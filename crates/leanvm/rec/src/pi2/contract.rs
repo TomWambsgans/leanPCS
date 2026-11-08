@@ -18,7 +18,7 @@
 //! two scalars), π2's `W` and `Q` likewise, and the setup roots are constants so (the root word of
 //! π1's setup hash, of π2's setup root); every layout word names its stack (π1's
 //! `leanvm_univariate::contract::layout_word`, π2's `prover::layout_word`: the code, the variables, the words placed).
-//! A precompile is a registry keyed by the layout word ([`registry`]): π1's five layouts are checked by
+//! A precompile is a registry keyed by the layout word ([`registry`]): π1's three layouts are checked by
 //! `leanvm_univariate`'s opening, π2's three by `quotient::opening`, and `Q`'s two claims travel in one call, as one
 //! opening (AGENTS.md: two openings of one root could be of two tables). The tests run the decoding mock
 //! (`machine::PcsOpen::decoding`): a call in another format attests nothing.

@@ -47,11 +47,22 @@ TLDR: The PCS is relatively easy to upgrade, the only thing that cannot be upgra
 - We want a "ZKZK-friendly" PCS -> at a prover overhead of typically 2x or 4x, we can make it ZKZK without changing the verifier *at all* (WHIR is an example)
 - I don't think we need to put the Fiat-Shamir states (before + after) in the header (but this requires security analysis)
 
-## Key figures: one ZK proof of a Merkle path
+## This repository
+
+An implementation of the idea above, on two Keccak workloads, with the `PCS_OPEN` precompile mocked and `MUL_FIELD`
+priced at 10 gas (the EIP draft: [`eip-draft_leanPCS.md`](eip-draft_leanPCS.md)). The field is `K = GF(2^64)`,
+`E = GF(2^192)`, the PCS leanVM's WHIR unchanged, Fiat–Shamir Keccak-256.
+
+1. **A zero-knowledge proof of Keccak-256 Merkle membership** (`crates/membership`), verified by an EVM contract and
+   proved correct in Lean 4 (`formal/`).
+2. **leanVM proofs on the EVM by recursion** (`crates/leanvm`): a leaf aggregate of leanXMSS signatures by leanVM's
+   Keccak VM, proved by a univariate PIOP (π1), whose verifier a second SNARK (π2) proves; the contract runs π2's
+   verifier and hands every claim to `PCS_OPEN`.
+
+### Key figures: one ZK proof of a Merkle path
 
 Statement `(y, root)`, witness `x` and a depth-32 path, Keccak-256: `y = H(x | 0x11..)`, path from `H(x | 0x22..)`
-to `root`. Measured on the implementation in `crates/membership/quotient` and `crates/membership/evm` (details: [`AGENTS.md`](AGENTS.md),
-[`STATUS.md`](STATUS.md)).
+to `root` (details: [`STATUS.md`](STATUS.md)).
 
 | | |
 |---|---|
@@ -63,25 +74,80 @@ to `root`. Measured on the implementation in `crates/membership/quotient` and `c
 | Contract deployment | 1.43 M gas |
 | Formal verification (Lean 4) | knowledge soundness (≈ 2^-62 at 2^64 queries), completeness (failure < 2^-162) and zero knowledge (≈ 2^-113) proved end to end, in the random-permutation model; the contract proved to be the verifier (its bytecode by tests) |
 
-## Key figures: one leanVM proof (recursion, `crates/leanvm/rec`)
+### Key figures: one leanVM proof by recursion
 
-A leanVM leaf aggregate of leanXMSS signatures:
-- π1 is a univariate PIOP for leanVM's statement (`crates/leanvm/univariate`), with leanVM's WHIR.
-- π2 is a SNARK of π1's verifier.
-- The contract runs π2's verifier and passes every claim to `PCS_OPEN`.
-- Fiat–Shamir is Keccak-256 throughout.
+A leaf aggregate of leanXMSS signatures by leanVM's Keccak VM (commit `9d50c92a3`: leanVM `42422001` with a `SHA3`
+table, one Keccak-f step a row). π1 proves its execution, Flock proving the Keccak-f permutations; π2 proves π1-rec3's
+verifier (π1 with Fiat–Shamir shaped for π2) minus its openings; the contract runs π2's verifier only. Measured on an
+Apple M4 Max (16 cores), `RUSTFLAGS="-C target-cpu=native"`, with other jobs on the machine (load average 9–14);
+transaction gas under EIP-7623 at a claim price of 0, without the 21,000 base.
 
-| | BLAKE2s VM (leanVM `42422001`) | Keccak VM (leanVM `9d50c92a3`'s `SHA3` table) |
-|---|---|---|
-| Signatures per proof | 1,000 (up to about 2,000) | 400 (up to about 470) |
-| Hash argument | Flock, BLAKE2s block | Flock, Keccak-f block, structured terminal |
-| Gas, `PCS_OPEN` free | 44,804 transaction (real proof; 45,464 on a sample stream) | 44,113 transaction (real 400-signature proof) |
-| Prover | π1 4.8 s + π2 4.5 s (h1, 16 threads) | π1 4.7 s at 400 signatures (M4 Max), π2 ≈ 8 s; [`KECCAK.md`](docs/leanvm/univariate/KECCAK.md) |
-| Formal verification (Lean 4) | knowledge soundness and completeness of π1-rec3 and of the recursion | the statement, the Keccak-f block (soundness, completeness, terminal) and π1's transcription; π1's and the recursion's theorems not yet |
+| | **128 signatures (the reference)** | 400 signatures |
+|---|---:|---:|
+| VM execution | 154,148 cycles; tables of `2^14`–`2^16` rows, memory `2^20` | 473,348 cycles; `2^16`–`2^17` rows, memory `2^22` |
+| π1 prover (π1-rec3) | 2.7 s cold, 3.65 s warm median of 3; 6.9 GB | 4.7 s (main line), 14.4 GB |
+| π2 prover | 4.4 s + 1.7 s openings (and 3.8 s witness); 9.8 GB | 3.0 s + 0.9 s openings (and 2.9 s witness); 9.8 GB |
+| Calldata to the contract | 980 B | 980 B |
+| Gas (real proof) | 28,325 execution; **43,309** transaction | 29,105 execution; 44,113 transaction |
+| PCS claims | 7, in 6 `PCS_OPEN` calls | 7, in 6 calls |
+| Formal verification (Lean 4) | the VM's statement, the Keccak-f block (soundness, completeness, terminal) and π1's transcription; π1's and the recursion's theorems in progress | |
 
-## Repository
+π1 alone as a contract (no recursion) costs 358,957 transaction gas at 128 signatures (8,020 B of calldata, 3 claims).
+The Keccak VM fits WHIR's `2^28`-word commitments up to about 470 signatures. Details:
+[`docs/leanvm/univariate/KECCAK.md`](docs/leanvm/univariate/KECCAK.md), [`STATUS.md`](STATUS.md).
+
+## Repository map
+
+```
+crates/
+  membership/quotient      the membership proof: circuit, prover, Rust verifier, hiding openings
+  membership/evm           its verifier as EVM bytecode; revm with FIELD_MUL and a mock PCS_OPEN; gas
+  evm_link                 compiles a recorded verifier graph, assembles it, links it into EIP-170 contracts
+  leanvm/statement         the Keccak VM's statement, Flock's verifier, the Keccak-256 chain, the EVM recorder
+  leanvm/univariate        π1: the univariate PIOP's verifier, contract and prover (package leanvm_univariate)
+  leanvm/rec               π2 and the recursion's contract (package leanvm_rec)
+  leanvm/gf2_linear        GF(2)-linear maps of GF(2^192) for the prover
+  vendor/leanvm-c445e3d5   leanVM's WHIR stack (primitives, fiat_shamir, pcs, parallel, verifier, bench)
+  vendor/leanvm-42422001   leanVM's Flock prover (packages lv42_*) and the Keccak-f block
+docs/
+  membership/HIDING.md     the hiding layouts
+  leanvm/univariate/       π1: SPEC.md (the PIOP), SPEC-FLOCK.md, PROVER.md, KECCAK.md (the VM, gas, measurements)
+  leanvm/rec/              π2: SPEC-REC.md (the recursion), PI2.md (π2's PIOP), SPEC-POINTS.md (the claims' points)
+  leanvm/flock/KECCAK.md   the Keccak-f[1600] Flock block
+formal/                    Lean 4 proofs (formal/README.md)
+params/                    soundness and parameter calculators (Python)
+```
+
+A crate's directory is its package name without its group's prefix (`crates/leanvm/rec` is `leanvm_rec`,
+`crates/vendor/leanvm-42422001/flock` is `lv42_flock`); `crates/leanvm/statement` is `leanvm_statement`.
+
+## Build, test, measure
+
+```sh
+cargo build --release --workspace --tests
+cargo test --release --workspace                                         # every default test
+
+# the membership proof
+cargo bench -p quotient --bench membership                               # prover / verifier timings and sizes
+cargo test --release -p evm -- --ignored --nocapture gas_report          # the contract's gas
+
+# the leanVM line (build with RUSTFLAGS="-C target-cpu=native" for timings)
+cargo test --release -p leanvm_univariate --test keccak_vm -- --ignored --nocapture keccak_gas_report  # π1's gas
+cargo test --release -p leanvm_univariate --test evm_vectors              # the committed real proofs replayed
+cargo test --release -p leanvm_rec --test keccak_vm_rec -- --ignored --nocapture                       # π2's circuit, gas
+PI2_VECTOR=keccak128_rec3 cargo test --release -p leanvm_rec --test pi2_real -- --ignored --nocapture real_end_to_end
+LEANVM_TRACE=<trace> PI1_VARIANT=rec3 cargo test --release -p leanvm_univariate --test prove_real -- --ignored \
+  --nocapture keccak_prover_benchmark                                    # π1's prover on a real trace
+```
+
+A trace is written by leanVM `9d50c92a3` itself, patched by `crates/leanvm/univariate/src/prover/dump_keccak/apply.sh`
+([`docs/leanvm/univariate/KECCAK.md`](docs/leanvm/univariate/KECCAK.md), "The prover"). The Lean builds:
+[`formal/README.md`](formal/README.md) and [`AGENTS.md`](AGENTS.md).
+
+## Documents
 
 - [`eip-draft_leanPCS.md`](eip-draft_leanPCS.md): the EIP draft (`PCS_OPEN` and `MULFIELD`) this repository backs.
-- [`AGENTS.md`](AGENTS.md): what the implementation adds to the note above, and where things are.
-- [`STATUS.md`](STATUS.md): what is proved, tested and measured, and what remains.
+- [`STATUS.md`](STATUS.md): what is proved, tested and measured, the security notes, and what remains.
+- [`AGENTS.md`](AGENTS.md): notes for contributors (people and agents): what the implementation adds to the idea above,
+  and conventions.
 - [`NOTICE.md`](NOTICE.md): provenance and licenses (MIT OR Apache-2.0).

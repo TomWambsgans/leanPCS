@@ -2,20 +2,25 @@
 
 # The Keccak VM: leanVM with Keccak-f in the VM, verified on the EVM
 
-**Status (2026-11-08): proven end to end on real executions.** The univariate PIOP's verifier (`verifier::reduce`) runs
-on a VM whose hash is Keccak-f: `Blake2s::Keccak(KECCAK_MAIN)`. It is recorded, compiled to EVM code, run on revm, and
-checked word for word against the Rust verifier. The prover (`src/prover/`, "The prover" below) proves real leanVM
-`9d50c92a3` executions (`cargo leanvm aggregate --xmss N`, N = 32, 128, 400):
+This document is the VM π1 proves and what it measures: the statement, the workloads, the capacity, the gas, the
+recursion and the prover. The protocol is `SPEC.md`, Flock's part `SPEC-FLOCK.md`, the prover's mechanics `PROVER.md`.
+
+**Status (2026-11-08): proven end to end on real executions.** The verifier (`verifier::reduce` with `KECCAK_MAIN` or
+`KECCAK_REC3`) is recorded, compiled to EVM code, run on revm, and checked word for word against the Rust verifier.
+The prover (`src/prover/`) proves real leanVM `9d50c92a3` executions (`cargo leanvm aggregate --xmss N`, N = 32, 128,
+400):
 - the Rust verifier accepts, the three WHIR openings verify, and the straight and deployable contracts accept the real
   calldata, with `PCS_OPEN` attesting exactly the claims the openings prove; mutated proofs are rejected;
-- the same holds for π1-rec3 (`KECCAK_REC3`);
-- π2 (`crates/leanvm/rec`) proves the real 400-signature π1-rec3 proof, and the recursion's contract accepts it.
+- π2 (`crates/leanvm/rec`) proves the real 128- and 400-signature π1-rec3 proofs, and the recursion's contract accepts
+  them.
 
-The gas is a function of the shape, not of the proof: the real proofs run at the gas measured below without a prover.
+**The reference workload is 128 signatures** (`leanvm_statement::shapes::reference()`, `leanvm_rec::REFERENCE`): the
+committed vector `tests/vectors/keccak128_rec3.txt`, the contract's reference setup root, the recursion's reference.
+The gas is a function of the shape, not of the proof: the real proofs run at the gas measured from the shapes.
 
 ## The statement
 
-- **The VM** is leanVM's Keccak branch, as it stood before the switch to a GKR (commit `9d50c92a3`, "flock: fix what
+- **The VM** is leanVM's Keccak branch, as it stood before its switch to a GKR (commit `9d50c92a3`, "flock: fix what
   the three-step block left stale"). It is leanVM `42422001` with its BLAKE2S table replaced by a `SHA3` table:
   - one row is one Keccak-f step over a thirteen-cell sponge state;
   - the four `m` cells are addressed independently, then come the `tail` run of four cells and the `cap` run of five;
@@ -24,229 +29,147 @@ The gas is a function of the shape, not of the proof: the real proofs run at the
   - the bytecode operands are the seven bases;
   - there are 86 columns: 9 operands, 25 + 25 lanes, and 27 counts.
 
-  `leanvm_statement::layout::tables_keccak` states the table and its 28 flush pairs, and the other five tables are
-  unchanged.
-- **The hash argument is not leanVM's.** leanVM's Flock block packs three permutations into 2^17 slots and commits
-  only the χ products. Its matrices are dense in the θ cascade, so the lincheck terminal is a walk of the whole circuit
-  (leanVM's `bilinear_walk`). `docs/leanvm/flock/KECCAK.md` §4.2 estimates such a walk at about 1.3M additions a
-  permutation, which is unaffordable in a contract.
-  - This verifier uses instead the Keccak-f block of `lv42_flock::keccak` (`docs/leanvm/flock/KECCAK.md`, M1): one permutation per 2^17
-    slots, with every round's state materialised.
-  - Its terminal is the structured one (`keccak_flock::structured_terminal`, `docs/leanvm/flock/KECCAK.md`, M3), about 3K `E` operations.
-  - The `A0` and `B0` matrices (2^34 entries) are never committed, so there are no claims on them: 3 claims in 3 calls,
-    against the BLAKE2s main line's 5.
-- **The link** is BLAKE2S's. The 50 lane columns are committed in `C1` as the univariate copies. `Q_W` binds each one
-  to `q_flock`'s word at its row's block: input lane `l` at the block's input port word `4l + 2`, output lane `l` at
-  the output port word `4l`. Each block is 2^11 words, so a `QflockSlot` term has 11 slot bits instead of 8
+  `leanvm_statement::layout::tables` states the table and its 28 flush pairs; the other five tables are leanVM
+  42422001's. In Lean the statement is `formal/KeccakVm`'s `KvHolds`.
+- **The hash argument is not leanVM's.** leanVM `9d50c92a3`'s Flock block packs three permutations into `2^17` slots
+  and commits only the χ products. Its matrices are dense in the θ cascade, so its lincheck terminal is a walk of the
+  whole circuit (leanVM's `bilinear_walk`), which `docs/leanvm/flock/KECCAK.md` §4.2 estimates at about 1.3M additions
+  a permutation: unaffordable in a contract.
+  - This verifier uses instead the Keccak-f block of `lv42_flock::keccak` (`docs/leanvm/flock/KECCAK.md`, M1): one
+    permutation per `2^17` slots, with every round's state materialised.
+  - Its terminal is the structured one (`keccak_flock::structured_terminal`, `docs/leanvm/flock/KECCAK.md`, M3),
+    3,019 `E` operations at a skip of 3.
+  - The block's matrices are never committed, so there are no claims on them: 3 claims in 3 calls (`C1`, `C2`, `F`).
+- **The link.** The 50 lane columns are committed in `C1` as the univariate copies, which the bus reads. `Q_W` binds
+  each one to `q_flock`'s word at its row's block: input lane `l` at the block's input port word, output lane `l` at
+  its output port word (`layout::keccak_slot`). Each block is `2^11` words, so a `QflockSlot` term has 11 slot bits
   (`verifier::weight_at`).
 - **leanVM's opcode exactly.** leanVM's step is `Keccak-f(in ⊕ END_BIT·e₁₆)` (`END_BIT = 0x80 << 56`, SHA3's last
   padding bit). The block proves `Keccak-f` of its input port, so the port of input lane 16 holds `in₁₆ ⊕ END_BIT`, and
-  `Q_W`'s copy identity for `in_16` is `copy − port = END_BIT` (`layout::keccak_slot_offset`): one constant, +36 gas.
+  `Q_W`'s copy identity for `in_16` is `copy − port = END_BIT` (`layout::keccak_slot_offset`): one constant.
 
 ## Workloads
 
 The workloads are runs of leanVM `9d50c92a3` on a Mac: `cargo leanvm aggregate --xmss N --log-inv-rate 1`, giving
-each table's executed rows. The memory is the cells used, and the bytecode is 2^17.54 instructions, padded to 2^18.
+each table's executed rows (`leanvm_statement::shapes::WORKLOADS`). The memory is the cells used, and the bytecode is
+`2^17.54` instructions, padded to `2^18`.
 
-| signatures | XOR | MUL | SET | DEREF | JUMP | SHA3 (Keccak-f) | memory |
-|---:|---:|---:|---:|---:|---:|---:|---:|
-| 32 | 6,956 | 9,877 | 6,578 | 9,652 | 3,995 | 4,440 | 2^17.5 |
-| 128 | 24,260 | 36,229 | 24,626 | 35,812 | 15,509 | 17,712 | 2^19.5 |
-| 400 | 73,288 | 110,893 | 75,762 | 109,932 | 48,157 | 55,316 | 2^21.1 |
-| 1,000 | 181,438 | 275,593 | 188,562 | 273,432 | 120,085 | 138,266 | 2^22.4 |
+| signatures | XOR | MUL | SET | DEREF | JUMP | SHA3 (Keccak-f) | memory | heights |
+|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| 32 | 6,956 | 9,877 | 6,578 | 9,652 | 3,995 | 4,440 | 2^17.5 | 13 14 13 14 12 13 |
+| **128** | 24,260 | 36,229 | 24,626 | 35,812 | 15,509 | 17,712 | 2^19.5 | 15 16 15 16 14 15 |
+| 400 | 73,288 | 110,893 | 75,762 | 109,932 | 48,157 | 55,316 | 2^21.1 | 17 17 17 17 16 16 |
+| 1,000 | 181,438 | 275,593 | 188,562 | 273,432 | 120,085 | 138,266 | 2^22.4 | |
 
-A signature takes about 138 Keccak-f, against about 202 BLAKE2s compressions in `42422001`'s guest, because 128 bytes
-are absorbed per permutation.
+A signature takes about 138 Keccak-f: 128 bytes are absorbed per permutation.
 
-**Capacity.** `q_flock` is 2^11 words per permutation, against 2^8 per BLAKE2s compression, so `C1` reaches WHIR's
-2^28 words at 2^16 permutations, about 470 signatures. At 400 signatures `C1` is 2^28 words. At 1,000 signatures
-(138,266 permutations) `q_flock` alone is 2^29 words: **no proof**. The BLAKE2s VM fits 2,000 signatures.
-`tests/keccak_vm.rs`, `keccak_stacks_against_whir`, checks this.
+**Capacity.** `q_flock` is `2^11` words per permutation, so `C1` reaches WHIR's `2^28` words at `2^16` permutations,
+about 470 signatures. At 400 signatures `C1` is `2^28` words. At 1,000 signatures (138,266 permutations) `q_flock`
+alone is `2^29` words: **no proof**. `tests/keccak_vm.rs`, `keccak_stacks_against_whir`, checks this.
 
 ## Gas
 
-Measured on revm (`tests/keccak_vm.rs`, `keccak_gas_report`). Transaction gas excludes the 21,000 base and uses
-EIP-7623. `c` is the price of a `PCS_OPEN` claim.
+Measured on revm (`tests/keccak_vm.rs`, `keccak_gas_report`), `KECCAK_MAIN`, point claims. Transaction gas excludes the
+21,000 base and uses EIP-7623. `c` is the price of a `PCS_OPEN` claim.
 
-| VM, hash argument | signatures | largest stack | calldata | execution | claims / calls | tx, `c` = 0 | tx, `c` = 5,000 |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| BLAKE2s VM (`42422001`), Flock (a′) | 400 | 2^27 | 7,060 B | 182,031 | 5 / 5 | 294,679 | 319,679 |
-| BLAKE2s VM (`42422001`), Flock (a′) | 1,000 | 2^27 | 7,108 B | 182,104 | 5 / 5 | 295,520 | 320,520 |
-| **Keccak VM, Flock Keccak-f** | 32 | 2^25 | 7,828 B | 222,928 | 3 / 3 | 347,840 | 362,840 |
-| **Keccak VM, Flock Keccak-f** | 128 | 2^27 | 8,020 B | 230,985 | 3 / 3 | 358,957 | 373,957 |
-| **Keccak VM, Flock Keccak-f** | 400 | 2^28 | 8,116 B | 236,976 | 3 / 3 | **366,484** | **381,484** |
-| Keccak VM's 400 shape with the BLAKE2S table and its Flock (a′) | 400 | 2^28 | 7,060 B | 178,029 | 5 / 5 | 290,677 | 315,677 |
-| the same, no hash argument | 400 | 2^28 | 3,556 B | 67,927 | 3 / 3 | 141,910 | 141,910 |
+| signatures | largest stack | calldata | execution | `FIELD_MUL` | claims / calls | tx, `c` = 0 | tx, `c` = 5,000 |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 32 | 2^25 | 7,828 B | 222,928 | 5,166 | 3 / 3 | 347,840 | 362,840 |
+| **128** | 2^27 | 8,020 B | 230,985 | 5,253 | 3 / 3 | **358,957** | **373,957** |
+| 400 | 2^28 | 8,116 B | 236,976 | 5,364 | 3 / 3 | 366,484 | 381,484 |
+| 1,000 (`C1` over `2^28`: infeasible) | 2^30 | 8,308 B | 247,340 | 5,531 | 3 / 3 | 379,908 | 394,908 |
 
-The Keccak contract at 400 signatures, cut into EIP-170 contracts, is 4 contracts with 252,545 of execution and
-382,053 transaction gas.
+The 400-signature contract, cut into EIP-170 contracts, is 4 contracts with 252,591 of execution and 382,099
+transaction gas. The 1,000-signature row is a contract no WHIR opening could serve.
 
-**Where the Keccak argument's cost goes.** These are differences in execution at the same shape (400 signatures),
-against BLAKE2s's Flock (a′), +58.9K in total:
-- the structured terminal, 42.2K, replacing the matrices' reduction (6.1K): **+36.1K**;
-- the ring switch's weight at the batch's point: +8.1K;
-- the batch's weights, with 50 more lane columns and 17 more counters in `C1`: +6.9K;
-- the combination: +3.3K;
-- the bus, where the `SHA3` table's 28 flush pairs send more fingerprints: +2.1K;
-- `Q_W`: +1.6K;
-- calldata reads and the transcript: +2.2K;
-- `PCS_OPEN`, with two calls fewer: −1.4K.
-
-Calldata is 1,056 B more:
-- the values at `t`, with 17 more counters: +408 B;
-- the bus's fingerprints: +408 B;
-- three more zerocheck rounds and three more lincheck rounds: +288 B;
-- one batch round fewer: −48 B.
+**Where it goes.** At 128 signatures the calldata is the selector and public input (36 B), the row counts (24 B), the
+two roots (64 B), Flock's 154 scalars (3,696 B), the 118 values at `t` (2,832 B) and the batching sumcheck's 27 rounds
+and 3 values (1,368 B). Only Flock's rounds and the batch grow with the shape, with the logarithms of the sizes. The
+contract is execution-bound. Its largest parts are the ring switch's weight at the batch's point (`SPEC.md` §13, "The
+floor") and Flock's structured terminal (about 42K at 400 signatures); `keccak_gas_report` prints the phases at 128
+and 400 signatures.
 
 ### Under the recursion (`crates/leanvm/rec`)
 
-π1 is recorded with π1-rec3's Fiat–Shamir shape (`Variant { skip: 3, TowerWalk, Rec3 }`), compiled into π2's D16v
-circuit on a sample stream, and π2's contract is measured. The gas depends on the circuit alone
-(`crates/leanvm/rec/tests/keccak_vm_rec.rs`).
+π1 is recorded with π1-rec3's Fiat–Shamir shape (`KECCAK_REC3`), compiled into π2's D16v circuit, and π2's contract
+is measured (`crates/leanvm/rec/tests/keccak_vm_rec.rs`). The contract's gas depends on the circuit alone.
 
-| π1 | Keccak-f | `E` products / linear | π2 positions | π2 blocks / selector pairs | contract execution | tx, `c` = 0 |
-|---|---:|---:|---:|---:|---:|---:|
-| BLAKE2s VM π1-rec3, 1,000 signatures | 107 | 53,666 / 115,628 | 15.93M of 2^24 (94.9%) | 25 / 156 | 29,832 | 45,464 |
-| Keccak VM π1-rec3, 400 signatures | 118 | 8,673 / 6,885 | 15.94M of 2^24 (95.0%) | 22 / 144 | 29,105 | **44,737** |
+| π1-rec3 | Keccak-f | Keccak-256 calls, stream | `E` products / linear | π2 positions used of 2^24 | π2 blocks / selector pairs | contract code | execution |
+|---|---:|---|---:|---:|---:|---:|---:|
+| **128 signatures** | 116 | 70, 9,232 B | 8,476 / 6,633 | 15,668,416 (93.4%) | 21 / 133 | 13,491 B | 28,325 |
+| 400 signatures | 118 | 71, 9,424 B | 8,673 / 6,885 | 15,940,800 (95.0%) | 22 / 144 | | 29,105 |
 
-The BLAKE2s line's 45,464 uses a sample stream. The README's 44,804 uses the real proof, whose stream has more zero
-bytes.
+**On the real proofs** (`crates/leanvm/rec/tests/pi2_real.rs`, `real_end_to_end`, Mac). The recursion's contract
+accepts with `PCS_OPEN` attesting its 7 claims in 6 calls, and 18 flipped calldata bytes are rejected.
 
-- **π2 still holds π1 in 2^24 positions.** The Keccak VM's π1 has 11 more Keccak-f (71 Keccak-256 calls against 67,
-  over a stream of 9,424 B against 8,272 B). Its terminal, though, is 3K operations instead of BLAKE2s's walked 49K
-  products, so the arithmetic regions nearly vanish.
-- **The recursion's contract costs the same as BLAKE2s's,** slightly less.
-- **The layout's padding was fixed for this** (`leanvm_rec::circuit::layout::pad_counts`):
-  - Before the fix, the Keccak π1 gave 70 blocks and 429 selector pairs: 47,791 of execution and 63,423 of
-    transaction gas.
-  - The cause was the greedy padding. It added one binary digit at a time and took the region that saved the most
-    rows. The largest region, `keccak16/k1` (118 × 6,144 = 724,992 rows), saves nothing from 2 to 3 digits (a carry:
-    both pad to 786,432), and saves 61K rows from 3 to 4.
-  - So the greedy restored every small region's digits before it took `k1`'s steps.
-  - It now looks past steps that save nothing: the best rows saved per added digit over every further digit count.
-  - The BLAKE2s π1's layout is unchanged (25 blocks, 156 pairs, the same gas), and `leanvm_rec`'s tests pass.
-  - The Lean transcription of the compiler (`formal/RecCircuit/RecCircuit/Layout.lean`, `pad_counts`) still has the
-    one-digit greedy and must take the same change.
+| | 128 signatures | 400 signatures |
+|---|---:|---:|
+| calldata | 980 B (58 zero) | 980 B (56 zero) |
+| execution | 28,325 | 29,105 |
+| transaction, EIP-7623, `c` = 0, without the base | **43,309** | 44,113 |
+| transaction, EIP-7976 | 62,720 | |
+| π2: witness compile, adapt and check | 3.8 s | 2.9 s |
+| π2: prove / open | 4.4 s / 1.7 s | 3.0 s / 0.9 s |
+| peak RSS | 9.79 GB | 9.8 GB |
+
+At 128 signatures the setup commitment takes 1.5 s, once per circuit; the runs were on the Mac of "Measured" below,
+under the same load, 3 runs. At 400 signatures the sample stream gave 44,737 transaction gas; the real proof's
+calldata has more zero bytes.
+
+π2 holds π1 in `2^24` positions: the structured terminal is 3K operations, so the arithmetic regions nearly vanish.
+The layout's padding (`leanvm_rec::circuit::layout::pad_counts`, and `formal/RecCircuit`'s `padCounts`) looks past
+digit counts that save no rows (a carry: the region `keccak16/k1` pads to the same rows at 2 and 3 digits); a
+one-digit greedy gave 70 blocks and 429 selector pairs (47,791 of execution) for the 400-signature π1.
 
 ## The prover
 
-### The trace (`src/prover/dump_keccak/`)
-
-`sh src/prover/dump_keccak/apply.sh <tree>` patches a leanVM `9d50c92a3` tree
-(`git -C <leanVM checkout> archive 9d50c92a3 | tar -x -C <tree>`). A proof leanVM starts with `LEANVM_TRACE_DUMP=<dir>`
-then runs the program again **without its fill blocks**, writes the run to `<dir>` and exits:
-
-```sh
-cd <tree> && LEANVM_TRACE_DUMP=<dir>/xmss400 cargo leanvm aggregate --xmss 400 --log-inv-rate 1
-```
-
-- **The fill.** leanVM `9d50c92a3` brings every table to a power of two by executing fill cycles after the halt, `SHA3`
-  to a quarter rule with a zero-state dummy on every fourth row (its three-steps-a-block Flock layout). The univariate
-  PIOP has its own padding rows (at the complement of `domain::active_positions`, their leaves 1), so the dump is the
-  program's own run: `program.filler` emptied, the interpreter halts at the sentinel. The tables hold exactly
-  `Stats::base_counts` rows, and the memory's and the bytecode's final counts are those of the rows dumped (the fill's
-  frames are never allocated, its instructions keep the count `g^0`).
-- The interpreter still reorders the `SHA3` rows when their count is a multiple of four
-  (`hash_flock::interleave_dummies`). That is a permutation of executed rows, which the bus does not see.
-- The columns are leanVM's own (`tables::fill_table` with the executed row count). Memory cells 0 and 1 are the public
-  input. `q_flock` is not dumped.
-- `Trace::load` pads each table to `2^ceil(log2 rows)` with its padding row. That row is zero but for two things:
-  the counters, set to 1 by `Trace::place`; and a `SHA3` row's output lanes, which hold `step(0) = Keccak-f(END_BIT·e₁₆)`,
-  so that `Q_W`'s copy identities hold on padding rows too.
-- The dump takes 0.1–0.3 s. The traces are deterministic: the Mac's and h1's are the same bytes.
+`PROVER.md` describes it: the trace `src/prover/dump_keccak/` makes leanVM `9d50c92a3` write (its run without the fill
+blocks), the placement, the Keccak-f blocks built from the placed `SHA3` rows, the phases, the skip kernels, and how to
+run. The traces' sizes:
 
 | signatures | rows (XOR, MUL, SET, DEREF, JUMP, SHA3) | heights | memory | bytecode |
 |---:|---|---|---:|---:|
 | 32 | 6,956 / 9,877 / 6,578 / 9,652 / 3,995 / 4,440 | 13 14 13 14 12 13 | 2^18 | 2^18 |
-| 128 | 24,260 / 36,229 / 24,626 / 35,812 / 15,509 / 17,712 | 15 16 15 16 14 15 | 2^20 | 2^18 |
+| **128** | 24,260 / 36,229 / 24,626 / 35,812 / 15,509 / 17,712 | 15 16 15 16 14 15 | 2^20 | 2^18 |
 | 400 | 73,288 / 110,893 / 75,762 / 109,932 / 48,157 / 55,316 | 17 17 17 17 16 16 | 2^22 | 2^18 |
 
-### What the prover does for the Keccak VM
-
-The BLAKE2s VM's prover, with the VM's tables (`verifier::vm_tables`) wherever it read leanVM 42422001's. `Trace::keccak` selects it, and so does
-`Blake2s::Keccak` in `prove::Config`.
-
-- **`q_flock`** (`Trace::keccak_flock`): one Keccak-f block a `SHA3` row, padding rows included. Block `i` sits at
-  row `i` of the placed table. Its input port is the row's input lanes with `END_BIT` added to lane 16, so its output
-  port is the row's output lanes (`step(in) = Keccak-f(in ⊕ END_BIT·e₁₆)`). The witness (`z`, `A z`, `B z`, the
-  lincheck's stripes) is `lv42_flock::keccak::generate_witness_with_ab_packed_and_lincheck`'s, over all `2^r` blocks.
-  `C1` commits `z` from the witness (`Stack::put_k_words`); the trace keeps no copy.
-- **Flock**: `prover::flock::prove_keccak`, the walked (structured) terminal, then the ring map's six challenges.
-- **`Q_W`'s copies** (`quotients::constraints_with`): the 50 lane columns against `q_flock`'s port words, 11 slot bits a
-  row. `in_16`'s constant `END_BIT` is folded into the slot table, since a multilinear plus a constant is the table
-  plus that constant.
-- **The batch's weights** (`Weight::with_slot_bits`): `q_flock`'s slot terms with 11 slot bits.
-- **The layout words** (`prove::layout_word_for`): the Keccak VM's stacks.
-- **π1-rec3's paired batch** (`batch::prove_pairs`) now accepts a stack shorter than the batch with an odd number of
-  variables (the setup's `2^23` against `2^25`). Past the words' rounds, the folded table zero-extends itself.
-
-### How to run
-
-Build with `RUSTFLAGS="-C target-cpu=native"`; `LEANVM_TRACE=<dir of a dump_keccak trace>`.
-
 ```sh
-cargo test --release -p leanvm_univariate --test prove_real -- --ignored --nocapture --test-threads 1 keccak
+LEANVM_TRACE=<dir> RUSTFLAGS="-C target-cpu=native" \
+  cargo test --release -p leanvm_univariate --test prove_real -- --ignored --nocapture --test-threads 1 keccak
+PI2_VECTOR=keccak128_rec3 cargo test --release -p leanvm_rec --test pi2_real -- --ignored --nocapture real_end_to_end
 ```
 
-- `proves_and_verifies_keccak` (`KECCAK_MAIN`) and `proves_and_verifies_keccak_rec3` (`KECCAK_REC3`) each:
-  - prove, and check the quotients' degrees, the combined claims against the stacks, and the Rust verifier;
-  - check that the WHIR openings verify;
-  - run the straight and deployable contracts on the real calldata, with word-for-word parity with the Rust
-    verifier, each `PCS_OPEN` call equal to the claim an opening proves, every call required, and a flipped byte
-    rejected;
-  - check that five stream mutations are rejected.
-  With `WRITE_VECTORS=<dir>` each writes its test vector.
-- `identities_hold_on_the_domain` checks the bus balance, the copies on every row, and the counters.
-- `keccak_prover_benchmark`: warm passes with a cooldown between them, as leanVM's benchmark runs (`PI1_REPEAT`,
-  `PI1_COOLDOWN`, `PI1_VARIANT=rec3`).
-
-The committed vectors are `tests/vectors/keccak.txt` (32 signatures, `KECCAK_MAIN`) and `tests/vectors/keccak_rec3.txt`
-(400 signatures, `KECCAK_REC3`). `tests/evm_vectors.rs` replays them with every other vector, its contract now binding
-the vector's own `F` (its third call's root). π2 on the real 400-signature π1-rec3 proof:
-
-```sh
-PI2_VECTOR=keccak_rec3 cargo test --release -p leanvm_rec --test pi2_real -- --ignored --nocapture real_end_to_end
-```
+The committed vectors are `tests/vectors/keccak.txt` (32 signatures, `KECCAK_MAIN`), `keccak128_rec3.txt` (128,
+`KECCAK_REC3`, the reference) and `keccak_rec3.txt` (400, `KECCAK_REC3`); `tests/evm_vectors.rs` replays them.
 
 ### The real proofs' gas
 
-The contract's execution at a claim price of 0, from `prove_real`. It equals the gas measured above from the shapes alone.
+The contract's execution at a claim price of 0, from `prove_real`. It equals the gas measured from the shapes alone.
 
 | signatures | π1 | calldata | straight | deployable (contracts) |
 |---:|---|---:|---:|---:|
 | 32 | `KECCAK_MAIN` | 7,828 B | 222,928 | 238,182 (4) |
 | 32 | `KECCAK_REC3` | 8,980 B | 223,357 | 239,010 (4) |
 | 128 | `KECCAK_MAIN` | 8,020 B | 230,985 | 246,393 (4) |
-| 128 | `KECCAK_REC3` | 9,268 B | 231,447 | 247,457 (4) |
+| **128** | **`KECCAK_REC3`** | 9,268 B | 231,447 | 247,457 (4) |
 | 400 | `KECCAK_MAIN` | 8,116 B | 236,976 | 252,591 (4) |
 | 400 | `KECCAK_REC3` | 9,460 B | 237,510 | 253,909 (4) |
 
-**Recursion, on the real 400-signature π1-rec3 proof.** π2 D16v takes 2.9 s to compile, adapt and check, 3.0 s to
-prove and 0.9 s to open, with a peak of 9.8 GB (Mac). The recursion's contract accepts with `PCS_OPEN` attesting its 7
-claims in 6 calls, and 18 flipped calldata bytes are rejected. The figures:
-- calldata: 980 B (56 zero);
-- execution: 29,105;
-- transaction: **44,113** (EIP-7623, `c` = 0).
-
-The sample stream gave 44,737; the real proof's calldata has more zero bytes.
-
 ### Measured
 
-**The Mac** is an Apple M4 Max (16 cores, 48 GiB, aarch64: no GFNI, so round 1 runs `round1_table`). Each figure is
-one cold run in its own process, with the machine idle before it, from `prove_real` (`proves_and_verifies_keccak`).
-The test-only combined-claims check is left out.
+**The reference, 128 signatures, `KECCAK_REC3`** (Apple M4 Max, 16 cores, 48 GiB, aarch64: no GFNI, so round 1 runs
+`round1_table`; `RUSTFLAGS="-C target-cpu=native"`; 2026-11-08, other agents' jobs on the machine, load average 9–14):
+3.65 s warm (the median of 3 passes, `keccak_prover_benchmark`, 3 s cooldown), peak RSS 6.86 GB; one cold run with
+the checks, 2.72 s and 6.75 GB. Flock is the largest phase (1.15 s), then the openings (0.66 s), the `C1` and setup
+commits (0.45 s), the leaves (0.44 s) and the batching sumcheck (0.38 s); `PROVER.md` ("Measured") has every phase.
 
-The laptop throttles under sustained load, and other agents shared it. Back-to-back passes come out 1.5–2× slower, so
-these figures are the best conditions seen, not medians.
-
-"Before" is the first working prover. "After" adds:
-- the round-1 table kernel;
-- `q_flock` committed from the Flock witness (no copy in the trace);
-- `C1`'s polynomials and the leaves freed before `C2`'s commitment.
-
-The `SHA3` leaf's grouped transforms and its pull/push fingerprints (`quotients::prefix_quotient`,
-`prints::PullPush`, aarch64 only) came later and are not in the "after" column. Measured alone, they take that leaf
-from 0.50 to 0.31 s at 400 signatures.
+**400 signatures, `KECCAK_MAIN`, on the same Mac.** Each figure is one cold run in its own process, the machine idle
+before it, from `prove_real`, the test-only combined-claims check left out; the laptop throttles under sustained load,
+so these are the best conditions seen, not medians. "Before" is the first working prover; "after" adds the round-1
+table kernel, `q_flock` committed from the Flock witness (no copy in the trace), and `C1`'s polynomials and the
+leaves freed before `C2`'s commitment. The `SHA3` leaf's grouped transforms and pull/push fingerprints
+(`quotients::prefix_quotient`, `prints::PullPush`, aarch64 only) came later: measured alone, they take that leaf from
+0.50 to 0.31 s.
 
 | phase (400 signatures, `KECCAK_MAIN`) | before | after |
 |---|---:|---:|
@@ -265,22 +188,18 @@ from 0.50 to 0.31 s at 400 signatures.
 | **total** | **6.61** | **4.69** |
 | peak RSS | 15.5 GB | 14.4 GB |
 
-At 128 signatures the total goes from 4.25 to 1.99 s (Flock 1.97 → 0.51 s, round 1 1.41 → 0.07 s), and the peak from
-7.2 to 6.7 GB. At 32 signatures, after: 0.76 s, 2.3 GB.
-
-The peak is reached at `C2`'s commitment. Both stacks are then `2^28` words, and `C1`'s codeword (twice its stack) is kept
-for its opening. `PI1_LOW_MEMORY=1` trades that codeword for 0.27 s of opening (see "What remains").
+Under the same conditions, at 128 signatures the total went from 4.25 to 1.99 s (Flock 1.97 → 0.51 s, round 1 1.41 →
+0.07 s) and the peak from 7.2 to 6.7 GB; at 32 signatures, after: 0.76 s, 2.3 GB. The peak is reached at `C2`'s
+commitment: both stacks are then at their largest, and `C1`'s codeword (twice its stack) is kept for its opening.
+`PI1_LOW_MEMORY=1` trades that codeword for re-encoding at the opening.
 
 **leanVM `9d50c92a3`'s own prover on the same Mac** (`cargo leanvm aggregate --xmss N --log-inv-rate 1 --repeat 3`,
-its tables filled to powers of two, one commitment of `2^26.5` words):
-- 128 signatures: 0.28 s, 4.0 GiB;
-- 400 signatures: 0.93 s, 13.1 GiB.
+its tables filled to powers of two, one commitment of `2^26.5` words): 0.28 s and 4.0 GiB at 128
+signatures, 0.93 s and 13.1 GiB at 400.
 
-This prover is about 5× slower at 400 signatures, with about the same peak memory.
-
-**h1** (AMD Ryzen 7 PRO 8700GE, 8 cores and 16 threads, 61 GiB; x86 with GFNI, so round 1 runs `round1_bytes`). These
-are warm medians of 3 passes with a 2 s cooldown (`keccak_prover_benchmark`), taken while other agents' Lean jobs held
-the load at 3–8. The aarch64-only `SHA3` leaf changes do not apply there. The proofs are byte-identical to the Mac's.
+**h1** (AMD Ryzen 7 PRO 8700GE, 8 cores and 16 threads, 61 GiB; x86 with GFNI, so round 1 runs `round1_bytes`): warm
+medians of 3 passes with a 2 s cooldown (`keccak_prover_benchmark`), while other agents' Lean jobs held the load at
+3–8. The aarch64-only `SHA3` leaf changes do not apply there. The proofs are byte-identical to the Mac's.
 
 | | 128 signatures | 400 signatures |
 |---|---:|---:|
@@ -288,31 +207,24 @@ the load at 3–8. The aarch64-only `SHA3` leaf changes do not apply there. The 
 | this prover, `KECCAK_REC3` | | 7.0 s, 14.5 GB |
 | leanVM `9d50c92a3` | 0.53–0.61 s, 2.6 GiB | 1.9–2.2 s, 9.6 GiB |
 
-Where the 400-signature `KECCAK_MAIN` proof's time goes on h1 (load 6):
-- Flock: 2.07 s;
-- openings: 1.65 s;
-- leaves: 0.99 s;
-- batching: 0.87 s;
-- `C1` commit: 0.86 s;
-- `C2` commit: 0.64 s;
-- tree: 0.34 s;
-- constraints: 0.26 s;
-- the rest: 0.76 s.
+Where the 400-signature `KECCAK_MAIN` proof's time goes on h1 (load 6): Flock 2.07 s, openings 1.65 s, leaves 0.99 s,
+batching 0.87 s, `C1` commit 0.86 s, `C2` commit 0.64 s, tree 0.34 s, constraints 0.26 s, the rest 0.76 s. With
+`PI1_LOW_MEMORY=1` the peak falls from 14.7 to 13.3 GB and the openings take 0.27 s more.
 
 ## What remains
 
 1. **Capacity.** Above about 470 signatures, either commit `q_flock` in two commitments (one more call), or use a
-   denser Keccak-f block that keeps a cheap terminal. `docs/leanvm/flock/KECCAK.md` §4.2's `k_log = 16` with a general `C` would be
-   2^10 words per permutation: 1,000 signatures would then put `q_flock` alone at 2^28.
-2. **The prover's speed.** It is 4–8× slower than leanVM `9d50c92a3`'s own prover on the same workload
-   ("Measured"). Most of the gap is the protocol's: two `2^28` commitments, their openings and the quotients, against
-   leanVM's single `2^26.5` commitment. What is left to try:
-   - on aarch64, a NEON `lanes` module for `crates/membership/quotient/src/ntt.rs`, which today multiplies one lane at a time.
-     It would speed up every transform: `C1`'s, the tree, the leaves, `Q_W`.
+   denser Keccak-f block that keeps a cheap terminal. `docs/leanvm/flock/KECCAK.md` §4.2's `k_log = 16` with a
+   general `C` would be `2^10` words per permutation: 1,000 signatures would then put `q_flock` alone at `2^28`.
+2. **The prover's speed.** It is several times slower than leanVM `9d50c92a3`'s own prover on the same workload
+   (above). Most of the gap is the protocol's: two proof commitments, their openings and the quotients, against
+   leanVM's single commitment. What is left to try:
+   - on aarch64, a NEON `lanes` module for `crates/membership/quotient/src/ntt.rs`, which today multiplies one lane
+     at a time. It would speed up every transform: `C1`'s, the tree, the leaves, `Q_W`.
    - Flock's level-0 bit pass: two kernels were tried and neither was faster. One halved the products; the other read
      L1-resident nibble tables. Its cost is per-quad overhead, not multiplications or cache misses.
-
-   `PI1_LOW_MEMORY=1` makes the prover drop `C1`'s codeword after its commitment, so that its opening re-encodes the
-   rows its queries open. The proof is the same. At 400 signatures on h1 the peak falls from 14.7 to 13.3 GB, and the
-   openings take 0.27 s more.
-3. **The Lean transcription's `pad_counts`** (above), and a review of the composition, as for BLAKE2s.
+3. **Lean.** `formal/UniKeccak` transcribes the verifier and agrees with the Rust on the differential vectors; the
+   knowledge soundness and completeness of the univariate verifier for the Keccak VM (a port of `UniSound` and
+   `UniComplete`) and the recursion's end theorems for the Keccak π1 are not done (`formal/README.md`, "The Keccak
+   VM").
+4. **The soundness calculator** (`params/leanvm_univariate_params.py`) still models the BLAKE2s VM (`SPEC.md` §9).

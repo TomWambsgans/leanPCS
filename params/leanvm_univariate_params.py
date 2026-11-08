@@ -1,5 +1,8 @@
 # Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
-"""Soundness of the univariate PIOP of docs/leanvm/univariate/SPEC.md (iteration 2), round by round, after the
+"""NOTE: this model is of the BLAKE2s VM's pi1 (leanVM 42422001, 1,000 signatures), which the code no longer has;
+it is not yet updated for the Keccak VM.
+
+Soundness of the univariate PIOP of docs/leanvm/univariate/SPEC.md (iteration 2), round by round, after the
 union bounds over the level-0 Johnson lists of its two proof commitments (WHIR takes no OOD sample at level 0: a root
 binds a list until the claims are opened), and the sizes of its commitments.
 

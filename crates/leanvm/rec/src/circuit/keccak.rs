@@ -1,5 +1,5 @@
 // Part of this repository. The round constants, rotations and lane permutation are Keccak's (FIPS 202), as in this
-// repository's crates/primitives/src/hash.rs (vendored from leanVM) and used by crates/membership/quotient/src/circuit.rs, whose
+// repository's crates/vendor/leanvm-c445e3d5/primitives/src/hash.rs (vendored from leanVM) and used by crates/membership/quotient/src/circuit.rs, whose
 // Keccak-f wiring (lane `x + 5y`, bit `z` at index `z`, lane `i` rotated by `RHO[i]` to `PI[i]`) this follows. MIT OR
 // Apache-2.0; see NOTICE.md.
 //! Keccak-f\[1600\] and Keccak-256 as rows (SPEC-REC.md §2.4.1, §2.4.2, §2.6).

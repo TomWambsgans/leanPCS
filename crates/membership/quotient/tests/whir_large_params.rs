@@ -4,7 +4,7 @@
 //!
 //! * the prover's configuration (`pcs::whir::config_for_rate`, the per-level eta search of `whir_config.rs`): the
 //!   folds, rate exponents, queries, grinding bits, out-of-domain samples and residual, level by level;
-//! * the verifier's tabulated query counts (`WHIR_QUERIES` of `crates/verifier/src/whir.rs`, read from its source:
+//! * the verifier's tabulated query counts (`WHIR_QUERIES` of `crates/vendor/leanvm-c445e3d5/verifier/src/whir.rs`, read from its source:
 //!   the table is private) and its ladder rule;
 //! * the Lean `largeLadder` (decided equal to leanerVM mumbai's `Whir.ladder`, `ladder_large`), its certified
 //!   level-0 lists `largeList` (`listHi_large`) and the opening's query count `largeQueries` (`largeQueries_eq`),

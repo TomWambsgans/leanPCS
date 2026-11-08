@@ -693,7 +693,7 @@ pub fn small_d32v(log_n: usize) -> Design {
     }
 }
 
-/// D16v at its target shape (SPEC-REC.md §2.4.5, π1-rec): `N = 2^24` positions, 86% of them used; about 200
+/// A synthetic D16v circuit of `N = 2^24` positions, sized as the former BLAKE2s VM's π1-rec was (SPEC-REC.md §2.4.5): 86% used; about 200
 /// (block, role) pairs and π1's 69 public terms. The rows by type follow §2.4.5's totals (Keccak-f's 107
 /// permutations: K1 657,408 rows, K0 164,352, KD 41,088, Kprep 11,449; the later blocks' XORs, the packings and
 /// free bits, the `E` units, the constants), each region on two or three aligned blocks.

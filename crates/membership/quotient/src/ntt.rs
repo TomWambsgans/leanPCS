@@ -1,6 +1,6 @@
 // Part of this repository. The additive transform's layers are domain.rs's (adapted there from leanVM's branch
 // PCS-openings-aggregation, commit 651453c6), in the same order; the lane-wise carry-less product and its reduction
-// are those of crates/primitives/src/field/{x8,gf2_64x3}.rs (vendored from leanVM c445e3d5, credit binius64).
+// are those of crates/vendor/leanvm-c445e3d5/primitives/src/field/{x8,gf2_64x3}.rs (vendored from leanVM c445e3d5, credit binius64).
 // MIT OR Apache-2.0; see NOTICE.md.
 //! [`crate::domain`]'s transforms on rows of eight words, a row's eight products one AVX-512 carry-less product where
 //! the build has it (for `crates/leanvm/univariate`'s prover):

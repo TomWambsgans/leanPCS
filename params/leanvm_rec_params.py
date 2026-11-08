@@ -1,5 +1,8 @@
 # Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
-"""Recursion for the univariate leanVM 42422001 verifier (docs/leanvm/rec/SPEC-REC.md): the sizes of the outer
+"""NOTE: this model is of the BLAKE2s VM's pi1 (leanVM 42422001, 1,000 signatures), which the code no longer has;
+it is not yet updated for the Keccak VM.
+
+Recursion for the univariate leanVM 42422001 verifier (docs/leanvm/rec/SPEC-REC.md): the sizes of the outer
 proof pi2 in each arithmetization, its soundness round by round after the union bounds over WHIR's level-0 Johnson
 lists, and the contract's gas.
 

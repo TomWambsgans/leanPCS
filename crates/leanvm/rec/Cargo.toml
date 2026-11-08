@@ -6,7 +6,7 @@ name = "leanvm_rec"
 version.workspace = true
 edition.workspace = true
 publish = false
-description = "Recursion for the univariate leanVM 42422001 verifier: pi1's verifier graph counted and evaluated (R1 of SPEC-REC.md); pi2's PIOP, its verifier compiled to EVM, its gas (R3)"
+description = "Recursion for the univariate Keccak VM verifier: pi2, a SNARK of pi1-rec3's verifier compiled from its recorded graph, and the contract that runs pi2's verifier"
 
 [lints]
 workspace = true
@@ -23,5 +23,5 @@ verifier.workspace = true
 parallel.workspace = true
 
 [dev-dependencies]
-# The allocator of the proving runs: jemalloc, freed pages kept (crates/bench), as crates/leanvm/univariate's.
+# The allocator of the proving runs: jemalloc, freed pages kept (crates/vendor/leanvm-c445e3d5/bench), as crates/leanvm/univariate's.
 bench.workspace = true

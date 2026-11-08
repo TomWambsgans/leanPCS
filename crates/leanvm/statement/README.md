@@ -1,30 +1,22 @@
 <!-- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. -->
 
-# leanVM's statement, Flock's verifier and the EVM toolchain, generic over the scalar
+# leanvm_statement
 
-The pieces `crates/leanvm/univariate` (π1) and `crates/leanvm/rec` (π2 and the recursion's contract) are built on:
+The Keccak VM's statement and the verifier pieces built on it, generic over the scalar they compute on, shared by
+`leanvm_univariate` (π1) and `leanvm_rec` (π2):
 
-- **leanVM's statement**, ported from leanVM `42422001`'s `crates/verifier` (`src/layout.rs`, `src/bus.rs`): the
-  six instruction tables, their bus flushes and constraints, and the stacking.
-  - `layout::tables_keccak` puts the `SHA3` table of leanVM's Keccak VM (commit `9d50c92a3`) in BLAKE2S's place
-    (`docs/leanvm/univariate/KECCAK.md`).
-- **Flock's verifier**, generic over the scalar it computes on (`src/flock.rs`, `src/flock_min.rs`): the zerocheck
-  with a univariate skip, the lincheck, the ring switch (`src/ring_tower.rs`) and the matrices' reduction
-  (`src/matrices.rs`).
-  - Its lincheck terminal is either BLAKE2s's walk, or the Keccak-f block's structured terminal
-    (`src/keccak_flock.rs`, design in `docs/leanvm/flock/KECCAK.md`).
-- **The Keccak-256 Fiat–Shamir chain** (`src/transcript.rs`, after `crates/membership/quotient/src/transcript.rs`).
-- **The EVM toolchain** (`src/evm/`):
-  - a recorder that runs a verifier on a symbolic scalar and gives its graph;
-  - the nodes' code for `crates/evm_link`, which compiles, assembles and links into EIP-170 contracts;
-  - a revm machine with `FIELD_MUL` and a mock `PCS_OPEN` that gives each instruction's gas;
-  - deployment of a linked verifier, and the gas of a fragment.
-- **The measured workloads** (`src/shapes.rs`): leanVM `42422001` leaf aggregates of 32 to 2,000 leanXMSS signatures,
-  their announced sizes, and the program's IV.
+- `layout`: the six instruction tables (leanVM `42422001`'s XOR, MUL, SET, DEREF, JUMP, and leanVM `9d50c92a3`'s
+  `SHA3`), their bus flushes and constraints;
+- `flock`, `flock_min`, `ring_tower`: Flock's verifier (zerocheck with a univariate skip, lincheck, ring switch with
+  the map in tower order); `keccak_flock`: the Keccak-f block's walk and structured terminal
+  ([`docs/leanvm/flock/KECCAK.md`](../../../docs/leanvm/flock/KECCAK.md));
+- `transcript`: the Keccak-256 Fiat–Shamir chain (`KeccakChannel`, `KeccakWriter`, the shapes `FsShape`);
+- `evm`: the recorder that runs a verifier on a symbolic scalar, the nodes' code for `crates/evm_link`, a revm
+  machine with `FIELD_MUL` and a mock `PCS_OPEN`, deployment;
+- `shapes`: the measured workloads (leanVM `9d50c92a3`, 32 to 1,000 signatures; the reference is 128) and the
+  program IV the contracts are built with.
 
 ```sh
-cargo test --release -p leanvm_statement                                                         # reductions, terminals
-cargo test --release -p leanvm_statement --test keccak_terminal -- --nocapture                   # Keccak-f terminal == walk
+cargo test --release -p leanvm_statement                                                  # reductions, terminals
+cargo test --release -p leanvm_statement --test keccak_terminal -- --nocapture            # Keccak-f terminal == walk
 ```
-
-Where each file comes from is in its first lines and in `NOTICE.md`.

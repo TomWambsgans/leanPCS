@@ -187,10 +187,7 @@ revm; log_n 29):
 
 Keccak-f counts each hash's `⌈(32 + absorbed bytes + 1) / 136⌉` blocks.
 
-**π2 positions** (§4.7's accounting):
-- Flock: 59 Keccak-f × 130,736 = 7.71M, plus ≈ 4.9K `E` ops at ≈ 10 positions an op (SPEC-REC §10.4 measured
-  114,704 positions for 11.7K ops) ≈ 0.05M: **≈ 7.76M**.
-- The whole π1 of §4.7: 91 Keccak-f = 11.9M. Its `E` ops are ≈ 10.7K (this terminal 3.0K instead of the modelled
-  10K, plus the ring kernel 5.3K, the quotient 0.4K and the batch weights 2K), and with the stream bits that part is
-  ≈ 1.23M. Total **≈ 13.1M of 2^24 (78%)**, against the modelled 13.2M.
+**π2 positions.** The proof-of-concept's estimate (§4.7 there) is superseded by the measurement on the Keccak VM's
+whole π1 (`docs/leanvm/rec/SPEC-REC.md` §10.3): π1-rec3 at 128 signatures records 116 Keccak-f and 8,476 `E`
+products / 6,633 linear operations, and its π2 circuit (D16v) uses 15,668,416 positions, 93.4% of `2^24`.
 

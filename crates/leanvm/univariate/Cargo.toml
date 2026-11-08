@@ -5,7 +5,7 @@ name = "leanvm_univariate"
 version.workspace = true
 edition.workspace = true
 publish = false
-description = "A univariate PIOP for leanVM 42422001 (two commitments, a product heap for the bus, quotient identities at one point): spec, soundness, verifier gas"
+description = "A univariate PIOP for the Keccak VM (leanVM 9d50c92a3): verifier generic over the scalar, its EVM contract, its prover"
 
 [lints]
 workspace = true

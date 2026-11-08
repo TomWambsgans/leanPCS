@@ -8,8 +8,8 @@
 //! - [`synth`]: synthetic circuits and their witnesses (the tests, the target shapes);
 //! - [`prover`]: the prover, its tables committed and opened with leanVM's WHIR;
 //! - [`verifier`]: the verifier, generic over the scalar;
-//! - [`contract`]: the verifier compiled to EVM, its calls of `PCS_OPEN` (π1's five, then π2's three), its gas;
-//! - [`pi1`]: π1-rec's calls, from its recorded verifier.
+//! - [`contract`]: the verifier compiled to EVM, its calls of `PCS_OPEN` (π1's three, then π2's three), its gas;
+//! - [`pi1`]: π1-rec3's calls, from its recorded verifier.
 
 pub mod adapt;
 pub mod circuit;
