@@ -15,7 +15,7 @@ cross-check does) writes its stream and its stacks; the test compares **the stre
 stacks word for word** with the vector's, and runs the Lean verifier (`UniStatement.run`) on the Lean stream.
 It throws (so `lean` exits with an error) on any disagreement.
 
-The vectors are written by `crates/leanvm_univariate/tests/honest_prover.rs` (`lean_honest_vectors`, with its own
+The vectors are written by `crates/leanvm/univariate/tests/honest_prover.rs` (`lean_honest_vectors`, with its own
 tiny-run prover; the four `… omitted point honest` records of its 20 are the ones read). That prover writes the
 same streams as the Rust prover's `prove_tiny` with stand-in roots (that
 test's own cross-check, `leanvm-univariate-prover2`), so the Lean prover agrees with both. A vector's `SHAPE`

@@ -1,0 +1,185 @@
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
+-- Uses leanerVM (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`, commit 6175f1a0, MIT OR Apache-2.0):
+-- the two calls `KeccakCalls` and their simulation lemmas (`implH`, `implF`); and
+-- `formal/EndToEnd/Completeness/E2ECompleteness/WithHash.lean`'s `simulateQ_proveOpeningWithH`.
+-- Ported to the Keccak VM from `formal/UniComplete/UniComplete/Rec3ProverSim.lean`.
+import UniKeccakComplete.K.Rec3Prover
+import UniKeccakComplete.K.FlockCommutes
+
+/-!
+# π1-rec3's honest prover commutes with simulation
+
+The port of `ProverSim.lean` to π1-rec3's prover (`Rec3Prover.lean`). Flock's prover is the main line's one
+(`flockProveH`, `FlockCommutes.lean`: it commutes with every monad morphism at both variants), so only the prover's
+own new pieces are new: the narrow draw (`wr_sampleNarrowW`), the run of squares (`wr_drawRunW`), the paired batch's
+rounds (`wr_pairRound3`, `wr_plainRound3`, `wr_batchRounds3`), the stream (`wr_proveStreamRec3With`), the prover with
+its three openings (`app_proveRec3With`, `app_uniProverRec3With`), and over the two calls
+**`simulateQ_uniProverRec3With`** (`Morph.sim impl`, the opening by WithHash's `simulateQ_proveOpeningWithH`), hence
+**`simulateQ_rec3_flockProveH`**: π1-rec3's prover with the honest Flock prover commutes with every
+simulation.
+
+Decisions (recorded): as in `ProverSim.lean`, the lemmas are stated for any monad morphism, lawfulness asked only
+where `<$>` is used (the stream's `some <$> flock …`); the main line's `Morph.wr_…`, `Morph.app_setupTreeOf`,
+`app_contractIvOf` (the IV at either variant), `app_seedOf`, `app_commitReal` are reused as they are.
+-/
+
+open OracleComp OracleSpec
+open LeanVM LeanVM.Parameters LeanVM.Semantics LeanVM.Protocol.KeccakHash
+open LeanVM.Protocol (Digest)
+open LeanVM.Protocol.Compile.Rom (implH implF)
+open UniStatement
+
+set_option autoImplicit false
+
+namespace UniKeccakComplete.Rec3
+
+open UniComplete
+
+/-! ## The writer's draws commute with every monad morphism -/
+
+section Draws
+
+variable {m n : Type → Type} [Monad m] [Monad n] (φ : Morph m n) (H : List UInt8 → m Digest)
+
+/-- **The narrow draw commutes.** -/
+theorem wr_sampleNarrowW : φ.wr (sampleNarrowW H) = sampleNarrowW fun x ↦ φ.app (H x) := by
+  simp only [sampleNarrowW, Morph.wr_bind, Morph.wr_get, Morph.wr_lift, Morph.wr_set, Morph.wr_pure]
+
+/-- **A run of squares commutes.** -/
+theorem wr_drawRunW (count : ℕ) : φ.wr (drawRunW H count) = drawRunW (fun x ↦ φ.app (H x)) count := by
+  simp only [drawRunW, Morph.wr_ite, Morph.wr_bind, Morph.wr_sampleW, Morph.wr_pure]
+
+end Draws
+
+/-! ## The paired batch and the stream -/
+
+section Stream
+
+variable {m n : Type → Type} [Monad m] [Monad n] (φ : Morph m n) (H : List UInt8 → m Digest)
+
+/-- **A pair round commutes.** -/
+theorem wr_pairRound3 (lambda : E) (nq : ℕ) (st : BatchState) :
+    φ.wr (pairRound3 H lambda nq st) = pairRound3 (fun x ↦ φ.app (H x)) lambda nq st := by
+  simp only [pairRound3, Morph.wr_bind, Morph.wr_sendScalars, wr_sampleNarrowW, Morph.wr_pure]
+
+/-- **The last plain round commutes.** -/
+theorem wr_plainRound3 (lambda : E) (nh : ℕ) (st : BatchState) :
+    φ.wr (plainRound3 H lambda nh st) = plainRound3 (fun x ↦ φ.app (H x)) lambda nh st := by
+  simp only [plainRound3, Morph.wr_bind, Morph.wr_sendScalar, wr_sampleNarrowW, Morph.wr_pure]
+
+/-- **π1-rec3's batching sumcheck's rounds commute.** -/
+theorem wr_batchRounds3 (lambda : E) (vars : ℕ) (st : BatchState) :
+    φ.wr (batchRounds3 H lambda vars st) = batchRounds3 (fun x ↦ φ.app (H x)) lambda vars st := by
+  simp only [batchRounds3, Morph.wr_bind, Morph.wr_forIn_list, wr_pairRound3, Morph.wr_ite, wr_plainRound3,
+    Morph.wr_pure]
+
+/-- **π1-rec3's stream commutes with a morphism** that commutes with the commitment and with Flock's prover. -/
+theorem wr_proveStreamRec3With [LawfulMonad m] [LawfulMonad n] (commit : Commitment → ℕ → Array K → m Committed)
+    (commit' : Commitment → ℕ → Array K → n Committed) (hcommit : ∀ c v s, φ.app (commit c v s) = commit' c v s)
+    (flock : FlockProver m) (flock' : FlockProver n) (hflock : ∀ logN v q, φ.wr (flock logN v q) = flock' logN v q)
+    (tr : Trace) :
+    φ.wr (proveStreamRec3With H commit flock tr) =
+      proveStreamRec3With (fun x ↦ φ.app (H x)) commit' flock' tr := by
+  simp only [proveStreamRec3With, Morph.wr_bind, Morph.wr_forIn_list, Morph.wr_sendInteger, Morph.wr_pure,
+    Morph.wr_lift, hcommit, Morph.wr_sendRoot, wr_drawRunW, Morph.wr_sampleW, Morph.wr_map, hflock,
+    Morph.wr_sendScalars, wr_batchRounds3, Morph.wr_get]
+
+end Stream
+
+/-! ## The IV, the prover -/
+
+section Top
+
+variable {m n : Type → Type} [Monad m] [LawfulMonad m] [Monad n] [LawfulMonad n] (φ : Morph m n)
+  (H : List UInt8 → m Digest) (F : KeccakState → m KeccakState)
+
+/-- **π1-rec3's honest prover commutes with a monad morphism** that commutes with Flock's prover and with the opening
+(`hopen`, WithHash's `simulateQ_proveOpeningWithH` for `simulateQ`). -/
+theorem app_proveRec3With
+    (hopen : ∀ (fuel : ℕ) (L : PcsQuotient.Layout) (tree : LeanVM.Prover.Tree) (stack : Array K)
+      (claims : List PcsQuotient.Claim),
+      φ.app (E2ECompleteness.proveOpeningWithH H F fuel L tree stack claims) =
+        E2ECompleteness.proveOpeningWithH (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) fuel L tree stack claims)
+    (flock : FlockProver m) (flock' : FlockProver n) (hflock : ∀ logN v q, φ.wr (flock logN v q) = flock' logN v q)
+    (fuel : ℕ) (a0 b0 : Digest) (programIv : List UInt8) (tr : Trace) :
+    φ.app (proveRec3With H F fuel flock a0 b0 programIv tr) =
+      proveRec3With (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) fuel flock' a0 b0 programIv tr := by
+  have hs : ∀ seed, φ.app ((proveStreamRec3With H (commitReal H) flock tr).run (Wr.start seed)) =
+      (proveStreamRec3With (fun x ↦ φ.app (H x)) (commitReal fun x ↦ φ.app (H x)) flock' tr).run
+        (Wr.start seed) := fun seed ↦ by
+    rw [← Morph.wr_run, wr_proveStreamRec3With φ H _ _ (Morph.app_commitReal φ H) flock flock' hflock]
+  simp only [proveRec3With, φ.app_bind, Morph.app_setupTreeOf, Morph.app_contractIvOf, Morph.app_seedOf, hs]
+  refine bind_congr fun tree ↦ bind_congr fun iv ↦ bind_congr fun seed ↦ bind_congr fun x ↦ ?_
+  obtain ⟨out, _⟩ := x
+  dsimp only
+  generalize List.find? (fun x ↦ x.1 == Commitment.c1) out.claims = o1
+  generalize List.find? (fun x ↦ x.1 == Commitment.c2) out.claims = o2
+  generalize List.find? (fun x ↦ x.1 == Commitment.setup) out.claims = o3
+  rcases o1 with _ | ⟨_, pt1, v1⟩ <;> rcases o2 with _ | ⟨_, pt2, v2⟩ <;> rcases o3 with _ | ⟨_, pt3, v3⟩ <;>
+    simp only [φ.app_bind, φ.app_pure, hopen]
+
+/-- **π1-rec3's deployed honest prover commutes with a monad morphism** that commutes with Flock's prover and with
+the opening. -/
+theorem app_uniProverRec3With
+    (hopen : ∀ (fuel : ℕ) (L : PcsQuotient.Layout) (tree : LeanVM.Prover.Tree) (stack : Array K)
+      (claims : List PcsQuotient.Claim),
+      φ.app (E2ECompleteness.proveOpeningWithH H F fuel L tree stack claims) =
+        E2ECompleteness.proveOpeningWithH (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) fuel L tree stack claims)
+    (flock : FlockProver m) (flock' : FlockProver n) (hflock : ∀ logN v q, φ.wr (flock logN v q) = flock' logN v q)
+    (D : UniKeccak.KDeployment) (input : Vector UInt8 32) (rows : List ℕ) (q : D.Stack rows) :
+    φ.app (uniProverRec3With H F flock D input rows q) =
+      uniProverRec3With (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) flock' D input rows q :=
+  app_proveRec3With φ H F hopen flock flock' hflock _ _ _ _ _
+
+end Top
+
+/-! ## Over the two calls: `simulateQ` -/
+
+section Commute
+
+variable {r : Type → Type} [Monad r] [LawfulMonad r] (impl : QueryImpl KeccakCalls r)
+
+/-- **π1-rec3's honest prover over the two calls commutes with any simulation**, at any fuel. -/
+theorem simulateQ_proveRec3With (flock : FlockProverH) (hflock : FlockCommutes flock) (fuel : ℕ) (a0 b0 : Digest)
+    (programIv : List UInt8) (tr : Trace) :
+    simulateQ impl (proveRec3With callKeccak256 callKeccakF1600 fuel (flock callKeccak256) a0 b0 programIv tr) =
+      proveRec3With (implH impl) (implF impl) fuel (flock (implH impl)) a0 b0 programIv tr := by
+  have h := app_proveRec3With (Morph.sim impl) callKeccak256 callKeccakF1600
+    (fun fuel L tree stack claims ↦ by
+      rw [Morph.sim_H, Morph.sim_F]
+      exact E2ECompleteness.simulateQ_proveOpeningWithH impl fuel L tree stack claims)
+    (flock callKeccak256) (flock (implH impl)) (fun logN v q ↦ by rw [hflock, Morph.sim_H]) fuel a0 b0
+    programIv tr
+  rw [Morph.sim_H, Morph.sim_F] at h
+  exact h
+
+/-- **π1-rec3's deployed honest prover over the two calls commutes with any simulation**: simulated by `impl`, it is
+the honest prover over `impl`'s two calls, Flock's prover at `impl`'s hash. -/
+theorem simulateQ_uniProverRec3With (flock : FlockProverH) (hflock : FlockCommutes flock)
+    (D : UniKeccak.KDeployment) (input : Vector UInt8 32) (rows : List ℕ) (q : D.Stack rows) :
+    simulateQ impl (uniProverRec3With callKeccak256 callKeccakF1600 (flock callKeccak256) D input rows q) =
+      uniProverRec3With (implH impl) (implF impl) (flock (implH impl)) D input rows q :=
+  simulateQ_proveRec3With impl flock hflock _ _ _ _ _
+
+/-- **π1-rec3's prover with the honest Flock prover commutes with every simulation** (the π1-rec3 analogue of
+`Prob.ProverCommutes`). -/
+theorem simulateQ_rec3_flockProveH (D : UniKeccak.KDeployment) (input : Vector UInt8 32)
+    (rows : List ℕ) (q : D.Stack rows) :
+    simulateQ impl (uniProverRec3With callKeccak256 callKeccakF1600 (flockProveH callKeccak256) D input rows q) =
+      uniProverRec3With (implH impl) (implF impl) (flockProveH (implH impl)) D input rows q :=
+  simulateQ_uniProverRec3With impl flockProveH flockCommutes_flockProveH D input rows q
+
+end Commute
+
+end UniKeccakComplete.Rec3
+
+/-! ## Axioms -/
+
+/-- info: 'UniKeccakComplete.Rec3.app_uniProverRec3With' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in #print axioms UniKeccakComplete.Rec3.app_uniProverRec3With
+
+/-- info: 'UniKeccakComplete.Rec3.simulateQ_uniProverRec3With' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in #print axioms UniKeccakComplete.Rec3.simulateQ_uniProverRec3With
+
+/-- info: 'UniKeccakComplete.Rec3.simulateQ_rec3_flockProveH' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in #print axioms UniKeccakComplete.Rec3.simulateQ_rec3_flockProveH

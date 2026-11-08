@@ -4,8 +4,8 @@ import UniStatement.KeccakTables
 /-!
 # The Keccak VM's tables against the Rust's
 
-The vectors are `crates/leanvm_flock_gas/tests/lean_keccak_tables.rs`'s output (`cargo test --release -p
-leanvm_flock_gas --test lean_keccak_tables -- --nocapture`): every table of `tables_keccak()`, its columns with their
+The vectors are `crates/leanvm/statement/tests/lean_keccak_tables.rs`'s output (`cargo test --release -p
+leanvm_statement --test lean_keccak_tables -- --nocapture`): every table of `tables_keccak()`, its columns with their
 `q_flock` word and offset, and its flushes' forms term by term. `tablesKeccak`, `keccakSlot` and `keccakSlotOffset`
 print the same lines here. Run with `lake env lean ../UniStatement/UniStatementTest/KeccakTables.lean` from
 `formal/EndToEnd`; the `#guard` fails on any difference.

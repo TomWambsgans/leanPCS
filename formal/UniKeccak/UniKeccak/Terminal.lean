@@ -1,7 +1,7 @@
--- Part of this repository (new here, not from leanVM). Transcribed from `crates/leanvm_flock_gas/src/keccak_flock.rs`
+-- Part of this repository (new here, not from leanVM). Transcribed from `crates/leanvm/statement/src/keccak_flock.rs`
 -- (`structured_terminal`, `shift_offsets`, `grouped`, `RC`, `RHO`, `SOURCE`, `port_word`, `CONSTANT_COLUMN`,
--- `X_QUAD`): the structured lincheck terminal of the Keccak-f[1600] Flock block of `crates/lv42_flock/src/keccak.rs`
--- (`crates/lv42_flock/KECCAK.md` §4.2, M3). MIT OR Apache-2.0; see AGENTS.md.
+-- `X_QUAD`): the structured lincheck terminal of the Keccak-f[1600] Flock block of `crates/vendor/leanvm-42422001/flock/src/keccak.rs`
+-- (`docs/leanvm/flock/KECCAK.md` §4.2, M3). MIT OR Apache-2.0; see AGENTS.md.
 module
 
 public import UniStatement.Flock
@@ -21,7 +21,7 @@ where the Rust's is `S::sum` (field addition is exact).
 
 `structuredTerminal` is the value the Keccak verifier's Flock (`UniKeccak.verifyWalkedK`) checks `r_lc` against
 (collected: `FlockMatrixTerminal`). That it equals the matrices' sum for `lv42_flock::keccak`'s R1CS is the Rust's
-test (`keccak_flock`'s against `walked_terminal_with::<KeccakWalked>`, `crates/leanvm_flock_gas/tests/
+test (`keccak_flock`'s against `walked_terminal_with::<KeccakWalked>`, `crates/leanvm/statement/tests/
 keccak_terminal.rs`), not a theorem here.
 -/
 

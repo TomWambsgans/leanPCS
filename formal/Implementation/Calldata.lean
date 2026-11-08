@@ -13,7 +13,7 @@ proves they agree:
 * `beNat` / `beBytes` (`MSTORE` of a `CALLDATALOAD`) round-trip, and a state's low 192 bits as a
   number are its `stateLimbs` (`natLimbs_state`);
 * `calldataOf`: the calldata of a statement's 64 bytes, two roots and five values, as
-  `crates/evm/src/quotient.rs`'s `calldata` writes it (a root's halves reversed, a value's limbs
+  `crates/membership/evm/src/quotient.rs`'s `calldata` writes it (a root's halves reversed, a value's limbs
   `c2, c1, c0` big-endian); and the words the graph reads from it (`cdWord_window`).
 -/
 

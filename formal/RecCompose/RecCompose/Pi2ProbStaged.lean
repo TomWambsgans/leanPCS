@@ -1,6 +1,6 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. π2's analogue of `formal/UniComplete/UniComplete/
 -- ProbExp.lean` (`stagedU`, its stages) and `ProbGrind.lean` (`rejectGood_uni`, the grinding through mumbai's
--- proof-of-work potential), from π2's honest prover (`RecCompose.Pi2Prover`, `crates/leanvm_rec/src/pi2/prover.rs`) and
+-- proof-of-work potential), from π2's honest prover (`RecCompose.Pi2Prover`, `crates/leanvm/rec/src/pi2/prover.rs`) and
 -- the Statement's contract (`formal/RecStatement`, written with Keccak-256 explicit in `Pi2CompleteH`). Uses leanerVM
 -- (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`, commit 6175f1a0, MIT OR Apache-2.0): the two calls, the
 -- logged random oracle and its potential engine, `powPot`, `missProb`, the run at a log's answers.

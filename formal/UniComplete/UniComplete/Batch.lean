@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Follows `crates/leanvm_univariate/src/prover/batch.rs`
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Follows `crates/leanvm/univariate/src/prover/batch.rs`
 -- (branch `leanvm-univariate-prover2`): the batching sumcheck's prover (SPEC.md §8, §13 lever 4a).
 import UniComplete.Trace
 

@@ -5,8 +5,8 @@ import Bridge.Claims.Constants
 /-!
 # The heap at the deployed Cantor basis
 
-The univariate crate computes its basis as `crates/quotient/src/domain.rs` does
-(`crates/leanvm_univariate/src/domain.rs`: `beta[0] = 1`, `beta[k + 1]` the solution of
+The univariate crate computes its basis as `crates/membership/quotient/src/domain.rs` does
+(`crates/leanvm/univariate/src/domain.rs`: `beta[0] = 1`, `beta[k + 1]` the solution of
 `s(x) = beta[k]` with its low bit clear, in leanVM 42422001's `K`, which is leanerVM's
 `LeanVM.Parameters.K`); the statement's `PcsQuotient.Domain.betaAt` is that computation, and
 `Bridge.isCantor_statementConsts` proves its first `24` vectors a Cantor basis (by

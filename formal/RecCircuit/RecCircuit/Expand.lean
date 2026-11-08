@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Transcribed from `crates/leanvm_rec/src/circuit/compile.rs`
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Transcribed from `crates/leanvm/rec/src/circuit/compile.rs`
 -- (`expand`), on `formal/RecGraph`'s recorder (`RecGraph.RecState`, the transcription of `record.rs`'s `Sym`:
 -- hash-consing, constant folding, `x + 0`, `x · 1`, `x · 0`, `x + x` simplified, operands ordered).
 import RecCircuit.Graph

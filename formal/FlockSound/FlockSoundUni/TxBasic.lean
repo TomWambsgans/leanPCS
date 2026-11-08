@@ -1,5 +1,5 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The evaluators are `formal/UniStatement`'s
--- (`UniStatement/Basic.lean`, transcribed from `crates/leanvm_flock_gas`).
+-- (`UniStatement/Basic.lean`, transcribed from `crates/leanvm/statement`).
 import UniStatement.FlockFacts
 import UniSound.FlockInterface
 import FlockSound.Main

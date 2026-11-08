@@ -1,5 +1,5 @@
--- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The writer is `leanvm_flock_gas::transcript::KeccakWriter`
--- (crates/leanvm_flock_gas, the prover's side of `KeccakChannel`); the polynomials are CompPoly's computable
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The writer is `leanvm_statement::transcript::KeccakWriter`
+-- (crates/leanvm/statement, the prover's side of `KeccakChannel`); the polynomials are CompPoly's computable
 -- `CPolynomial` (the `lean_vm` package set's).
 import UniStatement.Security
 import CompPoly.Univariate.Basic

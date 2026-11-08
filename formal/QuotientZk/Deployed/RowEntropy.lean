@@ -1,14 +1,14 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- The translation argument is F3's (`QuotientSecurity.Hiding.HiddenLayout.unopened_row_le`,
 -- `formal/QuotientSecurity/Hiding/Merkle.lean`), restated for any linear randomness model with free
--- entries, as the redesigned layout (`crates/quotient/HIDING.md`, the gadget) needs.
+-- entries, as the redesigned layout (`docs/membership/HIDING.md`, the gadget) needs.
 import QuotientSecurity.Hiding
 import QuotientZk.Rom.Main
 
 /-!
 # Unopened rows keep their entropy: the redesigned layout, and the joint view
 
-**The layout.** The hidden layouts of `crates/quotient/HIDING.md` (the gadget's redesign: no share
+**The layout.** The hidden layouts of `docs/membership/HIDING.md` (the gadget's redesign: no share
 lane; at the last nine entries of every lane's first piece, lanes `0, 31` and `1, 30` share one
 random value and the overflow lane holds zero) leave every lane's entries `0 .. D` (`D = 2^s - 9 =
 247`) uniform and independent: on stacks supported there the randomness is the identity

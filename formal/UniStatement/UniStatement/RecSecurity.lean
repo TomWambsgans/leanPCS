@@ -1,6 +1,6 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The statements' form is `Security.lean`'s
 -- (`UniKnowledgeSoundness`, `UniCompleteness`); the verifier is `Rec.lean`'s `verifyWithFs` at π1-rec3
--- (`crates/leanvm_univariate`'s `FLOCK_REC3`, `leanvm-rec` 4247e37).
+-- (`crates/leanvm/univariate`'s `FLOCK_REC3`, `leanvm-rec` 4247e37).
 module
 
 public import UniStatement.Rec
@@ -10,7 +10,7 @@ public import UniStatement.Security
 # Knowledge soundness and completeness of π1-rec3, against leanVM 42422001's relation
 
 Statements only. They are `Security.lean`'s, with the deployed verifier replaced by **π1-rec3's**
-(`crates/leanvm_rec/SPEC-REC.md` §12 item 8; `Rec.lean`):
+(`docs/leanvm/rec/SPEC-REC.md` §12 item 8; `Rec.lean`):
 
 * the contract's IV binds the variant (`contractIvForWith … (.flock flockMain) .rec3 true`: the main line's
   preimage with `fs-rec3`, the skip `3` and the slices' code `4` appended);

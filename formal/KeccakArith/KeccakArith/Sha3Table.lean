@@ -1,6 +1,6 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Written after `formal/Lv42`'s
 -- `Arithmetization/Tables/Blake2s.lean` (leanerVM `mumbai` f0393df4, MIT OR Apache-2.0); the `SHA3` table is
--- leanVM `9d50c92a3`'s (`crates/leanvm_flock_gas/src/layout.rs::{SHA3_COLUMNS, flushes_sha3}`).
+-- leanVM `9d50c92a3`'s (`crates/leanvm/statement/src/layout.rs::{SHA3_COLUMNS, flushes_sha3}`).
 module
 
 public import KeccakVm.Instance

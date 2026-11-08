@@ -44,7 +44,7 @@ Soundness.ksBound` (about `2^-62` at `Q = 2^64`) and `Completeness E2ECompletene
 `2^-162`) are proved with no hypothesis, and so is `ZeroKnowledgeWith` for `formal/QuotientZk`'s simulator at
 about `2^-113` (`PcsQuotient.EndToEnd.zeroKnowledge_closed`; `README.md`, "What is proved").
 
-**Zero knowledge rests on the hidden layouts** (`crates/quotient/HIDING.md`): the prover pads its two
+**Zero knowledge rests on the hidden layouts** (`docs/membership/HIDING.md`): the prover pads its two
 secret tables (`Layout.hidden`), and its opening of a table is then distributed as that of any other table
 with the same claims, under conditions (S) and (R) on the challenges, which `formal/QuotientSecurity/Hiding`
 proves for the deployed layouts outside a small set of challenges (`deployed_prEvent_le`). The statement's
@@ -295,7 +295,7 @@ structure Theorems (ε : ℕ → ℝ≥0∞) (δ : ℝ≥0∞) (ζ : ℕ → ℝ
   knowledgeSoundness : KnowledgeSoundness ε
   /-- Completeness of the honest `prover`. -/
   completeness : Completeness δ
-  /-- Statistical zero knowledge for `simulator` (the tables hidden as `crates/quotient/HIDING.md` says;
+  /-- Statistical zero knowledge for `simulator` (the tables hidden as `docs/membership/HIDING.md` says;
   its conditions (S), (R) on the challenges are part of what `ζ` must cover). `simulator` is a tested
   heuristic: no theorem covers it. -/
   zeroKnowledge : ZeroKnowledge ζ

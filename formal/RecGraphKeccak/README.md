@@ -3,11 +3,13 @@
 # RecGraphKeccak: the Keccak VM's π1-rec3 recorded graph, and graph = verifier
 
 The recursion's π2 proves a circuit compiled from the **recorded operation graph** of π1's verifier. This library is
-`formal/RecGraph` for the Keccak VM (`crates/leanvm_univariate/KECCAK.md`): its π1 verifier (`Blake2s::Keccak`,
+the Keccak VM's instance of `formal/RecGraph` (the graphs, the recorder, the shared verifier pieces and the simulation
+framework; the BLAKE2s VM's graph and proof, which this was ported from, are removed) for the Keccak VM
+(`docs/leanvm/univariate/KECCAK.md`): its π1 verifier (`Blake2s::Keccak`,
 `KECCAK_REC3`: skip 3, `FsShape::Rec3`, `Slices::TowerWalk`, point claims) at the reference workload, the Keccak VM
 at **128 signatures** (leanVM 9d50c92a3; rows XOR, MUL, SET, DEREF, JUMP, SHA3 `[24260, 36229, 24626, 35812, 15509,
 17712]`, 721,598 memory cells: memory `2^20`, bytecode `2^18`; `Pi1.keccak128 = UniKeccak.keccakShapeOf 721598 [..]`,
-the Rust emitter's `KECCAK_128`, both from `tests/keccak_vm.rs`'s `KECCAK_RUNS` / `UniKeccak.keccakRuns`).
+the Rust's `leanvm_rec::REFERENCE` = `leanvm_statement::shapes::reference()`, and `UniKeccak.keccakRuns`' 128-signature run).
 
 It is a library of `formal/EndToEnd` (`RecGraphKeccak`, `srcDir = "../RecGraphKeccak"`, `warningAsError`).
 
@@ -23,8 +25,8 @@ cargo test --release -p leanvm_rec --test lean_graph_keccak                 # fa
 ## Files
 
 - [`Emitted.lean`](RecGraphKeccak/Emitted.lean): **the Keccak π1-rec3 graph**, written by
-  `crates/leanvm_rec/tests/lean_graph_keccak.rs` (a self-contained renderer on `leanvm_univariate::contract::
-  {record_verifier, calls, Recorded}` and `leanvm_flock_gas::evm::{record::Node, codegen::Word}`): 10,848 nodes (9,871
+  `crates/leanvm/rec/tests/lean_graph_keccak.rs` (a self-contained renderer on `leanvm_univariate::contract::
+  {record_verifier, calls, Recorded}` and `leanvm_statement::evm::{record::Node, codegen::Word}`): 10,848 nodes (9,871
   additions and products, 69 Keccak-256 calls), 14 zero checks, no nonzero check, 1 ring-weight kernel, 3 `PCS_OPEN`
   calls of 31, 30, 27 words, a stream of 9,232 bytes (`C1`'s root at 24, `C2`'s at 3,752). Data only. Builds in about
   7 s.
@@ -57,14 +59,15 @@ cargo test --release -p leanvm_rec --test lean_graph_keccak                 # fa
 - [`Circuit.lean`](RecGraphKeccak/Circuit.lean): **`pi1rec3K_end`**, `RecCircuit.Compiled.compile_sound_end` at the
   Keccak graph: if the compiler accepts `RecGraphKeccak.Emitted.graph`, π2's satisfying witnesses carry its outputs.
   [`RecGraphKeccakTest/Circuit.lean`](RecGraphKeccakTest/Circuit.lean) (`lake exe rec-circuit-keccak GRAPH`) is the
-  run: on the graph `crates/leanvm_rec/tests/lean_circuit_keccak128.rs` writes (h1, 2026-11-08) it checks the file is
-  `Emitted.graph`, compiles it in Lean (16,133 expanded nodes, 677 s, 2.9 GB) and prints a circuit **identical** to the
-  Rust's (`diff`: 20,918 lines; `N = 2^24`, 14 regions, 21 blocks, 36 ports, 20,611 `κ`).
+  run: on the graph `crates/leanvm/rec/tests/lean_circuit_keccak.rs` writes (h1, 2026-11-08) it checks the file is
+  `Emitted.graph` (the reference's setup roots `Pi1.referenceRootsK`), compiles it in Lean (16,133 expanded nodes,
+  1,219 s under load, 2.9 GB) and prints a circuit **identical** to the Rust's (`diff`: 20,930 lines; `N = 2^24`, 14
+  regions, 21 blocks, 36 ports, 20,623 `κ`).
 
 ```sh
-LEAN_CIRCUIT_OUT=out cargo test --release -p leanvm_rec --test lean_circuit_keccak128 -- --ignored --nocapture
-lake build rec-circuit-keccak && .lake/build/bin/rec-circuit-keccak out/keccak128_pi1_rec3.graph > k.circuit
-diff out/keccak128_pi1_rec3.circuit k.circuit
+LEAN_CIRCUIT_OUT=out cargo test --release -p leanvm_rec --test lean_circuit_keccak -- --ignored --nocapture
+lake build rec-circuit-keccak && .lake/build/bin/rec-circuit-keccak out/keccak_pi1_rec3.graph > k.circuit
+diff out/keccak_pi1_rec3.circuit k.circuit
 ```
 
 ## What is proved, what is left

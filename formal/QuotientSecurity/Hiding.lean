@@ -15,7 +15,7 @@ import QuotientSecurity.Hiding.GadgetTheorem
 import QuotientSecurity.Hiding.Deployed
 
 /-!
-# Hiding WHIR openings of `K`-valued tables (`crates/quotient/HIDING.md`)
+# Hiding WHIR openings of `K`-valued tables (`docs/membership/HIDING.md`)
 
 * `Hiding.Core`: a view `A d + B r` with uniform `r` hides `d` given its claims when every
   claim-preserving change of `d` is reached by `B`; averaging over challenges costs the bad set.

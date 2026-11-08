@@ -1,7 +1,7 @@
--- Part of this repository. Transcribed from `crates/leanvm_univariate/src/verifier.rs` (`reduce`, `table_part`,
+-- Part of this repository. Transcribed from `crates/leanvm/univariate/src/verifier.rs` (`reduce`, `table_part`,
 -- `linearise`, `tuple_degree`, `chunks`, `quotient_terms`, `sent_columns`, `layouts`, `stack_layouts`, `degree`,
 -- `Shape`). The tables, flushes, fingerprints, public lines and Flock are leanVM 42422001's
--- (https://github.com/leanEthereum/leanVM), read through `crates/leanvm_flock_gas`. MIT OR Apache-2.0; see
+-- (https://github.com/leanEthereum/leanVM), read through `crates/leanvm/statement`. MIT OR Apache-2.0; see
 -- AGENTS.md.
 module
 

@@ -4,7 +4,7 @@ import QuotientSecurity.Hiding.Gadget
 /-!
 # The solvers' span: the hypothesis `hsolve` of `GadgetLayout.roundsReached`
 
-`crates/quotient/HIDING.md`, "Condition (R) for every challenge: the gadget", step 1 (the solvers).
+`docs/membership/HIDING.md`, "Condition (R) for every challenge: the gadget", step 1 (the solvers).
 `GadgetLayout.roundsReached` takes, for each pattern `p` and each `e : E`, `K`-values on the lanes
 of `p`'s other half that the stack has (`S = Set.range pos`), folding to `e` (`hsolve`). Here:
 

@@ -4,7 +4,7 @@ import QuotientSecurity.Hiding.Gadget
 /-!
 # The hidden layouts with the gadget (`opening::Layout::hidden` since the gadget)
 
-`crates/quotient/HIDING.md`, "The layout". A stack has lanes `ι` at lane indices `pos l` and
+`docs/membership/HIDING.md`, "The layout". A stack has lanes `ι` at lane indices `pos l` and
 entries `Y`. Its unknowns:
 
 * the entries `first` (every lane's first piece below the gadget, `0 .. D`) are uniform in every lane;

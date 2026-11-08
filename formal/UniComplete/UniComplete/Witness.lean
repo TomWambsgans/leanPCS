@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Follows `crates/leanvm_univariate/src/prover/trace.rs`
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Follows `crates/leanvm/univariate/src/prover/trace.rs`
 -- (`Trace::place`) and `tests/prove_tiny.rs` (the padding rows' counters `1`); the stack is `formal/Lv42`'s
 -- (leanerVM `mumbai` f0393df4's `LeanIsa.layout`, MIT OR Apache-2.0).
 import UniComplete.Prover

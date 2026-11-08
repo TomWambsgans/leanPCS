@@ -2,7 +2,7 @@
 
 # RecStatement
 
-The recursion's outer proof π2 (`crates/leanvm_rec`, `PI2.md` §2, §8–§9; branch `leanvm-rec` @ 2b22581, the final
+The recursion's outer proof π2 (`crates/leanvm/rec`, `PI2.md` §2, §8–§9; branch `leanvm-rec` @ 2b22581, the final
 protocol: the setup committed as `κ` and `κ + σ`, `ξ = κ(t) + βσ(t)` sent, no `h(t)`, the zero checks as an aligned
 coset of ports in closed form `β^15/F(Y)`, the row fold's siblings, the normalised `Q` claim
 `(1 + ρ')h + ρ'q = X/(S_d Y)`, one inversion, every `PCS_OPEN` call in `machine.rs`'s one ABI, π1's claims at points the
@@ -72,7 +72,7 @@ stale.)
 
 ## Rust → Lean
 
-| Rust (`crates/leanvm_rec/src/pi2`, `leanvm-rec` @ 2b22581) | Lean (`RecStatement.`) |
+| Rust (`crates/leanvm/rec/src/pi2`, `leanvm-rec` @ 2b22581) | Lean (`RecStatement.`) |
 |---|---|
 | `circuit.rs`: `Coeff`, `Lin`, `Formula`, `Pair`, `Read`, `PublicTerm`, `Circuit` (but `σ`, `κ`), `max_gamma`, `coset_constants`, `vanishing`, `pair_constants`, `digest` | `Coeff`, `Lin`, `Formula`, `Pair`, `Read`, `PublicTerm`, `Circuit`, `Circuit.maxGamma`, `cosetConstants` (`cosetConstantsF`), `vanishing` (`vanishingF`), `pairConstants`, `Pi2Circuit.digestWith` |
 | `verifier.rs`: `NAME`, `Spec::of`, `subspace_coefficients`, `zero_coset`, `normalised_constants`, `tag_walk`, `frobenius`, `inverse`, `extension`, `reduce`, `Reduced`, `verify`, `statement_words` | `name`, `Spec.of`, `subspaceCoefficients` (`subspaceCoeffsF`), `zeroCosetOf`, `normalisedConstants`, `tagWalk`, `frobenius`, `normInverse`, `extension`, `reduceWith` (+ `CoreSpec.run`), `Reduced`, `runWith`/`run`, `UniStatement.publicWordsOf` |
@@ -91,7 +91,7 @@ transcribed); the Rust's trace hook (`reduce_traced`) only reads values (the con
 
 ## The data
 
-`crates/leanvm_rec/src/lean_statement.rs` (`render`) writes `Data.lean` (`tests/lean_statement_keccak.rs`) from π2's
+`crates/leanvm/rec/src/lean_statement.rs` (`render`) writes `Data.lean` (`tests/lean_statement_keccak.rs`) from π2's
 circuit for the Keccak VM's π1-rec3 at the 128-signature reference (`circuit::compile::pi2(record_verifier(KECCAK_128,
 Keccak(KECCAK_REC3), Point), D16v)`, then `pi2::adapt`; the graph of `RecGraphKeccak/Emitted.lean`): the shape, the
 formulas, the pairs, the reads, the public terms; π1's contract IV (`Compiled::pi1_iv`), the setup's root

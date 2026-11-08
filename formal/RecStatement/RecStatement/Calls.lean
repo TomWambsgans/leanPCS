@@ -1,8 +1,8 @@
--- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Transcribed from `crates/leanvm_rec/src/pi2/contract.rs`
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Transcribed from `crates/leanvm/rec/src/pi2/contract.rs`
 -- (`read_indices`, `number`, `root_word`, `call_words`, `expected_calls`), branch `leanvm-rec` @ 2b22581; π1's contract
--- IV is `formal/UniKeccak`'s (`contractIvKWith`, `variantBytesK`: `crates/leanvm_univariate/src/contract.rs`'s
--- `variant_bytes`, `contract_iv_for` with `Blake2s::Keccak`). `PCS_OPEN`'s ABI is `crates/evm/src/machine.rs`'s
--- (`crates/leanvm_flock_gas/src/evm/machine.rs`: `element_word`, `root_word`).
+-- IV is `formal/UniKeccak`'s (`contractIvKWith`, `variantBytesK`: `crates/leanvm/univariate/src/contract.rs`'s
+-- `variant_bytes`, `contract_iv_for` with `Blake2s::Keccak`). `PCS_OPEN`'s ABI is `crates/membership/evm/src/machine.rs`'s
+-- (`crates/leanvm/statement/src/evm/machine.rs`: `element_word`, `root_word`).
 import RecStatement.Verifier
 import UniKeccak.Opening
 

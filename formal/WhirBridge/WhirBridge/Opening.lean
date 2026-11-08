@@ -1,7 +1,7 @@
 /-
 Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 
-The opening check of `crates/quotient/src/opening.rs` (`verify`, with `Layout`) as a program of the
+The opening check of `crates/membership/quotient/src/opening.rs` (`verify`, with `Layout`) as a program of the
 verifier language of leanerVM `mumbai` (https://github.com/Verified-zkEVM/leanerVM, commit 6175f1a0,
 MIT OR Apache-2.0: `Statement/LeanVmVerifier.lean`, its transcription of leanVM's verifier at
 `c445e3d5`), and its reading as mumbai's stacked opening `verifyStackedOpening`. The hidden branch of
@@ -14,7 +14,7 @@ import LeanVM.Protocol.EndToEnd.Sound.Glue
 /-!
 # The opening check
 
-`opening::verify(layout, root, claims, proof)` (`crates/quotient/src/opening.rs:782-892`):
+`opening::verify(layout, root, claims, proof)` (`crates/membership/quotient/src/opening.rs:782-892`):
 
 1. reject unless every claim's point has the table's `vars` coordinates;
 2. start the transcript from the IV `keccak256(prefix(layout) ‖ claims)` and a zero public digest

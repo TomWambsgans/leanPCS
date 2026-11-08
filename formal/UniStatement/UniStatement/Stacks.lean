@@ -1,4 +1,4 @@
--- Part of this repository. Transcribed from `crates/leanvm_univariate/src/stacks.rs` and `verifier.rs`'s
+-- Part of this repository. Transcribed from `crates/leanvm/univariate/src/stacks.rs` and `verifier.rs`'s
 -- `weight_at`. MIT OR Apache-2.0; see AGENTS.md.
 module
 

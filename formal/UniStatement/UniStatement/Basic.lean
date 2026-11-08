@@ -1,5 +1,5 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
--- Transcribed from `crates/leanvm_flock_gas/src/{field,multilinear,scalar}.rs` (adapted there from leanVM
+-- Transcribed from `crates/leanvm/statement/src/{field,multilinear,scalar}.rs` (adapted there from leanVM
 -- (https://github.com/leanEthereum/leanVM), commit 42422001, `crates/verifier/src/{field,multilinear}.rs`).
 -- The fields are leanerVM's (`Statement/Field.lean`, branch `mumbai`, commit 6175f1a0, MIT OR Apache-2.0).
 module
@@ -11,7 +11,7 @@ public import Statement.Field
 
 The verifier computes on `E = GF(2^192)` (leanerVM's `LeanVM.Parameters.E`, CompPoly's `BF64.Ext3`,
 compiled on machine words by `Statement/Fast`). This file holds the few helpers of
-`leanvm_flock_gas` the verifier calls, each on `E` (the Rust is generic over a `Scalar`, which on the
+`leanvm_statement` the verifier calls, each on `E` (the Rust is generic over a `Scalar`, which on the
 native verifier is `E`; constants are elements of `E`):
 
 * `eNew c0 c1 c2` is the Rust's `E::new`, limb `i` the coefficient of `y^i`;

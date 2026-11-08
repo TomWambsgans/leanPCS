@@ -27,7 +27,7 @@ Mathlib's `Polynomial E` (CompPoly's `toPoly`):
 * **`pEval_colPolyK_pointE`**: `colPolyK r v` interpolates `v` on `V_r`, `pEval (pointE i) (colPolyK r v) = ofK v_i`
   (`i < 2^r`, `r ≤ 28`), by `Bridge.Ntt` (the additive transform is the novel basis).
 
-**Finding (recorded):** `PcsQuotient.Domain.coefficients` is the statement's transform of `crates/quotient`, over its
+**Finding (recorded):** `PcsQuotient.Domain.coefficients` is the statement's transform of `crates/membership/quotient`, over its
 basis of `28` vectors (`betaAt k = 0` for `k ≥ 28`). `Shape.validate` admits heights up to `31`; at a height
 `29 ≤ r ≤ 31` the transform's twiddles at the top stages collide (`point (2 j)` reads bit `28` of `2 j` as `0`), so
 `colPolyK r v` does not interpolate `v` on `V_r` and the honest prover's constraint quotient does not divide. Every

@@ -1,5 +1,5 @@
-// Part of this repository; moved here from crates/leanvm_flock_gas/src/evm/codegen.rs, itself adapted from this
-// repository's crates/evm/src/codegen.rs (adapted from leanVM (https://github.com/leanEthereum/leanVM), branch
+// Part of this repository; moved here from crates/leanvm_statement/src/evm/codegen.rs, itself adapted from this
+// repository's crates/membership/evm/src/codegen.rs (adapted from leanVM (https://github.com/leanEthereum/leanVM), branch
 // PCS-openings-aggregation, commit 651453c6): the compilation of a recorded graph to straight-line code, a value used
 // once left on the stack and a shared one kept in a memory slot, the deeper operand evaluated first; here for any graph
 // whose nodes' code works on their operands on the stack, with the seams of [`crate::link`]. MIT OR Apache-2.0; see

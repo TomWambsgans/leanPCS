@@ -7,7 +7,7 @@ import UniStatement.Opening
 # The differential runner
 
 `lake env lean ../UniStatement/UniStatementTest/Runner.lean` (from `formal/EndToEnd`), with the vectors of
-`crates/leanvm_univariate/tests/lean_vectors.rs` at `$UNI_VECTORS`: the Lean verifier (`UniStatement.run`,
+`crates/leanvm/univariate/tests/lean_vectors.rs` at `$UNI_VECTORS`: the Lean verifier (`UniStatement.run`,
 compiled evaluation, not the kernel) on every vector's calldata, compared with the Rust verifier's on
 **every value it states**: the verdict (stream error or not, and which), every challenge drawn, every value
 it requires to be zero, the accept bit, the number of relations, each stack's variables, every opening

@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Transcribed from `crates/leanvm_rec/src/pi2/verifier.rs`
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Transcribed from `crates/leanvm/rec/src/pi2/verifier.rs`
 -- (`reduce`'s arithmetic after the transcript: `coeff`, `lin`, `formula`, the digits, the row's cells by the
 -- siblings' fold, the blocks' `Ẑ_s(t)`, the groups' and the public side's fractions along `tag_walk`, the zero coset in
 -- closed form, the pushes' sum, the identity, the one inversion, the claims), branch `leanvm-rec` @ 2b22581. `sq` is

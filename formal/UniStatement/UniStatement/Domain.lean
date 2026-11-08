@@ -1,5 +1,5 @@
--- Part of this repository. Transcribed from `crates/leanvm_univariate/src/domain.rs` (the Cantor basis computed
--- as in `crates/quotient/src/domain.rs`, adapted there from leanVM (https://github.com/leanEthereum/leanVM), branch
+-- Part of this repository. Transcribed from `crates/leanvm/univariate/src/domain.rs` (the Cantor basis computed
+-- as in `crates/membership/quotient/src/domain.rs`, adapted there from leanVM (https://github.com/leanEthereum/leanVM), branch
 -- PCS-openings-aggregation, commit 651453c6, `crates/flock/src/quotient/domain.rs`), for leanVM 42422001's `K`.
 -- MIT OR Apache-2.0; see AGENTS.md.
 module

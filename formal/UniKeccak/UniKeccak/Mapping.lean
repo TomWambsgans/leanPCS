@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The basis-B encoding is `crates/leanvm_univariate`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The basis-B encoding is `crates/leanvm/univariate`'s
 -- (SPEC.md §2), the map `UniStatement/Mapping.lean`'s; the relation and its stack are `formal/KeccakVm`'s
 -- (`keccakIsaInstance`, after `formal/Lv42`'s `leanIsaInstance`).
 module

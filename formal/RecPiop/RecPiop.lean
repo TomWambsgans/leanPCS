@@ -15,7 +15,7 @@ import RecPiop.Vanishing
 /-!
 # RecPiop: the soundness of π2's PIOP, generic over circuits
 
-π2 is the outer proof of the recursive EVM verifier for leanVM 42422001 (`crates/leanvm_rec`,
+π2 is the outer proof of the recursive EVM verifier for leanVM 42422001 (`crates/leanvm/rec`,
 `PI2.md`, `SPEC-REC.md` §2.3, §12; branch `leanvm-rec` @ 4247e37, the final PIOP: the setup as
 `κ`, `κ + σ` claimed at `β` and `ξ = κ(t) + βσ(t)` sent, no `h(t)`, the zero ports first). Its
 copy argument carries the computation: every position pulls `(w(ω_i), ω_i)` (but the holes) and

@@ -1,5 +1,5 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
--- Transcribed from `crates/quotient/src/statement.rs` (itself adapted from leanVM's
+-- Transcribed from `crates/membership/quotient/src/statement.rs` (itself adapted from leanVM's
 -- `crates/flock/src/membership.rs`, branch PCS-openings-aggregation, commit 651453c6). Keccak-256 is
 -- leanerVM's (`Statement/Keccak.lean`, branch `mumbai`, commit 6175f1a0, MIT OR Apache-2.0).
 module
@@ -9,7 +9,7 @@ public import Statement.Keccak
 /-!
 # The relation
 
-Read first. The statement `crates/quotient` proves: Ethereum's Keccak-256 `H` of a 64-byte block,
+Read first. The statement `crates/membership/quotient` proves: Ethereum's Keccak-256 `H` of a 64-byte block,
 the public values `y` and `root` (32 bytes each), and the secret `x`, a Merkle path of depth `32`
 (`siblings`) and its `directions`, such that
 

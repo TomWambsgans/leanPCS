@@ -1,5 +1,5 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
--- Transcribed from `crates/quotient/src/protocol.rs` (`verify`, `verify_openings`, `Openings`). The
+-- Transcribed from `crates/membership/quotient/src/protocol.rs` (`verify`, `verify_openings`, `Openings`). The
 -- opening proofs are leanerVM's format (`Statement/LeanVmVerifier.lean`, branch `mumbai`, commit
 -- 6175f1a0, MIT OR Apache-2.0).
 module
@@ -21,8 +21,8 @@ commitment `indexRoot`, the quotient table's two claims against its root (`verif
 permutation; deployed, Keccak-f[1600] (`verify`), at `logRows = 22` and the membership circuit's
 commitment (`Circuit.lean`, `Security.lean`).
 
-The EVM contract (`crates/evm`) is the reduction, recorded from the same Rust code
-(`crates/evm/src/record.rs`); it leaves the claims to the PCS_OPEN aggregation layer, which this
+The EVM contract (`crates/membership/evm`) is the reduction, recorded from the same Rust code
+(`crates/membership/evm/src/record.rs`); it leaves the claims to the PCS_OPEN aggregation layer, which this
 verifier checks with WHIR directly.
 -/
 

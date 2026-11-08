@@ -1,6 +1,6 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The interface is `UniSound.FlockSound`'s
 -- (`formal/UniSound/UniSound/FlockInterface.lean`) and `FlockSound3`'s (`Rec3/FlockInterface3.lean`) for the Keccak
--- verifier's Flock phase, `formal/UniKeccak`'s `verifyWalkedK` (`crates/leanvm_flock_gas/src/flock_min.rs`'s
+-- verifier's Flock phase, `formal/UniKeccak`'s `verifyWalkedK` (`crates/leanvm/statement/src/flock_min.rs`'s
 -- `verify_walked_with::<S, Keccak>`).
 import UniSound.Prog
 import UniSound.FlockInterface

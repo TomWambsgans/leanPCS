@@ -6,7 +6,7 @@ import UniKeccak
 # The Keccak VM's differential runner
 
 `lake env lean ../UniKeccak/UniKeccakTest/Runner.lean` (from `formal/EndToEnd`), with the vectors of
-`crates/leanvm_univariate/tests/lean_keccak_vectors.rs` at `$KECCAK_VECTORS`:
+`crates/leanvm/univariate/tests/lean_keccak_vectors.rs` at `$KECCAK_VECTORS`:
 
 * **Terminal vectors** (`TERMINAL`): `UniKeccak.structuredTerminal` on the Rust's random inputs at every skip
   `k ≤ 6`, against the Rust's `structured_terminal` and walked terminal (which the writer asserts equal), and Lean's

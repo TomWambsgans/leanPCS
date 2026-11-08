@@ -7,7 +7,7 @@ import Field.F192
 /-!
 # Keccak-f[1600] and Keccak-256 as D16v computes them, on words of `K`
 
-The value-level relations a satisfied D16v Keccak-f instance gives (`crates/leanvm_rec/src/circuit/keccak16.rs`):
+The value-level relations a satisfied D16v Keccak-f instance gives (`crates/leanvm/rec/src/circuit/keccak16.rs`):
 words of `K = F64` that the template's expression slots push, read through the copy argument. `D16Rel A C D` says:
 
 * `C 0` is θ's column parity of the input `A 0` (`kprep`'s `C_0` units);

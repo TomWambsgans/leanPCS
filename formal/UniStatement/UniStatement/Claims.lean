@@ -1,4 +1,4 @@
--- Part of this repository. Transcribed from `crates/leanvm_univariate/src/claims.rs`. MIT OR Apache-2.0; see
+-- Part of this repository. Transcribed from `crates/leanvm/univariate/src/claims.rs`. MIT OR Apache-2.0; see
 -- AGENTS.md.
 module
 

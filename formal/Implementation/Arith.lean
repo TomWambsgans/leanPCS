@@ -9,7 +9,7 @@
 The arithmetic of `GF(2^192) = K[y] / (y^3 + y + 1)`, `K = GF(2)[x] / (x^64 + x^4 + x^3 + x + 1)`, on
 the numbers the EVM holds: an element is `c0 + 2^64 c1 + 2^128 c2`, `c_i` the coefficient of `y^i`, bit
 `j` of `c_i` its coefficient of `x^j` (`primitives::field::F192`). Addition is `XOR`; the product
-(`mulE`, the opcode `FIELD_MUL` of `crates/evm/src/machine.rs`) is the schoolbook of
+(`mulE`, the opcode `FIELD_MUL` of `crates/membership/evm/src/machine.rs`) is the schoolbook of
 `gf2_64x3.rs`: nine carry-less products (`clmul`, `software::clmul`), the fold `y^3 = y + 1`,
 `y^4 = y^2 + y`, then each coefficient reduced by `x^64 = x^4 + x^3 + x + 1` (`reduce64`,
 `gf2_64.rs`'s `reduce`). `frobE` is `F192::frobenius`, `x^(2^64)`.

@@ -1,4 +1,4 @@
-// Part of this repository; the push helpers are moved here from crates/evm/src/codegen.rs (adapted from leanVM
+// Part of this repository; the push helpers are moved here from crates/membership/evm/src/codegen.rs (adapted from leanVM
 // (https://github.com/leanEthereum/leanVM), branch PCS-openings-aggregation, commit 651453c6). MIT OR Apache-2.0; see
 // AGENTS.md.
 //! The opcodes the generated code uses, `PUSH` of numbers, and the stack effect of straight-line code.

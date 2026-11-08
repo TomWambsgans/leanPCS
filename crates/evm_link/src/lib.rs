@@ -2,7 +2,7 @@
 //! A verifier compiled to straight-line EVM code, as one contract, or as contracts each within EIP-170's 24,576 bytes.
 //!
 //! This repository's contracts are not written by hand: a verifier written on a scalar type is run on a scalar that
-//! records every operation, and the recorded graph is compiled (`crates/evm`, `crates/leanvm_flock_gas`). The code
+//! records every operation, and the recorded graph is compiled (`crates/membership/evm`, `crates/leanvm_statement`). The code
 //! is straight-line, the cheapest code to run, so it grows with what the verifier computes: the membership verifier
 //! is 6,308 bytes, leanVM's 117 KB. This crate takes the compiled program, a list of [`Item`]s (code, and the values
 //! kept in memory slots), and either assembles it into one contract ([`assemble`], as the code generators always
@@ -42,10 +42,10 @@
 //! [`Item::FailIf`]; the outputs with [`Item::Output`] and [`Item::CopyConst`] and the calls of `PCS_OPEN` with
 //! [`Item::PcsOpen`], all after the last seam (the outputs region is the last part's: a linkable program computes
 //! every output's node before it writes the first). [`front`] is such a generator for any graph of nodes whose code
-//! works on their operands on the stack ([`front::Dag`]): `crates/leanvm_flock_gas` (`src/evm/codegen.rs`) gives it
+//! works on their operands on the stack ([`front::Dag`]): `crates/leanvm_statement` (`src/evm/codegen.rs`) gives it
 //! its nodes' code, entry and outputs, and its `src/evm/contract.rs` goes from the recorded verifier to deployed
 //! contracts (`deploy`), their gas measured per phase across contracts (`measure_deployable`) and checked against
-//! the Rust verifier (`parity_deployable`). `crates/evm` keeps a generator of its own and calls [`assemble`] and
+//! the Rust verifier (`parity_deployable`). `crates/membership/evm` keeps a generator of its own and calls [`assemble`] and
 //! [`link`] the same way.
 
 mod assemble;

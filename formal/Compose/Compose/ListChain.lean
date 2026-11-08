@@ -9,7 +9,7 @@ import QuotientRpm.ChainRom
 # The reduction with real roots: the list union, query by query
 
 The deployed reduction's proof carries two **roots** and five values, never the polynomials:
-the chain (`chainWith`, `crates/quotient/src/transcript.rs`) hashes the label, then each root's two
+the chain (`chainWith`, `crates/membership/quotient/src/transcript.rs`) hashes the label, then each root's two
 words after a state, then the values. What a root commits to is read off the hash's answers by an
 extraction that returns a **list** of candidates (`ListCommit`: a WHIR root's level-0 Johnson
 list, no out-of-domain sample at level 0), so a challenge drawn after a root must be sound for

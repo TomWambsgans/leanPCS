@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Follows `crates/leanvm_univariate/src/prover/quotients.rs`
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Follows `crates/leanvm/univariate/src/prover/quotients.rs`
 -- (branch `leanvm-univariate-prover2`): the second commitment's quotients (SPEC.md §5.2, §6, §13), here as exact
 -- polynomial divisions (the Rust divides on an extension coset and interpolates back).
 import UniComplete.Bus

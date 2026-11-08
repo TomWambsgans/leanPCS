@@ -355,7 +355,7 @@ noncomputable def Params.ofCantorBounds (d : ℕ) (hd : ∀ γ, (pub γ).natDegr
 
 /-! ### The claims against `quotient::protocol::reduce`, coordinate by coordinate
 
-What Lean cannot check, compared by reading `crates/quotient/src/protocol.rs` (`reduce`,
+What Lean cannot check, compared by reading `crates/membership/quotient/src/protocol.rs` (`reduce`,
 `sum_point`, `extension`, the three layouts and how `prove` fills the tables) against
 `claims_iff_accepts_ofCantor` below. `m = n + 2 = log_rows + 2` (24 at the instance),
 `w_k = sq^[k] t` (`reduce`'s `w`, `k ≤ m + 1`), `u_k = w_k / (1 + w_k)` (`reduce`'s `u`, here

@@ -1,8 +1,8 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Transcribed, in the Rust's operation order, from
--- `crates/leanvm_flock_gas/src/{scalar,multilinear,transcript}.rs` (`Scalar::pow`, `Scalar::sum`, `eq_kernel`,
+-- `crates/leanvm/statement/src/{scalar,multilinear,transcript}.rs` (`Scalar::pow`, `Scalar::sum`, `eq_kernel`,
 -- `multilinear_eval`, `eq_eval`, `dot`, `poly_eval`, `squares`, `FsShape::draw`, `sumcheck_round_poly`,
 -- `sumcheck_drawn`, `pair_point`, `pair_round_poly`, `sumcheck_pairs_drawn`, adapted there from leanVM
--- (https://github.com/leanEthereum/leanVM), commit 42422001) and `crates/leanvm_univariate/src/domain.rs` (`digits`,
+-- (https://github.com/leanEthereum/leanVM), commit 42422001) and `crates/leanvm/univariate/src/domain.rs` (`digits`,
 -- `coordinates_at`, `active_vanishing_from_bits`, `vanishing_ratio`).
 import RecGraph.Record
 import UniStatement.Rec

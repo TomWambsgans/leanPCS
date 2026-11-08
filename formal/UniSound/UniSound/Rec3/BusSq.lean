@@ -6,7 +6,7 @@ import UniStatement.Rec
 /-!
 # Round `0` of π1-rec3: the bus with `α = (c, c², c⁴, c⁸)`
 
-π1-rec3 (`crates/leanvm_rec/SPEC-REC.md` §1.4; `crates/leanvm_flock_gas/src/transcript.rs`,
+π1-rec3 (`docs/leanvm/rec/SPEC-REC.md` §1.4; `crates/leanvm/statement/src/transcript.rs`,
 `FsShape::draw`, `squares`; transcribed as `UniStatement.drawRun`, `UniStatement.squares`) draws
 round `0`'s challenges as three, `[c, β, γ]`, and reads the bus's tuple weights as the squares
 `α = (c, c², c⁴, c⁸)` of the one `c` (`β`, `γ` stay independent). The main line's round-`0` state

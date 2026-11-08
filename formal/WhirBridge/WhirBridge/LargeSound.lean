@@ -1,7 +1,7 @@
 /-
 Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 
-Fiat-Shamir soundness of `opening::verify` (`crates/quotient/src/opening.rs`) on public layouts of
+Fiat-Shamir soundness of `opening::verify` (`crates/membership/quotient/src/opening.rs`) on public layouts of
 `2^24 ..= 2^28` words. `family_sound_q` and `opening_sound_q` are this package's `family_sound`
 (`Family.lean`, adapted from leanerVM `mumbai`'s `romSound`, https://github.com/Verified-zkEVM/leanerVM,
 commit 6175f1a0, MIT OR Apache-2.0) and `opening_sound` (`Verifier.lean`) with the verifier's query

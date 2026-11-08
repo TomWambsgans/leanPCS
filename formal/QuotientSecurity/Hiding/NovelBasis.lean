@@ -14,7 +14,7 @@ rate `1/2`: row `q` of the level-0 codeword (`q < 2^(ℓ+1)`) holds each lane's 
 
 and `induced_weight` weighs a query `q` by `Π_k (1 + p_k (1 + Ŵ_k(K(q))))`, `Ŵ_k = W_k / W_k(v_k)`:
 the multilinear extension in `y` of `X_y = Π_{k : bit k of y} Ŵ_k` (`novel_mle`). That the NTT's
-committed codeword is this code is leanVM's (`crates/quotient/src/hiding.rs`: `column` computes `X_y` by
+committed codeword is this code is leanVM's (`crates/membership/quotient/src/hiding.rs`: `column` computes `X_y` by
 the same recurrence and `model_matches_the_prover` checks it against the committed codeword). This
 file transcribes that code (`subW`, `subRoot`, `novel`) and proves what condition (Q) needs of it:
 

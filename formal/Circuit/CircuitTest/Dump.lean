@@ -7,7 +7,7 @@ import Statement.Fast.Keccak
 /-!
 # The differential test against the Rust circuit
 
-`lake exe dump-circuit OUT` writes `membership` in the format of `crates/quotient/examples/dump_circuit.rs`
+`lake exe dump-circuit OUT` writes `membership` in the format of `crates/membership/quotient/examples/dump_circuit.rs`
 (little-endian `u32`s: the number of rows, the rows used, the number of inputs; each row's `X, Y, C`
 sources, `0` zero, `1` one, `2 + r` row `r`; the input rows; σ), and prints the public words that
 `Circuit.outputs` computes for a fixed secret next to `Secret.words`. The two files must have the same

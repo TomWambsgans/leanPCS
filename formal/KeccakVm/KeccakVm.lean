@@ -5,7 +5,7 @@ import KeccakVm.Instance
 /-!
 # KeccakVm: the Keccak VM's statement
 
-The Keccak VM (`crates/leanvm_univariate/KECCAK.md`): leanVM 42422001 with its `BLAKE2S` instruction replaced by
+The Keccak VM (`docs/leanvm/univariate/KECCAK.md`): leanVM 42422001 with its `BLAKE2S` instruction replaced by
 leanVM `9d50c92a3`'s `SHA3`, one step of that leanVM's cell sponge over Keccak-f[1600] (`Isa.lean`), and its
 relation in the form of leanVM 42422001's, with the Keccak-f block a parameter (`Instance.lean`). See `README.md`.
 

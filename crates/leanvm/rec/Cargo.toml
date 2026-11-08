@@ -1,0 +1,27 @@
+# Part of this repository. Builds on crates/leanvm/univariate and crates/leanvm/statement (which vendors and adapts
+# leanVM (https://github.com/leanEthereum/leanVM), commit 42422001), MIT OR Apache-2.0; pi2 (src/pi2) also on
+# crates/membership/quotient (its Cantor basis, transforms and opening layouts) and leanVM's WHIR (c445e3d5). See AGENTS.md.
+[package]
+name = "leanvm_rec"
+version.workspace = true
+edition.workspace = true
+publish = false
+description = "Recursion for the univariate Keccak VM verifier: pi2, a SNARK of pi1-rec3's verifier compiled from its recorded graph, and the contract that runs pi2's verifier"
+
+[lints]
+workspace = true
+
+[dependencies]
+leanvm_statement.workspace = true
+leanvm_univariate.workspace = true
+# pi2 (src/pi2): crates/membership/quotient's Cantor basis, transforms and opening layouts; leanVM's WHIR (c445e3d5).
+quotient.workspace = true
+primitives.workspace = true
+fiat_shamir.workspace = true
+pcs.workspace = true
+verifier.workspace = true
+parallel.workspace = true
+
+[dev-dependencies]
+# The allocator of the proving runs: jemalloc, freed pages kept (crates/vendor/leanvm-c445e3d5/bench), as crates/leanvm/univariate's.
+bench.workspace = true

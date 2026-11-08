@@ -3,8 +3,8 @@
 -- `PcsQuotient.Security` and leanerVM `mumbai` 6175f1a0's `Statement/LeanVm.lean`, MIT OR Apache-2.0); the relation is
 -- the Keccak VM's (`formal/KeccakVm`, `KvHolds`, through `UniKeccak.KDeployment.Relation`); the Keccak π1-rec3's
 -- recorded graph and its merge hazard are `formal/RecGraphKeccak`'s. Transcribed from
--- `crates/leanvm_rec/src/pi2/circuit.rs` (`Circuit::digest`), `prover.rs` (`Setup::new`) and `contract.rs`
--- (`registry`, the calls), and `crates/leanvm_flock_gas/src/evm/machine.rs` (`decode`, `root_of_word`), branch
+-- `crates/leanvm/rec/src/pi2/circuit.rs` (`Circuit::digest`), `prover.rs` (`Setup::new`) and `contract.rs`
+-- (`registry`, the calls), and `crates/leanvm/statement/src/evm/machine.rs` (`decode`, `root_of_word`), branch
 -- `leanvm-rec` @ 2b22581.
 import RecStatement.Calls
 import RecStatement.Data

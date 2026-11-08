@@ -29,7 +29,7 @@ variable (π : KeccakState → KeccakState) (iv publicInput : List UInt8) (strea
 theorem calls_eqK {st : RecState} {red : ReducedS} {r : Reduced} (hg : Good st)
     (hR : RedRK π iv publicInput stream st red r) (hb : InputsBelow st) (hs : stream.size = st.cursor) :
     (callsOfK st red).map (·.flatMap (RecGraph.wordBytes stream (evalAll π iv publicInput stream st))) =
-      UniKeccak.pcsCallsK keccak128 referenceRoots r := by
+      UniKeccak.pcsCallsK keccak128 referenceRootsK r := by
   obtain ⟨hr1, hr2, hop, hm⟩ := hR
   have hw1 := rootWord_of π iv publicInput stream hg hr1 hb hs
   have hw2 := rootWord_of π iv publicInput stream hg hr2 hb hs
@@ -70,11 +70,11 @@ abbrev walkUK (π : KeccakState → KeccakState) (publicInput : List UInt8) : Ch
 /-- The outputs of a walk's outcome. -/
 def outcomeOutputsK (x : Except UniError Reduced × Chan) : Option Outputs :=
   match x.1 with
-  | .ok r => some ⟨UniKeccak.pcsCallsK keccak128 referenceRoots r, x.2.zeros.toList, []⟩
+  | .ok r => some ⟨UniKeccak.pcsCallsK keccak128 referenceRootsK r, x.2.zeros.toList, []⟩
   | .error _ => none
 
 theorem verifierOutputs_eqK (π : KeccakState → KeccakState) (iv publicInput : List UInt8) (stream : Array UInt8) :
-    verifierOutputsWithK (m := Id) (fun s ↦ pure (π s)) keccak128 referenceRoots iv publicInput stream =
+    verifierOutputsWithK (m := Id) (fun s ↦ pure (π s)) keccak128 referenceRootsK iv publicInput stream =
       outcomeOutputsK (((walkUK π publicInput).run).run (Chan.start (Id.run (seedWith (Fp π) iv publicInput)) stream)) :=
   rfl
 
@@ -122,7 +122,7 @@ theorem outputsOf_recordedGraphK (p : Prog ReducedS) (stream : Array UInt8) (val
   rfl
 
 theorem outcomeOutputs_okK (b : Reduced) (c : Chan) :
-    outcomeOutputsK (.ok b, c) = some ⟨UniKeccak.pcsCallsK keccak128 referenceRoots b, c.zeros.toList, []⟩ := rfl
+    outcomeOutputsK (.ok b, c) = some ⟨UniKeccak.pcsCallsK keccak128 referenceRootsK b, c.zeros.toList, []⟩ := rfl
 
 theorem outcomeOutputs_errorK (e : UniError) (c : Chan) : outcomeOutputsK (.error e, c) = none := rfl
 

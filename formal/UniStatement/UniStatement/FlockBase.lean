@@ -1,6 +1,6 @@
 -- Part of this repository. Moved from `formal/UniStatement`'s `UniStatement/Flock.lean`, which imports this module (the
 -- declarations keep their names and namespace): its constants and weights that do not depend on the BLAKE2s block,
--- transcribed from `crates/leanvm_flock_gas/src/flock_min.rs` and `flock.rs` (`PHI_BASIS`, `fixed_challenges`,
+-- transcribed from `crates/leanvm/statement/src/flock_min.rs` and `flock.rs` (`PHI_BASIS`, `fixed_challenges`,
 -- `lagrange_weights`, `row_low_weights`), adapted there from leanVM (https://github.com/leanEthereum/leanVM), commit
 -- 42422001, `crates/verifier/src/flock.rs`. MIT OR Apache-2.0; see AGENTS.md.
 module
