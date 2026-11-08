@@ -103,6 +103,35 @@ theorem uni_tuples_eq (j : Fin 6) (push : Bool) (R : ℕ → K) :
   simp only [tupleK_eq, flushPolys_eval_eq]
   exact h
 
+/-- Shared opcode table `j`'s interactions of one side (`lvInteractions` at the five shared tables). -/
+def lvInteractionsBase (j : Fin 5) (push : Bool) : List (AbstractInteraction K) :=
+  (Lv42.Protocol.LeanIsa.baseComponent j).rowOperations.interactions.filter fun ai ↦
+    decide (Lv42.Arithmetization.channelDir ai.channel =
+      if push then Lv42.Arithmetization.Direction.push else .pull)
+
+/-- Shared opcode table `j`'s flushes of one side, as normal forms. -/
+def lvSideBase (j : Fin 5) (push : Bool) : List (List SP) :=
+  ((lvInteractionsBase j push).map (aiSP (Lv42.Protocol.LeanIsa.baseComponent j).width)).map (·.map spNorm)
+
+set_option maxRecDepth 100000 in
+/-- **The normal forms are equal** at the five shared tables (`sides_eq` there). -/
+theorem sides_eq_base : ∀ j : Fin 5, ∀ push : Bool, uniSide j push = lvSideBase j push := by
+  decide +kernel
+
+/-- **The forms are the shared tables' flushes**, on every row, in order (`uni_tuples_eq` at the five shared
+tables). -/
+theorem uni_tuples_eq_base (j : Fin 5) (push : Bool) (R : ℕ → K) :
+    ((if push then (tables.getD j default).flushes.push else (tables.getD j default).flushes.pull).map
+        fun tup ↦ tupleK tup R) =
+      (lvInteractionsBase j push).map fun ai ↦
+        (LeanVM.Protocol.flushPolys Lv42.Arithmetization.channelSep
+          (Lv42.Protocol.LeanIsa.baseComponent j).width ai).map
+            (·.eval fun i : Fin (Lv42.Protocol.LeanIsa.baseComponent j).width ↦ R i.val) := by
+  have h := congrArg (List.map (tupleOfSP R)) (sides_eq_base j push)
+  simp only [uniSide, lvSideBase, List.map_map] at h
+  simp only [tupleK_eq, flushPolys_eval_eq]
+  exact h
+
 set_option maxRecDepth 100000 in
 /-- **Every tuple has at most sixteen forms.** -/
 theorem tables_length_le : ∀ j : Fin 6, ∀ tup ∈ (tables.getD j default).flushes.push ++
@@ -441,6 +470,23 @@ theorem inst_flushes_eq (j : Fin 6) (side : Side) (row : Fin (width (opIdx j)) �
   rw [flushes_opIdx, List.map_map]
   exact map_filter_map _ _
     (fun f : Side × Vector (CPoly.CMvPolynomial (opcodeComponent j).width K) 16 ↦ decide (f.1 = side)) _ _
+    (fun ai ↦ decide_sideOf _ side) _ fun _ ↦ rfl
+
+/-- **A shared table's flushes of a side, on a row, are its interactions'** (`inst_flushes_eq` at the five shared
+tables, for any instance whose table is `baseTable j` with its sides read by `sideOf`). -/
+theorem base_flushes_eq (j : Fin 5) (side : Side) (row : Fin (baseComponent j).width → K) :
+    ((((baseTable j).flushes.map fun f ↦ (sideOf f.1, f.2)).filter fun f ↦ decide (f.1 = side)).map
+        (fun f ↦ f.2.map (·.eval row))) =
+      (lvInteractionsBase j (decide (side = .push))).map fun ai ↦
+        (LeanVM.Protocol.flushPolys Lv42.Arithmetization.channelSep (baseComponent j).width ai).map
+          (·.eval row) := by
+  change ((((baseComponent j).rowOperations.interactions.map (fun i ↦
+      (Lv42.Arithmetization.channelDir i.channel,
+        LeanVM.Protocol.flushPolys Lv42.Arithmetization.channelSep (baseComponent j).width i))).map
+      fun f ↦ (sideOf f.1, f.2)).filter fun f ↦ decide (f.1 = side)).map (fun f ↦ f.2.map (·.eval row)) = _
+  rw [List.map_map]
+  exact map_filter_map _ _
+    (fun f : Side × Vector (CPoly.CMvPolynomial (baseComponent j).width K) 16 ↦ decide (f.1 = side)) _ _
     (fun ai ↦ decide_sideOf _ side) _ fun _ ↦ rfl
 
 /-- **A row's flushes are its forms' tuples**: where Lv42's row `x` of opcode table `j` is the row `R`,

@@ -60,17 +60,17 @@ theorem constraintsVanish_kvStack (hjump : ∀ x < 2 ^ D.shape.heights.getD opJu
       have hpos : rowPosition (rows.getD 4 0) (D.shape.heights.getD opJump 0) x.val <
           2 ^ D.shape.heights.getD opJump 0 := rowPosition_lt (count := rows.getD 4 0) x.isLt
       obtain ⟨h1, h2⟩ := hjump _ hpos
-      let row : Fin (Lv42.Protocol.LeanIsa.opcodeComponent 4).width → K := fun i ↦
+      let row : Fin (Lv42.Protocol.LeanIsa.baseComponent 4).width → K := fun i ↦
         c1ValK D c (.table 4 i.val) (D.shape.heights.getD 4 0)
           (rowPosition (rows.getD 4 0) (D.shape.heights.getD 4 0) x.val)
       have hrow : (D.inst rows).row (kvStack D.prog (D.sizes rows) D.shape c) ⟨4 + 3, hj⟩ x = row := by
         funext i
         exact row_kvStack D rows c 4 hj x i
       rw [hrow]
-      have hl := List.isEmpty_iff.mp (Lv42.Protocol.LeanIsa.opcode_lookups 4)
-      exact (LeanVM.Protocol.toM3_constraints_iff (Lv42.Protocol.LeanIsa.opcodeComponent 4)
+      have hl := List.isEmpty_iff.mp (Lv42.Protocol.LeanIsa.base_lookups 4)
+      exact (LeanVM.Protocol.toM3_constraints_iff (Lv42.Protocol.LeanIsa.baseComponent 4)
         Lv42.Arithmetization.channelSep Lv42.Arithmetization.channelDir Lv42.Protocol.LeanIsa.counted hl row
-        (fun _ _ ↦ #[])).mpr (jump_constraintsHold row _ h1 h2) C hC
+        (fun _ _ ↦ #[])).mpr (jump_constraintsHold_base row _ h1 h2) C hC
     · by_cases h5 : j = 5
       · subst h5
         exact absurd hC List.not_mem_nil
@@ -78,14 +78,14 @@ theorem constraintsVanish_kvStack (hjump : ∀ x < 2 ^ D.shape.heights.getD opJu
         have hj5 : j < 5 := by omega
         have hl := List.length_pos_of_mem hC
         interval_cases j
-        · have h0 := Lv42.Protocol.LeanIsa.opcode_constraints_nil 0 (by decide)
-          exact absurd hl (by change ¬ 0 < (Lv42.Protocol.LeanIsa.opcodeTable 0).constraints.length; omega)
-        · have h0 := Lv42.Protocol.LeanIsa.opcode_constraints_nil 1 (by decide)
-          exact absurd hl (by change ¬ 0 < (Lv42.Protocol.LeanIsa.opcodeTable 1).constraints.length; omega)
-        · have h0 := Lv42.Protocol.LeanIsa.opcode_constraints_nil 2 (by decide)
-          exact absurd hl (by change ¬ 0 < (Lv42.Protocol.LeanIsa.opcodeTable 2).constraints.length; omega)
-        · have h0 := Lv42.Protocol.LeanIsa.opcode_constraints_nil 3 (by decide)
-          exact absurd hl (by change ¬ 0 < (Lv42.Protocol.LeanIsa.opcodeTable 3).constraints.length; omega)
+        · have h0 := Lv42.Protocol.LeanIsa.baseTable_constraints_nil 0 (by decide)
+          exact absurd hl (by change ¬ 0 < (Lv42.Protocol.LeanIsa.baseTable 0).constraints.length; omega)
+        · have h0 := Lv42.Protocol.LeanIsa.baseTable_constraints_nil 1 (by decide)
+          exact absurd hl (by change ¬ 0 < (Lv42.Protocol.LeanIsa.baseTable 1).constraints.length; omega)
+        · have h0 := Lv42.Protocol.LeanIsa.baseTable_constraints_nil 2 (by decide)
+          exact absurd hl (by change ¬ 0 < (Lv42.Protocol.LeanIsa.baseTable 2).constraints.length; omega)
+        · have h0 := Lv42.Protocol.LeanIsa.baseTable_constraints_nil 3 (by decide)
+          exact absurd hl (by change ¬ 0 < (Lv42.Protocol.LeanIsa.baseTable 3).constraints.length; omega)
         · exact absurd rfl h4
 
 /-- **`CountsNonzero`** from the counters' inverse `z·Πc = 1` on every row of `C1`. -/

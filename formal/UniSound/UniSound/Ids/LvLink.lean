@@ -85,6 +85,36 @@ theorem jump_constraintsHold (row : Fin (Lv42.Protocol.LeanIsa.opcodeComponent 4
   rw [hv, hget 5 (by omega), hget 12 (by omega), hget 13 (by omega)]
   exact ⟨h1, h2⟩
 
+/-- `JUMP`'s shared component has fourteen columns. -/
+theorem jump_width_base : (Lv42.Protocol.LeanIsa.baseComponent 4).width = 14 := by decide +kernel
+
+/-- **`jump_constraintsHold` at the shared `JUMP` table** (`baseComponent 4`, the one both instruction sets have). -/
+theorem jump_constraintsHold_base (row : Fin (Lv42.Protocol.LeanIsa.baseComponent 4).width → K)
+    (data : ProverData K)
+    (h1 : row ⟨13, by rw [jump_width_base]; omega⟩ + row ⟨5, by rw [jump_width_base]; omega⟩ *
+      row ⟨12, by rw [jump_width_base]; omega⟩ = 0)
+    (h2 : row ⟨5, by rw [jump_width_base]; omega⟩ * (row ⟨13, by rw [jump_width_base]; omega⟩ + 1) = 0) :
+    (⟨jumpTable⟩ : Component K).operations.ConstraintsHold
+      (Environment.fromArray (Array.ofFn row) data) := by
+  rw [Component.constraintsHold_iff, Component.rowOperations_mk]
+  have hget : ∀ (i : ℕ) (hi : i < 14), (Environment.fromArray (Array.ofFn row) data).get i =
+      row ⟨i, by rw [jump_width_base]; exact hi⟩ := by
+    intro i hi
+    show ((Array.ofFn row)[i]?).getD 0 = _
+    rw [Array.getElem?_ofFn]
+    simp [jump_width_base, hi]
+  have hv : (eval (Environment.fromArray (Array.ofFn row) data)
+      (varFromOffset JumpRow 0 : Var JumpRow K)).vcond =
+        (Environment.fromArray (Array.ofFn row) data).get 5 := by
+    rw [eval_varFromOffset_valueFromOffset]
+    simp [valueFromOffset, explicit_provable_type, circuit_norm]
+  refine (jump_constraints_iff (varFromOffset JumpRow 0) (Environment.fromArray (Array.ofFn row) data)
+    (size JumpRow) _ rfl ((Environment.fromArray (Array.ofFn row) data).get 12)
+    ((Environment.fromArray (Array.ofFn row) data).get 13) (by rw [jumpRow_size])
+    (by rw [jumpRow_size])).mpr ?_
+  rw [hv, hget 5 (by omega), hget 12 (by omega), hget 13 (by omega)]
+  exact ⟨h1, h2⟩
+
 end JumpRow
 
 end LvLink

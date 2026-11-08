@@ -89,19 +89,20 @@ theorem tablesKeccak_getD_of_ne {j : ℕ} (hj : j ≠ opSha3) :
 
 theorem tablesKeccak_getD_sha3 : (tablesKeccak.getD opSha3 default).flushes = flushesSha3 := rfl
 
-/-- The Keccak VM's flushes of the five tables other than `SHA3`, of a side, on a row, are Lv42's interactions'. -/
-theorem kv_flushes_lv (j : Fin 6) (hj : j.val < 5) (side : Side) (R : ℕ → K) :
-    ((KeccakVm.KeccakIsa.flushes (opIdx j)).filter fun f ↦ decide (f.1 = side)).map
+/-- The Keccak VM's flushes of the five tables other than `SHA3` (the shared tables `baseTable j`), of a side, on a
+row, are their interactions'. -/
+theorem kv_flushes_lv (j : Fin 5) (side : Side) (R : ℕ → K) :
+    ((KeccakVm.KeccakIsa.flushes (opIdx j.castSucc)).filter fun f ↦ decide (f.1 = side)).map
         (fun f ↦ f.2.map (·.eval fun i ↦ R i.val)) =
-      (lvInteractions j (decide (side = .push))).map fun ai ↦
-        (LeanVM.Protocol.flushPolys Lv42.Arithmetization.channelSep (opcodeComponent j).width ai).map
-          (·.eval fun i : Fin (opcodeComponent j).width ↦ R i.val) := by
-  match j, hj with
-  | 0, _ => exact inst_flushes_eq 0 side _
-  | 1, _ => exact inst_flushes_eq 1 side _
-  | 2, _ => exact inst_flushes_eq 2 side _
-  | 3, _ => exact inst_flushes_eq 3 side _
-  | 4, _ => exact inst_flushes_eq 4 side _
+      (lvInteractionsBase j (decide (side = .push))).map fun ai ↦
+        (LeanVM.Protocol.flushPolys Lv42.Arithmetization.channelSep (LeanIsa.baseComponent j).width ai).map
+          (·.eval fun i : Fin (LeanIsa.baseComponent j).width ↦ R i.val) := by
+  fin_cases j
+  · exact base_flushes_eq 0 side _
+  · exact base_flushes_eq 1 side _
+  · exact base_flushes_eq 2 side _
+  · exact base_flushes_eq 3 side _
+  · exact base_flushes_eq 4 side _
 
 /-- **A row's flushes are its forms' tuples**: where the Keccak VM's row `x` of opcode table `j` is the row `R`,
 its tuples of a side are the verifier's forms' (`tablesKeccak`) of that side at `R`, in order. -/
@@ -114,11 +115,12 @@ theorem rowTuplesK_eq (prog : KeccakVm.Program) (s : LeanIsa.Sizes)
         else (tablesKeccak.getD j default).flushes.pull).map fun tup ↦ tupleK tup R := by
   simp only [Heap.rowTuples, dite_pos_of hx, Heap.flushTuple, hrow]
   by_cases hj : j.val < 5
-  · rw [tablesKeccak_getD_of_ne (by unfold opSha3; omega)]
-    refine (kv_flushes_lv j hj side R).trans ?_
+  · obtain ⟨j', rfl⟩ : ∃ j' : Fin 5, j = j'.castSucc := ⟨⟨j.val, hj⟩, Fin.ext rfl⟩
+    rw [tablesKeccak_getD_of_ne (by unfold opSha3; omega)]
+    refine (kv_flushes_lv j' side R).trans ?_
     cases side
-    · exact (uni_tuples_eq j true R).symm
-    · exact (uni_tuples_eq j false R).symm
+    · exact (uni_tuples_eq_base j' true R).symm
+    · exact (uni_tuples_eq_base j' false R).symm
   · have h5 : j = 5 := Fin.ext (by have := j.isLt; omega)
     subst h5
     exact sha3_flushes_eq side R

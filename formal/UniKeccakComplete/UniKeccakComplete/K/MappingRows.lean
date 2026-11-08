@@ -4,7 +4,7 @@
 -- (`rowTuplesK_eq`), its tables' facts (`tablesFactsK`) and lanes' slots (`laneSlotsK`, `lane_offsets`).
 -- Ported to the Keccak VM from `formal/UniComplete/UniComplete/MappingRows.lean`.
 import UniKeccakComplete.K.MappingBasic
-import Lv42.Protocol.LeanIsa.Relation
+import Lv42.Protocol.LeanIsaBase
 import Lv42.Arithmetization.Completeness.BasicsBase
 
 /-!
@@ -96,10 +96,10 @@ theorem jump_constraints (r : Fin (KeccakVm.KeccakIsa.width (opIdx 4)) → K) (v
     (h : ∀ C ∈ KeccakVm.KeccakIsa.constraints (opIdx 4), C.eval r = 0) :
     v 13 + v 5 * v 12 = 0 ∧ v 5 * (v 13 + 1) = 0 := by
   obtain rfl : r = fun i : Fin (KeccakVm.KeccakIsa.width (opIdx 4)) ↦ v i.val := funext hv
-  have hl := List.isEmpty_iff.mp (opcode_lookups 4)
+  have hl := List.isEmpty_iff.mp (base_lookups 4)
   have hc : (⟨jumpTable⟩ : Air.Flat.Component K).operations.ConstraintsHold
       (Environment.fromArray (Array.ofFn fun i : Fin 14 ↦ v i) fun _ _ ↦ #[]) :=
-    (toM3_constraints_iff (opcodeComponent 4) channelSep channelDir counted hl _ (fun _ _ ↦ #[])).mp h
+    (toM3_constraints_iff (baseComponent 4) channelSep channelDir counted hl _ (fun _ _ ↦ #[])).mp h
   have hx : Eval.eval (Environment.fromArray (Array.ofFn fun i : Fin 14 ↦ v i) fun _ _ ↦ #[])
       (varFromOffset JumpRow 0 : Var JumpRow K) =
       (⟨v 0, v 1, v 2, v 3, v 4, v 5, v 6, v 7, v 8, v 9, v 10, v 11⟩ : JumpRow K) := by

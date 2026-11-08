@@ -108,6 +108,15 @@ theorem baseTable_flushes_degree (j : Fin 5) :
     ∀ f ∈ (baseTable j).flushes, ∀ k, (f.2.get k).totalDegree ≤ 2 :=
   fun f hf k ↦ toM3_flushes_degree _ _ _ _ (base_flushes_degreeBound j) f hf k
 
+/-- No shared opcode table has a lookup (`opcode_lookups` at the five shared tables). -/
+theorem base_lookups : ∀ j : Fin 5, (baseComponent j).rowOperations.lookups.isEmpty := by
+  decide +kernel
+
+/-- The constraint polynomials of the shared opcode tables but `JUMP` are none (`opcode_constraints_nil` at the
+five shared tables). -/
+theorem baseTable_constraints_nil : ∀ j : Fin 5, j ≠ 4 → (baseTable j).constraints.length = 0 := by
+  decide +kernel
+
 /-! ### Moved from `LeanIsa` and `LeanIsa/Bus` (instruction-set independent) -/
 
 /-- The index of opcode table `j` among the instance's tables. -/
