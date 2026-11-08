@@ -21,6 +21,7 @@ use primitives::field::{F64, F192};
 
 use crate::circuit::{Circuit, PUBLIC_ROWS};
 use crate::domain::{self, beta, chain, coordinates, point, row_vanishing};
+use crate::ntt::{self, Ex8, Kx8};
 use crate::opening::{self, Claim, Committed, Layout, Table};
 use crate::statement::Statement;
 use crate::transcript::{Proof, ProverChain, TranscriptError, VerifierChain, scalars_root};
@@ -285,38 +286,45 @@ pub fn fresh_seed() -> [u8; 32] {
 pub struct Index {
     pub log_rows: usize,
     pub table: Table,
+    /// The wiring polynomial's values on the quotients' coset, four times the cells: they depend on the circuit
+    /// alone, and every proof reads them.
+    sigma_values: Vec<F64>,
 }
 
 impl Index {
     pub fn new(circuit: &Circuit) -> Self {
         let mut sigma = parallel::map_collect(circuit.sigma.len(), |i| point(circuit.sigma[i] as usize));
-        domain::coefficients(&mut sigma, F64::ZERO);
+        ntt::coefficients(&mut sigma, F64::ZERO);
         let lane = 1 << wiring_layout(circuit.log_rows).log_lane();
         let table = Table::new(wiring_layout(circuit.log_rows), |l, _, out| {
             out.copy_from_slice(&sigma[l * lane..(l + 1) * lane])
         });
+        let n = table.stack.len();
+        let m = n.trailing_zeros() as usize;
+        let mut sigma_values = words(4 * n);
+        for (k, quarter) in sigma_values.chunks_exact_mut(n).enumerate() {
+            ntt::values_from(&table.stack, quarter, quarter_offset(coset(m), n, k));
+        }
         Self {
             log_rows: circuit.log_rows,
             table,
+            sigma_values,
         }
     }
 
     fn sigma(&self) -> &[F64] {
         &self.table.stack
     }
-}
 
-/// Into `data`, zero and four times the `n` cells long: the polynomial of coefficients `parts`, the `k`-th from
-/// `k * n` on, on the quotients' coset.
-fn coset_values(data: &mut [F64], parts: &[&[F64]]) {
-    let n = data.len() / 4;
-    for (k, part) in parts.iter().enumerate() {
-        data[k * n..k * n + part.len()].copy_from_slice(part);
+    fn sigma_values(&self) -> &[F64] {
+        &self.sigma_values
     }
-    domain::values(data, coset(n.trailing_zeros() as usize));
 }
 
-/// The words of extension elements, in their allocation: an `F192` is three `F64`s.
+/// The words of extension elements, in their allocation: an `F192` is three `F64`s. (The prover once kept `q` as
+/// extension elements and handed their allocation to the commitment as scratch; `miri_buffer_reuse` still checks
+/// that reuse.)
+#[cfg(test)]
 fn into_words(values: Vec<F192>) -> Vec<F64> {
     const _: () = assert!(size_of::<F192>() == 3 * size_of::<F64>() && align_of::<F192>() == align_of::<F64>());
     let mut values = std::mem::ManuallyDrop::new(values);
@@ -325,6 +333,45 @@ fn into_words(values: Vec<F192>) -> Vec<F64> {
     // `3 * capacity` words of the same alignment, the first `3 * len` of them initialized, and it is no longer
     // owned by `values`.
     unsafe { Vec::from_raw_parts(ptr.cast::<F64>(), 3 * len, 3 * capacity) }
+}
+
+/// `len` words, every one of which the caller writes before it reads it.
+fn words(len: usize) -> Vec<F64> {
+    // SAFETY: plain words; the callers write each before reading it.
+    unsafe { primitives::uninit_vec(len) }
+}
+
+/// The offset of the `k`-th quarter of the quotients' coset of `4 n` points (offset `offset`): the points
+/// `offset + B(k n + i)`, `i < n`, are those of the coset of `n` points offset `offset + B(k n)`.
+fn quarter_offset(offset: F64, n: usize, k: usize) -> F64 {
+    offset + point(k * n)
+}
+
+/// What the transform's two top layers, on the coset of `2^(m + 2)` points offset `offset`, make of a polynomial
+/// `a + b x^(2^m)`-like in the novel basis (coefficients `a` below `2^m`, `b` from `2^m` to `2^(m + 1)`): the
+/// `k`-th quarter's input is `a + c_k b`, for the `c_k` this returns. The top layer copies the lower half to the
+/// upper (whose coefficients are zero); the next takes `(a, b)` to `(a + λ b, a + (λ + 1) b)`, `λ` its twiddle.
+fn top_layers(offset: F64, m: usize, k: usize) -> F64 {
+    let lambda = chain(offset, m + 1)[m] + point(2 * (k >> 1));
+    if k & 1 == 0 { lambda } else { lambda + F64::ONE }
+}
+
+/// Eight extension elements' limbs, each as eight lanes.
+fn limbs8(x: &[F192; 8]) -> [Kx8; 3] {
+    [
+        Kx8::new(x.map(|v| F64(v.c0))),
+        Kx8::new(x.map(|v| F64(v.c1))),
+        Kx8::new(x.map(|v| F64(v.c2))),
+    ]
+}
+
+/// Whether every word is zero, the words read in parallel.
+fn all_zero(words: &[F64]) -> bool {
+    const RUN: usize = 1 << 16;
+    parallel::find_first(words.len().div_ceil(RUN), |r| {
+        words[r * RUN..words.len().min((r + 1) * RUN)].iter().any(|w| !w.is_zero())
+    })
+    .is_none()
 }
 
 /// The offset of the quotients' coset, for `2^m` cells.
@@ -589,8 +636,8 @@ pub(crate) fn prove_with_randomness_in(
 
     // The witness: four polynomials in the row, each with a multiple of the rows' vanishing polynomial.
     let span = tracing::info_span!("Witness").entered();
-    let mut w_hat = cells.to_vec();
-    tracing::info_span!("cells to coefficients").in_scope(|| domain::coefficients(&mut w_hat, F64::ZERO));
+    let mut w_hat = words(n);
+    tracing::info_span!("cells to coefficients").in_scope(|| ntt::coefficients_from(cells, &mut w_hat, F64::ZERO));
     let mut mask = [F64::ZERO; 16];
     for (j, coeffs) in masks.iter().enumerate() {
         for (i, &coeff) in coeffs.iter().enumerate() {
@@ -598,8 +645,11 @@ pub(crate) fn prove_with_randomness_in(
         }
     }
     // Hidden, its stack holds the coefficients out of order: they are read back from it where they are needed.
-    let witness = tracing::info_span!("table").in_scope(|| Table::hidden(
-        witness_layout(circuit.log_rows),
+    let witness_layout = witness_layout(circuit.log_rows);
+    let stack = words(witness_layout.placed());
+    let witness = tracing::info_span!("table").in_scope(|| Table::hidden_in(
+        witness_layout,
+        stack,
         &table_seed(padding, b"witness"),
         |start, out| {
             for (i, o) in (start..).zip(out.iter_mut()) {
@@ -617,60 +667,76 @@ pub(crate) fn prove_with_randomness_in(
     drop(span);
     let [alpha, beta_, gamma] = [(); 3].map(|_| ps.sample());
 
-    // The sum's polynomial on the cells.
+    // The sum's polynomial on the cells, its coefficients a limb at a time.
     let span = tracing::info_span!("Sum").entered();
-    let mut h = vec![F192::ZERO; n];
     let inner = tracing::info_span!("inverses").entered();
-    parallel::chunks_mut(&mut h, 1 << 12, |chunk_index, chunk| {
-        let base = chunk_index << 12;
-        let mut d: Vec<F192> = (0..chunk.len())
-            .flat_map(|k| {
-                let i = base + k;
-                let common = alpha + F192::from(cells[i]);
-                [point(i), point(circuit.sigma[i] as usize)].map(|to| common + beta_.mul_base(to))
-            })
-            .collect();
-        batch_inverse(&mut d);
-        for (k, out) in chunk.iter_mut().enumerate() {
-            *out = d[2 * k] + d[2 * k + 1];
-            if base + k < 1 << REGION {
-                *out += public_weight(base + k, gamma).mul_base(cells[base + k]);
+    let mut h_hat: [Vec<F64>; 3] = std::array::from_fn(|_| words(n));
+    {
+        let [h0, h1, h2] = &mut h_hat;
+        parallel::chunks_mut3(h0, h1, h2, 1 << 12, |chunk_index, h0, h1, h2| {
+            let base = chunk_index << 12;
+            let mut d: Vec<F192> = (0..h0.len())
+                .flat_map(|k| {
+                    let i = base + k;
+                    let common = alpha + F192::from(cells[i]);
+                    [point(i), point(circuit.sigma[i] as usize)].map(|to| common + beta_.mul_base(to))
+                })
+                .collect();
+            batch_inverse(&mut d);
+            for k in 0..h0.len() {
+                let mut out = d[2 * k] + d[2 * k + 1];
+                if base + k < 1 << REGION {
+                    out += public_weight(base + k, gamma).mul_base(cells[base + k]);
+                }
+                (h0[k], h1[k], h2[k]) = (F64(out.c0), F64(out.c1), F64(out.c2));
             }
-        }
-    });
+        });
+    }
     drop(inner);
-    tracing::info_span!("coefficients").in_scope(|| domain::coefficients(&mut h, F64::ZERO));
-    let h_hat = h;
+    tracing::info_span!("coefficients").in_scope(|| h_hat.iter_mut().for_each(|h| ntt::coefficients(h, F64::ZERO)));
     drop(span);
 
-    // Both quotients, on a coset four times the cells.
+    // Both quotients, on a coset four times the cells: four cosets of the cells' size, offset by `B(k n)`.
     let span = tracing::info_span!("Quotients").entered();
     let big = 4 * n;
     let offset = coset(m);
     let offsets = chain(offset, m + 1);
-    // Two of this loop's buffers serve the quotient table once it is done: `values`, the witness's and the
-    // wiring polynomial's values (the latter not kept with the index: only this loop reads them), becomes the
-    // table's stack, and `q` the half codeword its commitment encodes in. Reused whole, they spare the allocator
-    // mapping fresh memory its freed pieces could not serve.
+    // Two buffers serve the quotient table once the quotients are done: `values`, the witness's values, becomes
+    // the table's stack, and `scratch`, the quotients' limbs, the half codeword its commitment encodes in. Reused
+    // whole, they spare the allocator mapping fresh memory its freed pieces could not serve.
     let layout = quotient_layout(circuit.log_rows);
     let placed = layout.placed();
-    let mut values = Vec::with_capacity(placed.max(2 * big));
-    values.resize(2 * big, F64::ZERO);
-    let (w_values, sigma_values) = values.split_at_mut(big);
-    let inner = tracing::info_span!("witness values").entered();
-    witness.read(0, &mut w_values[..n]);
-    coset_values(w_values, &[&[], &mask]);
-    drop(inner);
-    // Note: these depend on the circuit alone, yet every proof computes them again (a `4n`-point transform);
-    // the index could keep them, for `4n` more words held between proofs.
-    tracing::info_span!("sigma values").in_scope(|| coset_values(sigma_values, &[index.sigma()]));
-    let mut q = Vec::with_capacity(big.max(placed.div_ceil(3)));
-    q.resize(big, F192::ZERO);
-    q[..n].copy_from_slice(&h_hat);
-    tracing::info_span!("sum values").in_scope(|| domain::values(&mut q, offset));
-    let mut q_gate = vec![F64::ZERO; big];
-    let inner = tracing::info_span!("quotient values").entered();
+    // Both at their full length, so that the table and the commitment do not grow them (which zeroes, on one
+    // thread): the table's fill writes every word of its stack, the commitment every word of its scratch.
+    let mut values = words(placed.max(big));
+    let mut scratch = words(placed.max(4 * big));
 
+    let inner = tracing::info_span!("witness values").entered();
+    {
+        let (first, rest) = values[..big].split_at_mut(n);
+        witness.read(0, first);
+        parallel::chunks_mut(rest, n, |_, quarter| quarter.copy_from_slice(first));
+    }
+    for (k, quarter) in values[..big].chunks_exact_mut(n).enumerate() {
+        // The mask's coefficients, from `n` on, times the cells' vanishing polynomial's value on this coset.
+        let scale = top_layers(offset, m, k);
+        for (v, &c) in quarter.iter_mut().zip(&mask) {
+            *v += scale * c;
+        }
+        ntt::values(quarter, quarter_offset(offset, n, k));
+    }
+    drop(inner);
+    let sigma_values = index.sigma_values();
+    let (q_limbs, q_gate) = scratch[..4 * big].split_at_mut(3 * big);
+    tracing::info_span!("sum values").in_scope(|| {
+        for (limb, column) in q_limbs.chunks_exact_mut(big).enumerate() {
+            for (k, quarter) in column.chunks_exact_mut(n).enumerate() {
+                ntt::values_from(&h_hat[limb], quarter, quarter_offset(offset, n, k));
+            }
+        }
+    });
+
+    let inner = tracing::info_span!("quotient values").entered();
     let (b, tau) = (coordinates(REGION), row_vanishing(m));
     let row_poly = |x: F64| {
         chain(x, m - 1)
@@ -680,8 +746,16 @@ pub(crate) fn prove_with_randomness_in(
     };
     let row_low: [F64; 4] = std::array::from_fn(|c| row_poly(point(c)));
     let gammas = [gamma, gamma * gamma, (gamma * gamma) * (gamma * gamma)];
-    parallel::chunks_mut2(&mut q, &mut q_gate, 1 << REGION, |high, q, q_gate| {
+    let w_values = &values[..big];
+    let (alpha8, beta8) = (Ex8::splat(alpha), Ex8::splat(beta_));
+    let beta_points = Ex8::from_limbs(limbs8(&std::array::from_fn(|l| beta_.mul_base(point(l)))));
+    let (q_ptr, gate_ptr) = (parallel::SendPtr(q_limbs.as_mut_ptr()), parallel::SendPtr(q_gate.as_mut_ptr()));
+    parallel::for_each(big >> REGION, |high| {
         let base = high << REGION;
+        // SAFETY: block `high` of each of the four columns is this task's alone.
+        let [q0, q1, q2] = [0, 1, 2].map(|limb| unsafe { q_ptr.slice(limb * big + base, 1 << REGION) });
+        // SAFETY: as above.
+        let q_gate = unsafe { gate_ptr.slice(base, 1 << REGION) };
         let w_at = |k: usize| offsets[k] + point(base >> k);
         // The public weight on this block: its region coordinates are the low index's bits, shifted.
         let indicator = (REGION..m).fold(F64::ONE, |acc, k| acc * (F64::ONE + w_at(k)));
@@ -700,21 +774,35 @@ pub(crate) fn prove_with_randomness_in(
         let cell_vanishing = w_at(m).inv();
         let row_base = row_poly(offset + point(base));
         let row_vanishing: [F64; 4] = std::array::from_fn(|c| (row_base + row_low[c]).inv());
-        for (low, (q, q_gate)) in q.iter_mut().zip(q_gate.iter_mut()).enumerate() {
+        // Eight cells at a time, lane `l` the `l`-th: `B(i + l) = B(i) + B(l)` for `i` a multiple of eight.
+        let (cell_vanishing, row_vanishing) = (
+            Kx8::splat(cell_vanishing),
+            Kx8::new(std::array::from_fn(|l| row_vanishing[l & 3])),
+        );
+        let limb = |x: &[F64]| Kx8::load(x);
+        for low in (0..1 << REGION).step_by(8) {
             let i = base + low;
-            let w = w_values[i];
-            let common = alpha + F192::from(w);
-            let d = common + beta_.mul_base(offset + point(i));
-            let d_next = common + beta_.mul_base(sigma_values[i]);
-            let public = weights.get(low).map_or(F192::ZERO, |weight| weight.mul_base(w));
-            *q = ((*q + public) * d * d_next + d + d_next).mul_base(cell_vanishing);
-            let row = [w, w_values[i ^ 1], w_values[i ^ 2], w_values[i ^ 3]];
-            *q_gate = gate(row) * row_vanishing[low & 3];
+            let w = limb(&w_values[i..]);
+            let common = alpha8 + Ex8::from_k(w);
+            let d = common + Ex8::splat(beta_.mul_base(offset + point(i))) + beta_points;
+            let d_next = common + beta8.mul_k(limb(&sigma_values[i..]));
+            let mut q = Ex8::from_limbs([limb(&q0[low..]), limb(&q1[low..]), limb(&q2[low..])]);
+            if weights.len() > 1 {
+                let weight: [F192; 8] = std::array::from_fn(|l| weights[low + l]);
+                q = q + Ex8::from_limbs(limbs8(&weight)).mul_k(w);
+            }
+            let [c0, c1, c2] = ((q * d * d_next + d + d_next).mul_k(cell_vanishing)).limbs();
+            for (out, c) in [&mut q0[..], &mut q1[..], &mut q2[..]].into_iter().zip([c0, c1, c2]) {
+                out[low..low + 8].copy_from_slice(&c.to_row().0);
+            }
+            let row = [w, w.xor_lanes(1), w.xor_lanes(2), w.xor_lanes(3)];
+            q_gate[low..low + 8].copy_from_slice(&(gate(row) * row_vanishing).to_row().0);
         }
     });
     drop(inner);
-    tracing::info_span!("quotient coefficients").in_scope(|| domain::coefficients(&mut q, offset));
-    tracing::info_span!("gate coefficients").in_scope(|| domain::coefficients(&mut q_gate, offset));
+    tracing::info_span!("quotient coefficients")
+        .in_scope(|| q_limbs.chunks_exact_mut(big).for_each(|column| ntt::coefficients(column, offset)));
+    tracing::info_span!("gate coefficients").in_scope(|| ntt::coefficients(q_gate, offset));
 
     // The quotient table: `m` variables of a polynomial, two more digits, `h` or `q`, that pair or the gate's
     // quotient, and the extension's two.
@@ -722,38 +810,34 @@ pub(crate) fn prove_with_randomness_in(
     // not be, and what the layout leaves out is dropped: the claims are then false.
     // The stack is built in `values`, whose old words stay wherever the fill does not write: it writes every word
     // of each run it is handed (debug builds check it).
-    let fits = q[3 * n + layout.covered(m, 7)..].iter().all(|v| v.is_zero())
-        && q_gate[n + layout.covered(m, 9)..].iter().all(|v| v.is_zero());
+    let fits = q_limbs
+        .chunks_exact(big)
+        .all(|column| all_zero(&column[3 * n + layout.covered(m, 7)..]))
+        && all_zero(&q_gate[n + layout.covered(m, 9)..]);
     let inner = tracing::info_span!("table").entered();
+    let (q_limbs, q_gate) = (&*q_limbs, &*q_gate);
     let quotient = Table::hidden_in(layout, values, &table_seed(padding, b"quotient"), |start, out| {
         // A run of pieces of one block, or a piece: in one chunk.
         let (c, within) = (start >> m, start & (n - 1));
         let (digit, limb) = (c & 3, c >> 4);
         let from = digit * n + within;
-        let len = out.len();
-        let at = |values: &[F192], out: &mut [F64]| {
-            for (o, v) in out.iter_mut().zip(&values[from..from + len]) {
-                *o = F64([v.c0, v.c1, v.c2][limb]);
-            }
+        let column = match c & 12 {
+            0 => &h_hat[limb][..],
+            4 => &q_limbs[limb * big..(limb + 1) * big],
+            _ => q_gate,
         };
-        match c & 12 {
-            0 => at(&h_hat, out),
-            4 => at(&q, out),
-            _ => out.copy_from_slice(&q_gate[from..from + len]),
-        }
+        out.copy_from_slice(&column[from..from + out.len()]);
     });
     drop(inner);
-    drop((h_hat, q_gate));
-    let scratch = into_words(q);
+    drop(h_hat);
     let quotient_committed = tracing::info_span!("Commit").in_scope(|| opening::commit_in(&quotient, scratch));
     ps.send_root(&quotient_committed.root);
     drop(span);
-
     let t = ps.sample();
     let digits: Vec<F192> = std::iter::successors(Some(t), |&w| Some(w * w + w))
         .take(m + 1)
         .collect();
-    let mut w_hat = vec![F64::ZERO; n];
+    let mut w_hat = words(n);
     witness.read(0, &mut w_hat);
     let a: [F192; 4] = std::array::from_fn(|j| {
         domain::evaluate(&w_hat, j, 4, &digits[2..m]) + digits[m] * domain::evaluate(&mask, j, 4, &digits[2..4])
