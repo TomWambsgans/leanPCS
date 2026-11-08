@@ -1,5 +1,5 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Follows `crates/leanvm/univariate/src/prover/prove.rs`
--- and `batch.rs` (`prove_pairs`) at `FLOCK_REC3` (`leanvm-rec` 4247e37), `crates/vendor/leanvm-42422001/flock`'s zerocheck draw
+-- and `batch.rs` (`prove_pairs`) at `FLOCK_REC3` (`leanvm-rec` 4247e37), `crates/vendor/flock-42422001`'s zerocheck draw
 -- (`EqPoint::Squares`), and `crates/leanvm/statement/src/transcript.rs` (`FsShape::draw`, `Channel::sample_narrow`);
 -- the verifier it writes for is `formal/UniStatement/UniStatement/Rec.lean`'s `reduceWithFs … .rec3 true`.
 import UniComplete.Rec3Pairs

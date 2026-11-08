@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The block is `crates/vendor/leanvm-42422001/flock/src/keccak.rs`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The block is `crates/vendor/flock-42422001/src/keccak.rs`'s
 -- (its module documentation, `port_row`, `b_forms`, `row_values_walk`); its port layout is read as
 -- `crates/leanvm/statement/src/keccak_flock.rs` reads it (`state_word`, `port_word`, `CONSTANT_COLUMN`,
 -- `row_values`). Keccak-f[1600] is leanerVM's (`Statement/Keccak.lean`), read bit by bit through `formal/Circuit`'s
@@ -10,7 +10,7 @@ import RecCircuit.KeccakMath
 # The Keccak-f block's R1CS
 
 One Keccak-f[1600] permutation in a block of `2^17` positions, every round's state materialised, `C = I`
-(`crates/vendor/leanvm-42422001/flock/src/keccak.rs`). Position `z + 64 w` is bit `z` of the block's 64-bit word `w` (`pos w z`): the
+(`crates/vendor/flock-42422001/src/keccak.rs`). Position `z + 64 w` is bit `z` of the block's 64-bit word `w` (`pos w z`): the
 low six coordinates are the packing position (`Flock.kSkip = 6`), the high eleven the word, as `bitTable` and
 `BlockR1CS.batchBlock` read a column of `K`.
 

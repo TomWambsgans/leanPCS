@@ -35,7 +35,7 @@ The gas is a function of the shape, not of the proof: the real proofs run at the
   and commits only the χ products. Its matrices are dense in the θ cascade, so its lincheck terminal is a walk of the
   whole circuit (leanVM's `bilinear_walk`), which `docs/leanvm/flock/KECCAK.md` §4.2 estimates at about 1.3M additions
   a permutation: unaffordable in a contract.
-  - This verifier uses instead the Keccak-f block of `lv42_flock::keccak` (`docs/leanvm/flock/KECCAK.md`, M1): one
+  - This verifier uses instead the Keccak-f block of `flock::keccak` (`docs/leanvm/flock/KECCAK.md`, M1): one
     permutation per `2^17` slots, with every round's state materialised.
   - Its terminal is the structured one (`keccak_flock::structured_terminal`, `docs/leanvm/flock/KECCAK.md`, M3),
     3,019 `E` operations at a skip of 3.

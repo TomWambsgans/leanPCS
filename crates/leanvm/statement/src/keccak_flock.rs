@@ -1,11 +1,11 @@
 // Part of this repository (new here, not from leanVM). The verifier's walk of the Keccak-f[1600] Flock block of
-// `crates/vendor/leanvm-42422001/flock/src/keccak.rs` (docs/leanvm/flock/KECCAK.md §4.2, §4.5), on a generic `Scalar`, and the block's
+// `crates/vendor/flock-42422001/src/keccak.rs` (docs/leanvm/flock/KECCAK.md §4.2, §4.5), on a generic `Scalar`, and the block's
 // structured lincheck terminal (M3). MIT OR Apache-2.0; see AGENTS.md.
 //! The Keccak-f block's lincheck terminal, two ways:
 //!
 //! - [`row_values`]: the rows' values `(A0 w, B0 w)` by one forward walk, for the walked terminal
 //!   ([`crate::flock_min::verify_walked_with`] with [`KeccakWalked`]). The block's layout and rows are
-//!   `lv42_flock::keccak`'s (its module documentation); this walk restates them on a [`Scalar`] (a test of
+//!   `flock::keccak`'s (its module documentation); this walk restates them on a [`Scalar`] (a test of
 //!   `crates/leanvm/univariate`, `flock_keccak.rs`, checks the two walks agree), at about 24 · 25 · 64 · 12
 //!   additions: the reference, not a terminal for a recursion.
 //! - [`structured_terminal`]: the same value from the block's structure (eq factors, ρ and θ as cyclic shifts,
@@ -98,7 +98,7 @@ pub const fn state_word(j: isize, l: usize) -> usize {
     }
 }
 
-/// The Keccak-f block (`lv42_flock::keccak`), its lincheck terminal the structured one ([`structured_terminal`]).
+/// The Keccak-f block (`flock::keccak`), its lincheck terminal the structured one ([`structured_terminal`]).
 #[derive(Clone, Copy, Debug)]
 pub struct Keccak;
 

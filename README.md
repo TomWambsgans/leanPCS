@@ -109,7 +109,7 @@ crates/
   leanvm/rec               π2 and the recursion's contract (package leanvm_rec)
   leanvm/gf2_linear        GF(2)-linear maps of GF(2^192) for the prover
   vendor/leanvm-c445e3d5   leanVM's WHIR stack (primitives, fiat_shamir, pcs, parallel, verifier, bench)
-  vendor/leanvm-42422001   leanVM's Flock prover (packages lv42_*) and the Keccak-f block
+  vendor/flock-42422001    leanVM's Flock prover on c445e3d5's primitives (package flock) and the Keccak-f block
 docs/
   membership/HIDING.md     the hiding layouts
   leanvm/univariate/       π1: SPEC.md (the PIOP), SPEC-FLOCK.md, PROVER.md, KECCAK.md (the VM, gas, measurements)
@@ -120,7 +120,7 @@ params/                    soundness and parameter calculators (Python)
 ```
 
 A crate's directory is its package name without its group's prefix (`crates/leanvm/rec` is `leanvm_rec`,
-`crates/vendor/leanvm-42422001/flock` is `lv42_flock`); `crates/leanvm/statement` is `leanvm_statement`.
+`crates/vendor/flock-42422001` is `flock`); `crates/leanvm/statement` is `leanvm_statement`.
 
 ## Build, test, measure
 

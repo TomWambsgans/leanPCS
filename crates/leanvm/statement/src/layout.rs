@@ -328,7 +328,7 @@ pub const SHA3_CELL_LANES: [(usize, Option<usize>); SHA3_STATE_CELLS] = {
     t
 };
 
-/// `log2` of the Keccak-f Flock block's slots (`crate::keccak_flock`, `lv42_flock::keccak`): one permutation a block,
+/// `log2` of the Keccak-f Flock block's slots (`crate::keccak_flock`, `flock::keccak`): one permutation a block,
 /// so one `SHA3` row a block, `2^(17 - 6)` words of `q_flock` a row.
 pub const KECCAK_R1CS_LOG_SIZE: usize = crate::keccak_flock::LOG_SIZE;
 
