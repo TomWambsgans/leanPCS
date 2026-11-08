@@ -7,9 +7,9 @@ import UniComplete.SyncBasic
 /-!
 # π1's own `PCS_OPEN` calls, decoded
 
-`decodePi1Call` (`RecStatement.Security`) reads π1's contract's call bytes (`UniStatement.openingWords` of a point
-claim: the root word, the layout word, the count `1`, the coordinates, the value) back into the opening's root, layout
-word and claim (`decodePi1Call_point`), when the claim's point has the layout word's variables; the root is the setup's
+`decodePi1Call` (`RecStatement.Security`) reads the Keccak π1's contract's call bytes (`UniKeccak.pcsCallsK`:
+`UniStatement.openingWords` of a point claim, under the Keccak layout words `UniKeccak.layoutWordsK`: the root word,
+the layout word, the count `1`, the coordinates, the value) back into the opening's root, layout word and claim (`decodePi1Call_point`), when the claim's point has the layout word's variables; the root is the setup's
 digest by its code `0x5503`, else the root word read back (`rootOfWord`), which is `UniStatement.rootOf` of the halves
 when their top limbs are zero (`rootOfWord_rootWord`).
 -/
@@ -202,11 +202,11 @@ theorem codeOf_layoutWord (s : UniStatement.Shape) (code vars placed : ℕ) :
   unfold codeOf
   rw [layoutWord_getD_22, layoutWord_getD_23]
 
-/-- π1's layout words: `C1`'s, `C2`'s, the setup's, each its code's. -/
-theorem layoutWords_getD (s : UniStatement.Shape) :
-    (∃ v p, (UniStatement.layoutWords s).getD 0 [] = UniStatement.layoutWord s 0x5501 v p) ∧
-      (∃ v p, (UniStatement.layoutWords s).getD 1 [] = UniStatement.layoutWord s 0x5502 v p) ∧
-      (∃ v p, (UniStatement.layoutWords s).getD 2 [] = UniStatement.layoutWord s 0x5503 v p) :=
+/-- The Keccak π1's layout words (`UniKeccak.layoutWordsK`): `C1`'s, `C2`'s, the setup's, each its code's. -/
+theorem layoutWordsK_getD (s : UniStatement.Shape) :
+    (∃ v p, (UniKeccak.layoutWordsK s).getD 0 [] = UniStatement.layoutWord s 0x5501 v p) ∧
+      (∃ v p, (UniKeccak.layoutWordsK s).getD 1 [] = UniStatement.layoutWord s 0x5502 v p) ∧
+      (∃ v p, (UniKeccak.layoutWordsK s).getD 2 [] = UniStatement.layoutWord s 0x5503 v p) :=
   ⟨⟨_, _, rfl⟩, ⟨_, _, rfl⟩, ⟨_, _, rfl⟩⟩
 
 /-- **Words of 32 bytes, concatenated, are cut back into them.** -/

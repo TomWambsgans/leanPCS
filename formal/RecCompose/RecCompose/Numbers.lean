@@ -9,8 +9,9 @@ import WhirBridge.Sound
 # π2's bound, `ε2`, in bits
 
 **`pi2Bound Q`**, for an adversary of `Q` calls of `π` and `π⁻¹` (`N = pi2N Q = 2^33 + Q` bounds every count: the
-setup's Keccak-256 calls, π1's three trees and π2's of `2^25` words, below `2^27`, twice; the chain's; the three
-openings'):
+setup's Keccak-256 calls, π1's one tree (the Keccak setup stack's) and π2's of `2^25` words, counted in
+`FsSetup.lean`; the chain's; the three openings'). The numbers below depend on π2's circuit
+only through its shape, which for the Keccak π1-rec3 (`Data.circuit`) is `2^24` positions in rows of `16`:
 
 ```
 N (ε + 5 N / 2^256) + N (e2 + 8 N / 2^256) + 2 N² / 2^256 + (2^81 + Q)² / 2^508,

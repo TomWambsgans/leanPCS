@@ -7,7 +7,7 @@ import RecCompose.Basic
 The recursive prover is π1-rec3's then π2's (`composeProver`). Its proof is rejected only if
 
 * π1-rec3's proof is not accepted by π1-rec3's graph with its openings (`pi1GraphVerifierWith`, `v.1` of π2's
-  completeness experiment): off the merge hazard the graph is π1-rec3's verifier (`Pi1GraphIsVerifier`), so this is at
+  completeness experiment): off the merge hazard the graph is π1-rec3's verifier (`Pi1GraphIsVerifierK`), so this is at
   most π1-rec3's rejection at Keccak-f[1600] (`Pi1CompletenessKeccak`, `δ1`) plus the hazard on its honest proofs
   (`Pi1HazardKeccakHonest`, `δh`): `CompletenessPi1Coupling`;
 * or it is, and π2's proof of it is rejected (`RecCompleteness2`, `δ2`).
@@ -32,12 +32,12 @@ def CompletenessAgree (D : RecDeployment) (P1 : Pi1Prover D) (P2 : Pi2Prover) : 
 /-- **π1-rec3's completeness coupling**, the graph being π1-rec3's verifier off the hazard: π1-rec3's proof is rejected
 by its graph with its openings at most as often as by π1-rec3's verifier at Keccak-f[1600], plus the hazard. -/
 def CompletenessPi1Coupling (D : RecDeployment) (P1 : Pi1Prover D) (P2 : Pi2Prover) : Prop :=
-  RecGraph.Pi1.Pi1GraphIsVerifier →
+  RecGraphKeccak.Pi1GraphIsVerifierK →
     ∀ (input : Vector UInt8 32) (rows : List ℕ) (q : D.pi1.Stack rows),
       Pr{let v ← recCompletenessExperiment2 D P1 P2 input rows q}[v.1 = false] ≤
         Pr{let v ← pi1KeccakCompletenessExperiment D P1 input rows q}[v = false] +
           Pr{let z ← pi1HonestHazardExperiment D P1 input rows q}[
-            ∃ iv s, z = some (iv, s) ∧ RecGraph.MergeHazard LeanVM.Semantics.keccakF1600 iv input.toList s]
+            ∃ iv s, z = some (iv, s) ∧ RecGraphKeccak.MergeHazardK LeanVM.Semantics.keccakF1600 iv input.toList s]
 
 /-- **Part 1 ⇒ Part 2 (completeness)**: from π2's completeness `RecCompleteness2 D P1 P2 δ2` and the couplings, the
 end-to-end statement `RecCompleteness D P1 P2 δ1 δh δ2`, for every `δ1`, `δh`. -/

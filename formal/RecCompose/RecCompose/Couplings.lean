@@ -93,21 +93,21 @@ being π1-rec3's verifier there: `pi1KeccakVerifierWith` (π1's run over Keccak-
 over `π`) on π1's proof of `s` with the recursive proof's three π1 opening proofs is, as a computation, the contract's
 three π1 `PCS_OPEN` calls `openSeq` of `ops`.
 
-Why it holds, and what its proof needs (open, `lean-rec-compose`): off the hazard `Pi1GraphIsVerifier` makes the graph's
-outputs `UniStatement.verifierOutputsWith`'s at the reference shape (`D.pi1.shape = reference`), so the run accepts and
-the graph's calls are `UniStatement.pcsCalls`' words; their decoding (`decodePi1Call`, which `Pi1GraphAccepts` compares
+Why it holds (`OpeningsAgree.lean`, `pi1OpeningsAgree`): off the hazard `Pi1GraphIsVerifierK` makes the graph's
+outputs `RecGraphKeccak.verifierOutputsWithK`'s at the reference shape (`D.pi1.shape = keccak128`), so the Keccak run
+accepts and the graph's calls are `UniKeccak.pcsCallsK`' words; their decoding (`decodePi1Call`, which `Pi1GraphAccepts` compares
 with `ops`) gives back the verifier's openings: `elementOfWord ∘ elementWord`, `countOfWord ∘ numberWord`,
 `rootOfWord ∘ rootWord = rootOf` (`C1`, `C2`), and the contract's setup root word `rootWordOfBytes (digestBytes F)`
 naming `F` (`digestOfBytes32 ∘ digestBytes`); the verifier's openings at π1-rec3 are three point claims in
 `commitments` order, no matrix call; and π1's layout words are registered with π1's opener at their variables (no π2
 layout word equals one: their first bytes, `"pi2"` and the shape's). -/
 def Pi1OpeningsAgree (D : RecDeployment) : Prop :=
-  RecGraph.Pi1.Pi1GraphIsVerifier →
+  RecGraphKeccak.Pi1GraphIsVerifierK →
     ∀ (roots : RecSetupRoots) (input : Vector UInt8 32) (proof : RecProof) (s : Array UInt8)
       (ops : List Pi1Opening),
       pi1OpsOf D roots input proof.stream = some ops →
       Pi1GraphAccepts (D.pi1IvAt roots.pi1) input s ops →
-      ¬ RecGraph.MergeHazard LeanVM.Semantics.keccakF1600 (D.pi1IvAt roots.pi1) input.toList s →
+      ¬ RecGraphKeccak.MergeHazardK LeanVM.Semantics.keccakF1600 (D.pi1IvAt roots.pi1) input.toList s →
         pi1KeccakVerifierWith queryPermutation D.pi1 roots.pi1 input (proof.pi1Proof s) =
           openSeq queryPermutation (registryAt D roots) ops proof
 
@@ -245,9 +245,9 @@ theorem pi1Coupling (D : RecDeployment) (hpure : CallsPure D) (hagree : Pi1Openi
   rcases Classical.em (∃ s ops, recExtractor2 D trees.roots z.1 trees.evaluations T z.2 = some s ∧
       pi1OpsOf D trees.roots z.1 z.2.stream = some ops ∧
       Pi1GraphAccepts (D.pi1IvAt trees.roots.pi1) z.1 s ops ∧
-      ¬ RecGraph.MergeHazard LeanVM.Semantics.keccakF1600 (D.pi1IvAt trees.roots.pi1) z.1.toList s ∧
-      ¬ ∃ q, UniStatement.uniExtractor D.pi1 z.1 trees.evaluations T (z.2.pi1Proof s) = some q ∧
-        D.pi1.Relation (z.2.pi1Proof s).rows z.1 q) with hC | hC
+      ¬ RecGraphKeccak.MergeHazardK LeanVM.Semantics.keccakF1600 (D.pi1IvAt trees.roots.pi1) z.1.toList s ∧
+      ¬ ∃ q, UniKeccak.uniExtractorK D.flock D.pi1 z.1 trees.evaluations T (z.2.pi1Proof s) = some q ∧
+        D.pi1.Relation D.flock (z.2.pi1Proof s).rows z.1 q) with hC | hC
   · obtain ⟨s, ops, hs, hops, hga, hz, hno⟩ := hC
     have hV := hagree hgv trees.roots z.1 z.2 s ops hops hga hz
     rw [hs, Option.getD_some]

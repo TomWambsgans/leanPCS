@@ -73,9 +73,9 @@ structure Pi2Layers (D : RecDeployment) (ε2 : ℕ → ℝ≥0∞) where
   rootsAt : List ℕ
   compiled : List UInt8 → RecCircuit.Compiled
   compile_ok : ∀ iv, iv.length = 32 →
-    RecCircuit.compile (RecCircuit.ofRG RecGraph.Pi1.pi1Graph rootsAt iv) = .ok (compiled iv)
+    RecCircuit.compile (RecCircuit.ofRG RecGraphKeccak.Pi1.pi1GraphK rootsAt iv) = .ok (compiled iv)
   stream_eq : ∀ iv, iv.length = 32 → ∀ (w : ℕ → K),
-    D.pi1Stream w = ((compiled iv).streamW (RecCircuit.ofRG RecGraph.Pi1.pi1Graph rootsAt iv) w).toArray
+    D.pi1Stream w = ((compiled iv).streamW (RecCircuit.ofRG RecGraphKeccak.Pi1.pi1GraphK rootsAt iv) w).toArray
   pub : RecSetupRoots → Vector UInt8 32 → Array UInt8 → ℕ → List Primitives.F192
   extraction : Pi2Extraction D (fun roots input stream w ↦
     ((compiled (D.pi1IvAt roots.pi1)).circuit.toPiop).Satisfies (pub roots input stream) (RecCircuit.emb w)) ε2
