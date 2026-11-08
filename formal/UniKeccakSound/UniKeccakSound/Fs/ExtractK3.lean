@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The Keccak main line's `Fs/ExtractK.lean` at π1-rec3's
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The Keccak main line's `Fs/ExtractK.lean` at π1-rec3's
 -- rounds, as `UniSound/Rec3/FsExtract3.lean`.
 import UniKeccakSound.Fs.CoupleK3
 import UniKeccakSound.Fs.ExtractK

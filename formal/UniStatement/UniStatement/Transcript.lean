@@ -1,5 +1,5 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
--- Transcribed from `crates/leanvm_flock_gas/src/transcript.rs` (`KeccakChannel`, `keccak_seed`, `challenge_of`,
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
+-- Transcribed from `crates/leanvm/statement/src/transcript.rs` (`KeccakChannel`, `keccak_seed`, `challenge_of`,
 -- `sumcheck`, `sumcheck_round_poly`; the last two adapted there from leanVM (https://github.com/leanEthereum/leanVM),
 -- commit 42422001, `crates/verifier/src/transcript.rs`). Keccak-256 over a permutation is leanerVM's
 -- (`Statement/Keccak.lean`, branch `mumbai`, commit 6175f1a0, MIT OR Apache-2.0); `challengeOf` is this

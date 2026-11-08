@@ -12,7 +12,7 @@ Copyright (c) 2026 Leanth Contributors. All rights reserved.
 
   Adapted from leanerVM (https://github.com/Verified-zkEVM/leanerVM), branch mumbai, commit
   f0393df4, file lean_vm/LeanVM/Protocol/ToCompPoly/AmbientStacking.lean. Apache-2.0 (the notice
-  above); see NOTICE.md. `LeanVM` renamed `Lv42`.
+  above); see AGENTS.md. `LeanVM` renamed `Lv42`.
 
   The multilinear extension of an aligned stack at an arbitrary point, for any pad. Candidate
   for CompPoly.

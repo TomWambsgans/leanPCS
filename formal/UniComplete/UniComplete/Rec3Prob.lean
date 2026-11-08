@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. π1-rec3's analogue of `Prob.lean`
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. π1-rec3's analogue of `Prob.lean`
 -- (`stagedU_holds`, `uniCompleteness_of_core`, `deltaUni`, `deltaUni_lt`, `uniCompleteness_reference`), itself
 -- following `formal/EndToEnd/Completeness/E2ECompleteness/End.lean`, `Assemble.lean`, `Final.lean`. Uses the main
 -- line's bad sets' counts (`Core.badFpCard_reference`, `Prob.badTCard_reference`), its setup's layout bound

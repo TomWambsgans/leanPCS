@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The byte round trips go through `UInt64.toNat`, as
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The byte round trips go through `UInt64.toNat`, as
 -- `formal/UniComplete/UniComplete/AlgCRun.lean`'s `run_fold_be64` (reused) and `SyncBasic.lean`'s do.
 import RecCompose.Basic
 import UniComplete.AlgCRun

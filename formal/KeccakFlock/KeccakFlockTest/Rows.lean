@@ -1,11 +1,11 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 import KeccakFlock
 
 /-!
 # The block's rows against the Rust's walk
 
-The vectors are `crates/leanvm_flock_gas/tests/lean_keccak_block.rs`'s output (`cargo test --release -p
-leanvm_flock_gas --test lean_keccak_block -- --nocapture`): the verifier's walk `keccak_flock::row_values` on column
+The vectors are `crates/leanvm/statement/tests/lean_keccak_block.rs`'s output (`cargo test --release -p
+leanvm_statement --test lean_keccak_block -- --nocapture`): the verifier's walk `keccak_flock::row_values` on column
 weights `w[p] = (r_p, 0, 0)`, `r_p` the `p`-th output of xorshift64 from `0x9e3779b97f4a7c15 ⊕ seed`. The walk only
 adds, so limb 0 of each row value is the XOR of the `r_p` over the row's positions: 64 random GF(2) column vectors
 at once, which determine the rows' 0/1 matrices up to a negligible chance. Per seed, the digest of limb 0 of `A w`

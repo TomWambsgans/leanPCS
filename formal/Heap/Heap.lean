@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 import Heap.Tree
 import Heap.Cantor
 import Heap.Leaf
@@ -12,7 +12,7 @@ import Heap.Honest
 /-!
 # Heap: the univariate PIOP's bus, a product heap, implies `Balanced`
 
-The univariate PIOP for leanVM 42422001 (`crates/leanvm_univariate/SPEC.md` §2, §5, branch
+The univariate PIOP for leanVM 42422001 (`docs/leanvm/univariate/SPEC.md` §2, §5, branch
 `leanvm-univariate`, at `56ea040`) proves leanVM's bus balance with a **grand product**, not
 logUp (in characteristic two, `Σ 1/(β + f)` sees each tuple's multiplicity only mod 2): the push
 and pull fingerprint products are compared through a committed binary tree on Cantor cosets, the

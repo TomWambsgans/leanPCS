@@ -1,8 +1,8 @@
-<!-- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The structure follows leanerVM's `Statement/README.md` (branch `mumbai`, commit 6175f1a0, MIT OR Apache-2.0). -->
+<!-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The structure follows leanerVM's `Statement/README.md` (branch `mumbai`, commit 6175f1a0, MIT OR Apache-2.0). -->
 
 # Statement
 
-What `crates/quotient` is proved to be, in the files a reviewer reads: **definitions and end
+What `crates/membership/quotient` is proved to be, in the files a reviewer reads: **definitions and end
 statements only**, no proof, one Lake package (`pcs-quotient-statement`, library `PcsQuotient`) of thirteen
 files, `PcsQuotient/<Name>.lean` (Lean modules `PcsQuotient.<Name>`). It depends on leanerVM's
 `Statement/` package (`statement`, branch `mumbai`, commit `6175f1a0`), whose definitions it reuses
@@ -40,8 +40,8 @@ behaves as a random permutation is the assumption. The adversary is classical, i
 is sampled.
 
 **The sources.** Each definition cites the Rust it transcribes (`protocol.rs`, `opening.rs`,
-`circuit.rs:N`, …) of `crates/quotient` at `main` `f4319d6` (the hidden layouts of
-`crates/quotient/HIDING.md`, the sizes `2^17` to `2^22` rows, the opening transcript of version `2`), and each
+`circuit.rs:N`, …) of `crates/membership/quotient` at `main` `f4319d6` (the hidden layouts of
+`docs/membership/HIDING.md`, the sizes `2^17` to `2^22` rows, the opening transcript of version `2`), and each
 file names what it takes from leanerVM in its first lines.
 
 ## Reading order
@@ -343,7 +343,7 @@ check the ones they use by kernel evaluation (`formal/EndToEnd/Bridge/Claims/Con
   `statementWords`; the Rust writes it out (same value).
 * The statement's prover takes its padding uniform; the deployed prover expands a 32-byte seed by
   ChaCha12 keyed by Keccak-256 (`Table::hidden`), which the test reproduces (`PcsQuotientTest/ChaCha.lean`).
-* The EVM contract (`crates/evm`) computes the reduction and calls `PCS_OPEN` for the openings; F5 and
+* The EVM contract (`crates/membership/evm`) computes the reduction and calls `PCS_OPEN` for the openings; F5 and
   `formal/EndToEnd/Evm` prove that its recorded graph accepts exactly when `verifyWith` does
   (`evm_accepts_iff_verifyWith`), with `PCS_OPEN`'s semantics an explicit definition (`pcsOpen`).
 

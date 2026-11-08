@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 import QuotientSecurity.Cantor
 import Heap.Tree
 
@@ -20,7 +20,7 @@ positions (`Heap.TreeHolds`) because of four facts of the basis, proved here for
 Hence **`root_eq_prod_leaves_omega`**: the tree identity on `V_n \ V_1` gives
 `T(1) = Π_{2^(n-1) ≤ i < 2^n} T(ω_i)`. **`tree_of_quotient`** reads the identity off the quotient
 form the verifier checks, `w_1(x)·(T(s(x)) + T(x)·T(x + 1)) + w_n(x)·Q(x) = 0` on `V_n`
-(`crates/leanvm_univariate/src/verifier.rs`, step 6): `w_n = s^n` vanishes on `V_n`, and
+(`crates/leanvm/univariate/src/verifier.rs`, step 6): `w_n = s^n` vanishes on `V_n`, and
 `w_1 = s` vanishes on `V_n` only on `V_1`. And for the leaf blocks: an aligned offset adds
 (`omega_add_of_dvd`, so `o_b + ω_k = ω_{pos_b + k}` for the coset `o_b + V_{r_b}` of a block at
 an aligned position), and the leaves are the coset `β_{n-1} + V_{n-1}` (`omega_two_pow_add`).

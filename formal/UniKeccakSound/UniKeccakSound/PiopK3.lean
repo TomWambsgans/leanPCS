@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The round-by-round form is `UniSound/Rec3/Piop3.lean`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The round-by-round form is `UniSound/Rec3/Piop3.lean`'s
 -- (π1-rec3's rounds `rec3Rounds`, the batch `PairBatch`), for the Keccak verifier at `keccakRec3`.
 import UniSound.Rec3.Piop3
 import UniKeccakSound.PiopK

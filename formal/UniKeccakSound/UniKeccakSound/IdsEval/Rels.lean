@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The two transcriptions are `UniSound/Ids/Rels.lean`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The two transcriptions are `UniSound/Ids/Rels.lean`'s
 -- reading (`tablePartOf`, `tablesPart`, a value at a time) and the Keccak code-level link's `mainRelsK`,
 -- `flockClaimK` (`Code/Shape.lean`); the proofs are `UniSound/Ids/Align.lean`'s on the Keccak tables.
 import UniSound.Ids.Align

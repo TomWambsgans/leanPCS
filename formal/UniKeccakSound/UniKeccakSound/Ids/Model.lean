@@ -1,5 +1,5 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The identities are
--- `crates/leanvm_univariate/KECCAK.md` and `formal/UniKeccak`'s `reduceWithK` (`constraintRelationK`, `layoutsK`,
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The identities are
+-- `docs/leanvm/univariate/KECCAK.md` and `formal/UniKeccak`'s `reduceWithK` (`constraintRelationK`, `layoutsK`,
 -- `weightAtK`, `batchK`); the model is `formal/UniSound/UniSound/Ids/Model.lean`'s on the Keccak VM's tables.
 import UniSound.Ids.Model
 import UniSound.CodeTables

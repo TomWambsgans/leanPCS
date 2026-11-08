@@ -1,5 +1,8 @@
-# Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
-"""Soundness of the univariate PIOP of crates/leanvm_univariate/SPEC.md (iteration 2), round by round, after the
+# Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
+"""NOTE: this model is of the BLAKE2s VM's pi1 (leanVM 42422001, 1,000 signatures), which the code no longer has;
+it is not yet updated for the Keccak VM.
+
+Soundness of the univariate PIOP of docs/leanvm/univariate/SPEC.md (iteration 2), round by round, after the
 union bounds over the level-0 Johnson lists of its two proof commitments (WHIR takes no OOD sample at level 0: a root
 binds a list until the claims are opened), and the sizes of its commitments.
 
@@ -20,7 +23,7 @@ As the code states them:
 - the bus's polynomial has degree 4 a tuple (one Schwartz-Zippel over E^5), with every table full (the counts are
   the prover's: at most 2^r rows each); a zero fingerprint needs no exclusion (the identities only multiply);
 - Flock's matrices' reduction runs its rounds in the batching sumcheck, so they are drawn after C2 (SPEC.md §13); the
-  ring map in tower order errs with probability at most 6/|E| (one a stage, crates/leanvm_flock_gas/src/ring_tower.rs);
+  ring map in tower order errs with probability at most 6/|E| (one a stage, crates/leanvm/statement/src/ring_tower.rs);
 - rho, lambda and the batching sumcheck are separate rows.
 
 Shapes whose proof stacks are below 2^24 words have no certified level-0 list: they are flagged and
@@ -49,7 +52,7 @@ TABLES = {
 # Fingerprints sent (pull, and JUMP's state push): verifier.rs's linearise over each flush's unsent columns.
 SENT_FINGERPRINTS = {"XOR": 4, "MUL": 4, "SET": 2, "DEREF": 4, "JUMP": 6, "BLAKE2S": 10}
 
-# The shapes leanVM's gas-dump gave (crates/leanvm_flock_gas/src/shapes.rs): log memory, rows per table.
+# The shapes leanVM's gas-dump gave (crates/leanvm/statement/src/shapes.rs): log memory, rows per table.
 SHAPES = {
     32: (16, [6060, 6490, 11768, 4703, 2699, 6489]),
     128: (18, [23629, 25224, 32804, 17879, 10468, 25881]),

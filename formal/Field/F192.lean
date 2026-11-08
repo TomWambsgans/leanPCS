@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- The field is CompPoly's `BF64.Ext3` (https://github.com/Verified-zkEVM/CompPoly, commit
 -- 572f997390aa4fc131ef30b1186fa1dcf292ca10, `CompPoly/Fields/Binary/BF64`, Apache-2.0): its carrier,
 -- `Field` instance and the irreducibility of both moduli are CompPoly's. It is the carrier leanerVM's
@@ -33,7 +33,7 @@ its shift-fold `reduce` folding `x^64 = 0x1B`, the nine limb products folded by 
 proved to be this field's `*`: `Implementation/Field192.lean` (`mul64_eq`, `isF192_primitives`).
 That the Rust computes these operations (that transcription, its Karatsuba and PMULL paths) is
 tested, not proved: `formal/Field/Test.lean` checks, in the kernel, products the Rust computes in
-`crates/quotient/tests/lean_field_vectors.rs` (and the Python reference vectors of `gf2_64x3.rs`),
+`crates/membership/quotient/tests/lean_field_vectors.rs` (and the Python reference vectors of `gf2_64x3.rs`),
 and inverses and a Frobenius by compiled evaluation.
 
 ## API

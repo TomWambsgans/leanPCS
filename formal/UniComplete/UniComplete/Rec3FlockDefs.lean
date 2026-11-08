@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. π1-rec3's Flock step: the verifier's
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. π1-rec3's Flock step: the verifier's
 -- `Flock.verifyWalkedFs … .rec3` (`Rec.lean`, `Rec3VerifierH.lean`'s `verifyWalkedFsH`) against `Rec3Prover.lean`'s
 -- `flockProve3`; the walk's lemma is `formal/FlockSound/FlockSoundUni/Rec3Walk.lean`'s `WalkLemma`.
 import UniComplete.Rec3Prover

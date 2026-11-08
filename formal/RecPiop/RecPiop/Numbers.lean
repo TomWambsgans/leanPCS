@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The form follows
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The form follows
 -- `formal/QuotientSecurity/Bits.lean`.
 import RecPiop.Rounds
 

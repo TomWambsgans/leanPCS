@@ -3,7 +3,7 @@
 
   Adapted from leanerVM (https://github.com/Verified-zkEVM/leanerVM), branch mumbai, commit
   f0393df4, file lean_vm/LeanVM/Arithmetization/Soundness/Theorem.lean. MIT OR Apache-2.0; see
-  NOTICE.md. `LeanVM` renamed `Lv42`.
+  AGENTS.md. `LeanVM` renamed `Lv42`.
 
   Constraint soundness: a witness satisfying the constraint statement of well-formed bytecode
   represents a valid execution.

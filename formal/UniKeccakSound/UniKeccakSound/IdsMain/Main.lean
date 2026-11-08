@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The proofs are `UniSound/Ids/Main.lean`'s,
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The proofs are `UniSound/Ids/Main.lean`'s,
 -- `Leaves.lean`'s, `MainOk.lean`'s and `BcTuple.lean`'s (`mainOfPolys`), for the Keccak VM's identities
 -- (`polysK`) and heap (`hdK`).
 import UniSound.Ids.MainOk

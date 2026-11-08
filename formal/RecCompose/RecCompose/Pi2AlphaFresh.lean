@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. `α`'s freshness at π2's staged run (`Pi2ProbStaged`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. `α`'s freshness at π2's staged run (`Pi2ProbStaged`'s
 -- `pi2Staged`, `stageA`) for π1-rec3's honest prover, from `Pi2AlphaLen` (the census before `σ`'s hash),
 -- `Pi2AlphaChain` (the chain from `σ` to `α`) and `Pi2AlphaSupport` (the graph's verdict on every outcome); uses leanerVM
 -- (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`, commit 6175f1a0, MIT OR Apache-2.0): the two calls,

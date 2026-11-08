@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. π1-rec3's run is `formal/UniStatement`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. π1-rec3's run is `formal/UniStatement`'s
 -- (`UniStatement/Rec.lean`: `reduceWithFs`, `batchFs`, `runWithFs`, `runFs`).
 import RecCompose.Pi2Run
 import RecCompose.CompleteCouplings

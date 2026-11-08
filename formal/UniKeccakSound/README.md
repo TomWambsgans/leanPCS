@@ -1,4 +1,4 @@
-<!-- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The structure follows formal/UniSound/UniSound.lean's report. -->
+<!-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The structure follows formal/UniSound/UniSound.lean's report. -->
 
 # UniKeccakSound: knowledge soundness of the Keccak VM's univariate verifier
 

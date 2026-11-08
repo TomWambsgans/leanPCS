@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Follows `formal/FlockSound/FlockSoundUni/Rec3Catch.lean`
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Follows `formal/FlockSound/FlockSoundUni/Rec3Catch.lean`
 -- (BLAKE2s's π1-rec3) at the Keccak verifier's sizes, with `FlockSound.FlockSq`'s `flock_front_sq`.
 import UniKeccakSound.Flock.Catch
 

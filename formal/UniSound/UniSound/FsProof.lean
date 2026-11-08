@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The framework is
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The framework is
 -- `formal/Compose/Compose/ListChainU.lean`, `ListChainUDoom.lean`, `ListChainKRpmS.lean`; the setup's
 -- facts follow `formal/Compose/Compose/Rpm.lean`'s (`hOnly_stackSetup`, `allQ_stackSetup`,
 -- `cost_stackSetup`) and `ListChainKDoom.lean`'s `whirOp_ok_stack`.

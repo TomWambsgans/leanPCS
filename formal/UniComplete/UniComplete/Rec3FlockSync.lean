@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The port of `FlockProverSync.lean` to π1-rec3: the
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The port of `FlockProverSync.lean` to π1-rec3: the
 -- verifier is `Rec3VerifierH.lean`'s `verifyWalkedFsH … .rec3` (`formal/UniStatement/UniStatement/Rec.lean`'s
 -- `Flock.verifyWalkedFs` with Keccak-256 an explicit call), the prover `Rec3Prover.lean`'s `flockProve3`.
 import UniComplete.Rec3FlockShape

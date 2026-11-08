@@ -1,10 +1,10 @@
 /-
-Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Adapted from `Test/Check.lean` (this
+Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Adapted from `Test/Check.lean` (this
 repository): the same parsing and the same checks, on public openings only.
 
 Runs the Lean `opening::verify` (`WhirBridge.openingVerifyWithHash`, over leanerVM mumbai's Keccak-256
 and Keccak-f[1600]) on public openings of `2^24 ..= 2^28` words made by the Rust prover
-(`crates/quotient/tests/whir_large_params.rs`, `large_public_openings`, which writes
+(`crates/membership/quotient/tests/whir_large_params.rs`, `large_public_openings`, which writes
 `target/whir_large_vector.txt`): for each, the layout is rebuilt by the Lean `Layout.new` from the
 constructor's arguments, `NewOK` (the hypothesis of `ours_sound_public`) evaluated on it, its prefix
 recomputed and compared with the Rust's, the honest proof accepted, and a wrong value, a wrong expected

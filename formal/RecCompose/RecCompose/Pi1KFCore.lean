@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The ports of `formal/UniComplete/UniComplete/
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The ports of `formal/UniComplete/UniComplete/
 -- Rec3CoreRun.lean` (`proveRec3With_eq`, `proveRec3With_eq_some`) and `Rec3Core.lean` (`accepts_of_trace3`,
 -- `verifyWithFsH_of_calls3`) to π1-rec3's two-hash prover (`Pi1KF.lean`), against `formal/RecStatement`'s
 -- `pi1KeccakVerifierWith` (π1-rec3's verifier with its Fiat–Shamir over Keccak-f[1600]); uses leanerVM

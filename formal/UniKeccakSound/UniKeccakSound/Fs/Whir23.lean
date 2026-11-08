@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The certificate is `WhirBridge/LargeParams.lean`'s and
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The certificate is `WhirBridge/LargeParams.lean`'s and
 -- `WhirBridge/Exact.lean`'s (`chkQ_large`, `costLE_large`, `isTotalQueryBound_large`, `ExactShape.large`) at the
 -- one shape they leave out, `2^23` words; the shapes' union is `WhirBridge/Union.lean`'s (`largeShapes`).
 import WhirBridge.Union

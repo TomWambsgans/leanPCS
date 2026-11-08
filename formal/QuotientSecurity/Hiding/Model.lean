@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 import QuotientSecurity.Hiding.Core
 
 /-!
@@ -26,7 +26,7 @@ randomness spans a subspace `rand` of stacks. **`level0_hides`**: under
 
 every change `Δ` of the stack that keeps the claims is cancelled, in the whole view, by a change of
 the randomness. With `Core.hiding_of_mem_range` the view of two tables with the same claims is then
-identically distributed (`level0_view_evalDistEq`). This is the argument of `crates/quotient/HIDING.md`
+identically distributed (`level0_view_evalDistEq`). This is the argument of `docs/membership/HIDING.md`
 ("Why it hides", steps 1 and 2), for an arbitrary layout.
 -/
 

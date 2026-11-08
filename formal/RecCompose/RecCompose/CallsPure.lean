@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The contract is `formal/RecStatement`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The contract is `formal/RecStatement`'s
 -- (`RecStatement/Security.lean`: `contractWith`, `pcsOpenAt`, `contractPi1Openings`, `pi1OpsOf`, the experiment
 -- `recSoundnessExperiment2`; `RecStatement/Calls.lean`: `pcsCalls`, `callWord`).
 import RecCompose.Pi2Run

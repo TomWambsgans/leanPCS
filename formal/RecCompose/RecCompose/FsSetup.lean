@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Follows `formal/UniSound/UniSound/FsProof.lean` (`setupK3`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Follows `formal/UniSound/UniSound/FsProof.lean` (`setupK3`'s
 -- facts, `whirOp_ok_tree`) and `FsSetup.lean` (`uniSetupBridge`) for π2's setup: π1's three trees, then π2's.
 import RecCompose.FsDefs
 import UniSound.FsSetup

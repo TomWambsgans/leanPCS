@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- Uses leanerVM `mumbai`'s Reed–Solomon facts (https://github.com/Verified-zkEVM/leanerVM, commit
 -- 6175f1a0, MIT OR Apache-2.0): `range_enc`, `enc_injective`, `eq_of_mem_code_of_agreeOn`,
 -- `eq_of_blockOf_eq`, `LevelCode.two_pow_le_thr`, `deployed_spec_hyps`.

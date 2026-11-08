@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The method is `UniSound/Ids/Deployed.lean`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The method is `UniSound/Ids/Deployed.lean`'s
 -- (`heapGood_reference`) and `UniKeccakSound/Fs/LayerK.lean`'s (`c1Vars_ref`, `c2Vars_ref`, `setupVars_ref`) at
 -- the reference Keccak shape.
 import UniKeccakSound.IdsNum.Layouts

@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The main line's `FsWalk.lean` for π1-rec3's walk
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The main line's `FsWalk.lean` for π1-rec3's walk
 -- (`UniStatement.runWithFs … .rec3 true`, `formal/UniStatement/UniStatement/Rec.lean`).
 import UniSound.Rec3.FsCouple3
 import UniSound.FsWalk

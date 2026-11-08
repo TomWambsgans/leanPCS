@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 import FlockSound.Cube
 import FlockSound.Split
 import FlockSound.Sumcheck
@@ -18,7 +18,7 @@ import FlockSound.Main
 /-!
 # FlockSound: Flock's soundness
 
-Flock (`crates/leanvm_flock_gas/src/flock_min.rs`, `crates/leanvm_univariate/SPEC-FLOCK.md`, SPEC.md §7
+Flock (`crates/leanvm/statement/src/flock_min.rs`, `docs/leanvm/univariate/SPEC-FLOCK.md`, SPEC.md §7
 and §13): its checks and claims give Lv42's `FlockRegion.Holds` of `q_flock`, but for bad challenges
 whose sizes are explicit. Generic first (`Cube` to `Flock`), at leanVM's constants second (`Fields`,
 `Leanvm`, `Main`). The guards below fail the build if a theorem's axioms grow beyond Lean's three.

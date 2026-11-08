@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 import QuotientSecurity.Hiding.GadgetLayout
 import QuotientSecurity.Hiding.Solve
 import QuotientSecurity.Hiding.NovelBasis
@@ -6,8 +6,8 @@ import QuotientSecurity.Hiding.NovelBasis
 /-!
 # The deployed hidden layouts as `GadgetLayout`s
 
-`crates/quotient/src/opening.rs` (`Layout::hidden_with`, `Table::hidden_in`, `gadget_lanes`,
-`Layout::gadget_entry`) and `crates/quotient/src/protocol.rs` (`witness_layout`, `quotient_layout`),
+`crates/membership/quotient/src/opening.rs` (`Layout::hidden_with`, `Table::hidden_in`, `gadget_lanes`,
+`Layout::gadget_entry`) and `crates/membership/quotient/src/protocol.rs` (`witness_layout`, `quotient_layout`),
 transcribed:
 
 * `Lane`, `Layout`: the Rust struct's fields (a hidden layout: its piece's `log` is a number);

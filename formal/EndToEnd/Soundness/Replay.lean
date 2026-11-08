@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- Uses leanerVM `mumbai`'s lemmas on Keccak-256's padding (https://github.com/Verified-zkEVM/leanerVM,
 -- commit 6175f1a0, MIT OR Apache-2.0: `lean_vm/LeanVM/Protocol/Rpm/Paths.lean`'s `length_padded`,
 -- `padded_prefix`, `unpad_eq_some_iff`). The filter lemmas (`preimage_filter`, `filter_answerPairs`)

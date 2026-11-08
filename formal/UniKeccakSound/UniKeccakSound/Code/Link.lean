@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The program is `formal/UniKeccak`'s `reduceWithK`
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The program is `formal/UniKeccak`'s `reduceWithK`
 -- (`Verifier.lean`); Flock's phase is cited through `KFlockSound.link`. The proof is
 -- `formal/UniSound/UniSound/CodeLink.lean`'s (`uniCode`) on the Keccak verifier.
 import UniKeccakSound.Code.Batch

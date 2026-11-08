@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The prover's code (`Prover.lean`, `Witness.lean`) cut at the
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The prover's code (`Prover.lean`, `Witness.lean`) cut at the
 -- bus challenges: the tails `streamTail`, `openingsTail` are its text, copied.
 import UniComplete.Witness
 import UniComplete.ProbChain

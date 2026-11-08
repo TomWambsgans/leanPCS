@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. `UniSound/FsWalk.lean` and `UniSound/FsWalkProof.lean`
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. `UniSound/FsWalk.lean` and `UniSound/FsWalkProof.lean`
 -- (`uniWalk`, `uniWalkReject`, whose generic lemmas are reused) for the Keccak walk, `formal/UniKeccak`'s `runWithK`.
 import UniKeccakSound.Fs.CoupleK
 import UniSound.FsWalkProof

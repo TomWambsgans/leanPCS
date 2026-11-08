@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- The extraction (the word a Merkle root commits to, read off the hash's answers by climbing down
 -- from the root through answered inputs) follows leanerVM `mumbai`'s `extract`
 -- (https://github.com/Verified-zkEVM/leanerVM, commit 6175f1a0, MIT OR Apache-2.0:

@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- Generalises `formal/Compose/Compose/ListChain.lean` of this repository (two roots, three
 -- challenge groups, hard-wired) to any number of rounds and roots: the structure (bad fresh queries
 -- parsed from the history, each round union-bounded over the candidates of the roots before it, the
@@ -11,7 +11,7 @@ import Compose.ListChain
 
 `ListChain.lean`'s chain is `quotient::protocol`'s: the label, a root and three challenges, a
 root and one challenge, five values and one challenge, its bad events written out round by round.
-Here the chain is any chain of `crates/quotient/src/transcript.rs`'s form, given by its rounds
+Here the chain is any chain of `crates/membership/quotient/src/transcript.rs`'s form, given by its rounds
 (`RoundSpec`): in round `j` the prover sends a root (two scalars, `rootWords`) if the round has
 one, then `nv` values (one scalar each, `scalarWord`); the verifier draws `ns + 1` challenges,
 the first the low 192 bits of the hash of the state and the round's scalars, each next the hash

@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Generalizes `Pi2Prob.lean`'s `prEvent_staged3_triple_le`
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Generalizes `Pi2Prob.lean`'s `prEvent_staged3_triple_le`
 -- (itself following `formal/UniComplete/UniComplete/ProbChain.lean`), with `ProbTFresh.lean`'s counting of hashed
 -- inputs (`HC`, `hc_of_qc`, `CacheBound`, `cacheBound_run`, `sum_hit_le`); uses leanerVM
 -- (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`, commit 6175f1a0, MIT OR Apache-2.0): the two calls

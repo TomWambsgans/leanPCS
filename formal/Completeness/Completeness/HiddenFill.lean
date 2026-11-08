@@ -1,11 +1,11 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 import WhirBridge.Layouts
 
 /-!
 # The honest prover's hidden stack
 
-The redesigned hidden layout of `crates/quotient/src/opening.rs` (commit `cbb527d`; the design is
-`crates/quotient/HIDING.md`), its honest stack and the table read back from it, transcribed:
+The redesigned hidden layout of `crates/membership/quotient/src/opening.rs` (commit `cbb527d`; the design is
+`docs/membership/HIDING.md`), its honest stack and the table read back from it, transcribed:
 
 * `Layout.hiddenNew` is `Layout::hidden_with` (`opening.rs:153-203`): the chunks' whole blocks
   and tails (`opening.rs:166-176`); the first (at most) `32` blocks on lanes `0..32`, random lanes

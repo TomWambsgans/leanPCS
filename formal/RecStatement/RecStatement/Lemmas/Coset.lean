@@ -1,5 +1,5 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The closed form is
--- `crates/leanvm_rec/src/pi2/verifier.rs`'s (`subspace_coefficients`, `zero_coset`, the public side's coset,
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The closed form is
+-- `crates/leanvm/rec/src/pi2/verifier.rs`'s (`subspace_coefficients`, `zero_coset`, the public side's coset,
 -- `PI2.md` §9 lever 3c; its unit test `the_zero_coset_sum_is_its_closed_form`).
 import RecStatement.Lemmas.Subspace
 

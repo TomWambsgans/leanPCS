@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- The sponge, the proof-of-work search and the trees (`buildTreeM`, `Tree.opening`) are leanerVM's
 -- (branch `mumbai`, commit 6175f1a0, MIT OR Apache-2.0: `Statement/Prover/Run.lean`,
 -- `Statement/LeanVmVerifier.lean`).

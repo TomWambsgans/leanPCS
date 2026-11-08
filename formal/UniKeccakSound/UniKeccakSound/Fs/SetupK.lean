@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. `UniSound/FsSetup.lean` (after
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. `UniSound/FsSetup.lean` (after
 -- `formal/EndToEnd/Soundness/TreeLog.lean`'s `loggedKC_buildTree` and `Bridge/Setup.lean`'s `commitWith_eq`) for the
 -- Keccak verifier's setup, one tree.
 import UniKeccakSound.Fs.CoupleK

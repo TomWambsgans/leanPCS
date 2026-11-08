@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. π1-rec3's prover (`Rec3Prover.lean`) cut at the bus
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. π1-rec3's prover (`Rec3Prover.lean`) cut at the bus
 -- challenges and at `t`, as `ProbSplit.lean` cuts the main line's: the tails are its text, copied.
 import UniComplete.Rec3Prover
 import UniComplete.ProbSplit

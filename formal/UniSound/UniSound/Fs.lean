@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The bound's form is
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The bound's form is
 -- `formal/Compose/Compose/ListChainKDoom.lean`'s `knowledgeSoundness_listChainK_closed_rpm`.
 import UniSound.PiopSound
 
@@ -177,7 +177,7 @@ follows from the verifier's checks with true claims, makes the deployed verifier
 for `uniExtractor` with the bound `uniBound e`.
 
 What the port changes in `ListChain`/`ListChainK` (found by this proof; the framework's chain is
-`crates/quotient`'s transcript, not the univariate one):
+`crates/membership/quotient`'s transcript, not the univariate one):
 * a scalar is 24 bytes (`nextScalar`), not a 32-byte word with eight zero bytes (`scalarWord`);
   a step's bytes are not whole words, so `chain_unique`'s `32 ∣` separation does not apply;
 * a root is its digest's two 16-byte halves each reversed (`nextRoot`, `rootOf`), not

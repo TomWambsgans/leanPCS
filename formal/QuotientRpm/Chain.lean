@@ -1,11 +1,11 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 import QuotientRpm.Bytes
 import QuotientSecurity.RandomOracle
 
 /-!
 # The reduction with the deployed transcript
 
-`crates/quotient/src/transcript.rs` and `quotient::protocol::reduce`, over a hash
+`crates/membership/quotient/src/transcript.rs` and `quotient::protocol::reduce`, over a hash
 `H : bytes → 32 bytes` in any monad (`Wire.verifyWith`). The chain's seed is `H` of the label
 (the tag `pcs-quotient-kc1`, the circuit's commitment, the statement's 64 bytes `y ‖ root`); each
 challenge is `H` of the state and the words of the scalars sent since the last challenge, its low

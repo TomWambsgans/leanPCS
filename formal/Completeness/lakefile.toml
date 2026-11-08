@@ -1,6 +1,6 @@
-# Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+# Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 #
-# End-to-end completeness of the membership proof (`crates/quotient`): the honest prover's proof,
+# End-to-end completeness of the membership proof (`crates/membership/quotient`): the honest prover's proof,
 # reduction and three WHIR openings, is accepted by the deployed verifier. It composes the
 # circuit's relation (F0a, `QuotientSecurity`), the reduction's completeness (F1), the deployed
 # Keccak-256 chain (F4a, `QuotientRpm`) and the openings (F2, `WhirBridge`, with leanerVM

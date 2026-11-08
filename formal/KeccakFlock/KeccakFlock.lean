@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 import KeccakFlock.Block
 import KeccakFlock.Sound
 import KeccakFlock.Complete
@@ -14,7 +14,7 @@ import KeccakFlock.TerminalMain
 /-!
 # KeccakFlock: the Keccak-f block of the Keccak VM's Flock argument
 
-The R1CS of `crates/lv42_flock/src/keccak.rs`'s block (`Block.lean`: `KeccakFlock.r1cs`, `cpos`, `inSlot`,
+The R1CS of `crates/vendor/leanvm-42422001/flock/src/keccak.rs`'s block (`Block.lean`: `KeccakFlock.r1cs`, `cpos`, `inSlot`,
 `outSlot`), its soundness (`Sound.lean`: `step_of_holds`), its completeness and the inhabitant of
 `KeccakVm.KeccakFlockSpec` (`Complete.lean`: `genColumn`, `holds_gen`, `in_gen`, `keccakFlockSpec`), and the lincheck
 terminal (`Terminal*.lean`: `structuredTerminal_eq_walked`, `walkedTerminal_eq_bilinear`). See `README.md`.

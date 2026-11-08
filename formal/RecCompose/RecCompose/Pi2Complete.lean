@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The contract is `formal/RecStatement`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The contract is `formal/RecStatement`'s
 -- (`Security.lean`: `contractWith`, `pcsOpenAt`, `pi1OpsOf`); π2's honest prover `RecCompose.Pi2Prover`'s; the joint
 -- run `Pi2CompleteSync`'s, the calls' decodings `Pi2CompleteCalls`', the honest openings `Pi2Whir`'s.
 import RecCompose.Pi2CompleteSync

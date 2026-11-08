@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- The opening's proof format and the verifier's program are leanerVM's (branch `mumbai`, commit
 -- 6175f1a0, MIT OR Apache-2.0: `Statement/LeanVmVerifier.lean`'s `Compile.Proof`, `Compile.Prog`,
 -- `Compile.run`); `fillRun` is `Compile.run` producing the Merkle openings instead of checking them.

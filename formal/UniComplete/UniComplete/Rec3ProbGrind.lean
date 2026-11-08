@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. π1-rec3's analogue of `ProbGrind.lean`
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. π1-rec3's analogue of `ProbGrind.lean`
 -- (`runAt_stagedU`, `one_le_powPot_of_rejectedU`, `rejectGood_uni`), itself following
 -- `formal/EndToEnd/Completeness/E2ECompleteness/Grinding.lean`. Uses `ProbGrind.lean`'s `winState` and
 -- `one_le_powPot_of_opening_none`, and leanerVM (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`, commit

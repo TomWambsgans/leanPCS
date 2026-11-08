@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 import RecGraphKeccak.Emitted
 import RecGraphKeccak.Pi1.Verifier
 
@@ -7,7 +7,7 @@ import RecGraphKeccak.Pi1.Verifier
 
 `lake env lean ../RecGraphKeccak/RecGraphKeccakTest/Pi1Check.lean` (from `formal/EndToEnd`): `Pi1.pi1GraphK` (the
 program `Pi1.pi1Rec3K` recorded in Lean) against `Emitted.graph` (the Rust's recording, written by
-`crates/leanvm_rec/tests/lean_graph_keccak.rs`): the nodes, the zero and nonzero checks, the kernels, the calls' words
+`crates/leanvm/rec/tests/lean_graph_keccak.rs`): the nodes, the zero and nonzero checks, the kernels, the calls' words
 and the stream's length, each equal. Compiled evaluation (`#eval`), not the kernel. Throws on the first difference,
 with the nodes around it.
 -/

@@ -1,9 +1,9 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 import QuotientSecurity.Hiding.Model
 import QuotientSecurity.Hiding.SpanStrong
 
 /-!
-# The hidden layouts of `crates/quotient` (`opening::Layout::hidden`)
+# The hidden layouts of `crates/membership/quotient` (`opening::Layout::hidden`)
 
 A hidden stack has lanes `ι` (at lane indices `pos l : Fin k → Bool`, `k = 6`, the bits of `l`) of
 entries `Y` (`2^ℓ` of them). Its unknowns:

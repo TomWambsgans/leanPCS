@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The main line's `UniSound/FsOps.lean` and π1-rec3's
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The main line's `UniSound/FsOps.lean` and π1-rec3's
 -- `UniSound/Rec3/FsOps3.lean` for the Keccak verifier (`formal/UniKeccak`'s `verifyWithK`: three `PCS_OPEN` calls).
 import UniKeccakSound.FsK
 import UniKeccakSound.Fs.Whir23

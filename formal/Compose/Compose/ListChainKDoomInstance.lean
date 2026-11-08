@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- The instance of `ListChainKDoom.lean`'s closed theorem that is `quotient::protocol`'s (the
 -- chain of `ListChainKInstance.lean`, the witness, wiring and quotient openings of
 -- `DeployedWired.lean`, the wiring stack's setup of `WiringSetup.lean`), of this repository.

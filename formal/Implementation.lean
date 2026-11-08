@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 import Implementation.Node
 import Implementation.Graph
 import Implementation.Arith
@@ -21,8 +21,8 @@ import Implementation.Field192
 # The implementation is the model (layer F5)
 
 The EVM contract and the Rust verifier are generated from one recorded operation graph
-(`crates/evm/src/record.rs`). `Implementation/Graph.lean` is that graph, written by the Rust
-(`crates/evm/src/lean.rs`, whose test fails when the file is stale); `Interp.lean` interprets it on
+(`crates/membership/evm/src/record.rs`). `Implementation/Graph.lean` is that graph, written by the Rust
+(`crates/membership/evm/src/lean.rs`, whose test fails when the file is stale); `Interp.lean` interprets it on
 calldata as the bytecode generator compiles each node (EVM words, `XOR`, `FIELD_MUL`, `KECCAK256`
 of `MSTORE`d words, `CALLDATALOAD`, shifts and masks) for any hash `H`.
 
@@ -52,7 +52,7 @@ CompPoly's `reduce (carryLessMul a b)`: both are the remainder of the same polyn
 `graph_is_verifier_F192`, `graph_words_F192`, `graph_reaches_iff_F192`: the end theorems on that
 field, no field hypothesis left.
 
-Tested, not proved: the bytecode computes the graph (`crates/evm`'s parity tests against the Rust
+Tested, not proved: the bytecode computes the graph (`crates/membership/evm`'s parity tests against the Rust
 verifier and `Implementation/Diff.lean` against this interpreter), and that the Rust's `F192`
 arithmetic is `mulE` (`mulE` transcribes its software `clmul` and `reduce`; the transcription and
 the Karatsuba and PMULL paths are checked by the differential test and by F0c's kernel-checked

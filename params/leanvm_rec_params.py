@@ -1,11 +1,14 @@
-# Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
-"""Recursion for the univariate leanVM 42422001 verifier (crates/leanvm_rec/SPEC-REC.md): the sizes of the outer
+# Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
+"""NOTE: this model is of the BLAKE2s VM's pi1 (leanVM 42422001, 1,000 signatures), which the code no longer has;
+it is not yet updated for the Keccak VM.
+
+Recursion for the univariate leanVM 42422001 verifier (docs/leanvm/rec/SPEC-REC.md): the sizes of the outer
 proof pi2 in each arithmetization, its soundness round by round after the union bounds over WHIR's level-0 Johnson
 lists, and the contract's gas.
 
     python3 -I params/leanvm_rec_params.py
 
-MEASURED (crates/leanvm_rec/tests/counts.rs and quotient_reference.rs, on h1): pi1's verifier graph at 1,000
+MEASURED (crates/leanvm/rec/tests/counts.rs and quotient_reference.rs, on h1): pi1's verifier graph at 1,000
 signatures (Keccak-256 calls and permutations, E operations, packings, claims), and the Merkle-path circuit's rows per
 Keccak-f and words per row. MODELLED (here): every pi2 size, every soundness figure, every gas figure. The models are
 formulas over the measured counts; SPEC-REC.md §2-§4 derives each one.
@@ -33,7 +36,7 @@ CERTIFIED_L0 = uni.CERTIFIED_L0
 WHIR_BITS = uni.WHIR_BITS
 
 # ---------------------------------------------------------------------------------------------------------------------
-# MEASURED: pi1's verifier graph, Claims::Point, 1,000 signatures (crates/leanvm_rec/tests/counts.rs, count_report).
+# MEASURED: pi1's verifier graph, Claims::Point, 1,000 signatures (crates/leanvm/rec/tests/counts.rs, count_report).
 # perms: Keccak-f[1600] permutations of every Keccak-256 call, the seed's included; ops: live E operations with the
 # ring switch's kernel expanded; packs: live stream reads + challenges (each a bytes/bits <-> E packing in pi2).
 PI1 = {
@@ -49,12 +52,12 @@ PI1 = {
     "BLAKE2s omitted (scale only)": dict(perms=52, calls=37, challenges=36, products=2009, linear=1982, reads=147,
                                          coords=27, values=3, stream=3472, bits=125, zero=13),
 }
-# MEASURED: crates/quotient's circuit (tests/quotient_reference.rs): rows per Keccak-f, the membership circuit, and the
+# MEASURED: crates/membership/quotient's circuit (tests/quotient_reference.rs): rows per Keccak-f, the membership circuit, and the
 # words per row of its three tables at 2^22 rows (4 cells a row; witness and quotient hidden).
 QUOTIENT_ROWS_PER_PERM = 113_114
 QUOTIENT_MERKLE = dict(perms=34, used=3_878_612, log_rows=22, witness=20_971_520, wiring=16_777_216,
                        quotient=264_241_152)
-# MEASURED: pi1's main line on revm (crates/leanvm_univariate SPEC.md §13): execution 182,104 gas straight for 11,631
+# MEASURED: pi1's main line on revm (crates/leanvm/univariate SPEC.md §13): execution 182,104 gas straight for 11,631
 # E operations, of which transcript 11,175, calldata reads 6,442, PCS_OPEN 3,444: the per-operation cost below.
 GAS_PER_OP = (182_104 - 11_175 - 6_442 - 3_444) / (6413 + 5218)
 
@@ -66,7 +69,7 @@ ROUNDS = 24
 
 def keccak_positions(design):
     """Positions of one Keccak-f[1600] permutation."""
-    if design == "B4":  # crates/quotient's bit gate, 4 cells a row (measured rows)
+    if design == "B4":  # crates/membership/quotient's bit gate, 4 cells a row (measured rows)
         return 4 * QUOTIENT_ROWS_PER_PERM
     if design == "C16":  # cell outputs, 16-cell rows: chi5+theta rows (15 cells), 2 C (6) + 1 D (3) rows
         return ROUNDS * (320 + 192) * 16
@@ -82,7 +85,7 @@ def keccak_positions(design):
 
 DESIGNS = {
     # name: (row width W = values at t, quotient words per position, extra values, proof commitments, note)
-    "B4": dict(W=4, qwords=13.75, extra=1, note="crates/quotient's chi gate on bits, cell outputs"),
+    "B4": dict(W=4, qwords=13.75, extra=1, note="crates/membership/quotient's chi gate on bits, cell outputs"),
     "C16": dict(W=16, qwords=9 + 3 / 16, extra=2, note="cell outputs, chi5+theta rows"),
     "C64": dict(W=64, qwords=9 + 3 / 64, extra=2, note="cell outputs, slice rows"),
     # extra: sigma(t) and kappa(t), the setup's wiring and constants columns
@@ -259,7 +262,7 @@ def main():
               f" E products {p['products']:>5}, linear {p['linear']:>5}, packings {p['reads'] + p['challenges']:>3},"
               f" claims' coordinates {p['coords']} + {p['values']} values")
     m = QUOTIENT_MERKLE
-    print(f"\n== crates/quotient (MEASURED): {QUOTIENT_ROWS_PER_PERM:,} rows a Keccak-f; the Merkle path's {m['perms']}"
+    print(f"\n== crates/membership/quotient (MEASURED): {QUOTIENT_ROWS_PER_PERM:,} rows a Keccak-f; the Merkle path's {m['perms']}"
           f" permutations use {m['used']:,} of 2^{m['log_rows']} rows; words a row: witness"
           f" {m['witness'] / 2**22:.2f}, wiring {m['wiring'] / 2**22:.2f}, quotient {m['quotient'] / 2**22:.2f}"
           f" (2^{math.log2(m['quotient']):.2f}, hidden)")
@@ -349,7 +352,7 @@ def main():
 
 
 # ---------------------------------------------------------------------------------------------------------------------
-# The claims' points (crates/leanvm_rec/SPEC-POINTS.md): the batching sumcheck's rounds k variables at a time on V_k's
+# The claims' points (docs/leanvm/rec/SPEC-POINTS.md): the batching sumcheck's rounds k variables at a time on V_k's
 # coordinate functionals, one challenge a round, so that the batch's point r is a function of ceil(27 / k) elements.
 #
 # MEASURED, the two baselines: R3 (leanvm-rec @ 4a57c61, PI2.md §0: pi1-rec, 46 coordinates and 5 values) and
@@ -367,7 +370,7 @@ BASELINES = {
 # 77,200 positions for 376), a Keccak-256 call's later block (54,928 for 27), an E operation (114,704 for 11,655).
 PORT_GAS = (6794 - 4723) / (67 - 47)
 POS_BIT, POS_PACKING, POS_LATER_BLOCK, POS_OP = 2, 77_200 / 376, 54_928 / 27, 114_704 / (6437 + 5218)
-# MEASURED (leanvm_flock_gas transcript::tests::pairs_cost_what_the_plain_rounds_do_in_permutations): the batch's 27
+# MEASURED (leanvm_statement transcript::tests::pairs_cost_what_the_plain_rounds_do_in_permutations): the batch's 27
 # variables in plain rounds 135 E operations, in pairs 278.
 OPS_PLAIN, OPS_PAIRS = 135, 278
 # MODELLED: the contract's work a public element besides its port (its calldata read, its 24 bytes in pi2's

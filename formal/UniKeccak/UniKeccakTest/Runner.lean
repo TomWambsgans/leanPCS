@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The vector parser is
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The vector parser is
 -- `formal/UniStatement/UniStatementTest/Runner.lean`'s, repeated (a test file is not a module).
 import UniKeccak
 
@@ -6,7 +6,7 @@ import UniKeccak
 # The Keccak VM's differential runner
 
 `lake env lean ../UniKeccak/UniKeccakTest/Runner.lean` (from `formal/EndToEnd`), with the vectors of
-`crates/leanvm_univariate/tests/lean_keccak_vectors.rs` at `$KECCAK_VECTORS`:
+`crates/leanvm/univariate/tests/lean_keccak_vectors.rs` at `$KECCAK_VECTORS`:
 
 * **Terminal vectors** (`TERMINAL`): `UniKeccak.structuredTerminal` on the Rust's random inputs at every skip
   `k ≤ 6`, against the Rust's `structured_terminal` and walked terminal (which the writer asserts equal), and Lean's

@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- Uses leanerVM (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`, commit 6175f1a0,
 -- MIT OR Apache-2.0): Keccak-256 (`Common.keccak256`, `common/Common/Sponge.lean`).
 import Implementation.Interp
@@ -8,7 +8,7 @@ import Common.Sponge
 # The interpreter against the Rust verifier
 
 `lake env lean --run Implementation/Diff.lean VECTORS`: each line of `VECTORS` (written by
-`LEAN_VECTORS=VECTORS cargo test -p evm write_lean_vectors -- --ignored`, `crates/evm/src/lean.rs`)
+`LEAN_VECTORS=VECTORS cargo test -p evm write_lean_vectors -- --ignored`, `crates/membership/evm/src/lean.rs`)
 is an index root, calldata of the verifier and what the Rust verifier
 (`quotient::protocol::verify`) has `PCS_OPEN` check, the three calls' inputs back to back (or
 `reject`), in hex. The interpreter (`run`, with leanerVM's Keccak-256) must give the same bytes on

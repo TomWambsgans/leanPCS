@@ -1,7 +1,7 @@
 /-
-Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 
-The three layouts `crates/quotient/src/protocol.rs` opens (`wiring_layout`, `witness_layout`,
+The three layouts `crates/membership/quotient/src/protocol.rs` opens (`wiring_layout`, `witness_layout`,
 `quotient_layout`), through the mirrors of `Layout::new` and `Layout::hidden`, for every supported
 circuit size, and what the bridge's theorems need of them, decided.
 -/
@@ -79,7 +79,7 @@ def quotientLayout (logRows : ℕ) : Layout :=
   Layout.hidden (cellVars logRows + 6) (cellVars logRows) (cellVars logRows + 4)
     (quotientChunks (cellVars logRows) qSpill 64) quotientRandomLanes logPieceDeployed
 
-/-- `LOG_ROWS` (`crates/quotient/src/circuit.rs`): the deployed size. -/
+/-- `LOG_ROWS` (`crates/membership/quotient/src/circuit.rs`): the deployed size. -/
 def logRows : ℕ := 22
 
 /-- The hidden shape's conditions as one decidable conjunction. -/

@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The parsing follows `formal/UniStatement`'s runner
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The parsing follows `formal/UniStatement`'s runner
 -- (`UniStatementTest/Runner.lean`).
 import RecStatement
 
@@ -6,7 +6,7 @@ import RecStatement
 # The differential runner
 
 `lake env lean ../RecStatement/RecStatementTest/Runner.lean` (from `formal/EndToEnd`), with the vectors of
-`crates/leanvm_rec/tests/lean_statement.rs` at `$REC_STATEMENT_VECTORS`: π2's real circuit for π1-rec3
+`crates/leanvm/rec/tests/lean_statement.rs` at `$REC_STATEMENT_VECTORS`: π2's real circuit for π1-rec3
 (`RecStatement.Data`), the Lean verifier (`RecStatement.run`, compiled evaluation, not the kernel) on every vector's
 calldata, compared with the Rust verifier's on **every value**: the verdict (the stream's error, or the value
 required nonzero), every intermediate value of the arithmetic (the trace: the challenges, the digits, the row's

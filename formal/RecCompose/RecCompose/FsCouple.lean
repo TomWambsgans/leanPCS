@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Follows `formal/UniSound/UniSound/FsCouple.lean`
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Follows `formal/UniSound/UniSound/FsCouple.lean`
 -- (`prefixU`, `uniSoundnessExperiment_eq`, `rpmGameS_eq`, `step_le`, `uniGameLeV_of`), with
 -- `formal/EndToEnd/Soundness/Final.lean`'s `prEvent_le_of_continuations`.
 import RecCompose.FsVerifier

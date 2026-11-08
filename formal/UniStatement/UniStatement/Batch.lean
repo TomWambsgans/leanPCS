@@ -1,5 +1,5 @@
--- Part of this repository. Transcribed from `crates/leanvm_univariate/src/verifier.rs` (`batch`, `Opening`).
--- MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. Transcribed from `crates/leanvm/univariate/src/verifier.rs` (`batch`, `Opening`).
+-- MIT OR Apache-2.0; see AGENTS.md.
 module
 
 public import UniStatement.Transcript

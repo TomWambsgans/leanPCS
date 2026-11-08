@@ -1,11 +1,11 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 import FlockSound.Zerocheck
 import Mathlib.Algebra.Polynomial.Expand
 
 /-!
 # A run of squares of one challenge: the Kronecker substitution
 
-π1-rec3 (`crates/leanvm_rec/SPEC-REC.md` §1.4; `crates/leanvm_flock_gas/src/transcript.rs`,
+π1-rec3 (`docs/leanvm/rec/SPEC-REC.md` §1.4; `crates/leanvm/statement/src/transcript.rs`,
 `FsShape::draw`, `squares`) derives a run of `m` challenges from one: `c, c², c⁴, …, c^(2^(m-1))`
 (`sqPt m c`). A multilinear extension at such a point is a polynomial in `c`: the base-2 Kronecker
 substitution `r_i ↦ c^(2^i)` sends the monomial `Π_{i ∈ S} r_i` to `c^(Σ_{i ∈ S} 2^i)`, distinct

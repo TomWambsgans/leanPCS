@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 import RecGraph.Node
 import RecGraph.Semantics
 import RecGraph.Record
@@ -14,7 +14,7 @@ import RecGraph.Sim.Shape
 # RecGraph: recorded verifier graphs, their meaning, and the recorder
 
 The recursion's outer proof π2 proves a circuit compiled from the **recorded operation graph** of the inner proof π1's
-verifier (`crates/leanvm_rec`, π1-rec3: `FsShape::Rec3`). This library is the design-independent half of "compiler
+verifier (`crates/leanvm/rec`, π1-rec3: `FsShape::Rec3`). This library is the design-independent half of "compiler
 correctness" (`README.md` here): the graph (`Node`, `Graph`), its meaning over any permutation (`evalGraph`), the
 Lean recorder (`Record.lean`) with "recording commutes with evaluation" (`Commute.lean`, `Values.lean`); and the verifier's shared pieces as recorder programs
 (`Pi1/`) with their simulation framework (`Sim/`), from which the Keccak VM's π1-rec3 (`formal/RecGraphKeccak`) is

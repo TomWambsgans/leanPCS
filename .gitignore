@@ -1,3 +1,4 @@
 target/
 .build/
 .claude/
+__pycache__/

@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The witness read off a stack follows `formal/Lv42`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The witness read off a stack follows `formal/Lv42`'s
 -- `Protocol/LeanIsa.lean` (`witnessOf`, leanerVM `mumbai` f0393df4, MIT OR Apache-2.0), for the Keccak VM's
 -- instance, all of whose columns are committed.
 module

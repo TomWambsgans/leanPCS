@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The interface is `UniSound.FlockSound3`
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The interface is `UniSound.FlockSound3`
 -- (`formal/UniSound/UniSound/Rec3/FlockInterface3.lean`); the instance follows `Instance.lean` (the main line's).
 import FlockSoundUni.Rec3Catch
 import UniSound.Rec3.FlockInterface3

@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. `RecGraph.Sim`'s `Claims.lean` weight part (`weightAt_phc`,
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. `RecGraph.Sim`'s `Claims.lean` weight part (`weightAt_phc`,
 -- `termP_eq`, `CombRep`, `combine_weight`), ported to the Keccak verifier's `weight_at` (its slot terms' slot bits
 -- `q_flock`'s variables minus their point's) and to `UniKeccak.weightAtK`.
 import RecGraph.Sim.Claims

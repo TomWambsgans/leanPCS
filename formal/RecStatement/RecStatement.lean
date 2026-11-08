@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 import RecStatement.Basic
 import RecStatement.Data
 import RecStatement.Spec
@@ -13,7 +13,7 @@ import RecStatement.Lemmas.SpecLink
 /-!
 # RecStatement: π2's verifier, transcribed, and the recursive verifier's statements
 
-`crates/leanvm_rec`'s π2 verifier (`pi2/verifier.rs`, `contract.rs`; `PI2.md` §2, §8–§9) as computable Lean
+`crates/leanvm/rec`'s π2 verifier (`pi2/verifier.rs`, `contract.rs`; `PI2.md` §2, §8–§9) as computable Lean
 (`README.md` here: the reading order, the correspondence with the Rust, what is tested):
 
 * **the verifier** (`run`, `runWith`): the seed of π2's IV (`iv`: π1's contract IV, the setup root, the circuit's

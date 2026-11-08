@@ -1,5 +1,5 @@
-# Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
-# The reviewer-facing statement of `crates/quotient` (README.md here), in the style of leanerVM's
+# Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
+# The reviewer-facing statement of `crates/membership/quotient` (README.md here), in the style of leanerVM's
 # `Statement/` package (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`, commit 6175f1a0,
 # MIT OR Apache-2.0), on which it depends for `K`, `E`, Keccak-256 over a permutation, the
 # random-permutation model, the WHIR verifier, its prover's pieces and the extractor's decoder.

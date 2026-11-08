@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 import FlockSound.Sumcheck
 import FlockSound.Point
 import FlockSound.Skip

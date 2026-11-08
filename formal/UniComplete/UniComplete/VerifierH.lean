@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- Transcribed from `formal/UniStatement` (`Transcript.lean`, `Flock.lean`, `Batch.lean`, `Verifier.lean`, `Run.lean`,
 -- `Opening.lean`, `Security.lean`), with Keccak-256 an explicit call, as `formal/EndToEnd/Completeness/
 -- E2ECompleteness/WithHash.lean` rewrites `formal/Statement`; the openings and the commitments are WithHash's

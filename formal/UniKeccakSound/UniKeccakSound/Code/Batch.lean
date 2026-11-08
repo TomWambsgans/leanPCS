@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The program is `formal/UniKeccak`'s `batchK`
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The program is `formal/UniKeccak`'s `batchK`
 -- (`Verifier.lean`); the proof is `formal/UniSound/UniSound/CodeBatch.lean`'s `batch_eq`, without the pending
 -- matrices.
 import UniKeccakSound.Code.Shape

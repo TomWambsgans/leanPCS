@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The main line's `FsGame.lean` (`fsLayer_of_gameV`)
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The main line's `FsGame.lean` (`fsLayer_of_gameV`)
 -- for π1-rec3: its IV (`UniStatement.Deployment.ivRec3With`, `contractIvForWith … .rec3 true`) and its three
 -- openings.
 import UniSound.Rec3.FsProof3

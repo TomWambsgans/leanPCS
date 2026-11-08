@@ -1,6 +1,6 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. π1-rec3's completeness end to end, against
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. π1-rec3's completeness end to end, against
 -- `formal/UniStatement/UniStatement/RecSecurity.lean`'s `UniCompletenessRec3` (π1-rec3's verifier
--- `Deployment.verifierRec3With`, `crates/leanvm_univariate`'s `FLOCK_REC3`, `leanvm-rec` 4247e37).
+-- `Deployment.verifierRec3With`, `crates/leanvm/univariate`'s `FLOCK_REC3`, `leanvm-rec` 4247e37).
 import UniComplete.Rec3Core
 import UniComplete.Rec3ProbTFresh
 import UniComplete.Rec3ProverSim

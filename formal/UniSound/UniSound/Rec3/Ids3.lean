@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The identity model is `Ids/`'s (the main line's),
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The identity model is `Ids/`'s (the main line's),
 -- read at π1-rec3's transcripts; the batch's start follows `Ids/Batch.lean`'s `batch_start_of`.
 import UniSound.Ids.Build
 import UniSound.Rec3.BusSq

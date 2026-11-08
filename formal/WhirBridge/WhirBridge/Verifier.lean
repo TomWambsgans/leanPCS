@@ -1,7 +1,7 @@
 /-
-Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 
-`opening::verify` of `crates/quotient/src/opening.rs`, the whole of it (its transcript's start
+`opening::verify` of `crates/membership/quotient/src/opening.rs`, the whole of it (its transcript's start
 included), over a hash and a permutation, and its Fiat-Shamir soundness in the random-oracle model
 for the layouts the protocol opens, from `family_sound` (`Family.lean`, adapted from leanerVM
 `mumbai`, https://github.com/Verified-zkEVM/leanerVM, commit 6175f1a0, MIT OR Apache-2.0).

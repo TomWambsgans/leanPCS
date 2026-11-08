@@ -1,6 +1,6 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Transcribed, in the Rust's operation order, from
--- `crates/leanvm_flock_gas/src/flock_min.rs` (`front_with`, `verify_walked_with::<S, Keccak>`) and
--- `crates/leanvm_flock_gas/src/keccak_flock.rs` (`structured_terminal`, `grouped`).
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Transcribed, in the Rust's operation order, from
+-- `crates/leanvm/statement/src/flock_min.rs` (`front_with`, `verify_walked_with::<S, Keccak>`) and
+-- `crates/leanvm/statement/src/keccak_flock.rs` (`structured_terminal`, `grouped`).
 import RecGraph.Pi1.Flock
 import UniKeccak.Terminal
 

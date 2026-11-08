@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 import VCVio.OracleComp.QueryTracking.RandomOracle.Basic
 import VCVio.OracleComp.Constructions.SampleableType.Measure
 import VCVio.OracleComp.SimSemantics.QueryImpl.Compose
@@ -7,7 +7,7 @@ import VCVio.OracleComp.QueryTracking.QueryBound.Basic
 /-!
 # The non-interactive proof and its simulator, in the random-oracle model
 
-The prover of `crates/quotient` is a Fiat–Shamir transform: the reduction's Keccak-256 chain
+The prover of `crates/membership/quotient` is a Fiat–Shamir transform: the reduction's Keccak-256 chain
 (`transcript.rs`) and the three WHIR openings' duplex sponge (`fiat_shamir`), with Merkle trees
 (`pcs::merkle`) over the committed tables. In the random-oracle model every hash is one oracle
 `I →ₒ O` (lazily sampled, VCVio's `randomOracle`); `Instance.lean` takes `I` the Keccak-256 inputs

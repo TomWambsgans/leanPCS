@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The heap's blocks at a shape are computed as
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The heap's blocks at a shape are computed as
 -- `formal/UniSound`'s `heap_reference` computes the reference shape's (`HeapLayout.new`'s sort, without evaluating
 -- `mergeSort`); `heapRelations_phcS` is `RecGraph.Sim.heapRelations_phc` for any shape whose table blocks are among the
 -- six tables.

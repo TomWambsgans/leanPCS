@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The main line's `FsFinal.lean` for π1-rec3.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The main line's `FsFinal.lean` for π1-rec3.
 import UniSound.Rec3.FsExtract3
 import UniSound.Rec3.FsVerifier3
 import UniSound.Rec3.FsWalkProof3

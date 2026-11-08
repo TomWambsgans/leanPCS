@@ -1,7 +1,7 @@
 /-
-Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 
-Every public layout `Layout::new` builds (`crates/quotient/src/opening.rs:120-142`) from a list of
+Every public layout `Layout::new` builds (`crates/membership/quotient/src/opening.rs:120-142`) from a list of
 `(table, height)` chunks is valid, by one generic proof over the chunks.
 -/
 import WhirBridge.Hidden

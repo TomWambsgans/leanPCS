@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 import UniStatement.Run
 import UniStatement.Opening
 import UniStatement.Mapping
@@ -7,7 +7,7 @@ import UniStatement.Security
 /-!
 # UniStatement: the univariate PIOP for leanVM 42422001, transcribed
 
-`crates/leanvm_univariate`'s verifier as computable Lean (`README.md` here: the reading order, the
+`crates/leanvm/univariate`'s verifier as computable Lean (`README.md` here: the reading order, the
 correspondence with the Rust, what is tested), and its end statements against leanVM 42422001's relation
 (`Lv42`'s `M3Holds`): `UniKnowledgeSoundness`, `UniCompleteness` (`Security.lean`), stated, not proved.
 

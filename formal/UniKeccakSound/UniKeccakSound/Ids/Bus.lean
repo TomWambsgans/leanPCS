@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The argument is `UniSound/Bus.lean`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The argument is `UniSound/Bus.lean`'s
 -- (`BusModel.mainSound`), for the Keccak VM's instance; the bus is `formal/Heap`'s.
 import UniSound.Bus
 import UniKeccakSound.Ids.Model

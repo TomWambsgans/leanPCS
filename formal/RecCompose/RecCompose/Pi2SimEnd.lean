@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. π2's completeness (`formal/RecStatement`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. π2's completeness (`formal/RecStatement`'s
 -- `RecCompleteness2`, `RecCompletenessWith`) at π1-rec3's honest prover (`formal/UniComplete`'s `uniProverRec3RP`),
 -- assembled from `Pi2SimExp` (`Pi2ExperimentLe`), `Pi2SimCore` (the grinding without `Pi2RunAt`), `Pi2Chain` and
 -- `Pi2TFreshPi2` (`Holds2`, `Pi2TFresh` from `Pi2AlphaFresh`), `Pi2CallsOpen` (`Pi2Pi1Openings`).

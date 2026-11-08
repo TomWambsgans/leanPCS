@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 import Implementation.Model
 import Field.F192
 import Field.Sampleable
@@ -32,7 +32,7 @@ Then:
 each reduced, which is F0c's `ofLimbs_mul_ofLimbs` (`isF192_primitives`).
 
 What stays tested: that the Rust computes `mulE` (its Karatsuba and PMULL paths, the opcode of
-`crates/evm`), by `crates/quotient/tests/lean_field_vectors.rs` and `Implementation/Diff.lean`.
+`crates/membership/evm`), by `crates/membership/quotient/tests/lean_field_vectors.rs` and `Implementation/Diff.lean`.
 -/
 
 set_option linter.unusedSectionVars false

@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- The unique decoder is Gao's (S. Gao, *A new algorithm for decoding Reed–Solomon codes*, in
 -- Communications, Information and Network Security, V. Bhargava et al. (eds.), Kluwer, 2003,
 -- pp. 55–68): the partial extended Euclidean algorithm on the points' vanishing polynomial and the

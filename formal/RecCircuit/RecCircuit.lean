@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 import RecCircuit.KeccakMath
 import RecCircuit.Spec
 import RecCircuit.Graph
@@ -27,7 +27,7 @@ import RecCircuit.End
 import RecCircuit.Complete
 
 /-!
-# π2's circuit, formally (`crates/leanvm_rec/src/circuit`)
+# π2's circuit, formally (`crates/leanvm/rec/src/circuit`)
 
 See `formal/RecCircuit/README.md`. The build fails if a headline theorem's axioms grow beyond Lean's three standard
 ones.

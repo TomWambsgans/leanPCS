@@ -1,0 +1,29 @@
+<!-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. -->
+
+# leanvm_univariate (π1)
+
+A univariate PIOP for the Keccak VM's statement (leanVM `9d50c92a3`), for the EVM with the aggregated `PCS_OPEN`
+precompile: two proof commitments and one setup commitment, the bus as a grand product in a committed heap, every
+identity checked at one point, Flock on the Keccak-f block, one point claim per commitment.
+
+- `verifier`: the verifier (`reduce`), generic over the scalar; `contract`: it compiled to EVM code, its calldata,
+  its gas; `prover`: the prover, on traces leanVM writes (`prover/dump_keccak`).
+- Variants: `KECCAK_MAIN`, and `KECCAK_REC3` (π1-rec3, the inner proof of `crates/leanvm/rec`).
+- Design: [`SPEC.md`](../../../docs/leanvm/univariate/SPEC.md) (the PIOP),
+  [`SPEC-FLOCK.md`](../../../docs/leanvm/univariate/SPEC-FLOCK.md),
+  [`PROVER.md`](../../../docs/leanvm/univariate/PROVER.md),
+  [`KECCAK.md`](../../../docs/leanvm/univariate/KECCAK.md) (the VM, workloads, gas, measurements).
+
+At the reference workload (128 signatures) the contract alone takes 8,020 B of calldata, 230,985 gas of execution and
+358,957 of transaction gas (EIP-7623, claims free).
+
+```sh
+cargo test --release -p leanvm_univariate                                                  # contract == Rust verifier, vectors, Flock
+cargo test --release -p leanvm_univariate --test keccak_vm -- --ignored --nocapture keccak_gas_report
+LEANVM_TRACE=<trace> cargo test --release -p leanvm_univariate --test prove_real -- --ignored --nocapture --test-threads 1
+```
+
+`tests/vectors/` holds real proofs (calldata, `PCS_OPEN` inputs, gas): `keccak.txt` (32 signatures, `KECCAK_MAIN`),
+`keccak128_rec3.txt` (128, `KECCAK_REC3`, the reference) and `keccak_rec3.txt` (400, `KECCAK_REC3`), replayed by
+`tests/evm_vectors.rs` and written by `tests/prove_real.rs` (`WRITE_VECTORS=<dir>`). `tests/lean_keccak_vectors.rs`
+writes the vectors of `formal/UniKeccak`'s differential runner.

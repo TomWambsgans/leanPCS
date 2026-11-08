@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The statements composed are
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The statements composed are
 -- `formal/RecStatement/RecStatement/Security.lean`'s (branch `lean-rec-statement` @ f0a9e21, with the composition's
 -- two fixes, `lean-rec-compose`).
 import RecStatement

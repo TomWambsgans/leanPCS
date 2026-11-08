@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Ported from `formal/UniSound`'s `Ids/Weights.lean`
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Ported from `formal/UniSound`'s `Ids/Weights.lean`
 -- (`slotView`, `wStep`, `wSum`, `weightAt_foldl`, `wStep_eq`, `weightAt_single`, `weightAtLinear`) to
 -- `UniKeccak.weightAtK`, whose slot terms read `q_flock`'s variables minus their point's as slot bits.
 import UniSound.Ids.Weights

@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. `UniSound/FsCouple.lean` (after
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. `UniSound/FsCouple.lean` (after
 -- `formal/EndToEnd/Soundness/Final.lean`: `prEvent_le_of_continuations`, `step_le`) for the Keccak experiment
 -- (`formal/UniKeccak`'s `keccakSoundnessExperiment`: one setup tree, the Keccak contract's IV, `verifyWithK`).
 import UniKeccakSound.Fs.GameK

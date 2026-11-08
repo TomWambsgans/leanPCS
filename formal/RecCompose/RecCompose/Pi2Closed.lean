@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. π2's completeness (`formal/RecStatement`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. π2's completeness (`formal/RecStatement`'s
 -- `RecCompleteness2`, `RecCompletenessWith`) at π1-rec3's honest prover, every provable named input closed.
 import RecCompose.Pi2SimEnd
 import RecCompose.Pi2Witness

@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The model is leanerVM `mumbai`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The model is leanerVM `mumbai`'s
 -- (`Statement/RandomPermutation.lean`: `loggedOracles`, `runWithRandomPermutation`, `QueryCostAtMost`); eager sampling
 -- is `formal/EndToEnd/ZK/ProverBridgeEager.lean`'s `prEvent_runWithRandomPermutation`.
 import RecStatement

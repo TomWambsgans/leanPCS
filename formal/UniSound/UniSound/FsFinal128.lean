@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. `FsFinal.lean`'s `fsLayer_holds` with
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. `FsFinal.lean`'s `fsLayer_holds` with
 -- `FsGame128.lean`'s `fsLayer128_of_gameV'` (kept apart from `FsGame128.lean`, which must not import
 -- `FsFinal.lean`'s bridges: they bring `Completeness`'s instance of `SampleableType E`).
 import UniSound.FsGame128

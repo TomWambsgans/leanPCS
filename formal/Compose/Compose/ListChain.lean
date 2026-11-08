@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- The structure (bad fresh queries parsed from the history, their probability, the trace of a
 -- winning run) follows `formal/QuotientRpm/ChainRom.lean` of this repository, whose lemmas it uses;
 -- here the roots are the proof's, not hashes of the messages, and every round is union-bounded
@@ -9,7 +9,7 @@ import QuotientRpm.ChainRom
 # The reduction with real roots: the list union, query by query
 
 The deployed reduction's proof carries two **roots** and five values, never the polynomials:
-the chain (`chainWith`, `crates/quotient/src/transcript.rs`) hashes the label, then each root's two
+the chain (`chainWith`, `crates/membership/quotient/src/transcript.rs`) hashes the label, then each root's two
 words after a state, then the values. What a root commits to is read off the hash's answers by an
 extraction that returns a **list** of candidates (`ListCommit`: a WHIR root's level-0 Johnson
 list, no out-of-domain sample at level 0), so a challenge drawn after a root must be sound for

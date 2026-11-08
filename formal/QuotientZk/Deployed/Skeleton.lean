@@ -1,16 +1,16 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
--- Transcribes, at the level of the oracle calls, `crates/quotient/src/transcript.rs` (the reduction's
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
+-- Transcribes, at the level of the oracle calls, `crates/membership/quotient/src/transcript.rs` (the reduction's
 -- Keccak-256 chain, with `QuotientRpm`'s bytes), `crates/fiat_shamir/src/{lib,merkle}.rs` (the overwrite
 -- duplex, grinding, `PrunedMerklePaths`; vendored from leanVM c445e3d5), `crates/pcs/src/whir.rs`
 -- (`recursive_prover`'s order of absorbs, draws, commitments and grinds) and
--- `crates/quotient/src/opening.rs` (the opening's IV and seed).
+-- `crates/membership/quotient/src/opening.rs` (the opening's IV and seed).
 import QuotientZk.Rom.Main
 import QuotientRpm.Bytes
 
 /-!
 # The deployed prover as a skeleton
 
-The skeleton (`skel`) is the honest prover of `crates/quotient` with its secret taken out: every
+The skeleton (`skel`) is the honest prover of `crates/membership/quotient` with its secret taken out: every
 hash it computes is an operation of `Rom/Defs.lean` and every message it sends comes from a `msg`
 operation. One oracle `G : Inp → Out` stands for both of Keccak's uses (`Inp = bytes ⊕ duplex
 state`, `Out = digest × duplex state`): Keccak-256 of `m` is `(G (inl m)).1`, the permutation of a

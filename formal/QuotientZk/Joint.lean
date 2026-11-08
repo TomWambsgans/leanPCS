@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 import QuotientZk.JointReduction
 import QuotientZk.JointGadget
 import QuotientZk.Rom.Main
@@ -6,7 +6,7 @@ import QuotientZk.Rom.Main
 /-!
 # Joint honest-verifier zero knowledge of the whole interactive protocol
 
-The interactive protocol of `crates/quotient` at challenges `c` shows the honest verifier the
+The interactive protocol of `crates/membership/quotient` at challenges `c` shows the honest verifier the
 reduction's five field elements (`redMsgs`, the claims being the verifier's functions of them), the
 public wiring table's opening, and the two secret tables' WHIR openings (`SecretOpening.view`: F3's
 level-0 view on a `GadgetLayout` stack, and everything WHIR shows after the first fold, `rest`, a

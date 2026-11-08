@@ -1,8 +1,8 @@
--- Part of this repository. Transcribed from `crates/leanvm_flock_gas/src/flock_min.rs`, `ring_tower.rs` and the parts
--- of `crates/leanvm_flock_gas/src/flock.rs` it calls (`PHI_BASIS`, `fixed_challenges`, `lagrange_weights`,
+-- Part of this repository. Transcribed from `crates/leanvm/statement/src/flock_min.rs`, `ring_tower.rs` and the parts
+-- of `crates/leanvm/statement/src/flock.rs` it calls (`PHI_BASIS`, `fixed_challenges`, `lagrange_weights`,
 -- `ring_map`, `ring_switch_weight`), adapted there from leanVM (https://github.com/leanEthereum/leanVM), commit
 -- 42422001, `crates/verifier/src/flock.rs`; the tower order of the ring map, the deferred matrices' reduction and
--- `Pending` are new there (iteration 2). MIT OR Apache-2.0; see NOTICE.md.
+-- `Pending` are new there (iteration 2). MIT OR Apache-2.0; see AGENTS.md.
 module
 
 public import UniStatement.Transcript

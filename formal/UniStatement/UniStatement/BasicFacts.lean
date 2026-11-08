@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Moved from `formal/UniSound`'s `UniSound/Ids/Facts.lean`
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Moved from `formal/UniSound`'s `UniSound/Ids/Facts.lean`
 -- (`eqKernel_snoc`, `size_eqKernel`, `eqKernel_getElem`, `eqKernel_getD`) and `formal/FlockSound`'s
 -- `FlockSoundUni/Transcription.lean` (`tx_array_getD`, `tx_eqEval_foldl`), which import this module; the declarations
 -- keep their names and namespaces.

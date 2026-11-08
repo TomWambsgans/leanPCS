@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Generalises `formal/FlockSound/FlockSound/Leanvm.lean`
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Generalises `formal/FlockSound/FlockSound/Leanvm.lean`
 -- and `Main.lean`'s `card_bad` (leanVM's Flock at `m = 8` slot bits) to any number `m` of slot bits.
 import FlockSoundUni.Catch
 import FlockSoundUni.Transcription

@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Transcribed from `crates/leanvm_rec/src/circuit/spec.rs`.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Transcribed from `crates/leanvm/rec/src/circuit/spec.rs`.
 import Field.F192
 
 /-!
@@ -20,7 +20,7 @@ namespace RecCircuit
 
 open Primitives
 
-/-- `K = GF(2)[x]/(x^64 + x^4 + x^3 + x + 1)`, the witness's words (`leanvm_flock_gas::field::K`). -/
+/-- `K = GF(2)[x]/(x^64 + x^4 + x^3 + x + 1)`, the witness's words (`leanvm_statement::field::K`). -/
 abbrev K := F64
 
 /-- A polynomial of degree ≤ 2 in a row's cells, coefficients in `K`, no constant term (`Poly`). -/

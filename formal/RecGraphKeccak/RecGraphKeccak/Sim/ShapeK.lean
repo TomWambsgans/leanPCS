@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. `RecGraph.Sim`'s `Shape.lean` (`shapeSpec`), ported to the
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. `RecGraph.Sim`'s `Shape.lean` (`shapeSpec`), ported to the
 -- Keccak shape `keccak128` (its layouts `layoutsK`, its tables `tablesKeccak`, `Q_W`'s folds `crOfK`); its generic
 -- pieces (`limbs_new_memC`, `layoutOK_newC`, `leafDegC`, `PointFact`, `relCommitC`, `y0_neGenC`, …) are reused.
 import RecGraph.Sim.Shape

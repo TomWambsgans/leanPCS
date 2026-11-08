@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- Uses leanerVM `mumbai`'s field lemmas (https://github.com/Verified-zkEVM/leanerVM, commit
 -- 6175f1a0, MIT OR Apache-2.0): `ofLimbs_eq`, `limb_ofLimbs`.
 import Compose.DecoderDeployed
@@ -7,7 +7,7 @@ import QuotientSecurity.Setup
 /-!
 # `quotient::protocol::reduce`'s claims, and what they say of F1's polynomials
 
-`reduce` (`crates/quotient/src/protocol.rs`) reads the statement and the proof, draws the
+`reduce` (`crates/membership/quotient/src/protocol.rs`) reads the statement and the proof, draws the
 challenges, and computes four WHIR claims, each a point and a value: one on the witness table,
 one on the wiring table, two on the quotient table. F4a's chain (`QuotientRpm/Chain.lean`,
 `Compose/ListChain.lean`'s `chainWith`) computes the challenges byte for byte; this file

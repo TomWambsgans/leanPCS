@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Follows
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Follows
 -- `formal/EndToEnd/Soundness/Final.lean` of this repository (`prEvent_le_of_continuations`,
 -- `soundnessExperiment_eq`, `rpmGame_eq`, `step_le`) and `Soundness/Hypotheses.lean` (the bridge
 -- facts as propositions about definitions).

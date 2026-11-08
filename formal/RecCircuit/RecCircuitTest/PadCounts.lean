@@ -1,10 +1,10 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 import RecCircuit.Layout
 
 /-!
 # `padCounts` against the Rust's `pad_counts`
 
-The vectors are `crates/leanvm_rec/tests/lean_pad_counts.rs`'s output (`cargo test --release -p leanvm_rec --test
+The vectors are `crates/leanvm/rec/tests/lean_pad_counts.rs`'s output (`cargo test --release -p leanvm_rec --test
 lean_pad_counts -- --nocapture`): 202 cases of region counts (each region: its rows, its expression roles, its forward
 roles, whether it has a port) and the Rust's padded counts. Cases 0 and 1 hold the carry of the look-ahead (724,992
 rows); in 33 of the cases the look-ahead pads differently from the one-digit greedy it replaced. Run with

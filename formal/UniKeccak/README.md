@@ -1,11 +1,11 @@
-<!-- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The structure follows formal/UniStatement/README.md. -->
+<!-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The structure follows formal/UniStatement/README.md. -->
 
 # UniKeccak: the univariate verifier for the Keccak VM
 
-The Keccak VM (`crates/leanvm_univariate/KECCAK.md`, `formal/KeccakVm`) is leanVM 42422001 with `BLAKE2S` replaced
+The Keccak VM (`docs/leanvm/univariate/KECCAK.md`, `formal/KeccakVm`) is leanVM 42422001 with `BLAKE2S` replaced
 by leanVM `9d50c92a3`'s `SHA3`. This library holds:
 
-- **its verifier as computable Lean**, `reduce` with `Blake2s::Keccak(variant)` of `crates/leanvm_univariate/src/
+- **its verifier as computable Lean**, `reduce` with `Blake2s::Keccak(variant)` of `crates/leanvm/univariate/src/
   verifier.rs`, for the main line (`KECCAK_MAIN`) and π1-rec3's shape (`KECCAK_REC3`), with the contract's IV and its
   three `PCS_OPEN` calls (`contract.rs`);
 - **the end statements**, against the Keccak VM's relation `KeccakVm.KvHolds F`: knowledge soundness and completeness
@@ -51,7 +51,7 @@ KECCAK_VECTORS=<path>/keccak_vectors.txt lake env lean ../UniKeccak/UniKeccakTes
 
 ## Rust → Lean
 
-| Rust (`crates/leanvm_univariate`, `crates/leanvm_flock_gas`, working tree of 2026-11-08) | Lean (`UniKeccak.`) |
+| Rust (`crates/leanvm/univariate`, `crates/leanvm/statement`, working tree of 2026-11-08) | Lean (`UniKeccak.`) |
 |---|---|
 | `keccak_flock.rs`: `structured_terminal`, `shift_offsets`, `grouped`, `RC`, `RHO`, `SOURCE`, `CONSTANT_COLUMN`, `X_QUAD` | `structuredTerminal`, `shiftOffsets`, `grouped`, `rc`, `rho`, `source`, `constantColumn`, `xQuad` |
 | `keccak_flock.rs`: `row_values`, `t_word`; `flock_min.rs`: `walked_terminal_with::<S, KeccakWalked>`, `known_weights_with` | `keccakRowValues`, `tWord`, `walkedTerminalK` |
@@ -83,7 +83,7 @@ KECCAK_VECTORS=<path>/keccak_vectors.txt lake env lean ../UniKeccak/UniKeccakTes
 ## What is tested
 
 `UniKeccakTest/Runner.lean`, run with `lake env lean` (the interpreter on the compiled definitions, not the kernel),
-reads the vectors of `crates/leanvm_univariate/tests/lean_keccak_vectors.rs`:
+reads the vectors of `crates/leanvm/univariate/tests/lean_keccak_vectors.rs`:
 
 - **14 terminal vectors**: `structuredTerminal` on random inputs at every skip `0..6` (two each), against the Rust's
   `structured_terminal`. The writer also asserts that it equals the walked terminal

@@ -1,5 +1,5 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. π1-rec3's honest prover is `formal/UniComplete`'s
--- (`UniComplete.Rec3.uniProverRec3With`, `uniProverRec3RP`, `Rec3Prover.lean`, `crates/leanvm_univariate`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. π1-rec3's honest prover is `formal/UniComplete`'s
+-- (`UniComplete.Rec3.uniProverRec3With`, `uniProverRec3RP`, `Rec3Prover.lean`, `crates/leanvm/univariate`'s
 -- `FLOCK_REC3`).
 import RecCompose.Pi2ProbStaged
 import UniComplete.Rec3End

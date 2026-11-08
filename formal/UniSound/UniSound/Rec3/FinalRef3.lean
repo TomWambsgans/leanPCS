@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The discharge follows `Closed.lean` (the main line's):
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The discharge follows `Closed.lean` (the main line's):
 -- `weightMle_ref`, `layoutVarsSmall_reference`, the batch the verifier's (`flockGood`, inside `uniFinal3`).
 import UniSound.Rec3.FinalLink3
 import UniSound.Rec3.Closed3

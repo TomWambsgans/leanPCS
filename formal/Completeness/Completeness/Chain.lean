@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- Uses leanerVM (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`, commit 6175f1a0,
 -- MIT OR Apache-2.0): a digest's 32 bytes (`Digest.toRpm`, `common/Common/Lanes.lean`).
 import Completeness.HiddenOpenings
@@ -7,7 +7,7 @@ import QuotientRpm.Chain
 /-!
 # The deployed transcript
 
-`keccakTranscript H limbs indexRoot` is `crates/quotient/src/transcript.rs`'s chain over the hash
+`keccakTranscript H limbs indexRoot` is `crates/membership/quotient/src/transcript.rs`'s chain over the hash
 `H` (F4a's bytes, `QuotientRpm`, and Compose's `chainWith`): the seed `H(pcs-quotient-kc1 ‖
 index_root ‖ y ‖ root)`, then `H` of the state and the witness root's two words for `α`, of the
 state alone for `β` and `γ`, of the state and the quotient root's words for `t`, of the state and

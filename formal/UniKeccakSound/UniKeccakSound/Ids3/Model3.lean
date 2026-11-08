@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The model is `UniSound/Rec3/Ids3.lean`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The model is `UniSound/Rec3/Ids3.lean`'s
 -- `ids3Of`, from the Keccak main line's (`Ids/Build.lean`'s `uniIdsK`).
 import UniKeccakSound.Ids3.Bus3
 import UniKeccakSound.Ids.Build

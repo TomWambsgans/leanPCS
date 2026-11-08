@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Copied from `formal/FlockSound` (branch `lean-uni-code`,
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Copied from `formal/FlockSound` (branch `lean-uni-code`,
 -- commit b3047c9, `FlockSoundUni/Transcription.lean`: the skip's nodes and weights; branch `lean-flock-sound`,
 -- `FlockSound/Fields.lean`: `phi8_xor`, `phi8_ne_zero`, `phi8_injOn`, ported there from leanerVM `mumbai` f0393df4,
 -- MIT OR Apache-2.0), unchanged but for the namespace and the linter options.

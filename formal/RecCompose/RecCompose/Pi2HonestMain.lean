@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The tables' model is `Tables.lean`'s (`pi2Model`,
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The tables' model is `Tables.lean`'s (`pi2Model`,
 -- `claim_wFold`, `claim_quotient`, `claim_sum`, `claim_setup`), the verifier's arithmetic `formal/RecStatement`'s
 -- (`checks_claims_iff_post2`), the rounds' states `formal/RecPiop`'s (`Post2`, `qClaim_iff`, `dPushAt_eq`).
 import RecCompose.Pi2Honest

@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. `Closed.lean`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. `Closed.lean`'s
 -- `uniKnowledgeSoundness_closed` with `FsGame128.lean`'s Fiat–Shamir layer (`fsLayer128_holds`) in
 -- place of `fsLayer_holds`; every other link is `Closed.lean`'s.
 import UniSound.Closed

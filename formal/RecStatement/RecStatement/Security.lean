@@ -1,9 +1,9 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The model, the experiments' shape and the form of the
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The model, the experiments' shape and the form of the
 -- statements are `formal/UniStatement`'s (`Security.lean`, `RecSecurity.lean`, after `formal/Statement`'s
 -- `PcsQuotient.Security` and leanerVM `mumbai` 6175f1a0's `Statement/LeanVm.lean`, MIT OR Apache-2.0); the relation is
 -- Lv42's (`formal/Lv42`, leanerVM `mumbai` f0393df4's `M3Holds`); π1-rec3's graph and its merge hazard are
--- `formal/RecGraph`'s. Transcribed from `crates/leanvm_rec/src/pi2/circuit.rs` (`Circuit::digest`), `prover.rs`
--- (`Setup::new`) and `contract.rs` (`registry`, the calls), and `crates/leanvm_flock_gas/src/evm/machine.rs`
+-- `formal/RecGraph`'s. Transcribed from `crates/leanvm/rec/src/pi2/circuit.rs` (`Circuit::digest`), `prover.rs`
+-- (`Setup::new`) and `contract.rs` (`registry`, the calls), and `crates/leanvm/statement/src/evm/machine.rs`
 -- (`decode`, `root_of_word`), branch `leanvm-rec` @ 2b22581.
 import RecStatement.Calls
 import RecStatement.Data

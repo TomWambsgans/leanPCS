@@ -1,10 +1,10 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 import Field.F192
 
 /-!
 # `F192` against the Rust
 
-The vectors of `crates/quotient/tests/lean_field_vectors.rs`, which asserts them of
+The vectors of `crates/membership/quotient/tests/lean_field_vectors.rs`, which asserts them of
 `primitives::field::F192`: the products are checked by the kernel (`decide +kernel` evaluates
 CompPoly's carry-less products and reductions), the inverses and the Frobenius (exponentiations
 to `2^192 - 2` and `2^64`) by compiled evaluation (`#guard`).

@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. `Z_bad` is `formal/UniSound`'s (`UniSound.Ids.zBad`,
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. `Z_bad` is `formal/UniSound`'s (`UniSound.Ids.zBad`,
 -- on the shape's hash table's height).
 import RecGraph.Pi1.Main
 import RecGraphKeccak.Pi1.Verifier
@@ -9,7 +9,7 @@ import UniSound.Ids.Model
 
 * `verifierOutputsWithK`: the outputs of `UniKeccak`'s verifier at `keccakRec3` and the point-claim ABI (`runWithK`, its
   three `PCS_OPEN` calls `pcsCallsK`, the values it collected as zeros, nothing nonzero), on the shape and setup
-  roots the graph was recorded with (`keccak128`, `referenceRoots`).
+  roots the graph was recorded with (`keccak128`, `referenceRootsK`).
 * `MergeHazardK`: the merge hazard of the Keccak verifier. `combine` merges points by value in `UniKeccak`,
   by symbol in the graph; the merge that changes a weight is of `y(t)` (the `SHA3` table's `q_flock` slot point, its
   `h_SHA3 = 15` coordinates) into a `C1` point starting with `t` or into Flock's point: `Z_bad(t) = 0`,
@@ -58,7 +58,7 @@ def Pi1GraphIsVerifierK : Prop :=
   ∀ (π : KeccakState → KeccakState) (iv : List UInt8) (publicInput : Vector UInt8 32) (stream : Array UInt8),
     ¬ MergeHazardK π iv publicInput.toList stream →
       evalGraph (m := Id) (fun s ↦ pure (π s)) pi1GraphK iv publicInput.toList stream =
-        verifierOutputsWithK (m := Id) (fun s ↦ pure (π s)) keccak128 referenceRoots iv publicInput.toList stream
+        verifierOutputsWithK (m := Id) (fun s ↦ pure (π s)) keccak128 referenceRootsK iv publicInput.toList stream
 
 /-- **What is left**: the program's run on `E` computes the Keccak verifier's outputs, off the merge hazard. -/
 def Pi1SimK : Prop :=
@@ -69,7 +69,7 @@ def Pi1SimK : Prop :=
             (pi1Rec3K.run π iv publicInput.toList stream
               (RecState.start, evalAll π iv publicInput.toList stream RecState.start)).2.2)
         else none) =
-        verifierOutputsWithK (m := Id) (fun s ↦ pure (π s)) keccak128 referenceRoots iv publicInput.toList stream
+        verifierOutputsWithK (m := Id) (fun s ↦ pure (π s)) keccak128 referenceRootsK iv publicInput.toList stream
 
 /-- `evalGraph_recorded` for `recordedGraphK`. -/
 theorem evalGraph_recordedGraphK (π : KeccakState → KeccakState) (iv publicInput : List UInt8) (stream : Array UInt8)

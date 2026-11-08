@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The proof is `UniSound/PiopSound.lean`'s, for the
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The proof is `UniSound/PiopSound.lean`'s, for the
 -- Keccak verifier's main line (no pending term; Flock's zeros carried from `C2` on).
 import UniSound.PiopSound
 import UniKeccakSound.PiopK

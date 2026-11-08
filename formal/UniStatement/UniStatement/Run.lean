@@ -1,6 +1,6 @@
--- Part of this repository. Transcribed from `crates/leanvm_univariate/src/contract.rs` (`rust_verifier`, `NAME`,
--- `calldata`) and `crates/leanvm_flock_gas/src/shapes.rs` (the measured shapes, `PROGRAM_IV`). MIT OR
--- Apache-2.0; see NOTICE.md.
+-- Part of this repository. Transcribed from `crates/leanvm/univariate/src/contract.rs` (`rust_verifier`, `NAME`,
+-- `calldata`) and `crates/leanvm/statement/src/shapes.rs` (the measured shapes, `PROGRAM_IV`). MIT OR
+-- Apache-2.0; see AGENTS.md.
 module
 
 public import UniStatement.Verifier

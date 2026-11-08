@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Transcribed from `crates/leanvm_rec/src/pi2/prover.rs`
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Transcribed from `crates/leanvm/rec/src/pi2/prover.rs`
 -- (`halves`, `public_scalars`, `prove_with`, `quotient_on_extension`, `open`; `PI2.md` §3), branch `leanvm-rec-opt`.
 -- The writer and the commitments are `formal/UniComplete`'s (`Wr`, `sendRoot`, `sampleW`, `commitWithH`), the WHIR
 -- openings `formal/EndToEnd/Completeness`'s (`proveOpeningWithH`), the transforms `formal/Statement`'s

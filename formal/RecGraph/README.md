@@ -1,8 +1,8 @@
-<!-- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. -->
+<!-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. -->
 
 # RecGraph: recorded verifier graphs, their meaning, and the recorder
 
-The recursion (`crates/leanvm_rec`) proves π1's verifier inside π2: π2's circuit is compiled from the **recorded
+The recursion (`crates/leanvm/rec`) proves π1's verifier inside π2: π2's circuit is compiled from the **recorded
 operation graph** of π1's verifier (π1-rec3: `FsShape::Rec3`, the point-claim ABI). Compiler correctness splits in
 two:
 
@@ -23,7 +23,7 @@ lake env lean ../RecGraph/RecGraphTest/SimAxioms.lean                # the simul
 
 ## Files
 
-- [`Node.lean`](RecGraph/Node.lean): `leanvm_flock_gas::evm::record`'s `Node` (`const`, `statement`, `input` at a byte
+- [`Node.lean`](RecGraph/Node.lean): `leanvm_statement::evm::record`'s `Node` (`const`, `statement`, `input` at a byte
   offset with a length, `add`, `mul`, `seed`, `hash` of a state and a run of stream bytes, `low`, `narrow` (π1-rec2's
   160-bit challenges), `bits`, `ringWeight`), `codegen::Word` (`node`, `const`, `stream`), `Graph` (nodes, zero and
   nonzero checks, kernels, `PCS_OPEN` call words, stream length). The pair derivation is additions and products: no new

@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 import PcsQuotient
 import VCVio.OracleComp.RunIO
 import PcsQuotientTest.ChaCha
@@ -7,7 +7,7 @@ import PcsQuotientTest.ChaCha
 # The differential test
 
 `lake exe differential VECTORS`: the Lean verifier (`PcsQuotient.reduce`, `PcsQuotient.verify`) on
-the vectors `crates/quotient/examples/statement_vectors.rs` writes, each with the Rust verifier's
+the vectors `crates/membership/quotient/examples/statement_vectors.rs` writes, each with the Rust verifier's
 outcome, and a count of the agreements. Exit code `1` on any disagreement or unreadable line.
 
 * `R` lines: the reduction alone; the Rust's two roots and four claims must be the Lean's, or both

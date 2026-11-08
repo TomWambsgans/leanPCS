@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- Relates this repository's Merkle extraction (`Merkle.lean`) to leanerVM `mumbai`'s
 -- (https://github.com/Verified-zkEVM/leanerVM, commit 6175f1a0, MIT OR Apache-2.0:
 -- `lean_vm/LeanVM/Protocol/Compile/Rom/Extract.lean`, `extract`, whose lemmas it uses).

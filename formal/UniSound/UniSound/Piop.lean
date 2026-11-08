@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The round-by-round form is
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The round-by-round form is
 -- `formal/Compose/Compose/ListChainK.lean`'s `Piop`.
 import UniSound.Sumcheck
 

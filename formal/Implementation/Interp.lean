@@ -1,11 +1,11 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 import Implementation.Graph
 import Implementation.Arith
 
 /-!
 # The graph, interpreted on calldata
 
-What the contract computes, node by node, as `crates/evm/src/codegen.rs` compiles each node: every
+What the contract computes, node by node, as `crates/membership/evm/src/codegen.rs` compiles each node: every
 value is an EVM word (a natural number below `2^256`), and
 
 * `const c` is `c`;

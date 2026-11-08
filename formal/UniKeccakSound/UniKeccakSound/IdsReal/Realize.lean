@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The argument is `UniSound/Ids/LvRealize.lean`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The argument is `UniSound/Ids/LvRealize.lean`'s
 -- (`lvRealizes`), for `formal/KeccakVm`'s instance and `formal/UniKeccak`'s `kvStack`; the boundary lemmas follow
 -- `Lv42/Protocol/LeanIsa/Bus.lean`'s (`boundaryTuples_push`, `boundaryTuples_pull`), `flushTuples_eq_opcode`
 -- `Heap/LeanIsa.lean`'s.

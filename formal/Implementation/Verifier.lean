@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 import Implementation.Constants
 import Implementation.Leaves
 
@@ -6,7 +6,7 @@ import Implementation.Leaves
 # The graph is the model's verifier
 
 The end theorems of layer F5, for the calldata of a statement's 64 bytes `sb`, two roots
-`r₁`, `r₂` and five values (`calldataOf`, as `crates/evm/src/quotient.rs` writes it), the index root
+`r₁`, `r₂` and five values (`calldataOf`, as `crates/membership/evm/src/quotient.rs` writes it), the index root
 `idx` and any hash `H`, in any field `F` whose limbs are `F192`'s (`IsF192`, with `FrobOK`):
 
 * `run_isSome_iff`: the contract reaches its calls of `PCS_OPEN` exactly when the product of the

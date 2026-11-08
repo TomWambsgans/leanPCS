@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 import PcsQuotient.Verifier
 import Soundness.Defs
 
@@ -6,7 +6,7 @@ import Soundness.Defs
 # The statement's Keccak-256 chain is F4's
 
 The statement's reduction (`PcsQuotient.reduceWith`, `Transcript.lean`) and F4's chain
-(`Compose.chainWith`, F4a's bytes `QuotientRpm`) both transcribe `crates/quotient/src/transcript.rs`.
+(`Compose.chainWith`, F4a's bytes `QuotientRpm`) both transcribe `crates/membership/quotient/src/transcript.rs`.
 Here, byte for byte:
 
 * the label (`label_eq`), a digest's bytes (`toB_toList`), a scalar's word (`scalarBytes_eq`: the

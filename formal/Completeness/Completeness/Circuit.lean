@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- Uses leanerVM (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`, commit 6175f1a0,
 -- MIT OR Apache-2.0): Keccak-256 (`Statement/Keccak.lean`, `keccak256`, `Digest.toBytes`).
 import QuotientSecurity.Pinning
@@ -7,7 +7,7 @@ import Statement.Keccak
 /-!
 # The circuit's completeness: an honest witness satisfies the relation
 
-`crates/quotient/src/statement.rs`: the statement is `y = H(x ‖ 0x11^32)` and the root of a
+`crates/membership/quotient/src/statement.rs`: the statement is `y = H(x ‖ 0x11^32)` and the root of a
 Merkle path of depth `32` from `H(x ‖ 0x22^32)`, `H` Keccak-256 of a 64-byte block (`pair`); the
 secret is `x`, the siblings and the directions (`Secret`, `Secret.statement`). Here they are
 transcribed with leanerVM `mumbai`'s Keccak-256 (`keccak256`, the deployed function, transcribed

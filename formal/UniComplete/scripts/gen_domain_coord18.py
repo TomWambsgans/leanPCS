@@ -1,4 +1,4 @@
-# Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+# Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 """Regenerate the literal certificate of `UniComplete/DomainCoord18.lean`.
 
 Reimplements `UniStatement.coordinateFunctionals 18` (Gauss-Jordan over GF(2^64) = GF(2)[x]/(x^64+x^4+x^3+x+1),

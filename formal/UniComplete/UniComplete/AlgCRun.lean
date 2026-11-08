@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The fixed-read toolkit (`runReads`, `runConsume`,
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The fixed-read toolkit (`runReads`, `runConsume`,
 -- `runForIn_reads`, the `linearise` emptiness lemmas, `runTablePart_eq`) is ported from this repository's
 -- `formal/UniSound/UniSound/{CodeBase,CodeTables}.lean` (branch `lean-uni-code`: `repeatM`, `consumeFold`,
 -- `forIn_reads`, `linearise_isEmpty`, `tablePart_eq`), renamed with a `run` prefix and specialised to reads of

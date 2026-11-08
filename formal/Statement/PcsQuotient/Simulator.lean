@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- The simulation of the four values is the one of leanVM's `formal/quotient` (branch
 -- PCS-openings-aggregation, commit 651453c6, `QuotientSecurity/ZeroKnowledge.lean`'s `simValues`, ported in
 -- `formal/QuotientSecurity`). The permutation's state, its lookups and the WHIR prover's pieces are
@@ -41,7 +41,7 @@ programmed point replaces its forward edge; the inverse of the answer it replace
 uniform state, which a distinguisher finds with negligible probability). The tables are hash maps, so
 each query costs one lookup.
 
-**Why step 4 is the right distribution** (`crates/quotient/HIDING.md`): the secret tables are committed in
+**Why step 4 is the right distribution** (`docs/membership/HIDING.md`): the secret tables are committed in
 hidden layouts, and for fixed challenges a translation of the padding maps the opening's view of a table onto
 that of any other table with the same claims (under conditions (Q), (S), (R) there, on the challenges); so the
 honest opening of the real table is distributed as that of a uniform table with the same claims, uniformly

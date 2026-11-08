@@ -1,10 +1,10 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 import Mathlib
 
 /-!
 # π2's circuit, generic
 
-The circuit description of π2's PIOP (`crates/leanvm_rec/src/circuit/spec.rs`, the interface, and
+The circuit description of π2's PIOP (`crates/leanvm/rec/src/circuit/spec.rs`, the interface, and
 `src/pi2/circuit.rs`, the PIOP's form; `PI2.md` §1), for **any** layout:
 
 * `N = 2^logN` positions, rows of `W = 2^logW` cells: position `i` is role `i % W` of row `i / W`,

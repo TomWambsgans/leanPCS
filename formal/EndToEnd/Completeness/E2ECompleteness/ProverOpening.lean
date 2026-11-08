@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- Adapts leanerVM (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`, commit 6175f1a0,
 -- MIT OR Apache-2.0): `corr_openingFast` (`lean_vm/LeanVM/Prover/Whir.lean`) for
 -- `corr_openingScript`, `toList_basisTableA` (`WhirBasis.lean`) for `weightTable_eq`,

@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- Uses leanerVM `mumbai`'s cube-point lemmas (https://github.com/Verified-zkEVM/leanerVM, commit
 -- 6175f1a0, MIT OR Apache-2.0): `bitsEquiv`, `bitsEquiv_val`, `boolPoint_bitsToNat`,
 -- `eqEval_bitsL`, `eqEval_comm`.

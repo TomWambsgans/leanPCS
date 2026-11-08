@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- The WHIR prover's arrays (`stackTableA`, `foldPairsW`, `roundC0A`, `roundC2A`, `stackWordFast`) are
 -- leanerVM's (branch `mumbai`, commit 6175f1a0, MIT OR Apache-2.0: `Statement/Prover/Whir.lean`,
 -- `Statement/Prover/Ntt.lean`).

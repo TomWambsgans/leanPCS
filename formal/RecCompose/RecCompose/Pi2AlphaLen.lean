@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The walks of `formal/UniComplete/UniComplete/
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The walks of `formal/UniComplete/UniComplete/
 -- Rec3ProverCost.lean` (`wc_proveStreamRec3With`, `costP_proveRec3With`) and
 -- `formal/EndToEnd/Completeness/E2ECompleteness/Cost.lean` (`cost_runFromWithHash`, `cost_proveOpeningWithH`,
 -- `qc_findNonceM`), redone for the lengths of the hashed inputs; uses leanerVM

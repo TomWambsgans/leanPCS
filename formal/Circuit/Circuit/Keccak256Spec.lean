@@ -1,5 +1,5 @@
 /-
-Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 The specification is leanerVM's Keccak-256 (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`,
 commit 6175f1a0, `Statement/Keccak.lean`, MIT OR Apache-2.0), imported.
 -/

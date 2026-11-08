@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The parsing follows `formal/UniComplete`'s runner
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The parsing follows `formal/UniComplete`'s runner
 -- (`UniCompleteTest/Runner.lean`).
 import RecCompose.Pi2Prover
 
@@ -6,7 +6,7 @@ import RecCompose.Pi2Prover
 # The differential test of π2's honest prover
 
 `PI2_PROVER=<vectors> lake env lean ../RecCompose/RecComposeTest/Pi2Prover.lean` (from `formal/EndToEnd`), on the
-vectors of `crates/leanvm_rec/tests/lean_pi2_prover.rs` (`PI2_PROVER_OUT=... cargo test --release -p leanvm_rec --test
+vectors of `crates/leanvm/rec/tests/lean_pi2_prover.rs` (`PI2_PROVER_OUT=... cargo test --release -p leanvm_rec --test
 lean_pi2_prover -- --ignored --nocapture`): the circuit compiler's example padded to `2^9`, `2^10` positions, through
 `pi2::adapt`. For each vector the runner reads the interface's circuit as `RecCircuit.Circuit` (its PIOP form
 `toPiop`), the reads, the public values, the witness and π2's IV, computes the setup's stack and tree

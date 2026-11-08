@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The port of `formal/UniSound/UniSound/FsWalkProof.lean`
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The port of `formal/UniSound/UniSound/FsWalkProof.lean`
 -- (`uniWalk`, `uniWalkReject`) to π2's run (`formal/RecStatement/RecStatement/Verifier.lean`: `reduceWith`, `runWith`),
 -- with that file's channel lemmas (`nextRoot_ok`, `nextScalars_ok`, `sample_bind`, `steps`, `wAbs`, `absorbsI_wAbs`,
 -- `chainU_eq`) and `formal/RecCompose/RecCompose/Pi2Run.lean`'s (`runWith_post`).

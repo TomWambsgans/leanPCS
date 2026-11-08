@@ -1,8 +1,8 @@
-<!-- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The structure follows formal/Statement/README.md. -->
+<!-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The structure follows formal/Statement/README.md. -->
 
 # UniStatement
 
-The univariate PIOP for leanVM 42422001 (`crates/leanvm_univariate`, `SPEC.md` there), **at iteration 2**
+The univariate PIOP for leanVM 42422001 (`crates/leanvm/univariate`, `SPEC.md` there), **at iteration 2**
 (`leanvm-univariate` `ad49e74`: `SPEC.md` §13's entries 1–13; milestone 1 was `cee6363`),
 in the files a reviewer reads: **its verifier as computable Lean**, module by module as
 `verifier.rs`, the setup constants as data, the whole verifier with `PCS_OPEN`, the map from its commitments to
@@ -70,16 +70,16 @@ UNI_VECTORS=$PWD/all.txt lake env lean ../UniStatement/UniStatementTest/Runner.l
     `contractIvFor reference (.flock flockMain) .rec3 true programIv referenceRoots`, its three calls `pcsCalls`;
     `formal/RecGraph`'s runner checks it against the Rust verifier and π1-rec3's recorded graph on the real proof
     (`main_line_rec3.txt`) and 24 mutated and random streams.
-16. [`KeccakTables.lean`](UniStatement/KeccakTables.lean) (the Keccak VM, `crates/leanvm_univariate/KECCAK.md`; not
+16. [`KeccakTables.lean`](UniStatement/KeccakTables.lean) (the Keccak VM, `docs/leanvm/univariate/KECCAK.md`; not
     imported by `UniStatement.lean`): `tablesKeccak` (the `SHA3` table in `BLAKE2S`'s place: `sha3Columns`,
     `flushesSha3`, on `formal/KeccakVm`'s cell layout `KeccakVm.sha3CellLanes`), `keccakSlot`, `keccakSlotOffset`,
     `keccakR1csLogSize`. `UniStatementTest/KeccakTables.lean` checks every table, column, slot, offset and flush form
-    against the Rust's `tables_keccak()` (`crates/leanvm_flock_gas/tests/lean_keccak_tables.rs`). `Blake2s::Keccak`'s
+    against the Rust's `tables_keccak()` (`crates/leanvm/statement/tests/lean_keccak_tables.rs`). `Blake2s::Keccak`'s
     verifier is not transcribed yet.
 
 ## Rust → Lean
 
-| Rust (`crates/leanvm_univariate` and `crates/leanvm_flock_gas` at `ad49e74`) | Lean (`UniStatement.`) |
+| Rust (`crates/leanvm/univariate` and `crates/leanvm/statement` at `ad49e74`) | Lean (`UniStatement.`) |
 |---|---|
 | `transcript.rs`: `KeccakChannel::{next_scalar, next_root, next_integer, sample, finish}`, `keccak_seed`, `challenge_of` | `nextScalar`, `nextRoot`, `nextInteger`, `sample`, `finish`, `seedWith`, `PcsQuotient.Transcript.challengeOf` |
 | `transcript.rs`: `Checks::Collect`, `require_zero`; `scalar.rs`: `Scalar::bits` | `Chan.zeros`, `requireZero`; `intBits` |
@@ -275,7 +275,7 @@ definitions' IR, not the kernel), on **150 vectors** of the Rust at `ad49e74`:
   for the scalar read just before it, the seed's IV the contract's; one under another program IV), **other row
   counts that fit** (`counts`: none, one, `leastRows`, a full table, `2^h − 1`, random, so every coset pattern
   of F1b), **a count out of range** (`badcount`), mutated, truncated, extended streams.
-* **Honest proofs of tiny runs** (20, written by `lean_honest_vectors` in `crates/leanvm_univariate/tests/honest_prover.rs`, at
+* **Honest proofs of tiny runs** (20, written by `lean_honest_vectors` in `crates/leanvm/univariate/tests/honest_prover.rs`, at
   iteration 2: the counts announced, the rows at their fixed cosets, padding counters nonzero; real VM runs of 15
   to 31 cycles over all six tables, Flock omitted, memory and bytecode of `2^4`, `2^5`, both claim modes; three
   mutations of each point-claim proof). The real prover's `prove_tiny` writes the same streams byte for byte

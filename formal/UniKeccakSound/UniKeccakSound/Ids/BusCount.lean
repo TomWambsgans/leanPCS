@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The proof is `UniSound/Ids/LvLink.lean`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The proof is `UniSound/Ids/LvLink.lean`'s
 -- (`busBound`, `lvBusCount`) for `formal/KeccakVm`'s instance.
 import UniKeccakSound.Ids.Build
 

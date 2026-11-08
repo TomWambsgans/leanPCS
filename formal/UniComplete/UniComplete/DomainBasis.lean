@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 import UniStatement.Domain
 import PcsQuotient.Domain
 import Heap.Cantor
@@ -6,7 +6,7 @@ import Heap.Cantor
 /-!
 # The univariate verifier's Cantor basis, as words (milestone 4, the domain facts)
 
-`UniStatement.beta` (`formal/UniStatement/UniStatement/Domain.lean`, `crates/leanvm_univariate/src/domain.rs`'s
+`UniStatement.beta` (`formal/UniStatement/UniStatement/Domain.lean`, `crates/leanvm/univariate/src/domain.rs`'s
 `beta`: `β₀ = 1`, `β_{k+1}` the solution of `s(x) = β_k` with its low bit clear, read off the reduced matrix
 of `s(x) = x² + x`) is computed, not assumed. Here:
 
@@ -60,7 +60,7 @@ theorem getD_of_lanes {a : Array K} {ws : List UInt64} (h : a.toList.map K.lane 
 theorem beta_getD (k : ℕ) : UniStatement.beta.getD k 0 = K.ofLane (betaWords.getD k 0) :=
   getD_of_lanes beta_lanes k
 
-/-- The statement's `28` words (`PcsQuotient.Domain.beta`, `crates/quotient`'s `beta()`), the first `28` of
+/-- The statement's `28` words (`PcsQuotient.Domain.beta`, `crates/membership/quotient`'s `beta()`), the first `28` of
 `betaWords`. -/
 theorem statementBeta_lanes : PcsQuotient.Domain.beta.toList.map K.lane = betaWords.take 28 := by
   decide +kernel

@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- Generalises `formal/Compose/Compose/ListChainK.lean` of this repository (its chain, parse, bad
 -- events, union bound and trace, whose structure follows `formal/QuotientRpm/ChainRom.lean`) to a
 -- chain whose messages are hashed by any injective encoding; the lemmas of `ListChainK.lean` that
@@ -9,10 +9,10 @@ import Compose.ListChainKDoom
 /-!
 # The list chain over any encoding
 
-`ListChainK.lean`'s chain is `crates/quotient/src/transcript.rs`'s: every scalar a 32-byte word,
+`ListChainK.lean`'s chain is `crates/membership/quotient/src/transcript.rs`'s: every scalar a 32-byte word,
 a root two such words, the label of a length `≢ 0 mod 32`, so that a step's input (the state and
 whole words) is never a label (`chain_unique`). The univariate verifier's chain
-(`crates/leanvm_flock_gas/src/transcript.rs`, `KeccakChannel`) is not of that form: a scalar is 24
+(`crates/leanvm/statement/src/transcript.rs`, `KeccakChannel`) is not of that form: a scalar is 24
 bytes, a root its digest's two 16-byte halves each reversed, the seed `name ‖ iv ‖ input` (80
 bytes, the length of a step absorbing two scalars), and the first round's message follows the
 statement's row counts. Here the chain is any chain whose messages are hashed by an encoding

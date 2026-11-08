@@ -1,9 +1,9 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 
 /-!
 # The recorded graph's nodes
 
-`crates/evm/src/record.rs`'s `Node` and `crates/evm/src/codegen.rs`'s `Word`, as Lean data:
+`crates/membership/evm/src/record.rs`'s `Node` and `crates/membership/evm/src/codegen.rs`'s `Word`, as Lean data:
 `Graph.lean` (generated from the Rust) is a list of these. Operands are indices of earlier
 nodes; a field element is a natural number below `2^192` (limb `i` its bits `64i .. 64i + 64`),
 a state a natural number below `2^256` (the 32 bytes of a Keccak-256 digest, big-endian), as

@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Uses leanerVM (https://github.com/Verified-zkEVM/leanerVM,
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Uses leanerVM (https://github.com/Verified-zkEVM/leanerVM,
 -- branch `mumbai`, commit 6175f1a0, MIT OR Apache-2.0): `StackClaim.Holds`, `IsMultilinearFn`, `boolPoint`
 -- (`Protocol/EndToEnd/Claims.lean`), `eqEval_cons`, `eqEval_append`, `boolPoint_add`, `boolPoint_two_mul`
 -- (`Protocol/Whir/Complete/Tables.lean`), through this repository's `E2ECompleteness.ProverOpening`

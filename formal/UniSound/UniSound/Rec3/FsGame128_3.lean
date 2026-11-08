@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The main line's `FsGame128.lean` (`hops_uni`,
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The main line's `FsGame128.lean` (`hops_uni`,
 -- `fsLayer128_of_gameV`) for π1-rec3, through `Compose`'s `knowledgeSoundness_listChainU_closed128`,
 -- `prEvent_doomF_le` and `prEvent_pairTr_expL_le`. Kept apart from `FsFinal3.lean`'s bridges, which bring
 -- `Completeness`'s instance of `SampleableType E`.

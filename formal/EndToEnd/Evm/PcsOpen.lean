@@ -1,5 +1,5 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
--- Transcribed from `crates/evm/src/machine.rs` (`element_word`, `root_word`, `layout_id`, `layout`,
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
+-- Transcribed from `crates/membership/evm/src/machine.rs` (`element_word`, `root_word`, `layout_id`, `layout`,
 -- `pcs_open_input`, `PcsOpen::well_sized`, the input format of its module documentation).
 import PcsQuotient.Verifier
 import Implementation.Calldata
@@ -8,7 +8,7 @@ import Soundness.Defs
 /-!
 # `PCS_OPEN`: its input, and what it attests
 
-The contract hands the precompile `PCS_OPEN` (`crates/evm/src/machine.rs`) one input per commitment:
+The contract hands the precompile `PCS_OPEN` (`crates/membership/evm/src/machine.rs`) one input per commitment:
 `3 + k (v + 1)` words of 32 bytes, each big-endian — the root's word (`rootWordOf`,
 `s₀ · 2^128 + s₁`, the root's two scalars as the transcript carries them), the layout's id
 (`layoutId`, `256 · table + log_rows`), the number `k` of claims, then each claim's `v` coordinates
@@ -24,7 +24,7 @@ precompile reads it (`well_sized`: whole words, an id naming a layout it knows (
 the block carries for the call (`proofFor id`); an input `parse` does not read attests nothing. The
 mock attests an input when the block holds an opening of exactly those claims that
 `opening::verify` accepted: that the mock and `opening::verify` are this (`PcsQuotient.opening`) is
-tested, not proved (`crates/evm`'s tests, `formal/Statement`'s differential tests).
+tested, not proved (`crates/membership/evm`'s tests, `formal/Statement`'s differential tests).
 -/
 
 set_option linter.unusedSectionVars false

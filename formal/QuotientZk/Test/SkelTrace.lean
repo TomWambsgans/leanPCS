@@ -1,7 +1,7 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- The Lean half of the differential test of `QuotientZk.Deployed.skel` against the Rust prover; the
 -- Rust half, which writes this driver's input and compares its output with the prover's own record,
--- is `crates/quotient/tests/skel_trace.rs`. The oracle is leanerVM `mumbai`'s Keccak-256 and
+-- is `crates/membership/quotient/tests/skel_trace.rs`. The oracle is leanerVM `mumbai`'s Keccak-256 and
 -- Keccak-f[1600] (`Statement.Keccak`, compiled through the proved `@[csimp]` lemmas of
 -- `Statement.Fast.Keccak`; https://github.com/Verified-zkEVM/leanerVM, commit 6175f1a0, MIT OR
 -- Apache-2.0).

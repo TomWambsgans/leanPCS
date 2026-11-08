@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The main line's `FsExtract.lean`
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The main line's `FsExtract.lean`
 -- (`uniExtractBridge_of_c1`) at π1-rec3's view of the stream; the extractor (`uniExtractor`) is unchanged.
 import UniSound.Rec3.FsWalk3
 import UniSound.FsExtract

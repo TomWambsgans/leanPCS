@@ -1,6 +1,6 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The Flock region and its predicate are
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The Flock region and its predicate are
 -- `formal/Lv42`'s (leanerVM `mumbai` f0393df4's `FlockRegion.Holds`, MIT OR Apache-2.0); the verifier's
--- Flock phase is `formal/UniStatement`'s `Flock.verify` (`crates/leanvm_flock_gas/src/flock_min.rs`).
+-- Flock phase is `formal/UniStatement`'s `Flock.verify` (`crates/leanvm/statement/src/flock_min.rs`).
 import UniSound.Prog
 
 /-!
