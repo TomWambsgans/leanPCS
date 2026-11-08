@@ -17,7 +17,7 @@
 use std::ops::{Add, Mul};
 
 use fiat_shamir::merkle::Hash;
-use primitives::field::{F64, F192};
+use primitives::field::{F64, F192, F192Unreduced};
 
 use crate::circuit::{Circuit, PUBLIC_ROWS};
 use crate::domain::{self, beta, chain, coordinates, point, row_vanishing};
@@ -356,6 +356,42 @@ fn top_layers(offset: F64, m: usize, k: usize) -> F64 {
     if k & 1 == 0 { lambda } else { lambda + F64::ONE }
 }
 
+/// [`domain::evaluate`] of the `step` interleaved polynomials of `coeffs` (the `j`-th of coefficients
+/// `coeffs[j + step * i]`) at once: `sum_i c_i prod_(k in i) digits[k]`, as the products of a table of the low
+/// digits' and one of the high digits', the low sums accumulated unreduced, in parallel over the high index.
+fn evaluate_interleaved(coeffs: &[F64], step: usize, digits: &[F192]) -> Vec<F192> {
+    let d = digits.len();
+    assert_eq!(coeffs.len(), step << d);
+    // `t[i]` the product of the digits at `i`'s bits.
+    let tensor = |digits: &[F192]| {
+        let mut t = vec![F192::ONE];
+        for &x in digits {
+            let len = t.len();
+            for i in 0..len {
+                let v = t[i] * x;
+                t.push(v);
+            }
+        }
+        t
+    };
+    let low = d.min(10);
+    let (low_weights, high_weights) = (tensor(&digits[..low]), tensor(&digits[low..]));
+    let run = step << low;
+    let sums: Vec<Vec<F192>> = parallel::map_collect(high_weights.len(), |high| {
+        let block = &coeffs[high * run..(high + 1) * run];
+        let mut acc = vec![F192Unreduced::ZERO; step];
+        for (lo, cs) in block.chunks_exact(step).enumerate() {
+            for (a, &c) in acc.iter_mut().zip(cs) {
+                *a ^= low_weights[lo].mul_base_unreduced(c);
+            }
+        }
+        acc.into_iter().map(|a| high_weights[high] * a.reduce()).collect()
+    });
+    (0..step)
+        .map(|j| sums.iter().fold(F192::ZERO, |acc, s| acc + s[j]))
+        .collect()
+}
+
 /// Eight extension elements' limbs, each as eight lanes.
 fn limbs8(x: &[F192; 8]) -> [Kx8; 3] {
     [
@@ -673,22 +709,46 @@ pub(crate) fn prove_with_randomness_in(
     let mut h_hat: [Vec<F64>; 3] = std::array::from_fn(|_| words(n));
     {
         let [h0, h1, h2] = &mut h_hat;
+        let (alpha8, beta8) = (Ex8::splat(alpha), Ex8::splat(beta_));
+        let beta_points = Ex8::from_limbs(limbs8(&std::array::from_fn(|l| beta_.mul_base(point(l)))));
         parallel::chunks_mut3(h0, h1, h2, 1 << 12, |chunk_index, h0, h1, h2| {
+            // The denominators of eight cells at a time, `d0` to the cell's own point and `d1` to its successor's,
+            // inverted by Montgomery's trick in sixteen interleaved chains, one a lane of each.
             let base = chunk_index << 12;
-            let mut d: Vec<F192> = (0..h0.len())
-                .flat_map(|k| {
-                    let i = base + k;
-                    let common = alpha + F192::from(cells[i]);
-                    [point(i), point(circuit.sigma[i] as usize)].map(|to| common + beta_.mul_base(to))
-                })
-                .collect();
-            batch_inverse(&mut d);
-            for k in 0..h0.len() {
-                let mut out = d[2 * k] + d[2 * k + 1];
-                if base + k < 1 << REGION {
-                    out += public_weight(base + k, gamma).mul_base(cells[base + k]);
+            let steps = h0.len() / 8;
+            let (mut d0s, mut d1s, mut p0s, mut p1s) = (
+                Vec::with_capacity(steps),
+                Vec::with_capacity(steps),
+                Vec::with_capacity(steps),
+                Vec::with_capacity(steps),
+            );
+            let (mut acc0, mut acc1) = (Ex8::splat(F192::ONE), Ex8::splat(F192::ONE));
+            for s in 0..steps {
+                let i = base + 8 * s;
+                let common = alpha8 + Ex8::from_k(Kx8::load(&cells[i..]));
+                let d0 = common + Ex8::splat(beta_.mul_base(point(i))) + beta_points;
+                let next = Kx8::new(std::array::from_fn(|l| point(circuit.sigma[i + l] as usize)));
+                let d1 = common + beta8.mul_k(next);
+                (p0s.push(acc0), p1s.push(acc1));
+                (acc0, acc1) = (acc0 * d0, acc1 * d1);
+                (d0s.push(d0), d1s.push(d1));
+            }
+            let mut last = [acc0.to_array(), acc1.to_array()].concat();
+            batch_inverse(&mut last);
+            let (mut inv0, mut inv1) = (
+                Ex8::from_limbs(limbs8(&last[..8].try_into().unwrap())),
+                Ex8::from_limbs(limbs8(&last[8..].try_into().unwrap())),
+            );
+            for s in (0..steps).rev() {
+                let out = inv0 * p0s[s] + inv1 * p1s[s];
+                (inv0, inv1) = (inv0 * d0s[s], inv1 * d1s[s]);
+                for (h, c) in [&mut h0[..], &mut h1[..], &mut h2[..]].into_iter().zip(out.limbs()) {
+                    h[8 * s..8 * s + 8].copy_from_slice(&c.to_row().0);
                 }
-                (h0[k], h1[k], h2[k]) = (F64(out.c0), F64(out.c1), F64(out.c2));
+            }
+            for k in 0..h0.len().min((1usize << REGION).saturating_sub(base)) {
+                let public = public_weight(base + k, gamma).mul_base(cells[base + k]);
+                (h0[k], h1[k], h2[k]) = (h0[k] + F64(public.c0), h1[k] + F64(public.c1), h2[k] + F64(public.c2));
             }
         });
     }
@@ -711,6 +771,17 @@ pub(crate) fn prove_with_randomness_in(
     let mut values = words(placed.max(big));
     let mut scratch = words(placed.max(4 * big));
 
+    // The transforms in two parts where the cells are many: the layers above a leaf a pass over memory each, and
+    // each leaf's own layers in the block-wise loop below, around the quotients' values, a block in cache.
+    let fused = n >= ntt::LEAF_WORDS;
+    let forward = |src: Option<&[F64]>, quarter: &mut [F64], k: usize| {
+        let at = quarter_offset(offset, n, k);
+        match (fused, src) {
+            (true, _) => ntt::values_upper(src, quarter, at),
+            (false, Some(src)) => ntt::values_from(src, quarter, at),
+            (false, None) => ntt::values(quarter, at),
+        }
+    };
     let inner = tracing::info_span!("witness values").entered();
     {
         let (first, rest) = values[..big].split_at_mut(n);
@@ -723,7 +794,7 @@ pub(crate) fn prove_with_randomness_in(
         for (v, &c) in quarter.iter_mut().zip(&mask) {
             *v += scale * c;
         }
-        ntt::values(quarter, quarter_offset(offset, n, k));
+        forward(None, quarter, k);
     }
     drop(inner);
     let sigma_values = index.sigma_values();
@@ -731,7 +802,7 @@ pub(crate) fn prove_with_randomness_in(
     tracing::info_span!("sum values").in_scope(|| {
         for (limb, column) in q_limbs.chunks_exact_mut(big).enumerate() {
             for (k, quarter) in column.chunks_exact_mut(n).enumerate() {
-                ntt::values_from(&h_hat[limb], quarter, quarter_offset(offset, n, k));
+                forward(Some(&h_hat[limb]), quarter, k);
             }
         }
     });
@@ -746,16 +817,11 @@ pub(crate) fn prove_with_randomness_in(
     };
     let row_low: [F64; 4] = std::array::from_fn(|c| row_poly(point(c)));
     let gammas = [gamma, gamma * gamma, (gamma * gamma) * (gamma * gamma)];
-    let w_values = &values[..big];
     let (alpha8, beta8) = (Ex8::splat(alpha), Ex8::splat(beta_));
     let beta_points = Ex8::from_limbs(limbs8(&std::array::from_fn(|l| beta_.mul_base(point(l)))));
-    let (q_ptr, gate_ptr) = (parallel::SendPtr(q_limbs.as_mut_ptr()), parallel::SendPtr(q_gate.as_mut_ptr()));
-    parallel::for_each(big >> REGION, |high| {
-        let base = high << REGION;
-        // SAFETY: block `high` of each of the four columns is this task's alone.
-        let [q0, q1, q2] = [0, 1, 2].map(|limb| unsafe { q_ptr.slice(limb * big + base, 1 << REGION) });
-        // SAFETY: as above.
-        let q_gate = unsafe { gate_ptr.slice(base, 1 << REGION) };
+    // The quotients' values on the `2^REGION` cells from `base`: `w` the witness's values there, `q` the sum's
+    // limbs (overwritten with `q`'s), `q_gate` the gate's quotient's.
+    let quotient_block = |base: usize, w_values: &[F64], q: [&mut [F64]; 3], q_gate: &mut [F64]| {
         let w_at = |k: usize| offsets[k] + point(base >> k);
         // The public weight on this block: its region coordinates are the low index's bits, shifted.
         let indicator = (REGION..m).fold(F64::ONE, |acc, k| acc * (F64::ONE + w_at(k)));
@@ -780,9 +846,10 @@ pub(crate) fn prove_with_randomness_in(
             Kx8::new(std::array::from_fn(|l| row_vanishing[l & 3])),
         );
         let limb = |x: &[F64]| Kx8::load(x);
+        let [q0, q1, q2] = q;
         for low in (0..1 << REGION).step_by(8) {
             let i = base + low;
-            let w = limb(&w_values[i..]);
+            let w = limb(&w_values[low..]);
             let common = alpha8 + Ex8::from_k(w);
             let d = common + Ex8::splat(beta_.mul_base(offset + point(i))) + beta_points;
             let d_next = common + beta8.mul_k(limb(&sigma_values[i..]));
@@ -798,11 +865,51 @@ pub(crate) fn prove_with_randomness_in(
             let row = [w, w.xor_lanes(1), w.xor_lanes(2), w.xor_lanes(3)];
             q_gate[low..low + 8].copy_from_slice(&(gate(row) * row_vanishing).to_row().0);
         }
+    };
+    let block = if fused { ntt::LEAF_WORDS } else { 1 << REGION };
+    let w_ptr = parallel::SendPtr(values.as_mut_ptr());
+    let (q_ptr, gate_ptr) = (parallel::SendPtr(q_limbs.as_mut_ptr()), parallel::SendPtr(q_gate.as_mut_ptr()));
+    parallel::for_each(big / block, |task| {
+        let start = task * block;
+        // SAFETY: the words `start..start + block` of each of the five columns are this task's alone.
+        let (w, mut q, gate) = unsafe {
+            (
+                w_ptr.slice(start, block),
+                [0, 1, 2].map(|limb| q_ptr.slice(limb * big + start, block)),
+                gate_ptr.slice(start, block),
+            )
+        };
+        if fused {
+            let k = start / n;
+            let at = quarter_offset(offset, n, k);
+            ntt::values_leaf(w, start - k * n, n, at);
+            q.iter_mut().for_each(|q| ntt::values_leaf(q, start - k * n, n, at));
+        }
+        for r in (0..block).step_by(1 << REGION) {
+            let run = r..r + (1 << REGION);
+            let [q0, q1, q2] = &mut q;
+            quotient_block(
+                start + r,
+                &w[run.clone()],
+                [&mut q0[run.clone()], &mut q1[run.clone()], &mut q2[run.clone()]],
+                &mut gate[run],
+            );
+        }
+        if fused {
+            q.iter_mut().for_each(|q| ntt::coefficients_leaf(q, start, big, offset));
+            ntt::coefficients_leaf(gate, start, big, offset);
+        }
     });
     drop(inner);
-    tracing::info_span!("quotient coefficients")
-        .in_scope(|| q_limbs.chunks_exact_mut(big).for_each(|column| ntt::coefficients(column, offset)));
-    tracing::info_span!("gate coefficients").in_scope(|| ntt::coefficients(q_gate, offset));
+    let backward = |column: &mut [F64]| {
+        if fused {
+            ntt::coefficients_upper(column, offset)
+        } else {
+            ntt::coefficients(column, offset)
+        }
+    };
+    tracing::info_span!("quotient coefficients").in_scope(|| q_limbs.chunks_exact_mut(big).for_each(backward));
+    tracing::info_span!("gate coefficients").in_scope(|| backward(q_gate));
 
     // The quotient table: `m` variables of a polynomial, two more digits, `h` or `q`, that pair or the gate's
     // quotient, and the extension's two.
@@ -839,12 +946,11 @@ pub(crate) fn prove_with_randomness_in(
         .collect();
     let mut w_hat = words(n);
     witness.read(0, &mut w_hat);
-    let a: [F192; 4] = std::array::from_fn(|j| {
-        domain::evaluate(&w_hat, j, 4, &digits[2..m]) + digits[m] * domain::evaluate(&mask, j, 4, &digits[2..4])
-    });
+    let at = evaluate_interleaved(&w_hat, 4, &digits[2..m]);
+    let a: [F192; 4] = std::array::from_fn(|j| at[j] + digits[m] * domain::evaluate(&mask, j, 4, &digits[2..4]));
     drop(w_hat);
     a.iter().for_each(|&x| ps.send(x));
-    let next = domain::evaluate(index.sigma(), 0, 1, &digits[..m]);
+    let next = evaluate_interleaved(index.sigma(), 1, &digits[..m])[0];
     ps.send(next);
     if inverse == Inverse::Hint {
         // Zero where the verifier rejects whatever the hint, which then panics below.

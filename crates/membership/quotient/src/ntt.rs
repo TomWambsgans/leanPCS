@@ -1217,6 +1217,207 @@ fn subset_sums_of<M: Copy + Send + Sync + Add<Output = M> + Default>(data: &mut 
     }
 }
 
+// ---------------------------------------------------------------------------------------------------------------
+// Split column transforms (`crate::protocol`'s reduction): the layers above a leaf on a whole column, and one
+// leaf's own layers on one block, so that a caller can fuse its own pointwise work between a forward transform's
+// last layers and an inverse transform's first, a block in cache, rather than make a pass over memory for each.
+// [`values`] is [`values_upper`] then [`values_leaf`] on each block of [`LEAF_WORDS`]; [`coefficients`] is
+// [`coefficients_leaf`] on each block then [`coefficients_upper`].
+// ---------------------------------------------------------------------------------------------------------------
+
+/// The words of a leaf: the block [`values_leaf`] and [`coefficients_leaf`] take.
+pub const LEAF_WORDS: usize = 8 * LEAF_ROWS;
+
+/// The most of the layers above a leaf that one pass over memory takes in [`values_upper`] and
+/// [`coefficients_upper`], and the rows of one of its tiles.
+const UPPER_GROUP: usize = GROUP;
+const UPPER_TILE_ROWS: usize = TILE_ROWS;
+
+/// The groups of row layers above a leaf, the highest first: `(lowest layer, layers)`.
+fn upper_groups(rows: usize) -> Vec<(usize, usize)> {
+    let mr = rows.trailing_zeros() as usize;
+    let leaf = mr.min(LEAF_ROWS.trailing_zeros() as usize);
+    let mut groups = Vec::new();
+    let mut top = mr;
+    while top > leaf {
+        let a = top.saturating_sub(UPPER_GROUP).max(leaf);
+        groups.push((a, top - a));
+        top = a;
+    }
+    groups
+}
+
+/// [`wide`] with [`UPPER_TILE_ROWS`].
+fn upper<T: Kind>(data: SendPtr<u64>, src: Option<SendPtr<u64>>, rows: usize, a: usize, g: usize, kind: &T) {
+    let lines = 1usize << g;
+    let width = (UPPER_TILE_ROWS >> g).clamp(1, 1 << a);
+    let per_group = (1usize << a) / width;
+    parallel::for_each((rows >> (a + g)) * per_group, |task| {
+        let row0 = ((task / per_group) << (a + g)) + (task % per_group) * width;
+        let line = |u: usize| row0 + (u << a);
+        // SAFETY: a task touches rows `line(u) + [0, width)`, `u < lines`: its own.
+        unsafe {
+            if let Some(s) = src {
+                for u in 0..lines {
+                    std::ptr::copy_nonoverlapping(s.add(8 * line(u)), data.add(8 * line(u)), 8 * width);
+                }
+            }
+            let layer = |j: usize| {
+                let k = a + j;
+                let hs = 1usize << j;
+                for ub in (0..lines).step_by(2 * hs) {
+                    let t = splat(kind.twiddle(k + 3, line(ub) >> (k + 1)).0);
+                    for u in ub..ub + hs {
+                        pairs::<T>(data.add(8 * line(u)), data.add(8 * line(u + hs)), width, t);
+                    }
+                }
+            };
+            if T::DOWN {
+                (0..g).rev().for_each(layer);
+            } else {
+                (0..g).for_each(layer);
+            }
+        }
+    });
+}
+
+/// The forward transform's layers above a leaf, on the column `dst` (a power of two, at least eight words), read
+/// first from `src` if given (of `dst`'s length): with [`values_leaf`] on every block, [`values`] (`values_from`).
+pub fn values_upper(src: Option<&[F64]>, dst: &mut [F64], offset: F64) {
+    assert!(dst.len().is_power_of_two() && dst.len() >= 8);
+    if let Some(s) = src {
+        assert_eq!(s.len(), dst.len());
+    }
+    let rows = dst.len() / 8;
+    let kind = Forward(Twiddles::new(offset, dst.len().trailing_zeros() as usize));
+    let data = SendPtr(dst.as_mut_ptr().cast::<u64>());
+    let mut from = src.map(|s| SendPtr(s.as_ptr().cast::<u64>().cast_mut()));
+    let groups = upper_groups(rows);
+    if groups.is_empty() {
+        if let Some(s) = src {
+            dst.copy_from_slice(s);
+        }
+        return;
+    }
+    for (a, g) in groups {
+        upper(data, from.take(), rows, a, g, &kind);
+    }
+}
+
+/// The inverse transform's layers above a leaf, on the column `data`, after [`coefficients_leaf`] on every block.
+pub fn coefficients_upper(data: &mut [F64], offset: F64) {
+    assert!(data.len().is_power_of_two() && data.len() >= 8);
+    let rows = data.len() / 8;
+    let kind = Inverse(Twiddles::new(offset, data.len().trailing_zeros() as usize));
+    let ptr = SendPtr(data.as_mut_ptr().cast::<u64>());
+    for (a, g) in upper_groups(rows).into_iter().rev() {
+        upper(ptr, None, rows, a, g, &kind);
+    }
+}
+
+/// A transform whose rows' own layers take their twiddles given ([`Twiddles::row`]'s), for [`leaf`], which steps
+/// them from row to row rather than computing each row's.
+trait RowLanes: Kind {
+    fn twiddles(&self) -> &Twiddles;
+    fn lanes_with(t: [V; 3], x: V) -> V;
+}
+
+impl RowLanes for Forward {
+    fn twiddles(&self) -> &Twiddles {
+        &self.0
+    }
+    /// [`Forward::lanes`], its twiddles given.
+    #[inline(always)]
+    fn lanes_with([t2, t1, t0]: [V; 3], x: V) -> V {
+        let x = mask_add(x, 0x0F, mul(swap::<4>(x), t2));
+        let x = mask_add(x, 0xF0, swap::<4>(x));
+        let x = mask_add(x, 0x33, mul(swap::<2>(x), t1));
+        let x = mask_add(x, 0xCC, swap::<2>(x));
+        let x = mask_add(x, 0x55, mul(swap::<1>(x), t0));
+        mask_add(x, 0xAA, swap::<1>(x))
+    }
+}
+
+impl RowLanes for Inverse {
+    fn twiddles(&self) -> &Twiddles {
+        &self.0
+    }
+    /// [`Inverse::lanes`], its twiddles given.
+    #[inline(always)]
+    fn lanes_with([t2, t1, t0]: [V; 3], x: V) -> V {
+        let x = mask_add(x, 0xAA, swap::<1>(x));
+        let x = mask_add(x, 0x55, mul(swap::<1>(x), t0));
+        let x = mask_add(x, 0xCC, swap::<2>(x));
+        let x = mask_add(x, 0x33, mul(swap::<2>(x), t1));
+        let x = mask_add(x, 0xF0, swap::<4>(x));
+        mask_add(x, 0x0F, mul(swap::<4>(x), t2))
+    }
+}
+
+/// A leaf's own layers (row layers below the leaf's, and each row's), on `block`: the words `start..` of a column
+/// of `len` words (`start` a multiple of `block.len()`, which is [`LEAF_WORDS`] or the whole column), on one
+/// thread.
+fn leaf<T: RowLanes>(block: &mut [F64], start: usize, kind: &T) {
+    assert!(block.len().is_power_of_two() && block.len() >= 8 && start.is_multiple_of(block.len()));
+    let size = block.len() / 8;
+    let leaf = size.trailing_zeros() as usize;
+    let first = start / 8;
+    let base = block.as_mut_ptr().cast::<u64>();
+    // From row `r` to `r + 1` the row's twiddles move by `B(2 d), B(4 d), B(8 d)`, `d = r ^ (r + 1)`, which is
+    // `2^(z + 1) - 1` for `z` the trailing ones of `r` (`B` is linear).
+    let steps: Vec<[V; 3]> = (0..leaf.max(1))
+        .map(|z| {
+            let d = (2usize << z) - 1;
+            [splat(point(2 * d).0), splat(point(4 * d).0), splat(point(8 * d).0)]
+        })
+        .collect();
+    // SAFETY: the block's own `size` rows.
+    unsafe {
+        let own = || {
+            let mut t = kind.twiddles().row(first);
+            for r in 0..size {
+                let p = base.add(8 * r);
+                store(p, T::lanes_with(t, load(p)));
+                if r + 1 < size {
+                    let step = &steps[r.trailing_ones() as usize];
+                    t = [xor(t[0], step[0]), xor(t[1], step[1]), xor(t[2], step[2])];
+                }
+            }
+        };
+        if !T::DOWN {
+            own();
+        }
+        let layer = |k: usize| {
+            let half = 1usize << k;
+            let t0 = kind.twiddle(k + 3, first >> (k + 1));
+            for j in 0..size >> (k + 1) {
+                let row = 2 * half * j;
+                let t = splat((t0 + kind.step(j)).0);
+                pairs::<T>(base.add(8 * row), base.add(8 * (row + half)), half, t);
+            }
+        };
+        if T::DOWN {
+            (0..leaf).rev().for_each(layer);
+            own();
+        } else {
+            (0..leaf).for_each(layer);
+        }
+    }
+}
+
+/// The forward transform's leaf layers on `block`, words `start..start + block.len()` of a column of `len` words
+/// at `offset`: `block.len()` is [`LEAF_WORDS`], or `len` if that is smaller.
+pub fn values_leaf(block: &mut [F64], start: usize, len: usize, offset: F64) {
+    assert_eq!(block.len(), LEAF_WORDS.min(len));
+    leaf(block, start, &Forward(Twiddles::new(offset, len.trailing_zeros() as usize)));
+}
+
+/// The inverse transform's leaf layers on `block`, as [`values_leaf`].
+pub fn coefficients_leaf(block: &mut [F64], start: usize, len: usize, offset: F64) {
+    assert_eq!(block.len(), LEAF_WORDS.min(len));
+    leaf(block, start, &Inverse(Twiddles::new(offset, len.trailing_zeros() as usize)));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1406,6 +1607,39 @@ mod tests {
             let mut got = all[..total].to_vec();
             interpolate_prefix(&mut got, &sizes, 1 << m);
             assert_eq!(got, novel, "count {count}, blocks {sizes:?}");
+        }
+    }
+
+    /// The split transforms are the whole ones: the upper layers, then each leaf block's (forward); each leaf
+    /// block's, then the upper layers (inverse); at sizes of no, one and two upper passes, in place and from a
+    /// source.
+    #[test]
+    fn split_transforms_are_the_whole() {
+        let mut next = rng(5);
+        for m in [3usize, 4, 9, 15, 16, 19, 22, 25] {
+            let len = 1usize << m;
+            let offset = point(1 << 29) + point(3 << m);
+            let column: Vec<F64> = (0..len).map(|_| F64(next())).collect();
+            let mut want = column.clone();
+            values(&mut want, offset);
+            let block = LEAF_WORDS.min(len);
+            let mut got = vec![F64::ZERO; len];
+            values_upper(Some(&column), &mut got, offset);
+            for (b, chunk) in got.chunks_exact_mut(block).enumerate() {
+                values_leaf(chunk, b * block, len, offset);
+            }
+            assert_eq!(got, want, "values, 2^{m}");
+            let mut again = column.clone();
+            values_upper(None, &mut again, offset);
+            for (b, chunk) in again.chunks_exact_mut(block).enumerate() {
+                values_leaf(chunk, b * block, len, offset);
+            }
+            assert_eq!(again, want, "values in place, 2^{m}");
+            for (b, chunk) in got.chunks_exact_mut(block).enumerate() {
+                coefficients_leaf(chunk, b * block, len, offset);
+            }
+            coefficients_upper(&mut got, offset);
+            assert_eq!(got, column, "coefficients, 2^{m}");
         }
     }
 }
