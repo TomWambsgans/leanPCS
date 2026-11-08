@@ -1,6 +1,8 @@
 // Vendored from leanVM (https://github.com/leanEthereum/leanVM), commit 42422001, file crates/flock/src/lincheck.rs.
 // Changed here: the prover's body after its row weights is `prove_padded_capture_s_hat_v_rows`, which also takes
-// row weights a zerocheck skip below 6 leaves; leanVM's entry is unchanged in what it computes. Ported onto leanVM
+// row weights a zerocheck skip below 6 leaves; leanVM's entry is unchanged in what it computes. The GFNI partial
+// fold splits by output groups (each task's accumulators in L1, every stripe's matrices built once) instead of
+// by stripes into per-worker accumulators of every group, reduced on the dispatcher. Ported onto leanVM
 // c445e3d5's `primitives` and `parallel`; `inner_product_ext` (42422001's `pcs::ring_switch`) is copied in.
 // MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and AGENTS.md at the repository root).
 // CREDIT: https://github.com/succinctlabs/flock (flock-core), MIT OR Apache-2.0.
@@ -655,62 +657,43 @@ fn partial_fold_packed_z_gfni(
     );
     // Rows past `useful_bits` are honest zeros; a group straddling the boundary folds them in harmlessly.
     let groups = useful_bits.div_ceil(64);
+    // Every stripe's eight weights as GFNI matrices, once.
+    // SAFETY: the module is compiled only with these target features enabled.
+    let matrices: Vec<[u64; OUT_BYTES]> =
+        parallel::map_collect(n_stripes, |t| unsafe { weight_matrices(eq_outer[8 * t..8 * t + 8].try_into().expect("8")) });
 
-    // One byte-sliced accumulator per worker, one tile of stripes per task.
-    let acc = parallel::map_reduce_with_state(
-        n_stripes / GFNI_TILE,
-        || (),
-        // SAFETY: an all-zero bit pattern is a valid register value.
-        || vec![unsafe { core::mem::zeroed::<[__m512i; OUT_BYTES]>() }; groups],
-        // SAFETY: the module is compiled only with these target features enabled.
-        |(), acc, tile| unsafe {
-            fold_tile(
-                z_packed,
-                k,
-                &eq_outer[8 * GFNI_TILE * tile..][..8 * GFNI_TILE],
-                tile,
-                acc,
-            )
-        },
-        |mut x, y| {
-            for (x, y) in x.iter_mut().flatten().zip(y.iter().flatten()) {
-                // SAFETY: as above.
-                *x = unsafe { xor(*x, *y) };
-            }
-            x
-        },
-    );
-
-    #[target_feature(enable = "avx512f")]
-    fn xor(x: __m512i, y: __m512i) -> __m512i {
-        _mm512_xor_si512(x, y)
-    }
+    // A task: `GROUPS` groups of 64 rows over every stripe, their byte-sliced accumulators in L1 (the sums over the
+    // stripes in another order: the same).
+    const GROUPS: usize = 16;
+    let mut out = vec![F192::ZERO; k];
+    parallel::chunks_mut(&mut out[..64 * groups], 64 * GROUPS, |task, out| {
+        // SAFETY: as above.
+        unsafe { fold_groups(z_packed, k, &matrices, 64 * task * GROUPS, out) }
+    });
 
     #[target_feature(enable = "avx512f", enable = "avx512bw", enable = "avx512vbmi", enable = "gfni")]
-    fn fold_tile(z_packed: &[u8], k: usize, eq: &[F192], tile: usize, acc: &mut [[__m512i; OUT_BYTES]]) {
-        let eq: &[[F192; 8]] = eq.as_chunks().0;
-        let matrices: [[u64; OUT_BYTES]; GFNI_TILE] = std::array::from_fn(|t| weight_matrices(&eq[t]));
-        let first = tile * GFNI_TILE;
-        for (g, acc) in acc.iter_mut().enumerate() {
-            let mut r = *acc;
-            for (t, m) in matrices.iter().enumerate() {
-                let row = &z_packed[(first + t) * k + 64 * g..][..64];
+    fn fold_groups(z_packed: &[u8], k: usize, matrices: &[[u64; OUT_BYTES]], first: usize, out: &mut [F192]) {
+        let n = out.len().div_ceil(64);
+        let mut acc = [[_mm512_setzero_si512(); OUT_BYTES]; GROUPS];
+        for (t, m) in matrices.iter().enumerate() {
+            let m: [__m512i; OUT_BYTES] = m.map(|q| _mm512_set1_epi64(q as i64));
+            for (g, acc) in acc.iter_mut().enumerate().take(n) {
+                let row = &z_packed[t * k + first + 64 * g..][..64];
                 // SAFETY: the row is 64 bytes.
                 let x = unsafe { _mm512_loadu_si512(row.as_ptr().cast()) };
-                for (r, &m) in r.iter_mut().zip(m) {
-                    *r = _mm512_xor_si512(*r, _mm512_gf2p8affine_epi64_epi8::<0>(x, _mm512_set1_epi64(m as i64)));
+                for (r, &m) in acc.iter_mut().zip(&m) {
+                    *r = _mm512_xor_si512(*r, _mm512_gf2p8affine_epi64_epi8::<0>(x, m));
                 }
             }
-            *acc = r;
+        }
+        for (acc, out) in acc.iter().zip(out.chunks_mut(64)) {
+            let mut values = [F192::ZERO; 64];
+            store_f192(acc, &mut values);
+            out.copy_from_slice(&values[..out.len()]);
         }
     }
 
     // Rows past the last group stay zero.
-    let mut out = vec![F192::ZERO; k];
-    for (acc, out) in acc.iter().zip(out.as_chunks_mut::<64>().0) {
-        // SAFETY: as above.
-        unsafe { store_f192(acc, out) };
-    }
     out
 }
 
