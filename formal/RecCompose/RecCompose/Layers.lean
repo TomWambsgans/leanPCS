@@ -187,22 +187,22 @@ structure Pi2Circuits (D : RecDeployment) where
   rootsAt : List ℕ
   compiled : List UInt8 → RecCircuit.Compiled
   compile_ok : ∀ iv, iv.length = 32 →
-    RecCircuit.compile (RecCircuit.ofRG RecGraph.Pi1.pi1Graph rootsAt iv) = .ok (compiled iv)
+    RecCircuit.compile (RecCircuit.ofRG RecGraphKeccak.Pi1.pi1GraphK rootsAt iv) = .ok (compiled iv)
   stream_eq : ∀ iv, iv.length = 32 → ∀ (w : ℕ → K),
-    D.pi1Stream w = ((compiled iv).streamW (RecCircuit.ofRG RecGraph.Pi1.pi1Graph rootsAt iv) w).toArray
+    D.pi1Stream w = ((compiled iv).streamW (RecCircuit.ofRG RecGraphKeccak.Pi1.pi1GraphK rootsAt iv) w).toArray
 
 variable {D : RecDeployment}
 
 /-- `compile_ok` at π1's contract IV of the setup's roots (32 bytes, `pi1IvAt_length`). -/
 theorem Pi2Circuits.compile_okAt (C : Pi2Circuits D) (roots : UniStatement.SetupRoots) :
-    RecCircuit.compile (RecCircuit.ofRG RecGraph.Pi1.pi1Graph C.rootsAt (D.pi1IvAt roots)) =
+    RecCircuit.compile (RecCircuit.ofRG RecGraphKeccak.Pi1.pi1GraphK C.rootsAt (D.pi1IvAt roots)) =
       .ok (C.compiled (D.pi1IvAt roots)) :=
   C.compile_ok _ (D.pi1IvAt_length roots)
 
 /-- `stream_eq` at π1's contract IV of the setup's roots. -/
 theorem Pi2Circuits.stream_eqAt (C : Pi2Circuits D) (roots : UniStatement.SetupRoots) (w : ℕ → K) :
     D.pi1Stream w = ((C.compiled (D.pi1IvAt roots)).streamW
-      (RecCircuit.ofRG RecGraph.Pi1.pi1Graph C.rootsAt (D.pi1IvAt roots)) w).toArray :=
+      (RecCircuit.ofRG RecGraphKeccak.Pi1.pi1GraphK C.rootsAt (D.pi1IvAt roots)) w).toArray :=
   C.stream_eq _ (D.pi1IvAt_length roots) w
 
 /-- The compiled circuit at the setup's roots, as `RecPiop`'s (`RecCircuit.Circuit.toPiop`). -/

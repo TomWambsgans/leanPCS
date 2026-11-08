@@ -1,11 +1,12 @@
--- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md and AGENTS.md.
 import RecCompose.RealDeployment
 
 /-!
 # The real deployment's checks, evaluated
 
 `rec-real-check` (compiled code; no kernel evaluation) evaluates the run-checked `Prop`s of
-`RecCompose/RealDeployment.lean`, each as the very expression it names:
+`RecCompose/RealDeployment.lean` for the Keccak VM's π1-rec3 at 128 signatures (the compiler on
+`RecGraphKeccak.Emitted.graph`), each as the very expression it names:
 
 * `DigestChecked`: its left side at `pi2CircuitOf refCompiled.circuit`, which is `realPi2 Data.pi1Iv` (`realPi2_ref`,
   `rfl`; the digest `RecDeployment.Real` names, of the Lean compiler's `σ`, `κ` at π1's reference IV), against
@@ -29,39 +30,43 @@ def hexOf (b : List UInt8) : String :=
 
 def flush : IO Unit := do (← IO.getStdout).flush
 
-def ivs : List (String × List UInt8) :=
-  [("pi1 reference IV", Data.pi1Iv), ("zero IV", List.replicate 32 0), ("all-ones IV", List.replicate 32 0xff)]
+def ivs : List (String × String × List UInt8) :=
+  [("ref", "pi1 reference IV", Data.pi1Iv), ("zero", "zero IV", List.replicate 32 0),
+    ("ones", "all-ones IV", List.replicate 32 0xff)]
 
+/-- `rec-real-check [ref] [zero] [ones] [--no-digest] [--setup | --setup-only]`: without an IV named, all three. Each
+line carries the time since the start when it is printed (the compiler may move a computation before the clock read
+that precedes it, so the per-check times can read `0`; the times since the start cannot). -/
 def main (args : List String) : IO UInt32 := do
   let setup := args.contains "--setup" || args.contains "--setup-only"
   let only := args.contains "--setup-only"
+  let named := ivs.filter fun x ↦ args.contains x.1
+  let chosen := if named.isEmpty then ivs else named
+  let start ← IO.monoMsNow
+  let since : IO Nat := do return (← IO.monoMsNow) - start
   let mut ok := true
-  let t0 ← IO.monoMsNow
   IO.println s!"reference IV: {refCompiled.circuit.kappa.size} kappa entries, {refCompiled.circuit.ports.size} ports, \
-    logN {refCompiled.circuit.logN} ({t0} ms since start)"
+    logN {refCompiled.circuit.logN} (at {← since} ms)"
   flush
   if !only then
-    let t ← IO.monoMsNow
-    let d := Id.run ((pi2CircuitOf refCompiled.circuit).digestWith (m := Id) fun x ↦ pure (LeanVM.Semantics.keccakF1600 x))
-    let b := decide (d = Data.digest)
-    let t' ← IO.monoMsNow
-    IO.println s!"DigestChecked: {b} (digest {hexOf d}, Data.digest {hexOf Data.digest}; {t' - t} ms)"
-    flush
-    ok := ok && b
-    for (label, iv) in ivs do
-      let t ← IO.monoMsNow
+    if !args.contains "--no-digest" then
+      let d := Id.run ((pi2CircuitOf refCompiled.circuit).digestWith (m := Id)
+        fun x ↦ pure (LeanVM.Semantics.keccakF1600 x))
+      let b := decide (d = Data.digest)
+      IO.println s!"DigestChecked: {b} (digest {hexOf d}, Data.digest {hexOf Data.digest}; at {← since} ms)"
+      flush
+      ok := ok && b
+    for (_, label, iv) in chosen do
       let v := ivCheck iv
-      IO.println s!"IvChecked at the {label} ({iv.length} bytes): ivCheck {v} ({(← IO.monoMsNow) - t} ms)"
+      IO.println s!"IvChecked at the {label} ({iv.length} bytes): ivCheck {v} (at {← since} ms)"
       flush
       ok := ok && v
   if setup then
-    let t ← IO.monoMsNow
     let r := digestBytes (Id.run ((pi2CircuitOf refCompiled.circuit).setupTreeWith (m := Id)
       fun x ↦ pure (LeanVM.Semantics.keccakF1600 x))).root
     let b := decide (r = Data.setupRoot)
-    let t' ← IO.monoMsNow
-    IO.println s!"SetupRootChecked: {b} (root {hexOf r}, Data.setupRoot {hexOf Data.setupRoot}; {t' - t} ms)"
+    IO.println s!"SetupRootChecked: {b} (root {hexOf r}, Data.setupRoot {hexOf Data.setupRoot}; at {← since} ms)"
     flush
     ok := ok && b
-  IO.println s!"rec-real-check: {if ok then "every check evaluated holds" else "a check FAILS"}"
+  IO.println s!"rec-real-check: {if ok then "every check evaluated holds" else "a check FAILS"} (at {← since} ms)"
   return if ok then 0 else 1

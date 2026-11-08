@@ -12,7 +12,7 @@ import RecCompose.Pi2TFresh
 π2's IV begins with the hash of `σ`'s `4 · 2^24 = 2^26` bytes, longer than anything hashed before it (`Pi2AlphaLen`),
 so its answer is uniform; then each hash of π2's IV and seed holds the previous answer at a fixed offset:
 
-`σd = H(σ)`, `κd = H(κ)`, `d = H(enc ‖ σd ‖ κd)` (`σd` at `25184`, `25248` bytes), `iv = H(… ‖ d ‖ …)` (`d` at `80`,
+`σd = H(σ)`, `κd = H(κ)`, `d = H(enc ‖ σd ‖ κd)` (`σd` at `24264`, `24328` bytes), `iv = H(… ‖ d ‖ …)` (`d` at `80`,
 `208` bytes), `seed = H(name ‖ iv ‖ input)` (`iv` at `16`, `80` bytes), then `W`'s tree (no `536`-byte input) and
 `α`'s input (`seed` at `0`, `536` bytes).
 
@@ -30,8 +30,8 @@ open LeanVM LeanVM.Rpm LeanVM.Parameters LeanVM.Semantics LeanVM.Protocol LeanVM
 open LeanVM.Protocol.Compile (Bytes)
 open E2ECompleteness (ro Cache HashOK cache_of_hashOK prEvent_fresh ro_run_fresh ro_run_cached length_digestBytes
   simulateQ_callKeccak256 runAt)
-open UniComplete.Prob (prEvent_query_le sum_const_div)
-open UniComplete.Prob.TFresh (CacheBound sum_hit_le)
+open UniKeccakComplete.Prob (prEvent_query_le sum_const_div)
+open UniKeccakComplete.Prob.TFresh (CacheBound sum_hit_le)
 open scoped ENNReal
 
 set_option autoImplicit false
@@ -117,8 +117,8 @@ the digest's, the IV's and the seed's hashes (each later input holding the previ
 computation hashing nothing of `536` bytes whose `α` input of `536` bytes begins with the seed, caches that input with
 probability at most `4 · (K + 4) / 2^256`. -/
 theorem chain_le {β : Type} (xσ xκ : Bytes) (fd : Digest → Digest → Bytes) (fiv fs : Digest → Bytes)
-    (hκ : xκ.length ≠ 25248) (hσ : xσ.length ≠ 25248)
-    (hfd : ∀ σ κ, (fd σ κ).length = 25248 ∧ ((fd σ κ).drop 25184).take 32 = digestBytes σ)
+    (hκ : xκ.length ≠ 24328) (hσ : xσ.length ≠ 24328)
+    (hfd : ∀ σ κ, (fd σ κ).length = 24328 ∧ ((fd σ κ).drop 24264).take 32 = digestBytes σ)
     (hfiv : ∀ d, (fiv d).length = 208 ∧ ((fiv d).drop 80).take 32 = digestBytes d)
     (hfs : ∀ iv, (fs iv).length = 80 ∧ ((fs iv).drop 16).take 32 = digestBytes iv)
     (T : Digest → OracleComp KeccakCalls β) (inpOf : β → Bytes) (hT : ∀ s, HashOK (fun m ↦ m.length ≠ 536) (T s))
@@ -135,7 +135,7 @@ theorem chain_le {β : Type} (xσ xκ : Bytes) (fd : Digest → Digest → Bytes
   rw [run_H_bind]
   -- `σ`: fresh; its answer is hit by the digest's length at most `K` times.
   refine (prEvent_query_le xσ c False (fun _ ↦ h0) _ _
-    (fun σd ↦ (if HitAt 25248 25184 c σd then 1 else 0) + 3 * B) fun σd ↦ ?_).trans ?_
+    (fun σd ↦ (if HitAt 24328 24264 c σd then 1 else 0) + 3 * B) fun σd ↦ ?_).trans ?_
   rotate_left
   · simp only [↓reduceIte, zero_add]
     rw [Finset.sum_add_distrib, ENNReal.add_div, sum_const_div]
@@ -149,8 +149,8 @@ theorem chain_le {β : Type} (xσ xκ : Bytes) (fd : Digest → Digest → Bytes
   rw [run_H_bind]
   set c₂ := (c.cacheQuery (.inl xσ) σd).cacheQuery (.inl xκ) κd with hc₂
   have hc₂b : CacheBound c₂ (K + 2) := (hc.cacheQuery_inl _ _).cacheQuery_inl _ _
-  -- the digest: fresh unless a cached `25248`-byte input held `σd`.
-  refine (prEvent_query_le (fd σd κd) c₂ (HitAt 25248 25184 c σd) (fun hn ↦ ?_) _ _
+  -- the digest: fresh unless a cached `24328`-byte input held `σd`.
+  refine (prEvent_query_le (fd σd κd) c₂ (HitAt 24328 24264 c σd) (fun hn ↦ ?_) _ _
     (fun d ↦ (if HitAt 208 80 c₂ d then 1 else 0) + 2 * B) fun d ↦ ?_).trans ?_
   · rcases hcd : c₂ (.inl (fd σd κd)) with _ | v
     · rfl

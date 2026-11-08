@@ -13,14 +13,14 @@ import ZK.ProverBridgeParam
 
 * **`perm_kc`**: a two-call computation answered over `π` (Keccak-256 the sponge over `π`), then by a fixed
   permutation `π` (`permImpl π`, the eager model), is the pure run at `(keccak256 over π, π)` (`runAt`).
-* **`experiment_eq_kc`**: π2's completeness experiment with π1-rec3's honest prover (`pi1Rec3Prover`) and π2's
-  (`pi2Prover`) is `expW2` over the two calls, answered over `π` (`sim_expW2`, π1-rec3's prover's commutation
-  `proverCommutes3_flockProve3H`, the Statement's code at `keccak256With π`: `Pi2CompleteH`'s `_eqH`).
+* **`experiment_eq_kc`**: π2's completeness experiment with a π1 prover `P1` that is the two-call program `P1k`
+  answered over `π` (at the statement; `Pi1OverPerm`, named) and π2's honest prover (`pi2Prover`) is `expW2` over the
+  two calls, answered over `π` (`sim_expW2`, the Statement's code at `keccak256With π`: `Pi2CompleteH`'s `_eqH`).
 * **`expW2_event_staged`**: at every pure `(Ht, Ft)`, if the experiment's event holds (π1-rec3's graph accepting, the
   contract rejecting), the staged run's does: the graph accepting, the witness is honest (`Pi2WitnessComplete`), so
   the staged run is the experiment (`stagedAt_good`).
-* **`pi2ExperimentLe_p1k`**: `Pi2ExperimentLe D C Fa (pi1Rec3Prover D) (p1k D)`, from the witness's completeness: the
-  two sides are averages over the permutations of these pure runs.
+* **`pi2ExperimentLe_of`**: `Pi2ExperimentLe D C Fa P1 P1k` from `Pi1OverPerm D P1 P1k` and the witness's
+  completeness: the two sides are averages over the permutations of these pure runs.
 * **`pi2RunAt_good`**: the staged run at pure functions (`Pi2RunAt`'s content where it is true: its verdict and
   priors on an honest witness, the verdict `(false, false)` when π1's prover returns none, the first component the
   graph's otherwise).
@@ -93,13 +93,15 @@ theorem perm_kc (π : Equiv.Perm St) {α : Type} (X : OracleComp KeccakCalls α)
 theorem implH_kc : implH keccakCallsOverQueryPermutation = keccak256With queryPermutation := rfl
 theorem implF_kc : implF keccakCallsOverQueryPermutation = queryPermutation := rfl
 
-/-- **π2's experiment is `expW2` over the two calls, answered over `π`.** -/
-theorem experiment_eq_kc (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C) (input : Vector UInt8 32)
-    (rows : List ℕ) (q : D.pi1.Stack rows) :
-    recCompletenessExperiment2 D (pi1Rec3Prover D) (pi2Prover D C Fa PcsQuotient.nonceFuel) input rows q =
+/-- **π2's experiment is `expW2` over the two calls, answered over `π`**, for a π1 prover that is its two-call program
+answered over `π` at the statement. -/
+theorem experiment_eq_kc (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C) (P1 : Pi1Prover D)
+    (P1k : Pi1ProverK D) (input : Vector UInt8 32) (rows : List ℕ) (q : D.pi1.Stack rows)
+    (hP : P1 input rows q = simulateQ keccakCallsOverQueryPermutation (P1k input rows q)) :
+    recCompletenessExperiment2 D P1 (pi2Prover D C Fa PcsQuotient.nonceFuel) input rows q =
       runWithRandomPermutation (simulateQ keccakCallsOverQueryPermutation
-        (expW2 callKeccak256 callKeccakF1600 D C Fa (p1k D input rows q) input)) := by
-  rw [sim_expW2, implH_kc, implF_kc, p1k, UniComplete.Rec3.proverCommutes3_flockProve3H D.pi1, implH_kc, implF_kc]
+        (expW2 callKeccak256 callKeccakF1600 D C Fa (P1k input rows q) input)) := by
+  rw [sim_expW2, implH_kc, implF_kc, ← hP]
   unfold recCompletenessExperiment2 expW2
   congr 1
   rw [Pi2H.setupTreesWith_eqH]
@@ -128,7 +130,7 @@ theorem staged_eq_kc {α : Type} (X : OracleComp KeccakCalls α) :
 the graph accepting, the witness is honest, and the staged run is the experiment. -/
 theorem expW2_event_staged {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
     (hwc : Pi2WitnessComplete D C Fa) (input : Vector UInt8 32)
-    (P1k : OracleComp KeccakCalls (Option UniStatement.UniProof)) (Ht : List UInt8 → Digest)
+    (P1k : OracleComp KeccakCalls (Option UniKeccak.KeccakProof)) (Ht : List UInt8 → Digest)
     (Ft : KeccakState → KeccakState)
     (hev : (runAt Ht Ft (expW2 callKeccak256 callKeccakF1600 D C Fa P1k input)).1 = true ∧
       (runAt Ht Ft (expW2 callKeccak256 callKeccakF1600 D C Fa P1k input)).2 = false) :
@@ -158,21 +160,24 @@ theorem expW2_event_staged {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D)
 
 /-! ## `Pi2ExperimentLe` -/
 
-/-- **`Pi2ExperimentLe` at π1-rec3's honest prover**, from the witness's completeness. -/
-theorem pi2ExperimentLe_p1k {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
-    (hwc : Pi2WitnessComplete D C Fa) : Pi2ExperimentLe D C Fa (pi1Rec3Prover D) (p1k D) := by
-  intro input rows q _ _
-  rw [experiment_eq_kc, staged_eq_kc, prEvent_runWithRandomPermutation, prEvent_runWithRandomPermutation]
+/-- **`Pi2ExperimentLe` at a π1 prover that is its two-call program answered over `π`** (`Pi1OverPerm`, named), from
+the witness's completeness. -/
+theorem pi2ExperimentLe_of {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
+    (hwc : Pi2WitnessComplete D C Fa) {P1 : Pi1Prover D} {P1k : Pi1ProverK D} (hP : Pi1OverPerm D P1 P1k) :
+    Pi2ExperimentLe D C Fa P1 P1k := by
+  intro input rows q hfit hrel
+  rw [experiment_eq_kc D C Fa P1 P1k input rows q (hP input rows q hfit hrel), staged_eq_kc,
+    prEvent_runWithRandomPermutation, prEvent_runWithRandomPermutation]
   refine mul_le_mul' le_rfl (Finset.sum_le_sum fun π _ ↦ ?_)
   rw [perm_kc, perm_kc, prEvent_pure, prEvent_pure]
   split_ifs with h1 h2
   · exact le_rfl
-  · exact absurd (expW2_event_staged hD C Fa hwc input (p1k D input rows q) (hOf π) (⇑π) h1) h2
+  · exact absurd (expW2_event_staged hD C Fa hwc input (P1k input rows q) (hOf π) (⇑π) h1) h2
   · exact zero_le
   · exact le_rfl
 
 end RecCompose.Pi2Sim
 
-/-- info: 'RecCompose.Pi2Sim.pi2ExperimentLe_p1k' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'RecCompose.Pi2Sim.pi2ExperimentLe_of' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms RecCompose.Pi2Sim.pi2ExperimentLe_p1k
+#print axioms RecCompose.Pi2Sim.pi2ExperimentLe_of

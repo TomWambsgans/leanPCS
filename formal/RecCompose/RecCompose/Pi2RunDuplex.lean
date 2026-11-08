@@ -1,6 +1,6 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. π2's analogue of `formal/UniComplete/UniComplete/
 -- ProverDuplex.lean`, `VerifierHDuplex.lean` and `Rec3ProbExp.lean`'s `duplexVm_stagedU3`, for `Pi2ProbStaged`'s
--- staged run (`pi2Staged`: the setup, π1-rec3's honest prover, π1-rec3's graph, π2's honest prover
+-- staged run (`pi2Staged`: the setup, π1-rec3's prover, π1-rec3's graph, π2's honest prover
 -- `crates/leanvm/rec/src/pi2/prover.rs`, the contract `formal/RecStatement`); uses
 -- `formal/EndToEnd/Completeness/E2ECompleteness/Duplex.lean` (`Disc`, `disc_proveOpeningWithH`, `disc_openingWithH`,
 -- `hOnly_commitWithH`) and leanerVM (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`, commit 6175f1a0,
@@ -10,16 +10,15 @@ import RecCompose.Pi2P1
 /-!
 # The duplex discipline of π2's staged run (`Pi2RunDuplex`)
 
-**`pi2RunDuplex_p1k : Pi2RunDuplex D C Fa (p1k D)`**: every Keccak-f[1600] call of `pi2Staged` (at π1-rec3's honest
-prover) continues a duplex or starts one at a zero capacity, from no earlier answer (mumbai's `DuplexVm`). No
-hypothesis.
+**`pi2RunDuplex_of hP1 : Pi2RunDuplex D C Fa P1k`**: every Keccak-f[1600] call of `pi2Staged` continues a duplex or
+starts one at a zero capacity, from no earlier answer (mumbai's `DuplexVm`), for a π1 prover whose own permutation
+calls do (`Pi1Disc D P1k`, named).
 
-* **The hash-only parts**: the setup (`hOnly_setupTreesWithH2`: π1's three trees, π2's setup tree), π2's IV
+* **The hash-only parts**: the setup (`hOnly_setupTreesWithH2`: π1's one tree, π2's setup tree), π2's IV
   (`hOnly_ivOfH`: the digest's three hashes and the IV's), the seed, π2's prover's stream (`wHOnly_pre2`, `mid2`,
   `post2`: the public values, the commitments, the challenges) and the contract's run on the calldata
   (`cHOnly_runWithH`: the channel's calculus `CHOnly`, every challenge a Keccak-256 call).
-* **The permutation is called by the openings only**, each disciplined: π1-rec3's prover's three
-  (`disc_uniProverRec3With`), the graph's three `PCS_OPEN`s and the contract's six (`disc_pcsOpenWithH`,
+* **The permutation is called by the openings only**, each disciplined: π1-rec3's prover's (`Pi1Disc`), the graph's three `PCS_OPEN`s and the contract's six (`disc_pcsOpenWithH`,
   `disc_openingWithH`), π2's prover's three (`disc_proveOpeningWithH`).
 * **The staged run** (`disc_pi2Staged`): for any `P1k` that is disciplined (`Disc`).
 -/
@@ -31,8 +30,7 @@ open LeanVM LeanVM.Rpm LeanVM.Parameters LeanVM.Semantics LeanVM.Protocol LeanVM
 open RecStatement
 open UniStatement (Chan ChanM)
 open E2ECompleteness (Disc disc_pure disc_of_hOnly)
-open UniComplete (WHOnly wHOnly_pure wHOnly_get wHOnly_lift wHOnly_sampleW wHOnly_sendRoot wHOnly_sendScalar
-  wHOnly_sendScalars wHOnly_sendInteger disc_forIn_list)
+open UniKeccakComplete (WHOnly wHOnly_pure wHOnly_get wHOnly_lift wHOnly_sampleW wHOnly_sendRoot wHOnly_sendScalar wHOnly_sendScalars wHOnly_sendInteger disc_forIn_list)
 
 namespace RecCompose.Pi2G
 
@@ -134,8 +132,8 @@ theorem cHOnly_nextScalars (n : ℕ) : CHOnly (UniStatement.nextScalars (m := Or
   exact (cHOnly_forIn_range _ _ _ fun _ _ ↦ cHOnly_nextScalar.bind fun _ ↦ cHOnly_pure _).bind fun _ ↦
     cHOnly_pure _
 
-theorem cHOnly_sampleH : CHOnly (UniComplete.sampleH callKeccak256) := by
-  unfold UniComplete.sampleH
+theorem cHOnly_sampleH : CHOnly (UniKeccakComplete.sampleH callKeccak256) := by
+  unfold UniKeccakComplete.sampleH
   exact cHOnly_get.bind fun _ ↦ (cHOnly_liftH _).bind fun _ ↦ (cHOnly_set _).bind fun _ ↦ cHOnly_pure _
 
 theorem cHOnly_finish : CHOnly (UniStatement.finish (m := OracleComp KeccakCalls)) := by
@@ -165,10 +163,10 @@ theorem hOnly_runWithH (s : Spec) (iv input : List UInt8) (stream : Array UInt8)
 
 /-! ## The setup, the IV, the prover's stream -/
 
-/-- **The setup only hashes** (π1's three trees, π2's setup tree). -/
+/-- **The setup only hashes** (π1's one tree, π2's setup tree). -/
 theorem hOnly_setupTreesWithH2 (D : RecDeployment) : HOnly (Pi2H.setupTreesWithH callKeccak256 callKeccakF1600 D) := by
-  unfold Pi2H.setupTreesWithH Pi2H.setupTreeWithH
-  exact (UniComplete.hOnly_setupTreesWithH D.pi1).bind fun _ ↦ (E2ECompleteness.hOnly_commitWithH _ _).bind fun _ ↦
+  unfold Pi2H.setupTreesWithH Pi2H.setupTreeKWithH Pi2H.setupTreeWithH
+  exact (E2ECompleteness.hOnly_commitWithH _ _).bind fun _ ↦ (E2ECompleteness.hOnly_commitWithH _ _).bind fun _ ↦
     hOnly_pure _
 
 /-- **π2's IV only hashes** (the digest's three hashes, the IV's). -/
@@ -211,7 +209,7 @@ theorem wHOnly_post2 (G : RecPiop.Circuit E) (setupStack : Array K) (input : Lis
 
 /-- **π1-rec3's graph with its three `PCS_OPEN`s is disciplined.** -/
 theorem disc_pi1GraphVerifierWithH (D : RecDeployment) (roots : UniStatement.SetupRoots) (input : Vector UInt8 32)
-    (p : UniStatement.UniProof) : Disc (Pi2H.pi1GraphVerifierWithH callKeccak256 callKeccakF1600 D roots input p) := by
+    (p : UniKeccak.KeccakProof) : Disc (Pi2H.pi1GraphVerifierWithH callKeccak256 callKeccakF1600 D roots input p) := by
   unfold Pi2H.pi1GraphVerifierWithH
   split
   · exact disc_pure _
@@ -222,7 +220,7 @@ theorem disc_pi1GraphVerifierWithH (D : RecDeployment) (roots : UniStatement.Set
       · split
         · exact disc_pure _
         · refine (disc_forIn_list _ _ _ fun x s ↦ ?_).bind fun _ ↦ disc_pure _
-          exact (UniComplete.disc_pcsOpenWithH _ _ _ _).bind fun _ ↦ disc_pure _
+          exact (UniKeccakComplete.disc_pcsOpenWithH _ _ _ _).bind fun _ ↦ disc_pure _
 
 /-- **`PCS_OPEN` on a call's words is disciplined.** -/
 theorem disc_pcsOpenAtH (reg : List (List UInt8 × Opener)) (words : List (List UInt8)) (p : Compile.Proof) :
@@ -230,7 +228,7 @@ theorem disc_pcsOpenAtH (reg : List (List UInt8 × Opener)) (words : List (List 
   unfold Pi2H.pcsOpenAtH
   split
   · exact disc_pure _
-  · exact UniComplete.disc_pcsOpenWithH _ _ _ _
+  · exact UniKeccakComplete.disc_pcsOpenWithH _ _ _ _
   · exact E2ECompleteness.disc_openingWithH _ _ _ _
 
 /-- **The contract is disciplined.** -/
@@ -256,7 +254,7 @@ theorem disc_verifierWithH (D : RecDeployment) (roots : RecSetupRoots) (input : 
 /-! ## The staged run -/
 
 theorem disc_stageA (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
-    (P1k : OracleComp KeccakCalls (Option UniStatement.UniProof)) (hP : Disc P1k) (input : Vector UInt8 32) :
+    (P1k : OracleComp KeccakCalls (Option UniKeccak.KeccakProof)) (hP : Disc P1k) (input : Vector UInt8 32) :
     Disc (stageA callKeccak256 callKeccakF1600 D C Fa P1k input) := by
   unfold stageA
   refine (disc_of_hOnly (hOnly_setupTreesWithH2 D)).bind fun trees ↦ hP.bind fun o ↦ ?_
@@ -288,7 +286,7 @@ theorem disc_stageC (D : RecDeployment) (C : Pi2Circuits D) (input : Vector UInt
 
 /-- **The staged run is disciplined**, for any disciplined π1 prover. -/
 theorem disc_pi2Staged (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
-    (P1k : OracleComp KeccakCalls (Option UniStatement.UniProof)) (hP : Disc P1k) (input : Vector UInt8 32) :
+    (P1k : OracleComp KeccakCalls (Option UniKeccak.KeccakProof)) (hP : Disc P1k) (input : Vector UInt8 32) :
     Disc (pi2Staged D C Fa P1k input).run := by
   unfold Pi2P.Pi2Staged.run Pi2P.staged3 Pi2P.Pi2Staged.tail
   refine (disc_stageA D C Fa P1k hP input).bind fun a ↦ (disc_of_hOnly (hOnly_queryH _)).bind fun _ ↦
@@ -296,13 +294,10 @@ theorem disc_pi2Staged (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D 
   refine ((disc_stageB D C a _ _ _).bind fun b ↦ (disc_of_hOnly (hOnly_queryH _)).bind fun st ↦
     (disc_stageC D C input b st).bind fun _ ↦ disc_pure _).bind fun _ ↦ disc_pure _
 
-/-- **`Pi2RunDuplex` for π1-rec3's honest prover** (`disc_uniProverRec3With`, its Flock prover hash-only by its
-commutation). -/
-theorem pi2RunDuplex_p1k (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C) :
-    Pi2RunDuplex D C Fa (p1k D) := fun input rows q _ _ ↦
-  (duplexVm_iff_duplexP _ _).mpr (disc_pi2Staged D C Fa _ (UniComplete.Rec3.disc_uniProverRec3With
-    UniComplete.Rec3.flockProve3H (UniComplete.flockHashOnly_of_commutes _ UniComplete.Rec3.flockCommutes_flockProve3H)
-    D.pi1 input rows q) input [])
+/-- **`Pi2RunDuplex` for a disciplined π1 prover** (`Pi1Disc`, named). -/
+theorem pi2RunDuplex_of (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C) {P1k : Pi1ProverK D}
+    (hP1 : Pi1Disc D P1k) : Pi2RunDuplex D C Fa P1k := fun input rows q hfit hrel ↦
+  (duplexVm_iff_duplexP _ _).mpr (disc_pi2Staged D C Fa _ (hP1 input rows q hfit hrel) input [])
 
 end RecCompose.Pi2G
 
@@ -310,6 +305,6 @@ end RecCompose.Pi2G
 #guard_msgs in
 #print axioms RecCompose.Pi2G.disc_pi2Staged
 
-/-- info: 'RecCompose.Pi2G.pi2RunDuplex_p1k' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'RecCompose.Pi2G.pi2RunDuplex_of' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms RecCompose.Pi2G.pi2RunDuplex_p1k
+#print axioms RecCompose.Pi2G.pi2RunDuplex_of

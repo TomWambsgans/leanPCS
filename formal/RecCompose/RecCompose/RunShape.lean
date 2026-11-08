@@ -1,16 +1,16 @@
--- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. π1-rec3's run is `formal/UniStatement`'s
--- (`UniStatement/Rec.lean`: `reduceWithFs`, `batchFs`, `runWithFs`, `runFs`).
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The Keccak π1-rec3's run is `formal/UniKeccak`'s
+-- (`UniKeccak/Verifier.lean`: `reduceWithK`, `runWithK`, `runK`).
 import RecCompose.Pi2Run
 import RecCompose.CompleteCouplings
 
 /-!
-# π1-rec3's run leaves no matrices' claim and reads its roots as two limbs: `Pi1RunShape`
+# The Keccak π1-rec3's run leaves no matrices' claim and reads its roots as two limbs: `Pi1RunShape`
 
-**`pi1RunShape`**: a run of π1-rec3's verifier (`runFs reference … (.flock flockMain) .point .rec3 true`) that returns
-a result has no matrices' claim and roots whose four halves have zero top limbs. Through `reduceWithFs` with the walk
-(`HoldsE`, postconditions on a channel computation's results): Flock's walked verifier leaves no matrices' reduction
-pending, so the batch (`batchFs` with nothing pending) returns none (`holdsE_batchFs_none`) and the matrices stay none;
-the roots are the two `nextRoot`s, each half `eNew _ _ 0` (`holdsE_nextRoot`).
+**`pi1RunShape`**: a run of the Keccak π1-rec3's verifier (`UniKeccak.runK keccak128 … keccakRec3 .point`) that returns
+a result has no matrices' claim and roots whose four halves have zero top limbs. Through `reduceWithK` (`HoldsE`,
+postconditions on a channel computation's results): its result is built with no matrices' claim (the Keccak-f block's
+Flock leaves none: `reduceWithK` returns `none` there), and its roots are the two `nextRoot`s, each half `eNew _ _ 0`
+(`holdsE_nextRoot`). Unlike the BLAKE2s VM's `reduceWithFs`, nothing of the batch is needed.
 -/
 
 set_option linter.unusedSectionVars false
@@ -20,8 +20,7 @@ namespace RecCompose
 open UniStatement LeanVM.Parameters LeanVM.Semantics LeanVM.Protocol LeanVM.Protocol.KeccakHash
 
 attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
-  LeanVM.Protocol.Compile.instFintypeKState UniStatement.layoutWords UniStatement.setupStack
-  UniStatement.flockMatrixStack
+  LeanVM.Protocol.Compile.instFintypeKState UniKeccak.layoutWordsK UniKeccak.setupStackK
 
 section Generic
 
@@ -71,56 +70,47 @@ theorem holdsE_nextRoot : HoldsE (nextRoot (m := m)) fun x ↦ x.1.limb 2 = 0 �
   obtain ⟨-, rfl⟩ := hok a ha
   exact ⟨rfl, rfl⟩
 
-/-- **With nothing pending, the batch returns no matrices' claim.** -/
-theorem holdsE_batchFs_none (F : KeccakState → m KeccakState) (fs : FsShape)
-    (combined : List (Commitment × Combined)) (layouts : List (Commitment × StackLayout))
-    (bitSlice : Option Combined) (ringMap : Option (List E)) :
-    HoldsE (batchFs F fs combined layouts bitSlice ringMap none) fun y ↦ y.2 = none := by
-  unfold batchFs
-  refine holdsE_bind (holdsE_true (m := m) _) fun lambda _ ↦ ?_
-  dsimp only
-  split <;>
-    repeat (first | exact holdsE_pure rfl | refine holdsE_bind (holdsE_true (m := m) _) fun _ _ ↦ ?_)
-
-/-- The result of π1-rec3's reduction: no matrices' claim, the roots' halves with zero top limbs. -/
+/-- The result of the Keccak π1-rec3's reduction: no matrices' claim, the roots' halves with zero top limbs. -/
 def ShapeOK (r : Reduced) : Prop :=
   r.matrices = none ∧ (r.roots.1.1.limb 2 = 0 ∧ r.roots.1.2.limb 2 = 0) ∧
     (r.roots.2.1.limb 2 = 0 ∧ r.roots.2.2.limb 2 = 0)
 
-/-- **π1-rec3's reduction** (the walk, point claims) returns no matrices' claim and roots read as two limbs. -/
-theorem holdsE_reduceWithFs (F : KeccakState → m KeccakState) (stmt : List E) :
-    HoldsE (reduceWithFs F reference stmt (.flock flockMain) .point .rec3 true) ShapeOK := by
-  unfold reduceWithFs
+/-- **The Keccak verifier's reduction** (any shape, variant and claims' mode) returns no matrices' claim and roots
+read as two limbs. -/
+theorem holdsE_reduceWithK (F : KeccakState → m KeccakState) (shape : UniStatement.Shape) (stmt : List E)
+    (v : UniKeccak.KeccakVariant) (mode : ClaimsMode) :
+    HoldsE (UniKeccak.reduceWithK F shape stmt v mode) ShapeOK := by
+  unfold UniKeccak.reduceWithK
   dsimp only
   repeat (first
     | exact holdsE_pure ⟨rfl, ‹_›, ‹_›⟩
-    | exact holdsE_pure ⟨‹_›, ‹_›, ‹_›⟩
     | exact holdsE_bind (holdsE_throw (m := m) _) fun _ h ↦ False.elim h
     | refine holdsE_bind holdsE_nextRoot fun _ _ ↦ ?_
-    | refine holdsE_bind (holdsE_batchFs_none F _ _ _ _ _) fun _ _ ↦ ?_
     | (refine holdsE_bind (holdsE_pure_eq (m := m) _) fun _ h ↦ ?_; subst h; try dsimp only)
     | refine holdsE_bind (holdsE_true (m := m) _) fun _ _ ↦ ?_
     | split)
 
-/-- **π1-rec3's run, over any permutation**: a result has no matrices' claim and roots read as two limbs. -/
-theorem runWithFs_shape (F : KeccakState → m KeccakState) (iv publicInput : List UInt8) (stream : Array UInt8) :
-    Holds (runWithFs F reference iv publicInput stream (.flock flockMain) .point .rec3 true) fun o ↦
-      ∀ r, o.result = .ok r → ShapeOK r := by
-  unfold runWithFs
+/-- **The Keccak verifier's run, over any permutation**: a result has no matrices' claim and roots read as two
+limbs. -/
+theorem runWithK_shape (F : KeccakState → m KeccakState) (shape : UniStatement.Shape) (iv publicInput : List UInt8)
+    (stream : Array UInt8) (v : UniKeccak.KeccakVariant) (mode : ClaimsMode) :
+    Holds (UniKeccak.runWithK F shape iv publicInput stream v mode) fun o ↦ ∀ r, o.result = .ok r → ShapeOK r := by
+  unfold UniKeccak.runWithK
   refine holds_bind (holds_true _) fun seed _ ↦ holds_bind (Q := fun p ↦ ∀ a, p.1 = .ok a → ShapeOK a) ?_
     fun p hp ↦ ?_
-  · exact holdsE_bind (holdsE_reduceWithFs F _) (fun a ha ↦ holdsE_bind (holdsE_true (m := m) _) fun _ _ ↦
-      holdsE_pure ha) _
+  · exact holdsE_bind (holdsE_reduceWithK F shape _ v mode) (fun a ha ↦ holdsE_bind (holdsE_true (m := m) _)
+      fun _ _ ↦ holdsE_pure ha) _
   · obtain ⟨result, chan⟩ := p
     exact holds_pure hp
 
 end Generic
 
-/-- **`Pi1RunShape`**: a run of π1-rec3's verifier that returns a result has no matrices' claim and roots whose halves
-have zero top limbs. -/
+/-- **`Pi1RunShape`**: a run of the Keccak π1-rec3's verifier that returns a result has no matrices' claim and roots
+whose halves have zero top limbs. -/
 theorem pi1RunShape : Pi1RunShape := by
   intro iv publicInput stream r hr
-  have h := holds_id (runWithFs_shape (m := Id) (fun s ↦ pure (keccakF1600 s)) iv publicInput stream) r hr
+  have h := holds_id (runWithK_shape (m := Id) (fun s ↦ pure (keccakF1600 s)) RecGraphKeccak.Pi1.keccak128 iv
+    publicInput stream UniKeccak.keccakRec3 .point) r hr
   exact ⟨h.1, h.2.1.1, h.2.1.2, h.2.2.1, h.2.2.2⟩
 
 end RecCompose

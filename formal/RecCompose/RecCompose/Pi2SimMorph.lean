@@ -1,5 +1,5 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Follows `formal/UniComplete/UniComplete/VerifierHSim.lean`
--- and `ProverSim.lean` (`UniComplete.Morph`, its channel and writer liftings) for π2's code (`Pi2CompleteH`'s contract,
+-- and `ProverSim.lean` (`UniKeccakComplete.Morph`, its channel and writer liftings) for π2's code (`Pi2CompleteH`'s contract,
 -- setup and graph verifier with Keccak-256 explicit, `Pi2Prover`'s honest prover, `Pi2ProbStaged`'s stages), over
 -- leanerVM's two calls (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`, commit 6175f1a0, MIT OR
 -- Apache-2.0: `implH`, `implF`, `simulateQ_queryH`) and `formal/EndToEnd/Completeness/E2ECompleteness/WithHash.lean`'s
@@ -10,7 +10,7 @@ import RecCompose.Pi2P1
 # π2's code commutes with simulation
 
 Every function of π2's completeness experiment is written over any monad, Keccak-256 `H` and the permutation `F`
-explicit. Read through a monad morphism `φ` (`UniComplete.Morph`) that commutes with WHIR's opening and its prover
+explicit. Read through a monad morphism `φ` (`UniKeccakComplete.Morph`) that commutes with WHIR's opening and its prover
 (`hopen`, `hprove`), each is the same function over `φ ∘ H`, `φ ∘ F` (`app_…`, `chan_…`, `wr_…`): the setup
 (`app_setupTreesWithH2`), the IV (`app_ivOfH`), π1-rec3's graph with its openings (`app_pi1GraphVerifierWithH`), π2's
 run and contract (`chan_reduceWithH2`, `app_runWithH2`, `app_contractWithH`, `app_verifierWithH2`), π2's honest prover
@@ -29,7 +29,7 @@ open OracleComp OracleSpec
 open LeanVM
 open LeanVM.Protocol.Compile.Rom (implH implF simulateQ_queryH simulateQ_queryF)
 open UniStatement (Chan ChanM)
-open UniComplete (Morph)
+open UniKeccakComplete (Morph)
 open Pi2S Pi2K Pi2P Pi2E Pi2G
 
 section Morph
@@ -42,7 +42,7 @@ variable {m n : Type → Type} [Monad m] [LawfulMonad m] [Monad n] [LawfulMonad 
 theorem app_setupTreesWithH2 (D : RecDeployment) :
     φ.app (Pi2H.setupTreesWithH H F D) =
       Pi2H.setupTreesWithH (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) D := by
-  simp only [Pi2H.setupTreesWithH, Pi2H.setupTreeWithH, UniComplete.setupTreesWithH, φ.app_bind, φ.app_pure,
+  simp only [Pi2H.setupTreesWithH, Pi2H.setupTreeKWithH, Pi2H.setupTreeWithH, φ.app_bind, φ.app_pure,
     Morph.app_commitWithH]
 
 theorem app_digestWithH (c : Pi2Circuit) :
@@ -68,14 +68,14 @@ variable (hopen : ∀ (L : PcsQuotient.Layout) (root : Digest) (claims : List Pc
 include hopen in
 theorem app_pcsOpenWithH (vars : ℕ) (root : Digest) (claims : List PcsQuotient.Claim)
     (proof : LeanVM.Protocol.Compile.Proof) :
-    φ.app (UniComplete.pcsOpenWithH H F vars root claims proof) =
-      UniComplete.pcsOpenWithH (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) vars root claims proof :=
+    φ.app (UniKeccakComplete.pcsOpenWithH H F vars root claims proof) =
+      UniKeccakComplete.pcsOpenWithH (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) vars root claims proof :=
   hopen _ _ _ _
 
 include hopen in
 /-- **π1-rec3's graph with its three openings.** -/
 theorem app_pi1GraphVerifierWithH (D : RecDeployment) (roots : UniStatement.SetupRoots) (input : Vector UInt8 32)
-    (proof : UniStatement.UniProof) :
+    (proof : UniKeccak.KeccakProof) :
     φ.app (Pi2H.pi1GraphVerifierWithH H F D roots input proof) =
       Pi2H.pi1GraphVerifierWithH (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) D roots input proof := by
   unfold Pi2H.pi1GraphVerifierWithH
@@ -177,7 +177,7 @@ theorem app_pi2ProveWith (fuel : ℕ) (G : RecPiop.Circuit E) (view : Circuit) (
 
 include hprove in
 theorem app_pi2ProverWith (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C) (fuel : ℕ)
-    (input : Vector UInt8 32) (p1 : UniStatement.UniProof) :
+    (input : Vector UInt8 32) (p1 : UniKeccak.KeccakProof) :
     φ.app (pi2ProverWith H F D C Fa fuel input p1) =
       pi2ProverWith (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) D C Fa fuel input p1 := by
   simp only [pi2ProverWith, φ.app_bind, φ.app_pure, app_setupTreesWithH2, app_ivOfH,
@@ -187,7 +187,7 @@ theorem app_pi2ProverWith (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts
 
 include hopen hprove in
 theorem app_expW2 (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
-    (p1o : m (Option UniStatement.UniProof)) (input : Vector UInt8 32) :
+    (p1o : m (Option UniKeccak.KeccakProof)) (input : Vector UInt8 32) :
     φ.app (expW2 H F D C Fa p1o input) =
       expW2 (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) D C Fa (φ.app p1o) input := by
   simp only [expW2, φ.app_bind, app_setupTreesWithH2]
@@ -218,7 +218,7 @@ theorem wr_post2 (G : RecPiop.Circuit E) (setupStack : Array K) (input : List UI
 
 include hopen in
 theorem app_stageA (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
-    (p1o : m (Option UniStatement.UniProof)) (input : Vector UInt8 32) :
+    (p1o : m (Option UniKeccak.KeccakProof)) (input : Vector UInt8 32) :
     φ.app (stageA H F D C Fa p1o input) =
       stageA (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) D C Fa (φ.app p1o) input := by
   simp only [stageA, φ.app_bind, app_setupTreesWithH2]
@@ -274,7 +274,7 @@ theorem hprove_sim : ∀ (fuel : ℕ) (L : PcsQuotient.Layout) (tree : LeanVM.Pr
 
 /-- **The experiment over the two calls commutes with any simulation.** -/
 theorem sim_expW2 (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
-    (p1o : OracleComp KeccakCalls (Option UniStatement.UniProof)) (input : Vector UInt8 32) :
+    (p1o : OracleComp KeccakCalls (Option UniKeccak.KeccakProof)) (input : Vector UInt8 32) :
     simulateQ impl (expW2 callKeccak256 callKeccakF1600 D C Fa p1o input) =
       expW2 (implH impl) (implF impl) D C Fa (simulateQ impl p1o) input := by
   have h := app_expW2 (Morph.sim impl) callKeccak256 callKeccakF1600 (hopen_sim impl) (hprove_sim impl) D C Fa p1o
@@ -283,7 +283,7 @@ theorem sim_expW2 (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
   exact h
 
 theorem sim_stageA (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
-    (p1o : OracleComp KeccakCalls (Option UniStatement.UniProof)) (input : Vector UInt8 32) :
+    (p1o : OracleComp KeccakCalls (Option UniKeccak.KeccakProof)) (input : Vector UInt8 32) :
     simulateQ impl (stageA callKeccak256 callKeccakF1600 D C Fa p1o input) =
       stageA (implH impl) (implF impl) D C Fa (simulateQ impl p1o) input := by
   have h := app_stageA (Morph.sim impl) callKeccak256 callKeccakF1600 (hopen_sim impl) D C Fa p1o input

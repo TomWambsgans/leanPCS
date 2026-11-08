@@ -1,35 +1,42 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The model, the experiments' shape and the form of the
--- statements are `formal/UniStatement`'s (`Security.lean`, `RecSecurity.lean`, after `formal/Statement`'s
+-- statements are `formal/UniStatement`'s and `formal/UniKeccak`'s (`Security.lean`, after `formal/Statement`'s
 -- `PcsQuotient.Security` and leanerVM `mumbai` 6175f1a0's `Statement/LeanVm.lean`, MIT OR Apache-2.0); the relation is
--- Lv42's (`formal/Lv42`, leanerVM `mumbai` f0393df4's `M3Holds`); π1-rec3's graph and its merge hazard are
--- `formal/RecGraph`'s. Transcribed from `crates/leanvm/rec/src/pi2/circuit.rs` (`Circuit::digest`), `prover.rs`
--- (`Setup::new`) and `contract.rs` (`registry`, the calls), and `crates/leanvm/statement/src/evm/machine.rs`
--- (`decode`, `root_of_word`), branch `leanvm-rec` @ 2b22581.
+-- the Keccak VM's (`formal/KeccakVm`, `KvHolds`, through `UniKeccak.KDeployment.Relation`); the Keccak π1-rec3's
+-- recorded graph and its merge hazard are `formal/RecGraphKeccak`'s. Transcribed from
+-- `crates/leanvm/rec/src/pi2/circuit.rs` (`Circuit::digest`), `prover.rs` (`Setup::new`) and `contract.rs`
+-- (`registry`, the calls), and `crates/leanvm/statement/src/evm/machine.rs` (`decode`, `root_of_word`), branch
+-- `leanvm-rec` @ 2b22581.
 import RecStatement.Calls
 import RecStatement.Data
-import UniStatement.RecSecurity
-import RecGraph.Pi1.Main
-import RecGraph.Emitted
+import UniKeccak.Security
+import RecGraphKeccak.Main
+import RecGraphKeccak.Emitted
 import RecCircuit.Sound
+import KeccakFlock.Complete
 
 /-!
-# The recursive verifier's end statements, against leanVM 42422001's relation
+# The recursive verifier's end statements, against the Keccak VM's relation
 
-Statements only, no proof (the composition proves them).
+Statements only, no proof (the composition proves them). The recursion's inner proof π1 is the Keccak VM's verifier
+(`formal/UniKeccak`, leanVM 9d50c92a3's Keccak VM) at π1-rec3's Fiat–Shamir shape (`UniKeccak.keccakRec3`) and the
+point-claim ABI; π2's verifier, circuit, setup and openings are generic in π2's circuit (`Core`, `Spec`, `Verifier`,
+`Calls`).
 
 **Two models, which do not compose formally.** π2's circuit computes π1-rec3's Fiat–Shamir challenges with the
-**real Keccak-f[1600]**: a circuit is a fixed function (`RecCircuit.compile_sound`, `keccak_out`: its ports carry
-`RecGraph.evalNodes` over Keccak-f[1600]). π1-rec3's knowledge soundness is proved in the **random-permutation model**
-(`UniSound.Rec3Ref.uniKnowledgeSoundness_closed_rec3`, 128.49 bits). No circuit computes a random permutation, so the
+**real Keccak-f[1600]**: a circuit is a fixed function (`RecCircuit.compile_sound`, `keccak_out`; for the Keccak
+π1-rec3's graph `RecGraphKeccak.pi1rec3K_end`: its ports carry `RecGraph.evalNodes` over Keccak-f[1600]).
+π1-rec3's knowledge soundness is proved in the **random-permutation model**
+(`UniKeccakSound.uniKnowledgeSoundnessKeccakRec3_closed`: error `uniBound128 (2^35/|E|) Q`, at most `2^-64` for
+`Q ≤ 2^64`). No circuit computes a random permutation, so the
 statements come in two parts, as the earlier proofs' caveat says (AGENTS.md: "the theorems are in the
 random-permutation model and do not formally compose with the EVM one, which holds at the real Keccak-f[1600]"):
 
 1. **π2's part, in the random-permutation model** (`RecKnowledgeSoundness2`, `RecCompleteness2`): one random
    permutation `π` for π2's own Fiat–Shamir (the contract's transcript and IV), the circuit's digest, the WHIR
    commitments and the six openings. If the contract accepts, π2's explicit extractor (`recExtractor2`) outputs
-   π1's stream `s` on which **π1-rec3's recorded graph, run with Keccak-f[1600]**, accepts, its three `PCS_OPEN` calls
-   being the contract's (which `PCS_OPEN` attested) (`Pi1GraphAccepts`); but with probability `ε2 Q`.
-2. **End to end, against Lv42's `M3Holds`, as an explicit reduction** (`RecKnowledgeSoundnessReduction`,
+   π1's stream `s` on which **the Keccak π1-rec3's recorded graph, run with Keccak-f[1600]**, accepts, its three
+   `PCS_OPEN` calls being the contract's (which `PCS_OPEN` attested) (`Pi1GraphAccepts`); but with probability `ε2 Q`.
+2. **End to end, against the Keccak VM's `KvHolds`, as an explicit reduction** (`RecKnowledgeSoundnessReduction`,
    `Reduction.lean`): for every adversary `A` of `Q` queries against the recursive verifier, the end-to-end
    extractor fails while the contract accepts with probability at most `ε2 Q` plus the probabilities that two
    **explicit derived adversaries** (`pi1Adversary A`, `hazardAdversary A`: they run `A`, then π2's extractor, and make
@@ -37,61 +44,67 @@ random-permutation model and do not formally compose with the EVM one, which hol
    stream π1-rec3's graph accepts (`pi1HazardExperiment`, `Pi1HazardAccepted`). No Fiat–Shamir hypothesis: the reader
    applies the Fiat–Shamir heuristic for Keccak-f[1600] to these two adversaries, which run in `A`'s time plus π2's
    extractor's.
-3. **The end-to-end corollaries, against Lv42's `M3Holds`** (`RecKnowledgeSoundness`, `RecCompleteness`), under named
-   hypotheses about π1-rec3 **at Keccak-f[1600]**:
+3. **The end-to-end corollaries, against the Keccak VM's `KvHolds`** (`RecKnowledgeSoundness`, `RecCompleteness`),
+   under named hypotheses about π1-rec3 **at Keccak-f[1600]**:
    * `Pi1FsKeccak ε1`: π1-rec3 is knowledge sound with its Fiat–Shamir instantiated by Keccak-f[1600] (its openings
      and commitments over `π`), error `ε1 Q`. Its motivation is π1-rec3's random-permutation theorem
-     (`uniKnowledgeSoundness_closed_rec3`). **As stated it is false**: it quantifies over every adversary, and charges
-     only calls of `π`, so an adversary grinds π1's Keccak-f[1600] challenges offline for free.
+     (`uniKnowledgeSoundnessKeccakRec3_closed`). **As stated it is false**: it quantifies over every adversary, and
+     charges only calls of `π`, so an adversary grinds π1's Keccak-f[1600] challenges offline for free.
      It is the Fiat–Shamir heuristic **for adversaries of bounded Keccak-f[1600] work**, which Lean does not
      model; the reduction form (2) does not need it.
    * `Pi1HazardKeccak εh`: π1-rec3's run at Keccak-f[1600] avoids the merge hazard on the streams its graph accepts
-     (`Pi1HazardAccepted`: `RecGraph.MergeHazard`, the run drawing `t` and `t` a root of `Z_bad`, where the recorded
-     graph merges by symbol what the verifier merges by value), but with probability `εh Q`; motivated by
-     `RecGraph.hazard_prob` (`2^19/|E|` a challenge) for random challenges. False as stated for the same reason (an
-     unbounded adversary grinds `t`); the same heuristic for bounded adversaries.
-   * `RecGraph.Pi1.Pi1GraphIsVerifier`: off the hazard, the recorded graph is π1-rec3's verifier (RecGraph's target,
-     proved: `RecGraph.Pi1.pi1GraphIsVerifier`).
+     (`Pi1HazardAccepted`: `RecGraphKeccak.MergeHazardK`, the run drawing `t` (challenge 52) and `t` a root of
+     `Z_bad(p_0)`, where the recorded graph merges by symbol what the verifier merges by value), but with probability
+     `εh Q`; motivated by `RecGraphKeccak.hazard_probK` (`2^16/|E|` a challenge) for random challenges. False as
+     stated for the same reason (an unbounded adversary grinds `t`); the same heuristic for bounded adversaries.
+   * `RecGraphKeccak.Pi1GraphIsVerifierK`: off the hazard, the recorded graph is the Keccak π1-rec3's verifier
+     (RecGraphKeccak's target, proved: `RecGraphKeccak.Sim.pi1GraphIsVerifierK`).
 
    The conclusion's error is `ε2 + ε1 + εh`. Completeness likewise: π2's completeness is over its own coins and `π`
    (`RecCompleteness2`); π1-rec3's completeness at Keccak-f[1600] is the named hypothesis `Pi1CompletenessKeccak δ1`
-   (its random-permutation reading proved, `RecCompose.Pi1KF.pi1CompletenessFs_rpm` from
-   `UniComplete.Rec3.uniCompletenessRec3_end_closed`, `δ < 2^-167`), its honest proofs off the hazard
-   `Pi1HazardKeccakHonest δh` (motivated only by `RecGraph.hazard_prob`, a count for a uniform `t`; its
-   random-permutation reading is not proved).
+   (its random-permutation analogue is `UniKeccak.UniCompletenessKeccakRec3`, a statement: no proof of it is used
+   here), its honest proofs off the hazard `Pi1HazardKeccakHonest δh` (motivated only by
+   `RecGraphKeccak.hazard_probK`, a count for a uniform `t`; its random-permutation reading is not proved).
 
 **The recursive verifier** (`RecDeployment.contractWith`) is the contract (`pi2::contract`): π2's verifier on the
 calldata (`runWith`: the public input, then the stream with π1's roots and claims' elements, `W`'s and `Q`'s roots and
 the 17 values), then **six `PCS_OPEN` calls**, each decoded under the contract's registry (`machine::decode`: a known
 layout word, which fixes the variables, `k ≥ 1` claims, the exact length, every element's top 64 bits zero) and
-opened by the Statement's WHIR opening: **π1's three** (`C1`, `C2`, π1's setup `F`; their points the 27 coordinates the
-contract derives from π1-rec3's 14 pair challenges) on the plain layout of π1's stacks (`UniStatement.pcsOpenWith`, as
-`UniStatement.verifyWithFs`), and **π2's three** (`W`, the setup, `Q` with its two claims in one call) on π2's layouts
-(`PcsQuotient.openingWith`, `quotient::opening`). π1's verifier itself never runs: π2 proves its graph accepted.
-The deployed EVM bytecode is linked to this model **by transcription and test**, not by a Lean proof (unlike the
-membership verifier's `Evm.evm_accepts_iff_verifyWith`): `contract.rs`'s parity tests (`parity`, `parity_deployable`)
-and `RecStatement`'s differential runner (64 streams). The deployed contract hard-codes π2's IV (`inst.iv`, the Rust's
-from its digest and setup root); `RecDeployment.Real` pins those (`Data.digest`, `Data.setupRoot`) to the Lean
-compiler's `σ`, `κ` at π1's reference IV, checked by evaluation (`RecCompose.DigestChecked`, `rec-real-check`).
+opened by the Statement's WHIR opening: **π1's three** (`C1`, `C2`, π1's setup `F`, on the Keccak VM's layouts
+`UniKeccak.layoutWordsK`; their points the coordinates the contract derives from π1-rec3's pair challenges) on the
+plain layout of π1's stacks (`UniStatement.pcsOpenWith`, as `UniKeccak.verifyWithK`), and **π2's three** (`W`, the
+setup, `Q` with its two claims in one call) on π2's layouts (`PcsQuotient.openingWith`, `quotient::opening`). π1's
+verifier itself never runs: π2 proves its graph accepted. The deployed EVM bytecode is linked to this model **by
+transcription and test**, not by a Lean proof (unlike the membership verifier's `Evm.evm_accepts_iff_verifyWith`):
+`contract.rs`'s parity tests (`parity`, `parity_deployable`). The deployed contract hard-codes π2's IV (`inst.iv`, the
+Rust's from its digest and setup root); `RecDeployment.Real` pins those (`Data.digest`, `Data.setupRoot`) at π1's
+reference IV (`Data.pi1Iv`).
 
-**The deployment** (`RecDeployment`): π1's (`UniStatement.Deployment`: the program, the shape, leanVM's program IV),
-**π2's circuit for π1's contract IV** (`Pi2Circuit`: the verifier's view, `Circuit`, and the setup columns `σ`, `κ`;
-the IV is among `κ`'s constants, the seed of π1's transcript), π1's calls as the circuit names their words, and **where
-π2's witness holds π1's stream** (`pi1Stream`: the circuit compiler's free bits, `RecCircuit.Compiled.decodeStream`).
-`RecDeployment.Real` pins it to the circuit of π1-rec3's real proof. **π1's contract IV** is computed with
-Keccak-f[1600] at π1's setup roots (`pi1IvAt`: it is π1's Fiat–Shamir's, which the circuit computes); **π2's IV**
-(`RecDeployment.ivWith`, `prover::iv`) over `π`: π1's IV, π2's setup root, the circuit's digest, π2's layout words.
+**The deployment** (`RecDeployment`): π1's (`UniKeccak.KDeployment`: the Keccak VM's program, the shape, leanVM's
+program IV, the `A0`, `B0` roots its IV hashes), **π2's circuit for π1's contract IV** (`Pi2Circuit`: the verifier's
+view, `Circuit`, and the setup columns `σ`, `κ`; the IV is among `κ`'s constants, the seed of π1's transcript), π1's
+calls as the circuit names their words, **where π2's witness holds π1's stream** (`pi1Stream`: the circuit compiler's
+free bits, `RecCircuit.Compiled.decodeStream`), and the **Keccak-f block** (`flock : KeccakVm.KeccakFlockSpec`) of
+the relation. `RecDeployment.Real` pins it to the circuit of the Keccak π1-rec3's graph at the 128-signature reference
+and the block to `KeccakFlock.keccakFlockSpec`. **π1's contract IV** is computed with Keccak-f[1600] at π1's setup
+roots (`pi1IvAt`, `UniKeccak.contractIvK … keccakRec3`: it is π1's Fiat–Shamir's, which the circuit computes);
+**π2's IV** (`RecDeployment.ivWith`, `prover::iv`) over `π`: π1's IV, π2's setup root, the circuit's digest, π2's
+layout words.
 
-**The relation** is leanVM 42422001's, as `UniStatement.Deployment.Relation`: `M3Holds (leanIsaInstance
-blake2sFlockSpec prog s) input q` at the sizes `s` of π1's row counts, which are π1's stream's (π2's witness), so the
-extractor outputs them with the stack.
+**The setup** (`RecDeployment.setupTreesWith`): π1's is **one** WHIR commitment, of the Keccak setup stack
+(`UniKeccak.setupTreeKWith`); π1's setup roots are its root and the deployment's `A0`, `B0` constants
+(`KDeployment.setupRoots`); the Keccak-f block's matrices are never committed. π2's is the commitment of `κ`, `κ + σ`.
+
+**The relation** is the Keccak VM's, as `UniKeccak.KDeployment.Relation`: `KvHolds D.flock prog s input q`
+(`M3Holds (keccakIsaInstance prog s) input q ∧ KeccakAux D.flock prog s q`) at the sizes `s` of π1's row counts,
+which are π1's stream's (π2's witness), so the extractor outputs them with the stack.
 
 **The extractors** are explicit and computable. `recExtractor2`: the transcript's and the setup's Keccak-256
 evaluations replayed; **π2's `W`** inverted under the root the stream names and decoded (the fast path, the unique
 decoder, the list decoder, at `W`'s `2^m`, rate `1/2`), each candidate's witness values read (`basisValue`, the `B`
-basis) and **π1's stream** read off them (`pi1Stream`), the first on which π1-rec3's graph's checks hold at
-Keccak-f[1600]. `recExtractor`: then π1-rec3's own extractor (`UniStatement.uniExtractor`) on that stream with the
-proof's three π1 openings, its row counts the stream's.
+basis) and **π1's stream** read off them (`pi1Stream`), the first on which the Keccak π1-rec3's graph accepts at
+Keccak-f[1600] with the contract's π1 openings. `recExtractor`: then the Keccak π1's own extractor
+(`UniKeccak.uniExtractorK D.flock`) on that stream with the proof's three π1 openings, its row counts the stream's.
 -/
 
 namespace RecStatement
@@ -171,18 +184,21 @@ end With
 
 /-! ## The deployment -/
 
-/-- **The recursive verifier's deployment**: π1's (program, shape, program IV); π2's circuit **for π1's contract IV**
-(the IV is among the circuit's constants: the seed of π1's transcript, which the circuit hashes with Keccak-f[1600]);
-π1's calls as the circuit names their words; and π1's stream as π2's witness holds it (the compiler's free bits,
-`RecCircuit.Compiled.decodeStream`), a function of the witness's values at the positions. -/
+/-- **The recursive verifier's deployment**: π1's (the Keccak VM's program, shape, program IV, the `A0`, `B0` roots its
+IV hashes); π2's circuit **for π1's contract IV** (the IV is among the circuit's constants: the seed of π1's transcript,
+which the circuit hashes with Keccak-f[1600]); π1's calls as the circuit names their words; π1's stream as π2's witness
+holds it (the compiler's free bits, `RecCircuit.Compiled.decodeStream`), a function of the witness's values at the
+positions; and the Keccak-f block of the relation (`KvHolds flock`: what the `QFLOCK` region means; the verifier does
+not read it, the relation and π1's extractor do). -/
 structure RecDeployment where
-  pi1 : UniStatement.Deployment
+  pi1 : UniKeccak.KDeployment
   pi2 : List UInt8 → Pi2Circuit
   pi1Calls : List (List CallWord)
   pi1Stream : (ℕ → K) → Array UInt8
+  flock : KeccakVm.KeccakFlockSpec
 
-/-- **π1's contract IV** at π1's setup roots, over Keccak-f[1600] (`contract_iv_for` at `FLOCK_REC3`): π1-rec3's
-Fiat–Shamir is the circuit's, which computes Keccak-f[1600]. -/
+/-- **π1's contract IV** at π1's setup roots, over Keccak-f[1600] (`contract_iv_for` at `Blake2s::Keccak(KECCAK_REC3)`,
+`UniKeccak.contractIvK … keccakRec3`): π1-rec3's Fiat–Shamir is the circuit's, which computes Keccak-f[1600]. -/
 def RecDeployment.pi1IvAt (D : RecDeployment) (roots : UniStatement.SetupRoots) : List UInt8 :=
   pi1Iv D.pi1.shape D.pi1.programIv roots
 
@@ -192,48 +208,55 @@ def RecDeployment.circuitAt (D : RecDeployment) (roots : UniStatement.SetupRoots
 
 /-- **The real deployment's setup columns are the circuit compiler's** (how the deployment builds them: `Setup::new`
 of `adapt` of `compile`, at π1's contract IV): at every 32-byte π1 IV (π1's contract IV is a Keccak-256 digest) at
-which the Lean compiler (`RecCircuit.compile`, the Rust's by `RecCircuitTest`) accepts π1-rec3's recorded graph at the
-emitted graph's roots, π2's `σ` and `κ` are the compiled circuit's (`sigmaAt`, `kappaAt`). (Composition,
-`lean-pi2-complete`: `RecCompose.Pi2SetupColumns` follows. `RecCompose.realDeployment` has it by construction.) -/
+which the Lean compiler (`RecCircuit.compile`, the Rust's by `RecCircuitTest`) accepts the Keccak π1-rec3's recorded
+graph (`RecGraphKeccak.Pi1.pi1GraphK`) at the emitted graph's roots (`RecGraphKeccak.Emitted.rootsAt`), π2's `σ` and
+`κ` are the compiled circuit's (`sigmaAt`, `kappaAt`). -/
 def RecDeployment.SetupFromCompiler (D : RecDeployment) : Prop :=
   ∀ (iv : List UInt8), iv.length = 32 → ∀ (c : RecCircuit.Compiled),
-    RecCircuit.compile (RecCircuit.ofRG RecGraph.Pi1.pi1Graph RecGraph.Emitted.rootsAt iv) = .ok c →
+    RecCircuit.compile (RecCircuit.ofRG RecGraphKeccak.Pi1.pi1GraphK RecGraphKeccak.Emitted.rootsAt iv) = .ok c →
       (D.pi2 iv).sigma = c.circuit.sigmaAt ∧ (D.pi2 iv).kappa = c.circuit.kappaAt
 
-/-- **The real deployment's data**: π2's circuit for π1-rec3's real proof (the emitted tables at every IV, and at π1's
-reference IV the `σ`, `κ` whose digest and setup root the Rust computed), π1's calls, the reference shape and leanVM's
-program IV, and the setup columns the compiler's at every 32-byte IV (`SetupFromCompiler`).
+/-- **The real deployment's data**: π2's circuit for the Keccak π1-rec3's graph at the 128-signature reference (the
+emitted tables at every IV, and at π1's reference IV the `σ`, `κ` whose digest and setup root the Rust computed),
+π1's calls, the reference shape (`RecGraphKeccak.Pi1.keccak128`, at which the graph is recorded) and leanVM's program
+IV, the setup columns the compiler's at every 32-byte IV (`SetupFromCompiler`), and the Keccak-f block
+`KeccakFlock.keccakFlockSpec` (the one π1-rec3's random-permutation theorem is proved at).
 
-**Inhabited**: `RecCompose.realDeployment prog` (σ, κ the Lean compiler's at every IV, π1's stream its `streamW`) has
-it, `RecCompose.realDeployment_real`, given the two evaluated checks of the digest and the setup root
-(`RecCompose.DigestChecked`, `RecCompose.SetupRootChecked`, `rec-real-check`) and `GraphsAgree`. The digest and setup
-root clauses are used by no proof: they pin the model's σ, κ (from which the model's contract computes π2's IV over `π`)
-to the deployed contract's constant IV, which the Rust computed from them. **The program is not pinned**
-(`D.pi1.prog`): the end theorems hold for every program of the reference shape, the deployment's program; leanVM
-42422001's program is not transcribed in Lean. -/
+`Data.pi1Iv`, π1's reference IV, is the Rust's `contract_iv(KECCAK_128, KECCAK_REC3, PROGRAM_IV,
+SetupRoots::REFERENCE)`: at the reference roots `RecGraphKeccak.Pi1.referenceRootsK` (`F` the Keccak 128 setup's
+commitment). The digest and setup
+root clauses are used by no proof: they pin the model's σ, κ (from which the model's contract computes π2's IV over
+`π`) to the deployed contract's constant IV, which the Rust computed from them. **The program and `A0`, `B0` are not
+pinned** (`D.pi1.prog`, `D.pi1.a0Root`, `D.pi1.b0Root`): the end theorems hold for every program of the reference
+shape and every pair of roots the IV hashes. -/
 def RecDeployment.Real (D : RecDeployment) : Prop :=
-  (∀ iv, (D.pi2 iv).circuit = Data.circuit) ∧ D.pi1Calls = Data.pi1Calls ∧ D.pi1.shape = UniStatement.reference ∧
+  (∀ iv, (D.pi2 iv).circuit = Data.circuit) ∧ D.pi1Calls = Data.pi1Calls ∧ D.pi1.shape = RecGraphKeccak.Pi1.keccak128 ∧
     D.pi1.programIv = UniStatement.programIv ∧
     Id.run ((D.pi2 Data.pi1Iv).digestWith (m := Id) fun x ↦ pure (LeanVM.Semantics.keccakF1600 x)) = Data.digest ∧
     digestBytes (Id.run ((D.pi2 Data.pi1Iv).setupTreeWith (m := Id)
       fun x ↦ pure (LeanVM.Semantics.keccakF1600 x))).root = Data.setupRoot ∧
-    D.SetupFromCompiler
+    D.SetupFromCompiler ∧ D.flock = KeccakFlock.keccakFlockSpec
 
 /-- **The setup's roots**: π1's three (`F`, `A0`, `B0`) and π2's (the commitment of `κ`, `κ + σ`). -/
 structure RecSetupRoots where
   pi1 : UniStatement.SetupRoots
   pi2 : Digest
 
-/-- **The setup's trees**: π1's (UniStatement's) and π2's. -/
+/-- **The setup's trees**: π1's one tree (the Keccak setup stack's commitment) with the `A0`, `B0` roots its IV hashes
+(the deployment's constants, no tree), and π2's tree. -/
 structure RecSetupTrees where
-  pi1 : UniStatement.SetupTrees
+  pi1 : LeanVM.Prover.Tree
+  a0Root : Digest
+  b0Root : Digest
   pi2 : LeanVM.Prover.Tree
 
-def RecSetupTrees.roots (t : RecSetupTrees) : RecSetupRoots := ⟨t.pi1.roots, t.pi2.root⟩
+/-- The setup's roots: π1's tree's root with `A0`, `B0` (`KDeployment.setupRoots` at the deployment's constants), and
+π2's tree's root. -/
+def RecSetupTrees.roots (t : RecSetupTrees) : RecSetupRoots := ⟨⟨t.pi1.root, t.a0Root, t.b0Root⟩, t.pi2.root⟩
 
-/-- The setup's Keccak-256 evaluations, which the extractors read. -/
+/-- The setup's Keccak-256 evaluations, which the extractors read: π1's tree's, then π2's. -/
 def RecSetupTrees.evaluations (t : RecSetupTrees) : List (List UInt8 × Digest) :=
-  t.pi1.evaluations ++ PcsQuotient.Tree.evaluations t.pi2
+  PcsQuotient.Tree.evaluations t.pi1 ++ PcsQuotient.Tree.evaluations t.pi2
 
 /-! ## `PCS_OPEN` -/
 
@@ -244,12 +267,12 @@ inductive Opener where
   | pi2 (layout : PcsQuotient.Layout)
 
 /-- **The registry** (`contract::registry`) of π1's shape and π2's `m`: π2's three layout words, then π1's (its calls'
-layouts, `C1`, `C2`, `F`). -/
+layouts on the Keccak VM, `UniKeccak.layoutWordsK`: `C1`, `C2`, `F`). -/
 def registryOf (shape : UniStatement.Shape) (m : ℕ) : List (List UInt8 × Opener) :=
   let (lw, lq, ls) := layoutWords m
   let (w, q, s) := layoutsOf m
   [(lw, .pi2 w), (lq, .pi2 q), (ls, .pi2 s)] ++
-    ((UniStatement.layoutWords shape).take 3).map fun word ↦ (word, .pi1 (UniStatement.layoutWordVars word))
+    ((UniKeccak.layoutWordsK shape).take 3).map fun word ↦ (word, .pi1 (UniStatement.layoutWordVars word))
 
 /-- The variables of a registered layout's claims. -/
 def Opener.vars : Opener → ℕ
@@ -319,8 +342,8 @@ section With
 
 variable {m : Type → Type} [Monad m] (F : KeccakState → m KeccakState)
 
-/-- **π2's IV** over `F` (`prover::iv`): π1-rec3's contract IV (Keccak-f[1600]) at π1's setup roots, the circuit's
-digest, π2's setup root, π2's layout words. -/
+/-- **π2's IV** over `F` (`prover::iv`): the Keccak π1-rec3's contract IV (Keccak-f[1600]) at π1's setup roots, the
+circuit's digest, π2's setup root, π2's layout words. -/
 def RecDeployment.ivWith (D : RecDeployment) (roots : RecSetupRoots) : m (List UInt8) := do
   let c := D.circuitAt roots.pi1
   let digest ← c.digestWith F
@@ -353,12 +376,12 @@ def RecDeployment.verifierWith (D : RecDeployment) (roots : RecSetupRoots) (inpu
     (proof : RecProof) : m Bool := do
   return (← D.contractWith F roots input proof).1
 
-/-- **The setup** over `F`: π1's (the setup stack `F`, Flock's `A0`, `B0`) and π2's (`κ`, `κ + σ` of the circuit for
-π1's contract IV at those roots). -/
+/-- **The setup** over `F`: π1's (the one commitment of the Keccak setup stack, `UniKeccak.setupTreeKWith`; `A0`, `B0`
+the deployment's constants) and π2's (`κ`, `κ + σ` of the circuit for π1's contract IV at those roots). -/
 def RecDeployment.setupTreesWith (D : RecDeployment) : m RecSetupTrees := do
-  let t1 ← UniStatement.setupTreesWith F D.pi1
-  let t2 ← (D.circuitAt t1.roots).setupTreeWith F
-  return ⟨t1, t2⟩
+  let t1 ← UniKeccak.setupTreeKWith F D.pi1
+  let t2 ← (D.circuitAt (D.pi1.setupRoots t1)).setupTreeWith F
+  return ⟨t1, D.pi1.a0Root, D.pi1.b0Root, t2⟩
 
 end With
 
@@ -367,7 +390,7 @@ end With
 /-- A π1 opening: the root, the layout word, the claims. -/
 abbrev Pi1Opening : Type := Digest × List UInt8 × List PcsQuotient.Claim
 
-/-- **A call of π1's own contract** (the bytes `RecGraph`'s outputs and `UniStatement.pcsCalls` give), decoded: its
+/-- **A call of π1's own contract** (the bytes `RecGraph`'s outputs and `UniKeccak.pcsCallsK` give), decoded: its
 root (the setup's as its hash, by the layout word's code `0x5503`; `C1`'s, `C2`'s as π1's stream carries them), layout
 word and claims (the layout word's variables, byte 24). -/
 def decodePi1Call (call : List UInt8) : Option Pi1Opening := do
@@ -387,13 +410,14 @@ def contractPi1Openings (registry : List (List UInt8 × Opener)) (calls : List (
     Option (List Pi1Opening) :=
   (calls.take 3).mapM fun words ↦ (decodeWith registry words).map fun x ↦ (x.1, words.getD 1 [], x.2.2)
 
-/-- **π1-rec3's graph accepts at Keccak-f[1600], its calls the contract's** (π2's part's conclusion): π2's circuit
-computes π1-rec3's recorded verifier graph (`RecGraph.Pi1.pi1Graph`) with the real Keccak-f[1600]
-(`RecCircuit.compile_sound`); on π1's IV, the public input and the stream `s`, the graph's checks hold and its three
-`PCS_OPEN` calls are the contract's `ops`: their layouts and claims, and `C1`'s and `C2`'s roots, which `s` carries (`F`'s
-root is the setup's, a constant of the contract, which the graph holds as the reference's). -/
+/-- **The Keccak π1-rec3's graph accepts at Keccak-f[1600], its calls the contract's** (π2's part's conclusion): π2's
+circuit computes the Keccak π1-rec3's recorded verifier graph (`RecGraphKeccak.Pi1.pi1GraphK`) with the real
+Keccak-f[1600] (`RecCircuit.compile_sound`, `RecGraphKeccak.pi1rec3K_end`); on π1's IV, the public input and the
+stream `s`, the graph's checks hold and its three `PCS_OPEN` calls are the contract's `ops`: their layouts and claims,
+and `C1`'s and `C2`'s roots, which `s` carries (`F`'s root is the setup's, a constant of the contract, which the graph
+holds as the code's reference). -/
 def Pi1GraphAccepts (iv1 : List UInt8) (input : Vector UInt8 32) (s : Array UInt8) (ops : List Pi1Opening) : Prop :=
-  ∃ out gops, RecGraph.evalGraphDeployed RecGraph.Pi1.pi1Graph iv1 input.toList s = some out ∧
+  ∃ out gops, RecGraph.evalGraphDeployed RecGraphKeccak.Pi1.pi1GraphK iv1 input.toList s = some out ∧
     (∀ z ∈ out.zeros, z = 0) ∧ (∀ z ∈ out.nonzeros, z ≠ 0) ∧ out.calls.mapM decodePi1Call = some gops ∧
     gops.map (·.2) = ops.map (·.2) ∧ (gops.take 2).map (·.1) = (ops.take 2).map (·.1)
 
@@ -401,18 +425,18 @@ section With
 
 variable {m : Type → Type} [Monad m] (F : KeccakState → m KeccakState)
 
-/-- **π1-rec3's verifier with its Fiat–Shamir over Keccak-f[1600]** and its three openings over `F`: π1's IV and run
-over Keccak-f[1600] (`pi1Iv`, `UniStatement.runFs … .rec3 true`), then `C1`, `C2`, the setup opened over `F`
-(`UniStatement.pcsOpenWith`, as `verifyWithFs`). -/
-def pi1KeccakVerifierWith (D : UniStatement.Deployment) (roots : UniStatement.SetupRoots) (input : Vector UInt8 32)
-    (proof : UniStatement.UniProof) : m Bool := do
+/-- **The Keccak π1-rec3's verifier with its Fiat–Shamir over Keccak-f[1600]** and its three openings over `F`:
+`UniKeccak.verifyWithK` at `keccakRec3` with its IV and run over Keccak-f[1600] (`pi1Iv`, `UniKeccak.runK …
+keccakRec3 .point`), then `C1`, `C2`, the setup opened over `F` (`UniStatement.pcsOpenWith`). -/
+def pi1KeccakVerifierWith (D : UniKeccak.KDeployment) (roots : UniStatement.SetupRoots) (input : Vector UInt8 32)
+    (proof : UniKeccak.KeccakProof) : m Bool := do
   let iv := pi1Iv D.shape D.programIv roots
-  let o := UniStatement.runFs D.shape iv input.toList proof.stream (.flock UniStatement.flockMain) .point .rec3 true
+  let o := UniKeccak.runK D.shape iv input.toList proof.stream UniKeccak.keccakRec3 .point
   if !o.accepts then return false
   match o.result with
   | .error _ => return false
   | .ok r =>
-    let words := UniStatement.layoutWords D.shape
+    let words := UniKeccak.layoutWordsK D.shape
     let callOf : UniStatement.Commitment → Digest × List UInt8 × Compile.Proof
       | .c1 => (UniStatement.rootOf r.roots.1, words.getD 0 [], proof.c1)
       | .c2 => (UniStatement.rootOf r.roots.2, words.getD 1 [], proof.c2)
@@ -424,13 +448,15 @@ def pi1KeccakVerifierWith (D : UniStatement.Deployment) (roots : UniStatement.Se
         let (root, word, p) := callOf c
         ok := ok && (← UniStatement.pcsOpenWith F (UniStatement.layoutWordVars word) root [⟨pt, value⟩] p)
       | _ => ok := false
+    if r.matrices.isSome then ok := false
     return ok
 
-/-- **π1-rec3's graph at Keccak-f[1600], its three openings over `F`**: the graph's checks hold and its calls (`F`'s root
-the setup's) are opened as `UniStatement.pcsOpenWith` with the proof's `C1`, `C2`, setup opening proofs. -/
+/-- **The Keccak π1-rec3's graph at Keccak-f[1600], its three openings over `F`**: the graph's checks hold and its
+calls (`F`'s root the setup's) are opened as `UniStatement.pcsOpenWith` with the proof's `C1`, `C2`, setup opening
+proofs. -/
 def pi1GraphVerifierWith (D : RecDeployment) (roots : UniStatement.SetupRoots) (input : Vector UInt8 32)
-    (proof : UniStatement.UniProof) : m Bool := do
-  match RecGraph.evalGraphDeployed RecGraph.Pi1.pi1Graph (D.pi1IvAt roots) input.toList proof.stream with
+    (proof : UniKeccak.KeccakProof) : m Bool := do
+  match RecGraph.evalGraphDeployed RecGraphKeccak.Pi1.pi1GraphK (D.pi1IvAt roots) input.toList proof.stream with
   | none => return false
   | some out =>
     if !(out.zeros.all (· == 0) && out.nonzeros.all (· != 0)) then return false
@@ -461,16 +487,16 @@ def committedWord (pre : Digest → ℕ → Option (List UInt8)) (μ : ℕ) (roo
 def candidates (μ : ℕ) (word : ℕ → List K) : List (Vector K (2 ^ μ)) :=
   fastStacks μ 1 word ++ PcsQuotient.UniqueDecoding.uniqueStacks μ 1 word ++ decodeStacks μ 1 word
 
-/-- π1-rec3's graph's checks at Keccak-f[1600] on a stream. -/
+/-- The Keccak π1-rec3's graph's checks at Keccak-f[1600] on a stream. -/
 def pi1GraphChecks (iv1 : List UInt8) (input : Vector UInt8 32) (s : Array UInt8) : Bool :=
-  match RecGraph.evalGraphDeployed RecGraph.Pi1.pi1Graph iv1 input.toList s with
+  match RecGraph.evalGraphDeployed RecGraphKeccak.Pi1.pi1GraphK iv1 input.toList s with
   | some out => out.zeros.all (· == 0) && out.nonzeros.all (· != 0)
   | none => false
 
 /-- **`Pi1GraphAccepts`, decided**: the graph's checks hold at Keccak-f[1600] and its three calls, decoded, are the
 openings `ops` (their layouts and claims, `C1`'s and `C2`'s roots). -/
 def pi1GraphAcceptsB (iv1 : List UInt8) (input : Vector UInt8 32) (s : Array UInt8) (ops : List Pi1Opening) : Bool :=
-  match RecGraph.evalGraphDeployed RecGraph.Pi1.pi1Graph iv1 input.toList s with
+  match RecGraph.evalGraphDeployed RecGraphKeccak.Pi1.pi1GraphK iv1 input.toList s with
   | none => false
   | some out =>
     out.zeros.all (· == 0) && out.nonzeros.all (· != 0) &&
@@ -490,8 +516,8 @@ def pi1OpsOf (D : RecDeployment) (roots : RecSetupRoots) (input : Vector UInt8 3
       (pcsCalls c (pi1CallsWith D.pi1Calls roots.pi1.bytecode) (digestBytes roots.pi2) stream r)
 
 /-- **π2's extractor on given preimages**: for each candidate of π2's `W` (its root after π1's public data), π1's stream
-its witness values hold (`pi1Stream`); the first on which π1-rec3's graph accepts at Keccak-f[1600] with the contract's
-π1 openings (`pi1GraphAcceptsB`: its checks, and its three calls those the contract makes, `pi1OpsOf`).
+its witness values hold (`pi1Stream`); the first on which the Keccak π1-rec3's graph accepts at Keccak-f[1600] with the
+contract's π1 openings (`pi1GraphAcceptsB`: its checks, and its three calls those the contract makes, `pi1OpsOf`).
 
 (Composition, `lean-rec-compose`: the search must test the calls too, not only the graph's checks. `W`'s list may hold
 two candidates whose π1 streams both pass the checks, the first one's calls not the contract's: the adversary commits a
@@ -523,16 +549,17 @@ def recExtractor2 (D : RecDeployment) (roots : RecSetupRoots) (input : Vector UI
     (setupEvals : List (List UInt8 × Digest)) (T : OracleQueryLog) (proof : RecProof) : Option (Array UInt8) :=
   recExtractFrom2 D roots input (preimagesOf setupEvals T) proof
 
-/-- π1's proof from π1's stream and the recursive proof's three π1 opening proofs (`A0`, `B0` unread at π1-rec3). -/
-def RecProof.pi1Proof (p : RecProof) (s : Array UInt8) : UniStatement.UniProof := ⟨s, p.c1, p.c2, p.f, ⟨[], []⟩, ⟨[], []⟩⟩
+/-- π1's Keccak proof from π1's stream and the recursive proof's three π1 opening proofs (`C1`, `C2`, the setup). -/
+def RecProof.pi1Proof (p : RecProof) (s : Array UInt8) : UniKeccak.KeccakProof := ⟨s, p.c1, p.c2, p.f⟩
 
-/-- **The end-to-end extractor**: π2's (π1's stream), then π1-rec3's own (`UniStatement.uniExtractor`: `C1`'s word
-under the root the stream names, decoded, read as Lv42's stack at the stream's row counts). -/
+/-- **The end-to-end extractor**: π2's (π1's stream), then the Keccak π1's own (`UniKeccak.uniExtractorK D.flock`:
+`C1`'s word under the root the stream names, decoded, read as the Keccak VM's stack at the stream's row counts, the
+first satisfying `KvHolds D.flock`). -/
 def recExtractor (D : RecDeployment) (roots : RecSetupRoots) (input : Vector UInt8 32)
     (setupEvals : List (List UInt8 × Digest)) (T : OracleQueryLog) (proof : RecProof) :
     Option ((rows : List ℕ) × D.pi1.Stack rows) :=
   (recExtractor2 D roots input setupEvals T proof).bind fun s ↦
-    (UniStatement.uniExtractor D.pi1 input setupEvals T (proof.pi1Proof s)).map fun q ↦ ⟨_, q⟩
+    (UniKeccak.uniExtractorK D.flock D.pi1 input setupEvals T (proof.pi1Proof s)).map fun q ↦ ⟨_, q⟩
 
 /-- π2's extractor's shape. -/
 abbrev RecExtractor2 : Type :=
@@ -564,7 +591,7 @@ noncomputable def recSoundnessExperiment2 (D : RecDeployment) (A : RecAdversary)
     return ((z, accepted), trees.evaluations, transcript, trees.roots, calls)
 
 /-- **The adversary breaks π2's knowledge soundness**: the contract accepts, and π2's extractor outputs no stream on
-which π1-rec3's graph accepts at Keccak-f[1600] with the contract's π1 openings. -/
+which the Keccak π1-rec3's graph accepts at Keccak-f[1600] with the contract's π1 openings. -/
 def RecBreaksKnowledgeSoundness2 (D : RecDeployment) (ext : RecExtractor2) (z : RecOutcome2) : Prop :=
   z.1.2 = true ∧ ¬ ∃ s ops, ext z.2.2.2.1 z.1.1.1 z.2.1 z.2.2.1 z.1.1.2 = some s ∧
     contractPi1Openings (registryOf D.pi1.shape (D.circuitAt z.2.2.2.1.pi1).circuit.logN) z.2.2.2.2 = some ops ∧
@@ -576,27 +603,27 @@ def RecKnowledgeSoundness2With (D : RecDeployment) (ext : RecExtractor2) (ε2 : 
     Pr{let z ← recSoundnessExperiment2 D A}[RecBreaksKnowledgeSoundness2 D ext z] ≤ ε2 Q
 
 /-- **π2's knowledge soundness** (provable in the random-permutation model): if the contract accepts, π2's explicit
-extractor `recExtractor2` outputs π1's stream, on which π1-rec3's recorded graph run with Keccak-f[1600] accepts, its
-three `PCS_OPEN` calls the contract's (which `PCS_OPEN` attested); but with probability `ε2 Q`. -/
+extractor `recExtractor2` outputs π1's stream, on which the Keccak π1-rec3's recorded graph run with Keccak-f[1600]
+accepts, its three `PCS_OPEN` calls the contract's (which `PCS_OPEN` attested); but with probability `ε2 Q`. -/
 def RecKnowledgeSoundness2 (D : RecDeployment) (ε2 : ℕ → ℝ≥0∞) : Prop :=
   RecKnowledgeSoundness2With D (recExtractor2 D) ε2
 
 /-! ## The hypotheses about π1-rec3 at Keccak-f[1600] -/
 
 /-- A π1 adversary of the recursive setup: given its roots and its trees' Keccak-256 evaluations (the setup is public;
-the derived adversary runs π2's extractor, which reads them), a public input and π1's proof.
+the derived adversary runs π2's extractor, which reads them), a public input and π1's Keccak proof.
 
-(Composition, `lean-rec-compose`: with the roots alone, the adversary built from π2's must recompute the setup, `2^27`
-and more calls of `π` that `ε1` would be charged at, and whose transcript `uniExtractor` would read with π2's
-adversary's.) -/
+(Composition, `lean-rec-compose`: with the roots alone, the adversary built from π2's must recompute the setup, many
+calls of `π` that `ε1` would be charged at, and whose transcript `uniExtractorK` would read with π2's adversary's.) -/
 abbrev Pi1Adversary : Type :=
   RecSetupRoots → List (List UInt8 × Digest) →
-    OracleComp RandomPermutationOracles (Vector UInt8 32 × UniStatement.UniProof)
+    OracleComp RandomPermutationOracles (Vector UInt8 32 × UniKeccak.KeccakProof)
 
 /-- **π1-rec3's knowledge-soundness experiment at Keccak-f[1600]**: the recursive setup over `π`, the adversary, then
-π1-rec3's verifier with its Fiat–Shamir over Keccak-f[1600] and its openings over `π` (`pi1KeccakVerifierWith`). -/
+the Keccak π1-rec3's verifier with its Fiat–Shamir over Keccak-f[1600] and its openings over `π`
+(`pi1KeccakVerifierWith`). -/
 noncomputable def pi1KeccakSoundnessExperiment (D : RecDeployment) (A : Pi1Adversary) :
-    ProbComp UniStatement.UniOutcome :=
+    ProbComp UniKeccak.KOutcome :=
   runWithRandomPermutation do
     let trees ← D.setupTreesWith queryPermutation
     let (z, transcript) ← (simulateQ loggedOracles (A trees.roots trees.evaluations)).run []
@@ -604,20 +631,21 @@ noncomputable def pi1KeccakSoundnessExperiment (D : RecDeployment) (A : Pi1Adver
     return ((z, accepted), trees.evaluations, transcript)
 
 /-- **Hypothesis: π1-rec3 is knowledge sound with its Fiat–Shamir instantiated by Keccak-f[1600]**, error `ε1 Q`, for
-its own extractor `UniStatement.uniExtractor`, against every π1 adversary of the recursive setup, `Q` counting its
-calls of `π` and `π⁻¹` only.
+its own extractor `UniKeccak.uniExtractorK D.flock`, against the Keccak VM's relation `KvHolds D.flock`, against every
+π1 adversary of the recursive setup, `Q` counting its calls of `π` and `π⁻¹` only.
 
 **As stated it is false.** Keccak-f[1600] is a fixed public function, which an `OracleComp` adversary computes for free:
 it commits a non-satisfying table, grinds each round's prover message offline until the Keccak-derived challenge
 escapes the round's doom, and opens honestly. It is the Fiat–Shamir heuristic **for
 adversaries of bounded Keccak-f[1600] work**, which Lean does not model, motivated by π1-rec3's random-permutation
-theorem (`UniSound.Rec3Ref.uniKnowledgeSoundness_closed_rec3`, 128.49 bits), where each grinding step costs a query.
-The end-to-end theorem does not take it: `RecKnowledgeSoundnessReduction` (`Reduction.lean`) bounds the break by this
-experiment's probability for one explicit adversary, `pi1Adversary A`. -/
+theorem (`UniKeccakSound.uniKnowledgeSoundnessKeccakRec3_closed`: error `uniBound128 (2^35/|E|) Q`, at most `2^-64`
+for `Q ≤ 2^64`), where each grinding step costs a query. The end-to-end theorem does not take it:
+`RecKnowledgeSoundnessReduction` (`Reduction.lean`) bounds the break by this experiment's probability for one explicit
+adversary, `pi1Adversary A`. -/
 def Pi1FsKeccak (D : RecDeployment) (ε1 : ℕ → ℝ≥0∞) : Prop :=
   ∀ (A : Pi1Adversary) (Q : ℕ), (∀ roots evals, QueryCostAtMost (A roots evals) permutationCallCost Q) →
     Pr{let z ← pi1KeccakSoundnessExperiment D A}[
-      UniStatement.UniBreaksKnowledgeSoundness D.pi1 (UniStatement.uniExtractor D.pi1) z] ≤ ε1 Q
+      UniKeccak.KBreaksKnowledgeSoundness D.flock D.pi1 (UniKeccak.uniExtractorK D.flock D.pi1) z] ≤ ε1 Q
 
 /-- An adversary choosing a public input and π1's stream, given the recursive setup's roots and its trees' Keccak-256
 evaluations (as `Pi1Adversary`). -/
@@ -633,21 +661,21 @@ noncomputable def pi1HazardExperiment (D : RecDeployment) (B : Pi1StreamAdversar
     let (z, _) ← (simulateQ loggedOracles (B trees.roots trees.evaluations)).run []
     return (D.pi1IvAt trees.roots.pi1, z)
 
-/-- **The merge hazard on a stream whose π1-rec3 graph checks hold**, at Keccak-f[1600]: the graph's checks hold on the
-stream (`pi1GraphChecks`), and π1-rec3's run on it draws `t` (challenge 49), `t` a root of `Z_bad(p_0)`
-(`RecGraph.MergeHazard`). It asks only `pi1GraphChecks`, not the full `Pi1GraphAccepts` on which `breaks_cases` splits:
-a larger event than needed, which is harmless, since the term is only larger. The
-empty stream, and every stream on which the run stops before `t`, is not on it. -/
+/-- **The merge hazard on a stream whose Keccak π1-rec3 graph checks hold**, at Keccak-f[1600]: the graph's checks hold
+on the stream (`pi1GraphChecks`), and the Keccak π1-rec3's run on it draws `t` (challenge 52), `t` a root of
+`Z_bad(p_0)` (`RecGraphKeccak.MergeHazardK`, `p_0` challenge 45). It asks only `pi1GraphChecks`, not the full
+`Pi1GraphAccepts`: a larger event than needed, which is harmless, since the term is only larger. The empty stream, and
+every stream on which the run stops before `t`, is not on it. -/
 def Pi1HazardAccepted (iv1 : List UInt8) (input : Vector UInt8 32) (s : Array UInt8) : Prop :=
-  pi1GraphChecks iv1 input s = true ∧ RecGraph.MergeHazard LeanVM.Semantics.keccakF1600 iv1 input.toList s
+  pi1GraphChecks iv1 input s = true ∧ RecGraphKeccak.MergeHazardK LeanVM.Semantics.keccakF1600 iv1 input.toList s
 
 /-- **Hypothesis: π1-rec3's run at Keccak-f[1600] avoids the merge hazard** on the streams its graph accepts
-(`Pi1HazardAccepted`; `RecGraph.MergeHazard`: the run draws `t` and `t` is where the recorded graph, merging by symbol,
-and the verifier, merging by value, may differ), but with probability `εh Q`, `Q` counting calls of `π` and `π⁻¹`
-only. Motivated by `RecGraph.hazard_prob` (`2^19/|E|` a uniform `t`).
+(`Pi1HazardAccepted`; `RecGraphKeccak.MergeHazardK`: the run draws `t` and `t` is where the recorded graph, merging by
+symbol, and the verifier, merging by value, may differ), but with probability `εh Q`, `Q` counting calls of `π` and
+`π⁻¹` only. Motivated by `RecGraphKeccak.hazard_probK` (`2^16/|E|` a uniform `t`).
 
 **As stated it is false** for the same reason as `Pi1FsKeccak`: an adversary writes an accepted-looking stream and
-grinds its free bytes offline until Keccak-f[1600]'s `t` lands on one of the `≤ 2^19` hazardous values, about `2^173`
+grinds its free bytes offline until Keccak-f[1600]'s `t` lands on one of the `≤ 2^16` hazardous values, about `2^176`
 evaluations and no query. It is the Fiat–Shamir heuristic **for adversaries of bounded Keccak-f[1600] work**, which
 Lean does not model. The end-to-end theorem does not take it: `RecKnowledgeSoundnessReduction` bounds the hazard by
 this experiment's probability for one explicit adversary, `hazardAdversary A`. -/
@@ -655,7 +683,7 @@ def Pi1HazardKeccak (D : RecDeployment) (εh : ℕ → ℝ≥0∞) : Prop :=
   ∀ (B : Pi1StreamAdversary) (Q : ℕ), (∀ roots evals, QueryCostAtMost (B roots evals) permutationCallCost Q) →
     Pr{let z ← pi1HazardExperiment D B}[Pi1HazardAccepted z.1 z.2.1 z.2.2] ≤ εh Q
 
-/-! ## Knowledge soundness, part 2: end to end, against Lv42's `M3Holds` -/
+/-! ## Knowledge soundness, part 2: end to end, against the Keccak VM's `KvHolds` -/
 
 /-- An outcome: the statement and the proof, the verdict, the setup's evaluations, the transcript, the setup's roots. -/
 abbrev RecOutcome : Type :=
@@ -671,40 +699,43 @@ noncomputable def recSoundnessExperiment (D : RecDeployment) (A : RecAdversary) 
     return ((z, accepted), trees.evaluations, transcript, trees.roots)
 
 /-- **The adversary breaks knowledge soundness**: the recursive verifier accepts, and the extractor outputs no row
-counts and stack satisfying leanVM 42422001's relation for the public input. -/
+counts and stack satisfying the Keccak VM's relation (`KvHolds D.flock`) for the public input. -/
 def RecBreaksKnowledgeSoundness (D : RecDeployment) (ext : RecExtractor D) (z : RecOutcome) : Prop :=
-  z.1.2 = true ∧ ¬ ∃ w, ext z.2.2.2 z.1.1.1 z.2.1 z.2.2.1 z.1.1.2 = some w ∧ D.pi1.Relation w.1 z.1.1.1 w.2
+  z.1.2 = true ∧ ¬ ∃ w, ext z.2.2.2 z.1.1.1 z.2.1 z.2.2.1 z.1.1.2 = some w ∧ D.pi1.Relation D.flock w.1 z.1.1.1 w.2
 
 /-- **Knowledge soundness for the extractor `ext`**, error `ε Q` for `Q` calls of `π` and `π⁻¹`. -/
 def RecKnowledgeSoundnessWith (D : RecDeployment) (ext : RecExtractor D) (ε : ℕ → ℝ≥0∞) : Prop :=
   ∀ (A : RecAdversary) (Q : ℕ), (∀ roots, QueryCostAtMost (A roots) permutationCallCost Q) →
     Pr{let z ← recSoundnessExperiment D A}[RecBreaksKnowledgeSoundness D ext z] ≤ ε Q
 
-/-- **Knowledge soundness of the recursive verifier against leanVM 42422001's relation, end to end, the Prop-premise
-corollary** (π2's verifier and the six openings; the explicit extractor `recExtractor`: π2's, then π1-rec3's), error
-`ε2 + ε1 + εh`, under the named hypotheses: the recorded graph is π1-rec3's verifier off the merge hazard
-(`RecGraph.Pi1.Pi1GraphIsVerifier`, proved), π1-rec3 is knowledge sound with its Fiat–Shamir over Keccak-f[1600]
-(`Pi1FsKeccak ε1`), and its run at Keccak-f[1600] avoids the merge hazard on accepted streams (`Pi1HazardKeccak εh`).
-`ε2` is π2's part's (`RecKnowledgeSoundness2`). The random-permutation theorems do not formally compose with the
-circuit's Keccak-f[1600]: these hypotheses are where they meet. **`Pi1FsKeccak` and `Pi1HazardKeccak` are false as
-stated** (they quantify over adversaries that grind Keccak-f[1600] offline for free): read them as the Fiat–Shamir
-heuristic for adversaries of bounded Keccak-f[1600] work. The end-to-end statement without them is the explicit
-reduction `RecKnowledgeSoundnessReduction` (`Reduction.lean`). -/
+/-- **Knowledge soundness of the recursive verifier against the Keccak VM's relation, end to end, the Prop-premise
+corollary** (π2's verifier and the six openings; the explicit extractor `recExtractor`: π2's, then the Keccak π1's),
+error `ε2 + ε1 + εh`, under the named hypotheses: the recorded graph is the Keccak π1-rec3's verifier off the merge
+hazard (`RecGraphKeccak.Pi1GraphIsVerifierK`, proved: `RecGraphKeccak.Sim.pi1GraphIsVerifierK`), π1-rec3 is knowledge
+sound with its Fiat–Shamir over Keccak-f[1600] (`Pi1FsKeccak ε1`), and its run at Keccak-f[1600] avoids the merge
+hazard on accepted streams (`Pi1HazardKeccak εh`). `ε2` is π2's part's (`RecKnowledgeSoundness2`). The
+random-permutation theorems do not formally compose with the circuit's Keccak-f[1600]: these hypotheses are where they
+meet. **`Pi1FsKeccak` and `Pi1HazardKeccak` are false as stated** (they quantify over adversaries that grind
+Keccak-f[1600] offline for free): read them as the Fiat–Shamir heuristic for adversaries of bounded Keccak-f[1600]
+work. The end-to-end statement without them is the explicit reduction `RecKnowledgeSoundnessReduction`
+(`Reduction.lean`). -/
 def RecKnowledgeSoundness (D : RecDeployment) (ε2 ε1 εh : ℕ → ℝ≥0∞) : Prop :=
-  RecGraph.Pi1.Pi1GraphIsVerifier → Pi1FsKeccak D ε1 → Pi1HazardKeccak D εh →
+  RecGraphKeccak.Pi1GraphIsVerifierK → Pi1FsKeccak D ε1 → Pi1HazardKeccak D εh →
     RecKnowledgeSoundnessWith D (recExtractor D) fun Q ↦ ε2 Q + ε1 Q + εh Q
 
 /-! ## Completeness -/
 
-/-- π1-rec3's prover (in the recursion, its Fiat–Shamir over Keccak-f[1600], its openings over `π`). -/
-abbrev Pi1Prover (D : RecDeployment) : Type := UniStatement.UniProver D.pi1
+/-- π1-rec3's prover (in the recursion, its Fiat–Shamir over Keccak-f[1600], its openings over `π`): a prover of the
+Keccak verifier (`UniKeccak.KProver`). -/
+abbrev Pi1Prover (D : RecDeployment) : Type := UniKeccak.KProver D.pi1
 
-/-- π2's prover: from the public input and π1's proof, a proof of the recursive verifier (or none), with coins, `π` and
-`π⁻¹` (it recomputes the public setup as it needs). -/
+/-- π2's prover: from the public input and π1's Keccak proof, a proof of the recursive verifier (or none), with coins,
+`π` and `π⁻¹` (it recomputes the public setup as it needs). -/
 abbrev Pi2Prover : Type :=
-  Vector UInt8 32 → UniStatement.UniProof → OracleComp RandomPermutationOracles (Option RecProof)
+  Vector UInt8 32 → UniKeccak.KeccakProof → OracleComp RandomPermutationOracles (Option RecProof)
 
-/-- A prover of the recursive verifier: from the public input, π1's row counts and a stack of Lv42's layout at them. -/
+/-- A prover of the recursive verifier: from the public input, π1's row counts and a stack of the Keccak VM's layout at
+them. -/
 abbrev RecProver (D : RecDeployment) : Type :=
   Vector UInt8 32 → (rows : List ℕ) → D.pi1.Stack rows → OracleComp RandomPermutationOracles (Option RecProof)
 
@@ -715,8 +746,9 @@ def composeProver (D : RecDeployment) (P1 : Pi1Prover D) (P2 : Pi2Prover) : RecP
     | none => return none
     | some p1 => P2 input p1
 
-/-- **π2's completeness experiment**: the setup, π1's proof (from any π1 prover), whether π1-rec3's graph accepts it at
-Keccak-f[1600] with its openings over `π` (`pi1GraphVerifierWith`), and whether the contract accepts π2's proof of it. -/
+/-- **π2's completeness experiment**: the setup, π1's proof (from any π1 prover), whether the Keccak π1-rec3's graph
+accepts it at Keccak-f[1600] with its openings over `π` (`pi1GraphVerifierWith`), and whether the contract accepts π2's
+proof of it. -/
 noncomputable def recCompletenessExperiment2 (D : RecDeployment) (P1 : Pi1Prover D) (P2 : Pi2Prover)
     (input : Vector UInt8 32) (rows : List ℕ) (q : D.pi1.Stack rows) : ProbComp (Bool × Bool) :=
   runWithRandomPermutation do
@@ -729,20 +761,20 @@ noncomputable def recCompletenessExperiment2 (D : RecDeployment) (P1 : Pi1Prover
       | none => return (a1, false)
       | some p2 => return (a1, ← D.verifierWith queryPermutation trees.roots input p2)
 
-/-- **π2's completeness** (over its own coins and `π`), on π1-rec3's prover `P1`'s proofs of honest statements: a π1
-proof on which π1-rec3's graph accepts at Keccak-f[1600], its openings verifying over `π`, is turned by `P2` into a proof
-the contract accepts, but with probability `δ2`.
+/-- **π2's completeness** (over its own coins and `π`), on π1-rec3's prover `P1`'s proofs of honest statements
+(`KvHonest D.flock`): a π1 proof on which the Keccak π1-rec3's graph accepts at Keccak-f[1600], its openings verifying
+over `π`, is turned by `P2` into a proof the contract accepts, but with probability `δ2`.
 
 (Composition, `lean-rec-compose`: for π1-rec3's prover, not every `P1`. A `P1` of unbounded queries can grind its
 proof, the graph still accepting, until π2's honest run on it hits one of π2's degenerate challenges (the one value the
 contract requires nonzero, `all = 0`), which no `δ2` below one bounds.) -/
 def RecCompleteness2 (D : RecDeployment) (P1 : Pi1Prover D) (P2 : Pi2Prover) (δ2 : ℝ≥0∞) : Prop :=
   ∀ (input : Vector UInt8 32) (rows : List ℕ) (q : D.pi1.Stack rows), D.pi1.shape.RowsFit rows →
-    D.pi1.HonestRelation rows input q →
+    D.pi1.HonestRelation D.flock rows input q →
     Pr{let v ← recCompletenessExperiment2 D P1 P2 input rows q}[v.1 = true ∧ v.2 = false] ≤ δ2
 
-/-- **π1-rec3's completeness experiment at Keccak-f[1600]**: the recursive setup, the prover's proof, π1-rec3's
-verifier with its Fiat–Shamir over Keccak-f[1600] and its openings over `π`. -/
+/-- **π1-rec3's completeness experiment at Keccak-f[1600]**: the recursive setup, the prover's proof, the Keccak
+π1-rec3's verifier with its Fiat–Shamir over Keccak-f[1600] and its openings over `π`. -/
 noncomputable def pi1KeccakCompletenessExperiment (D : RecDeployment) (P1 : Pi1Prover D) (input : Vector UInt8 32)
     (rows : List ℕ) (q : D.pi1.Stack rows) : ProbComp Bool :=
   runWithRandomPermutation do
@@ -751,12 +783,12 @@ noncomputable def pi1KeccakCompletenessExperiment (D : RecDeployment) (P1 : Pi1P
     | none => return false
     | some p1 => pi1KeccakVerifierWith queryPermutation D.pi1 trees.roots.pi1 input p1
 
-/-- **Hypothesis: π1-rec3 is complete with its Fiat–Shamir instantiated by Keccak-f[1600]**, error `δ1`. Its
-random-permutation reading is proved (`RecCompose.Pi1KF.pi1CompletenessFs_rpm`, from
-`UniComplete.Rec3.uniCompletenessRec3_end_closed`, `δ < 2^-167`). -/
+/-- **Hypothesis: π1-rec3 is complete with its Fiat–Shamir instantiated by Keccak-f[1600]**, error `δ1`, on honest
+statements (`KvHonest D.flock`). Its random-permutation analogue is `UniKeccak.UniCompletenessKeccakRec3` (a
+statement; no proof of it is used here), about one fixed honest prover: no adversary grinds there. -/
 def Pi1CompletenessKeccak (D : RecDeployment) (P1 : Pi1Prover D) (δ1 : ℝ≥0∞) : Prop :=
   ∀ (input : Vector UInt8 32) (rows : List ℕ) (q : D.pi1.Stack rows), D.pi1.shape.RowsFit rows →
-    D.pi1.HonestRelation rows input q →
+    D.pi1.HonestRelation D.flock rows input q →
     Pr{let v ← pi1KeccakCompletenessExperiment D P1 input rows q}[v = false] ≤ δ1
 
 /-- The honest proofs' merge hazard experiment: the recursive setup, the prover's proof, whether its run at
@@ -770,14 +802,14 @@ noncomputable def pi1HonestHazardExperiment (D : RecDeployment) (P1 : Pi1Prover 
     | some p1 => return some (D.pi1IvAt trees.roots.pi1, p1.stream)
 
 /-- **Hypothesis: π1-rec3's honest proofs avoid the merge hazard at Keccak-f[1600]**, but with probability `δh`.
-Motivated only by `RecGraph.hazard_prob` (at most `2^19` hazardous `t` per `p_0`, `2^-173` for a uniform `t`), a count,
-not a game: its random-permutation reading (`RecCompose.Pi1Hazard.Pi1HazardFsHonest` at `π`) is not proved. `RecGraph.MergeHazard` asks that the run draw `t` (challenge 49), so a
-proof whose run stops before `t` is not on it. -/
+Motivated only by `RecGraphKeccak.hazard_probK` (at most `2^16` hazardous `t` per `p_0`, `2^-176` for a uniform `t`),
+a count, not a game: its random-permutation reading is not proved. `RecGraphKeccak.MergeHazardK` asks that the run
+draw `t` (challenge 52), so a proof whose run stops before `t` is not on it. -/
 def Pi1HazardKeccakHonest (D : RecDeployment) (P1 : Pi1Prover D) (δh : ℝ≥0∞) : Prop :=
   ∀ (input : Vector UInt8 32) (rows : List ℕ) (q : D.pi1.Stack rows), D.pi1.shape.RowsFit rows →
-    D.pi1.HonestRelation rows input q →
+    D.pi1.HonestRelation D.flock rows input q →
     Pr{let z ← pi1HonestHazardExperiment D P1 input rows q}[
-      ∃ iv s, z = some (iv, s) ∧ RecGraph.MergeHazard LeanVM.Semantics.keccakF1600 iv input.toList s] ≤ δh
+      ∃ iv s, z = some (iv, s) ∧ RecGraphKeccak.MergeHazardK LeanVM.Semantics.keccakF1600 iv input.toList s] ≤ δh
 
 /-- **The completeness experiment**: the setup, the prover's proof, the recursive verifier's verdict, over `π`. -/
 noncomputable def recCompletenessExperiment (D : RecDeployment) (P : RecProver D) (input : Vector UInt8 32)
@@ -788,20 +820,20 @@ noncomputable def recCompletenessExperiment (D : RecDeployment) (P : RecProver D
     | none => return false
     | some proof => D.verifierWith queryPermutation trees.roots input proof
 
-/-- **Completeness of the prover `P`**: its proof of a public input with an `M3Honest` stack, at row counts that fit
-π1's shape, is rejected with probability at most `δ`. -/
+/-- **Completeness of the prover `P`**: its proof of a public input with a `KvHonest D.flock` stack, at row counts that
+fit π1's shape, is rejected with probability at most `δ`. -/
 def RecCompletenessWith (D : RecDeployment) (P : RecProver D) (δ : ℝ≥0∞) : Prop :=
   ∀ (input : Vector UInt8 32) (rows : List ℕ) (q : D.pi1.Stack rows), D.pi1.shape.RowsFit rows →
-    D.pi1.HonestRelation rows input q →
+    D.pi1.HonestRelation D.flock rows input q →
     Pr{let v ← recCompletenessExperiment D P input rows q}[v = false] ≤ δ
 
 /-- **Completeness of the recursive verifier, end to end**: π1-rec3's prover then π2's (`composeProver`), error
-`δ1 + δh + δ2`, under the named hypotheses: the recorded graph is π1-rec3's verifier off the merge hazard
-(`RecGraph.Pi1.Pi1GraphIsVerifier`), π1-rec3 is complete with its Fiat–Shamir over Keccak-f[1600]
-(`Pi1CompletenessKeccak δ1`, its random-permutation reading proved from `uniCompletenessRec3_end_closed`) and its honest
-proofs avoid the merge hazard (`Pi1HazardKeccakHonest δh`, motivated by `hazard_prob` only). `δ2` is π2's part's (`RecCompleteness2`). -/
+`δ1 + δh + δ2`, under the named hypotheses: the recorded graph is the Keccak π1-rec3's verifier off the merge hazard
+(`RecGraphKeccak.Pi1GraphIsVerifierK`, proved), π1-rec3 is complete with its Fiat–Shamir over Keccak-f[1600]
+(`Pi1CompletenessKeccak δ1`) and its honest proofs avoid the merge hazard (`Pi1HazardKeccakHonest δh`, motivated by
+`hazard_probK` only). `δ2` is π2's part's (`RecCompleteness2`). -/
 def RecCompleteness (D : RecDeployment) (P1 : Pi1Prover D) (P2 : Pi2Prover) (δ1 δh δ2 : ℝ≥0∞) : Prop :=
-  RecGraph.Pi1.Pi1GraphIsVerifier → Pi1CompletenessKeccak D P1 δ1 → Pi1HazardKeccakHonest D P1 δh →
+  RecGraphKeccak.Pi1GraphIsVerifierK → Pi1CompletenessKeccak D P1 δ1 → Pi1HazardKeccakHonest D P1 δh →
     RecCompletenessWith D (composeProver D P1 P2) (δ1 + δh + δ2)
 
 end RecStatement

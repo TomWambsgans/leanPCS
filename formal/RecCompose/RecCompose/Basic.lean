@@ -40,6 +40,11 @@ abbrev cls : List (List (List UInt8)) := z.2.2.2.2
 
 end Outcome
 
+/-- **The setup roots the Keccak π1-rec3's graph was recorded at** (`RecGraphKeccak.verifierOutputsWithK … keccak128
+referenceRootsK`: the graph's setup call holds their `F` as a constant, which the contract replaces by the setup's).
+The one name every RecCompose file uses for them, so that a change of the reference roots is a change here. -/
+abbrev keccakRefRoots : UniStatement.SetupRoots := RecGraphKeccak.Pi1.referenceRootsK
+
 /-- The registry the contract decodes its calls under, at π1's setup roots. -/
 abbrev registryAt (D : RecDeployment) (roots : RecSetupRoots) : List (List UInt8 × Opener) :=
   registryOf D.pi1.shape (D.circuitAt roots.pi1).circuit.logN

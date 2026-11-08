@@ -11,7 +11,7 @@ import RecCompose.CompleteCouplings
 import RecCompose.RunShape
 import RecCompose.OpeningsAgree
 import RecCompose.RunOpenings
-import RecGraph.Sim.End
+import RecGraphKeccak.Sim.Final
 
 /-!
 # The end theorems
@@ -19,16 +19,22 @@ import RecGraph.Sim.End
 * **`recKnowledgeSoundness2_real`** (π2's part, in the random-permutation model): at a real deployment, with π2's layers
   and the calldata's π1 openings, `RecKnowledgeSoundness2 D pi2Bound`, and `pi2Bound Q ≤ 2^-64` for `Q ≤ 2^64`
   (`2^-64.93` at `2^64`: 128.93 bits as `Q / ε2`).
-* **`recKnowledgeSoundnessReduction_end`** (end to end, against Lv42's `M3Holds`, as an explicit reduction):
-  `RecKnowledgeSoundnessReduction D pi2Bound`, from Part 1, the couplings and `RecGraph.Pi1.pi1GraphIsVerifier`. No
+* **`recKnowledgeSoundnessReduction_end`** (end to end, against the Keccak VM's `KvHolds`, as an explicit reduction):
+  `RecKnowledgeSoundnessReduction D pi2Bound`, from Part 1, the couplings and `RecGraphKeccak.Sim.pi1GraphIsVerifierK`. No
   Fiat–Shamir hypothesis: the bound is `pi2Bound Q` plus π1-rec3's and the hazard's experiments for the derived
   adversaries `pi1Adversary A`, `hazardAdversary A`.
 * **`recKnowledgeSoundness_end`** (its Prop-premise corollary): `RecKnowledgeSoundness D pi2Bound ε1 εh` for every
-  `ε1`, `εh` (the Props' own hypotheses: `Pi1GraphIsVerifier`, `Pi1FsKeccak ε1`, `Pi1HazardKeccak εh`, the last two
+  `ε1`, `εh` (the Props' own hypotheses: `Pi1GraphIsVerifierK`, `Pi1FsKeccak ε1`, `Pi1HazardKeccak εh`, the last two
   false as stated for unbounded adversaries), from Part 1 and the couplings.
 * **`recCompleteness_end`**: `RecCompleteness D P1 P2 δ1 δh δ2` for every `δ1`, `δh` (the Props' own hypotheses:
-  `Pi1GraphIsVerifier`, `Pi1CompletenessKeccak δ1`, `Pi1HazardKeccakHonest δh`), from π2's completeness
-  `RecCompleteness2 D P1 P2 δ2` (π2's honest prover is not transcribed: a named hypothesis) and the couplings.
+  `Pi1GraphIsVerifierK`, `Pi1CompletenessKeccak δ1`, `Pi1HazardKeccakHonest δh`), from π2's completeness
+  `RecCompleteness2 D P1 P2 δ2` (a named input, for any π1 prover `P1`: π2's honest prover is not transcribed for the
+  Keccak π1) and the couplings.
+
+The π1 of these theorems is the Keccak VM's verifier at π1-rec3's Fiat–Shamir shape (`UniKeccak`, `keccakRec3`), at
+the 128-signature reference shape (`RecGraphKeccak.Pi1.keccak128`, which `RecDeployment.Real` pins); the couplings use
+the Keccak run's shape and openings (`pi1RunShape`, `pi1RunOpenings`, proved through `UniKeccak.reduceWithK`) and the
+Keccak graph = verifier (`RecGraphKeccak.Sim.pi1GraphIsVerifierK`).
 -/
 
 namespace RecCompose
@@ -41,11 +47,11 @@ variable {D : RecDeployment}
 /-- **The circuit's corollary from RecCircuit's end theorem**: the compiled circuits' roots at the emitted graph's,
 the Lean recording the emitted graph (`GraphsAgree`, a run), and the bridge (`CircuitBridge`, open). -/
 theorem pi2CircuitAccepts_of_bridge (C : Pi2Circuits D) (Fa : Pi2Facts D C)
-    (hroots : C.rootsAt = RecGraph.Emitted.rootsAt) (hg : GraphsAgree)
+    (hroots : C.rootsAt = RecGraphKeccak.Emitted.rootsAt) (hg : GraphsAgree)
     (hb : CircuitBridge D C.compiled fun roots input stream ↦ Fa.pubOf roots (pi2Scalars D roots input stream)) :
     Pi2CircuitAccepts C Fa := by
   have hc : ∀ iv, iv.length = 32 →
-      RecCircuit.compile (RecCircuit.ofRG RecGraph.Emitted.graph RecGraph.Emitted.rootsAt iv) = .ok (C.compiled iv) := by
+      RecCircuit.compile (RecCircuit.ofRG RecGraphKeccak.Emitted.graph RecGraphKeccak.Emitted.rootsAt iv) = .ok (C.compiled iv) := by
     intro iv hiv
     have h := C.compile_ok iv hiv
     unfold GraphsAgree at hg
@@ -67,13 +73,13 @@ RecCircuit's end theorem (`hb`: `circuitBridge`, `Bridge.lean`, with the root-wo
 `RecKnowledgeSoundness2 D pi2Bound`,
 `pi2Bound Q ≤ 2^-64` for `Q ≤ 2^64`. -/
 theorem recKnowledgeSoundness2_real (D : RecDeployment) (hD : D.Real) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
-    (T : Pi2Tables D C) (hfs : Pi2FsLayer D) (hroots : C.rootsAt = RecGraph.Emitted.rootsAt) (hg : GraphsAgree)
+    (T : Pi2Tables D C) (hfs : Pi2FsLayer D) (hroots : C.rootsAt = RecGraphKeccak.Emitted.rootsAt) (hg : GraphsAgree)
     (hb : CircuitBridge D C.compiled fun roots input stream ↦ Fa.pubOf roots (pi2Scalars D roots input stream)) :
     RecKnowledgeSoundness2 D pi2Bound ∧ ∀ Q ≤ 2 ^ 64, pi2Bound Q ≤ (2 : ℝ≥0∞)⁻¹ ^ 64 :=
   recKnowledgeSoundness2_of_real D hD (pi2Layers_of C Fa T hfs (pi2CircuitAccepts_of_bridge C Fa hroots hg hb))
 
-/-- **The recursive verifier is knowledge sound end to end, as an explicit reduction**, against leanVM 42422001's
-relation, at the real deployment: `RecKnowledgeSoundnessReduction D pi2Bound`. For every adversary `A` of `Q` queries,
+/-- **The recursive verifier is knowledge sound end to end, as an explicit reduction**, against the Keccak VM's relation
+(`KvHolds D.flock`), at the real deployment: `RecKnowledgeSoundnessReduction D pi2Bound`. For every adversary `A` of `Q` queries,
 the derived adversaries `pi1Adversary D A`, `hazardAdversary D A` make at most `Q` queries, and the contract accepts
 while `recExtractor` fails with probability at most `pi2Bound Q` plus the probability that `pi1Adversary D A` breaks
 π1-rec3 at Keccak-f[1600] plus the probability that `hazardAdversary D A` hits the merge hazard on a stream π1-rec3's
@@ -84,10 +90,11 @@ theorem recKnowledgeSoundnessReduction_end (D : RecDeployment) (hD : D.Real) (L 
     (hazardCoupling D)
     (pi1Coupling D (callsPure D)
       (pi1OpeningsAgree D hD.2.2.1 pi1RunShape pi1RunOpenings (pi1CallsShape_data D hD.2.1)))
-    RecGraph.Pi1.pi1GraphIsVerifier
+    RecGraphKeccak.Sim.pi1GraphIsVerifierK
 
-/-- **The recursive verifier is knowledge sound end to end, the Prop-premise corollary**, against leanVM 42422001's
-relation, at the real deployment: `RecKnowledgeSoundness D pi2Bound ε1 εh` for every `ε1`, `εh`, i.e. under `Pi1GraphIsVerifier`,
+/-- **The recursive verifier is knowledge sound end to end, the Prop-premise corollary**, against the Keccak VM's
+relation, at the real deployment: `RecKnowledgeSoundness D pi2Bound ε1 εh` for every `ε1`, `εh`, i.e. under
+`Pi1GraphIsVerifierK`,
 `Pi1FsKeccak ε1` and `Pi1HazardKeccak εh`, error `pi2Bound Q + ε1 Q + εh Q`. The couplings are proved
 (`experimentsAgree`, `hazardCoupling`, `pi1Coupling`, `callsPure`, `pi1OpeningsAgree` with `pi1RunShape` and
 `pi1CallsShape_data`, `pi1RunShape`, `pi1RunOpenings`): the only inputs are π2's layers `L`. -/
@@ -100,13 +107,13 @@ theorem recKnowledgeSoundness_end (D : RecDeployment) (hD : D.Real) (L : Pi2Laye
 /-- **The end theorem from π2's named inputs**: `recKnowledgeSoundness_end` with π2's layers assembled from the compiled
 circuit, its facts, the tables' layer, π2's Fiat–Shamir layer and the bridge from RecCircuit's end theorem. -/
 theorem recKnowledgeSoundness_end_real (D : RecDeployment) (hD : D.Real) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
-    (T : Pi2Tables D C) (hfs : Pi2FsLayer D) (hroots : C.rootsAt = RecGraph.Emitted.rootsAt) (hg : GraphsAgree)
+    (T : Pi2Tables D C) (hfs : Pi2FsLayer D) (hroots : C.rootsAt = RecGraphKeccak.Emitted.rootsAt) (hg : GraphsAgree)
     (hb : CircuitBridge D C.compiled fun roots input stream ↦ Fa.pubOf roots (pi2Scalars D roots input stream))
     (ε1 εh : ℕ → ℝ≥0∞) : RecKnowledgeSoundness D pi2Bound ε1 εh :=
   recKnowledgeSoundness_end D hD (pi2Layers_of C Fa T hfs (pi2CircuitAccepts_of_bridge C Fa hroots hg hb)) ε1 εh
 
 /-- **The recursive verifier is complete end to end**, for π1-rec3's prover then π2's: `RecCompleteness D P1 P2 δ1 δh
-δ2` for every `δ1`, `δh`, i.e. under `Pi1GraphIsVerifier`, `Pi1CompletenessKeccak δ1` and `Pi1HazardKeccakHonest δh`,
+δ2` for every `δ1`, `δh`, i.e. under `Pi1GraphIsVerifierK`, `Pi1CompletenessKeccak δ1` and `Pi1HazardKeccakHonest δh`,
 error `δ1 + δh + δ2`, from π2's completeness `RecCompleteness2 D P1 P2 δ2` and the couplings. -/
 theorem recCompleteness_of_couplings (D : RecDeployment) (P1 : Pi1Prover D) (P2 : Pi2Prover) (δ2 : ℝ≥0∞)
     (h2 : RecCompleteness2 D P1 P2 δ2) (hA : CompletenessAgree D P1 P2) (hC : CompletenessPi1Coupling D P1 P2)
@@ -121,9 +128,10 @@ theorem recCompleteness_end (D : RecDeployment) (hD : D.Real) (P1 : Pi1Prover D)
   recCompleteness_of_part1 h2 (completenessAgree D P1 P2) (completenessPi1Coupling D hD.2.2.1 pi1RunShape P1 P2)
     δ1 δh
 
-/-! ## With `Pi1GraphIsVerifier` proved (`RecGraph.Pi1.pi1GraphIsVerifier`, `lean-rec-graph` 614fbe0) -/
+/-! ## With `Pi1GraphIsVerifierK` proved (`RecGraphKeccak.Sim.pi1GraphIsVerifierK`) -/
 
-/-- **The recursive verifier is knowledge sound end to end, the graph being π1-rec3's verifier off the hazard proved**:
+/-- **The recursive verifier is knowledge sound end to end, the graph being the Keccak π1-rec3's verifier off the hazard
+proved**:
 for every `ε1`, `εh`, under `Pi1FsKeccak ε1`, `Pi1HazardKeccak εh` only (false as stated for unbounded adversaries: the
 Fiat–Shamir heuristic for adversaries of bounded Keccak-f[1600] work, which Lean does not model; the statement without
 them is `recKnowledgeSoundnessReduction_end`), the explicit extractor `recExtractor` fails while the contract accepts
@@ -131,9 +139,10 @@ with probability at most `pi2Bound Q + ε1 Q + εh Q`. -/
 theorem recKnowledgeSoundness_end_fs (D : RecDeployment) (hD : D.Real) (L : Pi2Layers D pi2Bound)
     (ε1 εh : ℕ → ℝ≥0∞) (h1 : Pi1FsKeccak D ε1) (hh : Pi1HazardKeccak D εh) :
     RecKnowledgeSoundnessWith D (recExtractor D) fun Q ↦ pi2Bound Q + ε1 Q + εh Q :=
-  recKnowledgeSoundness_end D hD L ε1 εh RecGraph.Pi1.pi1GraphIsVerifier h1 hh
+  recKnowledgeSoundness_end D hD L ε1 εh RecGraphKeccak.Sim.pi1GraphIsVerifierK h1 hh
 
-/-- **The recursive verifier is complete end to end, the graph being π1-rec3's verifier off the hazard proved**: for
+/-- **The recursive verifier is complete end to end, the graph being the Keccak π1-rec3's verifier off the hazard
+proved**: for
 every `δ1`, `δh`, under π1-rec3's completeness at Keccak-f[1600] (`Pi1CompletenessKeccak δ1`) and the honest proofs'
 hazard (`Pi1HazardKeccakHonest δh`) only, the composed prover's proof is rejected with probability at most
 `δ1 + δh + δ2`. -/
@@ -141,7 +150,7 @@ theorem recCompleteness_end_fs (D : RecDeployment) (hD : D.Real) (P1 : Pi1Prover
     (h2 : RecCompleteness2 D P1 P2 δ2) (δ1 δh : ℝ≥0∞) (h1 : Pi1CompletenessKeccak D P1 δ1)
     (hh : Pi1HazardKeccakHonest D P1 δh) :
     RecCompletenessWith D (composeProver D P1 P2) (δ1 + δh + δ2) :=
-  recCompleteness_end D hD P1 P2 δ2 h2 δ1 δh RecGraph.Pi1.pi1GraphIsVerifier h1 hh
+  recCompleteness_end D hD P1 P2 δ2 h2 δ1 δh RecGraphKeccak.Sim.pi1GraphIsVerifierK h1 hh
 
 end RecCompose
 

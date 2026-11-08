@@ -81,8 +81,8 @@ theorem card_badCopy_le (G : RecPiop.Circuit E) (hV : G.Valid) (w : ℕ → K) (
 noncomputable def setupOfG (G : RecPiop.Circuit E) (hm : G.logN ≤ 28) : RecPiop.SetupPolys G pi2Omega where
   σP := sigmaPoly G
   κP := kappaPoly G
-  σ_deg := UniComplete.AlgC.novP_natDegree_lt _ _
-  κ_deg := UniComplete.AlgC.novP_natDegree_lt _ _
+  σ_deg := UniKeccakComplete.AlgC.novP_natDegree_lt _ _
+  κ_deg := UniKeccakComplete.AlgC.novP_natDegree_lt _ _
   σ_eval _ hi := sigmaPoly_omega G hm hi
   κ_eval _ hi := kappaPoly_omega G hm hi
 
@@ -112,7 +112,7 @@ theorem card_badT_le (G : RecPiop.Circuit E) (hV : G.Valid) (hm : G.logN ≤ 28)
     omega
   -- `d_pull d_push + Z_V`
   have hwdeg : (witnessPoly G w).natDegree ≤ G.N - 1 := by
-    have := UniComplete.AlgC.novP_natDegree_lt G.logN fun j ↦
+    have := UniKeccakComplete.AlgC.novP_natDegree_lt G.logN fun j ↦
       (UniComplete.novelOfValuesK G.logN (wValues G w)).getD j 0
     unfold witnessPoly
     unfold RecPiop.Circuit.N

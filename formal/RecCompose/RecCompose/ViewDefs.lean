@@ -22,8 +22,10 @@ links them:
 * **`validB`**: `RecPiop.Circuit.Valid` of `toPiop`, decided by loops over the positions, the blocks and the ports
   (`RecCompose.Valid`: `validB_sound`).
 * **`viewCheck`**: the three, against `Data.circuit` and `Data.pi1Calls`; `Pi2ViewChecked` (`Facts.lean`) is it at
-  every 32-byte π1 IV, **checked by evaluation at three IVs** (`RecComposeTest/ViewCheck.lean`, `RealCheck.lean`) and
-  assumed at the others.
+  every 32-byte π1 IV, **checked by evaluation** on the compiler's circuit for the Keccak VM's π1-rec3
+  (`RecGraphKeccak.Emitted.graph`) at π1's reference IV `Data.pi1Iv` and at the zero IV (`rec-view-check`,
+  `RecComposeTest/ViewCheck.lean`: true at both, about 14 minutes an IV, nearly all of it the compile), and assumed at
+  the others.
 -/
 
 namespace RecCompose

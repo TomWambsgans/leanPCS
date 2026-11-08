@@ -1,9 +1,12 @@
--- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The port of `formal/UniSound/UniSound/FsVerifier.lean`
--- (`uniVerifierBridge_of_walk`) to π2's contract (`formal/RecStatement/RecStatement/Security.lean`, `contractWith`).
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md; conventions: see AGENTS.md. The port of
+-- `formal/UniSound/UniSound/FsVerifier.lean` (`uniVerifierBridge_of_walk`) to π2's contract
+-- (`formal/RecStatement/RecStatement/Security.lean`, `contractWith`); π1's openings at `2^23 ..= 2^28` words are
+-- `formal/UniKeccakSound/UniKeccakSound/Fs/VerifierK.lean`'s (`pcsOpen_eq_earlyK`).
 import RecCompose.FsOps
 import RecCompose.OpeningsAgree
 import UniSound.FsVerifier
 import UniSound.FsWalkProof
+import UniKeccakSound.Fs.VerifierK
 
 /-!
 # π2's verifier bridge
@@ -16,13 +19,13 @@ walk (`Pi2Walk`, `Pi2WalkReject`):
 * a stream of another length is rejected (`Pi2WalkReject`);
 * on a stream of `944` bytes the run is the chain (`Pi2Walk` at `F = π`), which both sides run first;
 * per challenges: the run's verdict `all ≠ 0`; the six calls (`pcsCalls`) decode under the registry to the composed
-  openings' inputs (π1's three on their plain layouts, `UniSound.pcsOpen_eq_early`; π2's three on `shW`, `shS`, `shQ`,
+  openings' inputs (π1's three on their plain layouts, `UniKeccakSound.pcsOpen_eq_earlyK`; π2's three on `shW`, `shS`, `shQ`,
   `Bridge.openingWith_eq_ourVerifier'`), each F2's opening with the Statement's early stop, accepting at most as often
   as the composed one (`UniSound.early_le_rpm`); a call that does not decode rejects.
 
 The contract's loop is the six calls one after the other, their verdicts and-ed (`forIn_seqAndK`); π1's three calls'
-layout words are `Data.pi1Calls`' constants (byte `24`: `27`, `27`, `24` variables; first byte `0x15`, no π2 layout
-word, `"pi2"`), so a π1 call that decodes is opened on π1's plain layout of its variables (`pi1Open`); π2's three are
+layout words are `Data.pi1Calls`' constants (the Keccak layout words, byte `24`: `27`, `26`, `23` variables; first
+byte `0x14`, the reference shape's memory's `log`; no π2 layout word, `"pi2"`), so a π1 call that decodes is opened on π1's plain layout of its variables (`pi1Open`); π2's three are
 `pcsCalls`' last three, their roots the stream's `W`, `Q` root words and the setup's root word (`pcsCalls_cc`,
 `rootOfWord_streamWord`), their claims the run's (`decodeWith_mk`, `claimsOfWords_mk`).
 -/
@@ -35,8 +38,6 @@ open RecStatement Compose QuotientRpm LeanVM LeanVM.Parameters LeanVM.Protocol L
 open LeanVM.Protocol.Compile LeanVM.Protocol.EndToEnd WhirBridge
 open OracleSpec OracleComp
 open scoped ENNReal
-
-attribute [local instance high] Completeness.instSampleableTypeE_completeness
 
 attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
   LeanVM.Protocol.Compile.instFintypeKState UniStatement.layoutWords UniStatement.setupStack
@@ -429,7 +430,7 @@ theorem registry_eq (sh : UniStatement.Shape) :
     registryOf sh cc.logN =
       [((RecStatement.layoutWords cc.logN).1, .pi2 lW), ((RecStatement.layoutWords cc.logN).2.1, .pi2 lQ),
         ((RecStatement.layoutWords cc.logN).2.2, .pi2 lS)] ++
-      ((UniStatement.layoutWords sh).take 3).map fun word ↦ (word, .pi1 (UniStatement.layoutWordVars word)) := by
+      ((UniKeccak.layoutWordsK sh).take 3).map fun word ↦ (word, .pi1 (UniStatement.layoutWordVars word)) := by
   unfold registryOf
   rw [layoutsOf_cc]
 
@@ -478,8 +479,8 @@ theorem lookup_map_self (f : List UInt8 → Opener) :
     · rw [List.map_cons, lookup_cons_ne _ _ _ _ hw] at h
       exact lookup_map_self f ws a y h
 
-/-- **A word of first byte `0x15` is registered, if at all, with π1's opener at its variables.** -/
-theorem lookup_pi1 (sh : UniStatement.Shape) (a : List UInt8) (ha : a.head? = some 21) (y : Opener)
+/-- **A word of first byte `0x14` is registered, if at all, with π1's opener at its variables.** -/
+theorem lookup_pi1 (sh : UniStatement.Shape) (a : List UInt8) (ha : a.head? = some 20) (y : Opener)
     (h : (registryOf sh cc.logN).lookup a = some y) : y = .pi1 (UniStatement.layoutWordVars a) := by
   have hp : ∀ (code m : ℕ) (L : PcsQuotient.Layout), a ≠ layoutWord code m L := fun code m L ↦
     ne_of_head (by rw [ha, pi2LayoutWord_head]; decide)
@@ -505,16 +506,16 @@ theorem pcsCalls_cc (pi1 : List (List CallWord)) (sr : List UInt8) (stream : Arr
   rw [h1, h2]
   rfl
 
-/-- π1's calls' layout words (`Data.pi1Calls`' constants). -/
+/-- π1's calls' layout words (`Data.pi1Calls`' constants: the Keccak layout words of `C1`, `C2`, the setup). -/
 def pi1Lay (k : ℕ) : List UInt8 :=
-  if k = 0 then hexBytes "1513121212121112000000000000000000000000000055011b00000006220000"
-  else if k = 1 then hexBytes "1513121212121112000000000000000000000000000055021b00000006810003"
-  else hexBytes "1513121212121112000000000000000000000000000055031800000000a00000"
+  if k = 0 then hexBytes "14120f100f100e0f000000000000000000000000000055011b000000049fc000"
+  else if k = 1 then hexBytes "14120f100f100e0f000000000000000000000000000055021a000000028ce003"
+  else hexBytes "14120f100f100e0f000000000000000000000000000055031700000000500000"
 
 /-- π1's calls' count word. -/
 def hexOne : List UInt8 := hexBytes "0000000000000000000000000000000000000000000000000000000000000001"
 
-theorem pi1Lay_head (k : ℕ) (hk : k < 3) : (pi1Lay k).head? = some 21 := by
+theorem pi1Lay_head (k : ℕ) (hk : k < 3) : (pi1Lay k).head? = some 20 := by
   interval_cases k <;> decide
 
 theorem pi1Lay_vars (k : ℕ) (hk : k < 3) : UniStatement.layoutWordVars (pi1Lay k) = pi1Vars k := by
@@ -595,7 +596,8 @@ theorem pi1Open (D : RecDeployment) (hD : RecDeployment.Real D) (π : P2Pf) (ch 
     unfold pcsOpenAt
     rw [hd]
     show UniStatement.pcsOpenWith Common.queryPermutation (pi1Vars k) root cs p = _
-    rw [hroot', UniSound.pcsOpen_eq_early (pi1Vars k) (pi1Vars_lo k) (pi1Vars_hi k) root (cl1 D k π ch) cs hcl p]
+    rw [hroot', UniKeccakSound.pcsOpen_eq_earlyK (pi1Vars k) (pi1Vars_lo k) (pi1Vars_hi k) root (cl1 D k π ch) cs hcl
+      p]
 
 /-! ## π2's three calls -/
 

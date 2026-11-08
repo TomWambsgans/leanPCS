@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md and AGENTS.md.
 import RecCompose.RealDeployment
 
 /-!
@@ -105,7 +105,7 @@ def patchOk (B : RecCircuit.Compiled) (Z : List ℕ) (e : Except String RecCircu
 all-ones IV's with the `κ` entries at `iv`'s zero bits' seed positions removed (view, free bits, free reads equal). -/
 def patchCheck (iv : List UInt8) : Bool :=
   patchOk onesCompiled (zeroPos (seedPositions onesCompiled) iv)
-    (RecCircuit.compile (RecCircuit.ofRG RecGraph.Emitted.graph RecGraph.Emitted.rootsAt iv))
+    (RecCircuit.compile (RecCircuit.ofRG RecGraphKeccak.Emitted.graph RecGraphKeccak.Emitted.rootsAt iv))
 
 /-- **The compiler's IV factorization at every 32-byte IV** (not proved; see the module docstring). -/
 def PatchChecked : Prop := ∀ iv : List UInt8, iv.length = 32 → patchCheck iv = true
@@ -122,7 +122,7 @@ theorem patchOk_spec {B : RecCircuit.Compiled} {Z : List ℕ} {e : Except String
     exact ⟨rfl, circuit_eq_of_circuitEqB h1, view_eq_of_viewEqB h2, h3, h4⟩
 
 theorem patchCheck_spec {iv : List UInt8} (h : patchCheck iv = true) :
-    RecCircuit.compile (RecCircuit.ofRG RecGraph.Emitted.graph RecGraph.Emitted.rootsAt iv) = .ok (compiledAt iv) ∧
+    RecCircuit.compile (RecCircuit.ofRG RecGraphKeccak.Emitted.graph RecGraphKeccak.Emitted.rootsAt iv) = .ok (compiledAt iv) ∧
       IvPatched onesCompiled (zeroPos (seedPositions onesCompiled) iv) (compiledAt iv) :=
   patchOk_spec h
 
@@ -298,7 +298,7 @@ theorem ivChecked_of_patchChecked (hp : PatchChecked) (h1 : ivCheck onesIv = tru
   obtain ⟨-, hP0⟩ := patchCheck_spec (hp zeroIv zeroIv_length)
   obtain ⟨-, hv1, hs1⟩ := ivCheck_spec h1
   obtain ⟨-, -, hs0⟩ := ivCheck_spec h0
-  change checkOk refCompiled (RecCircuit.compile (RecCircuit.ofRG RecGraph.Emitted.graph RecGraph.Emitted.rootsAt iv))
+  change checkOk refCompiled (RecCircuit.compile (RecCircuit.ofRG RecGraphKeccak.Emitted.graph RecGraphKeccak.Emitted.rootsAt iv))
     = true
   rw [hc]
   change (viewCheck (compiledAt iv) && streamAgree (compiledAt iv) refCompiled) = true

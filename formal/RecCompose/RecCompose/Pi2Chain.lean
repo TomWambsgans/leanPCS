@@ -11,8 +11,8 @@ import Common.Rerun
 
 **The finding.** `Pi2Staged.Holds.hashA` asks stage A (π2's experiment up to `α`'s query) to hash nothing of `32`
 (or `536`) bytes (`HashOK (GoodL 536)`), and `Pi2ProbStaged`'s named `Pi2HashBeforeAlpha` states it of `pi2Staged`.
-**At π1-rec3's honest prover it is false**: stage A runs π1-rec3's prover (`p1k`), whose second bus answer is
-`s₂ = H(s₁)` on `s₁`'s `32` bytes (`UniComplete.Rec3.staged2`). So `α`'s chain is restated here without it:
+**It need not hold**: stage A runs π1-rec3's prover (`P1k`), which may hash `32`-byte inputs (a challenge chained on
+the last answer, `s₂ = H(s₁)` on `s₁`'s `32` bytes). So `α`'s chain is restated here without it:
 
 * **`prEvent_staged3_triple_le2`**: for a computation of the chain's shape (`staged3`) whose stage A makes at most
   `KA` Keccak-256 queries (`HC`), from a cache of at most `K₀` hashed inputs, the first input of length `L ≠ 32`, if
@@ -36,8 +36,8 @@ open LeanVM LeanVM.Rpm LeanVM.Parameters LeanVM.Semantics LeanVM.Protocol LeanVM
 open LeanVM.Protocol.Compile (Bytes)
 open E2ECompleteness (ro Cache HashOK cache_of_hashOK prEvent_fresh prEvent_final_le Regular length_digestBytes
   simulateQ_callKeccak256)
-open UniComplete.Prob (GoodL prEvent_query_le sum_const_div sum_mem_le)
-open UniComplete.Prob.TFresh (HC hc_of_qc CacheBound cacheBound_empty cacheBound_run sum_hit_le take_digestBytes')
+open UniKeccakComplete.Prob (GoodL prEvent_query_le sum_const_div sum_mem_le)
+open UniKeccakComplete.Prob.TFresh (HC hc_of_qc CacheBound cacheBound_empty cacheBound_run sum_hit_le take_digestBytes')
 open scoped ENNReal
 
 set_option autoImplicit false
@@ -251,7 +251,7 @@ theorem prEvent_staged_bad_le2 (S : Pi2Staged) {D : RecStatement.RecDeployment} 
 theorem recCompleteness2_of_staged2 {D : RecStatement.RecDeployment} {P1 : RecStatement.Pi1Prover D}
     {P2 : RecStatement.Pi2Prover} {L M ct N : ℕ} {εα εt εpow : ℝ≥0∞}
     (hS : ∀ (input : Vector UInt8 32) (rows : List ℕ) (q : D.pi1.Stack rows), D.pi1.shape.RowsFit rows →
-      D.pi1.HonestRelation rows input q →
+      D.pi1.HonestRelation D.flock rows input q →
       ∃ (S : Pi2Staged) (Bad : S.ρ → Finset (E × E × E)) (badT : S.τ → E → Prop),
         S.Holds2 D P1 P2 input rows q L Bad badT M ct N εα εt εpow) :
     RecStatement.RecCompleteness2 D P1 P2 (deltaStaged2 M ct N εα εt εpow) := by

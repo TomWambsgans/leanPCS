@@ -1,4 +1,5 @@
--- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Follows `formal/UniSound/UniSound/FsCouple.lean`
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md; conventions: see AGENTS.md. Follows
+-- `formal/UniSound/UniSound/FsCouple.lean`
 -- (`prefixU`, `uniSoundnessExperiment_eq`, `rpmGameS_eq`, `step_le`, `uniGameLeV_of`), with
 -- `formal/EndToEnd/Soundness/Final.lean`'s `prEvent_le_of_continuations`.
 import RecCompose.FsVerifier
@@ -36,8 +37,6 @@ open LeanVM.Protocol.Compile LeanVM.Protocol.EndToEnd WhirBridge
 open OracleSpec OracleComp
 open scoped ENNReal
 
-attribute [local instance high] Completeness.instSampleableTypeE_completeness
-
 attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
   LeanVM.Protocol.Compile.instFintypeKState UniStatement.layoutWords UniStatement.setupStack
   UniStatement.flockMatrixStack RecStatement.layoutWords
@@ -45,10 +44,10 @@ attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
 /-! ## The coupling's statement -/
 
 /-- **The game bridge**: π2's experiment's break (the contract accepts while no candidate of `W`'s committed word has
-`P`) is at most as likely as the composed random-permutation game's, of the setup's four trees, π2's adversary
+`P`) is at most as likely as the composed random-permutation game's, of the setup's two trees (π1's, π2's), π2's adversary
 (`p2Adv`) and the composed verifier with π2's IV (`p2Ver`), the event read on the proof with its IV (`ivOut2`), the
 setup's log and the Keccak-256 evaluations of the adversary's permutation transcript. -/
-def Pi2GameLeV (D : RecDeployment) (hs : UniSound.UniShapes D.pi1) (P : RecSetupRoots → Pi2St → Stk → Prop) : Prop :=
+def Pi2GameLeV (D : RecDeployment) (hs : UniKeccakSound.UniShapesK D.pi1) (P : RecSetupRoots → Pi2St → Stk → Prop) : Prop :=
   ∀ A : RecAdversary,
     Pr{let z ← recSoundnessExperiment2 D A}[acc z = true ∧
         ¬ ∃ w ∈ outcomeCandidates D z, P (rts z) (pi2StmtOf D z) (stkOf w)] ≤
@@ -77,8 +76,7 @@ theorem recSoundnessExperiment2_eq (D : RecDeployment) (A : RecAdversary) :
 
 theorem rootsOfOut_rootsB2 (t : RecSetupTrees) : rootsOfOut (rootsB2 t) = t.roots := by
   unfold rootsOfOut rootsB2 RecSetupTrees.roots
-  rw [show UniSound.rootsOfS (toB t.pi1.bytecode.root, toB t.pi1.a0.root, toB t.pi1.b0.root) = t.pi1.roots from
-    UniSound.rootsOfS_rootsB t.pi1, Soundness.ofB_toB_root]
+  simp only [UniSound.rootsOfS, Soundness.ofB_toB_root]
 
 theorem run_logged_p2Adv (A : RecAdversary) (s : SOut) :
     (simulateQ Common.loggedOracles (p2Adv A s)).run [] =
@@ -86,7 +84,7 @@ theorem run_logged_p2Adv (A : RecAdversary) (s : SOut) :
         (simulateQ Common.loggedOracles (A (rootsOfOut s))).run [] := by
   rw [p2Adv, simulateQ_map, StateT.run_map]
 
-theorem rpmGameS2_eq (D : RecDeployment) (hs : UniSound.UniShapes D.pi1) (hS : Pi2SetupBridge D hs)
+theorem rpmGameS2_eq (D : RecDeployment) (hs : UniKeccakSound.UniShapesK D.pi1) (hS : Pi2SetupBridge D hs)
     (A : RecAdversary) :
     Common.runWithRandomPermutation (rpmGameS (p2Setup D hs) p2Fix (p2Adv A) (p2Ver D)) =
       Common.runWithRandomPermutation (prefix2 D A >>= fun a =>
@@ -197,7 +195,7 @@ end Step
 
 /-- **The coupling**: π2's experiment's break is at most as likely as the composed game's, from the setup bridge, the
 verifier bridge (`hV`) and the extractor's reading. -/
-theorem pi2GameLeV (D : RecDeployment) (hD : RecDeployment.Real D) (hs : UniSound.UniShapes D.pi1)
+theorem pi2GameLeV (D : RecDeployment) (hD : RecDeployment.Real D) (hs : UniKeccakSound.UniShapesK D.pi1)
     (hv : (UniStatement.setupLayout D.pi1.shape).vars < 256) (hV : Pi2VerifierBridge D)
     (P : RecSetupRoots → Pi2St → Stk → Prop) : Pi2GameLeV D hs P := by
   intro A

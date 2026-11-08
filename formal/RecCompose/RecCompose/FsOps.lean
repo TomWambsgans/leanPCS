@@ -1,5 +1,6 @@
--- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The port of `formal/UniSound/UniSound/FsOps.lean` and
--- `FsProof.lean`'s facts (`hok_uni`, `hcov_uni`, `hS_uni`, `maxErrK_uni`, the shapes) to π2's six openings.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md; conventions: see AGENTS.md. The port of
+-- `formal/UniSound/UniSound/FsOps.lean` and `FsProof.lean`'s facts (`hok_uni`, `hcov_uni`, `hS_uni`, `maxErrK_uni`, the
+-- shapes) to π2's six openings; π1's `2^23`-word opening is `formal/UniKeccakSound/UniKeccakSound/Fs/Whir23.lean`'s.
 import RecCompose.FsDefs
 import RecCompose.Tables
 import Bridge.Verifier
@@ -15,8 +16,9 @@ import WhirBridge.Union
 * **the openings' `OKP`** (`okp_W`, `okp_Q`: the decoders list the candidates' stacks, a stack satisfying the
   opening's claims is good; π1's three: no stack); `hcov`, `hfit`, and **`hS`** (the setup's claim on its table, from
   its opening);
-* **the shapes at once** (`p2Shapes`: plain `2^24`, the setup's `2^25`, `Q`'s `2^28`, plain `2^27`; their prefixes
-  distinct) and the openings' query counts (`sumQO_le`); the decoders' lists (`L_W = 9952`, `L_Q = 3564`) and
+* **the shapes at once** (`p2Shapes`: plain `2^24` (`W`), the setup's `2^25`, `Q`'s `2^28`, and the Keccak π1's plain
+  `2^27` (`C1`), `2^26` (`C2`), `2^23` (its setup, `UniKeccakSound.plainShapeE23`, certified at the same `εExact`);
+  their prefixes distinct) and the openings' query counts (`sumQO_p2`); the decoders' lists (`L_W = 9952`, `L_Q = 3564`) and
   `maxErrK` (`maxErrK_le`).
 -/
 
@@ -28,8 +30,6 @@ open RecStatement Compose QuotientRpm LeanVM LeanVM.Parameters LeanVM.Protocol L
 open LeanVM.Protocol.Compile LeanVM.Protocol.EndToEnd WhirBridge Finset
 open OracleSpec OracleComp
 open scoped ENNReal
-
-attribute [local instance high] Completeness.instSampleableTypeE_completeness
 
 attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
   LeanVM.Protocol.Compile.instFintypeKState UniStatement.layoutWords UniStatement.setupStack
@@ -237,7 +237,7 @@ theorem clQ_claims (π : P2Pf) (ch : List (List E)) :
 
 section Ops
 
-variable (D : RecDeployment) (hs : UniSound.UniShapes D.pi1)
+variable (D : RecDeployment) (hs : UniKeccakSound.UniShapesK D.pi1)
 
 theorem p2Tc_zero : p2Tc 0 = colCode shW.L shW.R shW.adm := by
   unfold p2Tc
@@ -377,15 +377,16 @@ end Ops
 
 /-! ## The shapes, at once -/
 
-/-- **π2's contract's shapes**: plain `2^24` (`W`, π1's `F`), the setup's `2^25`, `Q`'s `2^28`, plain `2^27` (π1's
-`C1`, `C2`), at `εExact`. -/
+/-- **π2's contract's shapes**: plain `2^24` (`W`), the setup's `2^25`, `Q`'s `2^28`, and the Keccak π1's plain `2^27`
+(`C1`), `2^26` (`C2`) and `2^23` (its setup, `UniKeccakSound.plainShapeE23`), at `εExact`. -/
 noncomputable def p2Shapes : List (ExactShape εExact) :=
   [plainShapeE 24 le_rfl (by norm_num),
     ExactShape.large 25 24 25 [(0, 2 ^ 24), (1, 2 ^ 24)] newOK_setup (by decide) (by decide),
     ExactShape.large 29 24 28 (quotientChunks 24) newOK_quotient (by decide) (by decide),
-    plainShapeE 27 (by norm_num) (by norm_num)]
+    plainShapeE 27 (by norm_num) (by norm_num), plainShapeE 26 (by norm_num) (by norm_num),
+    UniKeccakSound.plainShapeE23]
 
-theorem p2Shapes_logN : p2Shapes.map (fun s ↦ s.L.logN) = [24, 25, 28, 27] := rfl
+theorem p2Shapes_logN : p2Shapes.map (fun s ↦ s.L.logN) = [24, 25, 28, 27, 26, 23] := rfl
 
 theorem p2Shapes_nodup : (p2Shapes.map fun s ↦ openingPrefix s.L s.R).Nodup := by
   refine nodup_prefix_of_logN (fun s hs ↦ ?_) (by rw [p2Shapes_logN]; decide)
@@ -397,8 +398,9 @@ theorem p2Shapes_nodup : (p2Shapes.map fun s ↦ openingPrefix s.L s.R).Nodup :=
 theorem p2Shapes_QO : ∀ s ∈ p2Shapes, s.QO ≤ 9018 := by
   intro s hs
   obtain ⟨h24, h25, h26, h27, h28⟩ := largeQueries_eq
+  have h23 := UniKeccakSound.queries23_eq
   simp only [p2Shapes, List.mem_cons, List.not_mem_nil, or_false] at hs
-  rcases hs with rfl | rfl | rfl | rfl
+  rcases hs with rfl | rfl | rfl | rfl | rfl | rfl
   · show largeQueries 24 ≤ 9018
     omega
   · show largeQueries 25 ≤ 9018
@@ -406,6 +408,10 @@ theorem p2Shapes_QO : ∀ s ∈ p2Shapes, s.QO ≤ 9018 := by
   · show largeQueries 28 ≤ 9018
     omega
   · show largeQueries 27 ≤ 9018
+    omega
+  · show largeQueries 26 ≤ 9018
+    omega
+  · show UniKeccakSound.queries23 ≤ 9018
     omega
 
 /-- **The six openings' shapes are among `p2Shapes`.** -/
@@ -415,21 +421,27 @@ theorem hops_p2 (D : RecDeployment) : ∀ o ∈ p2Ops D, ∃ s ∈ p2Shapes, s.L
   rcases ho with rfl | rfl | rfl | rfl | rfl | rfl
   · exact ⟨_, List.mem_cons_of_mem _ (List.mem_cons_of_mem _ (List.mem_cons_of_mem _ List.mem_cons_self)),
       rfl, rfl⟩
-  · exact ⟨_, List.mem_cons_of_mem _ (List.mem_cons_of_mem _ (List.mem_cons_of_mem _ List.mem_cons_self)),
-      rfl, rfl⟩
-  · exact ⟨_, List.mem_cons_self, rfl, rfl⟩
+  · exact ⟨_, List.mem_cons_of_mem _ (List.mem_cons_of_mem _ (List.mem_cons_of_mem _ (List.mem_cons_of_mem _
+      List.mem_cons_self))), rfl, rfl⟩
+  · exact ⟨_, List.mem_cons_of_mem _ (List.mem_cons_of_mem _ (List.mem_cons_of_mem _ (List.mem_cons_of_mem _
+      (List.mem_cons_of_mem _ List.mem_cons_self)))), rfl, rfl⟩
   · exact ⟨_, List.mem_cons_self, rfl, rfl⟩
   · exact ⟨_, List.mem_cons_of_mem _ List.mem_cons_self, rfl, rfl⟩
   · exact ⟨_, List.mem_cons_of_mem _ (List.mem_cons_of_mem _ List.mem_cons_self), rfl, rfl⟩
 
-/-- **The six openings' queries**: `8318 + 8318 + 7183 + 7183 + 7546 + 9018`. -/
-theorem sumQO_p2 (D : RecDeployment) : ((p2Ops D).map fun o => o.S.QO).sum = 47566 := by
+/-- **The six openings' queries**: `8318 + 7928 + 6499 + 7183 + 7546 + 9018` (π1's `C1`, `C2`, setup at `2^27`,
+`2^26`, `2^23` words, then `W`, π2's setup, `Q`). -/
+theorem sumQO_p2 (D : RecDeployment) : ((p2Ops D).map fun o => o.S.QO).sum = 46492 := by
   obtain ⟨h24, h25, h26, h27, h28⟩ := largeQueries_eq
+  have h23 := UniKeccakSound.queries23_eq
+  have k0 : UniKeccakSound.kQueries 27 = largeQueries 27 := rfl
+  have k1 : UniKeccakSound.kQueries 26 = largeQueries 26 := rfl
+  have k2 : UniKeccakSound.kQueries 23 = UniKeccakSound.queries23 := rfl
   have e0 : pi1Vars 0 = 27 := rfl
-  have e1 : pi1Vars 1 = 27 := rfl
-  have e2 : pi1Vars 2 = 24 := rfl
-  simp only [p2Ops, List.map_cons, List.map_nil, List.sum_cons, List.sum_nil, e0, e1, e2, h24, h25, h27, h28,
-    Nat.reduceAdd]
+  have e1 : pi1Vars 1 = 26 := rfl
+  have e2 : pi1Vars 2 = 23 := rfl
+  simp only [p2Ops, List.map_cons, List.map_nil, List.sum_cons, List.sum_nil, e0, e1, e2, k0, k1, k2, h23, h24, h25,
+    h26, h27, h28, Nat.reduceAdd]
 
 /-! ## The lists, `maxErrK` -/
 

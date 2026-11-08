@@ -1,7 +1,6 @@
--- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md and AGENTS.md.
 import RecCompose.Facts
 import RecCompose.Circuit
-import UniComplete.Reference
 
 /-!
 # The real deployment, and the run-checked inputs that build its circuits
@@ -9,11 +8,13 @@ import UniComplete.Reference
 This file exhibits a `D` with `D.Real`, and inhabits `Pi2Circuits D`, whose per-IV premises are stated for 32-byte
 IVs only (quantified over IVs of every length, it would be uninhabited). Here:
 
-* **`realDeployment prog hprog`**: π1's deployment at the reference shape and leanVM's program IV, for the program
-  `prog` (any program of the reference shape's size; leanVM 42422001's is not transcribed in Lean); π2's circuit at
-  each IV `pi2CircuitOf` of the Lean compiler's (`compiledAt iv`: `RecCircuit.compile` on π1-rec3's emitted graph at
-  that IV), so `σ`, `κ` are the compiler's by construction; π1's calls `Data.pi1Calls`; π1's stream `streamW` of the
-  compiled circuit at π1's reference IV (`realStream`).
+* **`realDeployment prog hprog`**: π1's deployment (the Keccak VM's `UniKeccak.KDeployment`) at the 128-signature
+  reference shape `RecGraphKeccak.Pi1.keccak128` and leanVM's program IV, for the program `prog` (any Keccak VM program
+  of the reference shape's bytecode size; leanVM 9d50c92a3's is not transcribed in Lean), with the `A0`, `B0` roots of
+  `realRoots` (one constant, the reference roots); π2's circuit at each IV `pi2CircuitOf` of the Lean compiler's
+  (`compiledAt iv`: `RecCircuit.compile` on the Keccak π1-rec3's emitted graph `RecGraphKeccak.Emitted.graph` at that
+  IV), so `σ`, `κ` are the compiler's by construction; π1's calls `Data.pi1Calls`; π1's stream `streamW` of the
+  compiled circuit at π1's reference IV (`realStream`); the Keccak-f block `KeccakFlock.keccakFlockSpec`.
 * **`realDeployment_real`**: `(realDeployment prog hprog).Real`, from `GraphsAgree` (the existing run) and two
   evaluated checks of single values: **`DigestChecked`** (the digest of the compiler's `σ`, `κ` at `Data.pi1Iv` is the
   Rust's `Data.digest`) and **`SetupRootChecked`** (their setup tree's root is the Rust's `Data.setupRoot`).
@@ -29,10 +30,10 @@ IVs only (quantified over IVs of every length, it would be uninhabited). Here:
 **Why `IvChecked` is not proved (IV uniformity).** The IV enters the compiler at one place, the seed's message
 (`constantBits NAME ++ constantBits r.iv ++ publicCopy`, one Keccak-f block): its 256 bits are the 256 constants
 `fresh 0` / `fresh 1` of the seed's permutation input (`permute`), whose only IV dependence is `setKappa`'s write of
-`κ = 1` (a `0` is not stored: the circuit's `κ` is sparse). So κ has exactly one entry more per IV one-bit: 19,143
-entries at the reference IV (146 one-bits) and 18,997 at the zero IV (`view9b.log`). Besides `κ`, the IV is in the
-traces the checker reads (the seed sponge's message and block input, `nodeOk`'s `seedMessage iv`, `graphOk`'s length
-check). A proof that the rest of the run (regions, rows, placements, values, σ, the view, the ports, `validB`, the
+`κ = 1` (a `0` is not stored: the circuit's `κ` is sparse). So κ has exactly one entry more per IV one-bit: 20,611
+entries at the reference IV (113 one-bits) and 20,498 at the zero IV (`rec-view-check`, logs `data-viewcheck-ref`,
+`data-viewcheck-zero`). Besides `κ`, the IV is in the traces the checker reads (the seed sponge's message and block
+input, `nodeOk`'s `seedMessage iv`, `graphOk`'s length check). A proof that the rest of the run (regions, rows, placements, values, σ, the view, the ports, `validB`, the
 checker's verdict, `streamW`) does not depend on those 256 constants is a relational simulation of the whole builder
 (`compileM`, the templates and `finish`, about 1,200 lines of monadic code) and of the checker (680 lines); it is not
 done. The three evaluated IVs set every IV constant both ways (the zero IV all `0`, the all-ones IV all `1`).
@@ -54,11 +55,11 @@ def okOr (e : Except String RecCircuit.Compiled) : RecCircuit.Compiled :=
   | .ok c => c
   | .error _ => default
 
-/-- **The Lean compiler on π1-rec3's emitted graph at `iv`** (the default circuit if it rejects). The proofs never
-unfold it into a `match` on the compiler's run (that would make the elaborator evaluate the run): they go through
-`okOr`'s lemmas. -/
+/-- **The Lean compiler on the Keccak π1-rec3's emitted graph at `iv`** (the default circuit if it rejects). The
+proofs never unfold it into a `match` on the compiler's run (that would make the elaborator evaluate the run): they go
+through `okOr`'s lemmas. -/
 def compiledAt (iv : List UInt8) : RecCircuit.Compiled :=
-  okOr (RecCircuit.compile (RecCircuit.ofRG RecGraph.Emitted.graph RecGraph.Emitted.rootsAt iv))
+  okOr (RecCircuit.compile (RecCircuit.ofRG RecGraphKeccak.Emitted.graph RecGraphKeccak.Emitted.rootsAt iv))
 
 /-- The compiled circuit at π1's reference IV. -/
 def refCompiled : RecCircuit.Compiled := compiledAt Data.pi1Iv
@@ -78,7 +79,7 @@ theorem pi2CircuitOf_kappa (C : RecCircuit.Circuit) : (pi2CircuitOf C).kappa = C
 
 /-- **π1's stream on π2's witness**: the compiler's decoding of the free bits (`streamW`) at π1's reference IV. -/
 def realStream (w : ℕ → K) : Array UInt8 :=
-  (refCompiled.streamW (RecCircuit.ofRG RecGraph.Emitted.graph RecGraph.Emitted.rootsAt Data.pi1Iv) w).toArray
+  (refCompiled.streamW (RecCircuit.ofRG RecGraphKeccak.Emitted.graph RecGraphKeccak.Emitted.rootsAt Data.pi1Iv) w).toArray
 
 /-- π2's circuit at each IV: the compiler's there. -/
 def realPi2 (iv : List UInt8) : Pi2Circuit := pi2CircuitOf (compiledAt iv).circuit
@@ -86,19 +87,28 @@ def realPi2 (iv : List UInt8) : Pi2Circuit := pi2CircuitOf (compiledAt iv).circu
 /-- At π1's reference IV, π2's circuit is the reference compile's (what `rec-real-check` evaluates). -/
 theorem realPi2_ref : realPi2 Data.pi1Iv = pi2CircuitOf refCompiled.circuit := rfl
 
-/-- π1's deployment at the reference shape and leanVM's program IV, for the program `prog`. -/
-def realPi1 (prog : Lv42.Semantics.Program) (hprog : UniStatement.reference.logBytecode = prog.logSize) :
-    UniStatement.Deployment :=
-  ⟨prog, UniStatement.reference, UniStatement.programIv, UniComplete.reference_valid, hprog⟩
+/-- **The setup roots of the real deployment** (one constant: the reference roots, `RecGraphKeccak.Pi1.referenceRootsK`;
+only their `A0`, `B0` enter the deployment, as `KDeployment.a0Root`, `b0Root`, which `RecDeployment.Real` does not
+pin). -/
+def realRoots : UniStatement.SetupRoots := RecGraphKeccak.Pi1.referenceRootsK
 
-/-- **The real deployment**, for π1's program `prog` (`D.pi1.prog` is not pinned by `RecDeployment.Real`: the end
-theorems hold for every program of the reference shape). -/
-def realDeployment (prog : Lv42.Semantics.Program) (hprog : UniStatement.reference.logBytecode = prog.logSize) :
+/-- The reference shape is valid (`Shape.Valid`: six heights, `validate` with Flock). -/
+theorem keccak128_valid : RecGraphKeccak.Pi1.keccak128.Valid := by decide +kernel
+
+/-- π1's deployment at the Keccak reference shape and leanVM's program IV, for the program `prog`. -/
+def realPi1 (prog : KeccakVm.Program) (hprog : RecGraphKeccak.Pi1.keccak128.logBytecode = prog.logSize) :
+    UniKeccak.KDeployment :=
+  ⟨prog, RecGraphKeccak.Pi1.keccak128, UniStatement.programIv, realRoots.a0, realRoots.b0, keccak128_valid, hprog⟩
+
+/-- **The real deployment**, for π1's program `prog` (`D.pi1.prog`, `a0Root`, `b0Root` are not pinned by
+`RecDeployment.Real`: the end theorems hold for every Keccak VM program of the reference shape). -/
+def realDeployment (prog : KeccakVm.Program) (hprog : RecGraphKeccak.Pi1.keccak128.logBytecode = prog.logSize) :
     RecDeployment where
   pi1 := realPi1 prog hprog
   pi2 := realPi2
   pi1Calls := Data.pi1Calls
   pi1Stream := realStream
+  flock := KeccakFlock.keccakFlockSpec
 
 /-! ## The evaluated checks -/
 
@@ -142,7 +152,7 @@ def checkOk (c0 : RecCircuit.Compiled) (e : Except String RecCircuit.Compiled) :
 /-- **The per-IV check**: the compiler accepts π1-rec3's emitted graph at `iv`, the circuit passes the view check, and
 it decodes π1's stream as the reference IV's circuit does. -/
 def ivCheck (iv : List UInt8) : Bool :=
-  checkOk refCompiled (RecCircuit.compile (RecCircuit.ofRG RecGraph.Emitted.graph RecGraph.Emitted.rootsAt iv))
+  checkOk refCompiled (RecCircuit.compile (RecCircuit.ofRG RecGraphKeccak.Emitted.graph RecGraphKeccak.Emitted.rootsAt iv))
 
 /-- **The per-IV check holds at every 32-byte IV.** Stated for every 32-byte IV, **checked by evaluation at three**
 (π1's reference IV, the zero IV, the all-ones IV: `rec-real-check`), assumed at the others (IV uniformity is not
@@ -161,7 +171,7 @@ theorem checkOk_spec {c0 : RecCircuit.Compiled} {e : Except String RecCircuit.Co
     exact ⟨rfl, h.1, h.2⟩
 
 theorem ivCheck_spec {iv : List UInt8} (h : ivCheck iv = true) :
-    RecCircuit.compile (RecCircuit.ofRG RecGraph.Emitted.graph RecGraph.Emitted.rootsAt iv) = .ok (compiledAt iv) ∧
+    RecCircuit.compile (RecCircuit.ofRG RecGraphKeccak.Emitted.graph RecGraphKeccak.Emitted.rootsAt iv) = .ok (compiledAt iv) ∧
       viewCheck (compiledAt iv) = true ∧ streamAgree (compiledAt iv) refCompiled = true := by
   exact checkOk_spec h
 
@@ -235,22 +245,23 @@ theorem streamW_eq_of_streamAgree {c c0 : RecCircuit.Compiled} (h : streamAgree 
 
 /-! ## The real deployment's circuits and `Real` -/
 
-/-- (Generic in the graph, so that no proof compares `RecGraph.Pi1.pi1Graph`'s fields by reduction: the kernel would
-run the recorder.) -/
+/-- (Generic in the graph, so that no proof compares `RecGraphKeccak.Pi1.pi1GraphK`'s fields by reduction: the kernel
+would run the recorder.) -/
 theorem ofRG_streamLen' (g : RecGraph.Graph) (rootsAt : List ℕ) (iv : List UInt8) :
     (RecCircuit.ofRG g rootsAt iv).graph.streamLen = g.streamLen := rfl
 
-variable (prog : Lv42.Semantics.Program) (hprog : UniStatement.reference.logBytecode = prog.logSize)
+variable (prog : KeccakVm.Program) (hprog : RecGraphKeccak.Pi1.keccak128.logBytecode = prog.logSize)
 
 theorem compiledAt_of_compile {iv : List UInt8} {c : RecCircuit.Compiled} (hg : GraphsAgree)
-    (hc : RecCircuit.compile (RecCircuit.ofRG RecGraph.Pi1.pi1Graph RecGraph.Emitted.rootsAt iv) = .ok c) :
+    (hc : RecCircuit.compile (RecCircuit.ofRG RecGraphKeccak.Pi1.pi1GraphK RecGraphKeccak.Emitted.rootsAt iv) = .ok c) :
     compiledAt iv = c := by
   unfold GraphsAgree at hg
   rw [hg] at hc
   exact (congrArg okOr hc).trans rfl
 
 /-- **The real deployment is `Real`**, from `GraphsAgree` and the two evaluated checks (`DigestChecked`,
-`SetupRootChecked`). The circuit, the calls, the shape, the program IV and the setup columns hold by construction. -/
+`SetupRootChecked`). The circuit, the calls, the shape, the program IV, the setup columns and the Keccak-f block hold
+by construction. -/
 theorem realDeployment_real (hg : GraphsAgree) (hd : DigestChecked) (hs : SetupRootChecked) :
     (realDeployment prog hprog).Real :=
   ⟨fun _ ↦ rfl, rfl, rfl, rfl, hd, hs, fun iv _ c hc ↦ by
@@ -259,21 +270,21 @@ theorem realDeployment_real (hg : GraphsAgree) (hd : DigestChecked) (hs : SetupR
     · show (compiledAt iv).circuit.sigmaAt = _
       rw [e]
     · show (pi2CircuitOf (compiledAt iv).circuit).kappa = _
-      rw [pi2CircuitOf_kappa, e]⟩
+      rw [pi2CircuitOf_kappa, e], rfl⟩
 
 /-- **The real deployment's compiled circuits** (`Pi2Circuits`), from `GraphsAgree` and `IvChecked`. -/
 def pi2Circuits_real (hg : GraphsAgree) (h : IvChecked) : Pi2Circuits (realDeployment prog hprog) where
-  rootsAt := RecGraph.Emitted.rootsAt
+  rootsAt := RecGraphKeccak.Emitted.rootsAt
   compiled := compiledAt
   compile_ok iv hiv := by
     unfold GraphsAgree at hg
     rw [hg]
     exact (ivCheck_spec (h iv hiv)).1
   stream_eq iv hiv w := by
-    show (refCompiled.streamW (RecCircuit.ofRG RecGraph.Emitted.graph RecGraph.Emitted.rootsAt Data.pi1Iv) w).toArray = _
+    show (refCompiled.streamW (RecCircuit.ofRG RecGraphKeccak.Emitted.graph RecGraphKeccak.Emitted.rootsAt Data.pi1Iv) w).toArray = _
     exact congrArg List.toArray (streamW_eq_of_streamAgree (ivCheck_spec (h iv hiv)).2.2
-      (RecCircuit.ofRG RecGraph.Pi1.pi1Graph RecGraph.Emitted.rootsAt iv)
-      (RecCircuit.ofRG RecGraph.Emitted.graph RecGraph.Emitted.rootsAt Data.pi1Iv)
+      (RecCircuit.ofRG RecGraphKeccak.Pi1.pi1GraphK RecGraphKeccak.Emitted.rootsAt iv)
+      (RecCircuit.ofRG RecGraphKeccak.Emitted.graph RecGraphKeccak.Emitted.rootsAt Data.pi1Iv)
       (by unfold GraphsAgree at hg; rw [ofRG_streamLen', ofRG_streamLen', hg]) w).symm
 
 /-- **The real deployment's circuits pass the view check** at every 32-byte IV, from `IvChecked`. -/
@@ -281,7 +292,7 @@ theorem pi2ViewChecked_real (hg : GraphsAgree) (h : IvChecked) : Pi2ViewChecked 
   fun iv hiv ↦ (ivCheck_spec (h iv hiv)).2.1
 
 theorem pi2Circuits_real_rootsAt (hg : GraphsAgree) (h : IvChecked) :
-    (pi2Circuits_real prog hprog hg h).rootsAt = RecGraph.Emitted.rootsAt := rfl
+    (pi2Circuits_real prog hprog hg h).rootsAt = RecGraphKeccak.Emitted.rootsAt := rfl
 
 end RecCompose
 

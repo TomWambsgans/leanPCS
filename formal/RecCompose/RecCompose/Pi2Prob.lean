@@ -4,7 +4,7 @@
 -- discipline (`HashOK`, `GoodL`, `prEvent_query_le`, `sum_bad_le`, `prEvent_tquery_le`), `E2ECompleteness`'s transfer
 -- (`rpm_le_rom`) and leanerVM (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`, commit 6175f1a0, MIT OR
 -- Apache-2.0): the two calls `KeccakCalls`, their lazy random oracles, `rpmError`, `DuplexVm`, `hashBlocks`.
-import UniComplete.ProbStaged
+import UniKeccakComplete.Staged
 import RecStatement.Security
 
 /-!
@@ -37,8 +37,7 @@ open LeanVM LeanVM.Rpm LeanVM.Parameters LeanVM.Semantics LeanVM.Protocol LeanVM
 open LeanVM.Protocol.Compile (Bytes)
 open E2ECompleteness (ro Cache HashOK hashOK cache_of_hashOK prEvent_fresh prEvent_final_le Regular
   card_digest_ennreal two_pow_256_ne_zero two_pow_256_ne_top length_digestBytes simulateQ_callKeccak256)
-open UniComplete.Prob (GoodL prEvent_query_le sum_const_div sum_mem_le sum_bad_le Inv fresh_first inv_first fresh_inv
-  inv_cons prEvent_tquery_le)
+open UniKeccakComplete.Prob (GoodL prEvent_query_le sum_const_div sum_mem_le sum_bad_le Inv fresh_first inv_first fresh_inv inv_cons prEvent_tquery_le)
 open scoped ENNReal
 
 set_option autoImplicit false
@@ -163,7 +162,7 @@ theorem prEvent_staged3_le {α ρ γ : Type} (chal : Digest → E) (hreg : Regul
 
 /-! ## `t` -/
 
-/-- **The point challenge `t` in the random-oracle model** (`UniComplete.Prob.prEvent_tquery_le` for a prior of any
+/-- **The point challenge `t` in the random-oracle model** (`UniKeccakComplete.Prob.prEvent_tquery_le` for a prior of any
 type): an event forcing `t = chal(answer)` into a bad set of at most `ct` values for each prior has probability at most
 the probability that `t`'s input is already cached, plus `ct / 2^192`. -/
 theorem prEvent_tquery_le' {β γ ω τ : Type} (chal : Digest → E) (hreg : Regular chal) (badT : τ → E → Prop)
@@ -400,7 +399,7 @@ then `RecCompleteness2 D P1 P2 (deltaStaged …)`. -/
 theorem recCompleteness2_of_staged {D : RecStatement.RecDeployment} {P1 : RecStatement.Pi1Prover D}
     {P2 : RecStatement.Pi2Prover} {L M ct N : ℕ} {εt εpow : ℝ≥0∞}
     (hS : ∀ (input : Vector UInt8 32) (rows : List ℕ) (q : D.pi1.Stack rows), D.pi1.shape.RowsFit rows →
-      D.pi1.HonestRelation rows input q →
+      D.pi1.HonestRelation D.flock rows input q →
       ∃ (S : Pi2Staged) (Bad : S.ρ → Finset (E × E × E)) (badT : S.τ → E → Prop),
         S.Holds D P1 P2 input rows q L Bad badT M ct N εt εpow) :
     RecStatement.RecCompleteness2 D P1 P2 (deltaStaged M ct N εt εpow) := by

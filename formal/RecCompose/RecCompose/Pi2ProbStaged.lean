@@ -6,7 +6,7 @@
 -- logged random oracle and its potential engine, `powPot`, `missProb`, the run at a log's answers.
 import RecCompose.Pi2CompleteEnd
 import RecCompose.Facts
-import UniComplete.ProbGrind
+import UniKeccakComplete.K.ProbGrind
 
 /-!
 # π2's completeness experiment, staged
@@ -58,7 +58,7 @@ open LeanVM LeanVM.Rpm
 open LeanVM.Protocol.Compile LeanVM.Protocol.Compile.Rom
 open LeanVM.Protocol.Rom
 open E2ECompleteness (ro runAt HashOK)
-open UniComplete.Prob (GoodL winState one_le_powPot_of_opening_none)
+open UniKeccakComplete.Prob (GoodL winState one_le_powPot_of_opening_none)
 open Pi2S Pi2K Pi2P Pi2E
 open scoped ENNReal
 
@@ -124,7 +124,7 @@ variable {m : Type → Type} [Monad m] (H : List UInt8 → m Digest) (F : Keccak
 /-- **π2's completeness experiment with Keccak-256 explicit**: the setup, π1's proof `p1o`, π1-rec3's graph on it, π2's
 honest prover (`nonceFuel` its search), the contract. -/
 noncomputable def expW2 (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
-    (p1o : m (Option UniStatement.UniProof)) (input : Vector UInt8 32) : m (Bool × Bool) := do
+    (p1o : m (Option UniKeccak.KeccakProof)) (input : Vector UInt8 32) : m (Bool × Bool) := do
   let trees ← Pi2H.setupTreesWithH H F D
   match ← p1o with
   | none => return (false, false)
@@ -138,7 +138,7 @@ noncomputable def expW2 (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D
 `W`'s stack and tree, the writer before `α`. -/
 structure StA where
   trees : RecSetupTrees
-  p1 : Option UniStatement.UniProof
+  p1 : Option UniKeccak.KeccakProof
   a1 : Bool
   roots : RecSetupRoots
   setupTree : LeanVM.Prover.Tree
@@ -159,7 +159,7 @@ structure StB where
 
 /-- **Stage A**: the setup, π1's proof, the graph, π2's prover up to `α`. -/
 noncomputable def stageA (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
-    (p1o : m (Option UniStatement.UniProof)) (input : Vector UInt8 32) : m StA := do
+    (p1o : m (Option UniKeccak.KeccakProof)) (input : Vector UInt8 32) : m StA := do
   let trees ← Pi2H.setupTreesWithH H F D
   match ← p1o with
   | none => return ⟨trees, none, false, trees.roots, trees.pi2, ([], fun _ ↦ 0), #[], trees.pi2, UniComplete.Wr.start default⟩
@@ -209,16 +209,16 @@ abbrev Pr2 : Type := RecSetupRoots × (ℕ → K) × (ℕ → List E)
 
 /-- **π2's experiment's stages over the two calls.** -/
 noncomputable def pi2Staged (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
-    (P1k : OracleComp KeccakCalls (Option UniStatement.UniProof)) (input : Vector UInt8 32) : Pi2Staged where
+    (P1k : OracleComp KeccakCalls (Option UniKeccak.KeccakProof)) (input : Vector UInt8 32) : Pi2Staged where
   α := StA
   β := StB
   ρ := Pr2
   τ := Pr2 × E × E × E
-  inp a := fixLen 536 (UniComplete.Prob.tInput a.wr)
+  inp a := fixLen 536 (UniKeccakComplete.Prob.tInput a.wr)
   pr a := (a.roots, a.vw.2, Fa.pubOf a.roots (publicScalarsOf input.toList a.vw.1))
   A := stageA callKeccak256 callKeccakF1600 D C Fa P1k input
   B := stageB callKeccak256 D C
-  tin b := UniComplete.Prob.tInput b.wr
+  tin b := UniKeccakComplete.Prob.tInput b.wr
   prT b := ((b.a.roots, b.a.vw.2, Fa.pubOf b.a.roots (publicScalarsOf input.toList b.a.vw.1)), b.α, b.β, b.γ)
   C := stageC callKeccak256 callKeccakF1600 D C input
 
@@ -242,20 +242,20 @@ rejecting) is at most the staged run's against the random permutation: `P1` is `
 π2's prover and the contract commute with the simulation (`keccakCallsOverRandomPermutation`), and when `P1k` returns
 none the staged run's dummy challenges change no verdict. -/
 def Pi2ExperimentLe (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C) (P1 : Pi1Prover D)
-    (P1k : Vector UInt8 32 → (rows : List ℕ) → D.pi1.Stack rows → OracleComp KeccakCalls (Option UniStatement.UniProof)) :
+    (P1k : Vector UInt8 32 → (rows : List ℕ) → D.pi1.Stack rows → OracleComp KeccakCalls (Option UniKeccak.KeccakProof)) :
     Prop :=
   ∀ (input : Vector UInt8 32) (rows : List ℕ) (q : D.pi1.Stack rows), D.pi1.shape.RowsFit rows →
-    D.pi1.HonestRelation rows input q →
+    D.pi1.HonestRelation D.flock rows input q →
     Pr{let v ← recCompletenessExperiment2 D P1 (pi2Prover D C Fa PcsQuotient.nonceFuel) input rows q}[
       v.1 = true ∧ v.2 = false] ≤
     Pr{let z ← (simulateQ keccakCallsOverRandomPermutation (pi2Staged D C Fa (P1k input rows q) input).run).run' []}[
       z.1.1.1 = true ∧ z.1.1.2 = false]
 
-/-- **Named: the staged run at pure functions** (`UniComplete.Prob.runAt_stagedU`'s analogue: the code's commutation
+/-- **Named: the staged run at pure functions** (`UniKeccakComplete.Prob.runAt_stagedU`'s analogue: the code's commutation
 with `totalImpl H F` and the prover's split at `α` and `t`): its verdict is `expW2` at `Id`, and when `P1k` gives `p1`
 with an honest witness, its priors and challenges are the honest prover's (`outOf`'s inputs). -/
 def Pi2RunAt (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
-    (P1k : Vector UInt8 32 → (rows : List ℕ) → D.pi1.Stack rows → OracleComp KeccakCalls (Option UniStatement.UniProof)) :
+    (P1k : Vector UInt8 32 → (rows : List ℕ) → D.pi1.Stack rows → OracleComp KeccakCalls (Option UniKeccak.KeccakProof)) :
     Prop :=
   ∀ (input : Vector UInt8 32) (rows : List ℕ) (q : D.pi1.Stack rows) (Ht : List UInt8 → Digest)
     (Ft : KeccakState → KeccakState),
@@ -280,34 +280,34 @@ def Pi2RunAt (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
 
 /-- **Named: the staged run follows the duplex discipline** (`ProverDuplex`'s, `VerifierDisc`'s, `P1k`'s). -/
 def Pi2RunDuplex (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
-    (P1k : Vector UInt8 32 → (rows : List ℕ) → D.pi1.Stack rows → OracleComp KeccakCalls (Option UniStatement.UniProof)) :
+    (P1k : Vector UInt8 32 → (rows : List ℕ) → D.pi1.Stack rows → OracleComp KeccakCalls (Option UniKeccak.KeccakProof)) :
     Prop :=
   ∀ (input : Vector UInt8 32) (rows : List ℕ) (q : D.pi1.Stack rows), D.pi1.shape.RowsFit rows →
-    D.pi1.HonestRelation rows input q → DuplexVm (pi2Staged D C Fa (P1k input rows q) input).run []
+    D.pi1.HonestRelation D.flock rows input q → DuplexVm (pi2Staged D C Fa (P1k input rows q) input).run []
 
 /-- **Named: the staged run's block count** is at most `N` (`P1k`'s, the setup's, the graph's, π2's prover's and
 contract's). -/
 def Pi2RunCost (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
-    (P1k : Vector UInt8 32 → (rows : List ℕ) → D.pi1.Stack rows → OracleComp KeccakCalls (Option UniStatement.UniProof))
+    (P1k : Vector UInt8 32 → (rows : List ℕ) → D.pi1.Stack rows → OracleComp KeccakCalls (Option UniKeccak.KeccakProof))
     (N : ℕ) : Prop :=
   ∀ (input : Vector UInt8 32) (rows : List ℕ) (q : D.pi1.Stack rows), D.pi1.shape.RowsFit rows →
-    D.pi1.HonestRelation rows input q →
+    D.pi1.HonestRelation D.flock rows input q →
     Common.QueryCostAtMost (pi2Staged D C Fa (P1k input rows q) input).run hashBlocks N
 
 /-- **Named: before `α`, nothing of `32` or `536` bytes is hashed** (`hashA_stagedU`'s analogue; `P1k`'s hashes, the
 setup's leaves and nodes, the graph's openings, π2's IV, digest and seed preimages, `W`'s tree). -/
 def Pi2HashBeforeAlpha (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
-    (P1k : Vector UInt8 32 → (rows : List ℕ) → D.pi1.Stack rows → OracleComp KeccakCalls (Option UniStatement.UniProof)) :
+    (P1k : Vector UInt8 32 → (rows : List ℕ) → D.pi1.Stack rows → OracleComp KeccakCalls (Option UniKeccak.KeccakProof)) :
     Prop :=
   ∀ (input : Vector UInt8 32) (rows : List ℕ) (q : D.pi1.Stack rows), D.pi1.shape.RowsFit rows →
-    D.pi1.HonestRelation rows input q → HashOK (GoodL 536) (pi2Staged D C Fa (P1k input rows q) input).A
+    D.pi1.HonestRelation D.flock rows input q → HashOK (GoodL 536) (pi2Staged D C Fa (P1k input rows q) input).A
 
 /-- **Named: `t`'s input is fresh** but with probability `εt` (`TQueryFresh`'s analogue). -/
 def Pi2TFresh (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
-    (P1k : Vector UInt8 32 → (rows : List ℕ) → D.pi1.Stack rows → OracleComp KeccakCalls (Option UniStatement.UniProof))
+    (P1k : Vector UInt8 32 → (rows : List ℕ) → D.pi1.Stack rows → OracleComp KeccakCalls (Option UniKeccak.KeccakProof))
     (εt : ℝ≥0∞) : Prop :=
   ∀ (input : Vector UInt8 32) (rows : List ℕ) (q : D.pi1.Stack rows), D.pi1.shape.RowsFit rows →
-    D.pi1.HonestRelation rows input q →
+    D.pi1.HonestRelation D.flock rows input q →
     Pr{let p ← (simulateQ ro (pi2Staged D C Fa (P1k input rows q) input).pre).run ∅}[
       p.2 (.inl ((pi2Staged D C Fa (P1k input rows q) input).tin p.1.1)) ≠ none] ≤ εt
 
@@ -316,7 +316,7 @@ Keccak-256): at pure `(H, F)`, on a π1 proof π1-rec3's graph accepts, its open
 prover takes honest, the contract's three π1 calls on π2's honest proof decode and their openings accept. -/
 def Pi2Pi1Openings (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C) : Prop :=
   ∀ (Ht : List UInt8 → Digest) (Ft : KeccakState → KeccakState) (input : Vector UInt8 32)
-    (p1 : UniStatement.UniProof) (proof : RecProof),
+    (p1 : UniKeccak.KeccakProof) (proof : RecProof),
     Pi2Good D C Fa (rootsH D Ht Ft) input p1.stream (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream) →
     Id.run (Pi2H.pi1GraphVerifierWithH (m := Id) (Pure.pure ∘ Ht) Ft D (rootsH D Ht Ft).pi1 input p1) = true →
     Id.run (pi2ProverWith (m := Id) (Pure.pure ∘ Ht) Ft D C Fa PcsQuotient.nonceFuel input p1) = some proof →
@@ -327,7 +327,7 @@ def Pi2Pi1Openings (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C) :
 
 /-- **The graph's verdict includes its checks.** -/
 theorem graphChecks_of_verifierH {H : List UInt8 → Id Digest} {F : KeccakState → Id KeccakState} {D : RecDeployment}
-    {roots : UniStatement.SetupRoots} {input : Vector UInt8 32} {p1 : UniStatement.UniProof}
+    {roots : UniStatement.SetupRoots} {input : Vector UInt8 32} {p1 : UniKeccak.KeccakProof}
     (h : Id.run (Pi2H.pi1GraphVerifierWithH (m := Id) H F D roots input p1) = true) :
     pi1GraphChecks (D.pi1IvAt roots) input p1.stream = true := by
   unfold Pi2H.pi1GraphVerifierWithH at h
@@ -344,7 +344,7 @@ theorem graphChecks_of_verifierH {H : List UInt8 → Id Digest} {F : KeccakState
 
 /-- **π2's honest prover returns none only at a failed opening.** -/
 theorem pi2Prover_none {D : RecDeployment} {C : Pi2Circuits D} (Fa : Pi2Facts D C) (Hk : List UInt8 → Digest)
-    (F : KeccakState → Id KeccakState) (fuel : ℕ) (input : Vector UInt8 32) (p1 : UniStatement.UniProof)
+    (F : KeccakState → Id KeccakState) (fuel : ℕ) (input : Vector UInt8 32) (p1 : UniKeccak.KeccakProof)
     (hp : Id.run (pi2ProverWith (m := Id) (Pure.pure ∘ Hk) F D C Fa fuel input p1) = none) :
     ∃ L tree stack claims, E2ECompleteness.proveOpeningWithH (m := Id) (Pure.pure ∘ Hk) F fuel L tree stack claims =
       none := by
@@ -371,7 +371,7 @@ theorem expW2_none (Ht : List UInt8 → Digest) (Ft : KeccakState → KeccakStat
 
 /-- **The experiment at `Id`, π1's prover giving `p1`**: the graph's verdict, and the contract's on π2's proof. -/
 theorem expW2_some (Ht : List UInt8 → Digest) (Ft : KeccakState → KeccakState) (D : RecDeployment)
-    (C : Pi2Circuits D) (Fa : Pi2Facts D C) (input : Vector UInt8 32) (p1 : UniStatement.UniProof) :
+    (C : Pi2Circuits D) (Fa : Pi2Facts D C) (input : Vector UInt8 32) (p1 : UniKeccak.KeccakProof) :
     Id.run (expW2 (m := Id) (Pure.pure ∘ Ht) Ft D C Fa (pure (some p1)) input) =
       match Id.run (pi2ProverWith (m := Id) (Pure.pure ∘ Ht) Ft D C Fa PcsQuotient.nonceFuel input p1) with
       | none => (Id.run (Pi2H.pi1GraphVerifierWithH (m := Id) (Pure.pure ∘ Ht) Ft D
@@ -407,8 +407,8 @@ open Classical in
 one of π2's openings fails its proof of work. From `Pi2RunAt`, the witness's completeness, π1's openings and
 `pi2_accepts`. -/
 theorem rejects_at {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
-    (hroots : C.rootsAt = RecGraph.Emitted.rootsAt) (hwc : Pi2WitnessComplete D C Fa) (hpo : Pi2Pi1Openings D C Fa)
-    (P1k : Vector UInt8 32 → (rows : List ℕ) → D.pi1.Stack rows → OracleComp KeccakCalls (Option UniStatement.UniProof))
+    (hroots : C.rootsAt = RecGraphKeccak.Emitted.rootsAt) (hwc : Pi2WitnessComplete D C Fa) (hpo : Pi2Pi1Openings D C Fa)
+    (P1k : Vector UInt8 32 → (rows : List ℕ) → D.pi1.Stack rows → OracleComp KeccakCalls (Option UniKeccak.KeccakProof))
     (hrun : Pi2RunAt D C Fa P1k) (input : Vector UInt8 32) (rows : List ℕ) (q : D.pi1.Stack rows)
     (Ht : List UInt8 → Digest) (Ft : KeccakState → KeccakState)
     (z : ((Bool × Bool) × ((Pr2 × E × E × E) × E)) × (Pr2 × E × E × E))
@@ -526,8 +526,8 @@ theorem grind_le {N : ℕ} (hN : N ≤ 2 ^ 50) :
 /-- **The grinding for π2** (`Holds.rejectGood`): the staged run rejected at good challenges, the graph accepting,
 with probability at most `N · (1 − 2^-17)^nonceFuel`. -/
 theorem rejectGood_pi2 {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
-    (hroots : C.rootsAt = RecGraph.Emitted.rootsAt) (hwc : Pi2WitnessComplete D C Fa) (hpo : Pi2Pi1Openings D C Fa)
-    (P1k : Vector UInt8 32 → (rows : List ℕ) → D.pi1.Stack rows → OracleComp KeccakCalls (Option UniStatement.UniProof))
+    (hroots : C.rootsAt = RecGraphKeccak.Emitted.rootsAt) (hwc : Pi2WitnessComplete D C Fa) (hpo : Pi2Pi1Openings D C Fa)
+    (P1k : Vector UInt8 32 → (rows : List ℕ) → D.pi1.Stack rows → OracleComp KeccakCalls (Option UniKeccak.KeccakProof))
     (hrun : Pi2RunAt D C Fa P1k) (input : Vector UInt8 32) (rows : List ℕ) (q : D.pi1.Stack rows) {N : ℕ}
     (hcost : Common.QueryCostAtMost (pi2Staged D C Fa (P1k input rows q) input).run hashBlocks N) :
     Pr{let z ← (simulateQ ro (pi2Staged D C Fa (P1k input rows q) input).run).run' ∅}[
@@ -541,15 +541,15 @@ theorem rejectGood_pi2 {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D) (Fa
 /-- **The staged run's `Holds`**, at the real deployment's facts: the named facts, the lengths, the counts, the
 grinding. -/
 theorem holds_pi2 {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D) (hchk : Pi2ViewChecked C)
-    (hroots : C.rootsAt = RecGraph.Emitted.rootsAt) (P1 : Pi1Prover D)
-    (P1k : Vector UInt8 32 → (rows : List ℕ) → D.pi1.Stack rows → OracleComp KeccakCalls (Option UniStatement.UniProof))
+    (hroots : C.rootsAt = RecGraphKeccak.Emitted.rootsAt) (P1 : Pi1Prover D)
+    (P1k : Vector UInt8 32 → (rows : List ℕ) → D.pi1.Stack rows → OracleComp KeccakCalls (Option UniKeccak.KeccakProof))
     {N : ℕ} {εt : ℝ≥0∞}
     (hexp : Pi2ExperimentLe D C (pi2Facts hD C hchk) P1 P1k) (hrun : Pi2RunAt D C (pi2Facts hD C hchk) P1k)
     (hdup : Pi2RunDuplex D C (pi2Facts hD C hchk) P1k) (hcost : Pi2RunCost D C (pi2Facts hD C hchk) P1k N)
     (hhash : Pi2HashBeforeAlpha D C (pi2Facts hD C hchk) P1k) (htf : Pi2TFresh D C (pi2Facts hD C hchk) P1k εt)
     (hpo : Pi2Pi1Openings D C (pi2Facts hD C hchk)) (hwc : Pi2WitnessComplete D C (pi2Facts hD C hchk))
     (input : Vector UInt8 32) (rows : List ℕ) (q : D.pi1.Stack rows) (hfit : D.pi1.shape.RowsFit rows)
-    (hrel : D.pi1.HonestRelation rows input q) :
+    (hrel : D.pi1.HonestRelation D.flock rows input q) :
     (pi2Staged D C (pi2Facts hD C hchk) (P1k input rows q) input).Holds D P1
       (pi2Prover D C (pi2Facts hD C hchk) PcsQuotient.nonceFuel) input rows q 536 (badSet2 C.G) (badT2 C.G)
       (2 ^ 25 + 36) (2 ^ 27) N εt ((N : ℝ≥0∞) * missProb Whir.queryGrindingBits ^ PcsQuotient.nonceFuel) where
@@ -570,8 +570,8 @@ theorem holds_pi2 {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D) (hchk : 
 `RecCompleteness2 D P1 (pi2Prover …) (delta2 N εt (N · (1 − 2^-17)^nonceFuel))`. Proved here: the lengths, the bad
 sets' counts, the grinding (from `Pi2RunAt`, `Pi2Pi1Openings`, `Pi2WitnessComplete` and the core). -/
 theorem recCompleteness2_pi2_staged {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D) (hchk : Pi2ViewChecked C)
-    (hroots : C.rootsAt = RecGraph.Emitted.rootsAt) (P1 : Pi1Prover D)
-    (P1k : Vector UInt8 32 → (rows : List ℕ) → D.pi1.Stack rows → OracleComp KeccakCalls (Option UniStatement.UniProof))
+    (hroots : C.rootsAt = RecGraphKeccak.Emitted.rootsAt) (P1 : Pi1Prover D)
+    (P1k : Vector UInt8 32 → (rows : List ℕ) → D.pi1.Stack rows → OracleComp KeccakCalls (Option UniKeccak.KeccakProof))
     {N : ℕ} {εt : ℝ≥0∞}
     (hexp : Pi2ExperimentLe D C (pi2Facts hD C hchk) P1 P1k) (hrun : Pi2RunAt D C (pi2Facts hD C hchk) P1k)
     (hdup : Pi2RunDuplex D C (pi2Facts hD C hchk) P1k) (hcost : Pi2RunCost D C (pi2Facts hD C hchk) P1k N)
@@ -590,8 +590,8 @@ theorem delta2_pi2_le {N : ℕ} {εt : ℝ≥0∞} (hN : N ≤ 2 ^ 50) (ht : εt
 /-- **The recursive verifier's completeness end to end**, with π2's honest prover at the real deployment's facts: from
 π2's staged facts (named above), π1-rec3's completeness at Keccak-f[1600] and its honest proofs' hazard. -/
 theorem recCompleteness_pi2_staged_fs {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D) (hchk : Pi2ViewChecked C)
-    (hroots : C.rootsAt = RecGraph.Emitted.rootsAt) (P1 : Pi1Prover D)
-    (P1k : Vector UInt8 32 → (rows : List ℕ) → D.pi1.Stack rows → OracleComp KeccakCalls (Option UniStatement.UniProof))
+    (hroots : C.rootsAt = RecGraphKeccak.Emitted.rootsAt) (P1 : Pi1Prover D)
+    (P1k : Vector UInt8 32 → (rows : List ℕ) → D.pi1.Stack rows → OracleComp KeccakCalls (Option UniKeccak.KeccakProof))
     {N : ℕ} {εt : ℝ≥0∞}
     (hexp : Pi2ExperimentLe D C (pi2Facts hD C hchk) P1 P1k) (hrun : Pi2RunAt D C (pi2Facts hD C hchk) P1k)
     (hdup : Pi2RunDuplex D C (pi2Facts hD C hchk) P1k) (hcost : Pi2RunCost D C (pi2Facts hD C hchk) P1k N)

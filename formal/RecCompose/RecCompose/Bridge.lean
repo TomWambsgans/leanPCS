@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md and AGENTS.md.
 import RecCompose.Circuit
 import RecCompose.Layers
 import RecCompose.CallsPure
@@ -8,7 +8,8 @@ import RecCompose.End
 /-!
 # `CircuitBridge`, proved from the ports' and the calls' meaning
 
-`circuitBridge`: RecCircuit's end statement (`EndStatement`, `pi1rec3_end`) at π2's public limbs of the calldata gives
+`circuitBridge`: RecCircuit's end statement (`EndStatement`, `RecGraphKeccak.pi1rec3K_end`) on π2's circuit for the
+Keccak π1-rec3's emitted graph (`RecGraphKeccak.Emitted.graph`), at π2's public limbs of the calldata, gives
 RecStatement's `Pi1GraphAccepts` with the contract's π1 openings (`pi1OpsOf`). The proof:
 
 * the ports' limbs are the public limbs (`Satisfies.ports`, `limbVals_toPiop`);
@@ -16,7 +17,8 @@ RecStatement's `Pi1GraphAccepts` with the contract's π1 openings (`pi1OpsOf`). 
   witness's public input is the calldata's (`bytes_eq_of_words`);
 * **the zero checks**: a zero port's public limbs are zero (`ZeroPortsMeaning`), so every zero check the circuit carries
   is zero; the zero ports carry every zero check whose image is not a constant (the checker's count,
-  `exists_zero_port`); the others are zero by `EndStatement`; π1-rec3's emitted graph has no nonzero check;
+  `exists_nth_filter`); the others are zero by `EndStatement`; the Keccak π1-rec3's emitted graph has no nonzero
+  check;
 * **the calls**: the circuit's rebuilt words are the contract's π1 call words (`CallWordsAgree`), and RecCircuit's
   `compile_sound_calls` makes them the graph's words, word 0 as `pcsWord` of it; so the contract's decoding of each call
   (`decodeWith`) and `decodePi1Call` of the graph's agree (`decode_agree`): the layouts and claims, and `C1`'s, `C2`'s
@@ -24,9 +26,9 @@ RecStatement's `Pi1GraphAccepts` with the contract's π1 openings (`pi1OpsOf`). 
   stream root's word as it is).
 
 The named facts (`StatementPortMeaning`, `ZeroPortsMeaning`, `CallWordsAgree`, `Pi1CallsLayouts`) are what the
-compiler's ports and calls mean in the contract's terms: the runners establish them (RecCircuitTest's ports and calls
-against the Rust, RecStatementTest's public terms and π1's calls' constants, `tests/pi2.rs`'s "π1's calls rebuilt from
-π2's ports equal the vector's").
+compiler's ports and calls mean in the contract's terms. They are proved for `pi2Facts` from the evaluated view check
+`Pi2ViewChecked` (`Meanings.lean`: `statementPortMeaning`, `zeroPortsMeaning`, `callWordsAgree`) and from
+`RecDeployment.Real` (`Layouts.lean`: `pi1CallsLayouts_of_real`, the Keccak π1-rec3's layout words).
 -/
 
 namespace RecCompose
@@ -245,7 +247,7 @@ def ZeroPortsMeaning : Prop :=
 public limbs, and π2's run over Keccak-f[1600] on the calldata (`pi1OpsOf`'s), the circuit's calls are `D.pi1Calls`
 word for word: each word the circuit rebuilds from its ports (`callWordBytes`) is RecStatement's `callWord` of the
 contract's (the stream's root words, the claims' elements, their pair points, the constants), 32 bytes
-(`tests/pi2.rs`: "π1's calls rebuilt from π2's ports equal the vector's"; RecStatementTest: the contract's words). -/
+(proved for `pi2Facts`: `callWordsAgree`, `Meanings.lean`). -/
 def CallWordsAgree : Prop :=
   ∀ (roots : RecSetupRoots) (input : Vector UInt8 32) (stream : Array UInt8) (w : ℕ → K) (r : Reduced),
     ((C.compiled (D.pi1IvAt roots.pi1)).circuit.toPiop).Satisfies (pubAt D C Fa roots input stream)
@@ -261,7 +263,8 @@ def CallWordsAgree : Prop :=
           (callWord (D.circuitAt roots.pi1).circuit.reads stream r ((D.pi1Calls.getD ci []).getD k default)).length =
             32
 
-/-- **π1's calls' layout words are π1-rec3's** (RecStatementTest: π1's calls' constants, the reference layout words). -/
+/-- **π1's calls' layout words are the Keccak π1-rec3's** (`w1`, at the reference shape; proved at the real deployment:
+`pi1CallsLayouts_of_real`, `Layouts.lean`). -/
 def Pi1CallsLayouts : Prop :=
   ∀ ci < 3, (D.pi1Calls.getD ci []).getD 1 default = .const (w1 ci)
 
@@ -307,7 +310,7 @@ theorem length_pcsWord (k : ℕ) (wd : RecGraph.Word) (bs : List UInt8) :
 
 /-- `C1`'s and `C2`'s calls' word 0 in the emitted graph: the stream's root. -/
 theorem emitted_root_words (k : ℕ) (hk : k < 2) :
-    ∃ a, (RecGraph.Emitted.graph.calls.getD k []).getD 0 default = .stream a := by
+    ∃ a, (RecGraphKeccak.Emitted.graph.calls.getD k []).getD 0 default = .stream a := by
   interval_cases k <;> exact ⟨_, rfl⟩
 
 theorem getD_map_of_lt {α β : Type} (f : α → β) (l : List α) {k : ℕ} (hk : k < l.length) (d : β) (d' : α) :
@@ -364,7 +367,7 @@ theorem three_le_of_decodeWith {reg : List (List UInt8 × Opener)} {ws : List (L
 /-- **`CircuitBridge` for the real deployment**, from the ports' and the calls' meaning, the compiler's run at the
 emitted graph's roots and the graphs agreeing (the root words as `fix-pi1-root` corrects them). -/
 theorem circuitBridge (D : RecDeployment) (hD : D.Real) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
-    (hroots : C.rootsAt = RecGraph.Emitted.rootsAt) (hg : GraphsAgree)
+    (hroots : C.rootsAt = RecGraphKeccak.Emitted.rootsAt) (hg : GraphsAgree)
     (hstmt : StatementPortMeaning D C Fa) (hzero : ZeroPortsMeaning D C Fa) (hcalls : CallWordsAgree D C Fa)
     (hlay : Pi1CallsLayouts D) :
     CircuitBridge D C.compiled fun roots input stream ↦ Fa.pubOf roots (pi2Scalars D roots input stream) := by
@@ -377,7 +380,7 @@ theorem circuitBridge (D : RecDeployment) (hD : D.Real) (C : Pi2Circuits D) (Fa 
     · exact ⟨_, by assumption⟩
   obtain ⟨r0, hr0⟩ := hrun
   unfold GraphsAgree at hg
-  have hc : RecCircuit.compile (RecCircuit.ofRG RecGraph.Emitted.graph RecGraph.Emitted.rootsAt
+  have hc : RecCircuit.compile (RecCircuit.ofRG RecGraphKeccak.Emitted.graph RecGraphKeccak.Emitted.rootsAt
       (D.pi1IvAt roots.pi1)) = .ok (C.compiled (D.pi1IvAt roots.pi1)) := by
     have h := C.compile_okAt roots.pi1
     rw [hroots, hg] at h
@@ -402,20 +405,20 @@ theorem circuitBridge (D : RecDeployment) (hD : D.Real) (C : Pi2Circuits D) (Fa 
     have := congrArg (fun l ↦ l.getD k 0) h3
     simpa [List.getD_eq_getElem?_getD, hk] using this
   -- The stream.
-  have hs : D.pi1Stream w = (c.streamW (RecCircuit.ofRG RecGraph.Emitted.graph RecGraph.Emitted.rootsAt iv) w).toArray := by
+  have hs : D.pi1Stream w = (c.streamW (RecCircuit.ofRG RecGraphKeccak.Emitted.graph RecGraphKeccak.Emitted.rootsAt iv) w).toArray := by
     rw [C.stream_eqAt roots.pi1 w, hroots, hg, hiv, hcd]
-  have hsize : (c.streamW (RecCircuit.ofRG RecGraph.Emitted.graph RecGraph.Emitted.rootsAt iv) w).toArray.size =
-      RecGraph.Emitted.graph.streamLen := by
+  have hsize : (c.streamW (RecCircuit.ofRG RecGraphKeccak.Emitted.graph RecGraphKeccak.Emitted.rootsAt iv) w).toArray.size =
+      RecGraphKeccak.Emitted.graph.streamLen := by
     rw [List.size_toArray, RecCircuit.Compiled.streamW_length, ofRG_streamLen]
-  have hVr : RecCircuit.rgVals RecGraph.Emitted.graph iv (c.pubW w)
-      (c.streamW (RecCircuit.ofRG RecGraph.Emitted.graph RecGraph.Emitted.rootsAt iv) w) =
-      Id.run (RecGraph.evalNodes (m := Id) (fun x ↦ pure (LeanVM.Semantics.keccakF1600 x)) RecGraph.Emitted.graph iv
-        input.toList (c.streamW (RecCircuit.ofRG RecGraph.Emitted.graph RecGraph.Emitted.rootsAt iv) w).toArray) := by
+  have hVr : RecCircuit.rgVals RecGraphKeccak.Emitted.graph iv (c.pubW w)
+      (c.streamW (RecCircuit.ofRG RecGraphKeccak.Emitted.graph RecGraphKeccak.Emitted.rootsAt iv) w) =
+      Id.run (RecGraph.evalNodes (m := Id) (fun x ↦ pure (LeanVM.Semantics.keccakF1600 x)) RecGraphKeccak.Emitted.graph iv
+        input.toList (c.streamW (RecCircuit.ofRG RecGraphKeccak.Emitted.graph RecGraphKeccak.Emitted.rootsAt iv) w).toArray) := by
     rw [hpub, rgVals_eq]
-  generalize hSd : (c.streamW (RecCircuit.ofRG RecGraph.Emitted.graph RecGraph.Emitted.rootsAt iv) w).toArray = S
+  generalize hSd : (c.streamW (RecCircuit.ofRG RecGraphKeccak.Emitted.graph RecGraphKeccak.Emitted.rootsAt iv) w).toArray = S
     at hs hsize hVr
   generalize hVd : Id.run (RecGraph.evalNodes (m := Id) (fun x ↦ pure (LeanVM.Semantics.keccakF1600 x))
-    RecGraph.Emitted.graph iv input.toList S) = V at hVr
+    RecGraphKeccak.Emitted.graph iv input.toList S) = V at hVr
   unfold RecCircuit.Compiled.EndStatement at hE
   rw [hVr, hSd] at hE
   -- The goal.
@@ -434,7 +437,7 @@ theorem circuitBridge (D : RecDeployment) (hD : D.Real) (C : Pi2Circuits D) (Fa 
   have hD3 : D.pi1Calls.length = 3 := (pi1CallsShape_data D hD.2.1).1
   obtain ⟨i, ra, j, rb, x, rd, hdata⟩ := data_pi1Calls_shape
   have hcalls3 : D.pi1Calls = [.root i :: ra, .root j :: rb, .const x :: rd] := hD.2.1.trans hdata
-  have hg3 : RecGraph.Emitted.graph.calls.length = 3 := by rw [← hgl, hcl, hD3]
+  have hg3 : RecGraphKeccak.Emitted.graph.calls.length = 3 := by rw [← hgl, hcl, hD3]
   set f := roots.pi1.bytecode with hf
   set cwf := callWord (D.circuitAt roots.pi1).circuit.reads stream r with hcwf
   set P := pi1CallsWith D.pi1Calls f with hP3
@@ -442,27 +445,27 @@ theorem circuitBridge (D : RecDeployment) (hD : D.Real) (C : Pi2Circuits D) (Fa 
   -- Each call.
   have key : ∀ k < 3, ∀ xk : Digest × Opener × List PcsQuotient.Claim,
       decodeWith (registryAt D roots) ((P.getD k []).map cwf) = some xk →
-        decodePi1Call ((RecGraph.Emitted.graph.calls.getD k []).flatMap (RecGraph.wordBytes S V)) =
-            some (digOf ((RecGraph.Emitted.graph.calls.getD k []).map (RecGraph.wordBytes S V)), w1 k, xk.2.2) ∧
+        decodePi1Call ((RecGraphKeccak.Emitted.graph.calls.getD k []).flatMap (RecGraph.wordBytes S V)) =
+            some (digOf ((RecGraphKeccak.Emitted.graph.calls.getD k []).map (RecGraph.wordBytes S V)), w1 k, xk.2.2) ∧
           ((P.getD k []).map cwf).getD 1 [] = w1 k ∧
-          (k < 2 → xk.1 = digOf ((RecGraph.Emitted.graph.calls.getD k []).map (RecGraph.wordBytes S V))) := by
+          (k < 2 → xk.1 = digOf ((RecGraphKeccak.Emitted.graph.calls.getD k []).map (RecGraph.wordBytes S V))) := by
     intro k hk xk hxk
     have hkD : k < D.pi1Calls.length := by rw [hD3]; exact hk
-    have hkg : k < RecGraph.Emitted.graph.calls.length := by rw [hg3]; exact hk
+    have hkg : k < RecGraphKeccak.Emitted.graph.calls.length := by rw [hg3]; exact hk
     obtain ⟨hcwl, hcww⟩ := hcw k hkD
     obtain ⟨hgwl, hgww⟩ := hgw k hkg
     have hpw := pi1CallsWith_words i j ra rb rd x f k hk
     rw [← hcalls3] at hpw
     obtain ⟨hpl, hpk, hp2⟩ := hpw
     -- the graph's words and the contract's
-    set gws := (RecGraph.Emitted.graph.calls.getD k []).map (RecGraph.wordBytes S V) with hgws
+    set gws := (RecGraphKeccak.Emitted.graph.calls.getD k []).map (RecGraph.wordBytes S V) with hgws
     set cws := (P.getD k []).map cwf with hcws
     have hlg : gws.length = (D.pi1Calls.getD k []).length := by
       rw [hgws, List.length_map, ← hgwl, hcwl]
     have hlc : cws.length = gws.length := by rw [hcws, List.length_map, hpl, hlg]
     have hword : ∀ kk < (D.pi1Calls.getD k []).length,
         cwf ((D.pi1Calls.getD k []).getD kk default) =
-          RecCircuit.pcsWord kk ((RecGraph.Emitted.graph.calls.getD k []).getD kk default) (gws.getD kk []) ∧
+          RecCircuit.pcsWord kk ((RecGraphKeccak.Emitted.graph.calls.getD k []).getD kk default) (gws.getD kk []) ∧
           (cwf ((D.pi1Calls.getD k []).getD kk default)).length = 32 := by
       intro kk hkk
       obtain ⟨h1, h2⟩ := hcww kk hkk
@@ -516,9 +519,9 @@ theorem circuitBridge (D : RecDeployment) (hD : D.Real) (C : Pi2Circuits D) (Fa 
   have k1 := key 1 (by norm_num) x1 hx1
   have k2 := key 2 (by norm_num) x2 hx2
   subst hops3
-  refine ⟨_, [(digOf ((RecGraph.Emitted.graph.calls.getD 0 []).map (RecGraph.wordBytes S V)), w1 0, x0.2.2),
-    (digOf ((RecGraph.Emitted.graph.calls.getD 1 []).map (RecGraph.wordBytes S V)), w1 1, x1.2.2),
-    (digOf ((RecGraph.Emitted.graph.calls.getD 2 []).map (RecGraph.wordBytes S V)), w1 2, x2.2.2)],
+  refine ⟨_, [(digOf ((RecGraphKeccak.Emitted.graph.calls.getD 0 []).map (RecGraph.wordBytes S V)), w1 0, x0.2.2),
+    (digOf ((RecGraphKeccak.Emitted.graph.calls.getD 1 []).map (RecGraph.wordBytes S V)), w1 1, x1.2.2),
+    (digOf ((RecGraphKeccak.Emitted.graph.calls.getD 2 []).map (RecGraph.wordBytes S V)), w1 2, x2.2.2)],
     rfl, ?_, ?_, ?_, ?_, ?_⟩
   · -- the zero checks
     intro z hz
@@ -531,13 +534,13 @@ theorem circuitBridge (D : RecDeployment) (hD : D.Real) (C : Pi2Circuits D) (Fa 
         unfold RecCircuit.Compiled.portsOk at h
         simp only [Bool.and_eq_true, beq_iff_eq] at h
         exact h.1
-      have hzn : c.zeroNodes.length = (RecGraph.Emitted.graph.zero.filter fun id ↦
+      have hzn : c.zeroNodes.length = (RecGraphKeccak.Emitted.graph.zero.filter fun id ↦
           RecCircuit.Compiled.notConst (c.nodes.getD (c.map.getD id 0) default)).length := by
         have hz := (RecCircuit.Compiled.graphOk_parts hck.graph).2.1
         unfold RecCircuit.Compiled.zeroNodes
         rw [hz, ofRG_zero, List.filter_map, List.length_map]
         rfl
-      have hmem : id ∈ RecGraph.Emitted.graph.zero.filter fun id ↦
+      have hmem : id ∈ RecGraphKeccak.Emitted.graph.zero.filter fun id ↦
           RecCircuit.Compiled.notConst (c.nodes.getD (c.map.getD id 0) default) := List.mem_filter.mpr ⟨hid, hn⟩
       obtain ⟨m, hm, hmid⟩ := List.getElem_of_mem hmem
       obtain ⟨J, hJ, hpJ, hcJ⟩ := exists_nth_filter (fun p : RecCircuit.Port ↦ p.source == .zero)
@@ -551,7 +554,7 @@ theorem circuitBridge (D : RecDeployment) (hD : D.Real) (C : Pi2Circuits D) (Fa 
         (by rw [hiv, hcd]; exact hsrc))
       rw [e1, show ([0, 0, 0] : List E) = [(0 : K), 0, 0].map F192.ofF64 by simp] at e2
       have e3 := map_ofF64_inj e2
-      have e4 : RecCircuit.zeroOrig c (RecCircuit.ofRG RecGraph.Emitted.graph RecGraph.Emitted.rootsAt iv)
+      have e4 : RecCircuit.zeroOrig c (RecCircuit.ofRG RecGraphKeccak.Emitted.graph RecGraphKeccak.Emitted.rootsAt iv)
           (c.zeroIndex J) = id := by
         rw [hzi]
         unfold RecCircuit.zeroOrig
@@ -563,11 +566,11 @@ theorem circuitBridge (D : RecDeployment) (hD : D.Real) (C : Pi2Circuits D) (Fa 
   · -- no nonzero check
     intro z hz
     simp only [RecGraph.outputsOf] at hz
-    rw [show RecGraph.Emitted.graph.nonzero = [] from rfl] at hz
+    rw [show RecGraphKeccak.Emitted.graph.nonzero = [] from rfl] at hz
     simp at hz
   · -- the calls decode
-    show (RecGraph.Emitted.graph.calls.map (·.flatMap (RecGraph.wordBytes S V))).mapM decodePi1Call = _
-    rw [list3_getD RecGraph.Emitted.graph.calls hg3 []]
+    show (RecGraphKeccak.Emitted.graph.calls.map (·.flatMap (RecGraph.wordBytes S V))).mapM decodePi1Call = _
+    rw [list3_getD RecGraphKeccak.Emitted.graph.calls hg3 []]
     simp only [List.map_cons, List.map_nil, List.mapM_cons, List.mapM_nil, k0.1, k1.1, k2.1, Option.bind_eq_bind,
       Option.bind_some, Option.pure_def]
     rfl
@@ -582,7 +585,7 @@ theorem circuitBridge (D : RecDeployment) (hD : D.Real) (C : Pi2Circuits D) (Fa 
 /-- **π2's part at the real deployment, the bridge proved**: `recKnowledgeSoundness2_real` with `CircuitBridge` from
 `circuitBridge` (the ports' and calls' meaning, `Pi1CallsLayouts`; the root word `pi1RootWordOk`). -/
 theorem recKnowledgeSoundness2_real_bridge (D : RecDeployment) (hD : D.Real) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
-    (T : Pi2Tables D C) (hfs : Pi2FsLayer D) (hroots : C.rootsAt = RecGraph.Emitted.rootsAt) (hg : GraphsAgree)
+    (T : Pi2Tables D C) (hfs : Pi2FsLayer D) (hroots : C.rootsAt = RecGraphKeccak.Emitted.rootsAt) (hg : GraphsAgree)
     (hstmt : StatementPortMeaning D C Fa) (hzero : ZeroPortsMeaning D C Fa)
     (hcalls : CallWordsAgree D C Fa) (hlay : Pi1CallsLayouts D) :
     RecKnowledgeSoundness2 D pi2Bound ∧ ∀ Q ≤ 2 ^ 64, pi2Bound Q ≤ (2 : ℝ≥0∞)⁻¹ ^ 64 :=

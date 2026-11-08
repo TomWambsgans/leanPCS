@@ -1,24 +1,28 @@
--- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Follows `formal/UniSound/UniSound/FsProof.lean` (`setupK3`'s
--- facts, `whirOp_ok_tree`) and `FsSetup.lean` (`uniSetupBridge`) for π2's setup: π1's three trees, then π2's.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md; conventions: see AGENTS.md. Follows
+-- `formal/UniKeccakSound/UniKeccakSound/Fs/ProofK.lean` (`setupK1`'s facts) and `SetupK.lean` (`uniSetupBridgeK`), after
+-- `formal/UniSound/UniSound/FsProof.lean` and `FsSetup.lean`, for π2's setup: π1's one tree, then π2's.
 import RecCompose.FsDefs
-import UniSound.FsSetup
+import RecCompose.GenericSetupLog
+import UniKeccakSound.Fs.SetupK
 
 /-!
 # π2's setup: its facts, its opening, and the bridge
 
-The composed setup `p2Setup` (`FsDefs.lean`: π1's three trees `UniSound.uSetup`, then π2's tree of the setup's table
-`κ`, `κ + σ` at π1's contract IV of those roots, on the plain shape of `2^25` words `sh25`):
+The composed setup `p2Setup` (`FsDefs.lean`: π1's one tree, the Keccak setup stack's `UniKeccakSound.setupK1`, its
+roots that root and the deployment's `A0`, `B0`; then π2's tree of the setup's table `κ`, `κ + σ` at π1's contract IV
+of those roots, on the plain shape of `2^25` words `sh25`):
 
 * **its facts** for `Compose.rpm_le_kcS` and `Compose.knowledgeSoundness_listChainU_closed128S`: Keccak-256 only
-  (`hOnly_p2Setup`), `p2QS` queries (`isTotalQueryBound_p2Setup`, `p2QS_le`: below `3 · 2^24 + 2^21`), each short
+  (`hOnly_p2Setup`), `p2QS` queries (`isTotalQueryBound_p2Setup`; `p2QS_le`: below `3 · 2^24 + 2^21`, the bound the
+  numbers take; π1's one tree has at most `2^24` queries, `UniKeccakSound.setupQSK_le`), each short
   (`cost_p2Setup`), its log and value (`p2Setup_run`), and no query a label (`p2Setup_noLabel`: every query is a
   Merkle node of `64` bytes or a leaf of `512`, a label has `80`);
 * **the setup opening's `OKP`** (`okp_setupOp`): with the setup's queries in the history, the word under π2's setup
   root (the proof's, which the setup fixes) is the honest encoding of the setup's table at the proof's roots
   (`extract_wiringSetup`, `honest_stackWord`); the other openings carry no stack (`p2Stk_none`);
 * **SETUP** (`pi2SetupBridge`): the composed setup over `π`, logged, is the Statement's `setupTreesWith` over `π`
-  (π1's trees by `UniSound.uniSetupBridge`, π2's by `UniSound.simulateQ_loggedKC_stackSetupS` at `25` variables:
-  `Pi2Circuit.setupTreeWith` commits at `(layoutsOf 24).2.2.logN = 25`).
+  (π1's tree by `UniKeccakSound.uniSetupBridgeK`, π2's by `simulateQ_loggedKC_stackSetupS` (`GenericSetupLog.lean`)
+  at `25` variables: `Pi2Circuit.setupTreeWith` commits at `(layoutsOf 24).2.2.logN = 25`).
 -/
 
 set_option linter.unusedSectionVars false
@@ -29,8 +33,6 @@ open RecStatement Compose QuotientRpm LeanVM LeanVM.Parameters LeanVM.Protocol L
 open LeanVM.Protocol.Compile LeanVM.Protocol.EndToEnd WhirBridge
 open OracleSpec OracleComp
 open scoped ENNReal
-
-attribute [local instance high] Completeness.instSampleableTypeE_completeness
 
 attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
   LeanVM.Protocol.Compile.instFintypeKState UniStatement.layoutWords UniStatement.setupStack
@@ -100,28 +102,28 @@ end TreeQueries
 
 section Setup
 
-variable (D : RecDeployment) (hs : UniSound.UniShapes D.pi1)
+variable (D : RecDeployment) (hs : UniKeccakSound.UniShapesK D.pi1)
 
-/-- **The setup's Keccak-256 queries**: π1's three trees', then π2's tree's (`2^21`). -/
-def p2QS : ℕ := UniSound.setupQS (D := D.pi1) + 2 ^ (WhirBridge.rootHeight 25 WhirBridge.logInvRate + 1)
+/-- **The setup's Keccak-256 queries**: π1's tree's, then π2's tree's (`2^21`). -/
+def p2QS : ℕ := UniKeccakSound.setupQSK D.pi1 + 2 ^ (WhirBridge.rootHeight 25 WhirBridge.logInvRate + 1)
 
 theorem hOnly_p2Setup : LeanVM.Rpm.HOnly (p2Setup D hs) := by
   unfold p2Setup
-  exact (UniSound.hOnly_setupK3 hs _ _ _).bind fun _ ↦ (UniSound.hOnly_stackSetupS _ _).bind fun _ ↦ trivial
+  exact (UniKeccakSound.hOnly_setupK1 hs _).bind fun _ ↦ (UniSound.hOnly_stackSetupS _ _).bind fun _ ↦ trivial
 
 theorem isTotalQueryBound_p2Setup : IsTotalQueryBound (p2Setup D hs) (p2QS D) := by
   unfold p2Setup
-  have h := isTotalQueryBound_bind (UniSound.isTotalQueryBound_setupK3 hs (UniSound.colF D.pi1)
-    (UniSound.colA D.pi1) (UniSound.colB D.pi1)) fun r ↦ isTotalQueryBound_bind
-      (ob := fun r2 ↦ (pure (r, r2) : OracleComp KeccakCalls SOut)) (n₂ := 0)
-      (isTotalQueryBound_stackSetupS sh25 (setupCol D ⟨UniSound.rootsOfS r, default⟩)) fun _ ↦ trivial
+  have h := isTotalQueryBound_bind (UniKeccakSound.isTotalQueryBound_setupK1 hs (UniKeccakSound.colFK D.pi1))
+    fun r ↦ isTotalQueryBound_bind
+      (ob := fun r2 ↦ (pure (pi1Out D r, r2) : OracleComp KeccakCalls SOut)) (n₂ := 0)
+      (isTotalQueryBound_stackSetupS sh25 (setupCol D ⟨UniSound.rootsOfS (pi1Out D r), default⟩)) fun _ ↦ trivial
   refine IsTotalQueryBound.mono h ?_
   dsimp only [p2QS, sh25, UniSound.plainShape, WhirShape.large, UniSound.plainL, WhirBridge.Layout.new]
   omega
 
 include hs in
 theorem p2QS_le : p2QS D ≤ 3 * 2 ^ 24 + 2 ^ 21 := by
-  have h := UniSound.setupQS_le D.pi1 hs
+  have h := UniKeccakSound.setupQSK_le D.pi1 hs
   have h21 : 2 ^ (WhirBridge.rootHeight 25 WhirBridge.logInvRate + 1) = 2 ^ 21 := by
     unfold WhirBridge.rootHeight WhirBridge.laneFold WhirBridge.logInvRate
     rfl
@@ -130,31 +132,34 @@ theorem p2QS_le : p2QS D ≤ 3 * 2 ^ 24 + 2 ^ 21 := by
 
 theorem allQ_p2Setup : AllQueriesSatisfy (p2Setup D hs) LeanVM.Rpm.Short := by
   unfold p2Setup
-  exact allQueriesSatisfy_bind (UniSound.allQ_setupK3 hs _ _ _) fun _ ↦
+  exact allQueriesSatisfy_bind (UniSound.allQ_stackSetupS _ _) fun _ ↦
     allQueriesSatisfy_bind (UniSound.allQ_stackSetupS _ _) fun _ ↦ LeanVM.Rpm.allQ_pure _
 
 theorem cost_p2Setup : Common.QueryCostAtMost (p2Setup D hs) LeanVM.Rpm.hashBlocks (p2QS D * 2 ^ 32) :=
   LeanVM.Rpm.isWeightBound_of_isTotalQueryBound LeanVM.Rpm.hashBlocks (2 ^ 32) (isTotalQueryBound_p2Setup D hs)
     ((allQ_p2Setup D hs).mono fun _ h ↦ LeanVM.Rpm.hashBlocks_le_of_short h)
 
-/-- **The setup's run**: π1's three trees' log, then π2's tree's; its value π1's roots and π2's root. -/
+/-- π1's setup: its one tree (`UniKeccakSound.setupK1` of the Keccak setup stack). -/
+noncomputable abbrev p1Setup : OracleComp KeccakCalls Bytes32 := UniKeccakSound.setupK1 hs (UniKeccakSound.colFK D.pi1)
+
+/-- **The setup's run**: π1's tree's log, then π2's tree's; its value π1's roots (its tree's root, `A0`, `B0`) and
+π2's root. -/
 theorem p2Setup_run (T : KTable) :
-    tableQueryLog (p2Setup D hs) T = tableQueryLog (UniSound.uSetup D.pi1 hs) T ++
+    tableQueryLog (p2Setup D hs) T = tableQueryLog (p1Setup D hs) T ++
         tableQueryLog (stackSetupS sh25 (setupCol D
-          ⟨UniSound.rootsOfS (evalWithAnswerFn (QueryImpl.ofFn T) (UniSound.uSetup D.pi1 hs)), default⟩)) T ∧
+          ⟨UniSound.rootsOfS (pi1Out D (evalWithAnswerFn (QueryImpl.ofFn T) (p1Setup D hs))), default⟩)) T ∧
       evalWithAnswerFn (QueryImpl.ofFn T) (p2Setup D hs) =
-        (evalWithAnswerFn (QueryImpl.ofFn T) (UniSound.uSetup D.pi1 hs),
+        (pi1Out D (evalWithAnswerFn (QueryImpl.ofFn T) (p1Setup D hs)),
           evalWithAnswerFn (QueryImpl.ofFn T) (stackSetupS sh25 (setupCol D
-            ⟨UniSound.rootsOfS (evalWithAnswerFn (QueryImpl.ofFn T) (UniSound.uSetup D.pi1 hs)), default⟩))) := by
+            ⟨UniSound.rootsOfS (pi1Out D (evalWithAnswerFn (QueryImpl.ofFn T) (p1Setup D hs))), default⟩))) := by
   constructor
   · simp only [p2Setup, tableQueryLog_bind, tableQueryLog_pure, List.append_nil]
   · simp only [p2Setup, evalWithAnswerFn_bind, evalWithAnswerFn_pure]
 
 theorem allQT_p2Setup : AllQueriesSatisfy (p2Setup D hs) TreeQ := by
-  unfold p2Setup UniSound.uSetup UniSound.setupK3
-  exact allQueriesSatisfy_bind (allQueriesSatisfy_bind (allQT_stackSetupS _ _) fun _ ↦
-    allQueriesSatisfy_bind (allQT_stackSetupS _ _) fun _ ↦ allQueriesSatisfy_bind (allQT_stackSetupS _ _)
-      fun _ ↦ trivial) fun _ ↦ allQueriesSatisfy_bind (allQT_stackSetupS _ _) fun _ ↦ trivial
+  unfold p2Setup UniKeccakSound.setupK1
+  exact allQueriesSatisfy_bind (allQT_stackSetupS _ _) fun _ ↦ allQueriesSatisfy_bind (allQT_stackSetupS _ _)
+    fun _ ↦ trivial
 
 /-- **No query of the setup is a label**: its queries are Merkle nodes (`64` bytes) and leaves (`512`), a label
 `name ‖ iv ‖ input` has `80`. -/
@@ -172,7 +177,7 @@ end Setup
 
 section Opening
 
-variable (D : RecDeployment) (hs : UniSound.UniShapes D.pi1)
+variable (D : RecDeployment) (hs : UniKeccakSound.UniShapesK D.pi1)
 
 /-- **The setup's opening carries the setup's table at the proof's roots.** -/
 theorem p2Stk_setup :
@@ -210,8 +215,8 @@ theorem okp_setupOp :
   rw [p2Stk_setup] at hf
   cases Option.some.inj hf
   obtain ⟨hl, he⟩ := p2Setup_run D hs T
-  set r := evalWithAnswerFn (QueryImpl.ofFn T) (UniSound.uSetup D.pi1 hs) with hr
-  set q := setupCol D ⟨UniSound.rootsOfS r, default⟩ with hq
+  set r := evalWithAnswerFn (QueryImpl.ofFn T) (p1Setup D hs) with hr
+  set q := setupCol D ⟨UniSound.rootsOfS (pi1Out D r), default⟩ with hq
   have hsub' : ∀ x, Sum.inl x ∈ (tableQueryLog (stackSetupS sh25 q) T).map Sigma.fst → x ∈ H := by
     intro x hx
     refine hsub x ?_
@@ -238,32 +243,36 @@ end Opening
 /-- `layouts(24)`'s setup layout has `2^25` words. -/
 theorem layoutsOf_setup_logN : (layoutsOf 24).2.2.logN = 25 := by decide
 
+/-- π1's setup output's roots are `KDeployment.setupRoots` of its tree. -/
+theorem rootsOfS_pi1Out (D : RecDeployment) (t : LeanVM.Prover.Tree) :
+    UniSound.rootsOfS (pi1Out D (toB t.root)) = D.pi1.setupRoots t := by
+  simp only [UniSound.rootsOfS, pi1Out, UniKeccak.KDeployment.setupRoots, Soundness.ofB_toB_root]
+
 /-- **SETUP**: the composed setup over `π`, logged, is the Statement's `setupTreesWith` over `π` (π2's circuit the
 real deployment's at every IV, π1's setup stack of fewer than `256` variables). -/
-theorem pi2SetupBridge (D : RecDeployment) (hD : RecDeployment.Real D) (hs : UniSound.UniShapes D.pi1)
+theorem pi2SetupBridge (D : RecDeployment) (hD : RecDeployment.Real D) (hs : UniKeccakSound.UniShapesK D.pi1)
     (hv : (UniStatement.setupLayout D.pi1.shape).vars < 256) : Pi2SetupBridge D hs := by
-  have e1 := UniSound.uniSetupBridge D.pi1 hs hv
-  unfold UniSound.UniSetupBridge at e1
+  have e1 := UniKeccakSound.uniSetupBridgeK D.pi1 hs hv
+  unfold UniKeccakSound.UniSetupBridgeK at e1
   have e2 : ∀ a : Array K, simulateQ keccakCallsOverQueryPermutation
       (loggedKC (stackSetupS sh25 (UniSound.colOf a 25))) =
         (fun t : LeanVM.Prover.Tree => (toB t.root, Soundness.treeTr t)) <$>
           PcsQuotient.commitWith Common.queryPermutation 25 a :=
-    fun a => UniSound.simulateQ_loggedKC_stackSetupS 25 (by norm_num) (by norm_num) a
-  have hc : ∀ t1 : UniStatement.SetupTrees, (D.circuitAt t1.roots).setupTreeWith Common.queryPermutation =
-      PcsQuotient.commitWith Common.queryPermutation 25 (D.circuitAt t1.roots).setupStack := by
+    fun a => simulateQ_loggedKC_stackSetupS 25 (by norm_num) (by norm_num) a
+  have hc : ∀ t1 : LeanVM.Prover.Tree, (D.circuitAt (D.pi1.setupRoots t1)).setupTreeWith Common.queryPermutation =
+      PcsQuotient.commitWith Common.queryPermutation 25 (D.circuitAt (D.pi1.setupRoots t1)).setupStack := by
     intro t1
     unfold Pi2Circuit.setupTreeWith
     rw [RecDeployment.circuitAt, hD.1, show (Data.circuit.logN : ℕ) = 24 from rfl, layoutsOf_setup_logN]
   unfold Pi2SetupBridge p2Setup setupCol
-  simp only [UniSound.loggedKC_bind, UniSound.loggedKC_pure, simulateQ_bind, simulateQ_map, simulateQ_pure, e1, e2]
+  simp only [loggedKC_bind, loggedKC_pure, simulateQ_bind, simulateQ_map, simulateQ_pure, e1, e2]
   unfold RecDeployment.setupTreesWith
   simp only [map_bind, map_pure, bind_map_left, hc]
   refine bind_congr fun t1 => ?_
-  rw [UniSound.rootsOfS_rootsB]
+  rw [rootsOfS_pi1Out]
   refine bind_congr fun t2 => ?_
-  simp only [setupTr2, RecSetupTrees.evaluations, List.map_append, List.append_nil, UniSound.setupTr,
-    Soundness.treeTr]
-  rfl
+  simp only [setupTr2, RecSetupTrees.evaluations, List.map_append, List.append_nil, Soundness.treeTr, rootsB2,
+    pi1Out]
 
 end RecCompose
 

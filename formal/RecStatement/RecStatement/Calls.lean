@@ -1,8 +1,10 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Transcribed from `crates/leanvm/rec/src/pi2/contract.rs`
--- (`read_indices`, `number`, `root_word`, `call_words`, `expected_calls`) and `crates/leanvm/univariate/src/contract.rs`
--- (`variant_bytes`, `contract_iv_for`), branch `leanvm-rec` @ 2b22581. `PCS_OPEN`'s ABI is
--- `crates/membership/evm/src/machine.rs`'s (`crates/leanvm/statement/src/evm/machine.rs`: `element_word`, `root_word`).
+-- (`read_indices`, `number`, `root_word`, `call_words`, `expected_calls`), branch `leanvm-rec` @ 2b22581; π1's contract
+-- IV is `formal/UniKeccak`'s (`contractIvKWith`, `variantBytesK`: `crates/leanvm/univariate/src/contract.rs`'s
+-- `variant_bytes`, `contract_iv_for` with `Blake2s::Keccak`). `PCS_OPEN`'s ABI is `crates/membership/evm/src/machine.rs`'s
+-- (`crates/leanvm/statement/src/evm/machine.rs`: `element_word`, `root_word`).
 import RecStatement.Verifier
+import UniKeccak.Opening
 
 /-!
 # The six `PCS_OPEN` calls, word for word
@@ -11,15 +13,16 @@ The contract calls `PCS_OPEN` six times, each with `machine.rs`'s ABI (`root wor
 value)`, 32-byte words), in this order (`contract::call_words`):
 
 1. **π1's three** (`C1`, `C2`, π1's setup `F`), their words as the circuit names them (`CallWord`): constants (π1's
-   layout words, the claim counts, `F`'s root word), π1's roots `C1`, `C2` (the stream's 32 bytes at their reads),
-   π1's claims' elements (public scalars, `element_word`), and the coordinates `y_0(z_j), y_1(z_j)` of π1-rec3's pair
-   challenges `z_j` (`pair_point`), which the contract derives;
+   layout words, the Keccak VM's `UniKeccak.layoutWordsK`, the claim counts, `F`'s root word), π1's roots `C1`, `C2`
+   (the stream's 32 bytes at their reads), π1's claims' elements (public scalars, `element_word`), and the
+   coordinates `y_0(z_j), y_1(z_j)` of π1-rec3's pair challenges `z_j` (`pair_point`), which the contract derives;
 2. **`W`'s** (one claim; its root the stream's 32 bytes), **the setup's** (one claim; its root a constant,
    `root_word` of the setup's root: each 16-byte half reversed), **`Q`'s** (two claims in one call: one opening).
 
-**π1's contract IV** (`contract_iv_for`): the main line's IV preimage (`UniStatement.contractIvWith`'s:
-the tag, the program IV, π1's three setup roots, the shape's bytes, the five layout words) with the variant's bytes
-appended, for π1-rec3 `"fs-rec3"`, the skip `3` and the slices' code `4` (`Slices::TowerWalk`).
+**π1's contract IV** (`contract_iv_for` at `Blake2s::Keccak(KECCAK_REC3)`, `UniKeccak.contractIvKWith`): the Keccak-256
+of the tag, the program IV, π1's three setup roots (`F`, and the deployment's constants `A0`, `B0`), the shape's bytes,
+the Keccak VM's five layout words (`layoutWordsK`), then the variant's bytes: `"keccak-vm"`, the skip `3` and the
+Fiat–Shamir shape's code `3` (`Rec3`).
 -/
 
 namespace RecStatement
@@ -76,23 +79,23 @@ def streamLen (c : Circuit) : ℕ := (c.reads.map (·.bytes)).sum + 64 + 24 * (2
 
 /-! ## π1's contract IV -/
 
-/-- **`variant_bytes(Flock(FLOCK_REC3))`**: `"fs-rec3"`, the skip (`3`), the slices' code (`4`, `TowerWalk`)
-(`UniStatement.variantBytes`). -/
-def rec3VariantBytes : List UInt8 := UniStatement.variantBytes (.flock UniStatement.flockMain) .rec3 true
+/-- **`variant_bytes(Blake2s::Keccak(KECCAK_REC3))`**: `"keccak-vm"`, the skip (`3`), the Fiat–Shamir shape's code
+(`3`, `Rec3`) (`UniKeccak.variantBytesK`). -/
+def rec3VariantBytes : List UInt8 := UniKeccak.variantBytesK UniKeccak.keccakRec3
 
 section With
 
 variable {m : Type → Type} [Monad m] (F : KeccakState → m KeccakState)
 
-/-- **`contract_iv_for(shape, Flock(FLOCK_REC3), program_iv, roots)`** over `F`: π1-rec3's contract IV
-(`UniStatement.contractIvForWith` at π1-rec3's Fiat–Shamir shape and walked terminal). -/
+/-- **`contract_iv_for(shape, Blake2s::Keccak(KECCAK_REC3), program_iv, roots)`** over `F`: the Keccak π1-rec3's
+contract IV (`UniKeccak.contractIvKWith … keccakRec3`). -/
 def pi1IvWith (s : UniStatement.Shape) (programIv : List UInt8) (roots : UniStatement.SetupRoots) :
     m (List UInt8) :=
-  UniStatement.contractIvForWith F s (.flock UniStatement.flockMain) .rec3 true programIv roots
+  UniKeccak.contractIvKWith F s UniKeccak.keccakRec3 programIv roots
 
 end With
 
-/-- π1-rec3's contract IV over Keccak-f[1600]. -/
+/-- The Keccak π1-rec3's contract IV over Keccak-f[1600] (`UniKeccak.contractIvK … keccakRec3`). -/
 def pi1Iv (s : UniStatement.Shape) (programIv : List UInt8) (roots : UniStatement.SetupRoots) : List UInt8 :=
   Id.run (pi1IvWith (m := Id) (fun x ↦ pure (keccakF1600 x)) s programIv roots)
 

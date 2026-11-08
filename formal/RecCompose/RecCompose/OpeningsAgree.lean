@@ -4,17 +4,20 @@ import RecCompose.CallsPure
 import RecCompose.CompleteCouplings
 
 /-!
-# π1-rec3's verifier's openings are the contract's: `Pi1OpeningsAgree`, proved
+# The Keccak π1-rec3's verifier's openings are the contract's: `Pi1OpeningsAgree`, proved
 
-`pi1OpeningsAgree`: on a stream π1-rec3's graph accepts with the contract's π1 openings `ops`, off the merge hazard (the
-graph being π1-rec3's verifier there, `Pi1GraphIsVerifier`), π1-rec3's verifier at Keccak-f[1600] with the recursive
-proof's three π1 opening proofs is, as a computation, the contract's three π1 openings `openSeq` of `ops`.
+`pi1OpeningsAgree`: on a stream the Keccak π1-rec3's graph accepts with the contract's π1 openings `ops`, off the merge
+hazard (the graph being the Keccak π1-rec3's verifier there, `Pi1GraphIsVerifierK`), the Keccak π1-rec3's verifier at
+Keccak-f[1600] with the recursive proof's three π1 opening proofs is, as a computation, the contract's three π1
+openings `openSeq` of `ops`.
 
-* the graph's outputs are the verifier's (`Pi1GraphIsVerifier`): the run accepts (its zeros vanish), and its calls are
-  `UniStatement.pcsCalls`' words of its openings (no matrices', `Pi1RunShape`), three point claims in `commitments`
-  order (**`Pi1RunOpenings`**, named), which decode (`Pi1Decode.decodePi1Call_point`) to the verifier's openings, so the
-  claims have their layout words' variables; `Pi1GraphAccepts` makes `ops`' layouts and claims these, and `C1`'s and
-  `C2`'s roots theirs (`Pi1Decode.rootOfWord_rootWord`, the halves' top limbs zero by `Pi1RunShape`);
+* the graph's outputs are the verifier's (`Pi1GraphIsVerifierK`, `RecGraphKeccak.verifierOutputsWithK`): the run
+  accepts (its zeros vanish), and its calls are `UniKeccak.pcsCallsK`' words of its openings, three point claims in
+  `commitments` order (**`Pi1RunOpenings`**, proved in `RunOpenings.lean`), which decode
+  (`Pi1Decode.decodePi1Call_point`) to the verifier's openings, so the claims have their layout words' variables;
+  `Pi1GraphAccepts` makes `ops`' layouts and claims these, and `C1`'s and `C2`'s roots theirs
+  (`Pi1Decode.rootOfWord_rootWord`, the halves' top limbs zero by `Pi1RunShape`, which also makes the verifier's
+  matrices' check pass);
 * the setup's root in `ops` is the contract's decoding of the setup's root word `rootWordOfBytes (digestBytes F)`, which
   is `F` (`rootOfWord_rootWordOfBytes_digestBytes`), when π1's third call names its root as a constant
   (**`Pi1CallsShape`**, named; `Data.pi1Calls`' `pi1CallsShape_data`);
@@ -30,14 +33,13 @@ open scoped ENNReal
 
 /-! ## The named facts -/
 
-/-- **π1-rec3's run's openings** (a fact of `UniStatement.reduceWithFs`'s code, named here, not proved): a run of π1-rec3's
-verifier at the reference shape that returns a result has three point claims, without a bit-slice claim, in
-`commitments` order (`batchFs` at the point-claim ABI, one opening per commitment; the walked terminal sends no
-bit-slice combination). -/
+/-- **The Keccak π1-rec3's run's openings** (a fact of `UniKeccak.reduceWithK`'s code, named here, proved in
+`RunOpenings.lean`: `pi1RunOpenings`): a run of the Keccak π1-rec3's verifier at the reference shape that returns a
+result has three point claims, without a bit-slice claim, in `commitments` order (`batchK` at the point-claim ABI, one
+opening per commitment, and each commitment has a relation). -/
 def Pi1RunOpenings : Prop :=
   ∀ (iv publicInput : List UInt8) (stream : Array UInt8) (r : UniStatement.Reduced),
-    (UniStatement.runFs UniStatement.reference iv publicInput stream (.flock UniStatement.flockMain) .point .rec3
-      true).result = .ok r →
+    (UniKeccak.runK RecGraphKeccak.Pi1.keccak128 iv publicInput stream UniKeccak.keccakRec3 .point).result = .ok r →
       ∃ pt1 v1 pt2 v2 pt3 v3, r.openings = [(.c1, .point pt1 v1 none), (.c2, .point pt2 v2 none),
         (.setup, .point pt3 v3 none)]
 
@@ -113,11 +115,12 @@ theorem pi2LayoutWord_head (code m : ℕ) (L : PcsQuotient.Layout) :
 theorem pi1LayoutWord_head (s : UniStatement.Shape) (code vars placed : ℕ) :
     (UniStatement.layoutWord s code vars placed).head? = some s.logMemory.toUInt8 := rfl
 
-/-- π1's three layout words at the reference shape. -/
-abbrev w1 (i : ℕ) : List UInt8 := (UniStatement.layoutWords UniStatement.reference).getD i []
+/-- The Keccak π1's three layout words at the reference shape (`UniKeccak.layoutWordsK keccak128`). -/
+abbrev w1 (i : ℕ) : List UInt8 := (UniKeccak.layoutWordsK RecGraphKeccak.Pi1.keccak128).getD i []
 
-theorem w1_head (i : ℕ) (hi : i < 3) : (w1 i).head? = some 21 := by
-  obtain ⟨⟨a0, b0, hw0⟩, ⟨a1, b1, hw1⟩, ⟨a2, b2, hw2⟩⟩ := Pi1Decode.layoutWords_getD UniStatement.reference
+/-- They begin with the reference shape's memory's `log`, `20` (`2^20 ≥ 721598` cells). -/
+theorem w1_head (i : ℕ) (hi : i < 3) : (w1 i).head? = some 20 := by
+  obtain ⟨⟨a0, b0, hw0⟩, ⟨a1, b1, hw1⟩, ⟨a2, b2, hw2⟩⟩ := Pi1Decode.layoutWordsK_getD RecGraphKeccak.Pi1.keccak128
   interval_cases i
   · rw [w1, hw0, pi1LayoutWord_head]; rfl
   · rw [w1, hw1, pi1LayoutWord_head]; rfl
@@ -125,14 +128,14 @@ theorem w1_head (i : ℕ) (hi : i < 3) : (w1 i).head? = some 21 := by
 
 theorem w1_codes : Pi1Decode.codeOf (w1 0) = 0x5501 ∧ Pi1Decode.codeOf (w1 1) = 0x5502 ∧
     Pi1Decode.codeOf (w1 2) = 0x5503 := by
-  obtain ⟨⟨a0, b0, hw0⟩, ⟨a1, b1, hw1⟩, ⟨a2, b2, hw2⟩⟩ := Pi1Decode.layoutWords_getD UniStatement.reference
+  obtain ⟨⟨a0, b0, hw0⟩, ⟨a1, b1, hw1⟩, ⟨a2, b2, hw2⟩⟩ := Pi1Decode.layoutWordsK_getD RecGraphKeccak.Pi1.keccak128
   refine ⟨?_, ?_, ?_⟩
   · rw [w1, hw0, Pi1Decode.codeOf_layoutWord]; decide
   · rw [w1, hw1, Pi1Decode.codeOf_layoutWord]; decide
   · rw [w1, hw2, Pi1Decode.codeOf_layoutWord]; decide
 
 theorem w1_length (i : ℕ) (hi : i < 3) : (w1 i).length = 32 := by
-  obtain ⟨⟨a0, b0, hw0⟩, ⟨a1, b1, hw1⟩, ⟨a2, b2, hw2⟩⟩ := Pi1Decode.layoutWords_getD UniStatement.reference
+  obtain ⟨⟨a0, b0, hw0⟩, ⟨a1, b1, hw1⟩, ⟨a2, b2, hw2⟩⟩ := Pi1Decode.layoutWordsK_getD RecGraphKeccak.Pi1.keccak128
   interval_cases i
   · rw [w1, hw0]; exact Pi1Decode.length_layoutWord _ _ _ _
   · rw [w1, hw1]; exact Pi1Decode.length_layoutWord _ _ _ _
@@ -151,12 +154,12 @@ theorem ne_of_head {a b : List UInt8} (h : a.head? ≠ b.head?) : a ≠ b := fun
 theorem ne_of_codeOf {a b : List UInt8} (h : Pi1Decode.codeOf a ≠ Pi1Decode.codeOf b) : a ≠ b := fun e ↦ h (e ▸ rfl)
 
 /-- **π1's layout words are registered with π1's opener, at their variables**, at the reference shape. -/
-theorem registryAt_lookup (D : RecDeployment) (roots : RecSetupRoots) (hD : D.pi1.shape = UniStatement.reference)
+theorem registryAt_lookup (D : RecDeployment) (roots : RecSetupRoots) (hD : D.pi1.shape = RecGraphKeccak.Pi1.keccak128)
     (i : ℕ) (hi : i < 3) :
     (registryAt D roots).lookup (w1 i) = some (.pi1 (UniStatement.layoutWordVars (w1 i))) := by
   have hp : ∀ (code m : ℕ) (L : PcsQuotient.Layout), w1 i ≠ RecStatement.layoutWord code m L := fun code m L ↦
     ne_of_head (by rw [w1_head i hi, pi2LayoutWord_head]; decide)
-  have htake : (UniStatement.layoutWords UniStatement.reference).take 3 = [w1 0, w1 1, w1 2] := rfl
+  have htake : (UniKeccak.layoutWordsK RecGraphKeccak.Pi1.keccak128).take 3 = [w1 0, w1 1, w1 2] := rfl
   unfold registryAt registryOf
   rw [hD]
   simp only [RecStatement.layoutWords, List.cons_append, List.nil_append]
@@ -255,20 +258,19 @@ theorem root_of_decodeWith (reg : List (List UInt8 × Opener)) (w : List (List U
 /-! ## The theorem -/
 
 /-- **`Pi1OpeningsAgree`**, at the reference shape, from π1-rec3's run's shape and openings and π1's calls' shape. -/
-theorem pi1OpeningsAgree (D : RecDeployment) (hD : D.pi1.shape = UniStatement.reference) (hS : Pi1RunShape)
+theorem pi1OpeningsAgree (D : RecDeployment) (hD : D.pi1.shape = RecGraphKeccak.Pi1.keccak128) (hS : Pi1RunShape)
     (hO : Pi1RunOpenings) (hC : Pi1CallsShape D) : Pi1OpeningsAgree D := by
   intro hgv roots input proof s ops hops hga hz
   obtain ⟨out, gops, hout, hzs, -, hg, hlay, hroot⟩ := hga
   have hge := hgv LeanVM.Semantics.keccakF1600 (D.pi1IvAt roots.pi1) input s hz
-  have hiv : D.pi1IvAt roots.pi1 = pi1Iv UniStatement.reference D.pi1.programIv roots.pi1 := by
+  have hiv : D.pi1IvAt roots.pi1 = pi1Iv RecGraphKeccak.Pi1.keccak128 D.pi1.programIv roots.pi1 := by
     unfold RecDeployment.pi1IvAt; rw [hD]
   rw [hiv] at hge hout
-  set iv := pi1Iv UniStatement.reference D.pi1.programIv roots.pi1 with hivd
-  set o := UniStatement.runFs UniStatement.reference iv input.toList s (.flock UniStatement.flockMain) .point
-    .rec3 true with ho
-  have hgo : RecGraph.evalGraphDeployed RecGraph.Pi1.pi1Graph iv input.toList s =
+  set iv := pi1Iv RecGraphKeccak.Pi1.keccak128 D.pi1.programIv roots.pi1 with hivd
+  set o := UniKeccak.runK RecGraphKeccak.Pi1.keccak128 iv input.toList s UniKeccak.keccakRec3 .point with ho
+  have hgo : RecGraph.evalGraphDeployed RecGraphKeccak.Pi1.pi1GraphK iv input.toList s =
       match o.result with
-      | .ok r => some ⟨UniStatement.pcsCalls UniStatement.reference UniStatement.referenceRoots r,
+      | .ok r => some ⟨UniKeccak.pcsCallsK RecGraphKeccak.Pi1.keccak128 keccakRefRoots r,
           o.chan.zeros.toList, []⟩
       | .error _ => none := hge
   rw [hgo] at hout
@@ -283,22 +285,22 @@ theorem pi1OpeningsAgree (D : RecDeployment) (hD : D.pi1.shape = UniStatement.re
     obtain ⟨hmat, h11, h12, h21, h22⟩ := hS iv input.toList s r hres
     obtain ⟨pt1, v1, pt2, v2, pt3, v3, hro⟩ := hO iv input.toList s r hres
     -- The graph's calls, decoded.
-    have hcalls : UniStatement.pcsCalls UniStatement.reference UniStatement.referenceRoots r =
+    have hcalls : UniKeccak.pcsCallsK RecGraphKeccak.Pi1.keccak128 keccakRefRoots r =
         [UniStatement.openingWords (UniStatement.rootWord r.roots.1) (w1 0) (.point pt1 v1 none),
           UniStatement.openingWords (UniStatement.rootWord r.roots.2) (w1 1) (.point pt2 v2 none),
-          UniStatement.openingWords (digestBytes UniStatement.referenceRoots.bytecode) (w1 2) (.point pt3 v3 none)] := by
-      unfold UniStatement.pcsCalls
-      rw [hro, hmat]
-      simp only [List.map_cons, List.map_nil, List.append_nil]
+          UniStatement.openingWords (digestBytes keccakRefRoots.bytecode) (w1 2) (.point pt3 v3 none)] := by
+      unfold UniKeccak.pcsCallsK
+      rw [hro]
+      simp only [List.map_cons, List.map_nil]
     rw [hcalls] at hg
     obtain ⟨g0, g1, g2, hgops, hd0, hd1, hd2⟩ := mapM_three _ _ _ _ _ hg
-    have hl1 := decodePi1Call_point_length _ _ _ _ (UniComplete.length_rootWord _) (w1_length 0 (by decide)) _ hd0
-    have hl2 := decodePi1Call_point_length _ _ _ _ (UniComplete.length_rootWord _) (w1_length 1 (by decide)) _ hd1
+    have hl1 := decodePi1Call_point_length _ _ _ _ (UniKeccakComplete.length_rootWord _) (w1_length 0 (by decide)) _ hd0
+    have hl2 := decodePi1Call_point_length _ _ _ _ (UniKeccakComplete.length_rootWord _) (w1_length 1 (by decide)) _ hd1
     have hl3 := decodePi1Call_point_length _ _ _ _ (Pi1Decode.length_digestBytes _) (w1_length 2 (by decide)) _ hd2
     obtain ⟨c0, c1, c2⟩ := w1_codes
-    rw [Pi1Decode.decodePi1Call_point _ _ _ _ (UniComplete.length_rootWord _) (w1_length 0 (by decide)) hl1, c0,
+    rw [Pi1Decode.decodePi1Call_point _ _ _ _ (UniKeccakComplete.length_rootWord _) (w1_length 0 (by decide)) hl1, c0,
       Pi1Decode.rootOfWord_rootWord _ h11 h12] at hd0
-    rw [Pi1Decode.decodePi1Call_point _ _ _ _ (UniComplete.length_rootWord _) (w1_length 1 (by decide)) hl2, c1,
+    rw [Pi1Decode.decodePi1Call_point _ _ _ _ (UniKeccakComplete.length_rootWord _) (w1_length 1 (by decide)) hl2, c1,
       Pi1Decode.rootOfWord_rootWord _ h21 h22] at hd1
     simp only [show (0x5501 : ℕ) ≠ 0x5503 by decide, show (0x5502 : ℕ) ≠ 0x5503 by decide, ite_false,
       Option.some.injEq] at hd0 hd1
@@ -353,17 +355,17 @@ theorem pi1OpeningsAgree (D : RecDeployment) (hD : D.pi1.shape = UniStatement.re
     subst ho2 r0 r1 e0 e1 e2
     unfold pi1KeccakVerifierWith openSeq openAt
     simp only [RecProof.pi1Proof]
-    have hres' : (UniStatement.runFs UniStatement.reference (pi1Iv UniStatement.reference D.pi1.programIv roots.pi1)
-        input.toList s (.flock UniStatement.flockMain) .point .rec3 true).result = .ok r := hres
-    have hacc' : (UniStatement.runFs UniStatement.reference (pi1Iv UniStatement.reference D.pi1.programIv roots.pi1)
-        input.toList s (.flock UniStatement.flockMain) .point .rec3 true).accepts = true := hacc
+    have hres' : (UniKeccak.runK RecGraphKeccak.Pi1.keccak128 (pi1Iv RecGraphKeccak.Pi1.keccak128 D.pi1.programIv
+        roots.pi1) input.toList s UniKeccak.keccakRec3 .point).result = .ok r := hres
+    have hacc' : (UniKeccak.runK RecGraphKeccak.Pi1.keccak128 (pi1Iv RecGraphKeccak.Pi1.keccak128 D.pi1.programIv
+        roots.pi1) input.toList s UniKeccak.keccakRec3 .point).accepts = true := hacc
     simp only [hD, hacc', hres', Bool.not_true, Bool.false_eq_true, ite_false, hro]
     have hcm : (List.map (fun x ↦ x.1) [(UniStatement.Commitment.c1, UniStatement.Opening.point pt1 v1 none),
         (UniStatement.Commitment.c2, UniStatement.Opening.point pt2 v2 none),
         (UniStatement.Commitment.setup, UniStatement.Opening.point pt3 v3 none)] == UniStatement.commitments) = true :=
       rfl
-    simp only [hcm, List.forIn_cons, List.forIn_nil, bind_assoc,
-      pure_bind, Bool.true_and, List.getD_cons_zero, List.getD_cons_succ,
+    simp only [hcm, hmat, Option.isSome_none, Bool.false_eq_true, ↓reduceIte, List.forIn_cons, List.forIn_nil,
+      bind_assoc, pure_bind, Bool.true_and, List.getD_cons_zero, List.getD_cons_succ,
       registryAt_lookup D roots hD 0 (by decide), registryAt_lookup D roots hD 1 (by decide),
       registryAt_lookup D roots hD 2 (by decide)]
 
