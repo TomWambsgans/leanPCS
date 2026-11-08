@@ -52,6 +52,8 @@ cargo test --release -p leanvm_rec --test lean_graph_keccak                 # fa
   - `Tables.lean`: **`tableSpecK`**; `ConstraintFold.lean`: `constraintRelationK_eq`, **`degreeSpecK`**;
     `Constraint.lean`: **`constraintSpecK`**; `Heap.lean`: `heap_keccak128`, **`heapSpecK`**.
 
+- [`Hazard.lean`](RecGraphKeccak/Hazard.lean), [`Functionals15.lean`](RecGraphKeccak/Functionals15.lean): the merge
+  hazard's probability at `keccak128`.
 - [`Circuit.lean`](RecGraphKeccak/Circuit.lean): **`pi1rec3K_end`**, `RecCircuit.Compiled.compile_sound_end` at the
   Keccak graph: if the compiler accepts `RecGraphKeccak.Emitted.graph`, π2's satisfying witnesses carry its outputs.
   [`RecGraphKeccakTest/Circuit.lean`](RecGraphKeccakTest/Circuit.lean) (`lake exe rec-circuit-keccak GRAPH`) is the
@@ -68,11 +70,12 @@ diff out/keccak128_pi1_rec3.circuit k.circuit
 ## What is proved, what is left
 
 Proved (sorry-free, on Lean's three axioms: the root's guards): the program records the Rust's graph (by the check,
-compiled evaluation); the structured terminal, Flock, the tables' parts, `Q_W`'s identity and its degree, the heap's
-relations; the composition: `Pi1GraphIsVerifierK` from the parts' statements.
+compiled evaluation), and **`Sim.pi1GraphIsVerifierK : Pi1GraphIsVerifierK`**, with no hypothesis: the structured
+terminal and Flock (`flockSpecK`), the tables' parts (`tableSpecK`), `Q_W`'s identity and degree (`constraintSpecK`,
+`degreeSpecK`), the heap's relations (`heapSpecK`), the tail (`tailSpecK`: `Sim/WeightsK.lean`'s `weightAtK` algebra,
+`Sim/ClaimsK.lean`'s `weightAtK_phc`, `termPK_eq`, `combine_weightK`, `Sim/BatchK.lean`'s `sim_batchK`), the relations'
+shape off the hazard (`shapeSpecK`, `Sim/ShapeK.lean`), composed (`reduce_simQK`, `pi1SimK_of_reduce`).
 
-Left (`KeccakSimParts`, with the representations of `Tables`/`Constraint`/`Heap` fixed): `TailSpecK` (the claims'
-combination and the batch with `weightAtK`, against `UniKeccak.batchK`: RecGraph's `Claims.lean` weight part and
-`Batch.lean` with 11 slot bits) and `ShapeSpecK` (`reduceWithK`'s relations satisfy the tail's conditions off the
-hazard: RecGraph's `Shape.lean` at `keccak128`), and the hazard's probability (`RecGraph.Hazard`'s `hazard_card` at
-height 15: `UniSound.Ids.zBad_ne_zero` needs `FunctionalsCorrect 15`).
+The hazard's probability (`Hazard.lean`): `hazard_cardK` (for every `p_0`, at most `2^16` hazardous `t`) and
+`hazard_probK` (`≤ 2^16/|E| = 2^-176`), from `Functionals15.lean`'s `functionalsCorrect15` (`FunctionalsCorrect 15`: 15
+Gauss–Jordan steps checked by `decide +kernel` from printed words, as `UniSound.Ids.functionalsCorrect18`; 241 s, 10 GB).
