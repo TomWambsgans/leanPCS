@@ -3,6 +3,8 @@ import UniKeccakSound.FinalK
 import UniKeccakSound.FinalK3
 import UniSound.Rec3.Batch3
 import KeccakFlock
+import UniSound.Ids.Facts
+import FlockSoundUni.Transcription
 
 /-!
 # The Keccak verifier's knowledge soundness at the Keccak-f block, from the named links that remain
