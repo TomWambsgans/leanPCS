@@ -4,7 +4,7 @@
 -- helpers (`eqKernel`, `eqEval`, `dot`, `lagrangeWeights`, `rowLowWeights`) are `formal/UniStatement`'s
 -- transcriptions of `multilinear.rs` and `flock.rs`.
 import KeccakFlock.Complete
-import UniStatement.Flock
+import UniStatement.FlockBase
 
 /-!
 # The Keccak-f block's lincheck terminal, two ways

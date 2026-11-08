@@ -15,6 +15,7 @@ module
 public import Lv42.Arithmetization.Tables.Basic
 public import Lv42.Semantics.Lemmas
 public import Clean.Circuit.Formal
+public import Clean.Circuit.Extensions
 public import Clean.Utils.Tactics.CircuitProofStart
 
 @[expose] public section
@@ -339,5 +340,19 @@ counter is a constant of the component, not a column or a public coordinate. -/
 theorem verifier_pull_eval (prog : Program) (env : Environment K) :
     eval env (⟨Expression.const prog.finalPc, 1⟩ : Regs (Expression K)) = Regs.final prog := by
   simp only [circuit_norm]; rfl
+
+/-! ## Raw rows -/
+
+/-- A raw row written from a typed row reads back as it: reading at offset `0` inverts
+`toElements`, for any row type and any data. -/
+theorem rowAt_toElements {Row : TypeMap} [ProvableType Row] (data : ProverData K) (r : Row K) :
+    valueFromOffset Row 0 (Environment.fromArray (toElements r).toArray data) = r := by
+  unfold valueFromOffset
+  convert ProvableType.fromElements_toElements r
+  refine Vector.ext fun i hi ↦ ?_
+  rw [Vector.getElem_mapRange]
+  show ((toElements r).toArray[0 + i]?).getD 0 = _
+  rw [Nat.zero_add, Array.getElem?_eq_getElem (by simpa using hi), Option.getD_some,
+    Vector.getElem_toArray]
 
 end Lv42.Arithmetization

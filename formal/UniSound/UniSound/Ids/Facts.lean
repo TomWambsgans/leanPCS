@@ -1,6 +1,7 @@
 -- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
 import UniSound.Ids.Bridges
 import UniSound.Ids.Cantor
+import UniStatement.BasicFacts
 
 /-!
 # The small facts of the verifier's definitions, proved
@@ -27,62 +28,6 @@ Every theorem is about the definitions, for all inputs; no element of `E` is com
 namespace UniSound.Ids.Facts
 
 open LeanVM.Parameters UniStatement Finset
-
-/-! ## `eqKernel` is the fingerprint's weights -/
-
-theorem eqKernel_snoc (l : List E) (r : E) :
-    eqKernel (l ++ [r]) = (eqKernel l).map (· * (1 + r)) ++ (eqKernel l).map (· * r) := by
-  simp only [eqKernel, List.foldl_append, List.foldl_cons, List.foldl_nil]
-
-theorem size_eqKernel (l : List E) : (eqKernel l).size = 2 ^ l.length := by
-  induction l using List.reverseRecOn with
-  | nil => rfl
-  | append_singleton l r ih =>
-    rw [eqKernel_snoc, Array.size_append, Array.size_map, Array.size_map, ih, List.length_append,
-      List.length_singleton, pow_succ, mul_two]
-
-/-- **`eqKernel`'s entry `x`**: `Π_j (r_j if bit j of x else 1 + r_j)`, the first coordinate the lowest
-bit. -/
-theorem eqKernel_getElem (l : List E) (x : ℕ) (hx : x < (eqKernel l).size) :
-    (eqKernel l)[x] =
-      ∏ j ∈ range l.length, (if x.testBit j then l.getD j 0 else 1 + l.getD j 0) := by
-  induction l using List.reverseRecOn generalizing x with
-  | nil =>
-    have : x = 0 := by simpa [eqKernel] using hx
-    subst this
-    rfl
-  | append_singleton l r ih =>
-    have hlen := size_eqKernel l
-    have hgetD : ∀ j < l.length, (l ++ [r]).getD j 0 = l.getD j 0 := fun j hj ↦ by
-      simp [List.getD_eq_getElem?_getD, List.getElem?_append_left hj]
-    have hlast : (l ++ [r]).getD l.length 0 = r := by simp [List.getD_eq_getElem?_getD]
-    simp only [eqKernel_snoc]
-    rw [List.length_append, List.length_singleton, Finset.prod_range_succ]
-    by_cases hlo : x < 2 ^ l.length
-    · rw [Array.getElem_append_left (by simp [hlen, hlo]), Array.getElem_map,
-        ih x (by rw [hlen]; exact hlo), Nat.testBit_lt_two_pow hlo, hlast]
-      simp only [Bool.false_eq_true, ↓reduceIte]
-      congr 1
-      exact Finset.prod_congr rfl fun j hj ↦ by rw [hgetD j (Finset.mem_range.mp hj)]
-    · have hx' : x < 2 ^ l.length + 2 ^ l.length := by
-        simp only [eqKernel_snoc, Array.size_append, Array.size_map, hlen] at hx
-        omega
-      obtain ⟨y, rfl⟩ : ∃ y, x = 2 ^ l.length + y := ⟨x - 2 ^ l.length, by omega⟩
-      have hy : y < 2 ^ l.length := by omega
-      rw [Array.getElem_append_right (by simp [hlen]), Array.getElem_map]
-      simp only [Array.size_map, hlen, Nat.add_sub_cancel_left]
-      rw [ih y (by rw [hlen]; exact hy), Nat.testBit_two_pow_add_eq, Nat.testBit_lt_two_pow hy, hlast]
-      simp only [Bool.not_false, ↓reduceIte]
-      congr 1
-      exact Finset.prod_congr rfl fun j hj ↦ by
-        rw [hgetD j (Finset.mem_range.mp hj), Nat.testBit_two_pow_add_gt (Finset.mem_range.mp hj)]
-
-theorem eqKernel_getD (l : List E) (x : ℕ) (hx : x < 2 ^ l.length) :
-    (eqKernel l).getD x 0 =
-      ∏ j ∈ range l.length, (if x.testBit j then l.getD j 0 else 1 + l.getD j 0) := by
-  have hx' : x < (eqKernel l).size := by rw [size_eqKernel]; exact hx
-  rw [Array.getD_eq_getD_getElem?, Array.getElem?_eq_getElem hx', Option.getD_some,
-    eqKernel_getElem l x hx']
 
 theorem alphasOf_length (ch : List E) : (alphasOf ch).length = 4 := by simp [alphasOf]
 

@@ -1,7 +1,6 @@
 -- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
 import KeccakFlock.TerminalEq
-import FlockSoundUni.Transcription
-import UniSound.Ids.Facts
+import UniStatement.BasicFacts
 
 /-!
 # The terminals' inputs: eq tables, packing weights, correlations

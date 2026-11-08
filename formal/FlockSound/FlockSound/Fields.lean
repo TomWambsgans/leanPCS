@@ -6,6 +6,7 @@
 -- Flock constants are `Lv42.Parameters.Flock`'s (`formal/Lv42`, the same values).
 import Lv42.Parameters.Flock
 import Lv42.Protocol.Spine.Instance
+import Lv42.Protocol.Blake2sHash
 import LeanVM.Parameters.Field
 import LeanVM.Parameters.Generator
 import LeanVM.Protocol.Field
@@ -511,28 +512,6 @@ theorem bitTable_isBool {n : ℕ} (c : Column n) (i : Fin (2 ^ Flock.kSkip)) (u 
   exact cellBit_isBool _ _
 
 /-! ## The skip nodes -/
-
-/-- `φ_8` is additive in its byte: it sums the basis images of the set bits. -/
-theorem phi8_xor (a b : ℕ) : Flock.phi8 (a ^^^ b) = Flock.phi8 a + Flock.phi8 b := by
-  simp only [Flock.phi8, ← Finset.sum_add_distrib, Nat.testBit_xor]
-  refine Finset.sum_congr rfl fun i _ ↦ ?_
-  cases a.testBit i <;> cases b.testBit i <;> simp [← two_mul, CharTwo.two_eq_zero]
-
-/-- The nonzero bytes below `128` have nonzero images: a kernel check. -/
-theorem phi8_ne_zero : ∀ b : Fin 128, b ≠ 0 → Flock.phi8 b ≠ 0 := by decide +kernel
-
-/-- `φ_8` is injective on the bytes below `128`. -/
-theorem phi8_injOn {a b : ℕ} (ha : a < 128) (hb : b < 128) (h : Flock.phi8 a = Flock.phi8 b) :
-    a = b := by
-  have hx : a ^^^ b < 128 := Nat.xor_lt_two_pow (n := 7) ha hb
-  by_contra hne
-  have hz : Flock.phi8 (a ^^^ b) = 0 := by
-    rw [phi8_xor, h, CharTwo.add_self_eq_zero]
-  refine phi8_ne_zero ⟨a ^^^ b, hx⟩ (fun h0 ↦ hne ?_) hz
-  have h0' : a ^^^ b = 0 := congrArg Fin.val h0
-  refine Nat.eq_of_testBit_eq fun i ↦ ?_
-  have := congrArg (·.testBit i) h0'
-  simpa [Nat.testBit_xor] using this
 
 
 end FlockSound

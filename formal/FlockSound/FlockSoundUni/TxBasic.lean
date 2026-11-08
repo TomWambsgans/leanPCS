@@ -1,5 +1,6 @@
 -- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The evaluators are `formal/UniStatement`'s
 -- (`UniStatement/Basic.lean`, transcribed from `crates/leanvm_flock_gas`).
+import UniStatement.FlockFacts
 import UniSound.FlockInterface
 import FlockSound.Main
 
@@ -26,8 +27,6 @@ open UniStatement UniSound LeanVM.Parameters Finset
 /-! ## Characteristic two -/
 
 theorem two_eq_zero_E : (2 : E) = 0 := CharTwo.two_eq_zero
-
-theorem sub_eq_add_E (a b : E) : a - b = a + b := CharTwo.sub_eq_add a b
 
 theorem add_self_E (a : E) : a + a = 0 := CharTwo.add_self_eq_zero a
 
@@ -61,15 +60,6 @@ theorem sqn_eq : ∀ (x : E) (k : ℕ), sqn x k = x ^ 2 ^ k
     rw [sqn, sqn_eq (x * x) k, ← pow_two, ← pow_mul, pow_succ']
 
 /-! ## Words -/
-
-theorem ofLane_zero : K.ofLane 0 = 0 := rfl
-
-theorem ofLane_xor (a b : UInt64) : K.ofLane (a ^^^ b) = K.ofLane a + K.ofLane b := by
-  simp only [K.ofLane, BF64.add_def, BF64.toBitVec_ofBitVec, UInt64.toBitVec_xor]
-
-theorem eK_eq (c : UInt64) : eK c = ofK (K.ofLane c) := by
-  rw [ofK_eq_ofLimbs]
-  rfl
 
 theorem gen_eq : gen = ofK g := by
   rw [gen, eK_eq]

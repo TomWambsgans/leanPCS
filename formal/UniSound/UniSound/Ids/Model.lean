@@ -3,6 +3,7 @@
 -- `heapRelations`, `batch`.
 import UniSound.Ids.Rels
 import UniSound.Mle
+import UniStatement.FormPoly
 
 /-!
 # The identity model's data
@@ -382,21 +383,6 @@ noncomputable def polysOf (D : Deployment) {κ : ℕ} (Fl : FlockSound κ) (s : 
   else [1]
 
 /-! ## The heap read off `C1`, the constraint vectors -/
-
-/-- An element's base limb (`K`'s part). -/
-def toK (e : E) : K := e.limb 0
-
-/-- A form at a row of `K` values (its coefficients read in `K`). -/
-def formK (f : Form) (row : ℕ → K) : K :=
-  (f.map fun mc ↦ match mc.1 with
-    | [] => toK mc.2
-    | [i] => toK mc.2 * row i
-    | [i, j] => toK mc.2 * row i * row j
-    | _ => 0).sum
-
-/-- A tuple at a row, as a bus tuple of sixteen coordinates. -/
-def tupleK (tuple : List Form) (row : ℕ → K) : Vector K 16 :=
-  Vector.ofFn fun s ↦ formK (tuple.getD s.val []) row
 
 section Heap
 

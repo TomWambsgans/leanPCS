@@ -12,7 +12,6 @@
 module
 
 public import Lv42.Parameters.Flock
-public import Lv42.Protocol.Blake2sHash
 public import LeanVM.Parameters.Field
 public import LeanVM.Protocol.Field
 public import Lv42.Protocol.ToArkLib.Flock.BlockR1CS
