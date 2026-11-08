@@ -1,13 +1,14 @@
 -- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
 import RecCompose.ViewDefs
 import RecCircuit.Sound
-import RecGraph.Emitted
+import RecGraphKeccak.Emitted
 
 /-!
 # The view check, evaluated
 
-`rec-view-check`: runs `RecCircuit.compile (ofRG RecGraph.Emitted.graph RecGraph.Emitted.rootsAt iv)` (compiled code)
-at π1's reference IV (`RecStatement.Data.pi1Iv`) and at the all-zero IV, and evaluates `RecCompose.viewCheck` on the
+`rec-view-check [ref|zero]`: runs `RecCircuit.compile (ofRG RecGraphKeccak.Emitted.graph RecGraphKeccak.Emitted.rootsAt
+iv)` (compiled code; the Keccak VM's π1-rec3 at 128 signatures) at π1's reference IV (`RecStatement.Data.pi1Iv`) and at
+the all-zero IV (both without an argument, one with `ref` or `zero`), and evaluates `RecCompose.viewCheck` on the
 circuit: its view (`viewOf`, `adapt` transcribed) is `Data.circuit`, its calls (`callsOf`) are `Data.pi1Calls`, and it is
 valid (`validB`), part by part.
 -/
@@ -16,7 +17,7 @@ open RecCompose
 
 def checkAt (label : String) (iv : List UInt8) : IO Bool := do
   let t0 ← IO.monoMsNow
-  match RecCircuit.compile (RecCircuit.ofRG RecGraph.Emitted.graph RecGraph.Emitted.rootsAt iv) with
+  match RecCircuit.compile (RecCircuit.ofRG RecGraphKeccak.Emitted.graph RecGraphKeccak.Emitted.rootsAt iv) with
   | .error m => IO.println s!"{label}: the compiler rejects the graph: {m}"; return false
   | .ok c =>
     let t1 ← IO.monoMsNow
@@ -51,7 +52,9 @@ def checkAt (label : String) (iv : List UInt8) : IO Bool := do
     (← IO.getStdout).flush
     return ok
 
-def main : IO UInt32 := do
-  let a ← checkAt "pi1 reference IV" RecStatement.Data.pi1Iv
-  let b ← checkAt "zero IV" (List.replicate 32 0)
+def main (args : List String) : IO UInt32 := do
+  let ref := args.isEmpty || args.contains "ref"
+  let zero := args.isEmpty || args.contains "zero"
+  let a ← if ref then checkAt "pi1 reference IV" RecStatement.Data.pi1Iv else pure true
+  let b ← if zero then checkAt "zero IV" (List.replicate 32 0) else pure true
   return if a && b then 0 else 1

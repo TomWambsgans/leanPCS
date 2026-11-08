@@ -8,8 +8,9 @@ import RecCompose.Valid
 **`pi2Facts hD C hchk : Pi2Facts D C`** at the real deployment, for the compiled circuits `C` (the run-checked
 `Pi2Circuits`) and **`Pi2ViewChecked C`**: at every 32-byte π1 IV the compiled circuit passes `viewCheck` (its view `viewOf`, the
 Rust's `adapt` transcribed, is `Data.circuit`; its calls are `Data.pi1Calls`; `validB` accepts it). That check is a
-`Bool` of the compiled circuit, **checked by evaluation** (`rec-view-check`, `RecComposeTest/ViewCheck.lean`, at π1's
-reference IV and at the zero IV), as `Pi2Circuits` itself is; no kernel evaluation of the circuit.
+`Bool` of the compiled circuit, **checked by evaluation** (`rec-view-check`, `RecComposeTest/ViewCheck.lean`, on the
+compiler's circuit for the Keccak VM's π1-rec3, `RecGraphKeccak.Emitted.graph`, at π1's reference IV `Data.pi1Iv` and at
+the zero IV), as `Pi2Circuits` itself is; no kernel evaluation of the circuit.
 
 From it: `SpecOf` (`specOf_data`), validity (`validB_sound`), `2^24` positions and rows of `16` (the view's), three
 four-limb ports (`Data`'s terms), the public limbs `pubOfC` (their lengths, `pub_canon`). `pi2Facts_pubOf` states the
@@ -23,9 +24,10 @@ namespace RecCompose
 open RecStatement LeanVM.Parameters Primitives Finset
 
 /-- **The compiled circuits pass the view check** at every 32-byte π1 IV (`viewCheck`: the view is `Data.circuit`, the
-calls `Data.pi1Calls`, the circuit valid). A `Bool` of the compiled circuit at each IV: **checked by evaluation at
-three IVs** (`rec-view-check`: π1's reference IV and the zero IV; `rec-real-check`: those and the all-ones IV), assumed
-at the others. At the real deployment it follows from `RecCompose.IvChecked` (`pi2ViewChecked_real`). -/
+calls `Data.pi1Calls`, the circuit valid). A `Bool` of the compiled circuit at each IV: **checked by evaluation** on
+the Keccak π1-rec3's compiled circuit (`rec-view-check`: true at π1's reference IV `Data.pi1Iv` and at the zero IV,
+about 14 minutes an IV; `rec-real-check` evaluates `IvChecked` at those and the all-ones IV), assumed at the others. At
+the real deployment it follows from `RecCompose.IvChecked` (`pi2ViewChecked_real`). -/
 def Pi2ViewChecked {D : RecDeployment} (C : Pi2Circuits D) : Prop :=
   ∀ iv, iv.length = 32 → viewCheck (C.compiled iv) = true
 

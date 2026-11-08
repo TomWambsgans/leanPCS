@@ -8,9 +8,10 @@ import RecStatement.Lemmas.SpecLink
 For a compiled circuit whose view (`viewOf`, `adapt` transcribed) is `Data.circuit` and which is valid,
 **`specOf_data`**: `SpecOf (Spec.of Data.circuit).core c.circuit.toPiop basisE (pairOfC …) (16 + ·) 16 (pubOfC …)`.
 
-* `Data`'s own facts, by kernel decision on its small terms (`data_*`): `maxGamma = 1`, its `36` public terms the
-  zero coset's `16` (tags `N .. N + 15`, `w_4`) then `20` others, the walk a permutation of them, three four-limb ports
-  (`List.mergeSort` taken off first, the lists being sorted: `List.mergeSort_of_pairwise`);
+* `Data`'s own facts (π2's circuit for the Keccak VM's π1-rec3 at 128 signatures), by kernel decision on its small
+  terms, none on `Data.pi1Iv`, `Data.pi1Calls`, `Data.digest` or `Data.setupRoot` (`data_*`): `maxGamma = 1`, its
+  `36` public terms the zero coset's `16` (tags `N .. N + 15`, `w_4`) then `20` others, the walk a permutation of them,
+  three four-limb ports (`List.mergeSort` taken off first, the lists being sorted: `List.mergeSort_of_pairwise`);
 * the recursion's constants (`core_c`: `Spec.of`'s in `K`, embedded, are `normalisedConstantsF` of the blocks' basis,
   `RecStatement.normConsts_of_spec`), the pairs' `Ẑ_s(c_p)` (`pairZ_eq_zHat`; the coset constants nonzero by the
   Cantor basis's independence, `zConst_ne_zero`);
