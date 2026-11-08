@@ -13,7 +13,9 @@ byte, as `UniStatement`'s `pcsCalls` (`rootWord` of `next_root`'s halves, the la
 * `be64_beWordAt`: `be64` of the word `beWordAt` reads is the eight bytes it read;
 * `rootWord_extract`: a root's halves, read at `off` and `off + 16`, give the stream's 32 bytes at `off`;
 * `InputsBelow`, `inputsBelow_record`: every stream read the recorder holds ends below its cursor;
-* `calls_eq`: the calls of a run related by `RedR`, on a stream of the record's length.
+* `rootWord_of`: a represented root's word is the stream's 32 bytes at its offset.
+
+The Keccak VM's calls (`RecGraphKeccak.Sim.Top`, `calls_eqK`) are assembled from these.
 -/
 
 -- The judgment is `RecGraph.Sim.Sim`.
@@ -330,32 +332,6 @@ theorem rootWord_of {st : RecState} (hg : Good st) {a : Sym × Sym} {x : E × E}
   rw [← val_input π iv publicInput stream hg.inv hna, ← val_input π iv publicInput stream hg.inv hnb, ha.2,
     hb'.2] at this
   exact this
-
-/-- **The calls' bytes are `pcsCalls`'s**, for a run related by `RedR`, on a stream of the record's length. -/
-theorem calls_eq {st : RecState} {red : ReducedS} {r : Reduced} (hg : Good st)
-    (hR : RedR π iv publicInput stream st red r) (hb : InputsBelow st) (hs : stream.size = st.cursor) :
-    (callsOf st red).map (·.flatMap (RecGraph.wordBytes stream (evalAll π iv publicInput stream st))) =
-      pcsCalls reference referenceRoots r := by
-  obtain ⟨hr1, hr2, hop, hm⟩ := hR
-  have hw1 := rootWord_of π iv publicInput stream hg hr1 hb hs
-  have hw2 := rootWord_of π iv publicInput stream hg hr2 hb hs
-  have h1na := hr1.2.2.1
-  have h2na := hr2.2.2.1
-  have hl0 : ((layoutWords reference).getD 0 []).length = 32 := by simp [layoutWords, layoutWord_length]
-  have hl1 : ((layoutWords reference).getD 1 []).length = 32 := by simp [layoutWords, layoutWord_length]
-  have hl2 : ((layoutWords reference).getD 2 []).length = 32 := by simp [layoutWords, layoutWord_length]
-  unfold pcsCalls callsOf
-  rw [hm]
-  simp only [List.append_nil, List.map_map]
-  refine map_eq_of_forall₂ hop ?_
-  rintro ⟨c, point, value⟩ y ⟨ptE, vE, rfl, hpt, hv⟩
-  simp only at hpt hv
-  cases c <;>
-  simp only [Function.comp_apply, h1na, h2na, List.flatMap_append, List.flatMap_cons, List.flatMap_nil,
-    List.append_nil, RecGraph.wordBytes, openingWords, Option.isSome_none, Bool.false_eq_true, ↓reduceIte,
-    Option.map_none, Option.getD_none, flatMap_nodes π iv publicInput stream hpt, valE_evalAll, hv.2, hw1, hw2,
-    beBytes32_one, beBytes32_beNat _ hl0, beBytes32_beNat _ hl1, beBytes32_beNat _ hl2,
-    beBytes32_beNat _ (digestBytes_len _), List.append_assoc]
 
 end Calls
 

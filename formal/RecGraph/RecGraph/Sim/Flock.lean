@@ -1,25 +1,18 @@
 -- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
-import RecGraph.Sim.FlockTerminal
 import RecGraph.Sim.FlockTower
 import RecGraph.Sim.ComposeSpec
 
 /-!
-# Flock with the walked terminal, simulated: `Pi1.verifyWalked` against `UniStatement.Flock.verifyWalkedFs`
+# Flock, simulated: the shared parts
 
-At π1-rec3's shape (`log_n = 32`, `flockMain`: a skip of 3, the slices in tower order; `.rec3`), as `Sim` instances
-(`Sim/Chan.lean`):
+The parts of Flock's simulation that the Keccak VM's (`RecGraphKeccak.Sim.Flock`, `verifyWalkedK_sim`) uses, as `Sim`
+instances (`Sim/Chan.lean`):
 
 * `zerocheck_sim`: the seven fixed coordinates, the drawn run (one challenge and its squares), the coset's eight
-  values, `z`, the skip's interpolation (`lagrangeInterpolate_ph`), the 29 rounds, `v_a`, `v_b`, `v_c`;
-* `front_sim`: `α`, the lincheck's claim, its 8 rounds, the 64 slices;
-* `ringEnd_sim`: the map's six challenges, the target (`towerTarget_ph`);
-* `verifyWalked_sim`: the front, the walked terminal (`walkedTerminal_ph`) against the lincheck's last claim, a zero,
-  the ring switch's end; `flockSpec` (`ComposeSpec.FlockSpec`) is it, for every permutation, IV, public input and
-  stream.
+  values, `z`, the skip's interpolation (`lagrangeInterpolate_ph`), the rounds, `v_a`, `v_b`, `v_c`;
+* `ringEnd_sim`: the map's six challenges, the target (`towerTarget_ph`).
 
-The bytes (3552) and the challenges (46) are counted from the definitions. The challenge nodes are tracked
-(`Sim.chIds_len`, `sim_sumcheckDrawn_ch`): the 40th challenge of the part (index 39) is the lincheck's last round, the
-first coordinate of Flock's point.
+The challenge nodes are tracked (`Sim.chIds_len`, `sim_sumcheckDrawn_ch`).
 -/
 
 -- The judgment's rules are `RecGraph.Sim.Sim.*`.
@@ -116,7 +109,6 @@ theorem sim_sumcheckDrawn_ch (st : RecState) {claim : Nat} {c : E} (count : Nat)
     · rw [Array.toList_push, Array.toList_push]
       exact ((hpt.grow π iv publicInput stream hg'.inv.kinv (hgr1.trans hgr2)).snoc hz).pgrow hg2 hst3
     · rw [hst3.chal, hzc, hL1, hch, Array.toList_push, List.append_assoc]
-
 
 theorem squares_length (x : E) (n : ℕ) : (UniStatement.squares x n).length = n := by
   rw [squares_eq]; simp
@@ -224,8 +216,6 @@ theorem zerocheck_sim (st : RecState) :
         ∃ L, chIds st' = chIds st ++ L ∧ L.length = 31) :=
   (zerocheck_sim0 st).chIds_len
 
-
-
 /-- `next_scalars(count)`, its length. -/
 theorem sim_nextScalars_len (st : RecState) (count : Nat) :
     Sim π iv publicInput stream st (Pi1.nextScalars count) (UniStatement.nextScalars (m := Id) count) (24 * count) 0
@@ -257,115 +247,6 @@ theorem forall₂_none {st : RecState} (n : ℕ) :
   | zero => exact List.Forall₂.nil
   | succ n ih => rw [List.replicate_succ, List.replicate_succ]; exact List.Forall₂.cons trivial ih
 
-theorem head_rev_append (l rest : List ℕ) (h : l.length = 8) : (l.reverse ++ rest).headD 0 = l.getD 7 0 := by
-  have hne : l.reverse ≠ [] := by intro h'; have := congrArg List.length h'; simp [h] at this
-  rw [List.headD_eq_head?_getD, List.head?_append_of_ne_nil _ hne, List.head?_reverse, List.getLast?_eq_getElem?,
-    List.getD_eq_getElem?_getD, h]
-
-theorem getD_39 (L1 : List ℕ) (a : ℕ) (l : List ℕ) (h1 : L1.length = 31) : (L1 ++ [a] ++ l).getD 39 0 = l.getD 7 0 := by
-  rw [List.getD_append_right _ _ _ _ (by simp [h1])]; simp [h1]
-
-section FrontDefs
-
-variable (π iv publicInput stream)
-
-/-- **What the front leaves, related** (π1-rec3's shape: the skip's point drawn, 3 low row coordinates, the 8
-lincheck ones, the 64 slices sent, Flock's point of 26 coordinates). -/
-structure FrontR (st : RecState) (fr : FrontS) (f : Flock.Front) : Prop where
-  zSkip : OptRp' st fr.zSkip f.zSkip
-  zSome : ∃ z, f.zSkip = some z
-  rowLow : RpL' st fr.rowLow f.rowLow
-  rowLowLen : f.rowLow.length = 3
-  chiIn : RpL' st fr.chiIn f.chiIn
-  chiInLen : f.chiIn.length = 8
-  chiInPrime : RpL' st fr.chiInPrime f.chiInPrime
-  alpha : Rp' st fr.alpha f.alpha
-  rLc : Rp' st fr.rLc f.rLc
-  slices : ∃ S, f.slices = some S ∧ RpL' st fr.slices S ∧ S.length = 64
-  point : RpL' st fr.point f.point
-  pointLen : f.point.length = 26
-
-end FrontDefs
-
-local notation "FrontR'" => FrontR π iv publicInput stream
-
-theorem FrontR.grow {st st' : RecState} (hg : Good st) (hgr : Grows st st') {fr : FrontS} {f : Flock.Front}
-    (h : FrontR' st fr f) : FrontR' st' fr f := by
-  have hk := hg.inv.kinv
-  obtain ⟨S, hS1, hS2, hS3⟩ := h.slices
-  exact ⟨h.zSkip.grow hk hgr, h.zSome, h.rowLow.grow π iv publicInput stream hk hgr, h.rowLowLen,
-    h.chiIn.grow π iv publicInput stream hk hgr, h.chiInLen, h.chiInPrime.grow π iv publicInput stream hk hgr,
-    h.alpha.grow π iv publicInput stream hk hgr, h.rLc.grow π iv publicInput stream hk hgr,
-    ⟨S, hS1, hS2.grow π iv publicInput stream hk hgr, hS3⟩, h.point.grow π iv publicInput stream hk hgr, h.pointLen⟩
-
-/-- **`front(32, flockMain, rec3)`**: the zerocheck, `α`, the lincheck's 8 rounds, the 64 slices; 40 challenge nodes,
-the 40th the lincheck's last round, Flock's point's first coordinate. -/
-theorem front_sim (st : RecState) :
-    Sim π iv publicInput stream st (Pi1.front 32 flockMain .rec3) (Flock.frontFs (Fp π) 32 flockMain .rec3) 3552 40
-      (fun st' fr f ↦ FrontR' st' fr f ∧
-        ∃ L, chIds st' = chIds st ++ L ∧ L.length = 40 ∧ L.getD 39 0 = fr.point.headD 0) := by
-  refine Sim.of_good fun hg ↦ ?_
-  unfold Pi1.front Flock.frontFs
-  dsimp only
-  refine Sim.cast (n := 1632 + (0 + (384 + (24 * Flock.kBits + 0))))
-    (ch := 31 + (1 + (8 + (0 + 0)))) (by simp [Flock.kBits]) rfl ?_
-  refine Sim.bind (zerocheck_sim st) fun st1 x xU hg1 hgr1 ⟨⟨hz, hchi, hvA, hvB, hvC, hchil, hzs⟩, L1, hL1, hL1l⟩ ↦ ?_
-  refine Sim.bind (sim_sample π iv publicInput stream st1) fun st2 al alU hg2 hgr2 ⟨hal, hal2, _⟩ ↦ ?_
-  have hk1 := hg1.inv.kinv
-  refine Sim.pbind' (PSim.mul hg2 hal (hvB.grow π iv publicInput stream hk1 hgr2)) fun st3 t1 hs3 ht1 ↦ ?_
-  refine Sim.pbind' (PSim.add hs3.good ((hvA.grow π iv publicInput stream hk1 hgr2).pgrow hg2 hs3) ht1)
-    fun st4 s1 hs4 hs1 ↦ ?_
-  have hal4 := (hal.pgrow hg2 hs3).pgrow hs3.good hs4
-  refine Sim.pbind' (pow_psim st4 hs4.good hal4 2 (by norm_num)) fun st5 a2 hs5 ha2 ↦ ?_
-  have hvC5 := ((((hvC.grow π iv publicInput stream hk1 hgr2).pgrow hg2 hs3).pgrow hs3.good hs4).pgrow hs4.good hs5)
-  refine Sim.pbind' (PSim.mul hs5.good ha2 hvC5) fun st6 t2 hs6 ht2 ↦ ?_
-  refine Sim.pbind' (PSim.add hs6.good ((hs1.pgrow hs4.good hs5).pgrow hs5.good hs6) ht2) fun st7 s2 hs7 hs2 ↦ ?_
-  have hal7 := ((hal4.pgrow hs4.good hs5).pgrow hs5.good hs6).pgrow hs6.good hs7
-  refine Sim.pbind' (pow_psim st7 hs7.good hal7 3 (by norm_num)) fun st8 a3 hs8 ha3 ↦ ?_
-  refine Sim.pbind' (PSim.add hs8.good (hs2.pgrow hs7.good hs8) ha3) fun st9 cl hs9 hcl ↦ ?_
-  have hch29 : chIds st9 = chIds st2 :=
-    (((((hs9.chal.trans hs8.chal).trans hs7.chal).trans hs6.chal).trans hs5.chal).trans hs4.chal).trans hs3.chal
-  rw [← UniStatement.sumcheckDrawn_false]
-  refine Sim.bind (Sim.cast (n' := 384) (ch' := 8) (by
-      rw [sumcheckBytes_none]; simp [rpBytes, Flock.lincheckRounds, blake2sR1csLogSize])
-    (by simp [Flock.lincheckRounds, blake2sR1csLogSize])
-    (sim_sumcheckDrawn_ch st9 3 false hcl (forall₂_none _)).chIds_len)
-    fun st10 sc scU hg10 hgr10 ⟨⟨hpt, hrl, hch⟩, Lsc, hLsc, hLscl⟩ ↦ ?_
-  have hlin : sc.1.length = 8 := by
-    rw [hch] at hLsc
-    rw [List.append_cancel_left hLsc, hLscl]; simp [Flock.lincheckRounds, blake2sR1csLogSize]
-  rw [iteF (by decide)]
-  rw [bind_map_left]
-  refine Sim.bind (sim_nextScalars_len st10 Flock.kBits).chIds_len
-    fun st11 sl slU hg11 hgr11 ⟨⟨hsl, hsll⟩, Lsl, hLsl, hLsll⟩ ↦ ?_
-  rw [List.length_eq_zero_iff.mp hLsll, List.append_nil] at hLsl
-  refine Sim.pure_of_pstep (PStep.refl st11 hg11) ?_
-  have hs39 := hs3.trans (hs4.trans (hs5.trans (hs6.trans (hs7.trans (hs8.trans hs9)))))
-  have hgr := hgr2.trans (hs39.grows.trans (hgr10.trans hgr11))
-  have hchi' := hchi.grow π iv publicInput stream hk1 hgr
-  have hptU := hpt.grow π iv publicInput stream hg10.inv.kinv hgr11
-  have hsclen : scU.1.length = 8 := by rw [← hpt.length, hlin]
-  refine ⟨⟨hz.grow hk1 hgr, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩, ?_⟩
-  · exact hzs
-  · exact List.forall₂_take _ hchi'
-  · simp [hchil, Flock.packing, flockMain]
-  · exact List.forall₂_take _ (List.forall₂_drop _ hchi')
-  · simp [hchil, Flock.packing, flockMain, Flock.lincheckRounds, blake2sR1csLogSize]
-  · exact List.rel_reverse hptU
-  · exact (hal.pgrow hg2 hs39).grow π iv publicInput stream hs39.good.inv.kinv (hgr10.trans hgr11)
-  · exact hrl.grow π iv publicInput stream hg10.inv.kinv hgr11
-  · exact ⟨slU, rfl, hsl, hsll⟩
-  · exact List.rel_append (List.rel_reverse hptU) (List.forall₂_drop _ (List.forall₂_drop _ hchi'))
-  · simp [hchil, hsclen, Flock.packing, flockMain, Flock.lincheckRounds, blake2sR1csLogSize]
-  · refine ⟨L1 ++ [al] ++ sc.1, ?_, ?_, ?_⟩
-    · show chIds st11 = _
-      rw [hLsl, hch, hch29, hal2, hL1, List.append_assoc, List.append_assoc, List.append_assoc]
-    · simp [hL1l, hlin]
-    · rw [getD_39 _ _ _ hL1l]
-      exact (head_rev_append _ _ hlin).symm
-
-
-
 /-- **`ring_end`** (tower order): the map's six challenges, then the target. -/
 theorem ringEnd_sim (st : RecState) {s : List Sym} {S : List E} (hs : RpL' st s S) (hS : S.length = Flock.kBits) :
     Sim π iv publicInput stream st (Pi1.ringEnd s) (Flock.ringEnd (Fp π) flockMain S) 0 6
@@ -391,65 +272,6 @@ theorem ringEnd_sim (st : RecState) {s : List Sym} {S : List E} (hs : RpL' st s 
   · rw [hmc] at hL
     rw [List.append_cancel_left hL, hLl]
 
-theorem rowLowWeights_len (z : E) (RL : List E) (h : RL.length = 3) :
-    (Flock.rowLowWeights (some z) RL).2.length ≤ 64 := by
-  unfold Flock.rowLowWeights
-  simp [List.length_flatMap, lagrangeWeights_eq, eqKernel_size, h, Flock.packing]
-
-/-- **`verify_walked(32, flockMain, rec3)`**: the front, the terminal against the walk (its zero), the ring switch's
-end: Flock's point (26 coordinates), the map and the target; 3552 bytes, 46 challenges, the 40th Flock's point's first
-coordinate. -/
-theorem verifyWalked_sim (st : RecState) :
-    Sim π iv publicInput stream st (Pi1.verifyWalked 32 flockMain .rec3)
-      (UniStatement.Flock.verifyWalkedFs (Fp π) 32 flockMain .rec3) 3552 46
-      (fun st' a b ↦ RpL' st' a.1 b.1 ∧ b.1.length = 26 ∧
-        (∃ mapE tgtE, b.2 = .ring mapE tgtE ∧ RpL' st' a.2.1 mapE ∧ Rp' st' a.2.2 tgtE) ∧
-        val π iv publicInput stream st' ((chIds st').getD ((chIds st).length + 39) 0) = b.1.headD 0) := by
-  refine Sim.of_good fun hg ↦ ?_
-  unfold Pi1.verifyWalked Flock.verifyWalkedFs
-  dsimp only
-  refine Sim.cast (n := 3552 + (0 + (0 + 0))) (ch := 40 + (0 + (6 + 0))) rfl rfl ?_
-  refine Sim.bind (front_sim st) fun st1 fr f hg1 hgr1 ⟨hF, L, hL, hLl, hL39⟩ ↦ ?_
-  obtain ⟨S, hS1, hS2, hS3⟩ := hF.slices
-  obtain ⟨z, hz⟩ := hF.zSome
-  rw [hS1, Option.getD_some]
-  have hLW := rowLowWeights_len z f.rowLow hF.rowLowLen
-  rw [← hz] at hLW
-  refine Sim.pbind' (PH.psim (R := Rp π iv publicInput stream)
-    (walkedTerminal_ph hg1 hF.zSkip hF.rowLow hF.chiIn hF.chiInPrime hS2 hF.alpha hF.chiInLen hS3 hLW))
-    fun st2 t hs2 ht ↦ ?_
-  generalize Flock.walkedTerminal f.zSkip f.rowLow f.chiIn f.chiInPrime S f.alpha = WT at ht ⊢
-  have hF2 := hF.grow hg1 hs2.grows
-  refine Sim.pbind' (PSim.add hs2.good ht hF2.rLc) fun st3 v hs3 hv ↦ ?_
-  refine Sim.bind (sim_requireZero π iv publicInput stream st3 v _ hv) fun st4 _ _ hg4 hgr4 ⟨_, hn4⟩ ↦ ?_
-  have hgr14 := hs2.grows.trans (hs3.grows.trans hgr4)
-  refine Sim.bind (ringEnd_sim st4 (hS2.grow π iv publicInput stream hg1.inv.kinv hgr14) hS3)
-    fun st5 r rU hg5 hgr5 ⟨hr, Lm, hLm, hLml⟩ ↦ ?_
-  obtain ⟨mapE, tgtE, hrU, hmap, htgt⟩ := hr
-  refine Sim.pure_of_pstep (PStep.refl st5 hg5) ?_
-  have hpt := hF.point.grow π iv publicInput stream hg1.inv.kinv (hgr14.trans hgr5)
-  refine ⟨hpt, hF.pointLen, ⟨mapE, tgtE, hrU, hmap, htgt⟩, ?_⟩
-  show val π iv publicInput stream st5 ((chIds st5).getD ((chIds st).length + 39) 0) = f.point.headD 0
-  have hc : chIds st5 = chIds st ++ (L ++ Lm) := by
-    rw [hLm, chIds_of_nodes hn4, hs3.chal, hs2.chal, hL, List.append_assoc]
-  rw [hc, List.getD_append_right _ _ _ _ (by omega), show (chIds st).length + 39 - (chIds st).length = 39 by omega,
-    List.getD_append _ _ _ _ (by omega), hL39]
-  have key : ∀ (l : List Sym) (l' : List E), RpL' st5 l l' → l'.length = 26 →
-      val π iv publicInput stream st5 (l.headD 0) = l'.headD 0 := by
-    intro l l' h hl
-    cases h with
-    | nil => simp at hl
-    | cons hab _ => exact hab.2
-  exact key _ _ hpt hF.pointLen
-
-
 end Flock
-
-/-- **Flock, as the composition assumes it** (`ComposeSpec.FlockSpec`). -/
-theorem flockSpec : FlockSpec := fun _ _ _ _ st ↦ verifyWalked_sim st
-
-/-- info: 'RecGraph.Sim.flockSpec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms flockSpec
 
 end RecGraph.Sim

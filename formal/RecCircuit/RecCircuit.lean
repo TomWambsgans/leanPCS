@@ -24,7 +24,6 @@ import RecCircuit.WeightSim
 import RecCircuit.ExpandProof
 import RecCircuit.Calls
 import RecCircuit.End
-import RecCircuit.Pi1Rec3
 import RecCircuit.Complete
 
 /-!
@@ -161,7 +160,3 @@ ones.
 /-- info: 'RecCircuit.Compiled.compile_sound_end' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms RecCircuit.Compiled.compile_sound_end
-
-/-- info: 'RecCircuit.pi1rec3_end' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms RecCircuit.pi1rec3_end

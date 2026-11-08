@@ -4,14 +4,12 @@ import RecGraph.Sim.Pure
 import RecGraph.Sim.Transcript
 
 /-!
-# Flock's pure parts, simulated: the Lagrange weights, the row weights, the known weights
+# Flock's pure parts, simulated: the Lagrange weights, the row weights' tail
 
 * `lagrangeWeights_ph`: the program's prefix and suffix products (two arrays, filled from both ends) against
   `UniStatement`'s two pushed arrays (the suffix's reversed), through the products `prodSeq`;
 * `lagrangeInterpolate_ph` (`Sim.Pure`'s `dot_psim`);
-* `rowLowWeights_ph`: the skip's weights and their products with `eq(low, ·)` (`eqKernel_psim`), the nested loops
-  against `flatMap` (the skip's point related by `Sim.Transcript`'s `OptRp`);
-* `knownWeights_ph`: the constant's bits, `α²`, `α³` (`pow_psim`), the two `eq` evaluations (`eqEval_psim`).
+* `eqKernel_ph`, `rowLowTail_ph`.
 -/
 
 namespace RecGraph.Sim
@@ -232,66 +230,6 @@ theorem rowLowTail_ph {st : RecState} (hg : Good st) {skip : List Sym} {skipU : 
     refine PH.ret hs'.good ⟨hs.pgrow hg hs', ?_⟩
     rw [hlen, List.take_length] at hW
     exact hW
-
-/-- **`row_low_weights(z_skip, low)`**: the skip's Lagrange weights, and their products with `eq(low, ·)`. -/
-theorem rowLowWeights_ph {st : RecState} (hg : Good st) {zSkip : Option Sym} {zS : Option E}
-    (hz : OptRp π iv publicInput stream st zSkip zS) {low : List Sym} {L : List E} (hl : RpL' st low L) :
-    PH (Pi1.rowLowWeights zSkip low) st (fun st' r ↦ RpL' st' r.1 (Flock.rowLowWeights zS L).1 ∧
-      RpL' st' r.2 (Flock.rowLowWeights zS L).2) := by
-  have hlen := hl.length
-  cases zSkip with
-  | some z =>
-    cases zS with
-    | none => exact absurd hz id
-    | some x =>
-      have hzx : Rp' st z x := hz
-      unfold Pi1.rowLowWeights Flock.rowLowWeights
-      dsimp only
-      rw [hlen]
-      phg (lagrangeWeights_ph hg hzx _) as st1 skip hs1 hskip
-      exact rowLowTail_ph hg hskip hl
-  | none =>
-    cases zS with
-    | some x => exact absurd hz id
-    | none =>
-      unfold Pi1.rowLowWeights Flock.rowLowWeights
-      dsimp only
-      phg (PO hg) as st1 o hs1 ho
-      exact rowLowTail_ph hg (List.Forall₂.cons ho List.Forall₂.nil) hl
-
-theorem constBit_eq (bit : ℕ) (h : bit < 8) :
-    eK (UInt64.ofNat ((Flock.constantColumn / Flock.kBits) >>> bit % 2)) =
-      bitE (Flock.constantColumn / Flock.kBits) bit := by
-  interval_cases bit <;> rfl
-
-/-- **`known_weights(α, chi_in, chi_in')`**: the `C = I` claim's weight and the constant position's pin. -/
-theorem knownWeights_ph {st : RecState} (hg : Good st) {alpha : Sym} {a : E} (ha : Rp' st alpha a)
-    {chiIn chiInPrime : List Sym} {CI CIP : List E} (h1 : RpL' st chiIn CI) (h2 : RpL' st chiInPrime CIP) :
-    PH (Pi1.knownWeights alpha chiIn chiInPrime) st (fun st' r ↦ Rp' st' r.1 (Flock.knownWeights a CI CIP).1 ∧
-      Rp' st' r.2 (Flock.knownWeights a CI CIP).2) := by
-  unfold Pi1.knownWeights Flock.knownWeights
-  dsimp only
-  refine PH.bind' (PH.forIn_range 0 Flock.lincheckRounds #[] _ st
-    (fun j st' D ↦ D.size = j ∧ ∀ k < j, Rp' st' (D.getD k 0) (bitE (Flock.constantColumn / Flock.kBits) k)) hg
-    ⟨rfl, by simp⟩ ?_) ?_
-  · intro j hj st' D hs' ⟨hD, hDv⟩
-    grow_all hg hs'
-    simp only [Nat.zero_add]
-    have hj8 : j < 8 := by simpa [Flock.lincheckRounds, blake2sR1csLogSize] using hj
-    phg (PC hg (eK (UInt64.ofNat ((Flock.constantColumn / Flock.kBits) >>> j % 2)))) as st1 c hs1 hc
-    rw [constBit_eq j hj8] at hc
-    exact PH.ret hg ⟨_, rfl, push_rp hD hDv hc⟩
-  rintro st1 D hs1 ⟨hD, hDv⟩
-  grow_all hg hs1
-  rw [Nat.sub_zero] at hD hDv
-  have hcb := rpL_of_fn hD hDv
-  phg (PSim.ph (pow_psim st1 hg ha 3 (by norm_num))) as st2 a3 hs2 ha3
-  phg (PSim.ph (eqEval_psim st2 hg hcb h2)) as st3 e3 hs3 he3
-  phg (PH.mul hg ha3 he3) as st4 pw hs4 hpw
-  phg (PSim.ph (pow_psim st4 hg ha 2 (by norm_num))) as st5 a2 hs5 ha2
-  phg (PSim.ph (eqEval_psim st5 hg h1 h2)) as st6 e2 hs6 he2
-  phg (PH.mul hg ha2 he2) as st7 cw hs7 hcw
-  exact PH.ret hg ⟨hcw, hpw⟩
 
 end Pure
 

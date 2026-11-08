@@ -3,6 +3,7 @@
 import RecGraph.Sim.Batch
 import RecGraphKeccak.Sim.ClaimsK
 import RecGraphKeccak.Sim.ComposeSpec
+import UniSound.Ids.Deployed
 
 /-!
 # The Keccak verifier's tail: one claim per commitment, then the paired batch

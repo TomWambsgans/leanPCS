@@ -246,7 +246,9 @@ PCS leanVM's WHIR in both layers. Details: `crates/leanvm_univariate/README.md`,
     Q ≤ 2^64 (`uniKnowledgeSoundness_closed`, `UniSound`, `FlockSound`, against `Lv42`'s relation);
   - π1-rec3, the recursion's inner verifier: knowledge soundness at most 2^-64 for Q ≤ 2^64
     (`uniKnowledgeSoundness_closed_rec3`) and completeness with δ < 2^-167 (`uniCompletenessRec3_end_closed`);
-  - π1-rec3's recorded graph is its verifier off the merge hazard (`RecGraph.Pi1.pi1GraphIsVerifier`);
+  - the Keccak VM's π1-rec3 recorded graph (128 signatures) is its verifier off the merge hazard
+    (`RecGraphKeccak.Sim.pi1GraphIsVerifierK`; the hazard at most 2^-176, `RecGraphKeccak.hazard_probK`); the BLAKE2s
+    VM's graph and its proof are removed from `formal/RecGraph`;
   - the recursion's end theorems (`RecCompose`: `recKnowledgeSoundness_closed`, `recCompleteness_end`), with π2's
     bound `pi2Bound` = 2^-64.93 at Q = 2^64, on the deployment's premises (`D.Real`, `Pi2ViewChecked`,
     `GraphsAgree`). Open: `IvChecked` for every 32-byte π1 IV is reduced to `PatchChecked`, which is not proved; the

@@ -10,14 +10,14 @@ import UniSound.Ids.Model
 * `verifierOutputsWithK`: the outputs of `UniKeccak`'s verifier at `keccakRec3` and the point-claim ABI (`runWithK`, its
   three `PCS_OPEN` calls `pcsCallsK`, the values it collected as zeros, nothing nonzero), on the shape and setup
   roots the graph was recorded with (`keccak128`, `referenceRoots`).
-* `MergeHazardK`: `RecGraph.MergeHazard` for the Keccak verifier. `combine` merges points by value in `UniKeccak`,
+* `MergeHazardK`: the merge hazard of the Keccak verifier. `combine` merges points by value in `UniKeccak`,
   by symbol in the graph; the merge that changes a weight is of `y(t)` (the `SHA3` table's `q_flock` slot point, its
   `h_SHA3 = 15` coordinates) into a `C1` point starting with `t` or into Flock's point: `Z_bad(t) = 0`,
   `Z_bad = (y_0 + X)(y_0 + p_0)` (`UniSound.Ids.zBad` at `keccak128`), `t` the run's challenge 52 and `p_0` its
   challenge 45 (the lincheck's last round). A run that does not draw `t` is off it.
 * **`Pi1GraphIsVerifierK`**, the target: off the hazard, the Keccak graph recorded in Lean (`Pi1.pi1GraphK`, equal node
   for node to the Rust's `Emitted.graph`: `RecGraphKeccakTest/Pi1Check.lean`) evaluates to `verifierOutputsWithK`.
-* `pi1GraphIsVerifierK_of_sim : Pi1SimK → Pi1GraphIsVerifierK` (`RecGraph.Pi1.evalGraph_recordedGraph`).
+* `pi1GraphIsVerifierK_of_sim : Pi1SimK → Pi1GraphIsVerifierK` (`RecGraph.Pi1.evalGraph_recorded`).
 -/
 
 namespace RecGraphKeccak

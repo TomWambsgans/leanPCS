@@ -158,7 +158,7 @@ theorem reduce_simQK (PR : PartRep) (hPR : PartRepGrows PR) {TS : Table → List
       (RedRK π iv publicInput stream) := by
   have hG0 : Grows st st := Grows.refl st
   unfold Pi1.reduceK
-  simp only [UniKeccak.reduceWithK, hvalidK, Bool.false_eq_true, ↓reduceIte, hmode]
+  simp only [UniKeccak.reduceWithK, hvalidK, Bool.false_eq_true, ↓reduceIte, hmodeK]
   rw [hlogNK]
   -- 0. The row counts.
   refine SimE.bind ((sim_countBits st keccak128.heights).withChIds.withCursor) ?_
