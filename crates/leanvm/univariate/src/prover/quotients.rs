@@ -15,9 +15,8 @@ use primitives::field::{F64, F192};
 
 use super::bus::Bus;
 use super::columns::{C1Polys, SetupPolys};
-use super::fingerprint::Fingerprint;
 use super::poly::omega;
-use super::prints::{Print, PullPush, product};
+use super::prints::{Print, PullPush, PullPush8};
 use super::trace::Trace;
 use crate::verifier::degree;
 use quotient::ntt::{self, ESplat, Ex8, K8, Kx8, MixedSum};
@@ -503,9 +502,6 @@ pub fn table_leaf(trace: &Trace, t: usize, c1: &C1Polys, bus: &Bus, r_novel: &[V
     }
     let heap: [Slot; 3] = std::array::from_fn(|k| slot(columns.len() + k));
     columns.extend(r_novel.iter().map(|l| &l[..]));
-    let prints =
-        |list: &[Fingerprint]| -> Vec<Print<Slot>> { list.iter().map(|f| Print::new(f, |c| slots[c])).collect() };
-    let (pull, push) = (prints(&bus.pull[t]), prints(&bus.push[t]));
     if PORTABLE_LANES && columns.len() <= SCALAR_COLUMNS {
         // Column `k` (in `columns`' order) read as `k`, from the run's values gathered point by point.
         let both = PullPush::new(&bus.pull[t], &bus.push[t], |c| {
@@ -543,6 +539,7 @@ pub fn table_leaf(trace: &Trace, t: usize, c1: &C1Polys, bus: &Bus, r_novel: &[V
             },
         );
     }
+    let both = PullPush8::new(&bus.pull[t], &bus.push[t], |c| slots[c]);
     prefix_quotient(
         r,
         count,
@@ -550,7 +547,7 @@ pub fn table_leaf(trace: &Trace, t: usize, c1: &C1Polys, bus: &Bus, r_novel: &[V
         |first, _| piece_of(first, r),
         |d, v, j| {
             let col = |s: Slot| v.at(s, j);
-            let (p, p2) = (product(&pull, col), product(&push, col));
+            let (p, p2) = both.at(col);
             let za = Ex8::from_k(z_act.at(d.first, j));
             let zp = z_pad.at(d.first, j);
             let numerator = v.e(heap, j) * (p.mul_k(zp) + za) + p2.mul_k(zp) + za;

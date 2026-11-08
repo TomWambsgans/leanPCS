@@ -40,14 +40,76 @@ impl<C: Copy> Print<C> {
     /// Its values, the columns' read by `col`.
     #[inline(always)]
     pub fn at(&self, col: impl Fn(C) -> Kx8) -> Ex8 {
-        let mut sum = MixedSum::default();
+        self.terms(MixedSum::default(), col).reduce() + self.constant
+    }
+
+    /// `sum` plus its terms, the constant apart, unreduced.
+    #[inline(always)]
+    fn terms(&self, mut sum: MixedSum, col: impl Fn(C) -> Kx8) -> MixedSum {
         for &(s, ref c) in &self.linear {
             sum.add(c, col(s));
         }
         for &(s, t, ref c) in &self.quadratic {
             sum.add(c, col(s) * col(t));
         }
-        sum.reduce() + self.constant
+        sum
+    }
+}
+
+/// A push fingerprint on eight points: its pull's (same index) terms plus `delta`'s, when that is fewer terms; else
+/// alone.
+enum Push8<C> {
+    Delta { constant: Ex8, delta: Print<C> },
+    Alone(Print<C>),
+}
+
+/// [`PullPush`] on eight points at once (`Ex8` lanes): each push fingerprint that differs from its pull in a
+/// few terms (a memory flush's push is its pull with the count times `g`) from the pull's unreduced sum.
+pub struct PullPush8<C> {
+    pull: Vec<Print<C>>,
+    push: Vec<Push8<C>>,
+}
+
+impl<C: Copy> PullPush8<C> {
+    /// `pull` and `push`, their column `c` read by `key(c)`.
+    pub fn new(pull: &[Fingerprint], push: &[Fingerprint], key: impl Fn(usize) -> C + Copy) -> Self {
+        let push = push
+            .iter()
+            .enumerate()
+            .map(|(i, f)| match pull.get(i).map(|p| difference(p, f)) {
+                Some(d) if d.linear.len() + d.quadratic.len() < f.linear.len() + f.quadratic.len() => Push8::Delta {
+                    constant: Ex8::splat(f.constant),
+                    delta: Print::new(&d, key),
+                },
+                _ => Push8::Alone(Print::new(f, key)),
+            })
+            .collect();
+        Self {
+            pull: pull.iter().map(|f| Print::new(f, key)).collect(),
+            push,
+        }
+    }
+
+    /// `(Π pull, Π push)` on eight points, the columns' read by `col`.
+    #[inline(always)]
+    pub fn at(&self, col: impl Fn(C) -> Kx8 + Copy) -> (Ex8, Ex8) {
+        let one = Ex8::splat(F192::ONE);
+        let (mut p, mut q) = (one, one);
+        for i in 0..self.pull.len().max(self.push.len()) {
+            let mut pulled = MixedSum::default();
+            if let Some(f) = self.pull.get(i) {
+                pulled = f.terms(MixedSum::default(), col);
+                let x = pulled.reduce() + f.constant;
+                p = if i == 0 { x } else { p * x };
+            }
+            let y = match self.push.get(i) {
+                Some(Push8::Delta { constant, delta }) => delta.terms(pulled, col).reduce() + *constant,
+                Some(Push8::Alone(f)) => f.at(col),
+                None => continue,
+            };
+            q = if i == 0 { y } else { q * y };
+        }
+        (p, q)
     }
 }
 
@@ -218,5 +280,7 @@ mod tests {
         for k in 0..8 {
             assert_eq!(both.at(|c| columns[c][k]), (p[k], q[k]));
         }
+        let (p8, q8) = PullPush8::new(&pull, &push, |c| c).at(col);
+        assert_eq!((p8.to_array(), q8.to_array()), (p, q));
     }
 }
