@@ -2072,9 +2072,21 @@ pub fn subset_sums_many<M: Copy + Send + Sync + Add<Output = M> + Default>(jobs:
         let block = unsafe { dsts[k].slice(b << leaf, 1 << leaf) };
         subset_block(block, b, leaf, Some(srcs[k]));
     });
-    for (_, dst) in jobs.iter_mut() {
-        let m = dst.len().trailing_zeros() as usize;
-        subset_upper(dst, subset_leaf::<M>(m));
+    // The longer columns' upper variables, the columns of one length together.
+    let mut lengths: Vec<usize> = jobs.iter().map(|(_, d)| d.len()).collect();
+    lengths.sort_unstable();
+    lengths.dedup();
+    for len in lengths {
+        let m = len.trailing_zeros() as usize;
+        let leaf = subset_leaf::<M>(m);
+        if leaf < m {
+            let bases: Vec<SendPtr<M>> = jobs
+                .iter_mut()
+                .filter(|(_, d)| d.len() == len)
+                .map(|(_, d)| SendPtr(d.as_mut_ptr()))
+                .collect();
+            subset_upper_of(&bases, len, leaf);
+        }
     }
 }
 
@@ -2090,15 +2102,21 @@ fn subset_sums_of<M: Copy + Send + Sync + Add<Output = M> + Default>(data: &mut 
 /// [`subset_sums`]' variables from `leaf` up, a few at a time on tiles.
 fn subset_upper<M: Copy + Send + Sync + Add<Output = M> + Default>(data: &mut [M], leaf: usize) {
     let n = data.len();
+    subset_upper_of(&[SendPtr(data.as_mut_ptr())], n, leaf);
+}
+
+/// [`subset_upper`] of several columns of `n` words at `bases` (disjoint), each pass's tasks for all in one dispatch.
+fn subset_upper_of<M: Copy + Send + Sync + Add<Output = M> + Default>(bases: &[SendPtr<M>], n: usize, leaf: usize) {
     let m = n.trailing_zeros() as usize;
-    let base = SendPtr(data.as_mut_ptr());
     let mut a = leaf;
     while a < m {
         let g = (m - a).min(8);
         let lines = 1usize << g;
         let width = ((1usize << leaf) >> g).clamp(1, 1 << a);
         let per_group = (1usize << a) / width;
-        parallel::for_each((n >> (a + g)) * per_group, |task| {
+        let per = (n >> (a + g)) * per_group;
+        parallel::for_each(per * bases.len(), |t| {
+            let (base, task) = (bases[t / per], t % per);
             let e0 = ((task / per_group) << (a + g)) + (task % per_group) * width;
             for j in 0..g {
                 let hs = 1usize << j;
