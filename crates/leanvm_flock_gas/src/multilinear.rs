@@ -1,6 +1,6 @@
 // Adapted from leanVM (https://github.com/leanEthereum/leanVM), commit 42422001, file crates/verifier/src/multilinear.rs:
 // the same functions on a generic `Scalar`, without the table-driven `Scaler` (a speed-up of the native code, not a
-// different computation). MIT OR Apache-2.0; see NOTICE.md.
+// different computation). MIT OR Apache-2.0; see AGENTS.md.
 //! Multilinear and stacking helpers.
 
 use crate::field::{E, GEN, ONE};

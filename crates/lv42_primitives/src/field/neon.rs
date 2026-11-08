@@ -1,5 +1,5 @@
 // Vendored from leanVM (https://github.com/leanEthereum/leanVM), commit 42422001, file crates/primitives/src/field/neon.rs.
-// MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and NOTICE.md at the repository root).
+// MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and AGENTS.md at the repository root).
 //! Small AArch64 SIMD helpers shared by the NEON kernels.
 //!
 //! The ARMv8.2 SHA3 extension, present on every Apple M core and enabled by

@@ -1,7 +1,7 @@
 // Adapted from leanVM (https://github.com/leanEthereum/leanVM), commit 42422001, file crates/verifier/src/lib.rs: its
 // errors, `verify_stacked_opening` and `walk`, the walk generic over a `Scalar` and a `Channel`, without the replay
 // mode, with the shape it reads checked against the caller's, and ending either in WHIR as leanVM does
-// (`verify_execution`) or in the claims a contract hands to `PCS_OPEN` (`reduce`). MIT OR Apache-2.0; see NOTICE.md.
+// (`verify_execution`) or in the claims a contract hands to `PCS_OPEN` (`reduce`). MIT OR Apache-2.0; see AGENTS.md.
 //! The gas of verifying a leanVM proof (commit 42422001: BLAKE2s proven with Flock) in an EVM contract whose PCS
 //! openings go to the block's aggregated `PCS_OPEN` precompile. See `README.md`.
 //!

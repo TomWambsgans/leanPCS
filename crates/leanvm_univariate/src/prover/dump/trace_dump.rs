@@ -1,6 +1,6 @@
 // Part of PCS-openings-aggregation (crates/leanvm_univariate/src/prover/dump), not of leanVM, and not a module of
 // that crate: `apply.sh` copies it into a leanVM (https://github.com/leanEthereum/leanVM) checkout at commit 42422001
-// as crates/leanvm_core/src/cpu/trace_dump.rs. MIT OR Apache-2.0; see NOTICE.md.
+// as crates/leanvm_core/src/cpu/trace_dump.rs. MIT OR Apache-2.0; see AGENTS.md.
 //! The execution trace of a proof, written for the univariate prover (`crates/leanvm_univariate/PROVER.md`): when
 //! `LEANVM_TRACE_DUMP` names a directory, [`maybe_dump`] writes there, right after leanVM built its witness, every
 //! column leanVM 42422001 commits or carries (its global order: the memory's three limbs, its final counts, the

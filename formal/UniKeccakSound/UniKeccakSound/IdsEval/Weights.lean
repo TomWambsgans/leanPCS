@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The weight is `formal/UniKeccak`'s `weightAtK`; the
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The weight is `formal/UniKeccak`'s `weightAtK`; the
 -- proofs are `UniSound/Ids/Weights.lean`'s (`slotInner`) and `UniSound/Ids/Eval.lean`'s (`inner_colPoly`,
 -- `inner_slot`), for `weightAtK`'s `11` slot bits.
 import UniKeccakSound.Ids.Batch

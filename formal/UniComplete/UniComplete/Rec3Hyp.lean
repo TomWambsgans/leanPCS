@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. π1-rec3's analogues of `ProbHyp.lean`'s named
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. π1-rec3's analogues of `ProbHyp.lean`'s named
 -- hypotheses; uses leanerVM (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`, commit 6175f1a0, MIT OR
 -- Apache-2.0): the two calls `KeccakCalls`, `implH`, `implF`, the block cost `hashBlocks`; and
 -- `formal/EndToEnd/Completeness/E2ECompleteness/Duplex.lean`'s discipline `Disc`.

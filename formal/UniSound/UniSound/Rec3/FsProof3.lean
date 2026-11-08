@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The main line's `FsProof.lean` (the composition's
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The main line's `FsProof.lean` (the composition's
 -- facts, the bound) and `FsCost.lean` (`uniNumbers_of`) for π1-rec3's three openings.
 import UniSound.Rec3.FsOps3
 import UniSound.FsCost

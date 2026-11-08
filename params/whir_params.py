@@ -1,4 +1,4 @@
-# Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+# Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 """Replicates leanVM's WHIR eta search (crates/pcs/src/whir_config.rs) at this repository's three stack sizes,
 and prints, per level, the Johnson list bound L the search assumes and every soundness term.
 

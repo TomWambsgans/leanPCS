@@ -1,4 +1,4 @@
-<!-- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. -->
+<!-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. -->
 
 # The Keccak VM: leanVM with Keccak-f in the VM, verified on the EVM
 

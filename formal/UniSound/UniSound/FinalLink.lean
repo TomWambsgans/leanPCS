@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The statement is `Fs.lean`'s `UniFinal`;
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The statement is `Fs.lean`'s `UniFinal`;
 -- the verifier's batch is `formal/UniStatement`'s `batch` (`CodeBatch.lean`'s `batchPure`).
 import UniSound.CodeLink
 import UniSound.PendingLink

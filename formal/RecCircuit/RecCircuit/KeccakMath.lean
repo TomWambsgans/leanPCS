@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Keccak-f[1600] and Keccak-256 are leanerVM's
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Keccak-f[1600] and Keccak-256 are leanerVM's
 -- (https://github.com/Verified-zkEVM/leanerVM, commit 6175f1a0, `Statement/Keccak.lean`), read bit by bit through
 -- `formal/Circuit`'s `KeccakBits` (`Circuit/KeccakSpec.lean`, `Circuit/Keccak256Spec.lean`).
 import Circuit.Keccak256Spec

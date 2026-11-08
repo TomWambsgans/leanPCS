@@ -2,7 +2,7 @@
 // Modified here: `ring_claim` and `ring_switch_open` (leanVM's PCS packaging of the slices) left out, with the imports
 // only they used. The transcript is `lv42_fiat_shamir`'s trait, which the univariate prover's Keccak-256 chain implements.
 // Added: `Blake2sSetup::prove_reduction_skip`, the reduction with a zerocheck skip of 3 to 6 and the eq point's shape.
-// MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and NOTICE.md at the repository root).
+// MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and AGENTS.md at the repository root).
 //! Monolithic BLAKE2s compression-function R1CS: one R1CS instance per
 //! `compress(h, m, t, f0, f1) → h'` call, encoding the 16-word state init, all
 //! **ten** rounds, and the finalization XORs in one sparse system.

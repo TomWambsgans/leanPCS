@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Uses `formal/Heap` (`tableTuples`,
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Uses `formal/Heap` (`tableTuples`,
 -- `rows_perm_tableTuples`, `perm_flatMap_map_comm`, `flushTuples_eq_opcode`) and `formal/Lv42` (leanerVM `mumbai`
 -- f0393df4, MIT OR Apache-2.0): `boundaryTuples_push`, `boundaryTuples_pull` (`Protocol/LeanIsa/Bus.lean`).
 import UniComplete.MappingTrace

@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! π2's circuit as the PIOP sees it (SPEC-REC.md §2.3–§2.4): the local form of the interface the circuit compiler
 //! (branch `leanvm-rec-circuit`, `circuit/spec.rs`) defines, which [`Circuit`] is built from (`pi2::adapt`).
 //!

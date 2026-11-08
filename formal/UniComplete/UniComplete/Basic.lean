@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The writer is `leanvm_flock_gas::transcript::KeccakWriter`
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The writer is `leanvm_flock_gas::transcript::KeccakWriter`
 -- (crates/leanvm_flock_gas, the prover's side of `KeccakChannel`); the polynomials are CompPoly's computable
 -- `CPolynomial` (the `lean_vm` package set's).
 import UniStatement.Security

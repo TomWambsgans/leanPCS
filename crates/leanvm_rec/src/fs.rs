@@ -1,5 +1,5 @@
 // Part of this repository. The recording mirrors `leanvm_univariate::contract::record_verifier_with`. MIT OR
-// Apache-2.0; see NOTICE.md.
+// Apache-2.0; see AGENTS.md.
 //! `π1`'s Fiat–Shamir shapes (SPEC-REC.md §1.3): the verifier recorded with some of its challenges **derived**
 //! instead of hashed, to measure what `π2`'s circuit saves.
 //!

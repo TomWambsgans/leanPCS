@@ -1,5 +1,5 @@
 // Part of this repository. The matrices are leanVM 42422001's BLAKE2s R1CS, as `leanvm_flock_gas::flock`'s walk of the
-// circuit (adapted from leanVM's crates/verifier/src/flock.rs) computes them. MIT OR Apache-2.0; see NOTICE.md.
+// circuit (adapted from leanVM's crates/verifier/src/flock.rs) computes them. MIT OR Apache-2.0; see AGENTS.md.
 //! The setup commitments `A0`, `B0` (SPEC.md §3): Flock's BLAKE2s R1CS matrices as multilinears of `2^28` words,
 //! entry `row + 2^14 col`, which Flock's matrices' reduction leaves one claim on each.
 //!

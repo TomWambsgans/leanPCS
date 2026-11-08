@@ -1,5 +1,5 @@
 /-
-Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 
 Runs the Lean `opening::verify` (`WhirBridge.openingVerifyWithHash`, over leanerVM mumbai's Keccak-256
 and Keccak-f[1600], `Statement/Keccak.lean`) on openings made by the Rust prover, and recomputes the

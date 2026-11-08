@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! The vectors of `formal/UniStatement/UniStatementTest/KeccakTables.lean`: the Keccak VM's six tables
 //! (`layout::tables_keccak`) as the verifier reads them, their columns, their flushes' forms term by term in the
 //! map's order, and each column's `q_flock` word (`keccak_slot`) and offset (`keccak_slot_offset`). One record a line:

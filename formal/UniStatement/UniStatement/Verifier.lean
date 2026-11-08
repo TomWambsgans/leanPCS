@@ -2,7 +2,7 @@
 -- `linearise`, `tuple_degree`, `chunks`, `quotient_terms`, `sent_columns`, `layouts`, `stack_layouts`, `degree`,
 -- `Shape`). The tables, flushes, fingerprints, public lines and Flock are leanVM 42422001's
 -- (https://github.com/leanEthereum/leanVM), read through `crates/leanvm_flock_gas`. MIT OR Apache-2.0; see
--- NOTICE.md.
+-- AGENTS.md.
 module
 
 public import UniStatement.Domain

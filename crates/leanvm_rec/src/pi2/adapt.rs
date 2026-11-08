@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! The circuit compiler's description (`crate::circuit::spec`, the PIOP-facing interface) as the PIOP's
 //! [`Circuit`], and its public inputs as the stream's public data.
 //!

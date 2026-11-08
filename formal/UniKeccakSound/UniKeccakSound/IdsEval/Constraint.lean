@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The program is `formal/UniKeccak`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The program is `formal/UniKeccak`'s
 -- `constraintRelationK` (`Verifier.lean`); the proofs are `UniSound/Ids/Eval.lean`'s (`constraintRelation_eq`,
 -- `crOf_holds`, `crOf_terms`) for the Keccak lanes' copies.
 import UniKeccakSound.IdsEval.Rels

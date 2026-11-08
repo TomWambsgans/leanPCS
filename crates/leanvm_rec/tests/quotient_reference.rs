@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! SPEC-REC.md §2: the Merkle-path quotient SNARK (`crates/quotient`) as `π2`'s reference: its rows per Keccak-f,
 //! the membership circuit's use of its `2^22` rows, and its commitments' words per row.
 //!

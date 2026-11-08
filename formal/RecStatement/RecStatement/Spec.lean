@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Transcribed from `crates/leanvm_rec/src/pi2/verifier.rs`
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Transcribed from `crates/leanvm_rec/src/pi2/verifier.rs`
 -- (`SpecPair`, `Group`, `Spec`, `Spec::of`, `subspace_coefficients`, `zero_coset`, `normalised_constants`,
 -- `tag_walk`) and `crates/leanvm_rec/src/pi2/circuit.rs` (`coset_constants`, `vanishing`, `pair_constants`,
 -- `Circuit::max_gamma`), branch `leanvm-rec` @ 2b22581. The Cantor basis is `formal/UniStatement`'s (`beta`, `point`).

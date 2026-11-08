@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Transcribed from
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Transcribed from
 -- `crates/leanvm_flock_gas/src/keccak_flock.rs` (`structured_terminal`, `shift_offsets`, `grouped`, `SOURCE`, `RC`,
 -- `RHO`) and `flock_min.rs` (`walked_terminal_with`, `known_weights_with`) with the Keccak block's walk; the shared
 -- helpers (`eqKernel`, `eqEval`, `dot`, `lagrangeWeights`, `rowLowWeights`) are `formal/UniStatement`'s

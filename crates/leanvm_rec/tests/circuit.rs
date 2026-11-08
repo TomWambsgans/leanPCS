@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! Milestone R2 (SPEC-REC.md §7, steps 2–6): `π2`'s circuit compiled from `π1`'s recorded verifier, its witness from
 //! the real 1,000-signature proofs (`crates/leanvm_univariate/tests/vectors/`: π1-rec's `main_line_rec`, and the
 //! main line's).

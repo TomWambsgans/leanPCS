@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The links' form is `UniSound/Fs.lean`'s and
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The links' form is `UniSound/Fs.lean`'s and
 -- `UniSound/Fs128.lean`'s, for the Keccak verifier (`formal/UniKeccak`: `reduceWithK`, `verifyWithK`, three openings).
 import UniSound.Fs128
 import UniKeccakSound.PiopK

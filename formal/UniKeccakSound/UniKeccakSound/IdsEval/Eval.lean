@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The proofs are `UniSound/Ids/Eval.lean`'s (`wP_eval`,
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The proofs are `UniSound/Ids/Eval.lean`'s (`wP_eval`,
 -- `blockP_eval`, `diffsEval`, `diffsEvalP_of_heapGood`) on the Keccak identity model.
 import UniKeccakSound.IdsEval.Ev
 

@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Follows
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Follows
 -- `formal/EndToEnd/Soundness/TreeLog.lean` (`loggedKC_stackSetup`), `Soundness/Final.lean`
 -- (`setupTree_eq`) and `Bridge/Setup.lean` (`commitWith_eq`) of this repository, for three trees.
 import UniSound.FsWalk

@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. `formal/Lv42`'s `Protocol/LeanIsa/Complete.lean`,
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. `formal/Lv42`'s `Protocol/LeanIsa/Complete.lean`,
 -- `Protocol/LeanIsa/Read.lean` and the stack of a witness of `Protocol/LeanIsa.lean` (leanerVM `mumbai` f0393df4,
 -- MIT OR Apache-2.0), for the Keccak VM's instance, all of whose columns are committed.
 module

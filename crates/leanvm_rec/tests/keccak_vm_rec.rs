@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! The Keccak VM's π1 (`crates/leanvm_univariate/KECCAK.md`) under π2: its verifier recorded with π1-rec3's
 //! Fiat–Shamir shape, counted, and compiled into π2's circuit (D16v) on a sample stream, next to the BLAKE2s VM's π1-rec3:
 //! whether π2 still holds it in `2^24` positions.

@@ -1,7 +1,7 @@
 // Adapted from leanVM (https://github.com/leanEthereum/leanVM), commit 42422001, file crates/verifier/src/layout.rs:
 // the same tables, flushes, constraints and stacking; a `Form` is generic over its coefficients' `Scalar`, a table's
 // constraints a method on any `Scalar`, and the layout holds the bytecode's length rather than the bytecode.
-// MIT OR Apache-2.0; see NOTICE.md.
+// MIT OR Apache-2.0; see AGENTS.md.
 //! The instruction tables, their bus flushes, and where every committed column sits in the stack.
 
 use crate::field::{E, GEN, ONE, ZERO};

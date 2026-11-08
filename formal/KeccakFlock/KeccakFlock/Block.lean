@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The block is `crates/lv42_flock/src/keccak.rs`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The block is `crates/lv42_flock/src/keccak.rs`'s
 -- (its module documentation, `port_row`, `b_forms`, `row_values_walk`); its port layout is read as
 -- `crates/leanvm_flock_gas/src/keccak_flock.rs` reads it (`state_word`, `port_word`, `CONSTANT_COLUMN`,
 -- `row_values`). Keccak-f[1600] is leanerVM's (`Statement/Keccak.lean`), read bit by bit through `formal/Circuit`'s

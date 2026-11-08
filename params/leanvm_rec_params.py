@@ -1,4 +1,4 @@
-# Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+# Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 """Recursion for the univariate leanVM 42422001 verifier (crates/leanvm_rec/SPEC-REC.md): the sizes of the outer
 proof pi2 in each arithmetization, its soundness round by round after the union bounds over WHIR's level-0 Johnson
 lists, and the contract's gas.

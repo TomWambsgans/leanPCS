@@ -1,7 +1,7 @@
 // Part of this repository: adversarial tests (commit 5ff0904), adapted to the selector,
 // the index root in storage, the strict check of `PCS_OPEN`'s reply and the word 1 returned; the test of any
 // returned data passing is turned around (`only_the_word_one_passes`), as is that of calldata dropping a root's
-// third limb. MIT OR Apache-2.0; see NOTICE.md.
+// third limb. MIT OR Apache-2.0; see AGENTS.md.
 //! Adversarial tests of the verifier contract and of its calls of `PCS_OPEN`, none of which needs a proof: the
 //! contract's claims are compared with the Rust verifier's on random and tampered calldata, degenerate proofs are
 //! built from the transcript, the bytecode is walked for its stack, jumps and gas, and the calls are answered by

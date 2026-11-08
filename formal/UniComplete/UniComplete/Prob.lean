@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- Follows `formal/EndToEnd/Completeness/E2ECompleteness/End.lean`, `Assemble.lean`, `Final.lean` (`deltaDeployed`,
 -- `deltaDeployed_lt`, `grinding_le`) for the univariate verifier. Uses leanerVM
 -- (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`, commit 6175f1a0, MIT OR Apache-2.0): `rpmError`, the

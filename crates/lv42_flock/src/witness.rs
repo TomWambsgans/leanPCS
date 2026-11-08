@@ -1,5 +1,5 @@
 // Vendored from leanVM (https://github.com/leanEthereum/leanVM), commit 42422001, file crates/flock/src/witness.rs.
-// MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and NOTICE.md at the repository root).
+// MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and AGENTS.md at the repository root).
 // CREDIT: https://github.com/succinctlabs/flock (flock-prover), MIT OR Apache-2.0.
 //! Bit-packing and R1CS-row helpers for the monolithic hash R1CS modules
 //! (only `hash` in this vendored subset).

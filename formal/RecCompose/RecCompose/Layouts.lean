@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md and AGENTS.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md and AGENTS.md.
 import UniComplete.Reference
 import RecCompose.Bridge
 

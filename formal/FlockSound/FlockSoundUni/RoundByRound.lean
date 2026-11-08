@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The interface (`UniSound.FlockSound`,
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The interface (`UniSound.FlockSound`,
 -- `Done`, `UMsg`, `ChainProg`) and the counting lemma `prEvent_draws_le_of_card` are `formal/UniSound`'s.
 import UniSound.Prob
 import FlockSound.Main

@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Transcribed from
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Transcribed from
 -- `crates/leanvm_flock_gas/src/evm/record.rs` (`Sym::new`, `Sym`'s `Add`, `Mul`, `Scalar::constant`, `bits`,
 -- `ring_weight`; `Recorder`'s `new`, `statement`, `input`, `sample`, `sample_narrow`, `require_zero`,
 -- `require_nonzero`).

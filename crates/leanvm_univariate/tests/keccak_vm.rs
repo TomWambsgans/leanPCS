@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! The Keccak VM (`KECCAK.md`): leanVM's `SHA3` table in BLAKE2S's place, proved by Flock on the Keccak-f block with
 //! its structured terminal. Its contract against its Rust verifier, its stacks against WHIR's `2^28` words, and its gas
 //! next to the BLAKE2s VM's.

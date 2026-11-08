@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- Transcribed from `crates/quotient/src/protocol.rs` (`verify`, `verify_openings`, `Openings`). The
 -- opening proofs are leanerVM's format (`Statement/LeanVmVerifier.lean`, branch `mumbai`, commit
 -- 6175f1a0, MIT OR Apache-2.0).

@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 // The Rust half of the differential test of the Lean skeleton `QuotientZk.Deployed.skel`
 // (`formal/QuotientZk/Deployed/Skeleton.lean`) against the prover; the Lean half is
 // `formal/QuotientZk/Test/SkelTrace.lean` (executable `skeltrace`, `formal/lakefile.toml`).

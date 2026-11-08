@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The program is `formal/UniStatement`'s `batchFs` at
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The program is `formal/UniStatement`'s `batchFs` at
 -- `.rec3` (`Rec.lean`: `sampleNarrow`, `sumcheckPairsDrawn`, `pairRoundPoly`, `sumcheckDrawn`); the toolkit extends
 -- `CodeBase.lean`'s and `CodeZeros.lean`'s (the main line's).
 import UniSound.FinalLink

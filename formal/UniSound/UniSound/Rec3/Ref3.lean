@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The assembly follows `Closed.lean` (the main line's).
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The assembly follows `Closed.lean` (the main line's).
 import UniSound.Rec3.Final3
 import UniSound.Rec3.Ids3
 import UniSound.Rec3.Batch3

@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! The zerocheck with a univariate skip of 3 to 6 (`lv42_flock::zerocheck::skip`) and Flock's prover on it
 //! (`prover::flock`), without a trace:
 //!

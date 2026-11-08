@@ -1,5 +1,5 @@
 // Adapted from leanVM (https://github.com/leanEthereum/leanVM), branch PCS-openings-aggregation, commit 651453c6,
-// file crates/evm/src/lib.rs. MIT OR Apache-2.0; see NOTICE.md.
+// file crates/evm/src/lib.rs. MIT OR Apache-2.0; see AGENTS.md.
 //! The membership verifier as an EVM contract, and the EVM it runs on: revm with one more instruction,
 //! `FIELD_MUL`, a product in `GF(2^192)`.
 //!

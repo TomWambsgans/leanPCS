@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Follows `crates/leanvm_univariate/src/prover/flock.rs`
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Follows `crates/leanvm_univariate/src/prover/flock.rs`
 -- (branch `leanvm-univariate-prover2`: `prove`, `sliced`, `Pending`'s tables) and the honest provers of
 -- `crates/leanvm_flock_gas/src/flock_min.rs`'s tests (`sliced`, `walked`, `prove_sums`); the zerocheck and the lincheck
 -- are leanVM 42422001's Flock (`crates/lv42_flock/src/{zerocheck.rs, zerocheck/skip.rs, lincheck.rs}` on that branch),

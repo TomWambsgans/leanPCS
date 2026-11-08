@@ -1,5 +1,5 @@
 // Vendored from leanVM (https://github.com/leanEthereum/leanVM), commit c445e3d51a5a85031df47240595698f3b24897bf, file crates/primitives/tests/eq_table_identity.rs.
-// MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and NOTICE.md at the repository root).
+// MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and AGENTS.md at the repository root).
 //! `eq_table` feeds the verifier (via the leanvm_core constraint and GKR paths and
 //! the Keccak reduction), so its rewrite must be bit-identical to the
 //! two-multiply form, not merely algebraically equal.

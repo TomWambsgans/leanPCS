@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The proof is `UniSound/Ids/WeightMle.lean`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The proof is `UniSound/Ids/WeightMle.lean`'s
 -- (`combAt_mle`) for `formal/UniKeccak`'s `weightAtK` (`Verifier.lean`) and the Keccak relations (`relsAtK`:
 -- `mainRelsK`, `constraintRelationK`, `flockClaimK`).
 import UniSound.Ids.WeightMle

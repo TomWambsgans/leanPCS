@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! The setup commitments (SPEC.md §3), computed from what they are fixed by: `F` from the program (leanVM's stacked
 //! bytecode) and the shape (the memory's and the bytecode's sizes), `A0` and `B0` from Flock's BLAKE2s R1CS alone.
 //! Their roots are what a contract is generated with (SPEC.md §13, F2): [`roots`].

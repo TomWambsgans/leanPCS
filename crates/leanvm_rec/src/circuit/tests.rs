@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! The templates on random inputs: every pull equals its push, and the results are the reference's.
 
 use leanvm_flock_gas::field::K;

@@ -1,7 +1,7 @@
 // Adapted from leanVM (https://github.com/leanEthereum/leanVM), commit 42422001, file crates/verifier/src/transcript.rs:
 // its `Proof`, `Transcript` (the BLAKE2s chain, used by the reference verifier) and `sumcheck`, the latter two behind a
 // `Channel` trait; new here: that trait, the Keccak-256 chain the contract runs, adapted from this repository's
-// `crates/quotient/src/transcript.rs`, and the Fiat–Shamir shapes (`FsShape`, π1-rec). MIT OR Apache-2.0; see NOTICE.md.
+// `crates/quotient/src/transcript.rs`, and the Fiat–Shamir shapes (`FsShape`, π1-rec). MIT OR Apache-2.0; see AGENTS.md.
 //! Proof transport and Fiat-Shamir.
 //!
 //! Two chains, one protocol: the walk reads its scalars and draws its challenges through a [`Channel`].

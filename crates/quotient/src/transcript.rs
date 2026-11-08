@@ -1,6 +1,6 @@
 // Part of this repository. Adapted from leanVM (https://github.com/leanEthereum/leanVM), branch
 // PCS-openings-aggregation, commit 651453c6, `FiatShamirState::keccak` (crates/fiat_shamir/src/lib.rs).
-// MIT OR Apache-2.0; see NOTICE.md.
+// MIT OR Apache-2.0; see AGENTS.md.
 //! The reduction's transcript: a Keccak-256 chain, because its verifier is also an EVM contract, where
 //! `KECCAK256` is one instruction.
 //!

@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- Generalises `formal/Compose/Compose/ListChainK.lean` of this repository (its chain, parse, bad
 -- events, union bound and trace, whose structure follows `formal/QuotientRpm/ChainRom.lean`) to a
 -- chain whose messages are hashed by any injective encoding; the lemmas of `ListChainK.lean` that

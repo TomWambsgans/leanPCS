@@ -1,4 +1,4 @@
-<!-- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. -->
+<!-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. -->
 
 # Recursion: a leanVM 42422001 proof verified on the EVM for 44.8K gas
 

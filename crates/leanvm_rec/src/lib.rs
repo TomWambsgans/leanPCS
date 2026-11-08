@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! Recursion for the univariate leanVM 42422001 verifier (`SPEC-REC.md`): what the outer proof `π2` must prove,
 //! measured on the inner verifier's recorded graph (milestone R1), and `π2`'s circuit compiled from it (R2).
 //!

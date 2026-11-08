@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The node set is `crates/leanvm_flock_gas/src/evm/record.rs`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The node set is `crates/leanvm_flock_gas/src/evm/record.rs`'s
 -- (`Node`, `Graph`) and the call words `crates/leanvm_flock_gas/src/evm/codegen.rs`'s (`Word`); the form follows
 -- `formal/Implementation/Node.lean` (the Merkle-path verifier's graph).
 

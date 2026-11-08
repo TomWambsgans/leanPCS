@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The Keccak main line's `Fs/GameK.lean` at π1-rec3's
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The Keccak main line's `Fs/GameK.lean` at π1-rec3's
 -- shape (`keccakRec3`: the contract's IV binds the variant), as `UniSound/Rec3/FsGame128_3.lean`.
 import UniKeccakSound.Fs.ProofK3
 import UniKeccakSound.Fs.GameK

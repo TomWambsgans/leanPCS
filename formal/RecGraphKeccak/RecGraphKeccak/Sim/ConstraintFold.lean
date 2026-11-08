@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The technique (the `Id.run do` loops as folds) is
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The technique (the `Id.run do` loops as folds) is
 -- `formal/UniSound`'s (`UniSound.Ids.Eval.constraintRelation_eq`, `crOf_deg`).
 import RecGraphKeccak.Sim.Tables
 import UniSound.Ids.Eval

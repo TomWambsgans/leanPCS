@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The statement is `formal/UniStatement`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The statement is `formal/UniStatement`'s
 -- `UniKnowledgeSoundness` (`Security.lean`); the end theorem it instantiates is
 -- `formal/FlockSound/FlockSoundUni/Game.lean`'s `uniKnowledgeSoundness_fs`.
 import FlockSoundUni.Game

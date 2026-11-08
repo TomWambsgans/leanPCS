@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. `Pi2Chain.lean`'s `prEvent_staged3_triple_le2`,
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. `Pi2Chain.lean`'s `prEvent_staged3_triple_le2`,
 -- `prEvent_staged_bad_le2`, `Pi2Prob.lean`'s `prEvent_tquery_le'` and `Pi2TFresh.lean`'s `TF.tFresh_of`, with the
 -- freshness conditioned on a predicate off which the verdict rejects; uses leanerVM
 -- (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`, commit 6175f1a0, MIT OR Apache-2.0): the two calls

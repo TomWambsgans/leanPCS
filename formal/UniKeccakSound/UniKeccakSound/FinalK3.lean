@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The links' form and the composition are
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The links' form and the composition are
 -- `UniSound/Rec3/Fs3.lean`'s, `Fs128_3.lean`'s and `Final3.lean`'s, for the Keccak verifier at `keccakRec3`.
 import UniSound.Rec3.Final3
 import UniSound.Rec3.Fs128_3

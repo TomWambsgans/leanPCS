@@ -1,5 +1,5 @@
 #!/bin/sh
-# Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+# Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 # Makes a checkout of leanVM (https://github.com/leanEthereum/leanVM) at commit 42422001 write its execution trace for
 # the univariate prover: `sh apply.sh <leanVM checkout>`. Then any proof leanVM makes with `LEANVM_TRACE_DUMP=<dir>`
 # set writes the trace to <dir> (trace_dump.rs) and goes on unchanged, e.g. with the gas-dump command of

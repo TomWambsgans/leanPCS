@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! π2 on the real instance (SPEC-REC.md §7 R3, `PI2.md` §5): the circuit compiled from π1's recorded verifier with the
 //! witness of the real 1,000-signature proof (`crates/leanvm_univariate/tests/vectors/main_line_rec.txt`, π1-rec; and
 //! `main_line.txt`), through the adapter (`pi2::adapt`):

@@ -1,5 +1,5 @@
 -- Adapted from leanVM (https://github.com/leanEthereum/leanVM), branch PCS-openings-aggregation, commit 651453c6,
--- file formal/quotient/QuotientSecurity/Bits.lean. MIT OR Apache-2.0; see NOTICE.md.
+-- file formal/quotient/QuotientSecurity/Bits.lean. MIT OR Apache-2.0; see AGENTS.md.
 import QuotientSecurity.RoundByRound
 
 /-!

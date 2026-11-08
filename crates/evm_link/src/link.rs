@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! A program cut into contracts that each fit: a driver and the parts it calls.
 
 use std::collections::HashMap;

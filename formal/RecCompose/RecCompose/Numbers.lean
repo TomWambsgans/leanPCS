@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The bound's form is `formal/UniSound/UniSound/Fs128.lean`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The bound's form is `formal/UniSound/UniSound/Fs128.lean`'s
 -- `uniBound128` (the openings once, the chain without the tag, the seed's pair, the permutation), its proof in bits
 -- that file's `uniBound128_le_bits`.
 import RecCompose.Basic

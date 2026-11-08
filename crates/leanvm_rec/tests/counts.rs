@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! Milestone R1 (SPEC-REC.md §1): the inner verifier's graph on real proofs, and its counts.
 //!
 //! - `the_graph_is_the_verifier_on_real_proofs`: the recorded graph, evaluated on each committed real proof

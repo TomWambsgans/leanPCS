@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The counts are `UniSound/Ids/Counts.lean`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The counts are `UniSound/Ids/Counts.lean`'s
 -- (`relCount_reference`, `ncvOf_eq`) on the Keccak verifier's relations (`Code/Shape.lean`'s `mainRelsK`,
 -- `flockClaimK`) and constraints (`Ids/Model.lean`'s `constraintsPK`).
 import UniSound.Ids.Counts

@@ -2,7 +2,7 @@
   Lv42.Parameters.Isa
 
   Adapted from leanerVM (https://github.com/Verified-zkEVM/leanerVM), branch mumbai, commit
-  f0393df4, file lean_vm/LeanVM/Parameters/Isa.lean. MIT OR Apache-2.0; see NOTICE.md. `LeanVM`
+  f0393df4, file lean_vm/LeanVM/Parameters/Isa.lean. MIT OR Apache-2.0; see AGENTS.md. `LeanVM`
   renamed `Lv42`.
 
   The opcode codes are distinct, and the two table-height caps the verifier checks announced

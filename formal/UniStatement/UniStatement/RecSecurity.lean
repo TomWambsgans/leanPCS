@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The statements' form is `Security.lean`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The statements' form is `Security.lean`'s
 -- (`UniKnowledgeSoundness`, `UniCompleteness`); the verifier is `Rec.lean`'s `verifyWithFs` at π1-rec3
 -- (`crates/leanvm_univariate`'s `FLOCK_REC3`, `leanvm-rec` 4247e37).
 module

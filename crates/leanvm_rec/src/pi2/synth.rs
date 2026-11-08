@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! Synthetic circuits built with the interface ([`Circuit`]), and their witnesses: the PIOP's tests before the real
 //! circuit exists, and the target shapes the verifier's gas is measured at (SPEC-REC.md §2.4.5–§2.4.6, §2.6).
 //!

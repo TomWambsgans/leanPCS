@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md; conventions: see AGENTS.md. The port of
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md; conventions: see AGENTS.md. The port of
 -- `formal/UniSound/UniSound/FsVerifier.lean` (`uniVerifierBridge_of_walk`) to π2's contract
 -- (`formal/RecStatement/RecStatement/Security.lean`, `contractWith`); π1's openings at `2^23 ..= 2^28` words are
 -- `formal/UniKeccakSound/UniKeccakSound/Fs/VerifierK.lean`'s (`pcsOpen_eq_earlyK`).

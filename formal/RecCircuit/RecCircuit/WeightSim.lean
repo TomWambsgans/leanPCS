@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. About `Graph.lean`'s `weightAtM` (the transcription of
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. About `Graph.lean`'s `weightAtM` (the transcription of
 -- `crates/leanvm_flock_gas/src/ring_tower.rs`'s `weight_at`) and `Expand.lean`'s `weightSym`.
 import RecCircuit.Expand
 import RecGraph.Values

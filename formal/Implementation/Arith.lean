@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- Transcribes crates/primitives/src/field/gf2_64.rs (`software::clmul`, `reduce`) and gf2_64x3.rs (the product's
 -- three stages, `frobenius`), vendored there from leanVM (https://github.com/leanEthereum/leanVM, commit c445e3d5,
 -- MIT OR Apache-2.0; `reduce` credited there to binius64, Apache-2.0).

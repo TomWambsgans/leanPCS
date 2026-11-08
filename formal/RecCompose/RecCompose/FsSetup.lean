@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md; conventions: see AGENTS.md. Follows
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md; conventions: see AGENTS.md. Follows
 -- `formal/UniKeccakSound/UniKeccakSound/Fs/ProofK.lean` (`setupK1`'s facts) and `SetupK.lean` (`uniSetupBridgeK`), after
 -- `formal/UniSound/UniSound/FsProof.lean` and `FsSetup.lean`, for π2's setup: π1's one tree, then π2's.
 import RecCompose.FsDefs

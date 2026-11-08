@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! What a call of the univariate verifier costs, over leanVM's measured shapes, next to the baseline's.
 //!
 //! `cargo test --release -p leanvm_univariate --test gas -- --ignored --nocapture gas_report`

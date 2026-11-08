@@ -1,5 +1,5 @@
 // Adapted from leanVM (https://github.com/leanEthereum/leanVM), commit 42422001, file crates/verifier/src/hash.rs:
-// unchanged but for this header. MIT OR Apache-2.0; see NOTICE.md.
+// unchanged but for this header. MIT OR Apache-2.0; see AGENTS.md.
 //! BLAKE2s and digests.
 
 use crate::field::E;

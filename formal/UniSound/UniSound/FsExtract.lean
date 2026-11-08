@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Follows
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Follows
 -- `formal/EndToEnd/Soundness/Extract.lean` of this repository (`extractor_of_mem`,
 -- `extractFrom_spec`, `mem_witnessDecoder_dec`), with its lemmas (`Soundness/Replay.lean`'s
 -- `preimage_merkle`, `leavesUnder_preimage`, `leavesUnder_congr`; `Soundness/MerkleWord.lean`'s

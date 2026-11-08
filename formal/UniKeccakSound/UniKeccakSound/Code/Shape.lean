@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The programs are `formal/UniKeccak`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The programs are `formal/UniKeccak`'s
 -- (`Verifier.lean`: `constraintRelationK`, `Shape.c2ColumnsK`, `layoutsK`) and `formal/UniStatement`'s
 -- (`heapRelations`, `tablePart`); the proofs are `formal/UniSound/UniSound/CodeShape.lean`'s on the Keccak tables.
 import UniSound.CodeLink

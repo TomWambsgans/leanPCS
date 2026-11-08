@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- The calldata's layout is `crates/evm/src/quotient.rs`'s `calldata`, which the tests' `parse`
 -- (`crates/evm/src/lean.rs`) inverts.
 import Evm.Contract

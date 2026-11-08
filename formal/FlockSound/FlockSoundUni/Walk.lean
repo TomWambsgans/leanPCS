@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The circuit is `formal/Lv42`'s (leanerVM `mumbai`
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The circuit is `formal/Lv42`'s (leanerVM `mumbai`
 -- f0393df4's `Blake2sCircuit`, MIT OR Apache-2.0); the walk is `formal/UniStatement`'s (`UniStatement/Rec.lean`).
 import FlockSoundUni.WalkCode
 

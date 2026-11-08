@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- The extractor's Merkle inversion, list decoding and transcript replay are leanerVM's (branch `mumbai`,
 -- commit 6175f1a0, MIT OR Apache-2.0: `Statement/Extractor.lean`'s `committedLeaves`, `leafAt`,
 -- `fastStacks`, `decodeStacks`, and `Statement/LeanVm.lean`'s `keccakEvaluationsOfTranscript`,

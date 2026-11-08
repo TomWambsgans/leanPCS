@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Follows `crates/leanvm_univariate/src/prover/prove.rs`
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Follows `crates/leanvm_univariate/src/prover/prove.rs`
 -- and `batch.rs` (`prove_pairs`) at `FLOCK_REC3` (`leanvm-rec` 4247e37), `crates/lv42_flock`'s zerocheck draw
 -- (`EqPoint::Squares`), and `crates/leanvm_flock_gas/src/transcript.rs` (`FsShape::draw`, `Channel::sample_narrow`);
 -- the verifier it writes for is `formal/UniStatement/UniStatement/Rec.lean`'s `reduceWithFs … .rec3 true`.

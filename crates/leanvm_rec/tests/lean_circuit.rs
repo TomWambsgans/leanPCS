@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! The vectors of `formal/RecCircuit`'s differential runner (`RecCircuitTest/Main.lean`): a recorded graph as text, and
 //! the circuit the Rust compiler makes of it (`circuit::compile::pi2`, D16v), summarised: the shape, the regions and
 //! their formula tables, the blocks, the ports, the calls, `κ`, and a hash of `σ`. The Lean compiler reads the graph,

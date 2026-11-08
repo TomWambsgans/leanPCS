@@ -27,7 +27,7 @@ Part of this repository. Notes for contributors: what the implementation adds to
 ## Implementation (`crates/`)
 
 Two lines, both with Keccak-256 Fiat–Shamir and both passing their claims to `PCS_OPEN`. See
-[`NOTICE.md`](NOTICE.md) for what comes from where.
+[`AGENTS.md`](AGENTS.md) for what comes from where.
 
 **Zero-knowledge Merkle membership** with Keccak-256 (depth 32: `y = H(x | 0x11..)`, path from `H(x | 0x22..)` to
 `root`), reduced to four PCS claims by five field elements, as in leanVM's `flock::quotient` but on a circuit of

@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! The Rust→EVM test vectors (`tests/vectors/*.txt`, milestone 3): a real proof's calldata, the `PCS_OPEN` inputs
 //! the contract calls with (which the openings prove), the verdict and the gas, straight and deployed. Written by
 //! `tests/prove_real.rs` (`WRITE_VECTORS=<dir>`), replayed by `tests/evm_vectors.rs` with no prover and no trace.

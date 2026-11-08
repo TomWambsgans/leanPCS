@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The weights are `formal/UniStatement`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The weights are `formal/UniStatement`'s
 -- `weightAt` (`Stacks.lean`), the claims `combine`'s (`Claims.lean`).
 import UniSound.Ids.Eval
 import UniSound.Ids.Facts

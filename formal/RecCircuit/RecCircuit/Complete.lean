@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The honest witness is `layout.rs`'s (`Builder::finish`:
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The honest witness is `layout.rs`'s (`Builder::finish`:
 -- the words in value order, a given word for a free value or a self-referential slot, the witness the words at their
 -- pulls, `crates/leanvm_rec/src/circuit/layout.rs`), its given words `compile.rs`'s (the stream's and the public
 -- input's bits, `units.rs`'s `bit_and_copy`; the never-hashed reads' limbs).

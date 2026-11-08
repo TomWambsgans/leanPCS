@@ -3,7 +3,7 @@
 // crates/evm/src/codegen.rs (adapted from leanVM (https://github.com/leanEthereum/leanVM), branch
 // PCS-openings-aggregation, commit 651453c6) and crates/leanvm_flock_gas/src/evm/codegen.rs, unchanged; new here: a
 // contract that runs part of a program (values from and to the other parts, the driver's calls). MIT OR Apache-2.0;
-// see NOTICE.md.
+// see AGENTS.md.
 //! One contract's code: a run of a program's items, with how it starts and ends.
 
 use std::cmp::Reverse;

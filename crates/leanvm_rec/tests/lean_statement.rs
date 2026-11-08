@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! π2's verifier as `formal/RecStatement` transcribes it (`leanvm_rec::lean_statement`), on π2's real circuit for
 //! π1-rec3's 1,000-signature proof (`crates/leanvm_univariate/tests/vectors/main_line_rec3.txt`), D16v:
 //!

@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- Follows `formal/Compose/Compose/ListChainUDoom128.lean` of this repository (`trace_whirU'`,
 -- `knowledgeSoundness_listChainU_closed128`), with two generalisations for π2's verifier
 -- (`formal/RecCompose`): the setup's openings' stacks read off the proof, and the protocol a function of

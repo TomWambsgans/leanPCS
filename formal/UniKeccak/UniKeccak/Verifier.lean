@@ -3,7 +3,7 @@
 -- `KECCAK_MAIN`, `KECCAK_REC3`) and `crates/leanvm_flock_gas/src/flock_min.rs` (`verify_walked_with::<Keccak>`,
 -- `front_with`). The tables, flushes, fingerprints and public lines are leanVM 42422001's, the `SHA3` table leanVM
 -- 9d50c92a3's (https://github.com/leanEthereum/leanVM), read through `crates/leanvm_flock_gas`. MIT OR Apache-2.0;
--- see NOTICE.md.
+-- see AGENTS.md.
 module
 
 public import UniStatement.Rec

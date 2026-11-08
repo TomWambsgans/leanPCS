@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The proofs are `UniSound/Ids/Cvec.lean`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The proofs are `UniSound/Ids/Cvec.lean`'s
 -- (`c1P_eval_pointE`, `slotP_eval_pointE`) and `UniSound/Ids/CvecOk.lean`'s (`cvecOk`), for the Keccak VM.
 import UniSound.Ids.CvecOk
 import UniKeccakSound.IdsMain.Reading

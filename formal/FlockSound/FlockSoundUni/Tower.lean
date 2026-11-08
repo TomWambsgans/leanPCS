@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The evaluators are `formal/UniStatement`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The evaluators are `formal/UniStatement`'s
 -- (`UniStatement/Flock.lean`, transcribed from `crates/leanvm_flock_gas/src/ring_tower.rs`); the staged map
 -- is `FlockSound.Frobenius`'s.
 import FlockSoundUni.TxBasic

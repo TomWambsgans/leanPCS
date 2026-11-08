@@ -1,6 +1,6 @@
 // Adapted from leanVM (https://github.com/leanEthereum/leanVM), commit 42422001, file crates/verifier/src/bytecode.rs:
 // unchanged but for this header, the IV made public and the test's reference fold taking extension elements.
-// MIT OR Apache-2.0; see NOTICE.md.
+// MIT OR Apache-2.0; see AGENTS.md.
 //! The program a proof is about, prepared once so that verifying many proofs of it hashes its table once.
 
 use crate::field::{E, ZERO, reduce};

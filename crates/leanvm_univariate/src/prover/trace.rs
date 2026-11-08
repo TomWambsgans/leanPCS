@@ -1,7 +1,7 @@
 // Part of this repository. Reads what `dump/trace_dump.rs` writes from a leanVM 42422001 checkout: leanVM's own
 // execution and witness generation (crates/leanvm_core/src/cpu/{execute,layout}.rs there), column for column; or what
 // `dump_keccak/trace_dump.rs` writes from a leanVM 9d50c92a3 tree (the Keccak VM, KECCAK.md): its run without the fill
-// blocks, the tables' executed rows. MIT OR Apache-2.0; see NOTICE.md.
+// blocks, the tables' executed rows. MIT OR Apache-2.0; see AGENTS.md.
 //! An execution trace of leanVM 42422001, as its prover laid it out: the tables' columns (in `leanvm_flock_gas`'s
 //! `layout::tables` order, BLAKE2S's eighteen value limbs included), the memory image and its final counts, the
 //! bytecode's final counts, `q_flock`, and the stacked bytecode. Or of the Keccak VM (leanVM 9d50c92a3, `KECCAK.md`):

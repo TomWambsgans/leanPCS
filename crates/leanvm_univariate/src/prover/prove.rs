@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! The prover (SPEC.md §3–§8), phase by phase, on a leanVM 42422001 trace: `C1`, the challenges, Flock, the heap
 //! and the quotients, `C2`, the values at `t`, the batching sumcheck, and the openings.
 //!

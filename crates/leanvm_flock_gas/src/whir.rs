@@ -1,6 +1,6 @@
 // Adapted from leanVM (https://github.com/leanEthereum/leanVM), commit 42422001, file crates/verifier/src/whir.rs:
 // the same verifier, with the sumcheck messages read through the generic `sumcheck_round_poly` and no replay mode.
-// MIT OR Apache-2.0; see NOTICE.md.
+// MIT OR Apache-2.0; see AGENTS.md.
 //! WHIR opening: used only by the reference verifier ([`crate::verify_execution`]), which checks real leanVM proofs.
 //! The contract leaves the opening to `PCS_OPEN`.
 

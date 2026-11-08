@@ -1,6 +1,6 @@
 // Adapted from leanVM (https://github.com/leanEthereum/leanVM), branch PCS-openings-aggregation, commit 651453c6,
 // file crates/evm/src/machine.rs; new here: the mock `PCS_OPEN`, and the `Chain` that deploys contracts and keeps
-// their storage across transactions. MIT OR Apache-2.0; see NOTICE.md.
+// their storage across transactions. MIT OR Apache-2.0; see AGENTS.md.
 //! revm with `FIELD_MUL`, and with a mock of the precompile `PCS_OPEN`.
 //!
 //! # `PCS_OPEN`

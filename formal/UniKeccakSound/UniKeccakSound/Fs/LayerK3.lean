@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The Keccak main line's `Fs/LayerK.lean` at π1-rec3's
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The Keccak main line's `Fs/LayerK.lean` at π1-rec3's
 -- shape, as `UniSound/Rec3/FsFinal128_3.lean`.
 import UniKeccakSound.Fs.GameK3
 import UniKeccakSound.Fs.ExtractK3

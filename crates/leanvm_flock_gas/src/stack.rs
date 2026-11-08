@@ -1,6 +1,6 @@
 // Part of this repository. The batching (one challenge's powers over the claims' values and weights) is leanVM's
 // `verify_stacked_opening` (https://github.com/leanEthereum/leanVM, commit 42422001, crates/verifier/src/lib.rs);
-// the sumcheck that ends it on one evaluation is new here. MIT OR Apache-2.0; see NOTICE.md.
+// the sumcheck that ends it on one evaluation is new here. MIT OR Apache-2.0; see AGENTS.md.
 //! The claims on the committed stack, reduced to one evaluation claim for `PCS_OPEN`.
 //!
 //! leanVM hands its stack claims to WHIR as one weighted claim, `Σ_u W(u) q(u) = T` with `W = Σ_j λ^j W_j` and

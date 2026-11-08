@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The layouts are `formal/UniKeccak`'s `layoutsK`,
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The layouts are `formal/UniKeccak`'s `layoutsK`,
 -- `layoutsOfK`, `Shape.c2ColumnsK`; the proofs are `UniSound/Ids/Eval.lean`'s (`c1_limbs`, `c2_limbs`,
 -- `setup_limbs`) on the Keccak VM's columns.
 import UniKeccakSound.Ids.FlockReg

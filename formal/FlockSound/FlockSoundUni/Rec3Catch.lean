@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The catch follows `Catch.lean`'s `catches_of_tx` (the
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The catch follows `Catch.lean`'s `catches_of_tx` (the
 -- main line's), with `FlockSound.FlockSq`'s `flock_front_sq`.
 import FlockSoundUni.Instance
 import FlockSoundUni.Rec3Link

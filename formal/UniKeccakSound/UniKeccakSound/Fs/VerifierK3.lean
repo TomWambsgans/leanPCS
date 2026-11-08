@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The Keccak main line's `Fs/VerifierK.lean` at π1-rec3's
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The Keccak main line's `Fs/VerifierK.lean` at π1-rec3's
 -- shape (`verifyWithK … keccakRec3`), as `UniSound/Rec3/FsVerifier3.lean`.
 import UniKeccakSound.Fs.WalkK3
 import UniKeccakSound.Fs.VerifierK

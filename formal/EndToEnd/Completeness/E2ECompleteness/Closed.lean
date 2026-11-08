@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 import E2ECompleteness.Final
 import E2ECompleteness.ProverFacts
 import E2ECompleteness.ProverTablesMatch

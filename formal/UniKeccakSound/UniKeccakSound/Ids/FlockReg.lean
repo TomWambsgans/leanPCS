@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The proofs follow `UniSound/Ids/LvLink.lean`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The proofs follow `UniSound/Ids/LvLink.lean`'s
 -- (`column_lv42Stack`, `flock_lv42Stack_qf`, `lvAux`) for `formal/KeccakVm`'s instance and `formal/UniKeccak`'s
 -- `kvStack`.
 import UniSound.Ids.LvLink

@@ -3,7 +3,7 @@
 // PCS-openings-aggregation, commit 651453c6): the compilation of a recorded graph to straight-line code, a value used
 // once left on the stack and a shared one kept in a memory slot, the deeper operand evaluated first; here for any graph
 // whose nodes' code works on their operands on the stack, with the seams of [`crate::link`]. MIT OR Apache-2.0; see
-// NOTICE.md.
+// AGENTS.md.
 //! A recorded graph as a straight-line [`Program`].
 //!
 //! A node's value is computed where it is first needed, from its operands' values on the stack: a value read once is

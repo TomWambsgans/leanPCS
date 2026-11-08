@@ -1,7 +1,7 @@
 // Vendored from leanVM (https://github.com/leanEthereum/leanVM), commit 42422001, file crates/flock/src/lib.rs.
 // Unchanged but for this header and one added module, `keccak` (new in this repository: the Keccak-f[1600] block,
 // crates/lv42_flock/KECCAK.md); the crate's `fiat_shamir` is `crates/lv42_fiat_shamir` (the transcript as a trait).
-// MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and NOTICE.md at the repository root).
+// MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and AGENTS.md at the repository root).
 // CREDIT: https://github.com/succinctlabs/flock, MIT OR Apache-2.0.
 //! flock: a batched R1CS proving system for hash circuits over GF(2), reduced
 //! to evaluation claims on the committed packed witness.

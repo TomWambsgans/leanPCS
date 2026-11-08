@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. π1-rec3's analogue of `ProbTFresh.lean`
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. π1-rec3's analogue of `ProbTFresh.lean`
 -- (`tQueryFresh_flockProve`, `tQueryFresh_reference`), reusing its chain calculus (`Prob.TFresh`: `ChainF`, `EndsT`,
 -- `WCh`, `WEnd`, `prHit_le`, the writer's and Flock's steps), itself following
 -- `formal/EndToEnd/Completeness/E2ECompleteness/Chain.lean`; uses leanerVM (https://github.com/Verified-zkEVM/leanerVM,

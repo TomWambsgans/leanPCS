@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The proof is `RecGraph.Sim.constraintRelation_phc`'s,
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The proof is `RecGraph.Sim.constraintRelation_phc`'s,
 -- at any shape, with the Keccak tables and the `SHA3` lanes' copies (`END_BIT`'s known part).
 import RecGraphKeccak.Sim.ConstraintFold
 

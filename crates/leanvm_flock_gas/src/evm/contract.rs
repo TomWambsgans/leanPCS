@@ -1,5 +1,5 @@
 // Part of this repository; the contract's assembly follows this repository's crates/evm/src/quotient.rs. MIT OR
-// Apache-2.0; see NOTICE.md.
+// Apache-2.0; see AGENTS.md.
 //! The leanVM verifier as a contract, its calldata, and what a call costs.
 //!
 //! **ABI.** `verify(bytes32 publicInput, bytes proof)`, selector [`VERIFY`], arguments packed: calldata is the

@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! GF(2)-linear maps of `E = GF(2^192)` of the form `x ↦ Σ_k c_k x^(2^k)`, `N` of them at once: the weight of
 //! Frobenius-twisted terms of one point, `Σ_k c_k eq(p, u)^(2^k) = L(eq(p, u))` on the cube (`leanvm_univariate`'s
 //! batching sumcheck). A crate of its own for the GFNI kernel's intrinsics, which are `unsafe`.

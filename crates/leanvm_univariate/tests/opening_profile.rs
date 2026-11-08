@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! Where a WHIR opening of `A0` (`2^28` words, the BLAKE2s R1CS) spends its time (ignored): its density, the commit,
 //! and the opening with leanVM's tracing spans printed.
 //!

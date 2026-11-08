@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The interface is `UniSound.FlockSound`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The interface is `UniSound.FlockSound`'s
 -- (`FlockInterface.lean`) for π1-rec3's Flock phase, `formal/UniStatement`'s `Flock.verifyWalkedFs` at `.rec3`
 -- (`crates/leanvm_flock_gas/src/flock_min.rs`'s `verify_walked` at `FLOCK_REC3`).
 import UniSound.Prog

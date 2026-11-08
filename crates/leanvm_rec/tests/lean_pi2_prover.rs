@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! The vectors of the Lean honest prover's differential test (`formal/RecCompose/RecComposeTest/Pi2Prover.lean`): the
 //! circuit compiler's example (`circuit::spec::example`), padded to `2^log_n` positions as `tests/pi2.rs` pads it,
 //! through `pi2::adapt`; its witness, public input and values, π2's IV; and the Rust prover's stream and roots

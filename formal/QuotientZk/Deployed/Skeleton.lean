@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- Transcribes, at the level of the oracle calls, `crates/quotient/src/transcript.rs` (the reduction's
 -- Keccak-256 chain, with `QuotientRpm`'s bytes), `crates/fiat_shamir/src/{lib,merkle}.rs` (the overwrite
 -- duplex, grinding, `PrunedMerklePaths`; vendored from leanVM c445e3d5), `crates/pcs/src/whir.rs`

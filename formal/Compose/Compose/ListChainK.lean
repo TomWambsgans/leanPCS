@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- Generalises `formal/Compose/Compose/ListChain.lean` of this repository (two roots, three
 -- challenge groups, hard-wired) to any number of rounds and roots: the structure (bad fresh queries
 -- parsed from the history, each round union-bounded over the candidates of the roots before it, the

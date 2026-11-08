@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The program is `formal/UniKeccak`'s `reduceWithK` at
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The program is `formal/UniKeccak`'s `reduceWithK` at
 -- `keccakRec3` (`Verifier.lean`; `batchK` at `.rec3`: `sumcheckPairsDrawn`, narrow draws); Flock's phase is cited
 -- through `KFlockSound.link`. The proof is `formal/UniSound/UniSound/Rec3/CodeLink3.lean`'s (`uniCode3`) and
 -- `Rec3/CodeBatch3.lean`'s (`batchFs3_eq`) on the Keccak verifier.

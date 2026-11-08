@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 import UniKeccakSound.FinalK
 import UniKeccakSound.FinalK3
 import UniSound.Rec3.Batch3

@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The proof follows `Final.lean` (the main line's).
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The proof follows `Final.lean` (the main line's).
 import UniSound.Final
 import UniSound.Rec3.Fs3
 

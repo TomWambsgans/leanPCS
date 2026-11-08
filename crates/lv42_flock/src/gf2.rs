@@ -1,5 +1,5 @@
 // Vendored from leanVM (https://github.com/leanEthereum/leanVM), commit 42422001, file crates/flock/src/gf2.rs.
-// MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and NOTICE.md at the repository root).
+// MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and AGENTS.md at the repository root).
 //! Symbolic GF(2) words and the 32-bit adder gadgets the hash circuits share.
 //!
 //! BLAKE2s is a 32-bit ARX round whose XORs and rotations are free over GF(2)

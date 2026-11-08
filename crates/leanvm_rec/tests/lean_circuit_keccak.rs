@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! The Keccak VM's π1-rec3 (`crates/leanvm_univariate/KECCAK.md`, `tests/keccak_vm_rec.rs`) as a vector of
 //! `formal/RecCircuit`'s differential runner (`RecCircuitTest/Main.lean`): its recorded graph as text and the circuit
 //! the Rust compiler makes of it (D16v), in `tests/lean_circuit.rs`'s format (whose helpers this file repeats). The

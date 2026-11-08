@@ -1,4 +1,4 @@
-<!-- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. -->
+<!-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. -->
 
 # Recursion: an EVM verifier for leanVM 42422001 near 100K gas
 

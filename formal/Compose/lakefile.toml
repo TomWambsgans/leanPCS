@@ -1,4 +1,4 @@
-# Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+# Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 #
 # The composition (layer F4 of `formal/README.md`): the reduction (`QuotientSecurity`, with the
 # deployed Keccak-256 chain of `QuotientRpm`) with real commitments, the WHIR roots, whose openings

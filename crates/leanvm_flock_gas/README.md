@@ -1,4 +1,4 @@
-<!-- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. -->
+<!-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. -->
 
 # leanVM's statement, Flock's verifier and the EVM toolchain, generic over the scalar
 
@@ -34,4 +34,4 @@ cargo test --release -p leanvm_flock_gas --test evm -- --ignored --nocapture gas
 cargo test --release -p leanvm_flock_gas --test keccak_terminal -- --nocapture                   # Keccak-f terminal == walk
 ```
 
-Where each file comes from is in its first lines and in `NOTICE.md`.
+Where each file comes from is in its first lines and in `AGENTS.md`.

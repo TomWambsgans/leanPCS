@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The contract's π1 calls (`formal/RecStatement`:
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The contract's π1 calls (`formal/RecStatement`:
 -- `pi1OpsOf`, `decodeWith`; `Data.pi1Calls`, the Rust's `spec::Circuit::calls`) on π2's honest stream, and π1-rec3's
 -- graph's openings (`pi1GraphVerifierWith`, with Keccak-256 explicit in `Pi2CompleteH`).
 import RecCompose.Pi2ProbStaged

@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! The prover of SPEC.md (milestone 2; `PROVER.md`): on an execution trace of leanVM 42422001 (its own execution
 //! and witness generation, dumped by `dump/`), the stream the verifier reads and one WHIR opening per commitment.
 //!

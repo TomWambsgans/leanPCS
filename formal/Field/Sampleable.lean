@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- The samplers are leanerVM's `mumbai` (https://github.com/Verified-zkEVM/leanerVM, commit
 -- 6175f1a07f0dc33bd3d640de0063d1006143ee91, `lean_vm/LeanVM/Protocol/Field.lean`: `finEquivK`,
 -- `instSampleableTypeK`, `limbsEquiv`, `instSampleableTypeE`; MIT OR Apache-2.0), restated on

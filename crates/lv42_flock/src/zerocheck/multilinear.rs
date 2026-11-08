@@ -1,6 +1,6 @@
 // Vendored from leanVM (https://github.com/leanEthereum/leanVM), commit 42422001, file crates/flock/src/zerocheck/multilinear.rs.
 // Changed here: the bit-round kernels also take rows of 1, 2 and 4 bytes (for a univariate skip below 6); the rest is
-// unchanged. MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and NOTICE.md at the repository root).
+// unchanged. MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and AGENTS.md at the repository root).
 // CREDIT: https://github.com/succinctlabs/flock (flock-core), MIT OR Apache-2.0.
 //! Multilinear sumcheck: rounds 2..(m − k_skip + 1) of the zerocheck protocol.
 //!

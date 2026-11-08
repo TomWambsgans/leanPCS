@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The proofs are `UniSound/Ids/Deployed.lean`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The proofs are `UniSound/Ids/Deployed.lean`'s
 -- (`c1Limbs`, `setupLimbs`), `UniSound/Ids/Counts.lean`'s (`c1Absent`) and `UniSound/Ids/Facts.lean`'s
 -- (`tablesFacts`), for the Keccak VM's layouts (`layoutsK`) and tables (`tablesKeccak`).
 import UniSound.Ids.Counts

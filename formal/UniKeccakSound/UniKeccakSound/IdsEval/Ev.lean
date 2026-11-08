@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The proofs are `UniSound/Ids/Eval.lean`'s (`evOf`,
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The proofs are `UniSound/Ids/Eval.lean`'s (`evOf`,
 -- `holds_of_diffs`, `ev_colPoly`, `ev_slot`, `treeP_eval`, `rootP_eval`, `c1_points`, `y_self`, `part_spec`) on the
 -- Keccak identity model (`UniKeccakSound/Ids/Model.lean`).
 import UniKeccakSound.IdsEval.Constraint

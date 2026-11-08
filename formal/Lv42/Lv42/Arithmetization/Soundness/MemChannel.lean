@@ -3,7 +3,7 @@
 
   Adapted from leanerVM (https://github.com/Verified-zkEVM/leanerVM), branch mumbai, commit
   f0393df4, file lean_vm/LeanVM/Arithmetization/Soundness/MemChannel.lean. MIT OR Apache-2.0; see
-  NOTICE.md. `LeanVM` renamed `Lv42`.
+  AGENTS.md. `LeanVM` renamed `Lv42`.
 
   Soundness of the memory channel: in a satisfying witness every pulled memory tuple is a correct
   read of the image the prover data names.

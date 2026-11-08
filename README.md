@@ -84,4 +84,4 @@ A leanVM leaf aggregate of leanXMSS signatures:
 - [`eip-draft_leanPCS.md`](eip-draft_leanPCS.md): the EIP draft (`PCS_OPEN` and `MULFIELD`) this repository backs.
 - [`AGENTS.md`](AGENTS.md): what the implementation adds to the note above, and where things are.
 - [`STATUS.md`](STATUS.md): what is proved, tested and measured, and what remains.
-- [`NOTICE.md`](NOTICE.md): provenance and licenses (MIT OR Apache-2.0).
+- [`AGENTS.md`](AGENTS.md): provenance and licenses (MIT OR Apache-2.0).

@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- Transcribed from `crates/quotient/src/circuit.rs` (the wiring and the public rows adapted from leanVM,
 -- branch PCS-openings-aggregation, commit 651453c6, `crates/flock/src/quotient/circuit.rs`) and
 -- `crates/quotient/src/protocol.rs` (`Index`). Keccak's constants and the WHIR commitment's encoder and

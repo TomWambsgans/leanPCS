@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- Generalises `formal/EndToEnd/Completeness/E2ECompleteness/Chain.lean` (`prEvent_staged_le`) to the univariate
 -- verifier's bus challenges; uses its hash discipline (`HashOK`, `cache_of_hashOK`), its fresh query (`prEvent_fresh`,
 -- `prEvent_final_le`) and its regular challenge map (`Regular`, `Regular.lean`'s `challengeOf_regular`), and leanerVM

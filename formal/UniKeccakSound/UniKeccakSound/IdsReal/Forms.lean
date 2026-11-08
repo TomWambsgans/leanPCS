@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The reflection is `UniSound/Ids/LvRealize.lean`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The reflection is `UniSound/Ids/LvRealize.lean`'s
 -- (`SP`, `spNorm`, `exprSP`, `formSP`, `sides_eq`), for the Keccak VM's `SHA3` table (`formal/KeccakVm`'s
 -- `Sha3Table.flushExprs`, `formal/UniStatement`'s `flushesSha3`).
 import UniSound.Ids.LvRealize

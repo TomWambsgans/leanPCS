@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The proof is `UniSound/Ids/FlockEnd.lean`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The proof is `UniSound/Ids/FlockEnd.lean`'s
 -- (`diffsFlock`) for the Keccak verifier (`weightAtK`'s ring term, `q_flock` of `11 + κ` variables).
 import UniSound.Ids.FlockEnd
 import UniSound.Ids.Facts

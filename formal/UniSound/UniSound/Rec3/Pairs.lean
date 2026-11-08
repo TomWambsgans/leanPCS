@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The paired batch is π1-rec3's
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The paired batch is π1-rec3's
 -- (`crates/leanvm_flock_gas/src/transcript.rs`: `cantor_beta1`, `pair_point`, `pair_round_poly`,
 -- `sumcheck_pairs_drawn`; `crates/leanvm_rec/SPEC-POINTS.md` §2.4, §3, §5), transcribed as `UniStatement.cantorBeta1`,
 -- `UniStatement.pairPoint`, `UniStatement.pairRoundPoly`, `UniStatement.sumcheckPairsDrawn`

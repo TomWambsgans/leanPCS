@@ -1,4 +1,4 @@
--- Part of this repository. Transcribed from `crates/leanvm_univariate/src/heap.rs`. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. Transcribed from `crates/leanvm_univariate/src/heap.rs`. MIT OR Apache-2.0; see AGENTS.md.
 module
 
 public import UniStatement.Basic

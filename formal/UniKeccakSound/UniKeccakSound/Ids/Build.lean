@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The construction is `UniSound/Ids/Build.lean`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The construction is `UniSound/Ids/Build.lean`'s
 -- (`busModelOf`, `idsRestOf`) and `UniSound/Bus.lean`'s `UniIds.ofBus`, for the Keccak VM.
 import UniSound.Ids.Build
 import UniSound.Ids.Main

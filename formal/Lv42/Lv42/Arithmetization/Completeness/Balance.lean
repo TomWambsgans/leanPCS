@@ -3,7 +3,7 @@
 
   Adapted from leanerVM (https://github.com/Verified-zkEVM/leanerVM), branch mumbai, commit
   f0393df4, file lean_vm/LeanVM/Arithmetization/Completeness/Balance.lean. MIT OR Apache-2.0; see
-  NOTICE.md. `LeanVM` renamed `Lv42`.
+  AGENTS.md. `LeanVM` renamed `Lv42`.
 
   The list arithmetic behind the balance of the three channel pairs: the read counters, the chain
   lemma, and two permutations.

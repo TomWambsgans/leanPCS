@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. π1-rec3's verifier reads its honest prover's stream:
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. π1-rec3's verifier reads its honest prover's stream:
 -- `SyncVerifier.lean`'s `reduce_steps`, `runWithH_syncs`, `runWithH_accepts` for `Rec3VerifierH.lean`'s
 -- `reduceWithFsH … .rec3 true` and `Rec3Prover.lean`'s `proveStreamRec3With`.
 import UniComplete.Rec3BatchZero

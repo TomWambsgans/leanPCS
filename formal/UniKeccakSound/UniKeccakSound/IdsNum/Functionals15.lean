@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The method is `UniSound/Ids/Deployed.lean`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The method is `UniSound/Ids/Deployed.lean`'s
 -- (`functionalsCorrect18`) at the Keccak VM's `SHA3` height.
 import UniSound.Ids.Deployed
 

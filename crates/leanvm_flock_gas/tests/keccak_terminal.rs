@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! The Keccak-f block's structured lincheck terminal (`keccak_flock::structured_terminal`, crates/lv42_flock/KECCAK.md
 //! §4.2, M3) against the walked one (`flock_min::walked_terminal_with::<_, KeccakWalked>`, M1's walk), and its cost:
 //!

@@ -2,7 +2,7 @@
 // independent honest prover written for this repository (no longer part of it; its streams are pinned below) as
 // iteration 2 has them (the rows placed at the fixed cosets, SPEC.md §13), unchanged but for `Witness` keeping only
 // what a trace needs.
-// MIT OR Apache-2.0; see NOTICE.md.
+// MIT OR Apache-2.0; see AGENTS.md.
 //! The prover at tiny and uneven sizes: 15- to 31-cycle executions over all six tables (memory and
 //! bytecode of `2^4` and `2^5`, tables of 0 to 6 rows, DEREF's gated store), as a leanVM trace, proven by the prover
 //! and accepted by the verifier with its three WHIR openings. Flock is omitted, as in the independent prover.

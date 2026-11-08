@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! Test vectors for the Lean transcription of the verifier (`formal/UniStatement`): random, accepting and mutated
 //! streams, each with the Rust verifier's verdict and its intermediate values (every challenge, every value it
 //! requires to be zero, the claims it hands `PCS_OPEN`).

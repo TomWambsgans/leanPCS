@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. π2's verifier is `formal/RecStatement`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. π2's verifier is `formal/RecStatement`'s
 -- (`RecStatement/Verifier.lean`: `reduceWith`, `runWith`, `run`).
 import RecCompose.Chan
 

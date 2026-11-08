@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. π2's analogue of `formal/UniComplete/UniComplete/
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. π2's analogue of `formal/UniComplete/UniComplete/
 -- ProbTFresh.lean` (`t`'s query fresh), with its counting (`HC`, `CacheBound`, `cacheBound_run`, `sum_hit_le`,
 -- `run_frame`), for π2's staged run (`RecCompose.Pi2ProbStaged`: `Q`'s tree between `γ` and `t`, `mid2`); uses
 -- leanerVM (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`, commit 6175f1a0, MIT OR Apache-2.0): the two

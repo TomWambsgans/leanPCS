@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- Generalises `formal/Compose/Compose/ListChainKAdv.lean` (the experiment, the adversary's log, the
 -- trace through `ListCommit.stable`), `ListChainKComposed.lean` (`breaksK_imp`) and
 -- `ListChainKDoom.lean` (the openings' stages, their doom by F2, `trace_whir`,

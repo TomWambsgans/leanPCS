@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md; conventions: see AGENTS.md. Follows
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md; conventions: see AGENTS.md. Follows
 -- `formal/UniSound/UniSound/FsExtract.lean`
 -- (`uniExtractBridge_of_c1`, `c1Word_eq_committed`) for π2's `W`, with `formal/EndToEnd/Soundness/Replay.lean`'s
 -- `preimage_merkle`, `leavesUnder_preimage`, `leavesUnder_congr` and `Soundness/MerkleWord.lean`'s

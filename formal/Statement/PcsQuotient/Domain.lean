@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- Transcribed from `crates/quotient/src/domain.rs` (copied from leanVM, branch
 -- PCS-openings-aggregation, commit 651453c6, `crates/flock/src/quotient/domain.rs`). The fields are
 -- leanerVM's (`Statement/Field.lean`, branch `mumbai`, commit 6175f1a0, MIT OR Apache-2.0).

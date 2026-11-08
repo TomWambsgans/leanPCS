@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Transcribed, in the Rust's operation order, from
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Transcribed, in the Rust's operation order, from
 -- `crates/leanvm_univariate/src/verifier.rs` (`reduce` with `Blake2s::Keccak`, `weight_at`, `batch`), `stacks.rs`
 -- (`EqCache`) and `contract.rs` (`record_verifier`, `calls`).
 import RecGraph.Pi1.Verifier

@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- Transcribed from `crates/quotient/src/transcript.rs` (adapted from leanVM, branch
 -- PCS-openings-aggregation, commit 651453c6, `FiatShamirState::keccak`). Keccak-256 over a
 -- permutation is leanerVM's (`Statement/Keccak.lean`, branch `mumbai`, commit 6175f1a0,

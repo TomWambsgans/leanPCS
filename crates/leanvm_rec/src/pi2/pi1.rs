@@ -1,5 +1,5 @@
 // Part of this repository. The mapping of π1's call words follows `crate::circuit::compile` (the ports). MIT OR
-// Apache-2.0; see NOTICE.md.
+// Apache-2.0; see AGENTS.md.
 //! π1's five `PCS_OPEN` calls as the circuit's interface names their words (`circuit::spec::CallWord`), from π1-rec's
 //! recorded verifier (`leanvm_univariate::contract`, 1,000-signature reference shape): constants (the setup roots as
 //! `PCS_OPEN`'s root words), π1's two roots (`C1`, `C2`, root words in calldata), and its claims' distinct elements in

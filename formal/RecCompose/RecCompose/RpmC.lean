@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The eager form of the random-permutation model is
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The eager form of the random-permutation model is
 -- `formal/EndToEnd/ZK/ProverBridgeEager.lean`'s (`prEvent_runWithRandomPermutation`).
 import ZK.ProverBridgeEager
 

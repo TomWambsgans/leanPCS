@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The numbers follow `FlockSoundUni/GameNumbers.lean`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The numbers follow `FlockSoundUni/GameNumbers.lean`'s
 -- (the main line's).
 import UniSound.Rec3.FsFinal3
 import UniSound.Rec3.Ref3

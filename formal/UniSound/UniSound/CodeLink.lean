@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The program is `formal/UniStatement`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The program is `formal/UniStatement`'s
 -- `reduceWith` (`Verifier.lean`); Flock's phase is cited through `FlockSound.link`.
 import UniSound.CodeBatch
 import UniSound.CodeShape

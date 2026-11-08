@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md; conventions: see AGENTS.md. The port of
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md; conventions: see AGENTS.md. The port of
 -- `formal/UniSound/UniSound/FsGame.lean`
 -- (`duplexVm_uVerIv`, `cost_uVerIv`, `isTotalQueryBound_ivAdv`, `expU_ivAdv`, `extractorK_append`,
 -- `uniBreaksRel_congr`), `Fs128.lean` (`hlab_uni`) and `FsCost.lean` (`uniNumbers_of`) to π2's composed verifier.

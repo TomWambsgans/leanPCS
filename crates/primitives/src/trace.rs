@@ -1,4 +1,4 @@
-// Part of this repository (not vendored). MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository (not vendored). MIT OR Apache-2.0; see AGENTS.md.
 // Written for the differential test of the Lean skeleton (`crates/quotient/tests/skel_trace.rs`,
 // `formal/QuotientZk/Test/`).
 //! A record of every Keccak call, for tests: compiled only with the `trace` feature, which no

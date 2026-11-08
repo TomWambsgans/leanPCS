@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The shape of `formal/Lv42`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The shape of `formal/Lv42`'s
 -- `Arithmetization/Soundness/Rows.lean` (leanerVM `mumbai` f0393df4, MIT OR Apache-2.0), for the Keccak VM.
 module
 

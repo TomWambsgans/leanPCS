@@ -2,7 +2,7 @@
   Lv42.Protocol.Stack
 
   Adapted from leanerVM (https://github.com/Verified-zkEVM/leanerVM), branch mumbai, commit
-  f0393df4, file lean_vm/LeanVM/Protocol/Stack.lean. MIT OR Apache-2.0; see NOTICE.md. `LeanVM`
+  f0393df4, file lean_vm/LeanVM/Protocol/Stack.lean. MIT OR Apache-2.0; see AGENTS.md. `LeanVM`
   renamed `Lv42`.
 
   Aligned stacking on leanVM's columns: `K`-columns stacked into one committed column, read back

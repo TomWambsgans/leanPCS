@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! An independent honest prover for the univariate PIOP on tiny executions, written from SPEC.md and leanVM's tables
 //! apart from the verifier's own evaluation code: a differential reference for the verifier and the contract, the
 //! generator of the Lean honest vectors (`lean_honest_vectors`), and rejection tests.

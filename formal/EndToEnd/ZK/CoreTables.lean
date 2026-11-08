@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- The WHIR word `stackWordFast` and the bytes `kBytes` are leanerVM's (branch `mumbai`, commit
 -- 6175f1a0, MIT OR Apache-2.0: `Statement/Prover/Ntt.lean`, `Statement/Field.lean`).
 import ZK.CoreTablesCode

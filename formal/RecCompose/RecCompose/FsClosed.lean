@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md; conventions: see AGENTS.md. `Final.lean`'s end theorems
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md; conventions: see AGENTS.md. `Final.lean`'s end theorems
 -- with π2's Fiat–Shamir layer proved (`pi2FsLayer_real`), as `formal/UniSound/UniSound/FsFinal128.lean`'s
 -- `fsLayer128_holds` for π1; the Keccak π1's shape numbers are `formal/UniKeccakSound/UniKeccakSound/Fs/LayerK.lean`'s.
 import RecCompose.Final

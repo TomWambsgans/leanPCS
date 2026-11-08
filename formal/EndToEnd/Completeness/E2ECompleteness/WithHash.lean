@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- Transcribed from `formal/Statement` (`PcsQuotient`: `Transcript.lean`, `Reduction.lean`,
 -- `Opening.lean`, `Verifier.lean`, `Circuit.lean`, `Prover.lean`, `Security.lean`), with Keccak-256 an
 -- explicit call. Uses leanerVM (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`, commit

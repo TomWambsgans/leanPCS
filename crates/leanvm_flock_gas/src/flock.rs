@@ -3,7 +3,7 @@
 // natively, as leanVM's are), the terminal check stated to the channel, the table-driven `Scaled` products written as
 // plain ones, the terminal walk folding both matrices' sides at once, and the gas report's phase names. New here: the
 // lincheck may leave its terminal identity to `crate::matrices` instead of walking the circuit. MIT OR Apache-2.0;
-// see NOTICE.md.
+// see AGENTS.md.
 //! Flock reduction, then ring switching.
 
 use crate::VerifierError;

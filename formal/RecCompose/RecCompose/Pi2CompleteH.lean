@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Transcribed from `formal/RecStatement` (`Verifier.lean`:
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Transcribed from `formal/RecStatement` (`Verifier.lean`:
 -- `ivWith`, `reduceWith`, `runWith`; `Security.lean`: `Pi2Circuit.digestWith`, `Pi2Circuit.setupTreeWith`,
 -- `RecDeployment.ivWith`, `pcsOpenAt`, `RecDeployment.contractWith`, `RecDeployment.verifierWith`,
 -- `RecDeployment.setupTreesWith`, `pi1GraphVerifierWith`) and `RecCompose.Couplings` (`openAt`, `openSeq`), with

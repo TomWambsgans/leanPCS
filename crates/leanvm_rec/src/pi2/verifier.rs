@@ -1,7 +1,7 @@
 // Part of this repository. The reduction's shape (one quotient identity at `t`, claims on the tables that hold the
 // polynomials, the Cantor digits and the extension's coordinates) follows crates/quotient/src/protocol.rs (`reduce`,
 // adapted there from leanVM's `flock::quotient`, branch PCS-openings-aggregation, commit 651453c6); the transcript is
-// crates/leanvm_flock_gas's Keccak-256 chain (`KeccakChannel`). MIT OR Apache-2.0; see NOTICE.md.
+// crates/leanvm_flock_gas's Keccak-256 chain (`KeccakChannel`). MIT OR Apache-2.0; see AGENTS.md.
 //! π2's verifier, generic over the scalar (`leanvm_flock_gas::scalar::Scalar`): on `E` with the Keccak-256 chain it is
 //! the contract's verifier in Rust ([`verify`]); on the recorder's symbol it is the graph the contract is compiled from
 //! (`pi2::contract`). See `PI2.md` §2 for the protocol.

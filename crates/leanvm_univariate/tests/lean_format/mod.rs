@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! The vectors' format and the Rust verifier's run on them, shared by `tests/lean_vectors.rs` (random, accepting and
 //! mutated streams at the measured shapes). See
 //! `lean_vectors.rs` for the format; each vector also has a `SHAPE <log_memory> <log_bytecode> <rows…>` line (the

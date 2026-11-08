@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. `FsFinal3.lean`'s `fsLayer3_holds` with
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. `FsFinal3.lean`'s `fsLayer3_holds` with
 -- `FsGame128_3.lean`'s `fsLayer128_3_of_gameV'` (kept apart from `FsGame128_3.lean`, which must not import
 -- `FsFinal3.lean`'s bridges: they bring `Completeness`'s instance of `SampleableType E`), as the main line's
 -- `FsFinal128.lean`.

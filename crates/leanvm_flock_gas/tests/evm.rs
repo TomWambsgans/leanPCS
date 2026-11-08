@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! The contract computes what the Rust verifier computes, and what a call of it costs.
 
 use leanvm_flock_gas::evm::codegen::MAX_CODE;

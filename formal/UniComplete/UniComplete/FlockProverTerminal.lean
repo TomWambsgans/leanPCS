@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The matrices are `formal/Lv42`'s (`blake2sFlockSpec.r1cs`,
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The matrices are `formal/Lv42`'s (`blake2sFlockSpec.r1cs`,
 -- leanerVM `mumbai` f0393df4's, MIT OR Apache-2.0) through `formal/UniStatement`'s `flockMatrixStack`.
 import UniComplete.FlockProverShape
 

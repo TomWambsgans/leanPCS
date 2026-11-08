@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. `RecGraph.Sim`'s `Batch.lean` (`sim_batch`, `sim_tail`,
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. `RecGraph.Sim`'s `Batch.lean` (`sim_batch`, `sim_tail`,
 -- `tailSpec`), ported to the Keccak verifier's batch (`batchK`, `weightAtK`) and its stacks (`layoutsK`).
 import RecGraph.Sim.Batch
 import RecGraphKeccak.Sim.ClaimsK

@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- The potential follows leanerVM's birthday bound (`prEvent_cacheHasCollision_le`,
 -- `lean_vm/LeanVM/Protocol/ToVCVio/Rom/Bounds.lean`, https://github.com/Verified-zkEVM/leanerVM,
 -- commit 6175f1a0, MIT OR Apache-2.0), on its budgeted potentials (`Rom/Potential.lean`:

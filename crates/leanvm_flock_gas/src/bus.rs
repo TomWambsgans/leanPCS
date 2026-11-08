@@ -1,7 +1,7 @@
 // Adapted from leanVM (https://github.com/leanEthereum/leanVM), commit 42422001, file crates/verifier/src/bus.rs: the same
 // GKR, leaf decomposition and table sumcheck on a generic `Scalar` and `Channel`, the checks stated to the channel, the
 // bytecode's value supplied by the caller (evaluated, or read from the proof and left as a claim), and the gas report's
-// phase names. MIT OR Apache-2.0; see NOTICE.md.
+// phase names. MIT OR Apache-2.0; see AGENTS.md.
 //! Bus balance and decomposition, then the table sumcheck.
 
 use crate::layout::{

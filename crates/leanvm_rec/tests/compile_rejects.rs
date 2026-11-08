@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! The compiler's rejections (`circuit::compile`, as the Lean compiler's in `formal/RecCircuit/RecCircuit/Compile.lean`):
 //! kinds of recorded graph it would otherwise compile into a circuit that does not constrain what the graph means,
 //! each refused with its message, and a small well-formed graph at each check's boundary still compiled, its circuit

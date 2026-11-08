@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Follows `formal/UniComplete/UniComplete/VerifierHSim.lean`
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Follows `formal/UniComplete/UniComplete/VerifierHSim.lean`
 -- and `ProverSim.lean` (`UniComplete.Morph`, its channel and writer liftings) for π2's code (`Pi2CompleteH`'s contract,
 -- setup and graph verifier with Keccak-256 explicit, `Pi2Prover`'s honest prover, `Pi2ProbStaged`'s stages), over
 -- leanerVM's two calls (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`, commit 6175f1a0, MIT OR

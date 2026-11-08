@@ -1,5 +1,5 @@
 // Adapted from leanVM (https://github.com/leanEthereum/leanVM), commit 42422001, file crates/verifier/src/merkle.rs:
-// unchanged but for this header. MIT OR Apache-2.0; see NOTICE.md.
+// unchanged but for this header. MIT OR Apache-2.0; see AGENTS.md.
 //! Merkle openings in the form a proof travels in: one batch per opening phase, each shared sibling sent once.
 
 use crate::field::K;

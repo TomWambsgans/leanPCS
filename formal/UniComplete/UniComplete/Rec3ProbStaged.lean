@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. π1-rec3's analogue of `ProbStaged.lean` (`UniStaged`,
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. π1-rec3's analogue of `ProbStaged.lean` (`UniStaged`,
 -- `UniStaged.Holds`, `uniCompleteness_of_staged`), itself following
 -- `formal/EndToEnd/Completeness/E2ECompleteness/End.lean`; uses its `rpm_le_rom` (`Transfer.lean`, mumbai's
 -- indifferentiability transfer) and leanerVM (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`, commit

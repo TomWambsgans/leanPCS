@@ -1,5 +1,5 @@
 // Vendored from leanVM (https://github.com/leanEthereum/leanVM), commit 42422001, file crates/primitives/src/hash/x86/zmm.rs.
-// MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and NOTICE.md at the repository root).
+// MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and AGENTS.md at the repository root).
 //! Two 16-lane compressions in one hand-scheduled AVX-512 kernel.
 //!
 //! On Zen 5, a 512-bit add, xor or rotate has a 2-cycle latency.

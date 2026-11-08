@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! The WHIR parameters `formal/WhirBridge/WhirBridge/LargeParams.lean` decides at the stack sizes `2^24 ..= 2^28`
 //! (rate `1/2`), against the Rust:
 //!

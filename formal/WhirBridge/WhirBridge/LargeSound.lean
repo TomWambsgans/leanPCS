@@ -1,5 +1,5 @@
 /-
-Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 
 Fiat-Shamir soundness of `opening::verify` (`crates/quotient/src/opening.rs`) on public layouts of
 `2^24 ..= 2^28` words. `family_sound_q` and `opening_sound_q` are this package's `family_sound`

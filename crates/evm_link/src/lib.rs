@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! A verifier compiled to straight-line EVM code, as one contract, or as contracts each within EIP-170's 24,576 bytes.
 //!
 //! This repository's contracts are not written by hand: a verifier written on a scalar type is run on a scalar that

@@ -1,5 +1,5 @@
 /-
-Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 
 What a claim of `crates/quotient/src/opening.rs` says of a stack: its multilinear claim on the
 *table* the stack stands for. Uses lemmas of leanerVM `mumbai` (https://github.com/Verified-zkEVM/leanerVM,

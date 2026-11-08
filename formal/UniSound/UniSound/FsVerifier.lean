@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Follows
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Follows
 -- `formal/EndToEnd/Soundness/EarlyStop.lean` (`es_le`, `early_le`, `mono_bind`, `zero_of_support`)
 -- and `formal/EndToEnd/Bridge/Verifier.lean` (`verifyWith_eq_verifyES`, `openingWith_eq_ourVerifier'`)
 -- of this repository; the Statement's verifier is `formal/UniStatement/UniStatement/Opening.lean`'s.

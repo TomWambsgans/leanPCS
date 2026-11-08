@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The Keccak π1-rec3's run is `formal/UniKeccak`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The Keccak π1-rec3's run is `formal/UniKeccak`'s
 -- (`UniKeccak/Verifier.lean`: `reduceWithK`, `batchK`, `verifyWalkedK`, `runWithK`, `runK`); `combine`,
 -- `heapRelations` and `ringEnd` are `formal/UniStatement`'s (`Claims.lean`, `Verifier.lean`, `Flock.lean`).
 import RecCompose.RunShape

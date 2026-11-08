@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The predicate is `formal/UniSound`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The predicate is `formal/UniSound`'s
 -- `Ids.FlockGood` (`Ids/Model.lean`); the instance is `Instance.lean`'s `flockSoundInstance`.
 import FlockSoundUni.PendingShape
 import UniSound.Ids.Build

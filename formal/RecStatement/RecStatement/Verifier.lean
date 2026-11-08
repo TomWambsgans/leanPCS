@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Transcribed from `crates/leanvm_rec/src/pi2/verifier.rs`
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Transcribed from `crates/leanvm_rec/src/pi2/verifier.rs`
 -- (`NAME`, `frobenius`, `inverse`, `extension`, `reduce`'s transcript, `statement_words`, `verify`) and
 -- `crates/leanvm_rec/src/pi2/prover.rs` (`layouts`, `quotient_chunks`, `layout_word`, `layout_words`, `iv`), branch
 -- `leanvm-rec` @ 2b22581. The channel is `formal/UniStatement`'s (`KeccakChannel`); the layouts are

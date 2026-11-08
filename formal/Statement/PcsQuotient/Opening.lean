@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- Transcribed from `crates/quotient/src/opening.rs` (`Layout`, `Layout::new`, `Layout::hidden`, `scales`,
 -- `seed`, `verify`) and `crates/quotient/src/protocol.rs` (`witness_layout`, `wiring_layout`,
 -- `quotient_layout`, `quotient_chunks`); the hidden layout is `crates/quotient/HIDING.md`'s. The WHIR verifier

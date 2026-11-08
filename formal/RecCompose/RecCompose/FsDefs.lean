@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md; conventions: see AGENTS.md. The port of
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md; conventions: see AGENTS.md. The port of
 -- `formal/UniSound/UniSound/FsChain.lean`, `FsOps.lean`, `FsGame.lean` (the IV in the verifier) and `FsCouple.lean`
 -- (the bridge facts) to π2's transcript (`formal/RecStatement/RecStatement/Verifier.lean`, `Calls.lean`,
 -- `Security.lean`); π1's setup and openings are the Keccak verifier's (`formal/UniKeccakSound/UniKeccakSound/Fs/`:

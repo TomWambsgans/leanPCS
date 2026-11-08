@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- The executable of the differential test of `QuotientZk.Deployed.skel` (`SkelTrace.lean`); the Rust
 -- half is `crates/quotient/tests/skel_trace.rs`.
 import QuotientZk.Test.SkelTrace

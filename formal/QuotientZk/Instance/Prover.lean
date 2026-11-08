@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- The claims' bytes are `opening::iv`'s (`crates/quotient/src/opening.rs`: each coordinate's limbs
 -- `c0, c1, c2`, little-endian); a leaf's bytes are the full-width image `whir.rs` hashes (the absent
 -- lanes' zeros, then the committed lanes from the last, each word little-endian).

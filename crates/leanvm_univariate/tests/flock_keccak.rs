@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! Flock on the Keccak-f\[1600\] block (`lv42_flock::keccak`, crates/lv42_flock/KECCAK.md §4.2, M1), end to end:
 //!
 //! - the verifier's walk (`leanvm_flock_gas::keccak_flock`, on `E`) is the prover's (`lv42_flock::keccak`, on `F192`);

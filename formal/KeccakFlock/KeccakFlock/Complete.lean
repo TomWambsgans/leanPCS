@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The honest block is `crates/lv42_flock/src/keccak.rs`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The honest block is `crates/lv42_flock/src/keccak.rs`'s
 -- `build_block_witness`.
 import KeccakFlock.Sound
 

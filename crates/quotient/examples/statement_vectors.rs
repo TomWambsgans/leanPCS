@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! Test vectors for the differential test of `formal/Statement` (its `lake exe differential`): statements and
 //! proofs, honest and tampered, with what the Rust verifier makes of them.
 //!

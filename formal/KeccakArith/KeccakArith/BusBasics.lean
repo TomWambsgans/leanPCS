@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The lemmas are `formal/Lv42`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The lemmas are `formal/Lv42`'s
 -- `Arithmetization/Completeness/{Bus,Satisfied}.lean` (leanerVM `mumbai` f0393df4, MIT OR Apache-2.0), which hold
 -- for any instruction set.
 module

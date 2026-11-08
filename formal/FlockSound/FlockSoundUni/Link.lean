@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The verifier (`Flock.verifyDeferred`) is
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The verifier (`Flock.verifyDeferred`) is
 -- `formal/UniStatement`'s, transcribed from `crates/leanvm_flock_gas/src/flock_min.rs`.
 import FlockSoundUni.Shape
 

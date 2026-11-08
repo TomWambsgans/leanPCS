@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The proofs are `UniSound/Ids/Deployed.lean`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The proofs are `UniSound/Ids/Deployed.lean`'s
 -- (`c1Limbs`, `setupLimbs`, `layoutAligned_new`) and `UniSound/Ids/Eval.lean`'s (`c1_limbs`, `c2_limbs`,
 -- `c2Columns_vars`) on the Keccak VM's layouts (`formal/UniKeccak`'s `layoutsK`, `Shape.c2ColumnsK`).
 import UniSound.Ids.Deployed

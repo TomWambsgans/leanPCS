@@ -1,7 +1,7 @@
 // Part of this repository (new here, not from leanVM). The verifier's walk of the Keccak-f[1600] Flock block of
 // `crates/lv42_flock/src/keccak.rs` (crates/lv42_flock/KECCAK.md §4.2, §4.5), on a generic `Scalar`, as
 // `crate::flock::blake2s_row_values` is BLAKE2s's, and the block's structured lincheck terminal (M3). MIT OR
-// Apache-2.0; see NOTICE.md.
+// Apache-2.0; see AGENTS.md.
 //! The Keccak-f block's lincheck terminal, two ways:
 //!
 //! - [`row_values`]: the rows' values `(A0 w, B0 w)` by one forward walk, for the walked terminal

@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The shape is `formal/UniKeccak/UniKeccak/Opening.lean`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The shape is `formal/UniKeccak/UniKeccak/Opening.lean`'s
 -- `keccakShapeOf` (the 128-signature run of `crates/leanvm_rec/tests/keccak_vm_rec.rs`).
 import UniKeccakSound.Code.Link
 

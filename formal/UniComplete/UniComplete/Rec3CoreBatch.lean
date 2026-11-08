@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. π1-rec3's honest batch's hypotheses at the prover's
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. π1-rec3's honest batch's hypotheses at the prover's
 -- front state, as `CoreBatch.lean`'s `batchHolds_of`, `batchHolds_front`, `batchSyncsAt_front` for the main line.
 import UniComplete.Rec3SyncVerifier
 import UniComplete.CoreBatch

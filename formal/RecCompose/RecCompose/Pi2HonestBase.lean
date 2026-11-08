@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The transforms' lemmas are `formal/EndToEnd/Bridge`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The transforms' lemmas are `formal/EndToEnd/Bridge`'s
 -- (`Bridge.Ntt.values_getD_E`, `values_coefficients_E`) at `formal/UniComplete`'s Cantor basis (`AlgC.cantorUpTo`,
 -- `novX_ofK`, `Ppoint_eq`).
 import RecCompose.Pi2Prover

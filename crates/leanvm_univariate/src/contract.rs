@@ -1,5 +1,5 @@
 // Part of this repository; the contract's assembly and measurement follow crates/leanvm_flock_gas/src/evm/contract.rs.
-// MIT OR Apache-2.0; see NOTICE.md.
+// MIT OR Apache-2.0; see AGENTS.md.
 //! The verifier as a contract (straight-line code compiled from the recorded verifier, `leanvm_flock_gas::evm`), its
 //! calldata, and what a call costs.
 //!

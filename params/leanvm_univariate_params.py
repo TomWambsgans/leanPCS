@@ -1,4 +1,4 @@
-# Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+# Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 """Soundness of the univariate PIOP of crates/leanvm_univariate/SPEC.md (iteration 2), round by round, after the
 union bounds over the level-0 Johnson lists of its two proof commitments (WHIR takes no OOD sample at level 0: a root
 binds a list until the claims are opened), and the sizes of its commitments.

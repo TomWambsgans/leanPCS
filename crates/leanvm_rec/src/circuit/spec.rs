@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! `π2`'s circuit as its PIOP sees it (SPEC-REC.md §2.3, §2.4, §2.6): the interface between the circuit compiler
 //! (`crate::circuit`) and `π2`'s prover and verifier (branch `leanvm-rec-piop`). Kept small and stable.
 //!

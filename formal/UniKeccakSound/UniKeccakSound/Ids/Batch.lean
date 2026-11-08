@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The proofs are `UniSound/Ids/Weights.lean`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The proofs are `UniSound/Ids/Weights.lean`'s
 -- (`weightAtLinear`) and `UniSound/Ids/Batch.lean`'s (`batch_start_of`), for `weightAtK` and the Keccak batch.
 import UniSound.Ids.Batch
 import UniSound.Ids.Weights

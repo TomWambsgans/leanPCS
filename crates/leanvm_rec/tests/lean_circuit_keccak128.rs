@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! The Keccak VM's π1-rec3 at the 128-signature reference workload (`KECCAK_128`, the graph of
 //! `formal/RecGraphKeccak/RecGraphKeccak/Emitted.lean`, `tests/lean_graph_keccak.rs`) as a vector of `formal/RecCircuit`'s
 //! runners: its recorded graph as text and the circuit the Rust compiler makes of it (D16v), in `tests/lean_circuit.rs`'s

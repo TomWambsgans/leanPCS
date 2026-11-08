@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! The product heap's layout (SPEC.md §5.2): which block of leaves sits where.
 //!
 //! The heap is one polynomial on `V_H`: position `i` holds node `i` (children `2i`, `2i + 1`, root `1`), the leaves at

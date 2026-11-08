@@ -1,6 +1,6 @@
 # Part of this repository. Builds on crates/leanvm_univariate and crates/leanvm_flock_gas (which vendors and adapts
 # leanVM (https://github.com/leanEthereum/leanVM), commit 42422001), MIT OR Apache-2.0; pi2 (src/pi2) also on
-# crates/quotient (its Cantor basis, transforms and opening layouts) and leanVM's WHIR (c445e3d5). See NOTICE.md.
+# crates/quotient (its Cantor basis, transforms and opening layouts) and leanVM's WHIR (c445e3d5). See AGENTS.md.
 [package]
 name = "leanvm_rec"
 version.workspace = true

@@ -1,5 +1,5 @@
 // Part of this repository. The tuples are leanVM 42422001's (crates/verifier/src/layout.rs there, through
-// `leanvm_flock_gas::layout`). MIT OR Apache-2.0; see NOTICE.md.
+// `leanvm_flock_gas::layout`). MIT OR Apache-2.0; see AGENTS.md.
 //! Bus fingerprints `β + Σ_s eq(α, s) τ_s` of a table's tuples, compiled once into a constant, linear terms and
 //! products of two columns, to be evaluated at every row (or at every point of a coset) from the columns' values.
 

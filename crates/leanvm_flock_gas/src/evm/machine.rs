@@ -3,7 +3,7 @@
 // and a mock `PCS_OPEN`, the same opcode, address, call encoding and transaction gas, and a `Chain` that deploys
 // contracts and keeps them across transactions; here the mock takes any layout id, code may also be installed rather
 // than deployed (it may pass EIP-170's limit), and an inspector gives every instruction's gas, in every contract a
-// call runs. MIT OR Apache-2.0; see NOTICE.md.
+// call runs. MIT OR Apache-2.0; see AGENTS.md.
 //! revm with `FIELD_MUL`, a mock of the precompile `PCS_OPEN`, and per-instruction gas.
 //!
 //! `PCS_OPEN`'s input is this repository's (`crates/evm/src/machine.rs`): `3 + k (v + 1)` words, the commitment's

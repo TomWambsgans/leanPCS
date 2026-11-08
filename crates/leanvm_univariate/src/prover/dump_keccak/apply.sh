@@ -1,5 +1,5 @@
 #!/bin/sh
-# Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+# Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 # Makes a leanVM (https://github.com/leanEthereum/leanVM) tree at commit 9d50c92a3 (the Keccak VM,
 # crates/leanvm_univariate/KECCAK.md) write its execution trace for the univariate prover: `sh apply.sh <leanVM tree>`.
 # Then any proof leanVM starts with `LEANVM_TRACE_DUMP=<dir>` set runs the program again without its fill blocks,

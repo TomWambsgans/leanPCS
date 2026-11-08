@@ -1,7 +1,7 @@
 // Part of this repository. The tables, their flushes and constraints, the bus fingerprints, the public input's lines
 // and the Flock reduction are leanVM's at commit 42422001 (crates/verifier/src/{layout,bus,lib,flock}.rs there), read
 // through `leanvm_flock_gas`'s port; the PIOP that checks them is new (SPEC.md), and so is its Fiat–Shamir shape π1-rec
-// (`crates/leanvm_rec/SPEC-REC.md` §1.4). MIT OR Apache-2.0; see NOTICE.md.
+// (`crates/leanvm_rec/SPEC-REC.md` §1.4). MIT OR Apache-2.0; see AGENTS.md.
 //! The verifier of SPEC.md, generic over the scalar it computes on: from the proof's stream (two roots, Flock's
 //! messages, the values at `t`) to one weighted claim per commitment.
 

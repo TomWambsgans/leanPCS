@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! The Cantor basis of `formal/QuotientSecurity/DeployedBasis.lean` (`betaWords`): the first 24
 //! words of `quotient::domain::beta()`, one for each bit of a cell's index. The Lean checks, in the
 //! kernel, that they are a Cantor basis of `F64` whose vectors after the first have their low bit

@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! The prover on real leanVM 42422001 traces (`src/prover/dump`, PROVER.md), and on the Keccak VM's (leanVM 9d50c92a3,
 //! `src/prover/dump_keccak`, KECCAK.md): SPEC.md's identities on the domain, the
 //! quotients' degrees, every combined relation at `t`, the Rust verifier's and the EVM contract's acceptance of the

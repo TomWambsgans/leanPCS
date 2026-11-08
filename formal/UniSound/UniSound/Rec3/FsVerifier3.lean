@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The main line's `FsVerifier.lean`
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The main line's `FsVerifier.lean`
 -- (`uniVerifierBridge_of_walk`) for π1-rec3's verifier, `formal/UniStatement/UniStatement/Rec.lean`'s
 -- `verifyWithFs … .rec3 true` (the loop over the openings, then no matrices' calls).
 import UniSound.Rec3.FsWalk3

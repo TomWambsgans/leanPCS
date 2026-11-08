@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! The inner verifier's graph, counted: what `π2`'s circuit must hold (SPEC-REC.md §1).
 //!
 //! Only **live** nodes count: those the `PCS_OPEN` calls' words or the checks read, through their operands (a hash

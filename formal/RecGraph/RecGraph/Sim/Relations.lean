@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The heap's leaf columns in closed form are
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The heap's leaf columns in closed form are
 -- `formal/UniComplete`'s (`ProverBounds.lean`: `id_forIn_foldl`, `leafCols`, `heapRelations_snd`), the relations'
 -- `formal/UniSound`'s (`Ids/Eval.lean`: `heapRelations_fst`, `blockRel`; `constraintRelation_eq`, `crOf`).
 import RecGraph.Sim.Claims

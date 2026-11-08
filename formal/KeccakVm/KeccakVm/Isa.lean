@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The five instructions other than the hash are
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The five instructions other than the hash are
 -- `formal/Lv42`'s (leanerVM `mumbai` f0393df4, leanVM 42422001), reused; the `SHA3` instruction is leanVM
 -- `9d50c92a3`'s (`crates/leanvm_core/src/cpu/isa.rs`, `cpu/execute.rs`, `tables.rs::sha3_cells`,
 -- `hash_flock.rs::{CELL_LANES, state_of_cells, cells_of_state, step_cells}`, `crates/primitives/src/hash.rs::step`),

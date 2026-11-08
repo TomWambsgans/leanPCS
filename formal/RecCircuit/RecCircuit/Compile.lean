@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Transcribed from `crates/leanvm_rec/src/circuit/compile.rs`
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Transcribed from `crates/leanvm_rec/src/circuit/compile.rs`
 -- (`compile` with `D16::new`, `pair_coordinate`, `be_bits`, `le_bits`), `crates/leanvm_rec/src/count.rs` (`live`) and
 -- `crates/leanvm_flock_gas/src/evm/machine.rs` (`root_word`, `element_word`), `transcript.rs` (`cantor_beta1`).
 import RecCircuit.Templates

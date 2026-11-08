@@ -1,6 +1,6 @@
 # Vendored from leanVM (https://github.com/leanEthereum/leanVM), commit 42422001, crates/flock (CREDIT:
 # https://github.com/succinctlabs/flock), MIT OR Apache-2.0, renamed; its prover writes to lv42_fiat_shamir's
-# transcript trait; its `keccak` module (and its test, tests/keccak.rs) is new here. See NOTICE.md.
+# transcript trait; its `keccak` module (and its test, tests/keccak.rs) is new here. See AGENTS.md.
 [package]
 name = "lv42_flock"
 version.workspace = true

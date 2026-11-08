@@ -1,5 +1,5 @@
 // Part of this repository. The chain's hashing is leanvm_flock_gas::transcript's `KeccakChannel`. MIT OR Apache-2.0;
-// see NOTICE.md.
+// see AGENTS.md.
 //! The verifier's combined claims on the point-claim stream.
 //!
 //! The prover learns each commitment's combined claim (its terms, points and value) by running the verifier's own

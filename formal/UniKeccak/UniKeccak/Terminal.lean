@@ -1,7 +1,7 @@
 -- Part of this repository (new here, not from leanVM). Transcribed from `crates/leanvm_flock_gas/src/keccak_flock.rs`
 -- (`structured_terminal`, `shift_offsets`, `grouped`, `RC`, `RHO`, `SOURCE`, `port_word`, `CONSTANT_COLUMN`,
 -- `X_QUAD`): the structured lincheck terminal of the Keccak-f[1600] Flock block of `crates/lv42_flock/src/keccak.rs`
--- (`crates/lv42_flock/KECCAK.md` §4.2, M3). MIT OR Apache-2.0; see NOTICE.md.
+-- (`crates/lv42_flock/KECCAK.md` §4.2, M3). MIT OR Apache-2.0; see AGENTS.md.
 module
 
 public import UniStatement.Flock

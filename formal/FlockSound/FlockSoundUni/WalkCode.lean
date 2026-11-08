@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The walk is `formal/UniStatement`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The walk is `formal/UniStatement`'s
 -- (`UniStatement/Rec.lean`: `Flock.blake2sRowValues`, `Flock.walkAdd`, `Flock.walkAdd3`, `Flock.walkedTerminal`),
 -- transcribed there from `crates/leanvm_flock_gas/src/flock.rs` (`RowValues`, `blake2s_row_values`, adapted from
 -- leanVM 42422001's `crates/verifier/src/flock.rs`) and `flock_min.rs` (`walked_terminal`).

@@ -1,6 +1,6 @@
 // Part of this repository. `matrix_values` is adapted from leanVM (https://github.com/leanEthereum/leanVM), commit
 // 42422001, file crates/verifier/src/deferred.rs; the reduction is new here, in the spirit of leanVM's deferred
-// matrix claims (`crates/rec_aggregation`, "Deferred evaluation claims"). MIT OR Apache-2.0; see NOTICE.md.
+// matrix claims (`crates/rec_aggregation`, "Deferred evaluation claims"). MIT OR Apache-2.0; see AGENTS.md.
 //! The lincheck's terminal identity left to `PCS_OPEN`: one evaluation claim on each of flock's matrices `A0`, `B0`.
 //!
 //! leanVM's verifier checks the lincheck's terminal identity by walking the BLAKE2s circuit against

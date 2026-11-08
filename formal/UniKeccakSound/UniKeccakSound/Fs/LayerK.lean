@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. `UniSound/FsFinal.lean`'s `uniGameLeV_holds` and
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. `UniSound/FsFinal.lean`'s `uniGameLeV_holds` and
 -- `UniSound/FsFinal128.lean`'s `fsLayer128_holds` for the Keccak verifier, and the reference Keccak shape's numbers.
 import UniKeccakSound.Fs.GameK
 import UniKeccakSound.Fs.ExtractK

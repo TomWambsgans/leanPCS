@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Uses `formal/Lv42` (leanerVM `mumbai` f0393df4,
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Uses `formal/Lv42` (leanerVM `mumbai` f0393df4,
 -- MIT OR Apache-2.0): `M3Honest`, `padRow_of_not_isLimb` (`Protocol/LeanIsa/Complete.lean`).
 import UniComplete.MappingBus
 

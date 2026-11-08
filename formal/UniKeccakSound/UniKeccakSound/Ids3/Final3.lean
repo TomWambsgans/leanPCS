@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The statement is `UniKeccakSound/FinalK3.lean`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The statement is `UniKeccakSound/FinalK3.lean`'s
 -- `UniFinalK3`; the proof is `UniSound/Rec3/FinalLink3.lean`'s `uniFinal3` for `formal/UniKeccak`'s `batchK` at
 -- `.rec3` (`Code/Link3.lean`'s `main3ProgK`, `batchPureWK`), with the Keccak main line's model and lemmas
 -- (`Ids/Final.lean`).

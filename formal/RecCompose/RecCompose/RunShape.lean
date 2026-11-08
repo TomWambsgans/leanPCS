@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The Keccak π1-rec3's run is `formal/UniKeccak`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The Keccak π1-rec3's run is `formal/UniKeccak`'s
 -- (`UniKeccak/Verifier.lean`: `reduceWithK`, `runWithK`, `runK`).
 import RecCompose.Pi2Run
 import RecCompose.CompleteCouplings

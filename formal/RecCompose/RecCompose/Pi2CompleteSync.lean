@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Follows `formal/UniComplete/UniComplete/SyncVerifier.lean`
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Follows `formal/UniComplete/UniComplete/SyncVerifier.lean`
 -- (`reduce_steps`, `runWithH_syncs`) for π2: its verifier is `formal/RecStatement`'s (`reduceWith`, `runWith`), its
 -- honest prover `RecCompose.Pi2Prover`'s (`pi2ProveStreamWith`); the joint steps are UniComplete's (`Steps`, `StepsE`,
 -- `UniComplete.Reads`, `Writes`, `SyncBasic.lean`).

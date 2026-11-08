@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The deployed openings are made as in this
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The deployed openings are made as in this
 // repository's commit 4d5dd40 (`deployed_opening`).
 //! The test vectors for `formal/WhirBridge`, in the form leanerVM mumbai's Lean verifier reads (the scalar stream,
 //! then one full Merkle path per query: the pruned batches expanded, as `Transcript::finish` returns them):

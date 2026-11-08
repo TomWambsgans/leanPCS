@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- The simulation of the four values is the one of leanVM's `formal/quotient` (branch
 -- PCS-openings-aggregation, commit 651453c6, `QuotientSecurity/ZeroKnowledge.lean`'s `simValues`, ported in
 -- `formal/QuotientSecurity`). The permutation's state, its lookups and the WHIR prover's pieces are
