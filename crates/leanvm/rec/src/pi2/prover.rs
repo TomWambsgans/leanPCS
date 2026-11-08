@@ -84,9 +84,23 @@ pub fn layouts(log_n: usize) -> Layouts {
     }
 }
 
+/// Words copied by the workers in runs of this many (`parallel::map_collect` writes each run whole).
+const COPY_RUN: usize = 64;
+
+/// `src` copied, in parallel.
+fn copied(src: &[F64]) -> Vec<F64> {
+    if !src.len().is_multiple_of(COPY_RUN) {
+        return src.to_vec();
+    }
+    parallel::map_collect(src.len() / COPY_RUN, |k| -> [F64; COPY_RUN] {
+        src[k * COPY_RUN..(k + 1) * COPY_RUN].try_into().expect("a run")
+    })
+    .into_flattened()
+}
+
 /// The `B` coefficients from the novel ones (or back).
 fn b_coefficients(novel: &[F64]) -> Vec<F64> {
-    let mut b = novel.to_vec();
+    let mut b = copied(novel);
     ntt::subset_sums(&mut b);
     b
 }
@@ -121,7 +135,8 @@ impl Setup {
             let src = if start >> m == 0 { &kb } else { &skb };
             out.copy_from_slice(&src[start & (n - 1)..(start & (n - 1)) + lane]);
         });
-        let committed = opening::commit(&table);
+        // Kept with its codeword: every proof opens it, and reads its first queries' rows from it.
+        let committed = opening::commit_keeping_codeword(&table);
         drop((kb, skb));
         let offset = beta()[m + 2];
         Self {
@@ -864,12 +879,11 @@ fn h_on_v(
 fn on_extension(novel: &[F64], m: usize, offset: F64) -> Vec<F64> {
     let n = novel.len();
     assert_eq!(n, 1 << m);
-    // The coefficients four times, in parallel runs of `RUN` words (`map_collect` writes each run whole).
-    const RUN: usize = 64;
-    let mut out: Vec<F64> = if n >= RUN {
-        parallel::map_collect(4 * n / RUN, |k| -> [F64; RUN] {
-            let at = (k * RUN) & (n - 1);
-            novel[at..at + RUN].try_into().expect("a run")
+    // The coefficients four times, in parallel runs.
+    let mut out: Vec<F64> = if n >= COPY_RUN {
+        parallel::map_collect(4 * n / COPY_RUN, |k| -> [F64; COPY_RUN] {
+            let at = (k * COPY_RUN) & (n - 1);
+            novel[at..at + COPY_RUN].try_into().expect("a run")
         })
         .into_flattened()
     } else {
@@ -930,13 +944,27 @@ pub fn prove_with(
     let public = public_scalars(public_input, values);
 
     // W: the B coefficients of w.
-    let mut w_novel = w.to_vec();
+    let mut w_novel = copied(w);
     ntt::coefficients(&mut w_novel, F64::ZERO);
     let w_b = b_coefficients(&w_novel);
     let lane = 1usize << l.witness.log_lane();
-    let witness = Table::new(l.witness, |_, block, out| {
-        out.copy_from_slice(&w_b[block * lane..(block + 1) * lane])
-    });
+    // The stack is `w_b` itself when the layout's lanes hold its blocks in order.
+    let in_order = l.witness.placed() == n && (0..n / lane).all(|k| l.witness.block(k) == k);
+    let (witness, w_b) = if in_order {
+        let stack = w_b;
+        (
+            Table {
+                layout: l.witness,
+                stack,
+            },
+            None,
+        )
+    } else {
+        let table = Table::new(l.witness, |_, block, out| {
+            out.copy_from_slice(&w_b[block * lane..(block + 1) * lane])
+        });
+        (table, Some(w_b))
+    };
     let witness_committed = opening::commit(&witness);
     writer.send_root(root_scalars(&witness_committed.root).map(to_e));
     let [alpha, beta_, gamma] = [(); 3].map(|_| to_f192(writer.sample()));
@@ -1000,6 +1028,8 @@ pub fn prove_with(
     let t = to_f192(writer.sample());
     lap("Q: table, commit", &mut timings);
 
+    // `w`'s `B` coefficients: the stack, when it holds them in order.
+    let w_b: &[F64] = w_b.as_deref().unwrap_or(&witness.stack);
     let digits: Vec<F192> = std::iter::successors(Some(t), |&x| Some(x * x + x))
         .take(m + 2)
         .collect();

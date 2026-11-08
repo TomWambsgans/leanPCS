@@ -582,10 +582,13 @@ impl Table {
 }
 
 /// What a commitment keeps for its openings: its Merkle tree alone. The codeword is twice the stack, and an
-/// opening reads a few hundred of its rows, so it encodes them again from the stack rather than keep it.
+/// opening reads a few hundred of its rows, so it encodes them again from the stack rather than keep it; but a
+/// commitment opened many times (a setup's) may keep it ([`commit_keeping_codeword`]), and its openings read
+/// those rows from it.
 pub struct Committed {
     pub root: Hash,
     tree: Vec<Hash>,
+    codeword: Option<Vec<F64>>,
 }
 
 /// WHIR's rate, `2^-LOG_INV_RATE`.
@@ -603,6 +606,19 @@ pub fn commit_in(table: &Table, scratch: Vec<F64>) -> Committed {
     Committed {
         root: commitment.root,
         tree,
+        codeword: None,
+    }
+}
+
+/// [`commit`], keeping the codeword ([`pcs::whir::commit`]'s, twice the stack) for the openings, which read the
+/// rows their first queries open from it rather than encode them again: for a table opened many times. The root,
+/// the tree and every opening are [`commit`]'s.
+pub fn commit_keeping_codeword(table: &Table) -> Committed {
+    let (commitment, data) = pcs::whir::commit(&table.stack, table.layout.log_n, LANE_FOLD, LOG_INV_RATE);
+    Committed {
+        root: commitment.root,
+        tree: data.merkle_tree,
+        codeword: Some(data.codeword),
     }
 }
 
@@ -714,6 +730,7 @@ pub fn open(table: &Table, committed: &Committed, claims: &[Claim]) -> Proof {
         &table.stack[..],
         &committed.root,
         &committed.tree[..],
+        committed.codeword.as_deref(),
         claims,
     )
 }
@@ -721,7 +738,14 @@ pub fn open(table: &Table, committed: &Committed, claims: &[Claim]) -> Proof {
 /// [`open`], consuming the table and its commitment: the stack and the Merkle tree, read last for the rows the
 /// first queries open, are freed then, before WHIR commits its deeper levels.
 pub fn open_owned(table: Table, committed: Committed, claims: &[Claim]) -> Proof {
-    open_stack(&table.layout, table.stack, &committed.root, committed.tree, claims)
+    open_stack(
+        &table.layout,
+        table.stack,
+        &committed.root,
+        committed.tree,
+        committed.codeword.as_deref(),
+        claims,
+    )
 }
 
 fn open_stack(
@@ -729,6 +753,7 @@ fn open_stack(
     stack: impl AsRef<[F64]>,
     root: &Hash,
     tree: impl AsRef<[Hash]>,
+    codeword: Option<&[F64]>,
     claims: &[Claim],
 ) -> Proof {
     let config = config_for_rate(layout.log_n, LOG_INV_RATE).expect("a WHIR shape leanVM supports");
@@ -744,7 +769,7 @@ fn open_stack(
     // the challenge, and a hidden layout's gadget. The prover never writes the weight out.
     let parts = claims.iter().zip(&lambdas).map(|(c, &l)| (&c.point[..], l));
     let weight: Vec<LaneTensor> = layout.weight(parts, lambdas[claims.len()]);
-    recursive_prover_with_lane_tensors(&config, layout.log_n, stack, &weight, target, None, tree, &mut ps);
+    recursive_prover_with_lane_tensors(&config, layout.log_n, stack, &weight, target, codeword, tree, &mut ps);
     ps.into_proof()
 }
 
