@@ -1320,6 +1320,73 @@ pub fn coefficients_upper(data: &mut [F64], offset: F64) {
 trait RowLanes: Kind {
     fn twiddles(&self) -> &Twiddles;
     fn lanes_with(t: [V; 3], x: V) -> V;
+    /// [`Self::lanes_with`] on two rows. With AVX-512, a layer's products of both rows are one product (each row
+    /// needs only half its lanes'): [`paired`].
+    #[inline(always)]
+    fn lanes_with2(tx: [V; 3], ty: [V; 3], x: V, y: V) -> (V, V) {
+        (Self::lanes_with(tx, x), Self::lanes_with(ty, y))
+    }
+}
+
+/// Two rows' half-products of a row's own layer as one product (AVX-512): lanes `l` with bit `L` clear of `x` and
+/// `y` take lane `l + L`'s times their twiddle's lane `l`.
+#[cfg(all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "vpclmulqdq"))]
+mod paired {
+    use super::lanes::{V, load, mul, store};
+    use core::arch::x86_64::*;
+
+    #[inline(always)]
+    fn raw(v: V) -> __m512i {
+        let mut a = [0u64; 8];
+        // SAFETY: eight words on the stack; the module's cfg enables avx512f.
+        unsafe {
+            store(a.as_mut_ptr(), v);
+            _mm512_loadu_si512(a.as_ptr().cast())
+        }
+    }
+
+    #[inline(always)]
+    fn wrap(x: __m512i) -> V {
+        let mut a = [0u64; 8];
+        // SAFETY: as above.
+        unsafe {
+            _mm512_storeu_si512(a.as_mut_ptr().cast(), x);
+            load(a.as_ptr())
+        }
+    }
+
+    #[inline(always)]
+    fn idx(i: [i64; 8]) -> __m512i {
+        // SAFETY: the module's cfg enables avx512f.
+        unsafe { _mm512_loadu_si512(i.as_ptr().cast()) }
+    }
+
+    #[inline(always)]
+    pub fn mul_add<const L: usize>(x: V, y: V, tx: V, ty: V) -> (V, V) {
+        let (dst, mask): ([i64; 4], u8) = match L {
+            4 => ([0, 1, 2, 3], 0x0F),
+            2 => ([0, 1, 4, 5], 0x33),
+            _ => ([0, 2, 4, 6], 0x55),
+        };
+        let both = |off: i64| std::array::from_fn::<i64, 8, _>(|j| dst[j % 4] + off + 8 * (j / 4) as i64);
+        // Lane `dst[j]` of a row gets lane `j` (x) or `4 + j` (y) of the product.
+        let mut back = ([0i64; 8], [0i64; 8]);
+        for (j, &d) in dst.iter().enumerate() {
+            back.0[d as usize] = j as i64;
+            back.1[d as usize] = 4 + j as i64;
+        }
+        let (x, y, tx, ty) = (raw(x), raw(y), raw(tx), raw(ty));
+        // SAFETY: the module's cfg enables avx512f.
+        unsafe {
+            let p = _mm512_permutex2var_epi64(x, idx(both(L as i64)), y);
+            let t = _mm512_permutex2var_epi64(tx, idx(both(0)), ty);
+            let m = raw(mul(wrap(p), wrap(t)));
+            (
+                wrap(_mm512_mask_xor_epi64(x, mask, x, _mm512_permutexvar_epi64(idx(back.0), m))),
+                wrap(_mm512_mask_xor_epi64(y, mask, y, _mm512_permutexvar_epi64(idx(back.1), m))),
+            )
+        }
+    }
 }
 
 impl RowLanes for Forward {
@@ -1336,6 +1403,16 @@ impl RowLanes for Forward {
         let x = mask_add(x, 0x55, mul(swap::<1>(x), t0));
         mask_add(x, 0xAA, swap::<1>(x))
     }
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "vpclmulqdq"))]
+    #[inline(always)]
+    fn lanes_with2([x2, x1, x0]: [V; 3], [y2, y1, y0]: [V; 3], x: V, y: V) -> (V, V) {
+        let (x, y) = paired::mul_add::<4>(x, y, x2, y2);
+        let (x, y) = (mask_add(x, 0xF0, swap::<4>(x)), mask_add(y, 0xF0, swap::<4>(y)));
+        let (x, y) = paired::mul_add::<2>(x, y, x1, y1);
+        let (x, y) = (mask_add(x, 0xCC, swap::<2>(x)), mask_add(y, 0xCC, swap::<2>(y)));
+        let (x, y) = paired::mul_add::<1>(x, y, x0, y0);
+        (mask_add(x, 0xAA, swap::<1>(x)), mask_add(y, 0xAA, swap::<1>(y)))
+    }
 }
 
 impl RowLanes for Inverse {
@@ -1351,6 +1428,16 @@ impl RowLanes for Inverse {
         let x = mask_add(x, 0x33, mul(swap::<2>(x), t1));
         let x = mask_add(x, 0xF0, swap::<4>(x));
         mask_add(x, 0x0F, mul(swap::<4>(x), t2))
+    }
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "vpclmulqdq"))]
+    #[inline(always)]
+    fn lanes_with2([x2, x1, x0]: [V; 3], [y2, y1, y0]: [V; 3], x: V, y: V) -> (V, V) {
+        let (x, y) = (mask_add(x, 0xAA, swap::<1>(x)), mask_add(y, 0xAA, swap::<1>(y)));
+        let (x, y) = paired::mul_add::<1>(x, y, x0, y0);
+        let (x, y) = (mask_add(x, 0xCC, swap::<2>(x)), mask_add(y, 0xCC, swap::<2>(y)));
+        let (x, y) = paired::mul_add::<2>(x, y, x1, y1);
+        let (x, y) = (mask_add(x, 0xF0, swap::<4>(x)), mask_add(y, 0xF0, swap::<4>(y)));
+        paired::mul_add::<4>(x, y, x2, y2)
     }
 }
 
@@ -1375,12 +1462,23 @@ fn leaf<T: RowLanes>(block: &mut [F64], start: usize, kind: &T) {
     unsafe {
         let own = || {
             let mut t = kind.twiddles().row(first);
-            for r in 0..size {
-                let p = base.add(8 * r);
-                store(p, T::lanes_with(t, load(p)));
-                if r + 1 < size {
-                    let step = &steps[r.trailing_ones() as usize];
-                    t = [xor(t[0], step[0]), xor(t[1], step[1]), xor(t[2], step[2])];
+            let advance = |t: [V; 3], r: usize| {
+                let step = &steps[r.trailing_ones() as usize];
+                [xor(t[0], step[0]), xor(t[1], step[1]), xor(t[2], step[2])]
+            };
+            if size == 1 {
+                store(base, T::lanes_with(t, load(base)));
+                return;
+            }
+            for r in (0..size).step_by(2) {
+                let tx = t;
+                let ty = advance(tx, r);
+                let (p, q) = (base.add(8 * r), base.add(8 * (r + 1)));
+                let (x, y) = T::lanes_with2(tx, ty, load(p), load(q));
+                store(p, x);
+                store(q, y);
+                if r + 2 < size {
+                    t = advance(ty, r + 1);
                 }
             }
         };
