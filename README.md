@@ -91,7 +91,7 @@ transaction gas under EIP-7623 at a claim price of 0, without the 21,000 base.
 | Calldata to the contract | 980 B | 980 B |
 | Gas (real proof) | 28,325 execution; **43,309** transaction | 29,105 execution; 44,113 transaction |
 | PCS claims | 7, in 6 `PCS_OPEN` calls | 7, in 6 calls |
-| Formal verification (Lean 4) | the VM's statement, the Keccak-f block (soundness, completeness, terminal) and π1's transcription; π1's and the recursion's theorems in progress | |
+| Formal verification (Lean 4) | the VM's statement and arithmetization, the Keccak-f block, π1's knowledge soundness (≤ 2^-64 at 2^64 queries) and completeness (failure < 2^-169), π1-rec3's recorded graph = its verifier; the recursion: knowledge soundness as an explicit reduction (π2's part ≤ 2^-64, plus π1-rec3 at Keccak-f[1600]), completeness (failure 2^-164 plus two premises at Keccak-f[1600]); the compiled circuit's checks evaluated, not proved | |
 
 π1 alone as a contract (no recursion) costs 358,957 transaction gas at 128 signatures (8,020 B of calldata, 3 claims).
 The Keccak VM fits WHIR's `2^28`-word commitments up to about 470 signatures. Details:
