@@ -17,7 +17,8 @@
 // `encoded_rows_two_sweep`; a lean level holds `LEAN_BATCH` replicas' work buffers while it commits), and the lane
 // rounds sum sparse low weights at their nonzero entries alone (`SparseLow`), the dense ones with `dot_base` on x86,
 // and fold the witness on AVX-512 eight words at a time (`collapse_avx512`); a lean level's message, kept for its
-// queries, is copied by the workers (`copied`) rather than by one thread.
+// queries, is copied by the workers (`copied`) rather than by one thread. A test pins the chunked dense induce to its
+// per-query form (`chunked_induce_matches_the_per_query_one`).
 
 //! WHIR with `K = GF(2)[x]/(x^64+x^4+x^3+x+1)` and
 //! `E = K[y]/(y^3+y+1)`.
@@ -2588,6 +2589,39 @@ mod tests {
             let via_ntt = induce_sumcheck_poly_via_ntt(log_msg_cols, log_inv_rate, &rows, &v_challenges, &qs, &weights);
             assert_eq!(dense.1, via_ntt.1, "enforced_sum mismatch");
             assert_eq!(&*dense.0, &*via_ntt.0, "basis_poly mismatch");
+        }
+    }
+
+    /// The dense induce by chunks of the basis is the per-query one, entry for entry, at the shapes the deeper
+    /// levels take (a few dozen queries, up to `2^14` entries), on the calling thread or the pool, and at the
+    /// degenerate ones.
+    #[test]
+    fn chunked_induce_matches_the_per_query_one() {
+        let mut rng = Rng::new(0x1d0c);
+        for (log_msg_cols, lanes_log, n_queries) in [
+            (0usize, 2usize, 3usize),
+            (1, 1, 2),
+            (5, 4, 7),
+            (9, 4, 23),
+            (13, 4, 32),
+            (14, 4, 56),
+        ] {
+            let block_len = 1usize << (log_msg_cols + 7);
+            let qs: Vec<usize> = (0..n_queries).map(|_| (rng.next_u64() as usize) % block_len).collect();
+            let rows: Vec<Vec<F192>> = (0..n_queries).map(|_| rng.ext_vec(1 << lanes_log)).collect();
+            let v_challenges: Vec<F192> = (0..lanes_log).map(|_| rng.ext()).collect();
+            let weights = powers(rng.ext(), n_queries);
+            let sks_vks = eval_sk_at_vks(log_msg_cols);
+            let chunked = induce_sumcheck_poly(log_msg_cols, &sks_vks, &rows, &v_challenges, &qs, &weights);
+            let by_query = crate::whir_induce::induce_sumcheck_poly_by_query(
+                log_msg_cols,
+                &sks_vks,
+                &rows,
+                &v_challenges,
+                &qs,
+                &weights,
+            );
+            assert_eq!(chunked, by_query, "2^{log_msg_cols} entries, {n_queries} queries");
         }
     }
 

@@ -553,14 +553,8 @@ mod x86 {
                 let c = _mm512_unpackhi_epi64(st[0].0, st[1].0);
                 let d = _mm512_unpackhi_epi64(st[2].0, st[3].0);
                 // Inputs 2q and 2q + 1 are lane q of a, b, c, d, in that order.
-                let (ab_lo, ab_hi) = (
-                    _mm512_shuffle_i64x2::<0x44>(a, b),
-                    _mm512_shuffle_i64x2::<0xEE>(a, b),
-                );
-                let (cd_lo, cd_hi) = (
-                    _mm512_shuffle_i64x2::<0x44>(c, d),
-                    _mm512_shuffle_i64x2::<0xEE>(c, d),
-                );
+                let (ab_lo, ab_hi) = (_mm512_shuffle_i64x2::<0x44>(a, b), _mm512_shuffle_i64x2::<0xEE>(a, b));
+                let (cd_lo, cd_hi) = (_mm512_shuffle_i64x2::<0x44>(c, d), _mm512_shuffle_i64x2::<0xEE>(c, d));
                 let pairs = [
                     _mm512_shuffle_i64x2::<0x88>(ab_lo, cd_lo),
                     _mm512_shuffle_i64x2::<0xDD>(ab_lo, cd_lo),
