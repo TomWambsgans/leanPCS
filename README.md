@@ -75,9 +75,9 @@ A leanVM leaf aggregate of leanXMSS signatures:
 |---|---|---|
 | Signatures per proof | 1,000 (up to about 2,000) | 400 (up to about 470) |
 | Hash argument | Flock, BLAKE2s block | Flock, Keccak-f block, structured terminal |
-| Gas, `PCS_OPEN` free | 44,804 transaction (real proof; 45,464 on a sample stream) | 44,737 transaction (sample stream) |
-| Prover | π1 4.8 s + π2 4.5 s (h1, 16 threads) | not yet (verifier only, [`KECCAK.md`](crates/leanvm_univariate/KECCAK.md)) |
-| Formal verification (Lean 4) | knowledge soundness and completeness of π1-rec3 and of the recursion | not yet |
+| Gas, `PCS_OPEN` free | 44,804 transaction (real proof; 45,464 on a sample stream) | 44,113 transaction (real 400-signature proof) |
+| Prover | π1 4.8 s + π2 4.5 s (h1, 16 threads) | π1 4.7 s at 400 signatures (M4 Max), π2 ≈ 8 s; [`KECCAK.md`](crates/leanvm_univariate/KECCAK.md) |
+| Formal verification (Lean 4) | knowledge soundness and completeness of π1-rec3 and of the recursion | the statement, the Keccak-f block (soundness, completeness, terminal) and π1's transcription; π1's and the recursion's theorems not yet |
 
 ## Repository
 
