@@ -7,7 +7,7 @@
 //!
 //! `KECCAK_VECTORS_OUT=$PWD/keccak_vectors.txt cargo test --release -p leanvm_univariate --test lean_keccak_vectors -- --ignored --nocapture`
 //!
-//! The format is `tests/lean_vectors.rs`'s (`formal/UniStatement/UniStatementTest/Runner.lean` reads it), with the
+//! The format is the BLAKE2s VM's vector format (`formal/UniKeccak/UniKeccakTest/Runner.lean` reads it), with the
 //! Keccak contract's setup: `SETUPROOTS <f> <a0> <b0>` the roots it binds (`SetupRoots::REFERENCE`, or for a real proof
 //! its own `F`, as `tests/evm_vectors.rs` builds its contract), `CONTRACTIV` `contract::contract_iv(shape,
 //! variant, program_iv, roots)`, `LAYOUTWORDS` `contract::layout_words(shape)`. The configuration
