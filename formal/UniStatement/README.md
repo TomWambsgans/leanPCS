@@ -2,6 +2,13 @@
 
 # UniStatement
 
+> **After the Keccak-only cut** (`BLAKE2S` removed from `formal/Lv42`): the end statements against leanVM 42422001's
+> relation (`UniKnowledgeSoundness`, `UniCompleteness`, their π1-rec3 forms in `RecSecurity.lean`), the extractor
+> `uniExtractor` and the map onto Lv42's stack (`lv42Column`, `lv42Stack`) are removed, with the sections below
+> that describe them (§"The statements", §"The map onto Lv42"). What stays is the verifier, the setup data, the
+> encodings of `Mapping.lean` and the shared pieces of `Security.lean` (`Deployment`, `SetupTrees`, `c1RootOf`,
+> `c1Word`, the adversary's types), which `UniKeccak` builds its statements on.
+
 The univariate PIOP for leanVM 42422001 (`crates/leanvm/univariate`, `SPEC.md` there), **at iteration 2**
 (`leanvm-univariate` `ad49e74`: `SPEC.md` §13's entries 1–13; milestone 1 was `cee6363`),
 in the files a reviewer reads: **its verifier as computable Lean**, module by module as
