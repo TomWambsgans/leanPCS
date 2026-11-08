@@ -15,7 +15,7 @@
 //! The circuit is compiled on synthetic streams (as `tests/lean_circuit_keccak128.rs`): the test checks that the
 //! adapted circuit (its formulas, pairs, reads, public terms, `σ`, `κ`, hence its digest and setup root), π1's calls and
 //! π1's contract IV do not depend on the stream or the public input. π1's contract IV is
-//! `contract_iv_for(KECCAK_128, Keccak(KECCAK_REC3), PROGRAM_IV, SetupRoots::REFERENCE)`: `record_verifier` binds the
+//! `contract_iv(KECCAK_128, KECCAK_REC3, PROGRAM_IV, SetupRoots::REFERENCE)`: `record_verifier` binds the
 //! code's reference roots (the setup call's constant `F` in `Emitted.lean`'s `call2` is `SetupRoots::REFERENCE.f`).
 //!
 //! `RUSTFLAGS="-C target-cpu=native" cargo test --release -p leanvm_rec --test lean_statement_keccak -- --ignored --nocapture`
@@ -25,31 +25,20 @@ static ALLOC: bench::Jemalloc = bench::Jemalloc;
 
 use std::fmt::Write;
 
-use leanvm_statement::flock_min::{Slices, Variant};
 use leanvm_statement::shapes::PROGRAM_IV;
-use leanvm_statement::transcript::FsShape;
 use leanvm_rec::circuit::compile::{Inputs, Layout, pi2};
 use leanvm_rec::circuit::spec::CallWord;
 use leanvm_rec::pi2::adapt;
 use leanvm_rec::pi2::circuit::{Circuit, Coeff, Formula, Lin, Read};
 use leanvm_rec::pi2::prover::Setup;
 use leanvm_rec::pi2::verifier::Spec;
-use leanvm_univariate::contract::{Recorded, SetupRoots, contract_iv_for, record_verifier};
-use leanvm_univariate::{Blake2s, Claims, Shape};
+use leanvm_rec::REFERENCE;
+use leanvm_univariate::contract::{Recorded, SetupRoots, contract_iv, record_verifier};
+use leanvm_univariate::{Claims, KECCAK_REC3, Shape};
 
-/// π1-rec3's shape with the Keccak VM's hash argument (`tests/keccak_vm_rec.rs`).
-const KECCAK_REC3: Variant = Variant {
-    skip: 3,
-    slices: Slices::TowerWalk,
-    fs: FsShape::Rec3,
-};
-
-/// The reference workload: leanVM 9d50c92a3's Keccak VM at 128 signatures (`tests/lean_graph_keccak.rs`'s `KECCAK_128`).
-const KECCAK_128: Shape = Shape {
-    log_memory: 20,
-    log_bytecode: 18,
-    table_rows: [24260, 36229, 24626, 35812, 15509, 17712],
-};
+/// The reference workload: leanVM 9d50c92a3's Keccak VM at 128 signatures (`leanvm_rec::REFERENCE`,
+/// `leanvm_statement::shapes::reference()`; Lean's `RecGraphKeccak.Pi1.keccak128`).
+const KECCAK_128: Shape = REFERENCE;
 
 fn deep<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> R {
     std::thread::Builder::new()
@@ -61,7 +50,7 @@ fn deep<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> R {
 }
 
 fn data_path() -> std::path::PathBuf {
-    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../formal/RecStatement/RecStatement/Data.lean")
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../formal/RecStatement/RecStatement/Data.lean")
 }
 
 /// The instance's constants the data carries.
@@ -151,7 +140,7 @@ fn render(circuit: &Circuit, calls: &[Vec<CallWord>], c: &Constants) -> String {
     writeln!(w).unwrap();
     writeln!(
         w,
-        "`pi2::circuit::Circuit` of `circuit::compile::pi2(record_verifier(KECCAK_128, Keccak(KECCAK_REC3), Point), D16v)` through"
+        "`pi2::circuit::Circuit` of `circuit::compile::pi2(record_verifier(KECCAK_128, KECCAK_REC3, Point), D16v)` through"
     )
     .unwrap();
     writeln!(
@@ -340,11 +329,14 @@ fn summary(circuit: &Circuit, calls: &[Vec<CallWord>], c: &Constants) -> String 
 #[ignore = "compiles π2's circuit for the Keccak VM's π1-rec3 twice (2^24 positions) and commits its setup"]
 fn keccak_statement_data_is_current() {
     let rendered = deep(|| {
-        let recorded = record_verifier(&KECCAK_128, Blake2s::Keccak(KECCAK_REC3), Claims::Point);
+        let recorded = record_verifier(&KECCAK_128, KECCAK_REC3, Claims::Point);
         // π1's contract IV binds the code's reference roots.
-        let iv = contract_iv_for(
+        assert_eq!(KECCAK_128.log_memory, 20);
+        assert_eq!(KECCAK_128.log_bytecode, 18);
+        assert_eq!(KECCAK_128.table_rows, [24260, 36229, 24626, 35812, 15509, 17712]);
+        let iv = contract_iv(
             &KECCAK_128,
-            Blake2s::Keccak(KECCAK_REC3),
+            KECCAK_REC3,
             &PROGRAM_IV,
             &SetupRoots::REFERENCE,
         );

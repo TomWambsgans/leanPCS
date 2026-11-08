@@ -7,7 +7,7 @@ import RecStatement.Basic
 /-!
 # π2's circuit for π1-rec3, as its verifier reads it
 
-`pi2::circuit::Circuit` of `circuit::compile::pi2(record_verifier(KECCAK_128, Keccak(KECCAK_REC3), Point), D16v)` through
+`pi2::circuit::Circuit` of `circuit::compile::pi2(record_verifier(KECCAK_128, KECCAK_REC3, Point), D16v)` through
 `pi2::adapt`: `2^24` positions, rows of `2^4`, 55 formulas, 133 (block, role) pairs (4 pull-less) in 66 groups, 19 reads,
 36 public terms (16 of them the zero coset); π1's 3 `PCS_OPEN` calls. Not `σ`, not `κ` (the setup's root and
 the circuit's digest bind them; the verifier reads neither). Data only.
@@ -269,13 +269,13 @@ def publicTerms : List PublicTerm := [
 def circuit : Circuit := ⟨24, 4, formulas, pairs, reads, publicTerms⟩
 
 /-- π1's contract IV (`Compiled::pi1_iv`: π1-rec3's at the reference setup roots). -/
-def pi1Iv : List UInt8 := hexBytes "c000ccb56724f70cb9ec2a3a9ea0f65919e84c454be0ea273481ac062ea04d06"
+def pi1Iv : List UInt8 := hexBytes "0249294e1c410df6e7ab8150703cf22eadede4183f6be94edf397274d5215449"
 
 /-- The setup's root (`prover::Setup::new(circuit).root()`: the commitment of `κ`, `κ + σ`). -/
-def setupRoot : List UInt8 := hexBytes "b394f9d4a38ba541ae0066580541200a3ffbe518cb001e152ef26bc1b8177292"
+def setupRoot : List UInt8 := hexBytes "1912375a0e9f64971366c543e508f7568fb82962037061494c1e12e327abd7d6"
 
 /-- The circuit's digest (`Circuit::digest`: its encoding with `σ`'s and `κ`'s hashes). -/
-def digest : List UInt8 := hexBytes "a51a9b0556b600c86eee96530bb741489750452f09a26b9eb6f9cafffa62c753"
+def digest : List UInt8 := hexBytes "3938d25fca6dbd5358a8889962144512e5661aa52935f6ea290d83611649b268"
 
 /-- π1's `PCS_OPEN` calls as the circuit names their words (`spec::Circuit::calls`). -/
 def pi1Calls : List (List CallWord) := [
@@ -340,7 +340,7 @@ def pi1Calls : List (List CallWord) := [
    .pair 12 0,
    .pair 12 1,
    .element 15],
-  [.const (hexBytes "4a4656391128c38b9bc096d79b0f5a9bb75fab8e20a3c0c088c0dfb7995c86cf"),
+  [.const (hexBytes "8d74ca281ca6cacab54209a8be447206a51c6e29079c9c10ab3967106cbae40a"),
    .const (hexBytes "14120f100f100e0f000000000000000000000000000055031700000000500000"),
    .const (hexBytes "0000000000000000000000000000000000000000000000000000000000000001"),
    .pair 0 0,

@@ -90,7 +90,7 @@ theorem realPi2_ref : realPi2 Data.pi1Iv = pi2CircuitOf refCompiled.circuit := r
 /-- **The setup roots of the real deployment** (one constant: the reference roots, `UniStatement.referenceRoots`;
 only their `A0`, `B0` enter the deployment, as `KDeployment.a0Root`, `b0Root`, which `RecDeployment.Real` does not
 pin). -/
-def realRoots : UniStatement.SetupRoots := UniStatement.referenceRoots
+def realRoots : UniStatement.SetupRoots := RecGraphKeccak.Pi1.referenceRootsK
 
 /-- The reference shape is valid (`Shape.Valid`: six heights, `validate` with Flock). -/
 theorem keccak128_valid : RecGraphKeccak.Pi1.keccak128.Valid := by decide +kernel
