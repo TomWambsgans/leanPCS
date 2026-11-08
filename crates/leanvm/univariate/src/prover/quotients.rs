@@ -270,13 +270,14 @@ fn piece_rows(src: &[K8], first: usize, p: usize, dst: &mut Vec<K8>) {
 }
 
 /// A quotient from its numerator on `D_M`'s first points: `columns` (novel coefficients, `2^r` each) evaluated on
-/// every piece (a coset `ω_first + V_e`, `e ≤ r`), `piece(first, e)` what else the piece needs, and
+/// every piece (a coset `ω_first + V_e`, `e ≤ r`), `piece(first, e, serial)` what else the piece needs (with `serial`
+/// from inside a pool task, a round's pieces' at once: it must then not dispatch to the pool), and
 /// `value(piece, points, j)` the quotient's values at the piece's points `8 j..8 j + 8`.
-fn prefix_quotient<D: Sync>(
+fn prefix_quotient<D: Send + Sync>(
     r: usize,
     count: u64,
     columns: &[&[F64]],
-    piece: impl Fn(usize, usize) -> D,
+    piece: impl Fn(usize, usize, bool) -> D + Sync,
     value: impl Fn(&D, &Points, usize) -> Ex8 + Sync,
 ) -> Quotient {
     let n = 1usize << r;
@@ -341,7 +342,7 @@ fn prefix_quotient<D: Sync>(
                 }
             }
         }
-        let data = piece(first, e);
+        let data = piece(first, e, false);
         let points = if alone {
             Points::Alone(&singles)
         } else {
@@ -400,7 +401,7 @@ fn prefix_quotient<D: Sync>(
             }
             t_transform += clock.elapsed().as_secs_f64();
             let clock = std::time::Instant::now();
-            let data: Vec<D> = round.iter().map(|&(first, _, p)| piece(first, p)).collect();
+            let data: Vec<D> = parallel::map_collect(round.len(), |g| piece(round[g].0, round[g].2, true));
             let points: Vec<Points> = if alone {
                 lone[..tasks].chunks(width).map(Points::Alone).collect()
             } else {
@@ -524,7 +525,7 @@ pub fn table_leaf(trace: &Trace, t: usize, c1: &C1Polys, bus: &Bus, r_novel: &[V
             r,
             count,
             &columns,
-            |first, _| piece_of(first, r),
+            |first, _, _| piece_of(first, r),
             |d, v, j| {
                 let mut at = [[F64::ZERO; SCALAR_COLUMNS]; 8];
                 for k in 0..width {
@@ -555,7 +556,7 @@ pub fn table_leaf(trace: &Trace, t: usize, c1: &C1Polys, bus: &Bus, r_novel: &[V
         r,
         count,
         &columns,
-        |first, _| piece_of(first, r),
+        |first, _, _| piece_of(first, r),
         |d, v, j| {
             let col = |s: Slot| v.at(s, j);
             let (p, p2) = both.at(col);
@@ -595,7 +596,7 @@ pub fn memory_leaf(
         r,
         count,
         &columns,
-        |first, _| piece_of(first, r),
+        |first, _, _| piece_of(first, r),
         |d, v, j| (v.e(heap, j) * fin.at(|s| v.at(s, j)) + init.at(|s| v.at(s, j))).mul_k(Kx8::splat(d.w_r_inv)),
     )
 }
@@ -625,7 +626,7 @@ pub fn bytecode_leaf(
         r,
         count,
         &columns,
-        |first, _| piece_of(first, r),
+        |first, _, _| piece_of(first, r),
         |d, v, j| (v.e(heap, j) * fin.at(|s| v.at(s, j)) + init.at(|s| v.at(s, j))).mul_k(Kx8::splat(d.w_r_inv)),
     )
 }
@@ -778,13 +779,17 @@ pub fn constraints_with(
         let counter_slots: Vec<Slot> = (1..=counters.len()).map(slot).collect();
         // A piece: `w_r` and its inverse; SHA3's `Σ g_j ℓ_j`, the slots' multilinear at `y(x) = y(ω_first) +
         // bits(i)`, a shifted cube (at least a run long).
-        let piece = |first: usize, e: usize| {
+        let piece = |first: usize, e: usize, serial: bool| {
             let cube = combined.as_ref().map(|(_, table)| {
                 let delta = coordinates_k(omega(first), functionals.as_ref().expect("SHA3"));
                 table
                     .iter()
                     .map(|l| {
-                        let mut c = ntt::shifted_cube(l, &delta, e);
+                        let mut c = if serial {
+                            ntt::shifted_cube_serial(l, &delta, e)
+                        } else {
+                            ntt::shifted_cube(l, &delta, e)
+                        };
                         c.resize(c.len().max(8), F64::ZERO);
                         c
                     })
@@ -816,10 +821,19 @@ pub fn constraints_with(
     let lm = trace.log_memory;
     let gs: Vec<F192> = (0..3).map(|_| next()).collect();
     let columns: Vec<&[F64]> = (0..3).map(|k| &c1.memory[k].novel[..]).collect();
-    let piece = |first: usize, e: usize| {
+    let piece = |first: usize, e: usize, serial: bool| {
         // 1 / w_1(x) = 1 / ω_((first + i) >> 1), shared by `i` and `i ^ 1` (at least a run's).
-        let mut inverses: Vec<F64> = parallel::map_collect(((1usize << e) / 2).max(4), |q| omega((first >> 1) + q));
-        invert(&mut inverses);
+        let len = ((1usize << e) / 2).max(4);
+        let mut inverses: Vec<F64> = if serial {
+            (0..len).map(|q| omega((first >> 1) + q)).collect()
+        } else {
+            parallel::map_collect(len, |q| omega((first >> 1) + q))
+        };
+        if serial {
+            invert_chunk(&mut inverses);
+        } else {
+            invert(&mut inverses);
+        }
         (omega(first), inverses)
     };
     let gs: Vec<ESplat> = gs.into_iter().map(ESplat::new).collect();
@@ -854,20 +868,23 @@ fn limbs_of(values: &[F192]) -> [Vec<F64>; 3] {
 
 /// Batch inversion in K (Montgomery's trick per chunk); every entry must be nonzero.
 fn invert(data: &mut [F64]) {
-    parallel::chunks_mut(data, 1 << 12, |_, chunk| {
-        let mut prefix = Vec::with_capacity(chunk.len());
-        let mut acc = F64::ONE;
-        for &x in chunk.iter() {
-            prefix.push(acc);
-            acc *= x;
-        }
-        let mut inv = acc.inv();
-        for i in (0..chunk.len()).rev() {
-            let x = chunk[i];
-            chunk[i] = inv * prefix[i];
-            inv *= x;
-        }
-    });
+    parallel::chunks_mut(data, 1 << 12, |_, chunk| invert_chunk(chunk));
+}
+
+/// [`invert`] by the calling worker alone (one chunk): the same inverses.
+fn invert_chunk(chunk: &mut [F64]) {
+    let mut prefix = Vec::with_capacity(chunk.len());
+    let mut acc = F64::ONE;
+    for &x in chunk.iter() {
+        prefix.push(acc);
+        acc *= x;
+    }
+    let mut inv = acc.inv();
+    for i in (0..chunk.len()).rev() {
+        let x = chunk[i];
+        chunk[i] = inv * prefix[i];
+        inv *= x;
+    }
 }
 
 /// `y_l(x)` for a K point: `Σ_m a_(l,m) x^(2^m)`.

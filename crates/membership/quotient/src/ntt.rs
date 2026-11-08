@@ -1651,6 +1651,48 @@ pub fn shifted_cube(values: &[F64], delta: &[F64], e: usize) -> Vec<F64> {
     out
 }
 
+/// [`shifted_cube`] by the calling worker alone: the same values.
+pub fn shifted_cube_serial(values: &[F64], delta: &[F64], e: usize) -> Vec<F64> {
+    let r = values.len().trailing_zeros() as usize;
+    assert!(e <= r && delta.len() >= r);
+    let size = 1usize << e;
+    let mut out = if e == r {
+        values.to_vec()
+    } else {
+        // `tensor`'s weights (the same products), then `fold_column`'s sums.
+        let mut weights = vec![F64::ONE];
+        for b in 0..r - e {
+            let (zero, one) = (F64::ONE + delta[e + b], delta[e + b]);
+            let high: Vec<F64> = weights.iter().map(|&w| w * one).collect();
+            weights.iter_mut().for_each(|w| *w *= zero);
+            weights.extend(high);
+        }
+        (0..size)
+            .map(|i| weights.iter().enumerate().fold(F64::ZERO, |acc, (h, &w)| acc + w * values[i + h * size]))
+            .collect()
+    };
+    if out.len() < 8 {
+        for (l, &d) in delta[..e].iter().enumerate() {
+            let half = 1usize << l;
+            for pair in out.chunks_exact_mut(2 * half) {
+                let (lo, hi) = pair.split_at_mut(half);
+                for (a, b) in lo.iter_mut().zip(hi.iter_mut()) {
+                    let t = d * (*a + *b);
+                    *a += t;
+                    *b += t;
+                }
+            }
+        }
+        return out;
+    }
+    let kind = Cube {
+        delta: delta[..e].to_vec(),
+    };
+    // SAFETY: `out`'s own words, eight a row.
+    unsafe { run_on(out.as_mut_ptr().cast(), None, out.len() / 8, 3, &kind, false, true) }
+    out
+}
+
 /// Columns of one length, each eight words a row, as [`run_cols`] takes them (read first from `srcs` if given).
 fn column_cols(dsts: &mut [&mut [F64]], srcs: Option<&[&[F64]]>) -> Vec<Col> {
     let len = dsts.first().map_or(0, |d| d.len());
@@ -2637,6 +2679,19 @@ mod tests {
         for i in 0..8 {
             assert_eq!(blend[i], e[if i % 2 == 1 { 8 + i } else { i }]);
             assert_eq!(kb.0[i], k[if i % 2 == 1 { 8 + i } else { i }]);
+        }
+    }
+
+    /// The one-worker shifted cube is the pool's.
+    #[test]
+    fn serial_cube_is_the_pools() {
+        let mut next = rng(31);
+        for r in [0usize, 2, 3, 9, 13, 15] {
+            let values: Vec<F64> = (0..1usize << r).map(|_| F64(next())).collect();
+            let delta: Vec<F64> = (0..r).map(|_| F64(next())).collect();
+            for e in 0..=r {
+                assert_eq!(shifted_cube_serial(&values, &delta, e), shifted_cube(&values, &delta, e), "2^{r} onto 2^{e}");
+            }
         }
     }
 
