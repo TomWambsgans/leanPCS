@@ -87,7 +87,7 @@ globs = ["PcsQuotient", "PcsQuotient.+"]
 [[lean_lib]]
 name = "Lv42"
 srcDir = "../Lv42"
-globs = ["Lv42", "Lv42.+"]
+globs = ["Lv42.+"]
 leanOptions = { warningAsError = true }
 
 # The Keccak VM (`docs/leanvm/univariate/KECCAK.md`), `formal/KeccakVm`: leanVM 42422001 with `BLAKE2S` replaced by
@@ -155,8 +155,7 @@ name = "Evm"
 
 # The univariate PIOP for leanVM 42422001 (`crates/leanvm/univariate`): its verifier transcribed
 # (`formal/UniStatement`, library `UniStatement`) and its end statements against `Lv42`'s relation
-# (`UniStatement.Security`). The differential runner (`UniStatementTest/Runner.lean`) runs with
-# `lake env lean`, not built.
+# (`UniStatement.Security`). `UniStatementTest/KeccakTables.lean` (`lake env lean`) checks the Keccak tables.
 [[lean_lib]]
 name = "UniStatement"
 srcDir = "../UniStatement"
@@ -177,7 +176,7 @@ leanOptions = { warningAsError = true }
 [[lean_lib]]
 name = "UniSound"
 srcDir = "../UniSound"
-globs = ["UniSound", "UniSound.+"]
+globs = ["UniSound.+"]
 leanOptions = { warningAsError = true }
 
 # Flock's soundness (`crates/leanvm/statement/src/flock_min.rs`, `docs/leanvm/univariate/SPEC-FLOCK.md`),
@@ -196,13 +195,12 @@ name = "FlockSoundUni"
 srcDir = "../FlockSound"
 globs = ["FlockSoundUni", "FlockSoundUni.+"]
 
-# The univariate PIOP's completeness (milestone 4, `formal/UniComplete`): the honest prover `uniProver` (a Lean
-# prover following SPEC.md and the Rust prover's message order) and `UniCompleteness` for it. The differential
-# runner (`UniCompleteTest/Runner.lean`) runs with `lake env lean`, not built.
+# The univariate PIOP's completeness (milestone 4, `formal/UniComplete`): the honest prover's layers that
+# `UniKeccakComplete` and `RecCompose` still import (the BLAKE2s end theorem and its runners are removed).
 [[lean_lib]]
 name = "UniComplete"
 srcDir = "../UniComplete"
-globs = ["UniComplete", "UniComplete.+"]
+globs = ["UniComplete.+"]
 leanOptions = { warningAsError = true }
 
 # π2's PIOP, generic over circuits (`crates/leanvm/rec`, `PI2.md`, branch `leanvm-rec` @ 4247e37),
