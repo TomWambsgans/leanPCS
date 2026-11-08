@@ -7,12 +7,14 @@
 //!
 //! 1. `w`'s novel coefficients (one transform on `V_m`), then its `B` coefficients (subset sums): the table `W`,
 //!    committed (`2^m` words);
-//! 2. `α, β, γ`; the pushes `P` on `V_m`, and `h = [pull]/(α + w + βx) + 1/(α + P + βσ)` there (one batched inversion
-//!    per run), whose sum is the public target; `h`'s novel coefficients;
-//! 3. on the coset `D = β_{m+2} + V_{m+2}` (`4N` points, disjoint from `V_m`): `w`, `σ`, `κ`, `h` by transforms, the
-//!    row's cells `w(x + ω_c)` (a coset of `V_r` stays in `D`), every pair's indicator (one batched inversion per
-//!    point), `P`, `d_pull`, `d_push`, and `q = (h d_pull d_push + (1 + 1_S) d_push + d_pull) / Z_V`; `q`'s novel
-//!    coefficients (degree below `4N`);
+//! 2. `α, β, γ`; the pushes `P` on `V_m`, and `h = [pull]/(α + w + βx) + 1/(α + P + βσ)` there (eight rows at a time,
+//!    one batched inversion per run, `h_on_v`) in `Q`'s stack, whose sum is the public target; `h`'s novel
+//!    coefficients;
+//! 3. on the coset `D = β_{m+2} + V_{m+2}` (`4N` points, disjoint from `V_m`), one coset of `V_m` at a time: `w`,
+//!    `h` by transforms (`σ`, `κ` the setup's), the row's cells `w(x + ω_c)` (a coset of `V_r` stays in `D`), every
+//!    pair's indicator (one batched inversion per chunk of points), `P` (the internal groups' pushes as one quadratic
+//!    form of the cells, `Quadratic`), `d_pull`, `d_push`, and `q = (h d_pull d_push + (1 + 1_S) d_push + d_pull) /
+//!    Z_V`; `q`'s novel coefficients (degree below `4N`);
 //! 4. the table `Q`: `h` (degree below `N`) and `q`'s four chunks, each of three limbs, `15 N` words, committed;
 //! 5. `t`; the fold values and `ξ = κ(t) + β σ(t)` (PI2.md §9); `ρ`; the claims (the verifier's), opened: one opening per
 //!    commitment, `Q`'s two claims together.
@@ -796,7 +798,7 @@ fn h_on_v(
 ) {
     let (r, n, width) = (circuit.log_row, circuit.n(), circuit.width());
     let tile = 8 * width;
-    assert!(run % tile == 0 && n % run == 0, "chunks of whole eight-row tiles");
+    assert!(run.is_multiple_of(tile) && n.is_multiple_of(run), "chunks of whole eight-row tiles");
     let compiled: Vec<Compiled> = circuit.formulas.iter().map(|f| Compiled::new(f, 0, gammas)).collect();
     let mut by_role: Vec<Vec<(usize, usize, usize)>> = vec![vec![]; width];
     for (p, pair) in circuit.pairs.iter().enumerate() {
