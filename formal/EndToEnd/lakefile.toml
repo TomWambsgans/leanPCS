@@ -79,10 +79,9 @@ name = "PcsQuotient"
 srcDir = "../Statement"
 globs = ["PcsQuotient", "PcsQuotient.+"]
 
-# leanVM 42422001's VM (leanISA with `BLAKE2S`), its arithmetization (Clean's six tables), the
-# abstract M3 instance with its Flock region, and the leanISA adaptor, ported from leanerVM
-# `mumbai` at f0393df4 into the namespace `Lv42` (`formal/Lv42`): the statement the univariate
-# PIOP for that leanVM proves against. It compiles against the same `lean_vm` package set
+# leanVM 42422001's VM without its `BLAKE2S` instruction (the five instructions, the machine), its five shared
+# tables (Clean components) and the abstract M3 instance with its Flock region, ported from leanerVM `mumbai` at
+# f0393df4 into the namespace `Lv42` (`formal/Lv42`): what the Keccak VM (`KeccakVm`) is built on. It compiles against the same `lean_vm` package set
 # (f0393df4 and 6175f1a0 pin the same Lean, Mathlib, CompPoly, Clean, ArkLib and VCVio).
 [[lean_lib]]
 name = "Lv42"
@@ -117,7 +116,7 @@ leanOptions = { warningAsError = true }
 
 # The univariate PIOP's bus (`docs/leanvm/univariate/SPEC.md` §5, branch `leanvm-univariate`) as a
 # product heap, `formal/Heap`: the tree, leaf and root identities give the push and pull products'
-# equality, which gives `Lv42`'s `Balanced` but with probability at most `4 N / |E|` over the bus
+# equality, which gives the bus's balance but with probability at most `4 N / |E|` over the bus
 # challenges (leanerVM 6175f1a0's Theorem 5.1, `LeanVM.Protocol.sideProduct_collision`).
 [[lean_lib]]
 name = "Heap"
@@ -153,9 +152,8 @@ globs = ["E2ECompleteness", "E2ECompleteness.+"]
 [[lean_lib]]
 name = "Evm"
 
-# The univariate PIOP for leanVM 42422001 (`crates/leanvm/univariate`): its verifier transcribed
-# (`formal/UniStatement`, library `UniStatement`) and its end statements against `Lv42`'s relation
-# (`UniStatement.Security`). `UniStatementTest/KeccakTables.lean` (`lake env lean`) checks the Keccak tables.
+# The univariate PIOP (`crates/leanvm/univariate`): the verifier's shared parts transcribed (`formal/UniStatement`:
+# the transcript, tables, batch, Flock's verifier, the deployment and its openings), which `UniKeccak` instantiates. `UniStatementTest/KeccakTables.lean` (`lake env lean`) checks the Keccak tables.
 [[lean_lib]]
 name = "UniStatement"
 srcDir = "../UniStatement"
@@ -170,9 +168,9 @@ srcDir = "../UniKeccak"
 globs = ["UniKeccak", "UniKeccak.+"]
 leanOptions = { warningAsError = true }
 
-# Knowledge soundness of the univariate PIOP for leanVM 42422001, end to end (`formal/UniSound`):
-# `UniStatement.UniKnowledgeSoundness` from `Compose`'s `k`-round chain, `Heap`'s bus and the
-# Flock interface (`UniSound/FlockInterface.lean`, the one hypothesis about BLAKE2s by Flock).
+# The univariate PIOP's soundness layers (`formal/UniSound`): the round-by-round PIOP, the identities, the code-level
+# and Fiat–Shamir links and the bounds, generic or at the deployment, which `UniKeccakSound` instantiates for the
+# Keccak VM.
 [[lean_lib]]
 name = "UniSound"
 srcDir = "../UniSound"
@@ -188,15 +186,15 @@ name = "FlockSound"
 srcDir = "../FlockSound"
 globs = ["FlockSound", "FlockSound.+"]
 
-# Flock's interface instance (`formal/FlockSound/Interface`): the round-by-round state and errors of
-# `UniSound.FlockSound` from `FlockSound`'s bad challenges.
+# Flock's round-by-round layer for the univariate PIOP (`formal/FlockSound/FlockSoundUni`): its transcription, parse,
+# catch and bad sets, which `UniKeccakSound`'s Flock on the Keccak-f block uses.
 [[lean_lib]]
 name = "FlockSoundUni"
 srcDir = "../FlockSound"
 globs = ["FlockSoundUni", "FlockSoundUni.+"]
 
-# The univariate PIOP's completeness (milestone 4, `formal/UniComplete`): the honest prover's layers that
-# `UniKeccakComplete` and `RecCompose` still import (the BLAKE2s end theorem and its runners are removed).
+# The honest prover's generic layers (`formal/UniComplete`: the domain, the division, WHIR's prover, π1-rec3's pairs)
+# that `UniKeccakComplete` and `RecCompose` import.
 [[lean_lib]]
 name = "UniComplete"
 srcDir = "../UniComplete"
