@@ -6,7 +6,8 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // Modified here, for speed, every basis unchanged: the dense induce (`induce_sumcheck_poly`) runs one task a chunk of
 // the basis rather than one per-worker accumulator a query added up on the dispatching thread; the per-query form
-// stays as the test oracle (`induce_sumcheck_poly_by_query`).
+// stays as the test oracle (`induce_sumcheck_poly_by_query`). The sparse transpose's window pass runs its layers on
+// the blocks holding a nonzero window alone (`transpose_dense_rest`).
 
 //! LCH novel-basis induction of the per-level sumcheck basis polynomial: the
 //! dense per-query expansion, its succinct residual evaluator, and the sparse
@@ -588,19 +589,26 @@ fn transpose_dense_rest(
         window.fill(F192::ZERO);
         let base = c << w_log;
         let first = windows.partition_point(|(w, _)| (*w << k) < base);
-        for (w, buf) in windows[first..].iter().take_while(|(w, _)| (*w << k) < base + win) {
-            window[(*w << k) - base..][..buf.len()].copy_from_slice(buf);
-        }
-        // Layers whose blocks fit the window, block sizes 2^(k+1) .. 2^w.
+        let inside: Vec<usize> = windows[first..]
+            .iter()
+            .take_while(|(w, _)| (*w << k) < base + win)
+            .map(|(w, buf)| {
+                window[(*w << k) - base..][..buf.len()].copy_from_slice(buf);
+                (*w << k) - base
+            })
+            .collect();
+        // Layers whose blocks fit the window, block sizes 2^(k+1) .. 2^w: on the blocks holding a sparse window
+        // alone, every other block being zero, which the transposed butterflies leave zero.
         for layer in (top..log_d - k).rev() {
-            let block_size = 1usize << (log_d - layer);
-            for (b, block) in window.chunks_mut(block_size).enumerate() {
-                let (lo, hi) = block.split_at_mut(block_size / 2);
-                transposed_butterfly_lanes(
-                    as_words(lo),
-                    as_words(hi),
-                    ntt.twiddle(layer, (base >> (log_d - layer)) + b),
-                );
+            let log_block = log_d - layer;
+            let block_size = 1usize << log_block;
+            let mut done = None;
+            for b in inside.iter().map(|&at| at >> log_block) {
+                if done.replace(b) == Some(b) {
+                    continue;
+                }
+                let (lo, hi) = window[b * block_size..][..block_size].split_at_mut(block_size / 2);
+                transposed_butterfly_lanes(as_words(lo), as_words(hi), ntt.twiddle(layer, (base >> log_block) + b));
             }
         }
     });

@@ -16,7 +16,8 @@
 // (`slabs_avx512`), the tiles transposed eight by eight in registers (`transpose_8x8`), and with GFNI the
 // butterfly's reduction takes byte maps for shifts (`gfni_reduce`); and sub-blocks too short to fill the hash's
 // batches hand their rows over afterwards. The first sweep gathers rows of up to 64 words where its group fits a
-// core's L2 (`WIDE_GATHER_WORDS`), and copies them inline (`copy_words`, `stream_words`).
+// core's L2 (`WIDE_GATHER_WORDS`), and copies them inline (`copy_words`, `stream_words`). On AVX-512 the transposed
+// butterfly is one pass (`transposed_butterfly_lanes`).
 //! Additive NTT over GF(2^64) in the Lin-Chung-Han novel polynomial basis.
 //!
 //! It is the Reed-Solomon encoder of every WHIR commitment over K = F_{2^64}.
@@ -1763,6 +1764,32 @@ fn butterfly_interleaved_block(block: &mut [F64], twiddle: F64, block_size_half:
 /// `s = u + v; new_u = s; new_v = v + s*t`.
 pub(crate) fn transposed_butterfly_lanes(top: &mut [F64], bot: &mut [F64], twiddle: F64) {
     assert_eq!(top.len(), bot.len());
+    // On AVX-512, in one pass: `s = u + v` to the top, `v + s*t` (the forward butterfly of (v, s)'s first output)
+    // to the bottom, eight lanes at a time, the last few masked.
+    #[cfg(all(target_arch = "x86_64", target_feature = "vpclmulqdq", target_feature = "avx512f"))]
+    {
+        use core::arch::x86_64::*;
+        let n = top.len();
+        // SAFETY: the target features are enabled at compile time; every access is inside both rows (whole
+        // vectors below `n / 8 * 8`, masked past it).
+        unsafe {
+            let tw = _mm512_set1_epi64(twiddle.0 as i64);
+            let mut k = 0;
+            while k < n {
+                let mask: u8 = if n - k >= 8 { 0xFF } else { (1u8 << (n - k)) - 1 };
+                let (pu, pv) = (top.as_mut_ptr().add(k), bot.as_mut_ptr().add(k));
+                let u = _mm512_maskz_loadu_epi64(mask, pu.cast());
+                let v = _mm512_maskz_loadu_epi64(mask, pv.cast());
+                let s = _mm512_xor_si512(u, v);
+                let (nv, _) = butterfly_zmm_v(v, s, tw);
+                _mm512_mask_storeu_epi64(pu.cast(), mask, s);
+                _mm512_mask_storeu_epi64(pv.cast(), mask, nv);
+                k += 8;
+            }
+        }
+        return;
+    }
+    #[allow(unreachable_code)]
     // The forward butterfly of (v, s) leaves v + s*t in v and s + (v + s*t) in s, which one more XOR undoes.
     for (u, v) in top.iter_mut().zip(bot.iter()) {
         *u += *v;
