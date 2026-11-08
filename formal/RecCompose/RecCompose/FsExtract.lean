@@ -1,4 +1,5 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Follows `formal/UniSound/UniSound/FsExtract.lean`
+-- Part of this repository. MIT OR Apache-2.0; see NOTICE.md; conventions: see AGENTS.md. Follows
+-- `formal/UniSound/UniSound/FsExtract.lean`
 -- (`uniExtractBridge_of_c1`, `c1Word_eq_committed`) for π2's `W`, with `formal/EndToEnd/Soundness/Replay.lean`'s
 -- `preimage_merkle`, `leavesUnder_preimage`, `leavesUnder_congr` and `Soundness/MerkleWord.lean`'s
 -- `wordOfMerkle_merkleWord_eq`.
@@ -36,8 +37,6 @@ open RecStatement Compose QuotientRpm LeanVM LeanVM.Parameters LeanVM.Protocol L
 open LeanVM.Protocol.Compile LeanVM.Protocol.EndToEnd WhirBridge
 open OracleSpec OracleComp
 open scoped ENNReal
-
-attribute [local instance high] Completeness.instSampleableTypeE_completeness
 
 attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
   LeanVM.Protocol.Compile.instFintypeKState UniStatement.layoutWords UniStatement.setupStack

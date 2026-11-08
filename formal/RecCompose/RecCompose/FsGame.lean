@@ -1,4 +1,5 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The port of `formal/UniSound/UniSound/FsGame128.lean`
+-- Part of this repository. MIT OR Apache-2.0; see NOTICE.md; conventions: see AGENTS.md. The port of
+-- `formal/UniSound/UniSound/FsGame128.lean`
 -- (`fsLayer128_of_gameV`) and `Fs128.lean` (`le_uniBound128`) to π2's verifier, through
 -- `Compose.knowledgeSoundness_listChainU_closed128S` (the setup's stacks and the protocol read off the setup),
 -- `Compose.prEvent_doomF_le` (the six openings once) and `Compose.prEvent_pairTr_expL_le` (the seed's pair).
@@ -35,8 +36,6 @@ open LeanVM.Protocol.Compile LeanVM.Protocol.EndToEnd WhirBridge
 open OracleSpec OracleComp
 open scoped ENNReal
 
-attribute [local instance high] Completeness.instSampleableTypeE_completeness
-
 attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
   LeanVM.Protocol.Compile.instFintypeKState UniStatement.layoutWords UniStatement.setupStack
   UniStatement.flockMatrixStack RecStatement.layoutWords
@@ -49,7 +48,7 @@ theorem le256' {a b : ℕ} (h : a ≤ b) : (a : ℝ≥0∞) / 2 ^ 256 ≤ (b : �
   ENNReal.div_le_div_right (Nat.cast_le.mpr h) _
 
 /-- **The composed bound is at most `pi2BoundE`**: the openings' term at `N + QV` queries, the seed's pair and the
-chain's at `N`, the permutation's at `QS 2^32 + Q + 2^48` calls, `N` the two-oracle game's queries (the setup's four
+chain's at `N`, the permutation's at `QS 2^32 + Q + 2^48` calls, `N` the two-oracle game's queries (the setup's two
 trees, the adversary and the IV, the chain, the six openings). -/
 theorem le_pi2BoundE (e : ℝ≥0∞) (Q QS nQ SQO nRf QV : ℕ) (hQS : QS ≤ 3 * 2 ^ 24 + 2 ^ 21)
     (hnQ : nQ ≤ 2 ^ 10) (hSQO : SQO ≤ 6 * 10122) (hr : nRf ≤ 6) (hQV : QV ≤ 10122) (d p m : ℝ≥0∞)
@@ -96,7 +95,7 @@ end Bits
 
 section Links
 
-variable (D : RecDeployment) (hD : RecDeployment.Real D) (hs : UniSound.UniShapes D.pi1)
+variable (D : RecDeployment) (hD : RecDeployment.Real D) (hs : UniKeccakSound.UniShapesK D.pi1)
 
 include hD in
 theorem circuitAt_real (roots : UniStatement.SetupRoots) : (D.circuitAt roots).circuit = cc := hD.1 _
@@ -206,7 +205,7 @@ end Links
 duplex shape and cost (`hdup`, `hcost`), the IV in the adversary (`hIvAdv`, `hexpU`), the extractor's word before the
 IV's log (`hext`), the seed's first 32 bytes (`hlab`), the event read through the transcript's answers (`hcongr`),
 the chain's queries (`hnQ`). -/
-theorem pi2FsLayer_of (D : RecDeployment) (hD : RecDeployment.Real D) (hs : UniSound.UniShapes D.pi1)
+theorem pi2FsLayer_of (D : RecDeployment) (hD : RecDeployment.Real D) (hs : UniKeccakSound.UniShapesK D.pi1)
     (hG : ∀ (P : RecSetupRoots → Pi2St → Stk → Prop) (A : RecAdversary),
       Pr{let z ← recSoundnessExperiment2 D A}[acc z = true ∧
           ¬ ∃ w ∈ outcomeCandidates D z, P (rts z) (pi2StmtOf D z) (stkOf w)] ≤
@@ -271,7 +270,7 @@ theorem pi2FsLayer_of (D : RecDeployment) (hD : RecDeployment.Real D) (hs : UniS
   have hpair := prEvent_pairTr_expL_le p2View X (p2Ops D) _ hX RecStatement.name name_length
   refine (hG P A).trans (hle.trans (add_le_add (hkc.trans hmain) le_rfl) |>.trans ?_)
   rw [sumQO_p2 D] at hdoom hpair ⊢
-  exact le_pi2BoundE e Q (p2QS D) pi2Spec.K.nQ 47566 pi2Spec.nRf 9018 (p2QS_le D hs) hnQ (by norm_num)
+  exact le_pi2BoundE e Q (p2QS D) pi2Spec.K.nQ 46492 pi2Spec.nRf 9018 (p2QS_le D hs) hnQ (by norm_num)
     (show 5 ≤ 6 by decide) (by norm_num) _ _ _ hdoom hpair le_rfl
 
 end RecCompose

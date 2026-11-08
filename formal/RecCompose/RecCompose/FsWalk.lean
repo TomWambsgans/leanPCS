@@ -1,4 +1,5 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The port of `formal/UniSound/UniSound/FsWalkProof.lean`
+-- Part of this repository. MIT OR Apache-2.0; see NOTICE.md; conventions: see AGENTS.md. The port of
+-- `formal/UniSound/UniSound/FsWalkProof.lean`
 -- (`uniWalk`, `uniWalkReject`) to π2's run (`formal/RecStatement/RecStatement/Verifier.lean`: `reduceWith`, `runWith`),
 -- with that file's channel lemmas (`nextRoot_ok`, `nextScalars_ok`, `sample_bind`, `steps`, `wAbs`, `absorbsI_wAbs`,
 -- `chainU_eq`) and `formal/RecCompose/RecCompose/Pi2Run.lean`'s (`runWith_post`).
@@ -34,8 +35,6 @@ open RecStatement Compose QuotientRpm LeanVM LeanVM.Parameters LeanVM.Protocol L
 open LeanVM.Semantics
 open UniStatement (Chan ChanM publicWordsOf)
 open OracleSpec OracleComp
-
-attribute [local instance high] Completeness.instSampleableTypeE_completeness
 
 attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
   LeanVM.Protocol.Compile.instFintypeKState UniStatement.layoutWords UniStatement.setupStack
