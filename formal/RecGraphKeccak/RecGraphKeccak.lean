@@ -5,6 +5,7 @@ import RecGraphKeccak.Main
 import RecGraphKeccak.Sim.End
 import RecGraphKeccak.Sim.Final
 import RecGraphKeccak.Circuit
+import RecGraphKeccak.Hazard
 
 /-!
 # RecGraphKeccak: the Keccak VM's π1-rec3 recorded graph, and graph = verifier
@@ -99,3 +100,15 @@ The build fails if a definition or theorem below uses an axiom beyond Lean's thr
 /-- info: 'RecGraphKeccak.Sim.pi1GraphIsVerifierK' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms RecGraphKeccak.Sim.pi1GraphIsVerifierK
+
+/-- info: 'RecGraphKeccak.functionalsCorrect15' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecGraphKeccak.functionalsCorrect15
+
+/-- info: 'RecGraphKeccak.hazard_cardK' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecGraphKeccak.hazard_cardK
+
+/-- info: 'RecGraphKeccak.hazard_probK' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecGraphKeccak.hazard_probK
