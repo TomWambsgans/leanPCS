@@ -9,6 +9,9 @@
 // `replicate` read through that pointer, which Miri reports as undefined behavior under Stacked Borrows and Tree
 // Borrows. The message is now [`Message::InPlace`], and each pass that reads it derives its pointer from the
 // buffer it was handed. The codewords are the same, word for word.
+// Also modified here, for speed, every codeword unchanged: the lane-major encodes (`encode_lane_major_with`,
+// `encoded_rows_lane_major`), which encode a lane-major message in two sweeps, the transpose fused into the second;
+// and, on AVX-512, the fused layers run slab by slab in registers (`slabs_avx512`).
 //! Additive NTT over GF(2^64) in the Lin-Chung-Han novel polynomial basis.
 //!
 //! It is the Reed-Solomon encoder of every WHIR commitment over K = F_{2^64}.
@@ -684,6 +687,278 @@ impl AdditiveNttF64 {
     }
 }
 
+// ===================================================================
+// Lane-major encodes: two sweeps, the transpose fused into the second
+// ===================================================================
+//
+// A commitment's message is lane-major: `n` blocks of `2^d` words, block `b` the codeword's lane `n - 1 - b`.
+// Every lane is a transform of its own, with the same twiddles, so the first layers can run on the message as it
+// lies, one lane at a time:
+//
+//     sweep 1 (gathered, per lane):  a task takes R adjacent residues of one lane: 2^g words of each, 2^(d-g)
+//                                    apart, R contiguous at a time; runs layers 0..g on them (R interleaved
+//                                    transforms) and writes them to the work buffer, still lane-major
+//     sweep 2 (per tile):            a task takes 2^(d-g) consecutive rows: one contiguous run of every lane,
+//                                    transposed into a row-major tile in cache; runs layers g..d there and hands
+//                                    the finished rows on, the work buffer never written back
+//
+// The row-major encode transposes the message (a read and a write of it), then sweeps the buffer twice in place
+// (two reads and two writes): three reads and three writes, against two reads and one write here. The codeword
+// is the same, word for word: every butterfly is the row-major transform's, at the same twiddle.
+
+/// Adjacent residues one first-sweep task takes from a lane: two vectors of a gathered row.
+const LANE_MAJOR_RESIDUES: usize = 16;
+
+/// Words a second-sweep tile may span (its rows by the lanes): it stays in cache from its transpose to its last
+/// layer and its rows' hashing.
+///
+/// - Off Apple silicon, 2^17 words (1 MiB) is a core's L2, which the encode's other buffers leave alone.
+/// - On Apple silicon the transform is compute bound (see [`L2_WORDS`]) and the tile is sized as the deep pass.
+#[cfg(not(all(target_arch = "aarch64", target_os = "macos")))]
+const LANE_MAJOR_TILE_WORDS: usize = 1 << 17;
+#[cfg(all(target_arch = "aarch64", target_os = "macos"))]
+const LANE_MAJOR_TILE_WORDS: usize = L3_WORDS;
+
+impl AdditiveNttF64 {
+    /// The split `(g, t)` of a lane-major encode of `2^log_rows` rows of `n_lanes` words by this whole transform:
+    /// `g` gathered layers in the first sweep, then tiles of `2^t` rows; `None` for a shape two sweeps do not
+    /// cover (or too small to split across the pool).
+    fn lane_major_split(&self, n_lanes: usize, log_rows: usize) -> Option<(usize, usize)> {
+        if n_lanes == 0 || log_rows != self.log_domain_size() || log_rows < 12 {
+            return None;
+        }
+        let mut t = ((LANE_MAJOR_TILE_WORDS / n_lanes).max(1).ilog2() as usize).min(log_rows);
+        // At least a tile per worker.
+        let min_g = parallel::num_threads().next_power_of_two().ilog2() as usize;
+        t = t.min(log_rows.saturating_sub(min_g));
+        let g = log_rows - t;
+        // A first-sweep group stays in L2, and a tile holds a residue block.
+        if (LANE_MAJOR_RESIDUES << g) > L2_WORDS || (1usize << t) < LANE_MAJOR_RESIDUES {
+            return None;
+        }
+        Some((g, t))
+    }
+
+    /// RS-encode the lane-major `msg` (`n_lanes` blocks of `2^d` words, block `b` the codeword's lane
+    /// `n_lanes - 1 - b`) by this whole `2^d`-row transform (a [`Self::replica`] encodes one replica), handing
+    /// `on_rows` every finished block of rows, as [`Self::encode_interleaved_in_place_with`] does after
+    /// [`transpose_lane_major`]; `work`, as long as the message, is left holding no codeword.
+    ///
+    /// Returns false, having done nothing, for a shape two sweeps do not cover.
+    pub fn encode_lane_major_with(&self, work: &mut [F64], msg: &[F64], n_lanes: usize, on_rows: &RowSink<'_>) -> bool {
+        assert!(n_lanes > 0 && msg.len().is_multiple_of(n_lanes));
+        let log_rows = log2_strict_usize(msg.len() / n_lanes);
+        let Some((g, t)) = self.lane_major_split(n_lanes, log_rows) else {
+            return false;
+        };
+        assert_eq!(work.len(), msg.len(), "the work buffer is as long as the message");
+        let rows = 1usize << log_rows;
+        if g > 0 {
+            let work_ptr = parallel::SendPtr(work.as_mut_ptr());
+            let stream = work.len() >= STREAM_MIN_WORDS;
+            self.lane_major_gathered(msg, n_lanes, log_rows, g, |b, r0, buf, stream_out| {
+                for (i, src) in buf.as_chunks::<LANE_MAJOR_RESIDUES>().0.iter().enumerate() {
+                    // SAFETY: each (lane, residue block) task alone writes these words of the work buffer.
+                    let dst = unsafe { work_ptr.slice(b * rows + r0 + (i << t), LANE_MAJOR_RESIDUES) };
+                    match (stream, stream_out) {
+                        (true, Some(s)) => s.copy(dst, src),
+                        _ => dst.copy_from_slice(src),
+                    }
+                }
+            });
+        }
+        let src: &[F64] = if g > 0 { work } else { msg };
+        parallel::for_each(1usize << g, |tile| {
+            with_scratch(n_lanes << t, |buf| {
+                let first = tile << t;
+                transpose_tile(buf, n_lanes, 1 << t, |b| &src[b * rows + first..][..1 << t]);
+                self.run_layers(buf, log_rows, n_lanes, g, log_rows, g, tile);
+                on_rows(first, buf);
+            })
+        });
+        true
+    }
+
+    /// The first sweep of a lane-major encode: every (lane, residue block) task gathers its `2^g` rows of
+    /// [`LANE_MAJOR_RESIDUES`] words into scratch, runs layers `0..g` there, and hands them to
+    /// `out(lane, first_residue, rows, stream)`, `stream` a streaming-store handle the task fences at its end.
+    fn lane_major_gathered(
+        &self,
+        msg: &[F64],
+        n_lanes: usize,
+        log_rows: usize,
+        g: usize,
+        out: impl Fn(usize, usize, &mut [F64], Option<&Stream>) + Sync,
+    ) {
+        let (rows, t) = (1usize << log_rows, log_rows - g);
+        let blocks = (1usize << t) / LANE_MAJOR_RESIDUES;
+        parallel::for_each_chunk(n_lanes * blocks, |lo, hi| {
+            with_scratch(LANE_MAJOR_RESIDUES << g, |buf| {
+                let stream = Stream::new();
+                for task in lo..hi {
+                    let (b, r0) = (task / blocks, (task % blocks) * LANE_MAJOR_RESIDUES);
+                    let lane = &msg[b * rows..][..rows];
+                    let n = 1usize << g;
+                    for (i, dst) in buf.as_chunks_mut::<LANE_MAJOR_RESIDUES>().0.iter_mut().enumerate() {
+                        // No prefetcher follows rows this far apart.
+                        if i + PREFETCH_ROWS < n {
+                            prefetch(lane[r0 + ((i + PREFETCH_ROWS) << t)..].as_ptr(), LANE_MAJOR_RESIDUES);
+                        }
+                        dst.copy_from_slice(&lane[r0 + (i << t)..][..LANE_MAJOR_RESIDUES]);
+                    }
+                    // Layers 0..g of a g-layer domain whose one block is the whole transform's block 0.
+                    self.run_layers(buf, g, LANE_MAJOR_RESIDUES, 0, g, 0, 0);
+                    out(b, r0, buf, Some(&stream));
+                }
+            })
+        });
+    }
+
+    /// The rows at `wanted` (sorted, distinct) of the codeword this transform encodes at log inverse rate
+    /// `log_inv_rate` from the lane-major `msg` (as [`Self::encode_lane_major_with`] takes it, one replica long),
+    /// each a row of `n_lanes` words, in `wanted`'s order; `None` for a shape two sweeps do not cover.
+    ///
+    /// The first sweep reads the message once for every replica and keeps, of each gathered transform, only the
+    /// tiles holding a wanted row; the second runs on those tiles alone, and in them on the blocks holding a
+    /// wanted row ([`Self::encode_interleaved_rows_in_place`]).
+    pub fn encoded_rows_lane_major(
+        &self,
+        msg: &[F64],
+        n_lanes: usize,
+        log_inv_rate: usize,
+        wanted: &[usize],
+    ) -> Option<Vec<F64>> {
+        assert!(wanted.is_sorted_by(|a, b| a < b), "sorted, distinct rows");
+        assert!(n_lanes > 0 && msg.len().is_multiple_of(n_lanes));
+        let log_rows = log2_strict_usize(msg.len() / n_lanes);
+        assert_eq!(
+            log_rows + log_inv_rate,
+            self.log_domain_size(),
+            "the codeword's own transform"
+        );
+        let replicas: Vec<AdditiveNttF64> = (0..1usize << log_inv_rate)
+            .map(|r| self.replica(log_inv_rate, r))
+            .collect();
+        let (g, t) = replicas[0].lane_major_split(n_lanes, log_rows)?;
+        let rows = 1usize << log_rows;
+        // The wanted tiles, (replica, tile) ascending, and where each one's lanes start in `kept`.
+        let mut tiles: Vec<(usize, usize)> = wanted.iter().map(|&q| (q >> log_rows, (q & (rows - 1)) >> t)).collect();
+        tiles.dedup();
+        assert!(
+            tiles.last().is_none_or(|&(r, _)| r < replicas.len()),
+            "rows of the codeword"
+        );
+        let tile_len = 1usize << t;
+        // `kept[(k * n_lanes + b) * tile_len ..]`: lane `b` of wanted tile `k`, after the first sweep.
+        let mut kept = if g > 0 {
+            // SAFETY: the first sweep writes every word of every wanted tile before the second reads it.
+            unsafe { primitives::uninit_vec::<F64>(tiles.len() * n_lanes * tile_len) }
+        } else {
+            Vec::new()
+        };
+        if g > 0 {
+            let kept_ptr = parallel::SendPtr(kept.as_mut_ptr());
+            let len = LANE_MAJOR_RESIDUES << g;
+            self.lane_major_gathered_replicas(&replicas, &tiles, msg, n_lanes, log_rows, g, len, |b, r0, k, src| {
+                // SAFETY: each (lane, residue block) task alone writes these words of `kept`.
+                unsafe { kept_ptr.slice((k * n_lanes + b) * tile_len + r0, LANE_MAJOR_RESIDUES) }.copy_from_slice(src);
+            });
+        }
+        let mut out = vec![F64::ZERO; wanted.len() * n_lanes];
+        let out_ptr = parallel::SendPtr(out.as_mut_ptr());
+        parallel::for_each(tiles.len(), |k| {
+            let (replica, tile) = tiles[k];
+            let first = (replica << log_rows) + (tile << t);
+            let at = wanted.partition_point(|&q| q < first);
+            let local: Vec<usize> = wanted[at..wanted.partition_point(|&q| q < first + tile_len)]
+                .iter()
+                .map(|&q| q - (replica << log_rows))
+                .collect();
+            with_scratch(n_lanes << t, |buf| {
+                let lane = |b: usize| -> &[F64] {
+                    if g > 0 {
+                        &kept[(k * n_lanes + b) * tile_len..][..tile_len]
+                    } else {
+                        &msg[b * rows + (tile << t)..][..tile_len]
+                    }
+                };
+                transpose_tile(buf, n_lanes, tile_len, lane);
+                replicas[replica].run_layers_on_rows(buf, log_rows, n_lanes, g, tile, tile << t, &local);
+                for (j, &q) in local.iter().enumerate() {
+                    let row = &buf[(q - (tile << t)) * n_lanes..][..n_lanes];
+                    // SAFETY: each wanted row is one tile's alone, and its slot one row of `out`.
+                    unsafe { out_ptr.slice((at + j) * n_lanes, n_lanes) }.copy_from_slice(row);
+                }
+            })
+        });
+        Some(out)
+    }
+
+    /// [`Self::lane_major_gathered`] for several replica transforms at once, reading each gathered group from the
+    /// message once and handing `out(lane, first_residue, k, words)` the words of wanted tile `k` alone.
+    #[allow(clippy::too_many_arguments)]
+    fn lane_major_gathered_replicas(
+        &self,
+        replicas: &[AdditiveNttF64],
+        tiles: &[(usize, usize)],
+        msg: &[F64],
+        n_lanes: usize,
+        log_rows: usize,
+        g: usize,
+        len: usize,
+        out: impl Fn(usize, usize, usize, &[F64]) + Sync,
+    ) {
+        let (rows, t) = (1usize << log_rows, log_rows - g);
+        let blocks = (1usize << t) / LANE_MAJOR_RESIDUES;
+        parallel::for_each_chunk(n_lanes * blocks, |lo, hi| {
+            with_scratch(2 * len, |scratch| {
+                let (gathered, work) = scratch.split_at_mut(len);
+                for task in lo..hi {
+                    let (b, r0) = (task / blocks, (task % blocks) * LANE_MAJOR_RESIDUES);
+                    let lane = &msg[b * rows..][..rows];
+                    let n = 1usize << g;
+                    for (i, dst) in gathered.as_chunks_mut::<LANE_MAJOR_RESIDUES>().0.iter_mut().enumerate() {
+                        if i + PREFETCH_ROWS < n {
+                            prefetch(lane[r0 + ((i + PREFETCH_ROWS) << t)..].as_ptr(), LANE_MAJOR_RESIDUES);
+                        }
+                        dst.copy_from_slice(&lane[r0 + (i << t)..][..LANE_MAJOR_RESIDUES]);
+                    }
+                    let mut k = 0;
+                    for (replica, ntt) in replicas.iter().enumerate() {
+                        let end = k + tiles[k..].partition_point(|&(r, _)| r == replica);
+                        if end > k {
+                            work.copy_from_slice(gathered);
+                            ntt.run_layers(work, g, LANE_MAJOR_RESIDUES, 0, g, 0, 0);
+                            for (j, &(_, tile)) in tiles[k..end].iter().enumerate() {
+                                out(b, r0, k + j, &work[tile * LANE_MAJOR_RESIDUES..][..LANE_MAJOR_RESIDUES]);
+                            }
+                        }
+                        k = end;
+                    }
+                }
+            })
+        });
+    }
+}
+
+/// Fill the row-major tile `buf` (`rows` rows of `n_lanes` words) from the lane runs `lane(b)` (`rows` words of
+/// message block `b`), codeword lane `n_lanes - 1 - b` taking block `b`, a few rows at a time so that they stay
+/// in L1.
+fn transpose_tile<'a>(buf: &mut [F64], n_lanes: usize, rows: usize, lane: impl Fn(usize) -> &'a [F64]) {
+    const CHUNK: usize = 64;
+    debug_assert_eq!(buf.len(), n_lanes * rows);
+    for x0 in (0..rows).step_by(CHUNK) {
+        let n = CHUNK.min(rows - x0);
+        let out = &mut buf[x0 * n_lanes..(x0 + n) * n_lanes];
+        for b in 0..n_lanes {
+            let src = &lane(b)[x0..x0 + n];
+            for (slot, &word) in out[n_lanes - 1 - b..].iter_mut().step_by(n_lanes).zip(src) {
+                *slot = word;
+            }
+        }
+    }
+}
+
 /// Visit every row group of a fused multi-layer block.
 ///
 /// ```text
@@ -737,7 +1012,137 @@ fn fused_rows<const N: usize>(
 /// - The eight rows stay in L1 across all twelve butterflies.
 /// - The seven twiddles are breadth-first: one for layer L, two for L+1, four for L+2.
 fn butterfly_interleaved_fused_3layer(block: &mut [F64], t: &[F64; 7], eighth: usize, num_ntts: usize) {
+    #[cfg(all(target_arch = "x86_64", target_feature = "vpclmulqdq", target_feature = "avx512f"))]
+    {
+        assert_eq!(block.len(), 8 * eighth * num_ntts);
+        // SAFETY: the block is exactly eight slabs of `eighth * num_ntts` words, and the features are enabled.
+        return unsafe { slabs_avx512::radix8(block.as_mut_ptr(), eighth * num_ntts, t) };
+    }
+    #[allow(unreachable_code)]
     fused_rows::<8>(block, eighth, num_ntts, |rows| radix8_butterflies(rows, t));
+}
+
+/// Fused layers on AVX-512, slab by slab rather than row by row.
+///
+/// # Why slabs
+///
+/// - Within one block every row of a slab takes the same twiddles, and a slab's rows are contiguous.
+/// - So the butterflies pair word `k` of one slab with word `k` of another, for every `k` of the slab at once:
+///   the rows' lanes need no loop of their own, and only the slab's end needs a masked vector.
+///
+/// # Why in registers
+///
+/// - A radix-8 group's eight vectors are loaded once, take all twelve butterflies in registers, and are stored once.
+/// - Butterfly by butterfly through L1 costs four memory operations a butterfly instead of 4/3; Zen 4 stores one
+///   512-bit vector every two cycles, so the stores alone would cost more than the arithmetic.
+#[cfg(all(target_arch = "x86_64", target_feature = "vpclmulqdq", target_feature = "avx512f"))]
+mod slabs_avx512 {
+    use super::butterfly_zmm_v;
+    use core::arch::x86_64::*;
+    use primitives::field::F64;
+
+    /// Run `kernel` on the eight-word vectors at offset `k` of every slab, `k` stepping over the slab, the last one
+    /// masked.
+    ///
+    /// # Safety
+    ///
+    /// `base` addresses `N` slabs of `slab` words, readable and writable.
+    #[inline(always)]
+    unsafe fn sweep<const N: usize>(base: *mut F64, slab: usize, kernel: impl Fn(&mut [__m512i; N])) {
+        let full = slab & !7;
+        let mut k = 0;
+        // SAFETY: every vector lies inside its slab: full ones below `full`, the masked one past it.
+        unsafe {
+            while k < full {
+                let p = base.add(k);
+                let mut x: [__m512i; N] = std::array::from_fn(|i| _mm512_loadu_si512(p.add(i * slab).cast()));
+                kernel(&mut x);
+                for (i, &v) in x.iter().enumerate() {
+                    _mm512_storeu_si512(p.add(i * slab).cast(), v);
+                }
+                k += 8;
+            }
+            if k < slab {
+                let mask = ((1u16 << (slab - k)) - 1) as u8;
+                let p = base.add(k);
+                let mut x: [__m512i; N] =
+                    std::array::from_fn(|i| _mm512_maskz_loadu_epi64(mask, p.add(i * slab).cast()));
+                kernel(&mut x);
+                for (i, &v) in x.iter().enumerate() {
+                    _mm512_mask_storeu_epi64(p.add(i * slab).cast(), mask, v);
+                }
+            }
+        }
+    }
+
+    #[inline(always)]
+    fn bf<const N: usize>(x: &mut [__m512i; N], a: usize, b: usize, tw: __m512i) {
+        (x[a], x[b]) = butterfly_zmm_v(x[a], x[b], tw);
+    }
+
+    #[inline(always)]
+    fn splat(t: F64) -> __m512i {
+        // SAFETY: the cfg enables avx512f.
+        unsafe { _mm512_set1_epi64(t.0 as i64) }
+    }
+
+    /// Three layers over eight slabs: [`super::radix8_butterflies`] on every row of them.
+    ///
+    /// # Safety
+    ///
+    /// `base` addresses eight slabs of `slab` words, readable and writable.
+    #[target_feature(enable = "vpclmulqdq", enable = "avx512f", enable = "avx2")]
+    pub(super) unsafe fn radix8(base: *mut F64, slab: usize, t: &[F64; 7]) {
+        let tw = t.map(splat);
+        // SAFETY: forwarded.
+        unsafe {
+            sweep::<8>(base, slab, |x| {
+                bf(x, 0, 4, tw[0]);
+                bf(x, 1, 5, tw[0]);
+                bf(x, 2, 6, tw[0]);
+                bf(x, 3, 7, tw[0]);
+                bf(x, 0, 2, tw[1]);
+                bf(x, 1, 3, tw[1]);
+                bf(x, 4, 6, tw[2]);
+                bf(x, 5, 7, tw[2]);
+                bf(x, 0, 1, tw[3]);
+                bf(x, 2, 3, tw[4]);
+                bf(x, 4, 5, tw[5]);
+                bf(x, 6, 7, tw[6]);
+            })
+        }
+    }
+
+    /// Two layers over four slabs: [`super::butterfly_interleaved_fused_2layer`]'s butterflies.
+    ///
+    /// # Safety
+    ///
+    /// `base` addresses four slabs of `slab` words, readable and writable.
+    #[target_feature(enable = "vpclmulqdq", enable = "avx512f", enable = "avx2")]
+    pub(super) unsafe fn radix4(base: *mut F64, slab: usize, t_outer: F64, t_inner_a: F64, t_inner_b: F64) {
+        let (o, a, b) = (splat(t_outer), splat(t_inner_a), splat(t_inner_b));
+        // SAFETY: forwarded.
+        unsafe {
+            sweep::<4>(base, slab, |x| {
+                bf(x, 0, 2, o);
+                bf(x, 1, 3, o);
+                bf(x, 0, 1, a);
+                bf(x, 2, 3, b);
+            })
+        }
+    }
+
+    /// One layer over two slabs.
+    ///
+    /// # Safety
+    ///
+    /// `base` addresses two slabs of `slab` words, readable and writable.
+    #[target_feature(enable = "vpclmulqdq", enable = "avx512f", enable = "avx2")]
+    pub(super) unsafe fn radix2(base: *mut F64, slab: usize, t: F64) {
+        let t = splat(t);
+        // SAFETY: forwarded.
+        unsafe { sweep::<2>(base, slab, |x| bf(x, 0, 1, t)) }
+    }
 }
 
 /// The twelve butterflies of one radix-8 row group, with its seven twiddles breadth-first.
@@ -973,6 +1378,13 @@ fn butterfly_interleaved_fused_2layer(
     quarter: usize,
     num_ntts: usize,
 ) {
+    #[cfg(all(target_arch = "x86_64", target_feature = "vpclmulqdq", target_feature = "avx512f"))]
+    {
+        assert_eq!(block.len(), 4 * quarter * num_ntts);
+        // SAFETY: the block is exactly four slabs of `quarter * num_ntts` words, and the features are enabled.
+        return unsafe { slabs_avx512::radix4(block.as_mut_ptr(), quarter * num_ntts, t_outer, t_inner_a, t_inner_b) };
+    }
+    #[allow(unreachable_code)]
     fused_rows::<4>(block, quarter, num_ntts, |rows| {
         let [row_a, row_b, row_c, row_d] = rows;
         // Layer L: rows 2 apart, one twiddle for the block.
@@ -987,6 +1399,13 @@ fn butterfly_interleaved_fused_2layer(
 #[inline]
 fn butterfly_interleaved_block(block: &mut [F64], twiddle: F64, block_size_half: usize, num_ntts: usize) {
     let half_offset = block_size_half * num_ntts;
+    #[cfg(all(target_arch = "x86_64", target_feature = "vpclmulqdq", target_feature = "avx512f"))]
+    {
+        assert_eq!(block.len(), 2 * half_offset);
+        // SAFETY: the block is exactly two slabs of `half_offset` words, and the features are enabled.
+        return unsafe { slabs_avx512::radix2(block.as_mut_ptr(), half_offset, twiddle) };
+    }
+    #[allow(unreachable_code)]
     let (top, bot) = block.split_at_mut(half_offset);
     for r in 0..block_size_half {
         let off = r * num_ntts;
@@ -1328,7 +1747,7 @@ unsafe fn butterfly_lanes_avx512_masked(top: *mut F64, bot: *mut F64, twiddle: u
 ///
 ///     reduce:     p = lo + hi * x^64,  x^64 = x^4 + x^3 + x + 1
 ///                 p mod f = lo ^ g(hi ^ spill),  g(y) = y ^ y<<1 ^ y<<3 ^ y<<4
-///                 spill = hi>>63 ^ hi>>61 ^ hi>>60, the bits g pushes past x^63
+///                 spill = hi>>61 ^ hi>>60, the bits g pushes past x^63 (hi has 63 bits)
 /// ```
 ///
 /// - The unpacks stay inside 128-bit lanes, so no shuffle crosses lanes.
@@ -1342,31 +1761,41 @@ fn butterfly_zmm(
     v: core::arch::x86_64::__m512i,
     twiddle: u64,
 ) -> (core::arch::x86_64::__m512i, core::arch::x86_64::__m512i) {
+    butterfly_zmm_v(u, v, core::arch::x86_64::_mm512_set1_epi64(twiddle as i64))
+}
+
+/// [`butterfly_zmm`] with the twiddle already broadcast to every lane.
+///
+/// The product's high half has at most 63 bits (two 64-bit factors), so its bit 63, which `hi >> 63` would
+/// spill, is always clear and that shift is left out.
+#[cfg(all(target_arch = "x86_64", target_feature = "vpclmulqdq", target_feature = "avx512f"))]
+#[inline(always)]
+fn butterfly_zmm_v(
+    u: core::arch::x86_64::__m512i,
+    v: core::arch::x86_64::__m512i,
+    tw: core::arch::x86_64::__m512i,
+) -> (core::arch::x86_64::__m512i, core::arch::x86_64::__m512i) {
     use core::arch::x86_64::*;
+    // SAFETY: the cfg enables vpclmulqdq and avx512f, which every intrinsic below needs.
+    unsafe {
+        // Products v * t: even lanes, then odd lanes, one 128-bit product per 128-bit lane.
+        let even = _mm512_clmulepi64_epi128::<0x00>(v, tw);
+        let odd = _mm512_clmulepi64_epi128::<0x11>(v, tw);
+        // Back to lane order: qword i of lo / hi is the low / high half of lane i's product.
+        let lo = _mm512_unpacklo_epi64(even, odd);
+        let hi = _mm512_unpackhi_epi64(even, odd);
 
-    let tw = _mm512_set1_epi64(twiddle as i64);
-    // Products v * t: even lanes, then odd lanes, one 128-bit product per 128-bit lane.
-    let even = _mm512_clmulepi64_epi128::<0x00>(v, tw);
-    let odd = _mm512_clmulepi64_epi128::<0x11>(v, tw);
-    // Back to lane order: qword i of lo / hi is the low / high half of lane i's product.
-    let lo = _mm512_unpacklo_epi64(even, odd);
-    let hi = _mm512_unpackhi_epi64(even, odd);
-
-    // Reduce modulo x^64 + x^4 + x^3 + x + 1 with shifts and three-way XORs.
-    const XOR3: i32 = 0x96;
-    // The bits of hi * (x^4 + x^3 + x + 1) that land past x^63.
-    let spill = _mm512_ternarylogic_epi64::<XOR3>(
-        _mm512_srli_epi64::<63>(hi),
-        _mm512_srli_epi64::<61>(hi),
-        _mm512_srli_epi64::<60>(hi),
-    );
-    // Both hi and spill are multiplied by the same constant, so fold them first.
-    let x = _mm512_xor_si512(hi, spill);
-    // g(x) = x ^ x<<1 ^ x<<3 ^ x<<4, split across two three-way XORs.
-    let fx = _mm512_ternarylogic_epi64::<XOR3>(x, _mm512_slli_epi64::<1>(x), _mm512_slli_epi64::<3>(x));
-    // u' = u + v * t, with the product's lo and g(x) folded in one step.
-    let new_u = _mm512_ternarylogic_epi64::<XOR3>(u, lo, _mm512_xor_si512(fx, _mm512_slli_epi64::<4>(x)));
-    (new_u, _mm512_xor_si512(v, new_u))
+        // Reduce modulo x^64 + x^4 + x^3 + x + 1 with shifts and three-way XORs.
+        const XOR3: i32 = 0x96;
+        // hi ^ the bits of hi * (x^4 + x^3 + x + 1) that land past x^63 (bit 63 of hi is clear): both are
+        // multiplied by the same constant, so they are folded first.
+        let x = _mm512_ternarylogic_epi64::<XOR3>(hi, _mm512_srli_epi64::<61>(hi), _mm512_srli_epi64::<60>(hi));
+        // g(x) = x ^ x<<1 ^ x<<3 ^ x<<4, split across two three-way XORs.
+        let fx = _mm512_ternarylogic_epi64::<XOR3>(x, _mm512_slli_epi64::<1>(x), _mm512_slli_epi64::<3>(x));
+        // u' = u + v * t, with the product's lo and g(x) folded in one step.
+        let new_u = _mm512_ternarylogic_epi64::<XOR3>(u, lo, _mm512_xor_si512(fx, _mm512_slli_epi64::<4>(x)));
+        (new_u, _mm512_xor_si512(v, new_u))
+    }
 }
 
 /// Two F64 butterflies with a shared twiddle, NEON-resident end to end.
@@ -1435,6 +1864,55 @@ mod tests {
                         data[off_bot + lane] = v + new_u;
                     }
                 }
+            }
+        }
+    }
+
+    #[test]
+    fn lane_major_encodes_match_the_transposed_encode() {
+        // Invariant: the two-sweep encodes from the lane-major message give the codeword the row-major encode of
+        // its transpose gives, word for word: every row through `encode_lane_major_with`, and any rows through
+        // `encoded_rows_lane_major`.
+        let mut rng = Rng::new(0x1A4E);
+        for (log_rows, n_lanes, log_inv_rate) in [(13usize, 63usize, 1usize), (12, 40, 1), (12, 3, 2), (14, 17, 1)] {
+            let rows = 1usize << log_rows;
+            let msg: Vec<F64> = (0..n_lanes << log_rows).map(|_| F64(rng.next_u64())).collect();
+            let ntt = AdditiveNttF64::standard(log_rows + log_inv_rate);
+            let mut want = vec![F64::ZERO; msg.len() << log_inv_rate];
+            transpose_lane_major(&mut want[..msg.len()], &msg, n_lanes, log_rows);
+            ntt.encode_interleaved_in_place(&mut want, n_lanes, log_inv_rate);
+
+            let got = std::sync::Mutex::new(vec![F64::ZERO; want.len()]);
+            let mut work = vec![F64::ZERO; msg.len()];
+            for replica in 0..1usize << log_inv_rate {
+                let at = replica * msg.len();
+                let sink = |row: usize, block: &[F64]| {
+                    got.lock().unwrap()[at + row * n_lanes..][..block.len()].copy_from_slice(block);
+                };
+                let replica_ntt = ntt.replica(log_inv_rate, replica);
+                assert!(replica_ntt.encode_lane_major_with(&mut work, &msg, n_lanes, &sink));
+            }
+            assert_eq!(
+                *got.lock().unwrap(),
+                want,
+                "every row, shape {log_rows}/{n_lanes}/{log_inv_rate}"
+            );
+
+            let mut wanted: Vec<usize> = (0..40)
+                .map(|_| rng.next_u64() as usize % (rows << log_inv_rate))
+                .collect();
+            wanted.extend([0, (rows << log_inv_rate) - 1, rows, rows - 1]);
+            wanted.sort_unstable();
+            wanted.dedup();
+            let found = ntt
+                .encoded_rows_lane_major(&msg, n_lanes, log_inv_rate, &wanted)
+                .expect("a two-sweep shape");
+            for (i, &q) in wanted.iter().enumerate() {
+                assert_eq!(
+                    found[i * n_lanes..(i + 1) * n_lanes],
+                    want[q * n_lanes..(q + 1) * n_lanes],
+                    "row {q}, shape {log_rows}/{n_lanes}/{log_inv_rate}"
+                );
             }
         }
     }

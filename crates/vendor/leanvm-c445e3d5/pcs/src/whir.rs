@@ -12,6 +12,9 @@
 // One comment corrected (no code change): the level-0 query grinding is `QUERY_GRINDING_BITS = 17` bits in the
 // production profile, not "0 bits" as leanVM's comment says (`whir_config.rs`, and the verifier's
 // `QUERY_GRINDING_BITS`); to report upstream.
+// Also modified here, for speed, every proof unchanged: `commit_tree` and `encoded_rows` encode from the
+// lane-major message (`AdditiveNttF64::encode_lane_major_with`, `encoded_rows_lane_major`), and the lane rounds sum
+// sparse low weights at their nonzero entries alone (`SparseLow`) and the dense ones with `dot_base` on x86.
 
 //! WHIR with `K = GF(2)[x]/(x^64+x^4+x^3+x+1)` and
 //! `E = K[y]/(y^3+y+1)`.
@@ -213,9 +216,14 @@ pub fn commit_tree_in(
             log_rows,
             log_inv_rate,
             scratch,
-            |replica, ntt, buffer| {
+            |replica, ntt, buffer, transposed| {
                 let first = replica << log_rows;
-                ntt.encode_interleaved_in_place_with(buffer, n_lanes, 0, &|row, rows| tree.absorb(first + row, rows));
+                let on_rows = |row: usize, rows: &[F64]| tree.absorb(first + row, rows);
+                if !transposed {
+                    return ntt.encode_lane_major_with(buffer, message, n_lanes, &on_rows);
+                }
+                ntt.encode_interleaved_in_place_with(buffer, n_lanes, 0, &on_rows);
+                true
             },
         )
     });
@@ -260,6 +268,16 @@ fn encoded_rows_within(
     let mut wanted = positions.to_vec();
     wanted.sort_unstable();
     wanted.dedup();
+    // From the lane-major message where the shape allows it: one read of it for every replica.
+    if let Some(found) = ntt.encoded_rows_lane_major(message, n_lanes, log_inv_rate, &wanted) {
+        return positions
+            .iter()
+            .map(|q| {
+                let at = wanted.binary_search(q).expect("a wanted row");
+                found[at * n_lanes..(at + 1) * n_lanes].to_vec()
+            })
+            .collect();
+    }
     // SAFETY: every group starts with a transpose that writes its message region, from which the encode writes
     // the rest of its codeword before reading it.
     let mut buffer = unsafe { primitives::uninit_vec::<F64>(group << k_code) };
@@ -292,27 +310,33 @@ fn lane_shape(message: &[F64], log_n: usize, log_batch_size: usize, log_inv_rate
     (n_lanes, log_rows)
 }
 
-/// Hand `encode(replica, transform, buffer)` each replica of the codeword in turn, the buffer (in `scratch`'s
-/// allocation when that holds it) holding the transposed message and the transform being that replica's
-/// ([`AdditiveNttF64::replica`]).
+/// Hand `encode(replica, transform, buffer, transposed)` each replica of the codeword in turn, the buffer (in
+/// `scratch`'s allocation when that holds it) and the transform being that replica's ([`AdditiveNttF64::replica`]):
+/// first with `transposed` false, the buffer a work buffer for an encode from the lane-major message, and, if that
+/// returns false (a shape it does not take), again with the buffer holding the transposed message.
 fn each_replica(
     message: &[F64],
     n_lanes: usize,
     log_rows: usize,
     log_inv_rate: usize,
     scratch: Vec<F64>,
-    mut encode: impl FnMut(usize, &AdditiveNttF64, &mut [F64]),
+    mut encode: impl FnMut(usize, &AdditiveNttF64, &mut [F64], bool) -> bool,
 ) {
     let ntt = AdditiveNttF64::standard(log_rows + log_inv_rate);
     let mut buffer = scratch;
     buffer.clear();
     buffer.reserve_exact(message.len());
-    // SAFETY: the capacity holds the message's length of plain words, and every replica starts with a transpose
-    // that writes each of them before the encode reads any.
+    // SAFETY: the capacity holds the message's length of plain words, and every replica either is encoded from
+    // the message, the encode writing every word of the buffer it reads ([`AdditiveNttF64::encode_lane_major_with`]),
+    // or starts with a transpose that writes each of them before the encode reads any.
     unsafe { buffer.set_len(message.len()) };
     for replica in 0..1usize << log_inv_rate {
-        crate::ntt::transpose_lane_major(&mut buffer, message, n_lanes, log_rows);
-        encode(replica, &ntt.replica(log_inv_rate, replica), &mut buffer);
+        let ntt = ntt.replica(log_inv_rate, replica);
+        // From the lane-major message where the shape allows it, else from its transpose.
+        if !encode(replica, &ntt, &mut buffer, false) {
+            crate::ntt::transpose_lane_major(&mut buffer, message, n_lanes, log_rows);
+            assert!(encode(replica, &ntt, &mut buffer, true));
+        }
     }
 }
 
@@ -1188,34 +1212,134 @@ fn tensor_msg(scales: &[Vec<F192>], inner: &[Vec<F192>]) -> SumcheckMessage {
     SumcheckMessage { u_0, u_2 }
 }
 
-/// `p_c[l] = Σ_x f(l, x) · low_c[x]` for every claim `c` and lane `l`, claim-major, in one pass over `f`.
-fn lane_inner_products(f: &[F64], block: usize, weight: &[LaneTensor]) -> Vec<Vec<F192>> {
+/// Low weights with at most this many nonzero entries are summed at those entries alone ([`SparseLow`]).
+const SPARSE_LOW_MAX: usize = 64;
+
+/// A tensor's low weight, by its nonzero entries when it has at most [`SPARSE_LOW_MAX`] of them (a hidden
+/// layout's gadget patterns have three): the lane rounds then read it at those entries alone, the field sums
+/// being the same without the zero terms.
+enum SparseLow {
+    Dense,
+    Sparse(Vec<(usize, F192)>),
+}
+
+/// Each tensor's [`SparseLow`].
+fn sparse_lows(weight: &[LaneTensor]) -> Vec<SparseLow> {
+    weight
+        .iter()
+        .map(|tensor| {
+            let low = &tensor.low;
+            let chunk = ROUND_CHUNK.min(low.len()).max(1);
+            let nonzero = parallel::map_reduce(
+                low.len().div_ceil(chunk),
+                || 0usize,
+                |t| {
+                    low[t * chunk..((t + 1) * chunk).min(low.len())]
+                        .iter()
+                        .filter(|e| !e.is_zero())
+                        .count()
+                },
+                |a, b| a + b,
+            );
+            if nonzero > SPARSE_LOW_MAX {
+                return SparseLow::Dense;
+            }
+            SparseLow::Sparse(
+                low.iter()
+                    .enumerate()
+                    .filter(|(_, e)| !e.is_zero())
+                    .map(|(x, &e)| (x, e))
+                    .collect(),
+            )
+        })
+        .collect()
+}
+
+/// `p_c[l] = Σ_x f(l, x) · low_c[x]` for every claim `c` and lane `l`, claim-major: in one pass over `f` for the
+/// dense low weights, at their nonzero entries for the sparse ones.
+fn lane_inner_products(f: &[F64], block: usize, weight: &[LaneTensor], sparse: &[SparseLow]) -> Vec<Vec<F192>> {
     let n_lanes = f.len() / block;
     let chunk = ROUND_CHUNK.min(block);
-    let sums = parallel::fold_reduce(
-        block / chunk,
-        || vec![F192Unreduced::ZERO; weight.len() * n_lanes],
-        |acc, t| {
-            let x0 = t * chunk;
+    let dense: Vec<usize> = (0..weight.len())
+        .filter(|&c| matches!(sparse[c], SparseLow::Dense))
+        .collect();
+    // On a vector carry-less multiplier: the chunk's dense low weights packed once for `dot_base`, which takes
+    // eight terms at a time, then the lanes in turn against them.
+    #[cfg(all(target_arch = "x86_64", target_feature = "vpclmulqdq", target_feature = "avx2"))]
+    let fold = |acc: &mut Vec<F192Unreduced>, t: usize| {
+        use primitives::field::{Weights8, dot_base};
+        let x0 = t * chunk;
+        if !chunk.is_multiple_of(8) {
+            return lane_inner_products_chunk(f, block, weight, &dense, acc, x0, chunk);
+        }
+        let packed: Vec<Vec<Weights8>> = dense
+            .iter()
+            .map(|&c| {
+                let low = &weight[c].low[x0..x0 + chunk];
+                low.as_chunks::<8>().0.iter().map(Weights8::new).collect()
+            })
+            .collect();
+        for l in 0..n_lanes {
+            let lane = &f[l * block + x0..l * block + x0 + chunk];
+            for (w, &c) in packed.iter().zip(&dense) {
+                acc[c * n_lanes + l] ^= dot_base(w, lane);
+            }
+        }
+    };
+    #[cfg(not(all(target_arch = "x86_64", target_feature = "vpclmulqdq", target_feature = "avx2")))]
+    let fold = |acc: &mut Vec<F192Unreduced>, t: usize| {
+        lane_inner_products_chunk(f, block, weight, &dense, acc, t * chunk, chunk)
+    };
+    let mut sums = if dense.is_empty() {
+        vec![F192Unreduced::ZERO; weight.len() * n_lanes]
+    } else {
+        parallel::fold_reduce(
+            block / chunk,
+            || vec![F192Unreduced::ZERO; weight.len() * n_lanes],
+            fold,
+            |mut a, b| {
+                a.iter_mut().zip(b).for_each(|(a, b)| *a ^= b);
+                a
+            },
+        )
+    };
+    for (c, low) in sparse.iter().enumerate() {
+        if let SparseLow::Sparse(entries) = low {
             for l in 0..n_lanes {
-                let lane = &f[l * block + x0..l * block + x0 + chunk];
-                for (c, tensor) in weight.iter().enumerate() {
-                    let mut sum = F192Unreduced::ZERO;
-                    for (&w, &e) in lane.iter().zip(&tensor.low[x0..x0 + chunk]) {
-                        sum ^= e.mul_base_unreduced(w);
-                    }
-                    acc[c * n_lanes + l] ^= sum;
+                for &(x, e) in entries {
+                    sums[c * n_lanes + l] ^= e.mul_base_unreduced(f[l * block + x]);
                 }
             }
-        },
-        |mut a, b| {
-            a.iter_mut().zip(b).for_each(|(a, b)| *a ^= b);
-            a
-        },
-    );
+        }
+    }
     sums.chunks_exact(n_lanes)
         .map(|claim| claim.iter().map(|s| s.reduce()).collect())
         .collect()
+}
+
+/// The dense low weights' terms of [`lane_inner_products`] over the words `x0 .. x0 + chunk` of every lane, one
+/// product at a time.
+#[allow(clippy::ptr_arg)]
+fn lane_inner_products_chunk(
+    f: &[F64],
+    block: usize,
+    weight: &[LaneTensor],
+    dense: &[usize],
+    acc: &mut Vec<F192Unreduced>,
+    x0: usize,
+    chunk: usize,
+) {
+    let n_lanes = f.len() / block;
+    for l in 0..n_lanes {
+        let lane = &f[l * block + x0..l * block + x0 + chunk];
+        for &c in dense {
+            let mut sum = F192Unreduced::ZERO;
+            for (&w, &e) in lane.iter().zip(&weight[c].low[x0..x0 + chunk]) {
+                sum ^= e.mul_base_unreduced(w);
+            }
+            acc[c * n_lanes + l] ^= sum;
+        }
+    }
 }
 
 /// The lanes collapsed at the lane rounds' challenges `rs`: the folded witness `Σ_l eq(rs, l) · f(l, ·)`, the
@@ -1225,6 +1349,7 @@ fn collapse_lanes(
     block: usize,
     rs: &[F192],
     weight: &[LaneTensor],
+    sparse: &[SparseLow],
     scales: &[F192],
 ) -> (Vec<F192>, Vec<F192>, SumcheckMessage) {
     let n_lanes = f.len() / block;
@@ -1252,11 +1377,22 @@ fn collapse_lanes(
             for (d, sum) in lo_f[..n].iter_mut().zip(&sums) {
                 *d = sum.reduce();
             }
+            // The dense low weights at every word, the sparse ones at their entries in the stage.
             for (k, d) in lo_b[..n].iter_mut().enumerate() {
                 *d = scales
                     .iter()
                     .zip(weight)
-                    .fold(F192::ZERO, |acc, (&scale, tensor)| acc + scale * tensor.low[s + k]);
+                    .zip(sparse)
+                    .filter(|(_, low)| matches!(low, SparseLow::Dense))
+                    .fold(F192::ZERO, |acc, ((&scale, tensor), _)| acc + scale * tensor.low[s + k]);
+            }
+            for (&scale, low) in scales.iter().zip(sparse) {
+                if let SparseLow::Sparse(entries) = low {
+                    let from = entries.partition_point(|&(x, _)| x < s);
+                    for &(x, e) in entries[from..].iter().take_while(|&&(x, _)| x < s + n) {
+                        lo_b[x - s] += scale * e;
+                    }
+                }
             }
             // SAFETY: distinct stages name disjoint in-bounds windows of `nf` and `nb`, which stay borrowed for
             // the whole dispatch.
@@ -1308,7 +1444,11 @@ fn tensor_lane_rounds<'a>(
     };
     let span = tracing::info_span!("Sumcheck round", round = 0, log_size = f.len().ilog2()).entered();
     let mut scales: Vec<Vec<F192>> = weight.iter().map(|t| padded(t.scales.clone())).collect();
-    let mut inner: Vec<Vec<F192>> = lane_inner_products(f, block, weight).into_iter().map(padded).collect();
+    let sparse = sparse_lows(weight);
+    let mut inner: Vec<Vec<F192>> = lane_inner_products(f, block, weight, &sparse)
+        .into_iter()
+        .map(padded)
+        .collect();
     drop(span);
     let msg = tensor_msg(&scales, &inner);
     send_msg(ps, msg, target);
@@ -1325,7 +1465,7 @@ fn tensor_lane_rounds<'a>(
         } else {
             let _span = tracing::info_span!("Sumcheck round", round = j + 1, log_size = block.ilog2()).entered();
             let last: Vec<F192> = scales.iter().map(|s| s[0]).collect();
-            let (nf, nb, msg) = collapse_lanes(f, block, &rs, weight, &last);
+            let (nf, nb, msg) = collapse_lanes(f, block, &rs, weight, &sparse, &last);
             collapsed = Some((nf, nb));
             msg
         };
