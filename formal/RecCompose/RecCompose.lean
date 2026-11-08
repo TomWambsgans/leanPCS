@@ -44,6 +44,7 @@ import RecCompose.IvUniform
 import RecCompose.Pi2AlphaEnd
 import RecCompose.Pi2Closed
 import RecCompose.CompleteKeccakEnd
+import RecCompose.RealEnd
 
 /-!
 # RecCompose: the recursive verifier's end theorems
@@ -103,3 +104,7 @@ ones.
 /-- info: 'RecCompose.Pi1K.recCompleteness_real_K_fs_bits' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms RecCompose.Pi1K.recCompleteness_real_K_fs_bits
+
+/-- info: 'RecCompose.recKnowledgeSoundness_reduction_real' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecCompose.recKnowledgeSoundness_reduction_real
