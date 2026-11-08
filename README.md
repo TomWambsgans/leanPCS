@@ -67,7 +67,7 @@ to `root` (details: [`AGENTS.md`](AGENTS.md#membership-what-is-proved)).
 | | |
 |---|---|
 | Circuit | 34 Keccak-256 (χ gate on bits): 3,878,612 of 2^22 rows |
-| Prover | 3.9 s, 6.2 GiB peak on h1 (Ryzen 7 PRO 8700GE, 8 cores, AVX-512) at load 14–19, where the prover before the x86 work took 8.8 s; 2.3 s on h2 (Core Ultra 7 265, 20 cores, AVX2) at load 10, 5.0 s before; 2.2 s on an M4 Max (16 cores) before the x86 work |
+| Prover | 3.6 s, 6.2 GiB peak on h1 (Ryzen 7 PRO 8700GE, 8 cores, AVX-512) at load 9–14, where the prover before the x86 work took 8.4 s; 2.3 s on h2 (Core Ultra 7 265, 20 cores, AVX2) at load 10, 5.0 s before; 2.2 s on an M4 Max (16 cores) before the x86 work |
 | Calldata to the contract | 252 bytes (2 roots + 5 field elements + statement) |
 | PCS claims | 4, in 3 `PCS_OPEN` calls |
 | Gas, `PCS_OPEN` free | 14,289 execution; 18,309 transaction (without the 21,000 base) |

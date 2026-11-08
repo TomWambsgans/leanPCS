@@ -96,7 +96,7 @@ Gas is transaction gas without the 21,000 base (EIP-7623), `PCS_OPEN` at a claim
 
 | | ZK Merkle membership | leanVM by recursion (128 signatures) |
 |---|---|---|
-| Prover | 2.2 s (reduction 1.46 s, openings 0.76 s), 5.9 GiB, before the x86 work. h1 (Ryzen 7 PRO 8700GE, AVX-512), load 14–19: 3.9 s (reduction 2.6 s, openings 1.2 s), 6.2 GiB, against 8.8 s (6.8 s, 2.0 s) before. h2 (Core Ultra 7 265, AVX2), load 10: 2.3 s (1.5 s, 0.8 s), against 5.0 s | trace → π1-rec3 → π2 and openings: 4.1 s per proof, 0.9 s per circuit once, 12.5 GB (`tests/pipeline.rs`, load 2–7) |
+| Prover | 2.2 s (reduction 1.46 s, openings 0.76 s), 5.9 GiB, before the x86 work. h1 (Ryzen 7 PRO 8700GE, AVX-512), load 9–14: 3.6 s (reduction 2.46 s, openings 1.14 s), 6.2 GiB, against 8.4 s (6.45 s, 1.92 s) before. h2 (Core Ultra 7 265, AVX2), load 10: 2.3 s (1.5 s, 0.8 s), against 5.0 s | trace → π1-rec3 → π2 and openings: 4.1 s per proof, 0.9 s per circuit once, 12.5 GB (`tests/pipeline.rs`, load 2–7) |
 | Calldata | 252 B | 980 B |
 | Gas | 14,289 execution, **18,309** transaction | 28,325 execution, **43,309** transaction (62,720 under EIP-7976) |
 | Claims | 4 in 3 calls | 7 in 6 calls |
