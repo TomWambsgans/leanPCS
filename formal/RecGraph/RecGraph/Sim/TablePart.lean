@@ -10,8 +10,8 @@ import UniSound.Ids.Facts
 * `tablePart_sim`: the program's `tablePart` simulates `UniStatement.tablePart`. It reads `24 · tableReads t` bytes
   (`UniSound.tableReads`: the sent columns, then each flush's sent fingerprints; which fingerprints are sent depends on
   which columns are, not on their values: `UniSound.sum_flushReads`). Its part and its relations are represented, and
-  each relation's terms are in the table's columns, at `w[..lh]`, untwisted (`TabShape`).
-* `tableSpec`: `TableSpec partR tableShape tableBytes`, `Compose`'s interface.
+  each relation's terms are in the table's columns, at `w[..lh]`, untwisted (`TabShape`). The Keccak VM's tables
+  (`RecGraphKeccak.Sim.Tables`, `tableSpecK`) use it.
 -/
 
 set_option linter.dupNamespace false
@@ -397,24 +397,7 @@ theorem tablePart_sim (st : RecState) (t : Table) (lh : Nat) {weights : Array Na
     exact Sim.pure_of_pstep (PStep.refl q6 hq6.good) ⟨_, _, rfl, rfl, hc0, hr0, hsh0, hPl, hPs,
       by rw [hpd0], by rw [hqd0], by rw [hfold, ← hdeg0]; rfl⟩
 
-/-- **A table's bytes**: `24` a value it reads (`UniSound.tableReads`). -/
-def tableBytes (t : Table) : Nat := 24 * UniSound.tableReads t
-
-/-- **A table's part, its shape**: its relations' terms in its columns, at `w[..h_t]` (`h_t` its log height). -/
-def tableShape (t : Table) (wE : List E) (b : TablePart × List Relation) : Prop :=
-  TabShape t (reference.heights.getD t.opcode 0) wE b.2
-
 variable {π iv publicInput stream}
 
-/-- **`TableSpec`**, `Compose`'s interface for a table's part. -/
-theorem tableSpec : TableSpec partR tableShape tableBytes := by
-  intro π iv publicInput stream st t ht weights weightsE beta betaE w wE _ hwt hsize hbeta hw _
-  refine Sim.mono (tablePart_sim π iv publicInput stream st t _ hwt
-    (fun tup htup ↦ by rw [hsize]; exact ((UniSound.Ids.tablesFacts t ht).2 tup htup).1) hbeta hw)
-    fun _ _ _ _ _ h ↦ ⟨⟨h.1, t, ht, congrArg Prod.fst h.2.2.2, congrArg Prod.snd h.2.2.2⟩, h.2.1, h.2.2.1⟩
-
-/-- info: 'RecGraph.Sim.tableSpec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms tableSpec
 
 end RecGraph.Sim

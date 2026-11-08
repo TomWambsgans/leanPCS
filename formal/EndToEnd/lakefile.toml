@@ -215,10 +215,9 @@ name = "RecPiop"
 srcDir = "../RecPiop"
 globs = ["RecPiop", "RecPiop.+"]
 
-# The recursion's inner verifier as a graph (`formal/RecGraph`): π1-rec3's recorded verifier graph
-# (`crates/leanvm_rec/src/lean.rs` writes `RecGraph/Emitted.lean`, data only), its semantics over any permutation
-# (`evalGraph`), and the Lean recorder with "recording commutes with evaluation". The differential runner
-# (`RecGraphTest/Runner.lean`) runs with `lake env lean`, not built.
+# The recursion's inner verifier as a graph (`formal/RecGraph`): recorded verifier graphs and their semantics over
+# any permutation (`evalGraph`), the Lean recorder with "recording commutes with evaluation", and the verifier's
+# shared pieces as recorder programs with their simulation framework (the Keccak VM's π1-rec3: `RecGraphKeccak`).
 [[lean_lib]]
 name = "RecGraph"
 srcDir = "../RecGraph"
@@ -267,12 +266,6 @@ name = "RecCompose"
 srcDir = "../RecCompose"
 globs = ["RecCompose", "RecCompose.+"]
 leanOptions = { warningAsError = true }
-
-# The compiler on `RecGraph.Emitted.graph` itself, against the Rust's circuit for π1-rec3 (`RecCircuitTest/Emitted.lean`).
-[[lean_exe]]
-name = "rec-circuit-emitted"
-srcDir = "../RecCircuit"
-root = "RecCircuitTest.Emitted"
 
 # The view check of `RecCompose.Facts` (`Pi2ViewChecked`) on the compiler's circuit for π1-rec3
 # (`RecComposeTest/ViewCheck.lean`).

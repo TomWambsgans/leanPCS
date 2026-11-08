@@ -4,19 +4,21 @@ import RecGraph.Semantics
 import RecGraph.Record
 import RecGraph.Commute
 import RecGraph.Values
-import RecGraph.Hazard
 import RecGraph.Pi1.Main
-import RecGraph.Sim.End
+import RecGraph.Sim.Compose
+import RecGraph.Sim.Calls
+import RecGraph.Sim.Flock
+import RecGraph.Sim.Shape
 
 /-!
-# RecGraph: π1-rec3's recorded verifier graph, its meaning, and the recorder
+# RecGraph: recorded verifier graphs, their meaning, and the recorder
 
 The recursion's outer proof π2 proves a circuit compiled from the **recorded operation graph** of the inner proof π1's
-verifier (`crates/leanvm_rec`, π1-rec3: `FLOCK_REC3`, `FsShape::Rec3`). This library is the design-independent half of
-"compiler correctness" (`README.md` here): the graph (`Node`, `Graph`; π1-rec3's is `Emitted.lean`, written by the
-Rust, data only), its meaning over any permutation (`evalGraph`), the target statement "graph = verifier"
-(`GraphIsVerifier`, against `UniStatement`'s π1-rec3: `UniStatement/Rec.lean`), and the Lean recorder (`Record.lean`)
-with "recording commutes with evaluation" (`Commute.lean`, `Values.lean`).
+verifier (`crates/leanvm_rec`, π1-rec3: `FsShape::Rec3`). This library is the design-independent half of "compiler
+correctness" (`README.md` here): the graph (`Node`, `Graph`), its meaning over any permutation (`evalGraph`), the
+Lean recorder (`Record.lean`) with "recording commutes with evaluation" (`Commute.lean`, `Values.lean`); and the verifier's shared pieces as recorder programs
+(`Pi1/`) with their simulation framework (`Sim/`), from which the Keccak VM's π1-rec3 (`formal/RecGraphKeccak`) is
+built and proved.
 
 The build fails if a definition or theorem below uses an axiom beyond Lean's three standard ones.
 -/
@@ -25,25 +27,6 @@ The build fails if a definition or theorem below uses an axiom beyond Lean's thr
 #guard_msgs in
 #print axioms RecGraph.evalGraph
 
-/-- info: 'RecGraph.GraphIsVerifier' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms RecGraph.GraphIsVerifier
-
-/-- info: 'UniStatement.runFs' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms UniStatement.runFs
-
-/-- info: 'UniStatement.verifyWithFs' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms UniStatement.verifyWithFs
-
-/-- info: 'UniStatement.reduceWithFs_main' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms UniStatement.reduceWithFs_main
-
-/-- info: 'UniStatement.runFs_main' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms UniStatement.runFs_main
 
 /-- info: 'RecGraph.run_vals' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
@@ -117,30 +100,6 @@ The build fails if a definition or theorem below uses an axiom beyond Lean's thr
 #guard_msgs in
 #print axioms RecGraph.bits_val
 
-/-- info: 'RecGraph.hazard_card' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms RecGraph.hazard_card
-
-/-- info: 'RecGraph.hazard_prob' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms RecGraph.hazard_prob
-
-/-- info: 'RecGraph.Pi1.pi1GraphIsVerifier_of_sim' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms RecGraph.Pi1.pi1GraphIsVerifier_of_sim
-
 /-- info: 'RecGraph.Pi1.evalGraph_recorded' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms RecGraph.Pi1.evalGraph_recorded
-
-/-- info: 'RecGraph.Pi1.evalGraph_recordedGraph' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms RecGraph.Pi1.evalGraph_recordedGraph
-
-/-- info: 'RecGraph.Pi1.pi1Sim' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms RecGraph.Pi1.pi1Sim
-
-/-- info: 'RecGraph.Pi1.pi1GraphIsVerifier' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms RecGraph.Pi1.pi1GraphIsVerifier

@@ -12,11 +12,6 @@ on the stream its witness's free bits encode.
 ```lean
 theorem Compiled.compile_sound_end (hc : compile (ofRG g rootsAt iv) = .ok c) {pub : ℕ → List F192} {w : ℕ → K}
     (hw : c.circuit.toPiop.Satisfies pub (emb w)) : EndStatement g rootsAt iv c w
-
-theorem pi1rec3_end {iv : List UInt8} {c : Compiled}
-    (hc : compile (ofRG RecGraph.Emitted.graph RecGraph.Emitted.rootsAt iv) = .ok c) {pub : ℕ → List F192}
-    {w : ℕ → K} (hw : c.circuit.toPiop.Satisfies pub (emb w)) :
-    Compiled.EndStatement RecGraph.Emitted.graph RecGraph.Emitted.rootsAt iv c w
 ```
 
 - **Hypotheses.** `compile (ofRG g rootsAt iv) = .ok c` says that the transcribed compiler ran on the recorded graph
@@ -37,9 +32,10 @@ theorem pi1rec3_end {iv : List UInt8} {c : Compiled}
     Before R1 a stream root's word was reversed too, which named a root other than the one π1's prover commits.
 - **Element ports.** `compile_sound_element_end`: element `e`'s port carries `V`'s value of any original node the
   expansion maps to the calls' `e`-th element node.
-- **π1-rec3.** `pi1rec3_end` is the end theorem at `RecGraph.Emitted.graph`. That the compiler accepts this graph is
-  a run, not a proof. `rec-circuit-emitted` checks that the Rust's graph file is `RecGraph.Emitted.graph`, field by
-  field. It then runs `compile` on that very term, in compiled code, and prints a circuit identical to the Rust's.
+- **The Keccak VM's π1-rec3.** `RecGraphKeccak.pi1rec3K_end` (`formal/RecGraphKeccak/RecGraphKeccak/Circuit.lean`) is
+  the end theorem at `RecGraphKeccak.Emitted.graph`. That the compiler accepts this graph is a run, not a proof.
+  `rec-circuit-keccak` checks that the Rust's graph file is `RecGraphKeccak.Emitted.graph`, field by field. It then
+  runs `compile` on that very term, in compiled code, and prints a circuit identical to the Rust's.
 
 ### How it is proved
 
@@ -112,7 +108,7 @@ The Rust compiler asserts the same typing (`assert_typed` in `compile.rs`, with 
 | `WeightSim` | `weightAt_eq_tower`, `weightSym_sim`: the ring switch's weight on `E` and on the recorder's symbols |
 | `ExpandProof` | `expandSound`: the expansion keeps RecGraph's elements, on every accepted graph |
 | `Calls` | `Circuit.callInputs` (π2's rebuild of π1's `PCS_OPEN` inputs), `pair_val`, `compile_sound_calls`, `compile_sound_callInputs` |
-| `End` | `EndStatement`, `compile_sound_end`; `Pi1Rec3`: `pi1rec3_end` |
+| `End` | `EndStatement`, `compile_sound_end` |
 | `Complete` | **completeness**: the honest witness (`word`: the words in value order, `layout.rs`'s; `witness`: each position's pulled value's word) satisfies the circuit (`witness_satisfied`) and RecPiop's copy constraints (`witness_copy`) and encodes the public input and the stream (`pubW_witness`, `streamW_witness`), for every public input and stream of the graph's length; `zero_port_sat` (a zero port's limbs on any satisfying witness) |
 
 ### The completeness checks (`Check.lean`: `completeSlots`, `completeValues`, `completeGiven`, `completeCover`)
@@ -169,10 +165,11 @@ The real run accepts them at both IVs `rec-view-check` uses (the compiler with t
 
 ```sh
 cd formal/EndToEnd
-systemd-run --scope -p MemoryMax=10G lake build RecCircuit rec-circuit-diff rec-circuit-emitted
+systemd-run --scope -p MemoryMax=10G lake build RecCircuit rec-circuit-diff rec-circuit-keccak
 LEAN_CIRCUIT_OUT=out cargo test --release -p leanvm_rec --test lean_circuit -- --include-ignored --nocapture --test-threads 1
 .lake/build/bin/rec-circuit-diff out/pi1_rec3.graph > pi1_rec3.lean.circuit && diff out/pi1_rec3.circuit pi1_rec3.lean.circuit
-.lake/build/bin/rec-circuit-emitted out/pi1_rec3.graph > pi1_rec3.emitted.circuit && diff out/pi1_rec3.circuit pi1_rec3.emitted.circuit
+LEAN_CIRCUIT_OUT=out cargo test --release -p leanvm_rec --test lean_circuit_keccak128 -- --ignored --nocapture
+.lake/build/bin/rec-circuit-keccak out/keccak128_pi1_rec3.graph > k128.emitted.circuit && diff out/keccak128_pi1_rec3.circuit k128.emitted.circuit
 LEAN_CIRCUIT_OUT=out cargo test --release -p leanvm_rec --test lean_circuit_keccak -- --ignored --nocapture
 .lake/build/bin/rec-circuit-diff out/keccak_pi1_rec3.graph > k.lean.circuit && diff out/keccak_pi1_rec3.circuit k.lean.circuit
 lake env lean ../RecCircuit/RecCircuitTest/PadCounts.lean    # padCounts against pad_counts
