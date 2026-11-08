@@ -1,7 +1,7 @@
 // Vendored from leanVM (https://github.com/leanEthereum/leanVM), commit 42422001, file crates/flock/src/zerocheck/multilinear.rs.
 // Changed here: the bit-round kernels also take rows of 1, 2 and 4 bytes (for a univariate skip below 6), and the byte
-// rows have a pass with eq-scaled products' tables (`bit_round_pair_bytes_scaled`, for aarch64); the rest is
-// unchanged. MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and AGENTS.md at the repository root).
+// rows have a pass with eq-scaled products' tables (`bit_round_pair_bytes_scaled`, for aarch64) and, with AVX-512, a
+// pass eight quads a step in lanes (`bytes_lanes`); the rest is unchanged. MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and AGENTS.md at the repository root).
 // Imports changed for crate `flock` on leanVM c445e3d5's `primitives`: `F8`, φ₈, the φ₈ Lagrange weights, the
 // GF(2^8) NTT and the transcript are this crate's modules (src/lib.rs).
 // CREDIT: https://github.com/succinctlabs/flock (flock-core), MIT OR Apache-2.0.
@@ -374,6 +374,15 @@ pub fn bit_round_pair_bytes(bits: PackedWitness<'_>, weights: &[F192; 8], r_eq: 
     // A quad covers 4 bytes, 32 bits.
     let (quad_in_block_mask, live_quads) = padding_pairs(padding, 4);
     let live = |quad: usize| (quad & quad_in_block_mask) < live_quads;
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "vpclmulqdq"))]
+    if lo_size.is_multiple_of(8) {
+        let sums = bytes_lanes::sums(bits, &values, &products, &eq_lo, &eq_hi, (quad_in_block_mask, live_quads));
+        let split_v = |v0: F192, v1: F192| v0 + r_v * (v0 + v1);
+        return RoundPair {
+            first: (split_v(sums[0], sums[1]), split_v(sums[2], sums[3])),
+            second: [[sums[4], sums[1], sums[3]], [sums[5], sums[6], sums[7]]],
+        };
+    }
     let word = |data: &[u8], q: usize| u32::from_le_bytes(data[4 * q..4 * q + 4].try_into().expect("a quad"));
     let product = |x: u32, y: u32| products[((x & 0xff) << 8 | (y & 0xff)) as usize];
     let sums = parallel::map_reduce(
@@ -419,6 +428,126 @@ pub fn bit_round_pair_bytes(bits: PackedWitness<'_>, weights: &[F192; 8], r_eq: 
     RoundPair {
         first: (split_v(sums[0], sums[1]), split_v(sums[2], sums[3])),
         second: [[sums[4], sums[1], sums[3]], [sums[5], sums[6], sums[7]]],
+    }
+}
+
+/// [`bit_round_pair_bytes`]' eight sums with AVX-512 (this repository's addition): eight quads a step in the lanes of
+/// a register, each of their eight slots' products gathered limb by limb (`vpgatherqq`) from the products' table laid
+/// out limb-major, its eq products lane-wise Karatsuba products accumulated unreduced; a quad in the blocks' padding
+/// has its eq lane zero. The same sums, in other groupings.
+#[cfg(all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "vpclmulqdq"))]
+mod bytes_lanes {
+    use super::PackedWitness;
+    use core::arch::x86_64::*;
+    use primitives::field::{F64, F192};
+
+    /// A register of eight 128-bit products (even lanes' and odd lanes' halves): the two `vpclmulqdq`s of eight
+    /// 64-bit lanes.
+    type U = [__m512i; 2];
+
+    /// Lane-wise carry-less products of eight qwords.
+    #[inline(always)]
+    fn clmul(a: __m512i, b: __m512i) -> U {
+        // SAFETY: the module's target features are enabled at compile time.
+        unsafe { [_mm512_clmulepi64_epi128::<0x00>(a, b), _mm512_clmulepi64_epi128::<0x11>(a, b)] }
+    }
+
+    #[inline(always)]
+    fn xor(a: __m512i, b: __m512i) -> __m512i {
+        // SAFETY: as above.
+        unsafe { _mm512_xor_si512(a, b) }
+    }
+
+    #[inline(always)]
+    fn xor_u(a: U, b: U) -> U {
+        [xor(a[0], b[0]), xor(a[1], b[1])]
+    }
+
+    /// The sum of a register's eight 128-bit products, reduced in the base field (`x^64 = 0x1B`).
+    fn fold(u: U) -> F64 {
+        // SAFETY: a register is eight qwords.
+        let w: [u64; 8] = unsafe { std::mem::transmute(xor(u[0], u[1])) };
+        let (lo, hi) = (w[0] ^ w[2] ^ w[4] ^ w[6], w[1] ^ w[3] ^ w[5] ^ w[7]);
+        F64(lo) + F64(hi) * F64(primitives::field::gf2_64::R64)
+    }
+
+    /// The eight sums `Σ_quad eq(quad) s_k(quad)`, by task `hi` of `eq_lo.len()` quads, times `eq_hi[hi]`, summed.
+    pub fn sums(
+        bits: PackedWitness<'_>,
+        values: &[F192; 256],
+        products: &[F192],
+        eq_lo: &[F192],
+        eq_hi: &[F192],
+        (mask, live_quads): (usize, usize),
+    ) -> [F192; 8] {
+        let limbs = |t: &[F192]| -> [Vec<u64>; 3] { [0, 1, 2].map(|l| t.iter().map(|x| [x.c0, x.c1, x.c2][l]).collect()) };
+        let (p, v, e) = (limbs(products), limbs(values), limbs(eq_lo));
+        let lo_size = eq_lo.len();
+        parallel::map_reduce(
+            eq_hi.len(),
+            || [F192::ZERO; 8],
+            |hi| {
+                // SAFETY: the target features are enabled at compile time; every load is in bounds (eight quads of
+                // `4 * 8` bytes from `4 * quad`, eight eq values from `lo`), every gather index below the table's
+                // length (`(x << 8) | y` of bytes, or a byte).
+                unsafe {
+                    let mut acc = [[[_mm512_setzero_si512(); 2]; 3]; 8];
+                    let low = _mm512_set1_epi64(0xff);
+                    for lo in (0..lo_size).step_by(8) {
+                        let quad = hi * lo_size + lo;
+                        // The live quads' lanes.
+                        let lanes = (0..8).fold(0u8, |m, k| m | (u8::from(((quad + k) & mask) < live_quads) << k));
+                        if lanes == 0 {
+                            continue;
+                        }
+                        let word = |data: &[u8]| _mm512_cvtepu32_epi64(_mm256_loadu_si256(data[4 * quad..4 * quad + 32].as_ptr().cast()));
+                        let (x, y, z) = (word(bits.a), word(bits.b), word(bits.c));
+                        let byte = |w: __m512i, k: u32| match k {
+                            0 => _mm512_and_si512(w, low),
+                            1 => _mm512_and_si512(_mm512_srli_epi64::<8>(w), low),
+                            2 => _mm512_and_si512(_mm512_srli_epi64::<16>(w), low),
+                            _ => _mm512_srli_epi64::<24>(w),
+                        };
+                        let (x0, x1, x2, x3) = (byte(x, 0), byte(x, 1), byte(x, 2), byte(x, 3));
+                        let (y0, y1, y2, y3) = (byte(y, 0), byte(y, 1), byte(y, 2), byte(y, 3));
+                        let (xu0, xu1, xv0, xv1) = (xor(x0, x1), xor(x2, x3), xor(x0, x2), xor(x1, x3));
+                        let (yu0, yu1, yv0, yv1) = (xor(y0, y1), xor(y2, y3), xor(y0, y2), xor(y1, y3));
+                        let index = |x: __m512i, y: __m512i| _mm512_or_si512(_mm512_slli_epi64::<8>(x), y);
+                        let gather = |t: &[Vec<u64>; 3], i: __m512i| -> [__m512i; 3] {
+                            [0, 1, 2].map(|l| _mm512_i64gather_epi64::<8>(i, t[l].as_ptr().cast()))
+                        };
+                        let plus = |a: [__m512i; 3], b: [__m512i; 3]| [xor(a[0], b[0]), xor(a[1], b[1]), xor(a[2], b[2])];
+                        // Bytes 0..3 are positions (u, v) = (0,0), (1,0), (0,1), (1,1).
+                        let slots: [[__m512i; 3]; 8] = [
+                            plus(gather(&p, index(x1, y1)), gather(&v, byte(z, 1))),
+                            plus(gather(&p, index(x3, y3)), gather(&v, byte(z, 3))),
+                            gather(&p, index(xu0, yu0)),
+                            gather(&p, index(xu1, yu1)),
+                            plus(gather(&p, index(x2, y2)), gather(&v, byte(z, 2))),
+                            gather(&p, index(xv0, yv0)),
+                            gather(&p, index(xv1, yv1)),
+                            gather(&p, index(xor(xu0, xu1), xor(yu0, yu1))),
+                        ];
+                        let eq = [0, 1, 2].map(|l| _mm512_maskz_loadu_epi64(lanes, e[l][lo..lo + 8].as_ptr().cast()));
+                        let (e01, e02, e12) = (xor(eq[0], eq[1]), xor(eq[0], eq[2]), xor(eq[1], eq[2]));
+                        for (acc, s) in acc.iter_mut().zip(slots) {
+                            // Karatsuba's six products, folded by `y^3 = y + 1`: `d0 = p0 + p1 + p2 + p12`, `d1 = p0
+                            // + p01 + p12`, `d2 = p0 + p1 + p02`.
+                            let (p0, p1, p2) = (clmul(eq[0], s[0]), clmul(eq[1], s[1]), clmul(eq[2], s[2]));
+                            let p01 = clmul(e01, xor(s[0], s[1]));
+                            let p02 = clmul(e02, xor(s[0], s[2]));
+                            let p12 = clmul(e12, xor(s[1], s[2]));
+                            let p0p1 = xor_u(p0, p1);
+                            acc[0] = xor_u(acc[0], xor_u(p0p1, xor_u(p2, p12)));
+                            acc[1] = xor_u(acc[1], xor_u(xor_u(p0, p01), p12));
+                            acc[2] = xor_u(acc[2], xor_u(p0p1, p02));
+                        }
+                    }
+                    acc.map(|d| eq_hi[hi] * F192::new(fold(d[0]).0, fold(d[1]).0, fold(d[2]).0))
+                }
+            },
+            |x, y| std::array::from_fn(|i| x[i] + y[i]),
+        )
     }
 }
 
