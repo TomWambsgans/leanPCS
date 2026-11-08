@@ -358,125 +358,6 @@ pub fn bit_round_materialize(
 /// bytes `x`, `y` (the sums of values being the values of the bytes' XOR), read from the table of all 65,536
 /// products instead of multiplied. The rest is [`bit_round_pair_kernel`]'s, the same sums in the same slots.
 pub fn bit_round_pair_bytes(bits: PackedWitness<'_>, weights: &[F192; 8], r_eq: &[F192], padding: &PaddingSpec) -> RoundPair {
-    // Where a product of E costs more than the scaled table's extra reads (all but AVX-512): the quads by pairs.
-    if !cfg!(all(target_arch = "x86_64", target_feature = "vpclmulqdq", target_feature = "avx512f")) && r_eq.len() >= 2 {
-        return bit_round_pair_bytes_by_pairs(bits, weights, r_eq, padding);
-    }
-    bit_round_pair_bytes_by_quads(bits, weights, r_eq, padding)
-}
-
-/// The values of the bytes under the fold's eight `weights`, `T[x] = Σ_(bits i of x) weights[i]`.
-fn byte_values(weights: &[F192; 8]) -> [F192; 256] {
-    let mut values = [F192::ZERO; 256];
-    for v in 1..256usize {
-        let low = v.trailing_zeros() as usize;
-        values[v] = values[v & (v - 1)] + weights[low];
-    }
-    values
-}
-
-/// A quad's eight sums' table entries (see [`bit_round_pair_bytes_by_quads`]): the product's index `x << 8 | y`, and
-/// the `c` byte (zero for the slots without `c`).
-#[inline(always)]
-fn quad_slots(x: u32, y: u32, z: u32) -> [(usize, usize); 8] {
-    let (xu0, xu1, xv0, xv1) = (x ^ x >> 8, x >> 16 ^ x >> 24, x ^ x >> 16, x >> 8 ^ x >> 24);
-    let (yu0, yu1, yv0, yv1) = (y ^ y >> 8, y >> 16 ^ y >> 24, y ^ y >> 16, y >> 8 ^ y >> 24);
-    let i = |x: u32, y: u32| ((x & 0xff) << 8 | (y & 0xff)) as usize;
-    [
-        (i(x >> 8, y >> 8), (z >> 8 & 0xff) as usize),
-        (i(x >> 24, y >> 24), (z >> 24) as usize),
-        (i(xu0, yu0), 0),
-        (i(xu1, yu1), 0),
-        (i(x >> 16, y >> 16), (z >> 16 & 0xff) as usize),
-        (i(xv0, yv0), 0),
-        (i(xv1, yv1), 0),
-        (i(xu0 ^ xu1, yu0 ^ yu1), 0),
-    ]
-}
-
-/// [`bit_round_pair_bytes_by_quads`] with the quads in pairs `(2k, 2k + 1)`, which differ in the first quad variable
-/// only: their eq weights are `eq'(k) (1 + r)` and `eq'(k) r` (`r` that variable's challenge), so a pair's term is
-/// `eq'(k) (s_(2k) + r s_(2k) + r s_(2k+1))`, each `s` a product table's entry plus a `c` table's, read with its
-/// multiple by `r` from tables of both. Four products of `E` a quad instead of eight; the same sums.
-fn bit_round_pair_bytes_by_pairs(
-    bits: PackedWitness<'_>,
-    weights: &[F192; 8],
-    r_eq: &[F192],
-    padding: &PaddingSpec,
-) -> RoundPair {
-    let values = byte_values(weights);
-    let [a, b, c] = [bits.a, bits.b, bits.c];
-    let n_quads = a.len() / 4;
-    assert!(n_quads >= 2 && b.len() == a.len() && c.len() == a.len());
-    assert_eq!(r_eq.len(), n_quads.trailing_zeros() as usize + 1);
-    let (r_v, r_pair, r_rest) = (r_eq[0], r_eq[1], &r_eq[2..]);
-    // `[T[x] T[y], r T[x] T[y]]` at `x << 8 | y`, and `[T[z], r T[z]]` at `z`.
-    let products: Vec<[F192; 2]> = parallel::map_collect(1 << 16, |i| {
-        let p = values[i >> 8] * values[i & 0xff];
-        [p, r_pair * p]
-    });
-    let cs: Vec<[F192; 2]> = values.iter().map(|&v| [v, r_pair * v]).collect();
-    let (eq_lo, eq_hi) = split_eq(r_rest);
-    let lo_size = eq_lo.len();
-    // A quad covers 4 bytes, 32 bits; a dead quad reads as zero bytes, whose entries are zero.
-    let (quad_in_block_mask, live_quads) = padding_pairs(padding, 4);
-    let live = |quad: usize| (quad & quad_in_block_mask) < live_quads;
-    let word = |data: &[u8], q: usize| {
-        if live(q) {
-            u32::from_le_bytes(data[4 * q..4 * q + 4].try_into().expect("a quad"))
-        } else {
-            0
-        }
-    };
-    let sums = parallel::map_reduce(
-        eq_hi.len(),
-        || [F192::ZERO; 8],
-        |hi| {
-            let mut acc = [F192Unreduced::ZERO; 8];
-            for lo in (0..lo_size).step_by(4) {
-                let n = (lo_size - lo).min(4);
-                let mut s = [[F192::ZERO; 4]; 8];
-                for k in 0..n {
-                    let pair = hi * lo_size + lo + k;
-                    let (q0, q1) = (2 * pair, 2 * pair + 1);
-                    let (w0, w1) = if !live(q0) && !live(q1) {
-                        continue;
-                    } else {
-                        (
-                            quad_slots(word(a, q0), word(b, q0), word(c, q0)),
-                            quad_slots(word(a, q1), word(b, q1), word(c, q1)),
-                        )
-                    };
-                    for (slot, (&(p0, c0), &(p1, c1))) in s.iter_mut().zip(w0.iter().zip(&w1)) {
-                        let ([x, rx], [cx, rcx]) = (products[p0], cs[c0]);
-                        slot[k] = x + rx + products[p1][1] + cx + rcx + cs[c1][1];
-                    }
-                }
-                let e = std::array::from_fn::<F192, 4, _>(|k| if k < n { eq_lo[lo + k] } else { F192::ZERO });
-                for (acc, s) in acc.iter_mut().zip(&s) {
-                    let t = mul_quad_unreduced((e[0], e[1], e[2], e[3]), (s[0], s[1], s[2], s[3]));
-                    *acc ^= t.0 ^ t.1 ^ t.2 ^ t.3;
-                }
-            }
-            acc.map(|s| eq_hi[hi] * s.reduce())
-        },
-        |x, y| std::array::from_fn(|i| x[i] + y[i]),
-    );
-    let split_v = |v0: F192, v1: F192| v0 + r_v * (v0 + v1);
-    RoundPair {
-        first: (split_v(sums[0], sums[1]), split_v(sums[2], sums[3])),
-        second: [[sums[4], sums[1], sums[3]], [sums[5], sums[6], sums[7]]],
-    }
-}
-
-/// [`bit_round_pair_bytes`] a quad at a time: eight products of `E` a quad, each a table entry times its eq weight.
-#[doc(hidden)]
-pub fn bit_round_pair_bytes_by_quads(
-    bits: PackedWitness<'_>,
-    weights: &[F192; 8],
-    r_eq: &[F192],
-    padding: &PaddingSpec,
-) -> RoundPair {
     let mut values = [F192::ZERO; 256];
     for v in 1..256usize {
         let low = v.trailing_zeros() as usize;
@@ -526,7 +407,6 @@ pub fn bit_round_pair_bytes_by_quads(
                 }
                 let e = std::array::from_fn::<F192, 4, _>(|k| if k < n { eq_lo[lo + k] } else { F192::ZERO });
                 for (acc, s) in acc.iter_mut().zip(&s) {
-                    if std::env::var_os("NOMUL").is_some() { *acc ^= F192Unreduced::from(s[0] + s[1] + s[2] + s[3]); continue; }
                     let t = mul_quad_unreduced((e[0], e[1], e[2], e[3]), (s[0], s[1], s[2], s[3]));
                     *acc ^= t.0 ^ t.1 ^ t.2 ^ t.3;
                 }

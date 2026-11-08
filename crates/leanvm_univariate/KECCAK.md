@@ -232,7 +232,72 @@ The sample stream gave 44,737; the real proof's calldata has more zero bytes.
 
 ### Measured
 
-TIMINGS
+**The Mac** is an Apple M4 Max (16 cores, 48 GiB, aarch64: no GFNI, so round 1 runs `round1_table`). Each figure is
+one cold run in its own process, with the machine idle before it, from `prove_real` (`proves_and_verifies_keccak`).
+The test-only combined-claims check is left out.
+
+The laptop throttles under sustained load, and other agents shared it. Back-to-back passes come out 1.5–2× slower, so
+these figures are the best conditions seen, not medians.
+
+"Before" is the first working prover. "After" adds:
+- the round-1 table kernel;
+- `q_flock` committed from the Flock witness (no copy in the trace);
+- `C1`'s polynomials and the leaves freed before `C2`'s commitment.
+
+The `SHA3` leaf's grouped transforms and its pull/push fingerprints (`quotients::prefix_quotient`,
+`prints::PullPush`, aarch64 only) came later and are not in the "after" column. Measured alone, they take that leaf
+from 0.50 to 0.31 s at 400 signatures.
+
+| phase (400 signatures, `KECCAK_MAIN`) | before | after |
+|---|---:|---:|
+| the Keccak-f blocks: `q_flock` and Flock's witness (65,536 blocks), and the placement | 0.20 | 0.10 |
+| `C1` and setup: inverse NTTs to basis `B` | 0.08 | 0.07 |
+| `C1` and setup: WHIR commits (`2^28`, `2^23`) | 0.54 | 0.54 |
+| Flock: zerocheck (round 1), lincheck, slices | 3.04 (2.14) | 1.05 (0.16) |
+| heap | 0.07 | 0.07 |
+| quotient: tree | 0.11 | 0.11 |
+| quotients: leaves (of which `SHA3`'s, 2^16 rows, 86 columns) | 0.57 (0.41) | 0.61 |
+| quotient: constraints `Q_W` | 0.13 | 0.13 |
+| `C2`: chunks, WHIR commit (`2^28`) | 0.48 | 0.51 |
+| values at `t`, claims, weights | 0.03 | 0.05 |
+| batching sumcheck | 0.53 | 0.55 |
+| openings: WHIR (3) | 0.83 | 0.90 |
+| **total** | **6.61** | **4.69** |
+| peak RSS | 15.5 GB | 14.4 GB |
+
+At 128 signatures the total goes from 4.25 to 1.99 s (Flock 1.97 → 0.51 s, round 1 1.41 → 0.07 s), and the peak from
+7.2 to 6.7 GB. At 32 signatures, after: 0.76 s, 2.3 GB.
+
+The peak is reached at `C2`'s commitment. Both stacks are then `2^28` words, and `C1`'s codeword (twice its stack) is kept
+for its opening. `PI1_LOW_MEMORY=1` trades that codeword for 0.27 s of opening (see "What remains").
+
+**leanVM `9d50c92a3`'s own prover on the same Mac** (`cargo leanvm aggregate --xmss N --log-inv-rate 1 --repeat 3`,
+its tables filled to powers of two, one commitment of `2^26.5` words):
+- 128 signatures: 0.28 s, 4.0 GiB;
+- 400 signatures: 0.93 s, 13.1 GiB.
+
+This prover is about 5× slower at 400 signatures, with about the same peak memory.
+
+**h1** (AMD Ryzen 7 PRO 8700GE, 8 cores and 16 threads, 61 GiB; x86 with GFNI, so round 1 runs `round1_bytes`). These
+are warm medians of 3 passes with a 2 s cooldown (`keccak_prover_benchmark`), taken while other agents' Lean jobs held
+the load at 3–8. The aarch64-only `SHA3` leaf changes do not apply there. The proofs are byte-identical to the Mac's.
+
+| | 128 signatures | 400 signatures |
+|---|---:|---:|
+| this prover, `KECCAK_MAIN` | 2.8–3.4 s, 6.7 GB | 7.1–8.4 s, 14.5 GB |
+| this prover, `KECCAK_REC3` | | 7.0 s, 14.5 GB |
+| leanVM `9d50c92a3` | 0.53–0.61 s, 2.6 GiB | 1.9–2.2 s, 9.6 GiB |
+
+Where the 400-signature `KECCAK_MAIN` proof's time goes on h1 (load 6):
+- Flock: 2.07 s;
+- openings: 1.65 s;
+- leaves: 0.99 s;
+- batching: 0.87 s;
+- `C1` commit: 0.86 s;
+- `C2` commit: 0.64 s;
+- tree: 0.34 s;
+- constraints: 0.26 s;
+- the rest: 0.76 s.
 
 ## What remains
 
@@ -242,7 +307,10 @@ TIMINGS
 2. **The prover's speed.** It is 4–8× slower than leanVM `9d50c92a3`'s own prover on the same workload
    ("Measured"). Most of the gap is the protocol's: two `2^28` commitments, their openings and the quotients, against
    leanVM's single `2^26.5` commitment. What is left to try:
-   - the Flock bit passes and the `SHA3` leaf quotient on aarch64.
+   - on aarch64, a NEON `lanes` module for `crates/quotient/src/ntt.rs`, which today multiplies one lane at a time.
+     It would speed up every transform: `C1`'s, the tree, the leaves, `Q_W`.
+   - Flock's level-0 bit pass: two kernels were tried and neither was faster. One halved the products; the other read
+     L1-resident nibble tables. Its cost is per-quad overhead, not multiplications or cache misses.
 
    `PI1_LOW_MEMORY=1` makes the prover drop `C1`'s codeword after its commitment, so that its opening re-encodes the
    rows its queries open. The proof is the same. At 400 signatures on h1 the peak falls from 14.7 to 13.3 GB, and the

@@ -431,33 +431,3 @@ fn flock_end_to_end_at_every_skip() {
         }
     }
 }
-
-/// The byte rows' pair pass against its quad-at-a-time form, timed alternately on a random witness of `2^FLOCK_M`
-/// bits (default 30; ignored): `cargo test --release -p leanvm_univariate --test flock_skip -- --ignored --nocapture
-/// byte_pair_pass_timings`.
-#[test]
-#[ignore]
-fn byte_pair_pass_timings() {
-    use lv42_flock::zerocheck::multilinear::{PackedWitness, bit_round_pair_bytes, bit_round_pair_bytes_by_quads};
-    lv42_parallel::init();
-    let m: usize = std::env::var("FLOCK_M").ok().and_then(|s| s.parse().ok()).unwrap_or(30);
-    let mut rng = Rng(0x5eed_0008);
-    let padding = PaddingSpec {
-        k_log: 14,
-        useful_bits_per_block: 16_000,
-    };
-    let [a, b, c] = witness(m, &padding, &mut rng);
-    let weights: [F192; 8] = std::array::from_fn(|_| rng.ext());
-    let r_eq: Vec<F192> = (0..m - 4).map(|_| rng.ext()).collect();
-    let bits = PackedWitness { a: &a, b: &b, c: &c };
-    for _ in 0..3 {
-        let started = std::time::Instant::now();
-        let quads = bit_round_pair_bytes_by_quads(bits, &weights, &r_eq, &padding);
-        let t_quads = started.elapsed().as_secs_f64();
-        let started = std::time::Instant::now();
-        let pairs = bit_round_pair_bytes(bits, &weights, &r_eq, &padding);
-        let t_pairs = started.elapsed().as_secs_f64();
-        assert_eq!(quads, pairs);
-        println!("  2^{m} bits: by quads {t_quads:.3} s, bit_round_pair_bytes {t_pairs:.3} s");
-    }
-}
