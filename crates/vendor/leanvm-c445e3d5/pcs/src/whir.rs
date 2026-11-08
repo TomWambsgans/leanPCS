@@ -19,7 +19,9 @@
 // rounds sum sparse low weights at their nonzero entries alone (`SparseLow`), the dense ones with `dot_base` on x86,
 // and fold the witness on AVX-512 eight words at a time (`collapse_avx512`); a lean level's message, kept for its
 // queries, is copied by the workers (`copied`) rather than by one thread. A test pins the chunked dense induce to its
-// per-query form (`chunked_induce_matches_the_per_query_one`).
+// per-query form (`chunked_induce_matches_the_per_query_one`). The E rounds (the folds, their messages, the OOD
+// evaluation, the glue, the collapsed weight) take four products at a time (`mul4`, `mul_unreduced4`;
+// `vectored_ext_rounds_match_one_product_at_a_time`).
 
 //! WHIR with `K = GF(2)[x]/(x^64+x^4+x^3+x+1)` and
 //! `E = K[y]/(y^3+y+1)`.
@@ -45,7 +47,7 @@ use crate::ntt::additive_ntt_f64::MsgLayout;
 use fiat_shamir::merkle::PrunedMerklePaths;
 use fiat_shamir::transcript::ProverState;
 use primitives::{
-    field::{F64, F192, F192Unreduced, powers},
+    field::{F64, F192, F192Unreduced, mul_unreduced4, mul4, powers},
     stream::Stream,
 };
 
@@ -678,6 +680,23 @@ trait RoundWitness: Copy + Sync + std::ops::Add<Output = Self> {
     /// last committed lane with the stacked witness's zero padding, so the
     /// interpolation collapses to `x0·(1+r)`.
     fn fold_lone(x0: Self, r: F192) -> F192;
+    /// `out[t] = fold_pair(f[2t], f[2t + 1], r)` for every `t`.
+    #[inline]
+    fn fold_into(f: &[Self], r: F192, out: &mut [F192]) {
+        for (o, x) in out.iter_mut().zip(f.as_chunks::<2>().0) {
+            *o = Self::fold_pair(x[0], x[1], r);
+        }
+    }
+    /// `(Σ f0·b0, Σ (f0 + f1)·(b0 + b1))` over the adjacent pairs of `f` and `b`, unreduced.
+    #[inline]
+    fn msg_terms(f: &[Self], b: &[F192]) -> (Self::Acc, Self::Acc) {
+        let (mut u_0, mut u_2) = (Self::ZERO_ACC, Self::ZERO_ACC);
+        for (x, y) in f.as_chunks::<2>().0.iter().zip(b.as_chunks::<2>().0) {
+            u_0 ^= x[0].mul_basis_unreduced(y[0]);
+            u_2 ^= (x[0] + x[1]).mul_basis_unreduced(y[0] + y[1]);
+        }
+        (u_0, u_2)
+    }
 }
 
 impl RoundWitness for F64 {
@@ -720,6 +739,31 @@ impl RoundWitness for F192 {
     fn fold_lone(x0: Self, r: F192) -> F192 {
         x0 + r * x0
     }
+    #[inline]
+    fn fold_into(f: &[Self], r: F192, out: &mut [F192]) {
+        fold_ext_into(f, r, out);
+    }
+    #[inline]
+    fn msg_terms(f: &[Self], b: &[F192]) -> (Self::Acc, Self::Acc) {
+        fold_msg_terms(f, b)
+    }
+}
+
+/// `out[t] = x0 + r·(x0 + x1)` for the pairs `(x0, x1) = (src[2t], src[2t + 1])`: [`RoundWitness::fold_pair`] in
+/// `E`, four products at a time ([`mul4`]: one vector of carry-less products for four, on AVX-512).
+#[inline]
+fn fold_ext_into(src: &[F192], r: F192, out: &mut [F192]) {
+    debug_assert_eq!(src.len(), 2 * out.len());
+    let (o4, o_rest) = out.as_chunks_mut::<4>();
+    let (s8, _) = src.as_chunks::<8>();
+    for (o, s) in o4.iter_mut().zip(s8) {
+        let p = mul4([r; 4], std::array::from_fn(|i| s[2 * i] + s[2 * i + 1]));
+        *o = std::array::from_fn(|i| s[2 * i] + p[i]);
+    }
+    let done = 4 * o4.len();
+    for (o, x) in o_rest.iter_mut().zip(src[2 * done..].as_chunks::<2>().0) {
+        *o = x[0] + r * (x[0] + x[1]);
+    }
 }
 
 /// Round message over a witness `f` and an E basis `b`. Mirror of
@@ -734,12 +778,13 @@ fn round_msg_lsb<T: RoundWitness>(f: &[T], b: &[F192]) -> SumcheckMessage {
     debug_assert_eq!(b.len(), n);
 
     let half = n / 2;
-    let term = |j: usize| -> (T::Acc, T::Acc) {
-        let (f0, f1) = (f[2 * j], f[2 * j + 1]);
-        let (b0, b1) = (b[2 * j], b[2 * j + 1]);
-        (f0.mul_basis_unreduced(b0), (f0 + f1).mul_basis_unreduced(b0 + b1))
+    // A chunk of `ROUND_CHUNK` pairs a task ([`RoundWitness::msg_terms`]: in `E`, four products at a time).
+    let chunk = 2 * ROUND_CHUNK;
+    let term = |c: usize| -> (T::Acc, T::Acc) {
+        let range = c * chunk..((c + 1) * chunk).min(n);
+        T::msg_terms(&f[range.clone()], &b[range])
     };
-    let (u_0, u_2) = accumulate_msg(half, half, T::ZERO_ACC, term);
+    let (u_0, u_2) = accumulate_msg(n.div_ceil(chunk), half, T::ZERO_ACC, term);
     SumcheckMessage {
         u_0: T::reduce(u_0),
         u_2: T::reduce(u_2),
@@ -753,31 +798,81 @@ fn round_msg_and_eval_lsb_ext(f: &[F192], b: &[F192]) -> (SumcheckMessage, F192)
     debug_assert!(n.is_power_of_two() && n >= 2);
     debug_assert_eq!(b.len(), n);
 
-    let term = |j: usize| {
-        let f0 = f[2 * j];
-        let f1 = f[2 * j + 1];
-        let b0 = b[2 * j];
-        let b1 = b[2 * j + 1];
-        let e0 = f0 * b0;
-        (e0, (f0 + f1) * (b0 + b1), e0 + f1 * b1)
+    // A chunk of `ROUND_CHUNK` pairs a task, their products `f0·b0`, `(f0 + f1)·(b0 + b1)` and `f1·b1` summed
+    // unreduced, four at a time ([`mul_unreduced4`]); the reduction is linear, so the sums are the reduced terms'.
+    let zero = F192Unreduced::ZERO;
+    let chunk = 2 * ROUND_CHUNK;
+    let term = |c: usize| {
+        let range = c * chunk..((c + 1) * chunk).min(n);
+        let (f, b) = (&f[range.clone()], &b[range]);
+        let (mut u_0, mut u_2, mut y) = (zero, zero, zero);
+        // Four pairs at a time: their twelve products, `f0·b0`, `(f0 + f1)·(b0 + b1)` and `f1·b1` for each pair.
+        let operands = |v: &[F192; 8]| -> [F192; 12] {
+            std::array::from_fn(|i| {
+                let (p, k) = (i / 3, i % 3);
+                match k {
+                    0 => v[2 * p],
+                    1 => v[2 * p] + v[2 * p + 1],
+                    _ => v[2 * p + 1],
+                }
+            })
+        };
+        let (f8, _) = f.as_chunks::<8>();
+        for (x, w) in f8.iter().zip(b.as_chunks::<8>().0) {
+            let (x, w) = (operands(x), operands(w));
+            for g in 0..3 {
+                let p = mul_unreduced4(
+                    std::array::from_fn(|j| x[4 * g + j]),
+                    std::array::from_fn(|j| w[4 * g + j]),
+                );
+                for (j, v) in p.into_iter().enumerate() {
+                    match (4 * g + j) % 3 {
+                        0 => {
+                            u_0 ^= v;
+                            y ^= v;
+                        }
+                        1 => u_2 ^= v,
+                        _ => y ^= v,
+                    }
+                }
+            }
+        }
+        for (x, w) in f[8 * f8.len()..]
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .zip(b[8 * f8.len()..].as_chunks::<2>().0)
+        {
+            let e0 = x[0].mul_unreduced(w[0]);
+            u_0 ^= e0;
+            u_2 ^= (x[0] + x[1]).mul_unreduced(w[0] + w[1]);
+            y ^= e0;
+            y ^= x[1].mul_unreduced(w[1]);
+        }
+        (u_0, u_2, y)
     };
     const PAR_THRESHOLD: usize = 4096;
     let half = n / 2;
-    let (u_0, u_2, y) = if half < PAR_THRESHOLD {
-        (0..half)
-            .map(term)
-            .fold((F192::ZERO, F192::ZERO, F192::ZERO), |(a0, a2, ay), (b0, b2, by)| {
-                (a0 + b0, a2 + b2, ay + by)
-            })
-    } else {
-        parallel::map_reduce(
-            half,
-            || (F192::ZERO, F192::ZERO, F192::ZERO),
-            term,
-            |(a0, a2, ay), (b0, b2, by)| (a0 + b0, a2 + b2, ay + by),
-        )
+    let tasks = n.div_ceil(chunk);
+    let xor3 = |(mut a0, mut a2, mut ay): (F192Unreduced, F192Unreduced, F192Unreduced),
+                (b0, b2, by): (F192Unreduced, F192Unreduced, F192Unreduced)| {
+        a0 ^= b0;
+        a2 ^= b2;
+        ay ^= by;
+        (a0, a2, ay)
     };
-    (SumcheckMessage { u_0, u_2 }, y)
+    let (u_0, u_2, y) = if half < PAR_THRESHOLD {
+        (0..tasks).map(term).fold((zero, zero, zero), xor3)
+    } else {
+        parallel::map_reduce(tasks, || (zero, zero, zero), term, xor3)
+    };
+    (
+        SumcheckMessage {
+            u_0: u_0.reduce(),
+            u_2: u_2.reduce(),
+        },
+        y.reduce(),
+    )
 }
 
 /// Uninitialized output for an initial-sumcheck fold.
@@ -798,7 +893,19 @@ unsafe fn fold_out_buf(n: usize) -> Vec<F192> {
 fn fold_msg_terms(nf: &[F192], nb: &[F192]) -> (F192Unreduced, F192Unreduced) {
     let mut u_0 = F192Unreduced::ZERO;
     let mut u_2 = F192Unreduced::ZERO;
-    let mut k = 0;
+    // Two pairs at a time, their four products together ([`mul_unreduced4`]).
+    let (f4, _) = nf.as_chunks::<4>();
+    for (f, b) in f4.iter().zip(nb.as_chunks::<4>().0) {
+        let p = mul_unreduced4(
+            [f[0], f[0] + f[1], f[2], f[2] + f[3]],
+            [b[0], b[0] + b[1], b[2], b[2] + b[3]],
+        );
+        u_0 ^= p[0];
+        u_2 ^= p[1];
+        u_0 ^= p[2];
+        u_2 ^= p[3];
+    }
+    let mut k = 4 * f4.len();
     while k + 1 < nf.len() {
         let f0 = nf[k];
         let f1 = nf[k + 1];
@@ -820,16 +927,12 @@ fn fold_and_msg_lsb<T: RoundWitness>(f: &[T], b: &[F192], r: F192) -> (Vec<F192>
     debug_assert_eq!(b.len(), n);
     let half = n / 2;
 
-    let fold_f = |j: usize| -> F192 { T::fold_pair(f[2 * j], f[2 * j + 1], r) };
-    let fold_b = |j: usize| -> F192 { F192::fold_pair(b[2 * j], b[2 * j + 1], r) };
     const PAR_THRESHOLD: usize = 4096;
     if half < PAR_THRESHOLD {
-        let mut nf = Vec::with_capacity(half);
-        let mut nb = Vec::with_capacity(half);
-        for j in 0..half {
-            nf.push(fold_f(j));
-            nb.push(fold_b(j));
-        }
+        let mut nf = vec![F192::ZERO; half];
+        let mut nb = vec![F192::ZERO; half];
+        T::fold_into(f, r, &mut nf);
+        fold_ext_into(b, r, &mut nb);
         let (u_0, u_2) = fold_msg_terms(&nf, &nb);
         return (
             nf,
@@ -862,11 +965,8 @@ fn fold_and_msg_lsb<T: RoundWitness>(f: &[T], b: &[F192], r: F192) -> (Vec<F192>
             // `nf`/`nb`, and both buffers stay borrowed for the whole dispatch.
             let fc = unsafe { nf_base.slice(base, len) };
             let bc = unsafe { nb_base.slice(base, len) };
-            for t in 0..len {
-                let j = base + t;
-                fc[t] = fold_f(j);
-                bc[t] = fold_b(j);
-            }
+            T::fold_into(&f[2 * base..2 * (base + len)], r, fc);
+            fold_ext_into(&b[2 * base..2 * (base + len)], r, bc);
             fold_msg_terms(fc, bc)
         },
         |(mut a0, mut a2), (c0, c2)| {
@@ -1473,14 +1573,24 @@ fn collapse_lanes(
                     *d = sum.reduce();
                 }
             }
-            // The dense low weights at every word, the sparse ones at their entries in the stage.
-            for (k, d) in lo_b[..n].iter_mut().enumerate() {
-                *d = scales
-                    .iter()
-                    .zip(weight)
-                    .zip(sparse)
-                    .filter(|(_, low)| matches!(low, SparseLow::Dense))
-                    .fold(F192::ZERO, |acc, ((&scale, tensor), _)| acc + scale * tensor.low[s + k]);
+            // The dense low weights at every word, four products at a time ([`mul4`]), the sparse ones at their
+            // entries in the stage.
+            lo_b[..n].fill(F192::ZERO);
+            for ((&scale, tensor), _) in scales
+                .iter()
+                .zip(weight)
+                .zip(sparse)
+                .filter(|(_, low)| matches!(low, SparseLow::Dense))
+            {
+                let low = &tensor.low[s..s + n];
+                let (d4, d_rest) = lo_b[..n].as_chunks_mut::<4>();
+                for (d, e) in d4.iter_mut().zip(low.as_chunks::<4>().0) {
+                    let p = mul4([scale; 4], *e);
+                    *d = std::array::from_fn(|i| d[i] + p[i]);
+                }
+                for (d, &e) in d_rest.iter_mut().zip(&low[n / 4 * 4..]) {
+                    *d += scale * e;
+                }
             }
             for (&scale, low) in scales.iter().zip(sparse) {
                 if let SparseLow::Sparse(entries) = low {
@@ -1848,7 +1958,13 @@ impl<'a> SumcheckProver<'a> {
             } else {
                 let chunk = parallel::recommended_chunk_size(self.combined_basis.len());
                 parallel::chunks_mut_zip(&mut self.combined_basis, &b_new, chunk, |_, accs, news| {
-                    for (acc, &v) in accs.iter_mut().zip(news) {
+                    // Four products at a time ([`mul4`]).
+                    let (a4, a_rest) = accs.as_chunks_mut::<4>();
+                    for (acc, v) in a4.iter_mut().zip(news.as_chunks::<4>().0) {
+                        let p = mul4([scalar; 4], *v);
+                        *acc = std::array::from_fn(|i| acc[i] + p[i]);
+                    }
+                    for (acc, &v) in a_rest.iter_mut().zip(&news[4 * a4.len()..]) {
                         *acc += scalar * v;
                     }
                 });
@@ -2602,6 +2718,61 @@ mod tests {
             let via_ntt = induce_sumcheck_poly_via_ntt(log_msg_cols, log_inv_rate, &rows, &v_challenges, &qs, &weights);
             assert_eq!(dense.1, via_ntt.1, "enforced_sum mismatch");
             assert_eq!(&*dense.0, &*via_ntt.0, "basis_poly mismatch");
+        }
+    }
+
+    /// The `E` round kernels four products at a time are the one-product-at-a-time forms, at lengths on both sides
+    /// of the vectors and the chunks, on the calling thread or the pool.
+    #[test]
+    fn vectored_ext_rounds_match_one_product_at_a_time() {
+        let mut rng = Rng::new(0xe4e4);
+        for n in [2usize, 4, 6, 8, 14, 16, 30, 4096, 1 << 14, 3 << 13] {
+            let f = rng.ext_vec(n);
+            let b = rng.ext_vec(n);
+            let r = rng.ext();
+            let half = n / 2;
+            let pairs =
+                |v: &[F192]| -> Vec<(F192, F192)> { v.as_chunks::<2>().0.iter().map(|x| (x[0], x[1])).collect() };
+            let (fp, bp) = (pairs(&f), pairs(&b));
+
+            let mut got = vec![F192::ZERO; half];
+            fold_ext_into(&f, r, &mut got);
+            let want: Vec<F192> = fp.iter().map(|&(x0, x1)| x0 + r * (x0 + x1)).collect();
+            assert_eq!(got, want, "fold, {n}");
+
+            let msg = |fp: &[(F192, F192)], bp: &[(F192, F192)]| {
+                fp.iter()
+                    .zip(bp)
+                    .fold((F192::ZERO, F192::ZERO), |(u0, u2), (&(f0, f1), &(b0, b1))| {
+                        (u0 + f0 * b0, u2 + (f0 + f1) * (b0 + b1))
+                    })
+            };
+            let (u_0, u_2) = fold_msg_terms(&f, &b);
+            assert_eq!((u_0.reduce(), u_2.reduce()), msg(&fp, &bp), "message terms, {n}");
+            let got = round_msg_lsb(&f, &b);
+            assert_eq!((got.u_0, got.u_2), msg(&fp, &bp), "round message, {n}");
+
+            let (got, y) = round_msg_and_eval_lsb_ext(&f, &b);
+            assert_eq!(
+                (got.u_0, got.u_2),
+                msg(&fp, &bp),
+                "round message with the evaluation, {n}"
+            );
+            assert_eq!(
+                y,
+                f.iter().zip(&b).fold(F192::ZERO, |a, (&x, &w)| a + x * w),
+                "evaluation, {n}"
+            );
+
+            let (nf, nb, got) = fold_and_msg_lsb(&f, &b, r);
+            let want_f: Vec<F192> = fp.iter().map(|&(x0, x1)| x0 + r * (x0 + x1)).collect();
+            let want_b: Vec<F192> = bp.iter().map(|&(x0, x1)| x0 + r * (x0 + x1)).collect();
+            assert_eq!((&nf, &nb), (&want_f, &want_b), "fold and message, {n}");
+            assert_eq!(
+                (got.u_0, got.u_2),
+                msg(&pairs(&want_f), &pairs(&want_b)),
+                "folded message, {n}"
+            );
         }
     }
 
