@@ -9,34 +9,18 @@ import Lv42.Protocol.FixedColumns
 import Heap.LeanIsa
 
 /-!
-# The heap read off `C1` realizes Lv42's bus (`LvRealizes`)
+# Reading the five shared tables' flushes and the heap off `C1`: the shared lemmas
 
-`lvRealizes`: for a deployment `D`, wherever the copies hold (`CopiesOf`), the heap the verifier reads off
-`C1` (`hdOf`) realizes the bus of `C1`'s Lv42 stack (`Heap.Realizes`, `lv42Stack`): its push and its pull
-tuples are permutations of `(D.inst rows).tuples q side`. Its hypotheses are the bridges `LvReadBack D`,
-`BasisValueInv`, `C1Limbs D.shape` (only `q_flock`'s conjunct) and `HeapGood D.shape` (only the memory's
-and the bytecode's heights at most `24`, for `BasisValueInv`). The pieces:
+What the Keccak line (`UniKeccakSound`) uses of the removed BLAKE2s VM's proof that the heap read off `C1` realizes
+Lv42's bus:
 
-1. **The forms are Lv42's flushes** (`uni_tuples_eq`, `rowTuples_eq`): on every row `R : ℕ → K`, table
-   `j`'s tuples of `UniStatement.tables` (`tupleK` of its push or pull forms) are, **in order**, Lv42's flushes
-   of opcode table `j` of that side (`Component.toM3` of its Clean component) evaluated at the row. By
-   reflection: both sides are read as polynomials in a normal form (`SP`, `spNorm`; the forms' `E`
-   coefficients by `toK`, Clean's expressions by `exprSP`), the twelve lists of normal forms are equal by
-   `decide +kernel` (`sides_eq`), and the normal form keeps the value (`spEval_spNorm`). Every tuple has at
-   most `16` forms (`tables_length_le`); every coefficient is `ofK` of its `K` reading and every monomial has
-   at most two variables (`tables_coeffs`); `gpow i = ofK (g^i)` (`gpow_eq_ofK`).
-2. **The rows** (`map_rowPosition`, `activePositions_perm`): `rowPosition count h` lists the active rows in
-   order, a permutation of `{y < 2^h : isActive y count h}`, for `count ≤ 2^h`.
-3. **The values** (`row_eq`): Lv42's executed row `x` of opcode table `j` is `C1`'s row `rowPosition x`
-   (`LvReadBack`), on `BLAKE2S`'s limb columns by the copies (`CopiesOf`; Lv42's slots are
-   `UniStatement.qflockSlot`'s, `slots_eq`). A table's block holds the table's flushes
-   (`tableBlock_pushes`, `tableBlock_pulls`).
-4. **The boundary** (`memTupleK_eq`, `bcTupleK_eq`, `initK_eq`, `finK_eq`): the memory's and the bytecode's
-   pairs and the state boundary are Lv42's six boundary blocks; the setup's two blocks are one limb each,
-   disjoint, inside the stack (`setup_facts`), its address column is `g^x` (`suVal_address`) and its
-   bytecode slots are `tupleSlot` (`slotVal_eq`), by `BasisValueInv`.
-5. **The heap** (`heap_flatMap`, `blocks_side`): `HeapLayout.new`'s blocks are the memory's, the bytecode's,
-   the six tables' and unused ones (`unusedBlocks_unused`); assembled as `Heap.LeanIsa.realizes` is.
+1. **The forms are Lv42's flushes** at the five shared tables (`uni_tuples_eq_base`, `base_flushes_eq`, `sides_eq_base`,
+   over `Fin 5` and `baseComponent`): on every row, a table's tuples of `UniStatement.tables` are, in order, its
+   Clean component's flushes evaluated at the row, by reflection through a polynomial normal form (`SP`);
+   `tables_length_le`, `tables_coeffs`, `gpow_eq_ofK`.
+2. **The rows** (`map_rowPosition`, `activePositions_perm`): `rowPosition count h` lists the active rows in order.
+3. **The boundary and the setup** (`initK_eq`, `finK_eq`, `setup_facts`, `suVal_address`, `slotVal_eq`).
+4. **The heap's blocks** (`heap_flatMap`, `blocks_side`, `unusedBlocks_unused`, `heights_le`).
 -/
 
 namespace UniSound.Ids
@@ -69,7 +53,7 @@ theorem flushPolys_eval_eq (n : ℕ) (ai : AbstractInteraction K) (R : ℕ → K
       simp only [Option.map_some, Option.getD_some]
       rw [Expression.eval_toCMvPolynomial _ noData, eval_exprSP]
 
-/-! ## The six tables: the forms are Lv42's flushes -/
+/-! ## The shared tables: the forms are Lv42's flushes -/
 
 /-- Table `j`'s forms of one side, as normal forms. -/
 def uniSide (j : ℕ) (push : Bool) : List (List SP) :=
@@ -713,7 +697,7 @@ theorem finK_eq : finK D = tupleOf (LeanVM.Parameters.gpow 0) #[D.prog.finalPc, 
 
 end Boundary
 
-/-! ## The heap realizes Lv42's bus -/
+/-! ## The heap's blocks by side -/
 
 /-- A leaf block's tuples of one side. -/
 def lbSide (b : Heap.LeafBlock (Vector K 16)) : Side → List (Vector K 16)

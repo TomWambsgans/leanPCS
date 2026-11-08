@@ -52,9 +52,8 @@ identities give `Lv42.Protocol.M3Instance.Balanced` (the push and pull tuples on
    `Pr[Sat ∧ ¬ Balanced q] ≤ busError N`, `N ≥ busCount` (the instance's tuple counts); and
    **`prob_exists_candidate_le`**: union-bounded over a list `L` of candidate stacks (a WHIR root's
    level-0 Johnson list), at most `busError (L.length · N)`. `tableBlock` and `pairBlock` build the
-   blocks of any `M3Instance`; **`LeanIsa.realizes`**: SPEC §5.2's heap (memory and bytecode pairs,
-   the six opcode tables, unused blocks, the state boundary at the root), in any block order,
-   realizes `leanIsaInstance`'s bus for every stack, and `LeanIsa.prob_sat_not_balanced` follows.
+   blocks of any `M3Instance`; the Keccak VM's heap is assembled from them in
+   `UniKeccakSound.IdsReal.Realize`.
 5. **Not vacuous** (`Heap.Honest`): the honest heap satisfies `Sat` whenever the bus balances and no
    pull fingerprint vanishes (`HeapData.sat_of_perm`).
 
@@ -74,8 +73,8 @@ that the products `P_b(ω_k)`, `P'_b(ω_k)` of the committed columns are row `k`
 that the crate's `prefix_vanishing` and `suffix_vanishing` loops cover `[0, rows)` and
 `[rows, 2^r)` with aligned blocks (then `prod_blockVanishing_eq_zero_iff` and `leaf_of_padded` give
 the padded rows' leaves): these produce `HeapData.Sat` for the
-layout `LeanIsa.heapData`, to which `LeanIsa.prob_sat_not_balanced` and
-`prob_exists_candidate_le` apply.
+heap's layout, to which `prob_sat_not_balanced` and `prob_exists_candidate_le` apply (for the Keccak VM in
+`formal/UniKeccakSound`).
 
 The build fails if the axiom footprint of the headline theorems grows beyond Lean's three standard
 axioms.

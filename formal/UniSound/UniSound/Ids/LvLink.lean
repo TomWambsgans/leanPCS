@@ -8,40 +8,22 @@ import Lv42.Protocol.FixedColumns
 import Lv42.Arithmetization.Completeness.RowsBase
 
 /-!
-# Lv42's relation on `C1`'s Lv42 stack, from the verifier's checks on `C1`
+# Lv42's tables on `C1`: the shared lemmas
 
-The bridges of `Bridges.lean` about Lv42 (`LvReadBack`, `LvConstraints`, `LvAux`, `LvBusCount`),
-proved for every deployment `D` (`lvAux` and the `q_flock` readings take `C1Limbs D.shape`, of which
-they use only `q_flock`'s one block; nothing else is assumed):
+What the Keccak line (`UniKeccakSound`) uses of the removed BLAKE2s VM's link from the verifier's checks on `C1` to
+Lv42's relation:
 
-* **`rowPosition` stays in its table** (`rowPosition_lt`): Lv42's row `x < 2^⌈log₂ count⌉` sits at
-  `C1`'s row `rowPosition count r x < 2^r`, whatever the count (no range check is needed): a non-full
-  table's loop only returns rows below `2^r`, and a full one is the identity on `x < 2^r`.
-* **Reading** (`lvReadBack`, `limb_lv42Stack`, `table_lv42Stack`, `mem_lv42Stack`,
-  `flock_lv42Stack`): a committed column of `lv42Stack` read back through Lv42's layout is
-  `lv42Column`'s (Lv42's `column_committed`, then the stack's block is its column, as Lv42's
-  `column_stackOf`); a `BLAKE2S` limb `k` at row `x` is `QFLOCK`'s cell `cubeIndex (slot k) x`, which
-  is `C1`'s word `qfOff + slot k + 256 · rowPosition x` (`limb_lv42Stack_qf`), so where the copies
-  hold every cell of a `BLAKE2S` row is `C1`'s (`blake2sRow_lv42Stack`).
-* **The tables agree** (by `decide +kernel` on the tables, none of them shape-sized): the count columns
-  (`counts_eq`: Lv42's are exactly the verifier's `cnt…` columns, in order), the widths
-  (`widths_eq`), `JUMP`'s `b, v_cond, w` at `13, 5, 12` (`jump_idx`, Lv42's `JumpRow` order with the
-  witnesses `w, b` last), the limbs' slots (`slots_agree`: `qflockSlot` of column `9 + k`'s name is
-  `blake2sFlockSpec.slot k`), the flush counts (`pushes_eq`, `pulls_eq`: `5, 5, 3, 5, 5, 11` a side).
-* **`lvConstraints`**: `ConstraintsVanish` from `JUMP`'s two constraints (Lv42's `jump_constraints_iff`
-  on a row read by its cells, `jump_constraintsHold`; the other tables have none), `CountsNonzero` from
-  the counters' `z·Πc = 1`, `PublicLinesHold` from the public lines (`publicInputOf` and
-  `publicWordsOf` read the same big-endian words). The counts' range (`CountsFit`) is not used.
-* **`lvAux`**: Lv42's region's block `t` (of `2^τ_5`) is `q_flock`'s block `rowPosition (rows 5) h_B t`,
-  cell for cell, so Flock's predicate on all `2^h_B` blocks gives the region's.
-* **`lvBusCount`** at `busBound` (the verifier's flush counts times `2^h_j`, plus `2^lm + 2^lb + 1`
-  for the boundary); `busBound reference = 10,878,977` (`busBound_reference`).
+* **`rowPosition` stays in its table** (`rowPosition_lt`): Lv42's row `x < 2^⌈log₂ count⌉` sits at `C1`'s row
+  `rowPosition count r x < 2^r`, whatever the count.
+* **`JUMP`** at the five shared tables: its width and constraints (`jump_width_base`, `jump_constraintsHold_base`),
+  its columns `b, v_cond, w` at `13, 5, 12` (`jump_idx`).
+* **`busBound`** (the verifier's flush counts times `2^h_j`, plus the boundary) and `busBound_reference`; small
+  helpers (`batchBlock_congr`, `bitTable_get`, `layoutOf_c1`).
 -/
 
 namespace UniSound.Ids
 
-/-! The bridges (`lvReadBack`, `lvConstraints`, `lvAux`, `lvBusCount`) and `busBound` are in
-`UniSound.Ids`; the helpers in `UniSound.Ids.LvLink`, clear of the other bridge files' names. -/
+/-! `busBound` is in `UniSound.Ids`; the helpers in `UniSound.Ids.LvLink`, clear of the other files' names. -/
 
 namespace LvLink
 
