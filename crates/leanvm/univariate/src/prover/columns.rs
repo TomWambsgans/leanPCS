@@ -5,7 +5,7 @@
 use leanvm_statement::N_TABLES;
 use leanvm_statement::layout::SEP_BYTECODE;
 use primitives::field::{F64, g_powers};
-use quotient::ntt::{coefficients_from, coefficients_from_cols, subset_sums_from, subset_sums_many};
+use quotient::ntt::{coefficients_cols_of, coefficients_from, subset_sums_from, subset_sums_of_cols};
 
 use super::trace::Trace;
 
@@ -39,18 +39,16 @@ impl Column {
 
     /// [`Column::novel_only`] of several columns of one length, their transforms in the same dispatches.
     pub fn novel_only_many(values: &[&[F64]]) -> Vec<Self> {
-        let len = values.first().map_or(0, |v| v.len());
-        let mut novel: Vec<Vec<F64>> = values.iter().map(|_| vec![F64::ZERO; len]).collect();
-        coefficients_from_cols(values, &mut novel.iter_mut().map(|n| &mut n[..]).collect::<Vec<_>>(), F64::ZERO);
-        novel.into_iter().map(|novel| Self { novel, b: Vec::new() }).collect()
+        coefficients_cols_of(values, F64::ZERO)
+            .into_iter()
+            .map(|novel| Self { novel, b: Vec::new() })
+            .collect()
     }
 
     /// [`Column::from_values`] of several columns of one length, in the same dispatches.
     pub fn from_values_many(values: &[&[F64]]) -> Vec<Self> {
         let mut columns = Self::novel_only_many(values);
-        let mut b: Vec<Vec<F64>> = columns.iter().map(|c| vec![F64::ZERO; c.novel.len()]).collect();
-        let mut jobs: Vec<(&[F64], &mut [F64])> = columns.iter().map(|c| &c.novel[..]).zip(b.iter_mut().map(|b| &mut b[..])).collect();
-        subset_sums_many(&mut jobs);
+        let b = subset_sums_of_cols(&columns.iter().map(|c| &c.novel[..]).collect::<Vec<_>>());
         for (c, b) in columns.iter_mut().zip(b) {
             c.b = b;
         }

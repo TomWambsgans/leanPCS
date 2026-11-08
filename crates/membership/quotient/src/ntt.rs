@@ -1438,23 +1438,48 @@ pub fn pack(columns: &[&[F64]]) -> Vec<K8> {
 
 /// `Π_(bits b of h) c[b]` for every `h < len` (the weights of a fold): `c[b]` for the bits of `h`, ...
 fn tensor(len: usize, factor: impl Fn(usize, bool) -> F64) -> Vec<F64> {
-    let mut out = vec![F64::ONE];
-    let mut b = 0;
-    while out.len() < len {
-        let (zero, one) = (factor(b, false), factor(b, true));
-        let half = out.len();
-        out.resize(2 * half, F64::ZERO);
-        let (low, high) = out.split_at_mut(half);
-        parallel::chunks_mut_zip(high, low, 1 << 12, |_, h, l| {
-            h.iter_mut().zip(l).for_each(|(h, &l)| *h = l * one)
-        });
-        if zero != F64::ONE {
-            parallel::chunks_mut(low, 1 << 12, |_, l| l.iter_mut().for_each(|x| *x *= zero));
+    // The products over the low bits and over the high bits, each by doubling, then (long ones) every entry the
+    // product of one of each in one dispatch: the same products (the field's are exact).
+    let doubled = |from: usize, bits: usize| {
+        let mut out = vec![F64::ONE];
+        for b in from..from + bits {
+            let (zero, one) = (factor(b, false), factor(b, true));
+            let high: Vec<F64> = out.iter().map(|&l| l * one).collect();
+            if zero != F64::ONE {
+                out.iter_mut().for_each(|x| *x *= zero);
+            }
+            out.extend(high);
         }
-        b += 1;
+        out
+    };
+    let bits = len.max(1).next_power_of_two().trailing_zeros() as usize;
+    let low_bits = bits.min(12);
+    let mut low = doubled(0, low_bits);
+    if bits == low_bits {
+        low.truncate(len);
+        return low;
     }
-    out.truncate(len);
-    out
+    let high = doubled(low_bits, bits - low_bits);
+    let mask = (1usize << low_bits) - 1;
+    parallel::map_collect(len, |h| low[h & mask] * high[h >> low_bits])
+}
+
+/// `len` zeros, a long column's pages written in parallel (not by one thread's `memset`).
+pub fn zeros(len: usize) -> Vec<F64> {
+    if len < 1 << 16 {
+        vec![F64::ZERO; len]
+    } else {
+        parallel::map_collect(len, |_| F64::ZERO)
+    }
+}
+
+/// `len` words to be written whole before any is read (a transform's or a fold's output).
+///
+/// # Safety
+/// The caller writes every word before reading it.
+unsafe fn unwritten(len: usize) -> Vec<F64> {
+    // SAFETY: the caller's.
+    unsafe { primitives::uninit_vec(len) }
 }
 
 /// The weights folding a polynomial's novel coefficients (`len` blocks of `2^e`) onto the coset `ω_first + V_e`:
@@ -1549,8 +1574,8 @@ fn fold_column(data: &[F64], e: usize, weights: &[F64]) -> Vec<F64> {
             },
         );
     }
-    let mut out = vec![F64::ZERO; size];
-    // SAFETY: `data` is `weights.len()` blocks of `out`'s rows.
+    // SAFETY (x2): `fold_rows` writes every row of `out`; `data` is `weights.len()` blocks of its rows.
+    let mut out = unsafe { unwritten(size) };
     unsafe { fold_rows(data.as_ptr().cast(), out.as_mut_ptr().cast(), size / 8, weights) }
     out
 }
@@ -1560,7 +1585,8 @@ fn fold_column(data: &[F64], e: usize, weights: &[F64]) -> Vec<F64> {
 pub fn on_coset_prefix(novel: &[F64], first: usize, e: usize) -> Vec<F64> {
     let size = 1usize << e;
     if novel.len() == size {
-        let mut out = vec![F64::ZERO; size];
+        // SAFETY: `values_from` writes every word first.
+        let mut out = unsafe { unwritten(size) };
         values_from(novel, &mut out, point(first));
         return out;
     }
@@ -1669,6 +1695,25 @@ pub fn coefficients_from_cols(srcs: &[&[F64]], dsts: &mut [&mut [F64]], offset: 
     unsafe { run_cols(&cols, len / 8, 3, &kind, false, false) }
 }
 
+/// [`coefficients_from_cols`] into new columns.
+pub fn coefficients_cols_of(srcs: &[&[F64]], offset: F64) -> Vec<Vec<F64>> {
+    let len = srcs.first().map_or(0, |c| c.len());
+    assert!(srcs.iter().all(|c| c.len() == len));
+    // SAFETY: the transform writes every word first (its first pass reads the sources).
+    let mut out: Vec<Vec<F64>> = srcs.iter().map(|_| unsafe { unwritten(len) }).collect();
+    coefficients_from_cols(srcs, &mut out.iter_mut().map(|o| &mut o[..]).collect::<Vec<_>>(), offset);
+    out
+}
+
+/// [`subset_sums_many`] into new columns, each its source's length (a power of two).
+pub fn subset_sums_of_cols(srcs: &[&[F64]]) -> Vec<Vec<F64>> {
+    // SAFETY: the sums write every word first (each block copied from its source).
+    let mut out: Vec<Vec<F64>> = srcs.iter().map(|s| unsafe { unwritten(s.len()) }).collect();
+    let mut jobs: Vec<(&[F64], &mut [F64])> = srcs.iter().copied().zip(out.iter_mut().map(|o| &mut o[..])).collect();
+    subset_sums_many(&mut jobs);
+    out
+}
+
 /// [`values_from`] by the calling worker alone.
 pub fn values_from_serial(src: &[F64], dst: &mut [F64], offset: F64) {
     assert_eq!(src.len(), dst.len());
@@ -1728,7 +1773,9 @@ pub fn on_coset_prefix_cols(novels: &[&[F64]], first: usize, e: usize) -> Vec<Ve
     let size = 1usize << e;
     let len = novels.first().map_or(0, |n| n.len());
     assert!(novels.iter().all(|n| n.len() == len) && len.is_multiple_of(size));
-    let mut out: Vec<Vec<F64>> = novels.iter().map(|_| vec![F64::ZERO; size]).collect();
+    // SAFETY: both ways below write every word of every output first (`values_from_cols`, or the fold's tasks, which
+    // cover every row).
+    let mut out: Vec<Vec<F64>> = novels.iter().map(|_| unsafe { unwritten(size) }).collect();
     if len == size {
         let mut dsts: Vec<&mut [F64]> = out.iter_mut().map(|o| &mut o[..]).collect();
         values_from_cols(novels, &mut dsts, point(first));
@@ -2548,6 +2595,50 @@ mod tests {
             interpolate_prefix_cols(&mut got.iter_mut().map(|c| &mut c[..]).collect::<Vec<_>>(), &sizes, base);
             assert_eq!(got, want, "interpolate_prefix_cols, blocks {sizes:?}");
         }
+    }
+
+    /// The fold weights in one dispatch are the doubling's.
+    #[test]
+    fn tensor_is_doubling() {
+        for len in [1usize, 2, 3, 100, 4096, 4097, 1 << 15, (1 << 17) + 5] {
+            let factor = |b: usize, bit: bool| if bit { point(5 + 3 * b) } else { point(1 << 20) + point(b) };
+            let mut want = vec![F64::ONE];
+            let mut b = 0;
+            while want.len() < len {
+                let half = want.len();
+                for h in 0..half {
+                    want.push(want[h] * factor(b, true));
+                }
+                for x in &mut want[..half] {
+                    *x *= factor(b, false);
+                }
+                b += 1;
+            }
+            want.truncate(len);
+            assert_eq!(tensor(len, factor), want, "{len}");
+        }
+        let mut next = rng(19);
+        let srcs: Vec<Vec<F64>> = (0..3).map(|_| (0..1 << 13).map(|_| F64(next())).collect()).collect();
+        let refs: Vec<&[F64]> = srcs.iter().map(|s| &s[..]).collect();
+        let want: Vec<Vec<F64>> = srcs
+            .iter()
+            .map(|s| {
+                let mut c = s.clone();
+                coefficients(&mut c, point(7));
+                c
+            })
+            .collect();
+        assert_eq!(coefficients_cols_of(&refs, point(7)), want);
+        let want: Vec<Vec<F64>> = srcs
+            .iter()
+            .map(|s| {
+                let mut c = s.clone();
+                subset_sums(&mut c);
+                c
+            })
+            .collect();
+        assert_eq!(subset_sums_of_cols(&refs), want);
+        assert_eq!(zeros(1 << 17), vec![F64::ZERO; 1 << 17]);
     }
 
     /// Several columns' subset sums at once are each one's.

@@ -349,7 +349,7 @@ fn prefix_quotient<D: Sync>(
         };
         ntt::fill_limbs8(out, |j| value(&data, &points, j));
     };
-    let mut limbs: [Vec<F64>; 3] = std::array::from_fn(|_| vec![F64::ZERO; total]);
+    let mut limbs: [Vec<F64>; 3] = std::array::from_fn(|_| ntt::zeros(total));
     if !grouped {
         for &(first, at, p) in &all {
             let [a, b, c] = &mut limbs;
@@ -663,7 +663,7 @@ pub fn tree(heap_novel: &[Vec<F64>; 3]) -> Quotient {
             (ts + t * t.swap_pairs()).mul_k(w1).mul_k(w_h_inv)
         });
     };
-    let mut limbs: [Vec<F64>; 3] = std::array::from_fn(|_| vec![F64::ZERO; total]);
+    let mut limbs: [Vec<F64>; 3] = std::array::from_fn(|_| ntt::zeros(total));
     for (&first, &e) in ntt::prefix_starts(&sizes, base).iter().zip(&sizes) {
         let at = first - base;
         let [a, b, c] = &mut limbs;
