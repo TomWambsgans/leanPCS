@@ -155,16 +155,26 @@ pub fn bytecode_leaves(trace: &Trace, bus: &Bus) -> Vec<F192> {
 /// every inner node the product of its children, position 0 zero.
 pub fn heap(layout: &HeapLayout, leaves: &[(Leaves, Vec<F192>)]) -> Vec<F192> {
     let size = 1usize << layout.h;
-    let mut heap = vec![F192::ONE; size];
+    // The leaves' blocks (each aligned to its length), written in parallel: a 2^22-node heap's fill and copies took
+    // one thread milliseconds.
+    let mut sources: Vec<(usize, &[F192])> = Vec::new();
     for block in &layout.blocks {
         if block.leaves == Leaves::Unused {
             continue;
         }
         let (_, values) = leaves.iter().find(|(l, _)| *l == block.leaves).expect("the block's leaves");
         assert_eq!(values.len(), 1 << block.r);
-        let at = block.position as usize;
-        heap[at..at + values.len()].copy_from_slice(values);
+        sources.push((block.position as usize, values));
     }
+    let mut heap: Vec<F192> = parallel::map_collect(size, |_| F192::ONE);
+    // Chunks no longer than the shortest block: each in one block or none.
+    let chunk = sources.iter().map(|(_, v)| v.len()).min().unwrap_or(size).clamp(1, 1 << 12);
+    parallel::chunks_mut(&mut heap, chunk, |j, part| {
+        let first = j * chunk;
+        if let Some((at, v)) = sources.iter().find(|(at, v)| (*at..*at + v.len()).contains(&first)) {
+            part.copy_from_slice(&v[first - at..first - at + part.len()]);
+        }
+    });
     let mut half = size / 2;
     while half > 1 {
         let (upper, lower) = heap.split_at_mut(half);
