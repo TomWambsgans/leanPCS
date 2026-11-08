@@ -12,8 +12,9 @@
 // Also modified here, for speed, every codeword unchanged: the two-sweep encodes (`encode_two_sweep_with`,
 // `encoded_rows_two_sweep`), which encode a lane-major or row-major message as it lies, a batch of replicas per read
 // of it, the transpose fused into the second sweep; on AVX-512, the fused layers run slab by slab in registers
-// (`slabs_avx512`), and the tiles transposed eight by eight in registers (`transpose_8x8`); and sub-blocks too short
-// to fill the hash's batches hand their rows over afterwards.
+// (`slabs_avx512`), the tiles transposed eight by eight in registers (`transpose_8x8`), and with GFNI the
+// butterfly's reduction takes byte maps for shifts (`gfni_reduce`); and sub-blocks too short to fill the hash's
+// batches hand their rows over afterwards.
 //! Additive NTT over GF(2^64) in the Lin-Chung-Han novel polynomial basis.
 //!
 //! It is the Reed-Solomon encoder of every WHIR commitment over K = F_{2^64}.
@@ -1982,7 +1983,8 @@ fn butterfly_zmm(
 /// [`butterfly_zmm`] with the twiddle already broadcast to every lane.
 ///
 /// The product's high half has at most 63 bits (two 64-bit factors), so its bit 63, which `hi >> 63` would
-/// spill, is always clear and that shift is left out.
+/// spill, is always clear and that shift is left out. With GFNI the reduction's shifts are byte maps instead
+/// ([`gfni_reduce`]): fewer instructions on Zen 4's shift pipes.
 #[cfg(all(target_arch = "x86_64", target_feature = "vpclmulqdq", target_feature = "avx512f"))]
 #[inline(always)]
 fn butterfly_zmm_v(
@@ -2000,17 +2002,93 @@ fn butterfly_zmm_v(
         let lo = _mm512_unpacklo_epi64(even, odd);
         let hi = _mm512_unpackhi_epi64(even, odd);
 
-        // Reduce modulo x^64 + x^4 + x^3 + x + 1 with shifts and three-way XORs.
+        // Reduce modulo x^64 + x^4 + x^3 + x + 1 with three-way XORs, and byte maps or shifts.
         const XOR3: i32 = 0x96;
-        // hi ^ the bits of hi * (x^4 + x^3 + x + 1) that land past x^63 (bit 63 of hi is clear): both are
-        // multiplied by the same constant, so they are folded first.
-        let x = _mm512_ternarylogic_epi64::<XOR3>(hi, _mm512_srli_epi64::<61>(hi), _mm512_srli_epi64::<60>(hi));
-        // g(x) = x ^ x<<1 ^ x<<3 ^ x<<4, split across two three-way XORs.
-        let fx = _mm512_ternarylogic_epi64::<XOR3>(x, _mm512_slli_epi64::<1>(x), _mm512_slli_epi64::<3>(x));
-        // u' = u + v * t, with the product's lo and g(x) folded in one step.
-        let new_u = _mm512_ternarylogic_epi64::<XOR3>(u, lo, _mm512_xor_si512(fx, _mm512_slli_epi64::<4>(x)));
+        #[cfg(target_feature = "gfni")]
+        let red = {
+            use gfni_reduce::{H, L, T};
+            // g(hi) byte by byte: each byte's product by 0x1B is its low byte in place, and its high nibble a
+            // byte up; the top byte's high nibble wraps to byte 0 and stands for the spill, whose own product
+            // by 0x1B lands in byte 0 too: rotating the nibbles leaves the spill once, which T adds in times 0x1A.
+            let low = _mm512_gf2p8affine_epi64_epi8::<0>(hi, _mm512_set1_epi64(L));
+            let high = _mm512_rol_epi64::<8>(_mm512_gf2p8affine_epi64_epi8::<0>(hi, _mm512_set1_epi64(H)));
+            let spill = _mm512_gf2p8affine_epi64_epi8::<0>(_mm512_srli_epi64::<56>(hi), _mm512_set1_epi64(T));
+            _mm512_ternarylogic_epi64::<XOR3>(low, high, spill)
+        };
+        #[cfg(not(target_feature = "gfni"))]
+        let red = {
+            // hi ^ the bits of hi * (x^4 + x^3 + x + 1) that land past x^63 (bit 63 of hi is clear): both are
+            // multiplied by the same constant, so they are folded first.
+            let x = _mm512_ternarylogic_epi64::<XOR3>(hi, _mm512_srli_epi64::<61>(hi), _mm512_srli_epi64::<60>(hi));
+            // g(x) = x ^ x<<1 ^ x<<3 ^ x<<4, split across two three-way XORs.
+            let fx = _mm512_ternarylogic_epi64::<XOR3>(x, _mm512_slli_epi64::<1>(x), _mm512_slli_epi64::<3>(x));
+            _mm512_xor_si512(fx, _mm512_slli_epi64::<4>(x))
+        };
+        // u' = u + v * t, with the product's lo and the reduced high half folded in one step.
+        let new_u = _mm512_ternarylogic_epi64::<XOR3>(u, lo, red);
         (new_u, _mm512_xor_si512(v, new_u))
     }
+}
+
+/// The byte maps of the reduction on GFNI, as `vgf2p8affineqb` matrices.
+///
+/// A product's high half `hi` (at most 63 bits) is folded in as `g(hi ^ spill)`, `g(y) = y · 0x1B` truncated to
+/// 64 bits and `spill` the bits of `hi · 0x1B` past bit 63 (three at most). Byte by byte, `b · 0x1B` is twelve
+/// bits: its low byte `L(b)` stays in place and its high nibble `H(b)` moves a byte up. The top byte's nibble moves
+/// out: it is the spill. So `g(hi ^ spill) = L(hi) ^ rotl8(H(hi)) ^ T(top byte)` in byte 0, `T(b) = H(b) · 0x1A`:
+/// the rotation brings the spill to byte 0 once, and `spill · 0x1B ^ spill = spill · 0x1A`.
+#[cfg(all(
+    target_arch = "x86_64",
+    target_feature = "vpclmulqdq",
+    target_feature = "avx512f",
+    target_feature = "gfni"
+))]
+mod gfni_reduce {
+    /// The carry-less product of two 16-bit polynomials, truncated.
+    const fn clmul16(a: u16, b: u16) -> u16 {
+        let mut acc = 0;
+        let mut j = 0;
+        while j < 16 {
+            if (b >> j) & 1 == 1 {
+                acc ^= a << j;
+            }
+            j += 1;
+        }
+        acc
+    }
+
+    /// The byte map `which` (0: L, 1: H, 2: T) of one byte.
+    const fn map(which: u8, b: u8) -> u8 {
+        let p = clmul16(b as u16, 0x1B);
+        match which {
+            0 => p as u8,
+            1 => (p >> 8) as u8,
+            _ => clmul16(p >> 8, 0x1A) as u8,
+        }
+    }
+
+    /// The matrix of byte map `which`: output bit `i` is the parity of the input under byte `7 - i`.
+    const fn matrix(which: u8) -> i64 {
+        let mut m = 0u64;
+        let mut i = 0;
+        while i < 8 {
+            let mut row = 0u64;
+            let mut j = 0;
+            while j < 8 {
+                if (map(which, 1 << j) >> i) & 1 == 1 {
+                    row |= 1 << j;
+                }
+                j += 1;
+            }
+            m |= row << (8 * (7 - i));
+            i += 1;
+        }
+        m as i64
+    }
+
+    pub(super) const L: i64 = matrix(0);
+    pub(super) const H: i64 = matrix(1);
+    pub(super) const T: i64 = matrix(2);
 }
 
 /// Two F64 butterflies with a shared twiddle, NEON-resident end to end.
