@@ -4,9 +4,9 @@
 
 The Keccak VM (`crates/leanvm_univariate/KECCAK.md`) is leanVM 42422001 with its `BLAKE2S` instruction replaced by
 leanVM `9d50c92a3`'s `SHA3`. This library is its statement: the instruction set, and the relation its univariate
-verifier would prove knowledge of, in the form `formal/Lv42` gives leanVM 42422001's. It holds definitions, with no
-end theorem about a verifier yet. It is a library of `formal/EndToEnd` (`KeccakVm`, `srcDir = "../KeccakVm"`,
-`warningAsError`), next to `Lv42`, whose definitions it reuses.
+verifier would prove knowledge of, in the form `formal/Lv42` gives leanVM 42422001's. It holds definitions (and
+`KeccakVm/Lemmas.lean`, the machine's lemmas), with no end theorem about a verifier yet. It is a library of
+`formal/EndToEnd` (`KeccakVm`, `srcDir = "../KeccakVm"`, `warningAsError`), next to `Lv42`, whose definitions it reuses.
 
 ```sh
 cd formal/EndToEnd   # on h1, under /root/pcs-quotient-fv/ only, with formal/leanervm linked
@@ -85,14 +85,21 @@ lake env lean ../UniStatement/UniStatementTest/KeccakTables.lean    # the verifi
 - **The arithmetization** ([`formal/KeccakArith`](../KeccakArith/README.md)):
   - the `SHA3` table as a Clean component;
   - `sha3M3_flushes`: its M3 flushes are `Sha3Table.flushes`, polynomial for polynomial;
-  - the per-row soundness: under `KeccakAux`, an executed `SHA3` row executes its instruction.
+  - the per-row soundness: under `KeccakAux`, an executed `SHA3` row executes its instruction;
+  - **soundness** `KeccakArith.kvSoundness`: under admissible sizes and `SentinelSafe prog`, a stack satisfying
+    `KvHolds F prog s input q` represents a `ValidExecution prog input t`;
+  - **completeness** `KeccakArith.kvCompleteness`: a `ValidExecution` with at most `2^32` instructions of every opcode
+    has a stack satisfying `KvHonest F prog s input q` at the sizes it carries.
 
-  Not proved: the whole soundness (`KvHolds` gives a `ValidExecution`) and the completeness, which needs the rest of
-  Lv42's `Arithmetization/{Soundness,Completeness}` and `LeanIsa/{Sound,Complete}` ported.
+  Both are Lv42's `Arithmetization/{Soundness,Completeness}` and `LeanIsa/{Sound,Complete}` ported, sorry-free on the
+  three standard axioms. `KeccakVm/Lemmas.lean` holds the machine lemmas they use (`Program.fetch_gpow`, `run_add`,
+  `Trace.regs`, `decode_entry`, `entry_injective`).
 - **The univariate verifier** ([`formal/UniKeccak`](../UniKeccak/README.md)):
   - `Blake2s::Keccak` transcribed, differential-tested on 74 vectors, the two real Keccak proofs among them;
   - its statements against `KvHolds`: `UniKnowledgeSoundnessKeccak`, the Rec3 variant, completeness.
 
   The statements are not proved.
-- **`Sha3Table.flushes` against the verifier's `flushesSha3`**, evaluated at a row: not proved. The two are written
-  from the same Rust function, and only the verifier's is differential-tested.
+- **`Sha3Table.flushes` against the verifier's `flushesSha3`** ([`formal/KeccakFlushes`](../KeccakFlushes/KeccakFlushes.lean)):
+  `KeccakFlushes.flushesSha3_eq`: on every row, the verifier's `SHA3` forms of each side (`UniSound.Ids.tupleK`) are, in
+  order, the instance's `SHA3` flushes of that side evaluated at the row (UniSound's `uni_tuples_eq` for the `SHA3`
+  table, by the same reflection).

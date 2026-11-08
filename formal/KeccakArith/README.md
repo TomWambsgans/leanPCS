@@ -4,13 +4,15 @@
 
 The Keccak VM (`crates/leanvm_univariate/KECCAK.md`, `formal/KeccakVm`) is leanVM 42422001 with `BLAKE2S` replaced
 by `SHA3`. Its relation is `KeccakVm.KvHolds F prog s input q` (`M3Holds` of `keccakIsaInstance prog s` and
-`KeccakAux F prog s q`). This library gives the `SHA3` table the Clean component Lv42 gives its `BLAKE2S` table, and
-proves what one `SHA3` row of a stack satisfying `KvHolds` means. It is a library of `formal/EndToEnd`
-(`KeccakArith`, `srcDir = "../KeccakArith"`, `warningAsError`), on top of `Lv42` and `KeccakVm`.
+`KeccakAux F prog s q`). This library gives the `SHA3` table the Clean component Lv42 gives its `BLAKE2S` table,
+proves what one `SHA3` row of a stack satisfying `KvHolds` means, and proves the relation's soundness
+(`kvSoundness`: `KvHolds` gives a valid execution) and completeness (`kvCompleteness`: a valid execution gives a
+stack satisfying `KvHonest`), by Lv42's arithmetization proofs ported to the Keccak VM. It is a library of
+`formal/EndToEnd` (`KeccakArith`, `srcDir = "../KeccakArith"`, `warningAsError`), on top of `Lv42` and `KeccakVm`.
 
 ```sh
 cd formal/EndToEnd   # on h1, under /root/pcs-quotient-fv/ only, with formal/leanervm linked
-systemd-run --scope -p MemoryMax=10G lake build KeccakArith   # #guard_msgs checks the axioms
+systemd-run --scope -p MemoryMax=12G lake build KeccakArith KeccakFlushes   # #guard_msgs checks the axioms
 ```
 
 ## The `SHA3` table (`KeccakArith/Sha3Table.lean`)
@@ -87,26 +89,76 @@ The per-row layer of Lv42's soundness (`Lv42/Arithmetization/Soundness/Rows.lean
 Axioms: every theorem above depends on `[propext, Classical.choice, Quot.sound]` (the `#guard_msgs` in
 `KeccakArith.lean`).
 
+## The end theorems
+
+```lean
+theorem KeccakArith.kvSoundness (F : KeccakFlockSpec) {input : PublicInput} (hs : Admissible prog s)
+    (hsafe : SentinelSafe prog) (h : KvHolds F prog s input q) :
+    ∃ t, AssignmentRepresents (witnessOf prog s q) t ∧ KeccakVm.ValidExecution prog input t
+
+theorem KeccakArith.kvCompleteness (F : KeccakFlockSpec) {prog : KeccakVm.Program} {input : PublicInput}
+    {t : KeccakVm.Trace prog} (h : KeccakVm.ValidExecution prog input t)
+    (hcount : ∀ op, t.count op ≤ 2 ^ maxLogRows) :
+    ∃ (s : Sizes) (q : Column (keccakIsaμ prog s)), KvHonest F prog s input q ∧ s.logMem = t.κ ∧
+      ∀ j : Fin 6, s.rows j = t.count (tableOpcode j)
+```
+
+`kvSoundness_exists` drops the representation. `Admissible prog s` is the verifier's announcement check (memory window
+`[2^16, 2^32]`, at most `2^32` rows a table, `keccakIsaμ prog s ≤ 28`), Lv42's `Sizes.Admissible` at the Keccak VM's
+instance; `SentinelSafe prog` (the last instruction is not a `JUMP`) is Lv42's one condition on the program.
+
+## Soundness (`Ensemble`, `SBus`, `SMemChannel`, `SBcChannel`, `SStateWalk`, `WitnessOf`, `ABus`, `ARelation`, `ASound`)
+
+Lv42's `Arithmetization/Soundness/*` and `Protocol/LeanIsa/{Bus,Relation,Sound}.lean`, at the Keccak VM:
+
+- `Ensemble.lean`: the Keccak VM's Clean ensemble `kEnsemble prog` (Lv42's five tables, `sha3Table`, Lv42's memory and
+  bytecode blocks, the verifier `kVerifier prog`), and its statement `SatisfiedBy prog input w`, Lv42's with
+  `Sha3RowsValid` (every `SHA3` row satisfies `Sha3Relation`) for the BLAKE2s validity and the Keccak VM program's
+  bytecode rows (`kBytecodeRowOf`); `AssignmentRepresents` at `KeccakVm.Trace`.
+- `SBus.lean` … `SStateWalk.lean`: the rows' records (`OpRecs`, from `KOpRow`), the memory and bytecode channels
+  (`lookup_sound`, at most `26 · 6 · 2^32` reads), no row at the sentinel, the state walk (`exists_run_of_perm`), and
+  `constraintSoundness`: a satisfying witness represents a valid execution.
+- `WitnessOf.lean`: the witness read off a stack (`witnessOf`), and the instance's opcode table `j` as its component
+  `kOpComponent j` (`inst_flushes_eval`, `inst_constraints_iff`, `mem_inst_counts`, from `sha3M3_flushes`, …).
+- `ABus.lean`, `ARelation.lean`: the M3 bus is the three channel pairs (`balanced_iff`, `tuples_perm`), the constraint and
+  count clauses are the witness's (`opcode_constraints_iff`, `countsNonzero_iff`).
+- `ASound.lean`: `satisfiedBy_witnessOf` (the Keccak relation of the rows from `KeccakAux`, `sha3Relation_stackRow`),
+  `kvSoundness`, `kvSoundness_exists`.
+
+## Completeness (`CSkel`, `CBus`, `CWitness`, `CSatisfied`, `CTheorem`, `AComplete`)
+
+Lv42's `Arithmetization/Completeness/*` and `Protocol/LeanIsa/Complete.lean`, at the Keccak VM:
+
+- `CSkel.lean`: the run's skeletons (`runSkels`, `runRows`, `count_eq_runRows`), the cells an instruction reads
+  (`readAddrs`: `SHA3`'s 26 cells), the row of an executing instruction (`rowOf`, `SHA3`'s `sha3RowOf`) and
+  `rowOf_sends` (`sha3_exec_sends`: the lanes read back from a canonical image are the image's limbs).
+- `CBus.lean`, `CWitness.lean`, `CSatisfied.lean`, `CTheorem.lean`: the rows with their counts, the witness of a run
+  (`skelWitness`), `skelWitness_satisfiedBy` (with `skelWitness_sha3_valid`: an executing `SHA3`'s row satisfies the
+  Keccak relation, `sha3RowOf_refines`), and `constraintCompleteness_rows`.
+- `AComplete.lean`: the stack of a witness (`stackOf`: every column committed at its block, `QFLOCK` the honest column
+  `F.gen (sha3States …)` of the executed rows' input states, `END_BIT` XORed into lane 16), `m3Honest_stackOf` (the
+  padding rows are zero), `keccakAux_stackOf` (`F.holds_gen`; the input copies from `F.in_gen`, `END_BIT` cancelling in
+  characteristic two; the output copies from `F.step_of_holds` and the rows' Keccak relation), `kvHonest_stackOf`,
+  `kvCompleteness`.
+
+## Helpers
+
+- `BusBasics.lean`: what a list of sends carries on a channel (`chanOf`, `sendsOf_*`), ISA-independent, copied from
+  Lv42's `Completeness/{Bus,Satisfied}.lean` so that the Keccak files need nothing of Lv42's BLAKE2s ensemble.
+- `formal/KeccakVm/KeccakVm/Lemmas.lean`: Lv42's program, step and run lemmas at the Keccak VM's machine
+  (`Program.fetch_gpow`, `run_add`, `Trace.regs`, …), and the decoder of its bytecode entries (`decode_entry`,
+  `entry_injective`).
+
+## The verifier's `SHA3` flushes (`formal/KeccakFlushes`)
+
+`KeccakFlushes.flushesSha3_eq (side : Side) (R : ℕ → K)`: on every row `R : ℕ → K`, the verifier's `SHA3` forms of one
+side (`UniStatement.flushesSha3`, read by `UniSound.Ids.tupleK`) are, in order, the instance's `SHA3` flushes of that
+side (`KeccakVm.Sha3Table.flushes` filtered by side) evaluated at the row's first 86 cells: the statement UniSound's
+`uni_tuples_eq` gives Lv42's five tables, by the same reflection (`LvR.spNorm`, `decide +kernel`). A separate library
+(`KeccakFlushes`, a plain-`import` file, since it imports `UniSound.Ids.LvRealize`) so that `KeccakArith` does not
+depend on `UniSound`.
+
 ## What is not done
 
-- **Whole soundness**: `KvHolds F prog s input q` (admissible sizes, `SentinelSafe`) ⇒ a `KeccakVm.ValidExecution`.
-  Done: the per-row layer (all six tables, `KOpRow`; the `SHA3` assumption from `KeccakAux`, `sha3Relation_stackRow`)
-  and the walk decomposition. Missing, all stated in Lv42 over `EnsembleWitness (leanIsaEnsemble prog)` and Lv42's
-  `Program`, `Instr`, `entry`, `execute`, `run` and so not reusable as they are:
-  - the Keccak VM's ensemble (`sha3Table` in `BLAKE2S`'s place, the verifier and bytecode block over
-    `KeccakVm.Program`; Lv42's `leanIsaVerifier` depends on the program only through `finalPc`) and its
-    `SatisfiedBy`, with `KeccakAux`'s consequence (`Sha3Relation` on every executed row) in place of
-    `Blake2sRowsValid` (`Statement.lean`, about 250 lines of definitions);
-  - the bus decomposition, the memory and bytecode channels and the sentinel and state-walk arguments
-    (`Soundness/{Bus,MemChannel,BytecodeChannel,StateWalk,Theorem}.lean`, about 1,400 lines; `lookup_sound` is
-    generic and reusable, the read bound becomes `26 · 6 · 2^32 < 2^64 − 1`), plus `KeccakVm` versions of
-    `Program.fetch_gpow`, `Trace.regs`, `regs_eq_map` and the injectivity of `KeccakVm.entry`;
-  - the adaptor from the M3 stack to that witness (`witnessOf` for `keccakIsaInstance`, whose columns are all
-    committed, and `Protocol/LeanIsa/{Bus,Relation,Sound}.lean`, about 1,300 lines; the `SHA3` table's part of the
-    flush and count correspondence is `sha3M3_flushes`, `sha3M3_count`, `toM3_flushes_eq`).
-  Estimated 3,000 lines, mostly transcription of Lv42.
-- **Completeness**: a valid execution gives a stack with `KvHonest`, via `F.gen`, `F.holds_gen`, `F.in_gen` and
-  Lv42's `Completeness/*` and `LeanIsa/Complete.lean` (about 3,300 lines) ported likewise. Done: the `SHA3` row's part
-  (`sha3RowOf_refines`, `sha3_exec_complete`). Also needed: `KeccakAux`'s copy clause for the honest stack, whose
-  input lane 16 is the port word plus `END_BIT` (`F.in_gen` gives the port words; the output port words need
-  `F.step_of_holds` on `F.gen`, which `holds_gen` allows).
+Nothing of the scope above. Lv42's read-back (`witnessOf_stackOf`) and the spine `Refinement` (`leanIsaRefinement`) are
+not ported (no consumer yet).
