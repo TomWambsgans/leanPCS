@@ -1,12 +1,13 @@
 // Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! The recursion end to end, from a Keccak VM trace (leanVM 9d50c92a3, `crates/leanvm/univariate/src/prover/
-//! dump_keccak`) to π2's proof and openings, timed: π1-rec3's proof (with its three openings), π2's witness (the
-//! circuit compiled on π1's stream), π2's proof and its three openings.
+//! dump_keccak`) to π2's proof and openings, timed: π1-rec3's proof (with its three openings), π2's witness (replayed
+//! on π1's stream from the circuit's witness plan, `circuit::plan`), π2's proof and its three openings.
 //!
 //! What depends on the program and the shape only is computed once, before the timed passes, and reported apart (the
-//! per-circuit setup): π1's setup roots (its `F`), π1's recorded verifier, π2's circuit (adapted), its spec, its setup
-//! commitment (`σ`, `κ`) and its IV. Each pass checks that its circuit is the cached one (outside the timing), that
-//! π2's openings verify, and that every pass's proofs are the first's.
+//! per-circuit setup): π1's setup roots (its `F`), π1's recorded verifier, π2's circuit (adapted) and its witness plan,
+//! its spec, its setup commitment (`σ`, `κ`) and its IV. The first pass checks (outside the timing) that the replayed
+//! witness and public inputs are those of the circuit compiled on its stream (`circuit::compile::pi2`), and that
+//! circuit the cached one; each pass, that π2's openings verify and that its proofs are the first pass's.
 //!
 //! `LEANVM_TRACE=<dir of one trace> cargo test --release -p leanvm_rec --test pipeline -- --ignored --nocapture`
 //! (`PIPELINE_REPEAT`, default 3; `PIPELINE_COOLDOWN`, default 2 s).
@@ -17,10 +18,10 @@ static ALLOC: bench::Jemalloc = bench::Jemalloc;
 use std::time::Instant;
 
 #[path = "../../univariate/tests/vectors/mod.rs"]
-#[allow(dead_code)]
 mod vectors;
 
 use leanvm_rec::circuit::compile::{Inputs, Layout, pi2};
+use leanvm_rec::circuit::plan::WitnessPlan;
 use leanvm_rec::pi2::adapt;
 use leanvm_rec::pi2::prover::{self, Setup, open, prove, verify_openings};
 use leanvm_rec::pi2::verifier::Spec;
@@ -78,10 +79,11 @@ fn trace_to_recursion() {
         let recorded = leanvm_univariate::contract::record_verifier_with(&shape, KECCAK_REC3, Claims::Point, &roots);
         let pi1_setup = started.elapsed().as_secs_f64();
         let public = trace.public_input();
-        // π2's circuit depends on π1's verifier only; a stream gives the compiler its values (any proof's: the first).
+        // π2's circuit and its witness plan depend on π1's verifier only; a stream gives the compiler its values (any
+        // proof's: the first).
         let (pi1_proof, _) = prove_pi1(&trace, trace.keccak_flock(), &PROGRAM_IV, config).expect("π1's proof");
         let started = Instant::now();
-        let compiled = pi2(
+        let (compiled, plan) = WitnessPlan::compile(
             &recorded,
             Layout::D16v,
             &Inputs {
@@ -90,6 +92,7 @@ fn trace_to_recursion() {
                 stream: &pi1_proof.stream,
             },
         );
+        let planned = started.elapsed().as_secs_f64();
         let circuit = adapt::adapt(&compiled.finished.circuit);
         let spec = Spec::of(&circuit);
         let setup = Setup::new(&circuit);
@@ -98,7 +101,7 @@ fn trace_to_recursion() {
         let pi2_setup = started.elapsed().as_secs_f64();
         drop((compiled, pi1_proof));
         println!(
-            "{}: loaded and placed in {loaded:.2} s; per circuit: π1's setup roots and recorded verifier {pi1_setup:.2} s, π2's circuit, spec, setup commitment and IV {pi2_setup:.2} s",
+            "{}: loaded and placed in {loaded:.2} s; per circuit: π1's setup roots and recorded verifier {pi1_setup:.2} s, π2's circuit, witness plan, spec, setup commitment and IV {pi2_setup:.2} s (circuit and plan {planned:.2} s)",
             std::path::Path::new(&dir).display()
         );
 
@@ -113,36 +116,34 @@ fn trace_to_recursion() {
                 laps.push((name, clock.elapsed().as_secs_f64()));
                 clock = Instant::now();
             };
-            // π2's witness is compiled on π1's stream while π1's openings run (`prove_streaming`).
+            // π2's witness is replayed on π1's stream while π1's openings run (`prove_streaming`).
             let (stream_tx, stream_rx) = std::sync::mpsc::channel::<Vec<u8>>();
-            let recorded = &recorded;
-            let (pi1_proof, (compiled, compiling)) = std::thread::scope(|s| {
-                let compiler = std::thread::Builder::new()
-                    .stack_size(1 << 30)
-                    .spawn_scoped(s, move || {
-                        let stream = stream_rx.recv().expect("π1's stream");
-                        let started = Instant::now();
-                        let compiled = pi2(
-                            recorded,
-                            Layout::D16v,
-                            &Inputs {
-                                program_iv: PROGRAM_IV,
-                                public,
-                                stream: &stream,
-                            },
-                        );
-                        (compiled, started.elapsed().as_secs_f64())
-                    })
-                    .expect("a thread");
+            let plan = &plan;
+            let (pi1_proof, ((witness, public2), replaying)) = std::thread::scope(|s| {
+                let replayer = s.spawn(move || {
+                    let stream = stream_rx.recv().expect("π1's stream");
+                    let started = Instant::now();
+                    let replayed = adapt::replay(
+                        plan,
+                        &Inputs {
+                            program_iv: PROGRAM_IV,
+                            public,
+                            stream: &stream,
+                        },
+                    );
+                    (replayed, started.elapsed().as_secs_f64())
+                });
                 let (proof, _) = prove_streaming(&trace, trace.keccak_flock(), &PROGRAM_IV, config, |stream| {
-                    stream_tx.send(stream.to_vec()).expect("the compiler waits")
+                    stream_tx.send(stream.to_vec()).expect("the replay waits")
                 })
                 .expect("π1's proof");
-                (proof, compiler.join().expect("no panic"))
+                (proof, replayer.join().expect("no panic"))
             });
-            lap("π1-rec3: proof and openings, with π2's witness compiled meanwhile", &mut laps);
-            let witness = adapt::witness(&compiled.finished.witness);
-            let (public_input, values) = adapt::public_values(&compiled.public);
+            lap(
+                "π1-rec3: proof and openings, with π2's witness replayed meanwhile",
+                &mut laps,
+            );
+            let (public_input, values) = adapt::public_values(&public2);
             lap("π2: the rest of its witness", &mut laps);
             let proved = prove(&circuit, &spec, &setup, &iv, &public_input, &values, &witness);
             lap("π2: proof", &mut laps);
@@ -150,10 +151,29 @@ fn trace_to_recursion() {
             let (reduced, roots2, openings) = open(proved, &setup);
             lap("π2: openings", &mut laps);
             laps.push(("total", started.elapsed().as_secs_f64()));
-            laps.push(("(π2's compile, overlapped with π1's openings)", compiling));
+            laps.push(("(π2's witness replay, overlapped with π1's openings)", replaying));
 
-            // Outside the timing: the circuit is the cached one, π2's openings verify, the proofs are the first's.
-            assert!(adapt::adapt(&compiled.finished.circuit).digest() == digest, "the circuit is the cached one");
+            // Outside the timing: the first pass's witness and public inputs are the compiler's on its stream, and its
+            // circuit the cached one; π2's openings verify; the proofs are the first's.
+            if pass == 0 {
+                let compiled = pi2(
+                    &recorded,
+                    Layout::D16v,
+                    &Inputs {
+                        program_iv: PROGRAM_IV,
+                        public,
+                        stream: &pi1_proof.stream,
+                    },
+                );
+                assert!(
+                    adapt::adapt(&compiled.finished.circuit).digest() == digest,
+                    "the circuit is the cached one"
+                );
+                assert!(
+                    witness == adapt::witness(&compiled.finished.witness) && public2 == compiled.public,
+                    "the replayed witness is the compiler's"
+                );
+            }
             assert_eq!(
                 verify_openings(circuit.log_n, &reduced, &roots2, &setup.root(), &openings),
                 Ok(())
@@ -166,7 +186,7 @@ fn trace_to_recursion() {
                     assert!(s2 == &stream && o2 == &opened, "π2's proof is the first pass's");
                 }
             }
-            drop((pi1_proof, compiled));
+            drop((pi1_proof, witness));
             if pass == 0 {
                 continue;
             }
