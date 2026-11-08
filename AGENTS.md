@@ -34,7 +34,9 @@ Two lines, both with Keccak-256 Fiat–Shamir and both passing their claims to `
 one χ gate on bits (3,878,612 of 2^22 rows), its claims opened by leanVM's WHIR unchanged.
 
 - `crates/membership/quotient`: circuit, prover, Rust verifier (`protocol::reduce`), and the openings (`opening`), whose
-  hidden layouts make the roots and the openings hide the witness ([`HIDING.md`](docs/membership/HIDING.md)).
+  hidden layouts make the roots and the openings hide the witness ([`HIDING.md`](docs/membership/HIDING.md)). The
+  prover's transforms are `ntt`'s (AVX-512, AVX2 or NEON lanes), split around one block-wise pass over the quotients'
+  values; the `Index` keeps σ's values on the quotients' coset (512 MiB at 2^22 rows), which every proof reads.
 - `crates/membership/evm`: the same verifier compiled to EVM bytecode, run on revm with `FIELD_MUL` (10 gas) and a mock
   `PCS_OPEN` precompile (ABI in `machine.rs`), which the contract calls once per commitment: three calls for the
   four claims. The contract's ABI (`verify(bytes32,bytes32,bytes)`, selector `0xde12c640`, 252 bytes of packed
@@ -88,13 +90,13 @@ cargo test --release -p leanvm_univariate -p leanvm_rec               # the lean
 LEANVM_TRACE=<trace> cargo test --release -p leanvm_rec --test pipeline -- --ignored --nocapture   # trace → π1 → π2, timed
 ```
 
-## Numbers (M4 Max, 16 cores)
+## Numbers (M4 Max, 16 cores, but where a machine is named)
 
 Gas is transaction gas without the 21,000 base (EIP-7623), `PCS_OPEN` at a claim price of 0.
 
 | | ZK Merkle membership | leanVM by recursion (128 signatures) |
 |---|---|---|
-| Prover | 2.2 s (reduction 1.46 s, openings 0.76 s), 5.9 GiB | trace → π1-rec3 → π2 and openings: 4.1 s per proof, 0.9 s per circuit once, 12.5 GB (`tests/pipeline.rs`, load 2–7) |
+| Prover | 2.2 s (reduction 1.46 s, openings 0.76 s), 5.9 GiB, before the x86 work. h1 (Ryzen 7 PRO 8700GE, AVX-512), load 14–19: 3.9 s (reduction 2.6 s, openings 1.2 s), 6.2 GiB, against 8.8 s (6.8 s, 2.0 s) before. h2 (Core Ultra 7 265, AVX2), load 10: 2.3 s (1.5 s, 0.8 s), against 5.0 s | trace → π1-rec3 → π2 and openings: 4.1 s per proof, 0.9 s per circuit once, 12.5 GB (`tests/pipeline.rs`, load 2–7) |
 | Calldata | 252 B | 980 B |
 | Gas | 14,289 execution, **18,309** transaction | 28,325 execution, **43,309** transaction (62,720 under EIP-7976) |
 | Claims | 4 in 3 calls | 7 in 6 calls |
