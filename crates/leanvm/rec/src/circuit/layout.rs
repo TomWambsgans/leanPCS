@@ -374,81 +374,108 @@ impl Builder {
                 self.regions[self.row_region[row as usize] as usize].name
             );
         }
-        let mut dead = 0usize;
-        for row in 0..rows as u32 {
-            for role in 0..w {
-                let p = self.pos(row, role);
-                let live = match self.formula(row, role) {
-                    Formula::Forward => false,
-                    Formula::Expr(_) => self.produced[p] != NONE,
-                    Formula::Port(_) => true,
-                };
-                if !live {
-                    if matches!(self.formula(row, role), Formula::Expr(_)) {
-                        dead += 1;
+        // Each (region, role)'s reads, once.
+        let role_reads: Vec<Vec<Vec<u8>>> =
+            self.regions.iter().map(|r| r.roles.iter().map(Formula::reads).collect()).collect();
+        // Rows a task of the checks below takes.
+        const CHECK_ROWS: usize = 1 << 12;
+        let dead = parallel::map_reduce(
+            rows.div_ceil(CHECK_ROWS),
+            || 0usize,
+            |chunk| {
+                let mut dead = 0usize;
+                for row in (chunk * CHECK_ROWS) as u32..((chunk + 1) * CHECK_ROWS).min(rows) as u32 {
+                    for role in 0..w {
+                        let p = self.pos(row, role);
+                        let live = match self.formula(row, role) {
+                            Formula::Forward => false,
+                            Formula::Expr(_) => self.produced[p] != NONE,
+                            Formula::Port(_) => true,
+                        };
+                        if !live {
+                            if matches!(self.formula(row, role), Formula::Expr(_)) {
+                                dead += 1;
+                            }
+                            continue;
+                        }
+                        for &c in &role_reads[self.row_region[row as usize] as usize][role] {
+                            assert_ne!(
+                                self.cell[self.pos(row, c as usize)],
+                                NONE,
+                                "({row}, {role}) of {} reads cell {c}, which holds nothing",
+                                self.regions[self.row_region[row as usize] as usize].name
+                            );
+                        }
                     }
-                    continue;
                 }
-                for c in self.formula(row, role).reads() {
-                    assert_ne!(
-                        self.cell[self.pos(row, c as usize)],
-                        NONE,
-                        "({row}, {role}) of {} reads cell {c}, which holds nothing",
-                        self.regions[self.row_region[row as usize] as usize].name
-                    );
-                }
-            }
-        }
+                dead
+            },
+            |a, b| a + b,
+        );
 
         // The words, in value order.
         let mut words: Vec<K> = vec![K(0); values];
-        let mut known = vec![false; values];
         let mut cells = vec![K(0); w];
+        let mut given = self.given.iter().peekable();
+        // The positions with a κ, as bits: most producers have none, and need no lookup.
+        let mut has_kappa = vec![0u64; (rows * w).div_ceil(64)];
+        for &p in self.kappa.keys() {
+            has_kappa[p as usize / 64] |= 1 << (p % 64);
+        }
         for v in 0..values {
-            if let Some(&g) = self.given.get(&(v as Value)) {
+            if let Some((_, &g)) = given.next_if(|&(&u, _)| u as usize == v) {
                 words[v] = g;
-                known[v] = true;
                 continue;
             }
             let p = self.producer[v] as usize;
             let (row, role) = ((p / w) as u32, p % w);
-            let f = self.formula(row, role).clone();
-            for c in f.reads() {
+            let f = self.formula(row, role);
+            for &c in &role_reads[self.row_region[row as usize] as usize][role] {
                 let u = self.cell[self.pos(row, c as usize)];
                 assert!(
-                    known[u as usize],
+                    (u as usize) < v,
                     "value {v} at ({row}, {role}) reads value {u}, not computed before it"
                 );
                 cells[c as usize] = words[u as usize];
             }
-            let k = self.kappa.get(&(p as u32)).copied().unwrap_or(K(0));
+            let k = if has_kappa[p / 64] >> (p % 64) & 1 == 1 {
+                self.kappa[&(p as u32)]
+            } else {
+                K(0)
+            };
             words[v] = f.eval(&cells, K(0), K(0)) + k;
-            known[v] = true;
         }
 
         // Dead slots: self-loops of 0, so their formula must vanish on their row.
-        for row in 0..rows as u32 {
-            for role in 0..w {
-                let p = self.pos(row, role);
-                if let Formula::Expr(poly) = self.formula(row, role)
-                    && self.produced[p] == NONE
-                {
-                    let cells: Vec<K> = (0..w)
-                        .map(|c| match self.cell[self.pos(row, c)] {
-                            NONE => K(0),
-                            u => words[u as usize],
-                        })
-                        .collect();
-                    let k = self.kappa.get(&(p as u32)).copied().unwrap_or(K(0));
-                    assert_eq!(
-                        poly.eval(&cells) + k,
-                        K(0),
-                        "dead slot ({row}, {role}) of {} does not push 0",
-                        self.regions[self.row_region[row as usize] as usize].name
-                    );
+        parallel::for_each(rows.div_ceil(CHECK_ROWS), |chunk| {
+            let mut cells = vec![K(0); w];
+            for row in (chunk * CHECK_ROWS) as u32..((chunk + 1) * CHECK_ROWS).min(rows) as u32 {
+                let mut filled = false;
+                for role in 0..w {
+                    let p = self.pos(row, role);
+                    if let Formula::Expr(poly) = self.formula(row, role)
+                        && self.produced[p] == NONE
+                    {
+                        if !filled {
+                            for (c, cell) in cells.iter_mut().enumerate() {
+                                *cell = match self.cell[self.pos(row, c)] {
+                                    NONE => K(0),
+                                    u => words[u as usize],
+                                };
+                            }
+                            filled = true;
+                        }
+                        let k = self.kappa.get(&(p as u32)).copied().unwrap_or(K(0));
+                        assert_eq!(
+                            poly.eval(&cells) + k,
+                            K(0),
+                            "dead slot ({row}, {role}) of {} does not push 0",
+                            self.regions[self.row_region[row as usize] as usize].name
+                        );
+                    }
                 }
             }
-        }
+        });
 
         // Placement: blocks by region, largest first.
         let mut count: Vec<usize> = vec![0; self.regions.len()];
@@ -554,16 +581,30 @@ impl Builder {
         }
 
         // The witness.
-        let mut witness = vec![K(0); n];
-        for p in 0..rows * w {
-            let v = match self.cell[p] {
-                NONE => pulled_at_free_end.get(&(p as u32)).copied(),
-                v => Some(v),
-            };
-            if let Some(v) = v {
-                witness[fpos(p) as usize] = words[v as usize];
-            }
+        // Each final row's creation row, if any: the witness is gathered a final row at a time.
+        let mut creation_row = vec![NONE; n / w];
+        for (row, &f) in row_map.iter().enumerate() {
+            creation_row[f as usize] = row as u32;
         }
+        let mut witness = vec![K(0); n];
+        parallel::chunks_mut(&mut witness, CHECK_ROWS * w, |chunk, out| {
+            for (k, final_row) in out.chunks_mut(w).enumerate() {
+                let row = creation_row[chunk * CHECK_ROWS + k];
+                if row == NONE {
+                    continue;
+                }
+                for (role, word) in final_row.iter_mut().enumerate() {
+                    let p = row as usize * w + role;
+                    let v = match self.cell[p] {
+                        NONE => pulled_at_free_end.get(&(p as u32)).copied(),
+                        v => Some(v),
+                    };
+                    if let Some(v) = v {
+                        *word = words[v as usize];
+                    }
+                }
+            }
+        });
 
         let kappa: Vec<(u32, K)> = {
             let mut k: Vec<(u32, K)> = self.kappa.iter().map(|(&p, &k)| (fpos(p as usize), k)).collect();

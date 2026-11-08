@@ -219,7 +219,7 @@ identity exempts them (§5.2).
 the transcript between `γ` and the `C2` root. The verifier runs it as
 `flock_min::verify_walked_with::<_, keccak_flock::Keccak>` at `log_n = 17 + h_SHA3` variables (32 at 128 signatures).
 
-- **The block** is `lv42_flock::keccak`'s (`docs/leanvm/flock/KECCAK.md`): one Keccak-f[1600] per `2^17` slots,
+- **The block** is `flock::keccak`'s (`docs/leanvm/flock/KECCAK.md`): one Keccak-f[1600] per `2^17` slots,
   every round's state materialised, `C = I`. Block `i` sits at row `i` of the placed `SHA3` table.
 - **The zerocheck** has a univariate skip of `k = 3`: `2^3` coset values, then `log_n - 3` rounds of 2 scalars, then
   `v_a` and `v_b`. **The lincheck** has 11 rounds of 2 scalars (the block's slot bits after its 6 packing bits).
@@ -496,7 +496,7 @@ subtracted). Modelled: the public input's byte swap (about 110 gas, not built) a
 - The lincheck merged into the batch: circular (its point is the ring switch's, an input of the batch).
 - Fewer coefficients a round: the batch's weight is a sum over many points, with no common eq factor to split off.
 - A smaller skip (`k` 3 → 0–2): 2 scalars at most, and the prover's skip kernels start at 3
-  (`lv42_flock::zerocheck::skip::MIN_SKIP`).
+  (`flock::zerocheck::skip::MIN_SKIP`).
 - Another tower basis for the target's `XOR` network: 400 random bases, the best 755 `XOR`s against 767.
 - The public input in leanVM's byte order: about 110 gas; documented instead (F7).
 - A looped ring-weight kernel: a loop costs about 30 gas an iteration.

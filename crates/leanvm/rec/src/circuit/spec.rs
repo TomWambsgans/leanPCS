@@ -65,12 +65,14 @@ impl Poly {
     where
         F: Copy + Default + std::ops::Add<Output = F> + std::ops::Mul<Output = F> + From<K>,
     {
+        // A coefficient 1 (almost every one) costs no product.
+        let scaled = |k: K, x: F| if k == K(1) { x } else { F::from(k) * x };
         let mut out = F::default();
         for &(c, k) in &self.linear {
-            out = out + F::from(k) * cells[c as usize];
+            out = out + scaled(k, cells[c as usize]);
         }
         for &(a, b, k) in &self.quadratic {
-            out = out + F::from(k) * cells[a as usize] * cells[b as usize];
+            out = out + scaled(k, cells[a as usize] * cells[b as usize]);
         }
         out
     }

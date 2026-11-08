@@ -188,6 +188,18 @@ pub struct Config {
 /// contract's own binds the setup roots, the shape and the variant: `contract::contract_iv`), from the Flock witness of
 /// its placed `SHA3` rows (`Trace::keccak_flock`).
 pub fn prove(trace: &Trace, flock: FlockWitness, iv: &[u8; 32], config: Config) -> Result<(Proof, Report), String> {
+    prove_streaming(trace, flock, iv, config, |_| {})
+}
+
+/// [`prove`], handing the stream to `on_stream` as soon as it is final (after the batching sumcheck, before the
+/// openings, which write nothing to it): a recursion can start compiling π2's witness while the openings run.
+pub fn prove_streaming(
+    trace: &Trace,
+    flock: FlockWitness,
+    iv: &[u8; 32],
+    config: Config,
+    on_stream: impl FnOnce(&[u8]),
+) -> Result<(Proof, Report), String> {
     let mut report = Report::default();
     let mut clock = Clock { last: Instant::now() };
     if !trace.placed {
@@ -274,7 +286,7 @@ pub fn prove(trace: &Trace, flock: FlockWitness, iv: &[u8; 32], config: Config) 
         let out = super::flock::prove(&mut writer, &flock, config.variant, log_n)?;
         drop(flock);
         report.notes.push(format!("Flock's zerocheck and lincheck: {:.3} s", out.reduction_secs));
-        for (stage, secs) in std::mem::take(&mut *lv42_flock::zerocheck::skip::STAGES.lock().expect("the stages")) {
+        for (stage, secs) in std::mem::take(&mut *flock::zerocheck::skip::STAGES.lock().expect("the stages")) {
             report.notes.push(format!("  the skip's zerocheck, {stage}: {secs:.3} s"));
         }
         clock.lap(&mut report, "Flock: zerocheck, lincheck, slices");
@@ -529,6 +541,7 @@ pub fn prove(trace: &Trace, flock: FlockWitness, iv: &[u8; 32], config: Config) 
                 super::batch::prove(&mut writer, &stacks, weights, lambda, narrow)?
             };
             clock.lap(&mut report, "batching sumcheck");
+            on_stream(&writer.stream);
             for ((c, _), &value) in combined.iter().zip(&values) {
                 let (stack, committed) = stacks_of(*c);
                 let p = point[..stack.layout.vars].to_vec();

@@ -67,7 +67,7 @@ to `root` (details: [`AGENTS.md`](AGENTS.md#membership-what-is-proved)).
 | | |
 |---|---|
 | Circuit | 34 Keccak-256 (χ gate on bits): 3,878,612 of 2^22 rows |
-| Prover | 2.2 s, 5.9 GiB peak (M4 Max, 16 cores) |
+| Prover | 3.6 s, 6.2 GiB peak on h1 (Ryzen 7 PRO 8700GE, 8 cores, AVX-512) at load 9–14, where the prover before the x86 work took 8.4 s; 2.3 s on h2 (Core Ultra 7 265, 20 cores, AVX2) at load 10, 5.0 s before; 2.2 s on an M4 Max (16 cores) before the x86 work |
 | Calldata to the contract | 252 bytes (2 roots + 5 field elements + statement) |
 | PCS claims | 4, in 3 `PCS_OPEN` calls |
 | Gas, `PCS_OPEN` free | 14,289 execution; 18,309 transaction (without the 21,000 base) |
@@ -87,6 +87,7 @@ transaction gas under EIP-7623 at a claim price of 0, without the 21,000 base.
 | VM execution | 154,148 cycles; tables of `2^14`–`2^16` rows, memory `2^20` | 473,348 cycles; `2^16`–`2^17` rows, memory `2^22` |
 | π1 prover (π1-rec3) | 2.7 s cold, 3.65 s warm median of 3; 6.9 GB | 4.7 s (main line), 14.4 GB |
 | π2 prover | 4.4 s + 1.7 s openings (and 3.8 s witness); 9.8 GB | 3.0 s + 0.9 s openings (and 2.9 s witness); 9.8 GB |
+| trace → π1 → π2, per proof (`tests/pipeline.rs`) | **4.1 s** (Mac, load 2–7; π1 with π2's witness 1.87, π2 1.58 + 0.70 openings); 8.9 s on h2, 11.5–12.1 s on h1 under load; per circuit, once, 0.9 s; 12.5 GB | |
 | Calldata to the contract | 980 B | 980 B |
 | Gas (real proof) | 28,325 execution; **43,309** transaction | 29,105 execution; 44,113 transaction |
 | PCS claims | 7, in 6 `PCS_OPEN` calls | 7, in 6 calls |
@@ -108,7 +109,7 @@ crates/
   leanvm/rec               π2 and the recursion's contract (package leanvm_rec)
   leanvm/gf2_linear        GF(2)-linear maps of GF(2^192) for the prover
   vendor/leanvm-c445e3d5   leanVM's WHIR stack (primitives, fiat_shamir, pcs, parallel, verifier, bench)
-  vendor/leanvm-42422001   leanVM's Flock prover (packages lv42_*) and the Keccak-f block
+  vendor/flock-42422001    leanVM's Flock prover on c445e3d5's primitives (package flock) and the Keccak-f block
 docs/
   membership/HIDING.md     the hiding layouts
   leanvm/univariate/       π1: SPEC.md (the PIOP), SPEC-FLOCK.md, PROVER.md, KECCAK.md (the VM, gas, measurements)
@@ -119,7 +120,7 @@ params/                    soundness and parameter calculators (Python)
 ```
 
 A crate's directory is its package name without its group's prefix (`crates/leanvm/rec` is `leanvm_rec`,
-`crates/vendor/leanvm-42422001/flock` is `lv42_flock`); `crates/leanvm/statement` is `leanvm_statement`.
+`crates/vendor/flock-42422001` is `flock`); `crates/leanvm/statement` is `leanvm_statement`.
 
 ## Build, test, measure
 

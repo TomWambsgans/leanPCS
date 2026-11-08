@@ -1,8 +1,9 @@
 // Part of this repository. The additive transform's layers are domain.rs's (adapted there from leanVM's branch
 // PCS-openings-aggregation, commit 651453c6), in the same order; the lane-wise carry-less product and its reduction
-// are those of crates/vendor/leanvm-c445e3d5/primitives/src/field/{x8,gf2_64x3}.rs (vendored from leanVM c445e3d5, credit binius64).
+// are those of crates/vendor/leanvm-c445e3d5/primitives/src/field/{x8,gf2_64x3,gf2_64}.rs (vendored from leanVM c445e3d5, credit binius64).
 // MIT OR Apache-2.0; see AGENTS.md.
-//! [`crate::domain`]'s transforms on rows of eight words, a row's eight products one AVX-512 carry-less product where
+//! [`crate::domain`]'s transforms on rows of eight words, a row's eight products one AVX-512 carry-less product (two
+//! AVX2 + VPCLMULQDQ ones, or NEON PMULLs) where
 //! the build has it (for `crates/leanvm/univariate`'s prover):
 //!
 //! - a batch ([`K8`]): eight K-columns, row `i` their entries at position `i`, every layer between rows;
@@ -107,7 +108,25 @@ mod lanes {
         unsafe { U(_mm512_xor_si512(a.0, b.0), _mm512_xor_si512(a.1, b.1)) }
     }
 
+    /// Lane `i` reduced: the reduction of `gf2_64x3::x86_64::reduce_lanes512`. With GFNI its shifts are byte maps
+    /// (`gfni_reduce`, from the vendored `pcs`'s `additive_ntt_f64.rs`): a high half has at most 63 bits (a sum of
+    /// products of two 64-bit factors), so `g(hi ^ spill) = L(hi) ^ rotl8(H(hi)) ^ T(hi >> 56)`.
+    #[cfg(target_feature = "gfni")]
+    #[inline(always)]
+    pub fn reduce_u(p: U) -> V {
+        use super::gfni_reduce::{H, L, T};
+        // SAFETY: the module's cfg enables avx512f, and this function's gfni.
+        unsafe {
+            let (lo, hi) = (_mm512_unpacklo_epi64(p.0, p.1), _mm512_unpackhi_epi64(p.0, p.1));
+            let low = _mm512_gf2p8affine_epi64_epi8::<0>(hi, _mm512_set1_epi64(L));
+            let high = _mm512_rol_epi64::<8>(_mm512_gf2p8affine_epi64_epi8::<0>(hi, _mm512_set1_epi64(H)));
+            let spill = _mm512_gf2p8affine_epi64_epi8::<0>(_mm512_srli_epi64::<56>(hi), _mm512_set1_epi64(T));
+            V(_mm512_xor_si512(lo, _mm512_ternarylogic_epi64::<0x96>(low, high, spill)))
+        }
+    }
+
     /// Lane `i` reduced: the reduction of `gf2_64x3::x86_64::reduce_lanes512`.
+    #[cfg(not(target_feature = "gfni"))]
     #[inline(always)]
     pub fn reduce_u(p: U) -> V {
         // SAFETY: the module's cfg enables avx512f.
@@ -182,7 +201,371 @@ mod lanes {
     }
 }
 
-#[cfg(not(all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "vpclmulqdq")))]
+/// The byte maps of the AVX-512 reduction on GFNI, as `vgf2p8affineqb` matrices (the vendored `pcs`'s
+/// `additive_ntt_f64.rs`, `gfni_reduce`). Byte by byte, `b · 0x1B` is twelve bits: its low byte `L(b)` stays in place
+/// and its high nibble `H(b)` moves a byte up; the top byte's nibble moves out, the spill, which the rotation brings
+/// to byte 0 once, so `T(b) = H(b) · 0x1A` adds the rest of its product.
+#[cfg(all(
+    target_arch = "x86_64",
+    target_feature = "avx512f",
+    target_feature = "vpclmulqdq",
+    target_feature = "gfni"
+))]
+mod gfni_reduce {
+    /// The carry-less product of two 16-bit polynomials, truncated.
+    const fn clmul16(a: u16, b: u16) -> u16 {
+        let mut acc = 0;
+        let mut j = 0;
+        while j < 16 {
+            if (b >> j) & 1 == 1 {
+                acc ^= a << j;
+            }
+            j += 1;
+        }
+        acc
+    }
+
+    /// The byte map `which` (0: L, 1: H, 2: T) of one byte.
+    const fn map(which: u8, b: u8) -> u8 {
+        let p = clmul16(b as u16, 0x1B);
+        match which {
+            0 => p as u8,
+            1 => (p >> 8) as u8,
+            _ => clmul16(p >> 8, 0x1A) as u8,
+        }
+    }
+
+    /// The matrix of byte map `which`: output bit `i` is the parity of the input under byte `7 - i`.
+    const fn matrix(which: u8) -> i64 {
+        let mut m = 0u64;
+        let mut i = 0;
+        while i < 8 {
+            let mut row = 0u64;
+            let mut j = 0;
+            while j < 8 {
+                if (map(which, 1 << j) >> i) & 1 == 1 {
+                    row |= 1 << j;
+                }
+                j += 1;
+            }
+            m |= row << (8 * (7 - i));
+            i += 1;
+        }
+        m as i64
+    }
+
+    pub(super) const L: i64 = matrix(0);
+    pub(super) const H: i64 = matrix(1);
+    pub(super) const T: i64 = matrix(2);
+}
+
+#[cfg(all(target_arch = "aarch64", target_feature = "aes"))]
+mod lanes {
+    use core::arch::aarch64::*;
+    use primitives::field::gf2_64::aarch64::{pmull_hi_asm, pmull_lo_asm, reduce_pair_pmull4};
+
+    /// Eight K elements in four NEON registers, lanes `2 j` and `2 j + 1` in register `j`.
+    #[derive(Clone, Copy)]
+    pub struct V([uint64x2_t; 4]);
+
+    /// # Safety
+    /// `p` points to eight readable words.
+    #[inline(always)]
+    pub unsafe fn load(p: *const u64) -> V {
+        // SAFETY: the caller's eight words; NEON is baseline on aarch64.
+        V(std::array::from_fn(|j| unsafe { vld1q_u64(p.add(2 * j)) }))
+    }
+
+    /// # Safety
+    /// `p` points to eight writable words.
+    #[inline(always)]
+    pub unsafe fn store(p: *mut u64, v: V) {
+        // Four stores, not one `vst1q_u64_x4`: through those LLVM sees a row stored to a local and read back
+        // (`Kx8::to_row`) as the registers themselves.
+        for (j, &x) in v.0.iter().enumerate() {
+            // SAFETY: the caller's eight words.
+            unsafe { vst1q_u64(p.add(2 * j), x) }
+        }
+    }
+
+    #[inline(always)]
+    pub fn splat(x: u64) -> V {
+        // SAFETY: NEON is baseline on aarch64.
+        V([unsafe { vdupq_n_u64(x) }; 4])
+    }
+
+    #[inline(always)]
+    pub fn from_array(x: [u64; 8]) -> V {
+        // SAFETY: eight words on the stack.
+        unsafe { load(x.as_ptr()) }
+    }
+
+    #[inline(always)]
+    pub fn xor(a: V, b: V) -> V {
+        // SAFETY: NEON is baseline on aarch64.
+        V(std::array::from_fn(|j| unsafe { veorq_u64(a.0[j], b.0[j]) }))
+    }
+
+    /// Lane-wise carry-less products, unreduced: lane `i`'s 128-bit product in register `i`.
+    #[derive(Clone, Copy)]
+    pub struct U([uint64x2_t; 8]);
+
+    #[inline(always)]
+    pub fn zero_u() -> U {
+        // SAFETY: NEON is baseline on aarch64.
+        U([unsafe { vdupq_n_u64(0) }; 8])
+    }
+
+    /// One PMULL a lane (PMULL2 for the odd lanes), on the registers as they are.
+    #[inline(always)]
+    pub fn clmul_u(a: V, b: V) -> U {
+        // SAFETY: the module's cfg enables aes (PMULL).
+        U(std::array::from_fn(|i| unsafe {
+            let (x, y) = (a.0[i / 2], b.0[i / 2]);
+            if i & 1 == 0 {
+                pmull_lo_asm(x, y)
+            } else {
+                pmull_hi_asm(x, y)
+            }
+        }))
+    }
+
+    #[inline(always)]
+    pub fn xor_u(a: U, b: U) -> U {
+        // SAFETY: NEON is baseline on aarch64.
+        U(std::array::from_fn(|i| unsafe { veorq_u64(a.0[i], b.0[i]) }))
+    }
+
+    /// Lane `i` reduced: two folds by `0x1B` with PMULL, a pair of lanes at a time
+    /// (`gf2_64::aarch64::reduce_pair_pmull4`).
+    #[inline(always)]
+    pub fn reduce_u(p: U) -> V {
+        // SAFETY: the module's cfg enables aes.
+        V(std::array::from_fn(|j| unsafe {
+            reduce_pair_pmull4(p.0[2 * j], p.0[2 * j + 1])
+        }))
+    }
+
+    /// Lane `i` is `a_i b_i` in K.
+    #[inline(always)]
+    pub fn mul(a: V, b: V) -> V {
+        reduce_u(clmul_u(a, b))
+    }
+
+    /// The 8 x 8 transpose: lane `p` of output `c` is lane `c` of input `p`.
+    #[inline(always)]
+    pub fn transpose(r: [V; 8]) -> [V; 8] {
+        // SAFETY: NEON is baseline on aarch64.
+        std::array::from_fn(|c| {
+            V(std::array::from_fn(|j| unsafe {
+                let (a, b) = (r[2 * j].0[c / 2], r[2 * j + 1].0[c / 2]);
+                if c & 1 == 0 { vzip1q_u64(a, b) } else { vzip2q_u64(a, b) }
+            }))
+        })
+    }
+
+    /// Lane `i` is `a_(i ^ S)`.
+    #[inline(always)]
+    pub fn swap<const S: usize>(a: V) -> V {
+        V(std::array::from_fn(|j| {
+            let x = a.0[j ^ (S >> 1)];
+            // SAFETY: NEON is baseline on aarch64.
+            if S & 1 == 1 { unsafe { vextq_u64::<1>(x, x) } } else { x }
+        }))
+    }
+
+    /// `a`, with `b` added on the lanes of `mask`.
+    #[inline(always)]
+    pub fn mask_add(a: V, mask: u8, b: V) -> V {
+        // SAFETY: NEON is baseline on aarch64.
+        V(std::array::from_fn(|j| unsafe {
+            let (x, y) = (a.0[j], b.0[j]);
+            match mask >> (2 * j) & 3 {
+                0 => x,
+                3 => veorq_u64(x, y),
+                m => {
+                    let keep = vcombine_u64(
+                        vcreate_u64(if m & 1 == 1 { u64::MAX } else { 0 }),
+                        vcreate_u64(if m & 2 == 2 { u64::MAX } else { 0 }),
+                    );
+                    veorq_u64(x, vandq_u64(y, keep))
+                }
+            }
+        }))
+    }
+}
+
+#[cfg(all(
+    target_arch = "x86_64",
+    target_feature = "avx2",
+    target_feature = "vpclmulqdq",
+    not(target_feature = "avx512f")
+))]
+mod lanes {
+    //! AVX2 + VPCLMULQDQ: eight K elements in two registers, lanes `0..4` and `4..8`; the products and the
+    //! reduction are the AVX-512 module's, on each half (no ternary logic: plain XORs).
+    use core::arch::x86_64::*;
+
+    /// Eight K elements in two registers.
+    #[derive(Clone, Copy)]
+    pub struct V([__m256i; 2]);
+
+    /// # Safety
+    /// `p` points to eight readable words.
+    #[inline(always)]
+    pub unsafe fn load(p: *const u64) -> V {
+        // SAFETY: the caller's eight words.
+        unsafe { V([_mm256_loadu_si256(p.cast()), _mm256_loadu_si256(p.add(4).cast())]) }
+    }
+
+    /// # Safety
+    /// `p` points to eight writable words.
+    #[inline(always)]
+    pub unsafe fn store(p: *mut u64, v: V) {
+        // SAFETY: the caller's eight words.
+        unsafe {
+            _mm256_storeu_si256(p.cast(), v.0[0]);
+            _mm256_storeu_si256(p.add(4).cast(), v.0[1]);
+        }
+    }
+
+    #[inline(always)]
+    pub fn splat(x: u64) -> V {
+        // SAFETY: the module's cfg enables avx2.
+        let h = unsafe { _mm256_set1_epi64x(x as i64) };
+        V([h, h])
+    }
+
+    #[inline(always)]
+    pub fn from_array(x: [u64; 8]) -> V {
+        // SAFETY: eight words on the stack.
+        unsafe { load(x.as_ptr()) }
+    }
+
+    #[inline(always)]
+    pub fn xor(a: V, b: V) -> V {
+        // SAFETY: the module's cfg enables avx2.
+        unsafe { V([_mm256_xor_si256(a.0[0], b.0[0]), _mm256_xor_si256(a.0[1], b.0[1])]) }
+    }
+
+    /// Lane-wise carry-less products, unreduced: each half's even lanes' 128-bit products, and its odd lanes'.
+    #[derive(Clone, Copy)]
+    pub struct U([__m256i; 4]);
+
+    #[inline(always)]
+    pub fn zero_u() -> U {
+        // SAFETY: the module's cfg enables avx2.
+        let z = unsafe { _mm256_setzero_si256() };
+        U([z; 4])
+    }
+
+    #[inline(always)]
+    pub fn clmul_u(a: V, b: V) -> U {
+        // SAFETY: the module's cfg enables avx2 and vpclmulqdq.
+        unsafe {
+            U([
+                _mm256_clmulepi64_epi128::<0x00>(a.0[0], b.0[0]),
+                _mm256_clmulepi64_epi128::<0x11>(a.0[0], b.0[0]),
+                _mm256_clmulepi64_epi128::<0x00>(a.0[1], b.0[1]),
+                _mm256_clmulepi64_epi128::<0x11>(a.0[1], b.0[1]),
+            ])
+        }
+    }
+
+    #[inline(always)]
+    pub fn xor_u(a: U, b: U) -> U {
+        // SAFETY: the module's cfg enables avx2.
+        unsafe { U(std::array::from_fn(|i| _mm256_xor_si256(a.0[i], b.0[i]))) }
+    }
+
+    /// One half reduced: `lo ^ f(hi ^ spill)`, as in the AVX-512 module.
+    #[inline(always)]
+    fn reduce_half(even: __m256i, odd: __m256i) -> __m256i {
+        // SAFETY: the module's cfg enables avx2.
+        unsafe {
+            let (lo, hi) = (_mm256_unpacklo_epi64(even, odd), _mm256_unpackhi_epi64(even, odd));
+            let spill = _mm256_xor_si256(
+                _mm256_xor_si256(_mm256_srli_epi64::<63>(hi), _mm256_srli_epi64::<61>(hi)),
+                _mm256_srli_epi64::<60>(hi),
+            );
+            let v = _mm256_xor_si256(hi, spill);
+            let f = _mm256_xor_si256(
+                _mm256_xor_si256(v, _mm256_slli_epi64::<1>(v)),
+                _mm256_xor_si256(_mm256_slli_epi64::<3>(v), _mm256_slli_epi64::<4>(v)),
+            );
+            _mm256_xor_si256(lo, f)
+        }
+    }
+
+    #[inline(always)]
+    pub fn reduce_u(p: U) -> V {
+        V([reduce_half(p.0[0], p.0[1]), reduce_half(p.0[2], p.0[3])])
+    }
+
+    /// Lane `i` is `a_i b_i` in K.
+    #[inline(always)]
+    pub fn mul(a: V, b: V) -> V {
+        reduce_u(clmul_u(a, b))
+    }
+
+    /// The 8 x 8 transpose: lane `p` of output `c` is lane `c` of input `p`.
+    #[inline(always)]
+    pub fn transpose(r: [V; 8]) -> [V; 8] {
+        let mut m = [[0u64; 8]; 8];
+        // SAFETY: eight words a row, on the stack.
+        unsafe {
+            for (row, v) in m.iter_mut().zip(r) {
+                store(row.as_mut_ptr(), v);
+            }
+        }
+        std::array::from_fn(|c| from_array(std::array::from_fn(|p| m[p][c])))
+    }
+
+    /// Lane `i` is `a_(i ^ S)`.
+    #[inline(always)]
+    pub fn swap<const S: usize>(a: V) -> V {
+        let [mut x, mut y] = a.0;
+        if S & 4 != 0 {
+            (x, y) = (y, x);
+        }
+        // SAFETY: the module's cfg enables avx2.
+        unsafe {
+            if S & 2 != 0 {
+                (x, y) = (_mm256_permute4x64_epi64::<0x4E>(x), _mm256_permute4x64_epi64::<0x4E>(y));
+            }
+            if S & 1 != 0 {
+                (x, y) = (_mm256_permute4x64_epi64::<0xB1>(x), _mm256_permute4x64_epi64::<0xB1>(y));
+            }
+        }
+        V([x, y])
+    }
+
+    /// `a`, with `b` added on the lanes of `mask`.
+    #[inline(always)]
+    pub fn mask_add(a: V, mask: u8, b: V) -> V {
+        let bit = |i: u32| -(((mask >> i) & 1) as i64);
+        // SAFETY: the module's cfg enables avx2.
+        unsafe {
+            let m0 = _mm256_set_epi64x(bit(3), bit(2), bit(1), bit(0));
+            let m1 = _mm256_set_epi64x(bit(7), bit(6), bit(5), bit(4));
+            V([
+                _mm256_xor_si256(a.0[0], _mm256_and_si256(b.0[0], m0)),
+                _mm256_xor_si256(a.0[1], _mm256_and_si256(b.0[1], m1)),
+            ])
+        }
+    }
+}
+
+#[cfg(not(any(
+    all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "vpclmulqdq"),
+    all(
+        target_arch = "x86_64",
+        target_feature = "avx2",
+        target_feature = "vpclmulqdq",
+        not(target_feature = "avx512f")
+    ),
+    all(target_arch = "aarch64", target_feature = "aes")
+)))]
 mod lanes {
     use primitives::field::F64;
 
@@ -278,6 +661,20 @@ trait Kind: Sync {
     fn butterfly(a: V, b: V, t: V) -> (V, V);
     /// Layers 0..3 of row `row`, eight consecutive positions of one column.
     fn lanes(&self, row: usize, x: V) -> V;
+    /// [`Self::lanes`] on the `size` rows at `base`, rows `first..first + size` of the column.
+    ///
+    /// # Safety
+    /// `base` holds `8 size` words of the caller's own.
+    #[inline(always)]
+    unsafe fn own_rows(&self, base: *mut u64, first: usize, size: usize) {
+        for r in 0..size {
+            // SAFETY: row `r < size` of the caller's.
+            unsafe {
+                let p = base.add(8 * r);
+                store(p, self.lanes(first + r, load(p)));
+            }
+        }
+    }
 }
 
 /// `ω_(2 j)`, from a table below a leaf's blocks.
@@ -323,6 +720,11 @@ struct Forward(Twiddles);
 impl Kind for Forward {
     const DOWN: bool = true;
     #[inline(always)]
+    unsafe fn own_rows(&self, base: *mut u64, first: usize, size: usize) {
+        // SAFETY: the caller's rows.
+        unsafe { own_stepped(self, base, first, size) }
+    }
+    #[inline(always)]
     fn twiddle(&self, k: usize, block: usize) -> F64 {
         self.0.offsets[k] + point(2 * block)
     }
@@ -352,6 +754,11 @@ struct Inverse(Twiddles);
 
 impl Kind for Inverse {
     const DOWN: bool = false;
+    #[inline(always)]
+    unsafe fn own_rows(&self, base: *mut u64, first: usize, size: usize) {
+        // SAFETY: the caller's rows.
+        unsafe { own_stepped(self, base, first, size) }
+    }
     #[inline(always)]
     fn twiddle(&self, k: usize, block: usize) -> F64 {
         self.0.offsets[k] + point(2 * block)
@@ -478,10 +885,7 @@ fn leaves<T: Kind>(
             }
             let own = |base: *mut u64| {
                 if shift == 3 {
-                    for r in 0..size {
-                        let p = base.add(8 * r);
-                        store(p, kind.lanes(first + r, load(p)));
-                    }
+                    kind.own_rows(base, first, size);
                 }
             };
             if !T::DOWN {
@@ -1217,6 +1621,324 @@ fn subset_sums_of<M: Copy + Send + Sync + Add<Output = M> + Default>(data: &mut 
     }
 }
 
+// ---------------------------------------------------------------------------------------------------------------
+// Split column transforms (`crate::protocol`'s reduction): the layers above a leaf on a whole column, and one
+// leaf's own layers on one block, so that a caller can fuse its own pointwise work between a forward transform's
+// last layers and an inverse transform's first, a block in cache, rather than make a pass over memory for each.
+// [`values`] is [`values_upper`] then [`values_leaf`] on each block of [`LEAF_WORDS`]; [`coefficients`] is
+// [`coefficients_leaf`] on each block then [`coefficients_upper`].
+// ---------------------------------------------------------------------------------------------------------------
+
+/// The rows of a leaf of the split transforms.
+const SPLIT_LEAF_ROWS: usize = LEAF_ROWS;
+
+/// The words of a leaf: the block [`values_leaf`] and [`coefficients_leaf`] take.
+pub const LEAF_WORDS: usize = 8 * SPLIT_LEAF_ROWS;
+
+/// The most of the layers above a leaf that one pass over memory takes in [`values_upper`] and
+/// [`coefficients_upper`], and the rows of one of its tiles.
+const UPPER_GROUP: usize = GROUP;
+const UPPER_TILE_ROWS: usize = TILE_ROWS;
+
+/// The groups of row layers above a leaf, the highest first: `(lowest layer, layers)`.
+fn upper_groups(rows: usize) -> Vec<(usize, usize)> {
+    let mr = rows.trailing_zeros() as usize;
+    let leaf = mr.min(SPLIT_LEAF_ROWS.trailing_zeros() as usize);
+    let mut groups = Vec::new();
+    let mut top = mr;
+    while top > leaf {
+        let a = top.saturating_sub(UPPER_GROUP).max(leaf);
+        groups.push((a, top - a));
+        top = a;
+    }
+    groups
+}
+
+/// [`wide`] with [`UPPER_TILE_ROWS`].
+fn upper<T: Kind>(data: SendPtr<u64>, src: Option<SendPtr<u64>>, rows: usize, a: usize, g: usize, kind: &T) {
+    let lines = 1usize << g;
+    let width = (UPPER_TILE_ROWS >> g).clamp(1, 1 << a);
+    let per_group = (1usize << a) / width;
+    parallel::for_each((rows >> (a + g)) * per_group, |task| {
+        let row0 = ((task / per_group) << (a + g)) + (task % per_group) * width;
+        let line = |u: usize| row0 + (u << a);
+        // SAFETY: a task touches rows `line(u) + [0, width)`, `u < lines`: its own.
+        unsafe {
+            if let Some(s) = src {
+                for u in 0..lines {
+                    std::ptr::copy_nonoverlapping(s.add(8 * line(u)), data.add(8 * line(u)), 8 * width);
+                }
+            }
+            let layer = |j: usize| {
+                let k = a + j;
+                let hs = 1usize << j;
+                for ub in (0..lines).step_by(2 * hs) {
+                    let t = splat(kind.twiddle(k + 3, line(ub) >> (k + 1)).0);
+                    for u in ub..ub + hs {
+                        pairs::<T>(data.add(8 * line(u)), data.add(8 * line(u + hs)), width, t);
+                    }
+                }
+            };
+            if T::DOWN {
+                (0..g).rev().for_each(layer);
+            } else {
+                (0..g).for_each(layer);
+            }
+        }
+    });
+}
+
+/// The forward transform's layers above a leaf, on the column `dst` (a power of two, at least eight words), read
+/// first from `src` if given (of `dst`'s length): with [`values_leaf`] on every block, [`values`] (`values_from`).
+pub fn values_upper(src: Option<&[F64]>, dst: &mut [F64], offset: F64) {
+    assert!(dst.len().is_power_of_two() && dst.len() >= 8);
+    if let Some(s) = src {
+        assert_eq!(s.len(), dst.len());
+    }
+    let rows = dst.len() / 8;
+    let kind = Forward(Twiddles::new(offset, dst.len().trailing_zeros() as usize));
+    let data = SendPtr(dst.as_mut_ptr().cast::<u64>());
+    let mut from = src.map(|s| SendPtr(s.as_ptr().cast::<u64>().cast_mut()));
+    let groups = upper_groups(rows);
+    if groups.is_empty() {
+        if let Some(s) = src {
+            dst.copy_from_slice(s);
+        }
+        return;
+    }
+    for (a, g) in groups {
+        upper(data, from.take(), rows, a, g, &kind);
+    }
+}
+
+/// The inverse transform's layers above a leaf, on the column `data`, after [`coefficients_leaf`] on every block.
+pub fn coefficients_upper(data: &mut [F64], offset: F64) {
+    assert!(data.len().is_power_of_two() && data.len() >= 8);
+    let rows = data.len() / 8;
+    let kind = Inverse(Twiddles::new(offset, data.len().trailing_zeros() as usize));
+    let ptr = SendPtr(data.as_mut_ptr().cast::<u64>());
+    for (a, g) in upper_groups(rows).into_iter().rev() {
+        upper(ptr, None, rows, a, g, &kind);
+    }
+}
+
+/// A transform whose rows' own layers take their twiddles given ([`Twiddles::row`]'s), for [`leaf`], which steps
+/// them from row to row rather than computing each row's.
+trait RowLanes: Kind {
+    fn twiddles(&self) -> &Twiddles;
+    fn lanes_with(t: [V; 3], x: V) -> V;
+    /// [`Self::lanes_with`] on two rows. With AVX-512, a layer's products of both rows are one product (each row
+    /// needs only half its lanes'): [`paired`].
+    #[inline(always)]
+    fn lanes_with2(tx: [V; 3], ty: [V; 3], x: V, y: V) -> (V, V) {
+        (Self::lanes_with(tx, x), Self::lanes_with(ty, y))
+    }
+}
+
+/// Two rows' half-products of a row's own layer as one product (AVX-512): lanes `l` with bit `L` clear of `x` and
+/// `y` take lane `l + L`'s times their twiddle's lane `l`.
+#[cfg(all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "vpclmulqdq"))]
+mod paired {
+    use super::lanes::{V, load, mul, store};
+    use core::arch::x86_64::*;
+
+    #[inline(always)]
+    fn raw(v: V) -> __m512i {
+        let mut a = [0u64; 8];
+        // SAFETY: eight words on the stack; the module's cfg enables avx512f.
+        unsafe {
+            store(a.as_mut_ptr(), v);
+            _mm512_loadu_si512(a.as_ptr().cast())
+        }
+    }
+
+    #[inline(always)]
+    fn wrap(x: __m512i) -> V {
+        let mut a = [0u64; 8];
+        // SAFETY: as above.
+        unsafe {
+            _mm512_storeu_si512(a.as_mut_ptr().cast(), x);
+            load(a.as_ptr())
+        }
+    }
+
+    #[inline(always)]
+    fn idx(i: [i64; 8]) -> __m512i {
+        // SAFETY: the module's cfg enables avx512f.
+        unsafe { _mm512_loadu_si512(i.as_ptr().cast()) }
+    }
+
+    #[inline(always)]
+    pub fn mul_add<const L: usize>(x: V, y: V, tx: V, ty: V) -> (V, V) {
+        let (dst, mask): ([i64; 4], u8) = match L {
+            4 => ([0, 1, 2, 3], 0x0F),
+            2 => ([0, 1, 4, 5], 0x33),
+            _ => ([0, 2, 4, 6], 0x55),
+        };
+        let both = |off: i64| std::array::from_fn::<i64, 8, _>(|j| dst[j % 4] + off + 8 * (j / 4) as i64);
+        // Lane `dst[j]` of a row gets lane `j` (x) or `4 + j` (y) of the product.
+        let mut back = ([0i64; 8], [0i64; 8]);
+        for (j, &d) in dst.iter().enumerate() {
+            back.0[d as usize] = j as i64;
+            back.1[d as usize] = 4 + j as i64;
+        }
+        let (x, y, tx, ty) = (raw(x), raw(y), raw(tx), raw(ty));
+        // SAFETY: the module's cfg enables avx512f.
+        unsafe {
+            let p = _mm512_permutex2var_epi64(x, idx(both(L as i64)), y);
+            let t = _mm512_permutex2var_epi64(tx, idx(both(0)), ty);
+            let m = raw(mul(wrap(p), wrap(t)));
+            (
+                wrap(_mm512_mask_xor_epi64(x, mask, x, _mm512_permutexvar_epi64(idx(back.0), m))),
+                wrap(_mm512_mask_xor_epi64(y, mask, y, _mm512_permutexvar_epi64(idx(back.1), m))),
+            )
+        }
+    }
+}
+
+impl RowLanes for Forward {
+    fn twiddles(&self) -> &Twiddles {
+        &self.0
+    }
+    /// [`Forward::lanes`], its twiddles given.
+    #[inline(always)]
+    fn lanes_with([t2, t1, t0]: [V; 3], x: V) -> V {
+        let x = mask_add(x, 0x0F, mul(swap::<4>(x), t2));
+        let x = mask_add(x, 0xF0, swap::<4>(x));
+        let x = mask_add(x, 0x33, mul(swap::<2>(x), t1));
+        let x = mask_add(x, 0xCC, swap::<2>(x));
+        let x = mask_add(x, 0x55, mul(swap::<1>(x), t0));
+        mask_add(x, 0xAA, swap::<1>(x))
+    }
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "vpclmulqdq"))]
+    #[inline(always)]
+    fn lanes_with2([x2, x1, x0]: [V; 3], [y2, y1, y0]: [V; 3], x: V, y: V) -> (V, V) {
+        let (x, y) = paired::mul_add::<4>(x, y, x2, y2);
+        let (x, y) = (mask_add(x, 0xF0, swap::<4>(x)), mask_add(y, 0xF0, swap::<4>(y)));
+        let (x, y) = paired::mul_add::<2>(x, y, x1, y1);
+        let (x, y) = (mask_add(x, 0xCC, swap::<2>(x)), mask_add(y, 0xCC, swap::<2>(y)));
+        let (x, y) = paired::mul_add::<1>(x, y, x0, y0);
+        (mask_add(x, 0xAA, swap::<1>(x)), mask_add(y, 0xAA, swap::<1>(y)))
+    }
+}
+
+impl RowLanes for Inverse {
+    fn twiddles(&self) -> &Twiddles {
+        &self.0
+    }
+    /// [`Inverse::lanes`], its twiddles given.
+    #[inline(always)]
+    fn lanes_with([t2, t1, t0]: [V; 3], x: V) -> V {
+        let x = mask_add(x, 0xAA, swap::<1>(x));
+        let x = mask_add(x, 0x55, mul(swap::<1>(x), t0));
+        let x = mask_add(x, 0xCC, swap::<2>(x));
+        let x = mask_add(x, 0x33, mul(swap::<2>(x), t1));
+        let x = mask_add(x, 0xF0, swap::<4>(x));
+        mask_add(x, 0x0F, mul(swap::<4>(x), t2))
+    }
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "vpclmulqdq"))]
+    #[inline(always)]
+    fn lanes_with2([x2, x1, x0]: [V; 3], [y2, y1, y0]: [V; 3], x: V, y: V) -> (V, V) {
+        let (x, y) = (mask_add(x, 0xAA, swap::<1>(x)), mask_add(y, 0xAA, swap::<1>(y)));
+        let (x, y) = paired::mul_add::<1>(x, y, x0, y0);
+        let (x, y) = (mask_add(x, 0xCC, swap::<2>(x)), mask_add(y, 0xCC, swap::<2>(y)));
+        let (x, y) = paired::mul_add::<2>(x, y, x1, y1);
+        let (x, y) = (mask_add(x, 0xF0, swap::<4>(x)), mask_add(y, 0xF0, swap::<4>(y)));
+        paired::mul_add::<4>(x, y, x2, y2)
+    }
+}
+
+/// A leaf's own layers (row layers below the leaf's, and each row's), on `block`: the words `start..` of a column
+/// of `len` words (`start` a multiple of `block.len()`, which is [`LEAF_WORDS`] or the whole column), on one
+/// thread.
+/// The twiddle steps of [`own_stepped`]: from row `r` to `r + 1` the row's twiddles move by `B(2 d), B(4 d),
+/// B(8 d)`, `d = r ^ (r + 1)`, which is `2^(z + 1) - 1` for `z` the trailing ones of `r` (`B` is linear); entry `z`.
+fn row_steps() -> &'static [[u64; 3]; 32] {
+    static STEPS: std::sync::OnceLock<[[u64; 3]; 32]> = std::sync::OnceLock::new();
+    STEPS.get_or_init(|| {
+        std::array::from_fn(|z| {
+            let d = (2usize << z) - 1;
+            [point(2 * d).0, point(4 * d).0, point(8 * d).0]
+        })
+    })
+}
+
+/// A row's own layers on the `size` rows at `base` (rows `first..` of the column), their twiddles stepped from row
+/// to row rather than computed for each, two rows at a time ([`RowLanes::lanes_with2`]).
+///
+/// # Safety
+/// `base` holds `8 size` words of the caller's own.
+#[inline(always)]
+unsafe fn own_stepped<T: RowLanes>(kind: &T, base: *mut u64, first: usize, size: usize) {
+    let steps = row_steps();
+    let mut t = kind.twiddles().row(first);
+    let advance = |t: [V; 3], r: usize| {
+        let step = &steps[r.trailing_ones() as usize];
+        [xor(t[0], splat(step[0])), xor(t[1], splat(step[1])), xor(t[2], splat(step[2]))]
+    };
+    // SAFETY: rows below `size` of the caller's.
+    unsafe {
+        if size == 1 {
+            store(base, T::lanes_with(t, load(base)));
+            return;
+        }
+        for r in (0..size).step_by(2) {
+            let tx = t;
+            let ty = advance(tx, r);
+            let (p, q) = (base.add(8 * r), base.add(8 * (r + 1)));
+            let (x, y) = T::lanes_with2(tx, ty, load(p), load(q));
+            store(p, x);
+            store(q, y);
+            if r + 2 < size {
+                t = advance(ty, r + 1);
+            }
+        }
+    }
+}
+
+fn leaf<T: RowLanes>(block: &mut [F64], start: usize, kind: &T) {
+    assert!(block.len().is_power_of_two() && block.len() >= 8 && start.is_multiple_of(block.len()));
+    let size = block.len() / 8;
+    let leaf = size.trailing_zeros() as usize;
+    let first = start / 8;
+    let base = block.as_mut_ptr().cast::<u64>();
+    // SAFETY: the block's own `size` rows.
+    unsafe {
+        let own = || own_stepped(kind, base, first, size);
+        if !T::DOWN {
+            own();
+        }
+        let layer = |k: usize| {
+            let half = 1usize << k;
+            let t0 = kind.twiddle(k + 3, first >> (k + 1));
+            for j in 0..size >> (k + 1) {
+                let row = 2 * half * j;
+                let t = splat((t0 + kind.step(j)).0);
+                pairs::<T>(base.add(8 * row), base.add(8 * (row + half)), half, t);
+            }
+        };
+        if T::DOWN {
+            (0..leaf).rev().for_each(layer);
+            own();
+        } else {
+            (0..leaf).for_each(layer);
+        }
+    }
+}
+
+/// The forward transform's leaf layers on `block`, words `start..start + block.len()` of a column of `len` words
+/// at `offset`: `block.len()` is [`LEAF_WORDS`], or `len` if that is smaller.
+pub fn values_leaf(block: &mut [F64], start: usize, len: usize, offset: F64) {
+    assert_eq!(block.len(), LEAF_WORDS.min(len));
+    leaf(block, start, &Forward(Twiddles::new(offset, len.trailing_zeros() as usize)));
+}
+
+/// The inverse transform's leaf layers on `block`, as [`values_leaf`].
+pub fn coefficients_leaf(block: &mut [F64], start: usize, len: usize, offset: F64) {
+    assert_eq!(block.len(), LEAF_WORDS.min(len));
+    leaf(block, start, &Inverse(Twiddles::new(offset, len.trailing_zeros() as usize)));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1406,6 +2128,110 @@ mod tests {
             let mut got = all[..total].to_vec();
             interpolate_prefix(&mut got, &sizes, 1 << m);
             assert_eq!(got, novel, "count {count}, blocks {sizes:?}");
+        }
+    }
+
+    /// The split transforms are the whole ones: the upper layers, then each leaf block's (forward); each leaf
+    /// block's, then the upper layers (inverse); at sizes of no, one and two upper passes, in place and from a
+    /// source.
+    #[test]
+    fn split_transforms_are_the_whole() {
+        let mut next = rng(5);
+        for m in [3usize, 4, 9, 15, 16, 19, 22, 25] {
+            let len = 1usize << m;
+            let offset = point(1 << 29) + point(3 << m);
+            let column: Vec<F64> = (0..len).map(|_| F64(next())).collect();
+            let mut want = column.clone();
+            values(&mut want, offset);
+            let block = LEAF_WORDS.min(len);
+            let mut got = vec![F64::ZERO; len];
+            values_upper(Some(&column), &mut got, offset);
+            for (b, chunk) in got.chunks_exact_mut(block).enumerate() {
+                values_leaf(chunk, b * block, len, offset);
+            }
+            assert_eq!(got, want, "values, 2^{m}");
+            let mut again = column.clone();
+            values_upper(None, &mut again, offset);
+            for (b, chunk) in again.chunks_exact_mut(block).enumerate() {
+                values_leaf(chunk, b * block, len, offset);
+            }
+            assert_eq!(again, want, "values in place, 2^{m}");
+            for (b, chunk) in got.chunks_exact_mut(block).enumerate() {
+                coefficients_leaf(chunk, b * block, len, offset);
+            }
+            coefficients_upper(&mut got, offset);
+            assert_eq!(got, column, "coefficients, 2^{m}");
+        }
+    }
+}
+
+/// The NEON lanes against scalar `F64` arithmetic.
+#[cfg(all(test, target_arch = "aarch64", target_feature = "aes"))]
+mod neon_tests {
+    use super::lanes::*;
+    use primitives::field::F64;
+
+    fn words(v: V) -> [u64; 8] {
+        let mut out = [0u64; 8];
+        // SAFETY: eight words on the stack.
+        unsafe { store(out.as_mut_ptr(), v) };
+        out
+    }
+
+    #[test]
+    fn neon_lanes_are_scalar() {
+        let mut state = 0x9E37_79B9_7F4A_7C15u64;
+        let mut next = move || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+        // Random words, and operands that exercise the reduction's spill.
+        let corners = [0, 1, u64::MAX, 1 << 63, 0xF000_0000_0000_0000, 0x1B];
+        for round in 0..2000 {
+            let terms = 1 + round % 9;
+            let a: Vec<[u64; 8]> = (0..terms)
+                .map(|_| std::array::from_fn(|i| if round < 6 { corners[(round + i) % 6] } else { next() }))
+                .collect();
+            let b: Vec<[u64; 8]> = (0..terms)
+                .map(|_| {
+                    std::array::from_fn(|i| {
+                        if round < 6 {
+                            corners[(round + i + 3) % 6]
+                        } else {
+                            next()
+                        }
+                    })
+                })
+                .collect();
+            let (va, vb) = (from_array(a[0]), from_array(b[0]));
+            let scalar_mul: [u64; 8] = std::array::from_fn(|i| (F64(a[0][i]) * F64(b[0][i])).0);
+            assert_eq!(words(mul(va, vb)), scalar_mul);
+            // A sum of unreduced products, reduced once.
+            let mut acc = zero_u();
+            for (x, y) in a.iter().zip(&b) {
+                acc = xor_u(acc, clmul_u(from_array(*x), from_array(*y)));
+            }
+            let want: [u64; 8] = std::array::from_fn(|i| {
+                a.iter()
+                    .zip(&b)
+                    .fold(F64::ZERO, |s, (x, y)| s + F64(x[i]) * F64(y[i]))
+                    .0
+            });
+            assert_eq!(words(reduce_u(acc)), want);
+            assert_eq!(words(splat(a[0][1])), [a[0][1]; 8]);
+            assert_eq!(words(xor(va, vb)), std::array::from_fn(|i| a[0][i] ^ b[0][i]));
+            assert_eq!(words(swap::<1>(va)), std::array::from_fn(|i| a[0][i ^ 1]));
+            assert_eq!(words(swap::<2>(va)), std::array::from_fn(|i| a[0][i ^ 2]));
+            assert_eq!(words(swap::<4>(va)), std::array::from_fn(|i| a[0][i ^ 4]));
+            let mask = (round % 256) as u8;
+            let masked: [u64; 8] =
+                std::array::from_fn(|i| if mask >> i & 1 == 1 { a[0][i] ^ b[0][i] } else { a[0][i] });
+            assert_eq!(words(mask_add(va, mask, vb)), masked);
+            let rows: [[u64; 8]; 8] = std::array::from_fn(|_| std::array::from_fn(|_| next()));
+            let t = transpose(rows.map(from_array)).map(words);
+            assert_eq!(t, std::array::from_fn(|c| std::array::from_fn(|p| rows[p][c])));
         }
     }
 }

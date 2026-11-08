@@ -1,5 +1,5 @@
 // Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
-//! The zerocheck with a univariate skip of 3 to 6 (`lv42_flock::zerocheck::skip`), without a trace:
+//! The zerocheck with a univariate skip of 3 to 6 (`flock::zerocheck::skip`), without a trace:
 //!
 //! - at a skip of 6, the skip module's round 1 and whole zerocheck write what leanVM's own do, byte for byte;
 //! - at skips of 3, 4 and 5, on honest witnesses, the zerocheck's stream is accepted (its rounds re-checked with the
@@ -14,13 +14,15 @@
 use leanvm_statement::field::E;
 use leanvm_statement::transcript::{Checks, FsShape, KeccakChannel, KeccakWriter, keccak_seed, sumcheck};
 use leanvm_univariate::prover::flock::Chain;
-use lv42_flock::zerocheck::skip::{EqPoint, prove_skip, round1};
-use lv42_flock::zerocheck::univariate_skip_optimized::{
+use flock::zerocheck::skip::{EqPoint, prove_skip, round1};
+use flock::zerocheck::univariate_skip_optimized::{
     c_s, medium_challenges, round1_shift_reduce_extract_c_packed_padded, small_challenges,
 };
-use lv42_flock::zerocheck::{PaddingSpec, prove_packed_padded};
-use lv42_primitives::field::{F8, F192};
-use lv42_primitives::multilinear::{eq_table, lagrange_weights_naive};
+use flock::zerocheck::{PaddingSpec, prove_packed_padded};
+use flock::field::F8;
+use primitives::field::F192;
+use flock::lagrange::lagrange_weights_naive;
+use primitives::multilinear::eq_table;
 
 struct Rng(u64);
 impl Rng {
@@ -92,9 +94,9 @@ fn round1_at_six_is_leanvms() {
             .chain(medium_challenges())
             .chain((0..m - 6 - 7).map(|_| rng.ext()))
             .collect();
-        let ntt_s = lv42_pcs::ntt::AdditiveNttGf8::new(6, F8::ZERO);
-        let ntt_l = lv42_pcs::ntt::AdditiveNttGf8::new(6, F8(64));
-        let table = lv42_pcs::ntt::InvNttTableByteSingleGf8::new(&ntt_s, &ntt_l);
+        let ntt_s = flock::ntt::AdditiveNttGf8::new(6, F8::ZERO);
+        let ntt_l = flock::ntt::AdditiveNttGf8::new(6, F8(64));
+        let table = flock::ntt::InvNttTableByteSingleGf8::new(&ntt_s, &ntt_l);
         let (ab, cc) = round1_shift_reduce_extract_c_packed_padded(&a, &b, &c, m, 6, &r_rest, &table, &padding);
         let theirs: Vec<F192> = ab.iter().zip(&cc).map(|(&x, &y)| c_s() * (x + y)).collect();
         assert_eq!(round1(&a, &b, &c, m, 6, &r_rest), theirs, "m = {m}");
@@ -105,7 +107,7 @@ fn round1_at_six_is_leanvms() {
 /// definition: the sum of the weights of the set bits.
 #[test]
 fn bit_fold_at_every_row_width() {
-    use lv42_flock::zerocheck::bit_fold::{BLOCK, BitFold};
+    use flock::zerocheck::bit_fold::{BLOCK, BitFold};
     fn check<const CHUNKS: usize>(rng: &mut Rng) {
         let weights: Vec<F192> = (0..8 * CHUNKS).map(|_| rng.ext()).collect();
         let fold = BitFold::new(&weights);
@@ -135,8 +137,8 @@ fn bit_fold_at_every_row_width() {
 /// The byte rows' pair pass (products from a table) is the generic pass on one-byte rows, padding included.
 #[test]
 fn byte_pair_pass_is_the_generic_pass() {
-    use lv42_flock::zerocheck::bit_fold::BitFold;
-    use lv42_flock::zerocheck::multilinear::{PackedWitness, bit_round_pair, bit_round_pair_bytes};
+    use flock::zerocheck::bit_fold::BitFold;
+    use flock::zerocheck::multilinear::{PackedWitness, bit_round_pair, bit_round_pair_bytes};
     let mut rng = Rng(0x5eed_0007);
     for m in [11usize, 14, 17] {
         let padding = PaddingSpec {
@@ -152,6 +154,30 @@ fn byte_pair_pass_is_the_generic_pass() {
         let bits = PackedWitness { a: &a, b: &b, c: &c };
         let generic = bit_round_pair(bits, &BitFold::new(&weights), &r_eq, &padding);
         assert_eq!(bit_round_pair_bytes(bits, &weights, &r_eq, &padding), generic, "m = {m}");
+    }
+}
+
+/// The byte rows' pass with eq-scaled products' tables (the aarch64 pass) is the byte pass, at every scale, padding
+/// included, down to fewer quad coordinates than the scale.
+#[test]
+fn scaled_byte_pair_pass_is_the_byte_pass() {
+    use flock::zerocheck::multilinear::{PackedWitness, bit_round_pair_bytes, bit_round_pair_bytes_scaled};
+    let mut rng = Rng(0x5eed_0008);
+    let padding = PaddingSpec {
+        k_log: 14,
+        useful_bits_per_block: 16_000,
+    };
+    for m in [6usize, 7, 11, 15, 18] {
+        let [a, b, c] = witness(m, &padding, &mut rng);
+        let [noise, ..] = witness(m, &padding, &mut rng);
+        let c: Vec<u8> = c.iter().zip(&noise).map(|(&x, &y)| x ^ y).collect();
+        let bits = PackedWitness { a: &a, b: &b, c: &c };
+        let w8: [F192; 8] = std::array::from_fn(|_| rng.ext());
+        let r_eq: Vec<F192> = (0..m - 4).map(|_| rng.ext()).collect();
+        let want = bit_round_pair_bytes(bits, &w8, &r_eq, &padding);
+        assert_eq!(bit_round_pair_bytes_scaled::<1>(bits, &w8, &r_eq, &padding), want, "m = {m}");
+        assert_eq!(bit_round_pair_bytes_scaled::<2>(bits, &w8, &r_eq, &padding), want, "m = {m}");
+        assert_eq!(bit_round_pair_bytes_scaled::<3>(bits, &w8, &r_eq, &padding), want, "m = {m}");
     }
 }
 
@@ -173,8 +199,8 @@ fn round1_bytes_is_the_generic_round1() {
             .chain((0..m - 3 - 7).map(|_| rng.ext()))
             .collect();
         assert_eq!(
-            lv42_flock::zerocheck::skip::round1_bytes(&a, &b, &c, m, &r_rest),
-            lv42_flock::zerocheck::skip::round1_generic(&a, &b, &c, m, 3, &r_rest),
+            flock::zerocheck::skip::round1_bytes(&a, &b, &c, m, &r_rest),
+            flock::zerocheck::skip::round1_generic(&a, &b, &c, m, 3, &r_rest),
             "m = {m}"
         );
     }
@@ -198,11 +224,11 @@ fn round1_folded_is_the_generic_round1() {
                 .chain(medium_challenges())
                 .chain((0..m - k - 7).map(|_| rng.ext()))
                 .collect();
-            let generic = lv42_flock::zerocheck::skip::round1_generic(&a, &b, &c, m, k, &r_rest);
-            assert_eq!(lv42_flock::zerocheck::skip::round1_folded(&a, &b, &c, m, k, &r_rest), generic, "k = {k}, m = {m}");
+            let generic = flock::zerocheck::skip::round1_generic(&a, &b, &c, m, k, &r_rest);
+            assert_eq!(flock::zerocheck::skip::round1_folded(&a, &b, &c, m, k, &r_rest), generic, "k = {k}, m = {m}");
             if (4..=5).contains(&k) {
                 assert_eq!(
-                    lv42_flock::zerocheck::skip::round1_words(&a, &b, &c, m, k, &r_rest),
+                    flock::zerocheck::skip::round1_words(&a, &b, &c, m, k, &r_rest),
                     generic,
                     "words: k = {k}, m = {m}"
                 );

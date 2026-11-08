@@ -125,7 +125,7 @@ Where the permutations go:
 
 **π1-rec3 derives `α_2, α_3, α_4` from `α_1`, and Flock's zerocheck coordinates after its fixed ones from the first,
 each the square of the one before** (`FsShape::draw`; `flock_min::zerocheck`; the prover's
-`lv42_flock::zerocheck::skip::EqPoint::Squares`, and `α` squared in `E` as the verifier does).
+`flock::zerocheck::skip::EqPoint::Squares`, and `α` squared in `E` as the verifier does).
 
 - **The zerocheck's eq point.** `Σ_x eq(r, x) P(x)` is multilinear in each `r_i`. So the substitution
   `r_i = c^(2^i)` maps distinct monomials to distinct powers of `c` (a base-2 Kronecker substitution), and the

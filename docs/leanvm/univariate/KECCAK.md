@@ -35,7 +35,7 @@ The gas is a function of the shape, not of the proof: the real proofs run at the
   and commits only the χ products. Its matrices are dense in the θ cascade, so its lincheck terminal is a walk of the
   whole circuit (leanVM's `bilinear_walk`), which `docs/leanvm/flock/KECCAK.md` §4.2 estimates at about 1.3M additions
   a permutation: unaffordable in a contract.
-  - This verifier uses instead the Keccak-f block of `lv42_flock::keccak` (`docs/leanvm/flock/KECCAK.md`, M1): one
+  - This verifier uses instead the Keccak-f block of `flock::keccak` (`docs/leanvm/flock/KECCAK.md`, M1): one
     permutation per `2^17` slots, with every round's state materialised.
   - Its terminal is the structured one (`keccak_flock::structured_terminal`, `docs/leanvm/flock/KECCAK.md`, M3),
     3,019 `E` operations at a skip of 3.
@@ -113,7 +113,13 @@ accepts with `PCS_OPEN` attesting its 7 claims in 6 calls, and 18 flipped callda
 | peak RSS | 9.79 GB | 9.8 GB |
 
 At 128 signatures the setup commitment takes 1.5 s, once per circuit; the runs were on the Mac of "Measured" below,
-under the same load, 3 runs. At 400 signatures the sample stream gave 44,737 transaction gas; the real proof's
+under the same load, 3 runs. Since then (2026-11-08, same Mac, load 2–7) the recursion end to end from the trace
+(`crates/leanvm/rec/tests/pipeline.rs`, median of 3 warm passes) takes **4.1 s a proof**: π1-rec3's proof and openings
+with π2's witness compiled meanwhile 1.87 s (the compile 0.49 s, overlapped with π1's openings), π2's proof 1.58 s,
+its openings 0.70 s; what depends on the circuit only (π1's setup roots, π2's circuit, spec, setup commitment, IV)
+0.9 s once; peak RSS 12.5 GB. On x86 (h2, Intel Core Ultra 7 265, AVX2 without AVX-512, load 11–17) it takes 7.5–8.9 s
+(π2's witness: compile, adapt and check 3.3 s → 1.3 s, of which the compile a proof needs 0.8 s); on h1 (Zen 4, AVX-512, load 13–15 from other jobs)
+11.5–12.1 s. At 400 signatures the sample stream gave 44,737 transaction gas; the real proof's
 calldata has more zero bytes.
 
 π2 holds π1 in `2^24` positions: the structured terminal is 3K operations, so the arithmetic regions nearly vanish.

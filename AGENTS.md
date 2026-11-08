@@ -34,7 +34,9 @@ Two lines, both with Keccak-256 Fiat–Shamir and both passing their claims to `
 one χ gate on bits (3,878,612 of 2^22 rows), its claims opened by leanVM's WHIR unchanged.
 
 - `crates/membership/quotient`: circuit, prover, Rust verifier (`protocol::reduce`), and the openings (`opening`), whose
-  hidden layouts make the roots and the openings hide the witness ([`HIDING.md`](docs/membership/HIDING.md)).
+  hidden layouts make the roots and the openings hide the witness ([`HIDING.md`](docs/membership/HIDING.md)). The
+  prover's transforms are `ntt`'s (AVX-512, AVX2 or NEON lanes), split around one block-wise pass over the quotients'
+  values; the `Index` keeps σ's values on the quotients' coset (512 MiB at 2^22 rows), which every proof reads.
 - `crates/membership/evm`: the same verifier compiled to EVM bytecode, run on revm with `FIELD_MUL` (10 gas) and a mock
   `PCS_OPEN` precompile (ABI in `machine.rs`), which the contract calls once per commitment: three calls for the
   four claims. The contract's ABI (`verify(bytes32,bytes32,bytes)`, selector `0xde12c640`, 252 bytes of packed
@@ -63,8 +65,9 @@ one χ gate on bits (3,878,612 of 2^22 rows), its claims opened by leanVM's WHIR
   verifier and the Keccak-f block's structured terminal, the Keccak-256 chain, the EVM recorder, code and machine,
   the workloads (`shapes`).
 - `crates/leanvm/gf2_linear`: the prover's GF(2)-linear maps.
-- `crates/vendor/leanvm-42422001`: leanVM `42422001`'s Flock prover (`lv42_*`), with the Keccak-f block
-  (`flock/src/keccak.rs`, [`docs/leanvm/flock/KECCAK.md`](docs/leanvm/flock/KECCAK.md)).
+- `crates/vendor/flock-42422001` (`flock`): leanVM `42422001`'s Flock prover, ported onto `c445e3d5`'s `primitives`,
+  `parallel` and `pcs`, with the Keccak-f block (`src/keccak.rs`,
+  [`docs/leanvm/flock/KECCAK.md`](docs/leanvm/flock/KECCAK.md)) and the univariate-skip zerocheck (`src/zerocheck/skip.rs`).
 - **The reference workload is 128 signatures**: `leanvm_rec::REFERENCE` = `leanvm_statement::shapes::reference()`
   (memory `2^20`, bytecode `2^18`), `contract::SetupRoots::REFERENCE` (its `F`), and the real π1-rec3 proof
   `crates/leanvm/univariate/tests/vectors/keccak128_rec3.txt`.
@@ -85,15 +88,16 @@ cargo test --release -p quotient -p evm                               # the memb
 cargo bench -p quotient --bench membership                            # prover / verifier timings and sizes
 cargo test --release -p evm -- --ignored --nocapture gas_report       # gas of the membership contract
 cargo test --release -p leanvm_univariate -p leanvm_rec               # the leanVM line
+LEANVM_TRACE=<trace> cargo test --release -p leanvm_rec --test pipeline -- --ignored --nocapture   # trace → π1 → π2, timed
 ```
 
-## Numbers (M4 Max, 16 cores)
+## Numbers (M4 Max, 16 cores, but where a machine is named)
 
 Gas is transaction gas without the 21,000 base (EIP-7623), `PCS_OPEN` at a claim price of 0.
 
 | | ZK Merkle membership | leanVM by recursion (128 signatures) |
 |---|---|---|
-| Prover | 2.2 s (reduction 1.46 s, openings 0.76 s), 5.9 GiB | π1-rec3 2.7–3.7 s (6.9 GB); π2 4.4 s + 1.7 s openings (9.8 GB), under load |
+| Prover | 2.2 s (reduction 1.46 s, openings 0.76 s), 5.9 GiB, before the x86 work. h1 (Ryzen 7 PRO 8700GE, AVX-512), load 9–14: 3.6 s (reduction 2.46 s, openings 1.14 s), 6.2 GiB, against 8.4 s (6.45 s, 1.92 s) before. h2 (Core Ultra 7 265, AVX2), load 10: 2.3 s (1.5 s, 0.8 s), against 5.0 s | trace → π1-rec3 → π2 and openings: 4.1 s per proof, 0.9 s per circuit once, 12.5 GB (`tests/pipeline.rs`, load 2–7) |
 | Calldata | 252 B | 980 B |
 | Gas | 14,289 execution, **18,309** transaction | 28,325 execution, **43,309** transaction (62,720 under EIP-7976) |
 | Claims | 4 in 3 calls | 7 in 6 calls |
@@ -180,10 +184,13 @@ leanEthereum) and is licensed, like leanVM, under the MIT license ([`LICENSE-MIT
   low-memory paths (the last also fixes an aliasing bug of the in-place encodes); `primitives/src/hash.rs` and
   `fiat_shamir/src/lib.rs` carry test-only trace hooks behind a `trace` feature. The workspace `Cargo.toml` and
   `rustfmt.toml` follow leanVM's.
-- **Vendored, leanVM `42422001`** (its Flock prover): `crates/vendor/leanvm-42422001/{primitives,parallel,flock}`
-  (`lv42_*`), without the BLAKE2s block; byte rows in the zerocheck, given row weights in the lincheck; new here: the
-  Keccak-f block (`flock/src/keccak.rs`) and the univariate-skip zerocheck (`flock/src/zerocheck/skip.rs`). `pcs` is the
-  part `flock` uses; `fiat_shamir` (new) states the transcript methods as a trait.
+- **Vendored, leanVM `42422001`** (its Flock prover, `crates/flock`): `crates/vendor/flock-42422001` (package `flock`),
+  ported onto `c445e3d5`'s `primitives`, `parallel` and `pcs`, so that one leanVM commit is vendored (`42422001`'s own
+  copies of those are not). Without the BLAKE2s block; byte rows in the zerocheck, given row weights in the lincheck;
+  new here: the Keccak-f block (`src/keccak.rs`) and the univariate-skip zerocheck (`src/zerocheck/skip.rs`). What
+  Flock uses of `42422001`'s `primitives` and `pcs` that `c445e3d5` lacks is copied into the crate: `src/field`
+  (GF(2^8), φ₈), `src/lagrange.rs` (the φ₈ barycentric weights), `src/ntt` (the GF(2^8) additive NTT);
+  `src/transcript.rs` (new) states the transcript methods as a trait.
 - **Adapted from leanVM `651453c6`** (branch `PCS-openings-aggregation`): `crates/membership/quotient` (the protocol of
   `flock::quotient`, its Cantor-basis domain, wiring, transcript; new here: the χ gate, the Keccak-256 statement, the
   layouts and hiding), `crates/membership/evm` (bytecode generator, recording scalar, revm machine), and the Lean
@@ -207,7 +214,7 @@ leanEthereum) and is licensed, like leanVM, under the MIT license ([`LICENSE-MIT
 
 - **Layout.** A crate's directory is its package name without its group's prefix: `crates/membership/*`,
   `crates/leanvm/*` (`leanvm_*`; `statement` is `leanvm_statement`), `crates/vendor/leanvm-c445e3d5/*`,
-  `crates/vendor/leanvm-42422001/*` (`lv42_*`). Design documents live in `docs/`, by line; a crate's README says what
+  `crates/vendor/flock-42422001` (one crate, `flock`: leanVM `42422001`'s, ported onto `c445e3d5`). Design documents live in `docs/`, by line; a crate's README says what
   it is, how to test it, and where its design is.
 - **Provenance.** Every file says where it comes from in its first lines (summed up above). Vendored files stay as
   upstream but for what their header lists.

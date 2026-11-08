@@ -3,12 +3,12 @@
 # Flock in π1 (the Flock section of `SPEC.md`)
 
 **Scope.** Flock proves that `C1`'s `q_flock` holds a valid witness of the Keccak-f[1600] block of
-`lv42_flock::keccak` (`docs/leanvm/flock/KECCAK.md`) at every `SHA3` row: one permutation a block of `2^17` bits,
+`flock::keccak` (`docs/leanvm/flock/KECCAK.md`) at every `SHA3` row: one permutation a block of `2^17` bits,
 every round's state materialised, `C = I`. `q_flock` packs 64 bits a `K`-word, so a block is `2^11` words and the
 zerocheck runs over `log_n = 17 + h_SHA3` variables (32 at the reference workload, 128 signatures). The verifier is
 `leanvm_statement::flock_min::verify_walked_with::<_, keccak_flock::Keccak>`; its prover is
-`leanvm_univariate::prover::flock::prove` on leanVM 42422001's Flock prover (`crates/vendor/leanvm-42422001/flock`)
-with the skip module `lv42_flock::zerocheck::skip`. This document states what π1 runs, why, and the soundness notes
+`leanvm_univariate::prover::flock::prove` on leanVM 42422001's Flock prover (`crates/vendor/flock-42422001`)
+with the skip module `flock::zerocheck::skip`. This document states what π1 runs, why, and the soundness notes
 that apply.
 
 ## The protocol, as the verifier reads it

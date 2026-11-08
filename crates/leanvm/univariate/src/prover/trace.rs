@@ -9,7 +9,7 @@ use std::path::Path;
 
 use leanvm_statement::N_TABLES;
 use leanvm_statement::layout::{OP_SHA3, SHA3_END_BIT, tables};
-use lv42_flock::keccak::{self as block, LANES};
+use flock::keccak::{self as block, LANES};
 use primitives::field::F64;
 
 use super::flock::FlockWitness;
@@ -169,7 +169,7 @@ impl Trace {
     /// `i` at row `i`, its input port the row's input lanes with `END_BIT` added to lane 16 (`layout::SHA3_END_BIT`),
     /// so that its output port is the row's output lanes. `q_flock` is the blocks' packed words `z` (`2^11` a row),
     /// which the prover commits from the witness: the trace keeps no copy (set `qflock` from `z` for
-    /// [`super::check::on_domain`]). The witness (`z`, `A z`, `B z`, the lincheck's stripes) is `lv42_flock::keccak`'s,
+    /// [`super::check::on_domain`]). The witness (`z`, `A z`, `B z`, the lincheck's stripes) is `flock::keccak`'s,
     /// for `flock::prove`.
     pub fn keccak_flock(&self) -> FlockWitness {
         assert!(self.placed, "the trace, placed");
@@ -189,7 +189,7 @@ impl Trace {
             state[16] ^= SHA3_END_BIT;
             state
         });
-        lv42_parallel::init();
+        parallel::init();
         let (z, a, b, z_lincheck) = block::generate_witness_with_ab_packed_and_lincheck(&inputs, self.heights[OP_SHA3]);
         FlockWitness {
             n_blocks: n,

@@ -1322,6 +1322,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "flock"
+version = "0.1.0"
+dependencies = [
+ "fiat_shamir",
+ "keccak",
+ "parallel",
+ "pcs",
+ "primitives",
+ "tracing",
+]
+
+[[package]]
 name = "fnv"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1754,6 +1766,7 @@ name = "leanvm_statement"
 version = "0.1.0"
 dependencies = [
  "evm_link",
+ "primitives",
  "revm",
 ]
 
@@ -1763,13 +1776,9 @@ version = "0.1.0"
 dependencies = [
  "bench",
  "fiat_shamir",
+ "flock",
  "gf2_linear",
  "leanvm_statement",
- "lv42_fiat_shamir",
- "lv42_flock",
- "lv42_parallel",
- "lv42_pcs",
- "lv42_primitives",
  "parallel",
  "pcs",
  "primitives",
@@ -1841,48 +1850,6 @@ name = "log"
 version = "0.4.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5d15f86d12da44cd8d4ec3c73984537eb7f4cadcb9776a575a0a8a05ca11005c"
-
-[[package]]
-name = "lv42_fiat_shamir"
-version = "0.1.0"
-dependencies = [
- "lv42_primitives",
-]
-
-[[package]]
-name = "lv42_flock"
-version = "0.1.0"
-dependencies = [
- "keccak",
- "lv42_fiat_shamir",
- "lv42_parallel",
- "lv42_pcs",
- "lv42_primitives",
- "tracing",
-]
-
-[[package]]
-name = "lv42_parallel"
-version = "0.1.0"
-dependencies = [
- "libc",
-]
-
-[[package]]
-name = "lv42_pcs"
-version = "0.1.0"
-dependencies = [
- "lv42_primitives",
-]
-
-[[package]]
-name = "lv42_primitives"
-version = "0.1.0"
-dependencies = [
- "lv42_parallel",
- "rand 0.9.5",
- "serde",
-]
 
 [[package]]
 name = "matchers"

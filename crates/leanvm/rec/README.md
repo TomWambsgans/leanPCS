@@ -18,8 +18,12 @@ Design: [`SPEC-REC.md`](../../../docs/leanvm/rec/SPEC-REC.md) (the recursion), [
 cargo test --release -p leanvm_rec                                                          # circuit, PIOP, contract
 cargo test --release -p leanvm_rec --test keccak_vm_rec -- --ignored --nocapture            # π2's circuit and gas, 128 and 400
 PI2_VECTOR=keccak128_rec3 cargo test --release -p leanvm_rec --test pi2_real -- --ignored --nocapture real_end_to_end
+LEANVM_TRACE=<trace dir> cargo test --release -p leanvm_rec --test pipeline -- --ignored --nocapture   # trace → π1 → π2, timed
 ```
 
 `real_end_to_end` proves π2 on the real π1-rec3 proof, verifies its openings, and runs the contract on the real
-calldata with `PCS_OPEN` attesting exactly the openings' claims (and rejects flipped bytes). Build with
-`RUSTFLAGS="-C target-cpu=native"` for timings.
+calldata with `PCS_OPEN` attesting exactly the openings' claims (and rejects flipped bytes). `pipeline` runs the
+recursion from a Keccak VM trace (`crates/leanvm/univariate/src/prover/dump_keccak`): the per-circuit setup once, then
+warm passes of π1-rec3's proof and openings (π2's witness compiled on π1's stream while π1's openings run,
+`prover::prove::prove_streaming`), π2's proof and openings, each phase's median; it checks the proofs against the
+committed vector and `pi2_real`'s fingerprints. Build with `RUSTFLAGS="-C target-cpu=native"` for timings.

@@ -1,6 +1,6 @@
 -- Part of this repository (new here, not from leanVM). Transcribed from `crates/leanvm/statement/src/keccak_flock.rs`
 -- (`structured_terminal`, `shift_offsets`, `grouped`, `RC`, `RHO`, `SOURCE`, `port_word`, `CONSTANT_COLUMN`,
--- `X_QUAD`): the structured lincheck terminal of the Keccak-f[1600] Flock block of `crates/vendor/leanvm-42422001/flock/src/keccak.rs`
+-- `X_QUAD`): the structured lincheck terminal of the Keccak-f[1600] Flock block of `crates/vendor/flock-42422001/src/keccak.rs`
 -- (`docs/leanvm/flock/KECCAK.md` §4.2, M3). MIT OR Apache-2.0; see AGENTS.md.
 module
 
@@ -11,7 +11,7 @@ public import UniStatement.KeccakTables
 # The Keccak-f block's structured lincheck terminal (`keccak_flock::structured_terminal`)
 
 Flock on the Keccak VM's `q_flock` runs on blocks of `2^17` positions (`2^11` words of 64 bits), one Keccak-f[1600]
-permutation each, every round's state materialised (`lv42_flock::keccak`). Its lincheck terminal is
+permutation each, every round's state materialised (`flock::keccak`). Its lincheck terminal is
 `Σ_(row, col) e(row) (Â0 + α B̂0)(row, col) w(col) + α² eq(chi_in, chi_in') Σ_z E_z s_z + α³ eq(word 1, chi_in') s_0`,
 `e = E ⊗ eq(chi_in, ·)` (`E` the 64 packing weights: the skip's Lagrange weights ⊗ `eq(row_low, ·)`),
 `w = s ⊗ eq(chi_in', ·)`. `structuredTerminal` computes it from the block's structure (eq factors of a word's
@@ -20,7 +20,7 @@ Rust's, with no walk of the circuit and no matrices. The order of a sum is the R
 where the Rust's is `S::sum` (field addition is exact).
 
 `structuredTerminal` is the value the Keccak verifier's Flock (`UniKeccak.verifyWalkedK`) checks `r_lc` against
-(collected: `FlockMatrixTerminal`). That it equals the matrices' sum for `lv42_flock::keccak`'s R1CS is the Rust's
+(collected: `FlockMatrixTerminal`). That it equals the matrices' sum for `flock::keccak`'s R1CS is the Rust's
 test (`keccak_flock`'s against `walked_terminal_with::<KeccakWalked>`, `crates/leanvm/statement/tests/
 keccak_terminal.rs`), not a theorem here.
 -/

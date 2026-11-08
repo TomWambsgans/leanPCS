@@ -15,7 +15,7 @@ unchanged but for this header. In them:
 
 ### 4.2 Keccak-f as a Flock block
 
-Flock (`crates/vendor/leanvm-42422001/flock`) proves `A z ∘ B z = z` (`C = I`, baked into zerocheck and lincheck) per block, the blocks
+Flock (`crates/vendor/flock-42422001`) proves `A z ∘ B z = z` (`C = I`, baked into zerocheck and lincheck) per block, the blocks
 batched; every z slot is the output of one row (constant wire, free input, lin-id `(form)·1`, product).
 
 - **Rows of round j** (24 rounds): `b = πρθ(A_{j-1})` is linear (each bit 11 bits of `A_{j-1}`).
@@ -29,7 +29,7 @@ batched; every z slot is the output of one row (constant wire, free input, lin-i
   (64%); padding slots are forced to 0 by empty rows (`PaddingSpec`). 4,096 blocks (3,959 used, the rest
   Keccak-f(0)): **log_n = 29, 2^23 K-words**.
 - **Why not `k_log = 16`**: 40,000 bits would fit if `C` were a general matrix (`c = A_j + b[X] + RC` with 12
-  nonzeros). That needs lv42_flock's zerocheck and lincheck to carry `Cz` (a third fold, `v_c` sent): a stretch
+  nonzeros). That needs flock's zerocheck and lincheck to carry `Cz` (a third fold, `v_c` sent): a stretch
   optimisation (half the bits, −0.1 s), not on the critical path.
 - **The prover's lincheck fold** (`LincheckCircuit::fold_alpha_batched`): a backward walk of the block circuit,
   ≈ 2.5M nonzeros, once (the z fold over blocks comes first). ≈ 20 ms [E].
@@ -74,7 +74,7 @@ Prover: `ℓ_q` on 10 cosets of 2^19 by shifted-cube folds (`O(19 · 2^19)` each
 code) and one inverse NTT, ≈ 0.1 s [E].
 
 
-### M1 notes (as built: `lv42_flock::keccak`)
+### M1 notes (as built: `flock::keccak`)
 
 The port quads are as above; two things inside the block differ from §4.2, neither visible to the glue.
 
