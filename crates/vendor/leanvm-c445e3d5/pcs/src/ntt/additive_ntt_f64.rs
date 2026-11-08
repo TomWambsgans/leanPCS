@@ -785,8 +785,11 @@ struct TwoSweep {
 }
 
 impl TwoSweep {
-    /// The plan, or `None` for a shape two sweeps do not cover (or too small to split across the pool).
-    fn new(layout: MsgLayout, n: usize, log_rows: usize) -> Option<Self> {
+    /// The plan, or `None` for a shape two sweeps do not cover (or too small to split across the pool). With `wide`
+    /// (an encode's plan), the first sweep gathers rows of up to [`WIDE_GATHER_WORDS`]; the rows of
+    /// [`AdditiveNttF64::encoded_rows_two_sweep`], whose first sweep is bound by its transforms, would gain nothing by
+    /// them but larger scratch buffers.
+    fn new(layout: MsgLayout, n: usize, log_rows: usize, wide: bool) -> Option<Self> {
         if n == 0 || log_rows < 12 {
             return None;
         }
@@ -808,7 +811,8 @@ impl TwoSweep {
             return None;
         }
         // Then the widest rows whose group fits the core's L2.
-        let (per, width) = std::iter::successors(Some(WIDE_GATHER_WORDS), |&w| (w > GATHER_WORDS).then_some(w / 2))
+        let widest = if wide { WIDE_GATHER_WORDS } else { GATHER_WORDS };
+        let (per, width) = std::iter::successors(Some(widest), |&w| (w > GATHER_WORDS).then_some(w / 2))
             .map(gather)
             .find(|&(per, width)| (width << g) <= 2 * L2_WORDS && (1usize << t) >= per)
             .unwrap_or((per, width));
@@ -916,7 +920,7 @@ impl AdditiveNttF64 {
             self.log_domain_size(),
             "the codeword's own transform"
         );
-        let Some(plan) = TwoSweep::new(layout, n, log_rows) else {
+        let Some(plan) = TwoSweep::new(layout, n, log_rows, true) else {
             return false;
         };
         let len = plan.len();
@@ -986,7 +990,7 @@ impl AdditiveNttF64 {
             "the codeword's own transform"
         );
         assert_eq!(data.len(), msg.len() << log_inv_rate, "the whole codeword");
-        let Some(plan) = TwoSweep::new(layout, n, log_rows) else {
+        let Some(plan) = TwoSweep::new(layout, n, log_rows, true) else {
             return false;
         };
         let (len, g, t, tile_words) = (plan.len(), plan.g, plan.t, plan.tile_words());
@@ -1106,7 +1110,7 @@ impl AdditiveNttF64 {
             self.log_domain_size(),
             "the codeword's own transform"
         );
-        let plan = TwoSweep::new(layout, n, log_rows)?;
+        let plan = TwoSweep::new(layout, n, log_rows, false)?;
         let (g, t) = (plan.g, plan.t);
         let rows = 1usize << log_rows;
         // The wanted tiles, (replica, tile) ascending.
