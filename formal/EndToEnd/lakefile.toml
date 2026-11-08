@@ -287,3 +287,11 @@ root = "RecComposeTest.ViewCheck"
 name = "rec-real-check"
 srcDir = "../RecCompose"
 root = "RecComposeTest.RealCheck"
+
+# The verifier's `SHA3` flushes (`UniStatement.flushesSha3`) against the Keccak VM instance's
+# (`KeccakVm.Sha3Table.flushes`), on every row (`formal/KeccakFlushes`).
+[[lean_lib]]
+name = "KeccakFlushes"
+srcDir = "../KeccakFlushes"
+globs = ["KeccakFlushes"]
+leanOptions = { warningAsError = true }
