@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The honest block is `crates/lv42_flock/src/keccak.rs`'s
+-- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The honest block is `crates/vendor/leanvm-42422001/flock/src/keccak.rs`'s
 -- `build_block_witness`.
 import KeccakFlock.Sound
 
@@ -293,7 +293,7 @@ end KeccakFlock
 
 namespace KeccakFlock
 
-/-- **The Keccak-f block of `crates/lv42_flock/src/keccak.rs`** as `KeccakVm.KeccakFlockSpec`: its R1CS, the
+/-- **The Keccak-f block of `crates/vendor/leanvm-42422001/flock/src/keccak.rs`** as `KeccakVm.KeccakFlockSpec`: its R1CS, the
 constant wire at position 64, the port words `4l + 2` (input) and `4l` (output), soundness and completeness. -/
 def keccakFlockSpec : KeccakVm.KeccakFlockSpec where
   r1cs := r1cs

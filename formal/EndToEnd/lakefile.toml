@@ -90,7 +90,7 @@ srcDir = "../Lv42"
 globs = ["Lv42", "Lv42.+"]
 leanOptions = { warningAsError = true }
 
-# The Keccak VM (`crates/leanvm_univariate/KECCAK.md`), `formal/KeccakVm`: leanVM 42422001 with `BLAKE2S` replaced by
+# The Keccak VM (`docs/leanvm/univariate/KECCAK.md`), `formal/KeccakVm`: leanVM 42422001 with `BLAKE2S` replaced by
 # leanVM 9d50c92a3's `SHA3` (one step of its cell sponge over leanerVM's Keccak-f[1600]); the other five instructions
 # and the machine are `Lv42`'s.
 [[lean_lib]]
@@ -99,7 +99,7 @@ srcDir = "../KeccakVm"
 globs = ["KeccakVm", "KeccakVm.+"]
 leanOptions = { warningAsError = true }
 
-# The Keccak VM's Keccak-f block (`crates/lv42_flock/src/keccak.rs`, `crates/lv42_flock/KECCAK.md`), `formal/KeccakFlock`:
+# The Keccak VM's Keccak-f block (`crates/vendor/leanvm-42422001/flock/src/keccak.rs`, `docs/leanvm/flock/KECCAK.md`), `formal/KeccakFlock`:
 # its R1CS, `KeccakVm.KeccakFlockSpec`'s inhabitant, the structured lincheck terminal.
 [[lean_lib]]
 name = "KeccakFlock"
@@ -115,7 +115,7 @@ srcDir = "../KeccakArith"
 globs = ["KeccakArith", "KeccakArith.+"]
 leanOptions = { warningAsError = true }
 
-# The univariate PIOP's bus (`crates/leanvm_univariate/SPEC.md` §5, branch `leanvm-univariate`) as a
+# The univariate PIOP's bus (`docs/leanvm/univariate/SPEC.md` §5, branch `leanvm-univariate`) as a
 # product heap, `formal/Heap`: the tree, leaf and root identities give the push and pull products'
 # equality, which gives `Lv42`'s `Balanced` but with probability at most `4 N / |E|` over the bus
 # challenges (leanerVM 6175f1a0's Theorem 5.1, `LeanVM.Protocol.sideProduct_collision`).
@@ -153,7 +153,7 @@ globs = ["E2ECompleteness", "E2ECompleteness.+"]
 [[lean_lib]]
 name = "Evm"
 
-# The univariate PIOP for leanVM 42422001 (`crates/leanvm_univariate`): its verifier transcribed
+# The univariate PIOP for leanVM 42422001 (`crates/leanvm/univariate`): its verifier transcribed
 # (`formal/UniStatement`, library `UniStatement`) and its end statements against `Lv42`'s relation
 # (`UniStatement.Security`). The differential runner (`UniStatementTest/Runner.lean`) runs with
 # `lake env lean`, not built.
@@ -163,7 +163,7 @@ srcDir = "../UniStatement"
 globs = ["UniStatement", "UniStatement.+"]
 leanOptions = { warningAsError = true }
 
-# The univariate verifier for the Keccak VM (`Blake2s::Keccak`, `crates/leanvm_univariate/src/verifier.rs`),
+# The univariate verifier for the Keccak VM (`Blake2s::Keccak`, `crates/leanvm/univariate/src/verifier.rs`),
 # `formal/UniKeccak`: its transcription and its end statements against `KeccakVm.KvHolds`.
 [[lean_lib]]
 name = "UniKeccak"
@@ -180,7 +180,7 @@ srcDir = "../UniSound"
 globs = ["UniSound", "UniSound.+"]
 leanOptions = { warningAsError = true }
 
-# Flock's soundness (`crates/leanvm_flock_gas/src/flock_min.rs`, `crates/leanvm_univariate/SPEC-FLOCK.md`),
+# Flock's soundness (`crates/leanvm/statement/src/flock_min.rs`, `docs/leanvm/univariate/SPEC-FLOCK.md`),
 # `formal/FlockSound`: generic sumcheck, univariate-skip, lincheck and ring-switch soundness over the
 # Boolean cube, then Flock's checks and claims give `Lv42`'s `FlockRegion.Holds` but for explicit bad
 # challenges, each of a bounded number of values.
@@ -205,7 +205,7 @@ srcDir = "../UniComplete"
 globs = ["UniComplete", "UniComplete.+"]
 leanOptions = { warningAsError = true }
 
-# π2's PIOP, generic over circuits (`crates/leanvm_rec`, `PI2.md`, branch `leanvm-rec` @ 4247e37),
+# π2's PIOP, generic over circuits (`crates/leanvm/rec`, `PI2.md`, branch `leanvm-rec` @ 4247e37),
 # `formal/RecPiop`: the circuit description and its `validate`, the copy argument in characteristic two
 # (set-based logUp, every tag twice, the holes left out of the pulls), the quotient identity and its
 # degrees, the dataflow lemma, and π2's rounds in `Compose.Piop`'s form (W → α, β, γ; Q → t; the values
@@ -224,7 +224,7 @@ srcDir = "../RecGraph"
 globs = ["RecGraph", "RecGraph.+"]
 leanOptions = { warningAsError = true }
 
-# π2's circuit (`crates/leanvm_rec/src/circuit`, branch `lean-rec-circuit`), `formal/RecCircuit`: the compiler from
+# π2's circuit (`crates/leanvm/rec/src/circuit`, branch `lean-rec-circuit`), `formal/RecCircuit`: the compiler from
 # π1's recorded verifier graph to π2's circuit, transcribed, and the proof that a satisfied compiled circuit's ports
 # carry the graph's outputs on the stream its free bits encode (the D16v Keccak-f template, Keccak-256's sponge, the
 # `E` units, the packings).
@@ -245,10 +245,10 @@ name = "rec-circuit-diff"
 srcDir = "../RecCircuit"
 root = "RecCircuitTest.Main"
 
-# π2's verifier (`crates/leanvm_rec`, `PI2.md` §2, §8–§9, branch `leanvm-rec` @ 2b22581), `formal/RecStatement`:
+# π2's verifier (`crates/leanvm/rec`, `PI2.md` §2, §8–§9, branch `leanvm-rec` @ 2b22581), `formal/RecStatement`:
 # the verifier as computable Lean (its seed and IV, the public data in the stream, the arithmetic at `t` over any
 # field, the six `PCS_OPEN` calls word for word), the circuit's tables as data the Rust emits
-# (`crates/leanvm_rec/src/lean_statement.rs`, with a staleness test), the verifier-arithmetic lemmas `RecPiop`'s
+# (`crates/leanvm/rec/src/lean_statement.rs`, with a staleness test), the verifier-arithmetic lemmas `RecPiop`'s
 # rounds consume, and the end statements of the recursive verifier against `Lv42`'s relation. The differential
 # runner (`RecStatementTest/Runner.lean`) runs with `lake env lean`, not built.
 [[lean_lib]]
@@ -290,7 +290,7 @@ globs = ["KeccakFlushes"]
 leanOptions = { warningAsError = true }
 
 # The Keccak VM's π1-rec3 as a graph (`formal/RecGraphKeccak`): its recorded verifier graph
-# (`crates/leanvm_rec/tests/lean_graph_keccak.rs` writes `RecGraphKeccak/Emitted.lean`, data only), the verifier as a
+# (`crates/leanvm/rec/tests/lean_graph_keccak.rs` writes `RecGraphKeccak/Emitted.lean`, data only), the verifier as a
 # `RecGraph.Prog` program (its Lean recording equals the emitted graph: `RecGraphKeccakTest/Pi1Check.lean`, run with
 # `lake env lean`), and graph = verifier against `UniKeccak`'s `runWithK` at `keccakRec3`.
 [[lean_lib]]
@@ -300,7 +300,7 @@ globs = ["RecGraphKeccak", "RecGraphKeccak.+"]
 leanOptions = { warningAsError = true }
 
 # The compiler on `RecGraphKeccak.Emitted.graph` itself, against the Rust's circuit for the Keccak π1-rec3
-# (`RecGraphKeccakTest/Circuit.lean`; the graph and circuit from `crates/leanvm_rec/tests/lean_circuit_keccak128.rs`).
+# (`RecGraphKeccakTest/Circuit.lean`; the graph and circuit from `crates/leanvm/rec/tests/lean_circuit_keccak.rs`).
 [[lean_exe]]
 name = "rec-circuit-keccak"
 srcDir = "../RecGraphKeccak"

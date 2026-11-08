@@ -10,7 +10,7 @@ import RecGraphKeccak.Hazard
 /-!
 # RecGraphKeccak: the Keccak VM's π1-rec3 recorded graph, and graph = verifier
 
-The Keccak VM's π1-rec3 recorded verifier graph (`Emitted.lean`, written by `crates/leanvm_rec/tests/
+The Keccak VM's π1-rec3 recorded verifier graph (`Emitted.lean`, written by `crates/leanvm/rec/tests/
 lean_graph_keccak.rs`, data only), the verifier as a `RecGraph.Prog` program (`Pi1/`; its Lean recording `pi1GraphK`
 equals the emitted graph node for node: `RecGraphKeccakTest/Pi1Check.lean`), and graph = verifier against `UniKeccak`'s
 `runWithK` at `keccakRec3` (`Main.lean`: `Pi1GraphIsVerifierK`), from the simulation's parts (`Sim/`): Flock with the

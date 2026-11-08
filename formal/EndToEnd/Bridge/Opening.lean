@@ -9,7 +9,7 @@ import LeanVM.Protocol.ExperimentBridge
 # The statement's openings are F2's
 
 The statement (`formal/Statement`, `PcsQuotient/Opening.lean`) and F2 (`formal/WhirBridge`) both
-transcribe `crates/quotient/src/opening.rs`. Here the two transcriptions are proved equal:
+transcribe `crates/membership/quotient/src/opening.rs`. Here the two transcriptions are proved equal:
 
 * **the layouts** (`layoutTr`: the same five fields): `layoutTr_witnessLayout`,
   `layoutTr_wiringLayout`, `layoutTr_quotientLayout`, for every size (`Layout::hidden` and

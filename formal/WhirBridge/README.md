@@ -2,13 +2,13 @@
 
 # WhirBridge: our WHIR openings under leanerVM `mumbai`'s proofs
 
-`crates/quotient/src/opening.rs` opens every claim on a committed table with leanVM's WHIR, unchanged.
+`crates/membership/quotient/src/opening.rs` opens every claim on a committed table with leanVM's WHIR, unchanged.
 [leanerVM](https://github.com/Verified-zkEVM/leanerVM) `mumbai` (commit `6175f1a0`, MIT OR Apache-2.0;
 its `leanvm-rev` is leanVM `c445e3d5`, the commit our `crates/verifier` is vendored from) proves leanVM's
 verifier knowledge sound. This package transcribes `opening::verify` into mumbai's verifier language,
 **its transcript included**, and proves its Fiat–Shamir soundness in the random-oracle model for the
 three openings the protocol makes (the wiring table's, public; the witness and quotient tables',
-hidden, in the layout redesigned for condition (R) of `crates/quotient/HIDING.md`: the overflow lane
+hidden, in the layout redesigned for condition (R) of `docs/membership/HIDING.md`: the overflow lane
 `32`, seven random lanes after it, and the **gadget**), at every supported size, in table terms.
 Everything here is sorry-free and depends on `propext`, `Classical.choice` and `Quot.sound` only
 (`#guard_msgs` checks in `WhirBridge.lean`). No `native_decide`: the facts
@@ -154,7 +154,7 @@ builds them in about 6.5 minutes from mumbai's Mathlib cache.
 
 mumbai's `verifyWhir` (`Statement/LeanVmVerifier.lean:1505-1553`, a transcription of `verifier.py` at
 `c445e3d5`) against the vendored `crates/verifier/src/whir.rs`, and `Layout.check` against
-`crates/quotient/src/opening.rs`. The vendored `whir.rs`, `transcript.rs`, `merkle.rs`, `multilinear.rs`,
+`crates/membership/quotient/src/opening.rs`. The vendored `whir.rs`, `transcript.rs`, `merkle.rs`, `multilinear.rs`,
 `field.rs` and `hash.rs` are byte-identical, past their two-line headers, to leanVM `c445e3d5`'s (checked
 against a fetch of that commit, mumbai's `leanvm-tree.sh`), so what mumbai's fuzzing establishes of leanVM's
 Rust verifier holds of ours.

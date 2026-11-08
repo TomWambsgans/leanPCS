@@ -2,7 +2,7 @@
 
 # RecCompose: the recursive verifier's end theorems
 
-The recursive EVM verifier for leanVM 42422001 proofs (`crates/leanvm_rec`): the contract runs π2's verifier, then six
+The recursive EVM verifier for leanVM 42422001 proofs (`crates/leanvm/rec`): the contract runs π2's verifier, then six
 `PCS_OPEN` calls (π1's `C1`, `C2`, `F`; π2's `W`, the setup, `Q`). Its statements are `RecStatement`'s
 (`RecStatement/Security.lean`), in two parts, since π2's circuit computes π1-rec3's Fiat–Shamir with the real
 Keccak-f[1600] while π1-rec3's soundness is proved in the random-permutation model:

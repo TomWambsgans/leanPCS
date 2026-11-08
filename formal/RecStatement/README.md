@@ -2,7 +2,7 @@
 
 # RecStatement
 
-The recursion's outer proof π2 (`crates/leanvm_rec`, `PI2.md` §2, §8–§9; branch `leanvm-rec` @ 2b22581, the final
+The recursion's outer proof π2 (`crates/leanvm/rec`, `PI2.md` §2, §8–§9; branch `leanvm-rec` @ 2b22581, the final
 protocol: the setup committed as `κ` and `κ + σ`, `ξ = κ(t) + βσ(t)` sent, no `h(t)`, the zero checks as an aligned
 coset of ports in closed form `β^15/F(Y)`, the row fold's siblings, the normalised `Q` claim
 `(1 + ρ')h + ρ'q = X/(S_d Y)`, one inversion, every `PCS_OPEN` call in `machine.rs`'s one ABI, π1's claims at points the
@@ -71,7 +71,7 @@ stale.)
 
 ## Rust → Lean
 
-| Rust (`crates/leanvm_rec/src/pi2`, `leanvm-rec` @ 2b22581) | Lean (`RecStatement.`) |
+| Rust (`crates/leanvm/rec/src/pi2`, `leanvm-rec` @ 2b22581) | Lean (`RecStatement.`) |
 |---|---|
 | `circuit.rs`: `Coeff`, `Lin`, `Formula`, `Pair`, `Read`, `PublicTerm`, `Circuit` (but `σ`, `κ`), `max_gamma`, `coset_constants`, `vanishing`, `pair_constants`, `digest` | `Coeff`, `Lin`, `Formula`, `Pair`, `Read`, `PublicTerm`, `Circuit`, `Circuit.maxGamma`, `cosetConstants` (`cosetConstantsF`), `vanishing` (`vanishingF`), `pairConstants`, `Pi2Circuit.digestWith` |
 | `verifier.rs`: `NAME`, `Spec::of`, `subspace_coefficients`, `zero_coset`, `normalised_constants`, `tag_walk`, `frobenius`, `inverse`, `extension`, `reduce`, `Reduced`, `verify`, `statement_words` | `name`, `Spec.of`, `subspaceCoefficients` (`subspaceCoeffsF`), `zeroCosetOf`, `normalisedConstants`, `tagWalk`, `frobenius`, `normInverse`, `extension`, `reduceWith` (+ `CoreSpec.run`), `Reduced`, `runWith`/`run`, `UniStatement.publicWordsOf` |
@@ -90,7 +90,7 @@ contract's graph is unchanged: `tests/pi2.rs`'s parity holds).
 
 ## The data
 
-`crates/leanvm_rec/src/lean_statement.rs` (`render`) writes `Data.lean` from π2's circuit for π1-rec3's real proof
+`crates/leanvm/rec/src/lean_statement.rs` (`render`) writes `Data.lean` from π2's circuit for π1-rec3's real proof
 (`circuit::compile::pi2(record_verifier(REFERENCE, Flock(FLOCK_REC3), Point), D16v)`, then `pi2::adapt`): the shape,
 the formulas, the pairs, the reads, the public terms; π1's contract IV (`Compiled::pi1_iv`), the setup's root
 (`Setup::new(circuit).root()`), the circuit's digest (`Circuit::digest`); π1's three calls (`spec::Circuit::calls`).
@@ -297,7 +297,7 @@ public fingerprints):
 ## What is tested, what is defined
 
 **Tested** (`RecStatementTest/Runner.lean`, `lake env lean`: compiled evaluation, not the kernel), on **64 vectors** of
-the Rust (`crates/leanvm_rec/tests/lean_statement.rs`): **the real proof** (π1-rec3's 1,000-signature proof, then π2's
+the Rust (`crates/leanvm/rec/tests/lean_statement.rs`): **the real proof** (π1-rec3's 1,000-signature proof, then π2's
 real proof on its circuit), **31 flips** (one bit of a byte of π1's roots, its elements, `W`'s and `Q`'s roots, every
 fold value and `ξ`, the last byte), **3 other public inputs**, **3 truncated and 2 extended streams**, **24 random**
 streams and public inputs. On each, the Lean and the Rust agree on every value: the verdict (the stream's error, or the

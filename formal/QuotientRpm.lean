@@ -9,7 +9,7 @@ import QuotientRpm.Rpm
 /-!
 # The reduction with the deployed transcript
 
-The Keccak-256 chain of `crates/quotient/src/transcript.rs`, in the random-oracle model
+The Keccak-256 chain of `crates/membership/quotient/src/transcript.rs`, in the random-oracle model
 (`knowledgeSoundness_chain`, `ChainRom.lean`) and in leanerVM's random-permutation model
 (`knowledgeSoundness_rpm`, `knowledgeSoundness_rpm_bits`, `Instance.soundness_rpm`, `Rpm.lean`),
 with ideal commitments. The end theorems use only `propext`, `Classical.choice` and `Quot.sound`.

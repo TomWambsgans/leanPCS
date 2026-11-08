@@ -1,5 +1,5 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The node set is `crates/leanvm_flock_gas/src/evm/record.rs`'s
--- (`Node`, `Graph`), the call words `codegen.rs`'s (`Word`), the semantics `crates/leanvm_rec/src/eval.rs`'s
+-- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The node set is `crates/leanvm/statement/src/evm/record.rs`'s
+-- (`Node`, `Graph`), the call words `codegen.rs`'s (`Word`), the semantics `crates/leanvm/rec/src/eval.rs`'s
 -- (`evaluate`), `transcript.rs`'s (`challenge_of`, `narrow`, `keccak_seed`), `scalar.rs`'s (`E::bits`) and
 -- `ring_tower.rs`'s (`weight_at`). The constructors are branch `lean-rec-graph`'s `RecGraph.Node` (and its `narrow`,
 -- π1-rec3's), so that its `evalGraph` can replace this one.

@@ -9,7 +9,7 @@ import RecGraphKeccak.Emitted
 roots at `RecGraphKeccak.Emitted.rootsAt`) and any π1 contract IV: if the compiler accepts it, every witness satisfying
 π2's PIOP has ports and rebuilt `PCS_OPEN` inputs equal to the Keccak graph's outputs over Keccak-f[1600]
 (`EndStatement`). That the compiler accepts it is a run, not a proof: `rec-circuit-keccak` (`RecGraphKeccakTest/
-Circuit.lean`) reads the graph the Rust emits (`crates/leanvm_rec/tests/lean_circuit_keccak128.rs`), checks it is
+Circuit.lean`) reads the graph the Rust emits (`crates/leanvm/rec/tests/lean_circuit_keccak.rs`), checks it is
 `RecGraphKeccak.Emitted.graph`, compiles it in Lean and prints a circuit to `diff` against the Rust's.
 -/
 

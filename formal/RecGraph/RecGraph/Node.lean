@@ -1,15 +1,15 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The node set is `crates/leanvm_flock_gas/src/evm/record.rs`'s
--- (`Node`, `Graph`) and the call words `crates/leanvm_flock_gas/src/evm/codegen.rs`'s (`Word`); the form follows
+-- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The node set is `crates/leanvm/statement/src/evm/record.rs`'s
+-- (`Node`, `Graph`) and the call words `crates/leanvm/statement/src/evm/codegen.rs`'s (`Word`); the form follows
 -- `formal/Implementation/Node.lean` (the Merkle-path verifier's graph).
 
 /-!
 # The recorded graph's nodes
 
-`leanvm_flock_gas::evm::record`'s `Node`, `Graph` and `codegen::Word`, as Lean data. The recorder runs π1's verifier
-(`crates/leanvm_univariate`'s `reduce`, generic over its scalar) on a symbol: every read of the stream, every
+`leanvm_statement::evm::record`'s `Node`, `Graph` and `codegen::Word`, as Lean data. The recorder runs π1's verifier
+(`crates/leanvm/univariate`'s `reduce`, generic over its scalar) on a symbol: every read of the stream, every
 challenge, every addition and product of `E`, every bit field of a row count and every ring-switch weight is a node,
 its operands the indices of earlier nodes (hash-consed: one node per distinct operation). `Emitted.lean` (written by
-the Rust, `crates/leanvm_rec/src/lean.rs`) is π1-rec3's; `Semantics.lean` gives a graph its meaning.
+the Rust, `crates/leanvm/rec/src/lean.rs`) is π1-rec3's; `Semantics.lean` gives a graph its meaning.
 
 Generalises `formal/Implementation`'s nodes: a stream read is at a byte offset with a length (a scalar's 24 bytes, a
 root half's 16, a packed integer's at most 8), a hash absorbs a run of the stream's bytes, and there are bit fields

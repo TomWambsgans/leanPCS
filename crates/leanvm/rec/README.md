@@ -1,0 +1,25 @@
+<!-- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. -->
+
+# leanvm_rec (π2 and the recursion's contract)
+
+A Keccak VM proof verified on the EVM by recursion. π1 is `crates/leanvm/univariate`'s π1-rec3 (`KECCAK_REC3`); π2 is
+a univariate SNARK of π1-rec3's verifier minus its openings, its circuit compiled from π1's recorded verifier graph
+(`circuit`, D16v); the contract (`pi2::contract`) runs π2's verifier only and passes π1's and π2's claims to
+`PCS_OPEN` (7 claims in 6 calls, `crates/membership/evm/src/machine.rs`'s ABI).
+
+On the real 128-signature proof (the reference, `crates/leanvm/univariate/tests/vectors/keccak128_rec3.txt`):
+980 B of calldata, 28,325 gas of execution, 43,309 of transaction gas (EIP-7623, claims free, without the 21,000
+base); one contract of 13.5 KB.
+
+Design: [`SPEC-REC.md`](../../../docs/leanvm/rec/SPEC-REC.md) (the recursion), [`PI2.md`](../../../docs/leanvm/rec/PI2.md)
+(π2's PIOP), [`SPEC-POINTS.md`](../../../docs/leanvm/rec/SPEC-POINTS.md) (the claims' points).
+
+```sh
+cargo test --release -p leanvm_rec                                                          # circuit, PIOP, contract
+cargo test --release -p leanvm_rec --test keccak_vm_rec -- --ignored --nocapture            # π2's circuit and gas, 128 and 400
+PI2_VECTOR=keccak128_rec3 cargo test --release -p leanvm_rec --test pi2_real -- --ignored --nocapture real_end_to_end
+```
+
+`real_end_to_end` proves π2 on the real π1-rec3 proof, verifies its openings, and runs the contract on the real
+calldata with `PCS_OPEN` attesting exactly the openings' claims (and rejects flipped bytes). Build with
+`RUSTFLAGS="-C target-cpu=native"` for timings.

@@ -2,7 +2,7 @@
 
 # KeccakArith: the Keccak VM's arithmetization
 
-The Keccak VM (`crates/leanvm_univariate/KECCAK.md`, `formal/KeccakVm`) is leanVM 42422001 with `BLAKE2S` replaced
+The Keccak VM (`docs/leanvm/univariate/KECCAK.md`, `formal/KeccakVm`) is leanVM 42422001 with `BLAKE2S` replaced
 by `SHA3`. Its relation is `KeccakVm.KvHolds F prog s input q` (`M3Holds` of `keccakIsaInstance prog s` and
 `KeccakAux F prog s q`). This library gives the `SHA3` table the Clean component Lv42 gives its `BLAKE2S` table,
 proves what one `SHA3` row of a stack satisfying `KvHolds` means, and proves the relation's soundness

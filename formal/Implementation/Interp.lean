@@ -5,7 +5,7 @@ import Implementation.Arith
 /-!
 # The graph, interpreted on calldata
 
-What the contract computes, node by node, as `crates/evm/src/codegen.rs` compiles each node: every
+What the contract computes, node by node, as `crates/membership/evm/src/codegen.rs` compiles each node: every
 value is an EVM word (a natural number below `2^256`), and
 
 * `const c` is `c`;

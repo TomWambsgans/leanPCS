@@ -1,6 +1,6 @@
 -- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The blocks' vanishing polynomials are
--- `crates/leanvm_rec/src/pi2/circuit.rs`'s (`coset_constants`, `vanishing`, `pair_constants`) and
--- `crates/leanvm_rec/src/pi2/verifier.rs`'s (`normalised_constants`, `Ẑ_s`); the indicator is
+-- `crates/leanvm/rec/src/pi2/circuit.rs`'s (`coset_constants`, `vanishing`, `pair_constants`) and
+-- `crates/leanvm/rec/src/pi2/verifier.rs`'s (`normalised_constants`, `Ẑ_s`); the indicator is
 -- `formal/RecPiop`'s (`RecPiop.Indicator`).
 import RecStatement.Core
 import RecPiop.Vanishing

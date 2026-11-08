@@ -25,7 +25,7 @@ import UniSound.Rec3.ClosedFinal3
 /-!
 # π1-rec3: knowledge soundness of the recursion's inner verifier
 
-π1-rec3 (`crates/leanvm_rec/SPEC-REC.md` §12 items 5, 7, 8, §1.4; `SPEC-POINTS.md`; `crates/leanvm_univariate`'s
+π1-rec3 (`docs/leanvm/rec/SPEC-REC.md` §12 items 5, 7, 8, §1.4; `SPEC-POINTS.md`; `crates/leanvm/univariate`'s
 `FLOCK_REC3`, `FsShape::Rec3`) is the main line's univariate verifier for leanVM 42422001 with four changes, each a
 new lemma here:
 

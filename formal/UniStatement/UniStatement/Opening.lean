@@ -1,6 +1,6 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. `PCS_OPEN`'s ABI is `crates/evm/src/machine.rs`'s
--- (as `crates/leanvm_flock_gas/src/evm/machine.rs` mocks it), its layout words and the contract's IV
--- `crates/leanvm_univariate/src/contract.rs`'s (`layout_word`, `layout_words`, `shape_bytes`, `contract_iv`,
+-- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. `PCS_OPEN`'s ABI is `crates/membership/evm/src/machine.rs`'s
+-- (as `crates/leanvm/statement/src/evm/machine.rs` mocks it), its layout words and the contract's IV
+-- `crates/leanvm/univariate/src/contract.rs`'s (`layout_word`, `layout_words`, `shape_bytes`, `contract_iv`,
 -- `SetupRoots`); its semantics is this repository's `formal/Statement` opening (`PcsQuotient.openingWith`:
 -- leanerVM `mumbai` 6175f1a0's WHIR verifier, MIT OR Apache-2.0).
 module

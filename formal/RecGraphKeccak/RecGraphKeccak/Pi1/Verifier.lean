@@ -1,5 +1,5 @@
 -- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Transcribed, in the Rust's operation order, from
--- `crates/leanvm_univariate/src/verifier.rs` (`reduce` with `Blake2s::Keccak`, `weight_at`, `batch`), `stacks.rs`
+-- `crates/leanvm/univariate/src/verifier.rs` (`reduce` with `Blake2s::Keccak`, `weight_at`, `batch`), `stacks.rs`
 -- (`EqCache`) and `contract.rs` (`record_verifier`, `calls`).
 import RecGraph.Pi1.Verifier
 import RecGraphKeccak.Pi1.Flock
@@ -8,7 +8,7 @@ import UniKeccak.Opening
 /-!
 # The Keccak VM's π1-rec3 verifier as a program
 
-`reduce` at the reference workload's shape (`keccak128`, the Keccak VM at 128 signatures; the Rust's `KECCAK_128`) with
+`reduce` at the reference workload's shape (`keccak128`, the Keccak VM at 128 signatures; the Rust's `leanvm_rec::REFERENCE`) with
 `Blake2s::Keccak(KECCAK_REC3)` and `Claims::Point`, on the recorder: `pi1Rec3K`. Against π1-rec3 on the BLAKE2s VM (the
 `reduce` this was ported from, since removed), what changes:
 
@@ -278,7 +278,7 @@ def reduceK (shape : Shape) (publicWords : List Sym) : Prog ReducedS := do
 /-- **The reference workload's shape**: the Keccak VM at 128 signatures (leanVM 9d50c92a3, `UniKeccak.keccakRuns`'
 `"keccak128"`: 721,598 memory cells, rows XOR, MUL, SET, DEREF, JUMP, SHA3 `[24260, 36229, 24626, 35812, 15509,
 17712]`), as `keccakShapeOf` builds it (the memory `⌈log₂ cells⌉ = 20`, the bytecode `2^18`): the Rust emitter's
-`KECCAK_128` (`crates/leanvm_rec/tests/lean_graph_keccak.rs`). -/
+`leanvm_rec::REFERENCE` (`crates/leanvm/rec/src/lib.rs`, checked by `tests/lean_graph_keccak.rs`). -/
 def keccak128 : Shape := UniKeccak.keccakShapeOf 721598 [24260, 36229, 24626, 35812, 15509, 17712]
 
 /-- `keccak128`'s run is `keccakRuns`' 128-signature run. -/
@@ -288,11 +288,19 @@ theorem keccak128_run : ("keccak128", 128, 721598, [24260, 36229, 24626, 35812, 
 /-- `keccak128`'s memory and bytecode: `2^20` cells, `2^18` instructions. -/
 theorem keccak128_logs : keccak128.logMemory = 20 ∧ keccak128.logBytecode = 18 := by decide
 
+/-- **The Keccak VM's `SetupRoots::REFERENCE`** (`crates/leanvm/univariate/src/contract.rs`): the 128-signature
+reference's setup root `F` (`067244be…`, the real `keccak128_rec3.txt` proof's `whir_root`), and the two fixed words
+`A0`, `B0` (`UniStatement.referenceRoots`'), each 32-byte word read as the digest of those bytes. `record_verifier`
+binds them: the setup call's root word is `F`. -/
+def referenceRootsK : SetupRoots :=
+  ⟨digestOfBytes32 (bytesOfHex "067244bea80942b5cacaa61c28ca748d0ae4ba6c106739ab109c9c07296e1ca5"),
+    referenceRoots.a0, referenceRoots.b0⟩
+
 /-- The shape the program is recorded at. -/
 abbrev shapeK : Shape := keccak128
 
 /-- **The recorded Keccak verifier** (`record_verifier_with`): the recorder's start (the seed), the public input's
-four words, then `reduceK` at `KECCAK_128`. -/
+four words, then `reduceK` at `leanvm_rec::REFERENCE`. -/
 def pi1Rec3K : Prog ReducedS := do
   let mut words : Array Sym := #[]
   for k in [0:4] do
@@ -312,7 +320,7 @@ def callsOfK (st : RecState) (red : ReducedS) : List (List Word) :=
     let (root, layout) : Word × List UInt8 := match c with
       | .c1 => (streamAt red.root1.1, words.getD 0 [])
       | .c2 => (streamAt red.root2.1, words.getD 1 [])
-      | .setup => (.const (beNat (LeanVM.Protocol.KeccakHash.digestBytes referenceRoots.bytecode)), words.getD 2 [])
+      | .setup => (.const (beNat (LeanVM.Protocol.KeccakHash.digestBytes referenceRootsK.bytecode)), words.getD 2 [])
     [root, .const (beNat layout), .const 1] ++ point.map Word.node ++ [.node value]
 
 /-- A program's recorded graph, from the recorder's start, with the Keccak calls' words (`callsOfK`) and its stream's

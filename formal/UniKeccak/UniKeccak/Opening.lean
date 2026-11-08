@@ -1,6 +1,6 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Transcribed from `crates/leanvm_univariate/src/contract.rs`
+-- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Transcribed from `crates/leanvm/univariate/src/contract.rs`
 -- (`variant_bytes` and `contract_iv_for` with `Blake2s::Keccak`, `layout_words_for`, `calls`) and
--- `crates/leanvm_univariate/tests/keccak_vm.rs` (`KECCAK_RUNS`, `KECCAK_LOG_BYTECODE`: leanVM 9d50c92a3's runs);
+-- `crates/leanvm/univariate/tests/keccak_vm.rs` (`KECCAK_RUNS`, `KECCAK_LOG_BYTECODE`: leanVM 9d50c92a3's runs);
 -- `PCS_OPEN`'s semantics is `UniStatement`'s (`pcsOpenWith`, this repository's `formal/Statement` opening).
 module
 
@@ -143,7 +143,7 @@ def keccakShapeOf (cells : ℕ) (rows : List ℕ) : Shape := shapeWith (log2Ceil
 def keccakShapeNamed (n : String) : Option (Shape × List ℕ) :=
   (keccakRuns.find? (·.1 == n)).map fun (_, _, cells, rows) ↦ (keccakShapeOf cells rows, rows)
 
-/-- **The Keccak VM at 400 signatures** (`KECCAK_400` of `crates/leanvm_rec/tests/keccak_vm_rec.rs`): the largest run
+/-- **The Keccak VM at 400 signatures** (`KECCAK_400` of `crates/leanvm/rec/tests/keccak_vm_rec.rs`): the largest run
 whose `C1` fits WHIR's `2^28` words. -/
 def keccak400 : Shape := keccakShapeOf 2243324 [73288, 110893, 75762, 109932, 48157, 55316]
 

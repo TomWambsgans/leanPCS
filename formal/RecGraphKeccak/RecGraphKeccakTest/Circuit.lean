@@ -6,7 +6,7 @@ import RecGraphKeccak.Emitted
 /-!
 # The compiler on `RecGraphKeccak.Emitted.graph`, the very term `pi1rec3K_end` is about
 
-`rec-circuit-keccak GRAPH`: reads the Keccak π1-rec3 graph as `crates/leanvm_rec/tests/lean_circuit_keccak128.rs`
+`rec-circuit-keccak GRAPH`: reads the Keccak π1-rec3 graph as `crates/leanvm/rec/tests/lean_circuit_keccak.rs`
 writes it (for its IV), checks that it is `RecGraphKeccak.Emitted.graph` with `RecGraphKeccak.Emitted.rootsAt` field
 by field, then runs `RecCircuit.compile (ofRG RecGraphKeccak.Emitted.graph RecGraphKeccak.Emitted.rootsAt iv)`
 (compiled code) and prints the circuit's summary, to `diff` against the Rust's `.circuit` file.

@@ -5,12 +5,12 @@ import Field.F192
 /-!
 # The deployed Cantor basis
 
-`quotient::domain::beta()` (`crates/quotient/src/domain.rs`): `beta[0] = 1` and
+`quotient::domain::beta()` (`crates/membership/quotient/src/domain.rs`): `beta[0] = 1` and
 `S(beta[k + 1]) = beta[k]`, `S(x) = x^2 + x`, each the solution with its low bit clear (`solve`
 returns a preimage and clears its bit 0; the two preimages differ by `1`, `S`'s kernel being
 `{0, 1}`). The instance uses its first `24` words, one for each bit of a cell's index:
 
-* `betaWords`: those words, which `crates/quotient/tests/lean_beta_vector.rs` asserts of the Rust;
+* `betaWords`: those words, which `crates/membership/quotient/tests/lean_beta_vector.rs` asserts of the Rust;
 * `deployedBasis`: they are a Cantor basis of `F64` (`betaF64_succ`, checked by the kernel, which
   evaluates CompPoly's products), with every vector but the first of low bit clear
   (`betaF64_low`);

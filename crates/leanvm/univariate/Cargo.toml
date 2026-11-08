@@ -1,0 +1,33 @@
+# Part of this repository. Builds on crates/leanvm/statement (which vendors and adapts leanVM
+# (https://github.com/leanEthereum/leanVM), commit 42422001), MIT OR Apache-2.0. See NOTICE.md.
+[package]
+name = "leanvm_univariate"
+version.workspace = true
+edition.workspace = true
+publish = false
+description = "A univariate PIOP for the Keccak VM (leanVM 9d50c92a3): verifier generic over the scalar, its EVM contract, its prover"
+
+[lints]
+workspace = true
+
+[dependencies]
+leanvm_statement.workspace = true
+revm.workspace = true
+# The prover (src/prover): leanVM's WHIR (c445e3d5) and its verifier, the Cantor transforms of crates/membership/quotient.
+primitives.workspace = true
+pcs.workspace = true
+fiat_shamir.workspace = true
+verifier.workspace = true
+parallel.workspace = true
+quotient.workspace = true
+# The ring switch's twisted weight: GF(2)-linear maps of E, eight at once with GFNI.
+gf2_linear.workspace = true
+# Flock's prover: leanVM 42422001's, vendored (crates/vendor/leanvm-42422001).
+lv42_flock.workspace = true
+lv42_fiat_shamir.workspace = true
+lv42_primitives.workspace = true
+lv42_parallel.workspace = true
+
+[dev-dependencies]
+bench.workspace = true
+lv42_pcs.workspace = true

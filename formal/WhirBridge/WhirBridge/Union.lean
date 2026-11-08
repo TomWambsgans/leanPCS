@@ -1,7 +1,7 @@
 /-
 Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
 
-One Fiat-Shamir family for several openings of `opening::verify` (`crates/quotient/src/opening.rs`)
+One Fiat-Shamir family for several openings of `opening::verify` (`crates/membership/quotient/src/opening.rs`)
 on different layouts: the construction of `Family.lean` (adapted from leanerVM `mumbai`'s
 `anyProgram`, `leanVmSeeds`, `anyCert`, https://github.com/Verified-zkEVM/leanerVM, commit 6175f1a0,
 MIT OR Apache-2.0: `lean_vm/LeanVM/Protocol/EndToEnd/Sound/Statements.lean`) with the shape's index

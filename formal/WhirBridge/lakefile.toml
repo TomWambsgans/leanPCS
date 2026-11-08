@@ -1,6 +1,6 @@
 # Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
 #
-# The WHIR bridge: this repository's opening check (`crates/quotient/src/opening.rs`, `verify`) as a
+# The WHIR bridge: this repository's opening check (`crates/membership/quotient/src/opening.rs`, `verify`) as a
 # program of leanerVM `mumbai`'s verifier language, and its soundness from mumbai's WHIR theorems.
 #
 # It builds against a built checkout of leanerVM (https://github.com/Verified-zkEVM/leanerVM, commit

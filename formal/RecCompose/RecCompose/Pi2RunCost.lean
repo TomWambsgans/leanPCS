@@ -1,7 +1,7 @@
 -- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. π2's analogue of `formal/UniComplete/UniComplete/
 -- ProverCost.lean`, `VerifierHCost.lean`, `Rec3ProverCost.lean` and `Rec3ProbExp.lean`'s `cost_stagedU3`, for
 -- `Pi2ProbStaged`'s staged run (`pi2Staged`: the setup, π1-rec3's honest prover, π1-rec3's graph, π2's honest prover
--- `crates/leanvm_rec/src/pi2/prover.rs`, the contract `formal/RecStatement`); uses
+-- `crates/leanvm/rec/src/pi2/prover.rs`, the contract `formal/RecStatement`); uses
 -- `formal/EndToEnd/Completeness/E2ECompleteness/Cost.lean` (`cost_openingWithH`, `cost_proveOpeningWithH`,
 -- `qc_commitWithH`) and leanerVM (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`, commit 6175f1a0,
 -- MIT OR Apache-2.0): the block cost `hashBlocks` and the weight calculus `Common.QueryCostAtMost`.

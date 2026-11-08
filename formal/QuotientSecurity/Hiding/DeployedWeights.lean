@@ -4,7 +4,7 @@ import QuotientSecurity.Hiding.DeployedLayout
 /-!
 # The deployed weight: `opening::verify`'s closure, and `WeightsFit`
 
-`opening::verify` (`crates/quotient/src/opening.rs`) hands leanVM's WHIR verifier a closure: at a stack
+`opening::verify` (`crates/membership/quotient/src/opening.rs`) hands leanVM's WHIR verifier a closure: at a stack
 point `x` (the lane's `ℓ` coordinates, then the lane index's six) it returns the combined weight of the
 claims and the gadget, `Σ_c λ^c W_c(x) + λ^m G(x)`, as multilinear polynomials. Transcribed here
 (`Layout.weight`, with `Layout::scales`, `ClaimWeight`, `eq`, `eq_index`, `gadget_lanes`,

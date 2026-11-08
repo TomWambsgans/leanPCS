@@ -1,7 +1,7 @@
 /-
 Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
 
-What a claim of `crates/quotient/src/opening.rs` says of a stack: its multilinear claim on the
+What a claim of `crates/membership/quotient/src/opening.rs` says of a stack: its multilinear claim on the
 *table* the stack stands for. Uses lemmas of leanerVM `mumbai` (https://github.com/Verified-zkEVM/leanerVM,
 commit 6175f1a0, MIT OR Apache-2.0) on cube points (`boolPoint_add`, `eqEval_append`,
 `eqEval_comm`, `eqEval_boolPoint_boolPoint`, `selectorPoint_eq_boolPoint`).

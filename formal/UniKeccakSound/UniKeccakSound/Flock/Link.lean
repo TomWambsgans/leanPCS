@@ -1,5 +1,5 @@
 -- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The verifier (`UniKeccak.verifyWalkedK`) is
--- `formal/UniKeccak`'s, transcribed from `crates/leanvm_flock_gas/src/flock_min.rs` (`verify_walked_with::<S, Keccak>`);
+-- `formal/UniKeccak`'s, transcribed from `crates/leanvm/statement/src/flock_min.rs` (`verify_walked_with::<S, Keccak>`);
 -- the proof follows `formal/FlockSound/FlockSoundUni/{Link,Rec3Link}.lean` (BLAKE2s's).
 import FlockSoundUni.Rec3Link
 import UniKeccakSound.FlockInterfaceK

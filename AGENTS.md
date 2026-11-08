@@ -1,7 +1,7 @@
 # AGENTS.md
 
-Part of this repository. Notes for contributors: what the implementation adds to the design note in
-[`README.md`](README.md), and where things are.
+Notes for contributors (people and agents): what the implementation adds to the design note in
+[`README.md`](README.md), where things are, and the conventions.
 
 ## What the implementation adds to the design note
 
@@ -18,7 +18,7 @@ Part of this repository. Notes for contributors: what the implementation adds to
 - **The Fiat–Shamir states need not be in the header**, given the two points above.
 - **The forward-compatibility upgrade by one Schwartz–Zippel point** needs the new commitment to bind one table: an
   OOD answer at commit time, or a root anyone recomputes from the public circuit.
-- **ZK without changing the verifier**: true (`crates/quotient/HIDING.md`), but at these sizes it is not leanVM's 4×
+- **ZK without changing the verifier**: true (`docs/membership/HIDING.md`), but at these sizes it is not leanVM's 4×
   padding (which would exceed WHIR's 2^28 words): a random first piece per lane, 7 random lanes, and a *gadget* (a
   fixed weight on nine first-piece entries, cancelled by the values there, batched as a claim of value zero) that makes
   WHIR's lane rounds uniform for every challenge outside a set below 2^-188. The padding must cover the masks' lane:
@@ -33,9 +33,9 @@ Two lines, both with Keccak-256 Fiat–Shamir and both passing their claims to `
 `root`), reduced to four PCS claims by five field elements, as in leanVM's `flock::quotient` but on a circuit of
 one χ gate on bits, its claims opened by leanVM's WHIR unchanged.
 
-- `crates/quotient`: circuit, prover, Rust verifier (`protocol::reduce`), and the openings (`opening`), whose
-  hidden layouts make the roots and the openings hide the witness ([`HIDING.md`](crates/quotient/HIDING.md)).
-- `crates/evm`: the same verifier compiled to EVM bytecode, run on revm with `FIELD_MUL` (10 gas) and a mock
+- `crates/membership/quotient`: circuit, prover, Rust verifier (`protocol::reduce`), and the openings (`opening`), whose
+  hidden layouts make the roots and the openings hide the witness ([`HIDING.md`](docs/membership/HIDING.md)).
+- `crates/membership/evm`: the same verifier compiled to EVM bytecode, run on revm with `FIELD_MUL` (10 gas) and a mock
   `PCS_OPEN` precompile (ABI in `machine.rs`), which the contract calls once per commitment: three calls for the
   four claims. The contract's ABI (`verify` with a selector and packed arguments, 252 bytes of calldata) and its
   deployment are in `quotient.rs`: the circuit's commitment is a constructor argument kept in storage (read by one
@@ -60,38 +60,67 @@ one χ gate on bits, its claims opened by leanVM's WHIR unchanged.
   The models: Keccak-f[1600] as one random permutation, the prover's randomness uniform (deployed: ChaCha12 and a
   Keccak-256 KDF, so computational). The Statement is the Rust by differential tests, not by proof.
 
-**leanVM proofs on the EVM, by recursion.**
+**leanVM proofs on the EVM, by recursion** (the Keccak VM only: leanVM `9d50c92a3`'s `SHA3` table; the BLAKE2s VM
+of leanVM `42422001` was removed from `crates/`).
 
-- `crates/leanvm_univariate`, `crates/leanvm_rec`: π1 is a univariate PIOP for leanVM's statement, with its prover
-  and verifier; π2 wraps π1's verifier, and the contract runs π2's verifier for about 45K gas
-  (`crates/leanvm_rec/README.md`). Both the BLAKE2s VM (leanVM `42422001`, end to end, Lean proofs) and the
-  Keccak VM (the `SHA3` table of leanVM `9d50c92a3`, Flock on the Keccak-f block; verifier and gas only so far,
-  [`KECCAK.md`](crates/leanvm_univariate/KECCAK.md)) are supported.
-  - `crates/leanvm_flock_gas` holds the shared parts: leanVM's statement ported, Flock's verifier, and the EVM
-    recorder and machine.
-  - `crates/lv42_*` is leanVM `42422001`'s Flock prover, vendored, with the Keccak-f block (`lv42_flock/KECCAK.md`).
-  - `crates/gf2_linear` holds the prover's GF(2)-linear maps.
-- `formal/`: π1's statement and knowledge soundness (`UniStatement`, `UniSound`, `FlockSound`, on `Lv42`'s
-  relation), its completeness (`UniComplete`), and the recursion's end theorems (`RecGraph`, `RecStatement`,
-  `RecPiop`, `RecCircuit`, `RecCompose`), described in [`formal/README.md`](formal/README.md).
+- `crates/leanvm/univariate` (π1): a univariate PIOP for the Keccak VM's statement, its verifier
+  (`verifier::reduce`, generic over the scalar: on `E` the Rust verifier, on the recorder's symbol the graph
+  `contract` compiles), its contract and its prover (`prover/`, on traces `prover/dump_keccak/` makes leanVM write).
+  Two variants: `KECCAK_MAIN` and `KECCAK_REC3`, π1-rec3, the recursion's inner proof. Design:
+  [`SPEC.md`](docs/leanvm/univariate/SPEC.md), [`KECCAK.md`](docs/leanvm/univariate/KECCAK.md).
+- `crates/leanvm/rec` (π2): π1-rec3's recorded verifier compiled into π2's circuit (`circuit`), π2's PIOP and its
+  contract (`pi2`), which runs π2's verifier and passes π1's and π2's claims to `PCS_OPEN`: 43,309 transaction gas on
+  the real 128-signature proof. Design: [`SPEC-REC.md`](docs/leanvm/rec/SPEC-REC.md), [`PI2.md`](docs/leanvm/rec/PI2.md).
+- `crates/leanvm/statement` (`leanvm_statement`): the shared parts: the VM's tables, flushes and constraints, Flock's
+  verifier and the Keccak-f block's structured terminal, the Keccak-256 chain, the EVM recorder, code and machine,
+  the workloads (`shapes`: the reference is 128 signatures).
+- `crates/leanvm/gf2_linear`: the prover's GF(2)-linear maps.
+- `crates/vendor/leanvm-42422001`: leanVM `42422001`'s Flock prover (`lv42_*`), with the Keccak-f block
+  (`flock/src/keccak.rs`, [`docs/leanvm/flock/KECCAK.md`](docs/leanvm/flock/KECCAK.md)).
+- The reference: `leanvm_rec::REFERENCE` = `leanvm_statement::shapes::reference()` (128 signatures, memory `2^20`,
+  bytecode `2^18`), `contract::SetupRoots::REFERENCE` (its `F`), and the real π1-rec3 proof
+  `crates/leanvm/univariate/tests/vectors/keccak128_rec3.txt`.
+- `formal/`: the Keccak VM's Lean development is on a separate branch (statement, Keccak-f block, π1's
+  transcription); this branch's `formal/` still holds the BLAKE2s VM's ([`formal/README.md`](formal/README.md)).
 
 **Shared.**
 
 - `crates/evm_link`: the compilation and assembly the code generators share, and the linker that cuts a program too
   big for EIP-170 into a driver and parts of at most 24,576 bytes it `DELEGATECALL`s, computing the same. The
   membership contract fits and is assembled byte for byte as without the linker (its tests also run on it linked
-  into 2 KB parts); leanVM's verifier (`crates/leanvm_flock_gas`, option A) is 5 contracts, 26,601 gas more (7.9%),
-  its transaction unchanged under EIP-7623.
-- Vendored from leanVM `c445e3d5`: `primitives`, `fiat_shamir`, `pcs`, `parallel`, `verifier`, `bench`.
-- `params/`: the parameter calculators (WHIR's, π1's and π2's soundness bits).
+  into 2 KB parts); π1's contract is 4 parts.
+- `crates/vendor/leanvm-c445e3d5`: leanVM `c445e3d5`'s `primitives`, `fiat_shamir`, `pcs`, `parallel`, `verifier`,
+  `bench`.
+- `params/`: the parameter calculators (WHIR's, π1's and π2's soundness bits; π1's and π2's still model the BLAKE2s
+  VM).
 - [`STATUS.md`](STATUS.md): what is proved, tested and measured, and what remains.
 
 ```sh
-cargo test --release -p quotient -p evm                               # tests, incl. contract == Rust verifier
-cargo bench -p quotient --bench membership                            # prover / verifier timings and sizes
-cargo test --release -p evm -- --ignored --nocapture gas_report       # gas of the contract
 cargo test --release --workspace                                      # every crate's tests
+cargo test --release -p quotient -p evm                               # the membership line, incl. contract == Rust verifier
+cargo bench -p quotient --bench membership                            # prover / verifier timings and sizes
+cargo test --release -p evm -- --ignored --nocapture gas_report       # gas of the membership contract
+cargo test --release -p leanvm_univariate -p leanvm_rec               # the leanVM line
 ```
+
+## Conventions
+
+- **Layout.** A crate's directory is its package name without its group's prefix: `crates/membership/*`,
+  `crates/leanvm/*` (`leanvm_*`; `statement` is `leanvm_statement`), `crates/vendor/leanvm-c445e3d5/*`,
+  `crates/vendor/leanvm-42422001/*` (`lv42_*`). Design documents live in `docs/`, by line; a crate's README says what
+  it is, how to test it, and where its design is.
+- **Provenance.** Every file says where it comes from in its first lines; [`NOTICE.md`](NOTICE.md) sums it up. Vendored
+  files stay as upstream but for what their header lists.
+- **Committed vectors** (`crates/leanvm/univariate/tests/vectors/*.txt`) are real proofs: never edit them by hand.
+  `tests/evm_vectors.rs` replays them; `tests/prove_real.rs` writes them (`WRITE_VECTORS=<dir>`, `VECTOR_FILE`).
+- **Lean-facing outputs.** Some tests write the inputs of `formal/`'s differential runners or check files there:
+  `crates/membership/evm/src/lean.rs` (`formal/Implementation/Graph.lean`, `UPDATE_LEAN=1`), `crates/membership/quotient`'s
+  `tests/{lean_beta_vector,lean_field_vectors,skel_trace,whir_bridge_vector,whir_large_params}.rs` and
+  `examples/statement_vectors.rs`, `crates/leanvm/statement/tests/{lean_keccak_tables,lean_keccak_block}.rs`,
+  `crates/leanvm/univariate/tests/lean_keccak_vectors.rs`, `crates/leanvm/rec/tests/{lean_circuit_keccak,
+  lean_pad_counts,lean_pi2_prover}.rs`. A change of their output must go with the Lean side.
+
+## Lean builds
 
 The Lean builds run on h1, under `/root/pcs-quotient-fv/` only (the rest of h1 is other work). Copy the
 repository there (rsync, without `.lake`), link `formal/leanervm` to `/root/pcs-quotient-fv/leanervm` (a built

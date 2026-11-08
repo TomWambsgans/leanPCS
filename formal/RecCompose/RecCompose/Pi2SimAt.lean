@@ -1,5 +1,5 @@
 -- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. π2's honest prover (`RecCompose.Pi2Prover`,
--- `crates/leanvm_rec/src/pi2/prover.rs`) cut at its challenges, as `Pi2ProbStaged` stages it; leanerVM
+-- `crates/leanvm/rec/src/pi2/prover.rs`) cut at its challenges, as `Pi2ProbStaged` stages it; leanerVM
 -- (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`, commit 6175f1a0, MIT OR Apache-2.0): the run at pure
 -- functions (`runAt`, `totalImpl`).
 import RecCompose.Pi2SimMorph

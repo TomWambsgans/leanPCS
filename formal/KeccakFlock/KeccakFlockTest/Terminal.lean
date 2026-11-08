@@ -4,8 +4,8 @@ import KeccakFlock
 /-!
 # The two terminals against the Rust's
 
-The vectors are `crates/leanvm_flock_gas/tests/lean_keccak_block.rs`'s `terminal_vectors` (`cargo test --release -p
-leanvm_flock_gas --test lean_keccak_block -- --nocapture`): at every skip `k ≤ 6`, the inputs drawn from xorshift64
+The vectors are `crates/leanvm/statement/tests/lean_keccak_block.rs`'s `terminal_vectors` (`cargo test --release -p
+leanvm_statement --test lean_keccak_block -- --nocapture`): at every skip `k ≤ 6`, the inputs drawn from xorshift64
 from `0x5eed ⊕ k` (`z_skip` when `k > 0`, `row_low` of `6 − k`, `chi_in`, `chi_in'` of 11, `s` of 64, `α`, each
 element three draws), and the Rust's `structured_terminal` and `walked_terminal_with::<_, KeccakWalked>` there (equal).
 Here `Terminal.structuredTerminal` is evaluated at all seven, `Terminal.walkedTerminal` (a walk of `2^17` rows, about

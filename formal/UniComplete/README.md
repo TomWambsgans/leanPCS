@@ -2,7 +2,7 @@
 
 # UniComplete
 
-Milestone 4's completeness half for the univariate PIOP of leanVM 42422001 (`crates/leanvm_univariate`,
+Milestone 4's completeness half for the univariate PIOP of leanVM 42422001 (`crates/leanvm/univariate`,
 `SPEC.md` §13 for iteration 2): **a Lean honest prover** (`uniProverWith`, `proveWith`) following SPEC.md and the
 Rust prover's message order, **its differential test** against the Rust (a tiny-run reference prover and, through
 its own cross-check, `prove_tiny`), and **the proof layers of `UniCompleteness D (uniProver D) δ`**

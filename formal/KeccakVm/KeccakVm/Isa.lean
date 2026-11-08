@@ -11,7 +11,7 @@ public import Statement.Keccak
 /-!
 # The Keccak VM's leanISA
 
-The Keccak VM (`crates/leanvm_univariate/KECCAK.md`) is leanVM 42422001 with its `BLAKE2S` instruction replaced by
+The Keccak VM (`docs/leanvm/univariate/KECCAK.md`) is leanVM 42422001 with its `BLAKE2S` instruction replaced by
 leanVM `9d50c92a3`'s `SHA3`: one step of that leanVM's cell sponge.
 
 * **`SHA3 m₀ m₁ m₂ m₃ tail cap out`** reads thirteen cells: `[o_m₀], …, [o_m₃]` (four independently addressed),

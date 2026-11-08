@@ -1,6 +1,6 @@
 -- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. `viewOf` is transcribed from
--- `crates/leanvm_rec/src/pi2/adapt.rs` (`adapt`, `expr`, `port_formula`, `public_counts`) and
--- `crates/leanvm_rec/src/pi2/circuit.rs` (`Coeff::ONE`, `Coeff::k`, `Coeff::e`, `Coeff::gamma`, `Lin::cell`), branch
+-- `crates/leanvm/rec/src/pi2/adapt.rs` (`adapt`, `expr`, `port_formula`, `public_counts`) and
+-- `crates/leanvm/rec/src/pi2/circuit.rs` (`Coeff::ONE`, `Coeff::k`, `Coeff::e`, `Coeff::gamma`, `Lin::cell`), branch
 -- `leanvm-rec` @ 2b22581; the validity check is `pi2::circuit::Circuit::validate` with `spec::Circuit::check_shape`, as
 -- `RecPiop.Circuit.Valid` states them.
 import RecCircuit.Check

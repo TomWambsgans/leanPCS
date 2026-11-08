@@ -1,5 +1,5 @@
 -- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. `Pi2TFresh.lean`'s `tFresh_of` at π2's staged run
--- (`RecCompose.Pi2ProbStaged`'s `pi2Staged`: `stageB`, `mid2`, `crates/leanvm_rec/src/pi2/prover.rs`'s `Q` and `t`);
+-- (`RecCompose.Pi2ProbStaged`'s `pi2Staged`: `stageB`, `mid2`, `crates/leanvm/rec/src/pi2/prover.rs`'s `Q` and `t`);
 -- uses leanerVM (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`, commit 6175f1a0, MIT OR Apache-2.0).
 import RecCompose.Pi2TFresh
 
