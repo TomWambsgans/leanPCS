@@ -1,5 +1,5 @@
 // Part of this repository. The additive transform is crates/membership/quotient/src/domain.rs's (adapted there from leanVM's
-// branch PCS-openings-aggregation, commit 651453c6). MIT OR Apache-2.0; see NOTICE.md.
+// branch PCS-openings-aggregation, commit 651453c6). MIT OR Apache-2.0; see AGENTS.md.
 //! Polynomials on the Cantor subspaces (SPEC.md §2), prover side.
 //!
 //! - `values` ↔ `novel`: the additive transform of `crates/membership/quotient/src/domain.rs`, novel basis

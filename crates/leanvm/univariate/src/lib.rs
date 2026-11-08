@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! A univariate PIOP for the Keccak VM's statement (leanVM 9d50c92a3), for the EVM: docs/leanvm/univariate/SPEC.md.
 //!
 //! [`verifier::reduce`] is the verifier, generic over the scalar it computes on: on `E` with the Keccak-256 chain it

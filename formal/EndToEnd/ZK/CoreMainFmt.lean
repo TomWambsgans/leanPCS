@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- The verifier's program (`verifyStackedOpening`), the setup (`setupWith`) and the chain
 -- (`reduceWith`) are leanerVM's and `formal/Statement`'s (branch `mumbai`, commit 6175f1a0, MIT OR
 -- Apache-2.0).

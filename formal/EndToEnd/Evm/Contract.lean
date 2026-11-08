@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- The calldata is `crates/membership/evm/src/quotient.rs`'s `calldata`; the calls of `PCS_OPEN` are
 -- `crates/membership/evm/src/quotient.rs`'s `build` and `crates/membership/evm/src/machine.rs`'s `pcs_open_input`.
 import Evm.Formula

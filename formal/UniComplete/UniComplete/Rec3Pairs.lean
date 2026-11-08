@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. π1-rec3's paired batch is
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. π1-rec3's paired batch is
 -- `crates/leanvm/statement/src/transcript.rs`'s `sumcheck_pairs_drawn` (`pair_round_poly`, `pair_point`), its honest
 -- prover `crates/leanvm/univariate/src/prover/batch.rs`'s `prove_pairs` (`leanvm-rec` 4247e37); the soundness side's
 -- language is `formal/UniSound/UniSound/Rec3/Pairs.lean`'s (`ProdSum`, `pairCoeffs`, `BatchState3`).

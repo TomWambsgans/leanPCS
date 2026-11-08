@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Uses leanerVM (https://github.com/Verified-zkEVM/leanerVM,
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Uses leanerVM (https://github.com/Verified-zkEVM/leanerVM,
 -- branch `mumbai`, commit 6175f1a0, MIT OR Apache-2.0): `eqEval`, `eqKernel`, `boolPoint` and their lemmas
 -- (`Protocol/Whir/Complete/Tables.lean`), through `UniComplete.Whir`'s `foldl_foldOnce`.
 import UniComplete.AlgCBasis

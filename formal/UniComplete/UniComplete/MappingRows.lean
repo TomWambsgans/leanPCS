@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Uses `formal/Lv42` (leanerVM `mumbai` f0393df4,
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Uses `formal/Lv42` (leanerVM `mumbai` f0393df4,
 -- MIT OR Apache-2.0): the six tables' sends in closed form (`xor_sends_gen` … `blake2s_sends_gen`,
 -- `Arithmetization/Completeness/Messages.lean`).
 import UniComplete.MappingBasic

@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- The margins of `ListChainK.lean`'s rounds, as `Compose/Bits.lean` of this repository does them for
 -- `ListChain.lean`'s.
 import Compose.ListChainKComposed

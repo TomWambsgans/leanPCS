@@ -2,7 +2,7 @@
   Lv42.Protocol.LeanIsa.Relation
 
   Adapted from leanerVM (https://github.com/Verified-zkEVM/leanerVM), branch mumbai, commit
-  f0393df4, file lean_vm/LeanVM/Protocol/LeanIsa/Relation.lean. MIT OR Apache-2.0; see NOTICE.md.
+  f0393df4, file lean_vm/LeanVM/Protocol/LeanIsa/Relation.lean. MIT OR Apache-2.0; see AGENTS.md.
   `LeanVM` renamed `Lv42`.
 
   The clauses of the M3 relation against leanISA's conjuncts, on a stack and a witness that

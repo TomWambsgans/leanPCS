@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! The vectors of `formal/KeccakFlock/KeccakFlockTest/Rows.lean`: the Keccak-f block's rows (`keccak_flock::row_values`,
 //! the verifier's walk of `crates/vendor/leanvm-42422001/flock/src/keccak.rs`'s block) on column weights `w[p] = (r_p, 0, 0)`, `r_p` the
 //! `p`-th output of a xorshift64 generator. The walk only adds, so limb 0 of every row value is the XOR of the `r_p`

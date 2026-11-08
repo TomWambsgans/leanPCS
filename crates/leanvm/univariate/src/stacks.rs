@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! Where every column sits in its commitment's stack (SPEC.md §3), and the weight a claim's terms put on the stack:
 //! what the batching sumcheck of `PCS_OPEN`'s point-claim ABI evaluates at its end point (SPEC.md §8).
 //!

@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The statements read are `formal/RecStatement`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The statements read are `formal/RecStatement`'s
 -- (`Pi1HazardKeccakHonest`, `Pi1HazardKeccak`, `RecGraph.MergeHazard`); the Keccak-f[1600] readings follow
 -- `Pi1KFRpm.lean`'s (`pi1CompletenessKeccak_iff`).
 import RecCompose.Pi1KFRpm

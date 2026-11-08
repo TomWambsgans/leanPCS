@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Copied from `formal/FlockSound` (branches
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Copied from `formal/FlockSound` (branches
 -- `lean-flock-tx`, commit 5adde3c, `FlockSoundUni/Tower.lean` and `FlockSoundUni/TxBasic.lean`; `lean-flock-sound`,
 -- `FlockSound/Fields.lean`, `FlockSound/R1CS.lean`), unchanged but for the namespace and the linter options: the
 -- tower decomposition of the ring switch's target, `towerTarget_eq` (`towerTarget s map = Σ_i x^i Φ_tower(s_i)`),

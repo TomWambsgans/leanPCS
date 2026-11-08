@@ -1,5 +1,5 @@
 // Vendored from leanVM (https://github.com/leanEthereum/leanVM), commit c445e3d51a5a85031df47240595698f3b24897bf, file crates/verifier/src/lib.rs.
-// MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and NOTICE.md at the repository root).
+// MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and AGENTS.md at the repository root).
 // Modified here: `whir` is public, and `Transcript` and `Digest` are re-exported, so that this repository opens
 // its own claims with this WHIR verifier.
 //! A self-contained verifier for leanVM execution proofs: single threaded, std only, plain integer arithmetic.

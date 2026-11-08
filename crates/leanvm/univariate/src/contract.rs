@@ -1,5 +1,5 @@
 // Part of this repository; the contract's assembly and measurement follow crates/membership/evm/src/quotient.rs. MIT OR
-// Apache-2.0; see NOTICE.md.
+// Apache-2.0; see AGENTS.md.
 //! The verifier as a contract (straight-line code compiled from the recorded verifier, `leanvm_statement::evm`), its
 //! calldata, and what a call costs.
 //!

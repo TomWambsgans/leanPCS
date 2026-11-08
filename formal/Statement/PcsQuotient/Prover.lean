@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- Transcribed from `crates/membership/quotient/src/protocol.rs` (`prove`, `open`, `public_weight`) and
 -- `crates/membership/quotient/src/opening.rs` (`open`). The WHIR opening's prover is leanerVM's (branch `mumbai`,
 -- commit 6175f1a0, MIT OR Apache-2.0: `Statement/Prover/Whir.lean`'s `levelsA`, `roundA`, `stackTableA`,

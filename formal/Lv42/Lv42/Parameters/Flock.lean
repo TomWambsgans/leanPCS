@@ -3,7 +3,7 @@
 
   Adapted from leanerVM (https://github.com/Verified-zkEVM/leanerVM), branch mumbai, commit
   f0393df4, file lean_vm/LeanVM/Spec/Verifier.lean (its section "The Flock constants", lines
-  225-307). MIT OR Apache-2.0; see NOTICE.md.
+  225-307). MIT OR Apache-2.0; see AGENTS.md.
 
   The constants of leanVM's Flock argument for BLAKE2s: the block sizes, the constant wire, the
   map `φ_8`, the fixed coordinates of the zerocheck point and the ring-switching shifts.

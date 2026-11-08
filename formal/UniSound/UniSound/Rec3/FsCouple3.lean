@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The main line's `FsCouple.lean` (`uniGameLeV_of`)
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The main line's `FsCouple.lean` (`uniGameLeV_of`)
 -- for π1-rec3's experiment (`UniStatement.uniSoundnessExperimentRec3`, `Deployment.verifierRec3With`).
 import UniSound.Rec3.FsGame3
 import UniSound.FsCouple

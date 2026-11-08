@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The sumcheck's loop as a recursion follows
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The sumcheck's loop as a recursion follows
 -- `formal/FlockSound/FlockSoundUni/Loops.lean` (branch `lean-flock-sound`, `sumcheckR`, `forIn_sumcheck`,
 -- `sumcheck_eq`), here for `sumcheckH` (Keccak-256 an explicit call) at `Id`.
 import UniComplete.FlockProverShape

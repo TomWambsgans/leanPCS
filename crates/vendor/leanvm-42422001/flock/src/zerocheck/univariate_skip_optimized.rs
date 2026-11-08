@@ -1,5 +1,5 @@
 // Vendored from leanVM (https://github.com/leanEthereum/leanVM), commit 42422001, file crates/flock/src/zerocheck/univariate_skip_optimized.rs.
-// MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and NOTICE.md at the repository root).
+// MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and AGENTS.md at the repository root).
 // CREDIT: https://github.com/succinctlabs/flock (flock-core), MIT OR Apache-2.0.
 //! Round-1 prover message: fully optimized (shift_reduce + extract_c, scalar).
 //!

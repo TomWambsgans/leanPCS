@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- An example of `ListChainKDoom.lean`'s closed theorem: two proof commitments of `2^27` words
 -- (WhirBridge's `exampleChunks`, at half the size) and a setup of `2^24 ..= 2^26` words, with the
 -- numbers; of this repository.

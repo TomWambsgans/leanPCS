@@ -1,5 +1,5 @@
 /-
-Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 
 What a claim of `crates/membership/quotient/src/opening.rs` says of a **hidden** layout's stack: its
 multilinear claim on the table `Table::read` reads back from the stack; and what the gadget the

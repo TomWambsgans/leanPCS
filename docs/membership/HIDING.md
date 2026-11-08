@@ -1,4 +1,4 @@
-<!-- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The construction adapts the padding of leanVM's
+<!-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The construction adapts the padding of leanVM's
 flock::membership (https://github.com/leanEthereum/leanVM, branch PCS-openings-aggregation,
 crates/flock/membership-zk.md), whose Lemma 4, Lemma 5 and "the siblings" this argument follows. -->
 

@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The honest witness is the circuit compiler's
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The honest witness is the circuit compiler's
 -- (`crates/leanvm/rec/src/circuit/layout.rs`'s `finish`, `RecCircuit.Compiled.witness`), the public values π2's prover
 -- sends `prover.rs`'s (`public_values`: π1's roots' 32 bytes, the calls' elements).
 import RecCompose.Pi2CompleteEnd

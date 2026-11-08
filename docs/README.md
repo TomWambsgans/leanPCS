@@ -13,4 +13,4 @@
   - [`leanvm/rec/PI2.md`](leanvm/rec/PI2.md): π2's PIOP, prover, verifier, contract;
   - [`leanvm/rec/SPEC-POINTS.md`](leanvm/rec/SPEC-POINTS.md): π1's claims' points on chain.
 
-The EIP draft is [`../eip-draft_leanPCS.md`](../eip-draft_leanPCS.md); the status, [`../STATUS.md`](../STATUS.md).
+The EIP draft is [`../eip-draft_leanPCS.md`](../eip-draft_leanPCS.md); the status and provenance, [`../AGENTS.md`](../AGENTS.md).

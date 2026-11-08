@@ -1,4 +1,4 @@
-# Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+# Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 """NOTE: this model is of the BLAKE2s VM's pi1 (leanVM 42422001, 1,000 signatures), which the code no longer has;
 it is not yet updated for the Keccak VM.
 

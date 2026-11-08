@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The main line's `FsOps.lean` (and `FsChain.lean`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The main line's `FsOps.lean` (and `FsChain.lean`'s
 -- tail) for π1-rec3's verifier (`formal/UniStatement`'s `verifyWithFs … .rec3 true`: three `PCS_OPEN` calls).
 import UniSound.FsOps
 import UniSound.Rec3.Fs3

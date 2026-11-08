@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Transcribed from `crates/leanvm/rec/src/circuit/layout.rs`.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Transcribed from `crates/leanvm/rec/src/circuit/layout.rs`.
 import RecCircuit.Spec
 
 /-!

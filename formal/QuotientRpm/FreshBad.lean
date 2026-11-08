@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- The induction and the restriction to finitely many inputs follow VCVio's `prEvent_freshBadQuery_le`
 -- and `prEvent_randomOracle_le_of_bad_queries` (https://github.com/Verified-zkEVM/VCVio, commit afa6593f,
 -- `VCVio/OracleComp/QueryTracking/RandomOracle/FreshQuery.lean`, Apache-2.0); here the bad event of a

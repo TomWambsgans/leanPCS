@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The main line's `Fs128.lean` (`FsLayer128`,
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The main line's `Fs128.lean` (`FsLayer128`,
 -- `uniBound128_le_bits`, `hlab_uni`) for π1-rec3: its layer `FsLayer3`, its IV (`ivInput3`, `ivAdv3`).
 import UniSound.Rec3.FsGame3
 import UniSound.Fs128

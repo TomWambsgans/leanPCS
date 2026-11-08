@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The tables' polynomials are `crates/leanvm/rec/src/pi2/
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The tables' polynomials are `crates/leanvm/rec/src/pi2/
 -- prover.rs`'s (`W` committed in the basis `B`, `Q`'s `h`, `q` in the novel basis, the setup's `κ`, `κ + σ` in the basis
 -- `B`), read through `formal/Statement`'s public layouts (`PcsQuotient.Layout.ofChunks`, `readEntry`); the novel basis
 -- and its sums are `formal/UniComplete`'s (`AlgC.novP`) and `formal/QuotientSecurity`'s (`tablePoly`).

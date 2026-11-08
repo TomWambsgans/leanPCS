@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The model, the experiments' shape and the form of the
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The model, the experiments' shape and the form of the
 -- statements are `UniStatement/Security.lean`'s and `RecSecurity.lean`'s (after `formal/Statement`'s
 -- `PcsQuotient.Security` and leanerVM `mumbai` 6175f1a0's `Statement/LeanVm.lean`, MIT OR Apache-2.0); the relation is
 -- `formal/KeccakVm`'s (`KvHolds`).

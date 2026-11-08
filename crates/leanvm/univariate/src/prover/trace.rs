@@ -1,6 +1,6 @@
 // Part of this repository. Reads what `dump_keccak/trace_dump.rs` writes from a leanVM 9d50c92a3 tree (the Keccak
 // VM, docs/leanvm/univariate/KECCAK.md): its run without the fill blocks, the tables' executed rows. MIT OR Apache-2.0;
-// see NOTICE.md.
+// see AGENTS.md.
 //! An execution trace of the Keccak VM (leanVM 9d50c92a3): the tables of `layout::tables`, padded here to their
 //! heights, the memory image and its final counts, the bytecode's final counts, the stacked bytecode, and `q_flock`
 //! built from the `SHA3` rows once they are placed ([`Trace::keccak_flock`]).

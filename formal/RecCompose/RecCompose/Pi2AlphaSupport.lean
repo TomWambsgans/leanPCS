@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. π2's staged run's facts on every outcome of its run
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. π2's staged run's facts on every outcome of its run
 -- against the lazy oracles, from `Pi2SimAt`'s facts at pure functions (`aAt`, `bAt`, `cAt`, `fixLen_aAt`) through
 -- `Pi2AlphaChain.runAt_read`; uses leanerVM (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`, commit
 -- 6175f1a0, MIT OR Apache-2.0): the two calls, their lazy random oracles, `simulateQ`.

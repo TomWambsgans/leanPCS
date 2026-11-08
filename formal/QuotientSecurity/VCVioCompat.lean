@@ -1,5 +1,5 @@
 -- Not from leanVM: written for the move of these proofs to VCVio afa6593f, whose measure-based
--- probability API retired some lemmas they used. MIT OR Apache-2.0; see NOTICE.md.
+-- probability API retired some lemmas they used. MIT OR Apache-2.0; see AGENTS.md.
 import VCVio.EvalDist.ProbabilityBounds
 import VCVio.OracleComp.EvalDist.Sum
 import VCVio.OracleComp.Constructions.SampleableType.Measure

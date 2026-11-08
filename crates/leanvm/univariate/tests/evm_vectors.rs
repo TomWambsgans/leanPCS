@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! The Rust→EVM test vectors, replayed with no prover and no trace: each file of `tests/vectors/` holds a real Keccak
 //! VM proof's calldata, the `PCS_OPEN` inputs the contract calls with (which the proof's WHIR openings prove), and the
 //! verdict and gas it was recorded with. The straight contract and the

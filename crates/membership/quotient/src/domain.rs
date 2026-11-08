@@ -1,5 +1,5 @@
 // Adapted from leanVM (https://github.com/leanEthereum/leanVM), branch PCS-openings-aggregation, commit 651453c6,
-// file crates/flock/src/quotient/domain.rs: copied unchanged but for this header and the basis continued to `EXT_BASIS` vectors (`beta_ext`). MIT OR Apache-2.0; see NOTICE.md.
+// file crates/flock/src/quotient/domain.rs: copied unchanged but for this header and the basis continued to `EXT_BASIS` vectors (`beta_ext`). MIT OR Apache-2.0; see AGENTS.md.
 //! The Cantor basis of `GF(2^64)`, its subspaces, and the additive transform between a polynomial's novel-basis
 //! coefficients and its values on a coset.
 

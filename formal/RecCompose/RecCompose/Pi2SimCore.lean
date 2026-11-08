@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. `Pi2ProbStaged.rejects_at`, `rejectGood_pi2` with the
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. `Pi2ProbStaged.rejects_at`, `rejectGood_pi2` with the
 -- staged run at pure functions proved (`Pi2SimAt`) in place of the named `Pi2RunAt`; uses leanerVM
 -- (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`, commit 6175f1a0, MIT OR Apache-2.0): the logged random
 -- oracle, mumbai's proof-of-work potential.

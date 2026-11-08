@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! π2's PIOP (SPEC-REC.md §2.3, §4, §7 R3; `PI2.md`): the virtual-push copy argument on the Cantor subspace, one
 //! quotient identity at `t`, four claims in three `PCS_OPEN` calls, for rows of `2^r` positions (D16v `r = 4`, D32v
 //! `r = 5`).

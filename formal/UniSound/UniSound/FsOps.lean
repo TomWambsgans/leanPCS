@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The openings are `formal/Compose`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The openings are `formal/Compose`'s
 -- `WhirOp`s (`ListChainKDoom.lean`); the claims are `UniStatement.verifyWith`'s.
 import UniSound.FsChain
 

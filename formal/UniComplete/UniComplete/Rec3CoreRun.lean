@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The port of `ProverRun.lean` (`StreamFacts`,
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The port of `ProverRun.lean` (`StreamFacts`,
 -- `streamRun_facts`, `proveWith_eq_some`, `proveWith_eq_none`), `CoreRun.lean` (`StreamValues`, `streamValues`) and
 -- `Core.lean` (`fails_only_at_opening`, `coreFailsOnlyAtPow`) to π1-rec3's prover (`Rec3Prover.lean`).
 import UniComplete.Rec3Hyp

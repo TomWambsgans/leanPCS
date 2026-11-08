@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- Ported from leanerVM (https://github.com/Verified-zkEVM/leanerVM), branch `mumbai`, commit
 -- f0393df4: `lean_vm/LeanVM/Protocol/FlockFields.lean` (ring-switching injectivity, the fixed
 -- coordinates' independence) and the packing and node lemmas of `lean_vm/LeanVM/Protocol/Flock.lean`

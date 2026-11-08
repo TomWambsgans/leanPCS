@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- The dictionary between tables by numbers and F1's claims, and the honest tables' chunks, follow
 -- `formal/Completeness/Completeness/Read.lean` (restated here without its WhirBridge import).
 import ZK.FactsF1

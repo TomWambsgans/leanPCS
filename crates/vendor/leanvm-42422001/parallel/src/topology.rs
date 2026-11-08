@@ -1,5 +1,5 @@
 // Vendored from leanVM (https://github.com/leanEthereum/leanVM), commit 42422001, file crates/parallel/src/topology.rs.
-// MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and NOTICE.md at the repository root).
+// MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and AGENTS.md at the repository root).
 //! Which cores exist, and how to ask the OS for one.
 
 use std::sync::OnceLock;

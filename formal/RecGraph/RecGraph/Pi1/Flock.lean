@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Transcribed, in the Rust's operation order, from
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Transcribed, in the Rust's operation order, from
 -- `crates/leanvm/statement/src/flock_min.rs` (`zerocheck`, `front`, `row_low_weights`, `known_weights`,
 -- `verify_walked`, `walked_terminal`, `ring_end`), `flock.rs` (`lagrange_weights`, `lagrange_interpolate`,
 -- `blake2s_row_values`, `RowValues`, adapted there from leanVM (https://github.com/leanEthereum/leanVM), commit

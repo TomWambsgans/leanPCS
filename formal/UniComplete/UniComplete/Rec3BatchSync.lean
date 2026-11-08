@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. π1-rec3's batch in step: the verifier's
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. π1-rec3's batch in step: the verifier's
 -- `batchFsH … .rec3` (`Rec3VerifierH.lean`, `Rec.lean`'s `batchFs`) reads the prover's (`Rec3Prover.lean`).
 import UniComplete.Rec3BatchAlg
 import UniComplete.Rec3VerifierH

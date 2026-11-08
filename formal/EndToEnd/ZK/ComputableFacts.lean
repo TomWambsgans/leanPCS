@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- Uses Mathlib's Lagrange interpolation (`Mathlib/LinearAlgebra/Lagrange.lean`, Apache-2.0):
 -- `Lagrange.interpolate`, `Lagrange.nodal`, `eq_interpolate_of_eval_eq`,
 -- `eval_nodal_derivative_eval_node_eq`. `bitsN`, `idx_bitsN`, `bitsN_idx` transcribe `bitsOf`, `idx_bitsOf`,

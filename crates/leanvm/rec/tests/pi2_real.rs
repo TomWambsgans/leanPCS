@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! π2 on the real instance (PI2.md): the circuit compiled from π1's recorded verifier with the witness of a real
 //! Keccak VM π1-rec3 proof (`crates/leanvm/univariate/tests/vectors/keccak128_rec3.txt`, the reference shape, 128
 //! signatures; `keccak_rec3.txt`, 400), through the adapter (`pi2::adapt`):

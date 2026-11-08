@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- The proof pattern (one commutation lemma per function, pushed through the binds; the run by induction
 -- on the program) is adapted from `formal/EndToEnd/Completeness/E2ECompleteness/WithHash.lean`
 -- (`simulateQ_runFromWithHash`, `simulateQ_proveWithH`), with a monad morphism for `simulateQ`. The

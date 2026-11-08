@@ -1,5 +1,5 @@
 // Vendored from leanVM (https://github.com/leanEthereum/leanVM), commit 42422001, file crates/primitives/src/field/x8.rs.
-// MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and NOTICE.md at the repository root).
+// MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and AGENTS.md at the repository root).
 //! Eight `F192` lanes held coefficient-major in three AVX-512 registers: register `k`
 //! holds coefficient `k` of every lane, so a product is lane-wise and needs no packing.
 //!

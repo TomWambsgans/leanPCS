@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- Uses leanerVM (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`, commit 6175f1a0,
 -- MIT OR Apache-2.0): `common`'s Keccak-256 transfer (`Common.keccak256_transfer2`) and leanVM's
 -- reading of the two calls in it (`LeanVM.Rpm.rpm_le_of_rom`, which this generalises from a prover

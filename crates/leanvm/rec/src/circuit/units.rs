@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! The circuit's small units (SPEC-REC.md §2.4.3, §2.4.4, §2.4.6), each a few consecutive roles of a row type, packed
 //! as many to a row as fit:
 //!

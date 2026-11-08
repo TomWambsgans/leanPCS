@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Follows `Pi2TFresh.lean` (`t`'s freshness by counting
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Follows `Pi2TFresh.lean` (`t`'s freshness by counting
 -- cached inputs that hold a fresh answer) and `formal/UniComplete/UniComplete/ProbTFresh.lean` (`CacheBound`,
 -- `cacheBound_run`, `sum_hit_le`); uses leanerVM (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`, commit
 -- 6175f1a0, MIT OR Apache-2.0): the two calls `KeccakCalls`, their lazy random oracles, the pure run `runAt`.

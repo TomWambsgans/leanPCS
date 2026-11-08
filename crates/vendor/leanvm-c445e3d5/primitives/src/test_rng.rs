@@ -1,5 +1,5 @@
 // Vendored from leanVM (https://github.com/leanEthereum/leanVM), commit c445e3d51a5a85031df47240595698f3b24897bf, file crates/primitives/src/test_rng.rs.
-// MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and NOTICE.md at the repository root).
+// MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and AGENTS.md at the repository root).
 //! One deterministic generator for the whole workspace's tests, so a SIMD
 //! kernel and its scalar oracle see the same stream on every host.
 //!

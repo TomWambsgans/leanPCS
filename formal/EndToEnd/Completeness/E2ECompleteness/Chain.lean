@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- Uses leanerVM (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`, commit 6175f1a0,
 -- MIT OR Apache-2.0): the two calls `KeccakCalls` (Keccak-256 and Keccak-f[1600]) and their
 -- random oracles, `|Digest| = 2^256`; and VCVio's lazy random oracle.

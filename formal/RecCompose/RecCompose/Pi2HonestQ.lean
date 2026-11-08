@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The polynomials are `formal/RecPiop`'s (`Identity.lean`:
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The polynomials are `formal/RecPiop`'s (`Identity.lean`:
 -- `pushPoly`, `holePoly`, `formulaPoly`, `cellPoly`, `Role.value_eval`; `Indicator.lean`: `ind`).
 import RecCompose.Pi2HonestCopy
 

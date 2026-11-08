@@ -1,5 +1,5 @@
 // Part of this repository. The harness (`bench`, the allocator, tracing) is leanVM's
-// (https://github.com/leanEthereum/leanVM, commit c445e3d5), MIT OR Apache-2.0; see NOTICE.md.
+// (https://github.com/leanEthereum/leanVM, commit c445e3d5), MIT OR Apache-2.0; see AGENTS.md.
 //! One membership proof, timed stage by stage, with its sizes and the prover's peak memory.
 //!
 //! `cargo bench -p quotient --bench membership`; `TRACING=1` for the span tree.

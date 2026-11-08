@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The identities are
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The identities are
 -- `docs/leanvm/univariate/SPEC.md` §5–§6 and `formal/UniStatement`'s `constraintRelation`,
 -- `heapRelations`, `batch`.
 import UniSound.Ids.Rels

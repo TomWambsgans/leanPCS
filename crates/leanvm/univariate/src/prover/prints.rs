@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! Bus fingerprints on eight points at once (`quotient::ntt`'s lanes): a [`Fingerprint`]'s coefficients in every
 //! lane, its columns read by key, the terms' products unreduced and one reduction a fingerprint.
 

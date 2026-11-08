@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! Recursion for the univariate verifier of the Keccak VM (docs/leanvm/rec/SPEC-REC.md): `π2`, a SNARK of `π1`'s
 //! verifier minus its openings, its circuit compiled from that verifier's recorded graph, and the contract that runs
 //! `π2`'s verifier.

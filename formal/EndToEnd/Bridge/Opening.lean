@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 import PcsQuotient.Verifier
 import WhirBridge.Verifier
 import LeanVM.Protocol.WithHashBridge

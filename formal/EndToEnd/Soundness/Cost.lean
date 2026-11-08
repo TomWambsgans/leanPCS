@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- Uses leanerVM `mumbai`'s cost lemmas (https://github.com/Verified-zkEVM/leanerVM, commit
 -- 6175f1a0, MIT OR Apache-2.0, `lean_vm/LeanVM/Protocol/Rpm/Cost.lean`): `Short`,
 -- `hashBlocks_le_of_short`, `WidthsLE`, `widthsLE_commitStack`, `widthsLE_verifyWhir`,

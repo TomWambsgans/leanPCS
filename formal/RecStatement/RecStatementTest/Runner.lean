@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The parsing follows `formal/UniStatement`'s runner
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The parsing follows `formal/UniStatement`'s runner
 -- (`UniStatementTest/Runner.lean`).
 import RecStatement
 

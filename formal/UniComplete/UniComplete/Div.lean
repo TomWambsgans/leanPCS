@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 import UniComplete.Basic
 import CompPoly.Univariate.DivisionCorrectness
 import CompPoly.Univariate.ToPoly.Impl

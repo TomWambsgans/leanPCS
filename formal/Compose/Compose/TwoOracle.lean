@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- The bad-query engine for dependent answer types (`prEvent_randomOracle_le_of_freshBad_dep`)
 -- generalises `formal/QuotientRpm/FreshBad.lean`'s `prEvent_randomOracle_le_of_freshBad`, which
 -- follows VCVio's `prEvent_randomOracle_le_of_bad_queries` (https://github.com/Verified-zkEVM/VCVio,

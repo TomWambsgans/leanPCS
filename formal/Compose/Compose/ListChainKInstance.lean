@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- The instance of `ListChainK.lean`'s `k`-round chain that is `ListChain.lean`'s (two roots, three
 -- challenge groups); the statements re-derived are `AdversaryLog.lean`'s, of this repository.
 import Compose.ListChainKComposed

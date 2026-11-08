@@ -2,7 +2,7 @@
   Lv42.Arithmetization.Channels
 
   Adapted from leanerVM (https://github.com/Verified-zkEVM/leanerVM), branch mumbai, commit
-  f0393df4, file lean_vm/LeanVM/Arithmetization/Channels.lean. MIT OR Apache-2.0; see NOTICE.md.
+  f0393df4, file lean_vm/LeanVM/Arithmetization/Channels.lean. MIT OR Apache-2.0; see AGENTS.md.
   `LeanVM` renamed `Lv42`.
 
   The three bus interactions of leanISA as six Clean channels, the image a channel guarantee is

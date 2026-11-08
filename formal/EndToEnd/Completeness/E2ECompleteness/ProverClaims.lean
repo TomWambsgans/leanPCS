@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- `ClaimsMatchH` restates Bridge-Defs' `Bridge.ClaimsMatch` (formal/EndToEnd/Bridge/Verifier.lean at
 -- worktree-agent-a9857ef0660456f3e, 96e3755). Uses leanerVM (https://github.com/Verified-zkEVM/leanerVM,
 -- branch `mumbai`, commit 6175f1a0, MIT OR Apache-2.0): the fields `K`, `E`.

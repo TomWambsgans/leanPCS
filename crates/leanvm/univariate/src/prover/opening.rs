@@ -1,7 +1,7 @@
 // Part of this repository. Follows crates/membership/quotient/src/opening.rs (its transcript's shape: one hash of a prefix and
 // the claim as the IV, a zero public digest, the root the proof's first two scalars); the commitment and the proof are
 // leanVM's WHIR (`pcs`, vendored from leanVM commit c445e3d5) unchanged, and the check is its verifier (`verifier`).
-// MIT OR Apache-2.0; see NOTICE.md.
+// MIT OR Apache-2.0; see AGENTS.md.
 //! What `PCS_OPEN` checks, for the univariate PIOP's commitments: one point claim on a whole stack (SPEC.md §8, the
 //! point-claim ABI), proven and verified with leanVM's WHIR at rate `1/2`, `64` lanes at its first fold.
 //!

@@ -1,7 +1,7 @@
 // Part of this repository. The Cantor basis is computed as in crates/membership/quotient/src/domain.rs (adapted there from leanVM
 // (https://github.com/leanEthereum/leanVM), branch PCS-openings-aggregation, commit 651453c6,
 // crates/flock/src/quotient/domain.rs), here for leanVM 42422001's `K` (crates/verifier/src/field.rs at 42422001).
-// MIT OR Apache-2.0; see NOTICE.md.
+// MIT OR Apache-2.0; see AGENTS.md.
 //! The Cantor basis of `K`, its subspaces, and the encodings of SPEC.md §2.
 //!
 //! - `ω_i = Σ_k i_k β_k`, `V_r = {ω_i : i < 2^r}`, digits `w_0(x) = x`, `w_{k+1} = w_k^2 + w_k`: `w_r` is the subspace

@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! The prover of SPEC.md (`PROVER.md`): on an execution trace of the Keccak VM (leanVM 9d50c92a3's own execution,
 //! dumped by `dump_keccak/`), the stream the verifier reads and one WHIR opening per commitment.
 //!

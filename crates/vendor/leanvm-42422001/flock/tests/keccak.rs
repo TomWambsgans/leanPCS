@@ -1,5 +1,5 @@
 // New in this repository: tests of `lv42_flock::keccak` (the Keccak-f[1600] block, docs/leanvm/flock/KECCAK.md
-// §4.2, §4.5). MIT OR Apache-2.0; see NOTICE.md.
+// §4.2, §4.5). MIT OR Apache-2.0; see AGENTS.md.
 //! The Keccak-f block R1CS:
 //!
 //! - its Keccak-f is RustCrypto's (`keccak::Keccak::with_f1600`, sha3's permutation) on random states;

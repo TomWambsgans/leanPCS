@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- Transcribed from `crates/leanvm/statement/src/{field,multilinear,scalar}.rs` (adapted there from leanVM
 -- (https://github.com/leanEthereum/leanVM), commit 42422001, `crates/verifier/src/{field,multilinear}.rs`).
 -- The fields are leanerVM's (`Statement/Field.lean`, branch `mumbai`, commit 6175f1a0, MIT OR Apache-2.0).

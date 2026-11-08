@@ -1,7 +1,7 @@
 // Adapted from this repository's crates/membership/evm/src/record.rs and crates/membership/evm/src/contract.rs (themselves adapted from
 // leanVM (https://github.com/leanEthereum/leanVM), branch PCS-openings-aggregation, commit 651453c6): the recording
 // scalar and the recording channel, here for leanVM's verifier: inputs at byte offsets of the stream, a hash of a
-// run of the stream's bytes, checks of zero and of nonzero, and a phase for every node. MIT OR Apache-2.0; see NOTICE.md.
+// run of the stream's bytes, checks of zero and of nonzero, and a phase for every node. MIT OR Apache-2.0; see AGENTS.md.
 //! A scalar that records the operations done on it, as a graph with shared subterms, and the channel that records
 //! the proof's reads and the transcript's challenges.
 

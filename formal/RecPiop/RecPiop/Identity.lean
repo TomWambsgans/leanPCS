@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The degree bookkeeping follows
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The degree bookkeeping follows
 -- `formal/QuotientSecurity/Degrees.lean` (crates/membership/quotient's two identities).
 import RecPiop.Indicator
 import RecPiop.Copy

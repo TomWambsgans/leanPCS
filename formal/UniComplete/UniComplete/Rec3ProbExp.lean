@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. π1-rec3's analogue of `ProbExp.lean` (`expW`,
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. π1-rec3's analogue of `ProbExp.lean` (`expW`,
 -- `experiment_eq`, `stagedU`, `experiment_staged`, `hashA_stagedU`, `duplexVm_stagedU`, `cost_stagedU`,
 -- `TQueryFresh`), itself following `formal/EndToEnd/Completeness/E2ECompleteness/Experiment.lean`, `Staging.lean`,
 -- `HashLen.lean`, `Assemble.lean`; uses leanerVM (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`, commit

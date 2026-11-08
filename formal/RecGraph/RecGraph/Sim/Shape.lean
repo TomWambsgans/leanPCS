@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The layouts' limbs, `c1Vars`, the heap's relations and
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The layouts' limbs, `c1Vars`, the heap's relations and
 -- the constraint relation as folds, `chunk_lt` and the hazard's argument are `formal/UniSound`'s (`Ids/Eval.lean`:
 -- `limbs_new_mem`, `heapRelations_fst`, `qTerms_mem`, `crOf`, `crStep_Q`, `y_self`; `Ids/Deployed.lean`: `c1Cols_eq`,
 -- `heap_reference`).

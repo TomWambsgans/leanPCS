@@ -1,5 +1,5 @@
 // Vendored from leanVM (https://github.com/leanEthereum/leanVM), commit c445e3d51a5a85031df47240595698f3b24897bf, file crates/primitives/src/field/x4.rs.
-// MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and NOTICE.md at the repository root).
+// MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and AGENTS.md at the repository root).
 //! Four lanes of mixed products `c · k`, `c ∈ E` and `k ∈ K`, in YMM registers, for a machine
 //! with VPCLMULQDQ but no AVX-512: the 256-bit counterpart of the AVX-512 `x8`'s `F64x8`,
 //! `F192x8` and `Mixed8`, with their API, which is all the leaf builder needs.

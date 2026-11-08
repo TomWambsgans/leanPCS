@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- Uses leanerVM (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`, commit 6175f1a0,
 -- MIT OR Apache-2.0): `common`'s weight calculus (`Common.QueryCostAtMost`; Keccak-256 over `π`
 -- costs `⌊n / 136⌋ + 1` calls, `Common.isWeightBound_keccakK_bind`; coins cost nothing,

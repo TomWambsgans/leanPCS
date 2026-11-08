@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- The list decoder is leanerVM `mumbai`'s (https://github.com/Verified-zkEVM/leanerVM, commit
 -- 6175f1a07f0dc33bd3d640de0063d1006143ee91, MIT OR Apache-2.0): `decodeStacks` of
 -- `Statement/Extractor.lean` (CompPoly's Guruswami–Sudan decoder over `K`, lane by lane, then

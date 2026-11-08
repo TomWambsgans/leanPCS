@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! A combined claim's weight on its stack (the verifier's `weight_at`, term by term), kept as pieces on the stack's
 //! blocks instead of written out over the stack, for the batching sumcheck's first rounds (`batch.rs`).
 //!

@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! The quotients alone on a real trace, timed one by one, at fixed challenges (no proof):
 //! `LEANVM_TRACE=<dir> cargo test --release -p leanvm_univariate --test prove_quotients -- --ignored --nocapture`.
 

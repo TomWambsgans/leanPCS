@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Transcribed, in the Rust's operation order, from
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Transcribed, in the Rust's operation order, from
 -- `crates/leanvm/univariate/src/verifier.rs` (`reduce`, `linearise`, `table_part`, `quotient_terms`, `weight_at`,
 -- `batch`), `claims.rs` (`Relations::{push, equal, combine}`), `stacks.rs` (`EqCache`, `limb_basis`) and
 -- `contract.rs` (`record_verifier`, `calls`), at `leanvm-rec` 4247e37.

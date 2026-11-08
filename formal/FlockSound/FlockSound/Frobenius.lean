@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- `frobPair`, `frobPair_stage` and `card_frob_root_le_one` are leanerVM's
 -- (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`, commit f0393df4,
 -- `lean_vm/LeanVM/Protocol/ToArkLib/Flock/FrobeniusMap.lean`, MIT OR Apache-2.0), as they are; the

@@ -2,7 +2,7 @@
 // crates/verifier/src/flock.rs: the 64 slices, a map `Φ` of six Frobenius stages drawn after them, the target
 // `Σ_i x^i Φ(s_i)` and the weight `Φ(eq(p, ·))`. New here: the stages in tower order (shift 1 innermost, 32
 // outermost), so that the target is computed through the subfields of `K` and the weight at a point from the inside
-// out. MIT OR Apache-2.0; see NOTICE.md.
+// out. MIT OR Apache-2.0; see AGENTS.md.
 //! The ring switch with its map's stages in **tower order**: `Φ = Φ_5 ∘ … ∘ Φ_0`, `Φ_j(a) = a + f_j a^(2^(2^j))`.
 //!
 //! leanVM applies the shifts 32, 16, …, 1 in that order. Here stage `j` has shift `2^j` and is applied `j`-th, so the

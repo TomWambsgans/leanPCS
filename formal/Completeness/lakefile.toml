@@ -1,4 +1,4 @@
-# Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+# Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 #
 # End-to-end completeness of the membership proof (`crates/membership/quotient`): the honest prover's proof,
 # reduction and three WHIR openings, is accepted by the deployed verifier. It composes the

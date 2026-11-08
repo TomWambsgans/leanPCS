@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The counting follows `formal/RecPiop`'s (`Copy.lean`:
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The counting follows `formal/RecPiop`'s (`Copy.lean`:
 -- `card_dPull_eq_zero_le`; `Identity.lean`: `card_eval_eq_zero_le`, the degrees).
 import RecCompose.Pi2HonestThm
 

@@ -1,6 +1,6 @@
 // Vendored from leanVM (https://github.com/leanEthereum/leanVM), commit 42422001, file crates/flock/src/zerocheck/bit_fold.rs.
 // Changed here: rows of 1, 2 and 4 bytes fold through the byte tables (for a univariate skip below 6); rows of 8
-// bytes or more fold as before. MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and NOTICE.md at the repository
+// bytes or more fold as before. MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and AGENTS.md at the repository
 // root).
 //! Weighted sums of packed bit rows, the fold that turns witness bits into F192 values.
 //!

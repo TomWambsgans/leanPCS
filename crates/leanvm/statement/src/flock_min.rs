@@ -4,7 +4,7 @@
 // (`FsShape::Rec`: its sampled coordinates successive squares of one), the ring map in tower order
 // (`crate::ring_tower`), and the lincheck's terminal checked on the sent slices for any block circuit
 // ([`WalkedCircuit`]: `crate::keccak_flock`'s Keccak-f block, docs/leanvm/flock/KECCAK.md). MIT OR Apache-2.0; see
-// NOTICE.md.
+// AGENTS.md.
 //! Flock's verifier as π1 runs it (docs/leanvm/univariate/SPEC-FLOCK.md): the zerocheck with a univariate skip, the
 //! lincheck, the 64 slices sent and the lincheck's terminal checked on them ([`WalkedCircuit::terminal`]), then the
 //! ring switch's map and target, whose weight `Φ(eq(p, ·))` is left to the verifier's batching sumcheck.

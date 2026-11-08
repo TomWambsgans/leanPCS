@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- Generalises `formal/Compose/Compose/Deployed.lean` and `DeployedWired.lean` of this repository
 -- (two proof openings and the setup's, hard-wired: each opening's stage logged so that its doom at
 -- its end is an event of F2's `ours_sound`, the trace through the undoomed openings, the setup's

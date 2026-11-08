@@ -1,4 +1,4 @@
-<!-- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The structure follows formal/UniStatement/README.md. -->
+<!-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The structure follows formal/UniStatement/README.md. -->
 
 # UniKeccak: the univariate verifier for the Keccak VM
 

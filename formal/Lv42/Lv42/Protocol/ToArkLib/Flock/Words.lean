@@ -3,7 +3,7 @@
 
   Adapted from leanerVM (https://github.com/Verified-zkEVM/leanerVM), branch mumbai, commit
   f0393df4, file lean_vm/LeanVM/Protocol/ToArkLib/Flock/Words.lean. MIT OR Apache-2.0; see
-  NOTICE.md. `LeanVM` renamed `Lv42`.
+  AGENTS.md. `LeanVM` renamed `Lv42`.
 
   32-bit words of a product-gate circuit: XOR, rotation and literals as linear operations, the
   ripple-carry adder and the fused three-operand adder as gadgets, each sound against `UInt32`

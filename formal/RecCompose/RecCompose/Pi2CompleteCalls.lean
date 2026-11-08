@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The contract's calls are `formal/RecStatement`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The contract's calls are `formal/RecStatement`'s
 -- (`Calls.lean`: `pcsCalls`, `claimWords`; `Security.lean`: `decodeWith`, `registryOf`, `pcsOpenAt`); the words' read-backs
 -- are `RecCompose.Pi1Decode`'s (`elementOfWord_elementWord`, `countOfWord_numberWord_one`, `rootOfWord_rootWord`,
 -- `mapM_range_eq_some`).

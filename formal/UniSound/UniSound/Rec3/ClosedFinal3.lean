@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The statement is `formal/UniStatement`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The statement is `formal/UniStatement`'s
 -- `UniKnowledgeSoundnessRec3` (`RecSecurity.lean`).
 import UniSound.Rec3.ClosedRec3
 import FlockSoundUni.Walk

@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! The layout framework (SPEC-REC.md §2.3, §7 R2 step 2): rows of a region type, values placed in their cells, the
 //! wiring `σ` derived from where each value is placed, the region blocks, `κ`, and the witness.
 //!

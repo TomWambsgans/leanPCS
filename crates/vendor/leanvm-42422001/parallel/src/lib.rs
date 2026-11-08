@@ -1,5 +1,5 @@
 // Vendored from leanVM (https://github.com/leanEthereum/leanVM), commit 42422001, file crates/parallel/src/lib.rs.
-// MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and NOTICE.md at the repository root).
+// MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and AGENTS.md at the repository root).
 //! Fixed-size thread pool for flat data-parallel kernels. Workers claim ranges from one shared counter, which also balances heterogeneous cores. Dispatches cannot nest. Task panics are resumed on the dispatcher after all workers stop.
 
 use std::any::Any;

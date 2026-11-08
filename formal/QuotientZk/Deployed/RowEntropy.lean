@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- The translation argument is F3's (`QuotientSecurity.Hiding.HiddenLayout.unopened_row_le`,
 -- `formal/QuotientSecurity/Hiding/Merkle.lean`), restated for any linear randomness model with free
 -- entries, as the redesigned layout (`docs/membership/HIDING.md`, the gadget) needs.

@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! `π2`'s circuit compiled from `π1`'s recorded verifier (SPEC-REC.md §2, §10), its witness from the real Keccak VM
 //! proofs (`crates/leanvm/univariate/tests/vectors/`: π1-rec3's and the main line's).
 //!

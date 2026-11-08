@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Follows `formal/UniComplete/UniComplete/Whir.lean` (the
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Follows `formal/UniComplete/UniComplete/Whir.lean` (the
 -- plain layouts) and `formal/EndToEnd/Completeness/E2ECompleteness/ProverStack.lean` (`wiring_stackClaims_hold`) for π2's
 -- public layouts of chunks (`crates/leanvm/rec/src/pi2/prover.rs`'s `layouts`, `quotient::opening::Layout::new`); uses
 -- `formal/WhirBridge` (`Layout.new_valid`, `Layout.holds_iff`, `Blocks.table_eq_lane`, `admissible_large`) and leanerVM

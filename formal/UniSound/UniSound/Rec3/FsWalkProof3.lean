@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The main line's `FsWalkProof.lean` (`uniWalk`,
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The main line's `FsWalkProof.lean` (`uniWalk`,
 -- `uniWalkReject`) for π1-rec3's walk (`UniStatement.runWithFs … .rec3 true`); its generic lemmas (`progRun`,
 -- `readCounts_ok`, `consumes_run`, …) are used as they are.
 import UniSound.Rec3.FsWalk3

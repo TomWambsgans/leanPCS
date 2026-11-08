@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- Transcribes `quotient::protocol::reduce` (crates/membership/quotient/src/protocol.rs) and the smart constructors of
 -- `crates/membership/evm/src/record.rs` (`Sym`'s `Add`, `Mul`, `frobenius`), adapted from leanVM
 -- (https://github.com/leanEthereum/leanVM, branch PCS-openings-aggregation, commit 651453c6).

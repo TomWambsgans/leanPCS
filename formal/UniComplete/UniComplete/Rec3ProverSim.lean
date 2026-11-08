@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- Uses leanerVM (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`, commit 6175f1a0, MIT OR Apache-2.0):
 -- the two calls `KeccakCalls` and their simulation lemmas (`implH`, `implF`); and
 -- `formal/EndToEnd/Completeness/E2ECompleteness/WithHash.lean`'s `simulateQ_proveOpeningWithH`.

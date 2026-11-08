@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The walk is `UniStatement.runWith`
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The walk is `UniStatement.runWith`
 -- (`formal/UniStatement/UniStatement/Run.lean`), the chain `Compose.ChainSpecU.chain`
 -- (`formal/Compose/Compose/ListChainU.lean`).
 import UniSound.FsCouple

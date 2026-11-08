@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- Generalises `formal/Compose/Compose/TwoOracle.lean` and `AdversaryLog.lean` of this repository
 -- (the list chain in leanerVM `mumbai`'s two-oracle model, https://github.com/Verified-zkEVM/leanerVM,
 -- commit 6175f1a0, MIT OR Apache-2.0; the extractor reading the adversary's queries, after mumbai's

@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The round-by-round form is `UniSound.Piop`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The round-by-round form is `UniSound.Piop`'s
 -- (`formal/Compose/Compose/ListChainK.lean`'s `Piop`), for π1-rec3's rounds.
 import UniSound.Piop
 import UniSound.Rec3.FlockInterface3

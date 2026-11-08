@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The statement read is `formal/RecStatement`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The statement read is `formal/RecStatement`'s
 -- (`Pi1CompletenessKeccak`, `pi1KeccakVerifierWith`); its random-permutation reading is `formal/UniStatement`'s
 -- `UniCompletenessRec3` (`RecSecurity.lean`), proved by `formal/UniComplete`'s `uniCompletenessRec3_end_closed`. The
 -- eager form of the random-permutation model is `formal/EndToEnd/ZK/ProverBridgeEager.lean`'s; Keccak-256 through a

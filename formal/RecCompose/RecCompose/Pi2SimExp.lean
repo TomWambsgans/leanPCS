@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The statement's experiment is `formal/RecStatement`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The statement's experiment is `formal/RecStatement`'s
 -- (`recCompletenessExperiment2`); the eager form of the random-permutation model is
 -- `formal/EndToEnd/ZK/ProverBridgeEager.lean`'s (`prEvent_runWithRandomPermutation`, `permImpl`), Keccak-256 through a
 -- monad morphism `ProverBridgeParam.lean`'s (`keccak256With_hom`); leanerVM (https://github.com/Verified-zkEVM/leanerVM,

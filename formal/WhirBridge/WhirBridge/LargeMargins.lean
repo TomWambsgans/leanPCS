@@ -1,5 +1,5 @@
 /-
-Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 
 The list factors a protocol committing stacks of `2^24 ..= 2^28` words pays: WHIR takes no
 out-of-domain sample at level 0, so a root binds to the up to `L₀` candidates of its Johnson list

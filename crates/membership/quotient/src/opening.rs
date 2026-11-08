@@ -2,7 +2,7 @@
 // can be nonzero) is from leanVM (https://github.com/leanEthereum/leanVM), branch PCS-openings-aggregation,
 // crates/flock/src/quotient/opening.rs; `wire_proof` is leanVM's `keccak_gkr::batch_bench::scalar_proof`
 // (commit c445e3d5). The hidden layout adapts the padding of leanVM's `flock::membership` (same branch,
-// crates/flock/membership-zk.md) to tables that fill their stack; see HIDING.md. MIT OR Apache-2.0; see NOTICE.md.
+// crates/flock/membership-zk.md) to tables that fill their stack; see HIDING.md. MIT OR Apache-2.0; see AGENTS.md.
 //! The commitments the claims are opened against, with leanVM's WHIR **unchanged**: its commitments and proofs
 //! are those of its committer ([`pcs::whir::commit`]) and its prover ([`pcs::whir::recursive_prover_with_basis`]),
 //! made in less memory ([`pcs::whir::commit_tree`], [`pcs::whir::recursive_prover_with_lane_tensors`]), and its

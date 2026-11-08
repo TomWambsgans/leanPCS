@@ -1,4 +1,4 @@
-<!-- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The structure follows leanerVM's `Statement/README.md` (branch `mumbai`, commit 6175f1a0, MIT OR Apache-2.0). -->
+<!-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The structure follows leanerVM's `Statement/README.md` (branch `mumbai`, commit 6175f1a0, MIT OR Apache-2.0). -->
 
 # Statement
 

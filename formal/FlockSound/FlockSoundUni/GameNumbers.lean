@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The numbers are `formal/UniStatement`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The numbers are `formal/UniStatement`'s
 -- (`reference`, `workloads`, `layoutsOf`, `layoutWords`, `programIv`); the hypotheses they discharge are
 -- `formal/UniSound`'s (`UniShapes`, `LayoutVarsSmall`, `UniIv`, `fsLayer_of_bridges`'s `hnQ`, `hnv`).
 import UniSound.FsCouple

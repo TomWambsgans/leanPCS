@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The node semantics are `crates/leanvm/rec/src/eval.rs`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The node semantics are `crates/leanvm/rec/src/eval.rs`'s
 -- (`evaluate`, `call_inputs`, `checks`), on `formal/UniStatement`'s definitions of the transcript (`KeccakChannel`:
 -- `seedWith`, `beWordAt`, `challengeOf`, `narrowE`), the bit fields (`intBits`), the ring switch's weight
 -- (`Flock.towerWeightAt`) and `PCS_OPEN`'s words (`elementWord`, `pcsCalls`).

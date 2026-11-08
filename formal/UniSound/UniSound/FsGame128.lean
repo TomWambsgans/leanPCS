@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The route is `FsGame.lean`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The route is `FsGame.lean`'s
 -- `fsLayer_of_gameV` and `FsFinal.lean`'s `fsLayer_holds`, through `Compose`'s
 -- `knowledgeSoundness_listChainU_closed128` (the chain without the seed's tag, doom at the run's end),
 -- `prEvent_doomF_le` (the openings once, one union family) and `prEvent_pairTr_le` (the seed's pair).

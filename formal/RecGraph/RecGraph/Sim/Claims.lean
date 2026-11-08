@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The generic `combine` and its algebra are `formal/UniSound`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The generic `combine` and its algebra are `formal/UniSound`'s
 -- (`UniSound/Ids/Weights.lean`: `combineEq`, `mergedPrefix`, `mergedSelf`), over any type of coordinates.
 import RecGraph.Sim.Tables
 import UniSound.Ids.Weights

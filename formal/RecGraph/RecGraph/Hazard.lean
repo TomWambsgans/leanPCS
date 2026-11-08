@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. `Z_bad`, its degree and its nonvanishing are
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. `Z_bad`, its degree and its nonvanishing are
 -- `formal/UniSound`'s (`UniSound.Ids.zBad`, `natDegree_zBad_le`, `zBad_ne_zero`; the main line's merge hazard).
 import RecGraph.Semantics
 import UniSound.Ids.Main

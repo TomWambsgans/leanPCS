@@ -1,5 +1,5 @@
 /-
-Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 
 The soundness of this repository's opening check from leanerVM `mumbai`'s WHIR theorems
 (https://github.com/Verified-zkEVM/leanerVM, commit 6175f1a0, MIT OR Apache-2.0):

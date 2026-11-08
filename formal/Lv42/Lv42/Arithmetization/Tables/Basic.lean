@@ -2,7 +2,7 @@
   Lv42.Arithmetization.Tables.Basic
 
   Adapted from leanerVM (https://github.com/Verified-zkEVM/leanerVM), branch mumbai, commit
-  f0393df4, file lean_vm/LeanVM/Arithmetization/Tables/Basic.lean. MIT OR Apache-2.0; see NOTICE.md.
+  f0393df4, file lean_vm/LeanVM/Arithmetization/Tables/Basic.lean. MIT OR Apache-2.0; see AGENTS.md.
   `LeanVM` renamed `Lv42`.
 
   The vocabulary the six opcode tables share, and that the boundary blocks reuse: the

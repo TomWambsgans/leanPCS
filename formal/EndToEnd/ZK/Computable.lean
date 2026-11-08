@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- The audit `computationalAxioms` is `formal/Compose/Compose/DecoderAxioms.lean`'s (this repository),
 -- restated here (that library is not built in this workspace).
 import ZK.Final

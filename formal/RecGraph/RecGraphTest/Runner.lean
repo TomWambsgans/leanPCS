@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The hex and element parsers follow
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The hex and element parsers follow
 -- `formal/UniStatement/UniStatementTest/Runner.lean`'s.
 import RecGraph.Emitted
 import RecGraph.Semantics

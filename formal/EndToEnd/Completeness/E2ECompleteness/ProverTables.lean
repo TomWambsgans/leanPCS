@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- The tables `E2ECompleteness.proveSpec` (`ProverDefs.lean`, `formal/Statement`'s `Prover.lean`)
 -- computes, against `formal/Completeness`'s honest prover. Uses leanerVM
 -- (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`, commit 6175f1a0, MIT OR Apache-2.0):

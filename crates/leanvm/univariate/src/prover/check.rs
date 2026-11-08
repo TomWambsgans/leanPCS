@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! SPEC.md's identities on the domain itself, on a real trace, with no randomness but the bus's challenges: what
 //! the quotients exist for. Each check names what it tests and how many rows break it.
 

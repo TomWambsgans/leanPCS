@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Transcribed from `formal/UniStatement/UniStatement/Rec.lean`
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Transcribed from `formal/UniStatement/UniStatement/Rec.lean`
 -- and `RecSecurity.lean` with Keccak-256 an explicit call, as `VerifierH.lean` does for the main line.
 import UniComplete.VerifierH
 import UniStatement.RecSecurity

@@ -3,7 +3,7 @@
 
   Adapted from leanerVM (https://github.com/Verified-zkEVM/leanerVM), branch mumbai, commit
   f0393df4, file lean_vm/LeanVM/Arithmetization/Tables/MulNative.lean. MIT OR Apache-2.0; see
-  NOTICE.md. `LeanVM` renamed `Lv42`.
+  AGENTS.md. `LeanVM` renamed `Lv42`.
 
   The `MUL_NATIVE` table: one Clean component per row, sound and complete for the relation the
   row refines, its bindings to an image together with `execute` of the instruction

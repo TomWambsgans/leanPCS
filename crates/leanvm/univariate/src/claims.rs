@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! Linear relations on committed polynomials, and their combination into one weighted claim per commitment
 //! (SPEC.md §8).
 //!

@@ -1,7 +1,7 @@
 // Adapted from leanVM (https://github.com/leanEthereum/leanVM), commit 42422001, file crates/verifier/src/flock.rs: the
 // pieces of its Flock verifier that `crate::flock_min` builds on, on a generic `Scalar` (constants computed natively,
 // as leanVM's are): the fixed challenges and Lagrange weights of the univariate skip, and the ring switch's map and
-// weight. MIT OR Apache-2.0; see NOTICE.md.
+// weight. MIT OR Apache-2.0; see AGENTS.md.
 //! Flock's shared pieces: the skip's fixed challenges and Lagrange weights, the ring switch's map and weight.
 
 use crate::field::{E, ONE};

@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The numbers follow
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The numbers follow
 -- `formal/Compose/Compose/ListChainKDoomExample.lean`.
 import UniSound.Fs
 import UniSound.Bus

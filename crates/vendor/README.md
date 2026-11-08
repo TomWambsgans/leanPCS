@@ -7,4 +7,4 @@
   `fiat_shamir` (a trait, new here), as packages `lv42_*`. Its BLAKE2s block is not vendored; the Keccak-f block
   (`flock/src/keccak.rs`) and the skip zerocheck (`flock/src/zerocheck/skip.rs`) are new here.
 
-Files are as upstream but for what their header lists; [`../../NOTICE.md`](../../NOTICE.md) has the details.
+Files are as upstream but for what their header lists; [`../../AGENTS.md`](../../AGENTS.md) has the details.
