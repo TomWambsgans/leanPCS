@@ -165,12 +165,11 @@ fn slot(k: usize) -> Slot {
 const PORTABLE_LANES: bool = !cfg!(all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "vpclmulqdq"));
 
 /// The longest columns (`2^GROUPED_ROWS` entries) whose pieces [`prefix_quotient`] evaluates in rounds, a round's
-/// batches transformed each by one worker ([`piece_rows`]) about `GROUPED_TASKS` a worker at once, in at most
-/// `GROUPED_BYTES`: there `ntt`'s transforms of one batch at a time, a few tasks a pass, leave workers idle between
+/// batches transformed each by one worker ([`piece_rows`]), in at most `GROUPED_BYTES` a round (SHA3's leaf: 5 of its
+/// 55 pieces, 60 tasks, 120 MB): there `ntt`'s transforms of one batch at a time, a few tasks a pass, leave workers idle between
 /// their passes (on 64 threads, `SHA3`'s leaf was three quarters spinning; on the M4 Max's NEON lanes, the rounds took
 /// "quotients: leaves" from 0.30 s to 0.18 s).
 const GROUPED_ROWS: usize = 17;
-const GROUPED_TASKS: usize = 2;
 const GROUPED_BYTES: usize = 1 << 29;
 
 /// [`ntt::values_batch`] with `runs`, by one worker: row `i` of `data` becomes the eight columns at `offset + ω_i`,
@@ -365,12 +364,18 @@ fn prefix_quotient<D: Sync>(
         } else {
             (batches.len(), size_of::<K8>())
         };
-        let per_round = (GROUPED_TASKS * parallel::num_threads())
-            .div_ceil(width)
-            .min(GROUPED_BYTES / (width * n * unit))
-            .clamp(1, all.len());
-        let mut transformed: Vec<Vec<K8>> = vec![Vec::new(); if alone { 0 } else { per_round * width }];
-        let mut lone: Vec<Vec<F64>> = vec![Vec::new(); if alone { per_round * width } else { 0 }];
+        // A round's tasks end together: the pieces a round that take the fewest waves of tasks on the pool, and of
+        // those the fewest (the least memory: freed, the buffers stay with the allocator).
+        let most = (GROUPED_BYTES / (width * n * unit)).clamp(1, all.len());
+        let threads = parallel::num_threads();
+        let waves = |per: usize| {
+            let (full, rest) = (all.len() / per, all.len() % per);
+            full * (per * width).div_ceil(threads) + (rest * width).div_ceil(threads)
+        };
+        let per_round = (1..=most).min_by_key(|&per| (waves(per), per)).expect("a piece");
+        // The tasks' buffers, reserved here (their pages first written by the tasks).
+        let mut transformed: Vec<Vec<K8>> = (0..if alone { 0 } else { per_round * width }).map(|_| Vec::with_capacity(n)).collect();
+        let mut lone: Vec<Vec<F64>> = (0..if alone { per_round * width } else { 0 }).map(|_| Vec::with_capacity(n)).collect();
         for round in all.chunks(per_round) {
             let clock = std::time::Instant::now();
             let tasks = round.len() * width;

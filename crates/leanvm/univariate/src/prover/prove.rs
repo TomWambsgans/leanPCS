@@ -104,7 +104,15 @@ impl Clock {
         }
         if std::env::var_os("PI1_PROFILE").is_some() {
             let faults = minor_faults();
-            eprintln!("    {name}: {:.4} s, {} minor faults", (now - self.last).as_secs_f64(), faults - self.faults);
+            let hwm = std::fs::read_to_string("/proc/self/status")
+                .ok()
+                .and_then(|s| s.lines().find(|l| l.starts_with("VmHWM:")).map(|l| l.to_string()))
+                .unwrap_or_default();
+            eprintln!(
+                "    {name}: {:.4} s, {} minor faults, {hwm}",
+                (now - self.last).as_secs_f64(),
+                faults - self.faults
+            );
             self.faults = faults;
         }
         self.last = Instant::now();
