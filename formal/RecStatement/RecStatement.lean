@@ -26,15 +26,18 @@ import RecStatement.Lemmas.SpecLink
   (`push_side`), the public side (`publicSide_eq`), the one inversion's two nonzero conditions (`all_ne_zero_iff`), and
   **`checks_claims_iff`**/**`checks_claims_iff_post2`**: the checks pass and the claims hold iff `t ∉ V_{m+2}`,
   `c_h + c_q ≠ 0` and `RecPiop.Post2`;
-* **the end statements** (`Security`, `Reduction`): π2's, in the random-permutation model (`RecKnowledgeSoundness2`,
-  `RecCompleteness2`: the contract accepts only if π1-rec3's recorded graph, run with Keccak-f[1600], accepts a stream
-  π2's extractor outputs, its calls the contract's); end-to-end knowledge soundness against leanVM 42422001's relation
-  as an **explicit reduction** (`RecKnowledgeSoundnessReduction`: the break is bounded by π2's error plus π1-rec3's and
-  the merge hazard's experiments at Keccak-f[1600] for two explicit derived adversaries, `pi1Adversary`,
-  `hazardAdversary`, of `A`'s queries); and the end-to-end corollaries (`RecKnowledgeSoundness`, `RecCompleteness`,
-  `Lv42.Protocol.M3Holds`) under named hypotheses about π1-rec3 at Keccak-f[1600] (`Pi1FsKeccak`, `Pi1HazardKeccak`,
-  false as stated for unbounded adversaries: the Fiat–Shamir heuristic for bounded ones; `Pi1CompletenessKeccak`) and
-  RecGraph's target (`Pi1GraphIsVerifier`); stated, not proved.
+* **the end statements** (`Security`, `Reduction`), for the recursion of the **Keccak VM** (π1 is `formal/UniKeccak`'s
+  verifier at π1-rec3's shape `keccakRec3`, the 128-signature reference `RecGraphKeccak.Pi1.keccak128`): π2's, in the
+  random-permutation model (`RecKnowledgeSoundness2`, `RecCompleteness2`: the contract accepts only if the Keccak
+  π1-rec3's recorded graph `RecGraphKeccak.Pi1.pi1GraphK`, run with Keccak-f[1600], accepts a stream π2's extractor
+  outputs, its calls the contract's); end-to-end knowledge soundness against the Keccak VM's relation
+  (`KeccakVm.KvHolds`, the Keccak-f block the deployment's `flock`) as an **explicit reduction**
+  (`RecKnowledgeSoundnessReduction`: the break is bounded by π2's error plus π1-rec3's and the merge hazard's
+  experiments at Keccak-f[1600] for two explicit derived adversaries, `pi1Adversary`, `hazardAdversary`, of `A`'s
+  queries); and the end-to-end corollaries (`RecKnowledgeSoundness`, `RecCompleteness`) under named hypotheses about
+  π1-rec3 at Keccak-f[1600] (`Pi1FsKeccak`, `Pi1HazardKeccak`, false as stated for unbounded adversaries: the
+  Fiat–Shamir heuristic for bounded ones; `Pi1CompletenessKeccak`, `Pi1HazardKeccakHonest`) and RecGraphKeccak's
+  target (`RecGraphKeccak.Pi1GraphIsVerifierK`, proved there); stated, not proved.
 
 The build fails if a headline definition or theorem uses an axiom beyond Lean's three standard ones.
 -/
@@ -46,6 +49,14 @@ The build fails if a headline definition or theorem uses an axiom beyond Lean's 
 /-- info: 'RecStatement.pcsCalls' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms RecStatement.pcsCalls
+
+/-- info: 'RecStatement.pi1Iv' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecStatement.pi1Iv
+
+/-- info: 'RecStatement.RecDeployment.setupTreesWith' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecStatement.RecDeployment.setupTreesWith
 
 /-- info: 'RecStatement.RecDeployment.verifierWith' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
@@ -102,6 +113,10 @@ The build fails if a headline definition or theorem uses an axiom beyond Lean's 
 /-- info: 'RecStatement.Pi1CompletenessKeccak' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms RecStatement.Pi1CompletenessKeccak
+
+/-- info: 'RecStatement.Pi1HazardKeccakHonest' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecStatement.Pi1HazardKeccakHonest
 
 /-- info: 'RecStatement.RecCompleteness' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
