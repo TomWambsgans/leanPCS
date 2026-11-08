@@ -34,7 +34,7 @@ fingerprints, BLAKE2s by Flock, the same public input. The proof of it is differ
 
 ## 1. Statement and workload
 
-leanVM 42422001's `crates/verifier` is vendored and made generic in `crates/leanvm_flock_gas`. The statement: the VM,
+leanVM 42422001's `crates/verifier` is vendored and made generic in `crates/leanvm/statement`. The statement: the VM,
 run on the stacked bytecode (the fixed program) from `pc = 1, fp = 1`, halts at `pc = g^(2^19 - 1)`, `fp = 1`. The
 32-byte public input is in memory cells 0 and 1, and every BLAKE2s precompile call is correct. In the Lean port
 (`formal/Lv42`), this is `M3Holds` = `ConstraintsVanish ∧ Balanced ∧ CountsNonzero ∧ PublicLinesHold ∧ FlockRegion`,
@@ -56,12 +56,12 @@ under `Sizes.Admissible`.
 183,266, MUL 195,439, SET 223,851, DEREF 137,591, JUMP 80,937, BLAKE2S 202,025 (log-heights 18 18 18 18 17 18).
 Memory is `2^21`, the bytecode `2^19` instructions (`2^23` words), `q_flock` `2^26` words. leanVM's own stack
 for it is `2^26.53` words. The other shapes (32 to 2,000 signatures) are leanVM's measured ones
-(`leanvm_flock_gas::shapes`).
+(`leanvm_statement::shapes`).
 
 ## 2. Domain and encodings
 
 - **Cantor basis** of `K`: `β_0 = 1`, `s(β_{k+1}) = β_k`, `s(x) = x^2 + x` (`src/domain.rs`, as
-  `crates/quotient/src/domain.rs`). Let `ω_i = Σ_k i_k β_k` and `V_r = {ω_i : i < 2^r}`. The digits are
+  `crates/membership/quotient/src/domain.rs`). Let `ω_i = Σ_k i_k β_k` and `V_r = {ω_i : i < 2^r}`. The digits are
   `w_0(x) = x`, `w_{k+1} = s(w_k)`. Then `w_r` is `V_r`'s subspace polynomial, `w_l(ω_i) = ω_{i >> l}`, and
   `w_m / w_r = Π_{j=r}^{m-1} (w_j + 1)`, a product with no division.
 - **Basis `B`.** A column of `2^r` rows is the polynomial of degree `< 2^r` whose value at `ω_i` is row `i`. It is
@@ -120,10 +120,10 @@ unchanged would cost the contract a byte swap of the four words, about 110 gas (
 256-bit word, then the four extractions; modelled), which is more than a few gas, while the convention costs nothing.
 So the convention is kept, and documented here and in `contract.rs`.
 
-The transcript is a Keccak-256 chain (`leanvm_flock_gas::transcript::KeccakChannel`). A challenge is one Keccak-256
+The transcript is a Keccak-256 chain (`leanvm_statement::transcript::KeccakChannel`). A challenge is one Keccak-256
 of the state and the calldata bytes read since the last one. A scalar is 24 bytes, a root half 16: one of the root's
 two WHIR scalars (`hash_to_scalars`, the opening's first two), big-endian, so that a root's 32 bytes are its `PCS_OPEN`
-root word `s_0 · 2^128 + s_1` (`crates/evm/src/machine.rs`), which the contract passes as it is
+root word `s_0 · 2^128 + s_1` (`crates/membership/evm/src/machine.rs`), which the contract passes as it is
 (the prover sent the hash's bytes before). The seed is the
 Keccak-256 of the name `leanVM-univar-v1`, the program's IV (which must bind the setup and the shape) and the public
 input. There are no announced sizes: one shape per contract. The order:
@@ -224,7 +224,7 @@ constraint: the leaf identity exempts them (§5.2).
 
 **Interface.** Flock runs after `C1` and before `C2`, reading only `C1`'s `q_flock` and the setup. It draws its own
 challenges in the transcript between `γ` and the `C2` root. It leaves claims on `q_flock`, which join `C1`'s
-relations, and claims on `A0` and `B0`. The verifier runs it as `leanvm_flock_gas::flock_min::verify(variant)`.
+relations, and claims on `A0` and `B0`. The verifier runs it as `leanvm_statement::flock_min::verify(variant)`.
 
 - **The skip (lever c).** leanVM's zerocheck has a univariate skip over the 6 packing bits. Here it is over `k ≤ 6`
   bits: `2^k` coset values, then `32 - k` rounds of 2 scalars, then `v_a` and `v_b`. The lincheck has 8 rounds. The
@@ -262,7 +262,7 @@ There are 96 to 97 of them.
 
 Each commitment's relations are combined by the powers of `ρ`: `C1` has 197 terms, `C2` 42 and `F` 2.
 
-**Claims, main line: `PCS_OPEN`'s ABI** (`crates/evm/src/machine.rs`: point claims, `c` each). A batching sumcheck
+**Claims, main line: `PCS_OPEN`'s ABI** (`crates/membership/evm/src/machine.rs`: point claims, `c` each). A batching sumcheck
 takes `Σ_k λ^k Σ_u W_k(u) C_k(u) = Σ_k λ^k v_k` over the longest stack (27 variables), the others zero-extended.
 It has two scalars a round, then the three stacks' values at its point `r`. The verifier evaluates every `W_k(r)`.
 Columns at one row point share their eq factor, selector factors share their high bits, and Frobenius twists are
@@ -318,7 +318,7 @@ and `B0` are `2^28` words each (WHIR's maximum), and the setup's `F` cannot join
 
 Not counted: Fiat–Shamir (Keccak-256 as a random oracle) and Flock's fixed zerocheck coordinates (leanVM's).
 
-**π1-rec** (`FLOCK_REC`, `FsShape::Rec`; `crates/leanvm_rec/SPEC-REC.md` §1.4, analysis there, not proven): `α` as
+**π1-rec** (`FLOCK_REC`, `FsShape::Rec`; `docs/leanvm/rec/SPEC-REC.md` §1.4, analysis there, not proven): `α` as
 `(c, c², c⁴, c⁸)` (the bus at degree 16 a factor in `(β, c)`: 164.6 bits alone, 152.5 after the union) and Flock's
 zerocheck coordinates after the fixed ones as successive squares (degree `2^22` in one variable: 170.0, 157.9). Every
 other row is unchanged, so the PIOP stays at 142.3 bits (`t`). The Lean theorems (README.md) are about the main line.
@@ -466,7 +466,7 @@ Each entry says what changed, why, and what the prover must change (none if the 
 
    Prover: nothing.
 
-2. **Lever 1a: the ring map in tower order** (`leanvm_flock_gas::ring_tower`, `Slices::Tower`, the main line's
+2. **Lever 1a: the ring map in tower order** (`leanvm_statement::ring_tower`, `Slices::Tower`, the main line's
    `FLOCK_MAIN`). The map's six stages are applied shift 1 first, 32 last (leanVM: 32 first). The outermost stage is
    then `GF(2^32)`-linear, the next `GF(2^16)`-linear, and so on, so the target `Σ_i x^i Φ(s_i)` is computed through
    `K`'s subfields: 64 sums of slices (the coordinates of `x^i` in a tower basis, 1,938 slice terms), then six levels
@@ -564,8 +564,8 @@ Each entry says what changed, why, and what the prover must change (none if the 
     Prover: place table `T`'s `c` active rows, in order, at `active_positions(c, r)` (and BLAKE2S's `q_flock`
     instances with them, position by position); padding rows everywhere else. The heap's leaves follow the positions
     (`is_active`).
-11. **Lever 3a: the ring weight as hand-scheduled code** (`leanvm_flock_gas::evm::kernel`, `Scalar::ring_weight`,
-    `Node::RingWeight`; opt-in for the leanVM crates, `crates/evm` untouched). The generic compilation spends about
+11. **Lever 3a: the ring weight as hand-scheduled code** (`leanvm_statement::evm::kernel`, `Scalar::ring_weight`,
+    `Node::RingWeight`; opt-in for the leanVM crates, `crates/membership/evm` untouched). The generic compilation spends about
     47 gas a twisted factor: the chain value `p_n^(2^k)` and `a_n` go to memory and back. The kernel keeps a block
     of 13 twists' products on the stack, the coordinates inner, so a coordinate's chain value and `a_n` stay on top
     for the block's squarings and factors, each factor multiplied into its product in place (`DUP`, `FIELD_MUL`,

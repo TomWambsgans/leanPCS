@@ -13,7 +13,7 @@ import WhirBridge.Large
 /-!
 # The WHIR bridge
 
-`opening::verify` of `crates/quotient/src/opening.rs` under leanerVM `mumbai`'s theorems: its
+`opening::verify` of `crates/membership/quotient/src/opening.rs` under leanerVM `mumbai`'s theorems: its
 Fiat-Shamir soundness in the random-oracle model for every valid layout (`opening_sound`) and for
 the protocol's witness, wiring and quotient layouts at every supported size (`ours_sound`), in
 table terms (`Layout.holds_iff`, `Table::read` for the hidden layouts; the hidden layouts' gadget,

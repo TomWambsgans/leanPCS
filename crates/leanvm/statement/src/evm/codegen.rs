@@ -1,4 +1,4 @@
-// Adapted from this repository's crates/evm/src/codegen.rs (itself adapted from leanVM
+// Adapted from this repository's crates/membership/evm/src/codegen.rs (itself adapted from leanVM
 // (https://github.com/leanEthereum/leanVM), branch PCS-openings-aggregation, commit 651453c6): the same compilation of
 // a recorded graph to straight-line code, a value used once left on the stack and a shared one kept in a memory slot
 // reused after its last read; here for leanVM's verifier: the transcript absorbs runs of calldata, a check is of zero

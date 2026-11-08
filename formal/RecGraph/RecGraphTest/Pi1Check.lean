@@ -6,7 +6,7 @@ import RecGraph.Pi1.Verifier
 # π1-rec3's program records the Rust's graph, node for node
 
 `lake env lean ../RecGraph/RecGraphTest/Pi1Check.lean` (from `formal/EndToEnd`): `Pi1.pi1Graph` (the program
-`Pi1.pi1Rec3` recorded in Lean) against `Emitted.graph` (the Rust's recording, written by `crates/leanvm_rec`): the
+`Pi1.pi1Rec3` recorded in Lean) against `Emitted.graph` (the Rust's recording, written by `crates/leanvm/rec`): the
 nodes, the zero and nonzero checks, the kernels, the calls' words and the stream's length, each equal. Compiled
 evaluation (`#eval`), not the kernel. Throws on the first difference, with the nodes around it.
 -/

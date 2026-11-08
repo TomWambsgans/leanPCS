@@ -5,7 +5,7 @@
 **Status: R3 steps 1–3 done; the changes of §8 and the optimisation levers (§9: 44,792 at `c = 0`, measured
 end to end on π1-rec3's real proof; 44,804 on the proof regenerated when π1's stream took root words, §8) on branch
 `leanvm-rec-opt`; §0–§7 describe the design before them.** Branch `leanvm-rec-piop`, from `leanvm-rec` @ 0862503, with `leanvm-rec-circuit` (π2's
-circuit, SPEC-REC.md §10) merged. Code in `crates/leanvm_rec/src/pi2/`. No formal proofs here (the Lean proofs are in `formal/RecCompose`).
+circuit, SPEC-REC.md §10) merged. Code in `crates/leanvm/rec/src/pi2/`. No formal proofs here (the Lean proofs are in `formal/RecCompose`).
 Every number below is **measured** on h1 (AMD Ryzen 7 PRO 8700GE, 8 cores, 16 threads), unless marked modelled.
 
 ```sh
@@ -159,7 +159,7 @@ sits on a `2^24` stack, half its lanes absent. Small test circuits take `2^15` s
 - `W` at `(ρ, ρ², …, ρ^{2^{r-1}}, w_r, …, w_{m-1})`, value `Σ_k eq(ρ⃗, k) a_k`;
 - `Q` at `(u_0, …, u_{m+1}, ρ', y_0, y_1)`, `u_l = w_l/(1 + w_l) = 1 + 1/w_l + 1/w_{l+1}`, `ρ' = w_m B / Y` (the
   identity's `c_q/(c_h + c_q)`), value `s (t / w_{m+2}) X / (S_d Y)`, that is `(1 + ρ') h(t) + ρ' q(t)` (`(y_0, y_1)`
-  and `s` the limbs' coordinates and scale, as `crates/quotient`; `Π (1 + w_l)^{-1}` telescopes to `t / w_{m+2}`); and
+  and `s` the limbs' coordinates and scale, as `crates/membership/quotient`; `Π (1 + w_l)^{-1}` telescopes to `t / w_{m+2}`); and
   at `(1^m, 0, 0, 0, y_0, y_1)`, `h`'s top coefficient `Σ_V h`, value `s T`;
 - the setup at `(w_0, …, w_{m-1}, β)`, value `ξ` (its halves `κ`, `κ + σ`: `(1 + β) κ + β (κ + σ) = κ + βσ`).
 
@@ -259,7 +259,7 @@ composition.
     layout_id`'s hash. π2's IV hashes these words (`"leanvm-rec-iv-v2"`);
   - a precompile is a registry keyed by the layout word (`contract::registry`): π1's five layouts are opened by
     `leanvm_univariate`'s opening, π2's three by `quotient::opening`; `Q`'s two claims stay in one call (one opening).
-  - The mock now decodes (`leanvm_flock_gas::evm::machine::{decode, PcsOpen::decoding}`): an input attests only if it
+  - The mock now decodes (`leanvm_statement::evm::machine::{decode, PcsOpen::decoding}`): an input attests only if it
     decodes under the registry (a known layout word, which fixes the variables; `k ≥ 1`; the exact length; every
     element's top 64 bits zero) into a registered opening (the root as its opening has it, the layout word, the
     claims). The end-to-end tests register π1's openings from the vector's inputs (`contract::pi1_opening`) and π2's

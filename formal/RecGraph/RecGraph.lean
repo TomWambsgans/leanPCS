@@ -12,7 +12,7 @@ import RecGraph.Sim.End
 # RecGraph: π1-rec3's recorded verifier graph, its meaning, and the recorder
 
 The recursion's outer proof π2 proves a circuit compiled from the **recorded operation graph** of the inner proof π1's
-verifier (`crates/leanvm_rec`, π1-rec3: `FLOCK_REC3`, `FsShape::Rec3`). This library is the design-independent half of
+verifier (`crates/leanvm/rec`, π1-rec3: `FLOCK_REC3`, `FsShape::Rec3`). This library is the design-independent half of
 "compiler correctness" (`README.md` here): the graph (`Node`, `Graph`; π1-rec3's is `Emitted.lean`, written by the
 Rust, data only), its meaning over any permutation (`evalGraph`), the target statement "graph = verifier"
 (`GraphIsVerifier`, against `UniStatement`'s π1-rec3: `UniStatement/Rec.lean`), and the Lean recorder (`Record.lean`)

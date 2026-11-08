@@ -1,5 +1,5 @@
 -- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Transcribed, in the Rust's operation order, from
--- `crates/leanvm_flock_gas/src/flock_min.rs` (`zerocheck`, `front`, `row_low_weights`, `known_weights`,
+-- `crates/leanvm/statement/src/flock_min.rs` (`zerocheck`, `front`, `row_low_weights`, `known_weights`,
 -- `verify_walked`, `walked_terminal`, `ring_end`), `flock.rs` (`lagrange_weights`, `lagrange_interpolate`,
 -- `blake2s_row_values`, `RowValues`, adapted there from leanVM (https://github.com/leanEthereum/leanVM), commit
 -- 42422001) and `ring_tower.rs` (`target`, `xor_network`).

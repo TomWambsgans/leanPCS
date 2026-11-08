@@ -1,7 +1,7 @@
 // Part of this repository. The tables, their flushes and constraints, the bus fingerprints, the public input's lines
 // and the Flock reduction are leanVM's at commit 42422001 (crates/verifier/src/{layout,bus,lib,flock}.rs there), read
 // through `leanvm_statement`'s port; the PIOP that checks them is new (SPEC.md), and so is its Fiat–Shamir shape π1-rec
-// (`crates/leanvm_rec/SPEC-REC.md` §1.4). MIT OR Apache-2.0; see NOTICE.md.
+// (`docs/leanvm/rec/SPEC-REC.md` §1.4). MIT OR Apache-2.0; see NOTICE.md.
 //! The verifier of SPEC.md, generic over the scalar it computes on: from the proof's stream (two roots, Flock's
 //! messages, the values at `t`) to one weighted claim per commitment.
 
@@ -301,7 +301,7 @@ pub enum Opening<S> {
 /// How the relations reach `PCS_OPEN` (SPEC.md §8).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Claims {
-    /// `crates/evm/src/machine.rs`'s ABI: point claims. One batching sumcheck over the stacks (the longest, the
+    /// `crates/membership/evm/src/machine.rs`'s ABI: point claims. One batching sumcheck over the stacks (the longest, the
     /// others zero-extended) turns every commitment's relations into one point claim at its end point.
     Point,
     /// Extension W: one weighted claim per commitment, its terms evaluated by the precompile.
@@ -317,7 +317,7 @@ pub const RING_TWIST: u8 = u8::MAX;
 /// structured terminal, `PCS_OPEN`'s point claims.
 pub const KECCAK_MAIN: Variant = Variant { skip: 3, fs: FsShape::Main };
 
-/// The Keccak VM's π1 under the recursion (`crates/leanvm_rec/tests/keccak_vm_rec.rs`): [`KECCAK_MAIN`] with π1-rec3's
+/// The Keccak VM's π1 under the recursion (`crates/leanvm/rec/tests/keccak_vm_rec.rs`): [`KECCAK_MAIN`] with π1-rec3's
 /// Fiat–Shamir shape (`FsShape::Rec3`).
 pub const KECCAK_REC3: Variant = Variant { skip: 3, fs: FsShape::Rec3 };
 

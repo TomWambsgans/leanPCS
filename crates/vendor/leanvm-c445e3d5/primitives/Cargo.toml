@@ -19,7 +19,7 @@ serde.workspace = true
 # Kept off the default build so `rand` stays out of the production graph.
 test-util = ["dep:rand"]
 # Test-only: record every Keccak call (`primitives::trace`), for the differential test of the Lean
-# skeleton (`crates/quotient/tests/skel_trace.rs`). Off in every production build.
+# skeleton (`crates/membership/quotient/tests/skel_trace.rs`). Off in every production build.
 trace = []
 
 [dev-dependencies]

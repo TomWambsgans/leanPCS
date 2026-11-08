@@ -1,6 +1,6 @@
 -- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The split of the bad challenges (a
 -- vanishing denominator, the log-derivative sum, the fingerprints in `γ`) follows
--- `formal/QuotientSecurity/Counting.lean` (crates/quotient's copy argument).
+-- `formal/QuotientSecurity/Counting.lean` (crates/membership/quotient's copy argument).
 import RecPiop.Circuit
 import RecPiop.LogUp
 

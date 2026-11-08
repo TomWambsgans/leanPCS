@@ -1,12 +1,12 @@
 // Part of this repository (new here, not from leanVM). The verifier's walk of the Keccak-f[1600] Flock block of
-// `crates/lv42_flock/src/keccak.rs` (crates/lv42_flock/KECCAK.md §4.2, §4.5), on a generic `Scalar`, and the block's
+// `crates/vendor/leanvm-42422001/flock/src/keccak.rs` (docs/leanvm/flock/KECCAK.md §4.2, §4.5), on a generic `Scalar`, and the block's
 // structured lincheck terminal (M3). MIT OR Apache-2.0; see NOTICE.md.
 //! The Keccak-f block's lincheck terminal, two ways:
 //!
 //! - [`row_values`]: the rows' values `(A0 w, B0 w)` by one forward walk, for the walked terminal
 //!   ([`crate::flock_min::verify_walked_with`] with [`KeccakWalked`]). The block's layout and rows are
 //!   `lv42_flock::keccak`'s (its module documentation); this walk restates them on a [`Scalar`] (a test of
-//!   `crates/leanvm_univariate`, `flock_keccak.rs`, checks the two walks agree), at about 24 · 25 · 64 · 12
+//!   `crates/leanvm/univariate`, `flock_keccak.rs`, checks the two walks agree), at about 24 · 25 · 64 · 12
 //!   additions: the reference, not a terminal for a recursion.
 //! - [`structured_terminal`]: the same value from the block's structure (eq factors, ρ and θ as cyclic shifts,
 //!   corrections), a few thousand `E` operations: [`Keccak`]'s terminal, the one π2 records.
@@ -149,7 +149,7 @@ fn grouped<S: Scalar>(n: usize, weights: &[S; 4], x: impl Fn(usize) -> S) -> S {
     )
 }
 
-/// **The structured terminal** (`crates/lv42_flock/KECCAK.md` §4.2, M3): exactly
+/// **The structured terminal** (`docs/leanvm/flock/KECCAK.md` §4.2, M3): exactly
 /// [`crate::flock_min::walked_terminal_with`]`::<S, KeccakWalked>`, `Σ_(row, col) e(row) (Â0 + α B̂0)(row, col) w(col)`
 /// `+ α² eq(chi_in, chi_in') Σ e_z s_z + α³ eq(word 1, chi_in') s_0`, with `e = E ⊗ eq(chi_in, ·)` (`E` the 64
 /// packing weights, the skip's Lagrange weights ⊗ `eq(row_low, ·)`) and `w = s ⊗ eq(chi_in', ·)`, computed from the
@@ -172,7 +172,7 @@ fn grouped<S: Scalar>(n: usize, weights: &[S; 4], x: impl Fn(usize) -> S) -> S {
 ///   s_z`, which is also the `C = I` claim's sum). Lanes 25..31 of every run and the suffix are empty rows and unread
 ///   columns: no term.
 ///
-/// 3,019 `E` operations at a skip of 3, 6,799 at 6 (recorded: crates/lv42_flock/KECCAK.md's M3 notes). `Σ_z E_z = 1`
+/// 3,019 `E` operations at a skip of 3, 6,799 at 6 (recorded: docs/leanvm/flock/KECCAK.md's M3 notes). `Σ_z E_z = 1`
 /// (Lagrange weights and an eq table each sum to 1) is used for the rows whose 64 positions all carry the same form.
 pub fn structured_terminal<S: Scalar>(
     z_skip: Option<S>,

@@ -1,5 +1,5 @@
 // Adapted from leanVM (https://github.com/leanEthereum/leanVM), branch PCS-openings-aggregation, commit 651453c6,
-// file crates/evm/src/record.rs. MIT OR Apache-2.0; see NOTICE.md.
+// file crates/membership/evm/src/record.rs. MIT OR Apache-2.0; see NOTICE.md.
 //! A scalar that records the operations done on it, as a graph with shared subterms.
 
 use std::cell::RefCell;

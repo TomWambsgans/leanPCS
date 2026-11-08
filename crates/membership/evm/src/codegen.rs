@@ -1,5 +1,5 @@
 // Adapted from leanVM (https://github.com/leanEthereum/leanVM), branch PCS-openings-aggregation, commit 651453c6,
-// file crates/evm/src/codegen.rs; new here: the calls of `PCS_OPEN`, the selector, the index root in storage
+// file crates/membership/evm/src/codegen.rs; new here: the calls of `PCS_OPEN`, the selector, the index root in storage
 // (`Entry`), `setIndexRoot` and the creation code; the assembly is now `crates/evm_link`'s, which also links the
 // program into contracts that each fit EIP-170's limit ([`compile_linked`]). MIT OR Apache-2.0; see NOTICE.md.
 //! A recorded graph as EVM bytecode: straight-line code, a value used once left on the stack and a shared one

@@ -1,6 +1,6 @@
 -- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Transcribed from
 -- `formal/UniStatement/UniStatement/Verifier.lean` (`tablePart`, `reduceWith` steps 3–7), itself
--- `crates/leanvm_univariate/src/verifier.rs`.
+-- `crates/leanvm/univariate/src/verifier.rs`.
 import UniSound.Ids.Poly
 
 /-!

@@ -1,4 +1,4 @@
-// Part of this repository. The Cantor basis is computed as in crates/quotient/src/domain.rs (adapted there from leanVM
+// Part of this repository. The Cantor basis is computed as in crates/membership/quotient/src/domain.rs (adapted there from leanVM
 // (https://github.com/leanEthereum/leanVM), branch PCS-openings-aggregation, commit 651453c6,
 // crates/flock/src/quotient/domain.rs), here for leanVM 42422001's `K` (crates/verifier/src/field.rs at 42422001).
 // MIT OR Apache-2.0; see NOTICE.md.
@@ -285,7 +285,7 @@ mod tests {
         }
     }
 
-    /// The paired batching sumcheck's coordinates (`leanvm_statement::transcript::pair_point`, `crates/leanvm_rec/
+    /// The paired batching sumcheck's coordinates (`leanvm_statement::transcript::pair_point`, `crates/leanvm/rec/
     /// SPEC-POINTS.md`) are this basis's `β_1` and `V_2`'s coordinate functionals, at any point.
     #[test]
     fn pair_points_are_v2s_coordinate_functionals() {

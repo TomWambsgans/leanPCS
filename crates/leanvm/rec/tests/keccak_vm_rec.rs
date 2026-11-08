@@ -15,7 +15,7 @@ use leanvm_rec::pi2::verifier::Spec;
 use leanvm_univariate::contract::{record_verifier, sample_stream};
 use leanvm_univariate::{Claims, KECCAK_REC3, Shape};
 
-/// leanVM 9d50c92a3 at 400 signatures (`crates/leanvm_univariate/tests/keccak_vm.rs`).
+/// leanVM 9d50c92a3 at 400 signatures (`crates/leanvm/univariate/tests/keccak_vm.rs`).
 const KECCAK_400: Shape = Shape {
     log_memory: 22,
     log_bytecode: 18,

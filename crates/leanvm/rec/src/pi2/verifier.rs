@@ -1,5 +1,5 @@
 // Part of this repository. The reduction's shape (one quotient identity at `t`, claims on the tables that hold the
-// polynomials, the Cantor digits and the extension's coordinates) follows crates/quotient/src/protocol.rs (`reduce`,
+// polynomials, the Cantor digits and the extension's coordinates) follows crates/membership/quotient/src/protocol.rs (`reduce`,
 // adapted there from leanVM's `flock::quotient`, branch PCS-openings-aggregation, commit 651453c6); the transcript is
 // crates/leanvm_statement's Keccak-256 chain (`KeccakChannel`). MIT OR Apache-2.0; see NOTICE.md.
 //! π2's verifier, generic over the scalar (`leanvm_statement::scalar::Scalar`): on `E` with the Keccak-256 chain it is
@@ -266,7 +266,7 @@ pub fn frobenius<S: Limbs>(x: S) -> S {
 
 /// `x^-1` for a nonzero `x`, by its norm to `K`: `m = x^(2^64) x^(2^128)` makes `N = x m` the norm, in `K`, whose
 /// inverse is `N^(2^64 - 2)` by Itoh–Tsujii (`t_k = N^(2^k - 1)`, the chain `1, 2, 3, 6, 7, …, 62, 63`: 63 squarings, 10
-/// products); then `x^-1 = m N^-1`. Two Frobenius maps and 76 products (crates/quotient's `protocol::inverse`).
+/// products); then `x^-1 = m N^-1`. Two Frobenius maps and 76 products (crates/membership/quotient's `protocol::inverse`).
 pub fn inverse<S: Limbs>(x: S) -> S {
     let f = frobenius(x);
     let m = f * frobenius(f);

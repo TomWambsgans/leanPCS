@@ -2,8 +2,8 @@
 
 # KeccakFlock: the Keccak-f block of the Keccak VM
 
-The Flock block of `crates/lv42_flock/src/keccak.rs` (one Keccak-f[1600] permutation in `2^17` positions, every
-round's state materialised, `C = I`; `crates/lv42_flock/KECCAK.md`), as the inhabitant of `KeccakVm.KeccakFlockSpec`
+The Flock block of `crates/vendor/leanvm-42422001/flock/src/keccak.rs` (one Keccak-f[1600] permutation in `2^17` positions, every
+round's state materialised, `C = I`; `docs/leanvm/flock/KECCAK.md`), as the inhabitant of `KeccakVm.KeccakFlockSpec`
 (`formal/KeccakVm/KeccakVm/Instance.lean`). It is a library of `formal/EndToEnd` (`KeccakFlock`,
 `srcDir = "../KeccakFlock"`, `warningAsError`). Its files are not `module`s: they import libraries that are not
 either, namely `formal/Circuit`'s `KeccakBits`, `formal/RecCircuit`'s `KeccakMath`, `FlockSoundUni.Transcription`
@@ -17,8 +17,8 @@ lake env lean ../KeccakFlock/KeccakFlockTest/Honest.lean         # the honest co
 lake env lean ../KeccakFlock/KeccakFlockTest/Terminal.lean       # both terminals against the Rust's (~9 min)
 ```
 
-The Rust side of `Rows.lean` and `Terminal.lean`: `cargo test --release -p leanvm_flock_gas --test lean_keccak_block --
---nocapture` (`crates/leanvm_flock_gas/tests/lean_keccak_block.rs`).
+The Rust side of `Rows.lean` and `Terminal.lean`: `cargo test --release -p leanvm_statement --test lean_keccak_block --
+--nocapture` (`crates/leanvm/statement/tests/lean_keccak_block.rs`).
 
 ## The R1CS (`KeccakFlock/Block.lean`)
 

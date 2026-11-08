@@ -9,7 +9,7 @@ checked word for word against the Rust verifier. The prover (`src/prover/`, "The
 - the Rust verifier accepts, the three WHIR openings verify, and the straight and deployable contracts accept the real
   calldata, with `PCS_OPEN` attesting exactly the claims the openings prove; mutated proofs are rejected;
 - the same holds for π1-rec3 (`KECCAK_REC3`);
-- π2 (`crates/leanvm_rec`) proves the real 400-signature π1-rec3 proof, and the recursion's contract accepts it.
+- π2 (`crates/leanvm/rec`) proves the real 400-signature π1-rec3 proof, and the recursion's contract accepts it.
 
 The gas is a function of the shape, not of the proof: the real proofs run at the gas measured below without a prover.
 
@@ -24,15 +24,15 @@ The gas is a function of the shape, not of the proof: the real proofs run at the
   - the bytecode operands are the seven bases;
   - there are 86 columns: 9 operands, 25 + 25 lanes, and 27 counts.
 
-  `leanvm_flock_gas::layout::tables_keccak` states the table and its 28 flush pairs, and the other five tables are
+  `leanvm_statement::layout::tables_keccak` states the table and its 28 flush pairs, and the other five tables are
   unchanged.
 - **The hash argument is not leanVM's.** leanVM's Flock block packs three permutations into 2^17 slots and commits
   only the χ products. Its matrices are dense in the θ cascade, so the lincheck terminal is a walk of the whole circuit
-  (leanVM's `bilinear_walk`). `crates/lv42_flock/KECCAK.md` §4.2 estimates such a walk at about 1.3M additions a
+  (leanVM's `bilinear_walk`). `docs/leanvm/flock/KECCAK.md` §4.2 estimates such a walk at about 1.3M additions a
   permutation, which is unaffordable in a contract.
-  - This verifier uses instead the Keccak-f block of `lv42_flock::keccak` (`crates/lv42_flock/KECCAK.md`, M1): one permutation per 2^17
+  - This verifier uses instead the Keccak-f block of `lv42_flock::keccak` (`docs/leanvm/flock/KECCAK.md`, M1): one permutation per 2^17
     slots, with every round's state materialised.
-  - Its terminal is the structured one (`keccak_flock::structured_terminal`, `crates/lv42_flock/KECCAK.md`, M3), about 3K `E` operations.
+  - Its terminal is the structured one (`keccak_flock::structured_terminal`, `docs/leanvm/flock/KECCAK.md`, M3), about 3K `E` operations.
   - The `A0` and `B0` matrices (2^34 entries) are never committed, so there are no claims on them: 3 claims in 3 calls,
     against the BLAKE2s main line's 5.
 - **The link** is BLAKE2S's. The 50 lane columns are committed in `C1` as the univariate copies. `Q_W` binds each one
@@ -98,11 +98,11 @@ Calldata is 1,056 B more:
 - three more zerocheck rounds and three more lincheck rounds: +288 B;
 - one batch round fewer: −48 B.
 
-### Under the recursion (`crates/leanvm_rec`)
+### Under the recursion (`crates/leanvm/rec`)
 
 π1 is recorded with π1-rec3's Fiat–Shamir shape (`Variant { skip: 3, TowerWalk, Rec3 }`), compiled into π2's D16v
 circuit on a sample stream, and π2's contract is measured. The gas depends on the circuit alone
-(`crates/leanvm_rec/tests/keccak_vm_rec.rs`).
+(`crates/leanvm/rec/tests/keccak_vm_rec.rs`).
 
 | π1 | Keccak-f | `E` products / linear | π2 positions | π2 blocks / selector pairs | contract execution | tx, `c` = 0 |
 |---|---:|---:|---:|---:|---:|---:|
@@ -302,12 +302,12 @@ Where the 400-signature `KECCAK_MAIN` proof's time goes on h1 (load 6):
 ## What remains
 
 1. **Capacity.** Above about 470 signatures, either commit `q_flock` in two commitments (one more call), or use a
-   denser Keccak-f block that keeps a cheap terminal. `crates/lv42_flock/KECCAK.md` §4.2's `k_log = 16` with a general `C` would be
+   denser Keccak-f block that keeps a cheap terminal. `docs/leanvm/flock/KECCAK.md` §4.2's `k_log = 16` with a general `C` would be
    2^10 words per permutation: 1,000 signatures would then put `q_flock` alone at 2^28.
 2. **The prover's speed.** It is 4–8× slower than leanVM `9d50c92a3`'s own prover on the same workload
    ("Measured"). Most of the gap is the protocol's: two `2^28` commitments, their openings and the quotients, against
    leanVM's single `2^26.5` commitment. What is left to try:
-   - on aarch64, a NEON `lanes` module for `crates/quotient/src/ntt.rs`, which today multiplies one lane at a time.
+   - on aarch64, a NEON `lanes` module for `crates/membership/quotient/src/ntt.rs`, which today multiplies one lane at a time.
      It would speed up every transform: `C1`'s, the tree, the leaves, `Q_W`.
    - Flock's level-0 bit pass: two kernels were tried and neither was faster. One halved the products; the other read
      L1-resident nibble tables. Its cost is per-quad overhead, not multiplications or cache misses.

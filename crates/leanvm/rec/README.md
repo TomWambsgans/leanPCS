@@ -5,12 +5,12 @@
 A proof of a leanVM 42422001 execution, verified by recursion. The statement is leanVM 42422001's: the same VM,
 tables, bus, BLAKE2s by Flock and public input.
 
-- **π1** is the univariate PIOP of `crates/leanvm_univariate`, with its Fiat–Shamir shape `FsShape::Rec3` /
+- **π1** is the univariate PIOP of `crates/leanvm/univariate`, with its Fiat–Shamir shape `FsShape::Rec3` /
   `FLOCK_REC3`, and leanVM's WHIR.
 - **π2** is a univariate SNARK, here in this crate, of π1's verifier minus its openings. Its circuit is compiled
   from π1's recorded verifier graph.
 - **The contract** runs only π2's verifier, then passes π1's and π2's claims to the aggregated `PCS_OPEN`
-  precompile. All claims are plain (point, value) claims, `crates/evm/src/machine.rs`'s ABI.
+  precompile. All claims are plain (point, value) claims, `crates/membership/evm/src/machine.rs`'s ABI.
 - **Fiat–Shamir and the PCS** use Keccak-256 and leanVM's WHIR in both layers.
 
 Design: [`SPEC-REC.md`](SPEC-REC.md) (§12 lists every change and where it stands); π2's PIOP: [`PI2.md`](PI2.md); the

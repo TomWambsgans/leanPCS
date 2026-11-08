@@ -1,8 +1,8 @@
--- Part of this repository. Transcribed from `crates/leanvm_univariate/src/verifier.rs` (`reduce` with
+-- Part of this repository. Transcribed from `crates/leanvm/univariate/src/verifier.rs` (`reduce` with
 -- `Blake2s::Keccak`, `qflock_slot`, `qflock_row_bits`, `vm_tables`, `stack_layouts_for`, `weight_at`, `batch`,
--- `KECCAK_MAIN`, `KECCAK_REC3`) and `crates/leanvm_flock_gas/src/flock_min.rs` (`verify_walked_with::<Keccak>`,
+-- `KECCAK_MAIN`, `KECCAK_REC3`) and `crates/leanvm/statement/src/flock_min.rs` (`verify_walked_with::<Keccak>`,
 -- `front_with`). The tables, flushes, fingerprints and public lines are leanVM 42422001's, the `SHA3` table leanVM
--- 9d50c92a3's (https://github.com/leanEthereum/leanVM), read through `crates/leanvm_flock_gas`. MIT OR Apache-2.0;
+-- 9d50c92a3's (https://github.com/leanEthereum/leanVM), read through `crates/leanvm/statement`. MIT OR Apache-2.0;
 -- see NOTICE.md.
 module
 
@@ -10,7 +10,7 @@ public import UniStatement.Rec
 public import UniKeccak.Terminal
 
 /-!
-# The Keccak VM's verifier (`reduce` with `Blake2s::Keccak`, `crates/leanvm_univariate/KECCAK.md`)
+# The Keccak VM's verifier (`reduce` with `Blake2s::Keccak`, `docs/leanvm/univariate/KECCAK.md`)
 
 `reduceWithK F shape publicWords variant mode`, line by line `reduce` on the Keccak VM, reusing `UniStatement`'s
 `reduceWithFs` steps where they do not change. What changes:

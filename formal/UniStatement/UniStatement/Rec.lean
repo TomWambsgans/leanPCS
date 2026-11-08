@@ -1,9 +1,9 @@
--- Part of this repository. Transcribed from `crates/leanvm_flock_gas/src/transcript.rs` (`FsShape`, `squares`,
+-- Part of this repository. Transcribed from `crates/leanvm/statement/src/transcript.rs` (`FsShape`, `squares`,
 -- `NARROW_BITS`, `narrow`, `Channel::sample_narrow`, `sumcheck_drawn`, `cantor_beta1`, `pair_point`,
 -- `pair_round_poly`, `sumcheck_pairs_drawn`), `flock_min.rs` (`zerocheck`'s draw, `Slices::TowerWalk`,
 -- `verify_walked`, `walked_terminal`), `flock.rs` (`blake2s_row_values`, `RowValues`, adapted there from leanVM
 -- (https://github.com/leanEthereum/leanVM), commit 42422001), `hash.rs` (`BLAKE2S_IV`, `BLAKE2S_SIGMA`,
--- `BLAKE2S_G_LANES`, leanVM's), `crates/leanvm_univariate/src/verifier.rs` (`reduce`'s `α` draw and walked Flock,
+-- `BLAKE2S_G_LANES`, leanVM's), `crates/leanvm/univariate/src/verifier.rs` (`reduce`'s `α` draw and walked Flock,
 -- `batch`'s rounds) and `contract.rs` (`variant_bytes`, `contract_iv_for`), at `leanvm-rec` 4247e37. MIT OR
 -- Apache-2.0; see NOTICE.md.
 module
@@ -13,7 +13,7 @@ public import UniStatement.Opening
 /-!
 # π1's Fiat–Shamir shapes for the recursion: π1-rec, π1-rec2, π1-rec3
 
-`crates/leanvm_rec/SPEC-REC.md` §1.4 and §12 (items 4, 6–8), `SPEC-POINTS.md`. The recursion's inner proof π1 is the
+`docs/leanvm/rec/SPEC-REC.md` §1.4 and §12 (items 4, 6–8), `SPEC-POINTS.md`. The recursion's inner proof π1 is the
 main line with its Fiat–Shamir shape changed (`FsShape`, a parameter here, **`main` by default**) and, from π1-rec2
 on, Flock's lincheck terminal checked by π1's verifier itself (`walk`, `Slices::TowerWalk`):
 

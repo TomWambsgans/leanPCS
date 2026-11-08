@@ -4,7 +4,7 @@
 
 The same statement as leanVM 42422001 — same VM, the six tables and their columns, the bus, BLAKE2s by Flock,
 the public input — proved by a different PIOP, designed for the EVM with the aggregated `PCS_OPEN` precompile
-(`README.md` of the repository; ABI in `crates/evm/src/machine.rs`). Keccak-256 for Fiat–Shamir and the PCS
+(`README.md` of the repository; ABI in `crates/membership/evm/src/machine.rs`). Keccak-256 for Fiat–Shamir and the PCS
 (leanVM's WHIR, unchanged). Design: [`SPEC.md`](SPEC.md) (§13: iteration 2, the final verifier); Flock's part:
 [`SPEC-FLOCK.md`](SPEC-FLOCK.md); the prover: [`PROVER.md`](PROVER.md).
 
@@ -52,7 +52,7 @@ Phase table and the skip-3 Flock kernels: [`PROVER.md`](PROVER.md).
 - `tests/evm_vectors.rs`: the committed Rust→EVM vectors of real 1,000-signature proofs (`tests/vectors/`: calldata,
   each `PCS_OPEN` input, verdict, gas) replayed on both builds, plus 13–17 mutations each that must revert. Among them
   π1-rec's (`main_line_rec.txt`: `FLOCK_REC`, the main line with the Fiat–Shamir shape `FsShape::Rec` that the
-  recursion of `crates/leanvm_rec` proves; 181,019 gas straight, 191,296 deployed).
+  recursion of `crates/leanvm/rec` proves; 181,019 gas straight, 191,296 deployed).
 - `tests/prove_real.rs` (needs a trace; `--ignored`), `tests/prove_tiny.rs`, `tests/flock_skip.rs`: the Rust verifier, the WHIR openings and both contract builds
   accept real proofs and reject mutated ones.
 

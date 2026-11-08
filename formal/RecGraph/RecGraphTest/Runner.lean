@@ -7,8 +7,8 @@ import RecGraph.Semantics
 # The differential runner
 
 `lake env lean ../RecGraph/RecGraphTest/Runner.lean` (from `formal/EndToEnd`), with the vectors of
-`crates/leanvm_rec/tests/lean_graph.rs` (`lean_vectors`) at `$REC_VECTORS` and, optionally, the committed real vector
-`crates/leanvm_univariate/tests/vectors/main_line_rec3.txt` at `$REC_REAL`. Compiled evaluation (`#eval`), not the
+`crates/leanvm/rec/tests/lean_graph.rs` (`lean_vectors`) at `$REC_VECTORS` and, optionally, the committed real vector
+`crates/leanvm/univariate/tests/vectors/main_line_rec3.txt` at `$REC_REAL`. Compiled evaluation (`#eval`), not the
 kernel. For every vector, three runs on the same calldata, compared on every output (each `PCS_OPEN` call's bytes, the
 values required zero, the values required nonzero):
 

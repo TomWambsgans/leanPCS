@@ -1,5 +1,5 @@
 // New in this repository (not from leanVM): the Keccak-f[1600] permutation as a Flock block R1CS, for
-// `crates/lv42_flock/KECCAK.md` §4.2 and §4.5 (design C*, milestone M1). Its walks and its prover entry follow this
+// `docs/leanvm/flock/KECCAK.md` §4.2 and §4.5 (design C*, milestone M1). Its walks and its prover entry follow this
 // crate's BLAKE2s block (`hash.rs`, leanVM 42422001's): the same row kinds, `C = I`, the same `LincheckCircuit` seam
 // and the same zerocheck-with-skip and lincheck calls. MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and
 // NOTICE.md at the repository root).

@@ -1,7 +1,7 @@
-# Formal verification of `crates/quotient`
+# Formal verification of `crates/membership/quotient`
 
-Knowledge soundness, completeness and statistical zero knowledge of the membership proof that `crates/quotient`
-builds and `crates/evm` verifies, in Lean 4. **The statement** is [`Statement/`](Statement/README.md), a Lake
+Knowledge soundness, completeness and statistical zero knowledge of the membership proof that `crates/membership/quotient`
+builds and `crates/membership/evm` verifies, in Lean 4. **The statement** is [`Statement/`](Statement/README.md), a Lake
 package of definitions and end statements only, on leanerVM `mumbai`'s `Statement/`: the relation, the proof
 format, the verifier (computable, differential-tested against the Rust), the honest prover, the extractor and
 the simulator, and `KnowledgeSoundness`, `Completeness`, `ZeroKnowledge(With)` in the random-permutation model.
@@ -18,13 +18,13 @@ starting point is leanVM's `formal/quotient` (branch `PCS-openings-aggregation`)
 [`README.upstream.md`](README.upstream.md): sorry-free proofs of the reduction for the BLAKE2s/full-adder
 circuit, with ideal commitments.
 
-**The univariate PIOP for leanVM 42422001** (`crates/leanvm_univariate`, milestone 4): its verifier transcribed
+**The univariate PIOP for leanVM 42422001** (`crates/leanvm/univariate`, milestone 4): its verifier transcribed
 and differential-tested, with its end statements `UniKnowledgeSoundness` and `UniCompleteness` against
 [`Lv42/`](Lv42)'s relation `M3Holds`, is [`UniStatement/`](UniStatement/README.md), a library of `EndToEnd/`;
 its knowledge soundness is proved, with no hypothesis, in `UniSound/` and `FlockSound/`
 ([below](#the-univariate-verifier-for-leanvm-42422001-knowledge-soundness)).
 
-**The recursion's inner verifier as a graph** (`crates/leanvm_rec`, π1-rec3): [`RecGraph/`](RecGraph/README.md), a
+**The recursion's inner verifier as a graph** (`crates/leanvm/rec`, π1-rec3): [`RecGraph/`](RecGraph/README.md), a
 library of `EndToEnd/`: π1-rec3's recorded verifier graph (written by the Rust, data only), its semantics over any
 permutation, the Lean recorder with "recording commutes with evaluation", and **graph = `UniStatement`'s verifier at
 π1-rec3** (`UniStatement/UniStatement/Rec.lean`), proved off the merge hazard (`RecGraph.Pi1.pi1GraphIsVerifier`, no
@@ -32,7 +32,7 @@ other hypothesis; the hazard, `y(t)` starting like `w` or Flock's point, has pro
 `hazard_prob`). The recorded graph is the Rust's node for node (`RecGraphTest/Pi1Check.lean`, by computation), and
 an oracle under which the graph and the verifier differ on the hazard is exhibited (`RecGraphTest/Runner.lean`).
 
-**The recursion's outer verifier** (`crates/leanvm_rec`, π2): [`RecStatement/`](RecStatement/README.md), a library of
+**The recursion's outer verifier** (`crates/leanvm/rec`, π2): [`RecStatement/`](RecStatement/README.md), a library of
 `EndToEnd/`: π2's verifier as computable Lean (the seed and IV, the public data in the stream, the arithmetic at `t`
 over any field, the six `PCS_OPEN` calls word for word), the circuit's tables as data the Rust emits (with a staleness
 test), differential-tested on the real π1-rec3 + π2 proof and 63 other streams (64/64 agree on every value); the
@@ -112,7 +112,7 @@ Statement's own definitions. Every theorem below is sorry-free and depends only 
 - **The models**: Keccak-f[1600] is one random permutation, and Keccak-256 is its sponge; every hash of the protocol
   is over that one π (the chain, the Merkle trees, the openings' duplex, the circuit's commitment), and the relation
   is over the deployed Keccak-256. The prover's randomness is uniform. As deployed (`Randomness::derive`,
-  `crates/quotient/src/protocol.rs`): a key is Keccak-256 of a tag, a 32-byte OS seed, the transcript's label (the
+  `crates/membership/quotient/src/protocol.rs`): a key is Keccak-256 of a tag, a 32-byte OS seed, the transcript's label (the
   circuit's commitment, the statement) and a digest of the witness's cells; the masks are the words of
   Keccak-256(tag ‖ key ‖ k), `k = 0, 1, 2`; the padding seed is Keccak-256(tag ‖ key), each table's seed is
   derived from it (`table_seed`), and each lane's padding is ChaCha12 keyed by Keccak-256(table seed ‖ lane).
@@ -129,10 +129,10 @@ Statement's own definitions. Every theorem below is sorry-free and depends only 
   - the Statement's prover against the Rust's: the reduction's stream of nine scalars, at `2^17` rows on a small
     circuit only (the openings are not compared); for zero knowledge, the Lean skeleton, which `coreD` relates to
     the Statement's prover, makes the Rust prover's queries and proof byte for byte at `2^17` rows
-    (`crates/quotient/tests/skel_trace.rs`);
-  - the EVM bytecode computes the recorded graph (`crates/evm`'s parity tests); `FIELD_MUL` and `KECCAK256` are
+    (`crates/membership/quotient/tests/skel_trace.rs`);
+  - the EVM bytecode computes the recorded graph (`crates/membership/evm`'s parity tests); `FIELD_MUL` and `KECCAK256` are
     the Lean operations (`mulE` is proved to be `F192`'s product; the Rust's `F192` arithmetic by test vectors);
-  - the `PCS_OPEN` mock (`crates/evm/src/machine.rs`) is the Rust `opening::verify`, which is
+  - the `PCS_OPEN` mock (`crates/membership/evm/src/machine.rs`) is the Rust `opening::verify`, which is
     `PcsQuotient.openingWith` (the differential test);
   - the extractor's cost table (read off its loops), and Gao's decoder recovering every word within its radius
     (`PcsQuotientTest/Decoder.lean`; the soundness proof does not need it).
@@ -244,7 +244,7 @@ systemd-run --scope -p MemoryMax=10G lake build UniSound FlockSoundUni FlockSoun
 
 ## π1-rec3: the recursion's inner verifier (knowledge soundness and completeness)
 
-π1-rec3 (`crates/leanvm_rec/SPEC-REC.md` §12 items 5, 7, 8, §1.4; `SPEC-POINTS.md`) is the univariate verifier with
+π1-rec3 (`docs/leanvm/rec/SPEC-REC.md` §12 items 5, 7, 8, §1.4; `SPEC-POINTS.md`) is the univariate verifier with
 `α = (c, c², c⁴, c⁸)`, Flock's zerocheck coordinates as squares of one challenge, Flock's lincheck terminal walked
 (no `A0`, `B0` claims: three openings), and the batch two variables a round with narrow (160-bit) challenges. Its
 statement is `UniStatement/UniStatement/RecSecurity.lean`'s (`UniKnowledgeSoundnessRec3`, `UniCompletenessRec3`, over
@@ -290,7 +290,7 @@ systemd-run --scope -p MemoryMax=10G lake build UniSound.Rec3 UniComplete.Rec3En
 >   honest prover" below);
 > * **the honest hazard `δh`** (see the named inputs' table below).
 
-The recursive EVM verifier (`crates/leanvm_rec`) runs π2's verifier, then six `PCS_OPEN` calls. Its statements are
+The recursive EVM verifier (`crates/leanvm/rec`) runs π2's verifier, then six `PCS_OPEN` calls. Its statements are
 [`RecStatement`](RecStatement/README.md)'s. They come in two parts, because π2's circuit computes π1-rec3's Fiat–Shamir
 with the real Keccak-f[1600] while π1-rec3's soundness is proved in the random-permutation model. The library
 [`RecCompose/`](RecCompose/README.md) proves part 1 from π2's layers, bounds it in bits, and proves part 1 ⇒ part 2.
@@ -493,7 +493,7 @@ and `recCompleteness_pi2_closed_fs` (the same inputs, `Pi1CompletenessKeccak D P
 * **π2's honest prover** (`Pi2Prover.lean`: `pi2ProveStreamWith`, `pi2ProveWith`, `prover.rs` transcribed over any
   Keccak-256 and permutation; `pi2Prover`, `Pi2CompleteEnd.lean`: the setup, the IVs, a witness by `Classical.choose`,
   π1's three openings then π2's). **Differential test** (`RecComposeTest/Pi2Prover.lean`, vectors from
-  `crates/leanvm_rec/tests/lean_pi2_prover.rs`, `spec::example()` padded to `2^9`, `2^10` positions): the setup's,
+  `crates/leanvm/rec/tests/lean_pi2_prover.rs`, `spec::example()` padded to `2^9`, `2^10` positions): the setup's,
   `W`'s and `Q`'s roots and the stream byte for byte, 2/2. **The deployed Rust prover is trusted for completeness**:
   the Lean prover is a transcription, compared with the Rust on that example only (not on π2's real circuit), and its
   witness is `Classical.choose` among the honest ones, not the Rust's witness generation.
@@ -659,7 +659,7 @@ systemd-run --scope -p MemoryMax=16G lake exe rec-real-check --setup-only   # Se
 
 ## The Keccak VM (`KeccakVm/`): its statement
 
-The Keccak VM (`crates/leanvm_univariate/KECCAK.md`) is leanVM 42422001 with `BLAKE2S` replaced by leanVM
+The Keccak VM (`docs/leanvm/univariate/KECCAK.md`) is leanVM 42422001 with `BLAKE2S` replaced by leanVM
 `9d50c92a3`'s `SHA3`. [`KeccakVm/`](KeccakVm/README.md), a library of `EndToEnd/`, is its statement:
 
 - **The instruction set.** The `SHA3` opcode is one step of `9d50c92a3`'s cell sponge: `keccakF1600` (leanerVM's)
@@ -676,7 +676,7 @@ The Keccak VM (`crates/leanvm_univariate/KECCAK.md`) is leanVM 42422001 with `BL
 
 Built on it:
 
-- **The Keccak-f block** ([`KeccakFlock/`](KeccakFlock/README.md)): the R1CS of `crates/lv42_flock/src/keccak.rs`
+- **The Keccak-f block** ([`KeccakFlock/`](KeccakFlock/README.md)): the R1CS of `crates/vendor/leanvm-42422001/flock/src/keccak.rs`
   and the inhabitant `KeccakFlock.keccakFlockSpec`. All of this is proved with no hypothesis:
   - `step_of_holds`: a satisfying block holds `keccakF1600` of its input port at its output port;
   - completeness;
@@ -721,13 +721,13 @@ lake env lean ../KeccakVm/KeccakVmTest/Isa.lean && lake env lean ../UniStatement
 | F2 | WHIR openings list-sound for our claims (some member of the root's level-0 list satisfies all claims of one opening) | leanerVM `mumbai`, `lean_vm` `Whir/Sound`: `stackedSpec` holds for any multiaffine weights; ours are | **done for the deployed openings** in [`WhirBridge/`](WhirBridge/README.md) (sorry-free, `propext`, `Classical.choice`, `Quot.sound`; no `native_decide`): `ours_sound`, Fiat–Shamir soundness in the two-oracle ROM of `opening::verify` itself (version-2 transcript: IV `keccak256(prefix ‖ claims)`, zero public digest, root read from the proof and checked; no claim rejected) for the witness and quotient (hidden, **the redesigned layouts for condition (R)**: overflow lane 32, random lanes 33..39, the gadget) and wiring (public) layouts at every `2^17..2^22` rows: an adversary of `QA` queries outputting a root, claims and a proof makes it accept while every candidate **table** (`Table::read`) of the root's extracted word violates a claim with probability ≤ `(QA + 10122)(2^-128 + 5(QA + 10122)/2^256)` ≤ `2^-63` for `QA ≤ 2^64`. The Lean `Layout` has every field of the Rust's, both branches of the weight closure transcribed with the gadget's term (the gadget one more stack claim of value zero, batched with `λ^m`; every weight multiaffine; `holds_iff` for the hidden layouts' claims, `gadget_holds_iff`: the gadget says the pattern lanes' `β`-combination at its entries is zero; the event, on the claims only, implies mumbai's doom, which counts the gadget); `Test/Check.lean` accepts the Rust's deployed witness and quotient openings, rejects them without the gadget's term, and recomputes the 18 prefixes. Level-0 candidates per root exported: ≤ 9,952 (wiring), 7,908 (witness), 3,564 (quotient). **Extended to public layouts of `2^24..2^28` words for a leanVM PIOP** ([`WhirBridge/Large*.lean`](WhirBridge/README.md#public-layouts-at-224--228-a-univariate-leanvm-piop)): `ours_sound_public` for every `Layout::new` layout of `(table, height)` chunks that passes its assertions (`Layout.new_valid`, one generic proof), the ladders, `L₀` = 9,952 / 7,908 / 6,296 / 4,473 / 3,564 and the verifier's `QO` = 7,183 .. 9,018 at `log_n` = 24 .. 28 by kernel decision, the union over one, two, three roots' lists (`L₁L₂ < 2^27`). Not covered here, and done in F4: the random-permutation model, extraction from the adversary's queries alone, the composition with the reduction. Not covered: pruned paths, the Rust being the Lean mirror (test evidence) |
 | F3 | Hiding openings: the padded tables (base field `K = GF(2^64)`, challenges in `E = GF(2^192)`, first fold 6); then (F3b) the roots, Merkle siblings, nonces and Fiat–Shamir in the random-oracle and random-permutation models, with an explicit simulator | new (the ZK-WHIR note, adapted to `K ⊂ E`; `membership-zk.md` of leanVM's branch for the sibling argument) | Lean: `formal/QuotientSecurity/Hiding/` (sorry-free): for two tables with the same claims, the views (lane rounds, the folded table, every opened row) have the same distribution on the good challenges (`hidden_view_evalDistEq`), and differ by at most Pr[(R) fails] + ~2^-127 on any event (`hidden_prEvent_le_bound`; (S) bounded by `card_not_span_four_le`); unopened rows keep ≥ 2,368 / 3,840 bits (`unopened_row_le`). For that first layout, condition (R) (`RoundsReached`) is a hypothesis (estimated ≈ 2^-53 in `HIDING.md`). **The deployed layouts, with the gadget** (`GadgetTheorem.lean`, `Deployed.lean`): (S) and (R) proven, not assumed, at every challenge `(μ, φ)` with `μ ≠ 0`, no coordinate of `φ` in `{0, 1}` and at most one of `φ₀, φ₁, φ₂` in `K` (`Solve.span_cube_erase`, `GadgetLayout.roundsReached`), (Q) and `WeightsFit` proven for the deployed weights, and **`deployed_prEvent_le`**: for the witness and quotient tables at `2^17 .. 2^22` rows, two tables with the same claims give experiments within `1/\|E\| + (12·\|E\| + 3·\|K\|²)/\|E\|² < 2^-188` on any event. The view is the linear part only: the level-0 roots (in calldata), the Merkle siblings, the grinding nonces and Fiat–Shamir are F3b's (below; hiding of the roots rests on that random-oracle step). Per table, interactive, honest verifier. The padding is uniform here; the prover's comes from a CSPRNG (ChaCha12 keyed by a Keccak-256 KDF of an OS seed), so as deployed the hiding is computational in that generator |
 | F4 | Composition: commitments as Merkle trees over Keccak-256 in the random-permutation model, the reduction's Keccak-256 chain, the openings' duplex; extraction from the adversary's transcript (`mumbai`'s `Statement/Extractor.lean` decodes WHIR words by Guruswami–Sudan) | `mumbai` `common` (sponge indifferentiability, ROM→RPM), `lean_vm` extraction | **the chain (F4a) done** in [`QuotientRpm/`](#the-keccak-256-chain-f4a) (sorry-free, `propext`, `Classical.choice`, `Quot.sound`): the reduction with `transcript.rs`'s chain, byte for byte, in the ROM and in leanerVM's RPM, ideal commitments (a root is Keccak-256 of an injective encoding of the message). **Real commitments composed with the openings (F4b)** in [`Compose/`](Compose/README.md) (sorry-free, same three axioms): the chain absorbs the proof's roots, every round union-bounded over the roots' candidate lists (`L₁` for `(α, β, γ)`, `L₁ L₂` for `t`, `ρ`; `≤ 2^-128` per query for lists up to `2^18`, `2^-138` with the certified `7908` / `3564`), the Merkle extraction from the transcript (computable, stable; mumbai's `extract` without collisions, `wordOfMerkle_eq_extract`), in the ROM and in mumbai's two-oracle model. The general statements (`knowledgeSoundness_merkle`, `_kc`) take the openings' doomed events as hypotheses: events in F2's oracle model, **not** literally F2's (any openings' verifier; `merkleWord` and a decoder for `extract`, `Candidates`, `Layout.tableEval`; F1's polynomial identities for `reduce`'s multilinear claims; the final transcript for the cache at the end of the opening), and their extractor reads every Keccak-256 query of the run. **The deployed composition** (`Deployed.lean`, `DeployedWired.lean`, `WiringSetup.lean`; **`knowledgeSoundness_wired_setup(_bits)`**): the setup computes the Merkle tree of the wiring stack's word with the oracle before the adversary runs (`stackSetup`, `2^20` queries at `2^22` rows); its root is in the chain's label and is the wiring opening's root; the chain, then `opening::verify` three times (F2's `ourVerifier`); the computable extractor reads the adversary's queries only (`adversaryExtractor`, decoder `tableCode`: mumbai's Guruswami–Sudan `decodeStacks`); **all three openings' terms are F2's `ours_sound`** (`prEvent_EWw_le`, `prEvent_Eσw_le`, `prEvent_EQw_le`; `QO = 10122` derived from F2's `variantQueries_eq`), the wiring term discharged: the setup's queries make the root's extracted word the stack's word (`extract_wiringSetup`), whose only candidate at the level-0 Johnson threshold is the stack (`candidates_honest`; rate `1/2`, Johnson radius ≈ 0.293 < distance 1/2): `openingBound (QS + Q + 6) + openingBound (QS + Q + 6 + QO) + openingBound (QS + Q + 6 + 2 QO) + N (2^-128 + 5 N / 2^256)`, `N = QS + Q + 6 + 3 QO` (about `2^-62` for `Q ≤ 2^64`). **The claim maps** `reduce`'s, `WitnessClaims`, `QuotientClaims`, `WiringClaims` discharged (`Compose/Claims.lean`: `knowledgeSoundness_deployed_rust`). **In the random-permutation model** (`Compose/Rpm.lean`: `knowledgeSoundness_wired_setup_rpm_bits`, `+ (QSπ + Q + 7 + 3 QOπ)² / 2^508`; at the deployed claim maps `Soundness.knowledgeSoundness_rust_rpm`, `EndToEnd/Soundness/RpmV.lean`), which the end-to-end theorem uses. Nothing left |
-| F5 | The implementation is the model: the EVM contract and the Rust verifier are generated from one recorded operation graph (`crates/evm/src/record.rs`); emit that graph as a Lean term too and prove it equals the model's verifier | new | **done for the graph** in [`Implementation/`](Implementation.lean) (sorry-free, no `native_decide`; end theorems on `propext`, `Classical.choice`, `Quot.sound`): `Implementation/Graph.lean` is the deployed contract's recorded graph (631 nodes, 122 output words, 1 nonzero check), written by `crates/evm/src/lean.rs` (`graph_lean_is_current` fails when stale); `Interp.lean` interprets it on calldata as `codegen.rs` compiles each node (EVM words, `XOR`, `FIELD_MUL` = `mulE`, Keccak-256 of `MSTORE`d words, `CALLDATALOAD` and shifts), for any hash. Proved, in any field with `F192`'s limbs (`IsF192`: `XOR` is `+`, `mulE` is `*`; the Frobenius node is then `x^(2^64)`, `frobOK`): a Lean transcription of `reduce` finds every node it asks for and gives exactly the contract's words and nonzero check (`Program.reduceIds_eq`, kernel evaluation); those nodes hold `reduce`'s formulas (per-node semantics, the norm inversion is `x⁻¹`), which are the claims and denominator of `claims_iff_accepts_ofCantor` on `membershipParams` with the graph's constants checked by computation (`consts`: Cantor basis, `b`, `tau`, extension); on `calldataOf` the leaves are `Wire.verifyWith`'s Keccak-256 chain byte for byte (`leafVals_calldataOf`); so `graph_reaches_iff` (the contract reaches its `PCS_OPEN` calls iff the denominators' product is nonzero), `graph_words` (it hands them the root words of `r₁`, the index root, `r₂`, the layout ids and the model's four claims) and **`graph_is_verifier`**: with those claims true of tables whose polynomials are a model proof's messages, the contract accepts iff no `1 + w_k(t)` vanishes and `Wire.verifyWith` accepts, for the deployed `Wire` (`wire`: index root an input, `statement::halves`, `F192` limbs, coefficient encodings of the ideal commitments). **On the concrete field** (`Implementation/Field192.lean`): `isF192_primitives` discharges `IsF192` for F0c's `Primitives.F192` (CompPoly's `BF64.Ext3`) with its Rust limbs `(c0, c1, c2)` (`limbsEquiv`): `mulE` is its product, the core being `mul64_eq` (Rust's shift-fold `reduce` of the carry-less product is CompPoly's `reduce (carryLessMul a b)` for all 64-bit `a`, `b`: both are the remainder of the same polynomial modulo `x^64 + x^4 + x^3 + x + 1`, `clmul_eq_carryLessMul`, `reduce64_eq_reduce`; a structural proof, no `bv_decide`); so **`graph_is_verifier_F192`**, `graph_words_F192`, `graph_reaches_iff_F192` hold with no field hypothesis. **Tested, not proved**: bytecode = graph (`crates/evm` parity tests); the interpreter = the Rust verifier (`Implementation/Diff.lean`, 3,000 random calldata, 0 disagreements); the Rust's `F192` arithmetic = `mulE` (`mulE` transcribes its software `clmul` and `reduce`; the transcription and the Karatsuba and PMULL paths are checked by those tests and `Field/Test.lean`'s vectors); the `PCS_OPEN` mock is `opening::verify`, which is `PcsQuotient.openingWith` (the Statement's differential test). **To the Statement's verifier**: `EndToEnd/Evm` (`evm_accepts_iff_verifyWith`, `evm_accepts_iff_exists`) |
+| F5 | The implementation is the model: the EVM contract and the Rust verifier are generated from one recorded operation graph (`crates/membership/evm/src/record.rs`); emit that graph as a Lean term too and prove it equals the model's verifier | new | **done for the graph** in [`Implementation/`](Implementation.lean) (sorry-free, no `native_decide`; end theorems on `propext`, `Classical.choice`, `Quot.sound`): `Implementation/Graph.lean` is the deployed contract's recorded graph (631 nodes, 122 output words, 1 nonzero check), written by `crates/membership/evm/src/lean.rs` (`graph_lean_is_current` fails when stale); `Interp.lean` interprets it on calldata as `codegen.rs` compiles each node (EVM words, `XOR`, `FIELD_MUL` = `mulE`, Keccak-256 of `MSTORE`d words, `CALLDATALOAD` and shifts), for any hash. Proved, in any field with `F192`'s limbs (`IsF192`: `XOR` is `+`, `mulE` is `*`; the Frobenius node is then `x^(2^64)`, `frobOK`): a Lean transcription of `reduce` finds every node it asks for and gives exactly the contract's words and nonzero check (`Program.reduceIds_eq`, kernel evaluation); those nodes hold `reduce`'s formulas (per-node semantics, the norm inversion is `x⁻¹`), which are the claims and denominator of `claims_iff_accepts_ofCantor` on `membershipParams` with the graph's constants checked by computation (`consts`: Cantor basis, `b`, `tau`, extension); on `calldataOf` the leaves are `Wire.verifyWith`'s Keccak-256 chain byte for byte (`leafVals_calldataOf`); so `graph_reaches_iff` (the contract reaches its `PCS_OPEN` calls iff the denominators' product is nonzero), `graph_words` (it hands them the root words of `r₁`, the index root, `r₂`, the layout ids and the model's four claims) and **`graph_is_verifier`**: with those claims true of tables whose polynomials are a model proof's messages, the contract accepts iff no `1 + w_k(t)` vanishes and `Wire.verifyWith` accepts, for the deployed `Wire` (`wire`: index root an input, `statement::halves`, `F192` limbs, coefficient encodings of the ideal commitments). **On the concrete field** (`Implementation/Field192.lean`): `isF192_primitives` discharges `IsF192` for F0c's `Primitives.F192` (CompPoly's `BF64.Ext3`) with its Rust limbs `(c0, c1, c2)` (`limbsEquiv`): `mulE` is its product, the core being `mul64_eq` (Rust's shift-fold `reduce` of the carry-less product is CompPoly's `reduce (carryLessMul a b)` for all 64-bit `a`, `b`: both are the remainder of the same polynomial modulo `x^64 + x^4 + x^3 + x + 1`, `clmul_eq_carryLessMul`, `reduce64_eq_reduce`; a structural proof, no `bv_decide`); so **`graph_is_verifier_F192`**, `graph_words_F192`, `graph_reaches_iff_F192` hold with no field hypothesis. **Tested, not proved**: bytecode = graph (`crates/membership/evm` parity tests); the interpreter = the Rust verifier (`Implementation/Diff.lean`, 3,000 random calldata, 0 disagreements); the Rust's `F192` arithmetic = `mulE` (`mulE` transcribes its software `clmul` and `reduce`; the transcription and the Karatsuba and PMULL paths are checked by those tests and `Field/Test.lean`'s vectors); the `PCS_OPEN` mock is `opening::verify`, which is `PcsQuotient.openingWith` (the Statement's differential test). **To the Statement's verifier**: `EndToEnd/Evm` (`evm_accepts_iff_verifyWith`, `evm_accepts_iff_exists`) |
 
 ## The Keccak-256 chain (F4a)
 
 `QuotientRpm/` (library `QuotientRpm`, which needs leanerVM `mumbai`'s `statement` and `common` packages,
 pinned in `lakefile.toml`) lifts the reduction's knowledge soundness from an abstract random oracle on
-`(statement, messages)` to the transcript `crates/quotient/src/transcript.rs` computes.
+`(statement, messages)` to the transcript `crates/membership/quotient/src/transcript.rs` computes.
 
 - **The chain** (`Bytes.lean`, `Chain.lean`): the seed is Keccak-256 of the label `pcs-quotient-kc1 ‖
   index_root ‖ y ‖ root` (112 bytes); each challenge is Keccak-256 of the state and of the scalars sent since
@@ -862,7 +862,7 @@ computational in that PRG).
   lift to leanerVM's random-permutation model is separate (`QuotientZk/Rpm*.lean`, `RpmJoint.lean`,
   `RpmDiscipline.lean`).
 - **`skel` against the Rust prover, by test** (`QuotientZk/Test/SkelTrace.lean`, executable `skeltrace`;
-  `crates/quotient/tests/skel_trace.rs`, feature `skel-trace`, which records every Keccak call of a proof through
+  `crates/membership/quotient/tests/skel_trace.rs`, feature `skel-trace`, which records every Keccak call of a proof through
   test-only hooks): at `2^17` rows `skel`, run as compiled with mumbai's Keccak-256 and Keccak-f[1600] as the
   oracle, on the prover's statement, secret leaf digests and messages (cut from its transcript at its draws),
   makes the prover's queries byte for byte: the label and the five chain steps, the three IVs and seeds, the 254
@@ -1108,7 +1108,7 @@ weights, Cantor basis) with no hypothesis left (`completeness_deployed_concrete`
   slot names one source). The instance is soundness's `deployedInstance` with `beta()`'s basis
   (`deployedInstanceE`; `deployedBasis`: the 24 words of `domain.rs`'s `beta()`, a Cantor basis of `F64 = K`
   checked by the kernel, its vectors after the first of low bit clear, which determines it,
-  `deployedBasis_unique`; `crates/quotient/tests/lean_beta_vector.rs` asserts the words of the Rust), `hB`,
+  `deployedBasis_unique`; `crates/membership/quotient/tests/lean_beta_vector.rs` asserts the words of the Rust), `hB`,
   `hc`, `hw` by definition. **`completeness_deployed_concrete`**: on that instance, for each witness one set
   `Bad` of `(α, β, t)` of density `< 2^-163` outside which, for every transcript, hash, permutation and padding,
   the honest proof (when the openings' proofs of work succeed) is accepted; **`completeness_deployed_keccak`**

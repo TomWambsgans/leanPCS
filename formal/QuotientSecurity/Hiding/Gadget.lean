@@ -5,7 +5,7 @@ import QuotientSecurity.Hiding.Layout
 /-!
 # The gadget of the hidden layouts: its patterns reach every round value
 
-`crates/quotient/HIDING.md`, "Condition (R) for every challenge: the gadget". The gadget weighs, at
+`docs/membership/HIDING.md`, "Condition (R) for every challenge: the gadget". The gadget weighs, at
 nine entries of every lane's first piece, three patterns: lanes `0` and `31`, lanes `1` and `30`
 (pairs complementary in bits `0 .. 4`, on the lower half), and lane `32` (the overflow lane, on the
 upper half). Here, for one entry each and with `E`-valued tables:

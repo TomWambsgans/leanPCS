@@ -22,7 +22,7 @@ left unattested.
 | configuration | Flock | gas, straight | gas, deployed (contracts) | calldata |
 |---|---|---:|---:|---:|
 | main line, `Flock(FLOCK_MAIN)` | (a′): skip 3, the ring map in tower order | 182,104 | 192,392 (3) | 7,108 B |
-| π1-rec, `Flock(FLOCK_REC)` | (a′) with `FsShape::Rec` (`crates/leanvm_rec/SPEC-REC.md` §1.4) | 181,019 | 191,296 (3) | 7,108 B |
+| π1-rec, `Flock(FLOCK_REC)` | (a′) with `FsShape::Rec` (`docs/leanvm/rec/SPEC-REC.md` §1.4) | 181,019 | 191,296 (3) | 7,108 B |
 | extension B, `Flock(FLOCK_BIT_SLICE)` | (a): skip 4, the slices' combination a bit-slice claim | 90,996 | 95,955 (2) | 5,716 B |
 | `Flock(FLOCK_LEANVM_SKIP)` | leanVM's skip 6, the slices sent | 251,276 | 263,557 (4) | 8,308 B |
 | `Blake2s::Omitted` | none | 66,206 | 70,019 (2) | 3,508 B |
@@ -93,7 +93,7 @@ recorded inputs, and revert on 13 to 17 mutations each:
    one it commits (`setup::f_root`; at the reference shape `SetupRoots::REFERENCE.f`). The stream starts with the six
    row counts (F1), then `C1`'s root.
 1. **`C1`** (`columns.rs`, `stack.rs`): every column through the inverse additive NTT to its novel coefficients
-   (`crates/quotient/src/ntt.rs`: `quotient::domain`'s transform, vectorized), then by subset sums to basis `B`
+   (`crates/membership/quotient/src/ntt.rs`: `quotient::domain`'s transform, vectorized), then by subset sums to basis `B`
    straight into the stack (the polynomials keep their novel coefficients only); the counter inverses
    `z_T = 1/Π c_j` on every row; `q_flock` as values; leanVM's WHIR commit.
 2. **Setup `F`**: the bytecode's 16 tuple slots interleaved and the addresses (`setup.rs`).
@@ -109,7 +109,7 @@ recorded inputs, and revert on 13 to 17 mutations each:
    - leanVM's Flock buffers (2 GB) are freed after Flock.
 5. **The heap** (`bus.rs`): a leaf per row, the ratio on active rows (`domain::is_active`) and 1 on padding rows, the
    fingerprints eight rows at a time (`prints.rs`); the heap's novel coefficients limb by limb.
-6. **The quotients** (`quotients.rs`, on `crates/quotient/src/ntt.rs`). Each leaf quotient is sized as the verifier
+6. **The quotients** (`quotients.rs`, on `crates/membership/quotient/src/ntt.rs`). Each leaf quotient is sized as the verifier
    sizes it, for its height's fewest rows (`Shape::least_rows`, F1); `Q_W`'s counter term has no `Z_pad`.
    - Each numerator is evaluated on the first `T` points of an extension coset `D_M = ω_{2^M} + V_M` (outside the
      domain), `T = Σ 2^{e_j}` the verifier's count rounded up to `2^{r-2}`, in binary: blocks of points
@@ -142,7 +142,7 @@ recorded inputs, and revert on 13 to 17 mutations each:
 10. **The openings** (`opening.rs`): one point claim per commitment, leanVM's WHIR, the IV binding `PCS_OPEN`'s
     32-byte layout word (F2; version 2), whose `vars` and `placed` the verifier reads.
 
-## The skip kernels (`crates/lv42_flock/src/zerocheck/skip.rs`)
+## The skip kernels (`crates/vendor/leanvm-42422001/flock/src/zerocheck/skip.rs`)
 
 leanVM's zerocheck prover hard-codes `K_SKIP = 6` in its round-1 kernel; its bit and table rounds were written for
 rows of 8 bytes or more. The skip module proves the zerocheck for any `3 ≤ k ≤ 6`:
@@ -216,7 +216,7 @@ Other agents' Lean jobs shared h1 (four `lean` processes at full load; the runs 
 
 **Where the time goes** (`tests/prove_kernels.rs`, `tests/prove_quotients.rs`):
 
-- **The transforms** (`crates/quotient/src/ntt.rs`). A K-NTT of `2^18` takes 0.32 ms on one column (eight positions
+- **The transforms** (`crates/membership/quotient/src/ntt.rs`). A K-NTT of `2^18` takes 0.32 ms on one column (eight positions
   a row, AVX-512 carry-less products; `quotient::domain`'s: 1.1 ms), 1.4 ms for a batch of eight columns (one row a
   position), 1.8 ms when several batches take turns (memory-bound: 16 MB in and out); `2^23` on one column 10.6 ms
   (`quotient::domain`'s: 59 ms); an E-column is three of them, 32 ms against `quotient::domain`'s E-NTT's 150 ms.

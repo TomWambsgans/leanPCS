@@ -1,5 +1,5 @@
 -- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The transcript is
--- `crates/leanvm_flock_gas/src/transcript.rs`'s (`KeccakChannel`), as `formal/UniStatement`
+-- `crates/leanvm/statement/src/transcript.rs`'s (`KeccakChannel`), as `formal/UniStatement`
 -- transcribes it (`Transcript.lean`); the framework is `formal/Compose/Compose/ListChainU.lean`.
 import UniSound.Fs
 import Compose.ListChainKRpmS

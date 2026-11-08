@@ -1,5 +1,5 @@
 // Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
-//! SPEC-REC.md §2: the Merkle-path quotient SNARK (`crates/quotient`) as `π2`'s reference: its rows per Keccak-f,
+//! SPEC-REC.md §2: the Merkle-path quotient SNARK (`crates/membership/quotient`) as `π2`'s reference: its rows per Keccak-f,
 //! the membership circuit's use of its `2^22` rows, and its commitments' words per row.
 //!
 //! `cargo test --release -p leanvm_rec --test quotient_reference -- --nocapture`

@@ -1,8 +1,8 @@
-// Part of PCS-openings-aggregation (crates/leanvm_univariate/src/prover/dump_keccak), not of leanVM, and not a module
+// Part of PCS-openings-aggregation (crates/leanvm/univariate/src/prover/dump_keccak), not of leanVM, and not a module
 // of that crate: `apply.sh` copies it into a leanVM (https://github.com/leanEthereum/leanVM) tree at commit 9d50c92a3
-// (the Keccak VM, crates/leanvm_univariate/KECCAK.md) as crates/leanvm_core/src/cpu/trace_dump.rs. MIT OR Apache-2.0;
+// (the Keccak VM, docs/leanvm/univariate/KECCAK.md) as crates/leanvm_core/src/cpu/trace_dump.rs. MIT OR Apache-2.0;
 // see NOTICE.md.
-//! The execution trace of a run, written for the univariate prover's Keccak VM (`crates/leanvm_univariate/KECCAK.md`):
+//! The execution trace of a run, written for the univariate prover's Keccak VM (`docs/leanvm/univariate/KECCAK.md`):
 //! when `LEANVM_TRACE_DUMP` names a directory, [`maybe_dump`] runs the program again **without the fill blocks**
 //! (`cpu::filler`), writes the run's rows, memory and counts there, and exits the process.
 //!

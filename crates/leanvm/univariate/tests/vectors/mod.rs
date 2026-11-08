@@ -135,7 +135,7 @@ pub fn read(text: &str) -> Vector {
     v
 }
 
-/// A call of π1's own contract in `PCS_OPEN`'s ABI (`crates/evm/src/machine.rs`),
+/// A call of π1's own contract in `PCS_OPEN`'s ABI (`crates/membership/evm/src/machine.rs`),
 /// as π2's contract makes it: `C1`'s and `C2`'s root words are the stream's bytes, the ABI's already; a
 /// setup root's (`F`: layout code `0x5503`, the layout word's bytes 22..24) is the hash as it is, its word
 /// `root_word` of it.

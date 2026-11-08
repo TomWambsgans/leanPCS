@@ -1,5 +1,5 @@
 // Adapted from leanVM (https://github.com/leanEthereum/leanVM), branch PCS-openings-aggregation, commit 651453c6,
-// file crates/evm/src/quotient.rs; new here: the calls of `PCS_OPEN`, the selector, the index root in storage, its
+// file crates/membership/evm/src/quotient.rs; new here: the calls of `PCS_OPEN`, the selector, the index root in storage, its
 // deployment and `setIndexRoot`. MIT OR Apache-2.0; see NOTICE.md.
 //! The membership verifier (`quotient::protocol::reduce`) as a contract, its ABI, and its deployment.
 //!

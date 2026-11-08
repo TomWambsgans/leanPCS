@@ -6,7 +6,7 @@ import Mathlib.Tactic
 /-!
 # The product heap's tree
 
-The univariate PIOP's bus (`crates/leanvm_univariate/SPEC.md` §5.2, branch `leanvm-univariate`)
+The univariate PIOP's bus (`docs/leanvm/univariate/SPEC.md` §5.2, branch `leanvm-univariate`)
 is a binary heap of depth `n`: position `i` holds node `i` for `1 ≤ i < 2^n`, the root at `1`,
 the children of `p` at `2p` and `2p + 1`, the leaves at `[2^(n-1), 2^n)`. Position `0` is no
 node. On positions, the **tree identity** says that every position `2 ≤ i < 2^n` is a child of

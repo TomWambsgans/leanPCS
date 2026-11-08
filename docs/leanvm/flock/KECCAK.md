@@ -3,8 +3,8 @@
 # The Keccak-f[1600] Flock block
 
 The Flock block of `src/keccak.rs` (one Keccak-f permutation per `2^17` slots, every round's state materialised) and
-its verifier's structured lincheck terminal (`crates/leanvm_flock_gas/src/keccak_flock.rs`). The Keccak VM of
-`crates/leanvm_univariate/KECCAK.md` proves its `SHA3` table with them.
+its verifier's structured lincheck terminal (`crates/leanvm/statement/src/keccak_flock.rs`). The Keccak VM of
+`docs/leanvm/univariate/KECCAK.md` proves its `SHA3` table with them.
 
 They were designed and built for an SLH-DSA proof-of-concept that has since been removed from the repository (its
 milestones M1 and M3, `crates/slh_dsa/SPEC-FAST.md` in the history). This file keeps that spec's sections on the block,
@@ -15,7 +15,7 @@ unchanged but for this header. In them:
 
 ### 4.2 Keccak-f as a Flock block
 
-Flock (`crates/lv42_flock`) proves `A z ∘ B z = z` (`C = I`, baked into zerocheck and lincheck) per block, the blocks
+Flock (`crates/vendor/leanvm-42422001/flock`) proves `A z ∘ B z = z` (`C = I`, baked into zerocheck and lincheck) per block, the blocks
 batched; every z slot is the output of one row (constant wire, free input, lin-id `(form)·1`, product).
 
 - **Rows of round j** (24 rounds): `b = πρθ(A_{j-1})` is linear (each bit 11 bits of `A_{j-1}`).
@@ -63,7 +63,7 @@ So W's cells on the aligned coset `o + V_19` (2^17 rows × 4) equal `q_flock`'s 
 
 **Identity**: `W_R(z) + ℓ_q(z) = Q_link(z) · Z_19(z)`, where:
 - `W_R` is the restriction of W's polynomial to the coset. It is one claim at a mixed point (`SPEC.md` §2, in
-  `crates/quotient`'s novel basis).
+  `crates/membership/quotient`'s novel basis).
 - `ℓ_q(z) = q̂_port(y_0(z), …, y_18(z))`, with `y_l` the coordinate functionals (`domain::coordinate_functionals`).
   It is one claim on `q_flock`'s values, for 19² products.
 - `deg ℓ_q ≤ 19 · 2^18`, so `Q_link` has ≈ 4.46M words.
@@ -117,7 +117,7 @@ padding), `log_n = 29`, median of 3:
 
 At skip 3 the zerocheck is ≈ 0.17 s of it (round 1 0.021, bit passes 0.073 / 0.039 / 0.016, storing 0.013, table
 rounds 0.012), the lincheck (walk, fold, 11 rounds) ≈ 0.015 s. Within §4.9's 0.18 s and M1's 0.3 s target. The verifier's reference walk (generic `Scalar`) is
-`leanvm_flock_gas::keccak_flock` (`flock_min::verify_walked_with::<_, Keccak>`); the prover's entry is
+`leanvm_statement::keccak_flock` (`flock_min::verify_walked_with::<_, Keccak>`); the prover's entry is
 `leanvm_univariate::prover::flock::prove_keccak` (walked terminal only).
 
 **For M3 (the structured terminal)**: the terminal is `Σ_rows e(row) (Â0 + α B̂0)(row, col) w(col)` with
@@ -129,7 +129,7 @@ Corrections beyond the shifted rounds: round 0's reads (port C words), round 23'
 (`A = [slot]`), the constant's column (every lin-id and free row's `B`, every product row's `A` has it, ι's bits),
 and the empty lanes 25..31 of each run. The forward walk to check against is `keccak_flock::row_values`.
 
-### M3 notes (as built: `leanvm_flock_gas::keccak_flock::structured_terminal`)
+### M3 notes (as built: `leanvm_statement::keccak_flock::structured_terminal`)
 
 `Keccak`'s `WalkedCircuit::terminal` is now the structured one (`verify_walked_with::<_, Keccak>`); `KeccakWalked` keeps
 M1's walk as the reference (the trait's default terminal, `walked_terminal_with`). The algorithm:
@@ -154,7 +154,7 @@ M1's walk as the reference (the trait's default terminal, `walked_terminal_with`
 
    Lanes 25..31 and the suffix have no term.
 
-**Tests** [M]: `crates/leanvm_flock_gas/tests/keccak_terminal.rs` (run on h1 and on a Mac).
+**Tests** [M]: `crates/leanvm/statement/tests/keccak_terminal.rs` (run on h1 and on a Mac).
 - It is equal to `walked_terminal_with::<_, KeccakWalked>` at random points, challenges and slices at every skip
   0..6, with 24 trials at skips 3 and 6.
 - It is equal for each of the 64 packing positions alone (`s = e_i`, unit and random weight) at skips 3 and 6.

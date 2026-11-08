@@ -1,8 +1,8 @@
-// Part of this repository. The additive transform is crates/quotient/src/domain.rs's (adapted there from leanVM's
+// Part of this repository. The additive transform is crates/membership/quotient/src/domain.rs's (adapted there from leanVM's
 // branch PCS-openings-aggregation, commit 651453c6). MIT OR Apache-2.0; see NOTICE.md.
 //! Polynomials on the Cantor subspaces (SPEC.md §2), prover side.
 //!
-//! - `values` ↔ `novel`: the additive transform of `crates/quotient/src/domain.rs`, novel basis
+//! - `values` ↔ `novel`: the additive transform of `crates/membership/quotient/src/domain.rs`, novel basis
 //!   `X_k = Π_{l : k_l = 1} w_l`, values at `offset + ω_i`.
 //! - `novel` ↔ `B`: `B_k = Π_l (w_l if k_l else 1 + w_l) = Σ_{j ⊇ k} X_j`, so the novel coefficients are the subset
 //!   sums of the `B` coefficients (`a_j = Σ_{k ⊆ j} b_k`), and in characteristic 2 the same transform inverts it.

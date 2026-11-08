@@ -28,7 +28,7 @@ import RecCircuit.Pi1Rec3
 import RecCircuit.Complete
 
 /-!
-# π2's circuit, formally (`crates/leanvm_rec/src/circuit`)
+# π2's circuit, formally (`crates/leanvm/rec/src/circuit`)
 
 See `formal/RecCircuit/README.md`. The build fails if a headline theorem's axioms grow beyond Lean's three standard
 ones.

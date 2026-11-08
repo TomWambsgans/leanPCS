@@ -1,7 +1,7 @@
 -- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The instance follows `formal/Lv42`'s
 -- `Protocol/LeanIsa.lean` (leanerVM `mumbai` f0393df4, MIT OR Apache-2.0): its five opcode tables, its column groups,
 -- its boundary blocks, public lines and stacking are reused or repeated; the `SHA3` table's flushes are
--- `crates/leanvm_flock_gas/src/layout.rs::flushes_sha3` (leanVM `9d50c92a3`'s `Sha3Table`).
+-- `crates/leanvm/statement/src/layout.rs::flushes_sha3` (leanVM `9d50c92a3`'s `Sha3Table`).
 module
 
 public import KeccakVm.Isa
@@ -35,7 +35,7 @@ The relation the Keccak VM's univariate verifier proves knowledge of, in the for
 of `2^17` bits, its constant position, the input and output port words of each lane, and the two directions
 between the region predicate and Keccak-f (`step_of_holds`: every block of a column satisfying the predicate holds
 Keccak-f[1600] of its input port at its output port; `gen`, `holds_gen`, `in_gen`: the honest column). Its
-inhabitant is the Keccak-f block of `crates/lv42_flock/src/keccak.rs`, `formal/KeccakFlock`'s `keccakFlockSpec`.
+inhabitant is the Keccak-f block of `crates/vendor/leanvm-42422001/flock/src/keccak.rs`, `formal/KeccakFlock`'s `keccakFlockSpec`.
 
 **The relation** `KvHolds F prog s input q`: `M3Holds` of the instance (constraints, bus balance, counts nonzero,
 public lines) and `KeccakAux F` (every block of `QFLOCK` satisfies the block R1CS with `1` at its constant

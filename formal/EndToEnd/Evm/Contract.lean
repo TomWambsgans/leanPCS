@@ -1,6 +1,6 @@
 -- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
--- The calldata is `crates/evm/src/quotient.rs`'s `calldata`; the calls of `PCS_OPEN` are
--- `crates/evm/src/quotient.rs`'s `build` and `crates/evm/src/machine.rs`'s `pcs_open_input`.
+-- The calldata is `crates/membership/evm/src/quotient.rs`'s `calldata`; the calls of `PCS_OPEN` are
+-- `crates/membership/evm/src/quotient.rs`'s `build` and `crates/membership/evm/src/machine.rs`'s `pcs_open_input`.
 import Evm.Formula
 import Evm.PcsOpen
 import Bridge.Verifier
@@ -8,7 +8,7 @@ import Bridge.Verifier
 /-!
 # The contract is the statement's verifier
 
-The deployed contract (`crates/evm`) is F5's recorded graph (`Implementation.run`, `accepts`) with the
+The deployed contract (`crates/membership/evm`) is F5's recorded graph (`Implementation.run`, `accepts`) with the
 deployed Keccak-256 (`keccakBytes`), the circuit's commitment read from storage (the setup root's 32
 bytes, `Compose.toB ir`), on the calldata of a proof (`calldata`: the statement's 64 bytes, the two
 roots, the five values, as `quotient.rs` writes them). Here, against the statement's verifier

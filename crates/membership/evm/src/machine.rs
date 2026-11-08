@@ -1,5 +1,5 @@
 // Adapted from leanVM (https://github.com/leanEthereum/leanVM), branch PCS-openings-aggregation, commit 651453c6,
-// file crates/evm/src/machine.rs; new here: the mock `PCS_OPEN`, and the `Chain` that deploys contracts and keeps
+// file crates/membership/evm/src/machine.rs; new here: the mock `PCS_OPEN`, and the `Chain` that deploys contracts and keeps
 // their storage across transactions. MIT OR Apache-2.0; see NOTICE.md.
 //! revm with `FIELD_MUL`, and with a mock of the precompile `PCS_OPEN`.
 //!
@@ -107,7 +107,7 @@ pub enum TableId {
 
 /// The rows, `2^log_rows`, for which `PCS_OPEN` knows the protocol's layouts: where each of its three tables is
 /// a stack leanVM's WHIR commits, of `2^15` to `2^28` words in at most 64 lanes, and the two secret ones have
-/// hidden layouts (`quotient::protocol::MIN_LOG_ROWS`, `crates/quotient/HIDING.md`).
+/// hidden layouts (`quotient::protocol::MIN_LOG_ROWS`, `docs/membership/HIDING.md`).
 pub const LOG_ROWS: std::ops::RangeInclusive<usize> = quotient::protocol::MIN_LOG_ROWS..=22;
 
 /// The rows of the layouts a `PCS_OPEN` taking tables past WHIR's `2^28` words would know

@@ -1,7 +1,7 @@
 #!/bin/sh
 # Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
 # Makes a leanVM (https://github.com/leanEthereum/leanVM) tree at commit 9d50c92a3 (the Keccak VM,
-# crates/leanvm_univariate/KECCAK.md) write its execution trace for the univariate prover: `sh apply.sh <leanVM tree>`.
+# docs/leanvm/univariate/KECCAK.md) write its execution trace for the univariate prover: `sh apply.sh <leanVM tree>`.
 # Then any proof leanVM starts with `LEANVM_TRACE_DUMP=<dir>` set runs the program again without its fill blocks,
 # writes that run to <dir> (trace_dump.rs) and exits, e.g.
 #   LEANVM_TRACE_DUMP=<dir>/xmss128 cargo leanvm aggregate --xmss 128 --log-inv-rate 1

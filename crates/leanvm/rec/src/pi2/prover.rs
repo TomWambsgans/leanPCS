@@ -1,6 +1,6 @@
 // Part of this repository. The quotient's computation on an extension coset, the tables' layouts and the openings
-// follow crates/quotient/src/protocol.rs (`prove_with_randomness`, adapted there from leanVM's `flock::quotient`,
-// branch PCS-openings-aggregation, commit 651453c6), without its hiding; the transforms are crates/quotient's
+// follow crates/membership/quotient/src/protocol.rs (`prove_with_randomness`, adapted there from leanVM's `flock::quotient`,
+// branch PCS-openings-aggregation, commit 651453c6), without its hiding; the transforms are crates/membership/quotient's
 // (`ntt`, AVX-512), the commitments and openings leanVM's WHIR (c445e3d5) through `quotient::opening`. MIT OR
 // Apache-2.0; see NOTICE.md.
 //! π2's prover (`PI2.md` §3), for any [`Circuit`]:

@@ -2,8 +2,8 @@
 
 # RecCircuit: π2's circuit computes π1's recorded verifier
 
-π2 (`crates/leanvm_rec`, SPEC-REC §2.3, §2.4, §10, §12) proves that π1's recorded verifier graph accepts. Its
-circuit is compiled from that graph (`crates/leanvm_rec/src/circuit/compile.rs`). This library transcribes the
+π2 (`crates/leanvm/rec`, SPEC-REC §2.3, §2.4, §10, §12) proves that π1's recorded verifier graph accepts. Its
+circuit is compiled from that graph (`crates/leanvm/rec/src/circuit/compile.rs`). This library transcribes the
 compiler into Lean, checks the compiled circuit, and proves that a satisfied circuit's ports carry the graph's outputs
 on the stream its witness's free bits encode.
 
@@ -147,17 +147,17 @@ The real run accepts them at both IVs `rec-view-check` uses (the compiler with t
 ## How the compiler is trusted
 
 - **Transcription.** The compiler is transcribed step by step, in the Rust's order, and compared with the Rust
-  (`RecCircuitTest/Main.lean`, `crates/leanvm_rec/tests/lean_circuit.rs`). The comparison covers the shape, the region
+  (`RecCircuitTest/Main.lean`, `crates/leanvm/rec/tests/lean_circuit.rs`). The comparison covers the shape, the region
   list, the formula tables, the blocks, the ports, the calls, `κ`, and an FNV-1a hash of `σ` over all 2^24 positions.
   It runs on three small recorded graphs, on π1-rec3's graph, and on the Keccak VM's π1-rec3 graph
-  (`crates/leanvm_rec/tests/lean_circuit_keccak.rs`: 400 signatures, 22 blocks, which the checker accepts too), and every
+  (`crates/leanvm/rec/tests/lean_circuit_keccak.rs`: 400 signatures, 22 blocks, which the checker accepts too), and every
   comparison is identical. On
   π1-rec3 the run takes about 90 s and 2.7 GB, checker included.
 - **The block padding** (`padCounts`, `layout.rs::pad_counts`) looks ahead. A region's next step is the digit count
   `j > k` with the most rows saved per added digit and role, so it passes over counts that save nothing (a carry:
   724,992 rows pad to 786,432 at both 2 and 3 digits). The one-digit greedy it replaced gave the Keccak π1 70 blocks.
   π1-rec3's circuit is unchanged (25 blocks), and `RecCompose` builds unchanged. `RecCircuitTest/PadCounts.lean`
-  compares `padCounts` with the Rust on 202 cases (`crates/leanvm_rec/tests/lean_pad_counts.rs`). In 33 of them the
+  compares `padCounts` with the Rust on 202 cases (`crates/leanvm/rec/tests/lean_pad_counts.rs`). In 33 of them the
   look-ahead pads differently from the greedy.
 - **Checker.** The checker adds no constraint and changes no circuit: a failing check makes `compile` reject the
   graph.

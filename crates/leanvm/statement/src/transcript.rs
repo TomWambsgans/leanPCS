@@ -1,6 +1,6 @@
 // Adapted from leanVM (https://github.com/leanEthereum/leanVM), commit 42422001, file crates/verifier/src/transcript.rs:
 // its `sumcheck`, behind a `Channel` trait; new here: that trait, the Keccak-256 chain the contract runs, adapted from
-// this repository's `crates/quotient/src/transcript.rs`, and the Fiat–Shamir shapes (`FsShape`, π1-rec). MIT OR
+// this repository's `crates/membership/quotient/src/transcript.rs`, and the Fiat–Shamir shapes (`FsShape`, π1-rec). MIT OR
 // Apache-2.0; see NOTICE.md.
 //! Proof transport and Fiat-Shamir.
 //!
@@ -32,7 +32,7 @@ pub trait Channel<S: Scalar> {
 
     fn sample(&mut self) -> S;
 
-    /// A challenge of [`NARROW_BITS`] bits (π1-rec2's batching sumcheck, `crates/leanvm_rec/SPEC-REC.md` §12): the
+    /// A challenge of [`NARROW_BITS`] bits (π1-rec2's batching sumcheck, `docs/leanvm/rec/SPEC-REC.md` §12): the
     /// hash's low 160 bits instead of 192, so that its 24 calldata bytes start with four zeros.
     fn sample_narrow(&mut self) -> S {
         unimplemented!("this channel draws no narrow challenges")
@@ -55,10 +55,10 @@ pub trait Channel<S: Scalar> {
 }
 
 /// The verifier's Fiat–Shamir shape: which runs of challenges are drawn one by one, and which derived
-/// (`crates/leanvm_rec/SPEC-REC.md` §1.4).
+/// (`docs/leanvm/rec/SPEC-REC.md` §1.4).
 ///
 /// Two runs may be derived: Flock's zerocheck eq point after its seven fixed coordinates (`flock_min`), and the bus's
-/// tuple weights `α` (`crates/leanvm_univariate`'s `reduce`). Every other challenge is drawn in both shapes, and the
+/// tuple weights `α` (`crates/leanvm/univariate`'s `reduce`). Every other challenge is drawn in both shapes, and the
 /// stream, the claims and their points' structure are the same; only the challenges' values differ.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum FsShape {
@@ -68,7 +68,7 @@ pub enum FsShape {
     /// `π1-rec`: in each of the two runs, the first challenge `c` is drawn and the others are `c², c⁴, …`, each the
     /// square of the one before (no hash). 24 fewer Keccak-256 calls on the main line (131 → 107 Keccak-f).
     Rec,
-    /// `π1-rec2`'s (`crates/leanvm_rec/SPEC-REC.md` §12): [`FsShape::Rec`], and the batching sumcheck's challenges of
+    /// `π1-rec2`'s (`docs/leanvm/rec/SPEC-REC.md` §12): [`FsShape::Rec`], and the batching sumcheck's challenges of
     /// [`NARROW_BITS`] bits ([`Channel::sample_narrow`]): the claims' point, which the recursion's contract carries in
     /// calldata, has four zero bytes a coordinate.
     Rec2,
@@ -162,7 +162,7 @@ pub fn sumcheck_drawn<S: Scalar>(
     Ok((point, claim))
 }
 
-/// `β_1` of the Cantor basis (`β_1² + β_1 = β_0 = 1`, the root with its low bit clear: `crates/leanvm_univariate`'s
+/// `β_1` of the Cantor basis (`β_1² + β_1 = β_0 = 1`, the root with its low bit clear: `crates/leanvm/univariate`'s
 /// `domain::beta()[1]`), so `V_2 = {0, 1, β_1, 1 + β_1}` is `GF(4)`: of `x^((2^64 - 1)/3)`, an element of order 3,
 /// and it plus one, the one whose low bit is clear.
 pub fn cantor_beta1() -> E {
@@ -194,7 +194,7 @@ fn pair_round_poly<S: Scalar>(transcript: &mut impl Channel<S>, degree: usize, c
     Ok([low, vec![c3], high].concat())
 }
 
-/// π1-pairs' batching sumcheck (`crates/leanvm_rec/SPEC-POINTS.md`): `vars` variables of a summand of degree `degree`
+/// π1-pairs' batching sumcheck (`docs/leanvm/rec/SPEC-POINTS.md`): `vars` variables of a summand of degree `degree`
 /// in each, two at a time, low variables first. Pair `j`'s round polynomial is
 /// `G_j(X) = Σ_rest f(r_(<2j), y_0(X), y_1(X), rest)`, so that `Σ_(x ∈ V_2) G_j(x)` is the sum over the pair's four
 /// corners; one challenge `z_j` a pair, the point's coordinates `(y_0(z_j), y_1(z_j))` ([`pair_point`]). With `vars`
@@ -583,7 +583,7 @@ mod tests {
         }
     }
 
-    /// What the batching sumcheck costs π2 (`crates/leanvm_rec/SPEC-POINTS.md` §6), recorded: over the batch's 27
+    /// What the batching sumcheck costs π2 (`docs/leanvm/rec/SPEC-POINTS.md` §6), recorded: over the batch's 27
     /// variables at degree 2, the paired rounds take as many Keccak-f permutations as the plain ones (a pair's 8 scalars
     /// and the state are 224 bytes, two blocks; a plain round's 2 and the state 80, one), 14 challenges instead of 27,
     /// and these operations.

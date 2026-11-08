@@ -1,5 +1,5 @@
 // Part of this repository (not vendored). MIT OR Apache-2.0; see NOTICE.md.
-// Written for the differential test of the Lean skeleton (`crates/quotient/tests/skel_trace.rs`,
+// Written for the differential test of the Lean skeleton (`crates/membership/quotient/tests/skel_trace.rs`,
 // `formal/QuotientZk/Test/`).
 //! A record of every Keccak call, for tests: compiled only with the `trace` feature, which no
 //! production build enables. With the feature off, nothing here exists and the hooks in

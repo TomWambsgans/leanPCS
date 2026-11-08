@@ -64,11 +64,11 @@ pub enum VerifierError {
     FlockMatrixTerminal,
     /// New here: the stack claims' batching sumcheck does not close.
     StackBatchTerminal,
-    /// New here (`crates/leanvm_univariate`): an announced table row count exceeds its height's `2^r`.
+    /// New here (`crates/leanvm/univariate`): an announced table row count exceeds its height's `2^r`.
     TableRows,
-    /// New here (`crates/leanvm_univariate`): a shape the verifier cannot be built for (a height below 2).
+    /// New here (`crates/leanvm/univariate`): a shape the verifier cannot be built for (a height below 2).
     InvalidShape,
-    /// New here (`crates/leanvm_rec`, π2): a denominator of π2's verifier vanishes at its challenges.
+    /// New here (`crates/leanvm/rec`, π2): a denominator of π2's verifier vanishes at its challenges.
     RecDegenerate,
 }
 

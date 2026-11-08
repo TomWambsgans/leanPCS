@@ -2,7 +2,7 @@
 
 # RecGraph: π1-rec3's recorded verifier graph, its meaning, and graph = verifier
 
-The recursion (`crates/leanvm_rec`) proves π1's verifier inside π2: π2's circuit is compiled from the **recorded
+The recursion (`crates/leanvm/rec`) proves π1's verifier inside π2: π2's circuit is compiled from the **recorded
 operation graph** of π1's verifier (π1-rec3: `FLOCK_REC3`, `FsShape::Rec3`, `Slices::TowerWalk`, the point-claim ABI,
 the reference shape). Compiler correctness splits in two:
 
@@ -24,12 +24,12 @@ REC_VECTORS=$PWD/rec_vectors.txt REC_REAL=$PWD/crates/leanvm_univariate/tests/ve
 
 ## Files
 
-- [`Node.lean`](RecGraph/Node.lean): `leanvm_flock_gas::evm::record`'s `Node` (`const`, `statement`, `input` at a byte
+- [`Node.lean`](RecGraph/Node.lean): `leanvm_statement::evm::record`'s `Node` (`const`, `statement`, `input` at a byte
   offset with a length, `add`, `mul`, `seed`, `hash` of a state and a run of stream bytes, `low`, `narrow` (π1-rec2's
   160-bit challenges), `bits`, `ringWeight`), `codegen::Word` (`node`, `const`, `stream`), `Graph` (nodes, zero and
   nonzero checks, kernels, `PCS_OPEN` call words, stream length). π1-rec3's pair derivation and the BLAKE2s walk are
   additions and products: no new kinds.
-- [`Emitted.lean`](RecGraph/Emitted.lean): **π1-rec3's graph**, written by `crates/leanvm_rec/src/lean.rs` (`render`;
+- [`Emitted.lean`](RecGraph/Emitted.lean): **π1-rec3's graph**, written by `crates/leanvm/rec/src/lean.rs` (`render`;
   `tests/lean_graph.rs`'s `graph_lean_is_current` fails while it is stale, `UPDATE_LEAN=1` rewrites it): 165,829
   nodes (164,829 additions and products, 66 Keccak-256 calls), 14 zero checks, no nonzero check, 1 ring-weight kernel,
   3 `PCS_OPEN` calls of 31, 31, 28 words, a stream of 8,272 bytes. Data only: never evaluated by the kernel; it is

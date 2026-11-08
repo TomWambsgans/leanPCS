@@ -4,7 +4,7 @@ import RecCircuit.Check
 /-!
 # The differential runner's parser and printer
 
-`rec-circuit-diff GRAPH`: reads a recorded graph written by `crates/leanvm_rec/tests/lean_circuit.rs`, compiles it
+`rec-circuit-diff GRAPH`: reads a recorded graph written by `crates/leanvm/rec/tests/lean_circuit.rs`, compiles it
 with `RecCircuit.compileRaw` (compiled code, not the kernel), and prints the circuit's summary in the Rust test's
 format (the shape, the regions and their formula tables, the blocks, the ports, the calls, `κ`, `σ`'s FNV-1a hash);
 `diff` it against the Rust's `.circuit` file.

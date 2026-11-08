@@ -3,7 +3,7 @@
 //! verifier minus its openings, its circuit compiled from that verifier's recorded graph, and the contract that runs
 //! `π2`'s verifier.
 //!
-//! `π1` is `crates/leanvm_univariate`'s proof. Its verifier, run on the recorder's symbol, is a graph
+//! `π1` is `crates/leanvm/univariate`'s proof. Its verifier, run on the recorder's symbol, is a graph
 //! (`leanvm_statement::evm::record`): the stream's reads, the Keccak-256 chain, `E`'s additions and products, the
 //! checks, and the `PCS_OPEN` claims. That graph is the circuit `π2` proves, PCS openings excluded.
 //!

@@ -6,7 +6,7 @@ import FlockSoundUni.WalkCode
 # The TowerWalk terminal's walk computes the BLAKE2s R1CS's products
 
 π1-rec3's verifier (`Slices::TowerWalk`) checks Flock's lincheck terminal against `walked_terminal`, which walks the
-BLAKE2s circuit once (`blake2s_row_values`, `crates/leanvm_flock_gas/src/flock.rs:318-388`) to get `A0 w` and `B0 w`.
+BLAKE2s circuit once (`blake2s_row_values`, `crates/leanvm/statement/src/flock.rs:318-388`) to get `A0 w` and `B0 w`.
 **`rowValues_spec`** proves that the official transcription `UniStatement.Flock.blake2sRowValues` computes exactly
 these: for every row `j < 2^14`,
 

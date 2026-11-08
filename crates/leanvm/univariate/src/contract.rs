@@ -1,4 +1,4 @@
-// Part of this repository; the contract's assembly and measurement follow crates/evm/src/quotient.rs. MIT OR
+// Part of this repository; the contract's assembly and measurement follow crates/membership/evm/src/quotient.rs. MIT OR
 // Apache-2.0; see NOTICE.md.
 //! The verifier as a contract (straight-line code compiled from the recorded verifier, `leanvm_statement::evm`), its
 //! calldata, and what a call costs.
@@ -16,11 +16,11 @@
 //!
 //! **Root words**. `C1`'s and `C2`'s are the stream's 32 bytes as they are:
 //! the prover sends each root as its two WHIR scalars (`prover::prove::halves`, `hash_to_scalars`), so those bytes
-//! are `PCS_OPEN`'s root word `s_0 · 2^128 + s_1` (`crates/evm/src/machine.rs`), which a decoding precompile reads as
+//! are `PCS_OPEN`'s root word `s_0 · 2^128 + s_1` (`crates/membership/evm/src/machine.rs`), which a decoding precompile reads as
 //! the root the opening is of. The setup roots' words are the hashes as they are ([`SetupRoots`]), not their root
 //! words: a precompile with machine.rs's decoding reads each as another root (`root_word` of it), so this contract,
 //! deployed alone, needs `Word::Const(root_word(..))` there (free: constants). π2's contract, which makes π1's calls,
-//! passes their root words (`crates/leanvm_rec`, `circuit::compile`).
+//! passes their root words (`crates/leanvm/rec`, `circuit::compile`).
 
 use leanvm_statement::evm::codegen::{CALLS, Contract, ENTRY, Ending, Entry, MEASURE, VERIFY, Word, compile, word};
 use leanvm_statement::evm::machine::{Outcome, PcsOpen, call};

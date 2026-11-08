@@ -2,7 +2,7 @@
 // leanVM), commit 42422001, file crates/fiat_shamir/src/transcript.rs; the transcript is a trait here, so that flock's
 // prover writes to whatever chain implements it (the univariate PIOP's Keccak-256 chain). MIT OR Apache-2.0; see
 // NOTICE.md.
-//! The transcript flock's prover (`crates/lv42_flock`) writes to.
+//! The transcript flock's prover (`crates/vendor/leanvm-42422001/flock`) writes to.
 
 pub mod transcript {
     use primitives::field::F192;

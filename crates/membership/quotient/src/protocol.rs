@@ -83,7 +83,7 @@ impl Inverse {
 }
 
 /// What the verifier computes with: the field, or a recorder of its operations, which is how the EVM contract is
-/// written (`crates/evm`).
+/// written (`crates/membership/evm`).
 pub trait Scalar: Copy + Add<Output = Self> + Mul<Output = Self> {
     fn constant(value: F192) -> Self;
     /// `self^(2^64)`.

@@ -6,11 +6,11 @@
 wins about 6.0K gas on top of `leanvm-rec-opt` and 10.5K on R3's 73,550, below the ~15K bar (§8).**
 
 - Branch `leanvm-rec-points`, from `leanvm-rec` @ 4a57c61.
-- The core is `leanvm_flock_gas::transcript::sumcheck_pairs`.
+- The core is `leanvm_statement::transcript::sumcheck_pairs`.
 - Every number is marked **measured** (on h1) or **modelled** (`params/leanvm_rec_params.py`, its last section).
 
 ```sh
-RUSTFLAGS="-C target-cpu=native" cargo test --release -p leanvm_flock_gas --lib transcript -- --nocapture
+RUSTFLAGS="-C target-cpu=native" cargo test --release -p leanvm_statement --lib transcript -- --nocapture
 RUSTFLAGS="-C target-cpu=native" cargo test --release -p leanvm_univariate --lib domain
 python3 -I params/leanvm_rec_params.py   # the last section: "the claims' points"
 ```
@@ -156,7 +156,7 @@ A round of `k` variables on `V_k`'s coordinate functionals works as follows:
 - **The contract.** It reads the 14 `z_j` and derives the 27 coordinates of the three `PCS_OPEN` calls: 13 times one
   squaring, one product by `β_1` and two XORs. `leanvm-rec-opt`'s lever 3b already writes `r` once for the three calls.
 
-**Measured** (`leanvm_flock_gas` `transcript::tests`, `leanvm_univariate` `domain::tests`):
+**Measured** (`leanvm_statement` `transcript::tests`, `leanvm_univariate` `domain::tests`):
 
 - the paired sumcheck is complete on honest product sums of 1, 2 and 3 tables, at odd and even variable counts;
 - a wrong claim, and each flipped scalar, ends on a claim the tables do not give;

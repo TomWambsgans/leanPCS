@@ -1,4 +1,4 @@
-// New in this repository: tests of `lv42_flock::keccak` (the Keccak-f[1600] block, crates/lv42_flock/KECCAK.md
+// New in this repository: tests of `lv42_flock::keccak` (the Keccak-f[1600] block, docs/leanvm/flock/KECCAK.md
 // §4.2, §4.5). MIT OR Apache-2.0; see NOTICE.md.
 //! The Keccak-f block R1CS:
 //!

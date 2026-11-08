@@ -1,4 +1,4 @@
-# Part of this repository. Builds on crates/leanvm_flock_gas (which vendors and adapts leanVM
+# Part of this repository. Builds on crates/leanvm/statement (which vendors and adapts leanVM
 # (https://github.com/leanEthereum/leanVM), commit 42422001), MIT OR Apache-2.0. See NOTICE.md.
 [package]
 name = "leanvm_univariate"
@@ -13,7 +13,7 @@ workspace = true
 [dependencies]
 leanvm_statement.workspace = true
 revm.workspace = true
-# The prover (src/prover): leanVM's WHIR (c445e3d5) and its verifier, the Cantor transforms of crates/quotient.
+# The prover (src/prover): leanVM's WHIR (c445e3d5) and its verifier, the Cantor transforms of crates/membership/quotient.
 primitives.workspace = true
 pcs.workspace = true
 fiat_shamir.workspace = true

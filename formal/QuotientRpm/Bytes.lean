@@ -8,7 +8,7 @@ import VCVio.OracleComp.Constructions.SampleableType.Measure
 /-!
 # The bytes the chain hashes
 
-`crates/quotient/src/transcript.rs`, byte for byte. The chain's state is a Keccak-256 digest, 32
+`crates/membership/quotient/src/transcript.rs`, byte for byte. The chain's state is a Keccak-256 digest, 32
 bytes (`Bytes32`). An `F192` scalar is three 64-bit limbs `(c0, c1, c2)`, `c0` the lowest
 (`Limbs`); the chain hashes it as a 256-bit big-endian word: eight zero bytes, then `c2`, `c1`,
 `c0`, each big-endian (`scalarWord`, `Chain::sample`). A challenge is the low 192 bits of the new

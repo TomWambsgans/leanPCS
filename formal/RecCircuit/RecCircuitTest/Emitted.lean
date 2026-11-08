@@ -6,7 +6,7 @@ import RecGraph.Emitted
 /-!
 # The compiler on `RecGraph.Emitted.graph`, the very term `pi1rec3_end` is about
 
-`rec-circuit-emitted GRAPH`: reads π1-rec3's graph as `crates/leanvm_rec/tests/lean_circuit.rs` writes it (for its IV),
+`rec-circuit-emitted GRAPH`: reads π1-rec3's graph as `crates/leanvm/rec/tests/lean_circuit.rs` writes it (for its IV),
 checks that it is `RecGraph.Emitted.graph` with `RecGraph.Emitted.rootsAt` field by field, then runs
 `RecCircuit.compile (ofRG RecGraph.Emitted.graph RecGraph.Emitted.rootsAt iv)` (compiled code) and prints the
 circuit's summary, to `diff` against the Rust's `.circuit` file.

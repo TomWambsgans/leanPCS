@@ -1,4 +1,4 @@
-// Adapted from this repository's crates/evm/src/record.rs and crates/evm/src/contract.rs (themselves adapted from
+// Adapted from this repository's crates/membership/evm/src/record.rs and crates/membership/evm/src/contract.rs (themselves adapted from
 // leanVM (https://github.com/leanEthereum/leanVM), branch PCS-openings-aggregation, commit 651453c6): the recording
 // scalar and the recording channel, here for leanVM's verifier: inputs at byte offsets of the stream, a hash of a
 // run of the stream's bytes, checks of zero and of nonzero, and a phase for every node. MIT OR Apache-2.0; see NOTICE.md.

@@ -50,7 +50,7 @@ TLDR: The PCS is relatively easy to upgrade, the only thing that cannot be upgra
 ## Key figures: one ZK proof of a Merkle path
 
 Statement `(y, root)`, witness `x` and a depth-32 path, Keccak-256: `y = H(x | 0x11..)`, path from `H(x | 0x22..)`
-to `root`. Measured on the implementation in `crates/quotient` and `crates/evm` (details: [`AGENTS.md`](AGENTS.md),
+to `root`. Measured on the implementation in `crates/membership/quotient` and `crates/membership/evm` (details: [`AGENTS.md`](AGENTS.md),
 [`STATUS.md`](STATUS.md)).
 
 | | |
@@ -63,10 +63,10 @@ to `root`. Measured on the implementation in `crates/quotient` and `crates/evm` 
 | Contract deployment | 1.43 M gas |
 | Formal verification (Lean 4) | knowledge soundness (≈ 2^-62 at 2^64 queries), completeness (failure < 2^-162) and zero knowledge (≈ 2^-113) proved end to end, in the random-permutation model; the contract proved to be the verifier (its bytecode by tests) |
 
-## Key figures: one leanVM proof (recursion, `crates/leanvm_rec`)
+## Key figures: one leanVM proof (recursion, `crates/leanvm/rec`)
 
 A leanVM leaf aggregate of leanXMSS signatures:
-- π1 is a univariate PIOP for leanVM's statement (`crates/leanvm_univariate`), with leanVM's WHIR.
+- π1 is a univariate PIOP for leanVM's statement (`crates/leanvm/univariate`), with leanVM's WHIR.
 - π2 is a SNARK of π1's verifier.
 - The contract runs π2's verifier and passes every claim to `PCS_OPEN`.
 - Fiat–Shamir is Keccak-256 throughout.
@@ -76,7 +76,7 @@ A leanVM leaf aggregate of leanXMSS signatures:
 | Signatures per proof | 1,000 (up to about 2,000) | 400 (up to about 470) |
 | Hash argument | Flock, BLAKE2s block | Flock, Keccak-f block, structured terminal |
 | Gas, `PCS_OPEN` free | 44,804 transaction (real proof; 45,464 on a sample stream) | 44,113 transaction (real 400-signature proof) |
-| Prover | π1 4.8 s + π2 4.5 s (h1, 16 threads) | π1 4.7 s at 400 signatures (M4 Max), π2 ≈ 8 s; [`KECCAK.md`](crates/leanvm_univariate/KECCAK.md) |
+| Prover | π1 4.8 s + π2 4.5 s (h1, 16 threads) | π1 4.7 s at 400 signatures (M4 Max), π2 ≈ 8 s; [`KECCAK.md`](docs/leanvm/univariate/KECCAK.md) |
 | Formal verification (Lean 4) | knowledge soundness and completeness of π1-rec3 and of the recursion | the statement, the Keccak-f block (soundness, completeness, terminal) and π1's transcription; π1's and the recursion's theorems not yet |
 
 ## Repository

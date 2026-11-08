@@ -24,14 +24,14 @@ in the contract at this size.
 `E`-linear claims alone, weighted ones included, 64 values must stay in calldata, and the best is 3,840 to
 5,376 B and about 87,000 gas of execution.
 
-Measured: every number in the tables, on revm, by a lever study (`crates/leanvm_flock_gas/tests/flock_levers.rs`, removed since; in the history). The build was
+Measured: every number in the tables, on revm, by a lever study (`crates/leanvm/statement/tests/flock_levers.rs`, removed since; in the history). The build was
 `flock_min.rs` recorded, compiled and run on a stream of the right length, its claims kept live and not counted,
 as `keccak_estimate` measures Flock alone. The levers' algebra is tested. With the slices sent, the honest
 matrices' reduction verifies at skips 6, 3 and 0. Without them, the combination left holds of the true slices and
 fails for others (`flock_min::tests`). Modelled: the prover's costs, and the claim types' implementations.
 
 ```sh
-cargo test --release -p leanvm_flock_gas --lib flock_min                                # the levers' algebra
+cargo test --release -p leanvm_statement --lib flock_min                                # the levers' algebra
 ```
 
 ## Flock as leanVM verifies it
@@ -207,7 +207,7 @@ target 69,939) and Flock 35,610.
 - **(a):**
   - one claim joins the stack's call: the bit-slice claim, beside the stack's other claims;
   - `A0` and `B0` are two claims in two calls on fixed roots (cold `SLOAD`s, about 6,300 gas with the calls,
-    `crates/leanvm_flock_gas/README.md`);
+    `crates/leanvm/statement/README.md`);
   - so Flock adds `3c`.
 - **The baseline** adds `2c`. Its ring switch's claim is folded into the stack's one claim by the batching
   sumcheck, which costs 1,320 B and about 6,700 of execution, not counted above.

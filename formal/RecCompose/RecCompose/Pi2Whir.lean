@@ -1,6 +1,6 @@
 -- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Follows `formal/UniComplete/UniComplete/Whir.lean` (the
 -- plain layouts) and `formal/EndToEnd/Completeness/E2ECompleteness/ProverStack.lean` (`wiring_stackClaims_hold`) for π2's
--- public layouts of chunks (`crates/leanvm_rec/src/pi2/prover.rs`'s `layouts`, `quotient::opening::Layout::new`); uses
+-- public layouts of chunks (`crates/leanvm/rec/src/pi2/prover.rs`'s `layouts`, `quotient::opening::Layout::new`); uses
 -- `formal/WhirBridge` (`Layout.new_valid`, `Layout.holds_iff`, `Blocks.table_eq_lane`, `admissible_large`) and leanerVM
 -- (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`, commit 6175f1a0, MIT OR Apache-2.0) through
 -- `E2ECompleteness.ProverOpening` (`openingWithH_proveOpeningWithH`, `exists_failed_pow_opening`).

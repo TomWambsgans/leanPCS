@@ -4,7 +4,7 @@ import QuotientSecurity.Hiding.Rounds
 /-!
 # The lane rounds of one entry: halves, solvers, and two weights reach every message
 
-`crates/quotient/HIDING.md`, "Condition (R) for every challenge: the gadget", steps 1, 4 and 5, for
+`docs/membership/HIDING.md`, "Condition (R) for every challenge: the gadget", steps 1, 4 and 5, for
 one entry (a column of the stack): a weight `w` and a table `t` on the `2^(n+1)` lane indices, the
 last lane variable (bit `n`, folded last) splitting them into a lower half (bit `n` false) and an
 upper half.

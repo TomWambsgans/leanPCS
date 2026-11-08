@@ -1,4 +1,4 @@
-// Adapted from this repository's crates/evm/src/machine.rs (itself adapted from leanVM
+// Adapted from this repository's crates/membership/evm/src/machine.rs (itself adapted from leanVM
 // (https://github.com/leanEthereum/leanVM), branch PCS-openings-aggregation, commit 651453c6): revm with `FIELD_MUL`
 // and a mock `PCS_OPEN`, the same opcode, address, call encoding and transaction gas, and a `Chain` that deploys
 // contracts and keeps them across transactions; here the mock takes any layout id, code may also be installed rather
@@ -6,13 +6,13 @@
 // call runs. MIT OR Apache-2.0; see NOTICE.md.
 //! revm with `FIELD_MUL`, a mock of the precompile `PCS_OPEN`, and per-instruction gas.
 //!
-//! `PCS_OPEN`'s input is this repository's (`crates/evm/src/machine.rs`): `3 + k (v + 1)` words, the commitment's
+//! `PCS_OPEN`'s input is this repository's (`crates/membership/evm/src/machine.rs`): `3 + k (v + 1)` words, the commitment's
 //! root word, the layout's id, `k`, then each claim's `v` coordinates and its value, a field element being the low
 //! 192 bits of its word. It returns the word 1 if the block's openings hold exactly these claims on that commitment
 //! under that layout. A call carries every claim on its commitment. Gas: `call_gas` a call and `claim_gas` a claim.
 //!
 //! The mock has two modes. The **byte-string** mode (no layouts registered) attests an input if it is one of the
-//! registered inputs, byte for byte: what `crates/leanvm_univariate`'s vectors use. The **decoding** mode is a
+//! registered inputs, byte for byte: what `crates/leanvm/univariate`'s vectors use. The **decoding** mode is a
 //! registry keyed by the layout word: an input attests only if it
 //! decodes under the ABI ([`decode`]: the root word `s_0 · 2^128 + s_1` of [`root_word`], a layout word the registry
 //! knows, which fixes `v`, `k ≥ 1`, the exact length, every element's top 64 bits zero) into a registered opening
@@ -70,7 +70,7 @@ pub fn element_word(x: E) -> [u8; 32] {
     U256::from_limbs([x.c0, x.c1, x.c2, 0]).to_be_bytes()
 }
 
-/// `PCS_OPEN`'s root word (`crates/evm/src/machine.rs`): `s_0 · 2^128 + s_1`, `s_h` the little-endian number of the
+/// `PCS_OPEN`'s root word (`crates/membership/evm/src/machine.rs`): `s_0 · 2^128 + s_1`, `s_h` the little-endian number of the
 /// root's bytes `16 h .. 16 h + 16`, that is each 16-byte half reversed. Its own inverse.
 pub fn root_word(root: &[u8; 32]) -> [u8; 32] {
     let mut out = *root;

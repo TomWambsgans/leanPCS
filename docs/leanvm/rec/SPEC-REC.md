@@ -13,7 +13,7 @@ Branch `leanvm-rec`, from `leanvm-univariate` @ 29d3095; π1-rec on `leanvm-rec-
 `leanvm-rec-circuit`; π2's PIOP on `leanvm-rec-piop`.
 No Lean for now (the user's instruction: no proofs until the gas is close to 100K). Every number is marked:
 
-- **measured**: by `crates/leanvm_rec`'s tests on h1, or by the univariate crate's revm runs;
+- **measured**: by `crates/leanvm/rec`'s tests on h1, or by the univariate crate's revm runs;
 - **modelled**: computed by `params/leanvm_rec_params.py` from measured counts.
 
 ```sh
@@ -25,11 +25,11 @@ python3 -I params/leanvm_rec_params.py                                          
 
 The design has three parts:
 
-- **π1** is the univariate PIOP of `crates/leanvm_univariate` (SPEC.md §13, the main line), with one change to its
+- **π1** is the univariate PIOP of `crates/leanvm/univariate` (SPEC.md §13, the main line), with one change to its
   Fiat–Shamir shape, **π1-rec** (§1.4): two runs of challenges are derived as squares of one challenge. They are
   `α_2..α_4` and Flock's zerocheck eq point. π1-rec has 107 Keccak-f permutations instead of 131. The statement, the
   proof's content and the claims are unchanged.
-- **π2** is a univariate quotient SNARK, in the family of `crates/quotient`. It proves that π1-rec's Rust verifier,
+- **π2** is a univariate quotient SNARK, in the family of `crates/membership/quotient`. It proves that π1-rec's Rust verifier,
   without its PCS openings, accepts on the public inputs and outputs these `PCS_OPEN` claims. Its arithmetization
   is **D16v** (§2.4):
   - one copy argument, in which a position's **push is a degree-2 expression of its row** (a "virtual push"), so
@@ -59,7 +59,7 @@ What the table shows:
 - **The floor is π1's claims, whatever π2 is.** They are 46 distinct coordinates and 5 values: 1,224 B, which is
   49K gas at EIP-7623's floor and 78K at EIP-7976's (§1.5).
 
-**What does not fit.** π2 with `crates/quotient`'s own gate (a χ on bits, every XOR a row) needs 14.8M rows for
+**What does not fit.** π2 with `crates/membership/quotient`'s own gate (a χ on bits, every XOR a row) needs 14.8M rows for
 π1's 131 permutations. That is a `2^29.8`-word quotient table, 3.5× over WHIR's `2^28` (§2.2). With cell outputs:
 
 - rows of 16 cells (C16) need `2^25` positions and a `2^28.2`-word quotient table;
@@ -72,7 +72,7 @@ change to π1 (`2^23` positions, `Q` `2^26.91`) and sends 34 values: 88,670 at `
 
 ### 1.1 Method
 
-The univariate verifier, run on the recorder's symbol (`leanvm_flock_gas::evm::record`), is a hash-consed graph. Its
+The univariate verifier, run on the recorder's symbol (`leanvm_statement::evm::record`), is a hash-consed graph. Its
 nodes are:
 
 - the stream's reads;
@@ -84,7 +84,7 @@ nodes are:
 - the checks;
 - the `PCS_OPEN` calls' words.
 
-This graph is the circuit π2 proves. `crates/leanvm_rec`:
+This graph is the circuit π2 proves. `crates/leanvm/rec`:
 
 - **`src/count.rs`** counts the **live** nodes: those the calls or the checks read, through their operands. The ring
   kernel is expanded by recording `ring_tower::weight_at` on fresh symbols.
@@ -179,7 +179,7 @@ squarings. The claims and the stream are unchanged.
 
 **π1-rec in code** (R2 step 1, branch `leanvm-rec-pi1`; measured on h1):
 
-- **The parameter.** `leanvm_flock_gas::transcript::FsShape { Main, Rec }` (re-exported by `leanvm_univariate`), a
+- **The parameter.** `leanvm_statement::transcript::FsShape { Main, Rec }` (re-exported by `leanvm_univariate`), a
   field `fs` of Flock's `flock_min::Variant`, so it reaches every function that takes the verifier's configuration
   (`Blake2s`): `leanvm_univariate::FLOCK_REC` is `FLOCK_MAIN` with `fs: FsShape::Rec`, and `Blake2s::fs()` reads it
   (`Blake2s::Omitted` is `Main`). `FsShape::draw(channel, n)` draws a run: `n` challenges, or one and its `n - 1`
@@ -193,7 +193,7 @@ squarings. The claims and the stream are unchanged.
   calls' words, the reads), at skip 3 and 6: **80 Keccak-256 calls, 107 Keccak-f permutations** (skip 6: 77, 114).
 - **The real proof** (1,000 signatures, `prove_real`'s `proves_and_verifies_main_line_rec`): 4.86 s, 10.4 GB; the Rust
   verifier, the five openings (`C1`, `C2`, `F`, `A0`, `B0`) and both contract builds accept, mutations are rejected.
-  Stream keccak `53c06ada652d58b2…`. Vector `crates/leanvm_univariate/tests/vectors/main_line_rec.txt`, replayed with 17
+  Stream keccak `53c06ada652d58b2…`. Vector `crates/leanvm/univariate/tests/vectors/main_line_rec.txt`, replayed with 17
   mutations by `evm_vectors`; the main line's contract rejects it and π1-rec's rejects the main line's.
   `leanvm_rec::eval` reproduces its five `PCS_OPEN` inputs.
 - **Gas** (`rec_gas_report`; the real vector's runs agree): execution 181,019 straight, 191,296 deployed in 3
@@ -235,7 +235,7 @@ So 1,224 B is this design's calldata floor: 49K gas at 40 a byte, 78K at 64.
 
 ## 2. π2's arithmetization
 
-### 2.1 The reference: `crates/quotient` (measured, `tests/quotient_reference.rs`)
+### 2.1 The reference: `crates/membership/quotient` (measured, `tests/quotient_reference.rs`)
 
 - **One gate, `V = X + C + Y·C`, four cells a row.** It is a χ on bits, an XOR when `Y = 0`, and a NOT.
 - **The wiring:** one logarithmic-derivative copy argument, with unique tags on both sides. It is sound in
@@ -253,7 +253,7 @@ So 1,224 B is this design's calldata floor: 49K gas at 40 a byte, 78K at 64.
 
 ### 2.2 Why bit-level wiring does not fit (modelled)
 
-| π2 with `crates/quotient`'s gate | rows | quotient table |
+| π2 with `crates/membership/quotient`'s gate | rows | quotient table |
 |---|---:|---:|
 | π1 main line (131 permutations) | 14.8M (`2^23.82`) | `2^29.80` words: **3.5× over `2^28`** |
 | π1-rec (107) | 12.1M (`2^23.53`) | `2^29.51`: **2.8× over** |
@@ -303,7 +303,7 @@ The checks are:
 
 **Soundness of the multiset step.** The pulls' tags are the positions, all distinct. The pushes' tags are `σ`'s
 values, also distinct. So both sides are sets of (value, tag) pairs, and mod-2 equality of sets is equality (as in
-`crates/quotient`, SPEC.md §5.1). Hence every position's value is the push meant for it. Each value then travels from
+`crates/membership/quotient`, SPEC.md §5.1). Hence every position's value is the push meant for it. Each value then travels from
 its producing expression slot through forwards to exactly one consumer whose own push is an expression (its *end*).
 
 **The layout's invariant**. A position's push is a formula of its *row*, not of its own pull,
@@ -353,7 +353,7 @@ A round `j` (θ, ρπ, χ, ι) takes its input state `A_{j-1}`:
 | **KD**, D units | 16 | 8 units: `C[x-1][z]` (end), `C[x+1][z-1]` (forward) | `D[x][z]` (expression), `C`'s forward | 16 |
 | **Kprep**, round 0's `C_0` | 107 a permutation | 3 units of 5 input bits | `C_0[x][z]`, 4 forwards | 16 |
 
-Per permutation: `24 · 336 · 16 + 107 · 16` = **130,736 positions**, against `crates/quotient`'s 452,456, a 3.5×
+Per permutation: `24 · 336 · 16 + 107 · 16` = **130,736 positions**, against `crates/membership/quotient`'s 452,456, a 3.5×
 saving. The chains balance:
 
 - `A_{j-1}` ends in its K0/K1 pull, fan-out 1: the partial sums use `A_j` where it is produced.
@@ -434,7 +434,7 @@ itself, `L₀ + YL₁ + Y²L₂`, and a four-limb port's (the statement, a root)
 **Measured (§10.4, 2–3):** the row counts need not be public (67 fractions), and the ports' positions are holes of `σ`
 (nothing pushes to them), whose pulls (0) are in the target too: 3 coset sums.
 
-**Not the alternative.** `crates/quotient` adds the public weight inside `h`'s identity: `(h + weight·w)·d·d'`. Here
+**Not the alternative.** `crates/membership/quotient` adds the public weight inside `h`'s identity: `(h + weight·w)·d·d'`. Here
 that would raise `q` to `5N` (an `18N`-word table, `2^28.17`). The outside tags keep the identity at `5N`.
 
 The verifier also hashes the public data into π2's seed (§4).
@@ -463,7 +463,7 @@ values plus `σ`, `κ`: 34 values, +384 B.
 
 | option | positions a Keccak-f | π1 | `N` (used) | `Q` words | proof commitments | values at `t` | π2's PIOP after the lists | calldata | EIP-7623 `c = 0` |
 |---|---:|---|---|---:|---:|---:|---:|---:|---:|
-| B4: `crates/quotient`'s gate | 452,456 | main / rec | `2^26` | `2^29.78` ✗ | — | 5 | — | — | — |
+| B4: `crates/membership/quotient`'s gate | 452,456 | main / rec | `2^26` | `2^29.78` ✗ | — | 5 | — | — | — |
 | C16: cell outputs, 16-cell rows | 196,608 | rec | `2^25` (64%) | `2^28.20` ✗ | 3 if split | 18 | 128.5 (split) | 1,876 B | 74,650 |
 | C64: cell outputs, slice rows | 98,304 | main | `2^24` (79%) | `2^27.18` | 2 | 66 | ≈ 141 | 2,996 B | 119,300 |
 | **D16v** | 130,736 | **rec** | **`2^24` (86%)** | **`2^27.91`** | **2** | **18** | **140.6** | **1,844 B** | **73,370** |
@@ -515,7 +515,7 @@ What each option shows:
 - **Claims** (4 in 3 calls):
   - `W`: one point claim, at `(ρ, ρ², ρ⁴, ρ⁸, w_4(t), …, w_23(t))` with value `Σ_k eq(ρ, k) a_k`;
   - `Q`: the identity at `t`, `h(t)·d_pull·d_push + q(t)·w_24(t) = d_pull + d_push`, as one point claim over `h` and
-    `q`'s chunks (the chunk digits as coordinates, as `crates/quotient`); and the sum, `Σ_V h` = the public target,
+    `q`'s chunks (the chunk digits as coordinates, as `crates/membership/quotient`); and the sum, `Σ_V h` = the public target,
     at the top coefficient's fixed point;
   - setup: `σ(t) + ρ'κ(t)`, one point claim.
 - **The contract**, in order:
@@ -607,7 +607,7 @@ adds 9 claims' worth.
    - The prover: the Flock zerocheck's point and the bus's `α`.
    - New vectors from the 1,000-signature trace on h1 (`prove_real`): `main_line_rec.txt`.
    - `fs::record_derived` is the check: the recorded graph equals π1-rec's (`pi1_rec_is_record_derived`).
-2. **The layout framework** (`crates/leanvm_rec/src/circuit/`):
+2. **The layout framework** (`crates/leanvm/rec/src/circuit/`):
    - positions, roles, regions;
    - expression slots and forwards, with the balancing rule (each value's segment ends at exactly one expression
      slot; spare slots end constants' segments);
@@ -632,7 +632,7 @@ adds 9 claims' worth.
 ### R3: π2's prover, its verifier compiled to EVM, real gas
 
 1. **π2's prover:**
-   - `w`'s coefficients (`crates/quotient/src/ntt.rs`);
+   - `w`'s coefficients (`crates/membership/quotient/src/ntt.rs`);
    - `h` on `V_24`;
    - `P`, `d_pull`, `d_push` on an extension coset of `8N` points;
    - `q`;
@@ -640,7 +640,7 @@ adds 9 claims' worth.
 
    Modelled: 5–8 s and about 3 GB beyond π1's 6.2 s.
 2. **π2's verifier in Rust, generic over `Scalar`** (as `quotient::protocol::reduce`). Recorded and compiled by
-   `leanvm_flock_gas::evm` and `evm_link`, with π1's five calls appended.
+   `leanvm_statement::evm` and `evm_link`, with π1's five calls appended.
 3. **Measured gas on revm** with the mock `PCS_OPEN`:
    - parity: the contract is the Rust verifier, word for word;
    - end to end on the real trace: π1-rec's proof, then π2's proof, and the contract accepts with `PCS_OPEN`
@@ -657,7 +657,7 @@ adds 9 claims' worth.
    - an identity of higher degree.
 
    R2 measures it. The fallback (D32v, `2^26.91`) costs 15K gas.
-2. **The virtual-push copy argument is new.** Its soundness is the set argument of §2.3, which `crates/quotient`'s
+2. **The virtual-push copy argument is new.** Its soundness is the set argument of §2.3, which `crates/membership/quotient`'s
    relies on too. But the balancing of slots, the selectors' degree and the outside tags need a written proof and an
    adversarial review before R3's numbers mean much.
 3. **π1-rec changes π1's protocol.** The new Fiat–Shamir shape needs prover changes, new vectors, and an update of
@@ -682,15 +682,15 @@ adds 9 claims' worth.
   - the evaluator, against the 5 real vectors (π1-rec's among them);
   - π1-rec's counts, via `fs::record_derived` and on π1-rec's code (the same graph);
   - π1-rec's real proof and its gas (§1.4);
-  - `crates/quotient`'s rows and words (§2.1);
-  - today's gas (`crates/leanvm_univariate`, SPEC.md §13).
+  - `crates/membership/quotient`'s rows and words (§2.1);
+  - today's gas (`crates/leanvm/univariate`, SPEC.md §13).
   - π2's circuit, its witness on the real proofs and its counts (§10);
   - π2's prover, its proof on the real witness, the contract's gas and its acceptance end to end (§11, `PI2.md`);
 - **Modelled:** everything else about π2: its soundness, and π1-rec's.
 
 ## 10. R2: π2's circuit, measured (steps 2–6)
 
-Branch `leanvm-rec-circuit`, `crates/leanvm_rec/src/circuit/`. Measured on h1 by `tests/circuit.rs`, on the real
+Branch `leanvm-rec-circuit`, `crates/leanvm/rec/src/circuit/`. Measured on h1 by `tests/circuit.rs`, on the real
 1,000-signature proofs: π1-rec's `main_line_rec`, and the main line's `main_line`.
 
 ```sh
@@ -836,7 +836,7 @@ side is roughly 2,850 operations, against D16v's 1,040. At 13.85 gas an operatio
 
 ## 11. R3: π2's PIOP, measured (steps 1–3)
 
-Branch `leanvm-rec-piop`, `crates/leanvm_rec/src/pi2/`; the protocol, the decisions and every number are in
+Branch `leanvm-rec-piop`, `crates/leanvm/rec/src/pi2/`; the protocol, the decisions and every number are in
 [`PI2.md`](PI2.md). Measured on h1 (`tests/pi2.rs`, `tests/pi2_real.rs`), on the real circuit and witness of π1-rec's
 1,000-signature proof:
 

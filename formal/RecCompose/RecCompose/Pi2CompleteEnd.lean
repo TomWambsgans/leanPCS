@@ -1,5 +1,5 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. π2's honest prover is `crates/leanvm_rec/src/pi2/prover.rs`'s
--- (`RecCompose.Pi2Prover`), its witness the circuit compiler's (`crates/leanvm_rec/src/circuit/compile.rs`, not
+-- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. π2's honest prover is `crates/leanvm/rec/src/pi2/prover.rs`'s
+-- (`RecCompose.Pi2Prover`), its witness the circuit compiler's (`crates/leanvm/rec/src/circuit/compile.rs`, not
 -- transcribed: chosen here); the statements are `formal/RecStatement`'s (`RecCompleteness2`, `RecCompleteness`).
 import RecCompose.Pi2Complete
 import RecCompose.Pi2Prob

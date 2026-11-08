@@ -1,5 +1,5 @@
 -- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The basis-B encoding is
--- `crates/leanvm_univariate`'s (SPEC.md §2).
+-- `crates/leanvm/univariate`'s (SPEC.md §2).
 import UniSound.Final
 
 /-!

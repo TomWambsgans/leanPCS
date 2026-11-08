@@ -271,7 +271,7 @@ single lower pattern, which is how the previous design reached 33 without any gu
 - Lanes: blocks on `0 .. 32` and from 40, the overflow lane 32, random lanes `33 .. 40` (`L ≥ 40`); the gadget's
   pairs `(0, 31)`, `(1, 30)` and the overflow lane.
 - The overflow lane holds its pieces: `H < 2^(ℓ-s)`. For `R1` (`H = 33`) this needs `ℓ ≥ 14`, so at least
-  `2^17` rows (`protocol::MIN_LOG_ROWS`); the `PCS_OPEN` mock (`crates/evm/src/machine.rs`) knows layouts for
+  `2^17` rows (`protocol::MIN_LOG_ROWS`); the `PCS_OPEN` mock (`crates/membership/evm/src/machine.rs`) knows layouts for
   `2^17` to `2^22` rows.
 - The layout's id (`opening::layout_id`) encodes the gadget (its patterns' lanes and entries) where it encoded the
   share lane; a public layout's encoding, so the wiring table's prefix, is unchanged.

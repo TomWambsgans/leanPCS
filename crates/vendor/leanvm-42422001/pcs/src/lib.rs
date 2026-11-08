@@ -3,7 +3,7 @@
 // Part of this repository. The parts of leanVM's `crates/pcs` (commit 42422001) that flock's prover uses: the
 // packing constants, the GF(2^8) additive NTT and its inverse table, one inner product. MIT OR Apache-2.0; see
 // NOTICE.md.
-//! leanVM 42422001's `pcs`, the subset flock's prover needs (`crates/lv42_flock`).
+//! leanVM 42422001's `pcs`, the subset flock's prover needs (`crates/vendor/leanvm-42422001/flock`).
 
 pub mod ntt;
 pub mod pack;

@@ -1,6 +1,6 @@
 -- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
--- The calldata's layout is `crates/evm/src/quotient.rs`'s `calldata`, which the tests' `parse`
--- (`crates/evm/src/lean.rs`) inverts.
+-- The calldata's layout is `crates/membership/evm/src/quotient.rs`'s `calldata`, which the tests' `parse`
+-- (`crates/membership/evm/src/lean.rs`) inverts.
 import Evm.Contract
 
 /-!
@@ -31,7 +31,7 @@ theorem accepts_of_not_wellFormed (attest : List UInt8 → Bool) (H : List UInt8
   unfold accepts Implementation.run
   rw [if_neg h]
 
-/-- The value of 24 calldata bytes (the tests' `parse`, `crates/evm/src/lean.rs`): its limbs
+/-- The value of 24 calldata bytes (the tests' `parse`, `crates/membership/evm/src/lean.rs`): its limbs
 `c2, c1, c0`, each big-endian. -/
 def scalarOfBytes (X : List UInt8) : E :=
   limbsEquiv.symm (ofBe64 (X.drop 16), ofBe64 (X.drop 8), ofBe64 X)

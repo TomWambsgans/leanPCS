@@ -3,7 +3,7 @@ Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
 
 Runs the Lean `opening::verify` (`WhirBridge.openingVerifyWithHash`, over leanerVM mumbai's Keccak-256
 and Keccak-f[1600], `Statement/Keccak.lean`) on openings made by the Rust prover, and recomputes the
-prefixes of the protocol's layouts. `crates/quotient/tests/whir_bridge_vector.rs` writes the vectors: a
+prefixes of the protocol's layouts. `crates/membership/quotient/tests/whir_bridge_vector.rs` writes the vectors: a
 public layout, the deployed witness and quotient layouts at `2^17` rows, and the 76-byte prefix of each
 of the 18 layouts the protocol opens. For each opening: the layout is rebuilt from its constructor's
 arguments by the Lean `Layout.new` / `Layout.hidden`, its prefix recomputed and compared with the

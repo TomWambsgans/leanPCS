@@ -1,5 +1,5 @@
 // Part of this repository. The recording, compilation, measurement and parity follow
-// crates/leanvm_univariate/src/contract.rs (itself after crates/evm/src/quotient.rs). MIT OR Apache-2.0; see
+// crates/leanvm/univariate/src/contract.rs (itself after crates/membership/evm/src/quotient.rs). MIT OR Apache-2.0; see
 // NOTICE.md.
 //! π2's verifier as a contract: [`super::verifier::reduce`] recorded on `leanvm_statement`'s symbol, compiled to
 //! straight-line EVM code (`leanvm_statement::evm::codegen`, `crates/evm_link`), run on revm with `FIELD_MUL` and the

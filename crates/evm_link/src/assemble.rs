@@ -1,6 +1,6 @@
 // Part of this repository; the assembly of a straight-line program (values kept in memory slots reused after their
 // last read, one revert, constants copied from the code, the calls of `PCS_OPEN`) is moved here from
-// crates/evm/src/codegen.rs (adapted from leanVM (https://github.com/leanEthereum/leanVM), branch
+// crates/membership/evm/src/codegen.rs (adapted from leanVM (https://github.com/leanEthereum/leanVM), branch
 // PCS-openings-aggregation, commit 651453c6) and crates/leanvm_statement/src/evm/codegen.rs, unchanged; new here: a
 // contract that runs part of a program (values from and to the other parts, the driver's calls). MIT OR Apache-2.0;
 // see NOTICE.md.

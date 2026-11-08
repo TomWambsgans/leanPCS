@@ -1,4 +1,4 @@
-// Part of this repository; the deployment follows this repository's crates/evm/src/quotient.rs. MIT OR Apache-2.0;
+// Part of this repository; the deployment follows this repository's crates/membership/evm/src/quotient.rs. MIT OR Apache-2.0;
 // see NOTICE.md.
 //! A [`Deployable`] verifier on revm: deployed by transactions ([`deploy`]) or installed ([`install`], for measuring
 //! builds), and the gas of a verifier fragment measured alone ([`measure_fragment`]).

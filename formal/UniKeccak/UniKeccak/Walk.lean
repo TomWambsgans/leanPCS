@@ -1,6 +1,6 @@
--- Part of this repository (new here, not from leanVM). Transcribed from `crates/leanvm_flock_gas/src/keccak_flock.rs`
+-- Part of this repository (new here, not from leanVM). Transcribed from `crates/leanvm/statement/src/keccak_flock.rs`
 -- (`row_values`, `t_word`, `state_word`) and `flock_min.rs` (`walked_terminal_with`, `known_weights_with`): the
--- forward walk of the Keccak-f[1600] Flock block of `crates/lv42_flock/src/keccak.rs` (`crates/lv42_flock/KECCAK.md`
+-- forward walk of the Keccak-f[1600] Flock block of `crates/vendor/leanvm-42422001/flock/src/keccak.rs` (`docs/leanvm/flock/KECCAK.md`
 -- §4.2, M1). MIT OR Apache-2.0; see NOTICE.md.
 module
 

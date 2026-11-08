@@ -90,7 +90,7 @@ fn copy(proof: &Proof, stream: Vec<u8>) -> Proof {
     }
 }
 
-/// `PCS_OPEN`'s root word (`crates/evm/src/machine.rs`: `s_0 · 2^128 + s_1`) of the root a WHIR opening is of, read
+/// `PCS_OPEN`'s root word (`crates/membership/evm/src/machine.rs`: `s_0 · 2^128 + s_1`) of the root a WHIR opening is of, read
 /// off the opening itself: its first two scalars, each 128 bits.
 fn whir_word(opening_stream: &[F192]) -> [u8; 32] {
     let mut word = [0u8; 32];
@@ -349,7 +349,7 @@ fn proves_and_verifies_keccak() {
     end_to_end(KECCAK_MAIN);
 }
 
-/// The Keccak VM's π1-rec3, the recursion's inner proof (`crates/leanvm_rec`): `KECCAK_MAIN` with π1-rec3's Fiat–Shamir
+/// The Keccak VM's π1-rec3, the recursion's inner proof (`crates/leanvm/rec`): `KECCAK_MAIN` with π1-rec3's Fiat–Shamir
 /// shape (`FsShape::Rec3`: α and the zerocheck's eq point as squares, the batch two variables a round).
 #[test]
 #[ignore]

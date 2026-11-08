@@ -2,7 +2,7 @@
 
 # KeccakVm: the Keccak VM's statement
 
-The Keccak VM (`crates/leanvm_univariate/KECCAK.md`) is leanVM 42422001 with its `BLAKE2S` instruction replaced by
+The Keccak VM (`docs/leanvm/univariate/KECCAK.md`) is leanVM 42422001 with its `BLAKE2S` instruction replaced by
 leanVM `9d50c92a3`'s `SHA3`. This library is its statement: the instruction set, and the relation its univariate
 verifier would prove knowledge of, in the form `formal/Lv42` gives leanVM 42422001's. It holds definitions, with no
 end theorem about a verifier yet. It is a library of `formal/EndToEnd` (`KeccakVm`, `srcDir = "../KeccakVm"`,
@@ -75,7 +75,7 @@ lake env lean ../UniStatement/UniStatementTest/KeccakTables.lean    # the verifi
   offset (`END_BIT` for `in_16`); `keccakR1csLogSize` is 17.
 - The flushes use the statement's `sha3CellLanes`.
 - `UniStatementTest/KeccakTables.lean` compares every table, column, slot, offset and flush form, term by term, with
-  the Rust's `tables_keccak()` (`crates/leanvm_flock_gas/tests/lean_keccak_tables.rs`). All 261 lines agree; a
+  the Rust's `tables_keccak()` (`crates/leanvm/statement/tests/lean_keccak_tables.rs`). All 261 lines agree; a
   mutated line fails.
 
 ## What is built on it, and what is not done

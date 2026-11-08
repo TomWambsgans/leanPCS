@@ -3,7 +3,7 @@
 // are those of crates/primitives/src/field/{x8,gf2_64x3}.rs (vendored from leanVM c445e3d5, credit binius64).
 // MIT OR Apache-2.0; see NOTICE.md.
 //! [`crate::domain`]'s transforms on rows of eight words, a row's eight products one AVX-512 carry-less product where
-//! the build has it (for `crates/leanvm_univariate`'s prover):
+//! the build has it (for `crates/leanvm/univariate`'s prover):
 //!
 //! - a batch ([`K8`]): eight K-columns, row `i` their entries at position `i`, every layer between rows;
 //! - one K-column, eight positions a row: its layers from 3 up between rows, layers 0..3 inside a row.

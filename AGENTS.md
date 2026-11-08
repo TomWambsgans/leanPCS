@@ -18,7 +18,7 @@ Part of this repository. Notes for contributors: what the implementation adds to
 - **The Fiat–Shamir states need not be in the header**, given the two points above.
 - **The forward-compatibility upgrade by one Schwartz–Zippel point** needs the new commitment to bind one table: an
   OOD answer at commit time, or a root anyone recomputes from the public circuit.
-- **ZK without changing the verifier**: true (`crates/quotient/HIDING.md`), but at these sizes it is not leanVM's 4×
+- **ZK without changing the verifier**: true (`docs/membership/HIDING.md`), but at these sizes it is not leanVM's 4×
   padding (which would exceed WHIR's 2^28 words): a random first piece per lane, 7 random lanes, and a *gadget* (a
   fixed weight on nine first-piece entries, cancelled by the values there, batched as a claim of value zero) that makes
   WHIR's lane rounds uniform for every challenge outside a set below 2^-188. The padding must cover the masks' lane:
@@ -33,9 +33,9 @@ Two lines, both with Keccak-256 Fiat–Shamir and both passing their claims to `
 `root`), reduced to four PCS claims by five field elements, as in leanVM's `flock::quotient` but on a circuit of
 one χ gate on bits, its claims opened by leanVM's WHIR unchanged.
 
-- `crates/quotient`: circuit, prover, Rust verifier (`protocol::reduce`), and the openings (`opening`), whose
-  hidden layouts make the roots and the openings hide the witness ([`HIDING.md`](crates/quotient/HIDING.md)).
-- `crates/evm`: the same verifier compiled to EVM bytecode, run on revm with `FIELD_MUL` (10 gas) and a mock
+- `crates/membership/quotient`: circuit, prover, Rust verifier (`protocol::reduce`), and the openings (`opening`), whose
+  hidden layouts make the roots and the openings hide the witness ([`HIDING.md`](docs/membership/HIDING.md)).
+- `crates/membership/evm`: the same verifier compiled to EVM bytecode, run on revm with `FIELD_MUL` (10 gas) and a mock
   `PCS_OPEN` precompile (ABI in `machine.rs`), which the contract calls once per commitment: three calls for the
   four claims. The contract's ABI (`verify` with a selector and packed arguments, 252 bytes of calldata) and its
   deployment are in `quotient.rs`: the circuit's commitment is a constructor argument kept in storage (read by one
@@ -62,15 +62,15 @@ one χ gate on bits, its claims opened by leanVM's WHIR unchanged.
 
 **leanVM proofs on the EVM, by recursion.**
 
-- `crates/leanvm_univariate`, `crates/leanvm_rec`: π1 is a univariate PIOP for leanVM's statement, with its prover
+- `crates/leanvm/univariate`, `crates/leanvm/rec`: π1 is a univariate PIOP for leanVM's statement, with its prover
   and verifier; π2 wraps π1's verifier, and the contract runs π2's verifier for about 45K gas
-  (`crates/leanvm_rec/README.md`). Both the BLAKE2s VM (leanVM `42422001`, end to end, Lean proofs) and the
+  (`crates/leanvm/rec/README.md`). Both the BLAKE2s VM (leanVM `42422001`, end to end, Lean proofs) and the
   Keccak VM (the `SHA3` table of leanVM `9d50c92a3`, Flock on the Keccak-f block; verifier and gas only so far,
-  [`KECCAK.md`](crates/leanvm_univariate/KECCAK.md)) are supported.
-  - `crates/leanvm_flock_gas` holds the shared parts: leanVM's statement ported, Flock's verifier, and the EVM
+  [`KECCAK.md`](docs/leanvm/univariate/KECCAK.md)) are supported.
+  - `crates/leanvm/statement` holds the shared parts: leanVM's statement ported, Flock's verifier, and the EVM
     recorder and machine.
   - `crates/lv42_*` is leanVM `42422001`'s Flock prover, vendored, with the Keccak-f block (`lv42_flock/KECCAK.md`).
-  - `crates/gf2_linear` holds the prover's GF(2)-linear maps.
+  - `crates/leanvm/gf2_linear` holds the prover's GF(2)-linear maps.
 - `formal/`: π1's statement and knowledge soundness (`UniStatement`, `UniSound`, `FlockSound`, on `Lv42`'s
   relation), its completeness (`UniComplete`), and the recursion's end theorems (`RecGraph`, `RecStatement`,
   `RecPiop`, `RecCircuit`, `RecCompose`), described in [`formal/README.md`](formal/README.md).
@@ -80,7 +80,7 @@ one χ gate on bits, its claims opened by leanVM's WHIR unchanged.
 - `crates/evm_link`: the compilation and assembly the code generators share, and the linker that cuts a program too
   big for EIP-170 into a driver and parts of at most 24,576 bytes it `DELEGATECALL`s, computing the same. The
   membership contract fits and is assembled byte for byte as without the linker (its tests also run on it linked
-  into 2 KB parts); leanVM's verifier (`crates/leanvm_flock_gas`, option A) is 5 contracts, 26,601 gas more (7.9%),
+  into 2 KB parts); leanVM's verifier (`crates/leanvm/statement`, option A) is 5 contracts, 26,601 gas more (7.9%),
   its transaction unchanged under EIP-7623.
 - Vendored from leanVM `c445e3d5`: `primitives`, `fiat_shamir`, `pcs`, `parallel`, `verifier`, `bench`.
 - `params/`: the parameter calculators (WHIR's, π1's and π2's soundness bits).
