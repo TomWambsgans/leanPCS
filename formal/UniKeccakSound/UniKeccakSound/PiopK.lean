@@ -63,7 +63,7 @@ structure UniIdsK (F : KeccakVm.KeccakFlockSpec) (D : KDeployment) {κ : ℕ} {v
   nRel : ℕ
   diffs_len : ∀ s c1 ch fd c2 t vals, ∀ d ∈ diffs s c1 ch fd c2 t vals, d.length ≤ nRel
   diffs_count : ∀ s c1 ch fd c2 t vals, (diffs s c1 ch fd c2 t vals).length ≤ 3
-  diffs_eval : ∀ s c1 ch fd c2 t vals, (∀ d ∈ diffs s c1 ch fd c2 t vals, ∀ x ∈ d, x = 0) →
+  diffs_eval : ∀ s c1 ch fd c2 t vals, ch.length = 6 → (∀ d ∈ diffs s c1 ch fd c2 t vals, ∀ x ∈ d, x = 0) →
     ∀ P ∈ polys s c1 ch fd c2, P.eval t = 0
   diffs_flock : ∀ s c1 ch fd c2 t vals, (∀ d ∈ diffs s c1 ch fd c2 t vals, ∀ x ∈ d, x = 0) →
     FlockEndHoldsK (qf c1) (Fl.prog.out fd [])
@@ -92,7 +92,7 @@ def uniSK (s : USt) (q : Op Stk) : Prop :=
         DoneFits (Fl.prog.rounds.take (q.length - 1)) (fdOf Fl.prog.rounds.length q) ∧
           Fl.S (I.qf c1) (fdOf Fl.prog.rounds.length q)
     else ∃ c2, (rd q (Fl.prog.rounds.length + 1)).1.1 = some c2 ∧
-      FlockDoneZ Fl (fdOf Fl.prog.rounds.length q) ∧
+      FlockDoneZ Fl (fdOf Fl.prog.rounds.length q) ∧ (rd q 0).2.length = 6 ∧
       ((I.zb (fdOf Fl.prog.rounds.length q)).eval ((rd q (Fl.prog.rounds.length + 1)).2.headD 0) = 0 ∨
       if q.length = Fl.prog.rounds.length + 2 then
         ∃ vals, ∀ d ∈ I.diffs s c1 (rd q 0).2 (fdOf Fl.prog.rounds.length q) c2

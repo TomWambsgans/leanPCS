@@ -11,7 +11,10 @@ by leanVM `9d50c92a3`'s `SHA3`. This library holds:
 - **the end statements**, against the Keccak VM's relation `KeccakVm.KvHolds F`: knowledge soundness and completeness
   of the main line and of π1-rec3's shape. `F : KeccakVm.KeccakFlockSpec` (the Keccak-f block) is a parameter.
 
-The statements are not proved. There is no `sorry` and no `native_decide`. The root's guards (`UniKeccak.lean`) check
+The knowledge-soundness statements are proved in [`formal/UniKeccakSound`](../UniKeccakSound/README.md) at the
+Keccak-f block `KeccakFlock.keccakFlockSpec` and the reference shape (128 signatures), with no other hypothesis
+(`UniKeccakSound.uniKnowledgeSoundnessKeccak_closed`, `uniKnowledgeSoundnessKeccakRec3_closed`). The completeness
+statements are not proved. There is no `sorry` and no `native_decide`. The root's guards (`UniKeccak.lean`) check
 that the verifier and every statement rest on Lean's three axioms.
 
 It is a library of `formal/EndToEnd` (`UniKeccak`, `srcDir = "../UniKeccak"`, `warningAsError`). It reuses
@@ -194,9 +197,10 @@ identities are what `KeccakAux`'s copy clause states.
 
 ## What remains
 
-- **Proofs**: the statements' soundness and completeness. They need:
-  - the Keccak-f block's inhabitant of `KeccakFlockSpec` and `KeccakFlockFits` for it (`formal/KeccakFlock`);
-  - the structured terminal's identity with the block's matrices' sum;
-  - `UniSound`'s and `UniComplete`'s layers redone on the Keccak tables (11 slot bits, the `END_BIT` constant in
-    `Q_W`, three openings);
-  - the Keccak VM's arithmetization (`formal/KeccakArith`).
+- **Knowledge soundness**: done in `formal/UniKeccakSound` at the reference shape `keccakShapeOf 721598 [24260, 36229,
+  24626, 35812, 15509, 17712]` (error `uniBound128 (2^32/|E|)`, resp. `(2^35/|E|)`, at most `2^-64` for `Q ≤ 2^64`).
+  Along the way it proved `UniKeccak.structuredTerminal` equal to `KeccakFlock.Terminal.structuredTerminal`
+  (`UniKeccakSound.KF.Br.structuredTerminal_eq`), which nothing had linked before, and certified the setup's
+  `2^23`-word WHIR opening (`UniKeccakSound/Fs/Whir23.lean`).
+- **Completeness**: not started. It needs a Lean honest prover for the Keccak verifier (`UniComplete`'s layers on the
+  Keccak tables, Flock's prover on the Keccak-f block) and its proof layers.

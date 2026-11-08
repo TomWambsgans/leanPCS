@@ -45,10 +45,10 @@ See `README.md`.
 #guard_msgs in
 #print axioms UniKeccakSound.uniKnowledgeSoundnessKeccak_ref
 
-/-- info: 'UniKeccakSound.uniKnowledgeSoundnessKeccak_closed_of' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'UniKeccakSound.uniKnowledgeSoundnessKeccak_closed' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms UniKeccakSound.uniKnowledgeSoundnessKeccak_closed_of
+#print axioms UniKeccakSound.uniKnowledgeSoundnessKeccak_closed
 
-/-- info: 'UniKeccakSound.uniKnowledgeSoundnessKeccakRec3_closed_of' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'UniKeccakSound.uniKnowledgeSoundnessKeccakRec3_closed' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms UniKeccakSound.uniKnowledgeSoundnessKeccakRec3_closed_of
+#print axioms UniKeccakSound.uniKnowledgeSoundnessKeccakRec3_closed
