@@ -2,7 +2,8 @@
 // PCS-openings-aggregation, commit 651453c6), in the same order; the lane-wise carry-less product and its reduction
 // are those of crates/vendor/leanvm-c445e3d5/primitives/src/field/{x8,gf2_64x3,gf2_64}.rs (vendored from leanVM c445e3d5, credit binius64).
 // MIT OR Apache-2.0; see AGENTS.md.
-//! [`crate::domain`]'s transforms on rows of eight words, a row's eight products one AVX-512 carry-less product where
+//! [`crate::domain`]'s transforms on rows of eight words, a row's eight products one AVX-512 carry-less product (two
+//! AVX2 + VPCLMULQDQ ones, or NEON PMULLs) where
 //! the build has it (for `crates/leanvm/univariate`'s prover):
 //!
 //! - a batch ([`K8`]): eight K-columns, row `i` their entries at position `i`, every layer between rows;
@@ -318,8 +319,175 @@ mod lanes {
     }
 }
 
+#[cfg(all(
+    target_arch = "x86_64",
+    target_feature = "avx2",
+    target_feature = "vpclmulqdq",
+    not(target_feature = "avx512f")
+))]
+mod lanes {
+    //! AVX2 + VPCLMULQDQ: eight K elements in two registers, lanes `0..4` and `4..8`; the products and the
+    //! reduction are the AVX-512 module's, on each half (no ternary logic: plain XORs).
+    use core::arch::x86_64::*;
+
+    /// Eight K elements in two registers.
+    #[derive(Clone, Copy)]
+    pub struct V([__m256i; 2]);
+
+    /// # Safety
+    /// `p` points to eight readable words.
+    #[inline(always)]
+    pub unsafe fn load(p: *const u64) -> V {
+        // SAFETY: the caller's eight words.
+        unsafe { V([_mm256_loadu_si256(p.cast()), _mm256_loadu_si256(p.add(4).cast())]) }
+    }
+
+    /// # Safety
+    /// `p` points to eight writable words.
+    #[inline(always)]
+    pub unsafe fn store(p: *mut u64, v: V) {
+        // SAFETY: the caller's eight words.
+        unsafe {
+            _mm256_storeu_si256(p.cast(), v.0[0]);
+            _mm256_storeu_si256(p.add(4).cast(), v.0[1]);
+        }
+    }
+
+    #[inline(always)]
+    pub fn splat(x: u64) -> V {
+        // SAFETY: the module's cfg enables avx2.
+        let h = unsafe { _mm256_set1_epi64x(x as i64) };
+        V([h, h])
+    }
+
+    #[inline(always)]
+    pub fn from_array(x: [u64; 8]) -> V {
+        // SAFETY: eight words on the stack.
+        unsafe { load(x.as_ptr()) }
+    }
+
+    #[inline(always)]
+    pub fn xor(a: V, b: V) -> V {
+        // SAFETY: the module's cfg enables avx2.
+        unsafe { V([_mm256_xor_si256(a.0[0], b.0[0]), _mm256_xor_si256(a.0[1], b.0[1])]) }
+    }
+
+    /// Lane-wise carry-less products, unreduced: each half's even lanes' 128-bit products, and its odd lanes'.
+    #[derive(Clone, Copy)]
+    pub struct U([__m256i; 4]);
+
+    #[inline(always)]
+    pub fn zero_u() -> U {
+        // SAFETY: the module's cfg enables avx2.
+        let z = unsafe { _mm256_setzero_si256() };
+        U([z; 4])
+    }
+
+    #[inline(always)]
+    pub fn clmul_u(a: V, b: V) -> U {
+        // SAFETY: the module's cfg enables avx2 and vpclmulqdq.
+        unsafe {
+            U([
+                _mm256_clmulepi64_epi128::<0x00>(a.0[0], b.0[0]),
+                _mm256_clmulepi64_epi128::<0x11>(a.0[0], b.0[0]),
+                _mm256_clmulepi64_epi128::<0x00>(a.0[1], b.0[1]),
+                _mm256_clmulepi64_epi128::<0x11>(a.0[1], b.0[1]),
+            ])
+        }
+    }
+
+    #[inline(always)]
+    pub fn xor_u(a: U, b: U) -> U {
+        // SAFETY: the module's cfg enables avx2.
+        unsafe { U(std::array::from_fn(|i| _mm256_xor_si256(a.0[i], b.0[i]))) }
+    }
+
+    /// One half reduced: `lo ^ f(hi ^ spill)`, as in the AVX-512 module.
+    #[inline(always)]
+    fn reduce_half(even: __m256i, odd: __m256i) -> __m256i {
+        // SAFETY: the module's cfg enables avx2.
+        unsafe {
+            let (lo, hi) = (_mm256_unpacklo_epi64(even, odd), _mm256_unpackhi_epi64(even, odd));
+            let spill = _mm256_xor_si256(
+                _mm256_xor_si256(_mm256_srli_epi64::<63>(hi), _mm256_srli_epi64::<61>(hi)),
+                _mm256_srli_epi64::<60>(hi),
+            );
+            let v = _mm256_xor_si256(hi, spill);
+            let f = _mm256_xor_si256(
+                _mm256_xor_si256(v, _mm256_slli_epi64::<1>(v)),
+                _mm256_xor_si256(_mm256_slli_epi64::<3>(v), _mm256_slli_epi64::<4>(v)),
+            );
+            _mm256_xor_si256(lo, f)
+        }
+    }
+
+    #[inline(always)]
+    pub fn reduce_u(p: U) -> V {
+        V([reduce_half(p.0[0], p.0[1]), reduce_half(p.0[2], p.0[3])])
+    }
+
+    /// Lane `i` is `a_i b_i` in K.
+    #[inline(always)]
+    pub fn mul(a: V, b: V) -> V {
+        reduce_u(clmul_u(a, b))
+    }
+
+    /// The 8 x 8 transpose: lane `p` of output `c` is lane `c` of input `p`.
+    #[inline(always)]
+    pub fn transpose(r: [V; 8]) -> [V; 8] {
+        let mut m = [[0u64; 8]; 8];
+        // SAFETY: eight words a row, on the stack.
+        unsafe {
+            for (row, v) in m.iter_mut().zip(r) {
+                store(row.as_mut_ptr(), v);
+            }
+        }
+        std::array::from_fn(|c| from_array(std::array::from_fn(|p| m[p][c])))
+    }
+
+    /// Lane `i` is `a_(i ^ S)`.
+    #[inline(always)]
+    pub fn swap<const S: usize>(a: V) -> V {
+        let [mut x, mut y] = a.0;
+        if S & 4 != 0 {
+            (x, y) = (y, x);
+        }
+        // SAFETY: the module's cfg enables avx2.
+        unsafe {
+            if S & 2 != 0 {
+                (x, y) = (_mm256_permute4x64_epi64::<0x4E>(x), _mm256_permute4x64_epi64::<0x4E>(y));
+            }
+            if S & 1 != 0 {
+                (x, y) = (_mm256_permute4x64_epi64::<0xB1>(x), _mm256_permute4x64_epi64::<0xB1>(y));
+            }
+        }
+        V([x, y])
+    }
+
+    /// `a`, with `b` added on the lanes of `mask`.
+    #[inline(always)]
+    pub fn mask_add(a: V, mask: u8, b: V) -> V {
+        let bit = |i: u32| -(((mask >> i) & 1) as i64);
+        // SAFETY: the module's cfg enables avx2.
+        unsafe {
+            let m0 = _mm256_set_epi64x(bit(3), bit(2), bit(1), bit(0));
+            let m1 = _mm256_set_epi64x(bit(7), bit(6), bit(5), bit(4));
+            V([
+                _mm256_xor_si256(a.0[0], _mm256_and_si256(b.0[0], m0)),
+                _mm256_xor_si256(a.0[1], _mm256_and_si256(b.0[1], m1)),
+            ])
+        }
+    }
+}
+
 #[cfg(not(any(
     all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "vpclmulqdq"),
+    all(
+        target_arch = "x86_64",
+        target_feature = "avx2",
+        target_feature = "vpclmulqdq",
+        not(target_feature = "avx512f")
+    ),
     all(target_arch = "aarch64", target_feature = "aes")
 )))]
 mod lanes {
