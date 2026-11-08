@@ -14,25 +14,24 @@ recorded graph [`RecGraphKeccak`](../RecGraphKeccak/README.md)'s `pi1GraphK`. In
 * **π2's verifier as computable Lean**, step by step as `pi2/verifier.rs` and the contract's order;
 * the circuit's tables as **data the Rust emits** (`Data.lean`, with a staleness test; never `σ`);
 * the **verifier-arithmetic lemmas** that `RecPiop`'s rounds and copy argument consume, proved;
-* the **end statements** of the whole recursive verifier, stated, not proved, in two parts: π2's, in the
-  random-permutation model (`RecKnowledgeSoundness2`, `RecCompleteness2`: the contract accepts only if the Keccak
-  π1-rec3's recorded graph, run with the real Keccak-f[1600] as π2's circuit runs it, accepts the stream π2's extractor
-  outputs); end-to-end knowledge soundness against the Keccak VM's relation (`KeccakVm.KvHolds`) as an **explicit
-  reduction**
-  (`RecKnowledgeSoundnessReduction`, `Reduction.lean`: the break is bounded by π2's error plus π1-rec3's and the merge
-  hazard's experiments at Keccak-f[1600] for two explicit adversaries derived from the attacker, of its queries); and
-  the end-to-end corollaries (`RecKnowledgeSoundness`, `RecCompleteness`) under named hypotheses about π1-rec3 at
-  Keccak-f[1600]. The soundness ones (`Pi1FsKeccak`, `Pi1HazardKeccak`) are false as stated
-  for computationally unbounded adversaries, which grind Keccak-f[1600] offline for free: read them as the Fiat–Shamir
-  heuristic for adversaries of bounded Keccak-f[1600] work, which Lean does not model.
+* the **end statements** of the whole recursive verifier, stated here and proved in
+  [`RecCompose`](../RecCompose/README.md): π2's part, in the random-permutation model (`RecKnowledgeSoundness2`,
+  `RecCompleteness2`: the contract accepts only if the Keccak π1-rec3's recorded graph, run with the real
+  Keccak-f[1600] as π2's circuit runs it, accepts the stream π2's extractor outputs); end-to-end knowledge soundness
+  against the Keccak VM's relation (`KeccakVm.KvHolds`) as an **explicit reduction** (`RecKnowledgeSoundnessReduction`,
+  `Reduction.lean`: the break is bounded by π2's error plus π1-rec3's and the merge hazard's experiments at
+  Keccak-f[1600] for two explicit adversaries derived from the attacker, of its queries); and the end-to-end forms
+  (`RecKnowledgeSoundness`, `RecCompleteness`) under named hypotheses about π1-rec3 at Keccak-f[1600]. The soundness
+  ones (`Pi1FsKeccak`, `Pi1HazardKeccak`) are false as stated for computationally unbounded adversaries, which grind
+  Keccak-f[1600] offline for free: read them as the Fiat–Shamir heuristic for adversaries of bounded Keccak-f[1600]
+  work, which Lean does not model.
 
 No `sorry`, no `native_decide`, every headline definition and theorem on Lean's three axioms (`RecStatement.lean`'s
 `#guard_msgs`). It is a library of `formal/EndToEnd` (`RecStatement`, `srcDir = "../RecStatement"`, `warningAsError`),
 as `UniStatement` is, whose definitions it reuses (the channel, `E`, the extractor's pieces), with `UniKeccak`'s for π1
 (the deployment `KDeployment`, the layout words `layoutWordsK`, the contract IV `contractIvKWith … keccakRec3`, the run
 `runK`, the setup `setupTreeKWith`, the extractor `uniExtractorK`, the relation `KvHolds`) and `RecGraphKeccak`'s for
-π1-rec3's recorded graph and merge hazard. No BLAKE2s VM part remains: the BLAKE2s differential runner
-(`RecStatementTest/Runner.lean`, whose vectors were the BLAKE2s π1-rec3's) is deleted.
+π1-rec3's recorded graph and merge hazard.
 
 ```sh
 cd formal/EndToEnd
@@ -91,7 +90,7 @@ transcribed); the Rust's trace hook (`reduce_traced`) only reads values (the con
 
 ## The data
 
-`crates/leanvm/rec/src/lean_statement.rs` (`render`) writes `Data.lean` (`tests/lean_statement_keccak.rs`) from π2's
+`crates/leanvm/rec/tests/lean_statement_keccak.rs` (`render`) writes `Data.lean` from π2's
 circuit for the Keccak VM's π1-rec3 at the 128-signature reference (`circuit::compile::pi2(record_verifier(KECCAK_128,
 Keccak(KECCAK_REC3), Point), D16v)`, then `pi2::adapt`; the graph of `RecGraphKeccak/Emitted.lean`): the shape, the
 formulas, the pairs, the reads, the public terms; π1's contract IV (`Compiled::pi1_iv`), the setup's root
@@ -108,9 +107,8 @@ circuit, π1's calls and π1's contract IV do not depend on the stream or the pu
 Keccak-f[1600] (a circuit is a fixed function: `RecCircuit.compile_sound`, `keccak_out`; for the Keccak graph
 `RecGraphKeccak.pi1rec3K_end`); the Keccak π1-rec3's knowledge soundness is proved in the random-permutation model
 (`UniKeccakSound.uniKnowledgeSoundnessKeccakRec3_closed`: `uniBound128 (2^35/|E|) Q`, at most `2^-64` for `Q ≤ 2^64`).
-No circuit computes a random permutation, which is inherent to recursion, so the statements come in two parts (the
-earlier proofs' caveat, AGENTS.md: "the theorems are in the random-permutation model and do not formally compose with
-the EVM one, which holds at the real Keccak-f[1600]"):
+No circuit computes a random permutation, which is inherent to recursion, so the statements come in two parts (as on
+the membership line, where the random-permutation theorems and the EVM one do not formally compose):
 
 1. **π2's part, in the random-permutation model** (provable): one random permutation `π` for π2's own Fiat–Shamir, the
    circuit's digest, the commitments and the six openings.
@@ -336,49 +334,59 @@ public fingerprints):
 * **`normConsts_of_spec`**, **`pairZ_eq_zHat`** (`SpecLink`): `Spec::of`'s constants (`coset_constants`,
   `normalised_constants`, `pair_constants`) are `SpecOf`'s; they commute with a field homomorphism (`K → E`).
 
+## Where the statements are proved
+
+In [`RecCompose`](../RecCompose/README.md), at `D.Real` and the run-checked inputs (`Pi2Circuits D`, `GraphsAgree`,
+`Pi2ViewChecked`), and at the real deployment (`RecCompose.realDeployment prog hprog`) from the evaluated checks
+`GraphsAgree`, `DigestChecked`, `SetupRootChecked`, `IvChecked`:
+
+* **`RecKnowledgeSoundnessReduction D pi2Bound`**, `pi2Bound Q ≤ 2^-64` for `Q ≤ 2^64`:
+  `RecCompose.recKnowledgeSoundness_reduction`, `recKnowledgeSoundness_reduction_real`. No Fiat–Shamir premise.
+* **`RecKnowledgeSoundness2 D pi2Bound`**: `recKnowledgeSoundness2_closed`; **`RecKnowledgeSoundness D pi2Bound ε1
+  εh`**: `recKnowledgeSoundness_closed` (premises `Pi1FsKeccak`, `Pi1HazardKeccak`, false as stated: above).
+* **`RecCompleteness2`** at the concrete π1-rec3 prover (`RecCompose.Pi1K.pi1Rec3ProverK`, UniKeccakComplete's with its
+  Fiat–Shamir over Keccak-f[1600]), `δ2 ≤ 2^-164`: `Pi1K.recCompleteness2_pi2_rec3_K`; **`RecCompletenessWith`** end to
+  end, error `δ1 + δh + 2^-164` under `Pi1CompletenessKeccak δ1` and `Pi1HazardKeccakHonest δh`:
+  `Pi1K.recCompleteness_real_K_fs_bits`.
+
 ## What is tested, what is defined
 
 **Tested**: `Data.lean` against the Rust (`tests/lean_statement_keccak.rs`'s `keccak_statement_data_is_current`: the
 file is what `render` writes for the Keccak π1-rec3's circuit; the circuit, π1's calls and π1's contract IV do not
-depend on the stream or the public input). The BLAKE2s VM's Lean differential runner (64 vectors of the BLAKE2s
-π1-rec3 + π2 proof: every value of `reduce`, the six `PCS_OPEN` inputs word for word, the registry's decoding) is
-deleted with the BLAKE2s deployment; **no Lean differential run of π2's verifier on Keccak vectors exists yet**. π2's
-verifier, `pcsCalls`, the registry's decoding and the IV (`Core`, `Spec`, `Verifier`, `Calls`) are generic in π2's
-circuit and unchanged from the version that runner checked; π1's contract IV and layout words are now `UniKeccak`'s
-(checked against the Rust there, `formal/UniKeccak/README.md`).
+depend on the stream or the public input). **No Lean differential run of π2's verifier on Keccak vectors exists.**
+π2's verifier, `pcsCalls`, the registry's decoding and the IV (`Core`, `Spec`, `Verifier`, `Calls`) are generic in π2's
+circuit and unchanged since an earlier runner, on the BLAKE2s VM's π1-rec3 + π2 vectors (since removed), agreed with
+the Rust on every value; π1's contract IV and layout words are now `UniKeccak`'s, checked against the Rust there
+([`../UniKeccak/README.md`](../UniKeccak/README.md)).
 
-**Defined, not tested here**: `PCS_OPEN`'s WHIR (the Rust has a mock), the extractor, the experiments, the Props. The
-setup's commitment (`setupTreeWith`) and the circuit's digest over Keccak-f[1600], of the Lean compiler's `σ`, `κ` at
-π1's reference IV, are not evaluated against `Data.digest`, `Data.setupRoot` here (for the BLAKE2s deployment,
-`RecCompose`'s `rec-real-check` did).
+**Evaluated** (in `RecCompose`, by running Lean): the digest and the setup root of the Lean compiler's `σ`, `κ` at π1's
+reference IV are `Data.digest`, `Data.setupRoot` (`DigestChecked`, `SetupRootChecked`, `rec-real-check`).
+
+**Defined, not tested**: `PCS_OPEN`'s WHIR (the Rust has a mock), the extractors, the experiments, the Props.
 
 ## Open points
 
-1. **The Props are to be proved in [`RecCompose`](../RecCompose/README.md)**, not here (its BLAKE2s proofs are being
-   converted to these statements): π2's part (`RecKnowledgeSoundness2`, `RecCompleteness2`) from `SpecOf` for the real
-   circuit (from the circuit compiler, `RecCircuit`, and `SpecLink`), the tables' layer (`W`'s and `Q`'s claims as
-   their tables' values: `run_u`, `run_digitsScale`, `RecPiop.sum_tablePoly_omega`), the Fiat–Shamir layer and the
-   openings, and π2's circuit computing the Keccak π1-rec3's graph (`RecGraphKeccak.pi1rec3K_end`, and `call_inputs`:
-   π2's calls rebuild π1's from the ports); the end-to-end forms add RecGraphKeccak's `Pi1GraphIsVerifierK` (proved)
-   and the hypotheses.
-2. **The random-permutation theorems do not formally compose with the circuit's Keccak-f[1600]**. The Props at
+1. **The random-permutation theorems do not formally compose with the circuit's Keccak-f[1600]**. The Props at
    Keccak-f[1600] are premises whose readings are heuristic, not theorems. For soundness the meeting point is the
    reduction `RecKnowledgeSoundnessReduction`: the reader applies the Fiat–Shamir heuristic to its two explicit derived
    adversaries (motivated by `UniKeccakSound.uniKnowledgeSoundnessKeccakRec3_closed` and
    `RecGraphKeccak.hazard_probK`). The Props `Pi1FsKeccak`, `Pi1HazardKeccak` are false as stated for unbounded
    adversaries (they grind Keccak-f[1600] offline for free); `Pi1CompletenessKeccak`, `Pi1HazardKeccakHonest` (about
-   the honest prover) are not provable. `Pi1CompletenessKeccak`'s random-permutation analogue is
-   `UniKeccak.UniCompletenessKeccakRec3`, a statement. **`Pi1HazardKeccakHonest`'s random-permutation reading is not
-   proved**: it is motivated only by `hazard_probK`, a count (at most `2^16` hazardous `t` per `p_0`, so `2^-176` for a
-   uniform `t` with `p_0` fixed), not a game.
-3. **`pi1Stream`** is a field of the deployment: where π2's witness holds π1's stream is the circuit compiler's (the
+   the honest prover) are not provable in this model. `Pi1CompletenessKeccak`'s random-permutation reading at the
+   concrete prover is proved (`RecCompose.Pi1K.pi1CompletenessFs_rpm`, from
+   `UniKeccakComplete.uniCompletenessKeccakRec3_closed`: `deltaK < 2^-169`). **`Pi1HazardKeccakHonest`'s
+   random-permutation reading is not proved**: it is motivated only by `hazard_probK`, a count (at most `2^16`
+   hazardous `t` per `p_0`, so `2^-176` for a uniform `t` with `p_0` fixed), not a game.
+2. **`pi1Stream`** is a field of the deployment: where π2's witness holds π1's stream is the circuit compiler's (the
    stream's hashed bytes are free bits of π2's witness, `RecCircuit.Compiled.decodeStream`); the composition instantiates
-   it. **`pi2`** is π2's circuit for π1's contract IV (the seed's constants): at the real deployment, the emitted tables
-   at every IV. **`flock`** is the Keccak-f block of the relation, pinned by `Real`.
-4. **`A0`, `B0`** are deployment constants the Keccak contract's IV hashes (`UniKeccak.KDeployment`), not commitments:
+   it. **`pi2`** is π2's circuit for π1's contract IV (the seed's constants): at the real deployment, the Lean
+   compiler's at every IV (`SetupFromCompiler`); that it compiles, passes `viewCheck` and decodes π1's stream as at the
+   reference IV, at every 32-byte IV, is `IvChecked`, evaluated at three IVs only ([`../RecCompose/README.md`](../RecCompose/README.md), "Remaining"). **`flock`** is the
+   Keccak-f block of the relation, pinned by `Real`.
+3. **`A0`, `B0`** are deployment constants the Keccak contract's IV hashes (`UniKeccak.KDeployment`), not commitments:
    `Real` does not pin them. The Rust's `Data.pi1Iv` is at `SetupRoots::REFERENCE` (= `referenceRootsK`: the Keccak
    128 setup's `F` and the two constants); the model's contract derives π1's IV at the setup's own roots.
-5. **`PCS_OPEN`'s WHIR instance is a choice**, as in UniStatement: π1's calls on the plain layout of `2^vars` words (the
+4. **`PCS_OPEN`'s WHIR instance is a choice**, as in UniStatement: π1's calls on the plain layout of `2^vars` words (the
    layout word's byte 24), π2's on π2's public layouts (`quotient::opening`); the registry decodes as `machine::decode`.
-6. **The degenerate events** (`all = 0`: `t ∈ V_{m+2}`, `c_h + c_q = 0`, a vanishing public denominator) reject; they
+5. **The degenerate events** (`all = 0`: `t ∈ V_{m+2}`, `c_h + c_q = 0`, a vanishing public denominator) reject; they
    matter for completeness only (`all_ne_zero_iff` names them).
