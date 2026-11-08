@@ -585,6 +585,20 @@ trait Kind: Sync {
     fn butterfly(a: V, b: V, t: V) -> (V, V);
     /// Layers 0..3 of row `row`, eight consecutive positions of one column.
     fn lanes(&self, row: usize, x: V) -> V;
+    /// [`Self::lanes`] on the `size` rows at `base`, rows `first..first + size` of the column.
+    ///
+    /// # Safety
+    /// `base` holds `8 size` words of the caller's own.
+    #[inline(always)]
+    unsafe fn own_rows(&self, base: *mut u64, first: usize, size: usize) {
+        for r in 0..size {
+            // SAFETY: row `r < size` of the caller's.
+            unsafe {
+                let p = base.add(8 * r);
+                store(p, self.lanes(first + r, load(p)));
+            }
+        }
+    }
 }
 
 /// `ω_(2 j)`, from a table below a leaf's blocks.
@@ -630,6 +644,11 @@ struct Forward(Twiddles);
 impl Kind for Forward {
     const DOWN: bool = true;
     #[inline(always)]
+    unsafe fn own_rows(&self, base: *mut u64, first: usize, size: usize) {
+        // SAFETY: the caller's rows.
+        unsafe { own_stepped(self, base, first, size) }
+    }
+    #[inline(always)]
     fn twiddle(&self, k: usize, block: usize) -> F64 {
         self.0.offsets[k] + point(2 * block)
     }
@@ -659,6 +678,11 @@ struct Inverse(Twiddles);
 
 impl Kind for Inverse {
     const DOWN: bool = false;
+    #[inline(always)]
+    unsafe fn own_rows(&self, base: *mut u64, first: usize, size: usize) {
+        // SAFETY: the caller's rows.
+        unsafe { own_stepped(self, base, first, size) }
+    }
     #[inline(always)]
     fn twiddle(&self, k: usize, block: usize) -> F64 {
         self.0.offsets[k] + point(2 * block)
@@ -785,10 +809,7 @@ fn leaves<T: Kind>(
             }
             let own = |base: *mut u64| {
                 if shift == 3 {
-                    for r in 0..size {
-                        let p = base.add(8 * r);
-                        store(p, kind.lanes(first + r, load(p)));
-                    }
+                    kind.own_rows(base, first, size);
                 }
             };
             if !T::DOWN {
@@ -1754,44 +1775,60 @@ impl RowLanes for Inverse {
 /// A leaf's own layers (row layers below the leaf's, and each row's), on `block`: the words `start..` of a column
 /// of `len` words (`start` a multiple of `block.len()`, which is [`LEAF_WORDS`] or the whole column), on one
 /// thread.
+/// The twiddle steps of [`own_stepped`]: from row `r` to `r + 1` the row's twiddles move by `B(2 d), B(4 d),
+/// B(8 d)`, `d = r ^ (r + 1)`, which is `2^(z + 1) - 1` for `z` the trailing ones of `r` (`B` is linear); entry `z`.
+fn row_steps() -> &'static [[u64; 3]; 32] {
+    static STEPS: std::sync::OnceLock<[[u64; 3]; 32]> = std::sync::OnceLock::new();
+    STEPS.get_or_init(|| {
+        std::array::from_fn(|z| {
+            let d = (2usize << z) - 1;
+            [point(2 * d).0, point(4 * d).0, point(8 * d).0]
+        })
+    })
+}
+
+/// A row's own layers on the `size` rows at `base` (rows `first..` of the column), their twiddles stepped from row
+/// to row rather than computed for each, two rows at a time ([`RowLanes::lanes_with2`]).
+///
+/// # Safety
+/// `base` holds `8 size` words of the caller's own.
+#[inline(always)]
+unsafe fn own_stepped<T: RowLanes>(kind: &T, base: *mut u64, first: usize, size: usize) {
+    let steps = row_steps();
+    let mut t = kind.twiddles().row(first);
+    let advance = |t: [V; 3], r: usize| {
+        let step = &steps[r.trailing_ones() as usize];
+        [xor(t[0], splat(step[0])), xor(t[1], splat(step[1])), xor(t[2], splat(step[2]))]
+    };
+    // SAFETY: rows below `size` of the caller's.
+    unsafe {
+        if size == 1 {
+            store(base, T::lanes_with(t, load(base)));
+            return;
+        }
+        for r in (0..size).step_by(2) {
+            let tx = t;
+            let ty = advance(tx, r);
+            let (p, q) = (base.add(8 * r), base.add(8 * (r + 1)));
+            let (x, y) = T::lanes_with2(tx, ty, load(p), load(q));
+            store(p, x);
+            store(q, y);
+            if r + 2 < size {
+                t = advance(ty, r + 1);
+            }
+        }
+    }
+}
+
 fn leaf<T: RowLanes>(block: &mut [F64], start: usize, kind: &T) {
     assert!(block.len().is_power_of_two() && block.len() >= 8 && start.is_multiple_of(block.len()));
     let size = block.len() / 8;
     let leaf = size.trailing_zeros() as usize;
     let first = start / 8;
     let base = block.as_mut_ptr().cast::<u64>();
-    // From row `r` to `r + 1` the row's twiddles move by `B(2 d), B(4 d), B(8 d)`, `d = r ^ (r + 1)`, which is
-    // `2^(z + 1) - 1` for `z` the trailing ones of `r` (`B` is linear).
-    let steps: Vec<[V; 3]> = (0..leaf.max(1))
-        .map(|z| {
-            let d = (2usize << z) - 1;
-            [splat(point(2 * d).0), splat(point(4 * d).0), splat(point(8 * d).0)]
-        })
-        .collect();
     // SAFETY: the block's own `size` rows.
     unsafe {
-        let own = || {
-            let mut t = kind.twiddles().row(first);
-            let advance = |t: [V; 3], r: usize| {
-                let step = &steps[r.trailing_ones() as usize];
-                [xor(t[0], step[0]), xor(t[1], step[1]), xor(t[2], step[2])]
-            };
-            if size == 1 {
-                store(base, T::lanes_with(t, load(base)));
-                return;
-            }
-            for r in (0..size).step_by(2) {
-                let tx = t;
-                let ty = advance(tx, r);
-                let (p, q) = (base.add(8 * r), base.add(8 * (r + 1)));
-                let (x, y) = T::lanes_with2(tx, ty, load(p), load(q));
-                store(p, x);
-                store(q, y);
-                if r + 2 < size {
-                    t = advance(ty, r + 1);
-                }
-            }
-        };
+        let own = || own_stepped(kind, base, first, size);
         if !T::DOWN {
             own();
         }
