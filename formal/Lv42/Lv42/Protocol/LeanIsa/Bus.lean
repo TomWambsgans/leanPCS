@@ -162,10 +162,6 @@ private theorem arity_of_mem {ch : RawChannel K} (h : (ch.name, ch.arity) ∈ ch
     rcases h with ⟨h, h'⟩ | ⟨h, h'⟩ | ⟨h, h'⟩ | ⟨h, h'⟩ | ⟨h, h'⟩ | ⟨h, h'⟩ <;>
     simp_all [StatePull, StatePush, MemPull, MemPush, BytecodePull, BytecodePush]
 
-/-- The sixteen-slot tuple of a message with the separator `σ`. -/
-def tupleOf (σ : K) (m : Array K) : Vector K 16 :=
-  Vector.ofFn fun k ↦ if k.val = 0 then σ else m[k.val - 1]?.getD 0
-
 /-- A message of at most fifteen coordinates is read back off its tuple. -/
 theorem tupleMsg_tupleOf (σ : K) (m : Array K) (h : m.size ≤ 15) :
     tupleMsg m.size (tupleOf σ m) = m := by

@@ -129,9 +129,6 @@ def opcodeTable (j : Fin 6) : M3Table K Arithmetization.Direction :=
 
 /-! ## The tables -/
 
-/-- The index of opcode table `j` among the instance's tables. -/
-def opIdx (j : Fin 6) : Fin 9 := ⟨j + 3, by omega⟩
-
 /-- The widths: the four memory columns, `BFCNT`, `QFLOCK`, then the opcode tables'. -/
 def width : Fin 9 → ℕ
   | ⟨0, _⟩ => 4

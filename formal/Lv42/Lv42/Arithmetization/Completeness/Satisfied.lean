@@ -427,26 +427,6 @@ theorem state_pair_perm (prog : Program) {κ : ℕ} (img : MemImage κ) (S : Lis
 
 /-! ## The constraints -/
 
-/-- The `JUMP` row circuit's constraints, generically: they are exactly the two residuals of the
-local witnesses `w` and `b`, at slots `n` and `n + 1`. -/
-theorem jump_constraints_iff (x : Var JumpRow K) (env : Environment K) (n : ℕ) (r : JumpRow K)
-    (hx : eval env x = r) (w b : K) (hw : env.get n = w) (hb : env.get (n + 1) = b) :
-    ((jumpTable.main x).operations n).ConstraintsHold env ↔
-      b + r.vcond * w = 0 ∧ r.vcond * (b + 1) = 0 := by
-  subst hx
-  obtain ⟨pc, fp, oc, od, of, vcond, vpc, vfp, rc, rd, rf, rbc⟩ := x
-  dsimp only [jumpTable]
-  simp only [circuit_norm, memRead, bytecodeRead, -BitVec.reduceNeg]
-  constructor
-  · intro h
-    have h1 := h _ (Or.inl rfl)
-    have h2 := h _ (Or.inr rfl)
-    simp only [Expression.eval, hw, hb] at h1 h2
-    exact ⟨h1, h2⟩
-  · rintro ⟨h1, h2⟩ e (rfl | rfl)
-    · simp only [Expression.eval, hw, hb, h1]
-    · simp only [Expression.eval, hb, h2]
-
 /-- The witness slot of a `JUMP` raw row is its first witness. -/
 theorem jumpRaw_get_witness (r : JumpRow K) (w b : K) (data : ProverData K) :
     (Environment.fromArray (jumpRaw r w b) data).get (size JumpRow) = w := by

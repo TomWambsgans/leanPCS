@@ -2,7 +2,6 @@
 -- Ported to the Keccak VM from `formal/UniComplete/UniComplete/Honest.lean`.
 import UniKeccakComplete.K.Witness
 import UniKeccakComplete.K.Claims
-import Lv42.Protocol.FlockSpec
 import KeccakFlock
 
 /-!

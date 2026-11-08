@@ -108,6 +108,15 @@ theorem baseTable_flushes_degree (j : Fin 5) :
     ∀ f ∈ (baseTable j).flushes, ∀ k, (f.2.get k).totalDegree ≤ 2 :=
   fun f hf k ↦ toM3_flushes_degree _ _ _ _ (base_flushes_degreeBound j) f hf k
 
+/-! ### Moved from `LeanIsa` and `LeanIsa/Bus` (instruction-set independent) -/
+
+/-- The index of opcode table `j` among the instance's tables. -/
+def opIdx (j : Fin 6) : Fin 9 := ⟨j + 3, by omega⟩
+
+/-- The sixteen-slot tuple of a message with the separator `σ`. -/
+def tupleOf (σ : K) (m : Array K) : Vector K 16 :=
+  Vector.ofFn fun k ↦ if k.val = 0 then σ else m[k.val - 1]?.getD 0
+
 end LeanIsa
 
 end

@@ -5,7 +5,7 @@
 -- Ported to the Keccak VM from `formal/UniComplete/UniComplete/MappingRows.lean`.
 import UniKeccakComplete.K.MappingBasic
 import Lv42.Protocol.LeanIsa.Relation
-import Lv42.Arithmetization.Completeness.Satisfied
+import Lv42.Arithmetization.Completeness.BasicsBase
 
 /-!
 # The six tables' flushes are the Keccak VM's (milestone 4)

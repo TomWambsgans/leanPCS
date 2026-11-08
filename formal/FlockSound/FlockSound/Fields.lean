@@ -6,7 +6,6 @@
 -- Flock constants are `Lv42.Parameters.Flock`'s (`formal/Lv42`, the same values).
 import Lv42.Parameters.Flock
 import Lv42.Protocol.Spine.Instance
-import Lv42.Protocol.Blake2sHash
 import LeanVM.Parameters.Field
 import LeanVM.Parameters.Generator
 import LeanVM.Protocol.Field

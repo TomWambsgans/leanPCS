@@ -1,7 +1,6 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 import Heap.Bus
 import Lv42.Protocol.Spine.Instance
-import Lv42.Protocol.Blake2sHash
 
 /-!
 # `Balanced`, but with probability at most `4·N/|E|`
