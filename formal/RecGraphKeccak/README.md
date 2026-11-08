@@ -52,6 +52,19 @@ cargo test --release -p leanvm_rec --test lean_graph_keccak                 # fa
   - `Tables.lean`: **`tableSpecK`**; `ConstraintFold.lean`: `constraintRelationK_eq`, **`degreeSpecK`**;
     `Constraint.lean`: **`constraintSpecK`**; `Heap.lean`: `heap_keccak128`, **`heapSpecK`**.
 
+- [`Circuit.lean`](RecGraphKeccak/Circuit.lean): **`pi1rec3K_end`**, `RecCircuit.Compiled.compile_sound_end` at the
+  Keccak graph: if the compiler accepts `RecGraphKeccak.Emitted.graph`, π2's satisfying witnesses carry its outputs.
+  [`RecGraphKeccakTest/Circuit.lean`](RecGraphKeccakTest/Circuit.lean) (`lake exe rec-circuit-keccak GRAPH`) is the
+  run: on the graph `crates/leanvm_rec/tests/lean_circuit_keccak128.rs` writes (h1, 2026-11-08) it checks the file is
+  `Emitted.graph`, compiles it in Lean (16,133 expanded nodes, 677 s, 2.9 GB) and prints a circuit **identical** to the
+  Rust's (`diff`: 20,918 lines; `N = 2^24`, 14 regions, 21 blocks, 36 ports, 20,611 `κ`).
+
+```sh
+LEAN_CIRCUIT_OUT=out cargo test --release -p leanvm_rec --test lean_circuit_keccak128 -- --ignored --nocapture
+lake build rec-circuit-keccak && .lake/build/bin/rec-circuit-keccak out/keccak128_pi1_rec3.graph > k.circuit
+diff out/keccak128_pi1_rec3.circuit k.circuit
+```
+
 ## What is proved, what is left
 
 Proved (sorry-free, on Lean's three axioms: the root's guards): the program records the Rust's graph (by the check,
