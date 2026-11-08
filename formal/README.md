@@ -303,8 +303,8 @@ theorem RecCompose.Pi1K.recCompleteness_real_K_fs_bits (prog : KeccakVm.Program)
 - **Transcriptions against the Rust**: `UniStatementTest/KeccakTables.lean` (the verifier's tables, 261 lines of
   `tables_keccak()`), `KeccakVmTest/Isa.lean` (`sha3Step` against SHA3-256), `KeccakFlockTest/{Rows,Honest,Terminal}.lean`
   (the block's rows, honest column and terminals); `UniKeccakTest/Runner.lean`: π1's verifier agrees with the Rust on
-  every value of 74/74 verifier vectors (the two real Keccak proofs among them, with every `PCS_OPEN` input word for
-  word) and 14/14 terminal vectors; `RecStatement/Data.lean` is what the Rust emits (`keccak_statement_data_is_current`);
+  every value of 90/90 verifier vectors (the three real Keccak proofs among them, the 128-signature π1-rec3 one
+  included, with every `PCS_OPEN` input word for word) and 14/14 terminal vectors; `RecStatement/Data.lean` is what the Rust emits (`keccak_statement_data_is_current`);
   the Lean compiler's circuit for the emitted graph is the Rust's, identical (`rec-circuit-keccak`, `rec-circuit-diff`),
   `padCounts` on 202 cases (`RecCircuitTest/PadCounts.lean`); π2's Lean prover writes the Rust's roots and
   stream on two small circuits (`RecComposeTest/Pi2Prover.lean`). No Lean differential run of π2's verifier on Keccak

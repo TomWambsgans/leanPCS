@@ -167,7 +167,7 @@ permutation; `formal/EndToEnd` proves them ([`formal/README.md`](formal/README.m
   (`GraphsAgree`, `RecGraphKeccakTest/Pi1Check.lean`); the digest and the setup root of the Lean compiler's π2 circuit
   are the Rust's (`DigestChecked`, `SetupRootChecked`); the per-IV check (`IvChecked`: compile, view check, stream
   decoding) at the reference, zero and all-ones IVs, assumed at the others (`rec-real-check`, `rec-view-check`).
-- **Tested against the Rust, not proved**: π1's verifier transcription (`UniKeccakTest/Runner.lean`, 74 verifier and
+- **Tested against the Rust, not proved**: π1's verifier transcription (`UniKeccakTest/Runner.lean`, 90 verifier and
   14 terminal vectors, the real proofs among them), the verifier's tables, the block's rows and terminal, the circuit
   compiler (`rec-circuit-keccak`: the identical circuit), π2's statement data (`lean_statement_keccak.rs`), the emitted
   graph (`lean_graph_keccak.rs`), π2's Lean prover on two small circuits. The deployed Rust provers are trusted for

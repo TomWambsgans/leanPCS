@@ -90,14 +90,14 @@ reads the vectors of `crates/leanvm/univariate/tests/lean_keccak_vectors.rs`:
   `structured_terminal`. The writer also asserts that it equals the walked terminal
   (`walked_terminal_with::<KeccakWalked>`). Lean's walk (`walkedTerminalK`) is checked against the Rust's walked
   terminal. A control checks that another `α` changes the value.
-- **74 verifier vectors**:
+- **90 verifier vectors** (`lean_keccak_vectors.rs` lists the set):
   - the main line at 32 signatures in both claim modes (point and weighted), the main line at 400 signatures, and
     π1-rec3's shape at 400 and at 32 signatures. Each has 15 vectors: 2 random streams, 2 accepting streams (one
     under another program IV), 2 accepting streams announcing other row counts that fit (none, one, `leastRows`, a
     full table, `2^h − 1`, random), 1 count out of range, 3 mutations, 1 truncated stream and 1 extended stream;
   - the main line at 128 and 1,000 signatures: random, accepting and mutated streams;
-  - **the two real Keccak proofs** (`tests/vectors/keccak.txt`, main line at 32 signatures; `keccak_rec3.txt`,
-    π1-rec3 at 400 signatures), with the contract's `PCS_OPEN` inputs, and three mutations each. Their IV binds their
+  - **the three real Keccak proofs** (`tests/vectors/keccak.txt`, main line at 32 signatures; `keccak128_rec3.txt`,
+    π1-rec3 at the 128-signature reference; `keccak_rec3.txt`, π1-rec3 at 400 signatures), with the contract's `PCS_OPEN` inputs, and three mutations each. Their IV binds their
     own setup root `F` (`SETUPROOTS`, as `tests/evm_vectors.rs` builds their contract).
 - On every vector, the Lean and the Rust agree on **every value**: the result (and its error), every challenge
   (narrow ones as drawn), every value required to be zero (the counts' range checks, Flock's structured terminal,
@@ -110,14 +110,16 @@ reads the vectors of `crates/leanvm/univariate/tests/lean_keccak_vectors.rs`:
   table's 86 columns; `source` is a permutation of the lanes with `rho`'s rotations; there are 40 shift offsets;
   `C1` is `2^28` words at 400 signatures.
 
-**Results** (h1, 2026-11-08, on the Rust working tree of that day):
-- **74/74 vectors agree on every value**: 26 accepted by both and 48 rejected by both. By kind (accepted/rejected):
-  accept 12/0, counts 10/0, badcount 0/5, random 0/12, mutate 2/15, truncate 0/5, extend 0/5, real 2/0, real-mutate
-  0/6. The two accepted mutations are weighted-mode streams mutated after the last check: weighted mode collects no
+**Results** (h2, 2026-11-08, on the merged tree; the vector set now also holds the real 128-signature π1-rec3 proof
+`keccak128_rec3.txt` and more shapes):
+- **90/90 vectors agree on every value**: 31 accepted by both and 59 rejected by both. By kind (accepted/rejected):
+  accept 14/0, counts 12/0, badcount 0/6, random 0/14, mutate 2/18, truncate 0/6, extend 0/6, real 3/0, real-mutate
+  0/9 (the real proofs: `keccak.txt`, `keccak128_rec3.txt`, `keccak_rec3.txt`, each with every `PCS_OPEN` input word
+  for word). The two accepted mutations are weighted-mode streams mutated after the last check: weighted mode collects no
   batch terminal, so only `PCS_OPEN` would reject them.
 - 14/14 terminal vectors agree: the structured terminal, the Rust's walk and Lean's walk.
 - All 6 self-tests hold.
-- The vectors take 428 s; the whole run takes about 30 minutes, most of it the 14 Lean walks of the `2^17`-position
+- The vectors take 346 s (h1 earlier: 428 s); the whole run takes about 30 minutes, most of it the 14 Lean walks of the `2^17`-position
   block in the interpreter.
 
 **Defined, not tested**: `PCS_OPEN`'s WHIR (the Rust has only a mock), the setup's commitment, `kvColumn`/`kvStack`,
