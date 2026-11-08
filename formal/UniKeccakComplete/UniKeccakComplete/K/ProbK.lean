@@ -45,12 +45,12 @@ theorem stagedU_holds {Ns NP S Nv : ℕ} (hc : ProverCommutes flock D) (hf : Flo
       Common.QueryCostAtMost (KDeployment.verifierWithH callKeccak256 callKeccakF1600 D keccakMain roots input π)
         hashBlocks Nv)
     (hcost : ProverCost flock D NP) (hstream : ProverStreamSize flock D S) (htot : Ns + (NP + Nv) ≤ 2 ^ 48)
-    (hacc : CoreAccepts D flock) (hpow : CoreFailsOnlyAtPow D flock) (hbad : BadFpCard D (2 ^ 28 - 1))
-    (hbadT : BadTCard D.shape (3 * 2 ^ 17)) (htf : TQueryFresh flock D ((2 : ℝ≥0∞)⁻¹ ^ 200))
+    (hacc : CoreAccepts D flock) (hpow : CoreFailsOnlyAtPow D flock) (hbad : BadFpCard D (2 ^ 22 - 1))
+    (hbadT : BadTCard D.shape (2 ^ 15)) (htf : TQueryFresh flock D ((2 : ℝ≥0∞)⁻¹ ^ 200))
     (input : Vector UInt8 32) (rows : List ℕ) (q : D.Stack rows) (hfit : D.shape.RowsFit rows)
     (hrel : D.HonestRelation KeccakFlock.keccakFlockSpec rows input q) :
     (stagedU flock D input rows q).Holds D keccakMain (uniProverRP flock D) input rows q
-      (BadFp (honestTrace D input rows q)) (BadT D.shape) (2 ^ 28 - 1) (3 * 2 ^ 17) (2 ^ 48)
+      (BadFp (honestTrace D input rows q)) (BadT D.shape) (2 ^ 22 - 1) (2 ^ 15) (2 ^ 48)
       ((2 : ℝ≥0∞)⁻¹ ^ 200) ((2 : ℝ≥0∞)⁻¹ ^ 304) := by
   have hQ := cost_stagedU flock D hset hver hcost hstream input rows q hfit hrel
   refine ⟨experiment_staged flock D hc input rows q, ?_⟩
@@ -69,22 +69,22 @@ theorem kStagedK_of_core {Ns NP S Nv : ℕ} (hflock : FlockCommutes flock)
       Common.QueryCostAtMost (KDeployment.verifierWithH callKeccak256 callKeccakF1600 D keccakMain roots input π)
         hashBlocks Nv)
     (hcost : ProverCost flock D NP) (hstream : ProverStreamSize flock D S) (htot : Ns + (NP + Nv) ≤ 2 ^ 48)
-    (hacc : CoreAccepts D flock) (hpow : CoreFailsOnlyAtPow D flock) (hbad : BadFpCard D (2 ^ 28 - 1))
-    (hbadT : BadTCard D.shape (3 * 2 ^ 17)) (htf : TQueryFresh flock D ((2 : ℝ≥0∞)⁻¹ ^ 200)) :
+    (hacc : CoreAccepts D flock) (hpow : CoreFailsOnlyAtPow D flock) (hbad : BadFpCard D (2 ^ 22 - 1))
+    (hbadT : BadTCard D.shape (2 ^ 15)) (htf : TQueryFresh flock D ((2 : ℝ≥0∞)⁻¹ ^ 200)) :
     KStagedK D keccakMain (uniProverRP flock D) := fun input rows q hfit hrel ↦
   ⟨stagedU flock D input rows q, _, _,
     stagedU_holds flock D (proverCommutes_of_flock hflock D) (flockSimCommutes_of_commutes hflock)
       (proverDuplex_of_flock hflock D) hset hver hcost hstream htot hacc hpow hbad hbadT htf input rows q hfit hrel⟩
 
-/-- **Completeness of the Keccak verifier (main line)**, `deltaK < 2^-163`, from the named hypotheses. -/
+/-- **Completeness of the Keccak verifier (main line)**, `deltaK < 2^-169`, from the named hypotheses. -/
 theorem uniCompletenessKeccak_of_core {Ns NP S Nv : ℕ} (hflock : FlockCommutes flock)
     (hset : Common.QueryCostAtMost (setupTreeKWithH callKeccak256 callKeccakF1600 D) hashBlocks Ns)
     (hver : ∀ roots input (π : KeccakProof), π.stream.size ≤ S →
       Common.QueryCostAtMost (KDeployment.verifierWithH callKeccak256 callKeccakF1600 D keccakMain roots input π)
         hashBlocks Nv)
     (hcost : ProverCost flock D NP) (hstream : ProverStreamSize flock D S) (htot : Ns + (NP + Nv) ≤ 2 ^ 48)
-    (hacc : CoreAccepts D flock) (hpow : CoreFailsOnlyAtPow D flock) (hbad : BadFpCard D (2 ^ 28 - 1))
-    (hbadT : BadTCard D.shape (3 * 2 ^ 17)) (htf : TQueryFresh flock D ((2 : ℝ≥0∞)⁻¹ ^ 200)) :
+    (hacc : CoreAccepts D flock) (hpow : CoreFailsOnlyAtPow D flock) (hbad : BadFpCard D (2 ^ 22 - 1))
+    (hbadT : BadTCard D.shape (2 ^ 15)) (htf : TQueryFresh flock D ((2 : ℝ≥0∞)⁻¹ ^ 200)) :
     UniCompletenessKeccak KeccakFlock.keccakFlockSpec D (uniProverRP flock D) deltaK :=
   uniCompletenessKeccak_end D _
     (kStagedK_of_core flock D hflock hset hver hcost hstream htot hacc hpow hbad hbadT htf)

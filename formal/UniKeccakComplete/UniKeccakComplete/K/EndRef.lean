@@ -35,7 +35,7 @@ namespace UniKeccakComplete
 open Prob (CoreAccepts CoreFailsOnlyAtPow BadFpCard BadTCard TQueryFresh deltaK uniProverRP)
 open Rec3 (CoreAccepts3 CoreFailsOnlyAtPow3 TQueryFresh3 uniProverRec3RP)
 
-/-- **Completeness of the Keccak verifier (main line) at the reference shape**, `deltaK < 2^-163`, from the core's
+/-- **Completeness of the Keccak verifier (main line) at the reference shape**, `deltaK < 2^-169`, from the core's
 named hypotheses. -/
 theorem uniCompletenessKeccak_ref (D : KDeployment) (hD : D.shape = UniKeccakSound.keccakRefShape)
     (hiv : D.programIv.length ≤ 2 ^ 16) (hacc : CoreAccepts D flockProveH)
@@ -44,9 +44,9 @@ theorem uniCompletenessKeccak_ref (D : KDeployment) (hD : D.shape = UniKeccakSou
   Prob.uniCompletenessKeccak_of_core flockProveH D flockCommutes_flockProveH (Cost.cost_setupTreeKWithH D)
     (fun roots input π h ↦ Cost.cost_verifierWithH_main D roots input π _ h)
     (Prob.proverCost_flockProveH D hD hiv) (Prob.proverStreamSize_flockProveH D hD) (totalCostK_le D hD hiv)
-    hacc hpow (BadFp.badFpCard_keccakRef D hD) (hD ▸ Prob.badTCard_reference) (Prob.tQueryFresh_reference D hD)
+    hacc hpow (BadFp.badFpCard_keccakRef_22 D hD) (hD ▸ Prob.badTCard_keccakRef_15) (Prob.tQueryFresh_reference D hD)
 
-/-- **Completeness of the Keccak π1 at π1-rec3's shape, at the reference shape**, `deltaK < 2^-163`, from the core's
+/-- **Completeness of the Keccak π1 at π1-rec3's shape, at the reference shape**, `deltaK < 2^-169`, from the core's
 named hypotheses. -/
 theorem uniCompletenessKeccakRec3_ref (D : KDeployment) (hD : D.shape = UniKeccakSound.keccakRefShape)
     (hiv : D.programIv.length ≤ 2 ^ 16) (hacc : CoreAccepts3 D flockProveH)
@@ -58,7 +58,7 @@ theorem uniCompletenessKeccakRec3_ref (D : KDeployment) (hD : D.shape = UniKecca
     (fun input rows q hfit hrel ↦ Rec3.cost_rec3_flockProveH D hD hiv input rows q hfit hrel)
     (fun input rows q hfit hrel π hπ ↦ Rec3.streamSize_rec3_flockProveH D hD input rows q hfit hrel π hπ)
     (fun roots input π h ↦ Cost.cost_verifierWithH_rec3 D roots input π _ h) (totalCostK3_le D hD hiv)
-    hacc hpow (BadFp.badFpCard_keccakRef D hD) (hD ▸ Prob.badTCard_reference) (Rec3.tQueryFresh3_reference D hD)
+    hacc hpow (BadFp.badFpCard_keccakRef_22 D hD) (hD ▸ Prob.badTCard_keccakRef_15) (Rec3.tQueryFresh3_reference D hD)
 
 end UniKeccakComplete
 
