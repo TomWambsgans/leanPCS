@@ -410,11 +410,11 @@ open UniSound.Ids (limbScale)
 open UniSound.Ids.Weights (twistPt ringRow zero_ne_ringTwist rowEq_eq foldl_mul_map foldl_add_map getD_of_take)
 
 /-- **A term's kind** at a layout: untwisted, not a slot, its point of at least its column's variables; or untwisted,
-a slot, its point shorter than `q_flock`'s variables, `q_flock`'s blocks of at least those; or the ring-switch term on
+a slot, its point shorter than `q_flock`'s blocks' variables; or the ring-switch term on
 a column of at most its point's variables. -/
 def TermKindK (L : StackLayout) (col : Column) (pt : List E) (tw : ℕ) : Prop :=
   (tw = 0 ∧ (∀ j, col ≠ .qflockSlot j) ∧ ∀ b ∈ L.limbs col, b.2.1 ≤ pt.length) ∨
-  (tw = 0 ∧ (∃ j, col = .qflockSlot j) ∧ pt.length < qvOf L ∧ ∀ b ∈ L.limbs .qflock, qvOf L ≤ b.2.1) ∨
+  (tw = 0 ∧ (∃ j, col = .qflockSlot j) ∧ ∀ b ∈ L.limbs .qflock, pt.length < b.2.1) ∨
   (tw = ringTwist ∧ (∀ j, col ≠ .qflockSlot j) ∧ ∀ b ∈ L.limbs col, b.2.1 ≤ pt.length)
 
 theorem slotViewK_of_ne {col : Column} (h : ∀ j, col ≠ .qflockSlot j) (qv : ℕ) (pt point : List E) :
@@ -474,7 +474,7 @@ theorem termPK_eq {L : StackLayout} (hL : LayoutOK L) (r map : List E) (z0 : E)
     (hk : TermKindK L col pt tw) (hq : q.take pt.length = pt) (hs : (∃ j, col = .qflockSlot j) → q = pt) :
     termPK L r map z0 col q tw = UniKeccak.weightAtK ⟨[pt], [(col, 0, tw, 1)], 0, 1⟩ L r (some map) := by
   rw [weightAtK_single]
-  rcases hk with ⟨rfl, hne, hlen⟩ | ⟨rfl, ⟨j, rfl⟩, hlt, hlen⟩ | ⟨rfl, hne, hlen⟩
+  rcases hk with ⟨rfl, hne, hlen⟩ | ⟨rfl, ⟨j, rfl⟩, hlen⟩ | ⟨rfl, hne, hlen⟩
   · rw [termPK_of_ne hne, partV_eq hL]
     unfold wSumK
     rw [ite_eq_right zero_ne_ringTwist, slotViewK_of_ne hne]
@@ -492,7 +492,9 @@ theorem termPK_eq {L : StackLayout} (hL : LayoutOK L) (r map : List E) (z0 : E)
     simp only [slotViewK]
     rw [partV_eq hL, ← mul_assoc]
     refine sum_factorC _ r _ _ fun b hb ↦ ?_
-    have hqv : qvOf L ≤ r.length := (hlen b hb).trans (hr .qflock b hb)
+    have hbq : b.2.1 = qvOf L := by rw [(hL .qflock b hb).2, qvOf_eq]
+    have hlt : pt.length < qvOf L := hbq ▸ hlen b hb
+    have hqv : qvOf L ≤ r.length := hbq ▸ hr .qflock b hb
     have hpos : ((List.range (qvOf L - pt.length)).map (bitE j) ++ twistPt pt 0).length > 0 := by
       simp; omega
     simp only [hpos, ↓reduceIte]
