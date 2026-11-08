@@ -1225,8 +1225,11 @@ fn subset_sums_of<M: Copy + Send + Sync + Add<Output = M> + Default>(data: &mut 
 // [`coefficients_leaf`] on each block then [`coefficients_upper`].
 // ---------------------------------------------------------------------------------------------------------------
 
+/// The rows of a leaf of the split transforms.
+const SPLIT_LEAF_ROWS: usize = LEAF_ROWS;
+
 /// The words of a leaf: the block [`values_leaf`] and [`coefficients_leaf`] take.
-pub const LEAF_WORDS: usize = 8 * LEAF_ROWS;
+pub const LEAF_WORDS: usize = 8 * SPLIT_LEAF_ROWS;
 
 /// The most of the layers above a leaf that one pass over memory takes in [`values_upper`] and
 /// [`coefficients_upper`], and the rows of one of its tiles.
@@ -1236,7 +1239,7 @@ const UPPER_TILE_ROWS: usize = TILE_ROWS;
 /// The groups of row layers above a leaf, the highest first: `(lowest layer, layers)`.
 fn upper_groups(rows: usize) -> Vec<(usize, usize)> {
     let mr = rows.trailing_zeros() as usize;
-    let leaf = mr.min(LEAF_ROWS.trailing_zeros() as usize);
+    let leaf = mr.min(SPLIT_LEAF_ROWS.trailing_zeros() as usize);
     let mut groups = Vec::new();
     let mut top = mr;
     while top > leaf {
