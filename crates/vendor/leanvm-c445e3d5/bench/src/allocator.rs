@@ -1,4 +1,5 @@
 // Vendored from leanVM (https://github.com/leanEthereum/leanVM), commit c445e3d51a5a85031df47240595698f3b24897bf, file crates/bench/src/allocator.rs.
+// Changed here: jemalloc also backs its extents with transparent huge pages (`thp:always`).
 // MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and AGENTS.md at the repository root).
 //! The global allocator of the CLI and the proving benchmarks.
 //!
@@ -14,6 +15,11 @@
 //! ```
 //!
 //! The cost is resident memory: the process holds its peak until it exits.
+//!
+//! The first proof still faults its pages in: with `thp:always` jemalloc asks for transparent huge pages
+//! (`MADV_HUGEPAGE`, which hosts with THP in `madvise` mode need), so a fault maps 2 MiB instead of 4 KiB. On a 64-thread
+//! host the first π2 proof faulted 3.05M pages (contending on the page-table locks) and took 0.95 s; with huge
+//! pages, 72K faults and 0.45 s.
 
 pub use tikv_jemallocator::Jemalloc;
 
@@ -23,4 +29,4 @@ pub use tikv_jemallocator::Jemalloc;
 /// - jemalloc reads a C string pointer here.
 /// - A reference to a byte array is that pointer, with no length beside it.
 #[unsafe(export_name = "_rjem_malloc_conf")]
-static MALLOC_CONF: &[u8; 18] = b"dirty_decay_ms:-1\0";
+static MALLOC_CONF: &[u8; 29] = b"dirty_decay_ms:-1,thp:always\0";
