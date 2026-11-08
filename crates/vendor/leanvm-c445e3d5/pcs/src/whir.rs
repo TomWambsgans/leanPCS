@@ -21,7 +21,8 @@
 // queries, is copied by the workers (`copied`) rather than by one thread. A test pins the chunked dense induce to its
 // per-query form (`chunked_induce_matches_the_per_query_one`). The E rounds (the folds, their messages, the OOD
 // evaluation, the glue, the collapsed weight) take four products at a time (`mul4`, `mul_unreduced4`;
-// `vectored_ext_rounds_match_one_product_at_a_time`).
+// `vectored_ext_rounds_match_one_product_at_a_time`). A dense low weight is told from its first chunk, a sparse one's
+// entries collected in parallel (`sparse_lows`).
 
 //! WHIR with `K = GF(2)[x]/(x^64+x^4+x^3+x+1)` and
 //! `E = K[y]/(y^3+y+1)`.
@@ -1410,7 +1411,20 @@ fn sparse_lows(weight: &[LaneTensor]) -> Vec<SparseLow> {
         .map(|tensor| {
             let low = &tensor.low;
             let chunk = ROUND_CHUNK.min(low.len()).max(1);
-            let nonzero = parallel::map_reduce(
+            let nonzero = |t: usize| -> Vec<(usize, F192)> {
+                let first = t * chunk;
+                low[first..(first + chunk).min(low.len())]
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, e)| !e.is_zero())
+                    .map(|(x, &e)| (first + x, e))
+                    .collect()
+            };
+            // A dense weight (an `eq` table: no zero at all) shows itself in its first chunk.
+            if nonzero(0).len() > SPARSE_LOW_MAX {
+                return SparseLow::Dense;
+            }
+            let count = parallel::map_reduce(
                 low.len().div_ceil(chunk),
                 || 0usize,
                 |t| {
@@ -1421,16 +1435,11 @@ fn sparse_lows(weight: &[LaneTensor]) -> Vec<SparseLow> {
                 },
                 |a, b| a + b,
             );
-            if nonzero > SPARSE_LOW_MAX {
+            if count > SPARSE_LOW_MAX {
                 return SparseLow::Dense;
             }
-            SparseLow::Sparse(
-                low.iter()
-                    .enumerate()
-                    .filter(|(_, e)| !e.is_zero())
-                    .map(|(x, &e)| (x, e))
-                    .collect(),
-            )
+            // The entries, chunk by chunk in parallel, in order.
+            SparseLow::Sparse(parallel::map_collect(low.len().div_ceil(chunk), nonzero).concat())
         })
         .collect()
 }
@@ -2627,13 +2636,23 @@ mod tests {
             for &n_lanes in lanes {
                 let mut rng = Rng::new(0x7E5 + n_lanes as u64);
                 let witness: Vec<F64> = (0..n_lanes * lane_block).map(|_| F64(rng.next_u64())).collect();
-                let weight: Vec<LaneTensor> = (0..2)
+                let weight: Vec<LaneTensor> = (0..3)
                     .map(|c| LaneTensor {
                         // A lane of zero scale, as a claim whose high coordinates miss it leaves.
                         scales: (0..n_lanes)
                             .map(|l| if l == c { F192::ZERO } else { rng.ext() })
                             .collect(),
-                        low: rng.ext_vec(lane_block),
+                        // The third a sparse low weight, as a hidden layout's gadget: a few entries, in different
+                        // chunks.
+                        low: match c {
+                            2 => (0..lane_block)
+                                .map(|x| match x == 1 || x == lane_block / 2 + 3 || x == lane_block - 1 {
+                                    true => rng.ext(),
+                                    false => F192::ZERO,
+                                })
+                                .collect(),
+                            _ => rng.ext_vec(lane_block),
+                        },
                     })
                     .collect();
                 let dense: Vec<F192> = (0..witness.len())
