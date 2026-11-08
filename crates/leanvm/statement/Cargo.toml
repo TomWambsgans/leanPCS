@@ -12,4 +12,5 @@ workspace = true
 
 [dependencies]
 evm_link.workspace = true
+primitives.workspace = true
 revm.workspace = true

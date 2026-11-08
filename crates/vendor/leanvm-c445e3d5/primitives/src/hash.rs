@@ -1,7 +1,11 @@
 // Vendored from leanVM (https://github.com/leanEthereum/leanVM), commit c445e3d51a5a85031df47240595698f3b24897bf, file crates/primitives/src/hash.rs.
 // MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and AGENTS.md at the repository root).
 // Changed here: test-only trace hooks under `#[cfg(feature = "trace")]` (off in every production build; see
-// `crates/primitives/src/trace.rs`), for the Lean skeleton's differential test. No other change.
+// `crates/primitives/src/trace.rs`), for the Lean skeleton's differential test. On aarch64 only: the batched
+// backend is NEON's two inputs with a third scalar one interleaved (`arm::Pair`, `LANES` = 3; remainders on NEON),
+// over a straight-line round (`arm::permute`, reached through the `Lanes64::permute` hook, whose default is the
+// unchanged `permute` the x86 backends use); more tests (`batched_matches_single_for_every_count`) and an
+// ignored timing test (`bench_backends`). The digests are unchanged.
 //! Keccak-256, the repo's one hash function: Ethereum's, which is the 256-bit hash of FIPS
 //! 202 with Keccak's original padding.
 //!
@@ -117,6 +121,11 @@ trait Lanes64: Copy {
     #[inline(always)]
     fn theta_d(c_prev: Self, c_next: Self) -> Self {
         c_prev.xor(c_next.rotl::<1>())
+    }
+    /// The 24 rounds over this lane type: [`permute`], unless the backend schedules its own.
+    #[inline(always)]
+    fn permute(a: &mut [Self; STATE_LANES]) {
+        permute(a);
     }
 }
 
@@ -470,8 +479,47 @@ mod x86 {
 
 #[cfg(target_arch = "aarch64")]
 mod arm {
-    use super::Lanes64;
+    use super::{Lanes64, RC, STATE_LANES};
     use core::arch::aarch64::*;
+
+    /// The 24 rounds, as [`super::permute`] computes them, but with every round written out
+    /// straight-line (χ row by row, the parities after χ): over [`Pair`], LLVM keeps
+    /// [`super::permute`]'s row loop and its branch on the row, which costs a quarter of the
+    /// speed. θ's XOR and ρ's rotation need no special form: LLVM fuses them into one `XAR`.
+    #[inline(always)]
+    pub(super) fn permute<S: Lanes64>(a: &mut [S; STATE_LANES]) {
+        let mut c: [S; 5] = std::array::from_fn(|x| S::xor5(a[x], a[x + 5], a[x + 10], a[x + 15], a[x + 20]));
+        for &rc in &RC {
+            let d: [S; 5] = std::array::from_fn(|x| S::theta_d(c[(x + 4) % 5], c[(x + 1) % 5]));
+            let th = |i: usize| a[i].xor(d[i % 5]);
+            // Row `y` holds the lanes π sends there, each rotated by its `RHO`.
+            #[rustfmt::skip]
+            let rows: [[S; 5]; 5] = [
+                [th(0), th(6).rotl::<44>(), th(12).rotl::<43>(), th(18).rotl::<21>(), th(24).rotl::<14>()],
+                [th(3).rotl::<28>(), th(9).rotl::<20>(), th(10).rotl::<3>(), th(16).rotl::<45>(), th(22).rotl::<61>()],
+                [th(1).rotl::<1>(), th(7).rotl::<6>(), th(13).rotl::<25>(), th(19).rotl::<8>(), th(20).rotl::<18>()],
+                [th(4).rotl::<27>(), th(5).rotl::<36>(), th(11).rotl::<10>(), th(17).rotl::<15>(), th(23).rotl::<56>()],
+                [th(2).rotl::<62>(), th(8).rotl::<55>(), th(14).rotl::<39>(), th(15).rotl::<41>(), th(21).rotl::<2>()],
+            ];
+            macro_rules! chi_row {
+                ($y:literal) => {{
+                    let [b0, b1, b2, b3, b4] = rows[$y];
+                    a[5 * $y] = S::chi(b0, b1, b2);
+                    a[5 * $y + 1] = S::chi(b1, b2, b3);
+                    a[5 * $y + 2] = S::chi(b2, b3, b4);
+                    a[5 * $y + 3] = S::chi(b3, b4, b0);
+                    a[5 * $y + 4] = S::chi(b4, b0, b1);
+                }};
+            }
+            chi_row!(0);
+            a[0] = a[0].xor(S::splat(rc));
+            chi_row!(1);
+            chi_row!(2);
+            chi_row!(3);
+            chi_row!(4);
+            c = std::array::from_fn(|x| S::xor5(a[x], a[x + 5], a[x + 10], a[x + 15], a[x + 20]));
+        }
+    }
 
     /// NEON: two lanes. With the SHA3 extension, χ is one `BCAX`, the column
     /// parity two `EOR3` and θ's rotate-and-xor one `RAX1`.
@@ -530,6 +578,66 @@ mod arm {
         fn theta_d(c_prev: Self, c_next: Self) -> Self {
             Self(unsafe { vrax1q_u64(c_prev.0, c_next.0) })
         }
+        #[inline(always)]
+        fn permute(a: &mut [Self; STATE_LANES]) {
+            permute(a);
+        }
+    }
+
+    /// Two backends side by side, `A`'s inputs first, each step issued to both.
+    ///
+    /// `Pair<Neon, u64>` is the hybrid of Becker and Kannwischer ("Hybrid scalar/vector
+    /// implementations of Keccak and SPHINCS+ on AArch64"): NEON alone saturates the core's four
+    /// vector pipes (`BCAX` and `EOR3` issue at about three a cycle) and leaves most of its ten-wide
+    /// dispatch and its integer ALUs idle, so a third input in general-purpose registers, interleaved
+    /// with the two in the vector, costs less than a third more time: on an M4 Max, one permutation
+    /// per input takes about 9% less than with NEON alone. A second scalar input, or a second NEON
+    /// pair, runs out of registers and is slower.
+    #[derive(Clone, Copy)]
+    pub(super) struct Pair<A, B>(A, B);
+
+    impl<A: Lanes64, B: Lanes64> Lanes64 for Pair<A, B> {
+        const WIDTH: usize = A::WIDTH + B::WIDTH;
+
+        #[inline(always)]
+        unsafe fn load(p: *const u64) -> Self {
+            unsafe { Self(A::load(p), B::load(p.add(A::WIDTH))) }
+        }
+        #[inline(always)]
+        unsafe fn store(self, p: *mut u64) {
+            unsafe {
+                self.0.store(p);
+                self.1.store(p.add(A::WIDTH));
+            }
+        }
+        #[inline(always)]
+        fn splat(x: u64) -> Self {
+            Self(A::splat(x), B::splat(x))
+        }
+        #[inline(always)]
+        fn xor(self, o: Self) -> Self {
+            Self(self.0.xor(o.0), self.1.xor(o.1))
+        }
+        #[inline(always)]
+        fn rotl<const N: i32>(self) -> Self {
+            Self(self.0.rotl::<N>(), self.1.rotl::<N>())
+        }
+        #[inline(always)]
+        fn chi(a: Self, b: Self, c: Self) -> Self {
+            Self(A::chi(a.0, b.0, c.0), B::chi(a.1, b.1, c.1))
+        }
+        #[inline(always)]
+        fn xor5(a: Self, b: Self, c: Self, d: Self, e: Self) -> Self {
+            Self(A::xor5(a.0, b.0, c.0, d.0, e.0), B::xor5(a.1, b.1, c.1, d.1, e.1))
+        }
+        #[inline(always)]
+        fn theta_d(c_prev: Self, c_next: Self) -> Self {
+            Self(A::theta_d(c_prev.0, c_next.0), B::theta_d(c_prev.1, c_next.1))
+        }
+        #[inline(always)]
+        fn permute(a: &mut [Self; STATE_LANES]) {
+            permute(a);
+        }
     }
 }
 
@@ -539,7 +647,10 @@ type Backend = x86::Avx512;
 #[cfg(all(target_arch = "x86_64", not(target_feature = "avx512f"), target_feature = "avx2"))]
 type Backend = x86::Avx2;
 #[cfg(target_arch = "aarch64")]
-type Backend = arm::Neon;
+type Backend = arm::Pair<arm::Neon, u64>;
+/// What takes a group too small for [`Backend`]: two inputs on NEON, a last one alone.
+#[cfg(target_arch = "aarch64")]
+type Narrow = arm::Neon;
 #[cfg(not(any(all(target_arch = "x86_64", target_feature = "avx2"), target_arch = "aarch64")))]
 type Backend = u64;
 
@@ -579,7 +690,7 @@ unsafe fn hash_group<S: Lanes64>(inputs: &[*const u8], len: usize, init: &[u64; 
             }
         }
         xor_buf(&mut st, &buf, RATE_LANES);
-        permute(&mut st);
+        S::permute(&mut st);
     }
     // The final block, read in place: its words, then the padding, which every input has in the same lanes.
     let (words, part) = (tail / 8, tail % 8);
@@ -600,7 +711,7 @@ unsafe fn hash_group<S: Lanes64>(inputs: &[*const u8], len: usize, init: &[u64; 
     xor_buf(&mut st, &buf, words + usize::from(part > 0));
     st[words] = st[words].xor(S::splat(u64::from(PAD_FIRST) << (8 * part)));
     st[RATE_LANES - 1] = st[RATE_LANES - 1].xor(S::splat(END_BIT));
-    permute(&mut st);
+    S::permute(&mut st);
     let mut lanes = [0u64; OUT_LANES * MAX_WIDTH];
     for (w, lane) in st[..OUT_LANES].iter().enumerate() {
         // SAFETY: `lanes` holds OUT_LANES * MAX_WIDTH >= (w + 1) * WIDTH words.
@@ -653,7 +764,21 @@ pub fn hash_many_from_state(data: &[u8], len: usize, state: &[u64; STATE_LANES],
     assert_eq!(out.len(), n * OUT_LEN);
     assert_eq!(data.len(), n * len);
     // SAFETY: the asserts pin the buffer sizes, and the backend is gated on the features its intrinsics need.
-    unsafe { hash_many_with::<Backend>(data, len, state, out) };
+    #[cfg(not(target_arch = "aarch64"))]
+    unsafe {
+        hash_many_with::<Backend>(data, len, state, out)
+    };
+    #[cfg(target_arch = "aarch64")]
+    {
+        let bulk = n / LANES * LANES;
+        let (data, rest) = data.split_at(bulk * len);
+        let (out, out_rest) = out.split_at_mut(bulk * OUT_LEN);
+        // SAFETY: as above, for each part.
+        unsafe {
+            hash_many_with::<Backend>(data, len, state, out);
+            hash_many_with::<Narrow>(rest, len, state, out_rest);
+        }
+    }
     #[cfg(feature = "trace")]
     crate::trace::many(data, len, state, out);
 }
@@ -664,6 +789,14 @@ pub fn keccak_f_many(states: &mut [[u64; STATE_LANES]]) {
     for group in groups {
         permute_group::<Backend>(group);
     }
+    #[cfg(target_arch = "aarch64")]
+    let rest = {
+        let (pairs, rest) = rest.as_chunks_mut::<{ Narrow::WIDTH }>();
+        for pair in pairs {
+            permute_group::<Narrow>(pair);
+        }
+        rest
+    };
     for state in rest {
         keccak_f(state);
     }
@@ -682,7 +815,7 @@ fn permute_group<S: Lanes64>(states: &mut [[u64; STATE_LANES]]) {
     }
     // SAFETY: `buf` holds STATE_LANES * MAX_WIDTH >= (i + 1) * WIDTH words.
     let mut st: [S; STATE_LANES] = std::array::from_fn(|i| unsafe { S::load(buf.as_ptr().add(i * S::WIDTH)) });
-    permute(&mut st);
+    S::permute(&mut st);
     for (i, lane) in st.iter().enumerate() {
         // SAFETY: as above.
         unsafe { lane.store(buf.as_mut_ptr().add(i * S::WIDTH)) };
@@ -808,5 +941,105 @@ mod tests {
         check::<x86::Avx512>("avx512");
         #[cfg(target_arch = "aarch64")]
         check::<arm::Neon>("neon");
+        #[cfg(target_arch = "aarch64")]
+        check::<arm::Pair<arm::Neon, u64>>("neon+scalar");
+    }
+
+    /// The public batched entry points agree with one-at-a-time hashing and permuting for every
+    /// count (so every remainder of every backend), at lengths around the block boundaries, from the
+    /// zero state and from shared nonzero ones.
+    #[test]
+    fn batched_matches_single_for_every_count() {
+        for zero_blocks in [0usize, 1, 2] {
+            let state = zero_prefix_state(zero_blocks);
+            for len in [0usize, 1, 7, 8, 63, 64, 135, 136, 137, 271, 272, 273, 376, 512, 1000] {
+                let max = 40;
+                let data: Vec<u8> = (0..max * len)
+                    .map(|i| ((i * 131 + len + zero_blocks) % 251) as u8)
+                    .collect();
+                for n in 0..=max {
+                    let mut got = vec![0u8; n * OUT_LEN];
+                    hash_many_from_state(&data[..n * len], len, &state, &mut got);
+                    for i in 0..n {
+                        let mut whole = vec![0u8; zero_blocks * RATE];
+                        whole.extend_from_slice(&data[i * len..(i + 1) * len]);
+                        assert_eq!(
+                            &got[i * OUT_LEN..(i + 1) * OUT_LEN],
+                            &hash(&whole)[..],
+                            "{zero_blocks} zero blocks, len {len}, input {i} of {n}"
+                        );
+                    }
+                }
+            }
+        }
+        for n in 0..40u64 {
+            let states: Vec<[u64; STATE_LANES]> = (0..n)
+                .map(|l| std::array::from_fn(|i| (l << 40) ^ (i as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15)))
+                .collect();
+            let mut got = states.clone();
+            keccak_f_many(&mut got);
+            for (mut want, got) in states.into_iter().zip(got) {
+                keccak_f(&mut want);
+                assert_eq!(got, want, "keccak_f_many of {n}");
+            }
+        }
+    }
+
+    /// Single-threaded timing per backend: the permutation alone, and the batched hash at a Merkle
+    /// node's 64 bytes and at PCS leaf sizes. Best of many short samples, interleaved, so other load
+    /// on the machine shows less.
+    ///
+    /// `RUSTFLAGS="-C target-cpu=native" cargo test --release -p primitives --lib -- --ignored --nocapture bench_backends`
+    #[test]
+    #[ignore]
+    fn bench_backends() {
+        use std::time::Instant;
+        /// One sample: ns per input-permutation of `S::permute` on a state in registers (`len == 0`),
+        /// or of the single-threaded batched hash of `len`-byte inputs.
+        fn sample<S: Lanes64>(len: usize) -> f64 {
+            if len == 0 {
+                let mut st: [S; STATE_LANES] = std::array::from_fn(|i| S::splat(i as u64));
+                let iters = 4000;
+                let t = Instant::now();
+                for _ in 0..iters {
+                    S::permute(&mut st);
+                    st = std::hint::black_box(st);
+                }
+                return t.elapsed().as_secs_f64() * 1e9 / (iters * S::WIDTH) as f64;
+            }
+            let perms = len / RATE + 1;
+            let n = (1 << 18) / len / 6 * 6;
+            let data: Vec<u8> = (0..n * len).map(|i| (i * 37 + 11) as u8).collect();
+            let mut out = vec![0u8; n * OUT_LEN];
+            let state = zero_prefix_state(1);
+            let t = Instant::now();
+            unsafe { hash_many_with::<S>(&data, len, &state, &mut out) };
+            std::hint::black_box(&mut out);
+            t.elapsed().as_secs_f64() * 1e9 / (n * perms) as f64
+        }
+        type Entry = (&'static str, fn(usize) -> f64);
+        #[cfg_attr(not(target_arch = "aarch64"), allow(unused_mut))]
+        let mut entries: Vec<Entry> = vec![("scalar", sample::<u64>)];
+        #[cfg(target_arch = "aarch64")]
+        {
+            use arm::{Neon, Pair};
+            entries.extend([
+                ("neon", sample::<Neon> as fn(usize) -> f64),
+                ("neon+scalar", sample::<Pair<Neon, u64>>),
+            ]);
+        }
+        let lens = [0usize, 64, 376, 512];
+        let mut best = vec![[f64::INFINITY; 4]; entries.len()];
+        for _ in 0..200 {
+            for (e, (_, f)) in entries.iter().enumerate() {
+                for (j, &len) in lens.iter().enumerate() {
+                    best[e][j] = best[e][j].min(f(len));
+                }
+            }
+        }
+        println!("ns per input-permutation, best of 200 (permute alone | hash 64 B | 376 B | 512 B):");
+        for ((name, _), b) in entries.iter().zip(&best) {
+            println!("{name:>16}: {:6.2} | {:6.2} | {:6.2} | {:6.2}", b[0], b[1], b[2], b[3]);
+        }
     }
 }

@@ -135,6 +135,7 @@ fn real_end_to_end() {
         let name = std::env::var("PI2_VECTOR").unwrap_or_else(|_| "keccak128_rec3".into());
         let start = std::time::Instant::now();
         let (v, c, pi1_iv) = real(&name, layout);
+        let compiled = start.elapsed().as_secs_f64();
         assert_eq!(c.finished.circuit.check(&c.finished.witness, &c.public), Ok(()));
         // π1's openings as the block holds them: the vector's claims on the roots π1's prover committed (its
         // `whir_root`s, from the prover's output), not on whatever a contract encodes.
@@ -151,7 +152,7 @@ fn real_end_to_end() {
             .expect("the adapted circuit holds");
         let spec = Spec::of(&circuit);
         println!(
-            "{name} × {layout:?}: compiled, adapted, checked in {:.1} s; {}",
+            "{name} × {layout:?}: compiled, adapted, checked in {:.1} s (the compile, which a proof's witness needs, {compiled:.2} s); {}",
             start.elapsed().as_secs_f64(),
             peak_memory()
         );

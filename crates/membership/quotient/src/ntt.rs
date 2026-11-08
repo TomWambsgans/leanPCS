@@ -1,6 +1,6 @@
 // Part of this repository. The additive transform's layers are domain.rs's (adapted there from leanVM's branch
 // PCS-openings-aggregation, commit 651453c6), in the same order; the lane-wise carry-less product and its reduction
-// are those of crates/vendor/leanvm-c445e3d5/primitives/src/field/{x8,gf2_64x3}.rs (vendored from leanVM c445e3d5, credit binius64).
+// are those of crates/vendor/leanvm-c445e3d5/primitives/src/field/{x8,gf2_64x3,gf2_64}.rs (vendored from leanVM c445e3d5, credit binius64).
 // MIT OR Apache-2.0; see AGENTS.md.
 //! [`crate::domain`]'s transforms on rows of eight words, a row's eight products one AVX-512 carry-less product where
 //! the build has it (for `crates/leanvm/univariate`'s prover):
@@ -182,7 +182,146 @@ mod lanes {
     }
 }
 
-#[cfg(not(all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "vpclmulqdq")))]
+#[cfg(all(target_arch = "aarch64", target_feature = "aes"))]
+mod lanes {
+    use core::arch::aarch64::*;
+    use primitives::field::gf2_64::aarch64::{pmull_hi_asm, pmull_lo_asm, reduce_pair_pmull4};
+
+    /// Eight K elements in four NEON registers, lanes `2 j` and `2 j + 1` in register `j`.
+    #[derive(Clone, Copy)]
+    pub struct V([uint64x2_t; 4]);
+
+    /// # Safety
+    /// `p` points to eight readable words.
+    #[inline(always)]
+    pub unsafe fn load(p: *const u64) -> V {
+        // SAFETY: the caller's eight words; NEON is baseline on aarch64.
+        V(std::array::from_fn(|j| unsafe { vld1q_u64(p.add(2 * j)) }))
+    }
+
+    /// # Safety
+    /// `p` points to eight writable words.
+    #[inline(always)]
+    pub unsafe fn store(p: *mut u64, v: V) {
+        // Four stores, not one `vst1q_u64_x4`: through those LLVM sees a row stored to a local and read back
+        // (`Kx8::to_row`) as the registers themselves.
+        for (j, &x) in v.0.iter().enumerate() {
+            // SAFETY: the caller's eight words.
+            unsafe { vst1q_u64(p.add(2 * j), x) }
+        }
+    }
+
+    #[inline(always)]
+    pub fn splat(x: u64) -> V {
+        // SAFETY: NEON is baseline on aarch64.
+        V([unsafe { vdupq_n_u64(x) }; 4])
+    }
+
+    #[inline(always)]
+    pub fn from_array(x: [u64; 8]) -> V {
+        // SAFETY: eight words on the stack.
+        unsafe { load(x.as_ptr()) }
+    }
+
+    #[inline(always)]
+    pub fn xor(a: V, b: V) -> V {
+        // SAFETY: NEON is baseline on aarch64.
+        V(std::array::from_fn(|j| unsafe { veorq_u64(a.0[j], b.0[j]) }))
+    }
+
+    /// Lane-wise carry-less products, unreduced: lane `i`'s 128-bit product in register `i`.
+    #[derive(Clone, Copy)]
+    pub struct U([uint64x2_t; 8]);
+
+    #[inline(always)]
+    pub fn zero_u() -> U {
+        // SAFETY: NEON is baseline on aarch64.
+        U([unsafe { vdupq_n_u64(0) }; 8])
+    }
+
+    /// One PMULL a lane (PMULL2 for the odd lanes), on the registers as they are.
+    #[inline(always)]
+    pub fn clmul_u(a: V, b: V) -> U {
+        // SAFETY: the module's cfg enables aes (PMULL).
+        U(std::array::from_fn(|i| unsafe {
+            let (x, y) = (a.0[i / 2], b.0[i / 2]);
+            if i & 1 == 0 {
+                pmull_lo_asm(x, y)
+            } else {
+                pmull_hi_asm(x, y)
+            }
+        }))
+    }
+
+    #[inline(always)]
+    pub fn xor_u(a: U, b: U) -> U {
+        // SAFETY: NEON is baseline on aarch64.
+        U(std::array::from_fn(|i| unsafe { veorq_u64(a.0[i], b.0[i]) }))
+    }
+
+    /// Lane `i` reduced: two folds by `0x1B` with PMULL, a pair of lanes at a time
+    /// (`gf2_64::aarch64::reduce_pair_pmull4`).
+    #[inline(always)]
+    pub fn reduce_u(p: U) -> V {
+        // SAFETY: the module's cfg enables aes.
+        V(std::array::from_fn(|j| unsafe {
+            reduce_pair_pmull4(p.0[2 * j], p.0[2 * j + 1])
+        }))
+    }
+
+    /// Lane `i` is `a_i b_i` in K.
+    #[inline(always)]
+    pub fn mul(a: V, b: V) -> V {
+        reduce_u(clmul_u(a, b))
+    }
+
+    /// The 8 x 8 transpose: lane `p` of output `c` is lane `c` of input `p`.
+    #[inline(always)]
+    pub fn transpose(r: [V; 8]) -> [V; 8] {
+        // SAFETY: NEON is baseline on aarch64.
+        std::array::from_fn(|c| {
+            V(std::array::from_fn(|j| unsafe {
+                let (a, b) = (r[2 * j].0[c / 2], r[2 * j + 1].0[c / 2]);
+                if c & 1 == 0 { vzip1q_u64(a, b) } else { vzip2q_u64(a, b) }
+            }))
+        })
+    }
+
+    /// Lane `i` is `a_(i ^ S)`.
+    #[inline(always)]
+    pub fn swap<const S: usize>(a: V) -> V {
+        V(std::array::from_fn(|j| {
+            let x = a.0[j ^ (S >> 1)];
+            // SAFETY: NEON is baseline on aarch64.
+            if S & 1 == 1 { unsafe { vextq_u64::<1>(x, x) } } else { x }
+        }))
+    }
+
+    /// `a`, with `b` added on the lanes of `mask`.
+    #[inline(always)]
+    pub fn mask_add(a: V, mask: u8, b: V) -> V {
+        // SAFETY: NEON is baseline on aarch64.
+        V(std::array::from_fn(|j| unsafe {
+            let (x, y) = (a.0[j], b.0[j]);
+            match mask >> (2 * j) & 3 {
+                0 => x,
+                3 => veorq_u64(x, y),
+                m => {
+                    let keep = vcombine_u64(
+                        vcreate_u64(if m & 1 == 1 { u64::MAX } else { 0 }),
+                        vcreate_u64(if m & 2 == 2 { u64::MAX } else { 0 }),
+                    );
+                    veorq_u64(x, vandq_u64(y, keep))
+                }
+            }
+        }))
+    }
+}
+
+#[cfg(not(any(
+    all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "vpclmulqdq"),
+    all(target_arch = "aarch64", target_feature = "aes")
+)))]
 mod lanes {
     use primitives::field::F64;
 
@@ -1741,6 +1880,77 @@ mod tests {
             }
             coefficients_upper(&mut got, offset);
             assert_eq!(got, column, "coefficients, 2^{m}");
+        }
+    }
+}
+
+/// The NEON lanes against scalar `F64` arithmetic.
+#[cfg(all(test, target_arch = "aarch64", target_feature = "aes"))]
+mod neon_tests {
+    use super::lanes::*;
+    use primitives::field::F64;
+
+    fn words(v: V) -> [u64; 8] {
+        let mut out = [0u64; 8];
+        // SAFETY: eight words on the stack.
+        unsafe { store(out.as_mut_ptr(), v) };
+        out
+    }
+
+    #[test]
+    fn neon_lanes_are_scalar() {
+        let mut state = 0x9E37_79B9_7F4A_7C15u64;
+        let mut next = move || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+        // Random words, and operands that exercise the reduction's spill.
+        let corners = [0, 1, u64::MAX, 1 << 63, 0xF000_0000_0000_0000, 0x1B];
+        for round in 0..2000 {
+            let terms = 1 + round % 9;
+            let a: Vec<[u64; 8]> = (0..terms)
+                .map(|_| std::array::from_fn(|i| if round < 6 { corners[(round + i) % 6] } else { next() }))
+                .collect();
+            let b: Vec<[u64; 8]> = (0..terms)
+                .map(|_| {
+                    std::array::from_fn(|i| {
+                        if round < 6 {
+                            corners[(round + i + 3) % 6]
+                        } else {
+                            next()
+                        }
+                    })
+                })
+                .collect();
+            let (va, vb) = (from_array(a[0]), from_array(b[0]));
+            let scalar_mul: [u64; 8] = std::array::from_fn(|i| (F64(a[0][i]) * F64(b[0][i])).0);
+            assert_eq!(words(mul(va, vb)), scalar_mul);
+            // A sum of unreduced products, reduced once.
+            let mut acc = zero_u();
+            for (x, y) in a.iter().zip(&b) {
+                acc = xor_u(acc, clmul_u(from_array(*x), from_array(*y)));
+            }
+            let want: [u64; 8] = std::array::from_fn(|i| {
+                a.iter()
+                    .zip(&b)
+                    .fold(F64::ZERO, |s, (x, y)| s + F64(x[i]) * F64(y[i]))
+                    .0
+            });
+            assert_eq!(words(reduce_u(acc)), want);
+            assert_eq!(words(splat(a[0][1])), [a[0][1]; 8]);
+            assert_eq!(words(xor(va, vb)), std::array::from_fn(|i| a[0][i] ^ b[0][i]));
+            assert_eq!(words(swap::<1>(va)), std::array::from_fn(|i| a[0][i ^ 1]));
+            assert_eq!(words(swap::<2>(va)), std::array::from_fn(|i| a[0][i ^ 2]));
+            assert_eq!(words(swap::<4>(va)), std::array::from_fn(|i| a[0][i ^ 4]));
+            let mask = (round % 256) as u8;
+            let masked: [u64; 8] =
+                std::array::from_fn(|i| if mask >> i & 1 == 1 { a[0][i] ^ b[0][i] } else { a[0][i] });
+            assert_eq!(words(mask_add(va, mask, vb)), masked);
+            let rows: [[u64; 8]; 8] = std::array::from_fn(|_| std::array::from_fn(|_| next()));
+            let t = transpose(rows.map(from_array)).map(words);
+            assert_eq!(t, std::array::from_fn(|c| std::array::from_fn(|p| rows[p][c])));
         }
     }
 }

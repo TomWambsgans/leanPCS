@@ -420,6 +420,7 @@ impl Circuit {
         }
         let pair_of = self.pair_of();
         let pulls = self.pulls();
+        let base: Vec<bool> = self.formulas.iter().map(Formula::is_base).collect();
         for (i, k) in self.kappa.iter().enumerate() {
             if *k != F64::ZERO && (pair_of[i] == NONE || !self.pairs[pair_of[i] as usize].pulls) {
                 return Err(format!("κ at position {i}, not an expression slot"));
@@ -439,7 +440,7 @@ impl Circuit {
             if !pulls[i] && inside {
                 return Err(format!("pull-less position {i} pushes inside"));
             }
-            if inside && pair_of[i] != NONE && !self.formulas[self.pairs[pair_of[i] as usize].formula].is_base() {
+            if inside && pair_of[i] != NONE && !base[self.pairs[pair_of[i] as usize].formula] {
                 return Err(format!("position {i} pushes an E value inside"));
             }
             if inside && !pulls[tag] {

@@ -159,11 +159,12 @@ fn slot(k: usize) -> Slot {
     (k / 8, k % 8)
 }
 
-/// Whether `quotient::ntt`'s lanes are portable code (its `lanes` module's cfg; aarch64 among others), one reduced
-/// product a lane, rather than AVX-512's eight carry-less products. There [`prefix_quotient`] transforms its whole
-/// pieces in rounds ([`values_rows`]), and [`table_leaf`] evaluates its numerator one point at a time in `E`
-/// ([`PullPush`]: a mixed product three unreduced base products, a push from its pull's sum) rather than eight at a
-/// time ([`product`]: a mixed product three reduced ones).
+/// Whether `quotient::ntt`'s lanes are other than AVX-512's eight carry-less products: aarch64's NEON lanes (eight
+/// PMULLs, four registers), or portable code. There [`prefix_quotient`] transforms its whole pieces in rounds
+/// ([`values_rows`]), and [`table_leaf`] evaluates its numerator one point at a time in `E` ([`PullPush`]: a mixed
+/// product three unreduced base products, a push from its pull's sum) rather than eight at a time ([`product`]: a
+/// mixed product three reduced ones). With the NEON lanes (M4 Max), the rounds still take "quotients: leaves" from
+/// 0.30 s to 0.18 s, and [`PullPush`] and [`product`] cost the same.
 const PORTABLE_LANES: bool = !cfg!(all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "vpclmulqdq"));
 
 /// The longest columns (`2^GROUPED_ROWS` entries) whose whole pieces [`prefix_quotient`] evaluates in rounds, a round's
@@ -176,6 +177,72 @@ const GROUPED_BYTES: usize = 1 << 29;
 /// [`ntt::values_batch`] with `runs`, by one worker: row `i` of `data` becomes the eight columns at `offset + ω_i`,
 /// then each eight rows transposed ([`Points::Batches`]). The layers from the highest down, two a pass above the
 /// blocks of `2^LEAF` rows, which then take their own layers one by one.
+#[cfg(all(target_arch = "aarch64", target_feature = "aes"))]
+fn values_rows(data: &mut [K8], offset: F64) {
+    const LEAF: usize = 10;
+    /// `a += t b; b += a` between the halves of `chunk`.
+    #[inline(always)]
+    fn layer(chunk: &mut [K8], t: F64) {
+        let (lo, hi) = chunk.split_at_mut(chunk.len() / 2);
+        let t = Kx8::splat(t);
+        for (a, b) in lo.iter_mut().zip(hi.iter_mut()) {
+            let (x, y) = (Kx8::row(a), Kx8::row(b));
+            let x = x + y * t;
+            (*a, *b) = (x.to_row(), (y + x).to_row());
+        }
+    }
+    let m = data.len().trailing_zeros() as usize;
+    assert!(data.len() == 1 << m && m >= 3);
+    let offsets = quotient::domain::chain(offset, m);
+    let leaf = m.min(LEAF);
+    let mut k = m;
+    while k > leaf {
+        if k - leaf >= 2 {
+            // Layers `k - 1` and `k - 2`: each entry of a block's four quarters meets both of its butterflies.
+            let block = 1usize << k;
+            for (j, chunk) in data.chunks_exact_mut(block).enumerate() {
+                let high = Kx8::splat(offsets[k - 1] + omega(2 * j));
+                let low = [offsets[k - 2] + omega(4 * j), offsets[k - 2] + omega(4 * j + 2)].map(Kx8::splat);
+                let q = block / 4;
+                let (h0, h1) = chunk.split_at_mut(2 * q);
+                let (q0, q1) = h0.split_at_mut(q);
+                let (q2, q3) = h1.split_at_mut(q);
+                for (((a0, a1), a2), a3) in q0.iter_mut().zip(q1.iter_mut()).zip(q2.iter_mut()).zip(q3.iter_mut()) {
+                    let (mut x0, mut x1, mut x2, mut x3) = (Kx8::row(a0), Kx8::row(a1), Kx8::row(a2), Kx8::row(a3));
+                    x0 = x0 + x2 * high;
+                    x2 = x2 + x0;
+                    x1 = x1 + x3 * high;
+                    x3 = x3 + x1;
+                    x0 = x0 + x1 * low[0];
+                    x1 = x1 + x0;
+                    x2 = x2 + x3 * low[1];
+                    x3 = x3 + x2;
+                    (*a0, *a1, *a2, *a3) = (x0.to_row(), x1.to_row(), x2.to_row(), x3.to_row());
+                }
+            }
+            k -= 2;
+        } else {
+            let block = 1usize << k;
+            for (j, chunk) in data.chunks_exact_mut(block).enumerate() {
+                layer(chunk, offsets[k - 1] + omega(2 * j));
+            }
+            k -= 1;
+        }
+    }
+    for (i, rows) in data.chunks_exact_mut(1 << leaf).enumerate() {
+        let first = i << leaf;
+        for k in (0..leaf).rev() {
+            for (j, chunk) in rows.chunks_exact_mut(2 << k).enumerate() {
+                layer(chunk, offsets[k] + omega(2 * ((first >> (k + 1)) + j)));
+            }
+        }
+        ntt::transpose_runs(rows);
+    }
+}
+
+/// [`values_rows`] where `quotient::ntt`'s lanes are portable code (x86_64 without AVX-512): one column entry at a
+/// time.
+#[cfg(not(all(target_arch = "aarch64", target_feature = "aes")))]
 fn values_rows(data: &mut [K8], offset: F64) {
     const LEAF: usize = 10;
     /// `a += t b; b += a` between the halves of `chunk`.

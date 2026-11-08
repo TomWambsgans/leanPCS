@@ -85,6 +85,7 @@ cargo test --release -p quotient -p evm                               # the memb
 cargo bench -p quotient --bench membership                            # prover / verifier timings and sizes
 cargo test --release -p evm -- --ignored --nocapture gas_report       # gas of the membership contract
 cargo test --release -p leanvm_univariate -p leanvm_rec               # the leanVM line
+LEANVM_TRACE=<trace> cargo test --release -p leanvm_rec --test pipeline -- --ignored --nocapture   # trace → π1 → π2, timed
 ```
 
 ## Numbers (M4 Max, 16 cores)
@@ -93,7 +94,7 @@ Gas is transaction gas without the 21,000 base (EIP-7623), `PCS_OPEN` at a claim
 
 | | ZK Merkle membership | leanVM by recursion (128 signatures) |
 |---|---|---|
-| Prover | 2.2 s (reduction 1.46 s, openings 0.76 s), 5.9 GiB | π1-rec3 2.7–3.7 s (6.9 GB); π2 4.4 s + 1.7 s openings (9.8 GB), under load |
+| Prover | 2.2 s (reduction 1.46 s, openings 0.76 s), 5.9 GiB | trace → π1-rec3 → π2 and openings: 4.1 s per proof, 0.9 s per circuit once, 12.5 GB (`tests/pipeline.rs`, load 2–7) |
 | Calldata | 252 B | 980 B |
 | Gas | 14,289 execution, **18,309** transaction | 28,325 execution, **43,309** transaction (62,720 under EIP-7976) |
 | Claims | 4 in 3 calls | 7 in 6 calls |
