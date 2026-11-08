@@ -414,7 +414,7 @@ theorem linearise_phc {st : RecState} (hg : Good st) (tuple : List Form) {weight
     (fun _ _ hg hs h ↦ ⟨RpL.pgrow hg hs h.1, RpSent.pgrow π iv publicInput stream hg hs h.2⟩)
     _ _ (fun (b : Nat × Array (Nat × Nat)) (c : E × List (Nat × E)) st ↦
       Rp π iv publicInput stream st b.1 c.1 ∧ RpPairs π iv publicInput stream st b.2.toList c.2)
-    ?_ _ ?_ st1 _ _ hs1.good ⟨hw, hs⟩ ⟨hk, List.Forall₂.nil⟩) fun r st2 hs2 hr ↦ phc_pure _ hs2.good hr
+    ?_ _ ?_ st1 _ _ hs1.good ⟨hw, hs⟩ ⟨hk, by exact List.Forall₂.nil⟩) fun r st2 hs2 hr ↦ phc_pure _ hs2.good hr
   · rintro ⟨form, s⟩ b c st hg hP ⟨hw, hsent⟩ hR
     have hs' : s < weightsS.size := by
       have : s < tuple.length := hP

@@ -2,15 +2,17 @@
 import RecGraphKeccak.Sim.End
 import RecGraphKeccak.Sim.Constraint
 import RecGraphKeccak.Sim.Heap
+import RecGraphKeccak.Sim.ShapeK
 
 /-!
 # Graph = verifier for the Keccak VM's π1-rec3: what is left after the proved parts
 
 Flock (`flockSpecK`), the tables' parts (`tableSpecK`), `Q_W`'s identity (`constraintSpecK`) and degree
 (`degreeSpecK`) and the heap's relations (`heapSpecK`) are proved, at the representations `partRK`, `tableShapeK`,
-`constraintShapeK`, `heapShapeK`. **`KeccakTailShape`** names what is left: a condition `OK` on the relations and
-`C2`'s columns, with byte and challenge counts, under which the tail simulates `UniKeccak`'s (`TailSpecK`), and which
-`reduceWithK`'s relations satisfy off the merge hazard (`ShapeSpecK`).
+`constraintShapeK`, `heapShapeK`. `KeccakTailShape`: a condition `OK` on the relations and `C2`'s columns, with byte
+and challenge counts, under which the tail simulates `UniKeccak`'s (`TailSpecK`), and which `reduceWithK`'s relations
+satisfy off the merge hazard (`ShapeSpecK`); proved at `TailOKK` (`keccakTailShape`: `Sim/BatchK.lean`,
+`Sim/ShapeK.lean`). So **`pi1GraphIsVerifierK : Pi1GraphIsVerifierK`**, with no hypothesis.
 -/
 
 set_option linter.dupNamespace false
@@ -35,5 +37,11 @@ theorem keccakSimParts_of_tailShape (h : KeccakTailShape) : KeccakSimParts := by
   obtain ⟨OK, nB, chB, hTail, hS⟩ := h
   exact ⟨partRK, tableShapeK, constraintShapeK, heapShapeK, OK, tableBytesK, nB, chB, partRK_grows, tableSpecK,
     constraintSpecK, degreeSpecK, heapSpecK, hTail, hS⟩
+
+/-- **The tail and the shape, proved** (`tailSpecK`, `shapeSpecK`, at `TailOKK`). -/
+theorem keccakTailShape : KeccakTailShape := ⟨TailOKK, tailBytesK, tailChK, tailSpecK, shapeSpecK⟩
+
+/-- **Graph = verifier for the Keccak VM's π1-rec3, off the merge hazard**: no hypothesis. -/
+theorem pi1GraphIsVerifierK : Pi1GraphIsVerifierK := pi1GraphIsVerifierK_of_tailShape keccakTailShape
 
 end RecGraphKeccak.Sim

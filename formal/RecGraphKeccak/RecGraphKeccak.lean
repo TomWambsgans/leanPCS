@@ -5,6 +5,7 @@ import RecGraphKeccak.Main
 import RecGraphKeccak.Sim.End
 import RecGraphKeccak.Sim.Final
 import RecGraphKeccak.Circuit
+import RecGraphKeccak.Hazard
 
 /-!
 # RecGraphKeccak: the Keccak VM's π1-rec3 recorded graph, and graph = verifier
@@ -14,8 +15,8 @@ lean_graph_keccak.rs`, data only), the verifier as a `RecGraph.Prog` program (`P
 equals the emitted graph node for node: `RecGraphKeccakTest/Pi1Check.lean`), and graph = verifier against `UniKeccak`'s
 `runWithK` at `keccakRec3` (`Main.lean`: `Pi1GraphIsVerifierK`), from the simulation's parts (`Sim/`): Flock with the
 structured terminal is proved (`flockSpecK`), the composition is proved (`pi1GraphIsVerifierK_of_parts`), the tables' parts, `Q_W`'s identity and
-degree and the heap's relations are proved; the tail and the relations' shape off the hazard are the named
-`KeccakTailShape` (`pi1GraphIsVerifierK_of_tailShape`). See `README.md`.
+degree and the heap's relations are proved; the tail and the relations' shape off the hazard
+are proved (`keccakTailShape`): **`Sim.pi1GraphIsVerifierK : Pi1GraphIsVerifierK`**, with no hypothesis. See `README.md`.
 
 The build fails if a definition or theorem below uses an axiom beyond Lean's three standard ones.
 -/
@@ -83,3 +84,31 @@ The build fails if a definition or theorem below uses an axiom beyond Lean's thr
 /-- info: 'RecGraphKeccak.pi1rec3K_end' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms RecGraphKeccak.pi1rec3K_end
+
+/-- info: 'RecGraphKeccak.Sim.tailSpecK' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecGraphKeccak.Sim.tailSpecK
+
+/-- info: 'RecGraphKeccak.Sim.shapeSpecK' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecGraphKeccak.Sim.shapeSpecK
+
+/-- info: 'RecGraphKeccak.Sim.keccakTailShape' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecGraphKeccak.Sim.keccakTailShape
+
+/-- info: 'RecGraphKeccak.Sim.pi1GraphIsVerifierK' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecGraphKeccak.Sim.pi1GraphIsVerifierK
+
+/-- info: 'RecGraphKeccak.functionalsCorrect15' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecGraphKeccak.functionalsCorrect15
+
+/-- info: 'RecGraphKeccak.hazard_cardK' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecGraphKeccak.hazard_cardK
+
+/-- info: 'RecGraphKeccak.hazard_probK' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecGraphKeccak.hazard_probK

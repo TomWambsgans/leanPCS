@@ -1,7 +1,7 @@
 -- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The node semantics are `crates/leanvm_rec/src/eval.rs`'s
 -- (`evaluate`, `call_inputs`, `checks`), on `formal/UniStatement`'s definitions of the transcript (`KeccakChannel`:
 -- `seedWith`, `beWordAt`, `challengeOf`, `narrowE`), the bit fields (`intBits`), the ring switch's weight
--- (`Flock.towerWeightAt`) and `PCS_OPEN`'s words (`elementWord`, `pcsCalls`).
+-- (`Flock.towerWeightAt`) and `PCS_OPEN`'s words (`elementWord`).
 import RecGraph.Node
 import UniStatement.Rec
 
@@ -29,9 +29,8 @@ A node's value (`stepNode`), as `eval.rs` computes it and as `UniStatement` read
 * `ringWeight k n` is `ring_tower::weight_at` (`Flock.towerWeightAt`) of kernel `k`'s values: the point's `n`
   coordinates, `1 + r`'s `n`, the map.
 
-`verifierOutputsWith` is the same outputs by `UniStatement`'s verifier (`runWithFs`, `pcsCalls`, the zeros it
-collects; it requires nothing nonzero). `GraphIsVerifier` states that a graph is a verifier for every permutation, IV,
-public input and stream.
+`evalGraphDeployed`: the outputs over Keccak-f[1600] (the deployed contract's). A verifier's outputs, and graph =
+verifier, are stated per VM (the Keccak VM's: `RecGraphKeccak.verifierOutputsWithK`, `Pi1GraphIsVerifierK`).
 -/
 
 namespace RecGraph
@@ -132,33 +131,10 @@ def evalGraph (g : Graph) (iv publicInput : List UInt8) (stream : Array UInt8) :
     return some (outputsOf g stream vals)
   else return none
 
-/-- **The same outputs, by `UniStatement`'s verifier** at a Fiat–Shamir shape (`fs`, `walk`; the main line's Flock and
-the point-claim ABI): the run on the stream (`runWithFs`), and on success its `PCS_OPEN` inputs (`pcsCalls`) and the
-values it collected as zeros; nothing is required nonzero. A run that ends in an error has none. -/
-def verifierOutputsWith (shape : Shape) (roots : SetupRoots) (iv publicInput : List UInt8) (stream : Array UInt8)
-    (fs : FsShape) (walk : Bool) : m (Option Outputs) := do
-  let o ← runWithFs F shape iv publicInput stream (.flock flockMain) .point fs walk
-  return match o.result with
-    | .ok r => some ⟨pcsCalls shape roots r, o.chan.zeros.toList, []⟩
-    | .error _ => none
-
 end With
-
-/-- **Graph = verifier**: for every permutation `π` of the Keccak state, every IV, public input and stream, the graph's
-outputs are `UniStatement`'s verifier's at the shape, the setup roots and the Fiat–Shamir shape. For π1-rec3:
-`GraphIsVerifier Emitted.graph reference referenceRoots .rec3 true`. -/
-def GraphIsVerifier (g : Graph) (shape : Shape) (roots : SetupRoots) (fs : FsShape) (walk : Bool) : Prop :=
-  ∀ (π : KeccakState → KeccakState) (iv : List UInt8) (publicInput : Vector UInt8 32) (stream : Array UInt8),
-    evalGraph (m := Id) (fun s ↦ pure (π s)) g iv publicInput.toList stream =
-      verifierOutputsWith (m := Id) (fun s ↦ pure (π s)) shape roots iv publicInput.toList stream fs walk
 
 /-- The graph's outputs over Keccak-f[1600] (the deployed contract's). -/
 def evalGraphDeployed (g : Graph) (iv publicInput : List UInt8) (stream : Array UInt8) : Option Outputs :=
   Id.run (evalGraph (m := Id) (fun s ↦ pure (keccakF1600 s)) g iv publicInput stream)
-
-/-- `UniStatement`'s outputs over Keccak-f[1600]. -/
-def verifierOutputsDeployed (shape : Shape) (roots : SetupRoots) (iv publicInput : List UInt8) (stream : Array UInt8)
-    (fs : FsShape) (walk : Bool) : Option Outputs :=
-  Id.run (verifierOutputsWith (m := Id) (fun s ↦ pure (keccakF1600 s)) shape roots iv publicInput stream fs walk)
 
 end RecGraph

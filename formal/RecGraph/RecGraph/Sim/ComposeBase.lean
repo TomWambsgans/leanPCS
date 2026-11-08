@@ -5,12 +5,12 @@ import RecGraph.Sim.Tables
 /-!
 # The composition's framework: a judgment under a condition on the final channel, and monotone runs
 
-* `SimQ Q st p u n ch R`: `Sim`, but only for the channels whose run ends in a channel satisfying `Q`. π1-rec3's
-  verifier is simulated off the merge hazard (`MergeHazard`, the hazard at the final channel's challenges 42 and 49):
-  `Q` is "no hazard at the final channel". Rules: `SimQ.of_sim`, `SimQ.bind` (a `Sim` first), `SimQ.pbind` (a pure part
-  first), `SimQ.cast`, `SimQ.of_cond` (a `Sim` under a premise `P`, and off `P` no run ends in `Q`).
+* `SimQ Q st p u n ch R`: `Sim`, but only for the channels whose run ends in a channel satisfying `Q` (π1-rec3's
+  verifier is simulated off the merge hazard: `Q` is "no hazard at the final channel"). Rules: `SimQ.of_sim`,
+  `SimQ.bind` (a `Sim` first), `SimQ.pbind` (a pure part first), `SimQ.cast`, `SimQ.of_cond` (a `Sim` under a premise
+  `P`, and off `P` no run ends in `Q`); `SimE`, its existential form.
 * `Mono u`: every run of `u` ends with the channel's challenges extended (nothing drawn is ever removed): `Mono.bind`,
-  `Mono.ret`, `Mono.forIn`, and `UniStatement`'s transcript functions and `batchFs` at π1-rec3's shape.
+  `Mono.ret`, `Mono.forIn`, and `UniStatement`'s transcript functions.
 * `chIds_grows`, `Sim.withChIds`: the challenge nodes grow as the state does, by as many as the challenges drawn.
 * The transport of representations along a growth (`Rp.sg`, `RpL.sg`, `RpRels.sg`, …) and the tactic
   `sgrow hk hgr`.
@@ -233,19 +233,6 @@ theorem Mono.sumcheckPairsDrawn (π : KeccakState → KeccakState) (claim : E) (
   split
   · exact Mono.bind (Mono.sumcheckDrawn π _ _ _ _) fun _ ↦ Mono.ret _
   · exact Mono.ret _
-
-/-- **`batchFs` at π1-rec3's shape** (paired rounds, no pending matrices) only draws. -/
-theorem Mono.batchFs (π : KeccakState → KeccakState) (combined : List (Commitment × Combined))
-    (layouts : List (Commitment × StackLayout)) (bitSlice : Option Combined) (ringMap : Option (List E)) :
-    Mono (UniStatement.batchFs (Fp π) .rec3 combined layouts bitSlice ringMap none) := by
-  unfold UniStatement.batchFs
-  refine Mono.bind (Mono.sample π) fun lambda ↦ ?_
-  dsimp only
-  refine Mono.bind (Mono.sumcheckPairsDrawn π _ _ _ _) fun x ↦ ?_
-  refine Mono.bind (Mono.ret _) fun x ↦ ?_
-  refine Mono.bind (Mono.nextScalars _) fun values ↦ ?_
-  refine Mono.bind (Mono.ret _) fun matrices ↦ ?_
-  exact Mono.bind (Mono.requireZero _) fun _ ↦ Mono.ret _
 
 /-! ## The judgment under a condition on the final channel -/
 

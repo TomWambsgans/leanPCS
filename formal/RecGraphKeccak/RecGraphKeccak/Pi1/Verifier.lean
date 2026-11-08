@@ -9,8 +9,8 @@ import UniKeccak.Opening
 # The Keccak VM's π1-rec3 verifier as a program
 
 `reduce` at the reference workload's shape (`keccak128`, the Keccak VM at 128 signatures; the Rust's `KECCAK_128`) with
-`Blake2s::Keccak(KECCAK_REC3)` and `Claims::Point`, on the recorder: `pi1Rec3K`. Against `RecGraph.Pi1.reduce`
-(π1-rec3 on the BLAKE2s VM), what changes:
+`Blake2s::Keccak(KECCAK_REC3)` and `Claims::Point`, on the recorder: `pi1Rec3K`. Against π1-rec3 on the BLAKE2s VM (the
+`reduce` this was ported from, since removed), what changes:
 
 * the tables are `tablesKeccak`, and Flock is `verifyWalkedK` (`log_n = 17 + h_SHA3`);
 * `Q_W`'s copies (`constraintRelationK`): each `SHA3` lane column against `q_flock`'s word `keccakSlot`, read through
