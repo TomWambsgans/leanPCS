@@ -865,6 +865,27 @@ unsafe fn run_on<T: Kind>(
     runs: bool,
     serial: bool,
 ) {
+    let col = Col {
+        data: SendPtr(data),
+        src: src.map(|s| SendPtr(s.cast_mut())),
+    };
+    // SAFETY: the caller's.
+    unsafe { run_cols(&[col], rows, shift, kind, runs, serial) }
+}
+
+/// A column a transform writes (`data`), read first from `src` if given.
+#[derive(Clone, Copy)]
+struct Col {
+    data: SendPtr<u64>,
+    src: Option<SendPtr<u64>>,
+}
+
+/// [`run_on`] on several columns of `rows` rows at once, each pass's tasks for every column in one dispatch: the
+/// same values as one column at a time.
+///
+/// # Safety
+/// Each column's `data` holds `8 rows` words, its `src` (if given) as many; all disjoint.
+unsafe fn run_cols<T: Kind>(cols: &[Col], rows: usize, shift: usize, kind: &T, runs: bool, serial: bool) {
     assert!(rows.is_power_of_two());
     let mr = rows.trailing_zeros() as usize;
     let leaf = mr.min(LEAF_ROWS.trailing_zeros() as usize);
@@ -876,18 +897,16 @@ unsafe fn run_on<T: Kind>(
         groups.push((a, top - a));
         top = a;
     }
-    let data = SendPtr(data);
-    let src = src.map(|s| SendPtr(s.cast_mut()));
     if T::DOWN {
-        let mut from = src;
+        let mut from = true;
         for &(a, g) in &groups {
-            wide(data, from.take(), rows, a, g, shift, kind, serial);
+            wide(cols, std::mem::take(&mut from), rows, a, g, shift, kind, serial);
         }
-        leaves(data, from, rows, leaf, shift, kind, runs, serial);
+        leaves(cols, from, rows, leaf, shift, kind, runs, serial);
     } else {
-        leaves(data, src, rows, leaf, shift, kind, runs, serial);
+        leaves(cols, true, rows, leaf, shift, kind, runs, serial);
         for &(a, g) in groups.iter().rev() {
-            wide(data, None, rows, a, g, shift, kind, serial);
+            wide(cols, false, rows, a, g, shift, kind, serial);
         }
     }
 }
@@ -895,8 +914,8 @@ unsafe fn run_on<T: Kind>(
 /// Row layers `0..leaf`, and the rows' own layers, on each block of `2^leaf` rows by one worker.
 #[allow(clippy::too_many_arguments)]
 fn leaves<T: Kind>(
-    data: SendPtr<u64>,
-    src: Option<SendPtr<u64>>,
+    cols: &[Col],
+    from_src: bool,
     rows: usize,
     leaf: usize,
     shift: usize,
@@ -905,7 +924,10 @@ fn leaves<T: Kind>(
     serial: bool,
 ) {
     let size = 1usize << leaf;
-    tasks(rows >> leaf, serial, |task| {
+    let per = rows >> leaf;
+    tasks(per * cols.len(), serial, |t| {
+        let (Col { data, src }, task) = (cols[t / per], t % per);
+        let src = if from_src { src } else { None };
         let first = task << leaf;
         // SAFETY: a task touches its own `size` rows from `first`.
         unsafe {
@@ -951,8 +973,8 @@ fn leaves<T: Kind>(
 /// Row layers `a..a + g` in one pass: tiles of `2^g` lines `2^a` rows apart, each line a run of rows.
 #[allow(clippy::too_many_arguments)]
 fn wide<T: Kind>(
-    data: SendPtr<u64>,
-    src: Option<SendPtr<u64>>,
+    cols: &[Col],
+    from_src: bool,
     rows: usize,
     a: usize,
     g: usize,
@@ -963,7 +985,10 @@ fn wide<T: Kind>(
     let lines = 1usize << g;
     let width = (TILE_ROWS >> g).clamp(1, 1 << a);
     let per_group = (1usize << a) / width;
-    tasks((rows >> (a + g)) * per_group, serial, |task| {
+    let per = (rows >> (a + g)) * per_group;
+    tasks(per * cols.len(), serial, |t| {
+        let (Col { data, src }, task) = (cols[t / per], t % per);
+        let src = if from_src { src } else { None };
         let row0 = ((task / per_group) << (a + g)) + (task % per_group) * width;
         let line = |u: usize| row0 + (u << a);
         // SAFETY: a task touches rows `line(u) + [0, width)`, `u < lines`: its own.
@@ -1578,6 +1603,202 @@ pub fn shifted_cube(values: &[F64], delta: &[F64], e: usize) -> Vec<F64> {
     // SAFETY: `out`'s own words, eight a row.
     unsafe { run(out.as_mut_ptr().cast(), None, out.len() / 8, 3, &kind, false) }
     out
+}
+
+/// Columns of one length, each eight words a row, as [`run_cols`] takes them (read first from `srcs` if given).
+fn column_cols(dsts: &mut [&mut [F64]], srcs: Option<&[&[F64]]>) -> Vec<Col> {
+    let len = dsts.first().map_or(0, |d| d.len());
+    assert!(dsts.iter().all(|d| d.len() == len));
+    dsts.iter_mut()
+        .enumerate()
+        .map(|(c, d)| Col {
+            data: SendPtr(d.as_mut_ptr().cast()),
+            src: srcs.map(|s| {
+                assert_eq!(s[c].len(), len);
+                SendPtr(s[c].as_ptr().cast::<u64>().cast_mut())
+            }),
+        })
+        .collect()
+}
+
+/// [`values`] on several columns of one length at once: each pass's tasks for all of them in one dispatch.
+pub fn values_cols(cols: &mut [&mut [F64]], offset: F64) {
+    let len = cols.first().map_or(0, |c| c.len());
+    if len < 8 {
+        return cols.iter_mut().for_each(|c| values(c, offset));
+    }
+    let kind = Forward(Twiddles::new(offset, len.trailing_zeros() as usize));
+    let cols = column_cols(cols, None);
+    // SAFETY: the columns' own words, eight a row, disjoint (distinct `&mut`).
+    unsafe { run_cols(&cols, len / 8, 3, &kind, false, false) }
+}
+
+/// [`coefficients`] on several columns of one length at once.
+pub fn coefficients_cols(cols: &mut [&mut [F64]], offset: F64) {
+    let len = cols.first().map_or(0, |c| c.len());
+    if len < 8 {
+        return cols.iter_mut().for_each(|c| coefficients(c, offset));
+    }
+    let kind = Inverse(Twiddles::new(offset, len.trailing_zeros() as usize));
+    let cols = column_cols(cols, None);
+    // SAFETY: the columns' own words, eight a row, disjoint.
+    unsafe { run_cols(&cols, len / 8, 3, &kind, false, false) }
+}
+
+/// [`values_from`] on several columns of one length at once.
+pub fn values_from_cols(srcs: &[&[F64]], dsts: &mut [&mut [F64]], offset: F64) {
+    let len = dsts.first().map_or(0, |c| c.len());
+    if len < 8 {
+        return dsts.iter_mut().zip(srcs).for_each(|(d, s)| values_from(s, d, offset));
+    }
+    let kind = Forward(Twiddles::new(offset, len.trailing_zeros() as usize));
+    let cols = column_cols(dsts, Some(srcs));
+    // SAFETY: the destinations' own words, eight a row, read first from their sources'.
+    unsafe { run_cols(&cols, len / 8, 3, &kind, false, false) }
+}
+
+/// [`values_from`] by the calling worker alone.
+pub fn values_from_serial(src: &[F64], dst: &mut [F64], offset: F64) {
+    assert_eq!(src.len(), dst.len());
+    if dst.len() < 8 {
+        dst.copy_from_slice(src);
+        return crate::domain::values(dst, offset);
+    }
+    let kind = Forward(Twiddles::new(offset, dst.len().trailing_zeros() as usize));
+    // SAFETY: `dst`'s own words, eight a row, read first from `src`'s.
+    unsafe {
+        run_on(
+            dst.as_mut_ptr().cast(),
+            Some(src.as_ptr().cast()),
+            dst.len() / 8,
+            3,
+            &kind,
+            false,
+            true,
+        )
+    }
+}
+
+/// [`on_coset_prefix`] of `novel` into `out` (`2^e` words), by the calling worker alone.
+pub fn on_coset_prefix_serial(novel: &[F64], first: usize, out: &mut [F64]) {
+    let size = out.len();
+    assert!(size.is_power_of_two() && novel.len().is_multiple_of(size));
+    let e = size.trailing_zeros() as usize;
+    if novel.len() == size {
+        return values_from_serial(novel, out, point(first));
+    }
+    // `novel_weights`' products in `tensor`'s order, then `fold_rows`' (or `fold_column`'s) sums: the same values.
+    let blocks = novel.len() / size;
+    let mut weights = vec![F64::ONE];
+    let mut b = 0;
+    while weights.len() < blocks {
+        let one = point(first >> (e + b));
+        let half = weights.len();
+        for h in 0..half {
+            let w = weights[h] * one;
+            weights.push(w);
+        }
+        b += 1;
+    }
+    for (i, o) in out.iter_mut().enumerate() {
+        *o = (0..blocks).fold(F64::ZERO, |acc, h| acc + weights[h] * novel[i + h * size]);
+    }
+    if size < 8 {
+        return crate::domain::values(out, point(first));
+    }
+    let kind = Forward(Twiddles::new(point(first), e));
+    // SAFETY: `out`'s own words, eight a row.
+    unsafe { run_on(out.as_mut_ptr().cast(), None, size / 8, 3, &kind, false, true) }
+}
+
+/// [`on_coset_prefix`] of several columns of one length at once.
+pub fn on_coset_prefix_cols(novels: &[&[F64]], first: usize, e: usize) -> Vec<Vec<F64>> {
+    let size = 1usize << e;
+    let len = novels.first().map_or(0, |n| n.len());
+    assert!(novels.iter().all(|n| n.len() == len) && len.is_multiple_of(size));
+    let mut out: Vec<Vec<F64>> = novels.iter().map(|_| vec![F64::ZERO; size]).collect();
+    if len == size {
+        let mut dsts: Vec<&mut [F64]> = out.iter_mut().map(|o| &mut o[..]).collect();
+        values_from_cols(novels, &mut dsts, point(first));
+        return out;
+    }
+    if size < 64 {
+        // Few rows: as one column at a time.
+        return novels.iter().map(|n| on_coset_prefix(n, first, e)).collect();
+    }
+    let weights = novel_weights(len / size, first, e);
+    let rows = size / 8;
+    let chunk = (rows / 128).clamp(1, 64);
+    let per = rows / chunk;
+    let dsts: Vec<SendPtr<u64>> = out.iter_mut().map(|o| SendPtr(o.as_mut_ptr().cast())).collect();
+    // `fold_rows`' sums, its tasks for every column in one dispatch.
+    parallel::for_each(per * novels.len(), |t| {
+        let (c, task) = (t / per, t % per);
+        let src: *const u64 = novels[c].as_ptr().cast();
+        // SAFETY: a task writes its own `chunk` rows of column `c`'s output and reads its source.
+        unsafe {
+            for i in task * chunk..(task + 1) * chunk {
+                let mut acc = load(src.add(8 * i));
+                if weights[0] != F64::ONE {
+                    acc = mul(acc, splat(weights[0].0));
+                }
+                for (h, &w) in weights.iter().enumerate().skip(1) {
+                    acc = xor(acc, mul(load(src.add(8 * (i + h * rows))), splat(w.0)));
+                }
+                store(dsts[c].add(8 * i), acc);
+            }
+        }
+    });
+    let mut dsts: Vec<&mut [F64]> = out.iter_mut().map(|o| &mut o[..]).collect();
+    values_cols(&mut dsts, point(first));
+    out
+}
+
+/// [`interpolate_prefix`] on several columns at once (one length, the same blocks), each step's dispatches for all
+/// of them: the same values.
+pub fn interpolate_prefix_cols(data: &mut [&mut [F64]], sizes: &[usize], base: usize) {
+    let total: usize = sizes.iter().map(|&e| 1usize << e).sum();
+    assert!(data.iter().all(|d| d.len() == total));
+    assert!(sizes.windows(2).all(|w| w[0] > w[1]) && base % (2 << sizes[0]) == 0);
+    let starts = prefix_starts(sizes, base);
+    let ptrs: Vec<SendPtr<F64>> = data.iter_mut().map(|d| SendPtr(d.as_mut_ptr())).collect();
+    // Column `c`'s words `at..at + len`.
+    // SAFETY (all uses): each call's ranges are disjoint from the others' live at once, inside `data[c]`.
+    let range = |c: usize, at: usize, len: usize| -> &mut [F64] { unsafe { ptrs[c].slice(at, len) } };
+    let n = data.len();
+    for j in 0..sizes.len() {
+        let (at, e) = (starts[j] - base, sizes[j]);
+        let mut us: Vec<&mut [F64]> = (0..n).map(|c| range(c, at, 1 << e)).collect();
+        coefficients_cols(&mut us, point(starts[j]));
+        let us: Vec<&[F64]> = us.into_iter().map(|u| &*u).collect();
+        for l in j + 1..sizes.len() {
+            let adds = on_coset_prefix_cols(&us, starts[l], sizes[l]);
+            let from = starts[l] - base;
+            const CHUNK: usize = 1 << 14;
+            let len = 1usize << sizes[l];
+            let per = len.div_ceil(CHUNK);
+            parallel::for_each(per * n, |t| {
+                let (c, k) = (t / per, t % per);
+                let (lo, hi) = (k * CHUNK, ((k + 1) * CHUNK).min(len));
+                let block = range(c, from + lo, hi - lo);
+                block.iter_mut().zip(&adds[c][lo..hi]).for_each(|(x, &y)| *x += y);
+            });
+        }
+    }
+    for j in (0..sizes.len().saturating_sub(1)).rev() {
+        let (at, e) = (starts[j] - base, sizes[j]);
+        let lambda = point(starts[j] >> e);
+        let len = total - at - (1 << e);
+        const CHUNK: usize = 1 << 14;
+        let per = len.div_ceil(CHUNK);
+        parallel::for_each(per * n, |t| {
+            let (c, k) = (t / per, t % per);
+            let (lo, hi) = (k * CHUNK, ((k + 1) * CHUNK).min(len));
+            let q = range(c, at + lo, hi - lo);
+            let r = range(c, at + (1 << e) + lo, hi - lo);
+            q.iter_mut().zip(r.iter()).for_each(|(x, &y)| *x += lambda * y);
+        });
+    }
 }
 
 /// The interpolation blocks: `count` rounded up to a multiple of `2^grain`, in binary, largest first.
@@ -2215,6 +2436,95 @@ mod tests {
             let mut got = all[..total].to_vec();
             interpolate_prefix(&mut got, &sizes, 1 << m);
             assert_eq!(got, novel, "count {count}, blocks {sizes:?}");
+        }
+    }
+
+    /// The several-column and one-worker transforms, folds and interpolation are the one-column ones.
+    #[test]
+    fn columns_at_once_and_serial_are_one_at_a_time() {
+        let mut next = rng(11);
+        for m in [0usize, 2, 3, 4, 9, 12, 13, 16, 19] {
+            let offset = point(3 << 21) + point(7 << m);
+            let columns: Vec<Vec<F64>> = (0..3).map(|_| (0..1usize << m).map(|_| F64(next())).collect()).collect();
+            let refs: Vec<&[F64]> = columns.iter().map(|c| &c[..]).collect();
+            let one = |f: fn(&mut [F64], F64)| -> Vec<Vec<F64>> {
+                columns
+                    .iter()
+                    .map(|c| {
+                        let mut c = c.clone();
+                        f(&mut c, offset);
+                        c
+                    })
+                    .collect()
+            };
+            let (want_v, want_c) = (one(values), one(coefficients));
+            let mut got = columns.clone();
+            values_cols(&mut got.iter_mut().map(|c| &mut c[..]).collect::<Vec<_>>(), offset);
+            assert_eq!(got, want_v, "values_cols, 2^{m}");
+            let mut got = columns.clone();
+            coefficients_cols(&mut got.iter_mut().map(|c| &mut c[..]).collect::<Vec<_>>(), offset);
+            assert_eq!(got, want_c, "coefficients_cols, 2^{m}");
+            let mut got: Vec<Vec<F64>> = columns.iter().map(|c| vec![F64::ZERO; c.len()]).collect();
+            values_from_cols(&refs, &mut got.iter_mut().map(|c| &mut c[..]).collect::<Vec<_>>(), offset);
+            assert_eq!(got, want_v, "values_from_cols, 2^{m}");
+            let mut got = vec![F64::ZERO; 1 << m];
+            values_from_serial(&columns[0], &mut got, offset);
+            assert_eq!(got, want_v[0], "values_from_serial, 2^{m}");
+            for e in [0, 1, 3, 6, 7, 9].into_iter().filter(|&e| e <= m) {
+                let first = (5 << 22) + (3 << e);
+                let want: Vec<Vec<F64>> = refs.iter().map(|c| on_coset_prefix(c, first, e)).collect();
+                assert_eq!(on_coset_prefix_cols(&refs, first, e), want, "on_coset_prefix_cols, 2^{m} onto 2^{e}");
+                let mut got = vec![F64::ZERO; 1 << e];
+                on_coset_prefix_serial(&columns[1], first, &mut got);
+                assert_eq!(got, want[1], "on_coset_prefix_serial, 2^{m} onto 2^{e}");
+            }
+        }
+        for (count, grain) in [(1u64, 0usize), (5, 0), (1000, 3), (5000, 6), (37_000, 10), (300_000, 13)] {
+            let sizes = prefix_sizes(count, grain);
+            let total: usize = sizes.iter().map(|&e| 1usize << e).sum();
+            let base = 2 << sizes[0];
+            let columns: Vec<Vec<F64>> = (0..3).map(|_| (0..total).map(|_| F64(next())).collect()).collect();
+            let want: Vec<Vec<F64>> = columns
+                .iter()
+                .map(|c| {
+                    let mut c = c.clone();
+                    interpolate_prefix(&mut c, &sizes, base);
+                    c
+                })
+                .collect();
+            let mut got = columns.clone();
+            interpolate_prefix_cols(&mut got.iter_mut().map(|c| &mut c[..]).collect::<Vec<_>>(), &sizes, base);
+            assert_eq!(got, want, "interpolate_prefix_cols, blocks {sizes:?}");
+        }
+    }
+
+    /// The one-worker batch transforms and fold are the pool's.
+    #[test]
+    fn serial_batches_are_the_pools() {
+        let mut next = rng(13);
+        for m in [3usize, 4, 9, 12, 13, 15, 16] {
+            let columns: Vec<Vec<F64>> = (0..8).map(|_| (0..1usize << m).map(|_| F64(next())).collect()).collect();
+            let refs: Vec<&[F64]> = columns.iter().map(|c| &c[..]).collect();
+            let batch = pack(&refs);
+            for runs in [false, true] {
+                let offset = point(9 << 20);
+                let mut want = vec![K8::ZERO; batch.len()];
+                values_batch_from(&batch, &mut want, offset, runs);
+                let mut got = vec![K8::ZERO; batch.len()];
+                values_batch_from_serial(&batch, &mut got, offset, runs);
+                assert!(got == want, "values_batch_from_serial, 2^{m}");
+                let mut got = batch.clone();
+                values_batch_serial(&mut got, offset, runs);
+                assert!(got == want, "values_batch_serial, 2^{m}");
+            }
+            for e in (0..=m).step_by(3) {
+                let first = (3 << 22) + (5 << e);
+                let mut want = vec![K8::ZERO; 1 << e];
+                fold_batch(&batch, first, &mut want);
+                let mut got = vec![K8::ZERO; 1 << e];
+                fold_batch_serial(&batch, first, &mut got);
+                assert!(got == want, "fold_batch_serial, 2^{m} onto 2^{e}");
+            }
         }
     }
 

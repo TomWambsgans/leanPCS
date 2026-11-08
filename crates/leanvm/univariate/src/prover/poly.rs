@@ -36,11 +36,12 @@ pub fn copy<T: Copy + Send + Sync>(dst: &mut [T], src: &[T]) {
 
 /// The novel coefficients, limb by limb, of the E-polynomial whose values on `V_r` are `values`.
 pub fn novel_limbs(values: &[F192]) -> [Vec<F64>; 3] {
-    [0, 1, 2].map(|k| {
-        let mut limb: Vec<F64> = parallel::map_collect(values.len(), |i| F64([values[i].c0, values[i].c1, values[i].c2][k]));
-        quotient::ntt::coefficients(&mut limb, F64::ZERO);
-        limb
-    })
+    let mut limbs =
+        [0, 1, 2].map(|k| parallel::map_collect(values.len(), |i| F64([values[i].c0, values[i].c1, values[i].c2][k])));
+    let [a, b, c] = &mut limbs;
+    // The three limbs' passes in the same dispatches.
+    quotient::ntt::coefficients_cols(&mut [&mut a[..], &mut b[..], &mut c[..]], F64::ZERO);
+    limbs
 }
 
 /// The point `ω_index`, for any index below `2^28`.

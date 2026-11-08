@@ -92,6 +92,7 @@ pub static MEMORY_PROBE: std::sync::OnceLock<fn() -> u64> = std::sync::OnceLock:
 
 struct Clock {
     last: Instant,
+    faults: u64,
 }
 
 impl Clock {
@@ -101,8 +102,21 @@ impl Clock {
         if let Some(probe) = MEMORY_PROBE.get() {
             report.peaks.push((name, probe()));
         }
+        if std::env::var_os("PI1_PROFILE").is_some() {
+            let faults = minor_faults();
+            eprintln!("    {name}: {:.4} s, {} minor faults", (now - self.last).as_secs_f64(), faults - self.faults);
+            self.faults = faults;
+        }
         self.last = Instant::now();
     }
+}
+
+/// The process's minor page faults so far (`/proc/self/stat`, field 10), 0 where unreadable: for `PI1_PROFILE`.
+fn minor_faults() -> u64 {
+    std::fs::read_to_string("/proc/self/stat")
+        .ok()
+        .and_then(|s| s.rsplit_once(')').and_then(|(_, rest)| rest.split_whitespace().nth(7)?.parse().ok()))
+        .unwrap_or(0)
 }
 
 /// The root's two 128-bit halves as the stream carries them: its two scalars as WHIR's transcript has them
@@ -201,7 +215,10 @@ pub fn prove_streaming(
     on_stream: impl FnOnce(&[u8]),
 ) -> Result<(Proof, Report), String> {
     let mut report = Report::default();
-    let mut clock = Clock { last: Instant::now() };
+    let mut clock = Clock {
+        last: Instant::now(),
+        faults: minor_faults(),
+    };
     if !trace.placed {
         return Err("the trace's rows are leanVM's order: place them first (Trace::place)".into());
     }
@@ -288,6 +305,9 @@ pub fn prove_streaming(
         report.notes.push(format!("Flock's zerocheck and lincheck: {:.3} s", out.reduction_secs));
         for (stage, secs) in std::mem::take(&mut *flock::zerocheck::skip::STAGES.lock().expect("the stages")) {
             report.notes.push(format!("  the skip's zerocheck, {stage}: {secs:.3} s"));
+        }
+        if std::env::var_os("PI1_PROFILE").is_some() {
+            report.notes.iter().for_each(|note| eprintln!("    {note}"));
         }
         clock.lap(&mut report, "Flock: zerocheck, lincheck, slices");
     }

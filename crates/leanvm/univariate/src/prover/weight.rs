@@ -852,7 +852,8 @@ impl Weight {
             }
         };
         let p = parallel::map_reduce(tasks.len(), || [F192::ZERO; SUMS], body, add);
-        if std::env::var("PI1_PROFILE").is_ok() {
+        // `PI1_PROFILE=kinds`: each kind's tasks again, timed (the sums' time doubles).
+        if std::env::var("PI1_PROFILE").is_ok_and(|v| v == "kinds") {
             let kind = |t: usize| match preps[self.pieces[tasks[t].0].shape] {
                 Prep2::Factored { .. } => 0,
                 Prep2::Dense => 1,

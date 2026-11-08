@@ -291,9 +291,9 @@ fn prefix_quotient<D: Sync>(
     } else {
         columns.chunks(8).map(ntt::pack).collect()
     };
-    // The pieces `(first point, place in the limbs, size)`, which tile the limbs in order; of a batched quotient
-    // (columns short enough, `GROUPED_ROWS`) in rounds, each round's batches on its pieces transformed by one worker
-    // each, in parallel.
+    // The pieces `(first point, place in the limbs, size)`, which tile the limbs in order; with columns short enough
+    // (`GROUPED_ROWS`) in rounds, each round's batches (or columns) on its pieces transformed by one worker each, in
+    // parallel.
     let all: Vec<(usize, usize, usize)> = ntt::prefix_starts(&sizes, base)
         .iter()
         .zip(&sizes)
@@ -302,12 +302,12 @@ fn prefix_quotient<D: Sync>(
             (0..1usize << (e - p)).map(move |j| (first + (j << p), first - base + (j << p), p))
         })
         .collect();
-    let grouped = !alone && (8..=1 << GROUPED_ROWS).contains(&n) && all.iter().all(|&(_, _, p)| p >= 3);
+    let grouped = (8..=1 << GROUPED_ROWS).contains(&n) && all.iter().all(|&(_, _, p)| p >= 3);
     // [`evaluate`]'s rows: grouped, the check's block alone (at most 64 points).
     let rows = if grouped { 64.min(n) } else { n }.max(8);
     let mut work: Vec<Vec<K8>> = batches.iter().map(|_| vec![K8::ZERO; rows]).collect();
     let mut singles: Vec<Vec<F64>> = if alone {
-        columns.iter().map(|_| vec![F64::ZERO; n.max(8)]).collect()
+        columns.iter().map(|_| vec![F64::ZERO; rows]).collect()
     } else {
         Vec::new()
     };
@@ -326,11 +326,15 @@ fn prefix_quotient<D: Sync>(
                 ntt::transpose_runs(&mut dst[..8]);
             }
         }
-        for (src, dst) in columns.iter().zip(singles.iter_mut()) {
+        if alone {
+            // Every column's passes in the same dispatches.
+            let mut dsts: Vec<&mut [F64]> = singles.iter_mut().map(|d| &mut d[..size]).collect();
             if e == r {
-                ntt::values_from(src, &mut dst[..size], omega(first));
+                ntt::values_from_cols(columns, &mut dsts, omega(first));
             } else {
-                dst[..size].copy_from_slice(&ntt::on_coset_prefix(src, first, e));
+                for (dst, values) in dsts.iter_mut().zip(ntt::on_coset_prefix_cols(columns, first, e)) {
+                    dst.copy_from_slice(&values);
+                }
             }
         }
         let data = piece(first, e);
@@ -356,23 +360,42 @@ fn prefix_quotient<D: Sync>(
             );
         }
     } else {
-        // The pieces tile the limbs in order: a round's are consecutive.
-        let width = batches.len();
+        // The pieces tile the limbs in order: a round's are consecutive. A task: a batch (or a column) on a piece.
+        let (width, unit) = if alone {
+            (columns.len(), size_of::<F64>())
+        } else {
+            (batches.len(), size_of::<K8>())
+        };
         let per_round = (GROUPED_TASKS * parallel::num_threads())
             .div_ceil(width)
-            .min(GROUPED_BYTES / (width * n * size_of::<K8>()))
+            .min(GROUPED_BYTES / (width * n * unit))
             .clamp(1, all.len());
-        let mut transformed: Vec<Vec<K8>> = vec![Vec::new(); per_round * width];
+        let mut transformed: Vec<Vec<K8>> = vec![Vec::new(); if alone { 0 } else { per_round * width }];
+        let mut lone: Vec<Vec<F64>> = vec![Vec::new(); if alone { per_round * width } else { 0 }];
         for round in all.chunks(per_round) {
             let clock = std::time::Instant::now();
-            parallel::chunks_mut(&mut transformed[..round.len() * width], 1, |i, dst| {
-                let (first, _, p) = round[i / width];
-                piece_rows(&batches[i % width], first, p, &mut dst[0]);
-            });
+            let tasks = round.len() * width;
+            if alone {
+                parallel::chunks_mut(&mut lone[..tasks], 1, |i, dst| {
+                    let (first, _, p) = round[i / width];
+                    let dst = &mut dst[0];
+                    dst.resize(1 << p, F64::ZERO);
+                    ntt::on_coset_prefix_serial(columns[i % width], first, dst);
+                });
+            } else {
+                parallel::chunks_mut(&mut transformed[..tasks], 1, |i, dst| {
+                    let (first, _, p) = round[i / width];
+                    piece_rows(&batches[i % width], first, p, &mut dst[0]);
+                });
+            }
             t_transform += clock.elapsed().as_secs_f64();
             let clock = std::time::Instant::now();
             let data: Vec<D> = round.iter().map(|&(first, _, p)| piece(first, p)).collect();
-            let points: Vec<Points> = transformed[..round.len() * width].chunks(width).map(Points::Batches).collect();
+            let points: Vec<Points> = if alone {
+                lone[..tasks].chunks(width).map(Points::Alone).collect()
+            } else {
+                transformed[..tasks].chunks(width).map(Points::Batches).collect()
+            };
             // Each piece's first run in the round.
             let runs: Vec<usize> = round
                 .iter()
@@ -394,8 +417,9 @@ fn prefix_quotient<D: Sync>(
         }
     }
     let evaluated = started.elapsed().as_secs_f64();
-    for limb in &mut limbs {
-        ntt::interpolate_prefix(limb, &sizes, base);
+    {
+        let [a, b, c] = &mut limbs;
+        ntt::interpolate_prefix_cols(&mut [&mut a[..], &mut b[..], &mut c[..]], &sizes, base);
     }
     // One more block of points: the numerator's quotient there against the interpolant's values.
     let g = sizes[sizes.len() - 1].min(r).min(6);
@@ -403,7 +427,7 @@ fn prefix_quotient<D: Sync>(
     let mut check: [Vec<F64>; 3] = std::array::from_fn(|_| vec![F64::ZERO; 1 << g]);
     let [a, b, c] = &mut check;
     evaluate(first, g, [a, b, c]);
-    let holds = (0..3).all(|k| ntt::on_coset_prefix(&limbs[k], first, g) == check[k]);
+    let holds = ntt::on_coset_prefix_cols(&[&limbs[0], &limbs[1], &limbs[2]], first, g) == check;
     if prof {
         eprintln!(
             "      prefix_quotient 2^{r}, {} columns, {} pieces, grouped {grouped}: evaluated {evaluated:.4} s (transforms {t_transform:.4}, fills {t_fill:.4}), interpolated and checked {:.4} s",
@@ -608,11 +632,9 @@ pub fn tree(heap_novel: &[Vec<F64>; 3]) -> Quotient {
     let total = (1usize << h) + (1 << sizes[1]);
     // The quotient on `ω_first + V_e`, into `out`.
     let on = |first: usize, e: usize, out: [&mut [F64]; 3]| {
-        let at: Vec<Vec<F64>> = heap_novel.iter().map(|l| ntt::on_coset_prefix(l, first, e)).collect();
-        let at_s: Vec<Vec<F64>> = heap_novel
-            .iter()
-            .map(|l| ntt::on_coset_prefix(l, first >> 1, e - 1))
-            .collect();
+        let limbs: Vec<&[F64]> = heap_novel.iter().map(|l| &l[..]).collect();
+        let at: Vec<Vec<F64>> = ntt::on_coset_prefix_cols(&limbs, first, e);
+        let at_s: Vec<Vec<F64>> = ntt::on_coset_prefix_cols(&limbs, first >> 1, e - 1);
         let w_h_inv = Kx8::splat(omega(first >> h).inv());
         if e < 3 {
             let t = |v: &[Vec<F64>], i: usize| F192::new(v[0][i].0, v[1][i].0, v[2][i].0);
@@ -647,14 +669,15 @@ pub fn tree(heap_novel: &[Vec<F64>; 3]) -> Quotient {
             ],
         );
     }
-    for limb in &mut limbs {
-        ntt::interpolate_prefix(limb, &sizes, base);
+    {
+        let [a, b, c] = &mut limbs;
+        ntt::interpolate_prefix_cols(&mut [&mut a[..], &mut b[..], &mut c[..]], &sizes, base);
     }
     let g = 6.min(sizes[1]);
     let mut check: [Vec<F64>; 3] = std::array::from_fn(|_| vec![F64::ZERO; 1 << g]);
     let [a, b, c] = &mut check;
     on(base + total, g, [a, b, c]);
-    let holds = (0..3).all(|k| ntt::on_coset_prefix(&limbs[k], base + total, g) == check[k]);
+    let holds = ntt::on_coset_prefix_cols(&[&limbs[0], &limbs[1], &limbs[2]], base + total, g) == check;
     Quotient::new(limbs, (1u64 << h) + 1, holds)
 }
 
