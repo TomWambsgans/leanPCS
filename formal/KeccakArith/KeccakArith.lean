@@ -5,6 +5,7 @@ public import KeccakArith.Sha3Table
 public import KeccakArith.RowSound
 public import KeccakArith.Rows
 public import KeccakArith.Walk
+public import KeccakArith.ASound
 
 /-!
 # KeccakArith: the Keccak VM's arithmetization
@@ -78,3 +79,15 @@ The build fails if the axiom footprint of these theorems grows beyond Lean's thr
 
 /-- info: 'KeccakArith.exists_run_of_perm' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in #print axioms KeccakArith.exists_run_of_perm
+
+/-- info: 'KeccakArith.constraintSoundness' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in #print axioms KeccakArith.constraintSoundness
+
+/-- info: 'KeccakArith.satisfiedBy_witnessOf' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in #print axioms KeccakArith.satisfiedBy_witnessOf
+
+/-- info: 'KeccakArith.kvSoundness' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in #print axioms KeccakArith.kvSoundness
+
+/-- info: 'KeccakArith.kvSoundness_exists' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in #print axioms KeccakArith.kvSoundness_exists
