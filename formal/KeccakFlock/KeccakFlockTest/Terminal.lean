@@ -9,7 +9,7 @@ leanvm_flock_gas --test lean_keccak_block -- --nocapture`): at every skip `k ≤
 from `0x5eed ⊕ k` (`z_skip` when `k > 0`, `row_low` of `6 − k`, `chi_in`, `chi_in'` of 11, `s` of 64, `α`, each
 element three draws), and the Rust's `structured_terminal` and `walked_terminal_with::<_, KeccakWalked>` there (equal).
 Here `Terminal.structuredTerminal` is evaluated at all seven, `Terminal.walkedTerminal` (a walk of `2^17` rows, about
-two minutes each in the interpreter) at skips 0, 3 and 6; the file takes about seven minutes. Run with
+two minutes each in the interpreter) at skips 0, 3 and 6; the file takes about nine minutes. Run with
 `lake env lean ../KeccakFlock/KeccakFlockTest/Terminal.lean` from `formal/EndToEnd`.
 -/
 

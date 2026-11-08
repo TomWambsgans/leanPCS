@@ -5,18 +5,20 @@
 The Flock block of `crates/lv42_flock/src/keccak.rs` (one Keccak-f[1600] permutation in `2^17` positions, every
 round's state materialised, `C = I`; `crates/lv42_flock/KECCAK.md`), as the inhabitant of `KeccakVm.KeccakFlockSpec`
 (`formal/KeccakVm/KeccakVm/Instance.lean`). It is a library of `formal/EndToEnd` (`KeccakFlock`,
-`srcDir = "../KeccakFlock"`, `warningAsError`). Its files are not `module`s: they import `formal/Circuit`'s
-`KeccakBits` and `formal/RecCircuit`'s `KeccakMath`, which are not either.
+`srcDir = "../KeccakFlock"`, `warningAsError`). Its files are not `module`s: they import libraries that are not
+either, namely `formal/Circuit`'s `KeccakBits`, `formal/RecCircuit`'s `KeccakMath`, `FlockSoundUni.Transcription`
+and `UniSound.Ids.Facts`.
 
 ```sh
 cd formal/EndToEnd   # on h1, under /root/pcs-quotient-fv/ only, with formal/leanervm linked
 systemd-run --scope -p MemoryMax=10G lake build KeccakFlock     # #guard_msgs checks the axioms
 lake env lean ../KeccakFlock/KeccakFlockTest/Rows.lean           # the rows against the Rust's walk (~30 s)
 lake env lean ../KeccakFlock/KeccakFlockTest/Honest.lean         # the honest column, evaluated (~35 s)
+lake env lean ../KeccakFlock/KeccakFlockTest/Terminal.lean       # both terminals against the Rust's (~9 min)
 ```
 
-The Rust side of `Rows.lean`: `cargo test --release -p leanvm_flock_gas --test lean_keccak_block -- --nocapture`
-(`crates/leanvm_flock_gas/tests/lean_keccak_block.rs`).
+The Rust side of `Rows.lean` and `Terminal.lean`: `cargo test --release -p leanvm_flock_gas --test lean_keccak_block --
+--nocapture` (`crates/leanvm_flock_gas/tests/lean_keccak_block.rs`).
 
 ## The R1CS (`KeccakFlock/Block.lean`)
 
@@ -108,11 +110,70 @@ The root file checks, with `#guard_msgs`, that `step_of_holds`, `holds_gen`, `in
   - Keccak-f of the zero state starts with `0xF1258F7940E1DDE7`;
   - a flipped output, `t`, state, input or empty bit breaks a row of its block, and only of its block.
 
+## The lincheck terminal (`KeccakFlock/Terminal*.lean`)
+
+- **Transcriptions** (`Terminal.lean`):
+  - `Terminal.structuredTerminal` is `keccak_flock.rs::structured_terminal`, computable. It is split into the packing
+    weights (`packingAt`), the correlations through partial correlations (`correlation`) and the body
+    (`structuredCore`). The body is written in the Rust's named parts (`tOne`, `rcOne`, `constants`, `bOne`,
+    `oneCoefficient`, `freeW`, `copiesW`, `aTMid`, `aTLast`, `diagonal`, `laneTerms`, `gAt`, `shifts`). The Rust's
+    accumulations into arrays are written as the sums they compute.
+  - `Terminal.walkedTerminal` is `flock_min.rs::walked_terminal_with::<_, KeccakWalked>`, run on the specification's
+    forward walk `r1cs.rows`. The shared helpers (`eqKernel`, `eqEval`, `dot`, `lagrangeWeights`, `rowLowWeights`)
+    are `formal/UniStatement`'s.
+- **The walked terminal is the matrices' bilinear form**, for all inputs (`TerminalWalk.lean`):
+
+  ```lean
+  theorem Terminal.walkedTerminal_eq_bilinear (zSkip rowLow chiIn chiInPrime s alpha) :
+      walkedTerminal zSkip rowLow chiIn chiInPrime s alpha =
+        bilinear zSkip rowLow chiIn chiInPrime s alpha +
+          alpha * alpha * eqEval chiIn chiInPrime * dot (rowLowWeights zSkip rowLow).2 s +
+          alpha * alpha * alpha * eqEval constantBits chiInPrime * s.getD 0 0
+  ```
+
+  Here `bilinear = Σ_(k, j) e_k (A_kj + α B_kj) w_j` over the block's matrices `matA`, `matB`, with
+  `e_k = lowWeights[k mod 64] · eq(chi_in)[k / 64]` and `w_j = s[j mod 64] · eq(chi_in')[j / 64]`.
+- **The structured terminal equals the walked one** under the Rust's assertions (`TerminalMain.lean`):
+
+  ```lean
+  theorem Core.structuredTerminal_eq_walked (zSkip rowLow chiIn chiInPrime s α)
+      (hrl : rowLow.length ≤ 6) (hz : zSkip = none → rowLow.length = 6)
+      (hci : chiIn.length = 11) (hcp : chiInPrime.length = 11) :
+      structuredTerminal zSkip rowLow chiIn chiInPrime s α = walkedTerminal zSkip rowLow chiIn chiInPrime s α
+  ```
+
+  `Core.structuredTerminal_eq_bilinear` combines the two theorems. The length of `s` is not needed: both sides read it
+  through `getD`. The proof, file by file:
+  - `TerminalCore.lean`, `WF_eq`: the walked form, row class by row class, for arbitrary tables. Summed over the
+    packing position, a form of `b` gives two correlations `corr(off) = Σ_z E_z s_(z − off)` (`sum_bForm`).
+  - `TerminalStruct.lean`: the constant column's coefficient (`tOne_eq`, `rcOne_eq`, `constants_eq`, `bOne_eq`) and
+    the diagonal (`diagonal_eq`). `constants_eq` uses characteristic two, `kd[0] + kd[1] = 1`.
+  - `TerminalShifts.lean`, `shifts_eq`: the offsets (`sum_shifts`), the lane bijections (`reindex1`, `reindex2`) and
+    the rounds (`laneA_eq`, `laneB_eq`).
+  - `TerminalEq.lean`, `structuredCore_eq`: the body is the walked form, given `Σ_z E_z = 1`.
+  - `TerminalFront.lean` and `TerminalMain.lean`, the inputs:
+    - the eq table of an 11-coordinate point factors into lane, kind and round (`eqKernel_factor`);
+    - the eq table of a concatenation is the tensor product (`eqKernel_append`);
+    - the split packing weights are `rowLowWeights` (`packingAt_eq`) and sum to 1 (`packing_sum`): an eq table does
+      (`eqKernel_sum`), and so do Lagrange weights at distinct nodes (`lagrangeWeights_sum`, Mathlib's
+      `Lagrange.sum_basis`, with `FlockSoundUni`'s `phi_injOn` and `lagrangeWeights_getD`);
+    - the partial correlations are the correlations (`correlation_eq`);
+    - the pin's weight is the eq table at word 1 (`eqEval_constantBits`).
+- **Tested** (`KeccakFlockTest/Terminal.lean`). At every skip `0..6`, on inputs drawn as the Rust test draws them,
+  `structuredTerminal` equals the Rust's `structured_terminal`, and `walkedTerminal` (at skips 0, 3, 6) equals the
+  Rust's walked terminal. A changed slice changes the value.
+
+The root file checks, with `#guard_msgs`, that `walkedTerminal_eq_bilinear`, `structuredTerminal_eq_walked` and
+`structuredTerminal_eq_bilinear` depend on `[propext, Classical.choice, Quot.sound]` only. `KeccakFlock` imports
+`FlockSoundUni.Transcription` and `UniSound.Ids.Facts` for these lemmas.
+
 ## What is not done
 
-- **The structured lincheck terminal** (`keccak_flock.rs::structured_terminal`, `KECCAK.md` M3), with its proof
-  that it equals the matrices' bilinear form (the walked terminal). See the section below.
 - **A fast backward walk.** `r1cs.cols` is the naive sum. `BlockR1CS.cols` is only read through `cols_fst` and
   `cols_snd`, so nothing here needs a fast one.
+- **The terminal in a verifier's statement.** No Keccak VM verifier is stated yet (`formal/KeccakVm/README.md`).
+  That statement can use `structuredTerminal_eq_bilinear` the way `FlockSoundUni/WalkRows.lean` uses `rowsSpec` for
+  BLAKE2s: the terminal's zero gives the lincheck's pending claim. The Keccak analogue of UniStatement's `Pending`
+  claim (`pendingHolds_iff`) is not transcribed.
 - The Keccak VM's relation over this block (`KeccakVm.KvHolds keccakFlockSpec`), its arithmetization and the
   univariate verifier's statement are other milestones (`formal/KeccakVm/README.md`).

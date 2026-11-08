@@ -78,16 +78,21 @@ lake env lean ../UniStatement/UniStatementTest/KeccakTables.lean    # the verifi
   the Rust's `tables_keccak()` (`crates/leanvm_flock_gas/tests/lean_keccak_tables.rs`). All 261 lines agree; a
   mutated line fails.
 
-## What is not done
+## What is built on it, and what is not done
 
-- **The arithmetization's soundness and completeness** for the Keccak VM are not proved: that `KvHolds` gives a
-  `ValidExecution` (Lv42's `satisfiedBy_witnessOf` and `constraintSoundness`, under `SentinelSafe`), and that a
-  valid execution gives a `KvHonest` stack. The five shared tables' Clean components are Lv42's. The `SHA3` table
-  needs a Clean component, and its bindings to `Sha3Cells`, as `Lv42.Arithmetization.Tables.Blake2s` has for
-  `BLAKE2S`.
-- **The equality of `Sha3Table.flushes` with the verifier's `flushesSha3`**, evaluated at a row, is not proved.
-  The two are written from the same Rust function and both use `sha3CellLanes`, but only the verifier's is
-  differential-tested.
-- **`KeccakFlockSpec`'s inhabitant**, the Keccak-f block of `crates/lv42_flock/src/keccak.rs`, is not defined.
-- **The univariate verifier's statement for the Keccak VM** is not stated: `Blake2s::Keccak` in `UniStatement`, its
-  `Deployment` and `UniKnowledgeSoundness` against `KvHolds`.
+- **The Keccak-f block** ([`formal/KeccakFlock`](../KeccakFlock/README.md)): `KeccakFlock.keccakFlockSpec`, the
+  inhabitant of `KeccakFlockSpec`. `step_of_holds`, `holds_gen` and `in_gen` are proved, with no hypothesis.
+- **The arithmetization** ([`formal/KeccakArith`](../KeccakArith/README.md)):
+  - the `SHA3` table as a Clean component;
+  - `sha3M3_flushes`: its M3 flushes are `Sha3Table.flushes`, polynomial for polynomial;
+  - the per-row soundness: under `KeccakAux`, an executed `SHA3` row executes its instruction.
+
+  Not proved: the whole soundness (`KvHolds` gives a `ValidExecution`) and the completeness, which needs the rest of
+  Lv42's `Arithmetization/{Soundness,Completeness}` and `LeanIsa/{Sound,Complete}` ported.
+- **The univariate verifier** ([`formal/UniKeccak`](../UniKeccak/README.md)):
+  - `Blake2s::Keccak` transcribed, differential-tested on 74 vectors, the two real Keccak proofs among them;
+  - its statements against `KvHolds`: `UniKnowledgeSoundnessKeccak`, the Rec3 variant, completeness.
+
+  The statements are not proved.
+- **`Sha3Table.flushes` against the verifier's `flushesSha3`**, evaluated at a row: not proved. The two are written
+  from the same Rust function, and only the verifier's is differential-tested.

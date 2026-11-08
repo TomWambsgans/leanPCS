@@ -660,8 +660,7 @@ systemd-run --scope -p MemoryMax=16G lake exe rec-real-check --setup-only   # Se
 ## The Keccak VM (`KeccakVm/`): its statement
 
 The Keccak VM (`crates/leanvm_univariate/KECCAK.md`) is leanVM 42422001 with `BLAKE2S` replaced by leanVM
-`9d50c92a3`'s `SHA3`. [`KeccakVm/`](KeccakVm/README.md), a library of `EndToEnd/`, is its statement. It has
-definitions only, with no theorem about a verifier yet:
+`9d50c92a3`'s `SHA3`. [`KeccakVm/`](KeccakVm/README.md), a library of `EndToEnd/`, is its statement:
 
 - **The instruction set.** The `SHA3` opcode is one step of `9d50c92a3`'s cell sponge: `keccakF1600` (leanerVM's)
   of the 25 lanes held in thirteen canonical cells, with lane 16 XORed with `END_BIT = 0x80 << 56` first, written to
@@ -675,19 +674,42 @@ definitions only, with no theorem about a verifier yet:
 - **The verifier's tables** are `UniStatement/KeccakTables.lean` (`tablesKeccak`, `keccakSlot`,
   `keccakSlotOffset`). They are compared with the Rust's `tables_keccak()` line by line.
 
+Built on it:
+
+- **The Keccak-f block** ([`KeccakFlock/`](KeccakFlock/README.md)): the R1CS of `crates/lv42_flock/src/keccak.rs`
+  and the inhabitant `KeccakFlock.keccakFlockSpec`. All of this is proved with no hypothesis:
+  - `step_of_holds`: a satisfying block holds `keccakF1600` of its input port at its output port;
+  - completeness;
+  - the structured lincheck terminal equals the matrices' bilinear form (`structuredTerminal_eq_bilinear`).
+
+  The matrices, the walk and the terminal are tested against the Rust.
+- **The arithmetization** ([`KeccakArith/`](KeccakArith/README.md)):
+  - the `SHA3` table as a Clean component, whose M3 flushes are the instance's (`sha3M3_flushes`);
+  - the per-row soundness under `KeccakAux` (`sha3_stackRow_sound`);
+  - the per-row facts for all six tables.
+
+  The whole soundness and the completeness are not proved (an estimated 3k and 3k lines of port).
+- **The univariate verifier** ([`UniKeccak/`](UniKeccak/README.md)): `Blake2s::Keccak` transcribed for the main
+  line and π1-rec3's shape. The Lean and Rust verifiers agree on every value of 74 vectors, the two real Keccak
+  proofs among them, and on the terminal.
+  - Its statements against `KvHolds` are stated, not proved: `UniKnowledgeSoundnessKeccak{With,Rec3}` and
+    `UniCompletenessKeccak{With,Rec3}`.
+  - `keccakFlockFits_keccakFlockSpec` says the block fits the verifier's ports.
+
 Not done:
 
-- the Keccak VM arithmetization's soundness and completeness (`KvHolds` ⇔ a valid execution);
-- the Keccak-f block (`KeccakFlockSpec`'s inhabitant);
-- `Blake2s::Keccak`'s transcription and its knowledge soundness and completeness;
-- the recursion's end theorems for the Keccak π1.
+- the univariate verifier's knowledge soundness and completeness for the Keccak VM (a port of `UniSound` and
+  `UniComplete`);
+- the recursion's end theorems for the Keccak π1 (`RecCompose`). The π2 compiler accepts the Keccak π1-rec3 graph
+  and builds the Rust's circuit (`RecCircuit/README.md`).
 
 See `KeccakVm/README.md`.
 
 ```sh
 cd formal/EndToEnd   # on h1
-systemd-run --scope -p MemoryMax=12G lake build KeccakVm UniStatement.KeccakTables
+systemd-run --scope -p MemoryMax=12G lake build KeccakVm KeccakFlock KeccakArith UniKeccak UniKeccak.Fits UniStatement.KeccakTables
 lake env lean ../KeccakVm/KeccakVmTest/Isa.lean && lake env lean ../UniStatement/UniStatementTest/KeccakTables.lean
+# the block's and the verifier's differential tests: KeccakFlock/README.md, UniKeccak/README.md
 ```
 
 ## Layers

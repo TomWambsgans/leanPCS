@@ -106,7 +106,15 @@ reads the vectors of `crates/leanvm_univariate/tests/lean_keccak_vectors.rs`:
   table's 86 columns; `source` is a permutation of the lanes with `rho`'s rotations; there are 40 shift offsets;
   `C1` is `2^28` words at 400 signatures.
 
-**Results**: RESULTS-PLACEHOLDER
+**Results** (h1, 2026-11-08, on the Rust working tree of that day):
+- **74/74 vectors agree on every value**: 26 accepted by both and 48 rejected by both. By kind (accepted/rejected):
+  accept 12/0, counts 10/0, badcount 0/5, random 0/12, mutate 2/15, truncate 0/5, extend 0/5, real 2/0, real-mutate
+  0/6. The two accepted mutations are weighted-mode streams mutated after the last check: weighted mode collects no
+  batch terminal, so only `PCS_OPEN` would reject them.
+- 14/14 terminal vectors agree: the structured terminal, the Rust's walk and Lean's walk.
+- All 6 self-tests hold.
+- The vectors take 428 s; the whole run takes about 30 minutes, most of it the 14 Lean walks of the `2^17`-position
+  block in the interpreter.
 
 **Defined, not tested**: `PCS_OPEN`'s WHIR (the Rust has only a mock), the setup's commitment, `kvColumn`/`kvStack`,
 `setupStackK`, the extractor, the experiments, the Props. `verifyWithK`'s run and calls are the tested `runK` and

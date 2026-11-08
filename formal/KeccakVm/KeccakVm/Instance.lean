@@ -35,7 +35,7 @@ The relation the Keccak VM's univariate verifier proves knowledge of, in the for
 of `2^17` bits, its constant position, the input and output port words of each lane, and the two directions
 between the region predicate and Keccak-f (`step_of_holds`: every block of a column satisfying the predicate holds
 Keccak-f[1600] of its input port at its output port; `gen`, `holds_gen`, `in_gen`: the honest column). Its
-inhabitant is the Keccak-f block of `crates/lv42_flock/src/keccak.rs`, the next milestone.
+inhabitant is the Keccak-f block of `crates/lv42_flock/src/keccak.rs`, `formal/KeccakFlock`'s `keccakFlockSpec`.
 
 **The relation** `KvHolds F prog s input q`: `M3Holds` of the instance (constraints, bus balance, counts nonzero,
 public lines) and `KeccakAux F` (every block of `QFLOCK` satisfies the block R1CS with `1` at its constant

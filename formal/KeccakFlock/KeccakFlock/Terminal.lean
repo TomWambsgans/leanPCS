@@ -17,11 +17,13 @@ import UniStatement.Flock
   operations: the packing weights split at bit `p = max(k, 3)`, the 40 correlations through partial correlations,
   the eq factors of a word (lane, kind, round), the 25 lanes of `b` spread over their two offsets, the constant
   column's coefficient and the diagonal terms. Rust's accumulations into arrays (`g`, `rc_mid`, `rc_last`,
-  `partial`) are written as the sums they compute. The function is split in three: the packing weights
-  (`packingAt`), the correlations (`correlation`) and the rest (`structuredCore`).
+  `partial`) are written as the sums they compute. The function is split into the packing weights
+  (`packingAt`), the correlations (`correlation`) and the rest (`structuredCore`), itself in the Rust's named parts
+  (`tOne`, `rcOne`, `constants`, `bOne`, `oneCoefficient`, `freeW`, `copiesW`, `aTMid`, `aTLast`, `diagonal`,
+  `laneTerms`, `gAt`, `shifts`).
 
 `walkedTerminal_eq_bilinear` (`TerminalWalk.lean`) states the walked terminal as the matrices' bilinear form;
-`structuredTerminal_eq_walked` (in progress) the two terminals' equality.
+`Core.structuredTerminal_eq_walked` (`TerminalMain.lean`) the two terminals' equality.
 -/
 
 namespace KeccakFlock.Terminal
@@ -209,10 +211,14 @@ the correlations (`packingAt`, `correlation`), then the body (`structuredCore`) 
 Rust's assertions (`chi_in`, `chi_in'` of 11, `s` of 64, `row_low` of at most 6, a skip point exactly when the skip
 has bits) are the hypotheses of the theorems about it. -/
 def structuredTerminal (zSkip : Option E) (rowLow chiIn chiInPrime s : List E) (alpha : E) : E :=
-  structuredCore (packingAt zSkip rowLow) (correlation zSkip rowLow s)
-    (fun i ↦ (eqKernel (chiIn.take 5)).getD i 0) (fun i ↦ (eqKernel (chiIn.drop 6)).getD i 0)
-    (fun i ↦ (eqKernel (chiInPrime.take 5)).getD i 0) (fun i ↦ (eqKernel (chiInPrime.drop 6)).getD i 0)
-    (fun i ↦ s.toArray.getD i 0) (chiIn.getD 5 0) (chiInPrime.getD 5 0) alpha (eqEval chiIn chiInPrime)
+  let lr := eqKernel (chiIn.take 5)
+  let rd := eqKernel (chiIn.drop 6)
+  let lh := eqKernel (chiInPrime.take 5)
+  let rh := eqKernel (chiInPrime.drop 6)
+  let sA := s.toArray
+  structuredCore (packingAt zSkip rowLow) (correlation zSkip rowLow s) (fun i ↦ lr.getD i 0) (fun i ↦ rd.getD i 0)
+    (fun i ↦ lh.getD i 0) (fun i ↦ rh.getD i 0) (fun i ↦ sA.getD i 0) (chiIn.getD 5 0) (chiInPrime.getD 5 0) alpha
+    (eqEval chiIn chiInPrime)
 
 /-! ## The walked terminal -/
 
