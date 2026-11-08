@@ -400,7 +400,7 @@ then `RecCompleteness2 D P1 P2 (deltaStaged …)`. -/
 theorem recCompleteness2_of_staged {D : RecStatement.RecDeployment} {P1 : RecStatement.Pi1Prover D}
     {P2 : RecStatement.Pi2Prover} {L M ct N : ℕ} {εt εpow : ℝ≥0∞}
     (hS : ∀ (input : Vector UInt8 32) (rows : List ℕ) (q : D.pi1.Stack rows), D.pi1.shape.RowsFit rows →
-      D.pi1.HonestRelation rows input q →
+      D.pi1.HonestRelation D.flock rows input q →
       ∃ (S : Pi2Staged) (Bad : S.ρ → Finset (E × E × E)) (badT : S.τ → E → Prop),
         S.Holds D P1 P2 input rows q L Bad badT M ct N εt εpow) :
     RecStatement.RecCompleteness2 D P1 P2 (deltaStaged M ct N εt εpow) := by

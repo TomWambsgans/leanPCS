@@ -6,7 +6,7 @@ import RecCompose.Pi2TFresh
 /-!
 # `Pi2TFresh`, proved from `α`'s freshness
 
-* **`Pi2AlphaFresh D C Fa P1k εα`** (named, replacing `Pi2HashBeforeAlpha`, which is false at `p1k`, `Pi2Chain`): in
+* **`Pi2AlphaFresh D C Fa P1k εα`** (named, replacing `Pi2HashBeforeAlpha`, which a π1 prover hashing `32`-byte inputs breaks, `Pi2Chain`): in
   the two-call random-oracle model, `α`'s input (`inp`, the state after the seed and π1's public data and `W`'s root,
   `536` bytes) is already hashed after stage A with probability at most `εα`.
 * **`stageB_eq`**: stage B is `Q`'s tree (`commitWithH`) then a pure writer, whose `t` input is `s₃`'s bytes and `Q`'s
@@ -81,10 +81,10 @@ inputs, `Pi2Chain`): in the two-call random-oracle model, `α`'s input (`536` by
 public data, `W`'s root) is already hashed after stage A (the setup, `P1k`, π1-rec3's graph and its openings, π2's
 prover up to `W`'s root) with probability at most `εα`. -/
 def Pi2AlphaFresh (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
-    (P1k : Vector UInt8 32 → (rows : List ℕ) → D.pi1.Stack rows → OracleComp KeccakCalls (Option UniStatement.UniProof))
+    (P1k : Vector UInt8 32 → (rows : List ℕ) → D.pi1.Stack rows → OracleComp KeccakCalls (Option UniKeccak.KeccakProof))
     (εα : ℝ≥0∞) : Prop :=
   ∀ (input : Vector UInt8 32) (rows : List ℕ) (q : D.pi1.Stack rows), D.pi1.shape.RowsFit rows →
-    D.pi1.HonestRelation rows input q →
+    D.pi1.HonestRelation D.flock rows input q →
     Pr{let p ← (simulateQ ro (pi2Staged D C Fa (P1k input rows q) input).A).run ∅}[
       p.2 (.inl ((pi2Staged D C Fa (P1k input rows q) input).inp p.1)) ≠ none] ≤ εα
 
@@ -97,7 +97,7 @@ noncomputable def tFreshBound2 (N : ℕ) (εα : ℝ≥0∞) : ℝ≥0∞ :=
 
 /-- **`Pi2TFresh`, from the run's cost and `α`'s freshness**, for every `P1k`. -/
 theorem pi2TFresh_of {D : RecDeployment} (C : Pi2Circuits D) (Fa : Pi2Facts D C)
-    (P1k : Vector UInt8 32 → (rows : List ℕ) → D.pi1.Stack rows → OracleComp KeccakCalls (Option UniStatement.UniProof))
+    (P1k : Vector UInt8 32 → (rows : List ℕ) → D.pi1.Stack rows → OracleComp KeccakCalls (Option UniKeccak.KeccakProof))
     {N : ℕ} {εα : ℝ≥0∞} (hcost : Pi2RunCost D C Fa P1k N) (hα : Pi2AlphaFresh D C Fa P1k εα) :
     Pi2TFresh D C Fa P1k (tFreshBound2 N εα) := by
   intro input rows q hfit hrel
@@ -148,15 +148,15 @@ theorem tFreshBound2_le {N : ℕ} {εα : ℝ≥0∞} (hN : N ≤ 2 ^ 50) (ha : 
 /-- **The staged run's `Holds2`**, at the real deployment's facts: `holds_pi2`'s fields, `α`'s freshness for `hashA`,
 `t`'s freshness proved. -/
 theorem holds2_pi2 {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D) (hchk : Pi2ViewChecked C)
-    (hroots : C.rootsAt = RecGraph.Emitted.rootsAt) (P1 : Pi1Prover D)
-    (P1k : Vector UInt8 32 → (rows : List ℕ) → D.pi1.Stack rows → OracleComp KeccakCalls (Option UniStatement.UniProof))
+    (hroots : C.rootsAt = RecGraphKeccak.Emitted.rootsAt) (P1 : Pi1Prover D)
+    (P1k : Vector UInt8 32 → (rows : List ℕ) → D.pi1.Stack rows → OracleComp KeccakCalls (Option UniKeccak.KeccakProof))
     {N : ℕ} {εα : ℝ≥0∞}
     (hexp : Pi2ExperimentLe D C (pi2Facts hD C hchk) P1 P1k) (hrun : Pi2RunAt D C (pi2Facts hD C hchk) P1k)
     (hdup : Pi2RunDuplex D C (pi2Facts hD C hchk) P1k) (hcost : Pi2RunCost D C (pi2Facts hD C hchk) P1k N)
     (hal : Pi2AlphaFresh D C (pi2Facts hD C hchk) P1k εα)
     (hpo : Pi2Pi1Openings D C (pi2Facts hD C hchk)) (hwc : Pi2WitnessComplete D C (pi2Facts hD C hchk))
     (input : Vector UInt8 32) (rows : List ℕ) (q : D.pi1.Stack rows) (hfit : D.pi1.shape.RowsFit rows)
-    (hrel : D.pi1.HonestRelation rows input q) :
+    (hrel : D.pi1.HonestRelation D.flock rows input q) :
     (pi2Staged D C (pi2Facts hD C hchk) (P1k input rows q) input).Holds2 D P1
       (pi2Prover D C (pi2Facts hD C hchk) PcsQuotient.nonceFuel) input rows q 536 (badSet2 C.G) (badT2 C.G)
       (2 ^ 25 + 36) (2 ^ 27) N εα (tFreshBound2 N εα)
@@ -175,10 +175,10 @@ theorem holds2_pi2 {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D) (hchk :
     (hcost input rows q hfit hrel)
 
 /-- **π2's completeness, `α`'s input fresh** (`recCompleteness2_pi2_staged` with `Pi2HashBeforeAlpha`, false at
-`p1k`, replaced by `Pi2AlphaFresh εα`, and `Pi2TFresh` proved). -/
+a π1 prover hashing `32`-byte inputs, replaced by `Pi2AlphaFresh εα`, and `Pi2TFresh` proved). -/
 theorem recCompleteness2_pi2_staged2 {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D) (hchk : Pi2ViewChecked C)
-    (hroots : C.rootsAt = RecGraph.Emitted.rootsAt) (P1 : Pi1Prover D)
-    (P1k : Vector UInt8 32 → (rows : List ℕ) → D.pi1.Stack rows → OracleComp KeccakCalls (Option UniStatement.UniProof))
+    (hroots : C.rootsAt = RecGraphKeccak.Emitted.rootsAt) (P1 : Pi1Prover D)
+    (P1k : Vector UInt8 32 → (rows : List ℕ) → D.pi1.Stack rows → OracleComp KeccakCalls (Option UniKeccak.KeccakProof))
     {N : ℕ} {εα : ℝ≥0∞}
     (hexp : Pi2ExperimentLe D C (pi2Facts hD C hchk) P1 P1k) (hrun : Pi2RunAt D C (pi2Facts hD C hchk) P1k)
     (hdup : Pi2RunDuplex D C (pi2Facts hD C hchk) P1k) (hcost : Pi2RunCost D C (pi2Facts hD C hchk) P1k N)
@@ -197,8 +197,8 @@ theorem delta2_pi2_le2 {N : ℕ} {εα : ℝ≥0∞} (hN : N ≤ 2 ^ 50) (ha : �
 
 /-- **The recursive verifier's completeness end to end**, `α`'s input fresh. -/
 theorem recCompleteness_pi2_staged2_fs {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D)
-    (hchk : Pi2ViewChecked C) (hroots : C.rootsAt = RecGraph.Emitted.rootsAt) (P1 : Pi1Prover D)
-    (P1k : Vector UInt8 32 → (rows : List ℕ) → D.pi1.Stack rows → OracleComp KeccakCalls (Option UniStatement.UniProof))
+    (hchk : Pi2ViewChecked C) (hroots : C.rootsAt = RecGraphKeccak.Emitted.rootsAt) (P1 : Pi1Prover D)
+    (P1k : Vector UInt8 32 → (rows : List ℕ) → D.pi1.Stack rows → OracleComp KeccakCalls (Option UniKeccak.KeccakProof))
     {N : ℕ} {εα : ℝ≥0∞}
     (hexp : Pi2ExperimentLe D C (pi2Facts hD C hchk) P1 P1k) (hrun : Pi2RunAt D C (pi2Facts hD C hchk) P1k)
     (hdup : Pi2RunDuplex D C (pi2Facts hD C hchk) P1k) (hcost : Pi2RunCost D C (pi2Facts hD C hchk) P1k N)

@@ -12,7 +12,7 @@ import UniComplete.VerifierH
 
 `formal/RecStatement`'s contract and setup are written over a permutation `F`, every Keccak-256 the sponge over it
 (`keccak256With F`). Here each function that hashes is rewritten with Keccak-256 a separate function `H` (`…H`), the
-code text the Statement's, only the hash changed (UniComplete's `sampleH`, `pcsOpenWithH`, `setupTreesWithH`;
+code text the Statement's, only the hash changed (UniComplete's `sampleH`, `pcsOpenWithH`;
 WithHash's `openingWithH`, `commitWithH`). **At `H = keccak256With F`** each is the Statement's (`…_eqH`). And
 `runWithH_post`: `Pi2Run.runWith_post` at any `H` (the run's success and public data do not depend on the hashes).
 -/
@@ -113,16 +113,20 @@ def verifierWithH (D : RecDeployment) (roots : RecSetupRoots) (input : Vector UI
 def setupTreeWithH (c : Pi2Circuit) : m LeanVM.Prover.Tree :=
   E2ECompleteness.commitWithH H (layoutsOf c.circuit.logN).2.2.logN c.setupStack
 
-/-- `RecDeployment.setupTreesWith` with Keccak-256 `H`. -/
-def setupTreesWithH (D : RecDeployment) : m RecSetupTrees := do
-  let t1 ← UniComplete.setupTreesWithH H F D.pi1
-  let t2 ← setupTreeWithH H (D.circuitAt t1.roots)
-  return ⟨t1, t2⟩
+/-- `UniKeccak.setupTreeKWith` with Keccak-256 `H`: the commitment of the Keccak setup stack. -/
+def setupTreeKWithH (D : UniKeccak.KDeployment) : m LeanVM.Prover.Tree :=
+  E2ECompleteness.commitWithH H (UniStatement.setupLayout D.shape).vars (UniKeccak.setupStackK D.prog D.shape)
+
+/-- `RecDeployment.setupTreesWith` with Keccak-256 `H` (`F` unused: the setup only hashes). -/
+def setupTreesWithH (_F : KeccakState → m KeccakState) (D : RecDeployment) : m RecSetupTrees := do
+  let t1 ← setupTreeKWithH H D.pi1
+  let t2 ← setupTreeWithH H (D.circuitAt (D.pi1.setupRoots t1))
+  return ⟨t1, D.pi1.a0Root, D.pi1.b0Root, t2⟩
 
 /-- `pi1GraphVerifierWith` with Keccak-256 `H`. -/
 def pi1GraphVerifierWithH (D : RecDeployment) (roots : UniStatement.SetupRoots) (input : Vector UInt8 32)
-    (proof : UniStatement.UniProof) : m Bool := do
-  match RecGraph.evalGraphDeployed RecGraph.Pi1.pi1Graph (D.pi1IvAt roots) input.toList proof.stream with
+    (proof : UniKeccak.KeccakProof) : m Bool := do
+  match RecGraph.evalGraphDeployed RecGraphKeccak.Pi1.pi1GraphK (D.pi1IvAt roots) input.toList proof.stream with
   | none => return false
   | some out =>
     if !(out.zeros.all (· == 0) && out.nonzeros.all (· != 0)) then return false
@@ -199,14 +203,18 @@ theorem setupTreeWith_eqH (c : Pi2Circuit) : c.setupTreeWith F = setupTreeWithH 
   unfold Pi2Circuit.setupTreeWith setupTreeWithH
   exact E2ECompleteness.commitWith_eqH F _ _
 
+theorem setupTreeKWith_eqH (D : UniKeccak.KDeployment) :
+    UniKeccak.setupTreeKWith F D = setupTreeKWithH (keccak256With F) D := by
+  unfold UniKeccak.setupTreeKWith setupTreeKWithH
+  exact E2ECompleteness.commitWith_eqH F _ _
+
 theorem setupTreesWith_eqH (D : RecDeployment) :
     D.setupTreesWith F = setupTreesWithH (keccak256With F) F D := by
   unfold RecDeployment.setupTreesWith setupTreesWithH
-  simp only [UniComplete.setupTreesWith_eqH]
-  simp only [setupTreeWith_eqH]
+  simp only [setupTreeKWith_eqH, setupTreeWith_eqH]
 
 theorem pi1GraphVerifierWith_eqH (D : RecDeployment) (roots : UniStatement.SetupRoots) (input : Vector UInt8 32)
-    (proof : UniStatement.UniProof) :
+    (proof : UniKeccak.KeccakProof) :
     pi1GraphVerifierWith F D roots input proof = pi1GraphVerifierWithH (keccak256With F) F D roots input proof := by
   have h : UniStatement.pcsOpenWith F = UniComplete.pcsOpenWithH (keccak256With F) F := by
     funext v r c p

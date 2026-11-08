@@ -30,8 +30,8 @@ open Classical in
 /-- **The core at pure `(Ht, Ft)`**, for any π1 prover: on a staged run whose graph accepts and whose contract
 rejects at good challenges, one of π2's openings fails its proof of work. -/
 theorem rejects_at_good {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
-    (hroots : C.rootsAt = RecGraph.Emitted.rootsAt) (hwc : Pi2WitnessComplete D C Fa) (hpo : Pi2Pi1Openings D C Fa)
-    (P1k : OracleComp KeccakCalls (Option UniStatement.UniProof)) (input : Vector UInt8 32)
+    (hroots : C.rootsAt = RecGraphKeccak.Emitted.rootsAt) (hwc : Pi2WitnessComplete D C Fa) (hpo : Pi2Pi1Openings D C Fa)
+    (P1k : OracleComp KeccakCalls (Option UniKeccak.KeccakProof)) (input : Vector UInt8 32)
     (Ht : List UInt8 → Digest) (Ft : KeccakState → KeccakState)
     (z : ((Bool × Bool) × ((Pr2 × E × E × E) × E)) × (Pr2 × E × E × E))
     (hz : runAt Ht Ft (pi2Staged D C Fa P1k input).run = z)
@@ -91,8 +91,8 @@ theorem rejects_at_good {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D) (F
 /-- **The grinding for π2** (`Holds.rejectGood`), the staged run's analysis proved: the staged run rejected at good
 challenges, the graph accepting, with probability at most `N · (1 − 2^-17)^nonceFuel`. -/
 theorem rejectGood_pi2_good {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
-    (hroots : C.rootsAt = RecGraph.Emitted.rootsAt) (hwc : Pi2WitnessComplete D C Fa) (hpo : Pi2Pi1Openings D C Fa)
-    (P1k : OracleComp KeccakCalls (Option UniStatement.UniProof)) (input : Vector UInt8 32) {N : ℕ}
+    (hroots : C.rootsAt = RecGraphKeccak.Emitted.rootsAt) (hwc : Pi2WitnessComplete D C Fa) (hpo : Pi2Pi1Openings D C Fa)
+    (P1k : OracleComp KeccakCalls (Option UniKeccak.KeccakProof)) (input : Vector UInt8 32) {N : ℕ}
     (hcost : Common.QueryCostAtMost (pi2Staged D C Fa P1k input).run hashBlocks N) :
     Pr{let z ← (simulateQ ro (pi2Staged D C Fa P1k input).run).run' ∅}[
       z.1.1.1 = true ∧ z.1.1.2 = false ∧ z.2.2 ∉ badSet2 C.G z.2.1 ∧ ¬ badT2 C.G z.1.2.1 z.1.2.2] ≤

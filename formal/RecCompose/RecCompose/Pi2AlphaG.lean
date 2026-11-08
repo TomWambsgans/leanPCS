@@ -266,7 +266,7 @@ theorem prEvent_staged_bad_le3 (S : Pi2Staged) {D : RecStatement.RecDeployment} 
 theorem recCompleteness2_of_staged3 {D : RecStatement.RecDeployment} {P1 : RecStatement.Pi1Prover D}
     {P2 : RecStatement.Pi2Prover} {L M ct N : ℕ} {εα εt εpow : ℝ≥0∞}
     (hS : ∀ (input : Vector UInt8 32) (rows : List ℕ) (q : D.pi1.Stack rows), D.pi1.shape.RowsFit rows →
-      D.pi1.HonestRelation rows input q → ∃ (S : Pi2Staged) (Bad : S.ρ → Finset (E × E × E)) (badT : S.τ → E → Prop)
+      D.pi1.HonestRelation D.flock rows input q → ∃ (S : Pi2Staged) (Bad : S.ρ → Finset (E × E × E)) (badT : S.τ → E → Prop)
         (G : S.α → Prop) (Gβ : S.β → Prop), S.Holds3 D P1 P2 input rows q L Bad badT G Gβ M ct N εα εt εpow) :
     RecStatement.RecCompleteness2 D P1 P2 (deltaStaged2 M ct N εα εt εpow) := by
   intro input rows q hfit hrel
@@ -425,7 +425,7 @@ attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
 /-- **`t`'s freshness at π2's staged run, conditioned on `G` of stage B's `a`** (`pi2TFresh_of`, conditioned): from the
 run's cost and `α`'s freshness on `G`. -/
 theorem pi2TFresh_ofG {D : RecDeployment} (C : Pi2Circuits D) (Fa : Pi2Facts D C)
-    (P1k : OracleComp KeccakCalls (Option UniStatement.UniProof)) (input : Vector UInt8 32) {N : ℕ}
+    (P1k : OracleComp KeccakCalls (Option UniKeccak.KeccakProof)) (input : Vector UInt8 32) {N : ℕ}
     (hcost : Common.QueryCostAtMost (pi2Staged D C Fa P1k input).run hashBlocks N) (G : StA → Prop) {εα : ℝ≥0∞}
     (hα : Pr{let p ← (simulateQ ro (pi2Staged D C Fa P1k input).A).run ∅}[
       p.2 (.inl ((pi2Staged D C Fa P1k input).inp p.1)) ≠ none ∧ G p.1] ≤ εα) :

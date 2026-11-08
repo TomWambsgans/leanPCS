@@ -134,7 +134,7 @@ theorem pi1OpsOf_some (D : RecDeployment) (hD : D.Real) (roots : RecSetupRoots) 
       o2.2.1 = w1 2 ∧ o2.1 = roots.pi1.bytecode := by
   have hview : (D.circuitAt roots.pi1).circuit = Data.circuit := hD.1 _
   obtain ⟨hl3, hk, h0r, h1r⟩ := data_calls
-  have hsh : D.pi1.shape = UniStatement.reference := hD.2.2.1
+  have hsh : D.pi1.shape = RecGraphKeccak.Pi1.keccak128 := hD.2.2.1
   have hlook : ∀ k < 3, (registryOf D.pi1.shape (D.circuitAt roots.pi1).circuit.logN).lookup (litWord k) = some (.pi1 (UniStatement.layoutWordVars (litWord k))) := by
     intro k hk3
     rw [litWord_eq k hk3]
@@ -199,9 +199,9 @@ theorem pi1OpsOf_some (D : RecDeployment) (hD : D.Real) (roots : RecSetupRoots) 
 /-- **π1-rec3's graph with its openings over `(H, F)`**, its checks holding and its calls decoding to three openings:
 the three openings, the setup's root the deployment's. -/
 theorem graphH_eq (H : List UInt8 → Id Digest) (F : KeccakState → Id KeccakState) (D : RecDeployment)
-    (roots : UniStatement.SetupRoots) (input : Vector UInt8 32) (p1 : UniStatement.UniProof)
+    (roots : UniStatement.SetupRoots) (input : Vector UInt8 32) (p1 : UniKeccak.KeccakProof)
     (gout : RecGraph.Outputs) (g0 g1 g2 : Pi1Opening)
-    (hev : RecGraph.evalGraphDeployed RecGraph.Pi1.pi1Graph (D.pi1IvAt roots) input.toList p1.stream = some gout)
+    (hev : RecGraph.evalGraphDeployed RecGraphKeccak.Pi1.pi1GraphK (D.pi1IvAt roots) input.toList p1.stream = some gout)
     (hchk : (gout.zeros.all (· == 0) && gout.nonzeros.all (· != 0)) = true)
     (hdec : gout.calls.mapM decodePi1Call = some [g0, g1, g2]) :
     Id.run (Pi2H.pi1GraphVerifierWithH (m := Id) H F D roots input p1) =
@@ -229,7 +229,7 @@ theorem openSeqH_eq (H : List UInt8 → Id Digest) (F : KeccakState → Id Kecca
 
 /-- **π2's honest proof**: its stream the honest prover's, π1's opening proofs π1's. -/
 theorem pi2Prover_some {D : RecDeployment} {C : Pi2Circuits D} (Fa : Pi2Facts D C) (Hk : List UInt8 → Digest)
-    (F : KeccakState → Id KeccakState) (fuel : ℕ) (input : Vector UInt8 32) (p1 : UniStatement.UniProof)
+    (F : KeccakState → Id KeccakState) (fuel : ℕ) (input : Vector UInt8 32) (p1 : UniKeccak.KeccakProof)
     (proof : RecProof) (hp : Id.run (pi2ProverWith (m := Id) (Pure.pure ∘ Hk) F D C Fa fuel input p1) = some proof) :
     proof.stream = (outOf D Hk (rootsH D Hk F) (C.G (rootsH D Hk F)) input
         (pi2Choice D C Fa (rootsH D Hk F) input p1.stream).1 (pi2Choice D C Fa (rootsH D Hk F) input p1.stream).2).stream ∧
@@ -258,7 +258,7 @@ theorem pi2Prover_some {D : RecDeployment} {C : Pi2Circuits D} (Fa : Pi2Facts D 
 /-- **`Pi2Pi1Openings` at the real deployment's facts**: the circuit's corollary (`circuitBridge` with the facts
 helper's meanings) makes the graph's calls the contract's, so the graph's openings are the contract's. -/
 theorem pi2Pi1Openings {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D) (hchk : Pi2ViewChecked C)
-    (hroots : C.rootsAt = RecGraph.Emitted.rootsAt) (hg : GraphsAgree) :
+    (hroots : C.rootsAt = RecGraphKeccak.Emitted.rootsAt) (hg : GraphsAgree) :
     Pi2Pi1Openings D C (pi2Facts hD C hchk) := by
   intro Ht Ft input p1 proof hgood ha1 hpr
   obtain ⟨hmatch, hsat, hstr⟩ := hgood
@@ -314,7 +314,7 @@ theorem pi2Pi1Openings {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D) (hc
     unfold registryAt
     rw [hview]
     rfl
-  have hsh : D.pi1.shape = UniStatement.reference := hD.2.2.1
+  have hsh : D.pi1.shape = RecGraphKeccak.Pi1.keccak128 := hD.2.2.1
   rw [openSeqH_eq _ _ _ o0 o1 o2 proof _ _ _
     (by rw [hreg, h0]; exact registryAt_lookup D _ hsh 0 (by decide))
     (by rw [hreg, h1]; exact registryAt_lookup D _ hsh 1 (by decide))
@@ -339,8 +339,8 @@ theorem pi2Pi1Openings {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D) (hc
 /-- **π2's completeness, `Pi2Pi1Openings` proved** (`pi2Pi1Openings`, from `GraphsAgree`): `recCompleteness2_pi2_staged`
 from the staged run's named facts and the witness's completeness. -/
 theorem recCompleteness2_pi2_closed {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D) (hchk : Pi2ViewChecked C)
-    (hroots : C.rootsAt = RecGraph.Emitted.rootsAt) (hg : GraphsAgree) (P1 : Pi1Prover D)
-    (P1k : Vector UInt8 32 → (rows : List ℕ) → D.pi1.Stack rows → OracleComp KeccakCalls (Option UniStatement.UniProof))
+    (hroots : C.rootsAt = RecGraphKeccak.Emitted.rootsAt) (hg : GraphsAgree) (P1 : Pi1Prover D)
+    (P1k : Vector UInt8 32 → (rows : List ℕ) → D.pi1.Stack rows → OracleComp KeccakCalls (Option UniKeccak.KeccakProof))
     {N : ℕ} {εt : ℝ≥0∞}
     (hexp : Pi2ExperimentLe D C (pi2Facts hD C hchk) P1 P1k) (hrun : Pi2RunAt D C (pi2Facts hD C hchk) P1k)
     (hdup : Pi2RunDuplex D C (pi2Facts hD C hchk) P1k) (hcost : Pi2RunCost D C (pi2Facts hD C hchk) P1k N)
@@ -353,8 +353,8 @@ theorem recCompleteness2_pi2_closed {D : RecDeployment} (hD : D.Real) (C : Pi2Ci
 
 /-- **The recursive verifier's completeness end to end, `Pi2Pi1Openings` proved.** -/
 theorem recCompleteness_pi2_closed_fs {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D) (hchk : Pi2ViewChecked C)
-    (hroots : C.rootsAt = RecGraph.Emitted.rootsAt) (hg : GraphsAgree) (P1 : Pi1Prover D)
-    (P1k : Vector UInt8 32 → (rows : List ℕ) → D.pi1.Stack rows → OracleComp KeccakCalls (Option UniStatement.UniProof))
+    (hroots : C.rootsAt = RecGraphKeccak.Emitted.rootsAt) (hg : GraphsAgree) (P1 : Pi1Prover D)
+    (P1k : Vector UInt8 32 → (rows : List ℕ) → D.pi1.Stack rows → OracleComp KeccakCalls (Option UniKeccak.KeccakProof))
     {N : ℕ} {εt : ℝ≥0∞}
     (hexp : Pi2ExperimentLe D C (pi2Facts hD C hchk) P1 P1k) (hrun : Pi2RunAt D C (pi2Facts hD C hchk) P1k)
     (hdup : Pi2RunDuplex D C (pi2Facts hD C hchk) P1k) (hcost : Pi2RunCost D C (pi2Facts hD C hchk) P1k N)

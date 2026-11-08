@@ -35,7 +35,7 @@ def GAcc (a : StA) : Prop := a.p1.isSome = true ∧ a.a1 = true
 variable {D : RecDeployment} (C : Pi2Circuits D) (Fa : Pi2Facts D C) (input : Vector UInt8 32)
 
 theorem runAt_stageA (Ht : List UInt8 → Digest) (Ft : KeccakState → KeccakState)
-    (P1k : OracleComp KeccakCalls (Option UniStatement.UniProof)) :
+    (P1k : OracleComp KeccakCalls (Option UniKeccak.KeccakProof)) :
     runAt Ht Ft (stageA callKeccak256 callKeccakF1600 D C Fa P1k input) =
       aAt Ht Ft D C Fa input (runAt Ht Ft P1k) := by
   unfold runAt aAt
@@ -56,7 +56,7 @@ theorem cAt_of_not (Ht : List UInt8 → Digest) (Ft : KeccakState → KeccakStat
 
 /-- **Stage A with `G` has `α`'s input of `536` bytes**, on every outcome. -/
 theorem gAcc_length (hD : D.Real) (hwc : Pi2WitnessComplete D C Fa)
-    (P1k : OracleComp KeccakCalls (Option UniStatement.UniProof)) {c : Cache} {p : StA × Cache}
+    (P1k : OracleComp KeccakCalls (Option UniKeccak.KeccakProof)) {c : Cache} {p : StA × Cache}
     (hp : p ∈ support ((simulateQ ro (stageA callKeccak256 callKeccakF1600 D C Fa P1k input)).run c))
     (hG : GAcc p.1) : (UniComplete.Prob.tInput p.1.wr).length = 536 := by
   have e := Pi2C.runAt_read hp
@@ -75,7 +75,7 @@ theorem gAcc_length (hD : D.Real) (hwc : Pi2WitnessComplete D C Fa)
     rw [← hgood, fixLen_length]
 
 /-- **Off `G`, the tail's verdict's first component is `false`**, on every outcome. -/
-theorem accA_pi2 (P1k : OracleComp KeccakCalls (Option UniStatement.UniProof)) (a : StA) (ha : ¬ GAcc a)
+theorem accA_pi2 (P1k : OracleComp KeccakCalls (Option UniKeccak.KeccakProof)) (a : StA) (ha : ¬ GAcc a)
     (s₁ s₂ s₃ : Digest) (c : Cache) (z : ((Bool × Bool) × (Pr2 × E × E × E) × E) × Cache)
     (hz : z ∈ support ((simulateQ ro ((pi2Staged D C Fa P1k input).tail a s₁ s₂ s₃)).run c)) :
     z.1.1.1 = false := by

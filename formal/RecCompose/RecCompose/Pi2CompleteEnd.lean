@@ -26,7 +26,8 @@ import RecCompose.End
   `L = 536` (`α`'s input: the state and π1's two roots and 17 elements and `W`'s root), the copy argument's
   `(2^25 + 36) |E|²` bad triples (`2N + n_P`, `N = 2^24`, `n_P = 36`), `t`'s `2^27` (`8N`), `N` block calls, `εt`,
   `εpow`): its `rejectGood` is `pi2_accepts` with the grinding, its other fields the commutation, duplex shape, cost and
-  lengths of the composed code (UniComplete's `ProverSim`, `ProverDuplex`, `ProverCost`, `ProbTFresh`, `ProbGrind` for π1).
+  lengths of the composed code (as UniComplete's `ProverSim`, `ProverDuplex`, `ProverCost`, `ProbTFresh`, `ProbGrind`
+  prove them for its π1 prover).
 * **`recCompleteness2_pi2`**: `RecCompleteness2 D P1 (pi2Prover D C Fa fuel) (delta2 N εt εpow)`;
   **`delta2_le`**: `delta2 N εt εpow ≤ 2^-164` for `N ≤ 2^50`, `εt ≤ 2^-200`, `εpow ≤ 2^-300`;
   **`recCompleteness_pi2_fs`**: the recursive verifier's completeness end to end with `pi2Prover`, error
@@ -83,7 +84,7 @@ variable {m : Type → Type} [Monad m] (H : List UInt8 → m Digest) (F : Keccak
 
 /-- **π2's honest prover** over `H`, `F`: the setup's trees, the IV, the witness, `pi2ProveWith`, π1's openings first. -/
 noncomputable def pi2ProverWith (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C) (fuel : ℕ)
-    (input : Vector UInt8 32) (p1 : UniStatement.UniProof) : m (Option RecProof) := do
+    (input : Vector UInt8 32) (p1 : UniKeccak.KeccakProof) : m (Option RecProof) := do
   let trees ← Pi2H.setupTreesWithH H F D
   let iv ← Pi2H.ivOfH H D trees.roots
   let vw := pi2Choice D C Fa trees.roots input p1.stream
@@ -132,7 +133,7 @@ theorem pi2ProveWith_run (Hk : List UInt8 → Digest) (F : KeccakState → Id Ke
 /-- **π2's honest prover at a pure permutation**: `pi2ProveWith` at the setup's trees, the contract's IV and the witness
 it takes, π1's openings first. -/
 theorem pi2ProverWith_run (Hk : List UInt8 → Digest) (F : KeccakState → Id KeccakState) (D : RecDeployment)
-    (C : Pi2Circuits D) (Fa : Pi2Facts D C) (fuel : ℕ) (input : Vector UInt8 32) (p1 : UniStatement.UniProof) :
+    (C : Pi2Circuits D) (Fa : Pi2Facts D C) (fuel : ℕ) (input : Vector UInt8 32) (p1 : UniKeccak.KeccakProof) :
     Id.run (pi2ProverWith (m := Id) (Pure.pure ∘ Hk) F D C Fa fuel input p1) =
       (Id.run (pi2ProveWith (m := Id) (Pure.pure ∘ Hk) F fuel (C.G (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots)
         (D.circuitAt (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots.pi1).circuit
@@ -147,14 +148,14 @@ theorem pi2ProverWith_run (Hk : List UInt8 → Digest) (F : KeccakState → Id K
 stacks (off the bad challenges, `halg`), and π1's three openings are accepted (`hpi1`), the contract accepts. -/
 theorem pi2_accepts (D : RecDeployment) (hD : D.Real) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
     (F : KeccakState → Id KeccakState) (Hk : List UInt8 → Digest)
-    (fuel : ℕ) (input : Vector UInt8 32) (p1 : UniStatement.UniProof)
+    (fuel : ℕ) (input : Vector UInt8 32) (p1 : UniKeccak.KeccakProof)
     (hgood : Pi2Good D C Fa (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots input p1.stream
       (pi2Choice D C Fa (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots input p1.stream))
     (hGN : (C.G (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots).logN = 24)
     (hrow : Data.circuit.logRow = (C.G (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots).logW)
     (proof : RecProof)
     (hp : Id.run (pi2ProverWith (m := Id) (Pure.pure ∘ Hk) F D C Fa fuel input p1) = some proof)
-    (hroots : C.rootsAt = RecGraph.Emitted.rootsAt)
+    (hroots : C.rootsAt = RecGraphKeccak.Emitted.rootsAt)
     (hbad : ¬ BadCopy (C.G (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots)
       (pi2Choice D C Fa (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots input p1.stream).2
       (Fa.pubOf (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots
@@ -206,9 +207,9 @@ theorem pi2_accepts (D : RecDeployment) (hD : D.Real) (C : Pi2Circuits D) (Fa : 
   have htree : (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).pi2 = E2ECompleteness.commitWithH (m := Id) (Pure.pure ∘ Hk)
       (layoutsOf 24).2.2.logN (D.circuitAt (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots.pi1).setupStack := by
     show Pi2H.setupTreeWithH (Pure.pure ∘ Hk)
-      (D.circuitAt (Id.run (UniComplete.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D.pi1)).roots) = _
+      (D.circuitAt (D.pi1.setupRoots (Id.run (Pi2H.setupTreeKWithH (m := Id) (Pure.pure ∘ Hk) D.pi1)))) = _
     unfold Pi2H.setupTreeWithH
-    have hl : (D.circuitAt (Id.run (UniComplete.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D.pi1)).roots).circuit.logN
+    have hl : (D.circuitAt (D.pi1.setupRoots (Id.run (Pi2H.setupTreeKWithH (m := Id) (Pure.pure ∘ Hk) D.pi1)))).circuit.logN
         = 24 := by
       unfold RecDeployment.circuitAt
       rw [hD.1]
@@ -285,7 +286,7 @@ of the composed code, as UniComplete proves them for π1 (`ProverSim`, `ProverDu
 def Pi2StagedFacts (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C) (P1 : Pi1Prover D) (fuel N : ℕ)
     (εt εpow : ℝ≥0∞) : Prop :=
   ∀ (input : Vector UInt8 32) (rows : List ℕ) (q : D.pi1.Stack rows), D.pi1.shape.RowsFit rows →
-    D.pi1.HonestRelation rows input q →
+    D.pi1.HonestRelation D.flock rows input q →
       ∃ (S : Pi2Staged) (Bad : S.ρ → Finset (E × E × E)) (badT : S.τ → E → Prop),
         S.Holds D P1 (pi2Prover D C Fa fuel) input rows q 536 Bad badT (2 ^ 25 + 36) (2 ^ 27) N εt εpow
 

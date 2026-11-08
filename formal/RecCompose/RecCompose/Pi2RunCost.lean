@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. π2's analogue of `formal/UniComplete/UniComplete/
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. π2's analogue of `formal/UniComplete/UniComplete/
 -- ProverCost.lean`, `VerifierHCost.lean`, `Rec3ProverCost.lean` and `Rec3ProbExp.lean`'s `cost_stagedU3`, for
 -- `Pi2ProbStaged`'s staged run (`pi2Staged`: the setup, π1-rec3's honest prover, π1-rec3's graph, π2's honest prover
 -- `crates/leanvm_rec/src/pi2/prover.rs`, the contract `formal/RecStatement`); uses
@@ -6,22 +6,24 @@
 -- `qc_commitWithH`) and leanerVM (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`, commit 6175f1a0,
 -- MIT OR Apache-2.0): the block cost `hashBlocks` and the weight calculus `Common.QueryCostAtMost`.
 import RecCompose.Pi2P1
+import RecCompose.IvLength
+import UniKeccakSound.Fs.LayerK
 
 /-!
 # The block count of π2's staged run (`Pi2RunCost`)
 
-**`pi2RunCost_p1k hD hg : Pi2RunCost D C Fa (p1k D) pi2RunN`**, **`pi2RunN_le : pi2RunN ≤ 2^50`** (`pi2RunN` is
+**`pi2RunCost_of hD hg hP1 : Pi2RunCost D C Fa P1k pi2RunN`**, **`pi2RunN_le : pi2RunN ≤ 2^50`** (`pi2RunN` is
 below `2^48.0`): at the real deployment (`hD`) and the graphs' agreement (`hg`, for the graph's calls' sizes), the
-staged run at π1-rec3's honest prover makes at most `pi2RunN` block calls (`hashBlocks`: a Keccak-256 of `n` bytes
-`⌊n / 136⌋ + 1`, a Keccak-f[1600] one).
+staged run at a π1 prover of at most `2^47` block calls (`Pi1Cost D P1k`, named) makes at most `pi2RunN` block calls
+(`hashBlocks`: a Keccak-256 of `n` bytes `⌊n / 136⌋ + 1`, a Keccak-f[1600] one).
 
 `pi2RunN = 2 · setup2 + 2^47 + 3 · gOpen + 2 · ivC + treeW + 1 + 6 + treeQ + 1 + 4 + openW + openS + openQ +
   (1 + 10 + 3 · 1080 + 6 · cOpen)`:
 
-* the setup twice (`setup2`: π1's `setupCost`, π2's setup tree `treeCost 25`), π1-rec3's prover (`2^47`,
-  `proverCost3_flockProve3H`);
-* the graph's three `PCS_OPEN`s (`gOpen`: a call of at most `31` words, `GraphsAgree` and `RecGraph.Emitted`'s calls),
-  π2's IV twice (`ivC`: `σ`'s `4 · 2^24` bytes, `κ`'s `8 · 2^24`, the encoding's `25184 + 64`, the IV's `208`), the
+* the setup twice (`setup2`: π1's one tree, `treeCost 23` at the reference shape, `UniKeccakSound.setupVars_ref`;
+  π2's setup tree `treeCost 25`), π1-rec3's prover (`2^47`, `Pi1Cost`);
+* the graph's three `PCS_OPEN`s (`gOpen`: a call of at most `31` words, `GraphsAgree` and `RecGraphKeccak.Emitted`'s
+  calls), π2's IV twice (`ivC`: `σ`'s `4 · 2^24` bytes, `κ`'s `8 · 2^24`, the encoding's `24264 + 64`, the IV's `208`), the
   seed (`80` bytes), `W`'s tree (`treeCost 24`);
 * the chain (`536`, `32`, `32` bytes), `Q`'s tree (`treeCost 28`), `t` (`64` bytes), `ρ` (`440` bytes);
 * π2's prover's three openings (`openW`, `openS`, `openQ`: E2ECompleteness's `cost_proveOpeningWithH`);
@@ -132,25 +134,21 @@ theorem length_layoutWord (code m : ℕ) (L : PcsQuotient.Layout) : (layoutWord 
   decide +kernel
 
 theorem length_pi1Iv (s : UniStatement.Shape) (programIv : List UInt8) (roots : UniStatement.SetupRoots) :
-    (pi1Iv s programIv roots).length = 32 := by
-  unfold pi1Iv pi1IvWith UniStatement.contractIvForWith
-  dsimp only
-  split
-  · simp [UniStatement.contractIvWith, len_digestBytes]
-  · simp [len_digestBytes]
+    (pi1Iv s programIv roots).length = 32 :=
+  RecStatement.pi1Iv_length s programIv roots
 
 theorem name_length : RecStatement.name.length = 16 := by decide +kernel
 
 theorem ivTag_length : RecStatement.ivTag.length = 16 := by decide +kernel
 
-theorem encoding_length : Data.circuit.encoding.length = 25184 := by decide +kernel
+theorem encoding_length : Data.circuit.encoding.length = 24264 := by decide +kernel
 
 theorem programIv_length : UniStatement.programIv.length = 32 := by decide +kernel
 
 /-! ## The setup, the IV, the seed -/
 
-/-- The setup's blocks: π1's three trees, π2's setup tree (`2^25` words). -/
-noncomputable def setup2 (D : RecDeployment) : ℕ := UniComplete.Cost.setupCost D.pi1 + treeCost 25
+/-- The setup's blocks: π1's one tree (the Keccak setup stack), π2's setup tree (`2^25` words). -/
+noncomputable def setup2 (D : RecDeployment) : ℕ := treeCost (UniStatement.setupLayout D.pi1.shape).vars + treeCost 25
 
 theorem circuit_logN {D : RecDeployment} (hD : D.Real) (roots : UniStatement.SetupRoots) :
     (D.circuitAt roots).circuit.logN = 24 := by
@@ -160,14 +158,14 @@ theorem circuit_logN {D : RecDeployment} (hD : D.Real) (roots : UniStatement.Set
 theorem qc_setupTreesWithH2 {D : RecDeployment} (hD : D.Real) :
     QC (Pi2H.setupTreesWithH callKeccak256 callKeccakF1600 D) (setup2 D) := by
   unfold Pi2H.setupTreesWithH Pi2H.setupTreeWithH setup2
-  refine E2ECompleteness.Cost.QC.bind_le (b := treeCost 25) (UniComplete.Cost.cost_setupTreesWithH D.pi1)
+  refine E2ECompleteness.Cost.QC.bind_le (b := treeCost 25) (qc_commitWithH _ _)
     (fun t1 ↦ E2ECompleteness.Cost.QC.bind_le (c := treeCost 25) (qc_commitWithH _ _) (fun _ ↦ qc_pure _ 0) ?_)
     le_rfl
   rw [circuit_logN hD]
   decide
 
 /-- π2's IV's blocks: `σ`'s `4 · 2^24` bytes, `κ`'s `8 · 2^24`, the encoding and the two digests, the IV's preimage. -/
-noncomputable def ivC : ℕ := (4 * 2 ^ 24) / 136 + 1 + ((8 * 2 ^ 24) / 136 + 1) + ((25184 + 64) / 136 + 1) + (208 / 136 + 1)
+noncomputable def ivC : ℕ := (4 * 2 ^ 24) / 136 + 1 + ((8 * 2 ^ 24) / 136 + 1) + ((24264 + 64) / 136 + 1) + (208 / 136 + 1)
 
 theorem cp_ivOfH {D : RecDeployment} (hD : D.Real) (roots : RecSetupRoots) :
     CP (Pi2H.ivOfH callKeccak256 D roots) ivC fun iv ↦ iv.length = 32 := by
@@ -177,7 +175,7 @@ theorem cp_ivOfH {D : RecDeployment} (hD : D.Real) (roots : RecSetupRoots) :
   simp only [bind_assoc, pure_bind]
   refine CP.bind_le (cp_H_le (k := (4 * 2 ^ 24) / 136 + 1) ?_) (fun _ _ ↦
     CP.bind_le (cp_H_le (k := (8 * 2 ^ 24) / 136 + 1) ?_) (fun _ _ ↦
-    CP.bind_le (cp_H_le (k := (25184 + 64) / 136 + 1) ?_) (fun _ _ ↦
+    CP.bind_le (cp_H_le (k := (24264 + 64) / 136 + 1) ?_) (fun _ _ ↦
     CP.bind_le (cp_H_le (k := 208 / 136 + 1) ?_) (fun _ _ ↦ cp_pure _ (len_digestBytes _)) le_rfl) le_rfl) le_rfl)
     (by unfold ivC; omega)
   · rw [length_flatMap_const _ 4 (fun i ↦ by simp [length_le64]), List.length_range, hn]
@@ -423,7 +421,7 @@ theorem length_flatMap_le {γ δ : Type} (f : γ → List δ) (k : ℕ) (hf : �
     rw [Nat.mul_succ]
     omega
 
-theorem emitted_calls_le : ∀ ws ∈ RecGraph.Emitted.calls, ws.length ≤ 31 := by decide +kernel
+theorem emitted_calls_le : ∀ ws ∈ RecGraphKeccak.Emitted.calls, ws.length ≤ 31 := by decide +kernel
 
 /-- A graph's outputs' calls: each call's words' bytes. -/
 theorem evalGraphDeployed_calls {g : RecGraph.Graph} {iv pub : List UInt8} {s : Array UInt8} {out : RecGraph.Outputs}
@@ -438,13 +436,13 @@ theorem evalGraphDeployed_calls {g : RecGraph.Graph} {iv pub : List UInt8} {s : 
 
 /-- The graph's calls: at most `31` words of `32` bytes. -/
 theorem graph_calls_le (hg : GraphsAgree) {iv pub : List UInt8} {s : Array UInt8} {out : RecGraph.Outputs}
-    (h : RecGraph.evalGraphDeployed RecGraph.Pi1.pi1Graph iv pub s = some out) :
+    (h : RecGraph.evalGraphDeployed RecGraphKeccak.Pi1.pi1GraphK iv pub s = some out) :
     ∀ call ∈ out.calls, call.length ≤ 32 * 31 := by
   obtain ⟨vals, hv⟩ := evalGraphDeployed_calls h
   intro call hc
   rw [hv, List.mem_map] at hc
   obtain ⟨ws, hws, rfl⟩ := hc
-  have hws' : ws ∈ RecGraph.Emitted.calls := by
+  have hws' : ws ∈ RecGraphKeccak.Emitted.calls := by
     unfold GraphsAgree at hg
     rw [hg] at hws
     exact hws
@@ -486,7 +484,7 @@ theorem mem_modify_snd {γ δ : Type} {g : γ × δ → γ × δ} (hg : ∀ x, (
 
 /-- **π1-rec3's graph with its three `PCS_OPEN`s**: at most `3 · gOpen` blocks. -/
 theorem qc_pi1GraphVerifierWithH (hg : GraphsAgree) (D : RecDeployment) (roots : UniStatement.SetupRoots)
-    (input : Vector UInt8 32) (p : UniStatement.UniProof) :
+    (input : Vector UInt8 32) (p : UniKeccak.KeccakProof) :
     QC (Pi2H.pi1GraphVerifierWithH callKeccak256 callKeccakF1600 D roots input p) (3 * gOpen) := by
   unfold Pi2H.pi1GraphVerifierWithH
   split
@@ -778,7 +776,7 @@ theorem cp_stageB {D : RecDeployment} (C : Pi2Circuits D) (Fa : Pi2Facts D C) (a
 noncomputable def costA (S : ℕ) : ℕ := S + (2 ^ 47 + (3 * gOpen + (S + (ivC + (1 + (treeCost 24 + 0))))))
 
 theorem cp_stageA {D : RecDeployment} (hD : D.Real) (hg : GraphsAgree) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
-    (P1k : OracleComp KeccakCalls (Option UniStatement.UniProof)) (hP : QC P1k (2 ^ 47)) (input : Vector UInt8 32) :
+    (P1k : OracleComp KeccakCalls (Option UniKeccak.KeccakProof)) (hP : QC P1k (2 ^ 47)) (input : Vector UInt8 32) :
     CP (stageA callKeccak256 callKeccakF1600 D C Fa P1k input) (costA (setup2 D)) fun a ↦ a.wr.stream.size ≤ 640 := by
   unfold stageA costA
   refine CP.bind (cp_of_qc (qc_setupTreesWithH2 hD)) fun trees _ ↦ CP.bind (cp_of_qc hP) fun o _ ↦ ?_
@@ -805,29 +803,21 @@ theorem cp_stageA {D : RecDeployment} (hD : D.Real) (hg : GraphsAgree) (C : Pi2C
 
 /-! ## The staged run -/
 
-/-- The setup's blocks at the reference shape: at most `2^27` for π1's, π2's setup tree. -/
+/-- The setup's blocks at the reference shape: at most `2^27` for π1's (`treeCost 23 = 5 · 2^18`), π2's setup tree. -/
 noncomputable def setupR : ℕ := 2 ^ 27 + treeCost 25
 
 theorem setup2_le {D : RecDeployment} (hD : D.Real) : setup2 D ≤ setupR := by
-  unfold setup2 setupR UniComplete.Cost.setupCost
-  rw [hD.2.2.1]
-  obtain ⟨-, -, h3, -⟩ := UniComplete.Cost.reference_vars
-  have h19 : 2 ^ ((UniStatement.setupLayout UniStatement.reference).vars - 6 + 1) ≤ 2 ^ 19 :=
-    Nat.pow_le_pow_right (by norm_num) (by omega)
-  have hm : UniStatement.matrixVars ≤ 28 := by decide
-  have h23 : 2 ^ (UniStatement.matrixVars - 6 + 1) ≤ 2 ^ 23 := Nat.pow_le_pow_right (by norm_num) (by omega)
-  generalize 2 ^ ((UniStatement.setupLayout UniStatement.reference).vars - 6 + 1) = x at h19 ⊢
-  generalize 2 ^ (UniStatement.matrixVars - 6 + 1) = y at h23 ⊢
-  have e19 : (2 : ℕ) ^ 19 = 524288 := by norm_num
-  have e23 : (2 : ℕ) ^ 23 = 8388608 := by norm_num
-  have e27 : (2 : ℕ) ^ 27 = 134217728 := by norm_num
-  omega
+  unfold setup2 setupR
+  rw [hD.2.2.1, show RecGraphKeccak.Pi1.keccak128 = UniKeccakSound.keccakRefShape from rfl,
+    UniKeccakSound.setupVars_ref]
+  unfold treeCost
+  norm_num
 
 /-- **The staged run's block count.** -/
 noncomputable def pi2RunN : ℕ := costA setupR + (4 + (1 + (1 + ((treeCost 28 + (1 + (costC + 0))) + 0))))
 
 theorem qc_pi2Staged {D : RecDeployment} (hD : D.Real) (hg : GraphsAgree) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
-    (P1k : OracleComp KeccakCalls (Option UniStatement.UniProof)) (hP : QC P1k (2 ^ 47)) (input : Vector UInt8 32) :
+    (P1k : OracleComp KeccakCalls (Option UniKeccak.KeccakProof)) (hP : QC P1k (2 ^ 47)) (input : Vector UInt8 32) :
     QC (pi2Staged D C Fa P1k input).run pi2RunN := by
   have h : CP (pi2Staged D C Fa P1k input).run
       (costA (setup2 D) + (4 + (1 + (1 + ((treeCost 28 + (1 + (costC + 0))) + 0))))) fun _ ↦ True := by
@@ -861,18 +851,17 @@ theorem pi2RunN_le : pi2RunN ≤ 2 ^ 50 := by
 end Cost2
 
 open Cost2 in
-/-- **`Pi2RunCost` for π1-rec3's honest prover**: at most `pi2RunN ≤ 2^50` block calls (`pi2RunN_le`), at the real
-deployment and the graphs' agreement. -/
-theorem pi2RunCost_p1k {D : RecDeployment} (hD : D.Real) (hg : GraphsAgree) (C : Pi2Circuits D) (Fa : Pi2Facts D C) :
-    Pi2RunCost D C Fa (p1k D) pi2RunN := fun input rows q hfit hrel ↦
-  qc_pi2Staged hD hg C Fa _ (UniComplete.Rec3.proverCost3_flockProve3H D.pi1 hD.2.2.1
-    (by rw [hD.2.2.2.1, programIv_length]; norm_num) input rows q hfit hrel) input
+/-- **`Pi2RunCost` for a π1 prover of at most `2^47` block calls** (`Pi1Cost`, named): at most `pi2RunN ≤ 2^50` block
+calls (`pi2RunN_le`), at the real deployment and the graphs' agreement. -/
+theorem pi2RunCost_of {D : RecDeployment} (hD : D.Real) (hg : GraphsAgree) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
+    {P1k : Pi1ProverK D} (hP1 : Pi1Cost D P1k) : Pi2RunCost D C Fa P1k pi2RunN := fun input rows q hfit hrel ↦
+  qc_pi2Staged hD hg C Fa _ (hP1 input rows q hfit hrel) input
 
 end RecCompose.Pi2G
 
-/-- info: 'RecCompose.Pi2G.pi2RunCost_p1k' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'RecCompose.Pi2G.pi2RunCost_of' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms RecCompose.Pi2G.pi2RunCost_p1k
+#print axioms RecCompose.Pi2G.pi2RunCost_of
 
 /-- info: 'RecCompose.Pi2G.Cost2.pi2RunN_le' depends on axioms: [propext] -/
 #guard_msgs in

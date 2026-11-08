@@ -28,7 +28,7 @@ cached with probability at most `εα + (4 K + 6 + NT) / 2^256` (`K` stage A's h
 **`pi2TFresh_of`**: `Pi2TFresh D C Fa P1k (εα + (4 N + 6 + treeCost μQ) / 2^256)` from `Pi2RunCost D C Fa P1k N` and
 `Pi2AlphaFresh D C Fa P1k εα`, for every `P1k`; **`tFreshBound2_le`**: below `2^-200` at `N ≤ 2^50`, `εα ≤ 2^-201`.
 
-**`recCompleteness2_pi2_staged2`**: `recCompleteness2_pi2_staged` with `Pi2HashBeforeAlpha` (false at `p1k`) replaced
+**`recCompleteness2_pi2_staged2`**: `recCompleteness2_pi2_staged` with `Pi2HashBeforeAlpha` (false at a π1 prover hashing `32`-byte inputs) replaced
 by `Pi2AlphaFresh εα` and `Pi2TFresh` proved, error `delta2' N εα εt' εpow`.
 -/
 

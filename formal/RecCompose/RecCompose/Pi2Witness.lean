@@ -215,7 +215,7 @@ theorem pi2WitnessComplete {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D)
   have hck := RecCircuit.Compiled.checked_of_compile hc
   obtain ⟨hview, -, -⟩ := viewChecked_at C hchk roots
   set c := C.compiled (D.pi1IvAt roots.pi1) with hcdef
-  set r := RecCircuit.ofRG RecGraph.Pi1.pi1Graph C.rootsAt (D.pi1IvAt roots.pi1) with hrdef
+  set r := RecCircuit.ofRG RecGraphKeccak.Pi1.pi1GraphK C.rootsAt (D.pi1IvAt roots.pi1) with hrdef
   unfold pi1GraphChecks at hgc
   split at hgc
   case h_2 => cases hgc

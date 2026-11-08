@@ -1,5 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The walks of `formal/UniComplete/UniComplete/
--- Rec3ProverCost.lean` (`wc_proveStreamRec3With`, `costP_proveRec3With`) and
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The walks of
 -- `formal/EndToEnd/Completeness/E2ECompleteness/Cost.lean` (`cost_runFromWithHash`, `cost_proveOpeningWithH`,
 -- `qc_findNonceM`), redone for the lengths of the hashed inputs; uses leanerVM
 -- (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`, commit 6175f1a0, MIT OR Apache-2.0): the two calls
@@ -12,17 +11,15 @@ import RecCompose.Pi2RunCost
 π2's IV starts with a hash of `σ`'s `4 · 2^24 = 2^26` bytes (`Pi2H.digestWithH`). Every Keccak-256 query before it,
 in `pi2Staged`'s stage A, is shorter (`Short`):
 
-* **`hashOK_setupTreesWithH2`**: the setup's four trees (`512`-byte leaves, `64`-byte nodes);
+* **`hashOK_setupTreesWithH2`**: the setup's two trees (π1's Keccak setup stack, π2's `κ`, `κ + σ`: `512`-byte leaves,
+  `64`-byte nodes);
 * **`hashOK_graph`**: π1-rec3's graph with its three `PCS_OPEN`s, from its block count (`3 · gOpen` blocks, so no
   query of `136 · 3 · gOpen < 2^26` bytes or more; **`hashOK_of_qc`**);
-* **`hashOK_p1k`**: π1-rec3's honest prover: its setup's trees, its IV (`321` bytes), its seed (`80`), its stream (a
-  sample hashes the state and the bytes written since the last one, at most `9328`; Flock's prover from its block
-  count, `46` blocks beyond its `3552` bytes), its three WHIR openings (the seed of `76 + 24 · 29` bytes at most, the
-  trees of rows of at most `192` words, the sponge and the proof-of-work search through the permutation only).
-
-The stream's walk is `Rec3.wc_proveStreamRec3With`'s, in a calculus `WS` (every query short, the stream at most
-`2^14` bytes), each piece of few blocks converted from its `Cost.WC` (`ws_of_wc`: with no extra budget a query costs
-at most the blocks left, `lenP_of_costP`), the two trees lifted (`ws_lift`).
+* π1-rec3's prover: the named `Pi1HashShort` (`Pi2P1`). The tools a concrete prover's census uses are here: Merkle
+  trees of rows of at most `192` words (`hashOK_buildTree`, `hashOK_commitWithH`), WHIR openings
+  (**`hashOK_proveOpeningWithH`**: the seed of `76 + 24 · k(v + 1)` bytes at most, the trees, the sponge and the
+  proof-of-work search through the permutation only), a writer's walk in the calculus `WS` (every query short, the
+  stream at most `2^14` bytes; `ws_of_wc` from UniComplete's `WC` costs, `ws_seq`, `ws_lift`).
 -/
 
 set_option linter.unusedSectionVars false
@@ -218,21 +215,18 @@ theorem hashOK_commitReal (c : Commitment) (vars : ℕ) (stack : Array K) :
   unfold UniComplete.commitReal
   exact E2ECompleteness.HashOK.bind (hashOK_commitWithH _ _) fun _ ↦ E2ECompleteness.HashOK.pure _ _
 
-/-- **The setup's four trees.** -/
+/-- **The setup's two trees.** -/
 theorem hashOK_setupTreesWithH2 (D : RecDeployment) :
     HashOK Short (Pi2H.setupTreesWithH callKeccak256 callKeccakF1600 D) := by
-  unfold Pi2H.setupTreesWithH UniComplete.setupTreesWithH Pi2H.setupTreeWithH
-  refine E2ECompleteness.HashOK.bind ?_ fun _ ↦ E2ECompleteness.HashOK.bind (hashOK_commitWithH _ _) fun _ ↦
-    E2ECompleteness.HashOK.pure _ _
+  unfold Pi2H.setupTreesWithH Pi2H.setupTreeKWithH Pi2H.setupTreeWithH
   exact E2ECompleteness.HashOK.bind (hashOK_commitWithH _ _) fun _ ↦
-    E2ECompleteness.HashOK.bind (hashOK_commitWithH _ _) fun _ ↦
     E2ECompleteness.HashOK.bind (hashOK_commitWithH _ _) fun _ ↦ E2ECompleteness.HashOK.pure _ _
 
 /-! ## π1-rec3's graph -/
 
 /-- **π1-rec3's graph with its three `PCS_OPEN`s** (`3 · gOpen` blocks). -/
 theorem hashOK_graph (hg : GraphsAgree) (D : RecDeployment) (roots : UniStatement.SetupRoots)
-    (input : Vector UInt8 32) (p : UniStatement.UniProof) :
+    (input : Vector UInt8 32) (p : UniKeccak.KeccakProof) :
     HashOK Short (Pi2H.pi1GraphVerifierWithH callKeccak256 callKeccakF1600 D roots input p) :=
   hashOK_of_qc (Pi2G.Cost2.qc_pi1GraphVerifierWithH hg D roots input p) (by
     unfold Pi2G.Cost2.gOpen E2ECompleteness.Cost.vOpen
@@ -323,142 +317,6 @@ theorem hashOK_proveOpening1 (fuel : ℕ) (L : PcsQuotient.Layout) (tree : Tree)
       exact hv)
     (by simp only [List.length_singleton, Nat.one_mul]; omega)
 
-/-! ## π1-rec3's stream -/
-
-section Stream
-
-open UniComplete UniComplete.Rec3 UniComplete.Cost
-open UniComplete.Bounds (batchVarsBound valuesBound)
-
-/-- **π1-rec3's stream hashes only short inputs** (`wc_proveStreamRec3With`'s walk), given Flock's prover's cost
-with at most `2^14` blocks beyond its bytes and a batch of at most `2^14` variables. -/
-theorem ws_proveStreamRec3With (flock : FlockProver (OracleComp KeccakCalls)) (kF wF : ℕ) (tr : Trace)
-    (hF : WC (flock (blake2sR1csLogSize + tr.shape.heights.getD opBlake2s 0) flockMain tr.qflock) kF wF
-      fun _ _ ↦ True) (hkF : kF ≤ 16384) (hV : batchVarsBound tr.shape ≤ 16384) :
-    WS (proveStreamRec3With callKeccak256 (commitReal callKeccak256) flock tr)
-      (streamBytes3 tr.shape tr.rows.length wF) (StreamOK3 (batchVarsBound tr.shape)) := by
-  unfold proveStreamRec3With streamBytes3
-  refine ws_seq (ws_of_wc (wc_forIn_list (k := 0) (w := 4) _ _ _ fun _ _ ↦ wc_seq (wc_sendInteger _ 4)
-    (fun _ _ _ ↦ wc_mono (wc_pure _) le_rfl le_rfl fun _ _ _ ↦ trivial) le_rfl le_rfl) (by simp))
-    (fun _ _ _ ↦ ?_) (by omega)
-  refine ws_seq (ws_lift (hashOK_commitReal _ _ _)) (fun committed1 _ _ ↦ ?_) (by omega)
-  refine ws_seq (ws_of_wc (wc_sendRoot _) (by norm_num)) (fun _ _ _ ↦ ?_) (by omega)
-  refine ws_seq (ws_of_wc (wc_drawRunW 4) (by norm_num)) (fun alphas _ _ ↦ ?_) (by omega)
-  refine ws_seq (ws_of_wc wc_sampleW (by norm_num)) (fun beta _ _ ↦ ?_) (by omega)
-  refine ws_seq (ws_of_wc wc_sampleW (by norm_num)) (fun gamma _ _ ↦ ?_) (by omega)
-  refine ws_seq (ws_of_wc (wc_map some hF) hkF) (fun flockOut _ _ ↦ ?_) (by omega)
-  refine ws_seq (ws_lift (hashOK_commitReal _ _ _)) (fun committed2 _ _ ↦ ?_) (by omega)
-  refine ws_seq (ws_of_wc (wc_sendRoot _) (by norm_num)) (fun _ _ _ ↦ ?_) (by omega)
-  refine ws_seq (ws_of_wc wc_sampleW (by norm_num)) (fun t _ _ ↦ ?_) (by omega)
-  have ha := Bounds.atT_facts tr (c2DataOf tr (eqKernel alphas) beta gamma) alphas beta gamma t flockOut
-  have hvars := Bounds.batchVars_atT tr (c2DataOf tr (eqKernel alphas) beta gamma) alphas beta gamma t flockOut
-  refine ws_seq (ws_of_wc (wc_mono (wc_sendScalars _) le_rfl (Nat.mul_le_mul_left 24 ha.values) fun _ _ h ↦ h)
-    (by norm_num)) (fun _ _ _ ↦ ?_) (by omega)
-  refine ws_seq (ws_of_wc wc_sampleW (by norm_num)) (fun rho _ _ ↦ ?_) (by omega)
-  refine ws_seq (ws_of_wc wc_sampleW (by norm_num)) (fun lambda _ _ ↦ ?_) (by omega)
-  refine ws_seq (ws_of_wc (wc_mono (wc_batchRounds3 _ _ _) hvars (Nat.mul_le_mul_left 96 hvars) fun r _ h ↦ h)
-    hV) (fun r _ hr ↦ ?_) (by omega)
-  refine ws_seq (ws_of_wc (wc_mono (wc_sendScalars _) le_rfl (length_claims _ _ _) fun _ _ h ↦ h) (by norm_num))
-    (fun _ _ _ ↦ ?_) (by omega)
-  simp only [List.length_nil, Nat.zero_add] at hr
-  refine ws_of_wc (k := 0) (wc_mono (wc_get_pure _ _ fun s ↦ ⟨rfl, ?_⟩) (Nat.zero_le _) (Nat.zero_le _) fun _ _ h ↦ h)
-    (by norm_num)
-  intro x hx
-  rw [List.mem_map] at hx
-  obtain ⟨⟨c, cl⟩, _, rfl⟩ := hx
-  dsimp only
-  rw [List.length_take]
-  omega
-
-end Stream
-
-/-! ## π1-rec3's prover -/
-
-section Prover
-
-open UniComplete UniComplete.Rec3 UniComplete.Cost
-open UniComplete.Bounds (batchVarsBound valuesBound)
-
-theorem hashOK_setupTreesOf (tr : Trace) : HashOK Short (setupTreesOf callKeccak256 tr) := by
-  unfold setupTreesOf
-  exact E2ECompleteness.HashOK.bind (hashOK_commitWithH _ _) fun _ ↦
-    E2ECompleteness.HashOK.bind (hashOK_commitWithH _ _) fun _ ↦
-    E2ECompleteness.HashOK.bind (hashOK_commitWithH _ _) fun _ ↦ E2ECompleteness.HashOK.pure _ _
-
-set_option hygiene false in
-/-- One step of the three openings' walk (`hc`, `h1` … `h3` the local facts on the claims). -/
-macro "hop3_step" : tactic => `(tactic| first
-  | exact E2ECompleteness.HashOK.pure _ _
-  | refine E2ECompleteness.HashOK.bind (hashOK_proveOpening1 _ _ _ _ _ _ (v := batchVarsBound tr.shape) (by first
-      | exact hc _ _ _ (List.mem_of_find?_eq_some h1)
-      | exact hc _ _ _ (List.mem_of_find?_eq_some h2)
-      | exact hc _ _ _ (List.mem_of_find?_eq_some h3)) hV) fun _ ↦ ?_)
-
-/-- **π1-rec3's honest prover hashes only short inputs** (`costP_proveRec3With`'s walk). -/
-theorem hashOK_proveRec3With (flock : FlockProver (OracleComp KeccakCalls)) (kF wF : ℕ) (programIv : List UInt8)
-    (tr : Trace) (hpub : tr.publicInput.length = 32)
-    (hF : WC (flock (blake2sR1csLogSize + tr.shape.heights.getD opBlake2s 0) flockMain tr.qflock) kF wF
-      fun _ _ ↦ True) (hkF : kF ≤ 16384) (hV : batchVarsBound tr.shape ≤ 16384)
-    (hS : streamBytes3 tr.shape tr.rows.length wF ≤ 16384) (hIv : programIv.length ≤ 2 ^ 16) :
-    HashOK Short (proveRec3With callKeccak256 callKeccakF1600 PcsQuotient.nonceFuel flock programIv tr) := by
-  unfold proveRec3With contractIvRec3Of seedOf
-  simp only [bind_assoc, pure_bind]
-  refine E2ECompleteness.HashOK.bind (hashOK_setupTreesOf tr) fun trees ↦ ?_
-  refine E2ECompleteness.HashOK.bind (hashOK_callKeccak256 ?_) fun d ↦ ?_
-  · show _ < 2 ^ 26
-    rw [List.length_append, ivInput_length', variantBytes_rec3_length, two26]
-    have : (2 : ℕ) ^ 16 = 65536 := by norm_num
-    omega
-  refine E2ECompleteness.HashOK.bind (hashOK_callKeccak256 ?_) fun seed ↦ ?_
-  · show _ < 2 ^ 26
-    simp only [List.length_append, name_length, len_digestBytes, hpub, two26]
-    omega
-  refine (LenP.bind (ws_proveStreamRec3With flock kF wF tr hF hkF hV (Wr.start seed)
-    (by simp [WInv, Wr.start]) (by simpa [Wr.start] using hS)) fun z hz ↦ lenP_of_hashOK ?_).toHashOK
-  obtain ⟨⟨_, hc0⟩, -, -, -⟩ := hz
-  have hc : ∀ c pt v, (c, pt, v) ∈ z.1.claims → pt.length ≤ batchVarsBound tr.shape :=
-    fun c pt v h ↦ hc0 _ h
-  obtain ⟨out, _⟩ := z
-  dsimp only at hc ⊢
-  generalize h1 : List.find? (fun x ↦ x.1 == Commitment.c1) out.claims = o1
-  generalize h2 : List.find? (fun x ↦ x.1 == Commitment.c2) out.claims = o2
-  generalize h3 : List.find? (fun x ↦ x.1 == Commitment.setup) out.claims = o3
-  rcases o1 with _ | ⟨_, pt1, v1⟩ <;> rcases o2 with _ | ⟨_, pt2, v2⟩ <;> rcases o3 with _ | ⟨_, pt3, v3⟩ <;>
-    repeat hop3_step
-
-/-- **π1-rec3's honest prover over the two calls hashes only short inputs** (`p1k`), at the real deployment and
-an honest statement of the shape's row counts. -/
-theorem hashOK_p1k {D : RecDeployment} (hD : D.Real) (input : Vector UInt8 32) (rows : List ℕ)
-    (q : D.pi1.Stack rows) (hfit : D.pi1.shape.RowsFit rows) (_hrel : D.pi1.HonestRelation rows input q) :
-    HashOK Short (Pi2G.p1k D input rows q) := by
-  have hsh : D.pi1.shape = reference := hD.2.2.1
-  have hlen : rows.length = 6 := hfit.1
-  obtain ⟨-, -, -, h4⟩ := UniComplete.Cost.reference_vars
-  have e : blake2sR1csLogSize + D.pi1.shape.heights.getD opBlake2s 0 = 32 := by
-    rw [hsh]
-    exact reference_flockLogN
-  have hs := proverStream3_reference D.pi1 hsh fun _ _ ↦ 3552
-  unfold proverStream3 at hs
-  beta_reduce at hs
-  have hF : WC (flockProve3H callKeccak256 32 flockMain (honestTrace D.pi1 input rows q).qflock) 46 3552
-      fun _ _ ↦ True := by
-    have h := flockCost_flockProve3H 32 flockMain (honestTrace D.pi1 input rows q).qflock
-    rw [flockBlocks3_reference, flockBytes_reference] at h
-    exact wc_mono h le_rfl le_rfl fun _ _ _ ↦ trivial
-  unfold Pi2G.p1k uniProverRec3With
-  refine hashOK_proveRec3With (flockProve3H callKeccak256) 46 3552 D.pi1.programIv
-    (honestTrace D.pi1 input rows q) (by simp [honestTrace]) ?_ (by norm_num) ?_ ?_ ?_
-  · rw [UniComplete.Mapping.honestTrace_shape, e]
-    exact hF
-  · rw [UniComplete.Mapping.honestTrace_shape, hsh]
-    omega
-  · rw [UniComplete.Mapping.honestTrace_shape, UniComplete.Mapping.honestTrace_rows, hlen]
-    omega
-  · rw [hD.2.2.2.1, Pi2G.Cost2.programIv_length]
-    norm_num
-
-end Prover
-
 end RecCompose.Pi2A
 
 /-- info: 'RecCompose.Pi2A.hashOK_setupTreesWithH2' depends on axioms: [propext, Classical.choice, Quot.sound] -/
@@ -469,6 +327,3 @@ end RecCompose.Pi2A
 #guard_msgs in
 #print axioms RecCompose.Pi2A.hashOK_graph
 
-/-- info: 'RecCompose.Pi2A.hashOK_p1k' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms RecCompose.Pi2A.hashOK_p1k

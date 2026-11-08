@@ -1,5 +1,5 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. `α`'s freshness at π2's staged run (`Pi2ProbStaged`'s
--- `pi2Staged`, `stageA`) for π1-rec3's honest prover, from `Pi2AlphaLen` (the census before `σ`'s hash),
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. `α`'s freshness at π2's staged run (`Pi2ProbStaged`'s
+-- `pi2Staged`, `stageA`) for π1-rec3's prover (`Pi2P1`'s named facts), from `Pi2AlphaLen` (the census before `σ`'s hash),
 -- `Pi2AlphaChain` (the chain from `σ` to `α`) and `Pi2AlphaSupport` (the graph's verdict on every outcome); uses leanerVM
 -- (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`, commit 6175f1a0, MIT OR Apache-2.0): the two calls,
 -- their lazy random oracles, the block cost.
@@ -8,16 +8,17 @@ import RecCompose.Pi2AlphaSupport
 import RecCompose.Pi2Witness
 
 /-!
-# `α`'s input is fresh at π1-rec3's honest prover
+# `α`'s input is fresh at π1-rec3's prover
 
-**`alphaFresh_p1k`**: in the two-call random-oracle model, after stage A of π2's staged run at π1-rec3's honest prover,
-`α`'s input is cached while π1-rec3's graph accepted (`GAcc`) with probability at most
+**`alphaFresh_of`**: in the two-call random-oracle model, after stage A of π2's staged run at a π1 prover `P1k` of at
+most `2^47` block calls (`Pi1Cost`) hashing only inputs shorter than `2^26` bytes (`Pi1HashShort`), `α`'s input is
+cached while π1-rec3's graph accepted (`GAcc`) with probability at most
 
   `alphaBound = 4 · (2 · setupR + 2^47 + 3 · gOpen + 4) / 2^256 ≤ 2^-204` (**`alphaBound_le`**).
 
 The proof: with `GAcc`, `α`'s input is the writer's `536` bytes (`gAcc_length`), so it suffices to bound their being
 cached (**`prA_le`**). Stage A is the setup, π1-rec3's prover, its graph, the setup again (every input shorter than
-`2^26` bytes: `Pi2AlphaLen`, at most `2 · setupR + 2^47 + 3 · gOpen` hashed inputs), then π2's IV, its seed and `W`'s
+`2^26` bytes: `Pi2AlphaLen` and `Pi1HashShort`, at most `2 · setupR + 2^47 + 3 · gOpen` hashed inputs), then π2's IV, its seed and `W`'s
 tree: `Pi2AlphaChain.chain_le` from `σ`'s `2^26` bytes, not cached.
 -/
 
@@ -108,7 +109,7 @@ set_option maxHeartbeats 1600000 in
 /-- **Stage A caches its writer's `536`-byte input** with probability at most `4 · (K + 4) / 2^256`, `K` the hash count
 before `σ`, for a π1 prover hashing short inputs. -/
 theorem prA_le {D : RecDeployment} (hD : D.Real) (hg : GraphsAgree) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
-    (P1k : OracleComp KeccakCalls (Option UniStatement.UniProof)) (input : Vector UInt8 32) {K₂ : ℕ}
+    (P1k : OracleComp KeccakCalls (Option UniKeccak.KeccakProof)) (input : Vector UInt8 32) {K₂ : ℕ}
     (hpS : HashOK Pi2A.Short P1k) (hpC : HC P1k K₂) :
     Pr{let p ← (simulateQ ro (stageA callKeccak256 callKeccakF1600 D C Fa P1k input)).run ∅}[
       p.2 (.inl (rawInp p.1)) ≠ none ∧ (rawInp p.1).length = 536] ≤
@@ -221,7 +222,7 @@ theorem prA_le {D : RecDeployment} (hD : D.Real) (hg : GraphsAgree) (C : Pi2Circ
       exact take_digestBytes _ _
     · exact le_rfl
 
-/-! ## At π1-rec3's honest prover -/
+/-! ## At π1-rec3's prover -/
 
 /-- **`α`'s bound**: four links, each at most the hashed inputs before `σ` (the setup twice, π1-rec3's prover, its graph)
 and four, over `2^256`. -/
@@ -252,29 +253,28 @@ theorem alphaBound_le : alphaBound ≤ (2 : ℝ≥0∞)⁻¹ ^ 204 := by
 theorem alphaBound_le201 : alphaBound ≤ (2 : ℝ≥0∞)⁻¹ ^ 201 :=
   alphaBound_le.trans (E2ECompleteness.inv_pow_le_inv_pow (by norm_num))
 
-/-- **`α`'s input is fresh while the graph accepts** at π1-rec3's honest prover: in the two-call random-oracle model,
-after stage A of π2's staged run, `α`'s input is cached and π1-rec3's graph accepted with probability at most
-`alphaBound ≤ 2^-204`. -/
-theorem alphaFresh_p1k {D : RecDeployment} (hD : D.Real) (hg : GraphsAgree) (C : Pi2Circuits D)
-    (hchk : Pi2ViewChecked C) (input : Vector UInt8 32) (rows : List ℕ) (q : D.pi1.Stack rows)
-    (hfit : D.pi1.shape.RowsFit rows) (hrel : D.pi1.HonestRelation rows input q) :
-    Pr{let p ← (simulateQ ro (pi2Staged D C (pi2Facts hD C hchk) (p1k D input rows q) input).A).run ∅}[
-      p.2 (.inl ((pi2Staged D C (pi2Facts hD C hchk) (p1k D input rows q) input).inp p.1)) ≠ none ∧ GAcc p.1] ≤
+/-- **`α`'s input is fresh while the graph accepts** at π1-rec3's prover (`Pi1Cost`, `Pi1HashShort`, named): in the
+two-call random-oracle model, after stage A of π2's staged run, `α`'s input is cached and π1-rec3's graph accepted with
+probability at most `alphaBound ≤ 2^-204`. -/
+theorem alphaFresh_of {D : RecDeployment} (hD : D.Real) (hg : GraphsAgree) (C : Pi2Circuits D)
+    (hchk : Pi2ViewChecked C) {P1k : Pi1ProverK D} (hcost : Pi1Cost D P1k) (hshort : Pi1HashShort D P1k)
+    (input : Vector UInt8 32) (rows : List ℕ) (q : D.pi1.Stack rows)
+    (hfit : D.pi1.shape.RowsFit rows) (hrel : D.pi1.HonestRelation D.flock rows input q) :
+    Pr{let p ← (simulateQ ro (pi2Staged D C (pi2Facts hD C hchk) (P1k input rows q) input).A).run ∅}[
+      p.2 (.inl ((pi2Staged D C (pi2Facts hD C hchk) (P1k input rows q) input).inp p.1)) ≠ none ∧ GAcc p.1] ≤
       alphaBound := by
   have hwc := Pi2W.pi2WitnessComplete hD C hchk
   refine (prEvent_mono_of_support _ _ (fun p ↦ p.2 (.inl (rawInp p.1)) ≠ none ∧ (rawInp p.1).length = 536)
     fun p hp hev ↦ ?_).trans ?_
   · have hl := gAcc_length C (pi2Facts hD C hchk) input hD hwc _ hp hev.2
-    have e : (pi2Staged D C (pi2Facts hD C hchk) (p1k D input rows q) input).inp p.1 = rawInp p.1 := by
+    have e : (pi2Staged D C (pi2Facts hD C hchk) (P1k input rows q) input).inp p.1 = rawInp p.1 := by
       show fixLen 536 (UniComplete.Prob.tInput p.1.wr) = _
       unfold fixLen
       simp only [hl, ↓reduceIte]
     have h1 := hev.1
     rw [e] at h1
     exact ⟨h1, hl⟩
-  · exact prA_le hD hg C _ _ input (Pi2A.hashOK_p1k hD input rows q hfit hrel)
-      (hc_of_qc (UniComplete.Rec3.proverCost3_flockProve3H D.pi1 hD.2.2.1
-        (by rw [hD.2.2.2.1, programIv_length]; norm_num) input rows q hfit hrel))
+  · exact prA_le hD hg C _ _ input (hshort input rows q hfit hrel) (hc_of_qc (hcost input rows q hfit hrel))
 
 end RecCompose.Pi2Sim
 
@@ -282,9 +282,9 @@ end RecCompose.Pi2Sim
 #guard_msgs in
 #print axioms RecCompose.Pi2Sim.prA_le
 
-/-- info: 'RecCompose.Pi2Sim.alphaFresh_p1k' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'RecCompose.Pi2Sim.alphaFresh_of' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms RecCompose.Pi2Sim.alphaFresh_p1k
+#print axioms RecCompose.Pi2Sim.alphaFresh_of
 
 /-- info: 'RecCompose.Pi2Sim.alphaBound_le' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in

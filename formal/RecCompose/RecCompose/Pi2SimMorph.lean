@@ -42,7 +42,7 @@ variable {m n : Type → Type} [Monad m] [LawfulMonad m] [Monad n] [LawfulMonad 
 theorem app_setupTreesWithH2 (D : RecDeployment) :
     φ.app (Pi2H.setupTreesWithH H F D) =
       Pi2H.setupTreesWithH (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) D := by
-  simp only [Pi2H.setupTreesWithH, Pi2H.setupTreeWithH, UniComplete.setupTreesWithH, φ.app_bind, φ.app_pure,
+  simp only [Pi2H.setupTreesWithH, Pi2H.setupTreeKWithH, Pi2H.setupTreeWithH, φ.app_bind, φ.app_pure,
     Morph.app_commitWithH]
 
 theorem app_digestWithH (c : Pi2Circuit) :
@@ -75,7 +75,7 @@ theorem app_pcsOpenWithH (vars : ℕ) (root : Digest) (claims : List PcsQuotient
 include hopen in
 /-- **π1-rec3's graph with its three openings.** -/
 theorem app_pi1GraphVerifierWithH (D : RecDeployment) (roots : UniStatement.SetupRoots) (input : Vector UInt8 32)
-    (proof : UniStatement.UniProof) :
+    (proof : UniKeccak.KeccakProof) :
     φ.app (Pi2H.pi1GraphVerifierWithH H F D roots input proof) =
       Pi2H.pi1GraphVerifierWithH (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) D roots input proof := by
   unfold Pi2H.pi1GraphVerifierWithH
@@ -177,7 +177,7 @@ theorem app_pi2ProveWith (fuel : ℕ) (G : RecPiop.Circuit E) (view : Circuit) (
 
 include hprove in
 theorem app_pi2ProverWith (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C) (fuel : ℕ)
-    (input : Vector UInt8 32) (p1 : UniStatement.UniProof) :
+    (input : Vector UInt8 32) (p1 : UniKeccak.KeccakProof) :
     φ.app (pi2ProverWith H F D C Fa fuel input p1) =
       pi2ProverWith (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) D C Fa fuel input p1 := by
   simp only [pi2ProverWith, φ.app_bind, φ.app_pure, app_setupTreesWithH2, app_ivOfH,
@@ -187,7 +187,7 @@ theorem app_pi2ProverWith (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts
 
 include hopen hprove in
 theorem app_expW2 (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
-    (p1o : m (Option UniStatement.UniProof)) (input : Vector UInt8 32) :
+    (p1o : m (Option UniKeccak.KeccakProof)) (input : Vector UInt8 32) :
     φ.app (expW2 H F D C Fa p1o input) =
       expW2 (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) D C Fa (φ.app p1o) input := by
   simp only [expW2, φ.app_bind, app_setupTreesWithH2]
@@ -218,7 +218,7 @@ theorem wr_post2 (G : RecPiop.Circuit E) (setupStack : Array K) (input : List UI
 
 include hopen in
 theorem app_stageA (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
-    (p1o : m (Option UniStatement.UniProof)) (input : Vector UInt8 32) :
+    (p1o : m (Option UniKeccak.KeccakProof)) (input : Vector UInt8 32) :
     φ.app (stageA H F D C Fa p1o input) =
       stageA (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) D C Fa (φ.app p1o) input := by
   simp only [stageA, φ.app_bind, app_setupTreesWithH2]
@@ -274,7 +274,7 @@ theorem hprove_sim : ∀ (fuel : ℕ) (L : PcsQuotient.Layout) (tree : LeanVM.Pr
 
 /-- **The experiment over the two calls commutes with any simulation.** -/
 theorem sim_expW2 (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
-    (p1o : OracleComp KeccakCalls (Option UniStatement.UniProof)) (input : Vector UInt8 32) :
+    (p1o : OracleComp KeccakCalls (Option UniKeccak.KeccakProof)) (input : Vector UInt8 32) :
     simulateQ impl (expW2 callKeccak256 callKeccakF1600 D C Fa p1o input) =
       expW2 (implH impl) (implF impl) D C Fa (simulateQ impl p1o) input := by
   have h := app_expW2 (Morph.sim impl) callKeccak256 callKeccakF1600 (hopen_sim impl) (hprove_sim impl) D C Fa p1o
@@ -283,7 +283,7 @@ theorem sim_expW2 (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
   exact h
 
 theorem sim_stageA (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
-    (p1o : OracleComp KeccakCalls (Option UniStatement.UniProof)) (input : Vector UInt8 32) :
+    (p1o : OracleComp KeccakCalls (Option UniKeccak.KeccakProof)) (input : Vector UInt8 32) :
     simulateQ impl (stageA callKeccak256 callKeccakF1600 D C Fa p1o input) =
       stageA (implH impl) (implF impl) D C Fa (simulateQ impl p1o) input := by
   have h := app_stageA (Morph.sim impl) callKeccak256 callKeccakF1600 (hopen_sim impl) D C Fa p1o input

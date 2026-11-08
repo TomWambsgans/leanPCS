@@ -96,7 +96,7 @@ variable (Ht : List UInt8 → Digest) (Ft : KeccakState → KeccakState) (D : Re
   (Fa : Pi2Facts D C) (input : Vector UInt8 32)
 
 /-- Stage A at `Id`, π1's prover's result `o`. -/
-noncomputable def aAt (o : Option UniStatement.UniProof) : StA :=
+noncomputable def aAt (o : Option UniKeccak.KeccakProof) : StA :=
   Id.run (stageA (m := Id) (Pure.pure ∘ Ht) Ft D C Fa (pure o) input)
 
 /-- Stage B at `Id`. -/
@@ -109,7 +109,7 @@ noncomputable def cAt (b : StB) (st : Digest) : Bool × Bool := Id.run (stageC (
 noncomputable def prOf (a : StA) : Pr2 := (a.roots, a.vw.2, Fa.pubOf a.roots (publicScalarsOf input.toList a.vw.1))
 
 /-- **The staged run at `Id`**, π1's prover's result `o`. -/
-noncomputable def stagedAt (o : Option UniStatement.UniProof) :
+noncomputable def stagedAt (o : Option UniKeccak.KeccakProof) :
     ((Bool × Bool) × ((Pr2 × E × E × E) × E)) × (Pr2 × E × E × E) :=
   let a := aAt Ht Ft D C Fa input o
   let s₁ := Ht (fixLen 536 (UniComplete.Prob.tInput a.wr))
@@ -121,7 +121,7 @@ noncomputable def stagedAt (o : Option UniStatement.UniProof) :
     (prOf D C Fa input a, chalP s₁, chalP s₂, chalP s₃))
 
 /-- **The staged run at pure `(Ht, Ft)`** is `stagedAt` at π1's prover's result. -/
-theorem runAt_staged (P1k : OracleComp KeccakCalls (Option UniStatement.UniProof)) :
+theorem runAt_staged (P1k : OracleComp KeccakCalls (Option UniKeccak.KeccakProof)) :
     runAt Ht Ft (pi2Staged D C Fa P1k input).run = stagedAt Ht Ft D C Fa input (runAt Ht Ft P1k) := by
   unfold runAt
   simp only [Pi2Staged.run, staged3, Pi2Staged.tail, pi2Staged, simulateQ_bind, simulateQ_pure, simulateQ_queryH,
@@ -133,7 +133,7 @@ theorem cAt_none (s₁ s₂ s₃ st : Digest) :
     cAt Ht Ft D C input (bAt Ht D C (aAt Ht Ft D C Fa input none) s₁ s₂ s₃) st = (false, false) := rfl
 
 /-- **Stage C's first component is π1-rec3's graph's verdict.** -/
-theorem cAt_fst (b : StB) (st : Digest) (p1 : UniStatement.UniProof) (hp : b.a.p1 = some p1) :
+theorem cAt_fst (b : StB) (st : Digest) (p1 : UniKeccak.KeccakProof) (hp : b.a.p1 = some p1) :
     (cAt Ht Ft D C input b st).1 = b.a.a1 := by
   unfold cAt stageC
   rw [hp]
@@ -142,7 +142,7 @@ theorem cAt_fst (b : StB) (st : Digest) (p1 : UniStatement.UniProof) (hp : b.a.p
 
 /-! ### π1's prover returning a proof -/
 
-variable (p1 : UniStatement.UniProof)
+variable (p1 : UniKeccak.KeccakProof)
 
 /-- The seed at the setup's roots. -/
 abbrev seedAt : Digest := Ht (RecStatement.name ++ ivOf D Ht (rootsH D Ht Ft) ++ input.toList)
