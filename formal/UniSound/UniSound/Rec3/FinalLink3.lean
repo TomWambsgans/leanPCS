@@ -1,7 +1,13 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The statement is `Rec3/Fs3.lean`'s `UniFinal3`; the
 -- proof follows `FinalLink.lean`'s `uniFinal` (the main line's), without the pending matrices' term.
 import UniSound.Rec3.CodeLink3
-import UniSound.Rec3.Ids3
+import UniSound.Ids.Build
+import UniSound.Rec3.BusSq
+import UniSound.Rec3.Piop3
+import FlockSoundUni.Rec3Catch
+import UniSound.Prog
+import UniSound.FlockInterface
+import UniStatement.RecSecurity
 import UniSound.Rec3.Batch3
 import UniSound.Ids.Align
 import FlockSoundUni.Good

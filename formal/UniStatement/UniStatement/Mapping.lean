@@ -1,6 +1,6 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The basis-B encoding is `crates/leanvm/univariate`'s
 -- (SPEC.md §2); the novel-basis transform is this repository's `formal/Statement` (`PcsQuotient.Domain`); the
--- relation and its stack are `formal/Lv42`'s (leanerVM `mumbai` f0393df4's, MIT OR Apache-2.0).
+-- programs and sizes are `formal/Lv42`'s (leanerVM `mumbai` f0393df4's, MIT OR Apache-2.0).
 module
 
 public import UniStatement.Run
@@ -8,46 +8,26 @@ public import PcsQuotient.Domain
 public import Lv42.Protocol.LeanIsaBase
 
 /-!
-# The univariate commitments against Lv42's stack
+# The univariate commitments' encodings
 
 The verifier's `C1` and setup commitments hold the tables' columns as **coefficients** in the basis `B`
-(SPEC.md §2) on their own stack (`layouts`); Lv42's relation `M3Holds (leanIsaInstance F prog s) input q`
-is about one stack `q` of **values** on the Boolean cube, in leanVM's layout (`LeanIsa.layout`). This file
-is the map between them, as definitions:
+(SPEC.md §2) on their own stack (`layouts`). This file has the maps the statements read them by:
 
 * `basisValue c r x`: the value at `ω_x` of the column whose `2^r` basis-`B` coefficients are `c`, the
   `K`-multilinear extension of `c` at the digits `w_l(ω_x) = ω_{x >> l}` (SPEC.md §2:
   `f(t) = ĉ(w_0(t), …, w_{r−1}(t))`);
 * `bCoefficients r v`: the inverse, the basis-`B` coefficients of the column of values `v`: the novel-basis
-  coefficients (`PcsQuotient.Domain.coefficients`), then `c_k = Σ_{S ⊆ k} d_S`, since
-  `B_k = Σ_{S ⊇ k} X_S` (the runner checks `basisValue ∘ bCoefficients = id` at small sizes);
-* **`lv42Stack`**, the Lv42 stack a `C1` stack carries: Lv42's columns in its stacking order
-  (`LeanIsa.stackOrder`), each read off `C1` as the correspondence table says, the committed ones by
-  `basisValue`, `QFLOCK` as it is (it is committed as values in both);
-* the setup's tables (`setupStack`, `matrixStack`): the bytecode's 16 tuple slots and the memory's
-  addresses (in basis `B`), and Flock's matrices `A0`, `B0` (`0`/`1` entries, row low).
+  coefficients (`PcsQuotient.Domain.coefficients`), then `c_k = Σ_{S ⊆ k} d_S`, since `B_k = Σ_{S ⊇ k} X_S`;
+* **the rows' order** (`rowPosition`, iteration 2, F1b): a table's executed rows are its first `count`; the
+  univariate PIOP places them at the fixed cosets of the count's set bits (`activePositions`), padding rows at the
+  other rows in order (the rows' order is not part of leanVM's statement: the bus is a multiset, the constraints
+  hold on every row, padding rows are free);
+* the public input the calldata's 32 bytes are (`publicInputOf`), a proof's sizes (`sizesOf`);
+* the setup's tables (`setupStack`, `matrixStack`): the bytecode's 16 tuple slots and the memory's addresses (in
+  basis `B`), and Flock's matrices `A0`, `B0` (`0`/`1` entries, row low).
 
-**The correspondence** (column of `C1` ↦ column of Lv42's `leanIsaInstance`; `t` an opcode, `i` a column):
-
-| `C1` (`UniStatement.Column`) | Lv42 (`LeanIsa.Col`) | encoding |
-|---|---|---|
-| `memory k`, `k < 3` (limbs), `memory 3` (final counts) | `memCol k` (`MEM_LO, MEM_HI, MEM_TOP, MFCNT`) | basis `B`, `2^logMem` |
-| `bytecodeFinal` | `bfcntCol` (`BFCNT`) | basis `B`, `2^logBytecode` |
-| `qflock` | `flockCol` (`QFLOCK`, the Flock region) | values; Lv42's instance `x` is `C1`'s `rowPosition x` |
-| `table t i`, `i` not a `BLAKE2S` limb | `⟨opIdx t, i⟩` | basis `B`, `2^h_t`; Lv42's row `x` is `C1`'s `rowPosition x` |
-| `table 5 i`, `9 ≤ i < 27` (the limbs' copies) | none: Lv42 reads limb `i − 9` off `QFLOCK`'s slot | the copies equal the slots on every row (`Q_W`) |
-| `inverse t` (`z_T`) | none | proves `CountsNonzero` (`Q_W`) |
-| `qflockSlot j` (a view of `qflock`) | `QFLOCK`'s strided slot | — |
-
-The column index `i` of a table is the same on both sides: both are leanVM's `layout.rs` order (Lv42's
-`Verifier.tables` names them, and its `padRow` reads them by position).
-
-**The rows' order** (iteration 2, F1b): Lv42's executed rows are a table's first `rows`; the univariate PIOP
-places them at the fixed cosets of the count's set bits (`activePositions`), and `q_flock`'s instances with
-them. `rowPosition` is the bijection (executed rows to the cosets in order, padding rows to the other rows in
-order); the rows' order is not part of leanVM's statement (the bus is a multiset, the constraints hold on every
-row, padding rows are free). The contract's height `h_t` is the shape's; Lv42's `τ_t = ⌈log₂ rows⌉ ≤ h_t`
-reads the first `2^τ_t` of `rowPosition`'s images.
+(The map from a `C1` stack to Lv42's stack for leanVM 42422001's relation, with its `BLAKE2S` limbs read off
+`QFLOCK`, was here; it is removed with `BLAKE2S`. The Keccak VM's is `UniKeccak.Mapping`'s.)
 -/
 
 @[expose] public section

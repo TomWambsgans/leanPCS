@@ -1,7 +1,8 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The links' and the layer's form is `Fs.lean`'s (the main
 -- line's), for π1-rec3's verifier (`formal/UniStatement`'s `reduceWithFs`, `verifyWithFs` at `.rec3` with the walk).
 import UniSound.Fs
-import UniSound.Rec3.PiopSound3
+import UniSound.PiopSound
+import UniSound.Rec3.Piop3
 
 /-!
 # π1-rec3: the code-level link, the last link and the Fiat–Shamir layer
