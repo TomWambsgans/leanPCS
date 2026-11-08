@@ -82,7 +82,10 @@ theorem sha3_flushes_eq (side : Side) (R : ℕ → K) :
 /-- `tablesKeccak` is `tables` but for `SHA3`. -/
 theorem tablesKeccak_getD_of_ne {j : ℕ} (hj : j ≠ opSha3) :
     tablesKeccak.getD j default = tables.getD j default := by
-  rw [tablesKeccak, List.getD_eq_getElem?_getD, List.getD_eq_getElem?_getD, List.getElem?_set_ne (Ne.symm hj)]
+  match j, hj with
+  | 0, _ | 1, _ | 2, _ | 3, _ | 4, _ => rfl
+  | 5, h => exact absurd rfl h
+  | n + 6, _ => simp [tablesKeccak, tables, List.getD_eq_getElem?_getD]
 
 theorem tablesKeccak_getD_sha3 : (tablesKeccak.getD opSha3 default).flushes = flushesSha3 := rfl
 
