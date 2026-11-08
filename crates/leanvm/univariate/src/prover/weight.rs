@@ -24,6 +24,7 @@ use gf2_linear::Linear;
 use leanvm_statement::field::E;
 use primitives::field::{F64, F192, F192Unreduced, Weights8, dot_base, mul_unreduced4, mul4};
 use primitives::multilinear::eq_table;
+use quotient::ntt::{Ex8, Kx8, MixedSum};
 
 use super::poly::from_v;
 use crate::claims::{Column, Combined};
@@ -668,7 +669,14 @@ impl Weight {
         enum Prep2 {
             Factored { coefficients: Vec<Sums>, span: usize },
             Dense,
-            Twisted { lo: Vec<F192>, hi: Vec<F192>, bits: usize, map: Linear<2> },
+            Twisted {
+                lo: Vec<F192>,
+                hi: Vec<F192>,
+                bits: usize,
+                map: Linear<2>,
+                /// `lo`'s three limbs (for the eight-lane steps).
+                lo_limbs: [Vec<F64>; 3],
+            },
             Scalar(F192),
         }
         let preps: Vec<Prep2> = self
@@ -730,11 +738,13 @@ impl Weight {
                             })
                             .collect();
                         let (lo, hi, bits) = split_eq(&point[bound + 1..]);
+                        let lo_limbs = [0, 1, 2].map(|l| lo.iter().map(|x| F64([x.c0, x.c1, x.c2][l])).collect());
                         Prep2::Twisted {
                             lo,
                             hi,
                             bits,
                             map: Linear::new([&a, c]),
+                            lo_limbs,
                         }
                     }
                 }
@@ -828,16 +838,55 @@ impl Weight {
                     }
                     out
                 }
-                (Prep2::Twisted { lo, hi, bits, map }, _) => {
+                (Prep2::Twisted { lo, hi, bits, map, lo_limbs }, _) => {
                     let mut at = vec![[F192Unreduced::ZERO; SUMS]; span];
+                    // Eight units a step in eight lanes: with `A = W(2u)`, `D = W(2u) + W(2u + 1)`, `B = A + D` and,
+                    // at offset `y` of the units' runs, `P`, `Q` the words of their even and odd runs, a group's eight
+                    // sums are the even and odd lanes of four lane-wise products: `A P` (sums 0, 1), `D (P + Q)` (3,
+                    // 4), `[A', B'] [P', Q']` (5, 6) and `[B, A' + B'] [Q, P' + Q']` (2, 7), `X'` a lane pair's sum
+                    // and `[X, Y]` the even lanes `X`'s, the odd `Y`'s. The same sums, other groupings.
+                    let mut lanes = vec![[MixedSum::default(); 4]; span];
+                    let mask = (1usize << *bits) - 1;
                     for first in (start..end).step_by(8) {
+                        let off = piece.offset + ((2 * first) << j);
+                        if *bits >= 3 && first % 8 == 0 && first + 8 <= end && off + (16 << j) <= words.len() {
+                            let at_lo = first & mask;
+                            let e8 = Ex8::from_limbs([0, 1, 2].map(|l| Kx8::load(&lo_limbs[l][at_lo..])))
+                                * Ex8::splat(hi[first >> *bits]);
+                            let [w0, dw] = map.at8_limbs(&e8.limbs().map(|k| k.to_row().0.map(|x| x.0)));
+                            let ex = |w: [[u64; 8]; 3]| Ex8::from_limbs(w.map(|l| Kx8::new(l.map(F64))));
+                            let (a, d) = (ex(w0), ex(dw));
+                            let b = a + d;
+                            let (a2, b2) = (a + a.swap_pairs(), b + b.swap_pairs());
+                            let (v, u) = (a2.odd_from(b2), b.odd_from(a2 + b2));
+                            for (y, lanes) in lanes.iter_mut().enumerate() {
+                                let p = Kx8::new(std::array::from_fn(|l| words[off + ((2 * l) << j) + y]));
+                                let q = Kx8::new(std::array::from_fn(|l| words[off + ((2 * l + 1) << j) + y]));
+                                let (p2, q2) = (p + p.xor_lanes(1), q + q.xor_lanes(1));
+                                lanes[0].add_lanes(a, p);
+                                lanes[1].add_lanes(d, p + q);
+                                lanes[2].add_lanes(v, p2.odd_from(q2));
+                                lanes[3].add_lanes(u, q.odd_from(p2 + q2));
+                            }
+                            continue;
+                        }
                         let [w0, dw] = map.at8(&eq8(lo, hi, *bits, first, end));
                         for k in (0..(end - first).min(8)).step_by(2) {
                             let w = [w0[k], w0[k] + dw[k], w0[k + 1], w0[k + 1] + dw[k + 1]];
                             group(&mut at, piece, (first + k) / 2, w);
                         }
                     }
-                    weigh(&at).map(|x| piece.scale * x)
+                    let even = |v: &[F192; 8]| (v[0] + v[2]) + (v[4] + v[6]);
+                    let odd = |v: &[F192; 8]| (v[1] + v[3]) + (v[5] + v[7]);
+                    let mut out = weigh(&at);
+                    for (lanes, &ey) in lanes.iter().zip(e) {
+                        let [s0, s1, s2, s3] = lanes.map(|l| l.reduce().to_array());
+                        let laned = [even(&s0), odd(&s0), even(&s3), even(&s1), odd(&s1), even(&s2), odd(&s2), odd(&s3)];
+                        for (o, x) in out.iter_mut().zip(laned) {
+                            *o += ey * x;
+                        }
+                    }
+                    out.map(|x| piece.scale * x)
                 }
                 (Prep2::Scalar(value), _) => {
                     // The block is one word of the folded stack, at its offset's position in its group.

@@ -1219,6 +1219,12 @@ impl Kx8 {
         Self(v)
     }
 
+    /// The even lanes `self`'s, the odd ones `odd`'s.
+    #[inline(always)]
+    pub fn odd_from(self, odd: Self) -> Self {
+        Self(mask_add(self.0, 0xAA, xor(self.0, odd.0)))
+    }
+
     #[inline(always)]
     pub fn to_row(self) -> K8 {
         let mut out = K8::ZERO;
@@ -1313,6 +1319,12 @@ impl Ex8 {
         Self(self.0.map(swap::<1>))
     }
 
+    /// The even lanes `self`'s, the odd ones `odd`'s.
+    #[inline(always)]
+    pub fn odd_from(self, odd: Self) -> Self {
+        Self(std::array::from_fn(|l| mask_add(self.0[l], 0xAA, xor(self.0[l], odd.0[l]))))
+    }
+
     /// Lane `i` times `k_i` in K.
     #[inline(always)]
     pub fn mul_k(self, k: Kx8) -> Self {
@@ -1373,6 +1385,14 @@ impl MixedSum {
     #[inline(always)]
     pub fn add(&mut self, c: &ESplat, k: Kx8) {
         for (acc, &l) in self.0.iter_mut().zip(&c.0) {
+            *acc = xor_u(*acc, clmul_u(l, k.0));
+        }
+    }
+
+    /// `Σ e k` lane by lane: lane `i` adds `e_i k_i`.
+    #[inline(always)]
+    pub fn add_lanes(&mut self, e: Ex8, k: Kx8) {
+        for (acc, &l) in self.0.iter_mut().zip(&e.0) {
             *acc = xor_u(*acc, clmul_u(l, k.0));
         }
     }
@@ -2594,6 +2614,29 @@ mod tests {
             let mut got = columns.clone();
             interpolate_prefix_cols(&mut got.iter_mut().map(|c| &mut c[..]).collect::<Vec<_>>(), &sizes, base);
             assert_eq!(got, want, "interpolate_prefix_cols, blocks {sizes:?}");
+        }
+    }
+
+    /// The lane-wise mixed sums and the lanes' blends are the scalar ones.
+    #[test]
+    fn lane_sums_and_blends() {
+        let mut next = rng(23);
+        let e: Vec<F192> = (0..16).map(|_| F192::new(next(), next(), next())).collect();
+        let k: Vec<F64> = (0..16).map(|_| F64(next())).collect();
+        let ex = |o: usize| Ex8::from_limbs([0, 1, 2].map(|l| Kx8::new(std::array::from_fn(|i| F64([e[o + i].c0, e[o + i].c1, e[o + i].c2][l])))));
+        let kx = |o: usize| Kx8::new(std::array::from_fn(|i| k[o + i]));
+        let mut sum = MixedSum::default();
+        sum.add_lanes(ex(0), kx(0));
+        sum.add_lanes(ex(8), kx(8));
+        let got = sum.reduce().to_array();
+        for i in 0..8 {
+            assert_eq!(got[i], e[i].mul_base(k[i]) + e[8 + i].mul_base(k[8 + i]));
+        }
+        let blend = ex(0).odd_from(ex(8)).to_array();
+        let kb = kx(0).odd_from(kx(8)).to_row();
+        for i in 0..8 {
+            assert_eq!(blend[i], e[if i % 2 == 1 { 8 + i } else { i }]);
+            assert_eq!(kb.0[i], k[if i % 2 == 1 { 8 + i } else { i }]);
         }
     }
 

@@ -108,6 +108,48 @@ impl<const N: usize> Linear<N> {
         }
     }
 
+    /// [`Self::at8`] limb by limb: `limbs[h][e]` is limb `h` of element `e`, and so is the output's (`out[n][h][e]`).
+    #[inline]
+    pub fn at8_limbs(&self, limbs: &[[u64; 8]; 3]) -> [[[u64; 8]; 3]; N] {
+        #[cfg(all(
+            target_arch = "x86_64",
+            target_feature = "gfni",
+            target_feature = "avx512f",
+            target_feature = "avx512bw",
+            target_feature = "avx512vbmi"
+        ))]
+        {
+            // SAFETY: the kernel's target features are enabled at compile time.
+            unsafe { self.at8_limbs_gfni(limbs) }
+        }
+        #[cfg(not(all(
+            target_arch = "x86_64",
+            target_feature = "gfni",
+            target_feature = "avx512f",
+            target_feature = "avx512bw",
+            target_feature = "avx512vbmi"
+        )))]
+        {
+            let each: [[F192; N]; 8] = std::array::from_fn(|e| self.at(F192::new(limbs[0][e], limbs[1][e], limbs[2][e])));
+            std::array::from_fn(|n| std::array::from_fn(|h| std::array::from_fn(|e| [each[e][n].c0, each[e][n].c1, each[e][n].c2][h])))
+        }
+    }
+
+    #[cfg(all(
+        target_arch = "x86_64",
+        target_feature = "gfni",
+        target_feature = "avx512f",
+        target_feature = "avx512bw",
+        target_feature = "avx512vbmi"
+    ))]
+    #[inline]
+    unsafe fn at8_gfni(&self, x: &[F192; 8]) -> [[F192; 8]; N] {
+        let limbs: [[u64; 8]; 3] = std::array::from_fn(|h| std::array::from_fn(|e| [x[e].c0, x[e].c1, x[e].c2][h]));
+        // SAFETY: the caller's target features.
+        let out = unsafe { self.at8_limbs_gfni(&limbs) };
+        std::array::from_fn(|n| std::array::from_fn(|e| F192::new(out[n][0][e], out[n][1][e], out[n][2][e])))
+    }
+
     /// [`Self::at8`] by `vgf2p8affineqb`: the eight elements' limbs transposed so that qword lane `l` of limb `h`'s
     /// register holds byte `l` of the eight elements, then per input byte `i` (broadcast) and output limb `h`, one
     /// affine product by the blocks from byte `i` to the limb's eight bytes; the sums transposed back.
@@ -119,7 +161,7 @@ impl<const N: usize> Linear<N> {
         target_feature = "avx512vbmi"
     ))]
     #[inline]
-    unsafe fn at8_gfni(&self, x: &[F192; 8]) -> [[F192; 8]; N] {
+    unsafe fn at8_limbs_gfni(&self, x: &[[u64; 8]; 3]) -> [[[u64; 8]; 3]; N] {
         use std::arch::x86_64::*;
         // SAFETY: the caller has the target features; every load and store is of an 8-qword array.
         unsafe {
@@ -136,11 +178,10 @@ impl<const N: usize> Linear<N> {
             );
             let mut bytes = [[0u64; 8]; 3];
             for (h, limb) in bytes.iter_mut().enumerate() {
-                let words: [u64; 8] = std::array::from_fn(|e| [x[e].c0, x[e].c1, x[e].c2][h]);
-                let v = _mm512_permutexvar_epi8(transpose, _mm512_loadu_si512(words.as_ptr().cast()));
+                let v = _mm512_permutexvar_epi8(transpose, _mm512_loadu_si512(x[h].as_ptr().cast()));
                 _mm512_storeu_si512(limb.as_mut_ptr().cast(), v);
             }
-            let mut out = [[F192::ZERO; 8]; N];
+            let mut out = [[[0u64; 8]; 3]; N];
             for (n, out) in out.iter_mut().enumerate() {
                 let blocks = &self.affine[n];
                 let mut acc = [_mm512_setzero_si512(); 3];
@@ -151,12 +192,8 @@ impl<const N: usize> Linear<N> {
                         *acc = _mm512_xor_si512(*acc, _mm512_gf2p8affine_epi64_epi8::<0>(src, m));
                     }
                 }
-                let mut limbs = [[0u64; 8]; 3];
                 for (h, acc) in acc.into_iter().enumerate() {
-                    _mm512_storeu_si512(limbs[h].as_mut_ptr().cast(), _mm512_permutexvar_epi8(transpose, acc));
-                }
-                for (e, o) in out.iter_mut().enumerate() {
-                    *o = F192::new(limbs[0][e], limbs[1][e], limbs[2][e]);
+                    _mm512_storeu_si512(out[h].as_mut_ptr().cast(), _mm512_permutexvar_epi8(transpose, acc));
                 }
             }
             out
@@ -218,6 +255,11 @@ mod tests {
                 };
                 assert_eq!(map.at(xk), [direct(&a), direct(&b[..17])]);
                 assert_eq!([eight[0][k], eight[1][k]], map.at(xk));
+                let limbs: [[u64; 8]; 3] = std::array::from_fn(|h| std::array::from_fn(|e| [x[e].c0, x[e].c1, x[e].c2][h]));
+                let by_limbs = map.at8_limbs(&limbs);
+                for n in 0..2 {
+                    assert_eq!(F192::new(by_limbs[n][0][k], by_limbs[n][1][k], by_limbs[n][2][k]), eight[n][k]);
+                }
             }
         }
     }
