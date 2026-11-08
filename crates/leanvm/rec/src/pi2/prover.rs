@@ -467,6 +467,46 @@ fn lanes(x: Kx8) -> [F64; 8] {
     x.to_row().0
 }
 
+/// Eight elements of `E` as lanes.
+fn ex8(x: [F192; 8]) -> Ex8 {
+    let limb = |k: usize| Kx8::new(x.map(|e| F64([e.c0, e.c1, e.c2][k])));
+    Ex8::from_limbs([limb(0), limb(1), limb(2)])
+}
+
+/// A formula of `K`'s value at eight points' cells.
+#[inline(always)]
+fn k_value(lin: &KLin, products: &[(F64, KLin, KLin)], cells: &[Kx8]) -> Kx8 {
+    if products.is_empty() {
+        lin.eval(cells)
+    } else {
+        let p = products.iter().fold(Kx8U::zero(), |acc, (c, a, b)| {
+            let (x, y) = (a.eval(cells), b.eval(cells));
+            acc + Kx8U::product(if *c == F64::ONE { x } else { Kx8::splat(*c) * x }, y)
+        });
+        lin.eval(cells) + p.reduce()
+    }
+}
+
+impl Compiled {
+    /// Its value at eight points' cells (`cells[c]` the cell `c` of the lanes' rows, before the role's permutation).
+    fn eval(&self, cells: &[Kx8], gammas: &[F192]) -> Ex8 {
+        match self {
+            Compiled::K { lin, products } => Ex8::from_k(k_value(lin, products, cells)),
+            Compiled::ELinear { terms, constant } => {
+                let mut v = MixedSum::default();
+                terms.iter().for_each(|(c, cell)| v.add(c, cells[*cell]));
+                v.reduce() + Ex8::splat(*constant)
+            }
+            Compiled::E { formula, role } => {
+                let rows: Vec<[F64; 8]> = cells.iter().map(|&c| lanes(c)).collect();
+                ex8(std::array::from_fn(|l| {
+                    formula.eval(&|c| F192::from(rows[c ^ role][l]), gammas)
+                }))
+            }
+        }
+    }
+}
+
 /// `q`'s values on `D = β_{m+2} + V_{m+2}`, limb by limb, eight consecutive points at a time (`quotient::ntt`'s
 /// lanes: one AVX-512 carry-less product for eight).
 #[allow(clippy::too_many_arguments)]
@@ -475,7 +515,7 @@ fn quotient_on_extension(
     spec: &Spec,
     setup: &Setup,
     w_novel: &[F64],
-    h_novel: &[Vec<F64>; 3],
+    h_novel: [&[F64]; 3],
     [alpha, beta_, gamma]: [F192; 3],
     [l0, l1, l2]: [&mut [F64]; 3],
 ) {
@@ -509,7 +549,7 @@ fn quotient_on_extension(
     let on_d = |novel: &[F64]| on_extension(novel, m, offset);
     let wd = on_d(w_novel);
     let (sd, kd) = (&setup.sigma_on_d, &setup.kappa_on_d);
-    let hd = [on_d(&h_novel[0]), on_d(&h_novel[1]), on_d(&h_novel[2])];
+    let hd = h_novel.map(on_d);
     let gammas = primitives::field::powers(gamma, spec.max_gamma + 1);
     lap("w, σ, κ, h on D");
 
@@ -644,16 +684,7 @@ fn quotient_on_extension(
                 selected = selected + narrow_sum;
                 match compiled {
                     Compiled::K { lin, products } => {
-                        let v = if products.is_empty() {
-                            lin.eval(&cells)
-                        } else {
-                            let p = products.iter().fold(Kx8U::zero(), |acc, (c, a, b)| {
-                                let (x, y) = (a.eval(&cells), b.eval(&cells));
-                                acc + Kx8U::product(if *c == F64::ONE { x } else { Kx8::splat(*c) * x }, y)
-                            });
-                            lin.eval(&cells) + p.reduce()
-                        };
-                        pushed_k = pushed_k + Kx8U::product(narrow_sum, v);
+                        pushed_k = pushed_k + Kx8U::product(narrow_sum, k_value(lin, products, &cells));
                     }
                     Compiled::ELinear { terms, constant } => {
                         let sum = group_wide[g * pv + jw] + narrow_sum;
@@ -699,13 +730,151 @@ fn quotient_on_extension(
     lap("q's coefficients");
 }
 
+/// `h = [pull]/(α + w + βx) + 1/(α + P + βσ)` on `V_m`, limb by limb (`out`), in chunks of `run` positions. Each
+/// position's pull and push are `Circuit::pulls`'s and `Circuit::pushes`'s, found without their tables: eight rows
+/// at a time, the positions of one role in them are one vector, of one formula when one pair (or none) covers the
+/// eight rows (found by a search in the role's pairs, sorted row intervals), else lane by lane. A pulling position's
+/// `h` is `(d_pull + d_push) / (d_pull d_push)`; a chunk's denominators are one batched inversion (eight chains).
+fn h_on_v(
+    circuit: &Circuit,
+    w: &[F64],
+    alpha: F192,
+    beta_: F192,
+    gammas: &[F192],
+    run: usize,
+    [o0, o1, o2]: [&mut [F64]; 3],
+) {
+    let (r, n, width) = (circuit.log_row, circuit.n(), circuit.width());
+    let tile = 8 * width;
+    assert!(run % tile == 0 && n % run == 0, "chunks of whole eight-row tiles");
+    let compiled: Vec<Compiled> = circuit.formulas.iter().map(|f| Compiled::new(f, 0, gammas)).collect();
+    let mut by_role: Vec<Vec<(usize, usize, usize)>> = vec![vec![]; width];
+    for (p, pair) in circuit.pairs.iter().enumerate() {
+        by_role[pair.role].push((pair.first_row, pair.first_row + (1 << pair.log_rows), p));
+    }
+    by_role.iter_mut().for_each(|l| l.sort_unstable());
+    // The pair of `role` covering `row` (`Ok`), and whether it (or none) covers the rows to `row + 8`.
+    let column = |row: usize, role: usize| -> (Option<usize>, bool) {
+        let list = &by_role[role];
+        let k = list.partition_point(|e| e.0 <= row);
+        if k > 0 && row < list[k - 1].1 {
+            (Some(list[k - 1].2), list[k - 1].1 >= row + 8)
+        } else {
+            (None, list.get(k).is_none_or(|e| e.0 >= row + 8))
+        }
+    };
+    // A position's pull, and its push's value (the formula of its pair, or its own value).
+    let push = |i: usize, cells: &dyn Fn(usize) -> F64| -> (bool, F192) {
+        match column(i >> r, i & (width - 1)).0 {
+            None => (true, F192::from(w[i])),
+            Some(p) => {
+                let pair = &circuit.pairs[p];
+                let formula = &circuit.formulas[pair.formula];
+                let own = if formula.is_base() {
+                    F192::from(formula.eval_k(cells))
+                } else {
+                    formula.eval(&|c| F192::from(cells(c)), gammas)
+                };
+                (pair.pulls, own)
+            }
+        }
+    };
+    let (alpha8, beta8) = (Ex8::splat(alpha), Ex8::splat(beta_));
+    let one8 = Ex8::splat(F192::ONE);
+    parallel::chunks_mut3(o0, o1, o2, run, |chunk, o0, o1, o2| {
+        let start = chunk * run;
+        let mut den: Vec<Ex8> = Vec::with_capacity(run / 8);
+        let mut num: Vec<Ex8> = Vec::with_capacity(run / 8);
+        let mut cells = vec![Kx8::splat(F64::ZERO); width];
+        for t in 0..run / tile {
+            let row0 = (start + t * tile) >> r;
+            let at = |l: usize, c: usize| ((row0 + l) << r) + c;
+            for (c, cell) in cells.iter_mut().enumerate() {
+                *cell = Kx8::new(std::array::from_fn(|l| w[at(l, c)]));
+            }
+            for c in 0..width {
+                let x = Kx8::new(std::array::from_fn(|l| point(at(l, c))));
+                let sigma = Kx8::new(std::array::from_fn(|l| point(circuit.sigma[at(l, c)] as usize)));
+                let kappa = Kx8::new(std::array::from_fn(|l| circuit.kappa[at(l, c)]));
+                let d_pull = alpha8 + Ex8::from_k(cells[c]) + beta8.mul_k(x);
+                let rest = alpha8 + Ex8::from_k(kappa) + beta8.mul_k(sigma);
+                let (pair, whole) = column(row0, c);
+                if whole {
+                    let (pull, own) = match pair {
+                        None => (true, Ex8::from_k(cells[c])),
+                        Some(p) => {
+                            let pair = &circuit.pairs[p];
+                            (pair.pulls, compiled[pair.formula].eval(&cells, gammas))
+                        }
+                    };
+                    let d_push = rest + own;
+                    if pull {
+                        den.push(d_pull * d_push);
+                        num.push(d_pull + d_push);
+                    } else {
+                        den.push(d_push);
+                        num.push(one8);
+                    }
+                } else {
+                    let (d_pull, rest) = (d_pull.to_array(), rest.to_array());
+                    let (mut d, mut u) = ([F192::ONE; 8], [F192::ONE; 8]);
+                    for l in 0..8 {
+                        let i = at(l, c);
+                        let base = i & !(width - 1);
+                        let (pull, own) = push(i, &|c| w[base + c]);
+                        let d_push = rest[l] + own;
+                        (d[l], u[l]) = if pull {
+                            (d_pull[l] * d_push, d_pull[l] + d_push)
+                        } else {
+                            (d_push, F192::ONE)
+                        };
+                    }
+                    den.push(ex8(d));
+                    num.push(ex8(u));
+                }
+            }
+        }
+        // The batched inversion, eight chains in the lanes.
+        let mut prefix = Vec::with_capacity(den.len());
+        let mut acc = one8;
+        for &d in &den {
+            prefix.push(acc);
+            acc = acc * d;
+        }
+        let mut inv = ex8(acc.to_array().map(|x| x.inv()));
+        for (d, &pre) in den.iter_mut().zip(&prefix).rev() {
+            let next = inv * *d;
+            *d = inv * pre;
+            inv = next;
+        }
+        for (k, (&d, &u)) in den.iter().zip(&num).enumerate() {
+            let (t, c) = (k / width, k % width);
+            let h = (u * d).to_array();
+            for (l, x) in h.iter().enumerate() {
+                let j = t * tile + (l << r) + c;
+                (o0[j], o1[j], o2[j]) = (F64(x.c0), F64(x.c1), F64(x.c2));
+            }
+        }
+    });
+}
+
 /// `f`'s values on `offset + V_{m+2}` from its novel coefficients (`2^m` of them: degree below `2^m`): one transform
 /// of `2^m` points on each coset `offset + ω_{c 2^m} + V_m`, `c < 4`; the values of the transform of the coefficients
 /// zero-padded to `2^(m+2)`, whose top two layers copy them to the four quarters.
 fn on_extension(novel: &[F64], m: usize, offset: F64) -> Vec<F64> {
     let n = novel.len();
     assert_eq!(n, 1 << m);
-    let mut out: Vec<F64> = parallel::map_collect(4 * n, |i| novel[i & (n - 1)]);
+    // The coefficients four times, in parallel runs of `RUN` words (`map_collect` writes each run whole).
+    const RUN: usize = 64;
+    let mut out: Vec<F64> = if n >= RUN {
+        parallel::map_collect(4 * n / RUN, |k| -> [F64; RUN] {
+            let at = (k * RUN) & (n - 1);
+            novel[at..at + RUN].try_into().expect("a run")
+        })
+        .into_flattened()
+    } else {
+        (0..4 * n).map(|i| novel[i & (n - 1)]).collect()
+    };
     for (c, quarter) in out.chunks_mut(n).enumerate() {
         ntt::values(quarter, offset + point(c << m));
     }
@@ -773,87 +942,8 @@ pub fn prove_with(
     let [alpha, beta_, gamma] = [(); 3].map(|_| to_f192(writer.sample()));
     lap("W: transform, commit", &mut timings);
 
-    // h on V_m, limb by limb. Each position's pull and push are `Circuit::pulls`'s and `Circuit::pushes`'s, found
-    // without their tables: a position's pair by a search in its role's pairs (sorted row intervals), every
-    // formula's kind once.
+    // h on V_m, limb by limb ([`h_on_v`]).
     let gammas = super::circuit::gamma_powers(gamma, circuit.max_gamma());
-    let base_formula: Vec<bool> = circuit.formulas.iter().map(|f| f.is_base()).collect();
-    let width = circuit.width();
-    let mut by_role: Vec<Vec<(usize, usize, usize)>> = vec![vec![]; width];
-    for (p, pair) in circuit.pairs.iter().enumerate() {
-        by_role[pair.role].push((pair.first_row, pair.first_row + (1 << pair.log_rows), p));
-    }
-    by_role.iter_mut().for_each(|l| l.sort_unstable());
-    let pair_at = |i: usize| -> Option<usize> {
-        let (row, list) = (i >> r, &by_role[i & (width - 1)]);
-        let k = list.partition_point(|e| e.0 <= row);
-        (k > 0 && row < list[k - 1].1).then(|| list[k - 1].2)
-    };
-    let run = n.min(1 << 12);
-    let mut h_novel: [Vec<F64>; 3] = std::array::from_fn(|_| parallel::map_collect(n, |_| F64::ZERO));
-    {
-        let [h0, h1, h2] = &mut h_novel;
-        parallel::chunks_mut3(h0, h1, h2, run, |chunk, o0, o1, o2| {
-            let start = chunk * run;
-            let mut pulls = vec![false; o0.len()];
-            let mut d: Vec<F192> = Vec::with_capacity(2 * o0.len());
-            for (j, pulls_j) in pulls.iter_mut().enumerate() {
-                let i = start + j;
-                let base = i & !(width - 1);
-                let (pull, own) = match pair_at(i) {
-                    None => (true, F192::from(w[i])),
-                    Some(p) => {
-                        let pair = &circuit.pairs[p];
-                        let formula = &circuit.formulas[pair.formula];
-                        let own = if base_formula[pair.formula] {
-                            F192::from(formula.eval_k(&|c| w[base + c]))
-                        } else {
-                            formula.eval(&|c| F192::from(w[base + c]), &gammas)
-                        };
-                        (pair.pulls, own)
-                    }
-                };
-                *pulls_j = pull;
-                d.push(if pull {
-                    alpha + F192::from(w[i]) + beta_.mul_base(point(i))
-                } else {
-                    F192::ONE
-                });
-                d.push(alpha + own + F192::from(circuit.kappa[i]) + beta_.mul_base(point(circuit.sigma[i] as usize)));
-            }
-            batch_inverse_e(&mut d);
-            for (j, &pull) in pulls.iter().enumerate() {
-                let x = if pull { d[2 * j] } else { F192::ZERO } + d[2 * j + 1];
-                (o0[j], o1[j], o2[j]) = (F64(x.c0), F64(x.c1), F64(x.c2));
-            }
-        });
-    }
-    let limb_sum = |l: &[F64]| {
-        parallel::map_reduce(
-            n / run,
-            || F64::ZERO,
-            |c| l[c * run..(c + 1) * run].iter().fold(F64::ZERO, |a, &x| a + x),
-            |a, b| a + b,
-        )
-    };
-    let sum = F192::new(limb_sum(&h_novel[0]).0, limb_sum(&h_novel[1]).0, limb_sum(&h_novel[2]).0);
-    let mut target_dens: Vec<F192> = circuit
-        .public_values(&public, gamma)
-        .iter()
-        .zip(&circuit.public)
-        .map(|(&f, term)| alpha + f + beta_.mul_base(point(term.tag as usize)))
-        .collect();
-    batch_inverse_e(&mut target_dens);
-    let target = target_dens.iter().fold(F192::ZERO, |a, &x| a + x);
-    assert!(
-        !check || sum == target,
-        "the copy argument's sum is not the public target: the witness does not satisfy the circuit"
-    );
-    for limb in &mut h_novel {
-        ntt::coefficients(limb, F64::ZERO);
-    }
-    lap("h on V_m, its coefficients", &mut timings);
-
     // Q's stack, built in place: its lanes are the chunks in `quotient_chunks`'s order, so the stack is, limb by
     // limb, `h`'s coefficients (`N` words) then `q`'s (`4N`, its four chunks in order). Checked lane by lane
     // against the table's layout (lane `L` holds block `b`: chunk `c = b·lane >> m`, `8 limb + 4 kind + digit`).
@@ -867,15 +957,38 @@ pub fn prove_with(
         assert_eq!(5 * n * limb + kind * n + digit * n + within, lane * qlane, "Q's lane {lane}");
     }
     let mut stack: Vec<F64> = parallel::map_collect(15 * n, |_| F64::ZERO);
+    let run = n.min(1 << 12);
     {
         let mut parts = stack.chunks_exact_mut(5 * n).map(|limb| limb.split_at_mut(n));
         let [(h0, q0), (h1, q1), (h2, q2)] = [(); 3].map(|_| parts.next().expect("three limbs"));
-        for (dst, src) in [h0, h1, h2].into_iter().zip(&h_novel) {
-            parallel::chunks_mut(dst, 1 << 16, |k, out| out.copy_from_slice(&src[k << 16..(k << 16) + out.len()]));
+        h_on_v(circuit, w, alpha, beta_, &gammas, run, [&mut *h0, &mut *h1, &mut *h2]);
+        let limb_sum = |l: &[F64]| {
+            parallel::map_reduce(
+                n / run,
+                || F64::ZERO,
+                |c| l[c * run..(c + 1) * run].iter().fold(F64::ZERO, |a, &x| a + x),
+                |a, b| a + b,
+            )
+        };
+        let sum = F192::new(limb_sum(h0).0, limb_sum(h1).0, limb_sum(h2).0);
+        let mut target_dens: Vec<F192> = circuit
+            .public_values(&public, gamma)
+            .iter()
+            .zip(&circuit.public)
+            .map(|(&f, term)| alpha + f + beta_.mul_base(point(term.tag as usize)))
+            .collect();
+        batch_inverse_e(&mut target_dens);
+        let target = target_dens.iter().fold(F192::ZERO, |a, &x| a + x);
+        assert!(
+            !check || sum == target,
+            "the copy argument's sum is not the public target: the witness does not satisfy the circuit"
+        );
+        for limb in [&mut *h0, &mut *h1, &mut *h2] {
+            ntt::coefficients(limb, F64::ZERO);
         }
-        quotient_on_extension(circuit, spec, setup, &w_novel, &h_novel, [alpha, beta_, gamma], [q0, q1, q2]);
+        lap("h on V_m, its coefficients", &mut timings);
+        quotient_on_extension(circuit, spec, setup, &w_novel, [h0, h1, h2], [alpha, beta_, gamma], [q0, q1, q2]);
     }
-    drop(h_novel);
     lap("q on the extension coset, its coefficients", &mut timings);
 
     let quotient = Table {

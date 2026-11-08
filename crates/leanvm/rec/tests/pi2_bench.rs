@@ -47,6 +47,8 @@ fn pi2_prover_timed() {
 
 fn run() {
     parallel::init();
+    // `BENCH_TRACING=1`: the trace tree of every pass (WHIR's spans).
+    bench::init_tracing_from_env();
     let repeat: usize = std::env::var("PI2_REPEAT").ok().map_or(5, |x| x.parse().expect("a count"));
     let path = format!(
         "{}/../univariate/tests/vectors/keccak128_rec3.txt",
