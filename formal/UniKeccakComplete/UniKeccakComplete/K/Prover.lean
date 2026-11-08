@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Follows `crates/leanvm_univariate/src/prover/prove.rs`
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Follows `crates/leanvm/univariate/src/prover/prove.rs`
 -- (branch `leanvm-univariate-prover2`): the prover phase by phase, its messages in the verifier's order
 -- (`formal/UniKeccak/UniKeccak/Verifier.lean`'s `reduceWithK`).
 -- Ported to the Keccak VM from `formal/UniComplete/UniComplete/Prover.lean`.

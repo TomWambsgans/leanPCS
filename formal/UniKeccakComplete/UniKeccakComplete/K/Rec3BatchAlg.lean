@@ -1,5 +1,5 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The algebra of `Rec3Prover.lean`'s paired batch
--- (`crates/leanvm_univariate/src/prover/batch.rs`'s `prove_pairs`, `leanvm-rec` 4247e37).
+-- (`crates/leanvm/univariate/src/prover/batch.rs`'s `prove_pairs`, `leanvm-rec` 4247e37).
 -- Ported to the Keccak VM from `formal/UniComplete/UniComplete/Rec3BatchAlg.lean`.
 import UniKeccakComplete.K.Rec3Prover
 import UniKeccakComplete.K.BatchProof

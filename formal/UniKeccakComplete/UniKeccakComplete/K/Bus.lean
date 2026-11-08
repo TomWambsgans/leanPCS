@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Follows `crates/leanvm_univariate/src/prover/bus.rs`
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Follows `crates/leanvm/univariate/src/prover/bus.rs`
 -- (branch `leanvm-univariate-prover2`): the leaves and the product heap (SPEC.md §5).
 -- Ported to the Keccak VM from `formal/UniComplete/UniComplete/Bus.lean`.
 import UniKeccakComplete.K.Trace

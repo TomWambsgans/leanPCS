@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Follows `crates/leanvm_univariate/src/prover/{trace,
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Follows `crates/leanvm/univariate/src/prover/{trace,
 -- columns, stack, setup, fingerprint}.rs` (branch `leanvm-univariate-prover2`): the placed trace, `C1`'s and the
 -- setup's polynomials and stacks, the bus fingerprints.
 -- Ported to the Keccak VM from `formal/UniComplete/UniComplete/Trace.lean`.
