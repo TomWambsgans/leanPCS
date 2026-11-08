@@ -590,7 +590,7 @@ pub(crate) fn prove_with_randomness_in(
     // The witness: four polynomials in the row, each with a multiple of the rows' vanishing polynomial.
     let span = tracing::info_span!("Witness").entered();
     let mut w_hat = cells.to_vec();
-    domain::coefficients(&mut w_hat, F64::ZERO);
+    tracing::info_span!("cells to coefficients").in_scope(|| domain::coefficients(&mut w_hat, F64::ZERO));
     let mut mask = [F64::ZERO; 16];
     for (j, coeffs) in masks.iter().enumerate() {
         for (i, &coeff) in coeffs.iter().enumerate() {
@@ -598,7 +598,7 @@ pub(crate) fn prove_with_randomness_in(
         }
     }
     // Hidden, its stack holds the coefficients out of order: they are read back from it where they are needed.
-    let witness = Table::hidden(
+    let witness = tracing::info_span!("table").in_scope(|| Table::hidden(
         witness_layout(circuit.log_rows),
         &table_seed(padding, b"witness"),
         |start, out| {
@@ -610,7 +610,7 @@ pub(crate) fn prove_with_randomness_in(
                 };
             }
         },
-    );
+    ));
     drop(w_hat);
     let witness_committed = tracing::info_span!("Commit").in_scope(|| opening::commit(&witness));
     ps.send_root(&witness_committed.root);
@@ -620,6 +620,7 @@ pub(crate) fn prove_with_randomness_in(
     // The sum's polynomial on the cells.
     let span = tracing::info_span!("Sum").entered();
     let mut h = vec![F192::ZERO; n];
+    let inner = tracing::info_span!("inverses").entered();
     parallel::chunks_mut(&mut h, 1 << 12, |chunk_index, chunk| {
         let base = chunk_index << 12;
         let mut d: Vec<F192> = (0..chunk.len())
@@ -637,7 +638,8 @@ pub(crate) fn prove_with_randomness_in(
             }
         }
     });
-    domain::coefficients(&mut h, F64::ZERO);
+    drop(inner);
+    tracing::info_span!("coefficients").in_scope(|| domain::coefficients(&mut h, F64::ZERO));
     let h_hat = h;
     drop(span);
 
@@ -655,16 +657,19 @@ pub(crate) fn prove_with_randomness_in(
     let mut values = Vec::with_capacity(placed.max(2 * big));
     values.resize(2 * big, F64::ZERO);
     let (w_values, sigma_values) = values.split_at_mut(big);
+    let inner = tracing::info_span!("witness values").entered();
     witness.read(0, &mut w_values[..n]);
     coset_values(w_values, &[&[], &mask]);
+    drop(inner);
     // Note: these depend on the circuit alone, yet every proof computes them again (a `4n`-point transform);
     // the index could keep them, for `4n` more words held between proofs.
-    coset_values(sigma_values, &[index.sigma()]);
+    tracing::info_span!("sigma values").in_scope(|| coset_values(sigma_values, &[index.sigma()]));
     let mut q = Vec::with_capacity(big.max(placed.div_ceil(3)));
     q.resize(big, F192::ZERO);
     q[..n].copy_from_slice(&h_hat);
-    domain::values(&mut q, offset);
+    tracing::info_span!("sum values").in_scope(|| domain::values(&mut q, offset));
     let mut q_gate = vec![F64::ZERO; big];
+    let inner = tracing::info_span!("quotient values").entered();
 
     let (b, tau) = (coordinates(REGION), row_vanishing(m));
     let row_poly = |x: F64| {
@@ -707,8 +712,9 @@ pub(crate) fn prove_with_randomness_in(
             *q_gate = gate(row) * row_vanishing[low & 3];
         }
     });
-    domain::coefficients(&mut q, offset);
-    domain::coefficients(&mut q_gate, offset);
+    drop(inner);
+    tracing::info_span!("quotient coefficients").in_scope(|| domain::coefficients(&mut q, offset));
+    tracing::info_span!("gate coefficients").in_scope(|| domain::coefficients(&mut q_gate, offset));
 
     // The quotient table: `m` variables of a polynomial, two more digits, `h` or `q`, that pair or the gate's
     // quotient, and the extension's two.
@@ -718,6 +724,7 @@ pub(crate) fn prove_with_randomness_in(
     // of each run it is handed (debug builds check it).
     let fits = q[3 * n + layout.covered(m, 7)..].iter().all(|v| v.is_zero())
         && q_gate[n + layout.covered(m, 9)..].iter().all(|v| v.is_zero());
+    let inner = tracing::info_span!("table").entered();
     let quotient = Table::hidden_in(layout, values, &table_seed(padding, b"quotient"), |start, out| {
         // A run of pieces of one block, or a piece: in one chunk.
         let (c, within) = (start >> m, start & (n - 1));
@@ -735,6 +742,7 @@ pub(crate) fn prove_with_randomness_in(
             _ => out.copy_from_slice(&q_gate[from..from + len]),
         }
     });
+    drop(inner);
     drop((h_hat, q_gate));
     let scratch = into_words(q);
     let quotient_committed = tracing::info_span!("Commit").in_scope(|| opening::commit_in(&quotient, scratch));
