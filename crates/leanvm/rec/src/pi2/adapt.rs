@@ -19,6 +19,8 @@ use primitives::field::{F64, F192};
 
 use super::circuit::{Circuit, Coeff, Formula, Lin, Pair, PublicTerm, Read};
 use super::prover::PublicValue;
+use crate::circuit::compile::Inputs;
+use crate::circuit::plan::WitnessPlan;
 use crate::circuit::spec;
 
 /// The fingerprint of a port's limbs, on the cells `limbs` (see the module's description).
@@ -163,6 +165,12 @@ pub fn adapt(c: &spec::Circuit) -> Circuit {
 /// The witness in the prover's field.
 pub fn witness(w: &[K]) -> Vec<F64> {
     w.iter().map(|k| F64(k.0)).collect()
+}
+
+/// The witness in the prover's field and the public inputs, replayed from `plan` (`circuit::plan`): those of
+/// `circuit::compile::pi2` on `inputs`, through [`witness`], with neither the compiler nor the copy.
+pub fn replay(plan: &WitnessPlan, inputs: &Inputs) -> (Vec<F64>, spec::PublicInputs) {
+    plan.witness_with(inputs, |k| F64(k.0))
 }
 
 /// The public input and the stream's public values (the roots as root words, then the elements).

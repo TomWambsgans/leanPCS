@@ -348,6 +348,16 @@ pub struct Sponge<P: Permutation> {
     pub xors: Xors,
     /// Permutations run.
     pub permutations: usize,
+    /// Each permutation run: its rows, input and output (for the witness plan, `super::plan`).
+    pub runs: Vec<Run>,
+}
+
+/// A permutation run: the creation rows `rows` it made (consecutive), its input and its output values.
+#[derive(Clone, Debug)]
+pub struct Run {
+    pub rows: std::ops::Range<u32>,
+    pub input: Vec<Bit>,
+    pub output: Vec<Value>,
 }
 
 impl<P: Permutation> Sponge<P> {
@@ -357,6 +367,7 @@ impl<P: Permutation> Sponge<P> {
             constants: Constants::new(),
             xors: Xors::new(b),
             permutations: 0,
+            runs: Vec::new(),
         }
     }
 
@@ -398,7 +409,13 @@ impl<P: Permutation> Sponge<P> {
                     input[i] = Bit::V(state[i]);
                 }
             }
+            let first_row = b.rows() as u32;
             state = self.permutation.permute(b, &mut self.constants, &input);
+            self.runs.push(Run {
+                rows: first_row..b.rows() as u32,
+                input,
+                output: state.clone(),
+            });
             self.permutations += 1;
         }
         state[..256].to_vec()

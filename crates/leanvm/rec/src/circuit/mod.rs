@@ -6,6 +6,7 @@ pub mod compile;
 pub mod keccak;
 pub mod keccak16;
 pub mod layout;
+pub mod plan;
 pub mod spec;
 pub mod units;
 
