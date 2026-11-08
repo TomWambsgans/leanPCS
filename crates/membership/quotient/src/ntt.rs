@@ -837,6 +837,34 @@ unsafe fn pairs<T: Kind>(lo: *mut u64, hi: *mut u64, len: usize, t: V) {
 /// # Safety
 /// `data` holds `8 rows` words, and `src` (if given) as many, disjoint from `data`.
 unsafe fn run<T: Kind>(data: *mut u64, src: Option<*const u64>, rows: usize, shift: usize, kind: &T, runs: bool) {
+    // SAFETY: the caller's.
+    unsafe { run_on(data, src, rows, shift, kind, runs, false) }
+}
+
+/// `f(i)` for every `i < n`: by the pool, or by the calling worker alone (`serial`), in the same order of results.
+#[inline(always)]
+fn tasks(n: usize, serial: bool, f: impl Fn(usize) + Sync) {
+    if serial {
+        (0..n).for_each(f);
+    } else {
+        parallel::for_each(n, f);
+    }
+}
+
+/// [`run`], by the pool or by the calling worker alone (`serial`, for a caller that runs many transforms at once,
+/// one a worker): the same layers in the same order, so the same values.
+///
+/// # Safety
+/// As [`run`]'s.
+unsafe fn run_on<T: Kind>(
+    data: *mut u64,
+    src: Option<*const u64>,
+    rows: usize,
+    shift: usize,
+    kind: &T,
+    runs: bool,
+    serial: bool,
+) {
     assert!(rows.is_power_of_two());
     let mr = rows.trailing_zeros() as usize;
     let leaf = mr.min(LEAF_ROWS.trailing_zeros() as usize);
@@ -853,18 +881,19 @@ unsafe fn run<T: Kind>(data: *mut u64, src: Option<*const u64>, rows: usize, shi
     if T::DOWN {
         let mut from = src;
         for &(a, g) in &groups {
-            wide(data, from.take(), rows, a, g, shift, kind);
+            wide(data, from.take(), rows, a, g, shift, kind, serial);
         }
-        leaves(data, from, rows, leaf, shift, kind, runs);
+        leaves(data, from, rows, leaf, shift, kind, runs, serial);
     } else {
-        leaves(data, src, rows, leaf, shift, kind, runs);
+        leaves(data, src, rows, leaf, shift, kind, runs, serial);
         for &(a, g) in groups.iter().rev() {
-            wide(data, None, rows, a, g, shift, kind);
+            wide(data, None, rows, a, g, shift, kind, serial);
         }
     }
 }
 
 /// Row layers `0..leaf`, and the rows' own layers, on each block of `2^leaf` rows by one worker.
+#[allow(clippy::too_many_arguments)]
 fn leaves<T: Kind>(
     data: SendPtr<u64>,
     src: Option<SendPtr<u64>>,
@@ -873,9 +902,10 @@ fn leaves<T: Kind>(
     shift: usize,
     kind: &T,
     runs: bool,
+    serial: bool,
 ) {
     let size = 1usize << leaf;
-    parallel::for_each(rows >> leaf, |task| {
+    tasks(rows >> leaf, serial, |task| {
         let first = task << leaf;
         // SAFETY: a task touches its own `size` rows from `first`.
         unsafe {
@@ -919,6 +949,7 @@ fn leaves<T: Kind>(
 }
 
 /// Row layers `a..a + g` in one pass: tiles of `2^g` lines `2^a` rows apart, each line a run of rows.
+#[allow(clippy::too_many_arguments)]
 fn wide<T: Kind>(
     data: SendPtr<u64>,
     src: Option<SendPtr<u64>>,
@@ -927,11 +958,12 @@ fn wide<T: Kind>(
     g: usize,
     shift: usize,
     kind: &T,
+    serial: bool,
 ) {
     let lines = 1usize << g;
     let width = (TILE_ROWS >> g).clamp(1, 1 << a);
     let per_group = (1usize << a) / width;
-    parallel::for_each((rows >> (a + g)) * per_group, |task| {
+    tasks((rows >> (a + g)) * per_group, serial, |task| {
         let row0 = ((task / per_group) << (a + g)) + (task % per_group) * width;
         let line = |u: usize| row0 + (u << a);
         // SAFETY: a task touches rows `line(u) + [0, width)`, `u < lines`: its own.
@@ -980,6 +1012,61 @@ pub fn values_batch_from(src: &[K8], dst: &mut [K8], offset: F64, runs: bool) {
     let kind = Forward(Twiddles::new(offset, dst.len().trailing_zeros() as usize));
     // SAFETY: `dst`'s own rows, read first from `src`'s.
     unsafe { run(words(dst), Some(src.as_ptr().cast()), dst.len(), 0, &kind, runs) }
+}
+
+/// [`values_batch_from`] by the calling worker alone (no dispatch to the pool): for a caller that transforms many
+/// batches at once, one a worker. The same values.
+pub fn values_batch_from_serial(src: &[K8], dst: &mut [K8], offset: F64, runs: bool) {
+    assert_eq!(src.len(), dst.len());
+    assert!(!runs || dst.len() >= 8);
+    let kind = Forward(Twiddles::new(offset, dst.len().trailing_zeros() as usize));
+    // SAFETY: `dst`'s own rows, read first from `src`'s.
+    unsafe { run_on(words(dst), Some(src.as_ptr().cast()), dst.len(), 0, &kind, runs, true) }
+}
+
+/// [`values_batch`] by the calling worker alone.
+pub fn values_batch_serial(data: &mut [K8], offset: F64, runs: bool) {
+    assert!(!runs || data.len() >= 8);
+    let kind = Forward(Twiddles::new(offset, data.len().trailing_zeros() as usize));
+    // SAFETY: `data`'s own rows.
+    unsafe { run_on(words(data), None, data.len(), 0, &kind, runs, true) }
+}
+
+/// [`fold_batch`] by the calling worker alone.
+pub fn fold_batch_serial(src: &[K8], first: usize, dst: &mut [K8]) {
+    let rows = dst.len();
+    assert_eq!(src.len() % rows, 0);
+    let len = src.len() / rows;
+    let e = rows.trailing_zeros() as usize;
+    // The weights `Π w_(e + b)(ω_first)` over the bits `b` of the block (`novel_weights`), built as `tensor` builds
+    // them: the same products in the same order.
+    let mut weights = vec![F64::ONE];
+    let mut b = 0;
+    while weights.len() < len {
+        let one = point(first >> (e + b));
+        let half = weights.len();
+        for h in 0..half {
+            let w = weights[h] * one;
+            weights.push(w);
+        }
+        b += 1;
+    }
+    // `fold_rows`' sum, row by row, in its order of terms.
+    let src: *const u64 = src.as_ptr().cast();
+    let dst = words(dst);
+    for i in 0..rows {
+        // SAFETY: rows `i + h rows` of `src` (`len` blocks of `rows`), and row `i` of `dst`.
+        unsafe {
+            let mut acc = load(src.add(8 * i));
+            if weights[0] != F64::ONE {
+                acc = mul(acc, splat(weights[0].0));
+            }
+            for (h, &w) in weights.iter().enumerate().skip(1) {
+                acc = xor(acc, mul(load(src.add(8 * (i + h * rows))), splat(w.0)));
+            }
+            store(dst.add(8 * i), acc);
+        }
+    }
 }
 
 /// Each eight rows transposed, as [`values_batch`]'s `runs` leaves them (`data.len()` a multiple of 8).

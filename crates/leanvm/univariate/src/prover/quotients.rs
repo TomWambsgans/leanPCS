@@ -160,18 +160,18 @@ fn slot(k: usize) -> Slot {
 }
 
 /// Whether `quotient::ntt`'s lanes are other than AVX-512's eight carry-less products: aarch64's NEON lanes (eight
-/// PMULLs, four registers), or portable code. There [`prefix_quotient`] transforms its whole pieces in rounds
-/// ([`values_rows`]), and [`table_leaf`] evaluates its numerator one point at a time in `E` ([`PullPush`]: a mixed
+/// PMULLs, four registers), or portable code. There [`table_leaf`] evaluates its numerator one point at a time in `E` ([`PullPush`]: a mixed
 /// product three unreduced base products, a push from its pull's sum) rather than eight at a time ([`product`]: a
-/// mixed product three reduced ones). With the NEON lanes (M4 Max), the rounds still take "quotients: leaves" from
-/// 0.30 s to 0.18 s, and [`PullPush`] and [`product`] cost the same.
+/// mixed product three reduced ones). With the NEON lanes (M4 Max), [`PullPush`] and [`product`] cost the same.
 const PORTABLE_LANES: bool = !cfg!(all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "vpclmulqdq"));
 
-/// The longest columns (`2^GROUPED_ROWS` entries) whose whole pieces [`prefix_quotient`] evaluates in rounds, a round's
-/// batches transformed each by one worker ([`values_rows`]) about `GROUPED_TASKS` at once, in at most
-/// `GROUPED_BYTES`: there `ntt`'s transforms of one batch at a time leave workers idle between their passes.
+/// The longest columns (`2^GROUPED_ROWS` entries) whose pieces [`prefix_quotient`] evaluates in rounds, a round's
+/// batches transformed each by one worker ([`piece_rows`]) about `GROUPED_TASKS` a worker at once, in at most
+/// `GROUPED_BYTES`: there `ntt`'s transforms of one batch at a time, a few tasks a pass, leave workers idle between
+/// their passes (on 64 threads, `SHA3`'s leaf was three quarters spinning; on the M4 Max's NEON lanes, the rounds took
+/// "quotients: leaves" from 0.30 s to 0.18 s).
 const GROUPED_ROWS: usize = 17;
-const GROUPED_TASKS: usize = 48;
+const GROUPED_TASKS: usize = 2;
 const GROUPED_BYTES: usize = 1 << 29;
 
 /// [`ntt::values_batch`] with `runs`, by one worker: row `i` of `data` becomes the eight columns at `offset + ω_i`,
@@ -240,76 +240,24 @@ fn values_rows(data: &mut [K8], offset: F64) {
     }
 }
 
-/// [`values_rows`] where `quotient::ntt`'s lanes are portable code (x86_64 without AVX-512): one column entry at a
-/// time.
+/// [`values_rows`] elsewhere: `ntt`'s transform of a batch with `runs`, by the calling worker alone.
 #[cfg(not(all(target_arch = "aarch64", target_feature = "aes")))]
 fn values_rows(data: &mut [K8], offset: F64) {
-    const LEAF: usize = 10;
-    /// `a += t b; b += a` between the halves of `chunk`.
-    #[inline(always)]
-    fn layer(chunk: &mut [K8], t: F64) {
-        let (lo, hi) = chunk.split_at_mut(chunk.len() / 2);
-        for (a, b) in lo.iter_mut().zip(hi.iter_mut()) {
-            for l in 0..8 {
-                a.0[l] += b.0[l] * t;
-                b.0[l] += a.0[l];
-            }
-        }
+    ntt::values_batch_serial(data, offset, true);
+}
+
+/// Batch `src` (novel coefficients, `2^r` rows) on the piece `ω_first + V_p` (`3 ≤ p ≤ r`), into `dst`, by the calling
+/// worker alone, each eight rows transposed ([`Points::Batches`]).
+fn piece_rows(src: &[K8], first: usize, p: usize, dst: &mut Vec<K8>) {
+    let size = 1usize << p;
+    if size == src.len() {
+        dst.clear();
+        dst.extend_from_slice(src);
+    } else {
+        dst.resize(size, K8::ZERO);
+        ntt::fold_batch_serial(src, first, dst);
     }
-    let m = data.len().trailing_zeros() as usize;
-    assert!(data.len() == 1 << m && m >= 3);
-    let offsets = quotient::domain::chain(offset, m);
-    let leaf = m.min(LEAF);
-    let mut k = m;
-    while k > leaf {
-        if k - leaf >= 2 {
-            // Layers `k - 1` and `k - 2`: each entry of a block's four quarters meets both of its butterflies.
-            let block = 1usize << k;
-            for (j, chunk) in data.chunks_exact_mut(block).enumerate() {
-                let high = offsets[k - 1] + omega(2 * j);
-                let low = [offsets[k - 2] + omega(4 * j), offsets[k - 2] + omega(4 * j + 2)];
-                let q = block / 4;
-                let (h0, h1) = chunk.split_at_mut(2 * q);
-                let (q0, q1) = h0.split_at_mut(q);
-                let (q2, q3) = h1.split_at_mut(q);
-                for (((a0, a1), a2), a3) in q0.iter_mut().zip(q1.iter_mut()).zip(q2.iter_mut()).zip(q3.iter_mut()) {
-                    for l in 0..8 {
-                        let (mut x0, mut x1, mut x2, mut x3) = (a0.0[l], a1.0[l], a2.0[l], a3.0[l]);
-                        x0 += x2 * high;
-                        x2 += x0;
-                        x1 += x3 * high;
-                        x3 += x1;
-                        x0 += x1 * low[0];
-                        x1 += x0;
-                        x2 += x3 * low[1];
-                        x3 += x2;
-                        (a0.0[l], a1.0[l], a2.0[l], a3.0[l]) = (x0, x1, x2, x3);
-                    }
-                }
-            }
-            k -= 2;
-        } else {
-            let block = 1usize << k;
-            for (j, chunk) in data.chunks_exact_mut(block).enumerate() {
-                layer(chunk, offsets[k - 1] + omega(2 * j));
-            }
-            k -= 1;
-        }
-    }
-    for (i, rows) in data.chunks_exact_mut(1 << leaf).enumerate() {
-        let first = i << leaf;
-        for k in (0..leaf).rev() {
-            for (j, chunk) in rows.chunks_exact_mut(2 << k).enumerate() {
-                layer(chunk, offsets[k] + omega(2 * ((first >> (k + 1)) + j)));
-            }
-        }
-        for run in rows.chunks_exact_mut(8) {
-            let m: [K8; 8] = std::array::from_fn(|q| run[q]);
-            for (c, row) in run.iter_mut().enumerate() {
-                *row = K8(std::array::from_fn(|q| m[q].0[c]));
-            }
-        }
-    }
+    values_rows(dst, omega(first));
 }
 
 /// A quotient from its numerator on `D_M`'s first points: `columns` (novel coefficients, `2^r` each) evaluated on
@@ -335,7 +283,21 @@ fn prefix_quotient<D: Sync>(
     } else {
         columns.chunks(8).map(ntt::pack).collect()
     };
-    let mut work: Vec<Vec<K8>> = batches.iter().map(|_| vec![K8::ZERO; n.max(8)]).collect();
+    // The pieces `(first point, place in the limbs, size)`, which tile the limbs in order; of a batched quotient
+    // (columns short enough, `GROUPED_ROWS`) in rounds, each round's batches on its pieces transformed by one worker
+    // each, in parallel.
+    let all: Vec<(usize, usize, usize)> = ntt::prefix_starts(&sizes, base)
+        .iter()
+        .zip(&sizes)
+        .flat_map(|(&first, &e)| {
+            let p = e.min(r);
+            (0..1usize << (e - p)).map(move |j| (first + (j << p), first - base + (j << p), p))
+        })
+        .collect();
+    let grouped = !alone && (8..=1 << GROUPED_ROWS).contains(&n) && all.iter().all(|&(_, _, p)| p >= 3);
+    // [`evaluate`]'s rows: grouped, the check's block alone (at most 64 points).
+    let rows = if grouped { 64.min(n) } else { n }.max(8);
+    let mut work: Vec<Vec<K8>> = batches.iter().map(|_| vec![K8::ZERO; rows]).collect();
     let mut singles: Vec<Vec<F64>> = if alone {
         columns.iter().map(|_| vec![F64::ZERO; n.max(8)]).collect()
     } else {
@@ -372,56 +334,50 @@ fn prefix_quotient<D: Sync>(
         ntt::fill_limbs8(out, |j| value(&data, &points, j));
     };
     let mut limbs: [Vec<F64>; 3] = std::array::from_fn(|_| vec![F64::ZERO; total]);
-    // The pieces `(first point, place in the limbs, size)`; the whole cosets of `V_r` of a batched quotient (columns
-    // short enough, `GROUPED_ROWS`) in rounds of a few, each round's batches transformed one by one in parallel.
-    let all: Vec<(usize, usize, usize)> = ntt::prefix_starts(&sizes, base)
-        .iter()
-        .zip(&sizes)
-        .flat_map(|(&first, &e)| {
-            let p = e.min(r);
-            (0..1usize << (e - p)).map(move |j| (first + (j << p), first - base + (j << p), p))
-        })
-        .collect();
-    let grouped = PORTABLE_LANES && !alone && (8..=1 << GROUPED_ROWS).contains(&n);
-    let (whole, rest): (Vec<_>, Vec<_>) = all.into_iter().partition(|&(_, _, p)| grouped && p == r);
-    for (first, at, p) in rest {
-        let [a, b, c] = &mut limbs;
-        evaluate(
-            first,
-            p,
-            [
-                &mut a[at..at + (1 << p)],
-                &mut b[at..at + (1 << p)],
-                &mut c[at..at + (1 << p)],
-            ],
-        );
-    }
-    if !whole.is_empty() {
+    if !grouped {
+        for &(first, at, p) in &all {
+            let [a, b, c] = &mut limbs;
+            evaluate(
+                first,
+                p,
+                [
+                    &mut a[at..at + (1 << p)],
+                    &mut b[at..at + (1 << p)],
+                    &mut c[at..at + (1 << p)],
+                ],
+            );
+        }
+    } else {
+        // The pieces tile the limbs in order: a round's are consecutive.
         let width = batches.len();
-        let per_round = GROUPED_TASKS
+        let per_round = (GROUPED_TASKS * parallel::num_threads())
             .div_ceil(width)
             .min(GROUPED_BYTES / (width * n * size_of::<K8>()))
-            .clamp(1, whole.len());
+            .clamp(1, all.len());
         let mut transformed: Vec<Vec<K8>> = vec![Vec::new(); per_round * width];
-        for round in whole.chunks(per_round) {
+        for round in all.chunks(per_round) {
             parallel::chunks_mut(&mut transformed[..round.len() * width], 1, |i, dst| {
-                let (g, b) = (i / width, i % width);
-                let dst = &mut dst[0];
-                dst.clear();
-                dst.extend_from_slice(&batches[b]);
-                values_rows(dst, omega(round[g].0));
+                let (first, _, p) = round[i / width];
+                piece_rows(&batches[i % width], first, p, &mut dst[0]);
             });
-            // The round's pieces are consecutive in the limbs (the whole pieces come first, in order): one fill.
-            let at = round[0].1;
-            assert!(round.iter().enumerate().all(|(g, p)| p.1 == at + g * n));
-            let data: Vec<D> = round.iter().map(|&(first, _, _)| piece(first, r)).collect();
-            let points: Vec<Points> =
-                transformed[..round.len() * width].chunks(width).map(Points::Batches).collect();
-            let end = at + round.len() * n;
+            let data: Vec<D> = round.iter().map(|&(first, _, p)| piece(first, p)).collect();
+            let points: Vec<Points> = transformed[..round.len() * width].chunks(width).map(Points::Batches).collect();
+            // Each piece's first run in the round.
+            let runs: Vec<usize> = round
+                .iter()
+                .scan(0, |acc, &(_, _, p)| {
+                    let at = *acc;
+                    *acc += (1usize << p) / 8;
+                    Some(at)
+                })
+                .collect();
+            let (at, last) = (round[0].1, round[round.len() - 1]);
+            let end = last.1 + (1 << last.2);
+            assert!(round.iter().zip(&runs).all(|(p, &j)| p.1 == at + 8 * j));
             let [a, b, c] = &mut limbs;
             ntt::fill_limbs8([&mut a[at..end], &mut b[at..end], &mut c[at..end]], |j| {
-                let g = j / (n / 8);
-                value(&data[g], &points[g], j % (n / 8))
+                let g = runs.partition_point(|&s| s <= j) - 1;
+                value(&data[g], &points[g], j - runs[g])
             });
         }
     }
