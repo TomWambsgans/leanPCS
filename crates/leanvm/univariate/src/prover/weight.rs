@@ -859,14 +859,44 @@ impl Weight {
                             let b = a + d;
                             let (a2, b2) = (a + a.swap_pairs(), b + b.swap_pairs());
                             let (v, u) = (a2.odd_from(b2), b.odd_from(a2 + b2));
-                            for (y, lanes) in lanes.iter_mut().enumerate() {
-                                let p = Kx8::new(std::array::from_fn(|l| words[off + ((2 * l) << j) + y]));
-                                let q = Kx8::new(std::array::from_fn(|l| words[off + ((2 * l + 1) << j) + y]));
+                            let mut add = |y: usize, p: Kx8, q: Kx8| {
+                                let lanes = &mut lanes[y];
                                 let (p2, q2) = (p + p.xor_lanes(1), q + q.xor_lanes(1));
                                 lanes[0].add_lanes(a, p);
                                 lanes[1].add_lanes(d, p + q);
                                 lanes[2].add_lanes(v, p2.odd_from(q2));
                                 lanes[3].add_lanes(u, q.odd_from(p2 + q2));
+                            };
+                            // The eight units' words at offset `y` of their even (`P`) and odd (`Q`) runs: the even
+                            // and odd words of two registers (round 0), or eight registers' transposes (a unit's
+                            // `2^(j + 1)` words a multiple of 8).
+                            let rows = |at: usize| Kx8::transpose8(std::array::from_fn(|l| Kx8::load(&words[off + (l << (j + 1)) + at..])));
+                            match j {
+                                0 => {
+                                    let (p, q) = Kx8::evens_odds(Kx8::load(&words[off..]), Kx8::load(&words[off + 8..]));
+                                    add(0, p, q);
+                                }
+                                1 => {
+                                    for y in 0..span {
+                                        let p = Kx8::new(std::array::from_fn(|l| words[off + ((2 * l) << j) + y]));
+                                        let q = Kx8::new(std::array::from_fn(|l| words[off + ((2 * l + 1) << j) + y]));
+                                        add(y, p, q);
+                                    }
+                                }
+                                2 => {
+                                    let t = rows(0);
+                                    for y in 0..4 {
+                                        add(y, t[y], t[4 + y]);
+                                    }
+                                }
+                                _ => {
+                                    for c in 0..span / 8 {
+                                        let (tp, tq) = (rows(8 * c), rows(span + 8 * c));
+                                        for i in 0..8 {
+                                            add(8 * c + i, tp[i], tq[i]);
+                                        }
+                                    }
+                                }
                             }
                             continue;
                         }

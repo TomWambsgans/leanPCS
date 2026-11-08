@@ -182,6 +182,17 @@ mod lanes {
         }
     }
 
+    /// The even lanes of `a` then of `b`, and the odd ones.
+    #[inline(always)]
+    pub fn evens_odds(a: V, b: V) -> (V, V) {
+        // SAFETY: the module's cfg enables avx512f.
+        unsafe {
+            let evens = _mm512_set_epi64(14, 12, 10, 8, 6, 4, 2, 0);
+            let odds = _mm512_set_epi64(15, 13, 11, 9, 7, 5, 3, 1);
+            (V(_mm512_permutex2var_epi64(a.0, evens, b.0)), V(_mm512_permutex2var_epi64(a.0, odds, b.0)))
+        }
+    }
+
     /// Lane `i` is `a_(i ^ S)`.
     #[inline(always)]
     pub fn swap<const S: usize>(a: V) -> V {
@@ -1223,6 +1234,28 @@ impl Kx8 {
     #[inline(always)]
     pub fn odd_from(self, odd: Self) -> Self {
         Self(mask_add(self.0, 0xAA, xor(self.0, odd.0)))
+    }
+
+    /// `a`'s even lanes then `b`'s, and their odd ones: `(x_0, x_2, .., y_0, y_2, ..)` and `(x_1, x_3, ..)`.
+    #[inline(always)]
+    pub fn evens_odds(a: Self, b: Self) -> (Self, Self) {
+        #[cfg(all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "vpclmulqdq"))]
+        {
+            let (e, o) = lanes::evens_odds(a.0, b.0);
+            (Self(e), Self(o))
+        }
+        #[cfg(not(all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "vpclmulqdq")))]
+        {
+            let (x, y) = (a.to_row().0, b.to_row().0);
+            let pick = |o: usize| Self::new(std::array::from_fn(|l| if l < 4 { x[2 * l + o] } else { y[2 * (l - 4) + o] }));
+            (pick(0), pick(1))
+        }
+    }
+
+    /// Eight registers transposed: lane `l` of output `i` is lane `i` of input `l`.
+    #[inline(always)]
+    pub fn transpose8(rows: [Self; 8]) -> [Self; 8] {
+        transpose(rows.map(|r| r.0)).map(Self)
     }
 
     #[inline(always)]
@@ -2673,6 +2706,18 @@ mod tests {
         let got = sum.reduce().to_array();
         for i in 0..8 {
             assert_eq!(got[i], e[i].mul_base(k[i]) + e[8 + i].mul_base(k[8 + i]));
+        }
+        let (ev, od) = Kx8::evens_odds(kx(0), kx(8));
+        for l in 0..8 {
+            let src = if l < 4 { 2 * l } else { 8 + 2 * (l - 4) };
+            assert_eq!((ev.to_row().0[l], od.to_row().0[l]), (k[src], k[src + 1]));
+        }
+        let rows: [Kx8; 8] = std::array::from_fn(|r| Kx8::new(std::array::from_fn(|l| k[(r + l) % 16])));
+        let t = Kx8::transpose8(rows);
+        for (i, t) in t.iter().enumerate() {
+            for l in 0..8 {
+                assert_eq!(t.to_row().0[l], rows[l].to_row().0[i]);
+            }
         }
         let blend = ex(0).odd_from(ex(8)).to_array();
         let kb = kx(0).odd_from(kx(8)).to_row();
