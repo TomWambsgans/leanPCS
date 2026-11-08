@@ -42,7 +42,7 @@ fn vector(name: &str) -> vectors::Vector {
 #[test]
 fn the_graph_is_the_verifier_on_real_proofs() {
     deep(|| {
-        for name in ["keccak", "keccak_rec3"] {
+        for name in ["keccak", "keccak128_rec3", "keccak_rec3"] {
             let v = vector(name);
             let variant = vectors::variant_of(&v.config);
             let roots = leanvm_univariate::contract::SetupRoots {

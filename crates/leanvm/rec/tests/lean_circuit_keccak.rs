@@ -1,8 +1,8 @@
 // Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
-//! The Keccak VM's π1-rec3 (`crates/leanvm_univariate/KECCAK.md`, `tests/keccak_vm_rec.rs`) as a vector of
+//! The Keccak VM's π1-rec3 at the reference shape (128 signatures, `leanvm_rec::REFERENCE`) as a vector of
 //! `formal/RecCircuit`'s differential runner (`RecCircuitTest/Main.lean`): its recorded graph as text and the circuit
-//! the Rust compiler makes of it (D16v), in `tests/lean_circuit.rs`'s format (whose helpers this file repeats). The
-//! circuit exercises `layout::pad_counts`'s look-ahead (22 blocks; the one-digit greedy made 70).
+//! the Rust compiler makes of it (D16v), in the format of the runner's vectors. The circuit exercises
+//! `layout::pad_counts`'s look-ahead (21 blocks; at 400 signatures 22, where the one-digit greedy made 70).
 //!
 //! `LEAN_CIRCUIT_OUT=dir cargo test --release -p leanvm_rec --test lean_circuit_keccak -- --ignored --nocapture`
 
@@ -15,14 +15,9 @@ use leanvm_statement::shapes::PROGRAM_IV;
 use leanvm_rec::circuit::compile::{Inputs, Layout, pi2};
 use leanvm_rec::circuit::spec::{CallWord, Circuit, Formula, Source};
 use leanvm_univariate::contract::{Recorded, calls, record_verifier};
-use leanvm_univariate::{Claims, KECCAK_REC3, Shape};
+use leanvm_rec::REFERENCE;
+use leanvm_univariate::{Claims, KECCAK_REC3};
 
-/// leanVM 9d50c92a3 at 400 signatures (`tests/keccak_vm_rec.rs`).
-const KECCAK_400: Shape = Shape {
-    log_memory: 22,
-    log_bytecode: 18,
-    table_rows: [73288, 110893, 75762, 109932, 48157, 55316],
-};
 
 fn deep<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> R {
     std::thread::Builder::new()
@@ -208,7 +203,7 @@ fn emit(name: &str, recorded: &Recorded) {
 #[ignore = "the Keccak VM's π1-rec3 graph and circuit (2^24 positions): about a minute"]
 fn keccak_pi1_rec3() {
     deep(|| {
-        let recorded = record_verifier(&KECCAK_400, KECCAK_REC3, Claims::Point);
+        let recorded = record_verifier(&REFERENCE, KECCAK_REC3, Claims::Point);
         emit("keccak_pi1_rec3", &recorded)
     });
 }

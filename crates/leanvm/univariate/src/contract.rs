@@ -37,8 +37,9 @@ pub const NAME: [u8; 16] = *b"leanVM-univar-v1";
 /// The roots the contract's IV binds, constants of the code (SPEC.md §13, F2): the setup commitment `F`'s, from the
 /// program and the shape (`prover::setup::f_root`), and two fixed words `a0`, `b0`. Those are the roots of leanVM
 /// 42422001's BLAKE2s R1CS matrices, which the Keccak VM does not open: they stay in the IV's preimage, fixed, so that
-/// the IV (and the committed vectors and their Lean transcription) are unchanged. [`SetupRoots::REFERENCE`] are the
-/// gas reports' for every shape (the gas does not depend on them).
+/// the IV (and the committed vectors and their Lean transcription) are unchanged. [`SetupRoots::REFERENCE`]'s `F` is
+/// the reference shape's (128 signatures, `leanvm_statement::shapes::reference`), which the gas reports use for every
+/// shape (the gas does not depend on the roots).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SetupRoots {
     pub f: [u8; 32],
@@ -65,7 +66,7 @@ const fn hex32(text: &[u8; 64]) -> [u8; 32] {
 
 impl SetupRoots {
     pub const REFERENCE: Self = Self {
-        f: hex32(b"9b5a0f9bd796c09b8bc328113956464acf865c99b7dfc088c0c0a3208eab5fb7"),
+        f: hex32(b"067244bea80942b5cacaa61c28ca748d0ae4ba6c106739ab109c9c07296e1ca5"),
         a0: hex32(b"93cd9a0352a85dcc663f7068e1f3afa3a00f5220bd2b03d67244f0eb133fd2f7"),
         b0: hex32(b"c07556508c416240dafd47665831fd51d2eb1104a52c63231101479c7f6cd467"),
     };

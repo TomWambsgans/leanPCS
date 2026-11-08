@@ -466,7 +466,7 @@ fn terminal_vectors(out: &mut String, rng: &mut Rng) -> usize {
 }
 
 /// `KECCAK_VECTORS_OUT=<file> cargo test --release -p leanvm_univariate --test lean_keccak_vectors -- --ignored
-/// --nocapture` (`KECCAK_REAL_DIR`, default `tests/vectors`: the real proofs `keccak.txt`, `keccak_rec3.txt`, if there).
+/// --nocapture` (`KECCAK_REAL_DIR`, default `tests/vectors`: the real proofs `keccak.txt`, `keccak128_rec3.txt`, `keccak_rec3.txt`, if there).
 #[test]
 #[ignore]
 fn lean_keccak_vectors() {
@@ -487,13 +487,14 @@ fn lean_keccak_vectors() {
         let terminals = terminal_vectors(&mut w.out, &mut rng);
 
         // The full sets: the main line at the smallest run (both modes) and at 400 signatures, π1-rec3's shape at
-        // 400 signatures (the recursion's) and the smallest.
+        // 400 signatures and the smallest, and π1-rec3 at the reference shape (128 signatures, the recursion's).
         let full = [
             (0, main, point),
             (0, main, weighted),
             (2, main, point),
             (2, rec3, point),
             (0, rec3, point),
+            (1, rec3, point),
         ];
         for (c, &(run_index, flock, claims)) in full.iter().enumerate() {
             let config = config(run_index, flock, claims);
@@ -595,7 +596,7 @@ fn lean_keccak_vectors() {
 
         // The real Keccak proofs, if there, with the contract's PCS_OPEN inputs, and three mutations each.
         let dir = std::env::var("KECCAK_REAL_DIR").unwrap_or_else(|_| "tests/vectors".to_string());
-        for file in ["keccak.txt", "keccak_rec3.txt"] {
+        for file in ["keccak.txt", "keccak128_rec3.txt", "keccak_rec3.txt"] {
             let Ok(text) = std::fs::read_to_string(format!("{dir}/{file}")) else {
                 println!("no {dir}/{file}: no real vector");
                 continue;
@@ -626,7 +627,7 @@ fn lean_keccak_vectors() {
                 other => panic!("no configuration {other}"),
             };
             let config = Config {
-                name: format!("real-{config_name}"),
+                name: format!("real-{}", file.trim_end_matches(".txt")),
                 shape: Shape {
                     log_memory: shape_line[0] as usize,
                     log_bytecode: shape_line[1] as usize,

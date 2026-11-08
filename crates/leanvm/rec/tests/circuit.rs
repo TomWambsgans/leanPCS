@@ -259,6 +259,12 @@ fn run(name: &str, layout: Layout, log_n: u8, fill: (f64, f64)) {
     println!("  mutations caught; {zero_checks} zero checks, {nodes} products in the expanded graph");
 }
 
+/// π1-rec3 at the reference shape (128 signatures), D16v: `2^24` positions at 93.4%.
+#[test]
+fn keccak_rec3_128_d16v() {
+    deep(|| run("keccak128_rec3", Layout::D16v, 24, (0.90, 0.99)));
+}
+
 /// π1-rec3 at 400 signatures, D16v: `2^24` positions at 95.0%, the quotient `15N = 2^27.91` words, under `2^28`.
 #[test]
 fn keccak_rec3_400_d16v() {
