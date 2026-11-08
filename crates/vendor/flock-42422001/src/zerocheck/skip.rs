@@ -529,41 +529,66 @@ pub fn round1_bytes(a: &[u8], b: &[u8], c: &[u8], m: usize, r_rest: &[F192]) -> 
         }
     };
     let word = |data: &[u8], at: usize| u64::from_le_bytes(data[at..at + 8].try_into().expect("8 bytes"));
+    // Output byte `16 l + b` (lane `l`'s row, medium `b`) is input byte `8 b + l` of the two registers of words, the
+    // lanes 0..4 in the first output, 4..8 in the second.
+    let transpose_index: [__m512i; 2] = std::array::from_fn(|q| {
+        let bytes: [u8; 64] = std::array::from_fn(|o| (8 * (o % 16) + 4 * q + o / 16) as u8);
+        // SAFETY: 64 bytes.
+        unsafe { _mm512_loadu_si512(bytes.as_ptr().cast()) }
+    });
     let zero = || ([F192::ZERO; ELL], [F192::ZERO; ELL]);
     let (ab, c_s_part) = parallel::fold_reduce(
         1usize << eq.n_hi,
         zero,
         |acc, x_hi| {
-            let (mut part_ab, mut part_c) = zero();
+            // An `x`'s sixteen products by its eq value, four at a time, summed unreduced.
+            let mut part = [primitives::field::F192Unreduced::ZERO; 2 * ELL];
             let mut rows = [[0u8; 16]; 64];
             let mut folded = [F192::ZERO; super::bit_fold::BLOCK];
             for x_first in (0..lo_size).step_by(4) {
                 let subs = (lo_size - x_first).min(4);
                 for sub in 0..subs {
                     let at = (x_hi * lo_size + x_first + sub) * block;
+                    let (mut ab, mut cr) = ([0u64; 16], [0u64; 16]);
                     for medium in 0..16 {
                         let o = at + 8 * medium;
-                        let row = ab_row(word(a, o), word(b, o));
-                        let crow = transpose_8x8(word(c, o));
-                        for lane in 0..ELL {
-                            rows[16 * sub + lane][medium] = (row >> (8 * lane)) as u8;
-                            rows[16 * sub + 8 + lane][medium] = (crow >> (8 * lane)) as u8;
+                        ab[medium] = ab_row(word(a, o), word(b, o));
+                        cr[medium] = transpose_8x8(word(c, o));
+                    }
+                    // Lane `l`'s row is byte `l` of the sixteen medium words: a 16 × 8 byte transpose, two byte
+                    // permutes of the two registers of words each.
+                    // SAFETY: the target features are enabled at compile time; `rows[16 sub..16 sub + 16]` is 256
+                    // bytes, `ab` and `cr` 128 each.
+                    unsafe {
+                        let dst = rows[16 * sub..].as_mut_ptr().cast::<u8>();
+                        for (half, words) in [ab, cr].iter().enumerate() {
+                            let (lo, hi) = (
+                                _mm512_loadu_si512(words.as_ptr().cast()),
+                                _mm512_loadu_si512(words[8..].as_ptr().cast()),
+                            );
+                            for (q, idx) in transpose_index.iter().enumerate() {
+                                let v = _mm512_permutex2var_epi8(lo, *idx, hi);
+                                _mm512_storeu_si512(dst.add(128 * half + 64 * q).cast(), v);
+                            }
                         }
                     }
                 }
                 fold.fold_block(&rows[..16 * subs], &mut folded);
                 for sub in 0..subs {
                     let e = eq.lo[x_first + sub];
-                    for lane in 0..ELL {
-                        part_ab[lane] += e * folded[16 * sub + lane];
-                        part_c[lane] += e * folded[16 * sub + 8 + lane];
+                    for (q, part) in part.chunks_exact_mut(4).enumerate() {
+                        let at = 16 * sub + 4 * q;
+                        let products = primitives::field::mul_unreduced4([e; 4], folded[at..at + 4].try_into().expect("4"));
+                        for (p, x) in part.iter_mut().zip(products) {
+                            *p ^= x;
+                        }
                     }
                 }
             }
             let e = eq.hi[x_hi];
             for lane in 0..ELL {
-                acc.0[lane] += e * part_ab[lane];
-                acc.1[lane] += e * part_c[lane];
+                acc.0[lane] += e * part[lane].reduce();
+                acc.1[lane] += e * part[ELL + lane].reduce();
             }
         },
         |mut x, y| {
