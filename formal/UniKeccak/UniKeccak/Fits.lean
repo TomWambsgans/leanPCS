@@ -17,6 +17,6 @@ theorem keccakFlockFits_keccakFlockSpec : KeccakFlockFits KeccakFlock.keccakFloc
 
 end UniKeccak
 
-/-- info: 'UniKeccak.keccakFlockFits_keccakFlockSpec' depends on axioms: [propext] -/
+/-- info: 'UniKeccak.keccakFlockFits_keccakFlockSpec' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms UniKeccak.keccakFlockFits_keccakFlockSpec
