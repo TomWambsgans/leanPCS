@@ -89,9 +89,11 @@ section Gaps
 
 variable (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ : ℕ} {v : KeccakVariant} (Fl : KFlockSound F κ v)
 
-/-- **The relations at `t` give the identities at `t`.** -/
+/-- **The relations at `t` give the identities at `t`**, for round `0`'s challenges of at least four entries (the
+relations read `α` as their first four, the identities as `alphasOf`: they agree there, `Align.alphasOf_eq`; a
+transcript of the rounds has six). -/
 def DiffsEvalK : Prop :=
-  ∀ s c1 ch fd c2 t vals, (∀ d ∈ diffsK D Fl s c1 ch fd c2 t vals, ∀ x ∈ d, x = 0) →
+  ∀ s c1 ch fd c2 t vals, 4 ≤ ch.length → (∀ d ∈ diffsK D Fl s c1 ch fd c2 t vals, ∀ x ∈ d, x = 0) →
     ∀ P ∈ polysK D Fl s c1 ch fd c2, P.eval t = 0
 
 /-- **The identities as polynomials give the heap and the constraint vectors** (`BusModelK.MainOK`). -/
@@ -249,7 +251,7 @@ noncomputable def uniIdsK (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ :
   nRel := max n 1
   diffs_len := diffsK_len D Fl n g.relCount
   diffs_count := diffsK_count D Fl
-  diffs_eval := g.diffsEval
+  diffs_eval s c1 ch fd c2 t vals hlen hz := g.diffsEval s c1 ch fd c2 t vals (by omega) hz
   diffs_flock := g.diffsFlock
   prod := prodK D Fl
   prod_vars := prodK_vars D Fl

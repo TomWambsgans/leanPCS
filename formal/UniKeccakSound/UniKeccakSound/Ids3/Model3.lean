@@ -46,7 +46,7 @@ noncomputable def uniIdsK3 (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ 
   nRel := max n 1
   diffs_len s c1 ch fd c2 t vals := diffsK_len D F3 n g.relCount s c1 (expandCh ch) fd c2 t vals
   diffs_count s c1 ch fd c2 t vals := diffsK_count D F3 s c1 (expandCh ch) fd c2 t vals
-  diffs_eval s c1 ch fd c2 t vals hz := g.diffsEval s c1 (expandCh ch) fd c2 t vals hz
+  diffs_eval s c1 ch fd c2 t vals hz := g.diffsEval s c1 (expandCh ch) fd c2 t vals (by simp [expandCh]) hz
   diffs_flock s c1 ch fd c2 t vals hz := g.diffsFlock s c1 (expandCh ch) fd c2 t vals hz
   prod s c1 ch fd c2 t vals ρ l := prodK D F3 s c1 (expandCh ch) fd c2 t vals ρ l
   prod_vars s c1 ch fd c2 t vals ρ l := by rw [prodK_vars]; exact hV

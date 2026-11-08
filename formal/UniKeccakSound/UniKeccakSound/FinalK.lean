@@ -68,7 +68,7 @@ theorem hlink_uniPiopK (C : UniCodeK D Fl I.nV I.V) (hFin : UniFinalK D Fl I C) 
   · rw [hq, rd_openedOf _ _ _ _ 0 (by omega)]
     simp
   rw [ite_eq_right (by omega)]
-  refine ⟨c2, ?_, ⟨?_, hzF⟩, ?_⟩
+  refine ⟨c2, ?_, ⟨?_, hzF⟩, ?_, ?_⟩
   · rw [hq, rd_openedOf _ _ _ _ (nF + 1) (by omega)]
     simp
   · -- Flock's rounds completed.
@@ -84,6 +84,14 @@ theorem hlink_uniPiopK (C : UniCodeK D Fl I.nV I.V) (hFin : UniFinalK D Fl I C) 
         simp only [uniRounds, List.append_assoc, List.singleton_append] at this
         exact this.2.2
       simpa using doneFits_append_take _ _ d h1
+  · -- Round `0`'s six challenges.
+    rw [hq, rd_openedOf _ _ _ _ 0 (by omega)]
+    rcases done with _ | ⟨x, d⟩
+    · simp only [List.length_nil] at hlen
+      omega
+    · have := hd
+      simp only [uniRounds, List.append_assoc, List.singleton_append] at this
+      exact this.2.1
   · rw [ite_eq_right (by omega)]
     exact hFin'
 

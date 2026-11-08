@@ -150,7 +150,7 @@ theorem uniSoundK_c2 (s : USt) (p : Op Stk) (hp : p.length = Fl.prog.rounds.leng
   rw [rd_append_lt _ _ 0 hlt, h0] at hc1
   cases hc1
   rw [ite_eq_right (by simp; omega)] at hpost
-  obtain ⟨c2', hc2, hDone, hrest⟩ := hpost
+  obtain ⟨c2', hc2, hDone, hl6, hrest⟩ := hpost
   rw [hx, hm] at hc2
   cases hc2
   rw [ite_eq_left (by simp; omega)] at hrest
@@ -160,7 +160,7 @@ theorem uniSoundK_c2 (s : USt) (p : Op Stk) (hp : p.length = Fl.prog.rounds.leng
   obtain ⟨vals, hz⟩ := hrest
   rw [rd_append_lt _ _ 0 hlt, hfd, hx] at hz
   rw [hfd] at hDone
-  have hev := I.diffs_eval _ _ _ _ _ _ _ hz
+  have hev := I.diffs_eval _ _ _ _ _ _ _ (by rwa [rd_append_lt _ _ 0 hlt] at hl6) hz
   have hEnd := I.diffs_flock _ _ _ _ _ _ _ hz
   by_contra hno
   refine hn ⟨c1, c2, rfl, rfl, fun P hP => ?_, hEnd, hDone⟩
@@ -200,12 +200,12 @@ theorem uniSoundK_vals (s : USt) (p : Op Stk) (hp : p.length = Fl.prog.rounds.le
     rw [rd_append_lt _ _ 0 hlt, h0] at hc1
     cases hc1
     rw [ite_eq_right (by simp; omega)] at hpost
-    obtain ⟨c2', hc2, hDone, -⟩ := hpost
+    obtain ⟨c2', hc2, hDone, hl6, -⟩ := hpost
     rw [rd_append_lt _ _ _ hlt1, h2] at hc2
     cases hc2
     refine ⟨c1, h0, ?_⟩
     rw [ite_eq_right (by omega)]
-    exact ⟨c2, h2, by rwa [hfd] at hDone, Or.inl hzb⟩
+    exact ⟨c2, h2, by rwa [hfd] at hDone, by rwa [rd_append_lt _ _ 0 hlt] at hl6, Or.inl hzb⟩
   by_cases hbad : ∃ d ∈ I.diffs s c1 (rd p 0).2 (fdOf Fl.prog.rounds.length p) c2
       ((rd p (Fl.prog.rounds.length + 1)).2.headD 0) m.2, ∃ x ∈ d, x ≠ 0
   · have hb := prEvent_twoLevel_le (I.diffs s c1 (rd p 0).2 (fdOf Fl.prog.rounds.length p) c2
@@ -220,7 +220,7 @@ theorem uniSoundK_vals (s : USt) (p : Op Stk) (hp : p.length = Fl.prog.rounds.le
     rw [rd_append_lt _ _ 0 hlt, h0] at hc1
     cases hc1
     rw [ite_eq_right (by simp; omega)] at hpost
-    obtain ⟨c2', hc2, -, hrest⟩ := hpost
+    obtain ⟨c2', hc2, -, -, hrest⟩ := hpost
     rw [rd_append_lt _ _ _ hlt1, h2] at hc2
     cases hc2
     rw [ite_eq_right (by simp; omega)] at hrest
@@ -237,12 +237,12 @@ theorem uniSoundK_vals (s : USt) (p : Op Stk) (hp : p.length = Fl.prog.rounds.le
     rw [rd_append_lt _ _ 0 hlt, h0] at hc1
     cases hc1
     rw [ite_eq_right (by simp; omega)] at hpost
-    obtain ⟨c2', hc2, hDone, -⟩ := hpost
+    obtain ⟨c2', hc2, hDone, hl6, -⟩ := hpost
     rw [rd_append_lt _ _ _ hlt1, h2] at hc2
     cases hc2
     refine ⟨c1, h0, ?_⟩
     rw [ite_eq_right (by omega)]
-    refine ⟨c2, h2, by rwa [hfd] at hDone, Or.inr ?_⟩
+    refine ⟨c2, h2, by rwa [hfd] at hDone, by rwa [rd_append_lt _ _ 0 hlt] at hl6, Or.inr ?_⟩
     rw [ite_eq_left hp]
     refine ⟨m.2, fun d hd x hx => ?_⟩
     by_contra hx0
@@ -281,12 +281,12 @@ theorem uniSoundK_batch (j : ℕ) (h1 : Fl.prog.rounds.length + 3 ≤ j)
     rw [rd_append_lt _ _ 0 hlt, h0] at hc1
     cases hc1
     rw [ite_eq_right (by simp; omega)] at hpost
-    obtain ⟨c2', hc2, hDone, -⟩ := hpost
+    obtain ⟨c2', hc2, hDone, hl6, -⟩ := hpost
     rw [rd_append_lt _ _ _ hlt1, hc2'] at hc2
     cases hc2
     refine ⟨c1, h0, ?_⟩
     rw [ite_eq_right (by omega)]
-    exact ⟨c2, hc2', by rwa [hfd] at hDone, Or.inl hzb⟩
+    exact ⟨c2, hc2', by rwa [hfd] at hDone, by rwa [rd_append_lt _ _ 0 hlt] at hl6, Or.inl hzb⟩
   set O := (I.prod s c1 (rd p 0).2 (fdOf Fl.prog.rounds.length p) c2
     ((rd p (Fl.prog.rounds.length + 1)).2.headD 0) (rd p (Fl.prog.rounds.length + 2)).1.2
     ((rd p (Fl.prog.rounds.length + 2)).2.headD 0)
@@ -307,7 +307,7 @@ theorem uniSoundK_batch (j : ℕ) (h1 : Fl.prog.rounds.length + 3 ≤ j)
   rw [rd_append_lt _ _ 0 hlt, h0] at hc1
   cases hc1
   rw [ite_eq_right (by simp; omega)] at hpost
-  obtain ⟨c2', hc2, hDone, hrest⟩ := hpost
+  obtain ⟨c2', hc2, hDone, hl6, hrest⟩ := hpost
   rw [rd_append_lt _ _ _ hlt1, hc2'] at hc2
   cases hc2
   rw [ite_eq_right (by simp; omega)] at hrest
@@ -317,7 +317,7 @@ theorem uniSoundK_batch (j : ℕ) (h1 : Fl.prog.rounds.length + 3 ≤ j)
   rw [hbr, rd_append_lt _ _ 0 hlt, rd_append_lt _ _ _ hlt1, rd_append_lt _ _ _ hlt2, hfd] at hrest
   refine ⟨fun hS => hn ⟨c1, h0, ?_⟩, hrest⟩
   rw [ite_eq_right (by omega)]
-  refine ⟨c2, hc2', by rwa [hfd] at hDone, Or.inr ?_⟩
+  refine ⟨c2, hc2', by rwa [hfd] at hDone, by rwa [rd_append_lt _ _ 0 hlt] at hl6, Or.inr ?_⟩
   rw [ite_eq_right (by omega)]
   exact hS
 
