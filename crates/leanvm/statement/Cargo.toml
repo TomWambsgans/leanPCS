@@ -1,0 +1,15 @@
+# Part of this repository. Vendors and adapts leanVM (https://github.com/leanEthereum/leanVM), commit 42422001,
+# crates/verifier, MIT OR Apache-2.0. See NOTICE.md.
+[package]
+name = "leanvm_statement"
+version.workspace = true
+edition.workspace = true
+publish = false
+description = "leanVM 42422001's statement, Flock's verifier pieces, the Keccak-256 chain and the EVM toolchain, generic over the scalar"
+
+[lints]
+workspace = true
+
+[dependencies]
+evm_link.workspace = true
+revm.workspace = true

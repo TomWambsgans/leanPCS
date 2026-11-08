@@ -6,12 +6,12 @@
 // eq point's sampled coordinates as successive squares of one (`EqPoint::Squares`, the univariate PIOP's π1-rec).
 // CREDIT: https://github.com/succinctlabs/flock (flock-core), MIT OR Apache-2.0. MIT OR Apache-2.0; see NOTICE.md.
 //! The zerocheck with a univariate skip of `k` variables, `3 ≤ k ≤ 6`: leanVM's protocol with `k` for its fixed 6
-//! (`leanvm_flock_gas::flock_min`'s `zerocheck` verifies it).
+//! (`leanvm_statement::flock_min`'s `zerocheck` verifies it).
 //!
 //! - The eq point `r` on the `m - k` variables after the skip: leanVM's seven fixed coordinates (three small, four
 //!   medium), then `m - k - 7` sampled ([`EqPoint::Sampled`], leanVM's), or the first of them sampled and each next
 //!   the square of the one before ([`EqPoint::Squares`]: π1-rec, `crates/leanvm_rec/SPEC-REC.md` §1.4, which
-//!   `leanvm_flock_gas::flock_min`'s `FsShape::Rec` verifies). The kernels take any point.
+//!   `leanvm_statement::flock_min`'s `FsShape::Rec` verifies). The kernels take any point.
 //! - Round 1: `P(λ) = Σ_x eq(r, x) (â(λ, x) b̂(λ, x) + ĉ(λ, x))` on the coset `Λ = φ_8(2^k + i)`, `i < 2^k`, where
 //!   `â(·, x)` extends the `2^k` bits of group `x` from `S = φ_8(i)`; `P` vanishes on `S`.
 //! - Then `z`, `m - k` rounds of degree 3 (the low variable first, `G(0)` left to the verifier), `â`, `b̂`.

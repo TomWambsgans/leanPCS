@@ -4,12 +4,8 @@
 [workspace]
 members = [
     "crates/evm_link",
-    "crates/quotient",
-    "crates/evm",
-    "crates/leanvm_flock_gas",
-    "crates/leanvm_univariate",
-    "crates/leanvm_rec",
-    "crates/gf2_linear",
+    "crates/membership/*",
+    "crates/leanvm/*",
     "crates/vendor/leanvm-c445e3d5/*",
     "crates/vendor/leanvm-42422001/*",
 ]
@@ -40,7 +36,10 @@ lv42_fiat_shamir = { path = "crates/vendor/leanvm-42422001/fiat_shamir" }
 lv42_flock = { path = "crates/vendor/leanvm-42422001/flock" }
 # This repository.
 evm_link = { path = "crates/evm_link" }
-quotient = { path = "crates/quotient" }
+quotient = { path = "crates/membership/quotient" }
+leanvm_statement = { path = "crates/leanvm/statement" }
+leanvm_univariate = { path = "crates/leanvm/univariate" }
+gf2_linear = { path = "crates/leanvm/gf2_linear" }
 libc = "0.2"
 serde = { version = "1", features = ["derive"] }
 bincode = "1"
