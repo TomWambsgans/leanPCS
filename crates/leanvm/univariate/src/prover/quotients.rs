@@ -250,14 +250,19 @@ fn values_rows(data: &mut [K8], offset: F64) {
 /// worker alone, each eight rows transposed ([`Points::Batches`]).
 fn piece_rows(src: &[K8], first: usize, p: usize, dst: &mut Vec<K8>) {
     let size = 1usize << p;
+    dst.resize(size, K8::ZERO);
     if size == src.len() {
-        dst.clear();
-        dst.extend_from_slice(src);
+        // Read from `src` tile by tile (no copy of the whole batch first), where `ntt`'s lanes serve.
+        if cfg!(all(target_arch = "aarch64", target_feature = "aes")) {
+            dst.copy_from_slice(src);
+            values_rows(dst, omega(first));
+        } else {
+            ntt::values_batch_from_serial(src, dst, omega(first), true);
+        }
     } else {
-        dst.resize(size, K8::ZERO);
         ntt::fold_batch_serial(src, first, dst);
+        values_rows(dst, omega(first));
     }
-    values_rows(dst, omega(first));
 }
 
 /// A quotient from its numerator on `D_M`'s first points: `columns` (novel coefficients, `2^r` each) evaluated on
@@ -271,6 +276,9 @@ fn prefix_quotient<D: Sync>(
     value: impl Fn(&D, &Points, usize) -> Ex8 + Sync,
 ) -> Quotient {
     let n = 1usize << r;
+    let prof = std::env::var_os("PI1_PROFILE").is_some();
+    let started = std::time::Instant::now();
+    let (mut t_transform, mut t_fill) = (0f64, 0f64);
     let sizes = ntt::prefix_sizes(count, r.saturating_sub(2));
     let base = 1usize << r.max(sizes[0] + 1);
     let total: usize = sizes.iter().map(|&e| 1usize << e).sum();
@@ -356,10 +364,13 @@ fn prefix_quotient<D: Sync>(
             .clamp(1, all.len());
         let mut transformed: Vec<Vec<K8>> = vec![Vec::new(); per_round * width];
         for round in all.chunks(per_round) {
+            let clock = std::time::Instant::now();
             parallel::chunks_mut(&mut transformed[..round.len() * width], 1, |i, dst| {
                 let (first, _, p) = round[i / width];
                 piece_rows(&batches[i % width], first, p, &mut dst[0]);
             });
+            t_transform += clock.elapsed().as_secs_f64();
+            let clock = std::time::Instant::now();
             let data: Vec<D> = round.iter().map(|&(first, _, p)| piece(first, p)).collect();
             let points: Vec<Points> = transformed[..round.len() * width].chunks(width).map(Points::Batches).collect();
             // Each piece's first run in the round.
@@ -379,8 +390,10 @@ fn prefix_quotient<D: Sync>(
                 let g = runs.partition_point(|&s| s <= j) - 1;
                 value(&data[g], &points[g], j - runs[g])
             });
+            t_fill += clock.elapsed().as_secs_f64();
         }
     }
+    let evaluated = started.elapsed().as_secs_f64();
     for limb in &mut limbs {
         ntt::interpolate_prefix(limb, &sizes, base);
     }
@@ -391,6 +404,14 @@ fn prefix_quotient<D: Sync>(
     let [a, b, c] = &mut check;
     evaluate(first, g, [a, b, c]);
     let holds = (0..3).all(|k| ntt::on_coset_prefix(&limbs[k], first, g) == check[k]);
+    if prof {
+        eprintln!(
+            "      prefix_quotient 2^{r}, {} columns, {} pieces, grouped {grouped}: evaluated {evaluated:.4} s (transforms {t_transform:.4}, fills {t_fill:.4}), interpolated and checked {:.4} s",
+            columns.len(),
+            all.len(),
+            started.elapsed().as_secs_f64() - evaluated
+        );
+    }
     Quotient::new(limbs, count, holds)
 }
 
