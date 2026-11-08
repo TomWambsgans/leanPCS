@@ -90,10 +90,16 @@ impl Quotient {
     /// Limb `limb` of chunk `chunk` of `Q = Q_0 + w_(e_0) (Q_1 + w_(e_1) Q_2)` in basis `B`, into `out` (`2^(e_chunk)`
     /// words): the novel coefficients' slice (`X_(2^e + k) = w_e X_k` for `k < 2^e`), then its subset sums.
     pub fn chunk_b(&self, sizes: &[usize], chunk: usize, limb: usize, out: &mut [F64]) {
+        assert_eq!(out.len(), 1 << sizes[chunk]);
+        ntt::subset_sums_from(self.chunk_novel(sizes, chunk, limb), out);
+    }
+
+    /// Limb `limb`'s novel coefficients of chunk `chunk` (its slice, the zeros past the quotient's end cut), whose
+    /// subset sums are [`Quotient::chunk_b`].
+    pub fn chunk_novel(&self, sizes: &[usize], chunk: usize, limb: usize) -> &[F64] {
         let novel = &self.novel[limb];
         let at: usize = sizes[..chunk].iter().map(|&e| 1usize << e).sum();
         let end: usize = at + (1 << sizes[chunk]);
-        assert_eq!(out.len(), 1 << sizes[chunk]);
         let have = end.min(novel.len()).saturating_sub(at);
         if chunk + 1 == sizes.len() {
             assert!(
@@ -101,7 +107,7 @@ impl Quotient {
                 "the chunks hold the whole quotient"
             );
         }
-        ntt::subset_sums_from(&novel[at..at + have], out);
+        &novel[at.min(novel.len())..at.min(novel.len()) + have]
     }
 
     /// Whether its numerator vanished on its domain (its degree is then below its points' count).

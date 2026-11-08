@@ -244,16 +244,20 @@ pub fn prove_streaming(
     let mut stack1 = Stack::new(StackLayout::new(&c1_columns(&shape)));
     // q_flock: the Flock witness's packed words (`Trace::keccak_flock`), which the trace does not keep.
     stack1.put_k_words(Column::Qflock, &flock.z);
+    // Every column's subset sums in the same dispatches.
+    let mut items: Vec<(Column, &[F64])> = Vec::new();
     for (t, columns) in c1.tables.iter().enumerate() {
         for (c, column) in columns.iter().enumerate() {
-            stack1.put_b(Column::Table { table: t, column: c }, &column.novel);
+            items.push((Column::Table { table: t, column: c }, &column.novel));
         }
-        stack1.put_b(Column::Inverse(t), &c1.inverses[t].novel);
+        items.push((Column::Inverse(t), &c1.inverses[t].novel));
     }
     for (k, column) in c1.memory.iter().enumerate() {
-        stack1.put_b(Column::Memory(k), &column.novel);
+        items.push((Column::Memory(k), &column.novel));
     }
-    stack1.put_b(Column::BytecodeFinal, &c1.bytecode_final.novel);
+    items.push((Column::BytecodeFinal, &c1.bytecode_final.novel));
+    stack1.put_b_many(&items);
+    drop(items);
     let mut stack_f = super::setup::f_stack(&shape, &setup);
     if config.garbage {
         stack1.fill_unused(0xC1);
@@ -395,23 +399,36 @@ pub fn prove_streaming(
     let constraint_sizes = chunks(constraint.count);
     let leaf_sizes: Vec<(usize, Vec<usize>)> = leaf_quotients.iter().map(|(b, q)| (*b, chunks(q.count))).collect();
     let mut stack2 = Stack::new(StackLayout::new(&c2_columns(layout.h, &constraint_sizes, &leaf_sizes)));
-    for (limb, novel) in heap_novel.iter().enumerate() {
-        quotient::ntt::subset_sums_from(novel, stack2.limb_mut(Column::Heap, limb));
-    }
-    drop(heap_novel);
-    let mut put = |q: &Quotient, sizes: &[usize], column: &dyn Fn(usize) -> Column| {
-        for chunk in 0..sizes.len() {
-            for limb in 0..3 {
-                q.chunk_b(sizes, chunk, limb, stack2.limb_mut(column(chunk), limb));
+    {
+        // The heap's limbs and every quotient's chunks' limbs: all their subset sums in the same dispatches.
+        let mut which: Vec<(Column, usize)> = Vec::new();
+        let mut sources: Vec<&[F64]> = Vec::new();
+        for (limb, novel) in heap_novel.iter().enumerate() {
+            which.push((Column::Heap, limb));
+            sources.push(novel);
+        }
+        let tree_sizes = [layout.h, 0];
+        type ColumnOf<'a> = Box<dyn Fn(usize) -> Column + 'a>;
+        let mut all: Vec<(&Quotient, &[usize], ColumnOf)> = vec![
+            (&tree, &tree_sizes[..], Box::new(Column::TreeQuotient)),
+            (&constraint, &constraint_sizes[..], Box::new(Column::ConstraintQuotient)),
+        ];
+        for ((block, q), (_, sizes)) in leaf_quotients.iter().zip(&leaf_sizes) {
+            all.push((q, sizes, Box::new(move |chunk| Column::LeafQuotient { block: *block, chunk })));
+        }
+        for (q, sizes, column) in &all {
+            for chunk in 0..sizes.len() {
+                for limb in 0..3 {
+                    which.push((column(chunk), limb));
+                    sources.push(q.chunk_novel(sizes, chunk, limb));
+                }
             }
         }
-    };
-    put(&tree, &[layout.h, 0], &Column::TreeQuotient);
-    put(&constraint, &constraint_sizes, &Column::ConstraintQuotient);
-    for ((block, q), (_, sizes)) in leaf_quotients.iter().zip(&leaf_sizes) {
-        put(q, sizes, &|chunk| Column::LeafQuotient { block: *block, chunk });
+        let dsts = stack2.limbs_mut_many(&which);
+        let mut jobs: Vec<(&[F64], &mut [F64])> = sources.into_iter().zip(dsts).collect();
+        quotient::ntt::subset_sums_many(&mut jobs);
     }
-    drop((tree, constraint, leaf_quotients));
+    drop((heap_novel, tree, constraint, leaf_quotients));
     clock.lap(&mut report, "C2: chunks in basis B");
     if config.garbage {
         stack2.fill_unused(0xC2);

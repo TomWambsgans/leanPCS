@@ -1657,6 +1657,18 @@ pub fn values_from_cols(srcs: &[&[F64]], dsts: &mut [&mut [F64]], offset: F64) {
     unsafe { run_cols(&cols, len / 8, 3, &kind, false, false) }
 }
 
+/// [`coefficients_from`] on several columns of one length at once.
+pub fn coefficients_from_cols(srcs: &[&[F64]], dsts: &mut [&mut [F64]], offset: F64) {
+    let len = dsts.first().map_or(0, |c| c.len());
+    if len < 8 {
+        return dsts.iter_mut().zip(srcs).for_each(|(d, s)| coefficients_from(s, d, offset));
+    }
+    let kind = Inverse(Twiddles::new(offset, len.trailing_zeros() as usize));
+    let cols = column_cols(dsts, Some(srcs));
+    // SAFETY: the destinations' own words, eight a row, read first from their sources'.
+    unsafe { run_cols(&cols, len / 8, 3, &kind, false, false) }
+}
+
 /// [`values_from`] by the calling worker alone.
 pub fn values_from_serial(src: &[F64], dst: &mut [F64], offset: F64) {
     assert_eq!(src.len(), dst.len());
@@ -1874,29 +1886,69 @@ pub fn subset_sums_from<M: Copy + Send + Sync + Add<Output = M> + Default>(src: 
     subset_sums_of(dst, Some(src));
 }
 
+/// The variables [`subset_sums`] takes on blocks one worker holds (256 KiB).
+fn subset_leaf<M>(m: usize) -> usize {
+    m.min(((1usize << 18) / std::mem::size_of::<M>()).max(2).ilog2() as usize)
+}
+
+/// [`subset_sums`]' low variables on block `b` (of `2^leaf`) of a column, read first from `src` (zero past its end).
+fn subset_block<M: Copy + Add<Output = M> + Default>(block: &mut [M], b: usize, leaf: usize, src: Option<&[M]>) {
+    if let Some(src) = src {
+        let at = (b << leaf).min(src.len());
+        let have = (src.len() - at).min(block.len());
+        block[..have].copy_from_slice(&src[at..at + have]);
+        block[have..].fill(M::default());
+    }
+    let mut half = 1;
+    while half < block.len() {
+        for pair in block.chunks_exact_mut(2 * half) {
+            let (lo, hi) = pair.split_at_mut(half);
+            for (h, &l) in hi.iter_mut().zip(lo.iter()) {
+                *h = *h + l;
+            }
+        }
+        half *= 2;
+    }
+}
+
+/// [`subset_sums_from`] of several columns (any lengths, each `src` at most its `dst`): every column's blocks in one
+/// dispatch, then each longer column's upper variables. The same values.
+pub fn subset_sums_many<M: Copy + Send + Sync + Add<Output = M> + Default>(jobs: &mut [(&[M], &mut [M])]) {
+    // (job, block, the block's length): every column's low variables.
+    let mut blocks: Vec<(usize, usize, usize)> = Vec::new();
+    for (k, (src, dst)) in jobs.iter().enumerate() {
+        let n = dst.len();
+        assert!(n.is_power_of_two() && src.len() <= n);
+        let leaf = subset_leaf::<M>(n.trailing_zeros() as usize);
+        blocks.extend((0..n >> leaf).map(|b| (k, b, leaf)));
+    }
+    let dsts: Vec<SendPtr<M>> = jobs.iter_mut().map(|(_, d)| SendPtr(d.as_mut_ptr())).collect();
+    let srcs: Vec<&[M]> = jobs.iter().map(|(s, _)| *s).collect();
+    parallel::for_each(blocks.len(), |t| {
+        let (k, b, leaf) = blocks[t];
+        // SAFETY: task `t` writes block `b` of column `k` alone, inside it.
+        let block = unsafe { dsts[k].slice(b << leaf, 1 << leaf) };
+        subset_block(block, b, leaf, Some(srcs[k]));
+    });
+    for (_, dst) in jobs.iter_mut() {
+        let m = dst.len().trailing_zeros() as usize;
+        subset_upper(dst, subset_leaf::<M>(m));
+    }
+}
+
 fn subset_sums_of<M: Copy + Send + Sync + Add<Output = M> + Default>(data: &mut [M], src: Option<&[M]>) {
     let n = data.len();
     assert!(n.is_power_of_two());
     let m = n.trailing_zeros() as usize;
-    let leaf = m.min(((1usize << 18) / std::mem::size_of::<M>()).max(2).ilog2() as usize);
-    parallel::chunks_mut(data, 1 << leaf, |b, block| {
-        if let Some(src) = src {
-            let at = (b << leaf).min(src.len());
-            let have = (src.len() - at).min(block.len());
-            block[..have].copy_from_slice(&src[at..at + have]);
-            block[have..].fill(M::default());
-        }
-        let mut half = 1;
-        while half < block.len() {
-            for pair in block.chunks_exact_mut(2 * half) {
-                let (lo, hi) = pair.split_at_mut(half);
-                for (h, &l) in hi.iter_mut().zip(lo.iter()) {
-                    *h = *h + l;
-                }
-            }
-            half *= 2;
-        }
-    });
+    let leaf = subset_leaf::<M>(m);
+    parallel::chunks_mut(data, 1 << leaf, |b, block| subset_block(block, b, leaf, src));
+    subset_upper(data, leaf);
+}
+
+/// [`subset_sums`]' variables from `leaf` up, a few at a time on tiles.
+fn subset_upper<M: Copy + Send + Sync + Add<Output = M> + Default>(data: &mut [M], leaf: usize) {
+    let n = data.len();
+    let m = n.trailing_zeros() as usize;
     let base = SendPtr(data.as_mut_ptr());
     let mut a = leaf;
     while a < m {
@@ -2495,6 +2547,48 @@ mod tests {
             let mut got = columns.clone();
             interpolate_prefix_cols(&mut got.iter_mut().map(|c| &mut c[..]).collect::<Vec<_>>(), &sizes, base);
             assert_eq!(got, want, "interpolate_prefix_cols, blocks {sizes:?}");
+        }
+    }
+
+    /// Several columns' subset sums at once are each one's.
+    #[test]
+    fn subset_sums_many_is_each() {
+        let mut next = rng(17);
+        let lens = [(1usize, 1usize), (8, 5), (1 << 10, 1 << 10), (1 << 15, 1000), (1 << 16, 1 << 16), (1 << 18, 3 << 15)];
+        let srcs: Vec<Vec<F64>> = lens.iter().map(|&(_, s)| (0..s).map(|_| F64(next())).collect()).collect();
+        let want: Vec<Vec<F64>> = lens
+            .iter()
+            .zip(&srcs)
+            .map(|(&(n, _), src)| {
+                let mut d = vec![F64::ZERO; n];
+                subset_sums_from(src, &mut d);
+                d
+            })
+            .collect();
+        let mut got: Vec<Vec<F64>> = lens.iter().map(|&(n, _)| vec![F64(next()); n]).collect();
+        let mut jobs: Vec<(&[F64], &mut [F64])> = srcs.iter().map(|s| &s[..]).zip(got.iter_mut().map(|g| &mut g[..])).collect();
+        subset_sums_many(&mut jobs);
+        assert_eq!(got, want);
+        let mut got: Vec<Vec<F64>> = srcs.iter().map(|s| vec![F64::ZERO; s.len().next_power_of_two()]).collect();
+        let want: Vec<Vec<F64>> = srcs
+            .iter()
+            .map(|s| {
+                let mut d = vec![F64::ZERO; s.len().next_power_of_two()];
+                coefficients_from(&{
+                    let mut v = s.clone();
+                    v.resize(d.len(), F64::ZERO);
+                    v
+                }, &mut d, point(1 << 20));
+                d
+            })
+            .collect();
+        for (g, s) in got.iter_mut().zip(&srcs).filter(|(g, _)| g.len() >= 8) {
+            let mut padded = s.clone();
+            padded.resize(g.len(), F64::ZERO);
+            coefficients_from_cols(&[&padded], &mut [&mut g[..]], point(1 << 20));
+        }
+        for (g, w) in got.iter().zip(&want).filter(|(g, _)| g.len() >= 8) {
+            assert_eq!(g, w);
         }
     }
 

@@ -131,6 +131,51 @@ impl Stack {
         quotient::ntt::subset_sums_from(novel, &mut self.words[offset as usize..offset as usize + novel.len()]);
     }
 
+    /// [`Stack::put_b`] of several K-columns at once: every column's subset sums in the same dispatches.
+    pub fn put_b_many(&mut self, items: &[(Column, &[F64])]) {
+        let places: Vec<(usize, usize)> = items
+            .iter()
+            .map(|&(column, novel)| {
+                let limbs = self.layout.limbs(column);
+                assert_eq!(limbs.len(), 1, "{column:?} is a K-column");
+                let (_, vars, offset) = limbs[0];
+                assert_eq!(novel.len(), 1 << vars, "{column:?}'s size");
+                (offset as usize, novel.len())
+            })
+            .collect();
+        let dsts = self.blocks_mut(&places);
+        let mut jobs: Vec<(&[F64], &mut [F64])> = items.iter().map(|&(_, novel)| novel).zip(dsts).collect();
+        quotient::ntt::subset_sums_many(&mut jobs);
+    }
+
+    /// Several E-columns' limbs `(column, limb)`, to be written in place, in that order (all distinct).
+    pub fn limbs_mut_many(&mut self, which: &[(Column, usize)]) -> Vec<&mut [F64]> {
+        let places: Vec<(usize, usize)> = which
+            .iter()
+            .map(|&(column, limb)| {
+                let (_, vars, offset) = self.layout.limbs(column)[limb];
+                (offset as usize, 1 << vars)
+            })
+            .collect();
+        self.blocks_mut(&places)
+    }
+
+    /// The words `offset..offset + len` of each place, in the places' order (disjoint).
+    fn blocks_mut(&mut self, places: &[(usize, usize)]) -> Vec<&mut [F64]> {
+        let mut order: Vec<usize> = (0..places.len()).collect();
+        order.sort_by_key(|&k| places[k].0);
+        let mut out: Vec<Option<&mut [F64]>> = places.iter().map(|_| None).collect();
+        let (mut rest, mut at) = (&mut self.words[..], 0usize);
+        for k in order {
+            let (offset, len) = places[k];
+            assert!(offset >= at, "the blocks are disjoint");
+            let (block, tail) = std::mem::take(&mut rest)[offset - at..].split_at_mut(len);
+            out[k] = Some(block);
+            (rest, at) = (tail, offset + len);
+        }
+        out.into_iter().map(|b| b.expect("a block")).collect()
+    }
+
     /// A K-column's words as placed: its `B` coefficients.
     pub fn k(&self, column: Column) -> &[F64] {
         let limbs = self.layout.limbs(column);
