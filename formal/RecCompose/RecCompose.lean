@@ -43,6 +43,7 @@ import RecCompose.RealDeployment
 import RecCompose.IvUniform
 import RecCompose.Pi2AlphaEnd
 import RecCompose.Pi2Closed
+import RecCompose.CompleteKeccakEnd
 
 /-!
 # RecCompose: the recursive verifier's end theorems
@@ -90,3 +91,15 @@ ones.
 /-- info: 'RecCompose.Pi2Alpha.delta2_alpha_le' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms RecCompose.Pi2Alpha.delta2_alpha_le
+
+/-- info: 'RecCompose.Pi1K.pi1ProverFactsK' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecCompose.Pi1K.pi1ProverFactsK
+
+/-- info: 'RecCompose.Pi1K.recCompleteness2_pi2_rec3_K' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecCompose.Pi1K.recCompleteness2_pi2_rec3_K
+
+/-- info: 'RecCompose.Pi1K.recCompleteness_real_K_fs_bits' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecCompose.Pi1K.recCompleteness_real_K_fs_bits

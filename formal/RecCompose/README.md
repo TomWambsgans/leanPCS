@@ -66,6 +66,15 @@ evaluated `DigestChecked`, `SetupRootChecked`, `IvChecked`/`viewCheck` and the i
 
 **π2's completeness** (`Pi2AlphaEnd.recCompleteness2_pi2_rec3_closed`, `δ2 ≤ 2^-164`, and the `_fs` form) is for an
 abstract π1-rec3 prover `P1` with the named facts `Pi1ProverFacts` (`Pi2P1.lean`).
+At the concrete prover (`CompleteKeccakEnd.lean`), `Pi1K.pi1Rec3ProverK D` is UniKeccakComplete's π1-rec3 prover with
+its Fiat–Shamir the pure `keccak256` and its trees and openings over `π`.
+- `pi1ProverFactsK` proves its facts.
+- `recCompleteness2_pi2_rec3_K` is π2's part.
+- `recCompleteness_real_K_fs_bits` is end to end at `realDeployment`, with error `δ1 + δh + 2^-164`.
+
+Two premises are left, both about this one honest prover at Keccak-f[1600]:
+- `Pi1CompletenessKeccak`: its random-permutation reading, `pi1CompletenessFs_rpm`, is proved at `Prob.deltaK < 2^-169`.
+- `Pi1HazardKeccakHonest`.
 
 ## The end theorems (`End.lean`)
 
