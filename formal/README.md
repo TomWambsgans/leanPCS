@@ -677,7 +677,7 @@ The Keccak VM (`docs/leanvm/univariate/KECCAK.md`) is leanVM 42422001 with `BLAK
 
 Built on it:
 
-- **The Keccak-f block** ([`KeccakFlock/`](KeccakFlock/README.md)): the R1CS of `crates/vendor/leanvm-42422001/flock/src/keccak.rs`
+- **The Keccak-f block** ([`KeccakFlock/`](KeccakFlock/README.md)): the R1CS of `crates/vendor/flock-42422001/src/keccak.rs`
   and the inhabitant `KeccakFlock.keccakFlockSpec`. All of this is proved with no hypothesis:
   - `step_of_holds`: a satisfying block holds `keccakF1600` of its input port at its output port;
   - completeness;

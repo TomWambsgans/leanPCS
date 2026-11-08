@@ -1,7 +1,7 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Follows `crates/leanvm/univariate/src/prover/flock.rs`
 -- and the honest provers of `crates/leanvm/statement/src/flock_min.rs`'s tests (`walked`, `prove_sums`); the
--- zerocheck and the lincheck are leanVM 42422001's Flock (`crates/vendor/leanvm-42422001/flock/src/{zerocheck.rs, zerocheck/skip.rs,
--- lincheck.rs}`) on the Keccak-f block (`crates/vendor/leanvm-42422001/flock/src/keccak.rs`), written here as the sums they compute, not
+-- zerocheck and the lincheck are leanVM 42422001's Flock (`crates/vendor/flock-42422001/src/{zerocheck.rs, zerocheck/skip.rs,
+-- lincheck.rs}`) on the Keccak-f block (`crates/vendor/flock-42422001/src/keccak.rs`), written here as the sums they compute, not
 -- as leanVM's packed passes.
 -- Ported to the Keccak VM from `formal/UniComplete/UniComplete/FlockProver.lean`.
 import UniKeccakComplete.K.Honest
