@@ -5,13 +5,12 @@ import UniStatement.Mapping
 import UniStatement.Security
 
 /-!
-# UniStatement: the univariate PIOP for leanVM 42422001, transcribed
+# UniStatement: the univariate PIOP's verifier, transcribed
 
-`crates/leanvm/univariate`'s verifier as computable Lean (`README.md` here: the reading order, the
-correspondence with the Rust, what is tested), and its end statements against leanVM 42422001's relation
-(`Lv42`'s `M3Holds`): `UniKnowledgeSoundness`, `UniCompleteness` (`Security.lean`), stated, not proved.
+`crates/leanvm/univariate`'s verifier as computable Lean, the shared part of the Keccak VM's verifier
+(`formal/UniKeccak`; `README.md` here: the reading order, the correspondence with the Rust).
 
-The build fails if a definition the statements rest on uses an axiom beyond Lean's three standard ones.
+The build fails if a guarded definition uses an axiom beyond Lean's three standard ones.
 -/
 
 /-- info: 'UniStatement.run' depends on axioms: [propext, Classical.choice, Quot.sound] -/

@@ -161,7 +161,18 @@ cited is sorry-free, without `native_decide`, on `propext`, `Classical.choice`, 
 They build on older shared libraries: `Lv42`, `UniStatement`, `UniSound`, `UniComplete` (the honest prover's generic
 layers, [`UniComplete/README.md`](UniComplete/README.md)), `FlockSound`, `FlockSoundUni`, `Heap`, `RecGraph`.
 
-<!-- CUT-SUMMARY -->
+**What is left of the BLAKE2s VM.** `formal/Lv42` is leanVM 42422001's instruction set without `BLAKE2S` (five
+instructions, the machine, the five shared tables, the M3 instance with its Flock region), with the bytecode guarantee
+`Lv42.Arithmetization.EntryOk` (an entry decodes, or has opcode `g^5`: the Keccak VM's `SHA3`). No BLAKE2s
+semantics, table, Flock circuit, statement or end theorem remains, and every module of `formal/` is in the import
+closure of the kept roots. The shared libraries (`UniStatement`, `UniSound`, `FlockSound`, `FlockSoundUni`,
+`UniComplete`, `Heap`, `RecGraph`) hold the generic verifier, PIOP, Fiat–Shamir and Flock layers the Keccak line
+instantiates, plus some unused BLAKE2s-era declarations: `UniStatement.Rec`'s `Flock.blake2s{Iv,Sigma,GLanes,RowValues}`
+and `walkSlots`, `UniStatement.Tables.blake2sSlots`, `FlockSoundUni.WalkCode`'s `Walk.blake2sRowValues_eq`,
+`UniSound.Ids.Facts.good_blake2s`, the BLAKE2s reference's numbers in `UniSound.Ids.Deployed` (`c1Limbs`,
+`c1Limbs_reference`, `setupLimbs_reference`) and `qflockSlot`'s limb readings in `UniSound.Ids`. The Rust name
+`Blake2s::Keccak` (the verifier's variant) is kept in `UniStatement.Verifier.Blake2s`.
+
 
 ### The statement, the arithmetization, the Keccak-f block
 

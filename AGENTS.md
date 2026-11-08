@@ -194,11 +194,12 @@ permutation; `formal/EndToEnd` proves them ([`formal/README.md`](formal/README.m
   π1-rec3's theorems are in the random-permutation model, so the soundness reduction's two π1 terms and the two
   completeness premises are left to the Fiat–Shamir heuristic for Keccak-f[1600]; (2) the compiler's IV uniformity
   (`RecCompose.PatchChecked`, which with the evaluated checks gives `IvChecked` at every IV; a relational simulation
-  of about 1,200 lines of the builder); (3) closed bounds at other shapes than the reference; (4) BLAKE2s-era
-  declarations left in the shared libraries (CUT-REMAINS).
-- leanVM: the soundness calculators for the Keccak VM; capacity beyond about 470 signatures; the contract IV (`contract::contract_iv`) still hashes two
-  fixed BLAKE2s-era roots (`SetupRoots::a0`, `b0`) and two fixed layout words, kept so the committed vectors stay
-  valid (dropping them means regenerating the vectors).
+  of about 1,200 lines of the builder); (3) closed bounds at other shapes than the reference; (4) unused
+  BLAKE2s-era declarations in the shared libraries ([`formal/README.md`](formal/README.md), "What is left of the
+  BLAKE2s VM").
+- leanVM: the soundness calculators for the Keccak VM; capacity beyond about 470 signatures; the contract IV
+  (`contract::contract_iv`) still hashes two fixed BLAKE2s-era roots (`SetupRoots::a0`, `b0`) and two fixed layout
+  words, kept so the committed vectors stay valid (dropping them means regenerating the vectors).
 - Possible gas saving: absorb the membership index root in the byte order `PCS_OPEN` takes (−132 gas).
 
 ## Provenance and licensing

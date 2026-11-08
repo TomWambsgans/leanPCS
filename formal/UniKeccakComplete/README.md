@@ -91,12 +91,12 @@ Both depend on `[propext, Classical.choice, Quot.sound]` only (the root's `#guar
 ## Provenance and the Keccak-only cut
 
 `K/` is `formal/UniComplete` (BLAKE2s, `~44k` lines) copied and ported to the Keccak VM (option (ii)): each file names
-its original in its header. The generic `UniComplete` modules are **imported, not copied**, and must be kept when
-`UniComplete` is deleted: `UniComplete.Basic`, `Div`, `Domain` (with `DomainBasis`, `DomainDigits`, `DomainPoly`,
+its original in its header. The generic `UniComplete` modules are **imported, not copied**, and are all that is left of
+`UniComplete`: `UniComplete.Basic`, `Div`, `Domain` (with `DomainBasis`, `DomainDigits`, `DomainPoly`,
 `DomainCount`, `DomainPositions`, `DomainActive`, `DomainCoord`, `DomainCoord18`), `Whir`, `Rec3Pairs`. No other
 `UniComplete` module is imported. Other BLAKE2s-line imports: `UniSound` through `UniKeccakSound` (as listed in its
-README) and `UniComplete.Rec3Pairs`' `UniSound.Rec3.Pairs`; `Lv42`'s shared protocol modules (`FlockSpec`,
-`LeanIsa.Relation`, `Arithmetization.Completeness.Satisfied`).
+README) and `UniComplete.Rec3Pairs`' `UniSound.Rec3.Pairs`; `Lv42`'s shared modules
+`Protocol.LeanIsaBase` and `Arithmetization.Completeness.BasicsBase`.
 
 ## What is not done
 
