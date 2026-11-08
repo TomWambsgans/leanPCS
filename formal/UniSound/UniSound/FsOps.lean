@@ -216,18 +216,7 @@ theorem mkStmt_wide (L : WhirBridge.Layout) (hL : L.extra = []) (cs : List WhirB
 
 section Ops
 
-variable (D : Deployment) {κ : ℕ} (Fl : FlockSound κ) (nV V : ℕ) (C : UniCode D Fl nV V)
-
-/-- The main line's rounds. -/
-abbrev uRounds : List RoundSpec := uniRounds Fl.prog.rounds nV V
-
-/-- The PIOP's statement a proof announces. -/
-def uSt (π : UPf) : USt := ustOf (uView (uRounds Fl nV V) π).1
-
-/-- **The chain program's result** on a proof and challenges. -/
-def uOut (π : UPf) (ch : List (List E)) : Reduced :=
-  (C.prog (uSt Fl nV V π).1 (uSt Fl nV V π).2).out (uDone (uRounds Fl nV V) π ch)
-    (uTail (uRounds Fl nV V) π)
+variable (D : Deployment) {κ : ℕ} (nV V : ℕ)
 
 /-- **The result is well formed**: one opening per commitment, in order, its point claims of its
 layout word's variables, and Flock's matrices' claim of `A0`'s. -/
@@ -238,54 +227,9 @@ def WellFormed (r : Reduced) : Prop :=
     (∀ c ∈ claimsOf r .setup, c.point.length = wv D 2) ∧
     (∀ mc, r.matrices = some mc → mc.point.length = wv D 3 ∧ mc.point.length = wv D 4)
 
-/-- **The verifier's check** (what an accepting run satisfies): the transcript completes the
-rounds, every value the chain program requires zero is, and its result is well formed. -/
-def uniCheck (π : UPf) (ch : List (List E)) : Prop :=
-  DoneFits (uRounds Fl nV V) (uDone (uRounds Fl nV V) π ch) ∧
-    (C.prog (uSt Fl nV V π).1 (uSt Fl nV V π).2).ZerosVanish (uDone (uRounds Fl nV V) π ch)
-      (uTail (uRounds Fl nV V) π) ∧
-    WellFormed D (uOut D Fl nV V C π ch)
-
 /-- The `k`-th opening's statement on its plain layout. -/
 def uCl (k : ℕ) (cs : List WhirBridge.Claim) : Stmt (plainL (wv D k)).stacking :=
   mkStmt _ (extra_plainL _) cs
-
-/-- `C1`'s claims. -/
-def cl1 (π : UPf) (ch : List (List E)) : Stmt (plainL (wv D 0)).stacking :=
-  uCl D 0 (claimsOf (uOut D Fl nV V C π ch) .c1)
-
-/-- `C2`'s claims. -/
-def cl2 (π : UPf) (ch : List (List E)) : Stmt (plainL (wv D 1)).stacking :=
-  uCl D 1 (claimsOf (uOut D Fl nV V C π ch) .c2)
-
-/-- The setup's claims. -/
-def cl3 (π : UPf) (ch : List (List E)) : Stmt (plainL (wv D 2)).stacking :=
-  uCl D 2 (claimsOf (uOut D Fl nV V C π ch) .setup)
-
-/-- `A0`'s claim. -/
-def cl4 (π : UPf) (ch : List (List E)) : Stmt (plainL (wv D 3)).stacking :=
-  uCl D 3 (matClaims (uOut D Fl nV V C π ch) true)
-
-/-- `B0`'s claim. -/
-def cl5 (π : UPf) (ch : List (List E)) : Stmt (plainL (wv D 4)).stacking :=
-  uCl D 4 (matClaims (uOut D Fl nV V C π ch) false)
-
-variable {D} in
-/-- **The five openings**: `C1` and `C2` (rounds `0`, `nF + 1`), the setup's stack, `A0`, `B0` (the
-setup's roots), each its one claim. -/
-noncomputable def uniOps (hs : UniShapes D) (qF : LeanVM.Protocol.Column (wv D 2))
-    (qA : LeanVM.Protocol.Column (wv D 3)) (qB : LeanVM.Protocol.Column (wv D 4)) :
-    List (WhirOp UPf E Stk) :=
-  [⟨shapeK hs 0 (by decide), cl1 D Fl nV V C, fun π => π.proof.c1,
-      .round 0 fun q => rdTab (tabOf _ q)⟩,
-    ⟨shapeK hs 1 (by decide), cl2 D Fl nV V C, fun π => π.proof.c2,
-      .round (Fl.prog.rounds.length + 1) fun q => rdTab (tabOf _ q)⟩,
-    ⟨shapeK hs 2 (by decide), cl3 D Fl nV V C, fun π => π.proof.setup,
-      .setup (fun π => toB π.roots.bytecode) qF⟩,
-    ⟨shapeK hs 3 (by decide), cl4 D Fl nV V C, fun π => π.proof.a0,
-      .setup (fun π => toB π.roots.a0) qA⟩,
-    ⟨shapeK hs 4 (by decide), cl5 D Fl nV V C, fun π => π.proof.b0,
-      .setup (fun π => toB π.roots.b0) qB⟩]
 
 variable {D} in
 /-- **The decoders**: `C1`'s (round `0`) and `C2`'s, `tableCode` of their shapes. -/
@@ -294,24 +238,6 @@ noncomputable def uniTc (hs : UniShapes D) (i : ℕ) : TableCode Stk :=
       (shapeK hs 0 (by decide)).adm rdTab
   else tableCode (shapeK hs 1 (by decide)).L (shapeK hs 1 (by decide)).R
       (shapeK hs 1 (by decide)).adm rdTab
-
-/-- **A candidate is good**: at `C1`'s and `C2`'s rounds, a stack satisfying its opening's claims. -/
-def uniGood (i : ℕ) (π : UPf) (ch : List (List E)) (c : Option Stk) : Prop :=
-  if i = 0 then ∃ q, c = some q ∧
-      ∀ cl ∈ (cl1 D Fl nV V C π ch).claims, mleStk q (wv D 0) cl.point = cl.value
-  else if i = Fl.prog.rounds.length + 1 then ∃ q, c = some q ∧
-      ∀ cl ∈ (cl2 D Fl nV V C π ch).claims, mleStk q (wv D 1) cl.point = cl.value
-  else True
-
-/-- **The setup's stacks are good**: the setup's honest stack, `A0` and `B0` satisfy their
-openings' claims. -/
-def uniGoodS (π : UPf) (ch : List (List E)) : Prop :=
-  (∀ cl ∈ (cl3 D Fl nV V C π ch).claims,
-      mleStk (fun i => (setupStack D.prog D.shape).getD i 0) (wv D 2) cl.point = cl.value) ∧
-    (∀ cl ∈ (cl4 D Fl nV V C π ch).claims,
-      mleArr (flockMatrixStack true) (wv D 3) cl.point = cl.value) ∧
-    (∀ cl ∈ (cl5 D Fl nV V C π ch).claims,
-      mleArr (flockMatrixStack false) (wv D 4) cl.point = cl.value)
 
 end Ops
 

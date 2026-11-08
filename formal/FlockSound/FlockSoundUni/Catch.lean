@@ -173,49 +173,6 @@ theorem eq_sliceList {l : List E} (h : l.length = 64) :
 
 /-! ## What the code's evaluators must be -/
 
-/-- **The evaluator transcription Flock's soundness needs**: the evaluators `Flock.verifyDeferred`
-calls (and the interface's `FlockEndHolds`, `PendingHolds` read) equal `FlockSound`'s cube forms, at
-every input. -/
-structure Tx (κ : ℕ) : Prop where
-  /-- `fixed_challenges()` are leanVM's seven fixed coordinates. -/
-  fixed : ∀ i : Fin 7, Flock.fixedChallenges.getD i 0 = fixedPt i
-  /-- `E::pow` is the power. -/
-  epow : ∀ (x : E) (n : ℕ), UniStatement.epow x n = x ^ n
-  /-- The skip's start (`lagrange_interpolate(16, [0; 8] ++ coset, z)`) is the interpolant over the
-  nodes `φ_8(0..15)` (`skipNodes 3`: the domain zeros, the coset values `cv`) at `z`. -/
-  interp : ∀ (cv : Cube 3 → E) (z : E),
-    Flock.lagrangeInterpolate 16 (List.replicate 8 0 ++ List.ofFn fun i : Fin 8 ↦ cv ((cubeFin 3).symm i)) z =
-      (FlockSound.interp (skipNodes 3 (by decide)) cv).eval z
-  /-- **The ring switch's target** (`ring_tower::target`): `Σ_i x^i Φ_tower(s_i)`, `Φ_tower` the
-  staged map with shifts `1, 2, …, 32` (`towerShifts`) and challenges `f`. -/
-  target : ∀ (s : Cube (3 + 3) → E) (f : Fin 6 → E),
-    Flock.towerTarget (sliceList s) (List.ofFn f) =
-      ∑ cy, packW (k := 3) (l := 3) rfl cy * stagedMap towerShifts f (s cy)
-  /-- **The ring claim's weight** (`towerCoefficients` on the 64 Frobenius twists of the point) is
-  `Φ_tower(eq(p, ·))` against the column's words. -/
-  ring : ∀ (qf : Column (8 + κ)) (p : Fin (8 + κ) → E) (f : Fin 6 → E),
-    ∑ k ∈ range 64, (Flock.towerCoefficients (List.ofFn f)).getD k 0 * mleE qf (twist (List.ofFn p) k) =
-      ∑ u, stagedMap towerShifts f (eqP p u) * colWord qf u
-  /-- **The pending claim** (`Pending::new` with the slices): `r_lc` plus the terminal's known terms,
-  `α² eq(χ_in, χ') Σ_cy e(cy) s(cy) + α³ eq(χ', cpos.2) s(cpos.1)`. -/
-  claim : ∀ (z α rLc : E) (rl : Fin 3 → E) (rh χ' : Fin 8 → E) (s : Cube (3 + 3) → E),
-    (Flock.Pending.new (some z) (List.ofFn rl) (List.ofFn rh) (List.ofFn χ') α rLc (some (sliceList s))).claim =
-      rLc + (α ^ 2 * FlockSound.eqEval rh χ' * ∑ cy, lowW (skipNodes 3 (by decide)) z rl cy * s cy +
-        α ^ 3 * eqP χ' ((posFin (k := 3) (l := 3) rfl).symm Lv42.Parameters.Flock.constPos).2 *
-          s ((posFin (k := 3) (l := 3) rfl).symm Lv42.Parameters.Flock.constPos).1)
-  /-- **The pending sum** (`Σ_u G(u) L(u)` on the setup stacks `A0`, `B0`) is the matrices' part of
-  the lincheck's terminal against the slices. -/
-  sum : ∀ (z α rLc : E) (rl : Fin 3 → E) (rh χ' : Fin 8 → E) (s : Cube (3 + 3) → E),
-    ∑ u ∈ range (2 ^ (Flock.Pending.new (some z) (List.ofFn rl) (List.ofFn rh) (List.ofFn χ') α rLc
-        (some (sliceList s))).rounds),
-      Pending.G (Flock.Pending.new (some z) (List.ofFn rl) (List.ofFn rh) (List.ofFn χ') α rLc
-          (some (sliceList s))) u *
-        Pending.L (Flock.Pending.new (some z) (List.ofFn rl) (List.ofFn rh) (List.ofFn χ') α rLc
-          (some (sliceList s))) u =
-      ∑ cy, matPart (cubeMat (k := 3) (l := 3) rfl Lv42.Protocol.Blake2sFlock.blake2sFlockSpec.r1cs.A)
-        (cubeMat (k := 3) (l := 3) rfl Lv42.Protocol.Blake2sFlock.blake2sFlockSpec.r1cs.B)
-        (skipNodes 3 (by decide)) z rl rh χ' α cy * s cy
-
 /-! ## The code's result is the run's -/
 
 theorem outOf_eq (d : Done) :
@@ -240,77 +197,9 @@ theorem getD_replicate_none (t : Fin 8) : (List.replicate 8 (none : Option E)).g
 
 section Run
 
-variable (tx : Tx κ) {done : Done} (hF : Fits κ done)
-include tx hF
+variable {done : Done} (hF : Fits κ done)
+include hF
 
-/-- The parsed run's zerocheck point is the code's `eq` factors. -/
-theorem pEs_getD (t : Fin (3 + 8 + κ)) :
-    (pEs done).getD t none = some (Front.τ (mainSetup κ) (parse κ done) t) := by
-  have hlen : (Flock.fixedChallenges ++ pSampled done).length = 3 + 8 + κ := by
-    simp only [List.length_append, length_fixedChallenges, pSampled, hF.r0]
-    omega
-  have ht := t.isLt
-  have e1 : (pEs done).getD t none = some ((Flock.fixedChallenges ++ pSampled done).getD t 0) := by
-    simp only [pEs, List.getD_eq_getElem?_getD, List.getElem?_map,
-      List.getElem?_eq_getElem (show t.val < (Flock.fixedChallenges ++ pSampled done).length by omega),
-      Option.map_some, Option.getD_some]
-  rw [e1]
-  congr 1
-  show _ = Fin.append fixedPt (parse κ done).τs (Fin.cast _ t)
-  rw [fin_append_cast]
-  split_ifs with h7
-  · rw [← tx.fixed]
-    simp only [List.getD_eq_getElem?_getD, List.getElem?_append_left
-      (show t.val < Flock.fixedChallenges.length by rw [length_fixedChallenges]; exact h7)]
-  · show _ = (pSampled done).getD (t - 7) 0
-    simp only [List.getD_eq_getElem?_getD, List.getElem?_append_right
-      (show Flock.fixedChallenges.length ≤ t.val by rw [length_fixedChallenges]; omega),
-      length_fixedChallenges]
-
-/-- **The zerocheck is consistent**, and its claims are the code's. -/
-theorem zc_consistent :
-    (∀ t : Fin (3 + 8 + κ + 1), claimAt (Front.c₀ (mainSetup κ) (parse κ done)) (parse κ done).zq
-      (parse κ done).zχ t = scClaim (pC0 done) (pEs done) (done.drop 2) t) ∧
-    Consistent 2 (fun i ↦ some (Front.τ (mainSetup κ) (parse κ done) i))
-      (Front.c₀ (mainSetup κ) (parse κ done)) (parse κ done).zq (parse κ done).zχ := by
-  refine sc_consistent (pC0 done) _ ?_ (pEs done) (done.drop 2) _ _ _ (fun _ ↦ rfl) (fun _ ↦ rfl)
-    (pEs_getD tx hF) fun t ↦ ?_
-  · have hc : pCoset done = List.ofFn fun i : Fin 8 ↦ (parse κ done).cv ((cubeFin 3).symm i) := by
-      show (rd done 1).1.2 = _
-      conv_lhs => rw [eq_ofFn_getD hF.r1v 0]
-      congr 1
-      funext i
-      show _ = (pCoset done).getD (cubeFin 3 ((cubeFin 3).symm i)) 0
-      rw [Equiv.apply_symm_apply]
-      rfl
-    show Flock.lagrangeInterpolate 16 (List.replicate 8 0 ++ pCoset done) (pZ done) = _
-    rw [hc, tx.interp]
-    rfl
-  · rw [rd_drop]
-    exact (hF.mid _ (by omega) (by have := t.isLt; omega)).1
-
-theorem running_eq : Front.running (mainSetup κ) (parse κ done) = pRunning κ done :=
-  (zc_consistent tx hF).1 (Fin.last _)
-
-/-- **The lincheck is consistent**, and its claims are the code's. -/
-theorem lin_consistent :
-    (∀ t : Fin (8 + 1), claimAt (Front.linC₀ (mainSetup κ) (parse κ done)) (parse κ done).lq
-      (parse κ done).lχ t = scClaim (pLc0 κ done) (List.replicate 8 none) (done.drop (14 + κ)) t) ∧
-    Consistent 2 (fun _ ↦ none) (Front.linC₀ (mainSetup κ) (parse κ done)) (parse κ done).lq
-      (parse κ done).lχ := by
-  refine sc_consistent (pLc0 κ done) _ ?_ (List.replicate 8 none) (done.drop (14 + κ)) _ _ _
-    (fun t ↦ ?_) (fun _ ↦ rfl) (fun t ↦ getD_replicate_none t) fun t ↦ ?_
-  · show _ = (parse κ done).va + (parse κ done).α * (parse κ done).vb +
-      (parse κ done).α ^ 2 * (Front.running (mainSetup κ) (parse κ done) + (parse κ done).va *
-        (parse κ done).vb) + (parse κ done).α ^ 3
-    rw [running_eq tx hF, ← tx.epow, ← tx.epow]
-    rfl
-  · show msgPoly (decodeMsg _ none _) = msgPoly (decodeMsg _ _ _)
-    rw [getD_replicate_none]
-  · rw [rd_drop]
-    exact (hF.mid _ (by omega) (by have := t.isLt; omega)).1
-
-omit tx in
 theorem decode_zc :
     decodeSC (Flock.lagrangeInterpolate 16 (List.replicate 8 0 ++ pCoset done) (pZ done))
         ((Flock.fixedChallenges ++ pSampled done).map some) ((done.drop 2).take (11 + κ)) =
@@ -329,180 +218,11 @@ theorem decode_zc :
     rw [rd_take t.isLt]
   · exact scClaim_congr _ _ _ fun v hv ↦ rd_take hv
 
-theorem decode_lin :
-    decodeSC (pVa κ done + pAlpha κ done * pVb κ done +
-        epow (pAlpha κ done) 2 * (pRunning κ done + pVa κ done * pVb κ done) + epow (pAlpha κ done) 3)
-        (List.replicate 8 none) ((done.drop (14 + κ)).take 8) =
-      (List.ofFn (parse κ done).lχ, Front.rlc (mainSetup κ) (parse κ done)) := by
-  have hl : ((done.drop (14 + κ)).take 8).length = 8 := by
-    simp only [List.length_take, List.length_drop, hF.len]
-    omega
-  rw [decodeSC_eq _ _ _ (hl.trans (List.length_replicate ..).symm), List.length_replicate,
-    map_eq_ofFn hl noRound]
-  congr 1
-  · congr 1
-    funext t
-    show (rd ((done.drop (14 + κ)).take 8) t).2.headD 0 = (rd (done.drop (14 + κ)) t).2.headD 0
-    rw [rd_take t.isLt]
-  · rw [scClaim_congr _ _ _ fun v hv ↦ rd_take hv]
-    exact ((lin_consistent tx hF).1 (Fin.last 8)).symm
-
-/-- **The code's result is the run's**: the point of the words, the ring map, the target of the
-sent slices, and the pending reduction at the run's row and column points, `α`, `r_lc` and slices. -/
-theorem outOf_parse :
-    outOf κ done =
-      (List.ofFn (Front.p (mainSetup κ) (parse κ done)),
-        some (.ring (List.ofFn (parse κ done).f)
-          (Flock.towerTarget (sliceList (parse κ done).s) (List.ofFn (parse κ done).f))),
-        Flock.Pending.new (some (parse κ done).z) (List.ofFn (Front.rl (mainSetup κ) (parse κ done)))
-          (List.ofFn (Front.rh (mainSetup κ) (parse κ done)))
-          (List.ofFn (Front.χ' (mainSetup κ) (parse κ done))) (parse κ done).α
-          (Front.rlc (mainSetup κ) (parse κ done)) (some (sliceList (parse κ done).s))) := by
-  obtain ⟨h3, h8, h8'⟩ := ofFn_three_parts (a := 3) (b := 8) (c := κ) (parse κ done).zχ
-  have hmap : (rd done (22 + κ)).2 = List.ofFn (parse κ done).f := eq_ofFn_getD hF.r6c 0
-  have hsl : (rd done (22 + κ)).1.2 = sliceList (parse κ done).s := eq_sliceList hF.r6v
-  rw [outOf_eq, flockOut_of _ _ _ _ _ _ _ _ _ _ _ _ _ _ (decode_zc hF) (decode_lin tx hF), h3, h8,
-    h8', reverse_ofFn, hmap, hsl]
-  congr 1
-  rw [← List.ofFn_fin_append]
-  rfl
-
 end Run
 
 /-! ## Each bad event is a hit -/
 
-section Hit
-
-variable (qf : Column (8 + κ)) (R : Front E 3 3 8 κ (4 + κ) 6)
-
-theorem badAt_τ (a : Fin (4 + κ)) :
-    badAt qf R 0 a = pointBad (4 + κ) (sampledTables (mainSetup κ).hsize (mainSetup κ).fixed
-      (Front.zRes (mainSetup κ) (zOf qf))) R.τs a := by
-  unfold badAt
-  rw [ite_eq_left rfl, dite_eq_left a.isLt]
-
-theorem badAt_z :
-    badAt qf R 1 0 = skipBad (mainSetup κ).node (Front.zA (mainSetup κ) (zOf qf))
-      (Front.zB (mainSetup κ) (zOf qf)) (Front.zZ (zOf qf)) (Front.τ (mainSetup κ) R) R.cv := by
-  unfold badAt
-  rw [ite_eq_right (by omega), ite_eq_left rfl, ite_eq_left rfl]
-
-theorem badAt_zc (t : Fin (3 + 8 + κ)) :
-    badAt qf R (2 + t) 0 = zcBad (mainSetup κ).node (Front.zA (mainSetup κ) (zOf qf))
-      (Front.zB (mainSetup κ) (zOf qf)) (Front.zZ (zOf qf)) (pinTab (zOf qf) (mainSetup κ).cpos)
-      (Front.τ (mainSetup κ) R) R.z (Front.c₀ (mainSetup κ) R) R.zq R.zχ t := by
-  have := t.isLt
-  unfold badAt
-  rw [ite_eq_right (by omega), ite_eq_right (by omega), dite_eq_left (by omega), ite_eq_left rfl]
-  congr 1
-  ext
-  simp
-
-theorem badAt_α :
-    badAt qf R (13 + κ) 0 = alphaBad R.va R.vb (Front.vc (mainSetup κ) R)
-      (skipVal (mainSetup κ).node (Front.zA (mainSetup κ) (zOf qf)) R.z R.zχ)
-      (skipVal (mainSetup κ).node (Front.zB (mainSetup κ) (zOf qf)) R.z R.zχ)
-      (skipVal (mainSetup κ).node (Front.zZ (zOf qf)) R.z R.zχ)
-      (zhat (zOf qf) (Front.rt (mainSetup κ) R) (mainSetup κ).cpos) := by
-  unfold badAt
-  rw [ite_eq_right (by omega), ite_eq_right (by omega), dite_eq_right (by omega), ite_eq_left rfl,
-    ite_eq_left rfl]
-
-theorem badAt_lin (t : Fin 8) :
-    badAt qf R (14 + κ + t) 0 = sumBad 2 8 (fun _ ↦ none)
-      (linRev (linFun (mainSetup κ).A (mainSetup κ).B (zOf qf) (mainSetup κ).cpos (mainSetup κ).node
-        R.z (Front.rl (mainSetup κ) R) (Front.rh (mainSetup κ) R) (Front.rt (mainSetup κ) R) R.α))
-      R.lq R.lχ t := by
-  have := t.isLt
-  unfold badAt
-  rw [ite_eq_right (by omega), ite_eq_right (by omega), dite_eq_right (by omega),
-    ite_eq_right (by omega), dite_eq_left (by omega), ite_eq_left rfl]
-  congr 1
-  ext
-  simp
-
-theorem badAt_ring (a : Fin (mainSetup κ).sh.length) :
-    badAt qf R (22 + κ) a = ringBad univ (mainSetup κ).w (mainSetup κ).sh
-      (fun cy ↦ R.s cy - strue (zOf qf) (Front.rt (mainSetup κ) R) (Front.χ' (mainSetup κ) R) cy) R.f
-      a := by
-  unfold badAt
-  rw [ite_eq_right (by omega), ite_eq_right (by omega), dite_eq_right (by omega),
-    ite_eq_right (by omega), dite_eq_right (by omega), ite_eq_left rfl,
-    dite_eq_left (show (a : ℕ) < 6 from a.isLt)]
-
-/-- **Each of `Front.Bad`'s events on the transcript's parse is a hit of `flockBad`.** -/
-theorem hit_of_bad {done : Done} (hF : Fits κ done)
-    (hbad : Front.Bad (mainSetup κ) (parse κ done) (zOf qf)) : HitIn (flockBad κ) qf done := by
-  have hl := hF.len
-  unfold Front.Bad at hbad
-  rcases hbad with ⟨a, ha⟩ | hz | ⟨t, ht⟩ | hα | ⟨t, ht⟩ | ⟨a, ha⟩
-  · refine hitIn_of_mem qf (j := 0) (i := a) (by omega) (by rw [hF.r0]; exact a.isLt) ?_
-    rw [badAt_τ]
-    exact ha
-  · refine hitIn_of_mem qf (j := 1) (i := 0) (by omega) (by rw [hF.r1c]; omega) ?_
-    rw [badAt_z, ← headD_eq_getD']
-    exact hz
-  · have ht2 := t.isLt
-    refine hitIn_of_mem qf (j := 2 + t) (i := 0) (by omega)
-      (by rw [(hF.mid _ (by omega) (by omega)).2]; omega) ?_
-    rw [badAt_zc, ← headD_eq_getD', ← rd_drop]
-    exact ht
-  · refine hitIn_of_mem qf (j := 13 + κ) (i := 0) (by omega)
-      (by rw [(hF.mid _ (by omega) (by omega)).2]; omega) ?_
-    rw [badAt_α, ← headD_eq_getD']
-    exact hα
-  · have ht8 := t.isLt
-    refine hitIn_of_mem qf (j := 14 + κ + t) (i := 0) (by omega)
-      (by rw [(hF.mid _ (by omega) (by omega)).2]; omega) ?_
-    rw [badAt_lin, ← headD_eq_getD', ← rd_drop]
-    exact ht
-  · refine hitIn_of_mem qf (j := 22 + κ) (i := a) (by omega)
-      (by rw [hF.r6c]; exact (show (a : ℕ) < 6 from a.isLt)) ?_
-    rw [badAt_ring]
-    exact ha
-
-end Hit
-
 /-! ## The catch, and the interface -/
-
-/-- **The bad family catches, given the evaluator transcription**: on a completed transcript whose
-ring claim holds of the column and whose pending claim is its sum, the column satisfies Flock's
-relation or a challenge is in its bad set (`flock_front` at leanVM's constants on the parse). -/
-theorem catches_of_tx (tx : Tx κ) : Catches (flockProg κ) (flockBad κ) := by
-  intro qf done hfit hend hpend
-  have hF := fits_of_doneFits hfit
-  by_cases hold : FlockHolds κ qf
-  · exact Or.inl hold
-  right
-  have hend' : FlockEndHolds qf (outOf κ done) := hend
-  have hpend' : PendingHolds (outOf κ done).2.2 := hpend
-  rw [outOf_parse tx hF] at hend' hpend'
-  have hring : ∑ u, stagedMap (mainSetup κ).sh (parse κ done).f
-      (eqP (Front.p (mainSetup κ) (parse κ done)) u) * colWord qf u =
-      Front.target (mainSetup κ) (parse κ done) := by
-    have h := hend'
-    simp only [FlockEndHolds] at h
-    rw [tx.ring, tx.target] at h
-    exact h
-  have hnot : ¬ R1CSHolds (mainSetup κ).A (mainSetup κ).B (zOf qf) (mainSetup κ).cpos :=
-    fun h ↦ hold ((r1csHolds_iff rfl _ qf).mp h)
-  rcases flock_front (mainSetup κ)
-      (leanvmSetup_valid 3 3 κ (4 + κ) rfl (by decide) (by omega) towerShifts (Or.inr rfl) _ _ _)
-      (zOf qf) (colBits_bool rfl qf) (colWord qf) (colPack rfl qf) (parse κ done)
-      (zc_consistent tx hF).2 (lin_consistent tx hF).2 hring hnot with hbad | hfalse
-  · exact hit_of_bad qf hF hbad
-  · exfalso
-    apply hfalse
-    have h := hpend'
-    unfold PendingHolds at h
-    rw [tx.sum, tx.claim] at h
-    exact h
-
-/-- **Flock's interface from the evaluator transcription**: the chain program `flockProg κ`, its link
-(`flock_link`), the bad family `flockBad κ` with its sizes `dBound κ`, which catches given `Tx κ`. -/
-noncomputable def flockSound_of_tx (tx : Tx κ) : FlockSound κ :=
-  ofFamily (flockProg κ) (flockProg_root κ) (flockProg_tail κ) (fun F ↦ flock_link κ F) (flockBad κ)
-    (dBound κ) (card_flockBad κ) (catches_of_tx tx)
 
 /-! ## The rounds' errors -/
 
@@ -511,17 +231,6 @@ noncomputable def flockSound_of_tx (tx : Tx κ) : FlockSound κ :=
 def roundErr (κ j : ℕ) : ℕ :=
   if j = 0 then 4 + κ else if j = 1 then 15 else if j < 13 + κ then 2 else if j = 13 + κ then 3
   else if j < 22 + κ then 2 else 6
-
-open scoped ENNReal in
-theorem flockSound_err (tx : Tx κ) (j : ℕ) (hj : j < 23 + κ) :
-    (flockSound_of_tx tx).err j = (roundErr κ j : ℝ≥0∞) / (Fintype.card E : ℝ≥0∞) := by
-  show ((∑ i ∈ range ((((flockRounds κ)[j]?).map (·.ns)).getD 0 + 1), dBound κ j i : ℕ) : ℝ≥0∞) /
-    (Fintype.card E : ℝ≥0∞) = _
-  have hj' : j < (flockRounds κ).length := by rw [flockRounds_length]; exact hj
-  rw [List.getElem?_eq_getElem hj', Option.map_some, Option.getD_some, flockRounds_getElem]
-  congr 2
-  unfold roundErr dBound
-  split_ifs <;> simp only [Finset.sum_const, Finset.card_range, smul_eq_mul, mul_one] <;> omega
 
 theorem roundErr_zc {j : ℕ} (h1 : 2 ≤ j) (h2 : j < 13 + κ) : roundErr κ j = 2 := by
   unfold roundErr
@@ -556,14 +265,5 @@ theorem sum_roundErr (κ : ℕ) : ∑ j ∈ range (23 + κ), roundErr κ j = 66 
     Finset.sum_range_one, eα, er]
   simp only [Finset.sum_const, Finset.card_range, smul_eq_mul]
   omega
-
-open scoped ENNReal in
-/-- **Flock's error per candidate**: `(66 + 3κ)/|E|`, the sum of its rounds' errors. -/
-theorem flockSound_error (tx : Tx κ) :
-    (flockSound_of_tx tx).flockError = ((66 + 3 * κ : ℕ) : ℝ≥0∞) / (Fintype.card E : ℝ≥0∞) := by
-  have hl : (flockSound_of_tx tx).prog.rounds.length = 23 + κ := flockRounds_length κ
-  rw [FlockSound.flockError, hl, Finset.sum_congr rfl fun j hj ↦
-    flockSound_err tx j (Finset.mem_range.mp hj), ← sum_roundErr κ, Nat.cast_sum]
-  simp only [ENNReal.div_eq_inv_mul, Finset.mul_sum]
 
 end FlockSound.Uni

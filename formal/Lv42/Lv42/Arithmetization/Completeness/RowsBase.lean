@@ -8,8 +8,8 @@
   The row of an instruction executed at a state: the table it belongs to, the raw row, and what
   it sends on the bus as a function of the state, the successor and the read counts.
 
-  This module is its instruction-set-independent part (shared by the Keccak VM), moved out with
-  every name kept; the BLAKE2s-specific rest stays in the module without `Base`, which imports it.
+  This module is its instruction-set-independent part (shared by the Keccak VM), with
+  every name kept; the BLAKE2s-specific rest (the module without `Base`) is removed with `BLAKE2S`.
 -/
 
 module

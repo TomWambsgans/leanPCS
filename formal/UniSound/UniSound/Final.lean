@@ -92,94 +92,7 @@ theorem fdOf_openedOf (nF : ℕ) (c1 c2 : Stk) (done : Done) :
 
 /-! ## The links of `uniPiop` -/
 
-variable (hFlock : FlockSound κ) (I : UniIds D hFlock)
-
-theorem hpre_uniPiop (s : USt) (c : Stk) (m : List E) :
-    (uniPiop hFlock I).pre s [] (some c, m) → Rel D s c := by
-  intro h
-  change uniPre hFlock I s [] (some c, m) at h
-  unfold uniPre at h
-  rw [ite_eq_left (List.length_nil : ([] : Op Stk).length = 0)] at h
-  obtain ⟨c', hc', hr⟩ := h
-  cases hc'
-  exact hr
-
-theorem hlink_uniPiop (C : UniCode D hFlock I.nV I.V) (hFin : UniFinal D hFlock I C) (s : USt)
-    (done : Done) (tl : List E) (c1 c2 : Stk)
-    (hd : DoneFits (uniRounds hFlock.prog.rounds I.nV I.V) done) (htl : tl.length = 5)
-    (hz : (C.prog s.1 s.2).ZerosVanish done tl)
-    (hc : ClaimsHold D ((C.prog s.1 s.2).out done tl) c1 c2) :
-    ∃ p m ch, openedOf hFlock.prog.rounds.length c1 c2 done = p ++ [(m, ch)] ∧
-      (uniPiop hFlock I).post s p m ch := by
-  set nF := hFlock.prog.rounds.length
-  set q := openedOf nF c1 c2 done with hq
-  have hlen : done.length = nF + 3 + I.V := by
-    rw [hd.length_eq, length_uniRounds]
-  have hql : q.length = nF + 3 + I.V := by rw [hq, length_openedOf, hlen]
-  have hne : q ≠ [] := by
-    intro h
-    rw [h] at hql
-    simp only [List.length_nil] at hql
-    omega
-  refine ⟨q.dropLast, (q.getLast hne).1, (q.getLast hne).2, ?_, ?_⟩
-  · exact (List.dropLast_append_getLast hne).symm
-  change uniS hFlock I s (q.dropLast ++ [((q.getLast hne).1, (q.getLast hne).2)])
-  rw [show q.dropLast ++ [((q.getLast hne).1, (q.getLast hne).2)] = q from
-    List.dropLast_append_getLast hne]
-  unfold uniS
-  refine ⟨c1, ?_, ?_⟩
-  · rw [hq, rd_openedOf _ _ _ _ 0 (by omega)]
-    simp
-  rw [ite_eq_right (by omega)]
-  refine ⟨c2, ?_, ?_, ?_⟩
-  · rw [hq, rd_openedOf _ _ _ _ (nF + 1) (by omega)]
-    simp
-  · -- Flock's rounds completed.
-    show DoneFits hFlock.prog.rounds (fdOf nF q)
-    rw [hq, fdOf_openedOf]
-    refine doneFits_map_noRoot _ _ hFlock.rounds_root ?_
-    rcases done with _ | ⟨x, d⟩
-    · simp only [List.length_nil] at hlen
-      omega
-    · have h1 : DoneFits (hFlock.prog.rounds ++ ([⟨true, 0, 0⟩, ⟨false, I.nV, 1⟩] ++
-          List.replicate I.V ⟨false, 2, 0⟩)) d := by
-        have := hd
-        simp only [uniRounds, List.append_assoc, List.singleton_append] at this
-        exact this.2.2
-      simpa using doneFits_append_take _ _ d h1
-  · rw [ite_eq_right (by omega)]
-    exact hFin s done tl c1 c2 hd htl hz hc
-
-/-- **Every round's error is at most `2^32 / |E|`**, given the identity model's and Flock's
-numbers. -/
-theorem uniErr_le (hMain : I.errMain ≤ ((2 ^ 32 : ℕ) : ℝ≥0∞) / (Fintype.card E : ℝ≥0∞))
-    (hFl : ∀ j, hFlock.err j ≤ ((2 ^ 32 : ℕ) : ℝ≥0∞) / (Fintype.card E : ℝ≥0∞))
-    (hdeg : I.degSum + I.degBad ≤ 2 ^ 32) (hrel : I.nRel + 2 ≤ 2 ^ 32) (j : ℕ) :
-    uniErr hFlock I j ≤ ((2 ^ 32 : ℕ) : ℝ≥0∞) / (Fintype.card E : ℝ≥0∞) := by
-  unfold uniErr
-  split_ifs
-  · exact hMain
-  · exact hFl _
-  · exact ENNReal.div_le_div_right (Nat.cast_le.mpr hdeg) _
-  · exact ENNReal.div_le_div_right (Nat.cast_le.mpr (by omega)) _
-  · exact ENNReal.div_le_div_right (Nat.cast_le.mpr (by norm_num)) _
-
 /-! ## The end theorem -/
-
-/-- **Knowledge soundness of the univariate verifier for leanVM 42422001** (main line: Flock with
-the slices in tower order, point claims), for the explicit extractor `uniExtractor`, with error
-`uniBound (2^32 / |E|) Q` at `Q` calls of `π` and `π⁻¹`; **under the Flock hypothesis `hFlock`**,
-the identity model `I`, the code-level links `C`, `hFin`, the Fiat–Shamir layer `hFs`, and the
-numbers. -/
-theorem uniKnowledgeSoundness (hFlock : FlockSound κ) (I : UniIds D hFlock)
-    (C : UniCode D hFlock I.nV I.V) (hFin : UniFinal D hFlock I C)
-    (hFs : FsLayer D hFlock I.nV I.V C)
-    (hMain : I.errMain ≤ ((2 ^ 32 : ℕ) : ℝ≥0∞) / (Fintype.card E : ℝ≥0∞))
-    (hFl : ∀ j, hFlock.err j ≤ ((2 ^ 32 : ℕ) : ℝ≥0∞) / (Fintype.card E : ℝ≥0∞))
-    (hdeg : I.degSum + I.degBad ≤ 2 ^ 32) (hrel : I.nRel + 2 ≤ 2 ^ 32) :
-    UniKnowledgeSoundness D (uniBound (((2 ^ 32 : ℕ) : ℝ≥0∞) / (Fintype.card E : ℝ≥0∞))) :=
-  hFs (uniPiop hFlock I) _ (uniErr_le hFlock I hMain hFl hdeg hrel) (hpre_uniPiop hFlock I)
-    (hlink_uniPiop hFlock I C hFin)
 
 /-! ## The bits -/
 
@@ -262,35 +175,5 @@ theorem uniBound_le_bits (Q : ℕ) (hQ : Q ≤ 2 ^ 64) :
   calc _ ≤ ((2 ^ 195 : ℕ) : ℝ≥0∞) / 2 ^ 256 := cast_div_le_256 (by norm_num)
     _ = (2 : ℝ≥0∞)⁻¹ ^ 61 := by
         rw [Nat.cast_pow, Nat.cast_ofNat, show (256 : ℕ) = 195 + 61 from rfl, two_pow_div_two_pow]
-
-/-- **Knowledge soundness with the bound in bits** (main line): under the same hypotheses, the
-deployed univariate verifier is knowledge sound for `uniExtractor` with error at most `2^-61` for
-every adversary of at most `2^64` calls of `π` and `π⁻¹` (`ε Q = uniBound (2^32 / |E|) Q`,
-explicit at every `Q`). -/
-theorem uniKnowledgeSoundness_bits (hFlock : FlockSound κ) (I : UniIds D hFlock)
-    (C : UniCode D hFlock I.nV I.V) (hFin : UniFinal D hFlock I C)
-    (hFs : FsLayer D hFlock I.nV I.V C)
-    (hMain : I.errMain ≤ ((2 ^ 32 : ℕ) : ℝ≥0∞) / (Fintype.card E : ℝ≥0∞))
-    (hFl : ∀ j, hFlock.err j ≤ ((2 ^ 32 : ℕ) : ℝ≥0∞) / (Fintype.card E : ℝ≥0∞))
-    (hdeg : I.degSum + I.degBad ≤ 2 ^ 32) (hrel : I.nRel + 2 ≤ 2 ^ 32) :
-    UniKnowledgeSoundness D (uniBound (((2 ^ 32 : ℕ) : ℝ≥0∞) / (Fintype.card E : ℝ≥0∞))) ∧
-      ∀ Q ≤ 2 ^ 64,
-        uniBound (((2 ^ 32 : ℕ) : ℝ≥0∞) / (Fintype.card E : ℝ≥0∞)) Q ≤ (2 : ℝ≥0∞)⁻¹ ^ 61 :=
-  ⟨uniKnowledgeSoundness hFlock I C hFin hFs hMain hFl hdeg hrel, uniBound_le_bits⟩
-
-/-- **Knowledge soundness, round `0` proved** (the bus `4N/|E|` and the constraints' batching,
-`BusModel.mainSound`, from `formal/Heap`): the end theorem with the bus model `B` and the rest of
-the identity model `J` in place of `UniIds`; **under the Flock hypothesis `hFlock`**. -/
-theorem uniKnowledgeSoundness_bus (hFlock : FlockSound κ) (B : BusModel D κ)
-    (J : UniIdsRest D hFlock B) (C : UniCode D hFlock J.nV J.V)
-    (hFin : UniFinal D hFlock (UniIds.ofBus hFlock B J) C) (hFs : FsLayer D hFlock J.nV J.V C)
-    (hB : 4 * B.N + B.ncv ≤ 2 ^ 32)
-    (hFl : ∀ j, hFlock.err j ≤ ((2 ^ 32 : ℕ) : ℝ≥0∞) / (Fintype.card E : ℝ≥0∞))
-    (hdeg : J.degSum + J.degBad ≤ 2 ^ 32) (hrel : J.nRel + 2 ≤ 2 ^ 32) :
-    UniKnowledgeSoundness D (uniBound (((2 ^ 32 : ℕ) : ℝ≥0∞) / (Fintype.card E : ℝ≥0∞))) ∧
-      ∀ Q ≤ 2 ^ 64,
-        uniBound (((2 ^ 32 : ℕ) : ℝ≥0∞) / (Fintype.card E : ℝ≥0∞)) Q ≤ (2 : ℝ≥0∞)⁻¹ ^ 61 :=
-  uniKnowledgeSoundness_bits hFlock (UniIds.ofBus hFlock B J) C hFin hFs (B.errMain_le hB) hFl hdeg
-    hrel
 
 end UniSound

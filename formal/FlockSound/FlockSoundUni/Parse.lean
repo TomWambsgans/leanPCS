@@ -88,12 +88,6 @@ end Congr
 /-- The ring map's stages in tower order (`towerRingMap`: stage `j` of shift `2^j`). -/
 abbrev towerShifts : List ℕ := [1, 2, 4, 8, 16, 32]
 
-/-- **leanVM's Flock at the main line**: skip `3` (`l = 3`), `4 + κ` sampled coordinates, the ring
-map in tower order, the BLAKE2s R1CS. -/
-abbrev mainSetup (κ : ℕ) : Setup E 3 3 8 κ 7 (4 + κ) :=
-  setupOf 3 3 κ (4 + κ) rfl (by decide) (by omega) towerShifts
-    Lv42.Protocol.Blake2sFlock.blake2sFlockSpec.r1cs
-
 /-- The column's bits on the cube. -/
 abbrev zOf {κ : ℕ} (qf : Column (8 + κ)) : Cube (3 + 3) → Cube 8 → Cube κ → E :=
   colBits (k := 3) (l := 3) rfl qf
@@ -151,101 +145,9 @@ noncomputable def parse (κ : ℕ) (d : Done) : Front E 3 3 8 κ (4 + κ) 6 wher
 
 /-! ## The bad family -/
 
-/-- **The bad set of challenge `i` of round `j`**, for the column `qf` and the run `R`:
-`Front.Bad`'s set at that position. -/
-noncomputable def badAt {κ : ℕ} (qf : Column (8 + κ)) (R : Front E 3 3 8 κ (4 + κ) 6) (j i : ℕ) :
-    Finset E :=
-  if j = 0 then
-    if h : i < 4 + κ then
-      pointBad (4 + κ) (sampledTables (mainSetup κ).hsize (mainSetup κ).fixed
-        (Front.zRes (mainSetup κ) (zOf qf))) R.τs ⟨i, h⟩
-    else ∅
-  else if j = 1 then
-    if i = 0 then
-      skipBad (mainSetup κ).node (Front.zA (mainSetup κ) (zOf qf)) (Front.zB (mainSetup κ) (zOf qf))
-        (Front.zZ (zOf qf)) (Front.τ (mainSetup κ) R) R.cv
-    else ∅
-  else if h : j < 13 + κ then
-    if i = 0 then
-      zcBad (mainSetup κ).node (Front.zA (mainSetup κ) (zOf qf)) (Front.zB (mainSetup κ) (zOf qf))
-        (Front.zZ (zOf qf)) (pinTab (zOf qf) (mainSetup κ).cpos) (Front.τ (mainSetup κ) R) R.z
-        (Front.c₀ (mainSetup κ) R) R.zq R.zχ ⟨j - 2, by omega⟩
-    else ∅
-  else if j = 13 + κ then
-    if i = 0 then
-      alphaBad R.va R.vb (Front.vc (mainSetup κ) R)
-        (skipVal (mainSetup κ).node (Front.zA (mainSetup κ) (zOf qf)) R.z R.zχ)
-        (skipVal (mainSetup κ).node (Front.zB (mainSetup κ) (zOf qf)) R.z R.zχ)
-        (skipVal (mainSetup κ).node (Front.zZ (zOf qf)) R.z R.zχ)
-        (zhat (zOf qf) (Front.rt (mainSetup κ) R) (mainSetup κ).cpos)
-    else ∅
-  else if h : j < 22 + κ then
-    if i = 0 then
-      sumBad 2 8 (fun _ ↦ none)
-        (linRev (linFun (mainSetup κ).A (mainSetup κ).B (zOf qf) (mainSetup κ).cpos (mainSetup κ).node
-          R.z (Front.rl (mainSetup κ) R) (Front.rh (mainSetup κ) R) (Front.rt (mainSetup κ) R) R.α))
-        R.lq R.lχ ⟨j - (14 + κ), by omega⟩
-    else ∅
-  else if j = 22 + κ then
-    if h : i < 6 then
-      ringBad univ (mainSetup κ).w (mainSetup κ).sh
-        (fun cy ↦ R.s cy - strue (zOf qf) (Front.rt (mainSetup κ) R) (Front.χ' (mainSetup κ) R) cy) R.f
-        ⟨i, h⟩
-    else ∅
-  else ∅
-
-/-- **Flock's bad family**: the bad set of the next challenge, at its position, of the parse of the
-rounds so far, this round's message and its challenges so far. -/
-noncomputable def flockBad (κ : ℕ) : BadFamily κ := fun qf done msg pre ↦
-  badAt qf (parse κ (done ++ [(msg, pre)])) done.length pre.length
-
 /-- **The bad sets' sizes** (`card_bad`), by position. -/
 def dBound (κ : ℕ) (j _i : ℕ) : ℕ :=
   if j = 0 then 1 else if j = 1 then 15 else if j < 13 + κ then 2 else if j = 13 + κ then 3
   else if j < 22 + κ then 2 else 1
-
-theorem card_badAt {κ : ℕ} (qf : Column (8 + κ)) (R : Front E 3 3 8 κ (4 + κ) 6) (j i : ℕ) :
-    (badAt qf R j i).card ≤ dBound κ j i := by
-  obtain ⟨hτ, hz, hzc, hα, hlin, hring⟩ := card_bad 3 3 κ (4 + κ) rfl (by decide) (by omega) towerShifts
-    Lv42.Protocol.Blake2sFlock.blake2sFlockSpec.r1cs qf R
-  unfold badAt
-  by_cases h0 : j = 0
-  · rw [ite_eq_left h0, show dBound κ j i = 1 by unfold dBound; split_ifs; omega]
-    split_ifs
-    · exact hτ _
-    · simp
-  rw [ite_eq_right h0]
-  by_cases h1 : j = 1
-  · rw [ite_eq_left h1, show dBound κ j i = 15 by unfold dBound; split_ifs; omega]
-    split_ifs
-    · exact hz.trans (by norm_num)
-    · simp
-  rw [ite_eq_right h1]
-  by_cases h2 : j < 13 + κ
-  · rw [dite_eq_left h2, show dBound κ j i = 2 by unfold dBound; split_ifs; omega]
-    split_ifs
-    · exact hzc _
-    · simp
-  rw [dite_eq_right h2]
-  by_cases h3 : j = 13 + κ
-  · rw [ite_eq_left h3, show dBound κ j i = 3 by unfold dBound; split_ifs; omega]
-    split_ifs
-    · exact hα
-    · simp
-  rw [ite_eq_right h3]
-  by_cases h4 : j < 22 + κ
-  · rw [dite_eq_left h4, show dBound κ j i = 2 by unfold dBound; split_ifs; omega]
-    split_ifs
-    · exact hlin _
-    · simp
-  rw [dite_eq_right h4, show dBound κ j i = 1 by unfold dBound; split_ifs; omega]
-  split_ifs
-  · exact hring _
-  · simp
-  · simp
-
-theorem card_flockBad (κ : ℕ) : ∀ qf done msg pre,
-    (flockBad κ qf done msg pre).card ≤ dBound κ done.length pre.length :=
-  fun qf _ _ _ ↦ card_badAt qf _ _ _
 
 end FlockSound.Uni

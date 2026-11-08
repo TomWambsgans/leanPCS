@@ -8,7 +8,7 @@ public import KeccakArith.SMemChannel
 # Soundness of the bytecode channel, for the Keccak VM
 
 Lv42's `bytecode_channel_sound` at `kEnsemble`: every pulled bytecode entry is the Keccak VM program's entry at the
-pulled counter, so it decodes (Lv42's `decode`, the bytecode pull's guarantee).
+pulled counter, so it is well formed (Lv42's `EntryOk`, the bytecode pull's guarantee).
 -/
 
 @[expose] public section
@@ -191,26 +191,27 @@ theorem bytecode_channel_sound (h : SatisfiedByB prog input w) :
   obtain rfl := bcMsgOfTriple_injective hx
   exact ⟨k, h1, h2⟩
 
-/-- Every Keccak VM entry decodes under the bytecode pull's decoder (Lv42's `decode`, whose opcode-`5` branch reads
-seven operand slots, the `SHA3` entry's shape). -/
-theorem decode_kentry (i : KeccakVm.Instr) : ∃ ins, Lv42.Arithmetization.decode (KeccakVm.entry i) = some ins := by
+/-- Every Keccak VM entry is well formed (`Lv42.Arithmetization.EntryOk`, the bytecode pull's guarantee): Lv42's
+five decode (`decode`), and `SHA3`'s carries the hash instruction's opcode `g^5`. -/
+theorem entryOk_kentry (i : KeccakVm.Instr) : Lv42.Arithmetization.EntryOk (KeccakVm.entry i) := by
   cases i with
-  | sha3 om otail ocap oout => exact ⟨_, Lv42.Arithmetization.decode_entry (.blake2s om otail ocap oout)⟩
-  | xor oA oB oC => exact ⟨_, Lv42.Arithmetization.decode_entry (.xor oA oB oC)⟩
-  | mulNative oA oB oC => exact ⟨_, Lv42.Arithmetization.decode_entry (.mulNative oA oB oC)⟩
-  | setConstant o k => exact ⟨_, Lv42.Arithmetization.decode_entry (.setConstant o k)⟩
-  | deref o1 o2 o3 mode => exact ⟨_, Lv42.Arithmetization.decode_entry (.deref o1 o2 o3 mode)⟩
-  | jump oc od of => exact ⟨_, Lv42.Arithmetization.decode_entry (.jump oc od of)⟩
+  | sha3 om otail ocap oout => exact Or.inr rfl
+  | xor oA oB oC => exact Lv42.Arithmetization.entryOk_entry (.xor oA oB oC)
+  | mulNative oA oB oC => exact Lv42.Arithmetization.entryOk_entry (.mulNative oA oB oC)
+  | setConstant o k => exact Lv42.Arithmetization.entryOk_entry (.setConstant o k)
+  | deref o1 o2 o3 mode => exact Lv42.Arithmetization.entryOk_entry (.deref o1 o2 o3 mode)
+  | jump oc od of => exact Lv42.Arithmetization.entryOk_entry (.jump oc od of)
 
-/-- The bytecode pull's guarantee, that the entry decodes, for every bytecode pull of a satisfying
+/-- The bytecode pull's guarantee, that the entry is well formed, for every bytecode pull of a satisfying
 witness. -/
 theorem bytecode_guarantee (h : SatisfiedByB prog input w) :
     ∀ i ∈ w.interactions, i.channel.name = BytecodePull.name →
       ∀ m : BytecodeMsg K, i.msg = (toElements m).toArray → BytecodePull.Guarantees m w.data := by
   intro i hi hname m hm
   obtain ⟨k, -, he⟩ := bytecode_channel_sound h i hi hname m hm
-  obtain ⟨ins, hins⟩ := decode_kentry (prog.code k)
-  exact ⟨ins, by rw [he]; exact hins⟩
+  show Lv42.Arithmetization.EntryOk (#v[m.opcode] ++ m.op)
+  rw [he]
+  exact entryOk_kentry (prog.code k)
 
 /-- The bytecode read of every row of the six tables is the program's: its counter is `g^k` for a
 slot `k` and its coordinates are the entry there. -/

@@ -173,7 +173,7 @@ def UniCompletenessKeccakRec3 (F) (D) (P) (δ) : Prop := UniCompletenessKeccakWi
 - **The setup** is one WHIR commitment, of `setupStackK`. `A0`, `B0` are not committed: their roots `a0Root`,
   `b0Root` are deployment constants that the contract's IV hashes, because `contract_iv_for` keeps the BLAKE2s
   preimage. The verifier never opens them.
-- **The extractor** `uniExtractorK F` is `uniExtractor` on the Keccak `C1` (`c1LayoutK`, `2^μ` words), each candidate
+- **The extractor** `uniExtractorK F` is the former `UniStatement.uniExtractor` on the Keccak `C1` (`c1LayoutK`, `2^μ` words), each candidate
   read as the Keccak VM's stack (`kvStack`), the first satisfying `KvHolds F`. `KvHolds` is decidable, so the
   extractor is computable for a computable `F`.
 - **`F` is a parameter.** The verifier fixes some of `F`'s fields: the port words `4l + 2` and `4l`, and the

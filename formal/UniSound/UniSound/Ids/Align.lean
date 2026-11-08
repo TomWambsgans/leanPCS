@@ -352,12 +352,6 @@ theorem alphasOf_eq (ch : List E) (h : 4 ≤ ch.length) : alphasOf ch = ch.take 
   · simp at h
   · rfl
 
-/-- The run's claims when every commitment has one. -/
-theorem flockClaim_ringMap (rels : Array Relation) {κ : ℕ} (Fl : FlockSound κ)
-    (fd : Done) : (flockClaim rels (Fl.prog.out fd [])).2.2 = ringMapAt Fl fd := by
-  unfold flockClaim ringMapAt
-  rcases h : (Fl.prog.out fd []).2.1 with _ | (⟨map, target⟩ | ⟨ws, value⟩) <;> rfl
-
 theorem filterMap_commitments (f : Commitment → Option Combined)
     (h : (commitments.filterMap fun c => (f c).map fun x => (c, x)).length = 3) :
     (commitments.filterMap fun c => (f c).map fun x => (c, x)) =
@@ -379,41 +373,7 @@ theorem layoutOf_eq (S : Shape) (c : Commitment) :
 
 section Model
 
-variable (D : Deployment) {κ : ℕ} (Fl : FlockSound κ)
-
-/-- **The identity model's relations at `t` are the code-level link's** (`mainRels`, then Flock's
-claim), for round `0`'s challenges `α = alphasOf ch`. -/
-theorem relsAt_eq_alphas (s : USt) (ch : List E) (fd : Done) (t : E) (vals : List E) :
-    relsAt D Fl s ch fd t vals = (flockClaim (mainRels D.shape (publicWordsOf s.1.toList)
-      (countsBits D.shape.heights s.2) (alphasOf ch) (ch.getD 4 0) (ch.getD 5 0) t vals).1
-        (Fl.prog.out fd [])).1.toList :=
-  relsOf_eq (relInput D s ch (Fl.prog.out fd []) t vals) (Fl.prog.out fd []) rfl rfl
-
-/-- **The identity model's relations at `t` are the code-level link's**, for at least four challenges
-in round `0` (`α` their first four, as the code reads them). -/
-theorem relsAt_eq (s : USt) (ch : List E) (fd : Done) (t : E) (vals : List E) (hch : 4 ≤ ch.length) :
-    relsAt D Fl s ch fd t vals = (flockClaim (mainRels D.shape (publicWordsOf s.1.toList)
-      (countsBits D.shape.heights s.2) (ch.take 4) (ch.getD 4 0) (ch.getD 5 0) t vals).1
-        (Fl.prog.out fd [])).1.toList := by
-  rw [relsAt_eq_alphas, alphasOf_eq ch hch]
-
-/-- **The run's combined claims are the identity model's** (`combAt`, one per commitment), its ring
-map Flock's (`ringMapAt`). -/
-theorem runClaims_eq (s : USt) (ch : List E) (fd : Done) (t : E) (vals : List E) (rho : E)
-    (hch : 4 ≤ ch.length) :
-    (runClaims D Fl s ch fd t vals rho).1 = commitments.map (fun c => (c, combAt D Fl s ch fd t vals rho c)) ∧
-      (runClaims D Fl s ch fd t vals rho).2 = ringMapAt Fl fd := by
-  have hl := mainCombined_length D.shape (publicWordsOf s.1.toList) (countsBits D.shape.heights s.2)
-    (ch.take 4) (ch.getD 4 0) (ch.getD 5 0) t vals (Fl.prog.out fd []) rho
-  rw [← relsAt_eq D Fl s ch fd t vals hch] at hl
-  refine ⟨?_, ?_⟩
-  · have e : (runClaims D Fl s ch fd t vals rho).1 = commitments.filterMap fun c =>
-        (combine (relsAt D Fl s ch fd t vals) c rho).map fun x => (c, x) := by
-      unfold runClaims
-      rw [← relsAt_eq D Fl s ch fd t vals hch]
-    rw [e, filterMap_commitments _ hl]
-    rfl
-  · exact flockClaim_ringMap _ Fl fd
+variable (D : Deployment) {κ : ℕ}
 
 theorem ProdSum.ext' {P Q : ProdSum} (h1 : P.vars = Q.vars) (h2 : P.n = Q.n) (h3 : P.coef = Q.coef)
     (h4 : P.A = Q.A) (h5 : P.B = Q.B) : P = Q := by
@@ -427,71 +387,7 @@ theorem getD_cmb (f : Commitment → Combined) (k : ℕ) (hk : k < 3) :
     (commitments.map fun c => (c, f c)).getD k default = (cm k, f (cm k)) := by
   interval_cases k <;> rfl
 
-/-- **The identity model's batch is the verifier's** (`prodOf` is `batchProd`) where the counts are in
-range and Flock's result is the main line's. -/
-theorem prodOf_eq_batchProd (s : USt) (c1 : Stk) (ch : List E) (fd : Done) (c2 : Stk) (t : E)
-    (vals : List E) (rho lam : E) (hcf : CountsInRange D.shape.heights s.2)
-    (hgood : FlockGood κ (batchVars D.shape) (Fl.prog.out fd [])) (hch : 4 ≤ ch.length) :
-    Ids.prodOf D Fl s c1 ch fd c2 t vals rho lam = batchProd D Fl s c1 ch fd c2 t vals rho lam := by
-  have hg : CountsFit D.shape s.2 ∧ FlockGood κ (batchVars D.shape) (Fl.prog.out fd []) := ⟨hcf, hgood⟩
-  obtain ⟨h1, h2⟩ := runClaims_eq D Fl s ch fd t vals rho hch
-  have hlen : (commitments.map fun c => (c, combAt D Fl s ch fd t vals rho c)).length = 3 := rfl
-  unfold Ids.prodOf batchProd _root_.UniSound.prodOf
-  rw [ite_eq_left hg, h1, h2, hlen]
-  refine ProdSum.ext' (batchVars_eq _) rfl rfl ?_ ?_
-  · funext k u
-    dsimp only
-    by_cases hk : k < 3
-    · rw [ite_eq_left hk, ite_eq_left hk, getD_cmb _ k hk]
-      dsimp only
-      rw [layoutOf_eq, ← batchVars_eq]
-    · rw [ite_eq_right hk, ite_eq_right hk]
-  · funext k u
-    dsimp only
-    by_cases hk : k < 3
-    · rw [ite_eq_left hk, ite_eq_left hk, getD_cmb _ k hk]
-      dsimp only
-      rw [layoutOf_eq]
-      rfl
-    · rw [ite_eq_right hk, ite_eq_right hk]
-
-/-- **The identity model's target is the verifier's** (`targetOf` is `batchTargetOf`). -/
-theorem targetOf_eq_batchTargetOf (s : USt) (c1 : Stk) (ch : List E) (fd : Done) (c2 : Stk) (t : E)
-    (vals : List E) (rho lam : E) (hcf : CountsInRange D.shape.heights s.2)
-    (hgood : FlockGood κ (batchVars D.shape) (Fl.prog.out fd [])) (hch : 4 ≤ ch.length) :
-    Ids.targetOf D Fl s c1 ch fd c2 t vals rho lam = batchTargetOf D Fl s ch fd t vals rho lam := by
-  have hg : CountsFit D.shape s.2 ∧ FlockGood κ (batchVars D.shape) (Fl.prog.out fd []) := ⟨hcf, hgood⟩
-  obtain ⟨h1, -⟩ := runClaims_eq D Fl s ch fd t vals rho hch
-  unfold Ids.targetOf batchTargetOf _root_.UniSound.targetOf
-  rw [ite_eq_left hg, h1]
-  simp only [batchTarget, commitments, List.map_cons, List.map_nil, List.foldl_cons, List.foldl_nil,
-    Finset.sum_range_succ, Finset.sum_range_zero, cm, List.getD_cons_zero, List.getD_cons_succ]
-  ring
-
 end Model
-
-/-- **`BatchIsVerifiers`** for an identity model whose batch is `Model.lean`'s (`prodOf`, `targetOf`),
-where Flock's result on every completed transcript is the main line's (`FlockGood`). -/
-theorem batchIsVerifiers_of (D : Deployment) {κ : ℕ} (Fl : FlockSound κ) (B : BusModel D κ)
-    (J : UniIdsRest D Fl B) (hp : J.prod = Ids.prodOf D Fl) (ht : J.target = Ids.targetOf D Fl)
-    (hgood : ∀ fd, DoneFits Fl.prog.rounds fd → FlockGood κ (batchVars D.shape) (Fl.prog.out fd [])) :
-    BatchIsVerifiers D Fl (UniIds.ofBus Fl B J) := by
-  intro s c1 ch fd c2 t vals rho lam hcf hfd hch _
-  refine ⟨?_, ?_⟩
-  · show J.prod s c1 ch fd c2 t vals rho lam = _
-    rw [hp]
-    exact prodOf_eq_batchProd D Fl s c1 ch fd c2 t vals rho lam hcf (hgood fd hfd) (by omega)
-  · show J.target s c1 ch fd c2 t vals rho lam = _
-    rw [ht]
-    exact targetOf_eq_batchTargetOf D Fl s c1 ch fd c2 t vals rho lam hcf (hgood fd hfd) (by omega)
-
-/-- **`BatchIsVerifiers` for `idsRestOf`** (`Build.lean`). -/
-theorem batchIsVerifiers_ids (D : Deployment) (N : ℕ) (h : IdsHyps D N)
-    (Fl : FlockSound (D.shape.heights.getD opBlake2s 0)) (d n : ℕ) (g : IdsGaps D Fl d n)
-    (hgood : ∀ fd, DoneFits Fl.prog.rounds fd →
-      FlockGood (D.shape.heights.getD opBlake2s 0) (batchVars D.shape) (Fl.prog.out fd [])) :
-    BatchIsVerifiers D Fl (UniIds.ofBus Fl (busModelOf D N h g.cvecOk) (idsRestOf D N h Fl d n g)) :=
-  batchIsVerifiers_of D Fl _ _ rfl rfl hgood
 
 /-- **The identity model's number of values at `t` is the code's**, once the tables read at most
 `4096` (`GameNumbers.lean`'s `valsCount_le`: at most `122` in all). -/
@@ -507,4 +403,3 @@ theorem nVOf_eq_of (S : Shape) (h : tablesReads ≤ 4096) : nVOf S = valsCount :
   omega
 
 end UniSound.Ids
-

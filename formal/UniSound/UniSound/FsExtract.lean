@@ -58,7 +58,6 @@ open LeanVM.Protocol.Compile LeanVM.Protocol.EndToEnd WhirBridge UniStatement
 
 attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
   LeanVM.Protocol.Compile.instFintypeKState UniStatement.layoutWords UniStatement.setupStack
-  UniStatement.flockMatrixStack
 
 /-! ## The row counts -/
 
@@ -76,11 +75,6 @@ theorem rowsOfBytes_rowBytes (b : Array UInt8) : rowsOfBytes (rowBytes b) = rows
   rw [rowBytes_getD b (by omega)]
 
 /-! ## `C1`'s root and its variables -/
-
-/-- **Round `0`'s message is `C1`'s root** the stream names, without scalars. -/
-theorem msgK_uView_c1 {κ : ℕ} (Fl : FlockSound κ) (nV V : ℕ) (π : UPf) :
-    msgK (uView (uRounds Fl nV V)) π 0 = (some (toB (c1RootOf π.proof)), []) :=
-  rfl
 
 /-- `C1`'s layout is the layouts' `C1` entry (it does not depend on `C2`'s columns). -/
 theorem c1Layout_eq (s : UniStatement.Shape) : c1Layout s = layoutOf (layoutsOf s) .c1 :=
@@ -176,33 +170,6 @@ theorem c1Word_eq_committed (D : Deployment) (setupEvals : List (List UInt8 × D
   · exact Soundness.Replay.preimage_merkle setupEvals _ d' 64 (by decide)
   · exact Soundness.Replay.preimage_merkle setupEvals _ d' (8 * 64) (by decide)
 
-/-- **The Statement's extractor returns a stack satisfying the relation** when its list decoder
-lists a stack whose Lv42 stack satisfies it. The fast path's and the unique decoder's candidates
-are tried first; whatever they return satisfies the relation. -/
-theorem extractFrom_spec (D : Deployment) (input : Vector UInt8 32)
-    (pre : Digest → ℕ → Option (List UInt8)) (proof : UniProof)
-    (st : Vector K (2 ^ (c1Layout D.shape).vars))
-    (hst : st ∈ LeanVM.Extraction.decodeStacks (c1Layout D.shape).vars 1 (c1Word D pre proof))
-    (hrel : D.Relation proof.rows input
-      (lv42Stack D.prog (D.sizes proof.rows) D.shape fun i ↦ st.toArray.getD i 0)) :
-    ∃ q, extractFrom D input pre proof = some q ∧ D.Relation proof.rows input q := by
-  have hf : ∀ (a : Vector K (2 ^ (c1Layout D.shape).vars)) (b : D.Stack proof.rows),
-      (if D.Relation proof.rows input
-          (lv42Stack D.prog (D.sizes proof.rows) D.shape fun i ↦ a.toArray.getD i 0) then
-        some (lv42Stack D.prog (D.sizes proof.rows) D.shape fun i ↦ a.toArray.getD i 0)
-      else none) = some b → D.Relation proof.rows input b := fun a b hab => by
-    by_cases hr : D.Relation proof.rows input
-        (lv42Stack D.prog (D.sizes proof.rows) D.shape fun i ↦ a.toArray.getD i 0)
-    · rw [ite_eq_left hr] at hab
-      cases hab
-      exact hr
-    · rw [ite_eq_right hr] at hab
-      cases hab
-  unfold extractFrom
-  exact Soundness.orElse_spec _ _ _ (Soundness.findSome_sat _ _ _ hf)
-    (Soundness.orElse_spec _ _ _ (Soundness.findSome_sat _ _ _ hf)
-      (Soundness.findSome_spec _ _ _ hf ⟨st, hst, by rw [ite_eq_left hrel]; rfl⟩))
-
 /-- A stack of one size, at another equal size, with the decoder's membership and any property of
 its reading. -/
 theorem exists_stack_cast {μ ν R : ℕ} (h : μ = ν) (P : (ℕ → K) → Prop) (W : ℕ → List K)
@@ -215,78 +182,5 @@ theorem exists_stack_cast {μ ν R : ℕ} (h : μ = ν) (P : (ℕ → K) → Pro
 
 /-! ## The bridge -/
 
-/-- **The extractor's reading, with `C1`'s variables below `256`**: a candidate of `C1`'s root that
-the composed extractor lists, satisfying leanVM 42422001's relation, makes the Statement's
-extractor find a stack satisfying it. The hypothesis `hc1` is needed: `UniShapes` bounds only
-`C1`'s layout word's byte `wv D 0 = vars % 256`, and the Statement's extractor decodes at `vars`
-(see the module's docstring). -/
-theorem uniExtractBridge_of_c1 (D : Deployment) {κ : ℕ} (Fl : FlockSound κ) (nV V : ℕ)
-    (hs : UniShapes D) (hc1 : (c1Layout D.shape).vars < 256) :
-    UniExtractBridge D Fl nV V hs := by
-  intro t T z q hq hrel
-  -- the evaluations both extractors read
-  have htr : setupTr t ++ evalTr (permutationQueries T) = Soundness.trOf
-      (t.evaluations ++ keccakEvaluationsOfTranscript (permutationQueries T)) := by
-    simp only [Soundness.trOf, setupTr, evalTr, List.map_append]
-  -- the composed candidate: a stack of `C1`'s decoder under the stream's root
-  have h0 : extractorK (fun i => (uniTc hs i).commit) (uView (uRounds Fl nV V))
-      (z, setupTr t ++ evalTr (permutationQueries T)) =
-      ((uniTc hs 0).commit.cands
-        (histOfTr (Soundness.trOf
-          (t.evaluations ++ keccakEvaluationsOfTranscript (permutationQueries T))))
-        (tableOfTr (Soundness.trOf
-          (t.evaluations ++ keccakEvaluationsOfTranscript (permutationQueries T))))
-        (toB (c1RootOf z.1.proof))).map some := by
-    rw [htr]
-    show optC _ _ _ (msgK (uView (uRounds Fl nV V)) z.1 0) = _
-    rw [msgK_uView_c1]
-    rfl
-  rw [h0] at hq
-  have hq' : q ∈ (uniTc hs 0).commit.cands
-      (histOfTr (Soundness.trOf
-        (t.evaluations ++ keccakEvaluationsOfTranscript (permutationQueries T))))
-      (tableOfTr (Soundness.trOf
-        (t.evaluations ++ keccakEvaluationsOfTranscript (permutationQueries T))))
-      (toB (c1RootOf z.1.proof)) := by
-    obtain ⟨q', hq', he⟩ := List.mem_map.mp hq
-    rw [← Option.some.inj he]
-    exact hq'
-  obtain ⟨st, hst, rfl⟩ := mem_uniTc_zero hs _ _ _ q hq'
-  -- the Statement's word agrees with the composed one on every column
-  have hμ : (c1Layout D.shape).vars = wv D 0 := c1Layout_vars D hc1
-  have hadm : Whir.Admissible (wv D 0) logInvRate := (shapeK hs 0 (by decide)).adm
-  have hst2 : st ∈ LeanVM.Extraction.decodeStacks (wv D 0) 1
-      (c1Word D (PcsQuotient.Replay.preimageIn (PcsQuotient.Replay.preimageIndex
-        (t.evaluations ++ PcsQuotient.Replay.transcriptEvaluations PcsQuotient.merkleLengths
-          (permutationQueries T)))) z.1.proof) := by
-    refine Soundness.mem_decodeStacks_congr hadm (fun p hp => ?_) st hst
-    rw [c1Word_eq_committed, hμ]
-    exact Soundness.wordOfMerkle_merkleWord_eq _ _ _ _ hp
-  -- the relation, at the proof's row counts
-  have hrel' : D.Relation (rowsOfBytes (rowBytes z.1.proof.stream)) z.1.input
-      (lv42Stack D.prog (D.sizes (rowsOfBytes (rowBytes z.1.proof.stream))) D.shape
-        fun i => st.toArray.getD i 0) := hrel
-  rw [rowsOfBytes_rowBytes] at hrel'
-  obtain ⟨st', hst', hP⟩ := exists_stack_cast hμ
-    (fun f => D.Relation (rowsOf z.1.proof.stream) z.1.input
-      (lv42Stack D.prog (D.sizes (rowsOf z.1.proof.stream)) D.shape f)) _ st hst2 hrel'
-  exact extractFrom_spec D z.1.input _ z.1.proof st' hst' hP
-
-/-- **The extractor's reading** (`UniExtractBridge`), under `LayoutVarsSmall` (the stacks have
-fewer than `256` variables: a hypothesis of the end theorem `uniKnowledgeSoundness_code` already).
-The form with `hs` alone does not follow from the definitions: `UniShapes` bounds the layout words'
-bytes, `vars % 256`, only, and the Statement's extractor decodes at `vars` (see the module's
-docstring). -/
-theorem uniExtractBridge (D : Deployment) {κ : ℕ} (Fl : FlockSound κ) (nV V : ℕ)
-    (hs : UniShapes D) (hsmall : LayoutVarsSmall D) : UniExtractBridge D Fl nV V hs :=
-  uniExtractBridge_of_c1 D Fl nV V hs (hsmall .c1)
-
 end UniSound
 
-/-- info: 'UniSound.uniExtractBridge' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms UniSound.uniExtractBridge
-
-/-- info: 'UniSound.uniExtractBridge_of_c1' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms UniSound.uniExtractBridge_of_c1

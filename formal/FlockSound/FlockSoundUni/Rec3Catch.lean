@@ -1,6 +1,7 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The catch follows `Catch.lean`'s `catches_of_tx` (the
 -- main line's), with `FlockSound.FlockSq`'s `flock_front_sq`.
-import FlockSoundUni.Instance
+import FlockSoundUni.Catch
+import FlockSoundUni.Transcription
 import FlockSoundUni.Rec3Link
 import FlockSound.FlockSq
 import UniSound.Rec3.BusSq
@@ -61,87 +62,8 @@ theorem parse_expandFd_τs (d : Done) (hd : d ≠ []) :
 
 /-! ## The bad family -/
 
-/-- **π1-rec3's Flock bad family**: round `0`'s challenge the Kronecker bad set of the residual's sampled tables;
-the later ones the main line's on the expanded transcript. -/
-noncomputable def flockBad3 (κ : ℕ) : BadFamily κ := fun qf done msg pre ↦
-  if done.length = 0 then
-    FlockSound.kronBad (4 + κ) (FlockSound.sampledTables (mainSetup κ).hsize (mainSetup κ).fixed
-      (FlockSound.Front.zRes (mainSetup κ) (zOf qf)))
-  else flockBad κ qf (expandFd κ done) msg pre
-
 /-- **The bad sets' sizes**: `2^(4 + κ) − 1` for the squares' challenge, the main line's after. -/
 def dBound3 (κ : ℕ) (j i : ℕ) : ℕ := if j = 0 then 2 ^ (4 + κ) - 1 else dBound κ j i
-
-theorem card_flockBad3 (κ : ℕ) : ∀ qf done msg pre,
-    (flockBad3 κ qf done msg pre).card ≤ dBound3 κ done.length pre.length := by
-  intro qf done msg pre
-  unfold flockBad3 dBound3
-  by_cases h : done.length = 0
-  · rw [ite_eq_left h, ite_eq_left h]
-    exact FlockSound.card_kronBad_le _ _
-  · rw [ite_eq_right h, ite_eq_right h, ← length_expandFd κ done]
-    exact card_flockBad κ qf _ msg pre
-
-/-- **A later challenge in the expanded parse's bad set is a hit of `flockBad3`.** -/
-theorem hitIn3_of_mem (qf : Column (8 + κ)) {done : Done} {j i : ℕ} (h1 : 1 ≤ j) (hj : j < done.length)
-    (hi : i < (rd (expandFd κ done) j).2.length)
-    (hmem : (rd (expandFd κ done) j).2.getD i 0 ∈ badAt qf (parse κ (expandFd κ done)) j i) :
-    HitIn (flockBad3 κ) qf done := by
-  obtain ⟨j', rfl⟩ : ∃ j', j = j' + 1 := ⟨j - 1, by omega⟩
-  have hrd : rd (expandFd κ done) (j' + 1) = rd done (j' + 1) := rd_expandFd_succ κ done j'
-  rw [hrd] at hi hmem
-  obtain ⟨r, ds, rfl⟩ : ∃ r ds, done = r :: ds :=
-    List.exists_cons_of_ne_nil (List.ne_nil_of_length_pos (by omega))
-  have hr := rd_eq_getElem hj
-  refine ⟨j' + 1, hj, i, by rw [← hr]; exact hi, ?_⟩
-  show _ ∈ flockBad3 κ qf ((r :: ds).take (j' + 1)) ((r :: ds)[j' + 1]).1 (((r :: ds)[j' + 1]).2.take i)
-  rw [← hr]
-  unfold flockBad3
-  rw [ite_eq_right (by simp), expandFd_take κ _ _ (by omega)]
-  unfold flockBad
-  have hA := agree_pfx (done := expandFd κ (r :: ds)) (j := j' + 1) (by rw [length_expandFd]; exact hj) i
-  rw [hrd] at hA
-  rw [List.length_take, length_expandFd, min_eq_left hj.le, List.length_take, min_eq_left hi.le,
-    badAt_congr qf hA]
-  exact hmem
-
-/-- **Each of `Front.BadSq`'s events on the expanded parse is a hit of `flockBad3`.** -/
-theorem hit_of_badSq (qf : Column (8 + κ)) {done : Done} (hd : done ≠ []) (h0 : (rd done 0).2.length = 1)
-    (hF : Fits κ (expandFd κ done))
-    (hbad : FlockSound.Front.BadSq (mainSetup κ) (parse κ (expandFd κ done)) (zOf qf) ((rd done 0).2.headD 0)) :
-    HitIn (flockBad3 κ) qf done := by
-  have hl : done.length = 23 + κ := by rw [← length_expandFd κ done]; exact hF.len
-  rcases hbad with hk | hz | ⟨t, ht⟩ | hα | ⟨t, ht⟩ | ⟨a, ha⟩
-  · obtain ⟨r, ds, rfl⟩ := List.exists_cons_of_ne_nil hd
-    refine ⟨0, by simp, 0, ?_, ?_⟩
-    · show 0 < r.2.length
-      have h0' : r.2.length = 1 := h0
-      omega
-    · show r.2.getD 0 0 ∈ flockBad3 κ qf ((r :: ds).take 0) (r :: ds)[0].1 ((r :: ds)[0].2.take 0)
-      unfold flockBad3
-      rw [ite_eq_left (by simp), ← headD_eq_getD']
-      exact hk
-  · refine hitIn3_of_mem qf (j := 1) (i := 0) le_rfl (by omega) (by rw [hF.r1c]; omega) ?_
-    rw [badAt_z, ← headD_eq_getD']
-    exact hz
-  · have ht2 := t.isLt
-    refine hitIn3_of_mem qf (j := 2 + t) (i := 0) (by omega) (by omega)
-      (by rw [(hF.mid _ (by omega) (by omega)).2]; omega) ?_
-    rw [badAt_zc, ← headD_eq_getD', ← rd_drop]
-    exact ht
-  · refine hitIn3_of_mem qf (j := 13 + κ) (i := 0) (by omega) (by omega)
-      (by rw [(hF.mid _ (by omega) (by omega)).2]; omega) ?_
-    rw [badAt_α, ← headD_eq_getD']
-    exact hα
-  · have ht8 := t.isLt
-    refine hitIn3_of_mem qf (j := 14 + κ + t) (i := 0) (by omega) (by omega)
-      (by rw [(hF.mid _ (by omega) (by omega)).2]; omega) ?_
-    rw [badAt_lin, ← headD_eq_getD', ← rd_drop]
-    exact ht
-  · refine hitIn3_of_mem qf (j := 22 + κ) (i := a) (by omega) (by omega)
-      (by rw [hF.r6c]; exact (show (a : ℕ) < 6 from a.isLt)) ?_
-    rw [badAt_ring]
-    exact ha
 
 end FlockSound.Uni
 
@@ -153,49 +75,6 @@ open LeanVM.Protocol (Column)
 variable {κ : ℕ}
 
 /-! ## The catch -/
-
-/-- **π1-rec3's bad family catches, given the evaluator transcription**: on a completed transcript of its rounds
-whose ring claim holds of the column and whose pending claim (the main line's reading's) is its sum, the column
-satisfies Flock's relation or a challenge is in its bad set (`flock_front_sq` at leanVM's constants on the expanded
-parse). -/
-theorem catches3 (tx : Tx κ) (qf : Column (8 + κ)) (done : Done) (hfit : DoneFits (flockRounds3 κ) done)
-    (hend : FlockEndHolds qf (outOf κ (expandFd κ done)))
-    (hpend : PendingHolds (outOf κ (expandFd κ done)).2.2) :
-    FlockHolds κ qf ∨ HitIn (flockBad3 κ) qf done := by
-  have hF := fits_of_doneFits (doneFits_expandFd hfit)
-  have hd : done ≠ [] := by
-    rintro rfl
-    exact hfit
-  have h0 : (rd done 0).2.length = 1 := by
-    have := ((doneFits_rd hfit).2 0 (by rw [length_flockRounds3]; omega)).2
-    simpa [flockRounds3, flockRounds3Pre] using this
-  by_cases hold : FlockHolds κ qf
-  · exact Or.inl hold
-  right
-  have hend' := hend
-  have hpend' := hpend
-  rw [outOf_parse tx hF] at hend' hpend'
-  have hring : ∑ u, stagedMap (mainSetup κ).sh (parse κ (expandFd κ done)).f
-      (eqP (Front.p (mainSetup κ) (parse κ (expandFd κ done))) u) * colWord qf u =
-      Front.target (mainSetup κ) (parse κ (expandFd κ done)) := by
-    have h := hend'
-    simp only [FlockEndHolds] at h
-    rw [tx.ring, tx.target] at h
-    exact h
-  have hnot : ¬ R1CSHolds (mainSetup κ).A (mainSetup κ).B (zOf qf) (mainSetup κ).cpos :=
-    fun h ↦ hold ((r1csHolds_iff rfl _ qf).mp h)
-  rcases flock_front_sq (mainSetup κ)
-      (leanvmSetup_valid 3 3 κ (4 + κ) rfl (by decide) (by omega) towerShifts (Or.inr rfl) _ _ _)
-      (zOf qf) (colBits_bool rfl qf) (colWord qf) (colPack rfl qf) (parse κ (expandFd κ done))
-      ((rd done 0).2.headD 0) (parse_expandFd_τs done hd) (zc_consistent tx hF).2 (lin_consistent tx hF).2
-      hring hnot with hbad | hfalse
-  · exact hit_of_badSq qf hd h0 hF hbad
-  · exfalso
-    apply hfalse
-    have h := hpend'
-    unfold PendingHolds at h
-    rw [tx.sum, tx.claim] at h
-    exact h
 
 /-! ## The rounds' errors -/
 

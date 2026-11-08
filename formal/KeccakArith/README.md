@@ -53,8 +53,8 @@ systemd-run --scope -p MemoryMax=12G lake build KeccakArith KeccakFlushes   # #g
 ## One row (`KeccakArith/RowSound.lean`)
 
 - `sha3_row_sound env hA hg`: for any row environment, under `Sha3Relation` of the row and the guarantees of its pulls
-  (`FullGuarantees`: the 26 memory pulls are reads of the image the data names, the bytecode tuple decodes, as Lv42's
-  bus soundness supplies them), the row is bound to the image and
+  (`FullGuarantees`: the 26 memory pulls are reads of the image the data names, the bytecode tuple is well formed, Lv42's `EntryOk`:
+  its opcode is `g^5`, as Lv42's bus soundness supplies them), the row is bound to the image and
   `KeccakVm.executeWith (imageOf env.data).2.read ⟨pc, fp⟩ r.instr = some ⟨g·pc, fp⟩`.
 - `sha3Relation_stackRow F prog s q (h : KeccakAux F prog s q) t (ht : t < s.rows 5)`: the stack's row `t`
   (`stackRow`, read with `rowOfCells` off `(keccakIsaInstance prog s).row q 8 t`) satisfies `Sha3Relation`. From
@@ -127,7 +127,8 @@ Lv42's `Arithmetization/Soundness/*` and `Protocol/LeanIsa/{Bus,Relation,Sound}.
 
 ## Completeness (`CSkel`, `CBus`, `CWitness`, `CSatisfied`, `CTheorem`, `AComplete`)
 
-Lv42's `Arithmetization/Completeness/*` and `Protocol/LeanIsa/Complete.lean`, at the Keccak VM:
+After Lv42's `Arithmetization/Completeness/*` and `Protocol/LeanIsa/Complete.lean` (removed from `formal/Lv42` with
+`BLAKE2S`; their instruction-set-independent parts are the `*Base` modules), at the Keccak VM:
 
 - `CSkel.lean`: the run's skeletons (`runSkels`, `runRows`, `count_eq_runRows`), the cells an instruction reads
   (`readAddrs`: `SHA3`'s 26 cells), the row of an executing instruction (`rowOf`, `SHA3`'s `sha3RowOf`) and

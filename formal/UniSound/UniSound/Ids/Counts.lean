@@ -80,18 +80,6 @@ theorem relsOf_len (inp : RelInput) : (relsOf inp).length ≤ 126 + inp.shape.he
     List.length_range, min_self, RelInput.memRels, RelInput.bcRels]
   omega
 
-/-- **At most `135` relations** at the reference shape (`9` heap blocks). -/
-theorem relCount_reference (D : Deployment) {κ : ℕ} (Fl : FlockSound κ) (hS : D.shape = reference) :
-    RelCountP D Fl 135 := by
-  intro s ch fd t vals
-  have h := relsOf_len (relInput D s ch (Fl.prog.out fd []) t vals)
-  have hb : (relInput D s ch (Fl.prog.out fd []) t vals).shape.heap.blocks.length = 9 := by
-    show D.shape.heap.blocks.length = 9
-    rw [hS, heap_blocks_reference]
-    rfl
-  unfold relsAt
-  omega
-
 /-! ## Columns absent from a layout -/
 
 /-- **A column not listed has no limbs**, in any `StackLayout.new`. -/
@@ -161,10 +149,6 @@ theorem ncvOf_eq (S : Shape) : ncvOf S = 30 := by
   norm_num
 
 end UniSound.Ids
-
-/-- info: 'UniSound.Ids.relCount_reference' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms UniSound.Ids.relCount_reference
 
 /-- info: 'UniSound.Ids.c1Absent' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in

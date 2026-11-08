@@ -1,5 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The statements' form is `Security.lean`'s
--- (`UniKnowledgeSoundness`, `UniCompleteness`); the verifier is `Rec.lean`'s `verifyWithFs` at π1-rec3
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The verifier is `Rec.lean`'s `verifyWithFs` at π1-rec3
 -- (`crates/leanvm/univariate`'s `FLOCK_REC3`, `leanvm-rec` 4247e37).
 module
 
@@ -7,10 +6,9 @@ public import UniStatement.Rec
 public import UniStatement.Security
 
 /-!
-# Knowledge soundness and completeness of π1-rec3, against leanVM 42422001's relation
+# π1-rec3's deployed verifier
 
-Statements only. They are `Security.lean`'s, with the deployed verifier replaced by **π1-rec3's**
-(`docs/leanvm/rec/SPEC-REC.md` §12 item 8; `Rec.lean`):
+`Security.lean`'s deployed verifier replaced by **π1-rec3's** (`docs/leanvm/rec/SPEC-REC.md` §12 item 8; `Rec.lean`):
 
 * the contract's IV binds the variant (`contractIvForWith … (.flock flockMain) .rec3 true`: the main line's
   preimage with `fs-rec3`, the skip `3` and the slices' code `4` appended);
@@ -19,9 +17,8 @@ Statements only. They are `Security.lean`'s, with the deployed verifier replaced
   two variables a round with narrow challenges), then **three** `PCS_OPEN` calls (`C1`, `C2`, the setup); `A0`,
   `B0` are not opened (the proof's `a0`, `b0` are not read).
 
-The setup, the extractor (`uniExtractor`: `C1`'s word under the root the stream names, the relation at the proof's
-row counts), the adversary, the experiments' shape and the relation are `Security.lean`'s, unchanged: the setup
-still commits `A0`, `B0` (the IV hashes their roots), though the verifier never opens them.
+(The statements of π1-rec3 against leanVM 42422001's relation, with its `BLAKE2S` table, were here; they are
+removed with `BLAKE2S`. The Keccak VM's are `UniKeccak.Security`'s.)
 -/
 
 @[expose] public section
@@ -50,49 +47,7 @@ def Deployment.verifierRec3With (D : Deployment) (roots : SetupRoots) (input : V
 
 end With
 
-/-- **π1-rec3's knowledge-soundness experiment**: the setup over `π`, the adversary given its roots (its queries
-logged), then π1-rec3's verifier over `π`. -/
-noncomputable def uniSoundnessExperimentRec3 (D : Deployment) (A : UniAdversary) : ProbComp UniOutcome :=
-  runWithRandomPermutation do
-    let trees ← setupTreesWith queryPermutation D
-    let (z, transcript) ← (simulateQ loggedOracles (A trees.roots)).run []
-    let accepted ← D.verifierRec3With queryPermutation trees.roots z.1 z.2
-    return ((z, accepted), trees.evaluations, transcript)
-
-/-- **Knowledge soundness of π1-rec3 for the extractor `ext`**, error `ε Q` for `Q` calls of `π` and `π⁻¹`. -/
-def UniKnowledgeSoundnessRec3With (D : Deployment) (ext : UniExtractor D) (ε : ℕ → ℝ≥0∞) : Prop :=
-  ∀ (A : UniAdversary) (Q : ℕ), (∀ roots, QueryCostAtMost (A roots) permutationCallCost Q) →
-    Pr{let z ← uniSoundnessExperimentRec3 D A}[UniBreaksKnowledgeSoundness D ext z] ≤ ε Q
-
-/-- **Knowledge soundness of π1-rec3** against leanVM 42422001's relation, for the explicit extractor
-`uniExtractor`. -/
-def UniKnowledgeSoundnessRec3 (D : Deployment) (ε : ℕ → ℝ≥0∞) : Prop :=
-  UniKnowledgeSoundnessRec3With D (uniExtractor D) ε
-
-/-- **π1-rec3's completeness experiment**: the setup, the prover's proof, π1-rec3's verdict, over `π`. -/
-noncomputable def uniCompletenessExperimentRec3 (D : Deployment) (P : UniProver D) (input : Vector UInt8 32)
-    (rows : List ℕ) (q : D.Stack rows) : ProbComp Bool :=
-  runWithRandomPermutation do
-    let trees ← setupTreesWith queryPermutation D
-    match ← P input rows q with
-    | none => return false
-    | some proof => D.verifierRec3With queryPermutation trees.roots input proof
-
-/-- **Completeness of π1-rec3 for the prover `P`**: its proof of a public input with an `M3Honest` stack, at row
-counts that fit the shape, is rejected with probability at most `δ`. -/
-def UniCompletenessRec3 (D : Deployment) (P : UniProver D) (δ : ℝ≥0∞) : Prop :=
-  ∀ (input : Vector UInt8 32) (rows : List ℕ) (q : D.Stack rows), D.shape.RowsFit rows →
-    D.HonestRelation rows input q →
-    Pr{let v ← uniCompletenessExperimentRec3 D P input rows q}[v = false] ≤ δ
-
 end UniStatement
 
 end
 
-/-- info: 'UniStatement.UniKnowledgeSoundnessRec3' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms UniStatement.UniKnowledgeSoundnessRec3
-
-/-- info: 'UniStatement.UniCompletenessRec3' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms UniStatement.UniCompletenessRec3

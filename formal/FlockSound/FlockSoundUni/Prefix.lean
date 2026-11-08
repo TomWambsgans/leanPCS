@@ -126,115 +126,9 @@ theorem parse_s (h : (rd d (22 + κ)).1 = (rd d' (22 + κ)).1) : (parse κ d).s 
 
 /-! The derived values. -/
 
-theorem τ_congr (h : rd d 0 = rd d' 0) :
-    Front.τ (mainSetup κ) (parse κ d) = Front.τ (mainSetup κ) (parse κ d') := by
-  show fullPoint _ _ (parse κ d).τs = fullPoint _ _ (parse κ d').τs
-  rw [parse_τs h]
-
-theorem c₀_congr (h : rd d 1 = rd d' 1) :
-    Front.c₀ (mainSetup κ) (parse κ d) = Front.c₀ (mainSetup κ) (parse κ d') := by
-  show (FlockSound.interp _ (parse κ d).cv).eval (parse κ d).z =
-    (FlockSound.interp _ (parse κ d').cv).eval (parse κ d').z
-  rw [parse_cv (congrArg Prod.fst h), parse_z h]
-
-theorem vc_congr (h : ∀ a < 13 + κ, rd d a = rd d' a) (h1 : (rd d (13 + κ)).1 = (rd d' (13 + κ)).1) :
-    Front.vc (mainSetup κ) (parse κ d) = Front.vc (mainSetup κ) (parse κ d') := by
-  show claimAt (Front.c₀ (mainSetup κ) (parse κ d)) (parse κ d).zq (parse κ d).zχ (Fin.last _) +
-      (parse κ d).va * (parse κ d).vb =
-    claimAt (Front.c₀ (mainSetup κ) (parse κ d')) (parse κ d').zq (parse κ d').zχ (Fin.last _) +
-      (parse κ d').va * (parse κ d').vb
-  rw [c₀_congr (h 1 (by omega)), parse_zq_eq h, parse_zχ_eq h, parse_va h1, parse_vb h1]
-
-theorem rl_congr (h : ∀ a < 13 + κ, rd d a = rd d' a) :
-    Front.rl (mainSetup κ) (parse κ d) = Front.rl (mainSetup κ) (parse κ d') := by
-  show lowPart (lowPart (parse κ d).zχ) = lowPart (lowPart (parse κ d').zχ)
-  rw [parse_zχ_eq h]
-
-theorem rh_congr (h : ∀ a < 13 + κ, rd d a = rd d' a) :
-    Front.rh (mainSetup κ) (parse κ d) = Front.rh (mainSetup κ) (parse κ d') := by
-  show highPart (lowPart (parse κ d).zχ) = highPart (lowPart (parse κ d').zχ)
-  rw [parse_zχ_eq h]
-
-theorem rt_congr (h : ∀ a < 13 + κ, rd d a = rd d' a) :
-    Front.rt (mainSetup κ) (parse κ d) = Front.rt (mainSetup κ) (parse κ d') := by
-  show highPart (parse κ d).zχ = highPart (parse κ d').zχ
-  rw [parse_zχ_eq h]
-
-theorem χ'_congr (h : ∀ a < 22 + κ, rd d a = rd d' a) :
-    Front.χ' (mainSetup κ) (parse κ d) = Front.χ' (mainSetup κ) (parse κ d') := by
-  show (fun j ↦ (parse κ d).lχ (Fin.rev j)) = fun j ↦ (parse κ d').lχ (Fin.rev j)
-  rw [parse_lχ_eq h]
-
 end Fields
 
 /-! ## The prefix property -/
-
-/-- **The bad set at `(j, i)` reads the transcript before `(j, i)` only.** -/
-theorem badAt_congr (qf : Column (8 + κ)) {d d' : Done} {j i : ℕ} (hA : AgreeAt d d' j i) :
-    badAt qf (parse κ d) j i = badAt qf (parse κ d') j i := by
-  obtain ⟨hlt, hmsg, hch⟩ := hA
-  unfold badAt
-  by_cases h0 : j = 0
-  · rw [ite_eq_left h0, ite_eq_left h0]
-    subst h0
-    split_ifs with hi
-    · exact pointBad_congr _ _ _ _ _ fun a ha ↦ hch a (by simpa using ha)
-    · rfl
-  simp only [ite_eq_right h0]
-  by_cases h1 : j = 1
-  · rw [ite_eq_left h1, ite_eq_left h1]
-    subst h1
-    split_ifs
-    · rw [τ_congr (hlt 0 (by omega)), parse_cv hmsg]
-    · rfl
-  simp only [ite_eq_right h1]
-  by_cases h2 : j < 13 + κ
-  · simp only [dite_eq_left h2]
-    split_ifs
-    · have hj : 2 + (j - 2) = j := by omega
-      rw [τ_congr (hlt 0 (by omega)), c₀_congr (hlt 1 (by omega)), parse_z (hlt 1 (by omega))]
-      refine zcBad_congr _ _ _ _ _ _ _ _ _ _ _ _ _ (fun u hu ↦ ?_) (fun u hu ↦ ?_)
-      · simp only at hu
-        refine parse_zq u (fun a ha ↦ hlt a (by omega)) ?_
-        rcases Nat.lt_or_ge (2 + u.val) j with hl | hl
-        · rw [hlt _ hl]
-        · rw [show 2 + u.val = j by omega]
-          exact hmsg
-      · simp only at hu
-        exact parse_zχ u (hlt _ (by omega))
-    · rfl
-  simp only [dite_eq_right h2]
-  by_cases h3 : j = 13 + κ
-  · rw [ite_eq_left h3, ite_eq_left h3]
-    subst h3
-    split_ifs
-    · rw [vc_congr hlt hmsg, rt_congr hlt, parse_va hmsg, parse_vb hmsg, parse_z (hlt 1 (by omega)),
-        parse_zχ_eq hlt]
-    · rfl
-  simp only [ite_eq_right h3]
-  by_cases h4 : j < 22 + κ
-  · simp only [dite_eq_left h4]
-    split_ifs
-    · have h13 : ∀ a < 13 + κ, rd d a = rd d' a := fun a ha ↦ hlt a (by omega)
-      rw [rl_congr h13, rh_congr h13, rt_congr h13, parse_z (hlt 1 (by omega)),
-        parse_α (hlt (13 + κ) (by omega))]
-      refine sumBad_congr' 2 8 _ _ _ _ _ _ _ ?_ fun u hu ↦ ?_
-      · refine parse_lq _ (fun a ha ↦ hlt a (by simp only at ha; omega)) ?_
-        simp only
-        rw [show 14 + κ + (j - (14 + κ)) = j by omega]
-        exact hmsg
-      · simp only at hu
-        exact parse_lχ u (hlt _ (by omega))
-    · rfl
-  simp only [dite_eq_right h4]
-  by_cases h5 : j = 22 + κ
-  · rw [ite_eq_left h5, ite_eq_left h5]
-    subst h5
-    split_ifs
-    · rw [rt_congr fun a ha ↦ hlt a (by omega), χ'_congr hlt, parse_s hmsg]
-      exact ringBad_congr _ _ _ _ _ _ _ fun a ha ↦ hch a (by simpa using ha)
-    · rfl
-  simp only [ite_eq_right h5]
 
 /-- **A transcript agrees with its prefix** at `(j, i)`: its rounds before `j`, round `j`'s message
 and its first `i` challenges. -/
@@ -248,20 +142,5 @@ theorem agree_pfx {done : Done} {j : ℕ} (hj : j < done.length) (i : ℕ) :
   · rw [rd_append_right (by omega), hl, Nat.sub_self]
     show ((rd done j).2.take i).getD b 0 = (rd done j).2.getD b 0
     simp only [List.getD_eq_getElem?_getD, List.getElem?_take, hb, ite_true]
-
-/-- **A challenge in its own parse's bad set is a hit of `flockBad`.** -/
-theorem hitIn_of_mem (qf : Column (8 + κ)) {done : Done} {j i : ℕ} (hj : j < done.length)
-    (hi : i < (rd done j).2.length)
-    (hmem : (rd done j).2.getD i 0 ∈ badAt qf (parse κ done) j i) : HitIn (flockBad κ) qf done := by
-  obtain ⟨r, ds, rfl⟩ : ∃ r ds, done = r :: ds :=
-    List.exists_cons_of_ne_nil (List.ne_nil_of_length_pos (by omega))
-  have hr := rd_eq_getElem hj
-  refine ⟨j, hj, i, by rw [← hr]; exact hi, ?_⟩
-  show _ ∈ flockBad κ qf ((r :: ds).take j) ((r :: ds)[j]).1 (((r :: ds)[j]).2.take i)
-  rw [← hr]
-  unfold flockBad
-  rw [List.length_take, min_eq_left hj.le, List.length_take, min_eq_left hi.le,
-    badAt_congr qf (agree_pfx hj i)]
-  exact hmem
 
 end FlockSound.Uni

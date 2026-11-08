@@ -92,22 +92,6 @@ def flockClaim (rels : Array Relation) (fl : List E × Option Flock.End × Flock
     (rels, [⟨(ws.zip (List.range ws.length)).map fun x => ⟨.qflockBits, fl.1, x.2, x.1⟩, value⟩], none)
   | none => (rels, [], none)
 
-/-- **The main line's zeros and result** from its rounds' records (`C1`'s round `r0`, Flock's `fd`,
-`C2`'s `r2`, the values' `r3`, the batch's `brs`) and the tail `tl`. -/
-def mainOut (D : Deployment) {κ : ℕ} (Fl : FlockSound κ) (input : Vector UInt8 32) (rows : List ℕ)
-    (r0 : UMsg × List E) (fd : Done) (r2 r3 : UMsg × List E) (brs : Done) (tl : List E) :
-    List E × Reduced :=
-  let fl := Fl.prog.out fd []
-  let mr := mainRels D.shape (publicWordsOf input.toList) (countsBits D.shape.heights rows) (r0.2.take 4)
-    (r0.2.getD 4 0) (r0.2.getD 5 0) (r2.2.headD 0) r3.1.2
-  let fc := flockClaim mr.1 fl
-  let combined := commitments.filterMap fun c => (combine fc.1.toList c (r3.2.headD 0)).map fun x => (c, x)
-  let stackLayouts := layouts D.shape mr.2
-  let bp := batchPure combined stackLayouts (combine fc.2.1 .c1 1) fc.2.2 fl.2.2 fl.1 (r3.2.getD 1 0) brs tl
-  (bp.1, ⟨(r0.1.1.getD default, r2.1.1.getD default), bp.2.1,
-    if bp.2.2.isSome = true then bp.2.2 else none, fc.1.size, stackLayouts.map fun x => (x.1, x.2.vars),
-    stackLayouts⟩)
-
 /-! ## The run's `C2` columns and claims -/
 
 /-- **`C2`'s columns in the run are the shape's** (whatever the values). -/
@@ -144,46 +128,8 @@ theorem mainCombined_length (shape : Shape) (pw : List E) (counts : List (List E
     unfold mainRels
     simp
 
-/-- The main line's zeros after a round: Flock's in its rounds, its tail zeros in `C2`'s round. -/
-def mainZeros {κ : ℕ} (Fl : FlockSound κ) (done : Done) (msg : UMsg) : List E :=
-  if 1 ≤ done.length ∧ done.length ≤ Fl.prog.rounds.length then Fl.prog.zeros (done.drop 1) msg
-  else if done.length = Fl.prog.rounds.length + 1 then Fl.prog.tailZeros (done.drop 1) []
-  else []
-
-/-- **The main line's chain program without the counts' zero** (`reduceWith` after `readCounts`, its
-zeros as `reduceWith` collects them). -/
-def mainProg0 (D : Deployment) {κ : ℕ} (Fl : FlockSound κ) (input : Vector UInt8 32) (rows : List ℕ) :
-    ChainProg Reduced where
-  rounds := uniRounds Fl.prog.rounds valsCount (varsOf (layoutsOf D.shape))
-  zeros := mainZeros Fl
-  tail := 5
-  tailZeros done tl := (mainOut D Fl input rows (done.getD 0 default)
-    ((done.drop 1).take Fl.prog.rounds.length) (done.getD (Fl.prog.rounds.length + 1) default)
-    (done.getD (Fl.prog.rounds.length + 2) default) (done.drop (Fl.prog.rounds.length + 3)) tl).1
-  out done tl := (mainOut D Fl input rows (done.getD 0 default)
-    ((done.drop 1).take Fl.prog.rounds.length) (done.getD (Fl.prog.rounds.length + 1) default)
-    (done.getD (Fl.prog.rounds.length + 2) default) (done.drop (Fl.prog.rounds.length + 3)) tl).2
-
 /-- **The counts' zero**: `0` if the row counts are in range (`readCounts`' checks), else `1`. -/
 def countsZeroOf (D : Deployment) (rows : List ℕ) : E := if CountsInRange D.shape.heights rows then 0 else 1
-
-/-- **The main line's chain program** for a public input and the row counts: `mainProg0` with the
-counts' zero in round `0` (`readCounts`' range checks, repeated inside the chain, so that the chain
-program's zeros vanishing puts the counts in range; observationally the same run, `link_counts`). -/
-def mainProg (D : Deployment) {κ : ℕ} (Fl : FlockSound κ) (input : Vector UInt8 32) (rows : List ℕ) :
-    ChainProg Reduced :=
-  (mainProg0 D Fl input rows).withHead [countsZeroOf D rows]
-
-theorem mainProg_rounds (D : Deployment) {κ : ℕ} (Fl : FlockSound κ) (input : Vector UInt8 32)
-    (rows : List ℕ) :
-    (mainProg D Fl input rows).rounds = [⟨true, 0, 5⟩] ++ Fl.prog.rounds ++
-      [⟨true, 0, 0⟩, ⟨false, valsCount, 1⟩] ++ List.replicate (varsOf (layoutsOf D.shape)) ⟨false, 2, 0⟩ :=
-  rfl
-
-/-- The main line's zeros in round `0`: the counts' zero. -/
-theorem mainProg_zeros_nil (D : Deployment) {κ : ℕ} (Fl : FlockSound κ) (input : Vector UInt8 32)
-    (rows : List ℕ) (msg : UMsg) : (mainProg D Fl input rows).zeros [] msg = [countsZeroOf D rows] := by
-  simp [mainProg, ChainProg.withHead]
 
 /-! ## Rounds of a fixed length -/
 
@@ -249,30 +195,6 @@ theorem ObsEq.bind_eq {α β : Type} {x y : ChanM m β} {f g : β → ChanM m α
     (hf : ∀ b, ObsEq (f b) (g b)) : ObsEq (x >>= f) (y >>= g) := by
   subst h
   exact ObsEq.bind_right x hf
-
-theorem mainZeros_nil {κ : ℕ} (Fl : FlockSound κ) (msg : UMsg) : mainZeros Fl [] msg = [] := by
-  simp [mainZeros]
-
-theorem mainZeros_flock {κ : ℕ} (Fl : FlockSound κ) (x : UMsg × List E) (e : Done) (msg : UMsg)
-    (h : e.length < Fl.prog.rounds.length) : mainZeros Fl ([] ++ [x] ++ e) msg = Fl.prog.zeros e msg := by
-  simp only [mainZeros, List.nil_append, List.length_cons, List.singleton_append]
-  rw [ite_eq_left ⟨by omega, by omega⟩]
-  simp
-
-theorem mainZeros_c2 {κ : ℕ} (Fl : FlockSound κ) (x : UMsg × List E) (G : Done)
-    (hG : G.length = Fl.prog.rounds.length) (msg : UMsg) :
-    mainZeros Fl ([x] ++ G) msg = Fl.prog.tailZeros G [] := by
-  have h1 : ([x] ++ G).length = Fl.prog.rounds.length + 1 := by simp [hG]
-  unfold mainZeros
-  rw [ite_eq_right (by omega), ite_eq_left h1]
-  simp
-
-theorem mainZeros_vals {κ : ℕ} (Fl : FlockSound κ) (x x2 : UMsg × List E) (G : Done)
-    (hG : G.length = Fl.prog.rounds.length) (msg : UMsg) :
-    mainZeros Fl ([x] ++ G ++ [x2]) msg = [] := by
-  have h1 : ([x] ++ G ++ [x2]).length = Fl.prog.rounds.length + 2 := by simp [hG]
-  unfold mainZeros
-  rw [ite_eq_right (by omega), ite_eq_right (by omega)]
 
 theorem nextScalars_seven : nextScalars (m := m) 7 = (do
     let a1 ← nextScalar (m := m)
@@ -341,174 +263,6 @@ theorem getD_fixLen_append_zero (T : ℕ) (v l : List E) : (fixLen T v ++ l).get
 theorem getD_five (a : List E) (b c : E) : (fixLen 4 a ++ [b, c]).getD 5 0 = c :=
   getD_fixLen_append 4 1 a [b, c]
 
-section Main
-
-variable (D : Deployment) {κ : ℕ} (Fl : FlockSound κ) (input : Vector UInt8 32) (rows : List ℕ)
-
-omit [LawfulMonad m] in
-theorem mainProg0_rounds : (mainProg0 D Fl input rows).rounds = [⟨true, 0, 5⟩] ++ Fl.prog.rounds ++
-    [⟨true, 0, 0⟩, ⟨false, valsCount, 1⟩] ++ List.replicate (varsOf (layoutsOf D.shape)) ⟨false, 2, 0⟩ :=
-  rfl
-
-omit [LawfulMonad m] in
-theorem mainProg0_zeros : (mainProg0 D Fl input rows).zeros = mainZeros Fl := rfl
-
-theorem mainProg0_flock (F : KeccakState → m KeccakState) (x : UMsg × List E) :
-    (mainProg0 D Fl input rows).runRounds F Fl.prog.rounds ([] ++ [x]) =
-      (fun d' => [] ++ [x] ++ d') <$> Fl.prog.runRounds F Fl.prog.rounds [] := by
-  have h := runRounds_shift (mainProg0 D Fl input rows) Fl.prog F ([] ++ [x]) Fl.prog.rounds.length
-    (fun e msg he => by rw [mainProg0_zeros]; exact mainZeros_flock Fl x e msg he) Fl.prog.rounds []
-    (by simp)
-  rw [List.append_nil] at h
-  exact h
-
-theorem mainProg0_batch (F : KeccakState → m KeccakState) (d : Done)
-    (hd : Fl.prog.rounds.length + 3 ≤ d.length) :
-    (mainProg0 D Fl input rows).runRounds F
-        (List.replicate (varsOf (layoutsOf D.shape)) ⟨false, 2, 0⟩) d =
-      (fun e => d ++ e) <$> readRounds F (List.replicate (varsOf (layoutsOf D.shape)) ⟨false, 2, 0⟩) := by
-  refine runRounds_noZeros _ F (Fl.prog.rounds.length + 3) (fun d msg h => ?_) _ d
-    (fun s hs => by rw [(List.mem_replicate.mp hs).2]) hd
-  rw [mainProg0_zeros]
-  simp only [mainZeros]
-  rw [ite_eq_right (by omega), ite_eq_right (by omega)]
-
-end Main
-
-/-- **The code-level link, observationally**, for the program without the counts' zero. -/
-theorem link_obs0 (D : Deployment) {κ : ℕ} (Fl : FlockSound κ)
-    (hκ : D.shape.heights.getD opBlake2s 0 = κ) (input : Vector UInt8 32)
-    (F : KeccakState → m KeccakState) :
-    ObsEq (reduceWith F D.shape (publicWordsOf input.toList) (.flock flockMain) .point)
-      (readCounts D.shape.heights >>= fun rows => (mainProg0 D Fl input rows).run F) := by
-  have hv : D.shape.validate (Blake2s.flock flockMain != Blake2s.omitted) = true := D.valid.2
-  have ht : (flockMain.slices == Flock.Slices.tower && ClaimsMode.point == ClaimsMode.point) = true :=
-    rfl
-  unfold reduceWith
-  simp only [hv, Bool.not_true, Bool.false_eq_true, ite_false, ht, ite_true, pure_bind, countBits_eq,
-    bind_map_left, batch_eq, tablePart_eq, hκ, Fl.link]
-  refine ObsEq.bind_right _ fun rows => ?_
-  simp only [ChainProg.run]
-  rw [mainProg0_rounds, show (mainProg0 D Fl input rows).tail = 5 from rfl, runRounds_append,
-    runRounds_append, runRounds_append, runRounds_cons, mainProg0_zeros]
-  rw [samples_fix F 4]
-  simp only [rootRead, ite_true, mainZeros_nil, nextScalars_zero, ChainProg.requireZeros, pure_bind,
-    bind_map_left, bind_assoc, ChainProg.runRounds, Nat.reduceAdd, samples_six]
-  -- Round 0: `C1`'s root, `α, β, γ`.
-  refine ObsEq.bind_right _ fun root1 => ?_
-  refine ObsEq.bind_right _ fun alphas => ?_
-  refine ObsEq.bind_right _ fun beta => ?_
-  refine ObsEq.bind_right _ fun gamma => ?_
-  -- Flock's rounds (`hFlock.link`).
-  rw [Fl.tail_eq, nextScalars_zero, mainProg0_flock, runRounds_fix Fl.prog F Fl.prog.rounds []]
-  simp only [pure_bind, bind_map_left, List.nil_append, List.length_nil, List.drop_zero, mainProg0_zeros]
-  refine ObsEq.bind_right _ fun fd => ?_
-  -- `C2`'s root (Flock's tail zeros moved past it), `t`.
-  refine ObsEq.trans (obsEq_requireZeros_nextRoot _ _) ?_
-  refine ObsEq.bind_right _ fun root2 => ?_
-  rw [mainZeros_c2 Fl _ _ (length_fixDone _ _)]
-  refine ObsEq.bind_right _ fun _ => ?_
-  rw [samples_one]
-  simp only [bind_map_left]
-  refine ObsEq.bind_right _ fun t => ?_
-  -- The values at `t`.
-  rw [forIn_reads_of tableReads (tablesStep D.shape.heights (eqKernel (fixLen 4 alphas)) beta
-    (digits t (max D.shape.heap.h (D.shape.constraintVars + 4) + 2)))]
-  swap
-  · intro table s
-    simp [map_eq_bind_pure_comp, tablesStep]
-  simp only [Bool.false_eq_true, ite_false, bind_assoc, pure_bind, samples_two]
-  simp only [mainZeros_vals Fl _ _ _ (length_fixDone _ _)]
-  rw [show valsCount = (tables.map tableReads).sum + 7 from rfl,
-    nextScalars_add, nextScalars_seven, nextScalars_fix (tables.map tableReads).sum]
-  simp only [ChainProg.requireZeros, bind_assoc, pure_bind, bind_map_left]
-  refine ObsEq.bind_right _ fun vt => ?_
-  refine ObsEq.bind_right _ fun a1 => ?_
-  refine ObsEq.bind_right _ fun a2 => ?_
-  refine ObsEq.bind_right _ fun a3 => ?_
-  refine ObsEq.bind_right _ fun a4 => ?_
-  refine ObsEq.bind_right _ fun a5 => ?_
-  refine ObsEq.bind_right _ fun a6 => ?_
-  refine ObsEq.bind_right _ fun a7 => ?_
-  simp only [fixLen_fixLen]
-  rcases hE : (Fl.prog.out (fixDone Fl.prog.rounds.length fd) []).2.1 with _ | ⟨map, target⟩ | ⟨ws, value⟩
-  all_goals
-    simp only []
-    refine ObsEq.bind_right _ fun rho => ?_
-    refine ObsEq.bind_right _ fun lam => ?_
-    rw [mainProg0_batch D Fl input rows F _ (by simp)]
-    simp only [bind_map_left]
-    refine ObsEq.bind_eq (by
-      have h := mainRels_c2 D (publicWordsOf input.toList) (countsBits D.shape.heights rows) (fixLen 4 alphas)
-        beta gamma t (fixLen (tables.map tableReads).sum vt ++ [a1, a2, a3, a4, a5, a6, a7])
-      simp only [mainRels, tablesReads, getD_fixLen_append, getD_fixLen_append_zero, List.getD_cons_zero,
-        List.getD_cons_succ, List.take_left', length_fixLen] at h
-      rw [h]
-      rfl) fun brs => ?_
-    refine ObsEq.bind_eq (by
-      have h := mainCombined_length D.shape (publicWordsOf input.toList) (countsBits D.shape.heights rows)
-        (fixLen 4 alphas) beta gamma t (fixLen (tables.map tableReads).sum vt ++ [a1, a2, a3, a4, a5, a6, a7])
-        (Fl.prog.out (fixDone Fl.prog.rounds.length fd) []) rho
-      simp only [mainRels, flockClaim, hE, tablesReads, getD_fixLen_append, getD_fixLen_append_zero,
-        List.getD_cons_zero, List.getD_cons_succ, List.take_left', length_fixLen] at h
-      rw [h]) fun tl => ?_
-    refine ObsEq.of_eq ?_
-    simp only [mainProg0, decode_r0, decode_fd _ _ _ _ _ _ (length_fixDone _ _),
-      decode_r2 _ _ _ _ _ _ (length_fixDone _ _), decode_r3 _ _ _ _ _ _ (length_fixDone _ _),
-      decode_brs _ _ _ _ _ _ (length_fixDone _ _)]
-    simp only [mainOut, mainRels, flockClaim, hE, tablesReads, getD_fixLen_append,
-      getD_fixLen_append_zero, getD_five, List.getD_cons_zero, List.getD_cons_succ, List.headD_cons,
-      Option.getD_some, List.take_left', length_fixLen]
-    congr 1
-    funext _
-    split_ifs <;> rfl
-
-
-/-- **The counts' zero is invisible**: after `readCounts`, whose zeros vanish only if the counts are
-in range (`readCounts_spec`), the counts' zero in round `0` changes no verdict. -/
-theorem link_counts (D : Deployment) {κ : ℕ} (Fl : FlockSound κ) (input : Vector UInt8 32)
-    (F : KeccakState → m KeccakState) :
-    ObsEq (readCounts D.shape.heights >>= fun rows => (mainProg0 D Fl input rows).run F)
-      (readCounts D.shape.heights >>= fun rows => (mainProg D Fl input rows).run F) := by
-  intro c
-  have h1 : ObsEq (readCounts (m := m) D.shape.heights >>= fun rows => (mainProg D Fl input rows).run F)
-      (readCounts (m := m) D.shape.heights >>= fun rows =>
-        ChainProg.requireZeros [countsZeroOf D rows] >>= fun _ => (mainProg0 D Fl input rows).run F) :=
-    ObsEq.bind_right _ fun rows => obsEq_withHead (mainProg0 D Fl input rows) [countsZeroOf D rows] F 5 _
-      rfl (funext fun msg => mainZeros_nil Fl msg)
-  rw [h1 c]
-  obtain ⟨q, hq, hspec⟩ := readCounts_spec (m := m) D.shape.heights c
-  rw [run_bind_of _ _ c q hq, run_bind_of _ _ c q hq]
-  rcases q with ⟨r, c1⟩
-  cases r with
-  | error e => rfl
-  | ok rows =>
-    dsimp only
-    refine (obsOf_requireZeros_of _ _ (obl_run _ F) c1 fun hz => ?_).symm
-    obtain ⟨hl, hb⟩ := hspec rows rfl
-    have h6 := D.valid.1
-    have hfit : CountsInRange D.shape.heights rows :=
-      ⟨by rw [hl, h6], fun j hj => (hb hz).2 j (by rw [h6]; exact hj)⟩
-    simp [countsZeroOf, hfit]
-
-/-- **The code-level link, observationally.** -/
-theorem link_obs (D : Deployment) {κ : ℕ} (Fl : FlockSound κ)
-    (hκ : D.shape.heights.getD opBlake2s 0 = κ) (input : Vector UInt8 32)
-    (F : KeccakState → m KeccakState) :
-    ObsEq (reduceWith F D.shape (publicWordsOf input.toList) (.flock flockMain) .point)
-      (readCounts D.shape.heights >>= fun rows => (mainProg D Fl input rows).run F) :=
-  (link_obs0 D Fl hκ input F).trans (link_counts D Fl input F)
 end Monad
-
-/-- **The code-level link** (`UniCode`) at the main line, for every deployment whose `BLAKE2S`
-height is Flock's `κ`: after the row counts, `reduceWith` is `mainProg` on
-`uniRounds hFlock.prog.rounds valsCount (varsOf (layoutsOf D.shape))`, with a tail of five, up to
-`obsOf`. -/
-def uniCode (D : Deployment) {κ : ℕ} (Fl : FlockSound κ) (hκ : D.shape.heights.getD opBlake2s 0 = κ) :
-    UniCode D Fl valsCount (varsOf (layoutsOf D.shape)) where
-  prog := mainProg D Fl
-  rounds_eq _ _ := rfl
-  tail_eq _ _ := rfl
-  link := fun input {_} _ _ F c₀ => link_obs D Fl hκ input F c₀
 
 end UniSound

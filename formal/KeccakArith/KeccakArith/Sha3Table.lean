@@ -376,11 +376,11 @@ theorem out_eq_to {env : Environment K} {r : Var Sha3Row K} {κ : ℕ} {mem : Me
       (Expression.eval env (cellLimbs r.outLane c)[2])) := by
   rwa [eval_outAddrE env r ⟨c, hc⟩, ofLimbs_eval_cellLimbs]
 
-/-- The bytecode tuple of a `SHA3` row is Lv42's entry of a `BLAKE2S` with the same operands (both opcodes are
-`g^5`), so it decodes: the bytecode pull's guarantee. -/
+/-- The bytecode tuple of a `SHA3` row carries the hash instruction's opcode `g^5`, so it is well formed
+(`Lv42.Arithmetization.EntryOk`): the bytecode pull's guarantee. -/
 theorem sha3_entry (om0 om1 om2 om3 otail ocap oout : K) :
-    #v[Opcode.sha3.code] ++ #v[om0, om1, om2, om3, otail, ocap, oout] =
-      Lv42.Arithmetization.entry (.blake2s ![om0, om1, om2, om3] otail ocap oout) := rfl
+    Lv42.Arithmetization.EntryOk (#v[Opcode.sha3.code] ++ #v[om0, om1, om2, om3, otail, ocap, oout]) :=
+  Or.inr rfl
 
 /-! ## The adapter to the prover data -/
 
@@ -453,7 +453,7 @@ def sha3Table : GeneralFormalCircuit K Sha3Row Regs where
     have hb := h_assumptions
     let R : Var Sha3Row K := ⟨input_var_pc, input_var_fp, input_var_om, input_var_otail, input_var_ocap,
       input_var_oout, input_var_inLane, input_var_outLane, input_var_cnt, input_var_cntBc⟩
-    refine ⟨⟨_, by rw [sha3_entry, decode_entry]⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+    refine ⟨sha3_entry _ _ _ _ _ _ _, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
     exacts [(in_eq_to (env := env.toEnvironment) (r := R) (c := 0) (by decide) (hb.in_eq ⟨0, by decide⟩) :), (in_eq_to (env := env.toEnvironment) (r := R) (c := 1) (by decide) (hb.in_eq ⟨1, by decide⟩) :), (in_eq_to (env := env.toEnvironment) (r := R) (c := 2) (by decide) (hb.in_eq ⟨2, by decide⟩) :), (in_eq_to (env := env.toEnvironment) (r := R) (c := 3) (by decide) (hb.in_eq ⟨3, by decide⟩) :), (in_eq_to (env := env.toEnvironment) (r := R) (c := 4) (by decide) (hb.in_eq ⟨4, by decide⟩) :), (in_eq_to (env := env.toEnvironment) (r := R) (c := 5) (by decide) (hb.in_eq ⟨5, by decide⟩) :), (in_eq_to (env := env.toEnvironment) (r := R) (c := 6) (by decide) (hb.in_eq ⟨6, by decide⟩) :), (in_eq_to (env := env.toEnvironment) (r := R) (c := 7) (by decide) (hb.in_eq ⟨7, by decide⟩) :), (in_eq_to (env := env.toEnvironment) (r := R) (c := 8) (by decide) (hb.in_eq ⟨8, by decide⟩) :), (in_eq_to (env := env.toEnvironment) (r := R) (c := 9) (by decide) (hb.in_eq ⟨9, by decide⟩) :), (in_eq_to (env := env.toEnvironment) (r := R) (c := 10) (by decide) (hb.in_eq ⟨10, by decide⟩) :), (in_eq_to (env := env.toEnvironment) (r := R) (c := 11) (by decide) (hb.in_eq ⟨11, by decide⟩) :), (in_eq_to (env := env.toEnvironment) (r := R) (c := 12) (by decide) (hb.in_eq ⟨12, by decide⟩) :),
       (out_eq_to (env := env.toEnvironment) (r := R) (c := 0) (by decide) (hb.out_eq ⟨0, by decide⟩) :), (out_eq_to (env := env.toEnvironment) (r := R) (c := 1) (by decide) (hb.out_eq ⟨1, by decide⟩) :), (out_eq_to (env := env.toEnvironment) (r := R) (c := 2) (by decide) (hb.out_eq ⟨2, by decide⟩) :), (out_eq_to (env := env.toEnvironment) (r := R) (c := 3) (by decide) (hb.out_eq ⟨3, by decide⟩) :), (out_eq_to (env := env.toEnvironment) (r := R) (c := 4) (by decide) (hb.out_eq ⟨4, by decide⟩) :), (out_eq_to (env := env.toEnvironment) (r := R) (c := 5) (by decide) (hb.out_eq ⟨5, by decide⟩) :), (out_eq_to (env := env.toEnvironment) (r := R) (c := 6) (by decide) (hb.out_eq ⟨6, by decide⟩) :), (out_eq_to (env := env.toEnvironment) (r := R) (c := 7) (by decide) (hb.out_eq ⟨7, by decide⟩) :), (out_eq_to (env := env.toEnvironment) (r := R) (c := 8) (by decide) (hb.out_eq ⟨8, by decide⟩) :), (out_eq_to (env := env.toEnvironment) (r := R) (c := 9) (by decide) (hb.out_eq ⟨9, by decide⟩) :), (out_eq_to (env := env.toEnvironment) (r := R) (c := 10) (by decide) (hb.out_eq ⟨10, by decide⟩) :), (out_eq_to (env := env.toEnvironment) (r := R) (c := 11) (by decide) (hb.out_eq ⟨11, by decide⟩) :), (out_eq_to (env := env.toEnvironment) (r := R) (c := 12) (by decide) (hb.out_eq ⟨12, by decide⟩) :)]
 

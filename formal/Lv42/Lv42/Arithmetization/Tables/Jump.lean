@@ -244,7 +244,7 @@ def jumpTable : GeneralFormalCircuit K JumpRow Regs where
     obtain ⟨hc, hd, hf⟩ := h.bindings
     obtain ⟨hw, hb⟩ := h_env
     rw [hw, hb]
-    exact ⟨(flags_complete _).1, (flags_complete _).2, ⟨_, decode_entry (.jump _ _ _)⟩,
+    exact ⟨(flags_complete _).1, (flags_complete _).2, entryOk_entry (.jump _ _ _),
       hc, hd, hf⟩
 
 /-! ## The witness discipline -/

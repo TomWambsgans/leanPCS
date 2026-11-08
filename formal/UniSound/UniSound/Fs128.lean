@@ -37,7 +37,6 @@ open scoped ENNReal
 
 attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
   LeanVM.Protocol.Compile.instFintypeKState UniStatement.layoutWords UniStatement.setupStack
-  UniStatement.flockMatrixStack
 
 /-- **The univariate verifier's bound at `≥ 128` bits** at `Q` adversary calls, rounds' errors at
 most `e`: the openings once at `269 · 2^-137`, the chain without the tag, the seed's pair, the
@@ -47,16 +46,6 @@ noncomputable def uniBound128 (e : ℝ≥0∞) (Q : ℕ) : ℝ≥0∞ :=
     (uniN Q : ℝ≥0∞) * (((9952 ^ 2 : ℕ) : ℝ≥0∞) * e + ((8 * uniN Q : ℕ) : ℝ≥0∞) / 2 ^ 256) +
       ((2 * uniN Q ^ 2 : ℕ) : ℝ≥0∞) / 2 ^ 256 +
         ((2 ^ 81 + Q : ℕ) : ℝ≥0∞) ^ 2 / 2 ^ 508
-
-/-- **The Fiat–Shamir layer at `≥ 128` bits**: `FsLayer` with the bound `uniBound128`. -/
-def FsLayer128 (D : Deployment) {κ : ℕ} (Fl : FlockSound κ) (nV V : ℕ) (C : UniCode D Fl nV V) :
-    Prop :=
-  ∀ (R : RbrPiop (uniRounds Fl.prog.rounds nV V) USt Stk) (e : ℝ≥0∞), (∀ j, R.err j ≤ e) →
-    (∀ s c m, R.pre s [] (some c, m) → Rel D s c) →
-    (∀ (s : USt) done tl c1 c2, DoneFits (uniRounds Fl.prog.rounds nV V) done → tl.length = 5 →
-      (C.prog s.1 s.2).ZerosVanish done tl → ClaimsHold D ((C.prog s.1 s.2).out done tl) c1 c2 →
-        ∃ p m ch, openedOf Fl.prog.rounds.length c1 c2 done = p ++ [(m, ch)] ∧ R.post s p m ch) →
-    UniKnowledgeSoundness D (uniBound128 e)
 
 /-! ## The bound in bits -/
 
@@ -196,40 +185,7 @@ theorem log_ivKC (D : Deployment) (π : UPf) (T : KTable) :
   simp only [ivKC, hash256, callKeccak256, tableQueryLog_bind, tableQueryLog_pure]
   rfl
 
-/-- **The seed's first 32 bytes are `name ‖ iv[0:16]`, `iv` the answer to the adversary's last
-query** (`ivAdv`: the contract's IV of the proof the setup fixes): the univariate game's `hlab`. -/
-theorem hlab_uni (D : Deployment) {κ : ℕ} (Fl : FlockSound κ) (nV V : ℕ) (hs : UniShapes D)
-    (A₀ : Bytes32 × Bytes32 × Bytes32 → OracleComp KeccakCalls UPf) (T : KTable) :
-    ∃ w, Sum.inl w ∈ (tableQueryLog (withSetupG (uSetup D hs) uFix (ivAdv D A₀)) T).map
-        Sigma.fst ∧
-      ((uSpec Fl nV V).label (uView (uRounds Fl nV V) (evalWithAnswerFn (QueryImpl.ofFn T)
-          (withSetupG (uSetup D hs) uFix (ivAdv D A₀)))).1).take 32 =
-        name ++ (viewT T w).toList.take (32 - name.length) := by
-  obtain ⟨hl, he⟩ := withSetupG_run (uSetup D hs) uFix (ivAdv D A₀) T
-  set s := evalWithAnswerFn (QueryImpl.ofFn T) (uSetup D hs)
-  set π := evalWithAnswerFn (QueryImpl.ofFn T) (A₀ s)
-  refine ⟨ivInput D (uFix s π).roots, ?_, ?_⟩
-  · rw [hl, List.map_append]
-    refine List.mem_append_right _ ?_
-    simp only [ivAdv, tableQueryLog_bind, tableQueryLog_map, List.map_append, List.mem_append]
-    refine Or.inr ?_
-    rw [log_ivKC]
-    exact List.mem_singleton_self _
-  · rw [he]
-    have hev : evalWithAnswerFn (QueryImpl.ofFn T) (ivAdv D A₀ s) =
-        setIv (viewT T (ivInput D (uFix s π).roots)) π := by
-      simp only [ivAdv, evalWithAnswerFn_bind, evalWithAnswerFn_map, eval_ivKC]
-      rfl
-    rw [hev, name_length]
-    show (uniLabel (uView (uRounds Fl nV V) (uFix s (setIv _ π))).1).take 32 = _
-    rw [uniLabel_take32]
-    rfl
-
 end UniSound
-
-/-- info: 'UniSound.hlab_uni' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms UniSound.hlab_uni
 
 /-- info: 'UniSound.uniBound128_le_bits' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in

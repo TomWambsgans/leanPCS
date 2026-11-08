@@ -77,16 +77,6 @@ theorem hitIn_append (B : BadFamily κ) (qf : LeanVM.Protocol.Column (8 + κ)) (
     rw [List.take_left' rfl, List.getElem_append_right (le_refl _)] at hr
     simpa using hr
 
-/-- **The state**: the relation holds, or some challenge so far was bad. -/
-def stateOf (B : BadFamily κ) (qf : LeanVM.Protocol.Column (8 + κ)) (done : Done) : Prop :=
-  FlockHolds κ qf ∨ HitIn B qf done
-
-theorem stateOf_nil (B : BadFamily κ) (qf : LeanVM.Protocol.Column (8 + κ)) :
-    stateOf B qf [] → FlockHolds κ qf := by
-  rintro (h | h)
-  · exact h
-  · exact h.elim
-
 /-! ## Counting the bad challenges of a round -/
 
 open Classical in
@@ -185,59 +175,11 @@ theorem prob_hit_le (ns : ℕ) (B' : List E → Finset E) (d : ℕ → ℕ)
       ((∑ i ∈ range (ns + 1), d i : ℕ) : ℝ≥0∞) / (Fintype.card E : ℝ≥0∞) :=
   prEvent_draws_le_of_card ns _ _ (card_hit_le ns B' d hB)
 
-/-- **The interface's `step`** for the state of a bad family. -/
-theorem step_le (B : BadFamily κ) (d : ℕ → ℕ → ℕ)
-    (hB : ∀ qf done msg pre, (B qf done msg pre).card ≤ d done.length pre.length)
-    (qf : LeanVM.Protocol.Column (8 + κ)) (done : Done) (msg : UMsg) (ns : ℕ) :
-    Pr{let c ← Compose.draws E (ns + 1)}[¬ stateOf B qf done ∧ stateOf B qf (done ++ [(msg, c)])] ≤
-      ((∑ i ∈ range (ns + 1), d done.length i : ℕ) : ℝ≥0∞) / (Fintype.card E : ℝ≥0∞) := by
-  refine (prEvent_mono _ _ _ fun c ⟨hn, hpost⟩ ↦ ?_).trans
-    (prob_hit_le ns (B qf done msg) (d done.length) fun pre ↦ hB qf done msg pre)
-  simp only [stateOf, not_or] at hn
-  rcases hpost with h | h
-  · exact absurd h hn.1
-  · rcases hitIn_append B qf done msg c h with h | h
-    · exact absurd h hn.2
-    · exact h
-
 theorem doneFits_length : ∀ {rs : List Compose.RoundSpec} {done : Done}, DoneFits rs done →
     done.length = rs.length
   | [], [], _ => rfl
   | _ :: _, _ :: _, h => by simp [doneFits_length h.2.2]
   | [], _ :: _, h => h.elim
   | _ :: _, [], h => h.elim
-
-/-- **What the interface's `finish` needs of a bad family**: on a completed transcript whose ring claim
-holds of the column and whose pending claim is its sum, the relation holds or a challenge is bad. -/
-def Catches (P : ChainProg (List E × Option Flock.End × Flock.Pending)) (B : BadFamily κ) : Prop :=
-  ∀ (qf : LeanVM.Protocol.Column (8 + κ)) (done : Done), DoneFits P.rounds done →
-    FlockEndHolds qf (P.out done []) → PendingHolds (P.out done []).2.2 →
-      FlockHolds κ qf ∨ HitIn B qf done
-
-/-- **The interface from a bad family that catches**: the program, its link, the family and its
-sizes give `FlockSound κ`, round `j`'s error `Σ_{i ≤ ns_j} d j i / |E|`. -/
-noncomputable def ofFamily (P : ChainProg (List E × Option Flock.End × Flock.Pending)) (hroot : ∀ s ∈ P.rounds, s.root = false)
-    (htail : P.tail = 0)
-    (hlink : ∀ {m : Type → Type} [Monad m] [LawfulMonad m] (F : KeccakState → m KeccakState),
-      Flock.verifyDeferred F (blake2sR1csLogSize + κ) flockMain = P.run F)
-    (B : BadFamily κ) (d : ℕ → ℕ → ℕ)
-    (hB : ∀ qf done msg pre, (B qf done msg pre).card ≤ d done.length pre.length)
-    (hcatch : Catches P B) : FlockSound κ where
-  prog := P
-  rounds_root := hroot
-  tail_eq := htail
-  link := hlink
-  S := stateOf B
-  err j := ((∑ i ∈ range ((((P.rounds[j]?).map (·.ns)).getD 0) + 1), d j i : ℕ) : ℝ≥0∞) /
-    (Fintype.card E : ℝ≥0∞)
-  S_nil := stateOf_nil B
-  step j hj qf done msg hfit _ := by
-    have hlen : done.length = j := by
-      rw [doneFits_length hfit, List.length_take]
-      omega
-    have h := step_le B d hB qf done msg (P.rounds[j]'hj).ns
-    rw [hlen] at h
-    simpa [List.getElem?_eq_getElem hj] using h
-  finish qf done hfit hend hpend := hcatch qf done hfit hend hpend
 
 end FlockSound.Uni

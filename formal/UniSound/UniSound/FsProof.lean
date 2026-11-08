@@ -35,7 +35,6 @@ open scoped ENNReal
 
 attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
   LeanVM.Protocol.Compile.instFintypeKState UniStatement.layoutWords UniStatement.setupStack
-  UniStatement.flockMatrixStack
 
 /-! ## The plain layout's table is its stack -/
 
@@ -286,101 +285,11 @@ theorem le_uniBound (e : ℝ≥0∞) (Q QS nQ SQO nRf : ℕ) (hQS : QS ≤ 3 * 2
 
 section Facts
 
-variable (D : Deployment) {κ : ℕ} (Fl : FlockSound κ) (nV V : ℕ) (C : UniCode D Fl nV V)
+variable (D : Deployment) {κ : ℕ} (nV V : ℕ)
   (hs : UniShapes D)
 
 /-- The honest columns: the setup's stack, `A0`, `B0`. -/
 def colF : LeanVM.Protocol.Column (wv D 2) := colOf (setupStack D.prog D.shape) (wv D 2)
-/-- `A0`'s column. -/
-def colA : LeanVM.Protocol.Column (wv D 3) := colOf (flockMatrixStack true) (wv D 3)
-/-- `B0`'s column. -/
-def colB : LeanVM.Protocol.Column (wv D 4) := colOf (flockMatrixStack false) (wv D 4)
-
-/-- The five openings at the honest columns. -/
-noncomputable abbrev uOps : List (WhirOp UPf E Stk) :=
-  uniOps Fl nV V C hs (colF D) (colA D) (colB D)
-
-/-- The setup at the honest columns. -/
-noncomputable abbrev uSetup : OracleComp KeccakCalls (Bytes32 × Bytes32 × Bytes32) :=
-  setupK3 hs (colF D) (colA D) (colB D)
-
-/-- The chain of the main line's rounds. -/
-noncomputable abbrev uSpec : ChainSpecU E FSt := uniSpec (uRounds Fl nV V)
-
-theorem hcov_uni : ∀ i < (uSpec Fl nV V).K.rounds.length, ((uSpec Fl nV V).K.spec i).root →
-    ∃ o ∈ uOps D Fl nV V C hs, ∃ rd, o.tgt = .round i rd := by
-  intro i _ hr
-  rcases root_uniRounds Fl.prog.rounds Fl.rounds_root nV V i hr with rfl | rfl
-  · exact ⟨_, List.mem_cons_self, _, rfl⟩
-  · exact ⟨_, List.mem_cons_of_mem _ List.mem_cons_self, _, rfl⟩
-
-theorem hok_uni : ∀ o ∈ uOps D Fl nV V C hs,
-    WhirOp.OK (uniTc hs) (uniGood D Fl nV V C) (uSetup D hs) uFix o := by
-  intro o ho
-  simp only [uOps, uniOps, List.mem_cons, List.mem_nil_iff, or_false] at ho
-  have hlog : ∀ k (hk : k = 2 ∨ k = 3 ∨ k = 4) (S : WhirShape) (q : LeanVM.Protocol.Column S.L.logN),
-      (k = 2 → S = shapeK hs 2 (by decide) ∧ HEq q (colF D)) →
-      (k = 3 → S = shapeK hs 3 (by decide) ∧ HEq q (colA D)) →
-      (k = 4 → S = shapeK hs 4 (by decide) ∧ HEq q (colB D)) →
-      ∀ T x, Sum.inl x ∈ (tableQueryLog (stackSetupS S q) T).map Sigma.fst →
-        Sum.inl x ∈ (tableQueryLog (uSetup D hs) T).map Sigma.fst := by
-    intro k hk S q h2 h3 h4 T x hx
-    rw [(setupK3_run hs _ _ _ T).1]
-    simp only [List.map_append, List.mem_append]
-    rcases hk with rfl | rfl | rfl
-    · obtain ⟨rfl, hq⟩ := h2 rfl
-      cases hq
-      exact Or.inl hx
-    · obtain ⟨rfl, hq⟩ := h3 rfl
-      cases hq
-      exact Or.inr (Or.inl hx)
-    · obtain ⟨rfl, hq⟩ := h4 rfl
-      cases hq
-      exact Or.inr (Or.inr hx)
-  rcases ho with rfl | rfl | rfl | rfl | rfl
-  · refine whirOp_ok_tableCode _ _ _ 0 rdTab (uniTc hs) (by unfold uniTc; rw [ite_eq_left rfl]) _
-      (fun π ch t h => ?_) _ _
-    rw [uniGood, ite_eq_left rfl]
-    exact ⟨rdTab t, rfl, fun cl hcl =>
-      (tabEval_rdTab _ t _ ((cl1 D Fl nV V C π ch).wide cl hcl)).symm.trans (h cl hcl)⟩
-  · refine whirOp_ok_tableCode _ _ _ (Fl.prog.rounds.length + 1) rdTab (uniTc hs)
-      (by unfold uniTc; rw [ite_eq_right (Nat.succ_ne_zero _)]) _ (fun π ch t h => ?_) _ _
-    rw [uniGood, ite_eq_right (Nat.succ_ne_zero _), ite_eq_left rfl]
-    exact ⟨rdTab t, rfl, fun cl hcl =>
-      (tabEval_rdTab _ t _ ((cl2 D Fl nV V C π ch).wide cl hcl)).symm.trans (h cl hcl)⟩
-  · refine whirOp_ok_tree _ _ _ _ _ _ _ _ _ (hlog 2 (Or.inl rfl) _ _ (fun _ => ⟨rfl, HEq.rfl⟩)
-      (by omega) (by omega)) fun T p => ?_
-    simp only [uFix, (setupK3_run hs _ _ _ T).2]
-    exact LeanVM.Rpm.digestToRpm_ofRpm _
-  · refine whirOp_ok_tree _ _ _ _ _ _ _ _ _ (hlog 3 (Or.inr (Or.inl rfl)) _ _ (by omega)
-      (fun _ => ⟨rfl, HEq.rfl⟩) (by omega)) fun T p => ?_
-    simp only [uFix, (setupK3_run hs _ _ _ T).2]
-    exact LeanVM.Rpm.digestToRpm_ofRpm _
-  · refine whirOp_ok_tree _ _ _ _ _ _ _ _ _ (hlog 4 (Or.inr (Or.inr rfl)) _ _ (by omega)
-      (by omega) (fun _ => ⟨rfl, HEq.rfl⟩)) fun T p => ?_
-    simp only [uFix, (setupK3_run hs _ _ _ T).2]
-    exact LeanVM.Rpm.digestToRpm_ofRpm _
-
-theorem hS_uni (π : UPf) (ch : List (List E))
-    (h : ∀ o ∈ uOps D Fl nV V C hs, WhirOp.SetupHolds o π ch) : uniGoodS D Fl nV V C π ch := by
-  have h3 := h _ (List.mem_cons_of_mem _ (List.mem_cons_of_mem _ List.mem_cons_self))
-  have h4 := h _ (List.mem_cons_of_mem _ (List.mem_cons_of_mem _
-    (List.mem_cons_of_mem _ List.mem_cons_self)))
-  have h5 := h _ (List.mem_cons_of_mem _ (List.mem_cons_of_mem _
-    (List.mem_cons_of_mem _ (List.mem_cons_of_mem _ List.mem_cons_self))))
-  refine ⟨fun cl hcl => ?_, fun cl hcl => ?_, fun cl hcl => ?_⟩
-  · have := h3 cl hcl
-    rw [← this]
-    exact (plain_tableEval _ (hs.lo 2 (by decide)) (hs.hi 2 (by decide)) _ _
-      ((cl3 D Fl nV V C π ch).wide cl hcl)).symm
-  · have := h4 cl hcl
-    rw [← this]
-    exact (plain_tableEval _ (hs.lo 3 (by decide)) (hs.hi 3 (by decide)) _ _
-      ((cl4 D Fl nV V C π ch).wide cl hcl)).symm
-  · have := h5 cl hcl
-    rw [← this]
-    exact (plain_tableEval _ (hs.lo 4 (by decide)) (hs.hi 4 (by decide)) _ _
-      ((cl5 D Fl nV V C π ch).wide cl hcl)).symm
 
 /-! ### The last link -/
 
@@ -418,34 +327,6 @@ theorem wv_eq (k : ℕ) : wv D k = layoutWordVars ((layoutWords D.shape).getD k 
   unfold wv
   rfl
 
-theorem claimsHold_of (r : Reduced) (q1 q2 : Stk)
-    (h1 : ∀ cl ∈ claimsOf r .c1, mleStk q1 (wv D 0) cl.point = cl.value)
-    (h2 : ∀ cl ∈ claimsOf r .c2, mleStk q2 (wv D 1) cl.point = cl.value)
-    (h3 : ∀ cl ∈ claimsOf r .setup,
-      mleStk (fun i => (setupStack D.prog D.shape).getD i 0) (wv D 2) cl.point = cl.value)
-    (h4 : ∀ cl ∈ matClaims r true, mleArr (flockMatrixStack true) (wv D 3) cl.point = cl.value)
-    (h5 : ∀ cl ∈ matClaims r false, mleArr (flockMatrixStack false) (wv D 4) cl.point = cl.value) :
-    ClaimsHold D r q1 q2 := by
-  refine ⟨fun o ho pt v bs hpt => ?_, fun mc hmc => ⟨?_, ?_⟩⟩
-  · have hm := mem_claimsOf ho hpt
-    rcases hc : o.1 with _ | _ | _
-    · rw [hc] at hm
-      have := h1 _ hm
-      rw [show wordIndex Commitment.c1 = 0 from rfl, ← wv_eq]
-      exact this
-    · rw [hc] at hm
-      have := h2 _ hm
-      rw [show wordIndex Commitment.c2 = 1 from rfl, ← wv_eq]
-      exact this
-    · rw [hc] at hm
-      have := h3 _ hm
-      rw [show wordIndex Commitment.setup = 2 from rfl, ← wv_eq]
-      exact this
-  · rw [← wv_eq]
-    exact h4 ⟨mc.point, mc.a⟩ (by simp [matClaims, hmc])
-  · rw [← wv_eq]
-    exact h5 ⟨mc.point, mc.b⟩ (by simp [matClaims, hmc])
-
 theorem matClaims_length_le (r : Reduced) (b : Bool) : (matClaims r b).length ≤ 1 := by
   unfold matClaims
   split <;> simp
@@ -462,143 +343,7 @@ theorem matClaims_point (r : Reduced) (b : Bool) (n : ℕ)
     exact h mc hmc
   · simp at hc
 
-/-- **The composition's last link from `FsLayer`'s**: candidates good at `C1`'s and `C2`'s rounds and
-`none` at the others, the setup's stacks good, and the check, make the opened transcript the one
-`FsLayer`'s link reads (`openedOf`), its claims true (`ClaimsHold`). -/
-theorem hlink_uni (R : RbrPiop (uRounds Fl nV V) USt Stk)
-    (hFin : ∀ (s : USt) done tl c1 c2, DoneFits (uRounds Fl nV V) done → tl.length = 5 →
-      (C.prog s.1 s.2).ZerosVanish done tl → ClaimsHold D ((C.prog s.1 s.2).out done tl) c1 c2 →
-        ∃ p m ch, openedOf Fl.prog.rounds.length c1 c2 done = p ++ [(m, ch)] ∧ R.post s p m ch)
-    (π : UPf) (ch : List (List E)) (cs : List (Option Stk)) (hc : uniCheck D Fl nV V C π ch)
-    (hl : cs.length = (uSpec Fl nV V).K.rounds.length)
-    (hg : ∀ i (h : i < cs.length), ((uSpec Fl nV V).K.spec i).root →
-      uniGood D Fl nV V C i π ch cs[i])
-    (hn : ∀ i (h : i < cs.length), ((uSpec Fl nV V).K.spec i).root = false → cs[i] = none)
-    (hgS : uniGoodS D Fl nV V C π ch) :
-    ∃ p m c, opened cs (uView (uRounds Fl nV V) π).2 ch = p ++ [(m, c)] ∧
-      (liftPiop (uSpec Fl nV V).K R rfl).post (uView (uRounds Fl nV V) π).1 p m c := by
-  obtain ⟨hdf, hzv, hwf⟩ := hc
-  have hlen : cs.length = Fl.prog.rounds.length + 3 + V := by
-    rw [hl]
-    exact length_uniRounds _ _ _
-  have h0 : 0 < cs.length := by omega
-  have h1 : Fl.prog.rounds.length + 1 < cs.length := by omega
-  have hs0 : ((uSpec Fl nV V).K.spec 0).root := by
-    show ((uniRounds Fl.prog.rounds nV V).getD 0 ⟨false, 0, 0⟩).root = true
-    rw [uniRounds_getD_zero]
-  have hs1 : ((uSpec Fl nV V).K.spec (Fl.prog.rounds.length + 1)).root := by
-    show ((uniRounds Fl.prog.rounds nV V).getD (Fl.prog.rounds.length + 1)
-      ⟨false, 0, 0⟩).root = true
-    rw [uniRounds_getD_c2]
-  have g0 := hg 0 h0 hs0
-  rw [uniGood, ite_eq_left rfl] at g0
-  obtain ⟨q1, hq1, hc1⟩ := g0
-  have g1 := hg _ h1 hs1
-  rw [uniGood, ite_eq_right (Nat.succ_ne_zero _), ite_eq_left rfl] at g1
-  obtain ⟨q2, hq2, hc2⟩ := g1
-  have hcand : ∀ i (h : i < cs.length), cs[i] = candAt Fl.prog.rounds.length q1 q2 i := by
-    intro i h
-    by_cases hi0 : i = 0
-    · subst hi0
-      rw [hq1]
-      simp [candAt]
-    by_cases hi1 : i = Fl.prog.rounds.length + 1
-    · subst hi1
-      rw [hq2]
-      simp [candAt]
-    · rcases Bool.eq_false_or_eq_true ((uSpec Fl nV V).K.spec i).root with hr | hr
-      · rcases root_uniRounds Fl.prog.rounds Fl.rounds_root nV V i hr with h' | h'
-        · exact absurd h' hi0
-        · exact absurd h' hi1
-      · rw [hn i h hr]
-        simp [candAt, hi0, hi1]
-  have hlu : (msgsAt π.proof.stream 24 (uRounds Fl nV V)).length = (uRounds Fl nV V).length :=
-    length_msgsAt _ _ _
-  have hch : (msgsAt π.proof.stream 24 (uRounds Fl nV V)).length ≤ ch.length := by
-    have := hdf.length_eq
-    simp only [uDone, List.length_zip] at this
-    omega
-  have hop : opened cs (uView (uRounds Fl nV V) π).2 ch =
-      openedOf Fl.prog.rounds.length q1 q2 (uDone (uRounds Fl nV V) π ch) :=
-    opened_eq_openedOf _ q1 q2 _ ch cs hch (by rw [hlu]; exact hl) hcand
-  obtain ⟨hwo, hw1, hw2, hw3, hwm⟩ := hwf
-  have e1 : (cl1 D Fl nV V C π ch).claims = claimsOf (uOut D Fl nV V C π ch) .c1 :=
-    mkStmt_claims (plainL (wv D 0)) (extra_plainL _) _ (claimsOf_length_le _ hwo _) hw1
-  have e2 : (cl2 D Fl nV V C π ch).claims = claimsOf (uOut D Fl nV V C π ch) .c2 :=
-    mkStmt_claims (plainL (wv D 1)) (extra_plainL _) _ (claimsOf_length_le _ hwo _) hw2
-  have e3 : (cl3 D Fl nV V C π ch).claims = claimsOf (uOut D Fl nV V C π ch) .setup :=
-    mkStmt_claims (plainL (wv D 2)) (extra_plainL _) _ (claimsOf_length_le _ hwo _) hw3
-  have e4 : (cl4 D Fl nV V C π ch).claims = matClaims (uOut D Fl nV V C π ch) true :=
-    mkStmt_claims (plainL (wv D 3)) (extra_plainL _) _ (matClaims_length_le _ _)
-      (matClaims_point _ _ _ fun mc hmc => (hwm mc hmc).1)
-  have e5 : (cl5 D Fl nV V C π ch).claims = matClaims (uOut D Fl nV V C π ch) false :=
-    mkStmt_claims (plainL (wv D 4)) (extra_plainL _) _ (matClaims_length_le _ _)
-      (matClaims_point _ _ _ fun mc hmc => (hwm mc hmc).2)
-  have hCH : ClaimsHold D (uOut D Fl nV V C π ch) q1 q2 :=
-    claimsHold_of D _ q1 q2 (by rw [← e1]; exact hc1) (by rw [← e2]; exact hc2)
-      (by rw [← e3]; exact hgS.1) (by rw [← e4]; exact hgS.2.1) (by rw [← e5]; exact hgS.2.2)
-  obtain ⟨p, m, ch', he, hpost⟩ :=
-    hFin (uSt Fl nV V π) _ _ q1 q2 hdf (length_uTail _ _) hzv hCH
-  exact ⟨p, m, ch', hop.trans he, hpost⟩
-
 /-! ### The event, the hypothesis -/
-
-/-- **The univariate break on the composed game's outcome**: the check, the five openings accept,
-and no candidate of `C1`'s root read off the transcript satisfies leanVM 42422001's relation. -/
-def UniBreaksRel (z : OutK UPf E (List Bool)) : Prop :=
-  uniCheck D Fl nV V C z.1.1 z.1.2.1 ∧
-    (∀ k < (uOps D Fl nV V C hs).length, z.1.2.2.getD k false = true) ∧
-    ∀ c ∈ extractorK (fun i => (uniTc hs i).commit) (uView (uRounds Fl nV V)) z,
-      ∀ q, c = some q → ¬ Rel D (uSt Fl nV V z.1.1) q
-
-/-- **The game bridge** (the hypothesis this file reduces `FsLayer` to): for every adversary of `Q`
-calls of `π` and `π⁻¹`, one of at most `Q + 8` calls (the adversary, then the contract's IV, which
-the proof the chain reads carries) breaks the composed game (`rpmGameS` of the three trees, the
-chain over the univariate encoding and the five openings, the event read on the setup's log and
-the Keccak-256 evaluations of its permutation transcript) at least as often as the adversary breaks
-the univariate experiment.
-
-**Superseded** by `FsGame.lean`'s `UniGameLeV` (the IV computed by the verifier, as the univariate
-experiment computes it), which `FsCouple.lean` reduces to three bridge facts. This form puts the
-IV's calls of `π` in the adversary's log, which the composed extractor replays
-(`keccakEvaluationsOfTranscript`) and the univariate extractor does not see: a fresh IV answer can
-extend a sponge path to a Merkle node or leaf under `C1`'s root, so the two extractors' words, and
-the events, differ on outcomes of probability about `2^-230`, and the inequality cannot be proved
-outcome by outcome. -/
-def UniGameLe : Prop :=
-  ∀ (A : UniAdversary) (Q : ℕ),
-    (∀ roots, Common.QueryCostAtMost (A roots) Common.permutationCallCost Q) →
-    ∃ A' : Bytes32 × Bytes32 × Bytes32 → OracleComp Common.RandomPermutationOracles UPf,
-      (∀ s, Common.QueryCostAtMost (A' s) Common.permutationCallCost (Q + 8)) ∧
-      Pr{let z ← uniSoundnessExperiment D A}[UniBreaksKnowledgeSoundness D (uniExtractor D) z] ≤
-        Pr{let z ← Common.runWithRandomPermutation (rpmGameS (uSetup D hs) uFix A'
-            (verU (uSpec Fl nV V) (uView (uRounds Fl nV V))
-              (opsRun (uView (uRounds Fl nV V)) (uOps D Fl nV V C hs))))}[
-          UniBreaksRel D Fl nV V C hs (z.1, z.2.1 ++ evalTr (permutationQueries z.2.2))]
-
-/-- **The deployment's numbers**: the chain's queries below `2^10`, the verifier's calls of `π`
-below `2^80`. -/
-structure UniNumbers : Prop where
-  chain : (uSpec Fl nV V).K.nQ ≤ 2 ^ 10
-  verifier : ∀ π, Common.QueryCostAtMost (verU (uSpec Fl nV V) (uView (uRounds Fl nV V))
-    (opsRun (uView (uRounds Fl nV V)) (uOps D Fl nV V C hs)) π) LeanVM.Rpm.hashBlocks (2 ^ 80)
-
-theorem msgK_uView_zero (π : UPf) : ∃ r, (msgK (uView (uRounds Fl nV V)) π 0).1 = some r :=
-  ⟨_, rfl⟩
-
-theorem breaksOK_of_rel (R : RbrPiop (uRounds Fl nV V) USt Stk)
-    (hpre : ∀ s c m, R.pre s [] (some c, m) → Rel D s c) (z : OutK UPf E (List Bool))
-    (hz : UniBreaksRel D Fl nV V C hs z) :
-    BreaksOK (uSpec Fl nV V).K (fun i => (uniTc hs i).commit) (liftPiop (uSpec Fl nV V).K R rfl)
-      (uView (uRounds Fl nV V)) (uniCheck D Fl nV V C)
-      (fun bs => ∀ k < (uOps D Fl nV V C hs).length, bs.getD k false = true) z := by
-  obtain ⟨h1, h2, h3⟩ := hz
-  refine ⟨h1, h2, fun c hc hpre' => ?_⟩
-  obtain ⟨r, hr⟩ := msgK_uView_zero Fl nV V z.1.1
-  have hc' := hc
-  simp only [extractorK, optC, hr, List.mem_map] at hc'
-  obtain ⟨q, -, rfl⟩ := hc'
-  exact h3 _ hc q rfl (hpre _ _ _ hpre')
 
 /-! ### The numbers -/
 
@@ -614,69 +359,7 @@ theorem setupQS_le : setupQS (D := D) ≤ 3 * 2 ^ 24 := by
   have : (2 : ℕ) ^ 24 = 16777216 := by norm_num
   omega
 
-theorem sumQO_le : ((uOps D Fl nV V C hs).map fun o => o.S.QO).sum ≤ 5 * 10122 := by
-  have q : ∀ k (hk : k < 5), largeQueries (wv D k) ≤ 10122 := fun k hk =>
-    (largeQueries_le (wv D k) (hs.lo k hk) (hs.hi k hk)).trans_eq variantQueries_eq
-  have q0 := q 0 (by decide)
-  have q1 := q 1 (by decide)
-  have q2 := q 2 (by decide)
-  have q3 := q 3 (by decide)
-  have q4 := q 4 (by decide)
-  simp only [uOps, uniOps, List.map_cons, List.map_nil, List.sum_cons, List.sum_nil]
-  try dsimp only [shapeK, plainShape, WhirShape.large]
-  omega
-
-theorem doom_le (Q X : ℕ) (hX : X + ((uOps D Fl nV V C hs).map fun o => o.S.QO).sum ≤ uniN Q) :
-    doomSum (uOps D Fl nV V C hs) X ≤ 5 * openingBoundAt 10122 (uniN Q) := by
-  refine (doomSum_le (uniN Q) (openingBoundAt 10122 (uniN Q)) _ X (fun o ho QA hQA => ?_) hX).trans
-    (le_of_eq (by simp [uOps, uniOps]))
-  simp only [uOps, uniOps, List.mem_cons, List.mem_nil_iff, or_false] at ho
-  rcases ho with rfl | rfl | rfl | rfl | rfl
-  all_goals
-    dsimp only [shapeK, plainShape, WhirShape.large] at hQA ⊢
-    exact openingBoundAt_mono (by omega)
-
-theorem maxErrK_uni (R : RbrPiop (uRounds Fl nV V) USt Stk) (e : ℝ≥0∞) (herr : ∀ j, R.err j ≤ e) :
-    maxErrK (uSpec Fl nV V).K (fun i => (uniTc hs i).commit) (liftPiop (uSpec Fl nV V).K R rfl) ≤
-      ((9952 ^ 2 : ℕ) : ℝ≥0∞) * e := by
-  unfold maxErrK
-  refine Finset.sup_le fun j _ => mul_le_mul' (Nat.cast_le.mpr ?_) (herr j)
-  refine (facL_le_pow _ 9952 (fun k => uniTc_bound hs k) 0 _).trans
-    (Nat.pow_le_pow_right (by norm_num) ?_)
-  exact (List.take_sublist _ _).countP_le.trans
-    (le_of_eq (countP_root_uniRounds Fl.prog.rounds Fl.rounds_root nV V))
-
 /-! ## The Fiat–Shamir layer -/
-
-/-- **The Fiat–Shamir layer from the composed game**: `FsLayer` for a deployment whose five layout
-words name `24 … 28` variables (`hs`), from its numbers (`UniNumbers`: the chain's `< 2^10`
-queries, the verifier's `< 2^80` calls of `π`) and the game bridge (`UniGameLe`). -/
-theorem fsLayer_of_game (hN : UniNumbers D Fl nV V C hs) (hG : UniGameLe D Fl nV V C hs) :
-    FsLayer D Fl nV V C := by
-  intro R e herr hpre hFin A Q hQ
-  obtain ⟨A', hA', hle⟩ := hG A Q hQ
-  have hmain := knowledgeSoundness_listChainU_closed_rpm (uSpec Fl nV V)
-    (liftPiop (uSpec Fl nV V).K R rfl) (uView (uRounds Fl nV V)) (uOps D Fl nV V C hs)
-    (fun i => uniTc hs i) (uniCheck D Fl nV V C) (uniGood D Fl nV V C) (uniGoodS D Fl nV V C)
-    (uSetup D hs) (hOnly_setupK3 hs _ _ _) setupQS (setupQS * 2 ^ 32)
-    (isTotalQueryBound_setupK3 hs _ _ _) (cost_setupK3 hs _ _ _) uFix A' (Q + 8) hA' (2 ^ 80)
-    hN.verifier (hok_uni D Fl nV V C hs) (hcov_uni D Fl nV V C hs) (hS_uni D Fl nV V C hs)
-    (fun π _ _ => fitsAll_uView _ π)
-    (fun π ch cs hc hl hg hn hgS => hlink_uni D Fl nV V C R hFin π ch cs hc hl hg hn hgS)
-  refine hle.trans ((prEvent_mono _ _ _ fun z hz =>
-    breaksOK_of_rel D Fl nV V C hs R hpre _ hz).trans (hmain.trans ?_))
-  have hS := setupQS_le D hs
-  have hn := hN.chain
-  have hq := sumQO_le D Fl nV V C hs
-  exact le_uniBound e Q setupQS (uSpec Fl nV V).K.nQ _ (uSpec Fl nV V).nRf hS hn hq
-    (show (5 : ℕ) ≤ 6 by decide) _ _ _
-    (doom_le D Fl nV V C hs Q _ (by
-      unfold uniN
-      have : (2 : ℕ) ^ 33 = 8589934592 := by norm_num
-      have : (2 : ℕ) ^ 24 = 16777216 := by norm_num
-      have : (2 : ℕ) ^ 10 = 1024 := by norm_num
-      omega)) (maxErrK_uni D Fl nV V hs R e herr)
-    (uniSpec_tagBound _)
 
 end Facts
 

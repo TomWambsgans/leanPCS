@@ -3,7 +3,8 @@
 
   Adapted from leanerVM (https://github.com/Verified-zkEVM/leanerVM), branch mumbai, commit
   f0393df4, file lean_vm/LeanVM/Arithmetization/Bytecode.lean. MIT OR Apache-2.0; see AGENTS.md.
-  `LeanVM` renamed `Lv42`.
+  `LeanVM` renamed `Lv42`. Changed: `BLAKE2S` is removed (`Lv42.Spec.Isa`); an opcode-`g^5` entry, the
+  hash instruction's, is well formed without decoding (`EntryOk`, the bytecode pull's guarantee).
 
   The sixteen-slot bytecode encoding of an instruction, its eight-coordinate bus entry, and the
   decoder for canonical eight-coordinate entries.
@@ -26,8 +27,8 @@ At leanVM pin `127510d14c98ade4e8a97646c44fa7f1ff5e752d`, transcribed from:
   (`05-arithmetization.tex:12`): shorter tuples are zero-padded to the `m = 16` slots;
 * `crates/leanvm_core/src/cpu/layout.rs:228-289` (`bytecode_columns`): the eight public program
   columns `(opcode, o1, o2, o3, fpc, ffp, extra0, extra1)`, with `SET_CONSTANT`'s immediate
-  lanes at `o2, o3, fpc` (`:251-270`) and `BLAKE2S`'s last four operands at `fpc, ffp, extra0,
-  extra1` (`:266-286`); the seed and finalize blocks carry them at `:384-394`;
+  lanes at `o2, o3, fpc` (`:251-270`) (and `BLAKE2S`'s last four operands at `fpc, ffp, extra0,
+  extra1`, `:266-286`, the Keccak VM's `SHA3`'s too); the seed and finalize blocks carry them at `:384-394`;
 * `crates/leanvm_core/src/cpu/isa.rs:58-75` and specification §7.4 (`07-instruction-tables.tex:76`):
   the `DEREF` store mode as the flag pair `(f_pc, f_fp)`, `cell = (0, 0)`, `pc = (1, 0)`,
   `fp = (0, 1)`.
@@ -48,8 +49,7 @@ loading/correspondence theorem. Those interfaces require separate coverage or re
 ## Wrong readings excluded
 
 * `SET_CONSTANT`'s `k₂` rides slot 7, coordinate 4 of the entry, the slot `DEREF` uses for
-  `f_pc`; `BLAKE2S`'s `o_{m₃}, o_cv, o_out, o_md` ride slots 7 to 10
-  (`decode_entry` on every constructor).
+  `f_pc` (`decode_entry` on every constructor).
 * The flag pair `(1, 1)` decodes to nothing, and so does every pair that is not one of the
   three.
 * A nonzero spare entry coordinate is not ignored. Each opcode table's bytecode tuple carries
@@ -77,14 +77,13 @@ def derefMode? (fpc ffp : K) : Option DerefMode :=
 
 /-! ## The decoder -/
 
-/-- The opcode of a code, if it is one of the six. -/
+/-- The opcode of a code, if it is one of the five. -/
 def opcode? (a : K) : Option Opcode :=
   if a = Opcode.xor.code then some .xor
   else if a = Opcode.mulNative.code then some .mulNative
   else if a = Opcode.setConstant.code then some .setConstant
   else if a = Opcode.deref.code then some .deref
   else if a = Opcode.jump.code then some .jump
-  else if a = Opcode.blake2s.code then some .blake2s
   else none
 
 /-- Read an entry back as an instruction: the exact inverse of `entry` (`decode_eq_some_iff`);
@@ -105,15 +104,7 @@ def decode (v : Vector K 8) : Option Instr :=
       | none => none
   | some .jump =>
       if v[4] = 0 ∧ v[5] = 0 ∧ v[6] = 0 ∧ v[7] = 0 then some (.jump v[1] v[2] v[3]) else none
-  | some .blake2s => some (.blake2s ![v[1], v[2], v[3], v[4]] v[5] v[6] v[7])
   | none => none
-
-/-! ## Proof helpers -/
-
-/-- A four-vector is its four entries. -/
-private theorem vecCons_apply (om : Fin 4 → K) : ![om 0, om 1, om 2, om 3] = om := by
-  funext i
-  fin_cases i <;> rfl
 
 /-! ## Load-bearing lemmas -/
 
@@ -155,11 +146,7 @@ theorem entry_getElem_zero (i : Instr) : (entry i)[0] = i.opcode.code := by
 
 /-- Every instruction's entry decodes to it. -/
 theorem decode_entry (i : Instr) : decode (entry i) = some i := by
-  cases i with
-  | blake2s om ocv oout omd =>
-    have h := vecCons_apply om
-    simp [decode, entry, opcode?_code, h]
-  | _ => simp [decode, entry, opcode?_code, derefMode?_flags, ofLimbs_limb]
+  cases i <;> simp [decode, entry, opcode?_code, derefMode?_flags, ofLimbs_limb]
 
 /-- `decode` is the exact inverse of `entry`: a vector decodes to an instruction only when it is
 that instruction's entry. -/
@@ -185,14 +172,10 @@ theorem decode_eq_some_iff {v : Vector K 8} {i : Instr} : decode v = some i ↔ 
           refine Vector.ext fun j hj ↦ ?_
           interval_cases j <;> simp [entry, hop, hm.1, hm.2, hz.1, hz.2]
       all_goals
-        first
-        | (split_ifs at h with hz
-           cases h
-           refine Vector.ext fun j hj ↦ ?_
-           interval_cases j <;> simp [entry, hop, hz])
-        | (cases h
-           refine Vector.ext fun j hj ↦ ?_
-           interval_cases j <;> simp [entry, hop])
+        split_ifs at h with hz
+        cases h
+        refine Vector.ext fun j hj ↦ ?_
+        interval_cases j <;> simp [entry, hop, hz]
   · rintro rfl
     exact decode_entry i
 
@@ -228,6 +211,25 @@ theorem entry_injective : Function.Injective entry := by
 theorem encodeSlots_getElem (i : Instr) (j : ℕ) (hj : j < 16) :
     (encodeSlots i)[j] = if h : 3 ≤ j ∧ j < 11 then (entry i)[j - 3] else 0 := by
   interval_cases j <;> simp [encodeSlots]
+
+/-! ## Well-formed entries -/
+
+/-- No opcode's code is `g^5`, the hash instruction's. -/
+theorem _root_.Lv42.Parameters.Opcode.code_ne_hash (o : Opcode) : o.code ≠ gpow 5 := by
+  cases o <;> exact by decide +kernel
+
+/-- **A well-formed bytecode entry**, the bytecode pull's guarantee (`BytecodePull`): it decodes to one of the
+five instructions, or its opcode is `g^5`, the hash instruction's (the Keccak VM's `SHA3`, `formal/KeccakVm`,
+whose seven operand slots are free). -/
+def EntryOk (v : Vector K 8) : Prop := (∃ ins, decode v = some ins) ∨ v[0] = gpow 5
+
+/-- Every instruction's entry is well formed. -/
+theorem entryOk_entry (i : Instr) : EntryOk (entry i) := Or.inl ⟨i, decode_entry i⟩
+
+/-- A well-formed entry whose opcode is one of the five decodes. -/
+theorem EntryOk.decode_of_code {v : Vector K 8} (h : EntryOk v) {o : Opcode} (ho : v[0] = o.code) :
+    ∃ ins, decode v = some ins :=
+  h.resolve_right fun h5 ↦ o.code_ne_hash (ho.symm.trans h5)
 
 end
 end Lv42.Arithmetization

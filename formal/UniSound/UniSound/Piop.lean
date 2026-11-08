@@ -85,11 +85,6 @@ abbrev USt := Vector UInt8 32 × List ℕ
 /-- **A candidate**: a stack, word by word. -/
 abbrev Stk := ℕ → K
 
-/-- **leanVM 42422001's relation** of a `C1` candidate: its Lv42 stack (`lv42Stack`) at the row
-counts satisfies `M3Holds` for the public input. -/
-def Rel (D : Deployment) (s : USt) (c : Stk) : Prop :=
-  D.Relation s.2 s.1 (lv42Stack D.prog (D.sizes s.2) D.shape c)
-
 /-! ## The rounds -/
 
 /-- **The main line's rounds**: `C1` and `α, β, γ`; Flock's; `C2` and `t`; the `nV` values and
@@ -98,70 +93,6 @@ def uniRounds (flockRounds : List Compose.RoundSpec) (nV V : ℕ) : List Compose
   [⟨true, 0, 5⟩] ++ flockRounds ++ [⟨true, 0, 0⟩, ⟨false, nV, 1⟩] ++ List.replicate V ⟨false, 2, 0⟩
 
 /-! ## The identity model -/
-
-/-- **The identity model of the main line**: the states' ingredients, for the Flock phase `Fl` on
-`q_flock` of `2^(8 + κ)` cells, and the facts each round needs.
-
-* `qf c`: `c`'s column `q_flock`; `MainHolds s c`: the relation but for Flock's region
-  (`ConstraintsVanish ∧ Balanced ∧ CountsNonzero ∧ PublicLinesHold` of `c`'s Lv42 stack);
-  `rel_of`: with Flock's predicate on `qf c`, the relation.
-* `MainOK s c (α, β, γ)`: the state after round `0` for the bus and the constraints;
-  `mainSound`: round `0` turns `¬ MainHolds` into `MainOK` with probability at most `errMain`.
-* `polys s c1 (α, β, γ) fd c2`: the identities `C1`, `C2` must satisfy, as polynomials in `t`
-  (`fd` Flock's transcript, drawn before `C2`: the identities may read its point);
-  `main_of_polys`: all zero, the bus and constraint state holds; `deg_le`: their degrees sum to at
-  most `degSum`.
-* `zb fd`: **the merge polynomial** (nonzero, of degree at most `degBad`): at its roots `t` the batch
-  may read a claim's weight at a merged point where it is not multilinear (`combine` merging a point
-  into a longer one), so the states after `t` are `zb(t) = 0 ∨ …`, and `t`'s error counts its roots
-  with the identities' (`(degSum + degBad) / |E|`).
-* `diffs … t vals`: for each commitment, each of its relations' `Σ terms + value` at `t` with the
-  values `vals` (zero when the relation holds; the verifier's relations, in `combine`'s order),
-  and as a fourth entry the pending reduction's `Σ G L̂ ŝ + claim`; `diffs_eval`: all zero, every
-  identity vanishes at `t`; `diffs_flock`: all zero, Flock's claim on `q_flock` holds (it is one
-  of `C1`'s relations); `diffs_pending`: all zero, the pending reduction's claim is its sum.
-* `prod … ρ λ`: the batch's `g = Σ_{k<3} λ^k W_k C_k + λ³ G L` (`ProdSum`, over `V` variables;
-  iteration 2's lever 4a: the pending matrices' sum is the fourth product), `target` its claimed
-  sum `Σ_k λ^k v_k + λ³ claim`; `batch_start`: `Σ_u g(u) + target` is the combination by `λ` of
-  the commitments' combinations by `ρ` of their relations' `diffs` (`combine`, `weightAt`).
-
-The model must cover **every row count the verifier accepts**, `0 … 2^h` of a table of height
-`h` (iteration 2 checks only the range), at Lv42's sizes `D.sizes rows` (`τ = ⌈log₂ rows⌉`, below
-`h` for a count up to `2^(h−1)`, where honest quotients do not fit: soundness must hold there all
-the same). -/
-structure UniIds (D : Deployment) {κ : ℕ} (Fl : FlockSound κ) where
-  nV : ℕ
-  V : ℕ
-  qf : Stk → LeanVM.Protocol.Column (8 + κ)
-  MainHolds : USt → Stk → Prop
-  rel_of : ∀ s c, MainHolds s c → FlockHolds κ (qf c) → Rel D s c
-  MainOK : USt → Stk → List E → Prop
-  errMain : ℝ≥0∞
-  mainSound : ∀ s c, Pr{let ch ← Compose.draws E 6}[¬ MainHolds s c ∧ MainOK s c ch] ≤ errMain
-  polys : USt → Stk → List E → Done → Stk → List (Polynomial E)
-  degSum : ℕ
-  deg_le : ∀ s c1 ch fd c2, ((polys s c1 ch fd c2).map Polynomial.natDegree).sum ≤ degSum
-  main_of_polys : ∀ s c1 ch fd c2, (∀ P ∈ polys s c1 ch fd c2, P = 0) → MainOK s c1 ch
-  zb : Done → Polynomial E
-  zb_ne : ∀ fd, zb fd ≠ 0
-  degBad : ℕ
-  zb_deg : ∀ fd, (zb fd).natDegree ≤ degBad
-  diffs : USt → Stk → List E → Done → Stk → E → List E → List (List E)
-  nRel : ℕ
-  diffs_len : ∀ s c1 ch fd c2 t vals, ∀ d ∈ diffs s c1 ch fd c2 t vals, d.length ≤ nRel
-  diffs_count : ∀ s c1 ch fd c2 t vals, (diffs s c1 ch fd c2 t vals).length ≤ 4
-  diffs_eval : ∀ s c1 ch fd c2 t vals, (∀ d ∈ diffs s c1 ch fd c2 t vals, ∀ x ∈ d, x = 0) →
-    ∀ P ∈ polys s c1 ch fd c2, P.eval t = 0
-  diffs_flock : ∀ s c1 ch fd c2 t vals, (∀ d ∈ diffs s c1 ch fd c2 t vals, ∀ x ∈ d, x = 0) →
-    FlockEndHolds (qf c1) (Fl.prog.out fd [])
-  diffs_pending : ∀ s c1 ch fd c2 t vals, (∀ d ∈ diffs s c1 ch fd c2 t vals, ∀ x ∈ d, x = 0) →
-    PendingHolds (Fl.prog.out fd []).2.2
-  prod : USt → Stk → List E → Done → Stk → E → List E → E → E → ProdSum
-  prod_vars : ∀ s c1 ch fd c2 t vals ρ l, (prod s c1 ch fd c2 t vals ρ l).vars = V
-  target : USt → Stk → List E → Done → Stk → E → List E → E → E → E
-  batch_start : ∀ s c1 ch fd c2 t vals ρ l,
-    (prod s c1 ch fd c2 t vals ρ l).T [] + target s c1 ch fd c2 t vals ρ l =
-      powComb ((diffs s c1 ch fd c2 t vals).map fun d => powComb d ρ) l
 
 /-! ## Reading an opened transcript -/
 
@@ -266,67 +197,5 @@ theorem uniRounds_batch (j : ℕ) (h1 : Fr.length + 3 ≤ j) (h2 : j < Fr.length
 end Rounds
 
 /-! ## The states -/
-
-section States
-
-variable {D : Deployment} {κ : ℕ} (Fl : FlockSound κ) (I : UniIds D Fl)
-
-/-- **Flock's end**: its rounds completed. -/
-def FlockDone (fd : Done) : Prop := DoneFits Fl.prog.rounds fd
-
-/-- **The state after the completed rounds `q`** (`q` nonempty). -/
-def uniS (s : USt) (q : Op Stk) : Prop :=
-  ∃ c1, (rd q 0).1.1 = some c1 ∧
-    if q.length ≤ Fl.prog.rounds.length + 1 then
-      I.MainOK s c1 (rd q 0).2 ∧
-        DoneFits (Fl.prog.rounds.take (q.length - 1)) (fdOf Fl.prog.rounds.length q) ∧
-          Fl.S (I.qf c1) (fdOf Fl.prog.rounds.length q)
-    else ∃ c2, (rd q (Fl.prog.rounds.length + 1)).1.1 = some c2 ∧
-      FlockDone Fl (fdOf Fl.prog.rounds.length q) ∧
-      ((I.zb (fdOf Fl.prog.rounds.length q)).eval ((rd q (Fl.prog.rounds.length + 1)).2.headD 0) = 0 ∨
-      if q.length = Fl.prog.rounds.length + 2 then
-        ∃ vals, ∀ d ∈ I.diffs s c1 (rd q 0).2 (fdOf Fl.prog.rounds.length q) c2
-          ((rd q (Fl.prog.rounds.length + 1)).2.headD 0) vals, ∀ x ∈ d, x = 0
-      else
-        SumState (I.prod s c1 (rd q 0).2 (fdOf Fl.prog.rounds.length q) c2
-            ((rd q (Fl.prog.rounds.length + 1)).2.headD 0)
-            (rd q (Fl.prog.rounds.length + 2)).1.2
-            ((rd q (Fl.prog.rounds.length + 2)).2.headD 0)
-            ((rd q (Fl.prog.rounds.length + 2)).2.getD 1 0)).oracle
-          (I.target s c1 (rd q 0).2 (fdOf Fl.prog.rounds.length q) c2
-            ((rd q (Fl.prog.rounds.length + 1)).2.headD 0)
-            (rd q (Fl.prog.rounds.length + 2)).1.2
-            ((rd q (Fl.prog.rounds.length + 2)).2.headD 0)
-            ((rd q (Fl.prog.rounds.length + 2)).2.getD 1 0))
-          (brOf Fl.prog.rounds.length q))
-
-/-- **The state before a round's challenges**: before round `0`, the relation of `C1`'s candidate;
-before `t`, the identities as polynomials for `C2`'s candidate and Flock's end; else the state
-after the rounds before. -/
-def uniPre (s : USt) (p : Op Stk) (m : Option Stk × List E) : Prop :=
-  if p.length = 0 then ∃ c, m.1 = some c ∧ Rel D s c
-  else if p.length = Fl.prog.rounds.length + 1 then
-    ∃ c1 c2, (rd p 0).1.1 = some c1 ∧ m.1 = some c2 ∧
-      (∀ P ∈ I.polys s c1 (rd p 0).2 (fdOf Fl.prog.rounds.length p) c2, P = 0) ∧
-      FlockEndHolds (I.qf c1) (Fl.prog.out (fdOf Fl.prog.rounds.length p) []) ∧
-      PendingHolds (Fl.prog.out (fdOf Fl.prog.rounds.length p) []).2.2 ∧
-      FlockDone Fl (fdOf Fl.prog.rounds.length p)
-  else uniS Fl I s p
-
-/-- **The state after a round's challenges.** -/
-def uniPost (s : USt) (p : Op Stk) (m : Option Stk × List E) (c : List E) : Prop :=
-  uniS Fl I s (p ++ [(m, c)])
-
-/-- **The rounds' errors.** -/
-noncomputable def uniErr (j : ℕ) : ℝ≥0∞ :=
-  if j = 0 then I.errMain
-  else if j ≤ Fl.prog.rounds.length then Fl.err (j - 1)
-  else if j = Fl.prog.rounds.length + 1 then
-    ((I.degSum + I.degBad : ℕ) : ℝ≥0∞) / (Fintype.card E : ℝ≥0∞)
-  else if j = Fl.prog.rounds.length + 2 then
-    ((I.nRel - 1 + (4 - 1) : ℕ) : ℝ≥0∞) / (Fintype.card E : ℝ≥0∞)
-  else ((2 : ℕ) : ℝ≥0∞) / (Fintype.card E : ℝ≥0∞)
-
-end States
 
 end UniSound

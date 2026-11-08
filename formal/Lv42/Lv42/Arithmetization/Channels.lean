@@ -3,7 +3,8 @@
 
   Adapted from leanerVM (https://github.com/Verified-zkEVM/leanerVM), branch mumbai, commit
   f0393df4, file lean_vm/LeanVM/Arithmetization/Channels.lean. MIT OR Apache-2.0; see AGENTS.md.
-  `LeanVM` renamed `Lv42`.
+  `LeanVM` renamed `Lv42`. Changed: the bytecode pull's guarantee is `EntryOk` (an opcode-`g^5` entry, the
+  hash instruction's, is well formed without decoding; `BLAKE2S` is removed).
 
   The three bus interactions of leanISA as six Clean channels, the image a channel guarantee is
   stated against, the two read gadgets, and the bus data of every channel.
@@ -52,7 +53,8 @@ reads, every pulled memory tuple is a correct read of the committed image and ev
 bytecode tuple is an entry of the public program. What a pull may assume locally is the
 channel's `Guarantees`: `MemPull` states the whole lookup fact, `MemImage.read` of the image
 named by the prover data, since the image is committed and lives nowhere else; `BytecodePull`
-states only that the pulled entry decodes, through `decode`, to an instruction, a static fact
+states only that the pulled entry is well formed (`EntryOk`: it decodes, through `decode`, to an
+instruction, or carries the hash instruction's opcode `g^5`), a static fact
 about the tuple that names no program (the paragraph on the program below), which is all a table
 needs (`DEREF`'s flag pair must be a store mode's) and which `Soundness.BytecodeChannel` derives
 from the lookup theorem together with the strong fact, that the entry is the program's at the
@@ -224,16 +226,17 @@ def MemPush : Channel K MemMsg where
   name := "mem.push"
   Guarantees _ _ := True
 
-/-- The bytecode pull, separator `g^2`: the pulled entry decodes to an instruction (`decode`). A
+/-- The bytecode pull, separator `g^2`: the pulled entry is well formed (`EntryOk`: it decodes to an
+instruction, or its opcode is the hash instruction's `g^5`). A
 static fact about the tuple alone, naming no program and reading no data: it is what the `DEREF`
 table needs (a flag pair that is no store mode decodes to nothing) and what every entry of the
-public program satisfies (`decode_entry`). That the entry is the program's at the pulled counter
+public program satisfies (`entryOk_entry`). That the entry is the program's at the pulled counter
 is `Soundness.BytecodeChannel`'s, specification Theorem 6.4 on the bytecode pair from the
 block's rows (`BytecodeRowsAreTheProgram`); the module docstring says why neither a program
 read off the data nor a program parameter belongs here. -/
 def BytecodePull : Channel K BytecodeMsg where
   name := "bc.pull"
-  Guarantees b _ := ∃ ins, decode (#v[b.opcode] ++ b.op) = some ins
+  Guarantees b _ := EntryOk (#v[b.opcode] ++ b.op)
 
 /-- The bytecode push, separator `g^2`. -/
 def BytecodePush : Channel K BytecodeMsg where

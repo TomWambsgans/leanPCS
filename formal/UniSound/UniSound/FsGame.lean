@@ -39,7 +39,6 @@ open scoped ENNReal
 
 attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
   LeanVM.Protocol.Compile.instFintypeKState UniStatement.layoutWords UniStatement.setupStack
-  UniStatement.flockMatrixStack
 
 /-! ## The contract's IV -/
 
@@ -124,53 +123,12 @@ theorem cost_uAdv (A : UniAdversary) (Q : ℕ)
 
 section Verifier
 
-variable (D : Deployment) {κ : ℕ} (Fl : FlockSound κ) (nV V : ℕ) (C : UniCode D Fl nV V)
+variable (D : Deployment) {κ : ℕ} (nV V : ℕ)
   (hs : UniShapes D)
-
-/-- **The composed verifier with the IV**: the contract's IV, then the chain and the five openings
-on the proof carrying it. -/
-noncomputable def uVerIv (π : UPf) :
-    OracleComp KeccakCalls (Bytes32 × (List (List E) × List Bool)) :=
-  ivKC D π >>= fun iv => (fun v => (iv, v)) <$>
-    verU (uSpec Fl nV V) (uView (uRounds Fl nV V))
-      (opsRun (uView (uRounds Fl nV V)) (uOps D Fl nV V C hs)) (setIv iv π)
 
 /-- The outcome with the IV written in the proof. -/
 def ivOut (z : UPf × (Bytes32 × (List (List E) × List Bool))) : UPf × (List (List E) × List Bool) :=
   (setIv z.2.1 z.1, z.2.2)
-
-/-- **The game bridge** (the coupling `fsLayer_of_gameV` takes): the univariate experiment's break is
-at most as likely as the composed random-permutation game's, of the setup's three trees, the
-univariate adversary (`uAdv`) and the composed verifier with the contract's IV (`uVerIv`), the event
-read on the proof with its IV (`ivOut`), the setup's log and the Keccak-256 evaluations of the
-adversary's permutation transcript. The two games make the same calls of `π` in the same order. -/
-def UniGameLeV : Prop :=
-  ∀ A : UniAdversary,
-    Pr{let z ← uniSoundnessExperiment D A}[UniBreaksKnowledgeSoundness D (uniExtractor D) z] ≤
-      Pr{let z ← Common.runWithRandomPermutation
-          (rpmGameS (uSetup D hs) uFix (uAdv A) (uVerIv D Fl nV V C hs))}[
-        UniBreaksRel D Fl nV V C hs (ivOut z.1, z.2.1 ++ evalTr (permutationQueries z.2.2))]
-
-theorem duplexVm_uVerIv (π : UPf) : LeanVM.Rpm.DuplexVm (uVerIv D Fl nV V C hs π) [] := by
-  unfold uVerIv ivKC
-  refine LeanVM.Rpm.DuplexVm.bind ?_ fun iv => ?_
-  · rw [LeanVM.Rpm.duplexVm_iff_duplexP]
-    exact ((hOnly_hash256 _).duplexP []).mono fun _ _ _ => trivial
-  · rw [map_eq_bind_pure_comp]
-    exact LeanVM.Rpm.DuplexVm.bind (duplexVm_verU _ _ _ (fun π ch => duplexVm_opsRun _ _ π ch) _)
-      fun _ => trivial
-
-theorem cost_uVerIv (hN : UniNumbers D Fl nV V C hs) (hI : UniIv D) (π : UPf) :
-    Common.QueryCostAtMost (uVerIv D Fl nV V C hs π) LeanVM.Rpm.hashBlocks (2 ^ 80 + 8) := by
-  unfold uVerIv ivKC
-  have hb : (ivInput D π.roots).length / 136 + 1 ≤ 8 := by
-    rw [length_ivInput]
-    have := hI.le
-    omega
-  refine cost_hash256_bind _ _ _ (hb.trans (by norm_num)) fun u => ?_
-  refine (Common.isWeightBound_map _ (hN.verifier _)).mono ?_
-  generalize (2 : ℕ) ^ 80 = a
-  omega
 
 end Verifier
 
@@ -269,30 +227,6 @@ theorem isTotalQueryBound_ivAdv (D : Deployment)
   simp only [ivKC, hash256, callKeccak256]
   exact isTotalQueryBound_query_bind_iff.mpr ⟨by norm_num, fun _ => trivial⟩
 
-section Move
-
-variable (D : Deployment) {κ : ℕ} (Fl : FlockSound κ) (nV V : ℕ) (C : UniCode D Fl nV V)
-  (hs : UniShapes D)
-
-/-- **The IV moved into the adversary**: the two-oracle game with the IV in the verifier is, up to
-writing the IV in the proof and appending its entry to the log, the experiment whose adversary
-computes the IV last. -/
-theorem expU_ivAdv (A₀ : Bytes32 × Bytes32 × Bytes32 → OracleComp KeccakCalls UPf) :
-    expU (uSpec Fl nV V) (uView (uRounds Fl nV V)) (withSetupG (uSetup D hs) uFix (ivAdv D A₀))
-        (opsRun (uView (uRounds Fl nV V)) (uOps D Fl nV V C hs)) =
-      (fun w => (ivOut w.1, w.2 ++ [(ivInput D w.1.1.roots, w.1.2.1)])) <$>
-        kcGameS (uSetup D hs) uFix A₀ (uVerIv D Fl nV V C hs) := by
-  have hw : withSetupG (uSetup D hs) uFix (ivAdv D A₀) =
-      withSetupG (uSetup D hs) uFix A₀ >>= fun π => (fun iv => setIv iv π) <$> ivKC D π := by
-    simp only [withSetupG, ivAdv, bind_assoc, map_bind, bind_map_left, Functor.map_map]
-    rfl
-  rw [expU, kcGameS, hw, loggedKC, logImplKC_bind]
-  simp only [uVerIv, ivKC, hash256, bind_assoc, pure_bind, map_bind, map_pure,
-    bind_map_left, ivOut]
-  rfl
-
-end Move
-
 /-! ## The bound -/
 
 /-- **The composed bound, the IV in the verifier, is at most `uniBound`**: `le_uniBound` with the
@@ -316,93 +250,17 @@ theorem le_uniBoundV (e : ℝ≥0∞) (Q QS nQ SQO nRf : ℕ) (hQS : QS ≤ 3 * 
 
 section Layer
 
-variable (D : Deployment) {κ : ℕ} (Fl : FlockSound κ) (nV V : ℕ) (C : UniCode D Fl nV V)
+variable (D : Deployment) {κ : ℕ} (nV V : ℕ)
   (hs : UniShapes D)
-
-/-- `UniBreaksRel` reads the transcript through its answers only. -/
-theorem uniBreaksRel_congr (z : UPf × (List (List E) × List Bool)) (tr tr' : Transcript)
-    (h : ∀ x, lookTr tr x = lookTr tr' x) (hz : UniBreaksRel D Fl nV V C hs (z, tr)) :
-    UniBreaksRel D Fl nV V C hs (z, tr') := by
-  obtain ⟨hH, hT⟩ := histOfTr_tableOfTr_congr h
-  refine ⟨hz.1, hz.2.1, fun c hc => hz.2.2 c ?_⟩
-  unfold extractorK at hc ⊢
-  simp only at hc ⊢
-  rwa [hH, hT]
 
 theorem leafLen_uniTc_zero : (uniTc hs 0).leafLen = 512 := by
   unfold uniTc
   rw [ite_eq_left rfl]
   rfl
 
-/-- **The Fiat–Shamir layer from the game bridge with the IV in the verifier**: `FsLayer` for a
-deployment whose five layout words name `24 … 28` variables (`hs`), from its numbers
-(`UniNumbers`), its program IV's length (`UniIv`) and the coupling `UniGameLeV`. -/
-theorem fsLayer_of_gameV (hN : UniNumbers D Fl nV V C hs) (hI : UniIv D)
-    (hG : UniGameLeV D Fl nV V C hs) : FsLayer D Fl nV V C := by
-  intro R e herr hpre hFin A Q hQ
-  obtain ⟨A₀, hA₀, hle⟩ := rpm_le_kcS (uSetup D hs) (hOnly_setupK3 hs _ _ _) setupQS
-    (setupQS * 2 ^ 32) (isTotalQueryBound_setupK3 hs _ _ _) (cost_setupK3 hs _ _ _) uFix (uAdv A) Q
-    (cost_uAdv A Q hQ) (uVerIv D Fl nV V C hs) (duplexVm_uVerIv D Fl nV V C hs) (2 ^ 80 + 8)
-    (cost_uVerIv D Fl nV V C hs hN hI)
-    (fun z tr => UniBreaksRel D Fl nV V C hs (ivOut z, tr))
-    (fun z tr tr' h hz => uniBreaksRel_congr D Fl nV V C hs (ivOut z) tr tr' h hz)
-  have hmain := knowledgeSoundness_listChainU_closed (uSpec Fl nV V)
-    (liftPiop (uSpec Fl nV V).K R rfl) (uView (uRounds Fl nV V)) (uOps D Fl nV V C hs)
-    (fun i => uniTc hs i) (uniCheck D Fl nV V C) (uniGood D Fl nV V C) (uniGoodS D Fl nV V C)
-    (uSetup D hs) uFix (ivAdv D A₀) setupQS (setupQS + Q + 1) (isTotalQueryBound_setupK3 hs _ _ _)
-    (isTotalQueryBound_ivAdv D A₀ _ hA₀) (hok_uni D Fl nV V C hs) (hcov_uni D Fl nV V C hs)
-    (hS_uni D Fl nV V C hs) (fun π _ _ => fitsAll_uView _ π)
-    (fun π ch cs hc hl hg hn hgS => hlink_uni D Fl nV V C R hFin π ch cs hc hl hg hn hgS)
-  have hkc : Pr{let z ← (simulateQ randomOracle
-        (kcGameS (uSetup D hs) uFix A₀ (uVerIv D Fl nV V C hs))).run' ∅}[
-        UniBreaksRel D Fl nV V C hs (ivOut z.1, z.2)] ≤
-      Pr{let z ← (simulateQ randomOracle (expU (uSpec Fl nV V) (uView (uRounds Fl nV V))
-          (withSetupG (uSetup D hs) uFix (ivAdv D A₀))
-          (opsRun (uView (uRounds Fl nV V)) (uOps D Fl nV V C hs)))).run' ∅}[
-        BreaksOK (uSpec Fl nV V).K (fun i => (uniTc hs i).commit) (liftPiop (uSpec Fl nV V).K R rfl)
-          (uView (uRounds Fl nV V)) (uniCheck D Fl nV V C)
-          (fun bs => ∀ k < (uOps D Fl nV V C hs).length, bs.getD k false = true) z] := by
-    rw [expU_ivAdv, run'_simulateQ_map, prEvent_map]
-    refine prEvent_mono _ _ _ fun w hw => ?_
-    have hb := breaksOK_of_rel D Fl nV V C hs R hpre _ hw
-    have hlen : (ivInput D w.1.1.roots).length = D.programIv.length + 280 := length_ivInput _ _
-    have h64 : (ivInput D w.1.1.roots).length ≠ 64 := by rw [hlen]; omega
-    have hl : (ivInput D w.1.1.roots).length ≠ (uniTc hs 0).leafLen := by
-      rw [hlen, leafLen_uniTc_zero]
-      have := hI.ne
-      omega
-    have he := extractorK_append (uniTc hs) (uView (uRounds Fl nV V)) (ivOut w.1) w.2
-      (ivInput D w.1.1.roots, w.1.2.1) h64 hl
-    refine ⟨hb.1, hb.2.1, fun c hc => hb.2.2 c ?_⟩
-    rw [← he]
-    exact hc
-  refine (hG A).trans (hle.trans (add_le_add (hkc.trans hmain) le_rfl) |>.trans ?_)
-  have hS := setupQS_le D hs
-  have hn := hN.chain
-  have hq := sumQO_le D Fl nV V C hs
-  exact le_uniBoundV e Q setupQS (uSpec Fl nV V).K.nQ _ (uSpec Fl nV V).nRf hS hn hq
-    (show (5 : ℕ) ≤ 6 by decide) _ _ _
-    (doom_le D Fl nV V C hs Q _ (by
-      unfold uniN
-      have : (2 : ℕ) ^ 33 = 8589934592 := by norm_num
-      have : (2 : ℕ) ^ 24 = 16777216 := by norm_num
-      have : (2 : ℕ) ^ 10 = 1024 := by norm_num
-      omega)) (maxErrK_uni D Fl nV V hs R e herr)
-    (uniSpec_tagBound _)
-
-/-- `fsLayer_of_gameV` with the numbers from the rounds' sizes (`uniNumbers_of`). -/
-theorem fsLayer_of_gameV' (hnQ : (uSpec Fl nV V).K.nQ ≤ 2 ^ 10)
-    (hnv : ∀ r ∈ uRounds Fl nV V, r.nv ≤ 2 ^ 30) (hI : UniIv D) (hG : UniGameLeV D Fl nV V C hs) :
-    FsLayer D Fl nV V C :=
-  fsLayer_of_gameV D Fl nV V C hs (uniNumbers_of D Fl nV V C hs hnQ hnv) hI hG
-
 end Layer
 
 end UniSound
-
-/-- info: 'UniSound.fsLayer_of_gameV' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms UniSound.fsLayer_of_gameV
 
 /-- info: 'UniSound.extractorK_append' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
