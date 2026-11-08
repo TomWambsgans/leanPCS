@@ -12,7 +12,8 @@
 // Also modified here, for speed, every codeword unchanged: the two-sweep encodes (`encode_two_sweep_with`,
 // `encoded_rows_two_sweep`), which encode a lane-major or row-major message as it lies, a batch of replicas per read
 // of it, the transpose fused into the second sweep; on AVX-512, the fused layers run slab by slab in registers
-// (`slabs_avx512`); and sub-blocks too short to fill the hash's batches hand their rows over afterwards.
+// (`slabs_avx512`), and the tiles transposed eight by eight in registers (`transpose_8x8`); and sub-blocks too short
+// to fill the hash's batches hand their rows over afterwards.
 //! Additive NTT over GF(2^64) in the Lin-Chung-Han novel polynomial basis.
 //!
 //! It is the Reed-Solomon encoder of every WHIR commitment over K = F_{2^64}.
@@ -634,6 +635,32 @@ impl AdditiveNttF64 {
         }
     }
 
+    /// [`Self::run_layers`] over a whole `2^log_d`-row domain, leaving only the rows `rows` (sorted, distinct)
+    /// final: whole layers while they have no more blocks than there are rows, then the blocks holding one of
+    /// them alone.
+    fn run_layers_toward(&self, buf: &mut [F64], log_d: usize, num_ntts: usize, rows: &[usize]) {
+        let whole = (rows.len().max(1).ilog2() as usize).min(log_d);
+        self.run_layers(buf, log_d, num_ntts, 0, whole, 0, 0);
+        for layer in whole..log_d {
+            let block_size = 1usize << (log_d - layer);
+            let mut done = None;
+            for &row in rows {
+                let block = row / block_size;
+                if done == Some(block) {
+                    continue;
+                }
+                done = Some(block);
+                let start = block * block_size * num_ntts;
+                butterfly_interleaved_block(
+                    &mut buf[start..start + block_size * num_ntts],
+                    self.twiddle(layer, block),
+                    block_size / 2,
+                    num_ntts,
+                );
+            }
+        }
+    }
+
     /// [`Self::run_layers`] from `first_layer` to the last, over sub-block `sub_idx` (of `2^first_layer`) whose
     /// first row is `first`, on the blocks that hold one of `rows` (sorted, in the sub-block) alone.
     #[allow(clippy::too_many_arguments)]
@@ -879,7 +906,7 @@ impl AdditiveNttF64 {
                 let work_ptr = parallel::SendPtr(work.as_mut_ptr());
                 let stream = len >= STREAM_MIN_WORDS;
                 let group: Vec<&AdditiveNttF64> = group.iter().collect();
-                self.two_sweep_gathered(&plan, &group, msg, |task, r, rows, stream_out| {
+                self.two_sweep_gathered(&plan, &group, None, msg, |task, r, rows, stream_out| {
                     for (i, src) in rows.chunks_exact(plan.width).enumerate() {
                         // SAFETY: each (task, replica) alone writes these words of the replica's work buffer.
                         let dst = unsafe { work_ptr.slice(r * len + plan.row_offset(task, i), plan.width) };
@@ -910,11 +937,13 @@ impl AdditiveNttF64 {
 
     /// The first sweep: every task gathers its `2^g` rows of `plan.width` words from the message into scratch,
     /// and for each of `replicas` runs layers `0..g` on them and hands them to `out(task, replica, rows,
-    /// stream)`, `stream` a streaming-store handle the task fences at its end.
+    /// stream)`, `stream` a streaming-store handle the task fences at its end. With `wanted`, replica `r`'s rows
+    /// are final at the rows `wanted[r]` (sorted, distinct) alone ([`Self::run_layers_toward`]).
     fn two_sweep_gathered(
         &self,
         plan: &TwoSweep,
         replicas: &[&AdditiveNttF64],
+        wanted: Option<&[Vec<usize>]>,
         msg: &[F64],
         out: impl Fn(usize, usize, &[F64], &Stream) + Sync,
     ) {
@@ -942,7 +971,10 @@ impl AdditiveNttF64 {
                         } else {
                             &mut gathered[..]
                         };
-                        ntt.run_layers(buf, g, width, 0, g, 0, 0);
+                        match wanted {
+                            None => ntt.run_layers(buf, g, width, 0, g, 0, 0),
+                            Some(rows) => ntt.run_layers_toward(buf, g, width, &rows[r]),
+                        }
                         out(task, r, buf, &stream);
                     }
                 }
@@ -1002,7 +1034,14 @@ impl AdditiveNttF64 {
         if g > 0 {
             let kept_ptr = parallel::SendPtr(kept.as_mut_ptr());
             let refs: Vec<&AdditiveNttF64> = replicas.iter().collect();
-            self.two_sweep_gathered(&plan, &refs, msg, |task, u, buf, _| {
+            // Each replica's wanted tiles: the first sweep's rows that are kept.
+            let rows: Vec<Vec<usize>> = (0..used.len())
+                .map(|u| {
+                    let end = used.get(u + 1).map_or(tiles.len(), |&(_, k)| k);
+                    tiles[used[u].1..end].iter().map(|&(_, tile)| tile).collect()
+                })
+                .collect();
+            self.two_sweep_gathered(&plan, &refs, Some(&rows), msg, |task, u, buf, _| {
                 let first = used[u].1;
                 let end = used.get(u + 1).map_or(tiles.len(), |&(_, k)| k);
                 for (k, &(_, tile)) in tiles.iter().enumerate().take(end).skip(first) {
@@ -1051,14 +1090,75 @@ impl AdditiveNttF64 {
 fn transpose_tile<'a>(buf: &mut [F64], n_lanes: usize, rows: usize, lane: impl Fn(usize) -> &'a [F64]) {
     const CHUNK: usize = 64;
     debug_assert_eq!(buf.len(), n_lanes * rows);
+    // On AVX-512, eight lanes by eight rows at a time, transposed in registers; the lanes past the last eight
+    // below.
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
+    let lanes_done = if rows.is_multiple_of(8) {
+        let groups = n_lanes / 8;
+        for b0 in (0..groups).map(|g| 8 * g) {
+            let runs: [&[F64]; 8] = std::array::from_fn(|k| &lane(b0 + 7 - k)[..rows]);
+            for x0 in (0..rows).step_by(8) {
+                // SAFETY: the cfg enables avx512f; every run holds `rows` words, and row `x0 + j` of `buf` the
+                // eight words from `n_lanes - 8 - b0`.
+                unsafe { transpose_8x8(&runs, x0, &mut buf[x0 * n_lanes + n_lanes - 8 - b0..], n_lanes) };
+            }
+        }
+        8 * groups
+    } else {
+        0
+    };
+    #[cfg(not(all(target_arch = "x86_64", target_feature = "avx512f")))]
+    let lanes_done = 0;
     for x0 in (0..rows).step_by(CHUNK) {
         let n = CHUNK.min(rows - x0);
         let out = &mut buf[x0 * n_lanes..(x0 + n) * n_lanes];
-        for b in 0..n_lanes {
+        for b in lanes_done..n_lanes {
             let src = &lane(b)[x0..x0 + n];
             for (slot, &word) in out[n_lanes - 1 - b..].iter_mut().step_by(n_lanes).zip(src) {
                 *slot = word;
             }
+        }
+    }
+}
+
+/// Words `x0 .. x0 + 8` of the eight runs, transposed: row `j` (`runs[k][x0 + j]` for `k < 8`) to
+/// `out[j * stride ..][..8]`.
+///
+/// # Safety
+///
+/// The cfg enables avx512f, every run holds the eight words, and `out` the eight rows.
+#[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
+#[inline(always)]
+unsafe fn transpose_8x8(runs: &[&[F64]; 8], x0: usize, out: &mut [F64], stride: usize) {
+    use core::arch::x86_64::*;
+    debug_assert!(out.len() >= 7 * stride + 8 && runs.iter().all(|r| r.len() >= x0 + 8));
+    // SAFETY: the caller vouches for the bounds and the features.
+    unsafe {
+        let v: [__m512i; 8] = std::array::from_fn(|k| _mm512_loadu_si512(runs[k].as_ptr().add(x0).cast()));
+        // Pairs: per 128-bit lane i, [v_k[2i], v_k+1[2i]] and [v_k[2i+1], v_k+1[2i+1]].
+        let lo: [__m512i; 4] = std::array::from_fn(|p| _mm512_unpacklo_epi64(v[2 * p], v[2 * p + 1]));
+        let hi: [__m512i; 4] = std::array::from_fn(|p| _mm512_unpackhi_epi64(v[2 * p], v[2 * p + 1]));
+        // Row 2i (from `lo`) or 2i + 1 (from `hi`) is 128-bit lane i of the four pair registers.
+        let rows = |t: &[__m512i; 4]| {
+            let (a, b) = (
+                _mm512_shuffle_i64x2::<0x44>(t[0], t[1]),
+                _mm512_shuffle_i64x2::<0x44>(t[2], t[3]),
+            );
+            let (c, d) = (
+                _mm512_shuffle_i64x2::<0xEE>(t[0], t[1]),
+                _mm512_shuffle_i64x2::<0xEE>(t[2], t[3]),
+            );
+            [
+                _mm512_shuffle_i64x2::<0x88>(a, b),
+                _mm512_shuffle_i64x2::<0xDD>(a, b),
+                _mm512_shuffle_i64x2::<0x88>(c, d),
+                _mm512_shuffle_i64x2::<0xDD>(c, d),
+            ]
+        };
+        let (even, odd) = (rows(&lo), rows(&hi));
+        for i in 0..4 {
+            _mm512_storeu_si512(out.as_mut_ptr().add(2 * i * stride).cast(), even[i]);
+            _mm512_storeu_si512(out.as_mut_ptr().add((2 * i + 1) * stride).cast(), odd[i]);
         }
     }
 }
