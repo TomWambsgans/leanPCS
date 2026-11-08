@@ -1,19 +1,14 @@
 // Adapted from leanVM (https://github.com/leanEthereum/leanVM), commit 42422001, file crates/verifier/src/flock.rs: the
-// same zerocheck, lincheck, BLAKE2s row walk and ring switch on a generic `Scalar` and `Channel` (constants computed
-// natively, as leanVM's are), the terminal check stated to the channel, the table-driven `Scaled` products written as
-// plain ones, the terminal walk folding both matrices' sides at once, and the gas report's phase names. New here: the
-// lincheck may leave its terminal identity to `crate::matrices` instead of walking the circuit. MIT OR Apache-2.0;
-// see NOTICE.md.
-//! Flock reduction, then ring switching.
+// pieces of its Flock verifier that `crate::flock_min` builds on, on a generic `Scalar` (constants computed natively,
+// as leanVM's are): the fixed challenges and Lagrange weights of the univariate skip, the BLAKE2s row walk (both
+// matrices' sides at once) and the ring switch's map and weight. MIT OR Apache-2.0; see NOTICE.md.
+//! Flock's shared pieces: the skip's Lagrange weights, the BLAKE2s circuit's row values, the ring switch's weight.
 
-use crate::VerifierError;
-use crate::field::{E, GEN, ONE};
+use crate::field::{E, ONE};
 use crate::hash::{BLAKE2S_G_LANES, BLAKE2S_IV, BLAKE2S_SIGMA};
-use crate::layout::{BLAKE2S_CONSTANT_COLUMN, BLAKE2S_R1CS_LOG_SIZE, FLOCK_K_SKIP, FLOCK_NUM_LINCHECK_ROUNDS, K_BITS};
-use crate::matrices::{MatrixClaim, reduce_matrices};
-use crate::multilinear::{dot, eq_eval, eq_kernel, poly_eval};
+use crate::layout::{BLAKE2S_CONSTANT_COLUMN, BLAKE2S_R1CS_LOG_SIZE, K_BITS};
+use crate::multilinear::dot;
 use crate::scalar::{Scalar, enter};
-use crate::transcript::{Channel, sumcheck};
 
 const PHI_BASIS: [u64; 8] = [
     0x0000000000000001,
@@ -74,163 +69,6 @@ pub fn lagrange_weights<S: Scalar>(count: usize, point: S) -> Vec<S> {
 
 pub(crate) fn lagrange_interpolate<S: Scalar>(count: usize, values: &[S], point: S) -> S {
     dot(&lagrange_weights(count, point), values)
-}
-
-pub struct ZerocheckResult<S> {
-    pub z_skip: S,
-    pub chi: Vec<S>,
-    pub v_a: S,
-    pub v_b: S,
-    pub v_c: S,
-}
-
-/// The zerocheck: one univariate skip round, then nflock quadratic ones.
-/// C rides those rounds with AB, so all three claims come out at one point.
-fn verify_flock_zerocheck<S: Scalar>(
-    log_n: usize,
-    transcript: &mut impl Channel<S>,
-) -> Result<ZerocheckResult<S>, VerifierError> {
-    let _phase = enter("flock zerocheck: skip round");
-    // The point r: seven fixed coordinates, the rest sampled.
-    let mut r: Vec<Option<S>> = fixed_challenges().map(|c| Some(S::constant(c))).into();
-    let sampled = transcript.samples(log_n - FLOCK_K_SKIP - N_FIXED_CHALLENGES);
-    r.extend(sampled.into_iter().map(Some));
-
-    // P = P^AB + P^C on the coset, then z_skip; the 64 zeros on Lambda are assumed.
-    let p_coset = transcript.next_scalars(K_BITS)?;
-    let z_skip = transcript.sample();
-    let v_p = lagrange_interpolate(2 * K_BITS, &[vec![S::zero(); K_BITS], p_coset].concat(), z_skip);
-
-    // nflock quadratic rounds on P, closed by v_a, v_b.
-    let (chi, running) = {
-        let _rounds = enter("flock zerocheck: rounds");
-        sumcheck(transcript, v_p, 3, &r)?
-    };
-    let (v_a, v_b) = (transcript.next_scalar()?, transcript.next_scalar()?);
-    let v_c = running + v_a * v_b;
-    Ok(ZerocheckResult {
-        z_skip,
-        chi,
-        v_a,
-        v_b,
-        v_c,
-    })
-}
-
-/// What the reduction leaves: the zerocheck's point and its three claims there, then the lincheck's
-/// batching challenge, its round challenges in round order, and the 64 slices it closes on.
-#[derive(Clone, Debug)]
-pub struct FlockClaims<S> {
-    pub z_skip: S,
-    pub chi: Vec<S>,
-    pub v_a: S,
-    pub v_b: S,
-    pub v_c: S,
-    pub alpha: S,
-    pub round_challenges: Vec<S>,
-    pub s: Vec<S>,
-    /// The claims on flock's matrices, when the lincheck leaves its terminal identity to them.
-    pub matrices: Option<MatrixClaim<S>>,
-}
-
-impl<S: Scalar> FlockClaims<S> {
-    /// The point the slices are claims at: the lincheck's challenges in coordinate order, then the rest of chi.
-    pub fn point(&self) -> Vec<S> {
-        let chi_in_prime = self.round_challenges.iter().rev().copied();
-        let rest = self.chi[FLOCK_NUM_LINCHECK_ROUNDS..].iter().copied();
-        chi_in_prime.chain(rest).collect()
-    }
-}
-
-/// How the lincheck's terminal identity is checked.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum LincheckTerminal {
-    /// As leanVM 42422001: by one forward walk of the BLAKE2s circuit (`A0 w`, `B0 w`) against the row weights.
-    Walk,
-    /// Left to claims on `A0` and `B0` at one point ([`crate::matrices`]), whose commitments are fixed.
-    Matrices,
-}
-
-/// Lincheck at the quirky point (z_skip, chi): its 64 slices s, claims at [`FlockClaims::point`].
-fn verify_flock_lincheck<S: Scalar>(
-    zc: ZerocheckResult<S>,
-    transcript: &mut impl Channel<S>,
-    terminal: LincheckTerminal,
-) -> Result<FlockClaims<S>, VerifierError> {
-    let _phase = enter("flock lincheck: rounds");
-    let alpha = transcript.sample(); // batches the two matrix identities, the c claim and the constant-position claim
-
-    // The 8 rounds that bind the high column coordinates, leaving 64 unfolded.
-    let claim = zc.v_a + alpha * zc.v_b + alpha.pow(2) * zc.v_c + alpha.pow(3);
-    let (round_challenges, r_lc) = sumcheck(transcript, claim, 3, &[None; FLOCK_NUM_LINCHECK_ROUNDS])?;
-
-    // The residual, then the terminal identity: pin term and c term included.
-    let s = transcript.next_scalars(K_BITS)?;
-    let chi_in = &zc.chi[..FLOCK_NUM_LINCHECK_ROUNDS];
-    let chi_in_prime: Vec<S> = round_challenges.iter().rev().copied().collect();
-    let matrices = match terminal {
-        LincheckTerminal::Walk => {
-            let _phase = enter("flock lincheck: terminal walk of the BLAKE2s circuit");
-            // e_row: phi8 Lagrange in the skip coordinate, eq in the slot variables.
-            let skip_weights = lagrange_weights(K_BITS, zc.z_skip);
-            // C = I, so the c weight is e_row itself, and both sides being tensors it
-            // collapses to eq(chi_in, chi_in_prime) times a 64-term Lagrange combination.
-            // w_col = eq(chi_in_prime) ⊗ s, a column of it per slice: each slice multiplies the whole eq table.
-            let high = eq_kernel(&chi_in_prime);
-            let mut w_col = vec![S::zero(); high.len() * K_BITS];
-            for (l, &slice) in s.iter().enumerate() {
-                for (h, &weight) in high.iter().enumerate() {
-                    w_col[h * K_BITS + l] = slice * weight;
-                }
-            }
-            let (left_values, right_values) = blake2s_row_values(&w_col);
-            // e_row = eq(chi_in) ⊗ skip_weights, never built: each block of 64 rows meets the skip weights, a column at a
-            // time, then chi_in weighs the blocks. leanVM sums the A0 side and the B0 side apart, adds them under alpha,
-            // and folds the blocks by chi_in. Here, the same sum in the order the contract can afford: a block takes
-            // both sides at once (against the skip weights and alpha times them), and the blocks are weighed by
-            // eq(chi_in)'s table, in the order the walk fills them, the output rows (blocks 4 to 7, which need the whole
-            // walk) last. So each value of the walk is used soon after it is made, and the contract does not hold
-            // them in memory. Products: 575 against leanVM's 511 (alpha times the 64 skip
-            // weights, eq(chi_in)'s table and the weighing, for two folds and alpha).
-            let alpha_skip: Vec<S> = skip_weights.iter().map(|&weight| alpha * weight).collect();
-            let block_weights = eq_kernel(chi_in);
-            let walk_order = (0..4).chain(8..high.len()).chain(4..8);
-            let mut matrices_part = S::zero();
-            for h in walk_order {
-                let mut block = S::zero();
-                for l in 0..K_BITS {
-                    block +=
-                        skip_weights[l] * left_values[h * K_BITS + l] + alpha_skip[l] * right_values[h * K_BITS + l];
-                }
-                matrices_part += block_weights[h] * block;
-            }
-            let terminal = matrices_part
-                + alpha.pow(2) * eq_eval(chi_in, &chi_in_prime) * dot(&skip_weights, &s)
-                + alpha.pow(3) * w_col[BLAKE2S_CONSTANT_COLUMN];
-            transcript.require_zero(terminal + r_lc, VerifierError::FlockLincheckTerminal)?;
-            None
-        }
-        LincheckTerminal::Matrices => Some(reduce_matrices(
-            transcript,
-            zc.z_skip,
-            chi_in,
-            &chi_in_prime,
-            &s,
-            alpha,
-            r_lc,
-        )?),
-    };
-    Ok(FlockClaims {
-        z_skip: zc.z_skip,
-        chi: zc.chi,
-        v_a: zc.v_a,
-        v_b: zc.v_b,
-        v_c: zc.v_c,
-        alpha,
-        round_challenges,
-        s,
-        matrices,
-    })
 }
 
 type Word<S> = [S; 32];
@@ -387,17 +225,6 @@ pub fn blake2s_row_values<S: Scalar>(column_weights: &[S]) -> (Vec<S>, Vec<S>) {
     (rows.left_values, rows.right_values)
 }
 
-/// The reduction in protocol order: zerocheck, then lincheck. What it leaves is the
-/// point and the 64 claims s\[i\] = z(i, point), i < 64, for ring switching to bind.
-pub fn verify_flock<S: Scalar>(
-    log_n: usize,
-    transcript: &mut impl Channel<S>,
-    terminal: LincheckTerminal,
-) -> Result<FlockClaims<S>, VerifierError> {
-    let zc = verify_flock_zerocheck(log_n, transcript)?;
-    verify_flock_lincheck(zc, transcript, terminal)
-}
-
 // The Frobenius shifts of the six stages composing Phi, one challenge each.
 pub(crate) const RING_MAP_SHIFTS: [usize; 6] = [32, 16, 8, 4, 2, 1];
 
@@ -425,19 +252,6 @@ fn ring_weight<S: Scalar>(r: &[S], r_prime: &[S], coefficients: &[S]) -> S {
         total += product;
     }
     total
-}
-
-/// The 64 claims s\[i\] = z(i, point) become the one dense claim `sum_u W(u) qflock(u) = target`.
-///
-/// Draw Phi once they are fixed, then take the target `T = sum_i x^i Phi(s_i)` against the
-/// MLE-friendly weight `W(u) = Phi(eq(point, u))`. Returns the target and W as a closure.
-pub fn ring_switch<S: Scalar>(point: Vec<S>, s: &[S], transcript: &mut impl Channel<S>) -> (S, RingWeight<S>) {
-    let _phase = enter("ring switch: map, coefficients, target");
-    let challenges = transcript.samples(RING_MAP_SHIFTS.len());
-    let weight = ring_switch_weight(point, &challenges);
-    let images: Vec<S> = s.iter().map(|&value| ring_map(value, &challenges)).collect();
-    let target = poly_eval(&images, S::constant(GEN));
-    (target, weight)
 }
 
 /// The weight of the map drawn as `challenges`: the same map as a Frobenius sum, `Phi(a) = sum_k c_k a^(2^k)` for

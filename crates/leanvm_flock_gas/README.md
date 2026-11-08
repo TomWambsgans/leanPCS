@@ -18,19 +18,12 @@ The pieces `crates/leanvm_univariate` (π1) and `crates/leanvm_rec` (π2 and the
   - a recorder that runs a verifier on a symbolic scalar and gives its graph;
   - the nodes' code for `crates/evm_link`, which compiles, assembles and links into EIP-170 contracts;
   - a revm machine with `FIELD_MUL` and a mock `PCS_OPEN` that gives each instruction's gas;
-  - contract, deployment and gas reports.
+  - deployment of a linked verifier, and the gas of a fragment.
 - **The measured workloads** (`src/shapes.rs`): leanVM `42422001` leaf aggregates of 32 to 2,000 leanXMSS signatures,
   their announced sizes, and the program's IV.
 
-The crate also keeps leanVM `42422001`'s own verifier, ported and made generic (`src/lib.rs`: `walk`,
-`verify_execution`, `reduce`; native `field`, `hash`, `merkle`, `bytecode`, `whir`). It is the reference the port is
-checked against. As a contract, it is this repository's baseline: 335,627 gas of execution, and 1,077,470 of
-transaction gas under EIP-7623 (calldata-bound, 27 KB), for leanVM's 1,290-signature proof. `crates/leanvm_rec`
-verifies the same statement for about 45,000.
-
 ```sh
-cargo test --release -p leanvm_flock_gas                                                         # parity, reductions, terminals
-cargo test --release -p leanvm_flock_gas --test evm -- --ignored --nocapture gas_report          # the baseline's gas
+cargo test --release -p leanvm_flock_gas                                                         # reductions, terminals
 cargo test --release -p leanvm_flock_gas --test keccak_terminal -- --nocapture                   # Keccak-f terminal == walk
 ```
 

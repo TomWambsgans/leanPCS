@@ -227,9 +227,6 @@ impl Rng {
     fn k(&mut self) -> E {
         E::new(self.next(), 0, 0)
     }
-    fn e(&mut self) -> E {
-        E::new(self.next(), self.next(), self.next())
-    }
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -1322,7 +1319,7 @@ fn verifying_contract_accepts_the_honest_proof_and_rejects_mutations() {
             measure: false,
         };
         let real = compile_deployable(&recorded.graph, &call_words.concat(), &ending, &entry, 4096);
-        let deployed = leanvm_flock_gas::evm::contract::deploy(&real, &[]);
+        let deployed = leanvm_flock_gas::evm::deploy::deploy(&real, &[]);
         println!("deployable verifying build: {} contracts", deployed.contracts.len());
         assert!(deployed.contracts.len() > 1, "cut into parts");
         let linked_accepts =

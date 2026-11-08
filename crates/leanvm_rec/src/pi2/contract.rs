@@ -1,6 +1,6 @@
 // Part of this repository. The recording, compilation, measurement and parity follow
-// crates/leanvm_univariate/src/contract.rs (itself after crates/leanvm_flock_gas/src/evm/contract.rs). MIT OR
-// Apache-2.0; see NOTICE.md.
+// crates/leanvm_univariate/src/contract.rs (itself after crates/evm/src/quotient.rs). MIT OR Apache-2.0; see
+// NOTICE.md.
 //! π2's verifier as a contract: [`super::verifier::reduce`] recorded on `leanvm_flock_gas`'s symbol, compiled to
 //! straight-line EVM code (`leanvm_flock_gas::evm::codegen`, `crates/evm_link`), run on revm with `FIELD_MUL` and the
 //! mock `PCS_OPEN` (`leanvm_flock_gas::evm::machine`, point claims: `root, layout, k, k × (point, value)`).
@@ -28,7 +28,7 @@ use leanvm_flock_gas::evm::codegen::{
     CALLS, Contract, Deployable, Ending, Entry, MAX_CODE, MEASURE, VERIFY, Word, compile, compile_deployable,
     compile_deployable_like, word,
 };
-use leanvm_flock_gas::evm::contract::{deploy, install};
+use leanvm_flock_gas::evm::deploy::{deploy, install};
 use leanvm_flock_gas::evm::machine::{self, Opening, Outcome, PcsOpen, call, decode, element_word};
 use leanvm_flock_gas::evm::record::{Graph, Recorder, Sym, record};
 use leanvm_flock_gas::field::E;

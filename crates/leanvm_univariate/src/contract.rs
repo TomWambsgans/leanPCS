@@ -1,5 +1,5 @@
-// Part of this repository; the contract's assembly and measurement follow crates/leanvm_flock_gas/src/evm/contract.rs.
-// MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository; the contract's assembly and measurement follow crates/evm/src/quotient.rs. MIT OR
+// Apache-2.0; see NOTICE.md.
 //! The verifier as a contract (straight-line code compiled from the recorded verifier, `leanvm_flock_gas::evm`), its
 //! calldata, and what a call costs.
 //!
@@ -655,7 +655,7 @@ pub fn measure_deployable(
     limit: usize,
 ) -> DeployableReport {
     use leanvm_flock_gas::evm::codegen::{compile_deployable, compile_deployable_like};
-    use leanvm_flock_gas::evm::contract::{deploy, install};
+    use leanvm_flock_gas::evm::deploy::{deploy, install};
     let recorded = record_verifier(shape, blake2s, mode);
     let (outputs, ending, entry) = ends(&recorded, iv, true, false);
     let real = compile_deployable(&recorded.graph, &outputs, &ending, &entry, limit);
@@ -740,7 +740,7 @@ pub fn parity_deployable(
     limit: usize,
 ) -> usize {
     use leanvm_flock_gas::evm::codegen::{compile_deployable, compile_deployable_like};
-    use leanvm_flock_gas::evm::contract::install;
+    use leanvm_flock_gas::evm::deploy::install;
     let recorded = record_verifier(shape, blake2s, mode);
     let (outputs, ending, entry) = ends(&recorded, iv, false, false);
     let returning = compile_deployable(&recorded.graph, &outputs, &ending, &entry, limit);

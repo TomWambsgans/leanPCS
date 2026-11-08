@@ -12,7 +12,7 @@
 #![allow(dead_code)]
 
 use leanvm_flock_gas::evm::codegen::{Ending, Entry, compile_deployable};
-use leanvm_flock_gas::evm::contract::{Deployed, deploy};
+use leanvm_flock_gas::evm::deploy::{Deployed, deploy};
 use leanvm_univariate::contract::{NAME, Recorded, calls};
 use leanvm_univariate::{
     Blake2s, FLOCK_BIT_SLICE, FLOCK_LEANVM_SKIP, FLOCK_MAIN, FLOCK_REC, FLOCK_REC2, FLOCK_REC3, KECCAK_MAIN, KECCAK_REC3, Shape,

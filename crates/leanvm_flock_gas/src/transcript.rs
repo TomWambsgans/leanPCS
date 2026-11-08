@@ -1,23 +1,21 @@
 // Adapted from leanVM (https://github.com/leanEthereum/leanVM), commit 42422001, file crates/verifier/src/transcript.rs:
-// its `Proof`, `Transcript` (the BLAKE2s chain, used by the reference verifier) and `sumcheck`, the latter two behind a
-// `Channel` trait; new here: that trait, the Keccak-256 chain the contract runs, adapted from this repository's
-// `crates/quotient/src/transcript.rs`, and the Fiat–Shamir shapes (`FsShape`, π1-rec). MIT OR Apache-2.0; see NOTICE.md.
+// its `sumcheck`, behind a `Channel` trait; new here: that trait, the Keccak-256 chain the contract runs, adapted from
+// this repository's `crates/quotient/src/transcript.rs`, and the Fiat–Shamir shapes (`FsShape`, π1-rec). MIT OR
+// Apache-2.0; see NOTICE.md.
 //! Proof transport and Fiat-Shamir.
 //!
-//! Two chains, one protocol: the walk reads its scalars and draws its challenges through a [`Channel`].
+//! A verifier reads its scalars and draws its challenges through a [`Channel`].
 //!
-//! - [`Transcript`] is leanVM's at 42422001: a BLAKE2s compression per scalar observed and per challenge. The
-//!   reference verifier ([`crate::verify_execution`]) runs it on real leanVM proofs.
 //! - [`KeccakChannel`] is the contract's: the proof is calldata bytes, and a challenge is one Keccak-256 of the state
 //!   and of the bytes read since the last challenge, exactly as they are in calldata (one `CALLDATACOPY` and one
 //!   `KECCAK256` in the contract). A scalar is 24 bytes, big-endian (`c2`, `c1`, `c0`); a commitment's root is its two
 //!   16-byte halves (`c1`, `c0`), so it has one encoding. The seed is the Keccak-256 of a 16-byte name, the program's
 //!   32-byte IV and the public input's 32 bytes. The challenge is the low 192 bits of the state, limb 0 lowest.
+//! - [`KeccakWriter`] is the prover's side of the same chain.
+//! - The recorder ([`crate::evm::record`]) is a channel too: it records the graph the contract is compiled from.
 
-use crate::field::{E, K, ZERO};
-use crate::hash::{Digest, blake2s_hash};
-use crate::merkle::{MerkleOpenings, MerklePath};
-use crate::multilinear::{log2_strict, poly_eval};
+use crate::field::{E, ZERO};
+use crate::multilinear::poly_eval;
 use crate::scalar::Scalar;
 use crate::{VerifierError, require};
 
@@ -113,193 +111,6 @@ pub fn squares<S: Scalar>(first: S, count: usize) -> Vec<S> {
         out.push(next);
     }
     out
-}
-
-/// The scalar stream, and the Merkle openings.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Proof {
-    pub stream: Vec<E>,
-    pub merkle_openings: MerkleOpenings,
-}
-
-impl Proof {
-    /// From the two encodings: the stream as 24-byte little-endian field elements, and the raw Merkle openings as they are.
-    pub fn load(stream: &[u8], merkle_openings: &[u8]) -> Result<Self, VerifierError> {
-        require(stream.len().is_multiple_of(24), VerifierError::StreamNotWholeElements)?;
-        Ok(Self {
-            stream: stream
-                .as_chunks::<24>()
-                .0
-                .iter()
-                .map(|data| E::from_bytes(data))
-                .collect::<Result<_, _>>()?,
-            merkle_openings: MerkleOpenings::Raw(merkle_openings.to_vec()),
-        })
-    }
-}
-
-pub const DS_OBSERVE: u64 = 1;
-pub const DS_SQUEEZE: u64 = 2;
-const DS_POW_BASE: u64 = 3;
-const DS_POW_NONCE: u64 = 4;
-
-/// Hash two four-word operands.
-pub fn compress(left: [u64; 4], right: [u64; 4]) -> [u64; 4] {
-    let mut data = [0u8; 64];
-    for (bytes, word) in data.as_chunks_mut().0.iter_mut().zip(left.into_iter().chain(right)) {
-        *bytes = word.to_le_bytes();
-    }
-    blake2s_hash(&data).words()
-}
-
-/// leanVM's transcript: the BLAKE2s chain, and the Merkle openings for WHIR.
-pub struct Transcript<'a> {
-    proof: &'a Proof,
-    state: [u64; 4],
-    stream_offset: usize,  // in E field elements
-    opening_offset: usize, // in bytes, or in batches of the pruned form
-    paths: Vec<MerklePath>,
-}
-
-impl<'a> Transcript<'a> {
-    pub fn new(proof: &'a Proof, fiat_shamir_iv: Digest, public_input: Digest) -> Self {
-        Self {
-            proof,
-            state: compress(fiat_shamir_iv.words(), public_input.words()),
-            stream_offset: 0,
-            opening_offset: 0,
-            paths: Vec::new(),
-        }
-    }
-
-    pub fn stream_offset(&self) -> usize {
-        self.stream_offset
-    }
-
-    fn observe(&mut self, value: E) {
-        self.state = compress(self.state, [value.c0, value.c1, value.c2, DS_OBSERVE]);
-    }
-
-    fn next(&mut self) -> Result<E, VerifierError> {
-        require(
-            self.stream_offset < self.proof.stream.len(),
-            VerifierError::StreamExhausted,
-        )?;
-        let value = self.proof.stream[self.stream_offset];
-        self.stream_offset += 1;
-        Ok(value)
-    }
-
-    pub fn grind_check(&mut self, bits: u32) -> Result<(), VerifierError> {
-        let nonce = self.next()?;
-        let block = [nonce.c0, nonce.c1, nonce.c2, DS_POW_NONCE];
-        let digest = compress(compress(self.state, [0, 0, 0, DS_POW_BASE]), block)[0];
-        let valid = if bits == 0 {
-            nonce == ZERO
-        } else {
-            digest & ((1 << bits) - 1) == 0
-        };
-        require(valid, VerifierError::GrindingNonce)?;
-        self.state = compress(self.state, block);
-        Ok(())
-    }
-
-    fn merkle_data(&mut self, data: &'a [u8], length: usize) -> Result<&'a [u8], VerifierError> {
-        let end = self.opening_offset + length;
-        require(end <= data.len(), VerifierError::MerkleOpeningMissing)?;
-        let chunk = &data[self.opening_offset..end];
-        self.opening_offset = end;
-        Ok(chunk)
-    }
-
-    /// The leaf images at `queries`, authenticated against `root`. `row_words` is what the pruned form stores of
-    /// each, the rest of the image being a zero prefix; the raw form carries whole images.
-    ///
-    /// Each query's own path is kept for [`Self::finish`], whichever form the proof came in.
-    pub fn merkle(
-        &mut self,
-        root: Digest,
-        block_length: u64,
-        queries: &[u64],
-        row_words: usize,
-        leaf_words: usize,
-    ) -> Result<Vec<Vec<K>>, VerifierError> {
-        let height = log2_strict(block_length)?;
-        let paths = match &self.proof.merkle_openings {
-            MerkleOpenings::Raw(data) => {
-                let mut paths = Vec::with_capacity(queries.len());
-                for &leaf_index in queries {
-                    let leaf = self.merkle_data(data, 8 * leaf_words)?;
-                    let mut siblings = Vec::with_capacity(height);
-                    for _ in 0..height {
-                        let sibling = self.merkle_data(data, 32)?;
-                        siblings.push(sibling.try_into().expect("32 bytes were read"));
-                    }
-                    let leaf = leaf.as_chunks().0.iter().map(|&word| K(u64::from_le_bytes(word)));
-                    let path = MerklePath {
-                        leaf_index,
-                        leaf: leaf.collect(),
-                        siblings,
-                    };
-                    require(path.root() == root, VerifierError::MerkleRootMismatch)?;
-                    paths.push(path);
-                }
-                paths
-            }
-            MerkleOpenings::Pruned(batches) => {
-                let batch = batches
-                    .get(self.opening_offset)
-                    .ok_or(VerifierError::MerkleOpeningMissing)?;
-                self.opening_offset += 1;
-                let (batch_root, paths) = batch.expand(height, queries, row_words, leaf_words)?;
-                require(batch_root == root, VerifierError::MerkleRootMismatch)?;
-                paths
-            }
-        };
-        let rows = paths.iter().map(|path| path.leaf.clone()).collect();
-        self.paths.extend(paths);
-        Ok(rows)
-    }
-
-    /// Nothing of the proof is left unread. Returns every query's path, in the order they were opened.
-    pub fn finish(self) -> Result<Vec<MerklePath>, VerifierError> {
-        require(
-            self.stream_offset == self.proof.stream.len(),
-            VerifierError::StreamNotConsumed,
-        )?;
-        require(
-            self.opening_offset == self.proof.merkle_openings.len(),
-            VerifierError::MerkleNotConsumed,
-        )?;
-        Ok(self.paths)
-    }
-}
-
-impl Channel<E> for Transcript<'_> {
-    fn next_scalar(&mut self) -> Result<E, VerifierError> {
-        let value = self.next()?;
-        self.observe(value);
-        Ok(value)
-    }
-
-    fn next_root(&mut self) -> Result<[E; 2], VerifierError> {
-        let halves = [self.next_scalar()?, self.next_scalar()?];
-        Digest::from_halves(halves[0], halves[1])?;
-        Ok(halves)
-    }
-
-    fn sample(&mut self) -> E {
-        self.state = compress(self.state, [0, 0, 0, DS_SQUEEZE]);
-        E::new(self.state[0], self.state[1], self.state[2])
-    }
-
-    fn require_zero(&mut self, value: E, error: VerifierError) -> Result<(), VerifierError> {
-        require(value == ZERO, error)
-    }
-
-    fn require_nonzero(&mut self, value: E, error: VerifierError) -> Result<(), VerifierError> {
-        require(value != ZERO, error)
-    }
 }
 
 /// returns q(X) := c0 + c1X + c2X^2 + ...

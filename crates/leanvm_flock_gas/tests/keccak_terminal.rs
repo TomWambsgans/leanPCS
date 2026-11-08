@@ -10,12 +10,12 @@
 //!
 //! `cargo test --release -p leanvm_flock_gas --test keccak_terminal -- --include-ignored --nocapture`.
 
-use leanvm_flock_gas::evm::contract::measure_fragment;
+use leanvm_flock_gas::evm::deploy::measure_fragment;
 use leanvm_flock_gas::evm::record::{Node, Recorder, Sym, record};
 use leanvm_flock_gas::field::E;
 use leanvm_flock_gas::flock_min::{self, End, Slices, Variant, WalkedCircuit, walked_terminal_with};
 use leanvm_flock_gas::keccak_flock::{Keccak, KeccakWalked, structured_terminal};
-use leanvm_flock_gas::scalar::{Scalar, enter};
+use leanvm_flock_gas::scalar::enter;
 use leanvm_flock_gas::transcript::{Channel, FsShape};
 
 const LINCHECK_ROUNDS: usize = 11;

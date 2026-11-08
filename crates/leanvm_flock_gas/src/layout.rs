@@ -1,14 +1,12 @@
 // Adapted from leanVM (https://github.com/leanEthereum/leanVM), commit 42422001, file crates/verifier/src/layout.rs:
-// the same tables, flushes, constraints and stacking; a `Form` is generic over its coefficients' `Scalar`, a table's
-// constraints a method on any `Scalar`, and the layout holds the bytecode's length rather than the bytecode.
-// MIT OR Apache-2.0; see NOTICE.md.
-//! The instruction tables, their bus flushes, and where every committed column sits in the stack.
+// the same tables, flushes and constraints (not its stacking, which `leanvm_univariate` replaces with its own); a
+// `Form` is generic over its coefficients' `Scalar`, and a table's constraints a method on any `Scalar`. New here: the
+// Keccak VM's `SHA3` table (`tables_keccak`). MIT OR Apache-2.0; see NOTICE.md.
+//! The instruction tables, their bus flushes and constraints.
 
 use crate::field::{E, GEN, ONE, ZERO};
 use crate::hash::{PARAM_IV, blake2s_hash};
-use crate::multilinear::{Placement, log2_ceil, log2_strict, stack_offsets};
 use crate::scalar::Scalar;
-use crate::{VerifierError, require};
 use std::collections::BTreeMap;
 use std::ops::Add;
 
@@ -78,54 +76,12 @@ impl Add for Form<E> {
     }
 }
 
-/// One block of a bus side, always owned by a table. The three blocks no table owns are the framework, on `BusLayout`.
-#[derive(Clone, Debug)]
-pub struct BusBlock {
-    pub log_rows: usize,        // the owner's height: the block spans 2^log_rows rows
-    pub rows: u64,              // ...of which the first `rows` flush, the rest being padding rows, whose leaves are 1
-    pub coordinates: Vec<Form>, // the tuple flushed, over the owner's OWN local column indices; stays symbolic until its table sumcheck
-    pub owner: usize,           // whose block it is, by opcode
-}
-
-pub const R1CS_DIGEST: [u8; 32] = [
-    0x53, 0x7a, 0xd2, 0x07, 0x90, 0x30, 0x8f, 0x8e, 0xb8, 0xc0, 0xe8, 0xbd, 0x3e, 0x6c, 0x58, 0xee, 0x64, 0x57, 0x33,
-    0x71, 0xe3, 0xd5, 0x3c, 0x30, 0x61, 0x3d, 0xd0, 0x4d, 0x87, 0xc0, 0xb7, 0xea,
-];
-
-// The columns no instruction table owns. They come first in the global column numbering, the tables after.
-pub const NUM_GLOBAL_COLUMNS: usize = 6;
-pub const MEMORY_0: usize = 0;
-pub const MEMORY_1: usize = 1;
-pub const MEMORY_2: usize = 2;
-pub const MEMORY_FINAL_COUNTERS: usize = 3;
-pub const BYTECODE_FINAL_COUNTERS: usize = 4;
-pub const QFLOCK: usize = 5;
-
 pub const BLAKE2S_R1CS_LOG_SIZE: usize = 14;
 pub const K_BITS: usize = 64;
 pub const FLOCK_K_SKIP: usize = 6; // log2_ceil(K_BITS)
-const LOG_PACKING: usize = 6; // bits per committed K-element: log2_ceil(K_BITS)
 
 pub const FLOCK_NUM_LINCHECK_ROUNDS: usize = BLAKE2S_R1CS_LOG_SIZE - FLOCK_K_SKIP;
-const QFLOCK_SLOT_BITS: usize = BLAKE2S_R1CS_LOG_SIZE - LOG_PACKING;
 pub const BLAKE2S_CONSTANT_COLUMN: usize = 512;
-
-pub const MAX_TABLE_LOG: usize = 32;
-pub const MIN_STACKED_LOG: usize = 15;
-pub const MAX_STACKED_LOG: usize = 28;
-
-pub struct Layout {
-    pub log_memory: usize,
-    pub log_bytecode: usize,
-    pub tables: Vec<Table>,
-    pub push: Vec<BusBlock>,
-    pub pull: Vec<BusBlock>,
-    pub count: Vec<BusBlock>,
-    pub placements: Vec<Placement>,
-    pub stack_log: usize,
-    pub placed: u64, // the words the columns fill, from the bottom of the stack
-    pub table_log_heights: Vec<usize>,
-}
 
 fn cols<const N: usize>(columns: &[&str], names: [&str; N]) -> [usize; N] {
     names.map(|name| {
@@ -531,109 +487,3 @@ pub const BLAKE2S_SLOTS: [Option<&str>; 20] = [
     Some("cv0_lo"), Some("cv0_hi"), Some("cv1_lo"), Some("cv1_hi"), Some("out0_lo"), Some("out0_hi"), Some("out1_lo"), Some("out1_hi"), None, None,
     Some("m0_lo"), Some("m0_hi"), Some("m1_lo"), Some("m1_hi"), Some("m2_lo"), Some("m2_hi"), Some("m3_lo"), Some("m3_hi"), Some("md_lo"), Some("md_hi"),
 ];
-
-const TABLE_WIDTHS: [usize; N_TABLES] = [
-    ARITH_COLUMNS.len(),
-    ARITH_COLUMNS.len(),
-    SET_COLUMNS.len(),
-    DEREF_COLUMNS.len(),
-    JUMP_COLUMNS.len(),
-    BLAKE2S_COLUMNS.len(),
-];
-pub const GLOBAL_COLUMN_BASES: [usize; N_TABLES] = {
-    let mut bases = [NUM_GLOBAL_COLUMNS; N_TABLES];
-    let mut table = 1;
-    while table < N_TABLES {
-        bases[table] = bases[table - 1] + TABLE_WIDTHS[table - 1];
-        table += 1;
-    }
-    bases
-};
-
-/// The layout of a proof of `bytecode_len` stacked bytecode words with the announced sizes.
-pub fn build_layout(bytecode_len: usize, log_memory: u64, table_rows: &[u64]) -> Result<Layout, VerifierError> {
-    let log_bytecode = log2_strict(bytecode_len as u64)?;
-    require(
-        (16..=32).contains(&log_memory)
-            && table_rows.iter().all(|&rows| rows <= 1 << MAX_TABLE_LOG)
-            && (BUS_BITS..=32 + BUS_BITS).contains(&log_bytecode),
-        VerifierError::AnnouncedTableSizes,
-    )?;
-    let log_bytecode = log_bytecode - BUS_BITS;
-    let log_memory = log_memory as usize;
-    // A table's height is the least power of two holding its rows.
-    let table_log_heights: Vec<usize> = table_rows.iter().map(|&rows| log2_ceil(rows)).collect();
-
-    let tables = tables();
-    let mut push = Vec::new();
-    let mut pull = Vec::new();
-    let mut count = Vec::new();
-    for ((table, &height), &rows) in tables.iter().zip(&table_log_heights).zip(table_rows) {
-        let block = |coordinates: &Vec<Form>| BusBlock {
-            log_rows: height,
-            rows,
-            coordinates: coordinates.clone(),
-            owner: table.opcode,
-        };
-        push.extend(table.flushes.push.iter().map(block));
-        pull.extend(table.flushes.pull.iter().map(block));
-        count.extend(table.count_columns().map(|local| block(&vec![col(local, 0)])));
-    }
-
-    // Every column's log size, in global order: the framework's, q_flock's, then each table's block.
-    let qflock_kappa = table_log_heights[OP_BLAKE2S] + QFLOCK_SLOT_BITS;
-    let mut kappas = vec![
-        log_memory,
-        log_memory,
-        log_memory,
-        log_memory,
-        log_bytecode,
-        qflock_kappa,
-    ];
-    for table in &tables {
-        kappas.extend(vec![table_log_heights[table.opcode]; table.width()]);
-    }
-
-    // A BLAKE2s value limb gets no block of its own: it is committed inside q_flock, whose slots
-    // interleave, so it sits at q_flock's offset behind its own slot's bits. Same width either way.
-    let mut limbs = BTreeMap::new();
-    for (slot, name) in BLAKE2S_SLOTS.iter().enumerate() {
-        if let Some(name) = name {
-            limbs.insert(
-                GLOBAL_COLUMN_BASES[OP_BLAKE2S] + cols(BLAKE2S_COLUMNS, [name])[0],
-                slot as u64,
-            );
-        }
-    }
-    let blocks: Vec<usize> = (0..kappas.len()).filter(|column| !limbs.contains_key(column)).collect();
-    let block_kappas: Vec<usize> = blocks.iter().map(|&column| kappas[column]).collect();
-    let (block_offsets, total_log) = stack_offsets(&block_kappas);
-    let offsets: BTreeMap<usize, u64> = blocks.into_iter().zip(block_offsets).collect();
-    let stack_log = MIN_STACKED_LOG.max(total_log); // Floor at the PCS minimum
-    let placed = block_kappas.iter().map(|&kappa| 1 << kappa).sum();
-    let placement = |(column, &kappa): (usize, &usize)| match limbs.get(&column) {
-        Some(slot) => Placement {
-            variables: kappa,
-            index: offsets[&QFLOCK] + slot,
-            low: QFLOCK_SLOT_BITS,
-        },
-        None => Placement {
-            variables: kappa,
-            index: offsets[&column],
-            low: 0,
-        },
-    };
-    let placements = kappas.iter().enumerate().map(placement).collect();
-    Ok(Layout {
-        log_memory,
-        log_bytecode,
-        tables,
-        push,
-        pull,
-        count,
-        placements,
-        stack_log,
-        placed,
-        table_log_heights,
-    })
-}

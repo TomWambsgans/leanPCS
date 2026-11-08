@@ -21,8 +21,8 @@
 //! of `ℓ`. So the combination is not one WHIR claim; it is one claim of a type that ring-switches inside the opening
 //! (leanVM's `ring_switch_open`: the 64 slices, the map `Φ`, a weighted WHIR claim), what [`Slices::Claim`] leaves to
 //! `PCS_OPEN`. With `E`-linear claims only, the 64 slices are sent and the contract computes the ring switch's
-//! target ([`Slices::Weighted`]: its weight `Φ(eq(p, ·))` left to a weighted claim; [`Slices::InContract`], the
-//! measured baseline: its coefficients and its weight at a point computed by the contract too).
+//! target ([`Slices::Weighted`]: its weight `Φ(eq(p, ·))` left to a weighted claim; [`Slices::InContract`], as
+//! leanVM's own verifier: its coefficients and its weight at a point computed by the contract too).
 
 use crate::VerifierError;
 use crate::field::{E, GEN};
@@ -40,7 +40,7 @@ pub const PACKING: usize = 6;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Slices {
     /// leanVM's: sent; the contract computes the ring switch's map, its 64 coefficients, its target, and the
-    /// weight `Φ(eq(p, ·))` at a point (as the baseline contract's stack batch does).
+    /// weight `Φ(eq(p, ·))` at a point (as leanVM's own verifier's stack batch does).
     InContract,
     /// Sent; the contract computes the target only, the weight left to `PCS_OPEN` as a weighted claim.
     Weighted,

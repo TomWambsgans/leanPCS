@@ -164,7 +164,8 @@ mod tests {
         E::new(next(), next(), next())
     }
 
-    /// leanVM's walk, as `flock::verify_flock_lincheck` does it, for the terminal's matrix terms and its known terms.
+    /// leanVM's walk, as leanVM 42422001's `verify_flock_lincheck` does it, for the terminal's matrix terms and its
+    /// known terms.
     fn walked_terminal(z_skip: E, chi_in: &[E], chi_in_prime: &[E], s: &[E], alpha: E) -> E {
         let skip_weights = lagrange_weights(K_BITS, z_skip);
         let high = eq_kernel(chi_in_prime);
