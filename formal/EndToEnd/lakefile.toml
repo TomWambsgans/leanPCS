@@ -295,3 +295,20 @@ name = "KeccakFlushes"
 srcDir = "../KeccakFlushes"
 globs = ["KeccakFlushes"]
 leanOptions = { warningAsError = true }
+
+# The Keccak VM's π1-rec3 as a graph (`formal/RecGraphKeccak`): its recorded verifier graph
+# (`crates/leanvm_rec/tests/lean_graph_keccak.rs` writes `RecGraphKeccak/Emitted.lean`, data only), the verifier as a
+# `RecGraph.Prog` program (its Lean recording equals the emitted graph: `RecGraphKeccakTest/Pi1Check.lean`, run with
+# `lake env lean`), and graph = verifier against `UniKeccak`'s `runWithK` at `keccakRec3`.
+[[lean_lib]]
+name = "RecGraphKeccak"
+srcDir = "../RecGraphKeccak"
+globs = ["RecGraphKeccak", "RecGraphKeccak.+"]
+leanOptions = { warningAsError = true }
+
+# The compiler on `RecGraphKeccak.Emitted.graph` itself, against the Rust's circuit for the Keccak π1-rec3
+# (`RecGraphKeccakTest/Circuit.lean`; the graph and circuit from `crates/leanvm_rec/tests/lean_circuit_keccak128.rs`).
+[[lean_exe]]
+name = "rec-circuit-keccak"
+srcDir = "../RecGraphKeccak"
+root = "RecGraphKeccakTest.Circuit"
