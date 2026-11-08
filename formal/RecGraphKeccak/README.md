@@ -60,8 +60,9 @@ cargo test --release -p leanvm_rec --test lean_graph_keccak                 # fa
   Keccak graph: if the compiler accepts `RecGraphKeccak.Emitted.graph`, π2's satisfying witnesses carry its outputs.
   [`RecGraphKeccakTest/Circuit.lean`](RecGraphKeccakTest/Circuit.lean) (`lake exe rec-circuit-keccak GRAPH`) is the
   run: on the graph `crates/leanvm/rec/tests/lean_circuit_keccak.rs` writes (h1, 2026-11-08) it checks the file is
-  `Emitted.graph`, compiles it in Lean (16,133 expanded nodes, 677 s, 2.9 GB) and prints a circuit **identical** to the
-  Rust's (`diff`: 20,918 lines; `N = 2^24`, 14 regions, 21 blocks, 36 ports, 20,611 `κ`).
+  `Emitted.graph` (the reference's setup roots `Pi1.referenceRootsK`), compiles it in Lean (16,133 expanded nodes,
+  1,219 s under load, 2.9 GB) and prints a circuit **identical** to the Rust's (`diff`: 20,930 lines; `N = 2^24`, 14
+  regions, 21 blocks, 36 ports, 20,623 `κ`).
 
 ```sh
 LEAN_CIRCUIT_OUT=out cargo test --release -p leanvm_rec --test lean_circuit_keccak -- --ignored --nocapture
