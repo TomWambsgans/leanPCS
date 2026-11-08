@@ -155,6 +155,30 @@ fn byte_pair_pass_is_the_generic_pass() {
     }
 }
 
+/// The byte rows' pass with eq-scaled products' tables (the aarch64 pass) is the byte pass, at every scale, padding
+/// included, down to fewer quad coordinates than the scale.
+#[test]
+fn scaled_byte_pair_pass_is_the_byte_pass() {
+    use lv42_flock::zerocheck::multilinear::{PackedWitness, bit_round_pair_bytes, bit_round_pair_bytes_scaled};
+    let mut rng = Rng(0x5eed_0008);
+    let padding = PaddingSpec {
+        k_log: 14,
+        useful_bits_per_block: 16_000,
+    };
+    for m in [6usize, 7, 11, 15, 18] {
+        let [a, b, c] = witness(m, &padding, &mut rng);
+        let [noise, ..] = witness(m, &padding, &mut rng);
+        let c: Vec<u8> = c.iter().zip(&noise).map(|(&x, &y)| x ^ y).collect();
+        let bits = PackedWitness { a: &a, b: &b, c: &c };
+        let w8: [F192; 8] = std::array::from_fn(|_| rng.ext());
+        let r_eq: Vec<F192> = (0..m - 4).map(|_| rng.ext()).collect();
+        let want = bit_round_pair_bytes(bits, &w8, &r_eq, &padding);
+        assert_eq!(bit_round_pair_bytes_scaled::<1>(bits, &w8, &r_eq, &padding), want, "m = {m}");
+        assert_eq!(bit_round_pair_bytes_scaled::<2>(bits, &w8, &r_eq, &padding), want, "m = {m}");
+        assert_eq!(bit_round_pair_bytes_scaled::<3>(bits, &w8, &r_eq, &padding), want, "m = {m}");
+    }
+}
+
 /// At a skip of 3, the byte kernel's round 1 (GFNI) is the generic one's.
 #[test]
 fn round1_bytes_is_the_generic_round1() {

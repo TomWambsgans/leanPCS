@@ -87,6 +87,7 @@ transaction gas under EIP-7623 at a claim price of 0, without the 21,000 base.
 | VM execution | 154,148 cycles; tables of `2^14`–`2^16` rows, memory `2^20` | 473,348 cycles; `2^16`–`2^17` rows, memory `2^22` |
 | π1 prover (π1-rec3) | 2.7 s cold, 3.65 s warm median of 3; 6.9 GB | 4.7 s (main line), 14.4 GB |
 | π2 prover | 4.4 s + 1.7 s openings (and 3.8 s witness); 9.8 GB | 3.0 s + 0.9 s openings (and 2.9 s witness); 9.8 GB |
+| trace → π1 → π2, per proof (`tests/pipeline.rs`) | **4.1 s** (Mac, load 2–7; π1 with π2's witness 1.87, π2 1.58 + 0.70 openings); 8.9 s on h2, 11.5–12.1 s on h1 under load; per circuit, once, 0.9 s; 12.5 GB | |
 | Calldata to the contract | 980 B | 980 B |
 | Gas (real proof) | 28,325 execution; **43,309** transaction | 29,105 execution; 44,113 transaction |
 | PCS claims | 7, in 6 `PCS_OPEN` calls | 7, in 6 calls |

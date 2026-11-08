@@ -1754,6 +1754,7 @@ name = "leanvm_statement"
 version = "0.1.0"
 dependencies = [
  "evm_link",
+ "primitives",
  "revm",
 ]
 

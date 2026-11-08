@@ -4,6 +4,7 @@
 // univariate_skip_optimized.rs (the fixed small and medium eq coordinates, the shift-reduce, the C part on S lifted
 // to Λ). New here: a univariate skip of any `k` in 3..=6, the round-1 kernel for it, the bit passes' schedule, and the
 // eq point's sampled coordinates as successive squares of one (`EqPoint::Squares`, the univariate PIOP's π1-rec).
+// On aarch64, level 0 at a skip of 3 is `bit_round_pair_bytes_scaled` (eq-scaled products' tables).
 // CREDIT: https://github.com/succinctlabs/flock (flock-core), MIT OR Apache-2.0. MIT OR Apache-2.0; see AGENTS.md.
 //! The zerocheck with a univariate skip of `k` variables, `3 ≤ k ≤ 6`: leanVM's protocol with `k` for its fixed 6
 //! (`leanvm_statement::flock_min`'s `zerocheck` verifies it).
@@ -34,9 +35,9 @@ use primitives::multilinear::lagrange_weights_naive;
 
 use super::bit_fold::BitFold;
 use super::multilinear::{
-    PackedWitness, bit_round_materialize, bit_round_pair, bit_round_pair_bytes, fold_and_compute_round_pair_into,
-    fold_and_compute_round_single_into, fold_in_place_pair, fold_in_place_single, interpolate_at_z_combined,
-    round_pair_naive, round_single_naive,
+    BYTES_SCALE_VARS, PackedWitness, bit_round_materialize, bit_round_pair, bit_round_pair_bytes,
+    bit_round_pair_bytes_scaled, fold_and_compute_round_pair_into, fold_and_compute_round_single_into,
+    fold_in_place_pair, fold_in_place_single, interpolate_at_z_combined, round_pair_naive, round_single_naive,
 };
 use super::univariate_skip::{SplitEq, build_eq, ntt_extend_vec};
 use super::univariate_skip_optimized::{c_s, medium_challenges, small_challenges};
@@ -154,7 +155,12 @@ pub fn prove_skip(
         let pair = if t == 0 && k == MIN_SKIP {
             // Positions of one byte: the products from a table of all of them.
             let weights: [F192; 8] = lagrange[..].try_into().expect("8 weights");
-            bit_round_pair_bytes(bits, &weights, &r_rest[1..], padding)
+            if cfg!(target_arch = "aarch64") {
+                // Without a batched product (the Mac): the quads' two lowest eq coordinates in the tables.
+                bit_round_pair_bytes_scaled::<BYTES_SCALE_VARS>(bits, &weights, &r_rest[1..], padding)
+            } else {
+                bit_round_pair_bytes(bits, &weights, &r_rest[1..], padding)
+            }
         } else {
             let fold = BitFold::at_level(&lagrange, &mlv_chis);
             bit_round_pair(bits, &fold, &r_rest[t + 1..], padding)
