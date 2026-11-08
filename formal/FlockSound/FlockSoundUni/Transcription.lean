@@ -2,6 +2,7 @@
 -- (`UniStatement/{Basic, Flock, Mapping, Security}.lean`, transcribed from `crates/leanvm_flock_gas`), the
 -- mathematical objects `formal/FlockSound`'s.
 import FlockSoundUni.Tower
+import UniStatement.BasicFacts
 
 /-!
 # The transcription lemmas: the code's evaluators are the soundness proof's objects
@@ -49,35 +50,7 @@ theorem tx_foldl_mul {α : Type*} (l : List α) (g : α → E) (a : E) :
   | nil => simp
   | cons x l ih => simp only [List.foldl_cons, ih, List.map_cons, List.prod_cons]; ring
 
-theorem tx_foldl_mul_range' (f : ℕ → E) : ∀ (m s : ℕ) (a : E),
-    (List.range' s m).foldl (fun acc k ↦ acc * f k) a = a * ∏ k ∈ range m, f (s + k)
-  | 0, s, a => by simp
-  | m + 1, s, a => by
-    rw [List.range'_succ, List.foldl_cons, tx_foldl_mul_range' f m (s + 1), Finset.prod_range_succ']
-    simp only [add_zero]
-    rw [Finset.prod_congr rfl fun k _ ↦ show f (s + 1 + k) = f (s + (k + 1)) by congr 1; omega]
-    ring
-
 /-! ## The constants (item 2) -/
-
-theorem tx_ofLane_phiFold (v : ℕ) : ∀ n : ℕ,
-    K.ofLane ((List.range n).foldl (fun acc bit ↦
-      if v.testBit bit then acc ^^^ Flock.phiBasis.getD bit 0 else acc) 0) =
-      ∑ b ∈ range n, if v.testBit b then K.ofLane (Flock.phiBasis.getD b 0) else 0
-  | 0 => by simp [ofLane_zero]
-  | n + 1 => by
-    rw [List.range_succ, List.foldl_append, List.foldl_cons, List.foldl_nil, Finset.sum_range_succ,
-      ← tx_ofLane_phiFold v n]
-    split_ifs <;> simp [ofLane_xor]
-
-/-- **`phi` is `φ_8`**: the code's `UInt64` xor of the basis words is the sum in `K`. -/
-theorem phi_eq (v : ℕ) : Flock.phi v = ofK (Lv42.Parameters.Flock.phi8 v) := by
-  rw [Flock.phi, eK_eq, tx_ofLane_phiFold, Lv42.Parameters.Flock.phi8, ← Fin.sum_univ_eq_sum_range]
-  refine congrArg ofK (Finset.sum_congr rfl fun i _ ↦ ?_)
-  by_cases h : v.testBit i
-  · simp only [h, ↓reduceIte]
-    fin_cases i <;> rfl
-  · simp only [h, Bool.false_eq_true, ↓reduceIte]
 
 theorem mediumGenerator_eq : Flock.mediumGenerator = Lv42.Parameters.Flock.g0 := rfl
 
@@ -104,127 +77,11 @@ theorem ptOf_fixed_append (sampled : List E) {n' ns : ℕ} (h : n' = 7 + ns) :
 
 /-! ## The skip's nodes and weights (item 1) -/
 
-theorem tx_ofK_add (a b : K) : ofK (a + b) = ofK a + ofK b := map_add (algebraMap K E) a b
-
-/-- **`phi` is `F_2`-linear.** -/
-theorem phi_xor (a b : ℕ) : Flock.phi (a ^^^ b) = Flock.phi a + Flock.phi b := by
-  rw [phi_eq, phi_eq, phi_eq, phi8_xor, tx_ofK_add]
-
 /-- **The nodes `φ(0), …, φ(2^n − 1)` are an `F_2`-subspace**: the sum of two is the node of the xor
 of their indices, again below `2^n`. -/
 theorem phi_add_mem {n a b : ℕ} (ha : a < 2 ^ n) (hb : b < 2 ^ n) :
     a ^^^ b < 2 ^ n ∧ Flock.phi a + Flock.phi b = Flock.phi (a ^^^ b) :=
   ⟨Nat.xor_lt_two_pow ha hb, (phi_xor a b).symm⟩
-
-/-- The nodes below `128` are distinct (`phi8_injOn`). -/
-theorem phi_injOn {a b : ℕ} (ha : a < 128) (hb : b < 128) (h : Flock.phi a = Flock.phi b) : a = b := by
-  rw [phi_eq, phi_eq] at h
-  exact phi8_injOn ha hb (ofK_injective h)
-
-theorem tx_xor_eq_zero {a b : ℕ} (h : a ^^^ b = 0) : a = b := by
-  have h' : a ^^^ (a ^^^ b) = a ^^^ 0 := by rw [h]
-  rwa [← Nat.xor_assoc, Nat.xor_self, Nat.zero_xor, Nat.xor_zero, eq_comm] at h'
-
-/-- Every node's denominator `Π_{j ≠ i} (φ_i − φ_j)` is the window's `Π_{t ≠ 0} φ_t`: `j ↦ i xor j`. -/
-theorem tx_prod_window {n i : ℕ} (hi : i < 2 ^ n) :
-    ∏ j ∈ (range (2 ^ n)).erase i, (Flock.phi i - Flock.phi j) =
-      ∏ t ∈ range (2 ^ n - 1), Flock.phi (1 + t) := by
-  have hne : ∀ j, j ≠ i → i ^^^ j ≠ 0 := fun j hj h ↦ hj (tx_xor_eq_zero h).symm
-  refine Finset.prod_nbij' (fun j ↦ (i ^^^ j) - 1) (fun t ↦ i ^^^ (t + 1)) ?_ ?_ ?_ ?_ ?_
-  · intro j hj
-    simp only [Finset.mem_erase, Finset.mem_range] at hj ⊢
-    have h1 := Nat.xor_lt_two_pow hi hj.2
-    have h2 := hne j hj.1
-    omega
-  · intro t ht
-    simp only [Finset.mem_erase, Finset.mem_range] at ht ⊢
-    refine ⟨fun h ↦ ?_, Nat.xor_lt_two_pow hi (by omega)⟩
-    have h' : i ^^^ (i ^^^ (t + 1)) = i ^^^ i := by rw [h]
-    rw [← Nat.xor_assoc, Nat.xor_self, Nat.zero_xor] at h'
-    omega
-  · intro j hj
-    simp only [Finset.mem_erase, Finset.mem_range] at hj
-    have h2 := hne j hj.1
-    show i ^^^ ((i ^^^ j) - 1 + 1) = j
-    rw [Nat.sub_add_cancel (Nat.pos_of_ne_zero h2), ← Nat.xor_assoc, Nat.xor_self, Nat.zero_xor]
-  · intro t _
-    show (i ^^^ (i ^^^ (t + 1))) - 1 = t
-    rw [← Nat.xor_assoc, Nat.xor_self, Nat.zero_xor, Nat.add_sub_cancel]
-  · intro j hj
-    simp only [Finset.mem_erase, Finset.mem_range] at hj
-    have h2 := hne j hj.1
-    rw [sub_eq_add_E, ← phi_xor, Nat.add_sub_cancel' (Nat.one_le_iff_ne_zero.mpr h2)]
-
-/-- **The window denominator** is every node's denominator. -/
-theorem windowDenominator_eq {n i : ℕ} (hi : i < 2 ^ n) :
-    Flock.windowDenominator (2 ^ n) =
-      (∏ j ∈ (range (2 ^ n)).erase i, (Flock.phi i - Flock.phi j))⁻¹ := by
-  rw [tx_prod_window hi, Flock.windowDenominator, tx_foldl_mul_range', one_mul]
-
-/-- Prefix products pushed one by one. -/
-theorem tx_foldl_push (d : ℕ → E) : ∀ n : ℕ,
-    (List.range n).foldl (fun acc i ↦ acc.push (acc.back?.getD 1 * d i)) #[1] =
-      ((List.range (n + 1)).map fun t ↦ ∏ j ∈ range t, d j).toArray
-  | 0 => by simp
-  | n + 1 => by
-    rw [List.range_succ, List.foldl_append, tx_foldl_push d n, List.foldl_cons, List.foldl_nil,
-      @List.range_succ (n + 1), List.map_append]
-    simp [Finset.prod_range_succ, List.getLast?_range]
-
-theorem lagrangeWeights_length (count : ℕ) (pt : E) :
-    (Flock.lagrangeWeights count pt).length = count := by
-  simp [Flock.lagrangeWeights]
-
-theorem tx_lagrangeWeights_getD {count i : ℕ} (hi : i < count) (pt : E) :
-    (Flock.lagrangeWeights count pt).getD i 0 =
-      (∏ j ∈ range i, (pt + Flock.phi j)) *
-        (∏ j ∈ range (count - 1 - i), (pt + Flock.phi (count - 1 - j))) * Flock.windowDenominator count := by
-  simp only [Flock.lagrangeWeights]
-  simp only [tx_foldl_push]
-  simp [List.getD_eq_getElem?_getD, hi, Array.getD_eq_getD_getElem?]
-  left
-  rw [List.getElem?_range (by omega), Option.map_some, Option.getD_some]
-  congr 1
-  · refine Finset.prod_congr rfl fun x hx ↦ ?_
-    rw [Finset.mem_range] at hx
-    simp [Array.getElem?_ofFn, show x < count by omega]
-  · rw [show count - (i + 1) = count - 1 - i by omega]
-    refine Finset.prod_congr rfl fun x hx ↦ ?_
-    rw [Finset.mem_range] at hx
-    simp [Array.getElem?_ofFn, show count - 1 - x < count by omega]
-
-/-- `Π_{j ∈ [0, N) \ {i}} f j` as the prefix before `i` and the suffix after. -/
-theorem tx_prod_erase (f : ℕ → E) {N i : ℕ} (hi : i < N) :
-    ∏ j ∈ (range N).erase i, f j = (∏ j ∈ range i, f j) * ∏ j ∈ range (N - 1 - i), f (i + 1 + j) := by
-  have hmem : i ∈ range N := Finset.mem_range.mpr hi
-  have h1 := Finset.mul_prod_erase (range N) (fun j ↦ if j = i then 1 else f j) hmem
-  simp only [if_true, one_mul] at h1
-  rw [Finset.prod_congr rfl fun j hj ↦ show f j = (if j = i then 1 else f j) by
-    rw [if_neg (Finset.ne_of_mem_erase hj)], h1]
-  rw [show N = i + 1 + (N - 1 - i) by omega, Finset.prod_range_add, Finset.prod_range_succ, if_pos rfl,
-    mul_one, show i + 1 + (N - 1 - i) - 1 - i = N - 1 - i by omega]
-  congr 1
-  · exact Finset.prod_congr rfl fun j hj ↦ by rw [if_neg (by rw [Finset.mem_range] at hj; omega)]
-  · exact Finset.prod_congr rfl fun j _ ↦ by rw [if_neg (by omega)]
-
-/-- **The code's weight at node `i`** is the Lagrange basis polynomial's value:
-`Π_{j ≠ i} (z − φ_j) / (φ_i − φ_j)` over the nodes `φ(0), …, φ(2^n − 1)`. -/
-theorem lagrangeWeights_getD {n i : ℕ} (hi : i < 2 ^ n) (z : E) :
-    (Flock.lagrangeWeights (2 ^ n) z).getD i 0 =
-      ∏ j ∈ (range (2 ^ n)).erase i, (Flock.phi i - Flock.phi j)⁻¹ * (z - Flock.phi j) := by
-  rw [tx_lagrangeWeights_getD hi, windowDenominator_eq hi, Finset.prod_mul_distrib,
-    Finset.prod_inv_distrib, tx_prod_erase (fun j ↦ z - Flock.phi j) hi]
-  have hB : ∏ j ∈ range (2 ^ n - 1 - i), (z + Flock.phi (2 ^ n - 1 - j)) =
-      ∏ j ∈ range (2 ^ n - 1 - i), (z - Flock.phi (i + 1 + j)) := by
-    rw [← Finset.prod_range_reflect (fun j ↦ z - Flock.phi (i + 1 + j))]
-    refine Finset.prod_congr rfl fun j hj ↦ ?_
-    rw [Finset.mem_range] at hj
-    rw [sub_eq_add_E]
-    congr 2
-    omega
-  rw [hB]
-  simp only [sub_eq_add_E]
-  ring
 
 /-- **A Lagrange basis polynomial at `z`**, its nodes indexed through `e : ι ≃ Fin N` by numbers. -/
 theorem tx_basis_eval {ι : Type*} [Fintype ι] [DecidableEq ι] {N : ℕ} (e : ι ≃ Fin N) (w : ℕ → E)
@@ -292,20 +149,6 @@ theorem tx_skipNodes_eq (k : ℕ) (hk : k ≤ 6) :
   funext q
   simp [skipNodes, Lv42.Parameters.Flock.skipNode, phi_eq, tx_skipIdx_val]
 
-/-- `dot` is the sum of the products, the second list read by `getD`. -/
-theorem tx_dot_foldl : ∀ (w v : List E) (a : E),
-    (w.zip v).foldl (fun acc (x, y) ↦ acc + x * y) a =
-      a + ∑ i ∈ range w.length, w.getD i 0 * v.getD i 0
-  | [], _, a => by simp
-  | x :: w, [], a => by simp
-  | x :: w, y :: v, a => by
-    rw [List.zip_cons_cons, List.foldl_cons, tx_dot_foldl w v, List.length_cons, Finset.sum_range_succ']
-    simp only [List.getD_cons_succ, List.getD_cons_zero]
-    ring
-
-theorem tx_dot_eq (w v : List E) : dot w v = ∑ i ∈ range w.length, w.getD i 0 * v.getD i 0 := by
-  rw [dot, tx_dot_foldl, zero_add]
-
 /-- **The zerocheck's starting claim**: `lagrangeInterpolate` of `2^k` zeros and the coset values is
 the interpolant `interp` at `z`. -/
 theorem lagrangeInterpolate_skip (k : ℕ) (hk : k ≤ 6) (coset : List E) (z : E) :
@@ -329,9 +172,6 @@ theorem lagrangeInterpolate_skip (k : ℕ) (hk : k ≤ 6) (coset : List E) (z : 
     simp
 
 /-! ## The cube forms (item 3) -/
-
-theorem tx_array_getD (a : Array E) (i : ℕ) (d : E) : a.getD i d = a.toList.getD i d := by
-  simp [Array.getD_eq_getD_getElem?, List.getD_eq_getElem?_getD]
 
 theorem tx_cubeEq_snoc (ps : List E) (r : E) (x : ℕ) :
     cubeEq (ps ++ [r]) (ps.length + 1) x =
@@ -426,18 +266,6 @@ theorem multilinearEval_eq (t p : List E) {n : ℕ} (hp : p.length = n) (ht : t.
   rw [multilinearEval, tx_fold_mle p t.toArray (by simpa using ht), sum_range_eq_sum_cube, mle]
   refine Finset.sum_congr rfl fun b _ ↦ ?_
   rw [cubeEq_cubeFin, tx_array_getD]
-
-theorem tx_eqEval_foldl : ∀ (x y : List E) (a : E), x.length = y.length →
-    (x.zip y).foldl (fun acc (u, v) ↦ acc * (1 + u + v)) a =
-      a * ∏ i ∈ range x.length, (1 + x.getD i 0 + y.getD i 0)
-  | [], [], a, _ => by simp
-  | u :: x, v :: y, a, h => by
-    rw [List.zip_cons_cons, List.foldl_cons, tx_eqEval_foldl x y _ (by simpa using h),
-      List.length_cons, Finset.prod_range_succ']
-    simp only [List.getD_cons_succ, List.getD_cons_zero]
-    ring
-  | [], _ :: _, _, h => by simp at h
-  | _ :: _, [], _, h => by simp at h
 
 /-- **`eqEval`** is `FlockSound.eqEval` (`Π (x y + (1 − x)(1 − y))`, characteristic two). -/
 theorem eqEval_eq (x y : List E) {n : ℕ} (hx : x.length = n) (hy : y.length = n) :

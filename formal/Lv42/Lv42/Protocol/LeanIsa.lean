@@ -19,6 +19,7 @@ public import Lv42.Protocol.VerifierTables
 public import Lv42.Protocol.FixedColumns
 public import Lv42.Protocol.FlockSpec
 public import Lv42.Protocol.Stack
+public import Lv42.Protocol.LeanIsaBase
 
 /-!
 # The leanISA instance
@@ -122,37 +123,9 @@ def opcodeComponent : Fin 6 → Component K
   | 4 => ⟨jumpTable⟩
   | 5 => ⟨blake2sTable⟩
 
-/-- The channels whose coordinate `1` is a read count: the memory and bytecode pulls (§6.2). -/
-def counted (c : RawChannel K) : Bool := c.name = MemPull.name || c.name = BytecodePull.name
-
 /-- Opcode table `j` as an M3 table. -/
 def opcodeTable (j : Fin 6) : M3Table K Arithmetization.Direction :=
   (opcodeComponent j).toM3 channelSep channelDir counted
-
-/-- The side of the bus a direction flushes on. -/
-def sideOf : Arithmetization.Direction → Side
-  | .push => .push
-  | .pull => .pull
-
-/-! ## Sizes -/
-
-/-- The announced sizes: the memory log-size, positive, and the six opcode tables'
-log-heights. -/
-structure Sizes where
-  /-- The memory log-size `log_mem`. -/
-  logMem : ℕ
-  /-- The memory has at least two cells. -/
-  logMem_pos : 0 < logMem
-  /-- The opcode tables' row counts, in the ensemble's order. -/
-  rows : Fin 6 → ℕ
-
-/-- An opcode table's log-height: the least `τ` with `rows ≤ 2^τ` (`log2_ceil`,
-`python-verifier/verifier.py:886`), `0` for no row. -/
-def Sizes.τ (s : Sizes) (j : Fin 6) : ℕ := Nat.clog 2 (s.rows j)
-
-/-- An opcode table's rows fit in its height. -/
-theorem Sizes.rows_le (s : Sizes) (j : Fin 6) : s.rows j ≤ 2 ^ s.τ j :=
-  Nat.le_pow_clog (by norm_num) _
 
 /-! ## The tables -/
 
@@ -307,12 +280,6 @@ def blocks : Blocks where
     · have := List.pairwise_iff_getElem.mp (stackOrder_pairwise prog s) a b a.isLt b.isLt h
       simp only [decide_eq_true_eq] at this
       exact this
-
-/-- The minimum stacked size, `MIN_MU` (`pcs.rs:49`). -/
-def minMu : ℕ := 15
-
-/-- The maximum stacked size, `MAX_MU` (`pcs.rs:51`). -/
-def maxMu : ℕ := 28
 
 /-- The stack's number of variables: the blocks' total, rounded up to a power of two, at least
 `2 ^ MIN_MU` (`placements_of`, `witness.rs:91`). -/
@@ -469,12 +436,6 @@ def Sizes.Admissible (prog : Program) (s : Sizes) : Prop :=
 
 instance (prog : Program) (s : Sizes) : Decidable (s.Admissible prog) :=
   inferInstanceAs (Decidable (_ ∧ _))
-
-/-- The WHIR rate check (`pcs/src/whir_config.rs:43-55`): the inverse rate's logarithm is in
-`[1, 4]`. A parameter of the commitment, read off the same announcement. -/
-def validRate (ρ : ℕ) : Prop := 1 ≤ ρ ∧ ρ ≤ 4
-
-instance (ρ : ℕ) : Decidable (validRate ρ) := inferInstanceAs (Decidable (_ ∧ _))
 
 /-- The sizes a witness carries: the memory log-size of its image and the row counts of its six
 opcode tables; none when the image has a single word. -/

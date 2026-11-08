@@ -5,7 +5,9 @@
 module
 
 public import KeccakVm.Isa
-public import Lv42.Protocol.LeanIsa
+public import Lv42.Protocol.LeanIsaBase
+public import Lv42.Protocol.Stack
+public import Lv42.Protocol.FixedColumns
 
 /-!
 # The Keccak VM's relation
@@ -16,7 +18,7 @@ The relation the Keccak VM's univariate verifier proves knowledge of, in the for
 **The instance** `keccakIsaInstance prog s`: nine tables, as Lv42's,
 * the four memory columns `MEM_LO, MEM_HI, MEM_TOP, MFCNT`, the bytecode count `BFCNT`, and the Flock column
   `QFLOCK` of `2^(11 + τ_SHA3)` cells (`2^11` words a permutation, `keccakR1csLogSize = 17`);
-* Lv42's five opcode tables (`XOR`, `MUL`, `SET`, `DEREF`, `JUMP`: `Lv42.Protocol.LeanIsa.opcodeTable`, Clean's
+* Lv42's five opcode tables (`XOR`, `MUL`, `SET`, `DEREF`, `JUMP`: `Lv42.Protocol.LeanIsa.baseTable`, Clean's
   polynomials), and the `SHA3` table (`Sha3Table`): 86 columns (`sha3Columns`), no constraint, its flushes the
   state step, the bytecode read of `(g^5, o_m₀, …, o_m₃, o_tail, o_cap, o_out)` and the 26 cell reads, each a
   memory pull `(g, addr, cnt, v₀, v₁, v₂)` and push `(g, addr, g · cnt, v₀, v₁, v₂)` (Lv42's `memRead`), the
@@ -50,7 +52,7 @@ namespace KeccakVm
 open LeanVM.Parameters LeanVM.Protocol LeanVM.Semantics Lv42.Protocol Lv42.Arithmetization CompPoly CPoly
 open CMlPolynomialEval
 open Lv42.Parameters (Flock.kSkip)
-open Lv42.Protocol.LeanIsa (Sizes opcodeComponent opcodeTable sideOf minMu maxMu)
+open Lv42.Protocol.LeanIsa (Sizes baseComponent baseTable sideOf minMu maxMu)
 
 /-! ## The `SHA3` table -/
 
@@ -149,11 +151,11 @@ def width : Fin 9 → ℕ
   | ⟨0, _⟩ => 4
   | ⟨1, _⟩ => 1
   | ⟨2, _⟩ => 1
-  | ⟨3, _⟩ => (opcodeComponent 0).width
-  | ⟨4, _⟩ => (opcodeComponent 1).width
-  | ⟨5, _⟩ => (opcodeComponent 2).width
-  | ⟨6, _⟩ => (opcodeComponent 3).width
-  | ⟨7, _⟩ => (opcodeComponent 4).width
+  | ⟨3, _⟩ => (baseComponent 0).width
+  | ⟨4, _⟩ => (baseComponent 1).width
+  | ⟨5, _⟩ => (baseComponent 2).width
+  | ⟨6, _⟩ => (baseComponent 3).width
+  | ⟨7, _⟩ => (baseComponent 4).width
   | ⟨8, _⟩ => Sha3Table.width
 
 variable (prog : Program) (s : Sizes)
@@ -183,11 +185,11 @@ theorem rows_le : ∀ j, rows prog s j ≤ 2 ^ height prog s j
 
 /-- The constraint polynomials: Lv42's opcode tables' (`JUMP`'s two); `SHA3` has none. -/
 def constraints : (j : Fin 9) → List (CMvPolynomial (width j) K)
-  | ⟨3, _⟩ => (opcodeTable 0).constraints
-  | ⟨4, _⟩ => (opcodeTable 1).constraints
-  | ⟨5, _⟩ => (opcodeTable 2).constraints
-  | ⟨6, _⟩ => (opcodeTable 3).constraints
-  | ⟨7, _⟩ => (opcodeTable 4).constraints
+  | ⟨3, _⟩ => (baseTable 0).constraints
+  | ⟨4, _⟩ => (baseTable 1).constraints
+  | ⟨5, _⟩ => (baseTable 2).constraints
+  | ⟨6, _⟩ => (baseTable 3).constraints
+  | ⟨7, _⟩ => (baseTable 4).constraints
   | ⟨0, _⟩ => []
   | ⟨1, _⟩ => []
   | ⟨2, _⟩ => []
@@ -195,11 +197,11 @@ def constraints : (j : Fin 9) → List (CMvPolynomial (width j) K)
 
 /-- The flushes: Lv42's opcode tables', each on its channel's side, and `SHA3`'s. -/
 def flushes : (j : Fin 9) → List (Side × Vector (CMvPolynomial (width j) K) 16)
-  | ⟨3, _⟩ => (opcodeTable 0).flushes.map fun f ↦ (sideOf f.1, f.2)
-  | ⟨4, _⟩ => (opcodeTable 1).flushes.map fun f ↦ (sideOf f.1, f.2)
-  | ⟨5, _⟩ => (opcodeTable 2).flushes.map fun f ↦ (sideOf f.1, f.2)
-  | ⟨6, _⟩ => (opcodeTable 3).flushes.map fun f ↦ (sideOf f.1, f.2)
-  | ⟨7, _⟩ => (opcodeTable 4).flushes.map fun f ↦ (sideOf f.1, f.2)
+  | ⟨3, _⟩ => (baseTable 0).flushes.map fun f ↦ (sideOf f.1, f.2)
+  | ⟨4, _⟩ => (baseTable 1).flushes.map fun f ↦ (sideOf f.1, f.2)
+  | ⟨5, _⟩ => (baseTable 2).flushes.map fun f ↦ (sideOf f.1, f.2)
+  | ⟨6, _⟩ => (baseTable 3).flushes.map fun f ↦ (sideOf f.1, f.2)
+  | ⟨7, _⟩ => (baseTable 4).flushes.map fun f ↦ (sideOf f.1, f.2)
   | ⟨8, _⟩ => Sha3Table.flushes
   | ⟨0, _⟩ => []
   | ⟨1, _⟩ => []
@@ -207,11 +209,11 @@ def flushes : (j : Fin 9) → List (Side × Vector (CMvPolynomial (width j) K) 1
 
 /-- The count columns: Lv42's opcode tables', and `SHA3`'s 27. -/
 def counts : (j : Fin 9) → List (Fin (width j))
-  | ⟨3, _⟩ => (opcodeTable 0).count
-  | ⟨4, _⟩ => (opcodeTable 1).count
-  | ⟨5, _⟩ => (opcodeTable 2).count
-  | ⟨6, _⟩ => (opcodeTable 3).count
-  | ⟨7, _⟩ => (opcodeTable 4).count
+  | ⟨3, _⟩ => (baseTable 0).count
+  | ⟨4, _⟩ => (baseTable 1).count
+  | ⟨5, _⟩ => (baseTable 2).count
+  | ⟨6, _⟩ => (baseTable 3).count
+  | ⟨7, _⟩ => (baseTable 4).count
   | ⟨8, _⟩ => Sha3Table.counts
   | ⟨0, _⟩ => []
   | ⟨1, _⟩ => []
@@ -219,11 +221,11 @@ def counts : (j : Fin 9) → List (Fin (width j))
 
 /-- Every constraint has total degree at most two (Lv42's `constraints_degree`). -/
 theorem constraints_degree : ∀ j, ∀ C ∈ constraints j, C.totalDegree ≤ 2
-  | ⟨3, h⟩ => Lv42.Protocol.LeanIsa.constraints_degree ⟨3, h⟩
-  | ⟨4, h⟩ => Lv42.Protocol.LeanIsa.constraints_degree ⟨4, h⟩
-  | ⟨5, h⟩ => Lv42.Protocol.LeanIsa.constraints_degree ⟨5, h⟩
-  | ⟨6, h⟩ => Lv42.Protocol.LeanIsa.constraints_degree ⟨6, h⟩
-  | ⟨7, h⟩ => Lv42.Protocol.LeanIsa.constraints_degree ⟨7, h⟩
+  | ⟨3, _⟩ => Lv42.Protocol.LeanIsa.baseTable_constraints_degree 0
+  | ⟨4, _⟩ => Lv42.Protocol.LeanIsa.baseTable_constraints_degree 1
+  | ⟨5, _⟩ => Lv42.Protocol.LeanIsa.baseTable_constraints_degree 2
+  | ⟨6, _⟩ => Lv42.Protocol.LeanIsa.baseTable_constraints_degree 3
+  | ⟨7, _⟩ => Lv42.Protocol.LeanIsa.baseTable_constraints_degree 4
   | ⟨0, _⟩ => by simp [constraints]
   | ⟨1, _⟩ => by simp [constraints]
   | ⟨2, _⟩ => by simp [constraints]
@@ -231,11 +233,21 @@ theorem constraints_degree : ∀ j, ∀ C ∈ constraints j, C.totalDegree ≤ 2
 
 /-- Every flush coordinate has total degree at most two (Lv42's `flushes_degree`, `Sha3Table.flushes_degree`). -/
 theorem flushes_degree : ∀ j, ∀ f ∈ flushes j, ∀ i, (f.2.get i).totalDegree ≤ 2
-  | ⟨3, h⟩ => Lv42.Protocol.LeanIsa.flushes_degree ⟨3, h⟩
-  | ⟨4, h⟩ => Lv42.Protocol.LeanIsa.flushes_degree ⟨4, h⟩
-  | ⟨5, h⟩ => Lv42.Protocol.LeanIsa.flushes_degree ⟨5, h⟩
-  | ⟨6, h⟩ => Lv42.Protocol.LeanIsa.flushes_degree ⟨6, h⟩
-  | ⟨7, h⟩ => Lv42.Protocol.LeanIsa.flushes_degree ⟨7, h⟩
+  | ⟨3, _⟩ => fun f hf i ↦ by
+    obtain ⟨f', hf', rfl⟩ := List.mem_map.mp hf
+    exact Lv42.Protocol.LeanIsa.baseTable_flushes_degree 0 f' hf' i
+  | ⟨4, _⟩ => fun f hf i ↦ by
+    obtain ⟨f', hf', rfl⟩ := List.mem_map.mp hf
+    exact Lv42.Protocol.LeanIsa.baseTable_flushes_degree 1 f' hf' i
+  | ⟨5, _⟩ => fun f hf i ↦ by
+    obtain ⟨f', hf', rfl⟩ := List.mem_map.mp hf
+    exact Lv42.Protocol.LeanIsa.baseTable_flushes_degree 2 f' hf' i
+  | ⟨6, _⟩ => fun f hf i ↦ by
+    obtain ⟨f', hf', rfl⟩ := List.mem_map.mp hf
+    exact Lv42.Protocol.LeanIsa.baseTable_flushes_degree 3 f' hf' i
+  | ⟨7, _⟩ => fun f hf i ↦ by
+    obtain ⟨f', hf', rfl⟩ := List.mem_map.mp hf
+    exact Lv42.Protocol.LeanIsa.baseTable_flushes_degree 4 f' hf' i
   | ⟨8, _⟩ => Sha3Table.flushes_degree
   | ⟨0, _⟩ => by simp [flushes]
   | ⟨1, _⟩ => by simp [flushes]

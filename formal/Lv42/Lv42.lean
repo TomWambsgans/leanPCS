@@ -4,9 +4,12 @@ import Lv42.Arithmetization.Bytecode
 import Lv42.Arithmetization.Channels
 import Lv42.Arithmetization.Completeness.Balance
 import Lv42.Arithmetization.Completeness.Basics
+import Lv42.Arithmetization.Completeness.BasicsBase
 import Lv42.Arithmetization.Completeness.Bus
 import Lv42.Arithmetization.Completeness.Messages
+import Lv42.Arithmetization.Completeness.MessagesBase
 import Lv42.Arithmetization.Completeness.Rows
+import Lv42.Arithmetization.Completeness.RowsBase
 import Lv42.Arithmetization.Completeness.Satisfied
 import Lv42.Arithmetization.Completeness.Skeletons
 import Lv42.Arithmetization.Completeness.Theorem
@@ -16,6 +19,7 @@ import Lv42.Arithmetization.Soundness.BytecodeChannel
 import Lv42.Arithmetization.Soundness.Lookup
 import Lv42.Arithmetization.Soundness.MemChannel
 import Lv42.Arithmetization.Soundness.Rows
+import Lv42.Arithmetization.Soundness.RowsBase
 import Lv42.Arithmetization.Soundness.StateWalk
 import Lv42.Arithmetization.Soundness.Theorem
 import Lv42.Arithmetization.Soundness.Walk
@@ -34,6 +38,7 @@ import Lv42.Protocol.Blake2sHash
 import Lv42.Protocol.FixedColumns
 import Lv42.Protocol.FlockSpec
 import Lv42.Protocol.LeanIsa
+import Lv42.Protocol.LeanIsaBase
 import Lv42.Protocol.LeanIsa.Bus
 import Lv42.Protocol.LeanIsa.Complete
 import Lv42.Protocol.LeanIsa.Read

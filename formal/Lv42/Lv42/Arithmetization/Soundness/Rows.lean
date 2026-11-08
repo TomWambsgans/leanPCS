@@ -12,6 +12,7 @@
 
 module
 
+public import Lv42.Arithmetization.Soundness.RowsBase
 public import Lv42.Arithmetization.Completeness.Rows
 public import Lv42.Spec.IsaWith
 
@@ -70,32 +71,6 @@ open Lv42.Parameters Lv42.Semantics LeanVM.Parameters
 open Air.Flat (Component)
 
 /-! ## The shape of a row -/
-
-/-- The parameters of what an opcode-table row sends (`sendsOf`): the pulled state, the pushed
-successor, the bytecode count and coordinates, and the memory reads. -/
-structure RowRec where
-  /-- The pulled program counter. -/
-  pc : K
-  /-- The pulled frame pointer. -/
-  fp : K
-  /-- The pushed successor. -/
-  next : Regs K
-  /-- The bytecode read count. -/
-  rbc : K
-  /-- The bytecode coordinates `(opcode, op₁, …, op₇)`. -/
-  e : Vector K 8
-  /-- The memory reads `(addr, count, limbs)`. -/
-  reads : List (K × K × Vector K 3)
-
-/-- A record exists. -/
-instance : Inhabited RowRec := ⟨⟨0, 0, ⟨0, 0⟩, 0, 0, []⟩⟩
-
-/-- What a row with these parameters sends. -/
-def RowRec.sends (x : RowRec) : List (String × Array K) :=
-  sendsOf x.pc x.fp x.next x.rbc x.e x.reads
-
-/-- The pulled state of a record. -/
-def RowRec.src (x : RowRec) : Regs K := ⟨x.pc, x.fp⟩
 
 /-- A component's row in the environment `env` has the shape of an opcode-table row, with at
 most nine memory reads, and under the table's assumptions, constraints and pull guarantees it is
@@ -308,17 +283,6 @@ theorem blake2s_opRow (env : Environment K) : OpRow ⟨blake2sTable⟩ env := by
     exact ⟨.blake2s ![r.om0, r.om1, r.om2, r.om3] r.ocv r.oout r.omd, rfl, blake2s_free_exec hb,
       fun _ ↦ rfl⟩
 
-/-- The output of the `JUMP` row circuit at a row variable that evaluates to `r`: the successor
-selected by the indicator `b`, the local witness at slot `n + 1`. -/
-theorem jump_output_gen (x : Var JumpRow K) (env : Environment K) (n : ℕ) (r : JumpRow K)
-    (hx : eval env x = r) (b : K) (hb : env.get (n + 1) = b) :
-    eval env ((jumpTable.main x).output n) =
-      (⟨b * r.vpc + b * (g * r.pc) + g * r.pc, b * r.vfp + b * r.fp + r.fp⟩ : Regs K) := by
-  subst hx
-  obtain ⟨pc, fp, oc, od, of, vcond, vpc, vfp, rc, rd, rf, rbc⟩ := x
-  dsimp only [jumpTable]
-  simp only [circuit_norm, memRead, bytecodeRead, hb, -BitVec.reduceNeg]
-
 /-- A `JUMP` row has the shape, its pushed successor the table's output, and under the residuals
 and the guarantees steps. -/
 theorem jump_opRow (env : Environment K) : OpRow ⟨jumpTable⟩ env := by
@@ -341,13 +305,6 @@ theorem jump_opRow (env : Environment K) : OpRow ⟨jumpTable⟩ env := by
 
 /-! ## The guarantees of a row -/
 
-/-- A channel whose guarantee a row may need: the memory pull, the bytecode pull, or a channel
-guaranteeing nothing. -/
-def ChannelOk (ch : RawChannel K) : Prop :=
-  ch = MemPull.toRaw ∨ ch = BytecodePull.toRaw ∨ ∀ mult msg data, ch.Guarantees mult msg data
-
--- Each of the six channels is `ChannelOk`: the two lookup pulls by name, the others since their
--- guarantee is `True` at every multiplicity.
 private theorem channelOk_memPull : ChannelOk MemPull.toRaw := Or.inl rfl
 private theorem channelOk_bytecodePull : ChannelOk BytecodePull.toRaw := Or.inr (Or.inl rfl)
 private theorem channelOk_statePull : ChannelOk StatePull.toRaw :=
@@ -358,56 +315,6 @@ private theorem channelOk_memPush : ChannelOk MemPush.toRaw :=
   Or.inr (Or.inr fun _ _ _ _ ↦ trivial)
 private theorem channelOk_bytecodePush : ChannelOk BytecodePush.toRaw :=
   Or.inr (Or.inr fun _ _ _ _ ↦ trivial)
-
-/-- Every interaction of the `XOR` table is on one of the six channels. -/
-theorem xor_channelOk : ∀ a ∈ (⟨xorTable⟩ : Component K).operations.interactions,
-    ChannelOk a.channel := by
-  rw [Component.interactions_eq]
-  simp only [Component.rowOperations_mk, circuit_norm, xorTable, memRead, bytecodeRead,
-    -BitVec.reduceNeg]
-  simp only [forall_eq_or_imp, forall_eq, ChannelInteraction.toRaw_channel, channelOk_memPull,
-    channelOk_bytecodePull, channelOk_statePull, channelOk_statePush, channelOk_memPush,
-    channelOk_bytecodePush, and_self]
-
-/-- Every interaction of the `MUL_NATIVE` table is on one of the six channels. -/
-theorem mul_channelOk : ∀ a ∈ (⟨mulTable⟩ : Component K).operations.interactions,
-    ChannelOk a.channel := by
-  rw [Component.interactions_eq]
-  simp only [Component.rowOperations_mk, circuit_norm, mulTable, memRead, bytecodeRead,
-    -BitVec.reduceNeg]
-  simp only [forall_eq_or_imp, forall_eq, ChannelInteraction.toRaw_channel, channelOk_memPull,
-    channelOk_bytecodePull, channelOk_statePull, channelOk_statePush, channelOk_memPush,
-    channelOk_bytecodePush, and_self]
-
-/-- Every interaction of the `SET_CONSTANT` table is on one of the six channels. -/
-theorem set_channelOk : ∀ a ∈ (⟨setTable⟩ : Component K).operations.interactions,
-    ChannelOk a.channel := by
-  rw [Component.interactions_eq]
-  simp only [Component.rowOperations_mk, circuit_norm, setTable, memRead, bytecodeRead,
-    -BitVec.reduceNeg]
-  simp only [forall_eq_or_imp, forall_eq, ChannelInteraction.toRaw_channel, channelOk_memPull,
-    channelOk_bytecodePull, channelOk_statePull, channelOk_statePush, channelOk_memPush,
-    channelOk_bytecodePush, and_self]
-
-/-- Every interaction of the `DEREF` table is on one of the six channels. -/
-theorem deref_channelOk : ∀ a ∈ (⟨derefTable⟩ : Component K).operations.interactions,
-    ChannelOk a.channel := by
-  rw [Component.interactions_eq]
-  simp only [Component.rowOperations_mk, circuit_norm, derefTable, memRead, bytecodeRead,
-    -BitVec.reduceNeg]
-  simp only [forall_eq_or_imp, forall_eq, ChannelInteraction.toRaw_channel, channelOk_memPull,
-    channelOk_bytecodePull, channelOk_statePull, channelOk_statePush, channelOk_memPush,
-    channelOk_bytecodePush, and_self]
-
-/-- Every interaction of the `JUMP` table is on one of the six channels. -/
-theorem jump_channelOk : ∀ a ∈ (⟨jumpTable⟩ : Component K).operations.interactions,
-    ChannelOk a.channel := by
-  rw [Component.interactions_eq]
-  dsimp only [Component.rowOperations_mk, jumpTable]
-  simp only [circuit_norm, memRead, bytecodeRead, -BitVec.reduceNeg]
-  simp only [forall_eq_or_imp, forall_eq, ChannelInteraction.toRaw_channel, channelOk_memPull,
-    channelOk_bytecodePull, channelOk_statePull, channelOk_statePush, channelOk_memPush,
-    channelOk_bytecodePush, and_self]
 
 /-- Every interaction of the `BLAKE2S` table is on one of the six channels. -/
 theorem blake2s_channelOk : ∀ a ∈ (⟨blake2sTable⟩ : Component K).operations.interactions,

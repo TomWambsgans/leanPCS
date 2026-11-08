@@ -4,7 +4,7 @@
 -- adapted there from leanVM `9d50c92a3`'s `Sha3Table` (`crates/leanvm_core/src/tables.rs`).
 module
 
-public import UniStatement.Tables
+public import UniStatement.TablesBase
 public import KeccakVm.Isa
 
 /-!
@@ -72,7 +72,9 @@ def flushesSha3 : Flushes :=
 
 /-- **The Keccak VM's tables** (`tables_keccak()`): `tables`' five and the `SHA3` table in `BLAKE2S`'s place. -/
 def tablesKeccak : List Table :=
-  tables.set opSha3 ⟨opSha3, sha3Columns, flushesSha3⟩
+  [⟨opXor, arithColumns, flushesArith opXor false⟩, ⟨opMul, arithColumns, flushesArith opMul true⟩,
+    ⟨opSet, setColumns, flushesSet⟩, ⟨opDeref, derefColumns, flushesDeref⟩,
+    ⟨opJump, jumpColumns, flushesJump⟩, ⟨opSha3, sha3Columns, flushesSha3⟩]
 
 /-- `KECCAK_R1CS_LOG_SIZE = keccak_flock::LOG_SIZE`: one permutation is a block of `2^17` positions, `2^11` words. -/
 def keccakR1csLogSize : ℕ := 17

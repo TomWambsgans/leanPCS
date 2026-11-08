@@ -4,6 +4,8 @@
 -- `row_values`). Keccak-f[1600] is leanerVM's (`Statement/Keccak.lean`), read bit by bit through `formal/Circuit`'s
 -- `KeccakBits` and `formal/RecCircuit`'s `stAfter`.
 import KeccakVm.Instance
+import Lv42.Protocol.ToArkLib.Flock.Builder
+import Batteries.Data.BitVec.Lemmas
 import RecCircuit.KeccakMath
 
 /-!

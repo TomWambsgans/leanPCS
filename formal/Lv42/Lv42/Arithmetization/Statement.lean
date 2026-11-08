@@ -372,18 +372,6 @@ structure AssignmentRepresents (w : EnsembleWitness (leanIsaEnsemble prog)) (t :
 
 /-! ## Load-bearing lemmas -/
 
-/-- A raw row written from a typed row reads back as it: reading at offset `0` inverts
-`toElements`, for any row type and any data. -/
-theorem rowAt_toElements {Row : TypeMap} [ProvableType Row] (data : ProverData K) (r : Row K) :
-    valueFromOffset Row 0 (Environment.fromArray (toElements r).toArray data) = r := by
-  unfold valueFromOffset
-  convert ProvableType.fromElements_toElements r
-  refine Vector.ext fun i hi ↦ ?_
-  rw [Vector.getElem_mapRange]
-  show ((toElements r).toArray[0 + i]?).getD 0 = _
-  rw [Nat.zero_add, Array.getElem?_eq_getElem (by simpa using hi), Option.getD_some,
-    Vector.getElem_toArray]
-
 /-- `memRowAt` inverts `toElements`. -/
 theorem memRowAt_toElements (w : EnsembleWitness (leanIsaEnsemble prog)) (r : MemRow K) :
     memRowAt w (toElements r).toArray = r :=

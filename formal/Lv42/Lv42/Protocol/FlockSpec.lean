@@ -15,6 +15,7 @@ module
 
 public import Lv42.Protocol.Blake2sCircuit
 public import Lv42.Protocol.Spine.Instance
+public import Lv42.Protocol.Blake2sHash
 
 /-!
 # The Flock specification and its BLAKE2s inhabitant

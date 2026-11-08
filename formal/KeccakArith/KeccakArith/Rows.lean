@@ -3,7 +3,7 @@
 module
 
 public import KeccakArith.RowSound
-public import Lv42.Arithmetization.Soundness.Rows
+public import Lv42.Arithmetization.Soundness.RowsBase
 
 /-!
 # The rows of the Keccak VM's six opcode tables
