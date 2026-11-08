@@ -1018,6 +1018,7 @@ mod tests {
             t.elapsed().as_secs_f64() * 1e9 / (n * perms) as f64
         }
         type Entry = (&'static str, fn(usize) -> f64);
+        #[cfg_attr(not(target_arch = "aarch64"), allow(unused_mut))]
         let mut entries: Vec<Entry> = vec![("scalar", sample::<u64>)];
         #[cfg(target_arch = "aarch64")]
         {
