@@ -1,19 +1,25 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see NOTICE.md and AGENTS.md.
 import UniComplete.Reference
 import RecCompose.Bridge
 
 /-!
-# π1's calls' layout words are π1-rec3's
+# π1's calls' layout words are the Keccak π1-rec3's
 
 **`pi1CallsLayouts_of_real`**: `Pi1CallsLayouts D` at the real deployment. π1's calls are `Data.pi1Calls`, and their
-layout words (word 1 of each, constants the Rust wrote) are π1-rec3's at the reference shape (`w1`, `UniStatement.
-layoutWords`). `layoutWords` sorts (`StackLayout.new`'s `List.mergeSort`, well-founded: the kernel does not reduce it),
-so the two numbers a word holds are taken off the sort first, as `UniComplete.stackLayout_vars` does for the variables:
+layout words (word 1 of each, constants the Rust wrote) are the Keccak π1-rec3's at the 128-signature reference shape
+(`w1 i`, `UniKeccak.layoutWordsK RecGraphKeccak.Pi1.keccak128`). `layoutWordsK` sorts (`StackLayout.new`'s
+`List.mergeSort`, well-founded: the kernel does not reduce it), so the two numbers a word holds are taken off the sort
+first (UniComplete's generic `stackLayout_vars`, `pieceWords`, `heapLayout_h`, `heapLayout_blocks_sum`, for any
+column list and any heap):
 
 * `stackLayout_words`: the words a stack's blocks fill are its pieces' (`UniComplete.pieceWords`), in any order;
-* `C2`'s through `UniComplete.c2_pieceWords` and the heap's unsorted blocks (`heapLayout_h`, `heapLayout_blocks_sum`);
+* `c2_pieceWordsK`: `C2`'s words on the Keccak VM (`UniKeccak.Shape.c2ColumnsK`) as the heap's, the tree and
+  constraint quotients' and the blocks' leaf quotients' (`leafWordsK`, `Shape.leafDegreeK`), from the heap's
+  unsorted blocks;
 
-then the kernel compares the three 32-byte words (small terms: the shape's bytes, the hex strings).
+then the kernel evaluates the three stacks' words (`0x49fc000`, `0x28ce003`, `0x500000`) and variables (`27`, `26`,
+`23`), and compares the three 32-byte words with `Data.pi1Calls`' (`data_layout0`, `1`, `2`: the only decisions that read
+`Data`, at its three layout words, which the setup roots do not change).
 -/
 
 namespace RecCompose
@@ -47,58 +53,138 @@ theorem stackLayout_words (cols : List (Column × ℕ × Bool)) : (StackLayout.n
   simp only [List.map_nil, List.nil_append, zero_add]
   rw [sum_map_mergeSort, pieces_words]
 
-theorem reference_c1Words : (StackLayout.new (c1Columns reference)).words = pieceWords (c1Columns reference) :=
-  stackLayout_words _
+/-! ## The Keccak VM's stacks -/
 
-theorem reference_setupWords :
-    (StackLayout.new (setupColumns reference)).words = pieceWords (setupColumns reference) :=
-  stackLayout_words _
+/-- `C1`'s columns on the Keccak VM (`UniKeccak.layoutsK`' `c1`). -/
+def c1ColumnsK (shape : Shape) : List (Column × ℕ × Bool) :=
+  let heights := shape.heights
+  [(.qflock, heights.getD opBlake2s 0 + UniKeccak.qflockRowBits, false)] ++
+    tablesKeccak.flatMap (fun t ↦
+      let h := heights.getD t.opcode 0
+      (List.range t.width).map (fun c ↦ (Column.table t.opcode c, h, false)) ++
+        [(.inverse t.opcode, h, false)]) ++
+    (List.range 4).map (fun k ↦ (Column.memory k, shape.logMemory, false)) ++
+    [(.bytecodeFinal, shape.logBytecode, false)]
 
-/-- `C2`'s words at the reference shape, from the heap's unsorted blocks. -/
-theorem reference_c2Words : (StackLayout.new reference.c2Columns).words =
-    3 * 2 ^ (log2Ceil (heapTotal reference.logMemory reference.logBytecode reference.heights) + 1) +
-      3 * 2 ^ (log2Ceil (heapTotal reference.logMemory reference.logBytecode reference.heights) + 1) + 3 * 2 ^ 0 +
-      ((chunks (reference.constraintDegree + 1)).map fun e ↦ 3 * 2 ^ e).sum +
-      (((heapUsed reference.logMemory reference.logBytecode reference.heights).map fun x ↦ leafWords ⟨x.1, x.2, 0⟩).sum +
-        ((unusedBlocks (2 ^ log2Ceil (heapTotal reference.logMemory reference.logBytecode reference.heights))
-          (heapTotal reference.logMemory reference.logBytecode reference.heights)).map leafWords).sum) := by
-  rw [stackLayout_words, c2_pieceWords, Shape.heap, heapLayout_h,
-    heapLayout_blocks_sum leafWords (fun l r p p' ↦ leafWords_position l r p p')]
+theorem layoutsOfK_eq (s : Shape) :
+    UniKeccak.layoutsOfK s = [(.c1, StackLayout.new (c1ColumnsK s)), (.c2, StackLayout.new (UniKeccak.Shape.c2ColumnsK s)),
+      (.setup, StackLayout.new (setupColumns s))] := rfl
 
-/-- **π1-rec3's three layout words at the reference shape**, their numbers off the sort. -/
+/-- **A heap block's leaf quotient's words** in the Keccak VM's `C2`: its `leafDegreeK`'s chunks, `E`-valued; none for
+an unused block. -/
+def leafWordsK (b : Block) : ℕ :=
+  match UniKeccak.Shape.leafDegreeK b with
+  | none => 0
+  | some d => ((chunks (d + 1)).map fun e ↦ 3 * 2 ^ e).sum
+
+theorem leafWordsK_position (l : Leaves) (r p p' : ℕ) : leafWordsK ⟨l, r, p⟩ = leafWordsK ⟨l, r, p'⟩ := rfl
+
+/-- **`C2`'s words on the Keccak VM**: the heap's and the tree quotient's (`E`-valued, `h`, `h`, `0` variables), the
+constraint quotient's chunks, and the heap blocks' leaf quotients. -/
+theorem c2_pieceWordsK (s : Shape) :
+    pieceWords (UniKeccak.Shape.c2ColumnsK s) =
+      3 * 2 ^ s.heap.h + 3 * 2 ^ s.heap.h + 3 * 2 ^ 0 +
+        ((chunks (UniKeccak.Shape.constraintDegreeK s + 1)).map fun e ↦ 3 * 2 ^ e).sum +
+          (s.heap.blocks.map leafWordsK).sum := by
+  unfold UniKeccak.Shape.c2ColumnsK
+  dsimp only
+  rw [pieceWords_append, pieceWords_append]
+  congr 1
+  · simp only [pieceWords, List.map_cons, List.map_nil, List.sum_cons, List.sum_nil, List.map_map,
+      Function.comp_def, ite_true]
+    rw [sum_zip_range_fst (chunks (UniKeccak.Shape.constraintDegreeK s + 1)) fun e ↦ 3 * 2 ^ e]
+    omega
+  · rw [pieceWords, sum_map_flatMap, ← sum_zip_range_fst s.heap.blocks leafWordsK]
+    congr 1
+    refine List.map_congr_left fun x _ ↦ ?_
+    unfold leafWordsK
+    cases h : UniKeccak.Shape.leafDegreeK x.1 with
+    | none => rfl
+    | some d =>
+      simp only [List.map_map, Function.comp_def, ite_true]
+      exact sum_zip_range_fst _ fun e ↦ 3 * 2 ^ e
+
+/-! ## The reference shape's three words (`RecGraphKeccak.Pi1.keccak128`, 128 signatures) -/
+
+open RecGraphKeccak.Pi1 (keccak128)
+
+/-- `C2`'s words at the reference shape, from the heap's unsorted blocks (no sort left). -/
+def c2WordsK : ℕ :=
+  3 * 2 ^ (log2Ceil (heapTotal keccak128.logMemory keccak128.logBytecode keccak128.heights) + 1) +
+    3 * 2 ^ (log2Ceil (heapTotal keccak128.logMemory keccak128.logBytecode keccak128.heights) + 1) + 3 * 2 ^ 0 +
+    ((chunks (UniKeccak.Shape.constraintDegreeK keccak128 + 1)).map fun e ↦ 3 * 2 ^ e).sum +
+    (((heapUsed keccak128.logMemory keccak128.logBytecode keccak128.heights).map fun x ↦
+        leafWordsK ⟨x.1, x.2, 0⟩).sum +
+      ((unusedBlocks (2 ^ log2Ceil (heapTotal keccak128.logMemory keccak128.logBytecode keccak128.heights))
+        (heapTotal keccak128.logMemory keccak128.logBytecode keccak128.heights)).map leafWordsK).sum)
+
+theorem keccak128_c2Pieces : pieceWords (UniKeccak.Shape.c2ColumnsK keccak128) = c2WordsK := by
+  rw [c2_pieceWordsK, Shape.heap, heapLayout_h,
+    heapLayout_blocks_sum leafWordsK (fun l r p p' ↦ leafWordsK_position l r p p')]
+  rfl
+
+/-- `C1`'s words: `77,578,240`. -/
+theorem keccak128_c1Words : pieceWords (c1ColumnsK keccak128) = 0x49fc000 := by decide +kernel
+
+/-- `C2`'s words: `42,786,819`. -/
+theorem keccak128_c2Words : c2WordsK = 0x28ce003 := by decide +kernel
+
+/-- The setup's words: `5,242,880`. -/
+theorem keccak128_setupWords : pieceWords (setupColumns keccak128) = 0x500000 := by decide +kernel
+
+/-- `C1`'s `27` variables. -/
+theorem keccak128_c1Vars : (StackLayout.new (c1ColumnsK keccak128)).vars = 27 := by
+  rw [stackLayout_vars, keccak128_c1Words]
+  decide +kernel
+
+/-- `C2`'s `26` variables. -/
+theorem keccak128_c2Vars : (StackLayout.new (UniKeccak.Shape.c2ColumnsK keccak128)).vars = 26 := by
+  rw [stackLayout_vars, keccak128_c2Pieces, keccak128_c2Words]
+  decide +kernel
+
+/-- The setup's `23` variables. -/
+theorem keccak128_setupVars : (StackLayout.new (setupColumns keccak128)).vars = 23 := by
+  rw [stackLayout_vars, keccak128_setupWords]
+  decide +kernel
+
+/-- **The Keccak π1-rec3's three layout words at the reference shape**, their numbers off the sort. -/
 theorem w1_eq :
-    w1 0 = layoutWord reference 0x5501 27 (pieceWords (c1Columns reference)) ∧
-    w1 1 = layoutWord reference 0x5502 27
-      (3 * 2 ^ (log2Ceil (heapTotal reference.logMemory reference.logBytecode reference.heights) + 1) +
-        3 * 2 ^ (log2Ceil (heapTotal reference.logMemory reference.logBytecode reference.heights) + 1) + 3 * 2 ^ 0 +
-        ((chunks (reference.constraintDegree + 1)).map fun e ↦ 3 * 2 ^ e).sum +
-        (((heapUsed reference.logMemory reference.logBytecode reference.heights).map fun x ↦
-            leafWords ⟨x.1, x.2, 0⟩).sum +
-          ((unusedBlocks (2 ^ log2Ceil (heapTotal reference.logMemory reference.logBytecode reference.heights))
-            (heapTotal reference.logMemory reference.logBytecode reference.heights)).map leafWords).sum)) ∧
-    w1 2 = layoutWord reference 0x5503 24 (pieceWords (setupColumns reference)) := by
+    w1 0 = layoutWord keccak128 0x5501 27 0x49fc000 ∧
+    w1 1 = layoutWord keccak128 0x5502 26 0x28ce003 ∧
+    w1 2 = layoutWord keccak128 0x5503 23 0x500000 := by
   refine ⟨?_, ?_, ?_⟩
-  · show layoutWord reference 0x5501 (StackLayout.new (c1Columns reference)).vars
-      (StackLayout.new (c1Columns reference)).words = _
-    rw [reference_c1Vars, reference_c1Words]
-  · show layoutWord reference 0x5502 (StackLayout.new reference.c2Columns).vars
-      (StackLayout.new reference.c2Columns).words = _
-    rw [reference_c2Vars, reference_c2Words]
-  · show layoutWord reference 0x5503 (StackLayout.new (setupColumns reference)).vars
-      (StackLayout.new (setupColumns reference)).words = _
-    rw [reference_setupVars, reference_setupWords]
+  · show layoutWord keccak128 0x5501 (StackLayout.new (c1ColumnsK keccak128)).vars
+      (StackLayout.new (c1ColumnsK keccak128)).words = _
+    rw [keccak128_c1Vars, stackLayout_words, keccak128_c1Words]
+  · show layoutWord keccak128 0x5502 (StackLayout.new (UniKeccak.Shape.c2ColumnsK keccak128)).vars
+      (StackLayout.new (UniKeccak.Shape.c2ColumnsK keccak128)).words = _
+    rw [keccak128_c2Vars, stackLayout_words, keccak128_c2Pieces, keccak128_c2Words]
+  · show layoutWord keccak128 0x5503 (StackLayout.new (setupColumns keccak128)).vars
+      (StackLayout.new (setupColumns keccak128)).words = _
+    rw [keccak128_setupVars, stackLayout_words, keccak128_setupWords]
 
-/-- `Data.pi1Calls`' layout words are π1-rec3's at the reference shape (kernel decisions on 32-byte words). -/
+/-! ## `Data.pi1Calls`' layout words (the only decisions here that read `Data`) -/
+
+theorem data_layout0 : (RecStatement.Data.pi1Calls.getD 0 []).getD 1 default =
+    RecStatement.CallWord.const (layoutWord keccak128 0x5501 27 0x49fc000) := by decide +kernel
+
+theorem data_layout1 : (RecStatement.Data.pi1Calls.getD 1 []).getD 1 default =
+    RecStatement.CallWord.const (layoutWord keccak128 0x5502 26 0x28ce003) := by decide +kernel
+
+theorem data_layout2 : (RecStatement.Data.pi1Calls.getD 2 []).getD 1 default =
+    RecStatement.CallWord.const (layoutWord keccak128 0x5503 23 0x500000) := by decide +kernel
+
+/-- `Data.pi1Calls`' layout words are the Keccak π1-rec3's at the reference shape. -/
 theorem data_pi1Calls_layouts : ∀ ci < 3, (RecStatement.Data.pi1Calls.getD ci []).getD 1 default =
     RecStatement.CallWord.const (w1 ci) := by
   obtain ⟨h0, h1, h2⟩ := w1_eq
   intro ci hci
   interval_cases ci
-  · rw [h0]; decide +kernel
-  · rw [h1]; decide +kernel
-  · rw [h2]; decide +kernel
+  · rw [h0]; exact data_layout0
+  · rw [h1]; exact data_layout1
+  · rw [h2]; exact data_layout2
 
-/-- **π1's calls' layout words are π1-rec3's**, at the real deployment. -/
+/-- **π1's calls' layout words are the Keccak π1-rec3's**, at the real deployment. -/
 theorem pi1CallsLayouts_of_real {D : RecStatement.RecDeployment} (hD : D.Real) : Pi1CallsLayouts D := by
   intro ci hci
   rw [hD.2.1]

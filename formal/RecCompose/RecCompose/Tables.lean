@@ -1,7 +1,8 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The tables' polynomials are `crates/leanvm_rec/src/pi2/
--- prover.rs`'s (`W` committed in the basis `B`, `Q`'s `h`, `q` in the novel basis, the setup's `κ`, `κ + σ` in the basis
--- `B`), read through `formal/Statement`'s public layouts (`PcsQuotient.Layout.ofChunks`, `readEntry`); the novel basis
--- and its sums are `formal/UniComplete`'s (`AlgC.novP`) and `formal/QuotientSecurity`'s (`tablePoly`).
+-- Part of this repository. MIT OR Apache-2.0; see NOTICE.md and AGENTS.md. The tables' polynomials are
+-- `crates/leanvm_rec/src/pi2/prover.rs`'s (`W` committed in the basis `B`, `Q`'s `h`, `q` in the novel basis, the
+-- setup's `κ`, `κ + σ` in the basis `B`), read through `formal/Statement`'s public layouts
+-- (`PcsQuotient.Layout.ofChunks`, `readEntry`); the novel basis and its sums are `formal/UniComplete`'s (`AlgC.novP`)
+-- and `formal/QuotientSecurity`'s (`tablePoly`).
 import RecCompose.Layers
 import UniComplete.AlgCBasis
 import UniSound.Ids.Cantor
@@ -31,9 +32,9 @@ as the model's values.
 
 **`pi2Tables D C Fa hcol : Pi2Tables D C`**, from the circuit's facts (`Pi2Facts`: `SpecOf`, `2^24` positions, rows
 of `16`) and one named input, **`Pi2SetupColumns D C`**: the deployment's setup columns `σ`, `κ` (which the setup's
-table commits) are the compiled circuit's (which the PIOP reads) at every setup (`RecDeployment.Real` pins them at
-π1's reference IV; a run and a definition, not a proof). `pi2Extraction_of_fs`, `pi2Layers_of_fs`: π2's extraction and
-layers with it in place of `Pi2Tables`.
+table commits) are the compiled circuit's (which the PIOP reads) at every setup (proved from `RecDeployment.Real`'s
+`SetupFromCompiler`: `pi2SetupColumns_of_real`, `Real.lean`). `pi2Extraction_of_fs`, `pi2Layers_of_fs`: π2's
+extraction and layers with it in place of `Pi2Tables`.
 -/
 
 set_option linter.unusedSectionVars false
@@ -823,11 +824,11 @@ theorem one_add_digit_ne_zero {t : F} {n : ℕ} (h : QuotientSecurity.sq^[n] t �
 end Gen
 
 /-- **The deployment's setup columns are the compiled circuit's**, at every setup (every 32-byte π1 IV): `κ` and `σ` of
-`D.circuitAt roots.pi1` (which the setup's table commits) are `C.G roots`'s (which the PIOP reads). At π1's reference
-IV, `RecDeployment.Real` pins `D`'s `σ`, `κ` by the circuit's digest and the setup's root (the Rust's), and
-`RecCircuitTest/Main.lean` compares the Lean compiler's `σ` (a hash of all `2^24` positions) and `κ` with the Rust's
-(compiled evaluation); at the other IVs (only `κ`'s IV constants move) it is how the deployment is meant to be built:
-**a run and a definition, not a proof**. -/
+`D.circuitAt roots.pi1` (which the setup's table commits) are `C.G roots`'s (which the PIOP reads). It follows from
+`RecDeployment.Real` (`pi2SetupColumns_of_real`, `Real.lean`): `SetupFromCompiler` says the deployment's `σ`, `κ` are
+the Lean compiler's on the Keccak π1-rec3's graph at every 32-byte IV, and at π1's reference IV `Real` pins them by the
+circuit's digest and the setup's root (the Rust's; `DigestChecked`, `SetupRootChecked`, evaluated by
+`rec-real-check`). -/
 def Pi2SetupColumns (D : RecDeployment) (C : Pi2Circuits D) : Prop :=
   ∀ (roots : RecSetupRoots) (i : ℕ), i < 2 ^ (C.G roots).logN →
     ofK ((D.circuitAt roots.pi1).kappa i) = (C.G roots).kappa i ∧

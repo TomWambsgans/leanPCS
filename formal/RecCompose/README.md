@@ -33,10 +33,16 @@ This library proves part 1 from π2's layers, its bound in bits, and part 1 ⇒ 
 ```sh
 cd formal/EndToEnd   # on h1, under /root/pcs-quotient-fv/ only
 systemd-run --scope -p MemoryMax=10G lake build RecCompose     # the theorems; #guard_msgs checks their axioms
-systemd-run --scope -p MemoryMax=12G lake exe rec-view-check   # viewCheck at two IVs (about 9.3 minutes an IV)
+systemd-run --scope -p MemoryMax=12G lake exe rec-view-check   # viewCheck at two IVs (about 14 minutes an IV)
 systemd-run --scope -p MemoryMax=16G lake exe rec-real-check   # DigestChecked, IvChecked at three IVs (RealDeployment.lean)
 systemd-run --scope -p MemoryMax=16G lake exe rec-real-check --setup-only   # SetupRootChecked
 ```
+
+On the Keccak VM's π1-rec3 (128 signatures) every evaluated check holds: `viewCheck` at π1's reference IV and the zero
+IV; `DigestChecked`, `ivCheck` at the reference, zero and all-ones IVs, `SetupRootChecked`. Each compile of the graph
+takes 13–21 minutes (`rec-real-check` compiles it once for the reference circuit and once per IV), the setup root
+under about 12 more; peak memory 6.7 GB. Arguments `ref`, `zero`, `ones` choose the IVs, `--no-digest` skips the
+digest. These are long evaluations, not builds: run them outside the build lock.
 
 ## The end theorems (`End.lean`)
 
