@@ -8,7 +8,7 @@ module
 public import UniStatement.Opening
 public import UniStatement.Mapping
 public import PcsQuotient.Extractor
-public import Lv42.Protocol.FlockSpec
+public import Lv42.Protocol.LeanIsaBase
 public import VCVio.EvalDist.ProbabilityNotation
 
 /-!
@@ -65,7 +65,7 @@ open LeanVM.Parameters LeanVM.Protocol LeanVM.Protocol.KeccakHash
 open LeanVM.Semantics (KeccakState)
 open LeanVM.Extraction
 open OracleComp OracleSpec Common
-open Lv42.Protocol.LeanIsa (Sizes leanIsaμ)
+open Lv42.Protocol.LeanIsa (Sizes)
 open Lv42.Semantics (Program PublicInput)
 open scoped ENNReal
 
@@ -88,30 +88,6 @@ theorem Deployment.logMemory_pos (D : Deployment) : 0 < D.shape.logMemory := by
 /-- A proof's sizes, as Lv42's: the shape's memory, the proof's row counts. -/
 def Deployment.sizes (D : Deployment) (rows : List ℕ) : Sizes := sizesOf D.shape D.logMemory_pos rows
 
-/-- **The instance** at a proof's row counts: leanVM 42422001's, Lv42's `leanIsaInstance` with the BLAKE2s
-Flock specification. -/
-abbrev Deployment.inst (D : Deployment) (rows : List ℕ) : Lv42.Protocol.M3Instance :=
-  Lv42.Protocol.leanIsaInstance Lv42.Protocol.Blake2sFlock.blake2sFlockSpec D.prog (D.sizes rows)
-
-/-- Lv42's stack at a proof's sizes. -/
-abbrev Deployment.Stack (D : Deployment) (rows : List ℕ) : Type :=
-  LeanVM.Protocol.Column (leanIsaμ D.prog (D.sizes rows))
-
-/-- **The relation**: `M3Holds` of the instance at the row counts, the public input the calldata's 32 bytes. -/
-def Deployment.Relation (D : Deployment) (rows : List ℕ) (input : Vector UInt8 32) (q : D.Stack rows) :
-    Prop :=
-  Lv42.Protocol.M3Holds (D.inst rows) (publicInputOf input.toList) q
-
-instance (D : Deployment) (rows : List ℕ) (input : Vector UInt8 32) (q : D.Stack rows) :
-    Decidable (D.Relation rows input q) :=
-  inferInstanceAs (Decidable (Lv42.Protocol.M3Holds _ _ _))
-
-/-- **The relation completeness starts from**: `M3Honest` (`M3Holds`, and every padding row its public
-row). -/
-def Deployment.HonestRelation (D : Deployment) (rows : List ℕ) (input : Vector UInt8 32) (q : D.Stack rows) :
-    Prop :=
-  Lv42.Protocol.M3Honest (D.inst rows) (publicInputOf input.toList) q
-
 /-! ### The setup -/
 
 /-- **The setup's trees**: the WHIR commitments of the setup stack and of `A0`, `B0`. -/
@@ -128,21 +104,9 @@ def SetupTrees.evaluations (t : SetupTrees) : List (List UInt8 × Digest) :=
   PcsQuotient.Tree.evaluations t.bytecode ++ PcsQuotient.Tree.evaluations t.a0 ++
     PcsQuotient.Tree.evaluations t.b0
 
-/-- `A0` (`left`) or `B0` of the BLAKE2s R1CS as a stack. -/
-def flockMatrixStack (left : Bool) : Array K :=
-  let C := Lv42.Protocol.Blake2sFlock.blake2sFlockSpec.r1cs
-  matrixStack fun k j ↦ if left then C.A k j else C.B k j
-
 section With
 
 variable {m : Type → Type} [Monad m] (F : KeccakState → m KeccakState)
-
-/-- **The setup** over `F`: the commitments of the setup stack (`setupStack`) and of `A0`, `B0`. -/
-def setupTreesWith (D : Deployment) : m SetupTrees := do
-  let f ← PcsQuotient.commitWith F (setupLayout D.shape).vars (setupStack D.prog D.shape)
-  let a ← PcsQuotient.commitWith F matrixVars (flockMatrixStack true)
-  let b ← PcsQuotient.commitWith F matrixVars (flockMatrixStack false)
-  return ⟨f, a, b⟩
 
 /-- **The transcript's IV** over `F` (iteration 2, F2: `contract::contract_iv`): the Keccak-256 of the tag,
 leanVM's program IV, the setup's three roots, the shape's bytes and the five layout words
@@ -173,34 +137,6 @@ def c1Word (D : Deployment) (pre : Digest → ℕ → Option (List UInt8)) (proo
   let height := (c1Layout D.shape).vars - 6 + 1
   leafAt (PcsQuotient.Replay.leavesUnder pre 64 height (c1RootOf proof)) height 64
 
-/-- **The extractor on given preimages**: the first candidate `C1` stack whose Lv42 stack, at the proof's
-row counts, satisfies the relation; the fast path's first, then the unique decoder's, then the list
-decoder's. -/
-def extractFrom (D : Deployment) (input : Vector UInt8 32) (pre : Digest → ℕ → Option (List UInt8))
-    (proof : UniProof) : Option (D.Stack proof.rows) :=
-  let word := c1Word D pre proof
-  let μ := (c1Layout D.shape).vars
-  let candidate (stack : Vector K (2 ^ μ)) : Option (D.Stack proof.rows) :=
-    let q := lv42Stack D.prog (D.sizes proof.rows) D.shape fun i ↦ stack.toArray.getD i 0
-    if D.Relation proof.rows input q then some q else none
-  (fastStacks μ 1 word).findSome? candidate <|>
-    (PcsQuotient.UniqueDecoding.uniqueStacks μ 1 word).findSome? candidate <|>
-    (decodeStacks μ 1 word).findSome? candidate
-
-/-- **The extractor** in the random-permutation model: `extractFrom` on the unique preimages of the
-setup's evaluations and the transcript's (the lengths a Merkle tree of `64`-word leaves hashes). -/
-def uniExtractor (D : Deployment) (input : Vector UInt8 32) (setupEvals : List (List UInt8 × Digest))
-    (T : OracleQueryLog) (proof : UniProof) : Option (D.Stack proof.rows) :=
-  let paths := setupEvals ++
-    PcsQuotient.Replay.transcriptEvaluations PcsQuotient.merkleLengths (LeanVM.permutationQueries T)
-  extractFrom D input (PcsQuotient.Replay.preimageIn (PcsQuotient.Replay.preimageIndex paths)) proof
-
-/-- An extractor's shape: from the statement, the setup's evaluations, the transcript and the proof, a
-stack at the proof's row counts. -/
-abbrev UniExtractor (D : Deployment) : Type :=
-  Vector UInt8 32 → List (List UInt8 × Digest) → OracleQueryLog → (proof : UniProof) →
-    Option (D.Stack proof.rows)
-
 /-! ### Knowledge soundness -/
 
 /-- An adversary: given the setup's roots, a public input and a proof, with coins, `π` and `π⁻¹`. -/
@@ -210,56 +146,7 @@ abbrev UniAdversary : Type := SetupRoots → OracleComp RandomPermutationOracles
 abbrev UniOutcome : Type :=
   ((Vector UInt8 32 × UniProof) × Bool) × List (List UInt8 × Digest) × OracleQueryLog
 
-/-- **The knowledge-soundness experiment**: the setup over `π`, the adversary given its roots (its queries
-logged), then the deployed verifier over `π`. -/
-noncomputable def uniSoundnessExperiment (D : Deployment) (A : UniAdversary) : ProbComp UniOutcome :=
-  runWithRandomPermutation do
-    let trees ← setupTreesWith queryPermutation D
-    let (z, transcript) ← (simulateQ loggedOracles (A trees.roots)).run []
-    let accepted ← D.verifierWith queryPermutation trees.roots z.1 z.2
-    return ((z, accepted), trees.evaluations, transcript)
-
-/-- **The adversary breaks knowledge soundness**: the verifier accepts, and the extractor outputs no stack
-satisfying leanVM 42422001's relation for the public input at the proof's row counts. -/
-def UniBreaksKnowledgeSoundness (D : Deployment) (ext : UniExtractor D) (z : UniOutcome) : Prop :=
-  z.1.2 = true ∧ ¬ ∃ q, ext z.1.1.1 z.2.1 z.2.2 z.1.1.2 = some q ∧ D.Relation z.1.1.2.rows z.1.1.1 q
-
-/-- **Knowledge soundness for the extractor `ext`**, error `ε Q` for `Q` calls of `π` and `π⁻¹`. -/
-def UniKnowledgeSoundnessWith (D : Deployment) (ext : UniExtractor D) (ε : ℕ → ℝ≥0∞) : Prop :=
-  ∀ (A : UniAdversary) (Q : ℕ), (∀ roots, QueryCostAtMost (A roots) permutationCallCost Q) →
-    Pr{let z ← uniSoundnessExperiment D A}[UniBreaksKnowledgeSoundness D ext z] ≤ ε Q
-
-/-- **Knowledge soundness** of the univariate verifier against leanVM 42422001's relation, for the explicit
-extractor `uniExtractor`. -/
-def UniKnowledgeSoundness (D : Deployment) (ε : ℕ → ℝ≥0∞) : Prop :=
-  UniKnowledgeSoundnessWith D (uniExtractor D) ε
-
 /-! ### Completeness -/
-
-/-- A prover: from the public input, the row counts and a stack of Lv42's layout at them, a proof (or none),
-with coins, `π` and `π⁻¹` (it recomputes the public setup as it needs). -/
-abbrev UniProver (D : Deployment) : Type :=
-  Vector UInt8 32 → (rows : List ℕ) → D.Stack rows → OracleComp RandomPermutationOracles (Option UniProof)
-
-/-- **The completeness experiment**: the setup, the prover's proof, the verifier's verdict, over `π`. -/
-noncomputable def uniCompletenessExperiment (D : Deployment) (P : UniProver D) (input : Vector UInt8 32)
-    (rows : List ℕ) (q : D.Stack rows) : ProbComp Bool :=
-  runWithRandomPermutation do
-    let trees ← setupTreesWith queryPermutation D
-    match ← P input rows q with
-    | none => return false
-    | some proof => D.verifierWith queryPermutation trees.roots input proof
-
-/-- **Completeness of the prover `P`**: its proof of a public input with an `M3Honest` stack, at row counts
-that fit the shape, is rejected with probability at most `δ`. -/
-def UniCompletenessWith (D : Deployment) (P : UniProver D) (δ : ℝ≥0∞) : Prop :=
-  ∀ (input : Vector UInt8 32) (rows : List ℕ) (q : D.Stack rows), D.shape.RowsFit rows →
-    D.HonestRelation rows input q →
-    Pr{let v ← uniCompletenessExperiment D P input rows q}[v = false] ≤ δ
-
-/-- **Completeness**, for a prover given explicitly: the honest prover is not yet transcribed, so the
-statement names it (`UniCompletenessWith`). -/
-def UniCompleteness (D : Deployment) (P : UniProver D) (δ : ℝ≥0∞) : Prop := UniCompletenessWith D P δ
 
 end UniStatement
 

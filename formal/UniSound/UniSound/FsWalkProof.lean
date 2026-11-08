@@ -57,7 +57,6 @@ open OracleSpec OracleComp
 
 attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
   LeanVM.Protocol.Compile.instFintypeKState UniStatement.layoutWords UniStatement.setupStack
-  UniStatement.flockMatrixStack
 
 /-! ## The stream's bytes -/
 
@@ -807,7 +806,6 @@ theorem countsAt_rows (b : Array UInt8) (h : 24 ≤ b.size) :
   rw [List.mem_range] at hj
   rw [rowBytes_getD b _ (by omega), Nat.zero_add]
 
-
 /-! ## The chain's specification, read off -/
 
 theorem uniSpec_label (rs : List RoundSpec) (s : FSt) :
@@ -846,95 +844,6 @@ theorem all_zero_iff (a : Array E) : a.all (· == 0) = true ↔ ∀ z ∈ a.toLi
   simp only [Array.all_eq_true_iff_forall_mem, Array.mem_def, beq_iff_eq]
 
 /-! ## WALK -/
-
-/-- **WALK**: on a stream of the main line's length, the walk is the chain: its verdict `uAccB`, its
-result `uOut`, at the chain's challenges over Keccak-256 `= keccak256With F`. -/
-theorem uniWalk (D : Deployment) {κ : ℕ} (Fl : FlockSound κ) (nV V : ℕ) (C : UniCode D Fl nV V) :
-    UniWalk D Fl nV V C := by
-  intro m _ _ F π hlen
-  have hsz : π.proof.stream.size = 24 + roundsBytes (uRounds Fl nV V) + 24 * 5 := hlen
-  have hsz' : π.proof.stream.size = 24 + roundsBytes (uniRounds Fl.prog.rounds nV V) + 24 * 5 := hlen
-  have h6 : D.shape.heights.length = 6 := D.valid.1
-  have hrows : countsAt π.proof.stream 0 6 = (uSt Fl nV V π).2 := countsAt_rows _ (by omega)
-  rw [runWith_pair]
-  have hlink : ∀ c, (fun x => walkOf (obsOf x)) <$>
-      (reduceWith F D.shape (publicWordsOf π.input.toList) (.flock flockMain) .point).run.run c =
-      (fun x => walkOf (obsOf x)) <$>
-        (readCounts D.shape.heights >>= fun rows => (C.prog π.input rows).run F).run.run c := by
-    intro c
-    have h := congrArg (fun z => walkOf <$> z) (C.link π.input F c)
-    simpa only [Functor.map_map] using h
-  simp only [hlink]
-  have hrc : ∀ seed : Digest,
-      (readCounts D.shape.heights >>= fun rows => (C.prog π.input rows).run F).run.run
-          (Chan.start seed π.proof.stream) =
-        ((C.prog (uSt Fl nV V π).1 (uSt Fl nV V π).2).run F).run.run
-          (collectZ { Chan.start seed π.proof.stream with cursor := 24 }
-            (countZeros D.shape.heights (uSt Fl nV V π).2)) := by
-    intro seed
-    rw [run_bind_ok (readCounts_ok D.shape.heights _ (by simp only [Chan.start, h6]; omega))]
-    simp only [Chan.start, h6, hrows]
-    rfl
-  simp only [hrc]
-  have hpr : ∀ seed : Digest,
-      ((C.prog (uSt Fl nV V π).1 (uSt Fl nV V π).2).run F).run.run
-          (collectZ { Chan.start seed π.proof.stream with cursor := 24 }
-            (countZeros D.shape.heights (uSt Fl nV V π).2)) =
-        progOut (C.prog (uSt Fl nV V π).1 (uSt Fl nV V π).2)
-            (collectZ { Chan.start seed π.proof.stream with cursor := 24 }
-              (countZeros D.shape.heights (uSt Fl nV V π).2)) <$>
-          steps (kB F) (toB seed)
-            (wAbs π.proof.stream 24 (bytesAt π.proof.stream 0 24) (uRounds Fl nV V)) := by
-    intro seed
-    rw [progRun _ F _ (by simp [collectZ, Chan.start])
-      (by simp only [collectZ, Chan.start, C.rounds_eq, C.tail_eq]; omega)]
-    simp only [preOf, collectZ, Chan.start, toList_extract_eq, C.rounds_eq, Nat.sub_zero]
-  simp only [hpr]
-  rw [seedWith, keccak_eq, bind_map_left]
-  change _ = _ <$> (uSpec Fl nV V).chain (kB F) _ _
-  rw [chainU_eq, map_bind, uView_eq]
-  simp only [uniSpec_label, uniSpec_absorbsS, uniSpec_rounds, uniSpec_lim,
-    rowBytes_toList _ (by omega : 24 ≤ π.proof.stream.size)]
-  rw [absorbsI_wAbs π.proof.stream _ 0 24 _ (by omega)]
-  simp only [↓reduceIte]
-  refine congrArg (fun f => kB F (name ++ π.iv.toList ++ π.input.toList) >>= f) (funext fun st0 => ?_)
-  rw [toB_ofB, Functor.map_map, Functor.map_map]
-  refine congrArg (fun f => f <$> steps (kB F) st0
-    (wAbs π.proof.stream 24 (bytesAt π.proof.stream 0 24) (uRounds Fl nV V))) (funext fun sts => ?_)
-  set P := C.prog (uSt Fl nV V π).1 (uSt Fl nV V π).2 with hP
-  set c1 := collectZ { Chan.start (ofB st0) π.proof.stream with cursor := 24 }
-    (countZeros D.shape.heights (uSt Fl nV V π).2) with hc1
-  have hd : c1.data = π.proof.stream := rfl
-  have hcu : c1.cursor = 24 := rfl
-  have hz0 : c1.zeros.toList = countZeros D.shape.heights (uSt Fl nV V π).2 := by
-    simp only [hc1, collectZ, Chan.start, foldl_push_toList, List.nil_append]
-  set ch := groupK (uRounds Fl nV V) (List.map (chalL uLimbs) sts) with hch
-  have hN : (runOut P P.rounds [] c1 sts).1 = uDone (uRounds Fl nV V) π ch := by
-    rw [runOut_done, C.rounds_eq, List.nil_append, hd, hcu]
-    rfl
-  have htl : scalarsAt (runOut P P.rounds [] c1 sts).2.data (runOut P P.rounds [] c1 sts).2.cursor
-      P.tail = uTail (uRounds Fl nV V) π := by
-    rw [runOut_data, runOut_cursor, C.rounds_eq, C.tail_eq, hd, hcu]
-    rfl
-  have hcur : (progOut P c1 sts).2.cursor = (progOut P c1 sts).2.data.size := by
-    rw [progOut_cursor, progOut_data, C.rounds_eq, C.tail_eq, hd, hcu]
-    omega
-  rw [walkOf_ok _ _ (progOut_fst P c1 sts) hcur, hN, htl]
-  refine Prod.ext ?_ rfl
-  show _ = uAccB D Fl nV V C π ch
-  rw [Bool.eq_iff_iff, all_zero_iff, uAccB, @decide_eq_true_iff _ (Classical.propDecidable _),
-    progOut_zeros, hN, htl, hz0]
-  unfold UAcc ChainProg.ZerosVanish
-  have hzf := zerosFrom_iff P [] (uDone (uRounds Fl nV V) π ch)
-  simp only [List.nil_append] at hzf
-  rw [← hzf]
-  simp only [List.mem_append]
-  constructor
-  · intro h
-    exact ⟨fun z hz => h z (Or.inl (Or.inl hz)), fun z hz => h z (Or.inl (Or.inr hz)),
-      fun z hz => h z (Or.inr hz)⟩
-  · rintro ⟨h1, h2, h3⟩ z ((hz | hz) | hz)
-    exacts [h1 z hz, h2 z hz, h3 z hz]
 
 /-! ## WALK REJECTS -/
 
@@ -1057,63 +966,5 @@ theorem consumes_readCounts : ∀ hs : List ℕ, Consumes (hs.length * 4) (readC
     simp only [List.length_cons]
     ring
 
-/-- **The main line consumes the main line's length**, `uLen`. -/
-theorem consumes_main (D : Deployment) {κ : ℕ} (Fl : FlockSound κ) (nV V : ℕ)
-    (C : UniCode D Fl nV V) (input : Vector UInt8 32) (F : KeccakState → OC KeccakState) :
-    Consumes (uLen Fl nV V) (readCounts D.shape.heights >>= fun rows => (C.prog input rows).run F) := by
-  refine ((consumes_readCounts _).bind (k := roundsBytes (uRounds Fl nV V) + (5 * 24 + (0 + 0)))
-    fun rows => ?_).mono_eq ?_
-  · have h := consumes_run (C.prog input rows) F
-    rw [C.rounds_eq, C.tail_eq] at h
-    exact h
-  · rw [D.valid.1, uLen]
-    ring
-
-/-- **WALK REJECTS**: on a stream of another length, every outcome of the walk over `π` rejects:
-a successful run of the main line reads exactly `uLen` bytes (`consumes_main`, through the
-code-level link), so the stream ran out (`StreamExhausted`) or is left unread
-(`StreamNotConsumed`). -/
-theorem uniWalkReject (D : Deployment) {κ : ℕ} (Fl : FlockSound κ) (nV V : ℕ)
-    (C : UniCode D Fl nV V) : UniWalkReject D Fl nV V := by
-  intro π hne o ho
-  have key := runWith_pair (m := OC) Common.queryPermutation D.shape π.iv.toList π.input.toList
-    π.proof.stream (.flock flockMain) .point
-  have h1 : (o.accepts, o.result) ∈ support ((fun o : Outcome => (o.accepts, o.result)) <$>
-      runWith Common.queryPermutation D.shape π.iv.toList π.input.toList π.proof.stream
-        (.flock flockMain) .point) := by
-    rw [support_map]
-    exact ⟨o, ho, rfl⟩
-  rw [key, mem_support_bind_iff] at h1
-  obtain ⟨seed, -, h2⟩ := h1
-  have hl := congrArg (fun z => walkOf <$> z)
-    (C.link π.input Common.queryPermutation (Chan.start seed π.proof.stream))
-  simp only [Functor.map_map] at hl
-  rw [hl, support_map] at h2
-  obtain ⟨y, hy, hyo⟩ := h2
-  have hc := consumes_main D Fl nV V C π.input Common.queryPermutation
-    (Chan.start seed π.proof.stream) y (by simp [Chan.start]) hy
-  have hacc : (walkOf (obsOf y)).1 = false := by
-    rcases y with ⟨r, c'⟩
-    cases r with
-    | error e => rfl
-    | ok a =>
-      obtain ⟨h3, h4, -⟩ := hc a rfl
-      simp only [Chan.start] at h3 h4
-      simp only [obsOf, walkOf]
-      split_ifs with h
-      · exact absurd (by rw [← h3, ← h, h4, Nat.zero_add]) hne
-      · rfl
-  have := congrArg Prod.fst hyo
-  simp only at this
-  rw [← this]
-  exact hacc
-
 end UniSound
 
-/-- info: 'UniSound.uniWalk' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms UniSound.uniWalk
-
-/-- info: 'UniSound.uniWalkReject' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms UniSound.uniWalkReject

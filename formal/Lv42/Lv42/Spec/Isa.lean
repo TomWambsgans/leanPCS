@@ -4,22 +4,23 @@
   Adapted from leanerVM (https://github.com/Verified-zkEVM/leanerVM), branch mumbai, commit
   f0393df4, file lean_vm/LeanVM/Spec/Isa.lean. MIT OR Apache-2.0; see AGENTS.md. `LeanVM` renamed
   `Lv42`. Changed: the docstring of `run` cites the halting rule of leanVM `42422001`'s Rust
-  executor.
+  executor; the `BLAKE2S` instruction is removed (the Keccak VM, `formal/KeccakVm`, puts its `SHA3` in
+  its place, opcode `g^5`).
 
-  leanISA, the leanVM instruction set: memory, instructions, programs, one step, valid
+  leanISA, the leanVM instruction set without its hash instruction: memory, instructions, programs, one step, valid
   executions; and the encoding of an instruction as sixteen `K` slots.
 -/
 
 module
 
 public import LeanVM.Parameters.Field
-public import Lv42.Spec.Blake2s
 
 /-!
 # leanISA
 
 The leanVM instruction set, from §2 of the leanVM specification at
-`3f7dc2196e43ca60034c5803eb307c050b4f91d9`.
+`3f7dc2196e43ca60034c5803eb307c050b4f91d9`, without its hash instruction `BLAKE2S`: the five instructions
+the Keccak VM (`formal/KeccakVm`) shares, which adds its own hash instruction `SHA3` at opcode `g^5`.
 
 Words are elements of `E = K[y]/(y³ + y + 1)`, `K = GF(2^64)`. Addresses are powers of the
 generator `g` of `K*`: memory word `i` and bytecode slot `i` both sit at `g^i`. The machine has two
@@ -37,24 +38,23 @@ open LeanVM.Parameters
 
 /-! ## Opcodes -/
 
-/-- The six instructions, in bus-code order (`tables.rs:99-104`). -/
+/-- The five instructions, in bus-code order (`tables.rs:99-104`; the sixth code, `g^5`, is the hash
+instruction's, the Keccak VM's `SHA3`). -/
 inductive Opcode
   | xor
   | mulNative
   | setConstant
   | deref
   | jump
-  | blake2s
   deriving DecidableEq, Repr
 
-/-- The bus code of an opcode: `g^0, …, g^5` in constructor order (specification §6.4). -/
+/-- The bus code of an opcode: `g^0, …, g^4` in constructor order (specification §6.4). -/
 def Opcode.code : Opcode → K
   | .xor => gpow 0
   | .mulNative => gpow 1
   | .setConstant => gpow 2
   | .deref => gpow 3
   | .jump => gpow 4
-  | .blake2s => gpow 5
 
 /-! ## Size bounds (specification §2, §6.2) -/
 
@@ -114,7 +114,7 @@ inductive DerefMode
   | fp
   deriving DecidableEq, Repr
 
-/-- The six instructions. -/
+/-- The five instructions. -/
 inductive Instr
   /-- `[o_C] = [o_A] + [o_B]`. -/
   | xor (oA oB oC : K)
@@ -127,9 +127,6 @@ inductive Instr
   | deref (o1 o2 o3 : K) (mode : DerefMode)
   /-- `[o_c]`, `[o_d]`, `[o_f]` are in `K`; jump to `([o_d], [o_f])` if `[o_c] ≠ 0`. -/
   | jump (oc od of : K)
-  /-- `([o_out], [g·o_out])` is the BLAKE2s compression of the message `[o_m₀], …, [o_m₃]` under
-  the chaining value `([o_cv], [g·o_cv])`, with counter and flags `[o_md]`. -/
-  | blake2s (om : Fin 4 → K) (ocv oout omd : K)
   deriving DecidableEq
 
 /-- The opcode of an instruction. -/
@@ -139,7 +136,6 @@ def Instr.opcode : Instr → Opcode
   | .setConstant .. => .setConstant
   | .deref .. => .deref
   | .jump .. => .jump
-  | .blake2s .. => .blake2s
 
 /-- A program: `2^logSize` instructions, instruction `i` at address `g^i`. -/
 structure Program where
@@ -153,38 +149,6 @@ structure Program where
 /-- The instruction at address `pc`. -/
 noncomputable def Program.fetch (prog : Program) (pc : K) : Option Instr :=
   (gLog? prog.logSize pc).map prog.code
-
-/-! ## `BLAKE2S`
-
-How the 32-bit words of the compression function are stored in memory words. -/
-
-/-- The metadata word: the counter is limb 0, the two flag words are the halves of limb 1. -/
-def unpackMetadata (md : E) : UInt64 × UInt32 × UInt32 :=
-  (⟨(md.limb 0).toBitVec⟩, lowWord (md.limb 1), highWord (md.limb 1))
-
-/-- The sixteen message words of four memory words. -/
-def messageWords (m : Fin 4 → E) : Vector UInt32 16 :=
-  cellWords (m 0) ++ cellWords (m 1) ++ cellWords (m 2) ++ cellWords (m 3)
-
-/-- What `BLAKE2S` checks: the nine words have no `y²` term, and the output is the compression
-of the message under the chaining value and the metadata. -/
-def CompressCells (m : Fin 4 → E) (cv0 cv1 out0 out1 md : E) : Prop :=
-  (∀ i, IsCanonical128 (m i)) ∧ IsCanonical128 cv0 ∧ IsCanonical128 cv1 ∧
-    IsCanonical128 out0 ∧ IsCanonical128 out1 ∧ IsCanonical128 md ∧
-    cellWords out0 ++ cellWords out1 =
-      compress (cellWords cv0 ++ cellWords cv1) (messageWords m) (unpackMetadata md).1
-        (unpackMetadata md).2.1 (unpackMetadata md).2.2
-
-/-- `CompressCells` is decidable (compared as lists of words, which the kernel reduces). -/
-instance {m : Fin 4 → E} {cv0 cv1 out0 out1 md : E} :
-    Decidable (CompressCells m cv0 cv1 out0 out1 md) :=
-  decidable_of_iff
-    ((∀ i, IsCanonical128 (m i)) ∧ IsCanonical128 cv0 ∧ IsCanonical128 cv1 ∧
-      IsCanonical128 out0 ∧ IsCanonical128 out1 ∧ IsCanonical128 md ∧
-      (cellWords out0 ++ cellWords out1).toList =
-        (compress (cellWords cv0 ++ cellWords cv1) (messageWords m) (unpackMetadata md).1
-          (unpackMetadata md).2.1 (unpackMetadata md).2.2).toList)
-    (by simp only [CompressCells, Vector.toList_inj])
 
 /-! ## One step -/
 
@@ -237,18 +201,6 @@ def executeWith (read : K → Option E) (r : Regs K) : Instr → Option (Regs K)
     let f ← read (r.fp * of)
     guard (IsInK c ∧ IsInK d ∧ IsInK f)
     pure (if c = 0 then r.next else ⟨d.limb 0, f.limb 0⟩)
-  | .blake2s om ocv oout omd => do
-    let m0 ← read (r.fp * om 0)
-    let m1 ← read (r.fp * om 1)
-    let m2 ← read (r.fp * om 2)
-    let m3 ← read (r.fp * om 3)
-    let cv0 ← read (r.fp * ocv)
-    let cv1 ← read (r.fp * (g * ocv))
-    let out0 ← read (r.fp * oout)
-    let out1 ← read (r.fp * (g * oout))
-    let md ← read (r.fp * omd)
-    guard (CompressCells ![m0, m1, m2, m3] cv0 cv1 out0 out1 md)
-    pure r.next
 
 /-- Execute an instruction on the memory `L`. -/
 noncomputable def execute {κ : ℕ} (L : MemImage κ) (r : Regs K) : Instr → Option (Regs K) :=
@@ -350,7 +302,6 @@ def entry : Instr → Vector K 8
   | .deref o1 o2 o3 mode =>
       #v[Opcode.deref.code, o1, o2, o3, (derefFlags mode).1, (derefFlags mode).2, 0, 0]
   | .jump oc od of => #v[Opcode.jump.code, oc, od, of, 0, 0, 0, 0]
-  | .blake2s om ocv oout omd => #v[Opcode.blake2s.code, om 0, om 1, om 2, om 3, ocv, oout, omd]
 
 /-- The sixteen slots of an instruction (specification §8.1): the entry at slots 3 to 10, zero
 elsewhere. -/

@@ -724,29 +724,6 @@ theorem ndeg_blockP (S : Shape) (hH : HeapGood S) (c1 c2 setup : Stk) (rows : Li
 
 /-! ## The identities' degrees -/
 
-/-- **The identities' degrees, summed**, at a shape whose heap is `HeapGood`. -/
-theorem degBound_of (D : Deployment) {κ : ℕ} (Fl : FlockSound κ) (hH : HeapGood D.shape) :
-    DegBoundP D Fl (treeB D.shape + wB D.shape + (D.shape.heap.blocks.map (blockB D.shape)).sum) := by
-  intro s c1 ch fd c2
-  unfold polysOf
-  split_ifs
-  · simp only [List.map_append, List.map_cons, List.map_nil, List.sum_append, List.sum_cons,
-      List.sum_nil, List.map_map]
-    have h1 := ndeg_treeP D.shape c2
-    have h2 := ndeg_rootP D.shape c2 (eqKernel (alphasOf ch)) (betaOf ch)
-    have h3 := ndeg_wP D.shape c1 c2 (publicWordsOf s.1.toList) (gammaOf ch) ((Fl.prog.out fd []).1.getD 0 0)
-    have h4 : ((D.shape.heap.blocks.zip (List.range D.shape.heap.blocks.length)).map
-        (Polynomial.natDegree ∘ fun bi ↦ blockP D.shape c1 c2 (stackFor D c1 c2 .setup) s.2 (alphasOf ch)
-          (betaOf ch) bi.1 bi.2)).sum ≤ (D.shape.heap.blocks.map (blockB D.shape)).sum := by
-      rw [← map_zip_fst D.shape.heap.blocks (List.range D.shape.heap.blocks.length) (by simp)
-        (blockB D.shape)]
-      refine list_sum_map_le _ _ _ fun bi hbi ↦ ?_
-      obtain ⟨b, i⟩ := bi
-      exact ndeg_blockP D.shape hH c1 c2 _ s.2 (alphasOf ch) (betaOf ch) b i (List.of_mem_zip hbi).1
-        (mem_zip_range_iff _ default _ hbi).2
-    omega
-  · simp
-
 theorem treeB_reference : treeB reference = 2 ^ 24 + 2 := by
   rw [treeB, heap_reference.1]
 
@@ -762,20 +739,5 @@ theorem refBound :
     Shape.constraintVars, List.foldl_cons, List.foldl_nil, List.cons_append, List.nil_append, opBlake2s]
   norm_num [max_def]
 
-/-- **The identities' degrees at the reference shape**: at most `50,708,397`. -/
-theorem degBound_reference (D : Deployment) {κ : ℕ} (Fl : FlockSound κ) (hS : D.shape = reference) :
-    DegBoundP D Fl 50708397 := by
-  intro s c1 ch fd c2
-  refine (degBound_of D Fl (hS ▸ heapGood_reference) s c1 ch fd c2).trans ?_
-  rw [hS, heap_blocks_reference]
-  exact refBound
-
 end UniSound.Ids
 
-/-- info: 'UniSound.Ids.degBound_of' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms UniSound.Ids.degBound_of
-
-/-- info: 'UniSound.Ids.degBound_reference' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms UniSound.Ids.degBound_reference

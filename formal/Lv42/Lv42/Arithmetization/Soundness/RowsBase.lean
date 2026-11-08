@@ -9,8 +9,8 @@
   and what the table's soundness makes of it: under the guarantees of its pulls, the row is a step
   of the machine from its pulled state to its pushed state.
 
-  This module is its instruction-set-independent part (shared by the Keccak VM), moved out with
-  every name kept; the BLAKE2s-specific rest stays in the module without `Base`, which imports it.
+  This module is its instruction-set-independent part (shared by the Keccak VM), with
+  every name kept; the BLAKE2s-specific rest (the module without `Base`) is removed with `BLAKE2S`.
 -/
 
 module

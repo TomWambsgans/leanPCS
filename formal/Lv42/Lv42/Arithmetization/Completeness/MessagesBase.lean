@@ -8,8 +8,8 @@
   What the row of each of the six tables sends on the bus: the state step, the bytecode read, and
   the memory reads, as the explicit messages the row circuit emits.
 
-  This module is its instruction-set-independent part (shared by the Keccak VM), moved out with
-  every name kept; the BLAKE2s-specific rest stays in the module without `Base`, which imports it.
+  This module is its instruction-set-independent part (shared by the Keccak VM), with
+  every name kept; the BLAKE2s-specific rest (the module without `Base`) is removed with `BLAKE2S`.
 -/
 
 module

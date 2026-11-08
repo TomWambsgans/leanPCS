@@ -36,7 +36,7 @@ open scoped ENNReal
 
 attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
   LeanVM.Protocol.Compile.instFintypeKState UniStatement.layoutWords UniStatement.setupStack
-  UniStatement.flockMatrixStack RecStatement.layoutWords
+  RecStatement.layoutWords
 
 /-! ## Queries of a Merkle tree -/
 

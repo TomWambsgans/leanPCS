@@ -212,7 +212,7 @@ def mulTable : GeneralFormalCircuit K MulRow Regs where
     obtain ⟨_, _, _, _, _, hvA, hvB, _, _, _, _⟩ := h_input
     subst hvA hvB
     simp only [Vector.getElem_map] at hA hB hC ⊢
-    exact ⟨⟨_, decode_entry (.mulNative _ _ _)⟩, hA, hB, hC⟩
+    exact ⟨entryOk_entry (.mulNative _ _ _), hA, hB, hC⟩
 
 /-! ## Rows from executions -/
 

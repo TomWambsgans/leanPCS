@@ -225,10 +225,12 @@ def derefTable : GeneralFormalCircuit K DerefRow Regs where
   soundness := by
     circuit_proof_start [StatePull, StatePush, MemPull, MemPush, BytecodePull, BytecodePush,
       memRead, bytecodeRead]
-    obtain ⟨⟨ins, hdec⟩, h1, h2, h3⟩ := h_holds
+    obtain ⟨hok, h1, h2, h3⟩ := h_holds
+    obtain ⟨ins, hdec⟩ := hok.decode_of_code (o := .deref) rfl
     obtain ⟨_, _, _, _, _, _, _, _, hv3, _, _, _, _⟩ := h_input
     subst hv3
-    -- The pulled tuple is an instruction (`decode`): `DEREF` with the row's operands, the flags
+    -- The pulled tuple is well formed with `DEREF`'s opcode, so an instruction (`decode`): `DEREF`
+    -- with the row's operands, the flags
     -- a store mode's. The one use a table makes of the bytecode guarantee.
     obtain ⟨mode, rfl, hflags⟩ := decode_deref_eq_some_iff.mp hdec
     obtain ⟨h4, h5⟩ := Prod.ext_iff.mp hflags
@@ -252,7 +254,7 @@ def derefTable : GeneralFormalCircuit K DerefRow Regs where
     subst h4 h5
     rw [← storeCoords_eval] at h2
     simp only [Vector.getElem_map] at h3 h2 ⊢
-    exact ⟨⟨_, decode_entry (.deref _ _ _ mode)⟩, h1, h2, h3⟩
+    exact ⟨entryOk_entry (.deref _ _ _ mode), h1, h2, h3⟩
 
 /-! ## Rows from executions -/
 

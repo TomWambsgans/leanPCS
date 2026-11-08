@@ -165,14 +165,6 @@ axioms.
 #guard_msgs in
 #print axioms Heap.card_exists_candidate_le
 
-/-- info: 'Heap.LeanIsa.realizes' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms Heap.LeanIsa.realizes
-
-/-- info: 'Heap.LeanIsa.prob_sat_not_balanced' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms Heap.LeanIsa.prob_sat_not_balanced
-
 -- 5. Not vacuous.
 /-- info: 'Heap.HeapData.sat_of_perm' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in

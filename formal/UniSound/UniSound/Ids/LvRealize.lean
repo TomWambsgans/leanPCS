@@ -3,8 +3,9 @@
 -- `lean-uni-complete`, e7de70d), copied here as that library is not on this branch.
 import UniSound.Ids.Bridges
 import UniStatement.FormPoly
-import Lv42.Protocol.LeanIsa.Read
-import Lv42.Protocol.LeanIsa.Bus
+import Lv42.Protocol.LeanIsaBase
+import Lv42.Protocol.Stack
+import Lv42.Protocol.FixedColumns
 import Heap.LeanIsa
 
 /-!
@@ -75,34 +76,6 @@ def uniSide (j : ℕ) (push : Bool) : List (List SP) :=
   ((if push then (tables.getD j default).flushes.push else (tables.getD j default).flushes.pull).map
     tupSP).map (·.map spNorm)
 
-/-- Lv42's opcode table `j`'s interactions of one side. -/
-def lvInteractions (j : Fin 6) (push : Bool) : List (AbstractInteraction K) :=
-  (Lv42.Protocol.LeanIsa.opcodeComponent j).rowOperations.interactions.filter fun ai ↦
-    decide (Lv42.Arithmetization.channelDir ai.channel =
-      if push then Lv42.Arithmetization.Direction.push else .pull)
-
-/-- Lv42's opcode table `j`'s flushes of one side, as normal forms. -/
-def lvSide (j : Fin 6) (push : Bool) : List (List SP) :=
-  ((lvInteractions j push).map (aiSP (Lv42.Protocol.LeanIsa.opcodeComponent j).width)).map (·.map spNorm)
-
-set_option maxRecDepth 100000 in
-/-- **The normal forms are equal**, table by table, side by side, in order. -/
-theorem sides_eq : ∀ j : Fin 6, ∀ push : Bool, uniSide j push = lvSide j push := by
-  decide +kernel
-
-/-- **The forms are Lv42's flushes**, on every row, in order. -/
-theorem uni_tuples_eq (j : Fin 6) (push : Bool) (R : ℕ → K) :
-    ((if push then (tables.getD j default).flushes.push else (tables.getD j default).flushes.pull).map
-        fun tup ↦ tupleK tup R) =
-      (lvInteractions j push).map fun ai ↦
-        (LeanVM.Protocol.flushPolys Lv42.Arithmetization.channelSep
-          (Lv42.Protocol.LeanIsa.opcodeComponent j).width ai).map
-            (·.eval fun i : Fin (Lv42.Protocol.LeanIsa.opcodeComponent j).width ↦ R i.val) := by
-  have h := congrArg (List.map (tupleOfSP R)) (sides_eq j push)
-  simp only [uniSide, lvSide, List.map_map] at h
-  simp only [tupleK_eq, flushPolys_eval_eq]
-  exact h
-
 /-- Shared opcode table `j`'s interactions of one side (`lvInteractions` at the five shared tables). -/
 def lvInteractionsBase (j : Fin 5) (push : Bool) : List (AbstractInteraction K) :=
   (Lv42.Protocol.LeanIsa.baseComponent j).rowOperations.interactions.filter fun ai ↦
@@ -153,7 +126,6 @@ theorem tables_coeffs (j : Fin 6) : ∀ tup ∈ (tables.getD j default).flushes.
   obtain ⟨hK, hl⟩ := tables_coeffs_decide j tup htup f hf mc hmc
   refine ⟨?_, hl⟩
   rw [toK, ofK_eq_ofLimbs, ofLimbs_of_isInK hK]
-
 
 /-! ## The rows: `rowPosition` maps the executed rows onto the active ones -/
 
@@ -454,24 +426,6 @@ theorem map_filter_map {α β γ : Type*} (l : List α) (f : α → β) (p : β 
     · rw [List.map_cons, List.map_cons, hg a, ih]
     · exact ih
 
-/-- Lv42's opcode table `j`'s flushes: its interactions, each on its channel's side. -/
-theorem flushes_opIdx (j : Fin 6) :
-    flushes (opIdx j) = ((opcodeComponent j).rowOperations.interactions.map fun i ↦
-      (Lv42.Arithmetization.channelDir i.channel,
-        LeanVM.Protocol.flushPolys Lv42.Arithmetization.channelSep (opcodeComponent j).width i)).map
-          fun f ↦ (sideOf f.1, f.2) := rfl
-
-/-- Lv42's flushes of opcode table `j` of a side, on a row, are its interactions' of that side. -/
-theorem inst_flushes_eq (j : Fin 6) (side : Side) (row : Fin (width (opIdx j)) → K) :
-    ((flushes (opIdx j)).filter fun f ↦ decide (f.1 = side)).map (fun f ↦ f.2.map (·.eval row)) =
-      (lvInteractions j (decide (side = .push))).map fun ai ↦
-        (LeanVM.Protocol.flushPolys Lv42.Arithmetization.channelSep (opcodeComponent j).width ai).map
-          (·.eval row) := by
-  rw [flushes_opIdx, List.map_map]
-  exact map_filter_map _ _
-    (fun f : Side × Vector (CPoly.CMvPolynomial (opcodeComponent j).width K) 16 ↦ decide (f.1 = side)) _ _
-    (fun ai ↦ decide_sideOf _ side) _ fun _ ↦ rfl
-
 /-- **A shared table's flushes of a side, on a row, are its interactions'** (`inst_flushes_eq` at the five shared
 tables, for any instance whose table is `baseTable j` with its sides read by `sideOf`). -/
 theorem base_flushes_eq (j : Fin 5) (side : Side) (row : Fin (baseComponent j).width → K) :
@@ -489,32 +443,11 @@ theorem base_flushes_eq (j : Fin 5) (side : Side) (row : Fin (baseComponent j).w
     (fun f : Side × Vector (CPoly.CMvPolynomial (baseComponent j).width K) 16 ↦ decide (f.1 = side)) _ _
     (fun ai ↦ decide_sideOf _ side) _ fun _ ↦ rfl
 
-/-- **A row's flushes are its forms' tuples**: where Lv42's row `x` of opcode table `j` is the row `R`,
-its tuples of a side are the forms' of that side at `R`, in order. -/
-theorem rowTuples_eq (F : FlockSpec) (prog : Lv42.Semantics.Program) (s : Sizes)
-    (q : LeanVM.Protocol.Column (leanIsaInstance F prog s).μ) (j : Fin 6) (side : Side) (x : ℕ)
-    (hx : x < 2 ^ (leanIsaInstance F prog s).τ (opIdx j)) (R : ℕ → K)
-    (hrow : (leanIsaInstance F prog s).row q (opIdx j) ⟨x, hx⟩ = fun i ↦ R i.val) :
-    Heap.rowTuples (leanIsaInstance F prog s) q (opIdx j) side x =
-      (if side = .push then (tables.getD j default).flushes.push
-        else (tables.getD j default).flushes.pull).map fun tup ↦ tupleK tup R := by
-  simp only [Heap.rowTuples, dite_pos_of hx, Heap.flushTuple, hrow]
-  refine (inst_flushes_eq j side _).trans ?_
-  cases side
-  · exact (uni_tuples_eq j true R).symm
-  · exact (uni_tuples_eq j false R).symm
-
 /-! ## The values: Lv42's rows are `C1`'s -/
 
 theorem layoutOf_c1 (S : UniStatement.Shape) : layoutOf S .c1 = c1Layout S := rfl
 
 theorem layoutOf_setup (S : UniStatement.Shape) : layoutOf S .setup = setupLayout S := rfl
-
-set_option maxRecDepth 10000 in
-/-- **Lv42's slots are the verifier's**: limb `k` (column `9 + k`) is `q_flock`'s slot `slots k`. -/
-theorem slots_eq : ∀ k : Fin 18,
-    qflockSlot (blake2sColumns.getD (9 + k.val) "") = some (Blake2sFlock.slots k).val := by
-  decide
 
 /-- A column of one limb, read at a row of its block. -/
 theorem c1Block_getD {L : StackLayout} {col : Column} {v off : ℕ} (h : L.limbs col = [(0, v, off)])
@@ -525,137 +458,11 @@ section Rows
 
 variable (D : Deployment) (rows : List ℕ) (c : Stk)
 
-/-- **Lv42's executed row `x` of opcode table `j` is `C1`'s row `rowPosition x`**: by `LvReadBack` on the
-committed columns, by the copies on `BLAKE2S`'s limbs. -/
-theorem row_eq (hRB : LvReadBack D) (hC1 : C1Limbs D.shape)
-    (hcp : ∀ x < 2 ^ D.shape.heights.getD opBlake2s 0, ∀ col slot,
-      qflockSlot (blake2sColumns.getD col "") = some slot →
-        c1Val D c (.table opBlake2s col) (D.shape.heights.getD opBlake2s 0) x = c (qfOff D + slot + 256 * x))
-    (j : Fin 6) (x : Fin (2 ^ (D.inst rows).τ (opIdx j))) (hx : x.val < rows.getD j 0)
-    (hcount : rows.getD j 0 ≤ 2 ^ D.shape.heights.getD j 0) :
-    (D.inst rows).row (lv42Stack D.prog (D.sizes rows) D.shape c) (opIdx j) x =
-      fun i ↦ c1Row D c j (rowPosition (rows.getD j 0) (D.shape.heights.getD j 0) x.val) i.val := by
-  funext i
-  by_cases hl : IsLimb ⟨opIdx j, i⟩
-  · obtain ⟨hj, h9, h27⟩ := hl
-    have hj5 : j = 5 := by
-      have := congrArg Fin.val hj
-      simp only [opIdx] at this
-      exact Fin.ext (by omega)
-    subst hj5
-    change 9 ≤ i.val at h9
-    change i.val < 27 at h27
-    set k : Fin 18 := ⟨i.val - 9, by omega⟩ with hk
-    have hik : i.val = 9 + k.val := by simp only [hk]; omega
-    have hb : 9 + k.val < width (opIdx 5) := by rw [width_blake2s]; have := k.isLt; omega
-    have key : ∀ i' : Fin (width (opIdx 5)), i'.val = 9 + k.val →
-        (D.inst rows).row (lv42Stack D.prog (D.sizes rows) D.shape c) (opIdx 5) x i' =
-          ((D.inst rows).column (lv42Stack D.prog (D.sizes rows) D.shape c) (limbCol k)).values.get x := by
-      intro i' h
-      have : i' = ⟨9 + k.val, hb⟩ := Fin.ext h
-      subst this
-      rfl
-    rw [key i hik]
-    have hlimb := column_limb Blake2sFlock.blake2sFlockSpec D.prog (D.sizes rows)
-      (lv42Stack D.prog (D.sizes rows) D.shape c) k x
-    have hfl := column_committed Blake2sFlock.blake2sFlockSpec D.prog (D.sizes rows)
-      (lv42Stack D.prog (D.sizes rows) D.shape c) flockCol not_isLimb_flockCol
-        (LeanVM.Protocol.cubeIndex (Blake2sFlock.blake2sFlockSpec.slot k) x)
-    have e : ((D.inst rows).column (lv42Stack D.prog (D.sizes rows) D.shape c) (limbCol k)).values.get x =
-        ((D.inst rows).column (lv42Stack D.prog (D.sizes rows) D.shape c) flockCol).values.get
-          (LeanVM.Protocol.cubeIndex (Blake2sFlock.blake2sFlockSpec.slot k) x) := by
-      rw [hlimb, hfl]
-      rfl
-    refine e.trans ((hRB rows c flockCol not_isLimb_flockCol _).trans ?_)
-    show (Vector.ofFn fun x ↦ (c1Block (c1Layout D.shape) c .qflock).getD
-        (x.val % 256 + 256 * rowPosition ((D.sizes rows).rows 5) (D.shape.heights.getD 5 0) (x.val / 256))
-          0).get _ = _
-    refine (Vector.get_ofFn _ _).trans ?_
-    obtain ⟨off, hoff⟩ := hC1.2.2.2.2
-    rw [layoutOf_c1] at hoff
-    have hslot := (Blake2sFlock.slots k).isLt
-    have hval : (LeanVM.Protocol.cubeIndex (k := 8) (Blake2sFlock.blake2sFlockSpec.slot k) x).val =
-        (Blake2sFlock.slots k).val + 256 * x.val := by
-      rw [LeanVM.Protocol.cubeIndex_val]
-      rfl
-    have hmod : (LeanVM.Protocol.cubeIndex (k := 8) (Blake2sFlock.blake2sFlockSpec.slot k) x).val % 256 =
-        (Blake2sFlock.slots k).val := by
-      rw [hval, Nat.add_mul_mod_self_left, Nat.mod_eq_of_lt hslot]
-    have hdiv : (LeanVM.Protocol.cubeIndex (k := 8) (Blake2sFlock.blake2sFlockSpec.slot k) x).val / 256 = x.val := by
-      rw [hval, Nat.add_mul_div_left _ _ (by norm_num), Nat.div_eq_of_lt hslot, zero_add]
-    show (c1Block (c1Layout D.shape) c .qflock).getD
-        ((LeanVM.Protocol.cubeIndex (k := 8) (Blake2sFlock.blake2sFlockSpec.slot k) x).val % 256 +
-          256 * rowPosition ((D.sizes rows).rows 5) (D.shape.heights.getD 5 0)
-            ((LeanVM.Protocol.cubeIndex (k := 8) (Blake2sFlock.blake2sFlockSpec.slot k) x).val / 256)) 0 = _
-    rw [hmod, hdiv]
-    have hy : rowPosition (rows.getD 5 0) (D.shape.heights.getD 5 0) x.val < 2 ^ D.shape.heights.getD 5 0 :=
-      rowPosition_lt_of_lt hcount hx
-    have hidx : (Blake2sFlock.slots k).val + 256 * rowPosition (rows.getD 5 0) (D.shape.heights.getD 5 0) x.val <
-        2 ^ (D.shape.heights.getD opBlake2s 0 + 8) := by
-      rw [pow_add]
-      show _ < 2 ^ D.shape.heights.getD 5 0 * 256
-      nlinarith
-    rw [show (D.sizes rows).rows 5 = rows.getD 5 0 from rfl, c1Block_getD hoff c hidx]
-    have hc := hcp _ hy i.val (Blake2sFlock.slots k).val (by rw [hik]; exact slots_eq k)
-    have hq : qfOff D = off := by simp [qfOff, hoff]
-    show _ = c1Val D c (.table opBlake2s i.val) (D.shape.heights.getD opBlake2s 0)
-      (rowPosition (rows.getD 5 0) (D.shape.heights.getD 5 0) x.val)
-    rw [hc, hq, add_assoc]
-  · have h := hRB rows c ⟨opIdx j, i⟩ hl x
-    refine h.trans ?_
-    show (Vector.ofFn fun x ↦ basisValue (c1Block (c1Layout D.shape) c (.table j.val i.val))
-      (D.shape.heights.getD j.val 0)
-        (rowPosition ((D.sizes rows).rows j) (D.shape.heights.getD j.val 0) x.val)).get x = _
-    rw [Vector.get_ofFn]
-    rfl
-
 theorem flatMap_ite_filter {α β : Type*} (l : List α) (p : α → Bool) (g : α → List β) :
     (l.flatMap fun x ↦ if p x then g x else []) = (l.filter p).flatMap g := by
   induction l with
   | nil => rfl
   | cons a l ih => by_cases h : p a <;> simp [h, ih]
-
-/-- **A table's block holds Lv42's executed rows' flushes**, on one side. -/
-theorem table_side_perm (hRB : LvReadBack D) (hC1 : C1Limbs D.shape)
-    (hcp : ∀ x < 2 ^ D.shape.heights.getD opBlake2s 0, ∀ col slot,
-      qflockSlot (blake2sColumns.getD col "") = some slot →
-        c1Val D c (.table opBlake2s col) (D.shape.heights.getD opBlake2s 0) x = c (qfOff D + slot + 256 * x))
-    (j : Fin 6) (r : ℕ) (hr : r = D.shape.heights.getD j 0) (hcount : rows.getD j 0 ≤ 2 ^ r)
-    (side : Side) :
-    ((List.range (2 ^ r)).flatMap fun x ↦ if isActive x (rows.getD j 0) r then
-      (if side = .push then (tables.getD j default).flushes.push
-        else (tables.getD j default).flushes.pull).map (fun tup ↦ tupleK tup (c1Row D c j x)) else []).Perm
-      (Heap.tableTuples (D.inst rows) (lv42Stack D.prog (D.sizes rows) D.shape c) (opIdx j) side) := by
-  subst hr
-  rw [flatMap_ite_filter]
-  refine ((activePositions_perm _ _).symm.flatMap_right _).trans ?_
-  rw [← map_rowPosition hcount, List.flatMap_map]
-  refine List.Perm.trans (List.Perm.of_eq (List.flatMap_congr fun x hx ↦ ?_))
-    (Heap.rows_perm_tableTuples (D.inst rows) (lv42Stack D.prog (D.sizes rows) D.shape c) (opIdx j) side)
-  have hxc : x < rows.getD j 0 := List.mem_range.mp hx
-  have hx' : x < 2 ^ (D.inst rows).τ (opIdx j) :=
-    lt_of_lt_of_le hxc ((D.inst rows).rows_le (opIdx j))
-  exact (rowTuples_eq _ _ _ _ j side x hx' _ (row_eq D rows c hRB hC1 hcp j ⟨x, hx'⟩ hxc hcount)).symm
-
-/-- A table's block's pushes. -/
-theorem tableBlock_pushes (hRB : LvReadBack D) (hC1 : C1Limbs D.shape)
-    (hcp : ∀ x < 2 ^ D.shape.heights.getD opBlake2s 0, ∀ col slot,
-      qflockSlot (blake2sColumns.getD col "") = some slot →
-        c1Val D c (.table opBlake2s col) (D.shape.heights.getD opBlake2s 0) x = c (qfOff D + slot + 256 * x))
-    (j : Fin 6) (b : Block) (hr : b.r = D.shape.heights.getD j 0) (hcount : rows.getD j 0 ≤ 2 ^ b.r) :
-    (tableBlockK D c rows b j).pushes.Perm
-      (Heap.tableTuples (D.inst rows) (lv42Stack D.prog (D.sizes rows) D.shape c) (opIdx j) .push) :=
-  table_side_perm D rows c hRB hC1 hcp j b.r hr hcount .push
-
-/-- A table's block's pulls. -/
-theorem tableBlock_pulls (hRB : LvReadBack D) (hC1 : C1Limbs D.shape)
-    (hcp : ∀ x < 2 ^ D.shape.heights.getD opBlake2s 0, ∀ col slot,
-      qflockSlot (blake2sColumns.getD col "") = some slot →
-        c1Val D c (.table opBlake2s col) (D.shape.heights.getD opBlake2s 0) x = c (qfOff D + slot + 256 * x))
-    (j : Fin 6) (b : Block) (hr : b.r = D.shape.heights.getD j 0) (hcount : rows.getD j 0 ≤ 2 ^ b.r) :
-    (tableBlockK D c rows b j).pulls.Perm
-      (Heap.tableTuples (D.inst rows) (lv42Stack D.prog (D.sizes rows) D.shape c) (opIdx j) .pull) :=
-  table_side_perm D rows c hRB hC1 hcp j b.r hr hcount .pull
 
 end Rows
 
@@ -892,40 +699,6 @@ section Boundary
 
 variable (D : Deployment) (rows : List ℕ) (c : Stk)
 
-theorem cell_mem (hRB : LvReadBack D) (i : Fin 4) (x : Fin (2 ^ (D.sizes rows).logMem)) :
-    cell Blake2sFlock.blake2sFlockSpec D.prog (D.sizes rows) (lv42Stack D.prog (D.sizes rows) D.shape c)
-      (memCol i) x = c1Val D c (.memory i.val) D.shape.logMemory x.val :=
-  (hRB rows c (memCol i) (by simp [IsLimb, memCol, opIdx]) x).trans (Vector.get_ofFn _ _)
-
-theorem cell_bfcnt (hRB : LvReadBack D) (x : Fin (2 ^ D.prog.logSize)) :
-    cell Blake2sFlock.blake2sFlockSpec D.prog (D.sizes rows) (lv42Stack D.prog (D.sizes rows) D.shape c)
-      bfcntCol x = c1Val D c .bytecodeFinal D.shape.logBytecode x.val := by
-  refine (hRB rows c bfcntCol (by simp [IsLimb, bfcntCol, opIdx]) x).trans ((Vector.get_ofFn _ _).trans ?_)
-  rw [D.logBytecode_eq]
-  rfl
-
-/-- **The memory's tuple of cell `x`** is Lv42's memory boundary tuple. -/
-theorem memTupleK_eq (hRB : LvReadBack D) (hBV : BasisValueInv) (hlm : D.shape.logMemory ≤ 24) (cnt : K)
-    (x : Fin (2 ^ (D.sizes rows).logMem)) :
-    memTupleK D c cnt x.val = tupleOf (LeanVM.Parameters.gpow 1)
-      (#[LeanVM.Parameters.gpow x.val, cnt] ++ (memLimbs Blake2sFlock.blake2sFlockSpec (D.sizes rows)
-        (lv42Stack D.prog (D.sizes rows) D.shape c) x).toArray) := by
-  have hsu := suVal_address D hBV hlm x.val x.isLt
-  apply Vector.ext
-  intro k hk
-  simp only [memTupleK, tupleOf, Vector.getElem_ofFn, memLimbs, cell_mem D rows c hRB]
-  interval_cases k <;> simp [hsu, toK_sepMem]
-
-/-- **The bytecode's tuple of instruction `i`** is Lv42's bytecode boundary tuple. -/
-theorem bcTupleK_eq (hBV : BasisValueInv) (hlb : D.shape.logBytecode ≤ 24) (cnt : K)
-    (i : Fin (2 ^ D.prog.logSize)) :
-    bcTupleK D cnt i.val = tupleOf (LeanVM.Parameters.gpow 2)
-      (#[LeanVM.Parameters.gpow i.val, cnt] ++ (entryList i).toArray) := by
-  apply Vector.ext
-  intro k hk
-  simp only [bcTupleK, tupleOf, Vector.getElem_ofFn, slotVal_eq D hBV hlb k hk i, tupleSlot, entryList]
-  interval_cases k <;> simp [ofBits_four]
-
 theorem initK_eq : initK = tupleOf (LeanVM.Parameters.gpow 0) #[1, 1] := by
   apply Vector.ext
   intro k hk
@@ -1024,97 +797,9 @@ theorem heights_le (D : Deployment) (hHG : HeapGood D.shape) :
   simp only at *
   omega
 
-open Lv42.Protocol.Blake2sFlock in
-/-- **The heap read off `C1` realizes Lv42's bus** wherever the copies hold (`LvRealizes`). -/
-theorem realizes (D : Deployment) (hRB : LvReadBack D) (hBV : BasisValueInv) (hC1 : C1Limbs D.shape)
-    (hHG : HeapGood D.shape) : LvRealizes D := by
-  intro s c hcp
-  obtain ⟨⟨-, hfit⟩, hcopy⟩ := hcp
-  obtain ⟨hlm, hlb⟩ := heights_le D hHG
-  set rows := s.2 with hrows
-  set q := lv42Stack D.prog (D.sizes rows) D.shape c with hq
-  have htab : ∀ side : Side, ((List.range 6).flatMap fun t ↦
-      lbSide (blockK D c rows ⟨.table t, D.shape.heights.getD t 0, 0⟩) side).Perm
-        ((List.finRange 6).flatMap fun j ↦ Heap.tableTuples (D.inst rows) q (opIdx j) side) := by
-    intro side
-    rw [← List.map_coe_finRange_eq_range, List.flatMap_map]
-    refine List.Perm.flatMap_left _ fun j _ ↦ ?_
-    cases side
-    · exact tableBlock_pushes D rows c hRB hC1 hcopy j ⟨.table j.val, _, 0⟩ rfl (hfit j j.isLt)
-    · exact tableBlock_pulls D rows c hRB hC1 hcopy j ⟨.table j.val, _, 0⟩ rfl (hfit j j.isLt)
-  have hrange : List.range (2 ^ D.shape.logBytecode) = List.range (2 ^ D.prog.logSize) := by
-    rw [D.logBytecode_eq]
-  constructor
-  · -- push
-    have hmem : lbSide (blockK D c rows ⟨.memory, D.shape.logMemory, 0⟩) .push =
-        (List.finRange (2 ^ (D.sizes rows).logMem)).map fun x ↦ tupleOf (LeanVM.Parameters.gpow 1)
-          (#[LeanVM.Parameters.gpow x.val, 1] ++ (memLimbs blake2sFlockSpec (D.sizes rows) q x).toArray) := by
-      refine (Heap.LeafBlock.pushes_pair _ _ _).trans ?_
-      exact map_range_eq_finRange _ _ _ fun x ↦ memTupleK_eq D rows c hRB hBV hlm 1 x
-    have hbc : lbSide (blockK D c rows ⟨.bytecode, D.shape.logBytecode, 0⟩) .push =
-        (List.finRange (2 ^ D.prog.logSize)).map fun i ↦ tupleOf (LeanVM.Parameters.gpow 2)
-          (#[LeanVM.Parameters.gpow i.val, 1] ++ (entryList i).toArray) := by
-      refine (Heap.LeafBlock.pushes_pair _ _ _).trans ?_
-      rw [hrange]
-      exact map_range_eq_finRange _ _ _ fun i ↦ bcTupleK_eq D hBV hlb 1 i
-    have hb := blocks_side D c rows .push
-    rw [hmem, hbc] at hb
-    show ((D.shape.heap.blocks.map (blockK D c rows)).flatMap (lbSide · .push) ++ [initK]).Perm
-      ((D.inst rows).flushTuples q .push ++ (D.inst rows).boundaryTuples q .push)
-    rw [Heap.LeanIsa.flushTuples_eq_opcode, boundaryTuples_push, initK_eq]
-    refine (hb.append_right _).trans ?_
-    refine (((htab .push).append_left _).append_right _).trans ?_
-    exact perm_shuffle _ _ _ _
-  · -- pull
-    have hmem : lbSide (blockK D c rows ⟨.memory, D.shape.logMemory, 0⟩) .pull =
-        (List.finRange (2 ^ (D.sizes rows).logMem)).map fun x ↦ tupleOf (LeanVM.Parameters.gpow 1)
-          (#[LeanVM.Parameters.gpow x.val, cell blake2sFlockSpec D.prog (D.sizes rows) q (memCol 3) x] ++
-            (memLimbs blake2sFlockSpec (D.sizes rows) q x).toArray) := by
-      refine (Heap.LeafBlock.pulls_pair _ _ _).trans ?_
-      refine map_range_eq_finRange _ _ _ fun x ↦ ?_
-      rw [cell_mem D rows c hRB 3 x]
-      exact memTupleK_eq D rows c hRB hBV hlm _ x
-    have hbc : lbSide (blockK D c rows ⟨.bytecode, D.shape.logBytecode, 0⟩) .pull =
-        (List.finRange (2 ^ D.prog.logSize)).map fun i ↦ tupleOf (LeanVM.Parameters.gpow 2)
-          (#[LeanVM.Parameters.gpow i.val, cell blake2sFlockSpec D.prog (D.sizes rows) q bfcntCol i] ++
-            (entryList i).toArray) := by
-      refine (Heap.LeafBlock.pulls_pair _ _ _).trans ?_
-      rw [hrange]
-      refine map_range_eq_finRange _ _ _ fun i ↦ ?_
-      rw [cell_bfcnt D rows c hRB i]
-      exact bcTupleK_eq D hBV hlb _ i
-    have hb := blocks_side D c rows .pull
-    rw [hmem, hbc] at hb
-    show ((D.shape.heap.blocks.map (blockK D c rows)).flatMap (lbSide · .pull) ++ [finK D]).Perm
-      ((D.inst rows).flushTuples q .pull ++ (D.inst rows).boundaryTuples q .pull)
-    rw [Heap.LeanIsa.flushTuples_eq_opcode, boundaryTuples_pull, finK_eq]
-    refine (hb.append_right _).trans ?_
-    refine (((htab .pull).append_left _).append_right _).trans ?_
-    exact perm_shuffle _ _ _ _
-
 end LvR
 
-/-- **The heap read off `C1` realizes Lv42's bus** wherever the copies hold (`LvRealizes`): from Lv42's
-columns of `C1`'s Lv42 stack being `lv42Column`'s (`LvReadBack`), the setup's basis-`B` coefficients being its
-values' (`BasisValueInv`), `C1`'s `q_flock` one limb (`C1Limbs`) and the heap's blocks fitting the leaves
-(`HeapGood`: the memory's and the bytecode's heights at most `24`). -/
-theorem lvRealizes (D : Deployment) (hRB : LvReadBack D) (hBV : BasisValueInv) (hC1 : C1Limbs D.shape)
-    (hHG : HeapGood D.shape) : LvRealizes D :=
-  LvR.realizes D hRB hBV hC1 hHG
-
 end UniSound.Ids
-
-/-- info: 'UniSound.Ids.lvRealizes' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms UniSound.Ids.lvRealizes
-
-/-- info: 'UniSound.Ids.LvR.uni_tuples_eq' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms UniSound.Ids.LvR.uni_tuples_eq
-
-/-- info: 'UniSound.Ids.LvR.rowTuples_eq' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms UniSound.Ids.LvR.rowTuples_eq
 
 /-- info: 'UniSound.Ids.LvR.tables_length_le' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
@@ -1132,10 +817,3 @@ end UniSound.Ids
 #guard_msgs in
 #print axioms UniSound.Ids.LvR.activePositions_perm
 
-/-- info: 'UniSound.Ids.LvR.row_eq' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms UniSound.Ids.LvR.row_eq
-
-/-- info: 'UniSound.Ids.LvR.slots_eq' depends on axioms: [propext] -/
-#guard_msgs in
-#print axioms UniSound.Ids.LvR.slots_eq

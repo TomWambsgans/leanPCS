@@ -49,7 +49,6 @@ open scoped ENNReal
 
 attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
   LeanVM.Protocol.Compile.instFintypeKState UniStatement.layoutWords UniStatement.setupStack
-  UniStatement.flockMatrixStack
 
 /-! ## Simulated computations -/
 
@@ -469,11 +468,7 @@ theorem sim_opsRun_nil {γ : Type} (view : UPf → FSt × List (RMsg E)) (π : U
 
 section Bridge
 
-variable (D : Deployment) {κ : ℕ} (Fl : FlockSound κ) (nV V : ℕ) (C : UniCode D Fl nV V)
-
-theorem length_uRounds : (uRounds Fl nV V).length = Fl.prog.rounds.length + 3 + V := by
-  simp [uniRounds]
-  omega
+variable (D : Deployment) {κ : ℕ} (nV V : ℕ)
 
 /-- The claims of the opening of a layout word's variables, its one claim. -/
 theorem claims_uCl (k : ℕ) (pt : List E) (v : E) (hl : pt.length = wv D k) :
@@ -499,132 +494,5 @@ theorem wellFormed_of_good (r : Reduced) (p1 : List E) (v1 : E) (p2 : List E) (v
 
 end Bridge
 
-/-- **THE VERIFIER BRIDGE**, from the walk (`UniWalk`, `UniWalkReject`) and the chain program's
-roots (`UniOutRoots`). -/
-theorem uniVerifierBridge_of_walk (D : Deployment) {κ : ℕ} (Fl : FlockSound κ) (nV V : ℕ)
-    (C : UniCode D Fl nV V) (hs : UniShapes D) (hW : UniWalk D Fl nV V C)
-    (hR : UniWalkReject D Fl nV V) (hO : UniOutRoots D Fl nV V C) :
-    UniVerifierBridge D Fl nV V C hs := by
-  intro π s
-  rw [verifyWith_eq_rest]
-  by_cases hlen : π.proof.stream.size = uLen Fl nV V
-  swap
-  · -- a stream of another length: the walk rejects
-    refine (le_of_eq (Soundness.zero_of_support _ _ _ (fun b hb => ?_) s)).trans zero_le
-    rw [mem_support_bind_iff] at hb
-    obtain ⟨p, hp, hb⟩ := hb
-    rw [support_map] at hp
-    obtain ⟨o, ho, rfl⟩ := hp
-    simp only [hR π hlen o ho, Bool.not_false, ↓reduceIte, support_pure,
-      Set.mem_singleton_iff] at hb
-    simp [hb]
-  -- the walk is the chain; both sides run it first
-  rw [hW Common.queryPermutation π hlen, bind_map_left, simulateQ_verU]
-  refine mono_bind_supp _ _ _ _ _ _ (fun ch hch s => ?_) s
-  obtain ⟨hfits, hlch⟩ := doneFits_of_mem_chain (uRounds Fl nV V) π ch _ hch
-  dsimp only
-  cases hacc : uAccB D Fl nV V C π ch
-  · -- the walk's verdict rejects
-    rw [ite_eq_left (show (!false) = true from rfl), Soundness.zero_pure _ false _ (by simp) s]
-    exact zero_le
-  rw [ite_eq_right (show ¬ ((!true) = true) by decide)]
-  have hz : (C.prog (uSt Fl nV V π).1 (uSt Fl nV V π).2).ZerosVanish
-      (uDone (uRounds Fl nV V) π ch) (uTail (uRounds Fl nV V) π) :=
-    (@of_decide_eq_true _ (Classical.propDecidable _) hacc).2
-  by_cases hg : GoodR D.shape (uOut D Fl nV V C π ch)
-  swap
-  · -- not the main line's result: the Statement rejects
-    refine (le_of_eq (Soundness.zero_of_support _ _ _ (fun b hb hbt => ?_) s)).trans zero_le
-    exact hg (restR_good D.shape π.roots π.proof Common.queryPermutation _ b hb hbt)
-  obtain ⟨p1, v1, p2, v2, p3, v3, mc, ho, hm, l1, l2, l3, l4, l5⟩ := hg
-  rw [← wv_eq] at l1 l2 l3 l4 l5
-  have hcheck : uniCheck D Fl nV V C π ch :=
-    ⟨hfits, hz, wellFormed_of_good D _ p1 v1 p2 v2 p3 v3 mc ho hm l1 l2 l3 l4 l5⟩
-  -- the claims
-  have hx1 : (cl1 D Fl nV V C π ch).claims = [(⟨p1, v1⟩ : PcsQuotient.Claim)].map Bridge.claimTr := by
-    rw [cl1, show claimsOf (uOut D Fl nV V C π ch) .c1 = [⟨p1, v1⟩] by simp [claimsOf, ho]]
-    exact claims_uCl D 0 p1 v1 l1
-  have hx2 : (cl2 D Fl nV V C π ch).claims = [(⟨p2, v2⟩ : PcsQuotient.Claim)].map Bridge.claimTr := by
-    rw [cl2, show claimsOf (uOut D Fl nV V C π ch) .c2 = [⟨p2, v2⟩] by simp [claimsOf, ho]]
-    exact claims_uCl D 1 p2 v2 l2
-  have hx3 : (cl3 D Fl nV V C π ch).claims = [(⟨p3, v3⟩ : PcsQuotient.Claim)].map Bridge.claimTr := by
-    rw [cl3, show claimsOf (uOut D Fl nV V C π ch) .setup = [⟨p3, v3⟩] by simp [claimsOf, ho]]
-    exact claims_uCl D 2 p3 v3 l3
-  have hx4 : (cl4 D Fl nV V C π ch).claims =
-      [(⟨mc.point, mc.a⟩ : PcsQuotient.Claim)].map Bridge.claimTr := by
-    rw [cl4, show matClaims (uOut D Fl nV V C π ch) true = [⟨mc.point, mc.a⟩] by
-      simp [matClaims, hm]]
-    exact claims_uCl D 3 _ _ l4
-  have hx5 : (cl5 D Fl nV V C π ch).claims =
-      [(⟨mc.point, mc.b⟩ : PcsQuotient.Claim)].map Bridge.claimTr := by
-    rw [cl5, show matClaims (uOut D Fl nV V C π ch) false = [⟨mc.point, mc.b⟩] by
-      simp [matClaims, hm]]
-    exact claims_uCl D 4 _ _ l5
-  -- the rounds' roots
-  have hr1 : ofB (((msgK (uView (uRounds Fl nV V)) π 0).1).getD (Vector.replicate 32 0)) =
-      rootOf (uOut D Fl nV V C π ch).roots.1 := by
-    rw [hO π ch]
-    exact root_at _ π ch 0 (by rw [length_uRounds]; omega) hlch (by
-      rw [uniRounds_getD_zero])
-  have hr2 : ofB (((msgK (uView (uRounds Fl nV V)) π (Fl.prog.rounds.length + 1)).1).getD
-      (Vector.replicate 32 0)) = rootOf (uOut D Fl nV V C π ch).roots.2 := by
-    rw [hO π ch]
-    exact root_at _ π ch _ (by rw [length_uRounds]; omega) hlch (by
-      rw [uniRounds_getD_c2])
-  -- the Statement's five calls, F2's early-stop openings
-  rw [restR_unroll D.shape π.roots π.proof Common.queryPermutation _ p1 v1 p2 v2 p3 v3 mc ho hm,
-    ← wv_eq, ← wv_eq, ← wv_eq, ← wv_eq, ← wv_eq,
-    pcsOpen_eq_early (wv D 0) (hs.lo 0 (by decide)) (hs.hi 0 (by decide)) _ _ _ hx1,
-    pcsOpen_eq_early (wv D 1) (hs.lo 1 (by decide)) (hs.hi 1 (by decide)) _ _ _ hx2,
-    pcsOpen_eq_early (wv D 2) (hs.lo 2 (by decide)) (hs.hi 2 (by decide)) _ _ _ hx3,
-    pcsOpen_eq_early (wv D 3) (hs.lo 3 (by decide)) (hs.hi 3 (by decide)) _ _ _ hx4,
-    pcsOpen_eq_early (wv D 4) (hs.lo 4 (by decide)) (hs.hi 4 (by decide)) _ _ _ hx5]
-  -- the composed side's five openings
-  unfold uOps uniOps
-  -- C1
-  rw [seqAnd_cons, sim_opsRun_cons]
-  refine early_le_rpm _ _ _ _ _ _ _ _ ?_ (fun s => ?_) (fun s => ?_) s
-  · exact Prod.ext (Prod.ext hr1 rfl) rfl
-  · refine Soundness.zero_of_support _ _ _ (fun x hx => ?_) s
-    rw [seqAnd_false _ x hx]
-    exact Bool.false_ne_true
-  -- C2
-  rw [seqAnd_cons, sim_opsRun_cons]
-  refine early_le_rpm _ _ _ _ _ _ _ _ ?_ (fun s => ?_) (fun s => ?_) s
-  · exact Prod.ext (Prod.ext hr2 rfl) rfl
-  · refine Soundness.zero_of_support _ _ _ (fun x hx => ?_) s
-    rw [seqAnd_false _ x hx]
-    exact Bool.false_ne_true
-  -- the setup
-  rw [seqAnd_cons, sim_opsRun_cons]
-  refine early_le_rpm _ _ _ _ _ _ _ _ ?_ (fun s => ?_) (fun s => ?_) s
-  · exact Prod.ext (Prod.ext (Soundness.ofB_toB_root _) rfl) rfl
-  · refine Soundness.zero_of_support _ _ _ (fun x hx => ?_) s
-    rw [seqAnd_false _ x hx]
-    exact Bool.false_ne_true
-  -- A0
-  rw [seqAnd_cons, sim_opsRun_cons]
-  refine early_le_rpm _ _ _ _ _ _ _ _ ?_ (fun s => ?_) (fun s => ?_) s
-  · exact Prod.ext (Prod.ext (Soundness.ofB_toB_root _) rfl) rfl
-  · refine Soundness.zero_of_support _ _ _ (fun x hx => ?_) s
-    rw [seqAnd_false _ x hx]
-    exact Bool.false_ne_true
-  -- B0
-  rw [seqAnd_cons, sim_opsRun_cons]
-  refine early_le_rpm _ _ _ _ _ _ _ _ ?_ (fun s => ?_) (fun s => ?_) s
-  · exact Prod.ext (Prod.ext (Soundness.ofB_toB_root _) rfl) rfl
-  · refine Soundness.zero_of_support _ _ _ (fun x hx => ?_) s
-    rw [seqAnd_false _ x hx]
-    exact Bool.false_ne_true
-  -- every opening accepted
-  rw [seqAnd, sim_opsRun_nil, simulateQ_pure]
-  refine Soundness.le_pure _ _ _ _ _ (fun _ => ⟨hcheck, fun k hk => ?_⟩) s
-  have hk5 : k < 5 := hk
-  interval_cases k <;> rfl
-
-
 end UniSound
 
-/-- info: 'UniSound.uniVerifierBridge_of_walk' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms UniSound.uniVerifierBridge_of_walk

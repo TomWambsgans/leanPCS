@@ -182,38 +182,6 @@ structure RowConstraints (D : Deployment) (c : Stk) (s : USt) : Prop where
     c1Val D c (.memory k) D.shape.logMemory 0 = toK ((linesOf (publicWordsOf s.1.toList)).getD k (0, 0)).1 ∧
       c1Val D c (.memory k) D.shape.logMemory 1 = toK ((linesOf (publicWordsOf s.1.toList)).getD k (0, 0)).2
 
-/-- **Lv42's columns of `C1`'s Lv42 stack are `lv42Column`'s**: a committed column read back through
-Lv42's layout (`M3Instance.column`) is the column `lv42Stack` stacked (`lv42Column`). -/
-def LvReadBack (D : Deployment) : Prop :=
-  ∀ (rows : List ℕ) (c : Stk) (col : Lv42.Protocol.LeanIsa.Col), ¬ Lv42.Protocol.LeanIsa.IsLimb col →
-    ∀ x : Fin (2 ^ Lv42.Protocol.LeanIsa.kappa D.prog (D.sizes rows) col),
-      ((D.inst rows).column (lv42Stack D.prog (D.sizes rows) D.shape c) col).values.get x =
-        (lv42Column D.prog (D.sizes rows) D.shape c col).get x
-
-/-- **The constraints on `C1`'s rows are Lv42's** `ConstraintsVanish`, `CountsNonzero`,
-`PublicLinesHold` of `C1`'s Lv42 stack (`lv42Stack`, its rows through `rowPosition`). -/
-def LvConstraints (D : Deployment) : Prop :=
-  ∀ (s : USt) (c : Stk), CountsFit D.shape s.2 → RowConstraints D c s →
-    (D.inst s.2).ConstraintsVanish (lv42Stack D.prog (D.sizes s.2) D.shape c) ∧
-      (D.inst s.2).CountsNonzero (lv42Stack D.prog (D.sizes s.2) D.shape c) ∧
-      (D.inst s.2).PublicLinesHold (publicInputOf s.1.toList) (lv42Stack D.prog (D.sizes s.2) D.shape c)
-
-/-- **The heap read off `C1` realizes Lv42's bus** of `C1`'s Lv42 stack where the copies hold. -/
-def LvRealizes (D : Deployment) : Prop :=
-  ∀ (s : USt) (c : Stk), CopiesOf D c s →
-    Heap.Realizes (I := D.inst s.2) (lv42Stack D.prog (D.sizes s.2) D.shape c) (hdOf D c s)
-
-/-- **Flock's predicate on `C1`'s `q_flock` is Lv42's region's** (`aux`). -/
-def LvAux (D : Deployment) : Prop :=
-  ∀ (s : USt) (c : Stk), FlockHolds (D.shape.heights.getD opBlake2s 0)
-    (qfOf D c (D.shape.heights.getD opBlake2s 0)) →
-      (D.inst s.2).aux (lv42Stack D.prog (D.sizes s.2) D.shape c)
-
-/-- **The bus counts** at counts in range: at most `N` tuples a side. -/
-def LvBusCount (D : Deployment) (N : ℕ) : Prop :=
-  ∀ rows : List ℕ, CountsFit D.shape rows →
-    Heap.busCount (D.inst rows) .push ≤ N ∧ Heap.busCount (D.inst rows) .pull ≤ N
-
 /-! ## Small facts of the verifier's definitions -/
 
 /-- **The fixed cosets** (F1b): `Z_act(ω_k)`, read off the count's bits, vanishes exactly on the active

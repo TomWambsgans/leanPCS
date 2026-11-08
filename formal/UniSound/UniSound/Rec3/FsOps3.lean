@@ -78,18 +78,7 @@ theorem root_rec3Rounds (fr : List RoundSpec) (hfr : ∀ r ∈ fr, r.root = fals
 
 section Ops
 
-variable (D : Deployment) {κ : ℕ} (F3 : FlockSound3 κ) (nV np : ℕ) (C : UniCode3 D F3 nV np)
-
-/-- π1-rec3's rounds. -/
-abbrev uRounds3 : List RoundSpec := rec3Rounds F3.prog.rounds nV np
-
-/-- The PIOP's statement a proof announces. -/
-def uSt3 (π : UPf) : USt := ustOf (uView (uRounds3 F3 nV np) π).1
-
-/-- **The chain program's result** on a proof and challenges. -/
-def uOut3 (π : UPf) (ch : List (List E)) : Reduced :=
-  (C.prog (uSt3 F3 nV np π).1 (uSt3 F3 nV np π).2).out (uDone (uRounds3 F3 nV np) π ch)
-    (uTail3 (uRounds3 F3 nV np) π)
+variable (D : Deployment) {κ : ℕ} (nV np : ℕ)
 
 /-- **The result is π1-rec3's shape**: one opening per commitment, in order, its point claims of its layout
 word's variables, and no matrices' claim. -/
@@ -99,51 +88,6 @@ def WellFormed3 (r : Reduced) : Prop :=
     (∀ c ∈ claimsOf r .c2, c.point.length = wv D 1) ∧
     (∀ c ∈ claimsOf r .setup, c.point.length = wv D 2) ∧
     r.matrices = none
-
-/-- **The verifier's check** (what an accepting run satisfies): the transcript completes the rounds, every value
-the chain program requires zero is, and its result is π1-rec3's shape. -/
-def uniCheck3 (π : UPf) (ch : List (List E)) : Prop :=
-  DoneFits (uRounds3 F3 nV np) (uDone (uRounds3 F3 nV np) π ch) ∧
-    (C.prog (uSt3 F3 nV np π).1 (uSt3 F3 nV np π).2).ZerosVanish (uDone (uRounds3 F3 nV np) π ch)
-      (uTail3 (uRounds3 F3 nV np) π) ∧
-    WellFormed3 D (uOut3 D F3 nV np C π ch)
-
-/-- `C1`'s claims. -/
-def cl1_3 (π : UPf) (ch : List (List E)) : Stmt (plainL (wv D 0)).stacking :=
-  uCl D 0 (claimsOf (uOut3 D F3 nV np C π ch) .c1)
-
-/-- `C2`'s claims. -/
-def cl2_3 (π : UPf) (ch : List (List E)) : Stmt (plainL (wv D 1)).stacking :=
-  uCl D 1 (claimsOf (uOut3 D F3 nV np C π ch) .c2)
-
-/-- The setup's claims. -/
-def cl3_3 (π : UPf) (ch : List (List E)) : Stmt (plainL (wv D 2)).stacking :=
-  uCl D 2 (claimsOf (uOut3 D F3 nV np C π ch) .setup)
-
-variable {D} in
-/-- **π1-rec3's three openings**: `C1` and `C2` (rounds `0`, `nF + 1`), the setup's stack (the setup's root),
-each its one claim. -/
-noncomputable def uniOps3 (hs : UniShapes D) (qF : LeanVM.Protocol.Column (wv D 2)) :
-    List (WhirOp UPf E Stk) :=
-  [⟨shapeK hs 0 (by decide), cl1_3 D F3 nV np C, fun π => π.proof.c1,
-      .round 0 fun q => rdTab (tabOf _ q)⟩,
-    ⟨shapeK hs 1 (by decide), cl2_3 D F3 nV np C, fun π => π.proof.c2,
-      .round (F3.prog.rounds.length + 1) fun q => rdTab (tabOf _ q)⟩,
-    ⟨shapeK hs 2 (by decide), cl3_3 D F3 nV np C, fun π => π.proof.setup,
-      .setup (fun π => toB π.roots.bytecode) qF⟩]
-
-/-- **A candidate is good**: at `C1`'s and `C2`'s rounds, a stack satisfying its opening's claims. -/
-def uniGood3 (i : ℕ) (π : UPf) (ch : List (List E)) (c : Option Stk) : Prop :=
-  if i = 0 then ∃ q, c = some q ∧
-      ∀ cl ∈ (cl1_3 D F3 nV np C π ch).claims, mleStk q (wv D 0) cl.point = cl.value
-  else if i = F3.prog.rounds.length + 1 then ∃ q, c = some q ∧
-      ∀ cl ∈ (cl2_3 D F3 nV np C π ch).claims, mleStk q (wv D 1) cl.point = cl.value
-  else True
-
-/-- **The setup's stack is good**: the setup's honest stack satisfies its opening's claims. -/
-def uniGoodS3 (π : UPf) (ch : List (List E)) : Prop :=
-  ∀ cl ∈ (cl3_3 D F3 nV np C π ch).claims,
-    mleStk (fun i => (setupStack D.prog D.shape).getD i 0) (wv D 2) cl.point = cl.value
 
 end Ops
 

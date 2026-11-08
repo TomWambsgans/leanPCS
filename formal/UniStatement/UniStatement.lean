@@ -22,18 +22,3 @@ The build fails if a definition the statements rest on uses an axiom beyond Lean
 #guard_msgs in
 #print axioms UniStatement.verifyWith
 
-/-- info: 'UniStatement.lv42Stack' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms UniStatement.lv42Stack
-
-/-- info: 'UniStatement.uniExtractor' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms UniStatement.uniExtractor
-
-/-- info: 'UniStatement.UniKnowledgeSoundness' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms UniStatement.UniKnowledgeSoundness
-
-/-- info: 'UniStatement.UniCompleteness' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms UniStatement.UniCompleteness

@@ -65,20 +65,6 @@ def wordIndex : Commitment → ℕ
   | .c2 => 1
   | .setup => 2
 
-/-- **The claims the verifier hands `PCS_OPEN` hold** of the candidates `c1`, `c2`, the setup's
-stack, and Flock's matrices `A0`, `B0`: each commitment's point claim on its stack's multilinear
-extension at its layout word's variables (`verifyWith`'s `layoutWordVars`), and `Â0(p) = a`,
-`B̂0(p) = b` at theirs. -/
-def ClaimsHold (D : Deployment) (r : Reduced) (c1 c2 : Stk) : Prop :=
-  (∀ o ∈ r.openings, ∀ pt v bs, o.2 = .point pt v bs →
-    mleStk (stackFor D c1 c2 o.1)
-      (layoutWordVars ((layoutWords D.shape).getD (wordIndex o.1) [])) pt = v) ∧
-  ∀ mc, r.matrices = some mc →
-    mleArr (flockMatrixStack true) (layoutWordVars ((layoutWords D.shape).getD 3 [])) mc.point =
-        mc.a ∧
-      mleArr (flockMatrixStack false) (layoutWordVars ((layoutWords D.shape).getD 4 [])) mc.point =
-        mc.b
-
 /-- **The opened transcript of a completed one**, round `0`'s root read as `c1`, round
 `nF + 1`'s as `c2`. -/
 def openedOf (nF : ℕ) (c1 c2 : Stk) (done : Done) : Op Stk :=
@@ -111,53 +97,7 @@ def obsOf {α : Type} (x : Except UniError α × Chan) :
         x.2.zeros.all (· == 0))
     | .error _ => none)
 
-/-- **The main line as a chain program** (code-level link), for the Flock phase `Fl`, with `nV`
-values at `t` and `V` batch rounds: after the row counts (`readCounts`, read with `C1`'s root in
-round `0`'s absorbed bytes), for each public input and counts the chain program `prog input rows`
-on `uniRounds Fl.prog.rounds nV V`, with a tail of five (the three stacks' values, `a`, `b`), runs
-as `reduceWith` at the deployment's shape, main line, point claims, up to what the verdict and the
-chain read (`obsOf`: the zeros' order aside) (`link`). Its Flock rounds are Flock's (`Fl.link`, by
-the composition). -/
-structure UniCode (D : Deployment) {κ : ℕ} (Fl : FlockSound κ) (nV V : ℕ) where
-  prog : Vector UInt8 32 → List ℕ → ChainProg Reduced
-  rounds_eq : ∀ input rows, (prog input rows).rounds = uniRounds Fl.prog.rounds nV V
-  tail_eq : ∀ input rows, (prog input rows).tail = 5
-  link : ∀ (input : Vector UInt8 32) {m : Type → Type} [Monad m] [LawfulMonad m]
-    (F : KeccakState → m KeccakState) (c₀ : Chan),
-    obsOf <$> ((reduceWith F D.shape (publicWordsOf input.toList) (.flock flockMain) .point).run.run
-        c₀) =
-      obsOf <$> ((readCounts D.shape.heights >>= fun rows => (prog input rows).run F).run.run c₀)
-
 /-! ## The last link -/
-
-/-- **The last link**: on a completed transcript and its tail, the verifier's checks
-(`ZerosVanish`: the batch's terminal `sum + λ³ value · extension + last = 0`) with true claims
-(`ClaimsHold`: the stacks' point claims, `A0`'s and `B0`'s at the pending reduction's terminal) make
-the batching sumcheck's last claim the identity model's partial sum at its point (`SumState` after
-the `V` rounds: `weightAt` the multilinear extension of the cube's weights, the stacks zero-extended,
-the pending term `(a + α b) L̂(ρ) ŝ(σ)` its product's value), unless `t` is a root of the merge
-polynomial (`I.zb`, where a weight need not be multilinear). -/
-def UniFinal (D : Deployment) {κ : ℕ} (Fl : FlockSound κ) (I : UniIds D Fl)
-    (C : UniCode D Fl I.nV I.V) : Prop :=
-  ∀ (s : USt) done tl c1 c2, DoneFits (uniRounds Fl.prog.rounds I.nV I.V) done → tl.length = 5 →
-    (C.prog s.1 s.2).ZerosVanish done tl → ClaimsHold D ((C.prog s.1 s.2).out done tl) c1 c2 →
-      (I.zb (fdOf Fl.prog.rounds.length (openedOf Fl.prog.rounds.length c1 c2 done))).eval
-          ((rd (openedOf Fl.prog.rounds.length c1 c2 done) (Fl.prog.rounds.length + 1)).2.headD 0) = 0 ∨
-      SumState (I.prod s c1 (rd (openedOf Fl.prog.rounds.length c1 c2 done) 0).2
-          (fdOf Fl.prog.rounds.length (openedOf Fl.prog.rounds.length c1 c2 done)) c2
-          ((rd (openedOf Fl.prog.rounds.length c1 c2 done) (Fl.prog.rounds.length + 1)).2.headD 0)
-          (rd (openedOf Fl.prog.rounds.length c1 c2 done) (Fl.prog.rounds.length + 2)).1.2
-          ((rd (openedOf Fl.prog.rounds.length c1 c2 done) (Fl.prog.rounds.length + 2)).2.headD 0)
-          ((rd (openedOf Fl.prog.rounds.length c1 c2 done)
-            (Fl.prog.rounds.length + 2)).2.getD 1 0)).oracle
-        (I.target s c1 (rd (openedOf Fl.prog.rounds.length c1 c2 done) 0).2
-          (fdOf Fl.prog.rounds.length (openedOf Fl.prog.rounds.length c1 c2 done)) c2
-          ((rd (openedOf Fl.prog.rounds.length c1 c2 done) (Fl.prog.rounds.length + 1)).2.headD 0)
-          (rd (openedOf Fl.prog.rounds.length c1 c2 done) (Fl.prog.rounds.length + 2)).1.2
-          ((rd (openedOf Fl.prog.rounds.length c1 c2 done) (Fl.prog.rounds.length + 2)).2.headD 0)
-          ((rd (openedOf Fl.prog.rounds.length c1 c2 done)
-            (Fl.prog.rounds.length + 2)).2.getD 1 0))
-        (brOf Fl.prog.rounds.length (openedOf Fl.prog.rounds.length c1 c2 done))
 
 /-! ## The Fiat–Shamir layer -/
 
@@ -169,50 +109,5 @@ noncomputable def uniBound (e : ℝ≥0∞) (Q : ℕ) : ℝ≥0∞ :=
   5 * openingBoundAt 10122 (uniN Q) +
     (uniN Q : ℝ≥0∞) * (((9952 ^ 2 : ℕ) : ℝ≥0∞) * e + ((2 ^ 128 + 8 * uniN Q : ℕ) : ℝ≥0∞) / 2 ^ 256) +
       ((2 ^ 81 + Q : ℕ) : ℝ≥0∞) ^ 2 / 2 ^ 508
-
-/-- **The Fiat–Shamir layer** (the port of `knowledgeSoundness_listChainK_closed_rpm` to the
-univariate verifier): every round-by-round sound protocol on the main line's rounds, its errors at
-most `e`, whose state before round `0` is the relation of `C1`'s candidate and whose last state
-follows from the verifier's checks with true claims, makes the deployed verifier knowledge sound
-for `uniExtractor` with the bound `uniBound e`.
-
-What the port changes in `ListChain`/`ListChainK` (found by this proof; the framework's chain is
-`crates/membership/quotient`'s transcript, not the univariate one):
-* a scalar is 24 bytes (`nextScalar`), not a 32-byte word with eight zero bytes (`scalarWord`);
-  a step's bytes are not whole words, so `chain_unique`'s `32 ∣` separation does not apply;
-* a root is its digest's two 16-byte halves each reversed (`nextRoot`, `rootOf`), not
-  `rootWords`: `Refers` needs a fourth reading (a fresh answer referred to by `4|H|` digests);
-* the seed `name ‖ iv ‖ input` has `80 = 32 + 2 · 24` bytes, the length of every sumcheck round's
-  step input (the state and `c0, c2`): the walk back must separate the seed by its fixed prefix
-  (`name` and the IV's first half) instead, one more bad answer per query;
-* the setup is three trees and the IV hashing their roots and the layout words (`setupTreesWith`,
-  `contractIvWith`), not one `Bytes32`; the adversary is given three roots (`rpm_le_kcG` for a
-  setup of any type);
-* the row counts are read with `C1`'s root (round `0`'s absorbed bytes), the statement's rows:
-  the chain's label is not the statement, the first step absorbs part of it.
-
-Its proof also needs, of the deployment: the five stacks at `2^24 … 2^28` words (`C1`, `C2`, the
-setup, `A0`, `B0`: `WhirShape.large`, lists at most `largeList ≤ 9952`, `QO ≤ 10122`), the setup's
-Keccak-256 calls below `2^26`, the verifier's calls of `π` below `2^80` (`hVπ`), and `uniExtractor`'s
-decoders listing the chain's candidates (`fastStacks`, `uniqueStacks`, `decodeStacks` at `C1`'s
-`2^μ`, against `Compose`'s `tableCode`).
-
-**Proved** (`FsProof.lean`'s `fsLayer_of_game`, `FsCost.lean`'s `fsLayer_of_game'`) for a deployment
-whose five layout words name `24 … 28` variables (`UniShapes`; the reference shape's
-`27, 27, 24, 28, 28`), from the chain's `< 2^10` queries, every round's `≤ 2^30` scalars, and one
-hypothesis, the coupling `UniGameLe`: the univariate experiment is dominated by the composed game
-(`Compose.rpmGameS` of the setup's three trees, `Compose.ListChainU`'s chain over the univariate
-encoding, the five openings), the event read through `uniExtractor`'s candidates. That form, the IV
-in the adversary, is superseded by `FsGame.lean`'s `fsLayer_of_gameV` (the IV in the verifier,
-`UniGameLeV`), and `UniGameLeV` is proved from bridge facts in `FsCouple.lean`, `FsSetup.lean`,
-`FsExtract.lean`, `FsVerifier.lean`. -/
-def FsLayer (D : Deployment) {κ : ℕ} (Fl : FlockSound κ) (nV V : ℕ) (C : UniCode D Fl nV V) :
-    Prop :=
-  ∀ (R : RbrPiop (uniRounds Fl.prog.rounds nV V) USt Stk) (e : ℝ≥0∞), (∀ j, R.err j ≤ e) →
-    (∀ s c m, R.pre s [] (some c, m) → Rel D s c) →
-    (∀ (s : USt) done tl c1 c2, DoneFits (uniRounds Fl.prog.rounds nV V) done → tl.length = 5 →
-      (C.prog s.1 s.2).ZerosVanish done tl → ClaimsHold D ((C.prog s.1 s.2).out done tl) c1 c2 →
-        ∃ p m ch, openedOf Fl.prog.rounds.length c1 c2 done = p ++ [(m, ch)] ∧ R.post s p m ch) →
-    UniKnowledgeSoundness D (uniBound e)
 
 end UniSound

@@ -223,11 +223,11 @@ structure BytecodeRow (F : Type) where
   op : Vector F 7
   deriving ProvableStruct
 
-/-- The row's entry decodes to an instruction (`decode_eq_some_iff` reads it as the entry):
-the bytecode pull's guarantee, and the block's `Spec`. -/
+/-- The row's entry is well formed (`EntryOk`: it decodes to an instruction, `decode_eq_some_iff` reading it
+as the entry, or carries the hash instruction's opcode): the bytecode pull's guarantee, and the block's `Spec`. -/
 structure BytecodeDecodes (r : BytecodeRow K) : Prop where
-  /-- The row's entry is an instruction's. -/
-  entry_eq : ∃ ins, decode (#v[r.opcode] ++ r.op) = some ins
+  /-- The row's entry is well formed. -/
+  entry_eq : EntryOk (#v[r.opcode] ++ r.op)
 
 /-- The row's binding to a program: the program fetches an instruction at the row's counter,
 and the row's entry decodes to it. The per-row reading of `BytecodeRowsAreTheProgram prog`,
@@ -293,7 +293,7 @@ theorem bytecodeRowOf_bindings (prog : Program) (i : Fin (2 ^ prog.logSize)) (cn
 builder writes. -/
 theorem bytecodeRowOf_decodes (prog : Program) (i : Fin (2 ^ prog.logSize)) (cntFin : K) :
     BytecodeDecodes (bytecodeRowOf prog i cntFin) :=
-  ⟨(bytecodeRowOf_bindings prog i cntFin).entry_eq.imp fun _ h ↦ h.2⟩
+  ⟨Or.inl ((bytecodeRowOf_bindings prog i cntFin).entry_eq.imp fun _ h ↦ h.2)⟩
 
 /-- Every slot of a program has a satisfying seed row, from the program alone and over any
 data: the constraints of `main` hold of `bytecodeRowOf` in the row environment. -/

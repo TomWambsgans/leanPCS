@@ -12,7 +12,7 @@ import UniKeccakSound.Ids.Model
 (`KeccakVm.keccakIsaInstance`'s `flushes (opIdx j)`) evaluated at the row.
 
 * The five tables other than `SHA3` are Lv42's on both sides (`tablesKeccak` is `tables` there; the instance's
-  flushes are Lv42's `opcodeTable`'s): `UniSound.Ids.LvR.uni_tuples_eq`.
+  flushes are Lv42's `baseTable`'s): `UniSound.Ids.LvR.uni_tuples_eq_base`.
 * **The `SHA3` table** (`sha3_flushes_eq`): the verifier's `flushesSha3` against `KeccakVm.Sha3Table.flushes`, by
   reflection as `LvR.sides_eq`: both sides read as polynomials in `LvR`'s normal form (the forms by `formSP`, the
   instance's Clean expressions `Sha3Table.flushExprs` by `exprSP`), the two lists of normal forms equal by
@@ -22,7 +22,7 @@ import UniKeccakSound.Ids.Model
 namespace UniKeccakSound.IdsReal
 
 open LeanVM.Parameters UniStatement UniSound.Ids UniSound.Ids.LvR Lv42.Protocol
-open Lv42.Protocol.LeanIsa (opIdx opcodeComponent)
+open Lv42.Protocol.LeanIsa (opIdx)
 
 /-! ## The `SHA3` table -/
 

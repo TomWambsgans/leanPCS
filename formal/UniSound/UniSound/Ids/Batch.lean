@@ -92,31 +92,4 @@ theorem comm_start (hW : WeightAtLinear) (hC : CombineEq) (rels : List Relation)
     simp only [relDiff]
     ring
 
-/-- **The batch's start** (`UniIdsRest.batch_start`): `Σ_u g(u) + target` is the combination by `λ` of
-the commitments' combinations by `ρ` of their relations' differences, and of the pending matrices'
-difference. -/
-theorem batch_start_of (D : Deployment) {κ : ℕ} (Fl : FlockSound κ) (hW : WeightAtLinear)
-    (hC : CombineEq) (s : USt) (c1 : Stk) (ch : List E) (fd : Done) (c2 : Stk) (t : E)
-    (vals : List E) (ρ l : E) :
-    (prodOf D Fl s c1 ch fd c2 t vals ρ l).T [] + targetOf D Fl s c1 ch fd c2 t vals ρ l =
-      powComb ((diffsOf D Fl s c1 ch fd c2 t vals).map fun d ↦ powComb d ρ) l := by
-  unfold prodOf targetOf diffsOf
-  split_ifs with hg
-  · have h0 := comm_start hW hC (relsAt D Fl s ch fd t vals) .c1 ρ (layoutOf D.shape .c1)
-      (ringMapAt Fl fd) (batchVars D.shape) (stackFor D c1 c2 .c1)
-    have h1 := comm_start hW hC (relsAt D Fl s ch fd t vals) .c2 ρ (layoutOf D.shape .c2)
-      (ringMapAt Fl fd) (batchVars D.shape) (stackFor D c1 c2 .c2)
-    have h2 := comm_start hW hC (relsAt D Fl s ch fd t vals) .setup ρ (layoutOf D.shape .setup)
-      (ringMapAt Fl fd) (batchVars D.shape) (stackFor D c1 c2 .setup)
-    simp only [ProdSum.T, List.length_nil, Nat.sub_zero, foldAll, List.foldl_nil,
-      Finset.sum_range_succ, Finset.sum_range_zero, zero_add, commitments, List.map_cons,
-      List.map_nil, List.cons_append, List.nil_append, powComb_cons, powComb_nil, mul_zero, add_zero]
-    simp only [cm, combAt, commitments, List.getD_cons_zero, List.getD_cons_succ,
-      show (0 : ℕ) < 3 from by norm_num, show (1 : ℕ) < 3 from by norm_num,
-      show (2 : ℕ) < 3 from by norm_num, show ¬ (3 : ℕ) < 3 from by norm_num, ite_true, ite_false,
-      pendDiff] at h0 h1 h2 ⊢
-    rw [← h0, ← h1, ← h2]
-    ring
-  · simp [ProdSum.T, powComb_cons, powComb_nil]
-
 end UniSound.Ids

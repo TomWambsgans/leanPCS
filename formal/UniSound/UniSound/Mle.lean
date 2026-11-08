@@ -71,11 +71,6 @@ theorem mleStk_eq_foldAll (c : Stk) (pt : List E) :
 
 /-! ## The pending matrices' term in the batch (lever 4a): the shape `UniFinal` needs -/
 
-/-- The pending reduction's summand `G`, zero-extended to the batch's variables (`eq(·, 0)` above
-its `k + 6`). -/
-noncomputable def Pending.Gext (p : Flock.Pending) (u : ℕ) : E :=
-  if u < 2 ^ p.rounds then Pending.G p u else 0
-
 /-- `L ŝ`, read on the low `k + 6` coordinates of the batch's. -/
 def Pending.Llift (p : Flock.Pending) (u : ℕ) : E := Pending.L p (u % 2 ^ p.rounds)
 
@@ -87,19 +82,5 @@ def Pending.Shaped (p : Flock.Pending) : Prop :=
   (0 < p.k → p.skipWeights.length = 2 ^ p.k) ∧
     ((p.slices.getD []).length = 2 ^ Flock.packing ∨ p.slices.getD [] = []) ∧
     p.k + (p.rowLow ++ p.chiIn).length + Flock.packing ≤ matrixVars
-
-/-- **The pending term's terminal** (the λ³ product of the batching sumcheck, `G_ext · L_lift`, at
-its point `r`): for a pending reduction of Flock's shape (`Pending.Shaped`), with `a`, `b` the
-matrices' extensions at the claim's point (`MatrixHolds`), the product of the two folds is
-`Pending.terminal`'s value times the zero extension `Π_{j ≥ k+6} (1 + r_j)` (the verifier's
-`scale · value · extension`). Flock's `matFun_append` and `extFun_append`
-(`formal/FlockSound/FlockSound/Matrices.lean`), restated on `foldAll`, `Pending.G`, `Pending.L`: the
-λ³ component of `UniFinal`. Proved: `PendingLink.lean`'s `pendingTerminalLink`. -/
-def PendingTerminalLink : Prop :=
-  ∀ (p : Flock.Pending) (r : List E) (a b : E), Pending.Shaped p → p.rounds ≤ r.length →
-    MatrixHolds (p.matrixClaim r a b) →
-      foldAll (Pending.Gext p) r 0 * foldAll (Pending.Llift p) r 0 =
-        (p.terminal r a b).1 *
-          (List.range' p.rounds (r.length - p.rounds)).foldl (fun e j => e * (1 + r.getD j 0)) 1
 
 end UniSound

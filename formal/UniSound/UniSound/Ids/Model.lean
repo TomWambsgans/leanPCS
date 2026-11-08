@@ -117,72 +117,15 @@ noncomputable def relDiff (L : StackLayout) (ringMap : Option (List E)) (V : ℕ
     ∑ u ∈ range (2 ^ V), termW L ringMap V tm.column (mp tm.point) tm.twist u * stE C L.vars u).sum +
     r.value
 
-/-- The pending matrices' difference: their sum over the batch's cube plus their claim. -/
-noncomputable def pendDiff (p : Flock.Pending) (V : ℕ) : E :=
-  ∑ u ∈ range (2 ^ V), Pending.Gext p u * Pending.Llift p u + p.claim
-
 section Model
 
-variable (D : Deployment) {κ : ℕ} (Fl : FlockSound κ)
-
-/-- The relations at a statement, round `0`'s challenges, Flock's transcript, `t` and the values. -/
-def relsAt (s : USt) (ch : List E) (fd : Done) (t : E) (vals : List E) : List Relation :=
-  relsOf (relInput D s ch (Fl.prog.out fd []) t vals)
-
-/-- The ring map of Flock's end. -/
-def ringMapAt (fd : Done) : Option (List E) :=
-  match (Fl.prog.out fd []).2.1 with
-  | some (.ring mp _) => some mp
-  | _ => none
-
-open Classical in
-/-- **The relations' differences** (`UniIdsRest.diffs`): per commitment (`C1`, `C2`, the setup) its
-relations' differences, then the pending matrices'. -/
-noncomputable def diffsOf (s : USt) (c1 : Stk) (ch : List E) (fd : Done) (c2 : Stk) (t : E)
-    (vals : List E) : List (List E) :=
-  if CountsFit D.shape s.2 ∧ FlockGood κ (batchVars D.shape) (Fl.prog.out fd []) then
-    (commitments.map fun c ↦ (mine (relsAt D Fl s ch fd t vals) c).map
-      (relDiff (layoutOf D.shape c) (ringMapAt Fl fd) (batchVars D.shape) (stackFor D c1 c2 c)
-        (mergedPoint (mine (relsAt D Fl s ch fd t vals) c)))) ++
-      [[pendDiff (Fl.prog.out fd []).2.2 (batchVars D.shape)]]
-  else [[1]]
+variable (D : Deployment) {κ : ℕ}
 
 /-- The commitment of the batch's `k`-th product. -/
 def cm (k : ℕ) : Commitment := commitments.getD k .c1
 
 /-- The empty claim (a commitment with no relation). -/
 def zeroClaim : Combined := ⟨[], [], 0, 0⟩
-
-/-- A commitment's combined claim. -/
-def combAt (s : USt) (ch : List E) (fd : Done) (t : E) (vals : List E) (ρ : E) (c : Commitment) :
-    Combined :=
-  (combine (relsAt D Fl s ch fd t vals) c ρ).getD zeroClaim
-
-open Classical in
-/-- **The batch** (`UniIdsRest.prod`): `Σ_{k<3} λ^k W_k C_k + λ³ G L` over the batch's variables. -/
-noncomputable def prodOf (s : USt) (c1 : Stk) (ch : List E) (fd : Done) (c2 : Stk) (t : E)
-    (vals : List E) (ρ l : E) : ProdSum :=
-  if CountsFit D.shape s.2 ∧ FlockGood κ (batchVars D.shape) (Fl.prog.out fd []) then
-    { vars := batchVars D.shape
-      n := 4
-      coef := fun k ↦ l ^ k
-      A := fun k u ↦ if k < 3 then
-          weightAt (combAt D Fl s ch fd t vals ρ (cm k)) (layoutOf D.shape (cm k))
-            (bitsE u (batchVars D.shape)) (ringMapAt Fl fd)
-        else Pending.Gext (Fl.prog.out fd []).2.2 u
-      B := fun k u ↦ if k < 3 then
-          stE (stackFor D c1 c2 (cm k)) (layoutOf D.shape (cm k)).vars u
-        else Pending.Llift (Fl.prog.out fd []).2.2 u }
-  else { vars := batchVars D.shape, n := 0, coef := fun _ ↦ 0, A := fun _ _ ↦ 0, B := fun _ _ ↦ 0 }
-
-open Classical in
-/-- **The batch's target** (`UniIdsRest.target`): `Σ_{k<3} λ^k v_k + λ³ claim`. -/
-noncomputable def targetOf (s : USt) (_c1 : Stk) (ch : List E) (fd : Done) (_c2 : Stk) (t : E)
-    (vals : List E) (ρ l : E) : E :=
-  if CountsFit D.shape s.2 ∧ FlockGood κ (batchVars D.shape) (Fl.prog.out fd []) then
-    ∑ k ∈ range 3, l ^ k * (combAt D Fl s ch fd t vals ρ (cm k)).value +
-      l ^ 3 * (Fl.prog.out fd []).2.2.claim
-  else 1
 
 end Model
 
@@ -369,18 +312,6 @@ noncomputable def blockP (rows : List ℕ) (alphas : List E) (beta : E) (b : Blo
       pushP tab weights beta cols * wr + Z ^ 2
 
 end Polys
-
-open Classical in
-/-- **The identities as polynomials in `t`** (`UniIdsRest.polys`): the tree, the root, the constraint
-quotient's (times `Z_bad`), every heap block's leaf identity; a nonzero constant out of range. -/
-noncomputable def polysOf (D : Deployment) {κ : ℕ} (Fl : FlockSound κ) (s : USt) (c1 : Stk)
-    (ch : List E) (fd : Done) (c2 : Stk) : List (Polynomial E) :=
-  if CountsFit D.shape s.2 then
-    [treeP D.shape c2, rootP D.shape c2 (eqKernel (alphasOf ch)) (betaOf ch),
-      wP D.shape c1 c2 (publicWordsOf s.1.toList) (gammaOf ch) ((Fl.prog.out fd []).1.getD 0 0)] ++
-    (D.shape.heap.blocks.zip (List.range D.shape.heap.blocks.length)).map fun bi ↦
-      blockP D.shape c1 c2 (stackFor D c1 c2 .setup) s.2 (alphasOf ch) (betaOf ch) bi.1 bi.2
-  else [1]
 
 /-! ## The heap read off `C1`, the constraint vectors -/
 

@@ -5,7 +5,7 @@ module
 
 public import UniStatement.Run
 public import PcsQuotient.Domain
-public import Lv42.Protocol.LeanIsa
+public import Lv42.Protocol.LeanIsaBase
 
 /-!
 # The univariate commitments against Lv42's stack
@@ -55,7 +55,7 @@ reads the first `2^τ_t` of `rowPosition`'s images.
 namespace UniStatement
 
 open LeanVM.Parameters
-open Lv42.Protocol.LeanIsa (Col Sizes blocks stackOrder kappa leanIsaμ)
+open Lv42.Protocol.LeanIsa (Sizes)
 open Lv42.Semantics (Program PublicInput)
 
 /-- The `K`-multilinear extension of a table at a point of `K`, low coordinate first. -/
@@ -103,36 +103,6 @@ def rowPosition (count r x : ℕ) : ℕ := Id.run do
       if y < 2 ^ b then return 2 ^ r - 2 ^ (b + 1) + y
       y := y - 2 ^ b
   return 2 ^ r - 1
-
-/-- **Lv42's column `c`, read off a `C1` stack** (the correspondence above), as Lv42's stacking reads it
-(`Vector K (2 ^ kappa prog s c)`): a table's row `x` at `C1`'s row `rowPosition` (iteration 2, F1b: its
-`s.rows` executed rows at their fixed cosets, the contract's height `h` from the shape), read in basis `B` at
-`h` variables; `QFLOCK`'s word `slot + 256 x` at `q_flock`'s word `slot + 256 · rowPosition x` (its instances
-sit with BLAKE2S's rows). -/
-def lv42Column (prog : Program) (s : Sizes) (shape : UniStatement.Shape) (stack : ℕ → K) :
-    (c : Col) → Vector K (2 ^ kappa prog s c)
-  | ⟨⟨0, _⟩, i⟩ =>
-    let coeffs := c1Block (c1Layout shape) stack (.memory i.val)
-    Vector.ofFn fun x ↦ basisValue coeffs s.logMem x.val
-  | ⟨⟨1, _⟩, _⟩ =>
-    let coeffs := c1Block (c1Layout shape) stack .bytecodeFinal
-    Vector.ofFn fun x ↦ basisValue coeffs prog.logSize x.val
-  | ⟨⟨2, _⟩, _⟩ =>
-    let values := c1Block (c1Layout shape) stack .qflock
-    let hB := shape.heights.getD 5 0
-    Vector.ofFn fun x ↦ values.getD (x.val % 256 + 256 * rowPosition (s.rows 5) hB (x.val / 256)) 0
-  | ⟨⟨j + 3, h⟩, i⟩ =>
-    let coeffs := c1Block (c1Layout shape) stack (.table j i.val)
-    let height := shape.heights.getD j 0
-    Vector.ofFn fun x ↦ basisValue coeffs height (rowPosition (s.rows ⟨j, by omega⟩) height x.val)
-
-/-- **The Lv42 stack a `C1` stack carries**: Lv42's committed columns (`stackOrder`: every column but the
-`BLAKE2S` limbs, largest first), each read off `C1` (`lv42Column`), stacked as Lv42 stacks a witness
-(`Blocks.stackColumn`, as `LeanIsa.stackOf`). -/
-def lv42Stack (prog : Program) (s : Sizes) (shape : UniStatement.Shape) (stack : ℕ → K) :
-    LeanVM.Protocol.Column (leanIsaμ prog s) :=
-  (blocks prog s).stackColumn (fun b ↦ lv42Column prog s shape stack (stackOrder prog s)[b])
-    (leanIsaμ prog s)
 
 /-- **The public input** the calldata's 32 bytes are: four 64-bit big-endian words, `lanes k` the word `k`
 (as `publicWordsOf`, the verifier's own reading). -/
