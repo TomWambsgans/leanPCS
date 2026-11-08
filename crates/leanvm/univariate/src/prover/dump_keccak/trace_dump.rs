@@ -23,7 +23,7 @@
 //! - `bytecode.bin`: the stacked bytecode (`layout::bytecode_table`), 8 little-endian bytes a word.
 //!
 //! `q_flock` is not written: the prover builds it from the `SHA3` rows (one Keccak-f block a row,
-//! `lv42_flock::keccak`).
+//! `flock::keccak`).
 
 use std::fmt::Write as _;
 use std::io::Write as _;

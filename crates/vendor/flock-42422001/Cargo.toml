@@ -1,0 +1,29 @@
+# Vendored from leanVM (https://github.com/leanEthereum/leanVM), commit 42422001, crates/flock (CREDIT:
+# https://github.com/succinctlabs/flock), MIT OR Apache-2.0, ported onto leanVM c445e3d5's `primitives`, `parallel` and
+# `pcs` (crates/vendor/leanvm-c445e3d5). Changed: its prover writes to the transcript trait of `src/transcript.rs`; the
+# parts of 42422001's `primitives` and `pcs` it uses that c445e3d5 lacks are modules here (`field`, `lagrange`, `ntt`);
+# its `keccak` module (and its test, tests/keccak.rs) and `zerocheck::skip` are new here. See src/lib.rs and AGENTS.md.
+[package]
+name = "flock"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[lib]
+doctest = false
+
+[dependencies]
+parallel.workspace = true
+primitives.workspace = true
+pcs.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+primitives = { workspace = true, features = ["test-util"] }
+# The unit tests' transcript: leanVM c445e3d5's prover state, as `transcript::Transcript` (src/transcript.rs).
+fiat_shamir.workspace = true
+# The reference Keccak-f[1600] the block is tested against (RustCrypto's, sha3's permutation).
+keccak = "0.2"
+
+[lints]
+workspace = true

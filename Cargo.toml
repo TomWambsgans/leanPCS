@@ -7,7 +7,7 @@ members = [
     "crates/membership/*",
     "crates/leanvm/*",
     "crates/vendor/leanvm-c445e3d5/*",
-    "crates/vendor/leanvm-42422001/*",
+    "crates/vendor/flock-42422001",
 ]
 resolver = "3"
 
@@ -28,12 +28,8 @@ fiat_shamir = { path = "crates/vendor/leanvm-c445e3d5/fiat_shamir" }
 pcs = { path = "crates/vendor/leanvm-c445e3d5/pcs" }
 parallel = { path = "crates/vendor/leanvm-c445e3d5/parallel" }
 verifier = { path = "crates/vendor/leanvm-c445e3d5/verifier" }
-# leanVM 42422001's Flock prover, vendored (crates/vendor/leanvm-42422001).
-lv42_primitives = { path = "crates/vendor/leanvm-42422001/primitives" }
-lv42_parallel = { path = "crates/vendor/leanvm-42422001/parallel" }
-lv42_pcs = { path = "crates/vendor/leanvm-42422001/pcs" }
-lv42_fiat_shamir = { path = "crates/vendor/leanvm-42422001/fiat_shamir" }
-lv42_flock = { path = "crates/vendor/leanvm-42422001/flock" }
+# leanVM 42422001's Flock prover, vendored and ported onto c445e3d5 (crates/vendor/flock-42422001).
+flock = { path = "crates/vendor/flock-42422001" }
 # This repository.
 evm_link = { path = "crates/evm_link" }
 quotient = { path = "crates/membership/quotient" }

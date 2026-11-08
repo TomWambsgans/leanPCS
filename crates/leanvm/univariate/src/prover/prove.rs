@@ -286,7 +286,7 @@ pub fn prove_streaming(
         let out = super::flock::prove(&mut writer, &flock, config.variant, log_n)?;
         drop(flock);
         report.notes.push(format!("Flock's zerocheck and lincheck: {:.3} s", out.reduction_secs));
-        for (stage, secs) in std::mem::take(&mut *lv42_flock::zerocheck::skip::STAGES.lock().expect("the stages")) {
+        for (stage, secs) in std::mem::take(&mut *flock::zerocheck::skip::STAGES.lock().expect("the stages")) {
             report.notes.push(format!("  the skip's zerocheck, {stage}: {secs:.3} s"));
         }
         clock.lap(&mut report, "Flock: zerocheck, lincheck, slices");

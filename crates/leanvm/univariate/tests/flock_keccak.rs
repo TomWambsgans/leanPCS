@@ -1,7 +1,7 @@
 // Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
-//! Flock on the Keccak-f\[1600\] block (`lv42_flock::keccak`, docs/leanvm/flock/KECCAK.md §4.2, M1), end to end:
+//! Flock on the Keccak-f\[1600\] block (`flock::keccak`, docs/leanvm/flock/KECCAK.md §4.2, M1), end to end:
 //!
-//! - the verifier's walk (`leanvm_statement::keccak_flock`, on `E`) is the prover's (`lv42_flock::keccak`, on `F192`);
+//! - the verifier's walk (`leanvm_statement::keccak_flock`, on `E`) is the prover's (`flock::keccak`, on `F192`);
 //! - `prover::flock::prove`'s stream is accepted by `flock_min::verify_walked_with::<_, Keccak>` (the structured terminal,
 //!   docs/leanvm/flock/KECCAK.md §4.2, M3) and by `verify_walked_with::<_, KeccakWalked>` (M1's walked terminal) at skips of 3 and 6,
 //!   both eq points; the slices are the witness's at the verifier's point;
@@ -20,9 +20,9 @@ use leanvm_statement::flock_min::WalkedCircuit;
 use leanvm_statement::keccak_flock::{Keccak, KeccakWalked};
 use leanvm_statement::transcript::{Checks, FsShape, KeccakChannel, KeccakWriter, keccak_seed};
 use leanvm_univariate::prover::flock::{FlockWitness, prove};
-use lv42_flock::keccak::{self as block, K, K_LOG, LANES, WORDS};
-use lv42_primitives::field::F192;
-use lv42_primitives::multilinear::eq_table;
+use flock::keccak::{self as block, K, K_LOG, LANES, WORDS};
+use primitives::field::F192;
+use primitives::multilinear::eq_table;
 
 struct Rng(u64);
 impl Rng {
@@ -186,7 +186,7 @@ fn flock_keccak_end_to_end() {
 #[test]
 #[ignore]
 fn flock_keccak_4096() {
-    lv42_parallel::init();
+    parallel::init();
     let mut rng = Rng(0x5eed_1000);
     let inputs: Vec<[u64; LANES]> = (0..3959).map(|_| rng.state()).collect();
     let log_n = K_LOG + 12;
@@ -225,7 +225,7 @@ fn flock_keccak_4096() {
             median(times.clone()),
             times.iter().map(|t| format!("{t:.3}")).collect::<Vec<_>>()
         );
-        for (stage, secs) in lv42_flock::zerocheck::skip::STAGES.lock().unwrap().iter() {
+        for (stage, secs) in flock::zerocheck::skip::STAGES.lock().unwrap().iter() {
             println!("  skip {skip}: zerocheck {stage} {secs:.3} s");
         }
     }
