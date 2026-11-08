@@ -1,5 +1,5 @@
 // Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
-//! The Rust→EVM test vectors (`tests/vectors/*.txt`, milestone 3): a real proof's calldata, the `PCS_OPEN` inputs
+//! The Rust→EVM test vectors (`tests/vectors/*.txt`): a real proof's calldata, the `PCS_OPEN` inputs
 //! the contract calls with (which the openings prove), the verdict and the gas, straight and deployed. Written by
 //! `tests/prove_real.rs` (`WRITE_VECTORS=<dir>`), replayed by `tests/evm_vectors.rs` with no prover and no trace.
 //!
@@ -14,9 +14,7 @@
 use leanvm_statement::evm::codegen::{Ending, Entry, compile_deployable};
 use leanvm_statement::evm::deploy::{Deployed, deploy};
 use leanvm_univariate::contract::{NAME, Recorded, calls};
-use leanvm_univariate::{
-    Blake2s, FLOCK_BIT_SLICE, FLOCK_LEANVM_SKIP, FLOCK_MAIN, FLOCK_REC, FLOCK_REC2, FLOCK_REC3, KECCAK_MAIN, KECCAK_REC3, Shape,
-};
+use leanvm_univariate::{KECCAK_MAIN, KECCAK_REC3, Shape, Variant};
 
 /// The program's IV the vectors' contracts are built with (`leanvm_statement::shapes::PROGRAM_IV`).
 pub use leanvm_statement::shapes::PROGRAM_IV;
@@ -38,35 +36,21 @@ pub struct Vector {
     pub note: String,
 }
 
-/// The configurations by name (`main_line_rec`: π1-rec, the main line with its Fiat–Shamir shape `FsShape::Rec`).
-pub fn blake2s_of(config: &str) -> Blake2s {
+/// The configurations by name: `keccak` the Keccak VM's main line (`KECCAK_MAIN`), `keccak_rec3` its π1-rec3
+/// (`KECCAK_REC3`).
+pub fn variant_of(config: &str) -> Variant {
     match config {
-        "omitted" => Blake2s::Omitted,
-        "main_line" => Blake2s::Flock(FLOCK_MAIN),
-        "main_line_rec" => Blake2s::Flock(FLOCK_REC),
-        "main_line_rec2" => Blake2s::Flock(FLOCK_REC2),
-        "main_line_rec3" => Blake2s::Flock(FLOCK_REC3),
-        "leanvm_skip" => Blake2s::Flock(FLOCK_LEANVM_SKIP),
-        "ext_b" => Blake2s::Flock(FLOCK_BIT_SLICE),
-        "keccak" => Blake2s::Keccak(KECCAK_MAIN),
-        "keccak_rec3" => Blake2s::Keccak(KECCAK_REC3),
+        "keccak" => KECCAK_MAIN,
+        "keccak_rec3" => KECCAK_REC3,
         other => panic!("no configuration {other}"),
     }
 }
 
-pub fn name_of(blake2s: Blake2s) -> &'static str {
-    match blake2s {
-        Blake2s::Omitted => "omitted",
-        Blake2s::Flock(v) if v == FLOCK_MAIN => "main_line",
-        Blake2s::Flock(v) if v == FLOCK_REC => "main_line_rec",
-        Blake2s::Flock(v) if v == FLOCK_REC2 => "main_line_rec2",
-        Blake2s::Flock(v) if v == FLOCK_REC3 => "main_line_rec3",
-        Blake2s::Flock(v) if v == FLOCK_LEANVM_SKIP => "leanvm_skip",
-        Blake2s::Flock(v) if v == FLOCK_BIT_SLICE => "ext_b",
-        Blake2s::Flock(_) => "flock",
-        Blake2s::Keccak(v) if v == KECCAK_MAIN => "keccak",
-        Blake2s::Keccak(v) if v == KECCAK_REC3 => "keccak_rec3",
-        Blake2s::Keccak(_) => "keccak_other",
+pub fn name_of(variant: Variant) -> &'static str {
+    match variant {
+        v if v == KECCAK_MAIN => "keccak",
+        v if v == KECCAK_REC3 => "keccak_rec3",
+        _ => "keccak_other",
     }
 }
 
@@ -153,8 +137,8 @@ pub fn read(text: &str) -> Vector {
 
 /// A call of π1's own contract in `PCS_OPEN`'s ABI (`crates/evm/src/machine.rs`),
 /// as π2's contract makes it: `C1`'s and `C2`'s root words are the stream's bytes, the ABI's already; a
-/// setup root's (`F`, `A0`, `B0`: layout codes `0x5503..=0x5505`, the layout word's bytes 22..24) is the hash as it
-/// is, its word `root_word` of it.
+/// setup root's (`F`: layout code `0x5503`, the layout word's bytes 22..24) is the hash as it is, its word
+/// `root_word` of it.
 pub fn pi1_abi(input: &[u8]) -> Vec<u8> {
     let mut x = input.to_vec();
     let code = u16::from_be_bytes([x[32 + 22], x[32 + 23]]);

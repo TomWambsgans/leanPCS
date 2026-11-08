@@ -8,7 +8,7 @@
 //!
 //! `cargo test --release -p leanvm_statement --test lean_keccak_tables -- --nocapture`
 
-use leanvm_statement::layout::{Form, keccak_slot, keccak_slot_offset, tables_keccak};
+use leanvm_statement::layout::{Form, keccak_slot, keccak_slot_offset, tables};
 
 fn form_text(f: &Form) -> String {
     let terms: Vec<String> = f
@@ -28,7 +28,7 @@ fn form_text(f: &Form) -> String {
 #[test]
 fn vectors() {
     let mut lines = Vec::new();
-    for t in tables_keccak() {
+    for t in tables() {
         lines.push(format!("table {} {}", t.opcode, t.width()));
         for name in t.columns {
             let slot = keccak_slot(name).map_or("-".to_string(), |s| s.to_string());

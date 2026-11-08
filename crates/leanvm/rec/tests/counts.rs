@@ -1,12 +1,10 @@
 // Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
-//! Milestone R1 (SPEC-REC.md §1): the inner verifier's graph on real proofs, and its counts.
+//! The inner verifier's graph on real proofs, and its counts (SPEC-REC.md §1).
 //!
 //! - `the_graph_is_the_verifier_on_real_proofs`: the recorded graph, evaluated on each committed real proof
-//!   (`crates/leanvm_univariate/tests/vectors/`, 1,000 signatures, π1-rec's `main_line_rec` among them), writes exactly
-//!   the `PCS_OPEN` inputs the contract wrote, and its checks hold: the evaluator is the witness generator's core.
-//! - `pi1_rec_is_record_derived`: π1-rec in code (`FLOCK_REC`, `FsShape::Rec`) records exactly the graph
-//!   [`leanvm_rec::fs::record_derived`] states, with 80 Keccak-256 calls and 107 Keccak-f permutations.
-//! - `count_report` (ignored): the table of SPEC-REC.md §1, over the inner verifier's variants.
+//!   (`crates/leanvm/univariate/tests/vectors/`), writes exactly the `PCS_OPEN` inputs the contract wrote, and its
+//!   checks hold: the evaluator is the witness generator's core.
+//! - `count_report` (ignored): the graph's counts at the reference shape, for the Keccak VM's two variants.
 //!
 //! `cargo test --release -p leanvm_rec --test counts -- --include-ignored --nocapture`
 
@@ -14,14 +12,13 @@
 mod vectors;
 
 use leanvm_statement::evm::record::Node;
-use leanvm_statement::flock_min::{Slices, Variant};
 use leanvm_statement::shapes::PROGRAM_IV;
-use leanvm_statement::transcript::{FsShape, keccak_seed};
+use leanvm_statement::transcript::keccak_seed;
 use leanvm_rec::count::{Counts, count, shared};
 use leanvm_rec::eval::{call_inputs, checks, evaluate};
 use leanvm_rec::{REFERENCE, permutations};
-use leanvm_univariate::contract::{NAME, Recorded, calls, record_verifier};
-use leanvm_univariate::{Blake2s, Claims, FLOCK_LEANVM_SKIP, FLOCK_MAIN, FLOCK_REC};
+use leanvm_univariate::contract::{NAME, Recorded, record_verifier};
+use leanvm_univariate::{Claims, KECCAK_MAIN, KECCAK_REC3, Variant};
 
 fn deep<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> R {
     std::thread::Builder::new()
@@ -45,10 +42,14 @@ fn vector(name: &str) -> vectors::Vector {
 #[test]
 fn the_graph_is_the_verifier_on_real_proofs() {
     deep(|| {
-        for name in ["main_line", "main_line_rec", "leanvm_skip", "omitted", "ext_b"] {
+        for name in ["keccak", "keccak_rec3"] {
             let v = vector(name);
-            let blake2s = vectors::blake2s_of(&v.config);
-            let recorded = record_verifier(&v.shape, blake2s, Claims::Point);
+            let variant = vectors::variant_of(&v.config);
+            let roots = leanvm_univariate::contract::SetupRoots {
+                f: v.whir_roots[2],
+                ..leanvm_univariate::contract::SetupRoots::REFERENCE
+            };
+            let recorded = leanvm_univariate::contract::record_verifier_with(&v.shape, variant, Claims::Point, &roots);
             let stream = &v.calldata[STREAM_AT..];
             assert_eq!(stream.len(), recorded.stream_len);
             let seed = keccak_seed(
@@ -90,100 +91,22 @@ fn the_graph_is_the_verifier_on_real_proofs() {
     });
 }
 
-/// π1-rec in code records the graph `fs::record_derived` states (SPEC-REC.md §1.4, R2 step 1): the main line's
-/// verifier with `α_2..α_4` and Flock's zerocheck coordinates 2..22 the squares of the ones before, through the
-/// [`leanvm_rec::fs::Derived`] channel, against `reduce` with `FsShape::Rec` on the plain recorder. Node for node, with
-/// the same phases, checks, ring kernels, `PCS_OPEN` words, stream and reads; at skip 3 (`FLOCK_REC`) and skip 6.
-#[test]
-fn pi1_rec_is_record_derived() {
-    deep(|| {
-        for (skip, hashes, perms) in [(3, 80, 107), (6, 77, 114)] {
-            let main = Variant {
-                skip,
-                slices: Slices::Tower,
-                fs: FsShape::Main,
-            };
-            let rec = Variant { fs: FsShape::Rec, ..main };
-            if skip == 3 {
-                assert_eq!((main, rec), (FLOCK_MAIN, FLOCK_REC), "the main line and pi1-rec");
-            }
-            let derived = leanvm_rec::fs::pi1_rec_derived(32, skip);
-            let (stated, hashed) =
-                leanvm_rec::fs::record_derived(&REFERENCE, Blake2s::Flock(main), Claims::Point, derived.clone());
-            let real = record_verifier(&REFERENCE, Blake2s::Flock(rec), Claims::Point);
-            let (a, b) = (&stated.graph, &real.graph);
-            assert_eq!(a.nodes.len(), b.nodes.len(), "skip {skip}: the node count");
-            if let Some(i) = (0..a.nodes.len()).find(|&i| a.nodes[i] != b.nodes[i]) {
-                panic!("skip {skip}: node {i} differs: stated {:?}, real {:?}", a.nodes[i], b.nodes[i]);
-            }
-            assert_eq!(a.phases, b.phases, "skip {skip}: every node's phase");
-            assert_eq!(a.zero, b.zero, "skip {skip}: the zero checks");
-            assert_eq!(a.nonzero, b.nonzero, "skip {skip}: the nonzero checks");
-            assert_eq!(a.kernels, b.kernels, "skip {skip}: the ring kernels");
-            assert_eq!(
-                format!("{:?}", calls(&stated)),
-                format!("{:?}", calls(&real)),
-                "skip {skip}: the PCS_OPEN calls' words"
-            );
-            assert_eq!(stated.stream_len, real.stream_len, "skip {skip}: the stream");
-            assert_eq!(stated.roots_at, real.roots_at, "skip {skip}: the roots' offsets");
-            assert_eq!(stated.reads, real.reads, "skip {skip}: the reads by phase");
-            // The main line's stream and claims are pi1-rec's.
-            let line = record_verifier(&REFERENCE, Blake2s::Flock(main), Claims::Point);
-            assert_eq!(line.stream_len, real.stream_len, "skip {skip}: the main line's stream length");
-            assert_eq!(line.roots_at, real.roots_at, "skip {skip}: the main line's roots");
-            let counts = count(&real);
-            assert_eq!(counts.challenges, hashed, "skip {skip}: one challenge node a hashed draw");
-            assert_eq!(counts.hash_lengths.len(), hashes, "skip {skip}: Keccak-256 calls, seed included");
-            assert_eq!(counts.permutations, perms, "skip {skip}: Keccak-f permutations");
-            let main_counts = count(&line);
-            println!(
-                "skip {skip}: pi1-rec in code = record_derived ({} nodes; {} derived): {} Keccak-256 calls, {} Keccak-f \
-                 (main line {}, {}); squares {} (main line {})",
-                b.nodes.len(),
-                derived.len(),
-                counts.hash_lengths.len(),
-                counts.permutations,
-                main_counts.hash_lengths.len(),
-                main_counts.permutations,
-                counts.total_ops.squares,
-                main_counts.total_ops.squares,
-            );
-        }
-    });
-}
-
 struct Config {
     name: String,
-    blake2s: Blake2s,
+    variant: Variant,
 }
 
 fn configs() -> Vec<Config> {
-    let mut out = vec![
+    vec![
         Config {
-            name: "main line (skip 3, tower)".into(),
-            blake2s: Blake2s::Flock(FLOCK_MAIN),
+            name: "Keccak VM main line (KECCAK_MAIN)".into(),
+            variant: KECCAK_MAIN,
         },
         Config {
-            name: "leanVM skip (skip 6, weighted)".into(),
-            blake2s: Blake2s::Flock(FLOCK_LEANVM_SKIP),
+            name: "Keccak VM π1-rec3 (KECCAK_REC3)".into(),
+            variant: KECCAK_REC3,
         },
-    ];
-    for skip in [6, 5, 4] {
-        out.push(Config {
-            name: format!("skip {skip}, tower"),
-            blake2s: Blake2s::Flock(Variant {
-                skip,
-                slices: Slices::Tower,
-                fs: FsShape::Main,
-            }),
-        });
-    }
-    out.push(Config {
-        name: "BLAKE2s omitted (scale)".into(),
-        blake2s: Blake2s::Omitted,
-    });
-    out
+    ]
 }
 
 fn print_counts(name: &str, recorded: &Recorded, c: &Counts) {
@@ -298,43 +221,13 @@ fn print_counts(name: &str, recorded: &Recorded, c: &Counts) {
 #[ignore]
 fn count_report() {
     deep(|| {
-        println!("## pi1's verifier graph at the reference shape (1,000 signatures), Claims::Point");
+        println!("## pi1's verifier graph at the reference shape (128 signatures), Claims::Point");
         println!("Keccak-256 of the seed: {} perm (80 B)", permutations(80));
         for config in configs() {
-            let recorded = record_verifier(&REFERENCE, config.blake2s, Claims::Point);
+            let recorded = record_verifier(&REFERENCE, config.variant, Claims::Point);
             let counts = count(&recorded);
             print_counts(&config.name, &recorded, &counts);
         }
-        // pi1-rec: the main line with alpha_2..4 and Flock's zerocheck eq point derived as squares (SPEC-REC.md §1.3).
-        for (name, skip) in [
-            ("pi1-rec: main line, alpha and the zerocheck point derived", 3),
-            ("pi1-rec at skip 6, tower", 6),
-        ] {
-            let blake2s = Blake2s::Flock(Variant {
-                skip,
-                slices: Slices::Tower,
-                fs: FsShape::Main,
-            });
-            let (recorded, hashed) = leanvm_rec::fs::record_derived(
-                &REFERENCE,
-                blake2s,
-                Claims::Point,
-                leanvm_rec::fs::pi1_rec_derived(32, skip),
-            );
-            let counts = count(&recorded);
-            print_counts(name, &recorded, &counts);
-            let derived = leanvm_rec::fs::pi1_rec_derived(32, skip).len();
-            assert_eq!(counts.challenges, hashed, "one challenge node a hashed draw");
-            println!("  (challenges hashed: {hashed}; derived as squares: {derived})");
-        }
-        // Weighted mode (extension W) for comparison: no batching sumcheck; its claims are not ABI point claims.
-        let recorded = record_verifier(&REFERENCE, Blake2s::Flock(FLOCK_MAIN), Claims::Weighted);
-        let counts = count(&recorded);
-        print_counts(
-            "main line, Claims::Weighted (not the ABI; for scale)",
-            &recorded,
-            &counts,
-        );
     });
 }
 
@@ -345,7 +238,7 @@ fn count_report() {
 fn transcript_shape() {
     deep(|| {
         for config in configs().into_iter().take(2) {
-            let recorded = record_verifier(&REFERENCE, config.blake2s, Claims::Point);
+            let recorded = record_verifier(&REFERENCE, config.variant, Claims::Point);
             let graph = &recorded.graph;
             println!("\n### {}: the challenges in order", config.name);
             let mut runs: Vec<(u32, usize)> = Vec::new();

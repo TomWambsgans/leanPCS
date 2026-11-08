@@ -256,15 +256,6 @@ pub fn count(recorded: &Recorded) -> Counts {
             });
         }
     }
-    if let Some(m) = &recorded.reduced.matrices {
-        for (name, value) in [("A0", m.a), ("B0", m.b)] {
-            c.claims.push(ClaimShape {
-                name: name.to_string(),
-                point: m.point.iter().map(|s| s.0).collect(),
-                value: value.0,
-            });
-        }
-    }
     c
 }
 

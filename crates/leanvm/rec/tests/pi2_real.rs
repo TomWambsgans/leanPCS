@@ -1,14 +1,14 @@
 // Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
-//! π2 on the real instance (SPEC-REC.md §7 R3, `PI2.md` §5): the circuit compiled from π1's recorded verifier with the
-//! witness of the real 1,000-signature proof (`crates/leanvm_univariate/tests/vectors/main_line_rec.txt`, π1-rec; and
-//! `main_line.txt`), through the adapter (`pi2::adapt`):
+//! π2 on the real instance (PI2.md): the circuit compiled from π1's recorded verifier with the witness of a real
+//! Keccak VM π1-rec3 proof (`crates/leanvm/univariate/tests/vectors/keccak128_rec3.txt`, the reference shape, 128
+//! signatures; `keccak_rec3.txt`, 400), through the adapter (`pi2::adapt`):
 //!
-//! - `real_gas`: the contract's gas on the real circuits, D16v × π1-rec and D32v × π1-rec / π1 (the verifier's gas
-//!   depends on the circuit alone), parity with the Rust verifier, straight and deployable;
-//! - `real_end_to_end` (`PI2_LAYOUT=d16v|d32v`, `PI2_VECTOR=main_line_rec|main_line`): π2's prover on the real witness,
-//!   its three openings verified (`quotient::opening::verify`, what `PCS_OPEN` checks), and the contract accepting the
-//!   proof with `PCS_OPEN` attesting exactly its nine calls: π1's five (the vector's inputs, which π1's openings
-//!   prove) and π2's three; a flipped calldata byte is rejected.
+//! - `real_gas`: the contract's gas on the real circuits, D16v (the verifier's gas depends on the circuit alone),
+//!   parity with the Rust verifier, straight and deployable;
+//! - `real_end_to_end` (`PI2_LAYOUT=d16v|d32v`, `PI2_VECTOR=keccak128_rec3|keccak_rec3`): π2's prover on the real
+//!   witness, its three openings verified (`quotient::opening::verify`, what `PCS_OPEN` checks), and the contract
+//!   accepting the proof with `PCS_OPEN` attesting exactly its calls: π1's three (the vector's inputs, which π1's
+//!   openings prove) and π2's three; a flipped calldata byte is rejected.
 //!
 //! `cargo test --release -p leanvm_rec --test pi2_real -- --ignored --nocapture --test-threads 1`
 
@@ -50,7 +50,7 @@ fn vector(name: &str) -> vectors::Vector {
 }
 
 /// The real circuit and witness, and π1's contract IV. π1's contract binds the vector's setup root `F` (its third
-/// call's, the shape's own: at the 1,000-signature reference shape `SetupRoots::REFERENCE`'s), as the proof's does.
+/// call's, its program's and shape's own), as the proof's does.
 fn real(name: &str, layout: Layout) -> (vectors::Vector, Compiled, [u8; 32]) {
     let v = vector(name);
     let roots = leanvm_univariate::contract::SetupRoots {
@@ -59,7 +59,7 @@ fn real(name: &str, layout: Layout) -> (vectors::Vector, Compiled, [u8; 32]) {
     };
     let recorded = leanvm_univariate::contract::record_verifier_with(
         &v.shape,
-        vectors::blake2s_of(&v.config),
+        vectors::variant_of(&v.config),
         Claims::Point,
         &roots,
     );
@@ -78,10 +78,7 @@ fn real(name: &str, layout: Layout) -> (vectors::Vector, Compiled, [u8; 32]) {
 }
 
 fn peak_memory() -> String {
-    std::fs::read_to_string("/proc/self/status")
-        .ok()
-        .and_then(|s| s.lines().find(|l| l.starts_with("VmHWM")).map(|l| l.trim().to_string()))
-        .unwrap_or_default()
+    format!("peak RSS {:.2} GB", bench::peak_rss_bytes() as f64 / 1e9)
 }
 
 fn gas(name: &str, layout: Layout) {
@@ -122,11 +119,8 @@ fn gas(name: &str, layout: Layout) {
 #[ignore]
 fn real_gas() {
     deep(|| {
-        gas("main_line_rec3", Layout::D16v);
-        gas("main_line_rec2", Layout::D16v);
-        gas("main_line_rec", Layout::D16v);
-        gas("main_line_rec", Layout::D32v);
-        gas("main_line", Layout::D32v);
+        gas("keccak128_rec3", Layout::D16v);
+        gas("keccak_rec3", Layout::D16v);
     });
 }
 
@@ -138,7 +132,7 @@ fn real_end_to_end() {
             Ok("d32v") => Layout::D32v,
             _ => Layout::D16v,
         };
-        let name = std::env::var("PI2_VECTOR").unwrap_or_else(|_| "main_line_rec".into());
+        let name = std::env::var("PI2_VECTOR").unwrap_or_else(|_| "keccak128_rec3".into());
         let start = std::time::Instant::now();
         let (v, c, pi1_iv) = real(&name, layout);
         assert_eq!(c.finished.circuit.check(&c.finished.witness, &c.public), Ok(()));
@@ -195,7 +189,7 @@ fn real_end_to_end() {
             Ok(())
         );
 
-        // The contract: π1's five calls (the openings the vector's inputs name, which π1's openings prove) and π2's
+        // The contract: π1's three calls (the openings the vector's inputs name, which π1's openings prove) and π2's
         // three (the proof's roots, its reduction's claims), attested exactly by the decoding mock (one
         // ABI, a registry keyed by the layout word).
         let recorded = record_verifier(&spec);
@@ -219,8 +213,8 @@ fn real_end_to_end() {
         let data = calldata(&public_input, &stream);
         println!("pi2 calldata keccak {}", hex(&primitives::hash::hash(&data)));
         let (accepted, made) = contract::run(&inst, &recorded, &data, &block);
-        assert!(accepted, "the contract accepts π2's proof of π1-rec's real proof");
-        assert_eq!(made, expected, "the nine claims in eight calls");
+        assert!(accepted, "the contract accepts π2's proof of π1-rec3's real proof");
+        assert_eq!(made, expected, "the calls the contract makes");
         // A regression test of the root words. The block attests π1's `C1`, `C2` calls (their words the stream's), not
         // those calls with the former word (each half of it reversed: on this stream, the hash as it is, which
         // names another root); and with π1's openings on those other roots, the contract rejects.
@@ -258,7 +252,7 @@ fn real_end_to_end() {
             );
         }
         contract::parity(&inst, &recorded, &public_input, &stream);
-        // The transaction on the real calldata (its zero bytes are the proof's: π1-rec2's narrow coordinates).
+        // The transaction on the real calldata (its zero bytes are the proof's: π1-rec3's narrow challenges).
         let (ok, execution) = contract::verifying_execution(&inst, &recorded, &data, &block);
         assert!(ok);
         let zero = data.iter().filter(|&&b| b == 0).count();

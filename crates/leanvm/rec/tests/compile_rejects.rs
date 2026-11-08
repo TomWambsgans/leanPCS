@@ -23,7 +23,7 @@ use leanvm_rec::circuit::compile::{Compiled, Inputs, Layout, pi2};
 use leanvm_rec::eval::evaluate;
 use leanvm_univariate::claims::Commitment;
 use leanvm_univariate::contract::{NAME, Recorded, SetupRoots};
-use leanvm_univariate::{Blake2s, FLOCK_REC3, Opening, Reduced};
+use leanvm_univariate::{KECCAK_REC3, Opening, Reduced};
 
 const PUBLIC: [u8; 32] = [3; 32];
 
@@ -41,17 +41,13 @@ fn deep<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> R {
 }
 
 fn point(point: Vec<Sym>, value: Sym) -> Opening<Sym> {
-    Opening::Point {
-        point,
-        value,
-        bit_slice: None,
-    }
+    Opening::Point { point, value }
 }
 
 fn recorded(graph: Graph, reduced: Reduced<Sym>, stream_len: usize, roots_at: [usize; 2]) -> Recorded {
     Recorded {
         shape: REFERENCE,
-        blake2s: Blake2s::Flock(FLOCK_REC3),
+        variant: KECCAK_REC3,
         roots: SetupRoots::REFERENCE,
         graph,
         reduced,
@@ -65,7 +61,6 @@ fn reduced(roots: [[Sym; 2]; 2], openings: Vec<(Commitment, Opening<Sym>)>) -> R
     Reduced {
         roots,
         openings,
-        matrices: None,
         relations: 0,
         stack_vars: vec![],
         layouts: vec![],

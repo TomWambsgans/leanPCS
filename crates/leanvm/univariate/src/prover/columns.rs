@@ -38,7 +38,7 @@ impl Column {
     }
 }
 
-/// `C1`'s polynomials (novel coefficients only: their `B` ones are the stack's): the tables' columns (BLAKE2S's limbs being the copies), the counter inverses, the memory's
+/// `C1`'s polynomials (novel coefficients only: their `B` ones are the stack's): the tables' columns (`SHA3`'s lanes being the copies), the counter inverses, the memory's
 /// four columns and the bytecode's final counts. `q_flock` is the trace's, as values.
 pub struct C1Polys {
     pub tables: Vec<Vec<Column>>,
@@ -57,7 +57,7 @@ pub struct SetupPolys {
 }
 
 pub fn c1_polys(trace: &Trace) -> C1Polys {
-    let layout = trace.vm_tables();
+    let layout = leanvm_statement::layout::tables();
     let mut tables_out = Vec::with_capacity(N_TABLES);
     let mut inverses = Vec::with_capacity(N_TABLES);
     let mut inverse_values = Vec::with_capacity(N_TABLES);

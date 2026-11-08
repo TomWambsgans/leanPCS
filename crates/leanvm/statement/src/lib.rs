@@ -1,16 +1,16 @@
 // Adapted from leanVM (https://github.com/leanEthereum/leanVM), commit 42422001, file crates/verifier/src/lib.rs: its
 // errors and the announced shape. MIT OR Apache-2.0; see NOTICE.md.
-//! leanVM 42422001's statement and the verifier pieces built on it, generic over the scalar they compute on, shared
-//! by `leanvm_univariate` (π1) and `leanvm_rec` (π2). See `README.md`.
+//! The Keccak VM's statement (leanVM 9d50c92a3) and the verifier pieces built on it, generic over the scalar they
+//! compute on, shared by `leanvm_univariate` (π1) and `leanvm_rec` (π2). See `README.md`.
 //!
-//! - [`layout`]: leanVM's six instruction tables, their bus flushes and constraints; [`layout::tables_keccak`] puts
-//!   the Keccak VM's `SHA3` table in BLAKE2S's place.
-//! - [`flock`], [`flock_min`], [`matrices`], [`ring_tower`]: Flock's verifier (zerocheck with a univariate skip,
-//!   lincheck, ring switch, the matrices' reduction); [`keccak_flock`]: the Keccak-f block's terminal.
+//! - [`layout`]: the VM's six instruction tables (leanVM 42422001's five and the `SHA3` table), their bus flushes and
+//!   constraints.
+//! - [`flock`], [`flock_min`], [`ring_tower`]: Flock's verifier (zerocheck with a univariate skip, lincheck, ring
+//!   switch); [`keccak_flock`]: the Keccak-f block and its structured terminal.
 //! - [`transcript`]: the Keccak-256 Fiat–Shamir chain ([`transcript::KeccakChannel`], [`transcript::KeccakWriter`]).
 //! - [`evm`]: the recorder that runs a verifier on a symbolic scalar, the nodes' code for `evm_link`, and a revm
 //!   machine with `FIELD_MUL` and a mock `PCS_OPEN`.
-//! - [`shapes`]: the measured leanVM 42422001 workloads and the program's IV.
+//! - [`shapes`]: the measured workloads (the reference: 128 signatures) and the program's IV.
 
 #![forbid(unsafe_code)]
 
@@ -18,11 +18,8 @@ pub mod evm;
 pub mod field;
 pub mod flock;
 pub mod flock_min;
-#[allow(dead_code)] // vendored unchanged; its digest helpers serve leanVM's own Merkle trees
-mod hash;
 pub mod keccak_flock;
 pub mod layout;
-pub mod matrices;
 pub mod multilinear;
 pub mod ring_tower;
 pub mod scalar;
@@ -63,7 +60,7 @@ pub enum VerifierError {
     CommittedSize,
     /// New here: the announced sizes are not the shape the verifier was built for.
     AnnouncedShape,
-    /// New here: the matrices' reduction does not close ([`matrices`]).
+    /// New here: Flock's lincheck terminal does not close.
     FlockMatrixTerminal,
     /// New here: the stack claims' batching sumcheck does not close.
     StackBatchTerminal,

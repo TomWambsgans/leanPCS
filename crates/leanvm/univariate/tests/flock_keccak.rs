@@ -2,7 +2,7 @@
 //! Flock on the Keccak-f\[1600\] block (`lv42_flock::keccak`, crates/lv42_flock/KECCAK.md §4.2, M1), end to end:
 //!
 //! - the verifier's walk (`leanvm_statement::keccak_flock`, on `E`) is the prover's (`lv42_flock::keccak`, on `F192`);
-//! - `prove_keccak`'s stream is accepted by `flock_min::verify_walked_with::<_, Keccak>` (the structured terminal,
+//! - `prover::flock::prove`'s stream is accepted by `flock_min::verify_walked_with::<_, Keccak>` (the structured terminal,
 //!   crates/lv42_flock/KECCAK.md §4.2, M3) and by `verify_walked_with::<_, KeccakWalked>` (M1's walked terminal) at skips of 3 and 6,
 //!   both eq points; the slices are the witness's at the verifier's point;
 //! - a witness with one state bit flipped (its rows' own values kept, so the zerocheck still holds) and a stream with
@@ -15,11 +15,11 @@
 
 use leanvm_statement::VerifierError;
 use leanvm_statement::field::E;
-use leanvm_statement::flock_min::{self, Slices, Variant};
+use leanvm_statement::flock_min::{self, Variant};
 use leanvm_statement::flock_min::WalkedCircuit;
 use leanvm_statement::keccak_flock::{Keccak, KeccakWalked};
 use leanvm_statement::transcript::{Checks, FsShape, KeccakChannel, KeccakWriter, keccak_seed};
-use leanvm_univariate::prover::flock::{FlockWitness, prove_keccak};
+use leanvm_univariate::prover::flock::{FlockWitness, prove};
 use lv42_flock::keccak::{self as block, K, K_LOG, LANES, WORDS};
 use lv42_primitives::field::F192;
 use lv42_primitives::multilinear::eq_table;
@@ -84,7 +84,6 @@ fn slices_of(z: &[u64], point: &[E]) -> Vec<F192> {
 fn variant(skip: usize, fs: FsShape) -> Variant {
     Variant {
         skip,
-        slices: Slices::TowerWalk,
         fs,
     }
 }
@@ -96,7 +95,7 @@ type Run = (Result<(), VerifierError>, Vec<E>, Vec<E>, Vec<u8>, f64);
 fn run(witness: &FlockWitness, variant: Variant, log_n: usize, seed: [u8; 32]) -> Run {
     let mut writer = KeccakWriter::new(seed);
     let started = std::time::Instant::now();
-    let out = prove_keccak(&mut writer, witness, variant, log_n).expect("a proof");
+    let out = prove(&mut writer, witness, variant, log_n).expect("a proof");
     let secs = started.elapsed().as_secs_f64();
     let verdict = verify(&writer.stream, variant, log_n, seed, &out.point);
     (verdict, out.point, out.slices, writer.stream, secs)
@@ -217,7 +216,7 @@ fn flock_keccak_4096() {
         for _ in 0..3 {
             let mut writer = KeccakWriter::new(seed);
             let started = std::time::Instant::now();
-            let out = prove_keccak(&mut writer, &w, v, log_n).expect("a proof");
+            let out = prove(&mut writer, &w, v, log_n).expect("a proof");
             times.push(started.elapsed().as_secs_f64());
             reductions.push(out.reduction_secs);
         }

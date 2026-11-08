@@ -1,8 +1,9 @@
 // Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
-//! The prover of SPEC.md (milestone 2; `PROVER.md`): on an execution trace of leanVM 42422001 (its own execution
-//! and witness generation, dumped by `dump/`), the stream the verifier reads and one WHIR opening per commitment.
+//! The prover of SPEC.md (`PROVER.md`): on an execution trace of the Keccak VM (leanVM 9d50c92a3's own execution,
+//! dumped by `dump_keccak/`), the stream the verifier reads and one WHIR opening per commitment.
 //!
 //! - [`trace`]: the trace leanVM wrote;
+//! - [`flock`]: Flock on the Keccak-f block;
 //! - [`poly`]: the Cantor subspaces' transforms (vectorized in `quotient::ntt`), basis `B`, the extension cosets;
 //! - [`columns`]: `C1`'s and the setup's polynomials;
 //! - [`fingerprint`], [`prints`], [`bus`]: the bus's fingerprints (one point at a time, and eight), leaves and
@@ -20,7 +21,6 @@ pub mod check;
 pub mod columns;
 pub mod fingerprint;
 pub mod flock;
-pub mod matrices;
 pub mod opening;
 pub mod poly;
 pub mod prints;

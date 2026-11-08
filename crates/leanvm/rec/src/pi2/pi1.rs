@@ -1,7 +1,7 @@
 // Part of this repository. The mapping of π1's call words follows `crate::circuit::compile` (the ports). MIT OR
 // Apache-2.0; see NOTICE.md.
-//! π1's five `PCS_OPEN` calls as the circuit's interface names their words (`circuit::spec::CallWord`), from π1-rec's
-//! recorded verifier (`leanvm_univariate::contract`, 1,000-signature reference shape): constants (the setup roots as
+//! π1's three `PCS_OPEN` calls as the circuit's interface names their words (`circuit::spec::CallWord`), from π1-rec3's
+//! recorded verifier (`leanvm_univariate::contract`, at the reference shape): constants (the setup root as
 //! `PCS_OPEN`'s root words), π1's two roots (`C1`, `C2`, root words in calldata), and its claims' distinct elements in
 //! first appearance. The contract of a synthetic circuit appends
 //! these, its words from calldata, as the real circuit's contract does.
@@ -13,7 +13,7 @@ use leanvm_statement::evm::machine::root_word;
 use leanvm_statement::evm::record::Node;
 use leanvm_statement::field::E;
 use leanvm_univariate::contract::{calls, record_verifier};
-use leanvm_univariate::{Blake2s, Claims, FLOCK_REC};
+use leanvm_univariate::{Claims, KECCAK_REC3};
 
 use crate::REFERENCE;
 use crate::circuit::spec::{CallWord, element_word};
@@ -26,9 +26,9 @@ pub struct Pi1Calls {
     pub elements: usize,
 }
 
-/// π1-rec's calls at the reference shape. Records π1's verifier: run it on a thread with a deep stack.
+/// π1-rec3's calls at the reference shape. Records π1's verifier: run it on a thread with a deep stack.
 pub fn pi1_calls() -> Pi1Calls {
-    let recorded = record_verifier(&REFERENCE, Blake2s::Flock(FLOCK_REC), Claims::Point);
+    let recorded = record_verifier(&REFERENCE, KECCAK_REC3, Claims::Point);
     let graph = &recorded.graph;
     let roots: BTreeMap<usize, u32> = recorded
         .roots_at

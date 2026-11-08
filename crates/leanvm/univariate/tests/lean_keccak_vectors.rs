@@ -1,6 +1,6 @@
 // Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
 //! Test vectors for the Lean transcription of the Keccak VM's verifier (`formal/UniKeccak`): `reduce` with
-//! `Blake2s::Keccak` (`KECCAK.md`) on random, accepting and mutated streams and on the real Keccak proofs of
+//! the Keccak VM (`KECCAK.md`) on random, accepting and mutated streams and on the real Keccak proofs of
 //! `tests/vectors/keccak*.txt`, each with the Rust verifier's verdict and its intermediate values (every challenge,
 //! every value it requires to be zero, the claims it hands `PCS_OPEN`); and the Keccak-f block's structured lincheck
 //! terminal (`keccak_flock::structured_terminal`) on random inputs at every skip, with the walked terminal's value.
@@ -9,8 +9,8 @@
 //!
 //! The format is `tests/lean_vectors.rs`'s (`formal/UniStatement/UniStatementTest/Runner.lean` reads it), with the
 //! Keccak contract's setup: `SETUPROOTS <f> <a0> <b0>` the roots it binds (`SetupRoots::REFERENCE`, or for a real proof
-//! its own `F`, as `tests/evm_vectors.rs` builds its contract), `CONTRACTIV` `contract::contract_iv_for(shape,
-//! Blake2s::Keccak(..), program_iv, roots)`, `LAYOUTWORDS` `contract::layout_words_for(shape, Blake2s::Keccak(..))`. The configuration
+//! its own `F`, as `tests/evm_vectors.rs` builds its contract), `CONTRACTIV` `contract::contract_iv(shape,
+//! variant, program_iv, roots)`, `LAYOUTWORDS` `contract::layout_words(shape)`. The configuration
 //! (`<flock>` in the `VECTOR` line) is `keccak` (`KECCAK_MAIN`) or `keccak_rec3` (`KECCAK_REC3`). A real proof's
 //! vector carries the contract's `PCS_OPEN` inputs (`PCSOPEN <hex>`, the vector file's `pcs_open` lines). Terminal
 //! vectors are one line each:
@@ -20,7 +20,7 @@
 //! ```
 //!
 //! (each list a count then its elements; an element `c0:c1:c2`, lowercase hex limbs.) This file holds its own copy of
-//! `tests/lean_format`'s logging channel and accepting streams (that module's IV is the BLAKE2s contract's), with
+//! the logging channel and accepting streams of the former BLAKE2s vectors' `tests/lean_format`, with
 //! `sample_narrow` logged (π1-rec3's batch).
 
 use std::fmt::Write as _;
@@ -33,9 +33,9 @@ use leanvm_statement::shapes::PROGRAM_IV;
 use leanvm_statement::transcript::{Channel, Checks, KeccakChannel, keccak_seed, narrow, scalar_bytes};
 use leanvm_univariate::claims::Combined;
 use leanvm_univariate::contract::{
-    NAME, SetupRoots, contract_iv_for, layout_words_for, record_verifier, sample_stream,
+    NAME, SetupRoots, contract_iv, layout_words, record_verifier, sample_stream,
 };
-use leanvm_univariate::{Blake2s, Claims, KECCAK_MAIN, KECCAK_REC3, Opening, Reduced, Shape, reduce};
+use leanvm_univariate::{Claims, KECCAK_MAIN, KECCAK_REC3, Opening, Reduced, Shape, Variant, reduce};
 
 /// Run `f` on a thread with a deep stack, as `tests/gas.rs` does.
 fn deep<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> R {
@@ -123,7 +123,7 @@ impl Run {
 struct Config {
     name: String,
     shape: Shape,
-    flock: (&'static str, Blake2s),
+    flock: (&'static str, Variant),
     claims: (&'static str, Claims),
     program_iv: [u8; 32],
     /// The setup roots the contract binds: `SetupRoots::REFERENCE`, or a real proof's own `F` (`tests/evm_vectors.rs`).
@@ -131,9 +131,9 @@ struct Config {
 }
 
 impl Config {
-    /// The Keccak contract's IV (`contract_iv_for`) at the configuration's setup roots.
+    /// The Keccak contract's IV (`contract_iv`) at the configuration's setup roots.
     fn contract_iv(&self) -> [u8; 32] {
-        contract_iv_for(&self.shape, self.flock.1, &self.program_iv, &self.roots)
+        contract_iv(&self.shape, self.flock.1, &self.program_iv, &self.roots)
     }
 }
 
@@ -301,7 +301,7 @@ impl Writer {
         )
         .unwrap();
         writeln!(out, "CONTRACTIV {}", hex(&config.contract_iv())).unwrap();
-        let words: Vec<String> = layout_words_for(&shape, config.flock.1)
+        let words: Vec<String> = layout_words(&shape)
             .iter()
             .map(|w| hex(w))
             .collect();
@@ -332,18 +332,11 @@ impl Writer {
             writeln!(out, "OPENINGS {}", reduced.openings.len()).unwrap();
             for (commitment, opening) in &reduced.openings {
                 match opening {
-                    Opening::Point {
-                        point,
-                        value,
-                        bit_slice,
-                    } => {
-                        let slice = match bit_slice {
-                            None => "BITSLICE 0".to_string(),
-                            Some(claim) => format!("BITSLICE 1 {}", combined(claim)),
-                        };
+                    // `BITSLICE 0` and `MATRICES 0` below: fields of the format that the Keccak VM leaves empty.
+                    Opening::Point { point, value } => {
                         writeln!(
                             out,
-                            "OPENING {commitment:?} POINT {} VALUE {} {slice}",
+                            "OPENING {commitment:?} POINT {} VALUE {} BITSLICE 0",
                             elements(point),
                             element(*value)
                         )
@@ -354,17 +347,7 @@ impl Writer {
                     }
                 }
             }
-            match &reduced.matrices {
-                None => writeln!(out, "MATRICES 0").unwrap(),
-                Some(m) => writeln!(
-                    out,
-                    "MATRICES 1 {} A {} B {}",
-                    elements(&m.point),
-                    element(m.a),
-                    element(m.b)
-                )
-                .unwrap(),
-            }
+            writeln!(out, "MATRICES 0").unwrap();
         }
         out.push_str(extra);
         writeln!(out, "END").unwrap();
@@ -437,7 +420,7 @@ fn shape_of(cells: u64, rows: [u64; 6]) -> Shape {
     }
 }
 
-fn config(run: usize, flock: (&'static str, Blake2s), claims: (&'static str, Claims)) -> Config {
+fn config(run: usize, flock: (&'static str, Variant), claims: (&'static str, Claims)) -> Config {
     let (name, cells, rows) = RUNS[run];
     Config {
         name: name.to_string(),
@@ -490,8 +473,8 @@ fn lean_keccak_vectors() {
     deep(|| {
         let started = std::time::Instant::now();
         let path = std::env::var("KECCAK_VECTORS_OUT").unwrap_or_else(|_| "target/keccak_vectors.txt".to_string());
-        let main = ("keccak", Blake2s::Keccak(KECCAK_MAIN));
-        let rec3 = ("keccak_rec3", Blake2s::Keccak(KECCAK_REC3));
+        let main = ("keccak", KECCAK_MAIN);
+        let rec3 = ("keccak_rec3", KECCAK_REC3);
         let point = ("point", Claims::Point);
         let weighted = ("weighted", Claims::Weighted);
         let mut w = Writer::default();

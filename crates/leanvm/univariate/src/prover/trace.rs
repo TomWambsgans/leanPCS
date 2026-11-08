@@ -1,25 +1,22 @@
-// Part of this repository. Reads what `dump/trace_dump.rs` writes from a leanVM 42422001 checkout: leanVM's own
-// execution and witness generation (crates/leanvm_core/src/cpu/{execute,layout}.rs there), column for column; or what
-// `dump_keccak/trace_dump.rs` writes from a leanVM 9d50c92a3 tree (the Keccak VM, KECCAK.md): its run without the fill
-// blocks, the tables' executed rows. MIT OR Apache-2.0; see NOTICE.md.
-//! An execution trace of leanVM 42422001, as its prover laid it out: the tables' columns (in `leanvm_statement`'s
-//! `layout::tables` order, BLAKE2S's eighteen value limbs included), the memory image and its final counts, the
-//! bytecode's final counts, `q_flock`, and the stacked bytecode. Or of the Keccak VM (leanVM 9d50c92a3, `KECCAK.md`):
-//! the tables of `layout::tables_keccak`, padded here to their heights, and `q_flock` built from the `SHA3` rows once
-//! they are placed ([`Trace::keccak_flock`]).
+// Part of this repository. Reads what `dump_keccak/trace_dump.rs` writes from a leanVM 9d50c92a3 tree (the Keccak
+// VM, docs/leanvm/univariate/KECCAK.md): its run without the fill blocks, the tables' executed rows. MIT OR Apache-2.0;
+// see NOTICE.md.
+//! An execution trace of the Keccak VM (leanVM 9d50c92a3): the tables of `layout::tables`, padded here to their
+//! heights, the memory image and its final counts, the bytecode's final counts, the stacked bytecode, and `q_flock`
+//! built from the `SHA3` rows once they are placed ([`Trace::keccak_flock`]).
 
 use std::path::Path;
 
 use leanvm_statement::N_TABLES;
-use leanvm_statement::layout::{OP_BLAKE2S, OP_SHA3, SHA3_END_BIT, tables, tables_keccak};
+use leanvm_statement::layout::{OP_SHA3, SHA3_END_BIT, tables};
 use lv42_flock::keccak::{self as block, LANES};
 use primitives::field::F64;
 
 use super::flock::FlockWitness;
 use crate::domain::{active_positions, is_active};
-use crate::verifier::{Shape, vm_tables};
+use crate::verifier::Shape;
 
-/// One execution: every column leanVM 42422001 commits or carries, at its padded height.
+/// One execution: every column the Keccak VM commits or carries, at its padded height.
 pub struct Trace {
     pub log_memory: usize,
     pub log_bytecode: usize,
@@ -39,9 +36,6 @@ pub struct Trace {
     pub bytecode: Vec<F64>,
     /// Whether the rows sit at the verifier's positions ([`Trace::place`]); leanVM's trace has the active rows first.
     pub placed: bool,
-    /// The Keccak VM (leanVM 9d50c92a3's `SHA3` table in BLAKE2S's place, `KECCAK.md`): `q_flock` is one Keccak-f block
-    /// of `2^11` words a `SHA3` row, built by [`Trace::keccak_flock`] (empty before).
-    pub keccak: bool,
 }
 
 /// Where row `i` of a height-`r` table of `rows` active rows goes: the active rows (leanVM's first `rows`) to
@@ -86,83 +80,16 @@ fn words(bytes: &[u8]) -> Vec<F64> {
 }
 
 impl Trace {
-    /// The trace `trace_dump.rs` wrote to `dir`.
-    pub fn load(dir: &Path) -> std::io::Result<Self> {
-        let meta = std::fs::read_to_string(dir.join("meta.txt"))?;
-        if meta.lines().any(|l| l.starts_with("vm keccak")) {
-            return Self::load_keccak(dir, &meta);
-        }
-        let field = |name: &str| -> Vec<u64> {
-            let line = meta
-                .lines()
-                .find(|l| l.split_whitespace().next() == Some(name))
-                .unwrap_or_else(|| panic!("meta.txt has no {name}"));
-            line.split_whitespace().skip(1).map(|x| x.parse().expect("a number")).collect()
-        };
-        let log_memory = field("log_mem")[0] as usize;
-        let log_bytecode = field("log_bytecode")[0] as usize;
-        let rows: [u64; N_TABLES] = field("rows").try_into().expect("six tables");
-        let heights: [usize; N_TABLES] = field("taus")
-            .into_iter()
-            .map(|x| x as usize)
-            .collect::<Vec<_>>()
-            .try_into()
-            .expect("six tables");
-        let pi = field("pi");
-        let lengths: Vec<usize> = meta
-            .lines()
-            .filter(|l| l.starts_with("column "))
-            .map(|l| l.split_whitespace().nth(2).expect("a length").parse().expect("a number"))
-            .collect();
-        let all = std::fs::read(dir.join("columns.bin"))?;
-        let total: usize = lengths.iter().sum();
-        assert_eq!(all.len(), 8 * total, "columns.bin holds the columns meta.txt lists");
-        let mut columns = Vec::with_capacity(lengths.len());
-        let mut at = 0;
-        for &len in &lengths {
-            columns.push(words(&all[8 * at..8 * (at + len)]));
-            at += len;
-        }
-        drop(all);
-        let layout = tables();
-        let widths: Vec<usize> = layout.iter().map(|t| t.width()).collect();
-        assert_eq!(columns.len(), 6 + widths.iter().sum::<usize>(), "leanVM's columns are the port's");
-        let mut rest = columns.split_off(6);
-        let qflock = columns.pop().expect("q_flock");
-        let bytecode_final = columns.pop().expect("the bytecode's final counts");
-        let memory: [Vec<F64>; 4] = columns.try_into().expect("the memory's four columns");
-        let mut tables_columns = Vec::with_capacity(N_TABLES);
-        for (t, &width) in widths.iter().enumerate() {
-            let table: Vec<Vec<F64>> = rest.drain(..width).collect();
-            assert!(table.iter().all(|c| c.len() == 1 << heights[t]), "table {t} at its height");
-            tables_columns.push(table);
-        }
-        let bytecode = words(&std::fs::read(dir.join("bytecode.bin"))?);
-        assert!(memory.iter().all(|c| c.len() == 1 << log_memory));
-        assert_eq!(bytecode_final.len(), 1 << log_bytecode);
-        assert_eq!(bytecode.len(), 16 << log_bytecode);
-        assert_eq!(qflock.len(), 1 << (heights[5] + 8));
-        Ok(Self {
-            log_memory,
-            log_bytecode,
-            rows,
-            heights,
-            public: [[pi[0], pi[1], pi[2]], [pi[3], pi[4], pi[5]]],
-            memory,
-            bytecode_final,
-            qflock,
-            tables: tables_columns,
-            bytecode,
-            placed: false,
-            keccak: false,
-        })
-    }
-
     /// The Keccak VM's trace `dump_keccak/trace_dump.rs` wrote to `dir`: the tables' executed rows, padded here to
     /// `2^taus[t]` rows with the table's padding row (zeros; the counters are set to 1 by [`Trace::place`]). A padding
     /// `SHA3` row's input lanes are zero, so its block's input port is `END_BIT` in lane 16 and its output lanes are
     /// `step(0) = Keccak-f(END_BIT · e_16)`: `Q_W`'s copy identities hold on it.
-    fn load_keccak(dir: &Path, meta: &str) -> std::io::Result<Self> {
+    pub fn load(dir: &Path) -> std::io::Result<Self> {
+        let meta = std::fs::read_to_string(dir.join("meta.txt"))?;
+        if !meta.lines().any(|l| l.starts_with("vm keccak")) {
+            return Err(std::io::Error::other("not a Keccak VM trace (dump it with src/prover/dump_keccak)"));
+        }
+        let meta = meta.as_str();
         let field = |name: &str| -> Vec<u64> {
             let line = meta
                 .lines()
@@ -192,7 +119,7 @@ impl Trace {
             at += len;
         }
         drop(all);
-        let layout = tables_keccak();
+        let layout = tables();
         let widths: Vec<usize> = layout.iter().map(|t| t.width()).collect();
         assert_eq!(columns.len(), 5 + widths.iter().sum::<usize>(), "leanVM 9d50c92a3's columns are the port's");
         let mut rest = columns.split_off(5);
@@ -235,13 +162,7 @@ impl Trace {
             tables: tables_columns,
             bytecode,
             placed: false,
-            keccak: true,
         })
-    }
-
-    /// The VM's tables (`verifier::vm_tables`).
-    pub fn vm_tables(&self) -> Vec<leanvm_statement::layout::Table> {
-        vm_tables(self.keccak)
     }
 
     /// The Keccak VM's Flock witness, its rows placed: one Keccak-f block a `SHA3` row (padding rows included), block
@@ -249,10 +170,10 @@ impl Trace {
     /// so that its output port is the row's output lanes. `q_flock` is the blocks' packed words `z` (`2^11` a row),
     /// which the prover commits from the witness: the trace keeps no copy (set `qflock` from `z` for
     /// [`super::check::on_domain`]). The witness (`z`, `A z`, `B z`, the lincheck's stripes) is `lv42_flock::keccak`'s,
-    /// for `flock::prove_keccak`.
+    /// for `flock::prove`.
     pub fn keccak_flock(&self) -> FlockWitness {
-        assert!(self.keccak && self.placed, "the Keccak VM's trace, placed");
-        let table = &tables_keccak()[OP_SHA3];
+        assert!(self.placed, "the trace, placed");
+        let table = &tables()[OP_SHA3];
         let lane = |prefix: &str, l: usize| {
             table
                 .columns
@@ -280,13 +201,13 @@ impl Trace {
     }
 
     /// The rows at the verifier's positions (SPEC.md §13, F1b and F1): table `t`'s active rows, in order, at
-    /// `domain::active_positions(rows, r)`, its padding rows at the others, in order ([`placement`]); BLAKE2S's
-    /// `q_flock` instances with its rows; the padding rows' counters 1, so that every row's are nonzero. leanVM puts
-    /// the active rows first; the rows' order is no part of its statement (the bus is a multiset, padding rows are
-    /// free). Flock's witness moves likewise ([`super::flock::FlockWitness::place`]).
+    /// `domain::active_positions(rows, r)`, its padding rows at the others, in order ([`placement`]); the padding
+    /// rows' counters 1, so that every row's are nonzero. leanVM puts the active rows first; the rows' order is no part
+    /// of its statement (the bus is a multiset, padding rows are free). Flock's witness is built after
+    /// ([`Trace::keccak_flock`]).
     pub fn place(&mut self) {
         assert!(!self.placed, "placed once");
-        let layout = self.vm_tables();
+        let layout = tables();
         for (t, table) in layout.iter().enumerate() {
             let to = placement(self.rows[t], self.heights[t]);
             let rows = self.rows[t] as usize;
@@ -301,9 +222,6 @@ impl Trace {
                     column[p] = v;
                 }
             });
-            if t == OP_BLAKE2S && !self.keccak {
-                permute_blocks(&mut self.qflock, &to);
-            }
         }
         self.placed = true;
     }

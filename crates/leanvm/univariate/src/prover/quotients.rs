@@ -9,7 +9,7 @@
 //! Every numerator is read from K-columns' values ([`Points`]), eight columns a batch ([`ntt::K8`]), the batches
 //! evaluated on each piece of points (a coset of `V_e`, `e ≤ r`, `2^r` the columns' length) by one transform each.
 
-use leanvm_statement::layout::{OP_BLAKE2S, OP_JUMP};
+use leanvm_statement::layout::{OP_JUMP, OP_SHA3, keccak_slot, keccak_slot_offset, tables};
 use leanvm_univariate_domain::{active_factors, padding_factors};
 use primitives::field::{F64, F192};
 
@@ -615,7 +615,7 @@ pub fn tree(heap_novel: &[Vec<F64>; 3]) -> Quotient {
 }
 
 /// The constraint quotient `Σ_i γ^i M_i W_i / w_(r_W)`, in the verifier's order of powers: per table, JUMP's two
-/// constraints, the counters, BLAKE2S's eighteen limb copies (the Keccak VM's `SHA3` fifty lane copies, `in_16`'s
+/// constraints, the counters, the `SHA3` table's fifty lane copies (`in_16`'s
 /// with `END_BIT`: `copy + port + END_BIT`); then the public input's three limbs. As
 /// `M_i = w_(r_W) / w_r`, it is the sum of each table's `Σ γ^i W_i / w_r` and the public input's part, each a
 /// quotient of its own on its own points.
@@ -640,9 +640,8 @@ pub fn constraints_with(
         current
     };
     let mut parts: Vec<Quotient> = Vec::new();
-    let keccak = trace.keccak;
-    let row_bits = crate::verifier::qflock_row_bits(keccak);
-    for table in &trace.vm_tables() {
+    let row_bits = crate::verifier::QFLOCK_ROW_BITS;
+    for table in &tables() {
         let t = table.opcode;
         let r = trace.heights[t];
         let n = 1usize << r;
@@ -652,20 +651,12 @@ pub fn constraints_with(
         let counters: Vec<usize> = table.count_columns().collect();
         let g_counter = next();
         // (power, column, q_flock's word in the row's block, the constant the column differs from it by).
-        let copies: Vec<(F192, usize, usize, u64)> = if t == OP_BLAKE2S {
+        let copies: Vec<(F192, usize, usize, u64)> = if t == OP_SHA3 {
             table
                 .columns
                 .iter()
                 .enumerate()
-                .filter_map(|(c, &name)| {
-                    let slot = if keccak {
-                        leanvm_statement::layout::keccak_slot(name)
-                    } else {
-                        leanvm_statement::layout::BLAKE2S_SLOTS.iter().position(|&s| s == Some(name))
-                    };
-                    let offset = if keccak { leanvm_statement::layout::keccak_slot_offset(name) } else { 0 };
-                    slot.map(|slot| (next(), c, slot, offset))
-                })
+                .filter_map(|(c, &name)| keccak_slot(name).map(|slot| (next(), c, slot, keccak_slot_offset(name))))
                 .collect()
         } else {
             Vec::new()
@@ -679,7 +670,7 @@ pub fn constraints_with(
         if !copies.is_empty() {
             most = most.max(degree(r as u64 * (n64 / 2), n64));
         }
-        // Columns: the inverse, the counters, JUMP's three, BLAKE2S's copies combined by their powers (three limbs).
+        // Columns: the inverse, the counters, JUMP's three, SHA3's copies combined by their powers (three limbs).
         let mut columns: Vec<&[F64]> = vec![&c1.inverses[t].novel];
         columns.extend(counters.iter().map(|&c| &cols[c].novel[..]));
         let jump_slots = jump.map(|(g1, g2, cond, w, b)| {
@@ -710,11 +701,11 @@ pub fn constraints_with(
         });
         let functionals = combined.as_ref().map(|_| crate::domain::coordinate_functionals(r));
         let counter_slots: Vec<Slot> = (1..=counters.len()).map(slot).collect();
-        // A piece: `w_r` and its inverse; BLAKE2S's `Σ g_j ℓ_j`, the slots' multilinear at `y(x) = y(ω_first) +
+        // A piece: `w_r` and its inverse; SHA3's `Σ g_j ℓ_j`, the slots' multilinear at `y(x) = y(ω_first) +
         // bits(i)`, a shifted cube (at least a run long).
         let piece = |first: usize, e: usize| {
             let cube = combined.as_ref().map(|(_, table)| {
-                let delta = coordinates_k(omega(first), functionals.as_ref().expect("BLAKE2S"));
+                let delta = coordinates_k(omega(first), functionals.as_ref().expect("SHA3"));
                 table
                     .iter()
                     .map(|l| {

@@ -4,25 +4,19 @@
 //! depends on the words outside the blocks: every weight is zero there, and every claim is on the whole stack's
 //! multilinear, whatever the stack holds there.
 
-use leanvm_statement::layout::OP_BLAKE2S;
+use leanvm_statement::layout::{OP_SHA3, tables};
 use primitives::field::{F64, F192};
 
 use crate::claims::Column;
 use crate::stacks::StackLayout;
 use crate::verifier::Shape;
 
-/// `C1`'s columns as the verifier lists them (`verifier::layouts`), for the BLAKE2s VM.
+/// `C1`'s columns as the verifier lists them (`verifier::stack_layouts`).
 pub fn c1_columns(shape: &Shape) -> Vec<(Column, usize, bool)> {
-    c1_columns_for(shape, false)
-}
-
-/// `C1`'s columns as the verifier lists them (`verifier::stack_layouts_for`), for the BLAKE2s VM or, with `keccak`,
-/// the Keccak VM (its `SHA3` table, `q_flock` of `2^11` words a row).
-pub fn c1_columns_for(shape: &Shape, keccak: bool) -> Vec<(Column, usize, bool)> {
     let heights = shape.heights();
     let mut c1: Vec<(Column, usize, bool)> =
-        vec![(Column::Qflock, heights[OP_BLAKE2S] + crate::verifier::qflock_row_bits(keccak), false)];
-    for table in crate::verifier::vm_tables(keccak) {
+        vec![(Column::Qflock, heights[OP_SHA3] + crate::verifier::QFLOCK_ROW_BITS, false)];
+    for table in tables() {
         let h = heights[table.opcode];
         c1.extend((0..table.width()).map(|column| {
             (

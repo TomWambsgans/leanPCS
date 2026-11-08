@@ -1,12 +1,11 @@
 // Adapted from leanVM (https://github.com/leanEthereum/leanVM), commit 42422001, file crates/verifier/src/flock.rs: the
 // pieces of its Flock verifier that `crate::flock_min` builds on, on a generic `Scalar` (constants computed natively,
-// as leanVM's are): the fixed challenges and Lagrange weights of the univariate skip, the BLAKE2s row walk (both
-// matrices' sides at once) and the ring switch's map and weight. MIT OR Apache-2.0; see NOTICE.md.
-//! Flock's shared pieces: the skip's Lagrange weights, the BLAKE2s circuit's row values, the ring switch's weight.
+// as leanVM's are): the fixed challenges and Lagrange weights of the univariate skip, and the ring switch's map and
+// weight. MIT OR Apache-2.0; see NOTICE.md.
+//! Flock's shared pieces: the skip's fixed challenges and Lagrange weights, the ring switch's map and weight.
 
 use crate::field::{E, ONE};
-use crate::hash::{BLAKE2S_G_LANES, BLAKE2S_IV, BLAKE2S_SIGMA};
-use crate::layout::{BLAKE2S_CONSTANT_COLUMN, BLAKE2S_R1CS_LOG_SIZE, K_BITS};
+use crate::layout::K_BITS;
 use crate::multilinear::dot;
 use crate::scalar::{Scalar, enter};
 
@@ -71,170 +70,8 @@ pub(crate) fn lagrange_interpolate<S: Scalar>(count: usize, values: &[S], point:
     dot(&lagrange_weights(count, point), values)
 }
 
-type Word<S> = [S; 32];
-
-/// The forward walk's state: `A0 w` and `B0 w`, filled row by row.
-struct RowValues<'a, S> {
-    column_weights: &'a [S],
-    left_values: Vec<S>,
-    right_values: Vec<S>,
-}
-
-impl<S: Scalar> RowValues<'_, S> {
-    fn slots(&self, base: usize) -> Word<S> {
-        std::array::from_fn(|bit| self.column_weights[base + bit])
-    }
-
-    fn literal(&self, value: u32) -> Word<S> {
-        let constant = self.column_weights[BLAKE2S_CONSTANT_COLUMN];
-        std::array::from_fn(|bit| if value >> bit & 1 == 1 { constant } else { S::zero() })
-    }
-
-    fn add(&mut self, x: Word<S>, y: Word<S>, carry_base: usize) -> Word<S> {
-        let mut carry = S::zero();
-        let mut output = [S::zero(); 32];
-        for bit in 0..32 {
-            if bit < 31 {
-                self.left_values[carry_base + bit] = x[bit] + carry;
-                self.right_values[carry_base + bit] = y[bit] + carry;
-            }
-            output[bit] = x[bit] + y[bit] + carry;
-            if bit < 31 {
-                carry += self.column_weights[carry_base + bit];
-            }
-        }
-        output
-    }
-
-    /// Fused three-operand add: 31 majority rows then 30 ripple rows.
-    ///
-    /// The majority of bit `i` is `maj_aux[i] + z[i]`, since over GF(2)
-    /// `(x+z)(y+z) = xy + xz + yz + z`; then `x + y + z` is the ripple sum of
-    /// `p = x^y^z` against `q[i] = maj[i-1]`, whose bit 0 is zero, so the
-    /// ripple layer's bit 0 needs no row and slot `base + 31 + i - 1` carries
-    /// bit `i`.
-    fn add3(&mut self, x: Word<S>, y: Word<S>, z: Word<S>, base: usize) -> Word<S> {
-        let mut majority = [S::zero(); 31];
-        for bit in 0..31 {
-            self.left_values[base + bit] = x[bit] + z[bit];
-            self.right_values[base + bit] = y[bit] + z[bit];
-            majority[bit] = self.column_weights[base + bit] + z[bit];
-        }
-        let ripple_base = base + 31;
-        let mut carry = S::zero();
-        let mut output = [S::zero(); 32];
-        for bit in 0..32 {
-            let q = if bit == 0 { S::zero() } else { majority[bit - 1] };
-            let left = x[bit] + y[bit] + z[bit] + carry;
-            output[bit] = left + q;
-            if (1..=30).contains(&bit) {
-                self.left_values[ripple_base + bit - 1] = left;
-                self.right_values[ripple_base + bit - 1] = q + carry;
-                carry += self.column_weights[ripple_base + bit - 1];
-            }
-        }
-        output
-    }
-
-    fn linear_rows(&mut self, values: Word<S>, base: usize) {
-        for bit in 0..32 {
-            self.left_values[base + bit] = values[bit];
-            self.right_values[base + bit] = self.column_weights[BLAKE2S_CONSTANT_COLUMN];
-        }
-    }
-}
-
-fn xor<S: Scalar>(x: Word<S>, y: Word<S>) -> Word<S> {
-    std::array::from_fn(|bit| x[bit] + y[bit])
-}
-
-fn rotate_right<S: Scalar>(word: Word<S>, amount: usize) -> Word<S> {
-    std::array::from_fn(|bit| word[(bit + amount) & 31])
-}
-
-/// Compute `A0 w` and `B0 w` by one forward walk of the circuit.
-pub fn blake2s_row_values<S: Scalar>(column_weights: &[S]) -> (Vec<S>, Vec<S>) {
-    let size = 1 << BLAKE2S_R1CS_LOG_SIZE;
-    let constant = BLAKE2S_CONSTANT_COLUMN;
-    let message_base = 640;
-    let counter_low = 1152;
-    let counter_high = 1184;
-    let final_flag = 1216;
-    let last_node_flag = 1248;
-    let gates_base = 1280;
-    let gate_stride = 184;
-    let mut rows = RowValues {
-        column_weights,
-        left_values: vec![S::zero(); size],
-        right_values: vec![S::zero(); size],
-    };
-
-    for (base, length) in [(0, 256), (message_base, 512), (counter_low, 128)] {
-        for row in base..base + length {
-            rows.left_values[row] = column_weights[row];
-            rows.right_values[row] = column_weights[constant];
-        }
-    }
-
-    // v[0..8] = h, v[8..12] = IV[0..4], v[12..16] = IV[4..8] ^ (t_lo, t_hi, f0, f1).
-    let mut state = [[S::zero(); 32]; 16];
-    for word in 0..8 {
-        state[word] = rows.slots(32 * word);
-    }
-    for word in 0..4 {
-        state[8 + word] = rows.literal(BLAKE2S_IV[word]);
-    }
-    for (word, base) in [counter_low, counter_high, final_flag, last_node_flag]
-        .into_iter()
-        .enumerate()
-    {
-        state[12 + word] = xor(rows.literal(BLAKE2S_IV[4 + word]), rows.slots(base));
-    }
-
-    for (round_index, sigma) in BLAKE2S_SIGMA.iter().enumerate() {
-        for (gate_index, &[lane_a, lane_b, lane_c, lane_d]) in BLAKE2S_G_LANES.iter().enumerate() {
-            let gate = round_index * 8 + gate_index;
-            let gate_base = gates_base + gate_stride * gate;
-            let (a, b, c, d) = (state[lane_a], state[lane_b], state[lane_c], state[lane_d]);
-            let mx = rows.slots(message_base + 32 * sigma[2 * gate_index]);
-            let my = rows.slots(message_base + 32 * sigma[2 * gate_index + 1]);
-            let a1 = rows.add3(a, b, mx, gate_base);
-            let d1 = rotate_right(xor(d, a1), 16);
-            let c1 = rows.add(c, d1, gate_base + 61);
-            let b1 = rotate_right(xor(b, c1), 12);
-            let a2 = rows.add3(a1, b1, my, gate_base + 92);
-            let d2 = rotate_right(xor(d1, a2), 8);
-            let c2 = rows.add(c1, d2, gate_base + 153);
-            let b2 = rotate_right(xor(b1, c2), 7);
-            // Every lane cascades: this encoding materializes no intermediate word.
-            state[lane_a] = a2;
-            state[lane_b] = b2;
-            state[lane_c] = c2;
-            state[lane_d] = d2;
-        }
-    }
-
-    // out[w] = h[w] ^ v[w] ^ v[w+8], the only materialized words.
-    for word in 0..8 {
-        let out = xor(xor(state[word], state[word + 8]), rows.slots(32 * word));
-        rows.linear_rows(out, 256 + 32 * word);
-    }
-
-    rows.left_values[constant] = column_weights[constant];
-    rows.right_values[constant] = column_weights[constant];
-    (rows.left_values, rows.right_values)
-}
-
 // The Frobenius shifts of the six stages composing Phi, one challenge each.
 pub(crate) const RING_MAP_SHIFTS: [usize; 6] = [32, 16, 8, 4, 2, 1];
-
-/// The drawn map, stage by stage: `a_p+1 = a_p + f_p a_p^(2^shift)`.
-pub(crate) fn ring_map<S: Scalar>(mut value: S, challenges: &[S]) -> S {
-    for (&challenge, shift) in challenges.iter().zip(RING_MAP_SHIFTS) {
-        value += challenge * value.pow(1 << shift);
-    }
-    value
-}
 
 /// The weight `W(u) = Phi(eq(r, u))`, extended and evaluated by the opening at
 /// `r_prime`: `sum_k c_k prod_n (1 + r_n^(2^k) + r'_n)`.

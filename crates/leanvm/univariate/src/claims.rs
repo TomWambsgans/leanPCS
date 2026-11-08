@@ -25,7 +25,7 @@ pub const COMMITMENTS: [Commitment; 3] = [Commitment::C1, Commitment::C2, Commit
 /// A column of a commitment's layout (SPEC.md §3).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Column {
-    /// `C1`: a table's column, by leanVM's opcode and local index (BLAKE2S's limbs are the univariate copies).
+    /// `C1`: a table's column, by leanVM's opcode and local index (`SHA3`'s lanes are the univariate copies).
     Table { table: usize, column: usize },
     /// `C1`: a table's counter-inverse column `z_T`.
     Inverse(usize),
@@ -33,13 +33,10 @@ pub enum Column {
     Memory(usize),
     /// `C1`: the bytecode's final counts.
     BytecodeFinal,
-    /// `C1`: `q_flock` (values), its slot `j` as a table of the BLAKE2S rows.
+    /// `C1`: `q_flock` (values), its word `j` of every `SHA3` row's block, as a table of the rows.
     QflockSlot(usize),
     /// `C1`: `q_flock` (values), whole.
     Qflock,
-    /// `C1`: `q_flock`'s bit-slice `i` (the term's twist field), an `E`-valued multilinear of its word coordinates:
-    /// a term of the bit-slice claim type (SPEC-FLOCK.md, lever (a)), which `PCS_OPEN` ring-switches.
-    QflockBits,
     /// `C2`: the product heap.
     Heap,
     /// `C2`: the tree quotient's chunk.
@@ -62,8 +59,7 @@ impl Column {
             | Column::Memory(_)
             | Column::BytecodeFinal
             | Column::QflockSlot(_)
-            | Column::Qflock
-            | Column::QflockBits => Commitment::C1,
+            | Column::Qflock => Commitment::C1,
             Column::Heap | Column::TreeQuotient(_) | Column::LeafQuotient { .. } | Column::ConstraintQuotient(_) => {
                 Commitment::C2
             }
@@ -78,10 +74,9 @@ impl Column {
             Column::Inverse(t) => 0x1000 | t as u64,
             Column::Memory(k) => 0x1100 | k as u64,
             Column::BytecodeFinal => 0x1200,
-            // Below 256: a BLAKE2s limb slot, or a Keccak-f block's port word (at most 98).
+            // Below 256: a Keccak-f block's port word (at most 98).
             Column::QflockSlot(j) => 0x1300 | j as u64,
             Column::Qflock => 0x1400,
-            Column::QflockBits => 0x1500,
             Column::Heap => 0x2000,
             Column::TreeQuotient(c) => 0x2100 | c as u64,
             Column::LeafQuotient { block, chunk } => 0x2200 | (block as u64) << 4 | chunk as u64,

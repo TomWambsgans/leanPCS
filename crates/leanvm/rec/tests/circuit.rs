@@ -1,7 +1,6 @@
 // Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
-//! Milestone R2 (SPEC-REC.md §7, steps 2–6): `π2`'s circuit compiled from `π1`'s recorded verifier, its witness from
-//! the real 1,000-signature proofs (`crates/leanvm_univariate/tests/vectors/`: π1-rec's `main_line_rec`, and the
-//! main line's).
+//! `π2`'s circuit compiled from `π1`'s recorded verifier (SPEC-REC.md §2, §10), its witness from the real Keccak VM
+//! proofs (`crates/leanvm/univariate/tests/vectors/`: π1-rec3's and the main line's).
 //!
 //! - every position's pull equals its push, and the public side holds (`spec::Circuit::check`);
 //! - the circuit's calls, on its public inputs, are exactly the vector's `PCS_OPEN` inputs;
@@ -23,7 +22,7 @@ use leanvm_rec::circuit::compile::{Compiled, Inputs, Layout, pi2};
 use leanvm_rec::circuit::spec::{CallWord, Failure};
 use leanvm_rec::eval::{Value, evaluate};
 use leanvm_univariate::Claims;
-use leanvm_univariate::contract::{NAME, Recorded, record_verifier};
+use leanvm_univariate::contract::{NAME, Recorded, SetupRoots, record_verifier_with};
 
 const STREAM_AT: usize = 4 + 32;
 
@@ -108,12 +107,16 @@ fn report(name: &str, layout: &str, c: &Compiled) {
     }
 }
 
-/// `(log N, the fill's bounds)` expected (SPEC-REC.md §2.4.5, §2.6: D16v × π1-rec `2^24` at 86%, D32v × π1 `2^23`
-/// at 84%).
+/// `(log N, the fill's bounds)` expected.
 fn run(name: &str, layout: Layout, log_n: u8, fill: (f64, f64)) {
     let v = vector(name);
-    let blake2s = vectors::blake2s_of(&v.config);
-    let recorded = record_verifier(&v.shape, blake2s, Claims::Point);
+    let variant = vectors::variant_of(&v.config);
+    // The contract binds the proof's setup root `F` (the third call's).
+    let roots = SetupRoots {
+        f: v.whir_roots[2],
+        ..SetupRoots::REFERENCE
+    };
+    let recorded = record_verifier_with(&v.shape, variant, Claims::Point, &roots);
     let stream = v.calldata[STREAM_AT..].to_vec();
     let iv = recorded.iv(&PROGRAM_IV);
     let c = compiled(&recorded, layout, iv, v.public, &stream);
@@ -256,37 +259,15 @@ fn run(name: &str, layout: Layout, log_n: u8, fill: (f64, f64)) {
     println!("  mutations caught; {zero_checks} zero checks, {nodes} products in the expanded graph");
 }
 
-/// The recommendation: D16v on π1-rec, `2^24` positions, the quotient `15N = 2^27.91` words, under `2^28`.
+/// π1-rec3 at 400 signatures, D16v: `2^24` positions at 95.0%, the quotient `15N = 2^27.91` words, under `2^28`.
 #[test]
-fn pi1_rec_d16v() {
-    deep(|| run("main_line_rec", Layout::D16v, 24, (0.80, 0.90)));
+fn keccak_rec3_400_d16v() {
+    deep(|| run("keccak_rec3", Layout::D16v, 24, (0.90, 0.99)));
 }
 
-/// π1-rec2 (SPEC-REC.md §12): the walk of the BLAKE2s circuit in π1's verifier, no claims on `A0`, `B0`: still `2^24`.
+/// The main line (every challenge hashed, the batch one variable a round) at 32 signatures, D16v: it does not fit
+/// `2^24` (`2^25` at 53.6%), which is why the recursion proves π1-rec3.
 #[test]
-fn pi1_rec2_d16v() {
-    deep(|| run("main_line_rec2", Layout::D16v, 24, (0.80, 0.99)));
-}
-
-/// π1-rec3 (SPEC-REC.md §12, SPEC-POINTS.md): π1-rec2 with the batch two variables a round: still `2^24`.
-#[test]
-fn pi1_rec3_d16v() {
-    deep(|| run("main_line_rec3", Layout::D16v, 24, (0.80, 0.99)));
-}
-
-#[test]
-fn pi1_rec_d32v() {
-    deep(|| run("main_line_rec", Layout::D32v, 23, (0.60, 0.75)));
-}
-
-/// D16v on the main line does not fit `2^24` (131 permutations): `2^25`, a quotient of `2^28.91` words.
-#[test]
-fn main_line_d16v() {
-    deep(|| run("main_line", Layout::D16v, 25, (0.45, 0.60)));
-}
-
-/// The fallback: D32v on the main line, `2^23` positions, `Q` `2^26.91`.
-#[test]
-fn main_line_d32v() {
-    deep(|| run("main_line", Layout::D32v, 23, (0.80, 0.90)));
+fn keccak_32_d16v() {
+    deep(|| run("keccak", Layout::D16v, 25, (0.50, 0.60)));
 }

@@ -13,7 +13,7 @@
 use leanvm_statement::evm::deploy::measure_fragment;
 use leanvm_statement::evm::record::{Node, Recorder, Sym, record};
 use leanvm_statement::field::E;
-use leanvm_statement::flock_min::{self, End, Slices, Variant, WalkedCircuit, walked_terminal_with};
+use leanvm_statement::flock_min::{self, End, Variant, WalkedCircuit, walked_terminal_with};
 use leanvm_statement::keccak_flock::{Keccak, KeccakWalked, structured_terminal};
 use leanvm_statement::scalar::enter;
 use leanvm_statement::transcript::{Channel, FsShape};
@@ -187,20 +187,14 @@ fn flock_keccak_verifier_fragment() {
     deep(|| {
         for (skip, fs) in [(3, FsShape::Rec3), (3, FsShape::Rec), (6, FsShape::Rec3)] {
             let log_n = 29;
-            let variant = Variant {
-                skip,
-                slices: Slices::TowerWalk,
-                fs,
-            };
+            let variant = Variant { skip, fs };
             let mut keccak_f = 0;
             let mut ops = (0, 0);
             let fragment = measure_fragment(|recorder| {
                 let (point, end) = flock_min::verify_walked_with::<Sym, Keccak>(log_n, variant, recorder).expect("recorded");
                 let mut outputs = point;
-                match end {
-                    End::Ring { map, target, .. } => outputs.extend(map.into_iter().chain([target])),
-                    End::Combination { weights, value } => outputs.extend(weights.into_iter().chain([value])),
-                }
+                let End { map, target } = end;
+                outputs.extend(map.into_iter().chain([target]));
                 outputs
             });
             // Keccak-f blocks of each hash, and the arithmetic, from a second recording (measure_fragment keeps its

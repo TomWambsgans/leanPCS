@@ -26,15 +26,10 @@ pub struct Bus {
 }
 
 impl Bus {
-    /// The BLAKE2s VM's bus ([`Bus::for_vm`] with leanVM 42422001's tables).
+    /// The Keccak VM's bus (`layout::tables`).
     pub fn new(alphas: &[F192], beta: F192) -> Self {
-        Self::for_vm(alphas, beta, false)
-    }
-
-    /// The bus of the BLAKE2s VM or, with `keccak`, of the Keccak VM (`verifier::vm_tables`).
-    pub fn for_vm(alphas: &[F192], beta: F192, keccak: bool) -> Self {
         let weights = primitives::multilinear::eq_table(alphas);
-        let layout = crate::verifier::vm_tables(keccak);
+        let layout = leanvm_statement::layout::tables();
         let pull = layout
             .iter()
             .map(|t| t.flushes.pull.iter().map(|tuple| Fingerprint::new(tuple, &weights, beta)).collect())

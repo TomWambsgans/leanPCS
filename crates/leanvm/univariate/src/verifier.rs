@@ -6,15 +6,14 @@
 //! messages, the values at `t`) to one weighted claim per commitment.
 
 use leanvm_statement::field::E;
-use leanvm_statement::flock::ring_switch_weight;
 use leanvm_statement::ring_tower;
-use leanvm_statement::flock_min::{self, End, Slices, Variant};
+use leanvm_statement::flock_min::{self, End};
+pub use leanvm_statement::flock_min::Variant;
 use leanvm_statement::keccak_flock::Keccak;
 use leanvm_statement::layout::{
-    BLAKE2S_R1CS_LOG_SIZE, BLAKE2S_SLOTS, Form, KECCAK_R1CS_LOG_SIZE, N_TABLES, OP_BLAKE2S, OP_DEREF, OP_JUMP, OP_MUL,
-    SEP_MEM, SEP_STATE, Table, gpow, keccak_slot, keccak_slot_offset, tables, tables_keccak,
+    Form, KECCAK_R1CS_LOG_SIZE, N_TABLES, OP_DEREF, OP_JUMP, OP_MUL, OP_SHA3, SEP_MEM, SEP_STATE, Table, gpow,
+    keccak_slot, keccak_slot_offset, tables,
 };
-use leanvm_statement::matrices::MatrixClaim;
 use leanvm_statement::multilinear::{eq_kernel, log2_ceil};
 use leanvm_statement::scalar::{Scalar, enter};
 use leanvm_statement::transcript::{Channel, FsShape, sumcheck_drawn, sumcheck_pairs_drawn};
@@ -59,11 +58,11 @@ impl Shape {
 
     /// The shapes a verifier can be built for (SPEC.md §13, F5): the quotients' degrees are computed without wrapping
     /// ([`degree`]) at any height, so a shape is rejected only where the protocol needs more: the memory at least
-    /// 2 cells (the public input's), every height below 32 (the counts are 32-bit), and with Flock BLAKE2S's height
-    /// at least 7 (its zerocheck's seven fixed coordinates).
-    pub fn validate(&self, flock: bool) -> Result<(), VerifierError> {
+    /// 2 cells (the public input's), every height below 32 (the counts are 32-bit), and `SHA3`'s height at least 7
+    /// (Flock's zerocheck's seven fixed coordinates).
+    pub fn validate(&self) -> Result<(), VerifierError> {
         let heights = self.heights();
-        let invalid = self.log_memory < 1 || heights.iter().any(|&h| h > 31) || (flock && heights[OP_BLAKE2S] < 7);
+        let invalid = self.log_memory < 1 || heights.iter().any(|&h| h > 31) || heights[OP_SHA3] < 7;
         if invalid {
             return Err(VerifierError::InvalidShape);
         }
@@ -276,32 +275,13 @@ fn table_part<S: Scalar + PartialEq, C: Channel<S>>(
     })
 }
 
-/// Where `q_flock` keeps value column `name` of the hash table: its word within the row's block (BLAKE2S's limb slot,
-/// or the Keccak-f block's port word of a `SHA3` lane).
-fn qflock_slot(keccak: bool, name: &str) -> Option<usize> {
-    if keccak {
-        keccak_slot(name)
-    } else {
-        BLAKE2S_SLOTS.iter().position(|&s| s == Some(name))
-    }
-}
+/// `log2` of `q_flock`'s words a `SHA3` row: `2^(17 - 6)`, one Keccak-f block a row.
+pub const QFLOCK_ROW_BITS: usize = KECCAK_R1CS_LOG_SIZE - 6;
 
-/// `log2` of `q_flock`'s words a hash-table row: `2^(14 - 6)` for BLAKE2s, `2^(17 - 6)` for the Keccak-f block.
-pub fn qflock_row_bits(keccak: bool) -> usize {
-    if keccak { KECCAK_R1CS_LOG_SIZE - 6 } else { BLAKE2S_R1CS_LOG_SIZE - 6 }
-}
-
-/// The VM's instruction tables: leanVM 42422001's, or with `keccak` the `SHA3` table of leanVM's Keccak VM in
-/// BLAKE2S's place (`leanvm_statement::layout::tables_keccak`).
-pub fn vm_tables(keccak: bool) -> Vec<Table> {
-    if keccak { tables_keccak() } else { tables() }
-}
-
-/// What the verifier leaves: the two roots and one weighted claim on each commitment, and Flock's claims on `A0`, `B0`.
+/// What the verifier leaves: the two roots and one claim on each commitment.
 pub struct Reduced<S> {
     pub roots: [[S; 2]; 2],
     pub openings: Vec<(Commitment, Opening<S>)>,
-    pub matrices: Option<MatrixClaim<S>>,
     /// The relations combined, and each commitment's stack variables.
     pub relations: usize,
     pub stack_vars: Vec<(Commitment, usize)>,
@@ -314,13 +294,8 @@ pub struct Reduced<S> {
 pub enum Opening<S> {
     /// One weighted claim (extension W, SPEC.md §8).
     Weighted(Combined<S>),
-    /// One point claim, `PCS_OPEN`'s ABI (after the batching sumcheck), and on `C1` with Flock (a) the bit-slice
-    /// combination claim (extension B).
-    Point {
-        point: Vec<S>,
-        value: S,
-        bit_slice: Option<Combined<S>>,
-    },
+    /// One point claim, `PCS_OPEN`'s ABI (after the batching sumcheck).
+    Point { point: Vec<S>, value: S },
 }
 
 /// How the relations reach `PCS_OPEN` (SPEC.md §8).
@@ -333,119 +308,29 @@ pub enum Claims {
     Weighted,
 }
 
-/// Flock's variants measured end to end (SPEC-FLOCK.md): (a′) the main line, `PCS_OPEN`'s claims `E`-linear; (a) a
-/// bit-slice claim type (a precompile extension); leanVM's own skip with (a′)'s weighted claim.
-pub const FLOCK_MAIN: Variant = Variant {
-    skip: 3,
-    slices: Slices::Tower,
-    fs: FsShape::Main,
-};
-
-/// **π1-rec** (`crates/leanvm_rec/SPEC-REC.md` §1.4): the main line with its Fiat–Shamir shape [`FsShape::Rec`]. The
-/// bus's `α = (c, c², c⁴, c⁸)` of one challenge `c`, and Flock's zerocheck eq coordinates after the seven fixed ones
-/// `c', c'², c'⁴, …` of one challenge `c'`; `β`, `γ`, the ring map's six and every other challenge drawn as on the main
-/// line. The same stream layout and claims; 80 Keccak-256 calls and 107 Keccak-f permutations instead of 104 and 131.
-pub const FLOCK_REC: Variant = Variant {
-    fs: FsShape::Rec,
-    ..FLOCK_MAIN
-};
-
-/// **π1-rec2** (`crates/leanvm_rec/SPEC-REC.md` §12): π1-rec with Flock's lincheck terminal checked by a walk of the
-/// BLAKE2s circuit on the sent slices (leanVM's own check, `flock_min::walked_terminal`, [`Slices::TowerWalk`]): no
-/// matrices' reduction in the batching sumcheck, no `a`, `b` after it, no claims on `A0`, `B0`. Three claims in three
-/// calls (`C1`, `C2`, `F`), all at the batch's point, whose coordinates are narrow challenges (`FsShape::Rec2`: 160
-/// bits, four zero bytes a coordinate in the recursion's calldata). Too dear for a contract (the walk is about 49,000
-/// products), it is for π2 to prove.
-pub const FLOCK_REC2: Variant = Variant {
-    skip: 3,
-    slices: Slices::TowerWalk,
-    fs: FsShape::Rec2,
-};
-
-/// **π1-rec3** (SPEC-REC.md §12, `SPEC-POINTS.md`): π1-rec2 with the batching sumcheck two variables a round
-/// (`transcript::sumcheck_pairs_drawn`, `FsShape::Rec3`): 13 pairs, each of one narrow challenge `z_j` whose
-/// `pair_point` is two of the point's coordinates, then one plain round: 14 challenges for the claims' 27 coordinates.
-pub const FLOCK_REC3: Variant = Variant {
-    skip: 3,
-    slices: Slices::TowerWalk,
-    fs: FsShape::Rec3,
-};
-
 /// The twist field of the term that stands for the whole ring-switch weight `Φ(eq(p, ·))` on the main line: the
 /// batch's weight evaluates it at its point by [`ring_tower::weight_at`] (64 twisted eq products and the map's stages)
 /// rather than as 64 terms with explicit coefficients (SPEC.md §13).
 pub const RING_TWIST: u8 = u8::MAX;
 
-pub const FLOCK_BIT_SLICE: Variant = Variant {
-    skip: 4,
-    slices: Slices::Claim,
-    fs: FsShape::Main,
-};
-pub const FLOCK_LEANVM_SKIP: Variant = Variant {
-    skip: 6,
-    slices: Slices::Weighted,
-    fs: FsShape::Main,
-};
-
-/// Which hash argument the verifier runs (SPEC.md §7). The name is milestone 1's, when the VM's hash was BLAKE2s
-/// only; [`Blake2s::Keccak`] is the Keccak VM (`KECCAK.md`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Blake2s {
-    /// Flock (`leanvm_statement::flock_min`, SPEC-FLOCK.md) as `Variant` has it: its claims on `q_flock` joined
-    /// into `C1`'s claim (the ring switch's 64 twisted terms, or one bit-slice combination), and on `A0`, `B0`.
-    Flock(Variant),
-    /// None: the rest of the verifier alone, to measure it apart.
-    Omitted,
-    /// The Keccak VM (`KECCAK.md`): leanVM's `SHA3` table (its Keccak branch, commit `9d50c92a3`) in BLAKE2S's
-    /// place, and Flock on the Keccak-f block (`lv42_flock::keccak`, one permutation a block) with its structured
-    /// lincheck terminal (`leanvm_statement::keccak_flock::structured_terminal`): the variant's slices must be
-    /// [`Slices::TowerWalk`] (no claims on `A0`, `B0`, whose `2^34` entries no stack holds).
-    Keccak(Variant),
-}
-
-impl Blake2s {
-    /// The verifier's Fiat–Shamir shape: Flock's variant's ([`Variant::fs`]); without Flock, the main line's (π1-rec
-    /// is defined with Flock, SPEC-REC.md §1.4).
-    pub fn fs(&self) -> FsShape {
-        match self {
-            Blake2s::Flock(variant) | Blake2s::Keccak(variant) => variant.fs,
-            Blake2s::Omitted => FsShape::Main,
-        }
-    }
-
-    /// Whether the VM's hash is Keccak-f (the `SHA3` table) rather than BLAKE2s.
-    pub fn keccak(&self) -> bool {
-        matches!(self, Blake2s::Keccak(_))
-    }
-}
-
 /// The Keccak VM's main line (`KECCAK.md`): the univariate skip of 3 (M3's cheaper terminal), the slices sent and the
 /// structured terminal, `PCS_OPEN`'s point claims.
-pub const KECCAK_MAIN: Variant = Variant {
-    skip: 3,
-    slices: Slices::TowerWalk,
-    fs: FsShape::Main,
-};
+pub const KECCAK_MAIN: Variant = Variant { skip: 3, fs: FsShape::Main };
 
 /// The Keccak VM's π1 under the recursion (`crates/leanvm_rec/tests/keccak_vm_rec.rs`): [`KECCAK_MAIN`] with π1-rec3's
 /// Fiat–Shamir shape (`FsShape::Rec3`).
-pub const KECCAK_REC3: Variant = Variant {
-    skip: 3,
-    slices: Slices::TowerWalk,
-    fs: FsShape::Rec3,
-};
+pub const KECCAK_REC3: Variant = Variant { skip: 3, fs: FsShape::Rec3 };
 
 /// The verifier (SPEC.md §4–§8): `public_words` are the public input's four 64-bit words, low first.
 pub fn reduce<S: Scalar + PartialEq, C: Channel<S>>(
     shape: &Shape,
     public_words: [S; 4],
     channel: &mut C,
-    blake2s: Blake2s,
+    variant: Variant,
     mode: Claims,
 ) -> Result<Reduced<S>, VerifierError> {
-    shape.validate(matches!(blake2s, Blake2s::Flock(_) | Blake2s::Keccak(_)))?;
-    let keccak = blake2s.keccak();
-    let tables = vm_tables(keccak);
+    shape.validate()?;
+    let tables = tables();
     let mut c2_columns: Vec<(Column, usize, bool)> = vec![
         (Column::Heap, shape.heap().h, true),
         (Column::TreeQuotient(0), shape.heap().h, true),
@@ -470,7 +355,7 @@ pub fn reduce<S: Scalar + PartialEq, C: Channel<S>>(
     // 1. C1, then the bus's and the constraints' challenges: α drawn one by one, or with π1-rec (c, c², c⁴, c⁸) of
     // one c (SPEC-REC.md §1.4; β stays independent of it).
     let root1 = channel.next_root()?;
-    let alphas = blake2s.fs().draw(channel, 4);
+    let alphas = variant.fs.draw(channel, 4);
     let beta = channel.sample();
     let gamma = channel.sample();
     let weights = {
@@ -478,34 +363,11 @@ pub fn reduce<S: Scalar + PartialEq, C: Channel<S>>(
         eq_kernel(&alphas)
     };
 
-    // 2. Flock, on C1's q_flock: leanVM's zerocheck, lincheck and matrices' reduction; its ring switch as one
-    // weighted claim of 64 twisted terms (SPEC.md §7).
-    let flock_log_n = BLAKE2S_R1CS_LOG_SIZE + heights[OP_BLAKE2S];
-    // On the main line with the slices sent, the matrices' reduction runs its rounds in the batching sumcheck's
-    // (SPEC.md §13): it is left pending here.
-    let mut pending = None;
-    let flock = match blake2s {
-        // π1-rec2: the lincheck's terminal by the circuit's walk, in either mode (no matrices' reduction).
-        Blake2s::Flock(variant) if variant.slices == Slices::TowerWalk => {
-            let (point, end) = flock_min::verify_walked(flock_log_n, variant, channel)?;
-            Some((point, Some(end), None))
-        }
-        Blake2s::Flock(variant) if mode == Claims::Point => {
-            let (point, end, left) = flock_min::verify_deferred(flock_log_n, variant, channel)?;
-            pending = Some((left, point.clone()));
-            Some((point, end, None))
-        }
-        Blake2s::Flock(variant) => {
-            let reduced = flock_min::verify(flock_log_n, variant, channel)?;
-            Some((reduced.point, Some(reduced.end), Some(reduced.matrices)))
-        }
-        Blake2s::Keccak(variant) => {
-            assert_eq!(variant.slices, Slices::TowerWalk, "the Keccak block's terminal is the structured walk");
-            let log_n = KECCAK_R1CS_LOG_SIZE + heights[OP_BLAKE2S];
-            let (point, end) = flock_min::verify_walked_with::<S, Keccak>(log_n, variant, channel)?;
-            Some((point, Some(end), None))
-        }
-        Blake2s::Omitted => None,
+    // 2. Flock, on C1's q_flock: the zerocheck and the lincheck on the Keccak-f block (one permutation a `SHA3`
+    // row), its terminal by the block's structure, the slices sent; its ring switch's map and target (SPEC-FLOCK.md).
+    let (flock_point, flock_end) = {
+        let log_n = KECCAK_R1CS_LOG_SIZE + heights[OP_SHA3];
+        flock_min::verify_walked_with::<S, Keccak>(log_n, variant, channel)?
     };
 
     // 3. C2, then the point.
@@ -623,17 +485,17 @@ pub fn reduce<S: Scalar + PartialEq, C: Channel<S>>(
             known += g;
             let counts = table.count_columns().count() as u64;
             quotient_degree = quotient_degree.max(degree((n - 1) * (1 + counts), n));
-            // BLAKE2S's limb copies equal q_flock's limbs: copy_j - ℓ_j, ℓ_j read through y(t).
-            if table.opcode == OP_BLAKE2S {
+            // SHA3's lane copies equal q_flock's port words: copy_j - ℓ_j, ℓ_j read through y(t).
+            if table.opcode == OP_SHA3 {
                 let functionals = coordinate_functionals(r);
                 let y = coordinates_at(t, &functionals);
                 for (column, &name) in table.columns.iter().enumerate() {
-                    if let Some(slot) = qflock_slot(keccak, name) {
+                    if let Some(slot) = keccak_slot(name) {
                         let g = next(&mut power) * lift;
                         terms.push(term(at(column), &w[..r], g));
                         terms.push(term(Column::QflockSlot(slot), &y, g));
                         // The Keccak VM's `in_16` is its port word plus `END_BIT` (`layout::SHA3_END_BIT`).
-                        if keccak && keccak_slot_offset(name) != 0 {
+                        if keccak_slot_offset(name) != 0 {
                             known += g * c(E::new(keccak_slot_offset(name), 0, 0));
                         }
                     }
@@ -734,86 +596,42 @@ pub fn reduce<S: Scalar + PartialEq, C: Channel<S>>(
         relations.push(terms, constraint_value);
     }
 
-    // 7. Flock's claim on q_flock: the ring switch's 64 twisted terms (E-linear), or one bit-slice combination.
-    let mut matrices = None;
-    let mut bit_slice = Relations::default();
+    // 7. Flock's claim on q_flock: the ring switch's weight `Φ(eq(p, ·))`, as one term evaluated at the batch's point
+    // (point claims, SPEC.md §13) or as its 64 twisted terms (weighted claims).
+    let End { map, target } = flock_end;
     let mut ring_map: Option<Vec<S>> = None;
-    let tower = matches!(
-        blake2s,
-        Blake2s::Flock(Variant {
-            slices: Slices::Tower | Slices::TowerWalk,
-            ..
-        }) | Blake2s::Keccak(_)
-    );
-    if let Some((flock_point, Some(flock_end), flock_matrices)) = flock {
-        match flock_end {
-            End::Ring { map, target, .. } if tower && mode == Claims::Point => {
-                // One term for the whole weight, evaluated at the batch's point (SPEC.md §13).
-                relations.push(
-                    vec![Term {
-                        column: Column::Qflock,
-                        point: flock_point.clone(),
-                        twist: RING_TWIST,
-                        coefficient: S::one(),
-                    }],
-                    target,
-                );
-                ring_map = Some(map);
-            }
-            End::Ring { map, target, .. } if tower => {
-                let coefficients = {
-                    let _phase = enter("ring switch: map, coefficients, target");
-                    ring_tower::coefficients(&map)
-                };
-                relations.push(
-                    coefficients
-                        .iter()
-                        .enumerate()
-                        .map(|(k, &coefficient)| Term {
-                            column: Column::Qflock,
-                            point: flock_point.clone(),
-                            twist: k as u8,
-                            coefficient,
-                        })
-                        .collect(),
-                    target,
-                );
-            }
-            End::Ring { map, target, .. } => {
-                let weight = {
-                    let _phase = enter("ring switch: map, coefficients, target");
-                    ring_switch_weight(flock_point.clone(), &map)
-                };
-                relations.push(
-                    weight
-                        .coefficients
-                        .iter()
-                        .enumerate()
-                        .map(|(k, &coefficient)| Term {
-                            column: Column::Qflock,
-                            point: weight.point.clone(),
-                            twist: k as u8,
-                            coefficient,
-                        })
-                        .collect(),
-                    target,
-                );
-            }
-            End::Combination { weights, value } => bit_slice.push(
-                weights
+    match mode {
+        Claims::Point => {
+            relations.push(
+                vec![Term {
+                    column: Column::Qflock,
+                    point: flock_point.clone(),
+                    twist: RING_TWIST,
+                    coefficient: S::one(),
+                }],
+                target,
+            );
+            ring_map = Some(map);
+        }
+        Claims::Weighted => {
+            let coefficients = {
+                let _phase = enter("ring switch: map, coefficients, target");
+                ring_tower::coefficients(&map)
+            };
+            relations.push(
+                coefficients
                     .iter()
                     .enumerate()
-                    .map(|(i, &coefficient)| Term {
-                        column: Column::QflockBits,
+                    .map(|(k, &coefficient)| Term {
+                        column: Column::Qflock,
                         point: flock_point.clone(),
-                        twist: i as u8,
+                        twist: k as u8,
                         coefficient,
                     })
                     .collect(),
-                value,
-            ),
+                target,
+            );
         }
-        matrices = flock_matrices;
     }
 
     // 8. One claim per commitment.
@@ -825,46 +643,15 @@ pub fn reduce<S: Scalar + PartialEq, C: Channel<S>>(
             .filter_map(|&commitment| relations.combine(commitment, rho).map(|claim| (commitment, claim)))
             .collect()
     };
-    let bit_slice = bit_slice.combine(Commitment::C1, S::one());
-    let layouts = stack_layouts_for(shape, &c2_columns, keccak);
+    let layouts = stack_layouts(shape, &c2_columns);
     let stack_vars = layouts.iter().map(|(c, l)| (*c, l.vars)).collect();
     let openings = match mode {
-        Claims::Weighted => {
-            let mut openings: Vec<(Commitment, Opening<S>)> =
-                combined.into_iter().map(|(c, claim)| (c, Opening::Weighted(claim))).collect();
-            if let Some(claim) = bit_slice {
-                // Without the point ABI, the bit-slice terms join C1's weighted claim.
-                let (_, Opening::Weighted(c1)) = &mut openings[0] else { unreachable!() };
-                // A fresh power of rho, past the powers C1's relations took.
-                let fresh = rho.pow(c1.relations as u64);
-                let base = c1.points.len();
-                c1.points.extend(claim.points);
-                c1.terms
-                    .extend(claim.terms.into_iter().map(|(column, p, twist, k)| (column, p + base, twist, fresh * k)));
-                c1.value += fresh * claim.value;
-            }
-            openings
-        }
-        Claims::Point => {
-            let (openings, deferred) = batch(
-                channel,
-                blake2s.fs(),
-                &combined,
-                &layouts,
-                bit_slice,
-                ring_map.as_deref(),
-                pending.as_ref().map(|(p, point)| (p, &point[..])),
-            )?;
-            if deferred.is_some() {
-                matrices = deferred;
-            }
-            openings
-        }
+        Claims::Weighted => combined.into_iter().map(|(c, claim)| (c, Opening::Weighted(claim))).collect(),
+        Claims::Point => batch(channel, variant.fs, &combined, &layouts, ring_map.as_deref())?,
     };
     Ok(Reduced {
         roots: [root1, root2],
         openings,
-        matrices,
         relations: relations.list.len(),
         stack_vars,
         layouts,
@@ -874,12 +661,6 @@ pub fn reduce<S: Scalar + PartialEq, C: Channel<S>>(
 /// The three stacks' layouts of `shape` (SPEC.md §3): `C1`'s, `C2`'s and the setup's. They depend on the shape
 /// alone; `C2`'s columns are the ones [`reduce`] states (its quotients' chunks), read off a run of it.
 pub fn layouts(shape: &Shape) -> Vec<(Commitment, StackLayout)> {
-    layouts_for(shape, Blake2s::Omitted)
-}
-
-/// [`layouts`] for the hash argument `blake2s`: BLAKE2s's stacks whatever its Flock variant, the Keccak VM's with
-/// [`Blake2s::Keccak`].
-pub fn layouts_for(shape: &Shape, blake2s: Blake2s) -> Vec<(Commitment, StackLayout)> {
     struct Null;
     impl Channel<E> for Null {
         fn next_scalar(&mut self) -> Result<E, VerifierError> {
@@ -902,26 +683,16 @@ pub fn layouts_for(shape: &Shape, blake2s: Blake2s) -> Vec<(Commitment, StackLay
         }
     }
     let words = [E::default(); 4];
-    let blake2s = if blake2s.keccak() { blake2s } else { Blake2s::Omitted };
-    reduce(shape, words, &mut Null, blake2s, Claims::Weighted).expect("a valid shape").layouts
+    reduce(shape, words, &mut Null, KECCAK_MAIN, Claims::Weighted).expect("a valid shape").layouts
 }
 
-/// The stacks' layouts, `C2`'s from its column list.
+/// The stacks' layouts, `C2`'s from its column list (`C1`: `q_flock` of `2^11` words a `SHA3` row, the tables'
+/// columns and inverses, the memory, the bytecode's final counts).
 pub fn stack_layouts(shape: &Shape, c2_columns: &[(Column, usize, bool)]) -> Vec<(Commitment, StackLayout)> {
-    stack_layouts_for(shape, c2_columns, false)
-}
-
-/// [`stack_layouts`] for the BLAKE2s VM or, with `keccak`, the Keccak VM (its `SHA3` table, `q_flock` of `2^11` words
-/// a row).
-pub fn stack_layouts_for(
-    shape: &Shape,
-    c2_columns: &[(Column, usize, bool)],
-    keccak: bool,
-) -> Vec<(Commitment, StackLayout)> {
     let heights = shape.heights();
     let mut c1: Vec<(Column, usize, bool)> =
-        vec![(Column::Qflock, heights[OP_BLAKE2S] + qflock_row_bits(keccak), false)];
-    for table in vm_tables(keccak) {
+        vec![(Column::Qflock, heights[OP_SHA3] + QFLOCK_ROW_BITS, false)];
+    for table in tables() {
         let h = heights[table.opcode];
         c1.extend((0..table.width()).map(|column| {
             (
@@ -988,7 +759,7 @@ fn weight_at<S: Scalar>(
     let mut slot_bits_of: Vec<(usize, usize)> = Vec::new();
     for &(column, p, twist, coefficient) in &claim.terms {
         if let Column::QflockSlot(j) = column {
-            // q_flock's word `slot + 2^b · instance`: the slot's `b` bits (8 for BLAKE2s, 11 for the Keccak-f block),
+            // q_flock's word `slot + 2^b · instance`: the slot's `b` bits (11 for the Keccak-f block),
             // then the instance's coordinates.
             let slot_bits = layout.limbs(Column::Qflock)[0].1 - claim.points[p].len();
             let bits = (0..slot_bits).fold(S::one(), |acc, b| {
@@ -1036,18 +807,13 @@ fn weight_at<S: Scalar>(
 /// The batching sumcheck (SPEC.md §8): `Σ_k λ^k Σ_u W_k(u) C_k(u)` over the longest stack, the others zero-extended;
 /// at its end point `r`, the prover sends each `C_k(r)` and the verifier checks the sum with `W_k(r)`.
 ///
-/// With Flock's matrices' reduction `pending` (SPEC.md §13), its sum `Σ_(x, y) G(x, y) L̂(x) ŝ(y)` over `k + 6`
-/// variables joins as the next power of `λ`, zero-extended by `eq(·, 0)` on the rest, so its rounds are the batch's
-/// first ones: after the stacks' values the prover sends `a = Â0`, `b = B̂0` at the point, and the terminal checks both.
 pub fn batch<S: Scalar + PartialEq, C: Channel<S>>(
     channel: &mut C,
     fs: FsShape,
     combined: &[(Commitment, Combined<S>)],
     layouts: &[(Commitment, StackLayout)],
-    bit_slice: Option<Combined<S>>,
     ring_map: Option<&[S]>,
-    pending: Option<(&flock_min::Pending<S>, &[S])>,
-) -> Result<(Vec<(Commitment, Opening<S>)>, Option<MatrixClaim<S>>), VerifierError> {
+) -> Result<Vec<(Commitment, Opening<S>)>, VerifierError> {
     let _phase = enter("claims: batching sumcheck to point claims");
     let lambda = channel.sample();
     let vars = layouts.iter().map(|(_, l)| l.vars).max().expect("stacks");
@@ -1057,30 +823,20 @@ pub fn batch<S: Scalar + PartialEq, C: Channel<S>>(
         target += scale * claim.value;
         scale *= lambda;
     }
-    if let Some((pending, _)) = pending {
-        assert!(pending.rounds() <= vars);
-        target += scale * pending.claim;
-    }
     // π1-rec2 (`FsShape::Rec2`): the rounds' challenges narrow, 160 bits; π1-rec3 (`FsShape::Rec3`): narrow and two
     // variables a round (`SPEC-POINTS.md`).
     let (r, last) = match fs {
         FsShape::Rec3 => {
-            assert!(pending.is_none(), "π1-rec3's paired batch has no matrices' reduction");
             let (r, _, last) = sumcheck_pairs_drawn(channel, target, 2, vars, true)?;
             (r, last)
         }
         _ => sumcheck_drawn(channel, target, 3, &vec![None; vars], fs == FsShape::Rec2)?,
     };
     let values = channel.next_scalars(combined.len())?;
-    let matrices = match pending {
-        Some(_) => Some((channel.next_scalar()?, channel.next_scalar()?)),
-        None => None,
-    };
     let _weights = enter("claims: the batch's weights at its point (eq, selectors, twists)");
     let mut sum = S::zero();
     let mut scale = S::one();
     let mut openings = Vec::new();
-    let mut bit_slice = bit_slice;
     for (k, ((commitment, claim), &value)) in combined.iter().zip(&values).enumerate() {
         let layout = &layouts.iter().find(|(c, _)| c == commitment).expect("a layout").1;
         let weight = weight_at(claim, layout, &r, 10_000 * k, ring_map);
@@ -1092,44 +848,9 @@ pub fn batch<S: Scalar + PartialEq, C: Channel<S>>(
             Opening::Point {
                 point: r[..layout.vars].to_vec(),
                 value,
-                bit_slice: if *commitment == Commitment::C1 { bit_slice.take() } else { None },
             },
         ));
     }
-    let mut claim = None;
-    if let (Some((pending, flock_point)), Some((a, b))) = (pending, matrices) {
-        let extension = (pending.rounds()..vars).fold(S::one(), |acc, j| acc * (S::one() + r[j]));
-        if pending.has_slices() {
-            let (value, matrices) = pending.terminal(&r, a, b)?;
-            sum += scale * value * extension;
-            claim = Some(matrices);
-        } else {
-            // Flock (a): the terminal leaves Σ_i μ_i ẑ(i, p) = sum + last, a bit-slice claim joining C1's call.
-            let (weights, matrices) = pending.combination(&r, a, b, extension, scale)?;
-            let mut relation = Relations::default();
-            relation.push(
-                weights
-                    .iter()
-                    .enumerate()
-                    .map(|(i, &coefficient)| Term {
-                        column: Column::QflockBits,
-                        point: flock_point.to_vec(),
-                        twist: i as u8,
-                        coefficient,
-                    })
-                    .collect(),
-                sum + last,
-            );
-            let combination = relation.combine(Commitment::C1, S::one());
-            for (commitment, opening) in openings.iter_mut() {
-                if let (Commitment::C1, Opening::Point { bit_slice, .. }) = (commitment, opening) {
-                    *bit_slice = combination.clone();
-                }
-            }
-            claim = Some(matrices);
-            return Ok((openings, claim));
-        }
-    }
     channel.require_zero(sum + last, VerifierError::StackBatchTerminal)?;
-    Ok((openings, claim))
+    Ok(openings)
 }

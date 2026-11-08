@@ -106,7 +106,7 @@ fn quotients_alone() {
     println!("  peak RSS {:.2} GB", bench::peak_rss_bytes() as f64 / 1e9);
 }
 
-/// The Keccak VM's SHA3 table leaf alone (in BLAKE2S's slot), timed a few times, its shape printed:
+/// The SHA3 table's leaf alone, timed a few times, its shape printed:
 /// `LEANVM_TRACE=<dir> cargo test --release -p leanvm_univariate --test prove_quotients -- --ignored --nocapture sha3_leaf`.
 #[test]
 #[ignore]
@@ -121,10 +121,10 @@ fn sha3_leaf() {
     let shape = trace.shape();
     let c1 = c1_polys(&trace);
     let alphas = [F192::new(3, 1, 4), F192::new(1, 5, 9), F192::new(2, 6, 5), F192::new(3, 5, 8)];
-    let bus = Bus::for_vm(&alphas, F192::new(9, 7, 9), trace.keccak);
+    let bus = Bus::new(&alphas, F192::new(9, 7, 9));
     let layout = shape.heap();
     let leaves = all_leaves(&trace, &bus).expect("leaves");
-    let t = leanvm_statement::layout::OP_BLAKE2S;
+    let t = leanvm_statement::layout::OP_SHA3;
     let block = layout.blocks.iter().find(|b| b.leaves == Leaves::Table(t)).expect("the table's block");
     let values = &leaves.iter().find(|(l, _)| *l == block.leaves).expect("leaves").1;
     let r_novel = novel_limbs(values);
@@ -135,7 +135,7 @@ fn sha3_leaf() {
         bus.pull[t].iter().map(terms).collect::<Vec<_>>(),
         bus.push[t].iter().map(terms).collect::<Vec<_>>()
     );
-    let count = leanvm_univariate::prover::prove::table_leaf_count_for(&trace.vm_tables()[t], block.r);
+    let count = leanvm_univariate::prover::prove::table_leaf_count_for(&leanvm_statement::layout::tables()[t], block.r);
     let reps: usize = std::env::var("REPS").ok().and_then(|s| s.parse().ok()).unwrap_or(3);
     let mut first: Option<Quotient> = None;
     for _ in 0..reps {

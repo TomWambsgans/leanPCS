@@ -1,11 +1,11 @@
-// Vendored from leanVM (https://github.com/leanEthereum/leanVM), commit 42422001, file crates/primitives/src/lib.rs.
+// Vendored from leanVM (https://github.com/leanEthereum/leanVM), commit 42422001, file crates/primitives/src/lib.rs,
+// without its `hash` module (BLAKE2s, which only the BLAKE2s Flock block used).
 // MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and NOTICE.md at the repository root).
 //! Shared primitives: field kernels, bit transposes, multilinear helpers, and
 //! small integer utilities.
 
 pub mod bits;
 pub mod field;
-pub mod hash;
 pub mod multilinear;
 pub mod stream;
 

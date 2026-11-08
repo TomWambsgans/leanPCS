@@ -11,20 +11,11 @@ use std::fmt::Write;
 use leanvm_statement::VerifierError;
 use leanvm_statement::evm::codegen::Word;
 use leanvm_statement::evm::record::Node;
-use leanvm_statement::flock_min::{Slices, Variant};
 use leanvm_statement::shapes::PROGRAM_IV;
-use leanvm_statement::transcript::FsShape;
 use leanvm_rec::circuit::compile::{Inputs, Layout, pi2};
 use leanvm_rec::circuit::spec::{CallWord, Circuit, Formula, Source};
 use leanvm_univariate::contract::{Recorded, calls, record_verifier};
-use leanvm_univariate::{Blake2s, Claims, Shape};
-
-/// π1-rec3's shape with the Keccak VM's hash argument (`tests/keccak_vm_rec.rs`).
-const KECCAK_REC3: Variant = Variant {
-    skip: 3,
-    slices: Slices::TowerWalk,
-    fs: FsShape::Rec3,
-};
+use leanvm_univariate::{Claims, KECCAK_REC3, Shape};
 
 /// leanVM 9d50c92a3 at 400 signatures (`tests/keccak_vm_rec.rs`).
 const KECCAK_400: Shape = Shape {
@@ -217,7 +208,7 @@ fn emit(name: &str, recorded: &Recorded) {
 #[ignore = "the Keccak VM's π1-rec3 graph and circuit (2^24 positions): about a minute"]
 fn keccak_pi1_rec3() {
     deep(|| {
-        let recorded = record_verifier(&KECCAK_400, Blake2s::Keccak(KECCAK_REC3), Claims::Point);
+        let recorded = record_verifier(&KECCAK_400, KECCAK_REC3, Claims::Point);
         emit("keccak_pi1_rec3", &recorded)
     });
 }

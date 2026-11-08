@@ -11,8 +11,8 @@
 //!
 //! **Calls**: one `PCS_OPEN` call per commitment, each with one weighted claim (SPEC.md §8): words `root, layout,
 //! k = 1, P`, the `P` points (a length, then the coordinates), the claim's `m` terms (`column | point << 32 |
-//! twist << 48`, then the coefficient) and its value; `A0` and `B0` as evaluation claims (`root, layout, 1`, the
-//! point, the value). The setup roots are constants in the code (no `SLOAD`).
+//! twist << 48`, then the coefficient) and its value; or, with point claims, `root, layout, 1`, the point and the
+//! value. The setup root is a constant in the code (no `SLOAD`).
 //!
 //! **Root words**. `C1`'s and `C2`'s are the stream's 32 bytes as they are:
 //! the prover sends each root as its two WHIR scalars (`prover::prove::halves`, `hash_to_scalars`), so those bytes
@@ -26,18 +26,19 @@ use leanvm_statement::evm::codegen::{CALLS, Contract, ENTRY, Ending, Entry, MEAS
 use leanvm_statement::evm::machine::{Outcome, PcsOpen, call};
 use leanvm_statement::evm::record::{Graph, Recorder, Sym, record};
 use leanvm_statement::field::E;
-use leanvm_statement::transcript::{Checks, FsShape, KeccakChannel, keccak_seed};
+use leanvm_statement::transcript::{Checks, KeccakChannel, keccak_seed};
 
 use crate::claims::{Combined, Commitment};
-use crate::verifier::{Blake2s, Claims, Opening, Reduced, Shape, reduce};
+use crate::verifier::{Claims, Opening, Reduced, Shape, Variant, reduce};
 
 /// The transcript's 16-byte name.
 pub const NAME: [u8; 16] = *b"leanVM-univar-v1";
 
-/// The setup commitments' roots, constants of the code (SPEC.md §13, F2): `F` from the program and the shape, `A0` and
-/// `B0` from Flock's BLAKE2s R1CS. The prover computes them (`prover::setup::roots`, branch
-/// `leanvm-univariate-prover`, PROVER.md); [`SetupRoots::REFERENCE`] are the reference shape's (memory `2^21`,
-/// bytecode `2^19`), which the gas reports use for every shape (the gas does not depend on them).
+/// The roots the contract's IV binds, constants of the code (SPEC.md §13, F2): the setup commitment `F`'s, from the
+/// program and the shape (`prover::setup::f_root`), and two fixed words `a0`, `b0`. Those are the roots of leanVM
+/// 42422001's BLAKE2s R1CS matrices, which the Keccak VM does not open: they stay in the IV's preimage, fixed, so that
+/// the IV (and the committed vectors and their Lean transcription) are unchanged. [`SetupRoots::REFERENCE`] are the
+/// gas reports' for every shape (the gas does not depend on them).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SetupRoots {
     pub f: [u8; 32],
@@ -78,6 +79,7 @@ fn layout_code(commitment: Commitment) -> u16 {
         Commitment::Setup => 0x5503,
     }
 }
+/// The codes of the IV's two fixed layout words (after [`SetupRoots`]'s `a0`, `b0`).
 const A0_CODE: u16 = 0x5504;
 const B0_CODE: u16 = 0x5505;
 
@@ -106,26 +108,29 @@ pub fn layout_word(shape: &Shape, code: u16, vars: usize, placed: u64) -> [u8; 3
     word
 }
 
-/// The five openings' layout words, in call order: `C1`, `C2`, the setup, `A0`, `B0`.
+/// The layout words the IV binds: the three openings', in call order (`C1`, `C2`, the setup), then two fixed words
+/// (codes `0x5504`, `0x5505`: see [`SetupRoots`]).
 pub fn layout_words(shape: &Shape) -> [[u8; 32]; 5] {
-    layout_words_for(shape, Blake2s::Omitted)
-}
-
-/// [`layout_words`] for the hash argument `blake2s` (the Keccak VM's stacks with [`Blake2s::Keccak`]).
-pub fn layout_words_for(shape: &Shape, blake2s: Blake2s) -> [[u8; 32]; 5] {
-    let layouts = crate::verifier::layouts_for(shape, blake2s);
+    let layouts = crate::verifier::layouts(shape);
     let of = |c: Commitment| {
         let layout = &layouts.iter().find(|(k, _)| *k == c).expect("a layout").1;
         layout_word(shape, layout_code(c), layout.vars, layout.words())
     };
-    let matrix = |code| layout_word(shape, code, 28, 1 << 28);
-    [of(Commitment::C1), of(Commitment::C2), of(Commitment::Setup), matrix(A0_CODE), matrix(B0_CODE)]
+    let fixed = |code| layout_word(shape, code, 28, 1 << 28);
+    [of(Commitment::C1), of(Commitment::C2), of(Commitment::Setup), fixed(A0_CODE), fixed(B0_CODE)]
 }
 
-/// The IV the transcript's seed hashes (SPEC.md §13, F2): the hash of a tag, the program's IV (leanVM's digest of the
-/// bytecode and the R1CS), the setup roots, the shape and the five layout words. The seed then adds the public
-/// input. A constant of the code: it costs no gas.
-pub fn contract_iv(shape: &Shape, program_iv: &[u8; 32], roots: &SetupRoots) -> [u8; 32] {
+/// The bytes the IV's preimage ends with: the tag `"keccak-vm"`, Flock's skip and the Fiat–Shamir shape's code.
+pub fn variant_bytes(variant: Variant) -> Vec<u8> {
+    let mut out = b"keccak-vm".to_vec();
+    out.extend([variant.skip as u8, variant.fs as u8]);
+    out
+}
+
+/// The IV the transcript's seed hashes (SPEC.md §13, F2): the Keccak-256 of a tag, the program's IV, the roots
+/// ([`SetupRoots`]), the shape, the five layout words ([`layout_words`]) and [`variant_bytes`]. The seed then adds the
+/// public input. A constant of the code: it costs no gas.
+pub fn contract_iv(shape: &Shape, variant: Variant, program_iv: &[u8; 32], roots: &SetupRoots) -> [u8; 32] {
     let words = layout_words(shape);
     let mut data = b"leanVM-univar-iv".to_vec();
     data.extend_from_slice(program_iv);
@@ -136,71 +141,15 @@ pub fn contract_iv(shape: &Shape, program_iv: &[u8; 32], roots: &SetupRoots) -> 
     for w in &words {
         data.extend_from_slice(w);
     }
-    leanvm_statement::transcript::keccak256(&data)
-}
-
-/// What the IV appends for `blake2s`: nothing on the Fiat–Shamir shape
-/// `Main` (the main line's IV and its measured variants' are unchanged, as their vectors and the Lean transcription
-/// take them); with π1-rec's shape ([`FsShape::Rec`]) the tag `"fs-rec"`, then the skip, the slices' code and, for the
-/// variant's batching challenges, their width in bytes. A Rec contract's IV is then the Keccak-256 of a longer
-/// preimage than any Main contract's (`contract_iv`'s is of fixed length), so the two never share a seed.
-pub fn variant_bytes(blake2s: Blake2s) -> Vec<u8> {
-    use leanvm_statement::flock_min::Slices;
-    let v = match blake2s {
-        Blake2s::Flock(v) => v,
-        // The Keccak VM (KECCAK.md): its own tag, so its seeds never meet a BLAKE2s contract's.
-        Blake2s::Keccak(v) => {
-            let mut out = b"keccak-vm".to_vec();
-            out.extend([v.skip as u8, v.fs as u8]);
-            return out;
-        }
-        Blake2s::Omitted => return vec![],
-    };
-    if v.fs == FsShape::Main {
-        return vec![];
-    }
-    let slices = match v.slices {
-        Slices::InContract => 0,
-        Slices::Weighted => 1,
-        Slices::Claim => 2,
-        Slices::Tower => 3,
-        Slices::TowerWalk => 4,
-    };
-    let mut out = match v.fs {
-        FsShape::Rec2 => b"fs-rec2".to_vec(),
-        FsShape::Rec3 => b"fs-rec3".to_vec(),
-        _ => b"fs-rec".to_vec(),
-    };
-    out.extend([v.skip as u8, slices]);
-    out
-}
-
-/// The IV of the contract for `blake2s` (N2): [`contract_iv`], with [`variant_bytes`] appended to its preimage when
-/// there are any.
-pub fn contract_iv_for(shape: &Shape, blake2s: Blake2s, program_iv: &[u8; 32], roots: &SetupRoots) -> [u8; 32] {
-    let extra = variant_bytes(blake2s);
-    if extra.is_empty() {
-        return contract_iv(shape, program_iv, roots);
-    }
-    let words = layout_words_for(shape, blake2s);
-    let mut data = b"leanVM-univar-iv".to_vec();
-    data.extend_from_slice(program_iv);
-    for root in [roots.f, roots.a0, roots.b0] {
-        data.extend_from_slice(&root);
-    }
-    data.extend_from_slice(&shape_bytes(shape));
-    for w in &words {
-        data.extend_from_slice(w);
-    }
-    data.extend_from_slice(&extra);
+    data.extend_from_slice(&variant_bytes(variant));
     leanvm_statement::transcript::keccak256(&data)
 }
 
 /// The verifier for one shape, recorded.
 pub struct Recorded {
     pub shape: Shape,
-    /// The BLAKE2s argument (and so the Fiat–Shamir shape) it was recorded for: the IV binds it ([`contract_iv_for`]).
-    pub blake2s: Blake2s,
+    /// Flock's variant (and so the Fiat–Shamir shape) it was recorded for: the IV binds it ([`contract_iv`]).
+    pub variant: Variant,
     pub roots: SetupRoots,
     pub graph: Graph,
     pub reduced: Reduced<Sym>,
@@ -210,30 +159,30 @@ pub struct Recorded {
 }
 
 impl Recorded {
-    /// The contract's IV for the program's `program_iv` ([`contract_iv_for`] of the shape, the variant and the roots
-    /// it was recorded with).
+    /// The contract's IV for the program's `program_iv` ([`contract_iv`] of the shape, the variant and the roots it
+    /// was recorded with).
     pub fn iv(&self, program_iv: &[u8; 32]) -> [u8; 32] {
-        contract_iv_for(&self.shape, self.blake2s, program_iv, &self.roots)
+        contract_iv(&self.shape, self.variant, program_iv, &self.roots)
     }
 }
 
-pub fn record_verifier(shape: &Shape, blake2s: Blake2s, mode: Claims) -> Recorded {
-    record_verifier_with(shape, blake2s, mode, &SetupRoots::REFERENCE)
+pub fn record_verifier(shape: &Shape, variant: Variant, mode: Claims) -> Recorded {
+    record_verifier_with(shape, variant, mode, &SetupRoots::REFERENCE)
 }
 
 /// [`record_verifier`] for a contract that binds `setup` (another shape's `F`, say): the graph is the same, the
 /// roots are the code's constants.
-pub fn record_verifier_with(shape: &Shape, blake2s: Blake2s, mode: Claims, setup: &SetupRoots) -> Recorded {
+pub fn record_verifier_with(shape: &Shape, variant: Variant, mode: Claims, setup: &SetupRoots) -> Recorded {
     let ((reduced, stream_len, roots, reads), graph) = record(|| {
         let mut recorder = Recorder::new();
         let words = Recorder::statement();
-        let reduced = reduce(shape, words, &mut recorder, blake2s, mode).expect("a recorder rejects nothing");
+        let reduced = reduce(shape, words, &mut recorder, variant, mode).expect("a recorder rejects nothing");
         (reduced, recorder.cursor as usize, recorder.roots.clone(), recorder.reads)
     });
     assert_eq!(roots.len(), 2, "two commitments in the stream");
     Recorded {
         shape: *shape,
-        blake2s,
+        variant,
         roots: *setup,
         graph,
         reduced,
@@ -279,14 +228,10 @@ fn opening_words<T: Copy, W: Clone>(
 ) -> Vec<W> {
     match opening {
         Opening::Weighted(claim) => [vec![root, layout, number(1)], combined_words(claim, word, number)].concat(),
-        Opening::Point { point, value, bit_slice } => {
-            let k = 1 + bit_slice.is_some() as u64;
-            let mut words = vec![root, layout, number(k)];
+        Opening::Point { point, value } => {
+            let mut words = vec![root, layout, number(1)];
             words.extend(point.iter().map(|&x| word(x)));
             words.push(word(*value));
-            if let Some(claim) = bit_slice {
-                words.extend(combined_words(claim, word, number));
-            }
             words
         }
     }
@@ -295,7 +240,7 @@ fn opening_words<T: Copy, W: Clone>(
 /// The calls of `PCS_OPEN`, as runs of output words.
 pub fn calls(recorded: &Recorded) -> Vec<Vec<Word>> {
     let reduced = &recorded.reduced;
-    let layouts = layout_words_for(&recorded.shape, recorded.blake2s);
+    let layouts = layout_words(&recorded.shape);
     let roots = recorded.roots;
     let mut out = Vec::new();
     for (commitment, opening) in &reduced.openings {
@@ -305,14 +250,6 @@ pub fn calls(recorded: &Recorded) -> Vec<Vec<Word>> {
             Commitment::Setup => (Word::Const(roots.f), layouts[2]),
         };
         out.push(opening_words(root, Word::Const(layout), opening, scalar, number));
-    }
-    if let Some(matrices) = &reduced.matrices {
-        for (root, layout, value) in [(roots.a0, layouts[3], matrices.a), (roots.b0, layouts[4], matrices.b)] {
-            let mut words = vec![Word::Const(root), Word::Const(layout), number(1)];
-            words.extend(matrices.point.iter().map(|&x| scalar(x)));
-            words.push(scalar(value));
-            out.push(words);
-        }
     }
     out
 }
@@ -355,10 +292,10 @@ pub fn rust_verifier(
     iv: &[u8; 32],
     public_words: &[u8; 32],
     stream: &[u8],
-    blake2s: Blake2s,
+    variant: Variant,
     mode: Claims,
 ) -> Result<(Reduced<E>, Vec<E>, Vec<E>), leanvm_statement::VerifierError> {
-    rust_verifier_with(shape, iv, &SetupRoots::REFERENCE, public_words, stream, blake2s, mode)
+    rust_verifier_with(shape, iv, &SetupRoots::REFERENCE, public_words, stream, variant, mode)
 }
 
 /// [`rust_verifier`] for a contract that binds `setup` in its IV.
@@ -368,10 +305,10 @@ pub fn rust_verifier_with(
     setup: &SetupRoots,
     public_words: &[u8; 32],
     stream: &[u8],
-    blake2s: Blake2s,
+    variant: Variant,
     mode: Claims,
 ) -> Result<(Reduced<E>, Vec<E>, Vec<E>), leanvm_statement::VerifierError> {
-    let seed = keccak_seed(&NAME, &contract_iv_for(shape, blake2s, iv, setup), public_words);
+    let seed = keccak_seed(&NAME, &contract_iv(shape, variant, iv, setup), public_words);
     let mut channel = KeccakChannel::new(
         seed,
         stream,
@@ -387,7 +324,7 @@ pub fn rust_verifier_with(
             0,
         )
     });
-    let reduced = reduce(shape, words, &mut channel, blake2s, mode)?;
+    let reduced = reduce(shape, words, &mut channel, variant, mode)?;
     channel.finish()?;
     let Checks::Collect { zero, nonzero } = channel.checks else {
         unreachable!()
@@ -448,23 +385,14 @@ impl GasReport {
 
 /// Measure the verifier for `shape`: build it, run it on sample calldata with every call attested, and check the
 /// run's gas against a run at another claim price and the phases against the total.
-pub fn measure(shape: &Shape, iv: &[u8; 32], blake2s: Blake2s, mode: Claims) -> GasReport {
-    let recorded = record_verifier(shape, blake2s, mode);
+pub fn measure(shape: &Shape, iv: &[u8; 32], variant: Variant, mode: Claims) -> GasReport {
+    let recorded = record_verifier(shape, variant, mode);
     let contract = compile_verifier(&recorded, iv, true);
     let stream = sample_stream(recorded.stream_len, 0x6A5);
     let data = calldata(&[0x5a; 32], &stream);
     assert_eq!(data.len(), contract.calldata_len);
     let all_calls = calls(&recorded);
-    let claims: usize = recorded
-        .reduced
-        .openings
-        .iter()
-        .map(|(_, opening)| match opening {
-            Opening::Weighted(_) => 1,
-            Opening::Point { bit_slice, .. } => 1 + bit_slice.is_some() as usize,
-        })
-        .sum::<usize>()
-        + 2 * recorded.reduced.matrices.is_some() as usize;
+    let claims = recorded.reduced.openings.len();
     let calls_count = all_calls.len();
     let run = |claim_gas: u64| -> Outcome {
         let block = PcsOpen::attesting_all(claim_gas);
@@ -492,7 +420,7 @@ pub fn measure(shape: &Shape, iv: &[u8; 32], blake2s: Blake2s, mode: Claims) -> 
     assert_eq!(measured, contract.checks as u64 + calls_count as u64, "one JUMPDEST a check and a call");
     phases.retain(|p| p.phase != MEASURE);
     phases.sort_by_key(|p| std::cmp::Reverse(p.gas));
-    let mut terms: Vec<(String, usize, usize)> = recorded
+    let terms: Vec<(String, usize, usize)> = recorded
         .reduced
         .openings
         .iter()
@@ -500,14 +428,11 @@ pub fn measure(shape: &Shape, iv: &[u8; 32], blake2s: Blake2s, mode: Claims) -> 
         .map(|((commitment, opening), words)| {
             let terms = match opening {
                 Opening::Weighted(claim) => claim.terms.len(),
-                Opening::Point { bit_slice, .. } => 1 + bit_slice.as_ref().map_or(0, |c| c.terms.len()),
+                Opening::Point { .. } => 1,
             };
             (format!("{commitment:?}"), terms, words.len())
         })
         .collect();
-    for (name, words) in ["A0", "B0"].iter().zip(&all_calls[recorded.reduced.openings.len()..]) {
-        terms.push((name.to_string(), 1, words.len()));
-    }
     let _ = ENTRY;
     GasReport {
         calldata_bytes: data.len(),
@@ -540,7 +465,7 @@ fn expected_words(reduced: &Reduced<E>, recorded: &Recorded, stream: &[u8]) -> V
         bytes
     };
     let root = |at: usize| -> [u8; 32] { stream[at..at + 32].try_into().unwrap() };
-    let layouts = layout_words_for(&recorded.shape, recorded.blake2s);
+    let layouts = layout_words(&recorded.shape);
     let roots = recorded.roots;
     let mut out = Vec::new();
     for (commitment, opening) in &reduced.openings {
@@ -551,20 +476,13 @@ fn expected_words(reduced: &Reduced<E>, recorded: &Recorded, stream: &[u8]) -> V
         };
         out.extend(opening_words(r, layout, opening, element_word, number));
     }
-    if let Some(matrices) = &reduced.matrices {
-        for (r, layout, value) in [(roots.a0, layouts[3], matrices.a), (roots.b0, layouts[4], matrices.b)] {
-            out.extend([r, layout, number(1)]);
-            out.extend(matrices.point.iter().map(|&x| element_word(x)));
-            out.push(element_word(value));
-        }
-    }
     out
 }
 
 /// The contract, built to return what it would hand `PCS_OPEN` and every value it checks, against the Rust verifier
 /// on the same calldata: word for word.
-pub fn parity(shape: &Shape, iv: &[u8; 32], public_words: &[u8; 32], stream: &[u8], blake2s: Blake2s, mode: Claims) {
-    parity_with(shape, iv, &SetupRoots::REFERENCE, public_words, stream, blake2s, mode);
+pub fn parity(shape: &Shape, iv: &[u8; 32], public_words: &[u8; 32], stream: &[u8], variant: Variant, mode: Claims) {
+    parity_with(shape, iv, &SetupRoots::REFERENCE, public_words, stream, variant, mode);
 }
 
 /// [`parity`] for a contract that binds `setup`.
@@ -574,10 +492,10 @@ pub fn parity_with(
     setup: &SetupRoots,
     public_words: &[u8; 32],
     stream: &[u8],
-    blake2s: Blake2s,
+    variant: Variant,
     mode: Claims,
 ) {
-    let recorded = record_verifier_with(shape, blake2s, mode, setup);
+    let recorded = record_verifier_with(shape, variant, mode, setup);
     let entry = Entry {
         name: NAME,
         iv: recorded.iv(iv),
@@ -592,7 +510,7 @@ pub fn parity_with(
         .collect();
     let contract = compile(&recorded.graph, &outputs, &Ending::Return, &entry);
     let (reduced, zero, nonzero) =
-        rust_verifier_with(shape, iv, setup, public_words, stream, blake2s, mode).expect("the stream's length");
+        rust_verifier_with(shape, iv, setup, public_words, stream, variant, mode).expect("the stream's length");
     let mut expected = expected_words(&reduced, &recorded, stream);
     expected.extend(zero.iter().chain(&nonzero).map(|&x| leanvm_statement::evm::machine::element_word(x)));
     let outcome = call(&contract.code, &[], &calldata(public_words, stream), &PcsOpen::default());
@@ -650,13 +568,13 @@ pub struct DeployableReport {
 pub fn measure_deployable(
     shape: &Shape,
     iv: &[u8; 32],
-    blake2s: Blake2s,
+    variant: Variant,
     mode: Claims,
     limit: usize,
 ) -> DeployableReport {
     use leanvm_statement::evm::codegen::{compile_deployable, compile_deployable_like};
     use leanvm_statement::evm::deploy::{deploy, install};
-    let recorded = record_verifier(shape, blake2s, mode);
+    let recorded = record_verifier(shape, variant, mode);
     let (outputs, ending, entry) = ends(&recorded, iv, true, false);
     let real = compile_deployable(&recorded.graph, &outputs, &ending, &entry, limit);
     let deployed = deploy(&real, &[]);
@@ -666,7 +584,7 @@ pub fn measure_deployable(
     let installed = install(&measuring, &[]);
     let stream = sample_stream(recorded.stream_len, 0x6A5);
     let data = calldata(&[0x5a; 32], &stream);
-    let straight = measure(shape, iv, blake2s, mode);
+    let straight = measure(shape, iv, variant, mode);
     let calls_count = straight.calls;
     let run = |claim_gas: u64| -> Outcome {
         let outcome = installed
@@ -735,13 +653,13 @@ pub fn parity_deployable(
     iv: &[u8; 32],
     public_words: &[u8; 32],
     stream: &[u8],
-    blake2s: Blake2s,
+    variant: Variant,
     mode: Claims,
     limit: usize,
 ) -> usize {
     use leanvm_statement::evm::codegen::{compile_deployable, compile_deployable_like};
     use leanvm_statement::evm::deploy::install;
-    let recorded = record_verifier(shape, blake2s, mode);
+    let recorded = record_verifier(shape, variant, mode);
     let (outputs, ending, entry) = ends(&recorded, iv, false, false);
     let returning = compile_deployable(&recorded.graph, &outputs, &ending, &entry, limit);
     let (outputs, ending, entry) = ends(&recorded, iv, false, true);
@@ -755,7 +673,7 @@ pub fn parity_deployable(
         .output
         .expect("a measuring build does not revert");
     let (reduced, zero, nonzero) =
-        rust_verifier(shape, iv, public_words, stream, blake2s, mode).expect("the stream's length");
+        rust_verifier(shape, iv, public_words, stream, variant, mode).expect("the stream's length");
     let mut expected = expected_words(&reduced, &recorded, stream);
     expected.extend(zero.iter().chain(&nonzero).map(|&x| leanvm_statement::evm::machine::element_word(x)));
     assert_eq!(output.len(), 32 * expected.len(), "words returned");

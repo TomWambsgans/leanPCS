@@ -2,7 +2,7 @@
 //! SPEC.md's identities on the domain itself, on a real trace, with no randomness but the bus's challenges: what
 //! the quotients exist for. Each check names what it tests and how many rows break it.
 
-use leanvm_statement::layout::{BLAKE2S_SLOTS, OP_BLAKE2S, OP_JUMP, keccak_slot, keccak_slot_offset};
+use leanvm_statement::layout::{OP_JUMP, OP_SHA3, keccak_slot, keccak_slot_offset, tables};
 use primitives::field::{F64, F192};
 
 use super::bus::{Bus, all_leaves, expected_root, heap};
@@ -29,7 +29,7 @@ fn check(name: impl Into<String>, tested: usize, failures: usize) -> Check {
 /// Every identity of SPEC.md on `trace`'s domain, with the bus at `(alphas, beta)`.
 pub fn on_domain(trace: &Trace, alphas: &[F192], beta: F192) -> Vec<Check> {
     let mut out = Vec::new();
-    let layout = trace.vm_tables();
+    let layout = tables();
     // JUMP: b + v_cond w = 0 and v_cond (b + 1) = 0, on every row.
     {
         let t = &layout[OP_JUMP];
@@ -74,32 +74,24 @@ pub fn on_domain(trace: &Trace, alphas: &[F192], beta: F192) -> Vec<Check> {
             .count();
         out.push(check("public input: memory cells 0 and 1", 2, bad));
     }
-    // The limb copies: BLAKE2S's value limbs are q_flock's slots, on every row (padding rows included); the Keccak
-    // VM's SHA3 lanes are its blocks' port words, `in_16` plus END_BIT.
+    // The lane copies: SHA3's lanes are its blocks' port words, `in_16` plus END_BIT, on every row (padding rows
+    // included).
     {
-        let t = &layout[OP_BLAKE2S];
-        let n = 1usize << trace.heights[OP_BLAKE2S];
-        let bits = crate::verifier::qflock_row_bits(trace.keccak);
+        let t = &layout[OP_SHA3];
+        let n = 1usize << trace.heights[OP_SHA3];
+        let bits = crate::verifier::QFLOCK_ROW_BITS;
         let mut bad = 0;
         let mut copies = 0;
         for (c, &name) in t.columns.iter().enumerate() {
-            let (slot, offset) = if trace.keccak {
-                (keccak_slot(name), keccak_slot_offset(name))
-            } else {
-                (BLAKE2S_SLOTS.iter().position(|&s| s == Some(name)), 0)
-            };
+            let (slot, offset) = (keccak_slot(name), keccak_slot_offset(name));
             if let Some(slot) = slot {
                 copies += 1;
                 bad += (0..n)
-                    .filter(|&i| trace.tables[OP_BLAKE2S][c][i].0 != trace.qflock[(i << bits) | slot].0 ^ offset)
+                    .filter(|&i| trace.tables[OP_SHA3][c][i].0 != trace.qflock[(i << bits) | slot].0 ^ offset)
                     .count();
             }
         }
-        let name = if trace.keccak {
-            "SHA3: copy_j = q_flock's port word j (+ END_BIT for in_16) (all rows, 50 lanes)"
-        } else {
-            "BLAKE2S: copy_j = q_flock's slot j (all rows, 18 limbs)"
-        };
+        let name = "SHA3: copy_j = q_flock's port word j (+ END_BIT for in_16) (all rows, 50 lanes)";
         out.push(check(name, copies * n, bad));
     }
     // The setup's tuple slots 0..2 are the framework's (SEP_BYTECODE, the pc, the count): leanVM's stacked bytecode
@@ -110,7 +102,7 @@ pub fn on_domain(trace: &Trace, alphas: &[F192], beta: F192) -> Vec<Check> {
         out.push(check("bytecode: leanVM's stacked slots 0, 1, 2 are zero", 3 * n, bad));
     }
     // The bus: no pull fingerprint vanishes, and the heap's root is the state boundary's ratio.
-    let bus = Bus::for_vm(alphas, beta, trace.keccak);
+    let bus = Bus::new(alphas, beta);
     match all_leaves(trace, &bus) {
         Err(e) => out.push(check(format!("bus: pull fingerprints nonzero ({e})"), 1, 1)),
         Ok(leaves) => {

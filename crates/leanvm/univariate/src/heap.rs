@@ -85,7 +85,7 @@ fn leaves_order(leaves: Leaves) -> usize {
 mod tests {
     use super::*;
 
-    /// At the reference workload (1,000 signatures): `2^22` leaves, the blocks of SPEC.md §5.2.
+    /// At leanVM 42422001's 1,000-signature shape: `2^22` leaves, the blocks of SPEC.md §5.2.
     #[test]
     fn reference_layout() {
         let heap = HeapLayout::new(21, 19, &[18, 18, 18, 18, 17, 18]);

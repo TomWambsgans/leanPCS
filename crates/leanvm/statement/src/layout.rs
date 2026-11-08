@@ -1,11 +1,10 @@
 // Adapted from leanVM (https://github.com/leanEthereum/leanVM), commit 42422001, file crates/verifier/src/layout.rs:
 // the same tables, flushes and constraints (not its stacking, which `leanvm_univariate` replaces with its own); a
 // `Form` is generic over its coefficients' `Scalar`, and a table's constraints a method on any `Scalar`. New here: the
-// Keccak VM's `SHA3` table (`tables_keccak`). MIT OR Apache-2.0; see NOTICE.md.
+// Keccak VM's `SHA3` table (leanVM 9d50c92a3) in BLAKE2S's place. MIT OR Apache-2.0; see NOTICE.md.
 //! The instruction tables, their bus flushes and constraints.
 
 use crate::field::{E, GEN, ONE, ZERO};
-use crate::hash::{PARAM_IV, blake2s_hash};
 use crate::scalar::Scalar;
 use std::collections::BTreeMap;
 use std::ops::Add;
@@ -76,12 +75,8 @@ impl Add for Form<E> {
     }
 }
 
-pub const BLAKE2S_R1CS_LOG_SIZE: usize = 14;
 pub const K_BITS: usize = 64;
 pub const FLOCK_K_SKIP: usize = 6; // log2_ceil(K_BITS)
-
-pub const FLOCK_NUM_LINCHECK_ROUNDS: usize = BLAKE2S_R1CS_LOG_SIZE - FLOCK_K_SKIP;
-pub const BLAKE2S_CONSTANT_COLUMN: usize = 512;
 
 fn cols<const N: usize>(columns: &[&str], names: [&str; N]) -> [usize; N] {
     names.map(|name| {
@@ -277,32 +272,6 @@ fn jump_constraints<S: Scalar>(columns: &[S]) -> Vec<S> {
     vec![flag + condition * inverse, condition * (flag + S::one())]
 }
 
-fn flushes_blake2s() -> Flushes {
-    let [pc, fp, cnt_bc] = cols(BLAKE2S_COLUMNS, ["pc", "fp", "cnt_bc"]);
-    let operands = cols(BLAKE2S_COLUMNS, ["o_0", "o_1", "o_2", "o_3", "o_v", "o_out", "o_md"]);
-    let mut flushes = Flushes::default();
-    flushes.state_step(pc, fp);
-    flushes.bytecode(pc, cnt_bc, OP_BLAKE2S, operands.map(|i| col(i, 0)).to_vec());
-    // The nine cells read, as (cell, operand, offset from it): four addressed message chunks, then
-    // the consecutive chaining-value and output pairs, then the metadata cell (the byte counter and
-    // the two flags). Each holds two q_flock limbs and a zero top.
-    #[rustfmt::skip]
-    let cells = [("m0", "o_0", 0), ("m1", "o_1", 0), ("m2", "o_2", 0), ("m3", "o_3", 0),
-                 ("cv0", "o_v", 0), ("cv1", "o_v", 1), ("out0", "o_out", 0), ("out1", "o_out", 1),
-                 ("md", "o_md", 0)];
-    for (cell, operand, exponent) in cells {
-        let names = [
-            operand,
-            &format!("cnt_{cell}"),
-            &format!("{cell}_lo"),
-            &format!("{cell}_hi"),
-        ];
-        let [address, count, lo, hi] = cols(BLAKE2S_COLUMNS, names);
-        flushes.memory_cols(prod(fp, address, exponent), count, &[lo, hi]);
-    }
-    flushes
-}
-
 /// The `SHA3` table of leanVM's Keccak branch before its switch to GKR (commit `9d50c92a3`,
 /// `crates/leanvm_core/src/tables.rs` there, `Sha3Table`): one Keccak-f step over a thirteen-cell state. Its flushes are
 /// that table's: the state step, the bytecode read (seven operands: four independently addressed `m` cells, the `tail`,
@@ -384,29 +353,15 @@ pub fn keccak_slot_offset(name: &str) -> u64 {
     if name == "in_16" { SHA3_END_BIT } else { 0 }
 }
 
-/// The tables of the Keccak VM: leanVM 42422001's five, and the `SHA3` table ([`flushes_sha3`]) in BLAKE2S's place.
-/// A padding row is zero: the univariate PIOP's padding rows' leaves are 1 whatever they hold.
-pub fn tables_keccak() -> Vec<Table> {
-    let mut tables = tables();
-    tables[OP_SHA3] = Table {
-        opcode: OP_SHA3,
-        columns: SHA3_COLUMNS,
-        padding: vec![ZERO; SHA3_COLUMNS.len()],
-        flushes: flushes_sha3(),
-    };
-    tables
-}
-
 pub const OP_XOR: usize = 0;
 pub const OP_MUL: usize = 1;
 pub const OP_SET: usize = 2;
 pub const OP_DEREF: usize = 3;
 pub const OP_JUMP: usize = 4;
-pub const OP_BLAKE2S: usize = 5;
-/// The Keccak VM's `SHA3` table, in BLAKE2S's place ([`tables_keccak`]).
+/// The Keccak VM's `SHA3` table, where leanVM 42422001 has BLAKE2S.
 pub const OP_SHA3: usize = 5;
 pub const N_TABLES: usize = 6;
-pub const TABLE_NAMES: [&str; N_TABLES] = ["XOR", "MUL", "SET", "DEREF", "JUMP", "BLAKE2S"];
+pub const TABLE_NAMES: [&str; N_TABLES] = ["XOR", "MUL", "SET", "DEREF", "JUMP", "SHA3"];
 
 #[rustfmt::skip]
 const ARITH_COLUMNS: &[&str] = &["pc", "fp", "o_a", "o_b", "o_c", "va_0", "va_1", "va_2", "vb_0", "vb_1", "vb_2", "cnt_a", "cnt_b", "cnt_c", "cnt_bc"];
@@ -415,16 +370,6 @@ const SET_COLUMNS: &[&str] = &["pc", "fp", "o", "k_0", "k_1", "k_2", "cnt", "cnt
 const DEREF_COLUMNS: &[&str] = &["pc", "fp", "o1", "o2", "o3", "f_pc", "f_fp", "ptr", "v3_0", "v3_1", "v3_2", "cnt_ptr", "cnt_target", "cnt_local", "cnt_bc"];
 #[rustfmt::skip]
 const JUMP_COLUMNS: &[&str] = &["pc", "fp", "o_c", "o_d", "o_f", "v_cond", "v_pc", "v_fp", "cnt_c", "cnt_d", "cnt_f", "cnt_bc", "w", "b"];
-#[rustfmt::skip]
-const BLAKE2S_COLUMNS: &[&str] = &[
-    "pc", "fp", "o_0", "o_1", "o_2", "o_3", "o_v", "o_out", "o_md",
-    // These eighteen value limbs live in q_flock, not here: each is already a flock witness slot.
-    "m0_lo", "m0_hi", "m1_lo", "m1_hi", "m2_lo", "m2_hi", "m3_lo", "m3_hi",
-    "out0_lo", "out0_hi", "out1_lo", "out1_hi", "cv0_lo", "cv0_hi", "cv1_lo", "cv1_hi", "md_lo", "md_hi",
-    // ...and the read counts, committed here like every other column.
-    "cnt_m0", "cnt_m1", "cnt_m2", "cnt_m3", "cnt_cv0", "cnt_cv1", "cnt_out0", "cnt_out1", "cnt_md", "cnt_bc",
-];
-
 /// leanVM `9d50c92a3`'s `SHA3` columns (`sha3t` there): the operands, the 25 input and 25 output lanes (`q_flock`'s
 /// words, committed again as the univariate copies), one read count a cell in flush order, and the bytecode count.
 #[rustfmt::skip]
@@ -439,35 +384,13 @@ const SHA3_COLUMNS: &[&str] = &[
     "cnt_25", "cnt_bc",
 ];
 
-/// Flock's padding instance, blake2s(0^64), in BLAKE2S_SLOTS order: the parameterized IV, the digest, then a zero
-/// message and the one-block final metadata (counter 64, f0 set).
-fn padding_instance() -> [u64; 20] {
-    let digest = blake2s_hash(&[0; 64]).words();
-    std::array::from_fn(|slot| match slot {
-        0..4 => PARAM_IV[2 * slot] as u64 | (PARAM_IV[2 * slot + 1] as u64) << 32,
-        4..8 => digest[slot - 4],
-        18 => 64,
-        19 => 0xFFFF_FFFF,
-        _ => 0,
-    })
-}
-
+/// The Keccak VM's tables: leanVM 42422001's five (XOR, MUL, SET, DEREF, JUMP), and the `SHA3` table
+/// ([`flushes_sha3`]). A padding row is zero: the univariate PIOP's padding rows' leaves are 1 whatever they hold.
 pub fn tables() -> Vec<Table> {
-    // A padding row is zero, but for BLAKE2s's value limbs: those are q_flock's slots, so they hold its padding instance.
-    let instance = padding_instance();
     let table = |opcode, columns: &'static [&'static str], flushes| Table {
         opcode,
         columns,
-        padding: columns
-            .iter()
-            .map(|&name| {
-                let slot = BLAKE2S_SLOTS
-                    .iter()
-                    .position(|&s| s == Some(name))
-                    .filter(|_| opcode == OP_BLAKE2S);
-                E::new(slot.map_or(0, |s| instance[s]), 0, 0)
-            })
-            .collect(),
+        padding: vec![ZERO; columns.len()],
         flushes,
     };
     vec![
@@ -476,14 +399,6 @@ pub fn tables() -> Vec<Table> {
         table(OP_SET, SET_COLUMNS, flushes_set()),
         table(OP_DEREF, DEREF_COLUMNS, flushes_deref()),
         table(OP_JUMP, JUMP_COLUMNS, flushes_jump()),
-        table(OP_BLAKE2S, BLAKE2S_COLUMNS, flushes_blake2s()),
+        table(OP_SHA3, SHA3_COLUMNS, flushes_sha3()),
     ]
 }
-
-// Where in the flock witness each embedded BLAKE2s limb live: one 64-bit slot per limb, the chaining value first, then the
-// digest, the message block and the metadata. Slots 8 and 9 are flock's constant wire and the padding up to its message base, which no memory cell carries.
-#[rustfmt::skip]
-pub const BLAKE2S_SLOTS: [Option<&str>; 20] = [
-    Some("cv0_lo"), Some("cv0_hi"), Some("cv1_lo"), Some("cv1_hi"), Some("out0_lo"), Some("out0_hi"), Some("out1_lo"), Some("out1_hi"), None, None,
-    Some("m0_lo"), Some("m0_hi"), Some("m1_lo"), Some("m1_hi"), Some("m2_lo"), Some("m2_hi"), Some("m3_lo"), Some("m3_hi"), Some("md_lo"), Some("md_hi"),
-];

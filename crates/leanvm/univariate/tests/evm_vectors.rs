@@ -1,7 +1,7 @@
 // Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
-//! The Rust→EVM test vectors (milestone 3), replayed with no prover and no trace: each file of `tests/vectors/` holds
-//! a real proof's calldata (1,000 leanXMSS signatures), the `PCS_OPEN` inputs the contract calls with (which the
-//! proof's WHIR openings prove), and the verdict and gas it was recorded with. The straight contract and the
+//! The Rust→EVM test vectors, replayed with no prover and no trace: each file of `tests/vectors/` holds a real Keccak
+//! VM proof's calldata, the `PCS_OPEN` inputs the contract calls with (which the proof's WHIR openings prove), and the
+//! verdict and gas it was recorded with. The straight contract and the
 //! deployable one (its parts of at most 24,576 bytes) are built from the verifier for the vector's shape and
 //! configuration, then:
 //!
@@ -11,10 +11,6 @@
 //!   batching sumcheck, the last byte), a row count changed, the public input changed, one call left unattested, a
 //!   byte of an attested input flipped.
 //!
-//! `main_line_rec.txt` is π1-rec's (`FLOCK_REC`, `crates/leanvm_rec/SPEC-REC.md` §1.4). The two Fiat–Shamir shapes do
-//! not cross: the main line's contract rejects π1-rec's proof, and π1-rec's the main line's, even with `PCS_OPEN`
-//! attesting every call.
-//!
 //! `cargo test --release -p leanvm_univariate --test evm_vectors -- --nocapture`
 
 mod vectors;
@@ -22,8 +18,8 @@ mod vectors;
 use leanvm_statement::evm::codegen::word;
 use leanvm_statement::evm::machine::{PcsOpen, call, root_of_word};
 use leanvm_univariate::Claims;
-use leanvm_univariate::contract::{SetupRoots, compile_verifier, record_verifier, record_verifier_with};
-use vectors::{PROGRAM_IV, Vector, blake2s_of, deployable, read};
+use leanvm_univariate::contract::{SetupRoots, compile_verifier, record_verifier_with};
+use vectors::{PROGRAM_IV, Vector, deployable, read, variant_of};
 
 /// Run `f` on a thread with a deep stack: the code generator recurses along the graph.
 fn deep<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> R {
@@ -47,14 +43,13 @@ fn attesting(calls: &[Vec<u8>]) -> PcsOpen {
 const STREAM_AT: usize = 4 + 32;
 
 fn replay(v: Vector) {
-    let blake2s = blake2s_of(&v.config);
-    // The contract binds the proof's setup root `F` (the third call's, its shape's own: `SetupRoots::REFERENCE`'s at
-    // the 1,000-signature reference shape, a Keccak VM shape's own otherwise).
+    let variant = variant_of(&v.config);
+    // The contract binds the proof's setup root `F` (the third call's: its program's and shape's own).
     let roots = SetupRoots {
         f: v.whir_roots[2],
         ..SetupRoots::REFERENCE
     };
-    let recorded = record_verifier_with(&v.shape, blake2s, Claims::Point, &roots);
+    let recorded = record_verifier_with(&v.shape, variant, Claims::Point, &roots);
     assert_eq!(STREAM_AT + recorded.stream_len, v.calldata.len(), "{}: the calldata is the shape's", v.config);
     let straight = compile_verifier(&recorded, &PROGRAM_IV, false);
     let deployed = deployable(&recorded);
@@ -121,36 +116,6 @@ fn replay(v: Vector) {
         assert!(run_deployed(data, block).output.is_none(), "{} deployed: {what} must revert", v.config);
     }
     println!("{}: {} mutations revert on both builds", v.config, mutants.len());
-}
-
-/// The main line's and π1-rec's contracts each reject the other's real proof: same stream layout, other challenges,
-/// so their checks fail, even with every `PCS_OPEN` call attested.
-#[test]
-fn fiat_shamir_shapes_do_not_cross() {
-    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/vectors");
-    let load = |name: &str| read(&std::fs::read_to_string(dir.join(format!("{name}.txt"))).expect("a vector"));
-    for (proof, contract) in [("main_line", "main_line_rec"), ("main_line_rec", "main_line")] {
-        let (v, other) = (load(proof), load(contract));
-        deep(move || {
-            let recorded = record_verifier(&other.shape, blake2s_of(&other.config), Claims::Point);
-            assert_eq!(STREAM_AT + recorded.stream_len, v.calldata.len(), "the same stream layout");
-            let straight = compile_verifier(&recorded, &PROGRAM_IV, false);
-            let deployed = deployable(&recorded);
-            let one = word([1, 0, 0]);
-            let all = PcsOpen::attesting_all(0);
-            let own = call(&straight.code, &[], &other.calldata, &all);
-            assert_eq!(own.output.as_deref(), Some(&one[..]), "{contract}'s contract accepts its own proof");
-            assert!(
-                call(&straight.code, &[], &v.calldata, &all).output.is_none(),
-                "{contract}'s straight build rejects {proof}'s proof"
-            );
-            assert!(
-                deployed.chain.call(deployed.address, &v.calldata, &all).output.is_none(),
-                "{contract}'s deployable build rejects {proof}'s proof"
-            );
-            println!("{contract}'s contract (both builds) rejects {proof}'s real proof, every call attested");
-        });
-    }
 }
 
 /// Every vector file, replayed.

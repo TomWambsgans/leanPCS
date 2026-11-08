@@ -1,21 +1,19 @@
 // Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
-//! The zerocheck with a univariate skip of 3 to 6 (`lv42_flock::zerocheck::skip`) and Flock's prover on it
-//! (`prover::flock`), without a trace:
+//! The zerocheck with a univariate skip of 3 to 6 (`lv42_flock::zerocheck::skip`), without a trace:
 //!
 //! - at a skip of 6, the skip module's round 1 and whole zerocheck write what leanVM's own do, byte for byte;
 //! - at skips of 3, 4 and 5, on honest witnesses, the zerocheck's stream is accepted (its rounds re-checked with the
 //!   verifier's sumcheck), and its three claims are the witness's evaluations at the point;
-//! - Flock end to end on BLAKE2s compressions (128 of them, `log_n = 21`): `flock_min::verify` accepts the stream at
-//!   skips of 3 to 6, both ring-map orders, and the 64 slices are the witness's at the verifier's point;
-//! - the zerocheck and Flock end to end also with π1-rec's eq point (`EqPoint::Squares`, `FsShape::Rec`: the sampled
-//!   coordinates successive squares of one).
+//! - the zerocheck also with π1-rec's eq point (`EqPoint::Squares`, `FsShape::Rec`: the sampled coordinates
+//!   successive squares of one).
+//!
+//! Flock end to end on the Keccak-f block: `tests/flock_keccak.rs`.
 //!
 //! `cargo test --release -p leanvm_univariate --test flock_skip -- --nocapture`
 
 use leanvm_statement::field::E;
-use leanvm_statement::flock_min::{self, Slices, Variant};
 use leanvm_statement::transcript::{Checks, FsShape, KeccakChannel, KeccakWriter, keccak_seed, sumcheck};
-use leanvm_univariate::prover::flock::{Chain, FlockWitness, prove};
+use leanvm_univariate::prover::flock::Chain;
 use lv42_flock::zerocheck::skip::{EqPoint, prove_skip, round1};
 use lv42_flock::zerocheck::univariate_skip_optimized::{
     c_s, medium_challenges, round1_shift_reduce_extract_c_packed_padded, small_challenges,
@@ -297,137 +295,6 @@ fn zerocheck_skips_verify_and_are_faithful() {
             assert_eq!(claim.b_eval, quirky(&b, k, claim.z, &chi), "k = {k}, m = {m}: b̂");
             assert_eq!(claim.c_eval, quirky(&c, k, claim.z, &chi), "k = {k}, m = {m}: ĉ");
             println!("k = {k}, m = {m}, {eq:?}: {} stream bytes, accepted, claims true", writer.stream.len());
-        }
-    }
-}
-
-/// The skips' costs on a real trace's Flock witness (`LEANVM_TRACE`; ignored): round 1 alone, the zerocheck, and
-/// the whole reduction (with the lincheck), at skips of 3 to 6.
-#[test]
-#[ignore]
-fn skip_timings_on_a_real_witness() {
-    let Some(dir) = std::env::var("LEANVM_TRACE").ok() else {
-        println!("LEANVM_TRACE is not set");
-        return;
-    };
-    lv42_parallel::init();
-    let w = FlockWitness::load(std::path::Path::new(&dir)).expect("Flock's inputs");
-    let setup = lv42_flock::hash::Blake2sSetup::new(w.n_blocks);
-    let m = setup.m();
-    let bytes = |words: &[u64]| -> Vec<u8> { words.iter().flat_map(|x| x.to_le_bytes()).collect() };
-    let (a, b, c) = (bytes(&w.a), bytes(&w.b), bytes(&w.z));
-    let padding = PaddingSpec {
-        k_log: 14,
-        useful_bits_per_block: lv42_flock::hash::USEFUL_BITS,
-    };
-    for k in [3usize, 4, 5, 6] {
-        let mut rng = Rng(0x7171 ^ k as u64);
-        let r_rest: Vec<F192> = small_challenges()
-            .into_iter()
-            .chain(medium_challenges())
-            .chain((0..m - k - 7).map(|_| rng.ext()))
-            .collect();
-        let started = std::time::Instant::now();
-        let _ = round1(&a, &b, &c, m, k, &r_rest);
-        let r1 = started.elapsed().as_secs_f64();
-        let seed = keccak_seed(b"flock skip time!", &[k as u8; 32], &[0; 32]);
-        let mut writer = KeccakWriter::new(seed);
-        let started = std::time::Instant::now();
-        {
-            let mut chain = Chain {
-                writer: &mut writer,
-                samples: Vec::new(),
-            };
-            let _ = prove_skip(&a, &b, &c, m, k, EqPoint::Sampled, &padding, &mut chain);
-        }
-        let zc = started.elapsed().as_secs_f64();
-        for (stage, secs) in lv42_flock::zerocheck::skip::STAGES.lock().unwrap().iter() {
-            println!("  skip {k}: {stage} {secs:.3} s");
-        }
-        let mut writer = KeccakWriter::new(seed);
-        let started = std::time::Instant::now();
-        {
-            let mut chain = Chain {
-                writer: &mut writer,
-                samples: Vec::new(),
-            };
-            let _ = setup.prove_reduction_skip(k, EqPoint::Sampled, &w.z, &w.a, &w.b, &w.z_lincheck, &mut chain);
-        }
-        let all = started.elapsed().as_secs_f64();
-        println!("skip {k}: round 1 {r1:.3} s; zerocheck (this module's) {zc:.3} s; reduction {all:.3} s");
-    }
-}
-
-/// Flock end to end on 128 BLAKE2s compressions: the stream `prove` writes is accepted by `flock_min::verify` at
-/// every skip from 3 to 6, both ring-map orders and both Fiat–Shamir shapes (π1-rec's eq point too), and its slices are
-/// `ẑ(i, p)` at the verifier's point.
-#[test]
-fn flock_end_to_end_at_every_skip() {
-    let mut rng = Rng(0x5eed_0004);
-    let n_blocks = 128;
-    let blocks: Vec<lv42_flock::hash::Compression> = (0..n_blocks)
-        .map(|_| {
-            let m: [u32; 16] = std::array::from_fn(|_| rng.next() as u32);
-            lv42_flock::hash::pinned_compression(m)
-        })
-        .collect();
-    let n_blocks_log = lv42_flock::hash::min_n_blocks_log(n_blocks);
-    let (z, a, b, z_lincheck) = lv42_flock::hash::generate_witness_with_ab_packed_and_lincheck(&blocks, n_blocks_log);
-    let mut witness = FlockWitness {
-        n_blocks,
-        z,
-        a,
-        b,
-        z_lincheck,
-    };
-    // The placement's stripes are the generator's: unmoved, the witness is the same; moved, it is the instances'.
-    let generated = witness.z_lincheck.clone();
-    let identity: Vec<usize> = (0..n_blocks).collect();
-    witness.place(&identity);
-    assert_eq!(witness.z_lincheck, generated, "the stripes rebuilt from z");
-    let moved: Vec<usize> = (0..n_blocks).map(|i| (i * 37 + 5) % n_blocks).collect();
-    let mut blocks_moved = blocks.clone();
-    for (i, &p) in moved.iter().enumerate() {
-        blocks_moved[p] = blocks[i];
-    }
-    witness.place(&moved);
-    let regenerated = lv42_flock::hash::generate_witness_with_ab_packed_and_lincheck(&blocks_moved, n_blocks_log);
-    assert_eq!(
-        (&witness.z, &witness.a, &witness.b, &witness.z_lincheck),
-        (&regenerated.0, &regenerated.1, &regenerated.2, &regenerated.3),
-        "a placed witness is the moved instances'"
-    );
-    let log_n = 14 + n_blocks_log;
-    for (k, fs) in (3..=6).flat_map(|k| [(k, FsShape::Main), (k, FsShape::Rec)]) {
-        for slices in [Slices::Tower, Slices::Weighted] {
-            let variant = Variant { skip: k, slices, fs };
-            let seed = keccak_seed(b"flock skip e2e!!", &[k as u8; 32], &[slices as u8; 32]);
-            let mut writer = KeccakWriter::new(seed);
-            let started = std::time::Instant::now();
-            let out = prove(&mut writer, &witness, variant, log_n, false).expect("a proof");
-            let secs = started.elapsed().as_secs_f64();
-            let mut channel = KeccakChannel::new(seed, &writer.stream, Checks::Enforce);
-            let reduced = flock_min::verify(log_n, variant, &mut channel).expect("accepted");
-            channel.finish().expect("the whole stream");
-            assert_eq!(reduced.point, out.point, "the slices' point");
-            // The slices are the witness's: s_i = Σ_u eq(p, u) bit_i(z_u), u the packed words.
-            let point: Vec<F192> = out.point.iter().map(|&x| from_e(x)).collect();
-            let eq = eq_table(&point);
-            for (i, &s) in out.slices.iter().enumerate() {
-                let direct = witness
-                    .z
-                    .iter()
-                    .zip(&eq)
-                    .filter(|(w, _)| *w >> i & 1 == 1)
-                    .fold(F192::ZERO, |acc, (_, &e)| acc + e);
-                assert_eq!(from_e(s), direct, "k = {k}: slice {i}");
-            }
-            let (ma, mb) = leanvm_statement::matrices::matrix_values(&reduced.matrices.point).unwrap();
-            assert_eq!((ma, mb), (reduced.matrices.a, reduced.matrices.b), "the matrices' claim");
-            println!(
-                "skip {k}, {slices:?}, {fs:?}: {} stream bytes, accepted, slices true ({secs:.3} s)",
-                writer.stream.len()
-            );
         }
     }
 }

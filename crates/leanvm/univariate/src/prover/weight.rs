@@ -31,8 +31,8 @@ use crate::stacks::StackLayout;
 
 /// The variables a factored piece's `low` covers: the rounds read from the stack's words must not outlast it.
 pub const LOW_VARS: usize = 8;
-/// `q_flock`'s slot bits for the BLAKE2s VM: its word `j + 256 u` is slot `j` of instance `u` (the Keccak VM's are
-/// 11, [`Weight::with_slot_bits`]).
+/// The slot bits [`Weight::new`] takes: a `q_flock` of `2^8` words a row (this module's tests; the Keccak VM's are 11,
+/// [`Weight::with_slot_bits`]).
 const SLOT_BITS: usize = 8;
 /// Words per task of a round.
 const TASK_WORDS: usize = 1 << 15;
@@ -250,13 +250,13 @@ pub struct Weight {
 }
 
 impl Weight {
-    /// The weight of `claim` on the stack `layout` places (the BLAKE2s VM's `q_flock`, 8 slot bits).
+    /// The weight of `claim` on the stack `layout` places, `q_flock` at 8 slot bits.
     pub fn new(claim: &Combined<E>, layout: &StackLayout) -> Self {
         Self::with_slot_bits(claim, layout, SLOT_BITS)
     }
 
-    /// [`Weight::new`] with `q_flock`'s word `j + 2^slot_bits u` slot `j` of instance `u` (`verifier::qflock_row_bits`:
-    /// 8 for BLAKE2s, 11 for the Keccak-f block).
+    /// [`Weight::new`] with `q_flock`'s word `j + 2^slot_bits u` slot `j` of instance `u` (`verifier::QFLOCK_ROW_BITS`:
+    /// 11 for the Keccak-f block).
     pub fn with_slot_bits(claim: &Combined<E>, layout: &StackLayout, slot_bits: usize) -> Self {
         let basis = [F192::ONE, F192::new(0, 1, 0), F192::new(0, 0, 1)];
         let points: Vec<Vec<F192>> = claim

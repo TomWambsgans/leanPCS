@@ -1,6 +1,7 @@
 // Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
-//! Recursion for the univariate leanVM 42422001 verifier (`SPEC-REC.md`): what the outer proof `π2` must prove,
-//! measured on the inner verifier's recorded graph (milestone R1), and `π2`'s circuit compiled from it (R2).
+//! Recursion for the univariate verifier of the Keccak VM (docs/leanvm/rec/SPEC-REC.md): `π2`, a SNARK of `π1`'s
+//! verifier minus its openings, its circuit compiled from that verifier's recorded graph, and the contract that runs
+//! `π2`'s verifier.
 //!
 //! `π1` is `crates/leanvm_univariate`'s proof. Its verifier, run on the recorder's symbol, is a graph
 //! (`leanvm_statement::evm::record`): the stream's reads, the Keccak-256 chain, `E`'s additions and products, the
@@ -9,31 +10,26 @@
 //! - [`count`]: the graph's live nodes by kind, the Keccak-256 calls and their permutations, the packings between
 //!   bytes and `E`, the checks, and the claims' points.
 //! - [`eval`]: the graph evaluated on a real proof's calldata, every node's value: the witness `π2`'s prover starts
-//!   from, checked against the recorded `PCS_OPEN` inputs of the committed test vectors (π1-rec's among them).
-//! - [`fs`]: `π1`'s Fiat–Shamir shapes, the graph `π1-rec` (`leanvm_univariate::FLOCK_REC`) must record.
+//!   from, checked against the recorded `PCS_OPEN` inputs of the committed test vectors.
 //! - [`circuit`]: `π2`'s circuit (D16v or D32v) and its witness, compiled from the graph; `circuit::spec` is the
 //!   PIOP's interface (SPEC-REC.md §10).
-//! - [`lean`]: π1-rec's graph as Lean data (`formal/RecGraph`), and the vectors of its differential runner.
-//! - [`lean_statement`]: `π2`'s verifier as `formal/RecStatement` transcribes it: the circuit's tables as Lean data
-//!   and the vectors of its differential runner.
+//! - [`pi2`]: `π2`'s PIOP: prover, verifier, contract.
 
 #![forbid(unsafe_code)]
 
 pub mod circuit;
 pub mod count;
 pub mod eval;
-pub mod fs;
-pub mod lean;
-pub mod lean_statement;
 pub mod pi2;
 
 use leanvm_univariate::Shape;
 
-/// The reference workload (`crates/leanvm_univariate/SPEC.md` §1): 1,000 leanXMSS signatures, 1,023,109 cycles.
+/// The reference shape: the Keccak VM's 128-signature workload (`leanvm_statement::shapes::reference()`, leanVM
+/// 9d50c92a3, 154,148 cycles): memory `2^20`, bytecode `2^18`, rows XOR, MUL, SET, DEREF, JUMP, SHA3.
 pub const REFERENCE: Shape = Shape {
-    log_memory: 21,
-    log_bytecode: 19,
-    table_rows: [183_266, 195_439, 223_851, 137_591, 80_937, 202_025],
+    log_memory: 20,
+    log_bytecode: 18,
+    table_rows: [24_260, 36_229, 24_626, 35_812, 15_509, 17_712],
 };
 
 /// Keccak-256's rate in bytes.

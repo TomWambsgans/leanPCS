@@ -52,7 +52,7 @@
 //!
 //! The input lanes are free: binding them (and reading the outputs) is the embedding's job, through the port quads.
 
-use crate::hash::SliceClaim;
+use crate::slice::SliceClaim;
 use crate::witness::{drive_witness_packed_and_lincheck, packed_bytes};
 use primitives::field::F192;
 
@@ -206,7 +206,7 @@ pub const PADDING_INPUT: [u64; LANES] = [0; LANES];
 
 /// Minimum `n_blocks_log` for `n_blocks` permutations.
 pub fn min_n_blocks_log(n_blocks: usize) -> usize {
-    crate::hash::min_n_blocks_log(n_blocks)
+    crate::slice::min_n_blocks_log(n_blocks)
 }
 
 // ---------------------------------------------------------------------------
