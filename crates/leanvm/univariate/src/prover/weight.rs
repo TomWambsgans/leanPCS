@@ -970,7 +970,9 @@ impl Weight {
                     .map(|(k, chunk)| (chunk, b, k * CHUNK)),
             );
         }
-        parallel::for_each_mut(&mut tasks, |_, (chunk, b, first)| {
+        // One chunk a task (`for_each_mut` takes 64 items a task at least).
+        parallel::chunks_mut(&mut tasks, 1, |_, task| {
+            let (chunk, b, first) = &mut task[0];
             let first = *first;
             for piece in &blocks[*b].2 {
                 let s = piece.scale;

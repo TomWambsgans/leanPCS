@@ -213,7 +213,9 @@ impl Trace {
             let rows = self.rows[t] as usize;
             let counters: Vec<usize> = table.count_columns().collect();
             let moved: Vec<(usize, usize)> = to.iter().enumerate().filter(|(i, p)| i != *p).map(|(i, &p)| (i, p)).collect();
-            parallel::for_each_mut(&mut self.tables[t], |c, column| {
+            // One column a task (`for_each_mut` takes 64 items a task at least).
+            parallel::chunks_mut(&mut self.tables[t], 1, |c, column| {
+                let column = &mut column[0];
                 if counters.contains(&c) {
                     column[rows..].fill(F64::ONE);
                 }

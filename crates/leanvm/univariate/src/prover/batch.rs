@@ -125,7 +125,9 @@ impl Folded {
             .zip(c_out[..half].chunks_mut(FOLD_CHUNK))
             .map(|(w, c)| (w, c, (F192Unreduced::ZERO, F192Unreduced::ZERO)))
             .collect();
-        parallel::for_each_mut(&mut parts, |k, (w_out, c_out, sums)| {
+        // One part a task (`for_each_mut` takes 64 items a task at least: 4 tasks for 2^20 words).
+        parallel::chunks_mut(&mut parts, 1, |k, part| {
+            let (w_out, c_out, sums) = &mut part[0];
             let first = k * FOLD_CHUNK;
             for (i, (wo, co)) in w_out.iter_mut().zip(c_out.iter_mut()).enumerate() {
                 let g = 2 * (first + i);
