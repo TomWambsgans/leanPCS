@@ -3,6 +3,8 @@ import KeccakFlock.Block
 import KeccakFlock.Sound
 import KeccakFlock.Complete
 import KeccakFlock.Terminal
+import KeccakFlock.TerminalWalk
+import KeccakFlock.TerminalCore
 
 /-!
 # KeccakFlock: the Keccak-f block of the Keccak VM's Flock argument

@@ -457,6 +457,23 @@ def sha3Table : GeneralFormalCircuit K Sha3Row Regs where
     exacts [(in_eq_to (env := env.toEnvironment) (r := R) (c := 0) (by decide) (hb.in_eq ⟨0, by decide⟩) :), (in_eq_to (env := env.toEnvironment) (r := R) (c := 1) (by decide) (hb.in_eq ⟨1, by decide⟩) :), (in_eq_to (env := env.toEnvironment) (r := R) (c := 2) (by decide) (hb.in_eq ⟨2, by decide⟩) :), (in_eq_to (env := env.toEnvironment) (r := R) (c := 3) (by decide) (hb.in_eq ⟨3, by decide⟩) :), (in_eq_to (env := env.toEnvironment) (r := R) (c := 4) (by decide) (hb.in_eq ⟨4, by decide⟩) :), (in_eq_to (env := env.toEnvironment) (r := R) (c := 5) (by decide) (hb.in_eq ⟨5, by decide⟩) :), (in_eq_to (env := env.toEnvironment) (r := R) (c := 6) (by decide) (hb.in_eq ⟨6, by decide⟩) :), (in_eq_to (env := env.toEnvironment) (r := R) (c := 7) (by decide) (hb.in_eq ⟨7, by decide⟩) :), (in_eq_to (env := env.toEnvironment) (r := R) (c := 8) (by decide) (hb.in_eq ⟨8, by decide⟩) :), (in_eq_to (env := env.toEnvironment) (r := R) (c := 9) (by decide) (hb.in_eq ⟨9, by decide⟩) :), (in_eq_to (env := env.toEnvironment) (r := R) (c := 10) (by decide) (hb.in_eq ⟨10, by decide⟩) :), (in_eq_to (env := env.toEnvironment) (r := R) (c := 11) (by decide) (hb.in_eq ⟨11, by decide⟩) :), (in_eq_to (env := env.toEnvironment) (r := R) (c := 12) (by decide) (hb.in_eq ⟨12, by decide⟩) :),
       (out_eq_to (env := env.toEnvironment) (r := R) (c := 0) (by decide) (hb.out_eq ⟨0, by decide⟩) :), (out_eq_to (env := env.toEnvironment) (r := R) (c := 1) (by decide) (hb.out_eq ⟨1, by decide⟩) :), (out_eq_to (env := env.toEnvironment) (r := R) (c := 2) (by decide) (hb.out_eq ⟨2, by decide⟩) :), (out_eq_to (env := env.toEnvironment) (r := R) (c := 3) (by decide) (hb.out_eq ⟨3, by decide⟩) :), (out_eq_to (env := env.toEnvironment) (r := R) (c := 4) (by decide) (hb.out_eq ⟨4, by decide⟩) :), (out_eq_to (env := env.toEnvironment) (r := R) (c := 5) (by decide) (hb.out_eq ⟨5, by decide⟩) :), (out_eq_to (env := env.toEnvironment) (r := R) (c := 6) (by decide) (hb.out_eq ⟨6, by decide⟩) :), (out_eq_to (env := env.toEnvironment) (r := R) (c := 7) (by decide) (hb.out_eq ⟨7, by decide⟩) :), (out_eq_to (env := env.toEnvironment) (r := R) (c := 8) (by decide) (hb.out_eq ⟨8, by decide⟩) :), (out_eq_to (env := env.toEnvironment) (r := R) (c := 9) (by decide) (hb.out_eq ⟨9, by decide⟩) :), (out_eq_to (env := env.toEnvironment) (r := R) (c := 10) (by decide) (hb.out_eq ⟨10, by decide⟩) :), (out_eq_to (env := env.toEnvironment) (r := R) (c := 11) (by decide) (hb.out_eq ⟨11, by decide⟩) :), (out_eq_to (env := env.toEnvironment) (r := R) (c := 12) (by decide) (hb.out_eq ⟨12, by decide⟩) :)]
 
+/-- A bound row satisfies the constraints of `main` in the row environment over its data: local completeness, which
+does not check the permutation (the boundary with Flock, as Lv42's `blake2sRow_complete`). -/
+theorem sha3Row_complete {r : Sha3Row K} {data : ProverData K} (h : Sha3Bindings (imageOf data).2 r) :
+    ConstraintsHold.Completeness (rowEnv data) ((sha3Table.main (const r)).operations 0) :=
+  (sha3Table.completeness 0 (rowEnv data) (const r)
+    (by simp only [circuit_norm, sha3Table, memRead, bytecodeRead, -BitVec.reduceNeg]) r
+    ProvableType.eval_const_prover h).1
+
+/-- Every valid `SHA3` execution has a satisfying row, from the execution alone (`sha3RowOf_refines`). -/
+theorem sha3_exec_complete {data : ProverData K} {pc fp : K} {om : Fin 4 → K} {otail ocap oout : K}
+    {next : Regs K}
+    (hexec : KeccakVm.executeWith (imageOf data).2.read ⟨pc, fp⟩ (.sha3 om otail ocap oout) = some next)
+    (cnt : Vector K 26) (cntBc : K) :
+    ConstraintsHold.Completeness (rowEnv data)
+      ((sha3Table.main (const (sha3RowOf (imageOf data).2 pc fp om otail ocap oout cnt cntBc))).operations 0) :=
+  sha3Row_complete (sha3RowOf_refines hexec cnt cntBc).bindings
+
 /-- The flushes of a component, as `KeccakVm.Sha3Table.flushExprs` writes them: the side of the channel, then the
 separator and the message. -/
 def flushForms (c : Air.Flat.Component K) : List (Lv42.Protocol.Side × List (Expression K)) :=
