@@ -108,7 +108,25 @@ mod lanes {
         unsafe { U(_mm512_xor_si512(a.0, b.0), _mm512_xor_si512(a.1, b.1)) }
     }
 
+    /// Lane `i` reduced: the reduction of `gf2_64x3::x86_64::reduce_lanes512`. With GFNI its shifts are byte maps
+    /// (`gfni_reduce`, from the vendored `pcs`'s `additive_ntt_f64.rs`): a high half has at most 63 bits (a sum of
+    /// products of two 64-bit factors), so `g(hi ^ spill) = L(hi) ^ rotl8(H(hi)) ^ T(hi >> 56)`.
+    #[cfg(target_feature = "gfni")]
+    #[inline(always)]
+    pub fn reduce_u(p: U) -> V {
+        use super::gfni_reduce::{H, L, T};
+        // SAFETY: the module's cfg enables avx512f, and this function's gfni.
+        unsafe {
+            let (lo, hi) = (_mm512_unpacklo_epi64(p.0, p.1), _mm512_unpackhi_epi64(p.0, p.1));
+            let low = _mm512_gf2p8affine_epi64_epi8::<0>(hi, _mm512_set1_epi64(L));
+            let high = _mm512_rol_epi64::<8>(_mm512_gf2p8affine_epi64_epi8::<0>(hi, _mm512_set1_epi64(H)));
+            let spill = _mm512_gf2p8affine_epi64_epi8::<0>(_mm512_srli_epi64::<56>(hi), _mm512_set1_epi64(T));
+            V(_mm512_xor_si512(lo, _mm512_ternarylogic_epi64::<0x96>(low, high, spill)))
+        }
+    }
+
     /// Lane `i` reduced: the reduction of `gf2_64x3::x86_64::reduce_lanes512`.
+    #[cfg(not(target_feature = "gfni"))]
     #[inline(always)]
     pub fn reduce_u(p: U) -> V {
         // SAFETY: the module's cfg enables avx512f.
@@ -181,6 +199,64 @@ mod lanes {
         // SAFETY: the module's cfg enables avx512f.
         unsafe { V(_mm512_mask_xor_epi64(a.0, mask, a.0, b.0)) }
     }
+}
+
+/// The byte maps of the AVX-512 reduction on GFNI, as `vgf2p8affineqb` matrices (the vendored `pcs`'s
+/// `additive_ntt_f64.rs`, `gfni_reduce`). Byte by byte, `b · 0x1B` is twelve bits: its low byte `L(b)` stays in place
+/// and its high nibble `H(b)` moves a byte up; the top byte's nibble moves out, the spill, which the rotation brings
+/// to byte 0 once, so `T(b) = H(b) · 0x1A` adds the rest of its product.
+#[cfg(all(
+    target_arch = "x86_64",
+    target_feature = "avx512f",
+    target_feature = "vpclmulqdq",
+    target_feature = "gfni"
+))]
+mod gfni_reduce {
+    /// The carry-less product of two 16-bit polynomials, truncated.
+    const fn clmul16(a: u16, b: u16) -> u16 {
+        let mut acc = 0;
+        let mut j = 0;
+        while j < 16 {
+            if (b >> j) & 1 == 1 {
+                acc ^= a << j;
+            }
+            j += 1;
+        }
+        acc
+    }
+
+    /// The byte map `which` (0: L, 1: H, 2: T) of one byte.
+    const fn map(which: u8, b: u8) -> u8 {
+        let p = clmul16(b as u16, 0x1B);
+        match which {
+            0 => p as u8,
+            1 => (p >> 8) as u8,
+            _ => clmul16(p >> 8, 0x1A) as u8,
+        }
+    }
+
+    /// The matrix of byte map `which`: output bit `i` is the parity of the input under byte `7 - i`.
+    const fn matrix(which: u8) -> i64 {
+        let mut m = 0u64;
+        let mut i = 0;
+        while i < 8 {
+            let mut row = 0u64;
+            let mut j = 0;
+            while j < 8 {
+                if (map(which, 1 << j) >> i) & 1 == 1 {
+                    row |= 1 << j;
+                }
+                j += 1;
+            }
+            m |= row << (8 * (7 - i));
+            i += 1;
+        }
+        m as i64
+    }
+
+    pub(super) const L: i64 = matrix(0);
+    pub(super) const H: i64 = matrix(1);
+    pub(super) const T: i64 = matrix(2);
 }
 
 #[cfg(all(target_arch = "aarch64", target_feature = "aes"))]
