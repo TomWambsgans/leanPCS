@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Copied from `formal/UniComplete`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Copied from `formal/UniComplete`'s
 -- `UniComplete/ProbChain.lean` (instruction-set independent; namespace `UniKeccakComplete.Prob`). That file
 -- Generalises `formal/EndToEnd/Completeness/E2ECompleteness/Chain.lean` (`prEvent_staged_le`) to the univariate
 -- verifier's bus challenges; uses its hash discipline (`HashOK`, `cache_of_hashOK`), its fresh query (`prEvent_fresh`,

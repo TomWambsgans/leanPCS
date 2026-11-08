@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. `formal/UniComplete`'s `UniComplete/ProbStaged.lean`
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. `formal/UniComplete`'s `UniComplete/ProbStaged.lean`
 -- (`UniStaged`, `UniStaged.Holds`, `prEvent_run_false_le`, `uniCompleteness_of_staged`) at the Keccak verifier's
 -- completeness experiment (`UniKeccak.keccakCompletenessExperiment`); it follows
 -- `formal/EndToEnd/Completeness/E2ECompleteness/End.lean` and uses its `rpm_le_rom` (`Transfer.lean`) and leanerVM
