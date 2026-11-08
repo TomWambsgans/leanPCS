@@ -10,6 +10,7 @@
 // Borrows. The message is now [`Message::InPlace`], and each pass that reads it derives its pointer from the
 // buffer it was handed. The codewords are the same, word for word.
 // Also modified here, for speed, every codeword unchanged: the two-sweep encodes (`encode_two_sweep_with`,
+// `encode_two_sweep_into`, which needs no work buffer: a tile is finished where its first sweep wrote it,
 // `encoded_rows_two_sweep`), which encode a lane-major or row-major message as it lies, a batch of replicas per read
 // of it, the transpose fused into the second sweep; on AVX-512, the fused layers run slab by slab in registers
 // (`slabs_avx512`), the tiles transposed eight by eight in registers (`transpose_8x8`), and with GFNI the
@@ -957,6 +958,78 @@ impl AdditiveNttF64 {
                 })
             });
         }
+        true
+    }
+
+    /// [`Self::encode_two_sweep_with`] into the whole codeword `data` (`2^log_inv_rate` replicas, row-major as
+    /// [`Self::encode_interleaved_in_place_with`] leaves it), with no work buffer: the first sweep reads the message
+    /// once for every replica and writes each replica's region tile by tile (a tile's `2^t` rows of every lane
+    /// together, laid out as the message), so that the second sweep finishes each tile in the very words it read
+    /// it from.
+    ///
+    /// Returns false, having done nothing, for a shape two sweeps do not cover.
+    pub fn encode_two_sweep_into(
+        &self,
+        data: &mut [F64],
+        msg: &[F64],
+        layout: MsgLayout,
+        n: usize,
+        log_inv_rate: usize,
+        on_rows: &RowSink<'_>,
+    ) -> bool {
+        assert!(n > 0 && msg.len().is_multiple_of(n));
+        let log_rows = log2_strict_usize(msg.len() / n);
+        assert_eq!(
+            log_rows + log_inv_rate,
+            self.log_domain_size(),
+            "the codeword's own transform"
+        );
+        assert_eq!(data.len(), msg.len() << log_inv_rate, "the whole codeword");
+        let Some(plan) = TwoSweep::new(layout, n, log_rows) else {
+            return false;
+        };
+        let (len, g, t, tile_words) = (plan.len(), plan.g, plan.t, plan.tile_words());
+        let replicas: Vec<AdditiveNttF64> = (0..1usize << log_inv_rate)
+            .map(|r| self.replica(log_inv_rate, r))
+            .collect();
+        let stream = data.len() >= STREAM_MIN_WORDS;
+        if g > 0 {
+            let data_ptr = parallel::SendPtr(data.as_mut_ptr());
+            let refs: Vec<&AdditiveNttF64> = replicas.iter().collect();
+            self.two_sweep_gathered(&plan, &refs, None, msg, |task, r, rows, stream_out| {
+                let first = r * len + plan.in_tile(task);
+                for (i, src) in rows.chunks_exact(plan.width).enumerate() {
+                    // SAFETY: each (task, replica) alone writes these words of tile `i` of the replica's region.
+                    let dst = unsafe { data_ptr.slice(first + i * tile_words, plan.width) };
+                    match stream {
+                        true => stream_words(stream_out, dst, src),
+                        false => copy_words(dst, src),
+                    }
+                }
+            });
+        }
+        // Without a first sweep, a tile is read from the message itself.
+        let (msg_stride, tile_stride) = (1usize << log_rows, 1usize << t);
+        parallel::chunks_mut(data, tile_words, |k, region| {
+            let (r, tile) = (k >> g, k & ((1 << g) - 1));
+            with_scratch(tile_words, |buf| {
+                if g > 0 {
+                    plan.fill_tile(buf, region, tile_stride);
+                } else {
+                    let at = match layout {
+                        MsgLayout::LaneMajor => tile << t,
+                        MsgLayout::RowMajor => (tile << t) * n,
+                    };
+                    plan.fill_tile(buf, &msg[at..], msg_stride);
+                }
+                replicas[r].run_layers(buf, log_rows, n, g, log_rows, g, tile);
+                on_rows((r << log_rows) + (tile << t), buf);
+                match stream {
+                    true => Stream::new().copy(region, buf),
+                    false => region.copy_from_slice(buf),
+                }
+            })
+        });
         true
     }
 
@@ -2257,6 +2330,15 @@ mod tests {
                 assert!(ntt.encode_two_sweep_with(&mut work, &msg, layout, n, log_inv_rate, &sink));
                 assert!(*got.lock().unwrap() == want, "every row, batch {batch}, {shape}");
             }
+            // Straight into the codeword: the codeword, and every row handed over.
+            let got = std::sync::Mutex::new(vec![F64::ZERO; want.len()]);
+            let sink = |row: usize, block: &[F64]| {
+                got.lock().unwrap()[row * n..][..block.len()].copy_from_slice(block);
+            };
+            let mut codeword: Vec<F64> = (0..want.len()).map(|_| F64(rng.next_u64())).collect();
+            assert!(ntt.encode_two_sweep_into(&mut codeword, &msg, layout, n, log_inv_rate, &sink));
+            assert!(codeword == want, "the codeword, {shape}");
+            assert!(*got.lock().unwrap() == want, "every row into the codeword, {shape}");
 
             let mut wanted: Vec<usize> = (0..40)
                 .map(|_| rng.next_u64() as usize % (rows << log_inv_rate))

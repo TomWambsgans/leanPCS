@@ -12,7 +12,8 @@
 // One comment corrected (no code change): the level-0 query grinding is `QUERY_GRINDING_BITS = 17` bits in the
 // production profile, not "0 bits" as leanVM's comment says (`whir_config.rs`, and the verifier's
 // `QUERY_GRINDING_BITS`); to report upstream.
-// Also modified here, for speed, every proof unchanged: `commit_tree`, `encoded_rows` and the lean deeper levels
+// Also modified here, for speed, every proof unchanged: `commit` (into its codeword, `encode_two_sweep_into`),
+// `commit_tree`, `encoded_rows` and the lean deeper levels
 // encode in two sweeps from the message as it lies (`AdditiveNttF64::encode_two_sweep_with`,
 // `encoded_rows_two_sweep`; a lean level holds `LEAN_BATCH` replicas' work buffers while it commits), and the lane
 // rounds sum sparse low weights at their nonzero entries alone (`SparseLow`), the dense ones with `dot_base` on x86,
@@ -165,17 +166,29 @@ pub fn commit(message: &[F64], log_n: usize, log_batch_size: usize, log_inv_rate
     // SAFETY: every codeword element is written before it is read.
     // `transpose_lane_major` covers every word of the message region (its tiles are
     // asserted to), and `encode_interleaved_in_place` writes every other replica from
-    // it before transforming that region in place.
+    // it before transforming that region in place. The two-sweep encode instead writes every word of every
+    // replica in its first sweep (each task its residues of every tile, the tasks covering them) before the second
+    // reads a tile, or, with no first sweep, fills each tile from the message.
     let mut codeword = unsafe { primitives::uninit_vec::<F64>(codeword_len) };
 
     // Leaves are hashed as the encode finishes each block of rows.
     let tree = merkle::MerkleBuilder::new(n_positions, n_lanes, 1usize << log_batch_size);
     tracing::info_span!("NTT", kind = "base encode", log_domain = k_code, lanes = n_lanes).in_scope(|| {
-        crate::ntt::transpose_lane_major(&mut codeword[..message.len()], message, n_lanes, log_rows);
         let ntt = AdditiveNttF64::standard(k_code);
-        ntt.encode_interleaved_in_place_with(&mut codeword, n_lanes, log_inv_rate, &|row, rows| {
-            tree.absorb(row, rows)
-        });
+        let on_rows = |row: usize, rows: &[F64]| tree.absorb(row, rows);
+        // From the lane-major message in two sweeps where the shape allows it, straight into the codeword.
+        if ntt.encode_two_sweep_into(
+            &mut codeword,
+            message,
+            MsgLayout::LaneMajor,
+            n_lanes,
+            log_inv_rate,
+            &on_rows,
+        ) {
+            return;
+        }
+        crate::ntt::transpose_lane_major(&mut codeword[..message.len()], message, n_lanes, log_rows);
+        ntt.encode_interleaved_in_place_with(&mut codeword, n_lanes, log_inv_rate, &on_rows);
     });
     let merkle_tree = tracing::info_span!("Merkle").in_scope(|| tree.finish());
     let root = *merkle_tree.last().expect("merkle tree non-empty");
