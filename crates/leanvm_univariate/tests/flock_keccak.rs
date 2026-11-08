@@ -1,9 +1,9 @@
 // Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
-//! Flock on the Keccak-f\[1600\] block (`lv42_flock::keccak`, crates/slh_dsa/SPEC-FAST.md §4.2, M1), end to end:
+//! Flock on the Keccak-f\[1600\] block (`lv42_flock::keccak`, crates/lv42_flock/KECCAK.md §4.2, M1), end to end:
 //!
 //! - the verifier's walk (`leanvm_flock_gas::keccak_flock`, on `E`) is the prover's (`lv42_flock::keccak`, on `F192`);
 //! - `prove_keccak`'s stream is accepted by `flock_min::verify_walked_with::<_, Keccak>` (the structured terminal,
-//!   SPEC-FAST §4.2, M3) and by `verify_walked_with::<_, KeccakWalked>` (M1's walked terminal) at skips of 3 and 6,
+//!   crates/lv42_flock/KECCAK.md §4.2, M3) and by `verify_walked_with::<_, KeccakWalked>` (M1's walked terminal) at skips of 3 and 6,
 //!   both eq points; the slices are the witness's at the verifier's point;
 //! - a witness with one state bit flipped (its rows' own values kept, so the zerocheck still holds) and a stream with
 //!   one slice changed are rejected, by both terminals;

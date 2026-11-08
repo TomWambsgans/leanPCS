@@ -1,4 +1,4 @@
-//! Adversarial review of the lean prover paths (commit 411866f): `commit_tree_in`, `encoded_rows`, the lean
+//! Adversarial tests of the lean prover paths (commit 411866f): `commit_tree_in`, `encoded_rows`, the lean
 //! deeper levels and `recursive_prover_with_lane_tensors`, each against the untouched `commit` /
 //! `recursive_prover_with_basis` on randomized shapes.
 

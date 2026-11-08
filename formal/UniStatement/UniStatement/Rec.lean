@@ -36,7 +36,7 @@ on, Flock's lincheck terminal checked by π1's verifier itself (`walk`, `Slices:
   `G_j` of degree `4 · 2` sent but `c_3` (`pairRoundPoly`: `Σ_(x ∈ V_2) G_j(x) = Σ_(e > 0, 3 | e) c_e`), one narrow
   challenge `z_j`, the point's two coordinates `pairPoint z_j = (z + β_1 (z² + z), z² + z)` (`cantorBeta1`); with
   the variables odd, a last plain round.
-* **The IV binds the variant** (`variantBytes`, `contractIvForWith`; REVIEW-REC.md N2): with a shape other than
+* **The IV binds the variant** (`variantBytes`, `contractIvForWith`): with a shape other than
   `main`, the tag `fs-rec`, `fs-rec2` or `fs-rec3`, the skip and the slices' code are appended to the IV's preimage.
 
 **The existing definitions are unchanged**: every function that changes has a parameterised copy here, named with
@@ -658,7 +658,7 @@ theorem runFs_main (shape : Shape) (iv publicInput : List UInt8) (stream : Array
 
 /-! ### The contract's IV binds the variant (`variant_bytes`, `contract_iv_for`) -/
 
-/-- **`variant_bytes(blake2s)`** (REVIEW-REC.md N2): nothing at the main line's shape (or without Flock); else the tag
+/-- **`variant_bytes(blake2s)`**: nothing at the main line's shape (or without Flock); else the tag
 `fs-rec`, `fs-rec2` or `fs-rec3`, then the skip and the slices' code (`InContract` 0, `Weighted` 1, `Claim` 2, `Tower`
 3, `TowerWalk` 4: `tower` with `walk`). -/
 def variantBytes (blake2s : Blake2s) (fs : FsShape) (walk : Bool) : List UInt8 :=

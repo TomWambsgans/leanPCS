@@ -150,7 +150,7 @@ fn run(name: &str, layout: Layout, log_n: u8, fill: (f64, f64)) {
         Ok(()),
         "{name} {layout:?}: the circuit holds"
     );
-    // The calls on the public inputs are the vector's PCS_OPEN inputs in PCS_OPEN's ABI (REVIEW-REC.md M1, R1: `C1`'s
+    // The calls on the public inputs are the vector's PCS_OPEN inputs in PCS_OPEN's ABI (`C1`'s
     // and `C2`'s root words as π1's own contract passes them, the stream's bytes; a setup root's word
     // `machine::root_word` of the hash π1's own contract holds as it is).
     let abi: Vec<Vec<u8>> = v.calls.iter().map(|input| vectors::pi1_abi(input)).collect();
@@ -160,9 +160,9 @@ fn run(name: &str, layout: Layout, log_n: u8, fill: (f64, f64)) {
         Some(&c.public),
         "{name}: the public inputs are read back from the calls"
     );
-    // REVIEW-REC.md R1: read as a decoding `PCS_OPEN` reads them (`machine::decode`), the calls are of the roots π1's
+    // Read as a decoding `PCS_OPEN` reads them (`machine::decode`), the calls are of the roots π1's
     // prover committed (the vector's `whir_root`s, from the prover's output, not from any contract's encoding). The
-    // encoding before R1 (π2's word for a stream root its stream bytes' halves reversed, which on this stream is the
+    // former encoding (π2's word for a stream root its stream bytes' halves reversed, which on this stream is the
     // hash as it is, the word π1's stream used to carry) names another root.
     assert_eq!(v.whir_roots.len(), v.calls.len(), "{name}: the vector has the committed roots");
     let decode = |input: &[u8]| machine::decode(input, |layout| Some(layout[24] as usize)).expect("a call decodes");

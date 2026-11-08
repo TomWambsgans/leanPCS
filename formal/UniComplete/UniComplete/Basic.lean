@@ -16,7 +16,7 @@ import CompPoly.Univariate.Basic
   `toNovel`), a column's polynomial from its basis-`B` or novel coefficients, the subset-sum transform on `E`.
 
 Nothing here is an FFT: the prover is mathematical (`toNovel` divides by `w_l`, the quotients are exact divisions),
-fast enough only at the review's tiny shapes.
+fast enough only at tiny shapes.
 -/
 
 namespace UniComplete

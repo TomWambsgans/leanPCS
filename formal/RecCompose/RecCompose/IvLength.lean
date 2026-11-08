@@ -8,7 +8,7 @@ import RecCompose.Basic
 branch), so it has 32 bytes at every deployment and every setup's roots (`pi1IvAt_length`). The statements' per-IV
 premises (`Pi2Circuits.compile_ok`, `stream_eq`, `Pi2ViewChecked`, `RecDeployment.SetupFromCompiler`) are stated for
 32-byte IVs only, and this lemma is how their consumers reach `pi1IvAt`. (At other lengths the checker rejects:
-`graphOk` asks `r.iv.length == 32`, which is why the review's 49,152-byte IV fails, `STATEMENT_REVIEW.md` finding 1.)
+`graphOk` asks `r.iv.length == 32`, so a 49,152-byte IV fails.)
 -/
 
 namespace RecStatement

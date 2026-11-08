@@ -24,14 +24,13 @@ in the contract at this size.
 `E`-linear claims alone, weighted ones included, 64 values must stay in calldata, and the best is 3,840 to
 5,376 B and about 87,000 gas of execution.
 
-Measured: every number in the tables, on revm, by `crates/leanvm_flock_gas/tests/flock_levers.rs`. The build is
+Measured: every number in the tables, on revm, by a lever study (`crates/leanvm_flock_gas/tests/flock_levers.rs`, removed since; in the history). The build was
 `flock_min.rs` recorded, compiled and run on a stream of the right length, its claims kept live and not counted,
 as `keccak_estimate` measures Flock alone. The levers' algebra is tested. With the slices sent, the honest
 matrices' reduction verifies at skips 6, 3 and 0. Without them, the combination left holds of the true slices and
 fails for others (`flock_min::tests`). Modelled: the prover's costs, and the claim types' implementations.
 
 ```sh
-cargo test --release -p leanvm_flock_gas --test flock_levers -- --ignored --nocapture   # the tables below
 cargo test --release -p leanvm_flock_gas --lib flock_min                                # the levers' algebra
 ```
 
@@ -219,7 +218,7 @@ So with lever (a), a transaction pays `3c` against `2c`, and saves 1,536 B, 157,
 ## Soundness, after the levers
 
 Each of Flock's challenges is drawn after the stack's root. So its error is multiplied by the stack's Johnson list:
-`≤ 7,908 ≈ 2^13` at leanerVM's parameters (`review/whir_params.py`).
+`≤ 7,908 ≈ 2^13` at leanerVM's parameters (`params/whir_params.py`).
 
 leanerVM bounds Flock's errors at `(4 κ + 302 + 2^31 + 2^15) / |E|` along every path (`flockErrorsOf_bounded`, `κ`
 the batch bits). That is `2^-161`, or `2^-148` after the union bound.
@@ -242,7 +241,7 @@ Flock is Spartan's two sumchecks on `2^log_n` bits:
 
 That is `2 (log_n + 14) + 4 = 96` scalars at `2^18` compressions, plus the skip's `2^k` and the slices' 64 if
 they are not left to a claim. The other options do not escape it:
-- a univariate quotient instead cannot read packed bits (`SPEC-B.md`);
+- a univariate quotient instead cannot read packed bits (option B, `SPEC-B.md` in the history);
 - the rounds' messages must be in calldata, each bound before its challenge;
 - none of them is an evaluation of a committed polynomial.
 
@@ -279,10 +278,10 @@ The table is at about 1M cycles. The spec's reference workload (1,000 signatures
 | A, (a) `k = 6` | 3,840 B | 34,666 + calls | 2 / 2, and a bit-slice term on `C1` | 153,600 | 96,106 | 〃 | 〃 | leanVM's; the ring switch moves to the block's builder |
 | **A, (a) `k = 4`** | **2,688 B** | **22,726** + calls | 〃 | **107,520** | **65,734** | 〃 | 〃 | plus one pass over the packed bits (modelled, a few %) |
 | A, (a) `k = 0` | 2,304 B | 20,033 + calls | 〃 | 92,160 | 56,897 | 〃 | 〃 | 6 rounds on packed bits (modelled, about 2×+ the zerocheck) |
-| B-word (`SPEC-B.md`), if it fitted | ≈ 850 B | ≈ 12,000 | 3–4 / 1 | ≈ 34,000 | ≈ 26,000 | +0 / 6–8K / 15–20K / 60–80K | `2^33.6 + 2^33.1` words: **does not fit `2^28`** | ≥ 100× the baseline's committed words |
+| B-word (option B), if it fitted | ≈ 850 B | ≈ 12,000 | 3–4 / 1 | ≈ 34,000 | ≈ 26,000 | +0 / 6–8K / 15–20K / 60–80K | `2^33.6 + 2^33.1` words: **does not fit `2^28`** | ≥ 100× the baseline's committed words |
 | B-plonk, if it fitted | ≈ 100 B | ≈ 10,000 | 4 / 1 | ≈ 4,000 | ≈ 11,600 | 〃 | `2^35.4 + 2^39.0`: **does not fit** | infeasible |
 
 At 32 signatures (`2^13` compressions, `log_n = 27`):
 - option A's (a) with `k = 4` reads 2,448 B for 21,288 of execution;
 - the baseline reads 5,136 B for 174,907;
-- B fits there only as the unreachable B-ideal bound (`SPEC-B.md`).
+- B fits there only as the unreachable B-ideal bound (option B).

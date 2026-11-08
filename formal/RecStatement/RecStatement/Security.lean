@@ -42,8 +42,8 @@ random-permutation model and do not formally compose with the EVM one, which hol
    * `Pi1FsKeccak ε1`: π1-rec3 is knowledge sound with its Fiat–Shamir instantiated by Keccak-f[1600] (its openings
      and commitments over `π`), error `ε1 Q`. Its motivation is π1-rec3's random-permutation theorem
      (`uniKnowledgeSoundness_closed_rec3`). **As stated it is false**: it quantifies over every adversary, and charges
-     only calls of `π`, so an adversary grinds π1's Keccak-f[1600] challenges offline for free (STATEMENT_REVIEW.md,
-     finding 3). It is the Fiat–Shamir heuristic **for adversaries of bounded Keccak-f[1600] work**, which Lean does not
+     only calls of `π`, so an adversary grinds π1's Keccak-f[1600] challenges offline for free.
+     It is the Fiat–Shamir heuristic **for adversaries of bounded Keccak-f[1600] work**, which Lean does not
      model; the reduction form (2) does not need it.
    * `Pi1HazardKeccak εh`: π1-rec3's run at Keccak-f[1600] avoids the merge hazard on the streams its graph accepts
      (`Pi1HazardAccepted`: `RecGraph.MergeHazard`, the run drawing `t` and `t` a root of `Z_bad`, where the recorded
@@ -609,7 +609,7 @@ calls of `π` and `π⁻¹` only.
 
 **As stated it is false.** Keccak-f[1600] is a fixed public function, which an `OracleComp` adversary computes for free:
 it commits a non-satisfying table, grinds each round's prover message offline until the Keccak-derived challenge
-escapes the round's doom, and opens honestly (STATEMENT_REVIEW.md, finding 3). It is the Fiat–Shamir heuristic **for
+escapes the round's doom, and opens honestly. It is the Fiat–Shamir heuristic **for
 adversaries of bounded Keccak-f[1600] work**, which Lean does not model, motivated by π1-rec3's random-permutation
 theorem (`UniSound.Rec3Ref.uniKnowledgeSoundness_closed_rec3`, 128.49 bits), where each grinding step costs a query.
 The end-to-end theorem does not take it: `RecKnowledgeSoundnessReduction` (`Reduction.lean`) bounds the break by this
@@ -636,8 +636,8 @@ noncomputable def pi1HazardExperiment (D : RecDeployment) (B : Pi1StreamAdversar
 /-- **The merge hazard on a stream whose π1-rec3 graph checks hold**, at Keccak-f[1600]: the graph's checks hold on the
 stream (`pi1GraphChecks`), and π1-rec3's run on it draws `t` (challenge 49), `t` a root of `Z_bad(p_0)`
 (`RecGraph.MergeHazard`). It asks only `pi1GraphChecks`, not the full `Pi1GraphAccepts` on which `breaks_cases` splits:
-a larger event than needed, which is harmless, since the term is only larger (`STATEMENT_REVIEW_2.md`, finding 6). The
-empty stream, and every stream on which the run stops before `t`, is not on it (`STATEMENT_REVIEW.md`, finding 2). -/
+a larger event than needed, which is harmless, since the term is only larger. The
+empty stream, and every stream on which the run stops before `t`, is not on it. -/
 def Pi1HazardAccepted (iv1 : List UInt8) (input : Vector UInt8 32) (s : Array UInt8) : Prop :=
   pi1GraphChecks iv1 input s = true ∧ RecGraph.MergeHazard LeanVM.Semantics.keccakF1600 iv1 input.toList s
 
@@ -772,7 +772,7 @@ noncomputable def pi1HonestHazardExperiment (D : RecDeployment) (P1 : Pi1Prover 
 /-- **Hypothesis: π1-rec3's honest proofs avoid the merge hazard at Keccak-f[1600]**, but with probability `δh`.
 Motivated only by `RecGraph.hazard_prob` (at most `2^19` hazardous `t` per `p_0`, `2^-173` for a uniform `t`), a count,
 not a game: its random-permutation reading (`RecCompose.Pi1Hazard.Pi1HazardFsHonest` at `π`) is not proved. `RecGraph.MergeHazard` asks that the run draw `t` (challenge 49), so a
-proof whose run stops before `t` is not on it (STATEMENT_REVIEW.md, finding 2). -/
+proof whose run stops before `t` is not on it. -/
 def Pi1HazardKeccakHonest (D : RecDeployment) (P1 : Pi1Prover D) (δh : ℝ≥0∞) : Prop :=
   ∀ (input : Vector UInt8 32) (rows : List ℕ) (q : D.pi1.Stack rows), D.pi1.shape.RowsFit rows →
     D.pi1.HonestRelation rows input q →

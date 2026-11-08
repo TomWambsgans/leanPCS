@@ -9,7 +9,7 @@ its source means (`portMeaning`), on the public input and the stream the witness
 
 * the statement port: the public input's four big-endian words;
 * root `i`'s port: the big-endian words of the stream's bytes `at + 24, at + 16, at + 8, at` (root `i` at `at`),
-  that is `PCS_OPEN`'s root word's four big-endian limbs, the word being the stream's 32 bytes (REVIEW-REC.md R1);
+  that is `PCS_OPEN`'s root word's four big-endian limbs, the word being the stream's 32 bytes;
 * element `e`'s port: the limbs of the value of the calls' `e`-th element node (a pair's challenge for a pair's
   coordinates), in the expanded graph;
 * the `m`-th zero port: the limbs of the value of the graph's `m`-th non-constant zero check;

@@ -242,7 +242,8 @@ const GROUPS: usize = 8 * 16;
 /// The round-1 message `P(λ) = P^AB(λ) + P^C(λ)` on `Λ`, as the verifier reads it, for a skip of `k`: at `k = 3`
 /// with GFNI by [`round1_bytes`], otherwise by [`round1_generic`].
 pub fn round1(a: &[u8], b: &[u8], c: &[u8], m: usize, k: usize, r_rest: &[F192]) -> Vec<F192> {
-    if k == MIN_SKIP && super::bit_fold::GFNI {
+    if k == MIN_SKIP {
+        // With GFNI the byte kernel; without, the products' table ([`round1_table`]).
         return round1_bytes(a, b, c, m, r_rest);
     }
     if (4..=5).contains(&k) && super::bit_fold::GFNI {
@@ -575,7 +576,112 @@ pub fn round1_bytes(a: &[u8], b: &[u8], c: &[u8], m: usize, r_rest: &[F192]) -> 
     target_feature = "avx512vbmi"
 )))]
 pub fn round1_bytes(a: &[u8], b: &[u8], c: &[u8], m: usize, r_rest: &[F192]) -> Vec<F192> {
-    round1_generic(a, b, c, m, MIN_SKIP, r_rest)
+    round1_table(a, b, c, m, r_rest)
+}
+
+/// `T_K[a ‖ b]` at a skip of 3: the 8 lanes of `X^K â b̂` (byte `λ`), `â`, `b̂` the bytes `a`, `b` extended from `S` to
+/// `Λ`; 8 tables of `2^16` words (4 MB), built once.
+fn product_tables() -> &'static [Vec<u64>; 8] {
+    static TABLES: std::sync::OnceLock<[Vec<u64>; 8]> = std::sync::OnceLock::new();
+    TABLES.get_or_init(|| {
+        let ell = 1usize << MIN_SKIP;
+        let ntt_s = AdditiveNttGf8::new(MIN_SKIP, F8::ZERO);
+        let ntt_l = AdditiveNttGf8::new(MIN_SKIP, F8(ell as u8));
+        let table = InvNttTableByteSingleGf8::new(&ntt_s, &ntt_l);
+        let extended: Vec<[F8; 8]> = (0..256u16)
+            .map(|v| {
+                let mut out = [F8::ZERO; 8];
+                table.apply(&[v as u8], &mut out);
+                out
+            })
+            .collect();
+        std::array::from_fn(|kk| {
+            let power = F8(1 << kk);
+            parallel::map_collect(1 << 16, |ab| {
+                let (ea, eb) = (&extended[ab >> 8], &extended[ab & 0xff]);
+                (0..8).fold(0u64, |w, l| w | u64::from((power * ea[l] * eb[l]).0) << (8 * l))
+            })
+        })
+    })
+}
+
+/// Round 1 at a skip of 3 without GFNI: [`round1_generic`] with a medium position's AB row (`Σ_K X^K â b̂`, a lane a
+/// byte) as 8 lookups of the products' tables ([`product_tables`]) instead of 128 byte products, its C row one 8×8
+/// bit transpose, the 16 rows of an `x` converted by `eq(r_med, b) C_s φ_8` lookups, and the `x`s' sums weighted
+/// unreduced.
+pub fn round1_table(a: &[u8], b: &[u8], c: &[u8], m: usize, r_rest: &[F192]) -> Vec<F192> {
+    use primitives::field::F192Unreduced;
+    const ELL: usize = 1 << MIN_SKIP;
+    assert_eq!(r_rest.len(), m - MIN_SKIP);
+    let ntt_s = AdditiveNttGf8::new(MIN_SKIP, F8::ZERO);
+    let ntt_l = AdditiveNttGf8::new(MIN_SKIP, F8(ELL as u8));
+    let table = InvNttTableByteSingleGf8::new(&ntt_s, &ntt_l);
+    let products = product_tables();
+    let eq_small = build_eq(&r_rest[..3]);
+    let cs = c_s();
+    for (kk, &e) in eq_small.iter().enumerate() {
+        assert_eq!(e, cs * PHI_8_TABLE[1 << kk], "the small coordinates' eq is C_s X^K");
+    }
+    let convert: Vec<[F192; 256]> = build_eq(&r_rest[3..N_INNER])
+        .iter()
+        .map(|&e| {
+            let scale = e * cs;
+            std::array::from_fn(|v| scale * PHI_8_TABLE[v])
+        })
+        .collect();
+    let eq = SplitEq::new(&r_rest[N_INNER..]);
+    let lo_size = 1usize << eq.n_lo;
+    let block = GROUPS;
+    assert_eq!(a.len(), (lo_size << eq.n_hi) * block);
+
+    let zero = || ([F192::ZERO; ELL], [F192::ZERO; ELL]);
+    let (ab, c_s_part) = parallel::fold_reduce(
+        1usize << eq.n_hi,
+        zero,
+        |acc, x_hi| {
+            let mut part_ab = [F192Unreduced::ZERO; ELL];
+            let mut part_c = [F192Unreduced::ZERO; ELL];
+            for x_lo in 0..lo_size {
+                let at = (x_hi * lo_size + x_lo) * block;
+                let (a, b, c) = (&a[at..at + block], &b[at..at + block], &c[at..at + block]);
+                let zero_words = |x: &[u8]| x.as_chunks::<8>().0.iter().all(|w| u64::from_ne_bytes(*w) == 0);
+                if zero_words(a) && zero_words(b) && zero_words(c) {
+                    continue;
+                }
+                let (mut sum_ab, mut sum_c) = ([F192::ZERO; ELL], [F192::ZERO; ELL]);
+                for (medium, lookups) in convert.iter().enumerate() {
+                    let g = 8 * medium;
+                    let row = (0..8).fold(0u64, |w, kk| {
+                        w ^ products[kk][usize::from(a[g + kk]) << 8 | usize::from(b[g + kk])]
+                    });
+                    let crow = transpose_8x8(u64::from_le_bytes(c[g..g + 8].try_into().expect("8 bytes")));
+                    for l in 0..ELL {
+                        sum_ab[l] += lookups[(row >> (8 * l)) as usize & 0xff];
+                        sum_c[l] += lookups[(crow >> (8 * l)) as usize & 0xff];
+                    }
+                }
+                let e = eq.lo[x_lo];
+                for l in 0..ELL {
+                    part_ab[l] ^= e.mul_unreduced(sum_ab[l]);
+                    part_c[l] ^= e.mul_unreduced(sum_c[l]);
+                }
+            }
+            let e = eq.hi[x_hi];
+            for l in 0..ELL {
+                acc.0[l] += e * part_ab[l].reduce();
+                acc.1[l] += e * part_c[l].reduce();
+            }
+        },
+        |mut x, y| {
+            for l in 0..ELL {
+                x.0[l] += y.0[l];
+                x.1[l] += y.1[l];
+            }
+            x
+        },
+    );
+    let c_lifted = ntt_extend_vec(&c_s_part, &table);
+    ab.iter().zip(&c_lifted).map(|(&x, &y)| x + y).collect()
 }
 
 /// The round-1 message for any skip of 3 to 6: per `x`, its 128 groups extended by the inverse NTT's byte tables.

@@ -12,7 +12,7 @@ at most one opening's transcript), so it does not count them, and π1-rec3's thr
 `2^24 ..= 2^28` words, among `WhirBridge.largeShapes` (`FsGame128_3.lean`'s `hops_uni3`), as the main line's five.
 
 **`uniBound128_le_bits35`**: `uniBound128 (2^35 / |E|) Q ≤ 2^-64` for `Q ≤ 2^64` (`2^-64.494` at `Q = 2^64`:
-`EndToEnd/Review/UniRec3Numbers.py`, exact rationals), at π1-rec3's rounds' error `2^35 / |E|` (the batch's narrow
+in exact rationals), at π1-rec3's rounds' error `2^35 / |E|` (the batch's narrow
 pairs), proved as `uniBound128_le_bits` (all terms over `2^256`, numerator at most `2^192`).
 
 **`hlab_uni3`**: the seed's first 32 bytes are `name ‖ iv[0:16]` with `iv` the answer to the two-oracle adversary's

@@ -23,7 +23,6 @@ pub mod flock;
 pub mod flock_min;
 mod hash;
 pub mod keccak_flock;
-pub mod keccak_gkr;
 pub mod layout;
 pub mod matrices;
 mod merkle;
@@ -96,11 +95,6 @@ pub enum VerifierError {
     InvalidShape,
     /// New here (`crates/leanvm_rec`, π2): a denominator of π2's verifier vanishes at its challenges.
     RecDegenerate,
-    /// Of the Keccak GKR (leanVM 4af2cddd), ported for the estimate (`keccak_gkr`).
-    KeccakProduct,
-    KeccakLayer,
-    KeccakOutputOpening,
-    KeccakInputOpening,
 }
 
 impl std::fmt::Display for VerifierError {

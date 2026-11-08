@@ -12,10 +12,10 @@
 //! the call before left another word (`Ending::PcsOpenReusing`, `PI2.md` §9): π1's calls at the batch's point write
 //! it once, the setup's reuses `W`'s digits.
 //!
-//! **One ABI for the eight calls** (REVIEW-REC.md M1): `machine.rs`'s, `root word, layout word, k, k × (point,
+//! **One ABI for the eight calls**: `machine.rs`'s, `root word, layout word, k, k × (point,
 //! value)`. Every root word is `PCS_OPEN`'s (`s_0 · 2^128 + s_1`, the two WHIR scalars of the root: each 16-byte half
 //! of the hash reversed). π1's roots are in calldata so, as π1's stream carries them (its prover sends a root as its
-//! two scalars, REVIEW-REC.md R1), π2's `W` and `Q` likewise, and the setup roots are constants so (the root word of
+//! two scalars), π2's `W` and `Q` likewise, and the setup roots are constants so (the root word of
 //! π1's setup hash, of π2's setup root); every layout word names its stack (π1's
 //! `leanvm_univariate::contract::layout_word`, π2's `prover::layout_word`: the code, the variables, the words placed).
 //! A precompile is a registry keyed by the layout word ([`registry`]): π1's five layouts are checked by
@@ -40,7 +40,7 @@ use super::verifier::{NAME, Reduced, Spec, reduce, statement_words};
 use crate::circuit::spec::CallWord;
 
 /// What the contract is built for: the circuit's verifier, its IV, the setup's root, and π1's calls. Built by
-/// [`Instance::new`] from the validated circuit (REVIEW-REC.md L2), which derives the IV.
+/// [`Instance::new`] from the validated circuit, which derives the IV.
 pub struct Instance<'a> {
     pub spec: &'a Spec,
     pub iv: [u8; 32],

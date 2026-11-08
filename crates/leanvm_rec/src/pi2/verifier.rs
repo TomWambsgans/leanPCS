@@ -132,7 +132,7 @@ pub fn normalised_constants(e: &[F64]) -> Vec<F64> {
 }
 
 impl Spec {
-    /// The verifier of `circuit`, which must be valid ([`Circuit::validate`], REVIEW-REC.md L1: no formula reads a
+    /// The verifier of `circuit`, which must be valid ([`Circuit::validate`]: no formula reads a
     /// hole, `κ` only at expression slots).
     pub fn of(circuit: &Circuit) -> Self {
         circuit.validate().unwrap_or_else(|e| panic!("the circuit is not valid: {e}"));

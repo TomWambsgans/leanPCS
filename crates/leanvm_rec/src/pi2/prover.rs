@@ -53,7 +53,7 @@ pub fn quotient_chunks(log_n: usize) -> Vec<(usize, usize)> {
     chunks
 }
 
-/// The certified rate-1/2 query ladders (`review/whir_params.py --large`, leanerVM's `largeQueries`), by stack size:
+/// The certified rate-1/2 query ladders (`params/whir_params.py --large`, leanerVM's `largeQueries`), by stack size:
 /// what `pcs::whir::config_for_rate(log_n, 1)` must give for the stacks π2 commits (tested).
 pub const CERTIFIED_QUERIES: [(usize, &[usize]); 5] = [
     (24, &[224, 56, 32, 23, 17]),
@@ -63,7 +63,7 @@ pub const CERTIFIED_QUERIES: [(usize, &[usize]); 5] = [
     (28, &[225, 56, 32, 23, 18, 14]),
 ];
 
-/// The smallest stack leanerVM's certified parameters cover (`review/whir_params.py --large`): circuits of
+/// The smallest stack leanerVM's certified parameters cover (`params/whir_params.py --large`): circuits of
 /// `2^CERTIFIED_FROM` positions or more commit no smaller stack (D32v's `W`, `2^23` words, takes a `2^24` stack, half
 /// its lanes absent); smaller circuits, the tests', take [`MIN_LOG_STACK`].
 pub const MIN_CERTIFIED_STACK: usize = 24;
@@ -101,7 +101,7 @@ pub struct Setup {
 }
 
 impl Setup {
-    /// The setup of `circuit`, which must be valid ([`Circuit::validate`], REVIEW-REC.md L1).
+    /// The setup of `circuit`, which must be valid ([`Circuit::validate`]).
     pub fn new(circuit: &Circuit) -> Self {
         circuit.validate().unwrap_or_else(|e| panic!("the circuit is not valid: {e}"));
         let (m, n) = (circuit.log_n, circuit.n());
@@ -142,7 +142,7 @@ pub const WITNESS_CODE: u16 = 0x5601;
 pub const QUOTIENT_CODE: u16 = 0x5602;
 pub const SETUP_CODE: u16 = 0x5603;
 
-/// A `PCS_OPEN` layout word of π2's tables (REVIEW-REC.md M1), in π1's format (`leanvm_univariate::contract::
+/// A `PCS_OPEN` layout word of π2's tables, in π1's format (`leanvm_univariate::contract::
 /// layout_word`): bytes 0..8 the tag `"pi2"` then `log_n` (π1's are its shape's bytes, each below 32), the table's
 /// code (bytes 22..24), its variables (byte 24) and the words its lanes fill (`placed`, bytes 25..32). A precompile's
 /// registry maps it to the layout (`quotient::opening::Layout`, a function of `log_n` and the code: [`layouts`]),

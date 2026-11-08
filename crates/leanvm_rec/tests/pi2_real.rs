@@ -49,11 +49,20 @@ fn vector(name: &str) -> vectors::Vector {
     vectors::read(&std::fs::read_to_string(&path).expect("a committed vector"))
 }
 
-/// The real circuit and witness, and π1's contract IV.
+/// The real circuit and witness, and π1's contract IV. π1's contract binds the vector's setup root `F` (its third
+/// call's, the shape's own: at the 1,000-signature reference shape `SetupRoots::REFERENCE`'s), as the proof's does.
 fn real(name: &str, layout: Layout) -> (vectors::Vector, Compiled, [u8; 32]) {
     let v = vector(name);
-    let recorded =
-        leanvm_univariate::contract::record_verifier(&v.shape, vectors::blake2s_of(&v.config), Claims::Point);
+    let roots = leanvm_univariate::contract::SetupRoots {
+        f: v.whir_roots[2],
+        ..leanvm_univariate::contract::SetupRoots::REFERENCE
+    };
+    let recorded = leanvm_univariate::contract::record_verifier_with(
+        &v.shape,
+        vectors::blake2s_of(&v.config),
+        Claims::Point,
+        &roots,
+    );
     let stream = v.calldata[STREAM_AT..].to_vec();
     let c = pi2(
         &recorded,
@@ -134,7 +143,7 @@ fn real_end_to_end() {
         let (v, c, pi1_iv) = real(&name, layout);
         assert_eq!(c.finished.circuit.check(&c.finished.witness, &c.public), Ok(()));
         // π1's openings as the block holds them: the vector's claims on the roots π1's prover committed (its
-        // `whir_root`s, from the prover's output; REVIEW-REC.md R1), not on whatever a contract encodes.
+        // `whir_root`s, from the prover's output), not on whatever a contract encodes.
         assert_eq!(v.whir_roots.len(), v.calls.len(), "the vector has the committed roots");
         let pi1_openings: Vec<Opening> =
             v.calls.iter().zip(&v.whir_roots).map(|(input, root)| contract::pi1_opening(input, root)).collect();
@@ -187,8 +196,8 @@ fn real_end_to_end() {
         );
 
         // The contract: π1's five calls (the openings the vector's inputs name, which π1's openings prove) and π2's
-        // three (the proof's roots, its reduction's claims), attested exactly by the decoding mock (REVIEW-REC.md M1:
-        // one ABI, a registry keyed by the layout word).
+        // three (the proof's roots, its reduction's claims), attested exactly by the decoding mock (one
+        // ABI, a registry keyed by the layout word).
         let recorded = record_verifier(&spec);
         let expected: Vec<Vec<u8>> = contract::expected_calls(&inst, &recorded, &reduced, &stream)
             .into_iter()
@@ -212,8 +221,8 @@ fn real_end_to_end() {
         let (accepted, made) = contract::run(&inst, &recorded, &data, &block);
         assert!(accepted, "the contract accepts π2's proof of π1-rec's real proof");
         assert_eq!(made, expected, "the nine claims in eight calls");
-        // REVIEW-REC.md R1, the regression. The block attests π1's `C1`, `C2` calls (their words the stream's), not
-        // those calls with the word before R1 (each half of it reversed: on this stream, the hash as it is, which
+        // A regression test of the root words. The block attests π1's `C1`, `C2` calls (their words the stream's), not
+        // those calls with the former word (each half of it reversed: on this stream, the hash as it is, which
         // names another root); and with π1's openings on those other roots, the contract rejects.
         let pcs = contract::block(&inst, &block);
         for (k, call) in made[..2].iter().enumerate() {

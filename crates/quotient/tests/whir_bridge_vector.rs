@@ -1,5 +1,5 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The deployed openings are made as
-// `review_f2f3.rs`'s `deployed_opening` makes them (this repository, commit 4d5dd40).
+// Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The deployed openings are made as in this
+// repository's commit 4d5dd40 (`deployed_opening`).
 //! The test vectors for `formal/WhirBridge`, in the form leanerVM mumbai's Lean verifier reads (the scalar stream,
 //! then one full Merkle path per query: the pruned batches expanded, as `Transcript::finish` returns them):
 //!
@@ -120,7 +120,7 @@ fn hidden_head(vars: usize, log_chunk: usize, log_n: usize, chunks: &[(usize, us
     )
 }
 
-/// A deployed opening (`review_f2f3.rs`, `deployed_opening`): a table of `layout`, every entry the layout holds
+/// A deployed opening: a table of `layout`, every entry the layout holds
 /// pseudo-random, `claims` claims at random points, committed and opened by the real prover.
 fn deployed(name: &str, head: String, layout: Layout, claims: usize, seed: u64) -> String {
     let table = Table::hidden(layout.clone(), &[seed as u8; 32], |start, out| {

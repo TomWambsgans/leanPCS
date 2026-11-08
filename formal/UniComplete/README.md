@@ -4,7 +4,7 @@
 
 Milestone 4's completeness half for the univariate PIOP of leanVM 42422001 (`crates/leanvm_univariate`,
 `SPEC.md` §13 for iteration 2): **a Lean honest prover** (`uniProverWith`, `proveWith`) following SPEC.md and the
-Rust prover's message order, **its differential test** against the Rust (the review's honest prover and, through
+Rust prover's message order, **its differential test** against the Rust (a tiny-run reference prover and, through
 its own cross-check, `prove_tiny`), and **the proof layers of `UniCompleteness D (uniProver D) δ`**
 (`formal/UniStatement/UniStatement/Security.lean`). A library of `formal/EndToEnd` (`UniComplete`,
 `srcDir = "../UniComplete"`), plain (non-`module`) Lean files, since it imports `E2ECompleteness`.
@@ -36,9 +36,9 @@ The prover is mathematical, not an FFT implementation: columns are interpolated 
 
 ## The differential test
 
-`UniCompleteTest/Runner.lean`, interpreted, on the review's four honest point-claim proofs (Flock omitted, memory
+`UniCompleteTest/Runner.lean`, interpreted, on four honest point-claim proofs (Flock omitted, memory
 and bytecode `2^4`/`2^5`, all six tables): the trace read back from the vector's `C1`, the Lean prover with the
-review's stand-in roots writes **the same stream byte for byte (2,896 bytes each) and the same three stacks word
+stand-in roots writes **the same stream byte for byte (2,896 bytes each) and the same three stacks word
 for word**; the Lean verifier accepts it. 4/4, about 6.5 minutes. For the three executions whose stream the Rust
 prover's `prove_tiny` (branch `leanvm-univariate-prover2`) records, by the first 8 bytes of its Keccak-256 (memory
 and bytecode `2^5, 2^4`, `2^4, 2^5`, `2^5, 2^5`), the Lean prover's stream has the same: 3/3.

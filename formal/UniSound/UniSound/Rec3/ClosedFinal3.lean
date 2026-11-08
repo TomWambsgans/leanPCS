@@ -11,7 +11,7 @@ heights `18 18 18 18 17 18`, memory `2^21`, bytecode `2^19`) with leanVM's progr
 verifier (`Deployment.verifierRec3With`: `verifyWithFs … .rec3 true`, three `PCS_OPEN` calls) is knowledge sound
 against leanVM 42422001's relation for the explicit extractor `uniExtractor`, with error `uniBound128 (2^35/|E|) Q` at
 `Q` calls of `π` and `π⁻¹`, at most `2^-64` for `Q ≤ 2^64` (`2^-64.494` at `Q = 2^64`: 128.49 bits,
-`EndToEnd/Review/UniRec3Numbers.py`, exact rationals). **No hypothesis.**
+in exact rationals). **No hypothesis.**
 
 It is `uniKnowledgeSoundness_closed_rec3_of_rows` (`ClosedRec3.lean`) with the circuit walk's specification
 `rowValues_spec` (`FlockSoundUni/Walk.lean`: `blake2sRowValues w` is `A0 w`, `B0 w` of Lv42's BLAKE2s R1CS).

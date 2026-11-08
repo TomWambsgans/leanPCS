@@ -1,5 +1,6 @@
 // Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
-//! The prover on real leanVM 42422001 traces (`src/prover/dump`, PROVER.md): SPEC.md's identities on the domain, the
+//! The prover on real leanVM 42422001 traces (`src/prover/dump`, PROVER.md), and on the Keccak VM's (leanVM 9d50c92a3,
+//! `src/prover/dump_keccak`, KECCAK.md): SPEC.md's identities on the domain, the
 //! quotients' degrees, every combined relation at `t`, the Rust verifier's and the EVM contract's acceptance of the
 //! proof (the contract's `PCS_OPEN` calls being exactly the claims the WHIR openings prove, and Flock's `A0`, `B0`
 //! claims the matrices' values), and the rejection of mutated proofs.
@@ -13,14 +14,14 @@ use leanvm_flock_gas::evm::machine::{PcsOpen, call, element_word, root_of_word};
 use leanvm_flock_gas::layout::OP_BLAKE2S;
 use leanvm_flock_gas::shapes::PROGRAM_IV;
 use leanvm_univariate::claims::Commitment;
-use leanvm_univariate::contract::{SetupRoots, calldata, compile_verifier, layout_words, record_verifier_with};
+use leanvm_univariate::contract::{SetupRoots, calldata, compile_verifier, layout_words_for, record_verifier_with};
 use leanvm_univariate::prover::check::on_domain;
 use leanvm_univariate::prover::flock::FlockWitness;
 use leanvm_univariate::prover::opening;
 use leanvm_univariate::prover::poly::to_v;
 use leanvm_univariate::prover::prove::{Config, OpeningProof, Proof, prove, verify};
 use leanvm_univariate::prover::trace::{Trace, placement};
-use leanvm_univariate::{Blake2s, Claims, FLOCK_LEANVM_SKIP, FLOCK_MAIN, FLOCK_REC, FLOCK_REC2, FLOCK_REC3};
+use leanvm_univariate::{Blake2s, Claims, FLOCK_LEANVM_SKIP, FLOCK_MAIN, FLOCK_REC, FLOCK_REC2, FLOCK_REC3, KECCAK_MAIN, KECCAK_REC3};
 use primitives::field::F192;
 
 fn dir() -> Option<std::path::PathBuf> {
@@ -167,10 +168,14 @@ fn number(n: u64) -> [u8; 32] {
 #[test]
 #[ignore]
 fn identities_hold_on_the_domain() {
-    let Some((trace, _)) = trace() else {
+    let Some((mut trace, _)) = trace() else {
         println!("LEANVM_TRACE is not set: nothing to check");
         return;
     };
+    if trace.keccak {
+        // The Keccak VM's q_flock: one Keccak-f block a SHA3 row.
+        trace.qflock = trace.keccak_flock().z.into_iter().map(primitives::field::F64).collect();
+    }
     let alphas = [F192::new(3, 1, 4), F192::new(1, 5, 9), F192::new(2, 6, 5), F192::new(3, 5, 8)];
     let checks = on_domain(&trace, &alphas, F192::new(9, 7, 9));
     let mut failed = false;
@@ -187,6 +192,10 @@ fn end_to_end(blake2s: Blake2s) {
         println!("LEANVM_TRACE is not set: nothing to prove");
         return;
     };
+    if trace.keccak != blake2s.keccak() {
+        println!("the trace's VM (Keccak: {}) is not {blake2s:?}'s: nothing to prove", trace.keccak);
+        return;
+    }
     let flock = match blake2s {
         Blake2s::Flock(_) => {
             let mut witness = FlockWitness::load(&dir().expect("a trace")).expect("Flock's inputs");
@@ -196,6 +205,14 @@ fn end_to_end(blake2s: Blake2s) {
             Some(witness)
         }
         Blake2s::Omitted => None,
+        // The Keccak VM: q_flock and Flock's witness built from the placed SHA3 rows, one Keccak-f block a row.
+        Blake2s::Keccak(_) => {
+            let started = std::time::Instant::now();
+            let witness = trace.keccak_flock();
+            println!("  {:8.3} s  the Keccak-f blocks: q_flock and Flock's witness", started.elapsed().as_secs_f64());
+            placing += started.elapsed().as_secs_f64();
+            Some(witness)
+        }
     };
     let roots = contract_roots(&trace);
     let config = Config {
@@ -206,12 +223,16 @@ fn end_to_end(blake2s: Blake2s) {
         stand_in_roots: None,
         roots,
     };
+    let _ = leanvm_univariate::prover::prove::MEMORY_PROBE.set(bench::peak_rss_bytes);
     let started = std::time::Instant::now();
     let (proof, report) = prove(&trace, flock, &PROGRAM_IV, config).expect("a proof");
     let total = started.elapsed().as_secs_f64();
     println!("  {placing:8.3} s  placement: the rows (and Flock's instances) at the verifier's positions");
-    for (phase, secs) in &report.phases {
-        println!("  {secs:8.3} s  {phase}");
+    for (k, (phase, secs)) in report.phases.iter().enumerate() {
+        match report.peaks.get(k) {
+            Some((_, peak)) => println!("  {secs:8.3} s  {phase} (peak RSS so far {:.2} GB)", *peak as f64 / 1e9),
+            None => println!("  {secs:8.3} s  {phase}"),
+        }
     }
     for note in &report.notes {
         println!("  note: {note}");
@@ -267,7 +288,7 @@ fn end_to_end(blake2s: Blake2s) {
 
     // The roots the openings are of, from the prover's output: each WHIR opening's first two scalars are its
     // commitment's root's (`hash_to_scalars`), and the stream carries C1's and C2's as those scalars, so that the
-    // stream's 32 bytes are the root's `PCS_OPEN` word (machine.rs: `s_0 · 2^128 + s_1`; REVIEW-REC.md R1).
+    // stream's 32 bytes are the root's `PCS_OPEN` word (machine.rs: `s_0 · 2^128 + s_1`).
     let order: Vec<Commitment> = proof.openings.iter().map(|o| o.commitment).collect();
     assert_eq!(order, [Commitment::C1, Commitment::C2, Commitment::Setup], "the calls' order");
     let mut whir_roots: Vec<[u8; 32]> = Vec::new();
@@ -287,7 +308,7 @@ fn end_to_end(blake2s: Blake2s) {
     // The contract on the real calldata: its PCS_OPEN mock attests exactly the claims the openings prove (C1's and
     // C2's root words their WHIR openings' first two scalars, the setup's root the contract's constant, the hash as it
     // is; the layout words the contract's) and Flock's A0, B0 claims, which are the matrices' values.
-    let words = layout_words(&shape);
+    let words = layout_words_for(&shape, blake2s);
     let mut inputs: Vec<Vec<u8>> = Vec::new();
     for o in &proof.openings {
         let root = match o.commitment {
@@ -337,7 +358,7 @@ fn end_to_end(blake2s: Blake2s) {
         }
         // C1's and C2's calls, read as a decoding PCS_OPEN reads them (machine.rs: the root word, then the root it
         // names), are of the roots the prover committed. The setup's constants are the hashes as they are (π1's own
-        // contract; π2 passes their root words, REVIEW-REC.md R1).
+        // contract; π2 passes their root words).
         for (k, (made, root)) in calls.iter().zip(&opened).enumerate().take(2) {
             let word: [u8; 32] = made[..32].try_into().expect("a root word");
             assert_eq!(&root_of_word(&word), root, "call {k}: PCS_OPEN reads the root the opening is of");
@@ -394,6 +415,14 @@ fn end_to_end(blake2s: Blake2s) {
             gas_straight: gas,
             gas_deployed: linked.2,
             contracts: linked.0,
+            note: if blake2s.keccak() {
+                format!(
+                    "the Keccak VM (leanVM 9d50c92a3, KECCAK.md), its run without the fill blocks: rows {:?}",
+                    trace.rows
+                )
+            } else {
+                String::new()
+            },
         });
         let path = std::path::Path::new(&out).join(format!("{name}.txt"));
         std::fs::write(&path, text).expect("the vector file");
@@ -408,7 +437,7 @@ fn end_to_end(blake2s: Blake2s) {
         let [(a0, a0c), (b0, b0c)] = leanvm_univariate::prover::setup::matrices();
         println!("  A0, B0 built and committed in {:.2} s", started.elapsed().as_secs_f64());
         let point: Vec<F192> = point.iter().map(|&x| leanvm_univariate::prover::poly::from_v(x)).collect();
-        let layouts = layout_words(&trace.shape());
+        let layouts = layout_words_for(&trace.shape(), blake2s);
         for (name, layout, root, words, committed, value) in
             [("A0", layouts[3], roots.a0, a0, a0c, *a), ("B0", layouts[4], roots.b0, b0, b0c, *b)]
         {
@@ -498,7 +527,23 @@ fn proves_and_verifies_ext_b() {
     end_to_end(Blake2s::Flock(leanvm_univariate::FLOCK_BIT_SLICE));
 }
 
-/// The setup roots a contract for this trace's program and shape is generated with (review M1's F2): `F` from the
+/// The Keccak VM (KECCAK.md): leanVM 9d50c92a3's `SHA3` table, Flock on the Keccak-f block at a skip of 3, the
+/// structured lincheck terminal, three claims (`KECCAK_MAIN`). On a trace `dump_keccak` wrote.
+#[test]
+#[ignore]
+fn proves_and_verifies_keccak() {
+    end_to_end(Blake2s::Keccak(KECCAK_MAIN));
+}
+
+/// The Keccak VM's π1-rec3 (`crates/leanvm_rec/tests/keccak_vm_rec.rs`): `KECCAK_MAIN` with π1-rec3's Fiat–Shamir
+/// shape (`FsShape::Rec3`: α and the zerocheck's eq point as squares, the batch two variables a round).
+#[test]
+#[ignore]
+fn proves_and_verifies_keccak_rec3() {
+    end_to_end(Blake2s::Keccak(KECCAK_REC3));
+}
+
+/// The setup roots a contract for this trace's program and shape is generated with (SPEC.md §13, F2): `F` from the
 /// program and the shape, `A0` and `B0` from Flock's BLAKE2s R1CS.
 #[test]
 #[ignore]
@@ -516,6 +561,80 @@ fn setup_roots() {
     println!("  A0 {}", hex(&roots.a0));
     println!("  B0 {}", hex(&roots.b0));
     println!("  in {:.2} s", started.elapsed().as_secs_f64());
+}
+
+/// The prover's timings, warm, as leanVM's own benchmark measures it (a warm-up pass, then `PI1_REPEAT` passes, 3 by
+/// default, each after `PI1_COOLDOWN` idle seconds, 2 by default, as leanVM's `--cooldown`; the median of each phase): the Keccak VM's main line (`PI1_VARIANT=rec3`: π1-rec3) on a `dump_keccak`
+/// trace, from the placed trace to the openings, the Keccak-f blocks' witness included, no test checks. Each pass's
+/// proof is checked to be the first's, byte for byte.
+#[test]
+#[ignore]
+fn keccak_prover_benchmark() {
+    let Some((trace, _)) = trace() else {
+        println!("LEANVM_TRACE is not set: nothing to prove");
+        return;
+    };
+    if !trace.keccak {
+        println!("not a Keccak VM trace: nothing to prove");
+        return;
+    }
+    let variant = match std::env::var("PI1_VARIANT").as_deref() {
+        Ok("rec3") => KECCAK_REC3,
+        _ => KECCAK_MAIN,
+    };
+    let repeat: usize = std::env::var("PI1_REPEAT").ok().map_or(3, |x| x.parse().expect("a count"));
+    let cooldown: u64 = std::env::var("PI1_COOLDOWN").ok().map_or(2, |x| x.parse().expect("seconds"));
+    let config = Config {
+        blake2s: Blake2s::Keccak(variant),
+        claims: Claims::Point,
+        check: false,
+        garbage: false,
+        stand_in_roots: None,
+        roots: contract_roots(&trace),
+    };
+    let mut phases: Vec<(String, Vec<f64>)> = Vec::new();
+    let mut totals = Vec::new();
+    let mut first: Option<Vec<u8>> = None;
+    for pass in 0..=repeat {
+        if pass > 0 {
+            std::thread::sleep(std::time::Duration::from_secs(cooldown));
+        }
+        let started = std::time::Instant::now();
+        let witness = trace.keccak_flock();
+        let blocks = started.elapsed().as_secs_f64();
+        let (proof, report) = prove(&trace, Some(witness), &PROGRAM_IV, config).expect("a proof");
+        let total = started.elapsed().as_secs_f64();
+        match &first {
+            None => first = Some(proof.stream.clone()),
+            Some(stream) => assert_eq!(stream, &proof.stream, "the same proof every pass"),
+        }
+        if pass == 0 {
+            continue;
+        }
+        totals.push(total);
+        let all = std::iter::once(("the Keccak-f blocks: q_flock and Flock's witness", blocks)).chain(report.phases.iter().copied());
+        for (k, (name, secs)) in all.enumerate() {
+            if phases.len() <= k {
+                phases.push((name.to_string(), Vec::new()));
+            }
+            phases[k].1.push(secs);
+        }
+    }
+    let median = |x: &[f64]| {
+        let mut x = x.to_vec();
+        x.sort_by(f64::total_cmp);
+        x[x.len() / 2]
+    };
+    println!("{variant:?}, rows {:?}: {repeat} warm passes, medians", trace.rows);
+    for (name, secs) in &phases {
+        println!("  {:8.3} s  {name}", median(secs));
+    }
+    println!(
+        "  {:8.3} s  total (passes {:?}); peak RSS {:.2} GB",
+        median(&totals),
+        totals.iter().map(|t| format!("{t:.3}")).collect::<Vec<_>>(),
+        bench::peak_rss_bytes() as f64 / 1e9
+    );
 }
 
 /// The verifier relies on nothing in the stacks' words past their blocks: filled with pseudo-random words, the

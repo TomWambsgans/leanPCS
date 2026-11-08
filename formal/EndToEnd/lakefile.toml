@@ -90,6 +90,31 @@ srcDir = "../Lv42"
 globs = ["Lv42", "Lv42.+"]
 leanOptions = { warningAsError = true }
 
+# The Keccak VM (`crates/leanvm_univariate/KECCAK.md`), `formal/KeccakVm`: leanVM 42422001 with `BLAKE2S` replaced by
+# leanVM 9d50c92a3's `SHA3` (one step of its cell sponge over leanerVM's Keccak-f[1600]); the other five instructions
+# and the machine are `Lv42`'s.
+[[lean_lib]]
+name = "KeccakVm"
+srcDir = "../KeccakVm"
+globs = ["KeccakVm", "KeccakVm.+"]
+leanOptions = { warningAsError = true }
+
+# The Keccak VM's Keccak-f block (`crates/lv42_flock/src/keccak.rs`, `crates/lv42_flock/KECCAK.md`), `formal/KeccakFlock`:
+# its R1CS, `KeccakVm.KeccakFlockSpec`'s inhabitant, the structured lincheck terminal.
+[[lean_lib]]
+name = "KeccakFlock"
+srcDir = "../KeccakFlock"
+globs = ["KeccakFlock", "KeccakFlock.+"]
+leanOptions = { warningAsError = true }
+
+# The Keccak VM's arithmetization, `formal/KeccakArith`: the `SHA3` table as a Clean component, `KeccakVm.KvHolds`
+# against the Keccak VM's valid executions.
+[[lean_lib]]
+name = "KeccakArith"
+srcDir = "../KeccakArith"
+globs = ["KeccakArith", "KeccakArith.+"]
+leanOptions = { warningAsError = true }
+
 # The univariate PIOP's bus (`crates/leanvm_univariate/SPEC.md` §5, branch `leanvm-univariate`) as a
 # product heap, `formal/Heap`: the tree, leaf and root identities give the push and pull products'
 # equality, which gives `Lv42`'s `Balanced` but with probability at most `4 N / |E|` over the bus
@@ -136,6 +161,14 @@ name = "Evm"
 name = "UniStatement"
 srcDir = "../UniStatement"
 globs = ["UniStatement", "UniStatement.+"]
+leanOptions = { warningAsError = true }
+
+# The univariate verifier for the Keccak VM (`Blake2s::Keccak`, `crates/leanvm_univariate/src/verifier.rs`),
+# `formal/UniKeccak`: its transcription and its end statements against `KeccakVm.KvHolds`.
+[[lean_lib]]
+name = "UniKeccak"
+srcDir = "../UniKeccak"
+globs = ["UniKeccak", "UniKeccak.+"]
 leanOptions = { warningAsError = true }
 
 # Knowledge soundness of the univariate PIOP for leanVM 42422001, end to end (`formal/UniSound`):
@@ -254,10 +287,3 @@ root = "RecComposeTest.ViewCheck"
 name = "rec-real-check"
 srcDir = "../RecCompose"
 root = "RecComposeTest.RealCheck"
-
-# The second statement review's IV sampling (`RecCompose/Review/IvSample.lean`, finding 2): `ivCheck` and the compiled
-# circuit's structure at sampled IVs against the reference IV's. Usage: `rec-iv-sample <count> <seed>`.
-[[lean_exe]]
-name = "rec-iv-sample"
-srcDir = "../RecCompose"
-root = "Review.IvSample"

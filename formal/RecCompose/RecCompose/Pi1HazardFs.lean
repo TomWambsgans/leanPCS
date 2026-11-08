@@ -27,8 +27,7 @@ is a root of `Z_bad(p_0)`, `p_0` challenge 42). This file states them with Kecca
   only, so this direction).
 
 **Not proved here**: the random-permutation readings (`Pi1HazardFsHonest D queryPermutation δh`,
-`Pi1HazardFs D queryPermutation εh`). `RecGraph.hazard_prob` is a count for a uniform `t`, not a game; the completeness
-route left is in `Review/STATEMENT_REVIEW_2.md`, finding 3.
+`Pi1HazardFs D queryPermutation εh`). `RecGraph.hazard_prob` is a count for a uniform `t`, not a game.
 -/
 
 set_option autoImplicit false

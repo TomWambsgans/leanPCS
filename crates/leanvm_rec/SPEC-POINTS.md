@@ -7,12 +7,12 @@ wins about 6.0K gas on top of `leanvm-rec-opt` and 10.5K on R3's 73,550, below t
 
 - Branch `leanvm-rec-points`, from `leanvm-rec` @ 4a57c61.
 - The core is `leanvm_flock_gas::transcript::sumcheck_pairs`.
-- Every number is marked **measured** (on h1) or **modelled** (`review/leanvm_rec_params.py`, its last section).
+- Every number is marked **measured** (on h1) or **modelled** (`params/leanvm_rec_params.py`, its last section).
 
 ```sh
 RUSTFLAGS="-C target-cpu=native" cargo test --release -p leanvm_flock_gas --lib transcript -- --nocapture
 RUSTFLAGS="-C target-cpu=native" cargo test --release -p leanvm_univariate --lib domain
-python3 -I review/leanvm_rec_params.py   # the last section: "the claims' points"
+python3 -I params/leanvm_rec_params.py   # the last section: "the claims' points"
 ```
 
 ## 0. Summary

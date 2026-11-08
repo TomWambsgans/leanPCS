@@ -10,11 +10,11 @@
 - Each PCS claim contains:
   - header:
     - `num_variables` (1 byte)
-    - commitment (32 bytes + 1 E field element) -> Merkle hash + OOD_answer (the OOD point being Fiat-Shamir derived derived from the Merkle hash)
+    - commitment (32 bytes + 1 E field element) -> Merkle hash + OOD_answer (the OOD point being Fiat-Shamir derived from the Merkle hash)
     - opening point (`num_variables` E field elements)
     - value (1 E field element)
   - opening_proof (the PCS opening transcript, where Fiat-Shamir is seeded by the header)
-- In the mempool, all the opening_proof 'disapear', and instead some STARK attests of their existence.
+- In the mempool, all the opening_proof 'disappear', and instead some STARK attests of their existence.
 - Each Ethereum block contains a list of "headers", one STARK proves them all.
 - We add a new magic precompile to the EVM: PCS_OPEN that takes as input header and attests that it is contained in the block's list of headers.
 
@@ -30,7 +30,7 @@
 
 ## Forward compatibility
 
-- The witnesss polynomial of the STARK is easy to change (commitment / opening algorithms are offchain).
+- The witness polynomial of the STARK is easy to change (commitment / opening algorithms are offchain).
 - The difficult part is the polynomial representing the circuit whose commitment is hardcoded in a smart contract.
 
 In 2031, when WHIR 2.0 is released, how to upgrade the PCS_OPEN precompile? -> An idea from Justin D:
@@ -50,7 +50,8 @@ TLDR: The PCS is relatively easy to upgrade, the only thing that cannot be upgra
 ## Key figures: one ZK proof of a Merkle path
 
 Statement `(y, root)`, witness `x` and a depth-32 path, Keccak-256: `y = H(x | 0x11..)`, path from `H(x | 0x22..)`
-to `root`. Measured on the implementation in `crates/` (details: [`AGENTS.md`](AGENTS.md), [`STATUS.md`](STATUS.md)).
+to `root`. Measured on the implementation in `crates/quotient` and `crates/evm` (details: [`AGENTS.md`](AGENTS.md),
+[`STATUS.md`](STATUS.md)).
 
 | | |
 |---|---|
@@ -61,3 +62,26 @@ to `root`. Measured on the implementation in `crates/` (details: [`AGENTS.md`](A
 | Gas, `PCS_OPEN` free | 14,289 execution; 18,309 transaction (without the 21,000 base) |
 | Contract deployment | 1.43 M gas |
 | Formal verification (Lean 4) | knowledge soundness (≈ 2^-62 at 2^64 queries), completeness (failure < 2^-162) and zero knowledge (≈ 2^-113) proved end to end, in the random-permutation model; the contract proved to be the verifier (its bytecode by tests) |
+
+## Key figures: one leanVM proof (recursion, `crates/leanvm_rec`)
+
+A leanVM leaf aggregate of leanXMSS signatures:
+- π1 is a univariate PIOP for leanVM's statement (`crates/leanvm_univariate`), with leanVM's WHIR.
+- π2 is a SNARK of π1's verifier.
+- The contract runs π2's verifier and passes every claim to `PCS_OPEN`.
+- Fiat–Shamir is Keccak-256 throughout.
+
+| | BLAKE2s VM (leanVM `42422001`) | Keccak VM (leanVM `9d50c92a3`'s `SHA3` table) |
+|---|---|---|
+| Signatures per proof | 1,000 (up to about 2,000) | 400 (up to about 470) |
+| Hash argument | Flock, BLAKE2s block | Flock, Keccak-f block, structured terminal |
+| Gas, `PCS_OPEN` free | 44,804 transaction (real proof; 45,464 on a sample stream) | 44,737 transaction (sample stream) |
+| Prover | π1 4.8 s + π2 4.5 s (h1, 16 threads) | not yet (verifier only, [`KECCAK.md`](crates/leanvm_univariate/KECCAK.md)) |
+| Formal verification (Lean 4) | knowledge soundness and completeness of π1-rec3 and of the recursion | not yet |
+
+## Repository
+
+- [`eip-draft_leanPCS.md`](eip-draft_leanPCS.md): the EIP draft (`PCS_OPEN` and `MULFIELD`) this repository backs.
+- [`AGENTS.md`](AGENTS.md): what the implementation adds to the note above, and where things are.
+- [`STATUS.md`](STATUS.md): what is proved, tested and measured, and what remains.
+- [`NOTICE.md`](NOTICE.md): provenance and licenses (MIT OR Apache-2.0).

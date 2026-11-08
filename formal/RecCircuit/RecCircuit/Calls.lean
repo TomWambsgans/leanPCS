@@ -12,7 +12,7 @@ port (`Circuit.callWordBytes`, `Circuit.callInputs`).
 On a satisfied circuit the compiler accepted, each of these words is π1's graph's word in `RecGraph`'s semantics over
 Keccak-f[1600] (`compile_sound_calls`) as `PCS_OPEN` takes it (`pcsWord`): a setup root (a constant word 0) as its
 root word (`machine::root_word`, each 16-byte half of the hash reversed), all other words byte for byte, a stream root
-included (π1's stream carries a root as its root word, its two WHIR scalars: REVIEW-REC.md R1). The calls check
+included (π1's stream carries a root as its root word, its two WHIR scalars). The calls check
 (`callsOk`) ties π2's call words to π1's; the pair's semantics (`pair_val`) is `pair_point`'s on the expanded graph's
 values (`y_1 = z·z + z`, `y_0 = z + β_1 y_1`, `β_1 = UniStatement.cantorBeta1`); `expandSound` takes a node's
 image's value back to the original graph.
@@ -53,7 +53,7 @@ end Circuit
 
 /-- **The word of a `PCS_OPEN` call at position `k`**, of the graph's word `w` and its bytes: a setup root (a constant
 word 0, the hash as π1's contract holds it) as `PCS_OPEN`'s root word (`machine::root_word`); every other word as it
-is, a stream root included (the stream's 32 bytes are the root's root word, REVIEW-REC.md R1). -/
+is, a stream root included (the stream's 32 bytes are the root's root word). -/
 def pcsWord (k : ℕ) : RecGraph.Word → List UInt8 → List UInt8
   | .const _, bytes => if k = 0 then rootWordBytes bytes else bytes
   | _, bytes => bytes
@@ -113,7 +113,7 @@ theorem beNat_eq_leNat_reverse (s : List UInt8) : beNat s = leNat s.reverse := b
 theorem be64_beNat (s : List UInt8) (hs : s.length = 8) : be64 (UInt64.ofNat (beNat s)) = s := by
   rw [beNat_eq_leNat_reverse, be64_leNat _ (by simpa using hs), List.reverse_reverse]
 
-/-- **A root port's word is the root's `PCS_OPEN` word**: the stream's 32 bytes as they are (REVIEW-REC.md R1). -/
+/-- **A root port's word is the root's `PCS_OPEN` word**: the stream's 32 bytes as they are. -/
 theorem root_bytes (raw : List UInt8) (hr : raw.length = 32) :
     Circuit.limbsBytes ((List.range 4).map fun l => F64.ofNat (beNat (slice raw ([24, 16, 8, 0].getD l 0) 8))) =
       raw := by

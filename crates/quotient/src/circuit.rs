@@ -10,7 +10,7 @@
 //! `v = v + v + v^2`, that is `v^2 = v`. Every other row reads constants or rows before it, and the gate sends
 //! bits to bits: by induction every cell is a bit, and the one the circuit computes.
 //!
-//! **Lane circuits** (`crates/slh_dsa/SPEC-FAST.md`, §4.3). The gate is an identity of `K = GF(2^64)`, and the
+//! **Lane circuits** (an SLH-DSA proof-of-concept since removed: `crates/lv42_flock/KECCAK.md` §4.3 in the history). The gate is an identity of `K = GF(2^64)`, and the
 //! argument does not need the cells to be bits. A lane circuit has `K`-valued cells besides its bits:
 //! - a **free-`K` row** ([`Builder::free_k`]) reads its own output as `X` and `1` as `Y`, so the gate reads
 //!   `v = v + C + C`: any value;

@@ -3,7 +3,7 @@
 // Modified here: per-layer twiddle offsets and `AdditiveNttF64::replica`, so that a codeword can be encoded one
 // replica at a time (the same words, in half the memory at rate 1/2); and `encode_interleaved_rows_in_place` /
 // `encode_interleaved_rows_with`, whose deep pass runs only on the blocks holding a wanted row.
-// Also modified here (an aliasing fix, to report upstream: UPSTREAM.md): the in-place encodes
+// Also modified here (an aliasing fix, to report upstream): the in-place encodes
 // (`encode_interleaved_in_place`, `encode_interleaved_in_place_with`, `encode_interleaved_rows_in_place`) took the
 // message pointer from `data` and then lent `data` out as a `&mut` (LLVM `noalias`) while the first pass and
 // `replicate` read through that pointer, which Miri reports as undefined behavior under Stacked Borrows and Tree

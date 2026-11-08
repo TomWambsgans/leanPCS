@@ -195,8 +195,7 @@ variable [Fintype K] [DecidableEq K] [FiniteDimensional K E] [SampleableType K] 
 /-- **Superseded**: its hypotheses `hT₁`/`hT₂` are not met by the honest tables at degenerate
 challenges/masks; the deployed result is `zeroKnowledge_closed` through `jointHVZKε_of_linkV`
 (`Instance/Nondeg.lean`). (`hT₁`, `hT₂` ask the honest tables' claims at every mask, with no
-`ClaimsND`; where `claimScale 2 23 t = 0` the verifier's witness value is `0`,
-`EndToEnd/Review/E2EZkNondeg.lean`.)
+`ClaimsND`; where `claimScale 2 23 t = 0` the verifier's witness value is `0`.)
 
 **Joint honest-verifier zero knowledge** (`zk_rom`'s `hzk`): at every good challenge, the whole
 honest view — the five field elements, the wiring opening, the two secret openings — under uniform

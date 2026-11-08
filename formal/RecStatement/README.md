@@ -124,7 +124,7 @@ the EVM one, which holds at the real Keccak-f[1600]"):
    random-permutation theorems, and RecGraph's target `Pi1GraphIsVerifier` (graph = verifier off the merge hazard,
    proved). `Pi1FsKeccak` and `Pi1HazardKeccak` quantify over every `OracleComp` adversary and count only its calls of
    `π`; such an adversary computes Keccak-f[1600] for free and grinds π1's challenges offline, so **they are false as
-   stated** (`RecCompose/Review/STATEMENT_REVIEW.md`, finding 3): the Fiat–Shamir heuristic for adversaries of bounded
+   stated**: the Fiat–Shamir heuristic for adversaries of bounded
    Keccak-f[1600] work, which Lean does not model. `Pi1CompletenessKeccak` and `Pi1HazardKeccakHonest` are about one
    fixed honest prover, the statement chosen before `π`: no adversary grinds there.
 

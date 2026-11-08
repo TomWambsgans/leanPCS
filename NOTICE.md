@@ -13,7 +13,7 @@ option. Every file says where it comes from in its first lines.
   `crates/bench`, copied unchanged but for a header line, except `crates/verifier/src/lib.rs`, which makes
   the WHIR verifier public, and three prover files of `crates/pcs` (`src/whir.rs`, `src/whir_ntt_ext.rs`,
   `src/ntt/additive_ntt_f64.rs`), which add ways to make the same commitments and proofs in less memory. The
-  last of those also fixes an aliasing bug of leanVM's in-place encodes, reported in `UPSTREAM.md`. `src/whir.rs`
+  last of those also fixes an aliasing bug of leanVM's in-place encodes. `src/whir.rs`
   and `src/whir_config.rs` also have comments corrected (no code change), reported there too. Each file's
   header says what changed. `crates/primitives/src/hash.rs` and `crates/fiat_shamir/src/lib.rs` also carry test-only trace hooks behind a
   `trace` feature that no production build enables. The workspace `Cargo.toml` and `rustfmt.toml` follow leanVM's.
@@ -25,8 +25,8 @@ option. Every file says where it comes from in its first lines.
     the hidden layouts of `crates/quotient/HIDING.md` (which adapt the padding of `flock::membership`,
     `crates/flock/membership-zk.md` on the same branch) and their exact checks (`src/hiding.rs`).
   - `crates/evm`: the bytecode generator, the recording scalar and the revm machine with `FIELD_MUL`.
-  - `formal/`: the Lean proofs of `formal/quotient` (sorry-free for the original circuit), being ported to
-    this circuit; each file names its source. Dependency revisions are those of
+  - `formal/`: the Lean proofs of `formal/quotient` (sorry-free for the original circuit), ported to this
+    circuit (`formal/QuotientSecurity`); each file names its source. Dependency revisions are those of
     [leanerVM](https://github.com/Verified-zkEVM/leanerVM)'s `mumbai` branch (MIT OR Apache-2.0).
 - **`formal/Statement/`** (new here): the statement of `crates/quotient` in Lean, in the style of leanerVM's
   `Statement/` package (branch `mumbai`, commit `6175f1a0`, MIT OR Apache-2.0), on which it depends (a Lake
@@ -38,10 +38,14 @@ option. Every file says where it comes from in its first lines.
   but for a header and the small changes each header lists; `src/lib.rs`, `src/bus.rs`, `src/layout.rs`,
   `src/flock.rs`, `src/multilinear.rs` and `src/transcript.rs` adapt the files of the same names (the same protocol,
   generic over the scalar it computes on); `src/matrices.rs` takes `matrix_values` from `deferred.rs`.
-  `src/keccak_gkr.rs` adapts `crates/verifier/src/keccak.rs` of leanVM commit `4af2cddd`, for an estimate. New there: `src/keccak_flock.rs` (the verifier's walk of `crates/lv42_flock`'s Keccak-f block),
+  New there: `src/keccak_flock.rs` (the verifier's walk of `crates/lv42_flock`'s Keccak-f block),
   the Keccak-256 chain (after `crates/quotient/src/transcript.rs`), the stack's batching sumcheck, the matrices'
-  reduction, the EVM recorder, code generator and machine (after `crates/evm`), and the `gas-dump` command it adds to
-  a leanVM checkout (`dump/`). Each file says where it comes from in its first lines.
+  reduction, and the EVM recorder, code generator and machine (after `crates/evm`). Each file says where it comes from
+  in its first lines.
+- **Adapted from leanVM, commit `9d50c92a3`** (its Keccak branch before the switch to GKR):
+  `crates/leanvm_flock_gas/src/layout.rs`'s `SHA3` table (`flushes_sha3`, its columns and `SHA3_CELL_LANES`) states
+  `crates/leanvm_core/src/tables.rs`'s `Sha3Table` and `hash_flock.rs`'s cell layout there, for the Keccak VM of
+  `crates/leanvm_univariate/KECCAK.md`. Its workloads (`tests/keccak_vm.rs`) are runs of that commit.
 - **`crates/evm_link`** (new here): the compilation of a recorded graph and the assembly, moved from
   `crates/leanvm_flock_gas/src/evm/codegen.rs` and `crates/evm/src/codegen.rs` (the latter adapted from leanVM's
   branch `PCS-openings-aggregation`, commit `651453c6`), and the linker into deployable contracts. Each file says so
@@ -62,7 +66,7 @@ option. Every file says where it comes from in its first lines.
       `c445e3d5`'s, and copied unchanged but for a header line. The exceptions say so in their headers:
       `flock/src/hash.rs` leaves out the PCS packaging of the slices and adds `prove_reduction_skip`;
       `zerocheck/bit_fold.rs` and `zerocheck/multilinear.rs` take rows of 1, 2 and 4 bytes (and the latter a
-      byte-row pass with a product table); `lincheck.rs` takes its row weights given. `flock/src/keccak.rs` (and its test) is new here: the Keccak-f[1600] block of `crates/slh_dsa/SPEC-FAST.md`, after `hash.rs`'s BLAKE2s block.
+      byte-row pass with a product table); `lincheck.rs` takes its row weights given. `flock/src/keccak.rs` (and its test) is new here: the Keccak-f[1600] block of `crates/lv42_flock/KECCAK.md`, after `hash.rs`'s BLAKE2s block.
     - `crates/lv42_flock/src/zerocheck/skip.rs` (new here, built on leanVM `42422001`'s zerocheck prover and its
       round-1 kernel, CREDIT flock-core): the zerocheck with a univariate skip of 3 to 6.
     - `crates/lv42_pcs` is the part of `42422001`'s `pcs` that `flock` uses: the GF(2^8) additive NTT, its inverse
@@ -75,7 +79,9 @@ option. Every file says where it comes from in its first lines.
   and evaluates that verifier's recorded graph (`crates/leanvm_flock_gas/src/evm/record.rs`, whose node semantics and
   Keccak-256 chain, adapted there from leanVM `42422001`'s transcript, `src/eval.rs` follows), and measures
   `crates/quotient`'s circuit (adapted from leanVM `651453c6`) as the reference of its outer proof.
-  `review/leanvm_rec_params.py` (new here) builds on `review/leanvm_univariate_params.py`.
+- **`params/`** (new here): the parameter calculators. `whir_params.py` replicates leanVM's WHIR parameter search
+  (`crates/pcs/src/whir_config.rs`) and copies rows of leanerVM's certified parameter table (`Params/Deployed.lean`);
+  `leanvm_univariate_params.py` and `leanvm_rec_params.py` (which builds on it) compute π1's and π2's soundness.
 - **Built on [leanerVM](https://github.com/Verified-zkEVM/leanerVM) `mumbai`, commit `6175f1a0`** (MIT OR
   Apache-2.0): `formal/WhirBridge` states this repository's WHIR openings in mumbai's verifier language and
   proves their soundness from mumbai's theorems, importing them; `WhirBridge/Variant.lean` adapts mumbai's

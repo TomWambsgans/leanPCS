@@ -66,8 +66,7 @@ theorem holds3_pi2_p1k {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D) (hc
 
 /-- **π2's completeness at π1-rec3's honest prover**, from the run-checked inputs only (`Pi2Circuits D`, `hroots`,
 `GraphsAgree`, `Pi2ViewChecked C`). **Superseded** by `Pi2KF.recCompleteness2_pi2_rec3_kf`: `Pi2G.pi1Rec3Prover` hashes
-its Fiat–Shamir over `π`, not over Keccak-f[1600] as the graph does, so "the graph accepts" is rare here
-(`Review/STATEMENT_REVIEW.md`, finding 4). -/
+its Fiat–Shamir over `π`, not over Keccak-f[1600] as the graph does, so "the graph accepts" is rare here. -/
 theorem recCompleteness2_pi2_rec3_closed {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D)
     (hchk : Pi2ViewChecked C) (hroots : C.rootsAt = RecGraph.Emitted.rootsAt) (hg : GraphsAgree) :
     RecCompleteness2 D (pi1Rec3Prover D) (pi2Prover D C (pi2Facts hD C hchk) PcsQuotient.nonceFuel)

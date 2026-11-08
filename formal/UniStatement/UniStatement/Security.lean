@@ -31,7 +31,7 @@ Lv42's, for leanVM 42422001's statement: `M3Holds (leanIsaInstance blake2sFlockS
 (`= ConstraintsVanish ∧ Balanced ∧ CountsNonzero ∧ PublicLinesHold ∧ aux`, the last `FlockRegion.Holds` of
 `q_flock`), at the proof's sizes `s` (`sizesOf`: the shape's memory, the proof's row counts), the public
 input the calldata's 32 bytes (`publicInputOf`: big-endian words, as the contract reads them at `ad49e74`,
-where REVIEW-M1 F7 is documented, not changed: a caller reverses leanVM's little-endian words), `q` a stack of
+a documented convention, not changed: a caller reverses leanVM's little-endian words), `q` a stack of
 Lv42's layout. Under `Sizes.Admissible`, Lv42 proves `M3Holds` equivalent to `SatisfiedBy prog input
 (witnessOf …)` (`satisfiedBy_witnessOf`) and, from a satisfying witness, `M3Honest` of its stack
 (`m3Honest_stackOf`).
@@ -51,7 +51,7 @@ each candidate read as Lv42's stack (`lv42Stack`: basis `B` to values, the corre
 
 **Completeness** is stated for a prover given as a parameter (`UniProver`): the univariate PIOP's honest
 prover is not transcribed (the Rust's, `src/prover`, is being adapted to iteration 2 on
-`leanvm-univariate-prover2`; `tests/review_honest.rs` has the review's, for tiny runs without Flock).
+`leanvm-univariate-prover2`).
 `UniCompletenessWith` asks that its proof of a statement with an `M3Honest` stack, at row counts that fit the
 shape (`Shape.RowsFit`: at least the fewest rows each height's quotients are sized for), be rejected with
 probability at most `δ`.

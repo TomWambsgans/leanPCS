@@ -62,7 +62,7 @@ other twenty-two its row.
    bits `k < 8`.
 
 The cells are arbitrary field elements, and the relation alone does not make them bits: with the
-identity wiring and zero weights every statement satisfies it (`formal/Review/Degenerate.lean`).
+identity wiring and zero weights every statement satisfies it.
 What makes them a computation is the circuit the wiring lays (`Pinning.lean`). For an instance
 whose wiring lays a loop-free χ circuit `C` (`Laid`: every `X`, `Y`, `C` cell on the cycle of
 what it reads, public word 5's 128 bits on the zero's cycle, word 4's bit 0 the one's anchor and

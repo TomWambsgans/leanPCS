@@ -9,7 +9,7 @@ import UniSound.Rec3.CodeLink3
 **`uniKnowledgeSoundness_rec3_of_code`**: for every deployment at the reference shape with leanVM's program IV,
 π1-rec3's verifier (`verifierRec3With`: `verifyWithFs … .rec3 true`, three openings) is knowledge sound for
 `uniExtractor`, with error `uniBound3 (2^35/|E|) Q`, at most `2^-61` for `Q ≤ 2^64` (`2^-61.93` at `Q = 2^64`,
-`EndToEnd/Review/UniRec3Numbers.py`), given the walk's fact `hw`, a code-level link `C` whose chain program names the
+in exact rationals), given the walk's fact `hw`, a code-level link `C` whose chain program names the
 stream's roots (`hroots`), and the last link `hFin`. The Fiat–Shamir layer is `fsLayer3_holds` (proved), its numbers
 `Numbers3.lean`'s; the identity model, Flock and the batch `Ref3.lean`'s.
 -/

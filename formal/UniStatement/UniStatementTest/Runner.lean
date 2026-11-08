@@ -408,7 +408,7 @@ def lv42Clauses (prog : Lv42.Semantics.Program) (s : Lv42.Protocol.LeanIsa.Sizes
 /-- **An honest proof's witness against Lv42**: the point claims the Lean verifier hands `PCS_OPEN` are true of
 the committed stacks; the committed `C1`, read as Lv42's columns (`lv42Column`, what `lv42Stack` stacks),
 satisfies `M3Holds`'s first four clauses for `leanIsaInstance blake2sFlockSpec prog s` (`lv42Clauses`; the
-fifth, Flock's R1CS on `q_flock`, is not checked: the review's prover omits Flock); and the setup's stack is
+fifth, Flock's R1CS on `q_flock`, is not checked: the vectors' prover omits Flock); and the setup's stack is
 `Mapping.lean`'s (`setupStack`: the addresses word for word, every run instruction's tuple slots read back
 from the basis-`B` coefficients). -/
 def honestChecks (v : Vector') (shape : Shape) (rows : List ℕ) (r : Reduced) : List (String × Bool) :=

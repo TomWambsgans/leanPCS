@@ -19,7 +19,7 @@ these theorems mention are in `Setup.lean`, which is short and has no proof in i
 
 **The circuit.** `soundness`, `zero_knowledge` and `completeness` are for every wiring and
 every weights, and with a degenerate circuit the relation holds of every statement
-(`formal/Review/Degenerate.lean`). `soundness_circuit` and `soundness_circuit_bits` are for an
+(the identity wiring with zero weights). `soundness_circuit` and `soundness_circuit_bits` are for an
 instance whose wiring lays a loop-free χ circuit `C` as `quotient::circuit::Builder::finish` lays
 it (`Laid`, `CircuitLayout.lean`) and whose weights are `coordinate_weight`'s: an accepted proof
 of the statement `(y, root)` holds `C`'s computation on some input bits, whose public words are

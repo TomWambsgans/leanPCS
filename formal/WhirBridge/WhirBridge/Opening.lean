@@ -5,8 +5,8 @@ The opening check of `crates/quotient/src/opening.rs` (`verify`, with `Layout`) 
 verifier language of leanerVM `mumbai` (https://github.com/Verified-zkEVM/leanerVM, commit 6175f1a0,
 MIT OR Apache-2.0: `Statement/LeanVmVerifier.lean`, its transcription of leanVM's verifier at
 `c445e3d5`), and its reading as mumbai's stacked opening `verifyStackedOpening`. The hidden branch of
-the weight started from the review's transcription (`formal/Review/HiddenWeight.lean`, this
-repository, commit 4d5dd40), and follows the hidden layout's redesign with the gadget.
+the weight started from an earlier transcription (this repository,
+commit 4d5dd40), and follows the hidden layout's redesign with the gadget.
 -/
 import LeanVM.Protocol.Whir.Sound.Spec
 import LeanVM.Protocol.EndToEnd.Sound.Glue

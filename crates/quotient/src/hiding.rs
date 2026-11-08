@@ -1,6 +1,6 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The two attack tests at the end are an independent
-// review's (`review_zk_calldata_only`, `review_zk_distinguish_and_unmask`), turned around to assert that the
-// attacks no longer distinguish.
+// Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The two attack tests at the end are the two attacks on
+// the pre-hiding prover (a calldata-only distinguisher and an opening distinguisher, `HIDING.md`), turned around to
+// assert that they no longer distinguish.
 //! The exact checks behind `HIDING.md`, in the real fields (`K = GF(2^64)`, `E = GF(2^192)`, WHIR's novel
 //! basis on its own domain).
 //!
@@ -983,7 +983,7 @@ pub(crate) fn guessed_witness(
     })
 }
 
-/// The review's calldata-only distinguisher, turned around: for a candidate witness the four `a_j` still pin
+/// The calldata-only distinguisher, turned around: for a candidate witness the four `a_j` still pin
 /// the twelve mask coefficients, but the witness table's root also commits to its padding, so recomputing it
 /// confirms neither candidate; and the same cells and masks under another seed commit to another root.
 ///
@@ -991,8 +991,7 @@ pub(crate) fn guessed_witness(
 /// any design whose padding is secret: it shows that the root commits to the padding, not that the root hides the
 /// witness. It also checks that with the prover's own padding the root confirms the true candidate and only it:
 /// the verdict rests on the padding's secrecy alone. The evidence that the roots and openings are independent of
-/// the witness is HIDING.md's argument, run on the real prover by `review_hiding.rs`'s translation tests
-/// (`translation_holds_on_real_openings`, `translation_holds_at_the_benchmark_size`), and [`openings_hide_the_tables`].
+/// the witness is HIDING.md's argument and [`openings_hide_the_tables`].
 #[test]
 fn calldata_alone_does_not_confirm_a_witness() {
     use crate::protocol::{Index, Randomness, label, prove_with_randomness, table_seed};
@@ -1068,7 +1067,7 @@ fn calldata_alone_does_not_confirm_a_witness() {
     }
 }
 
-/// The review's opening distinguisher, turned around: the witness table's opened rows match no row a candidate
+/// The opening distinguisher, turned around: the witness table's opened rows match no row a candidate
 /// witness commits to, whichever candidate; and they say nothing of the masks, for at the opened positions the
 /// overflow lane's random first piece alone reaches every value, so the masks' contributions lie in its span.
 ///
@@ -1076,8 +1075,7 @@ fn calldata_alone_does_not_confirm_a_witness() {
 /// first half passes for any design whose padding is secret; with the prover's own padding, every opened row is a
 /// row of the true candidate's commitment and not every one is of the other's (checked): the verdict rests on the
 /// padding's secrecy alone. The second half (the masks in the first piece's span) is a property of the layout. The evidence
-/// that the openings are independent of the witness is `review_hiding.rs`'s translation tests
-/// (`translation_holds_on_real_openings`, `translation_holds_at_the_benchmark_size`) and [`openings_hide_the_tables`].
+/// that the openings are independent of the witness is HIDING.md's argument and [`openings_hide_the_tables`].
 #[test]
 fn opened_rows_do_not_identify_the_witness() {
     use crate::protocol::{Index, Randomness, open, prove_with_randomness, table_seed, witness_layout};
@@ -1103,7 +1101,7 @@ fn opened_rows_do_not_identify_the_witness() {
         .collect();
     assert_eq!(rows[0].len(), lanes);
 
-    // The review's distinguisher: commit each candidate, with the masks and any padding, and look the opened rows
+    // The distinguisher: commit each candidate, with the masks and any padding, and look the opened rows
     // up among its rows.
     let mut mask = [F64::ZERO; 16];
     for (j, coeffs) in masks.iter().enumerate() {

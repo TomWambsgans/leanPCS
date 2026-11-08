@@ -8,11 +8,11 @@ import RecCompose.Pi2SimExp
 import RecCompose.Pi1KFTransfer
 
 /-!
-# π2's completeness at the recursion's π1 prover (statement review, finding 4)
+# π2's completeness at the recursion's π1 prover
 
 `Pi2Alpha.recCompleteness2_pi2_rec3_closed` is stated at `Pi2G.pi1Rec3Prover D`, whose Fiat–Shamir is over the random
 permutation; π1-rec3's graph hashes with the real Keccak-f[1600], so its event "the graph accepts" has probability
-about `2^-180` there (`Review/STATEMENT_REVIEW.md`, finding 4). Here the same theorems at `Pi1KF.pi1Rec3ProverKF D`, the
+about `2^-180` there. Here the same theorems at `Pi1KF.pi1Rec3ProverKF D`, the
 Lean prover with the recursion's hashes: its Fiat–Shamir the pure `keccak256` (the graph's), its trees and WHIR openings
 over `π`. Its honest proofs are the ones the graph accepts (`Pi1KFCore`), so the event bounded is the contract's
 rejection of an honest proof. These are completeness theorems for Lean provers: the deployed Rust prover is trusted for

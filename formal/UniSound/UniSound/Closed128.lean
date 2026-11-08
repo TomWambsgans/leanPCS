@@ -9,7 +9,7 @@ import UniSound.FsFinal128
 
 **`uniKnowledgeSoundness_closed128`**: `uniKnowledgeSoundness_closed` with the error
 `uniBound128 (2^32 / |E|) Q`, **at most `2^-64` for `Q ≤ 2^64`** (`2^-64.87` at `Q = 2^64`, 128.87 bits
-as `Q / ε`: `EndToEnd/Review/UniSoundnessNumbers128.py`, exact rationals). No hypothesis.
+as `Q / ε`, in exact rationals). No hypothesis.
 
 The bound's three changes against `uniBound` (`Fs128.lean`): the five WHIR openings charged once, as
 one union family whose bad events are per fresh query (`Compose.prEvent_doomF_le`), at the exact

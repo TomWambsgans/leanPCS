@@ -2,7 +2,7 @@
 import RecCompose.RealDeployment
 
 /-!
-# `IvChecked` from the compiler's IV factorization (`STATEMENT_REVIEW_2.md`, finding 2)
+# `IvChecked` from the compiler's IV factorization
 
 `IvChecked` asks, at every 32-byte IV, three things of the compiler's output: the compile succeeds (with its
 checker), the circuit passes `viewCheck`, and it decodes π1's stream as the reference IV's circuit does
@@ -16,7 +16,7 @@ ways (the all-ones IV and the zero IV), given the compiler's **IV factorization*
 * **`zeroPos P iv`**: the positions of `iv`'s zero bits.
 * **`PatchChecked`**: at every 32-byte IV, the compile succeeds and its circuit is the all-ones IV's with the `κ`
   entries at the IV's zero bits' seed positions removed (`patchCircuit`), its view, free bits and free reads the
-  all-ones IV's (`patchCheck iv`, a `Bool`). This is the reviewer's factorization `compile iv = patchκ P iv (compile
+  all-ones IV's (`patchCheck iv`, a `Bool`). This is the factorization `compile iv = patchκ P iv (compile
   base)`, stated on what the checks read.
 
 **Proved** (`ivChecked_of_patchChecked`): `PatchChecked`, `ivCheck` at the all-ones IV and `ivCheck` at the zero IV

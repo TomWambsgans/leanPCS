@@ -674,15 +674,20 @@ pub fn pad_counts(count: &[usize], regions: &[Region], _log_width: u8) -> Vec<us
         })
         .collect();
     let rows = |k: &[u32]| -> usize { count.iter().zip(k).map(|(&c, &k)| pad(c, k)).sum() };
+    // A region's next step: the digit count `j > k` that saves the most rows per added digit, looking past steps that
+    // save nothing (a carry: 724,992 rows pad to 786,432 at both 2 and 3 digits), and that rate per role.
+    let step = |r: usize, k: u32| -> (u32, f64) {
+        let c = count[r];
+        (k + 1..=c.count_ones())
+            .map(|j| (j, (pad(c, k) - pad(c, j)) as f64 / (j - k) as f64 / roles[r].max(1) as f64))
+            .fold((k + 1, f64::MIN), |best, s| if s.1 > best.1 { s } else { best })
+    };
     while rows(&k) > budget {
         let best = (0..count.len())
             .filter(|&r| k[r] < count[r].count_ones())
-            .max_by(|&a, &b| {
-                let gain = |r: usize| (pad(count[r], k[r]) - pad(count[r], k[r] + 1)) as f64 / roles[r].max(1) as f64;
-                gain(a).total_cmp(&gain(b))
-            })
+            .max_by(|&a, &b| step(a, k[a]).1.total_cmp(&step(b, k[b]).1))
             .expect("the unpadded layout fits");
-        k[best] += 1;
+        k[best] = step(best, k[best]).0;
     }
     count.iter().zip(&k).map(|(&c, &k)| pad(c, k)).collect()
 }

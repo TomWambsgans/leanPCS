@@ -173,7 +173,7 @@ pub struct PcsOpen {
     /// Gas a claim costs.
     pub claim_gas: u64,
     /// Whether it also takes the layouts past WHIR's `2^28` words ([`layout_large`]): the assumption a circuit
-    /// above `2^22` rows, such as SLH-DSA's (`crates/slh_dsa`), needs. Off, it knows [`layout`]'s only.
+    /// above `2^22` rows, such as an SLH-DSA circuit's (a proof-of-concept since removed), needs. Off, it knows [`layout`]'s only.
     pub large_tables: bool,
 }
 

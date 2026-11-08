@@ -19,7 +19,7 @@ The protocol is `uniPiop3 F3 I BR` (`PiopSound3.lean`, proved). **The weakest ro
 pairs**: `8 · 2^32 / |E| = 2^35 / |E|` (`2^-157`) each, the bound `e₃₅` of every round.
 
 **`uniBound3_le_bits`**: `uniBound3 (2^35 / |E|) Q ≤ 2^-61` for `Q ≤ 2^64` (exactly `2^-61.93` at `Q = 2^64`:
-`formal/EndToEnd/Review/UniRec3Numbers.py`; the three openings' doom terms, `≈ 3 · 2^-64`, and the tag's `2^-64`
+the three openings' doom terms, `≈ 3 · 2^-64`, and the tag's `2^-64`
 dominate; the list term is `≈ 2^-66.4`).
 -/
 

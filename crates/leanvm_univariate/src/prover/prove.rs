@@ -10,7 +10,7 @@ use std::time::Instant;
 
 use fiat_shamir::merkle::Hash;
 use leanvm_flock_gas::field::E;
-use leanvm_flock_gas::layout::{Form, OP_BLAKE2S, OP_JUMP, SEP_MEM, tables};
+use leanvm_flock_gas::layout::{Form, OP_BLAKE2S, OP_JUMP, SEP_MEM, Table, tables};
 use leanvm_flock_gas::transcript::{FsShape, KeccakWriter, keccak_seed, squares};
 use primitives::field::{F64, F192};
 
@@ -21,11 +21,11 @@ use super::replay::Replay;
 use super::opening::{self, Committed};
 use super::poly::{eval_k, eval_limbs, from_v, novel_limbs, to_v};
 use super::quotients::{self, Quotient};
-use super::stack::{Stack, c1_columns, c2_columns};
+use super::stack::{Stack, c1_columns_for, c2_columns};
 use super::trace::Trace;
 use super::weight::Weight;
 use crate::claims::{Column, Combined, Commitment};
-use crate::contract::{NAME, SetupRoots, contract_iv_for, layout_words};
+use crate::contract::{NAME, SetupRoots, contract_iv_for, layout_words_for};
 use crate::heap::Leaves;
 use crate::stacks::StackLayout;
 use crate::verifier::{Blake2s, Claims, Opening, Shape, chunks, degree, reduce, sent_columns};
@@ -49,9 +49,16 @@ pub struct OpeningProof {
     pub proof: fiat_shamir::transcript::Proof,
 }
 
-/// The `PCS_OPEN` layout word of a commitment of `shape` (`contract::layout_words`, SPEC.md §13, F2).
+/// The `PCS_OPEN` layout word of a commitment of `shape` (`contract::layout_words`, SPEC.md §13, F2), for the BLAKE2s
+/// VM.
 pub fn layout_word(shape: &Shape, commitment: Commitment) -> [u8; 32] {
-    let words = layout_words(shape);
+    layout_word_for(shape, Blake2s::Omitted, commitment)
+}
+
+/// [`layout_word`] for the hash argument `blake2s` (`contract::layout_words_for`: the Keccak VM's stacks with
+/// [`Blake2s::Keccak`]).
+pub fn layout_word_for(shape: &Shape, blake2s: Blake2s, commitment: Commitment) -> [u8; 32] {
+    let words = layout_words_for(shape, blake2s);
     match commitment {
         Commitment::C1 => words[0],
         Commitment::C2 => words[1],
@@ -84,7 +91,13 @@ pub struct Report {
     pub notes: Vec<String>,
     /// The setup roots the proof's contract binds.
     pub roots: Option<SetupRoots>,
+    /// The process's peak resident memory at the end of each phase, in bytes, when [`MEMORY_PROBE`] is set.
+    pub peaks: Vec<(&'static str, u64)>,
 }
+
+/// A reader of the process's peak resident memory (a test's `bench::peak_rss_bytes`): when set, each phase's end
+/// records it in [`Report::peaks`].
+pub static MEMORY_PROBE: std::sync::OnceLock<fn() -> u64> = std::sync::OnceLock::new();
 
 struct Clock {
     last: Instant,
@@ -94,7 +107,10 @@ impl Clock {
     fn lap(&mut self, report: &mut Report, name: &'static str) {
         let now = Instant::now();
         report.phases.push((name, (now - self.last).as_secs_f64()));
-        self.last = now;
+        if let Some(probe) = MEMORY_PROBE.get() {
+            report.peaks.push((name, probe()));
+        }
+        self.last = Instant::now();
     }
 }
 
@@ -103,7 +119,7 @@ impl Clock {
 /// first two scalars), each sent big-endian. The stream's 32 bytes are then the root's `PCS_OPEN` root word
 /// (`leanvm_flock_gas::evm::machine::root_word`, each 16-byte half of the hash reversed), the word the contract
 /// passes as it is; before, they were the hash's bytes as they are, a word a decoding `PCS_OPEN` reads as another
-/// root (`crates/leanvm_rec/REVIEW-REC.md`, R1).
+/// root.
 pub fn halves(root: &Hash) -> [E; 2] {
     fiat_shamir::merkle::hash_to_scalars(root).map(|s| E::new(s.c0, s.c1, s.c2))
 }
@@ -129,7 +145,11 @@ fn tuple_degree(tuple: &[Form]) -> usize {
 /// The verifier's count of a table block's leaf quotient coefficients: sized for the height's fewest rows
 /// (`Shape::least_rows`, SPEC.md §13, F1).
 pub fn table_leaf_count(t: usize, r: usize) -> u64 {
-    let table = &tables()[t];
+    table_leaf_count_for(&tables()[t], r)
+}
+
+/// [`table_leaf_count`] of a table of either VM (`verifier::vm_tables`).
+pub fn table_leaf_count_for(table: &Table, r: usize) -> u64 {
     let n = 1u64 << r;
     let pull = 1 + table.flushes.pull.iter().map(|tu| tuple_degree(tu)).sum::<usize>();
     let push: usize = table.flushes.push.iter().map(|tu| tuple_degree(tu)).sum();
@@ -139,7 +159,7 @@ pub fn table_leaf_count(t: usize, r: usize) -> u64 {
 /// The verifier's count of the constraint quotient's coefficients (`verifier::reduce`, step 5).
 pub fn constraint_count(trace: &Trace) -> u64 {
     let mut most = 0u64;
-    for table in tables() {
+    for table in trace.vm_tables() {
         let r = trace.heights[table.opcode];
         let n = 1u64 << r;
         if table.opcode == OP_JUMP {
@@ -186,16 +206,26 @@ pub fn prove(trace: &Trace, flock: Option<FlockWitness>, iv: &[u8; 32], config: 
         return Err(format!("leanVM's heights {:?} are not the verifier's {:?}", trace.heights, shape.heights()));
     }
     shape
-        .validate(matches!(config.blake2s, Blake2s::Flock(_)))
+        .validate(matches!(config.blake2s, Blake2s::Flock(_) | Blake2s::Keccak(_)))
         .map_err(|e| format!("the shape: {e:?}"))?;
+    if config.blake2s.keccak() != trace.keccak {
+        return Err(format!("the trace's VM (Keccak: {}) is not the verifier's ({:?})", trace.keccak, config.blake2s));
+    }
+    let keccak = trace.keccak;
     let public = trace.public_input();
 
     // 1. C1: every column in basis B, q_flock as values.
     let c1 = c1_polys(trace);
     let setup = setup_polys(trace);
     clock.lap(&mut report, "C1 and setup: inverse NTTs to basis B");
-    let mut stack1 = Stack::new(StackLayout::new(&c1_columns(&shape)));
-    stack1.put_k(Column::Qflock, &trace.qflock);
+    let mut stack1 = Stack::new(StackLayout::new(&c1_columns_for(&shape, keccak)));
+    // q_flock: the trace's (BLAKE2s), or the Keccak VM's Flock witness's packed words (`Trace::keccak_flock`), which
+    // the trace does not keep.
+    match (&flock, keccak) {
+        (Some(witness), true) => stack1.put_k_words(Column::Qflock, &witness.z),
+        (None, true) => return Err("the Keccak VM needs its Flock witness (Trace::keccak_flock)".into()),
+        _ => stack1.put_k(Column::Qflock, &trace.qflock),
+    }
     for (t, columns) in c1.tables.iter().enumerate() {
         for (c, column) in columns.iter().enumerate() {
             stack1.put_b(Column::Table { table: t, column: c }, &column.novel);
@@ -211,7 +241,14 @@ pub fn prove(trace: &Trace, flock: Option<FlockWitness>, iv: &[u8; 32], config: 
         stack1.fill_unused(0xC1);
         stack_f.fill_unused(0xF0);
     }
-    let committed1 = opening::commit_keeping_codeword(&stack1.words, stack1.layout.vars, stack1.placed());
+    // `PI1_LOW_MEMORY=1`: C1's codeword (twice its stack) is not kept until its opening, which encodes the rows its
+    // queries open again: the prover's peak (C2's commitment) falls by it. The proof is the same.
+    let low_memory = std::env::var_os("PI1_LOW_MEMORY").is_some_and(|v| v != "0");
+    let committed1 = if low_memory {
+        opening::commit(&stack1.words, stack1.layout.vars, stack1.placed())
+    } else {
+        opening::commit_keeping_codeword(&stack1.words, stack1.layout.vars, stack1.placed())
+    };
     let committed_f = opening::commit_keeping_codeword(&stack_f.words, stack_f.layout.vars, stack_f.placed());
     // The contract binds F's root (and opens F against it): it must be this program's and shape's. Garbage in the
     // unused words makes another F, which only a contract built for it accepts: that contract's roots are used. (The
@@ -256,8 +293,9 @@ pub fn prove(trace: &Trace, flock: Option<FlockWitness>, iv: &[u8; 32], config: 
     let mut slices_end = None;
     // The slices, when the stream does not carry them (extension B, `Slices::Claim`).
     let mut flock_slices: Option<Vec<E>> = None;
+    let mut flock = flock;
     if let Blake2s::Flock(variant) = config.blake2s {
-        let witness = flock.ok_or("Flock needs leanVM's Flock inputs (flock.bin)")?;
+        let witness = flock.take().ok_or("Flock needs leanVM's Flock inputs (flock.bin)")?;
         let log_n = leanvm_flock_gas::layout::BLAKE2S_R1CS_LOG_SIZE + trace.heights[OP_BLAKE2S];
         let deferred = config.claims == Claims::Point;
         let out = super::flock::prove(&mut writer, &witness, variant, log_n, deferred)?;
@@ -280,9 +318,22 @@ pub fn prove(trace: &Trace, flock: Option<FlockWitness>, iv: &[u8; 32], config: 
         }
         clock.lap(&mut report, "Flock: zerocheck, lincheck, slices");
     }
+    // The Keccak VM: Flock on the Keccak-f block, one block a SHA3 row, the walked (structured) terminal.
+    if let Blake2s::Keccak(variant) = config.blake2s {
+        let witness = flock.take().ok_or("the Keccak VM's Flock needs its witness (Trace::keccak_flock)")?;
+        let log_n = leanvm_flock_gas::layout::KECCAK_R1CS_LOG_SIZE + trace.heights[OP_BLAKE2S];
+        let out = super::flock::prove_keccak(&mut writer, &witness, variant, log_n)?;
+        drop(witness);
+        slices_end = Some(out.slices_end);
+        report.notes.push(format!("Flock's zerocheck and lincheck: {:.3} s", out.reduction_secs));
+        for (stage, secs) in std::mem::take(&mut *lv42_flock::zerocheck::skip::STAGES.lock().expect("the stages")) {
+            report.notes.push(format!("  the skip's zerocheck, {stage}: {secs:.3} s"));
+        }
+        clock.lap(&mut report, "Flock: zerocheck, lincheck, slices");
+    }
 
     // 4. The heap.
-    let bus = Bus::new(&alphas, beta);
+    let bus = Bus::for_vm(&alphas, beta, keccak);
     let leaves = all_leaves(trace, &bus)?;
     let layout = shape.heap();
     let heap_values = heap(&layout, &leaves);
@@ -315,7 +366,7 @@ pub fn prove(trace: &Trace, flock: Option<FlockWitness>, iv: &[u8; 32], config: 
                 quotients::bytecode_leaf(trace, &c1, &setup, &bus, &r_novel, n - 1),
             ),
             Leaves::Table(t) => {
-                let count = table_leaf_count(t, block.r);
+                let count = table_leaf_count_for(&trace.vm_tables()[t], block.r);
                 (
                     format!("leaf: {}", leanvm_flock_gas::TABLE_NAMES[t]),
                     quotients::table_leaf(trace, t, &c1, &bus, &r_novel, count),
@@ -337,7 +388,7 @@ pub fn prove(trace: &Trace, flock: Option<FlockWitness>, iv: &[u8; 32], config: 
         let [a, b] = trace.public;
         [(F64(a[0]), F64(b[0])), (F64(a[1]), F64(b[1])), (F64::ZERO, F64::ZERO)]
     };
-    let constraint = quotients::constraints(trace, &c1, gamma, constraint_count(trace), lines);
+    let constraint = quotients::constraints_with(trace, stack1.k(Column::Qflock), &c1, gamma, constraint_count(trace), lines);
     report
         .quotients
         .push(("constraints Q_W".into(), constraint.degree, constraint.count, quotients::extension_vars(constraint.count, r_w)));
@@ -347,6 +398,10 @@ pub fn prove(trace: &Trace, flock: Option<FlockWitness>, iv: &[u8; 32], config: 
             return Err(format!("{name}: degree {degree} is not below the verifier's count {count}"));
         }
     }
+    // Past the quotients, C1's polynomials and the leaves are not read again (the values at t read the stacks): freed
+    // before C2's commitment, the prover's peak (the columns' variables kept, for the values at t).
+    let table_vars: Vec<Vec<usize>> = c1.tables.iter().map(|t| t.iter().map(|c| c.vars()).collect()).collect();
+    drop((c1, leaves));
 
     // 6. C2.
     let constraint_sizes = chunks(constraint.count);
@@ -384,10 +439,10 @@ pub fn prove(trace: &Trace, flock: Option<FlockWitness>, iv: &[u8; 32], config: 
     let w: Vec<F192> = std::iter::successors(Some(t), |&x| Some(x * x + x)).take(digit_count).collect();
     let mut sent_values: Vec<F192> = Vec::new();
     let weights = &bus.weights;
-    for table in tables() {
-        let tcols = &c1.tables[table.opcode];
+    for table in trace.vm_tables() {
+        let tvars = &table_vars[table.opcode];
         let b = |c: usize| stack1.k(Column::Table { table: table.opcode, column: c });
-        let at: Vec<F192> = parallel::map_collect(tcols.len(), |c| primitives::multilinear::mle_eval(b(c), &w[..tcols[c].vars()]));
+        let at: Vec<F192> = parallel::map_collect(tvars.len(), |c| primitives::multilinear::mle_eval(b(c), &w[..tvars[c]]));
         let mut sent = vec![false; table.width()];
         for c in sent_columns(&table) {
             sent_values.push(at[c]);
@@ -446,7 +501,7 @@ pub fn prove(trace: &Trace, flock: Option<FlockWitness>, iv: &[u8; 32], config: 
 
     // Past the values at t, the proof reads the stacks and their commitments alone (the heap and the quotients are
     // in C2's stack since step 6).
-    drop((c1, setup, leaves));
+    drop(setup);
 
     // 8. ρ, and the combined claims: the verifier's own, on the stream so far, in weighted mode (which reads nothing
     // after ρ). With the matrices' reduction pending, weighted mode reads it after the slices: `Replay` serves it there,
@@ -513,7 +568,7 @@ pub fn prove(trace: &Trace, flock: Option<FlockWitness>, iv: &[u8; 32], config: 
     };
     let weights: Vec<Weight> = combined
         .iter()
-        .map(|(c, claim)| Weight::new(claim, &stacks_of(*c).0.layout))
+        .map(|(c, claim)| Weight::with_slot_bits(claim, &stacks_of(*c).0.layout, crate::verifier::qflock_row_bits(keccak)))
         .collect();
     clock.lap(&mut report, "claims: weights");
     if config.check {
@@ -561,7 +616,7 @@ pub fn prove(trace: &Trace, flock: Option<FlockWitness>, iv: &[u8; 32], config: 
             for ((c, _), &value) in combined.iter().zip(&values) {
                 let (stack, committed) = stacks_of(*c);
                 let p = point[..stack.layout.vars].to_vec();
-                let layout = layout_word(&shape, *c);
+                let layout = layout_word_for(&shape, config.blake2s, *c);
                 if layout_shape(&layout) != (committed.vars, committed.placed) {
                     return Err(format!(
                         "{c:?}: the layout word's stack {:?} is not the committed one ({}, {})",
@@ -656,7 +711,7 @@ pub fn verify(
         if !root_ok {
             return Err(format!("{commitment:?}: the opening's root is not the stream's (or the contract's)"));
         }
-        let layout = layout_word(trace_shape, *commitment);
+        let layout = layout_word_for(trace_shape, blake2s, *commitment);
         if mine.layout != layout {
             return Err(format!("{commitment:?}: the opening's layout word is not the contract's"));
         }
@@ -674,6 +729,7 @@ pub fn verify(
         }
         (None, Blake2s::Omitted) => {}
         (None, Blake2s::Flock(v)) if v.slices == leanvm_flock_gas::flock_min::Slices::TowerWalk => {}
+        (None, Blake2s::Keccak(_)) => {}
         _ => return Err("Flock's matrices' claims".into()),
     }
     Ok(unproven)

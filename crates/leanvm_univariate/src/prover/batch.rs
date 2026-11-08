@@ -325,8 +325,11 @@ pub fn prove_pairs(
     let shortest = stacks.iter().map(|&(_, v)| v).min().expect("stacks");
     // The rounds that read the words end on a pair's boundary.
     let base_rounds = BASE_ROUNDS.min(shortest - 1) & !1;
-    if stacks.iter().any(|&(_, v)| v % 2 == 1 && v != vars) {
-        return Err("a stack shorter than the batch ends inside a pair".into());
+    // A stack shorter than the batch with an odd number of variables ends inside a pair: its last variable is the
+    // pair's first, the second an extension variable. Past the rounds that read the words that is the folded
+    // table's own case (one word is its own pair with zero, `Folded`), so only the words' rounds must not reach it.
+    if stacks.iter().any(|&(_, v)| v % 2 == 1 && v != vars && v <= base_rounds + 1) {
+        return Err("a stack shorter than the batch ends inside a pair the words' rounds read".into());
     }
     let scales: Vec<F192> = primitives::field::powers(lambda, stacks.len());
     let beta1 = from_v(cantor_beta1());

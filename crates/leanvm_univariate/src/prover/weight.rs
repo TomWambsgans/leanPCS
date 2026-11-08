@@ -31,7 +31,8 @@ use crate::stacks::StackLayout;
 
 /// The variables a factored piece's `low` covers: the rounds read from the stack's words must not outlast it.
 pub const LOW_VARS: usize = 8;
-/// `q_flock`'s slot bits: its word `j + 256 u` is slot `j` of instance `u`.
+/// `q_flock`'s slot bits for the BLAKE2s VM: its word `j + 256 u` is slot `j` of instance `u` (the Keccak VM's are
+/// 11, [`Weight::with_slot_bits`]).
 const SLOT_BITS: usize = 8;
 /// Words per task of a round.
 const TASK_WORDS: usize = 1 << 15;
@@ -249,8 +250,14 @@ pub struct Weight {
 }
 
 impl Weight {
-    /// The weight of `claim` on the stack `layout` places.
+    /// The weight of `claim` on the stack `layout` places (the BLAKE2s VM's `q_flock`, 8 slot bits).
     pub fn new(claim: &Combined<E>, layout: &StackLayout) -> Self {
+        Self::with_slot_bits(claim, layout, SLOT_BITS)
+    }
+
+    /// [`Weight::new`] with `q_flock`'s word `j + 2^slot_bits u` slot `j` of instance `u` (`verifier::qflock_row_bits`:
+    /// 8 for BLAKE2s, 11 for the Keccak-f block).
+    pub fn with_slot_bits(claim: &Combined<E>, layout: &StackLayout, slot_bits: usize) -> Self {
         let basis = [F192::ONE, F192::new(0, 1, 0), F192::new(0, 0, 1)];
         let points: Vec<Vec<F192>> = claim
             .points
@@ -264,8 +271,6 @@ impl Weight {
             plain: Vec<(usize, F192)>,
             twisted: Vec<(usize, Vec<(u8, F192)>)>,
             slots: Vec<(usize, Vec<F192>)>,
-            /// The coefficient of the column's sum (`verifier::SUM_TWIST`: the weight 1 on every word).
-            sum: Option<F192>,
         }
         let mut columns: Vec<(Column, Terms)> = Vec::new();
         for &(column, p, twist, coefficient) in &claim.terms {
@@ -282,18 +287,13 @@ impl Weight {
                 }
             };
             let terms = &mut columns[at].1;
-            if twist == crate::verifier::SUM_TWIST {
-                assert!(slot.is_none(), "no slot sums");
-                *terms.sum.get_or_insert(F192::ZERO) += coefficient;
-                continue;
-            }
             match slot {
                 Some(j) => {
                     assert_eq!(twist, 0, "no twisted slot terms");
                     let slots = match terms.slots.iter().position(|(q, _)| *q == p) {
                         Some(i) => &mut terms.slots[i].1,
                         None => {
-                            terms.slots.push((p, vec![F192::ZERO; 1 << SLOT_BITS]));
+                            terms.slots.push((p, vec![F192::ZERO; 1 << slot_bits]));
                             &mut terms.slots.last_mut().unwrap().1
                         }
                     };
@@ -381,20 +381,10 @@ impl Weight {
                 let shape = weight.shapes.len() - 1;
                 add(&mut weight, shape, F192::ONE);
             }
-            if let Some(coefficient) = terms.sum {
-                // The weight 1 on every word: a factored shape of ones.
-                let a = vars.min(LOW_VARS);
-                weight.shapes.push(Shape::Factored {
-                    low: vec![F192::ONE; 1 << a],
-                    h: vec![F192::ONE; 1 << (vars - a)],
-                });
-                let shape = weight.shapes.len() - 1;
-                add(&mut weight, shape, coefficient);
-            }
             for (p, slots) in &terms.slots {
                 weight.shapes.push(Shape::Factored {
                     low: slots.clone(),
-                    h: eq_table(&points[*p][..vars - SLOT_BITS]),
+                    h: eq_table(&points[*p][..vars - slot_bits]),
                 });
                 let shape = weight.shapes.len() - 1;
                 add(&mut weight, shape, F192::ONE);

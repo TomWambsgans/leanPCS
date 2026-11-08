@@ -96,7 +96,7 @@ fn gas_report() {
         let mut rows = Vec::new();
         for workload in &WORKLOADS {
             let shape = Shape::of(&workload.shape);
-            // Review M1, F3: a proof stack below 2^24 words has no certified level-0 list; such shapes are not
+            // A proof stack below 2^24 words has no certified level-0 list (SPEC.md §9); such shapes are not
             // reported.
             let proof_stacks = leanvm_univariate::verifier::layouts(&shape);
             if proof_stacks.iter().any(|(c, l)| *c != leanvm_univariate::claims::Commitment::Setup && l.vars < 24) {

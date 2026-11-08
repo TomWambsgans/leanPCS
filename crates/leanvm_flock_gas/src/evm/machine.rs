@@ -12,8 +12,8 @@
 //! under that layout. A call carries every claim on its commitment. Gas: `call_gas` a call and `claim_gas` a claim.
 //!
 //! The mock has two modes. The **byte-string** mode (no layouts registered) attests an input if it is one of the
-//! registered inputs, byte for byte: what `crates/leanvm_univariate`'s vectors use. The **decoding** mode
-//! (`crates/leanvm_rec/REVIEW-REC.md`, M1) is a registry keyed by the layout word: an input attests only if it
+//! registered inputs, byte for byte: what `crates/leanvm_univariate`'s vectors use. The **decoding** mode is a
+//! registry keyed by the layout word: an input attests only if it
 //! decodes under the ABI ([`decode`]: the root word `s_0 · 2^128 + s_1` of [`root_word`], a layout word the registry
 //! knows, which fixes `v`, `k ≥ 1`, the exact length, every element's top 64 bits zero) into a registered opening
 //! (the root as the opening has it, the layout word, the claims). A call in another format then fails its test.

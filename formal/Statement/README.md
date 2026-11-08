@@ -224,12 +224,11 @@ them:
   (2^52 + Q + (6 + 3 · 10122) · 2^32)² / 2^508`, `N = 2^21 + Q + 6 + 3 · 10122`, with
   `openingBound x = (x + 10122)(2^-128 + 5 (x + 10122) / 2^256)` (F2's term for one opening); the constants
   count the setup's and the verifier's own calls. About `2^-105` at `Q = 0`, `2^-86` at `2^40`, `2^-62` at
-  `2^64` (`formal/EndToEnd/Review/E2ESoundnessNumbers.py`, exact rationals).
+  `2^64`.
 * `δ = E2ECompleteness.deltaDeployed = (17 · 2^24 + 8)/2^192 + 2/2^256 + 3 · 2^-277 + (2^48)²/2^508`, about
   `2^-163.91`: degenerate challenges (`2^-163.91`), a chain query that is not fresh (`2^-255`), the proofs of work
   (`2^-275.4`; no nonce among `2^25`, the whole run's failure below `2^-304`), the permutation as two random
-  oracles (`2^-412`). The same `δ` holds for every fixed value of the coins (`completeness_every_coins`,
-  `formal/EndToEnd/Review/E2ECompletenessReview.lean`).
+  oracles (`2^-412`).
 * `ζ = zkBoundEnd ((2^24 + 2^70) · 12) fmtBudget (· ↦ deltaNone)` (`formal/EndToEnd/ZK/Main.lean`): about
   `2^-113` for `Q ≤ 2^126`, its largest term the Fiat–Shamir freshness of the honest prover's queries;
   `HIDING.md`'s conditions (S) and (R) are proven for the deployed layouts outside a small set of challenges,

@@ -108,9 +108,8 @@ one term more (the gadget's), `m + 1` instead of `m` in front of the Johnson lis
 **Randomness.** The masks and the padding's seed must be uniform, secret, and **fresh per proof, never
 reused**: two proofs that share the padding's seed have the same random first pieces, which their opened rows
 then pin across both proofs' positions (about 446 > 256), and two that share the masks let the second proof's
-`a_j` be predicted from the first's for a guessed witness; either confirms the guess (`review_hiding.rs`,
-`reused_seed_confirms_the_witness`, `reused_masks_confirm_the_witness`). So `protocol::prove` draws its own: a
-32-byte seed per proof from the operating system (`protocol::fresh_seed`, `rand`'s `OsRng`, which keeps no
+`a_j` be predicted from the first's for a guessed witness; either confirms the guess. So `protocol::prove` draws
+its own: a 32-byte seed per proof from the operating system (`protocol::fresh_seed`, `rand`'s `OsRng`, which keeps no
 state in the process and so does not repeat in a fork), from which `protocol::Randomness::derive` makes both by
 Keccak-256 with distinct tags, a key binding the seed, the circuit's commitment, the statement and a digest of
 the witness's cells: a seed that repeats anyway (a restored snapshot) gives unrelated randomness for another
@@ -223,8 +222,7 @@ single lower pattern, which is how the previous design reached 33 without any gu
   positions, and an unopened row keeps `L - 3 = 37` elements. Without the gadget the view reveals the table.
 - `round_freedom_predicts_the_exact_test`: with all or part of the gadget, the view reveals nothing exactly when
   (R)'s span is 33, and at most what it misses; through the gadget alone 33 / 30 / 27 / 9.
-- `rounds_are_free_at_full_size`, and the review's `rounds_are_free_at_every_size` (`2^17` to `2^22` rows, eight
-  draws each): on the real layouts at the reduction's own claim points, the gadget's entries alone give 33 and (S)
+- `rounds_are_free_at_full_size`: on the real layouts at the reduction's own claim points, the gadget's entries alone give 33 and (S)
   holds; with sampled data entries too, 33; the data entries without the gadget reach at most 30.
 - `rounds_are_free_for_every_challenge`: the argument's parts on both real layouts: (1) across the halves lanes
   meet only in `c_5`, for every lane pair; at challenges chosen against the argument but outside `B` (all but two
@@ -232,9 +230,6 @@ single lower pattern, which is how the previous design reached 33 without any gu
   `E`-linear core exactly: each lower pattern reaches 9 dimensions of rounds 0 to 4 with `h_5(0)` its running
   claim, the upper one has `h_5(0) = 0` and a nonzero running claim, all together 11; (3) (R) itself, the `K`-span
   through the twisted completions: 33, and (S); (4) with two of `φ_0, φ_1, φ_2` in `K`, (S) fails.
-- `review_hiding.rs`, `translation_holds_on_real_openings` (`2^17` rows) and `translation_holds_at_the_benchmark_size`
-  (`2^22`, ignored, about 8 GB): the translation run with the real prover, (R) solved at the gadget's entries; the
-  second table's opening is the first's byte for byte but the first level's root and siblings.
 
 ## How much randomness is necessary
 
@@ -281,16 +276,16 @@ single lower pattern, which is how the previous design reached 33 without any gu
 - The layout's id (`opening::layout_id`) encodes the gadget (its patterns' lanes and entries) where it encoded the
   share lane; a public layout's encoding, so the wiring table's prefix, is unchanged.
 
-## The review's two attacks
+## The two attacks on the pre-hiding prover
 
-- **Calldata alone** (`review_zk_calldata_only`): the four `a_j` still pin the twelve masks for a candidate witness
+- **Calldata alone**: the four `a_j` still pin the twelve masks for a candidate witness
   (the test checks it for the true one), but `R1`'s root is now a Merkle root of rows that each hold
   `64·37` bits of padding the verifier never sees, so recomputing it from (cells, masks) confirms nothing: in the
   random-oracle model the root is independent of the witness but with probability `2·H·2^20·2^-2368`.
   `calldata_alone_does_not_confirm_a_witness`: the recomputed root matches for neither candidate, and the same
   cells and masks under another seed commit to another root. `R2`'s root (whose `q`, `q_G` depend on the masks
   and `h` on the cells) is hidden the same way.
-- **Openings** (`review_zk_distinguish_and_unmask`): every lane, the masks' included, has a random first piece,
+- **Openings**: every lane, the masks' included, has a random first piece,
   and by the theorem the opening is the same for any two tables with the same claims, which are functions of the
   `a_j`; the masks are entries of the table like any other. `opened_rows_do_not_identify_the_witness`: no opened
   row of `R1` is a row of either candidate's commitment, and at the opened positions (223 distinct) the overflow

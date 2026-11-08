@@ -115,7 +115,7 @@ theorem hides_pair {ι Y Q O : Type} [Fintype ι] [DecidableEq ι] [Fintype Y] [
 challenges/masks; the deployed result is `zeroKnowledge_closed` through `jointHVZKε_of_linkV`
 (`Instance/Nondeg.lean`; this theorem's form there: `joint_hzkV_nd`). (`hT₁`, `hT₂` ask the
 honest tables' claims at every mask, with no `ClaimsND`; where `claimScale 2 23 t = 0` the
-verifier's witness value is `0`, `EndToEnd/Review/E2EZkNondeg.lean`.)
+verifier's witness value is `0`.)
 
 **Joint honest-verifier zero knowledge, the openings reading the five values**: at every good
 challenge the honest view under uniform masks and paddings has the distribution of `jointSimV`. -/

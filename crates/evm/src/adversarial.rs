@@ -1,4 +1,4 @@
-// Part of this repository: an independent review's adversarial tests (commit 5ff0904), adapted to the selector,
+// Part of this repository: adversarial tests (commit 5ff0904), adapted to the selector,
 // the index root in storage, the strict check of `PCS_OPEN`'s reply and the word 1 returned; the test of any
 // returned data passing is turned around (`only_the_word_one_passes`), as is that of calldata dropping a root's
 // third limb. MIT OR Apache-2.0; see NOTICE.md.

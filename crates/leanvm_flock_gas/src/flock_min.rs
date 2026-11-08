@@ -4,7 +4,7 @@
 // parameters. New here: the skip of any size `k ≤ 6`, the matrices' reduction over the skip's `k` row bits, and the
 // lincheck's slices left to one claim of their combination, and π1-rec's zerocheck point (`FsShape::Rec`: its
 // sampled coordinates successive squares of one); the walked variant on any block circuit ([`WalkedCircuit`]: BLAKE2s's,
-// or `crate::keccak_flock`'s Keccak-f block, for crates/slh_dsa/SPEC-FAST.md). MIT OR Apache-2.0; see NOTICE.md.
+// or `crate::keccak_flock`'s Keccak-f block, for crates/lv42_flock/KECCAK.md). MIT OR Apache-2.0; see NOTICE.md.
 //! Flock's verifier, lever by lever (`crates/leanvm_univariate/SPEC.md`, the Flock section).
 //!
 //! **What the verifier needs of the 64 slices.** The lincheck ends on `s_i = ẑ(i, p)`, `i < 64` the packing bits
@@ -144,7 +144,7 @@ pub struct Reduced<S> {
 pub enum End<S> {
     /// The ring switch's claim `Σ_u W(u) q_flock(u) = target`, `W = Φ(eq(point, ·))`, `Φ` drawn by `map`; with
     /// [`Slices::InContract`], also `W` at a point and its coefficients. `weight` is for measuring that variant
-    /// (`tests/flock_levers.rs` outputs it, so that its cost is counted); `crates/leanvm_univariate` never uses
+    /// (a lever study, since removed, measured it); `crates/leanvm_univariate` never uses
     /// `InContract`.
     Ring { map: Vec<S>, target: S, weight: Option<S> },
     /// `Σ_i weights_i ẑ(i, point) = value`.

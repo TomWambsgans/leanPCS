@@ -55,12 +55,12 @@ discharged there (Flock by `flockSoundInstance`, `B`, `J` by `Ids/`'s `busModelR
 `idsRemainingRef`, the batch by `Ids/Align.lean`, `WeightMle` off the merge polynomial's roots by
 `Ids/WeightMle.lean`, the counts by `countsZero`, the Fiat–Shamir layer by `fsLayer_holds`, the numbers
 by `GameNumbers.lean` and `Closed.lean`). `uniBound (2^-160) (2^64) = 2^-61.41`
-(`EndToEnd/Review/UniSoundnessNumbers.py`, exact rationals).
+(in exact rationals).
 
 **Closed at `≥ 128` bits** (`Closed128.lean`): **`UniSound.Closed.uniKnowledgeSoundness_closed128`**, the
 same with the error `uniBound128 (2^32 / |E|) Q`, at most `2^-64` for `Q ≤ 2^64`
 (`uniBound128 (2^-160) (2^64) = 2^-64.87`, 128.87 bits as `Q / ε`:
-`EndToEnd/Review/UniSoundnessNumbers128.py`). No hypothesis. Its Fiat–Shamir layer (`FsLayer128`,
+in exact rationals). No hypothesis. Its Fiat–Shamir layer (`FsLayer128`,
 `fsLayer128_holds`) charges the five WHIR openings **once**, as one union family whose bad events are
 per fresh query (`Compose.prEvent_doomF_le`, generic in the number and shapes of the openings), at the
 exact certified per-group bound `WhirBridge.εExact = 269 · 2^-137`; and separates the seed from the

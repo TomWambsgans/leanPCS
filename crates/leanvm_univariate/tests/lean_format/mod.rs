@@ -1,6 +1,6 @@
 // Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
 //! The vectors' format and the Rust verifier's run on them, shared by `tests/lean_vectors.rs` (random, accepting and
-//! mutated streams at the measured shapes) and `tests/review_honest.rs` (the review's honest proofs). See
+//! mutated streams at the measured shapes). See
 //! `lean_vectors.rs` for the format; each vector also has a `SHAPE <log_memory> <log_bytecode> <rows…>` line (the
 //! Rust's `Shape`, whose heights `⌈log₂ rows⌉` the contract is built for), its setup (`PROGRAMIV`, `CONTRACTIV`, the
 //! five `LAYOUTWORDS`: `contract::contract_iv` and `layout_words` at the reference roots) and the row counts the

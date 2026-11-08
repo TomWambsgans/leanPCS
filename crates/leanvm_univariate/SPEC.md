@@ -7,7 +7,7 @@ must change; the sections below are milestone 1's design, corrected where §13 s
 line (ABI point claims × Flock (a′)) deployed: **305,808** transaction gas (EIP-7623, `c = 0`, without the base),
 against milestone 1's 417,014; calldata 7,108 B, execution 192,392 (3 contracts). Milestone 1: Option A:
 BLAKE2s by Flock's sumchecks, everything else univariate. §7 (Flock) is the Flock agent's, with details in
-`SPEC-FLOCK.md`; option B (BLAKE2s without sumcheck) is in `SPEC-B.md` and does not fit WHIR. *Measured*: revm
+`SPEC-FLOCK.md`; option B (BLAKE2s without sumcheck, `SPEC-B.md` in the history) does not fit WHIR. *Measured*: revm
 runs of the contract compiled from the recorded Rust verifier (`tests/gas.rs`); *modelled*: computed here.
 
 ## 0. Summary
@@ -70,7 +70,7 @@ for it is `2^26.53` words. The other shapes (32 to 2,000 signatures) are leanVM'
   themselves, with no inversion (the novel basis needs `w/(1+w)`).
 - **Restriction to a coset.** For `F` of `2^m` coefficients and an aligned coset `o + V_r`, let
   `R(z) = Σ_k c_k Π_(l<r) b_(k_l)(w_l(z)) Π_(l≥r) b_(k_l)(w_l(o))`, `b_1(x) = x`, `b_0(x) = 1 + x`: the low factors
-  of `B_k` at `z`, the high ones at `o` (review M1, F6: `B_(k - k mod 2^r)(o)` would add the constant
+  of `B_k` at `z`, the high ones at `o` (§13, F6: `B_(k - k mod 2^r)(o)` would add the constant
   `Π_(l<r)(1 + w_l(o))`). It has degree `< 2^r` and agrees with `F` on the coset, and `R(o + t)` is one claim on
   `F` at the *mixed point* `(w_{<r}(t) + w_{<r}(o), w_{≥r}(o))` (each `w_l` is GF(2)-linear). This is how one heap
   serves every block's identity.
@@ -97,7 +97,7 @@ all claims on it must be checked together (AGENTS.md). `src/stacks.rs` gives eac
 first. A claim reads only its column's block. Nothing relies on the stack's unused words, nor on the zero padding of
 a column shorter than its lane, which leanVM's `Layout::new` does not force.
 
-**Sizes over the shapes** (`review/leanvm_univariate_params.py`):
+**Sizes over the shapes** (`params/leanvm_univariate_params.py`):
 
 | signatures | 32 | 128 | 400 | **1,000** | 1,290 | 2,000 |
 |---|---:|---:|---:|---:|---:|---:|
@@ -113,7 +113,7 @@ heap, which doubles the heap (`2^24`) for no fewer values.
 
 ## 4. Transcript and challenges
 
-**The public input in calldata** (review M1, F7) is four big-endian 64-bit words `(cell0.c0, cell0.c1, cell1.c0,
+**The public input in calldata** (§13, F7) is four big-endian 64-bit words `(cell0.c0, cell0.c1, cell1.c0,
 cell1.c1)`, the K-limbs of memory cells 0 and 1. leanVM's statement reads its 32-byte digest as little-endian words
 (`Digest::words`), so a caller passes each of the digest's four 8-byte words byte-reversed. Accepting the digest
 unchanged would cost the contract a byte swap of the four words, about 110 gas (three mask-shift-or steps on the
@@ -124,7 +124,7 @@ The transcript is a Keccak-256 chain (`leanvm_flock_gas::transcript::KeccakChann
 of the state and the calldata bytes read since the last one. A scalar is 24 bytes, a root half 16: one of the root's
 two WHIR scalars (`hash_to_scalars`, the opening's first two), big-endian, so that a root's 32 bytes are its `PCS_OPEN`
 root word `s_0 · 2^128 + s_1` (`crates/evm/src/machine.rs`), which the contract passes as it is
-(`crates/leanvm_rec/REVIEW-REC.md`, R1; the prover sent the hash's bytes before). The seed is the
+(the prover sent the hash's bytes before). The seed is the
 Keccak-256 of the name `leanVM-univar-v1`, the program's IV (which must bind the setup and the shape) and the public
 input. There are no announced sizes: one shape per contract. The order:
 
@@ -284,13 +284,13 @@ coordinates), its terms (`column | point << 32 | twist << 48`, then the coeffici
 evaluates the weight, as leanVM's own WHIR verifier does. No batching sumcheck. Price `c` a claim; the precompile's
 work grows with the terms (197 + 42 + 2).
 
-## 9. Soundness (`review/leanvm_univariate_params.py`)
+## 9. Soundness (`params/leanvm_univariate_params.py`)
 
 Each challenge's error is a Schwartz–Zippel bound times the number of committed tables it is drawn against. That is
 `L_1` before `C2` and `L_1 L_2` after it. The setup is honestly computed, and an honest codeword's list within the
 Johnson radius is itself, so `L = 1` there. The lists are the certified level-0 lists of `lean-whir-large` (0aceeb1):
-4,473 at a `2^27` stack, so `L_1 L_2 = 2^24.3`. Iteration 2 (§13), at 1,000 signatures, as the code states it (review
-M1's F8: committed capacities, the unused blocks, degree 4 a tuple, `ρ` and `λ` apart):
+4,473 at a `2^27` stack, so `L_1 L_2 = 2^24.3`. Iteration 2 (§13), at 1,000 signatures, as the code states it (§13,
+F8: committed capacities, the unused blocks, degree 4 a tuple, `ρ` and `λ` apart):
 
 | round | error | bits alone | after the union |
 |---|---|---:|---:|
@@ -304,10 +304,10 @@ M1's F8: committed capacities, the unused blocks, degree 4 a tuple, `ρ` and `λ
 
 With the code's eta-search lists (216, which omit a row-union factor) the result is 151.1 bits; under leanerVM's
 generic cap `L ≤ 2^18`, 130.6. At 1,290 signatures: 141.9. Shapes whose proof stacks are below `2^24` words (32
-signatures: `C1` is `2^22`) have no certified level-0 list, so the gas reports over the shapes leave them out (review
-M1, F3).
+signatures: `C1` is `2^22`) have no certified level-0 list, so the gas reports over the shapes leave them out (§13,
+F3).
 
-**The PCS (review M1, F3).** WHIR is leanVM's, unchanged, at about 128.97 certified bits an opening, and the main
+**The PCS (§13, F3).** WHIR is leanVM's, unchanged, at about 128.97 certified bits an opening, and the main
 line makes 5 openings (`C1`, `C2`, the setup, `A0`, `B0`). A plain union gives 126.6 bits. In the query-bounded
 random-permutation model of the end theorems, the openings' Fiat–Shamir transcripts are domain-separated (each
 seeded by its own layout word and claims) and share the adversary's `Q` queries, so their total is about
@@ -426,7 +426,7 @@ uses about 12 GB at 1,000 signatures.
    - `CountsNonzero` by inverse columns `z_T` instead of leanVM's count product;
    - BLAKE2S's limbs committed twice, with `copy = ℓ(q_flock)` in `Q_W`;
    - padding rows unconstrained (the leaf identity forces their leaves to 1; no `padRow` constraint): the extracted
-     witness is `C1` as committed, with BLAKE2S's limbs read from `q_flock` (review M1, F6);
+     witness is `C1` as committed, with BLAKE2S's limbs read from `q_flock` (§13, F6);
    - the bus as a committed heap instead of a GKR;
    - one shape per contract.
 
@@ -458,7 +458,7 @@ Each entry says what changed, why, and what the prover must change (none if the 
    - §5: the root is `T(1) · fp(init) = fp(fin)`, a product; zero fingerprints need no exclusion, since every heap
      identity only multiplies.
    - §5.2: the leaf table is the reference workload's; `HeapLayout::new` can leave several unused blocks.
-   - §9 and `review/leanvm_univariate_params.py`: the bus error is `4N/|E|` (one Schwartz–Zippel over `E^5`, degree
+   - §9 and `params/leanvm_univariate_params.py`: the bus error is `4N/|E|` (one Schwartz–Zippel over `E^5`, degree
      4 a factor), `N = 8,501,434 ≈ 2^23.02` at the reference workload: `2^-166.98` alone, `2^-154.9` over `C1`'s list
      4,473. The "no pull fingerprint vanishes" term is gone.
    - §5.2: the BLAKE2S leaves read the `copy_j` columns, so the bus's soundness for BLAKE2S needs `Q_W`'s
@@ -506,7 +506,7 @@ Each entry says what changed, why, and what the prover must change (none if the 
    `b` follow the three stack values. `flock_min::tests::the_pending_matrices_reduction_merges_into_a_longer_sumcheck`
    is an honest prover of this merge.
 
-6. **F1 (review M1): the row counts are announced.** The contract is built for the heights (one contract per shape
+6. **F1: the row counts are announced.** The contract is built for the heights (one contract per shape
    class: heights, `log_memory`, `log_bytecode`), not for the row counts. The stream starts with the six tables'
    row counts, 32-bit big-endian integers (24 bytes, `Channel::next_integer`), before `C1`'s root; the first
    challenge's hash absorbs them with the root. The contract requires each count `c ≤ 2^r` (`c >> (r+1) = 0`, and
@@ -524,11 +524,11 @@ Each entry says what changed, why, and what the prover must change (none if the 
    BLAKE2S) before `C1`'s root; set padding rows' counter columns nonzero (e.g. 1) and `z_T = (Π_j c_j)^(-1)` on
    every row; drop `Z_pad` from the counters' constraint in `Q_W`; size each table's leaf quotient for
    `n - (2^(r-1) + 1)` padding rows (`Shape::least_rows`). The committed leaf quotients are unchanged.
-7. **F5 (review M1): small shapes.** Every quotient degree is `verifier::degree(plus, minus)`, saturating, so no
-   height wraps (the review's panicking shapes are recorded now, `review_honest::small_heights_are_recorded`).
+7. **F5: small shapes.** Every quotient degree is `verifier::degree(plus, minus)`, saturating, so no
+   height wraps (shapes that used to panic are recorded now).
    `Shape::validate` rejects only a memory of one cell, a height of 32 or more, and with Flock a BLAKE2S height
    below 7 (`VerifierError::InvalidShape`). Prover: nothing.
-8. **F2 (review M1) and the prover's requests: the IV, the layout words, the setup roots.**
+8. **F2 and the prover's requests: the IV, the layout words, the setup roots.**
    - `contract::SetupRoots`: the setup roots are code constants, `REFERENCE` being the reference shape's real ones
      (`F` 9b5a0f9b…, `A0` 93cd9a03…, `B0` c0755650…, from `prover::setup::roots`, PROVER.md). The gas reports use them
      for every shape (the gas does not depend on them); a deployment for another shape takes its own `F`.
@@ -543,9 +543,9 @@ Each entry says what changed, why, and what the prover must change (none if the 
      `contract` that takes an IV takes the program's and derives this one.
    Measured: no gas (constants), code +60 bytes.
    Prover: seed the transcript with `contract_iv(shape, PROGRAM_IV, roots)`; call `PCS_OPEN` with the layout words.
-9. **F3, F6, F7, F8 (review M1), and the real traces' corrections** (documentation, no change to the proof):
-   - §9: iteration 2's soundness from the code's capacities (`review/leanvm_univariate_params.py`, rewritten on
-     review M1's method): the PIOP 142.3 bits at 1,000 signatures; the PCS (5 WHIR openings at 128.97 bits) 126.6
+9. **F3, F6, F7, F8, and the real traces' corrections** (documentation, no change to the proof):
+   - §9: iteration 2's soundness from the code's capacities (`params/leanvm_univariate_params.py`, rewritten
+     with committed capacities): the PIOP 142.3 bits at 1,000 signatures; the PCS (5 WHIR openings at 128.97 bits) 126.6
      by a plain union, about 129 in the query-bounded random-permutation model; shapes below `2^24` left out.
    - §2: the restriction formula's high factors only (F6); §12: the extracted witness is `C1` as committed (F6).
    - §4 and `contract.rs`: the public input's word order documented (F7).
@@ -588,11 +588,11 @@ Each entry says what changed, why, and what the prover must change (none if the 
     - `weight_at` keys `q_flock`'s slot rows by their point (entry 4), not by the slot;
     - `Relations::combine` merges the 0-variable `TreeQuotient(1)` term into the first longest `C2` point: harmless
       (documented in `claims.rs`);
-    - `End::Ring`'s weight is computed only for `Slices::InContract`, a measuring variant (`flock_levers`); the
+    - `End::Ring`'s weight is computed only for `Slices::InContract`, a measuring variant (a lever study, since removed); the
       univariate verifier never uses it;
     - `flock_min`'s `log_n ≥ 21` is `Shape::validate`'s BLAKE2S height of at least 7 with Flock (entry 7);
     - §8: what the contract checks itself, and why random streams pass with mocked openings.
-    The Lean side (a998edd) is merged; `tests/lean_vectors.rs` compiles, and `review_honest::lean_honest_vectors`
+    The Lean side (a998edd) is merged; `tests/lean_vectors.rs` compiles and
     seeds with the contract's IV. The vectors and the transcription follow milestone 1's protocol until updated to
     this list. The merge brings the prover too (a6e2190, inside a998edd), unchanged: its `tests/prove_tiny.rs` writes
     milestone 1's stream and fails here (`StreamExhausted`) until prover2 adapts it to this list. Prover: nothing.

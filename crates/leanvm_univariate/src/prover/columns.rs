@@ -3,7 +3,7 @@
 //! coefficients (for the quotients' cosets) and its `B` coefficients (what the stack holds).
 
 use leanvm_flock_gas::N_TABLES;
-use leanvm_flock_gas::layout::{SEP_BYTECODE, tables};
+use leanvm_flock_gas::layout::SEP_BYTECODE;
 use primitives::field::{F64, g_powers};
 use quotient::ntt::{coefficients_from, subset_sums_from};
 
@@ -57,7 +57,7 @@ pub struct SetupPolys {
 }
 
 pub fn c1_polys(trace: &Trace) -> C1Polys {
-    let layout = tables();
+    let layout = trace.vm_tables();
     let mut tables_out = Vec::with_capacity(N_TABLES);
     let mut inverses = Vec::with_capacity(N_TABLES);
     let mut inverse_values = Vec::with_capacity(N_TABLES);

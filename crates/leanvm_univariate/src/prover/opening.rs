@@ -21,7 +21,7 @@ use primitives::hash::hash as keccak256;
 
 /// WHIR's first fold: `2^6` lanes.
 pub const LANE_FOLD: usize = 6;
-/// WHIR's rate, `2^-LOG_INV_RATE` (the repository's: `review/whir_params.py`).
+/// WHIR's rate, `2^-LOG_INV_RATE` (the repository's: `params/whir_params.py`).
 pub const LOG_INV_RATE: usize = 1;
 const LABEL: &[u8; 20] = b"leanvm-univariate-op";
 /// The version of this opening (its transcript, WHIR's configuration at c445e3d5): 2 since the layout word is

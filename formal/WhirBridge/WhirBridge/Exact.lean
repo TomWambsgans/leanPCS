@@ -19,7 +19,7 @@ import WhirBridge.LargeSound
 
 mumbai certifies every admissible WHIR shape at `2^-128` per group of challenges
 (`shapeOK_all`); at the shapes `2^24 ..= 2^28`, rate `1/2`, its own certificates give more: the
-weakest group is at `2^-128.95` (`review/whir_params.py --large`, level 0's query group at
+weakest group is at `2^-128.95` (`params/whir_params.py --large`, level 0's query group at
 `2^26`). This file states that bound and carries it through the opening.
 
 * **`εExact = 269 · 2^-137`** (`≈ 0.5254 · 2^-128 = 2^-128.93`). The smallest `num` at `D = 137`

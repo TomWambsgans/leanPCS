@@ -10,7 +10,7 @@ import UniSound.Rec3.Final128_3
 **`uniKnowledgeSoundness_rec3_128_of_walk`**: for every deployment at the reference shape with leanVM's program IV,
 π1-rec3's verifier is knowledge sound for `uniExtractor` with error `uniBound128 (2^35/|E|) Q` at `Q` calls of `π`
 and `π⁻¹`, at most `2^-64` for `Q ≤ 2^64` (`2^-64.494` at `Q = 2^64`: 128.49 bits,
-`EndToEnd/Review/UniRec3Numbers.py`), given the walk's fact `hw` only. It is `uniKnowledgeSoundness3_128` with
+in exact rationals), given the walk's fact `hw` only. It is `uniKnowledgeSoundness3_128` with
 Flock (`flock3Ref`), the identity model (`ids3Ref`), the batch (`pairBatchRec3 13`), the code-level link
 (`code3Ref`, its roots `uniCode3At_roots`), the last link (`uniFinal3_ref`), the `≥ 128`-bit Fiat–Shamir layer
 (`fsLayer128_3_holds`) and the reference numbers (`Ref3.lean`, `Numbers3.lean`).

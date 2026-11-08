@@ -1,7 +1,7 @@
 // Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
 //! The setup commitments (SPEC.md §3), computed from what they are fixed by: `F` from the program (leanVM's stacked
 //! bytecode) and the shape (the memory's and the bytecode's sizes), `A0` and `B0` from Flock's BLAKE2s R1CS alone.
-//! Their roots are what a contract is generated with (review M1's F2): [`roots`].
+//! Their roots are what a contract is generated with (SPEC.md §13, F2): [`roots`].
 //!
 //! They are committed as every stack is (`opening::commit`: leanVM's WHIR at `c445e3d5`, rate `1/2`, 64 lanes).
 

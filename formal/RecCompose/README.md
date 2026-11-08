@@ -19,14 +19,13 @@ Keccak-f[1600] while π1-rec3's soundness is proved in the random-permutation mo
 3. **the Prop-premise corollaries**: `RecKnowledgeSoundness D ε2 ε1 εh`, `RecCompleteness D P1 P2 δ1 δh δ2`, whose own
    hypotheses are `RecGraph.Pi1.Pi1GraphIsVerifier` (proved), `Pi1FsKeccak ε1`, `Pi1HazardKeccak εh` (and the
    completeness analogues `Pi1CompletenessKeccak`, `Pi1HazardKeccakHonest`, about the honest prover). `Pi1FsKeccak` and
-   `Pi1HazardKeccak` are **false as stated** for unbounded adversaries, which grind Keccak-f[1600] offline for free
-   (`Review/STATEMENT_REVIEW.md`, finding 3): read them as the Fiat–Shamir heuristic for adversaries of bounded
+   `Pi1HazardKeccak` are **false as stated** for unbounded adversaries, which grind Keccak-f[1600] offline for free:
+   read them as the Fiat–Shamir heuristic for adversaries of bounded
    Keccak-f[1600] work, motivated by π1-rec3's random-permutation theorem
    (`UniSound.Rec3Ref.uniKnowledgeSoundness_closed_rec3`) and `RecGraph.hazard_prob`.
 
 The merge hazard (`RecGraph.MergeHazard`) asks that π1-rec3's run draw `t` (challenge 49), so the empty stream and
-every run that stops early are off it (finding 2: they were on it, `Z_bad(0) = 0`, and `εh ≥ 1` was forced;
-`Review/StatementReview.lean`, `not_mergeHazard_empty`, `emptyAdversary_hazard_zero`). The soundness hazard
+every run that stops early are off it (were they on it, `Z_bad(0) = 0` would force `εh ≥ 1`). The soundness hazard
 (`Pi1HazardAccepted`) also asks that π1-rec3's graph accept the stream.
 
 This library proves part 1 from π2's layers, its bound in bits, and part 1 ⇒ parts 2 and 3.
@@ -37,7 +36,6 @@ systemd-run --scope -p MemoryMax=10G lake build RecCompose     # the theorems; #
 systemd-run --scope -p MemoryMax=12G lake exe rec-view-check   # viewCheck at two IVs (about 9.3 minutes an IV)
 systemd-run --scope -p MemoryMax=16G lake exe rec-real-check   # DigestChecked, IvChecked at three IVs (RealDeployment.lean)
 systemd-run --scope -p MemoryMax=16G lake exe rec-real-check --setup-only   # SetupRootChecked
-python3 -I Review/RecSoundnessNumbers.py                        # ε2 = pi2Bound in exact rationals
 ```
 
 ## The end theorems (`End.lean`)
@@ -136,7 +134,7 @@ the seed (the IV at `16` of `80`), `α`'s input (the seed at `0` of `536`), each
 | `Pi2AlphaG.lean` | `Holds2` conditioned on `G`: **`Pi2Staged.Holds3`** (`alphaFresh`, `tFresh` with `G`; `accA`, `accB`), `prEvent_staged3_triple_leG`, `prEvent_tquery_leG`, `prEvent_staged_bad_le3`, **`recCompleteness2_of_staged3`**, `tFresh_ofG`, **`pi2TFresh_ofG`**. |
 | `Pi2AlphaEnd.lean` | **`holds3_pi2_p1k`**; **`Pi2Alpha.recCompleteness2_pi2_rec3_closed`**, **`Pi2Alpha.recCompleteness_pi2_rec3_closed_fs`** (the run-checked inputs only, and for the end-to-end form the Fiat–Shamir premises), **`delta2_alpha_le`** (`δ2 ≤ 2^-164`). |
 
-## The recursion's π1 prover (`fix-rec-pi1prover`, statement review finding 4)
+## The recursion's π1 prover
 
 The completeness theorems above are stated at `Pi2G.pi1Rec3Prover D = uniProverRec3RP flockProve3H D.pi1`, whose
 Fiat–Shamir is Keccak-256 over the random permutation, while π1-rec3's graph and `pi1KeccakVerifierWith` hash with the
@@ -150,7 +148,6 @@ pure `keccak256`, trees and WHIR openings over `π`. `εα`, `εt`, `δ2` are un
 | `Pi1KFCore.lean` | at a pure trees' hash: `proveRec3With2_eq(_some)`, `pi1Iv_eq`, `runFs_eq`, **`pi1KF_challenges`** (off π1's bad events `BadKF` at the prover's own challenges, the Keccak-f[1600] verifier's run on its stream draws its challenges and accepts), **`pi1KF_accepts`** (`pi1KeccakVerifierWith` accepts its honest proof at every permutation, off `BadKF`). |
 | `Pi1KFRpm.lean` | `pi1VerifierFsWith Φ F`, `pi1FsCompletenessExperiment D Φ`, `Pi1CompletenessFs D Φ δ`; **`pi1CompletenessKeccak_iff`** (`Pi1CompletenessKeccak D (pi1Rec3ProverKF D) δ ↔ Pi1CompletenessFs D (pure ∘ keccakF1600) δ`), **`pi1CompletenessFs_rpm`** (at `Φ = π`, `deltaRec3 < 2^-167`, from `uniCompletenessRec3_end_closed`), **`verifierFs_eq`** (without the matrices' check, which never fires, the verifier is π1-rec3's `verifierRec3With`), `pi1KeccakVerifierWith_kf_eq` (at Keccak-f[1600]). |
 | `Pi2KFEnd.lean` | `experiment_eq_kf`, `pi2ExperimentLe_kf`, `pi2RunDuplex_kf`, `pi2RunCost_kf`, `alphaFresh_kf`, `holds3_pi2_kf`; **`recCompleteness2_pi2_rec3_kf`**, **`recCompleteness_pi2_rec3_kf_fs`**, `delta2_kf_le`. |
-| `Review/Pi1ProverReview.lean` | non-vacuity (`lake env lean`): `pi1Rec3ProverKF_fs_kf`, `challenges_match`, `keccak_accepts` (off `BadKF`), `contract_rejects_le` (unconditional: `¬ BadKF` enters only the two before), `rpm_reading`. |
 
 `Pi1CompletenessKeccak D (pi1Rec3ProverKF D) δ1` is a heuristic premise, "Keccak-f[1600] behaves as the random
 permutation for this fixed honest prover": its random-permutation reading is proved, its Keccak reading is not.

@@ -50,7 +50,7 @@ openings; `Fs*128_3.lean`: `fsLayer128_3_holds`, the openings charged once at th
 
 **The end theorem** (`ClosedFinal3.lean`): **`uniKnowledgeSoundness_closed_rec3`** — at the reference deployment with
 leanVM's program IV, knowledge sound with error `uniBound128 (2^35/|E|) Q ≤ 2^-64` for `Q ≤ 2^64` (`2^-64.494` at
-`2^64`: 128.49 bits, `EndToEnd/Review/UniRec3Numbers.py`), **no hypothesis**: `uniKnowledgeSoundness_closed_rec3_of_rows`
+`2^64`: 128.49 bits), **no hypothesis**: `uniKnowledgeSoundness_closed_rec3_of_rows`
 (`ClosedRec3.lean`) with `rowValues_spec` (`FlockSoundUni/Walk.lean`: the BLAKE2s circuit walk `blake2sRowValues`
 computes `A0 w`, `B0 w` of Lv42's R1CS, by simulating `Blake2sCircuit`'s builder), the walk's lemma from it by
 `walkLemma_of_rows` (`FlockSoundUni/WalkAlg.lean`). Completeness: `UniComplete.Rec3.uniCompletenessRec3_end_closed`

@@ -25,7 +25,7 @@ N (ε + 5 N / 2^256) + N (e2 + 8 N / 2^256) + 2 N² / 2^256 + (2^81 + Q)² / 2^5
 * **the seed's pair** (`Compose.prEvent_pairTr_le`: π2's seed `name ‖ iv ‖ input`, its IV an answer);
 * the random permutation, as `uniBound128`'s.
 
-At `Q = 2^64` it is `2^-64.93` (`EndToEnd/Review/RecSoundnessNumbers.py`, exact rationals: the openings `2^-64.93`,
+At `Q = 2^64` it is `2^-64.93` (in exact rationals: the openings `2^-64.93`,
 the chain's rounds `2^-76.60`, the collisions `2^-125`, the pair `2^-127`): **`pi2Bound_le_bits`**, at most `2^-64` for
 `Q ≤ 2^64`, i.e. at least 128 bits as `Q / ε2`.
 -/

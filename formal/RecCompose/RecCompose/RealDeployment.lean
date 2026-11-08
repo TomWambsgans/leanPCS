@@ -6,8 +6,8 @@ import UniComplete.Reference
 /-!
 # The real deployment, and the run-checked inputs that build its circuits
 
-`STATEMENT_REVIEW.md`, findings 1 and 5: no `D` with `D.Real` was exhibited, and `Pi2Circuits D` quantified over IVs
-of every length (so it was uninhabited). Here:
+This file exhibits a `D` with `D.Real`, and inhabits `Pi2Circuits D`, whose per-IV premises are stated for 32-byte
+IVs only (quantified over IVs of every length, it would be uninhabited). Here:
 
 * **`realDeployment prog hprog`**: π1's deployment at the reference shape and leanVM's program IV, for the program
   `prog` (any program of the reference shape's size; leanVM 42422001's is not transcribed in Lean); π2's circuit at

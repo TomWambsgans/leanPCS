@@ -16,7 +16,7 @@ import ZK.ProverBridgeParam
 proof, its Fiat–Shamir over the real Keccak-f[1600], its openings over the random permutation `π`, is rejected by
 π1-rec3's verifier at Keccak-f[1600] (`pi1KeccakVerifierWith`, openings over `π`) with probability at most `δ1`. At the
 old prover (`Pi2G.pi1Rec3Prover`, Fiat–Shamir over `π`) prover and verifier disagreed on every challenge, so it held
-only for `δ1 ≈ 1` (statement review, finding 4). At the recursion's prover `pi1Rec3ProverKF` both hash the
+only for `δ1 ≈ 1`. At the recursion's prover `pi1Rec3ProverKF` both hash the
 Fiat–Shamir with Keccak-f[1600]. This file makes the premise's content explicit:
 
 * **`pi1VerifierFsWith Φ F`**: `pi1KeccakVerifierWith` with its Fiat–Shamir over a permutation `Φ` (π1-rec3's IV
@@ -196,7 +196,7 @@ variable {m : Type → Type} [Monad m] [LawfulMonad m]
 /-- **π1-rec3's verifier without the matrices' check is π1-rec3's deployed verifier**, at the reference shape, every
 lawful monad and every hash `F` (its Fiat–Shamir and openings both over `F`): `verifyWithFs … .rec3 true`'s last check
 (`r.matrices = none` with the walk) never fires, since π1-rec3's run returns no matrices' claim over any permutation
-(`runWithFs_shape`). So `pi1KeccakVerifierWith` is no superset verifier (second statement review, finding 4). -/
+(`runWithFs_shape`). So `pi1KeccakVerifierWith` is no superset verifier. -/
 theorem verifierFs_eq (F : KeccakState → m KeccakState) (D : Deployment) (hD : D.shape = reference)
     (roots : SetupRoots) (input : Vector UInt8 32) (p : UniProof) :
     pi1VerifierFsWith F F D roots input p = D.verifierRec3With F roots input p := by

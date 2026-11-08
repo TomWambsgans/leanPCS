@@ -11,7 +11,7 @@ import UniSound.Rec3.Fs128_3
 π1-rec3's Flock phase `F3`, the identity model `I`, the batch `BR`, the code-level links `C`, `hFin` and the layer
 `hFs`, every round's error at most `2^35 / |E|`, π1-rec3's verifier is knowledge sound for `uniExtractor` with
 error `uniBound128 (2^35 / |E|) Q`, **at most `2^-64` for `Q ≤ 2^64`** (`uniBound128_le_bits35`; `2^-64.494` at
-`Q = 2^64`, 128.49 bits as `Q / ε`: `EndToEnd/Review/UniRec3Numbers.py`, exact rationals). The PIOP is
+`Q = 2^64`, 128.49 bits as `Q / ε`, in exact rationals). The PIOP is
 `uniPiop3 F3 I BR` (`PiopSound3.lean`), its errors `uniErr3_le`, its first state `hpre_uniPiop3`, its last link
 `hlink_uniPiop3` (`Final3.lean`). `fsLayer128_3_holds` (`FsFinal128_3.lean`) gives `hFs`.
 -/

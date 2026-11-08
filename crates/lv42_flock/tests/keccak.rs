@@ -1,10 +1,10 @@
-// New in this repository: tests of `lv42_flock::keccak` (the Keccak-f[1600] block, crates/slh_dsa/SPEC-FAST.md
+// New in this repository: tests of `lv42_flock::keccak` (the Keccak-f[1600] block, crates/lv42_flock/KECCAK.md
 // §4.2, §4.5). MIT OR Apache-2.0; see NOTICE.md.
 //! The Keccak-f block R1CS:
 //!
 //! - its Keccak-f is RustCrypto's (`keccak::Keccak::with_f1600`, sha3's permutation) on random states;
 //! - the witness satisfies `(A_0 z)·(B_0 z) = z` on every row of every block (padding blocks too), its port quads hold
-//!   what SPEC-FAST §4.5 says, and its lincheck stripes are `z`'s transpose;
+//!   what KECCAK.md §4.5 says, and its lincheck stripes are `z`'s transpose;
 //! - every flipped witness bit (in each region: inputs, products, states, outputs, copies, constants, padding) breaks
 //!   a row;
 //! - the rows that are not empty are exactly the layout's slots;
@@ -82,7 +82,7 @@ fn witness_satisfies_every_row_and_holds_the_ports() {
         let (zb, ab, bb) = (bits_of(block), bits_of(&a[i * WORDS..][..WORDS]), bits_of(&b[i * WORDS..][..WORDS]));
         let (left, right) = row_values_walk(&zb);
         assert!(left == ab && right == bb, "block {i}: the packed A z, B z");
-        // The ports (SPEC-FAST §4.5).
+        // The ports (KECCAK.md §4.5).
         let output = reference(input);
         assert_eq!(block_input(block), input);
         assert_eq!(block_output(block), output);

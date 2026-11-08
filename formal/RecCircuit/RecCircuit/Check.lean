@@ -407,7 +407,7 @@ def portsOk (X : Ctx) : Bool :=
       (p.source != .pad || allBelow 3 (fun l => X.constOk (vs.getD l NONE) 0))
 
 /-- The roots' packings: limb `l` the big-endian word of the stream's bytes `at + [24, 16, 8, 0][l]` (the root word is
-the stream's 32 bytes, REVIEW-REC.md R1). -/
+the stream's 32 bytes). -/
 def rootsOk (rootsAt : List ℕ) (packOf : Array (Option ℕ)) : Bool :=
   c.rootLimbs.size == rootsAt.length &&
   allBelow rootsAt.length fun i =>

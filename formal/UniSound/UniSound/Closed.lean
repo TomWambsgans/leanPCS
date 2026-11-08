@@ -15,7 +15,7 @@ signatures, heights `18 18 18 18 17 18`, memory `2^21`, bytecode `2^19`) with le
 (`programIv`), and **every program**, the univariate verifier is knowledge sound against leanVM
 42422001's relation for the explicit extractor `uniExtractor`, with error `uniBound (2^32 / |E|) Q` at
 `Q` calls of `π` and `π⁻¹`, at most `2^-61` for `Q ≤ 2^64` (`2^-61.41` at `Q = 2^64`:
-`EndToEnd/Review/UniSoundnessNumbers.py`, exact rationals). **No hypothesis.**
+in exact rationals). **No hypothesis.**
 
 It is `FlockSound.Uni.uniKnowledgeSoundness_fs` (Flock's instance, the code-level and last links, the
 Fiat–Shamir layer `fsLayer_holds`) at `κ = h_B` with:

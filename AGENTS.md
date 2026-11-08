@@ -1,9 +1,9 @@
 # AGENTS.md
 
-Part of this repository. Notes for whoever works on the implementation (people and agents): what the
-implementation adds to the design note in [`README.md`](README.md), and where things are.
+Part of this repository. Notes for contributors: what the implementation adds to the design note in
+[`README.md`](README.md), and where things are.
 
-## What the implementation and its reviews add to the design note
+## What the implementation adds to the design note
 
 - **No OOD answer, so claims on one commitment go together.** leanVM's WHIR, which the implementation uses unchanged,
   takes no out-of-domain sample at its first commitment: a root then binds only to a short (Johnson) list of tables
@@ -22,14 +22,16 @@ implementation adds to the design note in [`README.md`](README.md), and where th
   padding (which would exceed WHIR's 2^28 words): a random first piece per lane, 7 random lanes, and a *gadget* (a
   fixed weight on nine first-piece entries, cancelled by the values there, batched as a claim of value zero) that makes
   WHIR's lane rounds uniform for every challenge outside a set below 2^-188. The padding must cover the masks' lane:
-  the unpadded version let anyone solve the masks from the opening and find the Merkle path.
+  without it, anyone could solve the masks from the opening and find the Merkle path.
 
 ## Implementation (`crates/`)
 
-Zero-knowledge Merkle membership with Keccak-256 (depth 32: `y = H(x | 0x11..)`, path from `H(x | 0x22..)` to
+Two lines, both with Keccak-256 Fiat–Shamir and both passing their claims to `PCS_OPEN`. See
+[`NOTICE.md`](NOTICE.md) for what comes from where.
+
+**Zero-knowledge Merkle membership** with Keccak-256 (depth 32: `y = H(x | 0x11..)`, path from `H(x | 0x22..)` to
 `root`), reduced to four PCS claims by five field elements, as in leanVM's `flock::quotient` but on a circuit of
-one χ gate on bits, its claims opened by leanVM's WHIR unchanged. See [`NOTICE.md`](NOTICE.md) for what comes
-from where.
+one χ gate on bits, its claims opened by leanVM's WHIR unchanged.
 
 - `crates/quotient`: circuit, prover, Rust verifier (`protocol::reduce`), and the openings (`opening`), whose
   hidden layouts make the roots and the openings hide the witness ([`HIDING.md`](crates/quotient/HIDING.md)).
@@ -39,12 +41,6 @@ from where.
   deployment are in `quotient.rs`: the circuit's commitment is a constructor argument kept in storage (read by one
   cold `SLOAD`), which a fixed owner may change (`setIndexRoot`). About 14,300 gas of execution at a claim price
   of 0, and 1.43 M gas to deploy.
-- `crates/evm_link`: the compilation and assembly the code generators share, and the linker that cuts a program too
-  big for EIP-170 into a driver and parts of at most 24,576 bytes it `DELEGATECALL`s, computing the same. The
-  membership contract fits and is assembled byte for byte as before (its tests also run on it linked into 2 KB
-  parts); leanVM's verifier (`crates/leanvm_flock_gas`, option A) is 5 contracts, 26,601 gas more (7.9%), its
-  transaction unchanged under EIP-7623.
-- Vendored from leanVM `c445e3d5`: `primitives`, `fiat_shamir`, `pcs`, `parallel`, `verifier`, `bench`.
 - `formal/`: the Lean 4 proofs, sorry-free, on the three standard axioms.
   [`formal/Statement`](formal/Statement/README.md) states the end theorems about its own transcription of the
   Rust; `formal/EndToEnd` proves them ([`formal/README.md`](formal/README.md), "End-to-end theorems"):
@@ -63,12 +59,38 @@ from where.
 
   The models: Keccak-f[1600] as one random permutation, the prover's randomness uniform (deployed: ChaCha12 and a
   Keccak-256 KDF, so computational). The Statement is the Rust by differential tests, not by proof.
-- [`STATUS.md`](STATUS.md): where things stand, the numbers, the reviews and what they changed.
+
+**leanVM proofs on the EVM, by recursion.**
+
+- `crates/leanvm_univariate`, `crates/leanvm_rec`: π1 is a univariate PIOP for leanVM's statement, with its prover
+  and verifier; π2 wraps π1's verifier, and the contract runs π2's verifier for about 45K gas
+  (`crates/leanvm_rec/README.md`). Both the BLAKE2s VM (leanVM `42422001`, end to end, Lean proofs) and the
+  Keccak VM (the `SHA3` table of leanVM `9d50c92a3`, Flock on the Keccak-f block; verifier and gas only so far,
+  [`KECCAK.md`](crates/leanvm_univariate/KECCAK.md)) are supported.
+  - `crates/leanvm_flock_gas` holds the shared parts: leanVM's statement ported, Flock's verifier, and the EVM
+    recorder and machine.
+  - `crates/lv42_*` is leanVM `42422001`'s Flock prover, vendored, with the Keccak-f block (`lv42_flock/KECCAK.md`).
+  - `crates/gf2_linear` holds the prover's GF(2)-linear maps.
+- `formal/`: π1's statement and knowledge soundness (`UniStatement`, `UniSound`, `FlockSound`, on `Lv42`'s
+  relation), its completeness (`UniComplete`), and the recursion's end theorems (`RecGraph`, `RecStatement`,
+  `RecPiop`, `RecCircuit`, `RecCompose`), described in [`formal/README.md`](formal/README.md).
+
+**Shared.**
+
+- `crates/evm_link`: the compilation and assembly the code generators share, and the linker that cuts a program too
+  big for EIP-170 into a driver and parts of at most 24,576 bytes it `DELEGATECALL`s, computing the same. The
+  membership contract fits and is assembled byte for byte as without the linker (its tests also run on it linked
+  into 2 KB parts); leanVM's verifier (`crates/leanvm_flock_gas`, option A) is 5 contracts, 26,601 gas more (7.9%),
+  its transaction unchanged under EIP-7623.
+- Vendored from leanVM `c445e3d5`: `primitives`, `fiat_shamir`, `pcs`, `parallel`, `verifier`, `bench`.
+- `params/`: the parameter calculators (WHIR's, π1's and π2's soundness bits).
+- [`STATUS.md`](STATUS.md): what is proved, tested and measured, and what remains.
 
 ```sh
 cargo test --release -p quotient -p evm                               # tests, incl. contract == Rust verifier
 cargo bench -p quotient --bench membership                            # prover / verifier timings and sizes
 cargo test --release -p evm -- --ignored --nocapture gas_report       # gas of the contract
+cargo test --release --workspace                                      # every crate's tests
 ```
 
 The Lean builds run on h1, under `/root/pcs-quotient-fv/` only (the rest of h1 is other work). Copy the
@@ -78,7 +100,4 @@ leanerVM `6175f1a0`, which `WhirBridge`, `Compose`, `Completeness` and `EndToEnd
 ```sh
 cd formal/EndToEnd
 systemd-run --scope -p MemoryMax=12G lake build Soundness E2ECompleteness Evm ZK   # end theorems; #guard_msgs checks axioms
-lake env lean Review/E2ESoundness.lean                                            # the knowledge-soundness review
-lake env lean Review/E2ECompletenessReview.lean                                   # the completeness review
-python3 -I Review/E2ESoundnessNumbers.py                                          # ksBound, exact rationals
 ```

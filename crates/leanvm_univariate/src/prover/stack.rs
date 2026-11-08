@@ -4,18 +4,25 @@
 //! depends on the words outside the blocks: every weight is zero there, and every claim is on the whole stack's
 //! multilinear, whatever the stack holds there.
 
-use leanvm_flock_gas::layout::{OP_BLAKE2S, tables};
+use leanvm_flock_gas::layout::OP_BLAKE2S;
 use primitives::field::{F64, F192};
 
 use crate::claims::Column;
 use crate::stacks::StackLayout;
 use crate::verifier::Shape;
 
-/// `C1`'s columns as the verifier lists them (`verifier::layouts`).
+/// `C1`'s columns as the verifier lists them (`verifier::layouts`), for the BLAKE2s VM.
 pub fn c1_columns(shape: &Shape) -> Vec<(Column, usize, bool)> {
+    c1_columns_for(shape, false)
+}
+
+/// `C1`'s columns as the verifier lists them (`verifier::stack_layouts_for`), for the BLAKE2s VM or, with `keccak`,
+/// the Keccak VM (its `SHA3` table, `q_flock` of `2^11` words a row).
+pub fn c1_columns_for(shape: &Shape, keccak: bool) -> Vec<(Column, usize, bool)> {
     let heights = shape.heights();
-    let mut c1: Vec<(Column, usize, bool)> = vec![(Column::Qflock, heights[OP_BLAKE2S] + 8, false)];
-    for table in tables() {
+    let mut c1: Vec<(Column, usize, bool)> =
+        vec![(Column::Qflock, heights[OP_BLAKE2S] + crate::verifier::qflock_row_bits(keccak), false)];
+    for table in crate::verifier::vm_tables(keccak) {
         let h = heights[table.opcode];
         c1.extend((0..table.width()).map(|column| {
             (
@@ -105,6 +112,20 @@ impl Stack {
         let (_, vars, offset) = limbs[0];
         assert_eq!(data.len(), 1 << vars, "{column:?}'s size");
         super::poly::copy(&mut self.words[offset as usize..offset as usize + data.len()], data);
+    }
+
+    /// Write a K-column's words into its block from 64-bit words (a packed bit witness's: `q_flock`).
+    pub fn put_k_words(&mut self, column: Column, data: &[u64]) {
+        let limbs = self.layout.limbs(column);
+        assert_eq!(limbs.len(), 1, "{column:?} is a K-column");
+        let (_, vars, offset) = limbs[0];
+        assert_eq!(data.len(), 1 << vars, "{column:?}'s size");
+        let block = &mut self.words[offset as usize..offset as usize + data.len()];
+        parallel::chunks_mut(block, 1 << 16, |k, chunk| {
+            for (w, &x) in chunk.iter_mut().zip(&data[k << 16..]) {
+                *w = F64(x);
+            }
+        });
     }
 
     /// Write a K-column's `B` coefficients into its block, from its novel ones (subset sums).

@@ -11,7 +11,7 @@
 // as lane tensors rather than written out, its committed message freed once the first queries are answered.
 // One comment corrected (no code change): the level-0 query grinding is `QUERY_GRINDING_BITS = 17` bits in the
 // production profile, not "0 bits" as leanVM's comment says (`whir_config.rs`, and the verifier's
-// `QUERY_GRINDING_BITS`); reported in UPSTREAM.md.
+// `QUERY_GRINDING_BITS`); to report upstream.
 
 //! WHIR with `K = GF(2)[x]/(x^64+x^4+x^3+x+1)` and
 //! `E = K[y]/(y^3+y+1)`.

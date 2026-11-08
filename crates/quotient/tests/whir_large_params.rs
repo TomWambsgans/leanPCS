@@ -12,7 +12,7 @@
 //!
 //! With `--nocapture` it also prints each level's slack `eta` from the code's search and the level-0 Johnson list it
 //! implies, `1 / (2 eta sqrt(rho))`, next to leanerVM's certified list (the code's search omits the fold group's
-//! row-union factor `2^(l-1)`, so its lists are smaller; `review/whir_params.py`).
+//! row-union factor `2^(l-1)`, so its lists are smaller; `params/whir_params.py`).
 //!
 //!   cargo test --release -p quotient --test whir_large_params -- --nocapture
 //!   cargo test --release -p quotient --test whir_large_params -- --ignored --nocapture large_public_openings

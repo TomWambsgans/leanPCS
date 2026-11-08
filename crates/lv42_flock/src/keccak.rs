@@ -1,5 +1,5 @@
 // New in this repository (not from leanVM): the Keccak-f[1600] permutation as a Flock block R1CS, for
-// `crates/slh_dsa/SPEC-FAST.md` §4.2 and §4.5 (design C*, milestone M1). Its walks and its prover entry follow this
+// `crates/lv42_flock/KECCAK.md` §4.2 and §4.5 (design C*, milestone M1). Its walks and its prover entry follow this
 // crate's BLAKE2s block (`hash.rs`, leanVM 42422001's): the same row kinds, `C = I`, the same `LincheckCircuit` seam
 // and the same zerocheck-with-skip and lincheck calls. MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and
 // NOTICE.md at the repository root).
@@ -31,7 +31,7 @@
 //! ## Layout (words of 64 bits; bit `z` of a lane is bit `z` of its word, the packing position)
 //!
 //! ```text
-//!   word 4q + r, q < 32         port quads (SPEC-FAST §4.5): the glue's port row (X, Y, C, V) of quad q
+//!   word 4q + r, q < 32         port quads (KECCAK.md §4.5): the glue's port row (X, Y, C, V) of quad q
 //!     q < 25:  r = 0  A_23[q]    (X: output lane q, lin-id of round 23)
 //!              r = 1  1          (Y: the K-element 1, bit 0 a constant row; q = 0's is the constant wire)
 //!              r = 2  A_{-1}[q]  (C: input lane q, free)
@@ -44,7 +44,7 @@
 //! ```
 //!
 //! So a slot's index factors as `(z: 6 bits, lane: 5, kind: 1, round + 2: 5)` outside the port region, which is what
-//! a structured terminal (SPEC-FAST §4.2, M3) uses: rounds are a 5-bit field (a shift between consecutive rounds),
+//! a structured terminal (KECCAK.md §4.2, M3) uses: rounds are a 5-bit field (a shift between consecutive rounds),
 //! lanes a 5-bit field. 80,034 slots are constrained (the port region's 8,192 and the rounds' 75,200, less the
 //! empty bits of the Y, x and 0 words), of 104,000 before the suffix (the runs' lanes 25..32 are empty), of 131,072.
 //!

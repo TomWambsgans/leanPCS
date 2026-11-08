@@ -14,7 +14,9 @@
 use leanvm_flock_gas::evm::codegen::{Ending, Entry, compile_deployable};
 use leanvm_flock_gas::evm::contract::{Deployed, deploy};
 use leanvm_univariate::contract::{NAME, Recorded, calls};
-use leanvm_univariate::{Blake2s, FLOCK_BIT_SLICE, FLOCK_LEANVM_SKIP, FLOCK_MAIN, FLOCK_REC, FLOCK_REC2, FLOCK_REC3, Shape};
+use leanvm_univariate::{
+    Blake2s, FLOCK_BIT_SLICE, FLOCK_LEANVM_SKIP, FLOCK_MAIN, FLOCK_REC, FLOCK_REC2, FLOCK_REC3, KECCAK_MAIN, KECCAK_REC3, Shape,
+};
 
 /// The program's IV the vectors' contracts are built with (`leanvm_flock_gas::shapes::PROGRAM_IV`).
 pub use leanvm_flock_gas::shapes::PROGRAM_IV;
@@ -32,6 +34,8 @@ pub struct Vector {
     pub gas_straight: u64,
     pub gas_deployed: u64,
     pub contracts: usize,
+    /// What the proof is of, written as a comment line under the header (not read back).
+    pub note: String,
 }
 
 /// The configurations by name (`main_line_rec`: π1-rec, the main line with its Fiat–Shamir shape `FsShape::Rec`).
@@ -44,6 +48,8 @@ pub fn blake2s_of(config: &str) -> Blake2s {
         "main_line_rec3" => Blake2s::Flock(FLOCK_REC3),
         "leanvm_skip" => Blake2s::Flock(FLOCK_LEANVM_SKIP),
         "ext_b" => Blake2s::Flock(FLOCK_BIT_SLICE),
+        "keccak" => Blake2s::Keccak(KECCAK_MAIN),
+        "keccak_rec3" => Blake2s::Keccak(KECCAK_REC3),
         other => panic!("no configuration {other}"),
     }
 }
@@ -58,6 +64,9 @@ pub fn name_of(blake2s: Blake2s) -> &'static str {
         Blake2s::Flock(v) if v == FLOCK_LEANVM_SKIP => "leanvm_skip",
         Blake2s::Flock(v) if v == FLOCK_BIT_SLICE => "ext_b",
         Blake2s::Flock(_) => "flock",
+        Blake2s::Keccak(v) if v == KECCAK_MAIN => "keccak",
+        Blake2s::Keccak(v) if v == KECCAK_REC3 => "keccak_rec3",
+        Blake2s::Keccak(_) => "keccak_other",
     }
 }
 
@@ -74,7 +83,12 @@ fn unhex(text: &str) -> Vec<u8> {
 
 pub fn write(v: &Vector) -> String {
     let mut out = String::new();
-    out.push_str("# leanvm_univariate Rust->EVM test vector (tests/vectors/mod.rs): a real proof, 1,000 leanXMSS signatures\n");
+    if v.note.is_empty() {
+        out.push_str("# leanvm_univariate Rust->EVM test vector (tests/vectors/mod.rs): a real proof, 1,000 leanXMSS signatures\n");
+    } else {
+        out.push_str("# leanvm_univariate Rust->EVM test vector (tests/vectors/mod.rs): a real proof\n");
+        out.push_str(&format!("# {}\n", v.note));
+    }
     out.push_str(&format!("config {}\n", v.config));
     let rows: Vec<String> = v.shape.table_rows.iter().map(u64::to_string).collect();
     out.push_str(&format!("shape {} {} {}\n", v.shape.log_memory, v.shape.log_bytecode, rows.join(" ")));
@@ -109,6 +123,7 @@ pub fn read(text: &str) -> Vector {
         gas_straight: 0,
         gas_deployed: 0,
         contracts: 0,
+        note: String::new(),
     };
     for line in text.lines().filter(|l| !l.starts_with('#') && !l.is_empty()) {
         let (key, value) = line.split_once(' ').expect("key value");
@@ -136,8 +151,8 @@ pub fn read(text: &str) -> Vector {
     v
 }
 
-/// A call of π1's own contract in `PCS_OPEN`'s ABI (`crates/evm/src/machine.rs`; `crates/leanvm_rec/REVIEW-REC.md`
-/// M1, R1), as π2's contract makes it: `C1`'s and `C2`'s root words are the stream's bytes, the ABI's already; a
+/// A call of π1's own contract in `PCS_OPEN`'s ABI (`crates/evm/src/machine.rs`),
+/// as π2's contract makes it: `C1`'s and `C2`'s root words are the stream's bytes, the ABI's already; a
 /// setup root's (`F`, `A0`, `B0`: layout codes `0x5503..=0x5505`, the layout word's bytes 22..24) is the hash as it
 /// is, its word `root_word` of it.
 pub fn pi1_abi(input: &[u8]) -> Vec<u8> {

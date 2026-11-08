@@ -14,8 +14,7 @@ tables, bus, BLAKE2s by Flock and public input.
 - **Fiat–Shamir and the PCS** use Keccak-256 and leanVM's WHIR in both layers.
 
 Design: [`SPEC-REC.md`](SPEC-REC.md) (§12 lists every change and where it stands); π2's PIOP: [`PI2.md`](PI2.md); the
-claims' points: [`SPEC-POINTS.md`](SPEC-POINTS.md); the adversarial review: [`REVIEW-REC.md`](REVIEW-REC.md) (no
-attack found).
+claims' points: [`SPEC-POINTS.md`](SPEC-POINTS.md).
 
 ## Gas (measured on revm; 1,000 leanXMSS signatures, 1,023,109 cycles; claim price `c` = 0)
 
@@ -39,10 +38,10 @@ attack found).
 | commitments | C1, C2 (`2^27`-word stacks), setup F, A0, B0 | W (`2^24`), Q (`2^27.91` words), setup (σ, κ) |
 | size | Keccak-f in its verifier: 107 | `2^24` positions, 94.9% used |
 | prover (h1, 16 threads, `-C target-cpu=native`, jemalloc) | 4.8 s, 10.4 GB | 3.2 s + 1.3 s openings, 9.5 GB |
-| soundness after the union bounds (modelled, `review/leanvm_rec_params.py`) | PIOP 129.0 bits | copy argument 152.7, `t` 140.6 |
+| soundness after the union bounds (modelled, `params/leanvm_rec_params.py`) | PIOP 129.0 bits | copy argument 152.7, `t` 140.6 |
 
 WHIR's six openings are about 129 bits in the query-bounded model, or 126.4 by a plain union. These figures are
-modelled and reviewed, not proven.
+modelled, not proven.
 
 **Lean** (`formal/RecCompose`; `formal/README.md`, section "The recursive verifier"): π2's part of the end
 statement, `RecKnowledgeSoundness2 D pi2Bound`, holds in the random-permutation model, with `pi2Bound(2^64) = 2^-64.93`
@@ -73,10 +72,10 @@ Named, not proved:
 
 ```sh
 export RUSTFLAGS="-C target-cpu=native"
-cargo test --release -p leanvm_rec                                                             # circuit, PIOP, review tests
+cargo test --release -p leanvm_rec                                                             # circuit, PIOP, contract tests
 cargo test --release -p leanvm_rec --test pi2_real -- --ignored --nocapture real_gas           # gas on the real circuits (see the note below)
 cargo test --release -p leanvm_rec --test pi2_real -- --ignored --nocapture real_end_to_end    # π1-rec3 proof, then π2, then the contract (12 GB)
-python3 -I review/leanvm_rec_params.py                                                         # sizes, soundness, gas model
+python3 -I params/leanvm_rec_params.py                                                         # sizes, soundness, gas model
 cargo test --release -p leanvm_rec --test lean_statement -- --ignored statement_data_is_current # formal/RecStatement's data
 REC_STATEMENT_OUT=$PWD/v.txt cargo test --release -p leanvm_rec --test lean_statement -- --ignored lean_statement_vectors
 ```
@@ -87,14 +86,15 @@ REC_STATEMENT_OUT=$PWD/v.txt cargo test --release -p leanvm_rec --test lean_stat
 Note on the two gas figures: 44,804 is measured by `real_end_to_end` on the real proof's calldata (980 B, 59 zero
 bytes, 56 of them the 14 narrow challenges' high bytes). `real_gas` reports 45,464 for the same configuration, on a
 sample stream of 4 zero bytes: the gap, 660 = 55 × (16 − 4), is EIP-7623's price of the 55 more zero bytes, so
-`real_gas` does not see the narrow challenges' zero bytes. The execution (29,832) is the same in both. (Before R1,
-`REVIEW-REC.md`, the real proof had 60 zero bytes and 44,792: π1's proof was regenerated, its execution unchanged.)
+`real_gas` does not see the narrow challenges' zero bytes. The execution (29,832) is the same in both. (Before π1's
+stream carried its roots as root words, the real proof had 60 zero bytes and 44,792: π1's proof was regenerated, its
+execution unchanged.)
 
 What the tests check:
 - **End to end.** π1-rec3's real proof, then π2's proof, then the contract accepts, with `PCS_OPEN` (a decoding
   mock with a registry of layout words) attesting all 7 claims, π1's on the roots π1's prover committed (the
-  vector's `whir_root`s, not any contract's words: `REVIEW-REC.md` R1). 18 flipped calldata bytes are each rejected,
+  vector's `whir_root`s, not any contract's words). 18 flipped calldata bytes are each rejected,
   and so are π1's openings held on other roots.
 - **The circuit.** Every pull equals its push on the real streams and on mutated and random ones. π1's calls
-  rebuilt from π2's ports equal the vector's, and decode to the committed roots; the word before R1 does not.
+  rebuilt from π2's ports equal the vector's, and decode to the committed roots; the former word does not.
 - **The contract.** It equals the Rust verifier word for word.

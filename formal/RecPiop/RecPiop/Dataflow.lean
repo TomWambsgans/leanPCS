@@ -16,7 +16,7 @@ has exactly one producer, `σ⁻¹ j` (`producer`), and its value is the produce
   of forwards the value is unchanged (`forward_chain`), and a value travels from its producing
   expression slot through forwards to the chain's end (`expr_chain`);
 * **holes are never read**: the pushes at every position, holes included, do not depend on the
-  holes' values (`push_congr_off_holes`), which the PIOP leaves free (REVIEW-REC.md N1): two
+  holes' values (`push_congr_off_holes`), which the PIOP leaves free: two
   witnesses that agree off the holes have the same dataflow (`flow_congr_off_holes`).
 
 Generic in the layout; only `Valid` is assumed.

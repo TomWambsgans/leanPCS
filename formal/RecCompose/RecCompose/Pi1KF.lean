@@ -10,7 +10,7 @@ import RecStatement.Security
 /-!
 # π1-rec3's honest prover in the recursion: its Fiat–Shamir over Keccak-f[1600]
 
-The statement review (`Review/STATEMENT_REVIEW.md`, finding 4) found that the completeness theorems' π1 prover
+The completeness theorems' earlier π1 prover
 (`Pi2G.pi1Rec3Prover D = uniProverRec3RP flockProve3H D.pi1`) hashes its Fiat–Shamir (IV, seed, stream) with
 Keccak-256 over the random permutation `π`, while π1-rec3's graph (`RecGraph.evalGraphDeployed`) and
 `RecStatement.pi1KeccakVerifierWith` hash it with Keccak-256 over the real Keccak-f[1600]. Its proofs then fail π1's

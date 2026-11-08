@@ -43,7 +43,7 @@ pub fn pi1_calls() -> Pi1Calls {
             call.iter()
                 .enumerate()
                 .map(|(k, w)| match *w {
-                    // A setup root: `PCS_OPEN`'s root word (REVIEW-REC.md M1), as `circuit::compile` makes it.
+                    // A setup root: `PCS_OPEN`'s root word, as `circuit::compile` makes it.
                     Word::Const(bytes) if k == 0 => CallWord::Const(root_word(&bytes)),
                     Word::Const(bytes) => CallWord::Const(bytes),
                     Word::Stream(at) => CallWord::Root(roots[&at]),

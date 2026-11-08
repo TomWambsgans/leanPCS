@@ -1,6 +1,8 @@
 # Status
 
-Part of this repository. Updated as work lands.
+Part of this repository. What is proved, tested and measured, and what remains. The first sections are about the
+zero-knowledge membership proof (`crates/quotient`, `crates/evm`, `formal/Statement`, `formal/EndToEnd`);
+[the last](#leanvm-proofs-on-the-evm-by-recursion) is about the leanVM line.
 
 ## End-to-end theorems
 
@@ -18,20 +20,19 @@ statements from the layers below. Every theorem in this section is sorry-free an
   π and π⁻¹ (at most Q calls), and outputs a statement and a proof. The verifier runs over π. The bad event: the
   verifier accepts and the extractor returns no secret satisfying the relation.
 - The bound: ksBound(Q) is about 2^-105 at Q = 0, 2^-86 at Q = 2^40 and 2^-62 at Q = 2^64 (just above, by a factor
-  1 + 2^-43); it reaches 1 near Q = 2^125 (`formal/EndToEnd/Review/E2ESoundnessNumbers.py`, exact rationals). Its
-  terms: the three WHIR openings (F2's `ours_sound`), the reduction's rounds union-bounded over the roots'
-  candidate lists, and the transfer from the permutation to two random oracles.
+  1 + 2^-43); it reaches 1 near Q = 2^125. Its terms: the three WHIR openings (F2's `ours_sound`), the reduction's
+  rounds union-bounded over the roots' candidate lists, and the transfer from the permutation to two random oracles.
 - The extractor (`PcsQuotient.extractor`, `formal/Statement/PcsQuotient/Extractor.lean`) is an explicit,
   computable, straight-line function. It reads the statement, the proof, the adversary's transcript and the
   public setup tree; it does not query π or rerun the adversary. It replays the transcript and inverts the
-  witness table's Merkle tree with hash maps (proved equal to mumbai's lists), then decodes the word in three
+  witness table's Merkle tree with hash maps (proved equal to mumbai's lists, `Soundness/Replay.lean`), then decodes the word in three
   stages, each only if the ones before give no witness: interpolation (about 2^31.4 operations of K), Gao's
   unique decoder (about 2^34.3 for a word with few wrong columns, at most 2^45.7 within the radius 2^18), and
   the Guruswami–Sudan list decoder beyond that radius (about 2^98 per word: infeasible). The costs are read off
   the loops (`Extractor.lean`'s table), not proved. That Gao's decoder recovers every word within its radius
   is tested, not proved; the soundness proof does not need it.
-- Not vacuous: the honest prover, run as an adversary, is accepted with probability at least 1 − δ
-  (`honest_accepted_in_soundness`, `formal/EndToEnd/Review/E2ECompletenessReview.lean`).
+- Not vacuous: the experiment's setup and verifier are the completeness experiment's, in which the honest prover
+  is accepted with probability at least 1 − δ (below).
 - Scope: stand-alone knowledge soundness, not simulation-extractability.
 
 **Completeness: proved, no hypotheses.**
@@ -44,10 +45,7 @@ statements from the layers below. Every theorem in this section is sorry-free an
   The terms: degenerate challenges (2^-163.91); a chain query that is not fresh (2^-255); the proofs of work
   (3·2^-277 ≈ 2^-275.4; the proof bounds the whole run's grinding failure by 2^-304, `grinding_le` in
   `Grinding.lean`); the permutation as two random oracles (2^-412, for at most 2^48 block calls; the run makes
-  exactly 114,098,677,826,653 < 2^47, `hcost_exact`).
-- The coins do not matter: the same δ holds for every fixed value of the masks and the paddings
-  (`completeness_every_coins`, `formal/EndToEnd/Review/E2ECompletenessReview.lean`). So completeness does not
-  depend on the uniform-coins model, only on the coins being independent of π.
+  114,098,677,826,653 < 2^47; the bound is `hcost_deployed`).
 - The prover is the Statement's. A differential test finds it equal to the Rust prover's reduction stream (nine
   scalars) at 2^17 rows, on a small circuit; it does not compare the openings, and was not run at 2^22. The
   deployed Rust prover is therefore trusted for completeness.
@@ -76,8 +74,8 @@ statements from the layers below. Every theorem in this section is sorry-free an
   off the degenerate challenges and masks (`ClaimsND`). The earlier joint-model theorems that ask them at every
   mask (`zk_rpm_deployed_instance`, `zk_rpm_deployed_jointV_fs'`, `jointHVZK_of_linkV`, `joint_hzkV`,
   `zk_deployed_joint(_fs)`, `zk_rpm_deployed_joint(_fs)(')`, `joint_hzk`, `jointHVZK_of_link`) are kept but
-  superseded: the honest tables do not meet their hypotheses (`EndToEnd/Review/E2EZkNondeg.lean`: where the
-  witness claim's scale vanishes, the verifier's value is 0).
+  superseded: the honest tables do not meet their hypotheses (where the witness claim's scale vanishes, the
+  verifier's value is 0).
 - The bound: ζ(Q) ≈ 2^-113 for Q ≤ 2^126 (`zkBoundEnd`, `zkBoundEnd_le`). Its terms:
   - 2^-113, Fiat–Shamir freshness of the honest prover's queries (`fsFresh_setup_deployed_bits`):
     6·Q'(c + Q')/2^256 ≈ 2^-113.4 for Q' = 2^24 + 2^70 oracle operations (worst-case grinding counted) and
@@ -88,11 +86,10 @@ statements from the layers below. Every theorem in this section is sorry-free an
   - 2^-2200: an unopened leaf is asked, or two collide;
   - (Qp + 2^23 + Q)²/2^508, Qp = 12·(2^24 + 2^70) the prover's calls of π (`hprover_whir`): the permutation as
     two random oracles (at most 2^-256).
-- Two statement changes on the way. The deterministic core (`CoreWhir`: at a fixed permutation, `fmt` of the
-  skeleton's proof is the Statement's prover's proof) is false at degenerate α, β, where the Statement's coset
-  division is not F1's quotient; it is now stated off them (`CoreWhirG`, proved as `coreD`), and the degenerate
-  α, β are charged to deltaNone. `fmt`'s `fillRun` now ends at the program's `fail` as at its `ret`, as mumbai's
-  `runFrom` does.
+- The deterministic core (at a fixed permutation, `fmt` of the skeleton's proof is the Statement's prover's proof)
+  is stated off degenerate α, β (`CoreWhirG`, proved as `coreD`): at them the Statement's coset division is not F1's
+  quotient (`CoreWhir`, which asks it everywhere, is false), and they are charged to deltaNone. `fmt`'s `fillRun`
+  ends at the program's `fail` as at its `ret`, as mumbai's `runFrom` does.
 
 **The EVM contract is the Statement's verifier: proved, with tested links.**
 `Evm.evm_accepts_iff_verifyWith`, `Evm.evm_accepts_iff_exists` (`formal/EndToEnd/Evm/`).
@@ -119,11 +116,10 @@ statements from the layers below. Every theorem in this section is sorry-free an
   commitment and the statement) and a digest of the witness's cells; the masks are the words of Keccak-256(tag ‖
   key ‖ k) for k = 0, 1, 2; the padding seed is Keccak-256(tag ‖ key), each table's seed Keccak-256 of a label,
   the table's name and it (`table_seed`), and each lane's padding is ChaCha12 keyed by Keccak-256(table seed ‖
-  lane) (`opening.rs`). Deployed zero knowledge is therefore computational in that generator. Completeness holds
-  for every fixed coins (above); soundness does not involve the prover.
+  lane) (`opening.rs`). Deployed zero knowledge is therefore computational in that generator. Completeness is
+  proved for uniform coins; soundness does not involve the prover.
 - The Statement's definitions are the Rust by differential tests (`formal/Statement/PcsQuotientTest`), not by
-  proof: reductions at 2^16..2^23 rows, whole proofs (honest and tampered) verified at 2^17 rows and, in the
-  soundness review, at 2^22, the circuit commitments (the membership circuit's at 2^22), and the prover's
+  proof: reductions at 2^16..2^23 rows, whole proofs (honest and tampered) verified at 2^17 rows, the circuit commitments (the membership circuit's at 2^22), and the prover's
   reduction stream at 2^17 (above). The Statement's WHIR proofs carry full Merkle paths; the test expands the
   Rust's pruned ones. For zero knowledge, the Lean skeleton (which `coreD` relates to the Statement's prover)
   makes the Rust prover's queries and proof byte for byte at 2^17 rows (`crates/quotient/tests/skel_trace.rs`).
@@ -139,10 +135,10 @@ statements from the layers below. Every theorem in this section is sorry-free an
 | Openings with leanVM's WHIR, unchanged verifier | `crates/quotient/src/opening.rs` | tested |
 | Hiding (zero-knowledge) layouts for the secret tables: every lane's first piece random, 7 random lanes, and a 9-entry gadget (lanes 31, 30 copy lanes 0, 1; the overflow lane zero) checked as one extra zero-valued claim, which makes condition (R) hold for every challenge outside a small set | `crates/quotient/HIDING.md`, `src/hiding.rs`, `src/opening.rs` | exact rank tests; costs unchanged; Lean below |
 | EVM verifier (generated from the Rust verifier): selector `verify(bytes32,bytes32,bytes)` = `0xde12c640`, packed 252-byte calldata, index root in storage (owner-gated `setIndexRoot`), three fail-closed `PCS_OPEN` calls, returns the word 1 | `crates/evm` | parity with Rust, adversarial tests |
-| Deployable linking: a straight-line program over EIP-170's 24,576 bytes as a driver and the parts it `DELEGATECALL`s (values and the calldata each reads passed in calldata), the membership contract assembled byte for byte as before | `crates/evm_link` | tested: every adversarial and real-proof test of `crates/evm` also on its contract linked into 2 KB parts; leanVM's verifier (`crates/leanvm_flock_gas`) word for word against its Rust verifier |
+| Deployable linking: a straight-line program over EIP-170's 24,576 bytes as a driver and the parts it `DELEGATECALL`s (values and the calldata each reads passed in calldata), the membership contract assembled byte for byte as without the linker | `crates/evm_link` | tested: every adversarial and real-proof test of `crates/evm` also on its contract linked into 2 KB parts; leanVM's verifier (`crates/leanvm_flock_gas`) word for word against its Rust verifier |
 | Lean F0, the deployed circuit (F0a, F0b, F0c): an accepted proof's cells are a computation of the deployed 2^22-row circuit whose input bits give `x` and a path with `y = H(x \| 0x11..)` and the path from `H(x \| 0x22..)` ending at `root`, except with (Q+3)/2^128 (`soundness_membership_deployed`); Keccak-256 checked against mumbai's spec (`keccak256_bits`); over `primitives`' F192 (CompPoly's `BF64.Ext3`, mumbai's `E`: both moduli irreducible, `card = 2^192`), with no field hypothesis left (`soundness_membership_deployed_concrete`) | `formal/Circuit/`, `formal/QuotientSecurity/{CircuitLayout,Pinning,Deployed,DeployedConcrete}.lean`, `formal/Field/` | sorry-free, three standard axioms, no `native_decide`; σ equals the Rust's by a hash of both dumps, not by proof; the Rust's F192 arithmetic equals the Lean field's by test vectors (`Field/Test.lean`, against `crates/quotient/tests/lean_field_vectors.rs`), not by proof |
-| Lean F1, the reduction: knowledge soundness (Q+3)/2^128 (rounds 2^-166, 2^-164, 3/q, with margin for list unions up to 2^18), HVZK for ideal hiding commitments, completeness, ROM | `formal/QuotientSecurity` | sorry-free, 761 declarations on propext, Classical.choice, Quot.sound |
-| Lean F2, the WHIR openings: random-oracle soundness of `opening::verify` itself (the seed; the hidden witness and quotient layouts with the gadget, the public wiring layout) at 2^17..2^22 rows: an accepted opening has a candidate of the root's Johnson list satisfying all its claims, except with (QA+10122)(2^-128 + 5(QA+10122)/2^256) ≤ 2^-63 for QA ≤ 2^64 (`ours_sound`) | `formal/WhirBridge` | sorry-free, three standard axioms, no `native_decide` (589 declarations swept); mumbai's two-oracle model (the permutation: F4); the Lean mirror equals the Rust by test (`Test/Check.lean` at 2^17; the review's `F2Differential.lean` at 2^22), not by proof; pruned paths not formalised |
+| Lean F1, the reduction: knowledge soundness (Q+3)/2^128 (rounds 2^-166, 2^-164, 3/q, with margin for list unions up to 2^18), HVZK for ideal hiding commitments, completeness, ROM | `formal/QuotientSecurity` | sorry-free, on propext, Classical.choice, Quot.sound |
+| Lean F2, the WHIR openings: random-oracle soundness of `opening::verify` itself (the seed; the hidden witness and quotient layouts with the gadget, the public wiring layout) at 2^17..2^22 rows: an accepted opening has a candidate of the root's Johnson list satisfying all its claims, except with (QA+10122)(2^-128 + 5(QA+10122)/2^256) ≤ 2^-63 for QA ≤ 2^64 (`ours_sound`) | `formal/WhirBridge` | sorry-free, three standard axioms, no `native_decide`; mumbai's two-oracle model (the permutation: F4); the Lean mirror equals the Rust by test (`Test/Check.lean` at 2^17), not by proof; pruned paths not formalised |
 | Lean F3, hiding of one opening: for two tables with the same claims, the linear part of the view (lane rounds, folded table, opened rows) differs on any event by at most 1/\|E\| + (12\|E\| + 3\|K\|²)/\|E\|² < 2^-188, for the deployed witness and quotient layouts at 2^17..2^22 rows (`deployed_prEvent_le`); conditions (S) and (R) proven at every challenge outside a small set (`μ = 0`, a coordinate of `φ` in {0, 1}, two of `φ₀, φ₁, φ₂` in K; `GadgetLayout.roundsReached`); unopened rows keep ≥ 2,368 / 3,840 bits | `formal/QuotientSecurity/Hiding/` | sorry-free; uniform padding; the roots, siblings, nonces and Fiat–Shamir are F3b's |
 | Lean F3b, zero knowledge of the non-interactive proof: an explicit simulator (it programs the Fiat–Shamir challenges, takes the opened rows from the simulated view and fresh digests for the unopened leaves) with advantage εFS + εhv + 2^-2200 for the deployed skeleton (`zk_deployed_bits`), + Q²/2^508 in the RPM; εFS proved (`fsFresh_deployed`: ≤ 2^-54 for a distinguisher's precomputation up to 2^127; from an empty cache with the setup, 2^-113, `fsFresh_setup_deployed_bits`); the joint model for the deployed prover with the honest tables' claims off the degenerate challenges and masks (`Instance/Nondeg.lean`: `jointHVZKε_of_linkV`, εhv = 2^-165 + 2^-125 and the view within εz = 2/2^192, together epsHV; `zk_rpm_skel_approx`), which `zeroKnowledge_closed` uses. Superseded (kept; their all-masks `hT₁`/`hT₂`, `hTW`/`hTQ` are not met by the honest tables): `zk_deployed_joint(_fs)`, `zk_rpm_deployed_joint(_fs)(')`, `zk_rpm_deployed_jointV_fs'`, `zk_rpm_deployed_instance` | `formal/QuotientZk/` | sorry-free, three standard axioms; `skel` equals the Rust prover by a differential test, not by proof (`QuotientZk/Test/SkelTrace.lean`, `crates/quotient/tests/skel_trace.rs`: at 2^17 every Fiat–Shamir query, tree, grind and the proof byte for byte; at 2^17..2^22 the draws, messages and trees against the derived shapes; the differences are listed in `formal/README.md`); end to end: above |
 | Lean F4a, the reduction's Keccak-256 chain: knowledge soundness with `transcript.rs`'s chain byte for byte, in the ROM and in leanerVM's RPM: (Q+8)(2^-163 + 3(Q+8)/2^256) + Q²/2^509 | `formal/QuotientRpm/` | sorry-free, propext, Classical.choice, Quot.sound; ideal commitments; the `Wire` is a parameter (the Statement's chain is F4's `chainWith`: `EndToEnd/Bridge/Chain.lean`) |
@@ -154,8 +150,8 @@ statements from the layers below. Every theorem in this section is sorry-free an
 
 ## Numbers (M4 Max, 16 cores)
 
-- Prover: ~2.2 s for a full proof (reduction ~1.46 s, three openings ~0.76 s), peak memory 5.89 GiB (was 18.65 GiB
-  before the memory work; +0.3 GiB for hiding).
+- Prover: ~2.2 s for a full proof (reduction ~1.46 s, three openings ~0.76 s), peak memory 5.89 GiB (of which
+  0.3 GiB for hiding).
 - Verifier: reduction < 1 ms; WHIR openings 5 ms. Calldata 252 bytes (selector + 248). Openings 248 / 278 / 333 KiB.
 - EVM (2^22 rows), built up step by step, `PCS_OPEN` at price 0 (transaction gas without the 21,000 base, EIP-7623;
   EIP-7976 gives the same once execution dominates):
@@ -168,131 +164,41 @@ statements from the layers below. Every theorem in this section is sorry-free an
   | + index root from storage (cold `SLOAD` + byte reversal) | **14,289** | **18,309** |
 
   At a claim price c (4 claims in 3 calls): 18,309 / 26,309 / 38,309 / 98,309 for c = 0 / 2,000 / 5,000 / 20,000.
-  (Transaction gas moves by 12 for each calldata byte that is zero in one proof and not in another: the report's
-  proof, since the per-proof randomness, has one zero byte, the one before it two.)
+  (Transaction gas moves by 12 for each calldata byte that is zero in one proof and not in another: proofs are
+  randomized, and the measured one has one zero byte.)
   Deployment: 6,308-byte code, 1,426,798 gas.
 
 - leanVM's own PIOP verifier (commit 42422001: Flock + BLAKE2s), Keccak transcript, claims to `PCS_OPEN`, measured
   the same way (`crates/leanvm_flock_gas`): for leanVM's benchmark (1,290 leanXMSS signatures) 335,627 execution,
-  27,140 calldata bytes, 1,077,470 transaction gas (EIP-7623, without the base; calldata binds), 4 claims in 4 calls;
-  the Keccak-GKR version (4af2cddd) about 4.8 M (modelled from measured parts). The straight-line code is 117 KB, over
-  the contract size limit (loops or several contracts needed, not measured).
+  27,140 calldata bytes, 1,077,470 transaction gas (EIP-7623, without the base; calldata binds), 4 claims in 4 calls.
+  As 5 deployable contracts, 362,228 of execution. The baseline for `crates/leanvm_rec` (about 45K).
 
-## Reviews and their outcome
+## Security notes
 
-- **End-to-end zero knowledge (adversarial; `formal/EndToEnd/Review/E2EZk{Axioms,Closed,Nondeg}.lean`)**: the
-  end theorem `zeroKnowledge_closed` is on the three standard axioms, and every theorem of this repository's
-  modules in the `ZK` library's closure was swept (10,616 theorems, none on another axiom); it rests on the
-  non-degenerate chain (`jointHVZKε_of_linkV`, `prob_not_claimsND_le`, `prob_not_goodT_bits`), not on the
-  all-masks theorems; the simulator's arguments hold no witness. Found, and changed in the docs:
-  - the all-masks joint-model theorems (`zk_rpm_deployed_instance`, `zk_rpm_deployed_jointV_fs'`,
-    `jointHVZK_of_linkV`, `joint_hzkV`, `zk_deployed_joint(_fs)`, `zk_rpm_deployed_joint(_fs)(')`, `joint_hzk`,
-    `jointHVZK_of_link`) were presented as the deployed result, but the honest tables do not meet their
-    `hTW`/`hTQ` (`hT₁`/`hT₂`) at degenerate challenges and masks (`valsW c v = 0` where
-    `claimScale 2 23 t = 0`, `E2EZkNondeg.lean`) → kept, marked superseded (their docstrings, `formal/README.md`,
-    `Instance/Main.lean`'s header, `ZK/Assembly.lean`, the F3b row here);
-  - the scope was undocumented → single-proof zero knowledge stated (`Security.lean`'s `ZeroKnowledgeWith`,
-    the Statement README, `formal/README.md`, above), and `FSFresh`'s inherent |c₀|·2^-191 term noted as 0 in the
-    end theorem (`c₀ = []`);
-  - slack in ζ (the skeleton's grinding fuel; Pr[row ∈ K]) → under "Remaining", as possible improvements;
-  - stale lines (`coreClose_of_joint`'s lemmas under old names; `ProverBridge.lean`'s bound without
-    2^-125 + 2/2^192; `Nondeg.lean`'s (2^26 + 4|K|)/|E| for the proved (26·2^25 + 4|K|)/|E|, and "every good
-    challenge"; `Deployed/Main.lean`'s "`FSFresh` not proved here"; `HIDING.md`'s open items) → corrected;
-  - the simulator was called compiled/computable → "an explicit simulator", then compiled (`zeroKnowledge_closed_computable`).
-- **End-to-end completeness (adversarial; `formal/EndToEnd/Review/E2ECompletenessReview.lean`)**: the end
-  theorem is on the three standard axioms, and the statement's closure was swept (`#review_sweep`). Proved there:
-  `Relation` is satisfiable (`relation_self`), and an explicit secret's statement is accepted with probability at
-  least 1 − δ (`w₀_accepted`); the same δ for every fixed coins (`completeness_every_coins`); the exact block
-  count (`hcost_exact`: 114,098,677,826,653 < 2^47); knowledge soundness is not vacuous: the honest prover, run as
-  an adversary in the knowledge-soundness experiment (same setup, same verifier), is accepted with probability at
-  least 1 − δ (`honest_accepted_in_soundness`). Found, and changed in the docs:
-  - the Statement's prover was said to output the Rust prover's stream, but the differential test compares only
-    the reduction's nine scalars, at 2^17 rows on a small circuit → stated so; the deployed Rust prover is
-    trusted for completeness;
-  - the three theorems are about `verifyWith` in the random-permutation model and do not formally compose with
-    the EVM theorem at the real Keccak-f[1600] → stated;
-  - the deployed key derivation, and that completeness holds for every coins → documented;
-  - the proofs-of-work term: the end-to-end proof bounds the whole run's grinding failure by 2^-304
-    (`grinding_le`), not by `ours_romComplete`'s per-opening bound → stated;
-  - stale lines (the completeness hypotheses "left", `E2ECompleteness.lean`'s module doc, "bounds not yet
-    known" in the Statement README and `Security.lean`, "non-vacuity not proved" in `E2ESoundness.lean`,
-    "challenges uniform by assumption" here) → corrected.
-- **End-to-end knowledge soundness (adversarial; `formal/EndToEnd/Review/E2ESoundness.lean`,
-  `E2ESoundnessNumbers.py`)**: the end theorem is on the three standard axioms (`#guard_msgs`), and the
-  statement's definitional closure was swept for axioms, opaque, `implemented_by` and `extern` constants
-  (`#review_sweep`). Checked: the two experiments share one setup and one verifier, and the deployed verifier is
-  the experiment's at π = Keccak-f[1600] (`deployedVerifier_eq`); the extractor ignores the adversary's coins
-  (`extractor_coins`); the honest prover, run as an adversary, is accepted at least as often as in the
-  completeness experiment (`honest_accepted_ge`), so completeness makes the theorem non-vacuous
-  (`nonvacuous_of_completeness`; with `completeness_end`, acceptance with probability ≥ 1 − 2^-162, since
-  compiled as `honest_accepted_in_soundness` in the completeness review); ksBound recomputed in exact
-  rationals; at 2^22 rows the Lean verifier accepts the Rust's honest proof and rejects 14 tamperings, and the
-  Lean commitment of the circuit is the Rust's (run on h1, not proved). Found, and changed:
-  - the extractor was efficient only on words with no errors: its fast path fails on one wrong symbol, and it then
-    ran the Guruswami–Sudan decoder (about 2^98 operations per word) → Gao's unique decoder added between the two
-    (about 2^34.3 for a word with few wrong columns, at most 2^45.7 within the radius); Guruswami–Sudan only beyond
-    the unique-decoding radius; the cost table in `Extractor.lean`;
-  - mumbai's transcript replay is quadratic → hash maps for the replay and the Merkle inversion, proved equal to
-    mumbai's lists (`Soundness/Replay.lean`);
-  - the adversary was not given the setup's root → `Adversary` takes it (`Digest → OracleComp …`); the theorem
-    re-proved, with the same ksBound;
-  - stale lines in `formal/README.md`, `formal/Statement/README.md` and docstrings → corrected.
-- **End-to-end cryptography**: no soundness break at our sizes: after the union bounds over WHIR's level-0 Johnson
-  lists (no OOD sample at level 0), every reduction round keeps ≥ 130 bits (`review/whir_params.py`). But: claims on
-  one commitment must be opened together (a split opening of the quotient table's two claims would be forgeable at
-  ~2^111: the mock and the contract do it right; now documented as a requirement); with leanerVM's generic list cap
-  the copy round as bounded in the paper drops to 125 bits → tightened in Lean (F1: the copy round
-  `(4N + 8)/q`, and every round times `L²` at most 2^-128 for lists up to 2^18); WHIR's code-side
-  accounting omits a factor leanerVM proves (leanerVM's certified parameters are fine; forwarded to the F2 bridge);
-  the opening seed now binds the layout and a version, in the form F2 proves. Two concrete ZK attacks on the pre-hiding code
-  (solving the masks from the opened mask lane; per-coset fingerprints that deanonymize the Merkle path) → fixed by
-  the hiding layouts; both are regression tests (Implementation #1, below). Fourteen overclaims → wording corrected (`AGENTS.md`, doc comments, `formal/README.md`).
-- **Prover memory / `pcs` changes**: the claim holds (identical proofs across 674 randomized WHIR cases, 160 opening
-  layouts, thread counts, x86 NTT constants; 5.58 GiB measured). Found: an aliasing pattern in the NTT encode that Miri
-  flags as UB — pre-existing in leanVM, copied once more by the memory work — and an empty-claims panic → fixed
-  (the adversarial `pcs` review below; reported in `UPSTREAM.md`).
-
-- **Lean formal layer**: the core is sound (axiom sweep, bounds recomputed by hand, an independent Rust↔Lean
-  comparison of every claim coordinate). But the end theorems hold for every wiring — for a degenerate one they say
-  nothing — and the circuit argument was not connected to them; the README overstated ZK and the computability of
-  the extractor/simulator. → docs corrected; new layer F0 (the deployed circuit in Lean, the zero/one pinning, the
-  statement embedding, a non-vacuous end theorem), now done (F0a–F0c).
-- **EVM contract + `PCS_OPEN`**: no contract/Rust mismatch (> 6,000 random calldata, all single-bit flips, all
-  lengths, crafted degenerate proofs); claims bound byte for byte; gas reproduced opcode by opcode. Fixed: the call
-  check failed open on any non-empty return data; the reachable degenerate rejection was untested; `calldata()`
-  dropped a nonzero root limb; empty success data; ETH accepted; unchecked `push2` offsets; the mock now rejects bad
-  lengths.
-- **Implementation (#1)**: no soundness break. ZK was broken as built (calldata-only distinguisher; unpadded
-  openings) → fixed by the hiding layouts (both attacks are regression tests that now fail). `log_rows` range:
-  fixed. Gas formulas correct.
-- **Prover memory / `pcs` (adversarial, on 411866f)**: the lean paths make the dense prover's bytes. Differential
-  tests cover commitments, re-encoded rows, lean levels, the lane-tensor prover and openings. The whole-protocol
-  digests are pinned. Fixed:
-  - aliasing UB in the in-place NTT encodes, leanVM's included (Miri, both borrow models; reported in
-    `UPSTREAM.md`);
-  - an opening of no claims panicked.
-
-  `Table::new_in` / `hidden_in` now check, in debug builds, that the fill writes every word. Noted, not changed:
-  `prove` recomputes σ's coset values for every proof.
-- **Lean F2 and F3 (adversarial, on 25d06ea)**: axioms clean (263 + 173 declarations), vendored WHIR files
-  byte-identical to leanVM `c445e3d5`, query counts / grinding / folds and the list bounds match. But:
-  - F2 covers only the wiring opening: its Lean layout and weight closure are the public ones, while the witness
-    and quotient openings use hidden layouts (the bridge's own `Test/Check.lean` rejects real proofs of both;
-    `formal/Review/HiddenWeight.lean` shows mumbai's `verifyWhir` with the hidden closure accepts them, so the gap
-    is the transcription) → extended: F2 now covers the hidden layouts with the gadget;
-  - F3's view is the linear part only: the roots, Merkle siblings, nonces and Fiat–Shamir rest on an unformalised
-    random-oracle step, and it is the interactive, per-table, honest-verifier statement → F3b (`formal/QuotientZk`),
-    and zero knowledge end to end (`formal/EndToEnd/ZK`, `zeroKnowledge_closed`);
-  - (R) has no Lean bound; the end theorem is not instantiated with the deployed layout → with the layout
-    redesign: (S) and (R) proven, the end theorem instantiated (`deployed_prEvent_le`);
-  - the Lean samples uniform padding, the prover a CSPRNG (statistical ZK in the model, computational in the
-    generator as deployed) → documented.
-  Docs corrected (this file; `formal/README.md`).
+- **Claims on one commitment are opened together.** WHIR takes no out-of-domain sample at level 0, so a root binds
+  only a Johnson list of tables until its claims are opened. A split opening of the quotient table's two claims would
+  be forgeable at about 2^111 work; the contract makes one `PCS_OPEN` call per commitment and the mock checks all
+  the claims of one call in one opening. This is a requirement on the aggregation layer (below).
+- **Union bounds over the level-0 lists.** After them, every reduction round keeps ≥ 130 bits
+  (`params/whir_params.py`). With leanerVM's generic list cap, the copy round as bounded in the paper would keep
+  125 bits; F1 bounds it by `(4N + 8)/q`, and every round times `L²` by at most 2^-128 for lists up to 2^18.
+- **WHIR's parameters.** The code's proximity-gap accounting omits a factor `2^(ℓ-1)` that leanerVM's theorems carry;
+  leanerVM's certified parameters account for it.
+- **The opening's seed** binds the layout and a version, in the form F2 proves.
+- **Hiding.** Unpadded openings would not be zero knowledge: the masks can be solved from an opened mask lane, and
+  per-coset fingerprints identify the Merkle path. The hiding layouts (`crates/quotient/HIDING.md`) prevent both.
+- **The contract fails closed.** Each `PCS_OPEN` reply must be a success with 32 bytes and the word 1; calls with
+  value, other calldata lengths and degenerate proofs revert; the mock rejects malformed inputs. The contract agrees
+  with the Rust verifier on random calldata, every single-bit flip of a proof and crafted degenerate proofs, also
+  linked into 2 KB parts (`crates/evm/src/adversarial.rs`).
+- **The prover's low-memory paths** make the dense prover's commitments and proofs (differential tests in `crates/pcs`
+  and `crates/quotient/src/opening/adversarial.rs`; whole-protocol digests pinned in
+  `crates/quotient/src/protocol/adversarial.rs`). The in-place NTT encodes are free of the aliasing that Miri flags
+  in leanVM's, an opening of no claims is handled, and `Table::new_in` / `hidden_in` check, in debug
+  builds, that the fill writes every word.
 
 ## Remaining
 
-- The zero-knowledge simulator's computable form (in progress; its tables are computed, `sigmaAtD` and
-  `deployedSimV` are still `noncomputable`).
 - Zero knowledge is single-proof: no distinguisher query before the proof, no second proof under the same π.
   A pre-proof phase (the distinguisher's queries before the proof) is planned; it will make `FSFresh`'s
   |c₀|·2^-191 term nonzero (`QuotientZk/Deployed/Fresh.lean`; 0 in the end theorem today, `c₀ = []`).
@@ -300,7 +206,7 @@ statements from the layers below. Every theorem in this section is sorry-free an
   - ζ's dominant 2^-113 (Fiat–Shamir freshness) comes from the skeleton's grinding fuel, 2^64 nonces a grind
     (`QuotientZk/Deployed/Skeleton.lean`'s `queryPhase`, `qpBound` in `Deployed/Bound.lean`: 2^70 operations),
     while the Statement's prover tries 2^25 (`nonceFuel`). At that fuel εFS ≤ 2^-157
-    (`E2EZkNondeg.lean`: `epsFS (2^19) (2^24 + 2^31) 2^-191 2^-2368 ≤ 2^-157`), and ζ would be about 2^-125;
+    (`epsFS (2^19) (2^24 + 2^31) 2^-191 2^-2368 ≤ 2^-157`), and ζ would be about 2^-125;
   - the 2^-125 term of epsHV is almost entirely Pr[row ∈ K] (the 4|K|/|E| = 2^-126 of `card_not_TND_le`'s
     26·2^25 + 4|K|): `goodT` excludes a row in K because `prob_not_claimsND_le` takes the values uniform in E. A
     challenge-dependent mask bound (2/|K| for the masks at a row in K, whose values are uniform in K; 2/|E|
@@ -315,8 +221,34 @@ statements from the layers below. Every theorem in this section is sorry-free an
   `simulator` (`ZeroKnowledge ζ`, the field `Theorems.zeroKnowledge`) is a tested heuristic that no theorem covers.
 - Outside the theorems: the `PCS_OPEN` aggregation layer must check all the claims of one call in one opening (the
   mock does); the deployed generator (ChaCha12 and the Keccak-256 KDF) must be indistinguishable from uniform.
-- `UPSTREAM.md`: issues in vendored leanVM code to report upstream (an aliasing UB, now fixed here; a planner
-  divide-by-zero; documentation errors).
+- Possible prover saving: `prove` recomputes σ's coset values for every proof.
 - Possible gas saving: absorb the index root into the transcript in the byte order `PCS_OPEN` takes, to drop the
   132-gas byte reversal.
 
+
+## leanVM proofs on the EVM by recursion
+
+A leanVM leaf aggregate of leanXMSS signatures, verified on the EVM by recursion; Fiat–Shamir is Keccak-256 and the
+PCS leanVM's WHIR in both layers. Details: `crates/leanvm_univariate/README.md`, `crates/leanvm_rec/README.md`.
+
+- **π1** (`crates/leanvm_univariate`, `SPEC.md`, `PROVER.md`): a univariate PIOP for leanVM `42422001`'s statement,
+  with its prover and its verifier, generic over the scalar and compiled to EVM code. As a contract on its own, at
+  1,000 signatures: 7,108 calldata bytes, 192,392 execution, 305,808 transaction gas (EIP-7623), 5 claims in 5 calls.
+- **π2** (`crates/leanvm_rec`, `SPEC-REC.md`, `PI2.md`): a univariate SNARK of π1's verifier minus its openings, its
+  circuit compiled from π1's recorded verifier graph. The contract runs π2's verifier only: for 1,000 signatures
+  (1,023,109 cycles), 980 calldata bytes, 29,832 execution, **44,804** transaction gas (EIP-7623, without the base),
+  7 claims in 6 calls, one contract of 17.6 KB. Prover: π1 4.8 s + π2 4.5 s (16 threads).
+- **The Keccak VM** (the `SHA3` table of leanVM `9d50c92a3`, Flock on the Keccak-f block of
+  `crates/lv42_flock/KECCAK.md`, a structured terminal): 400 signatures a proof, 44,737 transaction gas on a sample
+  stream; its prover and Lean proofs are not yet done (`crates/leanvm_univariate/KECCAK.md`).
+- **Lean** (`formal/README.md`, from "The univariate verifier for leanVM 42422001"):
+  - the univariate verifier is knowledge sound, no hypothesis beyond the reference deployment, at most 2^-61 for
+    Q ≤ 2^64 (`uniKnowledgeSoundness_closed`, `UniSound`, `FlockSound`, against `Lv42`'s relation);
+  - π1-rec3, the recursion's inner verifier: knowledge soundness at most 2^-64 for Q ≤ 2^64
+    (`uniKnowledgeSoundness_closed_rec3`) and completeness with δ < 2^-167 (`uniCompletenessRec3_end_closed`);
+  - π1-rec3's recorded graph is its verifier off the merge hazard (`RecGraph.Pi1.pi1GraphIsVerifier`);
+  - the recursion's end theorems (`RecCompose`: `recKnowledgeSoundness_closed`, `recCompleteness_end`), with π2's
+    bound `pi2Bound` = 2^-64.93 at Q = 2^64, on the deployment's premises (`D.Real`, `Pi2ViewChecked`,
+    `GraphsAgree`). Open: `IvChecked` for every 32-byte π1 IV is reduced to `PatchChecked`, which is not proved; the
+    `_fs` forms' Fiat–Shamir premises on π1 (`Pi1FsKeccak`, `Pi1HazardKeccak`) are false as stated for unbounded
+    adversaries and stand for the Fiat–Shamir heuristic at bounded Keccak-f[1600] work.

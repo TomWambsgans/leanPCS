@@ -103,7 +103,7 @@ pub fn expand(graph: &Graph) -> (Graph, Vec<u32>) {
 
 /// What the compiler needs besides the graph: the program's IV (leanVM's digest of the bytecode and the R1CS), from
 /// which the contract's transcript IV is derived with `recorded` (`Recorded::iv`: its shape, setup roots and
-/// variant; REVIEW-REC.md L2), the public input and the stream.
+/// variant), the public input and the stream.
 pub struct Inputs<'a> {
     pub program_iv: [u8; 32],
     pub public: [u8; 32],
@@ -481,9 +481,9 @@ pub fn compile<P: Permutation>(
     ports.port(&mut b, &statement_limb, Source::Statement);
     let mut roots: Vec<[u8; 32]> = Vec::new();
     let mut root_of: BTreeMap<usize, u32> = BTreeMap::new();
-    // A root is public as `PCS_OPEN`'s root word (REVIEW-REC.md M1: one ABI for the eight calls), which is the
+    // A root is public as `PCS_OPEN`'s root word (one ABI for the eight calls), which is the
     // stream's 32 bytes as they are: π1's prover sends a root as its two WHIR scalars, big-endian
-    // (`leanvm_univariate::prover::prove::halves`; REVIEW-REC.md R1), and π1's own contract passes them so. Its
+    // (`leanvm_univariate::prover::prove::halves`), and π1's own contract passes them so. Its
     // limbs `L_l` are the big-endian words of the stream's bytes `24 − 8l .. 32 − 8l` (`spec::word_limbs`).
     for &at in &recorded.roots_at {
         assert!(hashed[at..at + 32].iter().all(|&h| h), "a root is hashed");

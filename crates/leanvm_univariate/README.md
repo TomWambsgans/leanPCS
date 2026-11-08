@@ -6,8 +6,7 @@ The same statement as leanVM 42422001 — same VM, the six tables and their colu
 the public input — proved by a different PIOP, designed for the EVM with the aggregated `PCS_OPEN` precompile
 (`README.md` of the repository; ABI in `crates/evm/src/machine.rs`). Keccak-256 for Fiat–Shamir and the PCS
 (leanVM's WHIR, unchanged). Design: [`SPEC.md`](SPEC.md) (§13: iteration 2, the final verifier); Flock's part:
-[`SPEC-FLOCK.md`](SPEC-FLOCK.md); the prover: [`PROVER.md`](PROVER.md); the adversarial review of milestone 1:
-[`REVIEW-M1.md`](REVIEW-M1.md).
+[`SPEC-FLOCK.md`](SPEC-FLOCK.md); the prover: [`PROVER.md`](PROVER.md).
 
 **The PIOP.** Two proof commitments and three setup commitments. `C1` holds the tables' columns as univariate
 polynomials on Cantor subspaces (novel-basis coefficients, so an evaluation at `t` is a multilinear claim) and
@@ -54,8 +53,7 @@ Phase table and the skip-3 Flock kernels: [`PROVER.md`](PROVER.md).
   each `PCS_OPEN` input, verdict, gas) replayed on both builds, plus 13–17 mutations each that must revert. Among them
   π1-rec's (`main_line_rec.txt`: `FLOCK_REC`, the main line with the Fiat–Shamir shape `FsShape::Rec` that the
   recursion of `crates/leanvm_rec` proves; 181,019 gas straight, 191,296 deployed).
-- `tests/prove_real.rs` (needs a trace; `--ignored`), `tests/prove_tiny.rs`, `tests/review_honest.rs` (an
-  independent honest prover), `tests/flock_skip.rs`: the Rust verifier, the WHIR openings and both contract builds
+- `tests/prove_real.rs` (needs a trace; `--ignored`), `tests/prove_tiny.rs`, `tests/flock_skip.rs`: the Rust verifier, the WHIR openings and both contract builds
   accept real proofs and reject mutated ones.
 
 ## Lean 4 (`formal/`; sorry-free, `propext`, `Classical.choice`, `Quot.sound` only, no `native_decide`)
@@ -81,9 +79,9 @@ Phase table and the skip-3 Flock kernels: [`PROVER.md`](PROVER.md).
   (the five openings' terms in `uniBound`), as in the Merkle-path proof.
 - **Tested, not proven**: that the Rust verifier is the Lean transcription (differential vectors); that the
   contract is the Rust verifier (parity tests; it is compiled from it); that the Rust prover is the Lean honest
-  prover (byte-equal streams on the review's and `prove_tiny`'s vectors, which leave Flock out); extensions W and
+  prover (byte-equal streams on `prove_tiny`'s vectors, which leave Flock out); extensions W and
   B and the other shapes (gas and tests only).
-- **Modelled**: the `PCS_OPEN` price `c`, the ≈ 84K figure above, and `review/leanvm_univariate_params.py`'s
+- **Modelled**: the `PCS_OPEN` price `c`, the ≈ 84K figure above, and `params/leanvm_univariate_params.py`'s
   bit counts (an analysis: ≥ 142 bits for the PIOP's rounds; the five WHIR openings at leanVM's ≈ 129-bit
   certificate each, 126.6 bits by a plain union, about 129 in the query-bounded model the Lean proofs use).
 - **Restrictions**: stacks of 2^24..2^28 words (the certified WHIR lists), so 128 signatures or more (32 signatures is below); ZK

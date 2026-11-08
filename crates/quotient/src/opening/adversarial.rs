@@ -1,4 +1,4 @@
-//! Adversarial review of the lean openings (commit 411866f): `commit` / `commit_in` / `open` / `open_owned`
+//! Adversarial tests of the lean openings (commit 411866f): `commit` / `commit_in` / `open` / `open_owned`
 //! against the opening of commit d940553 (leanVM's `commit` and the dense-weight prover), rebuilt here line for
 //! line, on random layouts with gaps, out-of-order and repeated blocks, partial lanes, and claims whose high
 //! coordinates are boolean or not.

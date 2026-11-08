@@ -28,7 +28,7 @@ ports' tags, the ports exactly the holes, **no formula reads a hole**, **`κ` on
 slots**); `validate` decides it (`validate_eq_true_iff`). **`Satisfies`** is the relation π2
 proves: every non-hole position's pull is the push meant for it, and every port's limbs are the
 public ones (`spec::Circuit::check`'s (1), (2), (4): not (3), the holes' values, which the PIOP
-leaves free; REVIEW-REC.md N1).
+leaves free).
 
 Everything is a function of the position (`ℕ → ·`), so the description is generic; nothing about
 a particular layout (D16v, D32v) is assumed.
@@ -228,7 +228,7 @@ structure Valid : Prop where
   sigma_inj : ∀ i < G.N, ∀ i' < G.N, G.sigma i = G.sigma i' → i = i'
   /-- Every non-hole is pushed to. -/
   sigma_onto : ∀ j < G.N, ¬ G.IsHole j → ∃ i < G.N, G.sigma i = j
-  /-- **No formula reads a hole** (REVIEW-REC.md L1). -/
+  /-- **No formula reads a hole.** -/
   no_hole_read : ∀ i < G.N, ∀ c ∈ (G.role i).reads, ¬ G.IsHole (G.base i + c)
   /-- **`κ` only at expression slots.** -/
   kappa_expr : ∀ i < G.N, G.kappa i ≠ 0 → (G.role i).isExpr = true

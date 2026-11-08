@@ -9,9 +9,10 @@ use leanvm_flock_gas::field::E;
 use leanvm_flock_gas::flock::ring_switch_weight;
 use leanvm_flock_gas::ring_tower;
 use leanvm_flock_gas::flock_min::{self, End, Slices, Variant};
+use leanvm_flock_gas::keccak_flock::Keccak;
 use leanvm_flock_gas::layout::{
-    BLAKE2S_R1CS_LOG_SIZE, BLAKE2S_SLOTS, Form, N_TABLES, OP_BLAKE2S, OP_DEREF, OP_JUMP, OP_MUL, SEP_MEM,
-    SEP_STATE, Table, gpow, tables,
+    BLAKE2S_R1CS_LOG_SIZE, BLAKE2S_SLOTS, Form, KECCAK_R1CS_LOG_SIZE, N_TABLES, OP_BLAKE2S, OP_DEREF, OP_JUMP, OP_MUL,
+    SEP_MEM, SEP_STATE, Table, gpow, keccak_slot, keccak_slot_offset, tables, tables_keccak,
 };
 use leanvm_flock_gas::matrices::MatrixClaim;
 use leanvm_flock_gas::multilinear::{eq_kernel, log2_ceil};
@@ -56,7 +57,7 @@ impl Shape {
         HeapLayout::new(self.log_memory, self.log_bytecode, &self.heights())
     }
 
-    /// The shapes a verifier can be built for (review M1, F5): the quotients' degrees are computed without wrapping
+    /// The shapes a verifier can be built for (SPEC.md §13, F5): the quotients' degrees are computed without wrapping
     /// ([`degree`]) at any height, so a shape is rejected only where the protocol needs more: the memory at least
     /// 2 cells (the public input's), every height below 32 (the counts are 32-bit), and with Flock BLAKE2S's height
     /// at least 7 (its zerocheck's seven fixed coordinates).
@@ -75,7 +76,7 @@ impl Shape {
     }
 }
 
-/// A quotient's degree `plus - minus`, or 0 where a small domain makes it negative (review M1, F5).
+/// A quotient's degree `plus - minus`, or 0 where a small domain makes it negative (SPEC.md §13, F5).
 pub fn degree(plus: u64, minus: u64) -> u64 {
     plus.saturating_sub(minus)
 }
@@ -275,9 +276,25 @@ fn table_part<S: Scalar + PartialEq, C: Channel<S>>(
     })
 }
 
-/// Where `q_flock` keeps limb column `name` of BLAKE2S: its slot.
-fn qflock_slot(name: &str) -> Option<usize> {
-    BLAKE2S_SLOTS.iter().position(|&s| s == Some(name))
+/// Where `q_flock` keeps value column `name` of the hash table: its word within the row's block (BLAKE2S's limb slot,
+/// or the Keccak-f block's port word of a `SHA3` lane).
+fn qflock_slot(keccak: bool, name: &str) -> Option<usize> {
+    if keccak {
+        keccak_slot(name)
+    } else {
+        BLAKE2S_SLOTS.iter().position(|&s| s == Some(name))
+    }
+}
+
+/// `log2` of `q_flock`'s words a hash-table row: `2^(14 - 6)` for BLAKE2s, `2^(17 - 6)` for the Keccak-f block.
+pub fn qflock_row_bits(keccak: bool) -> usize {
+    if keccak { KECCAK_R1CS_LOG_SIZE - 6 } else { BLAKE2S_R1CS_LOG_SIZE - 6 }
+}
+
+/// The VM's instruction tables: leanVM 42422001's, or with `keccak` the `SHA3` table of leanVM's Keccak VM in
+/// BLAKE2S's place (`leanvm_flock_gas::layout::tables_keccak`).
+pub fn vm_tables(keccak: bool) -> Vec<Table> {
+    if keccak { tables_keccak() } else { tables() }
 }
 
 /// What the verifier leaves: the two roots and one weighted claim on each commitment, and Flock's claims on `A0`, `B0`.
@@ -359,10 +376,6 @@ pub const FLOCK_REC3: Variant = Variant {
 /// rather than as 64 terms with explicit coefficients (SPEC.md §13).
 pub const RING_TWIST: u8 = u8::MAX;
 
-/// The twist field of a term that sums its column's words: the weight `1` on every word of its block, whatever its
-/// point (`crates/slh_fast`: the quotient argument's `Σ_(V_m) h`, the top novel coefficient of `h`, is the sum of its
-/// `B` coefficients). At the batch's point its row is `1`.
-pub const SUM_TWIST: u8 = u8::MAX - 1;
 pub const FLOCK_BIT_SLICE: Variant = Variant {
     skip: 4,
     slices: Slices::Claim,
@@ -374,7 +387,8 @@ pub const FLOCK_LEANVM_SKIP: Variant = Variant {
     fs: FsShape::Main,
 };
 
-/// Which BLAKE2s argument the verifier runs (SPEC.md §7).
+/// Which hash argument the verifier runs (SPEC.md §7). The name is milestone 1's, when the VM's hash was BLAKE2s
+/// only; [`Blake2s::Keccak`] is the Keccak VM (`KECCAK.md`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Blake2s {
     /// Flock (`leanvm_flock_gas::flock_min`, SPEC-FLOCK.md) as `Variant` has it: its claims on `q_flock` joined
@@ -382,6 +396,11 @@ pub enum Blake2s {
     Flock(Variant),
     /// None: the rest of the verifier alone, to measure it apart.
     Omitted,
+    /// The Keccak VM (`KECCAK.md`): leanVM's `SHA3` table (its Keccak branch, commit `9d50c92a3`) in BLAKE2S's
+    /// place, and Flock on the Keccak-f block (`lv42_flock::keccak`, one permutation a block) with its structured
+    /// lincheck terminal (`leanvm_flock_gas::keccak_flock::structured_terminal`): the variant's slices must be
+    /// [`Slices::TowerWalk`] (no claims on `A0`, `B0`, whose `2^34` entries no stack holds).
+    Keccak(Variant),
 }
 
 impl Blake2s {
@@ -389,11 +408,32 @@ impl Blake2s {
     /// is defined with Flock, SPEC-REC.md §1.4).
     pub fn fs(&self) -> FsShape {
         match self {
-            Blake2s::Flock(variant) => variant.fs,
+            Blake2s::Flock(variant) | Blake2s::Keccak(variant) => variant.fs,
             Blake2s::Omitted => FsShape::Main,
         }
     }
+
+    /// Whether the VM's hash is Keccak-f (the `SHA3` table) rather than BLAKE2s.
+    pub fn keccak(&self) -> bool {
+        matches!(self, Blake2s::Keccak(_))
+    }
 }
+
+/// The Keccak VM's main line (`KECCAK.md`): the univariate skip of 3 (M3's cheaper terminal), the slices sent and the
+/// structured terminal, `PCS_OPEN`'s point claims.
+pub const KECCAK_MAIN: Variant = Variant {
+    skip: 3,
+    slices: Slices::TowerWalk,
+    fs: FsShape::Main,
+};
+
+/// The Keccak VM's π1 under the recursion (`crates/leanvm_rec/tests/keccak_vm_rec.rs`): [`KECCAK_MAIN`] with π1-rec3's
+/// Fiat–Shamir shape (`FsShape::Rec3`).
+pub const KECCAK_REC3: Variant = Variant {
+    skip: 3,
+    slices: Slices::TowerWalk,
+    fs: FsShape::Rec3,
+};
 
 /// The verifier (SPEC.md §4–§8): `public_words` are the public input's four 64-bit words, low first.
 pub fn reduce<S: Scalar + PartialEq, C: Channel<S>>(
@@ -403,8 +443,9 @@ pub fn reduce<S: Scalar + PartialEq, C: Channel<S>>(
     blake2s: Blake2s,
     mode: Claims,
 ) -> Result<Reduced<S>, VerifierError> {
-    shape.validate(matches!(blake2s, Blake2s::Flock(_)))?;
-    let tables = tables();
+    shape.validate(matches!(blake2s, Blake2s::Flock(_) | Blake2s::Keccak(_)))?;
+    let keccak = blake2s.keccak();
+    let tables = vm_tables(keccak);
     let mut c2_columns: Vec<(Column, usize, bool)> = vec![
         (Column::Heap, shape.heap().h, true),
         (Column::TreeQuotient(0), shape.heap().h, true),
@@ -415,7 +456,7 @@ pub fn reduce<S: Scalar + PartialEq, C: Channel<S>>(
     let r_w = shape.constraint_vars();
     let h = heap.h;
 
-    // 0. The tables' row counts (review M1, F1): six 32-bit integers, absorbed with C1's root. A count is at most
+    // 0. The tables' row counts (SPEC.md §13, F1): six 32-bit integers, absorbed with C1's root. A count is at most
     // its height's 2^r; the contract reads its bits 0..=r.
     let mut count_bits: Vec<Vec<S>> = Vec::with_capacity(N_TABLES);
     for &r in &heights {
@@ -457,6 +498,12 @@ pub fn reduce<S: Scalar + PartialEq, C: Channel<S>>(
         Blake2s::Flock(variant) => {
             let reduced = flock_min::verify(flock_log_n, variant, channel)?;
             Some((reduced.point, Some(reduced.end), Some(reduced.matrices)))
+        }
+        Blake2s::Keccak(variant) => {
+            assert_eq!(variant.slices, Slices::TowerWalk, "the Keccak block's terminal is the structured walk");
+            let log_n = KECCAK_R1CS_LOG_SIZE + heights[OP_BLAKE2S];
+            let (point, end) = flock_min::verify_walked_with::<S, Keccak>(log_n, variant, channel)?;
+            Some((point, Some(end), None))
         }
         Blake2s::Omitted => None,
     };
@@ -581,10 +628,14 @@ pub fn reduce<S: Scalar + PartialEq, C: Channel<S>>(
                 let functionals = coordinate_functionals(r);
                 let y = coordinates_at(t, &functionals);
                 for (column, &name) in table.columns.iter().enumerate() {
-                    if let Some(slot) = qflock_slot(name) {
+                    if let Some(slot) = qflock_slot(keccak, name) {
                         let g = next(&mut power) * lift;
                         terms.push(term(at(column), &w[..r], g));
                         terms.push(term(Column::QflockSlot(slot), &y, g));
+                        // The Keccak VM's `in_16` is its port word plus `END_BIT` (`layout::SHA3_END_BIT`).
+                        if keccak && keccak_slot_offset(name) != 0 {
+                            known += g * c(E::new(keccak_slot_offset(name), 0, 0));
+                        }
                     }
                 }
                 quotient_degree = quotient_degree.max(degree((r as u64) * (n / 2), n));
@@ -692,7 +743,7 @@ pub fn reduce<S: Scalar + PartialEq, C: Channel<S>>(
         Blake2s::Flock(Variant {
             slices: Slices::Tower | Slices::TowerWalk,
             ..
-        })
+        }) | Blake2s::Keccak(_)
     );
     if let Some((flock_point, Some(flock_end), flock_matrices)) = flock {
         match flock_end {
@@ -775,7 +826,7 @@ pub fn reduce<S: Scalar + PartialEq, C: Channel<S>>(
             .collect()
     };
     let bit_slice = bit_slice.combine(Commitment::C1, S::one());
-    let layouts = stack_layouts(shape, &c2_columns);
+    let layouts = stack_layouts_for(shape, &c2_columns, keccak);
     let stack_vars = layouts.iter().map(|(c, l)| (*c, l.vars)).collect();
     let openings = match mode {
         Claims::Weighted => {
@@ -823,6 +874,12 @@ pub fn reduce<S: Scalar + PartialEq, C: Channel<S>>(
 /// The three stacks' layouts of `shape` (SPEC.md §3): `C1`'s, `C2`'s and the setup's. They depend on the shape
 /// alone; `C2`'s columns are the ones [`reduce`] states (its quotients' chunks), read off a run of it.
 pub fn layouts(shape: &Shape) -> Vec<(Commitment, StackLayout)> {
+    layouts_for(shape, Blake2s::Omitted)
+}
+
+/// [`layouts`] for the hash argument `blake2s`: BLAKE2s's stacks whatever its Flock variant, the Keccak VM's with
+/// [`Blake2s::Keccak`].
+pub fn layouts_for(shape: &Shape, blake2s: Blake2s) -> Vec<(Commitment, StackLayout)> {
     struct Null;
     impl Channel<E> for Null {
         fn next_scalar(&mut self) -> Result<E, VerifierError> {
@@ -845,14 +902,26 @@ pub fn layouts(shape: &Shape) -> Vec<(Commitment, StackLayout)> {
         }
     }
     let words = [E::default(); 4];
-    reduce(shape, words, &mut Null, Blake2s::Omitted, Claims::Weighted).expect("a valid shape").layouts
+    let blake2s = if blake2s.keccak() { blake2s } else { Blake2s::Omitted };
+    reduce(shape, words, &mut Null, blake2s, Claims::Weighted).expect("a valid shape").layouts
 }
 
 /// The stacks' layouts, `C2`'s from its column list.
 pub fn stack_layouts(shape: &Shape, c2_columns: &[(Column, usize, bool)]) -> Vec<(Commitment, StackLayout)> {
+    stack_layouts_for(shape, c2_columns, false)
+}
+
+/// [`stack_layouts`] for the BLAKE2s VM or, with `keccak`, the Keccak VM (its `SHA3` table, `q_flock` of `2^11` words
+/// a row).
+pub fn stack_layouts_for(
+    shape: &Shape,
+    c2_columns: &[(Column, usize, bool)],
+    keccak: bool,
+) -> Vec<(Commitment, StackLayout)> {
     let heights = shape.heights();
-    let mut c1: Vec<(Column, usize, bool)> = vec![(Column::Qflock, heights[OP_BLAKE2S] + 8, false)];
-    for table in tables() {
+    let mut c1: Vec<(Column, usize, bool)> =
+        vec![(Column::Qflock, heights[OP_BLAKE2S] + qflock_row_bits(keccak), false)];
+    for table in vm_tables(keccak) {
         let h = heights[table.opcode];
         c1.extend((0..table.width()).map(|column| {
             (
@@ -916,13 +985,19 @@ fn weight_at<S: Scalar>(
     // Lean transcription's finding 1 on milestone 1's `EqCache`, which keyed a slot's row by its slot and was right
     // only because every slot term sits at the one point y(t)).
     let mut slots: Vec<(usize, S)> = Vec::new();
+    let mut slot_bits_of: Vec<(usize, usize)> = Vec::new();
     for &(column, p, twist, coefficient) in &claim.terms {
         if let Column::QflockSlot(j) = column {
-            // q_flock's word `slot + 256 · instance`: the slot's bits, then the instance's coordinates.
-            let bits = (0..8).fold(S::one(), |acc, b| {
+            // q_flock's word `slot + 2^b · instance`: the slot's `b` bits (8 for BLAKE2s, 11 for the Keccak-f block),
+            // then the instance's coordinates.
+            let slot_bits = layout.limbs(Column::Qflock)[0].1 - claim.points[p].len();
+            let bits = (0..slot_bits).fold(S::one(), |acc, b| {
                 acc * if j >> b & 1 == 1 { r[b] } else { cache.one_plus_r()[b] }
             });
             let c = coefficient * bits;
+            if !slot_bits_of.iter().any(|&(q, _)| q == p) {
+                slot_bits_of.push((p, slot_bits));
+            }
             match slots.iter_mut().find(|(q, _)| *q == p) {
                 Some((_, sum)) => *sum += c,
                 None => slots.push((p, c)),
@@ -943,8 +1018,6 @@ fn weight_at<S: Scalar>(
             let map = ring_map.expect("the ring map of a ring-switch term");
             let _phase = enter("claims: the ring switch's weight at the batch's point");
             S::ring_weight(&point[..len], &cache.one_plus_r()[..len], map)
-        } else if twist == SUM_TWIST {
-            S::one()
         } else {
             cache.row(base_id + p, point, len, twist)
         };
@@ -953,7 +1026,8 @@ fn weight_at<S: Scalar>(
     for (p, sum) in slots {
         let point = &claim.points[p];
         let (_, qflock) = part(&mut cache, Column::Qflock);
-        let instance = cache.row_from(base_id + 1000 + p, point, 8);
+        let slot_bits = slot_bits_of.iter().find(|&&(q, _)| q == p).expect("a slot term's point").1;
+        let instance = cache.row_from(base_id + 1000 + p, point, slot_bits);
         total += sum * instance * qflock;
     }
     total

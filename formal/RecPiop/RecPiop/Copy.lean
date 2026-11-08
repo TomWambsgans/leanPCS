@@ -23,7 +23,7 @@ position, a **public term** `(F_j, ω_{N+j})` at every port, `2N` in all (`card_
   `h d_pull d_push + (1 + 1_S) d_push + d_pull = 0` at every position and summing to the target),
   where no pull's denominator vanishes, makes every denominator nonzero and the family's
   log-derivative sum zero. At a hole the identity is `d_pull (h d_push + 1) = 0`: the hole's pull
-  is out of the sum (REVIEW-REC.md N1's vanishing case is a pull's denominator zero, counted).
+  is out of the sum (the vanishing case is a pull's denominator zero, counted).
 * **`card_copyOK_le`**: if the witness does not satisfy the circuit, at most
   `(3N − 1 + Σ_j d_j)·|F|²` triples `(α, β, γ)` reach `CopyOK`: `N |F|²` where a pull's denominator
   vanishes, `(2N − 1) |F|²` where the family is odd mod 2 but its sum zero (logUp,

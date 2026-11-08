@@ -6,8 +6,8 @@ import RecStatement.Security
 
 `Security.lean`'s Prop-premise form `RecKnowledgeSoundness` takes `Pi1FsKeccak` and `Pi1HazardKeccak`, which quantify
 over every `OracleComp` adversary and count only its calls of `π`, `π⁻¹`. π1's challenges are Keccak-f[1600], a fixed
-public function such an adversary computes for free, so both are false as stated (`RecCompose/Review/STATEMENT_REVIEW.md`,
-finding 3). The statement here takes neither: it is a **reduction**.
+public function such an adversary computes for free, so both are false as stated.
+The statement here takes neither: it is a **reduction**.
 
 For every adversary `A` of `Q` queries against the recursive verifier,
 
@@ -31,7 +31,7 @@ candidate, a polynomial in the log's and the setup's sizes. Lean states the quer
 Keccak-f[1600] (free in the model, uncounted by `Q`), plus the extractor's, chiefly π1-rec3's graph's checks at
 Keccak-f[1600] on each candidate stream (its Fiat–Shamir: IV, seed, the stream's challenges, Flock's draws). The reader's
 Fiat–Shamir premise about these adversaries is a bound in that work; the reduction's `Q` counts only the calls of `π`
-and `π⁻¹` (STATEMENT_REVIEW_2.md, finding 6).
+and `π⁻¹`.
 
 The Fiat–Shamir heuristic for Keccak-f[1600] is applied by the reader, to these two adversaries: π1-rec3's
 random-permutation theorem (`UniSound.Rec3Ref.uniKnowledgeSoundness_closed_rec3`) for the first, `RecGraph.hazard_prob`

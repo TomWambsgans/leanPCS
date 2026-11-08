@@ -17,7 +17,7 @@ value)`, 32-byte words), in this order (`contract::call_words`):
 2. **`W`'s** (one claim; its root the stream's 32 bytes), **the setup's** (one claim; its root a constant,
    `root_word` of the setup's root: each 16-byte half reversed), **`Q`'s** (two claims in one call: one opening).
 
-**π1's contract IV** (`contract_iv_for`, REVIEW-REC.md N2): the main line's IV preimage (`UniStatement.contractIvWith`'s:
+**π1's contract IV** (`contract_iv_for`): the main line's IV preimage (`UniStatement.contractIvWith`'s:
 the tag, the program IV, π1's three setup roots, the shape's bytes, the five layout words) with the variant's bytes
 appended, for π1-rec3 `"fs-rec3"`, the skip `3` and the slices' code `4` (`Slices::TowerWalk`).
 -/

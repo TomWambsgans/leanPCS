@@ -1,9 +1,9 @@
-//! Adversarial review of the lean prover (commit 411866f) at the protocol level: whole proofs and openings on
+//! Adversarial tests of the lean prover (commit 411866f) at the protocol level: whole proofs and openings on
 //! the toy circuit at several sizes, seeds, honest and broken witnesses, fingerprinted:
 //! `cargo test -p quotient --release protocol::adversarial -- --nocapture` prints one `DIGEST` line per case.
 //! With the pool size set (`LEANVM_NUM_THREADS`), the lines must not change either.
 //!
-//! The review compared these lines with those of commit d940553 (whose prover kept every codeword and wrote the
+//! These lines were compared with those of commit d940553 (whose prover kept every codeword and wrote the
 //! weight out): the lean prover made the same proofs. The hidden layouts (201a5d1) then changed the proofs on
 //! purpose, so the lines were pinned to the prover of f6e68a5 (hidden layouts, lean prover): a regression pin
 //! of this prover's own outputs, not a comparison with an independent one. They moved once more, on purpose,
@@ -117,8 +117,8 @@ fn case(circuit: &Circuit, index: &Index, index_committed: &Committed, seed: u64
 }
 
 /// What the prover makes on these cases, its masks and padding given (`prove_with_randomness`): `(log_rows, seed,
-/// broken, fits, fingerprint)`. Re-pinned when the hidden layouts changed the proofs (the review pinned
-/// d940553's here), then when the openings' transcripts took leanVM's shape, then when the hidden layouts took
+/// broken, fits, fingerprint)`. Re-pinned when the hidden layouts changed the proofs (d940553's were pinned
+/// here first), then when the openings' transcripts took leanVM's shape, then when the hidden layouts took
 /// the gadget (`HIDING.md`, condition (R) for every challenge).
 const PINNED: &[(usize, u64, bool, bool, &str)] = &[
     (

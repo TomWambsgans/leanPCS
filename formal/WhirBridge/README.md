@@ -11,8 +11,7 @@ three openings the protocol makes (the wiring table's, public; the witness and q
 hidden, in the layout redesigned for condition (R) of `crates/quotient/HIDING.md`: the overflow lane
 `32`, seven random lanes after it, and the **gadget**), at every supported size, in table terms.
 Everything here is sorry-free and depends on `propext`, `Classical.choice` and `Quot.sound` only
-(`#guard_msgs` checks in `WhirBridge.lean`; the review's sweep `formal/Review/WhirBridgeAxioms.lean`:
-589 declarations, no other axiom, no `opaque`, no `implemented_by`). No `native_decide`: the facts
+(`#guard_msgs` checks in `WhirBridge.lean`). No `native_decide`: the facts
 about our layouts are `decide +kernel`.
 
 ## What is proved
@@ -260,8 +259,8 @@ admissible shape (the IV's hash, the seed's permutation, mumbai's `whirBound`), 
 * **One opening per root**: the guarantee is joint only within one opening. An opening that is not doomed
   has **one** candidate whose table satisfies **all** its claims (and which satisfies the gadget,
   `Layout.joint_of_not_doom`); claims on one root split over two openings would get one list member each,
-  possibly different (a split opening of the quotient table's two claims is forgeable, about `2^111` by
-  the review's count). So every statement here is about one opening holding all the claims on its root, as
+  possibly different (a split opening of the quotient table's two claims is forgeable at about `2^111`
+  work). So every statement here is about one opening holding all the claims on its root, as
   `protocol::verify_openings` does.
 * **Table terms**: the candidates are tables as `Table::read` reads them back (the hidden layouts: the
   overflow lane at the held pieces, the blocks' other pieces on their lanes, the random first pieces left
@@ -291,7 +290,7 @@ any shape `Layout::new` accepts, rate `1/2`. Nothing above changes; the new theo
 | `union_one_root_le`, `union_two_roots_le`, `union_three_roots_le`, `largeList_pairs` | `LargeMargins.lean` | `L₁ d/2^192 ≤ 2^-(178−k)`, `L₁L₂ d/2^192 ≤ 2^-(165−k)`, `L₁L₂L₃ d/2^192 ≤ 2^-(152−k)` for `d ≤ 2^k`; `L₁L₂ ∈ [3564², 9952²] = [2^23.60, 2^26.56]` |
 
 **The parameters** (rate `1/2`; queries per level after `17` bits of grinding; `L₀` the certified level-0 list;
-the weakest group of the certificate, its `Nat` bounds read as bits by `review/whir_params.py --large`, which
+the weakest group of the certificate, its `Nat` bounds read as bits by `params/whir_params.py --large`, which
 computes them exactly as `Params/Check.lean` does and reproduces the table of the previous section at `24`,
 `25`, `28`):
 
@@ -376,6 +375,5 @@ it now also runs every opening against the weight without the gadget's term).
 
 The `Large*` files were built at `/root/pcs-quotient-fv/whir-large` (a copy of `whir-bridge-gadget`, the same
 `../leanervm`): the five modules build in about 20 s (their kernel decisions, `shapeOK` at `128` and `129` for
-the five shapes included, a few seconds each); `Review/WhirBridgeAxioms.lean` sweeps 676 declarations, none
-outside the three axioms, no opaque, axiom or `implemented_by` constant. The Rust check is in the same directory
+the five shapes included, a few seconds each). The Rust check is in the same directory
 (`rust/`, the workspace without `formal/`).

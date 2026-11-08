@@ -14,7 +14,7 @@
 //! twist << 48`, then the coefficient) and its value; `A0` and `B0` as evaluation claims (`root, layout, 1`, the
 //! point, the value). The setup roots are constants in the code (no `SLOAD`).
 //!
-//! **Root words** (`crates/leanvm_rec/REVIEW-REC.md`, R1). `C1`'s and `C2`'s are the stream's 32 bytes as they are:
+//! **Root words**. `C1`'s and `C2`'s are the stream's 32 bytes as they are:
 //! the prover sends each root as its two WHIR scalars (`prover::prove::halves`, `hash_to_scalars`), so those bytes
 //! are `PCS_OPEN`'s root word `s_0 · 2^128 + s_1` (`crates/evm/src/machine.rs`), which a decoding precompile reads as
 //! the root the opening is of. The setup roots' words are the hashes as they are ([`SetupRoots`]), not their root
@@ -34,7 +34,7 @@ use crate::verifier::{Blake2s, Claims, Opening, Reduced, Shape, reduce};
 /// The transcript's 16-byte name.
 pub const NAME: [u8; 16] = *b"leanVM-univar-v1";
 
-/// The setup commitments' roots, constants of the code (review M1, F2): `F` from the program and the shape, `A0` and
+/// The setup commitments' roots, constants of the code (SPEC.md §13, F2): `F` from the program and the shape, `A0` and
 /// `B0` from Flock's BLAKE2s R1CS. The prover computes them (`prover::setup::roots`, branch
 /// `leanvm-univariate-prover`, PROVER.md); [`SetupRoots::REFERENCE`] are the reference shape's (memory `2^21`,
 /// bytecode `2^19`), which the gas reports use for every shape (the gas does not depend on them).
@@ -93,7 +93,7 @@ pub fn shape_bytes(shape: &Shape) -> [u8; 8] {
     bytes
 }
 
-/// A `PCS_OPEN` call's layout word (review M1, F2; the prover's request): the shape's bytes (bytes 0..8), the
+/// A `PCS_OPEN` call's layout word (SPEC.md §13, F2): the shape's bytes (bytes 0..8), the
 /// opening's code (22..24), the stack's variables (24) and the words its blocks fill, `placed` (25..32), which
 /// WHIR's verifier needs to know the committed lanes. Each shape's stacks have their own words.
 pub fn layout_word(shape: &Shape, code: u16, vars: usize, placed: u64) -> [u8; 32] {
@@ -108,7 +108,12 @@ pub fn layout_word(shape: &Shape, code: u16, vars: usize, placed: u64) -> [u8; 3
 
 /// The five openings' layout words, in call order: `C1`, `C2`, the setup, `A0`, `B0`.
 pub fn layout_words(shape: &Shape) -> [[u8; 32]; 5] {
-    let layouts = crate::verifier::layouts(shape);
+    layout_words_for(shape, Blake2s::Omitted)
+}
+
+/// [`layout_words`] for the hash argument `blake2s` (the Keccak VM's stacks with [`Blake2s::Keccak`]).
+pub fn layout_words_for(shape: &Shape, blake2s: Blake2s) -> [[u8; 32]; 5] {
+    let layouts = crate::verifier::layouts_for(shape, blake2s);
     let of = |c: Commitment| {
         let layout = &layouts.iter().find(|(k, _)| *k == c).expect("a layout").1;
         layout_word(shape, layout_code(c), layout.vars, layout.words())
@@ -117,7 +122,7 @@ pub fn layout_words(shape: &Shape) -> [[u8; 32]; 5] {
     [of(Commitment::C1), of(Commitment::C2), of(Commitment::Setup), matrix(A0_CODE), matrix(B0_CODE)]
 }
 
-/// The IV the transcript's seed hashes (review M1, F2): the hash of a tag, the program's IV (leanVM's digest of the
+/// The IV the transcript's seed hashes (SPEC.md §13, F2): the hash of a tag, the program's IV (leanVM's digest of the
 /// bytecode and the R1CS), the setup roots, the shape and the five layout words. The seed then adds the public
 /// input. A constant of the code: it costs no gas.
 pub fn contract_iv(shape: &Shape, program_iv: &[u8; 32], roots: &SetupRoots) -> [u8; 32] {
@@ -134,15 +139,22 @@ pub fn contract_iv(shape: &Shape, program_iv: &[u8; 32], roots: &SetupRoots) -> 
     leanvm_flock_gas::transcript::keccak256(&data)
 }
 
-/// What the IV appends for `blake2s` (`crates/leanvm_rec/REVIEW-REC.md`, N2): nothing on the Fiat–Shamir shape
+/// What the IV appends for `blake2s`: nothing on the Fiat–Shamir shape
 /// `Main` (the main line's IV and its measured variants' are unchanged, as their vectors and the Lean transcription
 /// take them); with π1-rec's shape ([`FsShape::Rec`]) the tag `"fs-rec"`, then the skip, the slices' code and, for the
 /// variant's batching challenges, their width in bytes. A Rec contract's IV is then the Keccak-256 of a longer
 /// preimage than any Main contract's (`contract_iv`'s is of fixed length), so the two never share a seed.
 pub fn variant_bytes(blake2s: Blake2s) -> Vec<u8> {
     use leanvm_flock_gas::flock_min::Slices;
-    let Blake2s::Flock(v) = blake2s else {
-        return vec![];
+    let v = match blake2s {
+        Blake2s::Flock(v) => v,
+        // The Keccak VM (KECCAK.md): its own tag, so its seeds never meet a BLAKE2s contract's.
+        Blake2s::Keccak(v) => {
+            let mut out = b"keccak-vm".to_vec();
+            out.extend([v.skip as u8, v.fs as u8]);
+            return out;
+        }
+        Blake2s::Omitted => return vec![],
     };
     if v.fs == FsShape::Main {
         return vec![];
@@ -170,7 +182,7 @@ pub fn contract_iv_for(shape: &Shape, blake2s: Blake2s, program_iv: &[u8; 32], r
     if extra.is_empty() {
         return contract_iv(shape, program_iv, roots);
     }
-    let words = layout_words(shape);
+    let words = layout_words_for(shape, blake2s);
     let mut data = b"leanVM-univar-iv".to_vec();
     data.extend_from_slice(program_iv);
     for root in [roots.f, roots.a0, roots.b0] {
@@ -283,7 +295,7 @@ fn opening_words<T: Copy, W: Clone>(
 /// The calls of `PCS_OPEN`, as runs of output words.
 pub fn calls(recorded: &Recorded) -> Vec<Vec<Word>> {
     let reduced = &recorded.reduced;
-    let layouts = layout_words(&recorded.shape);
+    let layouts = layout_words_for(&recorded.shape, recorded.blake2s);
     let roots = recorded.roots;
     let mut out = Vec::new();
     for (commitment, opening) in &reduced.openings {
@@ -528,7 +540,7 @@ fn expected_words(reduced: &Reduced<E>, recorded: &Recorded, stream: &[u8]) -> V
         bytes
     };
     let root = |at: usize| -> [u8; 32] { stream[at..at + 32].try_into().unwrap() };
-    let layouts = layout_words(&recorded.shape);
+    let layouts = layout_words_for(&recorded.shape, recorded.blake2s);
     let roots = recorded.roots;
     let mut out = Vec::new();
     for (commitment, opening) in &reduced.openings {

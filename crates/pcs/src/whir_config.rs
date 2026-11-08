@@ -9,7 +9,7 @@
 // Ported from bolt-rs (https://github.com/bcc-research/bolt-rs,
 // `whir_recursive.rs`).
 //
-// Comments corrected here, no code change (reported in UPSTREAM.md): the level-0
+// Comments corrected here, no code change (to report upstream): the level-0
 // OOD row's comment omitted its assumptions (the outer protocol binds the list:
 // its claims on one root are opened together and the challenges before them are
 // union-bounded over the list; `L·μ/q` assumes a uniform point in `E^μ`, else
@@ -334,7 +334,7 @@ fn derive_ladder_shape(log_n: usize, initial_k: usize, log_inv_rate: usize) -> R
 // union-bounding the challenges it draws before those claims over the list;
 // `L*mu/q` assumes a claim point uniform in `E^mu`, a point that is a degree-`D`
 // image of fewer challenges costs `L*D/q`, and a fixed point binds nothing.
-// See `paper_ood_bits` and UPSTREAM.md.] Plain Johnson without OOD
+// See `paper_ood_bits`.] Plain Johnson without OOD
 // binding would be unsound at these parameters: the query phase would pay a
 // union bound over the interleaved list (19 to 52 bits here) that the query
 // counts do not include.
@@ -453,7 +453,7 @@ fn reduced_rate(log_inv_rate: usize, log_msg_cols: usize) -> f64 {
 /// these levels, carries a factor `2^(ℓ−1)` on this `a/|F|` that this accounting
 /// omits (5 bits at the first fold, `ℓ = 6`). leanerVM certifies the deployed
 /// parameters with a smaller `η` of its own (`Params/Deployed.lean`, `certTable`),
-/// so the bits computed here are not the certified ones. See UPSTREAM.md.]
+/// so the bits computed here are not the certified ones.]
 fn paper_thm_ca_johnson_log_a(log_inv_rate: usize, eta: f64, log_msg_cols: usize) -> f64 {
     let rho = reduced_rate(log_inv_rate, log_msg_cols);
     let sqrt_rho = rho.sqrt();

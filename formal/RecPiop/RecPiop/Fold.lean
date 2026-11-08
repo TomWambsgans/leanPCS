@@ -7,7 +7,7 @@ import Mathlib
 `PI2.md` §2: `W`'s claim is at `(ρ, ρ², ρ⁴, …, ρ^{2^{r-1}}, w_r, …, w_{m-1})`, its value
 `Σ_k eq(ρ⃗, k)·a_k` (`foldAt`), the fold values `a_k` sent before `ρ`. The weights
 `eq(ρ⃗, k) = Π_{l<r} (ρ^{2^l} if bit `l` of `k`, else `1 + ρ^{2^l}`)` are polynomials in `ρ`
-(`eqPowPoly`) that are **unitriangular** (REVIEW-REC.md: `eq(ρ⃗, k) = Σ_{j ⊇ k} ρ^j` in
+(`eqPowPoly`) that are **unitriangular** (`eq(ρ⃗, k) = Σ_{j ⊇ k} ρ^j` in
 characteristic two): splitting on the top bit, the fold of `r + 1` bits is `A + X^{2^r}(A + B)`, `A`
 and `B` the folds of the two halves, both of degree below `2^r` (`foldPoly_succ`). So the fold
 polynomial of a nonzero vector is nonzero, of degree at most `2^r − 1` (`foldPoly_ne_zero`,

@@ -298,7 +298,9 @@ def nextPow2 (n : ℕ) : ℕ := Id.run do
   return p
 
 /-- Each region's rows padded to fewer blocks within the `2^L` rows the unpadded layout needs (`pad_counts`): greedily,
-the region whose next binary digit saves the most rows per added pair (`f64`, the last of equal gains). -/
+the region whose next step saves the most rows per added digit and role (`f64`, the last of equal rates). A region's
+next step is the digit count `j > k` with the best rate `(pad c k - pad c j) / (j - k) / roles`, the first of equal
+rates, looking past counts that save nothing (a carry). -/
 def padCounts (count : Array ℕ) (regions : Array Region) : Except String (Array ℕ) := do
   let total := count.foldl (· + ·) 0
   let budget := nextPow2 (max total 1)
@@ -312,14 +314,22 @@ def padCounts (count : Array ℕ) (regions : Array Region) : Except String (Arra
   while rows k > budget do
     if fuel == 0 then throw "pad_counts: no progress"
     fuel := fuel - 1
-    let gain := fun (r : ℕ) => Float.ofNat (pad (count.getD r 0) (k.getD r 0) - pad (count.getD r 0) (k.getD r 0 + 1)) /
-      Float.ofNat (max (roles.getD r 0) 1)
+    -- `step r`: the next digit count and its rate. The fold starts below every rate (rates are `≥ 0`), as the
+    -- Rust's `f64::MIN`, and keeps the first of equal rates (`>`).
+    let step := fun (r : ℕ) =>
+      let c := count.getD r 0
+      let kr := k.getD r 0
+      ((List.range (popcount c - kr)).map fun i => kr + 1 + i).foldl
+        (fun (best : ℕ × Float) j =>
+          let rate := Float.ofNat (pad c kr - pad c j) / Float.ofNat (j - kr) / Float.ofNat (max (roles.getD r 0) 1)
+          if rate > best.2 then (j, rate) else best)
+        (kr + 1, -1.0)
     let cands := (List.range count.size).filter fun r => k.getD r 0 < popcount (count.getD r 0)
     match cands with
     | [] => throw "the unpadded layout fits"
     | c :: cs =>
-      let best := cs.foldl (fun best r => if gain best ≤ gain r then r else best) c
-      k := k.set! best (k.getD best 0 + 1)
+      let best := cs.foldl (fun best r => if (step best).2 ≤ (step r).2 then r else best) c
+      k := k.set! best (step best).1
   return (List.range count.size).toArray.map fun r => pad (count.getD r 0) (k.getD r 0)
 
 /-! ## `finish` -/

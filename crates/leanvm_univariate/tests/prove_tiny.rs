@@ -1,14 +1,15 @@
-// Part of this repository. The tiny executions (`Rng`, `row_of`, `execution`) are copied from tests/review_honest.rs
-// (review M1's independent honest prover) as iteration 2 has them (the rows placed at the fixed cosets, SPEC.md
-// §13), unchanged but for `Witness` keeping only what a trace needs.
+// Part of this repository. The tiny executions (`Rng`, `row_of`, `execution`) are copied from the tests of an
+// independent honest prover written for this repository (no longer part of it; its streams are pinned below) as
+// iteration 2 has them (the rows placed at the fixed cosets, SPEC.md §13), unchanged but for `Witness` keeping only
+// what a trace needs.
 // MIT OR Apache-2.0; see NOTICE.md.
-//! The prover at tiny and uneven sizes: the review's 15- to 31-cycle executions over all six tables (memory and
+//! The prover at tiny and uneven sizes: 15- to 31-cycle executions over all six tables (memory and
 //! bytecode of `2^4` and `2^5`, tables of 0 to 6 rows, DEREF's gated store), as a leanVM trace, proven by the prover
-//! and accepted by the verifier with its three WHIR openings. Flock is omitted, as in the review's prover.
+//! and accepted by the verifier with its three WHIR openings. Flock is omitted, as in the independent prover.
 //!
 //! `cargo test --release -p leanvm_univariate --test prove_tiny -- --nocapture`
 
-// The copied execution keeps the review's spelling.
+// The copied execution keeps its original spelling.
 #![allow(clippy::assign_op_pattern)]
 
 use leanvm_flock_gas::field::{E, GEN, ONE, ZERO};
@@ -299,8 +300,9 @@ fn trace_of(w: &Witness) -> Trace {
             .map(|t| (0..t.width()).map(|c| w.rows[t.opcode].iter().map(|row| k(row[c])).collect()).collect())
             .collect(),
         bytecode,
-        // The review's execution places its rows as the verifier wants them (SPEC.md §13, F1b).
+        // The execution places its rows as the verifier wants them (SPEC.md §13, F1b).
         placed: true,
+        keccak: false,
     }
 }
 
@@ -327,7 +329,7 @@ fn tiny_executions_are_proven_and_verified() {
             assert!(*degree < *count as i64, "{name}");
         }
         verify(&trace.shape(), &[0x77; 32], &roots, &trace.public_input(), &proof, Blake2s::Omitted).expect("accepted");
-        // The review's honest prover sends these stand-in roots (it commits nothing) and binds the reference setup
+        // The independent honest prover sends these stand-in roots (it commits nothing) and binds the reference setup
         // roots: with them, the stream is the one it writes for the same execution, byte for byte, if the two
         // provers agree on every value.
         let stand_in = Config {
@@ -339,7 +341,7 @@ fn tiny_executions_are_proven_and_verified() {
             ..config
         };
         let (cross, _) = prove(&trace, None, &[0x77; 32], stand_in).expect("a proof");
-        // The review's prover's streams for these executions (`honest_proofs_at_other_sizes`, point claims, as
+        // The independent prover's streams for these executions (`honest_proofs_at_other_sizes`, point claims, as
         // iteration 2 has it at leanvm-univariate ad49e74), their Keccak-256's first bytes: the same, byte for byte.
         // A protocol change re-records them.
         let review: Option<[u8; 8]> = match (memory, bytecode) {

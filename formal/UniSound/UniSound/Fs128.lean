@@ -25,7 +25,7 @@ N (ε + 5 N / 2^256) + N (9952² e + 8 N / 2^256) + 2 N² / 2^256 + (2^81 + Q)²
   `hlab_uni`): two answers, one the other's prefix after `name`, `2 N² / 2^256`;
 * the random permutation, as `uniBound`'s.
 
-At `Q = 2^64` it is `2^-64.88` (`EndToEnd/Review/UniSoundnessNumbers128.py`, exact rationals).
+At `Q = 2^64` it is `2^-64.88` (in exact rationals).
 -/
 
 namespace UniSound

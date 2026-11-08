@@ -1,0 +1,43 @@
+-- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+module
+
+public import KeccakArith.Sha3Table
+public import KeccakArith.RowSound
+
+/-!
+# KeccakArith: the Keccak VM's arithmetization
+
+The `SHA3` table of the Keccak VM (`KeccakVm.Sha3Table`) as a Clean component, in the form of Lv42's `BLAKE2S` table,
+and its per-row soundness against `KeccakVm.executeWith` from `KeccakVm.KeccakAux`. See `README.md`.
+
+* `KeccakArith.Sha3Table`: the row (`Sha3Row`, the 86 columns), the component (`sha3Table`), its relation
+  (`Sha3Bindings`, `Sha3Relation`, `Sha3Refines`, `sha3_refines_iff`), rows from executions (`sha3RowOf_refines`),
+  and the M3 table it gives (`sha3M3`): its flushes are `KeccakVm.Sha3Table.flushes` (`sha3M3_flushes`), its count
+  columns `KeccakVm.Sha3Table.counts` (`sha3M3_count`), no constraint (`sha3M3_constraints`).
+* `KeccakArith.RowSound`: a row is a step under the Keccak relation and its pulls' guarantees (`sha3_row_sound`);
+  on a stack with `KeccakAux` every executed row satisfies the Keccak relation (`sha3Relation_stackRow`), so an
+  executed row whose pulls are genuine reads executes (`sha3_stackRow_sound`).
+
+The build fails if the axiom footprint of these theorems grows beyond Lean's three standard axioms.
+-/
+
+/-- info: 'KeccakArith.sha3M3_flushes' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in #print axioms KeccakArith.sha3M3_flushes
+
+/-- info: 'KeccakArith.sha3M3_count' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in #print axioms KeccakArith.sha3M3_count
+
+/-- info: 'KeccakArith.sha3_refines_iff' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in #print axioms KeccakArith.sha3_refines_iff
+
+/-- info: 'KeccakArith.sha3RowOf_refines' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in #print axioms KeccakArith.sha3RowOf_refines
+
+/-- info: 'KeccakArith.sha3_row_sound' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in #print axioms KeccakArith.sha3_row_sound
+
+/-- info: 'KeccakArith.sha3Relation_stackRow' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in #print axioms KeccakArith.sha3Relation_stackRow
+
+/-- info: 'KeccakArith.sha3_stackRow_sound' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in #print axioms KeccakArith.sha3_stackRow_sound

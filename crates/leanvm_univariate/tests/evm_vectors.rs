@@ -22,7 +22,7 @@ mod vectors;
 use leanvm_flock_gas::evm::codegen::word;
 use leanvm_flock_gas::evm::machine::{PcsOpen, call, root_of_word};
 use leanvm_univariate::Claims;
-use leanvm_univariate::contract::{compile_verifier, record_verifier};
+use leanvm_univariate::contract::{SetupRoots, compile_verifier, record_verifier, record_verifier_with};
 use vectors::{PROGRAM_IV, Vector, blake2s_of, deployable, read};
 
 /// Run `f` on a thread with a deep stack: the code generator recurses along the graph.
@@ -48,7 +48,13 @@ const STREAM_AT: usize = 4 + 32;
 
 fn replay(v: Vector) {
     let blake2s = blake2s_of(&v.config);
-    let recorded = record_verifier(&v.shape, blake2s, Claims::Point);
+    // The contract binds the proof's setup root `F` (the third call's, its shape's own: `SetupRoots::REFERENCE`'s at
+    // the 1,000-signature reference shape, a Keccak VM shape's own otherwise).
+    let roots = SetupRoots {
+        f: v.whir_roots[2],
+        ..SetupRoots::REFERENCE
+    };
+    let recorded = record_verifier_with(&v.shape, blake2s, Claims::Point, &roots);
     assert_eq!(STREAM_AT + recorded.stream_len, v.calldata.len(), "{}: the calldata is the shape's", v.config);
     let straight = compile_verifier(&recorded, &PROGRAM_IV, false);
     let deployed = deployable(&recorded);
@@ -67,7 +73,7 @@ fn replay(v: Vector) {
         assert_eq!(outcome.execution, gas, "{} {build}: the gas of execution", v.config);
         println!("{} {build}: accepts, {gas} gas of execution, {} PCS_OPEN calls", v.config, v.calls.len());
     }
-    // The roots the calls name (`crates/leanvm_rec/REVIEW-REC.md`, R1), against the vector's committed roots (its
+    // The roots the calls name, against the vector's committed roots (its
     // `whir_root`s, the prover's): `C1`'s and `C2`'s words, the stream's bytes, are their `PCS_OPEN` root words
     // (`machine.rs` decodes them to those roots); the setup roots' words are the hashes as they are, which π2's
     // contract passes as their root words (`pi1_abi`).

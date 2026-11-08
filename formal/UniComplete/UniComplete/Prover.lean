@@ -26,7 +26,7 @@ import E2ECompleteness.WithHash
 `proveWith` adds the setup (the three trees, as the experiment's `setupTreesWith`, recomputed), the contract's IV,
 the seed, and the five WHIR openings (`proveOpeningWithH`, the Statement's honest opening): `none` if a proof of
 work fails. The commitments go through a function (`commit`), the real one `commitWithH`; the differential test
-passes the review's stand-in roots.
+passes stand-in roots.
 -/
 
 namespace UniComplete

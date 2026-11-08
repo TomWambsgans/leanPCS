@@ -1,4 +1,4 @@
-//! Adversarial review of the replica / rows-only encodes (commit 411866f): every new transform is checked
+//! Adversarial tests of the replica / rows-only encodes (commit 411866f): every new transform is checked
 //! against the untouched whole-codeword encode, over shapes the production callers never use as well as the
 //! ones they do.
 

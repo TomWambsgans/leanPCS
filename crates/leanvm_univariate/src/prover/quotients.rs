@@ -9,7 +9,7 @@
 //! Every numerator is read from K-columns' values ([`Points`]), eight columns a batch ([`ntt::K8`]), the batches
 //! evaluated on each piece of points (a coset of `V_e`, `e ≤ r`, `2^r` the columns' length) by one transform each.
 
-use leanvm_flock_gas::layout::{OP_BLAKE2S, OP_JUMP, tables};
+use leanvm_flock_gas::layout::{OP_BLAKE2S, OP_JUMP};
 use leanvm_univariate_domain::{active_factors, padding_factors};
 use primitives::field::{F64, F192};
 
@@ -17,7 +17,7 @@ use super::bus::Bus;
 use super::columns::{C1Polys, SetupPolys};
 use super::fingerprint::Fingerprint;
 use super::poly::omega;
-use super::prints::{Print, product};
+use super::prints::{Print, PullPush, product};
 use super::trace::Trace;
 use crate::verifier::degree;
 use quotient::ntt::{self, ESplat, Ex8, K8, Kx8, MixedSum};
@@ -159,6 +159,92 @@ fn slot(k: usize) -> Slot {
     (k / 8, k % 8)
 }
 
+/// Whether `quotient::ntt`'s lanes are portable code (its `lanes` module's cfg; aarch64 among others), one reduced
+/// product a lane, rather than AVX-512's eight carry-less products. There [`prefix_quotient`] transforms its whole
+/// pieces in rounds ([`values_rows`]), and [`table_leaf`] evaluates its numerator one point at a time in `E`
+/// ([`PullPush`]: a mixed product three unreduced base products, a push from its pull's sum) rather than eight at a
+/// time ([`product`]: a mixed product three reduced ones).
+const PORTABLE_LANES: bool = !cfg!(all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "vpclmulqdq"));
+
+/// The longest columns (`2^GROUPED_ROWS` entries) whose whole pieces [`prefix_quotient`] evaluates in rounds, a round's
+/// batches transformed each by one worker ([`values_rows`]) about `GROUPED_TASKS` at once, in at most
+/// `GROUPED_BYTES`: there `ntt`'s transforms of one batch at a time leave workers idle between their passes.
+const GROUPED_ROWS: usize = 17;
+const GROUPED_TASKS: usize = 48;
+const GROUPED_BYTES: usize = 1 << 29;
+
+/// [`ntt::values_batch`] with `runs`, by one worker: row `i` of `data` becomes the eight columns at `offset + ω_i`,
+/// then each eight rows transposed ([`Points::Batches`]). The layers from the highest down, two a pass above the
+/// blocks of `2^LEAF` rows, which then take their own layers one by one.
+fn values_rows(data: &mut [K8], offset: F64) {
+    const LEAF: usize = 10;
+    /// `a += t b; b += a` between the halves of `chunk`.
+    #[inline(always)]
+    fn layer(chunk: &mut [K8], t: F64) {
+        let (lo, hi) = chunk.split_at_mut(chunk.len() / 2);
+        for (a, b) in lo.iter_mut().zip(hi.iter_mut()) {
+            for l in 0..8 {
+                a.0[l] += b.0[l] * t;
+                b.0[l] += a.0[l];
+            }
+        }
+    }
+    let m = data.len().trailing_zeros() as usize;
+    assert!(data.len() == 1 << m && m >= 3);
+    let offsets = quotient::domain::chain(offset, m);
+    let leaf = m.min(LEAF);
+    let mut k = m;
+    while k > leaf {
+        if k - leaf >= 2 {
+            // Layers `k - 1` and `k - 2`: each entry of a block's four quarters meets both of its butterflies.
+            let block = 1usize << k;
+            for (j, chunk) in data.chunks_exact_mut(block).enumerate() {
+                let high = offsets[k - 1] + omega(2 * j);
+                let low = [offsets[k - 2] + omega(4 * j), offsets[k - 2] + omega(4 * j + 2)];
+                let q = block / 4;
+                let (h0, h1) = chunk.split_at_mut(2 * q);
+                let (q0, q1) = h0.split_at_mut(q);
+                let (q2, q3) = h1.split_at_mut(q);
+                for (((a0, a1), a2), a3) in q0.iter_mut().zip(q1.iter_mut()).zip(q2.iter_mut()).zip(q3.iter_mut()) {
+                    for l in 0..8 {
+                        let (mut x0, mut x1, mut x2, mut x3) = (a0.0[l], a1.0[l], a2.0[l], a3.0[l]);
+                        x0 += x2 * high;
+                        x2 += x0;
+                        x1 += x3 * high;
+                        x3 += x1;
+                        x0 += x1 * low[0];
+                        x1 += x0;
+                        x2 += x3 * low[1];
+                        x3 += x2;
+                        (a0.0[l], a1.0[l], a2.0[l], a3.0[l]) = (x0, x1, x2, x3);
+                    }
+                }
+            }
+            k -= 2;
+        } else {
+            let block = 1usize << k;
+            for (j, chunk) in data.chunks_exact_mut(block).enumerate() {
+                layer(chunk, offsets[k - 1] + omega(2 * j));
+            }
+            k -= 1;
+        }
+    }
+    for (i, rows) in data.chunks_exact_mut(1 << leaf).enumerate() {
+        let first = i << leaf;
+        for k in (0..leaf).rev() {
+            for (j, chunk) in rows.chunks_exact_mut(2 << k).enumerate() {
+                layer(chunk, offsets[k] + omega(2 * ((first >> (k + 1)) + j)));
+            }
+        }
+        for run in rows.chunks_exact_mut(8) {
+            let m: [K8; 8] = std::array::from_fn(|q| run[q]);
+            for (c, row) in run.iter_mut().enumerate() {
+                *row = K8(std::array::from_fn(|q| m[q].0[c]));
+            }
+        }
+    }
+}
+
 /// A quotient from its numerator on `D_M`'s first points: `columns` (novel coefficients, `2^r` each) evaluated on
 /// every piece (a coset `ω_first + V_e`, `e ≤ r`), `piece(first, e)` what else the piece needs, and
 /// `value(piece, points, j)` the quotient's values at the piece's points `8 j..8 j + 8`.
@@ -219,20 +305,57 @@ fn prefix_quotient<D: Sync>(
         ntt::fill_limbs8(out, |j| value(&data, &points, j));
     };
     let mut limbs: [Vec<F64>; 3] = std::array::from_fn(|_| vec![F64::ZERO; total]);
-    for (&first, &e) in ntt::prefix_starts(&sizes, base).iter().zip(&sizes) {
-        let p = e.min(r);
-        for j in 0..1usize << (e - p) {
-            let at = first - base + (j << p);
+    // The pieces `(first point, place in the limbs, size)`; the whole cosets of `V_r` of a batched quotient (columns
+    // short enough, `GROUPED_ROWS`) in rounds of a few, each round's batches transformed one by one in parallel.
+    let all: Vec<(usize, usize, usize)> = ntt::prefix_starts(&sizes, base)
+        .iter()
+        .zip(&sizes)
+        .flat_map(|(&first, &e)| {
+            let p = e.min(r);
+            (0..1usize << (e - p)).map(move |j| (first + (j << p), first - base + (j << p), p))
+        })
+        .collect();
+    let grouped = PORTABLE_LANES && !alone && (8..=1 << GROUPED_ROWS).contains(&n);
+    let (whole, rest): (Vec<_>, Vec<_>) = all.into_iter().partition(|&(_, _, p)| grouped && p == r);
+    for (first, at, p) in rest {
+        let [a, b, c] = &mut limbs;
+        evaluate(
+            first,
+            p,
+            [
+                &mut a[at..at + (1 << p)],
+                &mut b[at..at + (1 << p)],
+                &mut c[at..at + (1 << p)],
+            ],
+        );
+    }
+    if !whole.is_empty() {
+        let width = batches.len();
+        let per_round = GROUPED_TASKS
+            .div_ceil(width)
+            .min(GROUPED_BYTES / (width * n * size_of::<K8>()))
+            .clamp(1, whole.len());
+        let mut transformed: Vec<Vec<K8>> = vec![Vec::new(); per_round * width];
+        for round in whole.chunks(per_round) {
+            parallel::chunks_mut(&mut transformed[..round.len() * width], 1, |i, dst| {
+                let (g, b) = (i / width, i % width);
+                let dst = &mut dst[0];
+                dst.clear();
+                dst.extend_from_slice(&batches[b]);
+                values_rows(dst, omega(round[g].0));
+            });
+            // The round's pieces are consecutive in the limbs (the whole pieces come first, in order): one fill.
+            let at = round[0].1;
+            assert!(round.iter().enumerate().all(|(g, p)| p.1 == at + g * n));
+            let data: Vec<D> = round.iter().map(|&(first, _, _)| piece(first, r)).collect();
+            let points: Vec<Points> =
+                transformed[..round.len() * width].chunks(width).map(Points::Batches).collect();
+            let end = at + round.len() * n;
             let [a, b, c] = &mut limbs;
-            evaluate(
-                first + (j << p),
-                p,
-                [
-                    &mut a[at..at + (1 << p)],
-                    &mut b[at..at + (1 << p)],
-                    &mut c[at..at + (1 << p)],
-                ],
-            );
+            ntt::fill_limbs8([&mut a[at..end], &mut b[at..end], &mut c[at..end]], |j| {
+                let g = j / (n / 8);
+                value(&data[g], &points[g], j % (n / 8))
+            });
         }
     }
     for limb in &mut limbs {
@@ -287,6 +410,9 @@ fn piece_of(first: usize, r: usize) -> Piece {
     }
 }
 
+/// The most columns (the heap's three included) [`table_leaf`]'s point-by-point numerator gathers.
+const SCALAR_COLUMNS: usize = 128;
+
 /// Table `t`'s leaf quotient: `((R P + P') Z_pad + (R + 1) Z_act) / w_r`, `R` the heap's block (its novel
 /// coefficients `r_novel`, limb by limb), `P`, `P'` the row's pull and push products, `Z_act`, `Z_pad` the vanishing
 /// polynomials of the active and the padding rows' fixed cosets (SPEC.md §13, F1b; the verifier checks it times
@@ -312,6 +438,43 @@ pub fn table_leaf(trace: &Trace, t: usize, c1: &C1Polys, bus: &Bus, r_novel: &[V
     let prints =
         |list: &[Fingerprint]| -> Vec<Print<Slot>> { list.iter().map(|f| Print::new(f, |c| slots[c])).collect() };
     let (pull, push) = (prints(&bus.pull[t]), prints(&bus.push[t]));
+    if PORTABLE_LANES && columns.len() <= SCALAR_COLUMNS {
+        // Column `k` (in `columns`' order) read as `k`, from the run's values gathered point by point.
+        let both = PullPush::new(&bus.pull[t], &bus.push[t], |c| {
+            let (b, l) = slots[c];
+            8 * b + l
+        });
+        let width = columns.len();
+        return prefix_quotient(
+            r,
+            count,
+            &columns,
+            |first, _| piece_of(first, r),
+            |d, v, j| {
+                let mut at = [[F64::ZERO; SCALAR_COLUMNS]; 8];
+                for k in 0..width {
+                    let x = v.at(slot(k), j).to_row();
+                    for (p, row) in at.iter_mut().enumerate() {
+                        row[k] = x.0[p];
+                    }
+                }
+                let (za, zp) = (z_act.at(d.first, j).to_row().0, z_pad.at(d.first, j).to_row().0);
+                let values: [F192; 8] = std::array::from_fn(|p| {
+                    let x = &at[p];
+                    let (pulled, pushed) = both.at(|k| x[k]);
+                    let heap = F192::new(x[width - 3].0, x[width - 2].0, x[width - 1].0);
+                    let za = F192::from(za[p]);
+                    let numerator = heap * (pulled.mul_base(zp[p]) + za) + pushed.mul_base(zp[p]) + za;
+                    numerator.mul_base(d.w_r_inv)
+                });
+                Ex8::from_limbs([
+                    Kx8::new(values.map(|x| F64(x.c0))),
+                    Kx8::new(values.map(|x| F64(x.c1))),
+                    Kx8::new(values.map(|x| F64(x.c2))),
+                ])
+            },
+        );
+    }
     prefix_quotient(
         r,
         count,
@@ -452,10 +615,24 @@ pub fn tree(heap_novel: &[Vec<F64>; 3]) -> Quotient {
 }
 
 /// The constraint quotient `Σ_i γ^i M_i W_i / w_(r_W)`, in the verifier's order of powers: per table, JUMP's two
-/// constraints, the counters, BLAKE2S's eighteen limb copies; then the public input's three limbs. As
+/// constraints, the counters, BLAKE2S's eighteen limb copies (the Keccak VM's `SHA3` fifty lane copies, `in_16`'s
+/// with `END_BIT`: `copy + port + END_BIT`); then the public input's three limbs. As
 /// `M_i = w_(r_W) / w_r`, it is the sum of each table's `Σ γ^i W_i / w_r` and the public input's part, each a
 /// quotient of its own on its own points.
 pub fn constraints(trace: &Trace, c1: &C1Polys, gamma: F192, count: u64, public_lines: [(F64, F64); 3]) -> Quotient {
+    constraints_with(trace, &trace.qflock, c1, gamma, count, public_lines)
+}
+
+/// [`constraints`] with `q_flock`'s words `qflock` (the Keccak VM's: the Flock witness's, as `C1` holds them; the
+/// trace keeps none).
+pub fn constraints_with(
+    trace: &Trace,
+    qflock: &[F64],
+    c1: &C1Polys,
+    gamma: F192,
+    count: u64,
+    public_lines: [(F64, F64); 3],
+) -> Quotient {
     let mut power = F192::ONE;
     let mut next = || {
         let current = power;
@@ -463,7 +640,9 @@ pub fn constraints(trace: &Trace, c1: &C1Polys, gamma: F192, count: u64, public_
         current
     };
     let mut parts: Vec<Quotient> = Vec::new();
-    for table in &tables() {
+    let keccak = trace.keccak;
+    let row_bits = crate::verifier::qflock_row_bits(keccak);
+    for table in &trace.vm_tables() {
         let t = table.opcode;
         let r = trace.heights[t];
         let n = 1usize << r;
@@ -472,16 +651,20 @@ pub fn constraints(trace: &Trace, c1: &C1Polys, gamma: F192, count: u64, public_
         let jump = (t == OP_JUMP).then(|| (next(), next(), index("v_cond"), index("w"), index("b")));
         let counters: Vec<usize> = table.count_columns().collect();
         let g_counter = next();
-        let copies: Vec<(F192, usize, usize)> = if t == OP_BLAKE2S {
+        // (power, column, q_flock's word in the row's block, the constant the column differs from it by).
+        let copies: Vec<(F192, usize, usize, u64)> = if t == OP_BLAKE2S {
             table
                 .columns
                 .iter()
                 .enumerate()
                 .filter_map(|(c, &name)| {
-                    leanvm_flock_gas::layout::BLAKE2S_SLOTS
-                        .iter()
-                        .position(|&s| s == Some(name))
-                        .map(|slot| (next(), c, slot))
+                    let slot = if keccak {
+                        leanvm_flock_gas::layout::keccak_slot(name)
+                    } else {
+                        leanvm_flock_gas::layout::BLAKE2S_SLOTS.iter().position(|&s| s == Some(name))
+                    };
+                    let offset = if keccak { leanvm_flock_gas::layout::keccak_slot_offset(name) } else { 0 };
+                    slot.map(|slot| (next(), c, slot, offset))
                 })
                 .collect()
         } else {
@@ -516,7 +699,8 @@ pub fn constraints(trace: &Trace, c1: &C1Polys, gamma: F192, count: u64, public_
                 limbs_of(&sums)
             };
             let copy = combine(&|j, i| cols[copies[j].1].novel[i]);
-            let table = combine(&|j, i| trace.qflock[(i << 8) | copies[j].2]);
+            // The slot's word plus the copy's constant: a table's multilinear plus a constant is the table plus it.
+            let table = combine(&|j, i| qflock[(i << row_bits) | copies[j].2] + F64(copies[j].3));
             (copy, table)
         });
         let copy_slots: Option<[Slot; 3]> = combined.as_ref().map(|(copy, _)| {
@@ -632,4 +816,31 @@ pub fn coordinates_k(x: F64, functionals: &[Vec<leanvm_flock_gas::K>]) -> Vec<F6
                 .fold(F64::ZERO, |acc, (a, &f)| acc + F64(a.0) * f)
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// [`values_rows`] is `ntt`'s transform of a batch with `runs`, at every size it takes and offsets of each kind.
+    #[test]
+    fn values_rows_is_ntts() {
+        let mut x = 0x9e37_79b9_7f4a_7c15u64;
+        let mut next = move || {
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            F64(x)
+        };
+        for m in [3, 4, 9, 10, 11, 12, 13, 15] {
+            let src: Vec<K8> = (0..1usize << m).map(|_| K8(std::array::from_fn(|_| next()))).collect();
+            for first in [0usize, 1 << m, 5 << m, 1 << 21] {
+                let mut want = vec![K8::ZERO; 1 << m];
+                ntt::values_batch_from(&src, &mut want, omega(first), true);
+                let mut got = src.clone();
+                values_rows(&mut got, omega(first));
+                assert!(got == want, "2^{m} rows at {first}");
+            }
+        }
+    }
 }

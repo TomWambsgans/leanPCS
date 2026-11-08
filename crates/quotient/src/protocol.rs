@@ -205,7 +205,7 @@ pub(crate) fn table_seed(seed: &[u8; 32], table: &[u8]) -> [u8; 32] {
 /// four row polynomials, and the seed of both tables' padding. It must be uniform, secret, and **fresh per proof,
 /// never reused**: two proofs that share the padding's seed have the same random first pieces, and two that share
 /// the masks let the second proof's `a_j` be predicted from the first's for a guessed witness, so either confirms
-/// the guess (`review_hiding.rs`). [`prove`] draws its own seed, [`prove_with_seed`] takes one; both derive this
+/// the guess. [`prove`] draws its own seed, [`prove_with_seed`] takes one; both derive this
 /// from it ([`Randomness::derive`]).
 #[derive(Clone)]
 pub struct Randomness {
@@ -552,7 +552,7 @@ pub fn prove_with_seed_in(
 
 /// [`prove`] with its randomness given. Crate-private: outside the crate, randomness reaches the prover only through
 /// [`Randomness::derive`] ([`prove`], [`prove_with_seed`]), so it cannot be reused across witnesses; the crate's
-/// tests use this to show what reuse would reveal (`review_hiding.rs`). Panics on a challenge the verifier rejects.
+/// tests use it to fix the masks and the padding. Panics on a challenge the verifier rejects.
 #[cfg(test)]
 pub(crate) fn prove_with_randomness(
     circuit: &Circuit,

@@ -6,18 +6,18 @@ import UniStatement.Run
 # The differential test of the honest prover
 
 `UNI_HONEST=<vectors> lake env lean ../UniComplete/UniCompleteTest/Runner.lean` (from `formal/EndToEnd`), on the
-review's honest proofs (`crates/leanvm_univariate/tests/review_honest.rs`, `lean_honest_vectors`: the vectors
+honest point-claim proofs of tiny runs without Flock (the vectors
 `honest-lm* omitted point honest`, which carry their committed stacks `STACK C1/C2/Setup` and the bytecode's
 slots `BYTECODE`). For each: the placed trace is read back from the vector's `C1` stack (each column's basis-`B`
 coefficients at its block, evaluated at every row: `basisValue`) and its bytecode; the Lean prover
-(`proveStreamWith`, interpreted, with the review's stand-in roots for `C1` and `C2`, as the Rust's `prove_tiny`
+(`proveStreamWith`, interpreted, with stand-in roots for `C1` and `C2`, as the Rust's `prove_tiny`
 cross-check does) writes its stream and its stacks; the test compares **the stream byte for byte** and **the three
 stacks word for word** with the vector's, and runs the Lean verifier (`UniStatement.run`) on the Lean stream.
 It throws (so `lean` exits with an error) on any disagreement.
 
-The vectors: `UNI_HONEST_OUT=$PWD/uni_honest.txt cargo test --release -p leanvm_univariate --test review_honest --
---ignored --nocapture lean_honest_vectors` (the four `… omitted point honest` records of the 20 are the ones
-read). The review's prover writes the same streams as the Rust prover's `prove_tiny` with stand-in roots (that
+The vectors are written by `crates/leanvm_univariate/tests/honest_prover.rs` (`lean_honest_vectors`, with its own
+tiny-run prover; the four `… omitted point honest` records of its 20 are the ones read). That prover writes the
+same streams as the Rust prover's `prove_tiny` with stand-in roots (that
 test's own cross-check, `leanvm-univariate-prover2`), so the Lean prover agrees with both. A vector's `SHAPE`
 line carries the row counts; the heights are `⌈log₂ rows⌉` (`shapeWith`).
 
@@ -85,7 +85,7 @@ def traceOf (shape : Shape) (rows : List ℕ) (c1 : Array K) (bytecode : Array K
     Array.ofFn (n := 2 ^ lb) fun i ↦ bytecode.getD (16 * i.val + s) 0
   ⟨shape, rows, tablesV, memory, valuesOf .bytecodeFinal lb, c1Block layout stack .qflock, slots, pub⟩
 
-/-- The review's stand-in roots (`prove_tiny`): `C1`'s `(0x1111, 0x2222), (0x3333, 0x4444)`, `C2`'s
+/-- The stand-in roots (`prove_tiny`): `C1`'s `(0x1111, 0x2222), (0x3333, 0x4444)`, `C2`'s
 `(0x5555, 0x6666), (0x7777, 0x8888)`. -/
 def standIn : Commitment → ℕ → Array K → Id Committed
   | .c1, _, _ => pure ⟨(default : Committed).tree, (eNew 0x1111 0x2222 0, eNew 0x3333 0x4444 0)⟩

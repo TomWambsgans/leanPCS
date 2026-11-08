@@ -3,8 +3,8 @@
 # UniStatement
 
 The univariate PIOP for leanVM 42422001 (`crates/leanvm_univariate`, `SPEC.md` there), **at iteration 2**
-(`leanvm-univariate` `ad49e74`: `SPEC.md` §13's entries 1–13; milestone 1 was `cee6363`, reviewed at `b948bfc`,
-`REVIEW-M1.md`), in the files a reviewer reads: **its verifier as computable Lean**, module by module as
+(`leanvm-univariate` `ad49e74`: `SPEC.md` §13's entries 1–13; milestone 1 was `cee6363`),
+in the files a reviewer reads: **its verifier as computable Lean**, module by module as
 `verifier.rs`, the setup constants as data, the whole verifier with `PCS_OPEN`, the map from its commitments to
 `formal/Lv42`'s stack, and **the end statements**, `UniKnowledgeSoundness` and `UniCompleteness`, against leanVM
 42422001's relation (`Lv42.Protocol.M3Holds`). Statements only: nothing is proved yet. No `sorry`, no
@@ -20,11 +20,10 @@ decoders.
 cd formal/EndToEnd
 systemd-run --scope -p MemoryMax=10G lake build UniStatement        # the library; the axiom guards
 # the vectors (from the repository root; absolute paths: cargo runs the tests in the crate's directory):
-# the measured shapes, the review's honest proofs, and the real prover's proofs (prover2's tests/vectors/*.txt)
+# the measured shapes and the real prover's proofs (prover2's tests/vectors/*.txt)
 UNI_VECTORS_OUT=$PWD/uni_vectors.txt cargo test --release -p leanvm_univariate --test lean_vectors -- --ignored --nocapture lean_vectors
-UNI_HONEST_OUT=$PWD/uni_honest.txt cargo test --release -p leanvm_univariate --test review_honest -- --ignored --nocapture lean_honest_vectors
 UNI_REAL_VECTORS_DIR=<prover2's tests/vectors> UNI_REAL_OUT=$PWD/uni_real.txt cargo test --release -p leanvm_univariate --test lean_vectors -- --ignored --nocapture lean_real_vectors
-cat uni_vectors.txt uni_honest.txt uni_real.txt > all.txt
+cat uni_vectors.txt uni_real.txt > all.txt
 UNI_VECTORS=$PWD/all.txt lake env lean ../UniStatement/UniStatementTest/Runner.lean   # the runner
 ```
 
@@ -71,6 +70,12 @@ UNI_VECTORS=$PWD/all.txt lake env lean ../UniStatement/UniStatementTest/Runner.l
     `contractIvFor reference (.flock flockMain) .rec3 true programIv referenceRoots`, its three calls `pcsCalls`;
     `formal/RecGraph`'s runner checks it against the Rust verifier and π1-rec3's recorded graph on the real proof
     (`main_line_rec3.txt`) and 24 mutated and random streams.
+16. [`KeccakTables.lean`](UniStatement/KeccakTables.lean) (the Keccak VM, `crates/leanvm_univariate/KECCAK.md`; not
+    imported by `UniStatement.lean`): `tablesKeccak` (the `SHA3` table in `BLAKE2S`'s place: `sha3Columns`,
+    `flushesSha3`, on `formal/KeccakVm`'s cell layout `KeccakVm.sha3CellLanes`), `keccakSlot`, `keccakSlotOffset`,
+    `keccakR1csLogSize`. `UniStatementTest/KeccakTables.lean` checks every table, column, slot, offset and flush form
+    against the Rust's `tables_keccak()` (`crates/leanvm_flock_gas/tests/lean_keccak_tables.rs`). `Blake2s::Keccak`'s
+    verifier is not transcribed yet.
 
 ## Rust → Lean
 
@@ -270,7 +275,7 @@ definitions' IR, not the kernel), on **150 vectors** of the Rust at `ad49e74`:
   for the scalar read just before it, the seed's IV the contract's; one under another program IV), **other row
   counts that fit** (`counts`: none, one, `leastRows`, a full table, `2^h − 1`, random, so every coset pattern
   of F1b), **a count out of range** (`badcount`), mutated, truncated, extended streams.
-* **The review's honest proofs** (20, `tests/review_honest.rs`'s `lean_honest_vectors`, adapted there to
+* **Honest proofs of tiny runs** (20, written by `lean_honest_vectors` in `crates/leanvm_univariate/tests/honest_prover.rs`, at
   iteration 2: the counts announced, the rows at their fixed cosets, padding counters nonzero; real VM runs of 15
   to 31 cycles over all six tables, Flock omitted, memory and bytecode of `2^4`, `2^5`, both claim modes; three
   mutations of each point-claim proof). The real prover's `prove_tiny` writes the same streams byte for byte
@@ -311,7 +316,7 @@ with the bit-slice end or no Flock, and extension B under the point ABI, lever 5
 bit-slice claim), and mutations after the last check (weighted mode).
 
 The vector writer (`tests/lean_format`) now reads the counts (`Logging::next_integer`: at `ad49e74` it had
-none, the trait's default `unimplemented!`, so `lean_vectors` and `lean_honest_vectors` panicked at the stream's
+none, the trait's default `unimplemented!`, so the vector writers panicked at the stream's
 first read there) and writes the setup lines (`PROGRAMIV`, `CONTRACTIV`, `LAYOUTWORDS`) and the counts
 (`COUNTS`); `accepting` streams announce counts that fit (the shape's, or given).
 
@@ -322,23 +327,23 @@ Props; `verifyWith`'s run and calls are the tested `run` and `pcsCalls`'s claims
 ## Open points
 
 1. **The honest prover is not transcribed**: `UniCompleteness` takes the prover as a parameter. The Rust's
-   (`src/prover`, adapted to iteration 2 on `leanvm-univariate-prover2`) and the review's (`tests/review_honest.rs`,
-   tiny runs without Flock) are tested against the Lean verifier through their proofs.
+   (`src/prover`, adapted to iteration 2 on `leanvm-univariate-prover2`) is tested against the Lean verifier through
+   its proofs.
 2. **`PCS_OPEN`'s WHIR instance is a choice**: the Rust mocks the precompile; the statements take the
    Statement's opening (label, version, layout identifier, rate `1/2`) on the plain layout of each stack, its
    size the call's layout word's `vars` (byte 24). The word's `placed` (the words the blocks fill) and code are
    bound by the contract's IV, not read by this opening (the Rust's precompile reads `placed` to know the
    committed lanes). The root word's reading (here: the two halves as `digestOfScalars` for the stream's roots,
    the bytes as `digestOfBytes32` for the reference setup roots) is the Rust's: its prover sends a root as its two
-   WHIR scalars (`prove::halves`, `hash_to_scalars`; `crates/leanvm_rec/REVIEW-REC.md`, R1: before, it sent the
-   hash's bytes, which this reading names as another root), and the setup roots are the commitments' hashes
+   WHIR scalars (`prove::halves`, `hash_to_scalars`; a prover sending the
+   hash's bytes would name another root under this reading), and the setup roots are the commitments' hashes
    (`prover::setup::roots`). The extensions
    (weighted claims, the bit-slice claim) have no opening here; `verifyWith` is the main line's.
 3. **The row counts and the shape class** (F1): the verifier accepts any count `c ≤ 2^h`, `0` included; the
    quotients are sized for `leastRows h = 2^(h−1) + 1`, so an honest prover needs `c ≥ leastRows h`
    (`Shape.RowsFit`, completeness's hypothesis), and soundness must hold at every `c ≤ 2^h` (Lv42's `τ` may then
    be below `h`; `lv42Column` reads the first `2^τ` rows of `rowPosition`).
-4. **REVIEW-M1 F7**: the public input is read as big-endian words (the contract's, documented at `ad49e74`);
+4. **The public input's byte order**: it is read as big-endian words (the contract's, documented at `ad49e74`);
    leanVM's digest is little-endian. One function (`publicWordsOf`, which `publicInputOf` shares) changes when the
    contract does.
 5. **`EqCache`'s slot rows** are keyed by the point since iteration 2 (lever 1c); `weightAt` never shared them.

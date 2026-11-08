@@ -7,8 +7,8 @@ import QuotientZk.Instance.Builder
 
 **Superseded as a zero-knowledge result.** `zk_rpm_deployed_instance` asks the honest tables'
 claims (`hTW`, `hTQ`) at every mask of every good challenge, with no `ClaimsND`, which the honest
-tables do not meet: where `claimScale 2 23 t = 0` the verifier's witness value `valsW` is `0`
-(`EndToEnd/Review/E2EZkNondeg.lean`), and for many good challenges some masks make `claimDen`
+tables do not meet: where `claimScale 2 23 t = 0` the verifier's witness value `valsW` is `0`,
+and for many good challenges some masks make `claimDen`
 vanish (`Nondeg.lean`'s header). The deployed result is `PcsQuotient.EndToEnd.zeroKnowledge_closed`
 (`EndToEnd/ZK/CoreMain.lean`) through `jointHVZKε_of_linkV` (`Instance/Nondeg.lean`), with the
 joint data `deployedJointData` (`EndToEnd/ZK/Joint.lean`), which asks `hTW`, `hTQ` under `ClaimsND`
@@ -73,8 +73,8 @@ noncomputable def clQ (c : DChal E) (v : Vals E) : Fin 2 → E :=
 /-- **Superseded**: its hypotheses `hTW`/`hTQ` are not met by the honest tables at degenerate
 challenges/masks; the deployed result is `zeroKnowledge_closed` through `jointHVZKε_of_linkV`
 (`Instance/Nondeg.lean`). (`hTW`, `hTQ` ask the honest tables' claims at every mask, with no
-`ClaimsND`; where `claimScale 2 23 t = 0` the verifier's witness value `valsW` is `0`,
-`EndToEnd/Review/E2EZkNondeg.lean`. The end theorem's joint data, `EndToEnd/ZK/Joint.lean`, asks
+`ClaimsND`; where `claimScale 2 23 t = 0` the verifier's witness value `valsW` is `0`.
+The end theorem's joint data, `EndToEnd/ZK/Joint.lean`, asks
 them under `ClaimsND`, and `EndToEnd/ZK/FactsClaims.lean` proves them there: `hTWD`, `hTQD`.)
 
 **Zero knowledge of the deployed proof in the random-permutation model, the joint model

@@ -6,6 +6,11 @@
 `verifier::reduce` reads (through the contract's Keccak-256 chain) and one WHIR opening per commitment. It follows
 iteration 2's final verifier (leanvm-univariate `ad49e74`; every "Prover:" item of SPEC.md §13 is done).
 
+It also proves the Keccak VM (leanVM `9d50c92a3`'s `SHA3` table in BLAKE2S's place, `Blake2s::Keccak`), on traces
+`src/prover/dump_keccak/` writes: see `KECCAK.md`, "The prover", for its trace, its measurements and its real proofs.
+The BLAKE2s line is unchanged by it: at 1,000 signatures the prover reproduces the committed vectors' calldata and
+`PCS_OPEN` inputs byte for byte (`main_line`, `main_line_rec3`, `ext_b`, rerun on h1 on 2026-11-08).
+
 ## Status
 
 **Every configuration that has an opening proves end to end on the real trace** (1,000 leanXMSS signatures,
@@ -27,8 +32,8 @@ streams), here on real proofs. With extension B, `C1`'s call also carries the bi
 `Σ_i μ_i ẑ(i, p) = κ`, which `PCS_OPEN` would ring-switch. WHIR cannot open it, so the test checks it on the
 committed `q_flock` directly. Extension W (weighted claims) has no opening prover.
 
-The same holds at 32 signatures, where the contract binds that shape's own `F` (`4845a2c7…`), and at review M1's tiny
-executions (`prove_tiny`), where the stream is the review's independent prover's, byte for byte.
+The same holds at 32 signatures, where the contract binds that shape's own `F` (`4845a2c7…`), and at the tiny
+executions (`prove_tiny`), where the stream is an independent prover's, byte for byte.
 
 **Rust→EVM test vectors** (milestone 3): `tests/vectors/*.txt` hold the five real proofs' calldata (π1-rec's,
 `main_line_rec.txt`, among them), the `PCS_OPEN`
@@ -76,7 +81,7 @@ recorded inputs, and revert on 13 to 17 mutations each:
      With `WRITE_VECTORS=<dir>` each writes its test vector.
    - `identities_hold_on_the_domain`, `unused_words_are_not_relied_on`, `setup_roots`.
 
-   Without a trace: `prove_tiny` (review M1's tiny executions, byte for byte with its prover), `flock_skip` (the skip
+   Without a trace: `prove_tiny` (tiny executions, byte for byte with an independent prover), `flock_skip` (the skip
    kernels), `evm_vectors` (the committed vectors). `flock_skip`'s `skip_timings_on_a_real_witness`, `opening_profile`,
    `prove_quotients` (the quotients alone on a trace, at fixed challenges) and `prove_kernels` (the transforms)
    are ignored timing tests.
@@ -144,7 +149,10 @@ rows of 8 bytes or more. The skip module proves the zerocheck for any `3 ≤ k �
 
 - **round 1**: `P(λ) = Σ_x eq(r, x)(â b̂ + ĉ)(λ, x)` on `Λ = φ_8(2^k + i)`. The seven fixed coordinates keep
   leanVM's small/medium structure (`eq(r_small, K) = C_s φ_8(X^K)`, asserted), so the 8 groups of a small run
-  combine in `F_8`. At `k = 3` a word's 8 groups extend in one `gf2p8affine` (`round1_bytes`); at 4 and 5 a group's
+  combine in `F_8`. At `k = 3` a word's 8 groups extend in one `gf2p8affine` (`round1_bytes`); without GFNI (the
+  Mac's aarch64) a medium position's AB row `Σ_K X^K â b̂` is 8 lookups of 8 tables `T_K[a ‖ b]` of `2^16` words
+  (4 MB, built once: `round1_table`), its C row an 8×8 bit transpose, instead of 128 byte products in software
+  (Keccak VM, 400 signatures, `2^33` bits: 2.14 → 0.16 s on the Mac); at 4 and 5 a group's
   bytes are one affine each (`round1_words`); the 16 medium positions are one `BitFold` of 16-byte rows; the C part is
   computed on `S` and extended to `Λ`, as leanVM does;
 - **bit rounds**: leanVM's pair kernels at levels `0, 2, ..` on rows of `2^(k + t)` bits, extended to rows of 1, 2,

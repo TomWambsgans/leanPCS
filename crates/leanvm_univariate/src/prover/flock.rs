@@ -3,7 +3,7 @@
 // repository's, below), on its own witness buffers (dumped by `dump/trace_dump.rs`); the matrices' reduction follows
 // `leanvm_flock_gas::flock_min`'s verifier (its `sliced` is that module's test's). With π1-rec (`FsShape::Rec`) the
 // zerocheck's eq point is the skip module's, as squares. [`prove_keccak`] runs the same reduction on the Keccak-f block
-// (`lv42_flock::keccak`, crates/slh_dsa/SPEC-FAST.md), for the walked terminal. MIT OR Apache-2.0; see NOTICE.md.
+// (`lv42_flock::keccak`, crates/lv42_flock/KECCAK.md), for the walked terminal. MIT OR Apache-2.0; see NOTICE.md.
 //! Flock's prover (SPEC.md §7), behind one call ([`prove`]): the zerocheck (a skip of 3 to 6), lincheck and 64
 //! slices, written to the contract's Keccak-256 chain through [`Chain`]; then the matrices' reduction to `A0`, `B0`
 //! claims (`k + 6` rounds and `a`, `b`) and the ring map's challenges, as `flock_min::verify` reads them; or, on the

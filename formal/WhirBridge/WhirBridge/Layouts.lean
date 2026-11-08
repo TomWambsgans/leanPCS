@@ -22,8 +22,8 @@ import WhirBridge.Hidden
   `HiddenOK` with pieces of `2^8`, the gadget's entries and lanes included), what
   `Layout.holds_iff` and `gadget_holds_iff` need;
 * `layouts_shape`: `40`, `64`, `63` lanes, the overflow lane `32`, the random lanes `33..39`, the
-  gadget's lanes `0, 1, 30, 31` blocks, `33` and `167` overflow pieces, as `review_f2f3.rs` checks
-  of the Rust (`f3_design_facts_hold_at_every_size`).
+  gadget's lanes `0, 1, 30, 31` blocks, `33` and `167` overflow pieces, as the Rust's
+  constructors lay them.
 
 The Rust's constructors are transcribed, not trusted: `Test/Check.lean` recomputes the 76-byte
 prefix of each of the 18 layouts (its id is Keccak-256 of every field) and compares it with the
@@ -146,8 +146,7 @@ def Layout.isBlockLane (L : Layout) (l : ℕ) : Bool :=
   | some (.block _) => true
   | _ => false
 
-/-- **Our layouts' shape** (what `review_f2f3.rs` checks of the Rust,
-`f3_design_facts_hold_at_every_size`): `40`, `64`, `63` lanes; the overflow lane `32`; the random
+/-- **Our layouts' shape** (the Rust constructors'): `40`, `64`, `63` lanes; the overflow lane `32`; the random
 lanes `33..39` (with the overflow lane, the cube of lanes `32..40`); the gadget's pair lanes
 `0, 31, 1, 30` blocks; `33` and `167` overflow pieces. -/
 theorem layouts_shape : ∀ r, minLogRows ≤ r → r ≤ maxLogRows →
