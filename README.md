@@ -62,7 +62,7 @@ priced at 10 gas (the EIP draft: [`eip-draft_leanPCS.md`](eip-draft_leanPCS.md))
 ### Key figures: one ZK proof of a Merkle path
 
 Statement `(y, root)`, witness `x` and a depth-32 path, Keccak-256: `y = H(x | 0x11..)`, path from `H(x | 0x22..)`
-to `root` (details: [`STATUS.md`](STATUS.md)).
+to `root` (details: [`AGENTS.md`](AGENTS.md#membership-what-is-proved)).
 
 | | |
 |---|---|
@@ -94,7 +94,7 @@ transaction gas under EIP-7623 at a claim price of 0, without the 21,000 base.
 
 π1 alone as a contract (no recursion) costs 358,957 transaction gas at 128 signatures (8,020 B of calldata, 3 claims).
 The Keccak VM fits WHIR's `2^28`-word commitments up to about 470 signatures. Details:
-[`docs/leanvm/univariate/KECCAK.md`](docs/leanvm/univariate/KECCAK.md), [`STATUS.md`](STATUS.md).
+[`docs/leanvm/univariate/KECCAK.md`](docs/leanvm/univariate/KECCAK.md), [`AGENTS.md`](AGENTS.md).
 
 ## Repository map
 
@@ -147,7 +147,5 @@ A trace is written by leanVM `9d50c92a3` itself, patched by `crates/leanvm/univa
 ## Documents
 
 - [`eip-draft_leanPCS.md`](eip-draft_leanPCS.md): the EIP draft (`PCS_OPEN` and `MULFIELD`) this repository backs.
-- [`STATUS.md`](STATUS.md): what is proved, tested and measured, the security notes, and what remains.
 - [`AGENTS.md`](AGENTS.md): notes for contributors (people and agents): what the implementation adds to the idea above,
-  and conventions.
-- [`AGENTS.md`](AGENTS.md): provenance and licenses (MIT OR Apache-2.0).
+  what is proved, tested and measured, what remains, provenance and licenses (MIT OR Apache-2.0), and conventions.
