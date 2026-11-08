@@ -16,7 +16,8 @@
 // encode in two sweeps from the message as it lies (`AdditiveNttF64::encode_two_sweep_with`,
 // `encoded_rows_two_sweep`; a lean level holds `LEAN_BATCH` replicas' work buffers while it commits), and the lane
 // rounds sum sparse low weights at their nonzero entries alone (`SparseLow`), the dense ones with `dot_base` on x86,
-// and fold the witness on AVX-512 eight words at a time (`collapse_avx512`).
+// and fold the witness on AVX-512 eight words at a time (`collapse_avx512`); a lean level's message, kept for its
+// queries, is copied by the workers (`copied`) rather than by one thread.
 
 //! WHIR with `K = GF(2)[x]/(x^64+x^4+x^3+x+1)` and
 //! `E = K[y]/(y^3+y+1)`.
@@ -461,6 +462,17 @@ impl LigeroWitness {
     }
 }
 
+/// `src` copied by the workers (a lean level's message is up to a gigabyte, which one thread copies slowly).
+fn copied<T: Copy + Send + Sync>(src: &[T]) -> Vec<T> {
+    // SAFETY: the chunks below cover the vector, each written whole from `src` before it is read.
+    let mut out = unsafe { primitives::uninit_vec::<T>(src.len()) };
+    let chunk = (1usize << 16).min(src.len().max(1));
+    parallel::chunks_mut(&mut out, chunk, |k, dst| {
+        dst.copy_from_slice(&src[k * chunk..k * chunk + dst.len()])
+    });
+    out
+}
+
 /// Replicas of a lean level's codeword ([`LigeroRows::Message`]) encoded per read of its message: their work
 /// buffers, each as large as the message, are what the level holds beside it while it commits.
 const LEAN_BATCH: usize = 4;
@@ -565,7 +577,7 @@ fn ligero_commit_ext_within(
             }
         });
         LigeroRows::Message {
-            msg: poly.to_vec(),
+            msg: copied(poly),
             log_inv_rate,
         }
     };
