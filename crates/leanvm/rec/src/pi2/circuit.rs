@@ -21,8 +21,9 @@
 //! with every position pulling, the copy argument could not balance.
 //!
 //! **The public side.** The verifier reads the public scalars (the public input's four words, then [`Read`]s from
-//! the stream) and adds `1/(α + F_J + β τ_J)` for each [`PublicTerm`] `J`, `F_J` a linear form in the public scalars
-//! (coefficients in `E`, times powers of `γ`).
+//! the stream); each [`PublicTerm`] `J` is the value `F_J` (a linear form in the public scalars, coefficients in `E`,
+//! times powers of `γ`) that the hole pushing to its tag `τ_J` must push. (As the circuit states it, that push is a
+//! pair `(F_J, τ_J)` of the copy argument; the PIOP, `PI2.md` §1, checks it apart, by the ports' term `T`.)
 
 use primitives::field::{F64, F192};
 use quotient::domain::{beta, point};

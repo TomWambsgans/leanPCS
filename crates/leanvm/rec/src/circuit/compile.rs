@@ -520,8 +520,9 @@ pub fn compile_keeping<P: Permutation>(
     }
 
     // Ports: the zero checks first, padded with constant zeros to a power of two, so that their outside tags
-    // `N … N + 2^k` are an aligned coset (PI2.md §9, lever 3c: the verifier sums them in closed form); then the
-    // statement, the roots, the calls' elements.
+    // `N … N + 2^k` are an aligned coset (PI2.md §9, lever 3c: π2v1's verifier summed them in closed form; π2v2's reads
+    // no zero port, and the padding stays so that the circuit is the same); then the statement, the roots, the calls'
+    // elements.
     let mut zero_ports = 0usize;
     for &id in &zero {
         match g.nodes[id as usize] {

@@ -6,7 +6,7 @@
 //! mock `PCS_OPEN` (`leanvm_statement::evm::machine`, point claims: `root, layout, k, k × (point, value)`).
 //!
 //! **Calldata**: the selector, π1's public input (32 bytes, which the seed hashes), then the stream: π1's roots and
-//! its claims' elements, `W`'s root, `Q`'s root, the `2^r + 1` values. **Calls**, in order: π1's (their words from
+//! its claims' elements, `W`'s root, `Q`'s root, the `2^r + 2` values. **Calls**, in order: π1's (their words from
 //! calldata and constants: `circuit::spec::Circuit::calls`), then π2's three: `W` (one claim), the setup (one; its root
 //! a constant of the code), `Q` (two). Each call's input is written at the region's start just before it, only where
 //! the call before left another word (`Ending::PcsOpenReusing`, `PI2.md` §9): π1's calls at the batch's point write
@@ -65,7 +65,7 @@ impl<'a> Instance<'a> {
             spec.log_n == circuit.log_n
                 && spec.log_row == circuit.log_row
                 && spec.pairs.len() == circuit.pairs.len()
-                && spec.public.len() + spec.zero_coset.as_ref().map_or(0, |(_, k, _)| 1 << k) == circuit.public.len()
+                && spec.ports == circuit.public.len()
                 && spec.reads == circuit.reads,
             "the spec is the circuit's"
         );

@@ -155,9 +155,10 @@ pub enum Source {
     Element(u32),
     /// A check of `π1`'s verifier: three zero limbs.
     Zero,
-    /// Padding of the zero checks to a power of two (`PI2.md` §9, lever 3c): three zero limbs of constants, checking
-    /// nothing. The zero ports and these are the first ports, so their outside tags `N … N + 2^k` are an aligned coset,
-    /// whose public sum π2's verifier takes in closed form.
+    /// Padding of the zero checks to a power of two: three zero limbs of constants, checking nothing. The zero ports and
+    /// these are the first ports, so their outside tags `N … N + 2^k` are an aligned coset, whose public sum π2v1's
+    /// verifier took in closed form (`PI2.md` §9, lever 3c). π2v2's verifier reads no zero port (`PI2.md` §1); the
+    /// padding stays, so that the circuit (and its setup) is the same.
     Pad,
 }
 

@@ -88,10 +88,11 @@ DESIGNS = {
     "B4": dict(W=4, qwords=13.75, extra=1, note="crates/membership/quotient's chi gate on bits, cell outputs"),
     "C16": dict(W=16, qwords=9 + 3 / 16, extra=2, note="cell outputs, chi5+theta rows"),
     "C64": dict(W=64, qwords=9 + 3 / 64, extra=2, note="cell outputs, slice rows"),
-    # extra: sigma(t) and kappa(t), the setup's wiring and constants columns
-    # q < 4N: a (block, role) indicator has degree N - 2^s, about N for a small block
-    "D16v": dict(W=16, qwords=3 + 3 * 4, extra=2, note="virtual pushes, chi5+theta + partial sums"),
-    "D32v": dict(W=32, qwords=3 + 3 * 4, extra=2, note="virtual pushes, slice rows"),
+    # extra: ξ = κ(t) + β σ(t) (the setup's) and s = P(t) (π2v2, PI2.md §2)
+    # π2v2: Q is h (3N), q < 2N (6N), P (N, in K) and P's definition quotient q_P < 2N (2N, in K): 12N words (π2v1:
+    # h and q < 4N, 15N)
+    "D16v": dict(W=16, qwords=3 + 3 * 2 + 1 + 2, extra=2, note="virtual pushes, chi5+theta + partial sums"),
+    "D32v": dict(W=32, qwords=3 + 3 * 2 + 1 + 2, extra=2, note="virtual pushes, slice rows"),
 }
 
 
@@ -175,21 +176,33 @@ def pi2_rounds(s, split=False, design="D16v"):
     lw, lq = CERTIFIED_L0[stack(s["witness"])], CERTIFIED_L0[stack(q_words)]
     n = s["n"]
     if design.startswith("D"):
-        t = ("t: the copy identity h · d_pull · d_push, degree ≤ 5N (d_push's selectors and quadratic pushes)", 5 * n)
+        # PI2.md §2, §7 (π2v2): two identities at t, each of degree below 3N, which must both vanish there: the copy
+        # identity h d_pull d_push + (1 + 1_S)(d_push + d_pull) + T = q Z_V (d_push of the committed P, below N; T the
+        # ports' term, below 2N) and P's definition P = P_v + Z_V q_P (P_v below 3N). A nonzero one vanishes at t with
+        # probability below 3N/2^192: the bound is the larger's, not the sum. (π2v1: one identity below 5N.)
+        t = ("t: the copy identity and P's definition, each of degree < 3N (q, q_P < 2N)", 3 * n)
     else:
         w = DESIGNS[design]["W"]
         t = (f"t: the copy identity h · d · d' (3N) and the gate's (2N/{w})", 3 * n + 2 * n // w)
-    return lw, lq, [
-        ("copy argument (α, β): 2N fractions, unique tags both sides, and no vanishing denominator", 4 * n / q, lw),
+    rounds = [
+        # π2v2 (PI2.md §7): the ports out of the copy argument. Over the internal positions the pulls and pushes are
+        # sets of (value, tag) pairs; a dishonest port's hole x makes h(x) = T(x) / (d_pull d_push) with a simple pole at
+        # α = w(x) + β x, which no other fraction has (no push targets a hole, σ(x) is outside V_m): Σ_V h is a nonzero
+        # rational function of (α, β) with at most 2N linear factors, plus the vanishing denominators.
+        ("copy argument (α, β): 2N fractions, unique tags, the ports' poles, no vanishing denominator", 4 * n / q, lw),
         # As built (pi2/adapt.rs): a three-limb port's fingerprint is the element itself (no γ);
         # the four-limb ones (the statement, pi1's two roots) are (L0 + Y L1) + γ (L2 + Y L3), degree 1 in γ.
         ("γ: the four-limb ports' fingerprints (L0 + Y L1) + γ (L2 + Y L3), degree 1 (3 ports)", 3 / q, lw),
         (t[0], t[1] / q, lw * lq),
-        # Since PI2.md §9 (lever 2), ρ is W's fold only (degree 15 over W's list): Q's claim is the identity's own
-        # combination of h(t) and q(t) (t's row), the setup's is at β and binds ξ = κ(t) + β σ(t) exactly (L = 1).
-        # Before: ρ's claims on three commitments, the errors adding, (15 L_W + L_Q + 1)/2^192.
+        # Since PI2.md §9 (lever 2), W's claim is its fold at ρ (degree 15 over W's list), the setup's at β binds
+        # ξ = κ(t) + β σ(t) exactly (L = 1).
         ("ρ: W's fold (degree 15)", 15 / q, lw),
     ]
+    if design.startswith("D"):
+        # π2v2: Q's one claim combines the copy identity's h(t), q(t), P(t) = s and q_P's definition by ρ at the kinds'
+        # coordinates (ρ', ρ, ρ² B): a polynomial of degree 3 in ρ, over Q's list.
+        rounds.append(("ρ: Q's claim (the identity, P(t) = s, P's definition), degree 3", 3 / q, lq))
+    return lw, lq, rounds
 
 
 # ---------------------------------------------------------------------------------------------------------------------

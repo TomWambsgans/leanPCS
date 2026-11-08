@@ -3,8 +3,8 @@
 //! [`Circuit`], and its public inputs as the stream's public data.
 //!
 //! - Every (block, role) pair whose formula is not a forward is a [`Pair`]; a `Port` pair pulls nothing (its
-//!   positions are the holes: `PI2.md` §1 explains why the PIOP leaves the holes' pulls out of the copy argument
-//!   instead of adding the holes' sums `Σ 1/D(0, h)` to the target; [`adapt`] checks that no formula reads a hole).
+//!   positions are the holes, which the PIOP leaves out of the copy argument and checks by the ports' term `T`,
+//!   `PI2.md` §1; [`adapt`] checks that no formula reads a hole).
 //! - A port's push is a fingerprint of its limbs that the verifier evaluates from the public data as calldata carries
 //!   it: three limbs (an element of `E`, a zero check) as `L_0 + Y L_1 + Y² L_2`, which is the element itself; four
 //!   limbs (the statement, a root) as `(L_0 + Y L_1) + γ (L_2 + Y L_3)`, a root's two 16-byte halves. Both bind the
