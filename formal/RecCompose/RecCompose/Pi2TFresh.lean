@@ -37,9 +37,8 @@ open LeanVM LeanVM.Rpm LeanVM.Parameters LeanVM.Semantics LeanVM.Protocol LeanVM
 open LeanVM.Protocol.Compile (Bytes)
 open E2ECompleteness (ro Cache HashOK cache_of_hashOK prEvent_fresh ro_run_fresh ro_run_cached length_digestBytes
   simulateQ_callKeccak256)
-open UniComplete.Prob (prEvent_query_le sum_const_div sum_mem_le)
-open UniComplete.Prob.TFresh (HC hq hc_of_qc CacheBound cacheBound_empty cacheBound_run sum_hit_le take_digestBytes
-  take_digestBytes' run_frame)
+open UniKeccakComplete.Prob (prEvent_query_le sum_const_div sum_mem_le)
+open UniKeccakComplete.Prob.TFresh (HC hq hc_of_qc CacheBound cacheBound_empty cacheBound_run sum_hit_le take_digestBytes take_digestBytes' run_frame)
 open scoped ENNReal
 
 set_option autoImplicit false
@@ -361,7 +360,7 @@ theorem tFresh_of (S : Pi2Staged) {δ : Type} (T : S.α → Digest → Digest �
     simp only [hbad, ↓reduceIte, zero_add]
     rw [not_or, not_or] at hbad
     have hT2 : HashOK (fun m ↦ m ≠ digestBytes s₂) (T p.1 s₁ s₂ u) :=
-      UniComplete.Prob.HashOK.mono (P := fun m ↦ m.length ≠ 32) (Q := fun m ↦ m ≠ digestBytes s₂) (fun m hm he ↦ hm (by rw [he]; exact length_digestBytes s₂))
+      UniKeccakComplete.Prob.HashOK.mono (P := fun m ↦ m.length ≠ 32) (Q := fun m ↦ m ≠ digestBytes s₂) (fun m hm he ↦ hm (by rw [he]; exact length_digestBytes s₂))
         (hT32 _ _ _ _)
     try dsimp only
     rw [run_frame _ u _ hT2 c₂]

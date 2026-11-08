@@ -1,8 +1,8 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The byte round trips go through `UInt64.toNat`, as
 -- `formal/UniComplete/UniComplete/AlgCRun.lean`'s `run_fold_be64` (reused) and `SyncBasic.lean`'s do.
 import RecCompose.Basic
-import UniComplete.AlgCRun
-import UniComplete.SyncBasic
+import UniKeccakComplete.K.AlgCRun
+import UniKeccakComplete.K.SyncBasic
 
 /-!
 # π1's own `PCS_OPEN` calls, decoded
@@ -33,7 +33,7 @@ theorem fold_be64_at (pre post : List UInt8) (u : UInt64) (at' : ℕ) (h : pre.l
     (List.range 8).foldl (fun (acc : UInt64) k ↦ (acc <<< 8) ||| ((pre ++ be64 u ++ post).getD (at' + k) 0).toUInt64)
       (0 : UInt64) = u := by
   apply UInt64.toNat_inj.mp
-  rw [UniComplete.AlgC.run_fold_be64 u (fun k ↦ (pre ++ be64 u ++ post).getD (at' + k) 0) (fun k hk ↦ by
+  rw [UniKeccakComplete.AlgC.run_fold_be64 u (fun k ↦ (pre ++ be64 u ++ post).getD (at' + k) 0) (fun k hk ↦ by
     rw [← h, List.append_assoc, List.getD_eq_getElem?_getD, List.getD_eq_getElem?_getD,
       List.getElem?_append_right (by omega), Nat.add_sub_cancel_left,
       List.getElem?_append_left (by rw [length_be64]; omega)]) 8 le_rfl]
@@ -63,7 +63,7 @@ theorem elementOfWord_elementWord (x : E) : elementOfWord (elementWord x) = some
   rw [show List.replicate 8 0 ++ be64 (x.limb 2).lane ++ (be64 (x.limb 1).lane ++ be64 (x.limb 0).lane) =
     elementWord x from e8.symm] at h8
   simp only [h24, h16, h8]
-  exact congrArg some (UniComplete.eNew_limbs x)
+  exact congrArg some (UniKeccakComplete.eNew_limbs x)
 
 /-- The count word of `1`. -/
 theorem countOfWord_numberWord_one : countOfWord (numberWord 1) = some 1 := by decide
@@ -111,7 +111,7 @@ theorem le_fold (u : UInt64) (f : ℕ → UInt8) (hf : ∀ k < 8, f k = (u >>> (
 theorem be64_reverse_getD (u : UInt64) {k : ℕ} (hk : k < 8) :
     (be64 u).reverse.getD k 0 = (u >>> (8 * k).toUInt64).toUInt8 := by
   rw [List.getD_eq_getElem?_getD, List.getElem?_reverse (by rw [length_be64]; exact hk), length_be64,
-    ← List.getD_eq_getElem?_getD, UniComplete.be64_getD u (by omega)]
+    ← List.getD_eq_getElem?_getD, UniKeccakComplete.be64_getD u (by omega)]
   congr 3
   omega
 

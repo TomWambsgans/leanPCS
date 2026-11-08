@@ -58,7 +58,7 @@ theorem cAt_of_not (Ht : List UInt8 → Digest) (Ft : KeccakState → KeccakStat
 theorem gAcc_length (hD : D.Real) (hwc : Pi2WitnessComplete D C Fa)
     (P1k : OracleComp KeccakCalls (Option UniKeccak.KeccakProof)) {c : Cache} {p : StA × Cache}
     (hp : p ∈ support ((simulateQ ro (stageA callKeccak256 callKeccakF1600 D C Fa P1k input)).run c))
-    (hG : GAcc p.1) : (UniComplete.Prob.tInput p.1.wr).length = 536 := by
+    (hG : GAcc p.1) : (UniKeccakComplete.Prob.tInput p.1.wr).length = 536 := by
   have e := Pi2C.runAt_read hp
   rw [runAt_stageA] at e
   rw [← e] at hG ⊢
@@ -85,7 +85,7 @@ theorem accA_pi2 (P1k : OracleComp KeccakCalls (Option UniKeccak.KeccakProof)) (
   generalize Pi2C.readF z.2 = Ft
   have h : (runAt Ht Ft ((pi2Staged D C Fa P1k input).tail a s₁ s₂ s₃)).1.1 =
       (cAt Ht Ft D C input (bAt Ht D C a s₁ s₂ s₃)
-        (Ht (UniComplete.Prob.tInput (bAt Ht D C a s₁ s₂ s₃).wr))).1 := by
+        (Ht (UniKeccakComplete.Prob.tInput (bAt Ht D C a s₁ s₂ s₃).wr))).1 := by
     unfold runAt
     simp only [Pi2Staged.tail, pi2Staged, simulateQ_bind, simulateQ_pure, simulateQ_queryH, sim_stageB,
       sim_stageC]

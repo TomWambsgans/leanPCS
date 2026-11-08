@@ -294,13 +294,13 @@ theorem pi1OpeningsAgree (D : RecDeployment) (hD : D.pi1.shape = RecGraphKeccak.
       simp only [List.map_cons, List.map_nil]
     rw [hcalls] at hg
     obtain ⟨g0, g1, g2, hgops, hd0, hd1, hd2⟩ := mapM_three _ _ _ _ _ hg
-    have hl1 := decodePi1Call_point_length _ _ _ _ (UniComplete.length_rootWord _) (w1_length 0 (by decide)) _ hd0
-    have hl2 := decodePi1Call_point_length _ _ _ _ (UniComplete.length_rootWord _) (w1_length 1 (by decide)) _ hd1
+    have hl1 := decodePi1Call_point_length _ _ _ _ (UniKeccakComplete.length_rootWord _) (w1_length 0 (by decide)) _ hd0
+    have hl2 := decodePi1Call_point_length _ _ _ _ (UniKeccakComplete.length_rootWord _) (w1_length 1 (by decide)) _ hd1
     have hl3 := decodePi1Call_point_length _ _ _ _ (Pi1Decode.length_digestBytes _) (w1_length 2 (by decide)) _ hd2
     obtain ⟨c0, c1, c2⟩ := w1_codes
-    rw [Pi1Decode.decodePi1Call_point _ _ _ _ (UniComplete.length_rootWord _) (w1_length 0 (by decide)) hl1, c0,
+    rw [Pi1Decode.decodePi1Call_point _ _ _ _ (UniKeccakComplete.length_rootWord _) (w1_length 0 (by decide)) hl1, c0,
       Pi1Decode.rootOfWord_rootWord _ h11 h12] at hd0
-    rw [Pi1Decode.decodePi1Call_point _ _ _ _ (UniComplete.length_rootWord _) (w1_length 1 (by decide)) hl2, c1,
+    rw [Pi1Decode.decodePi1Call_point _ _ _ _ (UniKeccakComplete.length_rootWord _) (w1_length 1 (by decide)) hl2, c1,
       Pi1Decode.rootOfWord_rootWord _ h21 h22] at hd1
     simp only [show (0x5501 : ℕ) ≠ 0x5503 by decide, show (0x5502 : ℕ) ≠ 0x5503 by decide, ite_false,
       Option.some.injEq] at hd0 hd1

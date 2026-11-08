@@ -30,8 +30,7 @@ open LeanVM LeanVM.Rpm LeanVM.Parameters LeanVM.Semantics LeanVM.Protocol LeanVM
 open RecStatement
 open UniStatement (Chan ChanM)
 open E2ECompleteness (Disc disc_pure disc_of_hOnly)
-open UniComplete (WHOnly wHOnly_pure wHOnly_get wHOnly_lift wHOnly_sampleW wHOnly_sendRoot wHOnly_sendScalar
-  wHOnly_sendScalars wHOnly_sendInteger disc_forIn_list)
+open UniKeccakComplete (WHOnly wHOnly_pure wHOnly_get wHOnly_lift wHOnly_sampleW wHOnly_sendRoot wHOnly_sendScalar wHOnly_sendScalars wHOnly_sendInteger disc_forIn_list)
 
 namespace RecCompose.Pi2G
 
@@ -133,8 +132,8 @@ theorem cHOnly_nextScalars (n : ℕ) : CHOnly (UniStatement.nextScalars (m := Or
   exact (cHOnly_forIn_range _ _ _ fun _ _ ↦ cHOnly_nextScalar.bind fun _ ↦ cHOnly_pure _).bind fun _ ↦
     cHOnly_pure _
 
-theorem cHOnly_sampleH : CHOnly (UniComplete.sampleH callKeccak256) := by
-  unfold UniComplete.sampleH
+theorem cHOnly_sampleH : CHOnly (UniKeccakComplete.sampleH callKeccak256) := by
+  unfold UniKeccakComplete.sampleH
   exact cHOnly_get.bind fun _ ↦ (cHOnly_liftH _).bind fun _ ↦ (cHOnly_set _).bind fun _ ↦ cHOnly_pure _
 
 theorem cHOnly_finish : CHOnly (UniStatement.finish (m := OracleComp KeccakCalls)) := by
@@ -221,7 +220,7 @@ theorem disc_pi1GraphVerifierWithH (D : RecDeployment) (roots : UniStatement.Set
       · split
         · exact disc_pure _
         · refine (disc_forIn_list _ _ _ fun x s ↦ ?_).bind fun _ ↦ disc_pure _
-          exact (UniComplete.disc_pcsOpenWithH _ _ _ _).bind fun _ ↦ disc_pure _
+          exact (UniKeccakComplete.disc_pcsOpenWithH _ _ _ _).bind fun _ ↦ disc_pure _
 
 /-- **`PCS_OPEN` on a call's words is disciplined.** -/
 theorem disc_pcsOpenAtH (reg : List (List UInt8 × Opener)) (words : List (List UInt8)) (p : Compile.Proof) :
@@ -229,7 +228,7 @@ theorem disc_pcsOpenAtH (reg : List (List UInt8 × Opener)) (words : List (List 
   unfold Pi2H.pcsOpenAtH
   split
   · exact disc_pure _
-  · exact UniComplete.disc_pcsOpenWithH _ _ _ _
+  · exact UniKeccakComplete.disc_pcsOpenWithH _ _ _ _
   · exact E2ECompleteness.disc_openingWithH _ _ _ _
 
 /-- **The contract is disciplined.** -/

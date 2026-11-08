@@ -1,5 +1,5 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md and AGENTS.md.
-import UniComplete.Reference
+import UniKeccakComplete.K.Reference
 import RecCompose.Bridge
 
 /-!
@@ -12,7 +12,7 @@ layout words (word 1 of each, constants the Rust wrote) are the Keccak π1-rec3'
 first (UniComplete's generic `stackLayout_vars`, `pieceWords`, `heapLayout_h`, `heapLayout_blocks_sum`, for any
 column list and any heap):
 
-* `stackLayout_words`: the words a stack's blocks fill are its pieces' (`UniComplete.pieceWords`), in any order;
+* `stackLayout_words`: the words a stack's blocks fill are its pieces' (`UniKeccakComplete.pieceWords`), in any order;
 * `c2_pieceWordsK`: `C2`'s words on the Keccak VM (`UniKeccak.Shape.c2ColumnsK`) as the heap's, the tree and
   constraint quotients' and the blocks' leaf quotients' (`leafWordsK`, `Shape.leafDegreeK`), from the heap's
   unsorted blocks;
@@ -24,7 +24,7 @@ then the kernel evaluates the three stacks' words (`0x49fc000`, `0x28ce003`, `0x
 
 namespace RecCompose
 
-open UniStatement UniComplete
+open UniStatement UniComplete UniKeccakComplete
 
 /-- A fold that adds `g x` is a sum. -/
 theorem foldl_add_eq {β : Type} (g : β → ℕ) (f : ℕ → β → ℕ) (hf : ∀ a x, f a x = a + g x) :

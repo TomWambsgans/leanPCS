@@ -29,7 +29,7 @@ open LeanVM LeanVM.Rpm
 open LeanVM.Protocol.Compile LeanVM.Protocol.Compile.Rom
 open LeanVM.Protocol.Rom
 open E2ECompleteness (ro HashOK)
-open UniComplete.Prob.TFresh (HC hc_of_qc take_digestBytes)
+open UniKeccakComplete.Prob.TFresh (HC hc_of_qc take_digestBytes)
 open Pi2S Pi2K Pi2P Pi2E
 open scoped ENNReal
 
@@ -60,19 +60,19 @@ noncomputable def outB {D : RecDeployment} (C : Pi2Circuits D) (a : StA) (s₁ s
 theorem stageB_eq (D : RecDeployment) (C : Pi2Circuits D) (a : StA) (s₁ s₂ s₃ : Digest) :
     stageB callKeccak256 D C a s₁ s₂ s₃ = treeB C a s₁ s₂ s₃ >>= fun qT ↦ pure (outB C a s₁ s₂ s₃ qT) := by
   unfold stageB mid2 treeB outB qStackOf
-  simp only [StateT.run_bind, StateT.run_lift, UniComplete.Prob.run_sendRoot, bind_assoc, pure_bind, StateT.run_pure]
+  simp only [StateT.run_bind, StateT.run_lift, UniKeccakComplete.Prob.run_sendRoot, bind_assoc, pure_bind, StateT.run_pure]
 
 /-- **`t`'s input after stage B**: `s₃`'s bytes, then `Q`'s root word. -/
 theorem tin_stageB {D : RecDeployment} (C : Pi2Circuits D) (a : StA) (s₁ s₂ s₃ : Digest) (qT : LeanVM.Prover.Tree) :
-    UniComplete.Prob.tInput (outB C a s₁ s₂ s₃ qT).wr = digestBytes s₃ ++ UniStatement.rootWord (digestScalars qT.root) := by
-  simp [UniComplete.Prob.tInput, outB, absorbW]
+    UniKeccakComplete.Prob.tInput (outB C a s₁ s₂ s₃ qT).wr = digestBytes s₃ ++ UniStatement.rootWord (digestScalars qT.root) := by
+  simp [UniKeccakComplete.Prob.tInput, outB, absorbW]
 
 theorem tin_stageB_length {D : RecDeployment} (C : Pi2Circuits D) (a : StA) (s₁ s₂ s₃ : Digest)
-    (qT : LeanVM.Prover.Tree) : (UniComplete.Prob.tInput (outB C a s₁ s₂ s₃ qT).wr).length = 64 ∧
-      (UniComplete.Prob.tInput (outB C a s₁ s₂ s₃ qT).wr).take 32 = digestBytes s₃ := by
+    (qT : LeanVM.Prover.Tree) : (UniKeccakComplete.Prob.tInput (outB C a s₁ s₂ s₃ qT).wr).length = 64 ∧
+      (UniKeccakComplete.Prob.tInput (outB C a s₁ s₂ s₃ qT).wr).take 32 = digestBytes s₃ := by
   rw [tin_stageB]
   refine ⟨?_, take_digestBytes _ _⟩
-  rw [List.length_append, E2ECompleteness.length_digestBytes, UniComplete.Prob.rootWord_length]
+  rw [List.length_append, E2ECompleteness.length_digestBytes, UniKeccakComplete.Prob.rootWord_length]
 
 /-! ## The named input and `t`'s freshness -/
 
@@ -104,7 +104,7 @@ theorem pi2TFresh_of {D : RecDeployment} (C : Pi2Circuits D) (Fa : Pi2Facts D C)
   refine TF.tFresh_of (pi2Staged D C Fa (P1k input rows q) input) (fun a s₁ s₂ s₃ ↦ treeB C a s₁ s₂ s₃)
     (fun a s₁ s₂ s₃ qT ↦ outB C a s₁ s₂ s₃ qT) (fun a s₁ s₂ s₃ ↦ stageB_eq D C a s₁ s₂ s₃)
     (fun a s₁ s₂ s₃ ↦ TF.apq_commitWithH _ _ _ (List.mem_singleton_self _))
-    (fun a s₁ s₂ s₃ ↦ UniComplete.Prob.HashOK.mono (fun m h ↦ h.1) (E2ECompleteness.hashOK_commitWithH _ _))
+    (fun a s₁ s₂ s₃ ↦ UniKeccakComplete.Prob.HashOK.mono (fun m h ↦ h.1) (E2ECompleteness.hashOK_commitWithH _ _))
     (NT := E2ECompleteness.Cost.treeCost muQ)
     (fun a s₁ s₂ s₃ ↦ by
       unfold treeB E2ECompleteness.Cost.treeCost

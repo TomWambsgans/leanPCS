@@ -2,7 +2,7 @@
 -- `formal/UniKeccakSound/UniKeccakSound/Fs/ProofK.lean` (`setupK1`'s facts) and `SetupK.lean` (`uniSetupBridgeK`), after
 -- `formal/UniSound/UniSound/FsProof.lean` and `FsSetup.lean`, for π2's setup: π1's one tree, then π2's.
 import RecCompose.FsDefs
-import UniSound.FsSetup
+import RecCompose.GenericSetupLog
 import UniKeccakSound.Fs.SetupK
 
 /-!
@@ -21,8 +21,8 @@ of those roots, on the plain shape of `2^25` words `sh25`):
   root (the proof's, which the setup fixes) is the honest encoding of the setup's table at the proof's roots
   (`extract_wiringSetup`, `honest_stackWord`); the other openings carry no stack (`p2Stk_none`);
 * **SETUP** (`pi2SetupBridge`): the composed setup over `π`, logged, is the Statement's `setupTreesWith` over `π`
-  (π1's tree by `UniKeccakSound.uniSetupBridgeK`, π2's by `UniSound.simulateQ_loggedKC_stackSetupS` at `25` variables:
-  `Pi2Circuit.setupTreeWith` commits at `(layoutsOf 24).2.2.logN = 25`).
+  (π1's tree by `UniKeccakSound.uniSetupBridgeK`, π2's by `simulateQ_loggedKC_stackSetupS` (`GenericSetupLog.lean`)
+  at `25` variables: `Pi2Circuit.setupTreeWith` commits at `(layoutsOf 24).2.2.logN = 25`).
 -/
 
 set_option linter.unusedSectionVars false
@@ -258,14 +258,14 @@ theorem pi2SetupBridge (D : RecDeployment) (hD : RecDeployment.Real D) (hs : Uni
       (loggedKC (stackSetupS sh25 (UniSound.colOf a 25))) =
         (fun t : LeanVM.Prover.Tree => (toB t.root, Soundness.treeTr t)) <$>
           PcsQuotient.commitWith Common.queryPermutation 25 a :=
-    fun a => UniSound.simulateQ_loggedKC_stackSetupS 25 (by norm_num) (by norm_num) a
+    fun a => simulateQ_loggedKC_stackSetupS 25 (by norm_num) (by norm_num) a
   have hc : ∀ t1 : LeanVM.Prover.Tree, (D.circuitAt (D.pi1.setupRoots t1)).setupTreeWith Common.queryPermutation =
       PcsQuotient.commitWith Common.queryPermutation 25 (D.circuitAt (D.pi1.setupRoots t1)).setupStack := by
     intro t1
     unfold Pi2Circuit.setupTreeWith
     rw [RecDeployment.circuitAt, hD.1, show (Data.circuit.logN : ℕ) = 24 from rfl, layoutsOf_setup_logN]
   unfold Pi2SetupBridge p2Setup setupCol
-  simp only [UniSound.loggedKC_bind, UniSound.loggedKC_pure, simulateQ_bind, simulateQ_map, simulateQ_pure, e1, e2]
+  simp only [loggedKC_bind, loggedKC_pure, simulateQ_bind, simulateQ_map, simulateQ_pure, e1, e2]
   unfold RecDeployment.setupTreesWith
   simp only [map_bind, map_pure, bind_map_left, hc]
   refine bind_congr fun t1 => ?_

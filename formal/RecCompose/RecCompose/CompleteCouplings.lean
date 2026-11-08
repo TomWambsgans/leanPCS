@@ -183,8 +183,8 @@ theorem graph_le_verifier (D : RecDeployment) (hD : D.pi1.shape = RecGraphKeccak
               (UniKeccak.layoutWordsK RecGraphKeccak.Pi1.keccak128).getD 2 [], [⟨pt3, v3⟩])] := by
         rw [hcalls]
         simp only [List.mapM_cons, List.mapM_nil,
-          Pi1Decode.decodePi1Call_point _ _ _ _ (UniComplete.length_rootWord _) hn0 hl1,
-          Pi1Decode.decodePi1Call_point _ _ _ _ (UniComplete.length_rootWord _) hn1 hl2,
+          Pi1Decode.decodePi1Call_point _ _ _ _ (UniKeccakComplete.length_rootWord _) hn0 hl1,
+          Pi1Decode.decodePi1Call_point _ _ _ _ (UniKeccakComplete.length_rootWord _) hn1 hl2,
           Pi1Decode.decodePi1Call_point _ _ _ _ (Pi1Decode.length_digestBytes _) hn2 hl3, hc0, hc1, hc2,
           Pi1Decode.rootOfWord_rootWord _ h11 h12, Pi1Decode.rootOfWord_rootWord _ h21 h22]
         simp

@@ -4,8 +4,8 @@
 -- openings `formal/EndToEnd/Completeness`'s (`proveOpeningWithH`), the transforms `formal/Statement`'s
 -- (`PcsQuotient.Domain.values`, `coefficients`).
 import RecCompose.Tables
-import UniComplete.Prover
-import UniComplete.AlgHPoly
+import UniKeccakComplete.K.Prover
+import UniKeccakComplete.K.AlgHPoly
 
 /-!
 # π2's honest prover

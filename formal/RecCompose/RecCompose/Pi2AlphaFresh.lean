@@ -31,8 +31,9 @@ open OracleComp OracleSpec
 open LeanVM
 open LeanVM.Protocol.Compile.Rom (implH implF simulateQ_queryH simulateQ_queryF)
 open E2ECompleteness (ro runAt Cache HashOK cache_of_hashOK length_digestBytes)
-open UniComplete (Wr WrM Morph)
-open UniComplete.Prob.TFresh (HC hc_of_qc CacheBound cacheBound_empty cacheBound_run take_digestBytes)
+open UniComplete (Wr WrM)
+open UniKeccakComplete (Morph)
+open UniKeccakComplete.Prob.TFresh (HC hc_of_qc CacheBound cacheBound_empty cacheBound_run take_digestBytes)
 open Pi2S Pi2K Pi2P Pi2E Pi2G Pi2G.Cost2
 open scoped ENNReal
 
@@ -100,10 +101,10 @@ theorem hashOK_commitWithH536 (μ : ℕ) (stack : Array K) :
 /-! ## Stage A -/
 
 /-- `α`'s input before `fixLen`. -/
-abbrev rawInp (a : StA) : List UInt8 := UniComplete.Prob.tInput a.wr
+abbrev rawInp (a : StA) : List UInt8 := UniKeccakComplete.Prob.tInput a.wr
 
-theorem rawInp_start : (UniComplete.Prob.tInput (Wr.start default)).length = 32 := by
-  simp [UniComplete.Prob.tInput, Wr.start, length_digestBytes]
+theorem rawInp_start : (UniKeccakComplete.Prob.tInput (Wr.start default)).length = 32 := by
+  simp [UniKeccakComplete.Prob.tInput, Wr.start, length_digestBytes]
 
 set_option maxHeartbeats 1600000 in
 /-- **Stage A caches its writer's `536`-byte input** with probability at most `4 · (K + 4) / 2^256`, `K` the hash count
@@ -217,7 +218,7 @@ theorem prA_le {D : RecDeployment} (hD : D.Real) (hg : GraphsAgree) (C : Pi2Circ
         rw [hy]
       obtain ⟨hh, hw⟩ := pre2_writer (C.G tr.roots) (D.circuitAt tr.roots.pi1).circuit.reads
         (pi2Choice D C Fa tr.roots input p1.stream).1 (pi2Choice D C Fa tr.roots input p1.stream).2 Ht (Wr.start seed)
-      show (UniComplete.Prob.tInput wr).take 32 = digestBytes seed
+      show (UniKeccakComplete.Prob.tInput wr).take 32 = digestBytes seed
       rw [hwr, hw, tInput_start_append]
       exact take_digestBytes _ _
     · exact le_rfl
@@ -268,7 +269,7 @@ theorem alphaFresh_of {D : RecDeployment} (hD : D.Real) (hg : GraphsAgree) (C : 
     fun p hp hev ↦ ?_).trans ?_
   · have hl := gAcc_length C (pi2Facts hD C hchk) input hD hwc _ hp hev.2
     have e : (pi2Staged D C (pi2Facts hD C hchk) (P1k input rows q) input).inp p.1 = rawInp p.1 := by
-      show fixLen 536 (UniComplete.Prob.tInput p.1.wr) = _
+      show fixLen 536 (UniKeccakComplete.Prob.tInput p.1.wr) = _
       unfold fixLen
       simp only [hl, ↓reduceIte]
     have h1 := hev.1

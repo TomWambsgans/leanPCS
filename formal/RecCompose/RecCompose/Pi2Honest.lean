@@ -51,14 +51,14 @@ def honestInputs (G : RecPiop.Circuit E) (setupStack : Array K) (w : ℕ → K) 
 
 /-- **The witness's polynomial** (degree below `N`): its novel coefficients'. -/
 noncomputable def witnessPoly (G : RecPiop.Circuit E) (w : ℕ → K) : E[X] :=
-  UniComplete.AlgC.novP G.logN fun j ↦ (UniComplete.novelOfValuesK G.logN (wValues G w)).getD j 0
+  UniKeccakComplete.AlgC.novP G.logN fun j ↦ (UniComplete.novelOfValuesK G.logN (wValues G w)).getD j 0
 
 /-- `σ`'s and `κ`'s polynomials (degree below `N`). -/
 noncomputable def sigmaPoly (G : RecPiop.Circuit E) : E[X] :=
-  UniComplete.AlgC.novP G.logN fun j ↦ (UniComplete.novelOfValuesE G.logN (sigmaValues G)).getD j 0
+  UniKeccakComplete.AlgC.novP G.logN fun j ↦ (UniComplete.novelOfValuesE G.logN (sigmaValues G)).getD j 0
 
 noncomputable def kappaPoly (G : RecPiop.Circuit E) : E[X] :=
-  UniComplete.AlgC.novP G.logN fun j ↦ (UniComplete.novelOfValuesE G.logN (kappaValues G)).getD j 0
+  UniKeccakComplete.AlgC.novP G.logN fun j ↦ (UniComplete.novelOfValuesE G.logN (kappaValues G)).getD j 0
 
 /-- **The copy argument's bad challenges**: a pulled `d_pull`, a `d_push` on `V_m` or a public `d_pub` zero. -/
 def BadCopy (G : RecPiop.Circuit E) (w : ℕ → K) (pub : ℕ → List E) (α β γ : E) : Prop :=
@@ -105,7 +105,7 @@ theorem kappaPoly_omega (G : RecPiop.Circuit E) (hm : G.logN ≤ 28) {i : ℕ} (
   simp only [show i < G.N from hi, dite_true, Option.getD_some]
 
 theorem hNovel_omega (G : RecPiop.Circuit E) (w : ℕ → K) (α β γ : E) (hm : G.logN ≤ 28) {i : ℕ} (hi : i < G.N) :
-    (UniComplete.AlgC.novP G.logN fun j ↦ (hNovel G w α β γ).getD j 0).eval (pi2Omega i) =
+    (UniKeccakComplete.AlgC.novP G.logN fun j ↦ (hNovel G w α β γ).getD j 0).eval (pi2Omega i) =
       (hValues G w α β γ).getD i 0 :=
   novP_values_omega hm _ (size_hValues w α β γ) hi
 

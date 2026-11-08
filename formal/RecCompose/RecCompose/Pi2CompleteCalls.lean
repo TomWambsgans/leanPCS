@@ -5,7 +5,9 @@
 import RecCompose.Pi1Decode
 import RecCompose.OpeningsAgree
 import RecCompose.Pi2Whir
-import UniComplete.Core
+import UniKeccakComplete.K.VerifierHCost
+import UniKeccakComplete.K.ProverCost
+import E2ECompleteness.Grinding
 
 /-!
 # π2's three `PCS_OPEN` calls decoded

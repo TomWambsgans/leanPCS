@@ -46,38 +46,38 @@ theorem poly_eq_of_eval_eq {p q : E[X]} {n : ℕ} (hp : p.natDegree < n) (hq : q
 theorem values_getD_novP {k : ℕ} (hk : k ≤ 28) (offset : K) (c : Array E) (hc : c.size = 2 ^ k) {p : ℕ}
     (hp : p < 2 ^ k) :
     (PcsQuotient.Domain.values k offset c).getD p 0 =
-      (UniComplete.AlgC.novP k fun j ↦ c.getD j 0).eval (ofK (offset + PcsQuotient.Domain.point p)) := by
-  rw [Bridge.Ntt.values_getD_E (UniComplete.AlgC.cantorUpTo hk) hk offset c hc hp, UniComplete.AlgC.novP_eval]
+      (UniKeccakComplete.AlgC.novP k fun j ↦ c.getD j 0).eval (ofK (offset + PcsQuotient.Domain.point p)) := by
+  rw [Bridge.Ntt.values_getD_E (UniKeccakComplete.AlgC.cantorUpTo hk) hk offset c hc hp, UniKeccakComplete.AlgC.novP_eval]
   refine Finset.sum_congr rfl fun j _ ↦ ?_
-  rw [UniComplete.AlgC.novX_ofK, mul_comm]
+  rw [UniKeccakComplete.AlgC.novX_ofK, mul_comm]
 
 /-- **The coefficients' polynomial takes the values**: `Σ_j (coefficients k offset v)_j X_j` is `v_p` at
 `offset + B(p)`. -/
 theorem novP_coefficients_eval {k : ℕ} (hk : k ≤ 28) (offset : K) (v : Array E) (hv : v.size = 2 ^ k) {p : ℕ}
     (hp : p < 2 ^ k) :
-    (UniComplete.AlgC.novP k fun j ↦ (PcsQuotient.Domain.coefficients k offset v).getD j 0).eval
+    (UniKeccakComplete.AlgC.novP k fun j ↦ (PcsQuotient.Domain.coefficients k offset v).getD j 0).eval
       (ofK (offset + PcsQuotient.Domain.point p)) = v.getD p 0 := by
   rw [← values_getD_novP hk offset _ (by rw [Bridge.Ntt.coefficients_size, hv]) hp,
     Bridge.Ntt.values_coefficients_E k offset v hv]
 
 /-- The statement's point, embedded, is `pi2Omega` below `2^28`. -/
 theorem ofK_point_eq {i : ℕ} (hi : i < 2 ^ 28) : ofK (PcsQuotient.Domain.point i) = pi2Omega i := by
-  rw [UniComplete.AlgC.Ppoint_eq hi, pi2Omega_eq]
+  rw [UniKeccakComplete.AlgC.Ppoint_eq hi, pi2Omega_eq]
   rfl
 
 /-- **The novel-basis polynomial of an interpolation's coefficients** takes the values on `V_k`. -/
 theorem novP_values_omega {k : ℕ} (hk : k ≤ 28) (v : Array E) (hv : v.size = 2 ^ k) {i : ℕ} (hi : i < 2 ^ k) :
-    (UniComplete.AlgC.novP k fun j ↦ (UniComplete.novelOfValuesE k v).getD j 0).eval (pi2Omega i) = v.getD i 0 := by
+    (UniKeccakComplete.AlgC.novP k fun j ↦ (UniComplete.novelOfValuesE k v).getD j 0).eval (pi2Omega i) = v.getD i 0 := by
   have h := novP_coefficients_eval hk 0 v hv hi
   rw [zero_add, ofK_point_eq (lt_of_lt_of_le hi (Nat.pow_le_pow_right (by norm_num) hk))] at h
   exact h
 
 /-- The same for a `K`-column. -/
 theorem novP_valuesK_omega {k : ℕ} (hk : k ≤ 28) (v : Array K) (hv : v.size = 2 ^ k) {i : ℕ} (hi : i < 2 ^ k) :
-    (UniComplete.AlgC.novP k fun j ↦ (UniComplete.novelOfValuesK k v).getD j 0).eval (pi2Omega i) =
+    (UniKeccakComplete.AlgC.novP k fun j ↦ (UniComplete.novelOfValuesK k v).getD j 0).eval (pi2Omega i) =
       ofK (v.getD i 0) := by
-  have h := UniComplete.AlgC.pEval_colPolyK_pointE hk v hv hi
-  rw [UniComplete.AlgC.pEval_eq, UniComplete.colPolyK, UniComplete.AlgC.ofNovel_toPoly] at h
+  have h := UniKeccakComplete.AlgC.pEval_colPolyK_pointE hk v hv hi
+  rw [UniKeccakComplete.AlgC.pEval_eq, UniKeccakComplete.colPolyK, UniKeccakComplete.AlgC.ofNovel_toPoly] at h
   rw [pi2Omega_eq]
   exact h
 

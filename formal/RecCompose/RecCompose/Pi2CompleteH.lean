@@ -5,7 +5,7 @@
 -- Keccak-256 an explicit call, as `formal/UniComplete/UniComplete/VerifierH.lean` rewrites `formal/UniStatement`.
 import RecCompose.Pi2Run
 import RecCompose.Couplings
-import UniComplete.VerifierH
+import UniKeccakComplete.K.VerifierH
 
 /-!
 # π2's verifier, contract and setup with Keccak-256 an explicit call
@@ -45,14 +45,14 @@ def reduceWithH (s : Spec) (statement : List E) : ChanM m Reduced := do
       pubs := pubs ++ [lo, hi]
     | .scalar => pubs := pubs ++ [← UniStatement.nextScalar (m := m)]
   let wRoot ← UniStatement.nextRoot (m := m)
-  let α ← UniComplete.sampleH H
-  let β ← UniComplete.sampleH H
-  let γ ← UniComplete.sampleH H
+  let α ← UniKeccakComplete.sampleH H
+  let β ← UniKeccakComplete.sampleH H
+  let γ ← UniKeccakComplete.sampleH H
   let qRoot ← UniStatement.nextRoot (m := m)
-  let t ← UniComplete.sampleH H
+  let t ← UniKeccakComplete.sampleH H
   let a ← UniStatement.nextScalars (m := m) (2 ^ s.logRow)
   let ξ ← UniStatement.nextScalar (m := m)
-  let ρ ← UniComplete.sampleH H
+  let ρ ← UniKeccakComplete.sampleH H
   let inp : Inputs E := ⟨pubs, α, β, γ, t, a, ξ, ρ⟩
   return ⟨pubs, pubs.map pairPoint, (wRoot, qRoot), inp, s.core.run inp⟩
 
@@ -83,7 +83,7 @@ def ivOfH (D : RecDeployment) (roots : RecSetupRoots) : m (List UInt8) := do
 def pcsOpenAtH (registry : List (List UInt8 × Opener)) (words : List (List UInt8)) (proof : Compile.Proof) : m Bool :=
   match decodeWith registry words with
   | none => pure false
-  | some (root, .pi1 vars, claims) => UniComplete.pcsOpenWithH H F vars root claims proof
+  | some (root, .pi1 vars, claims) => UniKeccakComplete.pcsOpenWithH H F vars root claims proof
   | some (root, .pi2 L, claims) => E2ECompleteness.openingWithH H F L root claims proof
 
 /-- `RecDeployment.contractWith` with Keccak-256 `H`. -/
@@ -137,14 +137,14 @@ def pi1GraphVerifierWithH (D : RecDeployment) (roots : UniStatement.SetupRoots) 
       let ops := ops.modify 2 fun o ↦ (roots.bytecode, o.2)
       let mut ok := true
       for (o, p) in ops.zip [proof.c1, proof.c2, proof.setup] do
-        ok := ok && (← UniComplete.pcsOpenWithH H F (UniStatement.layoutWordVars o.2.1) o.1 o.2.2 p)
+        ok := ok && (← UniKeccakComplete.pcsOpenWithH H F (UniStatement.layoutWordVars o.2.1) o.1 o.2.2 p)
       return ok
 
 /-- `Couplings.openAt` with Keccak-256 `H`. -/
 def openAtH (reg : List (List UInt8 × Opener)) (o : Pi1Opening) (p : Compile.Proof) : m Bool :=
   match reg.lookup o.2.1 with
   | none => pure false
-  | some (.pi1 vars) => UniComplete.pcsOpenWithH H F vars o.1 o.2.2 p
+  | some (.pi1 vars) => UniKeccakComplete.pcsOpenWithH H F vars o.1 o.2.2 p
   | some (.pi2 L) => E2ECompleteness.openingWithH H F L o.1 o.2.2 p
 
 /-- `Couplings.openSeq` with Keccak-256 `H`. -/
@@ -182,7 +182,7 @@ theorem pcsOpenAt_eqH (registry : List (List UInt8 × Opener)) (words : List (Li
   generalize decodeWith registry words = d
   rcases d with _ | ⟨root, ⟨vars⟩ | ⟨L⟩, claims⟩
   · rfl
-  · exact UniComplete.pcsOpenWith_eqH F _ _ _ _
+  · exact UniKeccakComplete.pcsOpenWith_eqH F _ _ _ _
   · exact E2ECompleteness.openingWith_eqH F _ _ _ _
 
 theorem contractWith_eqH (D : RecDeployment) (roots : RecSetupRoots) (input : Vector UInt8 32) (proof : RecProof) :
@@ -216,9 +216,9 @@ theorem setupTreesWith_eqH (D : RecDeployment) :
 theorem pi1GraphVerifierWith_eqH (D : RecDeployment) (roots : UniStatement.SetupRoots) (input : Vector UInt8 32)
     (proof : UniKeccak.KeccakProof) :
     pi1GraphVerifierWith F D roots input proof = pi1GraphVerifierWithH (keccak256With F) F D roots input proof := by
-  have h : UniStatement.pcsOpenWith F = UniComplete.pcsOpenWithH (keccak256With F) F := by
+  have h : UniStatement.pcsOpenWith F = UniKeccakComplete.pcsOpenWithH (keccak256With F) F := by
     funext v r c p
-    exact UniComplete.pcsOpenWith_eqH F v r c p
+    exact UniKeccakComplete.pcsOpenWith_eqH F v r c p
   unfold pi1GraphVerifierWith pi1GraphVerifierWithH
   rw [h]
   rfl
@@ -229,7 +229,7 @@ theorem openAt_eqH (reg : List (List UInt8 × Opener)) (o : Pi1Opening) (p : Com
   generalize reg.lookup o.2.1 = d
   rcases d with _ | ⟨vars⟩ | ⟨L⟩
   · rfl
-  · exact UniComplete.pcsOpenWith_eqH F _ _ _ _
+  · exact UniKeccakComplete.pcsOpenWith_eqH F _ _ _ _
   · exact E2ECompleteness.openingWith_eqH F _ _ _ _
 
 theorem openSeq_eqH (reg : List (List UInt8 × Opener)) (ops : List Pi1Opening) (proof : RecProof) :
@@ -258,13 +258,13 @@ section Generic
 variable {m : Type → Type} [Monad m] [LawfulMonad m]
 
 theorem sampleH_run (H : List UInt8 → m Digest) (c : Chan) :
-    ((UniComplete.sampleH H).run).run c =
+    ((UniKeccakComplete.sampleH H).run).run c =
       (fun st ↦ (.ok (PcsQuotient.Transcript.challengeOf st), sampled c st)) <$>
         H (digestBytes c.state ++ (c.data.extract c.absorbed c.cursor).toList) := by
-  unfold UniComplete.sampleH sampled
+  unfold UniKeccakComplete.sampleH sampled
   simp [Except.map]
 
-theorem reads_sampleH (H : List UInt8 → m Digest) : Reads (UniComplete.sampleH H) 0 fun _ _ _ ↦ True := by
+theorem reads_sampleH (H : List UInt8 → m Digest) : Reads (UniKeccakComplete.sampleH H) 0 fun _ _ _ ↦ True := by
   intro c
   rw [sampleH_run]
   exact holds_map (holds_true _) fun st _ ↦ ⟨rfl, fun a _ ↦ ⟨rfl, trivial⟩, fun _ ↦ ⟨_, rfl⟩⟩

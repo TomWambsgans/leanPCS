@@ -44,7 +44,7 @@ theorem modelW_eq (w : ℕ → K) :
       rw [hm]
       exact readW_honest (C.G roots) w (by omega) hi
   rw [hm, wPoly_congr hT]
-  refine poly_eq_of_eval_eq (natDegree_wPoly_lt _ _) (UniComplete.AlgC.novP_natDegree_lt _ _) pi2Omega
+  refine poly_eq_of_eval_eq (natDegree_wPoly_lt _ _) (UniKeccakComplete.AlgC.novP_natDegree_lt _ _) pi2Omega
     (omega_injOn_N (by omega)) fun i hi ↦ ?_
   unfold wTableB
   rw [wPoly_bCoefficients (by omega) _ (size_wValues _ w) hi, witnessPoly_omega _ w (by omega) hi]
@@ -55,37 +55,37 @@ theorem modelW_eq (w : ℕ → K) :
 
 theorem modelSigma_eq : (pi2Model Fa roots hcol).setup.σP = sigmaPoly (C.G roots) := by
   have h24 := logN_G Fa roots
-  refine poly_eq_of_eval_eq (pi2Model Fa roots hcol).setup.σ_deg (UniComplete.AlgC.novP_natDegree_lt _ _) pi2Omega
+  refine poly_eq_of_eval_eq (pi2Model Fa roots hcol).setup.σ_deg (UniKeccakComplete.AlgC.novP_natDegree_lt _ _) pi2Omega
     (omega_injOn_N (by omega)) fun i hi ↦ ?_
   rw [(pi2Model Fa roots hcol).setup.σ_eval i hi, sigmaPoly_omega _ (by omega) hi]
 
 theorem modelKappa_eq : (pi2Model Fa roots hcol).setup.κP = kappaPoly (C.G roots) := by
   have h24 := logN_G Fa roots
-  refine poly_eq_of_eval_eq (pi2Model Fa roots hcol).setup.κ_deg (UniComplete.AlgC.novP_natDegree_lt _ _) pi2Omega
+  refine poly_eq_of_eval_eq (pi2Model Fa roots hcol).setup.κ_deg (UniKeccakComplete.AlgC.novP_natDegree_lt _ _) pi2Omega
     (omega_injOn_N (by omega)) fun i hi ↦ ?_
   rw [(pi2Model Fa roots hcol).setup.κ_eval i hi, kappaPoly_omega _ (by omega) hi]
 
 /-- **`h`'s model polynomial of the honest stack is the prover's.** -/
 theorem modelH_eq (w : ℕ → K) (α β γ : E) :
     (pi2Model Fa roots hcol).hP (honestQ (C.G roots) w α β γ) =
-      UniComplete.AlgC.novP (C.G roots).logN fun j ↦ (hNovel (C.G roots) w α β γ).getD j 0 := by
+      UniKeccakComplete.AlgC.novP (C.G roots).logN fun j ↦ (hNovel (C.G roots) w α β γ).getD j 0 := by
   have hm := view_logN Fa roots
   have h24 := logN_G Fa roots
   show hPoly (qTable (D.circuitAt roots.pi1).circuit.logN _) (D.circuitAt roots.pi1).circuit.logN = _
   rw [hm]
   unfold hPoly
-  exact UniComplete.AlgC.novP_congr _ fun k hk ↦ qCoef_honest_h _ w α β γ (by omega) hk
+  exact UniKeccakComplete.AlgC.novP_congr _ fun k hk ↦ qCoef_honest_h _ w α β γ (by omega) hk
 
 /-- **`q`'s model polynomial of the honest stack is the prover's.** -/
 theorem modelQ_eq (w : ℕ → K) (α β γ : E) :
     (pi2Model Fa roots hcol).qP (honestQ (C.G roots) w α β γ) =
-      UniComplete.AlgC.novP ((C.G roots).logN + 2) fun j ↦ (qNovel (C.G roots) w α β γ).getD j 0 := by
+      UniKeccakComplete.AlgC.novP ((C.G roots).logN + 2) fun j ↦ (qNovel (C.G roots) w α β γ).getD j 0 := by
   have hm := view_logN Fa roots
   have h24 := logN_G Fa roots
   show qPoly (qTable (D.circuitAt roots.pi1).circuit.logN _) (D.circuitAt roots.pi1).circuit.logN = _
   rw [hm]
   unfold qPoly
-  exact UniComplete.AlgC.novP_congr _ fun k hk ↦ qCoef_honest_q _ w α β γ (by omega) hk
+  exact UniKeccakComplete.AlgC.novP_congr _ fun k hk ↦ qCoef_honest_q _ w α β γ (by omega) hk
 
 /-! ## `ξ` and the fold values -/
 
@@ -102,7 +102,7 @@ theorem mle_extract_eq (a : Array K) (off m : ℕ) (ha : off + 2 ^ m ≤ a.size)
   have hs : ((a.extract off (off + 2 ^ m)).map ofK).size = 2 ^ ((digitsList t (m + 3)).take m).length := by
     rw [hlen, Array.size_map, Array.size_extract, Nat.min_eq_left ha]
     exact Nat.add_sub_cancel_left _ _
-  have hA := UniComplete.AlgC.mle_eq_sum ((a.extract off (off + 2 ^ m)).map ofK) _ hs
+  have hA := UniKeccakComplete.AlgC.mle_eq_sum ((a.extract off (off + 2 ^ m)).map ofK) _ hs
   rw [Array.toList_map] at hA
   rw [hA, hlen, wPoly_eval]
   refine Finset.sum_congr rfl fun x hx ↦ ?_
@@ -117,7 +117,7 @@ theorem mle_extract_eq (a : Array K) (off m : ℕ) (ha : off + 2 ^ m ≤ a.size)
 
 theorem size_setupStack (c : Pi2Circuit) : c.setupStack.size = 2 ^ c.circuit.logN + 2 ^ c.circuit.logN := by
   unfold Pi2Circuit.setupStack
-  simp [UniComplete.AlgC.bCoefficients_size]
+  simp [UniKeccakComplete.AlgC.bCoefficients_size]
 
 /-- **`ξ` from the setup's halves is `κ(t) + β σ(t)`** at the model's setup polynomials. -/
 theorem xiOf_eq (β t : E) :

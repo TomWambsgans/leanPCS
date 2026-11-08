@@ -30,9 +30,8 @@ open LeanVM LeanVM.Rpm LeanVM.Parameters LeanVM.Semantics LeanVM.Protocol LeanVM
 open LeanVM.Protocol.Compile (Bytes)
 open E2ECompleteness (ro Cache HashOK cache_of_hashOK prEvent_fresh prEvent_final_le Regular length_digestBytes
   simulateQ_callKeccak256)
-open UniComplete.Prob (GoodL prEvent_query_le sum_const_div sum_mem_le sum_bad_le)
-open UniComplete.Prob.TFresh (HC hc_of_qc CacheBound cacheBound_empty cacheBound_run sum_hit_le take_digestBytes'
-  run_frame)
+open UniKeccakComplete.Prob (GoodL prEvent_query_le sum_const_div sum_mem_le sum_bad_le)
+open UniKeccakComplete.Prob.TFresh (HC hc_of_qc CacheBound cacheBound_empty cacheBound_run sum_hit_le take_digestBytes' run_frame)
 open scoped ENNReal
 
 set_option autoImplicit false
@@ -374,7 +373,7 @@ theorem tFresh_ofG (S : Pi2Staged) {δ : Type} (T : S.α → Digest → Digest �
     simp only [hbad, ↓reduceIte, zero_add]
     rw [not_or, not_or] at hbad
     have hT2 : HashOK (fun m ↦ m ≠ digestBytes s₂) (T p.1 s₁ s₂ u) :=
-      UniComplete.Prob.HashOK.mono (P := fun m ↦ m.length ≠ 32) (Q := fun m ↦ m ≠ digestBytes s₂)
+      UniKeccakComplete.Prob.HashOK.mono (P := fun m ↦ m.length ≠ 32) (Q := fun m ↦ m ≠ digestBytes s₂)
         (fun m hm he ↦ hm (by rw [he]; exact length_digestBytes s₂)) (hT32 _ _ _ _)
     try dsimp only
     rw [run_frame _ u _ hT2 c₂]
@@ -434,7 +433,7 @@ theorem pi2TFresh_ofG {D : RecDeployment} (C : Pi2Circuits D) (Fa : Pi2Facts D C
   refine TF.tFresh_ofG (pi2Staged D C Fa P1k input) (fun a s₁ s₂ s₃ ↦ treeB C a s₁ s₂ s₃)
     (fun a s₁ s₂ s₃ qT ↦ outB C a s₁ s₂ s₃ qT) (fun a s₁ s₂ s₃ ↦ stageB_eq D C a s₁ s₂ s₃)
     (fun a s₁ s₂ s₃ ↦ TF.apq_commitWithH _ _ _ (List.mem_singleton_self _))
-    (fun a s₁ s₂ s₃ ↦ UniComplete.Prob.HashOK.mono (fun m h ↦ h.1) (E2ECompleteness.hashOK_commitWithH _ _))
+    (fun a s₁ s₂ s₃ ↦ UniKeccakComplete.Prob.HashOK.mono (fun m h ↦ h.1) (E2ECompleteness.hashOK_commitWithH _ _))
     (NT := E2ECompleteness.Cost.treeCost muQ)
     (fun a s₁ s₂ s₃ ↦ by
       unfold treeB E2ECompleteness.Cost.treeCost

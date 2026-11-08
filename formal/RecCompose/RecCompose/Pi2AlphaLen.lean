@@ -34,7 +34,7 @@ open E2ECompleteness (HashOK hashOK_callKeccak256 hashOK_callKeccakF1600)
 open E2ECompleteness.Cost (qc_absorb qc_squeeze qc_powStepM qc_openingSpongeWithH OWordsLE
   oWordsLE_afterSend oWordsLE_afterSample oWordsLE_afterGrind oWordsLE_afterCommit oWordsLE_afterQuery
   length_wordOf_le wordsLE_openingScript)
-open UniComplete.Cost (CostP costP_query_bind WC WInv wpot)
+open UniKeccakComplete.Cost (CostP costP_query_bind WC WInv wpot)
 
 namespace RecCompose.Pi2A
 
@@ -142,7 +142,7 @@ end LenP
 /-! ## The writer's calculus -/
 
 /-- **`x` hashes only short inputs and writes at most `w` bytes**, from any state of at most `2^14 − w` bytes. -/
-def WS {α : Type} (x : UniComplete.PM α) (w : ℕ) (P : α → UniComplete.Wr → Prop) : Prop :=
+def WS {α : Type} (x : UniKeccakComplete.PM α) (w : ℕ) (P : α → UniComplete.Wr → Prop) : Prop :=
   ∀ c, WInv c → c.stream.size + w ≤ 16384 → LenP (x.run c) fun z ↦
     P z.1 z.2 ∧ WInv z.2 ∧ c.stream.size ≤ z.2.stream.size ∧ z.2.stream.size ≤ c.stream.size + w
 
@@ -151,7 +151,7 @@ section WS
 variable {α β : Type}
 
 /-- **A piece of at most `2^14` blocks beyond its bytes.** -/
-theorem ws_of_wc {x : UniComplete.PM α} {k w : ℕ} {P : α → UniComplete.Wr → Prop} (h : WC x k w P)
+theorem ws_of_wc {x : UniKeccakComplete.PM α} {k w : ℕ} {P : α → UniComplete.Wr → Prop} (h : WC x k w P)
     (hk : k ≤ 16384) : WS x w P := by
   intro c hc hs
   refine (lenP_of_costP (h c hc 0) ?_).mono fun z ⟨_, hz⟩ ↦ ⟨hz.1, hz.2.1, hz.2.2.1, hz.2.2.2.1⟩
@@ -159,7 +159,7 @@ theorem ws_of_wc {x : UniComplete.PM α} {k w : ℕ} {P : α → UniComplete.Wr 
   rw [two26]
   omega
 
-theorem ws_seq {x : UniComplete.PM α} {f : α → UniComplete.PM β} {w₁ w : ℕ} {P : α → UniComplete.Wr → Prop}
+theorem ws_seq {x : UniKeccakComplete.PM α} {f : α → UniKeccakComplete.PM β} {w₁ w : ℕ} {P : α → UniComplete.Wr → Prop}
     {Q : β → UniComplete.Wr → Prop} (hx : WS x w₁ P) (hf : ∀ a s, P a s → WS (f a) (w - w₁) Q) (hw : w₁ ≤ w) :
     WS (x >>= f) w Q := by
   intro c hc hs
@@ -170,7 +170,7 @@ theorem ws_seq {x : UniComplete.PM α} {f : α → UniComplete.PM β} {w₁ w : 
 
 /-- **A lifted computation** of short queries writes nothing. -/
 theorem ws_lift {X : OracleComp KeccakCalls α} (hX : HashOK Short X) :
-    WS (StateT.lift X : UniComplete.PM α) 0 fun _ _ ↦ True := by
+    WS (StateT.lift X : UniKeccakComplete.PM α) 0 fun _ _ ↦ True := by
   intro c hc _
   rw [StateT.run_lift]
   exact (lenP_of_hashOK hX).bind fun a _ ↦ ⟨trivial, hc, le_rfl, Nat.le_add_right _ _⟩
@@ -211,8 +211,8 @@ theorem hashOK_commitWithH (μ : ℕ) (stack : Array K) :
   hashOK_buildTree _ _ fun p ↦ by rw [E2ECompleteness.length_stackWordFast]; norm_num
 
 theorem hashOK_commitReal (c : Commitment) (vars : ℕ) (stack : Array K) :
-    HashOK Short (UniComplete.commitReal callKeccak256 c vars stack) := by
-  unfold UniComplete.commitReal
+    HashOK Short (UniKeccakComplete.commitReal callKeccak256 c vars stack) := by
+  unfold UniKeccakComplete.commitReal
   exact E2ECompleteness.HashOK.bind (hashOK_commitWithH _ _) fun _ ↦ E2ECompleteness.HashOK.pure _ _
 
 /-- **The setup's two trees.** -/

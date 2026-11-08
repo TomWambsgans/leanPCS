@@ -42,8 +42,7 @@ open LeanVM LeanVM.Rpm LeanVM.Parameters LeanVM.Semantics LeanVM.Protocol LeanVM
 open RecStatement
 open UniStatement (Chan ChanM)
 open E2ECompleteness.Cost (QC qc_pure qc_H qc_H_le qc_commitWithH treeCost vOpen blockFactor)
-open UniComplete.Cost (CostP costP_query_bind costP_of_qc CC cc_bind cc_mono cc_seq cc_free cc_pure cc_forIn_list
-  cc_sampleH cc_nextScalar cc_nextInteger cc_nextRoot cc_nextScalars cc_finish len_digestBytes pot Inv)
+open UniKeccakComplete.Cost (CostP costP_query_bind costP_of_qc CC cc_bind cc_mono cc_seq cc_free cc_pure cc_forIn_list cc_sampleH cc_nextScalar cc_nextInteger cc_nextRoot cc_nextScalars cc_finish len_digestBytes pot Inv)
 open LeanVM.Protocol.Verifier (whirBound costHeight)
 
 namespace RecCompose.Pi2G
@@ -72,17 +71,17 @@ theorem CP.bind {X : OracleComp KeccakCalls α} {f : α → OracleComp KeccakCal
     {Q : β → Prop} (hX : CP X c₁ P) (hf : ∀ a, P a → CP (f a) c₂ Q) : CP (X >>= f) (c₁ + c₂) Q := by
   intro m
   rw [show c₁ + c₂ + m = c₁ + (c₂ + m) by omega]
-  exact UniComplete.Cost.CostP.bind (hX (c₂ + m)) fun a r h ↦ costP_budget (hf a h.1 m) h.2
+  exact UniKeccakComplete.Cost.CostP.bind (hX (c₂ + m)) fun a r h ↦ costP_budget (hf a h.1 m) h.2
 
 theorem CP.mono {X : OracleComp KeccakCalls α} {c c' : ℕ} {P P' : α → Prop} (h : CP X c P) (hc : c ≤ c')
     (hP : ∀ a, P a → P' a) : CP X c' P' := by
   intro m
   have h1 := h (m + (c' - c))
   rw [show c + (m + (c' - c)) = c' + m by omega] at h1
-  exact UniComplete.Cost.CostP.mono h1 fun a r h ↦ ⟨hP a h.1, by omega⟩
+  exact UniKeccakComplete.Cost.CostP.mono h1 fun a r h ↦ ⟨hP a h.1, by omega⟩
 
 theorem cp_of_qc {X : OracleComp KeccakCalls α} {c : ℕ} (h : QC X c) : CP X c fun _ ↦ True :=
-  fun m ↦ UniComplete.Cost.CostP.mono (costP_of_qc h m) fun _ _ hr ↦ ⟨trivial, hr⟩
+  fun m ↦ UniKeccakComplete.Cost.CostP.mono (costP_of_qc h m) fun _ _ hr ↦ ⟨trivial, hr⟩
 
 theorem cp_pure (a : α) {P : α → Prop} (h : P a) : CP (pure a : OracleComp KeccakCalls α) 0 P :=
   fun m ↦ ⟨h, Nat.le_add_left m 0⟩
@@ -90,7 +89,7 @@ theorem cp_pure (a : α) {P : α → Prop} (h : P a) : CP (pure a : OracleComp K
 theorem CP.toQC {X : OracleComp KeccakCalls α} {c : ℕ} {P : α → Prop} (h : CP X c P) : QC X c := by
   have h0 := h 0
   rw [Nat.add_zero] at h0
-  exact UniComplete.Cost.CostP.toQC h0
+  exact UniKeccakComplete.Cost.CostP.toQC h0
 
 theorem cp_H (x : List UInt8) : CP (callKeccak256 x) (x.length / 136 + 1) fun _ ↦ True := cp_of_qc (qc_H x)
 
@@ -251,7 +250,7 @@ theorem length_publicWire_le : ∀ (l : List (Read × PublicValue)), (∀ p ∈ 
     omega
   | (.root, .root _) :: rest, h => by
     have := length_publicWire_le rest fun p hp ↦ h p (List.mem_cons_of_mem _ hp)
-    simp only [Pi2S.publicWire, List.length_append, UniComplete.Cost.length_rootWord, List.length_cons]
+    simp only [Pi2S.publicWire, List.length_append, UniKeccakComplete.Cost.length_rootWord, List.length_cons]
     omega
   | (.root, .scalar _) :: rest, h => by
     have := length_publicWire_le rest fun p hp ↦ h p (List.mem_cons_of_mem _ hp)
@@ -267,7 +266,7 @@ theorem length_publicWire_le : ∀ (l : List (Read × PublicValue)), (∀ p ∈ 
     omega
   | (.scalar, .scalar _) :: rest, h => by
     have := length_publicWire_le rest fun p hp ↦ h p (List.mem_cons_of_mem _ hp)
-    simp only [Pi2S.publicWire, List.length_append, UniComplete.Cost.length_scalarWire, List.length_cons]
+    simp only [Pi2S.publicWire, List.length_append, UniKeccakComplete.Cost.length_scalarWire, List.length_cons]
     omega
 
 theorem data_reads_length : Data.reads.length = 19 := by decide +kernel
@@ -330,7 +329,7 @@ theorem cp_post2 (G : RecPiop.Circuit E) (hW : G.logW = 4) (setupStack : Array K
     StateT.run_lift, StateT.run_set, StateT.run_pure]
   refine CP.bind_le (cp_H_le (k := 4) ?_) (fun _ _ ↦ cp_pure _ ?_) le_rfl
   · simp only [List.length_append, len_digestBytes, Array.length_toList, Array.size_extract, Array.size_append,
-      List.size_toArray, UniComplete.Cost.length_flatMap_scalarWire, length_foldValues, hW, hs,
+      List.size_toArray, UniKeccakComplete.Cost.length_flatMap_scalarWire, length_foldValues, hW, hs,
       List.length_singleton, Nat.min_self]
     omega
   · simp [length_foldValues, hW]
@@ -506,7 +505,7 @@ theorem qc_pi1GraphVerifierWithH (hg : GraphsAgree) (D : RecDeployment) (roots :
             have hlen := graph_calls_le hg hout call hcall
             rw [← he] at hc
             refine (qc_openingW (UniStatement.plainLayout (UniStatement.layoutWordVars o.2.1)) _ _ _ 31 ?_
-              (plain_ok _ (UniComplete.Cost.layoutWordVars_le _))).bind_le (fun _ ↦ qc_pure _ 0)
+              (plain_ok _ (UniKeccakComplete.Cost.layoutWordVars_le _))).bind_le (fun _ ↦ qc_pure _ 0)
               (by unfold gOpen; omega)
             rw [plain_vars]
             omega
@@ -551,7 +550,7 @@ theorem registry_ok (shape : UniStatement.Shape) {w : List UInt8} {op : Opener}
   · refine ⟨by decide, fun L hL ↦ ?_⟩
     cases hL
     decide
-  · exact ⟨UniComplete.Cost.layoutWordVars_le _, fun L hL ↦ by cases hL⟩
+  · exact ⟨UniKeccakComplete.Cost.layoutWordVars_le _, fun L hL ↦ by cases hL⟩
 
 /-- The contract's opening: a count of at most `2`, at most `255` variables. -/
 noncomputable def cOpen : ℕ := (76 + 24 * 512) / 136 + 1 + vOpen
@@ -567,7 +566,7 @@ theorem qc_pcsOpenAtH (shape : UniStatement.Shape) (words : List (List UInt8)) (
     obtain ⟨hv, -⟩ := registry_ok shape hlook
     have hk2 := hk k hck
     dsimp only at hcl hv
-    unfold UniComplete.pcsOpenWithH
+    unfold UniKeccakComplete.pcsOpenWithH
     refine qc_openingW (UniStatement.plainLayout vars) root claims p 512 ?_ (plain_ok vars hv)
     rw [plain_vars, hcl]
     have : k * (vars + 1) ≤ 2 * 256 := Nat.mul_le_mul hk2 (by simp only [Opener.vars] at hv; omega)
@@ -663,10 +662,10 @@ theorem costP_runWithH2 (s : Spec) (iv input : List UInt8) (stream : Array UInt8
     have hw : CC (do
         let r ← Pi2H.reduceWithH callKeccak256 s (UniStatement.publicWordsOf input)
         UniStatement.finish (m := OracleComp KeccakCalls)
-        return r : UniComplete.Cost.CM Reduced) 10 0 fun _ ↦ True :=
+        return r : UniKeccakComplete.Cost.CM Reduced) 10 0 fun _ ↦ True :=
       cc_mono (cc_bind (k₂ := 0) (g₂ := 0) (cc_reduceWithH2 s _) fun _ _ ↦ cc_free cc_finish fun _ _ ↦
         cc_pure (P := fun _ : Reduced ↦ True) trivial 0) (by omega) le_rfl fun _ h ↦ h
-    refine UniComplete.Cost.CostP.bind (hw (Chan.start seed stream) ⟨le_rfl, Nat.zero_le _⟩ m) fun z rem hz ↦ ?_
+    refine UniKeccakComplete.Cost.CostP.bind (hw (Chan.start seed stream) ⟨le_rfl, Nat.zero_le _⟩ m) fun z rem hz ↦ ?_
     obtain ⟨res, ch⟩ := z
     show ∀ r, res = .ok r → m ≤ rem
     intro r hr
@@ -680,12 +679,12 @@ noncomputable def contractC (S : ℕ) : ℕ := ivC + (1 + (10 + 3 * S + 6 * cOpe
 theorem qc_contractWithH {D : RecDeployment} (hD : D.Real) (roots : RecSetupRoots) (input : Vector UInt8 32)
     (proof : RecProof) {S : ℕ} (hS : proof.stream.size ≤ S) :
     QC (Pi2H.contractWithH callKeccak256 callKeccakF1600 D roots input proof) (contractC S) := by
-  refine UniComplete.Cost.CostP.toQC (Q := fun _ _ ↦ True) ?_
+  refine UniKeccakComplete.Cost.CostP.toQC (Q := fun _ _ ↦ True) ?_
   unfold Pi2H.contractWithH contractC
-  refine UniComplete.Cost.CostP.bind (cp_ivOfH hD roots _) fun iv rem hiv ↦ ?_
-  refine UniComplete.Cost.CostP.weaken (n := 1 + (10 + 3 * proof.stream.size + 6 * cOpen)) ?_
+  refine UniKeccakComplete.Cost.CostP.bind (cp_ivOfH hD roots _) fun iv rem hiv ↦ ?_
+  refine UniKeccakComplete.Cost.CostP.weaken (n := 1 + (10 + 3 * proof.stream.size + 6 * cOpen)) ?_
     (by have := hiv.2; omega)
-  refine UniComplete.Cost.CostP.bind (costP_runWithH2 _ iv input.toList proof.stream hiv.1 (by simp) (6 * cOpen))
+  refine UniKeccakComplete.Cost.CostP.bind (costP_runWithH2 _ iv input.toList proof.stream hiv.1 (by simp) (6 * cOpen))
     fun o rem' ho ↦ ?_
   split
   · trivial
@@ -697,7 +696,7 @@ theorem qc_contractWithH {D : RecDeployment} (hD : D.Real) (roots : RecSetupRoot
       split
       · trivial
       · rename_i hl
-        refine UniComplete.Cost.CostP.weaken (UniComplete.Cost.CostP.mono (costP_of_qc ?_ 0) fun _ _ _ ↦ trivial)
+        refine UniKeccakComplete.Cost.CostP.weaken (UniKeccakComplete.Cost.CostP.mono (costP_of_qc ?_ 0) fun _ _ _ ↦ trivial)
           (by omega)
         refine (qc_forIn_mem _ _ _ (c := cOpen) fun x hx s ↦ ?_).bind_le (fun _ ↦ qc_pure _ 0) ?_
         · obtain ⟨words, pp⟩ := x
@@ -834,8 +833,8 @@ theorem qc_pi2Staged {D : RecDeployment} (hD : D.Real) (hg : GraphsAgree) (C : P
       norm_num
     · rw [len_digestBytes]
       norm_num
-    · show (UniComplete.Prob.tInput b.wr).length < 136 * 1
-      simp only [UniComplete.Prob.tInput, List.length_append, len_digestBytes, Array.length_toList,
+    · show (UniKeccakComplete.Prob.tInput b.wr).length < 136 * 1
+      simp only [UniKeccakComplete.Prob.tInput, List.length_append, len_digestBytes, Array.length_toList,
         Array.size_extract]
       have := hb.1
       omega

@@ -3,8 +3,8 @@
 -- `KeccakCalls`, `keccakCallsOverQueryPermutation`); the duplex discipline, the block count and the hash census are
 -- `formal/EndToEnd/Completeness`'s (`E2ECompleteness.Disc`, `E2ECompleteness.Cost.QC`, `E2ECompleteness.HashOK`).
 import RecCompose.Pi2ProbStaged
-import UniComplete.ProbTFresh
-import UniComplete.ProverDuplex
+import UniKeccakComplete.K.ProbTFresh
+import UniKeccakComplete.K.ProverDuplex
 
 /-!
 # π1-rec3's prover, as π2's completeness takes it: an abstract program and four named facts

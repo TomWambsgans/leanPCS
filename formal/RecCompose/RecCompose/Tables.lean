@@ -4,7 +4,7 @@
 -- (`PcsQuotient.Layout.ofChunks`, `readEntry`); the novel basis and its sums are `formal/UniComplete`'s (`AlgC.novP`)
 -- and `formal/QuotientSecurity`'s (`tablePoly`).
 import RecCompose.Layers
-import UniComplete.AlgCBasis
+import UniKeccakComplete.K.AlgCBasis
 import UniSound.Ids.Cantor
 
 /-!
@@ -409,10 +409,10 @@ def qTable (m : ℕ) (c : Stk) (i : ℕ) : K := (layoutsOf m).2.1.readEntry c i
 def qCoef (T : ℕ → K) (m kind pd : ℕ) : E := ∑ l ∈ range 3, yE ^ l * ofK (T (pd + 2 ^ (m + 2) * (kind + 2 * l)))
 
 /-- **`h`**: `Q`'s kind-`0` coefficients in the novel basis on `m` digits (degree below `N`). -/
-noncomputable def hPoly (T : ℕ → K) (m : ℕ) : E[X] := UniComplete.AlgC.novP m (qCoef T m 0)
+noncomputable def hPoly (T : ℕ → K) (m : ℕ) : E[X] := UniKeccakComplete.AlgC.novP m (qCoef T m 0)
 
 /-- **`q`**: `Q`'s kind-`1` coefficients in the novel basis on `m + 2` digits (degree below `4N`). -/
-noncomputable def qPoly (T : ℕ → K) (m : ℕ) : E[X] := UniComplete.AlgC.novP (m + 2) (qCoef T m 1)
+noncomputable def qPoly (T : ℕ → K) (m : ℕ) : E[X] := UniKeccakComplete.AlgC.novP (m + 2) (qCoef T m 1)
 
 /-- **`Q`'s table is zero outside `quotient_chunks`**: `h`'s digits `1, 2, 3` and the limb `3`. -/
 structure QZero (T : ℕ → K) (m : ℕ) : Prop where
@@ -524,8 +524,8 @@ theorem qCoef_zero_of {T : ℕ → K} {m kind pd : ℕ} (h : ∀ l < 3, T (pd + 
 
 /-- `h`'s coefficients at the novel indices below `4N`: only those below `N`. -/
 theorem sum_qc0 {T : ℕ → K} {m : ℕ} (hz : QZero T m) (w : ℕ → E) :
-    ∑ pd ∈ range (2 ^ (m + 2)), qCoef T m 0 pd * UniComplete.AlgC.novX (m + 2) pd w =
-      ∑ k ∈ range (2 ^ m), qCoef T m 0 k * UniComplete.AlgC.novX m k w := by
+    ∑ pd ∈ range (2 ^ (m + 2)), qCoef T m 0 pd * UniKeccakComplete.AlgC.novX (m + 2) pd w =
+      ∑ k ∈ range (2 ^ m), qCoef T m 0 k * UniKeccakComplete.AlgC.novX m k w := by
   rw [sum_range_two_pow_add m _ 2]
   refine Finset.sum_congr rfl fun k hk ↦ ?_
   have hk' := Finset.mem_range.mp hk
@@ -534,13 +534,13 @@ theorem sum_qc0 {T : ℕ → K} {m : ℕ} (hz : QZero T m) (w : ℕ → E) :
   simp only [show (2 : ℕ) ^ 2 = 4 from rfl, Finset.sum_range_succ, Finset.sum_range_zero, zero_add,
     hz' 1 (by norm_num) (by norm_num), hz' 2 (by norm_num) (by norm_num), hz' 3 (by norm_num) (by norm_num),
     zero_mul, add_zero, mul_zero]
-  rw [UniComplete.AlgC.novX_low (by rw [pow_succ]; omega), UniComplete.AlgC.novX_low hk']
+  rw [UniKeccakComplete.AlgC.novX_low (by rw [pow_succ]; omega), UniKeccakComplete.AlgC.novX_low hk']
 
 /-- A point's weight at `u_l = w_l/(1 + w_l)`: the novel monomial times `Π_l (1 + w_l)⁻¹`. -/
 theorem eqBits_digits {u : List E} {n : ℕ} (hu : u.length = n) {w : ℕ → E} (hw : ∀ l < n, 1 + w l ≠ 0)
     (huw : ∀ l < n, u.getD l 0 = w l / (1 + w l)) (pd : ℕ) :
-    PcsQuotient.eqBits u pd = UniComplete.AlgC.novX n pd w * ∏ l ∈ range n, (1 + w l)⁻¹ := by
-  rw [eqBits_eq_prod, hu, UniComplete.AlgC.novX, ← Finset.prod_mul_distrib]
+    PcsQuotient.eqBits u pd = UniKeccakComplete.AlgC.novX n pd w * ∏ l ∈ range n, (1 + w l)⁻¹ := by
+  rw [eqBits_eq_prod, hu, UniKeccakComplete.AlgC.novX, ← Finset.prod_mul_distrib]
   refine Finset.prod_congr rfl fun l hl ↦ ?_
   have hl' := Finset.mem_range.mp hl
   rw [huw l hl', digit_weight (hw l hl')]
@@ -551,12 +551,12 @@ theorem claim_quotient {T : ℕ → K} {m : ℕ} (hz : QZero T m) {u : List E} (
     (hw : ∀ l < m + 2, 1 + w l ≠ 0) (huw : ∀ l < m + 2, u.getD l 0 = w l / (1 + w l)) (ρ' : E) :
     ∑ i ∈ range (2 ^ (m + 5)), PcsQuotient.eqBits (u ++ [ρ', extension.1.1, extension.1.2]) i * ofK (T i) =
       extension.2 * (∏ l ∈ range (m + 2), (1 + w l)⁻¹) *
-        ((1 + ρ') * ∑ k ∈ range (2 ^ m), qCoef T m 0 k * UniComplete.AlgC.novX m k w +
-          ρ' * ∑ k ∈ range (2 ^ (m + 2)), qCoef T m 1 k * UniComplete.AlgC.novX (m + 2) k w) := by
+        ((1 + ρ') * ∑ k ∈ range (2 ^ m), qCoef T m 0 k * UniKeccakComplete.AlgC.novX m k w +
+          ρ' * ∑ k ∈ range (2 ^ (m + 2)), qCoef T m 1 k * UniKeccakComplete.AlgC.novX (m + 2) k w) := by
   rw [show m + 5 = (m + 2) + 3 by ring, sum_range_two_pow_add (m + 2) _ 3, ← sum_qc0 hz w]
   have hinner : ∀ pd < 2 ^ (m + 2), ∑ kd ∈ range (2 ^ 3), PcsQuotient.eqBits (u ++ [ρ', extension.1.1, extension.1.2])
       (pd + 2 ^ (m + 2) * kd) * ofK (T (pd + 2 ^ (m + 2) * kd)) =
-      UniComplete.AlgC.novX (m + 2) pd w * (∏ l ∈ range (m + 2), (1 + w l)⁻¹) *
+      UniKeccakComplete.AlgC.novX (m + 2) pd w * (∏ l ∈ range (m + 2), (1 + w l)⁻¹) *
         (extension.2 * ((1 + ρ') * qCoef T m 0 pd + ρ' * qCoef T m 1 pd)) := by
     intro pd hpd
     have hpd' : pd < 2 ^ u.length := by rw [hu]; exact hpd
@@ -640,14 +640,14 @@ theorem wP_eval_sq (l : ℕ) (x : E) : (UniComplete.Domain.wP l).eval x = Quotie
 
 /-- **A novel-basis polynomial at a point**: `Σ_k d_k Π_{l : k_l} s^l(x)`. -/
 theorem novP_eval_sq (m : ℕ) (d : ℕ → E) (x : E) :
-    (UniComplete.AlgC.novP m d).eval x =
-      ∑ k ∈ range (2 ^ m), d k * UniComplete.AlgC.novX m k (fun l ↦ QuotientSecurity.sq^[l] x) := by
-  rw [UniComplete.AlgC.novP_eval]
+    (UniKeccakComplete.AlgC.novP m d).eval x =
+      ∑ k ∈ range (2 ^ m), d k * UniKeccakComplete.AlgC.novX m k (fun l ↦ QuotientSecurity.sq^[l] x) := by
+  rw [UniKeccakComplete.AlgC.novP_eval]
   simp only [wP_eval_sq]
 
 /-- The novel polynomial as `QuotientSecurity.tablePoly` of the table its bits index. -/
 theorem novP_eval_tablePoly (m : ℕ) (d : ℕ → E) (x : E) :
-    (UniComplete.AlgC.novP m d).eval x = (QuotientSecurity.tablePoly (fun b : Fin m → Bool ↦
+    (UniKeccakComplete.AlgC.novP m d).eval x = (QuotientSecurity.tablePoly (fun b : Fin m → Bool ↦
       ∑ i ∈ range (2 ^ m), if (fun k : Fin m ↦ i.testBit k) = b then d i else 0)).eval x := by
   rw [novP_eval_sq, QuotientSecurity.tablePoly_eval]
   unfold QuotientSecurity.digitsEval
@@ -658,12 +658,12 @@ theorem novP_eval_tablePoly (m : ℕ) (d : ℕ → E) (x : E) :
   rw [Finset.sum_ite_eq]
   simp only [Finset.mem_univ, ite_true]
   congr 1
-  unfold UniComplete.AlgC.novX
+  unfold UniKeccakComplete.AlgC.novX
   rw [← Fin.prod_univ_eq_prod_range (fun l ↦ if i.testBit l then QuotientSecurity.sq^[l] x else 1) m]
 
 /-- **`Σ_V h` is `h`'s top coefficient**: `Σ_{i<2^m} h(ω_i) = d_{2^m − 1}` (`RecPiop.sum_tablePoly_omega`). -/
 theorem sum_novP_omega {m : ℕ} (hm : m ≤ 32) (d : ℕ → E) :
-    ∑ i ∈ range (2 ^ m), (UniComplete.AlgC.novP m d).eval (pi2Omega i) = d (2 ^ m - 1) := by
+    ∑ i ∈ range (2 ^ m), (UniKeccakComplete.AlgC.novP m d).eval (pi2Omega i) = d (2 ^ m - 1) := by
   simp only [novP_eval_tablePoly]
   rw [RecPiop.sum_tablePoly_omega UniComplete.Domain.basisE hm]
   have hbits : (fun k : Fin m ↦ (2 ^ m - 1).testBit k) = fun _ ↦ true := by
@@ -726,16 +726,16 @@ theorem readEntry_ofChunks_two {vars lc logN : ℕ} (hlane : logN - PcsQuotient.
 (`m ≤ 28`: UniComplete's `evalB_bCoefficients`, `pEval_colPolyK_pointE`). -/
 theorem wPoly_bCoefficients {m : ℕ} (hm : m ≤ 28) (v : Array K) (hv : v.size = 2 ^ m) {i : ℕ} (hi : i < 2 ^ m) :
     (wPoly m fun j ↦ (UniStatement.bCoefficients m v).getD j 0).eval (pi2Omega i) = ofK (v.getD i 0) := by
-  rw [← UniComplete.AlgC.pEval_colPolyK_pointE hm v hv hi, pi2Omega_eq,
-    ← UniComplete.AlgC.evalB_bCoefficients m m v hv le_rfl, wPoly_eval]
+  rw [← UniKeccakComplete.AlgC.pEval_colPolyK_pointE hm v hv hi, pi2Omega_eq,
+    ← UniKeccakComplete.AlgC.evalB_bCoefficients m m v hv le_rfl, wPoly_eval]
   unfold UniComplete.evalB
-  have hlen := UniComplete.AlgC.length_take_digits (UniStatement.pointE i) (le_refl m)
-  rw [UniComplete.AlgC.mle_eq_sum _ _ (by rw [hlen, Array.size_map, UniComplete.AlgC.bCoefficients_size, hv]), hlen]
+  have hlen := UniKeccakComplete.AlgC.length_take_digits (UniStatement.pointE i) (le_refl m)
+  rw [UniKeccakComplete.AlgC.mle_eq_sum _ _ (by rw [hlen, Array.size_map, UniKeccakComplete.AlgC.bCoefficients_size, hv]), hlen]
   refine Finset.sum_congr rfl fun j _ ↦ ?_
-  rw [UniComplete.AlgC.getD_map_ofK]
+  rw [UniKeccakComplete.AlgC.getD_map_ofK]
   congr 1
   refine Finset.prod_congr rfl fun l hl ↦ ?_
-  rw [UniComplete.AlgC.take_digits_getD _ (le_refl m) (Finset.mem_range.mp hl), wP_eval_sq]
+  rw [UniKeccakComplete.AlgC.take_digits_getD _ (le_refl m) (Finset.mem_range.mp hl), wP_eval_sq]
 
 end RecCompose
 
@@ -785,7 +785,7 @@ theorem setupStack_getD (c : Pi2Circuit) {k : ℕ} (hk : k < 2 ^ c.circuit.logN)
           (Array.ofFn (n := 2 ^ c.circuit.logN) fun i ↦ UniStatement.point (c.sigma i.val))).getD k 0 := by
   have hs : (UniStatement.bCoefficients c.circuit.logN
       (Array.ofFn (n := 2 ^ c.circuit.logN) fun i ↦ c.kappa i.val)).size = 2 ^ c.circuit.logN := by
-    rw [UniComplete.AlgC.bCoefficients_size, Array.size_ofFn]
+    rw [UniKeccakComplete.AlgC.bCoefficients_size, Array.size_ofFn]
   unfold Pi2Circuit.setupStack
   simp only
   constructor
@@ -897,9 +897,9 @@ noncomputable def pi2Model (hcol : Pi2SetupColumns D C) : RecPiop.Model (C.G roo
   wP c := wPoly (D.circuitAt roots.pi1).circuit.logN (wTab D roots c)
   wP_deg c := (natDegree_wPoly_lt _ _).trans_eq (pow_view_N Fa roots)
   hP c := hPoly (qTable (D.circuitAt roots.pi1).circuit.logN c) (D.circuitAt roots.pi1).circuit.logN
-  hP_deg c := (UniComplete.AlgC.novP_natDegree_lt _ _).trans_eq (pow_view_N Fa roots)
+  hP_deg c := (UniKeccakComplete.AlgC.novP_natDegree_lt _ _).trans_eq (pow_view_N Fa roots)
   qP c := qPoly (qTable (D.circuitAt roots.pi1).circuit.logN c) (D.circuitAt roots.pi1).circuit.logN
-  qP_deg c := (UniComplete.AlgC.novP_natDegree_lt _ _).trans_eq (pow_view_N4 Fa roots)
+  qP_deg c := (UniKeccakComplete.AlgC.novP_natDegree_lt _ _).trans_eq (pow_view_N4 Fa roots)
   fold c t := wFold (D.circuitAt roots.pi1).circuit.logN (D.circuitAt roots.pi1).circuit.logRow (wTab D roots c) t
   cells_fold c t x hx := by
     have hx' : x < 2 ^ (D.circuitAt roots.pi1).circuit.logRow := by

@@ -106,18 +106,18 @@ theorem size_hNovel (w : ℕ → K) (α β γ : E) : (hNovel G w α β γ).size 
 /-- **`onCoset` is the novel polynomial at the coset's points.** -/
 theorem onCoset_getD {m : ℕ} (hm : m + 2 ≤ 28) (c : Array E) (hc : c.size = 2 ^ m) {p : ℕ}
     (hp : p < 2 ^ (m + 2)) :
-    (onCoset m c).getD p 0 = (UniComplete.AlgC.novP m fun j ↦ c.getD j 0).eval (cosetPoint m p) := by
+    (onCoset m c).getD p 0 = (UniKeccakComplete.AlgC.novP m fun j ↦ c.getD j 0).eval (cosetPoint m p) := by
   unfold onCoset
   rw [values_getD_novP hm _ _ Array.size_ofFn hp]
   unfold cosetPoint
   congr 1
   have hle : 2 ^ m ≤ 2 ^ (m + 2) := Nat.pow_le_pow_right (by norm_num) (by omega)
-  rw [UniComplete.AlgC.novP_of_zero_above (b := m) (m + 2) _ (by omega) fun k hk1 hk2 ↦ by
+  rw [UniKeccakComplete.AlgC.novP_of_zero_above (b := m) (m + 2) _ (by omega) fun k hk1 hk2 ↦ by
     rw [Array.getD_eq_getD_getElem?, Array.getElem?_ofFn]
     simp only [hk2, dite_true, Option.getD_some]
     rw [Array.getD_eq_getD_getElem?, Array.getElem?_eq_none (by omega)]
     rfl]
-  refine UniComplete.AlgC.novP_congr m fun k hk ↦ ?_
+  refine UniKeccakComplete.AlgC.novP_congr m fun k hk ↦ ?_
   rw [Array.getD_eq_getD_getElem?, Array.getElem?_ofFn]
   simp only [show k < 2 ^ (m + 2) by omega, dite_true, Option.getD_some]
 
@@ -167,10 +167,10 @@ theorem holeAtCoset_eq (hm : G.logN + 2 < 28) {p : ℕ} (hp : p < 2 ^ (G.logN + 
 coefficients. -/
 theorem qValues_eq (hV : G.Valid) (hm : G.logN + 2 < 28) (w : ℕ → K) (α β γ : E)
     (S : RecPiop.SetupPolys G pi2Omega) (wP hP : E[X])
-    (hwP : wP = UniComplete.AlgC.novP G.logN fun j ↦ (UniComplete.novelOfValuesK G.logN (wValues G w)).getD j 0)
-    (hσ : S.σP = UniComplete.AlgC.novP G.logN fun j ↦ (UniComplete.novelOfValuesE G.logN (sigmaValues G)).getD j 0)
-    (hκ : S.κP = UniComplete.AlgC.novP G.logN fun j ↦ (UniComplete.novelOfValuesE G.logN (kappaValues G)).getD j 0)
-    (hhP : hP = UniComplete.AlgC.novP G.logN fun j ↦ (hNovel G w α β γ).getD j 0) {p : ℕ}
+    (hwP : wP = UniKeccakComplete.AlgC.novP G.logN fun j ↦ (UniComplete.novelOfValuesK G.logN (wValues G w)).getD j 0)
+    (hσ : S.σP = UniKeccakComplete.AlgC.novP G.logN fun j ↦ (UniComplete.novelOfValuesE G.logN (sigmaValues G)).getD j 0)
+    (hκ : S.κP = UniKeccakComplete.AlgC.novP G.logN fun j ↦ (UniComplete.novelOfValuesE G.logN (kappaValues G)).getD j 0)
+    (hhP : hP = UniKeccakComplete.AlgC.novP G.logN fun j ↦ (hNovel G w α β γ).getD j 0) {p : ℕ}
     (hp : p < 2 ^ (G.logN + 2)) :
     (qValues G w α β γ).getD p 0 =
       (numPoly S wP hP α β γ).eval (cosetPoint G.logN p) * (zvAt G.logN (cosetPoint G.logN p))⁻¹ := by
@@ -199,26 +199,26 @@ theorem size_qValues (w : ℕ → K) (α β γ : E) : (qValues G w α β γ).siz
 `V_m` is nonzero. -/
 theorem novP_qNovel (hV : G.Valid) (hm : G.logN + 2 < 28) (w : ℕ → K) (α β γ : E)
     (S : RecPiop.SetupPolys G pi2Omega) (wP hP : E[X])
-    (hwP : wP = UniComplete.AlgC.novP G.logN fun j ↦ (UniComplete.novelOfValuesK G.logN (wValues G w)).getD j 0)
-    (hσ : S.σP = UniComplete.AlgC.novP G.logN fun j ↦ (UniComplete.novelOfValuesE G.logN (sigmaValues G)).getD j 0)
-    (hκ : S.κP = UniComplete.AlgC.novP G.logN fun j ↦ (UniComplete.novelOfValuesE G.logN (kappaValues G)).getD j 0)
-    (hhP : hP = UniComplete.AlgC.novP G.logN fun j ↦ (hNovel G w α β γ).getD j 0)
+    (hwP : wP = UniKeccakComplete.AlgC.novP G.logN fun j ↦ (UniComplete.novelOfValuesK G.logN (wValues G w)).getD j 0)
+    (hσ : S.σP = UniKeccakComplete.AlgC.novP G.logN fun j ↦ (UniComplete.novelOfValuesE G.logN (sigmaValues G)).getD j 0)
+    (hκ : S.κP = UniKeccakComplete.AlgC.novP G.logN fun j ↦ (UniComplete.novelOfValuesE G.logN (kappaValues G)).getD j 0)
+    (hhP : hP = UniKeccakComplete.AlgC.novP G.logN fun j ↦ (hNovel G w α β γ).getD j 0)
     (hwv : ∀ j < G.N, wP.eval (pi2Omega j) = RecCircuit.emb w j)
     (hhv : ∀ i < G.N, hP.eval (pi2Omega i) = (hValues G w α β γ).getD i 0)
     (hpull : ∀ i < G.N, ¬ G.IsHole i → RecPiop.dPull pi2Omega (RecCircuit.emb w) α β i ≠ 0)
     (hpush : ∀ i < G.N, G.dPush pi2Omega (RecCircuit.emb w) α β γ i ≠ 0) :
-    (UniComplete.AlgC.novP (G.logN + 2) fun j ↦ (qNovel G w α β γ).getD j 0) =
+    (UniKeccakComplete.AlgC.novP (G.logN + 2) fun j ↦ (qNovel G w α β γ).getD j 0) =
       numPoly S wP hP α β γ /ₘ G.zV pi2Omega := by
   have hn : G.logN ≤ 32 := by omega
   have hnum := num_eq_zV_mul hn fun i hi ↦ numPoly_eval_omega hV hn S w hwv α β γ hhv hpull hpush hi
-  have hwdeg : wP.natDegree < G.N := by rw [hwP]; exact UniComplete.AlgC.novP_natDegree_lt _ _
-  have hhdeg : hP.natDegree < G.N := by rw [hhP]; exact UniComplete.AlgC.novP_natDegree_lt _ _
-  refine poly_eq_of_eval_eq (n := 2 ^ (G.logN + 2)) (UniComplete.AlgC.novP_natDegree_lt _ _) ?_
+  have hwdeg : wP.natDegree < G.N := by rw [hwP]; exact UniKeccakComplete.AlgC.novP_natDegree_lt _ _
+  have hhdeg : hP.natDegree < G.N := by rw [hhP]; exact UniKeccakComplete.AlgC.novP_natDegree_lt _ _
+  refine poly_eq_of_eval_eq (n := 2 ^ (G.logN + 2)) (UniKeccakComplete.AlgC.novP_natDegree_lt _ _) ?_
     (cosetPoint G.logN) (fun a ha b hb h ↦ cosetPoint_inj hm ha hb h) fun p hp ↦ ?_
   · have := natDegree_qHonest_lt hV S hwdeg hhdeg α β γ
     calc _ < 4 * G.N := this
       _ = 2 ^ (G.logN + 2) := by unfold RecPiop.Circuit.N; ring
-  · have hc : (UniComplete.AlgC.novP (G.logN + 2) fun j ↦ (qNovel G w α β γ).getD j 0).eval (cosetPoint G.logN p) =
+  · have hc : (UniKeccakComplete.AlgC.novP (G.logN + 2) fun j ↦ (qNovel G w α β γ).getD j 0).eval (cosetPoint G.logN p) =
         (qValues G w α β γ).getD p 0 :=
       novP_coefficients_eval (k := G.logN + 2) (by omega) (cosetOffset G.logN) (qValues G w α β γ)
         (size_qValues w α β γ) hp

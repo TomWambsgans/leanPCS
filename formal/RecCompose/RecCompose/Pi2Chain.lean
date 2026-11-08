@@ -36,8 +36,8 @@ open LeanVM LeanVM.Rpm LeanVM.Parameters LeanVM.Semantics LeanVM.Protocol LeanVM
 open LeanVM.Protocol.Compile (Bytes)
 open E2ECompleteness (ro Cache HashOK cache_of_hashOK prEvent_fresh prEvent_final_le Regular length_digestBytes
   simulateQ_callKeccak256)
-open UniComplete.Prob (GoodL prEvent_query_le sum_const_div sum_mem_le)
-open UniComplete.Prob.TFresh (HC hc_of_qc CacheBound cacheBound_empty cacheBound_run sum_hit_le take_digestBytes')
+open UniKeccakComplete.Prob (GoodL prEvent_query_le sum_const_div sum_mem_le)
+open UniKeccakComplete.Prob.TFresh (HC hc_of_qc CacheBound cacheBound_empty cacheBound_run sum_hit_le take_digestBytes')
 open scoped ENNReal
 
 set_option autoImplicit false

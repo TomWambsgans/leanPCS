@@ -205,9 +205,9 @@ theorem graphH_eq (H : List UInt8 → Id Digest) (F : KeccakState → Id KeccakS
     (hchk : (gout.zeros.all (· == 0) && gout.nonzeros.all (· != 0)) = true)
     (hdec : gout.calls.mapM decodePi1Call = some [g0, g1, g2]) :
     Id.run (Pi2H.pi1GraphVerifierWithH (m := Id) H F D roots input p1) =
-      (((true && Id.run (UniComplete.pcsOpenWithH H F (UniStatement.layoutWordVars g0.2.1) g0.1 g0.2.2 p1.c1)) &&
-        Id.run (UniComplete.pcsOpenWithH H F (UniStatement.layoutWordVars g1.2.1) g1.1 g1.2.2 p1.c2)) &&
-        Id.run (UniComplete.pcsOpenWithH H F (UniStatement.layoutWordVars g2.2.1) roots.bytecode g2.2.2
+      (((true && Id.run (UniKeccakComplete.pcsOpenWithH H F (UniStatement.layoutWordVars g0.2.1) g0.1 g0.2.2 p1.c1)) &&
+        Id.run (UniKeccakComplete.pcsOpenWithH H F (UniStatement.layoutWordVars g1.2.1) g1.1 g1.2.2 p1.c2)) &&
+        Id.run (UniKeccakComplete.pcsOpenWithH H F (UniStatement.layoutWordVars g2.2.1) roots.bytecode g2.2.2
           p1.setup)) := by
   unfold Pi2H.pi1GraphVerifierWithH
   rw [hev]
@@ -220,9 +220,9 @@ theorem openSeqH_eq (H : List UInt8 → Id Digest) (F : KeccakState → Id Kecca
     (h0 : reg.lookup o0.2.1 = some (.pi1 v0)) (h1 : reg.lookup o1.2.1 = some (.pi1 v1))
     (h2 : reg.lookup o2.2.1 = some (.pi1 v2)) :
     Id.run (Pi2H.openSeqH (m := Id) H F reg [o0, o1, o2] proof) =
-      ((Id.run (UniComplete.pcsOpenWithH H F v0 o0.1 o0.2.2 proof.c1) &&
-        Id.run (UniComplete.pcsOpenWithH H F v1 o1.1 o1.2.2 proof.c2)) &&
-        Id.run (UniComplete.pcsOpenWithH H F v2 o2.1 o2.2.2 proof.f)) := by
+      ((Id.run (UniKeccakComplete.pcsOpenWithH H F v0 o0.1 o0.2.2 proof.c1) &&
+        Id.run (UniKeccakComplete.pcsOpenWithH H F v1 o1.1 o1.2.2 proof.c2)) &&
+        Id.run (UniKeccakComplete.pcsOpenWithH H F v2 o2.1 o2.2.2 proof.f)) := by
   unfold Pi2H.openSeqH Pi2H.openAtH
   simp only [List.getD_cons_zero, List.getD_cons_succ, h0, h1, h2]
   rfl

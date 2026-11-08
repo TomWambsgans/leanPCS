@@ -6,7 +6,7 @@
 -- logged random oracle and its potential engine, `powPot`, `missProb`, the run at a log's answers.
 import RecCompose.Pi2CompleteEnd
 import RecCompose.Facts
-import UniComplete.ProbGrind
+import UniKeccakComplete.K.ProbGrind
 
 /-!
 # π2's completeness experiment, staged
@@ -58,7 +58,7 @@ open LeanVM LeanVM.Rpm
 open LeanVM.Protocol.Compile LeanVM.Protocol.Compile.Rom
 open LeanVM.Protocol.Rom
 open E2ECompleteness (ro runAt HashOK)
-open UniComplete.Prob (GoodL winState one_le_powPot_of_opening_none)
+open UniKeccakComplete.Prob (GoodL winState one_le_powPot_of_opening_none)
 open Pi2S Pi2K Pi2P Pi2E
 open scoped ENNReal
 
@@ -214,11 +214,11 @@ noncomputable def pi2Staged (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Fac
   β := StB
   ρ := Pr2
   τ := Pr2 × E × E × E
-  inp a := fixLen 536 (UniComplete.Prob.tInput a.wr)
+  inp a := fixLen 536 (UniKeccakComplete.Prob.tInput a.wr)
   pr a := (a.roots, a.vw.2, Fa.pubOf a.roots (publicScalarsOf input.toList a.vw.1))
   A := stageA callKeccak256 callKeccakF1600 D C Fa P1k input
   B := stageB callKeccak256 D C
-  tin b := UniComplete.Prob.tInput b.wr
+  tin b := UniKeccakComplete.Prob.tInput b.wr
   prT b := ((b.a.roots, b.a.vw.2, Fa.pubOf b.a.roots (publicScalarsOf input.toList b.a.vw.1)), b.α, b.β, b.γ)
   C := stageC callKeccak256 callKeccakF1600 D C input
 
@@ -251,7 +251,7 @@ def Pi2ExperimentLe (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C) 
     Pr{let z ← (simulateQ keccakCallsOverRandomPermutation (pi2Staged D C Fa (P1k input rows q) input).run).run' []}[
       z.1.1.1 = true ∧ z.1.1.2 = false]
 
-/-- **Named: the staged run at pure functions** (`UniComplete.Prob.runAt_stagedU`'s analogue: the code's commutation
+/-- **Named: the staged run at pure functions** (`UniKeccakComplete.Prob.runAt_stagedU`'s analogue: the code's commutation
 with `totalImpl H F` and the prover's split at `α` and `t`): its verdict is `expW2` at `Id`, and when `P1k` gives `p1`
 with an honest witness, its priors and challenges are the honest prover's (`outOf`'s inputs). -/
 def Pi2RunAt (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C)

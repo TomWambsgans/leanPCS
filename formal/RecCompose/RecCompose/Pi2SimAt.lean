@@ -8,7 +8,7 @@ import RecCompose.Pi2SimMorph
 # π2's staged run at pure functions
 
 * **`stream_split`**: π2's prover's stream (`pi2ProveStreamWith`) is `pre2`, the three chained challenges, `mid2`,
-  `t`, `post2`, in any lawful monad (`UniComplete.Prob.run_sampleW`; after a challenge the next one's input is the
+  `t`, `post2`, in any lawful monad (`UniKeccakComplete.Prob.run_sampleW`; after a challenge the next one's input is the
   answer's `32` bytes, `tInput_absorbW`).
 * **`tInput_pre2_length`**: on values matching the real circuit's reads, `α`'s input has `536` bytes (the state, the
   public data's `472`, `W`'s root word), so `pi2Staged`'s `fixLen 536` keeps it.
@@ -32,25 +32,25 @@ open Pi2S Pi2K Pi2P Pi2E Pi2G
 
 /-! ## The stream, cut -/
 
-theorem tInput_absorbW (w : Wr) (s : Digest) : UniComplete.Prob.tInput (absorbW w s) = digestBytes s := by
-  simp [UniComplete.Prob.tInput, absorbW]
+theorem tInput_absorbW (w : Wr) (s : Digest) : UniKeccakComplete.Prob.tInput (absorbW w s) = digestBytes s := by
+  simp [UniKeccakComplete.Prob.tInput, absorbW]
 
 section Split
 
 variable {m : Type → Type} [Monad m] [LawfulMonad m] (H : List UInt8 → m Digest)
 
 theorem run_sampleW' (w : Wr) :
-    (UniComplete.sampleW H).run w = H (UniComplete.Prob.tInput w) >>= fun s ↦ pure (chalP s, absorbW w s) :=
-  UniComplete.Prob.run_sampleW H w
+    (UniComplete.sampleW H).run w = H (UniKeccakComplete.Prob.tInput w) >>= fun s ↦ pure (chalP s, absorbW w s) :=
+  UniKeccakComplete.Prob.run_sampleW H w
 
 /-- **The prover's stream, cut at its challenges.** -/
 theorem stream_split (G : RecPiop.Circuit E) (reads : List Read) (setupStack : Array K) (input : List UInt8)
     (values : List PublicValue) (w : ℕ → K) (w0 : Wr) :
     (pi2ProveStreamWith H G reads setupStack input values w).run w0 =
       (pre2 H G reads values w).run w0 >>= fun p ↦
-      H (UniComplete.Prob.tInput p.2) >>= fun s₁ ↦ H (digestBytes s₁) >>= fun s₂ ↦ H (digestBytes s₂) >>= fun s₃ ↦
+      H (UniKeccakComplete.Prob.tInput p.2) >>= fun s₁ ↦ H (digestBytes s₁) >>= fun s₂ ↦ H (digestBytes s₂) >>= fun s₃ ↦
       (mid2 H G w (chalP s₁) (chalP s₂) (chalP s₃)).run (absorbW (absorbW (absorbW p.2 s₁) s₂) s₃) >>= fun q ↦
-      H (UniComplete.Prob.tInput q.2) >>= fun st ↦
+      H (UniKeccakComplete.Prob.tInput q.2) >>= fun st ↦
       (post2 H G setupStack input values w p.1.1 p.1.2 q.1.1 q.1.2 (chalP s₁) (chalP s₂) (chalP s₃)
         (chalP st)).run (absorbW q.2 st) := by
   simp only [pi2ProveStreamWith, pre2, mid2, post2, StateT.run_bind, StateT.run_pure, StateT.run_lift,
@@ -61,8 +61,8 @@ end Split
 /-! ## `α`'s input -/
 
 theorem tInput_start_append (seed : Digest) (B : List UInt8) :
-    UniComplete.Prob.tInput ((Wr.start seed).append B) = digestBytes seed ++ B := by
-  simp [UniComplete.Prob.tInput, Wr.start, UniComplete.Wr.append]
+    UniKeccakComplete.Prob.tInput ((Wr.start seed).append B) = digestBytes seed ++ B := by
+  simp [UniKeccakComplete.Prob.tInput, Wr.start, UniComplete.Wr.append]
 
 /-- **`pre2`'s writer**: the start's, the public data and `W`'s root word appended. -/
 theorem pre2_writer (G : RecPiop.Circuit E) (reads : List Read) (values : List PublicValue) (w : ℕ → K)
@@ -70,21 +70,21 @@ theorem pre2_writer (G : RecPiop.Circuit E) (reads : List Read) (values : List P
     (Id.run ((pre2 (m := Id) (Pure.pure ∘ Hk) G reads values w).run w0)).2 =
       w0.append (publicWire (reads.zip values) ++ UniStatement.rootWord h) := by
   have hw := sendPublic_writes (reads.zip values) w0
-  unfold UniComplete.Writes at hw
+  unfold UniKeccakComplete.Writes at hw
   refine ⟨digestScalars (Id.run (E2ECompleteness.commitWithH (m := Id) (Pure.pure ∘ Hk) (layoutsOf G.logN).1.logN
     (placePublic (layoutsOf G.logN).1 fun i ↦ (wTableB G w).getD i 0))).root, ?_⟩
   unfold pre2
-  rw [UniComplete.wr_run_bind, hw, UniComplete.wr_run_bind, UniComplete.wr_run_bind]
+  rw [UniKeccakComplete.wr_run_bind, hw, UniKeccakComplete.wr_run_bind, UniKeccakComplete.wr_run_bind]
   rw [← UniComplete.Wr.append_append w0 (publicWire (reads.zip values))]
   rfl
 
 theorem tInput_pre2_length (G : RecPiop.Circuit E) (reads : List Read) (values : List PublicValue) (w : ℕ → K)
     (Hk : List UInt8 → Digest) (seed : Digest) (hm : List.Forall₂ ReadMatch reads values) :
-    (UniComplete.Prob.tInput (Id.run ((pre2 (m := Id) (Pure.pure ∘ Hk) G reads values w).run
+    (UniKeccakComplete.Prob.tInput (Id.run ((pre2 (m := Id) (Pure.pure ∘ Hk) G reads values w).run
       (Wr.start seed))).2).length = 32 + (reads.map Read.bytes).sum + 32 := by
   obtain ⟨h, hw⟩ := pre2_writer G reads values w Hk (Wr.start seed)
   rw [hw, tInput_start_append]
-  simp only [List.length_append, publicWire_length reads values hm, UniComplete.Prob.rootWord_length,
+  simp only [List.length_append, publicWire_length reads values hm, UniKeccakComplete.Prob.rootWord_length,
     E2ECompleteness.length_digestBytes]
   all_goals omega
 
@@ -112,11 +112,11 @@ noncomputable def prOf (a : StA) : Pr2 := (a.roots, a.vw.2, Fa.pubOf a.roots (pu
 noncomputable def stagedAt (o : Option UniKeccak.KeccakProof) :
     ((Bool × Bool) × ((Pr2 × E × E × E) × E)) × (Pr2 × E × E × E) :=
   let a := aAt Ht Ft D C Fa input o
-  let s₁ := Ht (fixLen 536 (UniComplete.Prob.tInput a.wr))
+  let s₁ := Ht (fixLen 536 (UniKeccakComplete.Prob.tInput a.wr))
   let s₂ := Ht (digestBytes s₁)
   let s₃ := Ht (digestBytes s₂)
   let b := bAt Ht D C a s₁ s₂ s₃
-  let st := Ht (UniComplete.Prob.tInput b.wr)
+  let st := Ht (UniKeccakComplete.Prob.tInput b.wr)
   ((cAt Ht Ft D C input b st, ((prOf D C Fa input b.a, b.α, b.β, b.γ), chalP st)),
     (prOf D C Fa input a, chalP s₁, chalP s₂, chalP s₃))
 
@@ -182,8 +182,8 @@ theorem bAt_wr (a : StA) (s₁ s₂ s₃ : Digest) : (bAt Ht D C a s₁ s₂ s�
 /-- **On an honest witness `α`'s input has `536` bytes** (at the real deployment): `fixLen` keeps it. -/
 theorem fixLen_aAt (hD : D.Real)
     (hgood : Pi2Good D C Fa (rootsH D Ht Ft) input p1.stream (vwAt Ht Ft D C Fa input p1)) :
-    fixLen 536 (UniComplete.Prob.tInput (aAt Ht Ft D C Fa input (some p1)).wr) =
-      UniComplete.Prob.tInput (aAt Ht Ft D C Fa input (some p1)).wr := by
+    fixLen 536 (UniKeccakComplete.Prob.tInput (aAt Ht Ft D C Fa input (some p1)).wr) =
+      UniKeccakComplete.Prob.tInput (aAt Ht Ft D C Fa input (some p1)).wr := by
   unfold fixLen
   split_ifs with h
   · rfl
@@ -199,12 +199,12 @@ noncomputable abbrev outAt : Pi2Out :=
   outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) input (vwAt Ht Ft D C Fa input p1).1 (vwAt Ht Ft D C Fa input p1).2
 
 /-- The staged run's chained answers and stage B, on π1's proof `p1` (`fixLen` dropped). -/
-noncomputable abbrev s1At : Digest := Ht (UniComplete.Prob.tInput (aAt Ht Ft D C Fa input (some p1)).wr)
+noncomputable abbrev s1At : Digest := Ht (UniKeccakComplete.Prob.tInput (aAt Ht Ft D C Fa input (some p1)).wr)
 noncomputable abbrev s2At : Digest := Ht (digestBytes (s1At Ht Ft D C Fa input p1))
 noncomputable abbrev s3At : Digest := Ht (digestBytes (s2At Ht Ft D C Fa input p1))
 noncomputable abbrev bAtP : StB := bAt Ht D C (aAt Ht Ft D C Fa input (some p1)) (s1At Ht Ft D C Fa input p1)
   (s2At Ht Ft D C Fa input p1) (s3At Ht Ft D C Fa input p1)
-noncomputable abbrev stAt : Digest := Ht (UniComplete.Prob.tInput (bAtP Ht Ft D C Fa input p1).wr)
+noncomputable abbrev stAt : Digest := Ht (UniKeccakComplete.Prob.tInput (bAtP Ht Ft D C Fa input p1).wr)
 
 /-- **The staged run's `post2` is the honest prover's output.** -/
 theorem post2_eq_outAt :
