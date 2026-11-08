@@ -1,6 +1,7 @@
 // Adapted from leanVM (https://github.com/leanEthereum/leanVM), commit 42422001, file crates/verifier/src/field.rs:
-// unchanged but for this header, `E::frobenius` made public and `Scaled` (a speed-up the port does not use) kept for its
-// test only. MIT OR Apache-2.0; see AGENTS.md.
+// unchanged but for this header, `E::frobenius` made public, `Scaled` (a speed-up the port does not use) kept for its
+// test only, and the carry-less product primitives' `gf2_64::mul_wide` (one PMULL or PCLMULQDQ where the build has
+// it), the integer version kept as the test's reference. MIT OR Apache-2.0; see AGENTS.md.
 //! Field arithmetic: `K = GF(2)[x]/(x^64 + x^4 + x^3 + x + 1)` and `E = K[y]/(y^3 + y + 1)`, on plain integers.
 
 use crate::{VerifierError, require};
@@ -10,6 +11,7 @@ use std::ops::{Add, AddAssign, Mul, MulAssign};
 /// classes of their bit positions mod 4, a coefficient below bit 60 sums at most 15 bits, so its carries stay below
 /// the next bit of its class. One at bit 60 or above may sum 16, whose carry lands past bit 63. Masking each class
 /// product to its own bits then leaves the parities.
+#[cfg(test)]
 const fn clmul_low(a: u64, b: u64) -> u64 {
     const M0: u64 = 0x1111_1111_1111_1111;
     const M1: u64 = M0 << 1;
@@ -25,10 +27,18 @@ const fn clmul_low(a: u64, b: u64) -> u64 {
 }
 
 /// 64x64 carry-less product: the high half is the low half of the bit-reversed operands' product, reversed back.
-const fn clmul(a: u64, b: u64) -> u128 {
+#[cfg(test)]
+const fn clmul_soft(a: u64, b: u64) -> u128 {
     let low = clmul_low(a, b);
     let high = clmul_low(a.reverse_bits(), b.reverse_bits()).reverse_bits() >> 1;
     (high as u128) << 64 | low as u128
+}
+
+/// 64x64 carry-less product: one PMULL (aarch64) or PCLMULQDQ (x86_64) where the build has it, through
+/// `primitives::field::gf2_64::mul_wide`, else the integer version.
+#[inline(always)]
+fn clmul(a: u64, b: u64) -> u128 {
+    primitives::field::gf2_64::mul_wide(a, b)
 }
 
 /// The carry-less square: the bits of `a` spread to the even positions.
@@ -51,7 +61,7 @@ pub(crate) const fn reduce(p: u128) -> u64 {
     lo ^ v ^ (v << 1) ^ (v << 3) ^ (v << 4)
 }
 
-const fn base_mul(left: u64, right: u64) -> u64 {
+fn base_mul(left: u64, right: u64) -> u64 {
     reduce(clmul(left, right))
 }
 
@@ -338,6 +348,23 @@ mod tests {
             }
         }
         p as u64
+    }
+
+    #[test]
+    fn carry_less_product_matches_the_integer_one() {
+        let mut state = 0x2545_F491_4F6C_DD1Du64;
+        let mut next = move || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+        let operands: Vec<u64> = CORNERS.into_iter().chain(std::iter::repeat_with(&mut next).take(200)).collect();
+        for &a in &operands {
+            for &b in &operands {
+                assert_eq!(clmul(a, b), clmul_soft(a, b));
+            }
+        }
     }
 
     #[test]

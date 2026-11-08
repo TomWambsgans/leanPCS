@@ -374,6 +374,9 @@ impl Builder {
                 self.regions[self.row_region[row as usize] as usize].name
             );
         }
+        // Each (region, role)'s reads, once.
+        let role_reads: Vec<Vec<Vec<u8>>> =
+            self.regions.iter().map(|r| r.roles.iter().map(Formula::reads).collect()).collect();
         let mut dead = 0usize;
         for row in 0..rows as u32 {
             for role in 0..w {
@@ -389,7 +392,7 @@ impl Builder {
                     }
                     continue;
                 }
-                for c in self.formula(row, role).reads() {
+                for &c in &role_reads[self.row_region[row as usize] as usize][role] {
                     assert_ne!(
                         self.cell[self.pos(row, c as usize)],
                         NONE,
@@ -404,16 +407,22 @@ impl Builder {
         let mut words: Vec<K> = vec![K(0); values];
         let mut known = vec![false; values];
         let mut cells = vec![K(0); w];
+        let mut given = self.given.iter().peekable();
+        // The positions with a κ, as bits: most producers have none, and need no lookup.
+        let mut has_kappa = vec![0u64; (rows * w).div_ceil(64)];
+        for &p in self.kappa.keys() {
+            has_kappa[p as usize / 64] |= 1 << (p % 64);
+        }
         for v in 0..values {
-            if let Some(&g) = self.given.get(&(v as Value)) {
+            if let Some((_, &g)) = given.next_if(|&(&u, _)| u as usize == v) {
                 words[v] = g;
                 known[v] = true;
                 continue;
             }
             let p = self.producer[v] as usize;
             let (row, role) = ((p / w) as u32, p % w);
-            let f = self.formula(row, role).clone();
-            for c in f.reads() {
+            let f = self.formula(row, role);
+            for &c in &role_reads[self.row_region[row as usize] as usize][role] {
                 let u = self.cell[self.pos(row, c as usize)];
                 assert!(
                     known[u as usize],
@@ -421,7 +430,11 @@ impl Builder {
                 );
                 cells[c as usize] = words[u as usize];
             }
-            let k = self.kappa.get(&(p as u32)).copied().unwrap_or(K(0));
+            let k = if has_kappa[p / 64] >> (p % 64) & 1 == 1 {
+                self.kappa[&(p as u32)]
+            } else {
+                K(0)
+            };
             words[v] = f.eval(&cells, K(0), K(0)) + k;
             known[v] = true;
         }
