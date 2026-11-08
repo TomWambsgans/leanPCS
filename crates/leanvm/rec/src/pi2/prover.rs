@@ -540,7 +540,7 @@ fn quotient_on_extension(
     let profile = std::env::var_os("PI2_PROFILE").is_some();
     let mut clock = Instant::now();
     let mut lap = |name: &str| {
-        if profile {
+        if profile && !name.is_empty() {
             eprintln!("    q: {:7.3} s  {name}", clock.elapsed().as_secs_f64());
         }
         clock = Instant::now();
@@ -561,12 +561,8 @@ fn quotient_on_extension(
             spec.groups.len()
         );
     }
-    let on_d = |novel: &[F64]| on_extension(novel, m, offset);
-    let wd = on_d(w_novel);
     let (sd, kd) = (&setup.sigma_on_d, &setup.kappa_on_d);
-    let hd = h_novel.map(on_d);
     let gammas = primitives::field::powers(gamma, spec.max_gamma + 1);
-    lap("w, σ, κ, h on D");
 
     // `Z_V` on `D`: `w_m(β_{m+2}) + ω_{i >> m}`, one value per coset of `V_m`, and its inverses.
     let zv_off = chain(offset, m + 1)[m];
@@ -639,106 +635,134 @@ fn quotient_on_extension(
         .collect();
 
     assert!(l0.len() == big && l1.len() == big && l2.len() == big);
-    parallel::chunks_mut3(&mut *l0, &mut *l1, &mut *l2, run, |chunk, o0, o1, o2| {
-        let start = chunk * run;
-        let coset = start >> m;
-        // The chunk's indicators: denominators, then one batched inversion, times `Z_V`.
-        let mut table = vec![one8; vectors];
-        for (p, &(s, z)) in pairs.iter().enumerate() {
-            let len = if wide[p] { pv } else { run / 8 };
-            for v in 0..len {
-                let i = start + 8 * v;
-                table[at[p] + v] =
-                    Kx8::load(&low[s][i & ((1 << LOW) - 1)..]) + Kx8::splat(at_offset[s] + high[s][i >> LOW] + z);
+    // One coset `offset + ω_(c N) + V_m` of `D` at a time: `w`'s and `h`'s values there (one transform of `N` each,
+    // from their coefficients, into buffers the cosets share), then the numerator on it.
+    let polys: [&[F64]; 4] = [w_novel, h_novel[0], h_novel[1], h_novel[2]];
+    let mut on_coset: [Vec<F64>; 4] = [vec![], vec![], vec![], vec![]];
+    let (mut transforms, mut numerator) = (0.0, 0.0);
+    for coset in 0..4 {
+        let clock = Instant::now();
+        let at_coset = offset + point(coset << m);
+        for (buffer, novel) in on_coset.iter_mut().zip(polys) {
+            if coset == 0 {
+                *buffer = copied(novel);
+                ntt::values(buffer, at_coset);
+            } else {
+                ntt::values_from(novel, buffer, at_coset);
             }
         }
-        let mut prefix = vec![one8; vectors];
-        let mut acc = one8;
-        for (pre, &d) in prefix.iter_mut().zip(&table) {
-            *pre = acc;
-            acc = acc * d;
-        }
-        let mut inv = Kx8::new(lanes(acc).map(|x| x.inv())) * Kx8::splat(zv[coset]);
-        for (d, &pre) in table.iter_mut().zip(&prefix).rev() {
-            let next = inv * *d;
-            *d = inv * pre;
-            inv = next;
-        }
-        drop(prefix);
-        // The wide pairs' sums by group (and the pull-less pairs'), `pv` vectors each.
-        let wide_sum = |members: &[usize], k: usize| {
-            members
-                .iter()
-                .filter(|&&p| wide[p])
-                .fold(zero8, |acc, &p| acc + table[at[p] + k])
-        };
-        let group_wide: Vec<Kx8> = groups
-            .iter()
-            .flat_map(|(_, members, _)| (0..pv).map(|k| wide_sum(members, k)).collect::<Vec<_>>())
-            .collect();
-        let pull_less_wide: Vec<Kx8> = (0..pv).map(|k| wide_sum(pull_less, k)).collect();
-        let coefficients = quadratic.coefficients(pv, |g, k| has_wide[g].then(|| group_wide[g * pv + k]));
-        let beta_start = Ex8::splat(beta_.mul_base(offset + point(start)));
-
-        let mut cells = vec![one8; width];
-        for j in 0..run / 8 {
-            let i = start + 8 * j;
-            let jw = j % pv;
-            // Lane `l` is the point `i + l`, its row's cell `c` the point `(i + l) ^ c`.
-            for (c, cell) in cells.iter_mut().enumerate() {
-                *cell = Kx8::load(&wd[i ^ (c & !7)..]).xor_lanes(c & 7);
-            }
-            let w = cells[0];
-            let mut pushed_k = quadratic.eval(&coefficients[jw * quadratic.len..(jw + 1) * quadratic.len], &cells);
-            // The narrow pairs' share, group by group, and the formulas of `E` (all their pairs').
-            let mut selected = zero8;
-            let mut pushed_e = Ex8::splat(F192::ZERO);
-            for &g in &with_narrow {
-                let (compiled, _, narrow) = &groups[g];
-                let narrow_sum = narrow.iter().fold(zero8, |acc, &p| acc + table[at[p] + j]);
-                selected = selected + narrow_sum;
-                match compiled {
-                    Compiled::K { lin, products } => {
-                        pushed_k = pushed_k + Kx8U::product(narrow_sum, k_value(lin, products, &cells));
-                    }
-                    Compiled::ELinear { terms, constant } => {
-                        let sum = group_wide[g * pv + jw] + narrow_sum;
-                        let mut v = MixedSum::default();
-                        terms.iter().for_each(|(c, cell)| v.add(c, cells[*cell]));
-                        pushed_e = pushed_e + (v.reduce() + Ex8::splat(*constant)).mul_k(sum);
-                    }
-                    Compiled::E { formula, role } => {
-                        let sum = group_wide[g * pv + jw] + narrow_sum;
-                        let rows: Vec<[F64; 8]> = cells.iter().map(|&c| lanes(c)).collect();
-                        let sums = lanes(sum);
-                        let v: [F192; 8] = std::array::from_fn(|l| {
-                            formula
-                                .eval(&|c| F192::from(rows[c ^ role][l]), &gammas)
-                                .mul_base(sums[l])
-                        });
-                        let limb = |k: usize| Kx8::new(v.map(|x| F64([x.c0, x.c1, x.c2][k])));
-                        pushed_e = pushed_e + Ex8::from_limbs([limb(0), limb(1), limb(2)]);
-                    }
+        let [wd, h0d, h1d, h2d] = &on_coset;
+        let hd = [h0d, h1d, h2d];
+        transforms += clock.elapsed().as_secs_f64();
+        let clock = Instant::now();
+        let quarter = coset * n..(coset + 1) * n;
+        let (l0, l1, l2) = (&mut l0[quarter.clone()], &mut l1[quarter.clone()], &mut l2[quarter]);
+        parallel::chunks_mut3(l0, l1, l2, run, |chunk, o0, o1, o2| {
+            let start = coset * n + chunk * run;
+            // The chunk's indicators: denominators, then one batched inversion, times `Z_V`.
+            let mut table = vec![one8; vectors];
+            for (p, &(s, z)) in pairs.iter().enumerate() {
+                let len = if wide[p] { pv } else { run / 8 };
+                for v in 0..len {
+                    let i = start + 8 * v;
+                    table[at[p] + v] =
+                        Kx8::load(&low[s][i & ((1 << LOW) - 1)..]) + Kx8::splat(at_offset[s] + high[s][i >> LOW] + z);
                 }
             }
-            let one_s = pull_less_narrow
+            let mut prefix = vec![one8; vectors];
+            let mut acc = one8;
+            for (pre, &d) in prefix.iter_mut().zip(&table) {
+                *pre = acc;
+                acc = acc * d;
+            }
+            let mut inv = Kx8::new(lanes(acc).map(|x| x.inv())) * Kx8::splat(zv[coset]);
+            for (d, &pre) in table.iter_mut().zip(&prefix).rev() {
+                let next = inv * *d;
+                *d = inv * pre;
+                inv = next;
+            }
+            drop(prefix);
+            // The wide pairs' sums by group (and the pull-less pairs'), `pv` vectors each.
+            let wide_sum = |members: &[usize], k: usize| {
+                members
+                    .iter()
+                    .filter(|&&p| wide[p])
+                    .fold(zero8, |acc, &p| acc + table[at[p] + k])
+            };
+            let group_wide: Vec<Kx8> = groups
                 .iter()
-                .fold(pull_less_wide[jw], |acc, &p| acc + table[at[p] + j]);
-            let pushed_k = (pushed_k + Kx8U::product(w, selected)).reduce();
-            let p_t = Ex8::from_k(w + pushed_k + Kx8::load(&kd[i..])) + pushed_e;
-            let d_pull = alpha8 + Ex8::from_k(w) + beta_start + beta_low[j];
-            let d_push = alpha8 + p_t + beta8.mul_k(Kx8::load(&sd[i..]));
-            let h = Ex8::from_limbs([Kx8::load(&hd[0][i..]), Kx8::load(&hd[1][i..]), Kx8::load(&hd[2][i..])]);
-            // `h d_pull d_push + (1 + 1_S) d_push + d_pull = (h d_pull + 1 + 1_S) d_push + d_pull`.
-            let num = (h * d_pull + Ex8::from_k(one8 + one_s)) * d_push + d_pull;
-            let [q0, q1, q2] = num.mul_k(Kx8::splat(zv_inv[coset])).limbs();
-            o0[8 * j..8 * j + 8].copy_from_slice(&q0.to_row().0);
-            o1[8 * j..8 * j + 8].copy_from_slice(&q1.to_row().0);
-            o2[8 * j..8 * j + 8].copy_from_slice(&q2.to_row().0);
-        }
-    });
-    lap("the numerator over Z_V");
-    drop((wd, hd));
+                .flat_map(|(_, members, _)| (0..pv).map(|k| wide_sum(members, k)).collect::<Vec<_>>())
+                .collect();
+            let pull_less_wide: Vec<Kx8> = (0..pv).map(|k| wide_sum(pull_less, k)).collect();
+            let coefficients = quadratic.coefficients(pv, |g, k| has_wide[g].then(|| group_wide[g * pv + k]));
+            let beta_start = Ex8::splat(beta_.mul_base(offset + point(start)));
+
+            let mut cells = vec![one8; width];
+            for j in 0..run / 8 {
+                let i = start + 8 * j;
+                let jw = j % pv;
+                // Lane `l` is the point `i + l`, its row's cell `c` the point `(i + l) ^ c`.
+                for (c, cell) in cells.iter_mut().enumerate() {
+                    *cell = Kx8::load(&wd[(i ^ (c & !7)) & (n - 1)..]).xor_lanes(c & 7);
+                }
+                let w = cells[0];
+                let mut pushed_k = quadratic.eval(&coefficients[jw * quadratic.len..(jw + 1) * quadratic.len], &cells);
+                // The narrow pairs' share, group by group, and the formulas of `E` (all their pairs').
+                let mut selected = zero8;
+                let mut pushed_e = Ex8::splat(F192::ZERO);
+                for &g in &with_narrow {
+                    let (compiled, _, narrow) = &groups[g];
+                    let narrow_sum = narrow.iter().fold(zero8, |acc, &p| acc + table[at[p] + j]);
+                    selected = selected + narrow_sum;
+                    match compiled {
+                        Compiled::K { lin, products } => {
+                            pushed_k = pushed_k + Kx8U::product(narrow_sum, k_value(lin, products, &cells));
+                        }
+                        Compiled::ELinear { terms, constant } => {
+                            let sum = group_wide[g * pv + jw] + narrow_sum;
+                            let mut v = MixedSum::default();
+                            terms.iter().for_each(|(c, cell)| v.add(c, cells[*cell]));
+                            pushed_e = pushed_e + (v.reduce() + Ex8::splat(*constant)).mul_k(sum);
+                        }
+                        Compiled::E { formula, role } => {
+                            let sum = group_wide[g * pv + jw] + narrow_sum;
+                            let rows: Vec<[F64; 8]> = cells.iter().map(|&c| lanes(c)).collect();
+                            let sums = lanes(sum);
+                            let v: [F192; 8] = std::array::from_fn(|l| {
+                                formula
+                                    .eval(&|c| F192::from(rows[c ^ role][l]), &gammas)
+                                    .mul_base(sums[l])
+                            });
+                            let limb = |k: usize| Kx8::new(v.map(|x| F64([x.c0, x.c1, x.c2][k])));
+                            pushed_e = pushed_e + Ex8::from_limbs([limb(0), limb(1), limb(2)]);
+                        }
+                    }
+                }
+                let one_s = pull_less_narrow
+                    .iter()
+                    .fold(pull_less_wide[jw], |acc, &p| acc + table[at[p] + j]);
+                let pushed_k = (pushed_k + Kx8U::product(w, selected)).reduce();
+                let p_t = Ex8::from_k(w + pushed_k + Kx8::load(&kd[i..])) + pushed_e;
+                let d_pull = alpha8 + Ex8::from_k(w) + beta_start + beta_low[j];
+                let d_push = alpha8 + p_t + beta8.mul_k(Kx8::load(&sd[i..]));
+                let at = i & (n - 1);
+                let h = Ex8::from_limbs([Kx8::load(&hd[0][at..]), Kx8::load(&hd[1][at..]), Kx8::load(&hd[2][at..])]);
+                // `h d_pull d_push + (1 + 1_S) d_push + d_pull = (h d_pull + 1 + 1_S) d_push + d_pull`.
+                let num = (h * d_pull + Ex8::from_k(one8 + one_s)) * d_push + d_pull;
+                let [q0, q1, q2] = num.mul_k(Kx8::splat(zv_inv[coset])).limbs();
+                o0[8 * j..8 * j + 8].copy_from_slice(&q0.to_row().0);
+                o1[8 * j..8 * j + 8].copy_from_slice(&q1.to_row().0);
+                o2[8 * j..8 * j + 8].copy_from_slice(&q2.to_row().0);
+            }
+        });
+        numerator += clock.elapsed().as_secs_f64();
+    }
+    drop(on_coset);
+    if profile {
+        eprintln!("    q: {transforms:7.3} s  w, h on D");
+        eprintln!("    q: {numerator:7.3} s  the numerator over Z_V");
+    }
+    lap(""); // the clock, from here
     for limb in [l0, l1, l2] {
         ntt::coefficients(limb, offset);
     }
