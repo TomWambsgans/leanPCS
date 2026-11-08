@@ -320,6 +320,148 @@ impl Compiled {
     }
 }
 
+/// The `K` groups' pushes `Σ_g S_g (E_g + w)` (and every group's `S_g w`) as one quadratic form of the row's cells,
+/// `Σ_a c_a (L_a + Σ_b T_ab c_b) + T_1`, whose coefficients are `K`-combinations of the groups' indicator sums. On a
+/// chunk the wide pairs' indicators are periodic (`pv` vectors), and so are these combinations: they are computed once
+/// a chunk, and a point's share costs one product a distinct monomial of the formulas (rather than one a product of
+/// each group's formula, and one a group).
+struct Quadratic {
+    /// The cells `a` with products, each with its cells `b` (`T_ab`'s coefficients, then `L_a`'s, in this order).
+    rows: Vec<(usize, Vec<usize>)>,
+    /// The cells with a linear coefficient alone (one coefficient each, after the rows').
+    linear: Vec<usize>,
+    /// The coefficients a chunk's vector reads (the constant `T_1` last).
+    len: usize,
+    /// Each group's share: `(coefficient, factor)`, `T[coefficient] += factor S_g`.
+    shares: Vec<Vec<(usize, F64)>>,
+}
+
+impl Quadratic {
+    /// The plan of `spec`'s groups (rows of `width` cells): `K` groups' formulas expanded into monomials of their
+    /// cells (`cell ^ role`), and every group's `w = c_0` (the push `E_g + w`).
+    fn new(spec: &Spec, width: usize) -> Self {
+        use std::collections::BTreeMap;
+        let k = |c: &super::circuit::Coeff| F64(c.value[0]);
+        // Each group's monomials: `(a, b)` with `a <= b`, `(a, NONE)` linear, `(NONE, NONE)` the constant.
+        const NONE: usize = usize::MAX;
+        let monomials: Vec<BTreeMap<(usize, usize), F64>> = spec
+            .groups
+            .iter()
+            .map(|g| {
+                let mut m = BTreeMap::new();
+                let mut add = |key: (usize, usize), c: F64| *m.entry(key).or_insert(F64::ZERO) += c;
+                add((0, NONE), F64::ONE);
+                if g.formula.is_base() {
+                    let role = g.role;
+                    let f = &g.formula;
+                    let terms = |l: &Lin| -> Vec<(F64, usize)> {
+                        l.terms.iter().map(|(c, cell)| (k(c), *cell as usize ^ role)).collect()
+                    };
+                    terms(&f.lin).into_iter().for_each(|(c, cell)| add((cell, NONE), c));
+                    if let Some(c) = &f.lin.constant {
+                        add((NONE, NONE), k(c));
+                    }
+                    for (c, a, b) in &f.products {
+                        let c = k(c);
+                        let (ka, kb) = (a.constant.as_ref().map(k), b.constant.as_ref().map(k));
+                        for &(x, i) in &terms(a) {
+                            for &(y, j) in &terms(b) {
+                                add((i.min(j), i.max(j)), c * x * y);
+                            }
+                            if let Some(kb) = kb {
+                                add((i, NONE), c * x * kb);
+                            }
+                        }
+                        if let Some(ka) = ka {
+                            terms(b).into_iter().for_each(|(y, j)| add((j, NONE), c * ka * y));
+                            if let Some(kb) = kb {
+                                add((NONE, NONE), c * ka * kb);
+                            }
+                        }
+                    }
+                }
+                m.retain(|_, c| *c != F64::ZERO);
+                m
+            })
+            .collect();
+        // The coefficients' order: each row's products then its linear coefficient, the linear cells, the constant.
+        let mut products: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+        let mut linear = vec![false; width];
+        for m in &monomials {
+            for &(a, b) in m.keys() {
+                if a != NONE && b != NONE {
+                    products.entry(a).or_default().push(b);
+                } else if a != NONE {
+                    linear[a] = true;
+                }
+            }
+        }
+        let mut index = BTreeMap::new();
+        let mut rows = vec![];
+        let mut len = 0;
+        for (a, mut bs) in products {
+            bs.sort_unstable();
+            bs.dedup();
+            for &b in &bs {
+                index.insert((a, b), len);
+                len += 1;
+            }
+            index.insert((a, NONE), len);
+            len += 1;
+            rows.push((a, bs));
+        }
+        let linear: Vec<usize> = (0..width).filter(|a| linear[*a] && !index.contains_key(&(*a, NONE))).collect();
+        for &a in &linear {
+            index.insert((a, NONE), len);
+            len += 1;
+        }
+        index.insert((NONE, NONE), len);
+        len += 1;
+        let shares = monomials
+            .iter()
+            .map(|m| m.iter().map(|(key, &c)| (index[key], c)).collect())
+            .collect();
+        Self {
+            rows,
+            linear,
+            len,
+            shares,
+        }
+    }
+
+    /// A chunk's coefficients, `pv` sets of [`Self::len`]: group `g`'s wide sum at vector `k` is `sum(g, k)` (`None`:
+    /// no wide pair).
+    fn coefficients(&self, pv: usize, sum: impl Fn(usize, usize) -> Option<Kx8>) -> Vec<Kx8> {
+        let mut t = vec![Kx8::splat(F64::ZERO); pv * self.len];
+        for (g, shares) in self.shares.iter().enumerate() {
+            for k in 0..pv {
+                let Some(s) = sum(g, k) else { continue };
+                let t = &mut t[k * self.len..(k + 1) * self.len];
+                for &(i, c) in shares {
+                    t[i] = t[i] + if c == F64::ONE { s } else { Kx8::splat(c) * s };
+                }
+            }
+        }
+        t
+    }
+
+    /// The form at a vector's `cells`, its coefficients `t`, unreduced.
+    #[inline(always)]
+    fn eval(&self, t: &[Kx8], cells: &[Kx8]) -> Kx8U {
+        let mut t = t.iter();
+        let mut next = || *t.next().expect("the plan's coefficients");
+        let mut acc = Kx8U::zero();
+        for (a, bs) in &self.rows {
+            let inner = bs.iter().fold(Kx8U::zero(), |acc, &b| acc + Kx8U::product(next(), cells[b]));
+            acc = acc + Kx8U::product(inner.reduce() + next(), cells[*a]);
+        }
+        for &a in &self.linear {
+            acc = acc + Kx8U::product(next(), cells[a]);
+        }
+        acc + Kx8U::product(next(), Kx8::splat(F64::ONE))
+    }
+}
+
 /// The lanes of eight elements.
 fn lanes(x: Kx8) -> [F64; 8] {
     x.to_row().0
@@ -419,12 +561,27 @@ fn quotient_on_extension(
         .iter()
         .map(|g| (Compiled::new(&g.formula, g.role, &gammas), &g.pairs[..], narrow(&g.pairs)))
         .collect();
+    // The groups' wide parts, as one quadratic form of the row's cells whose coefficients are periodic in a chunk
+    // ([`Quadratic`]); a group's narrow pairs, and the formulas of `E`, are evaluated group by group.
+    let quadratic = Quadratic::new(spec, width);
+    let has_wide: Vec<bool> = spec.groups.iter().map(|g| g.pairs.iter().any(|&p| wide[p])).collect();
+    let with_narrow: Vec<usize> = (0..groups.len())
+        .filter(|&g| !groups[g].2.is_empty() || !matches!(groups[g].0, Compiled::K { .. }))
+        .collect();
     let pull_less = &spec.pull_less;
     let pull_less_narrow = narrow(pull_less);
-    let points8 = Kx8::new(std::array::from_fn(point));
     let (alpha8, beta8) = (Ex8::splat(alpha), Ex8::splat(beta_));
     let one8 = Kx8::splat(F64::ONE);
     let zero8 = Kx8::splat(F64::ZERO);
+    // `β x` at a chunk's points: `x = offset + ω_start + ω_(8 j + l)` (the index's bits below `log run` and above
+    // are disjoint), so `β ω_(8 j + l)` is a table of the chunk's vectors and `β (offset + ω_start)` one product.
+    let beta_low: Vec<Ex8> = (0..run / 8)
+        .map(|j| {
+            let x: [F64; 8] = std::array::from_fn(|l| point(8 * j + l));
+            let b: [F192; 8] = x.map(|x| beta_.mul_base(x));
+            Ex8::from_limbs([0, 1, 2].map(|k| Kx8::new(b.map(|e| F64([e.c0, e.c1, e.c2][k])))))
+        })
+        .collect();
 
     assert!(l0.len() == big && l1.len() == big && l2.len() == big);
     parallel::chunks_mut3(&mut *l0, &mut *l1, &mut *l2, run, |chunk, o0, o1, o2| {
@@ -465,6 +622,8 @@ fn quotient_on_extension(
             .flat_map(|(_, members, _)| (0..pv).map(|k| wide_sum(members, k)).collect::<Vec<_>>())
             .collect();
         let pull_less_wide: Vec<Kx8> = (0..pv).map(|k| wide_sum(pull_less, k)).collect();
+        let coefficients = quadratic.coefficients(pv, |g, k| has_wide[g].then(|| group_wide[g * pv + k]));
+        let beta_start = Ex8::splat(beta_.mul_base(offset + point(start)));
 
         let mut cells = vec![one8; width];
         for j in 0..run / 8 {
@@ -475,15 +634,14 @@ fn quotient_on_extension(
                 *cell = Kx8::load(&wd[i ^ (c & !7)..]).xor_lanes(c & 7);
             }
             let w = cells[0];
+            let mut pushed_k = quadratic.eval(&coefficients[jw * quadratic.len..(jw + 1) * quadratic.len], &cells);
+            // The narrow pairs' share, group by group, and the formulas of `E` (all their pairs').
             let mut selected = zero8;
-            // `Σ_g sum_g v_g` (and `w · selected`), unreduced until the row's end.
-            let mut pushed_k = Kx8U::zero();
             let mut pushed_e = Ex8::splat(F192::ZERO);
-            for (g, (compiled, _, narrow)) in groups.iter().enumerate() {
-                let sum = narrow
-                    .iter()
-                    .fold(group_wide[g * pv + jw], |acc, &p| acc + table[at[p] + j]);
-                selected = selected + sum;
+            for &g in &with_narrow {
+                let (compiled, _, narrow) = &groups[g];
+                let narrow_sum = narrow.iter().fold(zero8, |acc, &p| acc + table[at[p] + j]);
+                selected = selected + narrow_sum;
                 match compiled {
                     Compiled::K { lin, products } => {
                         let v = if products.is_empty() {
@@ -495,14 +653,16 @@ fn quotient_on_extension(
                             });
                             lin.eval(&cells) + p.reduce()
                         };
-                        pushed_k = pushed_k + Kx8U::product(sum, v);
+                        pushed_k = pushed_k + Kx8U::product(narrow_sum, v);
                     }
                     Compiled::ELinear { terms, constant } => {
+                        let sum = group_wide[g * pv + jw] + narrow_sum;
                         let mut v = MixedSum::default();
                         terms.iter().for_each(|(c, cell)| v.add(c, cells[*cell]));
                         pushed_e = pushed_e + (v.reduce() + Ex8::splat(*constant)).mul_k(sum);
                     }
                     Compiled::E { formula, role } => {
+                        let sum = group_wide[g * pv + jw] + narrow_sum;
                         let rows: Vec<[F64; 8]> = cells.iter().map(|&c| lanes(c)).collect();
                         let sums = lanes(sum);
                         let v: [F192; 8] = std::array::from_fn(|l| {
@@ -520,11 +680,11 @@ fn quotient_on_extension(
                 .fold(pull_less_wide[jw], |acc, &p| acc + table[at[p] + j]);
             let pushed_k = (pushed_k + Kx8U::product(w, selected)).reduce();
             let p_t = Ex8::from_k(w + pushed_k + Kx8::load(&kd[i..])) + pushed_e;
-            let x = Kx8::splat(offset + point(i)) + points8;
-            let d_pull = alpha8 + Ex8::from_k(w) + beta8.mul_k(x);
+            let d_pull = alpha8 + Ex8::from_k(w) + beta_start + beta_low[j];
             let d_push = alpha8 + p_t + beta8.mul_k(Kx8::load(&sd[i..]));
             let h = Ex8::from_limbs([Kx8::load(&hd[0][i..]), Kx8::load(&hd[1][i..]), Kx8::load(&hd[2][i..])]);
-            let num = h * d_pull * d_push + d_push.mul_k(one8 + one_s) + d_pull;
+            // `h d_pull d_push + (1 + 1_S) d_push + d_pull = (h d_pull + 1 + 1_S) d_push + d_pull`.
+            let num = (h * d_pull + Ex8::from_k(one8 + one_s)) * d_push + d_pull;
             let [q0, q1, q2] = num.mul_k(Kx8::splat(zv_inv[coset])).limbs();
             o0[8 * j..8 * j + 8].copy_from_slice(&q0.to_row().0);
             o1[8 * j..8 * j + 8].copy_from_slice(&q1.to_row().0);
