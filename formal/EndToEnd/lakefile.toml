@@ -287,3 +287,11 @@ root = "RecComposeTest.ViewCheck"
 name = "rec-real-check"
 srcDir = "../RecCompose"
 root = "RecComposeTest.RealCheck"
+
+# Knowledge soundness of the Keccak VM's univariate verifier (`formal/UniKeccakSound`): `UniKeccak`'s statements from
+# the Keccak verifier's round-by-round PIOP, Flock on the Keccak-f block, and the code-level and Fiat–Shamir links.
+[[lean_lib]]
+name = "UniKeccakSound"
+srcDir = "../UniKeccakSound"
+globs = ["UniKeccakSound", "UniKeccakSound.+"]
+leanOptions = { warningAsError = true }
