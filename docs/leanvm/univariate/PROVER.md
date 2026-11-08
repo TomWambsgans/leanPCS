@@ -153,7 +153,10 @@ rows of 8 bytes or more. The skip module proves the zerocheck for any `3 ≤ k �
   extended to `Λ`, as leanVM does;
 - **bit rounds**: leanVM's pair kernels at levels `0, 2, ..` on rows of `2^(k + t)` bits, extended to rows of 1, 2,
   4 bytes (`BitFold`, GFNI included); at `k = 3`, level 0 reads its products from the table of all 65,536 byte
-  products (`multilinear::bit_round_pair_bytes`); the storing pass at the level whose rows are 64 or 128 bytes;
+  products (`multilinear::bit_round_pair_bytes`); on aarch64 (`bit_round_pair_bytes_scaled`) the quads' two lowest eq
+  coordinates are in 4 such tables (6 MiB, `e_s[la] T[x] T[y]`), so a group of 4 quads sums its 8 slots by lookups and
+  pays 8 products by eq, a quarter of the products (128 signatures, 16 threads: level 0 0.168 → 0.107 s); the
+  storing pass at the level whose rows are 64 or 128 bytes;
 - **table rounds**: leanVM's, copied.
 
 Tested (`tests/flock_skip.rs`):
@@ -163,7 +166,8 @@ Tested (`tests/flock_skip.rs`):
 - at `k = 3..6` on honest witnesses: the verifier's checks of the zerocheck hold, and its claims are the witness's
   evaluations;
 - every fast kernel against the generic one: `round1_bytes`, `round1_words`, `round1_folded` against
-  `round1_generic`; `bit_round_pair_bytes` against `bit_round_pair`; `BitFold` at every row width against its
+  `round1_generic`; `bit_round_pair_bytes` against `bit_round_pair`, `bit_round_pair_bytes_scaled` (scales 1 to 3)
+  against `bit_round_pair_bytes`; `BitFold` at every row width against its
   definition.
 
 Flock end to end on the Keccak-f block is `tests/flock_keccak.rs` (`SPEC-FLOCK.md`, "Tests").

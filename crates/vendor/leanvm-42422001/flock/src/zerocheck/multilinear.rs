@@ -1,5 +1,6 @@
 // Vendored from leanVM (https://github.com/leanEthereum/leanVM), commit 42422001, file crates/flock/src/zerocheck/multilinear.rs.
-// Changed here: the bit-round kernels also take rows of 1, 2 and 4 bytes (for a univariate skip below 6); the rest is
+// Changed here: the bit-round kernels also take rows of 1, 2 and 4 bytes (for a univariate skip below 6), and the byte
+// rows have a pass with eq-scaled products' tables (`bit_round_pair_bytes_scaled`, for aarch64); the rest is
 // unchanged. MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and AGENTS.md at the repository root).
 // CREDIT: https://github.com/succinctlabs/flock (flock-core), MIT OR Apache-2.0.
 //! Multilinear sumcheck: rounds 2..(m − k_skip + 1) of the zerocheck protocol.
@@ -358,11 +359,7 @@ pub fn bit_round_materialize(
 /// bytes `x`, `y` (the sums of values being the values of the bytes' XOR), read from the table of all 65,536
 /// products instead of multiplied. The rest is [`bit_round_pair_kernel`]'s, the same sums in the same slots.
 pub fn bit_round_pair_bytes(bits: PackedWitness<'_>, weights: &[F192; 8], r_eq: &[F192], padding: &PaddingSpec) -> RoundPair {
-    let mut values = [F192::ZERO; 256];
-    for v in 1..256usize {
-        let low = v.trailing_zeros() as usize;
-        values[v] = values[v & (v - 1)] + weights[low];
-    }
+    let values = byte_values(weights);
     let products: Vec<F192> = values.iter().flat_map(|&x| values.iter().map(move |&y| x * y)).collect();
     let [a, b, c] = [bits.a, bits.b, bits.c];
     let n_quads = a.len() / 4;
@@ -409,6 +406,101 @@ pub fn bit_round_pair_bytes(bits: PackedWitness<'_>, weights: &[F192; 8], r_eq: 
                 for (acc, s) in acc.iter_mut().zip(&s) {
                     let t = mul_quad_unreduced((e[0], e[1], e[2], e[3]), (s[0], s[1], s[2], s[3]));
                     *acc ^= t.0 ^ t.1 ^ t.2 ^ t.3;
+                }
+            }
+            acc.map(|s| eq_hi[hi] * s.reduce())
+        },
+        |x, y| std::array::from_fn(|i| x[i] + y[i]),
+    );
+    let split_v = |v0: F192, v1: F192| v0 + r_v * (v0 + v1);
+    RoundPair {
+        first: (split_v(sums[0], sums[1]), split_v(sums[2], sums[3])),
+        second: [[sums[4], sums[1], sums[3]], [sums[5], sums[6], sums[7]]],
+    }
+}
+
+/// The fold's 256 values of a byte row: `T[v] = Σ_(s : bit s of v) w_s`.
+fn byte_values(weights: &[F192; 8]) -> [F192; 256] {
+    let mut values = [F192::ZERO; 256];
+    for v in 1..256usize {
+        let low = v.trailing_zeros() as usize;
+        values[v] = values[v & (v - 1)] + weights[low];
+    }
+    values
+}
+
+/// Quad eq coordinates [`bit_round_pair_bytes_scaled`] folds into its tables: 4 tables of `2^16` products (6 MiB).
+pub const BYTES_SCALE_VARS: usize = 2;
+
+/// [`bit_round_pair_bytes`] with the quads' lowest `SCALE` eq coordinates folded into the tables (this repository's
+/// addition, for targets without a cheap batched product): `eq(r_quad, quad) = e_s[la] e_mid[lb] e_hi[hi]` for
+/// `quad = (hi, lb, la)`, `la` the low `SCALE` bits, and table `la` holds `e_s[la] T[x] T[y]` (and `e_s[la] T[v]`),
+/// so a group of `2^SCALE` quads sums its eight slots by lookups alone and pays eight products by `e_mid[lb]`: a
+/// `2^SCALE`-th of [`bit_round_pair_bytes`]'s, for tables `2^SCALE` times as large. The same sums, in other groupings.
+pub fn bit_round_pair_bytes_scaled<const SCALE: usize>(
+    bits: PackedWitness<'_>,
+    weights: &[F192; 8],
+    r_eq: &[F192],
+    padding: &PaddingSpec,
+) -> RoundPair {
+    let values = byte_values(weights);
+    let [a, b, c] = [bits.a, bits.b, bits.c];
+    let n_quads = a.len() / 4;
+    assert!(n_quads >= 1 && b.len() == a.len() && c.len() == a.len());
+    assert_eq!(r_eq.len(), n_quads.trailing_zeros() as usize + 1);
+    let (r_v, r_quad) = (r_eq[0], &r_eq[1..]);
+    let n_lo = r_quad.len().min(EQ_LO_VARS);
+    let n_s = SCALE.min(n_lo);
+    let (eq_s, eq_mid, eq_hi) = (
+        build_eq(&r_quad[..n_s]),
+        build_eq(&r_quad[n_s..n_lo]),
+        build_eq(&r_quad[n_lo..]),
+    );
+    let (group, lo_size) = (1usize << n_s, 1usize << n_lo);
+    // Table `la`: entry `x ‖ y` is `e_s[la] T[x] T[y]`; the C values `e_s[la] T[v]`.
+    let products: Vec<F192> = parallel::map_collect(group << 16, |i| {
+        (eq_s[i >> 16] * values[(i >> 8) & 0xff]) * values[i & 0xff]
+    });
+    let c_values: Vec<F192> = (0..group << 8).map(|i| eq_s[i >> 8] * values[i & 0xff]).collect();
+    // A quad covers 4 bytes, 32 bits.
+    let (quad_in_block_mask, live_quads) = padding_pairs(padding, 4);
+    let live = |quad: usize| (quad & quad_in_block_mask) < live_quads;
+    let word = |data: &[u8], q: usize| u32::from_le_bytes(data[4 * q..4 * q + 4].try_into().expect("a quad"));
+    let sums = parallel::map_reduce(
+        eq_hi.len(),
+        || [F192::ZERO; 8],
+        |hi| {
+            let mut acc = [F192Unreduced::ZERO; 8];
+            for (mid, &e) in eq_mid.iter().enumerate() {
+                let first = hi * lo_size + mid * group;
+                let mut s = [F192::ZERO; 8];
+                let mut any = false;
+                for la in 0..group {
+                    let quad = first + la;
+                    if !live(quad) {
+                        continue;
+                    }
+                    any = true;
+                    let table: &[F192; 1 << 16] = products[la << 16..(la + 1) << 16].try_into().expect("a table");
+                    let cv: &[F192; 256] = c_values[la << 8..(la + 1) << 8].try_into().expect("a table");
+                    let product = |x: u32, y: u32| table[((x & 0xff) << 8 | (y & 0xff)) as usize];
+                    let (x, y, z) = (word(a, quad), word(b, quad), word(c, quad));
+                    // Bytes 0..3 are positions (u, v) = (0,0), (1,0), (0,1), (1,1).
+                    let (xu0, xu1, xv0, xv1) = (x ^ x >> 8, x >> 16 ^ x >> 24, x ^ x >> 16, x >> 8 ^ x >> 24);
+                    let (yu0, yu1, yv0, yv1) = (y ^ y >> 8, y >> 16 ^ y >> 24, y ^ y >> 16, y >> 8 ^ y >> 24);
+                    s[0] += product(x >> 8, y >> 8) + cv[(z >> 8 & 0xff) as usize];
+                    s[1] += product(x >> 24, y >> 24) + cv[(z >> 24) as usize];
+                    s[2] += product(xu0, yu0);
+                    s[3] += product(xu1, yu1);
+                    s[4] += product(x >> 16, y >> 16) + cv[(z >> 16 & 0xff) as usize];
+                    s[5] += product(xv0, yv0);
+                    s[6] += product(xv1, yv1);
+                    s[7] += product(xu0 ^ xu1, yu0 ^ yu1);
+                }
+                if any {
+                    for (acc, s) in acc.iter_mut().zip(s) {
+                        *acc ^= e.mul_unreduced(s);
+                    }
                 }
             }
             acc.map(|s| eq_hi[hi] * s.reduce())
