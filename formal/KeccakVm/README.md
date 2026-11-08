@@ -5,7 +5,7 @@
 The Keccak VM (`docs/leanvm/univariate/KECCAK.md`) is leanVM 42422001 with its `BLAKE2S` instruction replaced by
 leanVM `9d50c92a3`'s `SHA3`. This library is its statement: the instruction set, and the relation its univariate
 verifier would prove knowledge of, in the form `formal/Lv42` gives leanVM 42422001's. It holds definitions (and
-`KeccakVm/Lemmas.lean`, the machine's lemmas), with no end theorem about a verifier yet. It is a library of
+`KeccakVm/Lemmas.lean`, the machine's lemmas); the theorems about it are in the libraries below. It is a library of
 `formal/EndToEnd` (`KeccakVm`, `srcDir = "../KeccakVm"`, `warningAsError`), next to `Lv42`, whose definitions it reuses.
 
 ```sh
@@ -98,7 +98,8 @@ lake env lean ../UniStatement/UniStatementTest/KeccakTables.lean    # the verifi
   - `Blake2s::Keccak` transcribed, differential-tested on 74 vectors, the two real Keccak proofs among them;
   - its statements against `KvHolds`: `UniKnowledgeSoundnessKeccak`, the Rec3 variant, completeness.
 
-  The statements are not proved.
+  They are proved in [`formal/UniKeccakSound`](../UniKeccakSound/README.md) and
+  [`formal/UniKeccakComplete`](../UniKeccakComplete/README.md) at the 128-signature reference shape.
 - **`Sha3Table.flushes` against the verifier's `flushesSha3`** ([`formal/KeccakFlushes`](../KeccakFlushes/KeccakFlushes.lean)):
   `KeccakFlushes.flushesSha3_eq`: on every row, the verifier's `SHA3` forms of each side (`UniSound.Ids.tupleK`) are, in
   order, the instance's `SHA3` flushes of that side evaluated at the row (UniSound's `uni_tuples_eq` for the `SHA3`

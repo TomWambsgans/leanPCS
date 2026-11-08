@@ -167,13 +167,13 @@ The root file checks, with `#guard_msgs`, that `walkedTerminal_eq_bilinear`, `st
 `structuredTerminal_eq_bilinear` depend on `[propext, Classical.choice, Quot.sound]` only. `KeccakFlock` imports
 `FlockSoundUni.Transcription` and `UniSound.Ids.Facts` for these lemmas.
 
+## Where it is used
+
+- The terminal is used by π1's verifier and its soundness: `UniKeccak.structuredTerminal` is
+  `KeccakFlock.Terminal.structuredTerminal` (`UniKeccakSound.KF.Br.structuredTerminal_eq`), and the catch of Flock's
+  soundness on the block uses `structuredTerminal_eq_bilinear` ([`formal/UniKeccakSound`](../UniKeccakSound/README.md)).
+
 ## What is not done
 
 - **A fast backward walk.** `r1cs.cols` is the naive sum. `BlockR1CS.cols` is only read through `cols_fst` and
   `cols_snd`, so nothing here needs a fast one.
-- **The terminal in a verifier's statement.** No Keccak VM verifier is stated yet (`formal/KeccakVm/README.md`).
-  That statement can use `structuredTerminal_eq_bilinear` the way `FlockSoundUni/WalkRows.lean` uses `rowsSpec` for
-  BLAKE2s: the terminal's zero gives the lincheck's pending claim. The Keccak analogue of UniStatement's `Pending`
-  claim (`pendingHolds_iff`) is not transcribed.
-- The Keccak VM's relation over this block (`KeccakVm.KvHolds keccakFlockSpec`), its arithmetization and the
-  univariate verifier's statement are other milestones (`formal/KeccakVm/README.md`).

@@ -143,13 +143,10 @@ The real run accepts them at both IVs `rec-view-check` uses (the compiler with t
 ## How the compiler is trusted
 
 - **Transcription.** The compiler is transcribed step by step, in the Rust's order, and compared with the Rust
-  (`RecCircuitTest/Main.lean`, `crates/leanvm/rec/tests/lean_circuit.rs`). The comparison covers the shape, the region
+  (`RecCircuitTest/Main.lean`, `crates/leanvm/rec/tests/lean_circuit_keccak.rs`). The comparison covers the shape, the region
   list, the formula tables, the blocks, the ports, the calls, `κ`, and an FNV-1a hash of `σ` over all 2^24 positions.
-  It runs on three small recorded graphs, on π1-rec3's graph, and on the Keccak VM's π1-rec3 graph
-  (`crates/leanvm/rec/tests/lean_circuit_keccak.rs`: the 128-signature reference, 21 blocks, which the checker accepts
-  too), and every
-  comparison is identical. On
-  π1-rec3 the run takes about 90 s and 2.7 GB, checker included.
+  It runs on the Keccak VM's π1-rec3 graph (the 128-signature reference, 21 blocks, which the checker accepts); it ran
+  on three small recorded graphs and on the removed BLAKE2s VM's π1-rec3 graph before, every comparison identical.
 - **The block padding** (`padCounts`, `layout.rs::pad_counts`) looks ahead. A region's next step is the digit count
   `j > k` with the most rows saved per added digit and role, so it passes over counts that save nothing (a carry:
   724,992 rows pad to 786,432 at both 2 and 3 digits). The one-digit greedy it replaced gave the Keccak π1 70 blocks.
@@ -167,8 +164,6 @@ The real run accepts them at both IVs `rec-view-check` uses (the compiler with t
 ```sh
 cd formal/EndToEnd
 systemd-run --scope -p MemoryMax=10G lake build RecCircuit rec-circuit-diff rec-circuit-keccak
-LEAN_CIRCUIT_OUT=out cargo test --release -p leanvm_rec --test lean_circuit -- --include-ignored --nocapture --test-threads 1
-.lake/build/bin/rec-circuit-diff out/pi1_rec3.graph > pi1_rec3.lean.circuit && diff out/pi1_rec3.circuit pi1_rec3.lean.circuit
 LEAN_CIRCUIT_OUT=out cargo test --release -p leanvm_rec --test lean_circuit_keccak -- --ignored --nocapture
 .lake/build/bin/rec-circuit-keccak out/keccak_pi1_rec3.graph > k.emitted.circuit && diff out/keccak_pi1_rec3.circuit k.emitted.circuit
 .lake/build/bin/rec-circuit-diff out/keccak_pi1_rec3.graph > k.lean.circuit && diff out/keccak_pi1_rec3.circuit k.lean.circuit

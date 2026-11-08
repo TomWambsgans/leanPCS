@@ -108,15 +108,8 @@ systemd-run --scope -p MemoryMax=12G lake build UniKeccakSound   # every file; t
 
 ## What remains
 
-- **Completeness** (`UniCompletenessKeccak{,Rec3}`) is not started. It needs a Lean honest prover for the Keccak
-  verifier, as `UniComplete`'s `uniProverWith` is for BLAKE2s:
-  - the trace placement for the Keccak tables;
-  - Flock's prover on the Keccak-f block (`KeccakFlock`'s `holds_gen`, the walk);
-  - the batch with `weightAtK`;
-  - the setup of one tree.
-
-  It also needs its proof layers. The estimate, porting `UniComplete` (~44k lines, about half of which is generic),
-  is 10–20k lines.
+- **Completeness** (`UniCompletenessKeccak{,Rec3}`) is not in this library: it is proved in [`formal/UniKeccakComplete`](../UniKeccakComplete/README.md)
+  (`uniCompletenessKeccak_closed`, `uniCompletenessKeccakRec3_closed`, `Prob.deltaK < 2^-169`).
 - **Closed bounds for every valid shape**: the theorems are at the reference shape. Most layers are shape-generic;
   the Fiat–Shamir layer's numbers (`UniShapesK`, `LayoutVarsSmallK`), the identity model's numbers (`DegBoundK`,
   `RelCountK`, `hB`), `FunctionalsCorrect h_SHA3`, `HeapGood` and π1-rec3's odd batch are decided at the reference.

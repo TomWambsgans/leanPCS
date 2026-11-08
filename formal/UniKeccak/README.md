@@ -13,8 +13,9 @@ by leanVM `9d50c92a3`'s `SHA3`. This library holds:
 
 The knowledge-soundness statements are proved in [`formal/UniKeccakSound`](../UniKeccakSound/README.md) at the
 Keccak-f block `KeccakFlock.keccakFlockSpec` and the reference shape (128 signatures), with no other hypothesis
-(`UniKeccakSound.uniKnowledgeSoundnessKeccak_closed`, `uniKnowledgeSoundnessKeccakRec3_closed`). The completeness
-statements are not proved. There is no `sorry` and no `native_decide`. The root's guards (`UniKeccak.lean`) check
+(`UniKeccakSound.uniKnowledgeSoundnessKeccak_closed`, `uniKnowledgeSoundnessKeccakRec3_closed`); the completeness
+statements in [`formal/UniKeccakComplete`](../UniKeccakComplete/README.md) (`uniCompletenessKeccak_closed`,
+`uniCompletenessKeccakRec3_closed`, error `Prob.deltaK < 2^-169`). There is no `sorry` and no `native_decide`. The root's guards (`UniKeccak.lean`) check
 that the verifier and every statement rest on Lean's three axioms.
 
 It is a library of `formal/EndToEnd` (`UniKeccak`, `srcDir = "../UniKeccak"`, `warningAsError`). It reuses
@@ -202,5 +203,5 @@ identities are what `KeccakAux`'s copy clause states.
   Along the way it proved `UniKeccak.structuredTerminal` equal to `KeccakFlock.Terminal.structuredTerminal`
   (`UniKeccakSound.KF.Br.structuredTerminal_eq`), which nothing had linked before, and certified the setup's
   `2^23`-word WHIR opening (`UniKeccakSound/Fs/Whir23.lean`).
-- **Completeness**: not started. It needs a Lean honest prover for the Keccak verifier (`UniComplete`'s layers on the
-  Keccak tables, Flock's prover on the Keccak-f block) and its proof layers.
+- **Completeness**: done in `formal/UniKeccakComplete` at the reference shape, for its explicit Lean honest prover
+  (`uniCompletenessKeccak_closed`, `uniCompletenessKeccakRec3_closed`, `Prob.deltaK < 2^-169`).
