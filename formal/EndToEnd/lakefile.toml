@@ -297,3 +297,10 @@ name = "RecGraphKeccak"
 srcDir = "../RecGraphKeccak"
 globs = ["RecGraphKeccak", "RecGraphKeccak.+"]
 leanOptions = { warningAsError = true }
+
+# The compiler on `RecGraphKeccak.Emitted.graph` itself, against the Rust's circuit for the Keccak π1-rec3
+# (`RecGraphKeccakTest/Circuit.lean`; the graph and circuit from `crates/leanvm_rec/tests/lean_circuit_keccak128.rs`).
+[[lean_exe]]
+name = "rec-circuit-keccak"
+srcDir = "../RecGraphKeccak"
+root = "RecGraphKeccakTest.Circuit"
