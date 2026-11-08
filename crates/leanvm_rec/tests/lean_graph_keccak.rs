@@ -2,9 +2,10 @@
 //! The Keccak VM's π1-rec3 graph as Lean data (`formal/RecGraphKeccak`).
 //!
 //! - `keccak_graph_lean_is_current`: the checked-in `formal/RecGraphKeccak/RecGraphKeccak/Emitted.lean` is what
-//!   [`render`] writes for the Keccak VM's π1-rec3 recorded verifier now (`record_verifier(&KECCAK_400,
-//!   Blake2s::Keccak(KECCAK_REC3), Claims::Point)`, as `tests/keccak_vm_rec.rs` and `tests/lean_circuit_keccak.rs`
-//!   record it); `UPDATE_LEAN=1` rewrites it.
+//!   [`render`] writes for the Keccak VM's π1-rec3 recorded verifier now (`record_verifier(&KECCAK_128,
+//!   Blake2s::Keccak(KECCAK_REC3), Claims::Point)`: π1-rec3's Fiat–Shamir shape at the 128-signature reference
+//!   workload); `UPDATE_LEAN=1` rewrites it.
+//! - `keccak_128_shape`: `KECCAK_128` is `KeccakRun::shape` of the 128-signature run (`⌈log₂ cells⌉`, `2^18`).
 //!
 //! Self-contained: the renderer is here (the format of `RecGraph.Node`'s `Node`, `Word` and `Graph`), on
 //! `leanvm_univariate::contract::{record_verifier, calls, Recorded}` and `leanvm_flock_gas::evm::{record::Node,
@@ -29,12 +30,18 @@ const KECCAK_REC3: Variant = Variant {
     fs: FsShape::Rec3,
 };
 
-/// leanVM 9d50c92a3 at 400 signatures (`tests/keccak_vm_rec.rs`).
-const KECCAK_400: Shape = Shape {
-    log_memory: 22,
+/// The reference workload: leanVM 9d50c92a3's Keccak VM at 128 signatures (`crates/leanvm_univariate/tests/
+/// keccak_vm.rs`'s `KECCAK_RUNS`: rows XOR, MUL, SET, DEREF, JUMP, SHA3, 721,598 memory cells), its shape as
+/// `KeccakRun::shape` builds it: the memory `⌈log₂ 721598⌉ = 20`, the bytecode `KECCAK_LOG_BYTECODE = 18`. The Lean
+/// side's `RecGraphKeccak.Pi1.keccak128` is `UniKeccak.keccakShapeOf 721598 [..]` of the same run.
+const KECCAK_128: Shape = Shape {
+    log_memory: 20,
     log_bytecode: 18,
-    table_rows: [73288, 110893, 75762, 109932, 48157, 55316],
+    table_rows: [24260, 36229, 24626, 35812, 15509, 17712],
 };
+
+/// The memory cells of the 128-signature run, whose `⌈log₂⌉` is `KECCAK_128.log_memory`.
+const KECCAK_128_CELLS: usize = 721_598;
 
 /// The nodes of one Lean definition: the file's definitions stay small enough to elaborate quickly.
 const CHUNK: usize = 1000;
@@ -54,7 +61,7 @@ fn graph_path() -> std::path::PathBuf {
 
 /// The Keccak VM's π1-rec3, recorded.
 fn recorded() -> Recorded {
-    record_verifier(&KECCAK_400, Blake2s::Keccak(KECCAK_REC3), Claims::Point)
+    record_verifier(&KECCAK_128, Blake2s::Keccak(KECCAK_REC3), Claims::Point)
 }
 
 fn word_nat(bytes: &[u8; 32]) -> String {
@@ -115,7 +122,7 @@ fn render(recorded: &Recorded) -> String {
     writeln!(w, "/-!").unwrap();
     writeln!(w, "# The Keccak VM's π1-rec3 recorded graph").unwrap();
     writeln!(w).unwrap();
-    writeln!(w, "`leanvm_univariate::contract::record_verifier` at the Keccak VM's 400-signature shape (`KECCAK_400`), with").unwrap();
+    writeln!(w, "`leanvm_univariate::contract::record_verifier` at the Keccak VM's 128-signature shape (`KECCAK_128`), with").unwrap();
     writeln!(
         w,
         "`Blake2s::Keccak(KECCAK_REC3)` (`FsShape::Rec3`, `Slices::TowerWalk`) and `Claims::Point`: {} nodes ({ops} additions",
@@ -208,6 +215,12 @@ fn render(recorded: &Recorded) -> String {
     writeln!(w).unwrap();
     writeln!(w, "end RecGraphKeccak.Emitted").unwrap();
     out
+}
+
+/// `KECCAK_128`'s memory is `⌈log₂⌉` of the run's cells, as `KeccakRun::shape` (`tests/keccak_vm.rs`) has it.
+#[test]
+fn keccak_128_shape() {
+    assert_eq!(KECCAK_128.log_memory, 64 - (KECCAK_128_CELLS - 1).leading_zeros() as usize);
 }
 
 /// The checked-in Lean graph is the Keccak VM's π1-rec3 recorded verifier: `UPDATE_LEAN=1` rewrites it.

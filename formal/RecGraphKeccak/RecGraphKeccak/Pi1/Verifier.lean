@@ -8,7 +8,7 @@ import UniKeccak.Opening
 /-!
 # The Keccak VM's π1-rec3 verifier as a program
 
-`reduce` at the Keccak VM's 400-signature shape (`UniKeccak.keccak400`, the Rust's `KECCAK_400`) with
+`reduce` at the reference workload's shape (`keccak128`, the Keccak VM at 128 signatures; the Rust's `KECCAK_128`) with
 `Blake2s::Keccak(KECCAK_REC3)` and `Claims::Point`, on the recorder: `pi1Rec3K`. Against `RecGraph.Pi1.reduce`
 (π1-rec3 on the BLAKE2s VM), what changes:
 
@@ -275,11 +275,24 @@ def reduceK (shape : Shape) (publicWords : List Sym) : Prog ReducedS := do
   let openings ← batchK combined.toList stackLayouts (some map)
   return ⟨root1, root2, openings⟩
 
-/-- The Keccak VM's 400-signature shape (`KECCAK_400`). -/
-abbrev shapeK : Shape := UniKeccak.keccak400
+/-- **The reference workload's shape**: the Keccak VM at 128 signatures (leanVM 9d50c92a3, `UniKeccak.keccakRuns`'
+`"keccak128"`: 721,598 memory cells, rows XOR, MUL, SET, DEREF, JUMP, SHA3 `[24260, 36229, 24626, 35812, 15509,
+17712]`), as `keccakShapeOf` builds it (the memory `⌈log₂ cells⌉ = 20`, the bytecode `2^18`): the Rust emitter's
+`KECCAK_128` (`crates/leanvm_rec/tests/lean_graph_keccak.rs`). -/
+def keccak128 : Shape := UniKeccak.keccakShapeOf 721598 [24260, 36229, 24626, 35812, 15509, 17712]
+
+/-- `keccak128`'s run is `keccakRuns`' 128-signature run. -/
+theorem keccak128_run : ("keccak128", 128, 721598, [24260, 36229, 24626, 35812, 15509, 17712]) ∈
+    UniKeccak.keccakRuns := by decide
+
+/-- `keccak128`'s memory and bytecode: `2^20` cells, `2^18` instructions. -/
+theorem keccak128_logs : keccak128.logMemory = 20 ∧ keccak128.logBytecode = 18 := by decide
+
+/-- The shape the program is recorded at. -/
+abbrev shapeK : Shape := keccak128
 
 /-- **The recorded Keccak verifier** (`record_verifier_with`): the recorder's start (the seed), the public input's
-four words, then `reduceK` at `KECCAK_400`. -/
+four words, then `reduceK` at `KECCAK_128`. -/
 def pi1Rec3K : Prog ReducedS := do
   let mut words : Array Sym := #[]
   for k in [0:4] do
