@@ -571,15 +571,26 @@ fn quotient_on_extension(
 
     // The normalised `Ẑ_s` on `D`, linear: at `β_{m+2}`, and on the low and high bits of the index.
     let s_max = spec.max_log_rows();
-    let zhat = |x: F64, s: usize| (0..s).fold(x, |z, j| z + spec.c[j] * z.square());
+    // `Ẑ_0(x) … Ẑ_{s_max}(x)`, each from the one before.
+    let zhats = |x: F64| -> Vec<F64> {
+        let mut out = Vec::with_capacity(s_max + 1);
+        let mut z = x;
+        out.push(z);
+        for &c in &spec.c[..s_max] {
+            z = z + c * z.square();
+            out.push(z);
+        }
+        out
+    };
+    // A table of `Ẑ_s` at `count` points, `s` major.
+    let table = |count: usize, at: &(dyn Fn(usize) -> F64 + Sync)| -> Vec<Vec<F64>> {
+        let rows: Vec<Vec<F64>> = parallel::map_collect(count, |j| zhats(at(j)));
+        (0..=s_max).map(|s| rows.iter().map(|r| r[s]).collect()).collect()
+    };
     const LOW: usize = 12;
-    let at_offset: Vec<F64> = (0..=s_max).map(|s| zhat(offset, s)).collect();
-    let low: Vec<Vec<F64>> = (0..=s_max)
-        .map(|s| (0..1usize << LOW).map(|j| zhat(point(j), s)).collect())
-        .collect();
-    let high: Vec<Vec<F64>> = (0..=s_max)
-        .map(|s| (0..(big >> LOW).max(1)).map(|j| zhat(point(j << LOW), s)).collect())
-        .collect();
+    let at_offset: Vec<F64> = zhats(offset);
+    let low = table(1 << LOW, &point);
+    let high = table((big >> LOW).max(1), &|j| point(j << LOW));
 
     // The indicators, a chunk of `run` points at a time: a chunk lies in one coset of `V_m` (one `Z_V` value) and
     // fixes the index's bits from `log run` up. `Ẑ_s` vanishes on `U_s = ⟨β_r, …, β_{r+s-1}⟩`, so pair `p`'s indicator
