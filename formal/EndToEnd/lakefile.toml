@@ -313,3 +313,12 @@ name = "UniKeccakSound"
 srcDir = "../UniKeccakSound"
 globs = ["UniKeccakSound", "UniKeccakSound.+"]
 leanOptions = { warningAsError = true }
+
+# Completeness of the Keccak VM's univariate verifier (`formal/UniKeccakComplete`): `UniKeccak`'s completeness
+# statements at the Keccak-f block from the staged premise, by `UniComplete`'s probability layer at the Keccak
+# experiment.
+[[lean_lib]]
+name = "UniKeccakComplete"
+srcDir = "../UniKeccakComplete"
+globs = ["UniKeccakComplete", "UniKeccakComplete.+"]
+leanOptions = { warningAsError = true }
