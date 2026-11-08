@@ -12,9 +12,11 @@
 // One comment corrected (no code change): the level-0 query grinding is `QUERY_GRINDING_BITS = 17` bits in the
 // production profile, not "0 bits" as leanVM's comment says (`whir_config.rs`, and the verifier's
 // `QUERY_GRINDING_BITS`); to report upstream.
-// Also modified here, for speed, every proof unchanged: `commit_tree` and `encoded_rows` encode from the
-// lane-major message (`AdditiveNttF64::encode_lane_major_with`, `encoded_rows_lane_major`), and the lane rounds sum
-// sparse low weights at their nonzero entries alone (`SparseLow`) and the dense ones with `dot_base` on x86.
+// Also modified here, for speed, every proof unchanged: `commit_tree`, `encoded_rows` and the lean deeper levels
+// encode in two sweeps from the message as it lies (`AdditiveNttF64::encode_two_sweep_with`,
+// `encoded_rows_two_sweep`; a lean level holds `LEAN_BATCH` replicas' work buffers while it commits), and the lane
+// rounds sum sparse low weights at their nonzero entries alone (`SparseLow`), the dense ones with `dot_base` on x86,
+// and fold the witness on AVX-512 eight words at a time (`collapse_avx512`).
 
 //! WHIR with `K = GF(2)[x]/(x^64+x^4+x^3+x+1)` and
 //! `E = K[y]/(y^3+y+1)`.
@@ -36,6 +38,7 @@
 
 use crate::merkle::{self, Hash};
 use crate::ntt::AdditiveNttF64;
+use crate::ntt::additive_ntt_f64::MsgLayout;
 use fiat_shamir::merkle::PrunedMerklePaths;
 use fiat_shamir::transcript::ProverState;
 use primitives::{
@@ -210,20 +213,35 @@ pub fn commit_tree_in(
         lanes = n_lanes
     )
     .in_scope(|| {
+        // From the lane-major message in two sweeps where the shape allows it, one replica at a time in
+        // `scratch`'s allocation.
+        let mut work = scratch;
+        work.clear();
+        work.reserve_exact(message.len());
+        // SAFETY: the capacity holds the message's length of plain words, which the first sweep writes before
+        // the second reads them.
+        unsafe { work.set_len(message.len()) };
+        let ntt = AdditiveNttF64::standard(k_code);
+        let on_rows = |row: usize, rows: &[F64]| tree.absorb(row, rows);
+        if ntt.encode_two_sweep_with(
+            &mut work,
+            message,
+            MsgLayout::LaneMajor,
+            n_lanes,
+            log_inv_rate,
+            &on_rows,
+        ) {
+            return;
+        }
         each_replica(
             message,
             n_lanes,
             log_rows,
             log_inv_rate,
-            scratch,
-            |replica, ntt, buffer, transposed| {
+            work,
+            |replica, ntt, buffer| {
                 let first = replica << log_rows;
-                let on_rows = |row: usize, rows: &[F64]| tree.absorb(first + row, rows);
-                if !transposed {
-                    return ntt.encode_lane_major_with(buffer, message, n_lanes, &on_rows);
-                }
-                ntt.encode_interleaved_in_place_with(buffer, n_lanes, 0, &on_rows);
-                true
+                ntt.encode_interleaved_in_place_with(buffer, n_lanes, 0, &|row, rows| tree.absorb(first + row, rows));
             },
         )
     });
@@ -268,8 +286,8 @@ fn encoded_rows_within(
     let mut wanted = positions.to_vec();
     wanted.sort_unstable();
     wanted.dedup();
-    // From the lane-major message where the shape allows it: one read of it for every replica.
-    if let Some(found) = ntt.encoded_rows_lane_major(message, n_lanes, log_inv_rate, &wanted) {
+    // From the lane-major message in two sweeps where the shape allows it: one read of it for every replica.
+    if let Some(found) = ntt.encoded_rows_two_sweep(message, MsgLayout::LaneMajor, n_lanes, log_inv_rate, &wanted) {
         return positions
             .iter()
             .map(|q| {
@@ -310,33 +328,27 @@ fn lane_shape(message: &[F64], log_n: usize, log_batch_size: usize, log_inv_rate
     (n_lanes, log_rows)
 }
 
-/// Hand `encode(replica, transform, buffer, transposed)` each replica of the codeword in turn, the buffer (in
-/// `scratch`'s allocation when that holds it) and the transform being that replica's ([`AdditiveNttF64::replica`]):
-/// first with `transposed` false, the buffer a work buffer for an encode from the lane-major message, and, if that
-/// returns false (a shape it does not take), again with the buffer holding the transposed message.
+/// Hand `encode(replica, transform, buffer)` each replica of the codeword in turn, the buffer (in `scratch`'s
+/// allocation when that holds it) holding the transposed message and the transform being that replica's
+/// ([`AdditiveNttF64::replica`]).
 fn each_replica(
     message: &[F64],
     n_lanes: usize,
     log_rows: usize,
     log_inv_rate: usize,
     scratch: Vec<F64>,
-    mut encode: impl FnMut(usize, &AdditiveNttF64, &mut [F64], bool) -> bool,
+    mut encode: impl FnMut(usize, &AdditiveNttF64, &mut [F64]),
 ) {
     let ntt = AdditiveNttF64::standard(log_rows + log_inv_rate);
     let mut buffer = scratch;
     buffer.clear();
     buffer.reserve_exact(message.len());
-    // SAFETY: the capacity holds the message's length of plain words, and every replica either is encoded from
-    // the message, the encode writing every word of the buffer it reads ([`AdditiveNttF64::encode_lane_major_with`]),
-    // or starts with a transpose that writes each of them before the encode reads any.
+    // SAFETY: the capacity holds the message's length of plain words, and every replica starts with a transpose
+    // that writes each of them before the encode reads any.
     unsafe { buffer.set_len(message.len()) };
     for replica in 0..1usize << log_inv_rate {
-        let ntt = ntt.replica(log_inv_rate, replica);
-        // From the lane-major message where the shape allows it, else from its transpose.
-        if !encode(replica, &ntt, &mut buffer, false) {
-            crate::ntt::transpose_lane_major(&mut buffer, message, n_lanes, log_rows);
-            assert!(encode(replica, &ntt, &mut buffer, true));
-        }
+        crate::ntt::transpose_lane_major(&mut buffer, message, n_lanes, log_rows);
+        encode(replica, &ntt.replica(log_inv_rate, replica), &mut buffer);
     }
 }
 
@@ -400,6 +412,23 @@ impl LigeroWitness {
                 let mut wanted = positions.to_vec();
                 wanted.sort_unstable();
                 wanted.dedup();
+                // In two sweeps where the shape allows it: one read of the message for every replica.
+                if let Some(found) =
+                    ntt.encoded_rows_two_sweep(ext_words(msg), MsgLayout::RowMajor, 3 * lanes, *log_inv_rate, &wanted)
+                {
+                    return positions
+                        .iter()
+                        .map(|q| {
+                            let at = wanted.binary_search(q).expect("a wanted row");
+                            found[3 * lanes * at..3 * lanes * (at + 1)]
+                                .as_chunks::<3>()
+                                .0
+                                .iter()
+                                .map(|&[c0, c1, c2]| F192::new(c0.0, c1.0, c2.0))
+                                .collect()
+                        })
+                        .collect();
+                }
                 let mut rows = vec![Vec::new(); positions.len()];
                 // SAFETY: every encode below writes the whole replica before anything reads it.
                 let mut replica = unsafe { primitives::uninit_vec::<F192>(msg.len()) };
@@ -430,6 +459,16 @@ impl LigeroWitness {
     pub fn root(&self) -> Hash {
         self.tree[self.tree.len() - 1]
     }
+}
+
+/// Replicas of a lean level's codeword ([`LigeroRows::Message`]) encoded per read of its message: their work
+/// buffers, each as large as the message, are what the level holds beside it while it commits.
+const LEAN_BATCH: usize = 4;
+
+/// An E-valued buffer as its K words: three a coefficient, the row-major lanes then three times as many.
+fn ext_words(v: &[F192]) -> &[F64] {
+    // SAFETY: an `F192` is three `F64`s (`whir_ntt_ext`'s layout asserts), so the view covers the same memory.
+    unsafe { std::slice::from_raw_parts(v.as_ptr().cast::<F64>(), 3 * v.len()) }
 }
 
 /// The rows of `rows` (opened at `positions`, in order) by position, for a Merkle opening.
@@ -499,10 +538,25 @@ fn ligero_commit_ext_within(
     } else {
         // One replica at a time, each hashed as it is encoded, and the message kept for the queries.
         assert_eq!(ntt.log_domain_size(), log_block_len, "the codeword's own transform");
+        // In two sweeps where the shape allows it, a batch of replicas reading the message once.
+        let batch = LEAN_BATCH.min(1 << log_inv_rate);
+        // SAFETY: the first sweep writes every word of the batch's replicas before the second reads them.
+        let mut work = unsafe { primitives::uninit_vec::<F64>(batch * 3 * poly.len()) };
+        let two_sweep = span.in_scope(|| {
+            ntt.encode_two_sweep_with(
+                &mut work,
+                ext_words(poly),
+                MsgLayout::RowMajor,
+                row_words,
+                log_inv_rate,
+                &|row, rows| builder.absorb(row, rows),
+            )
+        });
+        drop(work);
         // SAFETY: every encode below writes the whole replica before anything reads it.
-        let mut replica = unsafe { primitives::uninit_vec::<F192>(poly.len()) };
+        let mut replica = unsafe { primitives::uninit_vec::<F192>(if two_sweep { 0 } else { poly.len() }) };
         span.in_scope(|| {
-            for b in 0..1usize << log_inv_rate {
+            for b in (0..1usize << log_inv_rate).filter(|_| !two_sweep) {
                 let first = b * msg_cols;
                 let ntt = ntt.replica(log_inv_rate, b);
                 encode_interleaved_ext(&ntt, &mut replica, poly, num_interleaved, 0, &|row, rows| {
@@ -1354,6 +1408,8 @@ fn collapse_lanes(
 ) -> (Vec<F192>, Vec<F192>, SumcheckMessage) {
     let n_lanes = f.len() / block;
     let coeffs = &build_eq_table_ext(rs)[..n_lanes];
+    #[cfg(all(target_arch = "x86_64", target_feature = "vpclmulqdq", target_feature = "avx512f"))]
+    let packed = collapse_avx512::pack(coeffs);
     // SAFETY (x2): every task writes its whole window of both buffers before anything reads them.
     let mut nf = unsafe { fold_out_buf(block) };
     let mut nb = unsafe { fold_out_buf(block) };
@@ -1366,16 +1422,30 @@ fn collapse_lanes(
         let mut acc = (F192Unreduced::ZERO, F192Unreduced::ZERO);
         for s in (x0..x0 + chunk).step_by(STAGE) {
             let n = STAGE.min(x0 + chunk - s);
-            let mut sums = [F192Unreduced::ZERO; STAGE];
-            for (l, &coeff) in coeffs.iter().enumerate() {
-                for (sum, &w) in sums.iter_mut().zip(&f[l * block + s..l * block + s + n]) {
-                    *sum ^= coeff.mul_base_unreduced(w);
-                }
-            }
             let mut stage = [[F192::ZERO; STAGE]; 2];
             let [lo_f, lo_b] = &mut stage;
-            for (d, sum) in lo_f[..n].iter_mut().zip(&sums) {
-                *d = sum.reduce();
+            // The witness folded at the lanes' coefficients: on AVX-512 eight words at a time, every lane's
+            // products summed unreduced in registers ([`collapse_avx512`]).
+            #[cfg(all(target_arch = "x86_64", target_feature = "vpclmulqdq", target_feature = "avx512f"))]
+            let vectored = n.is_multiple_of(8);
+            #[cfg(not(all(target_arch = "x86_64", target_feature = "vpclmulqdq", target_feature = "avx512f")))]
+            let vectored = false;
+            if vectored {
+                #[cfg(all(target_arch = "x86_64", target_feature = "vpclmulqdq", target_feature = "avx512f"))]
+                // SAFETY: the features are enabled, every lane holds the stage's words, and `n` is whole vectors.
+                unsafe {
+                    collapse_avx512::stage(f, block, s, &packed, &mut lo_f[..n])
+                };
+            } else {
+                let mut sums = [F192Unreduced::ZERO; STAGE];
+                for (l, &coeff) in coeffs.iter().enumerate() {
+                    for (sum, &w) in sums.iter_mut().zip(&f[l * block + s..l * block + s + n]) {
+                        *sum ^= coeff.mul_base_unreduced(w);
+                    }
+                }
+                for (d, sum) in lo_f[..n].iter_mut().zip(&sums) {
+                    *d = sum.reduce();
+                }
             }
             // The dense low weights at every word, the sparse ones at their entries in the stage.
             for (k, d) in lo_b[..n].iter_mut().enumerate() {
@@ -1415,6 +1485,95 @@ fn collapse_lanes(
             u_2: u_2.reduce(),
         },
     )
+}
+
+/// The witness fold of [`collapse_lanes`] on AVX-512.
+#[cfg(all(target_arch = "x86_64", target_feature = "vpclmulqdq", target_feature = "avx512f"))]
+mod collapse_avx512 {
+    use core::arch::x86_64::*;
+    use primitives::field::{F64, F192};
+
+    /// Vectors of a lane fetched ahead of the one multiplied.
+    const PREFETCH_VECTORS: usize = 8;
+
+    /// A lane's coefficient in every 128-bit lane: `[c0, c1]`, then `[c2, c2]`.
+    #[derive(Clone, Copy)]
+    pub(super) struct Packed(__m512i, __m512i);
+
+    pub(super) fn pack(coeffs: &[F192]) -> Vec<Packed> {
+        // SAFETY: the cfg enables avx512f.
+        coeffs
+            .iter()
+            .map(|c| unsafe {
+                Packed(
+                    _mm512_broadcast_i32x4(_mm_set_epi64x(c.c1 as i64, c.c0 as i64)),
+                    _mm512_set1_epi64(c.c2 as i64),
+                )
+            })
+            .collect()
+    }
+
+    /// `lo ^ hi · x^64` modulo `x^64 + x^4 + x^3 + x + 1`, qword by qword, `hi` of at most 63 bits (a sum of
+    /// products of two 64-bit polynomials).
+    #[inline(always)]
+    unsafe fn reduce(lo: __m512i, hi: __m512i) -> __m512i {
+        const XOR3: i32 = 0x96;
+        // SAFETY: the cfg enables avx512f.
+        unsafe {
+            let x = _mm512_ternarylogic_epi64::<XOR3>(hi, _mm512_srli_epi64::<61>(hi), _mm512_srli_epi64::<60>(hi));
+            let fx = _mm512_ternarylogic_epi64::<XOR3>(x, _mm512_slli_epi64::<1>(x), _mm512_slli_epi64::<3>(x));
+            _mm512_ternarylogic_epi64::<XOR3>(lo, fx, _mm512_slli_epi64::<4>(x))
+        }
+    }
+
+    /// `out[k] = Σ_l coeffs[l] · f[l · block + s + k]`, eight words at a time: per lane six carry-less products
+    /// (each coefficient against the even and the odd words), summed unreduced, and one reduction at the end.
+    ///
+    /// # Safety
+    ///
+    /// The features are enabled, `out.len()` is a multiple of 8, and every lane `l < packed.len()` holds the
+    /// words `s .. s + out.len()` of `f`.
+    #[target_feature(enable = "vpclmulqdq", enable = "avx512f")]
+    pub(super) unsafe fn stage(f: &[F64], block: usize, s: usize, packed: &[Packed], out: &mut [F192]) {
+        debug_assert!(packed.len() * block <= f.len() && s + out.len() <= block);
+        let xor = |a, b| _mm512_xor_si512(a, b);
+        for (g, out) in out.as_chunks_mut::<8>().0.iter_mut().enumerate() {
+            let mut acc = [_mm512_setzero_si512(); 6];
+            for (l, &Packed(t01, t2)) in packed.iter().enumerate() {
+                let at = f.as_ptr().wrapping_add(l * block + s + 8 * g);
+                // Every lane is its own stream, more than the prefetchers follow: fetch a few vectors ahead. A
+                // prefetch never faults, past the lane's end included.
+                _mm_prefetch::<_MM_HINT_T0>(at.wrapping_add(8 * PREFETCH_VECTORS).cast());
+                // SAFETY: the caller vouches for the lane's words.
+                let k = unsafe { _mm512_loadu_si512(at.cast()) };
+                acc = [
+                    xor(acc[0], _mm512_clmulepi64_epi128::<0x00>(t01, k)),
+                    xor(acc[1], _mm512_clmulepi64_epi128::<0x01>(t01, k)),
+                    xor(acc[2], _mm512_clmulepi64_epi128::<0x10>(t01, k)),
+                    xor(acc[3], _mm512_clmulepi64_epi128::<0x11>(t01, k)),
+                    xor(acc[4], _mm512_clmulepi64_epi128::<0x00>(t2, k)),
+                    xor(acc[5], _mm512_clmulepi64_epi128::<0x11>(t2, k)),
+                ];
+            }
+            // Word 2j: [c0, c1] · k_2j in acc 0 and 1; word 2j + 1: in acc 2 and 3; c2 · k in acc 4 and 5.
+            let halves = |a: __m512i, b: __m512i| {
+                // SAFETY: the features are enabled.
+                unsafe { reduce(_mm512_unpacklo_epi64(a, b), _mm512_unpackhi_epi64(a, b)) }
+            };
+            // SAFETY: a register is eight qwords.
+            let (even, odd, c2) = unsafe {
+                (
+                    core::mem::transmute::<__m512i, [u64; 8]>(halves(acc[0], acc[1])),
+                    core::mem::transmute::<__m512i, [u64; 8]>(halves(acc[2], acc[3])),
+                    core::mem::transmute::<__m512i, [u64; 8]>(halves(acc[4], acc[5])),
+                )
+            };
+            for (i, o) in out.iter_mut().enumerate() {
+                let (j, w) = (i / 2, if i % 2 == 0 { &even } else { &odd });
+                *o = F192::new(w[2 * j], w[2 * j + 1], c2[i]);
+            }
+        }
+    }
 }
 
 /// The `initial_k` lane rounds on a lane-tensor weight, transcript operation for transcript operation those of
