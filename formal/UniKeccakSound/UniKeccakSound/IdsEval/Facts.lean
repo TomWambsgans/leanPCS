@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The tables are `formal/UniStatement`'s `tablesKeccak`
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The tables are `formal/UniStatement`'s `tablesKeccak`
 -- (`KeccakTables.lean`); the proofs are `UniSound/Ids/Eval.lean`'s (`tablePartOf_spec`, `tablesLin`, `chunksFit`) on
 -- the Keccak tables, whose `SHA3` table has `28` flushes and `27` counters.
 import UniKeccakSound.IdsEval.Layout

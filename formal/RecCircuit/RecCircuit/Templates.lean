@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Transcribed from `crates/leanvm/rec/src/circuit/keccak.rs`
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Transcribed from `crates/leanvm/rec/src/circuit/keccak.rs`
 -- (`Constants`, `Xors`, `Sponge`), `keccak16.rs` (`D16`) and `units.rs` (`Bools`, `Packer`, `Arith`, `Ports`). The round
 -- constants, rotations and lane permutation are Keccak's (FIPS 202): leanerVM's `keccakRC`, `formal/Circuit`'s
 -- `rho` and `PI` = leanerVM's `keccakPi`.

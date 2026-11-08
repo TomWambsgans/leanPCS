@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! Test vectors for the Lean transcription of the Keccak VM's verifier (`formal/UniKeccak`): `reduce` with
 //! the Keccak VM (`KECCAK.md`) on random, accepting and mutated streams and on the real Keccak proofs of
 //! `tests/vectors/keccak*.txt`, each with the Rust verifier's verdict and its intermediate values (every challenge,

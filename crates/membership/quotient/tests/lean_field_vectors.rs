@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! The `F192` test vectors of `formal/Field/Test.lean`: products, inverses and a Frobenius of
 //! `primitives::field::F192`, which the Lean field (`Primitives.F192`, CompPoly's `BF64.Ext3`) must
 //! reproduce limb for limb. The last four products are the Python reference vectors of

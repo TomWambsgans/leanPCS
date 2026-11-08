@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The rows' lemmas (`walk`, the cosets,
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The rows' lemmas (`walk`, the cosets,
 -- `activePositions`) are this repository's `formal/UniComplete/UniComplete/DomainPositions.lean` (branch
 -- `lean-uni-complete`, e7de70d), copied here as that library is not on this branch.
 import UniSound.Ids.Bridges

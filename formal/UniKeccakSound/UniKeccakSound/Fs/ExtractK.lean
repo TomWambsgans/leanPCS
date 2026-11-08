@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. `UniSound/FsExtract.lean` (after
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. `UniSound/FsExtract.lean` (after
 -- `formal/EndToEnd/Soundness/Extract.lean`) for the Keccak extractor (`formal/UniKeccak`'s `uniExtractorK`:
 -- `c1LayoutK`, `kvStack`).
 import UniKeccakSound.Fs.SetupK

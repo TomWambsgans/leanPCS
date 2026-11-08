@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Moved from `formal/UniSound`'s `UniSound/Ids/Model.lean`
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Moved from `formal/UniSound`'s `UniSound/Ids/Model.lean`
 -- (`toK`, `formK`, `tupleK`) and `UniSound/Ids/LvRealize.lean` (the polynomial normal form), which import this module;
 -- the declarations keep their names and namespaces.
 module

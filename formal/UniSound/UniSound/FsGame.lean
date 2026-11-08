@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The transfer is
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The transfer is
 -- `formal/Compose/Compose/ListChainKRpmS.lean`'s `rpm_le_kcS`, the two-oracle theorem
 -- `ListChainUDoom.lean`'s `knowledgeSoundness_listChainU_closed`; `FsProof.lean`'s
 -- `fsLayer_of_game` is the route through their composition.

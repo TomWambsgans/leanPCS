@@ -1,7 +1,7 @@
 // Part of this repository. The method names and `add_round_poly`'s body are leanVM's (https://github.com/leanEthereum/
 // leanVM), commit 42422001, file crates/fiat_shamir/src/transcript.rs; the transcript is a trait here, so that flock's
 // prover writes to whatever chain implements it (the univariate PIOP's Keccak-256 chain). MIT OR Apache-2.0; see
-// NOTICE.md.
+// AGENTS.md.
 //! The transcript flock's prover (`crates/vendor/leanvm-42422001/flock`) writes to.
 
 pub mod transcript {

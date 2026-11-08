@@ -2,7 +2,7 @@
   Lv42.Protocol.LeanIsaBase
 
   Adapted from leanerVM (https://github.com/Verified-zkEVM/leanerVM), branch mumbai, commit
-  f0393df4, file lean_vm/LeanVM/Protocol/LeanIsa.lean. MIT OR Apache-2.0; see NOTICE.md.
+  f0393df4, file lean_vm/LeanVM/Protocol/LeanIsa.lean. MIT OR Apache-2.0; see AGENTS.md.
   `LeanVM` renamed `Lv42`.
 
   The instruction-set-independent part of `Lv42.Protocol.LeanIsa` (shared by the Keccak VM's

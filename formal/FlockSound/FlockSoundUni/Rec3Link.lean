@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The verifier (`Flock.verifyWalkedFs` at `.rec3`) is
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The verifier (`Flock.verifyWalkedFs` at `.rec3`) is
 -- `formal/UniStatement`'s `Rec.lean`, transcribed from `crates/leanvm/statement/src/flock_min.rs` (`verify_walked`).
 import FlockSoundUni.Link
 import UniStatement.Rec

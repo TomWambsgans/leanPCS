@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! The three stacks, filled: every column's words at the block `crate::stacks::StackLayout` gives it (the
 //! verifier's `layouts`, rebuilt here from the same column lists), the rest zero. Nothing the verifier checks
 //! depends on the words outside the blocks: every weight is zero there, and every claim is on the whole stack's

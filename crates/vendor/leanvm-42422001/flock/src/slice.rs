@@ -1,7 +1,7 @@
 // Vendored from leanVM (https://github.com/leanEthereum/leanVM), commit 42422001, file crates/flock/src/hash.rs: its
 // circuit-agnostic `SliceClaim` (its doc no longer naming BLAKE2s) and `min_n_blocks_log`. The rest of that file, the BLAKE2s compression
 // block, is not vendored (this repository's one block is `keccak`). MIT OR Apache-2.0 (see LICENSE-MIT,
-// LICENSE-APACHE and NOTICE.md at the repository root).
+// LICENSE-APACHE and AGENTS.md at the repository root).
 // CREDIT: https://github.com/succinctlabs/flock, MIT OR Apache-2.0.
 //! The claim Flock's reduction leaves on the committed witness, and the block count's log.
 

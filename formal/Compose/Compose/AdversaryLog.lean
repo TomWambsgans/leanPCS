@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- The step from the whole transcript to the adversary's follows leanerVM `mumbai`'s
 -- `Sound.prEvent_logged2_root_le` (https://github.com/Verified-zkEVM/leanerVM, commit 6175f1a0,
 -- MIT OR Apache-2.0, `lean_vm/LeanVM/Protocol/EndToEnd/Sound/Extractor.lean`): a fresh answer of

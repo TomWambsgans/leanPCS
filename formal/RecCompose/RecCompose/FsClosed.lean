@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. `Final.lean`'s end theorems with π2's Fiat–Shamir layer
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. `Final.lean`'s end theorems with π2's Fiat–Shamir layer
 -- proved (`pi2FsLayer_real`), as `formal/UniSound/UniSound/FsFinal128.lean`'s `fsLayer128_holds` for π1.
 import RecCompose.Final
 import RecCompose.Meanings

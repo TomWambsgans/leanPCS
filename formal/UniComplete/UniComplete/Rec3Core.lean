@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. π1-rec3's honest proof is accepted: `Core.lean`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. π1-rec3's honest proof is accepted: `Core.lean`'s
 -- `accepts_of_trace`, `coreAccepts_of` for π1-rec3's verifier (`Rec3VerifierH.lean`'s `verifierRec3WithH`, three
 -- `PCS_OPEN` calls) and prover (`Rec3Prover.lean`).
 import UniComplete.Rec3CoreBatch

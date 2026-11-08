@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! The workloads: leaf aggregates of leanXMSS signatures by leanVM's Keccak VM (commit `9d50c92a3`, the last before its
 //! switch to GKR), `cargo leanvm aggregate --xmss N --log-inv-rate 1`, and the shapes their proofs announce. The
 //! reference is 128 signatures ([`reference`]).

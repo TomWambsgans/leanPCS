@@ -4,7 +4,7 @@
 // reused after its last read; here for leanVM's verifier: the transcript absorbs runs of calldata, a check is of zero
 // or of nonzero, commitments come from calldata or storage, every byte of code carries the phase it computes, and a
 // measuring build that never reverts. The compilation and the assembly are now `crates/evm_link`'s (`front`, and
-// `assemble` or `link`), this file the code of each node, the entry and the outputs. MIT OR Apache-2.0; see NOTICE.md.
+// `assemble` or `link`), this file the code of each node, the entry and the outputs. MIT OR Apache-2.0; see AGENTS.md.
 //! A recorded graph as EVM bytecode: one contract ([`compile`]), or contracts that each fit EIP-170's limit
 //! ([`compile_deployable`]).
 

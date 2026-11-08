@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The channel (`UniStatement.Transcript`)
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The channel (`UniStatement.Transcript`)
 -- and the chain programs (`UniSound.Prog`) are this repository's.
 import UniSound.Prog
 

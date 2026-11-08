@@ -1,5 +1,5 @@
 /-
-Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 
 `opening::verify` of `crates/membership/quotient/src/opening.rs`, the whole of it (its transcript's start
 included), over a hash and a permutation, and its Fiat-Shamir soundness in the random-oracle model

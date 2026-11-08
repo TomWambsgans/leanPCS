@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Transcribed, in the Rust's operation order, from
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Transcribed, in the Rust's operation order, from
 -- `crates/leanvm/statement/src/flock_min.rs` (`zerocheck`, `ring_end`), `flock.rs` (`lagrange_weights`,
 -- `lagrange_interpolate`) and `ring_tower.rs` (`target`, `xor_network`).
 import RecGraph.Pi1.Ops

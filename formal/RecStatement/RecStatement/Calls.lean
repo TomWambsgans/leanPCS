@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Transcribed from `crates/leanvm/rec/src/pi2/contract.rs`
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Transcribed from `crates/leanvm/rec/src/pi2/contract.rs`
 -- (`read_indices`, `number`, `root_word`, `call_words`, `expected_calls`) and `crates/leanvm/univariate/src/contract.rs`
 -- (`variant_bytes`, `contract_iv_for`), branch `leanvm-rec` @ 2b22581. `PCS_OPEN`'s ABI is
 -- `crates/membership/evm/src/machine.rs`'s (`crates/leanvm/statement/src/evm/machine.rs`: `element_word`, `root_word`).

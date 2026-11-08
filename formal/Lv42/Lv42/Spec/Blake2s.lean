@@ -2,7 +2,7 @@
   Lv42.Spec.Blake2s
 
   Adapted from leanerVM (https://github.com/Verified-zkEVM/leanerVM), branch mumbai, commit
-  f0393df4, file lean_vm/LeanVM/Spec/Blake2s.lean. MIT OR Apache-2.0; see NOTICE.md. `LeanVM`
+  f0393df4, file lean_vm/LeanVM/Spec/Blake2s.lean. MIT OR Apache-2.0; see AGENTS.md. `LeanVM`
   renamed `Lv42`.
 
   BLAKE2s: the compression function, which the ISA's `BLAKE2S` instruction computes, and

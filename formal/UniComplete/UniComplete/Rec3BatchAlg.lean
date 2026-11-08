@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The algebra of `Rec3Prover.lean`'s paired batch
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The algebra of `Rec3Prover.lean`'s paired batch
 -- (`crates/leanvm/univariate/src/prover/batch.rs`'s `prove_pairs`, `leanvm-rec` 4247e37).
 import UniComplete.Rec3Prover
 import UniComplete.BatchProof

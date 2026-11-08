@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The round-by-round form is `UniSound.Piop`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The round-by-round form is `UniSound.Piop`'s
 -- (`formal/UniSound/UniSound/Piop.lean`), for the Keccak verifier's main line.
 import UniSound.Piop
 import UniKeccakSound.FlockInterfaceK

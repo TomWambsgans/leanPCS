@@ -1,7 +1,7 @@
 // Part of this repository. Adapted from leanVM (https://github.com/leanEthereum/leanVM), branch
 // PCS-openings-aggregation, commit 651453c6, crates/flock/src/quotient.rs and crates/flock/src/membership.rs
 // (`Scalar`, `Channel`, `VerifyError`): the reduction is the same but for the gate (`V = X + C + Y·C` on bits,
-// degree 2) and the tables' layouts (stacks leanVM's WHIR commits as they are). MIT OR Apache-2.0; see NOTICE.md.
+// degree 2) and the tables' layouts (stacks leanVM's WHIR commits as they are). MIT OR Apache-2.0; see AGENTS.md.
 //! The membership statement reduced to four evaluation claims by five field elements and no sumcheck.
 //!
 //! A multilinear claim at a point built from one field element `t` is a univariate evaluation ([`domain`]),

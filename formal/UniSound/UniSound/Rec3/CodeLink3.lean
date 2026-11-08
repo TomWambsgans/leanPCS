@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The program is `formal/UniStatement`'s `reduceWithFs`
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The program is `formal/UniStatement`'s `reduceWithFs`
 -- at `.rec3` with the walk (`Rec.lean`); the proof follows `CodeLink.lean`'s (the main line's), Flock's phase cited
 -- through `FlockSound3.link`.
 import UniSound.Rec3.CodeBatch3

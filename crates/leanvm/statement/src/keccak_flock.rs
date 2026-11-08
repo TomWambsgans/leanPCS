@@ -1,6 +1,6 @@
 // Part of this repository (new here, not from leanVM). The verifier's walk of the Keccak-f[1600] Flock block of
 // `crates/vendor/leanvm-42422001/flock/src/keccak.rs` (docs/leanvm/flock/KECCAK.md §4.2, §4.5), on a generic `Scalar`, and the block's
-// structured lincheck terminal (M3). MIT OR Apache-2.0; see NOTICE.md.
+// structured lincheck terminal (M3). MIT OR Apache-2.0; see AGENTS.md.
 //! The Keccak-f block's lincheck terminal, two ways:
 //!
 //! - [`row_values`]: the rows' values `(A0 w, B0 w)` by one forward walk, for the walked terminal

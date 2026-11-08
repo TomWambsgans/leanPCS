@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- Transcribed from `crates/membership/quotient/src/statement.rs` (itself adapted from leanVM's
 -- `crates/flock/src/membership.rs`, branch PCS-openings-aggregation, commit 651453c6). Keccak-256 is
 -- leanerVM's (`Statement/Keccak.lean`, branch `mumbai`, commit 6175f1a0, MIT OR Apache-2.0).

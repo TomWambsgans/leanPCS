@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. `formal/Lv42`'s `Arithmetization/Statement.lean` and
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. `formal/Lv42`'s `Arithmetization/Statement.lean` and
 -- the verifier and bytecode block of `Arithmetization/Boundary.lean` (leanerVM `mumbai` f0393df4, MIT OR Apache-2.0),
 -- for the Keccak VM: the `SHA3` table in `BLAKE2S`'s place, the Keccak VM's programs.
 module

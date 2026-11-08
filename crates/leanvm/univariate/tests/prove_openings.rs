@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! One opening timed alone, at `C1`'s shape on the 1,000-signature trace (`2^27` variables, 50 lanes of `2^21`
 //! words), from a commitment that keeps its codeword and from one that does not (the same proof), and checked with
 //! the verifier. `BENCH_TRACING=1` prints WHIR's own spans:

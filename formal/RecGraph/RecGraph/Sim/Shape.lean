@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The layouts' limbs and the hazard's argument are
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The layouts' limbs and the hazard's argument are
 -- `formal/UniSound`'s (`Ids/Eval.lean`: `limbs_new_mem`, `y_self`).
 import RecGraph.Sim.TablePart
 import RecGraph.Sim.Batch

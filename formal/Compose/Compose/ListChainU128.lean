@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- Follows `formal/Compose/Compose/ListChainU.lean` of this repository step by step (its walk back,
 -- parse, bad events, union bound and trace); only what reads the tag is copied, the tag replaced by
 -- the label's first 32 bytes. Everything else of `ListChainU.lean` is reused as it is.

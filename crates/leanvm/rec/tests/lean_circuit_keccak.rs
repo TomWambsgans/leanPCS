@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! The Keccak VM's π1-rec3 at the reference shape (128 signatures, `leanvm_rec::REFERENCE`) as a vector of
 //! `formal/RecCircuit`'s differential runner (`RecCircuitTest/Main.lean`): its recorded graph as text and the circuit
 //! the Rust compiler makes of it (D16v), in the format of the runner's vectors. The circuit exercises

@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The Fiat–Shamir layer is
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The Fiat–Shamir layer is
 -- `formal/UniSound`'s `fsLayer_of_bridges` (`FsCouple.lean`); the rest `PendingShape.lean`'s
 -- `uniKnowledgeSoundness_flock`.
 import FlockSoundUni.PendingShape

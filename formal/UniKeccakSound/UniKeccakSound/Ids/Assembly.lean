@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The composition is `UniSound/Ids/Build.lean`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The composition is `UniSound/Ids/Build.lean`'s
 -- `uniKnowledgeSoundness_ids` and `UniSound/FinalLink.lean`'s `uniKnowledgeSoundness_code`, for the Keccak VM.
 import UniKeccakSound.FinalK
 import UniKeccakSound.Ids.Final

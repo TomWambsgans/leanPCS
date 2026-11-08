@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. `UniSound/FsVerifier.lean` (`uniVerifierBridge_of_walk`,
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. `UniSound/FsVerifier.lean` (`uniVerifierBridge_of_walk`,
 -- whose generic lemmas are reused) and π1-rec3's `Rec3/FsVerifier3.lean` (three calls) for the Keccak verifier,
 -- `formal/UniKeccak`'s `verifyWithK` (the loop over the openings, then no matrices' claim).
 import UniKeccakSound.Fs.WalkK

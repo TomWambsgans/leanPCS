@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- Generalises `formal/Compose/Compose/Openings.lean` (`breaks_imp`, `knowledgeSoundness_composed`)
 -- and `AdversaryLog.lean` (`knowledgeSoundness_composed_adv`) of this repository to the `k`-round
 -- chain of `ListChainK.lean`, with the setup's commitment as `DeployedWired.lean` and

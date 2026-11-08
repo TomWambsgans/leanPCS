@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The facts transferred are `formal/UniComplete`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The facts transferred are `formal/UniComplete`'s
 -- (`Rec3ProverDuplex.lean`'s `disc_uniProverRec3With`, `Rec3ProverCost.lean`'s `proverCost3_flockProve3H`); uses
 -- leanerVM (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`, commit 6175f1a0, MIT OR Apache-2.0): the two
 -- calls `KeccakCalls`, the duplex discipline `DuplexP`, the block cost `hashBlocks`, `QueryCostAtMost`; VCVio's

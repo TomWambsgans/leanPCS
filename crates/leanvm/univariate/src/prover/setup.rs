@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! The setup commitment `F` (SPEC.md §3), computed from what it is fixed by: the program (leanVM's stacked bytecode)
 //! and the shape (the memory's and the bytecode's sizes). Its root is what a contract is generated with (SPEC.md §13,
 //! F2): [`shape_roots`].

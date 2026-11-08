@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The instance follows `formal/Lv42`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The instance follows `formal/Lv42`'s
 -- `Protocol/LeanIsa.lean` (leanerVM `mumbai` f0393df4, MIT OR Apache-2.0): its five opcode tables, its column groups,
 -- its boundary blocks, public lines and stacking are reused or repeated; the `SHA3` table's flushes are
 -- `crates/leanvm/statement/src/layout.rs::flushes_sha3` (leanVM `9d50c92a3`'s `Sha3Table`).

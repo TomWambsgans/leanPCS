@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The proof is `UniSound/Rec3/PiopSound3.lean`'s, for the
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The proof is `UniSound/Rec3/PiopSound3.lean`'s, for the
 -- Keccak verifier at `keccakRec3` (Flock's zeros in place of the pending claim).
 import UniSound.Rec3.PiopSound3
 import UniKeccakSound.PiopK3

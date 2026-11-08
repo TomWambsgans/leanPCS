@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. `Z_bad`, its degree and its nonvanishing are
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. `Z_bad`, its degree and its nonvanishing are
 -- `formal/UniSound`'s (`zBad`, `natDegree_zBad_le`, `zBad_ne_zero`).
 import RecGraphKeccak.Main
 import RecGraphKeccak.Functionals15

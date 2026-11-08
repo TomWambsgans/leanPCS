@@ -27,7 +27,7 @@ Notes for contributors (people and agents): what the implementation adds to the 
 ## Implementation (`crates/`)
 
 Two lines, both with Keccak-256 Fiat–Shamir and both passing their claims to `PCS_OPEN`. See
-[`NOTICE.md`](NOTICE.md) for what comes from where.
+[`AGENTS.md`](AGENTS.md) for what comes from where.
 
 **Zero-knowledge Merkle membership** with Keccak-256 (depth 32: `y = H(x | 0x11..)`, path from `H(x | 0x22..)` to
 `root`), reduced to four PCS claims by five field elements, as in leanVM's `flock::quotient` but on a circuit of
@@ -109,7 +109,7 @@ cargo test --release -p leanvm_univariate -p leanvm_rec               # the lean
   `crates/leanvm/*` (`leanvm_*`; `statement` is `leanvm_statement`), `crates/vendor/leanvm-c445e3d5/*`,
   `crates/vendor/leanvm-42422001/*` (`lv42_*`). Design documents live in `docs/`, by line; a crate's README says what
   it is, how to test it, and where its design is.
-- **Provenance.** Every file says where it comes from in its first lines; [`NOTICE.md`](NOTICE.md) sums it up. Vendored
+- **Provenance.** Every file says where it comes from in its first lines; [`AGENTS.md`](AGENTS.md) sums it up. Vendored
   files stay as upstream but for what their header lists.
 - **Committed vectors** (`crates/leanvm/univariate/tests/vectors/*.txt`) are real proofs: never edit them by hand.
   `tests/evm_vectors.rs` replays them; `tests/prove_real.rs` writes them (`WRITE_VECTORS=<dir>`, `VECTOR_FILE`).

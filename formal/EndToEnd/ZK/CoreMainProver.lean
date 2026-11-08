@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- The statement's prover (`proveWith`, `proveOpeningWith`, `commitWith`, the chain) runs leanerVM's
 -- code (branch `mumbai`, commit 6175f1a0, MIT OR Apache-2.0: `Statement/Prover/Run.lean`,
 -- `Statement/Keccak.lean`), as `formal/Statement` adapts it.

@@ -2,7 +2,7 @@
   Lv42.Protocol.Blake2sHash
 
   Adapted from leanerVM (https://github.com/Verified-zkEVM/leanerVM), branch mumbai, commit
-  f0393df4, file lean_vm/LeanVM/Protocol/Blake2sHash.lean. MIT OR Apache-2.0; see NOTICE.md.
+  f0393df4, file lean_vm/LeanVM/Protocol/Blake2sHash.lean. MIT OR Apache-2.0; see AGENTS.md.
   `LeanVM` renamed `Lv42`.
 
   Lemmas about BLAKE2s-256 and the digest encoding of `Lv42.Spec.Blake2s`.

@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- About leanerVM `mumbai`'s list decoder (https://github.com/Verified-zkEVM/leanerVM, commit
 -- 6175f1a07f0dc33bd3d640de0063d1006143ee91, MIT OR Apache-2.0: `Statement/Extractor.lean`), with
 -- its lemmas (`lean_vm/LeanVM/Protocol/Extraction/{Prune,Lane,Novel}.lean`,

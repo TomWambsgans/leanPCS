@@ -1,5 +1,5 @@
 // Part of this repository. The tuples and the framework blocks are leanVM 42422001's (crates/verifier/src/{layout,
-// bus}.rs there, through `leanvm_statement`). MIT OR Apache-2.0; see NOTICE.md.
+// bus}.rs there, through `leanvm_statement`). MIT OR Apache-2.0; see AGENTS.md.
 //! The bus as a product heap (SPEC.md §5), prover side: every leaf's push-over-pull ratio, and the heap of their
 //! products.
 

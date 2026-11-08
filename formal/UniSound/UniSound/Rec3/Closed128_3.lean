@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The statement is `formal/UniStatement`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The statement is `formal/UniStatement`'s
 -- `UniKnowledgeSoundnessRec3` (`RecSecurity.lean`); the assembly is `Closed3.lean`'s with the `≥ 128`-bit layer.
 import UniSound.Rec3.FinalRef3
 import UniSound.Rec3.FsFinal128_3

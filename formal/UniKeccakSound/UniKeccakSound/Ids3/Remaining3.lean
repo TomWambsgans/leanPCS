@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The assembly is the Keccak main line's
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The assembly is the Keccak main line's
 -- (`Ids/Assembly.lean`, `Ids/Remaining.lean`) at π1-rec3's shape, as `UniSound/Rec3/{Final128_3,Closed128_3}.lean`.
 import UniKeccakSound.Ids3.Final3
 import UniKeccakSound.Ids.Remaining

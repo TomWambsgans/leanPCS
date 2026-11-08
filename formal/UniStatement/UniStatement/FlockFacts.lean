@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Moved from `formal/FlockSound`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Moved from `formal/FlockSound`'s
 -- `FlockSoundUni/TxBasic.lean` (`sub_eq_add_E`, `ofLane_zero`, `ofLane_xor`,
 -- `eK_eq`) and `FlockSoundUni/Transcription.lean` (the PHI points and the skip's Lagrange weights, `tx_dot_eq`), which
 -- import this module; the declarations keep their names and namespaces.

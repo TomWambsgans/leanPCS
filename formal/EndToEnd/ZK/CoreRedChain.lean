@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- The chain (`Chain.startWith`, `squeezeWith`, `reduceWith`), Keccak-256 over a permutation
 -- (`keccak256With`), the opening's sponge (`Sponge`, `seedInput`) and the byte helpers
 -- (`bytesLane`, `Digest.toRpm`, `Digest.ofRpm`) are leanerVM's (branch `mumbai`, commit 6175f1a0,

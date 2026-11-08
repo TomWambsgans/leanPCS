@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The walk is `formal/UniStatement`'s `Rec.lean`
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The walk is `formal/UniStatement`'s `Rec.lean`
 -- (`Flock.walkedTerminal`, `Flock.blake2sRowValues`), restated as folds in `WalkCode.lean`.
 import FlockSoundUni.WalkCode
 import FlockSoundUni.Rec3Walk

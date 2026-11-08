@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Follows
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Follows
 -- `formal/EndToEnd/Soundness/Cost.lean` of this repository (its `allQ_ourVerifier`, and leanerVM
 -- `mumbai`'s cost lemmas, https://github.com/Verified-zkEVM/leanerVM, commit 6175f1a0, MIT OR
 -- Apache-2.0: `Short`, `hashBlocks_le_of_short`, `isWeightBound_of_isTotalQueryBound`).

@@ -1,5 +1,5 @@
 // Vendored from leanVM (https://github.com/leanEthereum/leanVM), commit c445e3d51a5a85031df47240595698f3b24897bf, file crates/verifier/src/da.rs.
-// MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and NOTICE.md at the repository root).
+// MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and AGENTS.md at the repository root).
 //! LeanDA's Reed-Solomon membership vector, which the statement of an aggregate binds through its hash.
 //!
 //! A blob row is a codeword iff it is orthogonal to `L(X) = prod_j (1 + z_j * Vhat_j(X))` over the domain, `Vhat_j`

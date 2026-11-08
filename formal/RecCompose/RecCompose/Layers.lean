@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The Fiat–Shamir layer's form is
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The Fiat–Shamir layer's form is
 -- `formal/UniSound/UniSound/Fs128.lean`'s `FsLayer128` (every round-by-round sound protocol on the rounds, its first state
 -- the relation of round `0`'s candidate, its last following from the verifier's checks with true claims); the protocol
 -- is `formal/RecPiop`'s `piop`, the verifier's arithmetic `formal/RecStatement`'s `checks_claims_iff_post2`.

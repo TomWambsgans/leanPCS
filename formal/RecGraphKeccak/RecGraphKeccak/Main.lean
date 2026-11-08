@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. `Z_bad` is `formal/UniSound`'s (`UniSound.Ids.zBad`,
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. `Z_bad` is `formal/UniSound`'s (`UniSound.Ids.zBad`,
 -- on the shape's hash table's height).
 import RecGraph.Pi1.Main
 import RecGraphKeccak.Pi1.Verifier

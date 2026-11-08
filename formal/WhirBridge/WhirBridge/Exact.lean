@@ -1,5 +1,5 @@
 /-
-Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 
 The per-group bound of leanVM's WHIR at `2^24 ..= 2^28` words, rate `1/2`, at its certified value
 (`2^-128.93`) instead of `2^-128`, and this package's opening chain (`Sound.lean`'s `stackedAt`,

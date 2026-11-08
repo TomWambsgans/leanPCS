@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Round `0` with squares is `UniSound/Rec3/BusSq.lean`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Round `0` with squares is `UniSound/Rec3/BusSq.lean`'s
 -- `BusModel.mainSoundSq` for the Keccak VM's bus model (`Ids/Bus.lean`).
 import UniSound.Rec3.BusSq
 import UniKeccakSound.Ids.Bus

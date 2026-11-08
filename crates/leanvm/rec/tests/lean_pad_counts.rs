@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! The vectors of `formal/RecCircuit/RecCircuitTest/PadCounts.lean`: `layout::pad_counts` on pseudo-random region
 //! counts (each region: its row count, its expression roles, its forward roles, whether it has a port), and on the
 //! carry case of the look-ahead (724,992 rows pad to 786,432 at both 2 and 3 digits). One line per case:

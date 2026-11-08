@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. `FsLayer128` is `Fs.lean`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. `FsLayer128` is `Fs.lean`'s
 -- `FsLayer` with the bound `uniBound128`; `hlab_uni` reads the seed of `FsGame.lean`'s two-oracle
 -- game (`ivAdv`: the adversary, then the contract's IV).
 import UniSound.FsGame

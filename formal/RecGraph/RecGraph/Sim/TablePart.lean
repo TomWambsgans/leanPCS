@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. A table's reads and the sent columns' pattern are
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. A table's reads and the sent columns' pattern are
 -- `formal/UniSound`'s (`CodeTables.lean`: `tableReads`, `SamePat`, `sentPat`, `sum_flushReads`).
 import RecGraph.Sim.Relations
 import UniSound.CodeTables

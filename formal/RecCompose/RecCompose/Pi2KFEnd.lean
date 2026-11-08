@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. π2's completeness (`formal/RecStatement`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. π2's completeness (`formal/RecStatement`'s
 -- `RecCompleteness2`, `RecCompletenessWith`) at the recursion's π1 prover (`Pi1KF.pi1Rec3ProverKF`: its Fiat–Shamir over
 -- the real Keccak-f[1600], its trees and openings over `π`), redone on `Pi2AlphaEnd`'s ingredients: `Pi2SimExp`
 -- (`expW2_event_staged`, `perm_kc`), `Pi2AlphaFresh` (`prA_le`), `Pi2RunDuplex` (`disc_pi2Staged`), `Pi2RunCost`

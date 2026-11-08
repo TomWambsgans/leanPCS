@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- Transcribed from `crates/membership/evm/src/machine.rs` (`element_word`, `root_word`, `layout_id`, `layout`,
 -- `pcs_open_input`, `PcsOpen::well_sized`, the input format of its module documentation).
 import PcsQuotient.Verifier

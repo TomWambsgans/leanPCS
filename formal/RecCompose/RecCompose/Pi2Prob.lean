@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Follows `formal/UniComplete/UniComplete/ProbChain.lean`
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Follows `formal/UniComplete/UniComplete/ProbChain.lean`
 -- (`staged5`, `prEvent_staged5_le`) and `ProbStaged.lean` (`UniStaged`, `UniStaged.Holds`, `prEvent_run_false_le`) for
 -- π2's transcript (`crates/leanvm/rec/src/pi2/prover.rs`: `α, β, γ` after `W`'s root, `t` after `Q`'s); uses their hash
 -- discipline (`HashOK`, `GoodL`, `prEvent_query_le`, `sum_bad_le`, `prEvent_tquery_le`), `E2ECompleteness`'s transfer

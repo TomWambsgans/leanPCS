@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. π1-rec3's honest prover is `formal/UniComplete`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. π1-rec3's honest prover is `formal/UniComplete`'s
 -- (`UniComplete/Rec3Prover.lean`, `proveRec3With`, after `crates/leanvm/univariate`'s `FLOCK_REC3`); here with two
 -- hashes, as the recursion runs it (`crates/leanvm/rec`: π1's Fiat–Shamir is the real Keccak-256, which π2's circuit
 -- recomputes; its Merkle trees and WHIR openings are the `PCS_OPEN` precompile's, in the random-permutation model).

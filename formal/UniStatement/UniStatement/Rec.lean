@@ -5,7 +5,7 @@
 -- (https://github.com/leanEthereum/leanVM), commit 42422001), `hash.rs` (`BLAKE2S_IV`, `BLAKE2S_SIGMA`,
 -- `BLAKE2S_G_LANES`, leanVM's), `crates/leanvm/univariate/src/verifier.rs` (`reduce`'s `α` draw and walked Flock,
 -- `batch`'s rounds) and `contract.rs` (`variant_bytes`, `contract_iv_for`), at `leanvm-rec` 4247e37. MIT OR
--- Apache-2.0; see NOTICE.md.
+-- Apache-2.0; see AGENTS.md.
 module
 
 public import UniStatement.Opening

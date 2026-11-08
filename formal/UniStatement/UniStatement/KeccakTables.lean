@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Transcribed from `crates/leanvm/statement/src/layout.rs`
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Transcribed from `crates/leanvm/statement/src/layout.rs`
 -- (`SHA3_COLUMNS`, `flushes_sha3`, `SHA3_STATE_CELLS`, `SHA3_CELL_LANES`, `tables_keccak`, `keccak_slot`,
 -- `SHA3_END_BIT`, `keccak_slot_offset`, `KECCAK_R1CS_LOG_SIZE`) and `keccak_flock.rs` (`LOG_SIZE`, `state_word`),
 -- adapted there from leanVM `9d50c92a3`'s `Sha3Table` (`crates/leanvm_core/src/tables.rs`).

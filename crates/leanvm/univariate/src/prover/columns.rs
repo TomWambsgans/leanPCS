@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! The first commitment's polynomials and the setup's (SPEC.md §3), from a trace: every column's novel
 //! coefficients (for the quotients' cosets) and its `B` coefficients (what the stack holds).
 

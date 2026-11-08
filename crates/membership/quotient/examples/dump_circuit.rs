@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! The membership circuit as bytes, for the differential test against its Lean transcription
 //! (`formal/Circuit`, `lake exe dump-circuit`, which writes the same format): `cargo run --release -p quotient
 //! --example dump_circuit -- OUT`, then compare the two files' SHA-256.

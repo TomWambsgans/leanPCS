@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- The WHIR prover (`roundA`, `foldRoundsA`, `levelsA`, `openingFast`, this repository's
 -- `openingScript`) and the scripts' language (`Script`, `Script.bind`, the moves `msgOf`, `afterSend`,
 -- `afterSample`, `afterGrind`, `wordOf`, `afterCommit`, `afterQuery`) are leanerVM's (branch `mumbai`,

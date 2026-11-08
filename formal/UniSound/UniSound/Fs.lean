@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The bound's form is
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The bound's form is
 -- `formal/Compose/Compose/ListChainKDoom.lean`'s `knowledgeSoundness_listChainK_closed_rpm`.
 import UniSound.PiopSound
 

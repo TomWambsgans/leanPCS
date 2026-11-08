@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The algebra follows
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The algebra follows
 -- `formal/FlockSound/FlockSoundUni/WalkAlg.lean`'s `matrixSum_spec` (BLAKE2s's walk); the terminal's identity is
 -- `formal/KeccakFlock`'s `KeccakFlock.Core.structuredTerminal_eq_bilinear`.
 import UniKeccakSound.Flock.Instance

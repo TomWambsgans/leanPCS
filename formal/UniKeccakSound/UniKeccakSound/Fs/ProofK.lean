@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The main line's `UniSound/FsProof.lean` (the
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The main line's `UniSound/FsProof.lean` (the
 -- composition's facts, the setup), `UniSound/FsCost.lean` (`uniNumbers_of`) and π1-rec3's `Rec3/FsProof3.lean`
 -- (three openings) for the Keccak verifier, whose setup is one tree.
 import UniKeccakSound.Fs.OpsK

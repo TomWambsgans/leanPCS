@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Transcribed from `crates/leanvm/univariate/src/contract.rs`
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Transcribed from `crates/leanvm/univariate/src/contract.rs`
 -- (`variant_bytes` and `contract_iv_for` with `Blake2s::Keccak`, `layout_words_for`, `calls`) and
 -- `crates/leanvm/univariate/tests/keccak_vm.rs` (`KECCAK_RUNS`, `KECCAK_LOG_BYTECODE`: leanVM 9d50c92a3's runs);
 -- `PCS_OPEN`'s semantics is `UniStatement`'s (`pcsOpenWith`, this repository's `formal/Statement` opening).

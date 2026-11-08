@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- Transcribed from `crates/membership/quotient/src/protocol.rs` (`reduce`, `verify`, `label`, `sum_point`,
 -- `bit_weight`, `coordinate_weight`, `extension`), adapted from leanVM's `flock::quotient` (branch
 -- PCS-openings-aggregation, commit 651453c6). Fields and Keccak-256 are leanerVM's (branch `mumbai`,

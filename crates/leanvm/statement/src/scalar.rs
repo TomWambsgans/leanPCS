@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! What the verifier computes on: an element of `E`, or (for the contract) a node of a recorded graph.
 //!
 //! leanVM's verifier at 42422001 is written on `E`. Every function of it the contract runs is written here on a

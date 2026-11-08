@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The loop lemmas extend
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The loop lemmas extend
 -- `formal/FlockSound/FlockSoundUni/Loops.lean` (`repeatM`, `nextScalars_eq`, `samples_eq`).
 import UniSound.Fs
 import FlockSoundUni.Decode

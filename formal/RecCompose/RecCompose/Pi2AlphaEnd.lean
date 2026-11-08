@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. π2's completeness (`formal/RecStatement`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. π2's completeness (`formal/RecStatement`'s
 -- `RecCompleteness2`, `RecCompletenessWith`) at π1-rec3's honest prover with `α`'s freshness proved: `Pi2AlphaG`
 -- (`Holds3`, the staged bounds conditioned on the graph's acceptance), `Pi2AlphaFresh` (`alphaFresh_p1k`),
 -- `Pi2AlphaSupport` (`accA_pi2`, `accB_pi2`), and `Pi2SimEnd`'s, `Pi2Closed`'s ingredients.

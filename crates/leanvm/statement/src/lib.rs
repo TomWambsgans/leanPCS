@@ -1,5 +1,5 @@
 // Adapted from leanVM (https://github.com/leanEthereum/leanVM), commit 42422001, file crates/verifier/src/lib.rs: its
-// errors and the announced shape. MIT OR Apache-2.0; see NOTICE.md.
+// errors and the announced shape. MIT OR Apache-2.0; see AGENTS.md.
 //! The Keccak VM's statement (leanVM 9d50c92a3) and the verifier pieces built on it, generic over the scalar they
 //! compute on, shared by `leanvm_univariate` (π1) and `leanvm_rec` (π2). See `README.md`.
 //!

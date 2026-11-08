@@ -2,7 +2,7 @@
 // `docs/leanvm/flock/KECCAK.md` §4.2 and §4.5 (design C*, milestone M1). Its walks and its prover entry follow this
 // crate's BLAKE2s block (`hash.rs`, leanVM 42422001's): the same row kinds, `C = I`, the same `LincheckCircuit` seam
 // and the same zerocheck-with-skip and lincheck calls. MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and
-// NOTICE.md at the repository root).
+// AGENTS.md at the repository root).
 //! Keccak-f\[1600\] as one Flock block: `k_log = 17`, `C = I`, every round's state materialised.
 //!
 //! ## Rows

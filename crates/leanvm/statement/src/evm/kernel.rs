@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! Hand-scheduled code for the ring switch's weight at a point ([`crate::ring_tower::weight_at`]), the one
 //! computation of the univariate verifier the graph's generic compilation serves badly.
 //!

@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The two transcriptions are
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The two transcriptions are
 -- `Rels.lean`'s `relsOf` (the identity model's) and `CodeLink.lean`'s `mainRels`, `flockClaim` (the
 -- code-level link's), both of `formal/UniStatement`'s `reduceWith`, steps 4–7.
 import UniSound.FinalLink

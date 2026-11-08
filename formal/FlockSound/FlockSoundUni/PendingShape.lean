@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The hypothesis is `formal/UniSound`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The hypothesis is `formal/UniSound`'s
 -- `FlockPendingShaped` (`FinalLink.lean`); the instance is `Instance.lean`'s `flockSoundInstance`.
 import FlockSoundUni.Instance
 import UniSound.FinalLink

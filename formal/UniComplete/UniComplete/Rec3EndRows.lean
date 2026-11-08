@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. π1-rec3's completeness from the BLAKE2s walk's rows
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. π1-rec3's completeness from the BLAKE2s walk's rows
 -- (`formal/FlockSound/FlockSoundUni/WalkAlg.lean`'s `RowsSpec`, `walkLemmaConverse_of_rows`), the hypothesis
 -- π1-rec3's knowledge soundness takes too (`UniSound.Rec3`'s closed theorem).
 import UniComplete.Rec3End

@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The statement is `Mle.lean`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The statement is `Mle.lean`'s
 -- `PendingTerminalLink`, the restatement of `formal/FlockSound`'s `matFun_append` / `extFun_append`
 -- (branch `lean-flock-sound`) on the batch's tables.
 import UniSound.Mle

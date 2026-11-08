@@ -1,7 +1,7 @@
 // Vendored from leanVM (https://github.com/leanEthereum/leanVM), commit 42422001, file crates/flock/src/lincheck.rs.
 // Changed here: the prover's body after its row weights is `prove_padded_capture_s_hat_v_rows`, which also takes
 // row weights a zerocheck skip below 6 leaves; leanVM's entry is unchanged in what it computes.
-// MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and NOTICE.md at the repository root).
+// MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and AGENTS.md at the repository root).
 // CREDIT: https://github.com/succinctlabs/flock (flock-core), MIT OR Apache-2.0.
 //! Lincheck PIOP for **block-diagonal** R1CS over GF(2).
 //!

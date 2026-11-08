@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. π1-rec3's batch: the verifier's terminal on the honest
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. π1-rec3's batch: the verifier's terminal on the honest
 -- paired batch (`Rec3BatchSync.lean`'s `batchTerminal3`) vanishes, as `BatchProof.lean`'s `collectedAt_eq_zero` for
 -- the main line.
 import UniComplete.Rec3BatchSync

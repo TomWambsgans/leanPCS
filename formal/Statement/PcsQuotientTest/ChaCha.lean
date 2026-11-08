@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- ChaCha is D. J. Bernstein's (https://cr.yp.to/chacha.html); the stream is `rand_chacha`'s `ChaCha12Rng`
 -- (`rand`'s `StdRng`, the one `crates/membership/quotient/src/opening.rs` pads with), not formalized, for the test only.
 import PcsQuotient

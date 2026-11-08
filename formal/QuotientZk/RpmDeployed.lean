@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- Uses leanerVM (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`, commit 6175f1a0,
 -- MIT OR Apache-2.0): `common`'s two-oracle model (`Common.Indiff2`, `Common.Transfer2`,
 -- `Common.keccak_indiffBound2_le`, `Common.not_keccakNF_of_pad`) and the statement's model read

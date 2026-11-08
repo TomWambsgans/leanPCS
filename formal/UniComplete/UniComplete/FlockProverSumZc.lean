@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The relation is `formal/Lv42`'s (`BlockR1CS.BatchHolds`,
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The relation is `formal/Lv42`'s (`BlockR1CS.BatchHolds`,
 -- `batchBlock`, `bitTable`; leanerVM `mumbai` f0393df4's, MIT OR Apache-2.0).
 import UniComplete.FlockProverSumPure
 

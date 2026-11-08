@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. `Final3.lean`'s `uniKnowledgeSoundness3` and
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. `Final3.lean`'s `uniKnowledgeSoundness3` and
 -- `uniKnowledgeSoundness3_bits` with the Fiat–Shamir layer at `≥ 128` bits (`FsLayer128_3`), as the main line's
 -- `Closed128.lean`'s `uniKnowledgeSoundness128`.
 import UniSound.Rec3.Final3

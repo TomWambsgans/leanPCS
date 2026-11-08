@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The assembly is `UniSound/Ids/Assembly.lean`'s and
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The assembly is `UniSound/Ids/Assembly.lean`'s and
 -- `UniSound/Closed.lean`'s (`hB_ref`, `hdeg_ref`, `hrel_ref`) at the reference Keccak shape.
 import UniKeccakSound.IdsNum.Degrees
 import UniKeccakSound.IdsNum.Counts

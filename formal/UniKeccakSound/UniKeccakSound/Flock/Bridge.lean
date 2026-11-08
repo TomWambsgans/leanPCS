@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Relates `formal/UniKeccak/UniKeccak/Terminal.lean`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Relates `formal/UniKeccak/UniKeccak/Terminal.lean`'s
 -- `structuredTerminal` (transcribed from `crates/leanvm/statement/src/keccak_flock.rs`) to `formal/KeccakFlock`'s
 -- `KeccakFlock.Terminal.structuredTerminal` (the same function, its loops written as sums).
 import UniKeccakSound.Flock.Terminal

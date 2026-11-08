@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. `formal/Lv42`'s `Arithmetization/Soundness/Walk.lean`
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. `formal/Lv42`'s `Arithmetization/Soundness/Walk.lean`
 -- (leanerVM `mumbai` f0393df4, MIT OR Apache-2.0), at the Keccak VM's `run`.
 module
 

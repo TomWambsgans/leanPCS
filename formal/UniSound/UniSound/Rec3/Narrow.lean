@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The narrow challenges are π1-rec3's
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The narrow challenges are π1-rec3's
 -- (`crates/leanvm/statement/src/transcript.rs`: `NARROW_BITS`, `narrow`, `Channel::sample_narrow`,
 -- `sumcheck_drawn`), transcribed as `UniStatement.narrowE` (`formal/UniStatement/UniStatement/Rec.lean`).
 import UniSound.Sumcheck

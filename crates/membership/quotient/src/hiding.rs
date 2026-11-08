@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The two attack tests at the end are the two attacks on
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The two attack tests at the end are the two attacks on
 // the pre-hiding prover (a calldata-only distinguisher and an opening distinguisher, `HIDING.md`), turned around to
 // assert that they no longer distinguish.
 //! The exact checks behind `HIDING.md`, in the real fields (`K = GF(2^64)`, `E = GF(2^192)`, WHIR's novel

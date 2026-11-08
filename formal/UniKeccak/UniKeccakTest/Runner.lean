@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The vector parser is
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The vector parser is
 -- `formal/UniStatement/UniStatementTest/Runner.lean`'s, repeated (a test file is not a module).
 import UniKeccak
 

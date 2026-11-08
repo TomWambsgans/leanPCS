@@ -1,5 +1,5 @@
 /-
-Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 
 The opening with leanVM's transcript shape against an adversary that chooses the claims. The
 construction (one program for every statement, reading the statement as unabsorbed scalars; the

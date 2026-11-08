@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. `formal/Lv42`'s `Arithmetization/Completeness/Witness.lean`
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. `formal/Lv42`'s `Arithmetization/Completeness/Witness.lean`
 -- (leanerVM `mumbai` f0393df4, MIT OR Apache-2.0), for the Keccak VM.
 module
 

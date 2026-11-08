@@ -150,4 +150,4 @@ A trace is written by leanVM `9d50c92a3` itself, patched by `crates/leanvm/univa
 - [`STATUS.md`](STATUS.md): what is proved, tested and measured, the security notes, and what remains.
 - [`AGENTS.md`](AGENTS.md): notes for contributors (people and agents): what the implementation adds to the idea above,
   and conventions.
-- [`NOTICE.md`](NOTICE.md): provenance and licenses (MIT OR Apache-2.0).
+- [`AGENTS.md`](AGENTS.md): provenance and licenses (MIT OR Apache-2.0).

@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! The Keccak VM's π1 (docs/leanvm/univariate/KECCAK.md) under π2: its verifier recorded with π1-rec3's Fiat–Shamir
 //! shape, counted, and compiled into π2's circuit (D16v) on a sample stream, at the reference shape (128 signatures)
 //! and at 400: whether π2 holds it in `2^24` positions, and the recursion's contract's gas.

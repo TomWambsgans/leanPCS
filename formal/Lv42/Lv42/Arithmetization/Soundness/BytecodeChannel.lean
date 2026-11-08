@@ -3,7 +3,7 @@
 
   Adapted from leanerVM (https://github.com/Verified-zkEVM/leanerVM), branch mumbai, commit
   f0393df4, file lean_vm/LeanVM/Arithmetization/Soundness/BytecodeChannel.lean. MIT OR Apache-2.0;
-  see NOTICE.md. `LeanVM` renamed `Lv42`.
+  see AGENTS.md. `LeanVM` renamed `Lv42`.
 
   Soundness of the bytecode channel: in a satisfying witness every pulled bytecode tuple is the
   public program's entry at the pulled counter.

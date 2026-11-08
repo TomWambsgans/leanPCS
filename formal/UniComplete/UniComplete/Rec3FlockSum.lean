@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The port of `FlockProverSum.lean`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The port of `FlockProverSum.lean`'s
 -- `zc_values`/`pendingSumHolds`, `FlockProverTerminal.lean`'s `pendingTerminalHolds`/`tables_shape` and
 -- `FlockProverMain.lean`'s `pendingSumHolds_honest` to π1-rec3's honest Flock prover (`Rec3Prover.lean`'s `flockProve3`).
 import UniComplete.Rec3FlockShape

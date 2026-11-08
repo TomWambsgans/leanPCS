@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- The structure (bad fresh queries parsed from the history, their probability, the trace of a
 -- winning run) follows `formal/QuotientRpm/ChainRom.lean` of this repository, whose lemmas it uses;
 -- here the roots are the proof's, not hashes of the messages, and every round is union-bounded

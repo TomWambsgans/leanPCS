@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The port of `formal/UniSound/UniSound/FsOps.lean` and
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The port of `formal/UniSound/UniSound/FsOps.lean` and
 -- `FsProof.lean`'s facts (`hok_uni`, `hcov_uni`, `hS_uni`, `maxErrK_uni`, the shapes) to π2's six openings.
 import RecCompose.FsDefs
 import RecCompose.Tables

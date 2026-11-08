@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Transcribed, in the Rust's operation order, from
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Transcribed, in the Rust's operation order, from
 -- `crates/leanvm/univariate/src/verifier.rs` (`linearise`, `table_part`, `quotient_terms`, `heap_relations`),
 -- `claims.rs` (`Relations::{push, equal, combine}`) and `stacks.rs` (`limb_basis`), at `leanvm-rec` 4247e37.
 import RecGraph.Pi1.Flock

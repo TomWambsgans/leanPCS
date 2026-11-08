@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The pending reduction's identity is
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The pending reduction's identity is
 -- `formal/UniSound/UniSound/FlockInterface.lean`'s `PendingHolds`; the walk's lemma's converse is
 -- `Rec3FlockDefs.lean`'s `WalkLemmaConverse` (`formal/FlockSound/FlockSoundUni/Rec3Walk.lean`'s `WalkLemma`, `←`).
 import UniComplete.Rec3FlockSum

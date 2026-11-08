@@ -1,7 +1,7 @@
 -- Part of this repository. Transcribed from `crates/leanvm/statement/src/layout.rs` (`Form`, `Flushes`, the six
 -- tables' columns, flushes and counters, `BLAKE2S_SLOTS`), adapted there from leanVM
 -- (https://github.com/leanEthereum/leanVM), commit 42422001, `crates/verifier/src/layout.rs`. MIT OR Apache-2.0;
--- see NOTICE.md.
+-- see AGENTS.md.
 module
 
 public import UniStatement.TablesBase

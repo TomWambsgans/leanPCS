@@ -2,7 +2,7 @@
   Lv42.Spec.Isa
 
   Adapted from leanerVM (https://github.com/Verified-zkEVM/leanerVM), branch mumbai, commit
-  f0393df4, file lean_vm/LeanVM/Spec/Isa.lean. MIT OR Apache-2.0; see NOTICE.md. `LeanVM` renamed
+  f0393df4, file lean_vm/LeanVM/Spec/Isa.lean. MIT OR Apache-2.0; see AGENTS.md. `LeanVM` renamed
   `Lv42`. Changed: the docstring of `run` cites the halting rule of leanVM `42422001`'s Rust
   executor.
 

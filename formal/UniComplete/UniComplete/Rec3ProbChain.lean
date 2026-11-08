@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. π1-rec3's analogue of `ProbChain.lean`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. π1-rec3's analogue of `ProbChain.lean`'s
 -- `prEvent_staged5_le` (the main line's five chained bus answers), for π1-rec3's two; uses `ProbChain.lean`'s lemmas
 -- and `formal/EndToEnd/Completeness/E2ECompleteness/Chain.lean`'s (`prEvent_final_le`, `cache_of_hashOK`), and leanerVM
 -- (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`, commit 6175f1a0, MIT OR Apache-2.0): the two calls

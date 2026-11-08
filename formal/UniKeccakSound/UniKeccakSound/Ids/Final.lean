@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The statement is `UniKeccakSound/FsK.lean`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The statement is `UniKeccakSound/FsK.lean`'s
 -- `UniFinalK`; the proof is `UniSound/FinalLink.lean`'s `uniFinal` for `formal/UniKeccak`'s `batchK` (no pending
 -- matrices, three values in the tail).
 import UniSound.FinalLink

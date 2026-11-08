@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The assembly is `UniSound/Ids/Remaining.lean`'s, for
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The assembly is `UniSound/Ids/Remaining.lean`'s, for
 -- the Keccak VM.
 import UniKeccakSound.Ids.Assembly
 import UniKeccakSound.Ids.BusCount

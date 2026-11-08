@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The route is `UniSound/FsGame.lean`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The route is `UniSound/FsGame.lean`'s
 -- `fsLayer_of_gameV`, `UniSound/Fs128.lean`'s `hlab_uni` and `UniSound/FsGame128.lean`'s `fsLayer128_of_gameV`,
 -- through `Compose`'s `rpm_le_kcS`, `knowledgeSoundness_listChainU_closed128`, `prEvent_doomF_le` and
 -- `prEvent_pairTr_expL_le`, for the Keccak verifier (one setup tree, three openings, the Keccak contract's IV).

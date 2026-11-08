@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. Follows `formal/FlockSound/FlockSoundUni/Instance.lean`
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Follows `formal/FlockSound/FlockSoundUni/Instance.lean`
 -- and `Rec3Instance.lean` (BLAKE2s's) for the Keccak verifier's Flock phase.
 import UniKeccakSound.Flock.Rec3
 

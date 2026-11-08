@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! The prover on real Keccak VM traces (leanVM 9d50c92a3, written by `src/prover/dump_keccak`; KECCAK.md): SPEC.md's
 //! identities on the domain, the quotients' degrees, every combined relation at `t`, the Rust verifier's and the EVM
 //! contract's acceptance of the proof (the contract's `PCS_OPEN` calls being exactly the claims the WHIR openings

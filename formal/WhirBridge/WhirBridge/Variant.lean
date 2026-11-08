@@ -1,5 +1,5 @@
 /-
-Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 
 Fiat-Shamir soundness, in the random-oracle model, of the opening check with leanVM's transcript
 shape, from leanerVM `mumbai`'s random-oracle theorem (`Compile.Rom.romSound`). The construction

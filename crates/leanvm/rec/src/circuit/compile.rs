@@ -1,5 +1,5 @@
 // Part of this repository. The node semantics are those of `leanvm_statement::evm::record` and of
-// `leanvm_statement::transcript::KeccakChannel` (as in `crate::eval`). MIT OR Apache-2.0; see NOTICE.md.
+// `leanvm_statement::transcript::KeccakChannel` (as in `crate::eval`). MIT OR Apache-2.0; see AGENTS.md.
 //! The compiler from `π1`'s recorded verifier ([`Recorded`]) to `π2`'s circuit, and its witness (SPEC-REC.md §7 R2,
 //! steps 4–5):
 //!

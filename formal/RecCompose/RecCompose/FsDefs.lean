@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The port of `formal/UniSound/UniSound/FsChain.lean`,
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The port of `formal/UniSound/UniSound/FsChain.lean`,
 -- `FsOps.lean`, `FsProof.lean` (the setup), `FsGame.lean` (the IV in the verifier) and `FsCouple.lean` (the bridge facts)
 -- to π2's transcript (`formal/RecStatement/RecStatement/Verifier.lean`, `Calls.lean`, `Security.lean`).
 import RecCompose.Layers

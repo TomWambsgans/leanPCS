@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- Follows `formal/Compose/Compose/ListChainUDoom.lean` of this repository step by step (its bad
 -- events, trace and end theorem) over `ListChainU128.lean`'s `listBadU'`, on the run with its whole
 -- Keccak-256 transcript (`Final128Defs.lean`'s `expL`); what does not read the tag or the stages

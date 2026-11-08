@@ -1,6 +1,6 @@
 // Adapted from leanVM (https://github.com/leanEthereum/leanVM), commit 42422001, file crates/verifier/src/field.rs:
 // unchanged but for this header, `E::frobenius` made public and `Scaled` (a speed-up the port does not use) kept for its
-// test only. MIT OR Apache-2.0; see NOTICE.md.
+// test only. MIT OR Apache-2.0; see AGENTS.md.
 //! Field arithmetic: `K = GF(2)[x]/(x^64 + x^4 + x^3 + x + 1)` and `E = K[y]/(y^3 + y + 1)`, on plain integers.
 
 use crate::{VerifierError, require};

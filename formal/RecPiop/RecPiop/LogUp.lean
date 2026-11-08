@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The counting form follows leanerVM
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The counting form follows leanerVM
 -- 6175f1a0's `LeanVM.Protocol.card_sideProduct_collision_le` (one Schwartz–Zippel bound on a cleared
 -- polynomial, Mathlib's `MvPolynomial.schwartz_zippel_totalDegree`).
 import Mathlib

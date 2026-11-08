@@ -1,5 +1,5 @@
 // Adapted from leanVM (https://github.com/leanEthereum/leanVM), branch PCS-openings-aggregation, commit 651453c6,
-// file crates/membership/evm/src/contract.rs: its `Recorder`. MIT OR Apache-2.0; see NOTICE.md.
+// file crates/membership/evm/src/contract.rs: its `Recorder`. MIT OR Apache-2.0; see AGENTS.md.
 //! The proof as the recorder reads it: every read and every challenge is a node of the graph the contract is
 //! compiled from.
 

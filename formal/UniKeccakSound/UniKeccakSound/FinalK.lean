@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The composition is `UniSound/Final.lean`'s and
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The composition is `UniSound/Final.lean`'s and
 -- `UniSound/Closed128.lean`'s `uniKnowledgeSoundness128`, for the Keccak verifier's main line.
 import UniSound.Final
 import UniKeccakSound.PiopSoundK

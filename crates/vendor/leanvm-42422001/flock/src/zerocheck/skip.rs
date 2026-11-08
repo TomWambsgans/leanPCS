@@ -4,7 +4,7 @@
 // univariate_skip_optimized.rs (the fixed small and medium eq coordinates, the shift-reduce, the C part on S lifted
 // to Λ). New here: a univariate skip of any `k` in 3..=6, the round-1 kernel for it, the bit passes' schedule, and the
 // eq point's sampled coordinates as successive squares of one (`EqPoint::Squares`, the univariate PIOP's π1-rec).
-// CREDIT: https://github.com/succinctlabs/flock (flock-core), MIT OR Apache-2.0. MIT OR Apache-2.0; see NOTICE.md.
+// CREDIT: https://github.com/succinctlabs/flock (flock-core), MIT OR Apache-2.0. MIT OR Apache-2.0; see AGENTS.md.
 //! The zerocheck with a univariate skip of `k` variables, `3 ≤ k ≤ 6`: leanVM's protocol with `k` for its fixed 6
 //! (`leanvm_statement::flock_min`'s `zerocheck` verifies it).
 //!

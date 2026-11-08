@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! The second commitment's quotients (SPEC.md §5.2, §6), each from its numerator's values on the first points of an
 //! extension coset `D_M = ω_(2^M) + V_M`, which avoids its domain: there over the vanishing polynomial's, interpolated
 //! back to novel coefficients ([`ntt::interpolate_prefix`]). The points are the count rounded up, in blocks of cosets

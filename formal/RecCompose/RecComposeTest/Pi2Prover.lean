@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The parsing follows `formal/UniComplete`'s runner
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The parsing follows `formal/UniComplete`'s runner
 -- (`UniCompleteTest/Runner.lean`).
 import RecCompose.Pi2Prover
 

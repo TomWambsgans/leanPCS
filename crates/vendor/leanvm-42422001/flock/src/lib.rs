@@ -3,7 +3,7 @@
 // keeps that module's circuit-agnostic `SliceClaim`; the module `keccak` is new in this repository (the Keccak-f[1600]
 // block, docs/leanvm/flock/KECCAK.md). The crate's `fiat_shamir` is crates/vendor/leanvm-42422001/fiat_shamir (the
 // transcript as a trait).
-// MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and NOTICE.md at the repository root).
+// MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and AGENTS.md at the repository root).
 // CREDIT: https://github.com/succinctlabs/flock, MIT OR Apache-2.0.
 //! flock: a batched R1CS proving system for hash circuits over GF(2), reduced
 //! to evaluation claims on the committed packed witness.

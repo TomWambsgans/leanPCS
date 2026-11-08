@@ -1,5 +1,5 @@
 /-
-Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 
 One Fiat-Shamir family for several openings of `opening::verify` (`crates/membership/quotient/src/opening.rs`)
 on different layouts: the construction of `Family.lean` (adapted from leanerVM `mumbai`'s

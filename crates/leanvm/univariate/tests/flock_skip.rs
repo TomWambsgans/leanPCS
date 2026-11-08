@@ -1,4 +1,4 @@
-// Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! The zerocheck with a univariate skip of 3 to 6 (`lv42_flock::zerocheck::skip`), without a trace:
 //!
 //! - at a skip of 6, the skip module's round 1 and whole zerocheck write what leanVM's own do, byte for byte;

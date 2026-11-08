@@ -1,6 +1,6 @@
 // Part of this repository. The node semantics are those of `leanvm_statement::evm::record` and of the Keccak-256
 // chain `leanvm_statement::transcript::KeccakChannel` (adapted there from leanVM 42422001's transcript). MIT OR
-// Apache-2.0; see NOTICE.md.
+// Apache-2.0; see AGENTS.md.
 //! The inner verifier's graph evaluated on a real proof: every node's value, as `π2`'s witness generator needs it
 //! (SPEC-REC.md §6, R2). A challenge's hash node holds the 32-byte Keccak state, every other node an element of `E`.
 

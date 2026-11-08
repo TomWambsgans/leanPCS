@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- The functions costed are leanerVM's (branch `mumbai`, commit 6175f1a0, MIT OR Apache-2.0:
 -- `Statement/Keccak.lean`'s `keccak256With`; `Statement/LeanVmVerifier.lean`'s `verifyStackedOpening`)
 -- and `formal/Statement`'s (`setupWith`, `reduceWith`, `claimsAt`, `openingSpongeWith`); the program's

@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The channel is `formal/UniStatement`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The channel is `formal/UniStatement`'s
 -- (`Transcript.lean`); the toolkit is `CodeBase.lean`'s.
 import UniSound.CodeTables
 

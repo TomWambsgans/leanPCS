@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The port of `formal/UniSound/UniSound/FsGame128.lean`
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The port of `formal/UniSound/UniSound/FsGame128.lean`
 -- (`fsLayer128_of_gameV`) and `Fs128.lean` (`le_uniBound128`) to π2's verifier, through
 -- `Compose.knowledgeSoundness_listChainU_closed128S` (the setup's stacks and the protocol read off the setup),
 -- `Compose.prEvent_doomF_le` (the six openings once) and `Compose.prEvent_pairTr_expL_le` (the seed's pair).

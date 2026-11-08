@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The reflection is `formal/UniSound`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The reflection is `formal/UniSound`'s
 -- `UniSound/Ids/LvRealize.lean` (`uni_tuples_eq`), at the Keccak VM's `SHA3` table.
 import UniStatement.FormPoly
 import UniStatement.KeccakTables

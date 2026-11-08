@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- Follows `formal/EndToEnd/Completeness/E2ECompleteness/Chain.lean` (`HashOK`, `cache_of_hashOK`, the lazy random
 -- oracle's fresh answer `prEvent_fresh`) for the point challenge's query; uses leanerVM
 -- (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`, commit 6175f1a0, MIT OR Apache-2.0): the two calls

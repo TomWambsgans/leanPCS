@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The generic state and step are
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The generic state and step are
 -- `formal/FlockSound/FlockSoundUni/RoundByRound.lean`'s (BLAKE2s's, over `Column (8 + κ)` and `FlockHolds`), here
 -- over the Keccak verifier's column `Column (11 + κ)` and `KFlockHolds F κ`; the counting (`prob_hit_le`) is reused.
 import FlockSoundUni.RoundByRound

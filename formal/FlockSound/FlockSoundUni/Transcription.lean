@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The evaluators are `formal/UniStatement`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The evaluators are `formal/UniStatement`'s
 -- (`UniStatement/{Basic, Flock, Mapping, Security}.lean`, transcribed from `crates/leanvm/statement`), the
 -- mathematical objects `formal/FlockSound`'s.
 import FlockSoundUni.Tower

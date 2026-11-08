@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The reading lemmas follow `formal/Lv42`'s
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The reading lemmas follow `formal/Lv42`'s
 -- `LeanIsa/Complete.lean` (`column_stackOf`, `stackColumn_get`); `rowPosition`'s loop is read as
 -- `formal/UniComplete`'s `DomainPositions.lean` reads it (`walk`).
 import UniSound.Ids.Bridges

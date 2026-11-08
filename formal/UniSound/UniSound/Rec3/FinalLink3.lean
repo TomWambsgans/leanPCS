@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The statement is `Rec3/Fs3.lean`'s `UniFinal3`; the
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The statement is `Rec3/Fs3.lean`'s `UniFinal3`; the
 -- proof follows `FinalLink.lean`'s `uniFinal` (the main line's), without the pending matrices' term.
 import UniSound.Rec3.CodeLink3
 import UniSound.Rec3.Ids3

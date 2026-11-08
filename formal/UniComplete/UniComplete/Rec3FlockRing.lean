@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The port of `FlockProverRing.lean`'s honest-prover part
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The port of `FlockProverRing.lean`'s honest-prover part
 -- and of `CoreBatch.lean`'s Flock facts to π1-rec3's honest Flock prover (`Rec3Prover.lean`'s `flockProve3`).
 import UniComplete.Rec3FlockShape
 import UniComplete.FlockProverRing

@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md. The method (Gauss–Jordan steps checked by the kernel from
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The method (Gauss–Jordan steps checked by the kernel from
 -- printed words) is `formal/UniSound`'s `Ids/Deployed.lean` (`functionalsCorrect18`); `Z_bad` and its degree are
 -- `UniSound`'s (`zBad`, `natDegree_zBad_le`, `zBad_ne_zero`). The words below were printed by compiled evaluation of
 -- `UniSound.Ids.cfStep 15` and `cfFinal 15`.

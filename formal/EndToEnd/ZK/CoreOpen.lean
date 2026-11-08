@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see NOTICE.md.
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- The opening's prover (`proveOpeningWith`, `runFrom`) and sponge are leanerVM's (branch `mumbai`,
 -- commit 6175f1a0, MIT OR Apache-2.0) and `formal/Statement`'s.
 import ZK.CoreTrees

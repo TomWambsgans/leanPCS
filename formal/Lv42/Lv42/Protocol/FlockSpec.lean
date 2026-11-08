@@ -2,7 +2,7 @@
   Lv42.Protocol.FlockSpec
 
   Adapted from leanerVM (https://github.com/Verified-zkEVM/leanerVM), branch mumbai, commit
-  f0393df4, file lean_vm/LeanVM/Protocol/FlockSpec.lean. MIT OR Apache-2.0; see NOTICE.md. `LeanVM`
+  f0393df4, file lean_vm/LeanVM/Protocol/FlockSpec.lean. MIT OR Apache-2.0; see AGENTS.md. `LeanVM`
   renamed `Lv42`.
 
   What the Flock region of an arithmetization means: an R1CS on the region's blocks, the cells
