@@ -58,7 +58,7 @@ const LEAN_GRINDING: usize = 17;
 
 /// Row `log_inv_rate - 1`, entry `log_n - 15` of `WHIR_QUERIES`, parsed from the verifier's source.
 fn verifier_queries(log_inv_rate: usize, log_n: usize) -> Vec<usize> {
-    let source = include_str!("../../verifier/src/whir.rs");
+    let source = include_str!("../../vendor/leanvm-c445e3d5/verifier/src/whir.rs");
     let start = source.find("const WHIR_QUERIES").expect("WHIR_QUERIES in whir.rs");
     let row = source[start..].lines().nth(log_inv_rate).expect("a row per rate");
     let entries: Vec<Vec<usize>> = row

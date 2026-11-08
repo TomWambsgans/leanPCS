@@ -2,7 +2,17 @@
 # (https://github.com/leanEthereum/leanVM, commit c445e3d51a5a85031df47240595698f3b24897bf),
 # MIT OR Apache-2.0. See NOTICE.md.
 [workspace]
-members = ["crates/*"]
+members = [
+    "crates/evm_link",
+    "crates/quotient",
+    "crates/evm",
+    "crates/leanvm_flock_gas",
+    "crates/leanvm_univariate",
+    "crates/leanvm_rec",
+    "crates/gf2_linear",
+    "crates/vendor/leanvm-c445e3d5/*",
+    "crates/vendor/leanvm-42422001/*",
+]
 resolver = "3"
 
 [workspace.package]
@@ -15,14 +25,22 @@ needless_range_loop = "allow"
 too_many_arguments = "allow"
 
 [workspace.dependencies]
-bench = { path = "crates/bench" }
-primitives = { path = "crates/primitives" }
-fiat_shamir = { path = "crates/fiat_shamir" }
-pcs = { path = "crates/pcs" }
-parallel = { path = "crates/parallel" }
-verifier = { path = "crates/verifier" }
-quotient = { path = "crates/quotient" }
+# leanVM c445e3d5, vendored (crates/vendor/leanvm-c445e3d5).
+bench = { path = "crates/vendor/leanvm-c445e3d5/bench" }
+primitives = { path = "crates/vendor/leanvm-c445e3d5/primitives" }
+fiat_shamir = { path = "crates/vendor/leanvm-c445e3d5/fiat_shamir" }
+pcs = { path = "crates/vendor/leanvm-c445e3d5/pcs" }
+parallel = { path = "crates/vendor/leanvm-c445e3d5/parallel" }
+verifier = { path = "crates/vendor/leanvm-c445e3d5/verifier" }
+# leanVM 42422001's Flock prover, vendored (crates/vendor/leanvm-42422001).
+lv42_primitives = { path = "crates/vendor/leanvm-42422001/primitives" }
+lv42_parallel = { path = "crates/vendor/leanvm-42422001/parallel" }
+lv42_pcs = { path = "crates/vendor/leanvm-42422001/pcs" }
+lv42_fiat_shamir = { path = "crates/vendor/leanvm-42422001/fiat_shamir" }
+lv42_flock = { path = "crates/vendor/leanvm-42422001/flock" }
+# This repository.
 evm_link = { path = "crates/evm_link" }
+quotient = { path = "crates/quotient" }
 libc = "0.2"
 serde = { version = "1", features = ["derive"] }
 bincode = "1"

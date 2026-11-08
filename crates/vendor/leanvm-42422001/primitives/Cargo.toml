@@ -12,7 +12,7 @@ test = false
 doctest = false
 
 [dependencies]
-parallel = { package = "lv42_parallel", path = "../lv42_parallel" }
+parallel = { package = "lv42_parallel", path = "../parallel" }
 rand = { workspace = true, optional = true }
 serde.workspace = true
 
