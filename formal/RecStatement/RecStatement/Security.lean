@@ -222,8 +222,9 @@ emitted tables at every IV, and at π1's reference IV the `σ`, `κ` whose diges
 IV, the setup columns the compiler's at every 32-byte IV (`SetupFromCompiler`), and the Keccak-f block
 `KeccakFlock.keccakFlockSpec` (the one π1-rec3's random-permutation theorem is proved at).
 
-`Data.pi1Iv`, π1's reference IV, is the Rust's `contract_iv_for(KECCAK_128, Keccak(KECCAK_REC3), PROGRAM_IV,
-SetupRoots::REFERENCE)`: at the code's reference roots, not at the Keccak setup's commitment. The digest and setup
+`Data.pi1Iv`, π1's reference IV, is the Rust's `contract_iv(KECCAK_128, KECCAK_REC3, PROGRAM_IV,
+SetupRoots::REFERENCE)`: at the reference roots `RecGraphKeccak.Pi1.referenceRootsK` (`F` the Keccak 128 setup's
+commitment). The digest and setup
 root clauses are used by no proof: they pin the model's σ, κ (from which the model's contract computes π2's IV over
 `π`) to the deployed contract's constant IV, which the Rust computed from them. **The program and `A0`, `B0` are not
 pinned** (`D.pi1.prog`, `D.pi1.a0Root`, `D.pi1.b0Root`): the end theorems hold for every program of the reference

@@ -97,9 +97,9 @@ Keccak(KECCAK_REC3), Point), D16v)`, then `pi2::adapt`; the graph of `RecGraphKe
 formulas, the pairs, the reads, the public terms; π1's contract IV (`Compiled::pi1_iv`), the setup's root
 (`Setup::new(circuit).root()`), the circuit's digest (`Circuit::digest`); π1's three calls (`spec::Circuit::calls`).
 **Not `σ`, not `κ`**: the verifier reads neither; the setup's root and the digest bind them (`RecDeployment.Real`).
-π1's contract IV there is `contract_iv_for(KECCAK_128, Keccak(KECCAK_REC3), PROGRAM_IV, SetupRoots::REFERENCE)`: at
-the code's reference roots (the setup call's constant `F` in the graph is `SetupRoots::REFERENCE.f`), not at the Keccak
-setup's commitment. `keccak_statement_data_is_current` fails when the file is stale; it also checks that the adapted
+π1's contract IV there is `contract_iv(KECCAK_128, KECCAK_REC3, PROGRAM_IV, SetupRoots::REFERENCE)`: at the
+reference setup roots, whose `F` (`067244be…`) is the Keccak 128 setup's commitment (the real `keccak128_rec3.txt`
+proof's), the same roots as Lean's `RecGraphKeccak.Pi1.referenceRootsK` (the graph's setup call's constant). `keccak_statement_data_is_current` fails when the file is stale; it also checks that the adapted
 circuit, π1's calls and π1's contract IV do not depend on the stream or the public input.
 
 ## The statements (`Security.lean`, verbatim)
@@ -376,8 +376,8 @@ setup's commitment (`setupTreeWith`) and the circuit's digest over Keccak-f[1600
    it. **`pi2`** is π2's circuit for π1's contract IV (the seed's constants): at the real deployment, the emitted tables
    at every IV. **`flock`** is the Keccak-f block of the relation, pinned by `Real`.
 4. **`A0`, `B0`** are deployment constants the Keccak contract's IV hashes (`UniKeccak.KDeployment`), not commitments:
-   `Real` does not pin them. The Rust's `Data.pi1Iv` is at `SetupRoots::REFERENCE` (its `F` too), the code's reference
-   roots, not at the Keccak setup's commitment; the model's contract derives π1's IV at the setup's own roots.
+   `Real` does not pin them. The Rust's `Data.pi1Iv` is at `SetupRoots::REFERENCE` (= `referenceRootsK`: the Keccak
+   128 setup's `F` and the two constants); the model's contract derives π1's IV at the setup's own roots.
 5. **`PCS_OPEN`'s WHIR instance is a choice**, as in UniStatement: π1's calls on the plain layout of `2^vars` words (the
    layout word's byte 24), π2's on π2's public layouts (`quotient::opening`); the registry decodes as `machine::decode`.
 6. **The degenerate events** (`all = 0`: `t ∈ V_{m+2}`, `c_h + c_q = 0`, a vanishing public denominator) reject; they

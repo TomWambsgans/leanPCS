@@ -245,12 +245,11 @@ name = "rec-circuit-diff"
 srcDir = "../RecCircuit"
 root = "RecCircuitTest.Main"
 
-# π2's verifier (`crates/leanvm/rec`, `PI2.md` §2, §8–§9, branch `leanvm-rec` @ 2b22581), `formal/RecStatement`:
-# the verifier as computable Lean (its seed and IV, the public data in the stream, the arithmetic at `t` over any
-# field, the six `PCS_OPEN` calls word for word), the circuit's tables as data the Rust emits
-# (`crates/leanvm/rec/src/lean_statement.rs`, with a staleness test), the verifier-arithmetic lemmas `RecPiop`'s
-# rounds consume, and the end statements of the recursive verifier against `Lv42`'s relation. The differential
-# runner (`RecStatementTest/Runner.lean`) runs with `lake env lean`, not built.
+# π2's verifier (`crates/leanvm/rec`, `PI2.md` §2, §8–§9), `formal/RecStatement`, for the Keccak VM: the verifier as
+# computable Lean (its seed and IV, the public data in the stream, the arithmetic at `t` over any field, the six
+# `PCS_OPEN` calls word for word), π2's circuit for the Keccak π1-rec3 at the 128-signature reference as data the Rust
+# emits (`crates/leanvm/rec/tests/lean_statement_keccak.rs`, with a staleness test), the verifier-arithmetic lemmas
+# `RecPiop`'s rounds consume, and the end statements of the recursive verifier against the Keccak VM's `KvHolds`.
 [[lean_lib]]
 name = "RecStatement"
 srcDir = "../RecStatement"
@@ -259,7 +258,7 @@ leanOptions = { warningAsError = true }
 
 # The recursive verifier's end theorems (`formal/RecCompose`): π2's part `RecStatement.RecKnowledgeSoundness2` from
 # π2's layers (the Fiat–Shamir layer, the openings, `RecPiop`'s rounds, `RecCircuit`'s corollary), its bound in bits,
-# and Part 1 ⇒ Part 2 (`RecKnowledgeSoundness`, `RecCompleteness` against `Lv42`'s relation, under the named
+# and Part 1 ⇒ Part 2 (`RecKnowledgeSoundness`, `RecCompleteness` against the Keccak VM's `KvHolds`, under the named
 # hypotheses about π1-rec3 at Keccak-f[1600]).
 [[lean_lib]]
 name = "RecCompose"
@@ -267,8 +266,8 @@ srcDir = "../RecCompose"
 globs = ["RecCompose", "RecCompose.+"]
 leanOptions = { warningAsError = true }
 
-# The view check of `RecCompose.Facts` (`Pi2ViewChecked`) on the compiler's circuit for π1-rec3
-# (`RecComposeTest/ViewCheck.lean`).
+# The view check of `RecCompose.Facts` (`Pi2ViewChecked`) on the compiler's circuit for the Keccak π1-rec3
+# (`RecGraphKeccak.Emitted`; `RecComposeTest/ViewCheck.lean`).
 [[lean_exe]]
 name = "rec-view-check"
 srcDir = "../RecCompose"

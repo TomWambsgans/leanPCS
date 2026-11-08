@@ -41,6 +41,8 @@ import RecCompose.Layouts
 import RecCompose.IvLength
 import RecCompose.RealDeployment
 import RecCompose.IvUniform
+import RecCompose.Pi2AlphaEnd
+import RecCompose.Pi2Closed
 
 /-!
 # RecCompose: the recursive verifier's end theorems
@@ -48,3 +50,43 @@ import RecCompose.IvUniform
 See `formal/RecCompose/README.md`. The build fails if a headline theorem's axioms grow beyond Lean's three standard
 ones.
 -/
+
+/-- info: 'RecCompose.recKnowledgeSoundness_reduction' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecCompose.recKnowledgeSoundness_reduction
+
+/-- info: 'RecCompose.recKnowledgeSoundness2_closed' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecCompose.recKnowledgeSoundness2_closed
+
+/-- info: 'RecCompose.recKnowledgeSoundness_closed' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecCompose.recKnowledgeSoundness_closed
+
+/-- info: 'RecCompose.recKnowledgeSoundness_closed_fs' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecCompose.recKnowledgeSoundness_closed_fs
+
+/-- info: 'RecCompose.recCompleteness_end_fs' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecCompose.recCompleteness_end_fs
+
+/-- info: 'RecCompose.pi2Bound_le_bits' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecCompose.pi2Bound_le_bits
+
+/-- info: 'RecCompose.realDeployment_real' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecCompose.realDeployment_real
+
+/-- info: 'RecCompose.Pi2Alpha.recCompleteness2_pi2_rec3_closed' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecCompose.Pi2Alpha.recCompleteness2_pi2_rec3_closed
+
+/-- info: 'RecCompose.Pi2Alpha.recCompleteness_pi2_rec3_closed_fs' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecCompose.Pi2Alpha.recCompleteness_pi2_rec3_closed_fs
+
+/-- info: 'RecCompose.Pi2Alpha.delta2_alpha_le' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecCompose.Pi2Alpha.delta2_alpha_le

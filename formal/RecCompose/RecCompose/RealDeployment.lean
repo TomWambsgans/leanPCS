@@ -87,7 +87,7 @@ def realPi2 (iv : List UInt8) : Pi2Circuit := pi2CircuitOf (compiledAt iv).circu
 /-- At π1's reference IV, π2's circuit is the reference compile's (what `rec-real-check` evaluates). -/
 theorem realPi2_ref : realPi2 Data.pi1Iv = pi2CircuitOf refCompiled.circuit := rfl
 
-/-- **The setup roots of the real deployment** (one constant: the reference roots, `UniStatement.referenceRoots`;
+/-- **The setup roots of the real deployment** (one constant: the reference roots, `RecGraphKeccak.Pi1.referenceRootsK`;
 only their `A0`, `B0` enter the deployment, as `KDeployment.a0Root`, `b0Root`, which `RecDeployment.Real` does not
 pin). -/
 def realRoots : UniStatement.SetupRoots := RecGraphKeccak.Pi1.referenceRootsK
