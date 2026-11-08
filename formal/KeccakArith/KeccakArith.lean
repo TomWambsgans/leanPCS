@@ -6,6 +6,7 @@ public import KeccakArith.RowSound
 public import KeccakArith.Rows
 public import KeccakArith.Walk
 public import KeccakArith.ASound
+public import KeccakArith.AComplete
 
 /-!
 # KeccakArith: the Keccak VM's arithmetization
@@ -91,3 +92,12 @@ The build fails if the axiom footprint of these theorems grows beyond Lean's thr
 
 /-- info: 'KeccakArith.kvSoundness_exists' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in #print axioms KeccakArith.kvSoundness_exists
+
+/-- info: 'KeccakArith.constraintCompleteness_rows' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in #print axioms KeccakArith.constraintCompleteness_rows
+
+/-- info: 'KeccakArith.kvHonest_stackOf' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in #print axioms KeccakArith.kvHonest_stackOf
+
+/-- info: 'KeccakArith.kvCompleteness' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in #print axioms KeccakArith.kvCompleteness
