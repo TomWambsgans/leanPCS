@@ -31,7 +31,7 @@ RUSTFLAGS="-C target-cpu=native" cargo test --release -p leanvm_univariate --lib
   functionals. Then `r` is pairs `(y_0(z_j), y_1(z_j))` (and one plain coordinate at an odd count): **14 narrow
   challenges** and the 3 values, 17 elements, 408 B. This costs no Keccak-f (§2.4). Three variables a round would cost
   18 more Keccak-f, which π2 cannot hold.
-- **Gas** (measured, §4): the recursion's calldata is 980 B; the pairs save 13 elements (312 B) at the reference shape.
+- **Gas** (measured, §4): the recursion's calldata is 1,004 B (π2v2); the pairs save 13 elements (312 B) at the reference shape.
 
 ## 1. The claims and their points (measured)
 
@@ -40,7 +40,7 @@ RUSTFLAGS="-C target-cpu=native" cargo test --release -p leanvm_univariate --lib
 | π1's claims | `C1`, `C2`, `F`, each at `r`'s prefix of its commitment's variables |
 | `r` | the batch's point: 27 coordinates at 128 signatures (13 pairs, one plain round), 28 at 400 (14 pairs) |
 | their public elements | 14 narrow challenges and 3 values: 408 B |
-| calldata / execution / EIP-7623 `c = 0` (128 signatures) | 980 B / 28,325 / 43,309 |
+| calldata / execution / EIP-7623 `c = 0` (128 signatures) | 1,004 B / 27,641 / 43,009 (π2v2) |
 
 The Keccak VM's π1 commits no Flock matrices (`A0`, `B0`): its lincheck terminal is the structured one, computed by
 π1's verifier. So `r` is the whole problem.
@@ -178,10 +178,10 @@ contracts, and by the recursion's contract through π2 (`SPEC-REC.md` §11).
 | π1's claims in calldata: 14 challenges and 3 values | 408 B | 408 B |
 | with one element a coordinate (27 or 28, and 3 values) | 720 B | 744 B |
 | saved | 312 B | 336 B |
-| the recursion's calldata / execution / EIP-7623 | 980 B / 28,325 / 43,309 | 980 B / 29,105 / 44,113 |
-| EIP-7976 | 62,720 | 62,720 |
+| the recursion's calldata / execution / EIP-7623 (π2v2) | 1,004 B / 27,641 / 43,009 | 1,004 B / 28,421 / 43,777 |
+| EIP-7976 | 64,256 | 64,256 |
 
-- **What a byte is worth.** At the reference shape the standard price binds (`16 B + execution`, 5.8K above the
+- **What a byte is worth.** At the reference shape the standard price binds (`16 B + execution`, 4.6K above the
   floor), so a nonzero byte costs 16: the 312 B are worth about 5.0K there, 12.5K at the floor's 40 a byte, and 20.0K
   under EIP-7976 (64 a byte).
 - **The execution** has 13 fewer ports and reads, and 312 bytes fewer in π2's first hash; the pairs' derivation costs
@@ -207,7 +207,7 @@ contracts, and by the recursion's contract through π2 (`SPEC-REC.md` §11).
   On the BLAKE2s VM's π1 this was modelled at +56K positions.
 - **π2's verifier** has 13 fewer ports.
 - The whole Keccak VM π1-rec3 in π2: 15,668,416 positions (93.4% of `2^24`) at 128 signatures, 15,940,800 (95.0%) at
-  400 (`SPEC-REC.md` §10.3). `Q = 15N` stays `2^27.91`.
+  400 (`SPEC-REC.md` §10.3). `Q = 12N` stays `2^27.58` (π2v2).
 
 ## 7. The prover (`prover::batch::prove_pairs`)
 

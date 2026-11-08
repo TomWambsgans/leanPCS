@@ -4,8 +4,8 @@
 
 A proof of a Keccak VM execution (leanVM `9d50c92a3`'s tables, `docs/leanvm/univariate/KECCAK.md`) verified on the EVM
 by recursion: π1 is the univariate proof, π2 a SNARK of π1's verifier, and the contract runs π2's verifier only. At the
-reference shape (128 signatures) the real proof verifies for **28,325 gas of execution, 43,309 under EIP-7623 at a claim
-price `c = 0`** (980 B of calldata, 7 claims in 6 `PCS_OPEN` calls). Code: `crates/leanvm/rec`; π2's PIOP in
+reference shape (128 signatures) the real proof verifies for **27,641 gas of execution, 43,009 under EIP-7623 at a claim
+price `c = 0`** (1,004 B of calldata, 7 claims in 6 `PCS_OPEN` calls; π2v2, `PI2.md`). Code: `crates/leanvm/rec`; π2's PIOP in
 [`PI2.md`](PI2.md); the claims' points in [`SPEC-POINTS.md`](SPEC-POINTS.md).
 
 Every number is marked:
@@ -49,10 +49,10 @@ cargo test --release -p leanvm_rec --test pi2_real -- --ignored --nocapture real
 |---|---:|---:|
 | π1's verifier: Keccak-256 calls / Keccak-f / stream | 70 / 116 / 9,232 B | 71 / 118 / 9,424 B |
 | π2's positions (D16v, `N = 2^24`) | 15,668,416 (93.4%) | 15,940,800 (95.0%) |
-| calldata (zero bytes) | 980 B (58) | 980 B (56) |
-| execution | **28,325** | 29,105 |
-| **EIP-7623** (its floor) | **43,309** (37,460) | 44,113 |
-| EIP-7976 (64 a byte) | 62,720 | 62,720 |
+| calldata (zero bytes) | 1,004 B (58) | 1,004 B (59) |
+| execution | **27,641** | 28,421 |
+| **EIP-7623** (its floor) | **43,009** (38,420) | 43,777 (38,390) |
+| EIP-7976 (64 a byte) | 64,256 | 64,256 |
 | claims / calls | 7 / 6 | 7 / 6 |
 
 The univariate verifier on chain, without recursion, is about 359K at 128 signatures
@@ -222,11 +222,13 @@ That set is a coset of `U_s = span(β_4, …, β_(3+s))`, for a block of `2^s` r
 degree `N − 2^s < N`. The verifier needs one `Z_(U_s)(t)` per block size, a short linearized recursion, and then one
 division per pair (as built, normalised and summed by groups: `PI2.md` §2).
 
-The checks are:
+The checks are (as built, π2v2: `PI2.md` §1, §2):
 
-- `h(x) = 1/(α + w(x) + βx) + 1/(α + P(x) + βσ(x))` on `V_m` (as built, the holes' pulls left out: `PI2.md` §1, §4.1);
-- the identity `h·d_pull·d_push + d_pull + d_push = q·w_m(x)`, with `w_m = Z_{V_m}`;
-- the sum `Σ_{V_m} h = Σ_J 1/(α + F_J + βτ_J)`, the public side (§2.4.6).
+- `h(x) = (1 + 1_S(x))(1/(α + w(x) + βx) + 1/(α + P(x) + κ(x) + βσ(x)))` on `V_m`: the copy argument over the
+  positions but the holes (the ports' own positions, `1_S` their indicator), `P` without `κ` and the ports, committed;
+- the identity `h·d_pull·d_push + (1 + 1_S)(d_pull + d_push) + T = q·w_m(x)`, with `w_m = Z_{V_m}` and `T` the
+  ports' term (§2.4.6), and `P`'s definition `P = P_v + w_m q_P` (`P_v` the pushes' formula below);
+- the sum `Σ_{V_m} h = 0`.
 
 **Soundness of the multiset step.** The pulls' tags are the positions, all distinct. The pushes' tags are `σ`'s
 values, also distinct. So both sides are sets of (value, tag) pairs, and mod-2 equality of sets is equality (as in
@@ -252,10 +254,12 @@ function of bits and limbs, so by induction every Keccak value is a bit.
 
 **What it costs.**
 
-- **The degree.** The indicators have degree `N − 2^s < N` and `E` degree `≤ 2N`, so `deg P < 3N`. The identity has
-  degree `< 5N`, and `q` has degree `< 4N`. A product of a region selector by a role selector, unreduced, would make
-  it `4N`: the indicators must be those of the (block, role) cosets.
-- **The words.** The quotient table is `h` (`3N` words) plus `q` in 4 chunks (`12N`): **`15N` words**.
+- **The degree.** The indicators have degree `N − 2^s < N` and `E` degree `≤ 2N`, so `deg P_v < 3N`. Committing `P`
+  (`P_v`'s interpolation, below `N`) keeps the identity below `3N` and `q` below `2N`; `P`'s definition quotient `q_P`
+  is below `2N` too. (π2v1 kept `P_v` inside `d_push`: the identity below `5N`, `q` below `4N`.) A product of a region
+  selector by a role selector, unreduced, would add `N`: the indicators must be those of the (block, role) cosets.
+- **The words.** The quotient table is `h` (`3N` words), `q` in 2 chunks (`6N`), `P` (`N`, in `K`) and `q_P` (`2N`, in
+  `K`): **`12N` words** (π2v1: `h` and `q` in 4 chunks, `15N`).
 - **What it saves.** No position is spent on outputs, and no gate quotient is needed: every constraint is a push.
 
 ### 2.4 D16v: the layout
@@ -351,17 +355,20 @@ The public inputs are:
 The row counts are not public: they are stream bytes hashed by π1's transcript, and nothing on chain reads them
 (§10.4 item 3).
 
-**Each element `J` binds through one outside tag `τ_J ∉ V_m`.** Its producing row pushes a fingerprint `F_J` there,
-and the verifier adds `1/(α + F_J + βτ_J)` to the sum's target. A three-limb port's fingerprint (an element, a zero
-check) is the element itself, `L₀ + YL₁ + Y²L₂`; a four-limb port's (the statement, a root) is
-`(L₀ + YL₁) + γ(L₂ + YL₃)` (`PI2.md` §4.2). π1's zero checks are ports of value 0, summed in closed form (§12 item 6).
+**Each element `J` binds through one port**, a hole of its producing row whose formula is the fingerprint of the
+element's limbs, which must be `F_J`. In the circuit the hole pushes it to an outside tag `τ_J ∉ V_m`; π2v2's PIOP
+(`PI2.md` §1) checks it apart from the copy argument, by the identity's term `T = Σ_port I_p (E_p + Φ_k)`, `Φ_k(x) =
+Σ_J F_J w_m(x)/(w_r(x) + ω_{y_J})` (`F_J` on the hole's row, zero on the others): the verifier's cost is a fraction a
+port. A three-limb port's fingerprint (an element, a zero check) is the element itself, `L₀ + YL₁ + Y²L₂`; a
+four-limb port's (the statement, a root) is `(L₀ + YL₁) + γ(L₂ + YL₃)` (`PI2.md` §4.2). π1's zero checks are ports of
+value 0: in no `Φ`, they cost the verifier nothing (π2v1 summed their outside tags in closed form, §12 item 6).
 
 A pair's two coordinates are not ports: the port is its challenge `z`, and the calls' words are `y_0(z)`, `y_1(z)`
 (`CallWord::Pair`, §12 item 8).
 
 **Not the alternative.** `crates/membership/quotient` adds the public weight inside `h`'s identity:
-`(h + weight·w)·d·d'`. Here that would raise `q` to `5N` (an `18N`-word table, `2^28.17`). The outside tags keep the
-identity at `5N`.
+`(h + weight·w)·d·d'`. Here that would have raised π2v1's `q` to `5N` (an `18N`-word table, `2^28.17`). π2v1 kept the
+identity at `5N` with the outside tags in the copy argument; π2v2's `T` is below `2N`, inside its `3N`.
 
 The public data is in π2's stream, bound by its first challenge (§4).
 
@@ -370,7 +377,7 @@ The public data is in π2's stream, bound by its first challenge (§4).
 | commitment | content | words | stack, list |
 |---|---|---:|---|
 | `W` (proof) | `w`: `2^24` `K`-words | `2^24` | `2^24`, 9,952 |
-| `Q` (proof, after `α, β, γ`) | `h` (`3N`), `q` in 4 chunks (`12N`) | `2^27.91` (6% under `2^28`) | `2^28`, 3,564 |
+| `Q` (proof, after `α, β, γ`) | `h` (`3N`), `q` in 2 chunks (`6N`), `P` (`N`), `q_P` (`2N`) | `2^27.58` (25% under `2^28`; π2v1 `15N`, `2^27.91`) | `2^28`, 3,564 |
 | setup | `κ`, `κ + σ` | `2^25` | `L = 1` |
 
 ### 2.6 D32v: the other layout
@@ -410,16 +417,17 @@ The protocol as built is `PI2.md` §2. In outline:
   (`prover::iv`); π1's setup root `F` and π1's layout words, which π1's calls need.
 - **Public inputs:** the public input (32 B), π1's roots `C1`, `C2`, π1's claims' elements (14 `z_j`, 3 values).
 - **The transcript** (Keccak-256, on chain, `KeccakChannel`'s shape):
-  1. the seed `keccak("leanvm-rec-pi2v1" ‖ IV ‖ public input)`; the public data in the stream, absorbed by the first
+  1. the seed `keccak("leanvm-rec-pi2v2" ‖ IV ‖ public input)`; the public data in the stream, absorbed by the first
      challenge;
   2. `W`'s root, then `α`, `β`, `γ`;
   3. `Q`'s root, then `t`;
-  4. the row's 16 fold values `a_k` and `ξ = κ(t) + βσ(t)`; then `ρ`.
-- **The verifier**, at `t`: the digits; the row's cells from the `a_k`; the (block, role) indicators; `P(t)`,
-  `d_pull`, `d_push`; the public target; the identity, all as fractions with one inversion at the end.
+  4. the row's 16 fold values `a_k`, `ξ = κ(t) + βσ(t)` and `s = P(t)` (18 values); then `ρ`.
+- **The verifier**, at `t`: the digits; the row's cells from the `a_k`; the (block, role) indicators; the internal
+  pushes `P_v(t)`; the ports' `Φ` and their term; `d_pull`, `d_push = α + s + ξ`; the identity and `P`'s definition,
+  all as fractions with one inversion at the end.
 - **Claims** (4 in 3 calls): `W` at `(ρ, ρ², ρ⁴, ρ⁸, w_4(t), …, w_23(t))`; `Q`, the identity's combination of `h(t)` and
-  `q(t)`, and the sum `Σ_V h` = the public target at the top coefficient's point; the setup at `(w_0(t), …, w_23(t), β)`,
-  value `ξ`.
+  `q(t)`, `P(t) = s` and `P`'s definition in one claim (at `(u_0, …, u_24, ρ', ρ, ρ² B, y_0, y_1)`), and the sum
+  `Σ_V h = 0` at the top coefficient's point; the setup at `(w_0(t), …, w_23(t), β)`, value `ξ`.
 - **The contract**, in order: reads the stream; runs π2's verifier; calls `PCS_OPEN` for π1's 3 claims (3 calls, with
   π1's roots, layout words and setup root); then for π2's (`W`, the setup, `Q`).
 
@@ -433,10 +441,13 @@ takes no OOD sample at level 0). The setup is honest, so `L = 1`.
 
 | round | alone | after the union |
 |---|---:|---:|
-| the copy argument `(α, β)` (`4N/2^192`, over `W`'s list 9,952) | 166.0 | 152.7 |
+| the copy argument and the ports' poles `(α, β)` (`4N/2^192`, over `W`'s list 9,952; `PI2.md` §7) | 166.0 | 152.7 |
 | `γ`, the four-limb ports' fingerprints, degree 1 (the statement and 2 roots) | 190.4 | 177.1 |
-| `t`, the identity of degree `5N` (over `W` and `Q`: `2^25.1`) | 165.7 | **140.6** |
+| `t`, the identity and `P`'s definition, each of degree `< 3N` (over `W` and `Q`: `2^25.1`) | 166.4 | **141.3** |
 | `ρ`, `W`'s fold (degree 15) over `W`'s list | 188.1 | 174.8 |
+| `ρ`, `Q`'s claim (degree 3) over `Q`'s list 3,564 | 190.4 | 178.6 |
+
+(π2v1: `t` the identity of degree `5N`, 165.7 and 140.6.)
 
 **π1-rec3's rounds** are the main line's (`docs/leanvm/univariate/`), except:
 
@@ -462,7 +473,7 @@ challenges offline, as it could on chain: the per-query bounds above hold, with 
 
 ## 6. Gas (measured)
 
-**Calldata** (980 B):
+**Calldata** (1,004 B):
 
 | part | bytes |
 |---|---:|
@@ -470,25 +481,27 @@ challenges offline, as it could on chain: the per-query bounds above hold, with 
 | π1's roots `C1`, `C2` | 64 |
 | π1's claims: 14 narrow challenges and 3 values | 408 |
 | π2's roots `W`, `Q` | 64 |
-| π2's 17 values | 408 |
+| π2's 18 values (16 fold values, `ξ`, `s`) | 432 |
 
-The 14 narrow challenges each start with 4 zero bytes (56); the real proofs have 58 (128 signatures) and 56 (400).
+The 14 narrow challenges each start with 4 zero bytes (56); the real proofs have 58 (128 signatures) and 59 (400).
 
-**The contract** at the reference shape (`tests/keccak_vm_rec.rs`): 13,491 B of code (13,911 at 400 signatures), one
-contract, the straight build deployable; 753 `FIELD_MUL`, 860 `XOR`, 6 Keccak-256 (1,184 B hashed), 244 words of
-memory, 208 words written for `PCS_OPEN`. Execution 28,325 (29,105 at 400). The execution depends on the circuit, not
-on the proof.
+**The contract** at the reference shape (`tests/pi2_real.rs`, `real_gas`): 13,219 B of code (13,639 at 400
+signatures), one contract, the straight build deployable; 753 `FIELD_MUL`, 818 `XOR`, 6 Keccak-256 (1,208 B hashed), 230
+words of memory, 210 words written for `PCS_OPEN`. Execution 27,641 (28,421 at 400). The execution depends on the
+circuit, not on the proof.
 
 **Pricing** (no 21,000 base; `c` per claim adds `7c`):
 
 | | 128 signatures | 400 signatures |
 |---|---:|---:|
-| EIP-7623, real proof | **43,309** (standard binds: `16 · 922 + 4 · 58 + 28,325`; floor 37,460) | 44,113 |
-| EIP-7623, sample stream (4 zero bytes) | | 44,737 |
-| with the 21,000 base | 64,309 | 65,113 |
-| EIP-7976 (64 a byte: the floor binds) | 62,720 | 62,720 |
+| EIP-7623, real proof | **43,009** (standard binds: `16 · 946 + 4 · 58 + 27,641`; floor 38,420) | 43,777 |
+| EIP-7623, sample stream (4 zero bytes) | 43,657 | 44,437 |
+| with the 21,000 base | 64,009 | 64,777 |
+| EIP-7976 (64 a byte: the floor binds) | 64,256 | 64,256 |
 
-The standard price binds, 5.8K above the floor at the reference shape: execution counts in full down to the floor.
+The standard price binds, 4.6K above the floor at the reference shape: execution counts in full down to the floor.
+Against π2v1 (`PI2.md` §10: 980 B, 28,325, 43,309; 44,113 at 400; EIP-7976 62,720): `s`'s 24 B (+384 standard,
++1,536 under EIP-7976's floor), 684 less execution.
 
 ## 7. Build history
 
@@ -498,14 +511,14 @@ optimised on the BLAKE2s VM's π1 (π1-rec, then π1-rec2), then moved to the Ke
 
 ## 8. Margins and limits
 
-1. **D16v's margins.** π2 uses 93.4% of `2^24` at the reference shape and 95.0% at 400 signatures; `Q` is `2^27.91`
-   words, 6% under `2^28`, fixed by `N`. π2 grows slowly with the workload (116 → 118 Keccak-f from 128 to 400
+1. **D16v's margins.** π2 uses 93.4% of `2^24` at the reference shape and 95.0% at 400 signatures; `Q` is `2^27.58`
+   words (`12N`), 25% under `2^28`, fixed by `N`. π2 grows slowly with the workload (116 → 118 Keccak-f from 128 to 400
    signatures): the limit is π1's own stacks (`C1` reaches `2^28` words near 470 signatures,
    `docs/leanvm/univariate/KECCAK.md`).
 2. **π1-rec3 is not leanVM's Fiat–Shamir shape.** The derivations (§1.4) and the paired narrow batch
    (`SPEC-POINTS.md` §5) are standard but not leanVM's; π1-rec3's IV binds the shape (`variant_bytes`).
 3. **The claims dominate when `c` is large**: 7 claims a proof.
-4. **EIP-7976.** The calldata alone is 62,720 at 64 a byte.
+4. **EIP-7976.** The calldata alone is 64,256 at 64 a byte.
 5. **WHIR's certified lists** exist for `2^24..2^28` stacks only; π2's `W` and setup are `2^24` and `2^25`.
 6. **Modelled figures** (§5's π1 rounds) are the BLAKE2s VM's until the calculator is updated.
 
@@ -569,7 +582,7 @@ cargo test --release -p leanvm_rec --lib                                        
 | Keccak-f (positions a permutation × permutations) | 130,944 × 116 | 130,944 × 118 | |
 | the rest | 478,912 | 489,408 | |
 | rows used | 979,276 | 996,300 | |
-| `Q = 15N` | `2^27.91` ≤ `2^28` | `2^27.91` | `2^28.91` ✗ |
+| `Q = 12N` (π2v2; π2v1 `15N`) | `2^27.58` ≤ `2^28` | `2^27.58` | `2^28.58` ✗ |
 | regions / blocks / **selector pairs** | 14 / 21 / **133** | 22 blocks / **144** pairs | |
 
 **What D32v costs the verifier.** D32v's Keccak rows have 25–30 expression roles. Each is a formula of about 19 terms,
@@ -647,10 +660,13 @@ the default; Mac Apple M4 Max, 16 cores):
   what `PCS_OPEN` checks) → the contract accepts, `PCS_OPEN` attesting exactly the 7 claims in 6 calls (π1's 3, π2's 4
   in 3) → 18 flipped calldata bytes are each rejected. The contract is the Rust verifier word for word, straight and
   deployable.
-- Calldata 980 B (58 zero), execution 28,325, EIP-7623 43,309 (floor 37,460), EIP-7976 62,720.
-- π2's prover: the witness (compile, adapt, check) 3.8 s, the setup's commitment 1.5 s (once per circuit), prove
-  4.4 s, open 1.7 s, peak 9.79 GB. π1-rec3's prover at the same shape: 2.72 s cold with checks (6.75 GB).
-- At 400 signatures (`PI2_VECTOR=keccak_rec3`): 980 B (56 zero), execution 29,105, EIP-7623 44,113; π2 2.9 s compile,
+- π2v2: calldata 1,004 B (58 zero), execution 27,641, EIP-7623 43,009 (floor 38,420), EIP-7976 64,256. At 400
+  signatures (`PI2_VECTOR=keccak_rec3`): 1,004 B (59 zero), execution 28,421, EIP-7623 43,777. The prover's timings
+  (a 64-thread box): `PI2.md` §0.
+- π2v1 (the Mac): calldata 980 B (58 zero), execution 28,325, EIP-7623 43,309 (floor 37,460), EIP-7976 62,720;
+  π2's prover: the witness (compile, adapt, check) 3.8 s, the setup's commitment 1.5 s (once per circuit), prove
+  4.4 s, open 1.7 s, peak 9.79 GB (before the prover's optimisations). π1-rec3's prover at the same shape: 2.72 s cold
+  with checks (6.75 GB). At 400 signatures: 980 B (56 zero), execution 29,105, EIP-7623 44,113; π2 2.9 s compile,
   3.0 s prove, 0.9 s open, 9.8 GB.
 
 ## 12. π1-rec3 and the optimisations
@@ -661,17 +677,17 @@ detailed in `PI2.md` §8–§9.
 1. **One `PCS_OPEN` ABI** (`machine.rs`'s `root word, layout word, k, k × (point, value)`) for π1's and π2's calls,
    and **π1's IV binds its variant** (`contract_iv` hashes `variant_bytes`: the tag `"keccak-vm"`, the skip and the
    Fiat–Shamir shape's code).
-2. **π2's values are 17** (π2's claims). `ξ = κ(t) + βσ(t)` replaces `σ(t)`, `κ(t)` (the setup committed as `κ`,
-   `κ + σ`, its claim at `β`); `h(t)` is not sent, `Q`'s claim being the identity's combination of `h(t)` and `q(t)`,
-   with one inversion at the end.
+2. **π2's values are 17** (π2's claims; 18 in π2v2, with `s = P(t)`). `ξ = κ(t) + βσ(t)` replaces `σ(t)`, `κ(t)`
+   (the setup committed as `κ`, `κ + σ`, its claim at `β`); `h(t)` is not sent, `Q`'s claim being the identity's
+   combination of `h(t)` and `q(t)`, with one inversion at the end.
 3. **The fold's siblings** (π2's verifier only). The row's cells fold with half the products (`ω_{2k+1} = ω_{2k} + 1`).
 4. **No claims on `A0`, `B0`** (π1's claims). Flock's lincheck terminal is computed by π1's verifier from the Keccak-f
    block's structure (`keccak_flock::structured_terminal`, about 3K `E` operations), so the matrices are never
    committed and π1's claims are `C1`, `C2`, `F` at the batch's point. (On the BLAKE2s VM this took π1-rec2, whose
    terminal walked the BLAKE2s circuit inside π2.)
 5. **`PCS_OPEN`'s inputs written once** (the contract only: `evm_link`'s `reuse`; π2's call order `W`, setup, `Q`).
-6. **The zero checks' coset in closed form** (π2's circuit: the zero ports first, padded to a power of two; π2's
-   verifier).
+6. **The zero checks' coset in closed form** (π2's circuit: the zero ports first, padded to a power of two; π2v1's
+   verifier). π2v2's verifier reads no zero port at all (`PI2.md` §1, §9 lever 3c).
 7. **Narrow batch challenges** (**π1's Fiat–Shamir shape**: `FsShape::Rec2` is `Rec` with them, a step of `Rec3`).
    The batching sumcheck's challenges are the hash's low 160 bits (`Channel::sample_narrow`, `record::Node::Narrow`),
    so each challenge has four zero bytes in calldata.
@@ -682,6 +698,10 @@ detailed in `PI2.md` §8–§9.
    prover sends each root as its two WHIR scalars, `hash_to_scalars`). π1's contract's `C1`, `C2` words then decode to
    the commitments, and π2's root ports read the stream's bytes as they are.
 10. **The padding's look-ahead** (π2's circuit: `layout::pad_counts`, §10.4 item 12).
+11. **π2v2: the ports out of the copy argument, `P` committed, `q` below `2N`** (π2's PIOP, transcript, `Q`'s layout;
+    `PI2.md` §1, §2, §7). `Q` `15N → 12N` words on a `2N` coset (not `4N`), one more value, `t` at `3N` (141.3 bits
+    after the union, from 140.6); the contract 27,641 execution and 43,009 EIP-7623 (from 28,325 and 43,309); π2's
+    prover about 60 ms less a proof (`PI2.md` §0).
 
 **Dropped:**
 

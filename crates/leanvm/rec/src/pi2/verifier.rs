@@ -22,12 +22,12 @@
 //!    `(1 + 1_S) Δ + T = Δ + w_m R_n / R_d`;
 //! 6. the claim on `Q`: the identity `h d_pull d_push + q w_m = Δ + w_m R_n / R_d` is one combination of `h(t)` and
 //!    `q(t)` (`c_h = d_pull d_push`, `c_q = w_m`, `Y = c_h + c_q`, `ρ' = w_m / Y`), `P(t) = s`, and the definition
-//!    `w_m q_P(t) = s + P_v(t)`, combined by `ρ` (`PI2.md` §2);
-//! 7. one inversion of `R_d B Y · w_{m+1} · c_h` (nonzero required), and the digits' inverses down from `1/w_{m+1}`:
-//!    `1/w_l = (1 + w_l) / w_{l+1}`;
+//!    `w_m q_P(t) = s + P_v(t)`, combined by `ρ` at the kinds' coordinates `(ρ', ρ, ρ² B)` (`PI2.md` §2);
+//! 7. one inversion of `R_d Y · w_{m+1} · c_h D_n` (nonzero required; `D_n = B (α + P_v(t) + ξ)`), and the digits'
+//!    inverses down from `1/w_{m+1}`: `1/w_l = (1 + w_l) / w_{l+1}`;
 //!
 //! and leaves four claims: `W` at `(ρ, ρ², …, ρ^{2^{r-1}}, w_r, …, w_{m-1})`, value `Σ_k eq(ρ⃗, k) a_k`; `Q` at
-//! `(u_0, …, u_m, ρ', ρ, ρ², y_0, y_1)`, `u_l = w_l / (1 + w_l)`, and at `(1^m, 0, 0, 0, 0, y_0, y_1)` (the top
+//! `(u_0, …, u_m, ρ', ρ, ρ² B, y_0, y_1)`, `u_l = w_l / (1 + w_l)`, and at `(1^m, 0, 0, 0, 0, y_0, y_1)` (the top
 //! coefficient of `h`: `Σ_V h`), value `0`; the setup (its halves `κ` and `κ + σ`) at `(w_0, …, w_{m-1}, β)`, value
 //! `ξ`.
 
@@ -429,7 +429,8 @@ pub fn reduce_traced<S: Limbs, C: Channel<S>>(
             (Some(a), Some(b)) => (Some(a * denominator + b * term), Some(b * denominator)),
             _ => (Some(term), Some(denominator)),
         };
-        let (mut internal, mut ports): ((Option<S>, Option<S>), (Option<S>, Option<S>)) = ((None, None), (None, None));
+        let none: (Option<S>, Option<S>) = (None, None);
+        let (mut internal, mut ports) = (none, none);
         for (group, &(numerator, denominator)) in spec.groups.iter().zip(&groups) {
             let e = formula(&group.formula, &|c| cells[c ^ group.role], &gammas);
             let single = group.pairs.len() == 1;

@@ -48,7 +48,7 @@ pub struct Layouts {
     pub setup: Layout,
 }
 
-/// The kinds of `Q`'s chunks, their three bits the claim's coordinates `(ρ', ρ, ρ²)`: `h` (degree below `N`, three
+/// The kinds of `Q`'s chunks, their three bits the claim's coordinates `(ρ', ρ, ρ² B)`: `h` (degree below `N`, three
 /// limbs), `q` (below `2N`, three limbs), `P` (the internal pushes without `κ`, below `N`, in `K`) and `q_P` (`P`'s
 /// definition quotient, below `2N`, in `K`).
 pub const KIND_H: usize = 0b000;
