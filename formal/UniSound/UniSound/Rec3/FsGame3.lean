@@ -34,63 +34,7 @@ attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
 
 /-! ## π1-rec3's IV -/
 
-/-- **π1-rec3's variant bytes** (`variant_bytes` at `FLOCK_REC3`): `fs-rec3`, the skip, the slices' code. -/
-def rec3Extra : List UInt8 := variantBytes (.flock flockMain) .rec3 true
-
-theorem length_rec3Extra : rec3Extra.length = 9 := by decide +kernel
-
-theorem rec3Extra_isEmpty : rec3Extra.isEmpty = false := by decide +kernel
-
-/-- **π1-rec3's IV input** (`contractIvForWith … .rec3 true`): the main line's, then the variant bytes. -/
-def ivInput3 (D : Deployment) (roots : SetupRoots) : List UInt8 := ivInput D roots ++ rec3Extra
-
-theorem length_ivInput3 (D : Deployment) (roots : SetupRoots) :
-    (ivInput3 D roots).length = D.programIv.length + 289 := by
-  rw [ivInput3, List.length_append, length_ivInput, length_rec3Extra]
-
-theorem ivRec3With_eq' {m : Type → Type} [Monad m] [LawfulMonad m]
-    (F : LeanVM.Semantics.KeccakState → m LeanVM.Semantics.KeccakState) (D : Deployment) (roots : SetupRoots) :
-    D.ivRec3With F roots = digestBytes <$> keccak256With F (ivInput3 D roots) := by
-  unfold Deployment.ivRec3With contractIvForWith
-  rw [map_eq_bind_pure_comp]
-  show (if rec3Extra.isEmpty then _ else _) = _
-  rw [rec3Extra_isEmpty]
-  rfl
-
-/-- **The Statement's IV is the composed one**, Keccak-256 over `π`. -/
-theorem ivRec3With_eq (D : Deployment) (roots : SetupRoots) :
-    D.ivRec3With Common.queryPermutation roots =
-      (fun b : Bytes32 => b.toList) <$>
-        simulateQ keccakCallsOverQueryPermutation (hash256 (ivInput3 D roots)) := by
-  rw [ivRec3With_eq', hash256, callKeccak256, simulateQ_bind, simulateQ_spec_query, map_bind]
-  simp only [simulateQ_pure, map_pure, Bridge.toB_toList]
-  rw [map_eq_bind_pure_comp]
-  rfl
-
-/-- **π1-rec3's deployment IV is short and of no Merkle length**: its input (`D.programIv.length + 289` bytes) not a
-leaf's `512`, and at most eight calls of `π` (`≤ 1087` bytes). -/
-structure UniIv3 (D : Deployment) : Prop where
-  ne : D.programIv.length ≠ 223
-  le : D.programIv.length ≤ 798
-
-/-- **The IV as the composed verifier computes it**: one Keccak-256 call of its input. -/
-def ivKC3 (D : Deployment) (π : UPf) : OracleComp KeccakCalls Bytes32 := hash256 (ivInput3 D π.roots)
-
 /-! ## The IV moved into the adversary, in the two-oracle game -/
-
-/-- The two-oracle adversary with π1-rec3's IV: `A₀`, then the IV of the proof the setup fixes. -/
-def ivAdv3 (D : Deployment) (A₀ : Bytes32 × Bytes32 × Bytes32 → OracleComp KeccakCalls UPf)
-    (s : Bytes32 × Bytes32 × Bytes32) : OracleComp KeccakCalls UPf :=
-  A₀ s >>= fun π => (fun iv => setIv iv π) <$> ivKC3 D (uFix s π)
-
-theorem isTotalQueryBound_ivAdv3 (D : Deployment)
-    (A₀ : Bytes32 × Bytes32 × Bytes32 → OracleComp KeccakCalls UPf) (n : ℕ)
-    (h : ∀ s, IsTotalQueryBound (A₀ s) n) (s : Bytes32 × Bytes32 × Bytes32) :
-    IsTotalQueryBound (ivAdv3 D A₀ s) (n + 1) := by
-  unfold ivAdv3
-  refine isTotalQueryBound_bind (h s) fun π => (isQueryBound_map_iff _ _ _ _ _).mpr ?_
-  simp only [ivKC3, hash256, callKeccak256]
-  exact isTotalQueryBound_query_bind_iff.mpr ⟨by norm_num, fun _ => trivial⟩
 
 /-! ## The bound -/
 
@@ -115,6 +59,3 @@ theorem le_uniBoundV3 (e : ℝ≥0∞) (Q QS nQ SQO nRf : ℕ) (hQS : QS ≤ 3 *
 
 end UniSound
 
-/-- info: 'UniSound.ivRec3With_eq' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms UniSound.ivRec3With_eq

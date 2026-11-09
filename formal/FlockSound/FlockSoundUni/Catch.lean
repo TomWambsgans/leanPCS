@@ -175,23 +175,6 @@ theorem eq_sliceList {l : List E} (h : l.length = 64) :
 
 /-! ## The code's result is the run's -/
 
-theorem outOf_eq (d : Done) :
-    outOf κ d = flockOut (pSampled d) (pCoset d) (pZ d) ((d.drop 2).take (11 + κ)) (pVa κ d)
-      (pVb κ d) (pAlpha κ d) ((d.drop (14 + κ)).take 8) (rd d (22 + κ)).1.2 (rd d (22 + κ)).2 := by
-  simp only [outOf, rd_drop, Nat.add_zero]
-  rfl
-
-theorem flockOut_of (sampled coset : List E) (z : E) (zc : Done) (vA vB α : E) (lc : Done)
-    (slices map zs ls : List E) (running rLc : E)
-    (hzr : decodeSC (Flock.lagrangeInterpolate 16 (List.replicate 8 0 ++ coset) z)
-      ((Flock.fixedChallenges ++ sampled).map some) zc = (zs, running))
-    (hlr : decodeSC (vA + α * vB + epow α 2 * (running + vA * vB) + epow α 3) (List.replicate 8 none) lc =
-      (ls, rLc)) :
-    flockOut sampled coset z zc vA vB α lc slices map =
-      (ls.reverse ++ (zs.drop 3).drop 8, some (.ring map (Flock.towerTarget slices map)),
-        Flock.Pending.new (some z) (zs.take 3) ((zs.drop 3).take 8) ls.reverse α rLc (some slices)) := by
-  simp only [flockOut, hzr, hlr]
-
 theorem getD_replicate_none (t : Fin 8) : (List.replicate 8 (none : Option E)).getD t none = none := by
   simp only [List.getD_eq_getElem?_getD, List.getElem?_replicate, t.isLt, ite_true, Option.getD_some]
 

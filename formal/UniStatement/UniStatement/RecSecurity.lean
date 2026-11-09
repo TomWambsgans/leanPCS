@@ -23,31 +23,4 @@ removed with `BLAKE2S`. The Keccak VM's are `UniKeccak.Security`'s.)
 
 @[expose] public section
 
-namespace UniStatement
-
-open LeanVM.Parameters LeanVM.Protocol LeanVM.Protocol.KeccakHash
-open LeanVM.Semantics (KeccakState)
-open LeanVM.Extraction
-open OracleComp OracleSpec Common
-open scoped ENNReal
-
-section With
-
-variable {m : Type → Type} [Monad m] (F : KeccakState → m KeccakState)
-
-/-- **π1-rec3's IV** over `F` (`contract_iv_for` at `FLOCK_REC3`). -/
-def Deployment.ivRec3With (D : Deployment) (roots : SetupRoots) : m (List UInt8) :=
-  contractIvForWith F D.shape (.flock flockMain) .rec3 true D.programIv roots
-
-/-- **π1-rec3's deployed verifier** over `F` on the setup's roots: its IV, then `verifyWithFs` at `.rec3` with the
-walk (three calls). -/
-def Deployment.verifierRec3With (D : Deployment) (roots : SetupRoots) (input : Vector UInt8 32)
-    (proof : UniProof) : m Bool := do
-  verifyWithFs F D.shape (← D.ivRec3With F roots) roots input proof .rec3 true
-
-end With
-
-end UniStatement
-
 end
-

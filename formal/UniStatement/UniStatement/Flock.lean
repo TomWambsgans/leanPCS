@@ -6,7 +6,7 @@
 module
 
 public import UniStatement.Transcript
-public import UniStatement.Tables
+public import UniStatement.TablesBase
 public import UniStatement.FlockBase
 
 /-!
@@ -47,9 +47,6 @@ the univariate verifier does not read; it is not computed here.
 namespace UniStatement.Flock
 
 open LeanVM.Parameters LeanVM.Semantics
-
-/-- `FLOCK_NUM_LINCHECK_ROUNDS = 14 − 6`. -/
-def lincheckRounds : ℕ := blake2sR1csLogSize - 6
 
 /-- `BLAKE2S_CONSTANT_COLUMN`. -/
 def constantColumn : ℕ := 512
@@ -194,12 +191,6 @@ def towerWeightAt (point onePlusR map : List E) : E := Id.run do
       g := g.set! k (g.getD k 0 + power * g.getD (k + step) 0)
   return g.getD 0 0
 
-/-- **`known_weights(alpha, chi_in, chi_in')`**: the weights of the matrices' terminal's two known terms, the
-`C = I` claim's `α² eq(chi_in, chi_in')` and the constant position's pin `α³ eq(bits(512 / 64), chi_in')`. -/
-def knownWeights (alpha : E) (chiIn chiInPrime : List E) : E × E :=
-  let constantBits := (List.range lincheckRounds).map (bitE (constantColumn / kBits))
-  (epow alpha 2 * eqEval chiIn chiInPrime, epow alpha 3 * eqEval constantBits chiInPrime)
-
 /-- **The matrices' reduction, its rounds run by a later sumcheck** (`Pending`, lever 4a): its claim
 `Σ_(x, y) G(x, y) L̂(x) ŝ(y)` over the skip's `k` row bits `x` and the column's 6 packing bits `y`,
 `G = Â0 + α B̂0` at the row and column points; what its terminal needs; the slices if sent. -/
@@ -216,17 +207,6 @@ structure Pending where
   alpha : E
   slices : Option (List E)
   deriving Inhabited
-
-/-- **`Pending::new`**: the matrices' reduction of the lincheck's terminal `r_lc`: with the slices, its claim
-has their known part (as `reduceTerminal` starts it); without, it is `r_lc` and their part stays unknown. -/
-def Pending.new (zSkip : Option E) (rowLow chiIn chiInPrime : List E) (alpha rLc : E)
-    (slices : Option (List E)) : Pending :=
-  let (skipWeights, lowWeights) := rowLowWeights zSkip rowLow
-  let (cWeight, pinWeight) := knownWeights alpha chiIn chiInPrime
-  let known := slices.map fun s ↦
-    cWeight * dot lowWeights s + pinWeight * s.getD (constantColumn % kBits) 0
-  ⟨rLc + known.getD 0, packing - rowLow.length, skipWeights, lowWeights, cWeight, pinWeight, rowLow, chiIn,
-    chiInPrime, alpha, slices⟩
 
 /-- `Pending::rounds`: the variables of the sum, the later sumcheck's first ones. -/
 def Pending.rounds (p : Pending) : ℕ := p.k + packing
@@ -302,53 +282,6 @@ def zerocheck (logN k : ℕ) : ChanM m (Option E × List E × E × E × E) := do
   let vB ← nextScalar (m := m)
   return (zSkip, chi, vA, vB, running + vA * vB)
 
-/-- **The matrices' reduction** (`reduce_terminal`): the terminal's known terms (with the slices), `k + 6`
-rounds, `a`, `b`; the claims on `A0`, `B0`; with the slices, the terminal collected; without, the
-combination it leaves. -/
-def reduceTerminal (zSkip : Option E) (rowLow chiIn chiInPrime : List E) (alpha rLc : E)
-    (s : Option (List E)) : ChanM m (MatrixClaim × Option (List E × E)) := do
-  let k := packing - rowLow.length
-  let (skipWeights, lowWeights) := rowLowWeights zSkip rowLow
-  let (cWeight, pinWeight) := knownWeights alpha chiIn chiInPrime
-  let pin := constantColumn % kBits
-  let known := s.map fun s ↦ cWeight * dot lowWeights s + pinWeight * s.getD pin 0
-  let (challenges, running) ← sumcheck F (rLc + known.getD 0) 3 (List.replicate (k + packing) none)
-  let rho := challenges.take k
-  let sigma := challenges.drop k
-  let a ← nextScalar (m := m)
-  let b ← nextScalar (m := m)
-  let skipAtRho := if k > 0 then multilinearEval skipWeights rho else 1
-  let factor := (a + alpha * b) * skipAtRho
-  let matrices : MatrixClaim := ⟨rho ++ rowLow ++ chiIn ++ sigma ++ chiInPrime, a, b⟩
-  match s with
-  | some s =>
-    requireZero (m := m) (factor * multilinearEval s sigma + running)
-    return (matrices, none)
-  | none =>
-    let lambda := eprod challenges
-    let lambdaC := lambda * cWeight
-    let lambdaPin := lambda * pinWeight
-    let weights := ((eqKernel sigma).toList.zip (lowWeights ++ List.replicate kBits 0)).map
-      fun (e, low) ↦ factor * e + lambdaC * low
-    let weights := weights.modify pin (· + lambdaPin)
-    return (matrices, some (weights, running))
-
-/-- **`front(log_n, variant)`**: the zerocheck, the row point's split (the skip, the packing bits left to
-rounds, the 8 slot bits, the instance bits), the lincheck (`α`, 8 rounds), the slices if sent. -/
-def front (logN : ℕ) (variant : Variant) : ChanM m Front := do
-  let k := variant.skip
-  let (zSkip, chi, vA, vB, vC) ← zerocheck F logN k
-  let rowLow := chi.take (packing - k)
-  let rest := chi.drop (packing - k)
-  let chiIn := rest.take lincheckRounds
-  let chiRest := rest.drop lincheckRounds
-  let alpha ← sample F
-  let claim := vA + alpha * vB + epow alpha 2 * vC + epow alpha 3
-  let (roundChallenges, rLc) ← sumcheck F claim 3 (List.replicate lincheckRounds none)
-  let chiInPrime := roundChallenges.reverse
-  let s ← if variant.slices = .claim then pure none else some <$> nextScalars (m := m) kBits
-  return ⟨zSkip, chi, rowLow, chiIn, chiInPrime, alpha, rLc, s, chiInPrime ++ chiRest⟩
-
 /-- **`ring_end(variant, front, s)`**: the ring switch on the sent slices: the map drawn (six challenges), then
 the target, in tower order for `Slices.tower` (`towerTarget`), else leanVM's (`ringMap`'s images at `x`). -/
 def ringEnd (variant : Variant) (s : List E) : ChanM m End := do
@@ -356,29 +289,6 @@ def ringEnd (variant : Variant) (s : List E) : ChanM m End := do
   let target := if variant.slices = .tower then towerTarget s map
     else polyEval (s.map fun value ↦ ringMap value map) gen
   return .ring map target
-
-/-- **Flock at `log_n` variables** (`flock_min::verify`), as `variant` has it: the front, the matrices'
-reduction, then the ring switch's map and target (with the slices) or the combination (without). -/
-def verify (logN : ℕ) (variant : Variant) : ChanM m Reduced := do
-  let fr ← front F logN variant
-  let (matrices, combination) ←
-    reduceTerminal F fr.zSkip fr.rowLow fr.chiIn fr.chiInPrime fr.alpha fr.rLc fr.slices
-  match fr.slices, combination with
-  | some s, _ => return ⟨fr.point, matrices, ← ringEnd F variant s⟩
-  | none, some (weights, value) => return ⟨fr.point, matrices, .combination weights value⟩
-  | none, none => return ⟨fr.point, matrices, .combination [] 0⟩
-
-/-- **`flock_min::verify_deferred`** (lever 4a, iteration 2's point-claim ABI): the front; with the slices sent,
-the ring switch's map and target; and the matrices' reduction left pending, for the batching sumcheck to run
-its `k + 6` rounds (`Batch.lean`). Without the slices there is no end yet (`none`): the batching sumcheck's
-terminal leaves the combination (`Pending.combination`). -/
-def verifyDeferred (logN : ℕ) (variant : Variant) : ChanM m (List E × Option End × Pending) := do
-  let fr ← front F logN variant
-  let pending := Pending.new fr.zSkip fr.rowLow fr.chiIn fr.chiInPrime fr.alpha fr.rLc fr.slices
-  let end_ ← match fr.slices with
-    | some s => some <$> ringEnd F variant s
-    | none => pure none
-  return (fr.point, end_, pending)
 
 end With
 

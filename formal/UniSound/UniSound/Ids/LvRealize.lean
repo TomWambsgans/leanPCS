@@ -15,7 +15,7 @@ What the Keccak line (`UniKeccakSound`) uses of the removed BLAKE2s VM's proof t
 Lv42's bus:
 
 1. **The forms are Lv42's flushes** at the five shared tables (`uni_tuples_eq_base`, `base_flushes_eq`, `sides_eq_base`,
-   over `Fin 5` and `baseComponent`): on every row, a table's tuples of `UniStatement.tables` are, in order, its
+   over `Fin 5` and `baseComponent`): on every row, a table's tuples of `UniStatement.sharedTables` are, in order, its
    Clean component's flushes evaluated at the row, by reflection through a polynomial normal form (`SP`);
    `tables_length_le`, `tables_coeffs`, `gpow_eq_ofK`.
 2. **The rows** (`map_rowPosition`, `activePositions_perm`): `rowPosition count h` lists the active rows in order.
@@ -57,7 +57,7 @@ theorem flushPolys_eval_eq (n : ℕ) (ai : AbstractInteraction K) (R : ℕ → K
 
 /-- Table `j`'s forms of one side, as normal forms. -/
 def uniSide (j : ℕ) (push : Bool) : List (List SP) :=
-  ((if push then (tables.getD j default).flushes.push else (tables.getD j default).flushes.pull).map
+  ((if push then (sharedTables.getD j default).flushes.push else (sharedTables.getD j default).flushes.pull).map
     tupSP).map (·.map spNorm)
 
 /-- Shared opcode table `j`'s interactions of one side (`lvInteractions` at the five shared tables). -/
@@ -78,7 +78,7 @@ theorem sides_eq_base : ∀ j : Fin 5, ∀ push : Bool, uniSide j push = lvSideB
 /-- **The forms are the shared tables' flushes**, on every row, in order (`uni_tuples_eq` at the five shared
 tables). -/
 theorem uni_tuples_eq_base (j : Fin 5) (push : Bool) (R : ℕ → K) :
-    ((if push then (tables.getD j default).flushes.push else (tables.getD j default).flushes.pull).map
+    ((if push then (sharedTables.getD j default).flushes.push else (sharedTables.getD j default).flushes.pull).map
         fun tup ↦ tupleK tup R) =
       (lvInteractionsBase j push).map fun ai ↦
         (LeanVM.Protocol.flushPolys Lv42.Arithmetization.channelSep
@@ -88,28 +88,6 @@ theorem uni_tuples_eq_base (j : Fin 5) (push : Bool) (R : ℕ → K) :
   simp only [uniSide, lvSideBase, List.map_map] at h
   simp only [tupleK_eq, flushPolys_eval_eq]
   exact h
-
-set_option maxRecDepth 100000 in
-/-- **Every tuple has at most sixteen forms.** -/
-theorem tables_length_le : ∀ j : Fin 6, ∀ tup ∈ (tables.getD j default).flushes.push ++
-    (tables.getD j default).flushes.pull, tup.length ≤ 16 := by
-  decide +kernel
-
-set_option maxRecDepth 100000 in
-/-- **Every coefficient of the forms lies in `K`** (its `y` and `y²` limbs are zero), and every monomial has
-at most two variables. -/
-theorem tables_coeffs_decide : ∀ j : Fin 6, ∀ tup ∈ (tables.getD j default).flushes.push ++
-    (tables.getD j default).flushes.pull, ∀ f ∈ tup, ∀ mc ∈ f, IsInK mc.2 ∧ mc.1.length ≤ 2 := by
-  decide +kernel
-
-/-- **Every coefficient of the forms is `ofK` of its `K` reading** (`toK`), and every monomial has at most
-two variables. -/
-theorem tables_coeffs (j : Fin 6) : ∀ tup ∈ (tables.getD j default).flushes.push ++
-    (tables.getD j default).flushes.pull, ∀ f ∈ tup, ∀ mc ∈ f, mc.2 = ofK (toK mc.2) ∧ mc.1.length ≤ 2 := by
-  intro tup htup f hf mc hmc
-  obtain ⟨hK, hl⟩ := tables_coeffs_decide j tup htup f hf mc hmc
-  refine ⟨?_, hl⟩
-  rw [toK, ofK_eq_ofLimbs, ofLimbs_of_isInK hK]
 
 /-! ## The rows: `rowPosition` maps the executed rows onto the active ones -/
 
@@ -429,8 +407,6 @@ theorem base_flushes_eq (j : Fin 5) (side : Side) (row : Fin (baseComponent j).w
 
 /-! ## The values: Lv42's rows are `C1`'s -/
 
-theorem layoutOf_c1 (S : UniStatement.Shape) : layoutOf S .c1 = c1Layout S := rfl
-
 theorem layoutOf_setup (S : UniStatement.Shape) : layoutOf S .setup = setupLayout S := rfl
 
 /-- A column of one limb, read at a row of its block. -/
@@ -540,21 +516,6 @@ theorem setupLayout_vars (S : UniStatement.Shape) : (setupLayout S).vars =
   · simp [List.MergeSort.Internal.splitInTwo, h]
   · simp [List.MergeSort.Internal.splitInTwo, h, Nat.add_comm]
 
-theorem setupStk_eq (D : Deployment) (w : ℕ) (tOff aOff : ℕ)
-    (ht : (setupLayout D.shape).limbs .bytecodeTuple = [(0, D.shape.logBytecode + 4, tOff)])
-    (ha : (setupLayout D.shape).limbs .address = [(0, D.shape.logMemory, aOff)])
-    (hw : w < 2 ^ (setupLayout D.shape).vars) :
-    setupStk D w = if tOff ≤ w ∧ w < tOff + 2 ^ (D.shape.logBytecode + 4) then
-        ((Array.ofFn (n := 16) fun s ↦ bCoefficients D.prog.logSize
-          (Array.ofFn (n := 2 ^ D.prog.logSize) fun i ↦ tupleSlot D.prog i s.val)).getD ((w - tOff) % 16)
-            #[]).getD ((w - tOff) / 16) 0
-      else if aOff ≤ w ∧ w < aOff + 2 ^ D.shape.logMemory then
-        (bCoefficients D.shape.logMemory (Array.ofFn (n := 2 ^ D.shape.logMemory) fun i ↦
-          LeanVM.Parameters.gpow i.val)).getD (w - aOff) 0
-      else 0 := by
-  simp only [setupStk, setupStack, ht, ha, List.headD_cons]
-  simp [Array.getD_eq_getD_getElem?, hw]
-
 theorem le_two_pow_log2Ceil (n : ℕ) : n ≤ 2 ^ log2Ceil n := by
   unfold log2Ceil
   split_ifs with h
@@ -592,46 +553,6 @@ theorem bCoefficients_size (r : ℕ) (v : Array K) : (bCoefficients r v).size = 
   unfold bCoefficients subsetSums PcsQuotient.Domain.coefficients
   rw [foldl_size _ _ (fun a _ ↦ Array.size_ofFn), foldl_size _ _ (fun a _ ↦ by
     simp [PcsQuotient.Domain.stage])]
-
-/-- **The setup's address column is `g^x`** (`BasisValueInv`). -/
-theorem suVal_address (D : Deployment) (hBV : BasisValueInv) (hlm : D.shape.logMemory ≤ 24) (x : ℕ)
-    (hx : x < 2 ^ D.shape.logMemory) : suVal D .address D.shape.logMemory x = LeanVM.Parameters.gpow x := by
-  obtain ⟨tOff, aOff, ht, ha, hdis, htv, hav⟩ := setup_facts D.shape
-  have hblock : c1Block (setupLayout D.shape) (setupStk D) .address = bCoefficients D.shape.logMemory
-      (Array.ofFn (n := 2 ^ D.shape.logMemory) fun i ↦ LeanVM.Parameters.gpow i.val) := by
-    simp only [c1Block, ha]
-    apply Array.ext
-    · simp [bCoefficients_size]
-    · intro i h1 h2
-      simp only [Array.getElem_ofFn]
-      rw [Array.size_ofFn] at h1
-      rw [setupStk_eq D _ tOff aOff ht ha (by omega), ite_neg_of (by omega), ite_pos_of (by omega)]
-      simp [Array.getD_eq_getD_getElem?, h2]
-  rw [suVal, hblock, hBV _ hlm _ (by simp) x hx]
-  simp [Array.getD_eq_getD_getElem?, hx]
-
-/-- **The setup's bytecode slot `s` is `tupleSlot`** (`BasisValueInv`). -/
-theorem slotVal_eq (D : Deployment) (hBV : BasisValueInv) (hlb : D.shape.logBytecode ≤ 24) (s : ℕ)
-    (hs : s < 16) (x : Fin (2 ^ D.prog.logSize)) : slotVal D s x.val = tupleSlot D.prog x s := by
-  obtain ⟨tOff, aOff, ht, ha, hdis, htv, hav⟩ := setup_facts D.shape
-  have hlbe := D.logBytecode_eq
-  have hoff : tupleOff D = tOff := by simp [tupleOff, ht]
-  have harr : (Array.ofFn (n := 2 ^ D.shape.logBytecode) fun k ↦ setupStk D (tupleOff D + s + 16 * k.val)) =
-      bCoefficients D.prog.logSize (Array.ofFn (n := 2 ^ D.prog.logSize) fun i ↦ tupleSlot D.prog i s) := by
-    apply Array.ext
-    · simp [bCoefficients_size, hlbe]
-    · intro k h1 h2
-      simp only [Array.getElem_ofFn]
-      rw [Array.size_ofFn] at h1
-      have hk16 : s + 16 * k < 2 ^ (D.shape.logBytecode + 4) := by
-        rw [pow_add]; norm_num; omega
-      rw [hoff, setupStk_eq D _ tOff aOff ht ha (by omega), ite_pos_of (by omega)]
-      have e1 : (tOff + s + 16 * k - tOff) % 16 = s := by omega
-      have e2 : (tOff + s + 16 * k - tOff) / 16 = k := by omega
-      rw [e1, e2]
-      simp [Array.getD_eq_getD_getElem?, hs, h2]
-  rw [slotVal, harr, hlbe, hBV _ (hlbe ▸ hlb) _ (by simp) x.val x.isLt]
-  simp [Array.getD_eq_getD_getElem?]
 
 /-! ## Powers of the generator -/
 
@@ -689,12 +610,6 @@ theorem initK_eq : initK = tupleOf (LeanVM.Parameters.gpow 0) #[1, 1] := by
   simp only [initK, tupleOf, Vector.getElem_ofFn]
   interval_cases k <;> simp
 
-theorem finK_eq : finK D = tupleOf (LeanVM.Parameters.gpow 0) #[D.prog.finalPc, 1] := by
-  apply Vector.ext
-  intro k hk
-  simp only [finK, tupleOf, Vector.getElem_ofFn]
-  interval_cases k <;> simp [toK_gpow, Lv42.Semantics.Program.finalPc, D.logBytecode_eq]
-
 end Boundary
 
 /-! ## The heap's blocks by side -/
@@ -703,17 +618,6 @@ end Boundary
 def lbSide (b : Heap.LeafBlock (Vector K 16)) : Side → List (Vector K 16)
   | .push => b.pushes
   | .pull => b.pulls
-
-theorem blockK_key (D : Deployment) (c : Stk) (rows : List ℕ) (b : Block) :
-    blockK D c rows b = blockK D c rows ⟨b.leaves, b.r, 0⟩ := by
-  obtain ⟨l, r, p⟩ := b
-  cases l <;> rfl
-
-theorem blockK_unused (D : Deployment) (c : Stk) (rows : List ℕ) (r : ℕ) (side : Side) :
-    lbSide (blockK D c rows ⟨.unused, r, 0⟩) side = [] := by
-  cases side
-  · exact Heap.LeafBlock.pushes_unused r
-  · exact Heap.LeafBlock.pulls_unused r
 
 theorem map_range_eq_finRange {α : Type*} (n : ℕ) (f : ℕ → α) (g : Fin n → α)
     (h : ∀ x : Fin n, f x.val = g x) : (List.range n).map f = (List.finRange n).map g := by
@@ -733,65 +637,9 @@ theorem le_sum_of_mem' {l : List ℕ} {x : ℕ} (h : x ∈ l) : x ≤ l.sum := b
     · rw [List.sum_cons]
       exact (ih h).trans (Nat.le_add_left _ _)
 
-/-- **The heap's blocks, side by side**: the memory's, the bytecode's, the six tables'. -/
-theorem blocks_side (D : Deployment) (c : Stk) (rows : List ℕ) (side : Side) :
-    ((D.shape.heap.blocks.map (blockK D c rows)).flatMap (lbSide · side)).Perm
-      (lbSide (blockK D c rows ⟨.memory, D.shape.logMemory, 0⟩) side ++
-        lbSide (blockK D c rows ⟨.bytecode, D.shape.logBytecode, 0⟩) side ++
-          (List.range 6).flatMap fun t ↦ lbSide (blockK D c rows ⟨.table t, D.shape.heights.getD t 0, 0⟩) side) := by
-  have h := heap_flatMap D.shape (fun k ↦ lbSide (blockK D c rows ⟨k.1, k.2, 0⟩) side)
-    (fun r ↦ blockK_unused D c rows r side)
-  rw [List.flatMap_map] at h
-  rw [List.flatMap_map]
-  simp only [List.flatMap_append, List.flatMap_cons, List.flatMap_nil, List.append_nil, List.flatMap_map,
-    D.valid.1] at h
-  refine List.Perm.trans (List.Perm.of_eq ?_) h
-  exact List.flatMap_congr fun b _ ↦ by rw [blockK_key]; rfl
-
-/-- The memory and bytecode blocks' heights fit `BasisValueInv`'s. -/
-theorem heights_le (D : Deployment) (hHG : HeapGood D.shape) :
-    D.shape.logMemory ≤ 24 ∧ D.shape.logBytecode ≤ 24 := by
-  obtain ⟨_, hh, hsum, -⟩ := hHG
-  have hk := heap_flatMap D.shape (fun k : Leaves × ℕ ↦ if k.1 = .unused then [] else [2 ^ k.2])
-    (fun r ↦ by simp)
-  have hmem : ∀ k ∈ [(Leaves.memory, D.shape.logMemory), (Leaves.bytecode, D.shape.logBytecode)],
-      2 ^ k.2 ≤ 2 ^ (D.shape.heap.h - 1) := by
-    intro k hk'
-    have hin : 2 ^ k.2 ∈ (D.shape.heap.blocks.map blockKey).flatMap
-        (fun k : Leaves × ℕ ↦ if k.1 = .unused then [] else [2 ^ k.2]) := by
-      refine hk.symm.subset (List.mem_flatMap.mpr ⟨k, List.mem_append_left _ hk', ?_⟩)
-      rcases List.mem_cons.mp hk' with rfl | hk'
-      · simp
-      · rw [List.mem_singleton] at hk'
-        subst hk'
-        simp
-    obtain ⟨k', hk'', hin'⟩ := List.mem_flatMap.mp hin
-    obtain ⟨b, hb, rfl⟩ := List.mem_map.mp hk''
-    rw [← hsum]
-    have : 2 ^ k.2 = 2 ^ b.r := by
-      by_cases hu : b.leaves = .unused
-      · simp [blockKey, hu] at hin'
-      · simpa [blockKey, hu] using hin'
-    rw [this]
-    exact le_sum_of_mem' (List.mem_map.mpr ⟨b, hb, rfl⟩)
-  have h1 := hmem _ (List.mem_cons_self ..)
-  have h2 := hmem _ (List.mem_cons_of_mem _ (List.mem_singleton_self _))
-  have := (Nat.pow_le_pow_iff_right (by norm_num : 1 < 2)).mp h1
-  have := (Nat.pow_le_pow_iff_right (by norm_num : 1 < 2)).mp h2
-  simp only at *
-  omega
-
 end LvR
 
 end UniSound.Ids
-
-/-- info: 'UniSound.Ids.LvR.tables_length_le' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms UniSound.Ids.LvR.tables_length_le
-
-/-- info: 'UniSound.Ids.LvR.tables_coeffs' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms UniSound.Ids.LvR.tables_coeffs
 
 /-- info: 'UniSound.Ids.LvR.map_rowPosition' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
@@ -800,4 +648,3 @@ end UniSound.Ids
 /-- info: 'UniSound.Ids.LvR.activePositions_perm' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms UniSound.Ids.LvR.activePositions_perm
-

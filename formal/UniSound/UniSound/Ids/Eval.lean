@@ -339,14 +339,6 @@ theorem linearise_spec (tuple : List Form) (weights : Array E) (sent : Array (Op
 
 /-! ## A table's part at `t` (`tablePartOf`) -/
 
-/-- **The tables' flushes, as `linearise` reads them**: every sent column is a column of its table, each
-pull tuple has its push tuple's length, and every degree-two monomial of a flush has a sent factor. -/
-def TablesLin : Prop :=
-  ∀ tab ∈ tables, (∀ c ∈ sentColumns tab, c < tab.width) ∧
-    ∀ fl ∈ tab.flushes.pull.zip tab.flushes.push, fl.2.length = fl.1.length ∧
-      ∀ f ∈ fl.1 ++ fl.2, ∀ mc ∈ f, mc.1.length = 2 →
-        mc.1.getD 0 0 ∈ sentColumns tab ∨ mc.1.getD 1 0 ∈ sentColumns tab
-
 theorem mem_zip_range_iff {α : Type} (l : List α) (d : α) (p : α × ℕ) (hp : p ∈ l.zip (List.range l.length)) :
     p.2 < l.length ∧ l.getD p.2 d = p.1 := by
   obtain ⟨k, hk, he⟩ := List.getElem_of_mem hp
@@ -586,68 +578,6 @@ theorem tableDegrees_eq (tab : Table) :
       exact ⟨by ring, by ring⟩
   exact key l 1 0
 
-/-- **A table's part at `t`**: its sent values are its columns' values, its leaf's products are the
-flushes' fingerprints at `t`, its degrees are `tableDegrees`. -/
-theorem tablePartOf_spec (tab : Table) (hT : tab ∈ tables) (hL : TablesLin) (lh : ℕ) (weights : Array E)
-    (beta : E) (w vals : List E) (ev : Column → List E → E) (colv : ℕ → E)
-    (hev : ∀ c, ev (.table tab.opcode c) (w.take lh) = colv c)
-    (hh : ∀ r ∈ (tablePartOf tab lh weights beta w vals).2.1, RelHolds ev r) :
-    (∀ c ∈ sentColumns tab, (tablePartOf tab lh weights beta w vals).1.sent.getD c none = some (colv c)) ∧
-      (tablePartOf tab lh weights beta w vals).1.pull =
-        ((tab.flushes.pull.zip tab.flushes.push).map fun fl ↦ beta + tupleE fl.1 weights colv).prod ∧
-      (tablePartOf tab lh weights beta w vals).1.push =
-        ((tab.flushes.pull.zip tab.flushes.push).map fun fl ↦ beta + tupleE fl.2 weights colv).prod ∧
-      (tablePartOf tab lh weights beta w vals).1.pullDegree = (tableDegrees tab).1 ∧
-      (tablePartOf tab lh weights beta w vals).1.pushDegree = (tableDegrees tab).2 := by
-  obtain ⟨hw, hfl⟩ := hL tab hT
-  -- The `equal` relations of the sent values.
-  have h0 : ∀ p < (sentColumns tab).length, vals.getD p 0 = colv ((sentColumns tab).getD p 0) := by
-    intro p hp
-    have hmem : Relation.equal (.table tab.opcode ((sentColumns tab).getD p 0)) (w.take lh) (vals.getD p 0) ∈
-        (tablePartOf tab lh weights beta w vals).2.1 := by
-      unfold tablePartOf
-      dsimp only
-      obtain ⟨X, hX⟩ := rels_flushFold (fun c ↦ .table tab.opcode c) (w.take lh) weights beta
-        (sentOf tab vals) (tab.flushes.pull.zip tab.flushes.push)
-        ⟨1, 1, 1, 0, ((sentColumns tab).zip (List.range (sentColumns tab).length)).map fun p ↦
-          Relation.equal (.table tab.opcode p.1) (w.take lh) (vals.getD p.2 0), vals.drop (sentColumns tab).length⟩
-      rw [hX]
-      refine List.mem_append_left _ (List.mem_map.mpr ⟨((sentColumns tab).getD p 0, p), ?_, rfl⟩)
-      have hz : p < ((sentColumns tab).zip (List.range (sentColumns tab).length)).length := by simp [hp]
-      have := List.getElem_mem hz
-      rwa [List.getElem_zip, List.getElem_range, ← List.getD_eq_getElem _ 0] at this
-    rw [← holds_equal (hh _ hmem), hev]
-  have hs := sentOf_spec tab vals colv h0
-  have hsome : ∀ c ∈ sentColumns tab, ((sentOf tab vals).getD c none).isSome :=
-    fun c hc ↦ sentOf_isSome tab vals c hc (hw c hc)
-  have hSF : ∀ fl ∈ tab.flushes.pull.zip tab.flushes.push, fl.2.length = fl.1.length ∧
-      (∀ f ∈ fl.1, ∀ mc ∈ f, SentFactor (sentOf tab vals) mc.1) ∧
-      ∀ f ∈ fl.2, ∀ mc ∈ f, SentFactor (sentOf tab vals) mc.1 := by
-    intro fl hf
-    obtain ⟨hlen, hm⟩ := hfl fl hf
-    have key : ∀ f ∈ fl.1 ++ fl.2, ∀ mc ∈ f, SentFactor (sentOf tab vals) mc.1 := by
-      intro f hf' mc hmc i j hij
-      have := hm f hf' mc hmc (by rw [hij]; rfl)
-      rw [hij] at this
-      rcases this with h | h
-      · exact Or.inl (hsome i h)
-      · exact Or.inr (hsome j h)
-    exact ⟨hlen, fun f hf' ↦ key f (List.mem_append_left _ hf'),
-      fun f hf' ↦ key f (List.mem_append_right _ hf')⟩
-  unfold tablePartOf at hh ⊢
-  dsimp only at hh ⊢
-  obtain ⟨hpull, hpush⟩ := flushFold_spec tab.opcode (w.take lh) weights beta (sentOf tab vals) ev colv hev hs
-    _ _ hSF hh
-  obtain ⟨hd1, hd2⟩ := degree_flushFold (fun c ↦ .table tab.opcode c) (w.take lh) weights beta
-    (sentOf tab vals) (tab.flushes.pull.zip tab.flushes.push)
-    ⟨1, 1, 1, 0, ((sentColumns tab).zip (List.range (sentColumns tab).length)).map fun p ↦
-      Relation.equal (.table tab.opcode p.1) (w.take lh) (vals.getD p.2 0), vals.drop (sentColumns tab).length⟩
-  refine ⟨fun c hc ↦ ?_, by rw [hpull, one_mul], by rw [hpush, one_mul], ?_, ?_⟩
-  · obtain ⟨v, hv⟩ := Option.isSome_iff_exists.mp (hsome c hc)
-    rw [hv, hs c v hv]
-  · rw [hd1, tableDegrees_eq]
-  · rw [hd2, tableDegrees_eq]
-
 /-- Every relation of a table's part is on the table's columns at `w[..h]`, untwisted. -/
 theorem tablePartOf_terms (tab : Table) (lh : ℕ) (weights : Array E) (beta : E) (w vals : List E) :
     ∀ r ∈ (tablePartOf tab lh weights beta w vals).2.1, ∀ tm ∈ r.terms,
@@ -795,39 +725,6 @@ theorem heapRelations_fst (S : Shape) (active : List E) (parts : List TablePart)
 
 /-! ## The constraint relation (`constraintRelation`), as folds -/
 
-/-- `BLAKE2S`'s copies (the inner loop of `constraintRelation`), on (terms, power). -/
-def copyStep (o r : ℕ) (columns : List String) (w y : List E) (lift gamma : E) (s : Array Term × E)
-    (c : ℕ) : Array Term × E :=
-  match qflockSlot (columns.getD c "") with
-  | some slot => ((s.1.push (term (.table o c) (w.take r) (s.2 * lift))).push
-      (term (.qflockSlot slot) y (s.2 * lift)), s.2 * gamma)
-  | none => s
-
-/-- One table's step of `constraintRelation`'s loop, on (known, terms, power, degree). -/
-def crStep (shape : Shape) (gamma t : E) (w : List E) (s : E × Array Term × E × ℕ)
-    (x : Table × TablePart) : E × Array Term × E × ℕ :=
-  let r := shape.heights.getD x.1.opcode 0
-  let n := 2 ^ r
-  let lift := vanishingRatio w r shape.constraintVars
-  let s1 : E × Array Term × E × ℕ := if x.1.opcode = opJump then
-      (s.1 + s.2.2.1 * lift * (x.2.sent.getD (colIdx x.1.columns "b") none).getD 0 +
-          s.2.2.1 * gamma * lift * (x.2.sent.getD (colIdx x.1.columns "v_cond") none).getD 0 *
-            ((x.2.sent.getD (colIdx x.1.columns "b") none).getD 0 + 1),
-        s.2.1.push (term (.table x.1.opcode (colIdx x.1.columns "w")) (w.take r)
-          (s.2.2.1 * lift * (x.2.sent.getD (colIdx x.1.columns "v_cond") none).getD 0)),
-        s.2.2.1 * gamma * gamma, max s.2.2.2 (degree n 2))
-    else s
-  let s2 : E × Array Term × E × ℕ := (s1.1 + s1.2.2.1 * lift,
-    s1.2.1.push (term (.inverse x.1.opcode) (w.take r)
-      (s1.2.2.1 * lift * x.1.countColumns.foldl (fun acc c ↦ acc * (x.2.sent.getD c none).getD 0) 1)),
-    s1.2.2.1 * gamma, max s1.2.2.2 (degree ((n - 1) * (1 + x.1.countColumns.length)) n))
-  if x.1.opcode = opSha3 then
-    let inner := (List.range x.1.width).foldl
-      (copyStep x.1.opcode r x.1.columns w (coordinatesAt t (coordinateFunctionals r)) lift gamma)
-      (s2.2.1, s2.2.2.1)
-    (s2.1, inner.1, inner.2, max s2.2.2.2 (degree (r * (n / 2)) n))
-  else s2
-
 /-- The public lines' step, on (known, terms, power). -/
 def lineStep (shape : Shape) (gamma t : E) (w : List E) (s : E × Array Term × E) (x : (E × E) × ℕ) :
     E × Array Term × E :=
@@ -835,44 +732,11 @@ def lineStep (shape : Shape) (gamma t : E) (w : List E) (s : E × Array Term × 
     s.2.1.push (term (.memory x.2) (w.take shape.logMemory) (s.2.2 * vanishingRatio w 1 shape.constraintVars)),
     s.2.2 * gamma)
 
-/-- **`constraintRelation`, as folds.** -/
-def crOf (shape : Shape) (parts : List TablePart) (publicWords : List E) (gamma t constraintValue : E)
-    (w : List E) : Relation × ℕ :=
-  let s := (tables.zip parts).foldl (crStep shape gamma t w) (0, #[], 1, 0)
-  let s' := ((linesOf publicWords).zip (List.range 3)).foldl (lineStep shape gamma t w) (s.1, s.2.1, s.2.2.1)
-  (⟨s'.2.1.toList, constraintValue * w.getD shape.constraintVars 0 + s'.1⟩,
-    max s.2.2.2 (degree (2 ^ shape.logMemory) 3))
-
 theorem forIn_id_eq_foldl' {α β : Type} (l : List α) (init : β) (f : α → β → Id (ForInStep β))
     (g : β → α → β) (h : ∀ a b, f a b = pure (.yield (g b a))) :
     forIn l init f = pure (l.foldl g init) := by
   rw [show f = fun a b ↦ pure (.yield (g b a)) from funext fun a ↦ funext fun b ↦ h a b]
   exact List.forIn_pure_yield_eq_foldl _ _
-
-/-- **`constraintRelation` is its folds** (its `Id.run do` loops, unfolded). -/
-theorem constraintRelation_eq (shape : Shape) (parts : List TablePart) (publicWords : List E)
-    (gamma t constraintValue : E) (w : List E) :
-    constraintRelation shape parts publicWords gamma t constraintValue w =
-      crOf shape parts publicWords gamma t constraintValue w := by
-  unfold constraintRelation crOf
-  simp only [Id.run]
-  rw [forIn_id_eq_foldl' _ _ _ (crStep shape gamma t w)]
-  · simp only [pure_bind, List.forIn_pure_yield_eq_foldl]
-    rfl
-  · intro x s
-    by_cases hj : x.1.opcode = opJump
-    · have hb : ¬ x.1.opcode = opSha3 := by rw [hj]; decide
-      simp only [crStep, ite_eq_left hj, ite_eq_right hb]
-    · by_cases hb : x.1.opcode = opSha3
-      · simp only [crStep, ite_eq_right hj, ite_eq_left hb]
-        rw [forIn_id_eq_foldl' _ _ _ (copyStep x.1.opcode (shape.heights.getD x.1.opcode 0) x.1.columns w
-          (coordinatesAt t (coordinateFunctionals (shape.heights.getD x.1.opcode 0)))
-          (vanishingRatio w (shape.heights.getD x.1.opcode 0) shape.constraintVars) gamma)]
-        · rfl
-        · intro c s'
-          unfold copyStep
-          rcases qflockSlot (x.1.columns.getD c "") with _ | slot <;> rfl
-      · simp only [crStep, ite_eq_right hj, ite_eq_right hb]
 
 /-! ## The constraint relation at `t` -/
 
@@ -894,26 +758,6 @@ theorem powComb_append (a b : List E) (ρ : E) :
     rw [List.cons_append, powComb_cons, powComb_cons, ih, List.length_cons, pow_succ]
     ring
 
-theorem copyFold_spec (ev : Column → List E → E) (o r : ℕ) (columns : List String) (w y : List E)
-    (lift gamma : E) : ∀ (l : List ℕ) (s : Array Term × E),
-      termsVal ev (l.foldl (copyStep o r columns w y lift gamma) s).1 = termsVal ev s.1 +
-          s.2 * powComb (l.filterMap fun c ↦ (qflockSlot (columns.getD c "")).map fun slot ↦
-            lift * (ev (.table o c) (w.take r) + ev (.qflockSlot slot) y)) gamma ∧
-        (l.foldl (copyStep o r columns w y lift gamma) s).2 =
-          s.2 * gamma ^ (l.filterMap fun c ↦ qflockSlot (columns.getD c "")).length
-  | [], s => by simp [powComb_nil]
-  | c :: l, s => by
-    rw [List.foldl_cons]
-    obtain ⟨ih1, ih2⟩ := copyFold_spec ev o r columns w y lift gamma l (copyStep o r columns w y lift gamma s c)
-    rw [ih1, ih2]
-    simp only [List.filterMap_cons]
-    unfold copyStep
-    rcases qflockSlot (columns.getD c "") with _ | slot
-    · simp only [Option.map_none]
-      trivial
-    · simp only [Option.map_some, termsVal_push, term, powComb_cons, List.length_cons, pow_succ]
-      exact ⟨by ring, by ring⟩
-
 theorem lineFold_spec (S : Shape) (gamma t : E) (w : List E) (ev : Column → List E → E) :
     ∀ (l : List ((E × E) × ℕ)) (s : E × Array Term × E),
       (l.foldl (lineStep S gamma t w) s).1 + termsVal ev (l.foldl (lineStep S gamma t w) s).2.1 =
@@ -928,21 +772,6 @@ theorem lineFold_spec (S : Shape) (gamma t : E) (w : List E) (ev : Column → Li
     simp only [lineStep, termsVal_push, term, List.map_cons, powComb_cons, List.length_cons, pow_succ]
     exact ⟨by ring, by ring⟩
 
-/-- What the constraint relation's step needs of the evaluation at a table. -/
-structure CrTableOk (S : Shape) (c1 : Stk) (t : E) (w : List E) (ev : Column → List E → E)
-    (tab : Table) (part : TablePart) : Prop where
-  lift : vanishingRatio w (S.heights.getD tab.opcode 0) S.constraintVars =
-    (liftP (S.heights.getD tab.opcode 0) S.constraintVars).eval t
-  col : ∀ c, ev (.table tab.opcode c) (w.take (S.heights.getD tab.opcode 0)) =
-    (c1P S c1 (.table tab.opcode c)).eval t
-  inv : ev (.inverse tab.opcode) (w.take (S.heights.getD tab.opcode 0)) = (c1P S c1 (.inverse tab.opcode)).eval t
-  slot : tab.opcode = opSha3 → ∀ slot,
-    ev (.qflockSlot slot) (coordinatesAt t (coordinateFunctionals (S.heights.getD tab.opcode 0))) =
-      (slotP S c1 slot).eval t
-  sent : ∀ c ∈ sentColumns tab, part.sent.getD c none = some ((c1P S c1 (.table tab.opcode c)).eval t)
-  jumpSent : tab.opcode = opJump →
-    colIdx tab.columns "b" ∈ sentColumns tab ∧ colIdx tab.columns "v_cond" ∈ sentColumns tab
-
 theorem countColumns_sent (tab : Table) : ∀ c ∈ tab.countColumns, c ∈ sentColumns tab :=
   fun _ hc ↦ List.mem_append_left _ hc
 
@@ -954,69 +783,6 @@ theorem foldl_mul_getD (f : ℕ → E) (sent : Array (Option E)) :
     rw [List.foldl_cons, foldl_mul_getD f sent l _ fun c' hc' ↦ h c' (List.mem_cons_of_mem _ hc'),
       h c (List.mem_cons_self ..), Option.getD_some, List.map_cons, List.prod_cons, mul_assoc]
 
-/-- **One table's step of the constraint relation at `t`**: it adds the table's constraints at `t`,
-batched by the powers of `γ` from the current power. -/
-theorem crStep_spec (S : Shape) (c1 : Stk) (gamma t : E) (w : List E) (ev : Column → List E → E)
-    (tab : Table) (part : TablePart) (h : CrTableOk S c1 t w ev tab part) (s : E × Array Term × E × ℕ) :
-    (crStep S gamma t w s (tab, part)).1 + termsVal ev (crStep S gamma t w s (tab, part)).2.1 =
-        s.1 + termsVal ev s.2.1 +
-          s.2.2.1 * powComb ((tableConstraintsP S c1 tab).map fun mw ↦ (mw.1 * mw.2).eval t) gamma ∧
-      (crStep S gamma t w s (tab, part)).2.2.1 = s.2.2.1 * gamma ^ (tableConstraintsP S c1 tab).length := by
-  have hcnt : tab.countColumns.foldl (fun acc c ↦ acc * (part.sent.getD c none).getD 0) 1 =
-      (tab.countColumns.map fun c ↦ (c1P S c1 (.table tab.opcode c)).eval t).prod := by
-    rw [foldl_mul_getD _ _ _ 1 fun c hc ↦ h.sent c (countColumns_sent tab c hc), one_mul]
-  have hprod : ((tab.countColumns.map fun c ↦ c1P S c1 (.table tab.opcode c)).prod).eval t =
-      (tab.countColumns.map fun c ↦ (c1P S c1 (.table tab.opcode c)).eval t).prod := by
-    rw [eval_list_prod_of, List.map_map]
-    rfl
-  have hcopies := copyFold_spec ev tab.opcode (S.heights.getD tab.opcode 0) tab.columns w
-    (coordinatesAt t (coordinateFunctionals (S.heights.getD tab.opcode 0)))
-    ((liftP (S.heights.getD tab.opcode 0) S.constraintVars).eval t) gamma (List.range tab.width)
-  unfold crStep tableConstraintsP
-  dsimp only
-  rw [h.lift]
-  by_cases hj : tab.opcode = opJump
-  · have hb : ¬ tab.opcode = opSha3 := by rw [hj]; decide
-    obtain ⟨hsb, hsv⟩ := h.jumpSent hj
-    simp only [ite_eq_left hj, ite_eq_right hb, List.append_nil, List.cons_append, List.nil_append,
-      List.map_cons, List.map_nil, List.length_cons, List.length_nil, powComb_cons, powComb_nil,
-      termsVal_push, term, h.sent _ hsb, h.sent _ hsv, Option.getD_some, h.col, h.inv, hcnt,
-      Polynomial.eval_mul, Polynomial.eval_add, Polynomial.eval_one, hprod]
-    constructor <;> ring
-  · by_cases hb : tab.opcode = opSha3
-    · simp only [ite_eq_right hj, ite_eq_left hb, List.nil_append, List.cons_append, List.map_cons,
-        List.length_cons, powComb_cons, term, hcnt, Polynomial.eval_mul,
-        Polynomial.eval_add, Polynomial.eval_one, hprod]
-      obtain ⟨hc1, hc2⟩ := hcopies (s.2.1.push ⟨.inverse tab.opcode, w.take (S.heights.getD tab.opcode 0), 0,
-        s.2.2.1 * (liftP (S.heights.getD tab.opcode 0) S.constraintVars).eval t *
-          (tab.countColumns.map fun c ↦ (c1P S c1 (.table tab.opcode c)).eval t).prod⟩, s.2.2.1 * gamma)
-      rw [hc1, hc2, termsVal_push, List.map_filterMap, length_filterMap_map]
-      simp only [Option.map_map, Function.comp_def, Polynomial.eval_add, h.col, h.slot hb, h.inv]
-      constructor
-      · ring
-      · rw [pow_succ]
-        ring
-    · simp only [ite_eq_right hj, ite_eq_right hb, List.nil_append, List.append_nil, List.map_cons,
-        List.map_nil, List.length_cons, List.length_nil, powComb_cons, powComb_nil, termsVal_push, term,
-        h.inv, hcnt, Polynomial.eval_mul, Polynomial.eval_add, Polynomial.eval_one, hprod]
-      constructor <;> ring
-
-theorem crFold_spec (S : Shape) (c1 : Stk) (gamma t : E) (w : List E) (ev : Column → List E → E) :
-    ∀ (L : List (Table × TablePart)) (s : E × Array Term × E × ℕ), (∀ x ∈ L, CrTableOk S c1 t w ev x.1 x.2) →
-      (L.foldl (crStep S gamma t w) s).1 + termsVal ev (L.foldl (crStep S gamma t w) s).2.1 =
-          s.1 + termsVal ev s.2.1 + s.2.2.1 * powComb (L.flatMap fun x ↦
-            (tableConstraintsP S c1 x.1).map fun mw ↦ (mw.1 * mw.2).eval t) gamma ∧
-        (L.foldl (crStep S gamma t w) s).2.2.1 = s.2.2.1 * gamma ^ (L.flatMap fun x ↦
-            (tableConstraintsP S c1 x.1).map fun mw ↦ (mw.1 * mw.2).eval t).length
-  | [], s, _ => by simp [powComb_nil]
-  | x :: L, s, h => by
-    rw [List.foldl_cons]
-    obtain ⟨ih1, ih2⟩ := crFold_spec S c1 gamma t w ev L (crStep S gamma t w s x)
-      fun y hy ↦ h y (List.mem_cons_of_mem _ hy)
-    obtain ⟨s1, s2⟩ := crStep_spec S c1 gamma t w ev x.1 x.2 (h x (List.mem_cons_self ..)) s
-    rw [ih1, ih2, s1, s2, List.flatMap_cons, powComb_append, List.length_append, pow_add, List.length_map]
-    constructor <;> ring
-
 theorem flatMap_zip_fst {α β γ : Type} (f : α → List γ) :
     ∀ (l : List α) (m : List β), l.length ≤ m.length → (l.zip m).flatMap (fun x ↦ f x.1) = l.flatMap f
   | [], _, _ => rfl
@@ -1025,144 +791,11 @@ theorem flatMap_zip_fst {α β γ : Type} (f : α → List γ) :
     rw [List.zip_cons_cons, List.flatMap_cons, List.flatMap_cons,
       flatMap_zip_fst f l m (by simpa using h)]
 
-/-- **The constraint relation at `t`**: where it holds, the batched constraints at `t` plus
-`Q_W(t) w_{r_W}(t)` vanish. -/
-theorem crOf_holds (S : Shape) (c1 : Stk) (parts : List TablePart) (pw : List E) (gamma t cv : E)
-    (w : List E) (ev : Column → List E → E) (hlen : tables.length ≤ parts.length)
-    (hok : ∀ x ∈ tables.zip parts, CrTableOk S c1 t w ev x.1 x.2)
-    (hmem : ∀ k < 3, ev (.memory k) (w.take S.logMemory) = (c1P S c1 (.memory k)).eval t)
-    (hlift : vanishingRatio w 1 S.constraintVars = (liftP 1 S.constraintVars).eval t)
-    (hh : RelHolds ev (crOf S parts pw gamma t cv w).1) :
-    powComb ((constraintsP S c1 pw).map fun mw ↦ (mw.1 * mw.2).eval t) gamma +
-      cv * w.getD S.constraintVars 0 = 0 := by
-  unfold RelHolds crOf at hh
-  dsimp only at hh
-  obtain ⟨f1, f2⟩ := crFold_spec S c1 gamma t w ev (tables.zip parts) (0, #[], 1, 0) hok
-  generalize (tables.zip parts).foldl (crStep S gamma t w) (0, #[], 1, 0) = s at hh f1 f2
-  obtain ⟨l1, -⟩ := lineFold_spec S gamma t w ev ((linesOf pw).zip (List.range 3)) (s.1, s.2.1, s.2.2.1)
-  generalize ((linesOf pw).zip (List.range 3)).foldl (lineStep S gamma t w) (s.1, s.2.1, s.2.2.1) = s'
-    at hh l1
-  change termsVal ev s'.2.1 + _ = 0 at hh
-  have hl : ((linesOf pw).zip (List.range 3)).map (fun x ↦ vanishingRatio w 1 S.constraintVars *
-      (ev (.memory x.2) (w.take S.logMemory) + x.1.1 + t * (x.1.1 + x.1.2))) =
-      (linesP S c1 pw).map fun mw ↦ (mw.1 * mw.2).eval t := by
-    unfold linesP
-    rw [List.map_map]
-    refine List.map_congr_left fun x hx ↦ ?_
-    have hx3 : x.2 < 3 := List.mem_range.mp (List.of_mem_zip hx).2
-    simp only [Function.comp_apply, Polynomial.eval_mul, Polynomial.eval_add, Polynomial.eval_C,
-      Polynomial.eval_X, hlift, hmem x.2 hx3]
-  rw [hl] at l1
-  dsimp only at f1 f2
-  rw [termsVal_empty] at f1
-  simp only [add_zero, zero_add, one_mul] at f1 f2
-  unfold constraintsP
-  rw [List.map_append, powComb_append, List.map_flatMap,
-    ← flatMap_zip_fst (fun tab ↦ (tableConstraintsP S c1 tab).map fun mw ↦ (mw.1 * mw.2).eval t) tables
-      parts hlen]
-  rw [← f1, ← f2]
-  dsimp only at l1
-  linear_combination hh - l1
-
 /-! ### The constraint relation's terms -/
 
 /-- A term of the constraint relation: untwisted, on `C1`, at a prefix of the digits or at `y`. -/
 def CrPt (w y : List E) (tm : Term) : Prop :=
   tm.twist = 0 ∧ tm.column.commitment = .c1 ∧ ((∃ k, tm.point = w.take k) ∨ tm.point = y)
-
-theorem copyFold_terms (o r : ℕ) (columns : List String) (w y : List E) (lift gamma : E) :
-    ∀ (l : List ℕ) (s : Array Term × E), ∃ X,
-      (l.foldl (copyStep o r columns w y lift gamma) s).1.toList = s.1.toList ++ X ∧ ∀ tm ∈ X, CrPt w y tm
-  | [], s => ⟨[], by simp, by simp⟩
-  | c :: l, s => by
-    rw [List.foldl_cons]
-    obtain ⟨X, hX, hP⟩ := copyFold_terms o r columns w y lift gamma l (copyStep o r columns w y lift gamma s c)
-    rw [hX]
-    unfold copyStep
-    split
-    · rename_i _ slot _
-      refine ⟨[term (.table o c) (w.take r) (s.2 * lift), term (.qflockSlot slot) y (s.2 * lift)] ++ X,
-        by simp, fun tm htm ↦ ?_⟩
-      simp only [List.cons_append, List.nil_append, List.mem_cons] at htm
-      rcases htm with rfl | rfl | htm
-      · exact ⟨rfl, rfl, Or.inl ⟨r, rfl⟩⟩
-      · exact ⟨rfl, rfl, Or.inr rfl⟩
-      · exact hP tm htm
-    · exact ⟨X, rfl, hP⟩
-
-theorem copyFold_sub (o r : ℕ) (columns : List String) (w y : List E) (lift gamma : E)
-    (l : List ℕ) (s : Array Term × E) (tm : Term) (h : tm ∈ s.1.toList) :
-    tm ∈ (l.foldl (copyStep o r columns w y lift gamma) s).1.toList := by
-  obtain ⟨X, hX, -⟩ := copyFold_terms o r columns w y lift gamma l s
-  rw [hX]
-  exact List.mem_append_left _ h
-
-theorem copyFold_slot (o r : ℕ) (columns : List String) (w y : List E) (lift gamma : E) :
-    ∀ (l : List ℕ) (s : Array Term × E) (c slot : ℕ), c ∈ l → qflockSlot (columns.getD c "") = some slot →
-      ∃ tm ∈ (l.foldl (copyStep o r columns w y lift gamma) s).1.toList, tm.point = y
-  | [], _, _, _, h, _ => by simp at h
-  | c' :: l, s, c, slot, h, hs => by
-    rw [List.foldl_cons]
-    rcases List.mem_cons.mp h with rfl | h'
-    · refine ⟨term (.qflockSlot slot) y (s.2 * lift), copyFold_sub o r columns w y lift gamma l _ _ ?_, rfl⟩
-      unfold copyStep
-      rw [hs]
-      simp
-    · exact copyFold_slot o r columns w y lift gamma l _ c slot h' hs
-
-theorem crStep_terms (S : Shape) (gamma t : E) (w : List E) (s : E × Array Term × E × ℕ)
-    (x : Table × TablePart) : ∃ X, (crStep S gamma t w s x).2.1.toList = s.2.1.toList ++ X ∧
-      ∀ tm ∈ X, CrPt w (coordinatesAt t (coordinateFunctionals (S.heights.getD opSha3 0))) tm := by
-  unfold crStep
-  dsimp only
-  by_cases hj : x.1.opcode = opJump
-  · have hb : ¬ x.1.opcode = opSha3 := by rw [hj]; decide
-    simp only [ite_eq_left hj, ite_eq_right hb, Array.toList_push, List.append_assoc]
-    refine ⟨_, rfl, fun tm htm ↦ ?_⟩
-    simp only [List.singleton_append, List.mem_cons, List.not_mem_nil, or_false] at htm
-    rcases htm with rfl | rfl <;> exact ⟨rfl, rfl, Or.inl ⟨_, rfl⟩⟩
-  · by_cases hb : x.1.opcode = opSha3
-    · simp only [ite_eq_right hj, ite_eq_left hb]
-      obtain ⟨X, hX, hP⟩ := copyFold_terms _ _ _ _ _ _ _ _ _
-      rw [hX, Array.toList_push, List.append_assoc]
-      refine ⟨_, rfl, fun tm htm ↦ ?_⟩
-      simp only [List.singleton_append, List.mem_cons] at htm
-      rcases htm with rfl | htm
-      · exact ⟨rfl, rfl, Or.inl ⟨_, rfl⟩⟩
-      · have := hP tm htm
-        rwa [hb] at this
-    · simp only [ite_eq_right hj, ite_eq_right hb, Array.toList_push]
-      refine ⟨_, rfl, fun tm htm ↦ ?_⟩
-      simp only [List.mem_singleton] at htm
-      subst htm
-      exact ⟨rfl, rfl, Or.inl ⟨_, rfl⟩⟩
-
-theorem crStep_sub (S : Shape) (gamma t : E) (w : List E) (s : E × Array Term × E × ℕ)
-    (x : Table × TablePart) (tm : Term) (h : tm ∈ s.2.1.toList) : tm ∈ (crStep S gamma t w s x).2.1.toList := by
-  obtain ⟨X, hX, -⟩ := crStep_terms S gamma t w s x
-  rw [hX]
-  exact List.mem_append_left _ h
-
-theorem crFold_terms (S : Shape) (gamma t : E) (w : List E) : ∀ (L : List (Table × TablePart))
-    (s : E × Array Term × E × ℕ), ∀ tm ∈ (L.foldl (crStep S gamma t w) s).2.1.toList,
-      tm ∈ s.2.1.toList ∨ CrPt w (coordinatesAt t (coordinateFunctionals (S.heights.getD opSha3 0))) tm
-  | [], _, _, h => Or.inl h
-  | x :: L, s, tm, h => by
-    rw [List.foldl_cons] at h
-    rcases crFold_terms S gamma t w L _ tm h with h1 | h1
-    · obtain ⟨X, hX, hP⟩ := crStep_terms S gamma t w s x
-      rw [hX, List.mem_append] at h1
-      rcases h1 with h1 | h1
-      · exact Or.inl h1
-      · exact Or.inr (hP tm h1)
-    · exact Or.inr h1
-
-theorem crFold_sub (S : Shape) (gamma t : E) (w : List E) : ∀ (L : List (Table × TablePart))
-    (s : E × Array Term × E × ℕ), ∀ tm ∈ s.2.1.toList, tm ∈ (L.foldl (crStep S gamma t w) s).2.1.toList
-  | [], _, _, h => h
-  | x :: L, s, tm, h => by
-    rw [List.foldl_cons]
-    exact crFold_sub S gamma t w L _ tm (crStep_sub S gamma t w s x tm h)
 
 theorem lineFold_terms (S : Shape) (gamma t : E) (w : List E) (y : List E) : ∀ (l : List ((E × E) × ℕ))
     (s : E × Array Term × E), ∀ tm ∈ (l.foldl (lineStep S gamma t w) s).2.1.toList,
@@ -1183,51 +816,6 @@ theorem lineFold_sub (S : Shape) (gamma t : E) (w : List E) : ∀ (l : List ((E 
   | x :: l, s, tm, h => by
     rw [List.foldl_cons]
     exact lineFold_sub S gamma t w l _ tm (by simp [lineStep, h])
-
-/-- **The constraint relation's terms**: untwisted, on `C1`, at prefixes of the digits or at `y`. -/
-theorem crOf_terms (S : Shape) (parts : List TablePart) (pw : List E) (gamma t cv : E) (w : List E) :
-    ∀ tm ∈ (crOf S parts pw gamma t cv w).1.terms,
-      CrPt w (coordinatesAt t (coordinateFunctionals (S.heights.getD opSha3 0))) tm := by
-  intro tm htm
-  unfold crOf at htm
-  dsimp only at htm
-  rcases lineFold_terms S gamma t w _ _ _ tm htm with h | h
-  · rcases crFold_terms S gamma t w _ _ tm h with h' | h'
-    · simp at h'
-    · exact h'
-  · exact h
-
-theorem qflockSlot_m0 : qflockSlot (blake2sColumns.getD 9 "") = some 10 := by decide
-
-theorem tables_getD5 : (tables.getD 5 default).opcode = opSha3 ∧
-    (tables.getD 5 default).columns = blake2sColumns := ⟨rfl, rfl⟩
-
-/-- **The constraint relation has a term at `y`** (a `BLAKE2S` copy's slot). -/
-theorem crOf_slot (S : Shape) (parts : List TablePart) (pw : List E) (gamma t cv : E) (w : List E)
-    (hlen : tables.length ≤ parts.length) :
-    ∃ tm ∈ (crOf S parts pw gamma t cv w).1.terms,
-      tm.point = coordinatesAt t (coordinateFunctionals (S.heights.getD opSha3 0)) := by
-  have hx : (tables.getD 5 default, parts.getD 5 default) ∈ tables.zip parts := by
-    have h5 : 5 < (tables.zip parts).length := by
-      rw [List.length_zip]; have : tables.length = 6 := rfl; omega
-    have := List.getElem_mem h5
-    rwa [List.getElem_zip, ← List.getD_eq_getElem _ default, ← List.getD_eq_getElem _ default] at this
-  obtain ⟨L1, L2, hL⟩ := List.append_of_mem hx
-  have key : ∀ s : E × Array Term × E × ℕ, ∃ tm ∈ (crStep S gamma t w s
-      (tables.getD 5 default, parts.getD 5 default)).2.1.toList,
-      tm.point = coordinatesAt t (coordinateFunctionals (S.heights.getD opSha3 0)) := by
-    intro s
-    have h1 : ¬ (tables.getD 5 default).opcode = opJump := by decide
-    have h2 : (tables.getD 5 default).opcode = opSha3 := rfl
-    unfold crStep
-    dsimp only
-    simp only [ite_eq_right h1, ite_eq_left h2]
-    exact copyFold_slot _ _ _ _ _ _ _ _ _ 9 10 (List.mem_range.mpr (by decide)) qflockSlot_m0
-  unfold crOf
-  dsimp only
-  rw [hL, List.foldl_append, List.foldl_cons]
-  obtain ⟨tm, htm, hp⟩ := key (L1.foldl (crStep S gamma t w) (0, #[], 1, 0))
-  exact ⟨tm, lineFold_sub S gamma t w _ _ tm (crFold_sub S gamma t w L2 _ tm htm), hp⟩
 
 /-! ## The quotients' terms -/
 
@@ -1271,43 +859,6 @@ theorem qTerms_mem (column : ℕ → Column) (w : List E) : ∀ (l : List ℕ) (
     · obtain ⟨c, hc, h1, h2, h3⟩ := qTerms_mem column w rest (k + 1) _ tm h
       exact ⟨c + 1, by simp; omega, by rw [h1]; ring_nf, by simpa using h2, h3⟩
 
-theorem quotP_cons (S : Shape) (c2 : Stk) (column : ℕ → Column) (e : ℕ) (rest : List ℕ) :
-    quotP S c2 column (e :: rest) =
-      c2P S c2 (column 0) digitP + digitP e * quotP S c2 (fun c ↦ column (c + 1)) rest := by
-  unfold quotP
-  rw [List.length_cons, List.range_succ_eq_map, List.map_cons, List.sum_cons, List.map_map,
-    List.range_zero, List.map_nil, List.prod_nil, mul_one, ← List.sum_map_mul_left]
-  refine congrArg (fun z ↦ c2P S c2 (column 0) digitP + z) ?_
-  refine congrArg List.sum (List.map_congr_left fun c _ ↦ ?_)
-  show c2P S c2 (column (c + 1)) digitP *
-      ((List.range (c + 1)).map fun c' ↦ digitP ((e :: rest).getD c' 0)).prod =
-    digitP e * (c2P S c2 (column (c + 1)) digitP * ((List.range c).map fun c' ↦ digitP (rest.getD c' 0)).prod)
-  rw [List.range_succ_eq_map, List.map_cons, List.prod_cons, List.map_map]
-  have h : ((fun c' ↦ digitP ((e :: rest).getD c' 0)) ∘ Nat.succ) = fun c' ↦ digitP (rest.getD c' 0) :=
-    funext fun c' ↦ by simp
-  rw [h, List.getD_cons_zero]
-  ring
-
-/-- **A quotient's terms at `t`**: `scale · Q(t)`, where every chunk reads its polynomial at the digits
-and the chunks' digits are the digit polynomials'. -/
-theorem qTerms_val (S : Shape) (c2 : Stk) (ev : Column → List E → E) (w : List E) (t : E) :
-    ∀ (column : ℕ → Column) (sizes : List ℕ) (sc : E),
-      (∀ c < sizes.length, ev (column c) (w.take (sizes.getD c 0)) = (c2P S c2 (column c) digitP).eval t) →
-      (∀ c < sizes.length, w.getD (sizes.getD c 0) 0 = (digitP (sizes.getD c 0)).eval t) →
-      ((qTerms column w sizes 0 sc).map fun tm ↦ tm.coefficient * ev tm.column tm.point).sum =
-        sc * (quotP S c2 column sizes).eval t
-  | _, [], _, _, _ => by simp [qTerms, quotP]
-  | column, e :: rest, sc, hev, hw => by
-    simp only [qTerms, List.map_cons, List.sum_cons, term]
-    rw [qTerms_shift, qTerms_val S c2 ev w t (fun c ↦ column (c + 1)) rest (sc * w.getD e 0)
-      (fun c hc ↦ by simpa using hev (c + 1) (by simp; omega))
-      (fun c hc ↦ by simpa using hw (c + 1) (by simp; omega)), quotP_cons]
-    have h0 := hev 0 (by simp)
-    have hw0 := hw 0 (by simp)
-    simp only [List.getD_cons_zero] at h0 hw0
-    rw [h0, hw0, Polynomial.eval_add, Polynomial.eval_mul]
-    ring
-
 /-! ## The constraint quotient's degree -/
 
 /-- `Shape.constraintDegree`'s step. -/
@@ -1317,30 +868,6 @@ def cdStep (S : Shape) (d : ℕ) (table : Table) : ℕ :=
   let d := if table.opcode = opJump then max d (degree n 2) else d
   let d := max d (degree ((n - 1) * (1 + table.countColumns.length)) n)
   if table.opcode = opSha3 then max d (degree (r * (n / 2)) n) else d
-
-theorem crFold_deg (S : Shape) (gamma t : E) (w : List E) : ∀ (L : List (Table × TablePart))
-    (s : E × Array Term × E × ℕ), (L.foldl (crStep S gamma t w) s).2.2.2 =
-      (L.map Prod.fst).foldl (cdStep S) s.2.2.2
-  | [], _ => rfl
-  | x :: L, s => by
-    rw [List.foldl_cons, crFold_deg S gamma t w L, List.map_cons, List.foldl_cons]
-    congr 1
-    unfold crStep cdStep
-    dsimp only
-    by_cases hj : x.1.opcode = opJump
-    · have hb : ¬ x.1.opcode = opSha3 := by rw [hj]; decide
-      simp only [ite_eq_left hj, ite_eq_right hb]
-    · by_cases hb : x.1.opcode = opSha3
-      · simp only [ite_eq_right hj, ite_eq_left hb]
-      · simp only [ite_eq_right hj, ite_eq_right hb]
-
-/-- **The constraint relation's degree is the shape's** (`constraintDegree`), with a part per table. -/
-theorem crOf_deg (S : Shape) (parts : List TablePart) (pw : List E) (gamma t cv : E) (w : List E)
-    (hlen : tables.length ≤ parts.length) : (crOf S parts pw gamma t cv w).2 = S.constraintDegree := by
-  unfold crOf Shape.constraintDegree
-  dsimp only
-  rw [crFold_deg, List.map_fst_zip hlen]
-  rfl
 
 /-! ## Small facts: digits, coordinates, lifts, `Z_act` -/
 
@@ -1430,26 +957,11 @@ theorem activeVanishing_eval (w bits : List E) (t : E) (r : ℕ)
 
 /-! ## The layouts' columns -/
 
-theorem layoutsOf_eq (S : Shape) :
-    layoutsOf S = [(.c1, layoutOf S .c1), (.c2, layoutOf S .c2), (.setup, layoutOf S .setup)] := rfl
-
-theorem layoutOf_c2 (S : Shape) : layoutOf S .c2 = StackLayout.new S.c2Columns := rfl
-
-theorem vars_le_batch (S : Shape) (c : Commitment) : (layoutOf S c).vars ≤ batchVars S := by
-  unfold batchVars
-  rw [layoutsOf_eq]
-  refine le_foldl_max _ 0 _ (Or.inl ?_)
-  cases c <;> simp
-
 theorem limb_le_vars {L : StackLayout} (hL : LayoutAligned L) {col : Column} {b : ℕ × ℕ × ℕ}
     (hb : b ∈ L.limbs col) : b.2.1 ≤ L.vars := by
   have h := (hL _ (limbs_mem_blocks hb)).2
   have h2 : 2 ^ b.2.1 ≤ 2 ^ L.vars := by simp only at h; omega
   exact (Nat.pow_le_pow_iff_right (by norm_num)).mp h2
-
-theorem limb_le_batch (S : Shape) (c : Commitment) (hL : LayoutAligned (layoutOf S c)) {col : Column}
-    {b : ℕ × ℕ × ℕ} (hb : b ∈ (layoutOf S c).limbs col) : b.2.1 ≤ batchVars S :=
-  (limb_le_vars hL hb).trans (vars_le_batch S c)
 
 /-- A column's blocks in a layout of columns: each at the variables it is listed with. -/
 theorem limbs_new_mem (cols : List (Column × ℕ × Bool)) (col : Column) (b : ℕ × ℕ × ℕ)
@@ -1473,84 +985,6 @@ theorem limbs_new_mem (cols : List (Column × ℕ × Bool)) (col : Column) (b : 
   obtain ⟨rfl, -, rfl⟩ := he
   exact ⟨e, hc⟩
 
-/-- **`C2`'s columns' variables**: the heap's and the tree quotient's first chunk `h`, its second `0`, each
-quotient's chunk its size. -/
-def c2Vars (S : Shape) : Column → ℕ
-  | .heap => S.heap.h
-  | .treeQuotient 0 => S.heap.h
-  | .treeQuotient _ => 0
-  | .constraintQuotient c => (chunks (S.constraintDegree + 1)).getD c 0
-  | .leafQuotient i c => match Shape.leafDegree (S.heap.blocks.getD i default) with
-    | some d => (chunks (d + 1)).getD c 0
-    | none => 0
-  | _ => 0
-
-theorem c2Columns_vars (S : Shape) (col : Column) (v : ℕ) (e : Bool) (h : (col, v, e) ∈ S.c2Columns) :
-    v = c2Vars S col := by
-  unfold Shape.c2Columns at h
-  dsimp only at h
-  simp only [List.mem_append, List.mem_cons, List.not_mem_nil, or_false] at h
-  rcases h with ((h | h | h) | h) | h
-  · simp only [Prod.mk.injEq] at h
-    obtain ⟨rfl, rfl, -⟩ := h
-    rfl
-  · simp only [Prod.mk.injEq] at h
-    obtain ⟨rfl, rfl, -⟩ := h
-    rfl
-  · simp only [Prod.mk.injEq] at h
-    obtain ⟨rfl, rfl, -⟩ := h
-    rfl
-  · obtain ⟨p, hp, he⟩ := List.mem_map.mp h
-    obtain ⟨-, hget⟩ := mem_zip_range_iff _ 0 p hp
-    simp only [Prod.mk.injEq] at he
-    obtain ⟨rfl, rfl, -⟩ := he
-    simp only [c2Vars, hget]
-  · obtain ⟨⟨blk, idx⟩, hp, hx⟩ := List.mem_flatMap.mp h
-    obtain ⟨-, hget⟩ := mem_zip_range_iff _ default _ hp
-    dsimp only at hget hx
-    rcases hd : Shape.leafDegree blk with _ | d
-    · rw [hd] at hx
-      simp at hx
-    · rw [hd] at hx
-      obtain ⟨p, hp', he⟩ := List.mem_map.mp hx
-      obtain ⟨-, hget'⟩ := mem_zip_range_iff _ 0 p hp'
-      simp only [Prod.mk.injEq] at he
-      obtain ⟨rfl, rfl, -⟩ := he
-      simp only [c2Vars, hget, hd]
-      exact hget'.symm
-
-/-- **`C2`'s limbs**: each at its column's variables, within the batch's. -/
-theorem c2_limbs (S : Shape) (col : Column) (b : ℕ × ℕ × ℕ) (hb : b ∈ (layoutOf S .c2).limbs col) :
-    b.2.1 = c2Vars S col ∧ b.2.1 ≤ batchVars S := by
-  refine ⟨?_, limb_le_batch S .c2 (by rw [layoutOf_c2]; exact layoutAligned_new _) hb⟩
-  rw [layoutOf_c2] at hb
-  obtain ⟨e, he⟩ := limbs_new_mem _ col b hb
-  exact c2Columns_vars S col _ e he
-
-/-- **`C1`'s limbs**: each at its column's variables (`c1Vars`), within the batch's. -/
-theorem c1_limbs (S : Shape) (col : Column) (b : ℕ × ℕ × ℕ) (hb : b ∈ (layoutOf S .c1).limbs col) :
-    b.2.1 = c1Vars S col ∧ b.2.1 ≤ batchVars S := by
-  refine ⟨?_, limb_le_batch S .c1 (by rw [layoutOf_c1]; exact layoutAligned_new _) hb⟩
-  rw [layoutOf_c1] at hb
-  obtain ⟨e, he⟩ := limbs_new_mem _ col b hb
-  rw [c1Cols_eq] at he
-  obtain ⟨c, _, hc⟩ := List.mem_map.mp he
-  simp only [Prod.mk.injEq] at hc
-  obtain ⟨rfl, h2, -⟩ := hc
-  exact h2.symm
-
-/-- The setup's limbs: the bytecode's tuples at `lb + 4`, the addresses at `lm`. -/
-theorem setup_limbs (S : Shape) (col : Column) (b : ℕ × ℕ × ℕ) (hb : b ∈ (layoutOf S .setup).limbs col) :
-    (col = .bytecodeTuple → b.2.1 = S.logBytecode + 4) ∧ (col = .address → b.2.1 = S.logMemory) ∧
-      b.2.1 ≤ batchVars S := by
-  refine ⟨fun h ↦ ?_, fun h ↦ ?_, limb_le_batch S .setup (by rw [layoutOf_setup]; exact layoutAligned_new _) hb⟩
-  all_goals
-    rw [layoutOf_setup] at hb
-    obtain ⟨e, he⟩ := limbs_new_mem _ col b hb
-    subst h
-    simp [setupCols] at he
-    exact he.1
-
 theorem coordinateFunctionals_size (r : ℕ) : (coordinateFunctionals r).size = r := by
   rw [cf_eq]
   simp [cfFinal]
@@ -1559,13 +993,6 @@ theorem coordinateFunctionals_size (r : ℕ) : (coordinateFunctionals r).size = 
 
 /-- The digits the verifier reads `t` through. -/
 def nDigits (S : Shape) : ℕ := max S.heap.h (S.constraintVars + 4) + 2
-
-/-- **The quotients' chunks fit the digits**: every chunk size of the constraint quotient and of each
-heap block's leaf quotient is below the number of digits the verifier reads `t` through (so each chunk
-is read at the digits, and the digit `w_e` past it is the digit polynomial's). -/
-def ChunksFit (S : Shape) : Prop :=
-  (∀ e ∈ chunks (S.constraintDegree + 1), e < nDigits S) ∧
-    ∀ b ∈ S.heap.blocks, ∀ d, Shape.leafDegree b = some d → ∀ e ∈ chunks (d + 1), e < nDigits S
 
 /-- **The bytecode's variables fit the heap's** (`HeapLayout.new` lays a block of `2^lb` leaves among
 `2^(h−1)`), so the bytecode's claims read only digits. -/
@@ -1598,17 +1025,6 @@ theorem block_r_lt (S : Shape) (hH : HeapGood S) (b : Block) (hb : b ∈ S.heap.
   have := (Nat.pow_le_pow_iff_right (by norm_num)).mp hle
   omega
 
-section Ctx
-
-variable (D : Deployment) {κ : ℕ} (s : USt) (c1 : Stk) (ch : List E) (fd : Done)
-  (c2 : Stk) (t : E) (vals : List E)
-
-theorem h_lt_nDigits : D.shape.heap.h + 1 < nDigits D.shape := by unfold nDigits; omega
-
-theorem rW_lt_nDigits : D.shape.constraintVars + 4 < nDigits D.shape := by unfold nDigits; omega
-
-end Ctx
-
 /-! ## The tables' parts, the `C1` points -/
 
 theorem getD_mem' {α : Type} {l : List α} {c : ℕ} {d : α} (hc : c < l.length) : l.getD c d ∈ l := by
@@ -1634,8 +1050,6 @@ theorem tablePartOf_equal_mem (tab : Table) (lh : ℕ) (weights : Array E) (beta
   have hz : p < ((sentColumns tab).zip (List.range (sentColumns tab).length)).length := by simp [hp]
   have := List.getElem_mem hz
   rwa [List.getElem_zip, List.getElem_range, ← List.getD_eq_getElem _ 0] at this
-
-theorem tables_length : tables.length = 6 := rfl
 
 theorem jumpSent (tab : Table) (h : tab.opcode = opJump) :
     colIdx tab.columns "b" ∈ sentColumns tab ∧ colIdx tab.columns "v_cond" ∈ sentColumns tab := by
@@ -1701,17 +1115,6 @@ section Ctx
 variable (D : Deployment) {κ : ℕ} (s : USt) (c1 : Stk) (ch : List E) (fd : Done)
   (c2 : Stk) (t : E) (vals : List E)
 
-/-- `y(t)`, `BLAKE2S`'s coordinates of `t`. -/
-def yOf : List E := coordinatesAt t (coordinateFunctionals (D.shape.heights.getD opSha3 0))
-
-theorem height_lt_nDigits (o : ℕ) : D.shape.heights.getD o 0 < nDigits D.shape := by
-  have := height_le_rW D.shape o
-  unfold nDigits; omega
-
-theorem lm_lt_nDigits : D.shape.logMemory < nDigits D.shape := by
-  have := logMemory_le_rW D.shape
-  unfold nDigits; omega
-
 /-- A relation whose terms are all on `C1` is on `C1`. -/
 theorem commitment_c1 {r : Relation} (h : ∀ tm ∈ r.terms, tm.column.commitment = .c1) : r.commitment = .c1 := by
   unfold Relation.commitment
@@ -1747,22 +1150,7 @@ theorem pushP_evalE (tab : Table) (weights : Array E) (beta : E) (cols : ℕ →
 
 end Ctx
 
-/-- `BLAKE2S` has at least one row variable (a valid shape with Flock: at least `7`). -/
-theorem hB_pos (D : Deployment) : 1 ≤ D.shape.heights.getD opSha3 0 := by
-  have h := D.valid.2
-  unfold Shape.validate at h
-  simp at h
-  rw [List.getD_eq_getElem?_getD]
-  omega
-
 /-! ## The tables' flushes and the heap's depth, proved -/
-
-set_option maxRecDepth 100000 in
-/-- **The tables' flushes are as `linearise` reads them** (the kernel checks the six tables' monomials,
-not their coefficients). -/
-theorem tablesLin : TablesLin := by
-  unfold TablesLin
-  decide +kernel
 
 /-- **The bytecode's block fits the heap**, at every shape: `HeapLayout.new`'s depth `⌈log₂ Σ 2^r⌉ + 1`
 is above `lb` (the sum, a permutation of the used blocks', has `2^lb`). -/
@@ -1889,19 +1277,6 @@ theorem tupleDegree_le (tuple : List Form) (k : ℕ) (hk : 1 ≤ k)
       exact ih _ (inner f d hd (hm f (List.mem_cons_self ..))) fun g hg ↦ hm g (List.mem_cons_of_mem _ hg)
   exact outer tuple 0 (Nat.zero_le _) h
 
-/-- **The tables' shapes, as the degrees read them**: at most eleven flushes, monomials of degree at
-most two, at most ten counters. -/
-def TablesDeg : Prop :=
-  ∀ tab ∈ tables, (tab.flushes.pull.zip tab.flushes.push).length ≤ 11 ∧
-    (∀ fl ∈ tab.flushes.pull.zip tab.flushes.push, ∀ f ∈ fl.1 ++ fl.2, ∀ mc ∈ f, mc.1.length ≤ 2) ∧
-    tab.countColumns.length ≤ 10
-
-set_option maxRecDepth 100000 in
-/-- The tables' shapes (the kernel checks their monomials and counters, not their coefficients). -/
-theorem tablesDeg : TablesDeg := by
-  unfold TablesDeg
-  decide +kernel
-
 theorem sum_le_of {l : List ℕ} {k : ℕ} (h : ∀ x ∈ l, x ≤ k) : l.sum ≤ l.length * k := by
   induction l with
   | nil => simp
@@ -1912,109 +1287,4 @@ theorem sum_le_of {l : List ℕ} {k : ℕ} (h : ∀ x ∈ l, x ≤ k) : l.sum �
     rw [Nat.succ_mul]
     omega
 
-/-- A table's leaf degrees are at most `23`. -/
-theorem tableDegrees_le (tab : Table) (htab : tab ∈ tables) :
-    (tableDegrees tab).1 ≤ 23 ∧ (tableDegrees tab).2 ≤ 23 := by
-  obtain ⟨hn, hm, -⟩ := tablesDeg tab htab
-  rw [tableDegrees_eq]
-  have h1 : ∀ x ∈ (tab.flushes.pull.zip tab.flushes.push).map (fun fl ↦ tupleDegree fl.1), x ≤ 2 := by
-    intro x hx
-    obtain ⟨fl, hfl, rfl⟩ := List.mem_map.mp hx
-    exact tupleDegree_le _ 2 (by norm_num) fun f hf mc hmc ↦ hm fl hfl f (List.mem_append_left _ hf) mc hmc
-  have h2 : ∀ x ∈ (tab.flushes.pull.zip tab.flushes.push).map (fun fl ↦ tupleDegree fl.2), x ≤ 2 := by
-    intro x hx
-    obtain ⟨fl, hfl, rfl⟩ := List.mem_map.mp hx
-    exact tupleDegree_le _ 2 (by norm_num) fun f hf mc hmc ↦ hm fl hfl f (List.mem_append_right _ hf) mc hmc
-  have s1 := sum_le_of h1
-  have s2 := sum_le_of h2
-  rw [List.length_map] at s1 s2
-  dsimp only
-  constructor <;> omega
-
-/-- A valid shape's heights are at most `31`. -/
-theorem heights_le (D : Deployment) (o : ℕ) : D.shape.heights.getD o 0 ≤ 31 := by
-  have h := D.valid.2
-  unfold Shape.validate at h
-  simp at h
-  by_cases ho : o < D.shape.heights.length
-  · rw [List.getD_eq_getElem _ _ ho]
-    exact h.1.2 _ (List.getElem_mem ho)
-  · rw [List.getD_eq_default _ _ (by omega)]
-    omega
-
-/-- **The constraint quotient's degree is below `2^(r_W + 4)`.** -/
-theorem constraintDegree_lt (D : Deployment) :
-    D.shape.constraintDegree < 2 ^ (D.shape.constraintVars + 4) := by
-  set rW := D.shape.constraintVars
-  have hB : 2 ^ (rW + 4) = 16 * 2 ^ rW := by rw [pow_add]; ring
-  have key : ∀ (L : List Table) (d : ℕ), d < 16 * 2 ^ rW → (∀ tab ∈ L, tab ∈ tables) →
-      L.foldl (cdStep D.shape) d < 16 * 2 ^ rW := by
-    intro L
-    induction L with
-    | nil => intro d hd _; exact hd
-    | cons tab L ih =>
-      intro d hd hL
-      rw [List.foldl_cons]
-      refine ih _ ?_ fun t ht ↦ hL t (List.mem_cons_of_mem _ ht)
-      have htab := hL tab (List.mem_cons_self ..)
-      have hcnt := (tablesDeg tab htab).2.2
-      have hr := height_le_rW D.shape tab.opcode
-      have hr31 := heights_le D tab.opcode
-      have hn : 2 ^ D.shape.heights.getD tab.opcode 0 ≤ 2 ^ rW := Nat.pow_le_pow_right (by norm_num) hr
-      have hpos := Nat.two_pow_pos (D.shape.heights.getD tab.opcode 0)
-      unfold cdStep UniStatement.degree
-      dsimp only
-      generalize 2 ^ D.shape.heights.getD tab.opcode 0 = n at hn hpos ⊢
-      generalize D.shape.heights.getD tab.opcode 0 = r at hr hr31 ⊢
-      have h1 : (n - 1) * (1 + tab.countColumns.length) ≤ (n - 1) * 11 := Nat.mul_le_mul_left _ (by omega)
-      have h2 : r * (n / 2) ≤ 31 * (n / 2) := Nat.mul_le_mul_right _ hr31
-      split_ifs <;> simp only [max_lt_iff] <;> omega
-  unfold Shape.constraintDegree UniStatement.degree
-  dsimp only
-  rw [hB]
-  have hlm : 2 ^ D.shape.logMemory ≤ 2 ^ rW := Nat.pow_le_pow_right (by norm_num) (logMemory_le_rW D.shape)
-  have := Nat.two_pow_pos rW
-  refine max_lt (key tables 0 (by positivity) fun _ h ↦ h) ?_
-  omega
-
-/-- **The quotients' chunks fit the digits**, at a valid shape whose heap's blocks are `HeapGood`'s:
-the constraint quotient's chunks are at most `r_W + 4`, a table's leaf quotient's at most its height
-plus `4` (`23` fingerprint degrees), the memory's and the bytecode's at most their blocks'. -/
-theorem chunksFit (D : Deployment) (hH : HeapGood D.shape) : ChunksFit D.shape := by
-  have hN := rW_lt_nDigits D
-  refine ⟨fun e he ↦ ?_, fun b hb d hd e he ↦ ?_⟩
-  · have := chunk_lt _ (D.shape.constraintVars + 5) (by
-      have := constraintDegree_lt D
-      rw [pow_succ]; omega) e he
-    omega
-  · have hbr := block_r_lt D.shape hH b hb
-    have hhN := h_lt_nDigits D
-    have hblk := hH.2.2.2.2.2 b hb
-    have hpos := Nat.two_pow_pos b.r
-    unfold Shape.leafDegree at hd
-    rcases hlv : b.leaves with _ | _ | tt | _ <;> rw [hlv] at hd hblk
-    · simp only [Option.some.injEq] at hd
-      subst hd
-      have := chunk_lt _ (b.r + 1) (by unfold UniStatement.degree; rw [pow_succ]; omega) e he
-      omega
-    · simp only [Option.some.injEq] at hd
-      subst hd
-      have := chunk_lt _ (b.r + 1) (by unfold UniStatement.degree; rw [pow_succ]; omega) e he
-      omega
-    · obtain ⟨ht6, hrt⟩ := hblk
-      dsimp only at hd
-      simp only [Option.some.injEq] at hd
-      subst hd
-      obtain ⟨hp1, hp2⟩ := tableDegrees_le _ (tables_mem tt ht6)
-      have hr := height_le_rW D.shape tt
-      have hmax : max (tableDegrees (tables.getD tt default)).1 (tableDegrees (tables.getD tt default)).2 ≤ 23 :=
-        max_le hp1 hp2
-      have hm : max (tableDegrees (tables.getD tt default)).1 (tableDegrees (tables.getD tt default)).2 *
-          (2 ^ b.r - 1) ≤ 23 * (2 ^ b.r - 1) := Nat.mul_le_mul_right _ hmax
-      have h32 : 2 ^ (b.r + 5) = 32 * 2 ^ b.r := by rw [pow_add]; ring
-      have := chunk_lt _ (b.r + 5) (by unfold UniStatement.degree; omega) e he
-      omega
-    · simp at hd
-
 end UniSound.Ids.Eval
-

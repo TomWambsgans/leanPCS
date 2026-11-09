@@ -27,15 +27,7 @@ open scoped ENNReal
 
 /-! ## The reductions, stated -/
 
-/-- **The constraint vectors' vanishing gives the counts in range and the rows' constraints.** -/
-def CvecOkP (D : Deployment) : Prop :=
-  ∀ s c, (∀ x < 2 ^ D.shape.constraintVars, ∀ v ∈ cvecOf D c s x, v = 0) →
-    CountsFit D.shape s.2 ∧ RowConstraints D c s
-
 /-! ## Proved fields -/
-
-/-- The number of constraints, any `C1` (the list's shape does not depend on the stack). -/
-noncomputable def ncvOf (S : Shape) : ℕ := (constraintsP S (fun _ ↦ 0) []).length + 1
 
 theorem length_filterMap_map {α β γ : Type} (l : List α) (o : α → Option β) (g : α → β → γ) :
     (l.filterMap fun x ↦ (o x).map (g x)).length = (l.filterMap o).length := by
@@ -44,40 +36,6 @@ theorem length_filterMap_map {α β γ : Type} (l : List α) (o : α → Option 
   | cons a l ih =>
     simp only [List.filterMap_cons]
     cases o a <;> simp [ih]
-
-theorem length_constraintsP (S : Shape) (c : Stk) (pw : List E) :
-    (constraintsP S c pw).length = (constraintsP S (fun _ ↦ 0) []).length := by
-  unfold constraintsP linesP tableConstraintsP
-  generalize tables = ts
-  simp only [List.length_append, List.length_flatMap, List.length_map, List.length_zip, linesOf,
-    List.length_cons, List.length_nil, List.length_range]
-  refine congrArg (· + _) (congrArg List.sum (List.map_congr_left fun tab _ ↦ ?_))
-  split_ifs <;> simp [length_filterMap_map]
-
-theorem cvecOf_len (D : Deployment) (s : USt) (c : Stk) (x : ℕ) :
-    (cvecOf D c s x).length ≤ ncvOf D.shape := by
-  unfold cvecOf ncvOf
-  split_ifs
-  · rw [List.length_map, length_constraintsP]; omega
-  · simp
-
-/-- Each heap block's leaves read off `C1` has the block's size. -/
-theorem blockK_r (D : Deployment) (c : Stk) (rows : List ℕ) (b : Block) :
-    (blockK D c rows b).r = b.r := by
-  unfold blockK
-  cases b.leaves <;> rfl
-
-/-- **The heap read off `C1` is well formed** (`HeapGood`: the blocks fill the leaves). -/
-theorem hdOf_wf (D : Deployment) (hH : HeapGood D.shape) (c : Stk) (s : USt) :
-    (hdOf D c s).WellFormed := by
-  refine ⟨hH.1, ?_⟩
-  show Heap.total (D.shape.heap.blocks.map (blockK D c s.2)) = 2 ^ (D.shape.heap.h - 1)
-  unfold Heap.total
-  rw [List.map_map]
-  rw [← hH.2.2.1]
-  congr 1
-  refine List.map_congr_left fun b _ ↦ ?_
-  simp [blockK_r]
 
 theorem natDegree_listSum_le (l : List (Polynomial E)) (n : ℕ) (h : ∀ p ∈ l, p.natDegree ≤ n) :
     l.sum.natDegree ≤ n := by
@@ -117,10 +75,5 @@ theorem natDegree_zBad_le (S : Shape) (p0 : E) : (zBad S p0).natDegree ≤ zBadD
   omega
 
 /-! ## The models -/
-
-/-- The values the stream sends at `t`: each table's sent columns and sent fingerprints, then the
-memory's three, the bytecode's two, `T(t)`, `Q_W(t)` (as `tablePartOf` reads them). -/
-def nVOf (S : Shape) : ℕ :=
-  (tablesPart S #[] 0 [] tables (List.replicate 4096 0)).2.2.length |> fun left ↦ 4096 - left + 7
 
 end UniSound.Ids

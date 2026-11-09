@@ -29,8 +29,4 @@ theorem decodeSC_length : ∀ (c : E) (es : List (Option E)) (d : Done),
     omega
   | _, _ :: _, [] => by simp [decodeSC]
 
-/-- The batch has at least `15` variables (`C1`'s stack has; `batchVars` is `varsOf`). -/
-theorem batchVars_ge (S : Shape) : 15 ≤ Ids.batchVars S := varsOf_ge S
-
 end FlockSound.Uni
-

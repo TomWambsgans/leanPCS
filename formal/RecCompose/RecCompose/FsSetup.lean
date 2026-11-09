@@ -9,8 +9,8 @@ import UniKeccakSound.Fs.SetupK
 # π2's setup: its facts, its opening, and the bridge
 
 The composed setup `p2Setup` (`FsDefs.lean`: π1's one tree, the Keccak setup stack's `UniKeccakSound.setupK1`, its
-roots that root and the deployment's `A0`, `B0`; then π2's tree of the setup's table `κ`, `κ + σ` at π1's contract IV
-of those roots, on the plain shape of `2^25` words `sh25`):
+root; then π2's tree of the setup's table `κ`, `κ + σ` at π1's contract IV of that root, on the plain shape of
+`2^25` words `sh25`):
 
 * **its facts** for `Compose.rpm_le_kcS` and `Compose.knowledgeSoundness_listChainU_closed128S`: Keccak-256 only
   (`hOnly_p2Setup`), `p2QS` queries (`isTotalQueryBound_p2Setup`; `p2QS_le`: below `3 · 2^24 + 2^21`, the bound the
@@ -115,8 +115,8 @@ theorem isTotalQueryBound_p2Setup : IsTotalQueryBound (p2Setup D hs) (p2QS D) :=
   unfold p2Setup
   have h := isTotalQueryBound_bind (UniKeccakSound.isTotalQueryBound_setupK1 hs (UniKeccakSound.colFK D.pi1))
     fun r ↦ isTotalQueryBound_bind
-      (ob := fun r2 ↦ (pure (pi1Out D r, r2) : OracleComp KeccakCalls SOut)) (n₂ := 0)
-      (isTotalQueryBound_stackSetupS sh25 (setupCol D ⟨UniSound.rootsOfS (pi1Out D r), default⟩)) fun _ ↦ trivial
+      (ob := fun r2 ↦ (pure (r, r2) : OracleComp KeccakCalls SOut)) (n₂ := 0)
+      (isTotalQueryBound_stackSetupS sh25 (setupCol D ⟨UniSound.rootsOfS r, default⟩)) fun _ ↦ trivial
   refine IsTotalQueryBound.mono h ?_
   dsimp only [p2QS, sh25, UniSound.plainShape, WhirShape.large, UniSound.plainL, WhirBridge.Layout.new]
   omega
@@ -142,16 +142,15 @@ theorem cost_p2Setup : Common.QueryCostAtMost (p2Setup D hs) LeanVM.Rpm.hashBloc
 /-- π1's setup: its one tree (`UniKeccakSound.setupK1` of the Keccak setup stack). -/
 noncomputable abbrev p1Setup : OracleComp KeccakCalls Bytes32 := UniKeccakSound.setupK1 hs (UniKeccakSound.colFK D.pi1)
 
-/-- **The setup's run**: π1's tree's log, then π2's tree's; its value π1's roots (its tree's root, `A0`, `B0`) and
-π2's root. -/
+/-- **The setup's run**: π1's tree's log, then π2's tree's; its value π1's root and π2's root. -/
 theorem p2Setup_run (T : KTable) :
     tableQueryLog (p2Setup D hs) T = tableQueryLog (p1Setup D hs) T ++
         tableQueryLog (stackSetupS sh25 (setupCol D
-          ⟨UniSound.rootsOfS (pi1Out D (evalWithAnswerFn (QueryImpl.ofFn T) (p1Setup D hs))), default⟩)) T ∧
+          ⟨UniSound.rootsOfS (evalWithAnswerFn (QueryImpl.ofFn T) (p1Setup D hs)), default⟩)) T ∧
       evalWithAnswerFn (QueryImpl.ofFn T) (p2Setup D hs) =
-        (pi1Out D (evalWithAnswerFn (QueryImpl.ofFn T) (p1Setup D hs)),
+        (evalWithAnswerFn (QueryImpl.ofFn T) (p1Setup D hs),
           evalWithAnswerFn (QueryImpl.ofFn T) (stackSetupS sh25 (setupCol D
-            ⟨UniSound.rootsOfS (pi1Out D (evalWithAnswerFn (QueryImpl.ofFn T) (p1Setup D hs))), default⟩))) := by
+            ⟨UniSound.rootsOfS (evalWithAnswerFn (QueryImpl.ofFn T) (p1Setup D hs)), default⟩))) := by
   constructor
   · simp only [p2Setup, tableQueryLog_bind, tableQueryLog_pure, List.append_nil]
   · simp only [p2Setup, evalWithAnswerFn_bind, evalWithAnswerFn_pure]
@@ -216,7 +215,7 @@ theorem okp_setupOp :
   cases Option.some.inj hf
   obtain ⟨hl, he⟩ := p2Setup_run D hs T
   set r := evalWithAnswerFn (QueryImpl.ofFn T) (p1Setup D hs) with hr
-  set q := setupCol D ⟨UniSound.rootsOfS (pi1Out D r), default⟩ with hq
+  set q := setupCol D ⟨UniSound.rootsOfS r, default⟩ with hq
   have hsub' : ∀ x, Sum.inl x ∈ (tableQueryLog (stackSetupS sh25 q) T).map Sigma.fst → x ∈ H := by
     intro x hx
     refine hsub x ?_
@@ -243,10 +242,10 @@ end Opening
 /-- `layouts(24)`'s setup layout has `2^25` words. -/
 theorem layoutsOf_setup_logN : (layoutsOf 24).2.2.logN = 25 := by decide
 
-/-- π1's setup output's roots are `KDeployment.setupRoots` of its tree. -/
-theorem rootsOfS_pi1Out (D : RecDeployment) (t : LeanVM.Prover.Tree) :
-    UniSound.rootsOfS (pi1Out D (toB t.root)) = D.pi1.setupRoots t := by
-  simp only [UniSound.rootsOfS, pi1Out, UniKeccak.KDeployment.setupRoots, Soundness.ofB_toB_root]
+/-- π1's setup output's root is `KDeployment.setupRoots` of its tree. -/
+theorem rootsOfS_root (D : RecDeployment) (t : LeanVM.Prover.Tree) :
+    UniSound.rootsOfS (toB t.root) = D.pi1.setupRoots t := by
+  simp only [UniSound.rootsOfS, UniKeccak.KDeployment.setupRoots, Soundness.ofB_toB_root]
 
 /-- **SETUP**: the composed setup over `π`, logged, is the Statement's `setupTreesWith` over `π` (π2's circuit the
 real deployment's at every IV, π1's setup stack of fewer than `256` variables). -/
@@ -269,10 +268,9 @@ theorem pi2SetupBridge (D : RecDeployment) (hD : RecDeployment.Real D) (hs : Uni
   unfold RecDeployment.setupTreesWith
   simp only [map_bind, map_pure, bind_map_left, hc]
   refine bind_congr fun t1 => ?_
-  rw [rootsOfS_pi1Out]
+  rw [rootsOfS_root]
   refine bind_congr fun t2 => ?_
-  simp only [setupTr2, RecSetupTrees.evaluations, List.map_append, List.append_nil, Soundness.treeTr, rootsB2,
-    pi1Out]
+  simp only [setupTr2, RecSetupTrees.evaluations, List.map_append, List.append_nil, Soundness.treeTr, rootsB2]
 
 end RecCompose
 

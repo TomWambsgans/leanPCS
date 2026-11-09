@@ -113,36 +113,5 @@ theorem bcTuple_core (h : BetaCantor) (L : StackLayout) (V : ℕ) (C : Stk) (lb 
   rw [ite_eq_left (by omega), ← add_assoc]
   ring
 
-/-- **`BcTupleEval`** for a deployment whose heap is `HeapGood`: the setup's bytecode tuple at
-`(α, ω_x)` is `Σ_s eq(α, s)` times slot `s`'s value at `x`. -/
-theorem bcTupleEval_of_heapGood (D : Deployment) (hH : HeapGood D.shape) : BcTupleEval D := by
-  intro ch x hx
-  obtain ⟨off, hl⟩ := (setupLimbs D.shape).2
-  have hal : LayoutAligned (layoutOf D.shape .setup) := by
-    rw [layoutOf_setup]; exact layoutAligned_new _
-  have hb := hal _ (limbs_mem_blocks (b := (0, D.shape.logBytecode + 4, off))
-    (by rw [hl]; exact List.mem_singleton_self _))
-  have hlb : D.shape.logBytecode ≤ 24 := (lbFits D.shape).trans hH.2.1
-  have htup : tupleOff D = off := by
-    unfold tupleOff
-    rw [UniSound.Ids.setupLayout_eq, hl]
-    rfl
-  unfold slotVal suP
-  rw [htup]
-  generalize setupStk D = C
-  exact bcTuple_core betaCantor _ _ C _ off x _ (Facts.alphasOf_length ch) hl hb.1 hb.2
-    (vars_le_batch _ _) hlb hx
-
-/-- **`BcTupleEval` at the reference shape.** -/
-theorem bcTupleEval_reference (D : Deployment) (hS : D.shape = reference) : BcTupleEval D :=
-  bcTupleEval_of_heapGood D (hS ▸ heapGood_reference)
-
 end UniSound.Ids
 
-/-- info: 'UniSound.Ids.bcTupleEval_of_heapGood' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms UniSound.Ids.bcTupleEval_of_heapGood
-
-/-- info: 'UniSound.Ids.bcTupleEval_reference' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms UniSound.Ids.bcTupleEval_reference

@@ -58,30 +58,6 @@ def Outcome.accepts (o : Outcome) : Bool :=
     | .ok _ => true
     | .error _ => false) && o.chan.zeros.all (· == 0)
 
-section With
-
-variable {m : Type → Type} [Monad m] (F : KeccakState → m KeccakState)
-
-/-- **The verifier on calldata** over `F` (`rust_verifier`): the seed of the IV (the contract's, iteration 2's
-F2: `contractIvWith`) and the public input, the walk (the row counts read from the stream), nothing of the
-stream left. -/
-def runWith (shape : Shape) (iv publicInput : List UInt8) (stream : Array UInt8) (blake2s : Blake2s)
-    (mode : ClaimsMode) : m Outcome := do
-  let seed ← seedWith F iv publicInput
-  let walk : ChanM m Reduced := do
-    let r ← reduceWith F shape (publicWordsOf publicInput) blake2s mode
-    finish (m := m)
-    return r
-  let (result, chan) ← (walk.run).run (Chan.start seed stream)
-  return ⟨result, chan⟩
-
-end With
-
-/-- The run over Keccak-f[1600]: the deployed contract's computation. -/
-def run (shape : Shape) (iv publicInput : List UInt8) (stream : Array UInt8) (blake2s : Blake2s)
-    (mode : ClaimsMode) : Outcome :=
-  Id.run (runWith (m := Id) (fun s ↦ pure (keccakF1600 s)) shape iv publicInput stream blake2s mode)
-
 /-! ### The setup constants -/
 
 /-- `BYTECODE_LEN` (`shapes.rs`): the aggregation guest's stacked bytecode, `2^23` words. -/

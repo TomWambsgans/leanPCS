@@ -11,7 +11,7 @@ import UniKeccakSound.Ids.Model
 `tupleK` of its push or pull forms) are, **in order**, the Keccak VM's flushes of opcode table `j` of that side
 (`KeccakVm.keccakIsaInstance`'s `flushes (opIdx j)`) evaluated at the row.
 
-* The five tables other than `SHA3` are Lv42's on both sides (`tablesKeccak` is `tables` there; the instance's
+* The five tables other than `SHA3` are Lv42's on both sides (`tablesKeccak` is `sharedTables` there; the instance's
   flushes are Lv42's `baseTable`'s): `UniSound.Ids.LvR.uni_tuples_eq_base`.
 * **The `SHA3` table** (`sha3_flushes_eq`): the verifier's `flushesSha3` against `KeccakVm.Sha3Table.flushes`, by
   reflection as `LvR.sides_eq`: both sides read as polynomials in `LvR`'s normal form (the forms by `formSP`, the
@@ -79,13 +79,13 @@ theorem sha3_flushes_eq (side : Side) (R : ℕ → K) :
 
 /-! ## The six tables -/
 
-/-- `tablesKeccak` is `tables` but for `SHA3`. -/
+/-- `tablesKeccak` is `sharedTables` but for `SHA3`. -/
 theorem tablesKeccak_getD_of_ne {j : ℕ} (hj : j ≠ opSha3) :
-    tablesKeccak.getD j default = tables.getD j default := by
+    tablesKeccak.getD j default = sharedTables.getD j default := by
   match j, hj with
   | 0, _ | 1, _ | 2, _ | 3, _ | 4, _ => rfl
   | 5, h => exact absurd rfl h
-  | n + 6, _ => simp [tablesKeccak, tables, List.getD_eq_getElem?_getD]
+  | n + 6, _ => simp [tablesKeccak, sharedTables, List.getD_eq_getElem?_getD]
 
 theorem tablesKeccak_getD_sha3 : (tablesKeccak.getD opSha3 default).flushes = flushesSha3 := rfl
 

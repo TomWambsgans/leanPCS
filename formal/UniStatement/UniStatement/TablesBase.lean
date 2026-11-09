@@ -211,6 +211,12 @@ def flushesJump : Flushes :=
     operands).memoryCols (prod fp oC 0) cntC [cond] |>.memoryCols (prod fp oD 0) cntD [dest]).memoryCols
     (prod fp oF 0) cntF [frame]
 
+/-- **The five shared tables** (XOR, MUL, SET, DEREF, JUMP), in opcode order: leanVM 42422001's, which the Keccak VM
+keeps (`UniStatement.tablesKeccak` adds the `SHA3` table). -/
+def sharedTables : List Table :=
+  [⟨opXor, arithColumns, flushesArith opXor false⟩, ⟨opMul, arithColumns, flushesArith opMul true⟩,
+    ⟨opSet, setColumns, flushesSet⟩, ⟨opDeref, derefColumns, flushesDeref⟩, ⟨opJump, jumpColumns, flushesJump⟩]
+
 end UniStatement
 
 end

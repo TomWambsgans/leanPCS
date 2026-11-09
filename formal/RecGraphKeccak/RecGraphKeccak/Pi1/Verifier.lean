@@ -289,13 +289,11 @@ theorem keccak128_run : ("keccak128", 128, 721598, [24260, 36229, 24626, 35812, 
 theorem keccak128_logs : keccak128.logMemory = 20 ∧ keccak128.logBytecode = 18 := by decide
 
 /-- **The Keccak VM's `SetupRoots::REFERENCE`** (`crates/leanvm/univariate/src/contract.rs`): the 128-signature
-reference's setup root `F` (`067244be…`, the real `keccak128_rec3.txt` proof's `whir_root`), and the two fixed words
-`A0`, `B0` the contract IV hashes, each 32-byte word read as the digest of those bytes, all three as the Rust's.
+reference's setup root `F` (`067244be…`, the real `keccak128_rec3.txt` proof's `whir_root`), the 32-byte word read as
+the digest of those bytes, as the Rust's.
 `record_verifier` binds them: the setup call's root word is `F`. -/
 def referenceRootsK : SetupRoots :=
-  ⟨digestOfBytes32 (bytesOfHex "067244bea80942b5cacaa61c28ca748d0ae4ba6c106739ab109c9c07296e1ca5"),
-    digestOfBytes32 (bytesOfHex "93cd9a0352a85dcc663f7068e1f3afa3a00f5220bd2b03d67244f0eb133fd2f7"),
-    digestOfBytes32 (bytesOfHex "c07556508c416240dafd47665831fd51d2eb1104a52c63231101479c7f6cd467")⟩
+  ⟨digestOfBytes32 (bytesOfHex "067244bea80942b5cacaa61c28ca748d0ae4ba6c106739ab109c9c07296e1ca5")⟩
 
 /-- The shape the program is recorded at. -/
 abbrev shapeK : Shape := keccak128

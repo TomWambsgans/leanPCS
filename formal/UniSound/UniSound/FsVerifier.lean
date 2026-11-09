@@ -187,58 +187,6 @@ theorem root_at (rounds : List RoundSpec) (π : UPf) (ch : List (List E)) (i : �
 
 /-! ## The Statement's verifier after the run -/
 
-section Rest
-
-variable (shape : UniStatement.Shape) (roots : SetupRoots) (proof : UniProof)
-
-/-- A commitment's call: its root, its layout word, its opening proof. -/
-def callOfR (r : Reduced) : Commitment → Digest × List UInt8 × Compile.Proof
-  | .c1 => (rootOf r.roots.1, (layoutWords shape).getD 0 [], proof.c1)
-  | .c2 => (rootOf r.roots.2, (layoutWords shape).getD 1 [], proof.c2)
-  | .setup => (roots.bytecode, (layoutWords shape).getD 2 [], proof.setup)
-
-variable {m : Type → Type} [Monad m] (F : KeccakState → m KeccakState)
-
-/-- The loop's step over the result's openings. -/
-def stepR (r : Reduced) : Commitment × UniStatement.Opening → Bool → m (ForInStep Bool) :=
-  fun x ok => match x with
-    | (c, opening) => match opening with
-      | .point pt value none => match callOfR shape roots proof r c with
-        | (root, word, p) => do
-          let b ← pcsOpenWith F (layoutWordVars word) root [⟨pt, value⟩] p
-          pure (ForInStep.yield (ok && b))
-      | _ => pure (ForInStep.yield false)
-
-/-- `Flock`'s matrices' two calls. -/
-def matR (r : Reduced) (ok : Bool) : m Bool :=
-  match r.matrices with
-  | some mc => do
-    let b ← pcsOpenWith F (layoutWordVars ((layoutWords shape).getD 3 [])) roots.a0
-      [⟨mc.point, mc.a⟩] proof.a0
-    let b' ← pcsOpenWith F (layoutWordVars ((layoutWords shape).getD 4 [])) roots.b0
-      [⟨mc.point, mc.b⟩] proof.b0
-    pure (ok && b && b')
-  | none => pure false
-
-/-- **The Statement's verifier after the run**, on its result: the loop, then the matrices. -/
-def restR (r : Reduced) : m Bool :=
-  forIn r.openings (r.openings.map (·.1) == commitments) (stepR shape roots proof F r) >>=
-    matR shape roots proof F r
-
-/-- **The Statement's verifier is the run, then `restR`** on an accepting run's result. -/
-theorem verifyWith_eq_rest [LawfulMonad m] (iv : List UInt8) (input : Vector UInt8 32) :
-    verifyWith F shape iv roots input proof =
-      ((fun o : UniStatement.Outcome => (o.accepts, o.result)) <$>
-          runWith F shape iv input.toList proof.stream (.flock flockMain) .point) >>= fun p =>
-        if !p.1 then pure false else
-          match p.2 with
-          | .error _ => pure false
-          | .ok r => restR shape roots proof F r := by
-  rw [bind_map_left]
-  rfl
-
-end Rest
-
 /-! ## What an accepting `restR` needs -/
 
 section Support
@@ -257,105 +205,6 @@ theorem pcsOpen_len (vars : ℕ) (root : Digest) (pt : List E) (v : E) (p : Comp
   rw [hb] at hbt
   exact Bool.false_ne_true hbt
 
-theorem stepR_point (r : Reduced) (c : Commitment) (pt : List E) (v : E) (ok : Bool) :
-    stepR shape roots proof F r (c, .point pt v none) ok =
-      pcsOpenWith F (layoutWordVars (callOfR shape roots proof r c).2.1)
-          (callOfR shape roots proof r c).1 [⟨pt, v⟩] (callOfR shape roots proof r c).2.2 >>=
-        fun b => pure (ForInStep.yield (ok && b)) := by
-  cases c <;> rfl
-
-theorem stepR_other (r : Reduced) (c : Commitment) (o : UniStatement.Opening)
-    (ho : ∀ pt v, o ≠ .point pt v none) (ok : Bool) :
-    stepR shape roots proof F r (c, o) ok = pure (ForInStep.yield false) := by
-  rcases o with _ | ⟨pt, v, _ | _⟩
-  · rfl
-  · exact absurd rfl (ho pt v)
-  · rfl
-
-/-- **An accepting loop** started from `ok`, and met only point claims without a bit slice, each of
-its layout word's variables. -/
-theorem forIn_stepR_true (r : Reduced) :
-    ∀ (l : List (Commitment × UniStatement.Opening)) (ok : Bool),
-      ∀ b ∈ support (forIn l ok (stepR shape roots proof F r)), b = true →
-        ok = true ∧ ∀ x ∈ l, ∃ pt v, x.2 = .point pt v none ∧
-          pt.length = layoutWordVars (callOfR shape roots proof r x.1).2.1
-  | [], ok, b, hb, hbt => by
-    rw [List.forIn_nil, support_pure, Set.mem_singleton_iff] at hb
-    subst hb
-    exact ⟨hbt, by simp⟩
-  | (c, o) :: l, ok, b, hb, hbt => by
-    rw [List.forIn_cons, mem_support_bind_iff] at hb
-    obtain ⟨y, hy, hb⟩ := hb
-    by_cases ho : ∃ pt v, o = .point pt v none
-    · obtain ⟨pt, v, rfl⟩ := ho
-      rw [stepR_point, mem_support_bind_iff] at hy
-      obtain ⟨b1, hb1, hy⟩ := hy
-      rw [support_pure, Set.mem_singleton_iff] at hy
-      subst hy
-      obtain ⟨h1, h2⟩ := forIn_stepR_true r l (ok && b1) b hb hbt
-      rw [Bool.and_eq_true] at h1
-      refine ⟨h1.1, fun x hx => ?_⟩
-      rcases List.mem_cons.mp hx with rfl | hx
-      · exact ⟨pt, v, rfl, pcsOpen_len F _ _ _ _ _ b1 hb1 h1.2⟩
-      · exact h2 x hx
-    · rw [stepR_other _ _ _ _ _ _ _ (fun pt v h => ho ⟨pt, v, h⟩), support_pure,
-        Set.mem_singleton_iff] at hy
-      subst hy
-      exact absurd (forIn_stepR_true r l false b hb hbt).1 (by simp)
-
-/-- **Accepting matrices' calls**: started from `ok`, on a matrices' claim of `A0`'s and `B0`'s
-layout words' variables. -/
-theorem matR_true (r : Reduced) (ok : Bool) :
-    ∀ b ∈ support (matR shape roots proof F r ok), b = true →
-      ok = true ∧ ∃ mc, r.matrices = some mc ∧
-        mc.point.length = layoutWordVars ((layoutWords shape).getD 3 []) ∧
-        mc.point.length = layoutWordVars ((layoutWords shape).getD 4 []) := by
-  intro b hb hbt
-  unfold matR at hb
-  split at hb
-  · rename_i mc hmc
-    simp only [mem_support_bind_iff, support_pure, Set.mem_singleton_iff] at hb
-    obtain ⟨bA, hA, bB, hB, rfl⟩ := hb
-    simp only [Bool.and_eq_true] at hbt
-    exact ⟨hbt.1.1, mc, hmc, pcsOpen_len F _ _ _ _ _ _ hA hbt.1.2,
-      pcsOpen_len F _ _ _ _ _ _ hB hbt.2⟩
-  · rw [support_pure, Set.mem_singleton_iff] at hb
-    subst hb
-    exact absurd hbt (by simp)
-
-/-- **The main line's result**: three point claims without a bit slice, on `C1`, `C2` and the setup,
-each of its layout word's variables, and `Flock`'s matrices' claim of `A0`'s and `B0`'s. -/
-def GoodR (r : Reduced) : Prop :=
-  ∃ (p1 : List E) (v1 : E) (p2 : List E) (v2 : E) (p3 : List E) (v3 : E) (mc : Flock.MatrixClaim),
-    r.openings = [(.c1, .point p1 v1 none), (.c2, .point p2 v2 none),
-      (.setup, .point p3 v3 none)] ∧ r.matrices = some mc ∧
-    p1.length = layoutWordVars ((layoutWords shape).getD 0 []) ∧
-    p2.length = layoutWordVars ((layoutWords shape).getD 1 []) ∧
-    p3.length = layoutWordVars ((layoutWords shape).getD 2 []) ∧
-    mc.point.length = layoutWordVars ((layoutWords shape).getD 3 []) ∧
-    mc.point.length = layoutWordVars ((layoutWords shape).getD 4 [])
-
-/-- **`restR` accepts only on the main line's result.** -/
-theorem restR_good (r : Reduced) :
-    ∀ b ∈ support (restR shape roots proof F r), b = true → GoodR shape r := by
-  intro b hb hbt
-  rw [restR, mem_support_bind_iff] at hb
-  obtain ⟨ok, hok, hb⟩ := hb
-  obtain ⟨hokt, mc, hmc, h4, h5⟩ := matR_true shape roots proof F r ok b hb hbt
-  subst hokt
-  obtain ⟨hc, hall⟩ := forIn_stepR_true shape roots proof F r _ _ _ hok rfl
-  rw [beq_iff_eq] at hc
-  rcases hl : r.openings with _ | ⟨⟨c₁, o₁⟩, _ | ⟨⟨c₂, o₂⟩, _ | ⟨⟨c₃, o₃⟩, _ | ⟨_, _⟩⟩⟩⟩ <;>
-    rw [hl] at hc hall <;> simp [commitments] at hc
-  obtain ⟨rfl, rfl, rfl⟩ := hc
-  obtain ⟨p1, v1, e1, l1⟩ := hall _ List.mem_cons_self
-  obtain ⟨p2, v2, e2, l2⟩ := hall _ (List.mem_cons_of_mem _ List.mem_cons_self)
-  obtain ⟨p3, v3, e3, l3⟩ := hall _ (List.mem_cons_of_mem _ (List.mem_cons_of_mem _
-    List.mem_cons_self))
-  simp only at e1 e2 e3
-  subst e1 e2 e3
-  exact ⟨p1, v1, p2, v2, p3, v3, mc, hl, hmc, l1, l2, l3, h4, h5⟩
-
 /-- **Calls one after the other**, their verdicts and-ed onto `ok`. -/
 def seqAnd : List (OracleComp spec Bool) → Bool → OracleComp spec Bool
   | [], ok => pure ok
@@ -371,32 +220,6 @@ theorem seqAnd_false : ∀ (Ps : List (OracleComp spec Bool)), ∀ x ∈ support
     rw [seqAnd_cons, mem_support_bind_iff] at hx
     obtain ⟨_, -, hx⟩ := hx
     exact seqAnd_false Ps x hx
-
-/-- **On the main line's result, `restR` is the five calls**, one after the other. -/
-theorem restR_unroll (r : Reduced) (p1 : List E) (v1 : E) (p2 : List E) (v2 : E) (p3 : List E)
-    (v3 : E) (mc : Flock.MatrixClaim)
-    (ho : r.openings = [(.c1, .point p1 v1 none), (.c2, .point p2 v2 none),
-      (.setup, .point p3 v3 none)]) (hm : r.matrices = some mc) :
-    restR shape roots proof F r = seqAnd
-      [pcsOpenWith F (layoutWordVars ((layoutWords shape).getD 0 [])) (rootOf r.roots.1)
-          [⟨p1, v1⟩] proof.c1,
-        pcsOpenWith F (layoutWordVars ((layoutWords shape).getD 1 [])) (rootOf r.roots.2)
-          [⟨p2, v2⟩] proof.c2,
-        pcsOpenWith F (layoutWordVars ((layoutWords shape).getD 2 [])) roots.bytecode
-          [⟨p3, v3⟩] proof.setup,
-        pcsOpenWith F (layoutWordVars ((layoutWords shape).getD 3 [])) roots.a0
-          [⟨mc.point, mc.a⟩] proof.a0,
-        pcsOpenWith F (layoutWordVars ((layoutWords shape).getD 4 [])) roots.b0
-          [⟨mc.point, mc.b⟩] proof.b0] true := by
-  have hc : (r.openings.map (·.1) == commitments) = true := by
-    rw [ho]
-    rfl
-  rw [restR, hc, ho]
-  simp only [List.forIn_cons, List.forIn_nil, stepR_point, bind_assoc, pure_bind,
-    seqAnd]
-  unfold matR
-  rw [hm]
-  rfl
 
 end Support
 
@@ -466,33 +289,4 @@ theorem sim_opsRun_nil {γ : Type} (view : UPf → FSt × List (RMsg E)) (π : U
 
 /-! ## The bridge -/
 
-section Bridge
-
-variable (D : Deployment) {κ : ℕ} (nV V : ℕ)
-
-/-- The claims of the opening of a layout word's variables, its one claim. -/
-theorem claims_uCl (k : ℕ) (pt : List E) (v : E) (hl : pt.length = wv D k) :
-    (uCl D k [⟨pt, v⟩]).claims = [(⟨pt, v⟩ : PcsQuotient.Claim)].map Bridge.claimTr :=
-  mkStmt_claims _ _ _ (by simp) fun c hc => by
-    rw [List.mem_singleton] at hc
-    subst hc
-    exact hl
-
-theorem wellFormed_of_good (r : Reduced) (p1 : List E) (v1 : E) (p2 : List E) (v2 : E)
-    (p3 : List E) (v3 : E) (mc : Flock.MatrixClaim)
-    (ho : r.openings = [(.c1, .point p1 v1 none), (.c2, .point p2 v2 none),
-      (.setup, .point p3 v3 none)]) (hm : r.matrices = some mc)
-    (l1 : p1.length = wv D 0) (l2 : p2.length = wv D 1) (l3 : p3.length = wv D 2)
-    (l4 : mc.point.length = wv D 3) (l5 : mc.point.length = wv D 4) : WellFormed D r := by
-  refine ⟨by rw [ho]; rfl, ?_, ?_, ?_, fun mc' hmc' => ?_⟩
-  · simp [claimsOf, ho, l1]
-  · simp [claimsOf, ho, l2]
-  · simp [claimsOf, ho, l3]
-  · rw [hm] at hmc'
-    cases hmc'
-    exact ⟨l4, l5⟩
-
-end Bridge
-
 end UniSound
-

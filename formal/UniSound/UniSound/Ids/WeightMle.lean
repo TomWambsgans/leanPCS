@@ -300,65 +300,6 @@ theorem mle_ring_none (L : StackLayout) (V : ℕ) (mp mp' : List E) :
 def SlotAt (y : List E) (tm : Term) : Prop :=
   tm.twist = 0 ∧ ((∀ j, tm.column ≠ .qflockSlot j) ∨ tm.point = y)
 
-theorem copyFold_Q (o r : ℕ) (columns : List String) (w y : List E) (lift gamma : E) :
-    ∀ (l : List ℕ) (s : Array Term × E),
-      ∀ tm ∈ (l.foldl (Eval.copyStep o r columns w y lift gamma) s).1.toList,
-        tm ∈ s.1.toList ∨ SlotAt y tm
-  | [], _, _, h => Or.inl h
-  | c :: l, s, tm, h => by
-    rw [List.foldl_cons] at h
-    rcases copyFold_Q o r columns w y lift gamma l _ tm h with h1 | h1
-    · unfold Eval.copyStep at h1
-      split at h1
-      · simp only [Array.toList_push, List.mem_append, List.mem_singleton] at h1
-        rcases h1 with (h1 | rfl) | rfl
-        · exact Or.inl h1
-        · exact Or.inr ⟨rfl, Or.inl fun j h ↦ by simp [term] at h⟩
-        · exact Or.inr ⟨rfl, Or.inr rfl⟩
-      · exact Or.inl h1
-    · exact Or.inr h1
-
-theorem crStep_Q (S : Shape) (gamma t : E) (w : List E) (s : E × Array Term × E × ℕ)
-    (x : Table × TablePart) :
-    ∀ tm ∈ (Eval.crStep S gamma t w s x).2.1.toList, tm ∈ s.2.1.toList ∨
-      SlotAt (coordinatesAt t (coordinateFunctionals (S.heights.getD opSha3 0))) tm := by
-  intro tm htm
-  unfold Eval.crStep at htm
-  dsimp only at htm
-  by_cases hj : x.1.opcode = opJump
-  · have hb : ¬ x.1.opcode = opSha3 := by rw [hj]; decide
-    simp only [ite_eq_left hj, ite_eq_right hb, Array.toList_push, List.mem_append,
-      List.mem_singleton] at htm
-    rcases htm with (h | rfl) | rfl
-    · exact Or.inl h
-    · exact Or.inr ⟨rfl, Or.inl fun j h ↦ by simp [term] at h⟩
-    · exact Or.inr ⟨rfl, Or.inl fun j h ↦ by simp [term] at h⟩
-  · by_cases hb : x.1.opcode = opSha3
-    · simp only [ite_eq_right hj, ite_eq_left hb] at htm
-      rcases copyFold_Q _ _ _ _ _ _ _ _ _ tm htm with h | h
-      · simp only [Array.toList_push, List.mem_append, List.mem_singleton] at h
-        rcases h with h | rfl
-        · exact Or.inl h
-        · exact Or.inr ⟨rfl, Or.inl fun j h ↦ by simp [term] at h⟩
-      · rw [hb] at h
-        exact Or.inr h
-    · simp only [ite_eq_right hj, ite_eq_right hb, Array.toList_push, List.mem_append,
-        List.mem_singleton] at htm
-      rcases htm with h | rfl
-      · exact Or.inl h
-      · exact Or.inr ⟨rfl, Or.inl fun j h ↦ by simp [term] at h⟩
-
-theorem crFold_Q (S : Shape) (gamma t : E) (w : List E) : ∀ (L : List (Table × TablePart))
-    (s : E × Array Term × E × ℕ), ∀ tm ∈ (L.foldl (Eval.crStep S gamma t w) s).2.1.toList,
-      tm ∈ s.2.1.toList ∨
-        SlotAt (coordinatesAt t (coordinateFunctionals (S.heights.getD opSha3 0))) tm
-  | [], _, _, h => Or.inl h
-  | x :: L, s, tm, h => by
-    rw [List.foldl_cons] at h
-    rcases crFold_Q S gamma t w L _ tm h with h1 | h1
-    · exact crStep_Q S gamma t w s x tm h1
-    · exact Or.inr h1
-
 theorem lineFold_Q (S : Shape) (gamma t : E) (w y : List E) : ∀ (l : List ((E × E) × ℕ))
     (s : E × Array Term × E), ∀ tm ∈ (l.foldl (Eval.lineStep S gamma t w) s).2.1.toList,
       tm ∈ s.2.1.toList ∨ SlotAt y tm
@@ -372,21 +313,6 @@ theorem lineFold_Q (S : Shape) (gamma t : E) (w y : List E) : ∀ (l : List ((E 
       · exact Or.inr ⟨rfl, Or.inl fun j h ↦ by simp [term] at h⟩
     · exact Or.inr h1
 
-/-- **The constraint relation's terms**: untwisted, and not a slot or at `y(t)` (the copies'
-slots). -/
-theorem crOf_Q (S : Shape) (parts : List TablePart) (pw : List E) (gamma t cv : E) (w : List E) :
-    ∀ tm ∈ (Eval.crOf S parts pw gamma t cv w).1.terms,
-      SlotAt (coordinatesAt t (coordinateFunctionals (S.heights.getD opSha3 0))) tm := by
-  intro tm htm
-  unfold Eval.crOf at htm
-  dsimp only at htm
-  rcases lineFold_Q S gamma t w (coordinatesAt t (coordinateFunctionals (S.heights.getD opSha3 0)))
-    _ _ tm htm with h | h
-  · rcases crFold_Q S gamma t w _ _ tm h with h' | h'
-    · simp at h'
-    · exact h'
-  · exact h
-
 /-! ## The combined claims -/
 
 theorem fst_mem_zipIdx {α : Type} : ∀ (l : List α) (n : ℕ) (x : α × ℕ), x ∈ l.zipIdx n → x.1 ∈ l
@@ -398,4 +324,3 @@ theorem fst_mem_zipIdx {α : Type} : ∀ (l : List α) (n : ℕ) (x : α × ℕ)
     · exact List.mem_cons_of_mem _ (fst_mem_zipIdx l (n + 1) x h)
 
 end UniSound.Ids.Multilin
-

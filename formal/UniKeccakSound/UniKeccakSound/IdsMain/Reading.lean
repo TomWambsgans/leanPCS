@@ -12,7 +12,7 @@ import UniKeccakSound.Ids.FlockEnd
   (`tablesKeccak`, the `SHA3` table's 86 included) and their `z_T`, the memory's four, the bytecode's final
   counts, `q_flock` (`h_SHA3 + 11` variables). By `limbs_new_single`: each is named once (`c1NamesK`, kernel).
 * **`c1AbsentK`**: a table's column past its width has no limbs.
-* **`setupLimbsK`**, **`setupAlignedK`**: the setup's two columns, as BLAKE2s's (the same columns).
+* **`setupLimbsK`**, **`setupAlignedK`**: the setup's two columns, one limb each, aligned.
 * **`tablesFactsK`**: the Keccak tables' flushes have as many pulls as pushes, tuples of at most `16` forms, every
   coefficient in `K` (`good_sha3`: the `SHA3` table's state step, bytecode read and `26` cell reads).
 -/
@@ -90,8 +90,9 @@ theorem c1LimbsK (S : Shape) : C1LimbsK S where
     rw [layoutOfK_c1, c1LayoutK_eq]
     exact limbs_new_single _ _ _ (c1ColsK_filter S _ c1NamesK_bytecodeFinal)
 
-theorem tablesKeccak_eq : tablesKeccak = [tables.getD 0 default, tables.getD 1 default, tables.getD 2 default,
-    tables.getD 3 default, tables.getD 4 default, ⟨opSha3, sha3Columns, flushesSha3⟩] := rfl
+theorem tablesKeccak_eq : tablesKeccak = [sharedTables.getD 0 default, sharedTables.getD 1 default,
+    sharedTables.getD 2 default, sharedTables.getD 3 default, sharedTables.getD 4 default,
+    ⟨opSha3, sha3Columns, flushesSha3⟩] := rfl
 
 /-- Every Keccak table is the one at its opcode. -/
 theorem tablesKeccak_getD_opcode : ∀ tab ∈ tablesKeccak, tablesKeccak.getD tab.opcode default = tab := by
@@ -136,11 +137,7 @@ theorem layoutOfK_setup (S : Shape) : layoutOfK S .setup = StackLayout.new (setu
 theorem setupLimbsK (S : Shape) :
     (∃ off, (layoutOfK S .setup).limbs .address = [(0, S.logMemory, off)]) ∧
       ∃ off, (layoutOfK S .setup).limbs .bytecodeTuple = [(0, S.logBytecode + 4, off)] := by
-  have h := setupLimbs S
-  unfold SetupLimbs at h
-  rw [layoutOf_setup] at h
-  rw [layoutOfK_setup]
-  exact h
+  refine ⟨?_, ?_⟩ <;> rw [layoutOfK_setup] <;> exact limbs_new_single _ _ _ (by simp [setupCols])
 
 theorem setupAlignedK (S : Shape) : LayoutAligned (layoutOfK S .setup) := by
   rw [layoutOfK_setup]; exact layoutAligned_new _

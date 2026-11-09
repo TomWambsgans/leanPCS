@@ -76,17 +76,6 @@ theorem rowsOfBytes_rowBytes (b : Array UInt8) : rowsOfBytes (rowBytes b) = rows
 
 /-! ## `C1`'s root and its variables -/
 
-/-- `C1`'s layout is the layouts' `C1` entry (it does not depend on `C2`'s columns). -/
-theorem c1Layout_eq (s : UniStatement.Shape) : c1Layout s = layoutOf (layoutsOf s) .c1 :=
-  rfl
-
-/-- **`C1`'s variables are its layout word's**, when fewer than `256` (the word carries a byte). -/
-theorem c1Layout_vars (D : Deployment) (h : (c1Layout D.shape).vars < 256) :
-    (c1Layout D.shape).vars = wv D 0 := by
-  rw [c1Layout_eq] at h ⊢
-  show _ = layoutWordVars ((layoutWords D.shape).getD (wordIndex .c1) [])
-  rw [layoutWords_word, layoutWordVars_layoutWord _ _ _ _ h]
-
 /-! ## The composed candidates -/
 
 /-- **A plain layout's table, read back as a stack, is the stack**: its `2^v` words, zero past
@@ -131,44 +120,7 @@ theorem mem_tableCode_cands {L : WhirBridge.Layout} {R : ℕ} {hw : Whir.Admissi
   obtain ⟨st, hst, rfl⟩ := List.mem_map.mp hc
   exact ⟨st, hst, rfl⟩
 
-/-- **What `C1`'s decoder lists**: under a root, the stacks mumbai's `decodeStacks` lists for the
-Merkle word, each read back (through the plain layout's table) as the stack itself. -/
-theorem mem_uniTc_zero {D : Deployment} (hs : UniShapes D) (H : Hist) (T : QuotientRpm.Table)
-    (r : Bytes32) (q : Stk) (hq : q ∈ (uniTc hs 0).commit.cands H T r) :
-    ∃ st ∈ LeanVM.Extraction.decodeStacks (wv D 0) logInvRate
-        (wordOfMerkle (rootHeight (wv D 0) logInvRate) (2 ^ WhirBridge.laneFold)
-          (merkleWord H T (rootHeight (wv D 0) logInvRate) leafBytes r)),
-      q = fun i => st.toArray.getD i 0 := by
-  have e : uniTc hs 0 = tableCode (shapeK hs 0 (by decide)).L (shapeK hs 0 (by decide)).R
-      (shapeK hs 0 (by decide)).adm rdTab := by
-    unfold uniTc
-    rw [ite_eq_left rfl]
-  rw [e] at hq
-  obtain ⟨st, hst, rfl⟩ := mem_tableCode_cands _ _ _ _ _ hq
-  exact ⟨st, hst, rdTab_tabOf_plain (wv D 0) (hs.lo 0 (by decide)) (hs.hi 0 (by decide)) st⟩
-
 /-! ## The Statement's extractor -/
-
-/-- **The Statement's `C1` word is mumbai's `committedLeaves`** on the setup's evaluations and the
-transcript's, under the root the stream names. -/
-theorem c1Word_eq_committed (D : Deployment) (setupEvals : List (List UInt8 × Digest))
-    (T : Common.OracleQueryLog) (proof : UniProof) :
-    c1Word D (PcsQuotient.Replay.preimageIn (PcsQuotient.Replay.preimageIndex
-        (setupEvals ++ PcsQuotient.Replay.transcriptEvaluations PcsQuotient.merkleLengths
-          (permutationQueries T)))) proof =
-      LeanVM.Extraction.leafAt (LeanVM.Extraction.committedLeaves
-        (lookupEvaluation (setupEvals ++ keccakEvaluationsOfTranscript (permutationQueries T)))
-        ((setupEvals ++ keccakEvaluationsOfTranscript (permutationQueries T)).map (·.1))
-        (c1RootOf proof) ((c1Layout D.shape).vars - 6 + 1) 64)
-        ((c1Layout D.shape).vars - 6 + 1) 64 := by
-  unfold c1Word
-  show LeanVM.Extraction.leafAt (PcsQuotient.Replay.leavesUnder _ 64 _ _) _ 64 =
-    LeanVM.Extraction.leafAt (LeanVM.Extraction.subtreeLeaves _ 64 _ _) _ 64
-  rw [← Soundness.Replay.leavesUnder_preimage]
-  congr 1
-  refine Soundness.Replay.leavesUnder_congr _ _ 64 (fun d' => ?_) (fun d' => ?_) _ _
-  · exact Soundness.Replay.preimage_merkle setupEvals _ d' 64 (by decide)
-  · exact Soundness.Replay.preimage_merkle setupEvals _ d' (8 * 64) (by decide)
 
 /-- A stack of one size, at another equal size, with the decoder's membership and any property of
 its reading. -/
@@ -183,4 +135,3 @@ theorem exists_stack_cast {μ ν R : ℕ} (h : μ = ν) (P : (ℕ → K) → Pro
 /-! ## The bridge -/
 
 end UniSound
-

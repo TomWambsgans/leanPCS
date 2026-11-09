@@ -72,23 +72,6 @@ theorem zBad_ne_zero (S : Shape) (h : BetaCantor) (hf : FunctionalsCorrect (S.he
       rw [Polynomial.eval_add, eval_yP_zero, eval_C, eval_zero, zero_add] at this
       exact hp this
 
-/-- **The constraint vectors from the constraint identity.** -/
-theorem cvec_of_wP (D : Deployment) (hr : C1Reading D) (h2 : 2 ≤ D.shape.heights.getD opSha3 0)
-    (c1 c2 : Stk) (s : USt) (γ p0 : E) (hfit : CountsFit D.shape s.2)
-    (hW : wP D.shape c1 c2 (publicWordsOf s.1.toList) γ p0 = 0) :
-    ∀ x < 2 ^ D.shape.constraintVars, powComb (cvecOf D c1 s x) γ = 0 := by
-  intro x hx
-  unfold wP at hW
-  have hin := (mul_eq_zero.mp hW).resolve_left (zBad_ne_zero D.shape hr.beta hr.functionals h2 p0)
-  have hx24 : x < 2 ^ 24 := lt_of_lt_of_le hx (Nat.pow_le_pow_right (by norm_num) hr.rW)
-  have he := congrArg (Polynomial.eval (pointE x)) hin
-  rw [Polynomial.eval_add, Polynomial.eval_mul, eval_digitP_pointE hr.beta _ hx24,
-    show x >>> D.shape.constraintVars = 0 by rw [Nat.shiftRight_eq_div_pow]; exact Nat.div_eq_of_lt hx,
-    pointE_zero, mul_zero, add_zero, eval_zero, eval_batched] at he
-  unfold cvecOf
-  rw [ite_eq_left hfit]
-  exact he
-
 /-! ## The tree and the root -/
 
 /-- The verifier's Cantor basis cut to `n ≤ 24` vectors. -/
@@ -108,62 +91,6 @@ theorem omega_cantorN (h : BetaCantor) (n : ℕ) (hn : n ≤ 24) {i : ℕ} (hi :
       simp
   rw [hz, add_zero]
   exact Finset.sum_congr rfl fun k _ ↦ rfl
-
-theorem c2P_eval_congr (S : Shape) (c2 : Stk) (col : Column) (P P' : ℕ → Polynomial E) (x y : E)
-    (h : ∀ l, (P l).eval x = (P' l).eval y) : (c2P S c2 col P).eval x = (c2P S c2 col P').eval y := by
-  unfold c2P
-  exact colPoly_eval_congr (layoutOf S .c2) (batchVars S) c2 col P P' x y h
-
-/-- The heap's values at the points. -/
-noncomputable def heapT (S : Shape) (c2 : Stk) (i : ℕ) : E := (c2P S c2 .heap digitP).eval (pointE i)
-
-/-- **The tree from its identity.** -/
-theorem tree_of_treeP (S : Shape) (c2 : Stk) (h : BetaCantor) (hh1 : 1 ≤ S.heap.h) (hh : S.heap.h ≤ 24)
-    (ht : treeP S c2 = 0) : Heap.TreeHolds S.heap.h (heapT S c2) := by
-  have hq : ∀ x : E, QuotientSecurity.sq x * ((c2P S c2 .heap digitP).eval (QuotientSecurity.sq x) +
-      (c2P S c2 .heap digitP).eval x * (c2P S c2 .heap digitP).eval (x + 1)) +
-      QuotientSecurity.sq^[S.heap.h] x * (c2P S c2 (.treeQuotient 0) digitP +
-        digitP S.heap.h * c2P S c2 (.treeQuotient 1) digitP).eval x = 0 := by
-    intro x
-    have := congrArg (Polynomial.eval x) ht
-    unfold treeP at this
-    simp only [Polynomial.eval_add, Polynomial.eval_mul, eval_zero] at this
-    rw [eval_digitP 1, eval_digitP S.heap.h,
-      c2P_eval_congr _ _ _ (fun l ↦ digitP (l + 1)) digitP x (QuotientSecurity.sq x)
-        (fun l ↦ (digitP_eval_sq l x).symm),
-      c2P_eval_congr _ _ _ (fun l ↦ if l = 0 then digitP 0 + 1 else digitP l) digitP x (x + 1)
-        (fun l ↦ (digitP_eval_add_one l x).symm)] at this
-    rw [Function.iterate_one] at this
-    rw [Polynomial.eval_add, Polynomial.eval_mul, eval_digitP]
-    exact this
-  have h1 := Heap.treeHolds_omega (cantorN h S.heap.h hh) hh1
-    (T := fun x ↦ (c2P S c2 .heap digitP).eval x)
-    (Heap.tree_of_quotient (cantorN h S.heap.h hh) (T := fun x ↦ (c2P S c2 .heap digitP).eval x)
-      (Q := fun x ↦ (c2P S c2 (.treeQuotient 0) digitP +
-        digitP S.heap.h * c2P S c2 (.treeQuotient 1) digitP).eval x)
-      (fun x _ ↦ hq x))
-  intro i hi2 hi
-  have hj1 : i >>> 1 < 2 ^ S.heap.h :=
-    lt_of_le_of_lt (by rw [Nat.shiftRight_eq_div_pow]; exact Nat.div_le_self _ _) hi
-  have hj2 : i ^^^ 1 < 2 ^ S.heap.h := Nat.xor_lt_two_pow hi (Nat.one_lt_two_pow (by omega))
-  have := h1 i hi2 hi
-  simp only at this
-  unfold heapT
-  rwa [omega_cantorN h _ hh hj1, omega_cantorN h _ hh hi, omega_cantorN h _ hh hj2] at this
-
-/-- **The root from its identity**: `T(1) fp(init) = fp(fin)`. -/
-theorem root_of_rootP (S : Shape) (c2 : Stk) (h : BetaCantor) (weights : Array E) (β : E)
-    (hr : rootP S c2 weights β = 0) : heapT S c2 1 * rootInit weights β = rootFin S weights β := by
-  have he := congrArg (Polynomial.eval 0) hr
-  unfold rootP at he
-  rw [Polynomial.eval_add, Polynomial.eval_mul, eval_C, eval_C, eval_zero,
-    c2P_eval_congr _ _ _ (fun l ↦ if l = 0 then (1 : Polynomial E) else 0) digitP 0 1
-      (fun l ↦ (digitP_eval_one l).symm)] at he
-  have hp1 : pointE 1 = 1 := by
-    rw [pointE_eq_omega h (by norm_num), Heap.omega_one (cantorE h) (by norm_num)]
-  unfold heapT
-  rw [hp1, mul_comm]
-  exact CharTwo.add_eq_zero.mp he
 
 /-! ## Fingerprints -/
 
@@ -186,19 +113,6 @@ theorem fp_initK (hE : EqKernelLagrange) (ch : List E) :
   rw [sum_fin16 (fun s ↦ (eqKernel (alphasOf ch)).getD s 0 * ofK (if s < 3 then 1 else 0))]
   simp (config := {decide := true}) only [Finset.sum_range_succ, Finset.sum_range_zero, zero_add,
     ite_true, ite_false, ofK_one, ofK_zero, mul_one, mul_zero, add_zero]
-  ring
-
-theorem fp_finK (hE : EqKernelLagrange) (hg : GpowInK) (D : Deployment) (ch : List E) :
-    Heap.fp (fun i ↦ ch.getD i.val 0) (ch.getD 4 0) (finK D) =
-      rootFin D.shape (eqKernel (alphasOf ch)) (betaOf ch) := by
-  rw [fp_eq hE]
-  unfold finK rootFin betaOf sepState
-  simp only [Vector.get_ofFn]
-  rw [sum_fin16 (fun s ↦ (eqKernel (alphasOf ch)).getD s 0 *
-    ofK (if s = 1 then toK (UniStatement.gpow (2 ^ D.shape.logBytecode - 1)) else if s < 3 then 1 else 0))]
-  simp (config := {decide := true}) only [Finset.sum_range_succ, Finset.sum_range_zero, zero_add,
-    ite_true, ite_false, ofK_one, ofK_zero, mul_one, mul_zero, add_zero]
-  rw [hg]
   ring
 
 end UniSound.Ids

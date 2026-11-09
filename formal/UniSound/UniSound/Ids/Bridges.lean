@@ -126,16 +126,6 @@ def FunctionalsCorrect (r : ℕ) : Prop :=
 def LayoutAligned (L : StackLayout) : Prop :=
   ∀ b ∈ L.blocks, 2 ^ b.2.2.1 ∣ b.2.2.2 ∧ b.2.2.2 + 2 ^ b.2.2.1 ≤ 2 ^ L.vars
 
-/-- **`C1`'s columns are one limb each**, at their tables' heights (the tables' columns and `z_T`),
-the memory's, the bytecode's, `q_flock`'s `h_B + 8`. -/
-def C1Limbs (S : Shape) : Prop :=
-  (∀ o < 6, ∀ i < (tables.getD o default).width, ∃ off,
-      (layoutOf S .c1).limbs (.table o i) = [(0, S.heights.getD o 0, off)]) ∧
-    (∀ o < 6, ∃ off, (layoutOf S .c1).limbs (.inverse o) = [(0, S.heights.getD o 0, off)]) ∧
-    (∀ k < 4, ∃ off, (layoutOf S .c1).limbs (.memory k) = [(0, S.logMemory, off)]) ∧
-    (∃ off, (layoutOf S .c1).limbs .bytecodeFinal = [(0, S.logBytecode, off)]) ∧
-    (∃ off, (layoutOf S .c1).limbs .qflock = [(0, S.heights.getD opSha3 0 + 8, off)])
-
 /-- **The setup's two columns are one limb each.** -/
 def SetupLimbs (S : Shape) : Prop :=
   (∃ off, (layoutOf S .setup).limbs .address = [(0, S.logMemory, off)]) ∧
@@ -162,26 +152,6 @@ def BasisValueInv : Prop :=
 
 /-! ## Lv42 -/
 
-/-- **The constraints on `C1`'s rows, pointwise** (what the constraint quotient's identity gives on the
-domain): `JUMP`'s two, the counters' inverse, the limb copies, the public lines. -/
-structure RowConstraints (D : Deployment) (c : Stk) (s : USt) : Prop where
-  jump : ∀ x < 2 ^ D.shape.heights.getD opJump 0,
-    c1Val D c (.table opJump (colIdx jumpColumns "b")) (D.shape.heights.getD opJump 0) x +
-        c1Val D c (.table opJump (colIdx jumpColumns "v_cond")) (D.shape.heights.getD opJump 0) x *
-          c1Val D c (.table opJump (colIdx jumpColumns "w")) (D.shape.heights.getD opJump 0) x = 0 ∧
-      c1Val D c (.table opJump (colIdx jumpColumns "v_cond")) (D.shape.heights.getD opJump 0) x *
-          (c1Val D c (.table opJump (colIdx jumpColumns "b")) (D.shape.heights.getD opJump 0) x + 1) = 0
-  counters : ∀ o < 6, ∀ x < 2 ^ D.shape.heights.getD o 0,
-    c1Val D c (.inverse o) (D.shape.heights.getD o 0) x *
-      ((tables.getD o default).countColumns.map fun j ↦
-        c1Val D c (.table o j) (D.shape.heights.getD o 0) x).prod = 1
-  copies : ∀ x < 2 ^ D.shape.heights.getD opSha3 0, ∀ col slot,
-    qflockSlot (blake2sColumns.getD col "") = some slot →
-      c1Val D c (.table opSha3 col) (D.shape.heights.getD opSha3 0) x = c (qfOff D + slot + 256 * x)
-  lines : ∀ k < 3,
-    c1Val D c (.memory k) D.shape.logMemory 0 = toK ((linesOf (publicWordsOf s.1.toList)).getD k (0, 0)).1 ∧
-      c1Val D c (.memory k) D.shape.logMemory 1 = toK ((linesOf (publicWordsOf s.1.toList)).getD k (0, 0)).2
-
 /-! ## Small facts of the verifier's definitions -/
 
 /-- **The fixed cosets** (F1b): `Z_act(ω_k)`, read off the count's bits, vanishes exactly on the active
@@ -199,12 +169,5 @@ def EqKernelLagrange : Prop :=
 
 /-- **`g^n` is in `K`.** -/
 def GpowInK : Prop := ∀ n, ofK (toK (UniStatement.gpow n)) = UniStatement.gpow n
-
-/-- **The tables' flushes**: as many pulls as pushes, tuples of at most `16` forms, every coefficient
-in `K`. -/
-def TablesFacts : Prop :=
-  ∀ tab ∈ tables, tab.flushes.pull.length = tab.flushes.push.length ∧
-    ∀ tup ∈ tab.flushes.pull ++ tab.flushes.push, tup.length ≤ 16 ∧
-      ∀ f ∈ tup, ∀ mc ∈ f, ofK (toK mc.2) = mc.2
 
 end UniSound.Ids

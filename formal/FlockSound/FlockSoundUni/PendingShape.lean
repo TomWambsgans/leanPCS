@@ -16,20 +16,3 @@ the row and column points have at most `3` and `8` coordinates, and the slices a
 interface, the code-level link and the last link in place.
 -/
 
-namespace FlockSound.Uni
-
-open UniSound UniStatement LeanVM.Parameters
-open scoped ENNReal
-
-theorem pending_new_shaped (z α rLc : E) (rowLow chiIn chiInPrime slices : List E)
-    (hrl : rowLow.length ≤ 3) (hci : chiIn.length ≤ 8) (hsl : slices.length = 64) :
-    Pending.Shaped (Flock.Pending.new (some z) rowLow chiIn chiInPrime α rLc (some slices)) ∧
-      (Flock.Pending.new (some z) rowLow chiIn chiInPrime α rLc (some slices)).hasSlices = true ∧
-      (Flock.Pending.new (some z) rowLow chiIn chiInPrime α rLc (some slices)).rounds ≤ 15 := by
-  simp only [Pending.Shaped, Flock.Pending.new, Flock.rowLowWeights, Flock.Pending.rounds,
-    Flock.Pending.hasSlices, Flock.packing, Option.getD_some, Option.isSome_some, lagrangeWeights_length,
-    List.length_append, matrixVars, blake2sR1csLogSize]
-  exact ⟨⟨fun _ => trivial, Or.inl (by rw [hsl]; rfl), by omega⟩, trivial, by omega⟩
-
-end FlockSound.Uni
-

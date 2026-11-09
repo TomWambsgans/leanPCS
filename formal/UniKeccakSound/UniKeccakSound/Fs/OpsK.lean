@@ -10,12 +10,12 @@ import UniKeccakSound.Fs.Whir23
 (round `nF + 1`'s), opened by the computable decoder (`uniTcK`, `tableCode` of their shapes, the candidates read back
 as stacks, `rdTab`), and the setup's stack `F` at the setup's root, each a plain layout (`plainL v`: one chunk of
 `2^v` words, `PCS_OPEN`'s layout) at its Keccak layout word's variables (`wvK`, `layoutWordsK`), opened at
-`plainShapeK` (`Whir23.lean`: `2^23 ..= 2^28` words). No `A0`, `B0` openings.
+`plainShapeK` (`Whir23.lean`: `2^23 ..= 2^28` words).
 
 * **The proof the chain reads is `UniSound.UPf`** (the input, a `UniProof`, the transcript's IV, the setup's roots):
-  a Keccak proof is a `UniProof` whose `A0`, `B0` opening proofs are never read (`upOf`, `kpOf`: `kpOf ⟨…, upOf p, …⟩
-  = p` by `rfl`), so the chain's statement and messages (`uView`, `uDone`) and every lemma about them are
-  `UniSound`'s, at the main line's rounds (`uniRounds`); the tail is three scalars (`uTailK`, as π1-rec3's `uTail3`).
+  a Keccak proof is a `UniProof` (`upOf`, `kpOf`: `kpOf ⟨…, upOf p, …⟩ = p` by `rfl`), so the chain's statement
+  and messages (`uView`, `uDone`) and every lemma about them are `UniSound`'s, at the main line's rounds
+  (`uniRounds`); the tail is three scalars (`uTailK`, as π1-rec3's `uTail3`).
 * **`UniShapesK`**: the three layout words name `23 … 28` variables, `C1`'s and `C2`'s at least `24` (their roots'
   lists at most `largeList ≤ 9952`, the chain's list term).
 * **The check** (`uniCheckK`): the transcript completes the rounds, every value the chain program requires zero is,
@@ -36,9 +36,8 @@ attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
 
 /-! ## The Keccak proof as the chain reads it -/
 
-/-- **A Keccak proof as a `UniProof`**: the stream and the three opening proofs; `A0`'s and `B0`'s slots hold the
-setup's proof (never read). -/
-def upOf (p : KeccakProof) : UniProof := ⟨p.stream, p.c1, p.c2, p.setup, p.setup, p.setup⟩
+/-- **A Keccak proof as a `UniProof`**: the stream and the three opening proofs. -/
+def upOf (p : KeccakProof) : UniProof := ⟨p.stream, p.c1, p.c2, p.setup⟩
 
 /-- **The Keccak proof a `UniProof` carries**: its stream and its first three opening proofs. -/
 def kpOf (π : UPf) : KeccakProof := ⟨π.proof.stream, π.proof.c1, π.proof.c2, π.proof.setup⟩

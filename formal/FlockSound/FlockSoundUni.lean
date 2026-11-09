@@ -57,14 +57,6 @@ import FlockSoundUni.Transcription
 #guard_msgs in
 #print axioms FlockSound.Uni.readRounds_fit
 
-/-- info: 'FlockSound.Uni.flock_link' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms FlockSound.Uni.flock_link
-
-/-- info: 'FlockSound.Uni.flockProg_root' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms FlockSound.Uni.flockProg_root
-
 /-- info: 'FlockSound.Uni.zcBad_congr' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms FlockSound.Uni.zcBad_congr

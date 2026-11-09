@@ -582,7 +582,6 @@ def cfA : List (List ℕ) :=
     [1858076378458151939, 1858076378458151938, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1858076378458151939, 1858076378458151938],
     [1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1]]
 
-
 section Kernel
 
 set_option maxRecDepth 100000
@@ -900,28 +899,11 @@ theorem limbs_new_single (cols : List (Column × ℕ × Bool)) (col : Column) (v
 `C1`'s column list (`layouts`) names each column once, whatever the shape: its names (`c1Names`) do not
 depend on the shape, and the kernel checks that each of `C1Limbs`'s columns occurs once among them. -/
 
-/-- `C1`'s columns at a shape (`layouts`'s `c1`). -/
-def c1Cols (S : Shape) : List (Column × ℕ × Bool) :=
-  [(.qflock, S.heights.getD opSha3 0 + 8, false)] ++
-    tables.flatMap (fun t ↦
-      (List.range t.width).map (fun c ↦ (Column.table t.opcode c, S.heights.getD t.opcode 0, false)) ++
-        [(.inverse t.opcode, S.heights.getD t.opcode 0, false)]) ++
-    (List.range 4).map (fun k ↦ (Column.memory k, S.logMemory, false)) ++
-    [(.bytecodeFinal, S.logBytecode, false)]
-
 /-- The setup's columns at a shape (`layouts`'s `setup`). -/
 def setupCols (S : Shape) : List (Column × ℕ × Bool) :=
   [(.bytecodeTuple, S.logBytecode + 4, false), (.address, S.logMemory, false)]
 
-theorem layoutOf_c1 (S : Shape) : layoutOf S .c1 = StackLayout.new (c1Cols S) := rfl
-
 theorem layoutOf_setup (S : Shape) : layoutOf S .setup = StackLayout.new (setupCols S) := rfl
-
-/-- `C1`'s column names (no shape). -/
-def c1Names : List Column :=
-  [.qflock] ++ tables.flatMap (fun t ↦
-      (List.range t.width).map (fun c ↦ Column.table t.opcode c) ++ [.inverse t.opcode]) ++
-    (List.range 4).map Column.memory ++ [.bytecodeFinal]
 
 /-- A `C1` column's variables at a shape. -/
 def c1Vars (S : Shape) : Column → ℕ
@@ -931,50 +913,6 @@ def c1Vars (S : Shape) : Column → ℕ
   | .memory _ => S.logMemory
   | .bytecodeFinal => S.logBytecode
   | _ => 0
-
-theorem c1Cols_eq (S : Shape) : c1Cols S = c1Names.map fun c ↦ (c, c1Vars S c, false) := by
-  simp only [c1Cols, c1Names, List.map_append, List.map_flatMap, List.map_cons, List.map_nil,
-    List.map_map]
-  rfl
-
-/-- A column named once in `C1`'s list is listed once, at its variables. -/
-theorem c1Cols_filter (S : Shape) (col : Column) (h : c1Names.filter (· == col) = [col]) :
-    (c1Cols S).filter (fun x ↦ x.1 == col) = [(col, c1Vars S col, false)] := by
-  rw [c1Cols_eq, List.filter_map]
-  have e : ((fun x : Column × ℕ × Bool ↦ x.1 == col) ∘ fun c ↦ (c, c1Vars S c, false)) = (· == col) := rfl
-  rw [e, h]
-  rfl
-
-section Kernel
-
-set_option maxRecDepth 100000
-
-theorem c1Names_table : ∀ o < 6, ∀ i < (tables.getD o default).width,
-    c1Names.filter (· == Column.table o i) = [.table o i] := by decide +kernel
-
-theorem c1Names_inverse : ∀ o < 6, c1Names.filter (· == Column.inverse o) = [.inverse o] := by
-  decide +kernel
-
-theorem c1Names_memory : ∀ k < 4, c1Names.filter (· == Column.memory k) = [.memory k] := by
-  decide +kernel
-
-theorem c1Names_bytecodeFinal : c1Names.filter (· == Column.bytecodeFinal) = [.bytecodeFinal] := by
-  decide +kernel
-
-theorem c1Names_qflock : c1Names.filter (· == Column.qflock) = [.qflock] := by decide +kernel
-
-end Kernel
-
-/-- **`C1`'s columns are one limb each**, at every shape. -/
-theorem c1Limbs (S : Shape) : C1Limbs S := by
-  refine ⟨fun o ho i hi ↦ ?_, fun o ho ↦ ?_, fun k hk ↦ ?_, ?_, ?_⟩ <;> rw [layoutOf_c1]
-  · exact limbs_new_single _ _ _ (c1Cols_filter S _ (c1Names_table o ho i hi))
-  · exact limbs_new_single _ _ _ (c1Cols_filter S _ (c1Names_inverse o ho))
-  · exact limbs_new_single _ _ _ (c1Cols_filter S _ (c1Names_memory k hk))
-  · exact limbs_new_single _ _ _ (c1Cols_filter S _ c1Names_bytecodeFinal)
-  · exact limbs_new_single _ _ _ (c1Cols_filter S _ c1Names_qflock)
-
-theorem c1Limbs_reference : C1Limbs reference := c1Limbs reference
 
 /-- **The setup's two columns are one limb each**, at every shape. -/
 theorem setupLimbs (S : Shape) : SetupLimbs S := by
@@ -1318,7 +1256,6 @@ theorem basisValueInv : BasisValueInv := by
 
 end UniSound.Ids
 
-
 /-! ## Axioms -/
 
 /-- info: 'UniSound.Ids.betaCantor' depends on axioms: [propext, Classical.choice, Quot.sound] -/
@@ -1344,14 +1281,6 @@ end UniSound.Ids
 /-- info: 'UniSound.Ids.limbs_new_single' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms UniSound.Ids.limbs_new_single
-
-/-- info: 'UniSound.Ids.c1Limbs' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms UniSound.Ids.c1Limbs
-
-/-- info: 'UniSound.Ids.c1Limbs_reference' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms UniSound.Ids.c1Limbs_reference
 
 /-- info: 'UniSound.Ids.setupLimbs' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in

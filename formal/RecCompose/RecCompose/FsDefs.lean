@@ -26,8 +26,8 @@ deployment's circuit (`cc = Data.circuit`: `2^24` positions, rows of `16`, the r
   `26`, `23` variables at the reference shape, `UniKeccakSound.plainShapeK`; nothing concluded of them: `p2Stk =
   none`), π2's `W` (round `0`, plain `2^24`), the setup (`κ`, `κ + σ`,
   `2^25` words, its stack read off the proof's roots: `p2Stk`), `Q` (round `1`, `2^28` words, two claims);
-* **the setup** (`p2Setup`): π1's one tree (the Keccak setup stack's, `UniKeccakSound.setupK1`; `A0`, `B0` the
-  deployment's constants), then π2's tree of the circuit's setup table at π1's contract IV of those roots;
+* **the setup** (`p2Setup`): π1's one tree (the Keccak setup stack's, `UniKeccakSound.setupK1`), then π2's tree of the
+  circuit's setup table at π1's contract IV of its root;
 * **the composed verifier** (`p2Ver`): π2's IV (the circuit's digest, three Keccak-256 calls, then the IV's), then
   the chain and the six openings; the IV moved into the adversary (`p2IvAdv`);
 * **the protocol** (`liftPiop2`): a protocol on `pi2K` (`Pi2FsLayer`'s) on the chain's statement, `stOf`.
@@ -204,8 +204,8 @@ def liftPiop2 (R : Compose.Piop pi2K Stk) : Compose.Piop pi2Spec.K Stk where
 
 /-! ## The proof the chain reads -/
 
-/-- **The composed setup's output**: π1's three roots (`F`, `A0`, `B0`) and π2's setup root. -/
-abbrev SOut : Type := (Bytes32 × Bytes32 × Bytes32) × Bytes32
+/-- **The composed setup's output**: π1's setup root `F` and π2's setup root. -/
+abbrev SOut : Type := Bytes32 × Bytes32
 
 /-- The setup's roots of the composed setup's output. -/
 def rootsOfOut (s : SOut) : RecSetupRoots := ⟨UniSound.rootsOfS s.1, ofB s.2⟩
@@ -368,15 +368,11 @@ noncomputable def p2Stk (D : RecDeployment) (o : WhirOp P2Pf E Stk) : Option (P2
 /-- The plain shape of `2^25` words, on which the setup's tree is built (its height and leaves are `shS`'s). -/
 @[reducible] noncomputable def sh25 : WhirShape := UniSound.plainShape 25 (by norm_num) (by norm_num)
 
-/-- **π1's setup's output**: its tree's root, with the deployment's `A0`, `B0` constants (`KDeployment.setupRoots`). -/
-def pi1Out (D : RecDeployment) (r : Bytes32) : Bytes32 × Bytes32 × Bytes32 :=
-  (r, toB D.pi1.a0Root, toB D.pi1.b0Root)
-
-/-- **The composed setup**: π1's one tree (the Keccak setup stack's, `UniKeccakSound.uSetupK`; `A0`, `B0` the
-deployment's constants), then π2's, of the setup's table at π1's contract IV of those roots. -/
+/-- **The composed setup**: π1's one tree (the Keccak setup stack's, `UniKeccakSound.uSetupK`), then π2's, of the
+setup's table at π1's contract IV of its root. -/
 noncomputable def p2Setup (D : RecDeployment) (hs : UniKeccakSound.UniShapesK D.pi1) : OracleComp KeccakCalls SOut :=
   UniKeccakSound.setupK1 hs (UniKeccakSound.colFK D.pi1) >>= fun r =>
-    stackSetupS sh25 (setupCol D ⟨UniSound.rootsOfS (pi1Out D r), default⟩) >>= fun r2 => pure (pi1Out D r, r2)
+    stackSetupS sh25 (setupCol D ⟨UniSound.rootsOfS r, default⟩) >>= fun r2 => pure (r, r2)
 
 /-! ## π2's IV, the composed verifier -/
 
@@ -462,7 +458,7 @@ def P2BreaksRel (D : RecDeployment) (P : RecSetupRoots → Pi2St → Stk → Pro
 
 /-- The setup's roots as bytes. -/
 def rootsB2 (t : RecSetupTrees) : SOut :=
-  ((toB t.pi1.root, toB t.a0Root, toB t.b0Root), toB t.pi2.root)
+  (toB t.pi1.root, toB t.pi2.root)
 
 /-- The setup's Keccak-256 evaluations as a transcript. -/
 def setupTr2 (t : RecSetupTrees) : Transcript := t.evaluations.map fun e => (e.1, toB e.2)

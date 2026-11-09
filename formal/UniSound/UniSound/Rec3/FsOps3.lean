@@ -76,21 +76,6 @@ theorem root_rec3Rounds (fr : List RoundSpec) (hfr : ∀ r ∈ fr, r.root = fals
 
 /-! ## The verifier's openings -/
 
-section Ops
-
-variable (D : Deployment) {κ : ℕ} (nV np : ℕ)
-
-/-- **The result is π1-rec3's shape**: one opening per commitment, in order, its point claims of its layout
-word's variables, and no matrices' claim. -/
-def WellFormed3 (r : Reduced) : Prop :=
-  r.openings.map Prod.fst = commitments ∧
-    (∀ c ∈ claimsOf r .c1, c.point.length = wv D 0) ∧
-    (∀ c ∈ claimsOf r .c2, c.point.length = wv D 1) ∧
-    (∀ c ∈ claimsOf r .setup, c.point.length = wv D 2) ∧
-    r.matrices = none
-
-end Ops
-
 end UniSound
 
 /-- info: 'UniSound.root_rec3Rounds' depends on axioms: [propext, Classical.choice, Quot.sound] -/

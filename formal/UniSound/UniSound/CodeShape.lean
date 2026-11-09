@@ -60,28 +60,6 @@ def cdStep (shape : Shape) (d : ℕ) (table : Table) : ℕ :=
   let d := max d (degree ((n - 1) * (1 + table.countColumns.length)) n)
   if table.opcode = opSha3 then max d (degree (r * (n / 2)) n) else d
 
-theorem constraintDegree_eq (shape : Shape) :
-    shape.constraintDegree = max (tables.foldl (cdStep shape) 0) (degree (2 ^ shape.logMemory) 3) :=
-  rfl
-
-/-- **The constraint quotient's degree is the shape's**, for parts of every table. -/
-theorem constraintRelation_snd (shape : Shape) (parts : List TablePart) (pw : List E) (g t cv : E)
-    (w : List E) (h : tables.length ≤ parts.length) :
-    (constraintRelation shape parts pw g t cv w).2 = shape.constraintDegree := by
-  unfold constraintRelation
-  simp only [Id.run_bind, Id.run_pure]
-  rw [constraintDegree_eq]
-  refine (congrArg (fun d => max d (degree (2 ^ shape.logMemory) 3))
-    (forIn_id_proj (fun s : E × Array Term × E × ℕ => s.2.2.2) (fun d x => cdStep shape d x.1) _ ?_
-      _ _)).trans ?_
-  · intro x s
-    have hjb : opJump ≠ opSha3 := by decide
-    have hbj : opSha3 ≠ opJump := by decide
-    by_cases h1 : x.1.opcode = opJump <;> by_cases h2 : x.1.opcode = opSha3 <;>
-      simp only [h1, h2, ite_true, ite_false] <;>
-      exact ⟨_, rfl, by simp [cdStep, h1, h2, hjb, hbj]⟩
-  · simp only [foldl_zip_fst _ _ _ _ h]
-
 /-! ## The leaf quotients' columns -/
 
 /-- A heap block's leaf quotient's degree in the run (`heapRelations`), from the tables' parts. -/
@@ -225,71 +203,12 @@ theorem foldl_append_map {α β : Type} (f : α → β) :
   | [], c => by simp
   | x :: l, c => by rw [List.foldl_cons, foldl_append_map f l, List.map_cons, List.append_assoc]; rfl
 
-/-- **The tables' parts have the tables' degrees**, whatever the values. -/
-theorem tables_parts_degrees (heights : List ℕ) (weights : Array E) (beta : E) (w vs : List E) :
-    (consumeFold tableReads (tablesStep heights weights beta w) tables (#[], #[]) vs).2.toList.map
-        (fun p => (p.pullDegree, p.pushDegree)) = tables.map tableDegrees := by
-  rw [consumeFold_proj tableReads (tablesStep heights weights beta w)
-    (fun s : Array Relation × Array TablePart => s.2.toList.map fun p => (p.pullDegree, p.pushDegree))
-    (fun c table => c ++ [tableDegrees table]) ?_ tables (#[], #[]) vs]
-  · rw [foldl_append_map]
-    rfl
-  · intro x s vs
-    simp only [tablesStep, Array.toList_push, List.map_append, List.map_cons, List.map_nil,
-      tablePartPure_degrees]
-
-theorem leafDegreeRun_eq (parts : List TablePart)
-    (hparts : parts.map (fun p => (p.pullDegree, p.pushDegree)) = tables.map tableDegrees) (b : Block)
-    (hb : ∀ t, b.leaves = .table t → t < tables.length) : leafDegreeRun parts b = Shape.leafDegree b := by
-  unfold leafDegreeRun Shape.leafDegree
-  cases hl : b.leaves with
-  | unused => rfl
-  | memory => rfl
-  | bytecode => rfl
-  | table t =>
-    have ht := hb t hl
-    have hlen : parts.length = tables.length := by
-      simpa using congrArg List.length hparts
-    have h1 := congrArg (fun l => l.getD t (0, 0)) hparts
-    simp only [List.getD_eq_getElem?_getD, List.getElem?_map] at h1
-    rw [List.getElem?_eq_getElem (by omega), List.getElem?_eq_getElem ht] at h1
-    simp only [Option.map_some, Option.getD_some] at h1
-    simp only [List.getD_eq_getElem?_getD, List.getElem?_eq_getElem (by omega : t < parts.length),
-      List.getElem?_eq_getElem ht, Option.getD_some]
-    rw [← h1]
-
 theorem flatMap_congr_mem {α β : Type} (f g : α → List β) :
     ∀ (l : List α), (∀ x ∈ l, f x = g x) → l.flatMap f = l.flatMap g
   | [], _ => rfl
   | x :: l, h => by
     rw [List.flatMap_cons, List.flatMap_cons, h x (List.mem_cons_self ..),
       flatMap_congr_mem f g l (fun y hy => h y (List.mem_cons_of_mem _ hy))]
-
-/-- **`C2`'s columns in the run are the shape's.** -/
-theorem c2Columns_run (shape : Shape) (hlen : shape.heights.length = tables.length)
-    (parts : List TablePart)
-    (hparts : parts.map (fun p => (p.pullDegree, p.pushDegree)) = tables.map tableDegrees)
-    (active pw : List E) (g t cv : E) (weights : Array E) (beta hv mp mpu bp bpu : E) (w : List E) :
-    [(Column.heap, shape.heap.h, true), (Column.treeQuotient 0, shape.heap.h, true),
-        (Column.treeQuotient 1, 0, true)] ++
-      List.map (fun x => (Column.constraintQuotient x.2, x.1, true))
-        ((chunks ((constraintRelation shape parts pw g t cv w).2 + 1)).zip
-          (List.range (chunks ((constraintRelation shape parts pw g t cv w).2 + 1)).length)) ++
-      (heapRelations shape active parts weights beta hv cv mp mpu bp bpu w
-        (chunks ((constraintRelation shape parts pw g t cv w).2 + 1))).2 = shape.c2Columns := by
-  have hpl : tables.length ≤ parts.length := by
-    have := congrArg List.length hparts
-    simp at this
-    omega
-  rw [constraintRelation_snd _ _ _ _ _ _ _ hpl, heapRelations_snd]
-  unfold Shape.c2Columns
-  congr 1
-  refine flatMap_congr_mem _ _ _ fun x hx => ?_
-  have hb := List.of_mem_zip hx
-  rw [leafDegreeRun_eq parts hparts x.1 (fun t ht => by
-    have := heap_blocks_tables shape.logMemory shape.logBytecode shape.heights x.1 hb.1 t ht
-    omega)]
-  rfl
 
 /-! ## Every commitment has a relation -/
 

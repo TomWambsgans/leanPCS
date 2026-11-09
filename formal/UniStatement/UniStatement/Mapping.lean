@@ -56,9 +56,6 @@ def subsetSums (r : ℕ) (d : Array K) : Array K :=
 /-- **The basis-`B` coefficients** of the column of values `v` on `V_r`. -/
 def bCoefficients (r : ℕ) (v : Array K) : Array K := subsetSums r (PcsQuotient.Domain.coefficients r 0 v)
 
-/-- `C1`'s layout at a shape (`layouts`; it does not depend on `C2`'s columns). -/
-def c1Layout (shape : UniStatement.Shape) : StackLayout := ((layouts shape []).lookup .c1).getD default
-
 /-- The setup's layout at a shape (`setupStackColumns`: it does not depend on the tables). -/
 def setupLayout (shape : UniStatement.Shape) : StackLayout := StackLayout.new (setupStackColumns shape)
 

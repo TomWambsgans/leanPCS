@@ -104,57 +104,6 @@ theorem sum_deg_below (pt : ℕ → Polynomial E) (v r : ℕ)
 theorem digit_le (l : ℕ) : (digitP l).natDegree ≤ 2 ^ (l + 0) := by
   rw [add_zero]; exact natDegree_digitP l
 
-/-- **A `C1` column** at the digits: below `2^v`, `v` its variables. -/
-theorem ndeg_c1P (S : Shape) (c : Stk) (col : Column) : (c1P S c col).natDegree ≤ 2 ^ c1Vars S col := by
-  unfold c1P
-  refine ndeg_colPoly _ _ _ _ _ _ fun b hb ↦ ?_
-  rw [(c1_limbs S col b hb).1, ← add_zero (c1Vars S col)]
-  exact sum_deg_pow digitP _ 0 fun l _ ↦ digit_le l
-
-/-- **A `C2` column** at a point of coordinates of degree at most `2^(l+s)`. -/
-theorem ndeg_c2P (S : Shape) (c2 : Stk) (col : Column) (pt : ℕ → Polynomial E) (s : ℕ)
-    (h : ∀ l, (pt l).natDegree ≤ 2 ^ (l + s)) :
-    (c2P S c2 col pt).natDegree ≤ 2 ^ (c2Vars S col + s) := by
-  unfold c2P
-  refine ndeg_colPoly _ _ _ _ _ _ fun b hb ↦ ?_
-  rw [(c2_limbs S col b hb).1]
-  exact sum_deg_pow pt _ s fun l _ ↦ h l
-
-theorem ndeg_c2P_digits (S : Shape) (c2 : Stk) (col : Column) :
-    (c2P S c2 col digitP).natDegree ≤ 2 ^ c2Vars S col := by
-  simpa using ndeg_c2P S c2 col digitP 0 digit_le
-
-/-- **The restriction `R_b`**: `T` at the block's mixed point, below `2^r`. -/
-theorem ndeg_restr (S : Shape) (c2 : Stk) (b : Block) : (c2P S c2 .heap (mixP b)).natDegree ≤ 2 ^ b.r := by
-  unfold c2P
-  refine ndeg_colPoly _ _ _ _ _ _ fun bl _ ↦ sum_deg_below _ _ _ fun l _ ↦ ?_
-  unfold mixP
-  split_ifs
-  · exact ndeg_add (natDegree_digitP l) (ndeg_C _ _)
-  · simp
-
-/-- The setup's addresses at the digits. -/
-theorem ndeg_suP_address (S : Shape) (st : Stk) : (suP S st .address digitP).natDegree ≤ 2 ^ S.logMemory := by
-  unfold suP
-  refine ndeg_colPoly _ _ _ _ _ _ fun b hb ↦ ?_
-  rw [(setup_limbs S .address b hb).2.1 rfl, ← add_zero S.logMemory]
-  exact sum_deg_pow digitP _ 0 fun l _ ↦ digit_le l
-
-/-- The setup's bytecode tuples at `(α, w)`: below `2^lb`. -/
-theorem ndeg_suP_tuple (S : Shape) (st : Stk) (alphas : List E) :
-    (suP S st .bytecodeTuple (fun l ↦ if l < 4 then C (alphas.getD l 0) else digitP (l - 4))).natDegree ≤
-      2 ^ S.logBytecode := by
-  unfold suP
-  refine ndeg_colPoly _ _ _ _ _ _ fun b hb ↦ ?_
-  rw [(setup_limbs S .bytecodeTuple b hb).1 rfl,
-    show S.logBytecode + 4 = 4 + S.logBytecode from add_comm _ _, Finset.sum_range_add]
-  have h1 : ∑ x ∈ range 4, (if x < 4 then C (alphas.getD x 0) else digitP (x - 4)).natDegree = 0 :=
-    Finset.sum_eq_zero fun x hx ↦ by rw [ite_eq_left (mem_range.mp hx), natDegree_C]
-  rw [h1, zero_add]
-  refine (Finset.sum_le_sum fun l _ ↦ ?_).trans (sum_two_pow_lt _).le
-  rw [ite_eq_right (show ¬ 4 + l < 4 by omega), show 4 + l - 4 = l by omega]
-  exact natDegree_digitP l
-
 /-- A coordinate functional `y_l = Σ_m a_{l,m} X^(2^m)`. -/
 theorem ndeg_yP (a : Array (Array K)) (l : ℕ) : (yP a l).natDegree ≤ 2 ^ (a.size - 1) := by
   unfold yP
@@ -162,25 +111,6 @@ theorem ndeg_yP (a : Array (Array K)) (l : ℕ) : (yP a l).natDegree ≤ 2 ^ (a.
   obtain ⟨m, hm, rfl⟩ := List.mem_map.mp hp
   rw [List.mem_range] at hm
   exact ndeg_Cmul ((natDegree_X_pow_le _).trans (Nat.pow_le_pow_right (by norm_num) (by omega)))
-
-/-- **`q_flock`'s slot at `y(X)`**: at most `h_B 2^(h_B − 1)`. -/
-theorem ndeg_slotP (S : Shape) (c : Stk) (slot : ℕ) :
-    (slotP S c slot).natDegree ≤ S.heights.getD opSha3 0 * 2 ^ (S.heights.getD opSha3 0 - 1) := by
-  unfold slotP
-  refine ndeg_colPoly _ _ _ _ _ _ fun b hb ↦ ?_
-  rw [(c1_limbs S .qflock b hb).1]
-  show ∑ l ∈ range (S.heights.getD opSha3 0 + 8), _ ≤ _
-  rw [show S.heights.getD opSha3 0 + 8 = 8 + S.heights.getD opSha3 0 from add_comm _ _,
-    Finset.sum_range_add]
-  have h1 : ∑ x ∈ range 8, (if x < 8 then C (bitE slot x)
-      else yP (coordinateFunctionals (S.heights.getD opSha3 0)) (x - 8)).natDegree = 0 :=
-    Finset.sum_eq_zero fun x hx ↦ by rw [ite_eq_left (mem_range.mp hx), natDegree_C]
-  rw [h1, zero_add]
-  refine (Finset.sum_le_sum (g := fun _ ↦ 2 ^ (S.heights.getD opSha3 0 - 1)) fun l _ ↦ ?_).trans
-    (by simp)
-  rw [ite_eq_right (show ¬ 8 + l < 8 by omega)]
-  have := ndeg_yP (coordinateFunctionals (S.heights.getD opSha3 0)) (8 + l - 8)
-  rwa [coordinateFunctionals_size] at this
 
 /-! ## Lifts, `Z_act`, `Z_bad` -/
 
@@ -328,43 +258,7 @@ def pushL : List ℕ := [8, 8, 4, 8, 9, 20]
 /-- The tables' opcodes and counters' numbers. -/
 def ocL : List (ℕ × ℕ) := [(0, 4), (1, 4), (2, 2), (3, 4), (4, 4), (5, 10)]
 
-set_option maxRecDepth 100000 in
-theorem tables_pullDeg : tables.map pullDeg = pullL := by decide +kernel
-
-set_option maxRecDepth 100000 in
-theorem tables_pushDeg : tables.map pushDeg = pushL := by decide +kernel
-
-set_option maxRecDepth 100000 in
-theorem tables_oc : tables.map (fun tab ↦ (tab.opcode, tab.countColumns.length)) = ocL := by
-  decide +kernel
-
-theorem pullDeg_getD (t : ℕ) : pullDeg (tables.getD t default) = pullL.getD t 0 := by
-  rw [← tables_pullDeg, List.getD_eq_getElem?_getD, List.getD_eq_getElem?_getD, List.getElem?_map]
-  cases tables[t]? <;> rfl
-
-theorem pushDeg_getD (t : ℕ) : pushDeg (tables.getD t default) = pushL.getD t 0 := by
-  rw [← tables_pushDeg, List.getD_eq_getElem?_getD, List.getD_eq_getElem?_getD, List.getElem?_map]
-  cases tables[t]? <;> rfl
-
-theorem mem_ocL {tab : Table} (h : tab ∈ tables) : (tab.opcode, tab.countColumns.length) ∈ ocL := by
-  rw [← tables_oc]
-  exact List.mem_map.mpr ⟨tab, h, rfl⟩
-
 /-! ## Quotients and their chunks -/
-
-/-- **A quotient from its chunks**: at most `Σ_c 2^(e_c)`. -/
-theorem ndeg_quotP (S : Shape) (c2 : Stk) : ∀ (column : ℕ → Column) (sizes : List ℕ),
-    (∀ c < sizes.length, (c2P S c2 (column c) digitP).natDegree ≤ 2 ^ sizes.getD c 0) →
-    (quotP S c2 column sizes).natDegree ≤ (sizes.map (2 ^ ·)).sum
-  | _, [], _ => by simp [quotP]
-  | column, e :: rest, h => by
-    rw [quotP_cons]
-    have h0 := h 0 (by simp)
-    have ih := ndeg_quotP S c2 (fun c ↦ column (c + 1)) rest
-      (fun c hc ↦ by simpa using h (c + 1) (by simp; omega))
-    simp only [List.getD_cons_zero] at h0
-    rw [List.map_cons, List.sum_cons]
-    exact ndeg_add (h0.trans (Nat.le_add_right _ _)) (ndeg_mul (natDegree_digitP e) ih le_rfl)
 
 /-- `chunks`' potential: `4 Σ 2^e + β(k) · left`, `β = 5, 6, 8, 8, …` after `k` chunks. -/
 def cβ : ℕ → ℕ
@@ -462,23 +356,6 @@ theorem cdStep_le (S : Shape) (B d : ℕ) (tab : Table) (hd : d ≤ B)
   unfold UniStatement.degree
   split_ifs <;> simp only [max_le_iff] <;> omega
 
-theorem constraintDegree_le (S : Shape) : S.constraintDegree ≤ cdB S := by
-  have key : ∀ (L : List Table), (∀ tab ∈ L, tab ∈ tables) → ∀ d ≤ (ocL.map (cdOf S)).foldr max 0,
-      L.foldl (cdStep S) d ≤ (ocL.map (cdOf S)).foldr max 0 := by
-    intro L
-    induction L with
-    | nil => intro _ d hd; exact hd
-    | cons tab L ih =>
-      intro hL d hd
-      rw [List.foldl_cons]
-      have htab : tab ∈ tables := hL tab (List.mem_cons_self ..)
-      have hc : cdOf S (tab.opcode, tab.countColumns.length) ≤ (ocL.map (cdOf S)).foldr max 0 :=
-        le_foldr_max (List.mem_map.mpr ⟨_, mem_ocL htab, rfl⟩)
-      exact ih (fun t ht ↦ hL t (List.mem_cons_of_mem _ ht)) _ (cdStep_le S _ d tab hd hc)
-  unfold Shape.constraintDegree cdB
-  dsimp only
-  exact max_le_max (key tables (fun _ h ↦ h) 0 (Nat.zero_le _)) (Nat.sub_le _ _)
-
 /-! ## The constraints' degrees -/
 
 /-- A table's bound on its constraints' `W_i`: `2^r (1 + max(1, counts))`. -/
@@ -489,120 +366,15 @@ def wMax (S : Shape) : ℕ :=
   max (2 ^ S.logMemory) (max (S.heights.getD opSha3 0 * 2 ^ (S.heights.getD opSha3 0 - 1))
     ((ocL.map (wOf S)).foldr max 0))
 
-theorem wOf_le (S : Shape) {tab : Table} (h : tab ∈ tables) :
-    wOf S (tab.opcode, tab.countColumns.length) ≤ wMax S :=
-  (le_foldr_max (List.mem_map.mpr ⟨_, mem_ocL h, rfl⟩)).trans ((le_max_right _ _).trans (le_max_right _ _))
-
-/-- **Each constraint `(M_i, W_i)`**: `deg M_i + deg W_i ≤ 2^(r_W) + wMax`. -/
-theorem ndeg_constraints (S : Shape) (c1 : Stk) (pw : List E) :
-    ∀ mw ∈ constraintsP S c1 pw, mw.1.natDegree + mw.2.natDegree ≤ 2 ^ S.constraintVars + wMax S := by
-  intro mw hmw
-  unfold constraintsP at hmw
-  rcases List.mem_append.mp hmw with hmw | hmw
-  · obtain ⟨tab, htab, hmw⟩ := List.mem_flatMap.mp hmw
-    have hw := wOf_le S htab
-    unfold wOf at hw
-    dsimp only at hw
-    have hcol : ∀ i, (c1P S c1 (.table tab.opcode i)).natDegree ≤ 2 ^ S.heights.getD tab.opcode 0 :=
-      fun i ↦ ndeg_c1P S c1 _
-    have hinv : (c1P S c1 (.inverse tab.opcode)).natDegree ≤ 2 ^ S.heights.getD tab.opcode 0 :=
-      ndeg_c1P S c1 _
-    have hlift := ndeg_liftP (S.heights.getD tab.opcode 0) S.constraintVars
-    generalize hH : 2 ^ S.heights.getD tab.opcode 0 = H at hcol hinv hw
-    have hm1 : H ≤ H * max 1 tab.countColumns.length :=
-      Nat.le_mul_of_pos_right _ (lt_of_lt_of_le Nat.one_pos (le_max_left _ _))
-    have hm2 : H * (1 + max 1 tab.countColumns.length) = H + H * max 1 tab.countColumns.length := by ring
-    have hm3 : tab.countColumns.length * H ≤ H * max 1 tab.countColumns.length := by
-      rw [mul_comm]; exact Nat.mul_le_mul_left _ (le_max_right _ _)
-    unfold tableConstraintsP at hmw
-    dsimp only at hmw
-    simp only [List.mem_append, List.mem_cons, List.not_mem_nil, or_false] at hmw
-    rcases hmw with ((hmw | rfl) | hmw)
-    · split_ifs at hmw
-      · simp only [List.mem_cons, List.not_mem_nil, or_false] at hmw
-        rcases hmw with rfl | rfl
-        · refine Nat.add_le_add hlift ?_
-          exact ndeg_add ((hcol _).trans (by omega)) (ndeg_mul (hcol _) (hcol _) (by omega))
-        · refine Nat.add_le_add hlift ?_
-          exact ndeg_mul (hcol _) (ndeg_add (hcol _) ((natDegree_one).le.trans (Nat.zero_le _)))
-            (by omega)
-      · simp at hmw
-    · refine Nat.add_le_add hlift ?_
-      have hprod : ((tab.countColumns.map fun c ↦ c1P S c1 (.table tab.opcode c)).prod).natDegree ≤
-          tab.countColumns.length * H := by
-        refine (ndeg_listProd _).trans ?_
-        rw [List.map_map]
-        refine (sum_le_of (k := H) fun x hx ↦ ?_).trans (le_of_eq (by rw [List.length_map]))
-        obtain ⟨c, _, rfl⟩ := List.mem_map.mp hx
-        exact hcol c
-      exact ndeg_add (ndeg_mul hinv hprod (by omega)) (by simp)
-    · split_ifs at hmw
-      · obtain ⟨c, _, hc⟩ := List.mem_filterMap.mp hmw
-        obtain ⟨slot, _, rfl⟩ := Option.map_eq_some_iff.mp hc
-        refine Nat.add_le_add hlift (ndeg_add ((hcol c).trans ?_) ((ndeg_slotP S c1 slot).trans ?_))
-        · omega
-        · unfold wMax
-          exact (le_max_left _ _).trans (le_max_right _ _)
-      · simp at hmw
-  · unfold linesP at hmw
-    obtain ⟨lk, _, rfl⟩ := List.mem_map.mp hmw
-    refine Nat.add_le_add (ndeg_liftP 1 _) ?_
-    have hm : (c1P S c1 (.memory lk.2)).natDegree ≤ 2 ^ S.logMemory := ndeg_c1P S c1 _
-    have h1 : (1 : ℕ) ≤ 2 ^ S.logMemory := Nat.one_le_two_pow
-    refine (ndeg_add (ndeg_add hm (ndeg_C _ _)) (ndeg_mul natDegree_X_le (natDegree_C _).le
-      (by omega))).trans (le_max_left _ _)
-
 /-- **The constraint quotient's identity `Z_bad (Σ γ^i M_i W_i + Q_W w_{r_W})`.** -/
 def wB (S : Shape) : ℕ :=
   2 * 2 ^ (S.heights.getD opSha3 0 - 1) +
     max (2 ^ S.constraintVars + wMax S) (chB (cdB S + 1) + 2 ^ S.constraintVars)
 
-theorem ndeg_wP (S : Shape) (c1 c2 : Stk) (pw : List E) (gamma p0 : E) :
-    (wP S c1 c2 pw gamma p0).natDegree ≤ wB S := by
-  unfold wP wB
-  refine ndeg_mul (ndeg_zBad S p0) (ndeg_add ?_ ?_) le_rfl
-  · refine ndeg_listSum _ _ fun p hp ↦ ?_
-    obtain ⟨⟨mw, i⟩, hmw, rfl⟩ := List.mem_map.mp hp
-    have := ndeg_constraints S c1 pw mw (List.of_mem_zip hmw).1
-    exact (ndeg_mul (ndeg_Cmul le_rfl) le_rfl this).trans (le_max_left _ _)
-  · refine (ndeg_mul ((ndeg_quotP S c2 _ _ fun c _ ↦ ndeg_c2P_digits S c2 _).trans
-      ((chunks_le_chB _).trans (chB_mono (Nat.add_le_add_right (constraintDegree_le S) 1))))
-      (natDegree_digitP _) le_rfl).trans (le_max_right _ _)
-
 /-! ## The tree and the root -/
 
 /-- **The tree's identity**: at most `2^(h+1) + 2`. -/
 def treeB (S : Shape) : ℕ := 2 ^ (S.heap.h + 1) + 2
-
-theorem ndeg_treeP (S : Shape) (c2 : Stk) : (treeP S c2).natDegree ≤ treeB S := by
-  unfold treeP treeB
-  have hA : (c2P S c2 .heap (fun l ↦ digitP (l + 1))).natDegree ≤ 2 ^ (S.heap.h + 1) :=
-    ndeg_c2P S c2 .heap _ 1 fun l ↦ natDegree_digitP (l + 1)
-  have hB : (c2P S c2 .heap digitP).natDegree ≤ 2 ^ S.heap.h := ndeg_c2P_digits S c2 .heap
-  have hB2 : (c2P S c2 .heap (fun l ↦ if l = 0 then digitP 0 + 1 else digitP l)).natDegree ≤
-      2 ^ S.heap.h := by
-    exact ndeg_c2P S c2 .heap (fun l ↦ if l = 0 then digitP 0 + 1 else digitP l) 0 fun l ↦ by
-      split_ifs with h
-      · subst h; exact digit_one_le 0
-      · exact digit_le l
-  have hQ0 : (c2P S c2 (.treeQuotient 0) digitP).natDegree ≤ 2 ^ S.heap.h :=
-    ndeg_c2P_digits S c2 (.treeQuotient 0)
-  have hQ1 : (c2P S c2 (.treeQuotient 1) digitP).natDegree ≤ 2 ^ 0 :=
-    ndeg_c2P_digits S c2 (.treeQuotient 1)
-  rw [pow_zero] at hQ1
-  have h1 : (digitP 1).natDegree ≤ 2 := natDegree_digitP 1
-  have hh := natDegree_digitP S.heap.h
-  rw [pow_succ] at hA ⊢
-  exact ndeg_add (ndeg_mul h1 (ndeg_add hA (ndeg_mul hB hB2 (by omega))) (by omega))
-    (ndeg_mul hh (ndeg_add (hQ0.trans (Nat.le_succ _)) (ndeg_mul hh hQ1 le_rfl)) (by omega))
-
-theorem ndeg_rootP (S : Shape) (c2 : Stk) (weights : Array E) (beta : E) :
-    (rootP S c2 weights beta).natDegree ≤ 0 := by
-  unfold rootP
-  refine ndeg_add (ndeg_Cmul ?_) (ndeg_C _ _)
-  unfold c2P
-  refine ndeg_colPoly _ _ _ _ _ _ fun _ _ ↦ (Finset.sum_eq_zero fun l _ ↦ ?_).le
-  split_ifs <;> simp
 
 /-! ## The heap blocks' leaves -/
 
@@ -625,103 +397,6 @@ def blockB (S : Shape) (b : Block) : ℕ :=
   | .bytecode => memB b.r S.logBytecode
   | .table t => tabB b.r (pullL.getD t 0) (pushL.getD t 0)
 
-theorem ndeg_memPullP (S : Shape) (c1 setup : Stk) (weights : Array E) (beta : E) :
-    (memPullP S c1 setup weights beta).natDegree ≤ 2 ^ S.logMemory := by
-  unfold memPullP
-  have hm : ∀ k, (c1P S c1 (.memory k)).natDegree ≤ 2 ^ S.logMemory := fun k ↦ ndeg_c1P S c1 (.memory k)
-  refine ndeg_add (ndeg_add (ndeg_add (ndeg_add (ndeg_C _ _) (ndeg_C _ _))
-    (ndeg_Cmul (ndeg_suP_address S setup))) (ndeg_Cmul (hm 3))) (ndeg_listSum _ _ fun p hp ↦ ?_)
-  obtain ⟨k, _, rfl⟩ := List.mem_map.mp hp
-  exact ndeg_Cmul (hm k)
-
-theorem ndeg_bcPullP (S : Shape) (c1 setup : Stk) (alphas : List E) (weights : Array E) (beta : E) :
-    (bcPullP S c1 setup alphas weights beta).natDegree ≤ 2 ^ S.logBytecode := by
-  unfold bcPullP
-  exact ndeg_add (ndeg_add (ndeg_C _ _) (ndeg_suP_tuple S setup alphas))
-    (ndeg_Cmul (ndeg_c1P S c1 .bytecodeFinal))
-
-/-- A leaf quotient's chunks, at the block's leaf degree. -/
-theorem ndeg_leafQ (S : Shape) (c2 : Stk) (b : Block) (i d : ℕ) (hbi : S.heap.blocks.getD i default = b)
-    (hd : Shape.leafDegree b = some d) :
-    (quotP S c2 (Column.leafQuotient i) (chunks (d + 1))).natDegree ≤ chB (d + 1) := by
-  refine (ndeg_quotP S c2 _ _ fun c _ ↦ ?_).trans (chunks_le_chB _)
-  have hv : c2Vars S (.leafQuotient i c) = (chunks (d + 1)).getD c 0 := by
-    simp only [c2Vars, hbi, hd]
-  rw [← hv]
-  exact ndeg_c2P_digits S c2 _
-
-/-- **A heap block's leaf identity**: at most `blockB`. -/
-theorem ndeg_blockP (S : Shape) (hH : HeapGood S) (c1 c2 setup : Stk) (rows : List ℕ) (alphas : List E)
-    (beta : E) (b : Block) (i : ℕ) (hb : b ∈ S.heap.blocks) (hbi : S.heap.blocks.getD i default = b) :
-    (blockP S c1 c2 setup rows alphas beta b i).natDegree ≤ blockB S b := by
-  have hblk := hH.2.2.2.2.2 b hb
-  have hR := ndeg_restr S c2 b
-  have hw := natDegree_digitP b.r
-  unfold blockP blockB
-  rcases hlv : b.leaves with _ | _ | t | _ <;> rw [hlv] at hblk <;> dsimp only
-  · -- The memory's block.
-    have hd : Shape.leafDegree b = some (UniStatement.degree (2 * (2 ^ b.r - 1)) (2 ^ b.r)) := by
-      unfold Shape.leafDegree; rw [hlv]
-    have hq := ndeg_leafQ S c2 b i _ hbi hd
-    have hp := ndeg_memPullP S c1 setup (eqKernel alphas) beta
-    unfold memB
-    refine ndeg_add (ndeg_add (ndeg_mul hR hp (le_max_left _ _)) (ndeg_mul hq hw (le_max_right _ _)))
-      (ndeg_add (hp.trans ?_) (ndeg_Cmul (ndeg_add (by simp) ((ndeg_c1P S c1 (.memory 3)).trans ?_))))
-    · exact (Nat.le_add_left _ _).trans (le_max_left _ _)
-    · exact (Nat.le_add_left _ _).trans (le_max_left _ _)
-  · -- The bytecode's block.
-    have hd : Shape.leafDegree b = some (UniStatement.degree (2 * (2 ^ b.r - 1)) (2 ^ b.r)) := by
-      unfold Shape.leafDegree; rw [hlv]
-    have hq := ndeg_leafQ S c2 b i _ hbi hd
-    have hp := ndeg_bcPullP S c1 setup alphas (eqKernel alphas) beta
-    unfold memB
-    refine ndeg_add (ndeg_add (ndeg_mul hR hp (le_max_left _ _)) (ndeg_mul hq hw (le_max_right _ _)))
-      (ndeg_add (hp.trans ?_) (ndeg_Cmul (ndeg_add (by simp) ((ndeg_c1P S c1 .bytecodeFinal).trans ?_))))
-    · exact (Nat.le_add_left _ _).trans (le_max_left _ _)
-    · exact (Nat.le_add_left _ _).trans (le_max_left _ _)
-  · -- A table's block.
-    obtain ⟨ht, hr⟩ := hblk
-    have hop := tables_opcode t ht
-    have hd : Shape.leafDegree b = some (UniStatement.degree (max (tableDegrees (tables.getD t default)).1
-        (tableDegrees (tables.getD t default)).2 * (2 ^ b.r - 1) + (2 ^ b.r - Shape.leastRows b.r))
-        (2 ^ b.r)) := by
-      unfold Shape.leafDegree; rw [hlv]
-    have hq := ndeg_leafQ S c2 b i _ hbi hd
-    obtain ⟨hpd, hppd⟩ := tableDegrees_le' (tables.getD t default)
-    rw [pullDeg_getD] at hpd
-    rw [pushDeg_getD] at hppd
-    have hq' : (quotP S c2 (Column.leafQuotient i) (chunks (UniStatement.degree (max
-        (tableDegrees (tables.getD t default)).1 (tableDegrees (tables.getD t default)).2 * (2 ^ b.r - 1) +
-          (2 ^ b.r - Shape.leastRows b.r)) (2 ^ b.r) + 1))).natDegree ≤
-        chB (UniStatement.degree (max (1 + pullL.getD t 0) (pushL.getD t 0) * (2 ^ b.r - 1) +
-          (2 ^ b.r - Shape.leastRows b.r)) (2 ^ b.r) + 1) := by
-      refine hq.trans (chB_mono (Nat.add_le_add_right (Nat.sub_le_sub_right (Nat.add_le_add_right
-        (Nat.mul_le_mul_right _ (max_le_max hpd hppd)) _) _) _))
-    have hcol : ∀ c, (c1P S c1 (.table (tables.getD t default).opcode c)).natDegree ≤ 2 ^ b.r := fun c ↦ by
-      rw [hop, hr]
-      exact ndeg_c1P S c1 _
-    have hpull := ndeg_pullP (tables.getD t default) (eqKernel alphas) beta _ _ hcol
-    have hpush := ndeg_pushP (tables.getD t default) (eqKernel alphas) beta _ _ hcol
-    rw [pullDeg_getD] at hpull
-    rw [pushDeg_getD] at hpush
-    have hZ := ndeg_zActP ((List.range (b.r + 1)).map fun j ↦ intBits (rows.getD t 0) j 1) b.r
-    have hZ2 : (zActP ((List.range (b.r + 1)).map fun j ↦ intBits (rows.getD t 0) j 1) b.r ^ 2).natDegree ≤
-        2 ^ (b.r + 2) := by
-      refine natDegree_pow_le.trans ?_
-      have e : 2 ^ (b.r + 2) = 2 ^ (b.r + 1) * 2 := by ring
-      rw [e]
-      omega
-    unfold tabB
-    refine ndeg_add (ndeg_add (ndeg_add ?_ ?_) ?_) ?_
-    · exact ndeg_mul hR (ndeg_add (ndeg_mul hpull hw le_rfl |>.trans (le_max_left _ _))
-        (hZ2.trans (le_max_right _ _))) (le_max_left _ _)
-    · exact ndeg_mul hq' (ndeg_mul hw hZ le_rfl) ((le_max_left _ _).trans (le_max_right _ _))
-    · exact (ndeg_mul hpush hw le_rfl).trans
-        ((le_max_left _ _).trans ((le_max_right _ _).trans (le_max_right _ _)))
-    · exact hZ2.trans ((le_max_right _ _).trans ((le_max_right _ _).trans (le_max_right _ _)))
-  · -- An unused block.
-    exact ndeg_add hR ((natDegree_one).le.trans (Nat.zero_le _))
-
 /-! ## The identities' degrees -/
 
 theorem treeB_reference : treeB reference = 2 ^ 24 + 2 := by
@@ -740,4 +415,3 @@ theorem refBound :
   norm_num [max_def]
 
 end UniSound.Ids
-

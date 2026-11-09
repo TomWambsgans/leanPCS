@@ -92,7 +92,7 @@ def KDeployment.HonestRelation (F : KeccakVm.KeccakFlockSpec) (D : KDeployment) 
 /-! ### The setup -/
 
 /-- The setup's roots the verifier holds: the setup stack's commitment (`F`). -/
-def KDeployment.setupRoots (D : KDeployment) (tree : LeanVM.Prover.Tree) : SetupRoots :=
+def KDeployment.setupRoots (_D : KDeployment) (tree : LeanVM.Prover.Tree) : SetupRoots :=
   ⟨tree.root⟩
 
 section With

@@ -332,38 +332,7 @@ theorem good_jump : Good flushesJump := by
     (by formk)).memoryCols (formK_prod _ _ 0) _ _).memoryCols (formK_prod _ _ 0) _ _).memoryCols
     (formK_prod _ _ 0) _ _)
 
-theorem good_blake2s : Good flushesBlake2s := by
-  unfold flushesBlake2s
-  dsimp only
-  refine good_foldl _ (fun f x hf ↦ ?_) _
-    ((good_empty.stateStep _ _).bytecode _ _ _ (by simp) (allK_map _ fun _ ↦ formK_col _ 0))
-  obtain ⟨_, _, _⟩ := x
-  exact hf.memoryCols (formK_prod _ _ _) _ _
-
 end UniSound.Ids.Facts
-
-namespace UniSound.Ids
-
-open LeanVM.Parameters UniStatement Facts
-
-/-- **The tables' flushes** (`TablesFacts`): as many pulls as pushes, tuples of at most `16` forms,
-every coefficient in `K`. -/
-theorem tablesFacts : TablesFacts := by
-  have key : ∀ tab ∈ tables, Good tab.flushes := by
-    intro tab htab
-    simp only [tables, List.mem_cons, List.not_mem_nil, or_false] at htab
-    rcases htab with rfl | rfl | rfl | rfl | rfl | rfl
-    · exact good_arith _ _
-    · exact good_arith _ _
-    · exact good_set
-    · exact good_deref
-    · exact good_jump
-    · exact good_blake2s
-  intro tab htab
-  obtain ⟨hlen, htup⟩ := key tab htab
-  exact ⟨hlen, fun tup h ↦ ⟨(htup tup h).1, fun f hf mc hmc ↦ ((htup tup h).2 f hf mc hmc).ofK_toK⟩⟩
-
-end UniSound.Ids
 
 namespace UniSound.Ids.Facts
 
@@ -984,10 +953,6 @@ end UniSound.Ids
 /-- info: 'UniSound.Ids.gpowInK' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms UniSound.Ids.gpowInK
-
-/-- info: 'UniSound.Ids.tablesFacts' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms UniSound.Ids.tablesFacts
 
 /-- info: 'UniSound.Ids.zActZero' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
