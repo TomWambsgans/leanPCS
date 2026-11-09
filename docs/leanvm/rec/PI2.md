@@ -70,7 +70,8 @@ Since then (2026-11-09, the same box, `tests/pi2_bench.rs`, median of 5, load 10
 `Q`'s table and commit 0.074; openings `W` 0.010, `Q` 0.081, setup 0.013), peak 9.9 GB: `Q` and `W` keep their
 codewords until their openings (+1.8 GB in the pipeline), `Q`'s stack is the setup's from one proof to the next, the
 transforms are `quotient::ntt`'s multi-column ones, and the copy sum is checked as `h`'s top coefficient. End to end,
-the pipeline takes 0.69 s a proof (π2's proof 0.195 s, its openings 0.106 s; `KECCAK.md`).
+the pipeline took 0.69 s a proof (π2's proof 0.195 s, its openings 0.106 s); with `PCS_OPEN` version 3 (§8) its openings
+take 0.051 s and the pipeline 0.59 s (`KECCAK.md`).
 
 **`PCS_OPEN` version 3** (§8: WHIR's deeper levels on the recursion's ladder; 2026-11-09, the same box, interleaved
 against the version-2 build, load 14–42 from other jobs): π2's openings 0.100 → 0.048 s in their quiet passes (`W`

@@ -129,7 +129,9 @@ its openings 0.70 s; what depends on the circuit only (π1's setup roots, π2's 
 calldata has more zero bytes.
 
 **On an AMD EPYC 9355P** (Zen 5, 32 cores / 64 threads, 2026-11-09, `tests/pipeline.rs`, medians of 5 warm passes,
-three interleaved runs, load 4–19): **0.69 s a proof**, against 2.18 s at the start of that work (3.1×): π1-rec3's
+three interleaved runs). At the end of that work, with `PCS_OPEN` version 3 and π1's batched quotients (load 14–21):
+**0.59 s a proof**, against 2.16 s at its start (3.7×): π1-rec3's proof and openings 0.34 s, π2's proof 0.195 s, its
+openings 0.051 s, peak RSS 12.6 GB. Before version 3 and the batched quotients (load 4–19): **0.69 s a proof**, against 2.18 s at the start of that work (3.1×): π1-rec3's
 proof and openings 0.39 s (1.47 s, with π2's compile on the critical path), π2's witness 7 ms replayed while π1's
 openings run (0.62 s compiled), π2's proof 0.195 s (0.54 s), its openings 0.106 s (0.16 s); per circuit 1.7 s once
 (π2's circuit and witness plan 1.15 s); peak RSS 13.8 GB (12.65 GB). Without the π2v2 protocol change (the same proofs
