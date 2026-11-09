@@ -2158,6 +2158,108 @@ pub fn subset_sums_many<M: Copy + Send + Sync + Add<Output = M> + Default>(jobs:
     }
 }
 
+/// What [`filled_column`] writes in a block.
+#[derive(Clone, Copy, Debug)]
+pub enum Fill<'a> {
+    /// The `B` coefficients of these novel ones (at most the block's length, zero past their end):
+    /// [`subset_sums_from`].
+    Sums(&'a [F64]),
+    /// These words as they are (the block's length).
+    Words(&'a [F64]),
+    /// These 64-bit words as field words (the block's length).
+    Raw(&'a [u64]),
+}
+
+/// A new column of `len` words: each job's block (`offset`, `2^k` words) holding its [`Fill`], every other word zero;
+/// the blocks disjoint. As zeros then [`subset_sums_many`] and copies, but each word written once, not zeroed first:
+/// the blocks' low variables (and the copies, and the zeros between and after the blocks) in one dispatch, then the
+/// longer blocks' upper variables. A prover's stack of columns (620 MB for π1's C1 at the reference shape: its
+/// zeroing pass took the workers 2.9 ms).
+pub fn filled_column(len: usize, jobs: &[(usize, usize, Fill<'_>)]) -> Vec<F64> {
+    /// Words a copy or a zeroing task takes.
+    const RUN: usize = 1 << 16;
+    #[derive(Clone, Copy)]
+    enum Task {
+        /// Block `b` (of `2^leaf`) of job `k`'s subset sums.
+        Sums { k: usize, b: usize, leaf: usize },
+        /// Words `at..at + n` of job `k`, copied.
+        Copy { k: usize, at: usize, n: usize },
+        /// Words `at..at + n` of the column, zero.
+        Zero { at: usize, n: usize },
+    }
+    let mut order: Vec<usize> = (0..jobs.len()).collect();
+    order.sort_by_key(|&k| jobs[k].0);
+    let mut list: Vec<Task> = Vec::new();
+    let zeros = |list: &mut Vec<Task>, from: usize, to: usize| {
+        list.extend((from..to).step_by(RUN).map(|at| Task::Zero { at, n: RUN.min(to - at) }));
+    };
+    let mut cursor = 0;
+    for &k in &order {
+        let (offset, n, fill) = jobs[k];
+        assert!(n.is_power_of_two() && offset >= cursor && offset + n <= len, "disjoint blocks in the column");
+        zeros(&mut list, cursor, offset);
+        let copies = |list: &mut Vec<Task>| list.extend((0..n).step_by(RUN).map(|at| Task::Copy { k, at, n: RUN.min(n - at) }));
+        match fill {
+            Fill::Sums(src) => {
+                assert!(src.len() <= n);
+                let leaf = subset_leaf::<F64>(n.trailing_zeros() as usize);
+                list.extend((0..n >> leaf).map(|b| Task::Sums { k, b, leaf }));
+            }
+            Fill::Words(src) => {
+                assert_eq!(src.len(), n);
+                copies(&mut list);
+            }
+            Fill::Raw(src) => {
+                assert_eq!(src.len(), n);
+                copies(&mut list);
+            }
+        }
+        cursor = offset + n;
+    }
+    zeros(&mut list, cursor, len);
+    // SAFETY: the tasks tile the column (every block, every word between and after them), each word written below
+    // before any is read.
+    let mut out = unsafe { unwritten(len) };
+    let base = SendPtr(out.as_mut_ptr());
+    tasks(list.len(), false, |t| match list[t] {
+        Task::Sums { k, b, leaf } => {
+            let (offset, _, fill) = jobs[k];
+            let Fill::Sums(src) = fill else { unreachable!("a sums job") };
+            // SAFETY: task `t` alone writes these words of job `k`'s block.
+            subset_block(unsafe { base.slice(offset + (b << leaf), 1 << leaf) }, b, leaf, Some(src));
+        }
+        Task::Copy { k, at, n } => {
+            let (offset, _, fill) = jobs[k];
+            // SAFETY: as above.
+            let dst = unsafe { base.slice(offset + at, n) };
+            match fill {
+                Fill::Words(src) => dst.copy_from_slice(&src[at..at + n]),
+                Fill::Raw(src) => dst.iter_mut().zip(&src[at..at + n]).for_each(|(d, &x)| *d = F64(x)),
+                Fill::Sums(_) => unreachable!("a copy job"),
+            }
+        }
+        // SAFETY: as above.
+        Task::Zero { at, n } => unsafe { base.slice(at, n) }.fill(F64::ZERO),
+    });
+    // The longer blocks' upper variables, the blocks of one length together.
+    let mut lengths: Vec<usize> = jobs.iter().filter(|j| matches!(j.2, Fill::Sums(_))).map(|j| j.1).collect();
+    lengths.sort_unstable();
+    lengths.dedup();
+    for n in lengths {
+        let leaf = subset_leaf::<F64>(n.trailing_zeros() as usize);
+        if (1 << leaf) < n {
+            let bases: Vec<SendPtr<F64>> = jobs
+                .iter()
+                .filter(|j| j.1 == n && matches!(j.2, Fill::Sums(_)))
+                // SAFETY: inside `out`, each the start of a block of its own.
+                .map(|j| SendPtr(unsafe { base.add(j.0) }))
+                .collect();
+            subset_upper_of(&bases, n, leaf);
+        }
+    }
+    out
+}
+
 fn subset_sums_of<M: Copy + Send + Sync + Add<Output = M> + Default>(data: &mut [M], src: Option<&[M]>) {
     let n = data.len();
     assert!(n.is_power_of_two());
@@ -2881,6 +2983,48 @@ mod tests {
     }
 
     /// Several columns' subset sums at once are each one's.
+    /// A filled column is zeros, then each block's subset sums or copy, whatever the blocks' order and gaps.
+    #[test]
+    fn filled_column_is_zeros_then_each_block() {
+        let mut next = rng(23);
+        // (offset, block, source length or none for a copy, raw words)
+        let blocks = [
+            (1usize << 18, 1usize << 18, Some(3usize << 15), false),
+            (0, 1 << 16, Some(1 << 16), false),
+            (1 << 16, 1 << 15, None, false),
+            (3 << 15, 1 << 10, None, true),
+            (7 << 15, 8, Some(5), false),
+            (1 << 20, 1 << 20, Some(1000), false),
+            ((1 << 21) + 3, 1, Some(1), false),
+        ];
+        let len = (1 << 21) + (1 << 17);
+        let srcs: Vec<Vec<F64>> = blocks
+            .iter()
+            .map(|&(_, n, s, _)| (0..s.unwrap_or(n)).map(|_| F64(next())).collect())
+            .collect();
+        let raws: Vec<Vec<u64>> = srcs.iter().map(|s| s.iter().map(|x| x.0).collect()).collect();
+        let mut want = vec![F64::ZERO; len];
+        for (&(offset, n, s, _), src) in blocks.iter().zip(&srcs) {
+            match s {
+                Some(_) => subset_sums_from(src, &mut want[offset..offset + n]),
+                None => want[offset..offset + n].copy_from_slice(src),
+            }
+        }
+        let jobs: Vec<(usize, usize, Fill)> = blocks
+            .iter()
+            .zip(srcs.iter().zip(&raws))
+            .map(|(&(offset, n, s, raw), (src, words))| {
+                let fill = match (s, raw) {
+                    (Some(_), _) => Fill::Sums(src),
+                    (None, false) => Fill::Words(src),
+                    (None, true) => Fill::Raw(words),
+                };
+                (offset, n, fill)
+            })
+            .collect();
+        assert!(filled_column(len, &jobs) == want);
+    }
+
     #[test]
     fn subset_sums_many_is_each() {
         let mut next = rng(17);

@@ -13,6 +13,7 @@ use leanvm_statement::field::E;
 use leanvm_statement::layout::{Form, OP_JUMP, OP_SHA3, SEP_MEM, Table, tables};
 use leanvm_statement::transcript::{FsShape, KeccakWriter, keccak_seed, squares};
 use primitives::field::{F64, F192};
+use quotient::ntt::Fill;
 
 use super::bus::{Bus, all_leaves, expected_root, heap};
 use super::columns::{c1_polys, setup_polys};
@@ -241,23 +242,21 @@ pub fn prove_streaming(
     let c1 = c1_polys(trace);
     let setup = setup_polys(trace);
     clock.lap(&mut report, "C1 and setup: inverse NTTs to basis B");
-    let mut stack1 = Stack::new(StackLayout::new(&c1_columns(&shape)));
-    // q_flock: the Flock witness's packed words (`Trace::keccak_flock`), which the trace does not keep.
-    stack1.put_k_words(Column::Qflock, &flock.z);
-    // Every column's subset sums in the same dispatches.
-    let mut items: Vec<(Column, &[F64])> = Vec::new();
+    // q_flock: the Flock witness's packed words (`Trace::keccak_flock`), which the trace does not keep; every other
+    // column's subset sums, all in the same dispatches.
+    let mut fills: Vec<(Column, usize, Fill)> = vec![(Column::Qflock, 0, Fill::Raw(&flock.z))];
     for (t, columns) in c1.tables.iter().enumerate() {
         for (c, column) in columns.iter().enumerate() {
-            items.push((Column::Table { table: t, column: c }, &column.novel));
+            fills.push((Column::Table { table: t, column: c }, 0, Fill::Sums(&column.novel)));
         }
-        items.push((Column::Inverse(t), &c1.inverses[t].novel));
+        fills.push((Column::Inverse(t), 0, Fill::Sums(&c1.inverses[t].novel)));
     }
     for (k, column) in c1.memory.iter().enumerate() {
-        items.push((Column::Memory(k), &column.novel));
+        fills.push((Column::Memory(k), 0, Fill::Sums(&column.novel)));
     }
-    items.push((Column::BytecodeFinal, &c1.bytecode_final.novel));
-    stack1.put_b_many(&items);
-    drop(items);
+    fills.push((Column::BytecodeFinal, 0, Fill::Sums(&c1.bytecode_final.novel)));
+    let mut stack1 = Stack::filled(StackLayout::new(&c1_columns(&shape)), &fills);
+    drop(fills);
     let mut stack_f = super::setup::f_stack(&shape, &setup);
     if config.garbage {
         stack1.fill_unused(0xC1);
@@ -398,14 +397,11 @@ pub fn prove_streaming(
     // 6. C2.
     let constraint_sizes = chunks(constraint.count);
     let leaf_sizes: Vec<(usize, Vec<usize>)> = leaf_quotients.iter().map(|(b, q)| (*b, chunks(q.count))).collect();
-    let mut stack2 = Stack::new(StackLayout::new(&c2_columns(layout.h, &constraint_sizes, &leaf_sizes)));
-    {
+    let mut stack2 = {
         // The heap's limbs and every quotient's chunks' limbs: all their subset sums in the same dispatches.
-        let mut which: Vec<(Column, usize)> = Vec::new();
-        let mut sources: Vec<&[F64]> = Vec::new();
+        let mut fills: Vec<(Column, usize, Fill)> = Vec::new();
         for (limb, novel) in heap_novel.iter().enumerate() {
-            which.push((Column::Heap, limb));
-            sources.push(novel);
+            fills.push((Column::Heap, limb, Fill::Sums(novel)));
         }
         let tree_sizes = [layout.h, 0];
         type ColumnOf<'a> = Box<dyn Fn(usize) -> Column + 'a>;
@@ -419,15 +415,12 @@ pub fn prove_streaming(
         for (q, sizes, column) in &all {
             for chunk in 0..sizes.len() {
                 for limb in 0..3 {
-                    which.push((column(chunk), limb));
-                    sources.push(q.chunk_novel(sizes, chunk, limb));
+                    fills.push((column(chunk), limb, Fill::Sums(q.chunk_novel(sizes, chunk, limb))));
                 }
             }
         }
-        let dsts = stack2.limbs_mut_many(&which);
-        let mut jobs: Vec<(&[F64], &mut [F64])> = sources.into_iter().zip(dsts).collect();
-        quotient::ntt::subset_sums_many(&mut jobs);
-    }
+        Stack::filled(StackLayout::new(&c2_columns(layout.h, &constraint_sizes, &leaf_sizes)), &fills)
+    };
     drop((heap_novel, tree, constraint, leaf_quotients));
     clock.lap(&mut report, "C2: chunks in basis B");
     if config.garbage {
