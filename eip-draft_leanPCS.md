@@ -1,6 +1,6 @@
 ---
 title: leanPCS
-description: Add a PCS_OPEN precompile and a MULFIELD instruction, for cheap on-chain verification of STARKs
+description: Add a PCS_OPEN precompile and a MULFIELD instruction, for cheap verification of STARKs onchain
 author: TBD
 discussions-to: https://ethereum-magicians.org/t/TBD
 status: Draft
@@ -12,13 +12,15 @@ requires: 8141, 8288
 
 ## Abstract
 
-This EIP introduces a precompile, `PCS_OPEN`, that contracts can call to verify that a committed multilinear polynomial takes a given value at a given point. The underlying polynomial commitment scheme (PCS) is WHIR. This EIP also adds `MULFIELD`, an instruction that multiplies two elements of the binary field $\mathrm{GF}(2^{192})$. Together, they let users cheaply verify post-quantum STARKs (scalable transparent arguments of knowledge) on chain. `PCS_OPEN` acts as a post-quantum equivalent of the elliptic-curve precompiles used to verify pre-quantum SNARKs (succinct non-interactive arguments of knowledge). All the heavy WHIR proofs in the block are aggregated, via a STARK, so they don't appear in the block.
+This EIP introduces a precompile, `PCS_OPEN` (for "Polynomial Commitment Scheme Opening"), that contracts can call to verify that a committed multilinear polynomial takes a given value at a given point. This EIP also adds `MULFIELD`, an instruction that multiplies two elements of the binary field $\mathrm{GF}(2^{192})$. Together, they let users cheaply verify post-quantum STARKs (scalable transparent arguments of knowledge) onchain. `PCS_OPEN` acts as a post-quantum equivalent of the elliptic-curve precompiles used to verify pre-quantum SNARKs (succinct non-interactive arguments of knowledge). All the heavy PCS opening proofs are aggregated, via a STARK, so they don't appear in the block.
 
 ## Motivation
 
-Today, verifying a pre-quantum SNARK on chain costs about 200,000 gas. Post-quantum STARKs, based on hash functions, are much larger, and much more expensive to verify. Recursive aggregation amortizes this cost: a single STARK per block proves all the others. [EIP-8288](./eip-8288.md) aggregates whole STARKs, which requires applications to be written for a new instruction set, leanVM.
+Today, verifying a pre-quantum SNARK on chain costs about 200,000 gas thanks to the elliptic-curve precompiles. Post-quantum STARKs, based on hash functions, are much larger, and much more expensive to verify. Recursive aggregation amortizes this cost: a single STARK per block proves all the others. [EIP-8288](./eip-8288.md) aggregates whole STARKs, which would require to enshrine a new STARK-friendly ISA, such as RiscV.
 
-This EIP aggregates less. Most of the work of a STARK verifier is checking polynomial commitment openings. Ethereum aggregates only these openings, and contracts run the rest of the verifier, the polynomial interactive oracle proof (PIOP), in the Ethereum Virtual Machine (EVM). The PIOP mostly does arithmetic in a binary field. The EVM can already add field elements with `XOR` (`0x18`), but emulating one multiplication with existing instructions costs more than 1,000 gas. `MULFIELD` does it for 10 gas.
+This EIP aggregates less. Most of the work of a STARK verifier is checking PCS openings. This EIP suggests Ethereum should aggregates only these openings, and contracts run the rest of the verifier, the polynomial interactive oracle proof (PIOP), in the Ethereum Virtual Machine (EVM). The PIOP mostly does arithmetic in some finite field. We pick binary fields for their simplicity and their state of the art performance. The EVM can already add field elements with `XOR` (`0x18`), but emulating one multiplication with existing instructions costs more than 1,000 gas. `MULFIELD` does it for 10 gas.
+
+The goal of this EIP is to get most of the benefits (cheap STARKs onchain) from [EIP-8288](./eip-8288.md) without the complexity of enshrining a new ISA.
 
 ## Specification
 
