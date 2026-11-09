@@ -2126,7 +2126,7 @@ pub fn subset_sums_many<M: Copy + Send + Sync + Add<Output = M> + Default>(jobs:
     }
     let dsts: Vec<SendPtr<M>> = jobs.iter_mut().map(|(_, d)| SendPtr(d.as_mut_ptr())).collect();
     let srcs: Vec<&[M]> = jobs.iter().map(|(s, _)| *s).collect();
-    parallel::for_each(blocks.len(), |t| {
+    tasks(blocks.len(), false, |t| {
         let (k, b, leaf) = blocks[t];
         // SAFETY: task `t` writes block `b` of column `k` alone, inside it.
         let block = unsafe { dsts[k].slice(b << leaf, 1 << leaf) };
@@ -2155,7 +2155,11 @@ fn subset_sums_of<M: Copy + Send + Sync + Add<Output = M> + Default>(data: &mut 
     assert!(n.is_power_of_two());
     let m = n.trailing_zeros() as usize;
     let leaf = subset_leaf::<M>(m);
-    parallel::chunks_mut(data, 1 << leaf, |b, block| subset_block(block, b, leaf, src));
+    let base = SendPtr(data.as_mut_ptr());
+    tasks(n >> leaf, false, |b| {
+        // SAFETY: task `b` writes block `b` alone, inside `data`.
+        subset_block(unsafe { base.slice(b << leaf, 1 << leaf) }, b, leaf, src)
+    });
     subset_upper(data, leaf);
 }
 
@@ -2175,7 +2179,7 @@ fn subset_upper_of<M: Copy + Send + Sync + Add<Output = M> + Default>(bases: &[S
         let width = ((1usize << leaf) >> g).clamp(1, 1 << a);
         let per_group = (1usize << a) / width;
         let per = (n >> (a + g)) * per_group;
-        parallel::for_each(per * bases.len(), |t| {
+        tasks(per * bases.len(), false, |t| {
             let (base, task) = (bases[t / per], t % per);
             let e0 = ((task / per_group) << (a + g)) + (task % per_group) * width;
             for j in 0..g {
@@ -2239,7 +2243,7 @@ fn upper<T: Kind>(data: SendPtr<u64>, src: Option<SendPtr<u64>>, rows: usize, a:
     let lines = 1usize << g;
     let width = (UPPER_TILE_ROWS >> g).clamp(1, 1 << a);
     let per_group = (1usize << a) / width;
-    parallel::for_each((rows >> (a + g)) * per_group, |task| {
+    tasks((rows >> (a + g)) * per_group, false, |task| {
         let row0 = ((task / per_group) << (a + g)) + (task % per_group) * width;
         let line = |u: usize| row0 + (u << a);
         // SAFETY: a task touches rows `line(u) + [0, width)`, `u < lines`: its own.
