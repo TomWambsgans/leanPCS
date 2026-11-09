@@ -2171,6 +2171,11 @@ fn subset_sums_of<M: Copy + Send + Sync + Add<Output = M> + Default>(data: &mut 
     subset_upper(data, leaf);
 }
 
+/// The most variables a pass of [`subset_upper_of`] takes, on tiles of `2^g` runs (of `2^(leaf - g)` words, 256 KiB
+/// a tile): ten rather than eight, so that a column of `2^24` or `2^25` words takes one pass above its leaves, not two
+/// (one column of `2^24` words, 64 threads: 3.0 → 2.2 ms; `2^25` 5.8 → 5.4 ms).
+const SUBSET_GROUP: usize = 10;
+
 /// [`subset_sums`]' variables from `leaf` up, a few at a time on tiles.
 fn subset_upper<M: Copy + Send + Sync + Add<Output = M> + Default>(data: &mut [M], leaf: usize) {
     let n = data.len();
@@ -2178,11 +2183,12 @@ fn subset_upper<M: Copy + Send + Sync + Add<Output = M> + Default>(data: &mut [M
 }
 
 /// [`subset_upper`] of several columns of `n` words at `bases` (disjoint), each pass's tasks for all in one dispatch.
+/// Up to [`SUBSET_GROUP`] variables a pass: one pass above the leaves up to `2^25` words of eight bytes.
 fn subset_upper_of<M: Copy + Send + Sync + Add<Output = M> + Default>(bases: &[SendPtr<M>], n: usize, leaf: usize) {
     let m = n.trailing_zeros() as usize;
     let mut a = leaf;
     while a < m {
-        let g = (m - a).min(8);
+        let g = (m - a).min(SUBSET_GROUP);
         let lines = 1usize << g;
         let width = ((1usize << leaf) >> g).clamp(1, 1 << a);
         let per_group = (1usize << a) / width;
