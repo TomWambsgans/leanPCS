@@ -269,6 +269,25 @@ fn piece_rows(src: &[K8], first: usize, p: usize, dst: &mut Vec<K8>) {
     }
 }
 
+/// The largest piece (as a log) [`prefix_quotient`]'s rounds take, its pieces `all` of `2^r`-entry columns in `width`
+/// batches (or columns), on `threads` workers: `r`, or below when its tasks (a batch on a piece) are too few for the
+/// pool. A piece of `2^q` points below the columns' `2^r` entries is their fold onto it (`2^r` products) and a transform
+/// of `q` layers (`q 2^(q - 1)`); of the caps down to three below `r`, the one whose waves of tasks take the least, as
+/// a wave takes its largest task. The same values: a piece's points are its halves'. (MUL's leaf, `2^16` rows in three
+/// batches on 9 pieces: 27 tasks of `2^16` points, or 51 of at most `2^15`; 64 threads, the leaf 6.0 → 5.4 ms.)
+fn split_cap(r: usize, all: &[(usize, usize, usize)], width: usize, threads: usize) -> usize {
+    let cost = |q: usize| (q << q) / 2 + if q < r { 1 << r } else { 0 };
+    let largest = all.iter().map(|&(_, _, p)| p).max().unwrap_or(0);
+    let estimate = |cap: usize| {
+        let tasks: usize = all.iter().map(|&(_, _, p)| 1usize << (p - p.min(cap))).sum::<usize>() * width;
+        tasks.div_ceil(threads) * cost(largest.min(cap))
+    };
+    (largest.saturating_sub(3).max(3)..=r)
+        .rev()
+        .min_by_key(|&cap| (estimate(cap), std::cmp::Reverse(cap)))
+        .unwrap_or(r)
+}
+
 /// A quotient from its numerator on `D_M`'s first points: `columns` (novel coefficients, `2^r` each) evaluated on
 /// every piece (a coset `ω_first + V_e`, `e ≤ r`), `piece(first, e, serial)` what else the piece needs (with `serial`
 /// from inside a pool task, a round's pieces' at once: it must then not dispatch to the pool), and
@@ -299,15 +318,27 @@ fn prefix_quotient<D: Send + Sync>(
     // The pieces `(first point, place in the limbs, size)`, which tile the limbs in order; with columns short enough
     // (`GROUPED_ROWS`) in rounds, each round's batches (or columns) on its pieces transformed by one worker each, in
     // parallel.
-    let all: Vec<(usize, usize, usize)> = ntt::prefix_starts(&sizes, base)
-        .iter()
-        .zip(&sizes)
-        .flat_map(|(&first, &e)| {
-            let p = e.min(r);
-            (0..1usize << (e - p)).map(move |j| (first + (j << p), first - base + (j << p), p))
-        })
-        .collect();
+    let starts = ntt::prefix_starts(&sizes, base);
+    // The pieces of at most `2^cap` points.
+    let pieces_of = |cap: usize| -> Vec<(usize, usize, usize)> {
+        starts
+            .iter()
+            .zip(&sizes)
+            .flat_map(|(&first, &e)| {
+                let p = e.min(r).min(cap);
+                (0..1usize << (e - p)).map(move |j| (first + (j << p), first - base + (j << p), p))
+            })
+            .collect()
+    };
+    let mut all = pieces_of(r);
     let grouped = (8..=1 << GROUPED_ROWS).contains(&n) && all.iter().all(|&(_, _, p)| p >= 3);
+    if grouped {
+        let width = if alone { columns.len() } else { batches.len() };
+        let cap = split_cap(r, &all, width, parallel::num_threads());
+        if cap < r {
+            all = pieces_of(cap);
+        }
+    }
     // [`evaluate`]'s rows: grouped, the check's block alone (at most 64 points).
     let rows = if grouped { 64.min(n) } else { n }.max(8);
     let mut work: Vec<Vec<K8>> = batches.iter().map(|_| vec![K8::ZERO; rows]).collect();
@@ -373,7 +404,9 @@ fn prefix_quotient<D: Send + Sync>(
         };
         // A round's tasks end together: the pieces a round that take the fewest waves of tasks on the pool, and of
         // those the fewest (the least memory: freed, the buffers stay with the allocator).
-        let most = (GROUPED_BYTES / (width * n * unit)).clamp(1, all.len());
+        // A task's buffer: its piece's points (at most the columns' `2^r`).
+        let longest = all.iter().map(|&(_, _, p)| 1usize << p).max().unwrap_or(n);
+        let most = (GROUPED_BYTES / (width * longest * unit)).clamp(1, all.len());
         let threads = parallel::num_threads();
         let waves = |per: usize| {
             let (full, rest) = (all.len() / per, all.len() % per);
@@ -381,50 +414,54 @@ fn prefix_quotient<D: Send + Sync>(
         };
         let per_round = (1..=most).min_by_key(|&per| (waves(per), per)).expect("a piece");
         // The tasks' buffers, reserved here (their pages first written by the tasks).
-        let mut transformed: Vec<Vec<K8>> = (0..if alone { 0 } else { per_round * width }).map(|_| Vec::with_capacity(n)).collect();
-        let mut lone: Vec<Vec<F64>> = (0..if alone { per_round * width } else { 0 }).map(|_| Vec::with_capacity(n)).collect();
+        let mut transformed: Vec<Vec<K8>> = (0..if alone { 0 } else { per_round * width }).map(|_| Vec::with_capacity(longest)).collect();
+        let mut lone: Vec<Vec<F64>> = (0..if alone { per_round * width } else { 0 }).map(|_| Vec::with_capacity(longest)).collect();
         for round in all.chunks(per_round) {
-            let clock = std::time::Instant::now();
-            let tasks = round.len() * width;
-            if alone {
-                parallel::chunks_mut(&mut lone[..tasks], 1, |i, dst| {
-                    let (first, _, p) = round[i / width];
-                    let dst = &mut dst[0];
-                    dst.resize(1 << p, F64::ZERO);
-                    ntt::on_coset_prefix_serial(columns[i % width], first, dst);
+            // In affine ranges ([`parallel::affine`]): a task's buffer stays with its thread round after round, and the
+            // fill's points go to the threads that transformed their piece.
+            parallel::affine(|| {
+                let clock = std::time::Instant::now();
+                let tasks = round.len() * width;
+                if alone {
+                    parallel::chunks_mut(&mut lone[..tasks], 1, |i, dst| {
+                        let (first, _, p) = round[i / width];
+                        let dst = &mut dst[0];
+                        dst.resize(1 << p, F64::ZERO);
+                        ntt::on_coset_prefix_serial(columns[i % width], first, dst);
+                    });
+                } else {
+                    parallel::chunks_mut(&mut transformed[..tasks], 1, |i, dst| {
+                        let (first, _, p) = round[i / width];
+                        piece_rows(&batches[i % width], first, p, &mut dst[0]);
+                    });
+                }
+                t_transform += clock.elapsed().as_secs_f64();
+                let clock = std::time::Instant::now();
+                let data: Vec<D> = parallel::map_collect(round.len(), |g| piece(round[g].0, round[g].2, true));
+                let points: Vec<Points> = if alone {
+                    lone[..tasks].chunks(width).map(Points::Alone).collect()
+                } else {
+                    transformed[..tasks].chunks(width).map(Points::Batches).collect()
+                };
+                // Each piece's first run in the round.
+                let runs: Vec<usize> = round
+                    .iter()
+                    .scan(0, |acc, &(_, _, p)| {
+                        let at = *acc;
+                        *acc += (1usize << p) / 8;
+                        Some(at)
+                    })
+                    .collect();
+                let (at, last) = (round[0].1, round[round.len() - 1]);
+                let end = last.1 + (1 << last.2);
+                assert!(round.iter().zip(&runs).all(|(p, &j)| p.1 == at + 8 * j));
+                let [a, b, c] = &mut limbs;
+                ntt::fill_limbs8([&mut a[at..end], &mut b[at..end], &mut c[at..end]], |j| {
+                    let g = runs.partition_point(|&s| s <= j) - 1;
+                    value(&data[g], &points[g], j - runs[g])
                 });
-            } else {
-                parallel::chunks_mut(&mut transformed[..tasks], 1, |i, dst| {
-                    let (first, _, p) = round[i / width];
-                    piece_rows(&batches[i % width], first, p, &mut dst[0]);
-                });
-            }
-            t_transform += clock.elapsed().as_secs_f64();
-            let clock = std::time::Instant::now();
-            let data: Vec<D> = parallel::map_collect(round.len(), |g| piece(round[g].0, round[g].2, true));
-            let points: Vec<Points> = if alone {
-                lone[..tasks].chunks(width).map(Points::Alone).collect()
-            } else {
-                transformed[..tasks].chunks(width).map(Points::Batches).collect()
-            };
-            // Each piece's first run in the round.
-            let runs: Vec<usize> = round
-                .iter()
-                .scan(0, |acc, &(_, _, p)| {
-                    let at = *acc;
-                    *acc += (1usize << p) / 8;
-                    Some(at)
-                })
-                .collect();
-            let (at, last) = (round[0].1, round[round.len() - 1]);
-            let end = last.1 + (1 << last.2);
-            assert!(round.iter().zip(&runs).all(|(p, &j)| p.1 == at + 8 * j));
-            let [a, b, c] = &mut limbs;
-            ntt::fill_limbs8([&mut a[at..end], &mut b[at..end], &mut c[at..end]], |j| {
-                let g = runs.partition_point(|&s| s <= j) - 1;
-                value(&data[g], &points[g], j - runs[g])
+                t_fill += clock.elapsed().as_secs_f64();
             });
-            t_fill += clock.elapsed().as_secs_f64();
         }
     }
     let evaluated = started.elapsed().as_secs_f64();

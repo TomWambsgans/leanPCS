@@ -280,7 +280,7 @@ fn drain_affine(pool: &Pool, f: &(dyn Fn(usize, usize) + Sync), n: usize, t: usi
 /// it panics rather than silently serializing. Fan out over the outermost
 /// independent unit and keep the levels below it sequential.
 pub fn for_each_chunk<F: Fn(usize, usize) + Sync>(n_tasks: usize, f: F) {
-    dispatch(n_tasks, affine_default(n_tasks), f);
+    dispatch(n_tasks, AFFINE.get(), f);
 }
 
 /// [`for_each_chunk`], each worker first given its own contiguous range of the tasks ([`for_each_affine`]) when `affine`.
@@ -345,17 +345,11 @@ fn dispatch<F: Fn(usize, usize) + Sync>(n_tasks: usize, affine: bool, f: F) {
     }
 }
 
-/// Whether a dispatch of `n_tasks` from this thread goes by [`for_each_affine`]'s ranges: inside [`affine`], for at
-/// least a task a worker.
-fn affine_default(n_tasks: usize) -> bool {
-    AFFINE.get() && n_tasks >= num_threads()
-}
-
-/// `f()`, every dispatch it makes (of at least a task a worker) by [`for_each_affine`]'s ranges rather than shared
-/// claims: for a sequence of passes that each split their data in the order of their tasks, as a sumcheck's
-/// adjacent-pair folds (a task's outputs `[a, b)` read its inputs `[2a, 2b)`, which the same thread wrote in the
-/// round before) or a pass over buffers the previous pass wrote in the same order. The same values: only which thread
-/// runs which task changes.
+/// `f()`, every dispatch it makes by [`for_each_affine`]'s ranges rather than shared claims: for a sequence of passes
+/// that each split their data in the order of their tasks, as a sumcheck's adjacent-pair folds (a task's outputs
+/// `[a, b)` read its inputs `[2a, 2b)`, which the same thread wrote in the round before), a pass over buffers the
+/// previous pass wrote in the same order, or rounds of tasks each reusing the buffer of its index. The same values:
+/// only which thread runs which task changes.
 pub fn affine<R>(f: impl FnOnce() -> R) -> R {
     struct Restore(bool);
     impl Drop for Restore {
