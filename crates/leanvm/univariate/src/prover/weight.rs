@@ -24,7 +24,7 @@ use gf2_linear::Linear;
 use leanvm_statement::field::E;
 use primitives::field::{F64, F192, F192Unreduced, Weights8, dot_base, mul_unreduced4, mul4};
 use primitives::multilinear::eq_table;
-use quotient::ntt::{Ex8, Kx8, MixedSum};
+use quotient::ntt::{ESplat, Ex8, Kx8, MixedSum};
 
 use super::poly::from_v;
 use crate::claims::{Column, Combined};
@@ -801,21 +801,28 @@ impl Weight {
             match (&preps[piece.shape], &self.shapes[piece.shape]) {
                 (Prep2::Factored { coefficients, span }, Shape::Factored { h, .. }) => {
                     // `Σ_u h[u] word(u span + i)` first (one mixed product a word), then the sums of it.
+                    // Eight words a step in lanes, the last run zero-padded.
                     let keep = coefficients.len();
-                    let mut folded_h = vec![F192Unreduced::ZERO; keep];
+                    let mut folded_h = vec![MixedSum::default(); keep.div_ceil(8)];
                     for u in start..end {
                         let at = piece.offset + u * span;
                         if at >= words.len() {
                             break;
                         }
-                        let (hu, avail) = (h[u], (words.len() - at).min(keep));
-                        for (acc, &k) in folded_h[..avail].iter_mut().zip(&words[at..at + avail]) {
-                            *acc ^= hu.mul_base_unreduced(k);
+                        let (hu, avail) = (ESplat::new(h[u]), (words.len() - at).min(keep));
+                        let run = &words[at..at + avail];
+                        let (full, rest) = run.as_chunks::<8>();
+                        for (acc, k) in folded_h.iter_mut().zip(full) {
+                            acc.add(&hu, Kx8::new(*k));
+                        }
+                        if !rest.is_empty() {
+                            let k = Kx8::new(std::array::from_fn(|p| rest.get(p).copied().unwrap_or(F64::ZERO)));
+                            folded_h[full.len()].add(&hu, k);
                         }
                     }
+                    let folded_h = folded_h.into_iter().flat_map(|x| x.reduce().to_array());
                     let mut acc = [F192Unreduced::ZERO; SUMS];
-                    for (c, x) in coefficients.iter().zip(&folded_h) {
-                        let x = x.reduce();
+                    for (c, x) in coefficients.iter().zip(folded_h) {
                         for s in 0..SUMS {
                             if !c[s].is_zero() {
                                 acc[s] ^= c[s].mul_unreduced(x);
