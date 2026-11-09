@@ -407,8 +407,6 @@ theorem base_flushes_eq (j : Fin 5) (side : Side) (row : Fin (baseComponent j).w
 
 /-! ## The values: Lv42's rows are `C1`'s -/
 
-theorem layoutOf_setup (S : UniStatement.Shape) : layoutOf S .setup = setupLayout S := rfl
-
 /-- A column of one limb, read at a row of its block. -/
 theorem c1Block_getD {L : StackLayout} {col : Column} {v off : ℕ} (h : L.limbs col = [(0, v, off)])
     (stack : ℕ → K) {i : ℕ} (hi : i < 2 ^ v) : (c1Block L stack col).getD i 0 = stack (off + i) := by
@@ -416,7 +414,7 @@ theorem c1Block_getD {L : StackLayout} {col : Column} {v off : ℕ} (h : L.limbs
 
 section Rows
 
-variable (D : Deployment) (rows : List ℕ) (c : Stk)
+variable (rows : List ℕ) (c : Stk)
 
 theorem flatMap_ite_filter {α β : Type*} (l : List α) (p : α → Bool) (g : α → List β) :
     (l.flatMap fun x ↦ if p x then g x else []) = (l.filter p).flatMap g := by
@@ -602,7 +600,7 @@ theorem ofBits_four : K.ofBits 4 = LeanVM.Parameters.gpow 2 := by decide +kernel
 
 section Boundary
 
-variable (D : Deployment) (rows : List ℕ) (c : Stk)
+variable (rows : List ℕ) (c : Stk)
 
 theorem initK_eq : initK = tupleOf (LeanVM.Parameters.gpow 0) #[1, 1] := by
   apply Vector.ext

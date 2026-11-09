@@ -212,7 +212,7 @@ theorem disc_proveWith (flock : FlockProverH) (hflock : FlockHashOnly flock) (fu
 theorem disc_uniProverWith (flock : FlockProverH) (hflock : FlockHashOnly flock) (D : UniKeccak.KDeployment)
     (input : Vector UInt8 32) (rows : List ℕ) (q : D.Stack rows) :
     Disc (uniProverWith callKeccak256 callKeccakF1600 (flock callKeccak256) D input rows q) :=
-  disc_proveWith flock hflock _ _ _ _ _
+  disc_proveWith flock hflock _ _ _
 
 /-- **The deployed honest prover follows the duplex discipline** (mumbai's `DuplexVm`, from no earlier answer),
 given that Flock's prover only hashes. -/

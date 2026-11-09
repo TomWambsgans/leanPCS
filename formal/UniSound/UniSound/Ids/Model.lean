@@ -48,10 +48,6 @@ open LeanVM.Parameters UniStatement Polynomial Finset
 
 /-! ## Layouts, challenges, the inputs of the relations -/
 
-/-- A commitment's stack layout at a shape (`layoutsOf`, as `batch` finds it). -/
-def layoutOf (S : Shape) (c : Commitment) : StackLayout :=
-  (((layoutsOf S).find? (·.1 == c)).map (·.2)).getD default
-
 /-- The tuple weights' point `α`, as the verifier samples it (round `0`'s first four challenges). -/
 def alphasOf (ch : List E) : List E := (List.range 4).map fun i ↦ ch.getD i 0
 
@@ -110,7 +106,7 @@ noncomputable def relDiff (L : StackLayout) (ringMap : Option (List E)) (V : ℕ
 
 section Model
 
-variable (D : Deployment) {κ : ℕ}
+variable {κ : ℕ}
 
 /-- The commitment of the batch's `k`-th product. -/
 def cm (k : ℕ) : Commitment := commitments.getD k .c1
@@ -205,7 +201,7 @@ end Polys
 
 section Heap
 
-variable (D : Deployment) (c : Stk)
+variable (c : Stk)
 
 /-- The state boundary's push `(SEP_STATE, 1, 1)`. -/
 def initK : Vector K 16 := Vector.ofFn fun s ↦ if s.val < 3 then 1 else 0

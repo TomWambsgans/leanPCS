@@ -35,7 +35,7 @@ open OracleSpec OracleComp
 open scoped ENNReal
 
 attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
-  LeanVM.Protocol.Compile.instFintypeKState UniStatement.layoutWords UniStatement.setupStack
+  LeanVM.Protocol.Compile.instFintypeKState UniStatement.setupStack
   RecStatement.layoutWords
 
 /-! ## Queries of a Merkle tree -/
@@ -268,7 +268,7 @@ theorem pi2SetupBridge (D : RecDeployment) (hD : RecDeployment.Real D) (hs : Uni
   unfold RecDeployment.setupTreesWith
   simp only [map_bind, map_pure, bind_map_left, hc]
   refine bind_congr fun t1 => ?_
-  rw [rootsOfS_root]
+  rw [rootsOfS_root D]
   refine bind_congr fun t2 => ?_
   simp only [setupTr2, RecSetupTrees.evaluations, List.map_append, List.append_nil, Soundness.treeTr, rootsB2]
 

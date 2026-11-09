@@ -133,19 +133,9 @@ theorem fpProd_single {τ : Type} (f : τ → E) (a : τ) : Heap.fpProd f [a] = 
 
 section Blocks
 
-variable (D : Deployment) (hr : HeapReading D) (c1 c2 : Stk) (s : USt) (ch : List E) (b : Block) (i : ℕ)
-
-include hr in
-
-include hr in
+variable (c1 c2 : Stk) (s : USt) (ch : List E) (b : Block) (i : ℕ)
 
 theorem two_eq_zero_E : (2 : E) = 0 := CharTwo.two_eq_zero
-
-include hr in
-
-include hr in
-
-include hr in
 
 end Blocks
 

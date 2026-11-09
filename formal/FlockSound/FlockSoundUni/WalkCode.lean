@@ -193,12 +193,6 @@ def outStep (cw : Array E) (state : Array WalkWord) (st : Array E × Array E) (w
   (((List.range' 0 32).foldl (outBit cw (outWord cw state word) word) (st.1, st.2)).1,
    ((List.range' 0 32).foldl (outBit cw (outWord cw state word) word) (st.1, st.2)).2)
 
-section
-attribute [local irreducible] List.foldl walkAdd walkAdd3 walkSlots walkLiteral walkXor walkRotr Array.set!
-  Array.replicate List.range List.range' List.zip blake2sSigma blake2sGLanes blake2sIv
-
-end
-
 /-! ## `walked_terminal` (`flock_min.rs:185-215`) -/
 
 /-- The matrix terms `Σ_h rows[h] (Σ_low lw[low] left[h·64 + low] + α Σ_low lw[low] right[h·64 + low])`. -/

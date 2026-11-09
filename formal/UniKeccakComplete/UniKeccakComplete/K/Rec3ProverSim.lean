@@ -129,7 +129,7 @@ theorem app_uniProverRec3With
     (D : UniKeccak.KDeployment) (input : Vector UInt8 32) (rows : List ℕ) (q : D.Stack rows) :
     φ.app (uniProverRec3With H F flock D input rows q) =
       uniProverRec3With (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) flock' D input rows q :=
-  app_proveRec3With φ H F hopen flock flock' hflock _ _ _ _ _
+  app_proveRec3With φ H F hopen flock flock' hflock _ _ _
 
 end Top
 
@@ -159,7 +159,7 @@ theorem simulateQ_uniProverRec3With (flock : FlockProverH) (hflock : FlockCommut
     (D : UniKeccak.KDeployment) (input : Vector UInt8 32) (rows : List ℕ) (q : D.Stack rows) :
     simulateQ impl (uniProverRec3With callKeccak256 callKeccakF1600 (flock callKeccak256) D input rows q) =
       uniProverRec3With (implH impl) (implF impl) (flock (implH impl)) D input rows q :=
-  simulateQ_proveRec3With impl flock hflock _ _ _ _ _
+  simulateQ_proveRec3With impl flock hflock _ _ _
 
 /-- **π1-rec3's prover with the honest Flock prover commutes with every simulation** (the π1-rec3 analogue of
 `Prob.ProverCommutes`). -/

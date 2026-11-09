@@ -294,7 +294,7 @@ theorem fails_only_at_opening3 (H : List UInt8 → Digest) (F : KeccakState → 
       E2ECompleteness.proveOpeningWithH (m := Id) H F fuel L tree stack claims = none := by
   have hf : StreamFacts3 (commitReal (m := Id) H) tr (streamRun3 H flock programIv tr).1 :=
     streamRun3_facts H (commitReal (m := Id) H) _ tr _
-  rcases proveRec3With_eq_none H F _ _ _ _ _ _ hnone with hmiss | ⟨_, pt, v, -, h⟩ | ⟨_, pt, v, -, h⟩ |
+  rcases proveRec3With_eq_none H F _ _ _ _ hnone with hmiss | ⟨_, pt, v, -, h⟩ | ⟨_, pt, v, -, h⟩ |
       ⟨_, pt, v, -, h⟩
   · exfalso
     obtain ⟨c, hc, hn⟩ := hmiss
@@ -307,7 +307,7 @@ theorem fails_only_at_opening3 (H : List UInt8 → Digest) (F : KeccakState → 
 /-- **π1-rec3's honest prover fails only at an opening** (`CoreFailsOnlyAtPow3`), every shape and every Flock
 prover; the bad events are not used. -/
 theorem coreFailsOnlyAtPow3 (D : KDeployment) (flock : FlockProverH) : CoreFailsOnlyAtPow3 D flock :=
-  fun _ _ _ _ _ H F _ _ hnone ↦ fails_only_at_opening3 H F _ _ _ _ _ _ hnone
+  fun _ _ _ _ _ H F _ _ hnone ↦ fails_only_at_opening3 H F _ _ _ _ hnone
 
 end UniKeccakComplete.Rec3
 

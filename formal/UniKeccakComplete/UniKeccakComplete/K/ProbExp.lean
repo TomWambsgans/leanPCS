@@ -201,7 +201,7 @@ theorem layoutWordsK_length (s : UniStatement.Shape) : (layoutWordsK s).flatten.
   simp [layoutWordsK, layoutWord_length]
 
 /-- Lengths other than the bus chain's. -/
-theorem goodL_of_length {m : Bytes} (h : m.length = 512 ∨ m.length = 64 ∨ m.length = 80 ∨ 160 ≤ m.length) :
+theorem goodL_of_length {m : Bytes} (h : m.length = 512 ∨ m.length = 64 ∨ m.length = 80 ∨ 150 ≤ m.length) :
     GoodL 88 m := by
   refine ⟨?_, ?_⟩ <;> omega
 

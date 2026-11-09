@@ -56,7 +56,7 @@ open LeanVM.Semantics UniStatement
 open OracleSpec OracleComp
 
 attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
-  LeanVM.Protocol.Compile.instFintypeKState UniStatement.layoutWords UniStatement.setupStack
+  LeanVM.Protocol.Compile.instFintypeKState UniStatement.setupStack
 
 /-! ## The stream's bytes -/
 

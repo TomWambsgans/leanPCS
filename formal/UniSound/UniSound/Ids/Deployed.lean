@@ -903,8 +903,6 @@ depend on the shape, and the kernel checks that each of `C1Limbs`'s columns occu
 def setupCols (S : Shape) : List (Column × ℕ × Bool) :=
   [(.bytecodeTuple, S.logBytecode + 4, false), (.address, S.logMemory, false)]
 
-theorem layoutOf_setup (S : Shape) : layoutOf S .setup = StackLayout.new (setupCols S) := rfl
-
 /-- A `C1` column's variables at a shape. -/
 def c1Vars (S : Shape) : Column → ℕ
   | .qflock => S.heights.getD opSha3 0 + 8
@@ -913,12 +911,6 @@ def c1Vars (S : Shape) : Column → ℕ
   | .memory _ => S.logMemory
   | .bytecodeFinal => S.logBytecode
   | _ => 0
-
-/-- **The setup's two columns are one limb each**, at every shape. -/
-theorem setupLimbs (S : Shape) : SetupLimbs S := by
-  refine ⟨?_, ?_⟩ <;> rw [layoutOf_setup] <;> exact limbs_new_single _ _ _ (by simp [setupCols])
-
-theorem setupLimbs_reference : SetupLimbs reference := setupLimbs reference
 
 /-! ## The heap at the reference shape (`HeapGood reference`)
 
@@ -1281,14 +1273,6 @@ end UniSound.Ids
 /-- info: 'UniSound.Ids.limbs_new_single' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms UniSound.Ids.limbs_new_single
-
-/-- info: 'UniSound.Ids.setupLimbs' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms UniSound.Ids.setupLimbs
-
-/-- info: 'UniSound.Ids.setupLimbs_reference' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms UniSound.Ids.setupLimbs_reference
 
 /-- info: 'UniSound.Ids.heapGood_reference' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in

@@ -195,7 +195,7 @@ theorem jump_idx : colIdx jumpColumns "b" = 13 ∧ colIdx jumpColumns "v_cond" =
 
 section Constraints
 
-variable (D : Deployment) (rows : List ℕ) (c : Stk)
+variable (rows : List ℕ) (c : Stk)
 
 /-- `E`'s zero has a zero base limb. -/
 theorem toK_zero : toK (0 : E) = 0 := by

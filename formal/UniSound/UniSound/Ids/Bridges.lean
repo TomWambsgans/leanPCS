@@ -126,11 +126,6 @@ def FunctionalsCorrect (r : ℕ) : Prop :=
 def LayoutAligned (L : StackLayout) : Prop :=
   ∀ b ∈ L.blocks, 2 ^ b.2.2.1 ∣ b.2.2.2 ∧ b.2.2.2 + 2 ^ b.2.2.1 ≤ 2 ^ L.vars
 
-/-- **The setup's two columns are one limb each.** -/
-def SetupLimbs (S : Shape) : Prop :=
-  (∃ off, (layoutOf S .setup).limbs .address = [(0, S.logMemory, off)]) ∧
-    ∃ off, (layoutOf S .setup).limbs .bytecodeTuple = [(0, S.logBytecode + 4, off)]
-
 /-- **The heap's blocks** (`HeapLayout.new`): depth at most `24`, laid end to end from the first leaf
 `2^(h−1)`, each aligned, filling the leaves; the memory's of `2^lm` leaves, the bytecode's of `2^lb`,
 table `t`'s of `2^(h_t)`. -/

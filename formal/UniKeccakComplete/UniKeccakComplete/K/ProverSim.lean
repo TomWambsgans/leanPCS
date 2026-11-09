@@ -259,7 +259,7 @@ theorem app_uniProverWith
     (D : UniKeccak.KDeployment) (input : Vector UInt8 32) (rows : List ℕ) (q : D.Stack rows) :
     φ.app (uniProverWith H F flock D input rows q) =
       uniProverWith (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) flock' D input rows q :=
-  app_proveWith φ H F hopen flock flock' hflock _ _ _ _ _
+  app_proveWith φ H F hopen flock flock' hflock _ _ _
 
 end Top
 
@@ -304,7 +304,7 @@ theorem simulateQ_uniProverWith (flock : FlockProverH) (hflock : FlockCommutes f
     (input : Vector UInt8 32) (rows : List ℕ) (q : D.Stack rows) :
     simulateQ impl (uniProverWith callKeccak256 callKeccakF1600 (flock callKeccak256) D input rows q) =
       uniProverWith (implH impl) (implF impl) (flock (implH impl)) D input rows q :=
-  simulateQ_proveWith impl flock hflock _ _ _ _ _
+  simulateQ_proveWith impl flock hflock _ _ _
 
 end Commute
 

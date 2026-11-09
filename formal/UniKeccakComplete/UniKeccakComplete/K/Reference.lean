@@ -237,7 +237,6 @@ theorem reference_wordVars : (layoutWordsK keccakRefShape).map layoutWordVars = 
     (StackLayout.new (Shape.c2ColumnsK keccakRefShape)).vars % 256,
     (StackLayout.new (setupColumns keccakRefShape)).vars % 256] = _
   rw [reference_c1Vars, reference_c2Vars, reference_setupVars]
-  rfl
 
 end UniKeccakComplete
 

@@ -246,7 +246,7 @@ open Align
 
 section Model
 
-variable (D : Deployment) {κ : ℕ}
+variable {κ : ℕ}
 
 theorem ProdSum.ext' {P Q : ProdSum} (h1 : P.vars = Q.vars) (h2 : P.n = Q.n) (h3 : P.coef = Q.coef)
     (h4 : P.A = Q.A) (h5 : P.B = Q.B) : P = Q := by

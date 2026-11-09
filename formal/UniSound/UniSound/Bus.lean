@@ -34,8 +34,6 @@ open scoped ENNReal
 
 namespace BusModel
 
-variable {D : Deployment} {κ : ℕ}
-
 /-- Five challenges are `(α, β)`. -/
 theorem card_fin_five (P : (Fin 4 → E) → E → Prop) [∀ a b, Decidable (P a b)] :
     (univ.filter fun v : Fin (4 + 1) → E =>

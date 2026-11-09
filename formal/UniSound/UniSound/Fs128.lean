@@ -36,7 +36,7 @@ open OracleSpec OracleComp
 open scoped ENNReal
 
 attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
-  LeanVM.Protocol.Compile.instFintypeKState UniStatement.layoutWords UniStatement.setupStack
+  LeanVM.Protocol.Compile.instFintypeKState UniStatement.setupStack
 
 /-- **The univariate verifier's bound at `≥ 128` bits** at `Q` adversary calls, rounds' errors at
 most `e`: the openings once at `269 · 2^-137`, the chain without the tag, the seed's pair, the

@@ -470,7 +470,7 @@ theorem costP_uniProverWith (flock : FlockProverH) (k w : ℕ → UniKeccak.Kecc
     CostP (uniProverWith callKeccak256 callKeccakF1600 (flock callKeccak256) D input rows q)
       (proverBlocks D rows.length k w)
       fun o _ ↦ ∀ proof, o = some proof → proof.stream.size ≤ proverStream D rows.length w :=
-  costP_proveWith (flock callKeccak256) _ _ _ _ D.programIv (honestTrace D input rows q)
+  costP_proveWith (flock callKeccak256) _ _ D.programIv (honestTrace D input rows q)
     (by simp [honestTrace]) (hF _ _ _)
 
 /-- **The deployed honest prover over the two calls makes at most `proverBlocks` block calls.** -/

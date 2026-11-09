@@ -61,7 +61,7 @@ theorem accepts_of_trace3 (D : KDeployment) (H : List UInt8 → Digest) (F : Kec
     rw [hshape]; rfl
   have hC2 := c2ColumnsHonest_of_traceHonest hon
   -- The prover's proof.
-  obtain ⟨p1, p2, p3, h1, h2, h3, rfl⟩ := (proveRec3With_eq_some H F _ _ _ _ _ _ π).mp hπ
+  obtain ⟨p1, p2, p3, h1, h2, h3, rfl⟩ := (proveRec3With_eq_some H F _ _ _ _ π).mp hπ
   -- The verifier's run on the prover's stream.
   obtain ⟨R, hrunR, hopR, hmatR, hrootR⟩ := runWithKH_syncs3 H (commitReal (m := Id) H)
     (FlockP.flockProve (m := Id) (Pure.pure ∘ H)) tr

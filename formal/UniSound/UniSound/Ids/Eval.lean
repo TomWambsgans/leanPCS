@@ -1112,7 +1112,7 @@ theorem heap_terms (S : Shape) (active : List E) (parts : List TablePart) (weigh
 
 section Ctx
 
-variable (D : Deployment) {κ : ℕ} (s : USt) (c1 : Stk) (ch : List E) (fd : Done)
+variable {κ : ℕ} (s : USt) (c1 : Stk) (ch : List E) (fd : Done)
   (c2 : Stk) (t : E) (vals : List E)
 
 /-- A relation whose terms are all on `C1` is on `C1`. -/

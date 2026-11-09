@@ -755,8 +755,8 @@ theorem costP_verifyWithKH (shape : Shape) (v : UniKeccak.KeccakVariant) (iv : L
       · have : r.openings.length * openCost ≤ 3 * openCost := Nat.mul_le_mul_right _ hl
         omega
 
-/-- The Keccak contract's IV: the tag, the program's IV, three roots, the shape, the five Keccak layout words and the
-variant's eleven bytes. -/
+/-- The Keccak contract's IV: the tag, the program's IV, the setup's root, the shape, the three Keccak layout words
+and the variant's eleven bytes. -/
 def ivCost (D : UniKeccak.KDeployment) : ℕ := (163 + D.programIv.length) / 136 + 1
 
 /-- **The deployed Keccak verifier's block count** on a proof of a stream of at most `S` bytes: the IV, the seed (one
@@ -765,7 +765,7 @@ def verifierCost (D : UniKeccak.KDeployment) (v : UniKeccak.KeccakVariant) (S : 
   ivCost D + 1 + walkCost D.shape v + 3 * S + 3 * openCost
 
 theorem ivInput_length (s : Shape) (v : UniKeccak.KeccakVariant) (programIv : List UInt8) (roots : SetupRoots) :
-    (ivTag ++ programIv ++ digestBytes roots.bytecode ++ digestBytes roots.a0 ++ digestBytes roots.b0 ++
+    (ivTag ++ programIv ++ digestBytes roots.bytecode ++
       shapeBytes s ++ (UniKeccak.layoutWordsK s).flatten ++ UniKeccak.variantBytesK v).length =
       163 + programIv.length := by
   simp only [List.length_append, ivTag_length, len_digestBytes, shapeBytes_length, layoutWordsK_length,

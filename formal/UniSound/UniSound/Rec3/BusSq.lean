@@ -292,8 +292,6 @@ theorem expandCh_take (c β γ : E) : (expandCh [c, β, γ]).take 4 = squares c 
 
 namespace BusModel
 
-variable {D : Deployment} {κ : ℕ}
-
 /-- Two challenges are `(c, β)`. -/
 theorem card_fin_two_pair (P : E → E → Prop) [∀ a b, Decidable (P a b)] :
     (univ.filter fun v : Fin (1 + 1) → E =>

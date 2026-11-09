@@ -90,7 +90,7 @@ theorem accepts_of_trace (D : KDeployment) (H : List UInt8 → Digest) (F : Kecc
     rw [hshape]; rfl
   have hC2 := c2ColumnsHonest_of_traceHonest hon
   -- The prover's proof.
-  obtain ⟨p1, p2, p3, h1, h2, h3, rfl⟩ := (proveWith_eq_some H F _ _ _ _ _ _ π).mp hπ
+  obtain ⟨p1, p2, p3, h1, h2, h3, rfl⟩ := (proveWith_eq_some H F _ _ _ _ π).mp hπ
   -- The verifier's run on the prover's stream.
   obtain ⟨R, hrunR, hopR, hmatR, hrootR⟩ := runWithKH_syncs H (commitReal (m := Id) H)
     (FlockP.flockProve (m := Id) (Pure.pure ∘ H)) tr
@@ -225,7 +225,7 @@ theorem fails_only_at_opening (H : List UInt8 → Digest) (F : KeccakState → K
       E2ECompleteness.proveOpeningWithH (m := Id) H F fuel L tree stack claims = none := by
   have hf : StreamFacts (commitReal (m := Id) H) tr (streamRun H flock programIv tr).1 :=
     streamRun_facts H (commitReal (m := Id) H) _ tr _
-  rcases proveWith_eq_none H F _ _ _ _ _ _ hnone with hmiss | ⟨_, pt, v, -, h⟩ | ⟨_, pt, v, -, h⟩ |
+  rcases proveWith_eq_none H F _ _ _ _ hnone with hmiss | ⟨_, pt, v, -, h⟩ | ⟨_, pt, v, -, h⟩ |
       ⟨_, pt, v, -, h⟩
   · exfalso
     obtain ⟨c, hc, hn⟩ := hmiss
@@ -237,7 +237,7 @@ theorem fails_only_at_opening (H : List UInt8 → Digest) (F : KeccakState → K
 
 /-- **The honest prover fails only at an opening** (`Prob.CoreFailsOnlyAtPow`), every shape. -/
 theorem coreFailsOnlyAtPow (D : KDeployment) : Prob.CoreFailsOnlyAtPow D flockProveH :=
-  fun _ _ _ _ _ H F _ _ hnone ↦ fails_only_at_opening H F _ _ _ _ _ _ hnone
+  fun _ _ _ _ _ H F _ _ hnone ↦ fails_only_at_opening H F _ _ _ _ hnone
 
 end UniKeccakComplete.Core
 

@@ -6,7 +6,8 @@
 import UniComplete.Rec3Pairs
 import UniKeccakComplete.K.ProverSim
 import UniKeccakComplete.K.FlockProver
-import UniStatement.RecSecurity
+import UniStatement.Rec
+import UniStatement.Security
 
 /-!
 # π1-rec3's honest prover

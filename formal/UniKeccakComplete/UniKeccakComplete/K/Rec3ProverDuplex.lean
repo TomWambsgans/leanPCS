@@ -123,7 +123,7 @@ theorem disc_proveRec3With (flock : FlockProverH) (hflock : FlockHashOnly flock)
 theorem disc_uniProverRec3With (flock : FlockProverH) (hflock : FlockHashOnly flock) (D : UniKeccak.KDeployment)
     (input : Vector UInt8 32) (rows : List ℕ) (q : D.Stack rows) :
     Disc (uniProverRec3With callKeccak256 callKeccakF1600 (flock callKeccak256) D input rows q) :=
-  disc_proveRec3With flock hflock _ _ _ _ _
+  disc_proveRec3With flock hflock _ _ _
 
 /-- **π1-rec3's deployed honest prover follows the duplex discipline** (mumbai's `DuplexVm`, from no earlier
 answer), given that Flock's prover only hashes. -/
