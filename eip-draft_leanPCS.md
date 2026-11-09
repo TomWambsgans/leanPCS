@@ -47,13 +47,13 @@ The instruction `MULFIELD` (`0x1f`) pops `a` and `b`, ignores their top 64 bits,
 
 ### Claims
 
-A claim states that the multilinear polynomial $f$, committed in `(root, ood_answer)`, takes the value `value` at `point`. $f$ has `n` variables and coefficients in $K$, `point` is in $E^n$, and `value` is in $E$. A claim is encoded as:
+A claim has the following form: "the multilinear polynomial $f$, in `n` variables, with a commitment `commitment` (56 bytes), takes the value `value` (in $E$) at `point` (in $E^n$)". A claim is encoded as:
 
 ```
-claim = n (1 byte) || root (32 bytes) || ood_answer (32 bytes) || point (32 * n bytes) || value (32 bytes)
+claim = n (1 byte) || commitment (56 bytes) || point (24 * n bytes) || value (24 bytes)
 ```
 
-The commitment has two parts: `root` is the Merkle root of the WHIR codeword of $f$, and `ood_answer` is the value of $f$ at an out-of-domain point derived from `root`. Elements of $E$ are encoded as 32-byte big-endian words. A claim is well-formed if `1 <= n <= MAX_PCS_VARIABLES`, if it is `97 + 32 * n` bytes long, and if all its field elements are below $2^{192}$.
+Under the hood, `commitment` is a 32-byte Merkle root and a 24-byte out-of-domain answer (in $E$). A claim is well-formed if `1 <= n <= MAX_PCS_VARIABLES` and if it is `81 + 24 * n` bytes long.
 
 Each PCS version defines a verifier `pcs_verify(version, claim, opening_proof)`, whose Fiat-Shamir transcript starts from `claim`. Version `1` is the only version: WHIR at rate 1/4, in the list-decoding regime, with parameters TBD.
 
@@ -146,7 +146,7 @@ def mulfield(a, b):  # multiplication in E
 
 ## Security Considerations
 
-The security of `PCS_OPEN` relies on EIP-8288 and on the soundness of each PCS version. In the list-decoding regime, `ood_answer` is what binds a commitment to a single polynomial.
+The security of `PCS_OPEN` relies on EIP-8288 and on the soundness of each PCS version. In the list-decoding regime, the out-of-domain answer in a commitment is what binds it to a single polynomial.
 
 The Fiat-Shamir transcript of a WHIR proof starts from the claim only, not from the transcript of the application. This is believed to be sound, but it has not been formally analyzed yet.
 
