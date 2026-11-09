@@ -11,8 +11,8 @@ a few hundred natural numbers; no stack is evaluated):
 
 * `reference_valid`: the shape is valid (`Shape.Valid`: six heights, `validate` with Flock);
 * `reference_vars`: the three stacks have `27`, `26`, `23` variables (`layoutsOfK`), so `C1`, `C2` and the setup are
-  opened at `2^27`, `2^26`, `2^23` words, and the Keccak layout words name `27, 26, 23, 28, 28`
-  (`reference_wordVars`; the last two, `A0`'s and `B0`'s, are hashed into the IV but never opened).
+  opened at `2^27`, `2^26`, `2^23` words, and the Keccak layout words name `27, 26, 23`
+  (`reference_wordVars`).
 
 **The sorts.** `StackLayout.new` and `HeapLayout.new` sort with `List.mergeSort`, a well-founded recursion the
 kernel does not reduce. Neither number depends on the order, so the sorts are removed by permutation
@@ -191,7 +191,7 @@ theorem c2_pieceWords (s : Shape) :
 /-- `C1`'s columns (`layouts`' `c1`). -/
 def c1Columns (shape : Shape) : List (Column × ℕ × Bool) :=
   let heights := shape.heights
-  [(.qflock, heights.getD opBlake2s 0 + qflockRowBits, false)] ++
+  [(.qflock, heights.getD opSha3 0 + qflockRowBits, false)] ++
     tablesKeccak.flatMap (fun t ↦
       let h := heights.getD t.opcode 0
       (List.range t.width).map (fun c ↦ (Column.table t.opcode c, h, false)) ++
@@ -228,14 +228,14 @@ theorem reference_vars : (layoutsOfK keccakRefShape).map (·.2.vars) = [27, 26, 
 theorem layoutWordVars_layoutWord (s : Shape) (code vars placed : ℕ) :
     layoutWordVars (layoutWord s code vars placed) = vars % 256 := rfl
 
-/-- **The Keccak layout words name `27, 26, 23, 28, 28` variables.** -/
-theorem reference_wordVars : (layoutWordsK keccakRefShape).map layoutWordVars = [27, 26, 23, 28, 28] := by
+/-- **The Keccak layout words name `27, 26, 23` variables.** -/
+theorem reference_wordVars : (layoutWordsK keccakRefShape).map layoutWordVars = [27, 26, 23] := by
   unfold layoutWordsK
   simp only [List.map_cons, List.map_nil, layoutWordVars_layoutWord]
   rw [layoutsOf_eq]
   show [(StackLayout.new (c1Columns keccakRefShape)).vars % 256,
     (StackLayout.new (Shape.c2ColumnsK keccakRefShape)).vars % 256,
-    (StackLayout.new (setupColumns keccakRefShape)).vars % 256, matrixVars % 256, matrixVars % 256] = _
+    (StackLayout.new (setupColumns keccakRefShape)).vars % 256] = _
   rw [reference_c1Vars, reference_c2Vars, reference_setupVars]
   rfl
 

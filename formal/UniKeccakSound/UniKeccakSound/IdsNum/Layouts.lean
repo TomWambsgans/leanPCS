@@ -29,7 +29,7 @@ open LeanVM.Parameters UniStatement UniSound UniSound.Ids UniSound.Ids.Eval UniK
 
 /-- `C1`'s columns at a shape on the Keccak VM (`layoutsK`'s `c1`). -/
 def c1ColsK (S : Shape) : List (Column × ℕ × Bool) :=
-  [(.qflock, S.heights.getD opBlake2s 0 + qflockRowBits, false)] ++
+  [(.qflock, S.heights.getD opSha3 0 + qflockRowBits, false)] ++
     tablesKeccak.flatMap (fun t ↦
       (List.range t.width).map (fun c ↦ (Column.table t.opcode c, S.heights.getD t.opcode 0, false)) ++
         [(.inverse t.opcode, S.heights.getD t.opcode 0, false)]) ++
@@ -63,7 +63,7 @@ def c1NamesK : List Column :=
 
 /-- A Keccak `C1` column's variables at a shape. -/
 def c1VarsK (S : Shape) : Column → ℕ
-  | .qflock => S.heights.getD opBlake2s 0 + qflockRowBits
+  | .qflock => S.heights.getD opSha3 0 + qflockRowBits
   | .table o _ => S.heights.getD o 0
   | .inverse o => S.heights.getD o 0
   | .memory _ => S.logMemory
@@ -116,7 +116,7 @@ def C1LimbsK (S : Shape) : Prop :=
     (∀ o < 6, ∃ off, (layoutOfK S .c1).limbs (.inverse o) = [(0, S.heights.getD o 0, off)]) ∧
     (∀ k < 4, ∃ off, (layoutOfK S .c1).limbs (.memory k) = [(0, S.logMemory, off)]) ∧
     (∃ off, (layoutOfK S .c1).limbs .bytecodeFinal = [(0, S.logBytecode, off)]) ∧
-    (∃ off, (layoutOfK S .c1).limbs .qflock = [(0, S.heights.getD opBlake2s 0 + qflockRowBits, off)])
+    (∃ off, (layoutOfK S .c1).limbs .qflock = [(0, S.heights.getD opSha3 0 + qflockRowBits, off)])
 
 /-- **The setup's two columns are one limb each** on the Keccak VM. -/
 def SetupLimbsK (S : Shape) : Prop :=

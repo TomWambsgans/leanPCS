@@ -17,7 +17,7 @@ open LeanVM.Parameters UniStatement Finset Polynomial
 /-- **How `C1` is read** (the bridges the reading of `C1`'s columns at the points rests on). -/
 structure C1Reading (D : Deployment) : Prop where
   beta : BetaCantor
-  functionals : FunctionalsCorrect (D.shape.heights.getD opBlake2s 0)
+  functionals : FunctionalsCorrect (D.shape.heights.getD opSha3 0)
   limbs : C1Limbs D.shape
   aligned : LayoutAligned (layoutOf D.shape .c1)
   vars : (layoutOf D.shape .c1).vars ≤ batchVars D.shape
@@ -163,8 +163,8 @@ theorem cvecOk (D : Deployment) (hr : C1Reading D) : CvecOkP D := by
     have hmem : (liftP (S.heights.getD 5 0) rW, c1P S c (.table 5 col) + slotP S c slot) ∈
         tableConstraintsP S c (tables.getD 5 default) := by
       unfold tableConstraintsP
-      rw [show tables.getD 5 default = ⟨opBlake2s, blake2sColumns, flushesBlake2s⟩ from rfl]
-      simp only [opJump, opBlake2s, show ¬ (5 : ℕ) = 4 by norm_num, ite_false, ite_true,
+      rw [show tables.getD 5 default = ⟨opSha3, blake2sColumns, flushesBlake2s⟩ from rfl]
+      simp only [opJump, opSha3, show ¬ (5 : ℕ) = 4 by norm_num, ite_false, ite_true,
         List.nil_append]
       refine List.mem_append_right _ (List.mem_filterMap.mpr ⟨col, ?_, ?_⟩)
       · exact List.mem_range.mpr (by simpa [Table.width, blake2sColumns] using hcol37)

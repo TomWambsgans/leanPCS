@@ -902,7 +902,7 @@ depend on the shape, and the kernel checks that each of `C1Limbs`'s columns occu
 
 /-- `C1`'s columns at a shape (`layouts`'s `c1`). -/
 def c1Cols (S : Shape) : List (Column × ℕ × Bool) :=
-  [(.qflock, S.heights.getD opBlake2s 0 + 8, false)] ++
+  [(.qflock, S.heights.getD opSha3 0 + 8, false)] ++
     tables.flatMap (fun t ↦
       (List.range t.width).map (fun c ↦ (Column.table t.opcode c, S.heights.getD t.opcode 0, false)) ++
         [(.inverse t.opcode, S.heights.getD t.opcode 0, false)]) ++
@@ -925,7 +925,7 @@ def c1Names : List Column :=
 
 /-- A `C1` column's variables at a shape. -/
 def c1Vars (S : Shape) : Column → ℕ
-  | .qflock => S.heights.getD opBlake2s 0 + 8
+  | .qflock => S.heights.getD opSha3 0 + 8
   | .table o _ => S.heights.getD o 0
   | .inverse o => S.heights.getD o 0
   | .memory _ => S.logMemory

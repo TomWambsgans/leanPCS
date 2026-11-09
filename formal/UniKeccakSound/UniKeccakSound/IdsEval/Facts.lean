@@ -106,7 +106,7 @@ theorem heights_leK (D : KDeployment) (o : ℕ) : D.shape.heights.getD o 0 ≤ 3
     omega
 
 /-- `SHA3` has at least one row variable (a valid shape with Flock: at least `7`). -/
-theorem hB_posK (D : KDeployment) : 1 ≤ D.shape.heights.getD opBlake2s 0 := by
+theorem hB_posK (D : KDeployment) : 1 ≤ D.shape.heights.getD opSha3 0 := by
   have h := D.valid.2
   unfold Shape.validate at h
   simp at h

@@ -81,7 +81,7 @@ def degree (plus minus : ℕ) : ℕ := plus - minus
 public input's), every height below `32` (the counts are 32-bit), and with Flock BLAKE2S's height at least `7`
 (its zerocheck's seven fixed coordinates). -/
 def Shape.validate (s : Shape) (flock : Bool) : Bool :=
-  !(decide (s.logMemory < 1) || s.heights.any (· > 31) || (flock && decide (s.heights.getD opBlake2s 0 < 7)))
+  !(decide (s.logMemory < 1) || s.heights.any (· > 31) || (flock && decide (s.heights.getD opSha3 0 < 7)))
 
 /-- **A valid shape**, for a deployment of the main line (Flock): six tables, and `Shape.validate` with Flock. -/
 def Shape.Valid (s : Shape) : Prop := s.heights.length = 6 ∧ s.validate true = true
@@ -224,6 +224,11 @@ structure Reduced where
   layouts : List (Commitment × StackLayout)
   deriving Inhabited
 
+/-- **The setup stack's columns** (`stack_layouts`' setup): the bytecode's tuples (`lb + 4`), the memory's
+addresses. They do not depend on the tables. -/
+def setupStackColumns (shape : Shape) : List (Column × ℕ × Bool) :=
+  [(.bytecodeTuple, shape.logBytecode + 4, false), (.address, shape.logMemory, false)]
+
 /-- **The three stacks' layouts** (`stack_layouts`, SPEC.md §3), `C2`'s from its column list. `C1`: `q_flock`
 (values, `h_B + 8`), every table's columns and its `z_T`, the memory's four columns, the bytecode's final
 counts; `C2`: the heap, the quotients (`E`-valued, as the walk lists them); setup: the bytecode's tuples
@@ -231,7 +236,7 @@ counts; `C2`: the heap, the quotients (`E`-valued, as the walk lists them); setu
 def layouts (shape : Shape) (c2Columns : List (Column × ℕ × Bool)) : List (Commitment × StackLayout) :=
   let heights := shape.heights
   let c1 : List (Column × ℕ × Bool) :=
-    [(.qflock, heights.getD opBlake2s 0 + 8, false)] ++
+    [(.qflock, heights.getD opSha3 0 + 8, false)] ++
       tables.flatMap (fun t ↦
         let h := heights.getD t.opcode 0
         (List.range t.width).map (fun c ↦ (Column.table t.opcode c, h, false)) ++
@@ -252,7 +257,7 @@ def Shape.constraintDegree (shape : Shape) : ℕ :=
     let n := 2 ^ r
     let d := if table.opcode = opJump then max d (degree n 2) else d
     let d := max d (degree ((n - 1) * (1 + table.countColumns.length)) n)
-    if table.opcode = opBlake2s then max d (degree (r * (n / 2)) n) else d) 0
+    if table.opcode = opSha3 then max d (degree (r * (n / 2)) n) else d) 0
   max tableDegree (degree (2 ^ shape.logMemory) 3)
 
 /-- **A heap block's leaf quotient's degree** (step 6): the memory's and the bytecode's `2(n − 1) − n`; a
@@ -376,7 +381,7 @@ def constraintRelation (shape : Shape) (parts : List TablePart) (publicWords : L
     let counts := table.countColumns.length
     qDegree := max qDegree (degree ((n - 1) * (1 + counts)) n)
     -- BLAKE2S's limb copies equal q_flock's limbs: copy_j − ℓ_j, ℓ_j read through y(t).
-    if table.opcode = opBlake2s then
+    if table.opcode = opSha3 then
       let y := coordinatesAt t (coordinateFunctionals r)
       for c in List.range table.width do
         if let some slot := qflockSlot (table.columns.getD c "") then
@@ -478,7 +483,7 @@ def reduceWith (shape : Shape) (publicWords : List E) (blake2s : Blake2s) (mode 
   let gamma ← sample F
   let weights := eqKernel alphas
   -- 2. Flock, on C1's q_flock; with the point-claim ABI, its matrices' reduction left pending (lever 4a).
-  let logN := blake2sR1csLogSize + heights.getD opBlake2s 0
+  let logN := blake2sR1csLogSize + heights.getD opSha3 0
   let (flock, pending) : Option (List E × Option Flock.End × Option Flock.MatrixClaim) ×
       Option (Flock.Pending × List E) ← match blake2s, mode with
     | .flock variant, .point => do

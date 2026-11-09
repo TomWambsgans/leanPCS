@@ -99,19 +99,19 @@ theorem natDegree_yP_le (a : Array (Array K)) (l : ℕ) : (yP a l).natDegree ≤
 
 /-- The merge polynomial's degree bound: `2^(h_B + 1)` (`coordinateFunctionals h_B` has `h_B` rows,
 `Eval.lean`'s `coordinateFunctionals_size`). -/
-def zBadDeg (S : Shape) : ℕ := 2 ^ ((coordinateFunctionals (S.heights.getD opBlake2s 0)).size + 1)
+def zBadDeg (S : Shape) : ℕ := 2 ^ ((coordinateFunctionals (S.heights.getD opSha3 0)).size + 1)
 
 /-- **`Z_bad`'s degree** is at most `zBadDeg`. -/
 theorem natDegree_zBad_le (S : Shape) (p0 : E) : (zBad S p0).natDegree ≤ zBadDeg S := by
   unfold zBad zBadDeg
-  have hy := natDegree_yP_le (coordinateFunctionals (S.heights.getD opBlake2s 0)) 0
-  have h1 : 1 ≤ 2 ^ (coordinateFunctionals (S.heights.getD opBlake2s 0)).size := Nat.one_le_two_pow
+  have hy := natDegree_yP_le (coordinateFunctionals (S.heights.getD opSha3 0)) 0
+  have h1 : 1 ≤ 2 ^ (coordinateFunctionals (S.heights.getD opSha3 0)).size := Nat.one_le_two_pow
   refine (Polynomial.natDegree_mul_le).trans ?_
   have ha := (Polynomial.natDegree_add_le
-    (yP (coordinateFunctionals (S.heights.getD opBlake2s 0)) 0) Polynomial.X).trans
+    (yP (coordinateFunctionals (S.heights.getD opSha3 0)) 0) Polynomial.X).trans
       (max_le hy (Polynomial.natDegree_X_le.trans h1))
   have hb := (Polynomial.natDegree_add_le
-    (yP (coordinateFunctionals (S.heights.getD opBlake2s 0)) 0) (Polynomial.C p0)).trans
+    (yP (coordinateFunctionals (S.heights.getD opSha3 0)) 0) (Polynomial.C p0)).trans
       (max_le hy (by rw [Polynomial.natDegree_C]; exact Nat.zero_le _))
   rw [pow_succ]
   omega

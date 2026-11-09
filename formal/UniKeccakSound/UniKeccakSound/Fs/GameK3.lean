@@ -8,7 +8,7 @@ import UniKeccakSound.Fs.GameK
 
 **`fsLayer128K3_of_gameV`**: `FsLayer128K3 F D F3 nV np C` from the coupling **`UniGameLeVK3`** and the numbers, as
 `GameK.lean`'s `fsLayer128K_of_gameV`: the contract's IV at `keccakRec3` (`ivInputK3`: the variant's bytes
-`"keccak-vm" ‖ 3 ‖ 3`, so the same `D.programIv.length + 291` bytes and the same `UniIvK`), computed by the verifier
+`"keccak-vm" ‖ 3 ‖ 3`, so the same `D.programIv.length + 163` bytes and the same `UniIvK`), computed by the verifier
 (`uVerIvK3`) and moved into the two-oracle adversary (`expU_ivAdvK3`); the openings once at `kShapes`, the seed's
 pair (`hlab_uniK3`), the chain (`maxErrK_uniK3`): the bound `uniBound128 e`. The adversary (`uAdvK`), the setup's
 roots (`uFixK`) and `UniIvK` are the main line's.
@@ -26,11 +26,11 @@ attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
 
 /-! ## The Keccak contract's IV -/
 
-/-- **The Keccak contract IV's input** (`contractIvKWith` at `keccakRec3`): the tag, the program's IV, the three
-roots, the shape's bytes, the five Keccak layout words and the variant's bytes. -/
+/-- **The Keccak contract IV's input** (`contractIvKWith` at `keccakRec3`): the tag, the program's IV, the setup's
+root, the shape's bytes, the three Keccak layout words and the variant's bytes. -/
 def ivInputK3 (D : KDeployment) (roots : SetupRoots) : List UInt8 :=
-  ivTag ++ D.programIv ++ digestBytes roots.bytecode ++ digestBytes roots.a0 ++
-    digestBytes roots.b0 ++ shapeBytes D.shape ++ (layoutWordsK D.shape).flatten ++ variantBytesK keccakRec3
+  ivTag ++ D.programIv ++ digestBytes roots.bytecode ++
+    shapeBytes D.shape ++ (layoutWordsK D.shape).flatten ++ variantBytesK keccakRec3
 
 theorem contractIvKWith_eq3 {m : Type → Type} [Monad m] [LawfulMonad m]
     (F : LeanVM.Semantics.KeccakState → m LeanVM.Semantics.KeccakState) (D : KDeployment) (roots : SetupRoots) :
@@ -43,7 +43,7 @@ theorem length_variantBytesK_rec3 : (variantBytesK keccakRec3).length = 11 := by
   decide +kernel
 
 theorem length_ivInputK3 (D : KDeployment) (roots : SetupRoots) :
-    (ivInputK3 D roots).length = D.programIv.length + 291 := by
+    (ivInputK3 D roots).length = D.programIv.length + 163 := by
   simp only [ivInputK3, List.length_append, length_ivTag, length_digestBytes, length_shapeBytes,
     length_layoutWordsK_flatten, length_variantBytesK_rec3]
   omega
@@ -248,7 +248,7 @@ theorem fsLayer128K3_of_gameV (hN : UniNumbersK3 D F3 nV np C hs) (hI : UniIvK D
     rw [expU_ivAdvK3, run'_simulateQ_map, prEvent_map]
     refine prEvent_mono _ _ _ fun w hw => ?_
     have hb := breaksOK_of_relK3 D F3 nV np C hs R hpre _ hw
-    have hlen : (ivInputK3 D w.1.1.roots).length = D.programIv.length + 291 := length_ivInputK3 _ _
+    have hlen : (ivInputK3 D w.1.1.roots).length = D.programIv.length + 163 := length_ivInputK3 _ _
     have h64 : (ivInputK3 D w.1.1.roots).length ≠ 64 := by rw [hlen]; omega
     have hl : (ivInputK3 D w.1.1.roots).length ≠ (uniTcK hs 0).leafLen := by
       rw [hlen, leafLen_uniTcK_zero]

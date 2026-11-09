@@ -204,9 +204,9 @@ theorem kvCell_flock {w : ℕ} (hw : w < 2 ^ KeccakVm.kWords) {x : ℕ} (hx : x 
 padding rows by construction. -/
 theorem honest_copies (hfit : D.shape.RowsFit rows)
     (hrel : D.HonestRelation KeccakFlock.keccakFlockSpec rows input q) :
-    ∀ i < 2 ^ (honestTrace D input rows q).height opBlake2s, ∀ c < sha3Columns.length, ∀ slot,
+    ∀ i < 2 ^ (honestTrace D input rows q).height opSha3, ∀ c < sha3Columns.length, ∀ slot,
       keccakSlot (sha3Columns.getD c "") = some slot →
-        ((honestTrace D input rows q).column opBlake2s c).getD i 0 =
+        ((honestTrace D input rows q).column opSha3 c).getD i 0 =
           (honestTrace D input rows q).qflock.getD (slot + 2048 * i) 0 +
             K.ofLane (keccakSlotOffset (sha3Columns.getD c "")) := by
   intro i hi c hc slot hslot

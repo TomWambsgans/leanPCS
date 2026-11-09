@@ -228,7 +228,7 @@ def reduceWithKH (shape : Shape) (publicWords : List E) (v : KeccakVariant) (mod
   let beta ← sampleH H
   let gamma ← sampleH H
   let weights := eqKernel alphas
-  let logN := keccakR1csLogSize + heights.getD opBlake2s 0
+  let logN := keccakR1csLogSize + heights.getD opSha3 0
   let (flockPoint, flockEnd) ← verifyWalkedKH H logN v
   let root2 ← nextRoot (m := m)
   let t ← sampleH H
@@ -306,8 +306,8 @@ def runWithKH (shape : Shape) (iv publicInput : List UInt8) (stream : Array UInt
 /-- `UniKeccak.contractIvKWith` with Keccak-256 `H`. -/
 def contractIvKWithH (s : Shape) (v : KeccakVariant) (programIv : List UInt8) (roots : SetupRoots) :
     m (List UInt8) := do
-  let d ← H (ivTag ++ programIv ++ digestBytes roots.bytecode ++ digestBytes roots.a0 ++
-    digestBytes roots.b0 ++ shapeBytes s ++ (layoutWordsK s).flatten ++ variantBytesK v)
+  let d ← H (ivTag ++ programIv ++ digestBytes roots.bytecode ++
+    shapeBytes s ++ (layoutWordsK s).flatten ++ variantBytesK v)
   return digestBytes d
 
 /-- `KDeployment.ivWith` with Keccak-256 `H`. -/

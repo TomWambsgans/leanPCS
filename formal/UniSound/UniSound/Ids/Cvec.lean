@@ -181,13 +181,13 @@ theorem c1P_eval_pointE (D : Deployment) (h : BetaCantor) (ha : LayoutAligned (l
 
 /-- **`q_flock`'s slot `j` at `y(ω_x)`** is the word `j + 256 x`. -/
 theorem slotP_eval_pointE (D : Deployment) (h : BetaCantor)
-    (hf : FunctionalsCorrect (D.shape.heights.getD opBlake2s 0))
-    (hB24 : D.shape.heights.getD opBlake2s 0 ≤ 24) (ha : LayoutAligned (layoutOf D.shape .c1))
+    (hf : FunctionalsCorrect (D.shape.heights.getD opSha3 0))
+    (hB24 : D.shape.heights.getD opSha3 0 ≤ 24) (ha : LayoutAligned (layoutOf D.shape .c1))
     (hV : (layoutOf D.shape .c1).vars ≤ batchVars D.shape) (c : Stk) (off : ℕ)
-    (hl : (layoutOf D.shape .c1).limbs .qflock = [(0, D.shape.heights.getD opBlake2s 0 + 8, off)])
-    (slot x : ℕ) (hs : slot < 256) (hx : x < 2 ^ D.shape.heights.getD opBlake2s 0) :
+    (hl : (layoutOf D.shape .c1).limbs .qflock = [(0, D.shape.heights.getD opSha3 0 + 8, off)])
+    (slot x : ℕ) (hs : slot < 256) (hx : x < 2 ^ D.shape.heights.getD opSha3 0) :
     (slotP D.shape c slot).eval (pointE x) = ofK (c (off + (slot + 256 * x))) := by
-  set hB := D.shape.heights.getD opBlake2s 0
+  set hB := D.shape.heights.getD opSha3 0
   have hb := ha _ (limbs_mem_blocks (b := (0, hB + 8, off)) (by rw [hl]; exact List.mem_singleton_self _))
   have hoff : off < 2 ^ batchVars D.shape := by
     have := Nat.pow_le_pow_right (show 0 < 2 by norm_num) hV

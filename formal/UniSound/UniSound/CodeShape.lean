@@ -58,7 +58,7 @@ def cdStep (shape : Shape) (d : ℕ) (table : Table) : ℕ :=
   let n := 2 ^ r
   let d := if table.opcode = opJump then max d (degree n 2) else d
   let d := max d (degree ((n - 1) * (1 + table.countColumns.length)) n)
-  if table.opcode = opBlake2s then max d (degree (r * (n / 2)) n) else d
+  if table.opcode = opSha3 then max d (degree (r * (n / 2)) n) else d
 
 theorem constraintDegree_eq (shape : Shape) :
     shape.constraintDegree = max (tables.foldl (cdStep shape) 0) (degree (2 ^ shape.logMemory) 3) :=
@@ -75,9 +75,9 @@ theorem constraintRelation_snd (shape : Shape) (parts : List TablePart) (pw : Li
     (forIn_id_proj (fun s : E × Array Term × E × ℕ => s.2.2.2) (fun d x => cdStep shape d x.1) _ ?_
       _ _)).trans ?_
   · intro x s
-    have hjb : opJump ≠ opBlake2s := by decide
-    have hbj : opBlake2s ≠ opJump := by decide
-    by_cases h1 : x.1.opcode = opJump <;> by_cases h2 : x.1.opcode = opBlake2s <;>
+    have hjb : opJump ≠ opSha3 := by decide
+    have hbj : opSha3 ≠ opJump := by decide
+    by_cases h1 : x.1.opcode = opJump <;> by_cases h2 : x.1.opcode = opSha3 <;>
       simp only [h1, h2, ite_true, ite_false] <;>
       exact ⟨_, rfl, by simp [cdStep, h1, h2, hjb, hbj]⟩
   · simp only [foldl_zip_fst _ _ _ _ h]

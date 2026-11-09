@@ -81,19 +81,19 @@ theorem setupStackOf_size (tr : Trace) (href : tr.shape = keccakRefShape) : (set
 
 theorem reference_logMemory : keccakRefShape.logMemory = 20 := by decide +kernel
 
-theorem reference_sha3Height : keccakRefShape.heights.getD opBlake2s 0 = 15 := by
+theorem reference_sha3Height : keccakRefShape.heights.getD opSha3 0 = 15 := by
   rw [reference_heights]
   rfl
 
 /-- **`¬ BadT` gives the slot condition** at the reference shape: `y(t)` (`15` coordinates) is a prefix neither of
 `w(t)` (else a proper prefix of `w(t).take 20`) nor of Flock's point (of at least `26` coordinates). -/
 theorem slotCondition_of_badT (tr : Trace) (href : tr.shape = keccakRefShape) (t : E) (out : FlockOut)
-    (hpt : tr.shape.heights.getD opBlake2s 0 + 11 ≤ out.point.length)
+    (hpt : tr.shape.heights.getD opSha3 0 + 11 ≤ out.point.length)
     (hbad : ¬ Prob.BadT keccakRefShape out.point t) :
     AtTSlotCondition (digits t (max tr.shape.heap.h (tr.shape.constraintVars + 4) + 2))
-      (coordinatesAt t (coordinateFunctionals (tr.shape.heights.getD opBlake2s 0))) (some out) := by
+      (coordinatesAt t (coordinateFunctionals (tr.shape.heights.getD opSha3 0))) (some out) := by
   rw [href] at hpt ⊢
-  have hy : (coordinatesAt t (coordinateFunctionals (keccakRefShape.heights.getD opBlake2s 0))).length = 15 := by
+  have hy : (coordinatesAt t (coordinateFunctionals (keccakRefShape.heights.getD opSha3 0))).length = 15 := by
     rw [length_coordinatesAt, reference_sha3Height]
   have hw := length_w keccakRefShape t
   have hlm := logMemory_le_constraintVars keccakRefShape
@@ -313,7 +313,7 @@ theorem atTOf_coversC2 (tr : Trace) (hon : TraceHonest tr) (href : tr.shape = ke
 theorem ringRel_holds (tr : Trace) (out : FlockOut) {map : List E} {target : E}
     (hring : ∑ u ∈ range (2 ^ out.point.length),
       Flock.towerRingMap ((eqKernel out.point).getD u 0) map * ofK (tr.qflock.getD u 0) = target)
-    (hlen : out.point.length = tr.shape.heights.getD opBlake2s 0 + 11) (cols : List (Column × ℕ × Bool))
+    (hlen : out.point.length = tr.shape.heights.getD opSha3 0 + 11) (cols : List (Column × ℕ × Bool))
     (SO : Commitment → Array K) (hSO : SO .c1 = c1Stack tr) :
     Relation.Holds (layoutIn (layoutsK tr.shape cols)) SO (some map) (AlgC.ringRel out target) := by
   unfold Relation.Holds AlgC.ringRel
@@ -322,8 +322,8 @@ theorem ringRel_holds (tr : Trace) (out : FlockOut) {map : List E} {target : E}
   rw [hSO]
   obtain ⟨o, hlimbs, hin⟩ := AlgC.limbs_K (cols := AlgC.c1ColsOf tr.shape) (column := .qflock)
     (AlgC.termCount_c1 tr.shape AlgC.c1Names_count_qflock) (AlgC.c1ColsOf_vars tr.shape)
-  rw [show AlgC.c1VarsOf tr.shape .qflock = tr.shape.heights.getD opBlake2s 0 + 11 from rfl] at hlimbs hin
-  have hb : (Column.qflock, 0, tr.shape.heights.getD opBlake2s 0 + 11, o) ∈
+  rw [show AlgC.c1VarsOf tr.shape .qflock = tr.shape.heights.getD opSha3 0 + 11 from rfl] at hlimbs hin
+  have hb : (Column.qflock, 0, tr.shape.heights.getD opSha3 0 + 11, o) ∈
       (StackLayout.new (AlgC.c1ColsOf tr.shape)).blocks :=
     AlgC.mem_limbs.mp (by rw [hlimbs]; exact List.mem_singleton_self _)
   unfold termEval denseWeight termClaim c1Stack
@@ -332,8 +332,8 @@ theorem ringRel_holds (tr : Trace) (out : FlockOut) {map : List E} {target : E}
   obtain ⟨-, h2⟩ := AlgC.dotK_foldl_addAt (placeStack (StackLayout.new (AlgC.c1ColsOf tr.shape)) (c1Words tr))
     (fun u ↦ o + u)
     (fun u ↦ limbScale 1 0 * Flock.towerRingMap ((eqKernel ((out.point ++ List.replicate
-      (tr.shape.heights.getD opBlake2s 0 + 11) 0).take (tr.shape.heights.getD opBlake2s 0 + 11))).getD u 0) map)
-    (List.range (2 ^ (tr.shape.heights.getD opBlake2s 0 + 11)))
+      (tr.shape.heights.getD opSha3 0 + 11) 0).take (tr.shape.heights.getD opSha3 0 + 11))).getD u 0) map)
+    (List.range (2 ^ (tr.shape.heights.getD opSha3 0 + 11)))
     (Array.replicate (2 ^ (StackLayout.new (AlgC.c1ColsOf tr.shape)).vars) 0)
   rw [h2, AlgC.dotK_replicate, zero_add, AlgC.termSum_map_range, AlgC.termTake_pad _ hlen, ← hring, hlen,
     Array.size_replicate]
@@ -352,7 +352,7 @@ theorem relations_hold_front (tr : Trace) (hon : TraceHonest tr) (href : tr.shap
     (hend : out.end_ = .ring map target) (hbad : ¬ BadFp tr alphas beta)
     (hring : ∑ u ∈ range (2 ^ out.point.length),
       Flock.towerRingMap ((eqKernel out.point).getD u 0) map * ofK (tr.qflock.getD u 0) = target)
-    (hlen : out.point.length = tr.shape.heights.getD opBlake2s 0 + 11) :
+    (hlen : out.point.length = tr.shape.heights.getD opSha3 0 + 11) :
     ∀ r ∈ (atTOf tr (c2DataOf tr (eqKernel alphas) beta gamma) alphas beta gamma t (some out)).relations,
       Relation.Holds (layoutIn (layoutsK tr.shape
           (atTOf tr (c2DataOf tr (eqKernel alphas) beta gamma) alphas beta gamma t (some out)).c2Columns))
@@ -412,7 +412,7 @@ theorem batchHolds_of (H : List UInt8 → Digest) (tr : Trace) (hon : TraceHones
     (href : tr.shape = keccakRefShape) {alphas : List E} (hα : alphas.length = 4) (beta gamma t rho : E) (w : Wr)
     (out : FlockOut)
     (hout : out = ((FlockP.flockProve (m := Id) (Pure.pure ∘ H)
-      (keccakR1csLogSize + tr.shape.heights.getD opBlake2s 0) keccakMain tr.qflock).run w).1)
+      (keccakR1csLogSize + tr.shape.heights.getD opSha3 0) keccakMain tr.qflock).run w).1)
     (hbad : ¬ BadFp tr alphas beta) (hbadT : ¬ Prob.BadT keccakRefShape out.point t) :
     BatchHolds
       (commitments.filterMap fun c ↦
@@ -422,10 +422,10 @@ theorem batchHolds_of (H : List UInt8 → Digest) (tr : Trace) (hon : TraceHones
       (stacksOf (c1Stack tr) (c2DataOf tr (eqKernel alphas) beta gamma).stack (setupStackOf tr))
       (atTOf tr (c2DataOf tr (eqKernel alphas) beta gamma) alphas beta gamma t (some out)).ringMap := by
   obtain ⟨map, target, hend, hmap6, hring⟩ :=
-    FlockP.flockRingSum (Pure.pure ∘ H) (keccakR1csLogSize + tr.shape.heights.getD opBlake2s 0) keccakMain
+    FlockP.flockRingSum (Pure.pure ∘ H) (keccakR1csLogSize + tr.shape.heights.getD opSha3 0) keccakMain
       tr.qflock w
   rw [← hout] at hend hring
-  have hlen : out.point.length = tr.shape.heights.getD opBlake2s 0 + 11 := by
+  have hlen : out.point.length = tr.shape.heights.getD opSha3 0 + 11 := by
     rw [hout]
     exact FlockP.flock_point_length_trace H tr keccakMain (by decide) w
   have hslot := slotCondition_of_badT tr href t out (by omega) hbadT

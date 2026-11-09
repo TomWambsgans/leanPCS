@@ -79,13 +79,13 @@ variable (H : List UInt8 → Digest) (F : KeccakState → KeccakState)
 
 /-- The prover's seed (`proveWith`'s): the Keccak contract's IV at `keccakMain` over the setup's root and the
 deployment's `A0`, `B0` constants, then the public input. -/
-def proverSeed (a0 b0 : Digest) (programIv : List UInt8) (tr : Trace) : Digest :=
+def proverSeed (programIv : List UInt8) (tr : Trace) : Digest :=
   seedOf (m := Id) H (contractIvOf (m := Id) H tr.shape keccakMain programIv
-    ⟨(setupTreeOf (m := Id) H tr).root, a0, b0⟩) tr.publicInput
+    ⟨(setupTreeOf (m := Id) H tr).root⟩) tr.publicInput
 
-def streamRun (flock : FlockProver Id) (a0 b0 : Digest) (programIv : List UInt8) (tr : Trace) : CoreOut × Wr :=
+def streamRun (flock : FlockProver Id) (programIv : List UInt8) (tr : Trace) : CoreOut × Wr :=
   (proveStreamWith (m := Id) H (commitReal (m := Id) H) flock tr).run
-    (Wr.start (proverSeed H a0 b0 programIv tr))
+    (Wr.start (proverSeed H programIv tr))
 
 def openingFor (fuel : ℕ) (tree : LeanVM.Prover.Tree) (out : CoreOut) (words : List (List UInt8)) :
     Commitment → List E → E → Option Compile.Proof
@@ -103,20 +103,20 @@ def claimProof (fuel : ℕ) (tree : LeanVM.Prover.Tree) (out : CoreOut) (words :
   | none => none
 
 /-- **`proveWith` at `Id`**: the three claims' openings, bound in `Option`. -/
-theorem proveWith_eq (fuel : ℕ) (flock : FlockProver Id) (a0 b0 : Digest) (programIv : List UInt8)
+theorem proveWith_eq (fuel : ℕ) (flock : FlockProver Id) (programIv : List UInt8)
     (tr : Trace) :
-    proveWith (m := Id) H F fuel flock a0 b0 programIv tr =
-      (claimProof H F fuel (setupTreeOf (m := Id) H tr) (streamRun H flock a0 b0 programIv tr).1
+    proveWith (m := Id) H F fuel flock programIv tr =
+      (claimProof H F fuel (setupTreeOf (m := Id) H tr) (streamRun H flock programIv tr).1
           (layoutWordsK tr.shape) .c1).bind fun p1 ↦
-      (claimProof H F fuel (setupTreeOf (m := Id) H tr) (streamRun H flock a0 b0 programIv tr).1
+      (claimProof H F fuel (setupTreeOf (m := Id) H tr) (streamRun H flock programIv tr).1
           (layoutWordsK tr.shape) .c2).bind fun p2 ↦
-      (claimProof H F fuel (setupTreeOf (m := Id) H tr) (streamRun H flock a0 b0 programIv tr).1
+      (claimProof H F fuel (setupTreeOf (m := Id) H tr) (streamRun H flock programIv tr).1
           (layoutWordsK tr.shape) .setup).bind fun p3 ↦
-      some ⟨(streamRun H flock a0 b0 programIv tr).1.stream, p1, p2, p3⟩ := by
+      some ⟨(streamRun H flock programIv tr).1.stream, p1, p2, p3⟩ := by
   simp only [proveWith, idBind, idPure, streamRun, proverSeed]
   generalize (StateT.run (proveStreamWith (m := Id) H (commitReal (m := Id) H) flock tr)
     (Wr.start (seedOf (m := Id) H (contractIvOf (m := Id) H tr.shape keccakMain programIv
-      ⟨(setupTreeOf (m := Id) H tr).root, a0, b0⟩) tr.publicInput))).1 = out
+      ⟨(setupTreeOf (m := Id) H tr).root⟩) tr.publicInput))).1 = out
   generalize setupTreeOf (m := Id) H tr = tree
   unfold claimProof
   split <;> split <;> split <;> (try simp only [openingFor, *]) <;> rfl
@@ -364,17 +364,17 @@ theorem claimProof_eq_none (fuel : ℕ) (tree : LeanVM.Prover.Tree) (out : CoreO
 /-- **`proveWith` returns a proof** exactly when each of `C1`, `C2`, the setup has a claim and the three openings
 (`claimProof`: the stack, tree and layout of the commitment, the point claim) all return one; the proof is the
 stream and those openings. -/
-theorem proveWith_eq_some (fuel : ℕ) (flock : FlockProver Id) (a0 b0 : Digest) (programIv : List UInt8)
+theorem proveWith_eq_some (fuel : ℕ) (flock : FlockProver Id) (programIv : List UInt8)
     (tr : Trace) (π : KeccakProof) :
-    proveWith (m := Id) H F fuel flock a0 b0 programIv tr = some π ↔
+    proveWith (m := Id) H F fuel flock programIv tr = some π ↔
       ∃ p1 p2 p3,
-        claimProof H F fuel (setupTreeOf (m := Id) H tr) (streamRun H flock a0 b0 programIv tr).1
+        claimProof H F fuel (setupTreeOf (m := Id) H tr) (streamRun H flock programIv tr).1
           (layoutWordsK tr.shape) .c1 = some p1 ∧
-        claimProof H F fuel (setupTreeOf (m := Id) H tr) (streamRun H flock a0 b0 programIv tr).1
+        claimProof H F fuel (setupTreeOf (m := Id) H tr) (streamRun H flock programIv tr).1
           (layoutWordsK tr.shape) .c2 = some p2 ∧
-        claimProof H F fuel (setupTreeOf (m := Id) H tr) (streamRun H flock a0 b0 programIv tr).1
+        claimProof H F fuel (setupTreeOf (m := Id) H tr) (streamRun H flock programIv tr).1
           (layoutWordsK tr.shape) .setup = some p3 ∧
-        π = ⟨(streamRun H flock a0 b0 programIv tr).1.stream, p1, p2, p3⟩ := by
+        π = ⟨(streamRun H flock programIv tr).1.stream, p1, p2, p3⟩ := by
   rw [proveWith_eq, Option.bind_eq_some_iff]
   simp only [Option.bind_eq_some_iff, Option.some.injEq]
   constructor
@@ -385,10 +385,10 @@ theorem proveWith_eq_some (fuel : ℕ) (flock : FlockProver Id) (a0 b0 : Digest)
 
 /-- **When `proveWith` fails**: a commitment has no claim, or one of the three openings returned `none` (each named
 with its layout, tree, stack and point claim). -/
-theorem proveWith_eq_none (fuel : ℕ) (flock : FlockProver Id) (a0 b0 : Digest) (programIv : List UInt8)
-    (tr : Trace) (h : proveWith (m := Id) H F fuel flock a0 b0 programIv tr = none) :
+theorem proveWith_eq_none (fuel : ℕ) (flock : FlockProver Id) (programIv : List UInt8)
+    (tr : Trace) (h : proveWith (m := Id) H F fuel flock programIv tr = none) :
     let tree := setupTreeOf (m := Id) H tr
-    let out := (streamRun H flock a0 b0 programIv tr).1
+    let out := (streamRun H flock programIv tr).1
     let words := layoutWordsK tr.shape
     (∃ c ∈ [Commitment.c1, .c2, .setup], out.claims.find? (·.1 == c) = none) ∨
     (∃ c' pt v, out.claims.find? (·.1 == .c1) = some (c', pt, v) ∧
@@ -447,7 +447,7 @@ theorem ref_rounds : ((layoutsK keccakRefShape (Shape.c2ColumnsK keccakRefShape)
   rfl
 
 theorem ref_word (i : ℕ) :
-    layoutWordVars ((layoutWordsK keccakRefShape).getD i []) = [27, 26, 23, 28, 28].getD i 0 := by
+    layoutWordVars ((layoutWordsK keccakRefShape).getD i []) = [27, 26, 23].getD i 0 := by
   rw [← reference_wordVars,
     show (0 : ℕ) = layoutWordVars [] from rfl, List.getD_map]
 
@@ -458,21 +458,21 @@ theorem setupTree_eq (tr : Trace) :
 /-- **The honest prover fails only at a proof of work**, at the reference shape, for an honest trace: if
 `proveWith` returns `none`, one of the three openings (at `23 ≤ vars ≤ 27` variables) reached WHIR's `17`-bit proof
 of work at a sponge where every nonce below `fuel` fails. -/
-theorem prover_none_pow (fuel : ℕ) (flock : FlockProver Id) (a0 b0 : Digest) (programIv : List UInt8) (tr : Trace)
+theorem prover_none_pow (fuel : ℕ) (flock : FlockProver Id) (programIv : List UInt8) (tr : Trace)
     (hshape : tr.shape = keccakRefShape) (hon : TraceHonest tr)
-    (h : proveWith (m := Id) H F fuel flock a0 b0 programIv tr = none) :
+    (h : proveWith (m := Id) H F fuel flock programIv tr = none) :
     ∃ vars claims hist k sp, 23 ≤ vars ∧ vars ≤ 27 ∧
       (Whir.Complete.openingProgram vars PcsQuotient.logInvRate
         (PcsQuotient.stackClaims (plainLayout vars) claims)).after hist = some (.grind Whir.queryGrindingBits k) ∧
       ∀ n < fuel, powOk Whir.queryGrindingBits (Compile.nonceOf n) (Compile.powStep F sp (Compile.nonceOf n)).1 =
         false := by
-  have hf : StreamFacts (commitReal (m := Id) H) tr (streamRun H flock a0 b0 programIv tr).1 :=
+  have hf : StreamFacts (commitReal (m := Id) H) tr (streamRun H flock programIv tr).1 :=
     streamRun_facts H (commitReal (m := Id) H) flock tr _
   have hC2 := c2ColumnsHonest_of_traceHonest hon
   have hpts := hf.points hC2
   rw [hshape] at hpts
   -- A claim found for `c` is `c`'s, with a point of its stack's variables.
-  have hpt : ∀ c c' pt v, (streamRun H flock a0 b0 programIv tr).1.claims.find? (·.1 == c) =
+  have hpt : ∀ c c' pt v, (streamRun H flock programIv tr).1.claims.find? (·.1 == c) =
       some (c', pt, v) → c' = c ∧
         pt.length = min (layoutIn (layoutsK keccakRefShape (Shape.c2ColumnsK keccakRefShape)) c).vars 27 := by
     intro c c' pt v hfind
@@ -481,11 +481,11 @@ theorem prover_none_pow (fuel : ℕ) (flock : FlockProver Id) (a0 b0 : Digest) (
     have := hpts _ (List.mem_of_find?_eq_some hfind)
     rw [ref_rounds] at this
     exact ⟨rfl, this⟩
-  rcases proveWith_eq_none H F fuel flock a0 b0 programIv tr h with
+  rcases proveWith_eq_none H F fuel flock programIv tr h with
     hmiss | ⟨c', pt, v, hfind, hopen⟩ | ⟨c', pt, v, hfind, hopen⟩ | ⟨c', pt, v, hfind, hopen⟩
   · -- Every commitment has a claim.
     obtain ⟨c, hc, hnone⟩ := hmiss
-    have hc' : c ∈ (streamRun H flock a0 b0 programIv tr).1.claims.map (·.1) := by
+    have hc' : c ∈ (streamRun H flock programIv tr).1.claims.map (·.1) := by
       rw [hf.claims_fst]
       exact hc
     obtain ⟨x, hx, rfl⟩ := List.mem_map.mp hc'

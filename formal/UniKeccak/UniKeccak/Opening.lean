@@ -1,5 +1,5 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Transcribed from `crates/leanvm/univariate/src/contract.rs`
--- (`variant_bytes` and `contract_iv_for` with `Blake2s::Keccak`, `layout_words_for`, `calls`) and
+-- (`variant_bytes`, `contract_iv`, `layout_words`, `calls`) and
 -- `crates/leanvm/univariate/tests/keccak_vm.rs` (`KECCAK_RUNS`, `KECCAK_LOG_BYTECODE`: leanVM 9d50c92a3's runs);
 -- `PCS_OPEN`'s semantics is `UniStatement`'s (`pcsOpenWith`, this repository's `formal/Statement` opening).
 module
@@ -9,15 +9,14 @@ public import UniKeccak.Verifier
 /-!
 # The Keccak contract's IV, its `PCS_OPEN` calls, and the whole Keccak verifier
 
-* **The layout words** (`layoutWordsK`, `layout_words_for(shape, Blake2s::Keccak(..))`): the five words of
-  `UniStatement.layoutWord`, `C1`, `C2` and the setup from the Keccak VM's layouts (`layoutsOfK`), then `A0`'s and
-  `B0`'s (28 variables, `2^28` words), which the contract never calls but its IV hashes.
-* **The IV** (`contractIvKWith`, `contract_iv_for`): the Keccak-256 of the tag `"leanVM-univar-iv"`, the program's IV,
-  the three setup roots (`F`, `A0`, `B0`: the contract's constants, `SetupRoots::REFERENCE` in the Rust's tests), the
-  shape's bytes, the five layout words, then the variant's bytes (`variantBytesK`: `"keccak-vm"`, the skip, the
-  Fiat–Shamir shape's code `Main` 0, `Rec` 1, `Rec2` 2, `Rec3` 3). The seed is `keccak(name ‖ IV ‖ public input)`.
+* **The layout words** (`layoutWordsK`, `layout_words(shape)`): the three words of `UniStatement.layoutWord`, `C1`,
+  `C2` and the setup, from the Keccak VM's layouts (`layoutsOfK`).
+* **The IV** (`contractIvKWith`, `contract_iv`): the Keccak-256 of the tag `"leanVM-univar-iv"`, the program's IV,
+  the setup's root (`F`: the contract's constant, `SetupRoots::REFERENCE` in the Rust's tests), the shape's bytes, the
+  three layout words, then the variant's bytes (`variantBytesK`: `"keccak-vm"`, the skip, the Fiat–Shamir shape's
+  code `Main` 0, `Rec` 1, `Rec2` 2, `Rec3` 3). The seed is `keccak(name ‖ IV ‖ public input)`.
 * **The calls** (`pcsCallsK`, `calls`): **three**, `C1`, `C2`, the setup, each its one point claim, its root (`C1`'s
-  and `C2`'s the stream's, the setup's the constant `F` root) and its layout word. No `A0`, `B0` calls.
+  and `C2`'s the stream's, the setup's the constant `F` root) and its layout word.
 * **The whole verifier** (`verifyWithK`): the run (`runWithK`, point claims), its verdict, the three calls, each the
   Statement's opening (`pcsOpenWith`) on its stack of `2^vars` words, `vars` its layout word's. A proof is the stream
   and three opening proofs (`KeccakProof`).
@@ -38,30 +37,28 @@ def FsShape.code : FsShape → ℕ
   | .rec2 => 2
   | .rec3 => 3
 
-/-- **`variant_bytes(Blake2s::Keccak(v))`**: the tag `"keccak-vm"`, then the skip and the Fiat–Shamir shape's code. -/
+/-- **`variant_bytes(v)`**: the tag `"keccak-vm"`, then the skip and the Fiat–Shamir shape's code. -/
 def variantBytesK (v : KeccakVariant) : List UInt8 :=
   "keccak-vm".toUTF8.toList ++ [v.skip.toUInt8, (FsShape.code v.fs).toUInt8]
 
-/-- **`layout_words_for(shape, Blake2s::Keccak(..))`**: `C1`, `C2`, the setup (each its Keccak stack's `vars` and
-`placed`, `layoutsOfK`), `A0`, `B0` (`28` variables, `2^28` words). -/
+/-- **`layout_words(shape)`**: `C1`, `C2`, the setup, each its Keccak stack's `vars` and `placed` (`layoutsOfK`). -/
 def layoutWordsK (s : Shape) : List (List UInt8) :=
   let stackLayouts := layoutsOfK s
   let wordOf (c : Commitment) : List UInt8 :=
     let l := (stackLayouts.lookup c).getD default
     layoutWord s (layoutCode c) l.vars l.words
-  [wordOf .c1, wordOf .c2, wordOf .setup, layoutWord s a0Code matrixVars (2 ^ matrixVars),
-    layoutWord s b0Code matrixVars (2 ^ matrixVars)]
+  [wordOf .c1, wordOf .c2, wordOf .setup]
 
 section With
 
 variable {m : Type → Type} [Monad m] (F : KeccakState → m KeccakState)
 
-/-- **`contract_iv_for(shape, Blake2s::Keccak(v), program_iv, roots)`** over `F`: the Keccak-256 of the tag, the
-program's IV, the three roots, the shape's bytes, the Keccak layout words and the variant's bytes. -/
+/-- **`contract_iv(shape, v, program_iv, roots)`** over `F`: the Keccak-256 of the tag, the program's IV, the setup's
+root, the shape's bytes, the Keccak layout words and the variant's bytes. -/
 def contractIvKWith (s : Shape) (v : KeccakVariant) (programIv : List UInt8) (roots : SetupRoots) :
     m (List UInt8) := do
-  let d ← keccak256With F (ivTag ++ programIv ++ digestBytes roots.bytecode ++ digestBytes roots.a0 ++
-    digestBytes roots.b0 ++ shapeBytes s ++ (layoutWordsK s).flatten ++ variantBytesK v)
+  let d ← keccak256With F (ivTag ++ programIv ++ digestBytes roots.bytecode ++ shapeBytes s ++
+    (layoutWordsK s).flatten ++ variantBytesK v)
   return digestBytes d
 
 end With

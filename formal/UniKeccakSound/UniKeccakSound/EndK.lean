@@ -59,8 +59,8 @@ def KLinksP3 (F : KeccakVm.KeccakFlockSpec) (D : KDeployment) {κ : ℕ} (F3 : K
 /-- **Knowledge soundness of the Keccak verifier (main line) at the Keccak-f block**, error
 `uniBound128 (2^32/|E|) Q ≤ 2^-64` for `Q ≤ 2^64`, from the named links `KFlockP` and `KLinksP`. -/
 theorem uniKnowledgeSoundnessKeccak_of (D : KDeployment)
-    (hFl : KFlockP KeccakFlock.keccakFlockSpec (D.shape.heights.getD opBlake2s 0) keccakMain e32)
-    (hL : ∀ Fl : KFlockSound KeccakFlock.keccakFlockSpec (D.shape.heights.getD opBlake2s 0) keccakMain,
+    (hFl : KFlockP KeccakFlock.keccakFlockSpec (D.shape.heights.getD opSha3 0) keccakMain e32)
+    (hL : ∀ Fl : KFlockSound KeccakFlock.keccakFlockSpec (D.shape.heights.getD opSha3 0) keccakMain,
       KLinksP KeccakFlock.keccakFlockSpec D Fl) :
     UniKnowledgeSoundnessKeccak KeccakFlock.keccakFlockSpec D (uniBound128 e32) ∧
       ∀ Q ≤ 2 ^ 64, uniBound128 e32 Q ≤ (2 : ℝ≥0∞)⁻¹ ^ 64 := by
@@ -71,8 +71,8 @@ theorem uniKnowledgeSoundnessKeccak_of (D : KDeployment)
 /-- **Knowledge soundness of the Keccak π1 at π1-rec3's shape at the Keccak-f block**, error
 `uniBound128 (2^35/|E|) Q ≤ 2^-64` for `Q ≤ 2^64`, from the named links `KFlockP` and `KLinksP3`. -/
 theorem uniKnowledgeSoundnessKeccakRec3_of (D : KDeployment)
-    (hFl : KFlockP KeccakFlock.keccakFlockSpec (D.shape.heights.getD opBlake2s 0) keccakRec3 e35)
-    (hL : ∀ F3 : KFlockSound KeccakFlock.keccakFlockSpec (D.shape.heights.getD opBlake2s 0) keccakRec3,
+    (hFl : KFlockP KeccakFlock.keccakFlockSpec (D.shape.heights.getD opSha3 0) keccakRec3 e35)
+    (hL : ∀ F3 : KFlockSound KeccakFlock.keccakFlockSpec (D.shape.heights.getD opSha3 0) keccakRec3,
       KLinksP3 KeccakFlock.keccakFlockSpec D F3) :
     UniKnowledgeSoundnessKeccakRec3 KeccakFlock.keccakFlockSpec D (uniBound128 e35) ∧
       ∀ Q ≤ 2 ^ 64, uniBound128 e35 Q ≤ (2 : ℝ≥0∞)⁻¹ ^ 64 := by

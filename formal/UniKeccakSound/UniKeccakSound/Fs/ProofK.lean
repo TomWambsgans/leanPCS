@@ -86,7 +86,7 @@ theorem plain_tableEvalK (v : ℕ) (h1 : 23 ≤ v) (h2 : v ≤ 28) (a : Array K)
 
 /-- **The setup's roots the proof records**: the setup tree's root and the deployment's constants `A0`, `B0`
 (`KDeployment.setupRoots`). -/
-def rootsK (D : KDeployment) (s : Bytes32) : SetupRoots := ⟨ofB s, D.a0Root, D.b0Root⟩
+def rootsK (D : KDeployment) (s : Bytes32) : SetupRoots := ⟨ofB s⟩
 
 /-- **The proof with the setup's roots** (`fix`). -/
 def uFixK (D : KDeployment) (s : Bytes32) (π : UPf) : UPf := { π with roots := rootsK D s }

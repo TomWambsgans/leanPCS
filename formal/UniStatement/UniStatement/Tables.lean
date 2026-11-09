@@ -27,9 +27,6 @@ namespace UniStatement
 
 open LeanVM.Parameters
 
-/-- `OP_BLAKE2S`. -/
-def opBlake2s : ℕ := 5
-
 /-- `BLAKE2S_COLUMNS`: the eighteen value limbs are `q_flock`'s slots (and, here, committed again). -/
 def blake2sColumns : List String :=
   ["pc", "fp", "o_0", "o_1", "o_2", "o_3", "o_v", "o_out", "o_md",
@@ -48,13 +45,13 @@ def flushesBlake2s : Flushes :=
       ("cv1", "o_v", 1), ("out0", "o_out", 0), ("out1", "o_out", 1), ("md", "o_md", 0)]
   cells.foldl (fun f (cell, operand, exponent) ↦
       f.memoryCols (prod fp (c operand) exponent) (c ("cnt_" ++ cell)) [c (cell ++ "_lo"), c (cell ++ "_hi")])
-    ((({ push := [], pull := [] } : Flushes).stateStep pc fp).bytecode pc cntBc opBlake2s operands)
+    ((({ push := [], pull := [] } : Flushes).stateStep pc fp).bytecode pc cntBc opSha3 operands)
 
 /-- **The six tables** (`tables()`), in opcode order. -/
 def tables : List Table :=
   [⟨opXor, arithColumns, flushesArith opXor false⟩, ⟨opMul, arithColumns, flushesArith opMul true⟩,
     ⟨opSet, setColumns, flushesSet⟩, ⟨opDeref, derefColumns, flushesDeref⟩,
-    ⟨opJump, jumpColumns, flushesJump⟩, ⟨opBlake2s, blake2sColumns, flushesBlake2s⟩]
+    ⟨opJump, jumpColumns, flushesJump⟩, ⟨opSha3, blake2sColumns, flushesBlake2s⟩]
 
 /-- `BLAKE2S_SLOTS`: the `BLAKE2S` limb each `q_flock` slot carries; slots 8 and 9 carry none. -/
 def blake2sSlots : List (Option String) :=

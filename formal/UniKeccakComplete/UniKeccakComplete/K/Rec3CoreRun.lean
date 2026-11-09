@@ -195,29 +195,29 @@ variable (H : List UInt8 → Digest) (F : KeccakState → KeccakState)
 
 /-- **π1-rec3's seed** at a pure hash: `seedOf` of the Keccak contract's IV at `keccakRec3` on the setup's root and
 the deployment's `A0`, `B0` constants. -/
-def proverSeed3 (a0 b0 : Digest) (programIv : List UInt8) (tr : Trace) : Digest :=
+def proverSeed3 (programIv : List UInt8) (tr : Trace) : Digest :=
   seedOf (m := Id) H (contractIvOf (m := Id) H tr.shape keccakRec3 programIv
-    ⟨(setupTreeOf (m := Id) H tr).root, a0, b0⟩) tr.publicInput
+    ⟨(setupTreeOf (m := Id) H tr).root⟩) tr.publicInput
 
 /-- **π1-rec3's stream's run** from its seed: output and writer. -/
-def streamRun3 (flock : FlockProver Id) (a0 b0 : Digest) (programIv : List UInt8) (tr : Trace) : CoreOut × Wr :=
+def streamRun3 (flock : FlockProver Id) (programIv : List UInt8) (tr : Trace) : CoreOut × Wr :=
   (proveStreamRec3With (m := Id) H (commitReal (m := Id) H) flock tr).run
-    (Wr.start (proverSeed3 H a0 b0 programIv tr))
+    (Wr.start (proverSeed3 H programIv tr))
 
 /-- **`proveRec3With` at `Id`**: the three claims' openings (the main line's `claimProof`), bound in `Option`. -/
-theorem proveRec3With_eq (fuel : ℕ) (flock : FlockProver Id) (a0 b0 : Digest) (programIv : List UInt8) (tr : Trace) :
-    proveRec3With (m := Id) H F fuel flock a0 b0 programIv tr =
-      (claimProof H F fuel (setupTreeOf (m := Id) H tr) (streamRun3 H flock a0 b0 programIv tr).1
+theorem proveRec3With_eq (fuel : ℕ) (flock : FlockProver Id) (programIv : List UInt8) (tr : Trace) :
+    proveRec3With (m := Id) H F fuel flock programIv tr =
+      (claimProof H F fuel (setupTreeOf (m := Id) H tr) (streamRun3 H flock programIv tr).1
           (layoutWordsK tr.shape) .c1).bind fun p1 ↦
-      (claimProof H F fuel (setupTreeOf (m := Id) H tr) (streamRun3 H flock a0 b0 programIv tr).1
+      (claimProof H F fuel (setupTreeOf (m := Id) H tr) (streamRun3 H flock programIv tr).1
           (layoutWordsK tr.shape) .c2).bind fun p2 ↦
-      (claimProof H F fuel (setupTreeOf (m := Id) H tr) (streamRun3 H flock a0 b0 programIv tr).1
+      (claimProof H F fuel (setupTreeOf (m := Id) H tr) (streamRun3 H flock programIv tr).1
           (layoutWordsK tr.shape) .setup).bind fun p3 ↦
-      some ⟨(streamRun3 H flock a0 b0 programIv tr).1.stream, p1, p2, p3⟩ := by
+      some ⟨(streamRun3 H flock programIv tr).1.stream, p1, p2, p3⟩ := by
   simp only [proveRec3With, idBind, idPure, streamRun3, proverSeed3]
   generalize (StateT.run (proveStreamRec3With (m := Id) H (commitReal (m := Id) H) flock tr)
     (Wr.start (seedOf (m := Id) H (contractIvOf (m := Id) H tr.shape keccakRec3 programIv
-      ⟨(setupTreeOf (m := Id) H tr).root, a0, b0⟩) tr.publicInput))).1 = out
+      ⟨(setupTreeOf (m := Id) H tr).root⟩) tr.publicInput))).1 = out
   generalize setupTreeOf (m := Id) H tr = tree
   unfold claimProof
   split <;> split <;> split <;> (try simp only [openingFor, *]) <;> rfl
@@ -225,17 +225,17 @@ theorem proveRec3With_eq (fuel : ℕ) (flock : FlockProver Id) (a0 b0 : Digest) 
 /-- **`proveRec3With` returns a proof** exactly when each of `C1`, `C2`, the setup has a claim and the three openings
 (`claimProof`: the stack, tree and layout of the commitment, the point claim) all return one; the proof is the
 stream and those openings. -/
-theorem proveRec3With_eq_some (fuel : ℕ) (flock : FlockProver Id) (a0 b0 : Digest) (programIv : List UInt8) (tr : Trace)
+theorem proveRec3With_eq_some (fuel : ℕ) (flock : FlockProver Id) (programIv : List UInt8) (tr : Trace)
     (π : KeccakProof) :
-    proveRec3With (m := Id) H F fuel flock a0 b0 programIv tr = some π ↔
+    proveRec3With (m := Id) H F fuel flock programIv tr = some π ↔
       ∃ p1 p2 p3,
-        claimProof H F fuel (setupTreeOf (m := Id) H tr) (streamRun3 H flock a0 b0 programIv tr).1
+        claimProof H F fuel (setupTreeOf (m := Id) H tr) (streamRun3 H flock programIv tr).1
           (layoutWordsK tr.shape) .c1 = some p1 ∧
-        claimProof H F fuel (setupTreeOf (m := Id) H tr) (streamRun3 H flock a0 b0 programIv tr).1
+        claimProof H F fuel (setupTreeOf (m := Id) H tr) (streamRun3 H flock programIv tr).1
           (layoutWordsK tr.shape) .c2 = some p2 ∧
-        claimProof H F fuel (setupTreeOf (m := Id) H tr) (streamRun3 H flock a0 b0 programIv tr).1
+        claimProof H F fuel (setupTreeOf (m := Id) H tr) (streamRun3 H flock programIv tr).1
           (layoutWordsK tr.shape) .setup = some p3 ∧
-        π = ⟨(streamRun3 H flock a0 b0 programIv tr).1.stream, p1, p2, p3⟩ := by
+        π = ⟨(streamRun3 H flock programIv tr).1.stream, p1, p2, p3⟩ := by
   rw [proveRec3With_eq, Option.bind_eq_some_iff]
   simp only [Option.bind_eq_some_iff, Option.some.injEq]
   constructor
@@ -246,10 +246,10 @@ theorem proveRec3With_eq_some (fuel : ℕ) (flock : FlockProver Id) (a0 b0 : Dig
 
 /-- **When `proveRec3With` fails**: a commitment has no claim, or one of the three openings returned `none` (each
 named with its layout, tree, stack and point claim). -/
-theorem proveRec3With_eq_none (fuel : ℕ) (flock : FlockProver Id) (a0 b0 : Digest) (programIv : List UInt8) (tr : Trace)
-    (h : proveRec3With (m := Id) H F fuel flock a0 b0 programIv tr = none) :
+theorem proveRec3With_eq_none (fuel : ℕ) (flock : FlockProver Id) (programIv : List UInt8) (tr : Trace)
+    (h : proveRec3With (m := Id) H F fuel flock programIv tr = none) :
     let tree := setupTreeOf (m := Id) H tr
-    let out := (streamRun3 H flock a0 b0 programIv tr).1
+    let out := (streamRun3 H flock programIv tr).1
     let words := layoutWordsK tr.shape
     (∃ c ∈ [Commitment.c1, .c2, .setup], out.claims.find? (·.1 == c) = none) ∨
     (∃ c' pt v, out.claims.find? (·.1 == .c1) = some (c', pt, v) ∧
@@ -288,17 +288,17 @@ end Pieces
 /-- **`proveRec3With` fails only at an opening**: if it returns `none`, one of the three WHIR openings returned
 `none` (every commitment has a claim, `claims_fst`). -/
 theorem fails_only_at_opening3 (H : List UInt8 → Digest) (F : KeccakState → KeccakState) (fuel : ℕ)
-    (flock : FlockProver Id) (a0 b0 : Digest) (programIv : List UInt8) (tr : Trace)
-    (hnone : proveRec3With (m := Id) H F fuel flock a0 b0 programIv tr = none) :
+    (flock : FlockProver Id) (programIv : List UInt8) (tr : Trace)
+    (hnone : proveRec3With (m := Id) H F fuel flock programIv tr = none) :
     ∃ (L : PcsQuotient.Layout) (tree : LeanVM.Prover.Tree) (stack : Array K) (claims : List PcsQuotient.Claim),
       E2ECompleteness.proveOpeningWithH (m := Id) H F fuel L tree stack claims = none := by
-  have hf : StreamFacts3 (commitReal (m := Id) H) tr (streamRun3 H flock a0 b0 programIv tr).1 :=
+  have hf : StreamFacts3 (commitReal (m := Id) H) tr (streamRun3 H flock programIv tr).1 :=
     streamRun3_facts H (commitReal (m := Id) H) _ tr _
   rcases proveRec3With_eq_none H F _ _ _ _ _ _ hnone with hmiss | ⟨_, pt, v, -, h⟩ | ⟨_, pt, v, -, h⟩ |
       ⟨_, pt, v, -, h⟩
   · exfalso
     obtain ⟨c, hc, hn⟩ := hmiss
-    have hc' : c ∈ (streamRun3 H flock a0 b0 programIv tr).1.claims.map (·.1) := by
+    have hc' : c ∈ (streamRun3 H flock programIv tr).1.claims.map (·.1) := by
       rw [hf.claims_fst]; exact hc
     obtain ⟨x, hx, rfl⟩ := List.mem_map.mp hc'
     exact absurd (by simp : (x.1 == x.1) = true) (List.find?_eq_none.mp hn x hx)

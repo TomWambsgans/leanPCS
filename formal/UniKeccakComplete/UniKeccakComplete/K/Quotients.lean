@@ -152,7 +152,7 @@ def constraintNumerator (tr : Trace) (gamma : E) (publicWords : List E) : Poly :
       (colPolyK r (inverseColumn tr t))
     acc := acc + pC power * (counters + 1) * lift
     power := power * gamma
-    if t = opBlake2s then
+    if t = opSha3 then
       let functionals := coordinateFunctionals r
       let y := (List.range r).map (coordinateP functionals)
       for c in List.range table.width do

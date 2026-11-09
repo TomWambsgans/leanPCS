@@ -25,7 +25,7 @@ its zerocheck coordinates the squares of one challenge), so no Flock lemma is ne
   bytes (the row counts, the roots, Flock's, at most `valuesBound` values at `t`, `96` a batch variable, the claims'
   three values); its point claims have at most `batchVarsBound` coordinates (`StreamOK`).
 * **The prover** (`costP_proveRec3With`, `uniProverCost3`): the setup's tree, the Keccak contract's IV at
-  `keccakRec3` (`291` bytes and the program IV), the seed, the stream, three openings (`Cost.openP`).
+  `keccakRec3` (`163` bytes and the program IV), the seed, the stream, three openings (`Cost.openP`).
 * **At the reference shape** (`proverBlocks3_reference`): at most `2^47` block calls (nearly all the three WHIR
   provers'), the stream at most `6904` bytes beyond Flock's (`proverStream3_reference`); for the honest Flock prover
   **`cost_rec3_flockProveH`** (`2^47`) and **`streamSize_rec3_flockProveH`** (`2^14`), and the total
@@ -132,7 +132,7 @@ def streamBytes3 (shape : Shape) (rows wF : ℕ) : ℕ :=
 
 /-- **π1-rec3's stream's cost**, given Flock's prover's at its `log_n` and `keccakRec3`. -/
 theorem wc_proveStreamRec3With (flock : FlockProver (OracleComp KeccakCalls)) (kF wF : ℕ) (tr : Trace)
-    (hF : WC (flock (keccakR1csLogSize + tr.shape.heights.getD opBlake2s 0) UniKeccak.keccakRec3 tr.qflock) kF wF
+    (hF : WC (flock (keccakR1csLogSize + tr.shape.heights.getD opSha3 0) UniKeccak.keccakRec3 tr.qflock) kF wF
       fun _ _ ↦ True) :
     WC (proveStreamRec3With callKeccak256 (commitReal callKeccak256) flock tr)
       (streamBlocks3 tr.shape kF) (streamBytes3 tr.shape tr.rows.length wF) (StreamOK (batchVarsBound tr.shape)) := by
@@ -175,22 +175,22 @@ section Prover
 /-- **π1-rec3's honest prover's blocks**: the setup's tree, the IV at `keccakRec3`, the seed, the stream (its blocks
 and its bytes), three openings of claims of at most `batchVarsBound` coordinates. -/
 def uniProverCost3 (shape : Shape) (programIvLen rows kF wF : ℕ) : ℕ :=
-  treeCost (setupLayout shape).vars + ((291 + programIvLen) / 136 + 1) + 1 +
+  treeCost (setupLayout shape).vars + ((163 + programIvLen) / 136 + 1) + 1 +
     (streamBlocks3 shape kF + streamBytes3 shape rows wF) + 3 * openP PcsQuotient.nonceFuel (batchVarsBound shape)
 
 /-- **π1-rec3's honest prover's block count**, given Flock's prover's at its `log_n` and `keccakRec3`: and every
 proof it returns has a stream of at most `streamBytes3` bytes. -/
-theorem costP_proveRec3With (flock : FlockProver (OracleComp KeccakCalls)) (kF wF : ℕ) (a0 b0 : Digest)
+theorem costP_proveRec3With (flock : FlockProver (OracleComp KeccakCalls)) (kF wF : ℕ)
     (programIv : List UInt8) (tr : Trace) (hpub : tr.publicInput.length = 32)
-    (hF : WC (flock (keccakR1csLogSize + tr.shape.heights.getD opBlake2s 0) UniKeccak.keccakRec3 tr.qflock) kF wF
+    (hF : WC (flock (keccakR1csLogSize + tr.shape.heights.getD opSha3 0) UniKeccak.keccakRec3 tr.qflock) kF wF
       fun _ _ ↦ True) :
-    CostP (proveRec3With callKeccak256 callKeccakF1600 PcsQuotient.nonceFuel flock a0 b0 programIv tr)
+    CostP (proveRec3With callKeccak256 callKeccakF1600 PcsQuotient.nonceFuel flock programIv tr)
       (uniProverCost3 tr.shape programIv.length tr.rows.length kF wF)
       fun o _ ↦ ∀ p, o = some p → p.stream.size ≤ streamBytes3 tr.shape tr.rows.length wF := by
   unfold proveRec3With contractIvOf seedOf
   simp only [bind_assoc, pure_bind]
   refine costP_seq_qc (qc_setupTreeOf tr) (fun tree ↦ ?_) (by unfold uniProverCost3; omega)
-  refine costP_seq_qc (qc_H_le (k := (291 + programIv.length) / 136 + 1) (by
+  refine costP_seq_qc (qc_H_le (k := (163 + programIv.length) / 136 + 1) (by
     simp only [List.length_append, ivTag_length, len_digestBytes, shapeBytes_length, layoutWordsK_length,
       variantBytesK_length]
     omega))
@@ -200,14 +200,14 @@ theorem costP_proveRec3With (flock : FlockProver (OracleComp KeccakCalls)) (kF w
     (by unfold uniProverCost3; omega)
   have hW := wc_proveStreamRec3With flock kF wF tr hF (Wr.start seed) (by simp [WInv, Wr.start])
     (uniProverCost3 tr.shape programIv.length tr.rows.length kF wF -
-      treeCost (setupLayout tr.shape).vars - ((291 + programIv.length) / 136 + 1) - 1 -
+      treeCost (setupLayout tr.shape).vars - ((163 + programIv.length) / 136 + 1) - 1 -
       (streamBlocks3 tr.shape kF + streamBytes3 tr.shape tr.rows.length wF))
   rw [show streamBlocks3 tr.shape kF + streamBytes3 tr.shape tr.rows.length wF + wpot (Wr.start seed) +
       (uniProverCost3 tr.shape programIv.length tr.rows.length kF wF -
-        treeCost (setupLayout tr.shape).vars - ((291 + programIv.length) / 136 + 1) - 1 -
+        treeCost (setupLayout tr.shape).vars - ((163 + programIv.length) / 136 + 1) - 1 -
         (streamBlocks3 tr.shape kF + streamBytes3 tr.shape tr.rows.length wF)) =
       uniProverCost3 tr.shape programIv.length tr.rows.length kF wF -
-        treeCost (setupLayout tr.shape).vars - ((291 + programIv.length) / 136 + 1) - 1
+        treeCost (setupLayout tr.shape).vars - ((163 + programIv.length) / 136 + 1) - 1
       by simp only [wpot, Wr.start, Array.size_empty]; unfold uniProverCost3; omega] at hW
   refine CostP.bind hW fun z rem hz ↦ ?_
   obtain ⟨⟨hstream, hc0⟩, -, -, hsize, hrem⟩ := hz
@@ -339,7 +339,7 @@ theorem totalCostK3_le (D : KDeployment) (hD : D.shape = keccakRefShape) (hiv : 
     Cost.setupCost D + (2 ^ 47 + Cost.verifierCost D keccakRec3 (2 ^ 14)) ≤ 2 ^ 48 := by
   have h3 := Cost.reference_stackVars.2.2.1
   have ho := Cost.openCost_le
-  have hivc : (291 + D.programIv.length) / 136 ≤ 291 + 2 ^ 16 := (Nat.div_le_self _ _).trans (by omega)
+  have hivc : (163 + D.programIv.length) / 136 ≤ 163 + 2 ^ 16 := (Nat.div_le_self _ _).trans (by omega)
   unfold Cost.setupCost Cost.verifierCost Cost.ivCost
   rw [Cost.walkCost_rec3, hD, h3]
   norm_num

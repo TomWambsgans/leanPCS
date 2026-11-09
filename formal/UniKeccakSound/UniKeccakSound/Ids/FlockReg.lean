@@ -71,7 +71,7 @@ end Read
 
 /-- `C1`'s columns on the Keccak VM (`layoutsK`'s `c1`). -/
 def c1ColsK (S : UniStatement.Shape) : List (Column × ℕ × Bool) :=
-  [(.qflock, S.heights.getD opBlake2s 0 + qflockRowBits, false)] ++
+  [(.qflock, S.heights.getD opSha3 0 + qflockRowBits, false)] ++
     tablesKeccak.flatMap (fun t ↦
       (List.range t.width).map (fun c ↦ (Column.table t.opcode c, S.heights.getD t.opcode 0, false)) ++
         [(.inverse t.opcode, S.heights.getD t.opcode 0, false)]) ++
@@ -82,7 +82,7 @@ theorem c1LayoutK_eq (S : UniStatement.Shape) : c1LayoutK S = StackLayout.new (c
 
 /-- **`q_flock` is one block of `h_SHA3 + 11` variables in `C1`'s layout.** -/
 theorem c1LayoutK_qflock (S : UniStatement.Shape) :
-    ∃ off, (c1LayoutK S).limbs .qflock = [(0, S.heights.getD opBlake2s 0 + qflockRowBits, off)] := by
+    ∃ off, (c1LayoutK S).limbs .qflock = [(0, S.heights.getD opSha3 0 + qflockRowBits, off)] := by
   rw [c1LayoutK_eq]
   refine limbs_new_single _ _ _ ?_
   simp [c1ColsK, List.filter_append, List.filter_flatMap, List.filter_map, Function.comp_def]
@@ -96,12 +96,12 @@ variable (D : KDeployment) (rows : List ℕ) (c : Stk)
 theorem flock_kvStack_qf (u : Fin (2 ^ (KeccakVm.kWords + (D.sizes rows).τ 5))) :
     ((D.inst rows).column (kvStack D.prog (D.sizes rows) D.shape c) flockCol).values.get u =
       c (qfOffK D + (u.val % 2 ^ 11 +
-        2 ^ 11 * rowPosition (rows.getD 5 0) (D.shape.heights.getD opBlake2s 0) (u.val / 2 ^ 11))) := by
+        2 ^ 11 * rowPosition (rows.getD 5 0) (D.shape.heights.getD opSha3 0) (u.val / 2 ^ 11))) := by
   obtain ⟨off, hoff⟩ := c1LayoutK_qflock D.shape
   refine (column_kvStack D.prog (D.sizes rows) D.shape c flockCol u).trans ((Vector.get_ofFn _ _).trans ?_)
   have hqf : qfOffK D = off := by simp [qfOffK, hoff]
   have hblock : c1Block (c1LayoutK D.shape) c .qflock =
-      Array.ofFn (n := 2 ^ (D.shape.heights.getD opBlake2s 0 + qflockRowBits)) fun i ↦ c (off + i.val) := by
+      Array.ofFn (n := 2 ^ (D.shape.heights.getD opSha3 0 + qflockRowBits)) fun i ↦ c (off + i.val) := by
     unfold c1Block
     rw [hoff]
   have hu : u.val / 2 ^ 11 < 2 ^ Nat.clog 2 (rows.getD 5 0) := by
@@ -109,25 +109,25 @@ theorem flock_kvStack_qf (u : Fin (2 ^ (KeccakVm.kWords + (D.sizes rows).τ 5)))
       rw [pow_add, mul_comm]
     have h : u.val < 2 ^ (D.sizes rows).τ 5 * 2 ^ 11 := lt_of_lt_of_eq u.isLt hp
     exact (Nat.div_lt_iff_lt_mul (by norm_num)).mpr h
-  have ht := LvLink.rowPosition_lt (count := rows.getD 5 0) (r := D.shape.heights.getD opBlake2s 0) hu
+  have ht := LvLink.rowPosition_lt (count := rows.getD 5 0) (r := D.shape.heights.getD opSha3 0) hu
   have hm : u.val % 2 ^ 11 < 2 ^ 11 := Nat.mod_lt _ (by norm_num)
-  have hpow : 2 ^ (D.shape.heights.getD opBlake2s 0 + qflockRowBits) =
-      2 ^ D.shape.heights.getD opBlake2s 0 * 2 ^ 11 := by
+  have hpow : 2 ^ (D.shape.heights.getD opSha3 0 + qflockRowBits) =
+      2 ^ D.shape.heights.getD opSha3 0 * 2 ^ 11 := by
     rw [pow_add]; rfl
-  have hb : u.val % 2 ^ 11 + 2 ^ 11 * rowPosition (rows.getD 5 0) (D.shape.heights.getD opBlake2s 0)
-      (u.val / 2 ^ 11) < 2 ^ (D.shape.heights.getD opBlake2s 0 + qflockRowBits) := by
+  have hb : u.val % 2 ^ 11 + 2 ^ 11 * rowPosition (rows.getD 5 0) (D.shape.heights.getD opSha3 0)
+      (u.val / 2 ^ 11) < 2 ^ (D.shape.heights.getD opSha3 0 + qflockRowBits) := by
     rw [hpow]
-    have : 2 ^ 11 * rowPosition (rows.getD 5 0) (D.shape.heights.getD opBlake2s 0) (u.val / 2 ^ 11) + 2 ^ 11 ≤
-        2 ^ 11 * 2 ^ D.shape.heights.getD opBlake2s 0 := by
+    have : 2 ^ 11 * rowPosition (rows.getD 5 0) (D.shape.heights.getD opSha3 0) (u.val / 2 ^ 11) + 2 ^ 11 ≤
+        2 ^ 11 * 2 ^ D.shape.heights.getD opSha3 0 := by
       rw [← Nat.mul_succ]; exact Nat.mul_le_mul_left _ ht
-    rw [mul_comm (2 ^ D.shape.heights.getD opBlake2s 0)]
+    rw [mul_comm (2 ^ D.shape.heights.getD opSha3 0)]
     omega
   show (c1Block (c1LayoutK D.shape) c .qflock).getD
       (u.val % 2 ^ KeccakVm.kWords + 2 ^ KeccakVm.kWords * rowPosition (rows.getD 5 0)
         (D.shape.heights.getD 5 0) (u.val / 2 ^ KeccakVm.kWords)) 0 = _
   rw [hblock, hqf]
-  show (Array.ofFn (n := 2 ^ (D.shape.heights.getD opBlake2s 0 + qflockRowBits)) fun i ↦ c (off + i.val)).getD
-      (u.val % 2 ^ 11 + 2 ^ 11 * rowPosition (rows.getD 5 0) (D.shape.heights.getD opBlake2s 0) (u.val / 2 ^ 11))
+  show (Array.ofFn (n := 2 ^ (D.shape.heights.getD opSha3 0 + qflockRowBits)) fun i ↦ c (off + i.val)).getD
+      (u.val % 2 ^ 11 + 2 ^ 11 * rowPosition (rows.getD 5 0) (D.shape.heights.getD opSha3 0) (u.val / 2 ^ 11))
       0 = _
   rw [Array.getD_eq_getD_getElem?, Array.getElem?_eq_getElem (by rw [Array.size_ofFn]; exact hb),
     Option.getD_some, Array.getElem_ofFn]
@@ -135,8 +135,8 @@ theorem flock_kvStack_qf (u : Fin (2 ^ (KeccakVm.kWords + (D.sizes rows).τ 5)))
 /-- **A `SHA3` cell of `C1`'s Keccak VM stack** at row `x`: `C1`'s value at row `rowPosition x`. -/
 theorem sha3_kvStack (i : ℕ) (hi : i < KeccakVm.Sha3Table.width) (x : Fin (2 ^ (D.sizes rows).τ 5)) :
     KeccakVm.sha3Cell D.prog (D.sizes rows) (kvStack D.prog (D.sizes rows) D.shape c) i hi x =
-      c1ValK D c (.table opBlake2s i) (D.shape.heights.getD opBlake2s 0)
-        (rowPosition (rows.getD 5 0) (D.shape.heights.getD opBlake2s 0) x.val) := by
+      c1ValK D c (.table opSha3 i) (D.shape.heights.getD opSha3 0)
+        (rowPosition (rows.getD 5 0) (D.shape.heights.getD opSha3 0) x.val) := by
   refine (column_kvStack D.prog (D.sizes rows) D.shape c (KeccakVm.KeccakIsa.sha3Col i hi) x).trans ?_
   exact Vector.get_ofFn _ _
 
@@ -162,16 +162,16 @@ theorem lane_offsets : ∀ l : Fin 25,
 /-- **Flock's predicate on `q_flock` and the copies give `KeccakAux`** (`AuxOfFlockK`), for `κ = h_SHA3` and a
 Keccak-f block whose ports are the verifier's (`KeccakFlockFits`). -/
 theorem auxOfFlockK (F : KeccakVm.KeccakFlockSpec) (D : KDeployment) (κ : ℕ)
-    (hκ : D.shape.heights.getD opBlake2s 0 = κ) (hF : KeccakFlockFits F) (hL : LaneSlotsK) :
+    (hκ : D.shape.heights.getD opSha3 0 = κ) (hF : KeccakFlockFits F) (hL : LaneSlotsK) :
     AuxOfFlockK F D κ := by
   intro s c hcp hflock
   have hpos : ∀ t : Fin (2 ^ (D.sizes s.2).τ 5),
-      rowPosition (s.2.getD 5 0) (D.shape.heights.getD opBlake2s 0) t.val < 2 ^ D.shape.heights.getD opBlake2s 0 :=
+      rowPosition (s.2.getD 5 0) (D.shape.heights.getD opSha3 0) t.val < 2 ^ D.shape.heights.getD opSha3 0 :=
     fun t ↦ LvLink.rowPosition_lt (count := s.2.getD 5 0) t.isLt
   -- Cell `w` of the instance's block `t` is `q_flock`'s word `w + 2^11 · rowPosition t`.
   have hcell : ∀ (t : Fin (2 ^ (D.sizes s.2).τ 5)) (w : Fin (2 ^ KeccakVm.kWords)),
       KeccakVm.kBlockCell (KeccakVm.flockColumn D.prog (D.sizes s.2) (kvStack D.prog (D.sizes s.2) D.shape c))
-        t w = c (qfOffK D + (w.val + 2 ^ 11 * rowPosition (s.2.getD 5 0) (D.shape.heights.getD opBlake2s 0) t.val)) := by
+        t w = c (qfOffK D + (w.val + 2 ^ 11 * rowPosition (s.2.getD 5 0) (D.shape.heights.getD opSha3 0) t.val)) := by
     intro t w
     have h1 := flock_kvStack_qf D s.2 c (cubeIndex w t)
     have hw : w.val < 2 ^ 11 := w.isLt
@@ -180,7 +180,7 @@ theorem auxOfFlockK (F : KeccakVm.KeccakFlockSpec) (D : KDeployment) (κ : ℕ)
     simp only [cubeIndex_val, e1, e2] at h1
     exact h1
   refine ⟨fun t ↦ ?_, fun t ht l ↦ ?_⟩
-  · have ht' : rowPosition (s.2.getD 5 0) (D.shape.heights.getD opBlake2s 0) t.val < 2 ^ κ := hκ ▸ hpos t
+  · have ht' : rowPosition (s.2.getD 5 0) (D.shape.heights.getD opSha3 0) t.val < 2 ^ κ := hκ ▸ hpos t
     have key : Lv42.Protocol.BlockR1CS.batchBlock
         (Lv42.Protocol.bitTable (KeccakVm.flockColumn D.prog (D.sizes s.2) (kvStack D.prog (D.sizes s.2) D.shape c)))
           t = Lv42.Protocol.BlockR1CS.batchBlock (Lv42.Protocol.bitTable (qfK D c κ)) ⟨_, ht'⟩ := by

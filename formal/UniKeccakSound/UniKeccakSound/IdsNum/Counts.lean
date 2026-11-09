@@ -132,7 +132,7 @@ theorem relCountK_ref (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ : ℕ
 
 /-- A Keccak table's constraints' number, bounded: `JUMP`'s two, the counters', one a `SHA3` column. -/
 def tabConsK (tab : Table) : ℕ :=
-  (if tab.opcode = opJump then 2 else 0) + 1 + if tab.opcode = opBlake2s then tab.width else 0
+  (if tab.opcode = opJump then 2 else 0) + 1 + if tab.opcode = opSha3 then tab.width else 0
 
 theorem tableConstraintsPK_len (S : Shape) (c : Stk) (tab : Table) :
     (tableConstraintsPK S c tab).length ≤ tabConsK tab := by

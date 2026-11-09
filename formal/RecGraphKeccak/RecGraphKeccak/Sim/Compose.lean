@@ -22,7 +22,7 @@ open LeanVM.Parameters LeanVM.Semantics LeanVM.Protocol LeanVM.Protocol.KeccakHa
 
 theorem hvalidK : (!keccak128.validate true) = false := by decide
 
-theorem hlogNK : keccakR1csLogSize + keccak128.heights.getD opBlake2s 0 = 32 := by decide
+theorem hlogNK : keccakR1csLogSize + keccak128.heights.getD opSha3 0 = 32 := by decide
 
 theorem heights_lengthK : keccak128.heights.length = 6 := by decide
 

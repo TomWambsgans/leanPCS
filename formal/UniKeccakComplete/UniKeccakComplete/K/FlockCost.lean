@@ -256,7 +256,7 @@ theorem totalCostK_le (D : KDeployment) (hD : D.shape = keccakRefShape) (hiv : D
     Cost.setupCost D + (2 ^ 47 + Cost.verifierCost D keccakMain (2 ^ 14)) ≤ 2 ^ 48 := by
   have h3 := Cost.reference_stackVars.2.2.1
   have ho := Cost.openCost_le
-  have hivc : (291 + D.programIv.length) / 136 ≤ 291 + 2 ^ 16 := (Nat.div_le_self _ _).trans (by omega)
+  have hivc : (163 + D.programIv.length) / 136 ≤ 163 + 2 ^ 16 := (Nat.div_le_self _ _).trans (by omega)
   unfold Cost.setupCost Cost.verifierCost Cost.ivCost
   rw [Cost.walkCost_main, hD, h3, Cost.reference_sha3Height]
   norm_num

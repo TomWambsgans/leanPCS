@@ -14,13 +14,10 @@ Statements only, no proof. They are `UniStatement/Security.lean`'s (and `RecSecu
 with the Keccak VM in place of leanVM 42422001:
 
 * **The deployment** (`KDeployment`): the Keccak VM's program (`KeccakVm.Program`, `2^logBytecode` instructions), the
-  shape (valid: `Shape.validate` with Flock, so `h_SHA3 ≥ 7`), leanVM's program IV, and the `A0`, `B0` roots the
-  contract's IV hashes (`contract_iv_for` keeps the BLAKE2s contract's preimage: `SetupRoots::REFERENCE`'s in the
-  Rust's tests). The Keccak verifier opens neither.
+  shape (valid: `Shape.validate` with Flock, so `h_SHA3 ≥ 7`), leanVM's program IV.
 * **The setup** (`setupTreeKWith`): the one WHIR commitment of the setup stack (`setupStackK`: the bytecode's tuples
-  with the Keccak VM's entries, the memory's addresses). No `A0`, `B0` commitments: the Keccak-f block's matrices
-  (`2^34` entries) are never committed. The verifier's setup roots are its root and the deployment's two constants
-  (`KDeployment.setupRoots`).
+  with the Keccak VM's entries, the memory's addresses). The Keccak-f block's matrices (`2^34` entries) are never
+  committed. The verifier's setup root is its root (`KDeployment.setupRoots`).
 * **The verifier** (`KDeployment.verifierKWith … v`): the Keccak contract's IV (`contractIvKWith`, binding the variant
   `v`), then `verifyWithK` (the run, three `PCS_OPEN` calls). `keccakMain` is the main line, `keccakRec3` π1-rec3's
   shape under the recursion.
@@ -48,14 +45,11 @@ open KeccakVm.KeccakIsa (keccakIsaμ)
 open Lv42.Protocol.LeanIsa (Sizes)
 open scoped ENNReal
 
-/-- **The Keccak VM's deployment**: the program, the shape (its heights; valid), leanVM's program IV, and the `A0`,
-`B0` roots its contract's IV hashes. -/
+/-- **The Keccak VM's deployment**: the program, the shape (its heights; valid), leanVM's program IV. -/
 structure KDeployment where
   prog : KeccakVm.Program
   shape : Shape
   programIv : List UInt8
-  a0Root : Digest
-  b0Root : Digest
   valid : shape.Valid
   logBytecode_eq : shape.logBytecode = prog.logSize
 
@@ -97,9 +91,9 @@ def KDeployment.HonestRelation (F : KeccakVm.KeccakFlockSpec) (D : KDeployment) 
 
 /-! ### The setup -/
 
-/-- The setup's roots the verifier holds: the setup stack's commitment, and the deployment's `A0`, `B0` constants. -/
+/-- The setup's roots the verifier holds: the setup stack's commitment (`F`). -/
 def KDeployment.setupRoots (D : KDeployment) (tree : LeanVM.Prover.Tree) : SetupRoots :=
-  ⟨tree.root, D.a0Root, D.b0Root⟩
+  ⟨tree.root⟩
 
 section With
 
@@ -109,7 +103,7 @@ variable {m : Type → Type} [Monad m] (F : KeccakState → m KeccakState)
 def setupTreeKWith (D : KDeployment) : m LeanVM.Prover.Tree :=
   PcsQuotient.commitWith F (setupLayout D.shape).vars (setupStackK D.prog D.shape)
 
-/-- **The transcript's IV** over `F` (`contract_iv_for` at `Blake2s::Keccak(v)`). -/
+/-- **The transcript's IV** over `F` (`contract_iv` at the variant `v`). -/
 def KDeployment.ivWith (D : KDeployment) (v : KeccakVariant) (roots : SetupRoots) : m (List UInt8) :=
   contractIvKWith F D.shape v D.programIv roots
 

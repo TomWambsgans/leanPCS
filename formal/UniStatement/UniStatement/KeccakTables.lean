@@ -1,5 +1,5 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Transcribed from `crates/leanvm/statement/src/layout.rs`
--- (`SHA3_COLUMNS`, `flushes_sha3`, `SHA3_STATE_CELLS`, `SHA3_CELL_LANES`, `tables_keccak`, `keccak_slot`,
+-- (`SHA3_COLUMNS`, `flushes_sha3`, `SHA3_STATE_CELLS`, `SHA3_CELL_LANES`, `tables`, `keccak_slot`,
 -- `SHA3_END_BIT`, `keccak_slot_offset`, `KECCAK_R1CS_LOG_SIZE`) and `keccak_flock.rs` (`LOG_SIZE`, `state_word`),
 -- adapted there from leanVM `9d50c92a3`'s `Sha3Table` (`crates/leanvm_core/src/tables.rs`).
 module
@@ -8,10 +8,10 @@ public import UniStatement.TablesBase
 public import KeccakVm.Isa
 
 /-!
-# The Keccak VM's tables (`layout.rs::tables_keccak`)
+# The Keccak VM's tables (`layout.rs::tables`)
 
-The Keccak VM's six tables as the verifier reads them: `tables`' five, and the `SHA3` table in `BLAKE2S`'s place
-(`opSha3 = 5`). The `SHA3` table has 86 columns: `pc`, `fp`, the seven operands, the 25 input and 25 output lanes,
+The Keccak VM's six tables as the verifier reads them: leanVM 42422001's five (`UniStatement.TablesBase`), and the
+`SHA3` table (`opSha3 = 5`). The `SHA3` table has 86 columns: `pc`, `fp`, the seven operands, the 25 input and 25 output lanes,
 one read count a cell in flush order (`cnt_0 … cnt_25`), the bytecode count. Its flushes are the state step, the
 bytecode read (the seven operands), and the thirteen cells read and the thirteen written, each its two lanes and a
 zero top, the lone lane-16 cell its one lane (`memoryCols`'s missing limbs are zero). The cell layout is the
@@ -33,9 +33,6 @@ XORs `END_BIT` into lane 16 first (`KeccakVm.sha3Step`).
 namespace UniStatement
 
 open LeanVM.Parameters
-
-/-- `OP_SHA3`: the `SHA3` table, in `BLAKE2S`'s place. -/
-def opSha3 : ℕ := 5
 
 /-- `SHA3_STATE_CELLS`. -/
 def sha3StateCells : ℕ := 13
@@ -70,7 +67,8 @@ def flushesSha3 : Flushes :=
       | some hi => f.memoryCols address count [lo, c s!"{pre}_{hi}"]
       | none => f.memoryCols address count [lo]) f) start
 
-/-- **The Keccak VM's tables** (`tables_keccak()`): `tables`' five and the `SHA3` table in `BLAKE2S`'s place. -/
+/-- **The Keccak VM's tables** (`tables()`): leanVM 42422001's five (XOR, MUL, SET, DEREF, JUMP) and the `SHA3`
+table, in opcode order. -/
 def tablesKeccak : List Table :=
   [⟨opXor, arithColumns, flushesArith opXor false⟩, ⟨opMul, arithColumns, flushesArith opMul true⟩,
     ⟨opSet, setColumns, flushesSet⟩, ⟨opDeref, derefColumns, flushesDeref⟩,

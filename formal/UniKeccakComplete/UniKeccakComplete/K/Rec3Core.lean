@@ -46,9 +46,9 @@ theorem accepts_of_trace3 (D : KDeployment) (H : List UInt8 → Digest) (F : Kec
     (href : tr.shape = keccakRefShape) (hshape : tr.shape = D.shape) (hpi : tr.publicInput = input.toList)
     (hsetup : setupStackOf tr = setupStackK D.prog D.shape)
     (hbatch : BatchSyncsAt3 H (commitReal (m := Id) H) (FlockP.flockProve (m := Id) (Pure.pure ∘ H)) tr
-      (proverSeed3 H D.a0Root D.b0Root D.programIv tr) (fun _ ↦ 0))
+      (proverSeed3 H D.programIv tr) (fun _ ↦ 0))
     (hπ : proveRec3With (m := Id) H F PcsQuotient.nonceFuel (FlockP.flockProve (m := Id) (Pure.pure ∘ H))
-      D.a0Root D.b0Root D.programIv tr = some π) :
+      D.programIv tr = some π) :
     KDeployment.verifierWithH (m := Id) H F D keccakRec3 (D.setupRoots (setupTreeKWithH (m := Id) H F D)) input
       π = true := by
   have hflock := FlockP.flockSyncs_trace H tr hon keccakRec3 (by decide)
@@ -57,7 +57,7 @@ theorem accepts_of_trace3 (D : KDeployment) (H : List UInt8 → Digest) (F : Kec
     rw [hsetup, hshape]
   have hiv : KDeployment.ivWithH (m := Id) H D keccakRec3 (D.setupRoots (setupTreeOf (m := Id) H tr)) =
       contractIvOf (m := Id) H tr.shape keccakRec3 D.programIv
-        ⟨(setupTreeOf (m := Id) H tr).root, D.a0Root, D.b0Root⟩ := by
+        ⟨(setupTreeOf (m := Id) H tr).root⟩ := by
     rw [hshape]; rfl
   have hC2 := c2ColumnsHonest_of_traceHonest hon
   -- The prover's proof.
@@ -66,24 +66,24 @@ theorem accepts_of_trace3 (D : KDeployment) (H : List UInt8 → Digest) (F : Kec
   obtain ⟨R, hrunR, hopR, hmatR, hrootR⟩ := runWithKH_syncs3 H (commitReal (m := Id) H)
     (FlockP.flockProve (m := Id) (Pure.pure ∘ H)) tr
     (contractIvOf (m := Id) H tr.shape keccakRec3 D.programIv
-      ⟨(setupTreeOf (m := Id) H tr).root, D.a0Root, D.b0Root⟩) hon.valid hon.rowsFit (fun _ ↦ 0) hflock
+      ⟨(setupTreeOf (m := Id) H tr).root⟩) hon.valid hon.rowsFit (fun _ ↦ 0) hflock
     (fun _ ↦ 0) hbatch
   have hacc := runWithKH_accepts3 H (commitReal (m := Id) H) (FlockP.flockProve (m := Id) (Pure.pure ∘ H)) tr
     (contractIvOf (m := Id) H tr.shape keccakRec3 D.programIv
-      ⟨(setupTreeOf (m := Id) H tr).root, D.a0Root, D.b0Root⟩) hon.valid hon.rowsFit (fun _ ↦ 0) hflock
+      ⟨(setupTreeOf (m := Id) H tr).root⟩) hon.valid hon.rowsFit (fun _ ↦ 0) hflock
     (fun _ ↦ 0) hbatch rfl rfl
   have hrun_eq : proverRun3 H (commitReal (m := Id) H) (FlockP.flockProve (m := Id) (Pure.pure ∘ H)) tr
       (contractIvOf (m := Id) H tr.shape keccakRec3 D.programIv
-        ⟨(setupTreeOf (m := Id) H tr).root, D.a0Root, D.b0Root⟩) =
-      streamRun3 H (FlockP.flockProve (m := Id) (Pure.pure ∘ H)) D.a0Root D.b0Root D.programIv tr := rfl
+        ⟨(setupTreeOf (m := Id) H tr).root⟩) =
+      streamRun3 H (FlockP.flockProve (m := Id) (Pure.pure ∘ H)) D.programIv tr := rfl
   rw [hrun_eq] at hrunR hopR hrootR hacc
   have hf : StreamFacts3 (commitReal (m := Id) H) tr
-      (streamRun3 H (FlockP.flockProve (m := Id) (Pure.pure ∘ H)) D.a0Root D.b0Root D.programIv tr).1 :=
+      (streamRun3 H (FlockP.flockProve (m := Id) (Pure.pure ∘ H)) D.programIv tr).1 :=
     streamRun3_facts H (commitReal (m := Id) H) _ tr _
   have hv : StreamValues3 tr
-      (streamRun3 H (FlockP.flockProve (m := Id) (Pure.pure ∘ H)) D.a0Root D.b0Root D.programIv tr).1 :=
+      (streamRun3 H (FlockP.flockProve (m := Id) (Pure.pure ∘ H)) D.programIv tr).1 :=
     streamValues3 H (commitReal (m := Id) H) _ tr _
-  generalize (streamRun3 H (FlockP.flockProve (m := Id) (Pure.pure ∘ H)) D.a0Root D.b0Root D.programIv tr).1 = out
+  generalize (streamRun3 H (FlockP.flockProve (m := Id) (Pure.pure ∘ H)) D.programIv tr).1 = out
     at hf hv h1 h2 h3 hopR hrootR hrunR hacc ⊢
   -- The claims.
   obtain ⟨pt1, v1, pt2, v2, pt3, v3, hcl⟩ := claims_shape _ hf.claims_fst
@@ -172,20 +172,20 @@ theorem accepts_of_trace3 (D : KDeployment) (H : List UInt8 → Digest) (F : Kec
 theorem front_challenges3 (H : List UInt8 → Digest) (flock : FlockProver Id) (D : KDeployment)
     (input : Vector UInt8 32) (rows : List ℕ) (q : D.Stack rows) :
     (frontOf3 H (commitReal (m := Id) H) flock (honestTrace D input rows q)
-        (Wr.start (proverSeed3 H D.a0Root D.b0Root D.programIv (honestTrace D input rows q)))).1.alphas =
+        (Wr.start (proverSeed3 H D.programIv (honestTrace D input rows q)))).1.alphas =
         (proverChallenges3 H D input rows q).1 ∧
       (frontOf3 H (commitReal (m := Id) H) flock (honestTrace D input rows q)
-        (Wr.start (proverSeed3 H D.a0Root D.b0Root D.programIv (honestTrace D input rows q)))).1.beta =
+        (Wr.start (proverSeed3 H D.programIv (honestTrace D input rows q)))).1.beta =
         (proverChallenges3 H D input rows q).2 ∧
       (frontOf3 H (commitReal (m := Id) H) flock (honestTrace D input rows q)
-          (Wr.start (proverSeed3 H D.a0Root D.b0Root D.programIv (honestTrace D input rows q)))).1.flockOut.map
+          (Wr.start (proverSeed3 H D.programIv (honestTrace D input rows q)))).1.flockOut.map
           (·.point) = some (proverTChallenge3 H flock D input rows q).1 ∧
       (frontOf3 H (commitReal (m := Id) H) flock (honestTrace D input rows q)
-        (Wr.start (proverSeed3 H D.a0Root D.b0Root D.programIv (honestTrace D input rows q)))).1.t =
+        (Wr.start (proverSeed3 H D.programIv (honestTrace D input rows q)))).1.t =
         (proverTChallenge3 H flock D input rows q).2 := by
   set tr := honestTrace D input rows q
   set c1 := E2ECompleteness.commitWithH (m := Id) H (c1LayoutK tr.shape).vars (c1Stack tr)
-  set seed := proverSeed3 H D.a0Root D.b0Root D.programIv tr
+  set seed := proverSeed3 H D.programIv tr
   have hw2 : ((Wr.start seed).append (tr.rows.flatMap fun n ↦ integerWire n 4)).append
       (rootWord (commitReal (m := Id) H .c1 (c1LayoutK tr.shape).vars (c1Stack tr)).halves) =
       ⟨Prob.prefixStream rows c1, 0, seed, #[]⟩ := rfl

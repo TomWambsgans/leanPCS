@@ -121,7 +121,7 @@ theorem c1Absent (S : Shape) : ∀ o < 6, ∀ i, (tables.getD o default).width �
 
 theorem tableConstraintsP_len (S : Shape) (c : Stk) (tab : Table) :
     (tableConstraintsP S c tab).length = (if tab.opcode = opJump then 2 else 0) + 1 +
-      if tab.opcode = opBlake2s then
+      if tab.opcode = opSha3 then
         ((List.range tab.width).filterMap fun i ↦ qflockSlot (tab.columns.getD i "")).length
       else 0 := by
   unfold tableConstraintsP
@@ -131,7 +131,7 @@ theorem tableConstraintsP_len (S : Shape) (c : Stk) (tab : Table) :
 
 /-- A table's constraints' number. -/
 def tabCons (tab : Table) : ℕ := (if tab.opcode = opJump then 2 else 0) + 1 +
-  if tab.opcode = opBlake2s then
+  if tab.opcode = opSha3 then
     ((List.range tab.width).filterMap fun i ↦ qflockSlot (tab.columns.getD i "")).length
   else 0
 

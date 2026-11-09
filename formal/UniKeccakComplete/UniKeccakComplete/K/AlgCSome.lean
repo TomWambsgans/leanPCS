@@ -66,7 +66,7 @@ theorem atTOf_some_ringMap (tr : Trace) (c2 : C2Data) (alphas : List E) (beta ga
 /-- **With Flock's output, every relation off `C2` but the last (the ring switch's) holds**, at the layouts the
 verifier states, the prover's stacks and the ring map `some map`. -/
 theorem relations_hold_some {tr : Trace} (hH : TraceHonest tr) (hS : Small tr)
-    (hC : Domain.CoordinateFunctionalsBasis (tr.height opBlake2s)) {alphas : List E} (hα : alphas.length = 4)
+    (hC : Domain.CoordinateFunctionalsBasis (tr.height opSha3)) {alphas : List E} (hα : alphas.length = 4)
     (beta gamma t : E) (out : FlockOut) {map : List E} {target : E} (hend : out.end_ = .ring map target) :
     (atTOf tr (c2DataOf tr (eqKernel alphas) beta gamma) alphas beta gamma t (some out)).relations.getLast? =
         some (ringRel out target) ∧
@@ -93,9 +93,9 @@ theorem small_of_reference {tr : Trace} (href : tr.shape = UniKeccakSound.keccak
     decide +kernel
 
 theorem coordinateFunctionalsBasis_reference {tr : Trace} (href : tr.shape = UniKeccakSound.keccakRefShape) :
-    Domain.CoordinateFunctionalsBasis (tr.height opBlake2s) := by
-  have h : tr.height opBlake2s = 15 := by
-    show tr.shape.heights.getD opBlake2s 0 = 15
+    Domain.CoordinateFunctionalsBasis (tr.height opSha3) := by
+  have h : tr.height opSha3 = 15 := by
+    show tr.shape.heights.getD opSha3 0 = 15
     rw [href, reference_heights]
     rfl
   rw [h]

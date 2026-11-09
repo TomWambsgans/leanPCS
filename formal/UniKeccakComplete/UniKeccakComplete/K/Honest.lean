@@ -104,9 +104,9 @@ structure TraceHonest (tr : Trace) : Prop where
     col "b" + col "v_cond" * col "w" = 0 ∧ col "v_cond" * (col "b" + 1) = 0
   counters : ∀ t < 6, ∀ i < 2 ^ tr.height t,
     (tablesKeccak.getD t default).countColumns.foldl (fun acc c ↦ acc * (tr.column t c).getD i 0) 1 ≠ 0
-  copies : ∀ i < 2 ^ tr.height opBlake2s, ∀ c < sha3Columns.length, ∀ slot,
+  copies : ∀ i < 2 ^ tr.height opSha3, ∀ c < sha3Columns.length, ∀ slot,
     keccakSlot (sha3Columns.getD c "") = some slot →
-      (tr.column opBlake2s c).getD i 0 =
+      (tr.column opSha3 c).getD i 0 =
         tr.qflock.getD (slot + 2048 * i) 0 + K.ofLane (keccakSlotOffset (sha3Columns.getD c ""))
   publicLines : (tr.memory.getD 0 #[]).getD 0 0 = publicK tr 0 ∧ (tr.memory.getD 0 #[]).getD 1 0 = publicK tr 2 ∧
     (tr.memory.getD 1 #[]).getD 0 0 = publicK tr 1 ∧ (tr.memory.getD 1 #[]).getD 1 0 = publicK tr 3 ∧

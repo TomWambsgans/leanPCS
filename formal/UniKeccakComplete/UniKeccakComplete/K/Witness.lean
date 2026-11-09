@@ -86,7 +86,7 @@ variable {m : Type → Type} [Monad m] (H : List UInt8 → m Digest) (F : Keccak
 the main line, `nonceFuel` nonces a proof of work, the deployment's `A0`, `B0` constants in the IV. -/
 def uniProverWith (flock : FlockProver m) (D : KDeployment) (input : Vector UInt8 32) (rows : List ℕ)
     (q : D.Stack rows) : m (Option KeccakProof) :=
-  proveWith H F PcsQuotient.nonceFuel flock D.a0Root D.b0Root D.programIv (honestTrace D input rows q)
+  proveWith H F PcsQuotient.nonceFuel flock D.programIv (honestTrace D input rows q)
 
 end With
 

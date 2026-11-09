@@ -103,12 +103,12 @@ theorem take_getD0C (l : List E) (m : ℕ) (hm : 0 < m) : (l.take m).getD 0 0 = 
 
 /-- **Off `Z_bad`'s roots, `y(t)`'s first coordinate is neither `t` nor `p_0`** (`UniSound.Ids.Eval.y_self`'s
 argument), at any shape (at `reference` the kernel would evaluate the functionals). -/
-theorem y0_neGenC (S : UniStatement.Shape) {tE p0 : E} (hsz : 0 < S.heights.getD opBlake2s 0)
+theorem y0_neGenC (S : UniStatement.Shape) {tE p0 : E} (hsz : 0 < S.heights.getD opSha3 0)
     (hz : (UniSound.Ids.zBad S p0).eval tE ≠ 0) :
-    (coordinatesAt tE (coordinateFunctionals (S.heights.getD opBlake2s 0))).getD 0 0 ≠ tE ∧
-      (coordinatesAt tE (coordinateFunctionals (S.heights.getD opBlake2s 0))).getD 0 0 ≠ p0 := by
-  have hy0 : (coordinatesAt tE (coordinateFunctionals (S.heights.getD opBlake2s 0))).getD 0 0 =
-      (UniSound.Ids.yP (coordinateFunctionals (S.heights.getD opBlake2s 0)) 0).eval tE :=
+    (coordinatesAt tE (coordinateFunctionals (S.heights.getD opSha3 0))).getD 0 0 ≠ tE ∧
+      (coordinatesAt tE (coordinateFunctionals (S.heights.getD opSha3 0))).getD 0 0 ≠ p0 := by
+  have hy0 : (coordinatesAt tE (coordinateFunctionals (S.heights.getD opSha3 0))).getD 0 0 =
+      (UniSound.Ids.yP (coordinateFunctionals (S.heights.getD opSha3 0)) 0).eval tE :=
     UniSound.Ids.Eval.coordinatesAt_getD _ _ _ (by rw [UniSound.Ids.Eval.coordinateFunctionals_size]; exact hsz)
   unfold UniSound.Ids.zBad at hz
   rw [Polynomial.eval_mul, Polynomial.eval_add, Polynomial.eval_add, Polynomial.eval_X, Polynomial.eval_C,

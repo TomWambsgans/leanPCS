@@ -75,9 +75,9 @@ theorem accepts_of_trace (D : KDeployment) (H : List UInt8 → Digest) (F : Kecc
     (href : tr.shape = keccakRefShape) (hshape : tr.shape = D.shape) (hpi : tr.publicInput = input.toList)
     (hsetup : setupStackOf tr = setupStackK D.prog D.shape)
     (hbatch : BatchSyncsAt H (commitReal (m := Id) H) (FlockP.flockProve (m := Id) (Pure.pure ∘ H)) tr
-      (proverSeed H D.a0Root D.b0Root D.programIv tr) (fun _ ↦ 0))
+      (proverSeed H D.programIv tr) (fun _ ↦ 0))
     (hπ : proveWith (m := Id) H F PcsQuotient.nonceFuel (FlockP.flockProve (m := Id) (Pure.pure ∘ H))
-      D.a0Root D.b0Root D.programIv tr = some π) :
+      D.programIv tr = some π) :
     KDeployment.verifierWithH (m := Id) H F D keccakMain (D.setupRoots (setupTreeKWithH (m := Id) H F D)) input
       π = true := by
   have hflock := FlockP.flockSyncs_trace H tr hon keccakMain (by decide)
@@ -86,7 +86,7 @@ theorem accepts_of_trace (D : KDeployment) (H : List UInt8 → Digest) (F : Kecc
     rw [hsetup, hshape]
   have hiv : KDeployment.ivWithH (m := Id) H D keccakMain (D.setupRoots (setupTreeOf (m := Id) H tr)) =
       contractIvOf (m := Id) H tr.shape keccakMain D.programIv
-        ⟨(setupTreeOf (m := Id) H tr).root, D.a0Root, D.b0Root⟩ := by
+        ⟨(setupTreeOf (m := Id) H tr).root⟩ := by
     rw [hshape]; rfl
   have hC2 := c2ColumnsHonest_of_traceHonest hon
   -- The prover's proof.
@@ -95,24 +95,24 @@ theorem accepts_of_trace (D : KDeployment) (H : List UInt8 → Digest) (F : Kecc
   obtain ⟨R, hrunR, hopR, hmatR, hrootR⟩ := runWithKH_syncs H (commitReal (m := Id) H)
     (FlockP.flockProve (m := Id) (Pure.pure ∘ H)) tr
     (contractIvOf (m := Id) H tr.shape keccakMain D.programIv
-      ⟨(setupTreeOf (m := Id) H tr).root, D.a0Root, D.b0Root⟩) hon.valid hon.rowsFit (fun _ ↦ 0) hflock
+      ⟨(setupTreeOf (m := Id) H tr).root⟩) hon.valid hon.rowsFit (fun _ ↦ 0) hflock
     (fun _ ↦ 0) hbatch
   have hacc := runWithKH_accepts H (commitReal (m := Id) H) (FlockP.flockProve (m := Id) (Pure.pure ∘ H)) tr
     (contractIvOf (m := Id) H tr.shape keccakMain D.programIv
-      ⟨(setupTreeOf (m := Id) H tr).root, D.a0Root, D.b0Root⟩) hon.valid hon.rowsFit (fun _ ↦ 0) hflock
+      ⟨(setupTreeOf (m := Id) H tr).root⟩) hon.valid hon.rowsFit (fun _ ↦ 0) hflock
     (fun _ ↦ 0) hbatch rfl rfl
   have hrun_eq : proverRun H (commitReal (m := Id) H) (FlockP.flockProve (m := Id) (Pure.pure ∘ H)) tr
       (contractIvOf (m := Id) H tr.shape keccakMain D.programIv
-        ⟨(setupTreeOf (m := Id) H tr).root, D.a0Root, D.b0Root⟩) =
-      streamRun H (FlockP.flockProve (m := Id) (Pure.pure ∘ H)) D.a0Root D.b0Root D.programIv tr := rfl
+        ⟨(setupTreeOf (m := Id) H tr).root⟩) =
+      streamRun H (FlockP.flockProve (m := Id) (Pure.pure ∘ H)) D.programIv tr := rfl
   rw [hrun_eq] at hrunR hopR hrootR hacc
   have hf : StreamFacts (commitReal (m := Id) H) tr
-      (streamRun H (FlockP.flockProve (m := Id) (Pure.pure ∘ H)) D.a0Root D.b0Root D.programIv tr).1 :=
+      (streamRun H (FlockP.flockProve (m := Id) (Pure.pure ∘ H)) D.programIv tr).1 :=
     streamRun_facts H (commitReal (m := Id) H) _ tr _
   have hv : StreamValues tr
-      (streamRun H (FlockP.flockProve (m := Id) (Pure.pure ∘ H)) D.a0Root D.b0Root D.programIv tr).1 :=
+      (streamRun H (FlockP.flockProve (m := Id) (Pure.pure ∘ H)) D.programIv tr).1 :=
     streamValues H (commitReal (m := Id) H) _ tr _
-  generalize (streamRun H (FlockP.flockProve (m := Id) (Pure.pure ∘ H)) D.a0Root D.b0Root D.programIv tr).1 = out
+  generalize (streamRun H (FlockP.flockProve (m := Id) (Pure.pure ∘ H)) D.programIv tr).1 = out
     at hf hv h1 h2 h3 hopR hrootR hrunR hacc ⊢
   -- The claims.
   obtain ⟨pt1, v1, pt2, v2, pt3, v3, hcl⟩ := claims_shape _ hf.claims_fst
@@ -219,17 +219,17 @@ theorem coreAccepts_reference (D : KDeployment) (hD : D.shape = keccakRefShape) 
 /-- **`proveWith` fails only at an opening**: if it returns `none`, one of the three WHIR openings returned `none`
 (every commitment has a claim, `claims_complete`). -/
 theorem fails_only_at_opening (H : List UInt8 → Digest) (F : KeccakState → KeccakState) (fuel : ℕ)
-    (flock : FlockProver Id) (a0 b0 : Digest) (programIv : List UInt8) (tr : Trace)
-    (hnone : proveWith (m := Id) H F fuel flock a0 b0 programIv tr = none) :
+    (flock : FlockProver Id) (programIv : List UInt8) (tr : Trace)
+    (hnone : proveWith (m := Id) H F fuel flock programIv tr = none) :
     ∃ (L : PcsQuotient.Layout) (tree : LeanVM.Prover.Tree) (stack : Array K) (claims : List PcsQuotient.Claim),
       E2ECompleteness.proveOpeningWithH (m := Id) H F fuel L tree stack claims = none := by
-  have hf : StreamFacts (commitReal (m := Id) H) tr (streamRun H flock a0 b0 programIv tr).1 :=
+  have hf : StreamFacts (commitReal (m := Id) H) tr (streamRun H flock programIv tr).1 :=
     streamRun_facts H (commitReal (m := Id) H) _ tr _
   rcases proveWith_eq_none H F _ _ _ _ _ _ hnone with hmiss | ⟨_, pt, v, -, h⟩ | ⟨_, pt, v, -, h⟩ |
       ⟨_, pt, v, -, h⟩
   · exfalso
     obtain ⟨c, hc, hn⟩ := hmiss
-    have hc' : c ∈ (streamRun H flock a0 b0 programIv tr).1.claims.map (·.1) := by
+    have hc' : c ∈ (streamRun H flock programIv tr).1.claims.map (·.1) := by
       rw [hf.claims_fst]; exact hc
     obtain ⟨x, hx, rfl⟩ := List.mem_map.mp hc'
     exact absurd (by simp : (x.1 == x.1) = true) (List.find?_eq_none.mp hn x hx)

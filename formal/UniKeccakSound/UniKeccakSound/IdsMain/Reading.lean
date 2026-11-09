@@ -31,7 +31,7 @@ def c1NamesK : List Column :=
 
 /-- A `C1` column's variables at a shape on the Keccak VM. -/
 def c1VarsK (S : Shape) : Column → ℕ
-  | .qflock => S.heights.getD opBlake2s 0 + qflockRowBits
+  | .qflock => S.heights.getD opSha3 0 + qflockRowBits
   | .table o _ => S.heights.getD o 0
   | .inverse o => S.heights.getD o 0
   | .memory _ => S.logMemory

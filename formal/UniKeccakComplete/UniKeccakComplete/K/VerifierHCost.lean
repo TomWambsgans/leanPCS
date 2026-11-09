@@ -26,7 +26,7 @@ one), whatever its opening proofs; **`cost_setupTreeKWithH`** bounds the setup (
   zerocheck coordinates after its seven fixed ones, `drawCost`: one by one on the main line, one challenge and its
   squares at π1-rec3), then `β`, `γ`, Flock's `z`, its `α`, the ring map's six, `t`, `ρ`, `λ`. From the start, the
   potential is `3 S`.
-* **The seed** (`80` bytes, one block), **the IV** (`ivCost`: `291` bytes and the program's IV; the Keccak layout
+* **The seed** (`80` bytes, one block), **the IV** (`ivCost`: `163` bytes and the program's IV; the Keccak layout
   words and the variant's `11` bytes).
 * **The openings**: at most three point claims (the walk's result has at most three openings, the commitments'),
   each `openCost = 46 + vOpen` blocks (E2ECompleteness's `cost_openingWithH`: a claim of at most `255` coordinates, a
@@ -597,7 +597,7 @@ theorem cc_batchKH (fs : FsShape) (combined : List (Commitment × Combined))
 /-- The walk's challenges, but the sumchecks' rounds: the two runs (`α ∈ E^4`, Flock's sampled coordinates), then
 `β`, `γ`, Flock's `z`, its `α`, the ring map's six, `t`, `ρ`, `λ`, two blocks each. -/
 def walkCost (shape : Shape) (v : UniKeccak.KeccakVariant) : ℕ :=
-  drawCost v.fs 4 + drawCost v.fs (keccakR1csLogSize + shape.heights.getD opBlake2s 0 - v.skip - Flock.nFixed) + 26
+  drawCost v.fs 4 + drawCost v.fs (keccakR1csLogSize + shape.heights.getD opSha3 0 - v.skip - Flock.nFixed) + 26
 
 /-- **The walk, point claims** (either variant): at most `walkCost` blocks beyond the potential, and at most three
 openings. -/
@@ -646,7 +646,7 @@ theorem shapeBytes_length (s : Shape) : (shapeBytes s).length = 8 := by simp [sh
 theorem layoutWord_length (s : Shape) (code vars placed : ℕ) : (layoutWord s code vars placed).length = 32 := by
   simp [layoutWord, shapeBytes_length]
 
-theorem layoutWordsK_length (s : Shape) : (UniKeccak.layoutWordsK s).flatten.length = 160 := by
+theorem layoutWordsK_length (s : Shape) : (UniKeccak.layoutWordsK s).flatten.length = 96 := by
   simp [UniKeccak.layoutWordsK, layoutWord_length]
 
 theorem keccakTag_length : "keccak-vm".toUTF8.toList.length = 9 := by decide +kernel
@@ -757,7 +757,7 @@ theorem costP_verifyWithKH (shape : Shape) (v : UniKeccak.KeccakVariant) (iv : L
 
 /-- The Keccak contract's IV: the tag, the program's IV, three roots, the shape, the five Keccak layout words and the
 variant's eleven bytes. -/
-def ivCost (D : UniKeccak.KDeployment) : ℕ := (291 + D.programIv.length) / 136 + 1
+def ivCost (D : UniKeccak.KDeployment) : ℕ := (163 + D.programIv.length) / 136 + 1
 
 /-- **The deployed Keccak verifier's block count** on a proof of a stream of at most `S` bytes: the IV, the seed (one
 block), the walk, three per stream byte, the three openings. -/
@@ -767,7 +767,7 @@ def verifierCost (D : UniKeccak.KDeployment) (v : UniKeccak.KeccakVariant) (S : 
 theorem ivInput_length (s : Shape) (v : UniKeccak.KeccakVariant) (programIv : List UInt8) (roots : SetupRoots) :
     (ivTag ++ programIv ++ digestBytes roots.bytecode ++ digestBytes roots.a0 ++ digestBytes roots.b0 ++
       shapeBytes s ++ (UniKeccak.layoutWordsK s).flatten ++ UniKeccak.variantBytesK v).length =
-      291 + programIv.length := by
+      163 + programIv.length := by
   simp only [List.length_append, ivTag_length, len_digestBytes, shapeBytes_length, layoutWordsK_length,
     variantBytesK_length]
   omega
@@ -783,16 +783,16 @@ theorem cost_verifierWithH (D : UniKeccak.KDeployment) (v : UniKeccak.KeccakVari
   unfold KDeployment.verifierWithH KDeployment.ivWithH contractIvKWithH callKeccak256
   rw [bind_assoc, costP_query_bind]
   refine ⟨?_, fun d ↦ ?_⟩
-  · show (ivTag ++ D.programIv ++ digestBytes roots.bytecode ++ digestBytes roots.a0 ++
-      digestBytes roots.b0 ++ shapeBytes D.shape ++ (UniKeccak.layoutWordsK D.shape).flatten ++
+  · show (ivTag ++ D.programIv ++ digestBytes roots.bytecode ++
+      shapeBytes D.shape ++ (UniKeccak.layoutWordsK D.shape).flatten ++
       UniKeccak.variantBytesK v).length / 136 + 1 ≤ _
     rw [ivInput_length]
     unfold verifierCost ivCost
     omega
   · rw [pure_bind]
     refine (costP_verifyWithKH D.shape v (digestBytes d) roots input proof).weaken ?_
-    show _ ≤ verifierCost D v S - ((ivTag ++ D.programIv ++ digestBytes roots.bytecode ++ digestBytes roots.a0 ++
-      digestBytes roots.b0 ++ shapeBytes D.shape ++ (UniKeccak.layoutWordsK D.shape).flatten ++
+    show _ ≤ verifierCost D v S - ((ivTag ++ D.programIv ++ digestBytes roots.bytecode ++
+      shapeBytes D.shape ++ (UniKeccak.layoutWordsK D.shape).flatten ++
       UniKeccak.variantBytesK v).length / 136 + 1)
     rw [ivInput_length, len_digestBytes]
     unfold verifierCost ivCost
@@ -828,7 +828,7 @@ theorem cost_verifierWithH_rec3 (D : UniKeccak.KDeployment) (roots : SetupRoots)
 
 /-- `walkCost` at the main line: two per sampled coordinate. -/
 theorem walkCost_main (shape : Shape) :
-    walkCost shape UniKeccak.keccakMain = 8 + 2 * (17 + shape.heights.getD opBlake2s 0 - 3 - 7) + 26 := rfl
+    walkCost shape UniKeccak.keccakMain = 8 + 2 * (17 + shape.heights.getD opSha3 0 - 3 - 7) + 26 := rfl
 
 /-- `walkCost` at π1-rec3: `30`, whatever the shape. -/
 theorem walkCost_rec3 (shape : Shape) : walkCost shape UniKeccak.keccakRec3 = 30 := rfl

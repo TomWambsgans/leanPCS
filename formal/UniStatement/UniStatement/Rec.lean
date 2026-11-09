@@ -509,7 +509,7 @@ def reduceWithFs (shape : Shape) (publicWords : List E) (blake2s : Blake2s) (mod
   let gamma ← sample F
   let weights := eqKernel alphas
   -- 2. Flock, on C1's q_flock: walked (π1-rec2), or with the point-claim ABI its matrices' reduction left pending.
-  let logN := blake2sR1csLogSize + heights.getD opBlake2s 0
+  let logN := blake2sR1csLogSize + heights.getD opSha3 0
   let (flock, pending) : Option (List E × Option Flock.End × Option Flock.MatrixClaim) ×
       Option (Flock.Pending × List E) ← match blake2s, mode, walk with
     | .flock variant, _, true => do

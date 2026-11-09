@@ -43,8 +43,8 @@ def FlockRing3 (flock : FlockProver Id) (logN : ℕ) (q : Array K) : Prop :=
 
 /-- **Flock's point has `h_SHA3 + 11` coordinates**, at every writer. -/
 def FlockPointLen3 (flock : FlockProver Id) (tr : Trace) : Prop :=
-  ∀ w : Wr, ((flock (keccakR1csLogSize + tr.shape.heights.getD opBlake2s 0) keccakRec3 tr.qflock).run w).1.point.length =
-    tr.shape.heights.getD opBlake2s 0 + 11
+  ∀ w : Wr, ((flock (keccakR1csLogSize + tr.shape.heights.getD opSha3 0) keccakRec3 tr.qflock).run w).1.point.length =
+    tr.shape.heights.getD opSha3 0 + 11
 
 /-- **`BatchHolds` at `t`, `ρ`** (any challenges), for an honest trace at the reference shape,
 Flock's output a ring switch with its target true, `α, β` off `BadFp` and `t` off `BadT`. -/
@@ -53,7 +53,7 @@ theorem batchHolds3_of (tr : Trace) (hon : TraceHonest tr) (href : tr.shape = ke
     (hend : out.end_ = .ring map target) (hmap6 : map.length = 6)
     (hring : ∑ u ∈ range (2 ^ out.point.length),
       Flock.towerRingMap ((eqKernel out.point).getD u 0) map * ofK (tr.qflock.getD u 0) = target)
-    (hlen : out.point.length = tr.shape.heights.getD opBlake2s 0 + 11)
+    (hlen : out.point.length = tr.shape.heights.getD opSha3 0 + 11)
     (hbad : ¬ BadFp tr alphas beta) (hbadT : ¬ Prob.BadT keccakRefShape out.point t) :
     BatchHolds
       (commitments.filterMap fun c ↦
@@ -82,7 +82,7 @@ theorem batchHolds3_of (tr : Trace) (hon : TraceHonest tr) (href : tr.shape = ke
 /-- **The honest batch's hypotheses at π1-rec3's prover's front state**. -/
 theorem batchHolds3_front (H : List UInt8 → Digest) (commit : Commitment → ℕ → Array K → Id Committed)
     (flock : FlockProver Id) (tr : Trace) (hon : TraceHonest tr) (href : tr.shape = keccakRefShape) (seed : Digest)
-    (hring : FlockRing3 flock (keccakR1csLogSize + tr.shape.heights.getD opBlake2s 0) tr.qflock)
+    (hring : FlockRing3 flock (keccakR1csLogSize + tr.shape.heights.getD opSha3 0) tr.qflock)
     (hlen : FlockPointLen3 flock tr)
     (hbad : ¬ BadFp tr (frontOf3 H commit flock tr (Wr.start seed)).1.alphas
       (frontOf3 H commit flock tr (Wr.start seed)).1.beta)
@@ -97,7 +97,7 @@ theorem batchHolds3_front (H : List UInt8 → Digest) (commit : Commitment → �
 /-- **The paired batch synchronises at π1-rec3's prover's front state, its terminal zero.** -/
 theorem batchSyncsAt3_front (H : List UInt8 → Digest) (commit : Commitment → ℕ → Array K → Id Committed)
     (flock : FlockProver Id) (tr : Trace) (hon : TraceHonest tr) (href : tr.shape = keccakRefShape) (seed : Digest)
-    (hring : FlockRing3 flock (keccakR1csLogSize + tr.shape.heights.getD opBlake2s 0) tr.qflock)
+    (hring : FlockRing3 flock (keccakR1csLogSize + tr.shape.heights.getD opSha3 0) tr.qflock)
     (hlen : FlockPointLen3 flock tr)
     (hbad : ¬ BadFp tr (frontOf3 H commit flock tr (Wr.start seed)).1.alphas
       (frontOf3 H commit flock tr (Wr.start seed)).1.beta)

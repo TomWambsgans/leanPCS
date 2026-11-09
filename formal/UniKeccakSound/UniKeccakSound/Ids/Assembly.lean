@@ -50,7 +50,7 @@ theorem uniKnowledgeSoundnessK_ids (D : KDeployment) {F : KeccakVm.KeccakFlockSp
 code-level link `uniCodeKAt` (`UniKeccakSound.Code.Link`, its checks and claims the main line's by
 `codeIsMainK_uniCodeKAt`), for a deployment whose `SHA3` height is Flock's `κ`. -/
 theorem uniKnowledgeSoundnessK_code (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ : ℕ}
-    (Fl : KFlockSound F κ keccakMain) (hκ : D.shape.heights.getD opBlake2s 0 = κ) (N : ℕ) (h : IdsHypsK F D κ N)
+    (Fl : KFlockSound F κ keccakMain) (hκ : D.shape.heights.getD opSha3 0 = κ) (N : ℕ) (h : IdsHypsK F D κ N)
     (d n : ℕ) (g : IdsGapsK D Fl d n) (hgood : FlockGoodDoneK Fl) (hW : WeightMleK D Fl)
     (hsmall : LayoutVarsSmall3K D)
     (hFs : FsLayer128K F D Fl valsCountK (varsOf (layoutsOfK D.shape)) (uniCodeKAt D Fl hκ _ _ rfl rfl))

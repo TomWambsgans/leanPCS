@@ -62,7 +62,7 @@ def constraintRelationK (shape : Shape) (parts : List TablePartS) (publicWords :
     let g ← mul cur lift
     terms := terms.push (termS (.inverse table.opcode) (w.take r) (← mul g counters))
     known ← add known g
-    if table.opcode = opBlake2s then
+    if table.opcode = opSha3 then
       let y ← coordinatesAt t (coordinateFunctionals r)
       for (name, column) in table.columns.zip (List.range table.width) do
         if let some slot := keccakSlot name then
@@ -201,7 +201,7 @@ def reduceK (shape : Shape) (publicWords : List Sym) : Prog ReducedS := do
   let gamma ← sample
   let weights ← eqKernel alphas
   -- 2. Flock on the Keccak-f block, its structured terminal.
-  let logN := keccakR1csLogSize + heights.getD opBlake2s 0
+  let logN := keccakR1csLogSize + heights.getD opSha3 0
   let (flockPoint, map, target) ← verifyWalkedK logN UniKeccak.keccakRec3.skip fs
   -- 3. C2, t, the digits, Z_act.
   let root2 ← nextRoot

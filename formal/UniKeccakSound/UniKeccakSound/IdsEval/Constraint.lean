@@ -52,7 +52,7 @@ def crStepK (shape : Shape) (gamma t : E) (w : List E) (s : E × Array Term × E
     s1.2.1.push (term (.inverse x.1.opcode) (w.take r)
       (s1.2.2.1 * lift * x.1.countColumns.foldl (fun acc c ↦ acc * (x.2.sent.getD c none).getD 0) 1)),
     s1.2.2.1 * gamma, max s1.2.2.2 (degree ((n - 1) * (1 + x.1.countColumns.length)) n))
-  if x.1.opcode = opBlake2s then
+  if x.1.opcode = opSha3 then
     let inner := (List.range x.1.width).foldl
       (copyStepK x.1.opcode r x.1.columns w (coordinatesAt t (coordinateFunctionals r)) lift gamma)
       (s2.1, s2.2.1, s2.2.2.1)
@@ -79,9 +79,9 @@ theorem constraintRelationK_eq (shape : Shape) (parts : List TablePart) (publicW
     rfl
   · intro x s
     by_cases hj : x.1.opcode = opJump
-    · have hb : ¬ x.1.opcode = opBlake2s := by rw [hj]; decide
+    · have hb : ¬ x.1.opcode = opSha3 := by rw [hj]; decide
       simp only [crStepK, ite_eq_left hj, ite_eq_right hb]
-    · by_cases hb : x.1.opcode = opBlake2s
+    · by_cases hb : x.1.opcode = opSha3
       · simp only [crStepK, ite_eq_right hj, ite_eq_left hb]
         rw [forIn_id_eq_foldl' _ _ _ (copyStepK x.1.opcode (shape.heights.getD x.1.opcode 0) x.1.columns w
           (coordinatesAt t (coordinateFunctionals (shape.heights.getD x.1.opcode 0)))
@@ -139,7 +139,7 @@ structure CrTableOkK (S : Shape) (c1 : Stk) (t : E) (w : List E) (ev : Column �
   col : ∀ c, ev (.table tab.opcode c) (w.take (S.heights.getD tab.opcode 0)) =
     (c1PK S c1 (.table tab.opcode c)).eval t
   inv : ev (.inverse tab.opcode) (w.take (S.heights.getD tab.opcode 0)) = (c1PK S c1 (.inverse tab.opcode)).eval t
-  slot : tab.opcode = opBlake2s → ∀ c slot, c < tab.width → keccakSlot (tab.columns.getD c "") = some slot →
+  slot : tab.opcode = opSha3 → ∀ c slot, c < tab.width → keccakSlot (tab.columns.getD c "") = some slot →
     ev (.qflockSlot slot) (coordinatesAt t (coordinateFunctionals (S.heights.getD tab.opcode 0))) =
       (slotPK S c1 slot).eval t
   sent : ∀ c ∈ sentColumns tab, part.sent.getD c none = some ((c1PK S c1 (.table tab.opcode c)).eval t)
@@ -175,14 +175,14 @@ theorem crStepK_spec (S : Shape) (c1 : Stk) (gamma t : E) (w : List E) (ev : Col
   dsimp only
   rw [h.lift]
   by_cases hj : tab.opcode = opJump
-  · have hb : ¬ tab.opcode = opBlake2s := by rw [hj]; decide
+  · have hb : ¬ tab.opcode = opSha3 := by rw [hj]; decide
     obtain ⟨hsb, hsv⟩ := h.jumpSent hj
     simp only [ite_eq_left hj, ite_eq_right hb, List.append_nil, List.cons_append, List.nil_append,
       List.map_cons, List.map_nil, List.length_cons, List.length_nil, powComb_cons, powComb_nil,
       termsVal_push, term, h.sent _ hsb, h.sent _ hsv, Option.getD_some, h.col, h.inv, hcnt,
       Polynomial.eval_mul, Polynomial.eval_add, Polynomial.eval_one, hprod]
     constructor <;> ring
-  · by_cases hb : tab.opcode = opBlake2s
+  · by_cases hb : tab.opcode = opSha3
     · simp only [ite_eq_right hj, ite_eq_left hb, List.nil_append, List.cons_append, List.map_cons,
         List.length_cons, powComb_cons, term, hcnt, Polynomial.eval_mul,
         Polynomial.eval_add, Polynomial.eval_one, hprod]
@@ -315,16 +315,16 @@ theorem copyFoldK_slot (o r : ℕ) (columns : List String) (w y : List E) (lift 
 
 theorem crStepK_terms (S : Shape) (gamma t : E) (w : List E) (s : E × Array Term × E × ℕ)
     (x : Table × TablePart) : ∃ X, (crStepK S gamma t w s x).2.1.toList = s.2.1.toList ++ X ∧
-      ∀ tm ∈ X, CrPt w (coordinatesAt t (coordinateFunctionals (S.heights.getD opBlake2s 0))) tm := by
+      ∀ tm ∈ X, CrPt w (coordinatesAt t (coordinateFunctionals (S.heights.getD opSha3 0))) tm := by
   unfold crStepK
   dsimp only
   by_cases hj : x.1.opcode = opJump
-  · have hb : ¬ x.1.opcode = opBlake2s := by rw [hj]; decide
+  · have hb : ¬ x.1.opcode = opSha3 := by rw [hj]; decide
     simp only [ite_eq_left hj, ite_eq_right hb, Array.toList_push, List.append_assoc]
     refine ⟨_, rfl, fun tm htm ↦ ?_⟩
     simp only [List.singleton_append, List.mem_cons, List.not_mem_nil, or_false] at htm
     rcases htm with rfl | rfl <;> exact ⟨rfl, rfl, Or.inl ⟨_, rfl⟩⟩
-  · by_cases hb : x.1.opcode = opBlake2s
+  · by_cases hb : x.1.opcode = opSha3
     · simp only [ite_eq_right hj, ite_eq_left hb]
       obtain ⟨X, hX, hP⟩ := copyFoldK_terms _ _ _ _ _ _ _ _ _
       rw [hX, Array.toList_push, List.append_assoc]
@@ -348,7 +348,7 @@ theorem crStepK_sub (S : Shape) (gamma t : E) (w : List E) (s : E × Array Term 
 
 theorem crFoldK_terms (S : Shape) (gamma t : E) (w : List E) : ∀ (L : List (Table × TablePart))
     (s : E × Array Term × E × ℕ), ∀ tm ∈ (L.foldl (crStepK S gamma t w) s).2.1.toList,
-      tm ∈ s.2.1.toList ∨ CrPt w (coordinatesAt t (coordinateFunctionals (S.heights.getD opBlake2s 0))) tm
+      tm ∈ s.2.1.toList ∨ CrPt w (coordinatesAt t (coordinateFunctionals (S.heights.getD opSha3 0))) tm
   | [], _, _, h => Or.inl h
   | x :: L, s, tm, h => by
     rw [List.foldl_cons] at h
@@ -370,7 +370,7 @@ theorem crFoldK_sub (S : Shape) (gamma t : E) (w : List E) : ∀ (L : List (Tabl
 /-- **The Keccak constraint relation's terms**: untwisted, on `C1`, at prefixes of the digits or at `y`. -/
 theorem crOfK_terms (S : Shape) (parts : List TablePart) (pw : List E) (gamma t cv : E) (w : List E) :
     ∀ tm ∈ (crOfK S parts pw gamma t cv w).1.terms,
-      CrPt w (coordinatesAt t (coordinateFunctionals (S.heights.getD opBlake2s 0))) tm := by
+      CrPt w (coordinatesAt t (coordinateFunctionals (S.heights.getD opSha3 0))) tm := by
   intro tm htm
   unfold crOfK at htm
   dsimp only at htm
@@ -380,14 +380,14 @@ theorem crOfK_terms (S : Shape) (parts : List TablePart) (pw : List E) (gamma t 
     · exact h'
   · exact h
 
-theorem tablesKeccak_getD5 : (tablesKeccak.getD 5 default).opcode = opBlake2s := rfl
+theorem tablesKeccak_getD5 : (tablesKeccak.getD 5 default).opcode = opSha3 := rfl
 
 /-- **The Keccak constraint relation has a term at `y`** where a `SHA3` column has a lane slot. -/
 theorem crOfK_slot (S : Shape) (parts : List TablePart) (pw : List E) (gamma t cv : E) (w : List E)
     (hlen : tablesKeccak.length ≤ parts.length) (c slot : ℕ) (hc : c < (tablesKeccak.getD 5 default).width)
     (hs : keccakSlot ((tablesKeccak.getD 5 default).columns.getD c "") = some slot) :
     ∃ tm ∈ (crOfK S parts pw gamma t cv w).1.terms,
-      tm.point = coordinatesAt t (coordinateFunctionals (S.heights.getD opBlake2s 0)) := by
+      tm.point = coordinatesAt t (coordinateFunctionals (S.heights.getD opSha3 0)) := by
   have hx : (tablesKeccak.getD 5 default, parts.getD 5 default) ∈ tablesKeccak.zip parts := by
     have h5 : 5 < (tablesKeccak.zip parts).length := by
       rw [List.length_zip]; have : tablesKeccak.length = 6 := rfl; omega
@@ -396,7 +396,7 @@ theorem crOfK_slot (S : Shape) (parts : List TablePart) (pw : List E) (gamma t c
   obtain ⟨L1, L2, hL⟩ := List.append_of_mem hx
   have key : ∀ s : E × Array Term × E × ℕ, ∃ tm ∈ (crStepK S gamma t w s
       (tablesKeccak.getD 5 default, parts.getD 5 default)).2.1.toList,
-      tm.point = coordinatesAt t (coordinateFunctionals (S.heights.getD opBlake2s 0)) := by
+      tm.point = coordinatesAt t (coordinateFunctionals (S.heights.getD opSha3 0)) := by
     intro s
     have h1 : ¬ (tablesKeccak.getD 5 default).opcode = opJump := by decide
     unfold crStepK
@@ -421,9 +421,9 @@ theorem crFoldK_deg (S : Shape) (gamma t : E) (w : List E) : ∀ (L : List (Tabl
     unfold crStepK UniSound.cdStep
     dsimp only
     by_cases hj : x.1.opcode = opJump
-    · have hb : ¬ x.1.opcode = opBlake2s := by rw [hj]; decide
+    · have hb : ¬ x.1.opcode = opSha3 := by rw [hj]; decide
       simp only [ite_eq_left hj, ite_eq_right hb]
-    · by_cases hb : x.1.opcode = opBlake2s
+    · by_cases hb : x.1.opcode = opSha3
       · simp only [ite_eq_right hj, ite_eq_left hb]
       · simp only [ite_eq_right hj, ite_eq_right hb]
 

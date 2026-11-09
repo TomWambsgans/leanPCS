@@ -84,21 +84,21 @@ theorem ndeg_suPK_tuple (S : Shape) (st : Stk) (alphas : List E) :
 
 /-- **`q_flock`'s slot at `y(X)`** on the Keccak VM (`11` slot bits): at most `h_SHA3 2^(h_SHA3 − 1)`. -/
 theorem ndeg_slotPK (S : Shape) (c : Stk) (slot : ℕ) :
-    (slotPK S c slot).natDegree ≤ S.heights.getD opBlake2s 0 * 2 ^ (S.heights.getD opBlake2s 0 - 1) := by
+    (slotPK S c slot).natDegree ≤ S.heights.getD opSha3 0 * 2 ^ (S.heights.getD opSha3 0 - 1) := by
   unfold slotPK
   refine ndeg_colPoly _ _ _ _ _ _ fun b hb ↦ ?_
   rw [c1_limbsK S .qflock b hb]
-  show ∑ l ∈ range (S.heights.getD opBlake2s 0 + qflockRowBits), _ ≤ _
-  rw [show S.heights.getD opBlake2s 0 + qflockRowBits = qflockRowBits + S.heights.getD opBlake2s 0 from
+  show ∑ l ∈ range (S.heights.getD opSha3 0 + qflockRowBits), _ ≤ _
+  rw [show S.heights.getD opSha3 0 + qflockRowBits = qflockRowBits + S.heights.getD opSha3 0 from
     add_comm _ _, Finset.sum_range_add]
   have h1 : ∑ x ∈ range qflockRowBits, (if x < qflockRowBits then C (bitE slot x)
-      else yP (coordinateFunctionals (S.heights.getD opBlake2s 0)) (x - qflockRowBits)).natDegree = 0 :=
+      else yP (coordinateFunctionals (S.heights.getD opSha3 0)) (x - qflockRowBits)).natDegree = 0 :=
     Finset.sum_eq_zero fun x hx ↦ by rw [ite_eq_left (mem_range.mp hx), natDegree_C]
   rw [h1, zero_add]
-  refine (Finset.sum_le_sum (g := fun _ ↦ 2 ^ (S.heights.getD opBlake2s 0 - 1)) fun l _ ↦ ?_).trans
+  refine (Finset.sum_le_sum (g := fun _ ↦ 2 ^ (S.heights.getD opSha3 0 - 1)) fun l _ ↦ ?_).trans
     (by simp)
   rw [ite_eq_right (show ¬ qflockRowBits + l < qflockRowBits by omega)]
-  have := ndeg_yP (coordinateFunctionals (S.heights.getD opBlake2s 0)) (qflockRowBits + l - qflockRowBits)
+  have := ndeg_yP (coordinateFunctionals (S.heights.getD opSha3 0)) (qflockRowBits + l - qflockRowBits)
   rwa [coordinateFunctionals_size] at this
 
 /-! ## The Keccak tables, as the degrees read them (the kernel reads monomials, not coefficients) -/
@@ -193,7 +193,7 @@ theorem constraintDegreeK_le (S : Shape) : Shape.constraintDegreeK S ≤ cdBK S 
 
 /-- **The Keccak constraints' `W_i` bound**: the tables', `q_flock`'s slots', the public lines'. -/
 def wMaxK (S : Shape) : ℕ :=
-  max (2 ^ S.logMemory) (max (S.heights.getD opBlake2s 0 * 2 ^ (S.heights.getD opBlake2s 0 - 1))
+  max (2 ^ S.logMemory) (max (S.heights.getD opSha3 0 * 2 ^ (S.heights.getD opSha3 0 - 1))
     ((ocLK.map (wOf S)).foldr max 0))
 
 theorem wOf_leK (S : Shape) {tab : Table} (h : tab ∈ tablesKeccak) :
@@ -262,7 +262,7 @@ theorem ndeg_constraintsK (S : Shape) (c1 : Stk) (pw : List E) :
 
 /-- **The Keccak constraint quotient's identity `Z_bad (Σ γ^i M_i W_i + Q_W w_{r_W})`.** -/
 def wBK (S : Shape) : ℕ :=
-  2 * 2 ^ (S.heights.getD opBlake2s 0 - 1) +
+  2 * 2 ^ (S.heights.getD opSha3 0 - 1) +
     max (2 ^ S.constraintVars + wMaxK S) (chB (cdBK S + 1) + 2 ^ S.constraintVars)
 
 theorem ndeg_wPK (S : Shape) (c1 c2 : Stk) (pw : List E) (gamma p0 : E) :
@@ -455,7 +455,7 @@ theorem refBoundK :
   simp only [heapBlocksK, List.map_cons, List.map_nil, List.sum_cons, List.sum_nil, Block.ofTuple,
     blockBK, wBK, wMaxK, cdBK, cdOf, wOf, ocLK, tabB, memB, chB, pullLK, pushLK, List.foldr_cons,
     List.foldr_nil, List.getD_cons_succ, List.getD_cons_zero, Shape.leastRows, UniStatement.degree,
-    Shape.constraintVars, List.foldl_cons, List.foldl_nil, List.cons_append, List.nil_append, opBlake2s]
+    Shape.constraintVars, List.foldl_cons, List.foldl_nil, List.cons_append, List.nil_append, opSha3]
   norm_num [max_def]
 
 /-- **The Keccak identities' degrees at the reference shape**: at most `19,339,139`. -/

@@ -1123,14 +1123,14 @@ theorem forIn_id_inv_mem {α β : Type} (I : β → Prop) (f : α → β → Id 
       rw [h] at h1
       exact forIn_id_inv_mem I f l (fun a' ha' ↦ hf a' (List.mem_cons_of_mem _ ha')) b' h1
 
-/-- The Keccak VM's table of opcode `opBlake2s` (`= opSha3`) is `SHA3`'s. -/
-theorem sha3_columns_of_mem {t : Table} (ht : t ∈ tablesKeccak) (hop : t.opcode = opBlake2s) :
+/-- The Keccak VM's table of opcode `opSha3` is `SHA3`'s. -/
+theorem sha3_columns_of_mem {t : Table} (ht : t ∈ tablesKeccak) (hop : t.opcode = opSha3) :
     t.columns = sha3Columns := by
   simp only [tablesKeccak, List.mem_cons, List.not_mem_nil, or_false] at ht
   rcases ht with rfl | rfl | rfl | rfl | rfl | rfl <;> first | rfl | exact absurd hop (by decide)
 
 /-- **A `SHA3` column's `q_flock` slot is below `2^11`** (`UniKeccakSound`'s `keccakSlot_lt`). -/
-theorem keccakSlot_lt' {t : Table} (ht : t ∈ tablesKeccak) (hop : t.opcode = opBlake2s) {c j : ℕ}
+theorem keccakSlot_lt' {t : Table} (ht : t ∈ tablesKeccak) (hop : t.opcode = opSha3) {c j : ℕ}
     (h : keccakSlot (t.columns.getD c "") = some j) : j < 2048 := by
   rw [sha3_columns_of_mem ht hop] at h
   have := (UniKeccakSound.Ids.keccakSlot_lt UniKeccakSound.IdsReal.laneSlotsK h).2
@@ -1142,7 +1142,7 @@ theorem constraintRelation_terms (shape : Shape) (parts : List TablePart) (publi
     (gamma t constraintValue : E) (w : List E) (Q : Term → Prop)
     (htable : ∀ op c k, Q (term (.table op c) (w.take (shape.heights.getD op 0)) k))
     (hinv : ∀ op k, Q (term (.inverse op) (w.take (shape.heights.getD op 0)) k))
-    (hslot : ∀ op j k, op = opBlake2s → j < 2048 →
+    (hslot : ∀ op j k, op = opSha3 → j < 2048 →
       Q (term (.qflockSlot j) (coordinatesAt t (coordinateFunctionals (shape.heights.getD op 0))) k))
     (hmem : ∀ k g, Q (term (.memory k) (w.take shape.logMemory) g)) :
     ∀ x ∈ (UniKeccak.constraintRelationK shape parts publicWords gamma t constraintValue w).1.terms, Q x := by
@@ -1228,7 +1228,7 @@ theorem atTOf_terms (tr : Trace) (c2 : C2Data) (alphas : List E) (beta gamma t :
     ∀ r ∈ (atTOf tr c2 alphas beta gamma t flockOut).relations, ∃ c, ∀ x ∈ r.terms,
       AtTForm tr.shape.heights tr.shape.logMemory tr.shape.logBytecode
         (digits t (max tr.shape.heap.h (tr.shape.constraintVars + 4) + 2))
-        (coordinatesAt t (coordinateFunctionals (tr.shape.heights.getD opBlake2s 0))) alphas flockOut c x := by
+        (coordinatesAt t (coordinateFunctionals (tr.shape.heights.getD opSha3 0))) alphas flockOut c x := by
   unfold atTOf
   simp only [Id.run, bind, pure]
   split
@@ -1240,7 +1240,7 @@ theorem atTOf_terms (tr : Trace) (c2 : C2Data) (alphas : List E) (beta gamma t :
         refine forIn_id_inv (fun s : Array E × Array Relation × Array TablePart ↦ ∀ r ∈ s.2.1.toList, ∃ c,
           ∀ x ∈ r.terms, AtTForm tr.shape.heights tr.shape.logMemory tr.shape.logBytecode
             (digits t (max tr.shape.heap.h (tr.shape.constraintVars + 4) + 2))
-            (coordinatesAt t (coordinateFunctionals (tr.shape.heights.getD opBlake2s 0))) alphas (some _) c x)
+            (coordinatesAt t (coordinateFunctionals (tr.shape.heights.getD opSha3 0))) alphas (some _) c x)
           _ (fun table s hs ↦ ?_) _ _ (by simp)
         intro r hr
         simp only [ForInStep.value, Array.toList_append, List.mem_append] at hr
@@ -1271,7 +1271,7 @@ theorem atTOf_terms (tr : Trace) (c2 : C2Data) (alphas : List E) (beta gamma t :
         refine forIn_id_inv (fun s : Array E × Array Relation × Array TablePart ↦ ∀ r ∈ s.2.1.toList, ∃ c,
           ∀ x ∈ r.terms, AtTForm tr.shape.heights tr.shape.logMemory tr.shape.logBytecode
             (digits t (max tr.shape.heap.h (tr.shape.constraintVars + 4) + 2))
-            (coordinatesAt t (coordinateFunctionals (tr.shape.heights.getD opBlake2s 0))) alphas (some _) c x)
+            (coordinatesAt t (coordinateFunctionals (tr.shape.heights.getD opSha3 0))) alphas (some _) c x)
           _ (fun table s hs ↦ ?_) _ _ (by simp)
         intro r hr
         simp only [ForInStep.value, Array.toList_append, List.mem_append] at hr
@@ -1298,7 +1298,7 @@ theorem atTOf_terms (tr : Trace) (c2 : C2Data) (alphas : List E) (beta gamma t :
       refine forIn_id_inv (fun s : Array E × Array Relation × Array TablePart ↦ ∀ r ∈ s.2.1.toList, ∃ c,
         ∀ x ∈ r.terms, AtTForm tr.shape.heights tr.shape.logMemory tr.shape.logBytecode
           (digits t (max tr.shape.heap.h (tr.shape.constraintVars + 4) + 2))
-          (coordinatesAt t (coordinateFunctionals (tr.shape.heights.getD opBlake2s 0))) alphas _ c x)
+          (coordinatesAt t (coordinateFunctionals (tr.shape.heights.getD opSha3 0))) alphas _ c x)
         _ (fun table s hs ↦ ?_) _ _ (by simp)
       intro r hr
       simp only [ForInStep.value, Array.toList_append, List.mem_append] at hr
@@ -1341,7 +1341,7 @@ theorem atTOf_form_of (tr : Trace) (c2 : C2Data) (alphas : List E) (beta gamma t
     {x : Term} (hx : x ∈ r.terms) :
     AtTForm tr.shape.heights tr.shape.logMemory tr.shape.logBytecode
       (digits t (max tr.shape.heap.h (tr.shape.constraintVars + 4) + 2))
-      (coordinatesAt t (coordinateFunctionals (tr.shape.heights.getD opBlake2s 0))) alphas flockOut
+      (coordinatesAt t (coordinateFunctionals (tr.shape.heights.getD opSha3 0))) alphas flockOut
       r.commitment x := by
   obtain ⟨c, hc⟩ := atTOf_terms tr c2 alphas beta gamma t flockOut r hr
   rw [commitment_of_all (fun y hy ↦ (hc y hy).1) hx]
@@ -1355,12 +1355,12 @@ def AtTSlotCondition (w y : List E) (flockOut : Option FlockOut) : Prop :=
 theorem atTOf_slotsMaximal (tr : Trace) (c2 : C2Data) (alphas : List E) (beta gamma t : E)
     (flockOut : Option FlockOut)
     (hcond : AtTSlotCondition (digits t (max tr.shape.heap.h (tr.shape.constraintVars + 4) + 2))
-      (coordinatesAt t (coordinateFunctionals (tr.shape.heights.getD opBlake2s 0))) flockOut) :
+      (coordinatesAt t (coordinateFunctionals (tr.shape.heights.getD opSha3 0))) flockOut) :
     AtTSlotsMaximal (atTOf tr c2 alphas beta gamma t flockOut) := by
   intro r hr x hx j hj q hq hpq
   have hfx := atTOf_form_of tr c2 alphas beta gamma t flockOut hr hx
   -- the slot's point is `y`
-  have hy : x.point = coordinatesAt t (coordinateFunctionals (tr.shape.heights.getD opBlake2s 0)) := by
+  have hy : x.point = coordinatesAt t (coordinateFunctionals (tr.shape.heights.getD opSha3 0)) := by
     obtain ⟨hcom, -, h⟩ := hfx
     rcases h with h | ⟨_, _, h, -⟩ | ⟨_, h, -⟩ | ⟨_, h, hp, -⟩ | ⟨_, h, -⟩ | ⟨h, -⟩ | ⟨h, -⟩ | ⟨h, -⟩ | ⟨h, -⟩
     · rw [h, hj] at hcom
@@ -1444,7 +1444,7 @@ theorem layoutIn_c2 (shape : Shape) (c2 : List (Column × ℕ × Bool)) :
 
 /-- A column's variables on `C1`. -/
 def c1Vars (shape : Shape) : Column → ℕ
-  | .qflock => shape.heights.getD opBlake2s 0 + 11
+  | .qflock => shape.heights.getD opSha3 0 + 11
   | .table op _ => shape.heights.getD op 0
   | .inverse op => shape.heights.getD op 0
   | .memory _ => shape.logMemory
@@ -1458,7 +1458,7 @@ theorem vars_c1 {shape : Shape} {c2 : List (Column × ℕ × Bool)} {column : Co
   generalize b.2.1 = v at h ⊢
   unfold c1Columns at h
   obtain (((h | h) | h) | h) : (((column, v, eV) ∈
-      [(Column.qflock, shape.heights.getD opBlake2s 0 + UniKeccak.qflockRowBits, false)] ∨
+      [(Column.qflock, shape.heights.getD opSha3 0 + UniKeccak.qflockRowBits, false)] ∨
       (column, v, eV) ∈ tablesKeccak.flatMap (fun t ↦
         (List.range t.width).map (fun c ↦ (Column.table t.opcode c, shape.heights.getD t.opcode 0, false)) ++
           [(Column.inverse t.opcode, shape.heights.getD t.opcode 0, false)])) ∨
@@ -1574,7 +1574,7 @@ def AtTCoversC2 (shape : Shape) (a : AtT) : Prop :=
 of at least `q_flock`'s `h_B + 11` coordinates and four tuple weights; on `C2` by `AtTCoversC2`. -/
 theorem atTOf_covers (tr : Trace) (c2 : C2Data) (alphas : List E) (beta gamma t : E)
     (flockOut : Option FlockOut) (halphas : alphas.length = 4)
-    (hflock : ∀ out, flockOut = some out → tr.shape.heights.getD opBlake2s 0 + 11 ≤ out.point.length)
+    (hflock : ∀ out, flockOut = some out → tr.shape.heights.getD opSha3 0 + 11 ≤ out.point.length)
     (hc2 : AtTCoversC2 tr.shape (atTOf tr c2 alphas beta gamma t flockOut)) :
     AtTCovers tr.shape (atTOf tr c2 alphas beta gamma t flockOut) := by
   intro r hr x hx b hb
@@ -1768,7 +1768,7 @@ theorem length_coordinatesAt (t : E) (r : ℕ) : (coordinatesAt t (coordinateFun
 for Flock's point of at least `h_B + 11` coordinates. -/
 theorem atTOf_termWeightWF (tr : Trace) (c2 : C2Data) (alphas : List E) (beta gamma t : E)
     (flockOut : Option FlockOut)
-    (hflock : ∀ out, flockOut = some out → tr.shape.heights.getD opBlake2s 0 + 11 ≤ out.point.length) :
+    (hflock : ∀ out, flockOut = some out → tr.shape.heights.getD opSha3 0 + 11 ≤ out.point.length) :
     ∀ r ∈ (atTOf tr c2 alphas beta gamma t flockOut).relations, ∀ x ∈ r.terms,
       TermWeightWF (layoutIn (UniKeccak.layoutsK tr.shape (atTOf tr c2 alphas beta gamma t flockOut).c2Columns)
         r.commitment) x := by
@@ -1808,11 +1808,11 @@ batch's weight (`WeightWF`, on its commitment's layout) and, when every relation
 ring map of at most six stages; `C2`'s terms covering their columns (`AtTCoversC2`, not proved here). -/
 theorem atTOf_combined (tr : Trace) (c2 : C2Data) (alphas : List E) (beta gamma t rho : E)
     (flockOut : Option FlockOut) (stackOf : Commitment → Array K) (halphas : alphas.length = 4)
-    (hflock : ∀ out, flockOut = some out → tr.shape.heights.getD opBlake2s 0 + 11 ≤ out.point.length)
+    (hflock : ∀ out, flockOut = some out → tr.shape.heights.getD opSha3 0 + 11 ≤ out.point.length)
     (hmap : ∀ map, (atTOf tr c2 alphas beta gamma t flockOut).ringMap = some map → map.length ≤ 6)
     (hc2 : AtTCoversC2 tr.shape (atTOf tr c2 alphas beta gamma t flockOut))
     (hslot : AtTSlotCondition (digits t (max tr.shape.heap.h (tr.shape.constraintVars + 4) + 2))
-      (coordinatesAt t (coordinateFunctionals (tr.shape.heights.getD opBlake2s 0))) flockOut) :
+      (coordinatesAt t (coordinateFunctionals (tr.shape.heights.getD opSha3 0))) flockOut) :
     AtTWellFormed tr.shape (atTOf tr c2 alphas beta gamma t flockOut) ∧
     ∀ p ∈ commitments.filterMap (fun c ↦ (combine (atTOf tr c2 alphas beta gamma t flockOut).relations c rho).map
         (c, ·)),

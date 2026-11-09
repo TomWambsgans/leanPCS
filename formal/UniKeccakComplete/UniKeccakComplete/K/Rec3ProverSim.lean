@@ -101,9 +101,9 @@ theorem app_proveRec3With
       φ.app (E2ECompleteness.proveOpeningWithH H F fuel L tree stack claims) =
         E2ECompleteness.proveOpeningWithH (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) fuel L tree stack claims)
     (flock : FlockProver m) (flock' : FlockProver n) (hflock : ∀ logN v q, φ.wr (flock logN v q) = flock' logN v q)
-    (fuel : ℕ) (a0 b0 : Digest) (programIv : List UInt8) (tr : Trace) :
-    φ.app (proveRec3With H F fuel flock a0 b0 programIv tr) =
-      proveRec3With (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) fuel flock' a0 b0 programIv tr := by
+    (fuel : ℕ) (programIv : List UInt8) (tr : Trace) :
+    φ.app (proveRec3With H F fuel flock programIv tr) =
+      proveRec3With (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) fuel flock' programIv tr := by
   have hs : ∀ seed, φ.app ((proveStreamRec3With H (commitReal H) flock tr).run (Wr.start seed)) =
       (proveStreamRec3With (fun x ↦ φ.app (H x)) (commitReal fun x ↦ φ.app (H x)) flock' tr).run
         (Wr.start seed) := fun seed ↦ by
@@ -140,15 +140,15 @@ section Commute
 variable {r : Type → Type} [Monad r] [LawfulMonad r] (impl : QueryImpl KeccakCalls r)
 
 /-- **π1-rec3's honest prover over the two calls commutes with any simulation**, at any fuel. -/
-theorem simulateQ_proveRec3With (flock : FlockProverH) (hflock : FlockCommutes flock) (fuel : ℕ) (a0 b0 : Digest)
+theorem simulateQ_proveRec3With (flock : FlockProverH) (hflock : FlockCommutes flock) (fuel : ℕ)
     (programIv : List UInt8) (tr : Trace) :
-    simulateQ impl (proveRec3With callKeccak256 callKeccakF1600 fuel (flock callKeccak256) a0 b0 programIv tr) =
-      proveRec3With (implH impl) (implF impl) fuel (flock (implH impl)) a0 b0 programIv tr := by
+    simulateQ impl (proveRec3With callKeccak256 callKeccakF1600 fuel (flock callKeccak256) programIv tr) =
+      proveRec3With (implH impl) (implF impl) fuel (flock (implH impl)) programIv tr := by
   have h := app_proveRec3With (Morph.sim impl) callKeccak256 callKeccakF1600
     (fun fuel L tree stack claims ↦ by
       rw [Morph.sim_H, Morph.sim_F]
       exact E2ECompleteness.simulateQ_proveOpeningWithH impl fuel L tree stack claims)
-    (flock callKeccak256) (flock (implH impl)) (fun logN v q ↦ by rw [hflock, Morph.sim_H]) fuel a0 b0
+    (flock callKeccak256) (flock (implH impl)) (fun logN v q ↦ by rw [hflock, Morph.sim_H]) fuel
     programIv tr
   rw [Morph.sim_H, Morph.sim_F] at h
   exact h

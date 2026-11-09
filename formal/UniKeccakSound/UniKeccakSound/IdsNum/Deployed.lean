@@ -41,7 +41,7 @@ theorem keccakRef_eq : keccakRefShape = ⟨20, 18, [15, 16, 15, 16, 14, 15]⟩ :
 theorem keccak128_eq_refShape : keccak128 = keccakRefShape := rfl
 
 /-- `SHA3`'s height at the reference shape: `15`. -/
-theorem hSha3_ref : keccakRefShape.heights.getD opBlake2s 0 = 15 := by
+theorem hSha3_ref : keccakRefShape.heights.getD opSha3 0 = 15 := by
   rw [keccakRef_eq]; rfl
 
 /-! ## The heap (`HeapGood`) -/
@@ -87,12 +87,12 @@ theorem heapGoodK_ref : HeapGood keccakRefShape := by
 
 /-- **The coordinate functionals at `SHA3`'s height** (`15`) invert the Moore matrix, at the reference shape. -/
 theorem functionalsK_ref (D : KDeployment) (hD : D.shape = keccakRefShape) :
-    FunctionalsCorrect (D.shape.heights.getD opBlake2s 0) := by
+    FunctionalsCorrect (D.shape.heights.getD opSha3 0) := by
   rw [hD, hSha3_ref]
   exact functionalsCorrect15
 
 /-- **`2 ≤ h_SHA3`** at the reference shape. -/
-theorem height2K_ref (D : KDeployment) (hD : D.shape = keccakRefShape) : 2 ≤ D.shape.heights.getD opBlake2s 0 := by
+theorem height2K_ref (D : KDeployment) (hD : D.shape = keccakRefShape) : 2 ≤ D.shape.heights.getD opSha3 0 := by
   rw [hD, hSha3_ref]
   norm_num
 

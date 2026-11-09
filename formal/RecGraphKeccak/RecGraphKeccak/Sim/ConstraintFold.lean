@@ -48,7 +48,7 @@ def crStepK (shape : UniStatement.Shape) (gamma t : E) (w : List E) (s : E × Ar
     s1.2.1.push (term (.inverse x.1.opcode) (w.take r)
       (s1.2.2.1 * lift * x.1.countColumns.foldl (fun acc c ↦ acc * (x.2.sent.getD c none).getD 0) 1)),
     s1.2.2.1 * gamma, max s1.2.2.2 (degree ((n - 1) * (1 + x.1.countColumns.length)) n))
-  if x.1.opcode = opBlake2s then
+  if x.1.opcode = opSha3 then
     let inner := (List.range x.1.width).foldl
       (copyStepK x.1.opcode r x.1.columns w (coordinatesAt t (coordinateFunctionals r)) lift gamma)
       (s2.1, s2.2.1, s2.2.2.1)
@@ -76,9 +76,9 @@ theorem constraintRelationK_eq (shape : UniStatement.Shape) (parts : List TableP
     rfl
   · intro x s
     by_cases hj : x.1.opcode = opJump
-    · have hb : ¬ x.1.opcode = opBlake2s := by rw [hj]; decide
+    · have hb : ¬ x.1.opcode = opSha3 := by rw [hj]; decide
       simp only [crStepK, ite_eq_left hj, ite_eq_right hb]
-    · by_cases hb : x.1.opcode = opBlake2s
+    · by_cases hb : x.1.opcode = opSha3
       · simp only [crStepK, ite_eq_right hj, ite_eq_left hb]
         rw [forIn_id_eq_foldl' _ _ _ (copyStepK x.1.opcode (shape.heights.getD x.1.opcode 0) x.1.columns w
           (coordinatesAt t (coordinateFunctionals (shape.heights.getD x.1.opcode 0)))
@@ -101,7 +101,7 @@ def cdStepK (shape : UniStatement.Shape) (d : ℕ) (table : Table) : ℕ :=
   let n := 2 ^ r
   let d := if table.opcode = opJump then max d (degree n 2) else d
   let d := max d (degree ((n - 1) * (1 + table.countColumns.length)) n)
-  if table.opcode = opBlake2s then max d (degree (r * (n / 2)) n) else d
+  if table.opcode = opSha3 then max d (degree (r * (n / 2)) n) else d
 
 theorem crFoldK_deg (S : UniStatement.Shape) (gamma t : E) (w : List E) : ∀ (L : List (Table × TablePart))
     (s : E × Array Term × E × ℕ), (L.foldl (crStepK S gamma t w) s).2.2.2 =
@@ -113,9 +113,9 @@ theorem crFoldK_deg (S : UniStatement.Shape) (gamma t : E) (w : List E) : ∀ (L
     unfold crStepK cdStepK
     dsimp only
     by_cases hj : x.1.opcode = opJump
-    · have hb : ¬ x.1.opcode = opBlake2s := by rw [hj]; decide
+    · have hb : ¬ x.1.opcode = opSha3 := by rw [hj]; decide
       simp only [ite_eq_left hj, ite_eq_right hb]
-    · by_cases hb : x.1.opcode = opBlake2s
+    · by_cases hb : x.1.opcode = opSha3
       · simp only [ite_eq_right hj, ite_eq_left hb]
       · simp only [ite_eq_right hj, ite_eq_right hb]
 

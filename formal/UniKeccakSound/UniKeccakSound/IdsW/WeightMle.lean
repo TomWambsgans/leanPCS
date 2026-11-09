@@ -90,14 +90,14 @@ theorem mle_ring_noneK (L : StackLayout) (V : ℕ) (mp mp' : List E) :
 def wK (S : Shape) (t : E) : List E := digits t (max S.heap.h (S.constraintVars + 4) + 2)
 
 /-- `y(t)`, `SHA3`'s coordinates of `t` (the copies' slot point). -/
-def yK (S : Shape) (t : E) : List E := coordinatesAt t (coordinateFunctionals (S.heights.getD opBlake2s 0))
+def yK (S : Shape) (t : E) : List E := coordinatesAt t (coordinateFunctionals (S.heights.getD opSha3 0))
 
 /-- **A constraint term**: untwisted, on `C1`, either not a slot at a prefix of the digits, or at `y`. -/
 def CrKind (w y : List E) (tm : Term) : Prop :=
   tm.twist = 0 ∧ tm.column.commitment = .c1 ∧
     (((∀ j, tm.column ≠ .qflockSlot j) ∧ ∃ k, tm.point = w.take k) ∨ tm.point = y)
 
-theorem opJump_ne_opBlake2s : opJump ≠ opBlake2s := by decide
+theorem opJump_ne_opSha3 : opJump ≠ opSha3 := by decide
 
 /-- **The constraint relation's terms** (`constraintRelationK`): untwisted, on `C1`, not a slot at a prefix of the
 digits or at `y(t)` (the lanes' copies' slots). -/
@@ -116,15 +116,15 @@ theorem crK_kinds (S : Shape) (parts : List TablePart) (pw : List E) (gamma t cv
       _ _ (by simp)
     rintro ⟨table, part⟩ s hs
     by_cases hj : table.opcode = opJump
-    · have hb : ¬ table.opcode = opBlake2s := fun h ↦ opJump_ne_opBlake2s (hj ▸ h)
-      simp only [hj, ↓reduceIte, opJump_ne_opBlake2s]
+    · have hb : ¬ table.opcode = opSha3 := fun h ↦ opJump_ne_opSha3 (hj ▸ h)
+      simp only [hj, ↓reduceIte, opJump_ne_opSha3]
       refine ⟨_, rfl, fun tm htm ↦ ?_⟩
       simp only [Array.toList_push, List.mem_append, List.mem_singleton] at htm
       rcases htm with (htm | rfl) | rfl
       · exact hs tm htm
       · exact ⟨rfl, rfl, Or.inl ⟨(fun j h ↦ by cases h), _, rfl⟩⟩
       · exact ⟨rfl, rfl, Or.inl ⟨(fun j h ↦ by cases h), _, rfl⟩⟩
-    · by_cases hb : table.opcode = opBlake2s
+    · by_cases hb : table.opcode = opSha3
       · simp only [hb, ↓reduceIte]
         refine ⟨_, rfl, ?_⟩
         refine forIn_id_inv (fun s : E × Array Term × E => ∀ tm ∈ s.2.1.toList, CrKind (wK S t) (yK S t) tm) _ ?_
@@ -245,11 +245,11 @@ theorem relsAtK_kinds (s : USt) (ch : List E) (fd : Done) (t : E) (vals : List E
       exact Or.inr (Or.inr ⟨rfl, rfl, rfl, rfl⟩)
   · exact (mainRelsK_kinds _ _ _ _ _ _ _ _ r hr tm htm).imp id Or.inl
 
-theorem yK_length (S : Shape) (t : E) : (yK S t).length = S.heights.getD opBlake2s 0 := by
+theorem yK_length (S : Shape) (t : E) : (yK S t).length = S.heights.getD opSha3 0 := by
   rw [yK, Eval.coordinatesAt_length, Eval.coordinateFunctionals_size]
 
 /-- `SHA3` has at least one row variable (a valid shape). -/
-theorem hSha3_pos : 1 ≤ D.shape.heights.getD opBlake2s 0 := by
+theorem hSha3_pos : 1 ≤ D.shape.heights.getD opSha3 0 := by
   have h := D.valid.2
   unfold Shape.validate at h
   simp at h
@@ -263,7 +263,7 @@ theorem y_selfK (s : USt) (ch : List E) (fd : Done) (t : E) (vals : List E) (hz 
   have h1 := hSha3_pos D
   have hlen := yK_length D.shape t
   have hy0 : (yK D.shape t).getD 0 0 =
-      (yP (coordinateFunctionals (D.shape.heights.getD opBlake2s 0)) 0).eval t := by
+      (yP (coordinateFunctionals (D.shape.heights.getD opSha3 0)) 0).eval t := by
     rw [yK, Eval.coordinatesAt_getD _ _ _ (by rw [Eval.coordinateFunctionals_size]; omega)]
   unfold zbK zBad at hz
   rw [Polynomial.eval_mul, Polynomial.eval_add, Polynomial.eval_add, Polynomial.eval_X, Polynomial.eval_C,
@@ -290,18 +290,18 @@ theorem y_selfK (s : USt) (ch : List E) (fd : Done) (t : E) (vals : List E) (hz 
 theorem layoutOfK_c1W (S : Shape) : layoutOfK S .c1 = c1LayoutK S := rfl
 
 /-- `q_flock` in `C1`'s layout reads `h_SHA3 + 11` variables, within the batch's. -/
-theorem qflock_le_batchK (S : Shape) : S.heights.getD opBlake2s 0 + qflockRowBits ≤ batchVarsK S := by
+theorem qflock_le_batchK (S : Shape) : S.heights.getD opSha3 0 + qflockRowBits ≤ batchVarsK S := by
   obtain ⟨off, hl⟩ := c1LayoutK_qflock S
   rw [← layoutOfK_c1W] at hl
   have hbl := layoutAligned_new _ _ (limbs_mem_blocks (L := layoutOfK S .c1)
-    (b := (0, S.heights.getD opBlake2s 0 + qflockRowBits, off)) (by rw [hl]; exact List.mem_singleton_self _))
-  have hb2 : off + 2 ^ (S.heights.getD opBlake2s 0 + qflockRowBits) ≤ 2 ^ (layoutOfK S .c1).vars := hbl.2
+    (b := (0, S.heights.getD opSha3 0 + qflockRowBits, off)) (by rw [hl]; exact List.mem_singleton_self _))
+  have hb2 : off + 2 ^ (S.heights.getD opSha3 0 + qflockRowBits) ≤ 2 ^ (layoutOfK S .c1).vars := hbl.2
   have hvars : (layoutOfK S .c1).vars ≤ batchVarsK S := UniSound.layoutOf_vars_le _ _
   have h2 := Nat.pow_le_pow_right (show 0 < 2 by norm_num) hvars
-  have h3 : 2 ^ (S.heights.getD opBlake2s 0 + qflockRowBits) ≤ 2 ^ (batchVarsK S) := by omega
+  have h3 : 2 ^ (S.heights.getD opSha3 0 + qflockRowBits) ≤ 2 ^ (batchVarsK S) := by omega
   exact (Nat.pow_le_pow_iff_right (by norm_num)).mp h3
 
-theorem qvOfK_c1 (S : Shape) : qvOf (layoutOfK S .c1) = S.heights.getD opBlake2s 0 + qflockRowBits := by
+theorem qvOfK_c1 (S : Shape) : qvOf (layoutOfK S .c1) = S.heights.getD opSha3 0 + qflockRowBits := by
   obtain ⟨off, hl⟩ := c1LayoutK_qflock S
   rw [← layoutOfK_c1W] at hl
   simp [qvOf, hl]
@@ -310,7 +310,7 @@ theorem qflockRowBits_eq : qflockRowBits = 11 := rfl
 
 /-- **A relation term's `weightAtK` at its merged point is multilinear**, off `Z_bad`'s roots and with Flock's point
 of `q_flock`'s `11 + κ` coordinates, `κ = h_SHA3`. -/
-theorem term_mleK (hκ : D.shape.heights.getD opBlake2s 0 = κ) (s : USt) (ch : List E) (fd : Done) (t : E)
+theorem term_mleK (hκ : D.shape.heights.getD opSha3 0 = κ) (s : USt) (ch : List E) (fd : Done) (t : E)
     (vals : List E) (hfp : (Fl.prog.out fd []).1.length = KeccakVm.kWords + κ) (hz : (zbK D Fl fd).eval t ≠ 0)
     (c : Commitment) (r : Relation) (hr : r ∈ mine (relsAtK D Fl s ch fd t vals) c) (tm : Term)
     (htm : tm ∈ r.terms) (rm : Option (List E)) :
@@ -340,7 +340,7 @@ theorem term_mleK (hκ : D.shape.heights.getD opBlake2s 0 = κ) (s : USt) (ch : 
       rw [hl, List.mem_singleton] at hb
       subst hb
       rw [hq, hyl]
-      show _ ≤ D.shape.heights.getD opBlake2s 0 + qflockRowBits
+      show _ ≤ D.shape.heights.getD opSha3 0 + qflockRowBits
       omega
     · simp only [not_exists] at hslot
       exact mle_plainK _ rm _ _ tm.column hslot
@@ -359,14 +359,14 @@ theorem term_mleK (hκ : D.shape.heights.getD opBlake2s 0 = κ) (s : USt) (ch : 
       subst hb
       have hle := qflock_le_batchK D.shape
       refine ⟨?_, hle⟩
-      show D.shape.heights.getD opBlake2s 0 + qflockRowBits = (Fl.prog.out fd []).1.length
+      show D.shape.heights.getD opSha3 0 + qflockRowBits = (Fl.prog.out fd []).1.length
       rw [hfp, hκ, qflockRowBits_eq]
       show κ + 11 = 11 + κ
       omega
 
 /-- **A combined claim's `weightAtK` is multilinear in the batch's point**, off `Z_bad`'s roots and with Flock's
 point of `q_flock`'s `11 + κ` coordinates, `κ = h_SHA3`. -/
-theorem combAt_isMleK (hκ : D.shape.heights.getD opBlake2s 0 = κ) (s : USt) (ch : List E) (fd : Done) (t : E)
+theorem combAt_isMleK (hκ : D.shape.heights.getD opSha3 0 = κ) (s : USt) (ch : List E) (fd : Done) (t : E)
     (vals : List E) (ρ : E) (hfp : (Fl.prog.out fd []).1.length = KeccakVm.kWords + κ)
     (hz : (zbK D Fl fd).eval t ≠ 0) (c : Commitment) :
     Mle (batchVarsK D.shape) (fun p ↦
@@ -406,7 +406,7 @@ open LeanVM.Parameters UniStatement UniKeccak MultilinK
 `κ = h_SHA3`: where `Z_bad(t) ≠ 0` and Flock's result is the main line's (`FlockGoodK`), each commitment's combined
 claim's `weightAtK` at a point `r` of the batch's variables is the fold of its values on the cube. -/
 theorem weightMleK_of (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ : ℕ} {v : KeccakVariant}
-    (Fl : KFlockSound F κ v) (hκ : D.shape.heights.getD opBlake2s 0 = κ) : WeightMleK D Fl := by
+    (Fl : KFlockSound F κ v) (hκ : D.shape.heights.getD opSha3 0 = κ) : WeightMleK D Fl := by
   intro s ch fd t vals rho r _ hgood _ _ hz hr c _
   exact combAt_isMleK D Fl hκ s ch fd t vals rho hgood.2 hz c r hr
 

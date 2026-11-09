@@ -50,7 +50,7 @@ def streamTail (commit : Commitment → ℕ → Array K → m Committed) (flock 
   let stack1 := c1Stack tr
   let gamma ← sampleW H
   -- 2. Flock on the Keccak-f block.
-  let logN := keccakR1csLogSize + shape.heights.getD opBlake2s 0
+  let logN := keccakR1csLogSize + shape.heights.getD opSha3 0
   let flockOut : Option FlockOut ← some <$> flock logN UniKeccak.keccakMain tr.qflock
   -- 3. The heap, the quotients, C2.
   let c2 := c2DataOf tr (eqKernel alphas) beta gamma
@@ -129,11 +129,11 @@ def openingsTail (fuel : ℕ) (tr : Trace) (tree : LeanVM.Prover.Tree) (out : Co
     pure ⟨out.stream, c1, c2, s⟩
 
 /-- **The prover, cut after the stream.** -/
-theorem proveWith_split (fuel : ℕ) (flock : FlockProver m) (a0 b0 : Digest) (programIv : List UInt8)
+theorem proveWith_split (fuel : ℕ) (flock : FlockProver m) (programIv : List UInt8)
     (tr : Trace) :
-    proveWith H F fuel flock a0 b0 programIv tr = (do
+    proveWith H F fuel flock programIv tr = (do
       let tree ← setupTreeOf H tr
-      let iv ← contractIvOf H tr.shape UniKeccak.keccakMain programIv ⟨tree.root, a0, b0⟩
+      let iv ← contractIvOf H tr.shape UniKeccak.keccakMain programIv ⟨tree.root⟩
       let seed ← seedOf H iv tr.publicInput
       let (out, _) ← (proveStreamWith H (commitReal H) flock tr).run (Wr.start seed)
       openingsTail H F fuel tr tree out) := rfl
@@ -240,7 +240,7 @@ variable {m : Type → Type} [Monad m] (H : List UInt8 → m Digest) (F : Keccak
 def proverA (D : KDeployment) (input : Vector UInt8 32) (rows : List ℕ) (q : D.Stack rows) : m ProverA := do
   let tr := honestTrace D input rows q
   let tree ← setupTreeOf H tr
-  let iv ← contractIvOf H tr.shape keccakMain D.programIv ⟨tree.root, D.a0Root, D.b0Root⟩
+  let iv ← contractIvOf H tr.shape keccakMain D.programIv ⟨tree.root⟩
   let seed ← seedOf H iv tr.publicInput
   let c1 ← E2ECompleteness.commitWithH H (c1LayoutK tr.shape).vars (c1Stack tr)
   return ⟨tree, iv, seed, c1⟩
@@ -315,7 +315,7 @@ root's halves; it returns `γ`, Flock's output and `C2`'s commitment. -/
 def midB (commit : Commitment → ℕ → Array K → m Committed) (flock : FlockProver m) (tr : Trace) (alphas : List E)
     (beta : E) : WrM m (E × FlockOut × Committed) := do
   let gamma ← sampleW H
-  let out ← flock (keccakR1csLogSize + tr.shape.heights.getD opBlake2s 0) keccakMain tr.qflock
+  let out ← flock (keccakR1csLogSize + tr.shape.heights.getD opSha3 0) keccakMain tr.qflock
   let c2 := c2DataOf tr (eqKernel alphas) beta gamma
   let committed2 ← (StateT.lift (commit .c2 (((layoutsOfK tr.shape).lookup .c2).getD default).vars c2.stack) :
     WrM m Committed)

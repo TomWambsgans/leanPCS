@@ -252,7 +252,7 @@ def cdStep (shape : Shape) (d : ℕ) (table : Table) : ℕ :=
   let n := 2 ^ r
   let d := if table.opcode = opJump then max d (degree n 2) else d
   let d := max d (degree ((n - 1) * (1 + table.countColumns.length)) n)
-  if table.opcode = opBlake2s then max d (degree (r * (n / 2)) n) else d
+  if table.opcode = opSha3 then max d (degree (r * (n / 2)) n) else d
 
 theorem foldl_zip_fst {α β δ : Type} (g : δ → α → δ) :
     ∀ (l : List α) (l' : List β) (d : δ), l.length ≤ l'.length →
@@ -276,8 +276,8 @@ theorem constraintRelationK_snd (shape : Shape) (parts : List TablePart) (h : ta
     dsimp only
     split_ifs with hj hb hb
     · exact absurd (hj.symm.trans hb) (by decide)
-    · exact ⟨_, rfl, by simp [cdStep, hj, opJump, opBlake2s]⟩
-    · exact ⟨_, rfl, by simp [cdStep, hb, opJump, opBlake2s]⟩
+    · exact ⟨_, rfl, by simp [cdStep, hj, opJump, opSha3]⟩
+    · exact ⟨_, rfl, by simp [cdStep, hb, opJump, opSha3]⟩
     · exact ⟨_, rfl, by simp [cdStep, hj, hb]⟩
   · show max s.2.2.2 (degree (2 ^ shape.logMemory) 3) = Shape.constraintDegreeK shape
     rw [hs]

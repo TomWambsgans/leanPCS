@@ -15,8 +15,8 @@ import Compose.SeedPair
 verifier computing the Keccak contract's IV, then the chain over the univariate encoding and the three openings;
 proved from bridge facts in `CoupleK.lean`), and the deployment's numbers (`UniShapesK`, `UniNumbersK`, `UniIvK`):
 
-* **the contract's IV** (`ivInputK`: `contractIvKWith`'s input, `ivTag`, the program's IV, the three roots, the
-  shape's bytes, the five Keccak layout words and the variant's bytes, `D.programIv.length + 291` bytes): computed
+* **the contract's IV** (`ivInputK`: `contractIvKWith`'s input, `ivTag`, the program's IV, the setup's root, the
+  shape's bytes, the three Keccak layout words and the variant's bytes, `D.programIv.length + 163` bytes): computed
   by the verifier (`uVerIvK`) as in the Keccak experiment, then moved into the two-oracle adversary
   (`expU_ivAdvK`); its log entry has neither a Merkle node's `64` bytes nor a leaf's `512` (`UniIvK`), so `C1`'s
   extractor reads the same word (`UniSound.extractorK_append`);
@@ -39,11 +39,11 @@ attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
 
 /-! ## The Keccak contract's IV -/
 
-/-- **The Keccak contract IV's input** (`contractIvKWith` at `keccakMain`): the tag, the program's IV, the three
-roots, the shape's bytes, the five Keccak layout words and the variant's bytes. -/
+/-- **The Keccak contract IV's input** (`contractIvKWith` at `keccakMain`): the tag, the program's IV, the setup's
+root, the shape's bytes, the three Keccak layout words and the variant's bytes. -/
 def ivInputK (D : KDeployment) (roots : SetupRoots) : List UInt8 :=
-  ivTag ++ D.programIv ++ digestBytes roots.bytecode ++ digestBytes roots.a0 ++
-    digestBytes roots.b0 ++ shapeBytes D.shape ++ (layoutWordsK D.shape).flatten ++ variantBytesK keccakMain
+  ivTag ++ D.programIv ++ digestBytes roots.bytecode ++
+    shapeBytes D.shape ++ (layoutWordsK D.shape).flatten ++ variantBytesK keccakMain
 
 theorem contractIvKWith_eq {m : Type → Type} [Monad m] [LawfulMonad m]
     (F : LeanVM.Semantics.KeccakState → m LeanVM.Semantics.KeccakState) (D : KDeployment) (roots : SetupRoots) :
@@ -52,7 +52,7 @@ theorem contractIvKWith_eq {m : Type → Type} [Monad m] [LawfulMonad m]
   rw [map_eq_bind_pure_comp]
   rfl
 
-theorem length_layoutWordsK_flatten (s : UniStatement.Shape) : (layoutWordsK s).flatten.length = 160 := by
+theorem length_layoutWordsK_flatten (s : UniStatement.Shape) : (layoutWordsK s).flatten.length = 96 := by
   unfold layoutWordsK
   simp only [List.flatten_cons, List.flatten_nil, List.length_append, length_layoutWord,
     List.length_nil]
@@ -61,16 +61,16 @@ theorem length_variantBytesK_main : (variantBytesK keccakMain).length = 11 := by
   decide +kernel
 
 theorem length_ivInputK (D : KDeployment) (roots : SetupRoots) :
-    (ivInputK D roots).length = D.programIv.length + 291 := by
+    (ivInputK D roots).length = D.programIv.length + 163 := by
   simp only [ivInputK, List.length_append, length_ivTag, length_digestBytes, length_shapeBytes,
     length_layoutWordsK_flatten, length_variantBytesK_main]
   omega
 
-/-- **The Keccak deployment's IV is short and of no Merkle length**: the program's IV not `221` bytes (the IV's
+/-- **The Keccak deployment's IV is short and of no Merkle length**: the program's IV not `349` bytes (the IV's
 input then `512`, a leaf's), and at most `796` (the IV at most eight calls of `π`). The reference program IV
 (`UniStatement.programIv`) has `32` bytes. -/
 structure UniIvK (D : KDeployment) : Prop where
-  ne : D.programIv.length ≠ 221
+  ne : D.programIv.length ≠ 349
   le : D.programIv.length ≤ 796
 
 /-- **The IV as the composed verifier computes it**: one Keccak-256 call of its input. -/
@@ -293,7 +293,7 @@ theorem fsLayer128K_of_gameV (hN : UniNumbersK D Fl nV V C hs) (hI : UniIvK D)
     rw [expU_ivAdvK, run'_simulateQ_map, prEvent_map]
     refine prEvent_mono _ _ _ fun w hw => ?_
     have hb := breaksOK_of_relK D Fl nV V C hs R hpre _ hw
-    have hlen : (ivInputK D w.1.1.roots).length = D.programIv.length + 291 := length_ivInputK _ _
+    have hlen : (ivInputK D w.1.1.roots).length = D.programIv.length + 163 := length_ivInputK _ _
     have h64 : (ivInputK D w.1.1.roots).length ≠ 64 := by rw [hlen]; omega
     have hl : (ivInputK D w.1.1.roots).length ≠ (uniTcK hs 0).leafLen := by
       rw [hlen, leafLen_uniTcK_zero]

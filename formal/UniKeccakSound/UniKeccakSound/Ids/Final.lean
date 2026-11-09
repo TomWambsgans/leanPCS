@@ -278,7 +278,7 @@ theorem mainOutK_eq (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ : ℕ} 
 program is `mainProgK`, whose round-`0` zero is the counts', whose zeros in Flock's rounds and `C2`'s are Flock's,
 and whose tail zero and result are `mainOutK`'s, `mainBatchK`'s. -/
 theorem codeIsMainK_uniCodeKAt (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ : ℕ}
-    (Fl : KFlockSound F κ keccakMain) (hκ : D.shape.heights.getD opBlake2s 0 = κ) :
+    (Fl : KFlockSound F κ keccakMain) (hκ : D.shape.heights.getD opSha3 0 = κ) :
     CodeIsMainK D Fl valsCountK (varsOf (layoutsOfK D.shape)) (uniCodeKAt D Fl hκ _ _ rfl rfl) := by
   intro s r0 fd r2 r3 brs tl hfl hd htl hz
   change (mainProgK D Fl s.1 s.2).ZerosVanish _ tl at hz
@@ -338,7 +338,7 @@ theorem codeIsMainK_uniCodeKAt (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} 
 
 /-- **The last link on the Keccak VM for the Keccak code-level link** (`UniFinalK` at `uniCodeKAt`). -/
 theorem uniFinalK_uniCodeKAt (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ : ℕ}
-    (Fl : KFlockSound F κ keccakMain) (hκ : D.shape.heights.getD opBlake2s 0 = κ)
+    (Fl : KFlockSound F κ keccakMain) (hκ : D.shape.heights.getD opSha3 0 = κ)
     (N : ℕ) (h : IdsHypsK F D κ N) (d n : ℕ) (g : IdsGapsK D Fl d n) (hgood : FlockGoodDoneK Fl)
     (hW : WeightMleK D Fl) (hsmall : LayoutVarsSmall3K D) :
     UniFinalK D Fl (uniIdsK D Fl N h d n g) (uniCodeKAt D Fl hκ _ _ rfl rfl) :=

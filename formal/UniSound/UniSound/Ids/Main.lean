@@ -48,8 +48,8 @@ theorem eval_batched (cs : List (Polynomial E × Polynomial E)) (γ θ : E) :
   ring
 
 /-- **`Z_bad ≠ 0`** (the coordinate functionals: `y_0(β_1) = 0 ≠ β_1`, `y_0(0) = 0`, `y_0(β_0) = 1`). -/
-theorem zBad_ne_zero (S : Shape) (h : BetaCantor) (hf : FunctionalsCorrect (S.heights.getD opBlake2s 0))
-    (h2 : 2 ≤ S.heights.getD opBlake2s 0) (p0 : E) : zBad S p0 ≠ 0 := by
+theorem zBad_ne_zero (S : Shape) (h : BetaCantor) (hf : FunctionalsCorrect (S.heights.getD opSha3 0))
+    (h2 : 2 ≤ S.heights.getD opSha3 0) (p0 : E) : zBad S p0 ≠ 0 := by
   have hb1 : ofK (beta.getD 1 0) ≠ 0 := by
     intro h0
     have := (cantorE h).succ 0 (by norm_num)
@@ -73,7 +73,7 @@ theorem zBad_ne_zero (S : Shape) (h : BetaCantor) (hf : FunctionalsCorrect (S.he
       exact hp this
 
 /-- **The constraint vectors from the constraint identity.** -/
-theorem cvec_of_wP (D : Deployment) (hr : C1Reading D) (h2 : 2 ≤ D.shape.heights.getD opBlake2s 0)
+theorem cvec_of_wP (D : Deployment) (hr : C1Reading D) (h2 : 2 ≤ D.shape.heights.getD opSha3 0)
     (c1 c2 : Stk) (s : USt) (γ p0 : E) (hfit : CountsFit D.shape s.2)
     (hW : wP D.shape c1 c2 (publicWordsOf s.1.toList) γ p0 = 0) :
     ∀ x < 2 ^ D.shape.constraintVars, powComb (cvecOf D c1 s x) γ = 0 := by

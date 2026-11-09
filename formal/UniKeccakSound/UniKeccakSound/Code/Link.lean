@@ -7,7 +7,7 @@ import UniKeccakSound.Code.Batch
 # The Keccak verifier's code-level link: `reduceWithK` on the main line is a chain program (`UniCodeK`)
 
 **`uniCodeK D Fl hκ : UniCodeK D Fl valsCountK (varsOf (layoutsOfK D.shape))`**, for every deployment `D` and every
-Flock phase `Fl : KFlockSound F κ keccakMain` with `D.shape.heights.getD opBlake2s 0 = κ`: after the row counts,
+Flock phase `Fl : KFlockSound F κ keccakMain` with `D.shape.heights.getD opSha3 0 = κ`: after the row counts,
 `reduceWithK` at the deployment's shape, `keccakMain`, point claims, is the chain program `mainProgK` on
 `uniRounds Fl.prog.rounds valsCountK V`, `V` the batch's variables at the shape (`varsOf (layoutsOfK D.shape)`), with a
 tail of three, up to `obsOf`. Its rounds:
@@ -186,7 +186,7 @@ end Main
 
 /-- **The code-level link, observationally**, for the program without the counts' zero. -/
 theorem link_obs0K (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ : ℕ} (Fl : KFlockSound F κ keccakMain)
-    (hκ : D.shape.heights.getD opBlake2s 0 = κ) (input : Vector UInt8 32)
+    (hκ : D.shape.heights.getD opSha3 0 = κ) (input : Vector UInt8 32)
     (P : KeccakState → m KeccakState) :
     ObsEq (reduceWithK P D.shape (publicWordsOf input.toList) keccakMain .point)
       (readCounts D.shape.heights >>= fun rows => (mainProg0K D Fl input rows).run P) := by
@@ -298,7 +298,7 @@ theorem link_countsK (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ : ℕ}
 
 /-- **The Keccak verifier's code-level link, observationally.** -/
 theorem link_obsK (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ : ℕ} (Fl : KFlockSound F κ keccakMain)
-    (hκ : D.shape.heights.getD opBlake2s 0 = κ) (input : Vector UInt8 32)
+    (hκ : D.shape.heights.getD opSha3 0 = κ) (input : Vector UInt8 32)
     (P : KeccakState → m KeccakState) :
     ObsEq (reduceWithK P D.shape (publicWordsOf input.toList) keccakMain .point)
       (readCounts D.shape.heights >>= fun rows => (mainProgK D Fl input rows).run P) :=
@@ -312,7 +312,7 @@ end Monad
 height is Flock's `κ`: after the row counts, `reduceWithK` is `mainProgK` on
 `uniRounds Fl.prog.rounds valsCountK (varsOf (layoutsOfK D.shape))`, with a tail of three, up to `obsOf`. -/
 def uniCodeK (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ : ℕ} (Fl : KFlockSound F κ keccakMain)
-    (hκ : D.shape.heights.getD opBlake2s 0 = κ) :
+    (hκ : D.shape.heights.getD opSha3 0 = κ) :
     UniCodeK D Fl valsCountK (varsOf (layoutsOfK D.shape)) where
   prog := mainProgK D Fl
   rounds_eq _ _ := rfl
@@ -321,7 +321,7 @@ def uniCodeK (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ : ℕ} (Fl : K
 
 /-- `uniCodeK` at given numbers `nV = valsCountK`, `V = varsOf (layoutsOfK D.shape)` (an identity model's). -/
 def uniCodeKAt (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ : ℕ} (Fl : KFlockSound F κ keccakMain)
-    (hκ : D.shape.heights.getD opBlake2s 0 = κ) (nV V : ℕ) (hnV : nV = valsCountK)
+    (hκ : D.shape.heights.getD opSha3 0 = κ) (nV V : ℕ) (hnV : nV = valsCountK)
     (hV : V = varsOf (layoutsOfK D.shape)) : UniCodeK D Fl nV V where
   prog := mainProgK D Fl
   rounds_eq i r := by
@@ -330,7 +330,7 @@ def uniCodeKAt (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ : ℕ} (Fl :
   link := (uniCodeK D Fl hκ).link
 
 theorem uniCodeKAt_prog (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ : ℕ}
-    (Fl : KFlockSound F κ keccakMain) (hκ : D.shape.heights.getD opBlake2s 0 = κ) (nV V : ℕ)
+    (Fl : KFlockSound F κ keccakMain) (hκ : D.shape.heights.getD opSha3 0 = κ) (nV V : ℕ)
     (hnV : nV = valsCountK) (hV : V = varsOf (layoutsOfK D.shape)) :
     (uniCodeKAt D Fl hκ nV V hnV hV).prog = mainProgK D Fl := rfl
 
@@ -348,12 +348,12 @@ def UniOutRootsK (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ : ℕ} (Fl
 
 /-- The main line's chain program names them (`mainOutK`). -/
 theorem uniOutRootsK_uniCodeKAt (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ : ℕ}
-    (Fl : KFlockSound F κ keccakMain) (hκ : D.shape.heights.getD opBlake2s 0 = κ) (nV V : ℕ)
+    (Fl : KFlockSound F κ keccakMain) (hκ : D.shape.heights.getD opSha3 0 = κ) (nV V : ℕ)
     (hnV : nV = valsCountK) (hV : V = varsOf (layoutsOfK D.shape)) :
     UniOutRootsK D Fl (uniCodeKAt D Fl hκ nV V hnV hV) := fun _ _ _ _ => rfl
 
 theorem uniOutRootsK_uniCodeK (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ : ℕ}
-    (Fl : KFlockSound F κ keccakMain) (hκ : D.shape.heights.getD opBlake2s 0 = κ) :
+    (Fl : KFlockSound F κ keccakMain) (hκ : D.shape.heights.getD opSha3 0 = κ) :
     UniOutRootsK D Fl (uniCodeK D Fl hκ) := fun _ _ _ _ => rfl
 
 /-- **The chain program's checks give the counts in range**: round `0`'s zero is the counts' (`countsZeroK`, `1`

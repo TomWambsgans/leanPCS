@@ -102,9 +102,9 @@ end Stream
 section Prover
 
 /-- **π1-rec3's honest prover is disciplined**, from any earlier answers, given that Flock's prover only hashes. -/
-theorem disc_proveRec3With (flock : FlockProverH) (hflock : FlockHashOnly flock) (fuel : ℕ) (a0 b0 : Digest)
+theorem disc_proveRec3With (flock : FlockProverH) (hflock : FlockHashOnly flock) (fuel : ℕ)
     (programIv : List UInt8) (tr : Trace) :
-    Disc (proveRec3With callKeccak256 callKeccakF1600 fuel (flock callKeccak256) a0 b0 programIv tr) := by
+    Disc (proveRec3With callKeccak256 callKeccakF1600 fuel (flock callKeccak256) programIv tr) := by
   unfold proveRec3With
   refine (disc_of_hOnly (hOnly_setupTreeOf tr)).bind fun tree ↦ ?_
   refine (disc_of_hOnly (hOnly_contractIvOf _ _ _ _)).bind fun iv ↦ ?_

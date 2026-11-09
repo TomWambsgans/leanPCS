@@ -134,7 +134,7 @@ def C1Limbs (S : Shape) : Prop :=
     (∀ o < 6, ∃ off, (layoutOf S .c1).limbs (.inverse o) = [(0, S.heights.getD o 0, off)]) ∧
     (∀ k < 4, ∃ off, (layoutOf S .c1).limbs (.memory k) = [(0, S.logMemory, off)]) ∧
     (∃ off, (layoutOf S .c1).limbs .bytecodeFinal = [(0, S.logBytecode, off)]) ∧
-    (∃ off, (layoutOf S .c1).limbs .qflock = [(0, S.heights.getD opBlake2s 0 + 8, off)])
+    (∃ off, (layoutOf S .c1).limbs .qflock = [(0, S.heights.getD opSha3 0 + 8, off)])
 
 /-- **The setup's two columns are one limb each.** -/
 def SetupLimbs (S : Shape) : Prop :=
@@ -175,9 +175,9 @@ structure RowConstraints (D : Deployment) (c : Stk) (s : USt) : Prop where
     c1Val D c (.inverse o) (D.shape.heights.getD o 0) x *
       ((tables.getD o default).countColumns.map fun j ↦
         c1Val D c (.table o j) (D.shape.heights.getD o 0) x).prod = 1
-  copies : ∀ x < 2 ^ D.shape.heights.getD opBlake2s 0, ∀ col slot,
+  copies : ∀ x < 2 ^ D.shape.heights.getD opSha3 0, ∀ col slot,
     qflockSlot (blake2sColumns.getD col "") = some slot →
-      c1Val D c (.table opBlake2s col) (D.shape.heights.getD opBlake2s 0) x = c (qfOff D + slot + 256 * x)
+      c1Val D c (.table opSha3 col) (D.shape.heights.getD opSha3 0) x = c (qfOff D + slot + 256 * x)
   lines : ∀ k < 3,
     c1Val D c (.memory k) D.shape.logMemory 0 = toK ((linesOf (publicWordsOf s.1.toList)).getD k (0, 0)).1 ∧
       c1Val D c (.memory k) D.shape.logMemory 1 = toK ((linesOf (publicWordsOf s.1.toList)).getD k (0, 0)).2

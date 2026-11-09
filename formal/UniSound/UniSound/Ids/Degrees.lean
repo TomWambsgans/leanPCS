@@ -165,21 +165,21 @@ theorem ndeg_yP (a : Array (Array K)) (l : ℕ) : (yP a l).natDegree ≤ 2 ^ (a.
 
 /-- **`q_flock`'s slot at `y(X)`**: at most `h_B 2^(h_B − 1)`. -/
 theorem ndeg_slotP (S : Shape) (c : Stk) (slot : ℕ) :
-    (slotP S c slot).natDegree ≤ S.heights.getD opBlake2s 0 * 2 ^ (S.heights.getD opBlake2s 0 - 1) := by
+    (slotP S c slot).natDegree ≤ S.heights.getD opSha3 0 * 2 ^ (S.heights.getD opSha3 0 - 1) := by
   unfold slotP
   refine ndeg_colPoly _ _ _ _ _ _ fun b hb ↦ ?_
   rw [(c1_limbs S .qflock b hb).1]
-  show ∑ l ∈ range (S.heights.getD opBlake2s 0 + 8), _ ≤ _
-  rw [show S.heights.getD opBlake2s 0 + 8 = 8 + S.heights.getD opBlake2s 0 from add_comm _ _,
+  show ∑ l ∈ range (S.heights.getD opSha3 0 + 8), _ ≤ _
+  rw [show S.heights.getD opSha3 0 + 8 = 8 + S.heights.getD opSha3 0 from add_comm _ _,
     Finset.sum_range_add]
   have h1 : ∑ x ∈ range 8, (if x < 8 then C (bitE slot x)
-      else yP (coordinateFunctionals (S.heights.getD opBlake2s 0)) (x - 8)).natDegree = 0 :=
+      else yP (coordinateFunctionals (S.heights.getD opSha3 0)) (x - 8)).natDegree = 0 :=
     Finset.sum_eq_zero fun x hx ↦ by rw [ite_eq_left (mem_range.mp hx), natDegree_C]
   rw [h1, zero_add]
-  refine (Finset.sum_le_sum (g := fun _ ↦ 2 ^ (S.heights.getD opBlake2s 0 - 1)) fun l _ ↦ ?_).trans
+  refine (Finset.sum_le_sum (g := fun _ ↦ 2 ^ (S.heights.getD opSha3 0 - 1)) fun l _ ↦ ?_).trans
     (by simp)
   rw [ite_eq_right (show ¬ 8 + l < 8 by omega)]
-  have := ndeg_yP (coordinateFunctionals (S.heights.getD opBlake2s 0)) (8 + l - 8)
+  have := ndeg_yP (coordinateFunctionals (S.heights.getD opSha3 0)) (8 + l - 8)
   rwa [coordinateFunctionals_size] at this
 
 /-! ## Lifts, `Z_act`, `Z_bad` -/
@@ -233,11 +233,11 @@ theorem ndeg_zActP (bits : List E) (r : ℕ) : (zActP bits r).natDegree ≤ 2 ^ 
 
 /-- **`Z_bad = (y_0 + X)(y_0 + p_0)`**: at most `2 · 2^(h_B − 1)`. -/
 theorem ndeg_zBad (S : Shape) (p0 : E) :
-    (zBad S p0).natDegree ≤ 2 * 2 ^ (S.heights.getD opBlake2s 0 - 1) := by
+    (zBad S p0).natDegree ≤ 2 * 2 ^ (S.heights.getD opSha3 0 - 1) := by
   unfold zBad
-  have hy := ndeg_yP (coordinateFunctionals (S.heights.getD opBlake2s 0)) 0
+  have hy := ndeg_yP (coordinateFunctionals (S.heights.getD opSha3 0)) 0
   rw [coordinateFunctionals_size] at hy
-  have h1 : (1 : ℕ) ≤ 2 ^ (S.heights.getD opBlake2s 0 - 1) := Nat.one_le_two_pow
+  have h1 : (1 : ℕ) ≤ 2 ^ (S.heights.getD opSha3 0 - 1) := Nat.one_le_two_pow
   exact ndeg_mul (ndeg_add hy (natDegree_X_le.trans h1)) (ndeg_add hy (ndeg_C _ _)) (by omega)
 
 /-! ## Forms, tuples, fingerprint products -/
@@ -486,7 +486,7 @@ def wOf (S : Shape) (p : ℕ × ℕ) : ℕ := 2 ^ S.heights.getD p.1 0 * (1 + ma
 
 /-- **The constraints' `W_i` bound**: the tables', `q_flock`'s slots', the public lines'. -/
 def wMax (S : Shape) : ℕ :=
-  max (2 ^ S.logMemory) (max (S.heights.getD opBlake2s 0 * 2 ^ (S.heights.getD opBlake2s 0 - 1))
+  max (2 ^ S.logMemory) (max (S.heights.getD opSha3 0 * 2 ^ (S.heights.getD opSha3 0 - 1))
     ((ocL.map (wOf S)).foldr max 0))
 
 theorem wOf_le (S : Shape) {tab : Table} (h : tab ∈ tables) :
@@ -554,7 +554,7 @@ theorem ndeg_constraints (S : Shape) (c1 : Stk) (pw : List E) :
 
 /-- **The constraint quotient's identity `Z_bad (Σ γ^i M_i W_i + Q_W w_{r_W})`.** -/
 def wB (S : Shape) : ℕ :=
-  2 * 2 ^ (S.heights.getD opBlake2s 0 - 1) +
+  2 * 2 ^ (S.heights.getD opSha3 0 - 1) +
     max (2 ^ S.constraintVars + wMax S) (chB (cdB S + 1) + 2 ^ S.constraintVars)
 
 theorem ndeg_wP (S : Shape) (c1 c2 : Stk) (pw : List E) (gamma p0 : E) :
@@ -736,7 +736,7 @@ theorem refBound :
   simp only [heapBlocksRef, List.map_cons, List.map_nil, List.sum_cons, List.sum_nil, Block.ofTuple,
     blockB, wB, wMax, cdB, cdOf, wOf, ocL, tabB, memB, chB, pullL, pushL, List.foldr_cons,
     List.foldr_nil, List.getD_cons_succ, List.getD_cons_zero, Shape.leastRows, UniStatement.degree,
-    Shape.constraintVars, List.foldl_cons, List.foldl_nil, List.cons_append, List.nil_append, opBlake2s]
+    Shape.constraintVars, List.foldl_cons, List.foldl_nil, List.cons_append, List.nil_append, opSha3]
   norm_num [max_def]
 
 end UniSound.Ids

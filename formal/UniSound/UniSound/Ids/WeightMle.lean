@@ -321,19 +321,19 @@ theorem copyFold_Q (o r : ℕ) (columns : List String) (w y : List E) (lift gamm
 theorem crStep_Q (S : Shape) (gamma t : E) (w : List E) (s : E × Array Term × E × ℕ)
     (x : Table × TablePart) :
     ∀ tm ∈ (Eval.crStep S gamma t w s x).2.1.toList, tm ∈ s.2.1.toList ∨
-      SlotAt (coordinatesAt t (coordinateFunctionals (S.heights.getD opBlake2s 0))) tm := by
+      SlotAt (coordinatesAt t (coordinateFunctionals (S.heights.getD opSha3 0))) tm := by
   intro tm htm
   unfold Eval.crStep at htm
   dsimp only at htm
   by_cases hj : x.1.opcode = opJump
-  · have hb : ¬ x.1.opcode = opBlake2s := by rw [hj]; decide
+  · have hb : ¬ x.1.opcode = opSha3 := by rw [hj]; decide
     simp only [ite_eq_left hj, ite_eq_right hb, Array.toList_push, List.mem_append,
       List.mem_singleton] at htm
     rcases htm with (h | rfl) | rfl
     · exact Or.inl h
     · exact Or.inr ⟨rfl, Or.inl fun j h ↦ by simp [term] at h⟩
     · exact Or.inr ⟨rfl, Or.inl fun j h ↦ by simp [term] at h⟩
-  · by_cases hb : x.1.opcode = opBlake2s
+  · by_cases hb : x.1.opcode = opSha3
     · simp only [ite_eq_right hj, ite_eq_left hb] at htm
       rcases copyFold_Q _ _ _ _ _ _ _ _ _ tm htm with h | h
       · simp only [Array.toList_push, List.mem_append, List.mem_singleton] at h
@@ -351,7 +351,7 @@ theorem crStep_Q (S : Shape) (gamma t : E) (w : List E) (s : E × Array Term × 
 theorem crFold_Q (S : Shape) (gamma t : E) (w : List E) : ∀ (L : List (Table × TablePart))
     (s : E × Array Term × E × ℕ), ∀ tm ∈ (L.foldl (Eval.crStep S gamma t w) s).2.1.toList,
       tm ∈ s.2.1.toList ∨
-        SlotAt (coordinatesAt t (coordinateFunctionals (S.heights.getD opBlake2s 0))) tm
+        SlotAt (coordinatesAt t (coordinateFunctionals (S.heights.getD opSha3 0))) tm
   | [], _, _, h => Or.inl h
   | x :: L, s, tm, h => by
     rw [List.foldl_cons] at h
@@ -376,11 +376,11 @@ theorem lineFold_Q (S : Shape) (gamma t : E) (w y : List E) : ∀ (l : List ((E 
 slots). -/
 theorem crOf_Q (S : Shape) (parts : List TablePart) (pw : List E) (gamma t cv : E) (w : List E) :
     ∀ tm ∈ (Eval.crOf S parts pw gamma t cv w).1.terms,
-      SlotAt (coordinatesAt t (coordinateFunctionals (S.heights.getD opBlake2s 0))) tm := by
+      SlotAt (coordinatesAt t (coordinateFunctionals (S.heights.getD opSha3 0))) tm := by
   intro tm htm
   unfold Eval.crOf at htm
   dsimp only at htm
-  rcases lineFold_Q S gamma t w (coordinatesAt t (coordinateFunctionals (S.heights.getD opBlake2s 0)))
+  rcases lineFold_Q S gamma t w (coordinatesAt t (coordinateFunctionals (S.heights.getD opSha3 0)))
     _ _ tm htm with h | h
   · rcases crFold_Q S gamma t w _ _ tm h with h' | h'
     · simp at h'

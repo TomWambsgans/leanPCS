@@ -35,7 +35,7 @@ open LeanVM.Parameters UniStatement UniSound UniSound.Ids UniKeccak UniKeccakSou
 open scoped ENNReal
 
 /-- `h_SHA3 = 15` at the reference shape. -/
-theorem hSha3K_ref (D : KDeployment) (hD : D.shape = keccakRefShape) : D.shape.heights.getD opBlake2s 0 = 15 := by
+theorem hSha3K_ref (D : KDeployment) (hD : D.shape = keccakRefShape) : D.shape.heights.getD opSha3 0 = 15 := by
   rw [hD]
   decide +kernel
 

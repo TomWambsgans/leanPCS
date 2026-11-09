@@ -133,7 +133,7 @@ functionals at `t`, the point of `q_flock`'s slot terms, `tablePart`) is a prope
 memory's and the bytecode's `w.take lm`, `w.take lb` (`w = digits t n`, `n` the walk's digit count), or Flock's point
 on `q_flock` (`flockPoint`, fixed before `t`). -/
 def BadT (s : UniStatement.Shape) (flockPoint : List E) (t : E) : Prop :=
-  let y := coordinatesAt t (coordinateFunctionals (s.heights.getD opBlake2s 0))
+  let y := coordinatesAt t (coordinateFunctionals (s.heights.getD opSha3 0))
   let w := digits t (max s.heap.h (s.constraintVars + 4) + 2)
   ∃ P ∈ [w.take s.logBytecode, w.take s.logMemory, flockPoint], y.length < P.length ∧ P.take y.length = y
 

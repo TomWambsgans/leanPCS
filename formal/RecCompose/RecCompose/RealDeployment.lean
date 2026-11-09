@@ -87,9 +87,8 @@ def realPi2 (iv : List UInt8) : Pi2Circuit := pi2CircuitOf (compiledAt iv).circu
 /-- At π1's reference IV, π2's circuit is the reference compile's (what `rec-real-check` evaluates). -/
 theorem realPi2_ref : realPi2 Data.pi1Iv = pi2CircuitOf refCompiled.circuit := rfl
 
-/-- **The setup roots of the real deployment** (one constant: the reference roots, `RecGraphKeccak.Pi1.referenceRootsK`;
-only their `A0`, `B0` enter the deployment, as `KDeployment.a0Root`, `b0Root`, which `RecDeployment.Real` does not
-pin). -/
+/-- **The setup roots of the real deployment** (one constant: the reference roots,
+`RecGraphKeccak.Pi1.referenceRootsK`). -/
 def realRoots : UniStatement.SetupRoots := RecGraphKeccak.Pi1.referenceRootsK
 
 /-- The reference shape is valid (`Shape.Valid`: six heights, `validate` with Flock). -/
@@ -98,10 +97,10 @@ theorem keccak128_valid : RecGraphKeccak.Pi1.keccak128.Valid := by decide +kerne
 /-- π1's deployment at the Keccak reference shape and leanVM's program IV, for the program `prog`. -/
 def realPi1 (prog : KeccakVm.Program) (hprog : RecGraphKeccak.Pi1.keccak128.logBytecode = prog.logSize) :
     UniKeccak.KDeployment :=
-  ⟨prog, RecGraphKeccak.Pi1.keccak128, UniStatement.programIv, realRoots.a0, realRoots.b0, keccak128_valid, hprog⟩
+  ⟨prog, RecGraphKeccak.Pi1.keccak128, UniStatement.programIv, keccak128_valid, hprog⟩
 
-/-- **The real deployment**, for π1's program `prog` (`D.pi1.prog`, `a0Root`, `b0Root` are not pinned by
-`RecDeployment.Real`: the end theorems hold for every Keccak VM program of the reference shape). -/
+/-- **The real deployment**, for π1's program `prog` (`D.pi1.prog` is not pinned by `RecDeployment.Real`: the
+end theorems hold for every Keccak VM program of the reference shape). -/
 def realDeployment (prog : KeccakVm.Program) (hprog : RecGraphKeccak.Pi1.keccak128.logBytecode = prog.logSize) :
     RecDeployment where
   pi1 := realPi1 prog hprog

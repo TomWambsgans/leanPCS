@@ -28,7 +28,7 @@ at most `w` bytes).
   row counts, the roots, Flock's, at most `valuesBound` values at `t`, two scalars per round, the claims' three
   values; no matrices); its point claims have at most `batchVarsBound` coordinates (`StreamOK`). The sizes are
   `ProverBounds`'.
-* **The prover** (`costP_proveWith`, `uniProverCost`): the setup's one tree, the Keccak contract's IV (`291` bytes and
+* **The prover** (`costP_proveWith`, `uniProverCost`): the setup's one tree, the Keccak contract's IV (`163` bytes and
   the program IV), the seed (`80` bytes, one block), the stream, three openings (`openP`, E2ECompleteness's
   `cost_proveOpeningWithH`: WHIR's prover at `nonceFuel = 2^25` nonces a proof of work, at its fixed height, whatever
   the stack's size).
@@ -293,7 +293,7 @@ theorem length_claims {α : Type} (f : Commitment → Option (Commitment × Comb
 
 /-- **The stream's cost** (the main line), given Flock's prover's at its `log_n`. -/
 theorem wc_proveStreamWith (flock : FlockProver (OracleComp KeccakCalls)) (kF wF : ℕ) (tr : Trace)
-    (hF : WC (flock (keccakR1csLogSize + tr.shape.heights.getD opBlake2s 0) UniKeccak.keccakMain tr.qflock) kF wF
+    (hF : WC (flock (keccakR1csLogSize + tr.shape.heights.getD opSha3 0) UniKeccak.keccakMain tr.qflock) kF wF
       fun _ _ ↦ True) :
     WC (proveStreamWith callKeccak256 (commitReal callKeccak256) flock tr)
       (streamBlocks tr.shape kF) (streamBytes tr.shape tr.rows.length wF) (StreamOK (batchVarsBound tr.shape)) := by
@@ -378,7 +378,7 @@ theorem stream_of_some {s : Array UInt8} {p1 p2 p3 : Option LeanVM.Protocol.Comp
 /-- **The honest prover's blocks**: the setup's tree, the IV, the seed, the stream (its blocks and its bytes),
 three openings of claims of at most `batchVarsBound` coordinates. -/
 def uniProverCost (shape : Shape) (programIvLen rows kF wF : ℕ) : ℕ :=
-  treeCost (setupLayout shape).vars + ((291 + programIvLen) / 136 + 1) + 1 +
+  treeCost (setupLayout shape).vars + ((163 + programIvLen) / 136 + 1) + 1 +
     (streamBlocks shape kF + streamBytes shape rows wF) + 3 * openP PcsQuotient.nonceFuel (batchVarsBound shape)
 
 set_option hygiene false in
@@ -392,17 +392,17 @@ macro "open_step" : tactic => `(tactic| first
 
 /-- **The honest prover's block count** (the main line), given Flock's prover's at its `log_n`: and every proof it
 returns has a stream of at most `streamBytes` bytes. -/
-theorem costP_proveWith (flock : FlockProver (OracleComp KeccakCalls)) (kF wF : ℕ) (a0 b0 : Digest)
+theorem costP_proveWith (flock : FlockProver (OracleComp KeccakCalls)) (kF wF : ℕ)
     (programIv : List UInt8) (tr : Trace) (hpub : tr.publicInput.length = 32)
-    (hF : WC (flock (keccakR1csLogSize + tr.shape.heights.getD opBlake2s 0) UniKeccak.keccakMain tr.qflock) kF wF
+    (hF : WC (flock (keccakR1csLogSize + tr.shape.heights.getD opSha3 0) UniKeccak.keccakMain tr.qflock) kF wF
       fun _ _ ↦ True) :
-    CostP (proveWith callKeccak256 callKeccakF1600 PcsQuotient.nonceFuel flock a0 b0 programIv tr)
+    CostP (proveWith callKeccak256 callKeccakF1600 PcsQuotient.nonceFuel flock programIv tr)
       (uniProverCost tr.shape programIv.length tr.rows.length kF wF)
       fun o _ ↦ ∀ p, o = some p → p.stream.size ≤ streamBytes tr.shape tr.rows.length wF := by
   unfold proveWith contractIvOf seedOf
   simp only [bind_assoc, pure_bind]
   refine costP_seq_qc (qc_setupTreeOf tr) (fun tree ↦ ?_) (by unfold uniProverCost; omega)
-  refine costP_seq_qc (qc_H_le (k := (291 + programIv.length) / 136 + 1) (by
+  refine costP_seq_qc (qc_H_le (k := (163 + programIv.length) / 136 + 1) (by
     simp only [List.length_append, ivTag_length, len_digestBytes, shapeBytes_length, layoutWordsK_length,
       variantBytesK_length]
     omega))
@@ -412,14 +412,14 @@ theorem costP_proveWith (flock : FlockProver (OracleComp KeccakCalls)) (kF wF : 
     (by unfold uniProverCost; omega)
   have hW := wc_proveStreamWith flock kF wF tr hF (Wr.start seed) (by simp [WInv, Wr.start])
     (uniProverCost tr.shape programIv.length tr.rows.length kF wF -
-      treeCost (setupLayout tr.shape).vars - ((291 + programIv.length) / 136 + 1) - 1 -
+      treeCost (setupLayout tr.shape).vars - ((163 + programIv.length) / 136 + 1) - 1 -
       (streamBlocks tr.shape kF + streamBytes tr.shape tr.rows.length wF))
   rw [show streamBlocks tr.shape kF + streamBytes tr.shape tr.rows.length wF + wpot (Wr.start seed) +
       (uniProverCost tr.shape programIv.length tr.rows.length kF wF -
-        treeCost (setupLayout tr.shape).vars - ((291 + programIv.length) / 136 + 1) - 1 -
+        treeCost (setupLayout tr.shape).vars - ((163 + programIv.length) / 136 + 1) - 1 -
         (streamBlocks tr.shape kF + streamBytes tr.shape tr.rows.length wF)) =
       uniProverCost tr.shape programIv.length tr.rows.length kF wF -
-        treeCost (setupLayout tr.shape).vars - ((291 + programIv.length) / 136 + 1) - 1
+        treeCost (setupLayout tr.shape).vars - ((163 + programIv.length) / 136 + 1) - 1
       by simp only [wpot, Wr.start, Array.size_empty]; unfold uniProverCost; omega] at hW
   refine CostP.bind hW fun z rem hz ↦ ?_
   obtain ⟨⟨hstream, hc0⟩, -, -, hsize, hrem⟩ := hz
@@ -452,7 +452,7 @@ def FlockCost (flock : FlockProverH) (k w : ℕ → UniKeccak.KeccakVariant → 
   ∀ logN v words, WC (flock callKeccak256 logN v words) (k logN v) (w logN v) fun _ _ ↦ True
 
 /-- Flock's `log_n` at a shape: the Keccak-f block's `17` and `SHA3`'s height. -/
-abbrev flockLogN (shape : Shape) : ℕ := keccakR1csLogSize + shape.heights.getD opBlake2s 0
+abbrev flockLogN (shape : Shape) : ℕ := keccakR1csLogSize + shape.heights.getD opSha3 0
 
 /-- **The deployed honest prover's block count**, at `rows` row counts, Flock's prover's costs `k`, `w`. -/
 def proverBlocks (D : UniKeccak.KDeployment) (rows : ℕ) (k w : ℕ → UniKeccak.KeccakVariant → ℕ) : ℕ :=
@@ -519,7 +519,7 @@ theorem valuesBound_eq : valuesBound = 173 := by decide +kernel
 
 theorem reference_flockLogN : flockLogN keccakRefShape = 32 := by decide +kernel
 
-theorem reference_sha3Height : keccakRefShape.heights.getD opBlake2s 0 = 15 := by decide +kernel
+theorem reference_sha3Height : keccakRefShape.heights.getD opSha3 0 = 15 := by decide +kernel
 
 theorem c1LayoutK_eq (s : Shape) : UniKeccak.c1LayoutK s = StackLayout.new (c1Columns s) := rfl
 

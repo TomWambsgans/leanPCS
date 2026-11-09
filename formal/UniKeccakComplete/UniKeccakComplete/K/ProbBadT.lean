@@ -54,7 +54,7 @@ theorem take_getD_zero {w : List E} {n : ℕ} (hn : 0 < n) : (w.take n).getD 0 0
 
 /-- **The bad point challenges are among `2 · 2^(r−1)` values**, for a shape whose `SHA3` height `r ≥ 2` has the
 coordinate functionals' basis property. -/
-theorem badTCard_of_basis (s : UniStatement.Shape) {r : ℕ} (hr : s.heights.getD opBlake2s 0 = r) (h2 : 2 ≤ r)
+theorem badTCard_of_basis (s : UniStatement.Shape) {r : ℕ} (hr : s.heights.getD opSha3 0 = r) (h2 : 2 ≤ r)
     (hC : Domain.CoordinateFunctionalsBasis r) : BadTCard s (2 * 2 ^ (r - 1)) := by
   intro fp
   have hr0 : 0 < r := by omega

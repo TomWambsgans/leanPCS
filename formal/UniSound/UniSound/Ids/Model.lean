@@ -206,7 +206,7 @@ noncomputable def quotP (column : ℕ → Column) (sizes : List ℕ) : Polynomia
 /-- `q_flock`'s slot `j` at `y(X)`: its claim at `(bits(j), y(X))`. -/
 noncomputable def slotP (slot : ℕ) : Polynomial E :=
   colPoly (layoutOf S .c1) (batchVars S) c1 .qflock fun l ↦
-    if l < 8 then C (bitE slot l) else yP (coordinateFunctionals (S.heights.getD opBlake2s 0)) (l - 8)
+    if l < 8 then C (bitE slot l) else yP (coordinateFunctionals (S.heights.getD opSha3 0)) (l - 8)
 
 /-- The public lines (`constraintRelation`): limb `k`'s cells `0, 1`. -/
 def linesOf (pw : List E) : List (E × E) :=
@@ -221,7 +221,7 @@ noncomputable def tableConstraintsP (tab : Table) : List (Polynomial E × Polyno
   (if o = opJump then
     [(lift, col "b" + col "v_cond" * col "w"), (lift, col "v_cond" * (col "b" + 1))] else []) ++
   [(lift, c1P S c1 (.inverse o) * (tab.countColumns.map fun c ↦ c1P S c1 (.table o c)).prod + 1)] ++
-  (if o = opBlake2s then (List.range tab.width).filterMap fun c ↦
+  (if o = opSha3 then (List.range tab.width).filterMap fun c ↦
     (qflockSlot (tab.columns.getD c "")).map fun slot ↦ (lift, c1P S c1 (.table o c) + slotP S c1 slot)
    else [])
 
@@ -238,8 +238,8 @@ noncomputable def constraintsP (pw : List E) : List (Polynomial E × Polynomial 
 
 /-- **`Z_bad`**: `(y_0 + X)(y_0 + p_0)`, `p_0` Flock's point's first coordinate. -/
 noncomputable def zBad (p0 : E) : Polynomial E :=
-  (yP (coordinateFunctionals (S.heights.getD opBlake2s 0)) 0 + X) *
-    (yP (coordinateFunctionals (S.heights.getD opBlake2s 0)) 0 + C p0)
+  (yP (coordinateFunctionals (S.heights.getD opSha3 0)) 0 + X) *
+    (yP (coordinateFunctionals (S.heights.getD opSha3 0)) 0 + C p0)
 
 /-- **The constraint quotient's identity** (step 5), times `Z_bad`:
 `Z_bad (Σ_i γ^i M_i W_i + Q_W w_{r_W})`. -/
@@ -401,9 +401,9 @@ def qfOf (κ : ℕ) : LeanVM.Protocol.Column (8 + κ) :=
 `C1` each limb's copy is `q_flock`'s slot. -/
 def CopiesOf (s : USt) : Prop :=
   CountsFit D.shape s.2 ∧
-    ∀ x < 2 ^ D.shape.heights.getD opBlake2s 0, ∀ col slot,
+    ∀ x < 2 ^ D.shape.heights.getD opSha3 0, ∀ col slot,
       qflockSlot (blake2sColumns.getD col "") = some slot →
-        c1Val D c (.table opBlake2s col) (D.shape.heights.getD opBlake2s 0) x =
+        c1Val D c (.table opSha3 col) (D.shape.heights.getD opSha3 0) x =
           c (qfOff D + slot + 256 * x)
 
 end Heap

@@ -140,7 +140,7 @@ structure HeapReading (D : Deployment) : Prop where
   setupLimbs : SetupLimbs D.shape
   setupAligned : LayoutAligned (layoutOf D.shape .setup)
   setupVars : (layoutOf D.shape .setup).vars ≤ batchVars D.shape
-  hB2 : 2 ≤ D.shape.heights.getD opBlake2s 0
+  hB2 : 2 ≤ D.shape.heights.getD opSha3 0
   heightsLt : ∀ o < 6, D.shape.heights.getD o 0 < 24
   bcTuple : BcTupleEval D
 

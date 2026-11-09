@@ -7,7 +7,7 @@ import UniSound.Ids.Weights
 
 The main line's ring-switch relation `⟨[q_flock at p, twist ringTwist], target⟩` is one of `C1`'s
 relations (`relsOf`'s `ringRels`); `combine` may merge its point into a longer one, which changes nothing
-(`termWExtend`: the ring term reads `vars = 8 + (D.shape.heights.getD opBlake2s 0) = |p|` coordinates). Its weight on the cube is the tower
+(`termWExtend`: the ring term reads `vars = 8 + (D.shape.heights.getD opSha3 0) = |p|` coordinates). Its weight on the cube is the tower
 weight (`ringInner`), which is `Σ_k d_k eq(φ^k(p), ·)` (`TowerWeight`), so its difference is
 `Σ_k d_k q̂(φ^k(p)) + target` (`FlockEndHolds`).
 -/

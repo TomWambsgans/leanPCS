@@ -26,16 +26,16 @@ open LeanVM.Parameters UniStatement UniSound UniSound.Ids UniKeccak Finset Polyn
 /-- **The deployment's facts the reading of the heap rests on** (all decidable at a given shape). -/
 structure MainDeployK (D : KDeployment) : Prop where
   heap : HeapGood D.shape
-  functionals : FunctionalsCorrect (D.shape.heights.getD opBlake2s 0)
-  height2 : 2 ≤ D.shape.heights.getD opBlake2s 0
+  functionals : FunctionalsCorrect (D.shape.heights.getD opSha3 0)
+  height2 : 2 ≤ D.shape.heights.getD opSha3 0
   rW : D.shape.constraintVars ≤ 24
   heightsLt : ∀ o < 6, D.shape.heights.getD o 0 < 24
 
 /-! ## The constraint vectors -/
 
 /-- **The constraint vectors from the constraint identity.** -/
-theorem cvec_of_wPK (D : KDeployment) (hf : FunctionalsCorrect (D.shape.heights.getD opBlake2s 0))
-    (h2 : 2 ≤ D.shape.heights.getD opBlake2s 0) (hrW : D.shape.constraintVars ≤ 24)
+theorem cvec_of_wPK (D : KDeployment) (hf : FunctionalsCorrect (D.shape.heights.getD opSha3 0))
+    (h2 : 2 ≤ D.shape.heights.getD opSha3 0) (hrW : D.shape.constraintVars ≤ 24)
     (c1 c2 : Stk) (s : USt) (γ p0 : E) (hfit : CountsFit D.shape s.2)
     (hW : wPK D.shape c1 c2 (publicWordsOf s.1.toList) γ p0 = 0) :
     ∀ x < 2 ^ D.shape.constraintVars, powComb (cvecK D c1 s x) γ = 0 := by

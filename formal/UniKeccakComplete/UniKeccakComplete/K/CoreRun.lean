@@ -80,7 +80,7 @@ def frontFrom (tr : Trace) (committed1 : Committed) (alphas : List E) (beta : E)
   let stack1 := c1Stack tr
   let gamma := (Wr.sampled H w4).1
   let w5 := (Wr.sampled H w4).2
-  let logN := keccakR1csLogSize + shape.heights.getD opBlake2s 0
+  let logN := keccakR1csLogSize + shape.heights.getD opSha3 0
   let flockOut : Option FlockOut := some ((flock logN keccakMain tr.qflock).run w5).1
   let w6 := ((flock logN keccakMain tr.qflock).run w5).2
   let c2 := c2DataOf tr (eqKernel alphas) beta gamma
@@ -155,27 +155,27 @@ starts has the bus challenges `proverChallenges`, Flock's point and `t` of `prov
 theorem front_challenges (H : List UInt8 → Digest) (flock : FlockProver Id) (D : KDeployment)
     (input : Vector UInt8 32) (rows : List ℕ) (q : D.Stack rows) :
     (frontOf H (commitReal (m := Id) H) flock (honestTrace D input rows q)
-        (Wr.start (proverSeed H D.a0Root D.b0Root D.programIv (honestTrace D input rows q)))).1.alphas =
+        (Wr.start (proverSeed H D.programIv (honestTrace D input rows q)))).1.alphas =
         (Prob.proverChallenges H D input rows q).1 ∧
       (frontOf H (commitReal (m := Id) H) flock (honestTrace D input rows q)
-        (Wr.start (proverSeed H D.a0Root D.b0Root D.programIv (honestTrace D input rows q)))).1.beta =
+        (Wr.start (proverSeed H D.programIv (honestTrace D input rows q)))).1.beta =
         (Prob.proverChallenges H D input rows q).2 ∧
       (frontOf H (commitReal (m := Id) H) flock (honestTrace D input rows q)
-          (Wr.start (proverSeed H D.a0Root D.b0Root D.programIv (honestTrace D input rows q)))).1.flockOut.map
+          (Wr.start (proverSeed H D.programIv (honestTrace D input rows q)))).1.flockOut.map
           (·.point) = some (Prob.proverTChallenge H flock D input rows q).1 ∧
       (frontOf H (commitReal (m := Id) H) flock (honestTrace D input rows q)
-        (Wr.start (proverSeed H D.a0Root D.b0Root D.programIv (honestTrace D input rows q)))).1.t =
+        (Wr.start (proverSeed H D.programIv (honestTrace D input rows q)))).1.t =
         (Prob.proverTChallenge H flock D input rows q).2 := by
-  have hw2 : ((Wr.start (proverSeed H D.a0Root D.b0Root D.programIv (honestTrace D input rows q))).append
+  have hw2 : ((Wr.start (proverSeed H D.programIv (honestTrace D input rows q))).append
         ((honestTrace D input rows q).rows.flatMap fun n ↦ integerWire n 4)).append
       (rootWord (commitReal (m := Id) H .c1 (c1LayoutK (honestTrace D input rows q).shape).vars
         (c1Stack (honestTrace D input rows q))).halves) =
       ⟨Prob.prefixStream rows (E2ECompleteness.commitWithH (m := Id) H
           (c1LayoutK (honestTrace D input rows q).shape).vars (c1Stack (honestTrace D input rows q))), 0,
-        proverSeed H D.a0Root D.b0Root D.programIv (honestTrace D input rows q), #[]⟩ := rfl
+        proverSeed H D.programIv (honestTrace D input rows q), #[]⟩ := rfl
   obtain ⟨hα, hβ⟩ := samples_prefix H rows (E2ECompleteness.commitWithH (m := Id) H
       (c1LayoutK (honestTrace D input rows q).shape).vars (c1Stack (honestTrace D input rows q)))
-    (proverSeed H D.a0Root D.b0Root D.programIv (honestTrace D input rows q)) _ _ _ _ _ rfl rfl rfl rfl rfl
+    (proverSeed H D.programIv (honestTrace D input rows q)) _ _ _ _ _ rfl rfl rfl rfl rfl
   rw [frontOf_eq, hw2, hα, hβ]
   exact ⟨rfl, rfl, rfl, rfl⟩
 
