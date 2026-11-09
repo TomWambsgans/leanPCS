@@ -13,7 +13,7 @@ public import Lv42.Protocol.FixedColumns
 # The Keccak VM's relation
 
 The relation the Keccak VM's univariate verifier proves knowledge of, in the form of leanVM 42422001's
-(`Lv42.Protocol.M3Holds` of `leanIsaInstance`), with the Keccak-f block in place of BLAKE2s's.
+(`Lv42.Protocol.M3Holds` of `leanIsaInstance`), with the Keccak-f block as its Flock block.
 
 **The instance** `keccakIsaInstance prog s`: nine tables, as Lv42's,
 * the four memory columns `MEM_LO, MEM_HI, MEM_TOP, MFCNT`, the bytecode count `BFCNT`, and the Flock column
@@ -24,14 +24,14 @@ The relation the Keccak VM's univariate verifier proves knowledge of, in the for
   memory pull `(g, addr, cnt, v₀, v₁, v₂)` and push `(g, addr, g · cnt, v₀, v₁, v₂)` (Lv42's `memRead`), the
   values the cell's lanes in `sha3CellLanes`' order and zero tops, the lone lane-16 cell's high limb zero. The
   27 `cnt` columns are the count columns.
-* Every column is committed, the 50 lane columns included: unlike Lv42's `BLAKE2S` limbs they are not read off the
-  Flock column, because `in_16` is its port word plus `END_BIT` (`KECCAK.md`, "leanVM's opcode exactly"), which a
+* Every column is committed, the 50 lane columns included: they are not read off the Flock
+  column, because `in_16` is its port word plus `END_BIT` (`KECCAK.md`, "leanVM's opcode exactly"), which a
   linear reading cannot express. They are tied to the Flock column by `KeccakAux`'s copy clause instead, as the
   univariate verifier's `Q_W` ties its copies.
 * The boundary blocks, the public lines and the stacking are Lv42's, with the Keccak VM's bytecode entries
   (`KeccakVm.entry`). The padding rows are zero (`tables_keccak`: "A padding row is zero"; Lv42's five tables'
-  padding rows are zero too). The instance has no `FlockRegion` (Lv42's is sized for BLAKE2s's `2^14`-bit blocks):
-  the Keccak-f region is `KeccakAux`'s.
+  padding rows are zero too). The instance has no `FlockRegion`: the
+  Keccak-f region is `KeccakAux`'s.
 
 **The Keccak-f block** is a parameter, `KeccakFlockSpec` (as Lv42's instance takes a `FlockSpec`): an R1CS on blocks
 of `2^17` bits, its constant position, the input and output port words of each lane, and the two directions

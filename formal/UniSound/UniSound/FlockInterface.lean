@@ -4,7 +4,7 @@
 import UniSound.Prog
 
 /-!
-# Flock's interface: the one hypothesis the end-to-end proof takes about BLAKE2s by Flock
+# Flock's interface: the one hypothesis the end-to-end proof takes about Flock
 
 **The Flock argument is a separate proof.** The univariate verifier (iteration 2, main line
 `flockMain = ⟨3, .tower⟩`, point claims) runs Flock's front (`Flock.verifyDeferred`: the
@@ -19,7 +19,7 @@ and `C2`'s root, on `C1`'s column `q_flock`; it leaves
   claims on `A0`, `B0`.
 
 The end theorem (`UniSound.Final`) takes **one** hypothesis about Flock, `FlockSound κ` below (`κ`
-the `BLAKE2S` table's log-height, `q_flock` of `2^(8 + κ)` cells), whose fields the Flock proof must
+the hash table's log-height, `q_flock` of `2^(8 + κ)` cells), whose fields the Flock proof must
 provide:
 
 * **`prog`, `link`**: the code-level link. `Flock.verifyDeferred F (14 + κ) flockMain` is a chain
@@ -30,7 +30,7 @@ provide:
 * **`S`, `err`, `S_nil`, `step`, `finish`**: Flock's **round-by-round** soundness, on its own
   transcript (`Done`: the messages and challenges of its completed rounds), for every column `qf`
   of `2^(8 + κ)` cells: a state `S qf done`, true at the start only if `qf` satisfies
-  `FlockRegion.Holds` (`S_nil`: the BLAKE2s R1CS on every block of `2^14` bits, the constant
+  `FlockRegion.Holds` (`S_nil`: the block R1CS on every block of `2^14` bits, the constant
   position `1`); round `j` turns it from false to true with probability at most `err j` over its
   `ns + 1` uniform challenges, for every transcript before it and every message (`step`); and it
   is true at the end when the ring switch's claim holds of `qf` and the pending reduction's claim

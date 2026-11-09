@@ -3,8 +3,8 @@
 
   Adapted from leanerVM (https://github.com/Verified-zkEVM/leanerVM), branch mumbai, commit
   f0393df4, file lean_vm/LeanVM/Arithmetization/Bytecode.lean. MIT OR Apache-2.0; see AGENTS.md.
-  `LeanVM` renamed `Lv42`. Changed: `BLAKE2S` is removed (`Lv42.Spec.Isa`); an opcode-`g^5` entry, the
-  hash instruction's, is well formed without decoding (`EntryOk`, the bytecode pull's guarantee).
+  `LeanVM` renamed `Lv42`. Changed: the hash instruction is not ported (`Lv42.Spec.Isa`); an opcode-`g^5`
+  entry, the hash instruction's, is well formed without decoding (`EntryOk`, the bytecode pull's guarantee).
 
   The sixteen-slot bytecode encoding of an instruction, its eight-coordinate bus entry, and the
   decoder for canonical eight-coordinate entries.
@@ -27,8 +27,8 @@ At leanVM pin `127510d14c98ade4e8a97646c44fa7f1ff5e752d`, transcribed from:
   (`05-arithmetization.tex:12`): shorter tuples are zero-padded to the `m = 16` slots;
 * `crates/leanvm_core/src/cpu/layout.rs:228-289` (`bytecode_columns`): the eight public program
   columns `(opcode, o1, o2, o3, fpc, ffp, extra0, extra1)`, with `SET_CONSTANT`'s immediate
-  lanes at `o2, o3, fpc` (`:251-270`) (and `BLAKE2S`'s last four operands at `fpc, ffp, extra0,
-  extra1`, `:266-286`, the Keccak VM's `SHA3`'s too); the seed and finalize blocks carry them at `:384-394`;
+  lanes at `o2, o3, fpc` (`:251-270`) (and the hash instruction's last four operands at `fpc, ffp,
+  extra0, extra1`, `:266-286`, the Keccak VM's `SHA3`'s); the seed and finalize blocks carry them at `:384-394`;
 * `crates/leanvm_core/src/cpu/isa.rs:58-75` and specification §7.4 (`07-instruction-tables.tex:76`):
   the `DEREF` store mode as the flag pair `(f_pc, f_fp)`, `cell = (0, 0)`, `pc = (1, 0)`,
   `fp = (0, 1)`.

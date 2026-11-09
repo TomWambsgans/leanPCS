@@ -43,7 +43,7 @@ def Commitment.name : Commitment → String
 
 /-- **A column of a commitment's layout** (`Column`, SPEC.md §3). -/
 inductive Column where
-  /-- `C1`: a table's column, by opcode and local index (BLAKE2S's limbs are the univariate copies). -/
+  /-- `C1`: a table's column, by opcode and local index (the `SHA3` table's lanes are the univariate copies). -/
   | table (table column : ℕ)
   /-- `C1`: a table's counter-inverse column `z_T`. -/
   | inverse (table : ℕ)
@@ -51,7 +51,7 @@ inductive Column where
   | memory (k : ℕ)
   /-- `C1`: the bytecode's final counts. -/
   | bytecodeFinal
-  /-- `C1`: `q_flock` (values), its slot `j` as a table of the BLAKE2S rows. -/
+  /-- `C1`: `q_flock` (values), its slot `j` as a table of the `SHA3` rows. -/
   | qflockSlot (j : ℕ)
   /-- `C1`: `q_flock` (values), whole. -/
   | qflock

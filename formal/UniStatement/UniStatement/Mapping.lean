@@ -26,8 +26,7 @@ The verifier's `C1` and setup commitments hold the tables' columns as **coeffici
 * the setup's tables (`setupStack`, `matrixStack`): the bytecode's 16 tuple slots and the memory's addresses (in
   basis `B`), and Flock's matrices `A0`, `B0` (`0`/`1` entries, row low).
 
-(The map from a `C1` stack to Lv42's stack for leanVM 42422001's relation, with its `BLAKE2S` limbs read off
-`QFLOCK`, was here; it is removed with `BLAKE2S`. The Keccak VM's is `UniKeccak.Mapping`'s.)
+The map from a `C1` stack to Lv42's stack is `UniKeccak.Mapping`'s.
 -/
 
 @[expose] public section

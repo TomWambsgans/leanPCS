@@ -4,7 +4,7 @@
   Adapted from leanerVM (https://github.com/Verified-zkEVM/leanerVM), branch mumbai, commit
   f0393df4, file lean_vm/LeanVM/Arithmetization/Channels.lean. MIT OR Apache-2.0; see AGENTS.md.
   `LeanVM` renamed `Lv42`. Changed: the bytecode pull's guarantee is `EntryOk` (an opcode-`g^5` entry, the
-  hash instruction's, is well formed without decoding; `BLAKE2S` is removed).
+  hash instruction's, is well formed without decoding).
 
   The three bus interactions of leanISA as six Clean channels, the image a channel guarantee is
   stated against, the two read gadgets, and the bus data of every channel.

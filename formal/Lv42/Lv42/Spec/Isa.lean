@@ -4,8 +4,8 @@
   Adapted from leanerVM (https://github.com/Verified-zkEVM/leanerVM), branch mumbai, commit
   f0393df4, file lean_vm/LeanVM/Spec/Isa.lean. MIT OR Apache-2.0; see AGENTS.md. `LeanVM` renamed
   `Lv42`. Changed: the docstring of `run` cites the halting rule of leanVM `42422001`'s Rust
-  executor; the `BLAKE2S` instruction is removed (the Keccak VM, `formal/KeccakVm`, puts its `SHA3` in
-  its place, opcode `g^5`).
+  executor; the hash instruction is not ported (the Keccak VM, `formal/KeccakVm`, has its `SHA3`
+  at opcode `g^5`).
 
   leanISA, the leanVM instruction set without its hash instruction: memory, instructions, programs, one step, valid
   executions; and the encoding of an instruction as sixteen `K` slots.
@@ -19,7 +19,7 @@ public import LeanVM.Parameters.Field
 # leanISA
 
 The leanVM instruction set, from §2 of the leanVM specification at
-`3f7dc2196e43ca60034c5803eb307c050b4f91d9`, without its hash instruction `BLAKE2S`: the five instructions
+`3f7dc2196e43ca60034c5803eb307c050b4f91d9`, without its hash instruction: the five instructions
 the Keccak VM (`formal/KeccakVm`) shares, which adds its own hash instruction `SHA3` at opcode `g^5`.
 
 Words are elements of `E = K[y]/(y³ + y + 1)`, `K = GF(2^64)`. Addresses are powers of the

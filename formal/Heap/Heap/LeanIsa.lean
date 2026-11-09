@@ -6,8 +6,7 @@ import Lv42.Protocol.LeanIsaBase
 # Two list facts of leanISA's heap
 
 The list lemmas the assembly of a leanISA heap uses (`UniKeccakSound.IdsReal.Realize` for the Keccak VM): a
-`flatMap` over a filtered list, and the opcode tables as tables `3 … 8`. (SPEC §5.2's heap for leanVM 42422001's
-`leanIsaInstance`, with its `BLAKE2S` table, was here; it is removed with `BLAKE2S`.)
+`flatMap` over a filtered list, and the opcode tables as tables `3 … 8`.
 -/
 
 namespace Heap.LeanIsa

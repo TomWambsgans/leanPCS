@@ -5,11 +5,10 @@
   f0393df4, file lean_vm/LeanVM/Spec/Verifier.lean (its section "The Flock constants", lines
   225-307). MIT OR Apache-2.0; see AGENTS.md.
 
-  The constants of leanVM's Flock argument for BLAKE2s: the block sizes, the constant wire, the
+  The constants of leanVM's Flock argument: the block sizes, the constant wire, the
   map `φ_8`, the fixed coordinates of the zerocheck point and the ring-switching shifts.
-  `Spec/Verifier.lean`, the transcription of leanVM's BLAKE2s-era verifier, is not ported; the
-  arithmetization reads only these constants of it (`FlockRegion`, `FlockSpec`, the BLAKE2s
-  circuit), so they are its own module here, unchanged.
+  The rest of `Spec/Verifier.lean` is not ported; the arithmetization reads only these constants of
+  it (`FlockRegion`, `FlockSpec`), so they are its own module here, unchanged.
 -/
 
 module
@@ -51,7 +50,7 @@ skip domain is `φ_8(0), …, φ_8(63)` and its coset `φ_8(64), …, φ_8(127)`
 
 namespace Flock
 
-/-- Log-size of a witness block: `2 ^ 14` positions per BLAKE2s compression. -/
+/-- Log-size of a witness block of leanVM's hash circuit: `2 ^ 14` positions. -/
 abbrev kBlock : ℕ := 14
 
 /-- The univariate skip replaces the low `6` coordinates; `2 ^ 6 = 64` bits pack into one `K`

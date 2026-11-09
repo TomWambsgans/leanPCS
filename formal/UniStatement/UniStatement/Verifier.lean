@@ -13,7 +13,7 @@ public import UniStatement.Batch
 /-!
 # The verifier (`verifier.rs`, SPEC.md §4–§8 and §13): from the stream to one claim per commitment
 
-`reduceWith F shape publicWords blake2s mode`, line by line `reduce` at iteration 2 (`ad49e74`):
+The steps of `reduce` at iteration 2 (`ad49e74`), which `UniKeccak.reduceWithK` runs on the Keccak VM:
 
 0. **The shape** must be one a verifier is built for (`Shape.validate`, F5), else `InvalidShape`. **The six row
    counts** (F1): 32-bit big-endian integers at the stream's start, absorbed with `C1`'s root; each `c ≤ 2^r`
@@ -29,7 +29,7 @@ public import UniStatement.Batch
    is sent, else sent and bound by a relation on `C1`), and its push fingerprint (the pull's plus their
    difference when the sent values give it, else sent and bound).
 5. **The constraint quotient's identity** on `C1`: JUMP's two constraints, every table's counters
-   (`z Π c + 1`, on every row: padding rows' counters are nonzero too, F1), BLAKE2S's limb copies against
+   (`z Π c + 1`, on every row: padding rows' counters are nonzero too, F1), the `SHA3` table's lane copies against
    `q_flock`'s slots (read through `y(t)`), the public lines; batched by the powers of `γ`, each lifted to
    `V_{r_W}`; `= Q_W(t) w_{r_W}(t)`.
 6. **`C2`**: `T(t)`, the tree, the root, each heap block's leaf identity (a table's times `Z_act`:
@@ -56,7 +56,7 @@ namespace UniStatement
 open LeanVM.Parameters LeanVM.Semantics LeanVM.Protocol
 
 /-- **The sizes a contract is built for** (`Shape`): the memory's and the bytecode's log-sizes and each table's
-log-height (XOR, MUL, SET, DEREF, JUMP, BLAKE2S), one contract per shape class. The heap, the stacks and every
+log-height (XOR, MUL, SET, DEREF, JUMP, SHA3), one contract per shape class. The heap, the stacks and every
 quotient's size depend on these only. The Rust's `Shape` carries row counts, of which only the heights
 `⌈log₂ rows⌉` are read (`shapeWith`). **The row counts are the stream's** (iteration 2, F1): the verifier reads
 them (`reduceWith`), any count up to `2^r`. -/
@@ -78,7 +78,7 @@ def Shape.capacityRows (s : Shape) : List ℕ := s.heights.map Shape.leastRows
 def degree (plus minus : ℕ) : ℕ := plus - minus
 
 /-- **`Shape::validate(flock)`** (F5): the shapes a verifier can be built for: the memory at least `2` cells (the
-public input's), every height below `32` (the counts are 32-bit), and with Flock BLAKE2S's height at least `7`
+public input's), every height below `32` (the counts are 32-bit), and with Flock the `SHA3` table's height at least `7`
 (its zerocheck's seven fixed coordinates). -/
 def Shape.validate (s : Shape) (flock : Bool) : Bool :=
   !(decide (s.logMemory < 1) || s.heights.any (· > 31) || (flock && decide (s.heights.getD opSha3 0 < 7)))

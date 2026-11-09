@@ -181,9 +181,9 @@ theorem exists_opRecs (w : EnsembleWitness (kEnsemble prog)) : ∃ f, OpRecs w f
 
 /-! ## The statement without the compression -/
 
-/-- **The constraint statement without the BLAKE2s validity**: every conjunct of `SatisfiedBy`
-but `blake2s_valid`, what a proof establishes when nothing binds the `BLAKE2S` rows to the
-compression (the Flock-blind instance). The bus, the channels
+/-- **The constraint statement without the `SHA3` rows' validity**: every conjunct of `SatisfiedBy`
+but `sha3_valid`, what a proof establishes when nothing binds the `SHA3` rows to the
+permutation (the Flock-blind instance). The bus, the channels
 and the state walk need no more. -/
 structure SatisfiedByB (prog : KeccakVm.Program) (input : PublicInput)
     (w : EnsembleWitness (kEnsemble prog)) : Prop where
@@ -212,14 +212,14 @@ structure SatisfiedByB (prog : KeccakVm.Program) (input : PublicInput)
   /-- The second word of the image is `input₂ + input₃·y`. -/
   word1_eq : (imageOf w.data).2.read (gpow 1) = some input.word1
 
-/-- The constraint statement without its BLAKE2s validity. -/
+/-- The constraint statement without its `SHA3` rows' validity. -/
 theorem SatisfiedBy.toB {input : PublicInput} {w : EnsembleWitness (kEnsemble prog)}
     (h : SatisfiedBy prog input w) : SatisfiedByB prog input w :=
   ⟨h.public_input_eq, h.constraints, h.state_balanced, h.mem_balanced, h.bytecode_balanced,
     h.counts_nonzero, h.caps, h.index_columns, h.seed_rows, h.bytecode_rows, h.word0_eq,
     h.word1_eq⟩
 
-/-- With the BLAKE2s validity, the constraint statement. -/
+/-- With the `SHA3` rows' validity, the constraint statement. -/
 theorem SatisfiedByB.toSatisfiedBy {input : PublicInput}
     {w : EnsembleWitness (kEnsemble prog)} (h : SatisfiedByB prog input w)
     (hv : Sha3RowsValid w) : SatisfiedBy prog input w :=

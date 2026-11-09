@@ -180,7 +180,7 @@ private theorem seedRows_iff {prog : KeccakVm.Program} (w : EnsembleWitness (kEn
 /-- **The adaptor, soundness, without the Flock clause.** If the announced sizes are admissible
 and the stack `q` satisfies the leanISA instance's constraints, bus, counts and public lines on
 the input, then the witness read off `q` satisfies leanISA's constraint system on it but for the
-BLAKE2s validity (`SatisfiedByB`). -/
+`SHA3` rows' validity (`SatisfiedByB`). -/
 theorem satisfiedByB_witnessOf {input : PublicInput} (hs : Admissible prog s)
     (hcv : (keccakIsaInstance prog s).ConstraintsVanish q)
     (hbal : (keccakIsaInstance prog s).Balanced q)

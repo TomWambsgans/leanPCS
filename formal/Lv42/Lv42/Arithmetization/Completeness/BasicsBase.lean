@@ -10,7 +10,7 @@
   components that have none.
 
   This module is its instruction-set-independent part (shared by the Keccak VM), with
-  every name kept; the BLAKE2s-specific rest (the module without `Base`) is removed with `BLAKE2S`.
+  every name kept; the rest of the upstream module is not ported.
 -/
 
 module

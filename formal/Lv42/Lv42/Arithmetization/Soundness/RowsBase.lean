@@ -10,7 +10,7 @@
   of the machine from its pulled state to its pushed state.
 
   This module is its instruction-set-independent part (shared by the Keccak VM), with
-  every name kept; the BLAKE2s-specific rest (the module without `Base`) is removed with `BLAKE2S`.
+  every name kept; the rest of the upstream module is not ported.
 -/
 
 module
@@ -32,10 +32,10 @@ component as the typed row `rowInput` (the first cells, a missing cell `0`). Wha
 the row circuit of each opcode table sends the messages `sendsOf pc fp next rbc e reads` of
 `Completeness.Rows`: the state pull `(pc, fp)` and push `next`, the bytecode pull and push of the
 eight coordinates `e` at `pc`, and per memory read a pull of `(addr, count, v)` and a push of
-`(addr, g·count, v)`, at most nine reads (`BLAKE2S`). The memory and bytecode pairs need nothing
+`(addr, g·count, v)`. The memory and bytecode pairs need nothing
 more of the rows than this shape (`Soundness.MemChannel`, `Soundness.BytecodeChannel`).
 
-**The step** (also `OpRow`). Under the table's `Assumptions` (the compression, for `BLAKE2S`), its
+**The step** (also `OpRow`). Under the table's `Assumptions`, its
 constraints (the `JUMP` residuals), and the guarantees of its pulls (that the memory reads are the
 image's words and the bytecode entry decodes, which `Soundness.MemChannel` and
 `Soundness.BytecodeChannel` derive from the bus), Clean's instantiated soundness theorem
@@ -47,13 +47,6 @@ which for `JUMP` reads the indicator, the row's second local witness (`jump_outp
 **The guarantees** (`ChannelOk`). Of the six channels only the memory pull and the bytecode pull
 carry a guarantee; every interaction a table emits is on one of the six (`*_channelOk`), so the
 guarantees of a row are those of its memory and bytecode pulls.
-
-**Without the compression** (`OpRow`'s last clause). Under its constraints and the guarantees
-alone a row is a step of the Flock-blind semantics `blakeFree` (`Lv42.Spec.IsaWith`), whose
-`BLAKE2S` asks only canonical cells: a `BLAKE2S` row is bound to the image by the table's circuit
-without its assumption (`blake2sTableFree`), and its cells, two limbs each, are canonical
-(`blake2s_free_exec`); every other table assumes nothing, and a deployed step is a Flock-blind one
-(`executeWithB_free_of_executeWith`).
 
 ## Wrong readings excluded
 

@@ -11,8 +11,8 @@ import Heap.LeanIsa
 /-!
 # Reading the five shared tables' flushes and the heap off `C1`: the shared lemmas
 
-What the Keccak line (`UniKeccakSound`) uses of the removed BLAKE2s VM's proof that the heap read off `C1` realizes
-Lv42's bus:
+The proof that the heap read off `C1` realizes Lv42's bus, the parts the Keccak line (`UniKeccakSound`)
+uses:
 
 1. **The forms are Lv42's flushes** at the five shared tables (`uni_tuples_eq_base`, `base_flushes_eq`, `sides_eq_base`,
    over `Fin 5` and `baseComponent`): on every row, a table's tuples of `UniStatement.sharedTables` are, in order, its

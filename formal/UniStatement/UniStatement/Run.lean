@@ -10,7 +10,7 @@ public import UniStatement.Verifier
 
 **The calldata** (`contract.rs`): the selector, the public input's 32 bytes (four 64-bit words, each
 big-endian, word `k` the public word `k`), then the **stream**: the six row counts (iteration 2, F1: 4-byte
-big-endian integers, XOR to BLAKE2S, `rowsBytes`), `C1`'s root, Flock's messages, `C2`'s root, the values at
+big-endian integers, XOR to SHA3, `rowsBytes`), `C1`'s root, Flock's messages, `C2`'s root, the values at
 `t`, `ρ`'s and the batch's messages. The contract is built for one shape class (the heights) and one program;
 the transcript's seed takes its IV, which binds the program's IV, the setup roots, the shape and the layout
 words (`contractIvWith`, `Opening.lean`).
@@ -36,13 +36,13 @@ def publicWordsOf (publicInput : List UInt8) : List E :=
   (List.range 4).map fun k ↦ eK (beWordAt publicInput.toArray (8 * k))
 
 /-- **The row counts a stream announces** (iteration 2, F1): its first 24 bytes, six 4-byte big-endian integers,
-XOR to BLAKE2S (missing bytes `0`; a stream that short is rejected, `StreamExhausted`). -/
+XOR to SHA3 (missing bytes `0`; a stream that short is rejected, `StreamExhausted`). -/
 def rowsOf (stream : Array UInt8) : List ℕ :=
   (List.range 6).map fun k ↦
     (List.range 4).foldl (fun acc j ↦ acc * 256 + (stream.getD (4 * k + j) 0).toNat) 0
 
 /-- **The row counts as the stream carries them** (iteration 2, F1; `KeccakWriter::send_integer(rows, 4)`): each
-a 4-byte big-endian integer, XOR to BLAKE2S, at the stream's start. -/
+a 4-byte big-endian integer, XOR to SHA3, at the stream's start. -/
 def rowsBytes (rows : List ℕ) : List UInt8 :=
   rows.flatMap fun n ↦ (List.range 4).map fun k ↦ (n >>> (8 * (3 - k))).toUInt8
 
@@ -66,7 +66,7 @@ def bytecodeLogLen : ℕ := 23
 /-- `BUS_BITS`: a bus tuple has `2^4` slots. -/
 def busBits : ℕ := 4
 
-/-- `PROGRAM_IV` (`shapes.rs`): the aggregation guest's Fiat–Shamir IV (the BLAKE2s of the R1CS digest and
+/-- `PROGRAM_IV` (`shapes.rs`): the aggregation guest's Fiat–Shamir IV (a hash of the R1CS digest and
 of the stacked bytecode). -/
 def programIv : List UInt8 :=
   [0xb5, 0x41, 0x04, 0x5c, 0x98, 0x65, 0x5d, 0xb5, 0xa8, 0xaa, 0xc6, 0x1e, 0xfd, 0xb0, 0xad, 0xea, 0x1e, 0xaf,
@@ -81,7 +81,7 @@ def shapeWith (logMemory logBytecode : ℕ) (tableRows : List ℕ) : Shape :=
 def shapeOf (logMemory : ℕ) (tableRows : List ℕ) : Shape := shapeWith logMemory (bytecodeLogLen - busBits) tableRows
 
 /-- **The measured workloads** (`WORKLOADS`, `shapes.rs`): name, signatures, the memory's log-size, the rows in
-leanVM's order XOR, MUL, SET, DEREF, JUMP, BLAKE2S. -/
+leanVM's table order (XOR, MUL, SET, DEREF, JUMP, the hash table). -/
 def measured : List (String × ℕ × ℕ × List ℕ) :=
   [("xmss32", 32, 16, [6060, 6490, 11768, 4703, 2699, 6489]),
     ("xmss128", 128, 18, [23629, 25224, 32804, 17879, 10468, 25881]),

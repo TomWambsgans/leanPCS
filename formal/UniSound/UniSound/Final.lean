@@ -9,8 +9,8 @@ import UniSound.Bus
 **`uniKnowledgeSoundness`**: `UniKnowledgeSoundness D (uniBound e₃₂)` for every deployment `D`, the
 rounds' errors at most `e₃₂ = 2^32 / |E|`, from
 
-* **`hFlock : FlockSound κ`** — **the Flock hypothesis** (the one assumption about BLAKE2s by
-  Flock, `FlockInterface.lean`): Flock's front is a chain program, round-by-round sound from
+* **`hFlock : FlockSound κ`** — **the Flock hypothesis** (the one assumption about Flock,
+  `FlockInterface.lean`): Flock's front is a chain program, round-by-round sound from
   `FlockRegion.Holds` to its ring-switch claim and its pending matrices' reduction;
 * **`I : UniIds D hFlock`** — the identity model (`Piop.lean`): the bus and constraint state with
   its round-`0` error, the identities as polynomials of bounded degree, the relations at `t`, the

@@ -1,6 +1,6 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. `formal/Lv42`'s `Arithmetization/Statement.lean` and
 -- the verifier and bytecode block of `Arithmetization/Boundary.lean` (leanerVM `mumbai` f0393df4, MIT OR Apache-2.0),
--- for the Keccak VM: the `SHA3` table in `BLAKE2S`'s place, the Keccak VM's programs.
+-- for the Keccak VM: the `SHA3` table at opcode `5`, the Keccak VM's programs.
 module
 
 public import KeccakArith.Rows
@@ -11,11 +11,11 @@ public import Clean.Air.FlatEnsemble
 # The Keccak VM's constraint statement
 
 Lv42's constraint statement (`Lv42.Arithmetization.SatisfiedBy`), for the Keccak VM. The ensemble `kEnsemble prog` has
-Lv42's five opcode tables, the `SHA3` table (`sha3Table`) in `BLAKE2S`'s place, Lv42's memory and bytecode blocks, the
+Lv42's five opcode tables, the `SHA3` table (`sha3Table`) at opcode `5`, Lv42's memory and bytecode blocks, the
 six channels, and the verifier `kVerifier prog` (Lv42's `leanIsaVerifier`, at the Keccak VM's `finalPc`). A witness
 `w : EnsembleWitness (kEnsemble prog)` satisfies `SatisfiedBy prog input w` when every conjunct of Lv42's holds, with
 `Sha3RowsValid w` (every `SHA3` row satisfies `Sha3Relation`, the table's `Assumptions`, which the Keccak-f region
-gives) in place of `Blake2sRowsValid`, and the bytecode block's rows the Keccak VM program's (`kBytecodeRowOf`).
+gives), and the bytecode block's rows the Keccak VM program's (`kBytecodeRowOf`).
 `AssignmentRepresents w t` is Lv42's, at the Keccak VM's traces.
 -/
 

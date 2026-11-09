@@ -2,7 +2,7 @@
 import UniSound.Ids.Eval
 
 /-!
-# The relations' number, the columns absent from `C1`, the constraints' number
+# The relations' number and the columns absent from `C1`
 
 * **`relCount_reference`** (`RelCountP D Fl 135`): `relsOf` is each table's part (its sent values,
   then at most two relations a flush: `tablePartOf_rels_len`), the memory's three, the bytecode's two,
@@ -11,8 +11,6 @@ import UniSound.Ids.Eval
   coefficient), the reference heap has `9` blocks.
 * **`c1Absent`**: a column not in a stack's column list has no limbs (`limbs_new_absent`, for any
   `StackLayout.new`), so a table's column past its width has none in `C1`, at every shape.
-* **`ncvOf_eq`**: `30` constraints at every shape (`JUMP`'s two, six counters, `BLAKE2S`'s eighteen
-  copies, three public lines) plus one.
 -/
 
 namespace UniSound.Ids

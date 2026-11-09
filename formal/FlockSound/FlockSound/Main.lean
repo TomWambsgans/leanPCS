@@ -5,9 +5,9 @@ import FlockSound.Leanvm
 # Flock's soundness at leanVM's constants: `FlockRegion.Holds` but for bad challenges
 
 The generic theorems of `Flock.lean` at leanVM 42422001's constants (`Leanvm.lean`), for a column
-`c` of `2^(8 + κ)` cells of `K` (`q_flock`) and the block R1CS `r1cs` (`blake2sFlockSpec.r1cs`):
+`c` of `2^(8 + κ)` cells of `K` (`q_flock`) and a block R1CS `r1cs`:
 the conclusion is Lv42's relation, `BlockR1CS.BatchHolds r1cs constPos (bitTable c)`, which is
-`FlockRegion.Holds` (`Lv42.Protocol.FlockRegion.Holds`) of the BLAKE2s region.
+`FlockRegion.Holds` (`Lv42.Protocol.FlockRegion.Holds`).
 
 * **`flockHolds_v1`** (milestone 1; iteration 2's extension W, `Flock.verify`): the matrices'
   reduction in its own rounds;

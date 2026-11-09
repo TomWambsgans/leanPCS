@@ -738,7 +738,7 @@ theorem cfA_rows : ∀ l < 18, ∀ k < 18, cfDot cfA cfMat0 l k = if l = k then 
   exacts [cfA_row0, cfA_row1, cfA_row2, cfA_row3, cfA_row4, cfA_row5, cfA_row6, cfA_row7, cfA_row8,
     cfA_row9, cfA_row10, cfA_row11, cfA_row12, cfA_row13, cfA_row14, cfA_row15, cfA_row16, cfA_row17]
 
-/-- **The coordinate functionals at `BLAKE2S`'s reference height** invert the Moore matrix. -/
+/-- **The coordinate functionals at the reference height 18** invert the Moore matrix. -/
 theorem functionalsCorrect18 : FunctionalsCorrect 18 := by
   refine ⟨by rw [coordinateFunctionals_18]; rfl, fun l hl k hk ↦ ?_⟩
   rw [coordinateFunctionals_18, ← cfA_rows l hl k hk, cfDot]

@@ -1,5 +1,5 @@
--- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Written after `formal/Lv42`'s
--- `Arithmetization/Tables/Blake2s.lean` (leanerVM `mumbai` f0393df4, MIT OR Apache-2.0); the `SHA3` table is
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Written after leanerVM's
+-- `Arithmetization/Tables/Blake2s.lean` (`mumbai` f0393df4, MIT OR Apache-2.0); the `SHA3` table is
 -- leanVM `9d50c92a3`'s (`crates/leanvm/statement/src/layout.rs::{SHA3_COLUMNS, flushes_sha3}`).
 module
 
@@ -13,7 +13,7 @@ public import Clean.Utils.Tactics.CircuitProofStart
 # The `SHA3` table as a Clean component
 
 The Keccak VM's `SHA3` table (`KeccakVm.Sha3Table`), written as a Clean component in the form of Lv42's
-`BLAKE2S` table (`Lv42.Arithmetization.blake2sTable`).
+tables.
 
 **The row** `Sha3Row` is the 86 columns of `SHA3_COLUMNS`, in order: `pc, fp`, the operands `o_m₀ … o_m₃`
 (`om`), `o_tail, o_cap, o_out`, the 25 input lanes, the 25 output lanes, the 26 cell read counts, the bytecode
@@ -458,7 +458,7 @@ def sha3Table : GeneralFormalCircuit K Sha3Row Regs where
       (out_eq_to (env := env.toEnvironment) (r := R) (c := 0) (by decide) (hb.out_eq ⟨0, by decide⟩) :), (out_eq_to (env := env.toEnvironment) (r := R) (c := 1) (by decide) (hb.out_eq ⟨1, by decide⟩) :), (out_eq_to (env := env.toEnvironment) (r := R) (c := 2) (by decide) (hb.out_eq ⟨2, by decide⟩) :), (out_eq_to (env := env.toEnvironment) (r := R) (c := 3) (by decide) (hb.out_eq ⟨3, by decide⟩) :), (out_eq_to (env := env.toEnvironment) (r := R) (c := 4) (by decide) (hb.out_eq ⟨4, by decide⟩) :), (out_eq_to (env := env.toEnvironment) (r := R) (c := 5) (by decide) (hb.out_eq ⟨5, by decide⟩) :), (out_eq_to (env := env.toEnvironment) (r := R) (c := 6) (by decide) (hb.out_eq ⟨6, by decide⟩) :), (out_eq_to (env := env.toEnvironment) (r := R) (c := 7) (by decide) (hb.out_eq ⟨7, by decide⟩) :), (out_eq_to (env := env.toEnvironment) (r := R) (c := 8) (by decide) (hb.out_eq ⟨8, by decide⟩) :), (out_eq_to (env := env.toEnvironment) (r := R) (c := 9) (by decide) (hb.out_eq ⟨9, by decide⟩) :), (out_eq_to (env := env.toEnvironment) (r := R) (c := 10) (by decide) (hb.out_eq ⟨10, by decide⟩) :), (out_eq_to (env := env.toEnvironment) (r := R) (c := 11) (by decide) (hb.out_eq ⟨11, by decide⟩) :), (out_eq_to (env := env.toEnvironment) (r := R) (c := 12) (by decide) (hb.out_eq ⟨12, by decide⟩) :)]
 
 /-- A bound row satisfies the constraints of `main` in the row environment over its data: local completeness, which
-does not check the permutation (the boundary with Flock, as Lv42's `blake2sRow_complete`). -/
+does not check the permutation (the boundary with Flock). -/
 theorem sha3Row_complete {r : Sha3Row K} {data : ProverData K} (h : Sha3Bindings (imageOf data).2 r) :
     ConstraintsHold.Completeness (rowEnv data) ((sha3Table.main (const r)).operations 0) :=
   (sha3Table.completeness 0 (rowEnv data) (const r)

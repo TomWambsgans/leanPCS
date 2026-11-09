@@ -11,7 +11,7 @@ public import Statement.Keccak
 /-!
 # The Keccak VM's leanISA
 
-The Keccak VM (`docs/leanvm/univariate/KECCAK.md`) is leanVM 42422001 with its `BLAKE2S` instruction replaced by
+The Keccak VM (`docs/leanvm/univariate/KECCAK.md`) is leanVM 42422001 with its hash instruction replaced by
 leanVM `9d50c92a3`'s `SHA3`: one step of that leanVM's cell sponge.
 
 * **`SHA3 m₀ m₁ m₂ m₃ tail cap out`** reads thirteen cells: `[o_m₀], …, [o_m₃]` (four independently addressed),
@@ -42,7 +42,7 @@ open Lv42.Parameters (minLogMem maxLogMem maxLogBytecode)
 
 /-! ## Opcodes and instructions -/
 
-/-- The six instructions, in bus-code order: Lv42's five, then `SHA3` in `BLAKE2S`'s place. -/
+/-- The six instructions, in bus-code order: Lv42's five, then `SHA3` at opcode `5`. -/
 inductive Opcode
   | xor
   | mulNative
@@ -52,7 +52,7 @@ inductive Opcode
   | sha3
   deriving DecidableEq, Repr
 
-/-- The bus code: `g^0, …, g^5` in constructor order (`SHA3` takes `BLAKE2S`'s, `OP_SHA3 = 5`). -/
+/-- The bus code: `g^0, …, g^5` in constructor order (`OP_SHA3 = 5`). -/
 def Opcode.code : Opcode → K
   | .xor => gpow 0
   | .mulNative => gpow 1

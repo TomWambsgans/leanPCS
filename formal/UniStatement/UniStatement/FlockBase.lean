@@ -1,5 +1,5 @@
 -- Part of this repository. Moved from `formal/UniStatement`'s `UniStatement/Flock.lean`, which imports this module (the
--- declarations keep their names and namespace): its constants and weights that do not depend on the BLAKE2s block,
+-- declarations keep their names and namespace): its constants and weights that do not depend on the block,
 -- transcribed from `crates/leanvm/statement/src/flock_min.rs` and `flock.rs` (`PHI_BASIS`, `fixed_challenges`,
 -- `lagrange_weights`, `row_low_weights`), adapted there from leanVM (https://github.com/leanEthereum/leanVM), commit
 -- 42422001, `crates/verifier/src/flock.rs`. MIT OR Apache-2.0; see AGENTS.md.
@@ -12,7 +12,7 @@ public import UniStatement.Transcript
 
 The packing (`packing`, `kBits`), the PHI basis and points (`phi`, `fixedChallenges`), the skip's Lagrange weights
 (`lagrangeWeights`) and the packing weights (`rowLowWeights`): the parts of `UniStatement.Flock` that do not depend on
-the BLAKE2s block's size, which the Keccak-f block's terminal (`formal/KeccakFlock`) reads too.
+the block's size, which the Keccak-f block's terminal (`formal/KeccakFlock`) reads too.
 -/
 
 @[expose] public section

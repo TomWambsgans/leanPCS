@@ -16,7 +16,7 @@ below prove them (a bridge not yet proved is a hypothesis of the construction, b
 * **The tower** (`Tower.lean`): the ring-switch weight in tower order is `Σ_k d_k eq(φ^k(p), r)`
   (`TowerWeight`).
 * **The deployment's constants** (`Deployed.lean`): the verifier's basis is Cantor on its first `24`
-  vectors (`BetaCantor`), its coordinate functionals invert the Moore matrix at `BLAKE2S`'s height
+  vectors (`BetaCantor`), its coordinate functionals invert the Moore matrix at the reference height
   (`FunctionalsCorrect`), the stack layouts place each block aligned inside the stack and each `C1` and
   setup column as one limb (`LayoutAligned`, `C1Limbs`, `SetupLimbs`), the heap's blocks fill the
   leaves end to end, aligned (`HeapGood`), the setup's basis-`B` coefficients are its values'

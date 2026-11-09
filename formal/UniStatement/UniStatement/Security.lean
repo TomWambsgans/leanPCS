@@ -26,9 +26,6 @@ state, which every party queries forward and inverse; every hash of the protocol
 * **`C1`'s root and word** (`c1RootOf`, `c1Word`): the root the stream names and the leaves the unique preimages
   commit to under it.
 * The adversary's and the outcome's types (`UniAdversary`, `UniOutcome`).
-
-(The statements against leanVM 42422001's relation, with its `BLAKE2S` table and Flock's BLAKE2s circuit, were
-here; they are removed with `BLAKE2S`.)
 -/
 
 @[expose] public section

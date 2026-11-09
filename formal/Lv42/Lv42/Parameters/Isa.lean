@@ -23,8 +23,8 @@ Transcribed at leanVM
 pin `127510d14c98ade4e8a97646c44fa7f1ff5e752d`:
 
 * the opcode codes `g^0, …, g^4` in the order XOR, MUL_NATIVE, SET_CONSTANT, DEREF, JUMP
-  (`g^5`, BLAKE2S's, is the Keccak VM's `SHA3`): specification §6.4
-  (`doc/leanvm/body/06-bus-interactions.tex:95`) and `crates/leanvm_core/src/tables.rs:99-104` (`OP_XOR`, …, `OP_BLAKE2S`);
+  (`g^5` is the Keccak VM's `SHA3`): specification §6.4
+  (`doc/leanvm/body/06-bus-interactions.tex:95`) and `crates/leanvm_core/src/tables.rs:99-103` (`OP_XOR`, …, `OP_JUMP`);
 * the memory bounds `16 ≤ κ_mem ≤ 32`: specification §2 (`02-vm-specification.tex:49`) and
   §6.3 (`06-bus-interactions.tex:86`); `crates/leanvm_core/src/cpu/mod.rs:51-52`;
 * at most `2^32` rows per table and `2^32` bytecode instructions: specification §6.2, "Instance

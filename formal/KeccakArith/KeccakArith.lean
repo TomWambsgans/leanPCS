@@ -11,7 +11,7 @@ public import KeccakArith.AComplete
 /-!
 # KeccakArith: the Keccak VM's arithmetization
 
-The `SHA3` table of the Keccak VM (`KeccakVm.Sha3Table`) as a Clean component, in the form of Lv42's `BLAKE2S` table,
+The `SHA3` table of the Keccak VM (`KeccakVm.Sha3Table`) as a Clean component in the form of Lv42's tables,
 and its per-row soundness against `KeccakVm.executeWith` from `KeccakVm.KeccakAux`. See `README.md`.
 
 * `KeccakArith.Sha3Table`: the row (`Sha3Row`, the 86 columns), the component (`sha3Table`), its relation

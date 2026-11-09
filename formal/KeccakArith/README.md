@@ -2,9 +2,9 @@
 
 # KeccakArith: the Keccak VM's arithmetization
 
-The Keccak VM (`docs/leanvm/univariate/KECCAK.md`, `formal/KeccakVm`) is leanVM 42422001 with `BLAKE2S` replaced
-by `SHA3`. Its relation is `KeccakVm.KvHolds F prog s input q` (`M3Holds` of `keccakIsaInstance prog s` and
-`KeccakAux F prog s q`). This library gives the `SHA3` table the Clean component Lv42 gives its `BLAKE2S` table,
+The Keccak VM (`docs/leanvm/univariate/KECCAK.md`, `formal/KeccakVm`) is leanVM 42422001 with its hash instruction
+replaced by `SHA3`. Its relation is `KeccakVm.KvHolds F prog s input q` (`M3Holds` of `keccakIsaInstance prog s` and
+`KeccakAux F prog s q`). This library gives the `SHA3` table a Clean component in the form of Lv42's tables,
 proves what one `SHA3` row of a stack satisfying `KvHolds` means, and proves the relation's soundness
 (`kvSoundness`: `KvHolds` gives a valid execution) and completeness (`kvCompleteness`: a valid execution gives a
 stack satisfying `KvHonest`), by Lv42's arithmetization proofs ported to the Keccak VM. It is a library of
@@ -37,7 +37,7 @@ systemd-run --scope -p MemoryMax=12G lake build KeccakArith KeccakFlushes   # #g
     characterises the executor's thirteen-cell reads.
 - **Soundness and completeness of the component** are Clean's fields: soundness gives `Sha3Spec` (`Sha3Refines`
   over the image the prover data names) from `Sha3Relation` and the pull guarantees; completeness takes
-  `Sha3Bindings` (it does not check the permutation, as Lv42's `BLAKE2S` table does not check the compression).
+  `Sha3Bindings` (it does not check the permutation).
 - **Rows from executions**: `sha3RowOf mem pc fp om otail ocap oout cnt cntBc` reads the lanes back from the image
   (`lanesOf`, `cellsAt`); `sha3RowOf_refines`: a valid execution of `SHA3` is represented by it, with any counts.
 - **The M3 table**: `sha3M3 := (⟨sha3Table⟩ : Component K).toM3 channelSep channelDir counted`, as Lv42 reads its
@@ -84,7 +84,7 @@ The per-row layer of Lv42's soundness (`Lv42/Arithmetization/Soundness/Rows.lean
 - `exists_run_of_perm` (`Walk.lean`): Lv42's walk decomposition (specification Proposition 6.1) at `KeccakVm.step`
   and `KeccakVm.run`.
 - Completeness side (`Sha3Table.lean`): `sha3Row_complete` and `sha3_exec_complete`, the constraints of `main` hold
-  of `sha3RowOf` of a valid `SHA3` execution in the row environment (Lv42's `blake2s_exec_complete`).
+  of `sha3RowOf` of a valid `SHA3` execution in the row environment.
 
 Axioms: every theorem above depends on `[propext, Classical.choice, Quot.sound]` (the `#guard_msgs` in
 `KeccakArith.lean`).
@@ -113,7 +113,7 @@ Lv42's `Arithmetization/Soundness/*` and `Protocol/LeanIsa/{Bus,Relation,Sound}.
 
 - `Ensemble.lean`: the Keccak VM's Clean ensemble `kEnsemble prog` (Lv42's five tables, `sha3Table`, Lv42's memory and
   bytecode blocks, the verifier `kVerifier prog`), and its statement `SatisfiedBy prog input w`, Lv42's with
-  `Sha3RowsValid` (every `SHA3` row satisfies `Sha3Relation`) for the BLAKE2s validity and the Keccak VM program's
+  `Sha3RowsValid` (every `SHA3` row satisfies `Sha3Relation`) and the Keccak VM program's
   bytecode rows (`kBytecodeRowOf`); `AssignmentRepresents` at `KeccakVm.Trace`.
 - `SBus.lean` … `SStateWalk.lean`: the rows' records (`OpRecs`, from `KOpRow`), the memory and bytecode channels
   (`lookup_sound`, at most `26 · 6 · 2^32` reads), no row at the sentinel, the state walk (`exists_run_of_perm`), and
@@ -127,8 +127,8 @@ Lv42's `Arithmetization/Soundness/*` and `Protocol/LeanIsa/{Bus,Relation,Sound}.
 
 ## Completeness (`CSkel`, `CBus`, `CWitness`, `CSatisfied`, `CTheorem`, `AComplete`)
 
-After Lv42's `Arithmetization/Completeness/*` and `Protocol/LeanIsa/Complete.lean` (removed from `formal/Lv42` with
-`BLAKE2S`; their instruction-set-independent parts are the `*Base` modules), at the Keccak VM:
+After leanerVM's `Arithmetization/Completeness/*` and `Protocol/LeanIsa/Complete.lean` (their
+instruction-set-independent parts are `formal/Lv42`'s `*Base` modules), at the Keccak VM:
 
 - `CSkel.lean`: the run's skeletons (`runSkels`, `runRows`, `count_eq_runRows`), the cells an instruction reads
   (`readAddrs`: `SHA3`'s 26 cells), the row of an executing instruction (`rowOf`, `SHA3`'s `sha3RowOf`) and
@@ -145,7 +145,7 @@ After Lv42's `Arithmetization/Completeness/*` and `Protocol/LeanIsa/Complete.lea
 ## Helpers
 
 - `BusBasics.lean`: what a list of sends carries on a channel (`chanOf`, `sendsOf_*`), ISA-independent, copied from
-  Lv42's `Completeness/{Bus,Satisfied}.lean` so that the Keccak files need nothing of Lv42's BLAKE2s ensemble.
+  leanerVM's `Arithmetization/Completeness/{Bus,Satisfied}.lean`.
 - `formal/KeccakVm/KeccakVm/Lemmas.lean`: Lv42's program, step and run lemmas at the Keccak VM's machine
   (`Program.fetch_gpow`, `run_add`, `Trace.regs`, …), and the decoder of its bytecode entries (`decode_entry`,
   `entry_injective`).

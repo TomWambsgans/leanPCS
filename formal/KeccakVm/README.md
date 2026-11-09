@@ -2,7 +2,7 @@
 
 # KeccakVm: the Keccak VM's statement
 
-The Keccak VM (`docs/leanvm/univariate/KECCAK.md`) is leanVM 42422001 with its `BLAKE2S` instruction replaced by
+The Keccak VM (`docs/leanvm/univariate/KECCAK.md`) is leanVM 42422001 with its hash instruction replaced by
 leanVM `9d50c92a3`'s `SHA3`. This library is its statement: the instruction set, and the relation its univariate
 verifier would prove knowledge of, in the form `formal/Lv42` gives leanVM 42422001's. It holds definitions (and
 `KeccakVm/Lemmas.lean`, the machine's lemmas); the theorems about it are in the libraries below. It is a library of
@@ -49,8 +49,8 @@ lake env lean ../UniStatement/UniStatementTest/KeccakTables.lean    # the verifi
     at most 2 (`flushExprs_degreeBound`, by `decide +kernel`). The 27 `cnt` columns are its counts;
   - Lv42's boundary blocks, public lines and stacking, with the Keccak VM's bytecode entries;
   - zero padding rows, and no `FlockRegion`.
-- **Every column is committed, the lanes included.** In Lv42, the `BLAKE2S` limbs are read off the Flock column.
-  This cannot be done for `in_16`, which is its port word plus `END_BIT`, an affine reading that a `Layout` cannot
+- **Every column is committed, the lanes included.** The lanes are not read off the Flock column: `in_16` is its
+  port word plus `END_BIT`, an affine reading that a `Layout` cannot
   express. The lanes are tied to the Flock column by `KeccakAux` instead, as the univariate verifier's `Q_W` ties
   its copies.
 - **`KeccakFlockSpec`**, the Keccak-f block as a parameter, as Lv42's instance takes a `FlockSpec`. It has:
@@ -69,7 +69,7 @@ lake env lean ../UniStatement/UniStatementTest/KeccakTables.lean    # the verifi
 
 ## The verifier's tables (`formal/UniStatement/UniStatement/KeccakTables.lean`)
 
-- `tablesKeccak` holds `tables`' five tables, and the `SHA3` table in `BLAKE2S`'s place (`sha3Columns`,
+- `tablesKeccak` holds `tables`' five tables, and the `SHA3` table at opcode `5` (`sha3Columns`,
   `flushesSha3`).
 - `keccakSlot` places input lane `l` at port word `4l + 2` and output lane `l` at `4l`; `keccakSlotOffset` is the
   offset (`END_BIT` for `in_16`); `keccakR1csLogSize` is 17.

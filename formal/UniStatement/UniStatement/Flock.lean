@@ -10,7 +10,7 @@ public import UniStatement.TablesBase
 public import UniStatement.FlockBase
 
 /-!
-# BLAKE2s by Flock (`flock_min.rs`, `ring_tower.rs`, SPEC.md §7 and §13, `SPEC-FLOCK.md`)
+# Flock (`flock_min.rs`, `ring_tower.rs`, SPEC.md §7 and §13, `SPEC-FLOCK.md`)
 
 **A swappable module.** The verifier calls `Flock.verify` (extension W) or `Flock.verifyDeferred` (the
 point-claim ABI) between `γ` and the `C2` root, reading only its own messages; it returns the point of
@@ -48,7 +48,7 @@ namespace UniStatement.Flock
 
 open LeanVM.Parameters LeanVM.Semantics
 
-/-- `BLAKE2S_CONSTANT_COLUMN`. -/
+/-- The constant column of leanVM 42422001's hash block. -/
 def constantColumn : ℕ := 512
 
 /-- What becomes of the lincheck's 64 slices (`Slices`). -/

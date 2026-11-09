@@ -7,11 +7,8 @@ transcript, the domain, the tables, the heap, the claims, Flock's verifier, the 
 the run on calldata, `PCS_OPEN` and the contract's IV, the commitments' encodings and the deployment. It was written
 for leanVM 42422001 (iteration 2, `leanvm-univariate` `ad49e74`) and is now the shared part of the Keccak VM's
 verifier: [`formal/UniKeccak`](../UniKeccak/README.md) instantiates it (the `Variant`, the `SHA3` table of
-`KeccakTables.lean`) and states the end theorems against `KeccakVm.KvHolds`. The BLAKE2s VM's statements
-(`UniKnowledgeSoundness`, `UniCompleteness` against Lv42's six-table relation), its extractor and the map onto Lv42's
-stack were removed with `BLAKE2S`; a few unused BLAKE2s-era definitions remain (`Rec.lean`'s
-`Flock.blake2s{Iv,Sigma,GLanes,RowValues}`, `Tables.lean`'s `blake2sSlots`). No `sorry`, no `native_decide`; the
-root's guards (`UniStatement.lean`) check the verifier's axioms.
+`KeccakTables.lean`) and states the end theorems against `KeccakVm.KvHolds`. No `sorry`, no
+`native_decide`; the root's guards (`UniStatement.lean`) check the verifier's axioms.
 
 It is a library of `formal/EndToEnd` (`UniStatement`, `srcDir = "../UniStatement"`), sharing that workspace's built
 `lean_vm` packages (leanerVM `6175f1a0`), `Lv42` and `PcsQuotient` (`formal/Statement`), whose definitions it reuses:
@@ -58,8 +55,7 @@ lake env lean ../UniStatement/UniStatementTest/KeccakTables.lean    # the Keccak
 15. [`Rec.lean`](UniStatement/Rec.lean) (the recursion's inner proofs, `leanvm-rec` 4247e37; not imported by
     `UniStatement.lean`, so that nothing above is rebuilt): **`FsShape`** (`main`, `rec1`, `rec2`, `rec3`: the Rust's
     `Main`, `Rec`, `Rec2`, `Rec3`) and **`walk`** (`Slices::TowerWalk`), parameters of `Fs` copies of the functions
-    they change (`Flock.zerocheckFs`, `frontFs`, `verifyFs`, `verifyDeferredFs`, the new `verifyWalkedFs` with
-    `walkedTerminal` and the BLAKE2s circuit's walk `blake2sRowValues`; `batchFs` with the narrow challenges
+    they change (`Flock.zerocheckFs`, `frontFs`, `verifyFs`, `verifyDeferredFs`; `batchFs` with the narrow challenges
     `sampleNarrow` and the paired rounds `sumcheckPairsDrawn`, `pairPoint`, `cantorBeta1`; `reduceWithFs`,
     `runWithFs`, `runFs`, `verifyWithFs`; the IV for a variant `contractIvForWith`), `main` and no walk the default.
     At the default each is the original (`…Fs_main`, `reduceWithFs_main`, `runWithFs_main`, `runFs_main`), so the
@@ -68,7 +64,7 @@ lake env lean ../UniStatement/UniStatementTest/KeccakTables.lean    # the Keccak
     `contractIvFor reference (.flock flockMain) .rec3 true programIv referenceRoots`, its three calls `pcsCalls`;
     `UniKeccak` instantiates it for the Keccak VM (`keccakRec3`).
 16. [`KeccakTables.lean`](UniStatement/KeccakTables.lean) (the Keccak VM, `docs/leanvm/univariate/KECCAK.md`; not
-    imported by `UniStatement.lean`): `tablesKeccak` (the `SHA3` table in `BLAKE2S`'s place: `sha3Columns`,
+    imported by `UniStatement.lean`): `tablesKeccak` (the `SHA3` table at opcode `5`: `sha3Columns`,
     `flushesSha3`, on `formal/KeccakVm`'s cell layout `KeccakVm.sha3CellLanes`), `keccakSlot`, `keccakSlotOffset`,
     `keccakR1csLogSize`. `UniStatementTest/KeccakTables.lean` checks every table, column, slot, offset and flush form
     against the Rust's `tables_keccak()` (`crates/leanvm/statement/tests/lean_keccak_tables.rs`). the `Variant`'s
@@ -83,14 +79,14 @@ lake env lean ../UniStatement/UniStatementTest/KeccakTables.lean    # the Keccak
 | `transcript.rs`: `sumcheck`, `sumcheck_round_poly` | `sumcheck`, `roundPoly` |
 | `multilinear.rs`: `eq_kernel`, `eq_eval`, `multilinear_eval`, `poly_eval`, `log2_ceil`, `dot` | `eqKernel`, `eqEval`, `multilinearEval`, `polyEval`, `log2Ceil`, `dot` |
 | `domain.rs`: `beta`, `point`, `point_e`, `digits`, `coordinate_functionals`, `coordinates_at`, `prefix_vanishing`, `suffix_vanishing`, `vanishing_ratio`, `prefix_vanishing_from_bits`, `coset_offset`, `active_positions`, `is_active`, `active_vanishing_from_bits` | the same names in camel case |
-| `layout.rs`: `Form`, `Flushes::{pair, state_derived, state_step, counted, bytecode, memory, memory_cols}`, `flushes_*`, `tables`, `count_columns`, `BLAKE2S_SLOTS`, `SEP_*` | `Form`, `Flushes.*`, `flushes*`, `tables`, `Table.countColumns`, `blake2sSlots`, `sep*` |
+| `layout.rs`: `Form`, `Flushes::{pair, state_derived, state_step, counted, bytecode, memory, memory_cols}`, `flushes_*`, `tables`, `count_columns`, `SEP_*` | `Form`, `Flushes.*`, `flushes*`, `tables`, `Table.countColumns`, `sep*` |
 | `heap.rs`: `HeapLayout::new`, `Leaves`, `Block` | `HeapLayout.new`, `Leaves`, `Block` |
 | `claims.rs`: `Commitment`, `Column` (and `id`), `Term`, `Relation`, `Combined`, `Relations::{push, equal, combine}` | the same; `combine` |
 | `stacks.rs`: `StackLayout::{new, words, limbs}`, `EqCache::{row, row_from, selector}`, `limb_basis`; `verifier.rs`: `weight_at`, `RING_TWIST` | `StackLayout.new`, `words`, `limbs`, `rowEq`, `selector`, `limbBasis`, `weightAt` (no cache, no shared work; the same values), `ringTwist` |
 | `flock_min.rs`: `verify`, `verify_deferred`, `front`, `ring_end`, `known_weights`, `Pending::{new, rounds, has_slices, terminal, combination}`, `zerocheck`, `row_low_weights`, `reduce_terminal`, `Variant`, `Slices` (with `Tower`), `End` | `Flock.verify`, `Flock.verifyDeferred`, `Flock.front`, `Flock.ringEnd`, `Flock.knownWeights`, `Flock.Pending.*`, `Flock.zerocheck`, … |
 | `flock.rs`: `phi`, `fixed_challenges`, `lagrange_weights`, `ring_map`, `ring_switch_weight` (leanVM's order) | `Flock.phi`, …, `Flock.ringMap`, `Flock.ringSwitchCoefficients` |
 | `ring_tower.rs`: `ring_map`, `Tower::{theta, leaves}`, `conjugate`, `into_subfield`, `target`, `coefficients`, `weight_at` | `Flock.towerRingMap`, `Flock.towerTheta`, `Flock.towerLeaves`, `Flock.conjugate`, `Flock.intoSubfield`, `Flock.towerTarget`, `Flock.towerCoefficients`, `Flock.towerWeightAt` |
-| `verifier.rs`: `Shape` (`heights`, `heap`, `constraint_vars`, `validate`, `least_rows`), `degree`, `factor_columns`, `sent_columns`, `linearise`, `tuple_degree`, `chunks`, `quotient_terms`, `table_part`, `layouts`, `stack_layouts`, `batch`, `reduce`, `Reduced`, `Opening`, `Claims`, `Blake2s`, `FLOCK_*` | `Shape` (the heights), `Shape.validate`, `Shape.leastRows`, `degree`, `factorColumns`, `sentColumns`, `linearise`, `tupleDegree`, `chunks`, `quotientTerms`, `tablePart`, `layoutsOf`, `layouts`, `batch`, **`reduceWith`** (its steps 0, 5 and 6 as `countBits`, `constraintRelation`, `heapRelations`), `Reduced`, `Opening`, `ClaimsMode`, `Blake2s`, `flock*` |
+| `verifier.rs`: `Shape` (`heights`, `heap`, `constraint_vars`, `validate`, `least_rows`), `degree`, `factor_columns`, `sent_columns`, `linearise`, `tuple_degree`, `chunks`, `quotient_terms`, `table_part`, `layouts`, `stack_layouts`, `batch`, `reduce`, `Reduced`, `Opening`, `Claims`, `FLOCK_*` | `Shape` (the heights), `Shape.validate`, `Shape.leastRows`, `degree`, `factorColumns`, `sentColumns`, `linearise`, `tupleDegree`, `chunks`, `quotientTerms`, `tablePart`, `layoutsOf`, `layouts`, `batch`, **`reduceWith`** (its steps 0, 5 and 6 as `countBits`, `constraintRelation`, `heapRelations`), `Reduced`, `Opening`, `ClaimsMode`, `flock*` |
 | `contract.rs`: `rust_verifier`, `NAME`, `SetupRoots::REFERENCE`, `shape_bytes`, `layout_word`, `layout_words`, `contract_iv`, `calls` (`opening_words`, `combined_words`); `machine.rs`: `element_word`; `shapes.rs`: `WORKLOADS`, `PROGRAM_IV`, `Shape::of` | `runWith`/`run`, `name`, `referenceRoots`, `shapeBytes`, `layoutWord`, `layoutWords`, `contractIvWith`/`contractIv`, `pcsCalls` (`openingWords`, `combinedWords`), `elementWord`; `workloads`, `programIv`, `shapeOf`/`shapeWith` |
 | `machine.rs`: `PCS_OPEN`'s ABI (mocked, `attesting_all`) | `pcsOpenWith` = `PcsQuotient.openingWith` on `plainLayout` (the layout word's `vars`) |
 | `contract.rs`: the five calls (C1, C2, setup, A0, B0) | `verifyWith` |
@@ -108,7 +104,8 @@ holds row counts, of which only `⌈log₂ rows⌉` is read: `shapeWith`); the r
 
 ## The setup constants as data
 
-* The measured shapes (`measured`, `workloads`: the BLAKE2s VM's, 32 to 2,000 signatures; the Keccak VM's reference shape is `UniKeccakSound.keccakRefShape`), the program's IV
+* The measured shapes (`measured`, `workloads`: 32 to 2,000 signatures; the Keccak VM's reference shape is
+  `UniKeccakSound.keccakRefShape`), the program's IV
   (`programIv`), the transcript's name (`name`), the bytecode's `2^19` instructions.
 * The layouts (`layoutsOf shape`: `C1`, `C2`, setup; `C2`'s columns `Shape.c2Columns`) and the heap
   (`Shape.heap`) are functions of the shape, as in the Rust; the test compares the run's with them, their
@@ -126,7 +123,7 @@ holds row counts, of which only `⌈log₂ rows⌉` is read: `shapeWith`); the r
 The verifier is tested through `UniKeccak`'s runner (`UniKeccakTest/Runner.lean`, 90/90 vectors of
 `crates/leanvm/univariate/tests/lean_keccak_vectors.rs` agree with the Rust on every value, the real Keccak proofs'
 `PCS_OPEN` inputs word for word) and `UniStatementTest/KeccakTables.lean` (the Keccak VM's tables against
-`tables_keccak()`). The BLAKE2s VM's runner (150 vectors at `ad49e74`) was removed with it.
+`tables_keccak()`).
 
 ## Open points
 

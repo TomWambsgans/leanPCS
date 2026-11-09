@@ -10,8 +10,8 @@ import Lv42.Arithmetization.Completeness.RowsBase
 /-!
 # Lv42's tables on `C1`: the shared lemmas
 
-What the Keccak line (`UniKeccakSound`) uses of the removed BLAKE2s VM's link from the verifier's checks on `C1` to
-Lv42's relation:
+The link from the verifier's checks on `C1` to Lv42's relation, the parts the Keccak line (`UniKeccakSound`)
+uses:
 
 * **`rowPosition` stays in its table** (`rowPosition_lt`): Lv42's row `x < 2^⌈log₂ count⌉` sits at `C1`'s row
   `rowPosition count r x < 2^r`, whatever the count.
