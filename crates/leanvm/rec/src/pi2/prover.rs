@@ -1161,7 +1161,9 @@ pub fn prove_with(
         });
         (table, Some(w_b))
     };
-    let witness_committed = opening::commit(&witness);
+    // Kept with its codeword (twice the stack, 256 MB at `2^24` positions), as `Q`: its opening reads the rows its
+    // first queries open from it.
+    let witness_committed = opening::commit_keeping_codeword(&witness);
     writer.send_root(root_scalars(&witness_committed.root).map(to_e));
     let [alpha, beta_, gamma] = [(); 3].map(|_| to_f192(writer.sample()));
     lap("W: transform, commit", &mut timings);
