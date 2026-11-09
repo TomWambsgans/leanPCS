@@ -1,5 +1,7 @@
 // Vendored from leanVM (https://github.com/leanEthereum/leanVM), commit c445e3d51a5a85031df47240595698f3b24897bf, file crates/pcs/src/whir.rs.
 // MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and AGENTS.md at the repository root).
+// Added here: `config_for_schedule`, the configuration on another RS-domain schedule (`whir_config.rs`'s
+// `RECURSION_SCHEDULE`, this repository's `PCS_OPEN` version 3); `config_for_rate` is it on leanVM's, unchanged.
 // CREDIT: https://github.com/succinctlabs/flock (flock-core), MIT OR Apache-2.0.
 // Copyright (c) 2026 Bain Capital Crypto, LP and Ron Rothblum
 // Modifications copyright 2026 Succinct Labs, Benedikt Bunz, William Wang
@@ -53,9 +55,10 @@ use primitives::{
 };
 
 pub use super::whir_config::{
-    FinalBlockConfig, INITIAL_FOLDING_FACTOR, LOG_INV_RATE_0, LevelShapes, MAX_LOG_INV_RATE, MIN_LOG_INV_RATE,
-    ProverConfig, QUERY_GRINDING_BITS, RESIDUAL_MAX_LOG, RS_DOMAIN_INITIAL_REDUCTION_FACTOR, SECURITY_BITS,
-    SUBSEQUENT_FOLDING_FACTOR, WhirLevelConfig, WhirSecurityConfig, validate_log_inv_rate,
+    DEPLOYED_SCHEDULE, DomainSchedule, FinalBlockConfig, INITIAL_FOLDING_FACTOR, LOG_INV_RATE_0, LevelShapes,
+    MAX_LOG_INV_RATE, MIN_LOG_INV_RATE, ProverConfig, QUERY_GRINDING_BITS, RECURSION_SCHEDULE, RESIDUAL_MAX_LOG,
+    RS_DOMAIN_INITIAL_REDUCTION_FACTOR, SECURITY_BITS, SUBSEQUENT_FOLDING_FACTOR, WhirLevelConfig, WhirSecurityConfig,
+    validate_log_inv_rate,
 };
 #[cfg(test)]
 pub use super::whir_config::{default_config, udr_queries};
@@ -116,7 +119,12 @@ pub fn inner_product_base_ext(witness: &[F64], b: &[F192]) -> F192 {
 /// elements at L0 inverse-rate logarithm `log_inv_rate`, using the production
 /// 128-bit Johnson/OOD profile at `m = log_n + LOG_PACKING`.
 pub fn config_for_rate(log_n: usize, log_inv_rate: usize) -> Result<ProverConfig, String> {
-    let sec = WhirSecurityConfig::derive_config_with_log_inv_rate(log_n + crate::LOG_PACKING, log_inv_rate)?;
+    config_for_schedule(log_n, log_inv_rate, DEPLOYED_SCHEDULE)
+}
+
+/// [`config_for_rate`] on the ladder of another RS-domain schedule ([`RECURSION_SCHEDULE`], say). [Added here.]
+pub fn config_for_schedule(log_n: usize, log_inv_rate: usize, schedule: DomainSchedule) -> Result<ProverConfig, String> {
+    let sec = WhirSecurityConfig::derive_config_with_schedule(log_n + crate::LOG_PACKING, log_inv_rate, schedule)?;
     sec.to_config()
 }
 

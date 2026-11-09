@@ -9,6 +9,7 @@
 //! LANES_LANES   lanes carrying data, at most 64              [default 60: π2's Q]
 //! LANES_CLAIMS  claims (lane tensors)                        [default 2]
 //! LANES_KEEP    keep the codeword (`commit`) for the opening
+//! LANES_SCHEDULE  the ladder's RS-domain schedule, `initial,subsequent[,min_log_block]`  [default 3,1: the deployed one]
 //! BENCH_REPEAT, BENCH_TRACING
 //!
 //! cargo bench -p pcs --bench lanes
@@ -18,7 +19,7 @@ use std::hint::black_box;
 use std::time::Instant;
 
 use bench::{Plan, env_usize};
-use pcs::whir::{LaneTensor, commit, commit_tree_in, config_for_rate, recursive_prover_with_lane_tensors};
+use pcs::whir::{DomainSchedule, LaneTensor, commit, commit_tree_in, config_for_schedule, recursive_prover_with_lane_tensors};
 use primitives::field::{F64, F192};
 use primitives::test_rng::Rng;
 
@@ -32,7 +33,19 @@ fn main() {
     let lanes = env_usize("LANES_LANES", 60);
     let claims = env_usize("LANES_CLAIMS", 2);
     let keep = std::env::var_os("LANES_KEEP").is_some();
-    let config = config_for_rate(log_n, 1).expect("a WHIR shape");
+    let schedule = std::env::var("LANES_SCHEDULE").map_or(pcs::whir::DEPLOYED_SCHEDULE, |v| {
+        let parts: Vec<usize> = v.split(',').map(|x| x.trim().parse().expect("a number")).collect();
+        DomainSchedule {
+            initial: parts[0],
+            subsequent: parts[1],
+            min_log_block: parts.get(2).copied().unwrap_or(0),
+        }
+    });
+    let config = config_for_schedule(log_n, 1, schedule).expect("a WHIR shape");
+    println!(
+        "lanes: schedule {schedule:?}: rates {:?}, folds {} then {:?}, queries {:?}",
+        config.log_inv_rates, config.initial_k, config.level_ks, config.queries
+    );
     let log_lane = log_n - config.initial_k;
     let mut rng = Rng::new(0x1a7e5 ^ log_n as u64);
     let words: Vec<F64> = (0..lanes << log_lane).map(|_| F64(rng.next_u64())).collect();
