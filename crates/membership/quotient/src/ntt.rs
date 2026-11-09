@@ -1920,25 +1920,77 @@ pub fn interpolate_prefix_cols(data: &mut [&mut [F64]], sizes: &[usize], base: u
     // SAFETY (all uses): each call's ranges are disjoint from the others' live at once, inside `data[c]`.
     let range = |c: usize, at: usize, len: usize| -> &mut [F64] { unsafe { ptrs[c].slice(at, len) } };
     let n = data.len();
+    // Each block's inverse transform, which needs no other block's.
     for j in 0..sizes.len() {
         let (at, e) = (starts[j] - base, sizes[j]);
         let mut us: Vec<&mut [F64]> = (0..n).map(|c| range(c, at, 1 << e)).collect();
         coefficients_cols(&mut us, point(starts[j]));
-        let us: Vec<&[F64]> = us.into_iter().map(|u| &*u).collect();
-        for l in j + 1..sizes.len() {
-            let adds = on_coset_prefix_cols(&us, starts[l], sizes[l]);
-            let from = starts[l] - base;
-            const CHUNK: usize = 1 << 14;
-            let len = 1usize << sizes[l];
-            let per = len.div_ceil(CHUNK);
-            parallel::for_each(per * n, |t| {
-                let (c, k) = (t / per, t % per);
-                let (lo, hi) = (k * CHUNK, ((k + 1) * CHUNK).min(len));
-                let block = range(c, from + lo, hi - lo);
-                block.iter_mut().zip(&adds[c][lo..hi]).for_each(|(x, &y)| *x += y);
-            });
+    }
+    // `U_j` plus the earlier `U_i`'s folds onto block `j`.
+    for j in 1..sizes.len() {
+        let (at, e) = (starts[j] - base, sizes[j]);
+        let folds = earlier_folds(&starts, sizes, base, j);
+        let size = 1usize << e;
+        let rows = size.div_ceil(8);
+        let chunk = (rows / 128).clamp(1, 64);
+        let per = rows.div_ceil(chunk);
+        parallel::for_each(per * n, |t| {
+            let (c, k) = (t / per, t % per);
+            let (lo, hi) = (k * chunk, ((k + 1) * chunk).min(rows));
+            // SAFETY: the block's rows `lo..hi` of column `c` are this task's; the earlier blocks are only read.
+            unsafe { add_folds(ptrs[c].0, at, size, lo..hi, &folds) }
+        });
+    }
+    back_substitute(&ptrs, n, &starts, sizes, base, total);
+}
+
+/// The earlier blocks' folds onto block `j`: each block `i < j`'s first word (from `base`) and the weights of its
+/// `2^(e_i - e_j)` runs of `2^(e_j)` words ([`novel_weights`] onto block `j`'s coset).
+fn earlier_folds(starts: &[usize], sizes: &[usize], base: usize, j: usize) -> Vec<(usize, Vec<F64>)> {
+    let e = sizes[j];
+    (0..j)
+        .map(|i| (starts[i] - base, novel_weights(1 << (sizes[i] - e), starts[j], e)))
+        .collect()
+}
+
+/// Rows `rows` (of eight words, or the block's words if fewer) of the `size` words at `data + at` plus each fold's
+/// `Σ_h weights[h] data[from + h size + ·]`.
+///
+/// # Safety
+/// The words read and written are in the column, the rows written no other task's.
+unsafe fn add_folds(data: *mut F64, at: usize, size: usize, rows: std::ops::Range<usize>, folds: &[(usize, Vec<F64>)]) {
+    // SAFETY (all): the caller's.
+    unsafe {
+        if size < 8 {
+            for i in 0..size {
+                let mut acc = *data.add(at + i);
+                for (from, weights) in folds {
+                    for (h, &w) in weights.iter().enumerate() {
+                        acc += w * *data.add(from + h * size + i);
+                    }
+                }
+                *data.add(at + i) = acc;
+            }
+            return;
+        }
+        let words = data.cast::<u64>();
+        for r in rows {
+            let i = 8 * r;
+            let mut acc = load(words.add(at + i));
+            for (from, weights) in folds {
+                for (h, &w) in weights.iter().enumerate() {
+                    acc = xor(acc, mul(load(words.add(from + h * size + i)), splat(w.0)));
+                }
+            }
+            store(words.add(at + i), acc);
         }
     }
+}
+
+/// [`interpolate_prefix`]'s last step on columns: `Q_j = U_j + λ_j R_(j+1)` from the end.
+fn back_substitute(ptrs: &[SendPtr<F64>], n: usize, starts: &[usize], sizes: &[usize], base: usize, total: usize) {
+    // SAFETY (all uses): each call's ranges are disjoint from the others' live at once, inside the columns.
+    let range = |c: usize, at: usize, len: usize| -> &mut [F64] { unsafe { ptrs[c].slice(at, len) } };
     for j in (0..sizes.len().saturating_sub(1)).rev() {
         let (at, e) = (starts[j] - base, sizes[j]);
         let lambda = point(starts[j] >> e);
@@ -1985,35 +2037,12 @@ pub fn prefix_starts(sizes: &[usize], base: usize) -> Vec<usize> {
 /// `λ_j`, so the inverse transform there gives `U_j = Q_j + λ_j R_(j+1)`; on the later blocks `w_(e_j) = λ_j + 1`, so
 /// `R_(j+1) = R_j + U_j` there. Last, `Q_j = U_j + λ_j R_(j+1)` from the end, and `Q = [Q_0, Q_1, ...]` (since
 /// `X_(2^e + k) = w_e X_k`).
+///
+/// Block `j`'s values of `R_j` are its values of `Q` plus every earlier `U_i`'s there, so its inverse transform is that
+/// of `Q`'s values plus each `U_i`'s fold onto its coset (the inverse of [`on_coset_prefix`]): every block's transform
+/// on `Q`'s values first, then the folds added, no forward transform.
 pub fn interpolate_prefix(data: &mut [F64], sizes: &[usize], base: usize) {
-    let total: usize = sizes.iter().map(|&e| 1usize << e).sum();
-    assert_eq!(data.len(), total);
-    assert!(sizes.windows(2).all(|w| w[0] > w[1]) && base % (2 << sizes[0]) == 0);
-    let starts = prefix_starts(sizes, base);
-    for j in 0..sizes.len() {
-        let (at, e) = (starts[j] - base, sizes[j]);
-        let (head, tail) = data.split_at_mut(at + (1 << e));
-        let u = &mut head[at..];
-        coefficients(u, point(starts[j]));
-        for l in j + 1..sizes.len() {
-            let mut add = on_coset_prefix(u, starts[l], sizes[l]);
-            let from = starts[l] - starts[j] - (1 << e);
-            let block = &mut tail[from..from + (1 << sizes[l])];
-            parallel::chunks_mut_zip(block, &add, 1 << 14, |_, b, a| {
-                b.iter_mut().zip(a).for_each(|(x, &y)| *x += y)
-            });
-            add.clear();
-        }
-    }
-    for j in (0..sizes.len().saturating_sub(1)).rev() {
-        let (at, e) = (starts[j] - base, sizes[j]);
-        let lambda = point(starts[j] >> e);
-        let (q, rest) = data.split_at_mut(at + (1 << e));
-        let q = &mut q[at..at + rest.len()];
-        parallel::chunks_mut_zip(q, rest, 1 << 14, |_, q, r| {
-            q.iter_mut().zip(r).for_each(|(x, &y)| *x += lambda * y)
-        });
-    }
+    interpolate_prefix_cols(&mut [data], sizes, base);
 }
 
 /// Novel to `B` coefficients (or back), in place: `b_k = Σ_(j ⊆ k) a_j`. The low variables on blocks of 256 KiB
