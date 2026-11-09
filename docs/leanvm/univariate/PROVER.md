@@ -144,8 +144,11 @@ transcription's differential vectors.
    batch with an odd number of variables (the setup's `2^23` against `2^25`, say) zero-extends itself past its words'
    rounds. Then the stacks' values at the end point.
 10. **The openings** (`opening.rs`): one point claim per commitment, leanVM's WHIR (vendored from c445e3d5) at rate
-    `1/2`, its transcript seeded by a prefix that binds `PCS_OPEN`'s 32-byte layout word (version 2), whose `vars`
-    and `placed` the verifier reads.
+    `1/2`, its transcript seeded by a prefix that binds `PCS_OPEN`'s 32-byte layout word, whose `vars` and `placed`
+    the verifier reads. Version 3 (the layout word's byte 21): WHIR's deeper levels on the recursion's ladder
+    (`pcs::whir::RECURSION_SCHEDULE`: rates `1/2, 1/4, 1/8, …` after the rate-`1/2` level 0, not leanVM's `1/2,
+    1/16, 1/128, …`), so the levels past the first commit an eighth of what they did and the openings take about half
+    the time (`params/whir_params.py --recursion`; KECCAK.md's numbers); version 2 was leanVM's ladder.
 
 ## The skip kernels (`crates/vendor/flock-42422001/src/zerocheck/skip.rs`)
 

@@ -69,7 +69,10 @@ COPIES = 18  # BLAKE2S's limbs, committed again as univariate columns
 # `params/whir_params.py --large`). The code's eta search (whir_config.rs) gives smaller lists: it omits a
 # 2^(l-1) row-union factor.
 CERTIFIED_L0 = {24: 9952, 25: 7908, 26: 6296, 27: 4473, 28: 3564}
-# leanVM's WHIR, unchanged, per opening (the certified figure for these parameters).
+# leanVM's WHIR, per opening (the certified figure for these parameters). Since PCS_OPEN version 3 the recursion's
+# openings take another ladder past level 0 (`whir_params.py --recursion`): level 0 and its lists are the same, and
+# at these level-0 slacks every group of the deeper levels is at least 128.98 bits at 2^24 ..= 2^28 (128.88 at 2^23),
+# so the figure stands; those ladders are not in leanerVM's certTable (the script computes its checks).
 WHIR_BITS = 128.97
 OPENINGS = 5  # C1, C2, the setup, A0, B0
 

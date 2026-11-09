@@ -105,15 +105,15 @@ Gas is transaction gas without the 21,000 base (EIP-7623), `PCS_OPEN` at a claim
 
 | | ZK Merkle membership | leanVM by recursion (128 signatures) |
 |---|---|---|
-| Prover | 2.2 s (reduction 1.46 s, openings 0.76 s), 5.9 GiB, before the x86 work. h1 (Ryzen 7 PRO 8700GE, AVX-512), load 9–14: 3.6 s (reduction 2.46 s, openings 1.14 s), 6.2 GiB, against 8.4 s (6.45 s, 1.92 s) before. h2 (Core Ultra 7 265, AVX2), load 10: 2.3 s (1.5 s, 0.8 s), against 5.0 s | trace → π1-rec3 → π2 and openings: **0.69 s per proof** (π1 with its openings 0.39, π2 0.195 + 0.106 openings), 1.7 s per circuit once, 13.8 GB (`tests/pipeline.rs`; AMD EPYC 9355P, 64 threads, load 4–19, 2026-11-09; 2.18 s before, 3.1×). The Mac: 4.1 s before the work |
+| Prover | 2.2 s (reduction 1.46 s, openings 0.76 s), 5.9 GiB, before the x86 work. h1 (Ryzen 7 PRO 8700GE, AVX-512), load 9–14: 3.6 s (reduction 2.46 s, openings 1.14 s), 6.2 GiB, against 8.4 s (6.45 s, 1.92 s) before. h2 (Core Ultra 7 265, AVX2), load 10: 2.3 s (1.5 s, 0.8 s), against 5.0 s | trace → π1-rec3 → π2 and openings: **0.69 s per proof** (π1 with its openings 0.39, π2 0.195 + 0.106 openings), 1.7 s per circuit once, 13.8 GB (`tests/pipeline.rs`; AMD EPYC 9355P, 64 threads, load 4–19, 2026-11-09; 2.18 s before, 3.1×); with `PCS_OPEN` version 3 about 80 ms less (π2's openings 0.054 s, π1's 0.033 s; best passes 0.68 → 0.59 s at load 20–42), 12.0 GB. The Mac: 4.1 s before the work |
 | Calldata | 252 B | 1,004 B |
-| Gas | 14,289 execution, **18,309** transaction | 27,641 execution, **43,009** transaction (64,256 under EIP-7976) |
+| Gas | 14,289 execution, **18,309** transaction | 27,641 execution, **42,973** transaction (64,256 under EIP-7976; 43,009 before `PCS_OPEN` version 3, the calldata's zero bytes) |
 | Claims | 4 in 3 calls | 7 in 6 calls |
 | Deployment | 6,308-byte code, 1,426,798 gas | one contract of 13.2 KB |
 
 - Membership, at a claim price c: 18,309 / 26,309 / 38,309 / 98,309 gas for c = 0 / 2,000 / 5,000 / 20,000. Its
   verifier: reduction < 1 ms, openings 5 ms (248 / 278 / 333 KiB).
-- leanVM: at 400 signatures, 43,777 transaction gas. π1 alone as a contract costs 358,957 transaction gas at 128
+- leanVM: at 400 signatures, 43,729 transaction gas (43,777 before version 3). π1 alone as a contract costs 358,957 transaction gas at 128
   signatures (8,020 B calldata, 3 claims). **Capacity**: `q_flock` is `2^11` words a permutation, so `C1` reaches
   WHIR's `2^28` words at about 470 signatures (1,000 do not fit, `tests/keccak_vm.rs`).
 
@@ -158,7 +158,11 @@ permutation; `formal/EndToEnd` proves them ([`formal/README.md`](formal/README.m
   `RecGraph`, `RecStatement`, `RecCompose`, ...). π2's PIOP is now π2v2; `formal/RecPiop`, `RecStatement` and
   `RecCompose` state π2v1, and what changes for them (and `tests/lean_pi2_prover.rs`' output) is listed in
   [`PI2.md`](docs/leanvm/rec/PI2.md) §10. π1 and π2's circuit are unchanged.
-- **Modelled, not proved.** WHIR's openings are at leanVM's ≈ 129-bit certificate each. `params/leanvm_univariate_params.py`
+- **Modelled, not proved.** WHIR's openings are at leanVM's ≈ 129-bit certificate each. Since `PCS_OPEN` version 3
+  the recursion's six openings take another ladder past level 0 (rates `1/2, 1/4, 1/8, …`, `pcs::whir::RECURSION_SCHEDULE`;
+  `params/whir_params.py --recursion`): the same eta search and 128-bit checks, and leanerVM's certificate groups,
+  computed by the script, at least 128.98 bits past level 0 at `2^24 … 2^28` (128.88 at `2^23`); those ladders are not
+  in leanerVM's `certTable`. The membership line keeps version 2. `params/leanvm_univariate_params.py`
   and `params/leanvm_rec_params.py` still model the old BLAKE2s π1 at 1,000 signatures; π2's rounds there are π2v2's
   (D16v: PIOP 141.3 bits, its weakest round `t`).
 
@@ -182,11 +186,12 @@ permutation; `formal/EndToEnd` proves them ([`formal/README.md`](formal/README.m
   fixed BLAKE2s-era roots (`SetupRoots::a0`, `b0`) and two fixed layout words, kept so the committed vectors stay
   valid (dropping them means regenerating the vectors).
 - Possible gas saving: absorb the membership index root in the byte order `PCS_OPEN` takes (−132 gas).
-- The recursion prover (0.66 s a proof on 64 threads): WHIR's deeper levels at a gentler rate ladder (leanVM's is
-  fixed, 1/16, 1/128, …; one rate bit a level would cut the openings' levels 1+, about 60–80 ms a proof, but changes
-  `PCS_OPEN`'s WHIR and needs leanerVM's certificate redone); a lower-degree `SHA3` leaf by committing its seven
-  address products `fp·o` in `C1` (54.5 → 28.5 pieces; measured on the batched quotients, about 11 ms a proof, with
-  the same stream length and Keccak-f count: a π1 format change not yet worth it).
+- The recursion's WHIR ladder (`PCS_OPEN` version 3) in Lean: leanerVM's `Whir.ladder` and `certTable` for its
+  schedule (`shapeOK`), `formal/WhirBridge`'s Large* and `RecCompose`'s openings at its counts and version, the
+  layout words' version byte in `UniKeccak` and `RecStatement`.
+- The recursion prover: a lower-degree `SHA3` leaf by committing its seven address products `fp·o` in `C1` (54.5 →
+  28.5 pieces; measured on the batched quotients, about 11 ms a proof, with the same stream length and Keccak-f
+  count: a π1 format change not yet worth it).
 
 ## Provenance and licensing
 
@@ -198,7 +203,10 @@ leanEthereum) and is licensed, like leanVM, under the MIT license ([`LICENSE-MIT
   formalizes): `crates/vendor/leanvm-c445e3d5/*`, unchanged but for a header line, except: `verifier/src/lib.rs`
   makes the WHIR verifier public; `pcs`'s `src/whir.rs`, `src/whir_ntt_ext.rs` and `src/ntt/additive_ntt_f64.rs` add
   low-memory paths (the last also fixes an aliasing bug of the in-place encodes); `primitives/src/hash.rs` and
-  `fiat_shamir/src/lib.rs` carry test-only trace hooks behind a `trace` feature. Prover speedups, the same commitments
+  `fiat_shamir/src/lib.rs` carry test-only trace hooks behind a `trace` feature. A second WHIR ladder, for the
+  recursion's openings (`PCS_OPEN` version 3), leanVM's unchanged: `pcs`'s `src/whir_config.rs` (the RS-domain
+  schedule a parameter, `RECURSION_SCHEDULE`) and `src/whir.rs` (`config_for_schedule`), `verifier/src/whir.rs`
+  (`Ladder::Recursion`, its query table, `verify_whir_on`, `ladder`). Prover speedups, the same commitments
   and proofs (each file's header lists them): `pcs`'s `src/whir.rs`, `src/whir_induce.rs`,
   `src/ntt/additive_ntt_f64.rs` (the encode into the kept codeword in place, the gathers, the induces, the E rounds, a
   commit that keeps its codeword) and `benches/lanes.rs` (new); `primitives/src/hash.rs` (the AVX-512 batched

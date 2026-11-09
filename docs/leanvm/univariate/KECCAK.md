@@ -107,7 +107,7 @@ rejected. π2v1's figures in brackets.
 |---|---:|---:|
 | calldata | 1,004 B (58 zero) [980 B] | 1,004 B (59 zero) [980 B] |
 | execution | 27,641 [28,325] | 28,421 [29,105] |
-| transaction, EIP-7623, `c` = 0, without the base | **43,009** [43,309] | 43,777 [44,113] |
+| transaction, EIP-7623, `c` = 0, without the base | **42,973** [43,309] (43,009 before `PCS_OPEN` version 3: zero bytes) | 43,729 [44,113] (43,777) |
 | transaction, EIP-7976 | 64,256 [62,720] | 64,256 |
 
 The prover rows below are π2v1's on the Mac, before the speedups of 2026-11-09 (next paragraph).
@@ -134,7 +134,11 @@ proof and openings 0.39 s (1.47 s, with π2's compile on the critical path), π2
 openings run (0.62 s compiled), π2's proof 0.195 s (0.54 s), its openings 0.106 s (0.16 s); per circuit 1.7 s once
 (π2's circuit and witness plan 1.15 s); peak RSS 13.8 GB (12.65 GB). Without the π2v2 protocol change (the same proofs
 as before), 0.81 s (2.7×). π1 alone (`keccak_prover_benchmark`): 0.40 s, 0.94 s before. leanVM `9d50c92a3`'s own
-prover on the same machine: 0.19 s.
+prover on the same machine: 0.19 s. With `PCS_OPEN` version 3 (WHIR's deeper levels at rates `1/4, 1/8, …` after
+the rate-`1/2` level 0, not `1/16, 1/128, …`: `PROVER.md` item 10, `PI2.md` §8; interleaved against version 2 at load
+14–42): π1's three openings 0.064 → 0.033 s (π1 0.385 → 0.354 s in its quieter runs, peak 7.2 → 6.2 GB), π2's
+0.108 → 0.054 s, the pipeline about 80 ms less a proof (best passes 0.678 → 0.590 s; medians of 40 passes under that
+load 0.857 → 0.637 s), peak 12.0 GB; the opening proofs about 27% longer (at 128 signatures π1's 354, 344 and 276 KB).
 
 π2 holds π1 in `2^24` positions: the structured terminal is 3K operations, so the arithmetic regions nearly vanish.
 The layout's padding (`leanvm_rec::circuit::layout::pad_counts`, and `formal/RecCircuit`'s `padCounts`) looks past

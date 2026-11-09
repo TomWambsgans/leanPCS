@@ -25,15 +25,15 @@ cargo test --release -p leanvm_rec --test pi2 -- --ignored --nocapture gas_repor
 
 | | 128 signatures (reference) | 400 signatures |
 |---|---:|---:|
-| calldata (zero bytes) | 1,004 B (58) | 1,004 B (59) |
+| calldata (zero bytes) | 1,004 B (61) | 1,004 B (63) |
 | execution | **27,641** | 28,421 |
 | code | 13,219 B, one contract | 13,639 B |
 | claims / calls | 7 / 6 | 7 / 6 |
-| **EIP-7623** | **43,009** (floor 38,420) | 43,777 |
-| with the 21,000 base | 64,009 | 64,777 |
+| **EIP-7623** | **42,973** (floor 38,330) | 43,729 |
+| with the 21,000 base | 63,973 | 64,729 |
 | EIP-7976 | 64,256 | 64,256 |
 
-At `c = 0` the standard price binds (`16 · 946 + 4 · 58 + 27,641`). The contract at the reference shape: 753
+At `c = 0` the standard price binds (`16 · 943 + 4 · 61 + 27,641`; the proofs of `PCS_OPEN` version 3, §8: 58 zero bytes and 43,009 before). The contract at the reference shape: 753
 `FIELD_MUL`s, 818 `XOR`s, 6 Keccak-256 (1,208 B), 230 words of memory, 210 words written for `PCS_OPEN`; the straight
 build is the deployable one. The execution depends on the circuit alone: `real_gas` and `tests/keccak_vm_rec.rs`
 measure it on a sample stream (4 zero bytes: 43,657 at 128 signatures, 44,437 at 400).
@@ -71,6 +71,15 @@ Since then (2026-11-09, the same box, `tests/pi2_bench.rs`, median of 5, load 10
 codewords until their openings (+1.8 GB in the pipeline), `Q`'s stack is the setup's from one proof to the next, the
 transforms are `quotient::ntt`'s multi-column ones, and the copy sum is checked as `h`'s top coefficient. End to end,
 the pipeline takes 0.69 s a proof (π2's proof 0.195 s, its openings 0.106 s; `KECCAK.md`).
+
+**`PCS_OPEN` version 3** (§8: WHIR's deeper levels on the recursion's ladder; 2026-11-09, the same box, interleaved
+against the version-2 build, load 14–42 from other jobs): π2's openings 0.100 → 0.048 s in their quiet passes (`W`
+0.009 → 0.006, `Q` 0.079 → 0.033, setup 0.012 → 0.008; `pi2_bench`, medians 0.100–0.109 → 0.047–0.055 s), their
+proofs 284,920 / 314,200 / 296,680 → 347,320 / 405,432 / 365,224 bytes; π1-rec3's three openings 0.064 → 0.033 s
+(`keccak_prover_benchmark`), 272,272 / 267,544 / 218,024 → 354,096 / 343,512 / 276,232 bytes. The pipeline, 8 runs of 5
+passes each: medians 0.857 → 0.637 s, best passes 0.678 → 0.590 s (π2's openings 0.108 → 0.054 s, π1's proof and
+openings 0.426 → 0.378 s), peak RSS 13.8 → 12.0 GB. The gas is the version's alone through the calldata's zero bytes:
+27,641 execution, 42,973 transaction (61 zero bytes; 43,729 at 400 signatures).
 
 ## 1. What π2 proves
 
@@ -129,9 +138,11 @@ digest ‖ the three layout words)` (`prover::iv`), a constant of the code; `Q`'
 
 `Q`'s chunk `c = 16 limb + 2 kind + digit`, the kinds `h = 000`, `q = 001`, `P = 010`, `q_P = 101` (bits `(k_0, k_1,
 k_2)` at the claim's coordinates `(ρ', ρ, z)`, below); `prover::quotient_chunks` lists them in the stack's order. The
-stacks are at least `2^24` words, the smallest leanerVM's certified parameters cover; the query ladders of every stack
-are pinned to `params/whir_params.py --large`'s (`stacks_take_the_certified_queries`). D32v's `W` (`2^23` words) sits on
-a `2^24` stack, half its lanes absent. Small test circuits take `2^15` stacks.
+stacks are at least `2^24` words, the smallest leanerVM's certified parameters cover at version 2; the openings are
+version 3's (§8: WHIR's deeper levels on the recursion's ladder), whose query ladders, at every stack size `2^15 …
+2^28`, are the prover's eta search's and the verifier's table's alike (`stacks_take_the_recursion_ladder`) and
+`params/whir_params.py --recursion`'s. D32v's `W` (`2^23` words) sits on a `2^24` stack, half its lanes absent. Small
+test circuits take `2^15` stacks.
 
 **The verifier at `t`** (`verifier::reduce`, generic over `Scalar`):
 
@@ -250,7 +261,7 @@ at role 15).
 
 - `lib`: an indicator is one on its coset and zero on `V_m`'s rest (every alignment and size); `Φ`'s basis (`w_r(ω_i)
   = ω_{i >> r}`, `w_m = w_{m-r} ∘ w_r`, `V_{m-r}`'s Lagrange basis sums to one off `V_m`); the inverse; the stacks'
-  WHIR query ladders are the certified ones.
+  WHIR ladders (version 3) are the verifier's at every stack size, and the layout words carry the version.
 - `tests/pi2.rs`, D16v and D32v synthetic circuits and the interface's own example (padded, through `adapt`):
   - the honest proof's four claims hold and its three openings verify;
   - witness mutations (random constrained positions): a false claim;
@@ -313,10 +324,24 @@ then after the union):
     reversed). π1's prover sends a root as its two WHIR scalars, so π1's stream carries `C1`'s and `C2`'s root words as
     they are, and the circuit's root ports pack the stream's bytes as they are (`circuit::compile`). π2's `W` and `Q`
     roots are in calldata so; π1's setup root `F` and π2's setup root are constants so;
-  - every layout word names its stack: π1's are `leanvm_univariate::contract::layout_word`'s (shape, code, variables,
-    words placed); π2's `prover::layout_word`'s, in the same format (the tag `"pi2"`, `log_n`, the codes `0x5601`
-    `W`, `0x5602` `Q`, `0x5603` setup, the variables, the words placed: `Q`'s `m + 6` and `12N` in π2v2). π2's IV
-    hashes these words;
+  - every layout word names its stack: π1's are `leanvm_univariate::contract::layout_word`'s (shape, version, code,
+    variables, words placed); π2's `prover::layout_word`'s, in the same format (the tag `"pi2"`, `log_n`, the version,
+    the codes `0x5601` `W`, `0x5602` `Q`, `0x5603` setup, the variables, the words placed: `Q`'s `m + 6` and `12N` in
+    π2v2). π2's IV hashes these words;
+  - **the version** (byte 21 of every layout word: 3) fixes WHIR's parameters: all six openings are version 3's,
+    leanVM's commitment (rate `1/2`, 64 lanes, so the roots are version 2's) and WHIR's deeper levels on the
+    recursion's ladder (`pcs::whir::RECURSION_SCHEDULE`, `verifier::whir::Ladder::Recursion`): after the 6-variable
+    fold of level 0 at rate `1/2`, 4-variable folds at rates `1/4, 1/8, 1/16, …` (one rate bit a level; leanVM's
+    ladder, version 2, takes three: `1/16, 1/128, …`), every block at least `2^8` positions; the same eta search and
+    128-bit checks give the counts (`2^28`: `225, 112, 75, 56, 45, 35` queries against version 2's `225, 56, 32, 23, 18,
+    14`). Each deeper codeword is an eighth of the one before (version 2: a half), the first an eighth of version 2's:
+    the levels past the first commit about 15% of what they did, and an opening proof is about 27% longer (548
+    queries against 368 at `2^28`). In leanerVM's certificate model (`Params/Check.lean`'s groups, computed by
+    `params/whir_params.py --recursion`, at the level-0 slacks of the certified table) every group of the deeper
+    levels is at least 128.98 bits at `2^24 … 2^28` (128.88 at `2^23`), level 0 being version 2's; those ladders are not
+    in `certTable` (a new table, checked by `shapeOK`, would certify them). `quotient::opening` opens π2's tables in
+    version 3 (`Version::V3`, the `_with` functions) and π1's `leanvm_univariate::prover::opening` is version 3; the
+    membership line keeps version 2. The contract's gas does not depend on the version (`PCS_OPEN`'s claims priced 0);
   - a precompile is a registry keyed by the layout word (`contract::registry`): π1's layouts are opened by
     `leanvm_univariate`'s opening, π2's three by `quotient::opening`; `Q`'s two claims stay in one call (one opening).
   - The mock decodes (`leanvm_statement::evm::machine::{decode, PcsOpen::decoding}`): an input attests only if it
@@ -432,3 +457,24 @@ What it touches:
   `Pi2Whir.lean` (`newOK_q` with `m + 6` variables), `Numbers.lean` (`pi2RoundErr_eq` at `3 · 2^24`), the stream's
   offsets (`FsDefs`' `sLen` 944 → 968, `p2Inputs`, `FsWalk`'s `p2Msgs_eq`: 18 scalars), `FsVerifier`'s layout words,
   `FactsSpec`'s zero coset, and the prover vectors (`tests/lean_pi2_prover.rs`' `STREAM`, `QROOT`).
+
+`PCS_OPEN` version 3 (§8) touches, beyond that, what the Lean side states of the openings and the layout words (no
+file of `formal/` is changed here):
+
+- `formal/WhirBridge` (`Large*`, `Verifier.lean`'s `version`): its theorems are about version 2 (leanVM's ladder, the
+  certified counts of `LargeParams.lean`), which the membership line keeps; the recursion's openings need the same for
+  the recursion's ladder (`verifier::whir::Ladder::Recursion`: the rates `1, 2, 3, …` with blocks of at least `2^8`
+  positions, `RECURSION_QUERIES`, the prefix's version 3), with leanerVM's `levelsSpec` (generic in the levels) and a
+  certificate table for that ladder in place of `Whir.ladder` / `certTable` (`params/whir_params.py --recursion`
+  computes its groups).
+- `RecCompose`: `Pi2Whir.lean` (π2's three openings: version 3's ladder and counts, and `Statement/PcsQuotient/
+  Opening.lean`'s `openingVersion` 3 in their prefix), `FsVerifier`'s layout words and π2's IV.
+- `RecStatement/Verifier.lean`'s `layoutWord` (byte 21 the version, 3), so π2's IV; `UniKeccak/Opening.lean`'s
+  `layoutWordsK` through `UniStatement`'s `layoutWord` (byte 21 the version), so π1's contract IV and the transcripts
+  of the committed vectors.
+- The differential vectors that change (run against the start commit): `crates/leanvm/univariate/tests/
+  lean_keccak_vectors.rs` (the `LAYOUTWORDS`, IV-dependent and `OPENING` lines, and the three real vectors'),
+  `crates/leanvm/rec/tests/lean_circuit_keccak.rs` (the graph's `iv` and π1's three calls' layout-word constants; the
+  circuit's constants and κ), `crates/leanvm/rec/tests/lean_pi2_prover.rs` (`IV`, `QROOT`, `STREAM`). Unchanged:
+  `lean_pad_counts.rs`, and the membership line's (`whir_bridge_vector.rs`, `whir_large_params.rs`,
+  `examples/statement_vectors.rs`, the contract graph `formal/Implementation/Graph.lean`).
