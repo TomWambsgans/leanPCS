@@ -1,6 +1,7 @@
 // Vendored from leanVM (https://github.com/leanEthereum/leanVM), commit 42422001, file crates/flock/src/zerocheck/bit_fold.rs.
 // Changed here: rows of 1, 2 and 4 bytes fold through the byte tables (for a univariate skip below 6); rows of 8
-// bytes or more fold as before. MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and AGENTS.md at the repository
+// bytes or more fold as before; with GFNI, the output transpose is a qword transpose and one byte permute a register,
+// and a fold can leave its values in limb-major registers in quad order (`fold_quads`). MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and AGENTS.md at the repository
 // root).
 //! Weighted sums of packed bit rows, the fold that turns witness bits into F192 values.
 //!
@@ -86,6 +87,20 @@ impl BitFold {
     /// Bytes per row.
     pub fn n_chunks(&self) -> usize {
         self.n_chunks
+    }
+
+    /// [`Self::fold_block`] as limb-major registers in quad order (`gfni::Imp::fold_quads`), rows of two bytes or
+    /// more.
+    #[cfg(all(
+        target_arch = "x86_64",
+        target_feature = "gfni",
+        target_feature = "avx512bw",
+        target_feature = "avx512vbmi"
+    ))]
+    #[inline]
+    pub(crate) fn fold_quads<const CHUNKS: usize>(&self, rows: &[[u8; CHUNKS]]) -> [[core::arch::x86_64::__m512i; 8]; 3] {
+        debug_assert_eq!(CHUNKS, self.n_chunks);
+        self.imp.as_ref().expect("the GFNI fold").fold_quads(rows)
     }
 
     /// Fold up to 64 consecutive rows into `out[..rows.len()]`.
@@ -194,12 +209,11 @@ pub(crate) mod gfni {
     //!     3. transpose   24 registers of output bytes  ->  64 F192 values
     //! ```
     //!
-    //! Both transposes are butterflies of two-register byte permutes.
-    //!
-    //! A stage swaps one bit of the byte offset inside a register with one bit of the register index.
+    //! The input transpose is butterflies of two-register byte permutes: a stage swaps one bit of the byte offset
+    //! inside a register with one bit of the register index. The output transpose is a qword transpose and a byte
+    //! permute per register ([`coefficients`]).
 
     use core::arch::x86_64::*;
-    use std::sync::LazyLock;
 
     use super::{BLOCK, F192};
 
@@ -250,30 +264,70 @@ pub(crate) mod gfni {
         }
     }
 
-    /// Stages taking eight registers of one output coefficient, register = byte `o` and offset = value `p`, to qwords.
-    ///
-    /// ```text
-    ///     after the stages     offset = (o, then p bits 0..3)     register = p bits 3..6
-    /// ```
-    ///
-    /// So register `k`, qword `l` is the coefficient of value `8k + l`.
-    static OUTPUT_STAGES: LazyLock<[Stage; 3]> = LazyLock::new(|| {
-        let to_qwords = |f: usize| (f >> 3) | ((f & 7) << 3);
-        [0, 1, 2].map(|s| Stage::swap(8 << s, 1 << s, |f| if s == 2 { to_qwords(f) } else { f }))
-    });
+    /// 24 registers of output bytes, register `o` holding byte `o` of 64 values, as each coefficient's eight registers
+    /// of qwords: `out[i][k]` qword `l` is coefficient `i` of value `8k + l`. An 8×8 transpose of qwords and a byte
+    /// permute a register, rather than three butterfly stages of two-register byte permutes (this repository's
+    /// change: a third fewer permutes, and single-register ones).
+    #[inline]
+    #[target_feature(enable = "avx512f", enable = "avx512vbmi")]
+    pub(crate) fn coefficients(acc: &[__m512i; OUT_BYTES]) -> [[__m512i; 8]; 3] {
+        // Byte `8 p + t` of a register to byte `8 t + p`.
+        // SAFETY: 64 bytes.
+        let swap = unsafe { _mm512_loadu_si512(SWAP.as_ptr().cast()) };
+        std::array::from_fn(|i| {
+            // Register `k` qword `p` is qword `k` of output byte `8 i + p`: bytes `t` of values `8 k + t`.
+            transpose_qwords(std::array::from_fn(|p| acc[8 * i + p])).map(|v| _mm512_permutexvar_epi8(swap, v))
+        })
+    }
+
+    /// Byte `8 t + p` takes byte `8 p + t`: the 8×8 byte transpose inside a register.
+    static SWAP: [u8; 64] = {
+        let mut s = [0u8; 64];
+        let mut i = 0;
+        while i < 64 {
+            s[i] = (8 * (i % 8) + i / 8) as u8;
+            i += 1;
+        }
+        s
+    };
+
+    /// Transpose an 8x8 matrix of qwords: qword `r` of `out[c]` is qword `c` of `r[r]` (as `primitives`' `x8`).
+    #[inline]
+    #[target_feature(enable = "avx512f")]
+    fn transpose_qwords(r: [__m512i; 8]) -> [__m512i; 8] {
+        let t: [__m512i; 8] = std::array::from_fn(|i| {
+            let (a, b) = (r[i & !1], r[i | 1]);
+            if i % 2 == 0 {
+                _mm512_unpacklo_epi64(a, b)
+            } else {
+                _mm512_unpackhi_epi64(a, b)
+            }
+        });
+        let u: [__m512i; 8] = std::array::from_fn(|i| {
+            let (h, s, o) = (i / 4, (i / 2) % 2, i % 2);
+            let (a, b) = (t[4 * h + o], t[4 * h + 2 + o]);
+            if s == 0 {
+                _mm512_shuffle_i64x2::<0x88>(a, b)
+            } else {
+                _mm512_shuffle_i64x2::<0xDD>(a, b)
+            }
+        });
+        std::array::from_fn(|c| {
+            let (a, b) = (u[c % 4], u[4 + c % 4]);
+            if c < 4 {
+                _mm512_shuffle_i64x2::<0x88>(a, b)
+            } else {
+                _mm512_shuffle_i64x2::<0xDD>(a, b)
+            }
+        })
+    }
 
     /// Store 24 registers of output bytes, register `o` holding byte `o` of 64 values, as those 64 values.
     #[inline]
     #[target_feature(enable = "avx512f", enable = "avx512vbmi")]
     pub(crate) fn store_f192(acc: &[__m512i; OUT_BYTES], out: &mut [F192; BLOCK]) {
         // Per coefficient, eight registers of output bytes become eight registers of qwords.
-        let [mut c0, mut c1, mut c2]: [[__m512i; 8]; 3] =
-            std::array::from_fn(|i| std::array::from_fn(|o| acc[8 * i + o]));
-        for stage in OUTPUT_STAGES.iter() {
-            stage.apply(&mut c0);
-            stage.apply(&mut c1);
-            stage.apply(&mut c2);
-        }
+        let [c0, c1, c2] = coefficients(acc);
 
         // Interleave the three coefficients of values 8k..8k+8 into 24 consecutive qwords.
         //
@@ -369,6 +423,8 @@ pub(crate) mod gfni {
         matrices: Vec<u64>,
         /// Stages taking row-major bytes to one register per input byte.
         input: Vec<Stage>,
+        /// [`Self::input`] with the rows in quad order ([`Imp::fold_quads`]; this repository's addition).
+        quads: Vec<Stage>,
     }
 
     impl Imp {
@@ -398,6 +454,14 @@ pub(crate) mod gfni {
                     Stage::swap(1 << s, 1 << (s + skew), |f| if last { plain(f) } else { f })
                 })
                 .collect();
+            // Offset `32 h + 8 j + i` holds row `32 h + 4 i + j`: position `j` of quad `8 h + i`.
+            let quad_order = |f: usize| (f & 32) | (f & 7) << 2 | (f >> 3 & 3);
+            let quads = (0..n_stages)
+                .map(|s| {
+                    let last = s + 1 == n_stages;
+                    Stage::swap(1 << s, 1 << (s + skew), |f| if last { plain(quad_order(f)) } else { f })
+                })
+                .collect();
 
             // Register `r` then holds input byte `j(r)`: its bits are register bits skew.. then 0..skew.
             let byte_of_reg = |r: usize| (r >> skew) | ((r & ((1 << skew) - 1)) << (c - skew));
@@ -406,7 +470,7 @@ pub(crate) mod gfni {
             let matrices = (0..n_chunks)
                 .flat_map(|r| unsafe { weight_matrices(&bytes[byte_of_reg(r)]) })
                 .collect();
-            Self { matrices, input }
+            Self { matrices, input, quads }
         }
 
         #[inline]
@@ -422,15 +486,39 @@ pub(crate) mod gfni {
             unsafe { self.fold_full::<CHUNKS>(rows, out) };
         }
 
+        /// [`Self::fold_block`]'s 64 values as limb-major registers, with no interleave: `out[i][4 h + j]` qword `l`
+        /// is coefficient `i` of row `32 h + 4 l + j` (position `j` of quad `8 h + l`, for products in lanes; this
+        /// repository's addition). Rows of at least two bytes.
+        #[inline]
+        pub(crate) fn fold_quads<const CHUNKS: usize>(&self, rows: &[[u8; CHUNKS]]) -> [[__m512i; 8]; 3] {
+            assert!(CHUNKS >= 2 && rows.len() <= BLOCK);
+            // SAFETY (x2): the module is compiled only with these target features enabled.
+            if rows.len() < BLOCK {
+                let mut padded = [[0u8; CHUNKS]; BLOCK];
+                padded[..rows.len()].copy_from_slice(rows);
+                return unsafe { coefficients(&self.fold_bytes::<CHUNKS>(&padded, &self.quads)) };
+            }
+            let rows: &[[u8; CHUNKS]; BLOCK] = rows.try_into().expect("a full block");
+            unsafe { coefficients(&self.fold_bytes::<CHUNKS>(rows, &self.quads)) }
+        }
+
         #[inline]
         #[target_feature(enable = "avx512f", enable = "avx512bw", enable = "avx512vbmi", enable = "gfni")]
         fn fold_full<const CHUNKS: usize>(&self, rows: &[[u8; CHUNKS]; BLOCK], out: &mut [F192; BLOCK]) {
+            // Phase 3: back to one F192 per row.
+            store_f192(&self.fold_bytes::<CHUNKS>(rows, &self.input), out);
+        }
+
+        /// Phases 1 and 2 of the fold, the rows as `input` orders them.
+        #[inline]
+        #[target_feature(enable = "avx512f", enable = "avx512bw", enable = "avx512vbmi", enable = "gfni")]
+        fn fold_bytes<const CHUNKS: usize>(&self, rows: &[[u8; CHUNKS]; BLOCK], input: &[Stage]) -> [__m512i; OUT_BYTES] {
             // Phase 1: CHUNKS registers of 64 bytes, row-major, then one register per input byte.
             let base = rows.as_ptr().cast::<u8>();
             // SAFETY: the block is 64 * CHUNKS bytes, exactly CHUNKS registers.
             let mut regs: [__m512i; CHUNKS] =
                 std::array::from_fn(|i| unsafe { _mm512_loadu_si512(base.add(64 * i).cast()) });
-            for stage in &self.input {
+            for stage in input {
                 stage.apply(&mut regs);
             }
 
@@ -450,9 +538,7 @@ pub(crate) mod gfni {
                     acc[o] = _mm512_gf2p8affine_epi64_epi8::<0>(regs[0], _mm512_set1_epi64(matrices[0][o] as i64));
                 }
             }
-
-            // Phase 3: back to one F192 per row.
-            store_f192(&acc, out);
+            acc
         }
     }
 }
