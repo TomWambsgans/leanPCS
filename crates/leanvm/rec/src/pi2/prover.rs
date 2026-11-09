@@ -1230,21 +1230,14 @@ pub fn prove_with(
             let h = t * d.inv();
             (h0[i], h1[i], h2[i]) = (F64(h.c0), F64(h.c1), F64(h.c2));
         }
-        let limb_sum = |l: &[F64]| {
-            parallel::map_reduce(
-                n / run,
-                || F64::ZERO,
-                |c| l[c * run..(c + 1) * run].iter().fold(F64::ZERO, |a, &x| a + x),
-                |a, b| a + b,
-            )
-        };
-        let sum = F192::new(limb_sum(h0).0, limb_sum(h1).0, limb_sum(h2).0);
+        // The four columns' transforms in the same dispatches.
+        ntt::coefficients_cols(&mut [&mut *h0, &mut *h1, &mut *h2, &mut *p], F64::ZERO);
+        // `Σ_V h` is `h`'s top novel coefficient (the claim `Q` opens at `(1^m, 0, …)`), read rather than summed.
+        let sum = F192::new(h0[n - 1].0, h1[n - 1].0, h2[n - 1].0);
         assert!(
             !check || sum == F192::ZERO,
             "the copy argument's sum is not zero: the witness does not satisfy the circuit"
         );
-        // The four columns' transforms in the same dispatches.
-        ntt::coefficients_cols(&mut [&mut *h0, &mut *h1, &mut *h2, &mut *p], F64::ZERO);
         lap("h, P on V_m, their coefficients", &mut timings);
         quotient_on_extension(
             circuit,
