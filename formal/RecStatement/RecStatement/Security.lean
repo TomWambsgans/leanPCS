@@ -197,7 +197,7 @@ structure RecDeployment where
   pi1Stream : (ℕ → K) → Array UInt8
   flock : KeccakVm.KeccakFlockSpec
 
-/-- **π1's contract IV** at π1's setup roots, over Keccak-f[1600] (`contract_iv_for` at `Blake2s::Keccak(KECCAK_REC3)`,
+/-- **π1's contract IV** at π1's setup roots, over Keccak-f[1600] (`contract_iv_for` at `KECCAK_REC3`,
 `UniKeccak.contractIvK … keccakRec3`): π1-rec3's Fiat–Shamir is the circuit's, which computes Keccak-f[1600]. -/
 def RecDeployment.pi1IvAt (D : RecDeployment) (roots : UniStatement.SetupRoots) : List UInt8 :=
   pi1Iv D.pi1.shape D.pi1.programIv roots

@@ -1,5 +1,5 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Transcribed, in the Rust's operation order, from
--- `crates/leanvm/univariate/src/verifier.rs` (`reduce` with `Blake2s::Keccak`, `weight_at`, `batch`), `stacks.rs`
+-- `crates/leanvm/univariate/src/verifier.rs` (`reduce`, `weight_at`, `batch`), `stacks.rs`
 -- (`EqCache`) and `contract.rs` (`record_verifier`, `calls`).
 import RecGraph.Pi1.Verifier
 import RecGraphKeccak.Pi1.Flock
@@ -9,7 +9,7 @@ import UniKeccak.Opening
 # The Keccak VM's π1-rec3 verifier as a program
 
 `reduce` at the reference workload's shape (`keccak128`, the Keccak VM at 128 signatures; the Rust's `leanvm_rec::REFERENCE`) with
-`Blake2s::Keccak(KECCAK_REC3)` and `Claims::Point`, on the recorder: `pi1Rec3K`. Against π1-rec3 on the BLAKE2s VM (the
+`KECCAK_REC3` and `Claims::Point`, on the recorder: `pi1Rec3K`. Against π1-rec3 on the BLAKE2s VM (the
 `reduce` this was ported from, since removed), what changes:
 
 * the tables are `tablesKeccak`, and Flock is `verifyWalkedK` (`log_n = 17 + h_SHA3`);
@@ -184,7 +184,7 @@ def batchK (combined : List (Commitment × CombinedS)) (layouts : List (Commitme
   requireZero (← add sum last)
   return openings.toList
 
-/-- **The Keccak VM's π1-rec3 verifier** (`reduce` with `Blake2s::Keccak(KECCAK_REC3)`, `Claims::Point`), on the
+/-- **The Keccak VM's π1-rec3 verifier** (`reduce` with `KECCAK_REC3`, `Claims::Point`), on the
 recorder, from the public input's words. -/
 def reduceK (shape : Shape) (publicWords : List Sym) : Prog ReducedS := do
   let heights := shape.heights

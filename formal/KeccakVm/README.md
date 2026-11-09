@@ -95,7 +95,7 @@ lake env lean ../UniStatement/UniStatementTest/KeccakTables.lean    # the verifi
   three standard axioms. `KeccakVm/Lemmas.lean` holds the machine lemmas they use (`Program.fetch_gpow`, `run_add`,
   `Trace.regs`, `decode_entry`, `entry_injective`).
 - **The univariate verifier** ([`formal/UniKeccak`](../UniKeccak/README.md)):
-  - `Blake2s::Keccak` transcribed, differential-tested on 90 vectors, the three real Keccak proofs among them;
+  - the `Variant` transcribed, differential-tested on 90 vectors, the three real Keccak proofs among them;
   - its statements against `KvHolds`: `UniKnowledgeSoundnessKeccak`, the Rec3 variant, completeness.
 
   They are proved in [`formal/UniKeccakSound`](../UniKeccakSound/README.md) and

@@ -1,5 +1,5 @@
 -- Part of this repository. Transcribed from `crates/leanvm/univariate/src/verifier.rs` (`reduce` with
--- `Blake2s::Keccak`, `qflock_slot`, `qflock_row_bits`, `vm_tables`, `stack_layouts_for`, `weight_at`, `batch`,
+-- the `Variant`, `qflock_slot`, `qflock_row_bits`, `vm_tables`, `stack_layouts_for`, `weight_at`, `batch`,
 -- `KECCAK_MAIN`, `KECCAK_REC3`) and `crates/leanvm/statement/src/flock_min.rs` (`verify_walked_with::<Keccak>`,
 -- `front_with`). The tables, flushes, fingerprints and public lines are leanVM 42422001's, the `SHA3` table leanVM
 -- 9d50c92a3's (https://github.com/leanEthereum/leanVM), read through `crates/leanvm/statement`. MIT OR Apache-2.0;
@@ -10,7 +10,7 @@ public import UniStatement.Rec
 public import UniKeccak.Terminal
 
 /-!
-# The Keccak VM's verifier (`reduce` with `Blake2s::Keccak`, `docs/leanvm/univariate/KECCAK.md`)
+# The Keccak VM's verifier (`reduce`, `docs/leanvm/univariate/KECCAK.md`)
 
 `reduceWithK F shape publicWords variant mode`, line by line `reduce` on the Keccak VM, reusing `UniStatement`'s
 `reduceWithFs` steps where they do not change. What changes:
@@ -215,7 +215,7 @@ def Shape.c2ColumnsK (shape : Shape) : List (Column × ℕ × Bool) :=
         let sizes := chunks (d + 1)
         (sizes.zip (List.range sizes.length)).map fun (e, chunk) ↦ (Column.leafQuotient index chunk, e, true)
 
-/-- **`layouts_for(shape, Blake2s::Keccak(..))`**: the Keccak VM's three stacks' layouts of a shape. -/
+/-- **`layouts_for(shape, variant)`**: the Keccak VM's three stacks' layouts of a shape. -/
 def layoutsOfK (shape : Shape) : List (Commitment × StackLayout) := layoutsK shape (Shape.c2ColumnsK shape)
 
 /-- **A combined claim's weight at the stack point `r`** on the Keccak VM (`weight_at`): `weightAt`, but a
@@ -284,7 +284,7 @@ def batchK (fs : FsShape) (combined : List (Commitment × Combined)) (layouts : 
   requireZero (m := m) (sum + last)
   return openings.toList
 
-/-- **The Keccak VM's verifier** over the permutation `F` (`reduce` with `Blake2s::Keccak(variant)`, SPEC.md §4–§8,
+/-- **The Keccak VM's verifier** over the permutation `F` (`reduce` with `variant`, SPEC.md §4–§8,
 §13, `KECCAK.md`): `publicWords` are the public input's four 64-bit words, low first; the row counts are read from
 the stream. -/
 def reduceWithK (shape : Shape) (publicWords : List E) (v : KeccakVariant) (mode : ClaimsMode) :
@@ -376,7 +376,7 @@ def reduceWithK (shape : Shape) (publicWords : List E) (v : KeccakVariant) (mode
     | .point => batchK F fs combined stackLayouts ringMap
   return ⟨(root1, root2), openings, none, relations.size, stackVars, stackLayouts⟩
 
-/-- **The Keccak verifier on calldata** over `F` (`rust_verifier` with `Blake2s::Keccak`): the seed of the IV (the
+/-- **The Keccak verifier on calldata** over `F` (`rust_verifier`): the seed of the IV (the
 contract's, `contractIvKWith`) and the public input, the walk, nothing of the stream left. -/
 def runWithK (shape : Shape) (iv publicInput : List UInt8) (stream : Array UInt8) (v : KeccakVariant)
     (mode : ClaimsMode) : m Outcome := do

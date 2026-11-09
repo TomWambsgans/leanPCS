@@ -5,7 +5,7 @@
 The recursion's π2 proves a circuit compiled from the **recorded operation graph** of π1's verifier. This library is
 the Keccak VM's instance of `formal/RecGraph` (the graphs, the recorder, the shared verifier pieces and the simulation
 framework; the BLAKE2s VM's graph and proof, which this was ported from, are removed) for the Keccak VM
-(`docs/leanvm/univariate/KECCAK.md`): its π1 verifier (`Blake2s::Keccak`,
+(`docs/leanvm/univariate/KECCAK.md`): its π1 verifier (the `Variant`,
 `KECCAK_REC3`: skip 3, `FsShape::Rec3`, `Slices::TowerWalk`, point claims) at the reference workload, the Keccak VM
 at **128 signatures** (leanVM 9d50c92a3; rows XOR, MUL, SET, DEREF, JUMP, SHA3 `[24260, 36229, 24626, 35812, 15509,
 17712]`, 721,598 memory cells: memory `2^20`, bytecode `2^18`; `Pi1.keccak128 = UniKeccak.keccakShapeOf 721598 [..]`,

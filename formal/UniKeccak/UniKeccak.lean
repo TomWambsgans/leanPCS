@@ -11,7 +11,7 @@ public import UniKeccak.Security
 /-!
 # UniKeccak: the univariate verifier for the Keccak VM
 
-`Blake2s::Keccak`'s verifier (`crates/leanvm/univariate/src/verifier.rs`, `KECCAK.md`) transcribed as computable Lean
+π1's verifier (`crates/leanvm/univariate/src/verifier.rs`, `KECCAK.md`) transcribed as computable Lean
 (`reduceWithK`, `runK`, `verifyWithK`: the main line `keccakMain` and π1-rec3's shape `keccakRec3`), and its end
 statements against the Keccak VM's relation `KeccakVm.KvHolds F` (`UniKnowledgeSoundnessKeccak`,
 `UniKnowledgeSoundnessKeccakRec3`, `UniCompletenessKeccak`, `UniCompletenessKeccakRec3`), the Keccak-f block `F` a

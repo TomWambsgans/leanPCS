@@ -1,7 +1,7 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Transcribed from `crates/leanvm/rec/src/pi2/contract.rs`
 -- (`read_indices`, `number`, `root_word`, `call_words`, `expected_calls`), branch `leanvm-rec` @ 2b22581; π1's contract
 -- IV is `formal/UniKeccak`'s (`contractIvKWith`, `variantBytesK`: `crates/leanvm/univariate/src/contract.rs`'s
--- `variant_bytes`, `contract_iv_for` with `Blake2s::Keccak`). `PCS_OPEN`'s ABI is `crates/membership/evm/src/machine.rs`'s
+-- `variant_bytes`, `contract_iv_for`). `PCS_OPEN`'s ABI is `crates/membership/evm/src/machine.rs`'s
 -- (`crates/leanvm/statement/src/evm/machine.rs`: `element_word`, `root_word`).
 import RecStatement.Verifier
 import UniKeccak.Opening
@@ -19,7 +19,7 @@ value)`, 32-byte words), in this order (`contract::call_words`):
 2. **`W`'s** (one claim; its root the stream's 32 bytes), **the setup's** (one claim; its root a constant,
    `root_word` of the setup's root: each 16-byte half reversed), **`Q`'s** (two claims in one call: one opening).
 
-**π1's contract IV** (`contract_iv_for` at `Blake2s::Keccak(KECCAK_REC3)`, `UniKeccak.contractIvKWith`): the Keccak-256
+**π1's contract IV** (`contract_iv_for` at `KECCAK_REC3`, `UniKeccak.contractIvKWith`): the Keccak-256
 of the tag, the program IV, π1's three setup roots (`F`, and the deployment's constants `A0`, `B0`), the shape's bytes,
 the Keccak VM's five layout words (`layoutWordsK`), then the variant's bytes: `"keccak-vm"`, the skip `3` and the
 Fiat–Shamir shape's code `3` (`Rec3`).
@@ -79,7 +79,7 @@ def streamLen (c : Circuit) : ℕ := (c.reads.map (·.bytes)).sum + 64 + 24 * (2
 
 /-! ## π1's contract IV -/
 
-/-- **`variant_bytes(Blake2s::Keccak(KECCAK_REC3))`**: `"keccak-vm"`, the skip (`3`), the Fiat–Shamir shape's code
+/-- **`variant_bytes(KECCAK_REC3)`**: `"keccak-vm"`, the skip (`3`), the Fiat–Shamir shape's code
 (`3`, `Rec3`) (`UniKeccak.variantBytesK`). -/
 def rec3VariantBytes : List UInt8 := UniKeccak.variantBytesK UniKeccak.keccakRec3
 
@@ -87,7 +87,7 @@ section With
 
 variable {m : Type → Type} [Monad m] (F : KeccakState → m KeccakState)
 
-/-- **`contract_iv_for(shape, Blake2s::Keccak(KECCAK_REC3), program_iv, roots)`** over `F`: the Keccak π1-rec3's
+/-- **`contract_iv_for(shape, KECCAK_REC3, program_iv, roots)`** over `F`: the Keccak π1-rec3's
 contract IV (`UniKeccak.contractIvKWith … keccakRec3`). -/
 def pi1IvWith (s : UniStatement.Shape) (programIv : List UInt8) (roots : UniStatement.SetupRoots) :
     m (List UInt8) :=

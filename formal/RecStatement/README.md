@@ -79,7 +79,7 @@ stale.)
 | `prover.rs`: `quotient_chunks`, `layouts`, `layout_word`, `layout_words`, `iv`, `Setup::new`'s table | `quotientChunks`, `layoutsOf`, `layoutWord`, `layoutWords`, `ivWith`/`iv`, `Pi2Circuit.setupStack` |
 | `contract.rs`: `read_indices`, `number`, `root_word`, `call_words`/`expected_calls`, `registry`; `machine.rs`: `decode`, `root_of_word` | `elementIndices`, `UniStatement.numberWord`, `rootWordOfBytes`, `pcsCalls`, `registryOf`, `decodeWith`, `rootOfWord` |
 | `transcript.rs`: `cantor_beta1`, `pair_point`; `circuit/spec.rs`: `CallWord` | `cantorBeta1` (`UniStatement.cantorBeta1`), `pairPoint`, `CallWord` |
-| `leanvm_univariate/contract.rs`: `variant_bytes`, `contract_iv_for` (at `Blake2s::Keccak(KECCAK_REC3)`) | `rec3VariantBytes`, `pi1IvWith` (`UniKeccak.variantBytesK`, `contractIvKWith`) |
+| `leanvm_univariate/contract.rs`: `variant_bytes`, `contract_iv_for` (at `KECCAK_REC3`) | `rec3VariantBytes`, `pi1IvWith` (`UniKeccak.variantBytesK`, `contractIvKWith`) |
 
 **Deviations, none changing a value**: a `List` stands for a `Vec`, an out-of-range read gives a default (the Rust
 would panic; it never does on the circuits tested); the Rust skips a product by a coefficient equal to one, a zero

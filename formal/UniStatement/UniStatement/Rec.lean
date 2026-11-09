@@ -1,51 +1,28 @@
 -- Part of this repository. Transcribed from `crates/leanvm/statement/src/transcript.rs` (`FsShape`, `squares`,
 -- `NARROW_BITS`, `narrow`, `Channel::sample_narrow`, `sumcheck_drawn`, `cantor_beta1`, `pair_point`,
--- `pair_round_poly`, `sumcheck_pairs_drawn`), `flock_min.rs` (`zerocheck`'s draw, `Slices::TowerWalk`,
--- `verify_walked`, `walked_terminal`), `flock.rs` (`blake2s_row_values`, `RowValues`, adapted there from leanVM
--- (https://github.com/leanEthereum/leanVM), commit 42422001), `hash.rs` (`BLAKE2S_IV`, `BLAKE2S_SIGMA`,
--- `BLAKE2S_G_LANES`, leanVM's), `crates/leanvm/univariate/src/verifier.rs` (`reduce`'s `α` draw and walked Flock,
--- `batch`'s rounds) and `contract.rs` (`variant_bytes`, `contract_iv_for`), at `leanvm-rec` 4247e37. MIT OR
--- Apache-2.0; see AGENTS.md.
+-- `pair_round_poly`, `sumcheck_pairs_drawn`), `flock_min.rs` (`zerocheck`'s draw) and
+-- `crates/leanvm/univariate/src/verifier.rs` (`batch`'s rounds). MIT OR Apache-2.0; see AGENTS.md.
 module
 
 public import UniStatement.Opening
 
 /-!
-# π1's Fiat–Shamir shapes for the recursion: π1-rec, π1-rec2, π1-rec3
+# π1's Fiat–Shamir shapes for the recursion
 
-`docs/leanvm/rec/SPEC-REC.md` §1.4 and §12 (items 4, 6–8), `SPEC-POINTS.md`. The recursion's inner proof π1 is the
-main line with its Fiat–Shamir shape changed (`FsShape`, a parameter here, **`main` by default**) and, from π1-rec2
-on, Flock's lincheck terminal checked by π1's verifier itself (`walk`, `Slices::TowerWalk`):
+`docs/leanvm/rec/SPEC-REC.md` §1.4, `SPEC-POINTS.md`. The recursion's inner proof π1-rec3 is the main line with its
+Fiat–Shamir shape changed (`FsShape`, a parameter here, **`main` by default**):
 
-| Rust | `Blake2s` | `fs` | `walk` |
-|---|---|---|---|
-| `FLOCK_MAIN` (the main line) | `.flock flockMain` | `.main` | `false` |
-| `FLOCK_REC` (π1-rec) | `.flock flockMain` | `.rec1` | `false` |
-| `FLOCK_REC2` (π1-rec2) | `.flock flockMain` | `.rec2` | `true` |
-| `FLOCK_REC3` (π1-rec3, the recursion's) | `.flock flockMain` | `.rec3` | `true` |
-
-* **Squares** (`.rec1`, `.rec2`, `.rec3`; `FsShape::draw`): the bus's `α = (c, c², c⁴, c⁸)` of one challenge `c`, and
-  Flock's zerocheck eq coordinates after the seven fixed ones `c', c'², c'⁴, …` of one challenge `c'` (`drawRun`).
-* **The walked terminal** (`walk`, `Slices::TowerWalk`: the main line's `tower` slices, and the terminal walked):
-  Flock's lincheck terminal `r_lc` is checked against `walkedTerminal`, leanVM's forward walk of the BLAKE2s circuit
-  on the sent slices (`blake2sRowValues`: `A0 w`, `B0 w`), collected as a zero (`FlockMatrixTerminal`). No matrices'
-  reduction, no `a`, `b`, no claims on `A0`, `B0`: three calls, `C1`, `C2`, the setup, all at the batch's point.
-* **Narrow challenges** (`.rec2`, `.rec3`): the batching sumcheck's challenges are the hash's low 160 bits
-  (`sampleNarrow`: limb 2 cut to 32 bits, `narrowE`).
+* **Squares** (`FsShape::draw`): the bus's `α = (c, c², c⁴, c⁸)` of one challenge `c`, and Flock's zerocheck eq
+  coordinates after the seven fixed ones `c', c'², c'⁴, …` of one challenge `c'` (`drawRun`, `Flock.zerocheckFs`).
+* **Narrow challenges**: the batching sumcheck's challenges are the hash's low 160 bits (`sampleNarrow`: limb 2 cut
+  to 32 bits, `narrowE`).
 * **Paired rounds** (`.rec3`): the batch two variables a round (`sumcheckPairsDrawn`): pair `j`'s round polynomial
   `G_j` of degree `4 · 2` sent but `c_3` (`pairRoundPoly`: `Σ_(x ∈ V_2) G_j(x) = Σ_(e > 0, 3 | e) c_e`), one narrow
   challenge `z_j`, the point's two coordinates `pairPoint z_j = (z + β_1 (z² + z), z² + z)` (`cantorBeta1`); with
-  the variables odd, a last plain round.
-* **The IV binds the variant** (`variantBytes`, `contractIvForWith`): with a shape other than
-  `main`, the tag `fs-rec`, `fs-rec2` or `fs-rec3`, the skip and the slices' code are appended to the IV's preimage.
+  the variables odd, a last plain round (`batchFs`).
 
-**The existing definitions are unchanged**: every function that changes has a parameterised copy here, named with
-`Fs` (`Flock.zerocheckFs`, `Flock.frontFs`, `Flock.verifyFs`, `Flock.verifyDeferredFs`, `batchFs`, `reduceWithFs`,
-`runWithFs`, `runFs`, `verifyWithFs`; and the new `Flock.verifyWalkedFs`), its body the original's but for the
-draws, the walk and the batch's rounds. At `fs = .main`, `walk = false` each is the original (`…_main`, by `rfl`
-after a case split on the configuration), so the proofs about the main line (`UniSound`, `UniComplete`) keep their
-meaning and are not rebuilt. The verifier the recursion's π2 proves is `runFs reference iv publicInput stream
-(.flock flockMain) .point .rec3 true`, and with its three openings `verifyWithFs … .rec3 true`.
+At `fs = .main` each parameterised function is the original (`zerocheckFs_main`, `batchFs_main`). The Keccak VM's
+verifier (`UniKeccak`) uses these at `.rec3` for π1-rec3.
 -/
 
 @[expose] public section
@@ -172,64 +149,7 @@ def sumcheckPairsDrawn (claim : E) (degree vars : ℕ) (narrow : Bool) : ChanM m
 
 end With
 
-/-! ### The BLAKE2s circuit's walk (`flock.rs`'s `blake2s_row_values`, π1-rec2's terminal) -/
-
 namespace Flock
-
-/-- A 32-bit word of the walk: its bits' values. -/
-abbrev WalkWord := Array E
-
-/-- `RowValues::slots(base)`: the column weights at `base .. base + 32`. -/
-def walkSlots (cw : Array E) (base : ℕ) : WalkWord := Array.ofFn (n := 32) fun b ↦ cw.getD (base + b.val) 0
-
-/-- `RowValues::literal(value)`: the constant column's weight at each set bit of `value`. -/
-def walkLiteral (cw : Array E) (value : ℕ) : WalkWord :=
-  Array.ofFn (n := 32) fun b ↦ if value.testBit b.val then cw.getD constantColumn 0 else 0
-
-/-- `xor(x, y)`. -/
-def walkXor (x y : WalkWord) : WalkWord := Array.ofFn (n := 32) fun b ↦ x.getD b.val 0 + y.getD b.val 0
-
-/-- `rotate_right(word, amount)`. -/
-def walkRotr (w : WalkWord) (amount : ℕ) : WalkWord := Array.ofFn (n := 32) fun b ↦ w.getD ((b.val + amount) % 32) 0
-
-/-- **`RowValues::add(x, y, carry_base)`**: the 31 carry rows of `x + y` (left `x_i + c`, right `y_i + c`, the carry
-`c` the sum of the carry slots below `i`), and the sum's bits. -/
-def walkAdd (cw left right : Array E) (x y : WalkWord) (carryBase : ℕ) : Array E × Array E × WalkWord := Id.run do
-  let mut left := left
-  let mut right := right
-  let mut carry : E := 0
-  let mut output : Array E := Array.replicate 32 0
-  for bit in [0:32] do
-    if bit < 31 then
-      left := left.set! (carryBase + bit) (x.getD bit 0 + carry)
-      right := right.set! (carryBase + bit) (y.getD bit 0 + carry)
-    output := output.set! bit (x.getD bit 0 + y.getD bit 0 + carry)
-    if bit < 31 then
-      carry := carry + cw.getD (carryBase + bit) 0
-  return (left, right, output)
-
-/-- **`RowValues::add3(x, y, z, base)`**: the fused three-operand add, 31 majority rows then 30 ripple rows. -/
-def walkAdd3 (cw left right : Array E) (x y z : WalkWord) (base : ℕ) : Array E × Array E × WalkWord := Id.run do
-  let mut left := left
-  let mut right := right
-  let mut majority : Array E := Array.replicate 31 0
-  for bit in [0:31] do
-    left := left.set! (base + bit) (x.getD bit 0 + z.getD bit 0)
-    right := right.set! (base + bit) (y.getD bit 0 + z.getD bit 0)
-    majority := majority.set! bit (cw.getD (base + bit) 0 + z.getD bit 0)
-  let rippleBase := base + 31
-  let mut carry : E := 0
-  let mut output : Array E := Array.replicate 32 0
-  for bit in [0:32] do
-    let q : E := if bit = 0 then 0 else majority.getD (bit - 1) 0
-    let l := x.getD bit 0 + y.getD bit 0 + z.getD bit 0 + carry
-    output := output.set! bit (l + q)
-    if 1 ≤ bit ∧ bit ≤ 30 then
-      left := left.set! (rippleBase + bit - 1) l
-      right := right.set! (rippleBase + bit - 1) (q + carry)
-      carry := carry + cw.getD (rippleBase + bit - 1) 0
-  return (left, right, output)
-
 section With
 
 variable {m : Type → Type} [Monad m] (F : KeccakState → m KeccakState)

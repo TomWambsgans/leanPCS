@@ -6,7 +6,7 @@ The univariate PIOP's verifier (`crates/leanvm/univariate`, `docs/leanvm/univari
 transcript, the domain, the tables, the heap, the claims, Flock's verifier, the stacks, the batch, the shape class,
 the run on calldata, `PCS_OPEN` and the contract's IV, the commitments' encodings and the deployment. It was written
 for leanVM 42422001 (iteration 2, `leanvm-univariate` `ad49e74`) and is now the shared part of the Keccak VM's
-verifier: [`formal/UniKeccak`](../UniKeccak/README.md) instantiates it (`Blake2s::Keccak`, the `SHA3` table of
+verifier: [`formal/UniKeccak`](../UniKeccak/README.md) instantiates it (the `Variant`, the `SHA3` table of
 `KeccakTables.lean`) and states the end theorems against `KeccakVm.KvHolds`. The BLAKE2s VM's statements
 (`UniKnowledgeSoundness`, `UniCompleteness` against Lv42's six-table relation), its extractor and the map onto Lv42's
 stack were removed with `BLAKE2S`; a few unused BLAKE2s-era definitions remain (`Rec.lean`'s
@@ -71,7 +71,7 @@ lake env lean ../UniStatement/UniStatementTest/KeccakTables.lean    # the Keccak
     imported by `UniStatement.lean`): `tablesKeccak` (the `SHA3` table in `BLAKE2S`'s place: `sha3Columns`,
     `flushesSha3`, on `formal/KeccakVm`'s cell layout `KeccakVm.sha3CellLanes`), `keccakSlot`, `keccakSlotOffset`,
     `keccakR1csLogSize`. `UniStatementTest/KeccakTables.lean` checks every table, column, slot, offset and flush form
-    against the Rust's `tables_keccak()` (`crates/leanvm/statement/tests/lean_keccak_tables.rs`). `Blake2s::Keccak`'s
+    against the Rust's `tables_keccak()` (`crates/leanvm/statement/tests/lean_keccak_tables.rs`). the `Variant`'s
     verifier is `formal/UniKeccak`'s.
 
 ## Rust → Lean
