@@ -104,9 +104,9 @@ accepts with `PCS_OPEN` attesting its 7 claims in 6 calls, and 18 flipped callda
 
 | | 128 signatures | 400 signatures |
 |---|---:|---:|
-| calldata | 980 B (58 zero) | 980 B (56 zero) |
+| calldata | 980 B (66 zero) | 980 B (62 zero) |
 | execution | 28,325 | 29,105 |
-| transaction, EIP-7623, `c` = 0, without the base | **43,309** | 44,113 |
+| transaction, EIP-7623, `c` = 0, without the base | **43,213** | 44,041 |
 | transaction, EIP-7976 | 62,720 | |
 | π2: witness compile, adapt and check | 3.8 s | 2.9 s |
 | π2: prove / open | 4.4 s / 1.7 s | 3.0 s / 0.9 s |

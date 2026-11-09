@@ -4,7 +4,7 @@
 
 A proof of a Keccak VM execution (leanVM `9d50c92a3`'s tables, `docs/leanvm/univariate/KECCAK.md`) verified on the EVM
 by recursion: π1 is the univariate proof, π2 a SNARK of π1's verifier, and the contract runs π2's verifier only. At the
-reference shape (128 signatures) the real proof verifies for **28,325 gas of execution, 43,309 under EIP-7623 at a claim
+reference shape (128 signatures) the real proof verifies for **28,325 gas of execution, 43,213 under EIP-7623 at a claim
 price `c = 0`** (980 B of calldata, 7 claims in 6 `PCS_OPEN` calls). Code: `crates/leanvm/rec`; π2's PIOP in
 [`PI2.md`](PI2.md); the claims' points in [`SPEC-POINTS.md`](SPEC-POINTS.md).
 
@@ -48,9 +48,9 @@ cargo test --release -p leanvm_rec --test pi2_real -- --ignored --nocapture real
 |---|---:|---:|
 | π1's verifier: Keccak-256 calls / Keccak-f / stream | 70 / 116 / 9,232 B | 71 / 118 / 9,424 B |
 | π2's positions (D16v, `N = 2^24`) | 15,668,416 (93.4%) | 15,940,800 (95.0%) |
-| calldata (zero bytes) | 980 B (58) | 980 B (56) |
+| calldata (zero bytes) | 980 B (66) | 980 B (62) |
 | execution | **28,325** | 29,105 |
-| **EIP-7623** (its floor) | **43,309** (37,460) | 44,113 |
+| **EIP-7623** (its floor) | **43,213** (37,220) | 44,041 |
 | EIP-7976 (64 a byte) | 62,720 | 62,720 |
 | claims / calls | 7 / 6 | 7 / 6 |
 
@@ -475,7 +475,7 @@ challenges offline, as it could on chain: the per-query bounds above hold, with 
 | π2's roots `W`, `Q` | 64 |
 | π2's 17 values | 408 |
 
-The 14 narrow challenges each start with 4 zero bytes (56); the real proofs have 58 (128 signatures) and 56 (400).
+The 14 narrow challenges each start with 4 zero bytes (56); the real proofs have 66 (128 signatures) and 62 (400).
 
 **The contract** at the reference shape (`tests/keccak_vm_rec.rs`): 13,491 B of code (13,911 at 400 signatures), one
 contract, the straight build deployable; 753 `FIELD_MUL`, 860 `XOR`, 6 Keccak-256 (1,184 B hashed), 244 words of
@@ -486,9 +486,9 @@ on the proof.
 
 | | 128 signatures | 400 signatures |
 |---|---:|---:|
-| EIP-7623, real proof | **43,309** (standard binds: `16 · 922 + 4 · 58 + 28,325`; floor 37,460) | 44,113 |
+| EIP-7623, real proof | **43,213** (standard binds: `16 · 914 + 4 · 66 + 28,325`; floor 37,220) | 44,041 |
 | EIP-7623, sample stream (4 zero bytes) | | 44,737 |
-| with the 21,000 base | 64,309 | 65,113 |
+| with the 21,000 base | 64,213 | 65,041 |
 | EIP-7976 (64 a byte: the floor binds) | 62,720 | 62,720 |
 
 The standard price binds, 5.8K above the floor at the reference shape: execution counts in full down to the floor.
@@ -651,10 +651,10 @@ the default; Mac Apple M4 Max, 16 cores):
   what `PCS_OPEN` checks) → the contract accepts, `PCS_OPEN` attesting exactly the 7 claims in 6 calls (π1's 3, π2's 4
   in 3) → 18 flipped calldata bytes are each rejected. The contract is the Rust verifier word for word, straight and
   deployable.
-- Calldata 980 B (58 zero), execution 28,325, EIP-7623 43,309 (floor 37,460), EIP-7976 62,720.
+- Calldata 980 B (66 zero), execution 28,325, EIP-7623 43,213 (floor 37,220), EIP-7976 62,720.
 - π2's prover: the witness (compile, adapt, check) 3.8 s, the setup's commitment 1.5 s (once per circuit), prove
   4.4 s, open 1.7 s, peak 9.79 GB. π1-rec3's prover at the same shape: 2.72 s cold with checks (6.75 GB).
-- At 400 signatures (`PI2_VECTOR=keccak_rec3`): 980 B (56 zero), execution 29,105, EIP-7623 44,113; π2 2.9 s compile,
+- At 400 signatures (`PI2_VECTOR=keccak_rec3`): 980 B (62 zero), execution 29,105, EIP-7623 44,041; π2 2.9 s compile,
   3.0 s prove, 0.9 s open, 9.8 GB.
 
 ## 12. π1-rec3 and the optimisations

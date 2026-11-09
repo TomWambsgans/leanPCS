@@ -25,15 +25,15 @@ cargo test --release -p leanvm_rec --test pi2 -- --ignored --nocapture gas_repor
 
 | | 128 signatures (reference) | 400 signatures |
 |---|---:|---:|
-| calldata (zero bytes) | 980 B (58) | 980 B (56) |
+| calldata (zero bytes) | 980 B (66) | 980 B (62) |
 | execution | **28,325** | 29,105 |
 | code | 13,491 B, one contract | 13,911 B |
 | claims / calls | 7 / 6 | 7 / 6 |
-| **EIP-7623** | **43,309** (floor 37,460) | 44,113 |
-| with the 21,000 base | 64,309 | 65,113 |
+| **EIP-7623** | **43,213** (floor 37,220) | 44,041 |
+| with the 21,000 base | 64,213 | 65,041 |
 | EIP-7976 | 62,720 | 62,720 |
 
-At `c = 0` the standard price binds (`16 · 922 + 4 · 58 + 28,325`). The contract at the reference shape: 753
+At `c = 0` the standard price binds (`16 · 914 + 4 · 66 + 28,325`). The contract at the reference shape: 753
 `FIELD_MUL`s, 860 `XOR`s, 6 Keccak-256 (1,184 B), 244 words of memory, 208 words written for `PCS_OPEN`; the straight
 build is the deployable one. The execution depends on the circuit alone: `real_gas` and `tests/keccak_vm_rec.rs`
 measure it on a sample stream (4 zero bytes; 44,737 at 400 signatures).

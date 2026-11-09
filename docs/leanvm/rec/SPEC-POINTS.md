@@ -40,7 +40,7 @@ RUSTFLAGS="-C target-cpu=native" cargo test --release -p leanvm_univariate --lib
 | π1's claims | `C1`, `C2`, `F`, each at `r`'s prefix of its commitment's variables |
 | `r` | the batch's point: 27 coordinates at 128 signatures (13 pairs, one plain round), 28 at 400 (14 pairs) |
 | their public elements | 14 narrow challenges and 3 values: 408 B |
-| calldata / execution / EIP-7623 `c = 0` (128 signatures) | 980 B / 28,325 / 43,309 |
+| calldata / execution / EIP-7623 `c = 0` (128 signatures) | 980 B / 28,325 / 43,213 |
 
 The Keccak VM's π1 commits no Flock matrices (`A0`, `B0`): its lincheck terminal is the structured one, computed by
 π1's verifier. So `r` is the whole problem.
@@ -178,7 +178,7 @@ contracts, and by the recursion's contract through π2 (`SPEC-REC.md` §11).
 | π1's claims in calldata: 14 challenges and 3 values | 408 B | 408 B |
 | with one element a coordinate (27 or 28, and 3 values) | 720 B | 744 B |
 | saved | 312 B | 336 B |
-| the recursion's calldata / execution / EIP-7623 | 980 B / 28,325 / 43,309 | 980 B / 29,105 / 44,113 |
+| the recursion's calldata / execution / EIP-7623 | 980 B / 28,325 / 43,213 | 980 B / 29,105 / 44,041 |
 | EIP-7976 | 62,720 | 62,720 |
 
 - **What a byte is worth.** At the reference shape the standard price binds (`16 B + execution`, 5.8K above the

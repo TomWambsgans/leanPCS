@@ -101,13 +101,13 @@ Gas is transaction gas without the 21,000 base (EIP-7623), `PCS_OPEN` at a claim
 |---|---|---|
 | Prover | 2.2 s (reduction 1.46 s, openings 0.76 s), 5.9 GiB, before the x86 work. h1 (Ryzen 7 PRO 8700GE, AVX-512), load 9–14: 3.6 s (reduction 2.46 s, openings 1.14 s), 6.2 GiB, against 8.4 s (6.45 s, 1.92 s) before. h2 (Core Ultra 7 265, AVX2), load 10: 2.3 s (1.5 s, 0.8 s), against 5.0 s | trace → π1-rec3 → π2 and openings: 4.1 s per proof, 0.9 s per circuit once, 12.5 GB (`tests/pipeline.rs`, load 2–7) |
 | Calldata | 252 B | 980 B |
-| Gas | 14,289 execution, **18,309** transaction | 28,325 execution, **43,309** transaction (62,720 under EIP-7976) |
+| Gas | 14,289 execution, **18,309** transaction | 28,325 execution, **43,213** transaction (62,720 under EIP-7976) |
 | Claims | 4 in 3 calls | 7 in 6 calls |
 | Deployment | 6,308-byte code, 1,426,798 gas | one contract of 13.5 KB |
 
 - Membership, at a claim price c: 18,309 / 26,309 / 38,309 / 98,309 gas for c = 0 / 2,000 / 5,000 / 20,000. Its
   verifier: reduction < 1 ms, openings 5 ms (248 / 278 / 333 KiB).
-- leanVM: at 400 signatures, 44,113 transaction gas. π1 alone as a contract costs 358,957 transaction gas at 128
+- leanVM: at 400 signatures, 44,041 transaction gas. π1 alone as a contract costs 358,957 transaction gas at 128
   signatures (8,020 B calldata, 3 claims). **Capacity**: `q_flock` is `2^11` words a permutation, so `C1` reaches
   WHIR's `2^28` words at about 470 signatures (1,000 do not fit, `tests/keccak_vm.rs`).
 

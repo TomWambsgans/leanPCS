@@ -8,7 +8,7 @@ a univariate SNARK of π1-rec3's verifier minus its openings, its circuit compil
 `PCS_OPEN` (7 claims in 6 calls, `crates/membership/evm/src/machine.rs`'s ABI).
 
 On the real 128-signature proof (the reference, `crates/leanvm/univariate/tests/vectors/keccak128_rec3.txt`):
-980 B of calldata, 28,325 gas of execution, 43,309 of transaction gas (EIP-7623, claims free, without the 21,000
+980 B of calldata, 28,325 gas of execution, 43,213 of transaction gas (EIP-7623, claims free, without the 21,000
 base); one contract of 13.5 KB.
 
 Design: [`SPEC-REC.md`](../../../docs/leanvm/rec/SPEC-REC.md) (the recursion), [`PI2.md`](../../../docs/leanvm/rec/PI2.md)

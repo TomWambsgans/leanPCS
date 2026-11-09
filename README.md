@@ -89,7 +89,7 @@ transaction gas under EIP-7623 at a claim price of 0, without the 21,000 base.
 | π2 prover | 4.4 s + 1.7 s openings (and 3.8 s witness); 9.8 GB | 3.0 s + 0.9 s openings (and 2.9 s witness); 9.8 GB |
 | trace → π1 → π2, per proof (`tests/pipeline.rs`) | **4.1 s** (Mac, load 2–7; π1 with π2's witness 1.87, π2 1.58 + 0.70 openings); 8.9 s on h2, 11.5–12.1 s on h1 under load; per circuit, once, 0.9 s; 12.5 GB | |
 | Calldata to the contract | 980 B | 980 B |
-| Gas (real proof) | 28,325 execution; **43,309** transaction | 29,105 execution; 44,113 transaction |
+| Gas (real proof) | 28,325 execution; **43,213** transaction | 29,105 execution; 44,041 transaction |
 | PCS claims | 7, in 6 `PCS_OPEN` calls | 7, in 6 calls |
 | Formal verification (Lean 4) | the VM's statement and arithmetization, the Keccak-f block, π1's knowledge soundness (≤ 2^-64 at 2^64 queries) and completeness (failure < 2^-169), π1-rec3's recorded graph = its verifier; the recursion: knowledge soundness as an explicit reduction (π2's part ≤ 2^-64, plus π1-rec3 at Keccak-f[1600]), completeness (failure 2^-164 plus two premises at Keccak-f[1600]); the compiled circuit's checks evaluated, not proved | |
 
