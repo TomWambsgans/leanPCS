@@ -22,6 +22,7 @@
 //! 5. `t`; the fold values, `ξ = κ(t) + β σ(t)` (PI2.md §9) and `s = P(t)`; `ρ`; the claims (the verifier's), opened:
 //!    one opening per commitment, `Q`'s two claims together.
 
+use std::sync::Mutex;
 use std::time::Instant;
 
 use fiat_shamir::merkle::Hash;
@@ -122,6 +123,10 @@ pub struct Setup {
     pub kappa_on_d: Vec<F64>,
     pub table: Table,
     pub committed: Committed,
+    /// `Q`'s stack, which a proof's opening hands back once done with it (`Lent`), for the next proof to build its
+    /// own `Q` in: every word of it is written again, so it need not be zeroed first (`12 N` words, 1.6 GB at `2^24`
+    /// positions, kept between proofs).
+    spare: Mutex<Vec<F64>>,
 }
 
 impl Setup {
@@ -154,6 +159,18 @@ impl Setup {
             kappa_on_d: on_extension(&kappa, m, offset),
             table,
             committed,
+            spare: Mutex::new(Vec::new()),
+        }
+    }
+
+    /// A buffer of `len` words for `Q`'s stack, the spare if it is that long, else zeros.
+    fn stack(&self, len: usize) -> Vec<F64> {
+        let spare = std::mem::take(&mut *self.spare.lock().expect("no panic held the spare"));
+        if spare.len() == len {
+            spare
+        } else {
+            drop(spare);
+            parallel::map_collect(len, |_| F64::ZERO)
         }
     }
 
@@ -1165,7 +1182,8 @@ pub fn prove_with(
         let (limb, kind, digit) = (c >> 4, (c >> 1) & 7, c & 1);
         assert_eq!(unit(limb, kind, digit) * n + within, lane * qlane, "Q's lane {lane}");
     }
-    let mut stack: Vec<F64> = parallel::map_collect(12 * n, |_| F64::ZERO);
+    // Every word of it is written below (`h_on_v`, then `quotient_on_extension`), whatever it holds.
+    let mut stack: Vec<F64> = setup.stack(12 * n);
     let run = n.min(1 << 12);
     // The ports' values `F_J` in `Spec::phi`'s order.
     let port_values: Vec<F192> = spec
@@ -1288,6 +1306,26 @@ pub fn prove_with(
     }
 }
 
+/// `Q`'s stack in its opening, handed back to the setup's spare ([`Setup::stack`]) when the opening drops it.
+struct Lent<'a> {
+    stack: Vec<F64>,
+    spare: &'a Mutex<Vec<F64>>,
+}
+
+impl AsRef<[F64]> for Lent<'_> {
+    fn as_ref(&self) -> &[F64] {
+        &self.stack
+    }
+}
+
+impl Drop for Lent<'_> {
+    fn drop(&mut self) {
+        if let Ok(mut spare) = self.spare.lock() {
+            *spare = std::mem::take(&mut self.stack);
+        }
+    }
+}
+
 /// The three openings: `W`'s one claim, `Q`'s two, the setup's one.
 pub struct Openings {
     pub witness: fiat_shamir::transcript::Proof,
@@ -1320,7 +1358,16 @@ pub fn open(proved: Proved, setup: &Setup) -> (Reduced<E>, [Hash; 2], Openings) 
         }),
         quotient: timed("Q", &mut || {
             let (table, committed) = q.take().expect("once");
-            opening::open_owned(table, committed, &[claim(&reduced.quotient), claim(&reduced.sum)])
+            let stack = Lent {
+                stack: table.stack,
+                spare: &setup.spare,
+            };
+            opening::open_owned_stack(
+                &table.layout,
+                stack,
+                committed,
+                &[claim(&reduced.quotient), claim(&reduced.sum)],
+            )
         }),
         setup: timed("setup", &mut || {
             opening::open(&setup.table, &setup.committed, &[claim(&reduced.setup)])

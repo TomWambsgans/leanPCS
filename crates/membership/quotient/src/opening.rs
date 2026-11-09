@@ -748,6 +748,20 @@ pub fn open_owned(table: Table, committed: Committed, claims: &[Claim]) -> Proof
     )
 }
 
+/// [`open_owned`] of a table of `layout` whose stack is any owner of its words, dropped as [`open_owned`] drops the
+/// stack (once the rows the first queries open are read): a caller may take the words back then, in the owner's
+/// `Drop`, for its next table.
+pub fn open_owned_stack(layout: &Layout, stack: impl AsRef<[F64]>, committed: Committed, claims: &[Claim]) -> Proof {
+    open_stack(
+        layout,
+        stack,
+        &committed.root,
+        committed.tree,
+        committed.codeword.as_deref(),
+        claims,
+    )
+}
+
 fn open_stack(
     layout: &Layout,
     stack: impl AsRef<[F64]>,
