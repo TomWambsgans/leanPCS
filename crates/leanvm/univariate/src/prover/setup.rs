@@ -34,12 +34,10 @@ pub fn f_root(shape: &Shape, setup: &SetupPolys) -> Hash {
     opening::commit(&f.words, f.layout.vars, f.placed()).root
 }
 
-/// The roots of `shape`'s contract: `F`'s, and the two fixed words (`SetupRoots::REFERENCE`'s, the same for every
-/// shape).
+/// The root of `shape`'s contract: `F`'s.
 pub fn shape_roots(shape: &Shape, setup: &SetupPolys) -> SetupRoots {
     SetupRoots {
         f: f_root(shape, setup),
-        ..SetupRoots::REFERENCE
     }
 }
 

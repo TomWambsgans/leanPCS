@@ -114,7 +114,6 @@ fn run(name: &str, layout: Layout, log_n: u8, fill: (f64, f64)) {
     // The contract binds the proof's setup root `F` (the third call's).
     let roots = SetupRoots {
         f: v.whir_roots[2],
-        ..SetupRoots::REFERENCE
     };
     let recorded = record_verifier_with(&v.shape, variant, Claims::Point, &roots);
     let stream = v.calldata[STREAM_AT..].to_vec();

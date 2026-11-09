@@ -47,7 +47,6 @@ fn the_graph_is_the_verifier_on_real_proofs() {
             let variant = vectors::variant_of(&v.config);
             let roots = leanvm_univariate::contract::SetupRoots {
                 f: v.whir_roots[2],
-                ..leanvm_univariate::contract::SetupRoots::REFERENCE
             };
             let recorded = leanvm_univariate::contract::record_verifier_with(&v.shape, variant, Claims::Point, &roots);
             let stream = &v.calldata[STREAM_AT..];

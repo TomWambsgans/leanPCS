@@ -16,7 +16,7 @@
 //! adapted circuit (its formulas, pairs, reads, public terms, `σ`, `κ`, hence its digest and setup root), π1's calls and
 //! π1's contract IV do not depend on the stream or the public input. π1's contract IV is
 //! `contract_iv(KECCAK_128, KECCAK_REC3, PROGRAM_IV, SetupRoots::REFERENCE)`: `record_verifier` binds the
-//! code's reference roots (the setup call's constant `F` in `Emitted.lean`'s `call2` is `SetupRoots::REFERENCE.f`).
+//! code's reference root (the setup call's constant `F` in `Emitted.lean`'s `call2` is `SetupRoots::REFERENCE.f`).
 //!
 //! `RUSTFLAGS="-C target-cpu=native" cargo test --release -p leanvm_rec --test lean_statement_keccak -- --ignored --nocapture`
 
@@ -235,7 +235,7 @@ fn render(circuit: &Circuit, calls: &[Vec<CallWord>], c: &Constants) -> String {
     writeln!(w).unwrap();
     writeln!(
         w,
-        "/-- π1's contract IV (`Compiled::pi1_iv`: π1-rec3's at the reference setup roots). -/"
+        "/-- π1's contract IV (`Compiled::pi1_iv`: π1-rec3's at the reference setup root). -/"
     )
     .unwrap();
     writeln!(w, "def pi1Iv : List UInt8 := hexBytes \"{}\"", hex(&c.pi1_iv)).unwrap();
@@ -330,7 +330,7 @@ fn summary(circuit: &Circuit, calls: &[Vec<CallWord>], c: &Constants) -> String 
 fn keccak_statement_data_is_current() {
     let rendered = deep(|| {
         let recorded = record_verifier(&KECCAK_128, KECCAK_REC3, Claims::Point);
-        // π1's contract IV binds the code's reference roots.
+        // π1's contract IV binds the code's reference root.
         assert_eq!(KECCAK_128.log_memory, 20);
         assert_eq!(KECCAK_128.log_bytecode, 18);
         assert_eq!(KECCAK_128.table_rows, [24260, 36229, 24626, 35812, 15509, 17712]);
@@ -341,12 +341,7 @@ fn keccak_statement_data_is_current() {
             &SetupRoots::REFERENCE,
         );
         assert_eq!(recorded.iv(&PROGRAM_IV), iv);
-        eprintln!(
-            "SetupRoots::REFERENCE: f {} a0 {} b0 {}",
-            hex(&SetupRoots::REFERENCE.f),
-            hex(&SetupRoots::REFERENCE.a0),
-            hex(&SetupRoots::REFERENCE.b0)
-        );
+        eprintln!("SetupRoots::REFERENCE: f {}", hex(&SetupRoots::REFERENCE.f));
         let a = make(&recorded, 0, [3; 32]);
         let placeholder = |m: &Made| Constants {
             pi1_iv: m.pi1_iv,

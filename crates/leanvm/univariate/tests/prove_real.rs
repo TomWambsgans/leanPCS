@@ -55,7 +55,7 @@ use vectors::{deployable, name_of as vector_name};
 #[global_allocator]
 static ALLOCATOR: bench::Jemalloc = bench::Jemalloc;
 
-/// The roots of the trace's contract: its program's and shape's `F`, and the two fixed words.
+/// The root of the trace's contract: its program's and shape's `F`.
 fn contract_roots(trace: &Trace) -> SetupRoots {
     leanvm_univariate::prover::setup::shape_roots(&trace.shape(), &leanvm_univariate::prover::columns::setup_polys(trace))
 }

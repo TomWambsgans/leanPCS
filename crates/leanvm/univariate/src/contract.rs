@@ -7,7 +7,7 @@
 //! cell1.c1)`; leanVM's 32-byte digest has its words little-endian, so a caller reverses each word's 8 bytes, SPEC.md
 //! §4), then the stream: the six row counts, `C1`'s root, Flock's messages, `C2`'s root, the values at `t`, the
 //! batching sumcheck (SPEC.md §8, §13). The contract is built for one shape class (the heights), which the
-//! transcript's IV binds with the setup roots and the layout words.
+//! transcript's IV binds with the setup root and the layout words.
 //!
 //! **Calls**: one `PCS_OPEN` call per commitment, each with one weighted claim (SPEC.md §8): words `root, layout,
 //! k = 1, P`, the `P` points (a length, then the coordinates), the claim's `m` terms (`column | point << 32 |
@@ -17,8 +17,8 @@
 //! **Root words**. `C1`'s and `C2`'s are the stream's 32 bytes as they are:
 //! the prover sends each root as its two WHIR scalars (`prover::prove::halves`, `hash_to_scalars`), so those bytes
 //! are `PCS_OPEN`'s root word `s_0 · 2^128 + s_1` (`crates/membership/evm/src/machine.rs`), which a decoding precompile reads as
-//! the root the opening is of. The setup roots' words are the hashes as they are ([`SetupRoots`]), not their root
-//! words: a precompile with machine.rs's decoding reads each as another root (`root_word` of it), so this contract,
+//! the root the opening is of. The setup root's word is the hash as it is ([`SetupRoots`]), not its root
+//! word: a precompile with machine.rs's decoding reads it as another root (`root_word` of it), so this contract,
 //! deployed alone, needs `Word::Const(root_word(..))` there (free: constants). π2's contract, which makes π1's calls,
 //! passes their root words (`crates/leanvm/rec`, `circuit::compile`).
 
@@ -34,17 +34,13 @@ use crate::verifier::{Claims, Opening, Reduced, Shape, Variant, reduce};
 /// The transcript's 16-byte name.
 pub const NAME: [u8; 16] = *b"leanVM-univar-v1";
 
-/// The roots the contract's IV binds, constants of the code (SPEC.md §13, F2): the setup commitment `F`'s, from the
-/// program and the shape (`prover::setup::f_root`), and two fixed words `a0`, `b0`. Those are the roots of leanVM
-/// 42422001's BLAKE2s R1CS matrices, which the Keccak VM does not open: they stay in the IV's preimage, fixed, so that
-/// the IV (and the committed vectors and their Lean transcription) are unchanged. [`SetupRoots::REFERENCE`]'s `F` is
-/// the reference shape's (128 signatures, `leanvm_statement::shapes::reference`), which the gas reports use for every
-/// shape (the gas does not depend on the roots).
+/// The root the contract's IV binds, a constant of the code (SPEC.md §13, F2): the setup commitment `F`'s, from the
+/// program and the shape (`prover::setup::f_root`). [`SetupRoots::REFERENCE`]'s `F` is the reference shape's (128
+/// signatures, `leanvm_statement::shapes::reference`), which the gas reports use for every shape (the gas does not
+/// depend on the root).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SetupRoots {
     pub f: [u8; 32],
-    pub a0: [u8; 32],
-    pub b0: [u8; 32],
 }
 
 const fn digit(c: u8) -> u8 {
@@ -67,8 +63,6 @@ const fn hex32(text: &[u8; 64]) -> [u8; 32] {
 impl SetupRoots {
     pub const REFERENCE: Self = Self {
         f: hex32(b"067244bea80942b5cacaa61c28ca748d0ae4ba6c106739ab109c9c07296e1ca5"),
-        a0: hex32(b"93cd9a0352a85dcc663f7068e1f3afa3a00f5220bd2b03d67244f0eb133fd2f7"),
-        b0: hex32(b"c07556508c416240dafd47665831fd51d2eb1104a52c63231101479c7f6cd467"),
     };
 }
 
@@ -80,9 +74,6 @@ fn layout_code(commitment: Commitment) -> u16 {
         Commitment::Setup => 0x5503,
     }
 }
-/// The codes of the IV's two fixed layout words (after [`SetupRoots`]'s `a0`, `b0`).
-const A0_CODE: u16 = 0x5504;
-const B0_CODE: u16 = 0x5505;
 
 /// The shape's bytes: `log_memory`, `log_bytecode`, then the six heights.
 pub fn shape_bytes(shape: &Shape) -> [u8; 8] {
@@ -109,16 +100,14 @@ pub fn layout_word(shape: &Shape, code: u16, vars: usize, placed: u64) -> [u8; 3
     word
 }
 
-/// The layout words the IV binds: the three openings', in call order (`C1`, `C2`, the setup), then two fixed words
-/// (codes `0x5504`, `0x5505`: see [`SetupRoots`]).
-pub fn layout_words(shape: &Shape) -> [[u8; 32]; 5] {
+/// The layout words the IV binds: the three openings', in call order (`C1`, `C2`, the setup).
+pub fn layout_words(shape: &Shape) -> [[u8; 32]; 3] {
     let layouts = crate::verifier::layouts(shape);
     let of = |c: Commitment| {
         let layout = &layouts.iter().find(|(k, _)| *k == c).expect("a layout").1;
         layout_word(shape, layout_code(c), layout.vars, layout.words())
     };
-    let fixed = |code| layout_word(shape, code, 28, 1 << 28);
-    [of(Commitment::C1), of(Commitment::C2), of(Commitment::Setup), fixed(A0_CODE), fixed(B0_CODE)]
+    [of(Commitment::C1), of(Commitment::C2), of(Commitment::Setup)]
 }
 
 /// The bytes the IV's preimage ends with: the tag `"keccak-vm"`, Flock's skip and the Fiat–Shamir shape's code.
@@ -128,16 +117,14 @@ pub fn variant_bytes(variant: Variant) -> Vec<u8> {
     out
 }
 
-/// The IV the transcript's seed hashes (SPEC.md §13, F2): the Keccak-256 of a tag, the program's IV, the roots
-/// ([`SetupRoots`]), the shape, the five layout words ([`layout_words`]) and [`variant_bytes`]. The seed then adds the
-/// public input. A constant of the code: it costs no gas.
+/// The IV the transcript's seed hashes (SPEC.md §13, F2): the Keccak-256 of a tag, the program's IV, the setup root
+/// ([`SetupRoots`]), the shape, the three layout words ([`layout_words`]) and [`variant_bytes`]. The seed then adds
+/// the public input. A constant of the code: it costs no gas.
 pub fn contract_iv(shape: &Shape, variant: Variant, program_iv: &[u8; 32], roots: &SetupRoots) -> [u8; 32] {
     let words = layout_words(shape);
     let mut data = b"leanVM-univar-iv".to_vec();
     data.extend_from_slice(program_iv);
-    for root in [roots.f, roots.a0, roots.b0] {
-        data.extend_from_slice(&root);
-    }
+    data.extend_from_slice(&roots.f);
     data.extend_from_slice(&shape_bytes(shape));
     for w in &words {
         data.extend_from_slice(w);
@@ -160,7 +147,7 @@ pub struct Recorded {
 }
 
 impl Recorded {
-    /// The contract's IV for the program's `program_iv` ([`contract_iv`] of the shape, the variant and the roots it
+    /// The contract's IV for the program's `program_iv` ([`contract_iv`] of the shape, the variant and the root it
     /// was recorded with).
     pub fn iv(&self, program_iv: &[u8; 32]) -> [u8; 32] {
         contract_iv(&self.shape, self.variant, program_iv, &self.roots)

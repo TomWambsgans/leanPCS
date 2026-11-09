@@ -4,7 +4,7 @@
 //! circuit compiled on π1's stream), π2's proof and its three openings.
 //!
 //! What depends on the program and the shape only is computed once, before the timed passes, and reported apart (the
-//! per-circuit setup): π1's setup roots (its `F`), π1's recorded verifier, π2's circuit (adapted), its spec, its setup
+//! per-circuit setup): π1's setup root (its `F`), π1's recorded verifier, π2's circuit (adapted), its spec, its setup
 //! commitment (`σ`, `κ`) and its IV. Each pass checks that its circuit is the cached one (outside the timing), that
 //! π2's openings verify, and that every pass's proofs are the first's.
 //!
@@ -98,7 +98,7 @@ fn trace_to_recursion() {
         let pi2_setup = started.elapsed().as_secs_f64();
         drop((compiled, pi1_proof));
         println!(
-            "{}: loaded and placed in {loaded:.2} s; per circuit: π1's setup roots and recorded verifier {pi1_setup:.2} s, π2's circuit, spec, setup commitment and IV {pi2_setup:.2} s",
+            "{}: loaded and placed in {loaded:.2} s; per circuit: π1's setup root and recorded verifier {pi1_setup:.2} s, π2's circuit, spec, setup commitment and IV {pi2_setup:.2} s",
             std::path::Path::new(&dir).display()
         );
 

@@ -137,7 +137,7 @@ impl Setup {
     }
 }
 
-/// The codes of π2's tables in their `PCS_OPEN` layout words (π1's are `0x5501` … `0x5505`).
+/// The codes of π2's tables in their `PCS_OPEN` layout words (π1's are `0x5501` … `0x5503`).
 pub const WITNESS_CODE: u16 = 0x5601;
 pub const QUOTIENT_CODE: u16 = 0x5602;
 pub const SETUP_CODE: u16 = 0x5603;

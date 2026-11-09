@@ -7,10 +7,10 @@
 //!
 //! `KECCAK_VECTORS_OUT=$PWD/keccak_vectors.txt cargo test --release -p leanvm_univariate --test lean_keccak_vectors -- --ignored --nocapture`
 //!
-//! The format is the BLAKE2s VM's vector format (`formal/UniKeccak/UniKeccakTest/Runner.lean` reads it), with the
-//! Keccak contract's setup: `SETUPROOTS <f> <a0> <b0>` the roots it binds (`SetupRoots::REFERENCE`, or for a real proof
-//! its own `F`, as `tests/evm_vectors.rs` builds its contract), `CONTRACTIV` `contract::contract_iv(shape,
-//! variant, program_iv, roots)`, `LAYOUTWORDS` `contract::layout_words(shape)`. The configuration
+//! `formal/UniKeccak/UniKeccakTest/Runner.lean` reads the file. Each verifier vector carries the contract's setup:
+//! `SETUPROOTS <f>` the setup root it binds (`SetupRoots::REFERENCE`, or for a real proof its own `F`, as
+//! `tests/evm_vectors.rs` builds its contract), `CONTRACTIV` `contract::contract_iv(shape, variant, program_iv,
+//! roots)`, `LAYOUTWORDS 3 <C1> <C2> <setup>` `contract::layout_words(shape)`. The configuration
 //! (`<flock>` in the `VECTOR` line) is `keccak` (`KECCAK_MAIN`) or `keccak_rec3` (`KECCAK_REC3`). A real proof's
 //! vector carries the contract's `PCS_OPEN` inputs (`PCSOPEN <hex>`, the vector file's `pcs_open` lines). Terminal
 //! vectors are one line each:
@@ -19,9 +19,8 @@
 //! TERMINAL <k> <z_skip | -> <row_low> <chi_in> <chi_in'> <s> <alpha> <structured> <walked>
 //! ```
 //!
-//! (each list a count then its elements; an element `c0:c1:c2`, lowercase hex limbs.) This file holds its own copy of
-//! the logging channel and accepting streams of the former BLAKE2s vectors' `tests/lean_format`, with
-//! `sample_narrow` logged (π1-rec3's batch).
+//! (each list a count then its elements; an element `c0:c1:c2`, lowercase hex limbs.) The logging channel and the
+//! accepting streams are this file's, with `sample_narrow` logged (π1-rec3's batch).
 
 use std::fmt::Write as _;
 
@@ -126,12 +125,12 @@ struct Config {
     flock: (&'static str, Variant),
     claims: (&'static str, Claims),
     program_iv: [u8; 32],
-    /// The setup roots the contract binds: `SetupRoots::REFERENCE`, or a real proof's own `F` (`tests/evm_vectors.rs`).
+    /// The setup root the contract binds: `SetupRoots::REFERENCE`, or a real proof's own `F` (`tests/evm_vectors.rs`).
     roots: SetupRoots,
 }
 
 impl Config {
-    /// The Keccak contract's IV (`contract_iv`) at the configuration's setup roots.
+    /// The Keccak contract's IV (`contract_iv`) at the configuration's setup root.
     fn contract_iv(&self) -> [u8; 32] {
         contract_iv(&self.shape, self.flock.1, &self.program_iv, &self.roots)
     }
@@ -291,15 +290,7 @@ impl Writer {
         )
         .unwrap();
         writeln!(out, "PROGRAMIV {}", hex(&config.program_iv)).unwrap();
-        let roots = config.roots;
-        writeln!(
-            out,
-            "SETUPROOTS {} {} {}",
-            hex(&roots.f),
-            hex(&roots.a0),
-            hex(&roots.b0)
-        )
-        .unwrap();
+        writeln!(out, "SETUPROOTS {}", hex(&config.roots.f)).unwrap();
         writeln!(out, "CONTRACTIV {}", hex(&config.contract_iv())).unwrap();
         let words: Vec<String> = layout_words(&shape)
             .iter()
@@ -639,7 +630,6 @@ fn lean_keccak_vectors() {
                 // The contract binds the proof's own setup root `F` (the third call's), as `tests/evm_vectors.rs`.
                 roots: SetupRoots {
                     f: whir_roots[2].clone().try_into().expect("32 bytes"),
-                    ..SetupRoots::REFERENCE
                 },
             };
             let iv = config.contract_iv();

@@ -80,7 +80,7 @@ pub struct Report {
     pub opening_bytes: Vec<usize>,
     /// Finer timings inside a phase, as text.
     pub notes: Vec<String>,
-    /// The setup roots the proof's contract binds.
+    /// The setup root the proof's contract binds.
     pub roots: Option<SetupRoots>,
     /// The process's peak resident memory at the end of each phase, in bytes, when [`MEMORY_PROBE`] is set.
     pub peaks: Vec<(&'static str, u64)>,
@@ -179,13 +179,13 @@ pub struct Config {
     /// Send these root halves for `C1` and `C2` instead of the commitments' (no opening can then verify): a
     /// byte-for-byte cross-check of the stream against a prover that commits nothing (`tests/prove_tiny.rs`).
     pub stand_in_roots: Option<[[E; 2]; 2]>,
-    /// The setup roots the contract's IV binds (SPEC.md §13, F2): `F`'s must be this program's and shape's
+    /// The setup root the contract's IV binds (SPEC.md §13, F2): `F`'s, which must be this program's and shape's
     /// (`setup::shape_roots`; at the reference shape `SetupRoots::REFERENCE`).
     pub roots: SetupRoots,
 }
 
 /// Prove `trace`'s execution (its rows placed: [`Trace::place`]) for the contract of the program's IV `iv` (the
-/// contract's own binds the setup roots, the shape and the variant: `contract::contract_iv`), from the Flock witness of
+/// contract's own binds the setup root, the shape and the variant: `contract::contract_iv`), from the Flock witness of
 /// its placed `SHA3` rows (`Trace::keccak_flock`).
 pub fn prove(trace: &Trace, flock: FlockWitness, iv: &[u8; 32], config: Config) -> Result<(Proof, Report), String> {
     prove_streaming(trace, flock, iv, config, |_| {})
@@ -244,13 +244,10 @@ pub fn prove_streaming(
     };
     let committed_f = opening::commit_keeping_codeword(&stack_f.words, stack_f.layout.vars, stack_f.placed());
     // The contract binds F's root (and opens F against it): it must be this program's and shape's. Garbage in the
-    // unused words makes another F, which only a contract built for it accepts: that contract's roots are used. (The
+    // unused words makes another F, which only a contract built for it accepts: that contract's root is used. (The
     // stand-in roots' cross-check proves nothing.)
     let roots = if config.garbage {
-        SetupRoots {
-            f: committed_f.root,
-            ..config.roots
-        }
+        SetupRoots { f: committed_f.root }
     } else {
         config.roots
     };
@@ -262,7 +259,7 @@ pub fn prove_streaming(
     report.stacks.push((Commitment::Setup, stack_f.placed(), stack_f.layout.vars));
     clock.lap(&mut report, "C1 and setup: WHIR commits");
 
-    // 0. The seed (the contract's IV binds the setup roots), then the six row counts (SPEC.md §13, F1), absorbed with
+    // 0. The seed (the contract's IV binds the setup root), then the six row counts (SPEC.md §13, F1), absorbed with
     // C1's root.
     let seed = keccak_seed(&NAME, &contract_iv(&shape, config.variant, iv, &roots), &public);
     let mut writer = KeccakWriter::new(seed);
