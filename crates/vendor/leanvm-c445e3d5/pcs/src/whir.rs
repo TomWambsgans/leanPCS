@@ -1902,11 +1902,12 @@ impl<'a> SumcheckProver<'a> {
         self.round += 1;
         let log_size = self.combined_basis.len().ilog2();
         let _span = tracing::info_span!("Sumcheck round", round = self.round, log_size).entered();
-        let (nf, nb, msg) = match &self.f {
+        // In affine ranges ([`parallel::affine`]): a thread's outputs are the next round's inputs it reads.
+        let (nf, nb, msg) = parallel::affine(|| match &self.f {
             Witness::Base(f) => fold_and_msg_lsb(f, &self.combined_basis, r),
             Witness::Ext(f) => fold_and_msg_lsb(f, &self.combined_basis, r),
             Witness::Lifted(..) => unreachable!("a lane round follows the first"),
-        };
+        });
         // Swap the freshly folded buffers in and drop the consumed ones, so the
         // allocator serves the next round's `fold_out_buf` from their memory.
         drop(std::mem::replace(&mut self.f, Witness::Ext(nf)));
@@ -1918,7 +1919,7 @@ impl<'a> SumcheckProver<'a> {
     /// Introduce a fresh basis poly with claimed sum `h_new`; sends the
     /// (u_0, u_2) for `Σ_x f(x) · b_new(x)` at the current dim.
     fn introduce_new(&mut self, b_new: Vec<F192>, h_new: F192) -> SumcheckMessage {
-        let msg = match &self.f {
+        let msg = parallel::affine(|| match &self.f {
             Witness::Base(f) => {
                 assert_eq!(b_new.len(), f.len());
                 round_msg_lsb(f, &b_new)
@@ -1928,7 +1929,7 @@ impl<'a> SumcheckProver<'a> {
                 round_msg_lsb(f, &b_new)
             }
             Witness::Lifted(..) => unreachable!("no claim is introduced between lane rounds"),
-        };
+        });
         self.pending.push((b_new, h_new, RoundQuad::from_msg(msg, h_new)));
         msg
     }
@@ -1942,7 +1943,7 @@ impl<'a> SumcheckProver<'a> {
             Witness::Base(_) | Witness::Lifted(..) => panic!("OOD claim introduced before the lane rounds end"),
         };
         assert_eq!(b_new.len(), f.len());
-        let (msg, h_new) = round_msg_and_eval_lsb_ext(f, &b_new);
+        let (msg, h_new) = parallel::affine(|| round_msg_and_eval_lsb_ext(f, &b_new));
         self.pending.push((b_new, h_new, RoundQuad::from_msg(msg, h_new)));
         (msg, h_new)
     }
@@ -1966,16 +1967,19 @@ impl<'a> SumcheckProver<'a> {
                 }
             } else {
                 let chunk = parallel::recommended_chunk_size(self.combined_basis.len());
-                parallel::chunks_mut_zip(&mut self.combined_basis, &b_new, chunk, |_, accs, news| {
-                    // Four products at a time ([`mul4`]).
-                    let (a4, a_rest) = accs.as_chunks_mut::<4>();
-                    for (acc, v) in a4.iter_mut().zip(news.as_chunks::<4>().0) {
-                        let p = mul4([scalar; 4], *v);
-                        *acc = std::array::from_fn(|i| acc[i] + p[i]);
-                    }
-                    for (acc, &v) in a_rest.iter_mut().zip(&news[4 * a4.len()..]) {
-                        *acc += scalar * v;
-                    }
+                // In the next round's affine ranges ([`Self::fold`]).
+                parallel::affine(|| {
+                    parallel::chunks_mut_zip(&mut self.combined_basis, &b_new, chunk, |_, accs, news| {
+                        // Four products at a time ([`mul4`]).
+                        let (a4, a_rest) = accs.as_chunks_mut::<4>();
+                        for (acc, v) in a4.iter_mut().zip(news.as_chunks::<4>().0) {
+                            let p = mul4([scalar; 4], *v);
+                            *acc = std::array::from_fn(|i| acc[i] + p[i]);
+                        }
+                        for (acc, &v) in a_rest.iter_mut().zip(&news[4 * a4.len()..]) {
+                            *acc += scalar * v;
+                        }
+                    })
                 });
             }
             self.t_r += scalar * h_new;

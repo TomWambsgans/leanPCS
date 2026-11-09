@@ -1,5 +1,6 @@
 // Vendored from leanVM (https://github.com/leanEthereum/leanVM), commit c445e3d51a5a85031df47240595698f3b24897bf, file crates/parallel/tests/pool.rs.
 // MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and AGENTS.md at the repository root).
+// Changed here: the affine dispatches' tests.
 //! The pool's contract: every item runs exactly once, writes land where the
 //! caller partitioned them, reductions are order-independent, and a task panic
 //! surfaces on the dispatcher without wedging the pool.
@@ -32,6 +33,32 @@ fn chunk_ranges_tile_the_domain() {
             }
         });
         assert!(seen.iter().all(|c| c.load(Ordering::Relaxed) == 1), "n = {n}");
+    }
+}
+
+/// Affine dispatches, explicit or inside `affine` (nested too), tile the domain as the shared claims do, and `affine`
+/// leaves the dispatching thread as it found it.
+#[test]
+fn affine_ranges_tile_the_domain() {
+    let tiles = |n: usize, dispatch: &dyn Fn(&(dyn Fn(usize, usize) + Sync))| {
+        let seen: Vec<AtomicUsize> = (0..n).map(|_| AtomicUsize::new(0)).collect();
+        dispatch(&|start, end| {
+            assert!(start < end && end <= n, "range {start}..{end} outside 0..{n}");
+            for i in start..end {
+                seen[i].fetch_add(1, Ordering::Relaxed);
+            }
+        });
+        assert!(seen.iter().all(|c| c.load(Ordering::Relaxed) == 1), "n = {n}");
+    };
+    for n in SIZES {
+        tiles(n, &|f| parallel::for_each_affine(n, f));
+        parallel::affine(|| {
+            tiles(n, &|f| parallel::for_each_chunk(n, f));
+            parallel::affine(|| tiles(n, &|f| parallel::for_each_chunk(n, f)));
+            let sum = parallel::map_reduce(n, || 0usize, |i| i, |a, b| a + b);
+            assert_eq!(sum, n * n.saturating_sub(1) / 2);
+        });
+        tiles(n, &|f| parallel::for_each_chunk(n, f));
     }
 }
 

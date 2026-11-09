@@ -1,5 +1,7 @@
 // Vendored from leanVM (https://github.com/leanEthereum/leanVM), commit c445e3d51a5a85031df47240595698f3b24897bf, file crates/parallel/src/lib.rs.
 // MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and AGENTS.md at the repository root).
+// Changed here: affine dispatches (`for_each_affine`, `affine`): each worker first given its own contiguous range of
+// the tasks, the same on every call, for passes that read what the pass before wrote in the same order.
 //! Fixed-size thread pool for flat data-parallel kernels. Workers claim ranges from one shared counter, which also balances heterogeneous cores. Dispatches cannot nest. Task panics are resumed on the dispatcher after all workers stop.
 
 use std::any::Any;
@@ -46,6 +48,8 @@ const CHUNK_FLOOR: usize = 64;
 thread_local! {
     static WORKER_ID: Cell<usize> = const { Cell::new(0) };
     static IN_TASK: Cell<bool> = const { Cell::new(false) };
+    /// Inside [`affine`] on this (dispatching) thread.
+    static AFFINE: Cell<bool> = const { Cell::new(false) };
 }
 
 /// A type-erased work unit. The `&dyn Fn`'s lifetime is erased to `'static`; it
@@ -55,6 +59,8 @@ thread_local! {
 struct Job {
     f: NonNull<dyn Fn(usize, usize) + Sync>,
     n_tasks: usize,
+    /// Tasks in [`for_each_affine`] ranges rather than claimed from the shared counter.
+    affine: bool,
 }
 
 /// Park state for one worker (slot 0, the dispatcher, never parks).
@@ -90,6 +96,8 @@ struct Pool {
     counter: Line,
     /// Background workers still draining; the dispatcher spins this to zero.
     working: Line,
+    /// An affine dispatch's ranges: how far into range `r` the claims have gone.
+    cursors: Vec<Line>,
     /// Park flag and unpark handle per worker.
     workers: Vec<Worker>,
     /// Serializes dispatchers: one driver at a time.
@@ -131,6 +139,7 @@ fn pool() -> &'static Pool {
             generation: Line(AtomicUsize::new(0)),
             counter: Line(AtomicUsize::new(0)),
             working: Line(AtomicUsize::new(0)),
+            cursors: (0..n).map(|_| Line(AtomicUsize::new(0))).collect(),
             workers: (0..n)
                 .map(|_| Worker {
                     parked: AtomicBool::new(false),
@@ -208,6 +217,10 @@ fn drain(pool: &Pool) {
     // Catch a task panic so it cannot unwind across `worker_main` (skipping the
     // `working` decrement and hanging the join) or poison the dispatch lock.
     let result = catch_unwind(AssertUnwindSafe(|| {
+        if job.affine {
+            drain_affine(pool, f, task_count, worker_count);
+            return;
+        }
         loop {
             // A stale read only affects granularity: `fetch_add` tiles `0..n`
             // into disjoint claims regardless.
@@ -229,6 +242,32 @@ fn drain(pool: &Pool) {
     }
 }
 
+/// Pieces a [`for_each_affine`] range is claimed in: its owner takes them in order, and a worker done with its own range
+/// takes the pieces of the ranges still unfinished, so a late or slow worker's range is shared out.
+const AFFINE_PIECES: usize = 8;
+
+/// An affine dispatch's claims: range `r` of `0..n` is `r n / t..(r + 1) n / t`, the worker of id `r` its owner.
+/// A worker drains its own range's pieces, then the other ranges' unclaimed pieces in the order of their ids.
+fn drain_affine(pool: &Pool, f: &(dyn Fn(usize, usize) + Sync), n: usize, t: usize) {
+    let id = WORKER_ID.get();
+    for k in 0..t {
+        let r = (id + k) % t;
+        let (lo, hi) = (r * n / t, (r + 1) * n / t);
+        let piece = (hi - lo).div_ceil(AFFINE_PIECES).max(1);
+        let cursor = &pool.cursors[r];
+        loop {
+            if cursor.load(Ordering::Relaxed) >= hi - lo {
+                break;
+            }
+            let start = lo + cursor.fetch_add(piece, Ordering::Relaxed);
+            if start >= hi {
+                break;
+            }
+            f(start, (start + piece).min(hi));
+        }
+    }
+}
+
 /// Run `f(start, end)` over disjoint ranges tiling `0..n_tasks`, in parallel; one
 /// worker may get several (guided self-scheduling). Blocks until every range is done, with
 /// the dispatcher acting as worker 0.
@@ -241,6 +280,11 @@ fn drain(pool: &Pool) {
 /// it panics rather than silently serializing. Fan out over the outermost
 /// independent unit and keep the levels below it sequential.
 pub fn for_each_chunk<F: Fn(usize, usize) + Sync>(n_tasks: usize, f: F) {
+    dispatch(n_tasks, affine_default(n_tasks), f);
+}
+
+/// [`for_each_chunk`], each worker first given its own contiguous range of the tasks ([`for_each_affine`]) when `affine`.
+fn dispatch<F: Fn(usize, usize) + Sync>(n_tasks: usize, affine: bool, f: F) {
     assert!(!IN_TASK.get(), "nested parallel dispatch from inside a pool task");
 
     let worker_count = num_threads();
@@ -264,8 +308,17 @@ pub fn for_each_chunk<F: Fn(usize, usize) + Sync>(n_tasks: usize, f: F) {
 
     // SAFETY: sole writer, since the prior dispatch fully drained (`working == 0`)
     // and the next has not been observed yet.
-    unsafe { *pool.job.get() = Some(Job { f: f_erased, n_tasks }) };
+    unsafe {
+        *pool.job.get() = Some(Job {
+            f: f_erased,
+            n_tasks,
+            affine,
+        })
+    };
     pool.counter.store(0, Ordering::Relaxed);
+    if affine {
+        pool.cursors.iter().for_each(|c| c.store(0, Ordering::Relaxed));
+    }
     pool.working.store(worker_count - 1, Ordering::Release);
     pool.generation.fetch_add(1, Ordering::SeqCst); // publish; SeqCst guards the park protocol
 
@@ -290,6 +343,38 @@ pub fn for_each_chunk<F: Fn(usize, usize) + Sync>(n_tasks: usize, f: F) {
     if let Some(payload) = panicked {
         resume_unwind(payload);
     }
+}
+
+/// Whether a dispatch of `n_tasks` from this thread goes by [`for_each_affine`]'s ranges: inside [`affine`], for at
+/// least a task a worker.
+fn affine_default(n_tasks: usize) -> bool {
+    AFFINE.get() && n_tasks >= num_threads()
+}
+
+/// `f()`, every dispatch it makes (of at least a task a worker) by [`for_each_affine`]'s ranges rather than shared
+/// claims: for a sequence of passes that each split their data in the order of their tasks, as a sumcheck's
+/// adjacent-pair folds (a task's outputs `[a, b)` read its inputs `[2a, 2b)`, which the same thread wrote in the
+/// round before) or a pass over buffers the previous pass wrote in the same order. The same values: only which thread
+/// runs which task changes.
+pub fn affine<R>(f: impl FnOnce() -> R) -> R {
+    struct Restore(bool);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            AFFINE.set(self.0);
+        }
+    }
+    let _restore = Restore(AFFINE.replace(true));
+    f()
+}
+
+/// [`for_each_chunk`] with each worker given one contiguous range of the tasks, the same range on every call of as
+/// many tasks: range `r` of `t` workers is `r n / t..(r + 1) n / t`, first offered to worker `r` (in pieces, so a late
+/// worker's rest is shared out by the others once they are done with theirs). Passes that split their data in the
+/// tasks' order then give each thread the data it wrote last, in its own L2 or its CCD's L3, where shared claims put it
+/// on any core: on a Zen 5 of 8 CCDs, a pass over data about the size of the L3s together reads it mostly from other
+/// CCDs' L3s, slower than from memory.
+pub fn for_each_affine<F: Fn(usize, usize) + Sync>(n_tasks: usize, f: F) {
+    dispatch(n_tasks, true, f);
 }
 
 /// `f(i)` for every `i` in `0..n_tasks`, in parallel. `#[inline]` folds the
