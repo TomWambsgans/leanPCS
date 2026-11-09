@@ -32,11 +32,11 @@ open OracleSpec OracleComp
 open scoped ENNReal
 
 attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
-  LeanVM.Protocol.Compile.instFintypeKState UniStatement.layoutWords UniStatement.setupStack
+  LeanVM.Protocol.Compile.instFintypeKState UniStatement.setupStack
 
 section Walk
 
-variable (D : Deployment) {κ : ℕ} (nV V : ℕ)
+variable {κ : ℕ} (nV V : ℕ)
 
 /-- **The row counts' range checks** (`readCounts`), in order: each count below `2^(r + 1)`, and at
 most `2^r`, for its height `r`. -/

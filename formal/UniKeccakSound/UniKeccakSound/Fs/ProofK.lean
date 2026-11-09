@@ -7,7 +7,7 @@ import UniKeccakSound.Fs.OpsK
 # The Keccak verifier: the setup, the composition's facts, the numbers
 
 * **The setup is one tree** (`setupK1`: `stackSetupS` of the setup's stack `setupStackK` at its plain shape); the
-  proof records its root and the deployment's constants `A0`, `B0` (`uFixK`, `rootsK`: `KDeployment.setupRoots`).
+  proof records its root (`uFixK`, `rootsK`: `KDeployment.setupRoots`).
 * **The composition's facts** for the three openings (`uOpsK`), the decoders (`uniTcK`), the chain (`uSpecK`, on
   `uniRounds`): the openings match (`hok_uniK`: `C1`, `C2` by `whirOp_ok_tableCode`, the setup's by
   `whirOp_ok_stack`), every round with a root is opened (`hcov_uniK`), the setup's stack satisfies its claim
@@ -84,9 +84,9 @@ theorem plain_tableEvalK (v : ℕ) (h1 : 23 ≤ v) (h2 : v ≤ 28) (a : Array K)
 
 /-! ## The setup: one tree -/
 
-/-- **The setup's roots the proof records**: the setup tree's root and the deployment's constants `A0`, `B0`
-(`KDeployment.setupRoots`). -/
-def rootsK (D : KDeployment) (s : Bytes32) : SetupRoots := ⟨ofB s, D.a0Root, D.b0Root⟩
+/-- **The setup's root the proof records**: the setup tree's root (`KDeployment.setupRoots`), the same at every
+deployment. -/
+def rootsK (_D : KDeployment) (s : Bytes32) : SetupRoots := ⟨ofB s⟩
 
 /-- **The proof with the setup's roots** (`fix`). -/
 def uFixK (D : KDeployment) (s : Bytes32) (π : UPf) : UPf := { π with roots := rootsK D s }

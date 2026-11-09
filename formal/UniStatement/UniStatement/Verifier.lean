@@ -81,7 +81,7 @@ def degree (plus minus : ℕ) : ℕ := plus - minus
 public input's), every height below `32` (the counts are 32-bit), and with Flock BLAKE2S's height at least `7`
 (its zerocheck's seven fixed coordinates). -/
 def Shape.validate (s : Shape) (flock : Bool) : Bool :=
-  !(decide (s.logMemory < 1) || s.heights.any (· > 31) || (flock && decide (s.heights.getD opBlake2s 0 < 7)))
+  !(decide (s.logMemory < 1) || s.heights.any (· > 31) || (flock && decide (s.heights.getD opSha3 0 < 7)))
 
 /-- **A valid shape**, for a deployment of the main line (Flock): six tables, and `Shape.validate` with Flock. -/
 def Shape.Valid (s : Shape) : Prop := s.heights.length = 6 ∧ s.validate true = true
@@ -190,12 +190,6 @@ def tableDegrees (t : Table) : ℕ × ℕ :=
   (t.flushes.pull.zip t.flushes.push).foldl (fun (acc : ℕ × ℕ) (pulled, pushed) ↦
     (acc.1 + tupleDegree pulled, acc.2 + tupleDegree pushed)) (1, 0)
 
-/-- **How the BLAKE2s argument runs** (`Blake2s`). -/
-inductive Blake2s where
-  | flock (variant : Flock.Variant)
-  | omitted
-  deriving DecidableEq, Repr, Inhabited
-
 /-- **How the relations reach `PCS_OPEN`** (`Claims`). -/
 inductive ClaimsMode where
   /-- `PCS_OPEN`'s ABI: point claims, by the batching sumcheck. -/
@@ -224,66 +218,10 @@ structure Reduced where
   layouts : List (Commitment × StackLayout)
   deriving Inhabited
 
-/-- **The three stacks' layouts** (`stack_layouts`, SPEC.md §3), `C2`'s from its column list. `C1`: `q_flock`
-(values, `h_B + 8`), every table's columns and its `z_T`, the memory's four columns, the bytecode's final
-counts; `C2`: the heap, the quotients (`E`-valued, as the walk lists them); setup: the bytecode's tuples
-(`lb + 4`), the addresses. -/
-def layouts (shape : Shape) (c2Columns : List (Column × ℕ × Bool)) : List (Commitment × StackLayout) :=
-  let heights := shape.heights
-  let c1 : List (Column × ℕ × Bool) :=
-    [(.qflock, heights.getD opBlake2s 0 + 8, false)] ++
-      tables.flatMap (fun t ↦
-        let h := heights.getD t.opcode 0
-        (List.range t.width).map (fun c ↦ (Column.table t.opcode c, h, false)) ++
-          [(.inverse t.opcode, h, false)]) ++
-      (List.range 4).map (fun k ↦ (Column.memory k, shape.logMemory, false)) ++
-      [(.bytecodeFinal, shape.logBytecode, false)]
-  let setup : List (Column × ℕ × Bool) :=
-    [(.bytecodeTuple, shape.logBytecode + 4, false), (.address, shape.logMemory, false)]
-  [(.c1, StackLayout.new c1), (.c2, StackLayout.new c2Columns), (.setup, StackLayout.new setup)]
-
-/-! ### The quotients' sizes, from the shape alone -/
-
-/-- **The constraint quotient's degree** (step 5's `quotient_degree`): JUMP's `n − 2`, every table's counters
-`(n − 1)(1 + counts) − n`, BLAKE2S's copies `r n/2 − n`, the public lines `2^lm − 3`, saturating (`degree`). -/
-def Shape.constraintDegree (shape : Shape) : ℕ :=
-  let tableDegree := tables.foldl (fun d table ↦
-    let r := shape.heights.getD table.opcode 0
-    let n := 2 ^ r
-    let d := if table.opcode = opJump then max d (degree n 2) else d
-    let d := max d (degree ((n - 1) * (1 + table.countColumns.length)) n)
-    if table.opcode = opBlake2s then max d (degree (r * (n / 2)) n) else d) 0
-  max tableDegree (degree (2 ^ shape.logMemory) 3)
-
-/-- **A heap block's leaf quotient's degree** (step 6): the memory's and the bytecode's `2(n − 1) − n`; a
-table's `max(pull, push)(n − 1) + (n − leastRows r) − n`; none for an unused block. -/
-def Shape.leafDegree (block : Block) : Option ℕ :=
-  let n := 2 ^ block.r
-  match block.leaves with
-  | .unused => none
-  | .memory | .bytecode => some (degree (2 * (n - 1)) n)
-  | .table t =>
-    let (pd, ppd) := tableDegrees (tables.getD t default)
-    some (degree (max pd ppd * (n - 1) + (n - Shape.leastRows block.r)) n)
-
-/-- **`C2`'s columns at a shape**, as `reduceWith` lists them: the heap, the tree quotient's two chunks, the
-constraint quotient's chunks, each used heap block's leaf quotient's chunks. -/
-def Shape.c2Columns (shape : Shape) : List (Column × ℕ × Bool) :=
-  let h := shape.heap.h
-  let constraintChunks := chunks (shape.constraintDegree + 1)
-  [(.heap, h, true), (.treeQuotient 0, h, true), (.treeQuotient 1, 0, true)] ++
-    (constraintChunks.zip (List.range constraintChunks.length)).map (fun (e, c) ↦
-      (Column.constraintQuotient c, e, true)) ++
-    (shape.heap.blocks.zip (List.range shape.heap.blocks.length)).flatMap fun (block, index) ↦
-      match Shape.leafDegree block with
-      | none => []
-      | some d =>
-        let sizes := chunks (d + 1)
-        (sizes.zip (List.range sizes.length)).map fun (e, chunk) ↦ (Column.leafQuotient index chunk, e, true)
-
-/-- **`layouts(shape)`** (iteration 2, public in the Rust): the three stacks' layouts of a shape, `C2`'s columns
-from the shape (the Rust reads them off a run of `reduce` on a null channel). -/
-def layoutsOf (shape : Shape) : List (Commitment × StackLayout) := layouts shape shape.c2Columns
+/-- **The setup stack's columns** (`stack_layouts`' setup): the bytecode's tuples (`lb + 4`), the memory's
+addresses. They do not depend on the tables. -/
+def setupStackColumns (shape : Shape) : List (Column × ℕ × Bool) :=
+  [(.bytecodeTuple, shape.logBytecode + 4, false), (.address, shape.logMemory, false)]
 
 section With
 
@@ -340,63 +278,6 @@ def countBits (heights : List ℕ) : ChanM m (List (List E)) := do
   return out.toList
 
 end With
-
-/-- **The constraint quotient's identity** (step 5): its relation on `C1` (but for `Q_W(t)`, sent) and the
-quotient's degree. The counters' constraint `z Π c + 1` holds on every row (iteration 2, F1). -/
-def constraintRelation (shape : Shape) (parts : List TablePart) (publicWords : List E)
-    (gamma t constraintValue : E) (w : List E) : Relation × ℕ := Id.run do
-  let heights := shape.heights
-  let rW := shape.constraintVars
-  let mut known : E := 0
-  let mut terms : Array Term := #[]
-  let mut power : E := 1
-  let mut qDegree : ℕ := 0
-  for (table, part) in tables.zip parts do
-    let r := heights.getD table.opcode 0
-    let n := 2 ^ r
-    let lift := vanishingRatio w r rW
-    -- JUMP: b + v_cond w, v_cond (b + 1).
-    if table.opcode = opJump then
-      let cond := (part.sent.getD (colIdx table.columns "v_cond") none).getD 0
-      let flag := (part.sent.getD (colIdx table.columns "b") none).getD 0
-      let g1 := power * lift
-      power := power * gamma
-      known := known + g1 * flag
-      terms := terms.push (term (.table table.opcode (colIdx table.columns "w")) (w.take r) (g1 * cond))
-      let g2 := power * lift
-      power := power * gamma
-      known := known + g2 * cond * (flag + 1)
-      qDegree := max qDegree (degree n 2)
-    -- Counters nonzero on every row: z Π c + 1.
-    let counters := table.countColumns.foldl (fun acc c ↦ acc * (part.sent.getD c none).getD 0) 1
-    let g := power * lift
-    power := power * gamma
-    terms := terms.push (term (.inverse table.opcode) (w.take r) (g * counters))
-    known := known + g
-    let counts := table.countColumns.length
-    qDegree := max qDegree (degree ((n - 1) * (1 + counts)) n)
-    -- BLAKE2S's limb copies equal q_flock's limbs: copy_j − ℓ_j, ℓ_j read through y(t).
-    if table.opcode = opBlake2s then
-      let y := coordinatesAt t (coordinateFunctionals r)
-      for c in List.range table.width do
-        if let some slot := qflockSlot (table.columns.getD c "") then
-          let g := power * lift
-          power := power * gamma
-          terms := terms.push (term (.table table.opcode c) (w.take r) g)
-          terms := terms.push (term (.qflockSlot slot) y g)
-      qDegree := max qDegree (degree (r * (n / 2)) n)
-  -- The public input: the memory's limbs at cells 0 and 1 are the public lines.
-  let lm := shape.logMemory
-  let lines : List (E × E) :=
-    [(publicWords.getD 0 0, publicWords.getD 2 0), (publicWords.getD 1 0, publicWords.getD 3 0), (0, 0)]
-  let lift := vanishingRatio w 1 rW
-  for ((low, high), k) in lines.zip (List.range 3) do
-    let g := power * lift
-    power := power * gamma
-    terms := terms.push (term (.memory k) (w.take lm) g)
-    known := known + g * (low + t * (low + high))
-  qDegree := max qDegree (degree (2 ^ lm) 3)
-  return (⟨terms.toList, constraintValue * w.getD rW 0 + known⟩, qDegree)
 
 /-- **The heap's relations** (step 6) on `C2`, and the leaf quotients' columns: `T(t)`, the tree, the root,
 each block's leaf identity (`R_b(o_b + t) P_pull + w_r(t) Q_b(t) = P_push` for the memory and the bytecode; a
@@ -455,139 +336,6 @@ def heapRelations (shape : Shape) (active : List E) (parts : List TablePart) (we
         quotientTerms (Column.leafQuotient index) sizes w scale, push⟩
   relations := relations.push ⟨quotientTerms .constraintQuotient constraintChunks w 1, constraintValue⟩
   return (relations.toList, columns.toList)
-
-section With
-
-variable {m : Type → Type} [Monad m] (F : KeccakState → m KeccakState)
-
-/-- **The verifier** over the permutation `F` (`reduce`, SPEC.md §4–§8, §13), at the shape `shape`:
-`publicWords` are the public input's four 64-bit words, low first; the row counts are read from the stream. -/
-def reduceWith (shape : Shape) (publicWords : List E) (blake2s : Blake2s) (mode : ClaimsMode) :
-    ChanM m Reduced := do
-  if !shape.validate (blake2s != .omitted) then throw .invalidShape
-  let heights := shape.heights
-  let heap := shape.heap
-  let rW := shape.constraintVars
-  let h := heap.h
-  -- 0. The tables' row counts (F1): six 32-bit integers, absorbed with C1's root.
-  let counts ← countBits (m := m) heights
-  -- 1. C1, then the bus's and the constraints' challenges.
-  let root1 ← nextRoot (m := m)
-  let alphas ← samples F 4
-  let beta ← sample F
-  let gamma ← sample F
-  let weights := eqKernel alphas
-  -- 2. Flock, on C1's q_flock; with the point-claim ABI, its matrices' reduction left pending (lever 4a).
-  let logN := blake2sR1csLogSize + heights.getD opBlake2s 0
-  let (flock, pending) : Option (List E × Option Flock.End × Option Flock.MatrixClaim) ×
-      Option (Flock.Pending × List E) ← match blake2s, mode with
-    | .flock variant, .point => do
-      let (point, end_, left) ← Flock.verifyDeferred F logN variant
-      pure (some (point, end_, (none : Option Flock.MatrixClaim)), some (left, point))
-    | .flock variant, .weighted => do
-      let reduced ← Flock.verify F logN variant
-      pure (some (reduced.point, some reduced.end_, some reduced.matrices), none)
-    | .omitted, _ => pure (none, none)
-  -- 3. C2, then the point; the active rows' vanishing polynomials from the counts' bits (F1b).
-  let root2 ← nextRoot (m := m)
-  let t ← sample F
-  let w := digits t (max h (rW + 4) + 2)
-  let active := (counts.zip heights).map fun (bits, r) ↦ activeVanishingFromBits w bits r
-  -- 4. The values at t, with the relations they take part in.
-  let mut relations : Array Relation := #[]
-  let mut parts : Array TablePart := #[]
-  for table in tables do
-    let (part, rels) ← tablePart (m := m) table (heights.getD table.opcode 0) weights beta w
-    parts := parts.push part
-    relations := relations ++ rels.toArray
-  -- The memory: pull (SEP_MEM, g^i, final count, limbs) of every cell, push the same with count 1.
-  let lm := shape.logMemory
-  let memoryFinalCount ← nextScalar (m := m)
-  let address ← nextScalar (m := m)
-  let memoryPull ← nextScalar (m := m)
-  relations := relations.push (Relation.equal (.memory 3) (w.take lm) memoryFinalCount)
-  relations := relations.push (Relation.equal .address (w.take lm) address)
-  relations := relations.push ⟨(List.range 3).map (fun k ↦ term (.memory k) (w.take lm) (weights.getD (3 + k) 0)),
-    memoryPull + beta + weights.getD 0 0 * sepMem + weights.getD 1 0 * address +
-      weights.getD 2 0 * memoryFinalCount⟩
-  let memoryPush := memoryPull + weights.getD 2 0 * (1 + memoryFinalCount)
-  -- The bytecode: pull (SEP_BYTECODE, g^i, final count, instruction), push the same with count 1.
-  let lb := shape.logBytecode
-  let bytecodeFinalCount ← nextScalar (m := m)
-  let bytecodePull ← nextScalar (m := m)
-  relations := relations.push (Relation.equal .bytecodeFinal (w.take lb) bytecodeFinalCount)
-  relations := relations.push (Relation.equal .bytecodeTuple (alphas ++ w.take lb)
-    (bytecodePull + beta + weights.getD 2 0 * bytecodeFinalCount))
-  let bytecodePush := bytecodePull + weights.getD 2 0 * (1 + bytecodeFinalCount)
-  let heapValue ← nextScalar (m := m)
-  let constraintValue ← nextScalar (m := m)
-  -- 5. The constraint quotient's identity, on C1 but for Q_W(t), which is sent.
-  let (constraint, quotientDegree) :=
-    constraintRelation shape parts.toList publicWords gamma t constraintValue w
-  relations := relations.push constraint
-  let constraintChunks := chunks (quotientDegree + 1)
-  let c2Columns : List (Column × ℕ × Bool) :=
-    [(.heap, h, true), (.treeQuotient 0, h, true), (.treeQuotient 1, 0, true)] ++
-      (constraintChunks.zip (List.range constraintChunks.length)).map fun (e, c) ↦
-        (Column.constraintQuotient c, e, true)
-  -- 6. C2: the heap's tree, root and leaves, and Q_W's value.
-  let (heapRels, leafColumns) := heapRelations shape active parts.toList weights beta heapValue
-    constraintValue memoryPull memoryPush bytecodePull bytecodePush w constraintChunks
-  relations := relations ++ heapRels.toArray
-  let c2Columns := c2Columns ++ leafColumns
-  -- 7. Flock's claim on q_flock: the ring switch's weight (one term, or 64), or one bit-slice combination.
-  let tower := match blake2s with
-    | .flock variant => variant.slices == .tower
-    | .omitted => false
-  let mut bitSliceRelations : List Relation := []
-  let mut matrices : Option Flock.MatrixClaim := none
-  let mut ringMap : Option (List E) := none
-  match flock with
-  | some (flockPoint, some flockEnd, flockMatrices) =>
-    match flockEnd with
-    | .ring map target =>
-      if tower && mode == .point then
-        -- One term for the whole weight, evaluated at the batch's point (lever 1a).
-        relations := relations.push ⟨[⟨.qflock, flockPoint, ringTwist, 1⟩], target⟩
-        ringMap := some map
-      else
-        let coefficients := if tower then Flock.towerCoefficients map else Flock.ringSwitchCoefficients map
-        relations := relations.push ⟨(coefficients.zip (List.range coefficients.length)).map
-          (fun (c, k) ↦ ⟨.qflock, flockPoint, k, c⟩), target⟩
-    | .combination ws value =>
-      bitSliceRelations := [⟨(ws.zip (List.range ws.length)).map
-        (fun (c, i) ↦ ⟨.qflockBits, flockPoint, i, c⟩), value⟩]
-    matrices := flockMatrices
-  | _ => pure ()
-  -- 8. One claim per commitment.
-  let rho ← sample F
-  let combined : List (Commitment × Combined) :=
-    commitments.filterMap fun c ↦ (combine relations.toList c rho).map (c, ·)
-  let bitSlice := combine bitSliceRelations .c1 1
-  let stackLayouts := layouts shape c2Columns
-  let stackVars := stackLayouts.map fun (c, l) ↦ (c, l.vars)
-  let mut openings : List (Commitment × Opening) := []
-  match mode with
-  | .weighted =>
-    openings := combined.map fun (c, claim) ↦ (c, .weighted claim)
-    match bitSlice, openings with
-    | some claim, (c, .weighted c1) :: rest =>
-      -- Without the point ABI, the bit-slice terms join C1's weighted claim, at a fresh power of ρ.
-      let fresh := epow rho c1.relations
-      let base := c1.points.length
-      let merged : Combined := { c1 with
-        points := c1.points ++ claim.points
-        terms := c1.terms ++ claim.terms.map fun (column, p, twist, k) ↦ (column, p + base, twist, fresh * k)
-        value := c1.value + fresh * claim.value }
-      openings := (c, .weighted merged) :: rest
-    | _, _ => pure ()
-  | .point =>
-    let (batched, deferred) ← batch F combined stackLayouts bitSlice ringMap pending
-    openings := batched
-    if deferred.isSome then matrices := deferred
-  return ⟨(root1, root2), openings, matrices, relations.size, stackVars, stackLayouts⟩
-
-end With
 
 end UniStatement
 

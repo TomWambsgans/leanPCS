@@ -134,7 +134,7 @@ theorem constraintRelationK_phc (S : UniStatement.Shape) {st : RecState} (hg : G
       have hpw3F := Rp.pgrow hsB.good (hsC.trans (hsD.trans hsF)) hpw3
       have hcF := CrCtx.pgrow π iv publicInput stream hgX hsXF hcX
       have hliftF := Rp.pgrow hgX hsXF hliftX
-      by_cases hb : table.opcode = opBlake2s
+      by_cases hb : table.opcode = opSha3
       · rw [ite_eq_left hb, ite_eq_left hb]
         refine phc_bind (psim_phcC (coordinatesAt_psim sF hsF.good hcF.ht _)) fun y sG hsG hy ↦ ?_
         refine phc_bind (phc_forIn (fun a c s' ↦ a = (table.columns.getD c "", c) ∧
@@ -231,7 +231,7 @@ theorem constraintRelationK_phc (S : UniStatement.Shape) {st : RecState} (hg : G
       have hpw3F := Rp.pgrow hsB.good (hsC.trans (hsD.trans hsF)) hpw3
       have hcF := CrCtx.pgrow π iv publicInput stream hgX hsXF hcX
       have hliftF := Rp.pgrow hgX hsXF hliftX
-      by_cases hb : table.opcode = opBlake2s
+      by_cases hb : table.opcode = opSha3
       · rw [ite_eq_left hb, ite_eq_left hb]
         refine phc_bind (psim_phcC (coordinatesAt_psim sF hsF.good hcF.ht _)) fun y sG hsG hy ↦ ?_
         refine phc_bind (phc_forIn (fun a c s' ↦ a = (table.columns.getD c "", c) ∧

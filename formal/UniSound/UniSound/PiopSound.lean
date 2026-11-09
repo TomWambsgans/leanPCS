@@ -17,8 +17,6 @@ namespace UniSound
 open LeanVM.Parameters UniStatement Finset
 open scoped ENNReal
 
-variable {D : Deployment} {κ : ℕ}
-
 theorem prEvent_le_of_forall_not {α : Type} (mx : ProbComp α) (P : α → Prop) (ε : ℝ≥0∞)
     (h : ∀ x, ¬ P x) : Pr{let x ← mx}[P x] ≤ ε :=
   (le_of_eq (prEvent_eq_zero_of_forall_not mx P h)).trans zero_le

@@ -114,47 +114,6 @@ def weights : Array E := eqKernel inp.alphas
 def active : List E :=
   (inp.counts.zip inp.shape.heights).map fun p ↦ activeVanishingFromBits inp.w p.1 p.2
 
-/-- The tables' parts. -/
-def tp : List TablePart × List Relation × List E :=
-  tablesPart inp.shape inp.weights inp.beta inp.w tables inp.vals
-
-/-- The values after the tables'. -/
-def rest : List E := inp.tp.2.2
-
-def memoryFinalCount : E := inp.rest.getD 0 0
-def address : E := inp.rest.getD 1 0
-def memoryPull : E := inp.rest.getD 2 0
-def memoryPush : E := inp.memoryPull + inp.weights.getD 2 0 * (1 + inp.memoryFinalCount)
-def bytecodeFinalCount : E := inp.rest.getD 3 0
-def bytecodePull : E := inp.rest.getD 4 0
-def bytecodePush : E := inp.bytecodePull + inp.weights.getD 2 0 * (1 + inp.bytecodeFinalCount)
-def heapValue : E := inp.rest.getD 5 0
-def constraintValue : E := inp.rest.getD 6 0
-
-/-- The memory's three relations. -/
-def memRels : List Relation :=
-  [Relation.equal (.memory 3) (inp.w.take inp.shape.logMemory) inp.memoryFinalCount,
-    Relation.equal .address (inp.w.take inp.shape.logMemory) inp.address,
-    ⟨(List.range 3).map (fun k ↦ term (.memory k) (inp.w.take inp.shape.logMemory)
-        (inp.weights.getD (3 + k) 0)),
-      inp.memoryPull + inp.beta + inp.weights.getD 0 0 * sepMem + inp.weights.getD 1 0 * inp.address +
-        inp.weights.getD 2 0 * inp.memoryFinalCount⟩]
-
-/-- The bytecode's two relations. -/
-def bcRels : List Relation :=
-  [Relation.equal .bytecodeFinal (inp.w.take inp.shape.logBytecode) inp.bytecodeFinalCount,
-    Relation.equal .bytecodeTuple (inp.alphas ++ inp.w.take inp.shape.logBytecode)
-      (inp.bytecodePull + inp.beta + inp.weights.getD 2 0 * inp.bytecodeFinalCount)]
-
-/-- The constraint quotient's relation and degree (step 5). -/
-def constraint : Relation × ℕ :=
-  constraintRelation inp.shape inp.tp.1 inp.publicWords inp.gamma inp.t inp.constraintValue inp.w
-
-/-- The heap's relations (step 6). -/
-def heap : List Relation × List (Column × ℕ × Bool) :=
-  heapRelations inp.shape inp.active inp.tp.1 inp.weights inp.beta inp.heapValue inp.constraintValue
-    inp.memoryPull inp.memoryPush inp.bytecodePull inp.bytecodePush inp.w (chunks (inp.constraint.2 + 1))
-
 /-- Flock's ring end (step 7, the main line: one term for the whole ring-switch weight). -/
 def ringRels : List Relation :=
   match inp.flockEnd with
@@ -168,10 +127,6 @@ def ringMap : Option (List E) :=
   | _ => none
 
 end RelInput
-
-/-- **The verifier's relations at `t`**, in its order (steps 4–7 of `reduceWith`, main line). -/
-def relsOf (inp : RelInput) : List Relation :=
-  inp.tp.2.1 ++ inp.memRels ++ inp.bcRels ++ [inp.constraint.1] ++ inp.heap.1 ++ inp.ringRels
 
 /-- The relations on one commitment, in order (`combine`'s `mine`). -/
 def mine (rels : List Relation) (c : Commitment) : List Relation :=

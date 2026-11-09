@@ -2,11 +2,11 @@
 
 # UniKeccak: the univariate verifier for the Keccak VM
 
-The Keccak VM (`docs/leanvm/univariate/KECCAK.md`, `formal/KeccakVm`) is leanVM 42422001 with `BLAKE2S` replaced
-by leanVM `9d50c92a3`'s `SHA3`. This library holds:
+The Keccak VM (`docs/leanvm/univariate/KECCAK.md`, `formal/KeccakVm`) is leanVM 42422001 with its hash instruction
+(opcode `g^5`) replaced by leanVM `9d50c92a3`'s `SHA3`. This library holds:
 
-- **its verifier as computable Lean**, `reduce` with `Blake2s::Keccak(variant)` of `crates/leanvm/univariate/src/
-  verifier.rs`, for the main line (`KECCAK_MAIN`) and π1-rec3's shape (`KECCAK_REC3`), with the contract's IV and its
+- **its verifier as computable Lean**, `reduce` of `crates/leanvm/univariate/src/verifier.rs` at a `Variant`, for
+  the main line (`KECCAK_MAIN`) and π1-rec3's shape (`KECCAK_REC3`), with the contract's IV and its
   three `PCS_OPEN` calls (`contract.rs`);
 - **the end statements**, against the Keccak VM's relation `KeccakVm.KvHolds F`: knowledge soundness and completeness
   of the main line and of π1-rec3's shape. `F : KeccakVm.KeccakFlockSpec` (the Keccak-f block) is a parameter.
@@ -57,21 +57,21 @@ KECCAK_VECTORS=<path>/keccak_vectors.txt lake env lean ../UniKeccak/UniKeccakTes
 | `keccak_flock.rs`: `structured_terminal`, `shift_offsets`, `grouped`, `RC`, `RHO`, `SOURCE`, `CONSTANT_COLUMN`, `X_QUAD` | `structuredTerminal`, `shiftOffsets`, `grouped`, `rc`, `rho`, `source`, `constantColumn`, `xQuad` |
 | `keccak_flock.rs`: `row_values`, `t_word`; `flock_min.rs`: `walked_terminal_with::<S, KeccakWalked>`, `known_weights_with` | `keccakRowValues`, `tWord`, `walkedTerminalK` |
 | `flock_min.rs`: `front_with(log_n, variant, 17)`, `verify_walked_with::<S, Keccak>` | `frontK`, `verifyWalkedK` (the zerocheck `Flock.zerocheckFs`, the ring switch `Flock.ringEnd`: `UniStatement`'s) |
-| `verifier.rs`: `Blake2s::Keccak(variant)`, `KECCAK_MAIN`, `KECCAK_REC3` | `KeccakVariant` (skip, Fiat–Shamir shape; slices `TowerWalk`), `keccakMain`, `keccakRec3` |
-| `verifier.rs`: `reduce` with `Blake2s::Keccak` | `reduceWithK` (steps 0, 4, 6 `UniStatement`'s `countBits`, `tablePart`, `heapRelations`; α by `drawRun`) |
+| `verifier.rs`: `Variant`, `KECCAK_MAIN`, `KECCAK_REC3` | `KeccakVariant` (skip, Fiat–Shamir shape; slices `TowerWalk`), `keccakMain`, `keccakRec3` |
+| `verifier.rs`: `reduce` | `reduceWithK` (steps 0, 4, 6 `UniStatement`'s `countBits`, `tablePart`, `heapRelations`; α by `drawRun`) |
 | `verifier.rs`: step 5 with `qflock_slot(true, ·)`, `keccak_slot_offset` | `constraintRelationK` (`keccakSlot`, `keccakSlotOffset` of `UniStatement/KeccakTables.lean`) |
 | `verifier.rs`: `vm_tables(true)`, `qflock_row_bits(true)`, `stack_layouts_for(·, ·, true)`, `layouts_for(·, Keccak)` | `tablesKeccak`, `qflockRowBits`, `layoutsK`, `layoutsOfK` (`C2`'s columns `Shape.c2ColumnsK`) |
 | `verifier.rs`: `weight_at` (slot bits `= q_flock`'s variables − the point's) | `weightAtK` |
 | `verifier.rs`: `batch` (no pending matrices, no bit-slice claim) | `batchK` (rounds as `UniStatement.batchFs`: `sumcheckDrawn`, `sumcheckPairsDrawn`) |
 | `contract.rs`: `rust_verifier_with` | `runWithK`, `runK` |
-| `contract.rs`: `variant_bytes(Keccak)`, `layout_words_for(·, Keccak)`, `contract_iv_for(·, Keccak, ·, ·)`, `calls` | `variantBytesK`, `layoutWordsK`, `contractIvKWith`/`contractIvK`, `pcsCallsK` |
+| `contract.rs`: `variant_bytes`, `layout_words`, `contract_iv`, `calls` | `variantBytesK`, `layoutWordsK`, `contractIvKWith`/`contractIvK`, `pcsCallsK` |
 | the Keccak contract's three calls (`C1`, `C2`, setup) | `verifyWithK` |
 | `tests/keccak_vm.rs`: `KECCAK_RUNS`, `KECCAK_LOG_BYTECODE`; `leanvm_rec/tests/keccak_vm_rec.rs`: `KECCAK_400` | `keccakRuns`, `keccakLogBytecode`, `keccakShapeOf`, `keccakShapeNamed`, `keccak400` |
 
 **Deviations**, none changing a value:
 
-- The variant is the skip and the Fiat–Shamir shape. The Rust's `Variant` also has `slices`, which `Blake2s::Keccak`
-  asserts is `TowerWalk`; Lean leaves it out.
+- The variant is the skip and the Fiat–Shamir shape. The Rust's `Variant` also has `slices`, which the Keccak
+  verifier asserts is `TowerWalk`; Lean leaves it out.
 - The batch has no pending matrices and no bit-slice claim, the arguments the Rust passes as `None` here.
 - The ring switch's end is always `End::Ring`, so the `End::Combination` arm of step 7, which the Keccak verifier
   never reaches, adds nothing.
@@ -133,8 +133,6 @@ structure KDeployment where
   prog : KeccakVm.Program
   shape : Shape
   programIv : List UInt8
-  a0Root : Digest
-  b0Root : Digest
   valid : shape.Valid
   logBytecode_eq : shape.logBytecode = prog.logSize
 
@@ -170,9 +168,8 @@ def UniCompletenessKeccakRec3 (F) (D) (P) (δ) : Prop := UniCompletenessKeccakWi
 - `KAdversary := SetupRoots → OracleComp RandomPermutationOracles (Vector UInt8 32 × KeccakProof)`.
 - `KeccakProof` is the stream and three opening proofs (`C1`, `C2`, the setup).
 - `D.Stack rows := Column (keccakIsaμ D.prog (D.sizes rows))`, and `D.HonestRelation F` is `KvHonest F`.
-- **The setup** is one WHIR commitment, of `setupStackK`. `A0`, `B0` are not committed: their roots `a0Root`,
-  `b0Root` are deployment constants that the contract's IV hashes, because `contract_iv_for` keeps the BLAKE2s
-  preimage. The verifier never opens them.
+- **The setup** is one WHIR commitment, of `setupStackK`. The contract's IV hashes its root (`SetupRoots`'s one
+  word, `F`).
 - **The extractor** `uniExtractorK F` is the former `UniStatement.uniExtractor` on the Keccak `C1` (`c1LayoutK`, `2^μ` words), each candidate
   read as the Keccak VM's stack (`kvStack`), the first satisfying `KvHolds F`. `KvHolds` is decidable, so the
   extractor is computable for a computable `F`.
@@ -182,19 +179,15 @@ def UniCompletenessKeccakRec3 (F) (D) (P) (δ) : Prop := UniCompletenessKeccakWi
   inhabitant, with `KeccakFlockFits` and the terminal's identity as its lemmas.
 
 **The map** (`Mapping.lean`). `C1`'s `memory k`, `bytecodeFinal` and `table t i` are the Keccak VM's columns in basis
-`B`. Every `SHA3` column is committed, the 50 lanes included, so no column of the Keccak VM is read off `QFLOCK`,
-unlike Lv42's `BLAKE2S` limbs. `qflock` holds values: the Keccak VM's block `x` (cells `w + 2^11 x`) is `C1`'s block
-`rowPosition x`. Rows follow `rowPosition`, as in `UniStatement`. `inverse t` has no counterpart. `Q_W`'s copy
-identities are what `KeccakAux`'s copy clause states.
+`B`. Every `SHA3` column is committed, the 50 lanes included, so no column of the Keccak VM is read off `QFLOCK`.
+`qflock` holds values: the Keccak VM's block `x` (cells `w + 2^11 x`) is `C1`'s block `rowPosition x`. Rows follow
+`rowPosition`, as in `UniStatement`. `inverse t` has no counterpart. `Q_W`'s copy identities are what `KeccakAux`'s copy
+clause states.
 
 ## Needed changes outside this library (reported, not made)
 
 - `UniStatement.weightAt` fixes a slot term's bits at 8. The Rust reads them as `q_flock`'s variables minus the point's.
-  `weightAtK` is the Rust's; `UniStatement` could take it, and then `batchFs` would serve both VMs.
-- `UniStatement.Flock.front` and `zerocheckFs` take the lincheck's rounds from BLAKE2s's `lincheckRounds`. A
-  parameter there would make `frontK` unnecessary.
-- `contract_iv_for(·, Keccak, ·, ·)` hashes the `A0`, `B0` roots and their layout words, which the Keccak contract
-  never uses (`KDeployment.a0Root`, `b0Root`). Dropping them would be a Rust change, and the vectors would change too.
+  `weightAtK` is the Rust's; `UniStatement` could take it, and then `batchFs` would be `batchK`.
 - `KECCAK.md` says there is no Keccak prover. The real proofs of `tests/vectors/keccak*.txt` exist, so it is out of
   date.
 

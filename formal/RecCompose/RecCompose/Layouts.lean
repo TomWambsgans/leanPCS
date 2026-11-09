@@ -58,7 +58,7 @@ theorem stackLayout_words (cols : List (Column × ℕ × Bool)) : (StackLayout.n
 /-- `C1`'s columns on the Keccak VM (`UniKeccak.layoutsK`' `c1`). -/
 def c1ColumnsK (shape : Shape) : List (Column × ℕ × Bool) :=
   let heights := shape.heights
-  [(.qflock, heights.getD opBlake2s 0 + UniKeccak.qflockRowBits, false)] ++
+  [(.qflock, heights.getD opSha3 0 + UniKeccak.qflockRowBits, false)] ++
     tablesKeccak.flatMap (fun t ↦
       let h := heights.getD t.opcode 0
       (List.range t.width).map (fun c ↦ (Column.table t.opcode c, h, false)) ++

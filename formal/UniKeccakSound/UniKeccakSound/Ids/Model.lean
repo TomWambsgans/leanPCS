@@ -144,7 +144,7 @@ noncomputable def quotPK (column : ℕ → Column) (sizes : List ℕ) : Polynomi
 noncomputable def slotPK (slot : ℕ) : Polynomial E :=
   colPoly (layoutOfK S .c1) (batchVarsK S) c1 .qflock fun l ↦
     if l < qflockRowBits then C (bitE slot l)
-    else yP (coordinateFunctionals (S.heights.getD opBlake2s 0)) (l - qflockRowBits)
+    else yP (coordinateFunctionals (S.heights.getD opSha3 0)) (l - qflockRowBits)
 
 /-- **A table's constraints** `(M_i, W_i)` on the Keccak VM (`constraintRelationK`'s, in its order): `JUMP`'s two,
 the counters' `z Π c + 1`, the `SHA3` lanes' copies `copy_c + slot(y) + offset`; `M_i` the lift to `V_{r_W}`. -/
@@ -155,7 +155,7 @@ noncomputable def tableConstraintsPK (tab : Table) : List (Polynomial E × Polyn
   (if o = opJump then
     [(lift, col "b" + col "v_cond" * col "w"), (lift, col "v_cond" * (col "b" + 1))] else []) ++
   [(lift, c1PK S c1 (.inverse o) * (tab.countColumns.map fun c ↦ c1PK S c1 (.table o c)).prod + 1)] ++
-  (if o = opBlake2s then (List.range tab.width).filterMap fun c ↦
+  (if o = opSha3 then (List.range tab.width).filterMap fun c ↦
     (keccakSlot (tab.columns.getD c "")).map fun slot ↦
       (lift, c1PK S c1 (.table o c) + slotPK S c1 slot + C (eK (keccakSlotOffset (tab.columns.getD c ""))))
    else [])
@@ -328,9 +328,9 @@ def qfK (κ : ℕ) : LeanVM.Protocol.Column (KeccakVm.kWords + κ) :=
 each lane column is `q_flock`'s port word `keccakSlot` of block `x`, plus its offset (`END_BIT` for `in_16`). -/
 def CopiesK (s : USt) : Prop :=
   CountsFit D.shape s.2 ∧
-    ∀ x < 2 ^ D.shape.heights.getD opBlake2s 0, ∀ col slot,
+    ∀ x < 2 ^ D.shape.heights.getD opSha3 0, ∀ col slot,
       keccakSlot (sha3Columns.getD col "") = some slot →
-        c1ValK D c (.table opBlake2s col) (D.shape.heights.getD opBlake2s 0) x =
+        c1ValK D c (.table opSha3 col) (D.shape.heights.getD opSha3 0) x =
           c (qfOffK D + slot + 2 ^ qflockRowBits * x) + toK (eK (keccakSlotOffset (sha3Columns.getD col "")))
 
 end Heap

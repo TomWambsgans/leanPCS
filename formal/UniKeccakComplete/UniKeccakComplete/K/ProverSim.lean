@@ -231,9 +231,9 @@ theorem app_proveWith
       φ.app (E2ECompleteness.proveOpeningWithH H F fuel L tree stack claims) =
         E2ECompleteness.proveOpeningWithH (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) fuel L tree stack claims)
     (flock : FlockProver m) (flock' : FlockProver n) (hflock : ∀ logN v q, φ.wr (flock logN v q) = flock' logN v q)
-    (fuel : ℕ) (a0 b0 : Digest) (programIv : List UInt8) (tr : Trace) :
-    φ.app (proveWith H F fuel flock a0 b0 programIv tr) =
-      proveWith (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) fuel flock' a0 b0 programIv tr := by
+    (fuel : ℕ) (programIv : List UInt8) (tr : Trace) :
+    φ.app (proveWith H F fuel flock programIv tr) =
+      proveWith (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) fuel flock' programIv tr := by
   have hs : ∀ seed, φ.app ((proveStreamWith H (commitReal H) flock tr).run (Wr.start seed)) =
       (proveStreamWith (fun x ↦ φ.app (H x)) (commitReal fun x ↦ φ.app (H x)) flock' tr).run
         (Wr.start seed) := fun seed ↦ by
@@ -259,7 +259,7 @@ theorem app_uniProverWith
     (D : UniKeccak.KDeployment) (input : Vector UInt8 32) (rows : List ℕ) (q : D.Stack rows) :
     φ.app (uniProverWith H F flock D input rows q) =
       uniProverWith (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) flock' D input rows q :=
-  app_proveWith φ H F hopen flock flock' hflock _ _ _ _ _
+  app_proveWith φ H F hopen flock flock' hflock _ _ _
 
 end Top
 
@@ -285,15 +285,15 @@ section Commute
 variable {r : Type → Type} [Monad r] [LawfulMonad r] (impl : QueryImpl KeccakCalls r)
 
 /-- **The honest prover over the two calls commutes with any simulation**, at any fuel and Flock's mode. -/
-theorem simulateQ_proveWith (flock : FlockProverH) (hflock : FlockCommutes flock) (fuel : ℕ) (a0 b0 : Digest)
+theorem simulateQ_proveWith (flock : FlockProverH) (hflock : FlockCommutes flock) (fuel : ℕ)
     (programIv : List UInt8) (tr : Trace) :
-    simulateQ impl (proveWith callKeccak256 callKeccakF1600 fuel (flock callKeccak256) a0 b0 programIv tr) =
-      proveWith (implH impl) (implF impl) fuel (flock (implH impl)) a0 b0 programIv tr := by
+    simulateQ impl (proveWith callKeccak256 callKeccakF1600 fuel (flock callKeccak256) programIv tr) =
+      proveWith (implH impl) (implF impl) fuel (flock (implH impl)) programIv tr := by
   have h := Morph.app_proveWith (Morph.sim impl) callKeccak256 callKeccakF1600
     (fun fuel L tree stack claims ↦ by
       rw [Morph.sim_H, Morph.sim_F]
       exact E2ECompleteness.simulateQ_proveOpeningWithH impl fuel L tree stack claims)
-    (flock callKeccak256) (flock (implH impl)) (fun logN v q ↦ by rw [hflock, Morph.sim_H]) fuel a0 b0
+    (flock callKeccak256) (flock (implH impl)) (fun logN v q ↦ by rw [hflock, Morph.sim_H]) fuel
     programIv tr
   rw [Morph.sim_H, Morph.sim_F] at h
   exact h
@@ -304,7 +304,7 @@ theorem simulateQ_uniProverWith (flock : FlockProverH) (hflock : FlockCommutes f
     (input : Vector UInt8 32) (rows : List ℕ) (q : D.Stack rows) :
     simulateQ impl (uniProverWith callKeccak256 callKeccakF1600 (flock callKeccak256) D input rows q) =
       uniProverWith (implH impl) (implF impl) (flock (implH impl)) D input rows q :=
-  simulateQ_proveWith impl flock hflock _ _ _ _ _
+  simulateQ_proveWith impl flock hflock _ _ _
 
 end Commute
 

@@ -30,7 +30,7 @@ open scoped ENNReal
 /-- **Knowledge soundness of the Keccak verifier at π1-rec3's shape** at the code-level link `uniCodeK3At`, with the
 identity model `uniIdsK3` from the main line's bridges `h` and reductions `g` (at `F3`), at `e = 2^35 / |E|`. -/
 theorem uniKnowledgeSoundnessK3_ids (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ : ℕ}
-    (F3 : KFlockSound F κ keccakRec3) (hκ : D.shape.heights.getD opBlake2s 0 = κ) (N : ℕ) (h : IdsHypsK F D κ N)
+    (F3 : KFlockSound F κ keccakRec3) (hκ : D.shape.heights.getD opSha3 0 = κ) (N : ℕ) (h : IdsHypsK F D κ N)
     (d n : ℕ) (g : IdsGapsK D F3 d n) (np : ℕ) (hV : varsOf (layoutsOfK D.shape) = 2 * np + 1)
     (hgood : FlockGoodDoneK F3) (hW : WeightMleK D F3) (hsmall : LayoutVarsSmall3K D)
     (hFs : FsLayer128K3 F D F3 valsCountK np (uniCodeK3At D F3 hκ valsCountK np rfl hV))
@@ -49,7 +49,7 @@ theorem uniKnowledgeSoundnessK3_ids (D : KDeployment) {F : KeccakVm.KeccakFlockS
 identity model built from what remains (`IdsRemainingK`, the main line's named bridges at `F3`), for a Keccak-f block
 whose ports are the verifier's (`KeccakFlockFits F`) and Flock's phase at `κ = h_SHA3`. -/
 theorem uniKnowledgeSoundnessK3_remaining (F : KeccakVm.KeccakFlockSpec) (D : KDeployment) {κ : ℕ}
-    (F3 : KFlockSound F κ keccakRec3) (hκ : D.shape.heights.getD opBlake2s 0 = κ) (hF : KeccakFlockFits F)
+    (F3 : KFlockSound F κ keccakRec3) (hκ : D.shape.heights.getD opSha3 0 = κ) (hF : KeccakFlockFits F)
     (np : ℕ) (hV : varsOf (layoutsOfK D.shape) = 2 * np + 1) (d n : ℕ) (r : IdsRemainingK F D F3 d n)
     (hgood : FlockGoodDoneK F3) (hW : WeightMleK D F3) (hsmall : LayoutVarsSmall3K D)
     (hFs : FsLayer128K3 F D F3 valsCountK np (uniCodeK3At D F3 hκ valsCountK np rfl hV))
@@ -67,7 +67,7 @@ shape `keccakRefShape`, leanVM's program IV, any `A0`, `B0`), from what remains:
 `F3`, and Flock's rounds' numbers (the Fiat–Shamir layer is `fsLayer128K3_refCodeAt`). -/
 theorem uniKnowledgeSoundnessK3_remaining_ref (F : KeccakVm.KeccakFlockSpec) (D : KDeployment)
     (hD : D.shape = keccakRefShape) (hIv : D.programIv = UniStatement.programIv) {κ : ℕ}
-    (F3 : KFlockSound F κ keccakRec3) (hκ : D.shape.heights.getD opBlake2s 0 = κ) (hF : KeccakFlockFits F)
+    (F3 : KFlockSound F κ keccakRec3) (hκ : D.shape.heights.getD opSha3 0 = κ) (hF : KeccakFlockFits F)
     (np : ℕ) (hV : varsOf (layoutsOfK D.shape) = 2 * np + 1) (d n : ℕ) (r : IdsRemainingK F D F3 d n)
     (hgood : FlockGoodDoneK F3) (hW : WeightMleK D F3) (hsmall : LayoutVarsSmall3K D)
     (hFlR : Compose.nSteps F3.prog.rounds + np ≤ 1016) (hFlv : ∀ r ∈ F3.prog.rounds, r.nv ≤ 2 ^ 30)

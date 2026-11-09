@@ -7,7 +7,8 @@ import UniSound.Rec3.Piop3
 import FlockSoundUni.Rec3Catch
 import UniSound.Prog
 import UniSound.FlockInterface
-import UniStatement.RecSecurity
+import UniStatement.Rec
+import UniStatement.Security
 import UniSound.Rec3.Batch3
 import UniSound.Ids.Align
 import FlockSoundUni.Good

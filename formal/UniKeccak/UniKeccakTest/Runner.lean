@@ -1,5 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The vector parser is
--- `formal/UniStatement/UniStatementTest/Runner.lean`'s, repeated (a test file is not a module).
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 import UniKeccak
 
 /-!
@@ -15,7 +14,7 @@ import UniKeccak
   calldata, compared with the Rust verifier's on every value it states: the verdict (stream error or not, and which),
   every challenge drawn, every value it requires to be zero, the accept bit, the number of relations, each stack's
   variables, every opening handed to `PCS_OPEN` (point claims with their points and values, or weighted claims with
-  their points, terms in order, values) and no matrices; the setup (the five Keccak layout words, the Keccak
+  their points, terms in order, values) and no matrices; the setup (the three Keccak layout words, the Keccak
   contract's IV from the program's IV and the setup roots), the row counts the stream announces, the run's layouts
   against the shape's (`layoutsOfK`); on the real proofs, every `PCS_OPEN` input the contract calls with, word for
   word (`pcsCallsK`).
@@ -259,10 +258,8 @@ def compare (v : Vector') : Except String (Option String) := do
   if words.map List.toArray != v.layoutWords then
     return some s!"layout words: Lean {words.map fun w ↦ hexOf w.toArray}, Rust {v.layoutWords.map hexOf}"
   let roots : SetupRoots ← match v.setupRoots with
-    | [f, a, b] => pure ⟨digestOfBytes32 f.toList, digestOfBytes32 a.toList, digestOfBytes32 b.toList⟩
-    | _ => throw "no SETUPROOTS line"
-  if v.setupRoots.drop 1 != [(digestBytes referenceRoots.a0).toArray, (digestBytes referenceRoots.b0).toArray] then
-    return some "the A0, B0 roots are not the reference's"
+    | [f] => pure ⟨digestOfBytes32 f.toList⟩
+    | _ => throw "no SETUPROOTS line (one word, the setup's root F)"
   match v.programIv, v.contractIv with
   | some p, some c =>
     let iv := contractIvK shape variant p.toList roots

@@ -27,14 +27,14 @@ open scoped ENNReal
 err at most `2^32/|E|`, with at most `1014` chain steps together with the batch's rounds and at most `2^30` scalars a
 round. -/
 def KFlockRefP (D : KDeployment) : Prop :=
-  ∃ Fl : KFlockSound KeccakFlock.keccakFlockSpec (D.shape.heights.getD opBlake2s 0) keccakMain,
+  ∃ Fl : KFlockSound KeccakFlock.keccakFlockSpec (D.shape.heights.getD opSha3 0) keccakMain,
     (∀ j, Fl.err j ≤ e32) ∧ Compose.nSteps Fl.prog.rounds + varsOf (layoutsOfK D.shape) ≤ 1014 ∧
       ∀ r ∈ Fl.prog.rounds, r.nv ≤ 2 ^ 30
 
 /-- **Remaining: the identity model and the last link** for the Flock interface `Fl`: an identity model at the code
 link's numbers whose last link holds for `uniCodeKAt`, with its numbers. -/
 def KIdsP (F : KeccakVm.KeccakFlockSpec) (D : KDeployment)
-    (Fl : KFlockSound F (D.shape.heights.getD opBlake2s 0) keccakMain) : Prop :=
+    (Fl : KFlockSound F (D.shape.heights.getD opSha3 0) keccakMain) : Prop :=
   ∃ (I : UniIdsK F D Fl) (hnV : I.nV = valsCountK) (hV : I.V = varsOf (layoutsOfK D.shape)),
     UniFinalK D Fl I (uniCodeKAt D Fl rfl I.nV I.V hnV hV) ∧
       I.errMain ≤ e32 ∧ I.degSum + I.degBad ≤ 2 ^ 32 ∧ I.nRel + 2 ≤ 2 ^ 32

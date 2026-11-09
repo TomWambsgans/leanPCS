@@ -35,7 +35,7 @@ open OracleSpec OracleComp
 open LeanVM.Rpm (Short hashBlocks)
 
 attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
-  LeanVM.Protocol.Compile.instFintypeKState UniStatement.layoutWords UniStatement.setupStack
+  LeanVM.Protocol.Compile.instFintypeKState UniStatement.setupStack
   RecStatement.layoutWords
 
 /-! ## The circuit's encoding -/

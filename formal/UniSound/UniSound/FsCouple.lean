@@ -39,36 +39,11 @@ open OracleSpec OracleComp
 open scoped ENNReal
 
 attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
-  LeanVM.Protocol.Compile.instFintypeKState UniStatement.layoutWords UniStatement.setupStack
+  LeanVM.Protocol.Compile.instFintypeKState UniStatement.setupStack
 
 /-! ## The bridge facts -/
 
-/-- The setup's roots as bytes. -/
-def rootsB (t : SetupTrees) : Bytes32 × Bytes32 × Bytes32 :=
-  (toB t.bytecode.root, toB t.a0.root, toB t.b0.root)
-
-/-- The setup's Keccak-256 evaluations as a transcript. -/
-def setupTr (t : SetupTrees) : Transcript := t.evaluations.map fun e => (e.1, toB e.2)
-
 /-! ## The experiments, a common prefix then the verifiers -/
-
-theorem rootsOfS_rootsB (t : SetupTrees) : rootsOfS (rootsB t) = t.roots := by
-  simp only [rootsOfS, rootsB, SetupTrees.roots, Soundness.ofB_toB_root]
-
-/-- The proof the composed game's verifier reads, from the setup's trees and the adversary's
-output. -/
-def piOf (a : SetupTrees × ((Vector UInt8 32 × UniProof) × Common.OracleQueryLog)) : UPf :=
-  ⟨a.2.1.1, a.2.1.2, Vector.replicate 32 0, a.1.roots⟩
-
-theorem run_logged_uAdv (A : UniAdversary) (s : Bytes32 × Bytes32 × Bytes32) :
-    (simulateQ Common.loggedOracles (uAdv A s)).run [] =
-      (fun p => ((⟨p.1.1, p.1.2, Vector.replicate 32 0, rootsOfS s⟩ : UPf), p.2)) <$>
-        (simulateQ Common.loggedOracles (A (rootsOfS s))).run [] := by
-  rw [uAdv, simulateQ_map, StateT.run_map]
-
-theorem uFix_rootsB (t : SetupTrees) (π : UPf) : uFix (rootsB t) π = { π with roots := t.roots } := by
-  rw [← rootsOfS_rootsB t]
-  rfl
 
 theorem run'_map_lazy {α β : Type} (f : α → β) (X : OracleComp Common.RandomPermutationOracles α)
     (s : Common.PermutationEdges KeccakState) :
@@ -82,4 +57,3 @@ theorem run'_map_lazy {α β : Type} (f : α → β) (X : OracleComp Common.Rand
 /-! ## The coupling -/
 
 end UniSound
-

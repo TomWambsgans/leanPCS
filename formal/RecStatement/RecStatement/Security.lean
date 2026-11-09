@@ -226,9 +226,8 @@ IV, the setup columns the compiler's at every 32-byte IV (`SetupFromCompiler`), 
 SetupRoots::REFERENCE)`: at the reference roots `RecGraphKeccak.Pi1.referenceRootsK` (`F` the Keccak 128 setup's
 commitment). The digest and setup
 root clauses are used by no proof: they pin the model's σ, κ (from which the model's contract computes π2's IV over
-`π`) to the deployed contract's constant IV, which the Rust computed from them. **The program and `A0`, `B0` are not
-pinned** (`D.pi1.prog`, `D.pi1.a0Root`, `D.pi1.b0Root`): the end theorems hold for every program of the reference
-shape and every pair of roots the IV hashes. -/
+`π`) to the deployed contract's constant IV, which the Rust computed from them. **The program is not pinned**
+(`D.pi1.prog`): the end theorems hold for every program of the reference shape. -/
 def RecDeployment.Real (D : RecDeployment) : Prop :=
   (∀ iv, (D.pi2 iv).circuit = Data.circuit) ∧ D.pi1Calls = Data.pi1Calls ∧ D.pi1.shape = RecGraphKeccak.Pi1.keccak128 ∧
     D.pi1.programIv = UniStatement.programIv ∧
@@ -237,22 +236,18 @@ def RecDeployment.Real (D : RecDeployment) : Prop :=
       fun x ↦ pure (LeanVM.Semantics.keccakF1600 x))).root = Data.setupRoot ∧
     D.SetupFromCompiler ∧ D.flock = KeccakFlock.keccakFlockSpec
 
-/-- **The setup's roots**: π1's three (`F`, `A0`, `B0`) and π2's (the commitment of `κ`, `κ + σ`). -/
+/-- **The setup's roots**: π1's (`F`) and π2's (the commitment of `κ`, `κ + σ`). -/
 structure RecSetupRoots where
   pi1 : UniStatement.SetupRoots
   pi2 : Digest
 
-/-- **The setup's trees**: π1's one tree (the Keccak setup stack's commitment) with the `A0`, `B0` roots its IV hashes
-(the deployment's constants, no tree), and π2's tree. -/
+/-- **The setup's trees**: π1's one tree (the Keccak setup stack's commitment) and π2's tree. -/
 structure RecSetupTrees where
   pi1 : LeanVM.Prover.Tree
-  a0Root : Digest
-  b0Root : Digest
   pi2 : LeanVM.Prover.Tree
 
-/-- The setup's roots: π1's tree's root with `A0`, `B0` (`KDeployment.setupRoots` at the deployment's constants), and
-π2's tree's root. -/
-def RecSetupTrees.roots (t : RecSetupTrees) : RecSetupRoots := ⟨⟨t.pi1.root, t.a0Root, t.b0Root⟩, t.pi2.root⟩
+/-- The setup's roots: π1's tree's root (`KDeployment.setupRoots`) and π2's tree's root. -/
+def RecSetupTrees.roots (t : RecSetupTrees) : RecSetupRoots := ⟨⟨t.pi1.root⟩, t.pi2.root⟩
 
 /-- The setup's Keccak-256 evaluations, which the extractors read: π1's tree's, then π2's. -/
 def RecSetupTrees.evaluations (t : RecSetupTrees) : List (List UInt8 × Digest) :=
@@ -376,12 +371,12 @@ def RecDeployment.verifierWith (D : RecDeployment) (roots : RecSetupRoots) (inpu
     (proof : RecProof) : m Bool := do
   return (← D.contractWith F roots input proof).1
 
-/-- **The setup** over `F`: π1's (the one commitment of the Keccak setup stack, `UniKeccak.setupTreeKWith`; `A0`, `B0`
-the deployment's constants) and π2's (`κ`, `κ + σ` of the circuit for π1's contract IV at those roots). -/
+/-- **The setup** over `F`: π1's (the one commitment of the Keccak setup stack, `UniKeccak.setupTreeKWith`)
+and π2's (`κ`, `κ + σ` of the circuit for π1's contract IV at its root). -/
 def RecDeployment.setupTreesWith (D : RecDeployment) : m RecSetupTrees := do
   let t1 ← UniKeccak.setupTreeKWith F D.pi1
   let t2 ← (D.circuitAt (D.pi1.setupRoots t1)).setupTreeWith F
-  return ⟨t1, D.pi1.a0Root, D.pi1.b0Root, t2⟩
+  return ⟨t1, t2⟩
 
 end With
 

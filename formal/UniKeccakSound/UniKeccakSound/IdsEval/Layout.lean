@@ -49,7 +49,7 @@ def c1NamesK : List Column :=
 
 /-- A `C1` column's variables at a shape on the Keccak VM. -/
 def c1VarsK (S : Shape) : Column → ℕ
-  | .qflock => S.heights.getD opBlake2s 0 + qflockRowBits
+  | .qflock => S.heights.getD opSha3 0 + qflockRowBits
   | .table o _ => S.heights.getD o 0
   | .inverse o => S.heights.getD o 0
   | .memory _ => S.logMemory
@@ -73,7 +73,7 @@ theorem c1_limbsK (S : Shape) (col : Column) (b : ℕ × ℕ × ℕ) (hb : b ∈
   exact h2.symm
 
 /-- **`weightAtK`'s `q_flock` variables** in `C1`'s layout: `h_SHA3 + 11`. -/
-theorem qvOf_c1K (S : Shape) : qvOf (layoutOfK S .c1) = S.heights.getD opBlake2s 0 + qflockRowBits := by
+theorem qvOf_c1K (S : Shape) : qvOf (layoutOfK S .c1) = S.heights.getD opSha3 0 + qflockRowBits := by
   obtain ⟨off, hoff⟩ := c1LayoutK_qflock S
   unfold qvOf
   rw [show layoutOfK S .c1 = c1LayoutK S from rfl, hoff]

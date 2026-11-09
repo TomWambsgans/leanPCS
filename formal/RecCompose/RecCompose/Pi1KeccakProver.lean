@@ -51,10 +51,10 @@ variable {m : Type → Type} [Monad m] (Hfs Hm : List UInt8 → m Digest) (F : K
 /-- **π1-rec3's honest prover with two hashes**: the setup's tree over `Hm`, the Keccak contract's IV and the seed over
 `Hfs`, the stream (its draws over `Hfs`, its commitments' trees over `Hm`), then the three WHIR openings over `Hm`, `F`;
 `UniKeccakComplete.Rec3.proveRec3With` with its hash split. -/
-def proveRec3With2 (fuel : ℕ) (flock : FlockProver m) (a0 b0 : Digest) (programIv : List UInt8) (tr : Trace) :
+def proveRec3With2 (fuel : ℕ) (flock : FlockProver m) (programIv : List UInt8) (tr : Trace) :
     m (Option UniKeccak.KeccakProof) := do
   let tree ← setupTreeOf Hm tr
-  let iv ← contractIvOf Hfs tr.shape UniKeccak.keccakRec3 programIv ⟨tree.root, a0, b0⟩
+  let iv ← contractIvOf Hfs tr.shape UniKeccak.keccakRec3 programIv ⟨tree.root⟩
   let seed ← seedOf Hfs iv tr.publicInput
   let (out, _) ← (Rec3.proveStreamRec3With Hfs (commitReal Hm) flock tr).run (UniComplete.Wr.start seed)
   let words := UniKeccak.layoutWordsK tr.shape
@@ -83,7 +83,7 @@ def proveRec3With2 (fuel : ℕ) (flock : FlockProver m) (a0 b0 : Digest) (progra
 proof of work, the deployment's `A0`, `B0` constants in the IV. -/
 def uniProverRec3With2 (flock : FlockProver m) (D : UniKeccak.KDeployment) (input : Vector UInt8 32)
     (rows : List ℕ) (q : D.Stack rows) : m (Option UniKeccak.KeccakProof) :=
-  proveRec3With2 Hfs Hm F PcsQuotient.nonceFuel flock D.a0Root D.b0Root D.programIv (honestTrace D input rows q)
+  proveRec3With2 Hfs Hm F PcsQuotient.nonceFuel flock D.programIv (honestTrace D input rows q)
 
 end With
 
@@ -135,9 +135,9 @@ theorem app_proveRec3With2
       φ.app (E2ECompleteness.proveOpeningWithH Hm F fuel L tree stack claims) =
         E2ECompleteness.proveOpeningWithH (fun x ↦ φ.app (Hm x)) (fun s ↦ φ.app (F s)) fuel L tree stack claims)
     (flock : FlockProver m) (flock' : FlockProver n) (hflock : ∀ logN v q, φ.wr (flock logN v q) = flock' logN v q)
-    (fuel : ℕ) (a0 b0 : Digest) (programIv : List UInt8) (tr : Trace) :
-    φ.app (proveRec3With2 Hfs Hm F fuel flock a0 b0 programIv tr) =
-      proveRec3With2 (fun x ↦ φ.app (Hfs x)) (fun x ↦ φ.app (Hm x)) (fun s ↦ φ.app (F s)) fuel flock' a0 b0
+    (fuel : ℕ) (programIv : List UInt8) (tr : Trace) :
+    φ.app (proveRec3With2 Hfs Hm F fuel flock programIv tr) =
+      proveRec3With2 (fun x ↦ φ.app (Hfs x)) (fun x ↦ φ.app (Hm x)) (fun s ↦ φ.app (F s)) fuel flock'
         programIv tr := by
   have hs : ∀ seed, φ.app ((Rec3.proveStreamRec3With Hfs (commitReal Hm) flock tr).run (UniComplete.Wr.start seed)) =
       (Rec3.proveStreamRec3With (fun x ↦ φ.app (Hfs x)) (commitReal fun x ↦ φ.app (Hm x)) flock' tr).run
@@ -174,7 +174,7 @@ theorem simulateQ_p1kK (D : RecDeployment) (input : Vector UInt8 32) (rows : Lis
       rw [Morph.sim_H, Morph.sim_F]
       exact E2ECompleteness.simulateQ_proveOpeningWithH impl fuel L tree stack claims)
     (flockProveH hKF) (flockProveH hKF)
-    (fun logN v q ↦ by rw [flockCommutes_flockProveH, sim_hKF]) PcsQuotient.nonceFuel D.pi1.a0Root D.pi1.b0Root
+    (fun logN v q ↦ by rw [flockCommutes_flockProveH, sim_hKF]) PcsQuotient.nonceFuel
     D.pi1.programIv (honestTrace D.pi1 input rows q)
   rw [Morph.sim_H, Morph.sim_F, sim_hKF] at h
   exact h

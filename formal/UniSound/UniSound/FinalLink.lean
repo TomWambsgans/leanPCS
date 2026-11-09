@@ -153,9 +153,6 @@ theorem doneFits_noRoot_eq : ∀ (rs : List Compose.RoundSpec) (d : Done), (∀ 
 
 /-! ## The layout words -/
 
-/-- **The stacks have fewer than `256` variables** (a layout word carries them in one byte). -/
-def LayoutVarsSmall (D : Deployment) : Prop := ∀ c, (layoutOf (layoutsOf D.shape) c).vars < 256
-
 theorem layoutWordVars_layoutWord (s : Shape) (code vars placed : ℕ) (h : vars < 256) :
     layoutWordVars (layoutWord s code vars placed) = vars := by
   simp only [layoutWordVars, layoutWord, shapeBytes, List.getD_eq_getElem?_getD]
@@ -163,27 +160,6 @@ theorem layoutWordVars_layoutWord (s : Shape) (code vars placed : ℕ) (h : vars
   simp only [List.length_append, List.length_cons, List.length_map, List.length_range,
     List.length_replicate, List.length_nil]
   simp [Nat.mod_eq_of_lt h]
-
-theorem layoutWords_word (s : Shape) (c : Commitment) :
-    (layoutWords s).getD (wordIndex c) [] =
-      layoutWord s (layoutCode c) (layoutOf (layoutsOf s) c).vars (layoutOf (layoutsOf s) c).words := by
-  cases c <;> rfl
-
-theorem claimVars (D : Deployment) (hsmall : LayoutVarsSmall D) (c : Commitment) :
-    layoutWordVars ((layoutWords D.shape).getD (wordIndex c) []) = (layoutOf (layoutsOf D.shape) c).vars := by
-  rw [layoutWords_word, layoutWordVars_layoutWord _ _ _ _ (hsmall c)]
-
-theorem matrixWordVars (s : Shape) :
-    layoutWordVars ((layoutWords s).getD 3 []) = matrixVars ∧
-      layoutWordVars ((layoutWords s).getD 4 []) = matrixVars :=
-  ⟨layoutWordVars_layoutWord _ _ _ _ (by decide), layoutWordVars_layoutWord _ _ _ _ (by decide)⟩
-
-theorem varsOf_ge (s : Shape) : 15 ≤ varsOf (layoutsOf s) := by
-  have h := layoutOf_vars_le (layoutsOf s) .c1
-  have h1 : 15 ≤ (layoutOf (layoutsOf s) .c1).vars := by
-    show 15 ≤ (StackLayout.new _).vars
-    exact le_max_right _ _
-  omega
 
 /-! ## The identity model's batch, and the hypotheses -/
 

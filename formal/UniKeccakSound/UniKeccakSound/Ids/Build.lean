@@ -46,9 +46,9 @@ structure RowConstraintsK (D : KDeployment) (c : Stk) (s : USt) : Prop where
     c1ValK D c (.inverse o) (D.shape.heights.getD o 0) x *
       ((tablesKeccak.getD o default).countColumns.map fun j ↦
         c1ValK D c (.table o j) (D.shape.heights.getD o 0) x).prod = 1
-  copies : ∀ x < 2 ^ D.shape.heights.getD opBlake2s 0, ∀ col slot,
+  copies : ∀ x < 2 ^ D.shape.heights.getD opSha3 0, ∀ col slot,
     keccakSlot (sha3Columns.getD col "") = some slot →
-      c1ValK D c (.table opBlake2s col) (D.shape.heights.getD opBlake2s 0) x =
+      c1ValK D c (.table opSha3 col) (D.shape.heights.getD opSha3 0) x =
         c (qfOffK D + slot + 2 ^ qflockRowBits * x) + toK (eK (keccakSlotOffset (sha3Columns.getD col "")))
   lines : ∀ k < 3,
     c1ValK D c (.memory k) D.shape.logMemory 0 = toK ((linesOf (publicWordsOf s.1.toList)).getD k (0, 0)).1 ∧
@@ -126,8 +126,8 @@ structure IdsHypsK (F : KeccakVm.KeccakFlockSpec) (D : KDeployment) (κ : ℕ) (
   cvecOk : CvecOkK D
   auxOfFlock : AuxOfFlockK F D κ
   /-- The coordinate functionals at `SHA3`'s height invert the Moore matrix (`Z_bad ≠ 0`). -/
-  functionals : FunctionalsCorrect (D.shape.heights.getD opBlake2s 0)
-  height2 : 2 ≤ D.shape.heights.getD opBlake2s 0
+  functionals : FunctionalsCorrect (D.shape.heights.getD opSha3 0)
+  height2 : 2 ≤ D.shape.heights.getD opSha3 0
 
 /-- **The reductions** at the degrees' bound `d` and the relations' `n`. -/
 structure IdsGapsK (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ : ℕ} {v : KeccakVariant}

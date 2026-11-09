@@ -48,13 +48,6 @@ open LeanVM.Parameters UniStatement Polynomial Finset
 
 /-! ## Layouts, challenges, the inputs of the relations -/
 
-/-- A commitment's stack layout at a shape (`layoutsOf`, as `batch` finds it). -/
-def layoutOf (S : Shape) (c : Commitment) : StackLayout :=
-  (((layoutsOf S).find? (·.1 == c)).map (·.2)).getD default
-
-/-- **The batch's variables**: the longest stack's (`batch`'s `vars`). -/
-def batchVars (S : Shape) : ℕ := ((layoutsOf S).map (·.2.vars)).foldl max 0
-
 /-- The tuple weights' point `α`, as the verifier samples it (round `0`'s first four challenges). -/
 def alphasOf (ch : List E) : List E := (List.range 4).map fun i ↦ ch.getD i 0
 
@@ -70,12 +63,6 @@ def countsOf (S : Shape) (rows : List ℕ) : List (List E) :=
 
 /-- Flock's result: its point, its end, its pending reduction. -/
 abbrev FlockOut := List E × Option Flock.End × Flock.Pending
-
-/-- **The relations' inputs** at a statement, round `0`'s challenges, Flock's result, `t`, the values. -/
-def relInput (D : Deployment) (s : USt) (ch : List E) (fl : FlockOut) (t : E) (vals : List E) :
-    RelInput :=
-  ⟨D.shape, publicWordsOf s.1.toList, countsOf D.shape s.2, alphasOf ch, betaOf ch, gammaOf ch, fl.1,
-    fl.2.1, t, vals⟩
 
 /-- **The counts the verifier accepts** (`readCounts`' range checks): six, each at most `2^h`. -/
 def CountsFit (S : Shape) (rows : List ℕ) : Prop :=
@@ -119,7 +106,7 @@ noncomputable def relDiff (L : StackLayout) (ringMap : Option (List E)) (V : ℕ
 
 section Model
 
-variable (D : Deployment) {κ : ℕ}
+variable {κ : ℕ}
 
 /-- The commitment of the batch's `k`-th product. -/
 def cm (k : ℕ) : Commitment := commitments.getD k .c1
@@ -186,74 +173,14 @@ section Polys
 
 variable (S : Shape) (c1 c2 setup : Stk)
 
-/-- A `C1` column at the digits. -/
-noncomputable def c1P (column : Column) : Polynomial E :=
-  colPoly (layoutOf S .c1) (batchVars S) c1 column digitP
-
-/-- A `C2` column at a polynomial point. -/
-noncomputable def c2P (column : Column) (pt : ℕ → Polynomial E) : Polynomial E :=
-  colPoly (layoutOf S .c2) (batchVars S) c2 column pt
-
-/-- A setup column at a polynomial point. -/
-noncomputable def suP (column : Column) (pt : ℕ → Polynomial E) : Polynomial E :=
-  colPoly (layoutOf S .setup) (batchVars S) setup column pt
-
-/-- A quotient's polynomial from its chunks: `Q_0 + w_{e_0}(Q_1 + w_{e_1}(Q_2 …))` (`quotientTerms`). -/
-noncomputable def quotP (column : ℕ → Column) (sizes : List ℕ) : Polynomial E :=
-  ((List.range sizes.length).map fun c ↦
-    c2P S c2 (column c) digitP * ((List.range c).map fun c' ↦ digitP (sizes.getD c' 0)).prod).sum
-
-/-- `q_flock`'s slot `j` at `y(X)`: its claim at `(bits(j), y(X))`. -/
-noncomputable def slotP (slot : ℕ) : Polynomial E :=
-  colPoly (layoutOf S .c1) (batchVars S) c1 .qflock fun l ↦
-    if l < 8 then C (bitE slot l) else yP (coordinateFunctionals (S.heights.getD opBlake2s 0)) (l - 8)
-
 /-- The public lines (`constraintRelation`): limb `k`'s cells `0, 1`. -/
 def linesOf (pw : List E) : List (E × E) :=
   [(pw.getD 0 0, pw.getD 2 0), (pw.getD 1 0, pw.getD 3 0), (0, 0)]
 
-/-- **A table's constraints** `(M_i, W_i)` (`constraintRelation`'s, in its order): `JUMP`'s two, the
-counters' `z Π c + 1`, `BLAKE2S`'s copies `copy_c + slot(y)`; `M_i` the lift to `V_{r_W}`. -/
-noncomputable def tableConstraintsP (tab : Table) : List (Polynomial E × Polynomial E) :=
-  let o := tab.opcode
-  let lift := liftP (S.heights.getD o 0) S.constraintVars
-  let col (n : String) : Polynomial E := c1P S c1 (.table o (colIdx tab.columns n))
-  (if o = opJump then
-    [(lift, col "b" + col "v_cond" * col "w"), (lift, col "v_cond" * (col "b" + 1))] else []) ++
-  [(lift, c1P S c1 (.inverse o) * (tab.countColumns.map fun c ↦ c1P S c1 (.table o c)).prod + 1)] ++
-  (if o = opBlake2s then (List.range tab.width).filterMap fun c ↦
-    (qflockSlot (tab.columns.getD c "")).map fun slot ↦ (lift, c1P S c1 (.table o c) + slotP S c1 slot)
-   else [])
-
-/-- The public lines' constraints: memory limb `k`'s cells `0, 1` on the line through them. -/
-noncomputable def linesP (pw : List E) : List (Polynomial E × Polynomial E) :=
-  ((linesOf pw).zip (List.range 3)).map fun lk ↦
-    (liftP 1 S.constraintVars, c1P S c1 (.memory lk.2) + C lk.1.1 + X * C (lk.1.1 + lk.1.2))
-
-/-- **The constraints** `(M_i, W_i)` (`constraintRelation`'s, in its order): per table
-(`tableConstraintsP`), then the public lines; each `W_i` on its table's domain, `M_i` its lift to
-`V_{r_W}`. -/
-noncomputable def constraintsP (pw : List E) : List (Polynomial E × Polynomial E) :=
-  tables.flatMap (tableConstraintsP S c1) ++ linesP S c1 pw
-
 /-- **`Z_bad`**: `(y_0 + X)(y_0 + p_0)`, `p_0` Flock's point's first coordinate. -/
 noncomputable def zBad (p0 : E) : Polynomial E :=
-  (yP (coordinateFunctionals (S.heights.getD opBlake2s 0)) 0 + X) *
-    (yP (coordinateFunctionals (S.heights.getD opBlake2s 0)) 0 + C p0)
-
-/-- **The constraint quotient's identity** (step 5), times `Z_bad`:
-`Z_bad (Σ_i γ^i M_i W_i + Q_W w_{r_W})`. -/
-noncomputable def wP (pw : List E) (gamma p0 : E) : Polynomial E :=
-  zBad S p0 * ((((constraintsP S c1 pw).zip (List.range (constraintsP S c1 pw).length)).map
-      fun mw ↦ C (gamma ^ mw.2) * mw.1.1 * mw.1.2).sum +
-    quotP S c2 Column.constraintQuotient (chunks (S.constraintDegree + 1)) * digitP S.constraintVars)
-
-/-- **The tree's identity** (step 6): `w_1 (T(s(X)) + T(X) T(X + 1)) + w_h (Q_0 + w_h q_1)`. -/
-noncomputable def treeP : Polynomial E :=
-  digitP 1 * (c2P S c2 .heap (fun l ↦ digitP (l + 1)) +
-      c2P S c2 .heap digitP * c2P S c2 .heap (fun l ↦ if l = 0 then digitP 0 + 1 else digitP l)) +
-    digitP S.heap.h * (c2P S c2 (.treeQuotient 0) digitP +
-      digitP S.heap.h * c2P S c2 (.treeQuotient 1) digitP)
+  (yP (coordinateFunctionals (S.heights.getD opSha3 0)) 0 + X) *
+    (yP (coordinateFunctionals (S.heights.getD opSha3 0)) 0 + C p0)
 
 /-- The state boundary's push and pull fingerprints (`heapRelations`' root). -/
 def rootInit (weights : Array E) (beta : E) : E :=
@@ -263,53 +190,10 @@ def rootFin (S : Shape) (weights : Array E) (beta : E) : E :=
   beta + weights.getD 0 0 * sepState + weights.getD 1 0 * UniStatement.gpow (2 ^ S.logBytecode - 1) +
     weights.getD 2 0
 
-/-- **The root's identity**: `T(1) fp(init) + fp(fin)`, a constant. -/
-noncomputable def rootP (weights : Array E) (beta : E) : Polynomial E :=
-  C (rootInit weights beta) * c2P S c2 .heap (fun l ↦ if l = 0 then 1 else 0) + C (rootFin S weights beta)
-
 /-- A heap block's mixed point (SPEC §2's restriction): `w_l + ω_{pos >> l}` below `r`, `ω_{pos >> l}`
 above. -/
 noncomputable def mixP (b : Block) (l : ℕ) : Polynomial E :=
   if l < b.r then digitP l + C (pointE (b.position >>> l)) else C (pointE (b.position >>> l))
-
-/-- The memory's pull fingerprint as a polynomial. -/
-noncomputable def memPullP (weights : Array E) (beta : E) : Polynomial E :=
-  C beta + C (weights.getD 0 0 * sepMem) + C (weights.getD 1 0) * suP S setup .address digitP +
-    C (weights.getD 2 0) * c1P S c1 (.memory 3) +
-    ((List.range 3).map fun k ↦ C (weights.getD (3 + k) 0) * c1P S c1 (.memory k)).sum
-
-/-- The bytecode's pull fingerprint as a polynomial: the setup's 16 slots at `(α, X)`, the final count. -/
-noncomputable def bcPullP (alphas : List E) (weights : Array E) (beta : E) : Polynomial E :=
-  C beta + suP S setup .bytecodeTuple (fun l ↦ if l < 4 then C (alphas.getD l 0) else digitP (l - 4)) +
-    C (weights.getD 2 0) * c1P S c1 .bytecodeFinal
-
-/-- **A heap block's leaf identity** (step 6): a table's times `Z_act`,
-`R (P w_r + Z²) + Q w_r Z + P' w_r + Z²`; the memory's and the bytecode's `R P + Q w_r + P'`; an unused
-block's `R + 1`. -/
-noncomputable def blockP (rows : List ℕ) (alphas : List E) (beta : E) (b : Block) (i : ℕ) :
-    Polynomial E :=
-  let weights := eqKernel alphas
-  let R := c2P S c2 .heap (mixP b)
-  let wr := digitP b.r
-  let n := 2 ^ b.r
-  match b.leaves with
-  | .unused => R + 1
-  | .memory =>
-    R * memPullP S c1 setup weights beta +
-      quotP S c2 (Column.leafQuotient i) (chunks (degree (2 * (n - 1)) n + 1)) * wr +
-      (memPullP S c1 setup weights beta + C (weights.getD 2 0) * (1 + c1P S c1 (.memory 3)))
-  | .bytecode =>
-    R * bcPullP S c1 setup alphas weights beta +
-      quotP S c2 (Column.leafQuotient i) (chunks (degree (2 * (n - 1)) n + 1)) * wr +
-      (bcPullP S c1 setup alphas weights beta + C (weights.getD 2 0) * (1 + c1P S c1 .bytecodeFinal))
-  | .table t =>
-    let tab := tables.getD t default
-    let cols (c : ℕ) : Polynomial E := c1P S c1 (.table tab.opcode c)
-    let Z := zActP ((List.range (b.r + 1)).map fun j ↦ intBits (rows.getD t 0) j 1) b.r
-    let d := degree (max (tableDegrees tab).1 (tableDegrees tab).2 * (n - 1) + (n - Shape.leastRows b.r)) n
-    R * (pullP tab weights beta cols * wr + Z ^ 2) +
-      quotP S c2 (Column.leafQuotient i) (chunks (d + 1)) * (wr * Z) +
-      pushP tab weights beta cols * wr + Z ^ 2
 
 end Polys
 
@@ -317,94 +201,10 @@ end Polys
 
 section Heap
 
-variable (D : Deployment) (c : Stk)
-
-/-- **A `C1` column's value at row `x`** (basis `B` at `vars` variables), as `lv42Column` reads it. -/
-def c1Val (column : Column) (vars x : ℕ) : K := basisValue (c1Block (c1Layout D.shape) c column) vars x
-
-/-- The setup stack, word by word. -/
-def setupStk : Stk := fun i ↦ (setupStack D.prog D.shape).getD i 0
-
-/-- A setup column's value at row `x`. -/
-def suVal (column : Column) (vars x : ℕ) : K :=
-  basisValue (c1Block (setupLayout D.shape) (setupStk D) column) vars x
-
-/-- The setup's bytecode tuples' offset. -/
-def tupleOff : ℕ := (((setupLayout D.shape).limbs .bytecodeTuple).headD (0, 0, 0)).2.2
-
-/-- The setup's bytecode slot `s` at instruction `x` (slot `s` of coefficient `k` at word `s + 16 k`). -/
-def slotVal (s x : ℕ) : K :=
-  basisValue (Array.ofFn (n := 2 ^ D.shape.logBytecode) fun k ↦ setupStk D (tupleOff D + s + 16 * k.val))
-    D.shape.logBytecode x
-
-/-- Table `o`'s row `x` of `C1`, as values. -/
-def c1Row (o x : ℕ) : ℕ → K := fun i ↦ c1Val D c (.table o i) (D.shape.heights.getD o 0) x
-
-/-- A table's block of leaves on `C1`: its active rows (`isActive`) with their flushes' tuples. -/
-def tableBlockK (rows : List ℕ) (b : Block) (o : ℕ) : Heap.LeafBlock (Vector K 16) where
-  r := b.r
-  push x := if isActive x (rows.getD o 0) b.r then
-      (tables.getD o default).flushes.push.map fun tup ↦ tupleK tup (c1Row D c o x) else []
-  pull x := if isActive x (rows.getD o 0) b.r then
-      (tables.getD o default).flushes.pull.map fun tup ↦ tupleK tup (c1Row D c o x) else []
-
-/-- The memory's tuple of cell `x` with count `cnt`: `(SEP_MEM, g^x, cnt, m_0, m_1, m_2)`. -/
-def memTupleK (cnt : K) (x : ℕ) : Vector K 16 :=
-  Vector.ofFn fun s ↦
-    if s.val = 0 then toK sepMem
-    else if s.val = 1 then suVal D .address D.shape.logMemory x
-    else if s.val = 2 then cnt
-    else if s.val < 6 then c1Val D c (.memory (s.val - 3)) D.shape.logMemory x
-    else 0
-
-/-- The bytecode's tuple of instruction `x`: the setup's slots, the count added in slot `2`. -/
-def bcTupleK (cnt : K) (x : ℕ) : Vector K 16 :=
-  Vector.ofFn fun s ↦ slotVal D s.val x + if s.val = 2 then cnt else 0
-
-/-- **A heap block's leaves read off `C1`.** -/
-def blockK (rows : List ℕ) (b : Block) : Heap.LeafBlock (Vector K 16) :=
-  match b.leaves with
-  | .memory => Heap.LeafBlock.pair b.r (memTupleK D c 1)
-      (fun x ↦ memTupleK D c (c1Val D c (.memory 3) D.shape.logMemory x) x)
-  | .bytecode => Heap.LeafBlock.pair b.r (bcTupleK D 1)
-      (fun x ↦ bcTupleK D (c1Val D c .bytecodeFinal D.shape.logBytecode x) x)
-  | .table t => tableBlockK D c rows b t
-  | .unused => Heap.LeafBlock.unused b.r
+variable (c : Stk)
 
 /-- The state boundary's push `(SEP_STATE, 1, 1)`. -/
 def initK : Vector K 16 := Vector.ofFn fun s ↦ if s.val < 3 then 1 else 0
-
-/-- The state boundary's pull `(SEP_STATE, g^(2^lb − 1), 1)`. -/
-def finK : Vector K 16 :=
-  Vector.ofFn fun s ↦ if s.val = 1 then toK (UniStatement.gpow (2 ^ D.shape.logBytecode - 1))
-    else if s.val < 3 then 1 else 0
-
-/-- **The heap the verifier reads off `C1`** (`BusModel.hd`). -/
-def hdOf (s : USt) : Heap.HeapData :=
-  ⟨D.shape.heap.h, D.shape.heap.blocks.map (blockK D c s.2), initK, finK D⟩
-
-open Classical in
-/-- **The constraint vectors** (`BusModel.cvec`): row `x`'s `M_i(ω_x) W_i(ω_x)`; a `1` out of range. -/
-noncomputable def cvecOf (s : USt) (x : ℕ) : List E :=
-  if CountsFit D.shape s.2 then
-    (constraintsP D.shape c (publicWordsOf s.1.toList)).map fun mw ↦ (mw.1 * mw.2).eval (pointE x)
-  else [1]
-
-/-- `q_flock`'s offset in `C1`. -/
-def qfOff : ℕ := (((c1Layout D.shape).limbs .qflock).headD (0, 0, 0)).2.2
-
-/-- **`C1`'s column `q_flock`** (`BusModel.qf`). -/
-def qfOf (κ : ℕ) : LeanVM.Protocol.Column (8 + κ) :=
-  ⟨Vector.ofFn fun x ↦ c (qfOff D + x.val)⟩
-
-/-- **The limb copies hold** (`BusModel.Copies`): the counts in range, and on every `BLAKE2S` row of
-`C1` each limb's copy is `q_flock`'s slot. -/
-def CopiesOf (s : USt) : Prop :=
-  CountsFit D.shape s.2 ∧
-    ∀ x < 2 ^ D.shape.heights.getD opBlake2s 0, ∀ col slot,
-      qflockSlot (blake2sColumns.getD col "") = some slot →
-        c1Val D c (.table opBlake2s col) (D.shape.heights.getD opBlake2s 0) x =
-          c (qfOff D + slot + 256 * x)
 
 end Heap
 

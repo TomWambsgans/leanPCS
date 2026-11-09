@@ -678,7 +678,7 @@ local name, so that the two do not clash). -/
 abbrev flockP : FlockProverH := fun H ↦ FlockP.flockProve H
 
 /-- Flock's `log_n` at a shape: the Keccak-f block's `17` and `SHA3`'s height. -/
-abbrev flockLogNT (shape : UniStatement.Shape) : ℕ := keccakR1csLogSize + shape.heights.getD opBlake2s 0
+abbrev flockLogNT (shape : UniStatement.Shape) : ℕ := keccakR1csLogSize + shape.heights.getD opSha3 0
 
 /-- Flock's challenges at the deployment (`keccakMain`). -/
 def flockStepsD (D : KDeployment) : ℕ := flockSteps (flockLogNT D.shape) keccakMain.skip
@@ -739,7 +739,7 @@ theorem run_midB (flock : FlockProver (OracleComp KeccakCalls)) (tr : Trace) (al
     (w : Wr) :
     (midB callKeccak256 (commitReal callKeccak256) flock tr alphas beta).run w =
       (sampleW callKeccak256).run w >>= fun p ↦
-        (flock (keccakR1csLogSize + tr.shape.heights.getD opBlake2s 0) keccakMain tr.qflock).run p.2 >>= fun q ↦
+        (flock (keccakR1csLogSize + tr.shape.heights.getD opSha3 0) keccakMain tr.qflock).run p.2 >>= fun q ↦
           commitReal callKeccak256 .c2 (((layoutsOfK tr.shape).lookup .c2).getD default).vars
               (c2DataOf tr (eqKernel alphas) beta p.1).stack >>= fun c ↦
             pure ((p.1, q.1, c), { q.2 with stream := q.2.stream ++ (rootWord c.halves).toArray }) := by

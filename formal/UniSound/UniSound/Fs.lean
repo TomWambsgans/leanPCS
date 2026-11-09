@@ -52,13 +52,6 @@ open scoped ENNReal
 noncomputable def mleStk (c : Stk) (n : ℕ) (pt : List E) : E :=
   ∑ x : Fin (2 ^ n), cubeEq pt n x.val * ofK (c x.val)
 
-/-- **The stack a commitment's claim is on**: `C1`'s and `C2`'s candidates, the setup's honest
-stack. -/
-def stackFor (D : Deployment) (c1 c2 : Stk) : Commitment → Stk
-  | .c1 => c1
-  | .c2 => c2
-  | .setup => fun i => (setupStack D.prog D.shape).getD i 0
-
 /-- The layout word of a commitment's `PCS_OPEN` call (`layoutWords`: `C1`, `C2`, the setup). -/
 def wordIndex : Commitment → ℕ
   | .c1 => 0

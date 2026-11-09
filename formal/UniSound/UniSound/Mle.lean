@@ -74,13 +74,4 @@ theorem mleStk_eq_foldAll (c : Stk) (pt : List E) :
 /-- `L ŝ`, read on the low `k + 6` coordinates of the batch's. -/
 def Pending.Llift (p : Flock.Pending) (u : ℕ) : E := Pending.L p (u % 2 ^ p.rounds)
 
-/-- **A pending reduction's shape** (Flock's, `Pending.new`): the skip's `2^k` Lagrange weights, the
-slices `2^6` (or none), its row and column points inside `A0`'s variables. `multilinear_eval` folds
-pairs, so it is a multilinear extension only of a table of exactly `2^n` entries: without the shape,
-`PendingTerminalLink` is false (three slices). -/
-def Pending.Shaped (p : Flock.Pending) : Prop :=
-  (0 < p.k → p.skipWeights.length = 2 ^ p.k) ∧
-    ((p.slices.getD []).length = 2 ^ Flock.packing ∨ p.slices.getD [] = []) ∧
-    p.k + (p.rowLow ++ p.chiIn).length + Flock.packing ≤ matrixVars
-
 end UniSound

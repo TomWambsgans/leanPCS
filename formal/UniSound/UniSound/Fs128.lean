@@ -36,7 +36,7 @@ open OracleSpec OracleComp
 open scoped ENNReal
 
 attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
-  LeanVM.Protocol.Compile.instFintypeKState UniStatement.layoutWords UniStatement.setupStack
+  LeanVM.Protocol.Compile.instFintypeKState UniStatement.setupStack
 
 /-- **The univariate verifier's bound at `≥ 128` bits** at `Q` adversary calls, rounds' errors at
 most `e`: the openings once at `269 · 2^-137`, the chain without the tag, the seed's pair, the
@@ -174,16 +174,6 @@ theorem uniLabel_take32 (s : FSt) : (uniLabel s).take 32 = name ++ s.1.toList.ta
   unfold uniLabel
   rw [List.append_assoc, List.take_append, List.take_of_length_le (l := name) (by omega), hn,
     List.take_append_of_le_length (l₁ := s.1.toList) (by simp)]
-
-theorem eval_ivKC (D : Deployment) (π : UPf) (T : KTable) :
-    evalWithAnswerFn (QueryImpl.ofFn T) (ivKC D π) = viewT T (ivInput D π.roots) := by
-  simp only [ivKC, hash256, callKeccak256, evalWithAnswerFn_bind, evalWithAnswerFn_pure]
-  rfl
-
-theorem log_ivKC (D : Deployment) (π : UPf) (T : KTable) :
-    (tableQueryLog (ivKC D π) T).map Sigma.fst = [Sum.inl (ivInput D π.roots)] := by
-  simp only [ivKC, hash256, callKeccak256, tableQueryLog_bind, tableQueryLog_pure]
-  rfl
 
 end UniSound
 

@@ -36,11 +36,11 @@ theorem c1PK_eval_pointE (D : KDeployment) (c : Stk) (col : Column) (v off x : �
   rw [← layoutOfK_c1, hl]
 
 /-- **`q_flock`'s word `slot` at `y(ω_x)`** is the word `slot + 2^11 x`. -/
-theorem slotPK_eval_pointE (D : KDeployment) (hf : FunctionalsCorrect (D.shape.heights.getD opBlake2s 0))
-    (hB24 : D.shape.heights.getD opBlake2s 0 ≤ 24) (c : Stk) (slot x : ℕ) (hs : slot < 2 ^ 11)
-    (hx : x < 2 ^ D.shape.heights.getD opBlake2s 0) :
+theorem slotPK_eval_pointE (D : KDeployment) (hf : FunctionalsCorrect (D.shape.heights.getD opSha3 0))
+    (hB24 : D.shape.heights.getD opSha3 0 ≤ 24) (c : Stk) (slot x : ℕ) (hs : slot < 2 ^ 11)
+    (hx : x < 2 ^ D.shape.heights.getD opSha3 0) :
     (slotPK D.shape c slot).eval (pointE x) = ofK (c (qfOffK D + (slot + 2 ^ 11 * x))) := by
-  set hB := D.shape.heights.getD opBlake2s 0
+  set hB := D.shape.heights.getD opSha3 0
   obtain ⟨off, hl⟩ := c1LayoutK_qflock D.shape
   rw [← layoutOfK_c1] at hl
   have hq11 : qflockRowBits = 11 := rfl
@@ -140,7 +140,7 @@ theorem lift_mul_evalK (r m x : ℕ) (hx : x < 2 ^ r) (hx24 : x < 2 ^ 24) (W : P
   lift_mul_eval betaCantor r m x hx hx24 W
 
 /-- **The constraint vectors give the rows' constraints** (`CvecOkK`). -/
-theorem cvecOkK (D : KDeployment) (hf : FunctionalsCorrect (D.shape.heights.getD opBlake2s 0))
+theorem cvecOkK (D : KDeployment) (hf : FunctionalsCorrect (D.shape.heights.getD opSha3 0))
     (hrW : D.shape.constraintVars ≤ 24) (hL : LaneSlotsK) : CvecOkK D := by
   intro s c hall
   have hfit : CountsFit D.shape s.2 := by
@@ -235,7 +235,7 @@ theorem cvecOkK (D : KDeployment) (hf : FunctionalsCorrect (D.shape.heights.getD
           tableConstraintsPK S c (tablesKeccak.getD 5 default) := by
       unfold tableConstraintsPK
       rw [show tablesKeccak.getD 5 default = ⟨opSha3, sha3Columns, flushesSha3⟩ from rfl]
-      simp only [opJump, opBlake2s, opSha3, show ¬ (5 : ℕ) = 4 by norm_num, ite_false, ite_true,
+      simp only [opJump, opSha3, show ¬ (5 : ℕ) = 4 by norm_num, ite_false, ite_true,
         List.nil_append]
       refine List.mem_append_right _ (List.mem_filterMap.mpr ⟨col, ?_, ?_⟩)
       · exact List.mem_range.mpr (by simpa [Table.width, sha3Columns_length] using hc86)

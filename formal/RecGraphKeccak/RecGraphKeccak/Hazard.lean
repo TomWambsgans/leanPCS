@@ -23,7 +23,7 @@ open scoped ENNReal
 
 /-! ## The hazard's probability -/
 
-theorem keccak128_sha3_height : keccak128.heights.getD opBlake2s 0 = 15 := by decide
+theorem keccak128_sha3_height : keccak128.heights.getD opSha3 0 = 15 := by decide
 
 /-- `Z_bad` at the Keccak shape is nonzero. -/
 theorem hazardPolyK_ne_zero (p0 : E) : hazardPolyK p0 ≠ 0 :=

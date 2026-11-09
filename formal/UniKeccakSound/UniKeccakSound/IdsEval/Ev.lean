@@ -334,7 +334,7 @@ theorem rootPK_eval (hold : HoldAllK D Fl s c1 ch fd c2 t vals) :
   exact hR
 
 /-- `y(t)`, `SHA3`'s coordinates of `t`. -/
-def yOfK : List E := coordinatesAt t (coordinateFunctionals (D.shape.heights.getD opBlake2s 0))
+def yOfK : List E := coordinatesAt t (coordinateFunctionals (D.shape.heights.getD opSha3 0))
 
 /-- **Every Keccak `C1` point**: a prefix of the digits, `y(t)`, or Flock's point. -/
 theorem c1_pointsK : ∀ r ∈ relsK D Fl s ch fd t vals, r.commitment = .c1 → ∀ tm ∈ r.terms,
@@ -373,14 +373,14 @@ theorem c1_pointsK : ∀ r ∈ relsK D Fl s ch fd t vals, r.commitment = .c1 →
     · simp at hr
 
 /-- **No longer `C1` point extends `y(t)`** where `Z_bad(t) ≠ 0`. -/
-theorem y_selfK (h2 : 1 ≤ D.shape.heights.getD opBlake2s 0)
+theorem y_selfK (h2 : 1 ≤ D.shape.heights.getD opSha3 0)
     (hz : (zBad D.shape ((Fl.prog.out fd []).1.getD 0 0)).eval t ≠ 0) :
     ∀ r ∈ relsK D Fl s ch fd t vals, r.commitment = .c1 → ∀ tm ∈ r.terms,
       (yOfK D t).length < tm.point.length → tm.point.take (yOfK D t).length ≠ yOfK D t := by
-  have hlen : (yOfK D t).length = D.shape.heights.getD opBlake2s 0 := by
+  have hlen : (yOfK D t).length = D.shape.heights.getD opSha3 0 := by
     rw [yOfK, coordinatesAt_length, coordinateFunctionals_size]
   have hy0 : (yOfK D t).getD 0 0 =
-      (yP (coordinateFunctionals (D.shape.heights.getD opBlake2s 0)) 0).eval t := by
+      (yP (coordinateFunctionals (D.shape.heights.getD opSha3 0)) 0).eval t := by
     rw [yOfK, coordinatesAt_getD _ _ _ (by rw [coordinateFunctionals_size]; omega)]
   unfold zBad at hz
   rw [Polynomial.eval_mul, Polynomial.eval_add, Polynomial.eval_add, Polynomial.eval_X, Polynomial.eval_C,

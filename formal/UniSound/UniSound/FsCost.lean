@@ -24,7 +24,7 @@ open OracleSpec OracleComp
 open LeanVM.Rpm (Short hashBlocks)
 
 attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
-  LeanVM.Protocol.Compile.instFintypeKState UniStatement.layoutWords UniStatement.setupStack
+  LeanVM.Protocol.Compile.instFintypeKState UniStatement.setupStack
 
 theorem allQ_hash256 {x : List UInt8} (hx : x.length ≤ 2 ^ 39 + 9) :
     AllQueriesSatisfy (hash256 x) Short :=
@@ -99,9 +99,6 @@ theorem length_mem_absorbsI (s : FSt) (B : ℕ) : ∀ (i : ℕ) (rs : List Round
     · simp
     · exact length_mem_absorbsI s B (i + 1) rs ms.tail
         (fun m hm' => hm m (List.mem_of_mem_tail hm')) e he
-
-variable (D : Deployment) {κ : ℕ} (nV V : ℕ)
-  (hs : UniShapes D)
 
 end UniSound
 

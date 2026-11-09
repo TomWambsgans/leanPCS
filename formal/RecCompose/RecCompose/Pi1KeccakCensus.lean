@@ -17,7 +17,7 @@ of π2's `σ` hash, which starts the chain that makes `α`'s input fresh). For t
   only short inputs, writing at most `streamBytes3` bytes, its claims of at most `batchVarsBound` coordinates
   (`wc_proveStreamRec3With`'s walk in `WS`: the draws hash the state and the stream, at most `2^14` bytes; the
   commitments' trees `512`-byte rows and `64`-byte nodes, `Pi2A.hashOK_commitReal`);
-* **`hashOK_proveRec3K`**: the prover: the setup's tree, the Keccak contract's IV (`291` bytes and the program IV), the
+* **`hashOK_proveRec3K`**: the prover: the setup's tree, the Keccak contract's IV (`163` bytes and the program IV), the
   seed (`80` bytes), the stream, three WHIR openings of one claim of at most `2^14` coordinates
   (`Pi2A.hashOK_proveOpening1`);
 * **`hashOK_uniProverRec3_ref`**: UniKeccakComplete's two-call π1-rec3 prover with Flock's honest prover, at the
@@ -45,7 +45,7 @@ open Pi2A (Short WS ws_of_wc ws_seq ws_lift lenP_of_hashOK two26)
 /-- **π1-rec3's stream hashes only short inputs** (`wc_proveStreamRec3With`'s walk), given Flock's prover's cost
 with at most `2^14` blocks beyond its bytes and a batch of at most `2^14` variables. -/
 theorem ws_proveStreamRec3K (flock : FlockProver (OracleComp KeccakCalls)) (kF wF : ℕ) (tr : Trace)
-    (hF : WC (flock (keccakR1csLogSize + tr.shape.heights.getD opBlake2s 0) UniKeccak.keccakRec3 tr.qflock) kF wF
+    (hF : WC (flock (keccakR1csLogSize + tr.shape.heights.getD opSha3 0) UniKeccak.keccakRec3 tr.qflock) kF wF
       fun _ _ ↦ True) (hkF : kF ≤ 16384) (hV : batchVarsBound tr.shape ≤ 16384) :
     WS (Rec3.proveStreamRec3With callKeccak256 (commitReal callKeccak256) flock tr)
       (Rec3.streamBytes3 tr.shape tr.rows.length wF) (StreamOK (batchVarsBound tr.shape)) := by
@@ -94,13 +94,13 @@ macro "p1k_hop_step" : tactic => `(tactic| first
       | exact hc _ _ _ (List.mem_of_find?_eq_some h3)) hV) fun _ ↦ ?_)
 
 /-- **π1-rec3's honest prover hashes only short inputs** (`costP_proveRec3With`'s walk). -/
-theorem hashOK_proveRec3K (flock : FlockProver (OracleComp KeccakCalls)) (kF wF : ℕ) (a0 b0 : Digest)
+theorem hashOK_proveRec3K (flock : FlockProver (OracleComp KeccakCalls)) (kF wF : ℕ)
     (programIv : List UInt8) (tr : Trace) (hpub : tr.publicInput.length = 32)
-    (hF : WC (flock (keccakR1csLogSize + tr.shape.heights.getD opBlake2s 0) UniKeccak.keccakRec3 tr.qflock) kF wF
+    (hF : WC (flock (keccakR1csLogSize + tr.shape.heights.getD opSha3 0) UniKeccak.keccakRec3 tr.qflock) kF wF
       fun _ _ ↦ True) (hkF : kF ≤ 16384) (hV : batchVarsBound tr.shape ≤ 16384)
     (hS : Rec3.streamBytes3 tr.shape tr.rows.length wF ≤ 16384) (hIv : programIv.length ≤ 2 ^ 16) :
     HashOK Short
-      (Rec3.proveRec3With callKeccak256 callKeccakF1600 PcsQuotient.nonceFuel flock a0 b0 programIv tr) := by
+      (Rec3.proveRec3With callKeccak256 callKeccakF1600 PcsQuotient.nonceFuel flock programIv tr) := by
   unfold Rec3.proveRec3With setupTreeOf contractIvOf seedOf
   simp only [bind_assoc, pure_bind]
   refine E2ECompleteness.HashOK.bind (Pi2A.hashOK_commitWithH _ _) fun tree ↦ ?_
@@ -140,7 +140,7 @@ theorem hashOK_uniProverRec3_ref (D : UniKeccak.KDeployment) (hD : D.shape = Uni
   obtain ⟨-, -, -, h4⟩ := Cost.reference_stackVars
   have esh : (honestTrace D input rows q).shape = D.shape := rfl
   have erows : (honestTrace D input rows q).rows = rows := rfl
-  have e : keccakR1csLogSize + D.shape.heights.getD opBlake2s 0 = 32 := by
+  have e : keccakR1csLogSize + D.shape.heights.getD opSha3 0 = 32 := by
     rw [hD]
     exact Cost.reference_flockLogN
   have hs := Rec3.proverStream3_reference D hD fun _ _ ↦ 3696
@@ -152,7 +152,7 @@ theorem hashOK_uniProverRec3_ref (D : UniKeccak.KDeployment) (hD : D.shape = Uni
     rw [flockBlocks_rec3_reference, flockBytes_rec3_reference] at h
     exact h
   unfold Rec3.uniProverRec3With
-  refine hashOK_proveRec3K (flockProveH callKeccak256) 49 3696 D.a0Root D.b0Root D.programIv
+  refine hashOK_proveRec3K (flockProveH callKeccak256) 49 3696 D.programIv
     (honestTrace D input rows q) (by simp [honestTrace]) ?_ (by norm_num) ?_ ?_ hIv
   · rw [esh, e]
     exact hF

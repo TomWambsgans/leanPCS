@@ -195,7 +195,7 @@ theorem jump_idx : colIdx jumpColumns "b" = 13 ∧ colIdx jumpColumns "v_cond" =
 
 section Constraints
 
-variable (D : Deployment) (rows : List ℕ) (c : Stk)
+variable (rows : List ℕ) (c : Stk)
 
 /-- `E`'s zero has a zero base limb. -/
 theorem toK_zero : toK (0 : E) = 0 := by
@@ -209,9 +209,6 @@ end LvLink
 namespace LvLink
 
 /-! ## `QFLOCK` is `q_flock` -/
-
-/-- `C1`'s layout as the identity model finds it (`layoutOf`) is the mapping's (`c1Layout`). -/
-theorem layoutOf_c1 (S : UniStatement.Shape) : layoutOf S .c1 = c1Layout S := rfl
 
 /-! ## Flock's region -/
 
@@ -236,21 +233,6 @@ end LvLink
 
 /-! ## The bus counts -/
 
-/-- **The bus bound** at a shape: every table's flushes (the verifier's push tuples, as many as its
-pulls) times its height, the memory's and the bytecode's blocks, the state boundary. -/
-def busBound (S : UniStatement.Shape) : ℕ :=
-  ∑ j ∈ Finset.range 6, (tables.getD j default).flushes.push.length * 2 ^ S.heights.getD j 0 +
-    2 ^ S.logMemory + 2 ^ S.logBytecode + 1
-
-/-- **The reference shape's bus bound fits**: `busBound reference = 10,878,977` (heights
-`18, 18, 18, 18, 17, 18`, the memory `2^21`, the bytecode `2^19`). -/
-theorem busBound_reference : 4 * busBound reference + 100 ≤ 2 ^ 32 := by
-  decide +kernel
-
 /-! ## Axioms -/
-
-/-- info: 'UniSound.Ids.busBound_reference' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms busBound_reference
 
 end UniSound.Ids

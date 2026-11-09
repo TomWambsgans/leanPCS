@@ -1,5 +1,5 @@
 -- Part of this repository. Transcribed from `crates/leanvm/statement/src/layout.rs` (`Form`, `Flushes`, the six
--- tables' columns, flushes and counters, `BLAKE2S_SLOTS`), adapted there from leanVM
+-- tables' columns, flushes and counters), adapted there from leanVM
 -- (https://github.com/leanEthereum/leanVM), commit 42422001, `crates/verifier/src/layout.rs`. MIT OR Apache-2.0;
 -- see AGENTS.md.
 module
@@ -133,12 +133,14 @@ def Table.countColumns (t : Table) : List ℕ :=
 /-- The index of a column by name (`cols`, `column_index`). -/
 def colIdx (columns : List String) (n : String) : ℕ := columns.idxOf n
 
-/-- `OP_XOR … OP_BLAKE2S` and `N_TABLES`. -/
+/-- `OP_XOR … OP_SHA3` and `N_TABLES`: the `SHA3` table is opcode 5, the slot of leanVM 42422001's sixth
+instruction. -/
 def opXor : ℕ := 0
 def opMul : ℕ := 1
 def opSet : ℕ := 2
 def opDeref : ℕ := 3
 def opJump : ℕ := 4
+def opSha3 : ℕ := 5
 def nTables : ℕ := 6
 
 /-- `ARITH_COLUMNS`. -/
@@ -208,6 +210,12 @@ def flushesJump : Flushes :=
   (((({ push := [], pull := [] } : Flushes).stateDerived pc fp npc nfp).bytecode pc cntBc opJump
     operands).memoryCols (prod fp oC 0) cntC [cond] |>.memoryCols (prod fp oD 0) cntD [dest]).memoryCols
     (prod fp oF 0) cntF [frame]
+
+/-- **The five shared tables** (XOR, MUL, SET, DEREF, JUMP), in opcode order: leanVM 42422001's, which the Keccak VM
+keeps (`UniStatement.tablesKeccak` adds the `SHA3` table). -/
+def sharedTables : List Table :=
+  [⟨opXor, arithColumns, flushesArith opXor false⟩, ⟨opMul, arithColumns, flushesArith opMul true⟩,
+    ⟨opSet, setColumns, flushesSet⟩, ⟨opDeref, derefColumns, flushesDeref⟩, ⟨opJump, jumpColumns, flushesJump⟩]
 
 end UniStatement
 

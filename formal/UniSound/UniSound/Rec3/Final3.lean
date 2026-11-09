@@ -28,7 +28,7 @@ namespace UniSound
 open LeanVM.Parameters UniStatement Finset WhirBridge
 open scoped ENNReal
 
-variable {D : Deployment} {κ : ℕ} {np : ℕ} (BR : PairBatch np)
+variable {κ : ℕ} {np : ℕ} (BR : PairBatch np)
 
 /-! ## The end theorem, from the named links -/
 

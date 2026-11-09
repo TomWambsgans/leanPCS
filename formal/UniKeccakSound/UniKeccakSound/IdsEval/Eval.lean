@@ -71,7 +71,7 @@ theorem tpK_length : tablesKeccak.length ≤ (tpK (inpK D Fl s ch fd t vals)).1.
   rw [tablesPart_length]
 
 /-- **The Keccak constraint quotient's identity at `t`.** -/
-theorem wPK_eval (hC : ChunksFitK D.shape) (h2 : 1 ≤ D.shape.heights.getD opBlake2s 0)
+theorem wPK_eval (hC : ChunksFitK D.shape) (h2 : 1 ≤ D.shape.heights.getD opSha3 0)
     (hold : HoldAllK D Fl s c1 ch fd c2 t vals) :
     (wPK D.shape c1 c2 (publicWordsOf s.1.toList) (gammaOf ch) ((Fl.prog.out fd []).1.getD 0 0)).eval t = 0 := by
   unfold wPK
@@ -108,7 +108,7 @@ theorem wPK_eval (hC : ChunksFitK D.shape) (h2 : 1 ≤ D.shape.heights.getD opBl
   rw [qTerms_val' D.shape c2 _ _ t _ _ 1 hev
     (fun c hc ↦ wK_getD D Fl s ch fd t vals _ (hC.1 _ (getD_mem' (d := 0) hc))), one_mul] at hQ
   -- The constraint relation at `t`.
-  have hyl : (yOfK D t).length = D.shape.heights.getD opBlake2s 0 := by
+  have hyl : (yOfK D t).length = D.shape.heights.getD opSha3 0 := by
     rw [yOfK, coordinatesAt_length, coordinateFunctionals_size]
   have hok : ∀ x ∈ tablesKeccak.zip (tpK (inpK D Fl s ch fd t vals)).1,
       CrTableOkK D.shape c1 t (inpK D Fl s ch fd t vals).w (evOfK D Fl s c1 ch fd c2 t vals) x.1 x.2 := by

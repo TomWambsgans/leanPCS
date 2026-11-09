@@ -135,9 +135,9 @@ lake build Soundness E2ECompleteness Evm ZK        # the end theorems; #guard_ms
 
 ## leanVM by recursion: the Keccak VM
 
-The Keccak VM (`docs/leanvm/univariate/KECCAK.md`) is leanVM 42422001 with its `BLAKE2S` instruction replaced by
-leanVM `9d50c92a3`'s `SHA3` (one Keccak-f[1600] step a row). π1 is a univariate PIOP for its statement, π1-rec3 its
-variant for the recursion; π2 proves that π1-rec3's recorded verifier graph accepts; the contract runs π2's verifier,
+The Keccak VM (`docs/leanvm/univariate/KECCAK.md`) is leanVM 42422001 with its hash instruction (opcode `g^5`)
+replaced by leanVM `9d50c92a3`'s `SHA3` (one Keccak-f[1600] step a row). π1 is a univariate PIOP for its statement,
+π1-rec3 its variant for the recursion; π2 proves that π1-rec3's recorded verifier graph accepts; the contract runs π2's verifier,
 then six `PCS_OPEN` calls (π1's `C1`, `C2`, setup; π2's `W`, setup, `Q`). The reference is 128 signatures:
 `UniKeccakSound.keccakRefShape` = `RecGraphKeccak.Pi1.keccak128` (`RecCompose.Pi1K.keccak128_eq_refShape`) =
 `keccakShapeOf 721598 [24260, 36229, 24626, 35812, 15509, 17712]`: heights `15 16 15 16 14 15`, memory `2^20`, bytecode
@@ -150,7 +150,7 @@ cited is sorry-free, without `native_decide`, on `propext`, `Classical.choice`, 
 | [`KeccakVm`](KeccakVm/README.md) | the instruction set and the relation `KvHolds F prog s input q`: `M3Holds` of Lv42's instance with the `SHA3` table (86 columns, every lane committed), and `KeccakAux` (the Keccak-f region: each block satisfies the block's R1CS, each executed row's lanes are its block's ports, `END_BIT` on `in_16`); the block `F : KeccakFlockSpec` a parameter |
 | [`KeccakArith`](KeccakArith/README.md), `KeccakFlushes` | the arithmetization's soundness and completeness; the verifier's `SHA3` flushes are the instance's |
 | [`KeccakFlock`](KeccakFlock/README.md) | the block of `crates/vendor/flock-42422001/src/keccak.rs` as `keccakFlockSpec`, and its lincheck terminal |
-| [`UniKeccak`](UniKeccak/README.md) | π1's verifier as computable Lean (`reduce` with `Blake2s::Keccak(variant)`, main line and π1-rec3; the contract's IV, its three `PCS_OPEN` calls), and its statements `UniKnowledgeSoundnessKeccak{,Rec3}`, `UniCompletenessKeccak{,Rec3}` |
+| [`UniKeccak`](UniKeccak/README.md) | π1's verifier as computable Lean (`reduce` at a `Variant`, `KECCAK_MAIN` and `KECCAK_REC3` (π1-rec3); the contract's IV, its three `PCS_OPEN` calls), and its statements `UniKnowledgeSoundnessKeccak{,Rec3}`, `UniCompletenessKeccak{,Rec3}` |
 | [`UniKeccakSound`](UniKeccakSound/README.md) | π1's knowledge soundness |
 | [`UniKeccakComplete`](UniKeccakComplete/README.md) | an explicit Lean honest prover, and π1's completeness |
 | [`RecGraphKeccak`](RecGraphKeccak/README.md) | π1-rec3's recorded graph, graph = verifier off the merge hazard, the hazard's probability, π2's circuit for the graph |
@@ -158,20 +158,12 @@ cited is sorry-free, without `native_decide`, on `propext`, `Classical.choice`, 
 | [`RecStatement`](RecStatement/README.md) | π2's verifier, the contract and the recursion's end statements |
 | [`RecCompose`](RecCompose/README.md) | their proofs |
 
-They build on older shared libraries: `Lv42`, `UniStatement`, `UniSound`, `UniComplete` (the honest prover's generic
-layers, [`UniComplete/README.md`](UniComplete/README.md)), `FlockSound`, `FlockSoundUni`, `Heap`, `RecGraph`.
-
-**What is left of the BLAKE2s VM.** `formal/Lv42` is leanVM 42422001's instruction set without `BLAKE2S` (five
-instructions, the machine, the five shared tables, the M3 instance with its Flock region), with the bytecode guarantee
-`Lv42.Arithmetization.EntryOk` (an entry decodes, or has opcode `g^5`: the Keccak VM's `SHA3`). No BLAKE2s
-semantics, table, Flock circuit, statement or end theorem remains, and every module of `formal/` is in the import
-closure of the kept roots. The shared libraries (`UniStatement`, `UniSound`, `FlockSound`, `FlockSoundUni`,
-`UniComplete`, `Heap`, `RecGraph`) hold the generic verifier, PIOP, Fiat–Shamir and Flock layers the Keccak line
-instantiates, plus some unused BLAKE2s-era declarations: `UniStatement.Rec`'s `Flock.blake2s{Iv,Sigma,GLanes,RowValues}`
-and `walkSlots`, `UniStatement.Tables.blake2sSlots`, `FlockSoundUni.WalkCode`'s `Walk.blake2sRowValues_eq`,
-`UniSound.Ids.Facts.good_blake2s`, the BLAKE2s reference's numbers in `UniSound.Ids.Deployed` (`c1Limbs`,
-`c1Limbs_reference`, `setupLimbs_reference`) and `qflockSlot`'s limb readings in `UniSound.Ids`. The Rust name
-`Blake2s::Keccak` (the verifier's variant) is kept in `UniStatement.Verifier.Blake2s`.
+They build on older shared libraries: `Lv42` (leanVM 42422001's instruction set without its hash instruction: five
+instructions, the machine, the five shared tables, the M3 instance, with the bytecode guarantee
+`Lv42.Arithmetization.EntryOk`: an entry decodes, or has opcode `g^5`, the Keccak VM's `SHA3`), `UniStatement`,
+`UniSound`, `UniComplete` (the honest prover's generic layers, [`UniComplete/README.md`](UniComplete/README.md)),
+`FlockSound`, `FlockSoundUni`, `Heap`, `RecGraph`: the generic verifier, PIOP, Fiat–Shamir and Flock layers the Keccak
+line instantiates.
 
 
 ### The statement, the arithmetization, the Keccak-f block

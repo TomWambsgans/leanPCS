@@ -62,7 +62,7 @@ def tableItems (tr : Trace) (table : Table) : List Item :=
     [(colP tr table "b" + colP tr table "v_cond" * colP tr table "w", lift),
       (colP tr table "v_cond" * (colP tr table "b" + 1), lift)] else []) ++
   [(counterPoly tr table, lift)] ++
-  (if table.opcode = opBlake2s then
+  (if table.opcode = opSha3 then
     (List.range table.width).filterMap fun c ↦
       (keccakSlot (table.columns.getD c "")).map fun slot ↦ (copyPoly tr table c slot, lift)
    else [])
@@ -114,10 +114,10 @@ theorem constraintNumerator_eq (tr : Trace) (gamma : E) (words : List E) :
     rfl
   · intro table _ s
     by_cases hJ : table.opcode = opJump
-    · have hB : ¬ table.opcode = opBlake2s := by rw [hJ]; decide
+    · have hB : ¬ table.opcode = opSha3 := by rw [hJ]; decide
       simp only [Domain.ite_pos_of hJ, Domain.ite_neg_of hB, tableItems, List.append_nil, List.cons_append,
         List.nil_append, List.foldl_cons, List.foldl_nil, addItem, colP, counterPoly]
-    · by_cases hB : table.opcode = opBlake2s
+    · by_cases hB : table.opcode = opSha3
       · simp only [Domain.ite_neg_of hJ, Domain.ite_pos_of hB, tableItems, List.nil_append, List.cons_append,
           List.foldl_cons, foldl_filterMap]
         rw [forIn_id_yield _ _ _ (fun c s ↦ match keccakSlot (table.columns.getD c "") with
@@ -298,7 +298,7 @@ theorem counter_vanish {tr : Trace} (hH : TraceHonest tr) (hS : Small tr) {table
 theorem jumpTable_eq : tablesKeccak.getD opJump default = ⟨opJump, jumpColumns, flushesJump⟩ := rfl
 
 /-- `SHA3`'s table (in `BLAKE2S`'s place, opcode `5`). -/
-theorem blakeTable_eq : tablesKeccak.getD opBlake2s default = ⟨opBlake2s, sha3Columns, flushesSha3⟩ := rfl
+theorem sha3Table_eq : tablesKeccak.getD opSha3 default = ⟨opSha3, sha3Columns, flushesSha3⟩ := rfl
 
 theorem ofLane_zero : K.ofLane 0 = 0 := by decide
 
@@ -431,19 +431,19 @@ theorem mleP_slot_pointE (q : Array K) {r i slot : ℕ} (hC : Domain.CoordinateF
 
 /-- **`SHA3`'s copies vanish on `V_r`**: `copy_c(ω_i) = ℓ(ω_i) + offset`, the port word's value plus the offset. -/
 theorem copy_vanish {tr : Trace} (hH : TraceHonest tr) (hS : Small tr)
-    (hC : Domain.CoordinateFunctionalsBasis (tr.height opBlake2s)) {table : Table} (htab : table ∈ tablesKeccak)
-    (hB : table.opcode = opBlake2s) {c slot : ℕ} (hc : c < table.width)
+    (hC : Domain.CoordinateFunctionalsBasis (tr.height opSha3)) {table : Table} (htab : table ∈ tablesKeccak)
+    (hB : table.opcode = opSha3) {c slot : ℕ} (hc : c < table.width)
     (hslot : keccakSlot (table.columns.getD c "") = some slot) {i : ℕ} (hi : i < 2 ^ tr.height table.opcode) :
     (copyPoly tr table c slot).toPoly.eval (pointE i) = 0 := by
   obtain ⟨-, hget⟩ := mem_tables htab
   rw [hB] at hget hi
   subst hget
-  simp only [blakeTable_eq] at hc hslot
+  simp only [sha3Table_eq] at hc hslot
   have hcopy := hH.copies i hi c hc slot hslot
   unfold copyPoly
-  simp only [blakeTable_eq]
+  simp only [sha3Table_eq]
   rw [tp_add, tp_add, tp_C, Polynomial.eval_add, Polynomial.eval_add, Polynomial.eval_C,
-    eval_tableCol hH hS (by decide) (by rw [blakeTable_eq]; exact hc) hi,
+    eval_tableCol hH hS (by decide) (by rw [sha3Table_eq]; exact hc) hi,
     ← pEval_eq, mleP_slot_pointE _ hC hi, hcopy, eK_eq_ofK, Domain.embed_add]
   linear_combination CharTwo.add_self_eq_zero (ofK (tr.qflock.getD (slot + 2048 * i) 0)) +
     CharTwo.add_self_eq_zero (ofK (K.ofLane (keccakSlotOffset (sha3Columns.getD c ""))))
@@ -454,7 +454,7 @@ theorem mem_tableItems {tr : Trace} {table : Table} {it : Item} (h : it ∈ tabl
       it = (colP tr table "v_cond" * (colP tr table "b" + 1),
         liftP (tr.height table.opcode) tr.shape.constraintVars))) ∨
     it = (counterPoly tr table, liftP (tr.height table.opcode) tr.shape.constraintVars) ∨
-    (table.opcode = opBlake2s ∧ ∃ c < table.width, ∃ slot, keccakSlot (table.columns.getD c "") = some slot ∧
+    (table.opcode = opSha3 ∧ ∃ c < table.width, ∃ slot, keccakSlot (table.columns.getD c "") = some slot ∧
       it = (copyPoly tr table c slot, liftP (tr.height table.opcode) tr.shape.constraintVars)) := by
   simp only [tableItems, List.mem_append, List.mem_singleton] at h
   rcases h with (hJ | hc) | hB
@@ -465,7 +465,7 @@ theorem mem_tableItems {tr : Trace} {table : Table} {it : Item} (h : it ∈ tabl
     · rw [Domain.ite_neg_of hJ'] at hJ
       simp at hJ
   · exact Or.inr (Or.inl hc)
-  · by_cases hB' : table.opcode = opBlake2s
+  · by_cases hB' : table.opcode = opSha3
     · rw [Domain.ite_pos_of hB'] at hB
       obtain ⟨c, hc, hmap⟩ := List.mem_filterMap.mp hB
       obtain ⟨slot, hslot, rfl⟩ := Option.map_eq_some_iff.mp hmap
@@ -475,7 +475,7 @@ theorem mem_tableItems {tr : Trace} {table : Table} {it : Item} (h : it ∈ tabl
 
 /-- **Every table constraint vanishes on its table's `V_r`.** -/
 theorem tableItems_ok {tr : Trace} (hH : TraceHonest tr) (hS : Small tr)
-    (hC : Domain.CoordinateFunctionalsBasis (tr.height opBlake2s)) {table : Table} (htab : table ∈ tablesKeccak) :
+    (hC : Domain.CoordinateFunctionalsBasis (tr.height opSha3)) {table : Table} (htab : table ∈ tablesKeccak) :
     ∀ it ∈ tableItems tr table, ItemOK tr.shape.constraintVars it := by
   obtain ⟨ht, -⟩ := mem_tables htab
   have hr := height_le_constraintVars tr table.opcode
@@ -547,7 +547,7 @@ theorem publicItems_ok {tr : Trace} (hH : TraceHonest tr) (hS : Small tr) :
 
 /-- **Every constraint of the batch vanishes on its domain.** -/
 theorem numItems_ok {tr : Trace} (hH : TraceHonest tr) (hS : Small tr)
-    (hC : Domain.CoordinateFunctionalsBasis (tr.height opBlake2s)) :
+    (hC : Domain.CoordinateFunctionalsBasis (tr.height opSha3)) :
     ∀ it ∈ numItems tr (publicWordsOf tr.publicInput), ItemOK tr.shape.constraintVars it := by
   intro it hit
   rcases List.mem_append.mp hit with h | h
@@ -557,14 +557,14 @@ theorem numItems_ok {tr : Trace} (hH : TraceHonest tr) (hS : Small tr)
 
 /-- **`w_{r_W}` divides the constraints' numerator** of an honest trace. -/
 theorem numerator_dvd {tr : Trace} (hH : TraceHonest tr) (hS : Small tr)
-    (hC : Domain.CoordinateFunctionalsBasis (tr.height opBlake2s)) (gamma : E) :
+    (hC : Domain.CoordinateFunctionalsBasis (tr.height opSha3)) (gamma : E) :
     Domain.wP tr.shape.constraintVars ∣ (constraintNumerator tr gamma (publicWordsOf tr.publicInput)).toPoly := by
   rw [constraintNumerator_eq]
   exact foldl_addItem_dvd gamma _ _ (0, 1) (by rw [tp_zero]; exact dvd_zero _) (numItems_ok hH hS hC)
 
 /-- **The constraint quotient divides exactly**: `Q_W · w_{r_W} = N`. -/
 theorem constraintQuotient_mul {tr : Trace} (hH : TraceHonest tr) (hS : Small tr)
-    (hC : Domain.CoordinateFunctionalsBasis (tr.height opBlake2s)) (gamma : E) :
+    (hC : Domain.CoordinateFunctionalsBasis (tr.height opSha3)) (gamma : E) :
     (constraintQuotient tr gamma (publicWordsOf tr.publicInput)).toPoly * Domain.wP tr.shape.constraintVars =
       (constraintNumerator tr gamma (publicWordsOf tr.publicInput)).toPoly := by
   unfold constraintQuotient
@@ -584,7 +584,7 @@ def degStep (shape : Shape) (d : ℕ) (table : Table) : ℕ :=
   let n := 2 ^ r
   let d := if table.opcode = opJump then max d (degree n 2) else d
   let d := max d (degree ((n - 1) * (1 + table.countColumns.length)) n)
-  if table.opcode = opBlake2s then max d (degree (r * (n / 2)) n) else d
+  if table.opcode = opSha3 then max d (degree (r * (n / 2)) n) else d
 
 theorem constraintDegree_eq (shape : Shape) :
     (Shape.constraintDegreeK shape) = max (tablesKeccak.foldl (degStep shape) 0) (degree (2 ^ shape.logMemory) 3) := rfl
@@ -612,7 +612,7 @@ theorem le_constraintDegree (shape : Shape) {table : Table} (htab : table ∈ ta
     (table.opcode = opJump → degree (2 ^ shape.heights.getD table.opcode 0) 2 ≤ (Shape.constraintDegreeK shape)) ∧
     degree ((2 ^ shape.heights.getD table.opcode 0 - 1) * (1 + table.countColumns.length))
       (2 ^ shape.heights.getD table.opcode 0) ≤ (Shape.constraintDegreeK shape) ∧
-    (table.opcode = opBlake2s → degree (shape.heights.getD table.opcode 0 * (2 ^ shape.heights.getD table.opcode 0 / 2))
+    (table.opcode = opSha3 → degree (shape.heights.getD table.opcode 0 * (2 ^ shape.heights.getD table.opcode 0 / 2))
       (2 ^ shape.heights.getD table.opcode 0) ≤ (Shape.constraintDegreeK shape)) := by
   rw [constraintDegree_eq]
   have key : ∀ c : Table → ℕ, (∀ d x, c x ≤ degStep shape d x) →
@@ -624,7 +624,7 @@ theorem le_constraintDegree (shape : Shape) {table : Table} (htab : table ∈ ta
     simpa [hJ] using this
   · exact key (fun x ↦ degree ((2 ^ shape.heights.getD x.opcode 0 - 1) * (1 + x.countColumns.length))
       (2 ^ shape.heights.getD x.opcode 0)) (fun d x ↦ by unfold degStep; dsimp only; split_ifs <;> omega)
-  · have := key (fun x ↦ if x.opcode = opBlake2s then
+  · have := key (fun x ↦ if x.opcode = opSha3 then
       degree (shape.heights.getD x.opcode 0 * (2 ^ shape.heights.getD x.opcode 0 / 2))
         (2 ^ shape.heights.getD x.opcode 0) else 0)
       (fun d x ↦ by unfold degStep; dsimp only; split_ifs <;> omega)

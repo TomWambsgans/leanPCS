@@ -155,14 +155,6 @@ def inputRow (cw : Array E) (b : Array E × Array E) (i : ℕ) : Array E × Arra
 def inputRows (cw : Array E) (b : Array E × Array E) (a : ℕ × ℕ) : Array E × Array E :=
   (((List.range' a.1 a.2).foldl (inputRow cw) (b.1, b.2)).1, ((List.range' a.1 a.2).foldl (inputRow cw) (b.1, b.2)).2)
 
-/-- The initial working vector: `h`, `IV[0..4]`, `IV[4..8]` XOR the counter and the flags. -/
-def initState (cw : Array E) : Array WalkWord :=
-  let s := (List.range' 0 8).foldl (fun s word ↦ s.set! word (walkSlots cw (32 * word)))
-    (Array.replicate 16 (Array.replicate 32 0))
-  let s := (List.range' 0 4).foldl (fun s word ↦ s.set! (8 + word) (walkLiteral cw (blake2sIv.getD word 0))) s
-  ([1152, 1184, 1216, 1248].zip (List.range 4)).foldl (fun s bw ↦
-    s.set! (12 + bw.2) (walkXor (walkLiteral cw (blake2sIv.getD (4 + bw.2) 0)) (walkSlots cw bw.1))) s
-
 /-- One mixing step `G` of round `roundIndex` (lanes `lg.1`, gate `lg.2` of the round): its 184 rows from
 `1280 + 184 (8 roundIndex + lg.2)`, and the four lanes updated. The state: left, right, the working vector. -/
 def gateStep (cw : Array E) (sigma : List ℕ) (roundIndex : ℕ) (st : Array E × Array E × Array WalkWord)
@@ -188,13 +180,6 @@ def gateStep (cw : Array E) (sigma : List ℕ) (roundIndex : ℕ) (st : Array E 
   let b2 := walkRotr (walkXor b1 r4.2.2) 7
   (r4.1, r4.2.1, (((st.2.2.set! la r3.2.2).set! lb b2).set! lc r4.2.2).set! ld d2)
 
-/-- One round: its eight mixing steps. -/
-def roundStep (cw : Array E) (st : Array E × Array E × Array WalkWord) (sr : List ℕ × ℕ) :
-    Array E × Array E × Array WalkWord :=
-  (((blake2sGLanes.zip (List.range blake2sGLanes.length)).foldl (gateStep cw sr.1 sr.2) (st.1, st.2.1, st.2.2)).1,
-   ((blake2sGLanes.zip (List.range blake2sGLanes.length)).foldl (gateStep cw sr.1 sr.2) (st.1, st.2.1, st.2.2)).2.1,
-   ((blake2sGLanes.zip (List.range blake2sGLanes.length)).foldl (gateStep cw sr.1 sr.2) (st.1, st.2.1, st.2.2)).2.2)
-
 /-- One output row `(out_bit, w_512)` at `256 + 32 word + bit`. -/
 def outBit (cw out : Array E) (word : ℕ) (st : Array E × Array E) (bit : ℕ) : Array E × Array E :=
   (st.1.set! (256 + 32 * word + bit) (out.getD bit 0), st.2.set! (256 + 32 * word + bit) (cw.getD constantColumn 0))
@@ -208,38 +193,7 @@ def outStep (cw : Array E) (state : Array WalkWord) (st : Array E × Array E) (w
   (((List.range' 0 32).foldl (outBit cw (outWord cw state word) word) (st.1, st.2)).1,
    ((List.range' 0 32).foldl (outBit cw (outWord cw state word) word) (st.1, st.2)).2)
 
-/-- **`blake2s_row_values` as folds**: the input rows, the working vector, ten rounds, the output rows, the
-constant row. -/
-def rowModel (cw : Array E) : Array E × Array E :=
-  let st1 := [(0, 256), (640, 512), (1152, 128)].foldl (inputRows cw)
-    (Array.replicate (2 ^ blake2sR1csLogSize) 0, Array.replicate (2 ^ blake2sR1csLogSize) 0)
-  let st2 := (blake2sSigma.zip (List.range blake2sSigma.length)).foldl (roundStep cw)
-    (st1.1, st1.2, initState cw)
-  let st3 := (List.range' 0 8).foldl (outStep cw st2.2.2) (st2.1, st2.2.1)
-  (st3.1.set! constantColumn (cw.getD constantColumn 0), st3.2.set! constantColumn (cw.getD constantColumn 0))
-
-section
-attribute [local irreducible] List.foldl walkAdd walkAdd3 walkSlots walkLiteral walkXor walkRotr Array.set!
-  Array.replicate List.range List.range' List.zip blake2sSigma blake2sGLanes blake2sIv
-
-set_option maxRecDepth 100000 in
-/-- **The official walk is the model**, by unfolding (nothing evaluated: the folds, lists, arrays and word operations
-are irreducible here). -/
-theorem blake2sRowValues_eq (cw : Array E) : blake2sRowValues cw = rowModel cw := by
-  unfold blake2sRowValues
-  simp (config := { zeta := false }) (disch := exact fun _ _ ↦ ⟨_, rfl⟩) only [forIn_range0_value,
-    forIn_range_value, forIn_list_value]
-  rfl
-
-end
-
 /-! ## `walked_terminal` (`flock_min.rs:185-215`) -/
-
-/-- The column weights `w[h·64 + l] = s_l · eq_kernel(chi_in')[h]`. -/
-def colWeights (s : List E) (high : Array E) : Array E :=
-  (List.range' 0 high.size).foldl (fun w h ↦ (List.range' 0 s.toArray.size).foldl
-    (fun w l ↦ w.set! (h * kBits + l) (s.toArray.getD l 0 * high.getD h 0)) w)
-    (Array.replicate (2 ^ blake2sR1csLogSize) 0)
 
 /-- The matrix terms `Σ_h rows[h] (Σ_low lw[low] left[h·64 + low] + α Σ_low lw[low] right[h·64 + low])`. -/
 def matrixSum (lw rows left right : Array E) (alpha : E) : E :=
@@ -248,17 +202,5 @@ def matrixSum (lw rows left right : Array E) (alpha : E) : E :=
       (st.1 + lw.getD low 0 * left.getD (h * kBits + low) 0, st.2 + lw.getD low 0 * right.getD (h * kBits + low) 0))
       ((0 : E), (0 : E))
     m + rows.getD h 0 * (st.1 + alpha * st.2)) 0
-
-/-- **The official walked terminal as folds.** -/
-theorem walkedTerminal_eq (zSkip : Option E) (rowLow chiIn chiInPrime s : List E) (alpha : E) :
-    walkedTerminal zSkip rowLow chiIn chiInPrime s alpha =
-      matrixSum (rowLowWeights zSkip rowLow).2.toArray (eqKernel chiIn)
-          (blake2sRowValues (colWeights s (eqKernel chiInPrime))).1
-          (blake2sRowValues (colWeights s (eqKernel chiInPrime))).2 alpha +
-        (knownWeights alpha chiIn chiInPrime).1 * dot (rowLowWeights zSkip rowLow).2 s +
-        (knownWeights alpha chiIn chiInPrime).2 * s.getD (constantColumn % kBits) 0 := by
-  unfold walkedTerminal
-  simp (config := { zeta := false }) (disch := exact fun _ _ ↦ ⟨_, rfl⟩) only [forIn_range0_value]
-  rfl
 
 end FlockSound.Uni.Walk

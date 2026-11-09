@@ -28,7 +28,7 @@ open LeanVM.Parameters LeanVM.Semantics LeanVM.Protocol UniStatement RecGraph Re
 
 /-- `C1`'s columns at `keccak128` (`layoutsK`'s `c1`). -/
 def c1ColsK : List (Column × ℕ × Bool) :=
-  [(.qflock, keccak128.heights.getD opBlake2s 0 + UniKeccak.qflockRowBits, false)] ++
+  [(.qflock, keccak128.heights.getD opSha3 0 + UniKeccak.qflockRowBits, false)] ++
     tablesKeccak.flatMap (fun t ↦
       (List.range t.width).map (fun c ↦ (Column.table t.opcode c, keccak128.heights.getD t.opcode 0, false)) ++
         [(.inverse t.opcode, keccak128.heights.getD t.opcode 0, false)]) ++
@@ -46,7 +46,7 @@ def c1NamesK : List Column :=
 
 /-- A `C1` column's variables at `keccak128`. -/
 def c1VarsK : Column → ℕ
-  | .qflock => keccak128.heights.getD opBlake2s 0 + UniKeccak.qflockRowBits
+  | .qflock => keccak128.heights.getD opSha3 0 + UniKeccak.qflockRowBits
   | .table o _ => keccak128.heights.getD o 0
   | .inverse o => keccak128.heights.getD o 0
   | .memory _ => keccak128.logMemory
@@ -332,7 +332,7 @@ theorem colVars_leafK (parts : List TablePart) (i c : ℕ) :
 /-! ## The constraint relation's terms -/
 
 /-- `y(t)`, BLAKE2S's coordinates of `t`. -/
-abbrev yK (tE : E) : List E := coordinatesAt tE (coordinateFunctionals (keccak128.heights.getD opBlake2s 0))
+abbrev yK (tE : E) : List E := coordinatesAt tE (coordinateFunctionals (keccak128.heights.getD opSha3 0))
 
 /-- **A constraint term**: untwisted; a table's column or its inverse at its height's prefix of `w`, the memory's at
 `w[..lm]`, or a slot at `y`. -/
@@ -366,13 +366,13 @@ theorem crStep_CrK (gamma t : E) (w : List E) (s : E × Array Term × E × ℕ) 
   unfold crStepK at htm
   dsimp only at htm
   by_cases hj : x.1.opcode = opJump
-  · have hb : ¬ x.1.opcode = opBlake2s := by rw [hj]; decide
+  · have hb : ¬ x.1.opcode = opSha3 := by rw [hj]; decide
     simp only [ite_eq_left hj, ite_eq_right hb, Array.toList_push, List.mem_append, List.mem_singleton] at htm
     rcases htm with (h | rfl) | rfl
     · exact Or.inl h
     · exact Or.inr ⟨rfl, Or.inl ⟨_, _, rfl, rfl⟩⟩
     · exact Or.inr ⟨rfl, Or.inr (Or.inl ⟨_, rfl, rfl⟩)⟩
-  · by_cases hb : x.1.opcode = opBlake2s
+  · by_cases hb : x.1.opcode = opSha3
     · simp only [ite_eq_right hj, ite_eq_left hb] at htm
       rcases copyFold_CrK _ _ _ _ _ _ _ _ tm htm with h | h
       · simp only [Array.toList_push, List.mem_append, List.mem_singleton] at h
@@ -573,7 +573,7 @@ theorem shapeSpecK : ShapeSpecK tableShapeK constraintShapeK heapShapeK TailOKK 
   have hwl : (digits tE wLenK).length = 26 := by rw [digits_lengthC, wLen_eqK]
   have hy : (yK tE).length = 15 := by
     rw [UniSound.Ids.Eval.coordinatesAt_length, UniSound.Ids.Eval.coordinateFunctionals_size,
-      show keccak128.heights.getD opBlake2s 0 = 15 by decide]
+      show keccak128.heights.getD opSha3 0 = 15 by decide]
   obtain ⟨hne1, hne2⟩ := y0_neK hhaz
   have hlm := logMemory_eqK
   have hlb := logBytecode_eqK

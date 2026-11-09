@@ -30,7 +30,7 @@ open LeanVM.Rpm (Short hashBlocks)
 open scoped ENNReal
 
 attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
-  LeanVM.Protocol.Compile.instFintypeKState UniStatement.layoutWords UniStatement.setupStack
+  LeanVM.Protocol.Compile.instFintypeKState UniStatement.setupStack
 
 theorem countP_root_rec3Rounds (fr : List RoundSpec) (hfr : ∀ r ∈ fr, r.root = false) (nV np : ℕ) :
     (rec3Rounds fr nV np).countP (fun r => r.root) = 2 := by

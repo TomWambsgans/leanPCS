@@ -106,7 +106,7 @@ theorem main3OutK_aligned (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ :
 /-- **The last link on the Keccak VM at π1-rec3's shape** (`UniFinalK3`), for the identity model `uniIdsK3`, the
 paired batch `pairBatchRec3 np` and the code-level link `uniCodeK3At`. -/
 theorem uniFinalK3_uniCodeK3At (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ : ℕ}
-    (F3 : KFlockSound F κ keccakRec3) (hκ : D.shape.heights.getD opBlake2s 0 = κ) (N : ℕ) (h : IdsHypsK F D κ N)
+    (F3 : KFlockSound F κ keccakRec3) (hκ : D.shape.heights.getD opSha3 0 = κ) (N : ℕ) (h : IdsHypsK F D κ N)
     (d n : ℕ) (g : IdsGapsK D F3 d n) (np : ℕ) (hV : varsOf (layoutsOfK D.shape) = 2 * np + 1)
     (hgood : FlockGoodDoneK F3) (hW : WeightMleK D F3) (hsmall : LayoutVarsSmall3K D) :
     UniFinalK3 D F3 (uniIdsK3 D F3 N h d n g np hV) (pairBatchRec3 np)

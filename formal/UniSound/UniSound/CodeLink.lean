@@ -31,9 +31,6 @@ open UniStatement LeanVM.Parameters LeanVM.Semantics FlockSound.Uni
 
 /-! ## The values at `t` and the relations -/
 
-/-- The tables' values at `t`. -/
-def tablesReads : ℕ := (tables.map tableReads).sum
-
 /-- **The row counts in range** (what `readCounts`' range checks accept, iteration 2's F1): six
 counts, each at most `2^r` for its table's height `r`. -/
 def CountsInRange (heights rows : List ℕ) : Prop :=
@@ -42,44 +39,6 @@ def CountsInRange (heights rows : List ℕ) : Prop :=
 instance (heights rows : List ℕ) : Decidable (CountsInRange heights rows) := by
   unfold CountsInRange
   infer_instance
-
-/-- **The values at `t`**: the tables', the memory's final counts, address and pull fingerprint,
-the bytecode's final counts and pull fingerprint, `T(t)` and `Q_W(t)`. -/
-def valsCount : ℕ := tablesReads + 7
-
-/-- **The relations at `t` before Flock's claim (steps 4–6), and `C2`'s columns**, from the row
-counts' bits, `α`, `β`, `γ`, `t` and the values. -/
-def mainRels (shape : Shape) (pw : List E) (counts : List (List E)) (alphas : List E)
-    (beta gamma t : E) (vals : List E) : Array Relation × List (Column × ℕ × Bool) :=
-  let w := digits t (max shape.heap.h (shape.constraintVars + 4) + 2)
-  let weights := eqKernel alphas
-  let st := consumeFold tableReads (tablesStep shape.heights weights beta w) tables (#[], #[])
-    (vals.take tablesReads)
-  let memoryFinalCount := vals.getD tablesReads 0
-  let address := vals.getD (tablesReads + 1) 0
-  let memoryPull := vals.getD (tablesReads + 2) 0
-  let bytecodeFinalCount := vals.getD (tablesReads + 3) 0
-  let bytecodePull := vals.getD (tablesReads + 4) 0
-  let heapValue := vals.getD (tablesReads + 5) 0
-  let constraintValue := vals.getD (tablesReads + 6) 0
-  let cr := constraintRelation shape st.2.toList pw gamma t constraintValue w
-  let hr := heapRelations shape ((counts.zip shape.heights).map fun x => activeVanishingFromBits w x.1 x.2)
-    st.2.toList weights beta heapValue constraintValue memoryPull
-    (memoryPull + weights.getD 2 0 * (1 + memoryFinalCount)) bytecodePull
-    (bytecodePull + weights.getD 2 0 * (1 + bytecodeFinalCount)) w (chunks (cr.2 + 1))
-  let r1 := st.1.push (Relation.equal (.memory 3) (w.take shape.logMemory) memoryFinalCount)
-  let r2 := r1.push (Relation.equal .address (w.take shape.logMemory) address)
-  let r3 := r2.push ⟨(List.range 3).map (fun k => term (.memory k) (w.take shape.logMemory)
-      (weights.getD (3 + k) 0)),
-    memoryPull + beta + weights.getD 0 0 * sepMem + weights.getD 1 0 * address +
-      weights.getD 2 0 * memoryFinalCount⟩
-  let r4 := r3.push (Relation.equal .bytecodeFinal (w.take shape.logBytecode) bytecodeFinalCount)
-  let r5 := r4.push (Relation.equal .bytecodeTuple (alphas ++ w.take shape.logBytecode)
-    (bytecodePull + beta + weights.getD 2 0 * bytecodeFinalCount))
-  (r5.push cr.1 ++ hr.1.toArray,
-    [(.heap, shape.heap.h, true), (.treeQuotient 0, shape.heap.h, true), (.treeQuotient 1, 0, true)] ++
-      List.map (fun x => (Column.constraintQuotient x.2, x.1, true))
-        ((chunks (cr.2 + 1)).zip (List.range (chunks (cr.2 + 1)).length)) ++ hr.2)
 
 /-- **Flock's claim on `q_flock`** (step 7, main line: the ring switch's one term), the bit-slice
 relations, the ring map. -/
@@ -94,42 +53,10 @@ def flockClaim (rels : Array Relation) (fl : List E × Option Flock.End × Flock
 
 /-! ## The run's `C2` columns and claims -/
 
-/-- **`C2`'s columns in the run are the shape's** (whatever the values). -/
-theorem mainRels_c2 (D : Deployment) (pw : List E) (counts : List (List E)) (alphas : List E)
-    (beta gamma t : E) (vals : List E) :
-    (mainRels D.shape pw counts alphas beta gamma t vals).2 = D.shape.c2Columns := by
-  unfold mainRels
-  simp only []
-  exact c2Columns_run D.shape D.valid.1 _ (tables_parts_degrees _ _ _ _ _) _ _ _ _ _ _ _ _ _ _ _ _ _
-
 theorem flockClaim_mem (rels : Array Relation) (fl : List E × Option Flock.End × Flock.Pending)
     (r : Relation) (h : r ∈ rels.toList) : r ∈ (flockClaim rels fl).1.toList := by
   unfold flockClaim
   split <;> simp [h]
-
-/-- **One claim per commitment in the run.** -/
-theorem mainCombined_length (shape : Shape) (pw : List E) (counts : List (List E)) (alphas : List E)
-    (beta gamma t : E) (vals : List E) (fl : List E × Option Flock.End × Flock.Pending) (rho : E) :
-    (commitments.filterMap fun c =>
-      (combine (flockClaim (mainRels shape pw counts alphas beta gamma t vals).1 fl).1.toList c rho).map
-        fun x => (c, x)).length = 3 := by
-  apply combined_length
-  · refine ⟨Relation.equal (.memory 3) ((digits t (max shape.heap.h (shape.constraintVars + 4) + 2)).take
-      shape.logMemory) (vals.getD tablesReads 0), flockClaim_mem _ fl _ ?_, rfl⟩
-    unfold mainRels
-    simp
-  · refine ⟨Relation.equal .heap ((digits t (max shape.heap.h (shape.constraintVars + 4) + 2)).take
-      shape.heap.h) (vals.getD (tablesReads + 5) 0), flockClaim_mem _ fl _ ?_, rfl⟩
-    unfold mainRels
-    simp only [Array.toList_append, List.mem_append]
-    exact Or.inr (heapRelations_mem _ _ _ _ _ _ _ _ _ _ _ _ _)
-  · refine ⟨Relation.equal .address ((digits t (max shape.heap.h (shape.constraintVars + 4) + 2)).take
-      shape.logMemory) (vals.getD (tablesReads + 1) 0), flockClaim_mem _ fl _ ?_, rfl⟩
-    unfold mainRels
-    simp
-
-/-- **The counts' zero**: `0` if the row counts are in range (`readCounts`' checks), else `1`. -/
-def countsZeroOf (D : Deployment) (rows : List ℕ) : E := if CountsInRange D.shape.heights rows then 0 else 1
 
 /-! ## Rounds of a fixed length -/
 

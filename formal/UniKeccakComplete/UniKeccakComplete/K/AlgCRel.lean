@@ -154,18 +154,18 @@ theorem mem_zip_map {α β : Type} (f : α → β) : ∀ (l : List α), ∀ x �
       exact ⟨h1, List.mem_cons_of_mem _ h2⟩
 
 /-- Only `SHA3`'s columns are `q_flock`'s port words (the other tables' names start neither `in_` nor `out_`). -/
-theorem qflockSlot_tables : ∀ t < 6, t ≠ opBlake2s → ∀ c < (tablesKeccak.getD t default).width,
+theorem qflockSlot_tables : ∀ t < 6, t ≠ opSha3 → ∀ c < (tablesKeccak.getD t default).width,
     keccakSlot ((tablesKeccak.getD t default).columns.getD c "") = none := by
   decide +kernel
 
 /-- A column with a port word is `SHA3`'s, its word below `2^11` (`UniKeccakSound`'s `keccakSlot_lt`, from the
 lanes' slots `laneSlotsK`). -/
 theorem qflockSlot_spec {table : Table} (htab : table ∈ tablesKeccak) {c slot : ℕ} (hc : c < table.width)
-    (h : keccakSlot (table.columns.getD c "") = some slot) : table.opcode = opBlake2s ∧ slot < 2048 := by
+    (h : keccakSlot (table.columns.getD c "") = some slot) : table.opcode = opSha3 ∧ slot < 2048 := by
   obtain ⟨ht, hget⟩ := mem_tables htab
-  by_cases hB : table.opcode = opBlake2s
+  by_cases hB : table.opcode = opSha3
   · refine ⟨hB, ?_⟩
-    rw [← hget, hB, blakeTable_eq] at h
+    rw [← hget, hB, sha3Table_eq] at h
     exact (UniKeccakSound.Ids.keccakSlot_lt UniKeccakSound.IdsReal.laneSlotsK h).2
   · have := qflockSlot_tables _ ht hB c (by rw [hget]; exact hc)
     rw [hget, h] at this
@@ -397,7 +397,7 @@ theorem atConstraintValue_eq {tr : Trace} (hS : Small tr) (weights : Array E) (b
 
 /-- **The constraint quotient's identity holds**: `Σ_i γ^i lift_i M_i(t) = Q_W(t) w_{r_W}(t)` on `C1`. -/
 theorem constraintRel_hold {tr : Trace} (hH : TraceHonest tr) (hS : Small tr)
-    (hC : Domain.CoordinateFunctionalsBasis (tr.height opBlake2s)) (cols : List (Column × ℕ × Bool))
+    (hC : Domain.CoordinateFunctionalsBasis (tr.height opSha3)) (cols : List (Column × ℕ × Bool))
     (rm : Option (List E)) (alphas : List E) (beta gamma t : E) (c2 : C2Data) (hc2 : c2 = c2DataOf tr (eqKernel alphas) beta gamma) :
     ((atConstraint tr c2 alphas beta gamma t).1.terms.map (evOf tr c2 cols rm)).sum =
       (atConstraint tr c2 alphas beta gamma t).1.value := by
@@ -438,7 +438,7 @@ theorem constraintRel_hold {tr : Trace} (hH : TraceHonest tr) (hS : Small tr)
 map and `C2`'s column list** (none of these relations has a ring-switch term, and `C1`'s and the setup's layouts do
 not depend on `C2`'s columns). -/
 theorem relations_hold_rm {tr : Trace} (hH : TraceHonest tr) (hS : Small tr)
-    (hC : Domain.CoordinateFunctionalsBasis (tr.height opBlake2s)) {alphas : List E} (hα : alphas.length = 4)
+    (hC : Domain.CoordinateFunctionalsBasis (tr.height opSha3)) {alphas : List E} (hα : alphas.length = 4)
     (beta gamma t : E) (cols : List (Column × ℕ × Bool)) (rm : Option (List E)) :
     ∀ rel ∈ (atTOf tr (c2DataOf tr (eqKernel alphas) beta gamma) alphas beta gamma t none).relations,
       rel.commitment ≠ .c2 →
@@ -464,7 +464,7 @@ honest placed trace (heights and memory at most `28`, the coordinate functionals
 height), four `α`, any `β`, `γ`, `t`, and the prover's `C2` (`c2DataOf`), every relation of `atTOf … none` whose
 commitment is `C1` or the setup holds at the layouts the verifier states and the prover's three stacks. -/
 theorem relations_hold {tr : Trace} (hH : TraceHonest tr) (hS : Small tr)
-    (hC : Domain.CoordinateFunctionalsBasis (tr.height opBlake2s)) {alphas : List E} (hα : alphas.length = 4)
+    (hC : Domain.CoordinateFunctionalsBasis (tr.height opSha3)) {alphas : List E} (hα : alphas.length = 4)
     (beta gamma t : E) :
     ∀ rel ∈ (atTOf tr (c2DataOf tr (eqKernel alphas) beta gamma) alphas beta gamma t none).relations,
       rel.commitment ≠ .c2 →

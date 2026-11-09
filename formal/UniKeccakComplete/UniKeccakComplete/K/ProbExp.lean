@@ -197,11 +197,11 @@ theorem shapeBytes_length (s : UniStatement.Shape) : (shapeBytes s).length = 8 :
 theorem layoutWord_length (s : UniStatement.Shape) (code vars placed : ℕ) : (layoutWord s code vars placed).length = 32 := by
   simp [layoutWord, shapeBytes_length]
 
-theorem layoutWordsK_length (s : UniStatement.Shape) : (layoutWordsK s).flatten.length = 160 := by
+theorem layoutWordsK_length (s : UniStatement.Shape) : (layoutWordsK s).flatten.length = 96 := by
   simp [layoutWordsK, layoutWord_length]
 
 /-- Lengths other than the bus chain's. -/
-theorem goodL_of_length {m : Bytes} (h : m.length = 512 ∨ m.length = 64 ∨ m.length = 80 ∨ 280 ≤ m.length) :
+theorem goodL_of_length {m : Bytes} (h : m.length = 512 ∨ m.length = 64 ∨ m.length = 80 ∨ 150 ≤ m.length) :
     GoodL 88 m := by
   refine ⟨?_, ?_⟩ <;> omega
 

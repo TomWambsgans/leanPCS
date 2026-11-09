@@ -121,7 +121,7 @@ def setupTreeKWithH (D : UniKeccak.KDeployment) : m LeanVM.Prover.Tree :=
 def setupTreesWithH (_F : KeccakState → m KeccakState) (D : RecDeployment) : m RecSetupTrees := do
   let t1 ← setupTreeKWithH H D.pi1
   let t2 ← setupTreeWithH H (D.circuitAt (D.pi1.setupRoots t1))
-  return ⟨t1, D.pi1.a0Root, D.pi1.b0Root, t2⟩
+  return ⟨t1, t2⟩
 
 /-- `pi1GraphVerifierWith` with Keccak-256 `H`. -/
 def pi1GraphVerifierWithH (D : RecDeployment) (roots : UniStatement.SetupRoots) (input : Vector UInt8 32)

@@ -83,7 +83,7 @@ theorem run_midB3 (flock : FlockProver (OracleComp KeccakCalls)) (tr : Trace) (a
     (w : Wr) :
     (midB3 callKeccak256 (commitReal callKeccak256) flock tr alphas beta).run w =
       (sampleW callKeccak256).run w >>= fun p ↦
-        (flock (keccakR1csLogSize + tr.shape.heights.getD opBlake2s 0) keccakRec3 tr.qflock).run p.2 >>= fun q ↦
+        (flock (keccakR1csLogSize + tr.shape.heights.getD opSha3 0) keccakRec3 tr.qflock).run p.2 >>= fun q ↦
           commitReal callKeccak256 .c2 (((layoutsOfK tr.shape).lookup .c2).getD default).vars
               (c2DataOf tr (eqKernel alphas) beta p.1).stack >>= fun c ↦
             pure ((p.1, q.1, c), { q.2 with stream := q.2.stream ++ (rootWord c.halves).toArray }) := by

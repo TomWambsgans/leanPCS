@@ -208,61 +208,6 @@ namespace Align
 /-- The digits `t` is read through. -/
 def wOf (shape : Shape) (t : E) : List E := digits t (max shape.heap.h (shape.constraintVars + 4) + 2)
 
-/-- The tables' relations and parts as `mainRels` reads them. -/
-def stOf (shape : Shape) (alphas : List E) (beta t : E) (vals : List E) :
-    Array Relation × Array TablePart :=
-  consumeFold tableReads (tablesStep shape.heights (eqKernel alphas) beta (wOf shape t)) tables (#[], #[])
-    (vals.take tablesReads)
-
-/-- The constraint quotient's relation as `mainRels` states it. -/
-def crOf (shape : Shape) (pw : List E) (alphas : List E) (beta gamma t : E) (vals : List E) :
-    Relation × ℕ :=
-  constraintRelation shape (stOf shape alphas beta t vals).2.toList pw gamma t
-    (vals.getD (tablesReads + 6) 0) (wOf shape t)
-
-/-- The heap's relations as `mainRels` states them. -/
-def hrOf (shape : Shape) (pw : List E) (counts : List (List E)) (alphas : List E) (beta gamma t : E)
-    (vals : List E) : List Relation × List (Column × ℕ × Bool) :=
-  heapRelations shape ((counts.zip shape.heights).map fun x => activeVanishingFromBits (wOf shape t) x.1 x.2)
-    (stOf shape alphas beta t vals).2.toList (eqKernel alphas) beta (vals.getD (tablesReads + 5) 0)
-    (vals.getD (tablesReads + 6) 0) (vals.getD (tablesReads + 2) 0)
-    (vals.getD (tablesReads + 2) 0 + (eqKernel alphas).getD 2 0 * (1 + vals.getD tablesReads 0))
-    (vals.getD (tablesReads + 4) 0)
-    (vals.getD (tablesReads + 4) 0 + (eqKernel alphas).getD 2 0 * (1 + vals.getD (tablesReads + 3) 0))
-    (wOf shape t) (chunks ((crOf shape pw alphas beta gamma t vals).2 + 1))
-
-/-- **`mainRels`' relations**, as a list. -/
-theorem mainRels_fst (shape : Shape) (pw : List E) (counts : List (List E)) (alphas : List E)
-    (beta gamma t : E) (vals : List E) :
-    (mainRels shape pw counts alphas beta gamma t vals).1.toList =
-      (stOf shape alphas beta t vals).1.toList ++
-        [Relation.equal (.memory 3) ((wOf shape t).take shape.logMemory) (vals.getD tablesReads 0),
-          Relation.equal .address ((wOf shape t).take shape.logMemory) (vals.getD (tablesReads + 1) 0),
-          ⟨(List.range 3).map (fun k => term (.memory k) ((wOf shape t).take shape.logMemory)
-              ((eqKernel alphas).getD (3 + k) 0)),
-            vals.getD (tablesReads + 2) 0 + beta + (eqKernel alphas).getD 0 0 * sepMem +
-              (eqKernel alphas).getD 1 0 * vals.getD (tablesReads + 1) 0 +
-              (eqKernel alphas).getD 2 0 * vals.getD tablesReads 0⟩,
-          Relation.equal .bytecodeFinal ((wOf shape t).take shape.logBytecode)
-            (vals.getD (tablesReads + 3) 0),
-          Relation.equal .bytecodeTuple (alphas ++ (wOf shape t).take shape.logBytecode)
-            (vals.getD (tablesReads + 4) 0 + beta + (eqKernel alphas).getD 2 0 * vals.getD (tablesReads + 3) 0),
-          (crOf shape pw alphas beta gamma t vals).1] ++
-        (hrOf shape pw counts alphas beta gamma t vals).1 := by
-  unfold mainRels
-  simp only [wOf, stOf, crOf, hrOf, Array.toList_append, Array.toList_push, List.append_assoc,
-    List.cons_append, List.nil_append]
-
-theorem tp_eq (inp : RelInput) :
-    tablesPart inp.shape (eqKernel inp.alphas) inp.beta (wOf inp.shape inp.t) tables inp.vals = inp.tp :=
-  rfl
-
-theorem st_eq (inp : RelInput) :
-    consumeFold tableReads (tablesStep inp.shape.heights (eqKernel inp.alphas) inp.beta (wOf inp.shape inp.t))
-        tables (#[], #[]) (inp.vals.take (tables.map tableReads).sum) =
-      stOf inp.shape inp.alphas inp.beta inp.t inp.vals :=
-  rfl
-
 /-- `tablesPart_eq` from the empty arrays, for any tables (a variable list: `tables` itself is never
 reduced). -/
 theorem tablesPart_fst (S : Shape) (w8 : Array E) (beta : E) (w : List E) (ts : List Table) (X : List E) :
@@ -278,71 +223,6 @@ theorem tablesPart_snd (S : Shape) (w8 : Array E) (beta : E) (w : List E) (ts : 
   have k := (tablesPart_eq S w8 beta w ts #[] #[] X).2.1
   simp only [List.nil_append] at k
   exact k
-
-/-- The tables' relations. -/
-theorem tp_fst (inp : RelInput) :
-    (stOf inp.shape inp.alphas inp.beta inp.t inp.vals).1.toList = inp.tp.2.1 := by
-  rw [← st_eq, ← tp_eq]
-  exact tablesPart_fst _ _ _ _ tables _
-
-/-- The tables' parts. -/
-theorem tp_snd (inp : RelInput) :
-    (stOf inp.shape inp.alphas inp.beta inp.t inp.vals).2.toList = inp.tp.1 := by
-  rw [← st_eq, ← tp_eq]
-  exact tablesPart_snd _ _ _ _ tables _
-
-/-- The values after the tables'. -/
-theorem rest_getD (inp : RelInput) (k : ℕ) : inp.rest.getD k 0 = inp.vals.getD (tablesReads + k) 0 := by
-  have h3 := (tablesPart_eq inp.shape (eqKernel inp.alphas) inp.beta (wOf inp.shape inp.t) tables
-    #[] #[] inp.vals).2.2
-  rw [tp_eq] at h3
-  have e : inp.rest = inp.tp.2.2 := rfl
-  rw [e, h3]
-  exact getD_drop _ _ _
-
-/-- The constraint quotient's relation. -/
-theorem constraint_eq (inp : RelInput) :
-    inp.constraint = crOf inp.shape inp.publicWords inp.alphas inp.beta inp.gamma inp.t inp.vals := by
-  have e : inp.constraint = constraintRelation inp.shape inp.tp.1 inp.publicWords inp.gamma inp.t
-    (inp.rest.getD 6 0) (wOf inp.shape inp.t) := rfl
-  rw [e, ← tp_snd, rest_getD]
-  rfl
-
-/-- The heap's relations. -/
-theorem heap_eq (inp : RelInput) :
-    inp.heap = hrOf inp.shape inp.publicWords inp.counts inp.alphas inp.beta inp.gamma inp.t inp.vals := by
-  have e : inp.heap = heapRelations inp.shape
-      ((inp.counts.zip inp.shape.heights).map fun p ↦ activeVanishingFromBits (wOf inp.shape inp.t) p.1 p.2)
-      inp.tp.1 (eqKernel inp.alphas) inp.beta (inp.rest.getD 5 0) (inp.rest.getD 6 0) (inp.rest.getD 2 0)
-      (inp.rest.getD 2 0 + (eqKernel inp.alphas).getD 2 0 * (1 + inp.rest.getD 0 0)) (inp.rest.getD 4 0)
-      (inp.rest.getD 4 0 + (eqKernel inp.alphas).getD 2 0 * (1 + inp.rest.getD 3 0)) (wOf inp.shape inp.t)
-      (chunks (inp.constraint.2 + 1)) := rfl
-  rw [e, constraint_eq, ← tp_snd]
-  simp only [rest_getD, Nat.add_zero]
-  rfl
-
-/-- **The identity model's relations but Flock's are `mainRels`'**. -/
-theorem relsOf_fst (inp : RelInput) :
-    inp.tp.2.1 ++ inp.memRels ++ inp.bcRels ++ [inp.constraint.1] ++ inp.heap.1 =
-      (mainRels inp.shape inp.publicWords inp.counts inp.alphas inp.beta inp.gamma inp.t inp.vals).1.toList := by
-  rw [mainRels_fst, ← tp_fst, constraint_eq, heap_eq]
-  simp only [RelInput.memRels, RelInput.bcRels, RelInput.memoryFinalCount, RelInput.address,
-    RelInput.memoryPull, RelInput.bytecodeFinalCount, RelInput.bytecodePull, RelInput.w, RelInput.weights,
-    wOf, rest_getD, Nat.add_zero, List.append_assoc, List.cons_append, List.nil_append]
-
-/-- **The identity model's relations are the code-level link's**, Flock's ring term (`ringRels`) the one
-`flockClaim` adds. -/
-theorem relsOf_eq (inp : RelInput) (fl : FlockOut) (h1 : fl.1 = inp.flockPoint)
-    (h2 : fl.2.1 = inp.flockEnd) :
-    relsOf inp = (flockClaim (mainRels inp.shape inp.publicWords inp.counts inp.alphas inp.beta inp.gamma
-      inp.t inp.vals).1 fl).1.toList := by
-  rw [show relsOf inp = (inp.tp.2.1 ++ inp.memRels ++ inp.bcRels ++ [inp.constraint.1] ++ inp.heap.1) ++
-    inp.ringRels from rfl, relsOf_fst]
-  obtain ⟨p, e, pend⟩ := fl
-  simp only at h1 h2
-  subst h1 h2
-  unfold flockClaim RelInput.ringRels
-  rcases h : inp.flockEnd with _ | (⟨map, target⟩ | ⟨ws, value⟩) <;> simp
 
 theorem alphasOf_eq (ch : List E) (h : 4 ≤ ch.length) : alphasOf ch = ch.take 4 := by
   rcases ch with _ | ⟨a, _ | ⟨b, _ | ⟨c, _ | ⟨d, l⟩⟩⟩⟩
@@ -364,16 +244,9 @@ end Align
 
 open Align
 
-/-- **The batch's variables are the code's.** -/
-theorem batchVars_eq (S : Shape) : batchVars S = varsOf (layoutsOf S) := rfl
-
-/-- **A commitment's layout is the code's.** -/
-theorem layoutOf_eq (S : Shape) (c : Commitment) :
-    _root_.UniSound.layoutOf (layoutsOf S) c = Ids.layoutOf S c := rfl
-
 section Model
 
-variable (D : Deployment) {κ : ℕ}
+variable {κ : ℕ}
 
 theorem ProdSum.ext' {P Q : ProdSum} (h1 : P.vars = Q.vars) (h2 : P.n = Q.n) (h3 : P.coef = Q.coef)
     (h4 : P.A = Q.A) (h5 : P.B = Q.B) : P = Q := by
@@ -388,18 +261,5 @@ theorem getD_cmb (f : Commitment → Combined) (k : ℕ) (hk : k < 3) :
   interval_cases k <;> rfl
 
 end Model
-
-/-- **The identity model's number of values at `t` is the code's**, once the tables read at most
-`4096` (`GameNumbers.lean`'s `valsCount_le`: at most `122` in all). -/
-theorem nVOf_eq_of (S : Shape) (h : tablesReads ≤ 4096) : nVOf S = valsCount := by
-  have h3 := (tablesPart_eq S #[] 0 [] tables #[] #[] (List.replicate 4096 0)).2.2
-  have htr : (tables.map tableReads).sum = tablesReads := rfl
-  rw [htr] at h3
-  have hl : (tablesPart S #[] 0 [] tables (List.replicate 4096 0)).2.2.length = 4096 - tablesReads := by
-    rw [h3, List.length_drop, List.length_replicate]
-  unfold nVOf valsCount
-  simp only []
-  rw [hl]
-  omega
 
 end UniSound.Ids

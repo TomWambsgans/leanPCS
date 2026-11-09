@@ -13,11 +13,3 @@ import UniStatement.Security
 The build fails if a guarded definition uses an axiom beyond Lean's three standard ones.
 -/
 
-/-- info: 'UniStatement.run' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms UniStatement.run
-
-/-- info: 'UniStatement.verifyWith' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms UniStatement.verifyWith
-

@@ -141,7 +141,7 @@ def relBody (sh : Shape) (t gamma : E) (w : List E) (s : E × Array Term × E ×
         (term (.inverse x.1.opcode) (w.take r) (s.2.2.1 * gamma * gamma * vR * cnt)),
       s.2.2.1 * gamma * gamma * gamma,
       max (max s.2.2.2 (degree (2 ^ r) 2)) (degree ((2 ^ r - 1) * (1 + x.1.countColumns.length)) (2 ^ r)))
-  else if x.1.opcode = opBlake2s then
+  else if x.1.opcode = opSha3 then
     (((List.range x.1.width).foldl (relInner sh t gamma w x)
         (s.1 + s.2.2.1 * vR, s.2.1.push (term (.inverse x.1.opcode) (w.take r) (s.2.2.1 * vR * cnt)),
           s.2.2.1 * gamma)).1,
@@ -179,9 +179,9 @@ theorem constraintRelation_eq (sh : Shape) (parts : List TablePart) (pw : List E
   · rfl
   · intro x _ s
     by_cases hJ : x.1.opcode = opJump
-    · have hB : ¬ x.1.opcode = opBlake2s := by rw [hJ]; decide
+    · have hB : ¬ x.1.opcode = opSha3 := by rw [hJ]; decide
       simp only [Domain.ite_pos_of hJ, Domain.ite_neg_of hB, relBody]
-    · by_cases hB : x.1.opcode = opBlake2s
+    · by_cases hB : x.1.opcode = opSha3
       · simp only [Domain.ite_neg_of hJ, Domain.ite_pos_of hB, relBody]
         rw [forIn_id_yield _ _ _ (fun c s ↦ relInner sh t gamma w x s c)]
         · rfl
@@ -301,7 +301,7 @@ theorem relBody_spec (tr : Trace) (gamma t : E) (w : List E) (ev : Term → E) (
   obtain ⟨ht, hget⟩ := mem_tables hx.mem
   have hcnt := cnt_value hx
   by_cases hJ : x.1.opcode = opJump
-  · have hB : ¬ x.1.opcode = opBlake2s := by rw [hJ]; decide
+  · have hB : ¬ x.1.opcode = opSha3 := by rw [hJ]; decide
     have hx1 : x.1 = tablesKeccak.getD opJump default := by rw [← hJ, hget]
     have hb : colIdx x.1.columns "b" ∈ sentColumns x.1 := by rw [hx1]; decide +kernel
     have hv : colIdx x.1.columns "v_cond" ∈ sentColumns x.1 := by rw [hx1]; decide +kernel
@@ -317,7 +317,7 @@ theorem relBody_spec (tr : Trace) (gamma t : E) (w : List E) (ev : Term → E) (
       dsimp only
       ring
     · simp only [relBody, degStep, Domain.ite_pos_of hJ, Domain.ite_neg_of hB]
-  · by_cases hB : x.1.opcode = opBlake2s
+  · by_cases hB : x.1.opcode = opSha3
     · refine ⟨?_, ?_⟩
       · simp only [relBody, Domain.ite_neg_of hJ, Domain.ite_pos_of hB, tableItems, List.nil_append,
           List.cons_append, evalItems_cons]

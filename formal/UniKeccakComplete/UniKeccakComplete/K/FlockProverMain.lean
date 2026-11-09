@@ -68,13 +68,13 @@ theorem keccakMain_skip : UniKeccak.keccakMain.skip = 3 := rfl
 theorem keccakRec3_skip : UniKeccak.keccakRec3.skip = 3 := rfl
 
 /-- Flock's `log_n` on a trace, two spellings. -/
-theorem logN_eq (tr : Trace) : keccakR1csLogSize + tr.shape.heights.getD opBlake2s 0 = 17 + tr.height 5 := rfl
+theorem logN_eq (tr : Trace) : keccakR1csLogSize + tr.shape.heights.getD opSha3 0 = 17 + tr.height 5 := rfl
 
 /-- **The honest Flock step on an honest trace**, collecting zero, at the `log_n` the prover and the verifier use
 (`keccakR1csLogSize + h_SHA3`), any variant of skip `≤ 6` (`keccakMain`, `keccakRec3`). -/
 theorem flockSyncs_trace (H : List UInt8 → LeanVM.Protocol.Digest) (tr : Trace) (hon : TraceHonest tr)
     (v : UniKeccak.KeccakVariant) (hk : v.skip ≤ 6) :
-    FlockSyncs H (flockProve (m := Id) (Pure.pure ∘ H)) (keccakR1csLogSize + tr.shape.heights.getD opBlake2s 0)
+    FlockSyncs H (flockProve (m := Id) (Pure.pure ∘ H)) (keccakR1csLogSize + tr.shape.heights.getD opSha3 0)
       v tr.qflock (fun _ ↦ 0) := by
   rw [logN_eq]
   exact flockSyncs_zero H (tr.height 5) v tr.qflock hk (flockHolds_of_traceHonest tr hon)
@@ -126,9 +126,9 @@ theorem flock_ring (H : List UInt8 → LeanVM.Protocol.Digest) (logN : ℕ) (v :
 /-- **On a trace, the point has `h_SHA3 + 11` coordinates** (`q_flock`'s `2^(11 + h_SHA3)` words). -/
 theorem flock_point_length_trace (H : List UInt8 → LeanVM.Protocol.Digest) (tr : Trace) (v : UniKeccak.KeccakVariant)
     (hk : v.skip ≤ 6) (w : Wr) :
-    ((flockProve (m := Id) (Pure.pure ∘ H) (keccakR1csLogSize + tr.shape.heights.getD opBlake2s 0) v
-      tr.qflock).run w).1.point.length = tr.shape.heights.getD opBlake2s 0 + 11 := by
-  rw [flock_point_length H (keccakR1csLogSize + tr.shape.heights.getD opBlake2s 0) v _ w hk
+    ((flockProve (m := Id) (Pure.pure ∘ H) (keccakR1csLogSize + tr.shape.heights.getD opSha3 0) v
+      tr.qflock).run w).1.point.length = tr.shape.heights.getD opSha3 0 + 11 := by
+  rw [flock_point_length H (keccakR1csLogSize + tr.shape.heights.getD opSha3 0) v _ w hk
     (by unfold keccakR1csLogSize; omega)]
   unfold keccakR1csLogSize
   omega

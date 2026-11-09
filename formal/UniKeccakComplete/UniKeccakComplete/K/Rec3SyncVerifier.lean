@@ -76,7 +76,7 @@ def frontOf3 (tr : Trace) (w0 : Wr) : FrontOut × Wr :=
   let w4 := (Wr.sampled H w3).2
   let gamma := (Wr.sampled H w4).1
   let w5 := (Wr.sampled H w4).2
-  let logN := keccakR1csLogSize + shape.heights.getD opBlake2s 0
+  let logN := keccakR1csLogSize + shape.heights.getD opSha3 0
   let flockOut : Option FlockOut := some ((flock logN UniKeccak.keccakRec3 tr.qflock).run w5).1
   let w6 := ((flock logN UniKeccak.keccakRec3 tr.qflock).run w5).2
   let c2 := c2DataOf tr (eqKernel alphas) beta gamma
@@ -95,7 +95,7 @@ def frontOf3 (tr : Trace) (w0 : Wr) : FrontOut × Wr :=
 
 /-- Flock's output in `frontOf3` is the Flock prover's run (at `keccakRec3`) from `flockWriterOf3`. -/
 theorem frontOf3_flockOut (tr : Trace) (w0 : Wr) :
-    (frontOf3 H commit flock tr w0).1.flockOut = some ((flock (keccakR1csLogSize + tr.shape.heights.getD opBlake2s 0)
+    (frontOf3 H commit flock tr w0).1.flockOut = some ((flock (keccakR1csLogSize + tr.shape.heights.getD opSha3 0)
       UniKeccak.keccakRec3 tr.qflock).run (flockWriterOf3 H commit tr w0)).1 := rfl
 
 /-- **The paired batch's hypothesis at the prover's state** (`BatchSyncs3` at `frontOf3`'s). -/
@@ -114,7 +114,7 @@ set_option maxHeartbeats 4000000 in
 theorem reduce_steps3 (H : List UInt8 → Digest) (commit : Commitment → ℕ → Array K → Id Committed)
     (flock : FlockProver Id) (tr : Trace) (seed : Digest) (hvalid : tr.shape.validate true = true)
     (hlen : tr.rows.length = tr.shape.heights.length) (h32 : ∀ n ∈ tr.rows, n < 2 ^ 32) (zero : Wr → E)
-    (hflock : FlockSyncs H flock (keccakR1csLogSize + tr.shape.heights.getD opBlake2s 0) UniKeccak.keccakRec3
+    (hflock : FlockSyncs H flock (keccakR1csLogSize + tr.shape.heights.getD opSha3 0) UniKeccak.keccakRec3
       tr.qflock zero)
     (terminal : Wr → E) (hbatch : BatchSyncsAt3 H commit flock tr seed terminal) :
     StepsE (reduceWithKH (m := Id) (Pure.pure ∘ H) tr.shape (publicWordsOf tr.publicInput) UniKeccak.keccakRec3
@@ -154,9 +154,9 @@ theorem reduce_steps3 (H : List UInt8 → Digest) (commit : Commitment → ℕ �
   set w5 := (Wr.sampled H w4).2 with hw5
   apply StepsE.bind_pos (h1 := Steps.pmap (g := some) (hflock w5).steps)
   case e => rfl
-  set fo := ((flock (keccakR1csLogSize + tr.shape.heights.getD opBlake2s 0) UniKeccak.keccakRec3 tr.qflock).run
+  set fo := ((flock (keccakR1csLogSize + tr.shape.heights.getD opSha3 0) UniKeccak.keccakRec3 tr.qflock).run
     w5).1 with hfo
-  set w6 := ((flock (keccakR1csLogSize + tr.shape.heights.getD opBlake2s 0) UniKeccak.keccakRec3 tr.qflock).run
+  set w6 := ((flock (keccakR1csLogSize + tr.shape.heights.getD opSha3 0) UniKeccak.keccakRec3 tr.qflock).run
     w5).2 with hw6
   apply StepsE.plift
   apply StepsE.pbind (sendRoot_writes _ _)
@@ -253,7 +253,7 @@ the prover's final writer, having collected the counts' checks, Flock's value an
 theorem runWithKH_syncs3 (H : List UInt8 → Digest) (commit : Commitment → ℕ → Array K → Id Committed)
     (flock : FlockProver Id) (tr : Trace) (iv : List UInt8) (hvalid : tr.shape.Valid)
     (hfit : tr.shape.RowsFit tr.rows) (zero : Wr → E)
-    (hflock : FlockSyncs H flock (keccakR1csLogSize + tr.shape.heights.getD opBlake2s 0) UniKeccak.keccakRec3
+    (hflock : FlockSyncs H flock (keccakR1csLogSize + tr.shape.heights.getD opSha3 0) UniKeccak.keccakRec3
       tr.qflock zero)
     (terminal : Wr → E) (hbatch : BatchSyncsAt3 H commit flock tr (seedAt H iv tr.publicInput) terminal) :
     ∃ R : Reduced,
@@ -281,7 +281,7 @@ zero. -/
 theorem runWithKH_accepts3 (H : List UInt8 → Digest) (commit : Commitment → ℕ → Array K → Id Committed)
     (flock : FlockProver Id) (tr : Trace) (iv : List UInt8) (hvalid : tr.shape.Valid)
     (hfit : tr.shape.RowsFit tr.rows) (zero : Wr → E)
-    (hflock : FlockSyncs H flock (keccakR1csLogSize + tr.shape.heights.getD opBlake2s 0) UniKeccak.keccakRec3
+    (hflock : FlockSyncs H flock (keccakR1csLogSize + tr.shape.heights.getD opSha3 0) UniKeccak.keccakRec3
       tr.qflock zero)
     (terminal : Wr → E) (hbatch : BatchSyncsAt3 H commit flock tr (seedAt H iv tr.publicInput) terminal)
     (hzero : zero (flockWriterOf3 H commit tr (Wr.start (seedAt H iv tr.publicInput))) = 0)

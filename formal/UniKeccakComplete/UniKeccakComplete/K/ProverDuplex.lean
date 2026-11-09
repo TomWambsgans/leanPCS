@@ -191,9 +191,9 @@ macro "disc_step" : tactic => `(tactic| first
   | dsimp only)
 
 /-- **The honest prover is disciplined**, from any earlier answers, given that Flock's prover only hashes. -/
-theorem disc_proveWith (flock : FlockProverH) (hflock : FlockHashOnly flock) (fuel : ℕ) (a0 b0 : Digest)
+theorem disc_proveWith (flock : FlockProverH) (hflock : FlockHashOnly flock) (fuel : ℕ)
     (programIv : List UInt8) (tr : Trace) :
-    Disc (proveWith callKeccak256 callKeccakF1600 fuel (flock callKeccak256) a0 b0 programIv tr) := by
+    Disc (proveWith callKeccak256 callKeccakF1600 fuel (flock callKeccak256) programIv tr) := by
   unfold proveWith
   refine (disc_of_hOnly (hOnly_setupTreeOf tr)).bind fun tree ↦ ?_
   refine (disc_of_hOnly (hOnly_contractIvOf _ _ _ _)).bind fun iv ↦ ?_
@@ -212,7 +212,7 @@ theorem disc_proveWith (flock : FlockProverH) (hflock : FlockHashOnly flock) (fu
 theorem disc_uniProverWith (flock : FlockProverH) (hflock : FlockHashOnly flock) (D : UniKeccak.KDeployment)
     (input : Vector UInt8 32) (rows : List ℕ) (q : D.Stack rows) :
     Disc (uniProverWith callKeccak256 callKeccakF1600 (flock callKeccak256) D input rows q) :=
-  disc_proveWith flock hflock _ _ _ _ _
+  disc_proveWith flock hflock _ _ _
 
 /-- **The deployed honest prover follows the duplex discipline** (mumbai's `DuplexVm`, from no earlier answer),
 given that Flock's prover only hashes. -/

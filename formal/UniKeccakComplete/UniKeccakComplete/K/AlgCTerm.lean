@@ -606,7 +606,7 @@ theorem termEval_new_E {cols : List (Column × ℕ × Bool)} {column : Column} {
 /-- **`C1`'s columns** (the text of `layoutsK`). -/
 def c1ColsOf (shape : Shape) : List (Column × ℕ × Bool) :=
   let heights := shape.heights
-  [(.qflock, heights.getD opBlake2s 0 + 11, false)] ++
+  [(.qflock, heights.getD opSha3 0 + 11, false)] ++
     tablesKeccak.flatMap (fun t ↦
       let h := heights.getD t.opcode 0
       (List.range t.width).map (fun c ↦ (Column.table t.opcode c, h, false)) ++
@@ -623,7 +623,7 @@ def c1Names : List Column :=
 
 /-- A `C1` column's variables. -/
 def c1VarsOf (shape : Shape) : Column → ℕ
-  | .qflock => shape.heights.getD opBlake2s 0 + 11
+  | .qflock => shape.heights.getD opSha3 0 + 11
   | .table t _ => shape.heights.getD t 0
   | .inverse t => shape.heights.getD t 0
   | .memory _ => shape.logMemory

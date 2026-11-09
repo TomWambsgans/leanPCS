@@ -3,7 +3,8 @@
 import UniSound.Piop
 import UniSound.Prog
 import UniSound.FlockInterface
-import UniStatement.RecSecurity
+import UniStatement.Rec
+import UniStatement.Security
 
 /-!
 # π1-rec3's PIOP, round by round: rounds, identity model, states, errors

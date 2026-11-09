@@ -139,7 +139,7 @@ def constraintRelationK (shape : Shape) (parts : List TablePart) (publicWords : 
     let counts := table.countColumns.length
     qDegree := max qDegree (degree ((n - 1) * (1 + counts)) n)
     -- The SHA3 lanes' copies equal q_flock's words: copy − port, the port read through y(t); in_16 − port = END_BIT.
-    if table.opcode = opBlake2s then
+    if table.opcode = opSha3 then
       let y := coordinatesAt t (coordinateFunctionals r)
       for c in List.range table.width do
         let name := table.columns.getD c ""
@@ -170,7 +170,7 @@ columns, the bytecode's final counts; `C2` its columns; the setup the bytecode's
 def layoutsK (shape : Shape) (c2Columns : List (Column × ℕ × Bool)) : List (Commitment × StackLayout) :=
   let heights := shape.heights
   let c1 : List (Column × ℕ × Bool) :=
-    [(.qflock, heights.getD opBlake2s 0 + qflockRowBits, false)] ++
+    [(.qflock, heights.getD opSha3 0 + qflockRowBits, false)] ++
       tablesKeccak.flatMap (fun t ↦
         let h := heights.getD t.opcode 0
         (List.range t.width).map (fun c ↦ (Column.table t.opcode c, h, false)) ++
@@ -188,7 +188,7 @@ def Shape.constraintDegreeK (shape : Shape) : ℕ :=
     let n := 2 ^ r
     let d := if table.opcode = opJump then max d (degree n 2) else d
     let d := max d (degree ((n - 1) * (1 + table.countColumns.length)) n)
-    if table.opcode = opBlake2s then max d (degree (r * (n / 2)) n) else d) 0
+    if table.opcode = opSha3 then max d (degree (r * (n / 2)) n) else d) 0
   max tableDegree (degree (2 ^ shape.logMemory) 3)
 
 /-- A heap block's leaf quotient's degree on the Keccak VM (`Shape.leafDegree` on `tablesKeccak`). -/
@@ -304,7 +304,7 @@ def reduceWithK (shape : Shape) (publicWords : List E) (v : KeccakVariant) (mode
   let gamma ← sample F
   let weights := eqKernel alphas
   -- 2. Flock on the Keccak-f block, on C1's q_flock: the structured terminal, no matrices.
-  let logN := keccakR1csLogSize + heights.getD opBlake2s 0
+  let logN := keccakR1csLogSize + heights.getD opSha3 0
   let (flockPoint, flockEnd) ← verifyWalkedK F logN v
   -- 3. C2, then the point; the active rows' vanishing polynomials from the counts' bits (F1b).
   let root2 ← nextRoot (m := m)

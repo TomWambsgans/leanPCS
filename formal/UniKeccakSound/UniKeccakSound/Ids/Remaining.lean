@@ -31,8 +31,8 @@ structure IdsRemainingK (F : KeccakVm.KeccakFlockSpec) (D : KDeployment) {κ : �
   kvRealizes : KvRealizesK D
   kvConstraints : KvConstraintsK D
   cvecOk : CvecOkK D
-  functionals : FunctionalsCorrect (D.shape.heights.getD opBlake2s 0)
-  height2 : 2 ≤ D.shape.heights.getD opBlake2s 0
+  functionals : FunctionalsCorrect (D.shape.heights.getD opSha3 0)
+  height2 : 2 ≤ D.shape.heights.getD opSha3 0
   laneSlots : LaneSlotsK
   diffsEval : DiffsEvalK D Fl
   mainOfPolys : MainOfPolysK D Fl
@@ -44,7 +44,7 @@ section
 variable (F : KeccakVm.KeccakFlockSpec) (D : KDeployment) {κ : ℕ} {v : KeccakVariant} (Fl : KFlockSound F κ v)
 
 /-- **The bridges**, from what remains. -/
-theorem idsHypsK_of (hκ : D.shape.heights.getD opBlake2s 0 = κ) (hF : KeccakFlockFits F) {d n : ℕ}
+theorem idsHypsK_of (hκ : D.shape.heights.getD opSha3 0 = κ) (hF : KeccakFlockFits F) {d n : ℕ}
     (r : IdsRemainingK F D Fl d n) : IdsHypsK F D κ (busBoundK D.shape) where
   heapGood := r.heapGood
   kvRealizes := r.kvRealizes
@@ -56,7 +56,7 @@ theorem idsHypsK_of (hκ : D.shape.heights.getD opBlake2s 0 = κ) (hF : KeccakFl
   height2 := r.height2
 
 /-- **The reductions**, from what remains. -/
-theorem idsGapsK_of (hκ : D.shape.heights.getD opBlake2s 0 = κ) {d n : ℕ} (r : IdsRemainingK F D Fl d n) :
+theorem idsGapsK_of (hκ : D.shape.heights.getD opSha3 0 = κ) {d n : ℕ} (r : IdsRemainingK F D Fl d n) :
     IdsGapsK D Fl d n where
   diffsEval := r.diffsEval
   mainOfPolys := r.mainOfPolys
@@ -70,7 +70,7 @@ end
 identity model built from what remains (`IdsRemainingK`), for a Keccak-f block whose ports are the verifier's
 (`KeccakFlockFits F`) and Flock's phase at `κ = h_SHA3`. -/
 theorem uniKnowledgeSoundnessK_remaining (F : KeccakVm.KeccakFlockSpec) (D : KDeployment) {κ : ℕ}
-    (Fl : KFlockSound F κ keccakMain) (hκ : D.shape.heights.getD opBlake2s 0 = κ) (hF : KeccakFlockFits F)
+    (Fl : KFlockSound F κ keccakMain) (hκ : D.shape.heights.getD opSha3 0 = κ) (hF : KeccakFlockFits F)
     (d n : ℕ) (r : IdsRemainingK F D Fl d n) (hgood : FlockGoodDoneK Fl) (hW : WeightMleK D Fl)
     (hsmall : LayoutVarsSmall3K D)
     (hFs : FsLayer128K F D Fl valsCountK (varsOf (layoutsOfK D.shape)) (uniCodeKAt D Fl hκ _ _ rfl rfl))

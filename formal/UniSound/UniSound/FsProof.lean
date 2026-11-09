@@ -5,25 +5,17 @@
 import UniSound.FsOps
 
 /-!
-# The Fiat–Shamir layer, from the composed game
+# The Fiat–Shamir layer's facts, from the composed game
 
-**`fsLayer_of_game`**: `FsLayer D Fl nV V C` from one named hypothesis, **`UniGameLe`** (the
-univariate experiment is dominated by `ListChainKRpmS.lean`'s random-permutation game of the chain
-over the univariate encoding, its five openings and its setup), and the deployment's numbers
-(`UniNumbers`: the layout words' variables `24 … 28`, the chain's `< 2^10` queries, the verifier's
-`< 2^80` calls of `π`). The proof:
+The facts the Keccak verifier's Fiat–Shamir layers (`UniKeccakSound.Fs`) use about the chain over the univariate
+encoding (`ListChainKRpmS.lean`'s random-permutation game), its openings and its setup:
 
-* the setup is the three trees of the setup's stack `F` and Flock's `A0`, `B0` (`setupK3`, each
-  `stackSetupS` of its plain shape), the proof records their roots (`uFix`);
-* the openings (`uniOps`), the decoders (`uniTc`), the check (`uniCheck`), `good` (`uniGood`,
-  `uniGoodS`), the chain (`uniSpec`) and the protocol (`liftPiop`) are `FsOps.lean`'s and
-  `FsChain.lean`'s; their facts are proved here: the openings match (`hok_uni`: the round openings
-  by `whirOp_ok_tableCode`, the setup's by its trees, `whirOp_ok_tree`), every round with a root is
-  opened (`hcov_uni`), the setup's stacks satisfy their claims (`hS_uni`, the plain layout's table
-  is its stack, `plainL_table`), the last link (`hlink_uni`, from `FsLayer`'s);
-* `knowledgeSoundness_listChainU_closed_rpm`, then the bound (`le_uniBound`): every doom term at
-  most `openingBoundAt 10122 N`, the lists at most `largeList ≤ 9952`, two roots, the tag's
-  `2^-128` and seven references an input.
+* the plain layout's table is its stack (`plainL_table`, `plain_tableEval`);
+* the setup: each tree `stackSetupS` of its plain shape (`hOnly_stackSetupS`, `allQ_stackSetupS`), and a setup
+  opening of one of its trees (`whirOp_ok_tree`);
+* the bound (`le_uniBound`): every doom term at most `openingBoundAt 10122 N`, the lists at most
+  `largeList ≤ 9952`, two roots, the tag's `2^-128` and seven references an input;
+* the last link's facts on the rounds and the claims (`uniRounds_getD_zero`, `claimsOf_length_le`, …).
 -/
 
 namespace UniSound
@@ -34,7 +26,7 @@ open OracleSpec OracleComp
 open scoped ENNReal
 
 attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
-  LeanVM.Protocol.Compile.instFintypeKState UniStatement.layoutWords UniStatement.setupStack
+  LeanVM.Protocol.Compile.instFintypeKState UniStatement.setupStack
 
 /-! ## The plain layout's table is its stack -/
 
@@ -109,67 +101,6 @@ theorem allQ_stackSetupS (S : WhirShape) (q₀ : LeanVM.Protocol.Column S.L.logN
   rw [LeanVM.Protocol.Whir.Complete.wellShaped_stackWord _ q₀ p]
   decide
 
-variable {D : Deployment} (hs : UniShapes D)
-
-/-- **The setup**: the trees of the setup's stack `F` and of Flock's `A0`, `B0` (each the Merkle
-tree of its stack's encoding on its plain shape), their roots. -/
-noncomputable def setupK3 (qF : LeanVM.Protocol.Column (wv D 2))
-    (qA : LeanVM.Protocol.Column (wv D 3)) (qB : LeanVM.Protocol.Column (wv D 4)) :
-    OracleComp KeccakCalls (Bytes32 × Bytes32 × Bytes32) :=
-  stackSetupS (shapeK hs 2 (by decide)) qF >>= fun f =>
-    stackSetupS (shapeK hs 3 (by decide)) qA >>= fun a =>
-      stackSetupS (shapeK hs 4 (by decide)) qB >>= fun b => pure (f, a, b)
-
-/-- **The proof with the setup's roots** (`fix`). -/
-def uFix (s : Bytes32 × Bytes32 × Bytes32) (π : UPf) : UPf :=
-  { π with roots := ⟨ofB s.1, ofB s.2.1, ofB s.2.2⟩ }
-
-/-- The setup's Keccak-256 queries. -/
-def setupQS : ℕ :=
-  2 ^ (rootHeight (wv D 2) logInvRate + 1) + 2 ^ (rootHeight (wv D 3) logInvRate + 1) +
-    2 ^ (rootHeight (wv D 4) logInvRate + 1)
-
-variable (qF : LeanVM.Protocol.Column (wv D 2)) (qA : LeanVM.Protocol.Column (wv D 3))
-  (qB : LeanVM.Protocol.Column (wv D 4))
-
-theorem hOnly_setupK3 : LeanVM.Rpm.HOnly (setupK3 hs qF qA qB) :=
-  (hOnly_stackSetupS _ _).bind fun _ => (hOnly_stackSetupS _ _).bind fun _ =>
-    (hOnly_stackSetupS _ _).bind fun _ => trivial
-
-theorem isTotalQueryBound_setupK3 : IsTotalQueryBound (setupK3 hs qF qA qB) (setupQS (D := D)) := by
-  have h := isTotalQueryBound_bind (isTotalQueryBound_stackSetupS (shapeK hs 2 (by decide)) qF)
-    fun f => isTotalQueryBound_bind (isTotalQueryBound_stackSetupS (shapeK hs 3 (by decide)) qA)
-      fun a => isTotalQueryBound_bind
-        (ob := fun b => (pure (f, a, b) : OracleComp KeccakCalls (Bytes32 × Bytes32 × Bytes32)))
-        (n₂ := 0) (isTotalQueryBound_stackSetupS (shapeK hs 4 (by decide)) qB) fun _ => trivial
-  refine IsTotalQueryBound.mono h ?_
-  dsimp only [shapeK, plainShape, WhirShape.large, plainL, WhirBridge.Layout.new, setupQS]
-  omega
-
-theorem allQ_setupK3 : AllQueriesSatisfy (setupK3 hs qF qA qB) LeanVM.Rpm.Short :=
-  allQueriesSatisfy_bind (allQ_stackSetupS _ _) fun _ =>
-    allQueriesSatisfy_bind (allQ_stackSetupS _ _) fun _ =>
-      allQueriesSatisfy_bind (allQ_stackSetupS _ _) fun _ => LeanVM.Rpm.allQ_pure _
-
-theorem cost_setupK3 : Common.QueryCostAtMost (setupK3 hs qF qA qB) LeanVM.Rpm.hashBlocks
-    (setupQS (D := D) * 2 ^ 32) :=
-  LeanVM.Rpm.isWeightBound_of_isTotalQueryBound LeanVM.Rpm.hashBlocks (2 ^ 32)
-    (isTotalQueryBound_setupK3 hs qF qA qB)
-    ((allQ_setupK3 hs qF qA qB).mono fun _ h => LeanVM.Rpm.hashBlocks_le_of_short h)
-
-theorem setupK3_run (T : KTable) :
-    tableQueryLog (setupK3 hs qF qA qB) T =
-        tableQueryLog (stackSetupS (shapeK hs 2 (by decide)) qF) T ++
-          (tableQueryLog (stackSetupS (shapeK hs 3 (by decide)) qA) T ++
-            tableQueryLog (stackSetupS (shapeK hs 4 (by decide)) qB) T) ∧
-      evalWithAnswerFn (QueryImpl.ofFn T) (setupK3 hs qF qA qB) =
-        (evalWithAnswerFn (QueryImpl.ofFn T) (stackSetupS (shapeK hs 2 (by decide)) qF),
-          evalWithAnswerFn (QueryImpl.ofFn T) (stackSetupS (shapeK hs 3 (by decide)) qA),
-          evalWithAnswerFn (QueryImpl.ofFn T) (stackSetupS (shapeK hs 4 (by decide)) qB)) := by
-  constructor
-  · simp [setupK3, tableQueryLog_bind, tableQueryLog_map]
-  · simp [setupK3, evalWithAnswerFn_bind, evalWithAnswerFn_map]
-
 end Setup
 
 /-- **A setup opening of one of the setup's trees**: `WhirOp.OK` holds when the setup's log holds
@@ -233,19 +164,6 @@ theorem countP_root_uniRounds (fr : List RoundSpec) (hfr : ∀ r ∈ fr, r.root 
     List.countP_eq_zero.mpr fun r hr => by simp [hfr r hr]
   simp [uniRounds, List.countP_append, h0]
 
-theorem uniTc_bound {D : Deployment} (hs : UniShapes D) (i : ℕ) :
-    (uniTc hs i).commit.bound ≤ 9952 := by
-  unfold uniTc
-  split_ifs
-  · exact (tableCode_bound_large (wv D 0) (wv D 0) (wv D 0) [(0, 2 ^ wv D 0)]
-      (newOK_plain _ (hs.lo 0 (by decide)) (hs.hi 0 (by decide))) (hs.lo 0 (by decide))
-      (hs.hi 0 (by decide)) rdTab).le.trans
-      (largeList_le _ (hs.lo 0 (by decide)) (hs.hi 0 (by decide)))
-  · exact (tableCode_bound_large (wv D 1) (wv D 1) (wv D 1) [(0, 2 ^ wv D 1)]
-      (newOK_plain _ (hs.lo 1 (by decide)) (hs.hi 1 (by decide))) (hs.lo 1 (by decide))
-      (hs.hi 1 (by decide)) rdTab).le.trans
-      (largeList_le _ (hs.lo 1 (by decide)) (hs.hi 1 (by decide)))
-
 /-- **The composed bound is at most `uniBound`**: the doom terms at most `openingBoundAt 10122 N`,
 the list term at most `9952² e`, the tag's `2^-128`, at most `8 N` references a query, the
 permutation's calls below `2^81 + Q`. -/
@@ -285,12 +203,6 @@ theorem le_uniBound (e : ℝ≥0∞) (Q QS nQ SQO nRf : ℕ) (hQS : QS ≤ 3 * 2
 
 section Facts
 
-variable (D : Deployment) {κ : ℕ} (nV V : ℕ)
-  (hs : UniShapes D)
-
-/-- The honest columns: the setup's stack, `A0`, `B0`. -/
-def colF : LeanVM.Protocol.Column (wv D 2) := colOf (setupStack D.prog D.shape) (wv D 2)
-
 /-! ### The last link -/
 
 theorem uniRounds_getD_zero (fr : List RoundSpec) (nV V : ℕ) :
@@ -323,10 +235,6 @@ theorem mem_claimsOf {r : Reduced} {o : Commitment × UniStatement.Opening} (ho 
   show (if o.1 = o.1 then _ else none) = _
   rw [ite_eq_left rfl, hpt]
 
-theorem wv_eq (k : ℕ) : wv D k = layoutWordVars ((layoutWords D.shape).getD k []) := by
-  unfold wv
-  rfl
-
 theorem matClaims_length_le (r : Reduced) (b : Bool) : (matClaims r b).length ≤ 1 := by
   unfold matClaims
   split <;> simp
@@ -342,24 +250,6 @@ theorem matClaims_point (r : Reduced) (b : Bool) (n : ℕ)
     rw [hc]
     exact h mc hmc
   · simp at hc
-
-/-! ### The event, the hypothesis -/
-
-/-! ### The numbers -/
-
-include hs in
-theorem setupQS_le : setupQS (D := D) ≤ 3 * 2 ^ 24 := by
-  unfold setupQS rootHeight laneFold logInvRate
-  have h2 := hs.hi 2 (by decide)
-  have h3 := hs.hi 3 (by decide)
-  have h4 := hs.hi 4 (by decide)
-  have e2 : 2 ^ (wv D 2 - 6 + 1 + 1) ≤ 2 ^ 24 := Nat.pow_le_pow_right (by norm_num) (by omega)
-  have e3 : 2 ^ (wv D 3 - 6 + 1 + 1) ≤ 2 ^ 24 := Nat.pow_le_pow_right (by norm_num) (by omega)
-  have e4 : 2 ^ (wv D 4 - 6 + 1 + 1) ≤ 2 ^ 24 := Nat.pow_le_pow_right (by norm_num) (by omega)
-  have : (2 : ℕ) ^ 24 = 16777216 := by norm_num
-  omega
-
-/-! ## The Fiat–Shamir layer -/
 
 end Facts
 

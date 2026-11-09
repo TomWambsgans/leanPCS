@@ -135,10 +135,6 @@ theorem mleK_eq_sum : ∀ (pt : List K) (table : Array K), table.size = 2 ^ pt.l
 
 /-! ## Columns at the points -/
 
-theorem c1Layout_eq (S : Shape) : c1Layout S = layoutOf S .c1 := rfl
-
-theorem setupLayout_eq (S : Shape) : setupLayout S = layoutOf S .setup := rfl
-
 theorem one_add_ite (a : E) (b : Bool) :
     1 + a + (if b then 1 else 0) = if b then a else 1 + a := by
   cases b

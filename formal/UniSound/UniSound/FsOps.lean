@@ -154,19 +154,6 @@ theorem newOK_plain (v : ℕ) (h1 : 24 ≤ v) (h2 : v ≤ 28) : NewOK v v v [(0,
 
 theorem extra_plainL (v : ℕ) : (plainL v).extra = [] := WhirBridge.Layout.extra_of_none rfl
 
-/-- A layout word's variables (`layoutWordVars`): `C1`, `C2`, the setup, `A0`, `B0`. -/
-def wv (D : Deployment) (k : ℕ) : ℕ := layoutWordVars ((layoutWords D.shape).getD k [])
-
-/-- **The deployment's stacks are large**: the five layout words name `24 … 28` variables. -/
-structure UniShapes (D : Deployment) : Prop where
-  lo : ∀ k < 5, 24 ≤ wv D k
-  hi : ∀ k < 5, wv D k ≤ 28
-
-/-- The `k`-th opening's shape. -/
-@[reducible] noncomputable def shapeK {D : Deployment} (hs : UniShapes D) (k : ℕ) (hk : k < 5) :
-    WhirShape :=
-  plainShape (wv D k) (hs.lo k hk) (hs.hi k hk)
-
 /-- An array as a column of `2^v` words (missing words `0`). -/
 def colOf (a : Array K) (v : ℕ) : LeanVM.Protocol.Column v := ⟨Vector.ofFn fun i => a.getD i.val 0⟩
 
@@ -213,32 +200,5 @@ theorem mkStmt_wide (L : WhirBridge.Layout) (hL : L.extra = []) (cs : List WhirB
   (mkStmt L hL cs).wide
 
 /-! ## The verifier's openings -/
-
-section Ops
-
-variable (D : Deployment) {κ : ℕ} (nV V : ℕ)
-
-/-- **The result is well formed**: one opening per commitment, in order, its point claims of its
-layout word's variables, and Flock's matrices' claim of `A0`'s. -/
-def WellFormed (r : Reduced) : Prop :=
-  r.openings.map Prod.fst = commitments ∧
-    (∀ c ∈ claimsOf r .c1, c.point.length = wv D 0) ∧
-    (∀ c ∈ claimsOf r .c2, c.point.length = wv D 1) ∧
-    (∀ c ∈ claimsOf r .setup, c.point.length = wv D 2) ∧
-    (∀ mc, r.matrices = some mc → mc.point.length = wv D 3 ∧ mc.point.length = wv D 4)
-
-/-- The `k`-th opening's statement on its plain layout. -/
-def uCl (k : ℕ) (cs : List WhirBridge.Claim) : Stmt (plainL (wv D k)).stacking :=
-  mkStmt _ (extra_plainL _) cs
-
-variable {D} in
-/-- **The decoders**: `C1`'s (round `0`) and `C2`'s, `tableCode` of their shapes. -/
-noncomputable def uniTc (hs : UniShapes D) (i : ℕ) : TableCode Stk :=
-  if i = 0 then tableCode (shapeK hs 0 (by decide)).L (shapeK hs 0 (by decide)).R
-      (shapeK hs 0 (by decide)).adm rdTab
-  else tableCode (shapeK hs 1 (by decide)).L (shapeK hs 1 (by decide)).R
-      (shapeK hs 1 (by decide)).adm rdTab
-
-end Ops
 
 end UniSound

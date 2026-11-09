@@ -35,8 +35,6 @@ namespace UniSound
 open LeanVM.Parameters UniStatement Finset WhirBridge
 open scoped ENNReal
 
-variable {D : Deployment} {κ : ℕ}
-
 /-! ## The opened transcript of a completed one -/
 
 theorem length_openedOf (nF : ℕ) (c1 c2 : Stk) (done : Done) :

@@ -236,7 +236,7 @@ def proveStreamWith (commit : Commitment → ℕ → Array K → m Committed) (f
   let beta ← sampleW H
   let gamma ← sampleW H
   -- 2. Flock on the Keccak-f block.
-  let logN := keccakR1csLogSize + shape.heights.getD opBlake2s 0
+  let logN := keccakR1csLogSize + shape.heights.getD opSha3 0
   let flockOut : Option FlockOut ← some <$> flock logN UniKeccak.keccakMain tr.qflock
   -- 3. The heap, the quotients, C2.
   let c2 := c2DataOf tr (eqKernel alphas) beta gamma
@@ -291,17 +291,17 @@ def seedOf (iv publicInput : List UInt8) : m Digest := H (name ++ iv ++ publicIn
 /-- The Keccak contract's IV with Keccak-256 `H` (`contract_iv_for(·, Keccak(v), ·, ·)`, `contractIvKWith`). -/
 def contractIvOf (shape : Shape) (v : UniKeccak.KeccakVariant) (programIv : List UInt8) (roots : SetupRoots) :
     m (List UInt8) := do
-  let d ← H (ivTag ++ programIv ++ digestBytes roots.bytecode ++ digestBytes roots.a0 ++
-    digestBytes roots.b0 ++ shapeBytes shape ++ (UniKeccak.layoutWordsK shape).flatten ++ UniKeccak.variantBytesK v)
+  let d ← H (ivTag ++ programIv ++ digestBytes roots.bytecode ++
+    shapeBytes shape ++ (UniKeccak.layoutWordsK shape).flatten ++ UniKeccak.variantBytesK v)
   return digestBytes d
 
 /-- **The honest prover** over `H`, `F` (`prove`) of the main line (`keccakMain`): the setup's tree, the Keccak
 contract's IV (the setup's root and the deployment's `A0`, `B0` constants `a0`, `b0`), the seed, the stream, then
 the three WHIR openings (`C1`, `C2`, the setup); `none` if a proof of work fails. -/
-def proveWith (fuel : ℕ) (flock : FlockProver m) (a0 b0 : Digest) (programIv : List UInt8) (tr : Trace) :
+def proveWith (fuel : ℕ) (flock : FlockProver m) (programIv : List UInt8) (tr : Trace) :
     m (Option UniKeccak.KeccakProof) := do
   let tree ← setupTreeOf H tr
-  let iv ← contractIvOf H tr.shape UniKeccak.keccakMain programIv ⟨tree.root, a0, b0⟩
+  let iv ← contractIvOf H tr.shape UniKeccak.keccakMain programIv ⟨tree.root⟩
   let seed ← seedOf H iv tr.publicInput
   let (out, _) ← (proveStreamWith H (commitReal H) flock tr).run (Wr.start seed)
   let words := UniKeccak.layoutWordsK tr.shape

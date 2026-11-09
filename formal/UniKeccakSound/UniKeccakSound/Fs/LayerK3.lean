@@ -94,7 +94,7 @@ theorem fsLayer128K3_ref (D : KDeployment) (hD : D.shape = keccakRefShape) (hIv 
 `nV = valsCountK = 118`, `varsOf (layoutsOfK D.shape) = 2 np + 1`), from the deployment's numbers and Flock's
 rounds. -/
 theorem fsLayer128K3_codeAt (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ : ℕ}
-    (F3 : KFlockSound F κ keccakRec3) (hκ : D.shape.heights.getD opBlake2s 0 = κ) (nV np : ℕ)
+    (F3 : KFlockSound F κ keccakRec3) (hκ : D.shape.heights.getD opSha3 0 = κ) (nV np : ℕ)
     (hnV : nV = valsCountK) (hV : varsOf (layoutsOfK D.shape) = 2 * np + 1) (hs : UniShapesK D)
     (hsmall : LayoutVarsSmallK D) (hI : UniIvK D) (hFl : nSteps F3.prog.rounds + np ≤ 1016)
     (hFlv : ∀ r ∈ F3.prog.rounds, r.nv ≤ 2 ^ 30) :
@@ -105,7 +105,7 @@ theorem fsLayer128K3_codeAt (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ
 /-- **The Fiat–Shamir layer at π1-rec3's shape at the reference deployment and `Code/Link3.lean`'s link.** -/
 theorem fsLayer128K3_refCodeAt (D : KDeployment) (hD : D.shape = keccakRefShape)
     (hIv : D.programIv = UniStatement.programIv) {F : KeccakVm.KeccakFlockSpec} {κ : ℕ}
-    (F3 : KFlockSound F κ keccakRec3) (hκ : D.shape.heights.getD opBlake2s 0 = κ) (nV np : ℕ)
+    (F3 : KFlockSound F κ keccakRec3) (hκ : D.shape.heights.getD opSha3 0 = κ) (nV np : ℕ)
     (hnV : nV = valsCountK) (hV : varsOf (layoutsOfK D.shape) = 2 * np + 1)
     (hFl : nSteps F3.prog.rounds + np ≤ 1016) (hFlv : ∀ r ∈ F3.prog.rounds, r.nv ≤ 2 ^ 30) :
     FsLayer128K3 F D F3 nV np (uniCodeK3At D F3 hκ nV np hnV hV) :=

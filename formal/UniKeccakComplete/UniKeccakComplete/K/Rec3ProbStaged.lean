@@ -7,7 +7,8 @@
 -- Ported to the Keccak VM from `formal/UniComplete/UniComplete/Rec3ProbStaged.lean`.
 import UniKeccakComplete.K.Rec3ProbChain
 import UniKeccakComplete.Staged
-import UniStatement.RecSecurity
+import UniStatement.Rec
+import UniStatement.Security
 
 /-!
 # `UniCompletenessRec3`, from the staged two-call experiment

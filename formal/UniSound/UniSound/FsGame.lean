@@ -1,33 +1,24 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The transfer is
 -- `formal/Compose/Compose/ListChainKRpmS.lean`'s `rpm_le_kcS`, the two-oracle theorem
--- `ListChainUDoom.lean`'s `knowledgeSoundness_listChainU_closed`; `FsProof.lean`'s
--- `fsLayer_of_game` is the route through their composition.
+-- `ListChainUDoom.lean`'s `knowledgeSoundness_listChainU_closed`.
 import UniSound.FsCost
 import Soundness.TreeLog
 import Bridge.Chain
 
 /-!
-# The Fiat–Shamir layer, the contract's IV computed by the verifier
+# The Fiat–Shamir layer's pieces for the contract's IV computed by the verifier
 
-`FsProof.lean`'s `UniGameLe` couples the univariate experiment with the composed random-permutation
-game whose adversary computes the contract's IV (`A'`: the adversary, then the IV). That puts the
-IV's calls of `π` in the adversary's log, which the composed extractor replays
-(`keccakEvaluationsOfTranscript`): a fresh IV answer extends sponge paths the univariate
-extractor, reading the adversary's log alone, never sees. Whether that changes `C1`'s Merkle word
-depends on the permutation's answers (an IV answer equal to a digest on `C1`'s climb), so the
-coupling event by event fails, by a margin near `2^-230`, and `UniGameLe` is not provable without
-slack. Here the IV is computed where the univariate experiment computes it, **by the verifier**:
+`FsProof.lean`'s coupling with the composed random-permutation game whose adversary computes the contract's IV
+would put the IV's calls of `π` in the adversary's log, which the composed extractor replays
+(`keccakEvaluationsOfTranscript`): a fresh IV answer extends sponge paths the univariate extractor, reading the
+adversary's log alone, never sees, so that coupling fails event by event by a margin near `2^-230`. The Keccak
+verifier's layers (`UniKeccakSound.Fs.GameK`, `GameK3`) compute the IV **by the verifier** instead, then move it into
+the two-oracle adversary; this file has the pieces they share:
 
-* **`uVerIv`**: the IV (`ivKC`, one Keccak-256 call of `ivInput`, `contractIvWith`'s input), then
-  the composed verifier on the proof carrying it (`setIv`); `uAdv` the adversary, given the setup's
-  roots; **`UniGameLeV`**, the coupling, now with the same adversary log on both sides;
-* the random-permutation transfer `rpm_le_kcS` takes any verifier: the two-oracle game then has
-  the IV in the verifier, and **`expU_ivAdv`** moves it into the adversary (`ivAdv`): the same
-  queries, the log one entry longer, `(ivInput, IV)`, of `D.programIv.length + 280` bytes, neither
-  a Merkle node's `64` nor a leaf's `512` (`UniIv`), so `C1`'s extractor reads the same word
-  (**`extractorK_append`**);
-* **`fsLayer_of_gameV`**: `FsLayer` from `UniGameLeV`, `UniNumbers` and `UniIv`, through the
-  two-oracle theorem, with the bound `uniBound` unchanged (`le_uniBoundV`).
+* the proof with an IV (`setIv`, `ivOut`) and the setup's root as the proof records it (`rootsOfS`);
+* **`extractorK_append`**: a log entry of neither a Merkle node's `64` bytes nor a leaf's length leaves `C1`'s
+  extractor's word unchanged (the IV's entry);
+* `logImplKC_bind`, and **`le_uniBoundV`**: the composed bound with the IV in the verifier is at most `uniBound`.
 -/
 
 namespace UniSound
@@ -38,21 +29,9 @@ open OracleSpec OracleComp
 open scoped ENNReal
 
 attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
-  LeanVM.Protocol.Compile.instFintypeKState UniStatement.layoutWords UniStatement.setupStack
+  LeanVM.Protocol.Compile.instFintypeKState UniStatement.setupStack
 
 /-! ## The contract's IV -/
-
-/-- **The contract IV's input** (`contractIvWith`): the tag, the program's IV, the setup's three
-roots, the shape's bytes and the five layout words. -/
-def ivInput (D : Deployment) (roots : SetupRoots) : List UInt8 :=
-  ivTag ++ D.programIv ++ digestBytes roots.bytecode ++ digestBytes roots.a0 ++
-    digestBytes roots.b0 ++ shapeBytes D.shape ++ (layoutWords D.shape).flatten
-
-theorem contractIvWith_eq {m : Type → Type} [Monad m] [LawfulMonad m]
-    (F : LeanVM.Semantics.KeccakState → m LeanVM.Semantics.KeccakState) (D : Deployment) (roots : SetupRoots) :
-    contractIvWith F D.shape D.programIv roots = digestBytes <$> keccak256With F (ivInput D roots) := by
-  rw [map_eq_bind_pure_comp]
-  rfl
 
 theorem length_digestBytes (d : Digest) : (digestBytes d).length = 32 := by
   rw [← Bridge.toB_toList]
@@ -67,70 +46,15 @@ theorem length_layoutWord (s : UniStatement.Shape) (code vars placed : ℕ) :
     (layoutWord s code vars placed).length = 32 := by
   simp [layoutWord, length_shapeBytes]
 
-theorem length_layoutWords_flatten (s : UniStatement.Shape) : (layoutWords s).flatten.length = 160 := by
-  unfold layoutWords
-  simp only [List.flatten_cons, List.flatten_nil, List.length_append, length_layoutWord,
-    List.length_nil]
-
-theorem length_ivInput (D : Deployment) (roots : SetupRoots) :
-    (ivInput D roots).length = D.programIv.length + 280 := by
-  simp only [ivInput, List.length_append, length_ivTag, length_digestBytes, length_shapeBytes,
-    length_layoutWords_flatten]
-  omega
-
-/-- **The deployment's IV is short and of no Merkle length**: the program's IV not `232` bytes (the
-IV's input then `512`, a leaf's), and at most `807` (the IV at most eight calls of `π`). The
-reference program IV (`UniStatement.programIv`) has `32` bytes. -/
-structure UniIv (D : Deployment) : Prop where
-  ne : D.programIv.length ≠ 232
-  le : D.programIv.length ≤ 807
-
-/-- **The IV as the composed verifier computes it**: one Keccak-256 call of its input. -/
-def ivKC (D : Deployment) (π : UPf) : OracleComp KeccakCalls Bytes32 := hash256 (ivInput D π.roots)
-
-/-- **The Statement's IV is the composed one**, Keccak-256 over `π`. -/
-theorem ivWith_eq (D : Deployment) (roots : SetupRoots) :
-    D.ivWith Common.queryPermutation roots =
-      (fun b : Bytes32 => b.toList) <$>
-        simulateQ keccakCallsOverQueryPermutation (hash256 (ivInput D roots)) := by
-  rw [Deployment.ivWith, contractIvWith_eq, hash256, callKeccak256, simulateQ_bind,
-    simulateQ_spec_query, map_bind]
-  simp only [simulateQ_pure, map_pure, Bridge.toB_toList]
-  rw [map_eq_bind_pure_comp]
-  rfl
-
 /-- The proof with an IV. -/
 def setIv (iv : Vector UInt8 32) (π : UPf) : UPf := { π with iv := iv }
 
-/-- The setup's roots as the proof records them (`uFix`). -/
-def rootsOfS (s : Bytes32 × Bytes32 × Bytes32) : SetupRoots := ⟨ofB s.1, ofB s.2.1, ofB s.2.2⟩
-
-theorem uFix_setIv (s : Bytes32 × Bytes32 × Bytes32) (iv : Vector UInt8 32) (π : UPf) :
-    uFix s (setIv iv π) = setIv iv (uFix s π) := rfl
-
-/-- **The adversary of the composed game**: the univariate adversary given the setup's roots, its
-statement and proof (the IV and the roots the verifier and `uFix` set). -/
-def uAdv (A : UniAdversary) (s : Bytes32 × Bytes32 × Bytes32) :
-    OracleComp Common.RandomPermutationOracles UPf :=
-  (fun z : Vector UInt8 32 × UniProof => (⟨z.1, z.2, Vector.replicate 32 0, rootsOfS s⟩ : UPf)) <$>
-    A (rootsOfS s)
-
-theorem cost_uAdv (A : UniAdversary) (Q : ℕ)
-    (hQ : ∀ roots, Common.QueryCostAtMost (A roots) Common.permutationCallCost Q)
-    (s : Bytes32 × Bytes32 × Bytes32) :
-    Common.QueryCostAtMost (uAdv A s) Common.permutationCallCost Q :=
-  Common.isWeightBound_map _ (hQ _)
-
-section Verifier
-
-variable (D : Deployment) {κ : ℕ} (nV V : ℕ)
-  (hs : UniShapes D)
+/-- The setup's root as the proof records it: the setup tree's root, one 32-byte word. -/
+def rootsOfS (s : Bytes32) : SetupRoots := ⟨ofB s⟩
 
 /-- The outcome with the IV written in the proof. -/
 def ivOut (z : UPf × (Bytes32 × (List (List E) × List Bool))) : UPf × (List (List E) × List Bool) :=
   (setIv z.2.1 z.1, z.2.2)
-
-end Verifier
 
 /-! ## An entry of no Merkle length leaves the extractor's word -/
 
@@ -203,30 +127,6 @@ theorem logImplKC_bind {α β : Type} (oa : OracleComp KeccakCalls α)
       (simulateQ logImplKC oa).run l >>= fun p => (simulateQ logImplKC (f p.1)).run p.2 := by
   rw [simulateQ_bind, StateT.run_bind]
 
-theorem logImplKC_ivKC (D : Deployment) (π : UPf) (l : Transcript) :
-    (simulateQ logImplKC ((fun iv => setIv iv π) <$> ivKC D π)).run l =
-      callKeccak256 (ivInput D π.roots) >>= fun u =>
-        pure (setIv (toB u) π, l ++ [(ivInput D π.roots, toB u)]) := by
-  rw [ivKC, hash256, map_bind]
-  simp only [map_pure]
-  rw [callKeccak256, loggedKC_run_query_bind]
-  simp only [simulateQ_pure, StateT.run_pure]
-  rfl
-
-/-- The two-oracle adversary with the IV: `A₀`, then the IV of the proof the setup fixes. -/
-def ivAdv (D : Deployment) (A₀ : Bytes32 × Bytes32 × Bytes32 → OracleComp KeccakCalls UPf)
-    (s : Bytes32 × Bytes32 × Bytes32) : OracleComp KeccakCalls UPf :=
-  A₀ s >>= fun π => (fun iv => setIv iv π) <$> ivKC D (uFix s π)
-
-theorem isTotalQueryBound_ivAdv (D : Deployment)
-    (A₀ : Bytes32 × Bytes32 × Bytes32 → OracleComp KeccakCalls UPf) (n : ℕ)
-    (h : ∀ s, IsTotalQueryBound (A₀ s) n) (s : Bytes32 × Bytes32 × Bytes32) :
-    IsTotalQueryBound (ivAdv D A₀ s) (n + 1) := by
-  unfold ivAdv
-  refine isTotalQueryBound_bind (h s) fun π => (isQueryBound_map_iff _ _ _ _ _).mpr ?_
-  simp only [ivKC, hash256, callKeccak256]
-  exact isTotalQueryBound_query_bind_iff.mpr ⟨by norm_num, fun _ => trivial⟩
-
 /-! ## The bound -/
 
 /-- **The composed bound, the IV in the verifier, is at most `uniBound`**: `le_uniBound` with the
@@ -247,18 +147,6 @@ theorem le_uniBoundV (e : ℝ≥0∞) (Q QS nQ SQO nRf : ℕ) (hQS : QS ≤ 3 * 
   exact add_le_add le_rfl (ENNReal.div_le_div_right (Nat.cast_le.mpr (Nat.mul_le_mul_left _ hN)) _)
 
 /-! ## The Fiat–Shamir layer -/
-
-section Layer
-
-variable (D : Deployment) {κ : ℕ} (nV V : ℕ)
-  (hs : UniShapes D)
-
-theorem leafLen_uniTc_zero : (uniTc hs 0).leafLen = 512 := by
-  unfold uniTc
-  rw [ite_eq_left rfl]
-  rfl
-
-end Layer
 
 end UniSound
 

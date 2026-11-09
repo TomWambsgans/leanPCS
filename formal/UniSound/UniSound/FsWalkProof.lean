@@ -56,7 +56,7 @@ open LeanVM.Semantics UniStatement
 open OracleSpec OracleComp
 
 attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
-  LeanVM.Protocol.Compile.instFintypeKState UniStatement.layoutWords UniStatement.setupStack
+  LeanVM.Protocol.Compile.instFintypeKState UniStatement.setupStack
 
 /-! ## The stream's bytes -/
 
@@ -753,27 +753,6 @@ theorem finish_run (c : Chan) :
   simp only [finish, ExceptT.run_bind, StateT.run_bind, chan_get_run, pure_bind]
   split_ifs <;> rfl
 
-/-- **The walk's verdict and result** are `walkOf` of what `obsOf` keeps of `reduceWith`'s run from
-the seed's channel. -/
-theorem runWith_pair (F : KeccakState → m KeccakState) (shape : UniStatement.Shape) (iv input : List UInt8)
-    (stream : Array UInt8) (bl : Blake2s) (mode : ClaimsMode) :
-    (fun o : Outcome => (o.accepts, o.result)) <$> runWith F shape iv input stream bl mode =
-      seedWith F iv input >>= fun seed => (fun x => walkOf (obsOf x)) <$>
-        (reduceWith F shape (publicWordsOf input) bl mode).run.run (Chan.start seed stream) := by
-  simp only [runWith, map_bind]
-  congr 1
-  funext seed
-  simp only [ExceptT.run_bind, StateT.run_bind, bind_assoc]
-  rw [map_eq_bind_pure_comp]
-  congr 1
-  funext x
-  rcases x with ⟨r, c⟩
-  cases r with
-  | error e => simp [walkOf, obsOf, Outcome.accepts]
-  | ok a =>
-    simp only [StateT.run_bind, finish_run]
-    split_ifs with h <;> simp [walkOf, obsOf, Outcome.accepts, h]
-
 /-- The chain over an encoding, from its label's answer. -/
 theorem chainU_eq {F' St : Type} (U : ChainSpecU F' St) (H : List UInt8 → m Bytes32) (s : St)
     (ms : List (RMsg F')) :
@@ -967,4 +946,3 @@ theorem consumes_readCounts : ∀ hs : List ℕ, Consumes (hs.length * 4) (readC
     ring
 
 end UniSound
-

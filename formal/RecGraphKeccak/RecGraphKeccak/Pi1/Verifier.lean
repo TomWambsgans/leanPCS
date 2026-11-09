@@ -62,7 +62,7 @@ def constraintRelationK (shape : Shape) (parts : List TablePartS) (publicWords :
     let g ← mul cur lift
     terms := terms.push (termS (.inverse table.opcode) (w.take r) (← mul g counters))
     known ← add known g
-    if table.opcode = opBlake2s then
+    if table.opcode = opSha3 then
       let y ← coordinatesAt t (coordinateFunctionals r)
       for (name, column) in table.columns.zip (List.range table.width) do
         if let some slot := keccakSlot name then
@@ -201,7 +201,7 @@ def reduceK (shape : Shape) (publicWords : List Sym) : Prog ReducedS := do
   let gamma ← sample
   let weights ← eqKernel alphas
   -- 2. Flock on the Keccak-f block, its structured terminal.
-  let logN := keccakR1csLogSize + heights.getD opBlake2s 0
+  let logN := keccakR1csLogSize + heights.getD opSha3 0
   let (flockPoint, map, target) ← verifyWalkedK logN UniKeccak.keccakRec3.skip fs
   -- 3. C2, t, the digits, Z_act.
   let root2 ← nextRoot
@@ -289,13 +289,11 @@ theorem keccak128_run : ("keccak128", 128, 721598, [24260, 36229, 24626, 35812, 
 theorem keccak128_logs : keccak128.logMemory = 20 ∧ keccak128.logBytecode = 18 := by decide
 
 /-- **The Keccak VM's `SetupRoots::REFERENCE`** (`crates/leanvm/univariate/src/contract.rs`): the 128-signature
-reference's setup root `F` (`067244be…`, the real `keccak128_rec3.txt` proof's `whir_root`), and the two fixed words
-`A0`, `B0` the contract IV hashes, each 32-byte word read as the digest of those bytes, all three as the Rust's.
+reference's setup root `F` (`067244be…`, the real `keccak128_rec3.txt` proof's `whir_root`), the 32-byte word read as
+the digest of those bytes, as the Rust's.
 `record_verifier` binds them: the setup call's root word is `F`. -/
 def referenceRootsK : SetupRoots :=
-  ⟨digestOfBytes32 (bytesOfHex "067244bea80942b5cacaa61c28ca748d0ae4ba6c106739ab109c9c07296e1ca5"),
-    digestOfBytes32 (bytesOfHex "93cd9a0352a85dcc663f7068e1f3afa3a00f5220bd2b03d67244f0eb133fd2f7"),
-    digestOfBytes32 (bytesOfHex "c07556508c416240dafd47665831fd51d2eb1104a52c63231101479c7f6cd467")⟩
+  ⟨digestOfBytes32 (bytesOfHex "067244bea80942b5cacaa61c28ca748d0ae4ba6c106739ab109c9c07296e1ca5")⟩
 
 /-- The shape the program is recorded at. -/
 abbrev shapeK : Shape := keccak128

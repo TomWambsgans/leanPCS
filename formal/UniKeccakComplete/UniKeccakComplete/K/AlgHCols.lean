@@ -124,7 +124,7 @@ def cDegStep (shape : Shape) (d : ℕ) (table : Table) : ℕ :=
   let n := 2 ^ r
   let d := if table.opcode = opJump then max d (degree n 2) else d
   let d := max d (degree ((n - 1) * (1 + table.countColumns.length)) n)
-  if table.opcode = opBlake2s then max d (degree (r * (n / 2)) n) else d
+  if table.opcode = opSha3 then max d (degree (r * (n / 2)) n) else d
 
 theorem constraintDegree_eq (shape : Shape) :
     (Shape.constraintDegreeK shape) = max (tablesKeccak.foldl (cDegStep shape) 0) (degree (2 ^ shape.logMemory) 3) := rfl
@@ -144,14 +144,14 @@ theorem constraintRelation_degree (shape : Shape) (parts : List TablePart) (publ
       List.map_fst_zip hp]
   · intro x s
     by_cases h1 : x.1.opcode = opJump
-    · by_cases h2 : x.1.opcode = opBlake2s
-      · exact absurd (h1.symm.trans h2) (by simp [opJump, opBlake2s])
+    · by_cases h2 : x.1.opcode = opSha3
+      · exact absurd (h1.symm.trans h2) (by simp [opJump, opSha3])
       · rw [ite_pos_of h1, ite_neg_of h2]
         refine ⟨_, rfl, ?_⟩
         show _ = cDegStep shape s.2.2.2 x.1
         unfold cDegStep
         simp only [ite_pos_of h1, ite_neg_of h2]
-    · by_cases h2 : x.1.opcode = opBlake2s
+    · by_cases h2 : x.1.opcode = opSha3
       · rw [ite_neg_of h1, ite_pos_of h2]
         refine ⟨_, rfl, ?_⟩
         show _ = cDegStep shape s.2.2.2 x.1

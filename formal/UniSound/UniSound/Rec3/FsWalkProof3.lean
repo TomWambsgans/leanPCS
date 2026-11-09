@@ -35,7 +35,7 @@ open LeanVM.Semantics UniStatement
 open OracleSpec OracleComp
 
 attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
-  LeanVM.Protocol.Compile.instFintypeKState UniStatement.layoutWords UniStatement.setupStack
+  LeanVM.Protocol.Compile.instFintypeKState UniStatement.setupStack
 
 /-! ## The walk: the seed, π1-rec3's run, `finish` -/
 
@@ -55,36 +55,8 @@ theorem walkOf3_ok (x : Except UniError Reduced × Chan) (r : Reduced) (h1 : x.1
   subst h1
   simp [obsOf3, walkOf3, h2]
 
-section Monad
-
-variable {m : Type → Type} [Monad m] [LawfulMonad m]
-
-/-- **The walk's verdict and result** at a Fiat–Shamir shape are `walkOf3` of what `obsOf3` keeps of
-`reduceWithFs`'s run from the seed's channel. -/
-theorem runWithFs_pair3 (F : KeccakState → m KeccakState) (shape : UniStatement.Shape) (iv input : List UInt8)
-    (stream : Array UInt8) (bl : Blake2s) (mode : ClaimsMode) (fs : FsShape) (walk : Bool) :
-    (fun o : Outcome => (o.accepts, o.result)) <$> runWithFs F shape iv input stream bl mode fs walk =
-      seedWith F iv input >>= fun seed => (fun x => walkOf3 (obsOf3 x)) <$>
-        (reduceWithFs F shape (publicWordsOf input) bl mode fs walk).run.run (Chan.start seed stream) := by
-  simp only [runWithFs, map_bind]
-  congr 1
-  funext seed
-  simp only [ExceptT.run_bind, StateT.run_bind, bind_assoc]
-  rw [map_eq_bind_pure_comp]
-  congr 1
-  funext x
-  rcases x with ⟨r, c⟩
-  cases r with
-  | error e => simp [walkOf3, obsOf3, Outcome.accepts]
-  | ok a =>
-    simp only [StateT.run_bind, finish_run]
-    split_ifs with h <;> simp [walkOf3, obsOf3, Outcome.accepts, h]
-
-end Monad
-
 /-! ## WALK -/
 
 /-! ## WALK REJECTS -/
 
 end UniSound
-

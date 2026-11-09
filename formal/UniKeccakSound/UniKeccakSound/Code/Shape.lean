@@ -46,9 +46,9 @@ theorem constraintRelationK_snd (shape : Shape) (parts : List TablePart) (pw : L
     (forIn_id_proj (fun s : E × Array Term × E × ℕ => s.2.2.2) (fun d x => cdStep shape d x.1) _ ?_
       _ _)).trans ?_
   · intro x s
-    have hjb : opJump ≠ opBlake2s := by decide
-    have hbj : opBlake2s ≠ opJump := by decide
-    by_cases h1 : x.1.opcode = opJump <;> by_cases h2 : x.1.opcode = opBlake2s <;>
+    have hjb : opJump ≠ opSha3 := by decide
+    have hbj : opSha3 ≠ opJump := by decide
+    by_cases h1 : x.1.opcode = opJump <;> by_cases h2 : x.1.opcode = opSha3 <;>
       simp only [h1, h2, ite_true, ite_false] <;>
       exact ⟨_, rfl, by simp [cdStep, h1, h2, hjb, hbj]⟩
   · simp only [foldl_zip_fst _ _ _ _ h]

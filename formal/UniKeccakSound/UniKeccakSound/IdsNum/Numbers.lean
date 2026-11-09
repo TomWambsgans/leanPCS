@@ -115,7 +115,7 @@ variables and the numbers discharged; from `IdsRemainingRefK`, Flock's result th
 errors. -/
 theorem uniKnowledgeSoundnessK_ref (F : KeccakVm.KeccakFlockSpec) (D : KDeployment)
     (hD : D.shape = keccakRefShape) {κ : ℕ} (Fl : KFlockSound F κ keccakMain)
-    (hκ : D.shape.heights.getD opBlake2s 0 = κ) (hF : KeccakFlockFits F) (r : IdsRemainingRefK F D Fl)
+    (hκ : D.shape.heights.getD opSha3 0 = κ) (hF : KeccakFlockFits F) (r : IdsRemainingRefK F D Fl)
     (hgood : FlockGoodDoneK Fl) (hW : WeightMleK D Fl)
     (hFs : FsLayer128K F D Fl valsCountK (varsOf (layoutsOfK D.shape)) (uniCodeKAt D Fl hκ _ _ rfl rfl))
     (hFl : ∀ j, Fl.err j ≤ ((2 ^ 32 : ℕ) : ℝ≥0∞) / (Fintype.card E : ℝ≥0∞)) :
@@ -130,7 +130,7 @@ theorem uniKnowledgeSoundnessK_ref (F : KeccakVm.KeccakFlockSpec) (D : KDeployme
 IV, for a Flock phase of at most `987` steps (`nSteps`) and rounds of at most `2^30` scalars. -/
 theorem uniKnowledgeSoundnessK_refIv (F : KeccakVm.KeccakFlockSpec) (D : KDeployment)
     (hD : D.shape = keccakRefShape) (hIv : D.programIv = UniStatement.programIv) {κ : ℕ}
-    (Fl : KFlockSound F κ keccakMain) (hκ : D.shape.heights.getD opBlake2s 0 = κ) (hF : KeccakFlockFits F)
+    (Fl : KFlockSound F κ keccakMain) (hκ : D.shape.heights.getD opSha3 0 = κ) (hF : KeccakFlockFits F)
     (r : IdsRemainingRefK F D Fl) (hgood : FlockGoodDoneK Fl) (hW : WeightMleK D Fl)
     (hSteps : Compose.nSteps Fl.prog.rounds ≤ 987) (hFlv : ∀ r ∈ Fl.prog.rounds, r.nv ≤ 2 ^ 30)
     (hFl : ∀ j, Fl.err j ≤ ((2 ^ 32 : ℕ) : ℝ≥0∞) / (Fintype.card E : ℝ≥0∞)) :

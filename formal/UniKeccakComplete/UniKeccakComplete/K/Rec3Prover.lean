@@ -6,7 +6,8 @@
 import UniComplete.Rec3Pairs
 import UniKeccakComplete.K.ProverSim
 import UniKeccakComplete.K.FlockProver
-import UniStatement.RecSecurity
+import UniStatement.Rec
+import UniStatement.Security
 
 /-!
 # π1-rec3's honest prover
@@ -202,7 +203,7 @@ def proveStreamRec3With (commit : Commitment → ℕ → Array K → m Committed
   let beta ← sampleW H
   let gamma ← sampleW H
   -- 2. Flock on the Keccak-f block, at π1-rec3's shape.
-  let logN := keccakR1csLogSize + shape.heights.getD opBlake2s 0
+  let logN := keccakR1csLogSize + shape.heights.getD opSha3 0
   let flockOut : Option FlockOut ← some <$> flock logN UniKeccak.keccakRec3 tr.qflock
   -- 3. The heap, the quotients, C2.
   let c2 := c2DataOf tr (eqKernel alphas) beta gamma
@@ -244,10 +245,10 @@ variable {m : Type → Type} [Monad m] (H : List UInt8 → m Digest) (F : Keccak
 
 /-- **π1-rec3's honest prover** over `H`, `F`: the setup's tree, the Keccak contract's IV at `keccakRec3`, the seed,
 the stream, then the three WHIR openings (`C1`, `C2`, the setup); `none` if a proof of work fails. -/
-def proveRec3With (fuel : ℕ) (flock : FlockProver m) (a0 b0 : Digest) (programIv : List UInt8) (tr : Trace) :
+def proveRec3With (fuel : ℕ) (flock : FlockProver m) (programIv : List UInt8) (tr : Trace) :
     m (Option UniKeccak.KeccakProof) := do
   let tree ← setupTreeOf H tr
-  let iv ← contractIvOf H tr.shape UniKeccak.keccakRec3 programIv ⟨tree.root, a0, b0⟩
+  let iv ← contractIvOf H tr.shape UniKeccak.keccakRec3 programIv ⟨tree.root⟩
   let seed ← seedOf H iv tr.publicInput
   let (out, _) ← (proveStreamRec3With H (commitReal H) flock tr).run (Wr.start seed)
   let words := UniKeccak.layoutWordsK tr.shape
@@ -276,7 +277,7 @@ def proveRec3With (fuel : ℕ) (flock : FlockProver m) (a0 b0 : Digest) (program
 proof of work, the deployment's `A0`, `B0` constants in the IV. -/
 def uniProverRec3With (flock : FlockProver m) (D : UniKeccak.KDeployment) (input : Vector UInt8 32) (rows : List ℕ)
     (q : D.Stack rows) : m (Option UniKeccak.KeccakProof) :=
-  proveRec3With H F PcsQuotient.nonceFuel flock D.a0Root D.b0Root D.programIv (honestTrace D input rows q)
+  proveRec3With H F PcsQuotient.nonceFuel flock D.programIv (honestTrace D input rows q)
 
 end With
 

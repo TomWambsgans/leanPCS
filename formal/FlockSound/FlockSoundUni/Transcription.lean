@@ -294,29 +294,6 @@ theorem tx_cpos_snd {k l : ℕ} (hkl : k + l = 6) (j : Fin 8) :
   rw [tx_cpos]
   exact cubeFin_symm_apply _ _
 
-/-- **`knownWeights`**: `α² eq(chi_in, chi_in')` and `α³ eq(chi_in', cpos.2)`. -/
-theorem knownWeights_eq {k l : ℕ} (hkl : k + l = 6) (α : E) (chiIn chiInPrime : List E)
-    (h8 : chiIn.length = 8) (h8' : chiInPrime.length = 8) :
-    Flock.knownWeights α chiIn chiInPrime =
-      (α ^ 2 * FlockSound.eqEval (ptOf chiIn 8) (ptOf chiInPrime 8),
-        α ^ 3 * eqP (ptOf chiInPrime 8) ((posFin hkl).symm Lv42.Parameters.Flock.constPos).2) := by
-  have hc : ((List.range Flock.lincheckRounds).map
-      (bitE (Flock.constantColumn / Flock.kBits))).length = 8 := by
-    simp [Flock.lincheckRounds, blake2sR1csLogSize]
-  simp only [Flock.knownWeights, epow_eq]
-  rw [eqEval_eq _ _ h8 h8', eqEval_eq _ _ hc h8']
-  refine Prod.ext rfl (congrArg (α ^ 3 * ·) ?_)
-  rw [FlockSound.eqEval, eqP]
-  refine Finset.prod_congr rfl fun j _ ↦ ?_
-  rw [tx_cpos_snd]
-  have hj := j.isLt
-  have hget : ptOf ((List.range Flock.lincheckRounds).map
-      (bitE (Flock.constantColumn / Flock.kBits))) 8 j = if (8 : ℕ).testBit j then 1 else 0 := by
-    simp [ptOf, List.getD_eq_getElem?_getD, Flock.lincheckRounds, blake2sR1csLogSize, hj, bitE,
-      Flock.constantColumn, Flock.kBits]
-  rw [hget]
-  cases (8 : ℕ).testBit j <;> simp
-
 theorem tx_flatMap_getD (S : List E) {A : ℕ} (hS : S.length = A) : ∀ (M : List E) {a b : ℕ}, a < A →
     b < M.length → (M.flatMap fun m ↦ S.map fun x ↦ x * m).getD (a + A * b) 0 = S.getD a 0 * M.getD b 0
   | [], _, _, _, hb => by simp at hb
@@ -343,54 +320,6 @@ theorem tx_cubeFin_split {k l : ℕ} (cy : Cube (k + l)) :
   conv_lhs => rw [← append_lowPart_highPart cy]
   exact cubeFin_append_val _ _
 
-/-- **The pending reduction's claim** is the lincheck's terminal plus the two known terms, as the
-soundness proof has them (`Front.matClaim`'s `rlc + known`, at `C = setupOf …`). -/
-theorem pending_claim {k l : ℕ} (hkl : k + l = 6) (hk : k ≤ 6) (z α rLc : E)
-    (rowLow chiIn chiInPrime s : List E) (hl : rowLow.length = l) (h8 : chiIn.length = 8)
-    (h8' : chiInPrime.length = 8) :
-    (Flock.Pending.new (some z) rowLow chiIn chiInPrime α rLc (some s)).claim =
-      rLc + (α ^ 2 * FlockSound.eqEval (ptOf chiIn 8) (ptOf chiInPrime 8) *
-          ∑ cy, lowW (skipNodes k hk) z (ptOf rowLow l) cy * sliceOf s cy +
-        α ^ 3 * eqP (ptOf chiInPrime 8) ((posFin hkl).symm Lv42.Parameters.Flock.constPos).2 *
-          sliceOf s ((posFin hkl).symm Lv42.Parameters.Flock.constPos).1) := by
-  have hpk : Flock.packing - rowLow.length = k := by simp only [Flock.packing, hl]; omega
-  simp only [Flock.Pending.new, Flock.rowLowWeights, knownWeights_eq hkl α chiIn chiInPrime h8 h8',
-    Option.map_some, Option.getD_some, hpk]
-  have hS : (Flock.lagrangeWeights (2 ^ k) z).length = 2 ^ k := lagrangeWeights_length _ _
-  have hM : (eqKernel rowLow).toList.length = 2 ^ l := by
-    rw [Array.length_toList, eqKernel_size, hl]
-  have hdot : dot (List.flatMap (fun m ↦ List.map (fun l ↦ l * m) (Flock.lagrangeWeights (2 ^ k) z))
-      (eqKernel rowLow).toList) s = ∑ cy, lowW (skipNodes k hk) z (ptOf rowLow l) cy * sliceOf s cy := by
-    rw [tx_dot_eq, tx_length_flatMap, hS, hM, ← pow_add, sum_range_eq_sum_cube]
-    refine Finset.sum_congr rfl fun cy _ ↦ ?_
-    rw [tx_cubeFin_split, tx_flatMap_getD _ hS _ (cubeFin k (lowPart cy)).isLt
-      (by rw [hM]; exact (cubeFin l (highPart cy)).isLt), lagrangeWeights_skip k hk, ← tx_array_getD,
-      eqKernel_cube rowLow hl, ← tx_cubeFin_split]
-    unfold lowW sliceOf
-    rfl
-  have hpin : s.getD (Flock.constantColumn % Flock.kBits) 0 =
-      sliceOf s ((posFin hkl).symm Lv42.Parameters.Flock.constPos).1 := by
-    rw [sliceOf, tx_cpos_fst]
-    norm_num [Flock.constantColumn, Flock.kBits]
-  rw [hdot, hpin]
-
-/-- **The pending reduction's fields**: `k` skipped row bits, `k + 6` rounds, the points and `α` as given,
-the skip's weights `lagrangeWeights (2^k) z`. -/
-theorem pending_fields {k l : ℕ} (hkl : k + l = 6) (z α rLc : E) (rowLow chiIn chiInPrime : List E)
-    (sl : Option (List E)) (hl : rowLow.length = l) :
-    (Flock.Pending.new (some z) rowLow chiIn chiInPrime α rLc sl).k = k ∧
-      (Flock.Pending.new (some z) rowLow chiIn chiInPrime α rLc sl).rounds = k + 6 ∧
-      (Flock.Pending.new (some z) rowLow chiIn chiInPrime α rLc sl).rowLow = rowLow ∧
-      (Flock.Pending.new (some z) rowLow chiIn chiInPrime α rLc sl).chiIn = chiIn ∧
-      (Flock.Pending.new (some z) rowLow chiIn chiInPrime α rLc sl).chiInPrime = chiInPrime ∧
-      (Flock.Pending.new (some z) rowLow chiIn chiInPrime α rLc sl).alpha = α ∧
-      (Flock.Pending.new (some z) rowLow chiIn chiInPrime α rLc sl).skipWeights =
-        Flock.lagrangeWeights (2 ^ k) z ∧
-      (Flock.Pending.new (some z) rowLow chiIn chiInPrime α rLc sl).slices = sl := by
-  have hpk : 6 - rowLow.length = k := by rw [hl]; omega
-  simp only [Flock.Pending.new, Flock.rowLowWeights, Flock.Pending.rounds, Flock.packing, hpk,
-    and_self]
-
 /-- Without a skip (`k = 0`), the one Lagrange weight is `1`. -/
 theorem tx_lag_zero (hk : 0 ≤ 6) (b : Cube 0) (z : E) : (lag (skipNodes 0 hk) b).eval z = 1 := by
   have h0 : ((cubeFin 0 b : Fin (2 ^ 0)) : ℕ) = 0 := by simpa using (cubeFin 0 b).isLt
@@ -407,23 +336,6 @@ theorem tx_skipAt {k : ℕ} (hk : k ≤ 6) (z : E) (rho : List E) (hrho : rho.le
   · obtain rfl : k = 0 := by omega
     rw [mle, Fintype.sum_unique, eqP, Finset.univ_eq_empty, Finset.prod_empty, mul_one,
       tx_lag_zero hk]
-
-/-- **The pending reduction's terminal** at the batch's point: `(a + α b) L̂(ρ) ŝ(σ)`, `ρ` the point's first
-`k` coordinates and `σ` the next six. -/
-theorem pending_terminal {k l : ℕ} (hkl : k + l = 6) (hk : k ≤ 6) (z α rLc a b : E)
-    (rowLow chiIn chiInPrime s point : List E) (hl : rowLow.length = l) (hs : s.length = 64)
-    (hpt : k + 6 ≤ point.length) :
-    ((Flock.Pending.new (some z) rowLow chiIn chiInPrime α rLc (some s)).terminal point a b).1 =
-      (a + α * b) * mle (fun bx ↦ (lag (skipNodes k hk) bx).eval z) (ptOf (point.take k) k) *
-        mle (sliceOf s) (ptOf ((point.take (k + 6)).drop k) (k + l)) := by
-  obtain ⟨h1, h2, -, -, -, h6, h7, h8⟩ :=
-    pending_fields hkl z α rLc rowLow chiIn chiInPrime (some s) hl
-  have hσ : ((point.take (k + 6)).drop k).length = k + l := by simp; omega
-  have hρ : (point.take k).length = k := by simp; omega
-  simp only [Flock.Pending.terminal, Flock.Pending.skipAt, h1, h2, h6, h7, h8, Option.getD_some,
-    List.take_take, min_eq_left (show k ≤ k + 6 by omega)]
-  rw [tx_skipAt hk z _ hρ, multilinearEval_eq s _ hσ (by rw [hs, hkl]; rfl)]
-  rfl
 
 /-! ## The matrices (item 4) -/
 
@@ -477,42 +389,6 @@ theorem tx_posFin_val {k l : ℕ} (hkl : k + l = 6) (cy : Cube (k + l)) (ch : Cu
     LeanVM.Protocol.cubeSplit_apply, LeanVM.Protocol.cubeIndex]
   rfl
 
-/-- **A matrix stack's extension** at `(x, r_l, r_h, y, χ')` is `matMle`: the row's coordinates
-`(x, r_l, r_h)`, the column's `(y, χ')`, word `row + 2^14 col`. -/
-theorem mleArr_matrixStack (M : Fin (2 ^ 14) → Fin (2 ^ 14) → Bool) {k l : ℕ} (hkl : k + l = 6)
-    (x rl rh y χ' : List E) (hx : x.length = k) (hrl : rl.length = l) (hrh : rh.length = 8)
-    (hy : y.length = k + l) :
-    mleArr (matrixStack M) matrixVars (x ++ rl ++ rh ++ y ++ χ') =
-      matMle (ptOf rl l) (ptOf rh 8) (ptOf χ' 8) (cubeMat hkl M) (ptOf x k) (ptOf y (k + l)) := by
-  have hN : matrixVars = k + l + 8 + (k + l) + 8 := by
-    simp only [matrixVars, blake2sR1csLogSize]
-    omega
-  rw [hN, tx_mleArr_eq, ptOf_append _ _ (by simp only [List.length_append, hx, hrl, hrh, hy]),
-    ptOf_append _ _ (by simp only [List.length_append, hx, hrl, hrh]),
-    ptOf_append _ _ (by simp only [List.length_append, hx, hrl]), ptOf_append _ _ hx,
-    tx_mle_append5, matMle, tx_mle_append2]
-  refine Finset.sum_congr rfl fun bx _ ↦ ?_
-  simp only [matTab, lowPart_append, highPart_append, Finset.sum_mul]
-  conv_rhs => rw [Finset.sum_comm]
-  refine Finset.sum_congr rfl fun bl _ ↦ ?_
-  conv_rhs => rw [Finset.sum_comm]
-  refine Finset.sum_congr rfl fun bh _ ↦ Finset.sum_congr rfl fun by' _ ↦
-    Finset.sum_congr rfl fun ch _ ↦ ?_
-  have hw : ((cubeFin (k + l + 8 + (k + l) + 8)
-      (Fin.append (Fin.append (Fin.append (Fin.append bx bl) bh) by') ch) : Fin _) : ℕ) =
-      (posFin hkl (Fin.append bx bl, bh) : ℕ) + 2 ^ 14 * (posFin hkl (by', ch) : ℕ) := by
-    rw [cubeFin_append_val, cubeFin_append_val, cubeFin_append_val, cubeFin_append_val, tx_posFin_val,
-      tx_posFin_val, cubeFin_append_val]
-    generalize ((cubeFin k bx : Fin _) : ℕ) = A
-    generalize ((cubeFin l bl : Fin _) : ℕ) = B
-    generalize ((cubeFin 8 bh : Fin _) : ℕ) = C
-    generalize ((cubeFin (k + l) by' : Fin _) : ℕ) = D
-    generalize ((cubeFin 8 ch : Fin _) : ℕ) = F
-    rw [hkl]
-    ring
-  rw [tx_matrixStack_getD M _ _ hw, cubeMat]
-  ring
-
 theorem tx_ptOf_bitsE {n : ℕ} (b : Cube n) : ptOf (bitsE (cubeFin n b) n) n = cube b := by
   funext i
   simp only [ptOf, bitsE, cube, bit]
@@ -563,17 +439,6 @@ theorem tx_interp : ∀ (cv : Cube 3 → E) (z : E),
   rw [hcv] at h
   exact h
 
-/-- The pending reduction's claim at the main line (`k = l = 3`). -/
-theorem tx_claim : ∀ (z α rLc : E) (rl : Fin 3 → E) (rh χ' : Fin 8 → E) (s : Cube (3 + 3) → E),
-    (Flock.Pending.new (some z) (List.ofFn rl) (List.ofFn rh) (List.ofFn χ') α rLc
-        (some (List.ofFn fun i : Fin 64 ↦ s ((cubeFin (3 + 3)).symm i)))).claim =
-      rLc + (α ^ 2 * FlockSound.eqEval rh χ' * ∑ cy, lowW (skipNodes 3 (by decide)) z rl cy * s cy +
-        α ^ 3 * eqP χ' ((posFin (k := 3) (l := 3) rfl).symm Lv42.Parameters.Flock.constPos).2 *
-          s ((posFin (k := 3) (l := 3) rfl).symm Lv42.Parameters.Flock.constPos).1) := by
-  intro z α rLc rl rh χ' s
-  rw [pending_claim (k := 3) (l := 3) rfl (by decide) z α rLc _ _ _ _ List.length_ofFn
-    List.length_ofFn List.length_ofFn, tx_ptOf_ofFn, tx_ptOf_ofFn, tx_ptOf_ofFn, tx_sliceOf_ofFn]
-
 /-! ## `FlockTx`: the transcription, bundled -/
 
 end FlockSound.Uni
@@ -619,29 +484,10 @@ end FlockSound.Uni
 /-- info: 'FlockSound.Uni.eqEval_eq' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms FlockSound.Uni.eqEval_eq
-/-- info: 'FlockSound.Uni.knownWeights_eq' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms FlockSound.Uni.knownWeights_eq
-/-- info: 'FlockSound.Uni.pending_claim' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms FlockSound.Uni.pending_claim
-/-- info: 'FlockSound.Uni.pending_fields' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms FlockSound.Uni.pending_fields
-/-- info: 'FlockSound.Uni.pending_terminal' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms FlockSound.Uni.pending_terminal
-/-- info: 'FlockSound.Uni.mleArr_matrixStack' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms FlockSound.Uni.mleArr_matrixStack
 /-- info: 'FlockSound.Uni.tx_fixedChallenges_getD' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms FlockSound.Uni.tx_fixedChallenges_getD
 /-- info: 'FlockSound.Uni.tx_interp' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms FlockSound.Uni.tx_interp
-/-- info: 'FlockSound.Uni.tx_claim' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms FlockSound.Uni.tx_claim
 /-! ## Axiom guards -/
-

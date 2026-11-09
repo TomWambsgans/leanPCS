@@ -29,7 +29,7 @@ theorem layoutOfK_c1 (S : Shape) : layoutOfK S .c1 = c1LayoutK S := rfl
 
 /-- **The ring-switch relation gives Flock's claim** (`DiffsFlockK`), for `κ = h_SHA3`. -/
 theorem diffsFlockK (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ : ℕ} {v : KeccakVariant}
-    (Fl : KFlockSound F κ v) (hκ : D.shape.heights.getD opBlake2s 0 = κ) : DiffsFlockK D Fl := by
+    (Fl : KFlockSound F κ v) (hκ : D.shape.heights.getD opSha3 0 = κ) : DiffsFlockK D Fl := by
   intro s c1 ch fd c2 t vals hz
   unfold diffsK at hz
   split_ifs at hz with hg
@@ -56,7 +56,7 @@ theorem diffsFlockK (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ : ℕ} 
   -- The merged point changes nothing.
   obtain ⟨off, hl⟩ := c1LayoutK_qflock D.shape
   rw [← layoutOfK_c1] at hl
-  have hq11 : D.shape.heights.getD opBlake2s 0 + qflockRowBits = KeccakVm.kWords + κ := by
+  have hq11 : D.shape.heights.getD opSha3 0 + qflockRowBits = KeccakVm.kWords + κ := by
     rw [hκ]; show κ + 11 = 11 + κ; ring
   rw [hq11] at hl
   have hext : ∀ u, termW (layoutOfK D.shape .c1) (some map) (batchVarsK D.shape) .qflock

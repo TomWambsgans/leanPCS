@@ -139,7 +139,7 @@ theorem sim_uprover_old (D : UniKeccak.KDeployment) (input : Vector UInt8 32) (r
       rw [sim_old_qH, sim_old_qF, open_lift]
       exact sim_old_lift _)
     (flockProveH qFs) (flockProveH callKeccak256)
-    (fun logN v q ↦ by rw [flockCommutes_flockProveH, sim_old_qFs]) PcsQuotient.nonceFuel D.a0Root D.b0Root
+    (fun logN v q ↦ by rw [flockCommutes_flockProveH, sim_old_qFs]) PcsQuotient.nonceFuel
     D.programIv (honestTrace D input rows q)
   rw [sim_old_qFs, sim_old_qH, sim_old_qF] at h
   exact h
@@ -155,7 +155,7 @@ theorem sim_uprover_new (h : List UInt8 → Digest) (D : UniKeccak.KDeployment) 
       rw [sim_new_qH, sim_new_qF, open_lift]
       exact sim_new_lift h _)
     (flockProveH qFs) (flockProveH fun x ↦ (pure (h x) : OracleComp KeccakCalls Digest))
-    (fun logN v q ↦ by rw [flockCommutes_flockProveH, sim_new_qFs]) PcsQuotient.nonceFuel D.a0Root D.b0Root
+    (fun logN v q ↦ by rw [flockCommutes_flockProveH, sim_new_qFs]) PcsQuotient.nonceFuel
     D.programIv (honestTrace D input rows q)
   rw [sim_new_qFs, sim_new_qH, sim_new_qF] at e
   exact e

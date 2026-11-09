@@ -27,7 +27,7 @@ open OracleSpec OracleComp
 open scoped ENNReal
 
 attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
-  LeanVM.Protocol.Compile.instFintypeKState UniStatement.layoutWords UniStatement.setupStack
+  LeanVM.Protocol.Compile.instFintypeKState UniStatement.setupStack
 
 /-! ## The bound in bits, at `2^35 / |E|` -/
 
@@ -93,16 +93,6 @@ theorem uniBound128_le_bits35 (Q : ℕ) (hQ : Q ≤ 2 ^ 64) :
 end Bits
 
 /-! ## The seed is `name ‖ iv ‖ input`, the IV an answer the adversary asked -/
-
-theorem eval_ivKC3 (D : Deployment) (π : UPf) (T : KTable) :
-    evalWithAnswerFn (QueryImpl.ofFn T) (ivKC3 D π) = viewT T (ivInput3 D π.roots) := by
-  simp only [ivKC3, hash256, callKeccak256, evalWithAnswerFn_bind, evalWithAnswerFn_pure]
-  rfl
-
-theorem log_ivKC3 (D : Deployment) (π : UPf) (T : KTable) :
-    (tableQueryLog (ivKC3 D π) T).map Sigma.fst = [Sum.inl (ivInput3 D π.roots)] := by
-  simp only [ivKC3, hash256, callKeccak256, tableQueryLog_bind, tableQueryLog_pure]
-  rfl
 
 end UniSound
 
