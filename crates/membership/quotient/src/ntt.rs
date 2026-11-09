@@ -853,13 +853,44 @@ unsafe fn run<T: Kind>(data: *mut u64, src: Option<*const u64>, rows: usize, shi
 }
 
 /// `f(i)` for every `i < n`: by the pool, or by the calling worker alone (`serial`), in the same order of results.
+/// Many tasks go by [`affine`] ranges.
 #[inline(always)]
 fn tasks(n: usize, serial: bool, f: impl Fn(usize) + Sync) {
     if serial {
         (0..n).for_each(f);
+    } else if n >= 4 * parallel::num_threads() {
+        affine(n, f);
     } else {
         parallel::for_each(n, f);
     }
+}
+
+/// `f(i)` for every `i < n` by the pool, in one contiguous range of tasks a worker, each range first offered to the
+/// same thread on every call (then any range left unclaimed to whoever is free). A column's passes split their tasks
+/// in order of rows, so a transform's leaves and its next wide pass (and back-to-back transforms' last and first
+/// passes) give each thread the rows it wrote last: in its own L2 or its CCD's L3. With the pool's shared claims,
+/// rows land on any thread, and a column about as large as the L3s together (`2^25` words, 256 MiB on the 8-CCD Zen 5
+/// here) is read mostly from other CCDs' L3s, slower than from memory. One column's transforms back to back, 64
+/// threads: `2^25` words 9.8–10.3 → 4.4–5.5 ms, `2^24` 3.7 → 2.0–3.0 ms, `2^26` 11–14 → 10 ms. The same tasks, so the
+/// same values.
+fn affine(n: usize, f: impl Fn(usize) + Sync) {
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
+    thread_local! {
+        /// A thread's place among the ranges, the same on every call.
+        static HOME: usize = NEXT.fetch_add(1, Ordering::Relaxed);
+    }
+    let t = parallel::num_threads();
+    let claimed: Vec<AtomicBool> = (0..t).map(|_| AtomicBool::new(false)).collect();
+    let claim = |r: usize| !claimed[r].load(Ordering::Relaxed) && !claimed[r].swap(true, Ordering::Relaxed);
+    let run = |r: usize| (r * n / t..(r + 1) * n / t).for_each(&f);
+    parallel::for_each(t, |_| {
+        let home = HOME.with(|h| *h) % t;
+        if claim(home) {
+            run(home);
+        }
+        (0..t).filter(|&r| claim(r)).for_each(run);
+    });
 }
 
 /// [`run`], by the pool or by the calling worker alone (`serial`, for a caller that runs many transforms at once,
