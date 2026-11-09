@@ -3,7 +3,9 @@
 // leanVM's WHIR (`pcs`, vendored from leanVM commit c445e3d5) unchanged, and the check is its verifier (`verifier`).
 // MIT OR Apache-2.0; see AGENTS.md.
 //! What `PCS_OPEN` checks, for the univariate PIOP's commitments: one point claim on a whole stack (SPEC.md §8, the
-//! point-claim ABI), proven and verified with leanVM's WHIR at rate `1/2`, `64` lanes at its first fold.
+//! point-claim ABI), proven and verified with leanVM's WHIR at rate `1/2`, `64` lanes at its first fold, on the
+//! recursion's ladder (version 3: `pcs::whir::RECURSION_SCHEDULE`, rates `1/2, 1/4, 1/8, ...`; the commitment is
+//! leanVM's).
 //!
 //! The claim is the stack's multilinear (all `2^vars` words, whatever they hold) at a point. WHIR commits only the
 //! stack's whole lanes that carry data and reads the others as zero, and its prover needs a weight that vanishes on
@@ -15,7 +17,7 @@ use std::sync::Mutex;
 use fiat_shamir::digest_words;
 use fiat_shamir::merkle::Hash;
 use fiat_shamir::transcript::{Proof, ProverState};
-use pcs::whir::{LaneTensor, commit_tree_in, config_for_rate, recursive_prover_with_lane_tensors};
+use pcs::whir::{LaneTensor, RECURSION_SCHEDULE, commit_tree_in, config_for_schedule, recursive_prover_with_lane_tensors};
 use primitives::field::{F64, F192};
 use primitives::hash::hash as keccak256;
 
@@ -25,8 +27,12 @@ pub const LANE_FOLD: usize = 6;
 pub const LOG_INV_RATE: usize = 1;
 const LABEL: &[u8; 20] = b"leanvm-univariate-op";
 /// The version of this opening (its transcript, WHIR's configuration at c445e3d5): 2 since the layout word is
-/// `PCS_OPEN`'s 32 bytes (SPEC.md §13, F2).
-pub const VERSION: u64 = 2;
+/// `PCS_OPEN`'s 32 bytes (SPEC.md §13, F2); 3 since WHIR's deeper levels follow the recursion's ladder
+/// (`pcs::whir::RECURSION_SCHEDULE`, `verifier::whir::Ladder::Recursion`). The layout word carries it, byte
+/// [`VERSION_BYTE`]: a precompile reads the parameters off the word, and accepts no other version here.
+pub const VERSION: u64 = 3;
+/// The layout word's byte that holds [`VERSION`] (`contract::layout_word`).
+pub const VERSION_BYTE: usize = 21;
 
 /// A commitment: its root and Merkle tree, the stack's variables and the words its blocks place, and the codeword
 /// when it is kept, until an opening takes it.
@@ -93,7 +99,8 @@ fn eq_bits(index: usize, point: &[F192]) -> F192 {
 pub fn open(words: &[F64], committed: &Committed, layout: &[u8; 32], point: &[F192], value: F192) -> Proof {
     let vars = committed.vars;
     assert_eq!(point.len(), vars);
-    let config = config_for_rate(vars, LOG_INV_RATE).expect("a WHIR shape leanVM supports");
+    assert_eq!(layout[VERSION_BYTE] as u64, VERSION, "a layout word of this version");
+    let config = config_for_schedule(vars, LOG_INV_RATE, RECURSION_SCHEDULE).expect("a supported WHIR shape");
     let mut ps = ProverState::new(digest_words(&iv(layout, vars, point, value)), digest_words(&[0; 32]));
     ps.add_root(&committed.root);
     let log_lane = vars - LANE_FOLD;
@@ -136,8 +143,9 @@ pub fn wire_proof(proof: &Proof) -> verifier::Proof {
     }
 }
 
-/// Check an opening of `stack(point) = value` against `root`, with leanVM's WHIR verifier: the stack's variables and
-/// placed words are the layout word's (bytes 24 and 25..32).
+/// Check an opening of `stack(point) = value` against `root`, with leanVM's WHIR verifier on the recursion's ladder:
+/// the stack's variables and placed words are the layout word's (bytes 24 and 25..32), and its version (byte
+/// [`VERSION_BYTE`]) must be [`VERSION`].
 pub fn verify(
     root: &Hash,
     layout: &[u8; 32],
@@ -152,7 +160,7 @@ pub fn verify(
         bytes[1..].copy_from_slice(&layout[25..]);
         u64::from_be_bytes(bytes)
     };
-    if point.len() != vars {
+    if point.len() != vars || layout[VERSION_BYTE] as u64 != VERSION {
         return Err(verifier::VerifierError::WhirShape);
     }
     let mut transcript = Transcript::new(proof, Digest(iv(layout, vars, point, value)), Digest([0; 32]), true);
@@ -179,7 +187,8 @@ pub fn verify(
         });
         eq_low * on_lanes
     };
-    verifier::whir::verify_whir(
+    verifier::whir::verify_whir_on(
+        verifier::whir::Ladder::Recursion,
         &mut transcript,
         vars,
         placed,

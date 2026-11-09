@@ -72,19 +72,18 @@ pub fn quotient_chunks(log_n: usize) -> Vec<(usize, usize)> {
     chunks
 }
 
-/// The certified rate-1/2 query ladders (`params/whir_params.py --large`, leanerVM's `largeQueries`), by stack size:
-/// what `pcs::whir::config_for_rate(log_n, 1)` must give for the stacks π2 commits (tested).
-pub const CERTIFIED_QUERIES: [(usize, &[usize]); 5] = [
-    (24, &[224, 56, 32, 23, 17]),
-    (25, &[224, 56, 32, 23, 17]),
-    (26, &[224, 56, 32, 23, 18]),
-    (27, &[225, 56, 32, 23, 18]),
-    (28, &[225, 56, 32, 23, 18, 14]),
-];
+/// The version of π2's openings, and of π1's (`leanvm_univariate::prover::opening::VERSION`): WHIR on the recursion's
+/// ladder (`quotient::opening::Version::V3`, `pcs::whir::RECURSION_SCHEDULE`), its query counts per stack size
+/// `params/whir_params.py --recursion`'s (tested against the verifier's table).
+pub const OPENING_VERSION: opening::Version = opening::Version::V3;
 
-/// The smallest stack leanerVM's certified parameters cover (`params/whir_params.py --large`): circuits of
-/// `2^CERTIFIED_FROM` positions or more commit no smaller stack (D32v's `W`, `2^23` words, takes a `2^24` stack, half
-/// its lanes absent); smaller circuits, the tests', take [`MIN_LOG_STACK`].
+/// The layout word's byte that holds the opening's version (as π1's, `leanvm_univariate::prover::opening::
+/// VERSION_BYTE`).
+pub const VERSION_BYTE: usize = 21;
+
+/// The smallest stack leanerVM's certified parameters cover at version 2 (`params/whir_params.py --large`), kept for
+/// the layouts: circuits of `2^CERTIFIED_FROM` positions or more commit no smaller stack (D32v's `W`, `2^23` words,
+/// takes a `2^24` stack, half its lanes absent); smaller circuits, the tests', take [`MIN_LOG_STACK`].
 pub const MIN_CERTIFIED_STACK: usize = 24;
 pub const CERTIFIED_FROM: usize = 20;
 
@@ -188,15 +187,17 @@ pub const QUOTIENT_CODE: u16 = 0x5602;
 pub const SETUP_CODE: u16 = 0x5603;
 
 /// A `PCS_OPEN` layout word of π2's tables, in π1's format (`leanvm_univariate::contract::
-/// layout_word`): bytes 0..8 the tag `"pi2"` then `log_n` (π1's are its shape's bytes, each below 32), the table's
-/// code (bytes 22..24), its variables (byte 24) and the words its lanes fill (`placed`, bytes 25..32). A precompile's
-/// registry maps it to the layout (`quotient::opening::Layout`, a function of `log_n` and the code: [`layouts`]),
-/// whose opening it checks (`quotient::opening::verify`, whose transcript hashes that layout's id).
+/// layout_word`): bytes 0..8 the tag `"pi2"` then `log_n` (π1's are its shape's bytes, each below 32), the opening's
+/// version (byte 21, [`OPENING_VERSION`]), the table's code (bytes 22..24), its variables (byte 24) and the words its
+/// lanes fill (`placed`, bytes 25..32). A precompile's registry maps it to the layout (`quotient::opening::Layout`, a
+/// function of `log_n` and the code: [`layouts`]), whose opening it checks in that version
+/// (`quotient::opening::verify_with`, whose transcript hashes that layout's id and the version).
 pub fn layout_word(code: u16, log_n: usize, layout: &Layout) -> [u8; 32] {
     assert!(layout.vars < 256 && layout.placed() < 1 << 56 && log_n < 256);
     let mut word = [0u8; 32];
     word[..4].copy_from_slice(b"pi2\0");
     word[4] = log_n as u8;
+    word[VERSION_BYTE] = OPENING_VERSION.number() as u8;
     word[22..24].copy_from_slice(&code.to_be_bytes());
     word[24] = layout.vars as u8;
     word[25..].copy_from_slice(&(layout.placed() as u64).to_be_bytes()[1..]);
@@ -1367,7 +1368,7 @@ pub fn open(proved: Proved, setup: &Setup) -> (Reduced<E>, [Hash; 2], Openings) 
     let openings = Openings {
         witness: timed("W", &mut || {
             let (table, committed) = w.take().expect("once");
-            opening::open_owned(table, committed, &[claim(&reduced.witness)])
+            opening::open_owned_with(OPENING_VERSION, table, committed, &[claim(&reduced.witness)])
         }),
         quotient: timed("Q", &mut || {
             let (table, committed) = q.take().expect("once");
@@ -1375,7 +1376,8 @@ pub fn open(proved: Proved, setup: &Setup) -> (Reduced<E>, [Hash; 2], Openings) 
                 stack: table.stack,
                 spare: &setup.spare,
             };
-            opening::open_owned_stack(
+            opening::open_owned_stack_with(
+                OPENING_VERSION,
                 &table.layout,
                 stack,
                 committed,
@@ -1383,13 +1385,14 @@ pub fn open(proved: Proved, setup: &Setup) -> (Reduced<E>, [Hash; 2], Openings) 
             )
         }),
         setup: timed("setup", &mut || {
-            opening::open(&setup.table, &setup.committed, &[claim(&reduced.setup)])
+            opening::open_with(OPENING_VERSION, &setup.table, &setup.committed, &[claim(&reduced.setup)])
         }),
     };
     (reduced, roots, openings)
 }
 
-/// What `PCS_OPEN` checks of π2's three calls: each opening against its root and layout, with `opening::verify`.
+/// What `PCS_OPEN` checks of π2's three calls: each opening against its root and layout, with `opening::verify_with`
+/// in [`OPENING_VERSION`].
 pub fn verify_openings(
     log_n: usize,
     reduced: &Reduced<E>,
@@ -1398,7 +1401,10 @@ pub fn verify_openings(
     openings: &Openings,
 ) -> Result<(), ::verifier::VerifierError> {
     let l = layouts(log_n);
-    use opening::{verify, wire_proof};
+    use opening::wire_proof;
+    let verify = |layout: &Layout, root: &Hash, claims: &[opening::Claim], proof: &::verifier::Proof| {
+        opening::verify_with(OPENING_VERSION, layout, root, claims, proof)
+    };
     verify(
         &l.witness,
         &roots[0],
@@ -1438,20 +1444,27 @@ pub fn claims_hold(proved: &Proved, setup: &Setup) -> [bool; 4] {
 mod tests {
     use super::*;
 
-    /// π2's stacks are committed and opened at the certified rate-1/2 parameters: `W` (`2^m`), `Q` (`2^(m+4)`), the
-    /// setup (`2^(m+1)`), for D16v (`m = 24`) and D32v (`m = 23`), all within `2^24 … 2^28`.
+    /// π2's stacks are opened on the recursion's ladder at rate 1/2, the prover's configuration (`pcs`'s eta search)
+    /// the verifier's (`verifier::whir::ladder`), at every stack size `2^15 … 2^28` (D16v's `W`, `Q`, setup: `2^24`,
+    /// `2^28`, `2^25`; D32v's `2^24`, `2^27`, `2^24`; the tests' from `2^15`); and the layout words carry the version.
     #[test]
-    fn stacks_take_the_certified_queries() {
+    fn stacks_take_the_recursion_ladder() {
         assert_eq!(opening::LOG_INV_RATE, 1);
+        assert_eq!(OPENING_VERSION.schedule(), pcs::whir::RECURSION_SCHEDULE);
+        for log_n in 15..=28 {
+            let config = pcs::whir::config_for_schedule(log_n, 1, OPENING_VERSION.schedule()).expect("a WHIR shape");
+            let shapes = config.level_shapes(log_n);
+            let (folds, rates, queries) =
+                ::verifier::whir::ladder(log_n, 1, OPENING_VERSION.ladder()).expect("a verifier shape");
+            assert_eq!(
+                (shapes.ks, &config.log_inv_rates, &config.queries[..]),
+                (folds, &rates, queries),
+                "2^{log_n} words"
+            );
+        }
         for m in [23, 24] {
-            let l = layouts(m);
-            for layout in [&l.witness, &l.quotient, &l.setup] {
-                let config = pcs::whir::config_for_rate(layout.log_n, opening::LOG_INV_RATE).expect("a WHIR shape");
-                let certified = CERTIFIED_QUERIES
-                    .iter()
-                    .find(|(n, _)| *n == layout.log_n)
-                    .map(|(_, q)| *q);
-                assert_eq!(Some(&config.queries[..]), certified, "2^{} words", layout.log_n);
+            for word in layout_words(m) {
+                assert_eq!(word[VERSION_BYTE] as u64, OPENING_VERSION.number());
             }
         }
     }

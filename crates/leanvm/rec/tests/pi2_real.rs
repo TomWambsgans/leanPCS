@@ -185,6 +185,17 @@ fn real_end_to_end() {
                 format!("{:?}", (&openings.witness, &openings.quotient, &openings.setup)).as_bytes()
             ))
         );
+        // The openings' sizes: the scalars (24 bytes) and the Merkle rows and siblings.
+        let bytes = |p: &fiat_shamir::transcript::Proof| {
+            24 * p.stream.len()
+                + (p.merkle.iter())
+                    .map(|m| m.leaf_data.iter().map(|r| 8 * r.len()).sum::<usize>() + 32 * m.sibling_hashes.len())
+                    .sum::<usize>()
+        };
+        println!(
+            "pi2 openings W, Q, setup: {:?} bytes",
+            [&openings.witness, &openings.quotient, &openings.setup].map(bytes)
+        );
         assert_eq!(
             verify_openings(circuit.log_n, &reduced, &roots, &setup.root(), &openings),
             Ok(())

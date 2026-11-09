@@ -4,7 +4,7 @@
 //! coordinates are boolean or not.
 
 use super::*;
-use pcs::whir::{commit as whir_commit, recursive_prover_with_basis};
+use pcs::whir::{commit as whir_commit, config_for_rate, recursive_prover_with_basis};
 use primitives::test_rng::Rng;
 
 /// The opening of commit d940553, verbatim but for taking the codeword from a fresh `pcs::whir::commit` and for the
