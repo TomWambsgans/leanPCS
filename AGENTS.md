@@ -58,7 +58,9 @@ one χ gate on bits (3,878,612 of 2^22 rows), its claims opened by leanVM's WHIR
   [`SPEC.md`](docs/leanvm/univariate/SPEC.md), [`KECCAK.md`](docs/leanvm/univariate/KECCAK.md),
   [`PROVER.md`](docs/leanvm/univariate/PROVER.md).
 - `crates/leanvm/rec` (π2): a univariate SNARK of π1-rec3's verifier minus its openings: the recorded verifier
-  compiled into π2's circuit (`circuit`, D16v, `2^24` positions), π2's PIOP and its contract (`pi2`), which runs π2's
+  compiled into π2's circuit (`circuit`, D16v, `2^24` positions; the witness replayed per proof from a plan made once
+  per circuit, `circuit::plan`), π2's PIOP (π2v2: the ports out of the copy argument, the pushes `P` committed in `Q`
+  with their definition, `q` below `2N`) and its contract (`pi2`), which runs π2's
   verifier and passes π1's and π2's claims to `PCS_OPEN`. Design: [`SPEC-REC.md`](docs/leanvm/rec/SPEC-REC.md),
   [`PI2.md`](docs/leanvm/rec/PI2.md), [`SPEC-POINTS.md`](docs/leanvm/rec/SPEC-POINTS.md).
 - `crates/leanvm/statement` (`leanvm_statement`): the shared parts: the VM's tables, flushes and constraints, Flock's
@@ -89,7 +91,13 @@ cargo bench -p quotient --bench membership                            # prover /
 cargo test --release -p evm -- --ignored --nocapture gas_report       # gas of the membership contract
 cargo test --release -p leanvm_univariate -p leanvm_rec               # the leanVM line
 LEANVM_TRACE=<trace> cargo test --release -p leanvm_rec --test pipeline -- --ignored --nocapture   # trace → π1 → π2, timed
+cargo test --release -p leanvm_rec --test pi2_bench -- --ignored --nocapture                    # π2's prove/open alone (PI2_PROFILE=1)
 ```
+
+Build with `RUSTFLAGS="-C target-cpu=native"`. On a Zen 5 host (AMD EPYC 9355P) rustc 1.99.1's LLVM crashes (SIGILL in
+`SelectionDAG::Combine`) on some test crates with `native` or `znver4`; there,
+`-C target-cpu=x86-64-v4 -C target-feature=+gfni,+vpclmulqdq,+vaes,+pclmulqdq,+avx512vbmi,+aes,+bmi2` covers every
+`target_feature` the code tests and measured the same.
 
 ## Numbers (M4 Max, 16 cores, but where a machine is named)
 
@@ -97,15 +105,15 @@ Gas is transaction gas without the 21,000 base (EIP-7623), `PCS_OPEN` at a claim
 
 | | ZK Merkle membership | leanVM by recursion (128 signatures) |
 |---|---|---|
-| Prover | 2.2 s (reduction 1.46 s, openings 0.76 s), 5.9 GiB, before the x86 work. h1 (Ryzen 7 PRO 8700GE, AVX-512), load 9–14: 3.6 s (reduction 2.46 s, openings 1.14 s), 6.2 GiB, against 8.4 s (6.45 s, 1.92 s) before. h2 (Core Ultra 7 265, AVX2), load 10: 2.3 s (1.5 s, 0.8 s), against 5.0 s | trace → π1-rec3 → π2 and openings: 4.1 s per proof, 0.9 s per circuit once, 12.5 GB (`tests/pipeline.rs`, load 2–7) |
-| Calldata | 252 B | 980 B |
-| Gas | 14,289 execution, **18,309** transaction | 28,325 execution, **43,309** transaction (62,720 under EIP-7976) |
+| Prover | 2.2 s (reduction 1.46 s, openings 0.76 s), 5.9 GiB, before the x86 work. h1 (Ryzen 7 PRO 8700GE, AVX-512), load 9–14: 3.6 s (reduction 2.46 s, openings 1.14 s), 6.2 GiB, against 8.4 s (6.45 s, 1.92 s) before. h2 (Core Ultra 7 265, AVX2), load 10: 2.3 s (1.5 s, 0.8 s), against 5.0 s | trace → π1-rec3 → π2 and openings: **0.69 s per proof** (π1 with its openings 0.39, π2 0.195 + 0.106 openings), 1.7 s per circuit once, 13.8 GB (`tests/pipeline.rs`; AMD EPYC 9355P, 64 threads, load 4–19, 2026-11-09; 2.18 s before, 3.1×). The Mac: 4.1 s before the work |
+| Calldata | 252 B | 1,004 B |
+| Gas | 14,289 execution, **18,309** transaction | 27,641 execution, **43,009** transaction (64,256 under EIP-7976) |
 | Claims | 4 in 3 calls | 7 in 6 calls |
-| Deployment | 6,308-byte code, 1,426,798 gas | one contract of 13.5 KB |
+| Deployment | 6,308-byte code, 1,426,798 gas | one contract of 13.2 KB |
 
 - Membership, at a claim price c: 18,309 / 26,309 / 38,309 / 98,309 gas for c = 0 / 2,000 / 5,000 / 20,000. Its
   verifier: reduction < 1 ms, openings 5 ms (248 / 278 / 333 KiB).
-- leanVM: at 400 signatures, 44,113 transaction gas. π1 alone as a contract costs 358,957 transaction gas at 128
+- leanVM: at 400 signatures, 43,777 transaction gas. π1 alone as a contract costs 358,957 transaction gas at 128
   signatures (8,020 B calldata, 3 claims). **Capacity**: `q_flock` is `2^11` words a permutation, so `C1` reaches
   WHIR's `2^28` words at about 470 signatures (1,000 do not fit, `tests/keccak_vm.rs`).
 
@@ -147,9 +155,12 @@ permutation; `formal/EndToEnd` proves them ([`formal/README.md`](formal/README.m
   vectors) and its knowledge soundness at the reference shape, and π2's circuit = π1-rec3's verifier at 128
   signatures (`formal/RecGraphKeccak`); the recursion's end theorem remains. Until the merge, `formal/` here still
   holds the removed BLAKE2s VM's development (`Lv42`, `UniStatement`, `UniSound`, `UniComplete`, `FlockSound`,
-  `RecGraph`, `RecStatement`, `RecCompose`, ...).
+  `RecGraph`, `RecStatement`, `RecCompose`, ...). π2's PIOP is now π2v2; `formal/RecPiop`, `RecStatement` and
+  `RecCompose` state π2v1, and what changes for them (and `tests/lean_pi2_prover.rs`' output) is listed in
+  [`PI2.md`](docs/leanvm/rec/PI2.md) §10. π1 and π2's circuit are unchanged.
 - **Modelled, not proved.** WHIR's openings are at leanVM's ≈ 129-bit certificate each. `params/leanvm_univariate_params.py`
-  and `params/leanvm_rec_params.py` still model the old BLAKE2s π1 at 1,000 signatures.
+  and `params/leanvm_rec_params.py` still model the old BLAKE2s π1 at 1,000 signatures; π2's rounds there are π2v2's
+  (D16v: PIOP 141.3 bits, its weakest round `t`).
 
 ## Security notes
 
@@ -171,6 +182,11 @@ permutation; `formal/EndToEnd` proves them ([`formal/README.md`](formal/README.m
   fixed BLAKE2s-era roots (`SetupRoots::a0`, `b0`) and two fixed layout words, kept so the committed vectors stay
   valid (dropping them means regenerating the vectors).
 - Possible gas saving: absorb the membership index root in the byte order `PCS_OPEN` takes (−132 gas).
+- The recursion prover (0.69 s a proof on 64 threads): WHIR's deeper levels at a gentler rate ladder (leanVM's is
+  fixed, 1/16, 1/128, …; one rate bit a level would cut the openings' levels 1+, about 60–80 ms a proof, but changes
+  `PCS_OPEN`'s WHIR and needs leanerVM's certificate redone); π1's tables' prefix quotients batched stage by stage
+  across tables (15–20 ms); a lower-degree `SHA3` leaf by committing partial products of its fingerprints (20–25 ms, a
+  π1 format change).
 
 ## Provenance and licensing
 
@@ -182,7 +198,12 @@ leanEthereum) and is licensed, like leanVM, under the MIT license ([`LICENSE-MIT
   formalizes): `crates/vendor/leanvm-c445e3d5/*`, unchanged but for a header line, except: `verifier/src/lib.rs`
   makes the WHIR verifier public; `pcs`'s `src/whir.rs`, `src/whir_ntt_ext.rs` and `src/ntt/additive_ntt_f64.rs` add
   low-memory paths (the last also fixes an aliasing bug of the in-place encodes); `primitives/src/hash.rs` and
-  `fiat_shamir/src/lib.rs` carry test-only trace hooks behind a `trace` feature. The workspace `Cargo.toml` and
+  `fiat_shamir/src/lib.rs` carry test-only trace hooks behind a `trace` feature. Prover speedups, the same commitments
+  and proofs (each file's header lists them): `pcs`'s `src/whir.rs`, `src/whir_induce.rs`,
+  `src/ntt/additive_ntt_f64.rs` (the encode into the kept codeword in place, the gathers, the induces, the E rounds, a
+  commit that keeps its codeword) and `benches/lanes.rs` (new); `primitives/src/hash.rs` (the AVX-512 batched
+  Keccak-256's transposes in registers); `parallel/src/lib.rs` (affine dispatches: each worker the same contiguous
+  range of tasks every call); `bench/src/allocator.rs` (jemalloc's extents on transparent huge pages). The workspace `Cargo.toml` and
   `rustfmt.toml` follow leanVM's.
 - **Vendored, leanVM `42422001`** (its Flock prover, `crates/flock`): `crates/vendor/flock-42422001` (package `flock`),
   ported onto `c445e3d5`'s `primitives`, `parallel` and `pcs`, so that one leanVM commit is vendored (`42422001`'s own

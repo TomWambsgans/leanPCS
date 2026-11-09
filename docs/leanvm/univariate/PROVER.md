@@ -108,7 +108,9 @@ transcription's differential vectors.
      `λ_j` on block `j`, whose inverse NTT is `U_j = Q_j + λ_j R_{j+1}`, and `λ_j + 1` on the later blocks, where
      `R_{j+1} = R_j + U_j`; then `Q_j = U_j + λ_j R_{j+1}` from the last block back.
    - The columns a numerator reads, and `R`'s three limbs, are transformed eight at a time, one transform a piece of
-     at most `2^r` points; the numerator is computed eight points at a time (`prints.rs`), `Z_act` and `Z_pad` as
+     at most `2^r` points (halved while a round has too few tasks for the pool), each piece's transform by one worker,
+     a round of them in one dispatch in thread-affine ranges; the interpolation inverse-transforms every block first,
+     then adds the earlier blocks' folds; the numerator is computed eight points at a time (`prints.rs`), `Z_act` and `Z_pad` as
      their cosets' factors' products there. Where `quotient::ntt`'s lanes are portable code (aarch64), the longest
      columns' pieces are transformed in grouped rounds and each push fingerprint is derived from its pull's sum
      (`quotients::prefix_quotient`, `prints::PullPush`): the `SHA3` leaf's 86 columns are the case it serves.
@@ -152,8 +154,10 @@ rows of 8 bytes or more. The skip module proves the zerocheck for any `3 ≤ k �
   (`round1_words`); the 16 medium positions are one `BitFold` of 16-byte rows; the C part is computed on `S` and
   extended to `Λ`, as leanVM does;
 - **bit rounds**: leanVM's pair kernels at levels `0, 2, ..` on rows of `2^(k + t)` bits, extended to rows of 1, 2,
-  4 bytes (`BitFold`, GFNI included); at `k = 3`, level 0 reads its products from the table of all 65,536 byte
-  products (`multilinear::bit_round_pair_bytes`); on aarch64 (`bit_round_pair_bytes_scaled`) the quads' two lowest eq
+  4 bytes (`BitFold`, GFNI included); at `k = 3`, level 0 is GF(2) matrix products on GFNI where it is available
+  (`bytes_gfni`, no table or gathers), and otherwise reads its products from the table of all 65,536 byte
+  products (`multilinear::bit_round_pair_bytes`); the pair passes at levels 2 and 4 multiply straight from the GFNI
+  fold's limb-major registers (`fold_quads`, `pair_lanes`); on aarch64 (`bit_round_pair_bytes_scaled`) the quads' two lowest eq
   coordinates are in 4 such tables (6 MiB, `e_s[la] T[x] T[y]`), so a group of 4 quads sums its 8 slots by lookups and
   pays 8 products by eq, a quarter of the products (128 signatures, 16 threads: level 0 0.168 → 0.107 s); the
   storing pass at the level whose rows are 64 or 128 bytes;
@@ -196,6 +200,33 @@ Flock end to end on the Keccak-f block is `tests/flock_keccak.rs` (`SPEC-FLOCK.m
 | batching sumcheck | 0.38 |
 | openings: WHIR (3) | 0.66 |
 | **total** | **3.65** |
+
+**On an AMD EPYC 9355P** (Zen 5, 32 cores / 64 threads, AVX-512 with GFNI and VPCLMULQDQ; 2026-11-09, load 13–16,
+median of 5 warm passes; the same proof), after the speedups of that day, against the same benchmark before them:
+
+| phase (medians) | before | after |
+|---|---:|---:|
+| the Keccak-f blocks | 0.008 | 0.007 |
+| `C1` and setup: inverse NTTs to basis `B` | 0.036 | 0.008 |
+| `C1` and setup: WHIR commits | 0.074 | 0.038 |
+| Flock: zerocheck, lincheck, slices | 0.196 | 0.090 |
+| heap | 0.019 | 0.013 |
+| quotient: tree | 0.032 | 0.014 |
+| quotients: leaves | 0.269 | 0.069 |
+| quotient: constraints `Q_W` | 0.078 | 0.025 |
+| `C2`: chunks in basis `B` | 0.027 | 0.005 |
+| `C2`: WHIR commit | 0.021 | 0.016 |
+| values at `t`, claims, weights | 0.011 | 0.010 |
+| batching sumcheck | 0.087 | 0.040 |
+| openings: WHIR (3) | 0.085 | 0.065 |
+| **total** | **0.94** | **0.40** |
+
+On 64 threads most phases were bound by the pool's dispatches rather than by arithmetic: transforms of `2^14`–`2^16`
+points a dispatch each, `parallel::for_each_mut`'s 64 items a task, one-thread memsets, per-worker accumulators reduced
+on the dispatcher. Each piece's transform now runs on one worker, a round of them a dispatch, and columns share
+dispatches. Columns near `2^25` words (the 8 CCDs' L3 together) read rows another CCD wrote last under shared task
+claims; the thread-affine dispatches (`parallel::for_each_affine`, `affine`) give each worker the same range every
+call (a `2^25`-point inverse transform 9.8 → 4.4–5.5 ms).
 
 The 400-signature phase table, the h1 figures and leanVM `9d50c92a3`'s own prover on the same machines are in
 `KECCAK.md` ("Measured").

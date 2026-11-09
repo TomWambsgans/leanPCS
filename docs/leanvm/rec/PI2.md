@@ -61,8 +61,16 @@ jobs, `RUSTFLAGS="-C target-cpu=x86-64-v4 -C target-feature=+gfni,+vpclmulqdq,+v
 End to end (`tests/pipeline.rs` on a 128-signature trace, `PIPELINE_REPEAT=5`, the same box, 4 interleaved runs each,
 medians): π2's proof 0.327 → 0.258 s, its openings 0.148 → 0.141 s, the pipeline (π1-rec3's proof and openings,
 π2's proof and openings) 1.385 → 1.281 s (π1's share, unchanged code, 0.91 and 0.87 s). `q`'s coefficients gain
-little (four transforms of `2N` against three of `4N`): `quotient::ntt`'s transform is slower a word at `2^25` words
-than at `2^24` or `2^26` (a microbenchmark: 9.5 ms at `2^25`, 3.7 ms at `2^24`, 11.8 ms at `2^26`).
+little (four transforms of `2N` against three of `4N`): `quotient::ntt`'s transform was slower a word at `2^25` words
+than at `2^24` or `2^26` (a microbenchmark: 9.5 ms at `2^25`, 3.7 ms at `2^24`, 11.8 ms at `2^26`; since fixed by
+thread-affine dispatches, 4.4–5.5 ms: `PROVER.md`'s "Measured").
+
+Since then (2026-11-09, the same box, `tests/pi2_bench.rs`, median of 5, load 10–15): **prove 0.196 s, open 0.104 s**
+(`W` 0.013; `h`, `P` on `V_m` 0.018; on `D` 0.087, of which transforms 0.027, numerators 0.040, coefficients 0.020;
+`Q`'s table and commit 0.074; openings `W` 0.010, `Q` 0.081, setup 0.013), peak 9.9 GB: `Q` and `W` keep their
+codewords until their openings (+1.8 GB in the pipeline), `Q`'s stack is the setup's from one proof to the next, the
+transforms are `quotient::ntt`'s multi-column ones, and the copy sum is checked as `h`'s top coefficient. End to end,
+the pipeline takes 0.69 s a proof (π2's proof 0.195 s, its openings 0.106 s; `KECCAK.md`).
 
 ## 1. What π2 proves
 
@@ -173,7 +181,7 @@ words: π1's as the vector's; π2's `prover::layout_word` (§8).
 
 1. `w`'s novel coefficients (`quotient::ntt`), its `B` coefficients (subset sums): `W`, committed.
 2. `α, β, γ`; on `V_m` (`h_on_v`, eight rows at a time, one batched inversion a run of 4,096), in `Q`'s stack: `P_v`
-   (a pair's formula of its row, a forward's or a hole's own value) and `h` (zero at a hole), checked to sum to zero,
+   (a pair's formula of its row, a forward's or a hole's own value) and `h` (zero at a hole), its sum checked to be zero (as `h`'s top novel coefficient),
    and the ports checked (`T` zero at every hole; for any other `w`, `prove_with` sets `h = T/(d_pull d_push)` at a
    dishonest hole, so the identity still holds and only the sum's claim is false: §6); `h`'s and `P`'s novel
    coefficients.
@@ -185,7 +193,8 @@ words: π1's as the vector's; π2's `prover::layout_word` (§8).
    `Φ` by one batched inversion of `rows × ports` denominators, eight rows a vector), `d_pull`, `d_push`,
    `q = (h d_pull d_push + (1 + 1_S)(d_push + d_pull) + T) / Z_V` and `q_P = (P + P_v) / Z_V` (`Z_V` takes two values
    on `D`). Their novel coefficients: degree below `2N`, `2N` points determine them.
-4. `Q`, committed (its stack built in place); `t`; the fold values, `ξ` and `s = P(t)`; `ρ`; the verifier's claims,
+4. `Q`, committed (its stack built in place, the setup's from one proof to the next; `Q` and `W` keep their codewords
+   until their openings, which read the queried rows from them); `t`; the fold values, `ξ` and `s = P(t)`; `ρ`; the verifier's claims,
    opened by `quotient::opening` (leanVM's WHIR unchanged, rate 1/2, the claims on one commitment in one opening).
    `PI2_PROFILE=1` prints the phases.
 
