@@ -1,5 +1,5 @@
 // Vendored from leanVM (https://github.com/leanEthereum/leanVM), commit 42422001, file crates/flock/src/witness.rs,
-// without the BLAKE2s block's bit and adder helpers.
+// without the bit and adder helpers of upstream's block, which is not vendored (src/lib.rs).
 // MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and AGENTS.md at the repository root).
 // CREDIT: https://github.com/succinctlabs/flock (flock-prover), MIT OR Apache-2.0.
 //! Bit-packing and the witness driver for the block R1CS modules (`keccak`).

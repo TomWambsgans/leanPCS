@@ -1,7 +1,7 @@
 // New in this repository (not from leanVM): the Keccak-f[1600] permutation as a Flock block R1CS, for
-// `docs/leanvm/flock/KECCAK.md` §4.2 and §4.5 (design C*, milestone M1). Its walks and its prover entry follow this
-// crate's BLAKE2s block (`hash.rs`, leanVM 42422001's): the same row kinds, `C = I`, the same `LincheckCircuit` seam
-// and the same zerocheck-with-skip and lincheck calls. Crate `flock` runs on leanVM c445e3d5's `primitives` and `pcs`;
+// `docs/leanvm/flock/KECCAK.md` §4.2 and §4.5 (design C*, milestone M1). Its walks and its prover entry follow leanVM
+// 42422001's Flock block (`hash.rs` there, not vendored: src/lib.rs): its row kinds, `C = I`, the `LincheckCircuit`
+// seam and the zerocheck-with-skip and lincheck calls. Crate `flock` runs on leanVM c445e3d5's `primitives` and `pcs`;
 // the φ₈ Lagrange weights and the transcript are this crate's modules (src/lib.rs). MIT OR Apache-2.0 (see
 // LICENSE-MIT, LICENSE-APACHE and AGENTS.md at the repository root).
 //! Keccak-f\[1600\] as one Flock block: `k_log = 17`, `C = I`, every round's state materialised.
@@ -67,7 +67,7 @@ pub const WORDS: usize = K / 64;
 pub const LANES: usize = 25;
 /// Rounds of Keccak-f\[1600\].
 pub const ROUNDS: usize = 24;
-/// The lincheck's packing width (the slices' count is `2^K_SKIP`), as BLAKE2s's.
+/// The lincheck's packing width: 64 bits a word, so `2^K_SKIP` slices.
 pub const K_SKIP: usize = 6;
 
 /// Port quads at the start of the block.
@@ -250,7 +250,7 @@ fn build_block_witness(input: &[u64; LANES], z: &mut [u64], a: &mut [u64], b: &m
 }
 
 /// `(z, a, b, z_lincheck)` for `inputs.len()` permutations padded to `2^n_blocks_log` blocks with Keccak-f(0): the
-/// packed tables (`WORDS` words a block) and the lincheck's stripes, as BLAKE2s's generator leaves them.
+/// packed tables (`WORDS` words a block) and the lincheck's stripes, in the layout the zerocheck and the lincheck read.
 pub fn generate_witness_with_ab_packed_and_lincheck(
     inputs: &[[u64; LANES]],
     n_blocks_log: usize,
@@ -464,7 +464,7 @@ impl crate::lincheck::LincheckCircuit for KeccakLincheckCircuit {
 }
 
 // ---------------------------------------------------------------------------
-// The reduction (prover): BLAKE2s's `prove_reduction_skip` on this block.
+// The reduction (prover): the zerocheck with a skip, then the lincheck, on this block.
 // ---------------------------------------------------------------------------
 
 /// The Keccak-f R1CS for `2^n_blocks_log` blocks.
@@ -492,8 +492,8 @@ impl KeccakSetup {
 
     /// **The reduction with a zerocheck skip of `k`** (3 to 6): [`crate::zerocheck::skip::prove_skip`] at the eq
     /// point `eq` describes, then the lincheck at the row weights it leaves, `L(z) ⊗ eq(ρ_(<6-k)) ⊗ eq(x_inner_rest)`,
-    /// which leaves the 64 slices at `(r_inner_rest, x_outer)`: `Blake2sSetup::prove_reduction_skip`'s skip path with
-    /// this block's shape (`K_LOG = 17`: 11 lincheck rounds).
+    /// which leaves the 64 slices at `(r_inner_rest, x_outer)`; this block's shape, `K_LOG = 17`, gives 11 lincheck
+    /// rounds.
     #[allow(clippy::too_many_arguments)]
     pub fn prove_reduction_skip(
         &self,

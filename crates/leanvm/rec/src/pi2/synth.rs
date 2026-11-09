@@ -693,10 +693,10 @@ pub fn small_d32v(log_n: usize) -> Design {
     }
 }
 
-/// A synthetic D16v circuit of `N = 2^24` positions, sized as the former BLAKE2s VM's π1-rec was (SPEC-REC.md §2.4.5): 86% used; about 200
-/// (block, role) pairs and π1's 69 public terms. The rows by type follow §2.4.5's totals (Keccak-f's 107
-/// permutations: K1 657,408 rows, K0 164,352, KD 41,088, Kprep 11,449; the later blocks' XORs, the packings and
-/// free bits, the `E` units, the constants), each region on two or three aligned blocks.
+/// A synthetic D16v circuit of `N = 2^24` positions, 86% used, with about 200 (block, role) pairs and 69 public terms
+/// (PI2.md §5): more pairs than the Keccak VM's π1-rec3 circuit (133 at 93.4%, SPEC-REC.md §10.3). Its rows by type:
+/// 107 Keccak-f permutations (K1 657,408 rows, K0 164,352, KD 41,088, Kprep 11,449), then the later blocks' XORs, the
+/// packings and free bits, the `E` units, the constants, each region on two or three aligned blocks.
 pub fn target_d16v() -> Design {
     let types = d16v_types();
     let region = |name: &str, blocks: Vec<usize>| Region {

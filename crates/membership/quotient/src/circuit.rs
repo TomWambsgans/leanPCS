@@ -1,7 +1,7 @@
 // Part of this repository. Adapted from leanVM (https://github.com/leanEthereum/leanVM), branch
 // PCS-openings-aggregation, commit 651453c6, crates/flock/src/quotient/circuit.rs: the wiring and the public rows
-// are the same; the gate (one χ on bits instead of a full adder on GF(4)) and the hash (Keccak-256 instead of
-// BLAKE2s) are new. MIT OR Apache-2.0; see AGENTS.md.
+// are the same; the gate (one χ on bits instead of a full adder on GF(4)) and the Keccak-256
+// statement are new. MIT OR Apache-2.0; see AGENTS.md.
 //! Rows of one gate and the permutation that wires them, and the circuit of the membership statement.
 //!
 //! **The gate.** A row has four cells, `X, Y, C, V`, and says `V = X + C + Y·C`. On bits that is

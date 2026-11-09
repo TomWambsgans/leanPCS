@@ -1253,7 +1253,7 @@ mod tests {
         // m = k_log + n_blocks_log is small enough to keep the test fast
         // while still exercising the kernel's parallel + boundary paths.
         let cases = [
-            (14usize, 16_000usize, 0usize), // BLAKE2s, m=14
+            (14usize, 16_000usize, 0usize), // m=14
             (15, 31_401, 0),                // SHA-2,  m=15
             (16, 42_560, 0),                // Keccak, m=16
             (16, 42_560, 3),                // Keccak, m=19 (multiple hashes)

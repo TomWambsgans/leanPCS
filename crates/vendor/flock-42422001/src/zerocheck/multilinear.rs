@@ -1297,7 +1297,7 @@ mod tests {
 
     /// Skipping whole padding pairs and quads changes nothing on an honestly padded witness.
     ///
-    /// Shapes: BLAKE2s (k_log = 14, 16,000 bits), an odd boundary, and a two-block-per-row stride.
+    /// Shapes: k_log = 14 with 16,000 bits, an odd boundary, and a two-block-per-row stride.
     #[test]
     fn bit_rounds_skip_padding_exactly() {
         const K_SKIP: usize = 6;

@@ -1,6 +1,6 @@
 // Part of this repository. Adapted from leanVM (https://github.com/leanEthereum/leanVM), branch
 // PCS-openings-aggregation, commit 651453c6, crates/flock/src/membership.rs (`Statement`, `Secret`, `halves`),
-// with Keccak-256 in place of BLAKE2s. MIT OR Apache-2.0; see AGENTS.md.
+// with the Keccak-256 statement (new here). MIT OR Apache-2.0; see AGENTS.md.
 //! The statement: `y = H(x | 0x11^32)`, and a Merkle path of depth [`DEPTH`] from `H(x | 0x22^32)` up to
 //! `root`, with `H` = Keccak-256 (Ethereum's `keccak256`) of a 64-byte block.
 

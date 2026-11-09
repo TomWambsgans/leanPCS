@@ -1407,7 +1407,7 @@ mod tests {
     fn partial_fold_padded_matches_dense() {
         // (m, k_log, useful_bits)
         let cases: &[(usize, usize, usize)] = &[
-            // BLAKE2s's own shape: k_log = 14, useful = 15409, not byte-aligned.
+            // k_log = 14, useful = 15409, not byte-aligned.
             (17, 14, 15_409),
             // A larger block, also not byte-aligned.
             (18, 15, 31_401),

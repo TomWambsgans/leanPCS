@@ -1,7 +1,8 @@
 // Adapted from leanVM (https://github.com/leanEthereum/leanVM), commit 42422001, file crates/verifier/src/layout.rs:
 // the same tables, flushes and constraints (not its stacking, which `leanvm_univariate` replaces with its own); a
 // `Form` is generic over its coefficients' `Scalar`, and a table's constraints a method on any `Scalar`. New here: the
-// Keccak VM's `SHA3` table (leanVM 9d50c92a3) in BLAKE2S's place. MIT OR Apache-2.0; see AGENTS.md.
+// Keccak VM's `SHA3` table (leanVM 9d50c92a3), which replaces leanVM 42422001's BLAKE2S table in its opcode slot.
+// MIT OR Apache-2.0; see AGENTS.md.
 //! The instruction tables, their bus flushes and constraints.
 
 use crate::field::{E, GEN, ONE, ZERO};
@@ -358,7 +359,7 @@ pub const OP_MUL: usize = 1;
 pub const OP_SET: usize = 2;
 pub const OP_DEREF: usize = 3;
 pub const OP_JUMP: usize = 4;
-/// The Keccak VM's `SHA3` table, where leanVM 42422001 has BLAKE2S.
+/// The Keccak VM's `SHA3` table: opcode 5, its bytecode tag `g^5`.
 pub const OP_SHA3: usize = 5;
 pub const N_TABLES: usize = 6;
 pub const TABLE_NAMES: [&str; N_TABLES] = ["XOR", "MUL", "SET", "DEREF", "JUMP", "SHA3"];
