@@ -268,14 +268,14 @@ def publicTerms : List PublicTerm := [
 /-- **π2's circuit** as its verifier reads it. -/
 def circuit : Circuit := ⟨24, 4, formulas, pairs, reads, publicTerms⟩
 
-/-- π1's contract IV (`Compiled::pi1_iv`: π1-rec3's at the reference setup roots). -/
-def pi1Iv : List UInt8 := hexBytes "0249294e1c410df6e7ab8150703cf22eadede4183f6be94edf397274d5215449"
+/-- π1's contract IV (`Compiled::pi1_iv`: π1-rec3's at the reference setup root). -/
+def pi1Iv : List UInt8 := hexBytes "1ad4a254a161308f2962fc57d22991f8b26826cbb534d169f3a3dfe97a4be9cb"
 
 /-- The setup's root (`prover::Setup::new(circuit).root()`: the commitment of `κ`, `κ + σ`). -/
-def setupRoot : List UInt8 := hexBytes "1912375a0e9f64971366c543e508f7568fb82962037061494c1e12e327abd7d6"
+def setupRoot : List UInt8 := hexBytes "4ed1291a3ab56b5ab89e5264042c8bc4e19d099529df269726fd90d44b480933"
 
 /-- The circuit's digest (`Circuit::digest`: its encoding with `σ`'s and `κ`'s hashes). -/
-def digest : List UInt8 := hexBytes "3938d25fca6dbd5358a8889962144512e5661aa52935f6ea290d83611649b268"
+def digest : List UInt8 := hexBytes "731e2ecad676447d234ef83bdaf63c1789d446de22ba9c95e9eafe64cc6c3857"
 
 /-- π1's `PCS_OPEN` calls as the circuit names their words (`spec::Circuit::calls`). -/
 def pi1Calls : List (List CallWord) := [
