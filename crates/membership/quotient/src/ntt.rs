@@ -841,6 +841,23 @@ unsafe fn pairs<T: Kind>(lo: *mut u64, hi: *mut u64, len: usize, t: V) {
     }
 }
 
+/// [`pairs`] read from `src_lo` and `src_hi` (another buffer's rows), written to `lo` and `hi`: a first layer's
+/// butterflies that also copy.
+///
+/// # Safety
+/// The four point to `len` rows each, the sources readable, `lo` and `hi` of the caller's own.
+#[inline(always)]
+unsafe fn pairs_from<T: Kind>(src_lo: *const u64, src_hi: *const u64, lo: *mut u64, hi: *mut u64, len: usize, t: V) {
+    for i in 0..len {
+        // SAFETY: rows `i < len` of the caller's.
+        unsafe {
+            let (a, b) = T::butterfly(load(src_lo.add(8 * i)), load(src_hi.add(8 * i)), t);
+            store(lo.add(8 * i), a);
+            store(hi.add(8 * i), b);
+        }
+    }
+}
+
 /// `kind`'s layers on the `rows` rows of eight words at `data`, read first from `src` if given: position layer `k` is
 /// row layer `k - shift`, and the layers below `shift` (0 or 3) are inside the rows. With `runs`, every eight rows
 /// are transposed last ([`values_batch`]).
@@ -974,8 +991,12 @@ fn leaves<T: Kind>(
         // SAFETY: a task touches its own `size` rows from `first`.
         unsafe {
             let base = data.add(8 * first);
-            if let Some(s) = src {
+            // The first layer reads the source itself where it is a layer between rows (not the rows' own layers).
+            let fused = leaf > 0 && (T::DOWN || shift == 0);
+            let mut src = src;
+            if let Some(s) = src.filter(|_| !fused) {
                 std::ptr::copy_nonoverlapping(s.add(8 * first), base, 8 * size);
+                src = None;
             }
             let own = |base: *mut u64| {
                 if shift == 3 {
@@ -985,21 +1006,25 @@ fn leaves<T: Kind>(
             if !T::DOWN {
                 own(base);
             }
-            let layer = |k: usize| {
+            let layer = |k: usize, from: Option<SendPtr<u64>>| {
                 let half = 1usize << k;
                 // The blocks' twiddles: the first's, plus `step(j)` (the block indices' bits are disjoint).
                 let t0 = kind.twiddle(k + shift, first >> (k + 1));
                 for j in 0..size >> (k + 1) {
                     let row = first + 2 * half * j;
                     let t = splat((t0 + kind.step(j)).0);
-                    pairs::<T>(data.add(8 * row), data.add(8 * (row + half)), half, t);
+                    let (lo, hi) = (data.add(8 * row), data.add(8 * (row + half)));
+                    match from {
+                        Some(s) => pairs_from::<T>(s.add(8 * row), s.add(8 * (row + half)), lo, hi, half, t),
+                        None => pairs::<T>(lo, hi, half, t),
+                    }
                 }
             };
             if T::DOWN {
-                (0..leaf).rev().for_each(layer);
+                (0..leaf).rev().for_each(|k| layer(k, if k + 1 == leaf { src } else { None }));
                 own(base);
             } else {
-                (0..leaf).for_each(layer);
+                (0..leaf).for_each(|k| layer(k, if k == 0 { src } else { None }));
             }
             if runs {
                 for g in 0..size / 8 {
@@ -1035,25 +1060,25 @@ fn wide<T: Kind>(
         let line = |u: usize| row0 + (u << a);
         // SAFETY: a task touches rows `line(u) + [0, width)`, `u < lines`: its own.
         unsafe {
-            if let Some(s) = src {
-                for u in 0..lines {
-                    std::ptr::copy_nonoverlapping(s.add(8 * line(u)), data.add(8 * line(u)), 8 * width);
-                }
-            }
-            let layer = |j: usize| {
+            // The first layer reads the source itself: each line is in one of its pairs.
+            let layer = |j: usize, from: Option<SendPtr<u64>>| {
                 let k = a + j;
                 let hs = 1usize << j;
                 for ub in (0..lines).step_by(2 * hs) {
                     let t = splat(kind.twiddle(k + shift, line(ub) >> (k + 1)).0);
                     for u in ub..ub + hs {
-                        pairs::<T>(data.add(8 * line(u)), data.add(8 * line(u + hs)), width, t);
+                        let (lo, hi) = (data.add(8 * line(u)), data.add(8 * line(u + hs)));
+                        match from {
+                            Some(s) => pairs_from::<T>(s.add(8 * line(u)), s.add(8 * line(u + hs)), lo, hi, width, t),
+                            None => pairs::<T>(lo, hi, width, t),
+                        }
                     }
                 }
             };
             if T::DOWN {
-                (0..g).rev().for_each(layer);
+                (0..g).rev().for_each(|j| layer(j, if j + 1 == g { src } else { None }));
             } else {
-                (0..g).for_each(layer);
+                (0..g).for_each(|j| layer(j, if j == 0 { src } else { None }));
             }
         }
     });
