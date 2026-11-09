@@ -30,7 +30,7 @@ lake env lean ../UniStatement/UniStatementTest/KeccakTables.lean    # the Keccak
    checks collected.
 3. [`Domain.lean`](UniStatement/Domain.lean): the Cantor basis, the digits, the coordinate functionals, the
    vanishing polynomials, **the active rows at fixed cosets** and their `Z_act` from a count's bits.
-4. [`TablesBase.lean`](UniStatement/TablesBase.lean), [`Tables.lean`](UniStatement/Tables.lean): the five shared tables,
+4. [`TablesBase.lean`](UniStatement/TablesBase.lean): the five shared tables,
    their flushes as `Form`s, their counters (the Keccak VM's sixth, `SHA3`, is item 16).
 5. [`Heap.lean`](UniStatement/Heap.lean): the product heap's blocks.
 6. [`Claims.lean`](UniStatement/Claims.lean): columns, relations, `combine` (the powers of `ρ`, the prefix merge).
@@ -50,7 +50,7 @@ lake env lean ../UniStatement/UniStatementTest/KeccakTables.lean    # the Keccak
     reference setup roots, `PCS_OPEN` as the Statement's opening and its inputs word for word (`pcsCalls`), and
     **`verifyWith`**, the whole verifier (the main line: the run, then five calls).
 13. [`Mapping.lean`](UniStatement/Mapping.lean): basis `B` ↔ values, the rows' order (`rowPosition`), the setup's tables.
-14. [`Security.lean`](UniStatement/Security.lean), [`RecSecurity.lean`](UniStatement/RecSecurity.lean): the deployment, the
+14. [`Security.lean`](UniStatement/Security.lean): the deployment, the
     setup and its IV, `c1RootOf`, the adversary's types (the end statements are `UniKeccak`'s).
 15. [`Rec.lean`](UniStatement/Rec.lean) (π1-rec3's Fiat–Shamir shape; not imported by `UniStatement.lean`):
     **`FsShape`** (`main`, `rec1`, `rec2`, `rec3`: the Rust's `Main`, `Rec`, `Rec2`, `Rec3`), the draws it changes
