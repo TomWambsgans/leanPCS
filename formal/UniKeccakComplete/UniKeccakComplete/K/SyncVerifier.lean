@@ -33,7 +33,7 @@ Headline theorems:
 * `runWithKH_accepts`: the verdict is `true` when Flock's value and the batch's terminal are zero (the counts'
   checks vanish: `countChecks_zero`, from `RowsFit`).
 
-Against the BLAKE2s VM's file: no `Blake2s` switch (the prover always runs Flock, at `keccakMain`), no pending
+The prover always runs Flock, at `keccakMain`; there are no pending
 matrices (`Reduced.matrices = none`), Flock collects one value, three openings downstream.
 
 Decisions:

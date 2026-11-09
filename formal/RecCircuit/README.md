@@ -146,7 +146,7 @@ The real run accepts them at both IVs `rec-view-check` uses (the compiler with t
   (`RecCircuitTest/Main.lean`, `crates/leanvm/rec/tests/lean_circuit_keccak.rs`). The comparison covers the shape, the region
   list, the formula tables, the blocks, the ports, the calls, `κ`, and an FNV-1a hash of `σ` over all 2^24 positions.
   It runs on the Keccak VM's π1-rec3 graph (the 128-signature reference, 21 blocks, which the checker accepts); it ran
-  on three small recorded graphs and on the removed BLAKE2s VM's π1-rec3 graph before, every comparison identical.
+  on three small recorded graphs before, every comparison identical.
 - **The block padding** (`padCounts`, `layout.rs::pad_counts`) looks ahead. A region's next step is the digit count
   `j > k` with the most rows saved per added digit and role, so it passes over counts that save nothing (a carry:
   724,992 rows pad to 786,432 at both 2 and 3 digits). The one-digit greedy it replaced gave the Keccak π1 70 blocks.

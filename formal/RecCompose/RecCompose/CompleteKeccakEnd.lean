@@ -1,8 +1,7 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. π2's completeness (`formal/RecStatement`'s
 -- `RecCompleteness2`, `RecCompletenessWith`) at the recursion's concrete π1-rec3 prover (`Pi1KeccakProver`'s
 -- `pi1Rec3ProverK`, `formal/UniKeccakComplete`'s prover with its Fiat–Shamir over Keccak-f[1600]): `Pi2AlphaEnd`'s
--- theorems with `Pi2P1.Pi1ProverFacts` discharged (`Pi1KeccakTransfer`, `Pi1KeccakCensus`); follows the BLAKE2s line's
--- `Pi2KFEnd.lean` (removed).
+-- theorems with `Pi2P1.Pi1ProverFacts` discharged (`Pi1KeccakTransfer`, `Pi1KeccakCensus`).
 import RecCompose.Pi1KeccakCensus
 import RecCompose.Pi1KeccakRpm
 import RecCompose.Pi2AlphaEnd

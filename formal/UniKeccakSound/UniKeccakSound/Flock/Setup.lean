@@ -10,7 +10,7 @@ import UniSound.Ids.Facts
 /-!
 # Flock at leanVM's constants with `m` slot bits, and the Keccak-f block's setup
 
-`FlockSound.Leanvm` instantiates the generic theorems (`FlockSound.Flock`) at leanVM's constants with BLAKE2s's
+`FlockSound.Leanvm` instantiates the generic theorems (`FlockSound.Flock`) at leanVM's constants with
 `m = 8` slot bits. The constants' facts (`Setup.Valid`: the skip nodes, the fixed coordinates, ring switching) do not
 read `m`, so the same holds for any `m`; here at `m` slot bits:
 

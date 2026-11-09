@@ -1,5 +1,5 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Follows `formal/FlockSound/FlockSoundUni/Catch.lean`
--- (BLAKE2s's main line) at the Keccak verifier's sizes; the structured terminal's zero replaces the pending claim.
+-- at the Keccak verifier's sizes; the structured terminal's zero replaces the pending claim.
 import UniKeccakSound.Flock.Parse
 import FlockSoundUni.Catch
 import FlockSoundUni.Transcription

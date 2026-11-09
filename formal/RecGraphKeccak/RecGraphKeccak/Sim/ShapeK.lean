@@ -331,7 +331,7 @@ theorem colVars_leafK (parts : List TablePart) (i c : ℕ) :
 
 /-! ## The constraint relation's terms -/
 
-/-- `y(t)`, BLAKE2S's coordinates of `t`. -/
+/-- `y(t)`, the coordinates of `t` at `SHA3`'s height. -/
 abbrev yK (tE : E) : List E := coordinatesAt tE (coordinateFunctionals (keccak128.heights.getD opSha3 0))
 
 /-- **A constraint term**: untwisted; a table's column or its inverse at its height's prefix of `w`, the memory's at

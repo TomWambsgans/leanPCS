@@ -88,15 +88,13 @@ Both depend on `[propext, Classical.choice, Quot.sound]` only (the root's `#guar
 - **Counts and costs** (`K/BadFpCount`, `ProbBadT`, `ProbTFresh`, `Rec3ProbTFresh`, `ProverBounds`, `ProverCost`,
   `FlockCommutes`, `FlockCost`, `Rec3ProverSim`, `Rec3ProverDuplex`, `Rec3ProverCost`, `Reference`).
 
-## Provenance and the Keccak-only cut
+## Imports
 
-`K/` is `formal/UniComplete` (BLAKE2s, `~44k` lines) copied and ported to the Keccak VM (option (ii)): each file names
-its original in its header. The generic `UniComplete` modules are **imported, not copied**, and are all that is left of
-`UniComplete`: `UniComplete.Basic`, `Div`, `Domain` (with `DomainBasis`, `DomainDigits`, `DomainPoly`,
-`DomainCount`, `DomainPositions`, `DomainActive`, `DomainCoord`, `DomainCoord18`), `Whir`, `Rec3Pairs`. No other
-`UniComplete` module is imported. Other BLAKE2s-line imports: `UniSound` through `UniKeccakSound` (as listed in its
-README) and `UniComplete.Rec3Pairs`' `UniSound.Rec3.Pairs`; `Lv42`'s shared modules
-`Protocol.LeanIsaBase` and `Arithmetization.Completeness.BasicsBase`.
+The generic `UniComplete` modules are imported: `UniComplete.Basic`, `Div`, `Domain` (with `DomainBasis`,
+`DomainDigits`, `DomainPoly`, `DomainCount`, `DomainPositions`, `DomainActive`, `DomainCoord`, `DomainCoord18`),
+`Whir`, `Rec3Pairs`. Other imports from the shared libraries: `UniSound` through `UniKeccakSound` (as listed in its
+README) and `UniComplete.Rec3Pairs`' `UniSound.Rec3.Pairs`; `Lv42`'s shared modules `Protocol.LeanIsaBase` and
+`Arithmetization.Completeness.BasicsBase`.
 
 ## What is not done
 

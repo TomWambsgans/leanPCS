@@ -17,8 +17,8 @@ tree). **The proofs** of the statements are in [`EndToEnd/`](#end-to-end-theorem
 Toolchain and dependency revisions are leanerVM `mumbai`'s (Lean `v4.34.1`, Mathlib `d13f23b7`, VCVio
 `afa6593f`, CompPoly `572f9973`, ArkLib `4dae3acf`), so its results can be imported rather than reproved. The
 starting point is leanVM's `formal/quotient` (branch `PCS-openings-aggregation`), whose README is kept as
-[`README.upstream.md`](README.upstream.md): sorry-free proofs of the reduction for the BLAKE2s/full-adder
-circuit, with ideal commitments.
+[`README.upstream.md`](README.upstream.md): sorry-free proofs of the reduction for the upstream
+full-adder circuit, with ideal commitments.
 
 **leanVM proofs by recursion, for the Keccak VM** (`crates/leanvm/{univariate,rec}`; leanVM `9d50c92a3`'s `SHA3`
 table, the 128-signature reference), in libraries of `EndToEnd/`: the Keccak VM's statement and the soundness and

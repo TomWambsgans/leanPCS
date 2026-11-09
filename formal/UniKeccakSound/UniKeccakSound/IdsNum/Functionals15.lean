@@ -6,7 +6,7 @@ import UniSound.Ids.Deployed
 # The coordinate functionals at height `15` (`FunctionalsCorrect 15`)
 
 The reference Keccak shape's `SHA3` table has height `h_SHA3 = 15` (`keccakShapeOf 721598 [.., 17712]`), so the
-verifier's `Z_bad` reads `coordinateFunctionals 15`. As at BLAKE2s's `18` (`UniSound.Ids.functionalsCorrect18`):
+verifier's `Z_bad` reads `coordinateFunctionals 15`. As at `18` (`UniSound.Ids.functionalsCorrect18`):
 `coordinateFunctionals r` is `r` Gauss–Jordan steps on `[M | I]` (`UniSound.Ids.cf_eq`, every `r`); at `r = 15` the
 kernel checks each step from the previous rows as words (`cf15Mat k`, printed by compiled evaluation of
 `UniSound.Ids.cfStep`), then that the result (`cf15A`) times `M` (`M[k][m] = β_k^(2^m)`, `cf15Mat0`'s left half) is

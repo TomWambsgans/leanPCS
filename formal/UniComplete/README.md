@@ -6,8 +6,7 @@ The generic layers of the univariate verifier's honest prover (`crates/leanvm/un
 half), which [`UniKeccakComplete`](../UniKeccakComplete/README.md) and [`RecCompose`](../RecCompose/README.md) import:
 the prover's channel and polynomials, exact division, the domain facts, honest WHIR openings at the plain layouts, and
 the completeness of π1-rec3's paired batch rounds. Nothing here is VM-specific; the Keccak VM's honest prover and its
-completeness theorems are UniKeccakComplete's (`K/`, ported from this library's former BLAKE2s files). There is no end
-theorem and no differential runner here.
+completeness theorems are UniKeccakComplete's (`K/`). There is no end theorem and no differential runner here.
 
 A library of `formal/EndToEnd` (`UniComplete`, `srcDir = "../UniComplete"`, `globs = ["UniComplete.+"]`, no root
 file), plain (non-`module`) Lean files, since it imports `E2ECompleteness`. Sorry-free, no `native_decide`.

@@ -1,5 +1,5 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The Keccak main line's `Fs/OpsK.lean` at π1-rec3's shape
--- (`keccakRec3`, `rec3Rounds`), as `UniSound/Rec3/FsOps3.lean` is the BLAKE2s main line's `FsOps.lean`.
+-- (`keccakRec3`, `rec3Rounds`), as `UniSound/Rec3/FsOps3.lean` is the main line's `FsOps.lean`.
 import UniKeccakSound.FinalK3
 import UniKeccakSound.Fs.OpsK
 import UniSound.Rec3.FsOps3

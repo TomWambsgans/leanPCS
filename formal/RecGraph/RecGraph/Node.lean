@@ -15,7 +15,7 @@ Generalises `formal/Implementation`'s nodes: a stream read is at a byte offset w
 root half's 16, a packed integer's at most 8), a hash absorbs a run of the stream's bytes, and there are bit fields
 (`bits`), the ring switch's weight (`ringWeight`, one node for `ring_tower::weight_at`) and narrow challenges
 (`narrow`). π1-rec3's other novelties are no new kinds: a pair's coordinates (`pair_point`) are additions and products
-(one by the constant `β_1`), and the BLAKE2s circuit's walk (`walked_terminal`) is additions and products.
+(one by the constant `β_1`), and the Keccak-f block's walk (`walked_terminal_with`) is additions and products.
 -/
 
 namespace RecGraph

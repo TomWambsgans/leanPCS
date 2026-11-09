@@ -10,7 +10,7 @@ import RecCompose.CompleteCouplings
 a result has no matrices' claim and roots whose four halves have zero top limbs. Through `reduceWithK` (`HoldsE`,
 postconditions on a channel computation's results): its result is built with no matrices' claim (the Keccak-f block's
 Flock leaves none: `reduceWithK` returns `none` there), and its roots are the two `nextRoot`s, each half `eNew _ _ 0`
-(`holdsE_nextRoot`). Unlike the BLAKE2s VM's `reduceWithFs`, nothing of the batch is needed.
+(`holdsE_nextRoot`). Nothing of the batch is needed.
 -/
 
 set_option linter.unusedSectionVars false

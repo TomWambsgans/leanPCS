@@ -355,8 +355,8 @@ In [`RecCompose`](../RecCompose/README.md), at `D.Real` and the run-checked inpu
 file is what `render` writes for the Keccak π1-rec3's circuit; the circuit, π1's calls and π1's contract IV do not
 depend on the stream or the public input). **No Lean differential run of π2's verifier on Keccak vectors exists.**
 π2's verifier, `pcsCalls`, the registry's decoding and the IV (`Core`, `Spec`, `Verifier`, `Calls`) are generic in π2's
-circuit and unchanged since an earlier runner, on the BLAKE2s VM's π1-rec3 + π2 vectors (since removed), agreed with
-the Rust on every value; π1's contract IV and layout words are now `UniKeccak`'s, checked against the Rust there
+circuit and unchanged since an earlier differential runner, on vectors since removed, agreed with the Rust on every
+value; π1's contract IV and layout words are now `UniKeccak`'s, checked against the Rust there
 ([`../UniKeccak/README.md`](../UniKeccak/README.md)).
 
 **Evaluated** (in `RecCompose`, by running Lean): the digest and the setup root of the Lean compiler's `σ`, `κ` at π1's

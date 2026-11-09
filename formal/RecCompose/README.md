@@ -88,7 +88,7 @@ program `P1k` and `Pi1ProverFacts D P1 P1k`), and `recCompleteness_end_fs` (`End
 
 ## The Keccak VM
 
-The library was the BLAKE2s VM's, converted in place:
+The library at the Keccak VM:
 - π1 is `UniKeccak`'s verifier at `keccakRec3`, on `RecGraphKeccak.Pi1.keccak128` (`= UniKeccakSound.keccakRefShape`,
   `Pi1K.keccak128_eq_refShape`).
 - π1-rec3's recorded graph is `RecGraphKeccak.Pi1.pi1GraphK` (`RecGraphKeccak.Emitted`), at the reference setup roots
@@ -98,7 +98,7 @@ The library was the BLAKE2s VM's, converted in place:
 - The relation is `KvHolds` at `D.flock`; `Real` pins `D.flock = KeccakFlock.keccakFlockSpec`.
 - **π1's setup is one tree.** `A0` and `B0` are the deployment's constants, so π2's Fiat–Shamir family holds π1's
   `2^27`, `2^26` and `2^23` openings. The `2^23` one is certified by `UniKeccakSound.plainShapeE23`.
-- `GenericSetupLog.lean` copies the four VM-generic lemmas it needed from the BLAKE2s line's `UniSound.FsSetup`.
+- `GenericSetupLog.lean` holds the four VM-generic lemmas of the logged setup.
 
 ## Files
 

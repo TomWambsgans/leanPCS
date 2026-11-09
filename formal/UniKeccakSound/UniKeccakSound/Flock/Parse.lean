@@ -1,5 +1,5 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Follows `formal/FlockSound/FlockSoundUni/Parse.lean` and
--- `Prefix.lean` (BLAKE2s's main line) at the Keccak verifier's sizes (`11` lincheck rounds, `7 + κ` sampled
+-- `Prefix.lean` at the Keccak verifier's sizes (`11` lincheck rounds, `7 + κ` sampled
 -- coordinates).
 import UniKeccakSound.Flock.Link
 import UniKeccakSound.Flock.Setup

@@ -15,8 +15,8 @@ zero** (`batchTerminal_eq_zero`, at every writer: at every `λ` and every challe
 for its layout (`WeightWF`: slot points of `v − 11` coordinates, so `weightAtK`'s slot bits are `11`), on an aligned
 layout (`Aligned`; `StackLayout.new`'s are, `aligned_new`), its stack of `2^vars` words.
 
-Against the BLAKE2s VM's batch: no pending matrices (no `λ^n` product term, no `a`, `b`, no matrices' claim), the
-weight `weightAtK`, the sumcheck `sumcheckDrawnH … .main.narrow` (= `sumcheckH`, `sumcheckDrawnH_main`).
+The batch has no pending matrices (no `λ^n` product term, no `a`, `b`, no matrices' claim), its
+weight is `weightAtK`, its sumcheck `sumcheckDrawnH … .main.narrow` (= `sumcheckH`, `sumcheckDrawnH_main`).
 
 The value is `sum + last`: `last` is the sumcheck's terminal (`batch_rounds`: `Σ_k λ^k W̃_k C̃_k ext_k²`), `sum` the
 verifier's `Σ_k λ^k weightAtK · extension · value` (`weightAtK_eq_mle`: `W̃_k ext_k`; the extension `ext_k`; the value

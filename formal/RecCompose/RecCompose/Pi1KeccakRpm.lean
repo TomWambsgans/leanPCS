@@ -1,7 +1,7 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The statement read is `formal/RecStatement`'s
 -- (`Pi1CompletenessKeccak`, `pi1KeccakVerifierWith`); its random-permutation reading is `formal/UniKeccak`'s
 -- `UniCompletenessKeccakRec3` (`Security.lean`), proved by `formal/UniKeccakComplete`'s
--- `uniCompletenessKeccakRec3_closed`. Follows the BLAKE2s line's `Pi1KFRpm.lean` (removed). The eager form of the
+-- `uniCompletenessKeccakRec3_closed`. The eager form of the
 -- random-permutation model is `formal/EndToEnd/ZK/ProverBridgeEager.lean`'s; Keccak-256 through a monad morphism
 -- `ProverBridgeParam.lean`'s (`keccak256With_hom`); VCVio's `prEvent_bind_mono_of_forall_le`.
 import RecCompose.Pi1KeccakTransfer

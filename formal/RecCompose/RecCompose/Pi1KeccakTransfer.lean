@@ -1,6 +1,6 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The facts transferred are `formal/UniKeccakComplete`'s
--- (`K/Rec3ProverDuplex.lean`'s `disc_uniProverRec3With`, `K/Rec3ProverCost.lean`'s `cost_rec3_flockProveH`); follows
--- the BLAKE2s line's `Pi1KFTransfer.lean` (removed). Uses leanerVM (https://github.com/Verified-zkEVM/leanerVM, branch
+-- (`K/Rec3ProverDuplex.lean`'s `disc_uniProverRec3With`, `K/Rec3ProverCost.lean`'s `cost_rec3_flockProveH`).
+-- Uses leanerVM (https://github.com/Verified-zkEVM/leanerVM, branch
 -- `mumbai`, commit 6175f1a0, MIT OR Apache-2.0): the two calls `KeccakCalls`, the duplex discipline `DuplexP`, the
 -- block cost `hashBlocks`, `QueryCostAtMost`; VCVio's `simulateQ`, `IsQueryBound`; and
 -- `formal/EndToEnd/Completeness/E2ECompleteness`'s `Disc`, `HashOK`, `simulateQ_proveOpeningWithH`.

@@ -5,7 +5,7 @@ import RecGraph.Sim.Calls
 /-!
 # `Pi1SimK` from `reduceK`'s lockstep
 
-As `RecGraph.Sim.Top` and `RecGraph.Sim.Calls` (`calls_eq`) for the BLAKE2s VM:
+On `RecGraph.Sim.Calls`'s lemmas:
 
 * `calls_eqK`: the recorded calls' bytes (`callsOfK`) are `UniKeccak.pcsCallsK`'s, for a run related by `RedRK`;
 * `pi1SimK_of_reduce`: if `Pi1.reduceK keccak128` simulates `UniKeccak.reduceWithK … keccakRec3 .point` (`SimE`, off

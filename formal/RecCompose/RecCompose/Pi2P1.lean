@@ -18,8 +18,8 @@ statements only (row counts fitting the shape, `KvHonest D.flock`):
 
 * **`Pi1OverPerm D P1 P1k`**: `P1` is `P1k` with its two calls answered over `π` (Keccak-256 the sponge over `π`,
   Keccak-f[1600] `π` itself; `keccakCallsOverQueryPermutation`). A concrete prover proves it by writing its code over
-  any monad with the two functions explicit and showing it commutes with `simulateQ` (as UniComplete's
-  `proverCommutes3_flockProve3H` for the BLAKE2s π1-rec3 prover). For a prover whose Fiat–Shamir is the pure
+  any monad with the two functions explicit and showing it commutes with `simulateQ` (as UniKeccakComplete's
+  `simulateQ_rec3_flockProveH` for the Keccak π1-rec3 prover). For a prover whose Fiat–Shamir is the pure
   `keccak256` (the recursion's: π1-rec3's graph hashes with the real Keccak-f[1600]) the Fiat–Shamir hashes are not
   queries of `P1k` at all, only its trees' hashes and WHIR's permutation are.
 * **`Pi1Disc D P1k`**: every Keccak-f[1600] query of `P1k` continues a duplex or starts one (`E2ECompleteness.Disc`,
@@ -27,9 +27,9 @@ statements only (row counts fitting the shape, `KvHonest D.flock`):
   proofs of work; a prover proves it opening by opening (`E2ECompleteness.disc_proveOpeningWithH`), its hashes by
   `disc_of_hOnly`.
 * **`Pi1Cost D P1k`**: at most `2^47` block calls (`E2ECompleteness.Cost.QC` at `hashBlocks`: a Keccak-256 of `n`
-  bytes costs `⌊n / 136⌋ + 1`, a Keccak-f[1600] one). The BLAKE2s π1-rec3 prover's count was below `2^47`
-  (`proverCost3_flockProve3H`), nearly all of it its three WHIR provers' proof-of-work budgets (about `2^46.70`), which
-  do not depend on the VM; a Keccak prover has the same three openings.
+  bytes costs `⌊n / 136⌋ + 1`, a Keccak-f[1600] one). The Keccak π1-rec3 prover's count is below `2^47`
+  (UniKeccakComplete's `cost_rec3_flockProveH`), nearly all of it its three WHIR provers' proof-of-work budgets
+  (about `2^46.70`), which do not depend on the VM.
 * **`Pi1HashShort D P1k`**: every Keccak-256 query of `P1k` is shorter than `2^26` bytes (`E2ECompleteness.HashOK`),
   the length of π2's `σ` hash, which starts the chain that makes `α`'s input fresh (`Pi2AlphaFresh`). A prover's
   trees hash `512`-byte leaves and `64`-byte nodes (`Pi2A.hashOK_commitWithH`), its WHIR openings short inputs

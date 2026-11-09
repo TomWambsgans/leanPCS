@@ -11,7 +11,7 @@ import UniKeccakSound.Ids.Model
 The Keccak verifier's three stacks (`layoutsOfK`, read through `UniKeccakSound.Ids.layoutOfK`) are
 `StackLayout.new` of explicit column lists: `C1`'s (`c1ColsK`: `q_flock` at `h_SHA3 + 11` variables, every Keccak
 table's columns and `z_T` at its height, the memory's four columns, the bytecode's final counts), `C2`'s
-(`Shape.c2ColumnsK`), the setup's (`UniSound.Ids.setupCols`, the same as BLAKE2s's). At every shape:
+(`Shape.c2ColumnsK`), the setup's (`UniSound.Ids.setupCols`). At every shape:
 
 * **`layoutAlignedK`**: each stack's blocks are aligned (`UniSound.Ids.layoutAligned_new`, for any columns);
 * **`c1LimbsK`** (`C1LimbsK`): `C1`'s columns are one limb each (each named once in `c1NamesK`, checked by the

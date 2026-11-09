@@ -1,5 +1,5 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The Keccak main line's `Fs/CoupleK.lean` at π1-rec3's
--- shape, as `UniSound/Rec3/FsCouple3.lean` is the BLAKE2s main line's `FsCouple.lean`.
+-- shape, as `UniSound/Rec3/FsCouple3.lean` is the main line's `FsCouple.lean`.
 import UniKeccakSound.Fs.GameK3
 import UniKeccakSound.Fs.CoupleK
 

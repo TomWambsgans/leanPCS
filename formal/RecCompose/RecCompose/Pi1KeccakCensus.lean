@@ -1,7 +1,7 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The walk is `formal/UniKeccakComplete`'s
 -- (`K/Rec3ProverCost.lean`'s `wc_proveStreamRec3With`, `costP_proveRec3With`) redone for the lengths of the hashed
--- inputs, in `Pi2AlphaLen`'s calculus (`WS`, `LenP`); follows the BLAKE2s line's census (`Pi2AlphaLen`'s
--- `hashOK_proveRec3With`, `hashOK_p1k`, removed). Uses leanerVM (https://github.com/Verified-zkEVM/leanerVM, branch
+-- inputs, in `Pi2AlphaLen`'s calculus (`WS`, `LenP`).
+-- Uses leanerVM (https://github.com/Verified-zkEVM/leanerVM, branch
 -- `mumbai`, commit 6175f1a0, MIT OR Apache-2.0): the two calls `KeccakCalls`; and
 -- `formal/EndToEnd/Completeness/E2ECompleteness`'s `HashOK`.
 import RecCompose.Pi1KeccakTransfer

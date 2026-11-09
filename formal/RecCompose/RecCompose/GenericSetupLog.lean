@@ -1,5 +1,5 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Copied from `formal/UniSound/UniSound/FsSetup.lean`
--- (`simulateQ_loggedKC_stackSetupS`, `run_logImplKC`, `loggedKC_bind`, `loggedKC_pure`, statements and proofs
+-- (removed; `simulateQ_loggedKC_stackSetupS`, `run_logImplKC`, `loggedKC_bind`, `loggedKC_pure`, statements and proofs
 -- verbatim), which follows `formal/EndToEnd/Soundness/TreeLog.lean` (`loggedKC_buildTree`) and `Bridge/Setup.lean`
 -- (`commitWith_eq`) of this repository. These lemmas do not depend on the VM.
 import UniSound.FsWalk
@@ -8,8 +8,7 @@ import Bridge.Setup
 /-!
 # One plain tree, logged, and logging a bind (VM-generic)
 
-The two VM-generic facts about the logged setup that π2's setup bridge (`FsSetup.lean`, `pi2SetupBridge`) uses, copied
-from the BLAKE2s verifier's `UniSound.FsSetup` so that RecCompose does not depend on that module:
+The two VM-generic facts about the logged setup that π2's setup bridge (`FsSetup.lean`, `pi2SetupBridge`) uses:
 
 * **`simulateQ_loggedKC_stackSetupS`**: the logged setup of `colOf a v` at the plain shape of `2^v` words
   (`24 ≤ v ≤ 28`), answered over `π`, is `PcsQuotient.commitWith π v a`'s tree, its root as bytes and its log

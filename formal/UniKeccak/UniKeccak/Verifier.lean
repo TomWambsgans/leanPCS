@@ -15,7 +15,7 @@ public import UniKeccak.Terminal
 `reduceWithK F shape publicWords variant mode`, line by line `reduce` on the Keccak VM, reusing `UniStatement`'s
 `reduceWithFs` steps where they do not change. What changes:
 
-* **The tables** are `tablesKeccak` (the `SHA3` table in `BLAKE2S`'s place, `UniStatement/KeccakTables.lean`).
+* **The tables** are `tablesKeccak` (the `SHA3` table at opcode `5`, `UniStatement/KeccakTables.lean`).
 * **Flock** runs on the Keccak-f block (`verifyWalkedK`: `flock_min::verify_walked_with::<S, Keccak>`): `log_n =
   17 + h_SHA3`, the zerocheck (`Flock.zerocheckFs`, its coordinates drawn as the variant's Fiat–Shamir shape has
   them), the lincheck's **11** rounds (`17 − 6`), the 64 slices, the terminal `r_lc` against
@@ -27,7 +27,7 @@ public import UniKeccak.Terminal
 * **`C1`'s layout** (`layoutsK`): `q_flock` of `h_SHA3 + 11` variables (`2^11` words a block), the Keccak VM's
   tables' columns; the quotients' sizes from the Keccak tables (`Shape.c2ColumnsK`, `layoutsOfK`).
 * **A `q_flock` slot term's weight** (`weightAtK`): `q_flock`'s variables minus the point's are the slot bits, `11`
-  here (the Rust's `weight_at` reads them so; `UniStatement.weightAt` fixes them at BLAKE2s's `8`).
+  here (the Rust's `weight_at` reads them so; `UniStatement.weightAt` fixes them at `8`).
 * **The batch** (`batchK`): `batchFs` with `weightAtK`, and no pending matrices nor bit-slice claim (the Keccak
   verifier has neither).
 

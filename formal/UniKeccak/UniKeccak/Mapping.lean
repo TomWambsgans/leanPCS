@@ -25,7 +25,7 @@ coefficients on its own stack (`layoutsK`); `KeccakVm.KvHolds F prog s input q` 
 | `inverse t` (`z_T`) | none | `CountsNonzero` (`Q_W`) |
 | `qflockSlot j` (a view of `qflock`) | `kBlockCell · · j` | `Q_W` ties the lanes to it (`KeccakAux`'s copy clause) |
 
-Unlike Lv42's `BLAKE2S` limbs, no column of the Keccak VM is read off `QFLOCK`: the lanes are committed in both, and
+No column of the Keccak VM is read off `QFLOCK`: the lanes are committed in both, and
 `KeccakAux` states what `Q_W`'s copy identities check (`in_l = port + END_BIT·[l = 16]`, `out_l = port`). The column
 index `i` of a table is the same on both sides (`layout.rs`'s order: `KeccakVm.Sha3Table`'s `inLane l = 9 + l`,
 `outLane l = 34 + l`, `cnt c = 59 + c` are `sha3Columns`' positions).

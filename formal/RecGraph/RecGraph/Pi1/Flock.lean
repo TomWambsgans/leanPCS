@@ -77,8 +77,6 @@ structure FrontS where
   slices : List Sym
   point : List Sym
 
-/-! ### The BLAKE2s circuit's walk (`RowValues`) -/
-
 /-! ### The ring switch's end in tower order -/
 
 /-- **`xor_network(leaves)`** (Paar's greedy common subexpressions): while some pair of variables occurs in two sums

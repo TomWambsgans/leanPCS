@@ -68,7 +68,7 @@ stack (`Combined.Holds`) is the pairing of its weight (`denseWeight`) with the s
   point`). For the verifier's relations this is a condition on the challenges, not a fact: the slot point `y(t)`
   must not be a prefix of `w(t).take r` for a table (or the memory, or the bytecode) of more than `h_B` variables,
   nor of Flock's point on `q_flock` (`AtTSlotsMaximal`); it fails only where a coordinate equation in `t` holds.
-* **The Keccak VM** (against the BLAKE2s VM's file): `q_flock`'s slot `j` at words `j + 2048 u` (`2^11` words a
+* **The Keccak VM**: `q_flock`'s slot `j` at words `j + 2048 u` (`2^11` words a
   Keccak-f block), slots below `2048` (`keccakSlot_lt'`: a `SHA3` lane's port word, from `UniKeccakSound`'s
   `keccakSlot_lt`), `constraintRelationK` (the `SHA3` lanes' copies, with `END_BIT`'s known offset), `layoutsK`
   (`q_flock` of `h_B + 11` variables), no pending matrices in `atTOf`.
@@ -918,7 +918,7 @@ def AtTCovers (shape : Shape) (a : AtT) : Prop :=
     ∀ b ∈ (layoutIn (UniKeccak.layoutsK shape a.c2Columns) t.column.commitment).limbs t.column, b.2.1 ≤ t.point.length
 
 /-- **`q_flock`'s slot terms' points are maximal on `C1`**: no point of a relation on `C1` strictly extends
-one. At `atTOf` the slot terms are BLAKE2S's limb copies at `y(t) = coordinatesAt t (coordinateFunctionals
+one. At `atTOf` the slot terms are the `SHA3` lanes' copies at `y(t) = coordinatesAt t (coordinateFunctionals
 h_B)` (`h_B` coordinates), and the other points on `C1` are `w(t).take r` for each table's height `r`,
 `w(t).take lm`, `w(t).take lb` and Flock's point on `q_flock`; so this asks that `y(t)` is not
 `w(t).take h_B` while some table, the memory or the bytecode has more than `h_B` variables, nor the first

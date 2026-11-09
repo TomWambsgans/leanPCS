@@ -20,8 +20,8 @@ stack (`Heap.Realizes`, `kvStack`): its push and its pull tuples are permutation
 1. **The forms are the Keccak VM's flushes** (`IdsReal.rowTuplesK_eq`, `Forms.lean`).
 2. **The rows** (`LvR.map_rowPosition`, `LvR.activePositions_perm`, shape-generic).
 3. **The values** (`rowK_eq`): the Keccak VM's row `x` of opcode table `j` is `C1`'s row `rowPosition x`, every
-   column (the lanes included) being committed and read back as `kvColumn` (`column_kvStack`): no copy is needed
-   (unlike Lv42's `BLAKE2S` limbs, read off `q_flock`). A table's block holds its flushes (`tableBlockK_side`).
+   column (the lanes included) being committed and read back as `kvColumn` (`column_kvStack`): no copy is needed.
+   A table's block holds its flushes (`tableBlockK_side`).
 4. **The boundary** (`memTupleKK_eq`, `bcTupleKK_eq`, `finKK_eq`, `kv_boundaryTuples_push`/`_pull`): the memory's
    and the bytecode's pairs and the state boundary are the instance's six boundary blocks; the setup's address
    column is `g^x` (`suValK_address`) and its bytecode slots are `tupleSlotK` (`slotValK_eq`), by

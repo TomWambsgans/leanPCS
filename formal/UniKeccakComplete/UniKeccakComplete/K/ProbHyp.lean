@@ -128,7 +128,7 @@ theorem flockSimCommutes_of_commutes {flock : FlockProverH} (h : FlockCommutes f
 /-! ## The bad point challenges -/
 
 /-- **The bad point challenges** (the batch agent's finding): `combine` renumbers a point to any strictly longer point
-of the same commitment having it as a prefix, so the honest proof is rejected when `y(t)` (BLAKE2S's coordinate
+of the same commitment having it as a prefix, so the honest proof is rejected when `y(t)` (`SHA3`'s coordinate
 functionals at `t`, the point of `q_flock`'s slot terms, `tablePart`) is a proper prefix of another `C1` point: the
 memory's and the bytecode's `w.take lm`, `w.take lb` (`w = digits t n`, `n` the walk's digit count), or Flock's point
 on `q_flock` (`flockPoint`, fixed before `t`). -/

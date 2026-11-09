@@ -297,7 +297,7 @@ theorem counter_vanish {tr : Trace} (hH : TraceHonest tr) (hS : Small tr) {table
 /-- JUMP's table. -/
 theorem jumpTable_eq : tablesKeccak.getD opJump default = ⟨opJump, jumpColumns, flushesJump⟩ := rfl
 
-/-- `SHA3`'s table (in `BLAKE2S`'s place, opcode `5`). -/
+/-- `SHA3`'s table (opcode `5`). -/
 theorem sha3Table_eq : tablesKeccak.getD opSha3 default = ⟨opSha3, sha3Columns, flushesSha3⟩ := rfl
 
 theorem ofLane_zero : K.ofLane 0 = 0 := by decide

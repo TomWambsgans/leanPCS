@@ -6,7 +6,7 @@ import RecGraphKeccak.Main
 /-!
 # The Keccak composition's interface: what each part of the Keccak π1-rec3 verifier is to satisfy
 
-As `RecGraph.Sim.ComposeSpec` for the BLAKE2s VM, at `keccak128` and against `UniKeccak.reduceWithK`'s parts:
+On `RecGraph.Sim.ComposeSpec`'s representations, at `keccak128` and against `UniKeccak.reduceWithK`'s parts:
 
 * Flock: `FlockSpecK` (`Sim/Flock.lean`, proved: `flockSpecK`);
 * `TableSpecK PR TS nT`: a table's part (`tablePart`, on `tablesKeccak`, at `keccak128`'s heights);

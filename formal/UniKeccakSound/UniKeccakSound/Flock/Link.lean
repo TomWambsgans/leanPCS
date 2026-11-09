@@ -1,6 +1,6 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The verifier (`UniKeccak.verifyWalkedK`) is
 -- `formal/UniKeccak`'s, transcribed from `crates/leanvm/statement/src/flock_min.rs` (`verify_walked_with::<S, Keccak>`);
--- the proof follows `formal/FlockSound/FlockSoundUni/{Link,Rec3Link}.lean` (BLAKE2s's).
+-- the proof follows `formal/FlockSound/FlockSoundUni/{Link,Rec3Link}.lean`.
 import FlockSoundUni.Rec3Link
 import UniKeccakSound.FlockInterfaceK
 

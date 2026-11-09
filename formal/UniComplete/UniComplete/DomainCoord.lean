@@ -15,7 +15,7 @@ import UniComplete.DomainBasis
   `coordinatesAt_pointE_of_basis` gives the bits of `i` from `CoordinateFunctionalsBasis r`, the hypothesis at
   `coordinateFunctionals r`.
 
-**The instance `r = 18`** (the reference BLAKE2S height), `CoordinateFunctionalsBasis 18`, is proved in
+**The instance `r = 18`**, `CoordinateFunctionalsBasis 18`, is proved in
 `DomainCoord18` (`coordinateFunctionalsBasis_18`, `coordinatesAt_pointE_18`): one `decide +kernel` of
 `coordinateFunctionals 18` does not finish (it ran for 30 minutes at more than 10 GB: the elimination's entries
 stay unevaluated terms that the kernel re-reads), so there the elimination is cut into its column steps, each

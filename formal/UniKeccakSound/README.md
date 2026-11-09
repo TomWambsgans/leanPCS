@@ -59,7 +59,7 @@ The proof follows `UniSound`'s, layer by layer:
 - the tables (`tablesKeccak`) and 11 slot bits (`weightAtK`);
 - the `END_BIT` constant in `Q_W`'s `in_16` copy;
 - Flock's 11 lincheck rounds and its structured terminal, a zero inside Flock's last round. The states carry it from
-  `C2`'s round on (`FlockDoneZ`), in place of BLAKE2s's pending matrices' claim;
+  `C2`'s round on (`FlockDoneZ`), where `UniSound`'s states carry the pending matrices' claim;
 - three openings, and a setup of one tree;
 - the Keccak VM's relation `KvHolds` through `kvStack`.
 
@@ -68,16 +68,15 @@ at least four challenges. The relations read `α` as the first four, the identit
 only from four on. Correspondingly, `UniIdsK.diffs_eval` assumes six, and the main line's states record round `0`'s
 six challenges after `C2`'s round. None of `UniKeccak`'s statements changed.
 
-## Imports for the Keccak-only cut
+## Imports
 
-The library imports BLAKE2s-line modules only for their generic content. These are listed below with what is used;
+The library imports the shared libraries' modules for their generic content. These are listed below with what is used;
 the sub-libraries' docstrings name the lemmas.
 
 - **Shared, keep**: `Compose`, `WhirBridge`, `Heap`, `Soundness`, `Bridge`, `UniStatement`'s VM-independent steps,
   `FlockSound` (`Flock.lean`, `FlockSq.lean`, `Kronecker.lean`, the generic Flock theorems), `UniKeccak`, `KeccakVm`,
   `KeccakFlock`.
-- **BLAKE2s-specific modules, still imported for generic lemmas**. Each would have to move to a shared module before
-  deletion:
+- **Modules imported for their generic lemmas**, next to Lv42-instance content this library does not use:
   - `UniSound` main line:
     - `Prog`, `Prob`, `Sumcheck`, `Piop`, `PiopSound` (`RbrPiop`, `uniRounds`, `SumState`, `prEvent_*`);
     - `Final` (`openedOf` lemmas), `Fs`, `Fs128` (`uniBound128` and its bits);
@@ -96,8 +95,7 @@ the sub-libraries' docstrings name the lemmas.
     `Transcription`, `Tower`, `TxBasic`, `WalkCode` (chain-program decoding, the tower ring claim, the counting lemma).
   - `FlockSound.Main`, `FlockSound.Leanvm`: leanVM's constants (`skipNodes`, `packW`, `fixedPt`). `Flock/Setup.lean`
     generalises them to `m` slot bits.
-- **Not imported**: the BLAKE2s Flock block (`flockSoundInstance`), `UniSound.Closed*`, the BLAKE2s reference
-  deployment, `UniComplete`.
+- **Not imported**: `UniComplete`.
 
 ## Build
 
