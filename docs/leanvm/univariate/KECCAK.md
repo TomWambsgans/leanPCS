@@ -96,18 +96,24 @@ is measured (`crates/leanvm/rec/tests/keccak_vm_rec.rs`). The contract's gas dep
 
 | π1-rec3 | Keccak-f | Keccak-256 calls, stream | `E` products / linear | π2 positions used of 2^24 | π2 blocks / selector pairs | contract code | execution |
 |---|---:|---|---:|---:|---:|---:|---:|
-| **128 signatures** | 116 | 70, 9,232 B | 8,476 / 6,633 | 15,668,416 (93.4%) | 21 / 133 | 13,491 B | 28,325 |
-| 400 signatures | 118 | 71, 9,424 B | 8,673 / 6,885 | 15,940,800 (95.0%) | 22 / 144 | | 29,105 |
+| **128 signatures** | 116 | 70, 9,232 B | 8,476 / 6,633 | 15,668,416 (93.4%) | 21 / 133 | 13,219 B | 27,641 |
+| 400 signatures | 118 | 71, 9,424 B | 8,673 / 6,885 | 15,940,800 (95.0%) | 22 / 144 | 13,639 B | 28,421 |
 
-**On the real proofs** (`crates/leanvm/rec/tests/pi2_real.rs`, `real_end_to_end`, Mac). The recursion's contract
-accepts with `PCS_OPEN` attesting its 7 claims in 6 calls, and 18 flipped calldata bytes are rejected.
+**On the real proofs** (`crates/leanvm/rec/tests/pi2_real.rs`, `real_end_to_end`; π2v2, `docs/leanvm/rec/PI2.md`). The
+recursion's contract accepts with `PCS_OPEN` attesting its 7 claims in 6 calls, and 18 flipped calldata bytes are
+rejected. π2v1's figures, at `PCS_OPEN` version 2, in brackets.
 
 | | 128 signatures | 400 signatures |
 |---|---:|---:|
-| calldata | 980 B (66 zero) | 980 B (62 zero) |
-| execution | 28,325 | 29,105 |
-| transaction, EIP-7623, `c` = 0, without the base | **43,213** | 44,041 |
-| transaction, EIP-7976 | 62,720 | |
+| calldata | 1,004 B (59 zero) [980 B (66 zero)] | 1,004 B (61 zero) [980 B (62 zero)] |
+| execution | 27,641 [28,325] | 28,421 [29,105] |
+| transaction, EIP-7623, `c` = 0, without the base | **42,997** [43,213] | 43,753 [44,041] |
+| transaction, EIP-7976 | 64,256 [62,720] | 64,256 [62,720] |
+
+The prover rows below are π2v1's on the Mac, before the speedups of 2026-11-09 (next paragraph).
+
+| | 128 signatures | 400 signatures |
+|---|---:|---:|
 | π2: witness compile, adapt and check | 3.8 s | 2.9 s |
 | π2: prove / open | 4.4 s / 1.7 s | 3.0 s / 0.9 s |
 | peak RSS | 9.79 GB | 9.8 GB |
@@ -119,8 +125,22 @@ with π2's witness compiled meanwhile 1.87 s (the compile 0.49 s, overlapped wit
 its openings 0.70 s; what depends on the circuit only (π1's setup roots, π2's circuit, spec, setup commitment, IV)
 0.9 s once; peak RSS 12.5 GB. On x86 (h2, Intel Core Ultra 7 265, AVX2 without AVX-512, load 11–17) it takes 7.5–8.9 s
 (π2's witness: compile, adapt and check 3.3 s → 1.3 s, of which the compile a proof needs 0.8 s); on h1 (Zen 4, AVX-512, load 13–15 from other jobs)
-11.5–12.1 s. At 400 signatures the sample stream gave 44,737 transaction gas; the real proof's
+11.5–12.1 s. At 400 signatures the sample stream gave 44,737 transaction gas (π2v1); the real proof's
 calldata has more zero bytes.
+
+**On an AMD EPYC 9355P** (Zen 5, 32 cores / 64 threads, 2026-11-09, `tests/pipeline.rs`, medians of 5 warm passes,
+three interleaved runs). At the end of that work, with `PCS_OPEN` version 3 and π1's batched quotients (load 14–21):
+**0.59 s a proof**, against 2.16 s at its start (3.7×): π1-rec3's proof and openings 0.34 s, π2's proof 0.195 s, its
+openings 0.051 s, peak RSS 12.6 GB. Before version 3 and the batched quotients (load 4–19): **0.69 s a proof**, against 2.18 s at the start of that work (3.1×): π1-rec3's
+proof and openings 0.39 s (1.47 s, with π2's compile on the critical path), π2's witness 7 ms replayed while π1's
+openings run (0.62 s compiled), π2's proof 0.195 s (0.54 s), its openings 0.106 s (0.16 s); per circuit 1.7 s once
+(π2's circuit and witness plan 1.15 s); peak RSS 13.8 GB (12.65 GB). Without the π2v2 protocol change (the same proofs
+as before), 0.81 s (2.7×). π1 alone (`keccak_prover_benchmark`): 0.40 s, 0.94 s before. leanVM `9d50c92a3`'s own
+prover on the same machine: 0.19 s. With `PCS_OPEN` version 3 (WHIR's deeper levels at rates `1/4, 1/8, …` after
+the rate-`1/2` level 0, not `1/16, 1/128, …`: `PROVER.md` item 10, `PI2.md` §8; interleaved against version 2 at load
+14–42): π1's three openings 0.064 → 0.033 s (π1 0.385 → 0.354 s in its quieter runs, peak 7.2 → 6.2 GB), π2's
+0.108 → 0.054 s, the pipeline about 80 ms less a proof (best passes 0.678 → 0.590 s; medians of 40 passes under that
+load 0.857 → 0.637 s), peak 12.0 GB; the opening proofs about 27% longer (at 128 signatures π1's 354, 344 and 276 KB).
 
 π2 holds π1 in `2^24` positions: the structured terminal is 3K operations, so the arithmetic regions nearly vanish.
 The layout's padding (`leanvm_rec::circuit::layout::pad_counts`, and `formal/RecCircuit`'s `padCounts`) looks past

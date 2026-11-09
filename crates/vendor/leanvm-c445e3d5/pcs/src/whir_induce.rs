@@ -4,6 +4,10 @@
 // Copyright (c) 2026 Bain Capital Crypto, LP and Ron Rothblum
 // Modifications copyright 2026 Succinct Labs, Benedikt Bunz, William Wang
 // SPDX-License-Identifier: Apache-2.0 OR MIT
+// Modified here, for speed, every basis unchanged: the dense induce (`induce_sumcheck_poly`) runs one task a chunk of
+// the basis rather than one per-worker accumulator a query added up on the dispatching thread; the per-query form
+// stays as the test oracle (`induce_sumcheck_poly_by_query`). The sparse transpose's window pass runs its layers on
+// the blocks holding a nonzero window alone (`transpose_dense_rest`).
 
 //! LCH novel-basis induction of the per-level sumcheck basis polynomial: the
 //! dense per-query expansion, its succinct residual evaluator, and the sparse
@@ -102,14 +106,101 @@ fn invert_sks(sks_vks: &[F64]) -> Vec<F64> {
 
 /// Dense induce: `basis_poly[j] = Σ_i w_i · W-hat_j(q_i)`,
 /// `enforced_sum = Σ_i w_i · <row_i, eq(v_challenges, ·)>`, for the per-query
-/// batching weights `w` of [`primitives::field::powers`]. Mirror of the
-/// dense `whir::induce_sumcheck_poly` (per-worker accumulation).
+/// batching weights `w` of [`primitives::field::powers`].
 ///
-/// The LCH doubling recurrence runs into a HALF-size scratch and its last level
-/// expands straight into the worker's accumulator, so each query touches the
-/// accumulator once instead of writing a full-size table and adding it back.
-/// Addition in E is XOR, so reassociating across workers is bit-exact.
+/// One task a chunk of the basis, each running every query's LCH doubling recurrence over the chunk alone: no
+/// per-worker accumulator of the whole basis, and none to add up on the dispatching thread afterwards (one
+/// dispatch per worker's accumulator, which at `2^13` entries and 32 queries cost milliseconds for a tenth of one
+/// of work). The products are exact, so every entry is the one the per-query form
+/// ([`induce_sumcheck_poly_by_query`], the test oracle) gives.
 pub(crate) fn induce_sumcheck_poly<T: RowElem>(
+    log_msg_cols: usize,
+    sks_vks: &[F64],
+    opened_rows: &[Vec<T>],
+    v_challenges: &[F192],
+    queries: &[usize],
+    weights: &[F192],
+) -> (Vec<F192>, F192) {
+    let n = 1usize << log_msg_cols;
+    let n_queries = queries.len();
+    assert_eq!(opened_rows.len(), n_queries);
+    debug_assert_eq!(
+        v_challenges.len(),
+        opened_rows
+            .first()
+            .map(|r| r.len().trailing_zeros() as usize)
+            .unwrap_or(0)
+    );
+    debug_assert_eq!(weights.len(), n_queries);
+
+    let eq = build_eq_table_ext(v_challenges);
+    let enforced_sum = opened_rows
+        .iter()
+        .zip(weights)
+        .fold(F192::ZERO, |acc, (row, &w)| acc + T::dot(row, &eq) * w);
+    if log_msg_cols == 0 {
+        return (vec![weights.iter().fold(F192::ZERO, |a, &w| a + w)], enforced_sum);
+    }
+    let inv_sks_vks = invert_sks(sks_vks);
+    debug_assert!(inv_sks_vks.len() > log_msg_cols);
+    // Each query's normalized exponents: `basis_poly[j]` takes `w_i` times the product of query `i`'s exponents
+    // `k` over the bits `k` of `j`.
+    let exponents: Vec<Vec<F64>> = queries
+        .iter()
+        .map(|&q| {
+            let mut sks_at_x = vec![F64::ZERO; log_msg_cols];
+            normalized_sks_at(F64(q as u64), sks_vks, &inv_sks_vks, &mut sks_at_x);
+            sks_at_x
+        })
+        .collect();
+    // Chunks of the basis, a task each: every query's expansion over the chunk's low bits, from its weight times
+    // its exponents at the chunk's high bits. A field product is the same in any order, so every entry is the one
+    // a query's whole expansion gives.
+    let log_chunk = log_msg_cols
+        .saturating_sub(INDUCE_LOG_TASKS)
+        .max(INDUCE_MIN_LOG_CHUNK.min(log_msg_cols));
+    let chunk = 1usize << log_chunk;
+    // SAFETY: every task writes its whole chunk before anything reads it.
+    let mut basis_poly = unsafe { primitives::uninit_vec::<F192>(n) };
+    let expand = |t: usize, out: &mut [F192]| {
+        let mut scratch = vec![F192::ZERO; chunk];
+        out.fill(F192::ZERO);
+        for (sks_at_x, &w) in exponents.iter().zip(weights) {
+            scratch[0] = (log_chunk..log_msg_cols)
+                .filter(|&k| (t >> (k - log_chunk)) & 1 == 1)
+                .fold(w, |acc, k| acc.mul_base(sks_at_x[k]));
+            for (k, &s_at_x) in sks_at_x[..log_chunk].iter().enumerate() {
+                let (lo, hi) = scratch.split_at_mut(1usize << k);
+                for (h, &l) in hi.iter_mut().zip(lo.iter()) {
+                    *h = l.mul_base(s_at_x);
+                }
+            }
+            for (o, &v) in out.iter_mut().zip(&scratch) {
+                *o += v;
+            }
+        }
+    };
+    if n * n_queries < INDUCE_PAR_WORK {
+        basis_poly
+            .chunks_mut(chunk)
+            .enumerate()
+            .for_each(|(t, out)| expand(t, out));
+    } else {
+        parallel::chunks_mut(&mut basis_poly, chunk, expand);
+    }
+    (basis_poly, enforced_sum)
+}
+
+/// The dense induce's chunks: about `2^INDUCE_LOG_TASKS` of them, each of at least `2^INDUCE_MIN_LOG_CHUNK` entries
+/// (or the whole basis).
+const INDUCE_LOG_TASKS: usize = 7;
+const INDUCE_MIN_LOG_CHUNK: usize = 8;
+/// Below this many query-entry products the dense induce runs on the calling thread.
+const INDUCE_PAR_WORK: usize = 1 << 14;
+
+/// [`induce_sumcheck_poly`] query by query, each expanded into a worker's whole accumulator: the test oracle.
+#[cfg(test)]
+pub(crate) fn induce_sumcheck_poly_by_query<T: RowElem>(
     log_msg_cols: usize,
     sks_vks: &[F64],
     opened_rows: &[Vec<T>],
@@ -498,19 +589,26 @@ fn transpose_dense_rest(
         window.fill(F192::ZERO);
         let base = c << w_log;
         let first = windows.partition_point(|(w, _)| (*w << k) < base);
-        for (w, buf) in windows[first..].iter().take_while(|(w, _)| (*w << k) < base + win) {
-            window[(*w << k) - base..][..buf.len()].copy_from_slice(buf);
-        }
-        // Layers whose blocks fit the window, block sizes 2^(k+1) .. 2^w.
+        let inside: Vec<usize> = windows[first..]
+            .iter()
+            .take_while(|(w, _)| (*w << k) < base + win)
+            .map(|(w, buf)| {
+                window[(*w << k) - base..][..buf.len()].copy_from_slice(buf);
+                (*w << k) - base
+            })
+            .collect();
+        // Layers whose blocks fit the window, block sizes 2^(k+1) .. 2^w: on the blocks holding a sparse window
+        // alone, every other block being zero, which the transposed butterflies leave zero.
         for layer in (top..log_d - k).rev() {
-            let block_size = 1usize << (log_d - layer);
-            for (b, block) in window.chunks_mut(block_size).enumerate() {
-                let (lo, hi) = block.split_at_mut(block_size / 2);
-                transposed_butterfly_lanes(
-                    as_words(lo),
-                    as_words(hi),
-                    ntt.twiddle(layer, (base >> (log_d - layer)) + b),
-                );
+            let log_block = log_d - layer;
+            let block_size = 1usize << log_block;
+            let mut done = None;
+            for b in inside.iter().map(|&at| at >> log_block) {
+                if done.replace(b) == Some(b) {
+                    continue;
+                }
+                let (lo, hi) = window[b * block_size..][..block_size].split_at_mut(block_size / 2);
+                transposed_butterfly_lanes(as_words(lo), as_words(hi), ntt.twiddle(layer, (base >> log_block) + b));
             }
         }
     });

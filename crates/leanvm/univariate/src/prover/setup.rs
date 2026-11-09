@@ -7,6 +7,7 @@
 
 use fiat_shamir::merkle::Hash;
 use primitives::field::F64;
+use quotient::ntt::Fill;
 
 use super::columns::SetupPolys;
 use super::opening;
@@ -17,12 +18,15 @@ use crate::verifier::Shape;
 
 /// `F`'s stack: the 16 tuple slots interleaved (word `slot + 16 k`, `k` a basis-`B` coefficient), the addresses.
 pub fn f_stack(shape: &Shape, setup: &SetupPolys) -> Stack {
-    let mut stack = Stack::new(StackLayout::new(&setup_columns(shape)));
     let n = 1usize << shape.log_bytecode;
-    let tuple: Vec<F64> = (0..16 * n).map(|i| setup.slots[i % 16].b[i / 16]).collect();
-    stack.put_k(Column::BytecodeTuple, &tuple);
-    stack.put_k(Column::Address, &setup.address.b);
-    stack
+    let tuple: Vec<F64> = parallel::map_collect(16 * n, |i| setup.slots[i % 16].b[i / 16]);
+    Stack::filled(
+        StackLayout::new(&setup_columns(shape)),
+        &[
+            (Column::BytecodeTuple, 0, Fill::Words(&tuple)),
+            (Column::Address, 0, Fill::Words(&setup.address.b)),
+        ],
+    )
 }
 
 /// The roots a contract is built with (the contract's type: its IV binds them, SPEC.md §13, F2).

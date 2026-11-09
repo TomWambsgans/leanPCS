@@ -5,7 +5,11 @@
 // backend is NEON's two inputs with a third scalar one interleaved (`arm::Pair`, `LANES` = 3; remainders on NEON),
 // over a straight-line round (`arm::permute`, reached through the `Lanes64::permute` hook, whose default is the
 // unchanged `permute` the x86 backends use); more tests (`batched_matches_single_for_every_count`) and an
-// ignored timing test (`bench_backends`). The digests are unchanged.
+// ignored timing test (`bench_backends`, which times the x86 backends too). On every target, the batched hash
+// reads its inputs and writes its digests through the `Lanes64::absorb_words` and `Lanes64::squeeze` hooks, whose
+// defaults are the unchanged buffered transposes; the AVX-512 backend transposes eight inputs' words in registers
+// instead (`x86::transpose_8x8`), so that no vector load waits on the scalar stores it reads (512-byte inputs:
+// 29.4 ns an input-permutation before, 25.7 after; 64-byte ones 28.6 and 23.4). The digests are unchanged.
 //! Keccak-256, the repo's one hash function: Ethereum's, which is the 256-bit hash of FIPS
 //! 202 with Keccak's original padding.
 //!
@@ -126,6 +130,50 @@ trait Lanes64: Copy {
     #[inline(always)]
     fn permute(a: &mut [Self; STATE_LANES]) {
         permute(a);
+    }
+    /// XOR the `n` (at most [`RATE_LANES`]) little-endian words at byte `off` of each of the `WIDTH` inputs into
+    /// the lanes `st[..n]`, input `l` into vector lane `l`: by default through a buffer the words are written to
+    /// one at a time, unless the backend transposes them in registers.
+    ///
+    /// # Safety
+    ///
+    /// `inputs.len() == WIDTH`, and every input is valid for `off + 8 * n` readable bytes.
+    #[inline(always)]
+    unsafe fn absorb_words(st: &mut [Self; STATE_LANES], inputs: &[*const u8], off: usize, n: usize) {
+        // `buf[w * WIDTH + l]` is input `l`'s word `w`.
+        let mut buf = [0u64; RATE_LANES * MAX_WIDTH];
+        for (l, &input) in inputs.iter().enumerate() {
+            for w in 0..n {
+                // SAFETY: the word lies inside the input's readable bytes, as the caller vouches.
+                let word = unsafe { input.add(off + 8 * w).cast::<u64>().read_unaligned() };
+                buf[w * Self::WIDTH + l] = u64::from_le(word);
+            }
+        }
+        for (w, lane) in st[..n].iter_mut().enumerate() {
+            // SAFETY: `buf` holds RATE_LANES * MAX_WIDTH >= (w + 1) * WIDTH words.
+            *lane = lane.xor(unsafe { Self::load(buf.as_ptr().add(w * Self::WIDTH)) });
+        }
+    }
+    /// Write the `WIDTH` digests, the first [`OUT_LEN`] bytes of each input's state, one after another at `out`:
+    /// by default through a buffer, unless the backend transposes them in registers.
+    ///
+    /// # Safety
+    ///
+    /// `out` is valid for `WIDTH * OUT_LEN` writable bytes.
+    #[inline(always)]
+    unsafe fn squeeze(st: &[Self; STATE_LANES], out: *mut u8) {
+        let mut lanes = [0u64; OUT_LANES * MAX_WIDTH];
+        for (w, lane) in st[..OUT_LANES].iter().enumerate() {
+            // SAFETY: `lanes` holds OUT_LANES * MAX_WIDTH >= (w + 1) * WIDTH words.
+            unsafe { lane.store(lanes.as_mut_ptr().add(w * Self::WIDTH)) };
+        }
+        for l in 0..Self::WIDTH {
+            for w in 0..OUT_LANES {
+                let bytes = lanes[w * Self::WIDTH + l].to_le_bytes();
+                // SAFETY: `l * 32 + 8 * w + 8 <= WIDTH * 32`.
+                unsafe { out.add(l * OUT_LEN + 8 * w).copy_from_nonoverlapping(bytes.as_ptr(), 8) };
+            }
+        }
     }
 }
 
@@ -474,6 +522,81 @@ mod x86 {
                 Self(_mm512_ternarylogic_epi64::<0x96>(t, d.0, e.0))
             }
         }
+        /// Eight words of every input at a time, loaded whole (masked past the `n`th) and transposed eight by
+        /// eight in registers: no word goes through memory, where the vector loads would wait for the eight
+        /// stores each of them reads to retire.
+        #[inline(always)]
+        unsafe fn absorb_words(st: &mut [Self; super::STATE_LANES], inputs: &[*const u8], off: usize, n: usize) {
+            debug_assert_eq!(inputs.len(), 8);
+            for w0 in (0..n).step_by(8) {
+                let k = (n - w0).min(8);
+                let mask = (((1u16 << k) - 1) & 0xFF) as u8;
+                // SAFETY: the caller vouches for the first `n` words of every input, and a masked load reads
+                // none of the others.
+                let rows: [__m512i; 8] = std::array::from_fn(|l| unsafe {
+                    _mm512_maskz_loadu_epi64(mask, inputs[l].add(off + 8 * w0).cast())
+                });
+                let cols = transpose_8x8(rows);
+                for (lane, col) in st[w0..w0 + k].iter_mut().zip(cols) {
+                    *lane = lane.xor(Self(col));
+                }
+            }
+        }
+        /// The four digest lanes transposed in registers: two inputs' digests (64 contiguous bytes) a store.
+        #[inline(always)]
+        unsafe fn squeeze(st: &[Self; super::STATE_LANES], out: *mut u8) {
+            // SAFETY: the cfg enables avx512f, and the caller vouches for `out`'s 256 bytes.
+            unsafe {
+                // Per 128-bit lane q: words 0 and 1 of inputs 2q (`a`) and 2q + 1 (`c`), words 2 and 3 (`b`, `d`).
+                let a = _mm512_unpacklo_epi64(st[0].0, st[1].0);
+                let b = _mm512_unpacklo_epi64(st[2].0, st[3].0);
+                let c = _mm512_unpackhi_epi64(st[0].0, st[1].0);
+                let d = _mm512_unpackhi_epi64(st[2].0, st[3].0);
+                // Inputs 2q and 2q + 1 are lane q of a, b, c, d, in that order.
+                let (ab_lo, ab_hi) = (_mm512_shuffle_i64x2::<0x44>(a, b), _mm512_shuffle_i64x2::<0xEE>(a, b));
+                let (cd_lo, cd_hi) = (_mm512_shuffle_i64x2::<0x44>(c, d), _mm512_shuffle_i64x2::<0xEE>(c, d));
+                let pairs = [
+                    _mm512_shuffle_i64x2::<0x88>(ab_lo, cd_lo),
+                    _mm512_shuffle_i64x2::<0xDD>(ab_lo, cd_lo),
+                    _mm512_shuffle_i64x2::<0x88>(ab_hi, cd_hi),
+                    _mm512_shuffle_i64x2::<0xDD>(ab_hi, cd_hi),
+                ];
+                for (q, pair) in pairs.into_iter().enumerate() {
+                    _mm512_storeu_si512(out.add(64 * q).cast(), pair);
+                }
+            }
+        }
+    }
+
+    /// The 8x8 transpose of 64-bit words: word `j` of row `i` to word `i` of row `j`.
+    #[cfg(target_feature = "avx512f")]
+    #[inline(always)]
+    fn transpose_8x8(v: [__m512i; 8]) -> [__m512i; 8] {
+        // SAFETY: the cfg enables avx512f.
+        unsafe {
+            // Per 128-bit lane j: [v_2p[2j], v_2p+1[2j]] in `lo[p]`, [v_2p[2j+1], v_2p+1[2j+1]] in `hi[p]`.
+            let lo: [__m512i; 4] = std::array::from_fn(|p| _mm512_unpacklo_epi64(v[2 * p], v[2 * p + 1]));
+            let hi: [__m512i; 4] = std::array::from_fn(|p| _mm512_unpackhi_epi64(v[2 * p], v[2 * p + 1]));
+            // Row 2j (of `lo`) or 2j + 1 (of `hi`) is 128-bit lane j of the four pair registers, in order.
+            let rows = |t: &[__m512i; 4]| {
+                let (a, b) = (
+                    _mm512_shuffle_i64x2::<0x44>(t[0], t[1]),
+                    _mm512_shuffle_i64x2::<0x44>(t[2], t[3]),
+                );
+                let (c, d) = (
+                    _mm512_shuffle_i64x2::<0xEE>(t[0], t[1]),
+                    _mm512_shuffle_i64x2::<0xEE>(t[2], t[3]),
+                );
+                [
+                    _mm512_shuffle_i64x2::<0x88>(a, b),
+                    _mm512_shuffle_i64x2::<0xDD>(a, b),
+                    _mm512_shuffle_i64x2::<0x88>(c, d),
+                    _mm512_shuffle_i64x2::<0xDD>(c, d),
+                ]
+            };
+            let (even, odd) = (rows(&lo), rows(&hi));
+            [even[0], odd[0], even[1], odd[1], even[2], odd[2], even[3], odd[3]]
+        }
     }
 }
 
@@ -671,59 +794,33 @@ const MAX_WIDTH: usize = 8;
 unsafe fn hash_group<S: Lanes64>(inputs: &[*const u8], len: usize, init: &[u64; STATE_LANES], out: *mut u8) {
     debug_assert_eq!(inputs.len(), S::WIDTH);
     let mut st: [S; STATE_LANES] = std::array::from_fn(|i| S::splat(init[i]));
-    // `buf[w * WIDTH + l]` is input `l`'s lane `w` of the current block.
-    let mut buf = [0u64; RATE_LANES * MAX_WIDTH];
-    // XOR the first `n` lanes of `buf` into the rate.
-    let xor_buf = |st: &mut [S; STATE_LANES], buf: &[u64], n: usize| {
-        for (w, lane) in st[..n].iter_mut().enumerate() {
-            // SAFETY: `buf` holds RATE_LANES * MAX_WIDTH >= (w + 1) * WIDTH words.
-            *lane = lane.xor(unsafe { S::load(buf.as_ptr().add(w * S::WIDTH)) });
-        }
-    };
     let (blocks, tail) = (len / RATE, len % RATE);
     for blk in 0..blocks {
-        for (l, &input) in inputs.iter().enumerate() {
-            for w in 0..RATE_LANES {
-                // SAFETY: the block lies inside the input's `len` bytes.
-                let word = unsafe { input.add(blk * RATE + 8 * w).cast::<u64>().read_unaligned() };
-                buf[w * S::WIDTH + l] = u64::from_le(word);
-            }
-        }
-        xor_buf(&mut st, &buf, RATE_LANES);
+        // SAFETY: the block lies inside the input's `len` bytes.
+        unsafe { S::absorb_words(&mut st, inputs, blk * RATE, RATE_LANES) };
         S::permute(&mut st);
     }
-    // The final block, read in place: its words, then the padding, which every input has in the same lanes.
+    // The final block, read in place: its whole words, its last few bytes, then the padding, which every input
+    // has in the same lanes.
     let (words, part) = (tail / 8, tail % 8);
-    for (l, &input) in inputs.iter().enumerate() {
-        // SAFETY: the final block is the input's last `tail` bytes.
-        let input = unsafe { input.add(blocks * RATE) };
-        for w in 0..words {
-            // SAFETY: as above.
-            let word = unsafe { input.add(8 * w).cast::<u64>().read_unaligned() };
-            buf[w * S::WIDTH + l] = u64::from_le(word);
+    // SAFETY: the final block's whole words are the input's last `8 * words + part` bytes but `part`.
+    unsafe { S::absorb_words(&mut st, inputs, blocks * RATE, words) };
+    if part > 0 {
+        // `buf[l]` is input `l`'s last bytes, as a little-endian word.
+        let mut buf = [0u64; MAX_WIDTH];
+        for (l, &input) in inputs.iter().enumerate() {
+            // SAFETY: the final block is the input's last `tail` bytes.
+            let byte = |j: usize| u64::from(unsafe { *input.add(blocks * RATE + 8 * words + j) }) << (8 * j);
+            buf[l] = (0..part).fold(0, |acc, j| acc | byte(j));
         }
-        if part > 0 {
-            // SAFETY: as above.
-            let byte = |j: usize| u64::from(unsafe { *input.add(8 * words + j) }) << (8 * j);
-            buf[words * S::WIDTH + l] = (0..part).fold(0, |acc, j| acc | byte(j));
-        }
+        // SAFETY: `buf` holds MAX_WIDTH >= WIDTH words.
+        st[words] = st[words].xor(unsafe { S::load(buf.as_ptr()) });
     }
-    xor_buf(&mut st, &buf, words + usize::from(part > 0));
     st[words] = st[words].xor(S::splat(u64::from(PAD_FIRST) << (8 * part)));
     st[RATE_LANES - 1] = st[RATE_LANES - 1].xor(S::splat(END_BIT));
     S::permute(&mut st);
-    let mut lanes = [0u64; OUT_LANES * MAX_WIDTH];
-    for (w, lane) in st[..OUT_LANES].iter().enumerate() {
-        // SAFETY: `lanes` holds OUT_LANES * MAX_WIDTH >= (w + 1) * WIDTH words.
-        unsafe { lane.store(lanes.as_mut_ptr().add(w * S::WIDTH)) };
-    }
-    for l in 0..S::WIDTH {
-        for w in 0..OUT_LANES {
-            let bytes = lanes[w * S::WIDTH + l].to_le_bytes();
-            // SAFETY: `l * 32 + 8 * w + 8 <= WIDTH * 32`.
-            unsafe { out.add(l * OUT_LEN + 8 * w).copy_from_nonoverlapping(bytes.as_ptr(), 8) };
-        }
-    }
+    // SAFETY: the caller vouches for `WIDTH * OUT_LEN` writable bytes at `out`.
+    unsafe { S::squeeze(&st, out) };
 }
 
 /// The batched hash over one backend.
@@ -1018,8 +1115,15 @@ mod tests {
             t.elapsed().as_secs_f64() * 1e9 / (n * perms) as f64
         }
         type Entry = (&'static str, fn(usize) -> f64);
-        #[cfg_attr(not(target_arch = "aarch64"), allow(unused_mut))]
+        #[cfg_attr(
+            not(any(target_arch = "aarch64", all(target_arch = "x86_64", target_feature = "avx2"))),
+            allow(unused_mut)
+        )]
         let mut entries: Vec<Entry> = vec![("scalar", sample::<u64>)];
+        #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+        entries.push(("avx2", sample::<x86::Avx2>));
+        #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
+        entries.push(("avx512", sample::<x86::Avx512>));
         #[cfg(target_arch = "aarch64")]
         {
             use arm::{Neon, Pair};

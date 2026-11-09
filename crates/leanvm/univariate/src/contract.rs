@@ -87,13 +87,16 @@ pub fn shape_bytes(shape: &Shape) -> [u8; 8] {
     bytes
 }
 
-/// A `PCS_OPEN` call's layout word (SPEC.md §13, F2): the shape's bytes (bytes 0..8), the
-/// opening's code (22..24), the stack's variables (24) and the words its blocks fill, `placed` (25..32), which
-/// WHIR's verifier needs to know the committed lanes. Each shape's stacks have their own words.
+/// A `PCS_OPEN` call's layout word (SPEC.md §13, F2): the shape's bytes (bytes 0..8), the opening's version (21:
+/// `prover::opening::VERSION`, which fixes WHIR's parameters), the opening's code (22..24), the stack's variables (24)
+/// and the words its blocks fill, `placed` (25..32), which WHIR's verifier needs to know the committed lanes. Each
+/// shape's stacks have their own words.
 pub fn layout_word(shape: &Shape, code: u16, vars: usize, placed: u64) -> [u8; 32] {
+    use crate::prover::opening::{VERSION, VERSION_BYTE};
     assert!(vars < 256 && placed < 1 << 56);
     let mut word = [0u8; 32];
     word[..8].copy_from_slice(&shape_bytes(shape));
+    word[VERSION_BYTE] = VERSION as u8;
     word[22..24].copy_from_slice(&code.to_be_bytes());
     word[24] = vars as u8;
     word[25..].copy_from_slice(&placed.to_be_bytes()[1..]);

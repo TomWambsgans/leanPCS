@@ -188,8 +188,11 @@ fn honest_and_mutated(f: &Fixture, mutations: usize) {
         &f.witness,
         false,
     );
-    assert!(
-        claims_hold(&proved, &f.setup).contains(&false),
+    // The prover keeps the identity a polynomial one (`h = T / (d_pull d_push)` at the dishonest hole): the copy
+    // argument's sum, zero, is the false claim (PI2.md §7).
+    assert_eq!(
+        claims_hold(&proved, &f.setup),
+        [true, true, false, true],
         "a public element changed"
     );
     let mut public_input = f.public_input;
@@ -204,8 +207,9 @@ fn honest_and_mutated(f: &Fixture, mutations: usize) {
         &f.witness,
         false,
     );
-    assert!(
-        claims_hold(&proved, &f.setup).contains(&false),
+    assert_eq!(
+        claims_hold(&proved, &f.setup),
+        [true, true, false, true],
         "the public input changed"
     );
 }
@@ -264,7 +268,7 @@ fn the_interface_example() {
         verify_openings(f.circuit.log_n, &reduced, &roots, &f.setup.root(), &openings),
         Ok(())
     );
-    // The value the port binds, changed: a false claim.
+    // The value the port binds, changed: the sum's claim is false (the identity's holds, PI2.md §7).
     let mut other = public.clone();
     other.elements[0] = leanvm_statement::field::E::new(1, 0, 0);
     let (_, values) = adapt::public_values(&other);
@@ -278,7 +282,7 @@ fn the_interface_example() {
         &f.witness,
         false,
     );
-    assert!(claims_hold(&proved, &f.setup).contains(&false));
+    assert_eq!(claims_hold(&proved, &f.setup), [true, true, false, true]);
 }
 
 /// π1's calls for a small circuit: five calls of the real ones' kinds (constants, the two roots, elements).

@@ -1,5 +1,9 @@
 // Vendored from leanVM (https://github.com/leanEthereum/leanVM), commit c445e3d51a5a85031df47240595698f3b24897bf, file crates/verifier/src/whir.rs.
 // MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and AGENTS.md at the repository root).
+// Modified here: a second ladder, [`Ladder::Recursion`] (this repository's recursion openings, `PCS_OPEN` version 3:
+// rate 1/2 at level 0, the RS domain shrinking by 5 bits after the initial fold and by 3 after each later one, every
+// block at least 2^8 positions; its query counts tabulated, `RECURSION_QUERIES`), verified by [`verify_whir_on`];
+// [`verify_whir`] is that on [`Ladder::Deployed`], unchanged, and [`ladder`] gives either ladder's shape.
 //! WHIR opening.
 
 use crate::field::{E, K, ONE, ZERO, powers};
@@ -24,33 +28,86 @@ const WHIR_QUERIES: [[&[usize]; 14]; 4] = [
     [&[56,32], &[56,32,22], &[56,32,22], &[56,32,23], &[56,32,23], &[56,32,23,17], &[56,32,23,17], &[56,32,23,18], &[56,32,23,18], &[56,32,23,18,14], &[56,32,23,18,14], &[56,32,23,18,14], &[56,32,23,18,15], &[56,32,23,18,15,12]],
 ];
 
+/// The recursion ladder's RS-domain reductions and its least block: `5` bits after the initial fold, `3` after each
+/// later one (one rate bit a level), every block at least `2^8` positions. [Added here.]
+const RECURSION_INITIAL_REDUCTION: usize = 5;
+const RECURSION_SUBSEQUENT_REDUCTION: usize = 3;
+const RECURSION_MIN_LOG_BLOCK: usize = 8;
+
+/// The recursion ladder's query counts at rate 1/2, stack sizes `2^15 ..= 2^28` (`pcs`'s eta search on that ladder,
+/// `config_for_schedule(log_n, 1, RECURSION_SCHEDULE)`; tested equal). [Added here.]
+#[rustfmt::skip]
+const RECURSION_QUERIES: [&[usize]; 14] = [
+    &[222,73], &[223,110,35], &[223,111,43], &[223,111,55], &[223,111,73], &[223,112,74,35], &[223,112,74,43],
+    &[224,112,74,55], &[224,112,75,55], &[224,112,75,56,35], &[224,112,75,56,43], &[224,112,75,56,44],
+    &[225,112,75,56,45], &[225,112,75,56,45,35],
+];
+
+/// The ladder an opening is verified on. [Added here: leanVM verifies [`Ladder::Deployed`] alone.]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Ladder {
+    /// leanVM's: the RS domain shrinks by 3 bits after the initial fold, then by 1 (rates `1/2, 1/16, 1/128, ...`
+    /// from rate 1/2), at the four rates `1/2 ..= 1/16`.
+    Deployed,
+    /// This repository's recursion openings (`PCS_OPEN` version 3), at rate 1/2 alone: the RS domain shrinks by 5
+    /// bits after the initial fold, then by 3 (rates `1/2, 1/4, 1/8, ...`), every block at least `2^8` positions.
+    Recursion,
+}
+
 struct WhirConfig {
     log_inv_rates: Vec<usize>,
     folds: Vec<usize>,
     queries: &'static [usize],
 }
 
+/// A ladder's shape at this size and rate: the folds, the inverse-rate logarithms and the query counts per level.
+/// [Added here: `derive_config`, public.]
+pub fn ladder(
+    log_n: usize,
+    log_inv_rate: usize,
+    ladder: Ladder,
+) -> Result<(Vec<usize>, Vec<usize>, &'static [usize]), VerifierError> {
+    derive_config(log_n, log_inv_rate, ladder).map(|c| (c.folds, c.log_inv_rates, c.queries))
+}
+
 /// The opening shape at this size and rate: the ladder geometry, then the tabulated query counts.
-fn derive_config(log_n: usize, log_inv_rate: usize) -> Result<WhirConfig, VerifierError> {
+fn derive_config(log_n: usize, log_inv_rate: usize, ladder: Ladder) -> Result<WhirConfig, VerifierError> {
+    let rates = match ladder {
+        Ladder::Deployed => 1..=4,
+        Ladder::Recursion => 1..=1,
+    };
     require(
-        (MIN_STACKED_LOG..=MAX_STACKED_LOG).contains(&log_n) && (1..=4).contains(&log_inv_rate),
+        (MIN_STACKED_LOG..=MAX_STACKED_LOG).contains(&log_n) && rates.contains(&log_inv_rate),
         VerifierError::WhirShape,
     )?;
+    let (initial, subsequent, min_log_block) = match ladder {
+        Ladder::Deployed => (
+            RS_DOMAIN_INITIAL_REDUCTION_FACTOR,
+            RS_DOMAIN_SUBSEQUENT_REDUCTION_FACTOR,
+            0,
+        ),
+        Ladder::Recursion => (
+            RECURSION_INITIAL_REDUCTION,
+            RECURSION_SUBSEQUENT_REDUCTION,
+            RECURSION_MIN_LOG_BLOCK,
+        ),
+    };
     let mut folds = vec![INITIAL_FOLDING_FACTOR];
     let mut log_inv_rates = vec![log_inv_rate];
     let mut remaining = log_n - INITIAL_FOLDING_FACTOR;
     while remaining > RESIDUAL_MAX_LOG {
-        let reduction = if folds.len() == 1 {
-            RS_DOMAIN_INITIAL_REDUCTION_FACTOR
-        } else {
-            RS_DOMAIN_SUBSEQUENT_REDUCTION_FACTOR
-        };
-        log_inv_rates.push(log_inv_rates[log_inv_rates.len() - 1] + folds[folds.len() - 1] - reduction);
+        let reduction = if folds.len() == 1 { initial } else { subsequent };
         let fold = SUBSEQUENT_FOLDING_FACTOR.min(remaining);
         remaining -= fold;
+        // The level's message keeps `remaining` columns; its block is at least `2^min_log_block` positions.
+        let rate = log_inv_rates[log_inv_rates.len() - 1] + folds[folds.len() - 1] - reduction;
+        log_inv_rates.push(rate.max(min_log_block.saturating_sub(remaining)));
         folds.push(fold);
     }
-    let queries = WHIR_QUERIES[log_inv_rate - 1][log_n - MIN_STACKED_LOG];
+    let queries = match ladder {
+        Ladder::Deployed => WHIR_QUERIES[log_inv_rate - 1][log_n - MIN_STACKED_LOG],
+        Ladder::Recursion => RECURSION_QUERIES[log_n - MIN_STACKED_LOG],
+    };
     require(queries.len() == folds.len(), VerifierError::QueryCountLadder)?;
     Ok(WhirConfig {
         log_inv_rates,
@@ -148,7 +205,31 @@ pub fn verify_whir(
     root: Digest,
     evaluate_basis: &dyn Fn(&[E]) -> E,
 ) -> Result<(), VerifierError> {
-    let config = derive_config(log_n, log_inv_rate)?;
+    verify_whir_on(
+        Ladder::Deployed,
+        transcript,
+        log_n,
+        placed,
+        log_inv_rate,
+        target,
+        root,
+        evaluate_basis,
+    )
+}
+
+/// [`verify_whir`] on either [`Ladder`]. [Added here.]
+#[allow(clippy::too_many_arguments)]
+pub fn verify_whir_on(
+    ladder: Ladder,
+    transcript: &mut Transcript,
+    log_n: usize,
+    placed: u64,
+    log_inv_rate: usize,
+    target: E,
+    root: Digest,
+    evaluate_basis: &dyn Fn(&[E]) -> E,
+) -> Result<(), VerifierError> {
+    let config = derive_config(log_n, log_inv_rate, ladder)?;
     let levels = config.folds.len();
 
     let mut running_quad = transcript.sumcheck_round_poly(3, target, None)?;

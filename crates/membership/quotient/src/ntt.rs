@@ -182,6 +182,17 @@ mod lanes {
         }
     }
 
+    /// The even lanes of `a` then of `b`, and the odd ones.
+    #[inline(always)]
+    pub fn evens_odds(a: V, b: V) -> (V, V) {
+        // SAFETY: the module's cfg enables avx512f.
+        unsafe {
+            let evens = _mm512_set_epi64(14, 12, 10, 8, 6, 4, 2, 0);
+            let odds = _mm512_set_epi64(15, 13, 11, 9, 7, 5, 3, 1);
+            (V(_mm512_permutex2var_epi64(a.0, evens, b.0)), V(_mm512_permutex2var_epi64(a.0, odds, b.0)))
+        }
+    }
+
     /// Lane `i` is `a_(i ^ S)`.
     #[inline(always)]
     pub fn swap<const S: usize>(a: V) -> V {
@@ -830,6 +841,23 @@ unsafe fn pairs<T: Kind>(lo: *mut u64, hi: *mut u64, len: usize, t: V) {
     }
 }
 
+/// [`pairs`] read from `src_lo` and `src_hi` (another buffer's rows), written to `lo` and `hi`: a first layer's
+/// butterflies that also copy.
+///
+/// # Safety
+/// The four point to `len` rows each, the sources readable, `lo` and `hi` of the caller's own.
+#[inline(always)]
+unsafe fn pairs_from<T: Kind>(src_lo: *const u64, src_hi: *const u64, lo: *mut u64, hi: *mut u64, len: usize, t: V) {
+    for i in 0..len {
+        // SAFETY: rows `i < len` of the caller's.
+        unsafe {
+            let (a, b) = T::butterfly(load(src_lo.add(8 * i)), load(src_hi.add(8 * i)), t);
+            store(lo.add(8 * i), a);
+            store(hi.add(8 * i), b);
+        }
+    }
+}
+
 /// `kind`'s layers on the `rows` rows of eight words at `data`, read first from `src` if given: position layer `k` is
 /// row layer `k - shift`, and the layers below `shift` (0 or 3) are inside the rows. With `runs`, every eight rows
 /// are transposed last ([`values_batch`]).
@@ -837,6 +865,80 @@ unsafe fn pairs<T: Kind>(lo: *mut u64, hi: *mut u64, len: usize, t: V) {
 /// # Safety
 /// `data` holds `8 rows` words, and `src` (if given) as many, disjoint from `data`.
 unsafe fn run<T: Kind>(data: *mut u64, src: Option<*const u64>, rows: usize, shift: usize, kind: &T, runs: bool) {
+    // SAFETY: the caller's.
+    unsafe { run_on(data, src, rows, shift, kind, runs, false) }
+}
+
+/// `f(i)` for every `i < n`: by the pool, or by the calling worker alone (`serial`), in the same order of results.
+/// Many tasks go by [`affine`] ranges.
+#[inline(always)]
+fn tasks(n: usize, serial: bool, f: impl Fn(usize) + Sync) {
+    if serial {
+        (0..n).for_each(f);
+    } else if n >= 4 * parallel::num_threads() {
+        affine(n, f);
+    } else {
+        parallel::for_each(n, f);
+    }
+}
+
+/// `f(i)` for every `i < n` by the pool, in one contiguous range of tasks a worker, each range first offered to the
+/// same thread on every call ([`parallel::for_each_affine`]). A column's passes split their tasks in order of rows, so
+/// a transform's leaves and its next wide pass (and back-to-back transforms' last and first passes) give each thread
+/// the rows it wrote last: in its own L2 or its CCD's L3. With the pool's shared claims, rows land on any thread, and a
+/// column about as large as the L3s together (`2^25` words, 256 MiB on the 8-CCD Zen 5 here) is read mostly from other
+/// CCDs' L3s, slower than from memory. One column's transforms back to back, 64 threads: `2^25` words 9.8–10.3 →
+/// 4.4–5.5 ms, `2^24` 3.7 → 2.0–3.0 ms, `2^26` 11–14 → 10 ms. The same tasks, so the same values.
+fn affine(n: usize, f: impl Fn(usize) + Sync) {
+    parallel::for_each_affine(n, |lo, hi| (lo..hi).for_each(&f));
+}
+
+/// [`run`], by the pool or by the calling worker alone (`serial`, for a caller that runs many transforms at once,
+/// one a worker): the same layers in the same order, so the same values.
+///
+/// # Safety
+/// As [`run`]'s.
+unsafe fn run_on<T: Kind>(
+    data: *mut u64,
+    src: Option<*const u64>,
+    rows: usize,
+    shift: usize,
+    kind: &T,
+    runs: bool,
+    serial: bool,
+) {
+    let col = Col {
+        data: SendPtr(data),
+        src: src.map(|s| SendPtr(s.cast_mut())),
+    };
+    // SAFETY: the caller's.
+    unsafe { run_cols(&[col], rows, shift, kind, runs, serial) }
+}
+
+/// A column a transform writes (`data`), read first from `src` if given.
+#[derive(Clone, Copy)]
+struct Col {
+    data: SendPtr<u64>,
+    src: Option<SendPtr<u64>>,
+}
+
+/// [`run_on`] on several columns of `rows` rows at once, each pass's tasks for every column in one dispatch: the
+/// same values as one column at a time.
+///
+/// # Safety
+/// Each column's `data` holds `8 rows` words, its `src` (if given) as many; all disjoint.
+unsafe fn run_cols<T: Kind>(cols: &[Col], rows: usize, shift: usize, kind: &T, runs: bool, serial: bool) {
+    // SAFETY: the caller's.
+    unsafe { run_cols_each(cols, std::slice::from_ref(kind), rows, shift, runs, serial) }
+}
+
+/// [`run_cols`], column `c` by its own kind `kinds[c]` (or all by `kinds[0]`, one given): columns of one length
+/// on different cosets in the same dispatches.
+///
+/// # Safety
+/// As [`run_cols`]'s.
+unsafe fn run_cols_each<T: Kind>(cols: &[Col], kinds: &[T], rows: usize, shift: usize, runs: bool, serial: bool) {
+    assert!(kinds.len() == 1 || kinds.len() == cols.len());
     assert!(rows.is_power_of_two());
     let mr = rows.trailing_zeros() as usize;
     let leaf = mr.min(LEAF_ROWS.trailing_zeros() as usize);
@@ -848,40 +950,48 @@ unsafe fn run<T: Kind>(data: *mut u64, src: Option<*const u64>, rows: usize, shi
         groups.push((a, top - a));
         top = a;
     }
-    let data = SendPtr(data);
-    let src = src.map(|s| SendPtr(s.cast_mut()));
     if T::DOWN {
-        let mut from = src;
+        let mut from = true;
         for &(a, g) in &groups {
-            wide(data, from.take(), rows, a, g, shift, kind);
+            wide(cols, std::mem::take(&mut from), rows, a, g, shift, kinds, serial);
         }
-        leaves(data, from, rows, leaf, shift, kind, runs);
+        leaves(cols, from, rows, leaf, shift, kinds, runs, serial);
     } else {
-        leaves(data, src, rows, leaf, shift, kind, runs);
+        leaves(cols, true, rows, leaf, shift, kinds, runs, serial);
         for &(a, g) in groups.iter().rev() {
-            wide(data, None, rows, a, g, shift, kind);
+            wide(cols, false, rows, a, g, shift, kinds, serial);
         }
     }
 }
 
 /// Row layers `0..leaf`, and the rows' own layers, on each block of `2^leaf` rows by one worker.
+#[allow(clippy::too_many_arguments)]
 fn leaves<T: Kind>(
-    data: SendPtr<u64>,
-    src: Option<SendPtr<u64>>,
+    cols: &[Col],
+    from_src: bool,
     rows: usize,
     leaf: usize,
     shift: usize,
-    kind: &T,
+    kinds: &[T],
     runs: bool,
+    serial: bool,
 ) {
     let size = 1usize << leaf;
-    parallel::for_each(rows >> leaf, |task| {
+    let per = rows >> leaf;
+    tasks(per * cols.len(), serial, |t| {
+        let (Col { data, src }, task) = (cols[t / per], t % per);
+        let kind = &kinds[if kinds.len() == 1 { 0 } else { t / per }];
+        let src = if from_src { src } else { None };
         let first = task << leaf;
         // SAFETY: a task touches its own `size` rows from `first`.
         unsafe {
             let base = data.add(8 * first);
-            if let Some(s) = src {
+            // The first layer reads the source itself where it is a layer between rows (not the rows' own layers).
+            let fused = leaf > 0 && (T::DOWN || shift == 0);
+            let mut src = src;
+            if let Some(s) = src.filter(|_| !fused) {
                 std::ptr::copy_nonoverlapping(s.add(8 * first), base, 8 * size);
+                src = None;
             }
             let own = |base: *mut u64| {
                 if shift == 3 {
@@ -891,21 +1001,25 @@ fn leaves<T: Kind>(
             if !T::DOWN {
                 own(base);
             }
-            let layer = |k: usize| {
+            let layer = |k: usize, from: Option<SendPtr<u64>>| {
                 let half = 1usize << k;
                 // The blocks' twiddles: the first's, plus `step(j)` (the block indices' bits are disjoint).
                 let t0 = kind.twiddle(k + shift, first >> (k + 1));
                 for j in 0..size >> (k + 1) {
                     let row = first + 2 * half * j;
                     let t = splat((t0 + kind.step(j)).0);
-                    pairs::<T>(data.add(8 * row), data.add(8 * (row + half)), half, t);
+                    let (lo, hi) = (data.add(8 * row), data.add(8 * (row + half)));
+                    match from {
+                        Some(s) => pairs_from::<T>(s.add(8 * row), s.add(8 * (row + half)), lo, hi, half, t),
+                        None => pairs::<T>(lo, hi, half, t),
+                    }
                 }
             };
             if T::DOWN {
-                (0..leaf).rev().for_each(layer);
+                (0..leaf).rev().for_each(|k| layer(k, if k + 1 == leaf { src } else { None }));
                 own(base);
             } else {
-                (0..leaf).for_each(layer);
+                (0..leaf).for_each(|k| layer(k, if k == 0 { src } else { None }));
             }
             if runs {
                 for g in 0..size / 8 {
@@ -919,42 +1033,48 @@ fn leaves<T: Kind>(
 }
 
 /// Row layers `a..a + g` in one pass: tiles of `2^g` lines `2^a` rows apart, each line a run of rows.
+#[allow(clippy::too_many_arguments)]
 fn wide<T: Kind>(
-    data: SendPtr<u64>,
-    src: Option<SendPtr<u64>>,
+    cols: &[Col],
+    from_src: bool,
     rows: usize,
     a: usize,
     g: usize,
     shift: usize,
-    kind: &T,
+    kinds: &[T],
+    serial: bool,
 ) {
     let lines = 1usize << g;
     let width = (TILE_ROWS >> g).clamp(1, 1 << a);
     let per_group = (1usize << a) / width;
-    parallel::for_each((rows >> (a + g)) * per_group, |task| {
+    let per = (rows >> (a + g)) * per_group;
+    tasks(per * cols.len(), serial, |t| {
+        let (Col { data, src }, task) = (cols[t / per], t % per);
+        let kind = &kinds[if kinds.len() == 1 { 0 } else { t / per }];
+        let src = if from_src { src } else { None };
         let row0 = ((task / per_group) << (a + g)) + (task % per_group) * width;
         let line = |u: usize| row0 + (u << a);
         // SAFETY: a task touches rows `line(u) + [0, width)`, `u < lines`: its own.
         unsafe {
-            if let Some(s) = src {
-                for u in 0..lines {
-                    std::ptr::copy_nonoverlapping(s.add(8 * line(u)), data.add(8 * line(u)), 8 * width);
-                }
-            }
-            let layer = |j: usize| {
+            // The first layer reads the source itself: each line is in one of its pairs.
+            let layer = |j: usize, from: Option<SendPtr<u64>>| {
                 let k = a + j;
                 let hs = 1usize << j;
                 for ub in (0..lines).step_by(2 * hs) {
                     let t = splat(kind.twiddle(k + shift, line(ub) >> (k + 1)).0);
                     for u in ub..ub + hs {
-                        pairs::<T>(data.add(8 * line(u)), data.add(8 * line(u + hs)), width, t);
+                        let (lo, hi) = (data.add(8 * line(u)), data.add(8 * line(u + hs)));
+                        match from {
+                            Some(s) => pairs_from::<T>(s.add(8 * line(u)), s.add(8 * line(u + hs)), lo, hi, width, t),
+                            None => pairs::<T>(lo, hi, width, t),
+                        }
                     }
                 }
             };
             if T::DOWN {
-                (0..g).rev().for_each(layer);
+                (0..g).rev().for_each(|j| layer(j, if j + 1 == g { src } else { None }));
             } else {
-                (0..g).for_each(layer);
+                (0..g).for_each(|j| layer(j, if j == 0 { src } else { None }));
             }
         }
     });
@@ -980,6 +1100,79 @@ pub fn values_batch_from(src: &[K8], dst: &mut [K8], offset: F64, runs: bool) {
     let kind = Forward(Twiddles::new(offset, dst.len().trailing_zeros() as usize));
     // SAFETY: `dst`'s own rows, read first from `src`'s.
     unsafe { run(words(dst), Some(src.as_ptr().cast()), dst.len(), 0, &kind, runs) }
+}
+
+/// A batch of novel coefficients on the coset `ω_first + V_e` (`8 ≤ 2^e ≤ src.len()`), into a new batch, each eight
+/// rows transposed if `runs`: [`values_batch_from`], or [`fold_batch`] then [`values_batch`], without zeroing the
+/// output first.
+pub fn on_coset_batch(src: &[K8], first: usize, e: usize, runs: bool) -> Vec<K8> {
+    let size = 1usize << e;
+    assert!(size >= 8 && src.len().is_multiple_of(size));
+    // SAFETY: both ways write every row first (the transform's first pass reads `src`; the fold's tasks cover every
+    // row).
+    let mut out: Vec<K8> = unsafe { primitives::uninit_vec(size) };
+    if size == src.len() {
+        values_batch_from(src, &mut out, point(first), runs);
+    } else {
+        fold_batch(src, first, &mut out);
+        values_batch(&mut out, point(first), runs);
+    }
+    out
+}
+
+/// [`values_batch_from`] by the calling worker alone (no dispatch to the pool): for a caller that transforms many
+/// batches at once, one a worker. The same values.
+pub fn values_batch_from_serial(src: &[K8], dst: &mut [K8], offset: F64, runs: bool) {
+    assert_eq!(src.len(), dst.len());
+    assert!(!runs || dst.len() >= 8);
+    let kind = Forward(Twiddles::new(offset, dst.len().trailing_zeros() as usize));
+    // SAFETY: `dst`'s own rows, read first from `src`'s.
+    unsafe { run_on(words(dst), Some(src.as_ptr().cast()), dst.len(), 0, &kind, runs, true) }
+}
+
+/// [`values_batch`] by the calling worker alone.
+pub fn values_batch_serial(data: &mut [K8], offset: F64, runs: bool) {
+    assert!(!runs || data.len() >= 8);
+    let kind = Forward(Twiddles::new(offset, data.len().trailing_zeros() as usize));
+    // SAFETY: `data`'s own rows.
+    unsafe { run_on(words(data), None, data.len(), 0, &kind, runs, true) }
+}
+
+/// [`fold_batch`] by the calling worker alone.
+pub fn fold_batch_serial(src: &[K8], first: usize, dst: &mut [K8]) {
+    let rows = dst.len();
+    assert_eq!(src.len() % rows, 0);
+    let len = src.len() / rows;
+    let e = rows.trailing_zeros() as usize;
+    // The weights `Π w_(e + b)(ω_first)` over the bits `b` of the block (`novel_weights`), built as `tensor` builds
+    // them: the same products in the same order.
+    let mut weights = vec![F64::ONE];
+    let mut b = 0;
+    while weights.len() < len {
+        let one = point(first >> (e + b));
+        let half = weights.len();
+        for h in 0..half {
+            let w = weights[h] * one;
+            weights.push(w);
+        }
+        b += 1;
+    }
+    // `fold_rows`' sum, row by row, in its order of terms.
+    let src: *const u64 = src.as_ptr().cast();
+    let dst = words(dst);
+    for i in 0..rows {
+        // SAFETY: rows `i + h rows` of `src` (`len` blocks of `rows`), and row `i` of `dst`.
+        unsafe {
+            let mut acc = load(src.add(8 * i));
+            if weights[0] != F64::ONE {
+                acc = mul(acc, splat(weights[0].0));
+            }
+            for (h, &w) in weights.iter().enumerate().skip(1) {
+                acc = xor(acc, mul(load(src.add(8 * (i + h * rows))), splat(w.0)));
+            }
+            store(dst.add(8 * i), acc);
+        }
+    }
 }
 
 /// Each eight rows transposed, as [`values_batch`]'s `runs` leaves them (`data.len()` a multiple of 8).
@@ -1107,12 +1300,52 @@ impl Kx8 {
         Self(v)
     }
 
+    /// The even lanes `self`'s, the odd ones `odd`'s.
+    #[inline(always)]
+    pub fn odd_from(self, odd: Self) -> Self {
+        Self(mask_add(self.0, 0xAA, xor(self.0, odd.0)))
+    }
+
+    /// `a`'s even lanes then `b`'s, and their odd ones: `(x_0, x_2, .., y_0, y_2, ..)` and `(x_1, x_3, ..)`.
+    #[inline(always)]
+    pub fn evens_odds(a: Self, b: Self) -> (Self, Self) {
+        #[cfg(all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "vpclmulqdq"))]
+        {
+            let (e, o) = lanes::evens_odds(a.0, b.0);
+            (Self(e), Self(o))
+        }
+        #[cfg(not(all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "vpclmulqdq")))]
+        {
+            let (x, y) = (a.to_row().0, b.to_row().0);
+            let pick = |o: usize| Self::new(std::array::from_fn(|l| if l < 4 { x[2 * l + o] } else { y[2 * (l - 4) + o] }));
+            (pick(0), pick(1))
+        }
+    }
+
+    /// Eight registers transposed: lane `l` of output `i` is lane `i` of input `l`.
+    #[inline(always)]
+    pub fn transpose8(rows: [Self; 8]) -> [Self; 8] {
+        transpose(rows.map(|r| r.0)).map(Self)
+    }
+
     #[inline(always)]
     pub fn to_row(self) -> K8 {
         let mut out = K8::ZERO;
         // SAFETY: a row's eight words.
         unsafe { store(out.0.as_mut_ptr().cast(), self.0) };
         out
+    }
+
+    /// Its eight lanes into the first words of `dst`, cut at its length.
+    #[inline(always)]
+    pub fn store_to(self, dst: &mut [F64]) {
+        if dst.len() >= 8 {
+            // SAFETY: eight words of `dst`.
+            unsafe { store(dst.as_mut_ptr().cast(), self.0) }
+        } else {
+            let row = self.to_row();
+            dst.copy_from_slice(&row.0[..dst.len()]);
+        }
     }
 }
 
@@ -1201,6 +1434,12 @@ impl Ex8 {
         Self(self.0.map(swap::<1>))
     }
 
+    /// The even lanes `self`'s, the odd ones `odd`'s.
+    #[inline(always)]
+    pub fn odd_from(self, odd: Self) -> Self {
+        Self(std::array::from_fn(|l| mask_add(self.0[l], 0xAA, xor(self.0[l], odd.0[l]))))
+    }
+
     /// Lane `i` times `k_i` in K.
     #[inline(always)]
     pub fn mul_k(self, k: Kx8) -> Self {
@@ -1261,6 +1500,14 @@ impl MixedSum {
     #[inline(always)]
     pub fn add(&mut self, c: &ESplat, k: Kx8) {
         for (acc, &l) in self.0.iter_mut().zip(&c.0) {
+            *acc = xor_u(*acc, clmul_u(l, k.0));
+        }
+    }
+
+    /// `Σ e k` lane by lane: lane `i` adds `e_i k_i`.
+    #[inline(always)]
+    pub fn add_lanes(&mut self, e: Ex8, k: Kx8) {
+        for (acc, &l) in self.0.iter_mut().zip(&e.0) {
             *acc = xor_u(*acc, clmul_u(l, k.0));
         }
     }
@@ -1326,23 +1573,48 @@ pub fn pack(columns: &[&[F64]]) -> Vec<K8> {
 
 /// `Π_(bits b of h) c[b]` for every `h < len` (the weights of a fold): `c[b]` for the bits of `h`, ...
 fn tensor(len: usize, factor: impl Fn(usize, bool) -> F64) -> Vec<F64> {
-    let mut out = vec![F64::ONE];
-    let mut b = 0;
-    while out.len() < len {
-        let (zero, one) = (factor(b, false), factor(b, true));
-        let half = out.len();
-        out.resize(2 * half, F64::ZERO);
-        let (low, high) = out.split_at_mut(half);
-        parallel::chunks_mut_zip(high, low, 1 << 12, |_, h, l| {
-            h.iter_mut().zip(l).for_each(|(h, &l)| *h = l * one)
-        });
-        if zero != F64::ONE {
-            parallel::chunks_mut(low, 1 << 12, |_, l| l.iter_mut().for_each(|x| *x *= zero));
+    // The products over the low bits and over the high bits, each by doubling, then (long ones) every entry the
+    // product of one of each in one dispatch: the same products (the field's are exact).
+    let doubled = |from: usize, bits: usize| {
+        let mut out = vec![F64::ONE];
+        for b in from..from + bits {
+            let (zero, one) = (factor(b, false), factor(b, true));
+            let high: Vec<F64> = out.iter().map(|&l| l * one).collect();
+            if zero != F64::ONE {
+                out.iter_mut().for_each(|x| *x *= zero);
+            }
+            out.extend(high);
         }
-        b += 1;
+        out
+    };
+    let bits = len.max(1).next_power_of_two().trailing_zeros() as usize;
+    let low_bits = bits.min(12);
+    let mut low = doubled(0, low_bits);
+    if bits == low_bits {
+        low.truncate(len);
+        return low;
     }
-    out.truncate(len);
-    out
+    let high = doubled(low_bits, bits - low_bits);
+    let mask = (1usize << low_bits) - 1;
+    parallel::map_collect(len, |h| low[h & mask] * high[h >> low_bits])
+}
+
+/// `len` zeros, a long column's pages written in parallel (not by one thread's `memset`).
+pub fn zeros(len: usize) -> Vec<F64> {
+    if len < 1 << 16 {
+        vec![F64::ZERO; len]
+    } else {
+        parallel::map_collect(len, |_| F64::ZERO)
+    }
+}
+
+/// `len` words to be written whole before any is read (a transform's or a fold's output).
+///
+/// # Safety
+/// The caller writes every word before reading it.
+unsafe fn unwritten(len: usize) -> Vec<F64> {
+    // SAFETY: the caller's.
+    unsafe { primitives::uninit_vec(len) }
 }
 
 /// The weights folding a polynomial's novel coefficients (`len` blocks of `2^e`) onto the coset `ω_first + V_e`:
@@ -1437,8 +1709,8 @@ fn fold_column(data: &[F64], e: usize, weights: &[F64]) -> Vec<F64> {
             },
         );
     }
-    let mut out = vec![F64::ZERO; size];
-    // SAFETY: `data` is `weights.len()` blocks of `out`'s rows.
+    // SAFETY (x2): `fold_rows` writes every row of `out`; `data` is `weights.len()` blocks of its rows.
+    let mut out = unsafe { unwritten(size) };
     unsafe { fold_rows(data.as_ptr().cast(), out.as_mut_ptr().cast(), size / 8, weights) }
     out
 }
@@ -1448,7 +1720,8 @@ fn fold_column(data: &[F64], e: usize, weights: &[F64]) -> Vec<F64> {
 pub fn on_coset_prefix(novel: &[F64], first: usize, e: usize) -> Vec<F64> {
     let size = 1usize << e;
     if novel.len() == size {
-        let mut out = vec![F64::ZERO; size];
+        // SAFETY: `values_from` writes every word first.
+        let mut out = unsafe { unwritten(size) };
         values_from(novel, &mut out, point(first));
         return out;
     }
@@ -1493,6 +1766,565 @@ pub fn shifted_cube(values: &[F64], delta: &[F64], e: usize) -> Vec<F64> {
     out
 }
 
+/// [`shifted_cube`] by the calling worker alone: the same values.
+pub fn shifted_cube_serial(values: &[F64], delta: &[F64], e: usize) -> Vec<F64> {
+    let r = values.len().trailing_zeros() as usize;
+    assert!(e <= r && delta.len() >= r);
+    let size = 1usize << e;
+    let mut out = if e == r {
+        values.to_vec()
+    } else {
+        // `tensor`'s weights (the same products), then `fold_column`'s sums.
+        let mut weights = vec![F64::ONE];
+        for b in 0..r - e {
+            let (zero, one) = (F64::ONE + delta[e + b], delta[e + b]);
+            let high: Vec<F64> = weights.iter().map(|&w| w * one).collect();
+            weights.iter_mut().for_each(|w| *w *= zero);
+            weights.extend(high);
+        }
+        (0..size)
+            .map(|i| weights.iter().enumerate().fold(F64::ZERO, |acc, (h, &w)| acc + w * values[i + h * size]))
+            .collect()
+    };
+    if out.len() < 8 {
+        for (l, &d) in delta[..e].iter().enumerate() {
+            let half = 1usize << l;
+            for pair in out.chunks_exact_mut(2 * half) {
+                let (lo, hi) = pair.split_at_mut(half);
+                for (a, b) in lo.iter_mut().zip(hi.iter_mut()) {
+                    let t = d * (*a + *b);
+                    *a += t;
+                    *b += t;
+                }
+            }
+        }
+        return out;
+    }
+    let kind = Cube {
+        delta: delta[..e].to_vec(),
+    };
+    // SAFETY: `out`'s own words, eight a row.
+    unsafe { run_on(out.as_mut_ptr().cast(), None, out.len() / 8, 3, &kind, false, true) }
+    out
+}
+
+/// Columns of one length, each eight words a row, as [`run_cols`] takes them (read first from `srcs` if given).
+fn column_cols(dsts: &mut [&mut [F64]], srcs: Option<&[&[F64]]>) -> Vec<Col> {
+    let len = dsts.first().map_or(0, |d| d.len());
+    assert!(dsts.iter().all(|d| d.len() == len));
+    dsts.iter_mut()
+        .enumerate()
+        .map(|(c, d)| Col {
+            data: SendPtr(d.as_mut_ptr().cast()),
+            src: srcs.map(|s| {
+                assert_eq!(s[c].len(), len);
+                SendPtr(s[c].as_ptr().cast::<u64>().cast_mut())
+            }),
+        })
+        .collect()
+}
+
+/// [`values`] on several columns of one length at once: each pass's tasks for all of them in one dispatch.
+pub fn values_cols(cols: &mut [&mut [F64]], offset: F64) {
+    let len = cols.first().map_or(0, |c| c.len());
+    if len < 8 {
+        return cols.iter_mut().for_each(|c| values(c, offset));
+    }
+    let kind = Forward(Twiddles::new(offset, len.trailing_zeros() as usize));
+    let cols = column_cols(cols, None);
+    // SAFETY: the columns' own words, eight a row, disjoint (distinct `&mut`).
+    unsafe { run_cols(&cols, len / 8, 3, &kind, false, false) }
+}
+
+/// [`coefficients`] on several columns of one length at once.
+pub fn coefficients_cols(cols: &mut [&mut [F64]], offset: F64) {
+    let len = cols.first().map_or(0, |c| c.len());
+    if len < 8 {
+        return cols.iter_mut().for_each(|c| coefficients(c, offset));
+    }
+    let kind = Inverse(Twiddles::new(offset, len.trailing_zeros() as usize));
+    let cols = column_cols(cols, None);
+    // SAFETY: the columns' own words, eight a row, disjoint.
+    unsafe { run_cols(&cols, len / 8, 3, &kind, false, false) }
+}
+
+/// [`values_from`] on several columns of one length at once.
+pub fn values_from_cols(srcs: &[&[F64]], dsts: &mut [&mut [F64]], offset: F64) {
+    let len = dsts.first().map_or(0, |c| c.len());
+    if len < 8 {
+        return dsts.iter_mut().zip(srcs).for_each(|(d, s)| values_from(s, d, offset));
+    }
+    let kind = Forward(Twiddles::new(offset, len.trailing_zeros() as usize));
+    let cols = column_cols(dsts, Some(srcs));
+    // SAFETY: the destinations' own words, eight a row, read first from their sources'.
+    unsafe { run_cols(&cols, len / 8, 3, &kind, false, false) }
+}
+
+/// [`coefficients_from`] on several columns of one length at once.
+pub fn coefficients_from_cols(srcs: &[&[F64]], dsts: &mut [&mut [F64]], offset: F64) {
+    let len = dsts.first().map_or(0, |c| c.len());
+    if len < 8 {
+        return dsts.iter_mut().zip(srcs).for_each(|(d, s)| coefficients_from(s, d, offset));
+    }
+    let kind = Inverse(Twiddles::new(offset, len.trailing_zeros() as usize));
+    let cols = column_cols(dsts, Some(srcs));
+    // SAFETY: the destinations' own words, eight a row, read first from their sources'.
+    unsafe { run_cols(&cols, len / 8, 3, &kind, false, false) }
+}
+
+/// [`coefficients_from_cols`] into new columns.
+pub fn coefficients_cols_of(srcs: &[&[F64]], offset: F64) -> Vec<Vec<F64>> {
+    let len = srcs.first().map_or(0, |c| c.len());
+    assert!(srcs.iter().all(|c| c.len() == len));
+    // SAFETY: the transform writes every word first (its first pass reads the sources).
+    let mut out: Vec<Vec<F64>> = srcs.iter().map(|_| unsafe { unwritten(len) }).collect();
+    coefficients_from_cols(srcs, &mut out.iter_mut().map(|o| &mut o[..]).collect::<Vec<_>>(), offset);
+    out
+}
+
+/// [`subset_sums_many`] into new columns, each its source's length (a power of two).
+pub fn subset_sums_of_cols(srcs: &[&[F64]]) -> Vec<Vec<F64>> {
+    // SAFETY: the sums write every word first (each block copied from its source).
+    let mut out: Vec<Vec<F64>> = srcs.iter().map(|s| unsafe { unwritten(s.len()) }).collect();
+    let mut jobs: Vec<(&[F64], &mut [F64])> = srcs.iter().copied().zip(out.iter_mut().map(|o| &mut o[..])).collect();
+    subset_sums_many(&mut jobs);
+    out
+}
+
+/// [`values_from`] by the calling worker alone.
+pub fn values_from_serial(src: &[F64], dst: &mut [F64], offset: F64) {
+    assert_eq!(src.len(), dst.len());
+    if dst.len() < 8 {
+        dst.copy_from_slice(src);
+        return crate::domain::values(dst, offset);
+    }
+    let kind = Forward(Twiddles::new(offset, dst.len().trailing_zeros() as usize));
+    // SAFETY: `dst`'s own words, eight a row, read first from `src`'s.
+    unsafe {
+        run_on(
+            dst.as_mut_ptr().cast(),
+            Some(src.as_ptr().cast()),
+            dst.len() / 8,
+            3,
+            &kind,
+            false,
+            true,
+        )
+    }
+}
+
+/// [`on_coset_prefix`] of `novel` into `out` (`2^e` words), by the calling worker alone.
+pub fn on_coset_prefix_serial(novel: &[F64], first: usize, out: &mut [F64]) {
+    let size = out.len();
+    assert!(size.is_power_of_two() && novel.len().is_multiple_of(size));
+    let e = size.trailing_zeros() as usize;
+    if novel.len() == size {
+        return values_from_serial(novel, out, point(first));
+    }
+    // `novel_weights`' products in `tensor`'s order, then `fold_rows`' (or `fold_column`'s) sums: the same values.
+    let blocks = novel.len() / size;
+    let mut weights = vec![F64::ONE];
+    let mut b = 0;
+    while weights.len() < blocks {
+        let one = point(first >> (e + b));
+        let half = weights.len();
+        for h in 0..half {
+            let w = weights[h] * one;
+            weights.push(w);
+        }
+        b += 1;
+    }
+    for (i, o) in out.iter_mut().enumerate() {
+        *o = (0..blocks).fold(F64::ZERO, |acc, h| acc + weights[h] * novel[i + h * size]);
+    }
+    if size < 8 {
+        return crate::domain::values(out, point(first));
+    }
+    let kind = Forward(Twiddles::new(point(first), e));
+    // SAFETY: `out`'s own words, eight a row.
+    unsafe { run_on(out.as_mut_ptr().cast(), None, size / 8, 3, &kind, false, true) }
+}
+
+/// [`on_coset_prefix`] of several columns of one length at once.
+pub fn on_coset_prefix_cols(novels: &[&[F64]], first: usize, e: usize) -> Vec<Vec<F64>> {
+    let size = 1usize << e;
+    let len = novels.first().map_or(0, |n| n.len());
+    assert!(novels.iter().all(|n| n.len() == len) && len.is_multiple_of(size));
+    // SAFETY: both ways below write every word of every output first (`values_from_cols`, or the fold's tasks, which
+    // cover every row).
+    let mut out: Vec<Vec<F64>> = novels.iter().map(|_| unsafe { unwritten(size) }).collect();
+    if len == size {
+        let mut dsts: Vec<&mut [F64]> = out.iter_mut().map(|o| &mut o[..]).collect();
+        values_from_cols(novels, &mut dsts, point(first));
+        return out;
+    }
+    if size < 64 {
+        // Few rows: as one column at a time.
+        return novels.iter().map(|n| on_coset_prefix(n, first, e)).collect();
+    }
+    let weights = novel_weights(len / size, first, e);
+    let rows = size / 8;
+    let chunk = (rows / 128).clamp(1, 64);
+    let per = rows / chunk;
+    let dsts: Vec<SendPtr<u64>> = out.iter_mut().map(|o| SendPtr(o.as_mut_ptr().cast())).collect();
+    // `fold_rows`' sums, its tasks for every column in one dispatch.
+    parallel::for_each(per * novels.len(), |t| {
+        let (c, task) = (t / per, t % per);
+        let src: *const u64 = novels[c].as_ptr().cast();
+        // SAFETY: a task writes its own `chunk` rows of column `c`'s output and reads its source.
+        unsafe {
+            for i in task * chunk..(task + 1) * chunk {
+                let mut acc = load(src.add(8 * i));
+                if weights[0] != F64::ONE {
+                    acc = mul(acc, splat(weights[0].0));
+                }
+                for (h, &w) in weights.iter().enumerate().skip(1) {
+                    acc = xor(acc, mul(load(src.add(8 * (i + h * rows))), splat(w.0)));
+                }
+                store(dsts[c].add(8 * i), acc);
+            }
+        }
+    });
+    let mut dsts: Vec<&mut [F64]> = out.iter_mut().map(|o| &mut o[..]).collect();
+    values_cols(&mut dsts, point(first));
+    out
+}
+
+/// [`interpolate_prefix`] on several columns at once (one length, the same blocks), each step's dispatches for all
+/// of them: the same values.
+pub fn interpolate_prefix_cols(data: &mut [&mut [F64]], sizes: &[usize], base: usize) {
+    let total: usize = sizes.iter().map(|&e| 1usize << e).sum();
+    assert!(data.iter().all(|d| d.len() == total));
+    assert!(sizes.windows(2).all(|w| w[0] > w[1]) && base % (2 << sizes[0]) == 0);
+    let starts = prefix_starts(sizes, base);
+    let ptrs: Vec<SendPtr<F64>> = data.iter_mut().map(|d| SendPtr(d.as_mut_ptr())).collect();
+    // Column `c`'s words `at..at + len`.
+    // SAFETY (all uses): each call's ranges are disjoint from the others' live at once, inside `data[c]`.
+    let range = |c: usize, at: usize, len: usize| -> &mut [F64] { unsafe { ptrs[c].slice(at, len) } };
+    let n = data.len();
+    // Each block's inverse transform, which needs no other block's.
+    for j in 0..sizes.len() {
+        let (at, e) = (starts[j] - base, sizes[j]);
+        let mut us: Vec<&mut [F64]> = (0..n).map(|c| range(c, at, 1 << e)).collect();
+        coefficients_cols(&mut us, point(starts[j]));
+    }
+    // `U_j` plus the earlier `U_i`'s folds onto block `j`.
+    for j in 1..sizes.len() {
+        let (at, e) = (starts[j] - base, sizes[j]);
+        let folds = earlier_folds(&starts, sizes, base, j);
+        let size = 1usize << e;
+        let rows = size.div_ceil(8);
+        let chunk = (rows / 128).clamp(1, 64);
+        let per = rows.div_ceil(chunk);
+        parallel::for_each(per * n, |t| {
+            let (c, k) = (t / per, t % per);
+            let (lo, hi) = (k * chunk, ((k + 1) * chunk).min(rows));
+            // SAFETY: the block's rows `lo..hi` of column `c` are this task's; the earlier blocks are only read.
+            unsafe { add_folds(ptrs[c].0, at, size, lo..hi, &folds) }
+        });
+    }
+    back_substitute(&ptrs, n, &starts, sizes, base, total);
+}
+
+/// The earlier blocks' folds onto block `j`: each block `i < j`'s first word (from `base`) and the weights of its
+/// `2^(e_i - e_j)` runs of `2^(e_j)` words ([`novel_weights`] onto block `j`'s coset).
+fn earlier_folds(starts: &[usize], sizes: &[usize], base: usize, j: usize) -> Vec<(usize, Vec<F64>)> {
+    let e = sizes[j];
+    (0..j)
+        .map(|i| (starts[i] - base, novel_weights(1 << (sizes[i] - e), starts[j], e)))
+        .collect()
+}
+
+/// Rows `rows` (of eight words, or the block's words if fewer) of the `size` words at `data + at` plus each fold's
+/// `Σ_h weights[h] data[from + h size + ·]`.
+///
+/// # Safety
+/// The words read and written are in the column, the rows written no other task's.
+unsafe fn add_folds(data: *mut F64, at: usize, size: usize, rows: std::ops::Range<usize>, folds: &[(usize, Vec<F64>)]) {
+    // SAFETY (all): the caller's.
+    unsafe {
+        if size < 8 {
+            for i in 0..size {
+                let mut acc = *data.add(at + i);
+                for (from, weights) in folds {
+                    for (h, &w) in weights.iter().enumerate() {
+                        acc += w * *data.add(from + h * size + i);
+                    }
+                }
+                *data.add(at + i) = acc;
+            }
+            return;
+        }
+        let words = data.cast::<u64>();
+        for r in rows {
+            let i = 8 * r;
+            let mut acc = load(words.add(at + i));
+            for (from, weights) in folds {
+                for (h, &w) in weights.iter().enumerate() {
+                    acc = xor(acc, mul(load(words.add(from + h * size + i)), splat(w.0)));
+                }
+            }
+            store(words.add(at + i), acc);
+        }
+    }
+}
+
+/// [`interpolate_prefix`]'s last step on columns: `Q_j = U_j + λ_j R_(j+1)` from the end.
+fn back_substitute(ptrs: &[SendPtr<F64>], n: usize, starts: &[usize], sizes: &[usize], base: usize, total: usize) {
+    // SAFETY (all uses): each call's ranges are disjoint from the others' live at once, inside the columns.
+    let range = |c: usize, at: usize, len: usize| -> &mut [F64] { unsafe { ptrs[c].slice(at, len) } };
+    for j in (0..sizes.len().saturating_sub(1)).rev() {
+        let (at, e) = (starts[j] - base, sizes[j]);
+        let lambda = point(starts[j] >> e);
+        let len = total - at - (1 << e);
+        const CHUNK: usize = 1 << 14;
+        let per = len.div_ceil(CHUNK);
+        parallel::for_each(per * n, |t| {
+            let (c, k) = (t / per, t % per);
+            let (lo, hi) = (k * CHUNK, ((k + 1) * CHUNK).min(len));
+            let q = range(c, at + lo, hi - lo);
+            let r = range(c, at + (1 << e) + lo, hi - lo);
+            q.iter_mut().zip(r.iter()).for_each(|(x, &y)| *x += lambda * y);
+        });
+    }
+}
+
+/// [`coefficients_cols`] with each column on its own coset (`offsets[c]` for column `c`), all of one length: every
+/// pass's tasks for all of them in one dispatch.
+pub fn coefficients_cols_each(cols: &mut [&mut [F64]], offsets: &[F64]) {
+    assert_eq!(cols.len(), offsets.len());
+    let len = cols.first().map_or(0, |c| c.len());
+    if len < 8 {
+        return cols.iter_mut().zip(offsets).for_each(|(c, &o)| coefficients(c, o));
+    }
+    let kinds: Vec<Inverse> = offsets
+        .iter()
+        .map(|&o| Inverse(Twiddles::new(o, len.trailing_zeros() as usize)))
+        .collect();
+    let cols = column_cols(cols, None);
+    // SAFETY: the columns' own words, eight a row, disjoint (distinct `&mut`).
+    unsafe { run_cols_each(&cols, &kinds, len / 8, 3, false, false) }
+}
+
+/// One quotient's columns for [`interpolate_prefix_many`]: their values at `ω_(base + i)` (one length, `Σ 2^sizes`),
+/// as [`interpolate_prefix_cols`] takes them.
+pub struct PrefixCols<'a> {
+    pub cols: Vec<&'a mut [F64]>,
+    pub sizes: Vec<usize>,
+    pub base: usize,
+}
+
+/// A step's tasks over several parts, `counts[k]` of them part `k`'s: a task's part and its index there.
+struct Spans(Vec<usize>);
+
+impl Spans {
+    fn new(counts: impl IntoIterator<Item = usize>) -> Self {
+        let mut firsts = vec![0];
+        for c in counts {
+            firsts.push(firsts[firsts.len() - 1] + c);
+        }
+        Self(firsts)
+    }
+
+    fn total(&self) -> usize {
+        self.0[self.0.len() - 1]
+    }
+
+    #[inline]
+    fn locate(&self, t: usize) -> (usize, usize) {
+        let k = self.0.partition_point(|&f| f <= t) - 1;
+        (k, t - self.0[k])
+    }
+}
+
+/// [`interpolate_prefix_cols`] on several quotients at once, each step's tasks for all of them in one dispatch: every
+/// block's inverse transform (the blocks of one size together, each on its coset), then the earlier blocks' folds
+/// block index by block index, then the back substitution from each quotient's end. The same values.
+pub fn interpolate_prefix_many(jobs: &mut [PrefixCols<'_>]) {
+    struct Job {
+        ptrs: Vec<SendPtr<F64>>,
+        starts: Vec<usize>,
+        sizes: Vec<usize>,
+        base: usize,
+        total: usize,
+    }
+    let js: Vec<Job> = jobs
+        .iter_mut()
+        .map(|j| {
+            let total: usize = j.sizes.iter().map(|&e| 1usize << e).sum();
+            assert!(j.cols.iter().all(|d| d.len() == total));
+            assert!(j.sizes.windows(2).all(|w| w[0] > w[1]) && j.base % (2 << j.sizes[0]) == 0);
+            Job {
+                ptrs: j.cols.iter_mut().map(|d| SendPtr(d.as_mut_ptr())).collect(),
+                starts: prefix_starts(&j.sizes, j.base),
+                sizes: j.sizes.clone(),
+                base: j.base,
+                total,
+            }
+        })
+        .collect();
+    // 1. Each block's inverse transform, which needs no other block's: the blocks of one size in one call.
+    let mut by_size: std::collections::BTreeMap<usize, (Vec<&mut [F64]>, Vec<F64>)> = Default::default();
+    for job in &js {
+        for (j, &e) in job.sizes.iter().enumerate() {
+            let at = job.starts[j] - job.base;
+            for ptr in &job.ptrs {
+                let entry = by_size.entry(e).or_default();
+                // SAFETY: block `j` of a column, disjoint from every other entry's.
+                entry.0.push(unsafe { ptr.slice(at, 1 << e) });
+                entry.1.push(point(job.starts[j]));
+            }
+        }
+    }
+    for (_, (mut cols, offsets)) in by_size.into_iter().rev() {
+        coefficients_cols_each(&mut cols, &offsets);
+    }
+    // 2. `U_j` plus the earlier `U_i`'s folds onto block `j`, block index by block index.
+    let most = js.iter().map(|j| j.sizes.len()).max().unwrap_or(0);
+    for j in 1..most {
+        struct Part {
+            q: usize,
+            at: usize,
+            size: usize,
+            rows: usize,
+            chunk: usize,
+            per: usize,
+            folds: Vec<(usize, Vec<F64>)>,
+        }
+        let parts: Vec<Part> = js
+            .iter()
+            .enumerate()
+            .filter(|(_, job)| job.sizes.len() > j)
+            .map(|(q, job)| {
+                let (at, e) = (job.starts[j] - job.base, job.sizes[j]);
+                let size = 1usize << e;
+                let rows = size.div_ceil(8);
+                let chunk = (rows / 128).clamp(1, 64);
+                Part {
+                    q,
+                    at,
+                    size,
+                    rows,
+                    chunk,
+                    per: rows.div_ceil(chunk),
+                    folds: earlier_folds(&job.starts, &job.sizes, job.base, j),
+                }
+            })
+            .collect();
+        let spans = Spans::new(parts.iter().map(|p| p.per * js[p.q].ptrs.len()));
+        parallel::for_each(spans.total(), |t| {
+            let (k, i) = spans.locate(t);
+            let p = &parts[k];
+            let (c, i) = (i / p.per, i % p.per);
+            let (lo, hi) = (i * p.chunk, ((i + 1) * p.chunk).min(p.rows));
+            // SAFETY: the block's rows `lo..hi` of column `c` of quotient `p.q` are this task's; the earlier blocks
+            // are only read.
+            unsafe { add_folds(js[p.q].ptrs[c].0, p.at, p.size, lo..hi, &p.folds) }
+        });
+    }
+    // 3. `Q_j = U_j + λ_j R_(j+1)` from each quotient's end: step `k` is block `len - 2 - k` of each.
+    const CHUNK: usize = 1 << 14;
+    for k in 0..most.saturating_sub(1) {
+        // (quotient, the block's first word, its size's log, λ, the words added)
+        let parts: Vec<(usize, usize, usize, F64, usize)> = js
+            .iter()
+            .enumerate()
+            .filter(|(_, job)| job.sizes.len() >= k + 2)
+            .map(|(q, job)| {
+                let j = job.sizes.len() - 2 - k;
+                let (at, e) = (job.starts[j] - job.base, job.sizes[j]);
+                (q, at, e, point(job.starts[j] >> e), job.total - at - (1 << e))
+            })
+            .collect();
+        let spans = Spans::new(parts.iter().map(|p| p.4.div_ceil(CHUNK) * js[p.0].ptrs.len()));
+        parallel::for_each(spans.total(), |t| {
+            let (p, i) = spans.locate(t);
+            let (q, at, e, lambda, len) = parts[p];
+            let per = len.div_ceil(CHUNK);
+            let (c, i) = (i / per, i % per);
+            let (lo, hi) = (i * CHUNK, ((i + 1) * CHUNK).min(len));
+            // SAFETY: the task's words of block `j` are its own; the later blocks' (`R_(j+1)`) are only read.
+            let (x, y) = unsafe {
+                (
+                    js[q].ptrs[c].slice(at + lo, hi - lo),
+                    js[q].ptrs[c].slice(at + (1 << e) + lo, hi - lo),
+                )
+            };
+            x.iter_mut().zip(y.iter()).for_each(|(x, &y)| *x += lambda * y);
+        });
+    }
+}
+
+/// [`on_coset_prefix`] of several columns at once, column `c` on its own small coset `ω_(first_c) + V_(e_c)` (`e_c ≤
+/// 6`, `2^(e_c)` dividing its length and `first_c`): the folds' partial sums for all of them in one dispatch, each
+/// task over `2^12` of a column's blocks; then each column's sum and transform.
+pub fn on_coset_prefix_each(cols: &[(&[F64], usize, usize)]) -> Vec<Vec<F64>> {
+    const LOW: usize = 12;
+    // Per column: its blocks of `2^e` words, the weights of the low bits of a block's index and the factors of its
+    // high ones: `novel_weights`' products, `point(first >> (e + b))` over the bits `b` of the block's index.
+    struct Part<'a> {
+        data: &'a [F64],
+        size: usize,
+        blocks: usize,
+        low: Vec<F64>,
+        high: Vec<F64>,
+    }
+    let parts: Vec<Part> = cols
+        .iter()
+        .map(|&(data, first, e)| {
+            let size = 1usize << e;
+            assert!(e <= 6 && data.len().is_multiple_of(size) && first.is_multiple_of(size));
+            let blocks = data.len() / size;
+            let bits = blocks.max(1).next_power_of_two().trailing_zeros() as usize;
+            let factor = |b: usize| point(first >> (e + b));
+            let mut low = vec![F64::ONE];
+            for b in 0..bits.min(LOW) {
+                let one = factor(b);
+                let high: Vec<F64> = low.iter().map(|&l| l * one).collect();
+                low.extend(high);
+            }
+            let high = (LOW..bits.max(LOW)).map(factor).collect();
+            Part {
+                data,
+                size,
+                blocks,
+                low,
+                high,
+            }
+        })
+        .collect();
+    let spans = Spans::new(parts.iter().map(|p| p.blocks.div_ceil(1 << LOW)));
+    let partial: Vec<Vec<F64>> = parallel::map_collect(spans.total(), |t| {
+        let (k, i) = spans.locate(t);
+        let p = &parts[k];
+        // The high bits' factor of this task's blocks.
+        let high = p
+            .high
+            .iter()
+            .enumerate()
+            .filter(|&(b, _)| i >> b & 1 == 1)
+            .fold(F64::ONE, |acc, (_, &f)| acc * f);
+        let mut acc = vec![F64::ZERO; p.size];
+        for h in i << LOW..((i + 1) << LOW).min(p.blocks) {
+            let w = p.low[h & ((1 << LOW) - 1)] * high;
+            acc.iter_mut().zip(&p.data[h * p.size..]).for_each(|(a, &x)| *a += w * x);
+        }
+        acc
+    });
+    parts
+        .iter()
+        .enumerate()
+        .map(|(k, p)| {
+            let mut out = vec![F64::ZERO; p.size];
+            for acc in &partial[spans.0[k]..spans.0[k + 1]] {
+                out.iter_mut().zip(acc).for_each(|(o, &a)| *o += a);
+            }
+            crate::domain::values(&mut out, point(cols[k].1));
+            out
+        })
+        .collect()
+}
+
 /// The interpolation blocks: `count` rounded up to a multiple of `2^grain`, in binary, largest first.
 pub fn prefix_sizes(count: u64, grain: usize) -> Vec<usize> {
     let units = count.max(1).div_ceil(1 << grain);
@@ -1523,35 +2355,12 @@ pub fn prefix_starts(sizes: &[usize], base: usize) -> Vec<usize> {
 /// `λ_j`, so the inverse transform there gives `U_j = Q_j + λ_j R_(j+1)`; on the later blocks `w_(e_j) = λ_j + 1`, so
 /// `R_(j+1) = R_j + U_j` there. Last, `Q_j = U_j + λ_j R_(j+1)` from the end, and `Q = [Q_0, Q_1, ...]` (since
 /// `X_(2^e + k) = w_e X_k`).
+///
+/// Block `j`'s values of `R_j` are its values of `Q` plus every earlier `U_i`'s there, so its inverse transform is that
+/// of `Q`'s values plus each `U_i`'s fold onto its coset (the inverse of [`on_coset_prefix`]): every block's transform
+/// on `Q`'s values first, then the folds added, no forward transform.
 pub fn interpolate_prefix(data: &mut [F64], sizes: &[usize], base: usize) {
-    let total: usize = sizes.iter().map(|&e| 1usize << e).sum();
-    assert_eq!(data.len(), total);
-    assert!(sizes.windows(2).all(|w| w[0] > w[1]) && base % (2 << sizes[0]) == 0);
-    let starts = prefix_starts(sizes, base);
-    for j in 0..sizes.len() {
-        let (at, e) = (starts[j] - base, sizes[j]);
-        let (head, tail) = data.split_at_mut(at + (1 << e));
-        let u = &mut head[at..];
-        coefficients(u, point(starts[j]));
-        for l in j + 1..sizes.len() {
-            let mut add = on_coset_prefix(u, starts[l], sizes[l]);
-            let from = starts[l] - starts[j] - (1 << e);
-            let block = &mut tail[from..from + (1 << sizes[l])];
-            parallel::chunks_mut_zip(block, &add, 1 << 14, |_, b, a| {
-                b.iter_mut().zip(a).for_each(|(x, &y)| *x += y)
-            });
-            add.clear();
-        }
-    }
-    for j in (0..sizes.len().saturating_sub(1)).rev() {
-        let (at, e) = (starts[j] - base, sizes[j]);
-        let lambda = point(starts[j] >> e);
-        let (q, rest) = data.split_at_mut(at + (1 << e));
-        let q = &mut q[at..at + rest.len()];
-        parallel::chunks_mut_zip(q, rest, 1 << 14, |_, q, r| {
-            q.iter_mut().zip(r).for_each(|(x, &y)| *x += lambda * y)
-        });
-    }
+    interpolate_prefix_cols(&mut [data], sizes, base);
 }
 
 /// Novel to `B` coefficients (or back), in place: `b_k = Σ_(j ⊆ k) a_j`. The low variables on blocks of 256 KiB
@@ -1566,37 +2375,207 @@ pub fn subset_sums_from<M: Copy + Send + Sync + Add<Output = M> + Default>(src: 
     subset_sums_of(dst, Some(src));
 }
 
+/// The variables [`subset_sums`] takes on blocks one worker holds (256 KiB).
+fn subset_leaf<M>(m: usize) -> usize {
+    m.min(((1usize << 18) / std::mem::size_of::<M>()).max(2).ilog2() as usize)
+}
+
+/// [`subset_sums`]' low variables on block `b` (of `2^leaf`) of a column, read first from `src` (zero past its end).
+fn subset_block<M: Copy + Add<Output = M> + Default>(block: &mut [M], b: usize, leaf: usize, src: Option<&[M]>) {
+    if let Some(src) = src {
+        let at = (b << leaf).min(src.len());
+        let have = (src.len() - at).min(block.len());
+        block[..have].copy_from_slice(&src[at..at + have]);
+        block[have..].fill(M::default());
+    }
+    let mut half = 1;
+    while half < block.len() {
+        for pair in block.chunks_exact_mut(2 * half) {
+            let (lo, hi) = pair.split_at_mut(half);
+            for (h, &l) in hi.iter_mut().zip(lo.iter()) {
+                *h = *h + l;
+            }
+        }
+        half *= 2;
+    }
+}
+
+/// [`subset_sums_from`] of several columns (any lengths, each `src` at most its `dst`): every column's blocks in one
+/// dispatch, then each longer column's upper variables. The same values.
+pub fn subset_sums_many<M: Copy + Send + Sync + Add<Output = M> + Default>(jobs: &mut [(&[M], &mut [M])]) {
+    // (job, block, the block's length): every column's low variables.
+    let mut blocks: Vec<(usize, usize, usize)> = Vec::new();
+    for (k, (src, dst)) in jobs.iter().enumerate() {
+        let n = dst.len();
+        assert!(n.is_power_of_two() && src.len() <= n);
+        let leaf = subset_leaf::<M>(n.trailing_zeros() as usize);
+        blocks.extend((0..n >> leaf).map(|b| (k, b, leaf)));
+    }
+    let dsts: Vec<SendPtr<M>> = jobs.iter_mut().map(|(_, d)| SendPtr(d.as_mut_ptr())).collect();
+    let srcs: Vec<&[M]> = jobs.iter().map(|(s, _)| *s).collect();
+    tasks(blocks.len(), false, |t| {
+        let (k, b, leaf) = blocks[t];
+        // SAFETY: task `t` writes block `b` of column `k` alone, inside it.
+        let block = unsafe { dsts[k].slice(b << leaf, 1 << leaf) };
+        subset_block(block, b, leaf, Some(srcs[k]));
+    });
+    // The longer columns' upper variables, the columns of one length together.
+    let mut lengths: Vec<usize> = jobs.iter().map(|(_, d)| d.len()).collect();
+    lengths.sort_unstable();
+    lengths.dedup();
+    for len in lengths {
+        let m = len.trailing_zeros() as usize;
+        let leaf = subset_leaf::<M>(m);
+        if leaf < m {
+            let bases: Vec<SendPtr<M>> = jobs
+                .iter_mut()
+                .filter(|(_, d)| d.len() == len)
+                .map(|(_, d)| SendPtr(d.as_mut_ptr()))
+                .collect();
+            subset_upper_of(&bases, len, leaf);
+        }
+    }
+}
+
+/// What [`filled_column`] writes in a block.
+#[derive(Clone, Copy, Debug)]
+pub enum Fill<'a> {
+    /// The `B` coefficients of these novel ones (at most the block's length, zero past their end):
+    /// [`subset_sums_from`].
+    Sums(&'a [F64]),
+    /// These words as they are (the block's length).
+    Words(&'a [F64]),
+    /// These 64-bit words as field words (the block's length).
+    Raw(&'a [u64]),
+}
+
+/// A new column of `len` words: each job's block (`offset`, `2^k` words) holding its [`Fill`], every other word zero;
+/// the blocks disjoint. As zeros then [`subset_sums_many`] and copies, but each word written once, not zeroed first:
+/// the blocks' low variables (and the copies, and the zeros between and after the blocks) in one dispatch, then the
+/// longer blocks' upper variables. A prover's stack of columns (620 MB for π1's C1 at the reference shape: its
+/// zeroing pass took the workers 2.9 ms).
+pub fn filled_column(len: usize, jobs: &[(usize, usize, Fill<'_>)]) -> Vec<F64> {
+    /// Words a copy or a zeroing task takes.
+    const RUN: usize = 1 << 16;
+    #[derive(Clone, Copy)]
+    enum Task {
+        /// Block `b` (of `2^leaf`) of job `k`'s subset sums.
+        Sums { k: usize, b: usize, leaf: usize },
+        /// Words `at..at + n` of job `k`, copied.
+        Copy { k: usize, at: usize, n: usize },
+        /// Words `at..at + n` of the column, zero.
+        Zero { at: usize, n: usize },
+    }
+    let mut order: Vec<usize> = (0..jobs.len()).collect();
+    order.sort_by_key(|&k| jobs[k].0);
+    let mut list: Vec<Task> = Vec::new();
+    let zeros = |list: &mut Vec<Task>, from: usize, to: usize| {
+        list.extend((from..to).step_by(RUN).map(|at| Task::Zero { at, n: RUN.min(to - at) }));
+    };
+    let mut cursor = 0;
+    for &k in &order {
+        let (offset, n, fill) = jobs[k];
+        assert!(n.is_power_of_two() && offset >= cursor && offset + n <= len, "disjoint blocks in the column");
+        zeros(&mut list, cursor, offset);
+        let copies = |list: &mut Vec<Task>| list.extend((0..n).step_by(RUN).map(|at| Task::Copy { k, at, n: RUN.min(n - at) }));
+        match fill {
+            Fill::Sums(src) => {
+                assert!(src.len() <= n);
+                let leaf = subset_leaf::<F64>(n.trailing_zeros() as usize);
+                list.extend((0..n >> leaf).map(|b| Task::Sums { k, b, leaf }));
+            }
+            Fill::Words(src) => {
+                assert_eq!(src.len(), n);
+                copies(&mut list);
+            }
+            Fill::Raw(src) => {
+                assert_eq!(src.len(), n);
+                copies(&mut list);
+            }
+        }
+        cursor = offset + n;
+    }
+    zeros(&mut list, cursor, len);
+    // SAFETY: the tasks tile the column (every block, every word between and after them), each word written below
+    // before any is read.
+    let mut out = unsafe { unwritten(len) };
+    let base = SendPtr(out.as_mut_ptr());
+    tasks(list.len(), false, |t| match list[t] {
+        Task::Sums { k, b, leaf } => {
+            let (offset, _, fill) = jobs[k];
+            let Fill::Sums(src) = fill else { unreachable!("a sums job") };
+            // SAFETY: task `t` alone writes these words of job `k`'s block.
+            subset_block(unsafe { base.slice(offset + (b << leaf), 1 << leaf) }, b, leaf, Some(src));
+        }
+        Task::Copy { k, at, n } => {
+            let (offset, _, fill) = jobs[k];
+            // SAFETY: as above.
+            let dst = unsafe { base.slice(offset + at, n) };
+            match fill {
+                Fill::Words(src) => dst.copy_from_slice(&src[at..at + n]),
+                Fill::Raw(src) => dst.iter_mut().zip(&src[at..at + n]).for_each(|(d, &x)| *d = F64(x)),
+                Fill::Sums(_) => unreachable!("a copy job"),
+            }
+        }
+        // SAFETY: as above.
+        Task::Zero { at, n } => unsafe { base.slice(at, n) }.fill(F64::ZERO),
+    });
+    // The longer blocks' upper variables, the blocks of one length together.
+    let mut lengths: Vec<usize> = jobs.iter().filter(|j| matches!(j.2, Fill::Sums(_))).map(|j| j.1).collect();
+    lengths.sort_unstable();
+    lengths.dedup();
+    for n in lengths {
+        let leaf = subset_leaf::<F64>(n.trailing_zeros() as usize);
+        if (1 << leaf) < n {
+            let bases: Vec<SendPtr<F64>> = jobs
+                .iter()
+                .filter(|j| j.1 == n && matches!(j.2, Fill::Sums(_)))
+                // SAFETY: inside `out`, each the start of a block of its own.
+                .map(|j| SendPtr(unsafe { base.add(j.0) }))
+                .collect();
+            subset_upper_of(&bases, n, leaf);
+        }
+    }
+    out
+}
+
 fn subset_sums_of<M: Copy + Send + Sync + Add<Output = M> + Default>(data: &mut [M], src: Option<&[M]>) {
     let n = data.len();
     assert!(n.is_power_of_two());
     let m = n.trailing_zeros() as usize;
-    let leaf = m.min(((1usize << 18) / std::mem::size_of::<M>()).max(2).ilog2() as usize);
-    parallel::chunks_mut(data, 1 << leaf, |b, block| {
-        if let Some(src) = src {
-            let at = (b << leaf).min(src.len());
-            let have = (src.len() - at).min(block.len());
-            block[..have].copy_from_slice(&src[at..at + have]);
-            block[have..].fill(M::default());
-        }
-        let mut half = 1;
-        while half < block.len() {
-            for pair in block.chunks_exact_mut(2 * half) {
-                let (lo, hi) = pair.split_at_mut(half);
-                for (h, &l) in hi.iter_mut().zip(lo.iter()) {
-                    *h = *h + l;
-                }
-            }
-            half *= 2;
-        }
-    });
+    let leaf = subset_leaf::<M>(m);
     let base = SendPtr(data.as_mut_ptr());
+    tasks(n >> leaf, false, |b| {
+        // SAFETY: task `b` writes block `b` alone, inside `data`.
+        subset_block(unsafe { base.slice(b << leaf, 1 << leaf) }, b, leaf, src)
+    });
+    subset_upper(data, leaf);
+}
+
+/// The most variables a pass of [`subset_upper_of`] takes, on tiles of `2^g` runs (of `2^(leaf - g)` words, 256 KiB
+/// a tile): ten rather than eight, so that a column of `2^24` or `2^25` words takes one pass above its leaves, not two
+/// (one column of `2^24` words, 64 threads: 3.0 → 2.2 ms; `2^25` 5.8 → 5.4 ms).
+const SUBSET_GROUP: usize = 10;
+
+/// [`subset_sums`]' variables from `leaf` up, a few at a time on tiles.
+fn subset_upper<M: Copy + Send + Sync + Add<Output = M> + Default>(data: &mut [M], leaf: usize) {
+    let n = data.len();
+    subset_upper_of(&[SendPtr(data.as_mut_ptr())], n, leaf);
+}
+
+/// [`subset_upper`] of several columns of `n` words at `bases` (disjoint), each pass's tasks for all in one dispatch.
+/// Up to [`SUBSET_GROUP`] variables a pass: one pass above the leaves up to `2^25` words of eight bytes.
+fn subset_upper_of<M: Copy + Send + Sync + Add<Output = M> + Default>(bases: &[SendPtr<M>], n: usize, leaf: usize) {
+    let m = n.trailing_zeros() as usize;
     let mut a = leaf;
     while a < m {
-        let g = (m - a).min(8);
+        let g = (m - a).min(SUBSET_GROUP);
         let lines = 1usize << g;
         let width = ((1usize << leaf) >> g).clamp(1, 1 << a);
         let per_group = (1usize << a) / width;
-        parallel::for_each((n >> (a + g)) * per_group, |task| {
+        let per = (n >> (a + g)) * per_group;
+        tasks(per * bases.len(), false, |t| {
+            let (base, task) = (bases[t / per], t % per);
             let e0 = ((task / per_group) << (a + g)) + (task % per_group) * width;
             for j in 0..g {
                 let hs = 1usize << j;
@@ -1659,7 +2638,7 @@ fn upper<T: Kind>(data: SendPtr<u64>, src: Option<SendPtr<u64>>, rows: usize, a:
     let lines = 1usize << g;
     let width = (UPPER_TILE_ROWS >> g).clamp(1, 1 << a);
     let per_group = (1usize << a) / width;
-    parallel::for_each((rows >> (a + g)) * per_group, |task| {
+    tasks((rows >> (a + g)) * per_group, false, |task| {
         let row0 = ((task / per_group) << (a + g)) + (task % per_group) * width;
         let line = |u: usize| row0 + (u << a);
         // SAFETY: a task touches rows `line(u) + [0, width)`, `u < lines`: its own.
@@ -2128,6 +3107,345 @@ mod tests {
             let mut got = all[..total].to_vec();
             interpolate_prefix(&mut got, &sizes, 1 << m);
             assert_eq!(got, novel, "count {count}, blocks {sizes:?}");
+        }
+    }
+
+    /// The several-column and one-worker transforms, folds and interpolation are the one-column ones.
+    #[test]
+    fn columns_at_once_and_serial_are_one_at_a_time() {
+        let mut next = rng(11);
+        for m in [0usize, 2, 3, 4, 9, 12, 13, 16, 19] {
+            let offset = point(3 << 21) + point(7 << m);
+            let columns: Vec<Vec<F64>> = (0..3).map(|_| (0..1usize << m).map(|_| F64(next())).collect()).collect();
+            let refs: Vec<&[F64]> = columns.iter().map(|c| &c[..]).collect();
+            let one = |f: fn(&mut [F64], F64)| -> Vec<Vec<F64>> {
+                columns
+                    .iter()
+                    .map(|c| {
+                        let mut c = c.clone();
+                        f(&mut c, offset);
+                        c
+                    })
+                    .collect()
+            };
+            let (want_v, want_c) = (one(values), one(coefficients));
+            let mut got = columns.clone();
+            values_cols(&mut got.iter_mut().map(|c| &mut c[..]).collect::<Vec<_>>(), offset);
+            assert_eq!(got, want_v, "values_cols, 2^{m}");
+            let mut got = columns.clone();
+            coefficients_cols(&mut got.iter_mut().map(|c| &mut c[..]).collect::<Vec<_>>(), offset);
+            assert_eq!(got, want_c, "coefficients_cols, 2^{m}");
+            let mut got: Vec<Vec<F64>> = columns.iter().map(|c| vec![F64::ZERO; c.len()]).collect();
+            values_from_cols(&refs, &mut got.iter_mut().map(|c| &mut c[..]).collect::<Vec<_>>(), offset);
+            assert_eq!(got, want_v, "values_from_cols, 2^{m}");
+            let mut got = vec![F64::ZERO; 1 << m];
+            values_from_serial(&columns[0], &mut got, offset);
+            assert_eq!(got, want_v[0], "values_from_serial, 2^{m}");
+            for e in [0, 1, 3, 6, 7, 9].into_iter().filter(|&e| e <= m) {
+                let first = (5 << 22) + (3 << e);
+                let want: Vec<Vec<F64>> = refs.iter().map(|c| on_coset_prefix(c, first, e)).collect();
+                assert_eq!(on_coset_prefix_cols(&refs, first, e), want, "on_coset_prefix_cols, 2^{m} onto 2^{e}");
+                let mut got = vec![F64::ZERO; 1 << e];
+                on_coset_prefix_serial(&columns[1], first, &mut got);
+                assert_eq!(got, want[1], "on_coset_prefix_serial, 2^{m} onto 2^{e}");
+            }
+        }
+        for (count, grain) in [(1u64, 0usize), (5, 0), (1000, 3), (5000, 6), (37_000, 10), (300_000, 13)] {
+            let sizes = prefix_sizes(count, grain);
+            let total: usize = sizes.iter().map(|&e| 1usize << e).sum();
+            let base = 2 << sizes[0];
+            let columns: Vec<Vec<F64>> = (0..3).map(|_| (0..total).map(|_| F64(next())).collect()).collect();
+            let want: Vec<Vec<F64>> = columns
+                .iter()
+                .map(|c| {
+                    let mut c = c.clone();
+                    interpolate_prefix(&mut c, &sizes, base);
+                    c
+                })
+                .collect();
+            let mut got = columns.clone();
+            interpolate_prefix_cols(&mut got.iter_mut().map(|c| &mut c[..]).collect::<Vec<_>>(), &sizes, base);
+            assert_eq!(got, want, "interpolate_prefix_cols, blocks {sizes:?}");
+        }
+    }
+
+    /// The batched helpers (several quotients' interpolations, columns on their own cosets, small cosets of several
+    /// columns, a batch on a coset) are the one-at-a-time ones.
+    #[test]
+    fn many_at_once_are_one_at_a_time() {
+        let mut next = rng(29);
+        // Several quotients of different blocks, base and columns.
+        let shapes = [(1u64, 0usize), (1000, 3), (37_000, 10), (300_000, 13), (5000, 6), (300_001, 13)];
+        let mut all: Vec<(Vec<Vec<F64>>, Vec<usize>, usize)> = shapes
+            .iter()
+            .enumerate()
+            .map(|(i, &(count, grain))| {
+                let sizes = prefix_sizes(count, grain);
+                let total: usize = sizes.iter().map(|&e| 1usize << e).sum();
+                let base = (2 + 2 * (i % 2)) << sizes[0];
+                ((0..1 + i % 3).map(|_| (0..total).map(|_| F64(next())).collect()).collect(), sizes, base)
+            })
+            .collect();
+        let want: Vec<Vec<Vec<F64>>> = all
+            .iter()
+            .map(|(cols, sizes, base)| {
+                let mut cols = cols.clone();
+                interpolate_prefix_cols(&mut cols.iter_mut().map(|c| &mut c[..]).collect::<Vec<_>>(), sizes, *base);
+                cols
+            })
+            .collect();
+        let mut jobs: Vec<PrefixCols> = all
+            .iter_mut()
+            .map(|(cols, sizes, base)| PrefixCols {
+                cols: cols.iter_mut().map(|c| &mut c[..]).collect(),
+                sizes: sizes.clone(),
+                base: *base,
+            })
+            .collect();
+        interpolate_prefix_many(&mut jobs);
+        drop(jobs);
+        assert!(all.iter().map(|a| &a.0).eq(want.iter()), "interpolate_prefix_many");
+        for m in [0usize, 3, 4, 12, 16] {
+            let columns: Vec<Vec<F64>> = (0..4).map(|_| (0..1usize << m).map(|_| F64(next())).collect()).collect();
+            let offsets: Vec<F64> = (0..4).map(|c| point((c + 1) << 20) + point(c << m)).collect();
+            let want: Vec<Vec<F64>> = columns
+                .iter()
+                .zip(&offsets)
+                .map(|(c, &o)| {
+                    let mut c = c.clone();
+                    coefficients(&mut c, o);
+                    c
+                })
+                .collect();
+            let mut got = columns.clone();
+            coefficients_cols_each(&mut got.iter_mut().map(|c| &mut c[..]).collect::<Vec<_>>(), &offsets);
+            assert_eq!(got, want, "coefficients_cols_each, 2^{m}");
+            let at: Vec<(&[F64], usize, usize)> = columns
+                .iter()
+                .enumerate()
+                .flat_map(|(c, col)| {
+                    [0, 3, 6].into_iter().filter(move |&e| e <= m).map(move |e| (&col[..], (7 << 21) + (c << e), e))
+                })
+                .collect();
+            let want: Vec<Vec<F64>> = at.iter().map(|&(c, first, e)| on_coset_prefix(c, first, e)).collect();
+            assert_eq!(on_coset_prefix_each(&at), want, "on_coset_prefix_each, 2^{m}");
+            if m >= 3 {
+                let refs: Vec<&[F64]> = columns.iter().map(|c| &c[..]).collect();
+                let batch = pack(&refs);
+                for e in (3..=m).step_by(3) {
+                    let first = (5 << 22) + (3 << e);
+                    let mut want = vec![K8::ZERO; 1 << e];
+                    fold_batch(&batch, first, &mut want);
+                    values_batch(&mut want, point(first), true);
+                    assert_eq!(on_coset_batch(&batch, first, e, true), want, "on_coset_batch, 2^{m} onto 2^{e}");
+                }
+            }
+        }
+    }
+
+    /// The lane-wise mixed sums and the lanes' blends are the scalar ones.
+    #[test]
+    fn lane_sums_and_blends() {
+        let mut next = rng(23);
+        let e: Vec<F192> = (0..16).map(|_| F192::new(next(), next(), next())).collect();
+        let k: Vec<F64> = (0..16).map(|_| F64(next())).collect();
+        let ex = |o: usize| Ex8::from_limbs([0, 1, 2].map(|l| Kx8::new(std::array::from_fn(|i| F64([e[o + i].c0, e[o + i].c1, e[o + i].c2][l])))));
+        let kx = |o: usize| Kx8::new(std::array::from_fn(|i| k[o + i]));
+        let mut sum = MixedSum::default();
+        sum.add_lanes(ex(0), kx(0));
+        sum.add_lanes(ex(8), kx(8));
+        let got = sum.reduce().to_array();
+        for i in 0..8 {
+            assert_eq!(got[i], e[i].mul_base(k[i]) + e[8 + i].mul_base(k[8 + i]));
+        }
+        let (ev, od) = Kx8::evens_odds(kx(0), kx(8));
+        for l in 0..8 {
+            let src = if l < 4 { 2 * l } else { 8 + 2 * (l - 4) };
+            assert_eq!((ev.to_row().0[l], od.to_row().0[l]), (k[src], k[src + 1]));
+        }
+        let rows: [Kx8; 8] = std::array::from_fn(|r| Kx8::new(std::array::from_fn(|l| k[(r + l) % 16])));
+        let t = Kx8::transpose8(rows);
+        for (i, t) in t.iter().enumerate() {
+            for l in 0..8 {
+                assert_eq!(t.to_row().0[l], rows[l].to_row().0[i]);
+            }
+        }
+        let blend = ex(0).odd_from(ex(8)).to_array();
+        let kb = kx(0).odd_from(kx(8)).to_row();
+        for i in 0..8 {
+            assert_eq!(blend[i], e[if i % 2 == 1 { 8 + i } else { i }]);
+            assert_eq!(kb.0[i], k[if i % 2 == 1 { 8 + i } else { i }]);
+        }
+    }
+
+    /// The one-worker shifted cube is the pool's.
+    #[test]
+    fn serial_cube_is_the_pools() {
+        let mut next = rng(31);
+        for r in [0usize, 2, 3, 9, 13, 15] {
+            let values: Vec<F64> = (0..1usize << r).map(|_| F64(next())).collect();
+            let delta: Vec<F64> = (0..r).map(|_| F64(next())).collect();
+            for e in 0..=r {
+                assert_eq!(shifted_cube_serial(&values, &delta, e), shifted_cube(&values, &delta, e), "2^{r} onto 2^{e}");
+            }
+        }
+    }
+
+    /// The fold weights in one dispatch are the doubling's.
+    #[test]
+    fn tensor_is_doubling() {
+        for len in [1usize, 2, 3, 100, 4096, 4097, 1 << 15, (1 << 17) + 5] {
+            let factor = |b: usize, bit: bool| if bit { point(5 + 3 * b) } else { point(1 << 20) + point(b) };
+            let mut want = vec![F64::ONE];
+            let mut b = 0;
+            while want.len() < len {
+                let half = want.len();
+                for h in 0..half {
+                    want.push(want[h] * factor(b, true));
+                }
+                for x in &mut want[..half] {
+                    *x *= factor(b, false);
+                }
+                b += 1;
+            }
+            want.truncate(len);
+            assert_eq!(tensor(len, factor), want, "{len}");
+        }
+        let mut next = rng(19);
+        let srcs: Vec<Vec<F64>> = (0..3).map(|_| (0..1 << 13).map(|_| F64(next())).collect()).collect();
+        let refs: Vec<&[F64]> = srcs.iter().map(|s| &s[..]).collect();
+        let want: Vec<Vec<F64>> = srcs
+            .iter()
+            .map(|s| {
+                let mut c = s.clone();
+                coefficients(&mut c, point(7));
+                c
+            })
+            .collect();
+        assert_eq!(coefficients_cols_of(&refs, point(7)), want);
+        let want: Vec<Vec<F64>> = srcs
+            .iter()
+            .map(|s| {
+                let mut c = s.clone();
+                subset_sums(&mut c);
+                c
+            })
+            .collect();
+        assert_eq!(subset_sums_of_cols(&refs), want);
+        assert_eq!(zeros(1 << 17), vec![F64::ZERO; 1 << 17]);
+    }
+
+    /// Several columns' subset sums at once are each one's.
+    /// A filled column is zeros, then each block's subset sums or copy, whatever the blocks' order and gaps.
+    #[test]
+    fn filled_column_is_zeros_then_each_block() {
+        let mut next = rng(23);
+        // (offset, block, source length or none for a copy, raw words)
+        let blocks = [
+            (1usize << 18, 1usize << 18, Some(3usize << 15), false),
+            (0, 1 << 16, Some(1 << 16), false),
+            (1 << 16, 1 << 15, None, false),
+            (3 << 15, 1 << 10, None, true),
+            (7 << 15, 8, Some(5), false),
+            (1 << 20, 1 << 20, Some(1000), false),
+            ((1 << 21) + 3, 1, Some(1), false),
+        ];
+        let len = (1 << 21) + (1 << 17);
+        let srcs: Vec<Vec<F64>> = blocks
+            .iter()
+            .map(|&(_, n, s, _)| (0..s.unwrap_or(n)).map(|_| F64(next())).collect())
+            .collect();
+        let raws: Vec<Vec<u64>> = srcs.iter().map(|s| s.iter().map(|x| x.0).collect()).collect();
+        let mut want = vec![F64::ZERO; len];
+        for (&(offset, n, s, _), src) in blocks.iter().zip(&srcs) {
+            match s {
+                Some(_) => subset_sums_from(src, &mut want[offset..offset + n]),
+                None => want[offset..offset + n].copy_from_slice(src),
+            }
+        }
+        let jobs: Vec<(usize, usize, Fill)> = blocks
+            .iter()
+            .zip(srcs.iter().zip(&raws))
+            .map(|(&(offset, n, s, raw), (src, words))| {
+                let fill = match (s, raw) {
+                    (Some(_), _) => Fill::Sums(src),
+                    (None, false) => Fill::Words(src),
+                    (None, true) => Fill::Raw(words),
+                };
+                (offset, n, fill)
+            })
+            .collect();
+        assert!(filled_column(len, &jobs) == want);
+    }
+
+    #[test]
+    fn subset_sums_many_is_each() {
+        let mut next = rng(17);
+        let lens = [(1usize, 1usize), (8, 5), (1 << 10, 1 << 10), (1 << 15, 1000), (1 << 16, 1 << 16), (1 << 18, 3 << 15)];
+        let srcs: Vec<Vec<F64>> = lens.iter().map(|&(_, s)| (0..s).map(|_| F64(next())).collect()).collect();
+        let want: Vec<Vec<F64>> = lens
+            .iter()
+            .zip(&srcs)
+            .map(|(&(n, _), src)| {
+                let mut d = vec![F64::ZERO; n];
+                subset_sums_from(src, &mut d);
+                d
+            })
+            .collect();
+        let mut got: Vec<Vec<F64>> = lens.iter().map(|&(n, _)| vec![F64(next()); n]).collect();
+        let mut jobs: Vec<(&[F64], &mut [F64])> = srcs.iter().map(|s| &s[..]).zip(got.iter_mut().map(|g| &mut g[..])).collect();
+        subset_sums_many(&mut jobs);
+        assert_eq!(got, want);
+        let mut got: Vec<Vec<F64>> = srcs.iter().map(|s| vec![F64::ZERO; s.len().next_power_of_two()]).collect();
+        let want: Vec<Vec<F64>> = srcs
+            .iter()
+            .map(|s| {
+                let mut d = vec![F64::ZERO; s.len().next_power_of_two()];
+                coefficients_from(&{
+                    let mut v = s.clone();
+                    v.resize(d.len(), F64::ZERO);
+                    v
+                }, &mut d, point(1 << 20));
+                d
+            })
+            .collect();
+        for (g, s) in got.iter_mut().zip(&srcs).filter(|(g, _)| g.len() >= 8) {
+            let mut padded = s.clone();
+            padded.resize(g.len(), F64::ZERO);
+            coefficients_from_cols(&[&padded], &mut [&mut g[..]], point(1 << 20));
+        }
+        for (g, w) in got.iter().zip(&want).filter(|(g, _)| g.len() >= 8) {
+            assert_eq!(g, w);
+        }
+    }
+
+    /// The one-worker batch transforms and fold are the pool's.
+    #[test]
+    fn serial_batches_are_the_pools() {
+        let mut next = rng(13);
+        for m in [3usize, 4, 9, 12, 13, 15, 16] {
+            let columns: Vec<Vec<F64>> = (0..8).map(|_| (0..1usize << m).map(|_| F64(next())).collect()).collect();
+            let refs: Vec<&[F64]> = columns.iter().map(|c| &c[..]).collect();
+            let batch = pack(&refs);
+            for runs in [false, true] {
+                let offset = point(9 << 20);
+                let mut want = vec![K8::ZERO; batch.len()];
+                values_batch_from(&batch, &mut want, offset, runs);
+                let mut got = vec![K8::ZERO; batch.len()];
+                values_batch_from_serial(&batch, &mut got, offset, runs);
+                assert!(got == want, "values_batch_from_serial, 2^{m}");
+                let mut got = batch.clone();
+                values_batch_serial(&mut got, offset, runs);
+                assert!(got == want, "values_batch_serial, 2^{m}");
+            }
+            for e in (0..=m).step_by(3) {
+                let first = (3 << 22) + (5 << e);
+                let mut want = vec![K8::ZERO; 1 << e];
+                fold_batch(&batch, first, &mut want);
+                let mut got = vec![K8::ZERO; 1 << e];
+                fold_batch_serial(&batch, first, &mut got);
+                assert!(got == want, "fold_batch_serial, 2^{m} onto 2^{e}");
+            }
         }
     }
 

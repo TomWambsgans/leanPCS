@@ -1,5 +1,7 @@
 // Vendored from leanVM (https://github.com/leanEthereum/leanVM), commit c445e3d51a5a85031df47240595698f3b24897bf, file crates/pcs/src/whir.rs.
 // MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and AGENTS.md at the repository root).
+// Added here: `config_for_schedule`, the configuration on another RS-domain schedule (`whir_config.rs`'s
+// `RECURSION_SCHEDULE`, this repository's `PCS_OPEN` version 3); `config_for_rate` is it on leanVM's, unchanged.
 // CREDIT: https://github.com/succinctlabs/flock (flock-core), MIT OR Apache-2.0.
 // Copyright (c) 2026 Bain Capital Crypto, LP and Ron Rothblum
 // Modifications copyright 2026 Succinct Labs, Benedikt Bunz, William Wang
@@ -12,11 +14,17 @@
 // One comment corrected (no code change): the level-0 query grinding is `QUERY_GRINDING_BITS = 17` bits in the
 // production profile, not "0 bits" as leanVM's comment says (`whir_config.rs`, and the verifier's
 // `QUERY_GRINDING_BITS`); to report upstream.
-// Also modified here, for speed, every proof unchanged: `commit_tree`, `encoded_rows` and the lean deeper levels
+// Also modified here, for speed, every proof unchanged: `commit` (into its codeword, `encode_two_sweep_into`),
+// `commit_tree`, `encoded_rows` and the lean deeper levels
 // encode in two sweeps from the message as it lies (`AdditiveNttF64::encode_two_sweep_with`,
 // `encoded_rows_two_sweep`; a lean level holds `LEAN_BATCH` replicas' work buffers while it commits), and the lane
 // rounds sum sparse low weights at their nonzero entries alone (`SparseLow`), the dense ones with `dot_base` on x86,
-// and fold the witness on AVX-512 eight words at a time (`collapse_avx512`).
+// and fold the witness on AVX-512 eight words at a time (`collapse_avx512`); a lean level's message, kept for its
+// queries, is copied by the workers (`copied`) rather than by one thread. A test pins the chunked dense induce to its
+// per-query form (`chunked_induce_matches_the_per_query_one`). The E rounds (the folds, their messages, the OOD
+// evaluation, the glue, the collapsed weight) take four products at a time (`mul4`, `mul_unreduced4`;
+// `vectored_ext_rounds_match_one_product_at_a_time`). A dense low weight is told from its first chunk, a sparse one's
+// entries collected in parallel (`sparse_lows`).
 
 //! WHIR with `K = GF(2)[x]/(x^64+x^4+x^3+x+1)` and
 //! `E = K[y]/(y^3+y+1)`.
@@ -42,14 +50,15 @@ use crate::ntt::additive_ntt_f64::MsgLayout;
 use fiat_shamir::merkle::PrunedMerklePaths;
 use fiat_shamir::transcript::ProverState;
 use primitives::{
-    field::{F64, F192, F192Unreduced, powers},
+    field::{F64, F192, F192Unreduced, mul_unreduced4, mul4, powers},
     stream::Stream,
 };
 
 pub use super::whir_config::{
-    FinalBlockConfig, INITIAL_FOLDING_FACTOR, LOG_INV_RATE_0, LevelShapes, MAX_LOG_INV_RATE, MIN_LOG_INV_RATE,
-    ProverConfig, QUERY_GRINDING_BITS, RESIDUAL_MAX_LOG, RS_DOMAIN_INITIAL_REDUCTION_FACTOR, SECURITY_BITS,
-    SUBSEQUENT_FOLDING_FACTOR, WhirLevelConfig, WhirSecurityConfig, validate_log_inv_rate,
+    DEPLOYED_SCHEDULE, DomainSchedule, FinalBlockConfig, INITIAL_FOLDING_FACTOR, LOG_INV_RATE_0, LevelShapes,
+    MAX_LOG_INV_RATE, MIN_LOG_INV_RATE, ProverConfig, QUERY_GRINDING_BITS, RECURSION_SCHEDULE, RESIDUAL_MAX_LOG,
+    RS_DOMAIN_INITIAL_REDUCTION_FACTOR, SECURITY_BITS, SUBSEQUENT_FOLDING_FACTOR, WhirLevelConfig, WhirSecurityConfig,
+    validate_log_inv_rate,
 };
 #[cfg(test)]
 pub use super::whir_config::{default_config, udr_queries};
@@ -110,7 +119,12 @@ pub fn inner_product_base_ext(witness: &[F64], b: &[F192]) -> F192 {
 /// elements at L0 inverse-rate logarithm `log_inv_rate`, using the production
 /// 128-bit Johnson/OOD profile at `m = log_n + LOG_PACKING`.
 pub fn config_for_rate(log_n: usize, log_inv_rate: usize) -> Result<ProverConfig, String> {
-    let sec = WhirSecurityConfig::derive_config_with_log_inv_rate(log_n + crate::LOG_PACKING, log_inv_rate)?;
+    config_for_schedule(log_n, log_inv_rate, DEPLOYED_SCHEDULE)
+}
+
+/// [`config_for_rate`] on the ladder of another RS-domain schedule ([`RECURSION_SCHEDULE`], say). [Added here.]
+pub fn config_for_schedule(log_n: usize, log_inv_rate: usize, schedule: DomainSchedule) -> Result<ProverConfig, String> {
+    let sec = WhirSecurityConfig::derive_config_with_schedule(log_n + crate::LOG_PACKING, log_inv_rate, schedule)?;
     sec.to_config()
 }
 
@@ -163,17 +177,29 @@ pub fn commit(message: &[F64], log_n: usize, log_batch_size: usize, log_inv_rate
     // SAFETY: every codeword element is written before it is read.
     // `transpose_lane_major` covers every word of the message region (its tiles are
     // asserted to), and `encode_interleaved_in_place` writes every other replica from
-    // it before transforming that region in place.
+    // it before transforming that region in place. The two-sweep encode instead writes every word of every
+    // replica in its first sweep (each task its residues of every tile, the tasks covering them) before the second
+    // reads a tile, or, with no first sweep, fills each tile from the message.
     let mut codeword = unsafe { primitives::uninit_vec::<F64>(codeword_len) };
 
     // Leaves are hashed as the encode finishes each block of rows.
     let tree = merkle::MerkleBuilder::new(n_positions, n_lanes, 1usize << log_batch_size);
     tracing::info_span!("NTT", kind = "base encode", log_domain = k_code, lanes = n_lanes).in_scope(|| {
-        crate::ntt::transpose_lane_major(&mut codeword[..message.len()], message, n_lanes, log_rows);
         let ntt = AdditiveNttF64::standard(k_code);
-        ntt.encode_interleaved_in_place_with(&mut codeword, n_lanes, log_inv_rate, &|row, rows| {
-            tree.absorb(row, rows)
-        });
+        let on_rows = |row: usize, rows: &[F64]| tree.absorb(row, rows);
+        // From the lane-major message in two sweeps where the shape allows it, straight into the codeword.
+        if ntt.encode_two_sweep_into(
+            &mut codeword,
+            message,
+            MsgLayout::LaneMajor,
+            n_lanes,
+            log_inv_rate,
+            &on_rows,
+        ) {
+            return;
+        }
+        crate::ntt::transpose_lane_major(&mut codeword[..message.len()], message, n_lanes, log_rows);
+        ntt.encode_interleaved_in_place_with(&mut codeword, n_lanes, log_inv_rate, &on_rows);
     });
     let merkle_tree = tracing::info_span!("Merkle").in_scope(|| tree.finish());
     let root = *merkle_tree.last().expect("merkle tree non-empty");
@@ -461,6 +487,17 @@ impl LigeroWitness {
     }
 }
 
+/// `src` copied by the workers (a lean level's message is up to a gigabyte, which one thread copies slowly).
+fn copied<T: Copy + Send + Sync>(src: &[T]) -> Vec<T> {
+    // SAFETY: the chunks below cover the vector, each written whole from `src` before it is read.
+    let mut out = unsafe { primitives::uninit_vec::<T>(src.len()) };
+    let chunk = (1usize << 16).min(src.len().max(1));
+    parallel::chunks_mut(&mut out, chunk, |k, dst| {
+        dst.copy_from_slice(&src[k * chunk..k * chunk + dst.len()])
+    });
+    out
+}
+
 /// Replicas of a lean level's codeword ([`LigeroRows::Message`]) encoded per read of its message: their work
 /// buffers, each as large as the message, are what the level holds beside it while it commits.
 const LEAN_BATCH: usize = 4;
@@ -565,7 +602,7 @@ fn ligero_commit_ext_within(
             }
         });
         LigeroRows::Message {
-            msg: poly.to_vec(),
+            msg: copied(poly),
             log_inv_rate,
         }
     };
@@ -652,6 +689,23 @@ trait RoundWitness: Copy + Sync + std::ops::Add<Output = Self> {
     /// last committed lane with the stacked witness's zero padding, so the
     /// interpolation collapses to `x0·(1+r)`.
     fn fold_lone(x0: Self, r: F192) -> F192;
+    /// `out[t] = fold_pair(f[2t], f[2t + 1], r)` for every `t`.
+    #[inline]
+    fn fold_into(f: &[Self], r: F192, out: &mut [F192]) {
+        for (o, x) in out.iter_mut().zip(f.as_chunks::<2>().0) {
+            *o = Self::fold_pair(x[0], x[1], r);
+        }
+    }
+    /// `(Σ f0·b0, Σ (f0 + f1)·(b0 + b1))` over the adjacent pairs of `f` and `b`, unreduced.
+    #[inline]
+    fn msg_terms(f: &[Self], b: &[F192]) -> (Self::Acc, Self::Acc) {
+        let (mut u_0, mut u_2) = (Self::ZERO_ACC, Self::ZERO_ACC);
+        for (x, y) in f.as_chunks::<2>().0.iter().zip(b.as_chunks::<2>().0) {
+            u_0 ^= x[0].mul_basis_unreduced(y[0]);
+            u_2 ^= (x[0] + x[1]).mul_basis_unreduced(y[0] + y[1]);
+        }
+        (u_0, u_2)
+    }
 }
 
 impl RoundWitness for F64 {
@@ -694,6 +748,31 @@ impl RoundWitness for F192 {
     fn fold_lone(x0: Self, r: F192) -> F192 {
         x0 + r * x0
     }
+    #[inline]
+    fn fold_into(f: &[Self], r: F192, out: &mut [F192]) {
+        fold_ext_into(f, r, out);
+    }
+    #[inline]
+    fn msg_terms(f: &[Self], b: &[F192]) -> (Self::Acc, Self::Acc) {
+        fold_msg_terms(f, b)
+    }
+}
+
+/// `out[t] = x0 + r·(x0 + x1)` for the pairs `(x0, x1) = (src[2t], src[2t + 1])`: [`RoundWitness::fold_pair`] in
+/// `E`, four products at a time ([`mul4`]: one vector of carry-less products for four, on AVX-512).
+#[inline]
+fn fold_ext_into(src: &[F192], r: F192, out: &mut [F192]) {
+    debug_assert_eq!(src.len(), 2 * out.len());
+    let (o4, o_rest) = out.as_chunks_mut::<4>();
+    let (s8, _) = src.as_chunks::<8>();
+    for (o, s) in o4.iter_mut().zip(s8) {
+        let p = mul4([r; 4], std::array::from_fn(|i| s[2 * i] + s[2 * i + 1]));
+        *o = std::array::from_fn(|i| s[2 * i] + p[i]);
+    }
+    let done = 4 * o4.len();
+    for (o, x) in o_rest.iter_mut().zip(src[2 * done..].as_chunks::<2>().0) {
+        *o = x[0] + r * (x[0] + x[1]);
+    }
 }
 
 /// Round message over a witness `f` and an E basis `b`. Mirror of
@@ -708,12 +787,13 @@ fn round_msg_lsb<T: RoundWitness>(f: &[T], b: &[F192]) -> SumcheckMessage {
     debug_assert_eq!(b.len(), n);
 
     let half = n / 2;
-    let term = |j: usize| -> (T::Acc, T::Acc) {
-        let (f0, f1) = (f[2 * j], f[2 * j + 1]);
-        let (b0, b1) = (b[2 * j], b[2 * j + 1]);
-        (f0.mul_basis_unreduced(b0), (f0 + f1).mul_basis_unreduced(b0 + b1))
+    // A chunk of `ROUND_CHUNK` pairs a task ([`RoundWitness::msg_terms`]: in `E`, four products at a time).
+    let chunk = 2 * ROUND_CHUNK;
+    let term = |c: usize| -> (T::Acc, T::Acc) {
+        let range = c * chunk..((c + 1) * chunk).min(n);
+        T::msg_terms(&f[range.clone()], &b[range])
     };
-    let (u_0, u_2) = accumulate_msg(half, half, T::ZERO_ACC, term);
+    let (u_0, u_2) = accumulate_msg(n.div_ceil(chunk), half, T::ZERO_ACC, term);
     SumcheckMessage {
         u_0: T::reduce(u_0),
         u_2: T::reduce(u_2),
@@ -727,31 +807,81 @@ fn round_msg_and_eval_lsb_ext(f: &[F192], b: &[F192]) -> (SumcheckMessage, F192)
     debug_assert!(n.is_power_of_two() && n >= 2);
     debug_assert_eq!(b.len(), n);
 
-    let term = |j: usize| {
-        let f0 = f[2 * j];
-        let f1 = f[2 * j + 1];
-        let b0 = b[2 * j];
-        let b1 = b[2 * j + 1];
-        let e0 = f0 * b0;
-        (e0, (f0 + f1) * (b0 + b1), e0 + f1 * b1)
+    // A chunk of `ROUND_CHUNK` pairs a task, their products `f0·b0`, `(f0 + f1)·(b0 + b1)` and `f1·b1` summed
+    // unreduced, four at a time ([`mul_unreduced4`]); the reduction is linear, so the sums are the reduced terms'.
+    let zero = F192Unreduced::ZERO;
+    let chunk = 2 * ROUND_CHUNK;
+    let term = |c: usize| {
+        let range = c * chunk..((c + 1) * chunk).min(n);
+        let (f, b) = (&f[range.clone()], &b[range]);
+        let (mut u_0, mut u_2, mut y) = (zero, zero, zero);
+        // Four pairs at a time: their twelve products, `f0·b0`, `(f0 + f1)·(b0 + b1)` and `f1·b1` for each pair.
+        let operands = |v: &[F192; 8]| -> [F192; 12] {
+            std::array::from_fn(|i| {
+                let (p, k) = (i / 3, i % 3);
+                match k {
+                    0 => v[2 * p],
+                    1 => v[2 * p] + v[2 * p + 1],
+                    _ => v[2 * p + 1],
+                }
+            })
+        };
+        let (f8, _) = f.as_chunks::<8>();
+        for (x, w) in f8.iter().zip(b.as_chunks::<8>().0) {
+            let (x, w) = (operands(x), operands(w));
+            for g in 0..3 {
+                let p = mul_unreduced4(
+                    std::array::from_fn(|j| x[4 * g + j]),
+                    std::array::from_fn(|j| w[4 * g + j]),
+                );
+                for (j, v) in p.into_iter().enumerate() {
+                    match (4 * g + j) % 3 {
+                        0 => {
+                            u_0 ^= v;
+                            y ^= v;
+                        }
+                        1 => u_2 ^= v,
+                        _ => y ^= v,
+                    }
+                }
+            }
+        }
+        for (x, w) in f[8 * f8.len()..]
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .zip(b[8 * f8.len()..].as_chunks::<2>().0)
+        {
+            let e0 = x[0].mul_unreduced(w[0]);
+            u_0 ^= e0;
+            u_2 ^= (x[0] + x[1]).mul_unreduced(w[0] + w[1]);
+            y ^= e0;
+            y ^= x[1].mul_unreduced(w[1]);
+        }
+        (u_0, u_2, y)
     };
     const PAR_THRESHOLD: usize = 4096;
     let half = n / 2;
-    let (u_0, u_2, y) = if half < PAR_THRESHOLD {
-        (0..half)
-            .map(term)
-            .fold((F192::ZERO, F192::ZERO, F192::ZERO), |(a0, a2, ay), (b0, b2, by)| {
-                (a0 + b0, a2 + b2, ay + by)
-            })
-    } else {
-        parallel::map_reduce(
-            half,
-            || (F192::ZERO, F192::ZERO, F192::ZERO),
-            term,
-            |(a0, a2, ay), (b0, b2, by)| (a0 + b0, a2 + b2, ay + by),
-        )
+    let tasks = n.div_ceil(chunk);
+    let xor3 = |(mut a0, mut a2, mut ay): (F192Unreduced, F192Unreduced, F192Unreduced),
+                (b0, b2, by): (F192Unreduced, F192Unreduced, F192Unreduced)| {
+        a0 ^= b0;
+        a2 ^= b2;
+        ay ^= by;
+        (a0, a2, ay)
     };
-    (SumcheckMessage { u_0, u_2 }, y)
+    let (u_0, u_2, y) = if half < PAR_THRESHOLD {
+        (0..tasks).map(term).fold((zero, zero, zero), xor3)
+    } else {
+        parallel::map_reduce(tasks, || (zero, zero, zero), term, xor3)
+    };
+    (
+        SumcheckMessage {
+            u_0: u_0.reduce(),
+            u_2: u_2.reduce(),
+        },
+        y.reduce(),
+    )
 }
 
 /// Uninitialized output for an initial-sumcheck fold.
@@ -772,7 +902,19 @@ unsafe fn fold_out_buf(n: usize) -> Vec<F192> {
 fn fold_msg_terms(nf: &[F192], nb: &[F192]) -> (F192Unreduced, F192Unreduced) {
     let mut u_0 = F192Unreduced::ZERO;
     let mut u_2 = F192Unreduced::ZERO;
-    let mut k = 0;
+    // Two pairs at a time, their four products together ([`mul_unreduced4`]).
+    let (f4, _) = nf.as_chunks::<4>();
+    for (f, b) in f4.iter().zip(nb.as_chunks::<4>().0) {
+        let p = mul_unreduced4(
+            [f[0], f[0] + f[1], f[2], f[2] + f[3]],
+            [b[0], b[0] + b[1], b[2], b[2] + b[3]],
+        );
+        u_0 ^= p[0];
+        u_2 ^= p[1];
+        u_0 ^= p[2];
+        u_2 ^= p[3];
+    }
+    let mut k = 4 * f4.len();
     while k + 1 < nf.len() {
         let f0 = nf[k];
         let f1 = nf[k + 1];
@@ -794,16 +936,12 @@ fn fold_and_msg_lsb<T: RoundWitness>(f: &[T], b: &[F192], r: F192) -> (Vec<F192>
     debug_assert_eq!(b.len(), n);
     let half = n / 2;
 
-    let fold_f = |j: usize| -> F192 { T::fold_pair(f[2 * j], f[2 * j + 1], r) };
-    let fold_b = |j: usize| -> F192 { F192::fold_pair(b[2 * j], b[2 * j + 1], r) };
     const PAR_THRESHOLD: usize = 4096;
     if half < PAR_THRESHOLD {
-        let mut nf = Vec::with_capacity(half);
-        let mut nb = Vec::with_capacity(half);
-        for j in 0..half {
-            nf.push(fold_f(j));
-            nb.push(fold_b(j));
-        }
+        let mut nf = vec![F192::ZERO; half];
+        let mut nb = vec![F192::ZERO; half];
+        T::fold_into(f, r, &mut nf);
+        fold_ext_into(b, r, &mut nb);
         let (u_0, u_2) = fold_msg_terms(&nf, &nb);
         return (
             nf,
@@ -836,11 +974,8 @@ fn fold_and_msg_lsb<T: RoundWitness>(f: &[T], b: &[F192], r: F192) -> (Vec<F192>
             // `nf`/`nb`, and both buffers stay borrowed for the whole dispatch.
             let fc = unsafe { nf_base.slice(base, len) };
             let bc = unsafe { nb_base.slice(base, len) };
-            for t in 0..len {
-                let j = base + t;
-                fc[t] = fold_f(j);
-                bc[t] = fold_b(j);
-            }
+            T::fold_into(&f[2 * base..2 * (base + len)], r, fc);
+            fold_ext_into(&b[2 * base..2 * (base + len)], r, bc);
             fold_msg_terms(fc, bc)
         },
         |(mut a0, mut a2), (c0, c2)| {
@@ -1284,7 +1419,20 @@ fn sparse_lows(weight: &[LaneTensor]) -> Vec<SparseLow> {
         .map(|tensor| {
             let low = &tensor.low;
             let chunk = ROUND_CHUNK.min(low.len()).max(1);
-            let nonzero = parallel::map_reduce(
+            let nonzero = |t: usize| -> Vec<(usize, F192)> {
+                let first = t * chunk;
+                low[first..(first + chunk).min(low.len())]
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, e)| !e.is_zero())
+                    .map(|(x, &e)| (first + x, e))
+                    .collect()
+            };
+            // A dense weight (an `eq` table: no zero at all) shows itself in its first chunk.
+            if nonzero(0).len() > SPARSE_LOW_MAX {
+                return SparseLow::Dense;
+            }
+            let count = parallel::map_reduce(
                 low.len().div_ceil(chunk),
                 || 0usize,
                 |t| {
@@ -1295,16 +1443,11 @@ fn sparse_lows(weight: &[LaneTensor]) -> Vec<SparseLow> {
                 },
                 |a, b| a + b,
             );
-            if nonzero > SPARSE_LOW_MAX {
+            if count > SPARSE_LOW_MAX {
                 return SparseLow::Dense;
             }
-            SparseLow::Sparse(
-                low.iter()
-                    .enumerate()
-                    .filter(|(_, e)| !e.is_zero())
-                    .map(|(x, &e)| (x, e))
-                    .collect(),
-            )
+            // The entries, chunk by chunk in parallel, in order.
+            SparseLow::Sparse(parallel::map_collect(low.len().div_ceil(chunk), nonzero).concat())
         })
         .collect()
 }
@@ -1447,14 +1590,24 @@ fn collapse_lanes(
                     *d = sum.reduce();
                 }
             }
-            // The dense low weights at every word, the sparse ones at their entries in the stage.
-            for (k, d) in lo_b[..n].iter_mut().enumerate() {
-                *d = scales
-                    .iter()
-                    .zip(weight)
-                    .zip(sparse)
-                    .filter(|(_, low)| matches!(low, SparseLow::Dense))
-                    .fold(F192::ZERO, |acc, ((&scale, tensor), _)| acc + scale * tensor.low[s + k]);
+            // The dense low weights at every word, four products at a time ([`mul4`]), the sparse ones at their
+            // entries in the stage.
+            lo_b[..n].fill(F192::ZERO);
+            for ((&scale, tensor), _) in scales
+                .iter()
+                .zip(weight)
+                .zip(sparse)
+                .filter(|(_, low)| matches!(low, SparseLow::Dense))
+            {
+                let low = &tensor.low[s..s + n];
+                let (d4, d_rest) = lo_b[..n].as_chunks_mut::<4>();
+                for (d, e) in d4.iter_mut().zip(low.as_chunks::<4>().0) {
+                    let p = mul4([scale; 4], *e);
+                    *d = std::array::from_fn(|i| d[i] + p[i]);
+                }
+                for (d, &e) in d_rest.iter_mut().zip(&low[n / 4 * 4..]) {
+                    *d += scale * e;
+                }
             }
             for (&scale, low) in scales.iter().zip(sparse) {
                 if let SparseLow::Sparse(entries) = low {
@@ -1757,11 +1910,12 @@ impl<'a> SumcheckProver<'a> {
         self.round += 1;
         let log_size = self.combined_basis.len().ilog2();
         let _span = tracing::info_span!("Sumcheck round", round = self.round, log_size).entered();
-        let (nf, nb, msg) = match &self.f {
+        // In affine ranges ([`parallel::affine`]): a thread's outputs are the next round's inputs it reads.
+        let (nf, nb, msg) = parallel::affine(|| match &self.f {
             Witness::Base(f) => fold_and_msg_lsb(f, &self.combined_basis, r),
             Witness::Ext(f) => fold_and_msg_lsb(f, &self.combined_basis, r),
             Witness::Lifted(..) => unreachable!("a lane round follows the first"),
-        };
+        });
         // Swap the freshly folded buffers in and drop the consumed ones, so the
         // allocator serves the next round's `fold_out_buf` from their memory.
         drop(std::mem::replace(&mut self.f, Witness::Ext(nf)));
@@ -1773,7 +1927,7 @@ impl<'a> SumcheckProver<'a> {
     /// Introduce a fresh basis poly with claimed sum `h_new`; sends the
     /// (u_0, u_2) for `Σ_x f(x) · b_new(x)` at the current dim.
     fn introduce_new(&mut self, b_new: Vec<F192>, h_new: F192) -> SumcheckMessage {
-        let msg = match &self.f {
+        let msg = parallel::affine(|| match &self.f {
             Witness::Base(f) => {
                 assert_eq!(b_new.len(), f.len());
                 round_msg_lsb(f, &b_new)
@@ -1783,7 +1937,7 @@ impl<'a> SumcheckProver<'a> {
                 round_msg_lsb(f, &b_new)
             }
             Witness::Lifted(..) => unreachable!("no claim is introduced between lane rounds"),
-        };
+        });
         self.pending.push((b_new, h_new, RoundQuad::from_msg(msg, h_new)));
         msg
     }
@@ -1797,7 +1951,7 @@ impl<'a> SumcheckProver<'a> {
             Witness::Base(_) | Witness::Lifted(..) => panic!("OOD claim introduced before the lane rounds end"),
         };
         assert_eq!(b_new.len(), f.len());
-        let (msg, h_new) = round_msg_and_eval_lsb_ext(f, &b_new);
+        let (msg, h_new) = parallel::affine(|| round_msg_and_eval_lsb_ext(f, &b_new));
         self.pending.push((b_new, h_new, RoundQuad::from_msg(msg, h_new)));
         (msg, h_new)
     }
@@ -1821,10 +1975,19 @@ impl<'a> SumcheckProver<'a> {
                 }
             } else {
                 let chunk = parallel::recommended_chunk_size(self.combined_basis.len());
-                parallel::chunks_mut_zip(&mut self.combined_basis, &b_new, chunk, |_, accs, news| {
-                    for (acc, &v) in accs.iter_mut().zip(news) {
-                        *acc += scalar * v;
-                    }
+                // In the next round's affine ranges ([`Self::fold`]).
+                parallel::affine(|| {
+                    parallel::chunks_mut_zip(&mut self.combined_basis, &b_new, chunk, |_, accs, news| {
+                        // Four products at a time ([`mul4`]).
+                        let (a4, a_rest) = accs.as_chunks_mut::<4>();
+                        for (acc, v) in a4.iter_mut().zip(news.as_chunks::<4>().0) {
+                            let p = mul4([scalar; 4], *v);
+                            *acc = std::array::from_fn(|i| acc[i] + p[i]);
+                        }
+                        for (acc, &v) in a_rest.iter_mut().zip(&news[4 * a4.len()..]) {
+                            *acc += scalar * v;
+                        }
+                    })
                 });
             }
             self.t_r += scalar * h_new;
@@ -2485,13 +2648,23 @@ mod tests {
             for &n_lanes in lanes {
                 let mut rng = Rng::new(0x7E5 + n_lanes as u64);
                 let witness: Vec<F64> = (0..n_lanes * lane_block).map(|_| F64(rng.next_u64())).collect();
-                let weight: Vec<LaneTensor> = (0..2)
+                let weight: Vec<LaneTensor> = (0..3)
                     .map(|c| LaneTensor {
                         // A lane of zero scale, as a claim whose high coordinates miss it leaves.
                         scales: (0..n_lanes)
                             .map(|l| if l == c { F192::ZERO } else { rng.ext() })
                             .collect(),
-                        low: rng.ext_vec(lane_block),
+                        // The third a sparse low weight, as a hidden layout's gadget: a few entries, in different
+                        // chunks.
+                        low: match c {
+                            2 => (0..lane_block)
+                                .map(|x| match x == 1 || x == lane_block / 2 + 3 || x == lane_block - 1 {
+                                    true => rng.ext(),
+                                    false => F192::ZERO,
+                                })
+                                .collect(),
+                            _ => rng.ext_vec(lane_block),
+                        },
                     })
                     .collect();
                 let dense: Vec<F192> = (0..witness.len())
@@ -2576,6 +2749,94 @@ mod tests {
             let via_ntt = induce_sumcheck_poly_via_ntt(log_msg_cols, log_inv_rate, &rows, &v_challenges, &qs, &weights);
             assert_eq!(dense.1, via_ntt.1, "enforced_sum mismatch");
             assert_eq!(&*dense.0, &*via_ntt.0, "basis_poly mismatch");
+        }
+    }
+
+    /// The `E` round kernels four products at a time are the one-product-at-a-time forms, at lengths on both sides
+    /// of the vectors and the chunks, on the calling thread or the pool.
+    #[test]
+    fn vectored_ext_rounds_match_one_product_at_a_time() {
+        let mut rng = Rng::new(0xe4e4);
+        for n in [2usize, 4, 6, 8, 14, 16, 30, 4096, 1 << 14, 3 << 13] {
+            let f = rng.ext_vec(n);
+            let b = rng.ext_vec(n);
+            let r = rng.ext();
+            let half = n / 2;
+            let pairs =
+                |v: &[F192]| -> Vec<(F192, F192)> { v.as_chunks::<2>().0.iter().map(|x| (x[0], x[1])).collect() };
+            let (fp, bp) = (pairs(&f), pairs(&b));
+
+            let mut got = vec![F192::ZERO; half];
+            fold_ext_into(&f, r, &mut got);
+            let want: Vec<F192> = fp.iter().map(|&(x0, x1)| x0 + r * (x0 + x1)).collect();
+            assert_eq!(got, want, "fold, {n}");
+
+            let msg = |fp: &[(F192, F192)], bp: &[(F192, F192)]| {
+                fp.iter()
+                    .zip(bp)
+                    .fold((F192::ZERO, F192::ZERO), |(u0, u2), (&(f0, f1), &(b0, b1))| {
+                        (u0 + f0 * b0, u2 + (f0 + f1) * (b0 + b1))
+                    })
+            };
+            let (u_0, u_2) = fold_msg_terms(&f, &b);
+            assert_eq!((u_0.reduce(), u_2.reduce()), msg(&fp, &bp), "message terms, {n}");
+            let got = round_msg_lsb(&f, &b);
+            assert_eq!((got.u_0, got.u_2), msg(&fp, &bp), "round message, {n}");
+
+            let (got, y) = round_msg_and_eval_lsb_ext(&f, &b);
+            assert_eq!(
+                (got.u_0, got.u_2),
+                msg(&fp, &bp),
+                "round message with the evaluation, {n}"
+            );
+            assert_eq!(
+                y,
+                f.iter().zip(&b).fold(F192::ZERO, |a, (&x, &w)| a + x * w),
+                "evaluation, {n}"
+            );
+
+            let (nf, nb, got) = fold_and_msg_lsb(&f, &b, r);
+            let want_f: Vec<F192> = fp.iter().map(|&(x0, x1)| x0 + r * (x0 + x1)).collect();
+            let want_b: Vec<F192> = bp.iter().map(|&(x0, x1)| x0 + r * (x0 + x1)).collect();
+            assert_eq!((&nf, &nb), (&want_f, &want_b), "fold and message, {n}");
+            assert_eq!(
+                (got.u_0, got.u_2),
+                msg(&pairs(&want_f), &pairs(&want_b)),
+                "folded message, {n}"
+            );
+        }
+    }
+
+    /// The dense induce by chunks of the basis is the per-query one, entry for entry, at the shapes the deeper
+    /// levels take (a few dozen queries, up to `2^14` entries), on the calling thread or the pool, and at the
+    /// degenerate ones.
+    #[test]
+    fn chunked_induce_matches_the_per_query_one() {
+        let mut rng = Rng::new(0x1d0c);
+        for (log_msg_cols, lanes_log, n_queries) in [
+            (0usize, 2usize, 3usize),
+            (1, 1, 2),
+            (5, 4, 7),
+            (9, 4, 23),
+            (13, 4, 32),
+            (14, 4, 56),
+        ] {
+            let block_len = 1usize << (log_msg_cols + 7);
+            let qs: Vec<usize> = (0..n_queries).map(|_| (rng.next_u64() as usize) % block_len).collect();
+            let rows: Vec<Vec<F192>> = (0..n_queries).map(|_| rng.ext_vec(1 << lanes_log)).collect();
+            let v_challenges: Vec<F192> = (0..lanes_log).map(|_| rng.ext()).collect();
+            let weights = powers(rng.ext(), n_queries);
+            let sks_vks = eval_sk_at_vks(log_msg_cols);
+            let chunked = induce_sumcheck_poly(log_msg_cols, &sks_vks, &rows, &v_challenges, &qs, &weights);
+            let by_query = crate::whir_induce::induce_sumcheck_poly_by_query(
+                log_msg_cols,
+                &sks_vks,
+                &rows,
+                &v_challenges,
+                &qs,
+                &weights,
+            );
+            assert_eq!(chunked, by_query, "2^{log_msg_cols} entries, {n_queries} queries");
         }
     }
 

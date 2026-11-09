@@ -85,11 +85,11 @@ transaction gas under EIP-7623 at a claim price of 0, without the 21,000 base.
 | | **128 signatures (the reference)** | 400 signatures |
 |---|---:|---:|
 | VM execution | 154,148 cycles; tables of `2^14`–`2^16` rows, memory `2^20` | 473,348 cycles; `2^16`–`2^17` rows, memory `2^22` |
-| π1 prover (π1-rec3) | 2.7 s cold, 3.65 s warm median of 3; 6.9 GB | 4.7 s (main line), 14.4 GB |
-| π2 prover | 4.4 s + 1.7 s openings (and 3.8 s witness); 9.8 GB | 3.0 s + 0.9 s openings (and 2.9 s witness); 9.8 GB |
-| trace → π1 → π2, per proof (`tests/pipeline.rs`) | **4.1 s** (Mac, load 2–7; π1 with π2's witness 1.87, π2 1.58 + 0.70 openings); 8.9 s on h2, 11.5–12.1 s on h1 under load; per circuit, once, 0.9 s; 12.5 GB | |
-| Calldata to the contract | 980 B | 980 B |
-| Gas (real proof) | 28,325 execution; **43,213** transaction | 29,105 execution; 44,041 transaction |
+| π1 prover (π1-rec3) | 2.7 s cold, 3.65 s warm median of 3; 6.9 GB. EPYC 9355P: 0.40 s warm (0.94 s before), 7.2 GB; with `PCS_OPEN` version 3 its openings 0.064 → 0.033 s, 6.2 GB | 4.7 s (main line), 14.4 GB |
+| π2 prover | 4.4 s + 1.7 s openings (and 3.8 s witness); 9.8 GB. EPYC 9355P (π2v2): 0.196 s + 0.104 s openings (and 7 ms witness), 9.9 GB, the openings 0.049 s with `PCS_OPEN` version 3; π2v1 before the work 0.54 + 0.16 s (and 0.61 s witness) | 3.0 s + 0.9 s openings (and 2.9 s witness); 9.8 GB |
+| trace → π1 → π2, per proof (`tests/pipeline.rs`) | **0.59 s** on an AMD EPYC 9355P (64 threads, 2026-11-09, load 14–21; π1 with its openings 0.34, π2 0.195 + 0.051 openings, π2's witness 7 ms meanwhile), 3.7× its 2.16 s before; per circuit, once, 1.7 s; 12.6 GB. With `PCS_OPEN` version 3 (WHIR's deeper levels at rates 1/4, 1/8, …): about 80 ms less a proof (π1's openings −30 ms, π2's 0.108 → 0.054 s), best passes 0.68 → 0.59 s, 12.0 GB. The Mac: 4.1 s before | |
+| Calldata to the contract | 1,004 B | 1,004 B |
+| Gas (real proof) | 27,641 execution; **42,997** transaction (π2v1 at `PCS_OPEN` version 2: 980 B, 28,325, 43,213) | 28,421 execution; 43,753 transaction (44,041) |
 | PCS claims | 7, in 6 `PCS_OPEN` calls | 7, in 6 calls |
 | Formal verification (Lean 4) | the VM's statement and arithmetization, the Keccak-f block, π1's knowledge soundness (≤ 2^-64 at 2^64 queries) and completeness (failure < 2^-169), π1-rec3's recorded graph = its verifier; the recursion: knowledge soundness as an explicit reduction (π2's part ≤ 2^-64, plus π1-rec3 at Keccak-f[1600]), completeness (failure 2^-164 plus two premises at Keccak-f[1600]); the compiled circuit's checks evaluated, not proved | |
 

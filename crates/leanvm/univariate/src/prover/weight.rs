@@ -24,6 +24,7 @@ use gf2_linear::Linear;
 use leanvm_statement::field::E;
 use primitives::field::{F64, F192, F192Unreduced, Weights8, dot_base, mul_unreduced4, mul4};
 use primitives::multilinear::eq_table;
+use quotient::ntt::{ESplat, Ex8, Kx8, MixedSum};
 
 use super::poly::from_v;
 use crate::claims::{Column, Combined};
@@ -668,7 +669,14 @@ impl Weight {
         enum Prep2 {
             Factored { coefficients: Vec<Sums>, span: usize },
             Dense,
-            Twisted { lo: Vec<F192>, hi: Vec<F192>, bits: usize, map: Linear<2> },
+            Twisted {
+                lo: Vec<F192>,
+                hi: Vec<F192>,
+                bits: usize,
+                map: Linear<2>,
+                /// `lo`'s three limbs (for the eight-lane steps).
+                lo_limbs: [Vec<F64>; 3],
+            },
             Scalar(F192),
         }
         let preps: Vec<Prep2> = self
@@ -730,11 +738,13 @@ impl Weight {
                             })
                             .collect();
                         let (lo, hi, bits) = split_eq(&point[bound + 1..]);
+                        let lo_limbs = [0, 1, 2].map(|l| lo.iter().map(|x| F64([x.c0, x.c1, x.c2][l])).collect());
                         Prep2::Twisted {
                             lo,
                             hi,
                             bits,
                             map: Linear::new([&a, c]),
+                            lo_limbs,
                         }
                     }
                 }
@@ -791,21 +801,28 @@ impl Weight {
             match (&preps[piece.shape], &self.shapes[piece.shape]) {
                 (Prep2::Factored { coefficients, span }, Shape::Factored { h, .. }) => {
                     // `Σ_u h[u] word(u span + i)` first (one mixed product a word), then the sums of it.
+                    // Eight words a step in lanes, the last run zero-padded.
                     let keep = coefficients.len();
-                    let mut folded_h = vec![F192Unreduced::ZERO; keep];
+                    let mut folded_h = vec![MixedSum::default(); keep.div_ceil(8)];
                     for u in start..end {
                         let at = piece.offset + u * span;
                         if at >= words.len() {
                             break;
                         }
-                        let (hu, avail) = (h[u], (words.len() - at).min(keep));
-                        for (acc, &k) in folded_h[..avail].iter_mut().zip(&words[at..at + avail]) {
-                            *acc ^= hu.mul_base_unreduced(k);
+                        let (hu, avail) = (ESplat::new(h[u]), (words.len() - at).min(keep));
+                        let run = &words[at..at + avail];
+                        let (full, rest) = run.as_chunks::<8>();
+                        for (acc, k) in folded_h.iter_mut().zip(full) {
+                            acc.add(&hu, Kx8::new(*k));
+                        }
+                        if !rest.is_empty() {
+                            let k = Kx8::new(std::array::from_fn(|p| rest.get(p).copied().unwrap_or(F64::ZERO)));
+                            folded_h[full.len()].add(&hu, k);
                         }
                     }
+                    let folded_h = folded_h.into_iter().flat_map(|x| x.reduce().to_array());
                     let mut acc = [F192Unreduced::ZERO; SUMS];
-                    for (c, x) in coefficients.iter().zip(&folded_h) {
-                        let x = x.reduce();
+                    for (c, x) in coefficients.iter().zip(folded_h) {
                         for s in 0..SUMS {
                             if !c[s].is_zero() {
                                 acc[s] ^= c[s].mul_unreduced(x);
@@ -828,16 +845,85 @@ impl Weight {
                     }
                     out
                 }
-                (Prep2::Twisted { lo, hi, bits, map }, _) => {
+                (Prep2::Twisted { lo, hi, bits, map, lo_limbs }, _) => {
                     let mut at = vec![[F192Unreduced::ZERO; SUMS]; span];
+                    // Eight units a step in eight lanes: with `A = W(2u)`, `D = W(2u) + W(2u + 1)`, `B = A + D` and,
+                    // at offset `y` of the units' runs, `P`, `Q` the words of their even and odd runs, a group's eight
+                    // sums are the even and odd lanes of four lane-wise products: `A P` (sums 0, 1), `D (P + Q)` (3,
+                    // 4), `[A', B'] [P', Q']` (5, 6) and `[B, A' + B'] [Q, P' + Q']` (2, 7), `X'` a lane pair's sum
+                    // and `[X, Y]` the even lanes `X`'s, the odd `Y`'s. The same sums, other groupings.
+                    let mut lanes = vec![[MixedSum::default(); 4]; span];
+                    let mask = (1usize << *bits) - 1;
                     for first in (start..end).step_by(8) {
+                        let off = piece.offset + ((2 * first) << j);
+                        if *bits >= 3 && first % 8 == 0 && first + 8 <= end && off + (16 << j) <= words.len() {
+                            let at_lo = first & mask;
+                            let e8 = Ex8::from_limbs([0, 1, 2].map(|l| Kx8::load(&lo_limbs[l][at_lo..])))
+                                * Ex8::splat(hi[first >> *bits]);
+                            let [w0, dw] = map.at8_limbs(&e8.limbs().map(|k| k.to_row().0.map(|x| x.0)));
+                            let ex = |w: [[u64; 8]; 3]| Ex8::from_limbs(w.map(|l| Kx8::new(l.map(F64))));
+                            let (a, d) = (ex(w0), ex(dw));
+                            let b = a + d;
+                            let (a2, b2) = (a + a.swap_pairs(), b + b.swap_pairs());
+                            let (v, u) = (a2.odd_from(b2), b.odd_from(a2 + b2));
+                            let mut add = |y: usize, p: Kx8, q: Kx8| {
+                                let lanes = &mut lanes[y];
+                                let (p2, q2) = (p + p.xor_lanes(1), q + q.xor_lanes(1));
+                                lanes[0].add_lanes(a, p);
+                                lanes[1].add_lanes(d, p + q);
+                                lanes[2].add_lanes(v, p2.odd_from(q2));
+                                lanes[3].add_lanes(u, q.odd_from(p2 + q2));
+                            };
+                            // The eight units' words at offset `y` of their even (`P`) and odd (`Q`) runs: the even
+                            // and odd words of two registers (round 0), or eight registers' transposes (a unit's
+                            // `2^(j + 1)` words a multiple of 8).
+                            let rows = |at: usize| Kx8::transpose8(std::array::from_fn(|l| Kx8::load(&words[off + (l << (j + 1)) + at..])));
+                            match j {
+                                0 => {
+                                    let (p, q) = Kx8::evens_odds(Kx8::load(&words[off..]), Kx8::load(&words[off + 8..]));
+                                    add(0, p, q);
+                                }
+                                1 => {
+                                    for y in 0..span {
+                                        let p = Kx8::new(std::array::from_fn(|l| words[off + ((2 * l) << j) + y]));
+                                        let q = Kx8::new(std::array::from_fn(|l| words[off + ((2 * l + 1) << j) + y]));
+                                        add(y, p, q);
+                                    }
+                                }
+                                2 => {
+                                    let t = rows(0);
+                                    for y in 0..4 {
+                                        add(y, t[y], t[4 + y]);
+                                    }
+                                }
+                                _ => {
+                                    for c in 0..span / 8 {
+                                        let (tp, tq) = (rows(8 * c), rows(span + 8 * c));
+                                        for i in 0..8 {
+                                            add(8 * c + i, tp[i], tq[i]);
+                                        }
+                                    }
+                                }
+                            }
+                            continue;
+                        }
                         let [w0, dw] = map.at8(&eq8(lo, hi, *bits, first, end));
                         for k in (0..(end - first).min(8)).step_by(2) {
                             let w = [w0[k], w0[k] + dw[k], w0[k + 1], w0[k + 1] + dw[k + 1]];
                             group(&mut at, piece, (first + k) / 2, w);
                         }
                     }
-                    weigh(&at).map(|x| piece.scale * x)
+                    let even = |v: &[F192; 8]| (v[0] + v[2]) + (v[4] + v[6]);
+                    let odd = |v: &[F192; 8]| (v[1] + v[3]) + (v[5] + v[7]);
+                    let mut out = weigh(&at);
+                    for (lanes, &ey) in lanes.iter().zip(e) {
+                        let [s0, s1, s2, s3] = lanes.map(|l| l.reduce().to_array());
+                        let laned = [even(&s0), odd(&s0), even(&s3), even(&s1), odd(&s1), even(&s2), odd(&s2), odd(&s3)];
+                        for (o, x) in out.iter_mut().zip(laned) {
+                            *o += ey * x;
+                        }
+                    }
+                    out.map(|x| piece.scale * x)
                 }
                 (Prep2::Scalar(value), _) => {
                     // The block is one word of the folded stack, at its offset's position in its group.
@@ -852,7 +938,8 @@ impl Weight {
             }
         };
         let p = parallel::map_reduce(tasks.len(), || [F192::ZERO; SUMS], body, add);
-        if std::env::var("PI1_PROFILE").is_ok() {
+        // `PI1_PROFILE=kinds`: each kind's tasks again, timed (the sums' time doubles).
+        if std::env::var("PI1_PROFILE").is_ok_and(|v| v == "kinds") {
             let kind = |t: usize| match preps[self.pieces[tasks[t].0].shape] {
                 Prep2::Factored { .. } => 0,
                 Prep2::Dense => 1,
@@ -969,7 +1056,9 @@ impl Weight {
                     .map(|(k, chunk)| (chunk, b, k * CHUNK)),
             );
         }
-        parallel::for_each_mut(&mut tasks, |_, (chunk, b, first)| {
+        // One chunk a task (`for_each_mut` takes 64 items a task at least).
+        parallel::chunks_mut(&mut tasks, 1, |_, task| {
+            let (chunk, b, first) = &mut task[0];
             let first = *first;
             for piece in &blocks[*b].2 {
                 let s = piece.scale;

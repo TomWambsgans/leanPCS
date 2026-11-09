@@ -49,15 +49,17 @@ impl Folded {
         let sums = if len == 1 {
             (w[0] * c[0], w[0] * c[0])
         } else {
-            let (a, b) = parallel::map_reduce(
-                len.div_ceil(2 * FOLD_CHUNK),
-                || (F192Unreduced::ZERO, F192Unreduced::ZERO),
-                |t| {
-                    let range = 2 * FOLD_CHUNK * t..(2 * FOLD_CHUNK * (t + 1)).min(len);
-                    pair_sums(&w[range.clone()], &c[range])
-                },
-                |x, y| (x.0 ^ y.0, x.1 ^ y.1),
-            );
+            let (a, b) = parallel::affine(|| {
+                parallel::map_reduce(
+                    len.div_ceil(2 * FOLD_CHUNK),
+                    || (F192Unreduced::ZERO, F192Unreduced::ZERO),
+                    |t| {
+                        let range = 2 * FOLD_CHUNK * t..(2 * FOLD_CHUNK * (t + 1)).min(len);
+                        pair_sums(&w[range.clone()], &c[range])
+                    },
+                    |x, y| (x.0 ^ y.0, x.1 ^ y.1),
+                )
+            });
             (a.reduce(), b.reduce())
         };
         Self {
@@ -83,7 +85,7 @@ impl Folded {
             let x = wo * co;
             return (x, x);
         }
-        let (a, b) = parallel::map_reduce(
+        let (a, b) = parallel::affine(|| parallel::map_reduce(
             half.div_ceil(FOLD_CHUNK),
             || (F192Unreduced::ZERO, F192Unreduced::ZERO),
             |k| {
@@ -98,7 +100,7 @@ impl Folded {
                 (a, b)
             },
             |x, y| (x.0 ^ y.0, x.1 ^ y.1),
-        );
+        ));
         (a.reduce(), b.reduce())
     }
 
@@ -125,7 +127,10 @@ impl Folded {
             .zip(c_out[..half].chunks_mut(FOLD_CHUNK))
             .map(|(w, c)| (w, c, (F192Unreduced::ZERO, F192Unreduced::ZERO)))
             .collect();
-        parallel::for_each_mut(&mut parts, |k, (w_out, c_out, sums)| {
+        // One part a task (`for_each_mut` takes 64 items a task at least: 4 tasks for 2^20 words), in affine ranges
+        // ([`parallel::affine`]): a thread's outputs are the next round's inputs it reads.
+        parallel::affine(|| parallel::chunks_mut(&mut parts, 1, |k, part| {
+            let (w_out, c_out, sums) = &mut part[0];
             let first = k * FOLD_CHUNK;
             for (i, (wo, co)) in w_out.iter_mut().zip(c_out.iter_mut()).enumerate() {
                 let g = 2 * (first + i);
@@ -133,7 +138,7 @@ impl Folded {
                 *co = c[g] + r * (c[g] + c[g + 1]);
             }
             *sums = pair_sums(w_out, c_out);
-        });
+        }));
         self.sums = if half == 1 {
             (w_out[0] * c_out[0], w_out[0] * c_out[0])
         } else {
@@ -304,14 +309,17 @@ pub fn prove_pairs(
     };
     while round + 2 <= vars {
         if round == base_rounds {
-            folded = stacks
-                .iter()
-                .zip(&weights)
-                .map(|(&(words, v), weight)| {
-                    let len = 1 << (v - base_rounds);
-                    Folded::new(weight.dense(len), fold_stack(words, &e, len))
-                })
-                .collect();
+            // In the folds' affine ranges ([`Folded::fold`]).
+            folded = parallel::affine(|| {
+                stacks
+                    .iter()
+                    .zip(&weights)
+                    .map(|(&(words, v), weight)| {
+                        let len = 1 << (v - base_rounds);
+                        Folded::new(weight.dense(len), fold_stack(words, &e, len))
+                    })
+                    .collect()
+            });
             weights = Vec::new();
             lap("written out", round);
         }

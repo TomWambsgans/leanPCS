@@ -10,8 +10,9 @@ MEASURED (crates/leanvm/rec: tests/counts.rs, tests/keccak_vm_rec.rs, tests/circ
 pi1-rec3's verifier graph and pi2's positions at 128 and 400 signatures. MODELLED (here): every soundness figure, the
 other arithmetizations' sizes, the k-variable rounds' permutations.
 
-pi2's rounds are the Lean's (formal/RecPiop/RecPiop/Rounds.lean, `err`; formal/RecCompose/RecCompose/Numbers.lean):
-the copy argument (alpha, beta, gamma) over W's list, the identity at t and W's fold at rho over W's and Q's lists. The
+pi2's rounds are π2v2's (docs/leanvm/rec/PI2.md §2, §7; the Lean, formal/RecPiop/RecPiop/Rounds.lean `err`, states
+π2v1, whose t has degree < 5N): the copy argument (alpha, beta, gamma) over W's list, the two identities at t, W's fold
+and Q's claim at rho over W's and Q's lists. The
 composition adds pi2's bound and pi1-rec3's (RecCompose's `RecKnowledgeSoundnessReduction`), each with its openings
 charged once.
 """
@@ -50,11 +51,12 @@ LOG_N = 24
 ROW = 16  # D16v: 16 positions a row, 16 fold values and xi at t
 PORT_DEGREES = 3  # the four-limb ports' fingerprints, degree 1 in gamma: the statement and pi1's two roots
 
-# pi2's commitments (PI2.md §2): W the witness, 2^24 K-words; Q, h (3N) and q in four chunks (12N); the setup, kappa
-# and kappa + sigma (honest: L = 1).
+# pi2's commitments (PI2.md §2, π2v2): W the witness, 2^24 K-words; Q: h (3N), q < 2N (6N), the pushes P (N, in K)
+# and P's definition quotient q_P < 2N (2N, in K), 12N words (π2v1: h and q < 4N, 15N); the setup, kappa and
+# kappa + sigma (honest: L = 1).
 def pi2_stacks(log_n=LOG_N):
     n = 1 << log_n
-    return dict(W=n, Q=15 * n, setup=2 * n)
+    return dict(W=n, Q=12 * n, setup=2 * n)
 
 
 def stack(words):
@@ -67,9 +69,18 @@ def pi2_rounds(log_n=LOG_N, row=ROW):
     s = pi2_stacks(log_n)
     lw, lq = CERTIFIED_L0[stack(s["W"])], CERTIFIED_L0[stack(s["Q"])]
     return lw, lq, [
-        ("copy argument (α, β, γ): 2N fractions and the ports' fingerprints", 3 * n - 1 + PORT_DEGREES, lw),
-        ("t: the identity h d_pull d_push + q w_m, degree < 5N", 5 * n - 1, lw * lq),
+        # π2v2 (PI2.md §7): the ports out of the copy argument, as an error term T. A dishonest port's hole x gives
+        # h(x) a simple pole at α = w(x) + β x, which no other fraction has: Σ_V h is a nonzero rational function of
+        # (α, β) with at most 2N linear factors, plus the vanishing denominators (4N), and the four-limb ports'
+        # fingerprints, degree 1 in γ.
+        ("copy argument (α, β, γ): 2N fractions, the ports' poles and fingerprints", 4 * n + PORT_DEGREES, lw),
+        # π2v2: two identities at t, each of degree below 3N, which must both vanish: the copy identity
+        # h d_pull d_push + (1 + 1_S)(d_push + d_pull) + T = q Z_V (d_push of the committed P) and P's definition
+        # P = P_v + Z_V q_P. The bound is the larger's, not the sum (π2v1: one identity below 5N).
+        ("t: the copy identity and P's definition, each of degree < 3N", 3 * n - 1, lw * lq),
         (f"ρ: W's fold (degree {row - 1})", row - 1, lw * lq),
+        # π2v2: Q's one claim combines h(t), q(t), P(t) = s and q_P's definition by ρ: degree 3 in ρ.
+        ("ρ: Q's claim (the identity, P(t) = s, P's definition), degree 3", 3, lw * lq),
     ]
 
 
@@ -116,8 +127,9 @@ DESIGNS = {
     "B4": dict(values=5, qwords=13.75, note="the χ gate on bits, cell outputs"),
     "C16": dict(values=18, qwords=9 + 3 / 16, note="cell outputs, χ5+θ rows"),
     "C64": dict(values=66, qwords=9 + 3 / 64, note="cell outputs, slice rows"),
-    "D16v": dict(values=17, qwords=15, note="virtual pushes, 16-position rows"),
-    "D32v": dict(values=33, qwords=15, note="virtual pushes, slice rows"),
+    # π2v2: Q 12N words; values at t: the row, ξ and s = P(t)
+    "D16v": dict(values=18, qwords=12, note="virtual pushes, 16-position rows"),
+    "D32v": dict(values=34, qwords=12, note="virtual pushes, slice rows"),
 }
 
 

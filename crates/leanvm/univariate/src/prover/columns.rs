@@ -5,7 +5,7 @@
 use leanvm_statement::N_TABLES;
 use leanvm_statement::layout::SEP_BYTECODE;
 use primitives::field::{F64, g_powers};
-use quotient::ntt::{coefficients_from, subset_sums_from};
+use quotient::ntt::{coefficients_cols_of, coefficients_from, subset_sums_from, subset_sums_of_cols};
 
 use super::trace::Trace;
 
@@ -36,6 +36,24 @@ impl Column {
     pub fn vars(&self) -> usize {
         self.novel.len().trailing_zeros() as usize
     }
+
+    /// [`Column::novel_only`] of several columns of one length, their transforms in the same dispatches.
+    pub fn novel_only_many(values: &[&[F64]]) -> Vec<Self> {
+        coefficients_cols_of(values, F64::ZERO)
+            .into_iter()
+            .map(|novel| Self { novel, b: Vec::new() })
+            .collect()
+    }
+
+    /// [`Column::from_values`] of several columns of one length, in the same dispatches.
+    pub fn from_values_many(values: &[&[F64]]) -> Vec<Self> {
+        let mut columns = Self::novel_only_many(values);
+        let b = subset_sums_of_cols(&columns.iter().map(|c| &c.novel[..]).collect::<Vec<_>>());
+        for (c, b) in columns.iter_mut().zip(b) {
+            c.b = b;
+        }
+        columns
+    }
 }
 
 /// `C1`'s polynomials (novel coefficients only: their `B` ones are the stack's): the tables' columns (`SHA3`'s lanes being the copies), the counter inverses, the memory's
@@ -63,7 +81,7 @@ pub fn c1_polys(trace: &Trace) -> C1Polys {
     let mut inverse_values = Vec::with_capacity(N_TABLES);
     for (t, table) in layout.iter().enumerate() {
         let columns = &trace.tables[t];
-        tables_out.push(columns.iter().map(|c| Column::novel_only(c)).collect());
+        tables_out.push(Column::novel_only_many(&columns.iter().map(|c| &c[..]).collect::<Vec<_>>()));
         let n = 1usize << trace.heights[t];
         let counters: Vec<usize> = table.count_columns().collect();
         // Every row's counters are nonzero (the placed trace's padding rows hold 1: SPEC.md §13, F1).
@@ -95,24 +113,25 @@ pub fn c1_polys(trace: &Trace) -> C1Polys {
         tables: tables_out,
         inverses,
         inverse_values,
-        memory: std::array::from_fn(|k| Column::novel_only(&trace.memory[k])),
+        memory: Column::novel_only_many(&trace.memory.iter().map(|m| &m[..]).collect::<Vec<_>>())
+            .try_into()
+            .unwrap_or_else(|_| unreachable!("four columns")),
         bytecode_final: Column::novel_only(&trace.bytecode_final),
     }
 }
 
 pub fn setup_polys(trace: &Trace) -> SetupPolys {
     let n = 1usize << trace.log_bytecode;
-    let slots = (0..16)
-        .map(|s| {
-            let values: Vec<F64> = match s {
-                0 => vec![F64(SEP_BYTECODE.c0); n],
-                1 => g_powers(n),
-                2 => vec![F64::ZERO; n],
-                _ => trace.bytecode[s * n..(s + 1) * n].to_vec(),
-            };
-            Column::from_values(&values)
+    let (sep, pc, zero) = (vec![F64(SEP_BYTECODE.c0); n], g_powers(n), vec![F64::ZERO; n]);
+    let values: Vec<&[F64]> = (0..16)
+        .map(|s| match s {
+            0 => &sep[..],
+            1 => &pc[..],
+            2 => &zero[..],
+            _ => &trace.bytecode[s * n..(s + 1) * n],
         })
         .collect();
+    let slots = Column::from_values_many(&values);
     SetupPolys {
         slots,
         address: Column::from_values(&g_powers(1 << trace.log_memory)),

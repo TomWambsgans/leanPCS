@@ -26,8 +26,10 @@ fn opening_at_the_reference_shape() {
     let value = primitives::multilinear::mle_eval_par(&words, &point);
     words.truncate(lanes << (vars - opening::LANE_FOLD));
     let placed = words.len() as u64;
-    // A layout word carrying the stack's variables and placed words (`contract::layout_word`'s bytes 24..32).
+    // A layout word carrying the opening's version, the stack's variables and placed words (`contract::layout_word`'s
+    // bytes 21 and 24..32).
     let mut layout = [0u8; 32];
+    layout[opening::VERSION_BYTE] = opening::VERSION as u8;
     layout[24] = vars as u8;
     layout[25..].copy_from_slice(&placed.to_be_bytes()[1..]);
     let mut proofs = Vec::new();

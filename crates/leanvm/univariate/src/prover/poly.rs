@@ -36,11 +36,32 @@ pub fn copy<T: Copy + Send + Sync>(dst: &mut [T], src: &[T]) {
 
 /// The novel coefficients, limb by limb, of the E-polynomial whose values on `V_r` are `values`.
 pub fn novel_limbs(values: &[F192]) -> [Vec<F64>; 3] {
-    [0, 1, 2].map(|k| {
-        let mut limb: Vec<F64> = parallel::map_collect(values.len(), |i| F64([values[i].c0, values[i].c1, values[i].c2][k]));
-        quotient::ntt::coefficients(&mut limb, F64::ZERO);
-        limb
-    })
+    let mut limbs =
+        [0, 1, 2].map(|k| parallel::map_collect(values.len(), |i| F64([values[i].c0, values[i].c1, values[i].c2][k])));
+    let [a, b, c] = &mut limbs;
+    // The three limbs' passes in the same dispatches.
+    quotient::ntt::coefficients_cols(&mut [&mut a[..], &mut b[..], &mut c[..]], F64::ZERO);
+    limbs
+}
+
+/// [`novel_limbs`] of several E-polynomials, the inverse transforms of those of one length in the same dispatches.
+pub fn novel_limbs_many(values: &[&[F192]]) -> Vec<[Vec<F64>; 3]> {
+    let mut out: Vec<[Vec<F64>; 3]> = values
+        .iter()
+        .map(|v| [0, 1, 2].map(|k| parallel::map_collect(v.len(), |i| F64([v[i].c0, v[i].c1, v[i].c2][k]))))
+        .collect();
+    let mut lengths: Vec<usize> = values.iter().map(|v| v.len()).collect();
+    lengths.sort_unstable();
+    lengths.dedup();
+    for len in lengths {
+        let mut cols: Vec<&mut [F64]> = out
+            .iter_mut()
+            .filter(|l| l[0].len() == len)
+            .flat_map(|l| l.iter_mut().map(|v| &mut v[..]))
+            .collect();
+        quotient::ntt::coefficients_cols(&mut cols, F64::ZERO);
+    }
+    out
 }
 
 /// The point `ω_index`, for any index below `2^28`.

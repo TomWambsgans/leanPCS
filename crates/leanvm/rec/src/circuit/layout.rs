@@ -311,7 +311,12 @@ impl Builder {
     }
 
     /// Lay the rows out, derive `σ`, check the invariant and compute the witness.
-    pub fn finish(mut self) -> Finished {
+    pub fn finish(self) -> Finished {
+        self.finish_keeping(false).0
+    }
+
+    /// [`Builder::finish`], and with `keep` what the witness plan reads of the layout ([`Internals`]).
+    pub fn finish_keeping(mut self, keep: bool) -> (Finished, Option<Internals>) {
         let w = self.width();
         let rows = self.row_region.len();
 
@@ -666,14 +671,54 @@ impl Builder {
                 }
             }
         }
-        Finished {
-            circuit,
-            witness,
-            stats,
-            words,
-            row_map,
-        }
+        let internals = keep.then(|| Internals {
+            width: w,
+            row_region: std::mem::take(&mut self.row_region),
+            roles: circuit.regions.iter().map(|r| r.roles.clone()).collect(),
+            role_reads,
+            cell: std::mem::take(&mut self.cell),
+            produced: std::mem::take(&mut self.produced),
+            producer: std::mem::take(&mut self.producer),
+            kappa: std::mem::take(&mut self.kappa),
+            given: self.given.keys().copied().collect(),
+            pulled_at_free_end,
+            row_map: row_map.clone(),
+        });
+        (
+            Finished {
+                circuit,
+                witness,
+                stats,
+                words,
+                row_map,
+            },
+            internals,
+        )
     }
+}
+
+/// What the witness plan ([`super::plan`]) reads of a finished layout, by creation position (`row · W + role`, rows
+/// in creation order): where each value is placed, produced and pulled.
+pub struct Internals {
+    pub width: usize,
+    /// Each creation row's region.
+    pub row_region: Vec<u16>,
+    /// Each region's role formulas, and the cells each reads.
+    pub roles: Vec<Vec<Formula>>,
+    pub role_reads: Vec<Vec<Vec<u8>>>,
+    /// Per position: the value placed there (read there), or `u32::MAX`.
+    pub cell: Vec<Value>,
+    /// Per position: the value its slot produces, or `u32::MAX`.
+    pub produced: Vec<Value>,
+    /// Per value: its producing position, or `u32::MAX` for a free value.
+    pub producer: Vec<u32>,
+    pub kappa: BTreeMap<u32, K>,
+    /// The values whose words are given (free values, self-referential slots), in order.
+    pub given: Vec<Value>,
+    /// Per free end: the value it pulls.
+    pub pulled_at_free_end: BTreeMap<u32, Value>,
+    /// Each creation row's final row.
+    pub row_map: Vec<u32>,
 }
 
 /// The smallest count `≥ c` with at most `k` binary digits.

@@ -157,9 +157,9 @@ fn render(circuit: &Circuit, calls: &[Vec<CallWord>], c: &Constants) -> String {
     .unwrap();
     writeln!(
         w,
-        "{} public terms ({} of them the zero coset); π1's {} `PCS_OPEN` calls. Not `σ`, not `κ` (the setup's root and",
+        "{} public terms ({} of them of value zero, in no `Φ`); π1's {} `PCS_OPEN` calls. Not `σ`, not `κ` (the setup's root and",
         circuit.public.len(),
-        spec.zero_coset.as_ref().map_or(0, |(_, k, _)| 1usize << k),
+        spec.ports - spec.phi.iter().map(|(_, terms)| terms.len()).sum::<usize>(),
         calls.len()
     )
     .unwrap();
@@ -303,7 +303,7 @@ fn make(recorded: &Recorded, seed: usize, public: [u8; 32]) -> Made {
 fn summary(circuit: &Circuit, calls: &[Vec<CallWord>], c: &Constants) -> String {
     let spec = Spec::of(circuit);
     format!(
-        "log_n {} log_row {}, {} formulas, {} pairs ({} pull-less) in {} groups, {} reads, {} public terms ({} zero coset), \
+        "log_n {} log_row {}, {} formulas, {} pairs ({} pull-less) in {} groups, {} reads, {} public terms ({} of value zero), \
          {} calls of {:?} words, |σ| {}, |κ| {}\npi1_iv {}\nsetup_root {}\ndigest {}",
         circuit.log_n,
         circuit.log_row,
@@ -313,7 +313,7 @@ fn summary(circuit: &Circuit, calls: &[Vec<CallWord>], c: &Constants) -> String 
         spec.groups.len(),
         circuit.reads.len(),
         circuit.public.len(),
-        spec.zero_coset.as_ref().map_or(0, |(_, k, _)| 1usize << k),
+        spec.ports - spec.phi.iter().map(|(_, terms)| terms.len()).sum::<usize>(),
         calls.len(),
         calls.iter().map(Vec::len).collect::<Vec<_>>(),
         circuit.sigma.len(),

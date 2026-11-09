@@ -190,6 +190,40 @@ pub fn pi2(recorded: &Recorded, layout: Layout, inputs: &Inputs) -> Compiled {
     }
 }
 
+/// Where a given word (a free value's, a self-referential slot's) comes from: the inputs' bits and bytes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Given {
+    /// The stream's bit `k` (byte `k / 8`, low bit first).
+    StreamBit(u32),
+    /// The public input's bit `k`.
+    PublicBit(u32),
+    /// Limb `limb` of the 24-byte big-endian scalar at stream byte `offset`: its bytes `16 − 8·limb .. 24 − 8·limb`.
+    Limb { offset: u32, limb: u8 },
+}
+
+impl Given {
+    /// The word on these inputs.
+    pub fn word(self, public: &[u8; 32], stream: &[u8]) -> K {
+        match self {
+            Given::StreamBit(k) => K((stream[k as usize / 8] >> (k % 8) & 1) as u64),
+            Given::PublicBit(k) => K((public[k as usize / 8] >> (k % 8) & 1) as u64),
+            Given::Limb { offset, limb } => {
+                let at = offset as usize + 16 - 8 * limb as usize;
+                K(stream[at..at + 8].iter().fold(0u64, |acc, &x| acc << 8 | x as u64))
+            }
+        }
+    }
+}
+
+/// What the witness plan (`super::plan`) reads of a compilation besides its circuit: the layout's internals, where
+/// each given word comes from, the permutation runs, and the public elements' limbs.
+pub struct Trace {
+    pub internals: super::layout::Internals,
+    pub given: Vec<(Value, Given)>,
+    pub runs: Vec<super::keccak::Run>,
+    pub elements: Vec<Limbs>,
+}
+
 /// Compile `recorded` with the permutation template `make` (rows of `2^log_width`), on a real proof's inputs.
 pub fn compile<P: Permutation>(
     recorded: &Recorded,
@@ -197,6 +231,18 @@ pub fn compile<P: Permutation>(
     make: impl FnOnce(&mut Builder) -> P,
     inputs: &Inputs,
 ) -> Compiled {
+    compile_keeping(recorded, log_width, make, inputs, false).0
+}
+
+/// [`compile`], and with `keep` its [`Trace`].
+pub fn compile_keeping<P: Permutation>(
+    recorded: &Recorded,
+    log_width: u8,
+    make: impl FnOnce(&mut Builder) -> P,
+    inputs: &Inputs,
+    keep: bool,
+) -> (Compiled, Option<Trace>) {
+    let mut given: Vec<(Value, Given)> = Vec::new();
     let (g, map) = expand(&recorded.graph);
     let pi1_iv = recorded.iv(&inputs.program_iv);
     let stream = inputs.stream;
@@ -253,20 +299,25 @@ pub fn compile<P: Permutation>(
         }
         for j in 0..8 {
             let bit = byte >> j & 1 == 1;
-            if first_block[i] {
+            let v = if first_block[i] {
                 let (v, c) = bools.bit_and_copy(&mut b, bit);
                 (bit_self[8 * i + j], bit_copy[8 * i + j]) = (Some(v), Some(c));
                 free_bits[1] += 1;
+                v
             } else {
-                bit_self[8 * i + j] = Some(bools.bit(&mut b, bit));
+                let v = bools.bit(&mut b, bit);
+                bit_self[8 * i + j] = Some(v);
                 free_bits[0] += 1;
-            }
+                v
+            };
+            given.push((v, Given::StreamBit((8 * i + j) as u32)));
         }
     }
     let mut public_self = Vec::with_capacity(256);
     let mut public_copy = Vec::with_capacity(256);
     for i in 0..256 {
         let (v, c) = bools.bit_and_copy(&mut b, inputs.public[i / 8] >> (i % 8) & 1 == 1);
+        given.push((v, Given::PublicBit(i as u32)));
         public_self.push(v);
         public_copy.push(c);
         free_bits[1] += 1;
@@ -357,7 +408,16 @@ pub fn compile<P: Permutation>(
                     let bytes = &stream[offset..offset + len];
                     let be = |r: &[u8]| r.iter().fold(0u64, |acc, &x| acc << 8 | x as u64);
                     let words = [be(&bytes[16..24]), be(&bytes[8..16]), be(&bytes[0..8])];
-                    (words.map(|w| b.free(K(w))), false)
+                    let l = words.map(|w| b.free(K(w)));
+                    for (limb, &v) in l.iter().enumerate() {
+                        let source = Given::Limb {
+                            offset: offset as u32,
+                            limb: limb as u8,
+                        };
+                        debug_assert_eq!(source.word(&inputs.public, stream), K(words[limb]));
+                        given.push((v, source));
+                    }
+                    (l, false)
                 } else {
                     assert!(len >= 1, "a hashed read is not empty");
                     packings += 1;
@@ -460,8 +520,9 @@ pub fn compile<P: Permutation>(
     }
 
     // Ports: the zero checks first, padded with constant zeros to a power of two, so that their outside tags
-    // `N … N + 2^k` are an aligned coset (PI2.md §9, lever 3c: the verifier sums them in closed form); then the
-    // statement, the roots, the calls' elements.
+    // `N … N + 2^k` are an aligned coset (PI2.md §9, lever 3c: π2v1's verifier summed them in closed form; π2v2's reads
+    // no zero port, and the padding stays so that the circuit is the same); then the statement, the roots, the calls'
+    // elements.
     let mut zero_ports = 0usize;
     for &id in &zero {
         match g.nodes[id as usize] {
@@ -536,7 +597,7 @@ pub fn compile<P: Permutation>(
     }
     b.calls = circuit_calls;
     let keccak_permutations = sponge.permutations;
-    let finished = b.finish();
+    let (finished, internals) = b.finish_keeping(keep);
     let elements: Vec<E> = element_nodes
         .iter()
         .map(|id| {
@@ -544,7 +605,13 @@ pub fn compile<P: Permutation>(
             E::new(w[0], w[1], w[2])
         })
         .collect();
-    Compiled {
+    let trace = internals.map(|internals| Trace {
+        internals,
+        given,
+        runs: std::mem::take(&mut sponge.runs),
+        elements: element_nodes.iter().map(|id| limbs[id]).collect(),
+    });
+    let compiled = Compiled {
         public: PublicInputs {
             statement: inputs.public,
             roots,
@@ -561,5 +628,6 @@ pub fn compile<P: Permutation>(
         arith: arith.counts,
         packings,
         free_bits,
-    }
+    };
+    (compiled, trace)
 }

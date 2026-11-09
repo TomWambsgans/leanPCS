@@ -433,10 +433,15 @@ The design's refinements, by the labels the code cites. Each entry states the ru
      reports use `REFERENCE` for every shape (the gas does not depend on the root); a deployment for another shape
      takes its own `F`.
    - `PCS_OPEN`'s layout word (`contract::layout_word`) is a 32-byte constant: the shape's 8 bytes (`log_memory`,
-     `log_bytecode`, the six heights), the opening's code (`0x5501` `C1`, `0x5502` `C2`, `0x5503` the setup, bytes
+     `log_bytecode`, the six heights), the opening's version (byte 21: 3, `prover::opening::VERSION`, WHIR on the
+     recursion's ladder, below), the opening's code (`0x5501` `C1`, `0x5502` `C2`, `0x5503` the setup, bytes
      22..24), the stack's `vars` (byte 24) and `placed` (bytes 25..32, the words the blocks fill). WHIR's verifier
-     reads `vars` and `placed` from it. `contract::layout_words` gives the three openings' words, `C1`, `C2`, the
-     setup.
+     reads `vars` and `placed` from it, and accepts version 3 alone. `contract::layout_words` gives the three
+     openings' words, `C1`, `C2`, the setup.
+   - The openings (`prover::opening`, version 3): leanVM's commitment (rate `1/2`, 64 lanes), and WHIR's deeper
+     levels on the recursion's ladder (`pcs::whir::RECURSION_SCHEDULE`, `verifier::whir::Ladder::Recursion`: rates
+     `1/2, 1/4, 1/8, …`, one rate bit a level instead of three, every block at least `2^8` positions), the same eta
+     search and 128-bit checks; `params/whir_params.py --recursion`. Version 2 was leanVM's ladder.
    - `verifier::layouts(shape)` is public (and `Reduced::layouts`): the stacks depend on the shape alone.
    - The contract's IV is `keccak("leanVM-univar-iv" ‖ program IV ‖ F ‖ shape bytes ‖ the three layout words ‖
      variant bytes)` (`contract::contract_iv`; the variant bytes are `"keccak-vm"`, the skip and the Fiat–Shamir

@@ -16,6 +16,12 @@
 // `L·D/q`; a fixed point binds nothing), and the proximity-gap accounting omits
 // the factor `2^(ℓ−1)` leanerVM proves for the fold (leanerVM certifies the
 // deployed parameters with a smaller `η`).
+//
+// Added here: the ladder's RS-domain schedule as a parameter ([`DomainSchedule`]): the deployed one
+// ([`DEPLOYED_SCHEDULE`], `3` then `1` bit, what every function without a schedule keeps) and a second one for
+// this repository's recursion openings ([`RECURSION_SCHEDULE`], `PCS_OPEN` version 3), whose deeper levels keep a
+// lower rate and so commit far smaller codewords; the eta search, the checks and every other parameter are the
+// same.
 
 //! Field-independent configuration and soundness analysis for WHIR.
 //!
@@ -89,6 +95,49 @@ const RS_DOMAIN_SUBSEQUENT_REDUCTION_FACTOR: usize = 1;
 
 const _: () = assert!(RS_DOMAIN_INITIAL_REDUCTION_FACTOR <= INITIAL_FOLDING_FACTOR);
 const _: () = assert!(RS_DOMAIN_SUBSEQUENT_REDUCTION_FACTOR <= SUBSEQUENT_FOLDING_FACTOR);
+
+/// How a ladder's total RS domain (the codeword's words, lanes included) shrinks: by `initial` bits after the
+/// initial fold, then by `subsequent` bits after each later fold, so a fold of `k` variables raises the
+/// inverse-rate logarithm by `k - reduction`; but a level's block (its RS domain, `log_msg_cols + log_inv_rate`)
+/// is at least `2^min_log_block` positions, its rate raised to reach it. [Added here: leanVM fixes the deployed
+/// schedule.]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DomainSchedule {
+    pub initial: usize,
+    pub subsequent: usize,
+    pub min_log_block: usize,
+}
+
+impl DomainSchedule {
+    /// The inverse-rate logarithm of the level after one of rate `2^-rate` that folded `fold` variables (`first`:
+    /// the initial fold), the new level's message `2^log_msg_cols` columns. `None` if the fold is smaller than the
+    /// reduction.
+    pub fn next_rate(&self, rate: usize, fold: usize, first: bool, log_msg_cols: usize) -> Option<usize> {
+        let reduction = if first { self.initial } else { self.subsequent };
+        let next = (rate + fold).checked_sub(reduction)?;
+        Some(next.max(self.min_log_block.saturating_sub(log_msg_cols)))
+    }
+}
+
+/// leanVM's schedule: `3` bits, then `1` (rates `1/2, 1/16, 1/128, 1/1024, ...` from a rate-`1/2` level 0).
+pub const DEPLOYED_SCHEDULE: DomainSchedule = DomainSchedule {
+    initial: RS_DOMAIN_INITIAL_REDUCTION_FACTOR,
+    subsequent: RS_DOMAIN_SUBSEQUENT_REDUCTION_FACTOR,
+    min_log_block: 0,
+};
+
+/// This repository's recursion openings (`PCS_OPEN` version 3): `5` bits, then `3`, so one rate bit a level (rates
+/// `1/2, 1/4, 1/8, 1/16, ...` from a rate-`1/2` level 0), every block at least `2^8` positions (above any level's
+/// query count). Each deeper codeword is an eighth of the one before, not a half, and the first one an eighth of
+/// the deployed one's: more queries at the deeper levels, far less to commit.
+pub const RECURSION_SCHEDULE: DomainSchedule = DomainSchedule {
+    initial: 5,
+    subsequent: 3,
+    min_log_block: 8,
+};
+
+const _: () = assert!(RECURSION_SCHEDULE.initial <= INITIAL_FOLDING_FACTOR);
+const _: () = assert!(RECURSION_SCHEDULE.subsequent <= SUBSEQUENT_FOLDING_FACTOR);
 
 /// Folding stops once at most this many variables remain: the residual
 /// polynomial (`yr`, at most `2^RESIDUAL_MAX_LOG` coefficients) is sent in
@@ -296,17 +345,23 @@ fn derive_ladder(
 }
 
 /// Production ladder: the total RS domain loses
-/// [`RS_DOMAIN_INITIAL_REDUCTION_FACTOR`] bits after the initial fold, then
-/// exactly one bit per subsequent fold, so a fold of `k` variables raises the
-/// inverse-rate logarithm by `k - reduction`.
-fn derive_ladder_shape(log_n: usize, initial_k: usize, log_inv_rate: usize) -> Result<LadderShape, String> {
-    let mut domain_reduction = RS_DOMAIN_INITIAL_REDUCTION_FACTOR;
-    derive_ladder(log_n, initial_k, log_inv_rate, |rate_running, fold_running, _cols| {
-        let rate_increase = fold_running.checked_sub(domain_reduction).ok_or_else(|| {
-            format!("folding factor {fold_running} is smaller than RS domain reduction {domain_reduction}")
-        })?;
-        domain_reduction = RS_DOMAIN_SUBSEQUENT_REDUCTION_FACTOR;
-        Ok(rate_running + rate_increase)
+/// `schedule.initial` bits after the initial fold, then
+/// `schedule.subsequent` per subsequent fold, so a fold of `k` variables raises the
+/// inverse-rate logarithm by `k - reduction`. [The schedule is a parameter here; leanVM's is
+/// [`DEPLOYED_SCHEDULE`].]
+fn derive_ladder_shape(
+    log_n: usize,
+    initial_k: usize,
+    log_inv_rate: usize,
+    schedule: DomainSchedule,
+) -> Result<LadderShape, String> {
+    let mut first = true;
+    derive_ladder(log_n, initial_k, log_inv_rate, |rate_running, fold_running, cols| {
+        let rate = schedule
+            .next_rate(rate_running, fold_running, first, cols)
+            .ok_or_else(|| format!("folding factor {fold_running} is smaller than the RS domain reduction"))?;
+        first = false;
+        Ok(rate)
     })
 }
 
@@ -421,6 +476,8 @@ pub struct WhirSecurityConfig {
     pub levels: Vec<WhirLevelConfig>,
     /// Final residual block descriptor.
     pub final_block: FinalBlockConfig,
+    /// The ladder's RS-domain schedule. [Added here.]
+    pub schedule: DomainSchedule,
 }
 
 /// Extension-field size used for soundness analysis: `q = 2^192`.
@@ -787,22 +844,16 @@ impl WhirSecurityConfig {
             // `dim_in - lv.k + rate_{i+1}`. Pin that difference to the public
             // initial reduction and to one bit at every later transition.
             if let Some(next) = self.levels.get(i + 1) {
-                let domain_reduction = if i == 0 {
-                    RS_DOMAIN_INITIAL_REDUCTION_FACTOR
-                } else {
-                    RS_DOMAIN_SUBSEQUENT_REDUCTION_FACTOR
-                };
-                let expected_next_rate = lv
-                    .log_inv_rate
-                    .checked_add(lv.k)
-                    .and_then(|r| r.checked_sub(domain_reduction))
-                    .ok_or_else(|| format!("L{i}: invalid RS domain reduction {domain_reduction}"))?;
+                let expected_next_rate = self
+                    .schedule
+                    .next_rate(lv.log_inv_rate, lv.k, i == 0, next.log_msg_cols)
+                    .ok_or_else(|| format!("L{i}: invalid RS domain reduction ({:?})", self.schedule))?;
                 if next.log_inv_rate != expected_next_rate {
                     return Err(format!(
-                        "L{}: log_inv_rate ({}) does not reduce the preceding RS domain by {} bit(s); expected {}",
+                        "L{}: log_inv_rate ({}) does not follow the RS domain schedule {:?}; expected {}",
                         i + 1,
                         next.log_inv_rate,
-                        domain_reduction,
+                        self.schedule,
                         expected_next_rate,
                     ));
                 }
@@ -910,6 +961,15 @@ impl WhirSecurityConfig {
     /// grinding, query + query grinding, OOD, and algebraic checks) clears the
     /// target individually.
     pub fn derive_config_with_log_inv_rate(m: usize, log_inv_rate: usize) -> Result<Self, String> {
+        Self::derive_config_with_schedule(m, log_inv_rate, DEPLOYED_SCHEDULE)
+    }
+
+    /// [`Self::derive_config_with_log_inv_rate`] on the ladder of another RS-domain schedule. [Added here.]
+    pub fn derive_config_with_schedule(
+        m: usize,
+        log_inv_rate: usize,
+        schedule: DomainSchedule,
+    ) -> Result<Self, String> {
         validate_log_inv_rate(log_inv_rate)?;
         let target_bits = SECURITY_BITS;
         let query_grind: usize = QUERY_GRINDING_BITS;
@@ -921,7 +981,7 @@ impl WhirSecurityConfig {
         // The ladder geometry is independent of eta. Exact block-length
         // feasibility is checked below by the same per-level optimizer that
         // supplies the production eta and query count.
-        let shape = derive_ladder_shape(log_n, initial_k, log_inv_rate)?;
+        let shape = derive_ladder_shape(log_n, initial_k, log_inv_rate, schedule)?;
         let n_levels = shape.log_inv_rates.len();
 
         // Round-by-round target: every verifier-challenge error term (pg,
@@ -962,6 +1022,7 @@ impl WhirSecurityConfig {
             final_block: FinalBlockConfig {
                 yr_log_n: shape.yr_log_n,
             },
+            schedule,
         };
         cfg.validate()?;
         Ok(cfg)
@@ -1029,6 +1090,26 @@ mod tests {
             (128.0..129.0).contains(&min_pg_bits),
             "eta search should use, but not exceed, the one-bit PG margin: {min_pg_bits}"
         );
+    }
+
+    /// The recursion schedule's ladders at rate `1/2`, every stack size `2^15 ..= 2^28`: 128-bit under the same
+    /// search and checks; printed with `--nocapture`.
+    #[test]
+    fn recursion_schedule_is_128_bit_at_every_stack_size() {
+        for log_n in 15..=28 {
+            let cfg =
+                WhirSecurityConfig::derive_config_with_schedule(log_n + crate::LOG_PACKING, 1, RECURSION_SCHEDULE)
+                    .unwrap_or_else(|e| panic!("2^{log_n}: {e}"));
+            let pc = cfg.to_config().unwrap();
+            for level in &cfg.levels[1..] {
+                assert!(level.log_msg_cols + level.log_inv_rate >= RECURSION_SCHEDULE.min_log_block);
+                assert!(level.log_inv_rate >= 2);
+            }
+            println!(
+                "{log_n}: rates {:?} folds {:?} queries {:?}",
+                pc.log_inv_rates, pc.level_ks, pc.queries
+            );
+        }
     }
 
     /// Parameter-report helper:

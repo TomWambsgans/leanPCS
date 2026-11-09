@@ -95,9 +95,11 @@ transcription's differential vectors.
    π1-rec3 its sampled eq coordinates are successive squares, `EqPoint::Squares`), the lincheck at the row weights the
    skip leaves, the 64 slices, then the ring map's six challenges. The slices' point is checked against the one the
    verifier derives. Flock's witness is freed after it.
-5. **The heap** (`bus.rs`): a leaf per row, the ratio on active rows (`domain::is_active`) and 1 on padding rows, the
-   fingerprints eight rows at a time (`prints.rs`); the heap's novel coefficients limb by limb. The heap's root is
-   checked against the state boundary's ratio.
+5. **The heap** (`bus.rs`, `heap_of`): a leaf per row, the ratio on active rows (`domain::is_active`) and 1 on
+   padding rows, the fingerprints eight rows at a time (`prints.rs`, padding runs skipped); every block's leaves in one
+   dispatch, a task `2^10` rows of one block (its fingerprints, one inversion by Montgomery's trick, the ratios),
+   written straight to the heap's positions; the heap's novel coefficients limb by limb, and each block's (`R`) the
+   blocks of one height together. The heap's root is checked against the state boundary's ratio.
 6. **The quotients** (`quotients.rs`, on `crates/membership/quotient/src/ntt.rs`). Each leaf quotient is sized as the
    verifier sizes it, for its height's fewest rows (`Shape::least_rows`).
    - Each numerator is evaluated on the first `T` points of an extension coset `D_M = ω_{2^M} + V_M` (outside the
@@ -107,11 +109,18 @@ transcription's differential vectors.
      coefficients (`ntt::interpolate_prefix`): with `R_j = Q_j + w_{e_j} R_{j+1}` (`R_0 = Q`), `w_{e_j}` is a constant
      `λ_j` on block `j`, whose inverse NTT is `U_j = Q_j + λ_j R_{j+1}`, and `λ_j + 1` on the later blocks, where
      `R_{j+1} = R_j + U_j`; then `Q_j = U_j + λ_j R_{j+1}` from the last block back.
-   - The columns a numerator reads, and `R`'s three limbs, are transformed eight at a time, one transform a piece of
-     at most `2^r` points; the numerator is computed eight points at a time (`prints.rs`), `Z_act` and `Z_pad` as
-     their cosets' factors' products there. Where `quotient::ntt`'s lanes are portable code (aarch64), the longest
-     columns' pieces are transformed in grouped rounds and each push fingerprint is derived from its pull's sum
-     (`quotients::prefix_quotient`, `prints::PullPush`): the `SHA3` leaf's 86 columns are the case it serves.
+   - The tables' six leaves and `Q_W`'s six tables' parts are made together, every stage of all twelve in the same
+     dispatches (`quotients::prefix_quotients`): their columns (and `R`'s three limbs) packed eight at a time; their
+     pieces (at most `2^15` points) in one dispatch, a task one batch (or, with five columns or fewer, one column) on
+     one piece by one worker, or a piece's values at 512 of its points (eight at a time, `prints.rs`, `Z_act` and
+     `Z_pad` as their cosets' factors' products there) as soon as its transforms are done; a piece's transforms are
+     handed out while at most 256 MiB of them are held, and freed once its values are; then all the interpolations (`ntt::interpolate_prefix_many`:
+     every block's inverse transform, the blocks of one size together, then the earlier blocks' folds, then the back
+     substitution) and all the checks (`ntt::on_coset_prefix_each`). One quotient at a time, its short dispatches left
+     most of 64 threads idle (the tables' leaves and `Q_W`'s parts 85–90 → 60 ms, 128 signatures). The memory's and
+     the bytecode's leaves and `Q_W`'s public part, whose columns are `2^18`–`2^20`, go one at a time by `ntt`'s
+     whole transforms (`quotients::prefix_quotient`). Where `quotient::ntt`'s lanes are portable code (aarch64), each
+     push fingerprint is derived from its pull's sum (`prints::PullPush`).
    - `Q_W` is the sum of each table's part `Σ γ^i W_i / w_r` and the public input's, each on its own points.
      `SHA3`'s 50 lane copies are combined by their powers first: `Σ g_j copy_j` is one E-column, and `Σ g_j ℓ_j` the
      multilinear of the combined slot table (11 slot bits a row), one shifted cube a piece; `in_16`'s constant
@@ -119,7 +128,7 @@ transcription's differential vectors.
    - A numerator that does not vanish on its domain is caught on one more block of points, where its value over the
      vanishing polynomial's is checked against the interpolant's: the quotient is then reported at full degree, and
      every quotient's degree is checked below the verifier's count.
-   - `C1`'s polynomials and the leaves are freed after the quotients, before `C2`'s commitment.
+   - `C1`'s polynomials are freed after the quotients, before `C2`'s commitment.
 7. **`C2`**: the heap and every quotient's chunks (`Q = Q_0 + w_{e_0}(Q_1 + w_{e_1} Q_2)`, slices of the novel
    coefficients since `X_{2^e + k} = w_e X_k`), put in basis `B` limb by limb in place in the stack; leanVM's WHIR
    commit; then **`t`** and the values at `t`, in the verifier's order.
@@ -135,8 +144,11 @@ transcription's differential vectors.
    batch with an odd number of variables (the setup's `2^23` against `2^25`, say) zero-extends itself past its words'
    rounds. Then the stacks' values at the end point.
 10. **The openings** (`opening.rs`): one point claim per commitment, leanVM's WHIR (vendored from c445e3d5) at rate
-    `1/2`, its transcript seeded by a prefix that binds `PCS_OPEN`'s 32-byte layout word (version 2), whose `vars`
-    and `placed` the verifier reads.
+    `1/2`, its transcript seeded by a prefix that binds `PCS_OPEN`'s 32-byte layout word, whose `vars` and `placed`
+    the verifier reads. Version 3 (the layout word's byte 21): WHIR's deeper levels on the recursion's ladder
+    (`pcs::whir::RECURSION_SCHEDULE`: rates `1/2, 1/4, 1/8, …` after the rate-`1/2` level 0, not leanVM's `1/2,
+    1/16, 1/128, …`), so the levels past the first commit an eighth of what they did and the openings take about half
+    the time (`params/whir_params.py --recursion`; KECCAK.md's numbers); version 2 was leanVM's ladder.
 
 ## The skip kernels (`crates/vendor/flock-42422001/src/zerocheck/skip.rs`)
 
@@ -152,8 +164,10 @@ rows of 8 bytes or more. The skip module proves the zerocheck for any `3 ≤ k �
   (`round1_words`); the 16 medium positions are one `BitFold` of 16-byte rows; the C part is computed on `S` and
   extended to `Λ`, as leanVM does;
 - **bit rounds**: leanVM's pair kernels at levels `0, 2, ..` on rows of `2^(k + t)` bits, extended to rows of 1, 2,
-  4 bytes (`BitFold`, GFNI included); at `k = 3`, level 0 reads its products from the table of all 65,536 byte
-  products (`multilinear::bit_round_pair_bytes`); on aarch64 (`bit_round_pair_bytes_scaled`) the quads' two lowest eq
+  4 bytes (`BitFold`, GFNI included); at `k = 3`, level 0 is GF(2) matrix products on GFNI where it is available
+  (`bytes_gfni`, no table or gathers), and otherwise reads its products from the table of all 65,536 byte
+  products (`multilinear::bit_round_pair_bytes`); the pair passes at levels 2 and 4 multiply straight from the GFNI
+  fold's limb-major registers (`fold_quads`, `pair_lanes`); on aarch64 (`bit_round_pair_bytes_scaled`) the quads' two lowest eq
   coordinates are in 4 such tables (6 MiB, `e_s[la] T[x] T[y]`), so a group of 4 quads sums its 8 slots by lookups and
   pays 8 products by eq, a quarter of the products (128 signatures, 16 threads: level 0 0.168 → 0.107 s); the
   storing pass at the level whose rows are 64 or 128 bytes;
@@ -196,6 +210,38 @@ Flock end to end on the Keccak-f block is `tests/flock_keccak.rs` (`SPEC-FLOCK.m
 | batching sumcheck | 0.38 |
 | openings: WHIR (3) | 0.66 |
 | **total** | **3.65** |
+
+**On an AMD EPYC 9355P** (Zen 5, 32 cores / 64 threads, AVX-512 with GFNI and VPCLMULQDQ; 2026-11-09, load 13–16,
+median of 5 warm passes; the same proof), after the speedups of that day, against the same benchmark before them:
+
+| phase (medians) | before | after |
+|---|---:|---:|
+| the Keccak-f blocks | 0.008 | 0.007 |
+| `C1` and setup: inverse NTTs to basis `B` | 0.036 | 0.008 |
+| `C1` and setup: WHIR commits | 0.074 | 0.038 |
+| Flock: zerocheck, lincheck, slices | 0.196 | 0.090 |
+| heap | 0.019 | 0.013 |
+| quotient: tree | 0.032 | 0.014 |
+| quotients: leaves | 0.269 | 0.069 |
+| quotient: constraints `Q_W` | 0.078 | 0.025 |
+| `C2`: chunks in basis `B` | 0.027 | 0.005 |
+| `C2`: WHIR commit | 0.021 | 0.016 |
+| values at `t`, claims, weights | 0.011 | 0.010 |
+| batching sumcheck | 0.087 | 0.040 |
+| openings: WHIR (3) | 0.085 | 0.065 |
+| **total** | **0.94** | **0.40** |
+
+On 64 threads most phases were bound by the pool's dispatches rather than by arithmetic: transforms of `2^14`–`2^16`
+points a dispatch each, `parallel::for_each_mut`'s 64 items a task, one-thread memsets, per-worker accumulators reduced
+on the dispatcher. Each piece's transform now runs on one worker, a round of them a dispatch, and columns share
+dispatches. Columns near `2^25` words (the 8 CCDs' L3 together) read rows another CCD wrote last under shared task
+claims; the thread-affine dispatches (`parallel::for_each_affine`, `affine`) give each worker the same range every
+call (a `2^25`-point inverse transform 9.8 → 4.4–5.5 ms).
+
+Then the tables' leaves and `Q_W`'s parts in shared dispatches and the heap's leaves in one (`prefix_quotients`,
+`heap_of`; same machine, load 12–24, interleaved with the binaries before): the leaves and `Q_W` 0.083–0.098 → 0.063
+s, the tree 0.015 → 0.013 s, π1 0.387–0.397 → 0.356–0.361 s; the pipeline (`tests/pipeline.rs`) 0.693 → 0.662 s a
+proof; π1's peak RSS 7.2 → 7.8 GB (the pipeline's 13.8 → 14.5 GB).
 
 The 400-signature phase table, the h1 figures and leanVM `9d50c92a3`'s own prover on the same machines are in
 `KECCAK.md` ("Measured").

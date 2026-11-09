@@ -3,8 +3,8 @@
 //! [`Circuit`], and its public inputs as the stream's public data.
 //!
 //! - Every (block, role) pair whose formula is not a forward is a [`Pair`]; a `Port` pair pulls nothing (its
-//!   positions are the holes: `PI2.md` §1 explains why the PIOP leaves the holes' pulls out of the copy argument
-//!   instead of adding the holes' sums `Σ 1/D(0, h)` to the target; [`adapt`] checks that no formula reads a hole).
+//!   positions are the holes, which the PIOP leaves out of the copy argument and checks by the ports' term `T`,
+//!   `PI2.md` §1; [`adapt`] checks that no formula reads a hole).
 //! - A port's push is a fingerprint of its limbs that the verifier evaluates from the public data as calldata carries
 //!   it: three limbs (an element of `E`, a zero check) as `L_0 + Y L_1 + Y² L_2`, which is the element itself; four
 //!   limbs (the statement, a root) as `(L_0 + Y L_1) + γ (L_2 + Y L_3)`, a root's two 16-byte halves. Both bind the
@@ -19,6 +19,8 @@ use primitives::field::{F64, F192};
 
 use super::circuit::{Circuit, Coeff, Formula, Lin, Pair, PublicTerm, Read};
 use super::prover::PublicValue;
+use crate::circuit::compile::Inputs;
+use crate::circuit::plan::WitnessPlan;
 use crate::circuit::spec;
 
 /// The fingerprint of a port's limbs, on the cells `limbs` (see the module's description).
@@ -163,6 +165,12 @@ pub fn adapt(c: &spec::Circuit) -> Circuit {
 /// The witness in the prover's field.
 pub fn witness(w: &[K]) -> Vec<F64> {
     w.iter().map(|k| F64(k.0)).collect()
+}
+
+/// The witness in the prover's field and the public inputs, replayed from `plan` (`circuit::plan`): those of
+/// `circuit::compile::pi2` on `inputs`, through [`witness`], with neither the compiler nor the copy.
+pub fn replay(plan: &WitnessPlan, inputs: &Inputs) -> (Vec<F64>, spec::PublicInputs) {
+    plan.witness_with(inputs, |k| F64(k.0))
 }
 
 /// The public input and the stream's public values (the roots as root words, then the elements).

@@ -78,7 +78,10 @@ CERTIFIED_L0 = {24: 9952, 25: 7908, 26: 6296, 27: 4473, 28: 3564}
 LEAN_LIST = 9952
 # WhirBridge.εExact: the exact certified per-group bound of an opening (the weakest group at 2^24 ..= 2^28 has
 # 128.95 bits; the setup's 2^23 is certified in formal/UniKeccakSound/UniKeccakSound/Fs/Whir23.lean), charged once for
-# all of a proof's openings in the query-bounded random-permutation model.
+# all of a proof's openings in the query-bounded random-permutation model. Since PCS_OPEN version 3 the recursion's
+# openings take another ladder past level 0 (`whir_params.py --recursion`, `pcs::whir::RECURSION_SCHEDULE`): level 0
+# and its lists are the same, and the deeper levels' certificate groups, computed by that script (not in leanerVM's
+# certTable), are at least 128.98 bits at 2^24 ..= 2^28 (128.88 at 2^23); the figure below is the deployed ladder's.
 EPS_WHIR = Fraction(269, 2 ** 137)
 # The Lean's cap on every round's error before the lists (formal/UniKeccakSound/README.md): 2^32/|E| on the main line,
 # 2^35/|E| at pi1-rec3 (its narrow pairs: 8/2^160).

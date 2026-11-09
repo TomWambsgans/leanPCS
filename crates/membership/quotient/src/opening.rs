@@ -3,6 +3,7 @@
 // crates/flock/src/quotient/opening.rs; `wire_proof` is leanVM's `keccak_gkr::batch_bench::scalar_proof`
 // (commit c445e3d5). The hidden layout adapts the padding of leanVM's `flock::membership` (same branch,
 // crates/flock/membership-zk.md) to tables that fill their stack; see HIDING.md. MIT OR Apache-2.0; see AGENTS.md.
+// Version 3 of the opening (the leanVM recursion's WHIR ladder, `Version`) added here; version 2 unchanged.
 //! The commitments the claims are opened against, with leanVM's WHIR **unchanged**: its commitments and proofs
 //! are those of its committer ([`pcs::whir::commit`]) and its prover ([`pcs::whir::recursive_prover_with_basis`]),
 //! made in less memory ([`pcs::whir::commit_tree`], [`pcs::whir::recursive_prover_with_lane_tensors`]), and its
@@ -20,6 +21,11 @@
 //! id, its size and WHIR's rate: [`prefix`]) and the claims, its public digest zero, and the root the proof's
 //! first two scalars, which the verifier checks are the root it expects ([`iv`]).
 //!
+//! Two [`Version`]s of the opening share the commitment (the same level-0 code, rate `1/2`, `64` lanes) and differ
+//! in WHIR's deeper levels: version 2, the membership line's ([`VERSION`]: leanVM's ladder), and version 3, the
+//! leanVM recursion's (`crates/leanvm/rec`: a ladder whose deeper levels keep a lower rate,
+//! `pcs::whir::RECURSION_SCHEDULE`). The functions without a version are version 2's; the `_with` ones take it.
+//!
 //! A **hidden** layout ([`Layout::hidden`]) makes the commitment and its opening independent of the table given
 //! the claims (`HIDING.md`): every lane's first piece of `2^LOG_PIECE` entries is random, the pieces the table's
 //! blocks give up sit in one *overflow* lane, and seven lanes are random. The claims weigh nothing of the
@@ -31,7 +37,10 @@
 use fiat_shamir::digest_words;
 use fiat_shamir::merkle::Hash;
 use fiat_shamir::transcript::{Proof, ProverState};
-use pcs::whir::{LaneTensor, commit_tree_in, config_for_rate, recursive_prover_with_lane_tensors};
+use pcs::whir::{
+    DEPLOYED_SCHEDULE, DomainSchedule, LaneTensor, RECURSION_SCHEDULE, commit_tree_in, config_for_schedule,
+    recursive_prover_with_lane_tensors,
+};
 use primitives::field::{F64, F192, powers};
 use primitives::hash::hash as keccak256;
 use primitives::multilinear::{eq_table, mle_eval, mle_eval_par};
@@ -46,6 +55,43 @@ const LABEL: &[u8] = b"pcs-quotient-opening";
 /// puts on a layout, the transcript's shape. Version 1 was the seed before it: `(keccak256(LABEL),
 /// keccak256(root ‖ claims))`, the root never absorbed.
 pub const VERSION: u64 = 2;
+
+/// A version of the opening, which fixes WHIR's ladder past its level 0 (the commitment is the same).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Version {
+    /// [`VERSION`], the membership line's: leanVM's ladder (`pcs::whir::DEPLOYED_SCHEDULE`, rates `1/2, 1/16,
+    /// 1/128, ...`), at the counts `formal/WhirBridge` imports.
+    V2,
+    /// The leanVM recursion's: `pcs::whir::RECURSION_SCHEDULE` (rates `1/2, 1/4, 1/8, ...`, every deeper block at
+    /// least `2^8` positions), the same eta search and 128-bit checks (`params/whir_params.py --recursion`).
+    V3,
+}
+
+impl Version {
+    /// The number [`prefix`] binds.
+    pub fn number(self) -> u64 {
+        match self {
+            Version::V2 => VERSION,
+            Version::V3 => 3,
+        }
+    }
+
+    /// WHIR's ladder: the prover's schedule.
+    pub fn schedule(self) -> DomainSchedule {
+        match self {
+            Version::V2 => DEPLOYED_SCHEDULE,
+            Version::V3 => RECURSION_SCHEDULE,
+        }
+    }
+
+    /// WHIR's ladder: the verifier's.
+    pub fn ladder(self) -> verifier::whir::Ladder {
+        match self {
+            Version::V2 => verifier::whir::Ladder::Deployed,
+            Version::V3 => verifier::whir::Ladder::Recursion,
+        }
+    }
+}
 
 /// The first fold of leanVM's WHIR: `2^6` lanes.
 pub const LANE_FOLD: usize = 6;
@@ -582,10 +628,13 @@ impl Table {
 }
 
 /// What a commitment keeps for its openings: its Merkle tree alone. The codeword is twice the stack, and an
-/// opening reads a few hundred of its rows, so it encodes them again from the stack rather than keep it.
+/// opening reads a few hundred of its rows, so it encodes them again from the stack rather than keep it; but a
+/// commitment opened many times (a setup's) may keep it ([`commit_keeping_codeword`]), and its openings read
+/// those rows from it.
 pub struct Committed {
     pub root: Hash,
     tree: Vec<Hash>,
+    codeword: Option<Vec<F64>>,
 }
 
 /// WHIR's rate, `2^-LOG_INV_RATE`.
@@ -603,6 +652,19 @@ pub fn commit_in(table: &Table, scratch: Vec<F64>) -> Committed {
     Committed {
         root: commitment.root,
         tree,
+        codeword: None,
+    }
+}
+
+/// [`commit`], keeping the codeword ([`pcs::whir::commit`]'s, twice the stack) for the openings, which read the
+/// rows their first queries open from it rather than encode them again: for a table opened many times. The root,
+/// the tree and every opening are [`commit`]'s.
+pub fn commit_keeping_codeword(table: &Table) -> Committed {
+    let (commitment, data) = pcs::whir::commit(&table.stack, table.layout.log_n, LANE_FOLD, LOG_INV_RATE);
+    Committed {
+        root: commitment.root,
+        tree: data.merkle_tree,
+        codeword: Some(data.codeword),
     }
 }
 
@@ -614,9 +676,14 @@ const _: () = assert!(LABEL.len() == 20);
 /// [`LABEL`] (20 bytes), [`VERSION`] (8 bytes, little-endian), the layout's id ([`layout_id`], 32 bytes), the
 /// stack's size `log_n` (8 bytes) and WHIR's rate [`LOG_INV_RATE`] (8 bytes): [`PREFIX_LEN`] bytes.
 pub fn prefix(layout: &Layout) -> [u8; PREFIX_LEN] {
+    prefix_with(Version::V2, layout)
+}
+
+/// [`prefix`] of another version: its number in place of [`VERSION`].
+pub fn prefix_with(version: Version, layout: &Layout) -> [u8; PREFIX_LEN] {
     let fields = [
         LABEL,
-        &VERSION.to_le_bytes(),
+        &version.number().to_le_bytes(),
         &layout_id(layout),
         &(layout.log_n as u64).to_le_bytes(),
         &(LOG_INV_RATE as u64).to_le_bytes(),
@@ -633,7 +700,12 @@ pub fn prefix(layout: &Layout) -> [u8; PREFIX_LEN] {
 /// before anything else. That is leanVM's transcript shape, which `formal/WhirBridge` proves sound in the
 /// random-oracle model for claims the adversary chooses (`family_sound`, its seeding `famSeed pre`).
 pub fn iv(layout: &Layout, claims: &[Claim]) -> [u8; 32] {
-    let mut bytes = prefix(layout).to_vec();
+    iv_with(Version::V2, layout, claims)
+}
+
+/// [`iv`] of another version ([`prefix_with`]).
+pub fn iv_with(version: Version, layout: &Layout, claims: &[Claim]) -> [u8; 32] {
+    let mut bytes = prefix_with(version, layout).to_vec();
     for claim in claims {
         for x in claim.point.iter().chain([&claim.value]) {
             for limb in [x.c0, x.c1, x.c2] {
@@ -709,11 +781,18 @@ fn encode_layout(layout: &Layout, bytes: &mut Vec<u8>) {
 
 /// Prove every one of `claims` on one committed table, in one opening.
 pub fn open(table: &Table, committed: &Committed, claims: &[Claim]) -> Proof {
+    open_with(Version::V2, table, committed, claims)
+}
+
+/// [`open`] in another version.
+pub fn open_with(version: Version, table: &Table, committed: &Committed, claims: &[Claim]) -> Proof {
     open_stack(
+        version,
         &table.layout,
         &table.stack[..],
         &committed.root,
         &committed.tree[..],
+        committed.codeword.as_deref(),
         claims,
     )
 }
@@ -721,18 +800,62 @@ pub fn open(table: &Table, committed: &Committed, claims: &[Claim]) -> Proof {
 /// [`open`], consuming the table and its commitment: the stack and the Merkle tree, read last for the rows the
 /// first queries open, are freed then, before WHIR commits its deeper levels.
 pub fn open_owned(table: Table, committed: Committed, claims: &[Claim]) -> Proof {
-    open_stack(&table.layout, table.stack, &committed.root, committed.tree, claims)
+    open_owned_with(Version::V2, table, committed, claims)
+}
+
+/// [`open_owned`] in another version.
+pub fn open_owned_with(version: Version, table: Table, committed: Committed, claims: &[Claim]) -> Proof {
+    open_stack(
+        version,
+        &table.layout,
+        table.stack,
+        &committed.root,
+        committed.tree,
+        committed.codeword.as_deref(),
+        claims,
+    )
+}
+
+/// [`open_owned`] of a table of `layout` whose stack is any owner of its words, dropped as [`open_owned`] drops the
+/// stack (once the rows the first queries open are read): a caller may take the words back then, in the owner's
+/// `Drop`, for its next table.
+pub fn open_owned_stack(layout: &Layout, stack: impl AsRef<[F64]>, committed: Committed, claims: &[Claim]) -> Proof {
+    open_owned_stack_with(Version::V2, layout, stack, committed, claims)
+}
+
+/// [`open_owned_stack`] in another version.
+pub fn open_owned_stack_with(
+    version: Version,
+    layout: &Layout,
+    stack: impl AsRef<[F64]>,
+    committed: Committed,
+    claims: &[Claim],
+) -> Proof {
+    open_stack(
+        version,
+        layout,
+        stack,
+        &committed.root,
+        committed.tree,
+        committed.codeword.as_deref(),
+        claims,
+    )
 }
 
 fn open_stack(
+    version: Version,
     layout: &Layout,
     stack: impl AsRef<[F64]>,
     root: &Hash,
     tree: impl AsRef<[Hash]>,
+    codeword: Option<&[F64]>,
     claims: &[Claim],
 ) -> Proof {
-    let config = config_for_rate(layout.log_n, LOG_INV_RATE).expect("a WHIR shape leanVM supports");
-    let mut ps = ProverState::new(digest_words(&iv(layout, claims)), digest_words(&PUBLIC_DIGEST));
+    let config = config_for_schedule(layout.log_n, LOG_INV_RATE, version.schedule()).expect("a supported WHIR shape");
+    let mut ps = ProverState::new(
+        digest_words(&iv_with(version, layout, claims)),
+        digest_words(&PUBLIC_DIGEST),
+    );
     ps.add_root(root);
     // One power of the challenge a claim, and in a hidden layout the next for the gadget.
     let lambdas = powers(ps.sample(), claims.len() + 1);
@@ -744,7 +867,7 @@ fn open_stack(
     // the challenge, and a hidden layout's gadget. The prover never writes the weight out.
     let parts = claims.iter().zip(&lambdas).map(|(c, &l)| (&c.point[..], l));
     let weight: Vec<LaneTensor> = layout.weight(parts, lambdas[claims.len()]);
-    recursive_prover_with_lane_tensors(&config, layout.log_n, stack, &weight, target, None, tree, &mut ps);
+    recursive_prover_with_lane_tensors(&config, layout.log_n, stack, &weight, target, codeword, tree, &mut ps);
     ps.into_proof()
 }
 
@@ -788,9 +911,30 @@ pub fn verify(
     verify_paths(layout, root, claims, proof).map(|_| ())
 }
 
+/// [`verify`] in another version: its IV and WHIR's ladder.
+pub fn verify_with(
+    version: Version,
+    layout: &Layout,
+    root: &Hash,
+    claims: &[Claim],
+    proof: &verifier::Proof,
+) -> Result<(), verifier::VerifierError> {
+    verify_paths_with(version, layout, root, claims, proof).map(|_| ())
+}
+
 /// [`verify`], returning every query's Merkle path in the order the verifier opened them: the proof's openings in
 /// their raw form, one full path per query, which is the form `formal/Statement`'s verifier reads.
 pub fn verify_paths(
+    layout: &Layout,
+    root: &Hash,
+    claims: &[Claim],
+    proof: &verifier::Proof,
+) -> Result<Vec<verifier::MerklePath>, verifier::VerifierError> {
+    verify_paths_with(Version::V2, layout, root, claims, proof)
+}
+
+fn verify_paths_with(
+    version: Version,
     layout: &Layout,
     root: &Hash,
     claims: &[Claim],
@@ -803,7 +947,12 @@ pub fn verify_paths(
     if claims.is_empty() || claims.iter().any(|claim| claim.point.len() != layout.vars) {
         return Err(verifier::VerifierError::WhirShape);
     }
-    let mut transcript = Transcript::new(proof, Digest(iv(layout, claims)), Digest(PUBLIC_DIGEST), true);
+    let mut transcript = Transcript::new(
+        proof,
+        Digest(iv_with(version, layout, claims)),
+        Digest(PUBLIC_DIGEST),
+        true,
+    );
     // The root, the proof's first two scalars: the one the verifier expects, or nothing further is read.
     let halves = transcript.next_scalars(2)?;
     if Digest::from_halves(halves[0], halves[1])? != Digest(*root) {
@@ -890,7 +1039,8 @@ pub fn verify_paths(
         });
         claims + gadget
     };
-    verifier::whir::verify_whir(
+    verifier::whir::verify_whir_on(
+        version.ladder(),
         &mut transcript,
         layout.log_n,
         layout.placed() as u64,
