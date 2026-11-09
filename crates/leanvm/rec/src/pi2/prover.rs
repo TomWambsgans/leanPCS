@@ -105,22 +105,9 @@ pub fn layouts(log_n: usize) -> Layouts {
 /// Words copied by the workers in runs of this many (`parallel::map_collect` writes each run whole).
 const COPY_RUN: usize = 64;
 
-/// `src` copied, in parallel.
-fn copied(src: &[F64]) -> Vec<F64> {
-    if !src.len().is_multiple_of(COPY_RUN) {
-        return src.to_vec();
-    }
-    parallel::map_collect(src.len() / COPY_RUN, |k| -> [F64; COPY_RUN] {
-        src[k * COPY_RUN..(k + 1) * COPY_RUN].try_into().expect("a run")
-    })
-    .into_flattened()
-}
-
-/// The `B` coefficients from the novel ones (or back).
+/// The `B` coefficients from the novel ones (or back), into a new column (no copy of `novel` first).
 fn b_coefficients(novel: &[F64]) -> Vec<F64> {
-    let mut b = copied(novel);
-    ntt::subset_sums(&mut b);
-    b
+    ntt::subset_sums_of_cols(&[novel]).pop().expect("one column")
 }
 
 /// The extension coset `D = β_{m+1} + V_{m+1}` (`2N` points, disjoint from `V_m`): its offset.
@@ -780,23 +767,25 @@ fn quotient_on_extension(
         .collect();
 
     assert!(l0.len() == big && l1.len() == big && l2.len() == big && qp.len() == big);
-    // One coset `offset + ω_(c N) + V_m` of `D` at a time: `w`'s, `h`'s and `P`'s values there (one transform of `N`
-    // each, from their coefficients, into buffers the cosets share), then the numerators on it.
+    // One coset `offset + ω_(c N) + V_m = ω_((2 + c) N) + V_m` of `D` at a time: `w`'s, `h`'s and `P`'s values there
+    // (one transform of `N` each, from their coefficients, the five in the same dispatches, into buffers the cosets
+    // share), then the numerators on it.
     let polys: [&[F64]; 5] = [w_novel, h_novel[0], h_novel[1], h_novel[2], p_novel];
-    let mut on_coset: [Vec<F64>; 5] = std::array::from_fn(|_| vec![]);
+    let mut on_coset: Vec<Vec<F64>> = vec![];
     let (mut transforms, mut numerator) = (0.0, 0.0);
     for coset in 0..2 {
         let clock = Instant::now();
-        let at_coset = offset + point(coset << m);
-        for (buffer, novel) in on_coset.iter_mut().zip(polys) {
-            if coset == 0 {
-                *buffer = copied(novel);
-                ntt::values(buffer, at_coset);
-            } else {
-                ntt::values_from(novel, buffer, at_coset);
-            }
+        let first = (2 + coset) << m;
+        debug_assert_eq!(point(first), offset + point(coset << m));
+        if coset == 0 {
+            on_coset = ntt::on_coset_prefix_cols(&polys, first, m);
+        } else {
+            let mut buffers: Vec<&mut [F64]> = on_coset.iter_mut().map(|b| &mut b[..]).collect();
+            ntt::values_from_cols(&polys, &mut buffers, point(first));
         }
-        let [wd, h0d, h1d, h2d, pd] = &on_coset;
+        let [wd, h0d, h1d, h2d, pd] = &on_coset[..] else {
+            unreachable!("five columns")
+        };
         let hd = [h0d, h1d, h2d];
         transforms += clock.elapsed().as_secs_f64();
         let clock = Instant::now();
@@ -910,9 +899,8 @@ fn quotient_on_extension(
         eprintln!("    q: {numerator:7.3} s  the numerators over Z_V");
     }
     lap(""); // the clock, from here
-    for limb in [l0, l1, l2, qp] {
-        ntt::coefficients(limb, offset);
-    }
+    // The four columns' transforms in the same dispatches.
+    ntt::coefficients_cols(&mut [l0, l1, l2, qp], offset);
     lap("q's and q_P's coefficients");
 }
 
@@ -1128,8 +1116,7 @@ pub fn prove_with(
     let public = public_scalars(public_input, values);
 
     // W: the B coefficients of w.
-    let mut w_novel = copied(w);
-    ntt::coefficients(&mut w_novel, F64::ZERO);
+    let w_novel = ntt::coefficients_cols_of(&[w], F64::ZERO).pop().expect("one column");
     let w_b = b_coefficients(&w_novel);
     let lane = 1usize << l.witness.log_lane();
     // The stack is `w_b` itself when the layout's lanes hold its blocks in order.
@@ -1220,9 +1207,8 @@ pub fn prove_with(
             !check || sum == F192::ZERO,
             "the copy argument's sum is not zero: the witness does not satisfy the circuit"
         );
-        for limb in [&mut *h0, &mut *h1, &mut *h2, &mut *p] {
-            ntt::coefficients(limb, F64::ZERO);
-        }
+        // The four columns' transforms in the same dispatches.
+        ntt::coefficients_cols(&mut [&mut *h0, &mut *h1, &mut *h2, &mut *p], F64::ZERO);
         lap("h, P on V_m, their coefficients", &mut timings);
         quotient_on_extension(
             circuit,
