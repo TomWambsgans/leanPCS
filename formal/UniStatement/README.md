@@ -52,17 +52,11 @@ lake env lean ../UniStatement/UniStatementTest/KeccakTables.lean    # the Keccak
 13. [`Mapping.lean`](UniStatement/Mapping.lean): basis `B` ↔ values, the rows' order (`rowPosition`), the setup's tables.
 14. [`Security.lean`](UniStatement/Security.lean), [`RecSecurity.lean`](UniStatement/RecSecurity.lean): the deployment, the
     setup and its IV, `c1RootOf`, the adversary's types (the end statements are `UniKeccak`'s).
-15. [`Rec.lean`](UniStatement/Rec.lean) (the recursion's inner proofs, `leanvm-rec` 4247e37; not imported by
-    `UniStatement.lean`, so that nothing above is rebuilt): **`FsShape`** (`main`, `rec1`, `rec2`, `rec3`: the Rust's
-    `Main`, `Rec`, `Rec2`, `Rec3`) and **`walk`** (`Slices::TowerWalk`), parameters of `Fs` copies of the functions
-    they change (`Flock.zerocheckFs`, `frontFs`, `verifyFs`, `verifyDeferredFs`; `batchFs` with the narrow challenges
-    `sampleNarrow` and the paired rounds `sumcheckPairsDrawn`, `pairPoint`, `cantorBeta1`; `reduceWithFs`,
-    `runWithFs`, `runFs`, `verifyWithFs`; the IV for a variant `contractIvForWith`), `main` and no walk the default.
-    At the default each is the original (`…Fs_main`, `reduceWithFs_main`, `runWithFs_main`, `runFs_main`), so the
-    existing statements and proofs keep their meaning. **π1-rec3** (`FLOCK_REC3`, the recursion's) is
-    `runFs reference iv publicInput stream (.flock flockMain) .point .rec3 true`, its IV
-    `contractIvFor reference (.flock flockMain) .rec3 true programIv referenceRoots`, its three calls `pcsCalls`;
-    `UniKeccak` instantiates it for the Keccak VM (`keccakRec3`).
+15. [`Rec.lean`](UniStatement/Rec.lean) (π1-rec3's Fiat–Shamir shape; not imported by `UniStatement.lean`):
+    **`FsShape`** (`main`, `rec1`, `rec2`, `rec3`: the Rust's `Main`, `Rec`, `Rec2`, `Rec3`), the draws it changes
+    (`drawRun`, `Flock.zerocheckFs`; `batchFs` with the narrow challenges `sampleNarrow` and the paired rounds
+    `sumcheckPairsDrawn`, `pairPoint`, `cantorBeta1`), `main` the default, at which each is the original
+    (`zerocheckFs_main`, `batchFs_main`). `UniKeccak` uses them at `.rec3` for the Keccak VM's π1-rec3 (`keccakRec3`).
 16. [`KeccakTables.lean`](UniStatement/KeccakTables.lean) (the Keccak VM, `docs/leanvm/univariate/KECCAK.md`; not
     imported by `UniStatement.lean`): `tablesKeccak` (the `SHA3` table at opcode `5`: `sha3Columns`,
     `flushesSha3`, on `formal/KeccakVm`'s cell layout `KeccakVm.sha3CellLanes`), `keccakSlot`, `keccakSlotOffset`,
