@@ -182,11 +182,11 @@ permutation; `formal/EndToEnd` proves them ([`formal/README.md`](formal/README.m
   fixed BLAKE2s-era roots (`SetupRoots::a0`, `b0`) and two fixed layout words, kept so the committed vectors stay
   valid (dropping them means regenerating the vectors).
 - Possible gas saving: absorb the membership index root in the byte order `PCS_OPEN` takes (−132 gas).
-- The recursion prover (0.69 s a proof on 64 threads): WHIR's deeper levels at a gentler rate ladder (leanVM's is
+- The recursion prover (0.66 s a proof on 64 threads): WHIR's deeper levels at a gentler rate ladder (leanVM's is
   fixed, 1/16, 1/128, …; one rate bit a level would cut the openings' levels 1+, about 60–80 ms a proof, but changes
-  `PCS_OPEN`'s WHIR and needs leanerVM's certificate redone); π1's tables' prefix quotients batched stage by stage
-  across tables (15–20 ms); a lower-degree `SHA3` leaf by committing partial products of its fingerprints (20–25 ms, a
-  π1 format change).
+  `PCS_OPEN`'s WHIR and needs leanerVM's certificate redone); a lower-degree `SHA3` leaf by committing its seven
+  address products `fp·o` in `C1` (54.5 → 28.5 pieces; measured on the batched quotients, about 11 ms a proof, with
+  the same stream length and Keccak-f count: a π1 format change not yet worth it).
 
 ## Provenance and licensing
 

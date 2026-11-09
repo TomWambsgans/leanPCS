@@ -44,6 +44,26 @@ pub fn novel_limbs(values: &[F192]) -> [Vec<F64>; 3] {
     limbs
 }
 
+/// [`novel_limbs`] of several E-polynomials, the inverse transforms of those of one length in the same dispatches.
+pub fn novel_limbs_many(values: &[&[F192]]) -> Vec<[Vec<F64>; 3]> {
+    let mut out: Vec<[Vec<F64>; 3]> = values
+        .iter()
+        .map(|v| [0, 1, 2].map(|k| parallel::map_collect(v.len(), |i| F64([v[i].c0, v[i].c1, v[i].c2][k]))))
+        .collect();
+    let mut lengths: Vec<usize> = values.iter().map(|v| v.len()).collect();
+    lengths.sort_unstable();
+    lengths.dedup();
+    for len in lengths {
+        let mut cols: Vec<&mut [F64]> = out
+            .iter_mut()
+            .filter(|l| l[0].len() == len)
+            .flat_map(|l| l.iter_mut().map(|v| &mut v[..]))
+            .collect();
+        quotient::ntt::coefficients_cols(&mut cols, F64::ZERO);
+    }
+    out
+}
+
 /// The point `ω_index`, for any index below `2^28`.
 pub fn omega(index: usize) -> F64 {
     point(index)

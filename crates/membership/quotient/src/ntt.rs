@@ -928,6 +928,17 @@ struct Col {
 /// # Safety
 /// Each column's `data` holds `8 rows` words, its `src` (if given) as many; all disjoint.
 unsafe fn run_cols<T: Kind>(cols: &[Col], rows: usize, shift: usize, kind: &T, runs: bool, serial: bool) {
+    // SAFETY: the caller's.
+    unsafe { run_cols_each(cols, std::slice::from_ref(kind), rows, shift, runs, serial) }
+}
+
+/// [`run_cols`], column `c` by its own kind `kinds[c]` (or all by `kinds[0]`, one given): columns of one length
+/// on different cosets in the same dispatches.
+///
+/// # Safety
+/// As [`run_cols`]'s.
+unsafe fn run_cols_each<T: Kind>(cols: &[Col], kinds: &[T], rows: usize, shift: usize, runs: bool, serial: bool) {
+    assert!(kinds.len() == 1 || kinds.len() == cols.len());
     assert!(rows.is_power_of_two());
     let mr = rows.trailing_zeros() as usize;
     let leaf = mr.min(LEAF_ROWS.trailing_zeros() as usize);
@@ -942,13 +953,13 @@ unsafe fn run_cols<T: Kind>(cols: &[Col], rows: usize, shift: usize, kind: &T, r
     if T::DOWN {
         let mut from = true;
         for &(a, g) in &groups {
-            wide(cols, std::mem::take(&mut from), rows, a, g, shift, kind, serial);
+            wide(cols, std::mem::take(&mut from), rows, a, g, shift, kinds, serial);
         }
-        leaves(cols, from, rows, leaf, shift, kind, runs, serial);
+        leaves(cols, from, rows, leaf, shift, kinds, runs, serial);
     } else {
-        leaves(cols, true, rows, leaf, shift, kind, runs, serial);
+        leaves(cols, true, rows, leaf, shift, kinds, runs, serial);
         for &(a, g) in groups.iter().rev() {
-            wide(cols, false, rows, a, g, shift, kind, serial);
+            wide(cols, false, rows, a, g, shift, kinds, serial);
         }
     }
 }
@@ -961,7 +972,7 @@ fn leaves<T: Kind>(
     rows: usize,
     leaf: usize,
     shift: usize,
-    kind: &T,
+    kinds: &[T],
     runs: bool,
     serial: bool,
 ) {
@@ -969,6 +980,7 @@ fn leaves<T: Kind>(
     let per = rows >> leaf;
     tasks(per * cols.len(), serial, |t| {
         let (Col { data, src }, task) = (cols[t / per], t % per);
+        let kind = &kinds[if kinds.len() == 1 { 0 } else { t / per }];
         let src = if from_src { src } else { None };
         let first = task << leaf;
         // SAFETY: a task touches its own `size` rows from `first`.
@@ -1029,7 +1041,7 @@ fn wide<T: Kind>(
     a: usize,
     g: usize,
     shift: usize,
-    kind: &T,
+    kinds: &[T],
     serial: bool,
 ) {
     let lines = 1usize << g;
@@ -1038,6 +1050,7 @@ fn wide<T: Kind>(
     let per = (rows >> (a + g)) * per_group;
     tasks(per * cols.len(), serial, |t| {
         let (Col { data, src }, task) = (cols[t / per], t % per);
+        let kind = &kinds[if kinds.len() == 1 { 0 } else { t / per }];
         let src = if from_src { src } else { None };
         let row0 = ((task / per_group) << (a + g)) + (task % per_group) * width;
         let line = |u: usize| row0 + (u << a);
@@ -1087,6 +1100,24 @@ pub fn values_batch_from(src: &[K8], dst: &mut [K8], offset: F64, runs: bool) {
     let kind = Forward(Twiddles::new(offset, dst.len().trailing_zeros() as usize));
     // SAFETY: `dst`'s own rows, read first from `src`'s.
     unsafe { run(words(dst), Some(src.as_ptr().cast()), dst.len(), 0, &kind, runs) }
+}
+
+/// A batch of novel coefficients on the coset `ω_first + V_e` (`8 ≤ 2^e ≤ src.len()`), into a new batch, each eight
+/// rows transposed if `runs`: [`values_batch_from`], or [`fold_batch`] then [`values_batch`], without zeroing the
+/// output first.
+pub fn on_coset_batch(src: &[K8], first: usize, e: usize, runs: bool) -> Vec<K8> {
+    let size = 1usize << e;
+    assert!(size >= 8 && src.len().is_multiple_of(size));
+    // SAFETY: both ways write every row first (the transform's first pass reads `src`; the fold's tasks cover every
+    // row).
+    let mut out: Vec<K8> = unsafe { primitives::uninit_vec(size) };
+    if size == src.len() {
+        values_batch_from(src, &mut out, point(first), runs);
+    } else {
+        fold_batch(src, first, &mut out);
+        values_batch(&mut out, point(first), runs);
+    }
+    out
 }
 
 /// [`values_batch_from`] by the calling worker alone (no dispatch to the pool): for a caller that transforms many
@@ -1303,6 +1334,18 @@ impl Kx8 {
         // SAFETY: a row's eight words.
         unsafe { store(out.0.as_mut_ptr().cast(), self.0) };
         out
+    }
+
+    /// Its eight lanes into the first words of `dst`, cut at its length.
+    #[inline(always)]
+    pub fn store_to(self, dst: &mut [F64]) {
+        if dst.len() >= 8 {
+            // SAFETY: eight words of `dst`.
+            unsafe { store(dst.as_mut_ptr().cast(), self.0) }
+        } else {
+            let row = self.to_row();
+            dst.copy_from_slice(&row.0[..dst.len()]);
+        }
     }
 }
 
@@ -2044,6 +2087,242 @@ fn back_substitute(ptrs: &[SendPtr<F64>], n: usize, starts: &[usize], sizes: &[u
             q.iter_mut().zip(r.iter()).for_each(|(x, &y)| *x += lambda * y);
         });
     }
+}
+
+/// [`coefficients_cols`] with each column on its own coset (`offsets[c]` for column `c`), all of one length: every
+/// pass's tasks for all of them in one dispatch.
+pub fn coefficients_cols_each(cols: &mut [&mut [F64]], offsets: &[F64]) {
+    assert_eq!(cols.len(), offsets.len());
+    let len = cols.first().map_or(0, |c| c.len());
+    if len < 8 {
+        return cols.iter_mut().zip(offsets).for_each(|(c, &o)| coefficients(c, o));
+    }
+    let kinds: Vec<Inverse> = offsets
+        .iter()
+        .map(|&o| Inverse(Twiddles::new(o, len.trailing_zeros() as usize)))
+        .collect();
+    let cols = column_cols(cols, None);
+    // SAFETY: the columns' own words, eight a row, disjoint (distinct `&mut`).
+    unsafe { run_cols_each(&cols, &kinds, len / 8, 3, false, false) }
+}
+
+/// One quotient's columns for [`interpolate_prefix_many`]: their values at `ω_(base + i)` (one length, `Σ 2^sizes`),
+/// as [`interpolate_prefix_cols`] takes them.
+pub struct PrefixCols<'a> {
+    pub cols: Vec<&'a mut [F64]>,
+    pub sizes: Vec<usize>,
+    pub base: usize,
+}
+
+/// A step's tasks over several parts, `counts[k]` of them part `k`'s: a task's part and its index there.
+struct Spans(Vec<usize>);
+
+impl Spans {
+    fn new(counts: impl IntoIterator<Item = usize>) -> Self {
+        let mut firsts = vec![0];
+        for c in counts {
+            firsts.push(firsts[firsts.len() - 1] + c);
+        }
+        Self(firsts)
+    }
+
+    fn total(&self) -> usize {
+        self.0[self.0.len() - 1]
+    }
+
+    #[inline]
+    fn locate(&self, t: usize) -> (usize, usize) {
+        let k = self.0.partition_point(|&f| f <= t) - 1;
+        (k, t - self.0[k])
+    }
+}
+
+/// [`interpolate_prefix_cols`] on several quotients at once, each step's tasks for all of them in one dispatch: every
+/// block's inverse transform (the blocks of one size together, each on its coset), then the earlier blocks' folds
+/// block index by block index, then the back substitution from each quotient's end. The same values.
+pub fn interpolate_prefix_many(jobs: &mut [PrefixCols<'_>]) {
+    struct Job {
+        ptrs: Vec<SendPtr<F64>>,
+        starts: Vec<usize>,
+        sizes: Vec<usize>,
+        base: usize,
+        total: usize,
+    }
+    let js: Vec<Job> = jobs
+        .iter_mut()
+        .map(|j| {
+            let total: usize = j.sizes.iter().map(|&e| 1usize << e).sum();
+            assert!(j.cols.iter().all(|d| d.len() == total));
+            assert!(j.sizes.windows(2).all(|w| w[0] > w[1]) && j.base % (2 << j.sizes[0]) == 0);
+            Job {
+                ptrs: j.cols.iter_mut().map(|d| SendPtr(d.as_mut_ptr())).collect(),
+                starts: prefix_starts(&j.sizes, j.base),
+                sizes: j.sizes.clone(),
+                base: j.base,
+                total,
+            }
+        })
+        .collect();
+    // 1. Each block's inverse transform, which needs no other block's: the blocks of one size in one call.
+    let mut by_size: std::collections::BTreeMap<usize, (Vec<&mut [F64]>, Vec<F64>)> = Default::default();
+    for job in &js {
+        for (j, &e) in job.sizes.iter().enumerate() {
+            let at = job.starts[j] - job.base;
+            for ptr in &job.ptrs {
+                let entry = by_size.entry(e).or_default();
+                // SAFETY: block `j` of a column, disjoint from every other entry's.
+                entry.0.push(unsafe { ptr.slice(at, 1 << e) });
+                entry.1.push(point(job.starts[j]));
+            }
+        }
+    }
+    for (_, (mut cols, offsets)) in by_size.into_iter().rev() {
+        coefficients_cols_each(&mut cols, &offsets);
+    }
+    // 2. `U_j` plus the earlier `U_i`'s folds onto block `j`, block index by block index.
+    let most = js.iter().map(|j| j.sizes.len()).max().unwrap_or(0);
+    for j in 1..most {
+        struct Part {
+            q: usize,
+            at: usize,
+            size: usize,
+            rows: usize,
+            chunk: usize,
+            per: usize,
+            folds: Vec<(usize, Vec<F64>)>,
+        }
+        let parts: Vec<Part> = js
+            .iter()
+            .enumerate()
+            .filter(|(_, job)| job.sizes.len() > j)
+            .map(|(q, job)| {
+                let (at, e) = (job.starts[j] - job.base, job.sizes[j]);
+                let size = 1usize << e;
+                let rows = size.div_ceil(8);
+                let chunk = (rows / 128).clamp(1, 64);
+                Part {
+                    q,
+                    at,
+                    size,
+                    rows,
+                    chunk,
+                    per: rows.div_ceil(chunk),
+                    folds: earlier_folds(&job.starts, &job.sizes, job.base, j),
+                }
+            })
+            .collect();
+        let spans = Spans::new(parts.iter().map(|p| p.per * js[p.q].ptrs.len()));
+        parallel::for_each(spans.total(), |t| {
+            let (k, i) = spans.locate(t);
+            let p = &parts[k];
+            let (c, i) = (i / p.per, i % p.per);
+            let (lo, hi) = (i * p.chunk, ((i + 1) * p.chunk).min(p.rows));
+            // SAFETY: the block's rows `lo..hi` of column `c` of quotient `p.q` are this task's; the earlier blocks
+            // are only read.
+            unsafe { add_folds(js[p.q].ptrs[c].0, p.at, p.size, lo..hi, &p.folds) }
+        });
+    }
+    // 3. `Q_j = U_j + λ_j R_(j+1)` from each quotient's end: step `k` is block `len - 2 - k` of each.
+    const CHUNK: usize = 1 << 14;
+    for k in 0..most.saturating_sub(1) {
+        // (quotient, the block's first word, its size's log, λ, the words added)
+        let parts: Vec<(usize, usize, usize, F64, usize)> = js
+            .iter()
+            .enumerate()
+            .filter(|(_, job)| job.sizes.len() >= k + 2)
+            .map(|(q, job)| {
+                let j = job.sizes.len() - 2 - k;
+                let (at, e) = (job.starts[j] - job.base, job.sizes[j]);
+                (q, at, e, point(job.starts[j] >> e), job.total - at - (1 << e))
+            })
+            .collect();
+        let spans = Spans::new(parts.iter().map(|p| p.4.div_ceil(CHUNK) * js[p.0].ptrs.len()));
+        parallel::for_each(spans.total(), |t| {
+            let (p, i) = spans.locate(t);
+            let (q, at, e, lambda, len) = parts[p];
+            let per = len.div_ceil(CHUNK);
+            let (c, i) = (i / per, i % per);
+            let (lo, hi) = (i * CHUNK, ((i + 1) * CHUNK).min(len));
+            // SAFETY: the task's words of block `j` are its own; the later blocks' (`R_(j+1)`) are only read.
+            let (x, y) = unsafe {
+                (
+                    js[q].ptrs[c].slice(at + lo, hi - lo),
+                    js[q].ptrs[c].slice(at + (1 << e) + lo, hi - lo),
+                )
+            };
+            x.iter_mut().zip(y.iter()).for_each(|(x, &y)| *x += lambda * y);
+        });
+    }
+}
+
+/// [`on_coset_prefix`] of several columns at once, column `c` on its own small coset `ω_(first_c) + V_(e_c)` (`e_c ≤
+/// 6`, `2^(e_c)` dividing its length and `first_c`): the folds' partial sums for all of them in one dispatch, each
+/// task over `2^12` of a column's blocks; then each column's sum and transform.
+pub fn on_coset_prefix_each(cols: &[(&[F64], usize, usize)]) -> Vec<Vec<F64>> {
+    const LOW: usize = 12;
+    // Per column: its blocks of `2^e` words, the weights of the low bits of a block's index and the factors of its
+    // high ones: `novel_weights`' products, `point(first >> (e + b))` over the bits `b` of the block's index.
+    struct Part<'a> {
+        data: &'a [F64],
+        size: usize,
+        blocks: usize,
+        low: Vec<F64>,
+        high: Vec<F64>,
+    }
+    let parts: Vec<Part> = cols
+        .iter()
+        .map(|&(data, first, e)| {
+            let size = 1usize << e;
+            assert!(e <= 6 && data.len().is_multiple_of(size) && first.is_multiple_of(size));
+            let blocks = data.len() / size;
+            let bits = blocks.max(1).next_power_of_two().trailing_zeros() as usize;
+            let factor = |b: usize| point(first >> (e + b));
+            let mut low = vec![F64::ONE];
+            for b in 0..bits.min(LOW) {
+                let one = factor(b);
+                let high: Vec<F64> = low.iter().map(|&l| l * one).collect();
+                low.extend(high);
+            }
+            let high = (LOW..bits.max(LOW)).map(factor).collect();
+            Part {
+                data,
+                size,
+                blocks,
+                low,
+                high,
+            }
+        })
+        .collect();
+    let spans = Spans::new(parts.iter().map(|p| p.blocks.div_ceil(1 << LOW)));
+    let partial: Vec<Vec<F64>> = parallel::map_collect(spans.total(), |t| {
+        let (k, i) = spans.locate(t);
+        let p = &parts[k];
+        // The high bits' factor of this task's blocks.
+        let high = p
+            .high
+            .iter()
+            .enumerate()
+            .filter(|&(b, _)| i >> b & 1 == 1)
+            .fold(F64::ONE, |acc, (_, &f)| acc * f);
+        let mut acc = vec![F64::ZERO; p.size];
+        for h in i << LOW..((i + 1) << LOW).min(p.blocks) {
+            let w = p.low[h & ((1 << LOW) - 1)] * high;
+            acc.iter_mut().zip(&p.data[h * p.size..]).for_each(|(a, &x)| *a += w * x);
+        }
+        acc
+    });
+    parts
+        .iter()
+        .enumerate()
+        .map(|(k, p)| {
+            let mut out = vec![F64::ZERO; p.size];
+            for acc in &partial[spans.0[k]..spans.0[k + 1]] {
+                out.iter_mut().zip(acc).for_each(|(o, &a)| *o += a);
+            }
+            crate::domain::values(&mut out, point(cols[k].1));
+            out
+        })
+        .collect()
 }
 
 /// The interpolation blocks: `count` rounded up to a multiple of `2^grain`, in binary, largest first.
@@ -2887,6 +3166,80 @@ mod tests {
             let mut got = columns.clone();
             interpolate_prefix_cols(&mut got.iter_mut().map(|c| &mut c[..]).collect::<Vec<_>>(), &sizes, base);
             assert_eq!(got, want, "interpolate_prefix_cols, blocks {sizes:?}");
+        }
+    }
+
+    /// The batched helpers (several quotients' interpolations, columns on their own cosets, small cosets of several
+    /// columns, a batch on a coset) are the one-at-a-time ones.
+    #[test]
+    fn many_at_once_are_one_at_a_time() {
+        let mut next = rng(29);
+        // Several quotients of different blocks, base and columns.
+        let shapes = [(1u64, 0usize), (1000, 3), (37_000, 10), (300_000, 13), (5000, 6), (300_001, 13)];
+        let mut all: Vec<(Vec<Vec<F64>>, Vec<usize>, usize)> = shapes
+            .iter()
+            .enumerate()
+            .map(|(i, &(count, grain))| {
+                let sizes = prefix_sizes(count, grain);
+                let total: usize = sizes.iter().map(|&e| 1usize << e).sum();
+                let base = (2 + 2 * (i % 2)) << sizes[0];
+                ((0..1 + i % 3).map(|_| (0..total).map(|_| F64(next())).collect()).collect(), sizes, base)
+            })
+            .collect();
+        let want: Vec<Vec<Vec<F64>>> = all
+            .iter()
+            .map(|(cols, sizes, base)| {
+                let mut cols = cols.clone();
+                interpolate_prefix_cols(&mut cols.iter_mut().map(|c| &mut c[..]).collect::<Vec<_>>(), sizes, *base);
+                cols
+            })
+            .collect();
+        let mut jobs: Vec<PrefixCols> = all
+            .iter_mut()
+            .map(|(cols, sizes, base)| PrefixCols {
+                cols: cols.iter_mut().map(|c| &mut c[..]).collect(),
+                sizes: sizes.clone(),
+                base: *base,
+            })
+            .collect();
+        interpolate_prefix_many(&mut jobs);
+        drop(jobs);
+        assert!(all.iter().map(|a| &a.0).eq(want.iter()), "interpolate_prefix_many");
+        for m in [0usize, 3, 4, 12, 16] {
+            let columns: Vec<Vec<F64>> = (0..4).map(|_| (0..1usize << m).map(|_| F64(next())).collect()).collect();
+            let offsets: Vec<F64> = (0..4).map(|c| point((c + 1) << 20) + point(c << m)).collect();
+            let want: Vec<Vec<F64>> = columns
+                .iter()
+                .zip(&offsets)
+                .map(|(c, &o)| {
+                    let mut c = c.clone();
+                    coefficients(&mut c, o);
+                    c
+                })
+                .collect();
+            let mut got = columns.clone();
+            coefficients_cols_each(&mut got.iter_mut().map(|c| &mut c[..]).collect::<Vec<_>>(), &offsets);
+            assert_eq!(got, want, "coefficients_cols_each, 2^{m}");
+            let at: Vec<(&[F64], usize, usize)> = columns
+                .iter()
+                .enumerate()
+                .flat_map(|(c, col)| {
+                    [0, 3, 6].into_iter().filter(move |&e| e <= m).map(move |e| (&col[..], (7 << 21) + (c << e), e))
+                })
+                .collect();
+            let want: Vec<Vec<F64>> = at.iter().map(|&(c, first, e)| on_coset_prefix(c, first, e)).collect();
+            assert_eq!(on_coset_prefix_each(&at), want, "on_coset_prefix_each, 2^{m}");
+            if m >= 3 {
+                let refs: Vec<&[F64]> = columns.iter().map(|c| &c[..]).collect();
+                let batch = pack(&refs);
+                for e in (3..=m).step_by(3) {
+                    let first = (5 << 22) + (3 << e);
+                    let mut want = vec![K8::ZERO; 1 << e];
+                    fold_batch(&batch, first, &mut want);
+                    values_batch(&mut want, point(first), true);
+                    assert_eq!(on_coset_batch(&batch, first, e, true), want, "on_coset_batch, 2^{m} onto 2^{e}");
+                }
+            }
         }
     }
 

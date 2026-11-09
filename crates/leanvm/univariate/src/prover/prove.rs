@@ -15,12 +15,12 @@ use leanvm_statement::transcript::{FsShape, KeccakWriter, keccak_seed, squares};
 use primitives::field::{F64, F192};
 use quotient::ntt::Fill;
 
-use super::bus::{Bus, all_leaves, expected_root, heap};
+use super::bus::{Bus, expected_root, heap_of};
 use super::columns::{c1_polys, setup_polys};
 use super::flock::FlockWitness;
 use super::replay::Replay;
 use super::opening::{self, Committed};
-use super::poly::{eval_k, eval_limbs, from_v, novel_limbs, to_v};
+use super::poly::{eval_k, eval_limbs, from_v, novel_limbs, novel_limbs_many, to_v};
 use super::quotients::{self, Quotient};
 use super::stack::{Stack, c1_columns, c2_columns};
 use super::trace::Trace;
@@ -325,15 +325,31 @@ pub fn prove_streaming(
 
     // 4. The heap.
     let bus = Bus::new(&alphas, beta);
-    let leaves = all_leaves(trace, &bus)?;
     let layout = shape.heap();
-    let heap_values = heap(&layout, &leaves);
+    let heap_values = heap_of(trace, &bus, &layout)?;
     let root = expected_root(&bus, trace.log_bytecode);
     report.checks.push(("bus: the heap's root is the state boundary's ratio (push = pull)".into(), heap_values[1] == root));
     if heap_values[1] != root {
         return Err("the bus does not balance: the heap's root is not fp(final) / fp(initial)".into());
     }
     let heap_novel = novel_limbs(&heap_values);
+    // Every block's heap (`R`, its leaves) as novel coefficients, the blocks of one height in the same dispatches.
+    let blocks: Vec<(usize, Leaves, usize)> = layout
+        .blocks
+        .iter()
+        .enumerate()
+        .filter(|(_, b)| b.leaves != Leaves::Unused)
+        .map(|(i, b)| (i, b.leaves, b.r))
+        .collect();
+    let r_novels: Vec<[Vec<F64>; 3]> = novel_limbs_many(
+        &blocks
+            .iter()
+            .map(|&(i, _, r)| {
+                let at = layout.blocks[i].position as usize;
+                &heap_values[at..at + (1 << r)]
+            })
+            .collect::<Vec<_>>(),
+    );
     drop(heap_values);
     clock.lap(&mut report, "heap: leaves, products, inverse NTT");
 
@@ -341,45 +357,51 @@ pub fn prove_streaming(
     let tree = quotients::tree(&heap_novel);
     report.quotients.push(("tree".into(), tree.degree, tree.count, layout.h + 1));
     clock.lap(&mut report, "quotient: tree");
+    // The tables' leaves and `Q_W`'s tables' parts, every stage of all of them in the same dispatches; then the
+    // memory's and the bytecode's leaves and `Q_W`'s public part, whose columns are long.
+    let parts = quotients::constraint_parts(trace, stack1.k(Column::Qflock), &c1, gamma);
+    let mut jobs: Vec<Box<dyn quotients::Numerator + '_>> = Vec::new();
+    for (&(_, kind, r), r_novel) in blocks.iter().zip(&r_novels) {
+        if let Leaves::Table(t) = kind {
+            let count = table_leaf_count_for(&tables()[t], r);
+            jobs.push(quotients::table_leaf_numerator(trace, t, &c1, &bus, r_novel, count));
+        }
+    }
+    jobs.extend(parts.tables.iter().map(|p| p.numerator(&c1)));
+    let mut batched = quotients::prefix_quotients(&jobs.iter().map(|j| &**j).collect::<Vec<_>>()).into_iter();
+    drop(jobs);
+    clock.lap(&mut report, "quotients: the tables' leaves and Q_W's parts");
     let mut leaf_quotients: Vec<(usize, Quotient)> = Vec::new();
-    for (index, block) in layout.blocks.iter().enumerate() {
-        let n = 1u64 << block.r;
-        let values = match block.leaves {
-            Leaves::Unused => continue,
-            other => &leaves.iter().find(|(l, _)| *l == other).expect("leaves").1,
-        };
-        let leaf_clock = std::time::Instant::now();
-        let r_novel = novel_limbs(values);
-        let (name, q) = match block.leaves {
-            Leaves::Memory => ("leaf: memory".to_string(), quotients::memory_leaf(trace, &c1, &setup, &bus, &r_novel, n - 1)),
+    for (&(index, kind, r), r_novel) in blocks.iter().zip(&r_novels) {
+        let n = 1u64 << r;
+        let (name, q) = match kind {
+            Leaves::Memory => ("leaf: memory".to_string(), quotients::memory_leaf(trace, &c1, &setup, &bus, r_novel, n - 1)),
             Leaves::Bytecode => (
                 "leaf: bytecode".to_string(),
-                quotients::bytecode_leaf(trace, &c1, &setup, &bus, &r_novel, n - 1),
+                quotients::bytecode_leaf(trace, &c1, &setup, &bus, r_novel, n - 1),
             ),
-            Leaves::Table(t) => {
-                let count = table_leaf_count_for(&tables()[t], block.r);
-                (
-                    format!("leaf: {}", leanvm_statement::TABLE_NAMES[t]),
-                    quotients::table_leaf(trace, t, &c1, &bus, &r_novel, count),
-                )
-            }
+            Leaves::Table(t) => (
+                format!("leaf: {}", leanvm_statement::TABLE_NAMES[t]),
+                batched.next().expect("a table's leaf"),
+            ),
             Leaves::Unused => unreachable!(),
         };
-        if std::env::var("PI1_PROFILE").is_ok() {
-            eprintln!("    {name} (2^{} rows): {:.4} s", block.r, leaf_clock.elapsed().as_secs_f64());
-        }
         report
             .quotients
-            .push((name, q.degree, q.count, quotients::extension_vars(q.count, block.r)));
+            .push((name, q.degree, q.count, quotients::extension_vars(q.count, r)));
         leaf_quotients.push((index, q));
     }
-    clock.lap(&mut report, "quotients: leaves");
+    debug_assert_eq!(batched.len(), parts.tables.len());
+    drop(r_novels);
+    clock.lap(&mut report, "quotients: memory and bytecode leaves");
     let r_w = shape.constraint_vars();
     let lines = {
         let [a, b] = trace.public;
         [(F64(a[0]), F64(b[0])), (F64(a[1]), F64(b[1])), (F64::ZERO, F64::ZERO)]
     };
-    let constraint = quotients::constraints_with(trace, stack1.k(Column::Qflock), &c1, gamma, constraint_count(trace), lines);
+    let mut constraint_parts: Vec<Quotient> = batched.collect();
+    constraint_parts.push(quotients::public_part(trace, &c1, parts.publics, lines));
+    let constraint = quotients::sum_parts(constraint_parts, constraint_count(trace));
     report
         .quotients
         .push(("constraints Q_W".into(), constraint.degree, constraint.count, quotients::extension_vars(constraint.count, r_w)));
@@ -389,10 +411,10 @@ pub fn prove_streaming(
             return Err(format!("{name}: degree {degree} is not below the verifier's count {count}"));
         }
     }
-    // Past the quotients, C1's polynomials and the leaves are not read again (the values at t read the stacks): freed
+    // Past the quotients, C1's polynomials are not read again (the values at t read the stacks): freed
     // before C2's commitment, the prover's peak (the columns' variables kept, for the values at t).
     let table_vars: Vec<Vec<usize>> = c1.tables.iter().map(|t| t.iter().map(|c| c.vars()).collect()).collect();
-    drop((c1, leaves));
+    drop(c1);
 
     // 6. C2.
     let constraint_sizes = chunks(constraint.count);

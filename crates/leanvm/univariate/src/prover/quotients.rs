@@ -9,6 +9,11 @@
 //! Every numerator is read from K-columns' values ([`Points`]), eight columns a batch ([`ntt::K8`]), the batches
 //! evaluated on each piece of points (a coset of `V_e`, `e ≤ r`, `2^r` the columns' length) by one transform each.
 
+use std::any::Any;
+use std::marker::PhantomData;
+use std::ops::Range;
+use std::sync::{Arc, Mutex, OnceLock};
+
 use leanvm_statement::layout::{OP_JUMP, OP_SHA3, keccak_slot, keccak_slot_offset, tables};
 use leanvm_univariate_domain::{active_factors, padding_factors};
 use primitives::field::{F64, F192};
@@ -114,22 +119,6 @@ impl Quotient {
     fn holds(&self) -> bool {
         self.degree < self.novel[0].len() as i64
     }
-
-    /// `self + other`, coefficient by coefficient.
-    fn add(mut self, other: Quotient) -> Self {
-        let holds = self.holds() && other.holds();
-        for (mine, theirs) in self.novel.iter_mut().zip(other.novel) {
-            if mine.len() < theirs.len() {
-                mine.resize(theirs.len(), F64::ZERO);
-            }
-            // By the workers: the constraints' eight parts (up to `2^20` coefficients) took one thread 3 ms.
-            let len = theirs.len();
-            parallel::chunks_mut_zip(&mut mine[..len], &theirs, 1 << 14, |_, x, y| {
-                x.iter_mut().zip(y).for_each(|(x, &y)| *x += y)
-            });
-        }
-        Self::new(self.novel, self.count.max(other.count), holds)
-    }
 }
 
 /// The extension's variables: at least the domain's, and enough for `count` coefficients.
@@ -144,8 +133,8 @@ type Slot = (usize, usize);
 /// The columns' values on one piece of points, eight points a run: column `slot` at the points `8 j..8 j + 8`; from
 /// the batches (their runs transposed), or from each column's values alone (column `8 b + l` for the slot `(b, l)`).
 pub enum Points<'a> {
-    Batches(&'a [Vec<K8>]),
-    Alone(&'a [Vec<F64>]),
+    Batches(&'a [&'a [K8]]),
+    Alone(&'a [&'a [F64]]),
 }
 
 impl Points<'_> {
@@ -173,14 +162,6 @@ fn slot(k: usize) -> Slot {
 /// product three unreduced base products, a push from its pull's sum) rather than eight at a time ([`product`]: a
 /// mixed product three reduced ones). With the NEON lanes (M4 Max), [`PullPush`] and [`product`] cost the same.
 const PORTABLE_LANES: bool = !cfg!(all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "vpclmulqdq"));
-
-/// The longest columns (`2^GROUPED_ROWS` entries) whose pieces [`prefix_quotient`] evaluates in rounds, a round's
-/// batches transformed each by one worker ([`piece_rows`]), in at most `GROUPED_BYTES` a round (SHA3's leaf: 5 of its
-/// 55 pieces, 60 tasks, 120 MB): there `ntt`'s transforms of one batch at a time, a few tasks a pass, leave workers idle between
-/// their passes (on 64 threads, `SHA3`'s leaf was three quarters spinning; on the M4 Max's NEON lanes, the rounds took
-/// "quotients: leaves" from 0.30 s to 0.18 s).
-const GROUPED_ROWS: usize = 17;
-const GROUPED_BYTES: usize = 1 << 29;
 
 /// [`ntt::values_batch`] with `runs`, by one worker: row `i` of `data` becomes the eight columns at `offset + ω_i`,
 /// then each eight rows transposed ([`Points::Batches`]). The layers from the highest down, two a pass above the
@@ -254,59 +235,19 @@ fn values_rows(data: &mut [K8], offset: F64) {
     ntt::values_batch_serial(data, offset, true);
 }
 
-/// Batch `src` (novel coefficients, `2^r` rows) on the piece `ω_first + V_p` (`3 ≤ p ≤ r`), into `dst`, by the calling
-/// worker alone, each eight rows transposed ([`Points::Batches`]).
-fn piece_rows(src: &[K8], first: usize, p: usize, dst: &mut Vec<K8>) {
-    let size = 1usize << p;
-    dst.resize(size, K8::ZERO);
-    if size == src.len() {
-        // Read from `src` tile by tile (no copy of the whole batch first), where `ntt`'s lanes serve.
-        if cfg!(all(target_arch = "aarch64", target_feature = "aes")) {
-            dst.copy_from_slice(src);
-            values_rows(dst, omega(first));
-        } else {
-            ntt::values_batch_from_serial(src, dst, omega(first), true);
-        }
-    } else {
-        ntt::fold_batch_serial(src, first, dst);
-        values_rows(dst, omega(first));
-    }
-}
-
-/// The largest piece (as a log) [`prefix_quotient`]'s rounds take, its pieces `all` of `2^r`-entry columns in `width`
-/// batches (or columns), on `threads` workers: `r`, or below when its tasks (a batch on a piece) are too few for the
-/// pool. A piece of `2^q` points below the columns' `2^r` entries is their fold onto it (`2^r` products) and a transform
-/// of `q` layers (`q 2^(q - 1)`); of the caps down to three below `r`, the one whose waves of tasks take the least, as
-/// a wave takes its largest task. The same values: a piece's points are its halves'. (MUL's leaf, `2^16` rows in three
-/// batches on 9 pieces: 27 tasks of `2^16` points, or 51 of at most `2^15`; 64 threads, the leaf 6.0 → 5.4 ms.)
-fn split_cap(r: usize, all: &[(usize, usize, usize)], width: usize, threads: usize) -> usize {
-    let cost = |q: usize| (q << q) / 2 + if q < r { 1 << r } else { 0 };
-    let largest = all.iter().map(|&(_, _, p)| p).max().unwrap_or(0);
-    let estimate = |cap: usize| {
-        let tasks: usize = all.iter().map(|&(_, _, p)| 1usize << (p - p.min(cap))).sum::<usize>() * width;
-        tasks.div_ceil(threads) * cost(largest.min(cap))
-    };
-    (largest.saturating_sub(3).max(3)..=r)
-        .rev()
-        .min_by_key(|&cap| (estimate(cap), std::cmp::Reverse(cap)))
-        .unwrap_or(r)
-}
-
-/// A quotient from its numerator on `D_M`'s first points: `columns` (novel coefficients, `2^r` each) evaluated on
-/// every piece (a coset `ω_first + V_e`, `e ≤ r`), `piece(first, e, serial)` what else the piece needs (with `serial`
-/// from inside a pool task, a round's pieces' at once: it must then not dispatch to the pool), and
-/// `value(piece, points, j)` the quotient's values at the piece's points `8 j..8 j + 8`.
+/// A quotient from its numerator on `D_M`'s first points, its columns long (the memory's, the bytecode's, `Q_W`'s
+/// public part; the tables' go by [`prefix_quotients`]): `columns` (novel coefficients, `2^r` each) evaluated on every
+/// block (a coset `ω_first + V_e`, `e ≤ r`) by `ntt`'s transforms, `piece(first, e)` what else the block needs, and
+/// `value(piece, points, j)` the quotient's values at the block's points `8 j..8 j + 8`.
 fn prefix_quotient<D: Send + Sync>(
     r: usize,
     count: u64,
     columns: &[&[F64]],
-    piece: impl Fn(usize, usize, bool) -> D + Sync,
+    piece: impl Fn(usize, usize) -> D + Sync,
     value: impl Fn(&D, &Points, usize) -> Ex8 + Sync,
 ) -> Quotient {
-    let n = 1usize << r;
     let prof = std::env::var_os("PI1_PROFILE").is_some();
     let started = std::time::Instant::now();
-    let (mut t_transform, mut t_fill) = (0f64, 0f64);
     let sizes = ntt::prefix_sizes(count, r.saturating_sub(2));
     let base = 1usize << r.max(sizes[0] + 1);
     let total: usize = sizes.iter().map(|&e| 1usize << e).sum();
@@ -319,75 +260,41 @@ fn prefix_quotient<D: Send + Sync>(
     } else {
         columns.chunks(8).map(ntt::pack).collect()
     };
-    // The pieces `(first point, place in the limbs, size)`, which tile the limbs in order; with columns short enough
-    // (`GROUPED_ROWS`) in rounds, each round's batches (or columns) on its pieces transformed by one worker each, in
-    // parallel.
-    let starts = ntt::prefix_starts(&sizes, base);
-    // The pieces of at most `2^cap` points.
-    let pieces_of = |cap: usize| -> Vec<(usize, usize, usize)> {
-        starts
-            .iter()
-            .zip(&sizes)
-            .flat_map(|(&first, &e)| {
-                let p = e.min(r).min(cap);
-                (0..1usize << (e - p)).map(move |j| (first + (j << p), first - base + (j << p), p))
-            })
-            .collect()
-    };
-    let mut all = pieces_of(r);
-    let grouped = (8..=1 << GROUPED_ROWS).contains(&n) && all.iter().all(|&(_, _, p)| p >= 3);
-    if grouped {
-        let width = if alone { columns.len() } else { batches.len() };
-        let cap = split_cap(r, &all, width, parallel::num_threads());
-        if cap < r {
-            all = pieces_of(cap);
-        }
-    }
-    // [`evaluate`]'s rows: grouped, the check's block alone (at most 64 points).
-    let rows = if grouped { 64.min(n) } else { n }.max(8);
-    let mut work: Vec<Vec<K8>> = batches.iter().map(|_| vec![K8::ZERO; rows]).collect();
-    let mut singles: Vec<Vec<F64>> = if alone {
-        columns.iter().map(|_| vec![F64::ZERO; rows]).collect()
-    } else {
-        Vec::new()
-    };
-    // The quotient's values on the piece `ω_first + V_e`, into `out`.
-    let mut evaluate = |first: usize, e: usize, out: [&mut [F64]; 3]| {
+    // The quotient's values on the piece `ω_first + V_e`, into `out`: the columns' values there in new buffers (not
+    // zeroed first: these columns are long, and one thread's zeroing took milliseconds).
+    let evaluate = |first: usize, e: usize, out: [&mut [F64]; 3]| {
         let size = 1usize << e;
-        for (src, dst) in batches.iter().zip(work.iter_mut()) {
-            let runs = size >= 8;
-            if e == r {
-                ntt::values_batch_from(src, &mut dst[..size], omega(first), runs);
-            } else {
-                ntt::fold_batch(src, first, &mut dst[..size]);
-                ntt::values_batch(&mut dst[..size], omega(first), runs);
-            }
-            if !runs {
-                ntt::transpose_runs(&mut dst[..8]);
-            }
-        }
-        if alone {
-            // Every column's passes in the same dispatches.
-            let mut dsts: Vec<&mut [F64]> = singles.iter_mut().map(|d| &mut d[..size]).collect();
-            if e == r {
-                ntt::values_from_cols(columns, &mut dsts, omega(first));
-            } else {
-                for (dst, values) in dsts.iter_mut().zip(ntt::on_coset_prefix_cols(columns, first, e)) {
-                    dst.copy_from_slice(&values);
+        let work: Vec<Vec<K8>> = batches
+            .iter()
+            .map(|src| {
+                if size >= 8 {
+                    return ntt::on_coset_batch(src, first, e, true);
                 }
-            }
-        }
-        let data = piece(first, e, false);
-        let points = if alone {
-            Points::Alone(&singles)
-        } else {
-            Points::Batches(&work)
+                let mut dst = vec![K8::ZERO; 8];
+                ntt::fold_batch(src, first, &mut dst[..size]);
+                ntt::values_batch(&mut dst[..size], omega(first), false);
+                ntt::transpose_runs(&mut dst);
+                dst
+            })
+            .collect();
+        // Every column's passes in the same dispatches.
+        let mut singles: Vec<Vec<F64>> = match (alone, e <= 6) {
+            (false, _) => Vec::new(),
+            (true, true) => ntt::on_coset_prefix_each(&columns.iter().map(|&c| (c, first, e)).collect::<Vec<_>>()),
+            (true, false) => ntt::on_coset_prefix_cols(columns, first, e),
         };
+        singles.iter_mut().for_each(|s| s.resize(s.len().max(8), F64::ZERO));
+        let data = piece(first, e);
+        let (rows, words): (Vec<&[K8]>, Vec<&[F64]>) =
+            (work.iter().map(|w| &w[..]).collect(), singles.iter().map(|w| &w[..]).collect());
+        let points = if alone { Points::Alone(&words) } else { Points::Batches(&rows) };
         ntt::fill_limbs8(out, |j| value(&data, &points, j));
     };
     let mut limbs: [Vec<F64>; 3] = std::array::from_fn(|_| ntt::zeros(total));
-    if !grouped {
-        for &(first, at, p) in &all {
+    for (&first, &e) in ntt::prefix_starts(&sizes, base).iter().zip(&sizes) {
+        let p = e.min(r);
+        for j in 0..1usize << (e - p) {
+            let (first, at) = (first + (j << p), first - base + (j << p));
             let [a, b, c] = &mut limbs;
             evaluate(
                 first,
@@ -398,74 +305,6 @@ fn prefix_quotient<D: Send + Sync>(
                     &mut c[at..at + (1 << p)],
                 ],
             );
-        }
-    } else {
-        // The pieces tile the limbs in order: a round's are consecutive. A task: a batch (or a column) on a piece.
-        let (width, unit) = if alone {
-            (columns.len(), size_of::<F64>())
-        } else {
-            (batches.len(), size_of::<K8>())
-        };
-        // A round's tasks end together: the pieces a round that take the fewest waves of tasks on the pool, and of
-        // those the fewest (the least memory: freed, the buffers stay with the allocator).
-        // A task's buffer: its piece's points (at most the columns' `2^r`).
-        let longest = all.iter().map(|&(_, _, p)| 1usize << p).max().unwrap_or(n);
-        let most = (GROUPED_BYTES / (width * longest * unit)).clamp(1, all.len());
-        let threads = parallel::num_threads();
-        let waves = |per: usize| {
-            let (full, rest) = (all.len() / per, all.len() % per);
-            full * (per * width).div_ceil(threads) + (rest * width).div_ceil(threads)
-        };
-        let per_round = (1..=most).min_by_key(|&per| (waves(per), per)).expect("a piece");
-        // The tasks' buffers, reserved here (their pages first written by the tasks).
-        let mut transformed: Vec<Vec<K8>> = (0..if alone { 0 } else { per_round * width }).map(|_| Vec::with_capacity(longest)).collect();
-        let mut lone: Vec<Vec<F64>> = (0..if alone { per_round * width } else { 0 }).map(|_| Vec::with_capacity(longest)).collect();
-        for round in all.chunks(per_round) {
-            // In affine ranges ([`parallel::affine`]): a task's buffer stays with its thread round after round, and the
-            // fill's points go to the threads that transformed their piece.
-            parallel::affine(|| {
-                let clock = std::time::Instant::now();
-                let tasks = round.len() * width;
-                if alone {
-                    parallel::chunks_mut(&mut lone[..tasks], 1, |i, dst| {
-                        let (first, _, p) = round[i / width];
-                        let dst = &mut dst[0];
-                        dst.resize(1 << p, F64::ZERO);
-                        ntt::on_coset_prefix_serial(columns[i % width], first, dst);
-                    });
-                } else {
-                    parallel::chunks_mut(&mut transformed[..tasks], 1, |i, dst| {
-                        let (first, _, p) = round[i / width];
-                        piece_rows(&batches[i % width], first, p, &mut dst[0]);
-                    });
-                }
-                t_transform += clock.elapsed().as_secs_f64();
-                let clock = std::time::Instant::now();
-                let data: Vec<D> = parallel::map_collect(round.len(), |g| piece(round[g].0, round[g].2, true));
-                let points: Vec<Points> = if alone {
-                    lone[..tasks].chunks(width).map(Points::Alone).collect()
-                } else {
-                    transformed[..tasks].chunks(width).map(Points::Batches).collect()
-                };
-                // Each piece's first run in the round.
-                let runs: Vec<usize> = round
-                    .iter()
-                    .scan(0, |acc, &(_, _, p)| {
-                        let at = *acc;
-                        *acc += (1usize << p) / 8;
-                        Some(at)
-                    })
-                    .collect();
-                let (at, last) = (round[0].1, round[round.len() - 1]);
-                let end = last.1 + (1 << last.2);
-                assert!(round.iter().zip(&runs).all(|(p, &j)| p.1 == at + 8 * j));
-                let [a, b, c] = &mut limbs;
-                ntt::fill_limbs8([&mut a[at..end], &mut b[at..end], &mut c[at..end]], |j| {
-                    let g = runs.partition_point(|&s| s <= j) - 1;
-                    value(&data[g], &points[g], j - runs[g])
-                });
-                t_fill += clock.elapsed().as_secs_f64();
-            });
         }
     }
     let evaluated = started.elapsed().as_secs_f64();
@@ -479,16 +318,451 @@ fn prefix_quotient<D: Send + Sync>(
     let mut check: [Vec<F64>; 3] = std::array::from_fn(|_| vec![F64::ZERO; 1 << g]);
     let [a, b, c] = &mut check;
     evaluate(first, g, [a, b, c]);
-    let holds = ntt::on_coset_prefix_cols(&[&limbs[0], &limbs[1], &limbs[2]], first, g) == check;
+    let holds = ntt::on_coset_prefix_each(&limbs.each_ref().map(|l| (&l[..], first, g))) == check;
     if prof {
         eprintln!(
-            "      prefix_quotient 2^{r}, {} columns, {} pieces, grouped {grouped}: evaluated {evaluated:.4} s (transforms {t_transform:.4}, fills {t_fill:.4}), interpolated and checked {:.4} s",
+            "      prefix_quotient 2^{r}, {} columns: evaluated {evaluated:.4} s, interpolated and checked {:.4} s",
             columns.len(),
-            all.len(),
             started.elapsed().as_secs_f64() - evaluated
         );
     }
     Quotient::new(limbs, count, holds)
+}
+
+/// A quotient for [`prefix_quotients`]: its numerator over its vanishing polynomial, read from K-columns of `2^r`
+/// novel coefficients evaluated on each piece of `D_M`'s first points, as [`prefix_quotient`] takes it.
+pub trait Numerator: Sync {
+    /// `r` (the columns' `2^r` entries) and the count the verifier declares.
+    fn shape(&self) -> (usize, u64);
+    fn columns(&self) -> &[&[F64]];
+    /// What the piece `ω_first + V_e` needs besides the columns' values, by the calling worker alone.
+    fn piece(&self, first: usize, e: usize) -> Box<dyn Any + Send + Sync>;
+    /// The quotient's values at the piece's runs `runs` (eight points each): run `j` into `out[k][8 (j - runs.start)..]`,
+    /// cut at the outputs' length.
+    fn fill(&self, piece: &(dyn Any + Send + Sync), points: &Points, runs: Range<usize>, out: [&mut [F64]; 3]);
+}
+
+/// A [`Numerator`] from closures: `piece(first, e)` a piece's data (by the calling worker alone), `value(data,
+/// points, j)` the quotient's values at the piece's points `8 j..8 j + 8`.
+pub struct Prefix<'a, D, P, V> {
+    r: usize,
+    count: u64,
+    columns: Vec<&'a [F64]>,
+    piece: P,
+    value: V,
+    data: PhantomData<fn() -> D>,
+}
+
+impl<'a, D, P, V> Prefix<'a, D, P, V>
+where
+    D: Send + Sync + 'static,
+    P: Fn(usize, usize) -> D + Sync,
+    V: Fn(&D, &Points, usize) -> Ex8 + Sync,
+{
+    pub fn new(r: usize, count: u64, columns: Vec<&'a [F64]>, piece: P, value: V) -> Self {
+        Self {
+            r,
+            count,
+            columns,
+            piece,
+            value,
+            data: PhantomData,
+        }
+    }
+}
+
+impl<D, P, V> Numerator for Prefix<'_, D, P, V>
+where
+    D: Send + Sync + 'static,
+    P: Fn(usize, usize) -> D + Sync,
+    V: Fn(&D, &Points, usize) -> Ex8 + Sync,
+{
+    fn shape(&self) -> (usize, u64) {
+        (self.r, self.count)
+    }
+
+    fn columns(&self) -> &[&[F64]] {
+        &self.columns
+    }
+
+    fn piece(&self, first: usize, e: usize) -> Box<dyn Any + Send + Sync> {
+        Box::new((self.piece)(first, e))
+    }
+
+    fn fill(&self, piece: &(dyn Any + Send + Sync), points: &Points, runs: Range<usize>, out: [&mut [F64]; 3]) {
+        let data = piece.downcast_ref::<D>().expect("the piece's data");
+        let [a, b, c] = out;
+        for j in runs.clone() {
+            let at = 8 * (j - runs.start);
+            let [x, y, z] = (self.value)(data, points, j).limbs();
+            x.store_to(&mut a[at..]);
+            y.store_to(&mut b[at..]);
+            z.store_to(&mut c[at..]);
+        }
+    }
+}
+
+/// The transforms' outputs [`prefix_quotients`] holds at once (a piece's are freed once its values are computed).
+const LIVE_BYTES: usize = 1 << 28;
+
+/// The largest piece (as a log) [`prefix_quotients`] transforms by one worker: a task of a few milliseconds.
+const PIECE_CAP: usize = 15;
+
+/// Runs a fill task of [`prefix_quotients`] computes.
+const FILL_RUNS: usize = 64;
+
+/// A piece's transformed columns: a batch's rows (their runs transposed), or a column's values.
+enum Values {
+    Rows(Vec<K8>),
+    Words(Vec<F64>),
+}
+
+/// [`prefix_quotients`]' schedule: the pieces' transforms in order, each piece's values once its transforms are done,
+/// its buffers freed once its values are.
+struct Schedule {
+    /// The next piece whose transforms (and data) are to be handed out, and the next of its tasks.
+    next_unit: usize,
+    next_task: usize,
+    /// The bytes of the pieces handed out whose values are not all computed.
+    live: usize,
+    /// The fills whose piece's transforms are done.
+    ready: std::collections::VecDeque<usize>,
+    /// Per piece: its transforms (and data) not yet done, its fills not yet done.
+    transforms_left: Vec<usize>,
+    fills_left: Vec<usize>,
+    fills_done: usize,
+    /// Buffers to reuse.
+    free: Vec<Values>,
+}
+
+/// A task [`Schedule::next`] hands out.
+enum Job {
+    /// Piece `u`'s batch (or column) `c` (its data when `c` is its width), into the buffer.
+    Transform(usize, usize, Option<Values>),
+    /// Fill `f`.
+    Fill(usize),
+    /// Nothing yet: wait for a task to finish.
+    Wait,
+    Done,
+}
+
+/// Several quotients, as [`prefix_quotient`] makes each, every stage's tasks for all of them in one dispatch: the
+/// columns' batches packed; then in one dispatch, the pieces' transforms (each a batch, or a column, on a piece by one
+/// worker) and their values (a piece's as soon as its transforms are done, at most `LIVE_BYTES` of transforms held);
+/// the interpolations ([`ntt::interpolate_prefix_many`]) and the checks' folds ([`ntt::on_coset_prefix_each`]). One
+/// quotient at a time, on 64 threads, the tables' leaves and `Q_W`'s parts left most workers idle between short
+/// dispatches. The same quotients.
+pub fn prefix_quotients(jobs: &[&dyn Numerator]) -> Vec<Quotient> {
+    let prof = std::env::var_os("PI1_PROFILE").is_some();
+    let started = std::time::Instant::now();
+    struct Plan {
+        count: u64,
+        sizes: Vec<usize>,
+        base: usize,
+        total: usize,
+        /// Each column transformed alone (no batch to pack, no empty lanes), else eight at a time.
+        alone: bool,
+        /// The batches (or the columns) a piece transforms.
+        width: usize,
+        /// The check's block: its first point and its size's log.
+        check: (usize, usize),
+    }
+    // The pieces, each quotient's in the order of its limbs' words, then the checks' blocks: (quotient, first point,
+    // size's log, whether a check's).
+    let mut units: Vec<(usize, usize, usize, bool)> = Vec::new();
+    let plans: Vec<Plan> = jobs
+        .iter()
+        .enumerate()
+        .map(|(q, job)| {
+            let (r, count) = job.shape();
+            let columns = job.columns();
+            assert!(r >= 3 && columns.iter().all(|c| c.len() == 1 << r));
+            let sizes = ntt::prefix_sizes(count, r.saturating_sub(2));
+            let base = 1usize << r.max(sizes[0] + 1);
+            let total: usize = sizes.iter().map(|&e| 1usize << e).sum();
+            let whole: usize = sizes.iter().map(|&e| 1usize << e.saturating_sub(r)).sum();
+            let alone = columns.len() <= 5 || whole == 1;
+            let cap = r.min(PIECE_CAP);
+            for (&first, &e) in ntt::prefix_starts(&sizes, base).iter().zip(&sizes) {
+                let p = e.min(cap);
+                units.extend((0..1usize << (e - p)).map(|j| (q, first + (j << p), p, false)));
+            }
+            let g = sizes[sizes.len() - 1].min(r).min(6);
+            assert!(g >= 3, "a piece is at least a run");
+            Plan {
+                count,
+                sizes,
+                base,
+                total,
+                alone,
+                width: if alone { columns.len() } else { columns.len().div_ceil(8) },
+                check: (base + total, g),
+            }
+        })
+        .collect();
+    units.extend(plans.iter().enumerate().map(|(q, p)| (q, p.check.0, p.check.1, true)));
+    // The batches, packed in one dispatch, one a task.
+    let packing: Vec<(usize, usize)> = plans
+        .iter()
+        .enumerate()
+        .filter(|(_, p)| !p.alone)
+        .flat_map(|(q, p)| (0..p.width).map(move |b| (q, b)))
+        .collect();
+    let mut packed: Vec<Vec<K8>> = parallel::map_collect(packing.len(), |k| {
+        let (q, b) = packing[k];
+        let columns = jobs[q].columns();
+        let columns = &columns[8 * b..(8 * b + 8).min(columns.len())];
+        (0..columns[0].len())
+            .map(|i| K8(std::array::from_fn(|l| columns.get(l).map_or(F64::ZERO, |c| c[i]))))
+            .collect()
+    });
+    let mut batches: Vec<Vec<Vec<K8>>> = plans.iter().map(|_| Vec::new()).collect();
+    for (&(q, _), batch) in packing.iter().zip(packed.drain(..)) {
+        batches[q].push(batch);
+    }
+    let t_pack = started.elapsed().as_secs_f64();
+    // The limbs, every word written by the fills (the pieces tile them), each zeroed by a worker.
+    let lengths: Vec<usize> = plans.iter().flat_map(|p| [p.total; 3]).collect();
+    let mut flat: Vec<Vec<F64>> = parallel::map_collect(lengths.len(), |k| vec![F64::ZERO; lengths[k]]);
+    let mut limbs: Vec<[Vec<F64>; 3]> = Vec::with_capacity(plans.len());
+    while !flat.is_empty() {
+        let rest = flat.split_off(3);
+        let [a, b, c]: [Vec<F64>; 3] = flat.try_into().expect("three limbs");
+        limbs.push([a, b, c]);
+        flat = rest;
+    }
+    let mut checks: Vec<[Vec<F64>; 3]> = plans
+        .iter()
+        .map(|p| std::array::from_fn(|_| vec![F64::ZERO; 1 << p.check.1]))
+        .collect();
+    let unit_bytes = |&(q, _, p, _): &(usize, usize, usize, bool)| plans[q].width << p << if plans[q].alone { 3 } else { 6 };
+    let clock = std::time::Instant::now();
+    {
+        // The fills, piece by piece (`fill_first[u]..fill_first[u + 1]`): the piece, its runs, and its outputs, the
+        // limbs (or the checks) split in the order of the pieces.
+        let mut tails: Vec<[&mut [F64]; 3]> = limbs.iter_mut().map(|l| l.each_mut().map(|v| &mut v[..])).collect();
+        let mut check_tails: Vec<[&mut [F64]; 3]> = checks.iter_mut().map(|l| l.each_mut().map(|v| &mut v[..])).collect();
+        let mut fills: Vec<(usize, Range<usize>, Mutex<Option<[&mut [F64]; 3]>>)> = Vec::new();
+        let mut fill_first = vec![0];
+        for (u, &(q, _, p, check)) in units.iter().enumerate() {
+            let size = 1usize << p;
+            let tail = if check { &mut check_tails[q] } else { &mut tails[q] };
+            let mut piece: [&mut [F64]; 3] = tail.each_mut().map(|t| {
+                let (head, rest) = std::mem::take(t).split_at_mut(size);
+                *t = rest;
+                head
+            });
+            for b in 0..size.div_ceil(8 * FILL_RUNS) {
+                let runs = b * FILL_RUNS..((b + 1) * FILL_RUNS).min(size.div_ceil(8));
+                let words = (8 * runs.len()).min(piece[0].len());
+                let out = piece.each_mut().map(|t| {
+                    let (head, rest) = std::mem::take(t).split_at_mut(words);
+                    *t = rest;
+                    head
+                });
+                fills.push((u, runs, Mutex::new(Some(out))));
+            }
+            fill_first.push(fills.len());
+        }
+        // Each piece's transforms, shared by its fills; the last of them gives the buffers back.
+        let outputs: Vec<Vec<Mutex<Option<Arc<Values>>>>> = units
+            .iter()
+            .map(|&(q, ..)| (0..plans[q].width).map(|_| Mutex::new(None)).collect())
+            .collect();
+        let data: Vec<OnceLock<Box<dyn Any + Send + Sync>>> = units.iter().map(|_| OnceLock::new()).collect();
+        let schedule = Mutex::new(Schedule {
+            next_unit: 0,
+            next_task: 0,
+            live: 0,
+            ready: Default::default(),
+            transforms_left: units.iter().map(|&(q, ..)| plans[q].width + 1).collect(),
+            fills_left: (0..units.len()).map(|u| fill_first[u + 1] - fill_first[u]).collect(),
+            fills_done: 0,
+            free: Vec::new(),
+        });
+        let total_fills = fills.len();
+        // The next task: a ready fill first, else the next transform if its piece's buffers fit (or nothing is live).
+        let next = |s: &mut Schedule| -> Job {
+            if let Some(f) = s.ready.pop_front() {
+                return Job::Fill(f);
+            }
+            if s.fills_done == total_fills {
+                return Job::Done;
+            }
+            if s.next_unit == units.len() {
+                return Job::Wait;
+            }
+            let u = s.next_unit;
+            let (q, ..) = units[u];
+            if s.next_task == 0 {
+                let bytes = unit_bytes(&units[u]);
+                if s.live > 0 && s.live + bytes > LIVE_BYTES {
+                    return Job::Wait;
+                }
+                s.live += bytes;
+            }
+            let c = s.next_task;
+            s.next_task += 1;
+            if s.next_task > plans[q].width {
+                (s.next_unit, s.next_task) = (u + 1, 0);
+            }
+            if c == plans[q].width {
+                return Job::Transform(u, c, None);
+            }
+            let alone = plans[q].alone;
+            let buf = match s.free.iter().rposition(|b| matches!(b, Values::Words(_)) == alone) {
+                Some(i) => s.free.swap_remove(i),
+                None if alone => Values::Words(Vec::new()),
+                None => Values::Rows(Vec::new()),
+            };
+            Job::Transform(u, c, Some(buf))
+        };
+        let lock = || schedule.lock().expect("the schedule");
+        parallel::for_each(parallel::num_threads(), |_| {
+            let mut job = next(&mut lock());
+            loop {
+                match job {
+                    Job::Done => break,
+                    Job::Wait => {
+                        (0..64).for_each(|_| std::hint::spin_loop());
+                        job = next(&mut lock());
+                    }
+                    Job::Transform(u, c, buf) => {
+                        let (q, first, p, _) = units[u];
+                        let size = 1usize << p;
+                        match buf {
+                            None => {
+                                if data[u].set(jobs[q].piece(first, p)).is_err() {
+                                    unreachable!("a piece's data computed once");
+                                }
+                            }
+                            Some(mut buf) => {
+                                match &mut buf {
+                                    Values::Words(words) => {
+                                        if words.len() < size {
+                                            words.resize(size, F64::ZERO);
+                                        }
+                                        ntt::on_coset_prefix_serial(jobs[q].columns()[c], first, &mut words[..size]);
+                                    }
+                                    Values::Rows(rows) => {
+                                        if rows.len() < size {
+                                            rows.resize(size, K8::ZERO);
+                                        }
+                                        piece_rows_into(&batches[q][c], first, p, &mut rows[..size]);
+                                    }
+                                }
+                                *outputs[u][c].lock().expect("a piece's transform") = Some(Arc::new(buf));
+                            }
+                        }
+                        let mut s = lock();
+                        s.transforms_left[u] -= 1;
+                        if s.transforms_left[u] == 0 {
+                            s.ready.extend(fill_first[u]..fill_first[u + 1]);
+                        }
+                        job = next(&mut s);
+                    }
+                    Job::Fill(f) => {
+                        let (u, ref runs, ref out) = fills[f];
+                        let (q, _, p, _) = units[u];
+                        let size = 1usize << p;
+                        let held: Vec<Arc<Values>> = outputs[u]
+                            .iter()
+                            .map(|v| v.lock().expect("a piece's transform").clone().expect("the piece's transforms"))
+                            .collect();
+                        let values = held.iter().map(|v| &**v);
+                        let (rows, words): (Vec<&[K8]>, Vec<&[F64]>) = if plans[q].alone {
+                            let words = values.map(|v| match v {
+                                Values::Words(w) => &w[..size],
+                                Values::Rows(_) => unreachable!("a column's values"),
+                            });
+                            (Vec::new(), words.collect())
+                        } else {
+                            let rows = values.map(|v| match v {
+                                Values::Rows(r) => &r[..size],
+                                Values::Words(_) => unreachable!("a batch's rows"),
+                            });
+                            (rows.collect(), Vec::new())
+                        };
+                        let points = if plans[q].alone { Points::Alone(&words) } else { Points::Batches(&rows) };
+                        let piece = data[u].get().expect("the piece's data");
+                        let out = out.lock().expect("a fill's outputs").take().expect("each fill once");
+                        jobs[q].fill(&**piece, &points, runs.clone(), out);
+                        drop(points);
+                        drop((rows, words));
+                        drop(held);
+                        let mut s = lock();
+                        s.fills_left[u] -= 1;
+                        s.fills_done += 1;
+                        if s.fills_left[u] == 0 {
+                            // The piece's buffers, for the pieces after it (its other fills are done).
+                            s.live -= unit_bytes(&units[u]);
+                            for v in &outputs[u] {
+                                let held = v.lock().expect("a piece's transform").take().expect("the piece's transforms");
+                                s.free.push(Arc::into_inner(held).expect("the piece's fills are done"));
+                            }
+                        }
+                        job = next(&mut s);
+                    }
+                }
+            }
+        });
+    }
+    let t_rounds = clock.elapsed().as_secs_f64();
+    drop(batches);
+    let clock = std::time::Instant::now();
+    {
+        let mut parts: Vec<ntt::PrefixCols> = limbs
+            .iter_mut()
+            .zip(&plans)
+            .map(|(l, p)| ntt::PrefixCols {
+                cols: l.iter_mut().map(|v| &mut v[..]).collect(),
+                sizes: p.sizes.clone(),
+                base: p.base,
+            })
+            .collect();
+        ntt::interpolate_prefix_many(&mut parts);
+    }
+    let t_interpolate = clock.elapsed().as_secs_f64();
+    // One more block of points each: the numerator's quotient there against the interpolant's values.
+    let at: Vec<(&[F64], usize, usize)> = limbs
+        .iter()
+        .zip(&plans)
+        .flat_map(|(l, p)| l.iter().map(move |v| (&v[..], p.check.0, p.check.1)))
+        .collect();
+    let values = ntt::on_coset_prefix_each(&at);
+    let out: Vec<Quotient> = limbs
+        .into_iter()
+        .zip(plans.iter().zip(checks))
+        .zip(values.chunks(3))
+        .map(|((l, (plan, check)), values)| Quotient::new(l, plan.count, values == check))
+        .collect();
+    if prof {
+        eprintln!(
+            "      prefix_quotients ({} quotients, {} pieces): packed {t_pack:.4} s, pieces {t_rounds:.4} s, interpolated {t_interpolate:.4} s, all {:.4} s",
+            jobs.len(),
+            units.len(),
+            started.elapsed().as_secs_f64()
+        );
+    }
+    out
+}
+
+/// Batch `src` (novel coefficients, `2^r` rows) on the piece `ω_first + V_p` (`3 ≤ p ≤ r`), into `dst` (`2^p` rows), by
+/// the calling worker alone, each eight rows transposed ([`Points::Batches`]).
+fn piece_rows_into(src: &[K8], first: usize, p: usize, dst: &mut [K8]) {
+    assert_eq!(dst.len(), 1 << p);
+    if dst.len() == src.len() {
+        // Read from `src` tile by tile (no copy of the whole batch first), where `ntt`'s lanes serve.
+        if cfg!(all(target_arch = "aarch64", target_feature = "aes")) {
+            dst.copy_from_slice(src);
+            values_rows(dst, omega(first));
+        } else {
+            ntt::values_batch_from_serial(src, dst, omega(first), true);
+        }
+    } else {
+        ntt::fold_batch_serial(src, first, dst);
+        values_rows(dst, omega(first));
+    }
 }
 
 /// A vanishing polynomial `Π (w_b + ω_a)` over its factors `(b, a)`, on eight points at once: at
@@ -538,6 +812,19 @@ const SCALAR_COLUMNS: usize = 128;
 /// polynomials of the active and the padding rows' fixed cosets (SPEC.md §13, F1b; the verifier checks it times
 /// `Z_act`).
 pub fn table_leaf(trace: &Trace, t: usize, c1: &C1Polys, bus: &Bus, r_novel: &[Vec<F64>; 3], count: u64) -> Quotient {
+    let job = table_leaf_numerator(trace, t, c1, bus, r_novel, count);
+    prefix_quotients(&[&*job]).pop().expect("the leaf")
+}
+
+/// [`table_leaf`]'s numerator, for [`prefix_quotients`].
+pub fn table_leaf_numerator<'a>(
+    trace: &Trace,
+    t: usize,
+    c1: &'a C1Polys,
+    bus: &'a Bus,
+    r_novel: &'a [Vec<F64>; 3],
+    count: u64,
+) -> Box<dyn Numerator + 'a> {
     let r = trace.heights[t];
     let mut used: Vec<usize> = bus.pull[t]
         .iter()
@@ -562,12 +849,12 @@ pub fn table_leaf(trace: &Trace, t: usize, c1: &C1Polys, bus: &Bus, r_novel: &[V
             8 * b + l
         });
         let width = columns.len();
-        return prefix_quotient(
+        return Box::new(Prefix::new(
             r,
             count,
-            &columns,
-            |first, _, _| piece_of(first, r),
-            |d, v, j| {
+            columns,
+            move |first, _| piece_of(first, r),
+            move |d: &Piece, v: &Points, j| {
                 let mut at = [[F64::ZERO; SCALAR_COLUMNS]; 8];
                 for k in 0..width {
                     let x = v.at(slot(k), j).to_row();
@@ -590,15 +877,15 @@ pub fn table_leaf(trace: &Trace, t: usize, c1: &C1Polys, bus: &Bus, r_novel: &[V
                     Kx8::new(values.map(|x| F64(x.c2))),
                 ])
             },
-        );
+        ));
     }
     let both = PullPush8::new(&bus.pull[t], &bus.push[t], |c| slots[c]);
-    prefix_quotient(
+    Box::new(Prefix::new(
         r,
         count,
-        &columns,
-        |first, _, _| piece_of(first, r),
-        |d, v, j| {
+        columns,
+        move |first, _| piece_of(first, r),
+        move |d: &Piece, v: &Points, j| {
             let col = |s: Slot| v.at(s, j);
             let (p, p2) = both.at(col);
             let za = Ex8::from_k(z_act.at(d.first, j));
@@ -606,7 +893,7 @@ pub fn table_leaf(trace: &Trace, t: usize, c1: &C1Polys, bus: &Bus, r_novel: &[V
             let numerator = v.e(heap, j) * (p.mul_k(zp) + za) + p2.mul_k(zp) + za;
             numerator.mul_k(Kx8::splat(d.w_r_inv))
         },
-    )
+    ))
 }
 
 /// The memory's leaf quotient: `(R D_fin + D_init) / w_lm`.
@@ -637,7 +924,7 @@ pub fn memory_leaf(
         r,
         count,
         &columns,
-        |first, _, _| piece_of(first, r),
+        |first, _| piece_of(first, r),
         |d, v, j| (v.e(heap, j) * fin.at(|s| v.at(s, j)) + init.at(|s| v.at(s, j))).mul_k(Kx8::splat(d.w_r_inv)),
     )
 }
@@ -667,7 +954,7 @@ pub fn bytecode_leaf(
         r,
         count,
         &columns,
-        |first, _, _| piece_of(first, r),
+        |first, _| piece_of(first, r),
         |d, v, j| (v.e(heap, j) * fin.at(|s| v.at(s, j)) + init.at(|s| v.at(s, j))).mul_k(Kx8::splat(d.w_r_inv)),
     )
 }
@@ -683,8 +970,20 @@ pub fn tree(heap_novel: &[Vec<F64>; 3]) -> Quotient {
     // The quotient on `ω_first + V_e`, into `out`.
     let on = |first: usize, e: usize, out: [&mut [F64]; 3]| {
         let limbs: Vec<&[F64]> = heap_novel.iter().map(|l| &l[..]).collect();
-        let at: Vec<Vec<F64>> = ntt::on_coset_prefix_cols(&limbs, first, e);
-        let at_s: Vec<Vec<F64>> = ntt::on_coset_prefix_cols(&limbs, first >> 1, e - 1);
+        let (at, at_s): (Vec<Vec<F64>>, Vec<Vec<F64>>) = if e <= 6 {
+            // A few points (the check's): the six folds' partial sums in one dispatch.
+            let mut both = ntt::on_coset_prefix_each(
+                &limbs
+                    .iter()
+                    .map(|&l| (l, first, e))
+                    .chain(limbs.iter().map(|&l| (l, first >> 1, e - 1)))
+                    .collect::<Vec<_>>(),
+            );
+            let at_s = both.split_off(3);
+            (both, at_s)
+        } else {
+            (ntt::on_coset_prefix_cols(&limbs, first, e), ntt::on_coset_prefix_cols(&limbs, first >> 1, e - 1))
+        };
         let w_h_inv = Kx8::splat(omega(first >> h).inv());
         if e < 3 {
             let t = |v: &[Vec<F64>], i: usize| F192::new(v[0][i].0, v[1][i].0, v[2][i].0);
@@ -727,7 +1026,7 @@ pub fn tree(heap_novel: &[Vec<F64>; 3]) -> Quotient {
     let mut check: [Vec<F64>; 3] = std::array::from_fn(|_| vec![F64::ZERO; 1 << g]);
     let [a, b, c] = &mut check;
     on(base + total, g, [a, b, c]);
-    let holds = ntt::on_coset_prefix_cols(&[&limbs[0], &limbs[1], &limbs[2]], base + total, g) == check;
+    let holds = ntt::on_coset_prefix_each(&limbs.each_ref().map(|l| (&l[..], base + total, g))) == check;
     Quotient::new(limbs, (1u64 << h) + 1, holds)
 }
 
@@ -750,14 +1049,44 @@ pub fn constraints_with(
     count: u64,
     public_lines: [(F64, F64); 3],
 ) -> Quotient {
+    let parts = constraint_parts(trace, qflock, c1, gamma);
+    let jobs: Vec<Box<dyn Numerator + '_>> = parts.tables.iter().map(|p| p.numerator(c1)).collect();
+    let mut quotients = prefix_quotients(&jobs.iter().map(|j| &**j).collect::<Vec<_>>());
+    quotients.push(public_part(trace, c1, parts.publics, public_lines));
+    sum_parts(quotients, count)
+}
+
+/// One table's part of `Q_W`, `Σ γ^i W_i / w_r` over its constraints, before its [`Numerator`]: its powers of `γ`
+/// and, for `SHA3`, its lane copies combined by their powers.
+pub struct ConstraintPart {
+    r: usize,
+    count: u64,
+    /// JUMP's two powers and its columns `v_cond`, `w`, `b`.
+    jump: Option<(F192, F192, usize, usize, usize)>,
+    counters: Vec<usize>,
+    g_counter: F192,
+    t: usize,
+    /// `SHA3`'s `Σ g_j copy_j` (novel coefficients) and `Σ g_j v_j` (`q_flock`'s slots, as tables of the rows), three
+    /// limbs each, and the coordinates' functionals.
+    combined: Option<([Vec<F64>; 3], [Vec<F64>; 3], Vec<Vec<leanvm_statement::K>>)>,
+}
+
+/// `Q_W`'s parts: the tables' (in the verifier's order of powers), and the public input's three powers.
+pub struct ConstraintParts {
+    pub tables: Vec<ConstraintPart>,
+    pub publics: [F192; 3],
+}
+
+/// The tables' parts of `Q_W` and the public input's powers of `γ`, in the verifier's order.
+pub fn constraint_parts(trace: &Trace, qflock: &[F64], c1: &C1Polys, gamma: F192) -> ConstraintParts {
     let mut power = F192::ONE;
     let mut next = || {
         let current = power;
         power *= gamma;
         current
     };
-    let mut parts: Vec<Quotient> = Vec::new();
     let row_bits = crate::verifier::QFLOCK_ROW_BITS;
+    let mut parts = Vec::new();
     for table in &tables() {
         let t = table.opcode;
         let r = trace.heights[t];
@@ -787,15 +1116,7 @@ pub fn constraints_with(
         if !copies.is_empty() {
             most = most.max(degree(r as u64 * (n64 / 2), n64));
         }
-        // Columns: the inverse, the counters, JUMP's three, SHA3's copies combined by their powers (three limbs).
-        let mut columns: Vec<&[F64]> = vec![&c1.inverses[t].novel];
-        columns.extend(counters.iter().map(|&c| &cols[c].novel[..]));
-        let jump_slots = jump.map(|(g1, g2, cond, w, b)| {
-            let at = columns.len();
-            columns.extend([&cols[cond].novel[..], &cols[w].novel[..], &cols[b].novel[..]]);
-            (g1, g2, slot(at), slot(at + 1), slot(at + 2))
-        });
-        let combined: Option<([Vec<F64>; 3], [Vec<F64>; 3])> = (!copies.is_empty()).then(|| {
+        let combined = (!copies.is_empty()).then(|| {
             // Σ g_j copy_j (novel coefficients), and Σ g_j v_j (the q_flock slots, as tables of the rows).
             let combine = |read: &(dyn Fn(usize, usize) -> F64 + Sync)| -> [Vec<F64>; 3] {
                 let sums: Vec<F192> = parallel::map_collect(n, |i| {
@@ -809,28 +1130,52 @@ pub fn constraints_with(
             let copy = combine(&|j, i| cols[copies[j].1].novel[i]);
             // The slot's word plus the copy's constant: a table's multilinear plus a constant is the table plus it.
             let table = combine(&|j, i| qflock[(i << row_bits) | copies[j].2] + F64(copies[j].3));
-            (copy, table)
+            (copy, table, crate::domain::coordinate_functionals(r))
         });
-        let copy_slots: Option<[Slot; 3]> = combined.as_ref().map(|(copy, _)| {
+        parts.push(ConstraintPart {
+            r,
+            count: most + 1,
+            jump,
+            counters,
+            g_counter,
+            t,
+            combined,
+        });
+    }
+    ConstraintParts {
+        tables: parts,
+        publics: [next(), next(), next()],
+    }
+}
+
+impl ConstraintPart {
+    /// Its numerator, for [`prefix_quotients`]: the inverse, the counters, JUMP's three columns, `SHA3`'s copies
+    /// combined by their powers (three limbs); a piece's data `1 / w_r` and `SHA3`'s `Σ g_j ℓ_j`, the slots'
+    /// multilinear at `y(x) = y(ω_first) + bits(i)`, a shifted cube (at least a run long).
+    pub fn numerator<'a>(&'a self, c1: &'a C1Polys) -> Box<dyn Numerator + 'a> {
+        let (r, t) = (self.r, self.t);
+        let cols = &c1.tables[t];
+        let mut columns: Vec<&[F64]> = vec![&c1.inverses[t].novel];
+        columns.extend(self.counters.iter().map(|&c| &cols[c].novel[..]));
+        let jump_slots = self.jump.map(|(g1, g2, cond, w, b)| {
+            let at = columns.len();
+            columns.extend([&cols[cond].novel[..], &cols[w].novel[..], &cols[b].novel[..]]);
+            (ESplat::new(g1), ESplat::new(g2), slot(at), slot(at + 1), slot(at + 2))
+        });
+        let copy_slots: Option<[Slot; 3]> = self.combined.as_ref().map(|(copy, ..)| {
             let at = columns.len();
             columns.extend(copy.iter().map(|l| &l[..]));
             std::array::from_fn(|k| slot(at + k))
         });
-        let functionals = combined.as_ref().map(|_| crate::domain::coordinate_functionals(r));
-        let counter_slots: Vec<Slot> = (1..=counters.len()).map(slot).collect();
-        // A piece: `w_r` and its inverse; SHA3's `Σ g_j ℓ_j`, the slots' multilinear at `y(x) = y(ω_first) +
-        // bits(i)`, a shifted cube (at least a run long).
-        let piece = |first: usize, e: usize, serial: bool| {
-            let cube = combined.as_ref().map(|(_, table)| {
-                let delta = coordinates_k(omega(first), functionals.as_ref().expect("SHA3"));
+        let counter_slots: Vec<Slot> = (1..=self.counters.len()).map(slot).collect();
+        let combined = &self.combined;
+        let piece = move |first: usize, e: usize| {
+            let cube = combined.as_ref().map(|(_, table, functionals)| {
+                let delta = coordinates_k(omega(first), functionals);
                 table
                     .iter()
                     .map(|l| {
-                        let mut c = if serial {
-                            ntt::shifted_cube_serial(l, &delta, e)
-                        } else {
-                            ntt::shifted_cube(l, &delta, e)
-                        };
+                        let mut c = ntt::shifted_cube_serial(l, &delta, e);
                         c.resize(c.len().max(8), F64::ZERO);
                         c
                     })
@@ -839,47 +1184,47 @@ pub fn constraints_with(
             (piece_of(first, r), cube)
         };
         let one = Kx8::splat(F64::ONE);
-        let jump_slots = jump_slots.map(|(g1, g2, cond, w, b)| (ESplat::new(g1), ESplat::new(g2), cond, w, b));
-        let g_counter = ESplat::new(g_counter);
-        parts.push(prefix_quotient(r, most + 1, &columns, piece, |(d, cube), v, j| {
-            let mut sum = MixedSum::default();
-            if let Some((g1, g2, cond, w, b)) = &jump_slots {
-                let (cond, w, b) = (v.at(*cond, j), v.at(*w, j), v.at(*b, j));
-                sum.add(g1, b + cond * w);
-                sum.add(g2, cond * (b + one));
-            }
-            // The counters are nonzero on every row (SPEC.md §13, F1): z Π c + 1, without Z_pad.
-            let product = counter_slots.iter().fold(v.at(slot(0), j), |acc, &s| acc * v.at(s, j));
-            sum.add(&g_counter, product + one);
-            let mut sum = sum.reduce();
-            if let (Some(copy), Some(cube)) = (copy_slots, cube) {
-                sum = sum + v.e(copy, j) + Ex8::from_limbs([0, 1, 2].map(|k| Kx8::load(&cube[k][8 * j..])));
-            }
-            sum.mul_k(Kx8::splat(d.w_r_inv))
-        }));
+        let g_counter = ESplat::new(self.g_counter);
+        Box::new(Prefix::new(
+            r,
+            self.count,
+            columns,
+            piece,
+            move |(d, cube): &(Piece, Option<Vec<Vec<F64>>>), v: &Points, j| {
+                let mut sum = MixedSum::default();
+                if let Some((g1, g2, cond, w, b)) = &jump_slots {
+                    let (cond, w, b) = (v.at(*cond, j), v.at(*w, j), v.at(*b, j));
+                    sum.add(g1, b + cond * w);
+                    sum.add(g2, cond * (b + one));
+                }
+                // The counters are nonzero on every row (SPEC.md §13, F1): z Π c + 1, without Z_pad.
+                let product = counter_slots.iter().fold(v.at(slot(0), j), |acc, &s| acc * v.at(s, j));
+                sum.add(&g_counter, product + one);
+                let mut sum = sum.reduce();
+                if let (Some(copy), Some(cube)) = (copy_slots, cube) {
+                    sum = sum + v.e(copy, j) + Ex8::from_limbs([0, 1, 2].map(|k| Kx8::load(&cube[k][8 * j..])));
+                }
+                sum.mul_k(Kx8::splat(d.w_r_inv))
+            },
+        ))
     }
-    // The public input: (mem_k + I_k) / w_1, I_k(x) = low + x (low + high), of degree below 2^lm - 2.
+}
+
+/// `Q_W`'s public part: `(mem_k + I_k) / w_1` at the powers `gs`, `I_k(x) = low + x (low + high)`, of degree below
+/// `2^lm - 2`.
+pub fn public_part(trace: &Trace, c1: &C1Polys, gs: [F192; 3], public_lines: [(F64, F64); 3]) -> Quotient {
     let lm = trace.log_memory;
-    let gs: Vec<F192> = (0..3).map(|_| next()).collect();
     let columns: Vec<&[F64]> = (0..3).map(|k| &c1.memory[k].novel[..]).collect();
-    let piece = |first: usize, e: usize, serial: bool| {
+    let piece = |first: usize, e: usize| {
         // 1 / w_1(x) = 1 / ω_((first + i) >> 1), shared by `i` and `i ^ 1` (at least a run's).
         let len = ((1usize << e) / 2).max(4);
-        let mut inverses: Vec<F64> = if serial {
-            (0..len).map(|q| omega((first >> 1) + q)).collect()
-        } else {
-            parallel::map_collect(len, |q| omega((first >> 1) + q))
-        };
-        if serial {
-            invert_chunk(&mut inverses);
-        } else {
-            invert(&mut inverses);
-        }
+        let mut inverses: Vec<F64> = parallel::map_collect(len, |q| omega((first >> 1) + q));
+        invert(&mut inverses);
         (omega(first), inverses)
     };
-    let gs: Vec<ESplat> = gs.into_iter().map(ESplat::new).collect();
+    let gs = gs.map(ESplat::new);
     let lanes = Kx8::new(std::array::from_fn(omega));
-    parts.push(prefix_quotient(
+    prefix_quotient(
         lm,
         (1u64 << lm) - 2,
         &columns,
@@ -893,13 +1238,30 @@ pub fn constraints_with(
             sum.reduce()
                 .mul_k(Kx8::new(std::array::from_fn(|p| inverses[4 * j + p / 2])))
         },
-    ));
-    let mut out = parts.pop().expect("the public part");
-    while let Some(p) = parts.pop() {
-        out = out.add(p);
-    }
-    out.count = count;
-    out
+    )
+}
+
+/// The sum of quotients, coefficient by coefficient, in one dispatch: `count` the result's.
+pub fn sum_parts(mut parts: Vec<Quotient>, count: u64) -> Quotient {
+    let holds = parts.iter().all(|q| q.holds());
+    let longest = (0..parts.len())
+        .max_by_key(|&i| parts[i].novel[0].len())
+        .expect("a part");
+    let mut out = parts.swap_remove(longest);
+    const CHUNK: usize = 1 << 14;
+    let [a, b, c] = &mut out.novel;
+    parallel::chunks_mut3(a, b, c, CHUNK, |i, a, b, c| {
+        let lo = i * CHUNK;
+        for (k, dst) in [a, b, c].into_iter().enumerate() {
+            for p in &parts {
+                let src = &p.novel[k];
+                if lo < src.len() {
+                    dst.iter_mut().zip(&src[lo..]).for_each(|(x, &y)| *x += y);
+                }
+            }
+        }
+    });
+    Quotient::new(out.novel, count, holds)
 }
 
 /// E elements as their three limbs.
