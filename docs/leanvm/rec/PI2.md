@@ -204,16 +204,17 @@ D16v circuit of the Keccak VM's π1 has 133 pairs at the reference shape.
   and parity.
 - `tests/lean_pi2_prover.rs`: vectors for the Lean honest prover's differential test (`formal/RecCompose`).
 
-## 7. Soundness (modelled; as SPEC-REC §5)
+## 7. Soundness (as SPEC-REC §5)
 
-The rounds are SPEC-REC §5's:
+The rounds are SPEC-REC §5's, as the Lean states them (`formal/RecPiop`'s `err`):
 
-- the copy argument `(α, β)`: `4N/2^192` over `W`'s list, the pulls over the non-holes;
-- `γ`: the four-limb ports, degree 1;
+- the copy argument `(α, β, γ)`: `(3N + 2)/2^192` over `W`'s list, the pulls over the non-holes, `γ` the four-limb
+  ports' fingerprints, degree 1 (153.1 bits after the list);
 - `t`: the identity, degree below `5N`, over `W`'s and `Q`'s lists (140.6 bits after the union);
-- `ρ`: `W`'s fold (degree `2^r − 1`) over `W`'s list.
+- `ρ`: `W`'s fold (degree `2^r − 1`) over both lists (163.0).
 
-These depend only on `N` and the stacks, the same for the Keccak VM's π2.
+These depend only on `N` and the stacks. With the three openings charged once (`269 · 2^-137` a query), π2 keeps
+128.93 bits as `Q/ε` at `Q = 2^64`: `RecCompose.pi2Bound` (`pi2Bound_le_bits`).
 
 ## 8. The `PCS_OPEN` ABI, the IVs, the setup path
 
@@ -244,8 +245,8 @@ These depend only on `N` and the stacks, the same for the Keccak VM's π2.
 
 ## 9. Optimisation levers
 
-Each lever is in the code; its gain was measured when it was made (on the BLAKE2s VM's π1, the line the recursion was
-first built on), and the Keccak VM's figures are §0's.
+Each lever is in the code; its gain was measured when it was made, on the π1 of that time, so the figures below are
+the gains then, and the current figures are §0's.
 
 **Lever 1d: π1-rec3, the paired batch** (`SPEC-POINTS.md` §3; `FsShape::Rec3`; **π1's Fiat–Shamir shape**). The
 batching sumcheck takes two variables a round on `V_2`'s coordinate functionals: a pair's polynomial
@@ -275,7 +276,7 @@ probability `2/2^160`. Not taken: reading the challenges as 20 bytes (a new read
 
 **Lever 1a′: no claims on Flock's matrices.** The Keccak VM's π1 has none: its lincheck terminal is the structured one
 (`keccak_flock::structured_terminal`), computed by π1's verifier, so its claims are three (`C1`, `C2`, `F`), all at the
-batch's point. (On the BLAKE2s VM the lever was π1-rec2, whose terminal walked the BLAKE2s circuit inside π2.)
+batch's point.
 
 **Lever 3c: the zero checks as one closed-form term.** π1's zero checks are ports of value 0, each a fraction
 `1/(α + βτ_J)` of the public side. The circuit compiler makes them the first ports, padded with constant-zero ports

@@ -78,9 +78,9 @@ group's column index as the low coordinates, `Σ_j eq(w_(<c)(x), j) col_j(w_c(x)
 value at `x`: one point claim for each height group. But:
 
 - **It saves no coordinate.** The batch stays for `q_flock` (§2.1), and its point already carries every other claim.
-- **It costs π2 more than π2 has.** Every column's value at every point must be sent: about 80 more values, 1.9 KB of
-  π1's stream, about 14 Keccak-f, or 1.9M positions (modelled on the BLAKE2s VM's π1; the Keccak VM's has more
-  columns). π2 has 1.11M positions left at the reference shape and 0.84M at 400 signatures.
+- **It costs π2 more than π2 has.** Every column's value at every point must be sent: about 90 more values (the tables'
+  153 columns, of which 64 are sent), 2.1 KB of π1's stream, about 16 Keccak-f, or 2.1M positions (modelled). π2
+  has 1.11M positions left at the reference shape and 0.84M at 400 signatures.
 - **It costs a commitment and claims.** `C3` is E-valued, up to the columns' size, and its list joins the union bound.
   Each height group needs its own claim, because its DEEP identity has its own denominator: at least 4 on `C1`.
 - **The heap's restrictions are not univariate evaluations of `T`.** They are multilinear claims at
@@ -121,14 +121,14 @@ A round of `k` variables on `V_k`'s coordinate functionals works as follows:
 - No curve does better. A curve through the `2^k` corners on `2^k` points has coordinates of
   degree at least `2^(k-1)`: each takes two values there, so the vanishing polynomial divides `y(y + 1)`.
 
-π2 hashes that data. Over 27 variables (modelled; Keccak-256's rate is 136 bytes; π2's positions at 130,736 a
+π2 hashes that data. Over 27 variables (modelled; Keccak-256's rate is 136 bytes; π2's positions at 130,944 a
 Keccak-f):
 
 | rounds of | challenges | scalars | Keccak-f | π2 |
 |---|---:|---:|---:|---|
 | 1 variable | 27 | 54 | 27 | |
 | **2 variables (π1-rec3)** | **14** | 106 | **27** | **+0 Keccak-f** |
-| 3 variables | 9 | 216 | 45 | +18 (2.35M positions) |
+| 3 variables | 9 | 216 | 45 | +18 (2.36M positions) |
 | 4 variables | 7 | 408 | 77 | +50 |
 | 3 triples, 9 pairs | 12 | 144 | 33 | +6 (0.79M positions) |
 
@@ -192,9 +192,12 @@ contracts, and by the recursion's contract through π2 (`SPEC-REC.md` §11).
 
 - **A pair's error.** Its polynomial has degree 8, so its Schwartz–Zippel error with a narrow challenge is `8/2^160`
   (a plain round's `2/2^160`). It is drawn after `C2`, over `C1`'s and `C2`'s lists.
-- **The batch.** The 14 rounds and `λ` add; the union over `C1`'s and `C2`'s lists multiplies. On the BLAKE2s VM's
-  lists (`C1`, `C2` on `2^27` stacks, 4,473 each), `params/leanvm_rec_params.py` gives 153.3 bits alone and 129.0
-  after the lists, π1's weakest round; the calculator is not yet updated for the Keccak VM's stacks.
+- **The batch.** Each of the 14 rounds and `λ` is a round of its own, unioned over `C1`'s and `C2`'s lists (4,473 and
+  6,296 at 128 signatures). A pair keeps 157.0 bits alone and 132.3 after the lists, π1-rec3's weakest round
+  (`params/leanvm_univariate_params.py`; the main line's weakest is `t`, 143.2). Summed over the 14 rounds, as an
+  interactive protocol would count them, about 128.5; with Fiat–Shamir over `Q` queries the per-round figure is the
+  one that counts (`docs/leanvm/univariate/SPEC.md` §9). The Lean bound caps each round at `2^35/|E|`, a pair's
+  `8/2^160` exactly.
 - **The point is not uniform.** Each pair of coordinates lies on a curve. Neither argument needs uniformity: the
   sumcheck makes one Schwartz–Zippel step a round, in `z_j`, and WHIR's openings are sound at every point.
 - **No new list.** There is no new commitment, and the openings are the same 6 (π1's 3, π2's 3).
@@ -204,7 +207,7 @@ contracts, and by the recursion's contract through π2 (`SPEC-REC.md` §11).
 - **Keccak-f: unchanged** (recorded: 27 permutations for 27 variables either way).
 - **Positions:** more stream scalars (a pair sends 8 where two plain rounds send 4: free bits and packings), fewer
   challenge packings, one later block a pair, and about twice the batch's `E` operations (278 against 135, recorded).
-  On the BLAKE2s VM's π1 this was modelled at +56K positions.
+  Not measured on its own; the totals below include it.
 - **π2's verifier** has 13 fewer ports.
 - The whole Keccak VM π1-rec3 in π2: 15,668,416 positions (93.4% of `2^24`) at 128 signatures, 15,940,800 (95.0%) at
   400 (`SPEC-REC.md` §10.3). `Q = 15N` stays `2^27.91`.

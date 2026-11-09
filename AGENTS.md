@@ -172,8 +172,11 @@ permutation; `formal/EndToEnd` proves them ([`formal/README.md`](formal/README.m
   compiler (`rec-circuit-keccak`: the identical circuit), π2's statement data (`lean_statement_keccak.rs`), the emitted
   graph (`lean_graph_keccak.rs`), π2's Lean prover on two small circuits. The deployed Rust provers are trusted for
   completeness; the contract's bytecode is π2's Rust verifier by the Rust's tests.
-- **Modelled, not proved.** WHIR's openings are at leanVM's ≈ 129-bit certificate each. `params/leanvm_univariate_params.py`
-  and `params/leanvm_rec_params.py` still model the old BLAKE2s π1 at 1,000 signatures.
+- **Modelled, not proved: soundness at other shapes.** `params/leanvm_univariate_params.py` and
+  `params/leanvm_rec_params.py` give every round's bits at the code's degrees and the certified lists, at 32, 128 and
+  400 signatures. At 128, with the openings charged once at WhirBridge's `269 · 2^-137` a query: π1 128.93 bits as
+  Q/ε (main line) and 128.79 (π1-rec3), π2 128.93, the recursion about 127.9; the Lean bounds, coarser, are 128.87,
+  128.49 and 128.93 (`docs/leanvm/univariate/SPEC.md` §9).
 
 ## Security notes
 
@@ -194,12 +197,9 @@ permutation; `formal/EndToEnd` proves them ([`formal/README.md`](formal/README.m
   π1-rec3's theorems are in the random-permutation model, so the soundness reduction's two π1 terms and the two
   completeness premises are left to the Fiat–Shamir heuristic for Keccak-f[1600]; (2) the compiler's IV uniformity
   (`RecCompose.PatchChecked`, which with the evaluated checks gives `IvChecked` at every IV; a relational simulation
-  of about 1,200 lines of the builder); (3) closed bounds at other shapes than the reference; (4) unused
-  BLAKE2s-era declarations in the shared libraries ([`formal/README.md`](formal/README.md), "What is left of the
-  BLAKE2s VM").
-- leanVM: the soundness calculators for the Keccak VM; capacity beyond about 470 signatures; the contract IV
-  (`contract::contract_iv`) still hashes two fixed BLAKE2s-era roots (`SetupRoots::a0`, `b0`) and two fixed layout
-  words, kept so the committed vectors stay valid (dropping them means regenerating the vectors).
+  of about 1,200 lines of the builder); (3) closed bounds at other shapes than the reference; (4) declarations in the
+  shared libraries that no end theorem uses ([`formal/README.md`](formal/README.md)).
+- leanVM: capacity beyond about 470 signatures.
 - Possible gas saving: absorb the membership index root in the byte order `PCS_OPEN` takes (−132 gas).
 
 ## Provenance and licensing

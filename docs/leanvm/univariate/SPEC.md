@@ -9,8 +9,8 @@ the gas and the prover's measurements are in `KECCAK.md`; Flock's part is in `SP
 
 ## 0. Summary
 
-The statement is the Keccak VM's: leanVM 42422001's VM with its BLAKE2S table replaced by leanVM `9d50c92a3`'s `SHA3`
-table (§1). The proof of it is not leanVM's:
+The statement is the Keccak VM's: leanVM 42422001's five instruction tables and leanVM `9d50c92a3`'s `SHA3` table as
+the sixth (§1). The proof of it is not leanVM's:
 
 - **Two proof commitments**, `C1` and `C2`, and one fixed setup commitment `F`. `C1` holds the tables' columns
   (univariate: coefficients on Cantor subspaces) and Flock's packed witness `q_flock` (values). `C2` comes after the
@@ -33,11 +33,11 @@ table (§1). The proof of it is not leanVM's:
 ## 1. Statement and workload
 
 leanVM 42422001's `crates/verifier` is ported, generic over the scalar, in `crates/leanvm/statement`, with the
-`SHA3` table of leanVM `9d50c92a3` in BLAKE2S's place (`layout::tables`). The statement: the VM, run on the stacked
-bytecode (the fixed program) from `pc = 1, fp = 1`, halts at `pc = g^(2^lb - 1)`, `fp = 1`, `2^lb` the bytecode's
-instructions. The 32-byte public input is in memory cells 0 and 1, and every `SHA3` row is one Keccak-f step of
-leanVM `9d50c92a3`'s sponge. In Lean (`formal/KeccakVm`) this is `KvHolds`: `M3Holds` of the six tables together with
-the Keccak-f region `KeccakAux`.
+`SHA3` table of leanVM `9d50c92a3` as its sixth table, opcode 5 (`layout::tables`). The statement: the VM, run on
+the stacked bytecode (the fixed program) from `pc = 1, fp = 1`, halts at `pc = g^(2^lb - 1)`, `fp = 1`, `2^lb` the
+bytecode's instructions. The 32-byte public input is in memory cells 0 and 1, and every `SHA3` row is one Keccak-f
+step of leanVM `9d50c92a3`'s sponge. In Lean (`formal/KeccakVm`) this is `KvHolds`: `M3Holds` of the six tables
+together with the Keccak-f region `KeccakAux`.
 
 - **Fields.** `K = GF(2)[x]/(x^64 + x^4 + x^3 + x + 1)` and `E = K[y]/(y^3 + y + 1)`, with `g = x` (`GEN`).
 - **Tables.** XOR (15 columns), MUL (15), SET (8), DEREF (15), JUMP (14), and `SHA3` (86: 9 operands, 25 input and
@@ -279,44 +279,46 @@ and the parity tests run it; the prover has no opening for it.
 
 ## 9. Soundness
 
-**The calculator is not yet updated for the Keccak VM.** `params/leanvm_univariate_params.py` still models the
-BLAKE2s VM's π1 at 1,000 signatures, so its figures are not the Keccak VM's. The reasoning below does not depend on
-the VM.
+Modelled round by round by `params/leanvm_univariate_params.py` (`python3 -I`), at every workload; proved in Lean at
+the reference shape (below).
 
 Each challenge's error is a Schwartz–Zippel bound times the number of committed tables it is drawn against: `L_1`
-before `C2` and `L_1 L_2` after it, `L` the certified level-0 Johnson list of a stack's WHIR commitment
-(`lean-whir-large`; e.g. 4,473 at a `2^27` stack). The setup is honestly computed, and an honest codeword's list
-within the Johnson radius is itself, so `L = 1` there. Stacks below `2^24` words have no certified level-0 list.
-`|E| = 2^192`. The rounds, as the code states them (§13, F8: committed capacities, the unused blocks, degree 4 a
-tuple, `ρ` and `λ` apart):
+before `C2` and `L_1 L_2` after it, `L` the certified level-0 Johnson list of a stack's WHIR commitment (leanerVM's
+`WhirBridge`, rate 1/2: 4,473 at `C1`'s `2^27` stack, 6,296 at `C2`'s `2^26`). The setup is honestly computed, and an
+honest codeword's list within the Johnson radius is itself, so `L = 1` there. Stacks below `2^24` words have no
+certified level-0 list. `|E| = 2^192`. The rounds at 128 signatures, as the code states them (§13, F8: committed
+capacities, the unused blocks, degree 4 a tuple, `ρ`, `λ` and each round of the batch apart), in bits after the lists:
 
-| round | error |
-|---|---|
-| bus `(α, β)`: if the push and pull multisets differ, `Π(β + fp)` differs: one Schwartz–Zippel over `E^5`, degree 4 a factor, every table full (the counts are the prover's), `N` tuples | `4N/|E|` |
-| `γ`: `C1`-only constraints batched | `(their number − 1)/|E|` |
-| Flock, before `C2`: the skip (`(2^(k+1) - 1)/|E|`), the zerocheck's degree-3 and the lincheck's degree-2 rounds, the ring map in tower order (`6/|E|`) | about `2^7/|E|` |
-| `t`: every identity at its committed capacity (tree, leaves times `Z_act`, unused blocks, `Q_W`) | `Σ deg/|E|` |
-| `ρ`: each commitment's relations combined | `(their number)/|E|` |
-| `λ` (3 claims) and the batching sumcheck's rounds | `(2 + 2 · vars)/|E|` on the main line |
+| round | error | main line | π1-rec3 |
+|---|---|---:|---:|
+| bus `(α, β)`: if the push and pull multisets differ, `Π(β + fp)` differs: one Schwartz–Zippel over `E^5`, degree 4 a factor (π1-rec3, `α = (c, c², c⁴, c⁸)`: 16 in `(β, c)`), every table full (the counts are the prover's), `N = 2^21.62` tuples a side | `4N/|E|` (`16N/|E|`) | 156.3 | 154.3 |
+| `γ`: the 61 `C1`-only constraints batched | `60/|E|` | 174.0 | 174.0 |
+| Flock's zerocheck point: its 22 drawn coordinates (π1-rec3: the successive squares of one) | `22/|E|` (`(2^22 − 1)/|E|`) | 175.4 | 157.9 |
+| Flock's other rounds: the skip (`(2^(k+1) − 1)/|E|`), 29 zerocheck rounds of degree 3, the lincheck's `α` (3) and 11 rounds of degree 2, the ring map in tower order (`6/|E|`) | at most `15/|E|` each | ≥ 176.0 | ≥ 176.0 |
+| `t`: every identity at its committed capacity: the tree (`2^23`), the leaves times `Z_act` (memory `2^21`, `SHA3` `1.9M`, …), `Q_W` (`2^21`), the unused blocks; `Σ deg = 17,653,749 ≈ 2^24.07` | `Σ deg/|E|` | **143.2** | 143.2 |
+| `ρ`: `C1`'s 116 relations combined (`C2` 14, `F` 2) | `115/|E|` | 160.4 | 160.4 |
+| `λ`: 3 claims | `2/|E|` | 166.3 | 166.3 |
+| the batch: 27 rounds of degree 2 (π1-rec3: 13 pairs of degree 8 and one plain round, narrow challenges) | `2/|E|` each (`8/2^160`, `2/2^160`) | 166.3 | **132.3** |
 
-The `t` round dominates: its degree sum, the largest, is multiplied by `L_1 L_2`.
+The weakest round is `t` on the main line and the narrow pairs at π1-rec3. At 32 and 400 signatures the main line's
+`t` keeps 143.3 and 142.5 bits; π1-rec3's pairs 131.1 and 133.4.
 
-**The PCS (§13, F3).** WHIR is leanVM's, unchanged, at about 128.97 certified bits an opening, and the main line
-makes 3 openings (`C1`, `C2`, `F`): a plain union gives about 127.4 bits. In the query-bounded random-permutation
-model of the end theorems, the openings' Fiat–Shamir transcripts are domain-separated (each seeded by its own layout
-word and claims) and share the adversary's `Q` queries, so their total is about `(Q + 3)·ε` rather than `3·Q·ε`:
-about 129 bits for `Q ≫ 3`. The setup's `F` cannot join a proof commitment without losing its `L = 1`.
+**Fiat–Shamir and the PCS (§13, F3).** WHIR is leanVM's, unchanged. In the query-bounded random-permutation model of
+the end theorems an adversary of `Q` permutation queries breaks π1 with probability about `Q (ε_WHIR + ε_round)`,
+`ε_round` the weakest round after its lists: the openings' Fiat–Shamir transcripts are domain-separated (each seeded
+by its own layout word and claims) and share the adversary's queries, so the three openings (`C1`, `C2`, `F`) are
+charged once, at `WhirBridge`'s exact certified bound `269 · 2^-137 = 2^-128.93` a query (the setup's `2^23` stack is
+certified too). That is **128.93 bits** as `Q/ε` on the main line and **128.79** at π1-rec3 (`Q = 2^64`); 128.64 and
+128.86 at π1-rec3's 32 and 400 signatures. The setup's `F` cannot join a proof commitment without losing its `L = 1`.
 
-Not counted: Fiat–Shamir (Keccak-256 as a random oracle) and Flock's fixed zerocheck coordinates (leanVM's).
-
-**π1-rec3** (`KECCAK_REC3`; `docs/leanvm/rec/SPEC-REC.md` §1.4 and `SPEC-POINTS.md`, analysis there, not proven):
-`α` as `(c, c², c⁴, c⁸)` puts the bus at degree 16 a factor in `(β, c)`; Flock's zerocheck coordinates as successive
-squares of one `c` give a polynomial of degree about `2^(log_n - k - 7)` in `c`; the batching sumcheck's narrow
-challenges make a round of degree `d` err with probability `d/2^160`.
-
-**Lean.** `formal/UniKeccak` transcribes this verifier (main line and π1-rec3) and agrees with the Rust on the
-differential vectors; its knowledge-soundness and completeness statements for the Keccak VM are stated, not proved
-(`formal/README.md`, "The Keccak VM").
+**Lean.** `formal/UniKeccakSound` proves knowledge soundness of both variants at the reference shape, in one random
+permutation and with an explicit extractor: **128.87 bits** (main line) and **128.49** (π1-rec3) as `Q/ε` at
+`Q ≤ 2^64` (`uniBound128`); completeness is `formal/UniKeccakComplete`'s (`δ < 2^-169`). The calculator reproduces
+`uniBound128` from its terms, and the gap to its own figures is the Lean's coarser rounds: it caps every round's error
+before the lists at one bound, `2^32/|E|` on the main line (the largest is `t`'s `2^24.07/|E|`) and `2^35/|E|` at
+π1-rec3 (its narrow pairs' `8/2^160`, exactly), and multiplies every round, those before `C2` included, by the largest
+certified list squared, `9,952² ≈ 2^26.6` (against `4,473 · 6,296 ≈ 2^24.7`). WHIR's `2^-128.93` a query is the same
+in both; the rounds cost the Lean 0.06 bits (main line) and 0.44 (π1-rec3), the calculator 0.00 and 0.14.
 
 ## 10. Gas
 
@@ -362,8 +364,8 @@ signatures, `KECCAK_REC3`, on an Apple M4 Max: 3.65 s warm (median of 3), 6.86 G
    - one shape class per contract.
 
    `Balanced` (a `List.Perm`) follows from the heap's root as leanVM's GKR root gives it.
-5. **The soundness calculator** models the BLAKE2s VM (§9) and is an analysis, not a proof: it assumes the batching
-   sumcheck and `ρ` as standard and Fiat–Shamir over Keccak-256.
+5. **The soundness calculator** (§9) is an analysis, not a proof: it reads the degrees off the code, at every
+   workload. The proof is the Lean's (§9), at the reference shape only, with a coarser bound.
 6. **The gas is a function of the shape.** The code is straight-line with fixed-cost opcodes, so a valid proof costs
    what a sample stream of its length costs; the real proofs confirm it.
    - Each measuring build jumps over failed checks: one `JUMPDEST` a check and a call, subtracted.
@@ -403,9 +405,9 @@ The design's refinements, by the labels the code cites. Each entry states the ru
    them, and `q_flock`'s slot terms share the eq of their instance coordinates (only their 11 slot bits' factors
    differ).
 
-5. **Lever 4a** (a matrices' reduction run inside the batching sumcheck) belonged to the BLAKE2s block, whose
-   lincheck terminal was reduced to claims on committed matrices. The Keccak-f block's terminal is computed from its
-   structure in Flock (§7), so the batching sumcheck is the stacks' alone.
+5. **Lever 4a** (a matrices' reduction run inside the batching sumcheck) is not needed: it reduces a lincheck
+   terminal to claims on committed matrices, and the Keccak-f block's terminal is computed from its structure in
+   Flock (§7). No matrix is committed, and the batching sumcheck is the stacks' alone.
 
 6. **F1: the row counts are announced.** The contract is built for the heights (one contract per shape class:
    heights, `log_memory`, `log_bytecode`), not for the row counts. The stream starts with the six tables' row counts,
@@ -425,28 +427,26 @@ The design's refinements, by the labels the code cites. Each entry states the ru
    `Shape::validate` rejects only a memory of one cell, a height of 32 or more, and a `SHA3` height below 7 (Flock's
    seven fixed zerocheck coordinates; `VerifierError::InvalidShape`).
 
-8. **F2: the IV, the layout words, the setup roots.**
-   - `contract::SetupRoots`: the roots the IV binds are code constants: `F` (from the program and the shape,
-     `prover::setup::f_root`; `REFERENCE.f` is the 128-signature shape's, `067244be…`) and two fixed words `a0`,
-     `b0` (`93cd9a03…`, `c0755650…`), the roots of leanVM 42422001's BLAKE2s matrices, which no Keccak VM proof
-     opens; they stay in the preimage so that the IV's bytes, the committed vectors and their Lean transcription are
-     unchanged. The gas reports use `REFERENCE` for every shape (the gas does not depend on the roots); a deployment
-     for another shape takes its own `F`.
+8. **F2: the IV, the layout words, the setup root.**
+   - `contract::SetupRoots`: the root the IV binds is a code constant, the setup commitment `F`'s (from the program
+     and the shape, `prover::setup::f_root`; `REFERENCE.f` is the 128-signature shape's, `067244be…`). The gas
+     reports use `REFERENCE` for every shape (the gas does not depend on the root); a deployment for another shape
+     takes its own `F`.
    - `PCS_OPEN`'s layout word (`contract::layout_word`) is a 32-byte constant: the shape's 8 bytes (`log_memory`,
      `log_bytecode`, the six heights), the opening's code (`0x5501` `C1`, `0x5502` `C2`, `0x5503` the setup, bytes
      22..24), the stack's `vars` (byte 24) and `placed` (bytes 25..32, the words the blocks fill). WHIR's verifier
-     reads `vars` and `placed` from it. `contract::layout_words` adds two fixed words (codes `0x5504`, `0x5505`,
-     `vars` 28, `placed` `2^28`) after the three openings'.
+     reads `vars` and `placed` from it. `contract::layout_words` gives the three openings' words, `C1`, `C2`, the
+     setup.
    - `verifier::layouts(shape)` is public (and `Reduced::layouts`): the stacks depend on the shape alone.
-   - The contract's IV is `keccak("leanVM-univar-iv" ‖ program IV ‖ F ‖ a0 ‖ b0 ‖ shape bytes ‖ the five layout
-     words ‖ variant bytes)` (`contract::contract_iv`; the variant bytes are `"keccak-vm"`, the skip and the
-     Fiat–Shamir shape's code); the seed is `keccak(name ‖ IV ‖ public input)`. It costs no gas.
+   - The contract's IV is `keccak("leanVM-univar-iv" ‖ program IV ‖ F ‖ shape bytes ‖ the three layout words ‖
+     variant bytes)` (`contract::contract_iv`; the variant bytes are `"keccak-vm"`, the skip and the Fiat–Shamir
+     shape's code); the seed is `keccak(name ‖ IV ‖ public input)`. It costs no gas.
    - Prover: seed the transcript with `contract_iv(shape, variant, program IV, roots)`; call `PCS_OPEN` with the
      layout words.
 
 9. **F3, F6, F7, F8** (documentation):
-   - F3: §9's PCS figure (WHIR openings at 128.97 bits, by a plain union and in the query-bounded model); shapes
-     below `2^24` have no certified list.
+   - F3: §9's PCS figure (the three openings charged once at `269 · 2^-137` a query, in the query-bounded model);
+     proof stacks below `2^24` have no certified list.
    - F6: §2's restriction formula takes the high factors only (`B_(k - k mod 2^r)(o)` would add the constant
      `Π_(l<r)(1 + w_l(o))`); §12: the extracted witness is `C1` as committed.
    - F7: §4 and `contract.rs`: the public input's word order.
@@ -470,8 +470,8 @@ The design's refinements, by the labels the code cites. Each entry states the ru
     below the slots (the hashing's scratch, free between nodes). The parity tests check it word for word against the
     Rust (`ring_tower::weight_at`). The report's `FIELD_MUL` count is the graph's, without the kernel's.
 
-12. **Lever 5a** (extension B, a bit-slice claim type on the ABI) was removed with the BLAKE2s VM; `PCS_OPEN` takes
-    point claims, or weighted claims under extension W.
+12. **Lever 5a** (extension B, a bit-slice claim type on the ABI) is not built: no claim of the Keccak VM's π1 is on
+    bit slices. `PCS_OPEN` takes point claims, or weighted claims under extension W.
 
 13. **The Lean transcription's findings** (documentation):
     - `weight_at` keys `q_flock`'s slot rows by their point (entry 4), not by the slot;
@@ -489,7 +489,7 @@ Frobenius conjugates and the batch's point is random in `E`. The next is Flock's
 400 signatures). `keccak_gas_report` prints every phase at 128 and 400 signatures.
 
 **Measured vs modelled.** Every gas and calldata figure is measured on revm (the measuring build's checks
-subtracted). Modelled: the public input's byte swap (about 110 gas, not built) and the PCS's 128.97 bits an opening.
+subtracted). Modelled: the public input's byte swap (about 110 gas, not built). The soundness figures are §9's.
 
 ### Dropped levers
 

@@ -12,9 +12,8 @@ Every number is marked:
 
 - **measured**: by `crates/leanvm/rec`'s tests (§10, §11), on the Keccak VM's committed real proofs or on the recorded
   verifier at a shape;
-- **modelled**: computed by `params/leanvm_rec_params.py`. The calculator is not yet updated for the Keccak VM: its π1
-  figures are the BLAKE2s VM's π1 at 1,000 signatures (the line this recursion was first built on). Where a modelled
-  figure depends only on π2's size (`N = 2^24`) and WHIR's stacks, it holds for the Keccak VM too, and is quoted as such.
+- **modelled**: computed by `params/leanvm_rec_params.py` (`python3 -I`), from the measured counts: the soundness
+  figures (§5), the other arithmetizations' sizes (§3), the batch's rounds of `k` variables (`SPEC-POINTS.md` §2.4).
 
 ```sh
 export RUSTFLAGS="-C target-cpu=native"
@@ -423,39 +422,43 @@ The protocol as built is `PI2.md` §2. In outline:
 - **The contract**, in order: reads the stream; runs π2's verifier; calls `PCS_OPEN` for π1's 3 claims (3 calls, with
   π1's roots, layout words and setup root); then for π2's (`W`, the setup, `Q`).
 
-## 5. Soundness (modelled)
+## 5. Soundness (modelled; the Lean bounds)
 
 Each challenge's error is its Schwartz–Zippel bound times the lists of the commitments it is drawn against (WHIR
-takes no OOD sample at level 0). The setup is honest, so `L = 1`.
+takes no OOD sample at level 0). The setup is honest, so `L = 1`. `params/leanvm_rec_params.py` prints these rounds;
+an adversary of `Q` permutation queries breaks a layer with probability about `Q (ε_WHIR + ε_round)`, its openings
+charged once at `269 · 2^-137 = 2^-128.93` a query and `ε_round` its weakest round after the lists
+(`docs/leanvm/univariate/SPEC.md` §9).
 
-**π2's rounds** depend only on `N = 2^24` and the stacks of §2.5, so the calculator's figures hold for the Keccak VM's
-π2:
+**π2's rounds**, as the Lean states them (`formal/RecPiop`'s `err`), at `N = 2^24` over the stacks of §2.5:
 
-| round | alone | after the union |
-|---|---:|---:|
-| the copy argument `(α, β)` (`4N/2^192`, over `W`'s list 9,952) | 166.0 | 152.7 |
-| `γ`, the four-limb ports' fingerprints, degree 1 (the statement and 2 roots) | 190.4 | 177.1 |
-| `t`, the identity of degree `5N` (over `W` and `Q`: `2^25.1`) | 165.7 | **140.6** |
-| `ρ`, `W`'s fold (degree 15) over `W`'s list | 188.1 | 174.8 |
+| round | error | alone | after the lists |
+|---|---|---:|---:|
+| the copy argument `(α, β, γ)`: `2N` fractions and the three four-limb ports' fingerprints (degree 1 in `γ`), over `W`'s list 9,952 | `(3N + 2)/2^192` | 166.4 | 153.1 |
+| `t`, the identity of degree `< 5N`, over `W`'s and `Q`'s lists (9,952 · 3,564 = `2^25.1`) | `(5N − 1)/2^192` | 165.7 | **140.6** |
+| `ρ`, `W`'s fold (degree 15), over both lists | `15/2^192` | 188.1 | 163.0 |
 
-**π1-rec3's rounds** are the main line's (`docs/leanvm/univariate/`), except:
+With its three openings once, π2 keeps **128.93 bits** as `Q/ε` at `Q = 2^64`: `RecCompose.pi2Bound`, which
+`formal/RecCompose` proves (`pi2Bound_le_bits`), is this bound.
 
-- the bus `(α = (c, c², c⁴, c⁸), β)`: degree 16 a fingerprint factor (§1.4);
-- Flock's eq point as powers: degree `2^n − 1` over its `n` derived coordinates (§1.4);
+**π1-rec3's rounds** are the main line's (`docs/leanvm/univariate/SPEC.md` §9, at 128 signatures, `C1`'s list 4,473
+and `C2`'s 6,296), except:
+
+- the bus `(α = (c, c², c⁴, c⁸), β)`: degree 16 a fingerprint factor (§1.4): 154.3 bits after `C1`'s list;
+- Flock's eq point as powers: degree `2^22 − 1` over its 22 derived coordinates (§1.4): 157.9;
 - the batch: a pair of degree 8 with a narrow challenge errs with probability `8/2^160`, a plain round `2/2^160`,
-  over `C1`'s and `C2`'s lists (`SPEC-POINTS.md` §5).
+  over `C1`'s and `C2`'s lists (`SPEC-POINTS.md` §5): **132.3**, π1-rec3's weakest round (`t` is 143.2).
 
-The calculator computes these for the BLAKE2s VM's π1 (1,000 signatures, where the narrow batch is the weakest round,
-129.0 bits after the lists, and `t` 142.3); it is not yet updated for the Keccak VM's stacks and lists.
-
-**The openings.** WHIR's openings are 6: π1's 3 and π2's 3. A plain union costs `log₂ 6 = 2.6` bits below the
-weakest opening (the calculator: 128.97 bits each, 126.4 together; about 129 in the query-bounded random-permutation
-model).
+With its three openings once, π1-rec3 keeps 128.79 bits as `Q/ε`; the Lean bound
+(`UniKeccakSound.uniKnowledgeSoundnessKeccakRec3_closed`) is 128.49, its rounds capped at `2^35/|E|` and multiplied by
+9,952² (`docs/leanvm/univariate/SPEC.md` §9 explains the gap).
 
 **The composition.** π2's knowledge soundness gives a π1-rec3 transcript on which π1's verifier (exactly its graph,
 Keccak-256 bit for bit) outputs the claimed claims. Those claims are then opened by `PCS_OPEN`, and π1's soundness
-applies. The errors add. The Lean statement of this composition is `formal/RecCompose` (`formal/README.md`, "The
-recursive verifier").
+applies. The errors add: π2's, π1-rec3's and its merge hazard's (`2^16/|E|` a query, `RecGraphKeccak.hazard_probK`),
+about **127.9 bits** as `Q/ε` at `Q = 2^64` with the calculator's π1-rec3 rounds, 127.7 with the Lean's. The Lean
+statement of this composition is `formal/RecCompose` (`formal/README.md`, "The recursion's end theorems"), with
+π1-rec3's two terms at the real Keccak-f[1600].
 
 **Fiat–Shamir.** Both layers are random-oracle Fiat–Shamir over Keccak-256. A cheating prover can grind π1's
 challenges offline, as it could on chain: the per-query bounds above hold, with `Q` queries.
@@ -493,8 +496,8 @@ The standard price binds, 5.8K above the floor at the reference shape: execution
 ## 7. Build history
 
 The plan's milestones are done: R2 (π2's circuit compiled from the recorded verifier, its witness from real proofs:
-§10) and R3 (π2's prover, verifier and contract, measured end to end: §11, `PI2.md`). The recursion was first built and
-optimised on the BLAKE2s VM's π1 (π1-rec, then π1-rec2), then moved to the Keccak VM, which replaced it.
+§10) and R3 (π2's prover, verifier and contract, measured end to end: §11, `PI2.md`). The Fiat–Shamir shapes π1-rec and
+π1-rec2 (`FsShape::Rec`, `Rec2`) are the steps that led to π1-rec3 (§12).
 
 ## 8. Margins and limits
 
@@ -507,7 +510,8 @@ optimised on the BLAKE2s VM's π1 (π1-rec, then π1-rec2), then moved to the Ke
 3. **The claims dominate when `c` is large**: 7 claims a proof.
 4. **EIP-7976.** The calldata alone is 62,720 at 64 a byte.
 5. **WHIR's certified lists** exist for `2^24..2^28` stacks only; π2's `W` and setup are `2^24` and `2^25`.
-6. **Modelled figures** (§5's π1 rounds) are the BLAKE2s VM's until the calculator is updated.
+6. **The Lean bounds are at the reference shape.** At 400 signatures the soundness figures are the calculator's
+   (π1-rec3: 133.4 bits for its narrow pairs after `C1`'s and `C2`'s `2^28` lists, 128.86 with its openings).
 
 ## 9. Measured vs modelled
 
@@ -667,8 +671,7 @@ detailed in `PI2.md` §8–§9.
 3. **The fold's siblings** (π2's verifier only). The row's cells fold with half the products (`ω_{2k+1} = ω_{2k} + 1`).
 4. **No claims on `A0`, `B0`** (π1's claims). Flock's lincheck terminal is computed by π1's verifier from the Keccak-f
    block's structure (`keccak_flock::structured_terminal`, about 3K `E` operations), so the matrices are never
-   committed and π1's claims are `C1`, `C2`, `F` at the batch's point. (On the BLAKE2s VM this took π1-rec2, whose
-   terminal walked the BLAKE2s circuit inside π2.)
+   committed and π1's claims are `C1`, `C2`, `F` at the batch's point.
 5. **`PCS_OPEN`'s inputs written once** (the contract only: `evm_link`'s `reuse`; π2's call order `W`, setup, `Q`).
 6. **The zero checks' coset in closed form** (π2's circuit: the zero ports first, padded to a power of two; π2's
    verifier).

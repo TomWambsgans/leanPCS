@@ -97,7 +97,8 @@ both), so `k < 6` needs that parameter split.
   each, the lincheck's batching `α` (degree 3), and the ring map's `6/|E|` in tower order (leanVM's order:
   `2^31/|E|` by Schwartz–Zippel). In all about `2^7/|E|` at these sizes.
 - With π1-rec3 the zerocheck's sampled coordinates are successive squares of one challenge, so their eq polynomial has
-  degree about `2^(log_n - k - 7)` in it (`docs/leanvm/rec/SPEC-REC.md` §1.4; analysis there, not proven).
+  degree `2^(log_n - k - 7) - 1` in it (`docs/leanvm/rec/SPEC-REC.md` §1.4): 157.9 bits after `L_1` at 128
+  signatures (`SPEC.md` §9), within the Lean bound (`formal/UniKeccakSound`).
 - **The terminal must be checked.** leanerVM proves that dropping it loses all security
   (`linEnd_unchecked_no_security`, mumbai `f0393df4`, `ToArkLib/Flock/Security.lean`). Here the contract checks it on
   the sent slices; the slices are then bound to `q_flock` by the ring switch's claim, which the `C1` opening proves.

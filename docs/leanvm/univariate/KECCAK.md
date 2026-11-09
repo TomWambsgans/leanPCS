@@ -21,7 +21,7 @@ The gas is a function of the shape, not of the proof: the real proofs run at the
 ## The statement
 
 - **The VM** is leanVM's Keccak branch, as it stood before its switch to a GKR (commit `9d50c92a3`, "flock: fix what
-  the three-step block left stale"). It is leanVM `42422001` with its BLAKE2S table replaced by a `SHA3` table:
+  the three-step block left stale"). It is leanVM `42422001`'s five instruction tables and a `SHA3` table, opcode 5:
   - one row is one Keccak-f step over a thirteen-cell sponge state;
   - the four `m` cells are addressed independently, then come the `tail` run of four cells and the `cap` run of five;
   - thirteen cells are read and thirteen written, each holding two lanes and a zero top (`memory_128`), except the
@@ -229,8 +229,9 @@ batching 0.87 s, `C1` commit 0.86 s, `C2` commit 0.64 s, tree 0.34 s, constraint
      at a time. It would speed up every transform: `C1`'s, the tree, the leaves, `Q_W`.
    - Flock's level-0 bit pass: two kernels were tried and neither was faster. One halved the products; the other read
      L1-resident nibble tables. Its cost is per-quad overhead, not multiplications or cache misses.
-3. **Lean.** `formal/UniKeccak` transcribes the verifier and agrees with the Rust on the differential vectors; the
-   knowledge soundness and completeness of the univariate verifier for the Keccak VM (a port of `UniSound` and
-   `UniComplete`) and the recursion's end theorems for the Keccak π1 are not done (`formal/README.md`, "The Keccak
-   VM").
-4. **The soundness calculator** (`params/leanvm_univariate_params.py`) still models the BLAKE2s VM (`SPEC.md` §9).
+3. **Lean.** The verifier's knowledge soundness and completeness (main line and π1-rec3), and the recursion's
+   knowledge soundness as a reduction to π1-rec3's at Keccak-f[1600], are proved at the reference shape
+   (`formal/README.md`); the model gap between the two and closed bounds at other shapes remain.
+4. **Soundness at other shapes** is modelled only: `params/leanvm_univariate_params.py` gives every workload's rounds
+   (`SPEC.md` §9: at 32 and 400 signatures the main line keeps 128.93 bits with the openings, π1-rec3 128.64 and
+   128.86).
