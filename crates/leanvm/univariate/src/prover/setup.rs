@@ -19,7 +19,7 @@ use crate::verifier::Shape;
 pub fn f_stack(shape: &Shape, setup: &SetupPolys) -> Stack {
     let mut stack = Stack::new(StackLayout::new(&setup_columns(shape)));
     let n = 1usize << shape.log_bytecode;
-    let tuple: Vec<F64> = (0..16 * n).map(|i| setup.slots[i % 16].b[i / 16]).collect();
+    let tuple: Vec<F64> = parallel::map_collect(16 * n, |i| setup.slots[i % 16].b[i / 16]);
     stack.put_k(Column::BytecodeTuple, &tuple);
     stack.put_k(Column::Address, &setup.address.b);
     stack

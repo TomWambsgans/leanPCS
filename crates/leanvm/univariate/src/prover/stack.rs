@@ -75,9 +75,11 @@ impl Stack {
         let lane = 1usize << (layout.vars - super::opening::LANE_FOLD);
         let used = layout.words() as usize;
         let len = used.div_ceil(lane).max(1) * lane;
+        // Zeroed by the workers: one thread's `vec![F64::ZERO; len]` (a memset of C1's 620 MB at the reference
+        // shape, C2's 340 MB) took 12 and 6 ms.
         Self {
             layout,
-            words: vec![F64::ZERO; len],
+            words: quotient::ntt::zeros(len),
         }
     }
 
