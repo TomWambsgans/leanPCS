@@ -119,6 +119,8 @@ pub fn extension_offset(log_n: usize) -> F64 {
 /// The setup: `σ` and `κ` on the prover's extension coset `D` ([`extension_offset`]; fixed by the circuit, so
 /// computed once here, not per proof), and the committed table of their `B` coefficients.
 pub struct Setup {
+    /// `σ`'s values on `V_m`, the points `ω_(σ(i))`.
+    pub sigma_on_v: Vec<F64>,
     pub sigma_on_d: Vec<F64>,
     pub kappa_on_d: Vec<F64>,
     pub table: Table,
@@ -134,8 +136,8 @@ impl Setup {
     pub fn new(circuit: &Circuit) -> Self {
         circuit.validate().unwrap_or_else(|e| panic!("the circuit is not valid: {e}"));
         let (m, n) = (circuit.log_n, circuit.n());
-        let mut sigma: Vec<F64> = parallel::map_collect(n, |i| point(circuit.sigma[i] as usize));
-        ntt::coefficients(&mut sigma, F64::ZERO);
+        let sigma_on_v: Vec<F64> = parallel::map_collect(n, |i| point(circuit.sigma[i] as usize));
+        let sigma = ntt::coefficients_cols_of(&[&sigma_on_v], F64::ZERO).pop().expect("one column");
         let mut kappa = circuit.kappa.clone();
         ntt::coefficients(&mut kappa, F64::ZERO);
         // The halves `κ` and `κ + σ` (PI2.md §9): the claim at the last coordinate `β` is `κ(t) + β σ(t)`, the one value
@@ -155,6 +157,7 @@ impl Setup {
         drop((kb, skb));
         let offset = extension_offset(m);
         Self {
+            sigma_on_v,
             sigma_on_d: on_extension(&sigma, m, offset),
             kappa_on_d: on_extension(&kappa, m, offset),
             table,
@@ -931,6 +934,7 @@ fn quotient_on_extension(
 #[allow(clippy::too_many_arguments)]
 fn h_on_v(
     circuit: &Circuit,
+    sigma_on_v: &[F64],
     w: &[F64],
     alpha: F192,
     beta_: F192,
@@ -977,6 +981,8 @@ fn h_on_v(
     let (alpha8, beta8) = (Ex8::splat(alpha), Ex8::splat(beta_));
     let one8 = Ex8::splat(F192::ONE);
     let zero8 = Ex8::splat(F192::ZERO);
+    let lane_x = Kx8::new(std::array::from_fn(|l| point(l << r)));
+    let cell_x: Vec<F64> = (0..width).map(point).collect();
     chunks_mut4(o0, o1, o2, p, run, |chunk, o0, o1, o2, op| {
         let start = chunk * run;
         let mut den: Vec<Ex8> = Vec::with_capacity(run / 8);
@@ -988,9 +994,11 @@ fn h_on_v(
             for (c, cell) in cells.iter_mut().enumerate() {
                 *cell = Kx8::new(std::array::from_fn(|l| w[at(l, c)]));
             }
+            // `ω_i` is linear in `i`'s bits: `ω_(row0 2^r) + ω_(l 2^r) + ω_c` (`row0` a multiple of 8, `c < 2^r`).
+            let x_tile = point(row0 << r);
             for c in 0..width {
-                let x = Kx8::new(std::array::from_fn(|l| point(at(l, c))));
-                let sigma = Kx8::new(std::array::from_fn(|l| point(circuit.sigma[at(l, c)] as usize)));
+                let x = lane_x + Kx8::splat(x_tile + cell_x[c]);
+                let sigma = Kx8::new(std::array::from_fn(|l| sigma_on_v[at(l, c)]));
                 let kappa = Kx8::new(std::array::from_fn(|l| circuit.kappa[at(l, c)]));
                 let d_pull = alpha8 + Ex8::from_k(cells[c]) + beta8.mul_k(x);
                 let rest = alpha8 + Ex8::from_k(kappa) + beta8.mul_k(sigma);
@@ -1204,7 +1212,17 @@ pub fn prove_with(
         let (h1, rest) = rest.split_at_mut(n);
         let (q1, rest) = rest.split_at_mut(2 * n);
         let (h2, q2) = rest.split_at_mut(n);
-        h_on_v(circuit, w, alpha, beta_, &gammas, run, [&mut *h0, &mut *h1, &mut *h2], p);
+        h_on_v(
+            circuit,
+            &setup.sigma_on_v,
+            w,
+            alpha,
+            beta_,
+            &gammas,
+            run,
+            [&mut *h0, &mut *h1, &mut *h2],
+            p,
+        );
         // `h = T / (d_pull d_push)` at the holes ([`holes`]: zero for a witness), `d_push = α + w + βσ` there.
         for &(i, t) in holes.iter().filter(|(_, t)| *t != F192::ZERO) {
             let value = alpha + F192::from(w[i]);
