@@ -1064,9 +1064,9 @@ fn bit_round_pair_kernel<const CHUNKS: usize>(
 
 /// [`bit_round_pair_kernel`] with the GFNI fold's limb-major registers multiplied in lanes (this repository's
 /// addition): a block's 64 positions are folded in quad order ([`BitFold::fold_quads`]), so that register `4 h + j`
-/// holds position `j` of quads `8 h..8 h + 8`, one quad a lane; a quad's eight products are then eight lane-wise
-/// products of eight quads, and its eq products eight unreduced lane products. No values stored, no repacking: the
-/// same sums.
+/// holds position `j` of quads `8 h..8 h + 8`, one quad a lane; the eq weights scale the four `a` registers, and a
+/// quad's eight products are then eight unreduced lane-wise products of eight quads. No values stored, no repacking:
+/// the same sums.
 #[cfg(all(
     target_arch = "x86_64",
     target_feature = "avx512f",
@@ -1202,22 +1202,28 @@ mod pair_lanes {
                         let [a0, a1, a2, a3] = [0, 1, 2, 3].map(|j| at(&fa, 4 * h + j));
                         let [b0, b1, b2, b3] = [0, 1, 2, 3].map(|j| at(&fb, 4 * h + j));
                         let [c1, c2, c3] = [1, 2, 3].map(|j| at(&fc, 4 * h + j));
+                        // The eq weights go on `a` first (four products), so that every slot is one unreduced
+                        // product, and the C terms three: fifteen products, four reduced, not sixteen, eight.
+                        let e = eq_lanes(&eq_lo[lo_first + 8 * h..], n - 8 * h);
+                        let [a0, a1, a2, a3] = [a0, a1, a2, a3].map(|a| mul(e, a));
                         // Leading coefficients along `u` (positions 0,1 and 2,3) and along `v` (0,2 and 1,3).
                         let (du0, du1, dv0, dv1) = (add(a0, a1), add(a2, a3), add(a0, a2), add(a1, a3));
                         let (eu0, eu1, ev0, ev1) = (add(b0, b1), add(b2, b3), add(b0, b2), add(b1, b3));
-                        let e = eq_lanes(&eq_lo[lo_first + 8 * h..], n - 8 * h);
-                        let slots = [
-                            add(mul(a1, b1), c1),
-                            add(mul(a3, b3), c3),
-                            mul(du0, eu0),
-                            mul(du1, eu1),
-                            add(mul(a2, b2), c2),
-                            mul(dv0, ev0),
-                            mul(dv1, ev1),
-                            mul(add(du0, du1), add(eu0, eu1)),
+                        let pairs = [
+                            (a1, b1),
+                            (a3, b3),
+                            (du0, eu0),
+                            (du1, eu1),
+                            (a2, b2),
+                            (dv0, ev0),
+                            (dv1, ev1),
+                            (add(du0, du1), add(eu0, eu1)),
                         ];
-                        for (acc, s) in acc.iter_mut().zip(slots) {
-                            mul_acc(acc, e, s);
+                        for (acc, (x, y)) in acc.iter_mut().zip(pairs) {
+                            mul_acc(acc, x, y);
+                        }
+                        for (k, c) in [(0, c1), (1, c3), (4, c2)] {
+                            mul_acc(&mut acc[k], e, c);
                         }
                     }
                 }
