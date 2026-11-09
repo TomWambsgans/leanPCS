@@ -47,7 +47,6 @@ fn replay(v: Vector) {
     // The contract binds the proof's setup root `F` (the third call's: its program's and shape's own).
     let roots = SetupRoots {
         f: v.whir_roots[2],
-        ..SetupRoots::REFERENCE
     };
     let recorded = record_verifier_with(&v.shape, variant, Claims::Point, &roots);
     assert_eq!(STREAM_AT + recorded.stream_len, v.calldata.len(), "{}: the calldata is the shape's", v.config);
@@ -70,8 +69,8 @@ fn replay(v: Vector) {
     }
     // The roots the calls name, against the vector's committed roots (its
     // `whir_root`s, the prover's): `C1`'s and `C2`'s words, the stream's bytes, are their `PCS_OPEN` root words
-    // (`machine.rs` decodes them to those roots); the setup roots' words are the hashes as they are, which π2's
-    // contract passes as their root words (`pi1_abi`).
+    // (`machine.rs` decodes them to those roots); the setup root's word is the hash as it is, which π2's
+    // contract passes as its root word (`pi1_abi`).
     assert_eq!(v.whir_roots.len(), v.calls.len(), "{}: the vector has the committed roots", v.config);
     for (k, (input, root)) in v.calls.iter().zip(&v.whir_roots).enumerate() {
         let word: [u8; 32] = input[..32].try_into().expect("a root word");

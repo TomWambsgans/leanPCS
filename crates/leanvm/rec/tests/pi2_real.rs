@@ -55,7 +55,6 @@ fn real(name: &str, layout: Layout) -> (vectors::Vector, Compiled, [u8; 32]) {
     let v = vector(name);
     let roots = leanvm_univariate::contract::SetupRoots {
         f: v.whir_roots[2],
-        ..leanvm_univariate::contract::SetupRoots::REFERENCE
     };
     let recorded = leanvm_univariate::contract::record_verifier_with(
         &v.shape,
