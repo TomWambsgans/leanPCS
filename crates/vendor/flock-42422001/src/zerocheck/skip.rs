@@ -547,6 +547,13 @@ pub fn round1_bytes(a: &[u8], b: &[u8], c: &[u8], m: usize, r_rest: &[F192]) -> 
             let mut folded = [F192::ZERO; super::bit_fold::BLOCK];
             for x_first in (0..lo_size).step_by(4) {
                 let subs = (lo_size - x_first).min(4);
+                // Four `x`s all of zero bytes (the blocks' padding) add nothing: skipped.
+                let first = (x_hi * lo_size + x_first) * block;
+                let span = first..first + subs * block;
+                let zero = |data: &[u8]| data[span.clone()].as_chunks::<8>().0.iter().all(|w| u64::from_ne_bytes(*w) == 0);
+                if zero(a) && zero(b) && zero(c) {
+                    continue;
+                }
                 for sub in 0..subs {
                     let at = (x_hi * lo_size + x_first + sub) * block;
                     let (mut ab, mut cr) = ([0u64; 16], [0u64; 16]);
