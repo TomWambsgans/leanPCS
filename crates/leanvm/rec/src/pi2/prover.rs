@@ -1243,7 +1243,10 @@ pub fn prove_with(
         layout: l.quotient.clone(),
         stack,
     };
-    let quotient_committed = opening::commit(&quotient);
+    // Kept with its codeword (twice the stack, 3.2 GB at `2^24` positions) until its opening, which reads the rows its
+    // first queries open from it rather than encode them again (the opening's largest step but the lane rounds and
+    // the next level's commitment; the commitment takes as long either way).
+    let quotient_committed = opening::commit_keeping_codeword(&quotient);
     writer.send_root(root_scalars(&quotient_committed.root).map(to_e));
     let t = to_f192(writer.sample());
     lap("Q: table, commit", &mut timings);
