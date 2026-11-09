@@ -1,7 +1,8 @@
 // Vendored from leanVM (https://github.com/leanEthereum/leanVM), commit 42422001, file crates/flock/src/zerocheck/multilinear.rs.
 // Changed here: the bit-round kernels also take rows of 1, 2 and 4 bytes (for a univariate skip below 6), and the byte
 // rows have a pass with eq-scaled products' tables (`bit_round_pair_bytes_scaled`, for aarch64) and, with AVX-512, a
-// pass eight quads a step in lanes (`bytes_lanes`); the rest is unchanged. MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and AGENTS.md at the repository root).
+// pass eight quads a step in lanes (`bytes_lanes`), and with GFNI one of GF(2) matrix products (`bytes_gfni`); the
+// rest is unchanged. MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and AGENTS.md at the repository root).
 // Imports changed for crate `flock` on leanVM c445e3d5's `primitives`: `F8`, φ₈, the φ₈ Lagrange weights, the
 // GF(2^8) NTT and the transcript are this crate's modules (src/lib.rs).
 // CREDIT: https://github.com/succinctlabs/flock (flock-core), MIT OR Apache-2.0.
@@ -362,8 +363,6 @@ pub fn bit_round_materialize(
 /// bytes `x`, `y` (the sums of values being the values of the bytes' XOR), read from the table of all 65,536
 /// products instead of multiplied. The rest is [`bit_round_pair_kernel`]'s, the same sums in the same slots.
 pub fn bit_round_pair_bytes(bits: PackedWitness<'_>, weights: &[F192; 8], r_eq: &[F192], padding: &PaddingSpec) -> RoundPair {
-    let values = byte_values(weights);
-    let products: Vec<F192> = values.iter().flat_map(|&x| values.iter().map(move |&y| x * y)).collect();
     let [a, b, c] = [bits.a, bits.b, bits.c];
     let n_quads = a.len() / 4;
     assert!(n_quads >= 1 && b.len() == a.len() && c.len() == a.len());
@@ -374,6 +373,24 @@ pub fn bit_round_pair_bytes(bits: PackedWitness<'_>, weights: &[F192; 8], r_eq: 
     // A quad covers 4 bytes, 32 bits.
     let (quad_in_block_mask, live_quads) = padding_pairs(padding, 4);
     let live = |quad: usize| (quad & quad_in_block_mask) < live_quads;
+    #[cfg(all(
+        target_arch = "x86_64",
+        target_feature = "avx512f",
+        target_feature = "avx512bw",
+        target_feature = "avx512vbmi",
+        target_feature = "gfni",
+        target_feature = "vpclmulqdq"
+    ))]
+    if lo_size.is_multiple_of(8) {
+        let sums = bytes_gfni::sums(bits, weights, &eq_lo, &eq_hi, (quad_in_block_mask, live_quads));
+        let split_v = |v0: F192, v1: F192| v0 + r_v * (v0 + v1);
+        return RoundPair {
+            first: (split_v(sums[0], sums[1]), split_v(sums[2], sums[3])),
+            second: [[sums[4], sums[1], sums[3]], [sums[5], sums[6], sums[7]]],
+        };
+    }
+    let values = byte_values(weights);
+    let products: Vec<F192> = values.iter().flat_map(|&x| values.iter().map(move |&y| x * y)).collect();
     #[cfg(all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "vpclmulqdq"))]
     if lo_size.is_multiple_of(8) {
         let sums = bytes_lanes::sums(bits, &values, &products, &eq_lo, &eq_hi, (quad_in_block_mask, live_quads));
@@ -548,6 +565,296 @@ mod bytes_lanes {
             },
             |x, y| std::array::from_fn(|i| x[i] + y[i]),
         )
+    }
+}
+
+/// [`bit_round_pair_bytes`]' eight sums as GF(2) matrix products on GFNI (this repository's addition). With
+/// `T[x] = Σ_s x_s w_s`, a slot's product is `T[x] T[y] = Σ_(s,t) x_s y_t w_s w_t`, so its eq-weighted sum over quads
+/// is `Σ_(s,t) w_s w_t M[s, t]` with `M[s, t] = Σ_quad eq(quad) x_s y_t`: 64 sums of eq values over the quads where
+/// two bits are set, which are GF(2)-linear in the bits. Eight quads' bits `x_s y_t` are a byte, and its 24 output
+/// bytes are 24 affine instructions against the eight eq values' bit matrices (one per byte of an `F192`), one
+/// instruction for the 64 pairs `(s, t)` at once; the C terms `Σ_s w_s Σ eq z_s` are three slots of 8 rows the same
+/// way. A task's 64 rows are contracted with `w_s w_t` once, in lanes. No products' table and no gathers: the same
+/// sums.
+#[cfg(all(
+    target_arch = "x86_64",
+    target_feature = "avx512f",
+    target_feature = "avx512bw",
+    target_feature = "avx512vbmi",
+    target_feature = "gfni",
+    target_feature = "vpclmulqdq"
+))]
+mod bytes_gfni {
+    use super::PackedWitness;
+    use core::arch::x86_64::*;
+    use primitives::field::{F64, F192};
+
+    /// A register of eight 128-bit products (even lanes' and odd lanes' halves).
+    type U = [__m512i; 2];
+
+    #[inline(always)]
+    fn clmul(a: __m512i, b: __m512i) -> U {
+        // SAFETY: the module's target features are enabled at compile time.
+        unsafe { [_mm512_clmulepi64_epi128::<0x00>(a, b), _mm512_clmulepi64_epi128::<0x11>(a, b)] }
+    }
+
+    #[inline(always)]
+    fn xor(a: __m512i, b: __m512i) -> __m512i {
+        // SAFETY: as above.
+        unsafe { _mm512_xor_si512(a, b) }
+    }
+
+    #[inline(always)]
+    fn xor_u(a: U, b: U) -> U {
+        [xor(a[0], b[0]), xor(a[1], b[1])]
+    }
+
+    /// The sum of a register's eight 128-bit products, reduced in the base field (`x^64 = 0x1B`).
+    fn fold(u: U) -> F64 {
+        // SAFETY: a register is eight qwords.
+        let w: [u64; 8] = unsafe { std::mem::transmute(xor(u[0], u[1])) };
+        let (lo, hi) = (w[0] ^ w[2] ^ w[4] ^ w[6], w[1] ^ w[3] ^ w[5] ^ w[7]);
+        F64(lo) + F64(hi) * F64(primitives::field::gf2_64::R64)
+    }
+
+    /// Eight `F192` lanes, limb-major.
+    type Lanes = [__m512i; 3];
+
+    fn lanes(x: [F192; 8]) -> Lanes {
+        let limb = |l: usize| -> [u64; 8] { std::array::from_fn(|i| [x[i].c0, x[i].c1, x[i].c2][l]) };
+        [0, 1, 2].map(|l| qwords(limb(l)))
+    }
+
+    /// `acc += Σ_lanes a b`, unreduced: Karatsuba's six products, folded by `y^3 = y + 1`.
+    #[inline(always)]
+    fn mul_acc(acc: &mut [U; 3], a: &Lanes, b: &Lanes) {
+        let (p0, p1, p2) = (clmul(a[0], b[0]), clmul(a[1], b[1]), clmul(a[2], b[2]));
+        let p01 = clmul(xor(a[0], a[1]), xor(b[0], b[1]));
+        let p02 = clmul(xor(a[0], a[2]), xor(b[0], b[2]));
+        let p12 = clmul(xor(a[1], a[2]), xor(b[1], b[2]));
+        let p0p1 = xor_u(p0, p1);
+        acc[0] = xor_u(acc[0], xor_u(p0p1, xor_u(p2, p12)));
+        acc[1] = xor_u(acc[1], xor_u(xor_u(p0, p01), p12));
+        acc[2] = xor_u(acc[2], xor_u(p0p1, p02));
+    }
+
+    /// The 8×8 bit transpose: bit `i` of byte `b` of the result is bit `b` of byte `i` of `a`.
+    fn transpose_bits(a: u64) -> u64 {
+        let mut t = 0u64;
+        for i in 0..8 {
+            for b in 0..8 {
+                t |= (a >> (8 * i + b) & 1) << (8 * b + i);
+            }
+        }
+        t
+    }
+
+    /// Transpose an 8x8 matrix of qwords: lane `r` of `out[c]` is lane `c` of `r[r]` (as `primitives`' `x8`).
+    #[inline(always)]
+    fn transpose_qwords(r: [__m512i; 8]) -> [__m512i; 8] {
+        // SAFETY: the module's cfg enables avx512f.
+        unsafe {
+            let t: [__m512i; 8] = std::array::from_fn(|i| {
+                let (a, b) = (r[i & !1], r[i | 1]);
+                if i % 2 == 0 {
+                    _mm512_unpacklo_epi64(a, b)
+                } else {
+                    _mm512_unpackhi_epi64(a, b)
+                }
+            });
+            let u: [__m512i; 8] = std::array::from_fn(|i| {
+                let (h, s, o) = (i / 4, (i / 2) % 2, i % 2);
+                let (a, b) = (t[4 * h + o], t[4 * h + 2 + o]);
+                if s == 0 {
+                    _mm512_shuffle_i64x2::<0x88>(a, b)
+                } else {
+                    _mm512_shuffle_i64x2::<0xDD>(a, b)
+                }
+            });
+            std::array::from_fn(|c| {
+                let (a, b) = (u[c % 4], u[4 + c % 4]);
+                if c < 4 {
+                    _mm512_shuffle_i64x2::<0x88>(a, b)
+                } else {
+                    _mm512_shuffle_i64x2::<0xDD>(a, b)
+                }
+            })
+        }
+    }
+
+    #[inline(always)]
+    fn bytes(v: [u8; 64]) -> __m512i {
+        // SAFETY: 64 bytes.
+        unsafe { _mm512_loadu_si512(v.as_ptr().cast()) }
+    }
+
+    #[inline(always)]
+    fn qwords(v: [u64; 8]) -> __m512i {
+        // SAFETY: eight qwords.
+        unsafe { _mm512_loadu_si512(v.as_ptr().cast()) }
+    }
+
+    /// 24 accumulated output bytes of 64 rows (`acc[J]` byte `r` is byte `J` of row `r`'s `F192`) as the rows' values
+    /// in lanes: `out[L]` lane `t` is row `8 L + t`.
+    #[inline(always)]
+    fn rows(acc: &[__m512i; 24]) -> [Lanes; 8] {
+        // Byte `8 p + t` of a transposed register to byte `8 t + p`.
+        let swap = bytes(std::array::from_fn(|i| (8 * (i % 8) + i / 8) as u8));
+        let limbs: [[__m512i; 8]; 3] = std::array::from_fn(|l| {
+            // `x[L]` lane `p` is `acc[8 l + p]` lane `L`: rows `8 L + t` at its byte `t`.
+            let x = transpose_qwords(std::array::from_fn(|p| acc[8 * l + p]));
+            // SAFETY: the module's cfg enables avx512vbmi.
+            x.map(|v| unsafe { _mm512_permutexvar_epi8(swap, v) })
+        });
+        std::array::from_fn(|r| [limbs[0][r], limbs[1][r], limbs[2][r]])
+    }
+
+    /// The most groups of eight quads a task takes (`2^EQ_LO_VARS` quads).
+    const MAX_GROUPS: usize = (1 << super::EQ_LO_VARS) / 8;
+
+    /// The eight sums `Σ_quad eq(quad) s_k(quad)`, by task `hi` of `eq_lo.len()` quads, times `eq_hi[hi]`, summed.
+    pub fn sums(
+        bits: PackedWitness<'_>,
+        weights: &[F192; 8],
+        eq_lo: &[F192],
+        eq_hi: &[F192],
+        (mask, live_quads): (usize, usize),
+    ) -> [F192; 8] {
+        let lo_size = eq_lo.len();
+        let groups = lo_size / 8;
+        assert!(lo_size.is_multiple_of(8) && groups <= MAX_GROUPS);
+        assert!(bits.a.len() >= 4 * lo_size * eq_hi.len());
+        // Group `g`'s eight eq values as 24 bit matrices: matrix `J` maps a byte whose bit `j` is quad `7 - j`'s bit
+        // to byte `J` of the sum of the eq values of the quads whose bit is set.
+        let matrices: Vec<u64> = (0..groups)
+            .flat_map(|g| {
+                let eq = &eq_lo[8 * g..8 * g + 8];
+                (0..24).map(move |j| {
+                    let byte = |e: F192| ([e.c0, e.c1, e.c2][j / 8] >> (8 * (j % 8))) & 0xff;
+                    let a = (0..8).fold(0u64, |acc, i| acc | byte(eq[i]) << (8 * i));
+                    transpose_bits(a).reverse_bits()
+                })
+            })
+            .collect();
+        // Row `8 s + t` of a slot is the pair `(s, t)`: its weight `w_s w_t`; the C rows `8 j + s` weigh `w_s`.
+        let w_rows: [Lanes; 8] = std::array::from_fn(|s| lanes(std::array::from_fn(|t| weights[s] * weights[t])));
+        let w_c = lanes(*weights);
+        parallel::map_reduce(
+            eq_hi.len(),
+            || [F192::ZERO; 8],
+            // SAFETY: the target features are enabled at compile time; task `hi`'s quads are in the witness (asserted).
+            |hi| unsafe { task(bits, &matrices, &w_rows, &w_c, hi, lo_size, (mask, live_quads)) }.map(|s| eq_hi[hi] * s),
+            |x, y| std::array::from_fn(|i| x[i] + y[i]),
+        )
+    }
+
+    /// One task's eight sums, unscaled by its `eq_hi`.
+    ///
+    /// # Safety
+    /// The target features are enabled; the quads `hi lo_size..(hi + 1) lo_size` are in the witness.
+    #[inline(always)]
+    unsafe fn task(
+        bits: PackedWitness<'_>,
+        matrices: &[u64],
+        w_rows: &[Lanes; 8],
+        w_c: &Lanes,
+        hi: usize,
+        lo_size: usize,
+        (mask, live_quads): (usize, usize),
+    ) -> [F192; 8] {
+        // SAFETY: the caller's; the loads are the task's quads, the matrices `24 g..24 g + 24` of a group `g`.
+        unsafe {
+            let zero = _mm512_setzero_si512();
+            // Per live group: the slots' transposed `a` bytes (lane = slot, byte `s` = bit `s` of the eight quads,
+            // quad `7 - j` at bit `j`, dead quads cleared), the same of `b`, and the C slots' `c` bytes.
+            let mut xs = [zero; MAX_GROUPS];
+            let mut ys = [zero; MAX_GROUPS];
+            let mut zs = [zero; MAX_GROUPS];
+            let mut which = [0u16; MAX_GROUPS];
+            let mut n = 0;
+            // Lane `l < 4`, byte `i`: byte `l` of quad `i` of `a`; lanes `4 + l`: of `b`.
+            let gather_ab = bytes(std::array::from_fn(|i| {
+                let (lane, quad) = (i / 8, i % 8);
+                (if lane < 4 { 4 * quad + lane } else { 32 + 4 * quad + lane - 4 }) as u8
+            }));
+            // Lanes 0, 1, 2: bytes 1, 3, 2 of the quads of `c` (the slots 0, 1, 4).
+            let gather_c = bytes(std::array::from_fn(|i| {
+                let (lane, quad) = (i / 8, i % 8);
+                (4 * quad + [1, 3, 2, 0, 0, 0, 0, 0][lane]) as u8
+            }));
+            let transpose = _mm512_set1_epi64(0x8040_2010_0804_0201u64 as i64);
+            // The slots' bytes from the quads' bytes 0..3: x1, x3, x0^x1, x2^x3, x2, x0^x2, x1^x3, x0^x1^x2^x3.
+            let (i0, i1, i2, i3) = (
+                [1u64, 3, 0, 2, 2, 0, 1, 0],
+                [0u64, 0, 1, 3, 0, 2, 3, 1],
+                [0u64, 0, 0, 0, 0, 0, 0, 2],
+                [0u64, 0, 0, 0, 0, 0, 0, 3],
+            );
+            let pick_ix = |base: u64| [i0, i1, i2, i3].map(|i| qwords(i.map(|x| x + base)));
+            let (px, py) = (pick_ix(0), pick_ix(4));
+            let pick = |t: __m512i, p: &[__m512i; 4]| {
+                let v = _mm512_permutexvar_epi64(p[0], t);
+                let v = xor(v, _mm512_maskz_permutexvar_epi64(0b1110_1100, p[1], t));
+                let v = xor(v, _mm512_maskz_permutexvar_epi64(0b1000_0000, p[2], t));
+                xor(v, _mm512_maskz_permutexvar_epi64(0b1000_0000, p[3], t))
+            };
+            for g in 0..lo_size / 8 {
+                let quad = hi * lo_size + 8 * g;
+                let live = (0..8).fold(0u8, |m, k| m | (u8::from(((quad + k) & mask) < live_quads) << k));
+                if live == 0 {
+                    continue;
+                }
+                let load = |data: &[u8]| _mm256_loadu_si256(data.as_ptr().add(4 * quad).cast());
+                let ab = _mm512_inserti64x4::<1>(_mm512_castsi256_si512(load(bits.a)), load(bits.b));
+                let t = _mm512_gf2p8affine_epi64_epi8::<0>(transpose, _mm512_permutexvar_epi8(gather_ab, ab));
+                let keep = _mm512_set1_epi8(live.reverse_bits() as i8);
+                xs[n] = _mm512_and_si512(pick(t, &px), keep);
+                ys[n] = pick(t, &py);
+                let c = _mm512_castsi256_si512(load(bits.c));
+                let tc =
+                    _mm512_gf2p8affine_epi64_epi8::<0>(transpose, _mm512_maskz_permutexvar_epi8(0xFF_FFFF, gather_c, c));
+                zs[n] = _mm512_and_si512(tc, keep);
+                which[n] = g as u16;
+                n += 1;
+            }
+            let mut out = [F192::ZERO; 8];
+            if n == 0 {
+                return out;
+            }
+            // The rows of `data(i)` against each live group's matrices, accumulated.
+            let run = |data: &dyn Fn(usize) -> __m512i| -> [__m512i; 24] {
+                let mut acc = [zero; 24];
+                for i in 0..n {
+                    let d = data(i);
+                    let m = matrices.as_ptr().add(24 * which[i] as usize);
+                    for (j, a) in acc.iter_mut().enumerate() {
+                        let e = _mm512_set1_epi64(*m.add(j) as i64);
+                        *a = xor(*a, _mm512_gf2p8affine_epi64_epi8::<0>(d, e));
+                    }
+                }
+                acc
+            };
+            let reduce = |acc: &[U; 3]| F192::new(fold(acc[0]).0, fold(acc[1]).0, fold(acc[2]).0);
+            for (k, slot) in out.iter_mut().enumerate() {
+                // Byte `8 s + t`: bit `s` of the slot's `a` byte and bit `t` of its `b` byte.
+                let ix = bytes(std::array::from_fn(|i| (8 * k + i / 8) as u8));
+                let iy = bytes(std::array::from_fn(|i| (8 * k + i % 8) as u8));
+                let acc =
+                    run(&|i| _mm512_and_si512(_mm512_permutexvar_epi8(ix, xs[i]), _mm512_permutexvar_epi8(iy, ys[i])));
+                let mut sum = [[zero; 2]; 3];
+                for (w, r) in w_rows.iter().zip(rows(&acc)) {
+                    mul_acc(&mut sum, w, &r);
+                }
+                *slot = reduce(&sum);
+            }
+            let r = rows(&run(&|i| zs[i]));
+            for (j, k) in [0, 1, 4].into_iter().enumerate() {
+                let mut sum = [[zero; 2]; 3];
+                mul_acc(&mut sum, w_c, &r[j]);
+                out[k] += reduce(&sum);
+            }
+            out
+        }
     }
 }
 
