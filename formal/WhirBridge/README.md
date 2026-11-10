@@ -12,7 +12,8 @@ hidden, in the layout redesigned for condition (R) of `docs/membership/HIDING.md
 `32`, seven random lanes after it, and the **gadget**), at every supported size, in table terms.
 Everything here is sorry-free and depends on `propext`, `Classical.choice` and `Quot.sound` only
 (`#guard_msgs` checks in `WhirBridge.lean`). No `native_decide`: the facts
-about our layouts are `decide +kernel`.
+about our layouts are `decide +kernel`. It also covers the EIP's PCS opening, **version 1**
+(`crates/pcs_claim`, `docs/PCS_CLAIM.md`): [below](#the-pcs-claim-version-1-cratespcs_claim).
 
 ## What is proved
 
@@ -328,6 +329,119 @@ once its `NewOK` is decided); `Layout::new` = `Layout.new` is checked by executi
 `CheckLarge.lean`), not proved; the composition with the PIOP's reduction (the union over the lists,
 `LargeMargins.lean` gives the counting and the numbers) is the PIOP's.
 
+## The PCS claim, version 1 (`crates/pcs_claim`)
+
+`WhirBridge/PcsClaim.lean`, `PcsBinding.lean`, `PcsBindingRom.lean` (axioms checked in `WhirBridge/Pcs.lean`,
+imported by `WhirBridge.lean`; namespace `WhirBridge.Pcs`). Nothing above changes: the openings of version 2 and
+their theorems stay as they are; the new files only add.
+
+**The transcription** (`lib.rs:72-330`): `claimBytes` is `PCS_claim = 1 ‖ n ‖ root (32) ‖ ood (24) ‖ point (24 n) ‖
+value (24)`, each element its limbs `c2, c1, c0` big-endian (`elemBytes`, `element_bytes`); `oodPoint n root` is
+`ood_point` (coordinate `j` the element the low 24 bytes of `keccak256("leanPCS-ood" ‖ 1 ‖ n ‖ root ‖ j)` encode,
+`elemOf`, `element_of`), with mumbai's Keccak-256; `pcsVerifyWithHash H F zOf x π` is `verify_claim`: reject
+unless `15 ≤ n ≤ 28` (the point has `n` coordinates by `Claim1 n`), the IV `H(claimBytes x)` and the public digest
+zero (no other prefix: the claim's first two bytes are the one the verifier fixes), the proof's first two scalars
+the root, read and compared with the claim's, then `check`: `λ`, the target `ood + λ · value`, the weight
+`eq(z, ·) + λ · eq(point, ·)` (`eqZ`, the Rust's closure), `z = zOf root`, and WHIR on the deployed ladder at rate
+`1/2`. As mumbai's language: the stacked opening of **two** stack claims, `(z, ood)` and `(point, value)`, on
+`stacking n`, whose stack is the polynomial's `2^n` words in the order of its variables (`check_eq`, `prog_eq`);
+a claim holds of a stack iff `colEval q p = v`, `colEval q p = Σ_i q_i · eq(p, bits of i)` the EIP's `f` (`holds_iff`).
+
+| Theorem | File | What |
+|---|---|---|
+| `claimBytes_injective` | `PcsClaim.lean` | the claim's bytes name the claim (at one `n`): the seeding of `pcs_family_sound` names the statement |
+| `check_eq`, `prog_eq`, `holds_iff` | `PcsClaim.lean` | the check **is** mumbai's `verifyStackedOpening` of the two claims (`dot (powers λ 2) [a, b] = a + λ b`); a claim on the stack is `f(point) = value` |
+| `pcsVerify_imp` | `PcsClaim.lean` | acceptance by `verify_claim` implies the root check and acceptance by the proven program from `seed1` (IV `H(PCS_claim)`) |
+| `pcs_family_sound` | `PcsClaim.lean` | `family_sound` for this shape: seedings `seeds zOf` (one hash step, the claim's bytes; root history the two claims' reads, `famHistory`), the program and certificate of `Family.lean` |
+| **`pcs_sound`** | `PcsClaim.lean` | at every `15 ≤ n ≤ 28` and every `zOf : Digest → Vector E n`: `Pr[verify_claim accepts ∧ PcsDoomed] ≤ openingBound QA` |
+| **`pcs_sound_any`**, `pcs_any_bound_le` | `PcsClaim.lean` | the adversary chooses `n` too (`AnyClaim = Σ n, Claim1 n`): `≤ 14 · openingBound QA ≤ 2^-59` for `QA ≤ 2^64` |
+| `colEval_eq_evalMle`, `colTable_injective`, `card_not_sepAt_le` | `PcsBinding.lean` | `f(z)` is CompPoly's multilinear extension of the stack's table; Schwartz-Zippel over a list (mumbai's `card_ood_collision_image_le`): at most `C(L, 2) · n · |E|^(n-1)` points leave two distinct members of a list of `L` agreeing |
+| **`two_openings_one_polynomial`** | `PcsBinding.lean` | two claims on one commitment `(root, ood)` whose openings are not doomed (against one cache), the root's list separated at `z` (`SepAt`): **one** candidate satisfies `f(z) = ood`, `f(point₁) = value₁` and `f(point₂) = value₂` |
+| `ood_binding`, `ood_binding_candidates` | `PcsBinding.lean` | the out-of-domain point a random oracle `Digest →ₒ E^n` (`OodSpec`), the lists fixed in advance (any function of the root, at most `L` each; the deployed code's lists for any fixed Keccak-256 answers, `L = listMax`): `Pr[some answered root's list not separated at its point] ≤ Q · C(L, 2) · n / 2^192` |
+| `extract_stable` | `PcsBindingRom.lean` | recording a fresh Keccak-256 answer `u` leaves the word mumbai's `extract` reads for `r` unchanged when `u ≠ r` and `u` is no child digest of an answered input nor of the new one |
+| **`ood_binding_rom`** | `PcsBindingRom.lean` | the lists read off the **final** Keccak-256 answers (the event `pcs_sound` reads), the adversary holding Keccak-256, Keccak-f[1600] and the out-of-domain oracle (`BindSpec`): `Pr[BindBad] ≤ Q · C(L, 2) · n / 2^192 + Q (Q + 1) / 2^256` (mumbai's budgeted potential) |
+| `δood_le`, `listHi_v1`, `binding_bound_le` | `PcsBindingRom.lean`, `PcsBinding.lean` | `C(L, 2) · n / 2^192 ≤ 2^-156` at every `15 ≤ n ≤ 28` with the certified lists (`decide +kernel`); `≤ 2^-152` for `L ≤ 2^18`, `n ≤ 32` |
+
+```lean
+theorem pcs_sound (h1 : minVars ≤ n) (h2 : n ≤ maxVars) (zOf : Digest → Vector E n)
+    (A : OracleComp KeccakCalls (Claim1 n × Proof)) (QA : ℕ) (hA : IsTotalQueryBound A QA) :
+    Pr{let z ← romExperiment A (pcsVerifier zOf)}[z.1.2 = true ∧ PcsDoomed zOf z.1.1 z.2] ≤
+      openingBound QA
+
+def PcsDoomed (zOf : Digest → Vector E n) (w : Claim1 n × Proof) (cache) : Prop :=
+  ∀ q ∈ Candidates n logInvRate (code₀ n logInvRate).thr
+      (extract (fun x ↦ cache (.inl x)) w.1.root (rootHeight n logInvRate) (2 ^ laneFold)),
+    colEval q (zOf w.1.root).toList ≠ w.1.ood ∨ colEval q w.1.point ≠ w.1.value
+
+theorem ood_binding_rom (hw : Whir.Admissible n logInvRate) (oa : OracleComp (BindSpec n) α)
+    (Q : ℕ) (hQ : IsTotalQueryBound oa Q) :
+    Pr{let z ← (simulateQ (BindSpec n).randomOracle oa).run ∅}[BindBad z.2] ≤
+      Q * δood n + ((Q * (Q + 1) : ℕ) : ℝ≥0∞) / 2 ^ 256        -- δood n = C(listMax, 2) · n / 2^192
+
+def BindBad (c) : Prop := ∃ r z, c (.inr r) = some z ∧ ¬ SepAt (rootList (hOf c) r) z
+```
+
+**The numbers.** `openingBound QA = (QA + 10122)(2^-128 + 5 (QA + 10122)/2^256)` as for version 2 (`10122` bounds
+the verifier's queries at every admissible shape): `≤ 2^-63` at one `n`, `≤ 2^-59.19` over the `14` values of `n`.
+The binding's error per query is `C(L, 2) · n / 2^192`, `L` level 0's **certified** list (leanerVM's `certOf`, the
+lists `pcs_sound` quantifies over), in bits:
+
+| `n` | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| `L` | 87315 | 65939 | 53937 | 43620 | 34894 | 27718 | 22133 | 15692 | 12514 | 9952 | 7908 | 6296 | 4473 | 3564 |
+| bits | 156.3 | 157.0 | 157.5 | 158.0 | 158.6 | 159.2 | 159.7 | 160.7 | 161.3 | 161.9 | 162.5 | 163.1 | 164.0 | 164.6 |
+
+`δood_le` proves `≥ 156` at every `n`. `docs/PCS_CLAIM.md`'s `L ≤ 323` and `2^-171` are `whir_config.rs`'s own lists,
+which omit the fold group's row-union factor (above, "Errors at our sizes"); with the certified lists the bound is
+`2^-156.3` (`n = 15`) to `2^-164.6` (`n = 28`) per query (`156` bits or more as `Q/ε`; about `2^-92` at
+`Q = 2^64`).
+
+**How they combine.** An adversary outputs two claims on one commitment `(root, ood)` and two proofs. By
+`pcs_sound` (each opening, `zOf = oodPoint n`), except with probability `openingBound QA` each, neither opening is
+doomed: each has a candidate of the root's list satisfying its two claims. By `ood_binding_rom`, except with
+probability `Q · δood n + Q (Q + 1)/2^256`, the list of every root whose point was asked for, extracted from the
+final answers, is separated at its point. Then `two_openings_one_polynomial`: one candidate satisfies all four
+claims, so claims on one commitment may be declared and proven separately. The total:
+`2 · openingBound QA + Q · C(L, 2) · n / 2^192 + Q (Q + 1) / 2^256`.
+
+**What is not formal** (beyond the bridge's [assumptions](#assumptions)):
+
+1. **The two experiments.** `pcs_sound` is in mumbai's two-oracle model with the out-of-domain point a fixed
+   function `zOf` of the root (every function: the deployed `oodPoint` computed with mumbai's Keccak-256, as the
+   layout id of version 2 is); `ood_binding_rom` adds an independent out-of-domain oracle. The union bound above
+   adds probabilities from the two models; a single experiment would need `pcs_sound` against an adversary holding
+   the out-of-domain oracle too (eager sampling of that oracle, VCVio's `EagerTable`, for a sum of specifications).
+2. **The out-of-domain point as one oracle answer.** The deployed point is `n` Keccak-256 answers at the inputs
+   `oodInput n root j` (46 bytes, distinct from every Merkle input: nodes are 64 bytes, leaves a multiple of 8),
+   each read in its low 24 bytes (uniform in `E`). The model draws the whole point uniformly in `E^n` per root.
+3. **The transcription is the Rust** by execution (below), not by proof; `MIN_VARIABLES`, `MAX_VARIABLES`,
+   well-formedness (`decode`) are transcribed as the range check and `Claim1 n`'s fixed point length.
+
+**Executed** (the Rust prover's openings against the Lean verifier, mumbai's Keccak):
+
+```sh
+cargo run --release -p pcs_claim --example lean_vector > target/pcs_claim_vector.txt   # n = 15, 16, 18
+(cd formal/EndToEnd && lake env lean --run ../WhirBridge/Test/CheckPcs.lean ../../target/pcs_claim_vector.txt)
+```
+
+`Test/CheckPcs.lean` recomputes `PCS_claim`'s bytes, its Keccak-256 (the dependency's payload) and the
+out-of-domain point and compares them with the Rust's, accepts the honest proof, and rejects a wrong value, a wrong
+out-of-domain answer, a wrong root, a changed stream scalar, a changed leaf word, and the honest proof against
+another out-of-domain point (so the weight reads `z`): `3 PCS openings; all checks: true`, 39 s on h1.
+
+**What downstream must change to use version 1** (nothing breaks now: `formal/Statement`, `EndToEnd`, `UniKeccak`,
+`RecCompose` build unchanged against this package):
+
+* the openings: each commitment's claims become PCS claims on its stack (`f` the stack's polynomial, `colEval`),
+  their event `PcsDoomed` in place of `OpeningDoomed` / `ours_sound_public`'s (table terms via `Layout` and the
+  hidden layouts' gadget do not exist in version 1: a table's claim must be expressed as a claim on the stack);
+* the transcripts: the IV is `keccak256(PCS_claim)` (`claimBytes`), no prefix with a layout id, the version byte
+  `1` in place of the layout words' version (`formal/Statement`'s `openingPrefix`, `UniKeccak`'s and `RecStatement`'s
+  layout words);
+* the composition: a commitment now carries `ood`; with `two_openings_one_polynomial` and `ood_binding_rom`,
+  claims on one root may be split over openings, and the union over the list (`Gaps` 4, `LargeMargins`) can be
+  replaced by the binding term; the out-of-domain oracle must enter the composed experiment (point 1 above).
+
 ## Assumptions
 
 Keccak-256 and Keccak-f[1600] are independent random oracles (mumbai's two-oracle model; leanVM's own
@@ -372,6 +486,10 @@ modules, **931 modules in 6 min 30 s** (0.97 CPU-hours), then the whole `LeanVM`
 a clean `.lake` in 1 min 19 s on the shared machine (`Layouts.lean`'s kernel decisions of the 18 layouts
 28 s of it); the vectors are written in 5 s and `Test/Check.lean` runs in 1 min 54 s (`all checks: true`;
 it now also runs every opening against the weight without the gadget's term).
+
+The `Pcs*` files (version 1) build in the end-to-end workspace (`cd formal/EndToEnd && lake build WhirBridge`,
+about 15 s for the four modules on h1, `/root/pcs-quotient-fv/leanPCS-main`, branch `lean-whir-v1`); `WhirBridge`,
+`Soundness`, `E2ECompleteness`, `Evm`, `ZK` rebuild unchanged over them.
 
 The `Large*` files were built at `/root/pcs-quotient-fv/whir-large` (a copy of `whir-bridge-gadget`, the same
 `../leanervm`): the five modules build in about 20 s (their kernel decisions, `shapeOK` at `128` and `129` for
