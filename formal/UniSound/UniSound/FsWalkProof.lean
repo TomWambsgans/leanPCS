@@ -140,32 +140,51 @@ theorem scalar24_scalarAt (b : Array UInt8) (o : ℕ) (h : o + 24 ≤ b.size) :
   rw [scalar24, scalarAt, uLimbs_eNew, be64_beWordAt b o (by omega),
     be64_beWordAt b (o + 8) (by omega), be64_beWordAt b (o + 16) (by omega), bytesAt_24]
 
-theorem revRoot_vec (w0 w1 w2 w3 : UInt64) :
-    revRoot (toB #v[w0, w1, w2, w3]) =
-      QuotientRpm.be64 w1 ++ QuotientRpm.be64 w0 ++ (QuotientRpm.be64 w3 ++ QuotientRpm.be64 w2) := by
-  have hl : (toB #v[w0, w1, w2, w3]).toList =
-      (wordBytes w0 ++ wordBytes w1) ++ (wordBytes w2 ++ wordBytes w3) := by
-    rw [Bridge.toB_toList]
-    simp [digestBytes]
-  have h16 : (wordBytes w0 ++ wordBytes w1).length = 16 := by
-    simp [wordBytes_length]
-  rw [revRoot, hl, List.take_left' h16, List.drop_left' h16, List.reverse_append,
-    List.reverse_append]
-  rfl
+theorem length_rootWord (h : E × E) : (UniStatement.rootWord h).length = 32 := by
+  simp [UniStatement.rootWord, UniStatement.be64]
 
-theorem rootOf_halvesAt (b : Array UInt8) (o : ℕ) :
-    UniStatement.rootOf (halvesAt b o) =
-      #v[beWordAt b (o + 8), beWordAt b o, beWordAt b (o + 24), beWordAt b (o + 16)] := by
-  have e : ∀ x y : UInt64, IsCanonical128 (eNew x y 0) := fun _ _ => rfl
-  unfold UniStatement.rootOf digestOfScalars halvesAt
-  rw [ite_eq_left ⟨e _ _, e _ _⟩]
-  rfl
+/-- **A root's digest has the bytes it is read from** (`rootOf`: the words of `rootWord`). -/
+theorem digestBytes_rootOf (h : E × E) : digestBytes (UniStatement.rootOf h) = UniStatement.rootWord h := by
+  have hl := length_rootWord h
+  set w := UniStatement.rootWord h with hw
+  have e : digestBytes (UniStatement.rootOf h) =
+      wordBytes (LeanVM.Rpm.bytesLane w) ++ (wordBytes (LeanVM.Rpm.bytesLane (w.drop 8)) ++
+        (wordBytes (LeanVM.Rpm.bytesLane (w.drop 16)) ++
+          (wordBytes (LeanVM.Rpm.bytesLane (w.drop 24)) ++ []))) := rfl
+  rw [e, List.append_nil, QuotientRpm.wordBytes_bytesLane_take _ (by omega),
+    QuotientRpm.wordBytes_bytesLane_take _ (by simp; omega),
+    QuotientRpm.wordBytes_bytesLane_take _ (by simp; omega),
+    QuotientRpm.wordBytes_bytesLane_take _ (by simp; omega)]
+  rw [List.take_of_length_le (l := List.drop 24 w) (by simp; omega),
+    show List.drop 24 w = List.drop 8 (List.drop 16 w) by rw [List.drop_drop],
+    List.take_append_drop, show List.drop 16 w = List.drop 8 (List.drop 8 w) by rw [List.drop_drop],
+    List.take_append_drop, List.take_append_drop]
+
+theorem limb_eNew_lane (a b c : UInt64) :
+    ((eNew a b c).limb 0).lane = a ∧ ((eNew a b c).limb 1).lane = b := by
+  have h := uLimbs_eNew a b c
+  simp only [uLimbs, Equiv.coe_fn_mk, Prod.mk.injEq] at h
+  exact ⟨h.1, h.2.1⟩
+
+theorem be64_eq (w : UInt64) : UniStatement.be64 w = QuotientRpm.be64 w := by
+  apply List.ext_getElem (by simp [UniStatement.be64, QuotientRpm.be64, LeanVM.Rpm.wordBytes_len])
+  intro j h1 h2
+  have hj : j < 8 := by simpa [UniStatement.be64] using h1
+  simp only [UniStatement.be64, QuotientRpm.be64, List.getElem_map, List.getElem_range,
+    List.getElem_reverse, LeanVM.Rpm.wordBytes_len]
+  interval_cases j <;> rfl
+
+/-- **A root's halves as `nextRoot` reads them**: their `rootWord` is the stream's 32 bytes. -/
+theorem rootWord_halvesAt (b : Array UInt8) (o : ℕ) (h : o + 32 ≤ b.size) :
+    UniStatement.rootWord (halvesAt b o) = bytesAt b o 32 := by
+  simp only [UniStatement.rootWord, halvesAt, (limb_eNew_lane _ _ _).1, (limb_eNew_lane _ _ _).2, be64_eq]
+  rw [be64_beWordAt b o (by omega), be64_beWordAt b (o + 8) (by omega),
+    be64_beWordAt b (o + 16) (by omega), be64_beWordAt b (o + 24) (by omega), bytesAt_32, List.append_assoc]
 
 /-- **A root as the stream carries it** is the stream's 32 bytes it is read from. -/
 theorem revRoot_halvesAt (b : Array UInt8) (o : ℕ) (h : o + 32 ≤ b.size) :
     revRoot (toB (UniStatement.rootOf (halvesAt b o))) = bytesAt b o 32 := by
-  rw [rootOf_halvesAt, revRoot_vec, be64_beWordAt b o (by omega), be64_beWordAt b (o + 8) (by omega),
-    be64_beWordAt b (o + 16) (by omega), be64_beWordAt b (o + 24) (by omega), bytesAt_32]
+  rw [revRoot, Bridge.toB_toList, digestBytes_rootOf, rootWord_halvesAt b o h]
 
 /-- The stream's `n` scalars from byte `o`. -/
 def scalarsAt (b : Array UInt8) (o n : ℕ) : List E := (List.range n).map fun k => scalarAt b (o + 24 * k)

@@ -261,6 +261,29 @@ theorem obsEq_withHead {α : Type} (P : ChainProg α) (zs : List E) (F : KeccakS
   simp only [hrr]
   exact fun c => (obsEq_requireZeros_nextRoot zs _ c).symm
 
+/-- `obsEq_withHead` when the first round reads one value after its root (the Keccak verifier on the EIP's PCS
+claims: the commitment's out-of-domain answer). -/
+theorem obsEq_withHead1 {α : Type} (P : ChainProg α) (zs : List E) (F : KeccakState → m KeccakState)
+    (ns : ℕ) (rs : List Compose.RoundSpec) (hr : P.rounds = ⟨true, 1, ns⟩ :: rs)
+    (hz : P.zeros [] = fun _ => []) :
+    ObsEq ((P.withHead zs).run F) (ChainProg.requireZeros zs >>= fun _ => P.run F) := by
+  have hz' : (P.withHead zs).zeros [] = fun _ => zs := by
+    funext msg
+    simp [ChainProg.withHead]
+  have hr' : (P.withHead zs).rounds = ⟨true, 1, ns⟩ :: rs := hr
+  unfold ChainProg.run
+  rw [hr, hr', runRounds_cons, runRounds_cons, hz, hz']
+  simp only [rootRead, ite_true, nextScalars_one, bind_map_left, pure_bind, bind_assoc,
+    ChainProg.requireZeros]
+  have hrr : ∀ (r : E × E) (x : E) (chs : List E),
+      (P.withHead zs).runRounds F rs ([] ++ [((some r, [x]), chs)]) =
+        P.runRounds F rs ([] ++ [((some r, [x]), chs)]) := fun r x chs =>
+    runRounds_withHead P zs F rs _ (by simp)
+  simp only [hrr]
+  intro c
+  exact (((obsEq_requireZeros_nextRoot zs _).trans
+    (ObsEq.bind_right _ fun _ => obsEq_requireZeros_nextScalar zs _)) c).symm
+
 /-! ## The row counts' checks -/
 
 /-- **The zeros all vanish.** -/

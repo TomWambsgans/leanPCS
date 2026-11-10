@@ -91,14 +91,14 @@ theorem hlink_uniK3 (R : RbrPiop (uRoundsK3 F3 nV np) USt Stk)
   obtain ⟨hdf, hzv, hwf⟩ := hc
   have hlen : cs.length = F3.prog.rounds.length + 4 + np := by
     rw [hl]
-    exact length_rec3Rounds _ _ _
+    exact length_rec3Rounds _ _ _ 1
   have h0 : 0 < cs.length := by omega
   have h1 : F3.prog.rounds.length + 1 < cs.length := by omega
   have hs0 : ((uSpecK3 F3 nV np).K.spec 0).root := by
-    show ((rec3Rounds F3.prog.rounds nV np).getD 0 ⟨false, 0, 0⟩).root = true
+    show ((rec3Rounds F3.prog.rounds nV np 1).getD 0 ⟨false, 0, 0⟩).root = true
     rw [rec3Rounds_zero]
   have hs1 : ((uSpecK3 F3 nV np).K.spec (F3.prog.rounds.length + 1)).root := by
-    show ((rec3Rounds F3.prog.rounds nV np).getD (F3.prog.rounds.length + 1)
+    show ((rec3Rounds F3.prog.rounds nV np 1).getD (F3.prog.rounds.length + 1)
       ⟨false, 0, 0⟩).root = true
     rw [rec3Rounds_c2]
   have g0 := hg 0 h0 hs0

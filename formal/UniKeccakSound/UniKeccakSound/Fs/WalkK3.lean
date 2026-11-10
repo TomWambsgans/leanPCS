@@ -100,7 +100,7 @@ theorem uniWalkK3 (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ : ℕ} (F
     (nV np : ℕ) (C : UniCodeK3 D F3 nV np) : UniWalkK3 D F3 nV np C := by
   intro m _ _ P π hlen
   have hsz : π.proof.stream.size = 24 + roundsBytes (uRoundsK3 F3 nV np) + 24 * 3 := hlen
-  have hsz' : π.proof.stream.size = 24 + roundsBytes (rec3Rounds F3.prog.rounds nV np) + 24 * 3 := hlen
+  have hsz' : π.proof.stream.size = 24 + roundsBytes (rec3Rounds F3.prog.rounds nV np 1) + 24 * 3 := hlen
   have h6 : D.shape.heights.length = 6 := D.valid.1
   have hrows : countsAt π.proof.stream 0 6 = (uStK3 F3 nV np π).2 := countsAt_rows _ (by omega)
   rw [runWithK_pair3]

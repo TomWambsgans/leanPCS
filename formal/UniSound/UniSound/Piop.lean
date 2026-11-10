@@ -88,9 +88,10 @@ abbrev Stk := ℕ → K
 /-! ## The rounds -/
 
 /-- **The main line's rounds**: `C1` and `α, β, γ`; Flock's; `C2` and `t`; the `nV` values and
-`ρ, λ`; the `V` rounds of the batching sumcheck. -/
-def uniRounds (flockRounds : List Compose.RoundSpec) (nV V : ℕ) : List Compose.RoundSpec :=
-  [⟨true, 0, 5⟩] ++ flockRounds ++ [⟨true, 0, 0⟩, ⟨false, nV, 1⟩] ++ List.replicate V ⟨false, 2, 0⟩
+`ρ, λ`; the `V` rounds of the batching sumcheck. `o` values follow each root (`0` here; the Keccak verifier on
+the EIP's PCS claims has `1`, each commitment's out-of-domain answer). -/
+def uniRounds (flockRounds : List Compose.RoundSpec) (nV V : ℕ) (o : ℕ := 0) : List Compose.RoundSpec :=
+  [⟨true, o, 5⟩] ++ flockRounds ++ [⟨true, o, 0⟩, ⟨false, nV, 1⟩] ++ List.replicate V ⟨false, 2, 0⟩
 
 /-! ## The identity model -/
 
@@ -155,29 +156,29 @@ end Read
 
 section Rounds
 
-variable (Fr : List Compose.RoundSpec) (nV V : ℕ)
+variable (Fr : List Compose.RoundSpec) (nV V : ℕ) {o : ℕ}
 
-theorem length_uniRounds : (uniRounds Fr nV V).length = Fr.length + 3 + V := by
+theorem length_uniRounds : (uniRounds Fr nV V o).length = Fr.length + 3 + V := by
   simp [uniRounds]
   omega
 
-theorem uniRounds_zero : (uniRounds Fr nV V).getD 0 ⟨false, 0, 0⟩ = ⟨true, 0, 5⟩ := rfl
+theorem uniRounds_zero : (uniRounds Fr nV V o).getD 0 ⟨false, 0, 0⟩ = ⟨true, o, 5⟩ := rfl
 
 theorem uniRounds_flock (j : ℕ) (h1 : 1 ≤ j) (h2 : j ≤ Fr.length) :
-    (uniRounds Fr nV V).getD j ⟨false, 0, 0⟩ = Fr.getD (j - 1) ⟨false, 0, 0⟩ := by
+    (uniRounds Fr nV V o).getD j ⟨false, 0, 0⟩ = Fr.getD (j - 1) ⟨false, 0, 0⟩ := by
   obtain ⟨i, rfl⟩ : ∃ i, j = i + 1 := ⟨j - 1, by omega⟩
   simp only [uniRounds, List.getD_eq_getElem?_getD, Nat.add_sub_cancel]
   rw [List.append_assoc, List.append_assoc, List.singleton_append, List.getElem?_cons_succ,
     List.getElem?_append_left (by omega)]
 
-theorem uniRounds_c2 : (uniRounds Fr nV V).getD (Fr.length + 1) ⟨false, 0, 0⟩ = ⟨true, 0, 0⟩ := by
+theorem uniRounds_c2 : (uniRounds Fr nV V o).getD (Fr.length + 1) ⟨false, 0, 0⟩ = ⟨true, o, 0⟩ := by
   simp only [uniRounds, List.getD_eq_getElem?_getD]
   rw [List.append_assoc, List.append_assoc, List.singleton_append, List.getElem?_cons_succ,
     List.getElem?_append_right (le_refl _), Nat.sub_self]
   rfl
 
 theorem uniRounds_vals :
-    (uniRounds Fr nV V).getD (Fr.length + 2) ⟨false, 0, 0⟩ = ⟨false, nV, 1⟩ := by
+    (uniRounds Fr nV V o).getD (Fr.length + 2) ⟨false, 0, 0⟩ = ⟨false, nV, 1⟩ := by
   simp only [uniRounds, List.getD_eq_getElem?_getD]
   rw [List.append_assoc, List.append_assoc, List.singleton_append,
     show Fr.length + 2 = (Fr.length + 1) + 1 by omega, List.getElem?_cons_succ,
@@ -185,7 +186,7 @@ theorem uniRounds_vals :
   rfl
 
 theorem uniRounds_batch (j : ℕ) (h1 : Fr.length + 3 ≤ j) (h2 : j < Fr.length + 3 + V) :
-    (uniRounds Fr nV V).getD j ⟨false, 0, 0⟩ = ⟨false, 2, 0⟩ := by
+    (uniRounds Fr nV V o).getD j ⟨false, 0, 0⟩ = ⟨false, 2, 0⟩ := by
   simp only [uniRounds, List.getD_eq_getElem?_getD]
   rw [List.getElem?_append_right (by simp; omega)]
   simp only [List.length_append, List.length_cons, List.length_nil]

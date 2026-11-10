@@ -9,7 +9,7 @@ import UniKeccakSound.Code.Batch
 **`uniCodeK D Fl hκ : UniCodeK D Fl valsCountK (varsOf (layoutsOfK D.shape))`**, for every deployment `D` and every
 Flock phase `Fl : KFlockSound F κ keccakMain` with `D.shape.heights.getD opSha3 0 = κ`: after the row counts,
 `reduceWithK` at the deployment's shape, `keccakMain`, point claims, is the chain program `mainProgK` on
-`uniRounds Fl.prog.rounds valsCountK V`, `V` the batch's variables at the shape (`varsOf (layoutsOfK D.shape)`), with a
+`uniRounds Fl.prog.rounds valsCountK V 1`, `V` the batch's variables at the shape (`varsOf (layoutsOfK D.shape)`), with a
 tail of three, up to `obsOf`. Its rounds:
 
 * `C1`'s root and `α ∈ E^4, β, γ` (`drawRun .main 4` is four draws);
@@ -50,7 +50,7 @@ def mainOutK (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ : ℕ} (Fl : K
   let stackLayouts := layoutsK D.shape mr.2
   let bp := batchPureK combined stackLayouts fc.2 (r3.2.getD 1 0) brs tl
   (bp.1, ⟨(r0.1.1.getD default, r2.1.1.getD default), bp.2, none, fc.1.size,
-    stackLayouts.map fun x => (x.1, x.2.vars), stackLayouts⟩)
+    stackLayouts.map fun x => (x.1, x.2.vars), stackLayouts, (r0.1.2.headD 0, r2.1.2.headD 0)⟩)
 
 /-- The main line's zeros after a round, for Flock's program `FP`: Flock's in its rounds, its tail zeros in `C2`'s
 round. -/
@@ -63,7 +63,7 @@ def mainZerosK {β : Type} (FP : ChainProg β) (done : Done) (msg : UMsg) : List
 `reduceWithK` collects them). -/
 def mainProg0K (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ : ℕ} (Fl : KFlockSound F κ keccakMain)
     (input : Vector UInt8 32) (rows : List ℕ) : ChainProg Reduced where
-  rounds := uniRounds Fl.prog.rounds valsCountK (varsOf (layoutsOfK D.shape))
+  rounds := uniRounds Fl.prog.rounds valsCountK (varsOf (layoutsOfK D.shape)) 1
   zeros := mainZerosK Fl.prog
   tail := 3
   tailZeros done tl := (mainOutK D Fl input rows (done.getD 0 default)
@@ -89,7 +89,7 @@ variable (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ : ℕ} (Fl : KFloc
   (input : Vector UInt8 32) (rows : List ℕ)
 
 theorem mainProgK_rounds :
-    (mainProgK D Fl input rows).rounds = uniRounds Fl.prog.rounds valsCountK (varsOf (layoutsOfK D.shape)) :=
+    (mainProgK D Fl input rows).rounds = uniRounds Fl.prog.rounds valsCountK (varsOf (layoutsOfK D.shape)) 1 :=
   rfl
 
 theorem mainProgK_tail : (mainProgK D Fl input rows).tail = 3 := rfl
@@ -99,8 +99,8 @@ theorem mainProgK_zeros_nil (msg : UMsg) :
     (mainProgK D Fl input rows).zeros [] msg = [countsZeroK D.shape.heights rows] := by
   simp [mainProgK, ChainProg.withHead]
 
-theorem mainProg0K_rounds : (mainProg0K D Fl input rows).rounds = [⟨true, 0, 5⟩] ++ Fl.prog.rounds ++
-    [⟨true, 0, 0⟩, ⟨false, valsCountK, 1⟩] ++ List.replicate (varsOf (layoutsOfK D.shape)) ⟨false, 2, 0⟩ :=
+theorem mainProg0K_rounds : (mainProg0K D Fl input rows).rounds = [⟨true, 1, 5⟩] ++ Fl.prog.rounds ++
+    [⟨true, 1, 0⟩, ⟨false, valsCountK, 1⟩] ++ List.replicate (varsOf (layoutsOfK D.shape)) ⟨false, 2, 0⟩ :=
   rfl
 
 theorem mainProg0K_zeros : (mainProg0K D Fl input rows).zeros = mainZerosK Fl.prog := rfl
@@ -200,10 +200,11 @@ theorem link_obs0K (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ : ℕ} (
   rw [mainProg0K_rounds, show (mainProg0K D Fl input rows).tail = 3 from rfl, runRounds_append,
     runRounds_append, runRounds_append, runRounds_cons, mainProg0K_zeros]
   rw [samples_fix P 4]
-  simp only [rootRead, ite_true, mainZerosK_nil, nextScalars_zero, ChainProg.requireZeros, pure_bind,
+  simp only [rootRead, ite_true, mainZerosK_nil, nextScalars_one, ChainProg.requireZeros, pure_bind,
     bind_map_left, bind_assoc, ChainProg.runRounds, Nat.reduceAdd, samples_six]
-  -- Round 0: `C1`'s root, `α, β, γ`.
+  -- Round 0: `C1`'s root and out-of-domain answer, `α, β, γ`.
   refine ObsEq.bind_right _ fun root1 => ?_
+  refine ObsEq.bind_right _ fun ood1 => ?_
   refine ObsEq.bind_right _ fun alphas => ?_
   refine ObsEq.bind_right _ fun beta => ?_
   refine ObsEq.bind_right _ fun gamma => ?_
@@ -214,6 +215,9 @@ theorem link_obs0K (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ : ℕ} (
   -- `C2`'s root (Flock's tail zeros moved past it), `t`.
   refine ObsEq.trans (obsEq_requireZeros_nextRoot _ _) ?_
   refine ObsEq.bind_right _ fun root2 => ?_
+  refine ObsEq.trans (obsEq_requireZeros_nextScalar _ _) ?_
+  try simp only [nextScalars_one, bind_map_left]
+  refine ObsEq.bind_right _ fun ood2 => ?_
   rw [mainZerosK_c2 Fl.prog _ _ (length_fixDone _ _)]
   refine ObsEq.bind_right _ fun _ => ?_
   rw [UniSound.samples_one]
@@ -279,7 +283,7 @@ theorem link_countsK (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ : ℕ}
       (readCounts (m := m) D.shape.heights >>= fun rows =>
         ChainProg.requireZeros [countsZeroK D.shape.heights rows] >>= fun _ =>
           (mainProg0K D Fl input rows).run P) :=
-    ObsEq.bind_right _ fun rows => obsEq_withHead (mainProg0K D Fl input rows)
+    ObsEq.bind_right _ fun rows => obsEq_withHead1 (mainProg0K D Fl input rows)
       [countsZeroK D.shape.heights rows] P 5 _ rfl (funext fun msg => mainZerosK_nil Fl.prog msg)
   rw [h1 c]
   obtain ⟨q, hq, hspec⟩ := readCounts_spec (m := m) D.shape.heights c
@@ -310,7 +314,7 @@ end Monad
 
 /-- **The Keccak verifier's code-level link** (`UniCodeK`) at the main line, for every deployment whose `SHA3`
 height is Flock's `κ`: after the row counts, `reduceWithK` is `mainProgK` on
-`uniRounds Fl.prog.rounds valsCountK (varsOf (layoutsOfK D.shape))`, with a tail of three, up to `obsOf`. -/
+`uniRounds Fl.prog.rounds valsCountK (varsOf (layoutsOfK D.shape)) 1`, with a tail of three, up to `obsOf`. -/
 def uniCodeK (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ : ℕ} (Fl : KFlockSound F κ keccakMain)
     (hκ : D.shape.heights.getD opSha3 0 = κ) :
     UniCodeK D Fl valsCountK (varsOf (layoutsOfK D.shape)) where
@@ -372,7 +376,7 @@ theorem countsZeroK_holds (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ :
 /-- On a completed transcript of the main line's rounds. -/
 theorem countsZeroK_of_fits (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ : ℕ}
     (Fl : KFlockSound F κ keccakMain) (input : Vector UInt8 32) (rows : List ℕ) (done : Done) (tl : List E)
-    (hd : DoneFits (uniRounds Fl.prog.rounds valsCountK (varsOf (layoutsOfK D.shape))) done)
+    (hd : DoneFits (uniRounds Fl.prog.rounds valsCountK (varsOf (layoutsOfK D.shape)) 1) done)
     (hz : (mainProgK D Fl input rows).ZerosVanish done tl) :
     CountsInRange D.shape.heights rows := by
   refine countsZeroK_holds D Fl input rows done tl ?_ hz

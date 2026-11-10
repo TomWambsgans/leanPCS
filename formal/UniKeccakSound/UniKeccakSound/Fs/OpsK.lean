@@ -1,7 +1,7 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The main line's `UniSound/FsOps.lean` and π1-rec3's
 -- `UniSound/Rec3/FsOps3.lean` for the Keccak verifier (`formal/UniKeccak`'s `verifyWithK`: three claims' openings).
 import UniKeccakSound.FsK
-import UniKeccakSound.Fs.Whir23
+import UniKeccakSound.Fs.PcsOpK
 
 /-!
 # The Keccak verifier's three openings, its check, and the proof the chain reads
@@ -32,7 +32,7 @@ open OracleSpec OracleComp
 open scoped ENNReal
 
 attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
-  LeanVM.Protocol.Compile.instFintypeKState UniKeccak.layoutWordsK UniKeccak.setupStackK
+  LeanVM.Protocol.Compile.instFintypeKState UniKeccak.setupStackK
 
 /-! ## The Keccak proof as the chain reads it -/
 
@@ -52,12 +52,18 @@ def uTailK (rounds : List RoundSpec) (π : UPf) : List E :=
 @[simp] theorem length_uTailK (rounds : List RoundSpec) (π : UPf) : (uTailK rounds π).length = 3 := by
   simp [uTailK]
 
-/-! ## The layout words and the shapes -/
+/-! ## The stacks' variables and the shapes -/
 
-/-- A Keccak layout word's variables (`layoutWordVars` of `layoutWordsK`): `C1`, `C2`, the setup. -/
-def wvK (D : KDeployment) (k : ℕ) : ℕ := layoutWordVars ((layoutWordsK D.shape).getD k [])
+/-- The commitment of index `k`: `C1`, `C2`, the setup. -/
+def comK : ℕ → Commitment
+  | 0 => .c1
+  | 1 => .c2
+  | _ => .setup
 
-/-- **The Keccak deployment's stacks fit WHIR's certified window**: the three layout words name `23 … 28` variables,
+/-- A Keccak commitment's stack variables (`stackVarsK`, its PCS claim's `n`): `C1`, `C2`, the setup. -/
+def wvK (D : KDeployment) (k : ℕ) : ℕ := stackVarsK D.shape (comK k)
+
+/-- **The Keccak deployment's stacks fit WHIR's certified window**: the three stacks have `23 … 28` variables,
 `C1`'s and `C2`'s at least `24`. -/
 structure UniShapesK (D : KDeployment) : Prop where
   lo : ∀ k < 3, 23 ≤ wvK D k
@@ -78,7 +84,7 @@ variable (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ : ℕ} (Fl : KFloc
   (C : UniCodeK D Fl nV V)
 
 /-- The main line's rounds. -/
-abbrev uRoundsK : List RoundSpec := uniRounds Fl.prog.rounds nV V
+abbrev uRoundsK : List RoundSpec := uniRounds Fl.prog.rounds nV V 1
 
 /-- The PIOP's statement a proof announces. -/
 def uStK (π : UPf) : USt := ustOf (uView (uRoundsK Fl nV V) π).1
@@ -88,8 +94,8 @@ def uOutK (π : UPf) (ch : List (List E)) : Reduced :=
   (C.prog (uStK Fl nV V π).1 (uStK Fl nV V π).2).out (uDone (uRoundsK Fl nV V) π ch)
     (uTailK (uRoundsK Fl nV V) π)
 
-/-- **The result is well formed**: one opening per commitment, in order, its point claims of its Keccak layout
-word's variables, and no matrices' claim. -/
+/-- **The result is well formed**: one opening per commitment, in order, its point claims of its stack's
+variables, and no matrices' claim. -/
 def WellFormedK (r : Reduced) : Prop :=
   r.openings.map Prod.fst = commitments ∧
     (∀ c ∈ claimsOf r .c1, c.point.length = wvK D 0) ∧
@@ -104,46 +110,61 @@ def uniCheckK (π : UPf) (ch : List (List E)) : Prop :=
       (uTailK (uRoundsK Fl nV V) π) ∧
     WellFormedK D (uOutK D Fl nV V C π ch)
 
-/-- The `k`-th opening's statement on its plain layout. -/
-def uClK (k : ℕ) (cs : List WhirBridge.Claim) : Stmt (plainL (wvK D k)).stacking :=
-  mkStmt _ (extra_plainL _) cs
+/-- **A commitment's point claim in a result**: the point and the value of its opening, if a point claim. -/
+def ptvK (r : Reduced) (c : Commitment) : List E × E :=
+  match r.openings.lookup c with
+  | some (.point pt v _) => (pt, v)
+  | _ => ([], 0)
 
-/-- `C1`'s claims. -/
-def cl1K (π : UPf) (ch : List (List E)) : Stmt (plainL (wvK D 0)).stacking :=
-  uClK D 0 (claimsOf (uOutK D Fl nV V C π ch) .c1)
+/-- **The `k`-th commitment's out-of-domain answer**: `C1`'s and `C2`'s as the run read them, the setup's the
+setup stack's at the setup's root (`setupOodK`, the deployment's constant). -/
+def oodK (π : UPf) (ch : List (List E)) : Commitment → E
+  | .c1 => (uOutK D Fl nV V C π ch).oods.1
+  | .c2 => (uOutK D Fl nV V C π ch).oods.2
+  | .setup => setupOodK D π.roots.bytecode
 
-/-- `C2`'s claims. -/
-def cl2K (π : UPf) (ch : List (List E)) : Stmt (plainL (wvK D 1)).stacking :=
-  uClK D 1 (claimsOf (uOutK D Fl nV V C π ch) .c2)
+/-- **What the `k`-th opening's claim says of a stack**: its point has the stack's variables and the plain layout's
+table evaluation there is its value (the point claim of its PCS claim; its out-of-domain claim is not used). -/
+def holdsK (k : ℕ) (π : UPf) (ch : List (List E)) (q : Column (plainL (wvK D k)).logN) : Prop :=
+  (ptvK (uOutK D Fl nV V C π ch) (comK k)).1.length = wvK D k ∧
+    (plainL (wvK D k)).tableEval q (ptvK (uOutK D Fl nV V C π ch) (comK k)).1 =
+      (ptvK (uOutK D Fl nV V C π ch) (comK k)).2
 
-/-- The setup's claims. -/
-def cl3K (π : UPf) (ch : List (List E)) : Stmt (plainL (wvK D 2)).stacking :=
-  uClK D 2 (claimsOf (uOutK D Fl nV V C π ch) .setup)
+/-- **The `k`-th opening's verifier**, at the root it reads: the PCS claim's opening (`pcsOpenC`) of its point claim
+on the commitment `(root, ood)`, with its opening proof. -/
+def verK (k : ℕ) (r : Digest) (π : UPf) (ch : List (List E)) : OracleComp KeccakCalls Bool :=
+  pcsOpenC (wvK D k) r (oodK D Fl nV V C π ch (comK k)) (ptvK (uOutK D Fl nV V C π ch) (comK k)).1
+    (ptvK (uOutK D Fl nV V C π ch) (comK k)).2 ((kpOf π).openingOf (comK k))
+
+variable {D} in
+/-- **The `k`-th opening** on what it opens (`t`). -/
+noncomputable def opK (hs : UniShapesK D) (k : ℕ) (hk : k < 3) (t : Tgt UPf Stk (shapeKK hs k hk).L.logN) :
+    GOp UPf E Stk :=
+  ⟨(shapeKK hs k hk).L.logN, (shapeKK hs k hk).R, (shapeKK hs k hk).adm, holdsK D Fl nV V C k,
+    verK D Fl nV V C k, 10122, fun _ _ _ => isTotalQueryBound_pcsOpenC _ _ _ _ _ _,
+    fun _ _ _ => duplexVm_pcsOpenC _ _ _ _ _ _, t⟩
 
 variable {D} in
 /-- **The Keccak verifier's three openings**: `C1` and `C2` (rounds `0`, `nF + 1`), the setup's stack (the setup's
-root), each its one claim. -/
+root), each its PCS claim. -/
 noncomputable def uniOpsK (hs : UniShapesK D) (qF : LeanVM.Protocol.Column (wvK D 2)) :
-    List (WhirOp UPf E Stk) :=
-  [⟨shapeKK hs 0 (by decide), cl1K D Fl nV V C, fun π => π.proof.c1,
-      .round 0 fun q => rdTab (tabOf _ q)⟩,
-    ⟨shapeKK hs 1 (by decide), cl2K D Fl nV V C, fun π => π.proof.c2,
-      .round (Fl.prog.rounds.length + 1) fun q => rdTab (tabOf _ q)⟩,
-    ⟨shapeKK hs 2 (by decide), cl3K D Fl nV V C, fun π => π.proof.setup,
-      .setup (fun π => toB π.roots.bytecode) qF⟩]
+    List (GOp UPf E Stk) :=
+  [opK Fl nV V C hs 0 (by decide) (.round 0 fun q => rdTab (tabOf _ q)),
+    opK Fl nV V C hs 1 (by decide) (.round (Fl.prog.rounds.length + 1) fun q => rdTab (tabOf _ q)),
+    opK Fl nV V C hs 2 (by decide) (.setup (fun π => toB π.roots.bytecode) qF)]
 
-/-- **A candidate is good**: at `C1`'s and `C2`'s rounds, a stack satisfying its opening's claims. -/
+/-- **A candidate is good**: at `C1`'s and `C2`'s rounds, a stack satisfying its PCS claim's point claim. -/
 def uniGoodK (i : ℕ) (π : UPf) (ch : List (List E)) (c : Option Stk) : Prop :=
   if i = 0 then ∃ q, c = some q ∧
-      ∀ cl ∈ (cl1K D Fl nV V C π ch).claims, mleStk q (wvK D 0) cl.point = cl.value
+      mleStk q (wvK D 0) (ptvK (uOutK D Fl nV V C π ch) .c1).1 = (ptvK (uOutK D Fl nV V C π ch) .c1).2
   else if i = Fl.prog.rounds.length + 1 then ∃ q, c = some q ∧
-      ∀ cl ∈ (cl2K D Fl nV V C π ch).claims, mleStk q (wvK D 1) cl.point = cl.value
+      mleStk q (wvK D 1) (ptvK (uOutK D Fl nV V C π ch) .c2).1 = (ptvK (uOutK D Fl nV V C π ch) .c2).2
   else True
 
-/-- **The setup's stack is good**: the setup's honest stack satisfies its opening's claims. -/
+/-- **The setup's stack is good**: the setup's honest stack satisfies its PCS claim's point claim. -/
 def uniGoodSK (π : UPf) (ch : List (List E)) : Prop :=
-  ∀ cl ∈ (cl3K D Fl nV V C π ch).claims,
-    mleStk (fun i => (setupStackK D.prog D.shape).getD i 0) (wvK D 2) cl.point = cl.value
+  mleStk (fun i => (setupStackK D.prog D.shape).getD i 0) (wvK D 2) (ptvK (uOutK D Fl nV V C π ch) .setup).1 =
+    (ptvK (uOutK D Fl nV V C π ch) .setup).2
 
 end Ops
 

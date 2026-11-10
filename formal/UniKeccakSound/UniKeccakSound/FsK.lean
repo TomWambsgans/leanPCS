@@ -36,23 +36,23 @@ def stackForK (D : KDeployment) (c1 c2 : Stk) : Commitment → Stk
   | .setup => fun i => (setupStackK D.prog D.shape).getD i 0
 
 /-- **The claims the Keccak verifier leaves, declared, hold** of the candidates `c1`, `c2` and the setup's stack: each
-commitment's point claim on its stack's multilinear extension at its Keccak layout word's variables
-(`verifyWithK`'s `layoutWordVars`). -/
+commitment's point claim on its stack's multilinear extension at its stack's variables (`verifyWithK`'s
+`stackVarsK`, the PCS claim's `n`). -/
 def ClaimsHoldK (D : KDeployment) (r : Reduced) (c1 c2 : Stk) : Prop :=
   ∀ o ∈ r.openings, ∀ pt v bs, o.2 = .point pt v bs →
-    mleStk (stackForK D c1 c2 o.1) (layoutWordVars ((layoutWordsK D.shape).getD (wordIndex o.1) [])) pt = v
+    mleStk (stackForK D c1 c2 o.1) (stackVarsK D.shape o.1) pt = v
 
 /-! ## The code-level link -/
 
 /-- **The Keccak verifier's main line as a chain program** (code-level link), for the Flock phase `Fl`, with `nV`
 values at `t` and `V` batch rounds: after the row counts, for each public input and counts the chain program
-`prog input rows` on `uniRounds Fl.prog.rounds nV V`, with a tail of three (the three stacks' values), runs as
+`prog input rows` on `uniRounds Fl.prog.rounds nV V 1`, with a tail of three (the three stacks' values), runs as
 `reduceWithK` at the deployment's shape, `keccakMain`, point claims, up to what the verdict and the chain read
 (`obsOf`). -/
 structure UniCodeK {F : KeccakVm.KeccakFlockSpec} (D : KDeployment) {κ : ℕ} (Fl : KFlockSound F κ keccakMain)
     (nV V : ℕ) where
   prog : Vector UInt8 32 → List ℕ → ChainProg Reduced
-  rounds_eq : ∀ input rows, (prog input rows).rounds = uniRounds Fl.prog.rounds nV V
+  rounds_eq : ∀ input rows, (prog input rows).rounds = uniRounds Fl.prog.rounds nV V 1
   tail_eq : ∀ input rows, (prog input rows).tail = 3
   link : ∀ (input : Vector UInt8 32) {m : Type → Type} [Monad m] [LawfulMonad m]
     (P : KeccakState → m KeccakState) (c₀ : Chan),
@@ -67,7 +67,7 @@ vanish on its transcript, and the batching sumcheck's last claim the identity mo
 unless `t` is a root of the merge polynomial. -/
 def UniFinalK {F : KeccakVm.KeccakFlockSpec} (D : KDeployment) {κ : ℕ} (Fl : KFlockSound F κ keccakMain)
     (I : UniIdsK F D Fl) (C : UniCodeK D Fl I.nV I.V) : Prop :=
-  ∀ (s : USt) done tl c1 c2, DoneFits (uniRounds Fl.prog.rounds I.nV I.V) done → tl.length = 3 →
+  ∀ (s : USt) done tl c1 c2, DoneFits (uniRounds Fl.prog.rounds I.nV I.V 1) done → tl.length = 3 →
     (C.prog s.1 s.2).ZerosVanish done tl → ClaimsHoldK D ((C.prog s.1 s.2).out done tl) c1 c2 →
       Fl.prog.ZerosVanish (fdOf Fl.prog.rounds.length (openedOf Fl.prog.rounds.length c1 c2 done)) [] ∧
       ((I.zb (fdOf Fl.prog.rounds.length (openedOf Fl.prog.rounds.length c1 c2 done))).eval
@@ -96,9 +96,9 @@ of `C1`'s candidate and whose last state follows from the verifier's checks with
 Keccak verifier (`keccakMain`) knowledge sound for `uniExtractorK F D` with the bound `uniBound128 e`. -/
 def FsLayer128K (F : KeccakVm.KeccakFlockSpec) (D : KDeployment) {κ : ℕ} (Fl : KFlockSound F κ keccakMain)
     (nV V : ℕ) (C : UniCodeK D Fl nV V) : Prop :=
-  ∀ (R : RbrPiop (uniRounds Fl.prog.rounds nV V) USt Stk) (e : ℝ≥0∞), (∀ j, R.err j ≤ e) →
+  ∀ (R : RbrPiop (uniRounds Fl.prog.rounds nV V 1) USt Stk) (e : ℝ≥0∞), (∀ j, R.err j ≤ e) →
     (∀ s c m, R.pre s [] (some c, m) → RelK F D s c) →
-    (∀ (s : USt) done tl c1 c2, DoneFits (uniRounds Fl.prog.rounds nV V) done → tl.length = 3 →
+    (∀ (s : USt) done tl c1 c2, DoneFits (uniRounds Fl.prog.rounds nV V 1) done → tl.length = 3 →
       (C.prog s.1 s.2).ZerosVanish done tl → ClaimsHoldK D ((C.prog s.1 s.2).out done tl) c1 c2 →
         ∃ p m ch, openedOf Fl.prog.rounds.length c1 c2 done = p ++ [(m, ch)] ∧ R.post s p m ch) →
     UniKnowledgeSoundnessKeccak F D (uniBound128 e)

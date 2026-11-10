@@ -29,12 +29,12 @@ open scoped ENNReal
 
 /-- **The Keccak verifier at π1-rec3's shape as a chain program** (code-level link), for its Flock phase `F3`, with
 `nV` values at `t` and `np` pair rounds: after the row counts, the chain program `prog input rows` on
-`rec3Rounds F3.prog.rounds nV np`, with a tail of three, runs as `reduceWithK` at the deployment's shape,
+`rec3Rounds F3.prog.rounds nV np 1`, with a tail of three, runs as `reduceWithK` at the deployment's shape,
 `keccakRec3`, point claims, up to `obsOf3`. -/
 structure UniCodeK3 {F : KeccakVm.KeccakFlockSpec} (D : KDeployment) {κ : ℕ} (F3 : KFlockSound F κ keccakRec3)
     (nV np : ℕ) where
   prog : Vector UInt8 32 → List ℕ → ChainProg Reduced
-  rounds_eq : ∀ input rows, (prog input rows).rounds = rec3Rounds F3.prog.rounds nV np
+  rounds_eq : ∀ input rows, (prog input rows).rounds = rec3Rounds F3.prog.rounds nV np 1
   tail_eq : ∀ input rows, (prog input rows).tail = 3
   link : ∀ (input : Vector UInt8 32) {m : Type → Type} [Monad m] [LawfulMonad m]
     (P : KeccakState → m KeccakState) (c₀ : Chan),
@@ -45,7 +45,7 @@ structure UniCodeK3 {F : KeccakVm.KeccakFlockSpec} (D : KDeployment) {κ : ℕ} 
 its transcript and the batch's last state hold at its point, unless `t` is a root of the merge polynomial. -/
 def UniFinalK3 {F : KeccakVm.KeccakFlockSpec} (D : KDeployment) {κ : ℕ} (F3 : KFlockSound F κ keccakRec3) {np : ℕ}
     (I : UniIdsK3 F D F3 np) (BR : PairBatch np) (C : UniCodeK3 D F3 I.nV np) : Prop :=
-  ∀ (s : USt) done tl c1 c2, DoneFits (rec3Rounds F3.prog.rounds I.nV np) done → tl.length = 3 →
+  ∀ (s : USt) done tl c1 c2, DoneFits (rec3Rounds F3.prog.rounds I.nV np 1) done → tl.length = 3 →
     (C.prog s.1 s.2).ZerosVanish done tl → ClaimsHoldK D ((C.prog s.1 s.2).out done tl) c1 c2 →
       F3.prog.ZerosVanish (fdOf F3.prog.rounds.length (openedOf F3.prog.rounds.length c1 c2 done)) [] ∧
       ((I.zb (fdOf F3.prog.rounds.length (openedOf F3.prog.rounds.length c1 c2 done))).eval
@@ -69,9 +69,9 @@ errors at most `e`, first state the Keccak VM's relation, last state from the ch
 deployed Keccak verifier at `keccakRec3` knowledge sound for `uniExtractorK F D` with the bound `uniBound128 e`. -/
 def FsLayer128K3 (F : KeccakVm.KeccakFlockSpec) (D : KDeployment) {κ : ℕ} (F3 : KFlockSound F κ keccakRec3)
     (nV np : ℕ) (C : UniCodeK3 D F3 nV np) : Prop :=
-  ∀ (R : RbrPiop (rec3Rounds F3.prog.rounds nV np) USt Stk) (e : ℝ≥0∞), (∀ j, R.err j ≤ e) →
+  ∀ (R : RbrPiop (rec3Rounds F3.prog.rounds nV np 1) USt Stk) (e : ℝ≥0∞), (∀ j, R.err j ≤ e) →
     (∀ s c m, R.pre s [] (some c, m) → RelK F D s c) →
-    (∀ (s : USt) done tl c1 c2, DoneFits (rec3Rounds F3.prog.rounds nV np) done → tl.length = 3 →
+    (∀ (s : USt) done tl c1 c2, DoneFits (rec3Rounds F3.prog.rounds nV np 1) done → tl.length = 3 →
       (C.prog s.1 s.2).ZerosVanish done tl → ClaimsHoldK D ((C.prog s.1 s.2).out done tl) c1 c2 →
         ∃ p m ch, openedOf F3.prog.rounds.length c1 c2 done = p ++ [(m, ch)] ∧ R.post s p m ch) →
     UniKnowledgeSoundnessKeccakRec3 F D (uniBound128 e)
@@ -81,7 +81,7 @@ variable {F : KeccakVm.KeccakFlockSpec} {D : KDeployment} {κ : ℕ} (F3 : KFloc
 
 theorem hlink_uniPiopK3 (C : UniCodeK3 D F3 I.nV np) (hFin : UniFinalK3 D F3 I BR C) (s : USt)
     (done : Done) (tl : List E) (c1 c2 : Stk)
-    (hd : DoneFits (rec3Rounds F3.prog.rounds I.nV np) done) (htl : tl.length = 3)
+    (hd : DoneFits (rec3Rounds F3.prog.rounds I.nV np 1) done) (htl : tl.length = 3)
     (hz : (C.prog s.1 s.2).ZerosVanish done tl)
     (hc : ClaimsHoldK D ((C.prog s.1 s.2).out done tl) c1 c2) :
     ∃ p m ch, openedOf F3.prog.rounds.length c1 c2 done = p ++ [(m, ch)] ∧
@@ -117,7 +117,7 @@ theorem hlink_uniPiopK3 (C : UniCodeK3 D F3 I.nV np) (hFin : UniFinalK3 D F3 I B
     rcases done with _ | ⟨x, d⟩
     · simp only [List.length_nil] at hlen
       omega
-    · have h1 : DoneFits (F3.prog.rounds ++ ([⟨true, 0, 0⟩, ⟨false, I.nV, 1⟩] ++
+    · have h1 : DoneFits (F3.prog.rounds ++ ([⟨true, 1, 0⟩, ⟨false, I.nV, 1⟩] ++
           (List.replicate np ⟨false, 8, 0⟩ ++ [⟨false, 2, 0⟩]))) d := by
         have := hd
         rw [rec3Rounds_eq] at this

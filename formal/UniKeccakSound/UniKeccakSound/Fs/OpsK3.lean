@@ -31,7 +31,7 @@ variable (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ : ℕ} (F3 : KFloc
   (C : UniCodeK3 D F3 nV np)
 
 /-- π1-rec3's rounds. -/
-abbrev uRoundsK3 : List RoundSpec := rec3Rounds F3.prog.rounds nV np
+abbrev uRoundsK3 : List RoundSpec := rec3Rounds F3.prog.rounds nV np 1
 
 /-- The PIOP's statement a proof announces. -/
 def uStK3 (π : UPf) : USt := ustOf (uView (uRoundsK3 F3 nV np) π).1

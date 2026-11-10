@@ -58,7 +58,7 @@ def CodeIsMainK (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ : ℕ} (Fl 
     (nV V : ℕ) (C : UniCodeK D Fl nV V) : Prop :=
   ∀ (s : USt) (r0 : UMsg × List E) (fd : Done) (r2 r3 : UMsg × List E) (brs : Done) (tl : List E),
     fd.length = Fl.prog.rounds.length →
-    DoneFits (uniRounds Fl.prog.rounds nV V) ([r0] ++ fd ++ [r2, r3] ++ brs) → tl.length = 3 →
+    DoneFits (uniRounds Fl.prog.rounds nV V 1) ([r0] ++ fd ++ [r2, r3] ++ brs) → tl.length = 3 →
     (C.prog s.1 s.2).ZerosVanish ([r0] ++ fd ++ [r2, r3] ++ brs) tl →
       CountsFit D.shape s.2 ∧ Fl.prog.ZerosVanish fd [] ∧
         (∀ z ∈ (mainBatchK D Fl s r0 fd r2 r3 brs tl).1, z = 0) ∧
@@ -84,16 +84,12 @@ def WeightMleK (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ : ℕ} {v : 
 /-- **The stacks have fewer than `256` variables** (a layout word carries them in one byte). -/
 def LayoutVarsSmall3K (D : KDeployment) : Prop := ∀ c, (layoutOfK D.shape c).vars < 256
 
-/-! ## The layout words -/
+/-! ## The claims' variables -/
 
-theorem layoutWordsK_word (S : Shape) (c : Commitment) :
-    (layoutWordsK S).getD (wordIndex c) [] =
-      layoutWord S (layoutCode c) (layoutOfK S c).vars (layoutOfK S c).words := by
+/-- A claim's `n` is its stack's variables (`stackVarsK`, the stack's layout's). -/
+theorem claimVarsK (D : KDeployment) (_hsmall : LayoutVarsSmall3K D) (c : Commitment) :
+    stackVarsK D.shape c = (layoutOfK D.shape c).vars := by
   cases c <;> rfl
-
-theorem claimVarsK (D : KDeployment) (hsmall : LayoutVarsSmall3K D) (c : Commitment) :
-    layoutWordVars ((layoutWordsK D.shape).getD (wordIndex c) []) = (layoutOfK D.shape c).vars := by
-  rw [layoutWordsK_word, layoutWordVars_layoutWord _ _ _ _ (hsmall c)]
 
 /-! ## The terminal -/
 

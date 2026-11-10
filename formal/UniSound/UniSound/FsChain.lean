@@ -17,9 +17,9 @@ import Compose.ListChainKRpmS
   `2^-128`).
 * **The statement's bytes before round `0`'s message** (`pre`): the row counts' 24 bytes, absorbed
   with `C1`'s root (`readCounts`, then `nextRoot`).
-* **A message's encoding** (`uniEnc`): the root as the stream carries it (`revRoot`: the digest's
-  two 16-byte halves, each reversed: `next_root`), then each scalar's 24 bytes (`scalar24`: limbs
-  `2, 1, 0`, big-endian: `next_scalar`).
+* **A message's encoding** (`uniEnc`): the root as the stream carries it (`revRoot`: the digest's 32
+  bytes as they are, the EIP's PCS claims' convention: `next_root`), then each scalar's 24 bytes
+  (`scalar24`: limbs `2, 1, 0`, big-endian: `next_scalar`).
 * **What an input refers to** (`UniRf`): `Compose.Refers`, or a root after a state (`C2`'s, bytes
   `32 … 64`) or after a state and the row counts (`C1`'s, bytes `56 … 88`): at most five digests.
 
@@ -87,19 +87,14 @@ theorem scalars24_inj : ∀ {l l' : List E}, l.length = l'.length → scalars24 
   | [], _ :: _, hl, _ => by simp at hl
   | _ :: _, [], hl, _ => by simp at hl
 
-/-- **A root as the stream carries it** (`next_root`): its digest's two 16-byte halves, each
-reversed (a half's limbs `1, 0`, big-endian). -/
-def revRoot (r : Bytes32) : List UInt8 := (r.toList.take 16).reverse ++ (r.toList.drop 16).reverse
+/-- **A root as the stream carries it** (`next_root`): its digest's 32 bytes as they are (since the EIP's PCS
+claims, `prover::prove::halves`; before them the two 16-byte halves, each reversed). -/
+def revRoot (r : Bytes32) : List UInt8 := r.toList
 
 @[simp] theorem length_revRoot (r : Bytes32) : (revRoot r).length = 32 := by
   simp [revRoot]
 
-theorem revRoot_injective : Function.Injective revRoot := fun a b h => by
-  unfold revRoot at h
-  obtain ⟨h1, h2⟩ := List.append_inj h (by simp)
-  apply Vector.toList_inj.mp
-  rw [← List.take_append_drop 16 a.toList, ← List.take_append_drop 16 b.toList,
-    List.reverse_inj.mp h1, List.reverse_inj.mp h2]
+theorem revRoot_injective : Function.Injective revRoot := fun _ _ h => Vector.toList_inj.mp h
 
 /-- **A round's message as the chain hashes it**: the root's bytes, then the scalars'. -/
 def uniEnc (m : RMsg E) : List UInt8 :=

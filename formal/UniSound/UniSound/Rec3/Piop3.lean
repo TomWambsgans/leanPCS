@@ -47,39 +47,39 @@ open scoped ENNReal
 
 /-- **π1-rec3's rounds**: `C1` and `c, β, γ`; Flock's; `C2` and `t`; the `nV` values and `ρ, λ`; `np` pair rounds;
 the last plain round. -/
-def rec3Rounds (flockRounds : List Compose.RoundSpec) (nV np : ℕ) : List Compose.RoundSpec :=
-  [⟨true, 0, 2⟩] ++ flockRounds ++ [⟨true, 0, 0⟩, ⟨false, nV, 1⟩] ++ List.replicate np ⟨false, 8, 0⟩ ++
+def rec3Rounds (flockRounds : List Compose.RoundSpec) (nV np : ℕ) (o : ℕ := 0) : List Compose.RoundSpec :=
+  [⟨true, o, 2⟩] ++ flockRounds ++ [⟨true, o, 0⟩, ⟨false, nV, 1⟩] ++ List.replicate np ⟨false, 8, 0⟩ ++
     [⟨false, 2, 0⟩]
 
 section Rounds
 
-variable (Fr : List Compose.RoundSpec) (nV np : ℕ)
+variable (Fr : List Compose.RoundSpec) (nV np : ℕ) {o : ℕ}
 
-theorem length_rec3Rounds : (rec3Rounds Fr nV np).length = Fr.length + 4 + np := by
+theorem length_rec3Rounds : (rec3Rounds Fr nV np o).length = Fr.length + 4 + np := by
   simp [rec3Rounds]
   omega
 
-theorem rec3Rounds_zero : (rec3Rounds Fr nV np).getD 0 ⟨false, 0, 0⟩ = ⟨true, 0, 2⟩ := rfl
+theorem rec3Rounds_zero : (rec3Rounds Fr nV np o).getD 0 ⟨false, 0, 0⟩ = ⟨true, o, 2⟩ := rfl
 
-theorem rec3Rounds_eq : rec3Rounds Fr nV np =
-    [⟨true, 0, 2⟩] ++ (Fr ++ ([⟨true, 0, 0⟩, ⟨false, nV, 1⟩] ++ (List.replicate np ⟨false, 8, 0⟩ ++
+theorem rec3Rounds_eq : rec3Rounds Fr nV np o =
+    [⟨true, o, 2⟩] ++ (Fr ++ ([⟨true, o, 0⟩, ⟨false, nV, 1⟩] ++ (List.replicate np ⟨false, 8, 0⟩ ++
       [⟨false, 2, 0⟩]))) := by
   simp [rec3Rounds]
 
 theorem rec3Rounds_flock (j : ℕ) (h1 : 1 ≤ j) (h2 : j ≤ Fr.length) :
-    (rec3Rounds Fr nV np).getD j ⟨false, 0, 0⟩ = Fr.getD (j - 1) ⟨false, 0, 0⟩ := by
+    (rec3Rounds Fr nV np o).getD j ⟨false, 0, 0⟩ = Fr.getD (j - 1) ⟨false, 0, 0⟩ := by
   obtain ⟨i, rfl⟩ : ∃ i, j = i + 1 := ⟨j - 1, by omega⟩
   rw [rec3Rounds_eq]
   simp only [List.getD_eq_getElem?_getD, Nat.add_sub_cancel, List.singleton_append, List.getElem?_cons_succ]
   rw [List.getElem?_append_left (by omega)]
 
-theorem rec3Rounds_c2 : (rec3Rounds Fr nV np).getD (Fr.length + 1) ⟨false, 0, 0⟩ = ⟨true, 0, 0⟩ := by
+theorem rec3Rounds_c2 : (rec3Rounds Fr nV np o).getD (Fr.length + 1) ⟨false, 0, 0⟩ = ⟨true, o, 0⟩ := by
   rw [rec3Rounds_eq]
   simp only [List.getD_eq_getElem?_getD, List.singleton_append, List.getElem?_cons_succ]
   rw [List.getElem?_append_right (le_refl _), Nat.sub_self]
   rfl
 
-theorem rec3Rounds_vals : (rec3Rounds Fr nV np).getD (Fr.length + 2) ⟨false, 0, 0⟩ = ⟨false, nV, 1⟩ := by
+theorem rec3Rounds_vals : (rec3Rounds Fr nV np o).getD (Fr.length + 2) ⟨false, 0, 0⟩ = ⟨false, nV, 1⟩ := by
   rw [rec3Rounds_eq]
   simp only [List.getD_eq_getElem?_getD, List.singleton_append,
     show Fr.length + 2 = (Fr.length + 1) + 1 by omega, List.getElem?_cons_succ]
@@ -87,7 +87,7 @@ theorem rec3Rounds_vals : (rec3Rounds Fr nV np).getD (Fr.length + 2) ⟨false, 0
   rfl
 
 theorem rec3Rounds_pair (j : ℕ) (h1 : Fr.length + 3 ≤ j) (h2 : j < Fr.length + 3 + np) :
-    (rec3Rounds Fr nV np).getD j ⟨false, 0, 0⟩ = ⟨false, 8, 0⟩ := by
+    (rec3Rounds Fr nV np o).getD j ⟨false, 0, 0⟩ = ⟨false, 8, 0⟩ := by
   rw [rec3Rounds_eq]
   obtain ⟨i, rfl⟩ : ∃ i, j = i + 1 := ⟨j - 1, by omega⟩
   simp only [List.getD_eq_getElem?_getD, List.singleton_append, List.getElem?_cons_succ]
@@ -97,7 +97,7 @@ theorem rec3Rounds_pair (j : ℕ) (h1 : Fr.length + 3 ≤ j) (h2 : j < Fr.length
   rw [ite_eq_left (by omega)]
   rfl
 
-theorem rec3Rounds_last : (rec3Rounds Fr nV np).getD (Fr.length + 3 + np) ⟨false, 0, 0⟩ = ⟨false, 2, 0⟩ := by
+theorem rec3Rounds_last : (rec3Rounds Fr nV np o).getD (Fr.length + 3 + np) ⟨false, 0, 0⟩ = ⟨false, 2, 0⟩ := by
   rw [rec3Rounds_eq]
   simp only [List.getD_eq_getElem?_getD, List.singleton_append,
     show Fr.length + 3 + np = (Fr.length + 2 + np) + 1 by omega, List.getElem?_cons_succ]

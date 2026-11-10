@@ -325,7 +325,7 @@ theorem uniSoundK_batch (j : ℕ) (h1 : Fl.prog.rounds.length + 3 ≤ j)
 
 /-- **The univariate PIOP, round by round** (main line), for the Flock phase `Fl` and the identity
 model `I`. -/
-noncomputable def uniPiopK : RbrPiop (uniRounds Fl.prog.rounds I.nV I.V) USt Stk where
+noncomputable def uniPiopK : RbrPiop (uniRounds Fl.prog.rounds I.nV I.V 1) USt Stk where
   pre := uniPreK Fl I
   post := uniPostK Fl I
   pre_post := uniPreK_pre_post Fl I

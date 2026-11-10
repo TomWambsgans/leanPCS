@@ -46,7 +46,7 @@ theorem fsLayer128K3_holds (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ 
 /-- **π1-rec3's chain queries**: `nSteps` of Flock's rounds, `np`, and `8`. -/
 theorem nQ_uSpecK3 {F : KeccakVm.KeccakFlockSpec} {κ : ℕ} (F3 : KFlockSound F κ keccakRec3) (nV np : ℕ) :
     (uSpecK3 F3 nV np).K.nQ = nSteps F3.prog.rounds + np + 8 := by
-  show nSteps (rec3Rounds F3.prog.rounds nV np) + 1 = _
+  show nSteps (rec3Rounds F3.prog.rounds nV np 1) + 1 = _
   simp only [rec3Rounds, nSteps_append, nSteps_replicate, nSteps]
   ring
 

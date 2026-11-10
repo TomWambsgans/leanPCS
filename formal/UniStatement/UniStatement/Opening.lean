@@ -7,6 +7,7 @@ module
 
 public import UniStatement.Run
 public import PcsQuotient.Opening
+public import Common.Lanes
 
 /-!
 # The claims' opening, the layout words and the contract's IV: the shared pieces
@@ -38,10 +39,6 @@ open LeanVM.Parameters LeanVM.Semantics LeanVM.Protocol LeanVM.Protocol.KeccakHa
 /-- **The plain layout** of a stack of `2^vars` words: one chunk, lane `l` its block `l`
 (`PcsQuotient.Layout.ofChunks`); a claim's weight is `eq(point, ·)` on the stack. -/
 def plainLayout (vars : ℕ) : PcsQuotient.Layout := PcsQuotient.Layout.ofChunks vars vars vars [(0, 2 ^ vars)]
-
-/-- A commitment's root from the two halves the stream carries it as (`next_root`; never malformed: a
-half has no top limb). -/
-def rootOf (halves : E × E) : Digest := (digestOfScalars halves).getD (Vector.replicate 4 0)
 
 /-- **The setup's root** (`SetupRoots`), a constant of the verifier: the commitment `F` of the bytecode's tuples and
 the memory's addresses. -/
@@ -95,6 +92,16 @@ def elementWord (x : E) : List UInt8 :=
 def rootWord (halves : E × E) : List UInt8 :=
   be64 (halves.1.limb 1).lane ++ be64 (halves.1.limb 0).lane ++ be64 (halves.2.limb 1).lane ++
     be64 (halves.2.limb 0).lane
+
+/-- **A commitment's root from the two halves the stream carries it as** (`next_root`): the digest whose bytes
+are the stream's 32 bytes, as they are (`rootWord`: each half's limbs `1, 0` big-endian). Since the EIP's PCS
+claims (`crates/pcs_claim`) the prover sends a root's bytes as they are (`prover::prove::halves`), the bytes a PCS
+claim's root field holds; before them it sent the root's two scalars of WHIR's transcript
+(`digestOfScalars`). Its four words are the little-endian words of the bytes (`LeanVM.Rpm.bytesLane`). -/
+def rootOf (halves : E × E) : Digest :=
+  let w := rootWord halves
+  #v[LeanVM.Rpm.bytesLane w, LeanVM.Rpm.bytesLane (w.drop 8), LeanVM.Rpm.bytesLane (w.drop 16),
+    LeanVM.Rpm.bytesLane (w.drop 24)]
 
 /-- `combined_words(claim)`: its points (a count, then each its length and coordinates), its terms (a count, then
 each `column | point << 32 | twist << 48` and its coefficient), its value. -/

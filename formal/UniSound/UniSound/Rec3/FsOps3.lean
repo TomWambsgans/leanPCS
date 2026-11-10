@@ -40,13 +40,13 @@ def uTail3 (rounds : List RoundSpec) (π : UPf) : List E :=
 
 /-! ## The rounds with a root -/
 
-theorem root_rec3Rounds (fr : List RoundSpec) (hfr : ∀ r ∈ fr, r.root = false) (nV np i : ℕ)
-    (h : ((rec3Rounds fr nV np).getD i ⟨false, 0, 0⟩).root = true) : i = 0 ∨ i = fr.length + 1 := by
+theorem root_rec3Rounds (fr : List RoundSpec) (hfr : ∀ r ∈ fr, r.root = false) (nV np i : ℕ) {o : ℕ}
+    (h : ((rec3Rounds fr nV np o).getD i ⟨false, 0, 0⟩).root = true) : i = 0 ∨ i = fr.length + 1 := by
   rcases i with _ | k
   · exact Or.inl rfl
   · right
-    have e : (rec3Rounds fr nV np).getD (k + 1) ⟨false, 0, 0⟩ =
-        (fr ++ (([⟨true, 0, 0⟩, ⟨false, nV, 1⟩] : List RoundSpec) ++
+    have e : (rec3Rounds fr nV np o).getD (k + 1) ⟨false, 0, 0⟩ =
+        (fr ++ (([⟨true, o, 0⟩, ⟨false, nV, 1⟩] : List RoundSpec) ++
           (List.replicate np (⟨false, 8, 0⟩ : RoundSpec) ++ ([⟨false, 2, 0⟩] : List RoundSpec)))).getD k
           ⟨false, 0, 0⟩ := by
       rw [rec3Rounds_eq]

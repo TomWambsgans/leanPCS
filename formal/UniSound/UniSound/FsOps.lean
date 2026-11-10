@@ -32,13 +32,13 @@ open scoped ENNReal
 
 /-! ## The rounds with a root -/
 
-theorem root_uniRounds (fr : List RoundSpec) (hfr : ∀ r ∈ fr, r.root = false) (nV V i : ℕ)
-    (h : ((uniRounds fr nV V).getD i ⟨false, 0, 0⟩).root = true) : i = 0 ∨ i = fr.length + 1 := by
+theorem root_uniRounds (fr : List RoundSpec) (hfr : ∀ r ∈ fr, r.root = false) (nV V i : ℕ) {o : ℕ}
+    (h : ((uniRounds fr nV V o).getD i ⟨false, 0, 0⟩).root = true) : i = 0 ∨ i = fr.length + 1 := by
   rcases i with _ | k
   · exact Or.inl rfl
   · right
-    have e : (uniRounds fr nV V).getD (k + 1) ⟨false, 0, 0⟩ =
-        (fr ++ (([⟨true, 0, 0⟩, ⟨false, nV, 1⟩] : List RoundSpec) ++
+    have e : (uniRounds fr nV V o).getD (k + 1) ⟨false, 0, 0⟩ =
+        (fr ++ (([⟨true, o, 0⟩, ⟨false, nV, 1⟩] : List RoundSpec) ++
           List.replicate V (⟨false, 2, 0⟩ : RoundSpec))).getD k ⟨false, 0, 0⟩ := by
       simp [uniRounds, List.append_assoc]
     rw [e] at h

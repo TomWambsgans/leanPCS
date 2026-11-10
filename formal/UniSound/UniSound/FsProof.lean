@@ -158,8 +158,8 @@ theorem facL_le_pow {M : Type} (C : ℕ → ListCommit M) (b : ℕ) (hb : ∀ k,
     · simp only [facL, List.countP_cons, hs, ↓reduceIte, pow_succ]
       exact (Nat.mul_le_mul (hb i) ih).trans (le_of_eq (mul_comm _ _))
 
-theorem countP_root_uniRounds (fr : List RoundSpec) (hfr : ∀ r ∈ fr, r.root = false) (nV V : ℕ) :
-    (uniRounds fr nV V).countP (fun r => r.root) = 2 := by
+theorem countP_root_uniRounds (fr : List RoundSpec) (hfr : ∀ r ∈ fr, r.root = false) (nV V : ℕ) {o : ℕ} :
+    (uniRounds fr nV V o).countP (fun r => r.root) = 2 := by
   have h0 : fr.countP (fun r => r.root) = 0 :=
     List.countP_eq_zero.mpr fun r hr => by simp [hfr r hr]
   simp [uniRounds, List.countP_append, h0]
@@ -205,14 +205,14 @@ section Facts
 
 /-! ### The last link -/
 
-theorem uniRounds_getD_zero (fr : List RoundSpec) (nV V : ℕ) :
-    (uniRounds fr nV V).getD 0 ⟨false, 0, 0⟩ = ⟨true, 0, 5⟩ := by
+theorem uniRounds_getD_zero (fr : List RoundSpec) (nV V : ℕ) {o : ℕ} :
+    (uniRounds fr nV V o).getD 0 ⟨false, 0, 0⟩ = ⟨true, o, 5⟩ := by
   simp [uniRounds]
 
-theorem uniRounds_getD_c2 (fr : List RoundSpec) (nV V : ℕ) :
-    (uniRounds fr nV V).getD (fr.length + 1) ⟨false, 0, 0⟩ = ⟨true, 0, 0⟩ := by
-  have e : uniRounds fr nV V = ([⟨true, 0, 5⟩] ++ fr) ++
-      (([⟨true, 0, 0⟩, ⟨false, nV, 1⟩] : List RoundSpec) ++
+theorem uniRounds_getD_c2 (fr : List RoundSpec) (nV V : ℕ) {o : ℕ} :
+    (uniRounds fr nV V o).getD (fr.length + 1) ⟨false, 0, 0⟩ = ⟨true, o, 0⟩ := by
+  have e : uniRounds fr nV V o = ([⟨true, o, 5⟩] ++ fr) ++
+      (([⟨true, o, 0⟩, ⟨false, nV, 1⟩] : List RoundSpec) ++
         List.replicate V (⟨false, 2, 0⟩ : RoundSpec)) := by
     simp [uniRounds]
   rw [e, List.getD_append_right _ _ _ _ (by simp)]

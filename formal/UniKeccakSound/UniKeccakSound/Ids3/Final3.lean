@@ -115,9 +115,9 @@ theorem uniFinalK3_uniCodeK3At (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} 
   change (main3ProgK D F3 np s.1 s.2).ZerosVanish done tl at hz
   change ClaimsHoldK D ((main3ProgK D F3 np s.1 s.2).out done tl) c1 c2 at hc
   have hcf : CountsFit D.shape s.2 := countsZeroK3_of_fits D F3 np s.1 s.2 done tl hd hz
-  have hd' : DoneFits ([⟨true, 0, 2⟩] ++ F3.prog.rounds ++ [⟨true, 0, 0⟩, ⟨false, valsCountK, 1⟩] ++
+  have hd' : DoneFits ([⟨true, 1, 2⟩] ++ F3.prog.rounds ++ [⟨true, 1, 0⟩, ⟨false, valsCountK, 1⟩] ++
       (List.replicate np ⟨false, 8, 0⟩ ++ [⟨false, 2, 0⟩])) done := by
-    have hd2 : DoneFits (rec3Rounds F3.prog.rounds valsCountK np) done := hd
+    have hd2 : DoneFits (rec3Rounds F3.prog.rounds valsCountK np 1) done := hd
     rw [rec3Rounds, List.append_assoc] at hd2
     exact hd2
   obtain ⟨d012, brs, rfl, h012, hbr⟩ := doneFits_append_split _ _ _ hd'

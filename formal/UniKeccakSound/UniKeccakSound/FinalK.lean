@@ -42,7 +42,7 @@ theorem hpre_uniPiopK (s : USt) (c : Stk) (m : List E) :
 
 theorem hlink_uniPiopK (C : UniCodeK D Fl I.nV I.V) (hFin : UniFinalK D Fl I C) (s : USt)
     (done : Done) (tl : List E) (c1 c2 : Stk)
-    (hd : DoneFits (uniRounds Fl.prog.rounds I.nV I.V) done) (htl : tl.length = 3)
+    (hd : DoneFits (uniRounds Fl.prog.rounds I.nV I.V 1) done) (htl : tl.length = 3)
     (hz : (C.prog s.1 s.2).ZerosVanish done tl)
     (hc : ClaimsHoldK D ((C.prog s.1 s.2).out done tl) c1 c2) :
     ∃ p m ch, openedOf Fl.prog.rounds.length c1 c2 done = p ++ [(m, ch)] ∧
@@ -78,7 +78,7 @@ theorem hlink_uniPiopK (C : UniCodeK D Fl I.nV I.V) (hFin : UniFinalK D Fl I C) 
     rcases done with _ | ⟨x, d⟩
     · simp only [List.length_nil] at hlen
       omega
-    · have h1 : DoneFits (Fl.prog.rounds ++ ([⟨true, 0, 0⟩, ⟨false, I.nV, 1⟩] ++
+    · have h1 : DoneFits (Fl.prog.rounds ++ ([⟨true, 1, 0⟩, ⟨false, I.nV, 1⟩] ++
           List.replicate I.V ⟨false, 2, 0⟩)) d := by
         have := hd
         simp only [uniRounds, List.append_assoc, List.singleton_append] at this

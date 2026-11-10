@@ -322,7 +322,7 @@ theorem uniSoundK3_batch (j : ℕ) (h1 : F3.prog.rounds.length + 3 ≤ j)
 /-! ## The protocol -/
 
 /-- **π1-rec3's PIOP, round by round**, for its Flock phase `F3`, the identity model `I` and the batch `BR`. -/
-noncomputable def uniPiopK3 : RbrPiop (rec3Rounds F3.prog.rounds I.nV np) USt Stk where
+noncomputable def uniPiopK3 : RbrPiop (rec3Rounds F3.prog.rounds I.nV np 1) USt Stk where
   pre := uniPreK3 F3 I BR
   post := uniPostK3 F3 I BR
   pre_post := uniPreK3_pre_post F3 I BR

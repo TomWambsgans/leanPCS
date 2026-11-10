@@ -65,7 +65,7 @@ theorem nSteps_replicate (r : RoundSpec) : ∀ n, nSteps (List.replicate n r) = 
 /-- **The main line's chain queries**: `nSteps` of Flock's rounds, `V`, and `10`. -/
 theorem nQ_uSpecK {F : KeccakVm.KeccakFlockSpec} {κ : ℕ} (Fl : KFlockSound F κ keccakMain) (nV V : ℕ) :
     (uSpecK Fl nV V).K.nQ = nSteps Fl.prog.rounds + V + 10 := by
-  show nSteps (uniRounds Fl.prog.rounds nV V) + 1 = _
+  show nSteps (uniRounds Fl.prog.rounds nV V 1) + 1 = _
   simp only [uniRounds, nSteps_append, nSteps_replicate, nSteps]
   ring
 

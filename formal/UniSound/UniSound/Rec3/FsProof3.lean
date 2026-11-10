@@ -32,8 +32,8 @@ open scoped ENNReal
 attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
   LeanVM.Protocol.Compile.instFintypeKState UniStatement.setupStack
 
-theorem countP_root_rec3Rounds (fr : List RoundSpec) (hfr : ∀ r ∈ fr, r.root = false) (nV np : ℕ) :
-    (rec3Rounds fr nV np).countP (fun r => r.root) = 2 := by
+theorem countP_root_rec3Rounds (fr : List RoundSpec) (hfr : ∀ r ∈ fr, r.root = false) (nV np : ℕ) {o : ℕ} :
+    (rec3Rounds fr nV np o).countP (fun r => r.root) = 2 := by
   have h0 : fr.countP (fun r => r.root) = 0 :=
     List.countP_eq_zero.mpr fun r hr => by simp [hfr r hr]
   simp [rec3Rounds, List.countP_append, h0]

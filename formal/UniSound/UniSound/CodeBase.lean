@@ -219,6 +219,31 @@ theorem nextRoot_run_collect (c : Chan) (zs : List E) :
     rcases q with ⟨r2, c2⟩
     cases r2 <;> simp
 
+theorem nextScalar_run_collect (c : Chan) (zs : List E) :
+    (nextScalar (m := m)).run.run (collectZ c zs) =
+      (fun p => (p.1, collectZ p.2 zs)) <$> (nextScalar (m := m)).run.run c := by
+  simp only [nextScalar, ExceptT.run_bind, StateT.run_bind, takeBytes_run_collect, bind_map_left,
+    map_bind]
+  congr 1
+  funext p
+  rcases p with ⟨r, c1⟩
+  cases r <;> simp
+
+/-- **Zeros collected before a scalar are collected after it**, observationally. -/
+theorem obsEq_requireZeros_nextScalar {α : Type} (zs : List E) (k : E → ChanM m α) :
+    ObsEq (ChainProg.requireZeros zs >>= fun _ => nextScalar >>= k)
+      (nextScalar >>= fun r => ChainProg.requireZeros zs >>= fun _ => k r) := by
+  intro c
+  simp only [ExceptT.run_bind, StateT.run_bind, requireZeros_run, pure_bind]
+  rw [nextScalar_run_collect]
+  simp only [bind_map_left, map_bind]
+  congr 1
+  funext p
+  rcases p with ⟨r, c1⟩
+  cases r with
+  | error e => simp [obsOf]
+  | ok rt => simp [requireZeros_run]
+
 /-- **Zeros collected before a root are collected after it**, observationally. -/
 theorem obsEq_requireZeros_nextRoot {α : Type} (zs : List E) (k : E × E → ChanM m α) :
     ObsEq (ChainProg.requireZeros zs >>= fun _ => nextRoot >>= k)

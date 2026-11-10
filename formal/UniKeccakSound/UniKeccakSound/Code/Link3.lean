@@ -13,7 +13,7 @@ import UniKeccakSound.FinalK3
 deployment `D` whose batch has `2 np + 1` variables (`hV : varsOf (layoutsOfK D.shape) = 2 * np + 1`) and every
 Flock phase `F3 : KFlockSound F κ keccakRec3` with `D.shape.heights.getD opSha3 0 = κ`: after the row counts,
 `reduceWithK` at the deployment's shape, `keccakRec3`, point claims, is the chain program `main3ProgK` on
-`rec3Rounds F3.prog.rounds valsCountK np`, with a tail of three, up to `obsOf3`. Its rounds:
+`rec3Rounds F3.prog.rounds valsCountK np 1`, with a tail of three, up to `obsOf3`. Its rounds:
 
 * `C1`'s root and **three** challenges `c, β, γ` (`drawRun .rec3 4` is one draw and `squares c 4`);
 * Flock's rounds on the Keccak-f block (`F3.link`; its zeros, the structured terminal among them, are the main
@@ -97,12 +97,12 @@ def main3OutK (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ : ℕ} (F3 : 
   let stackLayouts := layoutsK D.shape mr.2
   let bp := batchPureWK narrowE combined stackLayouts fc.2 (r3.2.getD 1 0) brs tl
   (bp.1, ⟨(r0.1.1.getD default, r2.1.1.getD default), bp.2, none, fc.1.size,
-    stackLayouts.map fun x => (x.1, x.2.vars), stackLayouts⟩)
+    stackLayouts.map fun x => (x.1, x.2.vars), stackLayouts, (r0.1.2.headD 0, r2.1.2.headD 0)⟩)
 
 /-- **The chain program at π1-rec3's shape without the counts' zero.** -/
 def main3Prog0K (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ : ℕ} (F3 : KFlockSound F κ keccakRec3)
     (np : ℕ) (input : Vector UInt8 32) (rows : List ℕ) : ChainProg Reduced where
-  rounds := rec3Rounds F3.prog.rounds valsCountK np
+  rounds := rec3Rounds F3.prog.rounds valsCountK np 1
   zeros := mainZerosK F3.prog
   tail := 3
   tailZeros done tl := (main3OutK D F3 input rows (done.getD 0 default)
@@ -123,7 +123,7 @@ section Defs
 variable (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ : ℕ} (F3 : KFlockSound F κ keccakRec3) (np : ℕ)
   (input : Vector UInt8 32) (rows : List ℕ)
 
-theorem main3ProgK_rounds : (main3ProgK D F3 np input rows).rounds = rec3Rounds F3.prog.rounds valsCountK np :=
+theorem main3ProgK_rounds : (main3ProgK D F3 np input rows).rounds = rec3Rounds F3.prog.rounds valsCountK np 1 :=
   rfl
 
 theorem main3ProgK_tail : (main3ProgK D F3 np input rows).tail = 3 := rfl
@@ -150,9 +150,9 @@ theorem main3ProgK_out (done : Done) (tl : List E) :
       ((done.drop 1).take F3.prog.rounds.length) (done.getD (F3.prog.rounds.length + 1) default)
       (done.getD (F3.prog.rounds.length + 2) default) (done.drop (F3.prog.rounds.length + 3)) tl).2 := rfl
 
-theorem main3Prog0K_rounds : (main3Prog0K D F3 np input rows).rounds = [⟨true, 0, 2⟩] ++ F3.prog.rounds ++
-    [⟨true, 0, 0⟩, ⟨false, valsCountK, 1⟩] ++ (List.replicate np ⟨false, 8, 0⟩ ++ [⟨false, 2, 0⟩]) := by
-  show rec3Rounds _ _ _ = _
+theorem main3Prog0K_rounds : (main3Prog0K D F3 np input rows).rounds = [⟨true, 1, 2⟩] ++ F3.prog.rounds ++
+    [⟨true, 1, 0⟩, ⟨false, valsCountK, 1⟩] ++ (List.replicate np ⟨false, 8, 0⟩ ++ [⟨false, 2, 0⟩]) := by
+  show rec3Rounds _ _ _ 1 = _
   rw [rec3Rounds, List.append_assoc]
 
 theorem main3Prog0K_zeros : (main3Prog0K D F3 np input rows).zeros = mainZerosK F3.prog := rfl
@@ -214,10 +214,11 @@ theorem link3_obs0K (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ : ℕ} 
   simp only [ChainProg.run]
   rw [main3Prog0K_rounds, show (main3Prog0K D F3 np input rows).tail = 3 from rfl, runRounds_append,
     runRounds_append, runRounds_append, runRounds_cons, main3Prog0K_zeros]
-  simp only [rootRead, ite_true, mainZerosK_nil, nextScalars_zero, ChainProg.requireZeros, pure_bind,
-    bind_map_left, bind_assoc, ChainProg.runRounds, Nat.reduceAdd, samples_three]
-  -- Round 0: `C1`'s root, `c, β, γ`.
+  simp only [rootRead, ite_true, mainZerosK_nil, nextScalars_one, ChainProg.requireZeros,
+    pure_bind, bind_map_left, bind_assoc, ChainProg.runRounds, Nat.reduceAdd, samples_three]
+  -- Round 0: `C1`'s root and out-of-domain answer, `c, β, γ`.
   refine ObsEq3.bind_right _ fun root1 => ?_
+  refine ObsEq3.bind_right _ fun ood1 => ?_
   refine ObsEq3.bind_right _ fun c => ?_
   refine ObsEq3.bind_right _ fun beta => ?_
   refine ObsEq3.bind_right _ fun gamma => ?_
@@ -228,6 +229,9 @@ theorem link3_obs0K (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ : ℕ} 
   -- `C2`'s root (Flock's tail zeros moved past it), `t`.
   refine ObsEq3.trans (ObsEq.obsEq3 (obsEq_requireZeros_nextRoot _ _)) ?_
   refine ObsEq3.bind_right _ fun root2 => ?_
+  refine ObsEq3.trans (ObsEq.obsEq3 (obsEq_requireZeros_nextScalar _ _)) ?_
+  try simp only [nextScalars_one, bind_map_left]
+  refine ObsEq3.bind_right _ fun ood2 => ?_
   rw [mainZerosK_c2 F3.prog _ _ (length_fixDone _ _)]
   refine ObsEq3.bind_right _ fun _ => ?_
   rw [UniSound.samples_one]
@@ -298,7 +302,7 @@ theorem link3_countsK (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ : ℕ
       (readCounts (m := m) D.shape.heights >>= fun rows =>
         ChainProg.requireZeros [countsZeroK D.shape.heights rows] >>= fun _ =>
           (main3Prog0K D F3 np input rows).run P) :=
-    ObsEq.bind_right _ fun rows => obsEq_withHead (main3Prog0K D F3 np input rows)
+    ObsEq.bind_right _ fun rows => obsEq_withHead1 (main3Prog0K D F3 np input rows)
       [countsZeroK D.shape.heights rows] P 2 _ rfl (funext fun msg => mainZerosK_nil F3.prog msg)
   rw [h1 c]
   obtain ⟨q, hq, hspec⟩ := readCounts_spec (m := m) D.shape.heights c
@@ -329,7 +333,7 @@ end Monad
 
 /-- **The Keccak verifier's code-level link at π1-rec3's shape** (`UniCodeK3`), for every deployment whose `SHA3`
 height is Flock's `κ` and whose batch has `2 np + 1` variables: after the row counts, `reduceWithK … keccakRec3`
-is `main3ProgK` on `rec3Rounds F3.prog.rounds valsCountK np`, with a tail of three, up to `obsOf3`. -/
+is `main3ProgK` on `rec3Rounds F3.prog.rounds valsCountK np 1`, with a tail of three, up to `obsOf3`. -/
 def uniCodeK3 (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ : ℕ} (F3 : KFlockSound F κ keccakRec3)
     (hκ : D.shape.heights.getD opSha3 0 = κ) (np : ℕ) (hV : varsOf (layoutsOfK D.shape) = 2 * np + 1) :
     UniCodeK3 D F3 valsCountK np where
@@ -399,7 +403,7 @@ theorem countsZeroK3_holds (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ 
 /-- On a completed transcript of π1-rec3's rounds. -/
 theorem countsZeroK3_of_fits (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ : ℕ}
     (F3 : KFlockSound F κ keccakRec3) (np : ℕ) (input : Vector UInt8 32) (rows : List ℕ) (done : Done)
-    (tl : List E) (hd : DoneFits (rec3Rounds F3.prog.rounds valsCountK np) done)
+    (tl : List E) (hd : DoneFits (rec3Rounds F3.prog.rounds valsCountK np 1) done)
     (hz : (main3ProgK D F3 np input rows).ZerosVanish done tl) :
     CountsInRange D.shape.heights rows := by
   refine countsZeroK3_holds D F3 np input rows done tl ?_ hz
