@@ -17,15 +17,14 @@ Lean recording of π1-rec3's verifier is the emitted graph (`GraphsAgree`).
   RecStatement's statements name, is the Rust's, which RecCircuit's instance compiles). **A run, not a proof**:
   `RecGraphKeccak/RecGraphKeccakTest/Pi1Check.lean` compares them node for node (compiled evaluation; no kernel
   evaluation of the graph).
-* `CircuitBridge` (**open, `lean-rec-compose`**): at π2's public limbs `pub` of the calldata, `EndStatement` gives
-  `Pi1GraphAccepts`: the statement port and `Satisfies` make the witness's public input the calldata's; the zero ports'
-  public limbs are zero, so every zero check of the graph is (the constant ones are by `EndStatement`), and the graph has
-  no nonzero check; the stream decoded has the graph's length; the circuit's `callInputs` read at `pub` are the
-  contract's π1 call words (RecStatement's `callWord`: the stream's root words, the claims' elements, their pair
-  points), so `decodePi1Call` of the graph's calls (word 0 raw, the contract's `pcsWord` of it) gives the contract's
-  openings' layouts, claims, and `C1`'s and `C2`'s roots. (To check there: that `Pi1GraphAccepts` compares `C1`'s and
-  `C2`'s roots in one encoding, `decodePi1Call` reading the graph's raw word 0 with `rootOfWord` and `decodeWith` the
-  contract's word 0, `pcsWord` of it, with `rootOfWord` too.)
+* `CircuitBridge` (proved, `Bridge.lean`: `circuitBridge`, from the ports' and claims' meaning): at π2's public limbs
+  `pub` of the calldata, `EndStatement` gives `Pi1GraphAccepts`: the statement port and `Satisfies` make the witness's
+  public input the calldata's; the zero ports' public limbs are zero, so every zero check of the graph is (the constant
+  ones are by `EndStatement`), and the graph has no nonzero check; the stream decoded has the graph's length; the
+  circuit's `callInputs` read at `pub` are the contract's π1 claim words (RecStatement's `callWord`: the stream's roots'
+  bytes, the claims' elements, their pair points), so `decodePi1Call` of the graph's claims (`claimOfWords`, the roots
+  as raw bytes on both sides) gives the contract's points and values, and `C1`'s and `C2`'s roots and answers.
+
 -/
 
 namespace RecCompose

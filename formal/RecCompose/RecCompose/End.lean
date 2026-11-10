@@ -60,7 +60,8 @@ theorem pi2CircuitAccepts_of_bridge (C : Pi2Circuits D) (Fa : Pi2Facts D C)
   exact circuit_of_bridge hc hb
 
 /-- **π2's part at the real deployment, `ε2 = pi2Bound`**: if the contract accepts, π2's extractor outputs π1's stream
-on which π1-rec3's recorded graph run with Keccak-f[1600] accepts, its three calls the contract's, but with
+on which π1-rec3's recorded graph run with Keccak-f[1600] accepts, its three claims the contract's, but with
+
 probability `pi2Bound Q`, at most `2^-64` for `Q ≤ 2^64`. From π2's layers (`Pi2Layers`, built by `pi2Layers_of`). -/
 theorem recKnowledgeSoundness2_of_real (D : RecDeployment) (_hD : D.Real) (L : Pi2Layers D pi2Bound) :
     RecKnowledgeSoundness2 D pi2Bound ∧ ∀ Q ≤ 2 ^ 64, pi2Bound Q ≤ (2 : ℝ≥0∞)⁻¹ ^ 64 :=
