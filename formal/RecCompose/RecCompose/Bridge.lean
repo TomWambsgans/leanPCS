@@ -253,15 +253,12 @@ theorem length_wordBytes_le (s : Array UInt8) (vals : Array RecGraph.Value) (w :
 theorem length_rootWordBytes (b : List UInt8) : (RecCircuit.rootWordBytes b).length = b.length := by
   simp [RecCircuit.rootWordBytes]; omega
 
-theorem pcsWord_ne_zero {k : ℕ} (hk : k ≠ 0) (wd : RecGraph.Word) (b : List UInt8) : RecCircuit.pcsWord k wd b = b := by
-  cases wd <;> simp [RecCircuit.pcsWord, hk]
+theorem pcsWord_ne_zero {k : ℕ} (_hk : k ≠ 0) (wd : RecGraph.Word) (b : List UInt8) : RecCircuit.pcsWord k wd b = b :=
+  rfl
 
 theorem length_pcsWord (k : ℕ) (wd : RecGraph.Word) (bs : List UInt8) :
     (RecCircuit.pcsWord k wd bs).length = bs.length := by
-  cases wd with
-  | const x => by_cases hk : k = 0 <;> simp [RecCircuit.pcsWord, hk, length_rootWordBytes]
-  | node id => rfl
-  | stream at_ => rfl
+  rfl
 
 /-- `C1`'s and `C2`'s claims' word 0 in the emitted graph: the stream's root. -/
 theorem emitted_root_words (k : ℕ) (hk : k < 2) :

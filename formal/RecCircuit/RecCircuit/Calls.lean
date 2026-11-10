@@ -10,9 +10,8 @@ port's `element_word`; a pair's coordinate (π1-rec3's paired batch) `element_wo
 port (`Circuit.callWordBytes`, `Circuit.callInputs`).
 
 On a satisfied circuit the compiler accepted, each of these words is π1's graph's word in `RecGraph`'s semantics over
-Keccak-f[1600] (`compile_sound_calls`) as a claim holds it (`pcsWord`): a setup root (a constant word 0) as its
-root word (`machine::root_word`, each 16-byte half of the hash reversed), all other words byte for byte, a stream root
-included (π1's stream carries a root as its root word, its two WHIR scalars). The calls check
+Keccak-f[1600] (`compile_sound_calls`) as a claim holds it (`pcsWord`): every word byte for byte, the setup's
+root (a constant word 0) and a stream root included (a PCS claim's root field is the root's 32 bytes). The calls check
 (`callsOk`) ties π2's call words to π1's; the pair's semantics (`pair_val`) is `pair_point`'s on the expanded graph's
 values (`y_1 = z·z + z`, `y_0 = z + β_1 y_1`, `β_1 = UniStatement.cantorBeta1`); `expandSound` takes a node's
 image's value back to the original graph.
@@ -51,11 +50,10 @@ def callInputs (w : ℕ → K) : List (List UInt8) := C.calls.map (·.flatMap (C
 
 end Circuit
 
-/-- **The word of a claim at position `k`**, of the graph's word `w` and its bytes: a setup root (a constant
-word 0, the hash as π1's contract holds it) as a claim's root word (`machine::root_word`); every other word as it
-is, a stream root included (the stream's 32 bytes are the root's root word). -/
-def pcsWord (k : ℕ) : RecGraph.Word → List UInt8 → List UInt8
-  | .const _, bytes => if k = 0 then rootWordBytes bytes else bytes
+/-- **The word of a claim at position `k`**, of the graph's word `w` and its bytes: every word as it is (on the
+EIP's PCS claims a claim holds a root's 32 bytes, a setup root's and a stream root's alike; before them a setup
+root, a constant word 0, was held as its root word, `machine::root_word`, each 16-byte half reversed). -/
+def pcsWord (_k : ℕ) : RecGraph.Word → List UInt8 → List UInt8
   | _, bytes => bytes
 
 /-! ## Bytes -/

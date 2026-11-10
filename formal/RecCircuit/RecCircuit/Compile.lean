@@ -340,7 +340,7 @@ def compileM (r : Recorded) (g : Array Node) (map : Array ℕ) : BM Compiled := 
     let mut k := 0
     for w in call do
       let cw ← match w with
-        | .const bytes => pure (if k == 0 then CallWord.const (rootWord bytes) else CallWord.const bytes)
+        | .const bytes => pure (CallWord.const bytes)
         | .stream at_ => match rootOf.lookup at_ with
           | some i => pure (CallWord.root i)
           | none => throw "a stream word that is no root"
