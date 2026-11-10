@@ -1,7 +1,7 @@
 // Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! The prover on real Keccak VM traces (leanVM 9d50c92a3, written by `src/prover/dump_keccak`; KECCAK.md): SPEC.md's
 //! identities on the domain, the quotients' degrees, every combined relation at `t`, the Rust verifier's and the EVM
-//! contract's acceptance of the proof (the contract's `PCS_OPEN` calls being exactly the claims the WHIR openings
+//! contract's acceptance of the proof (the claims the contract checks declared being exactly those the WHIR openings
 //! prove), and the rejection of mutated proofs.
 //!
 //! `LEANVM_TRACE=<dir of one trace>` (the directory `trace_dump.rs` wrote), then, built with
@@ -11,10 +11,10 @@
 //! `<dir>/<VECTOR_FILE>.txt`.
 
 use leanvm_statement::evm::codegen::word;
-use leanvm_statement::evm::machine::{PcsOpen, call, element_word, root_of_word};
+use leanvm_statement::evm::machine::{PcsFrame, call, element_word, root_of_word};
 use leanvm_statement::shapes::PROGRAM_IV;
 use leanvm_univariate::claims::Commitment;
-use leanvm_univariate::contract::{SetupRoots, calldata, compile_verifier, record_verifier_with};
+use leanvm_univariate::contract::{SetupRoots, calldata, compile_verifier, proof_calldata, record_verifier_with};
 use leanvm_univariate::prover::check::on_domain;
 use leanvm_univariate::prover::poly::to_v;
 use leanvm_univariate::prover::prove::{Config, OpeningProof, Proof, prove, verify};
@@ -90,7 +90,7 @@ fn copy(proof: &Proof, stream: Vec<u8>) -> Proof {
     }
 }
 
-/// `PCS_OPEN`'s root word (`crates/membership/evm/src/machine.rs`: `s_0 · 2^128 + s_1`) of the root a WHIR opening is of, read
+/// A claim's root word (`crates/membership/evm/src/machine.rs`: `s_0 · 2^128 + s_1`) of the root a WHIR opening is of, read
 /// off the opening itself: its first two scalars, each 128 bits.
 fn whir_word(opening_stream: &[F192]) -> [u8; 32] {
     let mut word = [0u8; 32];
@@ -207,7 +207,7 @@ fn end_to_end(variant: Variant) {
     );
     // The roots the openings are of, from the prover's output: each WHIR opening's first two scalars are its
     // commitment's root's (`hash_to_scalars`), and the stream carries C1's and C2's as those scalars, so that the
-    // stream's 32 bytes are the root's `PCS_OPEN` word (machine.rs: `s_0 · 2^128 + s_1`).
+    // stream's 32 bytes are the root's claim word (machine.rs: `s_0 · 2^128 + s_1`).
     let order: Vec<Commitment> = proof.openings.iter().map(|o| o.commitment).collect();
     assert_eq!(order, [Commitment::C1, Commitment::C2, Commitment::Setup], "the calls' order");
     let mut whir_roots: Vec<[u8; 32]> = Vec::new();
@@ -221,7 +221,7 @@ fn end_to_end(variant: Variant) {
         whir_roots.push(o.root);
     }
 
-    // The contract on the real calldata: its PCS_OPEN mock attests exactly the claims the openings prove (C1's and
+    // The contract on the real calldata: its frame of PCS claims declares exactly the claims the openings prove (C1's and
     // C2's root words their WHIR openings' first two scalars, the setup's root the contract's constant, the hash as it
     // is; the layout words the contract's).
     let mut inputs: Vec<Vec<u8>> = Vec::new();
@@ -247,41 +247,42 @@ fn end_to_end(variant: Variant) {
         // The measuring build, word for word against the Rust verifier, on this accepting stream.
         leanvm_univariate::contract::parity_with(&shape, &PROGRAM_IV, &roots, &public, &stream, variant, Claims::Point);
         let contract = compile_verifier(&recorded, &PROGRAM_IV, false);
-        // The calls the contract makes are the claims the openings prove.
-        let calls = call(&contract.code, &[], &data, &PcsOpen::attesting_all(0)).pcs_calls;
-        assert_eq!(calls.len(), inputs.len(), "one call per claim the openings prove");
+        // The claims the contract checks are those the openings prove.
+        let calls = call(&contract.code, &[], &data, &PcsFrame::declaring_all()).claims;
+        assert_eq!(calls.len(), inputs.len(), "one claim per opening");
         for (k, (made, proven)) in calls.iter().zip(&inputs).enumerate() {
             assert_eq!(made, proven, "call {k}: the opening's claim");
         }
-        // C1's and C2's calls, read as a decoding PCS_OPEN reads them (machine.rs: the root word, then the root it
+        // C1's and C2's claims, decoded (machine.rs: the root word, then the root it
         // names), are of the roots the prover committed. The setup's constants are the hashes as they are (π1's own
         // contract; π2 passes their root words).
         for (k, (made, root)) in calls.iter().zip(&opened).enumerate().take(2) {
             let word: [u8; 32] = made[..32].try_into().expect("a root word");
-            assert_eq!(&root_of_word(&word), root, "call {k}: PCS_OPEN reads the root the opening is of");
+            assert_eq!(&root_of_word(&word), root, "claim {k}: of the root the opening is of");
         }
         let attesting = |skip: Option<usize>| {
-            let mut pcs = PcsOpen::default();
+            let mut pcs = PcsFrame::default();
             for (k, input) in calls.iter().enumerate() {
                 if Some(k) != skip {
-                    pcs.register(input.clone());
+                    pcs.declare(input.clone());
                 }
             }
             pcs
         };
-        let blocks: Vec<PcsOpen> = std::iter::once(attesting(None)).chain((0..calls.len()).map(|k| attesting(Some(k)))).collect();
+        let blocks: Vec<PcsFrame> = std::iter::once(attesting(None)).chain((0..calls.len()).map(|k| attesting(Some(k)))).collect();
         let one = word([1, 0, 0]);
-        let accepts = |data: &[u8], block: &PcsOpen| call(&contract.code, &[], data, block).output.as_deref() == Some(&one[..]);
+        let accepts = |data: &[u8], block: &PcsFrame| call(&contract.code, &[], data, block).output.as_deref() == Some(&one[..]);
         let ok = call(&contract.code, &[], &data, &blocks[0]);
         let mut bad = data.clone();
-        let last = bad.len() - 1;
+        // The stream's last byte, before the frame's.
+        let last = bad.len() - 2;
         bad[last] ^= 1;
         let mut rejected = accepts(&bad, &blocks[0]) as usize;
-        // Every call must be attested.
+        // Every claim must be declared.
         rejected += blocks[1..].iter().filter(|b| accepts(&data, b)).count();
         // The deployable verifying build (crates/evm_link, contracts of at most 24,576 bytes), likewise.
         let deployed = deployable(&recorded);
-        let linked = |data: &[u8], block: &PcsOpen| deployed.chain.call(deployed.address, data, block);
+        let linked = |data: &[u8], block: &PcsFrame| deployed.chain.call(deployed.address, data, block);
         let linked_run = linked(&data, &blocks[0]);
         let linked_ok = linked_run.output.as_deref() == Some(&one[..])
             && linked(&bad, &blocks[0]).output.is_none()
@@ -298,14 +299,14 @@ fn end_to_end(variant: Variant) {
         linked.2
     );
     assert_eq!(accepted.as_deref(), Some(&word([1, 0, 0])[..]), "the contract accepts the real proof");
-    // The Rust→EVM test vector (tests/vectors/): the calldata, the calls PCS_OPEN attests, the verdict and the gas.
+    // The Rust→EVM test vector (tests/vectors/): the proof's calldata, the claims declared, the verdict and the gas.
     if let Ok(out) = std::env::var("WRITE_VECTORS") {
         let name = vector_name(variant);
         let text = vectors::write(&vectors::Vector {
             config: name.to_string(),
             shape,
             public,
-            calldata: calldata(&public, &proof.stream),
+            calldata: proof_calldata(&public, &proof.stream),
             calls: calls.clone(),
             whir_roots,
             accepts: true,

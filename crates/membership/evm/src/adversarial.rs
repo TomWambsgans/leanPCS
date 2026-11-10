@@ -113,7 +113,6 @@ fn block_for(index_root: &Hash, data: &[u8], log_rows: usize) -> PcsFrame {
 struct Deployed {
     chain: Chain,
     address: Address,
-    index_root: Hash,
 }
 
 fn deploy(contract: &Contract, index_root: &Hash) -> Deployed {
@@ -121,11 +120,7 @@ fn deploy(contract: &Contract, index_root: &Hash) -> Deployed {
     let address = crate::quotient::deploy(&mut chain, contract, index_root, Address::ZERO)
         .0
         .expect("a deployment");
-    Deployed {
-        chain,
-        address,
-        index_root: *index_root,
-    }
+    Deployed { chain, address }
 }
 
 /// A call of the contract, in a transaction whose frame of PCS claims is `block`.
@@ -492,7 +487,6 @@ fn a_driver_without_its_parts_reverts() {
         let deployed = Deployed {
             chain,
             address,
-            index_root,
         };
         let passes = missing.iter().all(|&m| !m);
         assert_eq!(
@@ -531,7 +525,6 @@ fn linked_gas_report() {
         let deployed = Deployed {
             chain,
             address: address.expect("a deployment"),
-            index_root,
         };
         let called = call(&deployed, &data, &PcsFrame::declaring_all());
         assert_eq!(called.output, Some(VERIFIED.to_vec()));

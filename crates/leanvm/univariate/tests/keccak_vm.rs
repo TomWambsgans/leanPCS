@@ -32,8 +32,8 @@ fn deep<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> R {
         .expect("no panic")
 }
 
-/// The contract computes what the Rust verifier computes, word for word, on sample streams: the claims it hands
-/// `PCS_OPEN` and every value it checks (both modes, the smallest Keccak shape).
+/// The contract computes what the Rust verifier computes, word for word, on sample streams: the claims it checks
+/// declared and every value it checks (both modes, the smallest Keccak shape).
 #[test]
 fn keccak_contract_is_the_rust_verifier() {
     deep(|| {
@@ -68,8 +68,8 @@ fn row(label: &str, xmss: usize, report: &GasReport, stack: usize) -> String {
         report.field_muls,
         report.claims,
         report.calls,
-        report.transaction(0, 40),
-        report.transaction(5_000, 40),
+        report.transaction(40),
+        report.transaction(64),
     )
 }
 
@@ -89,7 +89,7 @@ fn keccak_gas_report() {
     deep(|| {
         println!(
             "| configuration | signatures | largest stack | calldata B | execution | FIELD_MUL | claims / calls | \
-             tx EIP-7623 c = 0 | c = 5,000 |"
+             tx EIP-7623 | EIP-7976 | (without the claims' frame and intrinsic gas)"
         );
         println!("|---|---:|---:|---:|---:|---:|---:|---:|---:|");
         let mut details = Vec::new();
@@ -120,11 +120,11 @@ fn keccak_gas_report() {
         let shape = Shape::of(&by_xmss(400).shape);
         let deployable = measure_deployable(&shape, &PROGRAM_IV, KECCAK_MAIN, Claims::Point, 24_576);
         println!(
-            "\nKeccak VM, 400 signatures, deployable: {} contracts, execution {} (straight {}), tx EIP-7623 c = 0: {}",
+            "\nKeccak VM, 400 signatures, deployable: {} contracts, execution {} (straight {}), tx EIP-7623: {}",
             deployable.contracts.len(),
             deployable.report.execution,
             deployable.straight,
-            deployable.report.transaction(0, 40),
+            deployable.report.transaction(40),
         );
     });
 }

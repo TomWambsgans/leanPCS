@@ -336,7 +336,7 @@ fn contract_checks(design: Design) {
         let parts = contract::parity_deployable(&inst, &recorded, &f.public_input, &stream);
         println!("parity: {words} words, deployable in {parts} contract(s)");
 
-        // The honest proof: the contract calls PCS_OPEN with π1's calls and the claims the openings prove.
+        // The honest proof: the contract checks π1's claims and those the openings prove, declared.
         let (reduced, roots, openings) = open(proved, &f.setup);
         assert_eq!(
             verify_openings(f.circuit.log_n, &reduced, &roots, &f.setup.root(), &openings),
@@ -357,7 +357,7 @@ fn contract_checks(design: Design) {
         assert_eq!(word(&pi2[0], 3), element_word(reduced.witness.0[0]));
         assert_eq!(word(&pi2[2], 2), number(2), "Q's two claims in one call");
         let _ = to_f192;
-        for at in [36, data.len() / 2, data.len() - 1] {
+        for at in [36, data.len() / 2, data.len() - 2, data.len() - 1] {
             let mut bad = data.clone();
             bad[at] ^= 1;
             assert!(

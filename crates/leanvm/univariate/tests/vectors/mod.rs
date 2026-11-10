@@ -1,11 +1,12 @@
 // Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
-//! The Rust→EVM test vectors (`tests/vectors/*.txt`): a real proof's calldata, the `PCS_OPEN` inputs
-//! the contract calls with (which the openings prove), the verdict and the gas, straight and deployed. Written by
+//! The Rust→EVM test vectors (`tests/vectors/*.txt`): a real proof's calldata (without the frame byte a verifying call
+//! appends), the claims the contract checks declared (which the openings prove), the verdict and the gas, straight and
+//! deployed. Written by
 //! `tests/prove_real.rs` (`WRITE_VECTORS=<dir>`), replayed by `tests/evm_vectors.rs` with no prover and no trace.
 //!
 //! The format is lines of `key value`, the bytes in lowercase hex: `config`, `shape` (`log_memory log_bytecode` and
-//! the six row counts), `public`, `calldata`, one `pcs_open` line per call in call order, one `whir_root` line per
-//! call in call order (the root of the commitment the call opens, as the prover committed it: the hash whose two
+//! the six row counts), `public`, `calldata`, one `pcs_open` line per claim in order (the key from when they were
+//! calls of a precompile), one `whir_root` line per claim in order (the root of the commitment the claim is on, as the prover committed it: the hash whose two
 //! scalars, `hash_to_scalars`, are its WHIR opening's first two; written by the prover's run, not read off the
 //! contract's calls), `accepts`, `gas_straight`, `gas_deployed`, `contracts`; `#` starts a comment.
 
@@ -26,7 +27,7 @@ pub struct Vector {
     pub calldata: Vec<u8>,
     pub calls: Vec<Vec<u8>>,
     /// The roots of the commitments the calls open, in call order, from the prover's output (its commitments' and
-    /// the setup's): what a real `PCS_OPEN` opens, whatever the contract encodes.
+    /// the setup's): what the block's openings open, whatever the contract encodes.
     pub whir_roots: Vec<[u8; 32]>,
     pub accepts: bool,
     pub gas_straight: u64,
@@ -135,7 +136,7 @@ pub fn read(text: &str) -> Vector {
     v
 }
 
-/// A call of π1's own contract in `PCS_OPEN`'s ABI (`crates/membership/evm/src/machine.rs`),
+/// A claim of π1's own contract in the claims' encoding (`crates/membership/evm/src/machine.rs`),
 /// as π2's contract makes it: `C1`'s and `C2`'s root words are the stream's bytes, the ABI's already; a
 /// setup root's (`F`: layout code `0x5503`, the layout word's bytes 22..24) is the hash as it is, its word
 /// `root_word` of it.
@@ -152,7 +153,7 @@ pub fn pi1_abi(input: &[u8]) -> Vec<u8> {
 /// The deployable verifying build of `recorded` (`crates/evm_link`: contracts of at most 24,576 bytes), deployed.
 pub fn deployable(recorded: &Recorded) -> Deployed {
     let call_words = calls(recorded);
-    let ending = Ending::PcsOpen(call_words.iter().map(Vec::len).collect());
+    let ending = Ending::Declared(call_words.iter().map(Vec::len).collect());
     let entry = Entry {
         name: NAME,
         iv: recorded.iv(&PROGRAM_IV),

@@ -385,12 +385,6 @@ pub struct Chain {
 }
 
 impl Chain {
-    /// The accounts, for an EVM of another kind.
-    #[cfg(test)]
-    pub(crate) fn db(&self) -> CacheDB<EmptyDB> {
-        self.db.clone()
-    }
-
     /// Run a transaction from `from`, sending `value` wei, whose frame of PCS claims is `pcs`, and keep
     /// what it changes; and the address of the contract it created, if any. Each transaction starts cold
     /// (EIP-2929): its first `SLOAD` of a slot costs 2,100.

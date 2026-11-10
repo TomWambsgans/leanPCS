@@ -200,9 +200,9 @@ fn real_end_to_end() {
             Ok(())
         );
 
-        // The contract: π1's three calls (the openings the vector's inputs name, which π1's openings prove) and π2's
-        // three (the proof's roots, its reduction's claims), attested exactly by the decoding mock (one
-        // ABI, a registry keyed by the layout word).
+        // The contract: π1's three claims (the openings the vector's inputs name, which π1's openings prove) and π2's
+        // three (the proof's roots, its reduction's claims), declared exactly, in order, in its frame of PCS claims
+        // (one encoding, a registry keyed by the layout word).
         let recorded = record_verifier(&spec);
         let expected: Vec<Vec<u8>> = contract::expected_calls(&inst, &recorded, &reduced, &stream)
             .into_iter()
@@ -213,7 +213,7 @@ fn real_end_to_end() {
             assert_eq!(
                 registry.decode(made).as_ref(),
                 Some(opening),
-                "π1's call {k}, from π2's public data, is the vector's opening in PCS_OPEN's ABI"
+                "π1's claim {k}, from π2's public data, is the vector's opening in the claims' encoding"
             );
         }
         let block: Vec<Opening> = pi1_openings
@@ -225,17 +225,17 @@ fn real_end_to_end() {
         println!("pi2 calldata keccak {}", hex(&primitives::hash::hash(&data)));
         let (accepted, made) = contract::run(&inst, &recorded, &data, &block);
         assert!(accepted, "the contract accepts π2's proof of π1-rec3's real proof");
-        assert_eq!(made, expected, "the calls the contract makes");
-        // A regression test of the root words. The block attests π1's `C1`, `C2` calls (their words the stream's), not
-        // those calls with the former word (each half of it reversed: on this stream, the hash as it is, which
+        assert_eq!(made, expected, "the claims the contract checks");
+        // A regression test of the root words. The frame declares π1's `C1`, `C2` claims (their words the stream's), not
+        // those claims with the former word (each half of it reversed: on this stream, the hash as it is, which
         // names another root); and with π1's openings on those other roots, the contract rejects.
         let pcs = contract::block(&inst, &block);
         for (k, call) in made[..2].iter().enumerate() {
             let word: [u8; 32] = call[..32].try_into().expect("a root word");
             let mut old = call.clone();
             old[..32].copy_from_slice(&machine::root_word(&word));
-            assert!(pcs.attests(call), "π1's call {k} is attested");
-            assert!(!pcs.attests(&old), "π1's call {k} with the word before R1 is not");
+            assert!(pcs.declares(call, k), "π1's claim {k} is declared");
+            assert!(!pcs.declares(&old, k), "π1's claim {k} with the word before R1 is not");
         }
         let elsewhere: Vec<Opening> = block
             .iter()
@@ -252,7 +252,8 @@ fn real_end_to_end() {
         let mut flips = vec![4, 4 + 31, 36 + 5, 36 + 40, 36 + 64, 36 + 64 + 24 * 25 + 11, 36 + w_at - 1];
         flips.extend([36 + w_at, 36 + w_at + 31, 36 + q_at + 7]);
         flips.extend((0..spec.values()).step_by(4).map(|k| 36 + values_at + 24 * k + k % 24));
-        flips.extend([data.len() - 48, data.len() - 25, data.len() - 1]);
+        // The last values, and the frame's index.
+        flips.extend([data.len() - 49, data.len() - 26, data.len() - 2, data.len() - 1]);
         assert!(flips.len() >= 13);
         for &at in &flips {
             let mut bad = data.clone();
@@ -268,15 +269,24 @@ fn real_end_to_end() {
         assert!(ok);
         let zero = data.iter().filter(|&&b| b == 0).count();
         println!(
-            "the real calldata: {} B ({zero} zero); execution {execution} (the verifying build); EIP-7623 c = 0 {} (floor {}, standard {}); EIP-7976 {}",
+            "the real calldata: {} B ({zero} zero); execution {execution} (the verifying build); EIP-7623 {} (floor {}, standard {}); EIP-7976 {}",
             data.len(),
             contract::transaction_of(&data, execution, 40),
             40 * (data.len() - zero) + 10 * zero,
             16 * (data.len() - zero) + 4 * zero + execution as usize,
             contract::transaction_of(&data, execution, 64)
         );
+        // With the frame of PCS claims as calldata, and the claims' intrinsic gas.
+        let carried = [&data[..], &pcs.data()[..]].concat();
+        let intrinsic = machine::dependency_gas(block.len());
         println!(
-            "end to end: π1's real proof → π2's proof ({} B of calldata) → the contract accepts, PCS_OPEN attesting its {} claims in {} calls; {} flipped bytes rejected",
+            "with its frame of PCS claims ({} B) and their intrinsic gas ({intrinsic}): EIP-7623 {}, EIP-7976 {}",
+            pcs.data().len(),
+            contract::transaction_of(&carried, execution, 40) + intrinsic,
+            contract::transaction_of(&carried, execution, 64) + intrinsic
+        );
+        println!(
+            "end to end: π1's real proof → π2's proof ({} B of calldata) → the contract accepts, its frame declaring its {} claims as {}; {} flipped bytes rejected",
             data.len(),
             block.iter().map(|o| o.claims.len()).sum::<usize>(),
             block.len(),

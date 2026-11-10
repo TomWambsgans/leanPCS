@@ -7,7 +7,7 @@ use evm_link::creation_code;
 use revm::primitives::Address;
 
 use crate::evm::codegen::{CALLS, Deployable, ENTRY, Ending, Entry, MEASURE, VERIFY, Word, compile};
-use crate::evm::machine::{Chain, PcsOpen, VERIFIER, call, transaction_gas};
+use crate::evm::machine::{Chain, PcsFrame, VERIFIER, call, transaction_gas};
 use crate::evm::record::{Recorder, Sym, record};
 
 /// The transcript's 16-byte name in [`measure_fragment`]'s builds.
@@ -177,7 +177,7 @@ pub fn measure_fragment(f: impl FnOnce(&mut Recorder) -> Vec<Sym>) -> FragmentGa
         &contract.code,
         &[],
         &calldata(&[0x5a; 32], &stream),
-        &PcsOpen::default(),
+        &PcsFrame::default(),
     );
     assert!(outcome.output.is_some(), "the measuring build returns");
     let mut phases: Vec<PhaseGas> = Vec::new();
