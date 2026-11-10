@@ -34,6 +34,12 @@ pub const WORD_BITS: usize = 128;
 /// The membership circuit's rows: `2^LOG_ROWS`.
 pub const LOG_ROWS: usize = 22;
 
+/// The **random rows**: idle rows the builder turns into free-`K` rows (`X` reads the row's own output, `Y` one,
+/// `C` zero, so `V = V + 0 + 0` holds for any value), the last ones of the circuit outside a port region. A witness
+/// leaves them zero; the prover fills each with a fresh random value ([`Circuit::random_rows`], `HIDING.md`): they
+/// make the witness table's out-of-domain answer and the gate quotient's evaluations uniform, and its root hide.
+pub const RANDOM_ROWS: usize = 16;
+
 /// What a cell reads: a constant, or row `r`'s `V` cell.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Src {
@@ -317,6 +323,16 @@ impl Builder {
                 self.rows[port_region.0 + i] = *row;
             }
         }
+        let in_ports = |r: usize| (port_region.0..port_region.0 + port_region.1).contains(&r);
+        let random: Vec<usize> = (used_rows..n).rev().filter(|&r| !in_ports(r)).take(RANDOM_ROWS).collect();
+        assert_eq!(random.len(), RANDOM_ROWS, "room for the random rows");
+        for &r in &random {
+            self.rows[r] = Row {
+                x: Src::Row(r as u32),
+                y: Src::One,
+                c: Src::Zero,
+            };
+        }
 
         // A cycle is a source and the cells reading it, in cell order.
         const NONE: u32 = u32::MAX;
@@ -367,6 +383,16 @@ pub fn read(v: &[u8], src: Src) -> u8 {
 }
 
 impl Circuit {
+    /// The [`RANDOM_ROWS`] rows, from the last.
+    pub fn random_rows(&self) -> Vec<usize> {
+        let (start, len) = self.port_region;
+        (self.used_rows..self.rows.len())
+            .rev()
+            .filter(|&r| !(start..start + len).contains(&r))
+            .take(RANDOM_ROWS)
+            .collect()
+    }
+
     pub fn n_inputs(&self) -> usize {
         self.inputs.len()
     }
@@ -583,6 +609,7 @@ mod tests {
                 x if x == c => vc,
                 x if x == s => F64(bit),
                 x if x == free_port => vo,
+                _ if circuit.random_rows().contains(&(r as usize)) => F64::ZERO,
                 _ => panic!("row {r} is not free"),
             });
             assert_eq!(read_k(&v, product), va * vc);
@@ -610,7 +637,9 @@ mod tests {
         for _ in 0..8 {
             let inputs: Vec<bool> = (0..8).map(|_| rng.next_u64() & 1 == 1).collect();
             let bits = circuit.outputs(&inputs);
-            let v = circuit.outputs_k(|r, _| F64(inputs[circuit.inputs.iter().position(|&i| i == r).unwrap()] as u64));
+            let v = circuit.outputs_k(|r, _| {
+                F64(circuit.inputs.iter().position(|&i| i == r).is_some_and(|k| inputs[k]) as u64)
+            });
             assert_eq!(v, bits.iter().map(|&x| F64(x as u64)).collect::<Vec<_>>());
             assert_eq!(circuit.cells_k(&v), circuit.cells(&inputs));
             assert_eq!(circuit.check_k(&circuit.cells_k(&v)), Ok(()));
@@ -681,10 +710,16 @@ mod tests {
         let rank = |r: usize| if r < PUBLIC_ROWS { n + r } else { r };
         let mut is_input = vec![false; n];
         circuit.inputs.iter().for_each(|&r| is_input[r as usize] = true);
+        let random = circuit.random_rows();
+        assert_eq!(random, (n - RANDOM_ROWS..n).rev().collect::<Vec<_>>());
         for (r, row) in circuit.rows.iter().enumerate() {
             let sources = [row.x, row.y, row.c];
             if is_input[r] {
                 assert_eq!(sources, [Src::Row(r as u32); 3]);
+                continue;
+            }
+            if random.contains(&r) {
+                assert_eq!(sources, [Src::Row(r as u32), Src::One, Src::Zero]);
                 continue;
             }
             for src in sources {

@@ -57,6 +57,14 @@ pub struct Proof {
 struct Chain {
     state: [u8; 32],
     pending: Vec<F192>,
+    draws: usize,
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Test-only: challenges every chain of this thread returns in place of its draws, `k`-th for its `k`-th draw
+    /// (the hiding test fixes the challenges to see the proof as a function of the prover's randomness).
+    pub(crate) static FIXED: std::cell::RefCell<Option<Vec<F192>>> = const { std::cell::RefCell::new(None) };
 }
 
 impl Chain {
@@ -64,6 +72,7 @@ impl Chain {
         Self {
             state: keccak256(label),
             pending: Vec::new(),
+            draws: 0,
         }
     }
 
@@ -78,11 +87,17 @@ impl Chain {
         }
         self.state = keccak256(&input);
         let limb = |i: usize| u64::from_be_bytes(self.state[24 - 8 * i..32 - 8 * i].try_into().unwrap());
+        self.draws += 1;
+        #[cfg(test)]
+        if let Some(x) = FIXED.with(|fixed| fixed.borrow().as_ref().map(|f| f[self.draws - 1])) {
+            return x;
+        }
         F192::new(limb(0), limb(1), limb(2))
     }
 }
 
 /// The prover's side: sends scalars and draws challenges.
+#[derive(Clone)]
 pub struct ProverChain {
     chain: Chain,
     stream: Vec<F192>,

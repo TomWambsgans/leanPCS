@@ -20,7 +20,7 @@
 use pcs::whir_config::WhirSecurityConfig;
 use primitives::field::{F64, F192};
 use primitives::test_rng::Rng;
-use quotient::opening::{self, Claim, Layout, Table};
+use pcs_claim::PcsClaim;
 
 /// A ladder: per level `(fold, log_inv_rate, queries)`.
 type Ladder = &'static [(usize, usize, usize)];
@@ -159,17 +159,6 @@ fn whir_large_params_match_lean() {
     }
 }
 
-/// A public layout of `(table, height)` chunks in a `2^log_n` stack, as a PIOP's: chunks of two lanes
-/// (`log_chunk = log_lane + 1`) of a table of `log_n + 1` variables, `29` full ones (chunk `7` left out), then
-/// one of a lane and five entries (two lanes), one of a third of a lane and one of a single entry (a lane each),
-/// out of order: `62` lanes, `placed` short of the stack.
-fn public_chunks(log_n: usize) -> (usize, usize, Vec<(usize, usize)>) {
-    let log_lane = log_n - 6;
-    let mut chunks: Vec<(usize, usize)> = (0..30).filter(|&c| c != 7).map(|c| (c, 2 << log_lane)).collect();
-    chunks.extend([(40, (1 << log_lane) + 5), (33, (1 << log_lane) / 3), (7, 1)]);
-    (log_n + 1, log_lane + 1, chunks)
-}
-
 fn words(bytes: &[u8; 32]) -> [u64; 4] {
     std::array::from_fn(|i| u64::from_le_bytes(bytes[8 * i..8 * i + 8].try_into().expect("8 bytes")))
 }
@@ -188,46 +177,33 @@ fn limbs(x: &F192) -> [u64; 3] {
     [x.c0, x.c1, x.c2]
 }
 
-/// The vector `formal/WhirBridge/Test/CheckLarge.lean` reads (as `whir_bridge_vector.rs` writes them, this
-/// repository): the layout's constructor, the prefix, the root, the claims, the stream and one full path per query
-/// (the replay of `opening::verify`'s transcript, nothing checked).
-fn vector(
-    name: &str,
-    head: String,
-    layout: &Layout,
-    root: &[u8; 32],
-    claims: &[Claim],
-    proof: &fiat_shamir::transcript::Proof,
-) -> String {
-    let wire = &opening::wire_proof(proof);
+/// The vector `formal/WhirBridge/Test/CheckLarge.lean` reads: the PCS claim's bytes (`pcs_claim`, the EIP's
+/// encoding), the root, the claim's point and value, the stream and one full path per query (the replay of
+/// `pcs_claim::verify`'s transcript, nothing checked).
+fn vector(name: &str, claim: &PcsClaim, proof: &fiat_shamir::transcript::Proof) -> String {
+    let wire = &pcs_claim::wire_proof(proof);
     use verifier::{Digest, E, Transcript};
-    let mut transcript = Transcript::new(
-        wire,
-        Digest(opening::iv(layout, claims)),
-        Digest(opening::PUBLIC_DIGEST),
-        false,
-    );
+    let mut transcript = Transcript::new(wire, Digest(pcs_claim::iv(claim)), Digest(pcs_claim::PUBLIC_DIGEST), false);
     let halves = transcript.next_scalars(2).expect("the root's two scalars");
-    assert_eq!(Digest::from_halves(halves[0], halves[1]), Ok(Digest(*root)));
+    assert_eq!(Digest::from_halves(halves[0], halves[1]), Ok(Digest(claim.root)));
     let _lambda = transcript.sample();
     let zero = E::new(0, 0, 0);
+    let n = claim.n as usize;
     verifier::whir::verify_whir(
         &mut transcript,
-        layout.log_n,
-        layout.placed() as u64,
-        opening::LOG_INV_RATE,
+        n,
+        1u64 << n,
+        pcs_claim::LOG_INV_RATE,
         zero,
-        Digest(*root),
+        Digest(claim.root),
         &|_| zero,
     )
     .expect("the replay walks the proof");
     let paths = transcript.finish().expect("the replay reads the whole proof");
-    let mut out = format!("vector {name}\n") + &head;
-    out += &line("prefix", opening::prefix(layout).iter().map(|&b| b as u64));
-    out += &line("root", words(root));
-    for claim in claims {
-        out += &line("claim", claim.point.iter().chain([&claim.value]).flat_map(limbs));
-    }
+    let mut out = format!("vector {name}\n");
+    out += &line("pcsclaim", claim.encode().iter().map(|&b| b as u64));
+    out += &line("root", words(&claim.root));
+    out += &line("claim", claim.point.iter().chain([&claim.value]).flat_map(limbs));
     out += &line("stream", proof.stream.iter().flat_map(limbs));
     for path in &paths {
         out += &line(
@@ -241,12 +217,11 @@ fn vector(
     out + "end\n"
 }
 
-/// Public openings at `2^24 ..= 2^MAX` words (`WHIR_LARGE_MAX`, default 26; the prover's memory grows with the
-/// stack): on the PIOP-like layout of `public_chunks`, the prover's proof of two claims verifies and a changed value
-/// is rejected; each opening is written (`target/whir_large_vector.txt`, or `$WHIR_LARGE_VECTOR`) for
-/// `formal/WhirBridge/Test/CheckLarge.lean`, which runs the Lean verifier on it.
+/// Openings at `2^24 ..= 2^MAX` words (`WHIR_LARGE_MAX`, default 26; the prover's memory grows with the table): the
+/// prover's opening of one claim verifies and a changed value is rejected; each opening is written
+/// (`target/whir_large_vector.txt`, or `$WHIR_LARGE_VECTOR`) for `formal/WhirBridge/Test/CheckLarge.lean`.
 #[test]
-#[ignore = "heavy: commits and opens stacks of 2^24 words and more"]
+#[ignore = "heavy: commits and opens tables of 2^24 words and more"]
 fn large_public_openings() {
     let max: usize = std::env::var("WHIR_LARGE_MAX")
         .ok()
@@ -256,58 +231,24 @@ fn large_public_openings() {
         .unwrap_or_else(|_| concat!(env!("CARGO_MANIFEST_DIR"), "/../../../target/whir_large_vector.txt").to_string());
     let mut out = String::new();
     let mut rng = Rng::new(0x1a7e);
-    for log_n in 24..=max {
-        let (vars, log_chunk, chunks) = public_chunks(log_n);
-        let layout = Layout::new(vars, log_chunk, log_n, &chunks);
+    for n in 24..=max {
         let start = std::time::Instant::now();
-        let log_lane = layout.log_lane();
-        let table = Table::new(layout.clone(), |_, b, out: &mut [F64]| {
-            for (k, x) in out.iter_mut().enumerate() {
-                *x = F64((((b << log_lane) + k) as u64 + 1)
-                    .wrapping_mul(0x9E37_79B9_7F4A_7C15)
-                    .rotate_left(17));
-            }
-        });
-        let committed = opening::commit(&table);
-        let claims: Vec<Claim> = (0..2)
-            .map(|_| {
-                let point = rng.ext_vec(vars);
-                let value = table.eval(&point);
-                Claim { point, value }
-            })
+        let table: Vec<F64> = (0..1u64 << n)
+            .map(|k| F64((k + 1).wrapping_mul(0x9E37_79B9_7F4A_7C15).rotate_left(17)))
             .collect();
-        let proof = opening::open(&table, &committed, &claims);
-        let wire = opening::wire_proof(&proof);
+        let committed = pcs_claim::commit(table);
+        let claim = committed.claim_at(rng.ext_vec(n));
+        let proof = pcs_claim::open(&committed, &claim);
         let proved = start.elapsed();
-        let root = committed.root;
-        drop(table);
         let start = std::time::Instant::now();
-        assert_eq!(
-            opening::verify(&layout, &root, &claims, &wire),
-            Ok(()),
-            "log_n = {log_n}"
-        );
+        assert!(pcs_claim::verify(&claim.encode(), &pcs_claim::wire_proof(&proof)), "n = {n}");
         let verified = start.elapsed();
-        let mut bad = claims.clone();
-        bad[1].value += F192::ONE;
-        assert!(
-            opening::verify(&layout, &root, &bad, &wire).is_err(),
-            "log_n = {log_n}: a wrong value"
-        );
-        let head = line(
-            "new",
-            [vars, log_chunk, log_n]
-                .into_iter()
-                .chain(chunks.iter().flat_map(|&(c, l)| [c, l]))
-                .map(|n| n as u64),
-        );
-        out += &vector(&format!("public{log_n}"), head, &layout, &root, &claims, &proof);
+        let mut bad = claim.clone();
+        bad.value += F192::ONE;
+        assert!(!pcs_claim::verify(&bad.encode(), &pcs_claim::wire_proof(&proof)), "n = {n}: a wrong value");
+        out += &vector(&format!("public{n}"), &claim, &proof);
         println!(
-            "log_n = {log_n}: {} chunks, {} lanes, placed {} of 2^{log_n}; committed and opened in {:.1} s, \
-             verified in {:.1} ms; a wrong value rejected",
-            chunks.len(),
-            layout.lanes(),
-            layout.placed(),
+            "n = {n}: committed and opened in {:.1} s, verified in {:.1} ms; a wrong value rejected",
             proved.as_secs_f64(),
             verified.as_secs_f64() * 1e3
         );

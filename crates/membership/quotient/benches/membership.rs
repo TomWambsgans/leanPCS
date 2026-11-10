@@ -9,7 +9,7 @@ use std::time::Instant;
 use fiat_shamir::transcript::Proof as WhirProof;
 use primitives::test_rng::Rng;
 use quotient::circuit::{membership, membership_inputs};
-use quotient::opening::commit;
+use quotient::opening::Commitment;
 use quotient::protocol::{Index, digest, open, prove_with_seed, verify, verify_openings};
 use quotient::statement::{DEPTH, Secret};
 
@@ -48,7 +48,8 @@ fn main() {
     let peak = || bench::peak_rss_bytes() as f64 / f64::powi(1024.0, 3);
     let start = Instant::now();
     let index = Index::new(&circuit);
-    let index_committed = commit(&index.table);
+    let index_committed = index.commit();
+    let commitment = Commitment::of(&index_committed);
     time("index (wiring table, committed)", start);
     let peak_index = peak();
 
@@ -66,13 +67,13 @@ fn main() {
     let cells = circuit.cells(&membership_inputs(&secret));
     let witness_secs = time("witness (cells)", start);
     let start = Instant::now();
-    let proved = prove_with_seed(&circuit, &index, &index_committed.root, &statement, &cells, &seed);
-    let reduction_secs = time("reduction (commit both tables)", start);
+    let proved = prove_with_seed(&circuit, &index, &commitment, &statement, &cells, &seed);
+    let reduction_secs = time("reduction (commit four tables)", start);
     let peak_reduction = peak();
     assert!(proved.fits);
     let start = Instant::now();
-    let openings = open(proved.tables, &proved.claims, &index, &index_committed);
-    let opening_secs = time("openings (three WHIR)", start);
+    let openings = open(&proved.tables, &proved.claims, &index_committed);
+    let opening_secs = time("openings (six WHIR)", start);
     let peak_openings = peak();
     println!(
         "{:<34}: {:>8.3} s",
@@ -81,29 +82,24 @@ fn main() {
     );
 
     let start = Instant::now();
-    let (roots, claims) = verify(&index_committed.root, &statement, &proved.proof, circuit.log_rows).expect("accepts");
+    let (commitments, claims) = verify(&commitment, &statement, &proved.proof, circuit.log_rows).expect("accepts");
     time("verify: reduction", start);
-    assert_eq!(roots, proved.roots);
+    assert_eq!(commitments, proved.commitments);
     let start = Instant::now();
-    verify_openings(circuit.log_rows, &index_committed.root, &roots, &claims, &openings).expect("openings hold");
+    verify_openings(circuit.log_rows, &commitment, &commitments, &claims, &openings).expect("openings hold");
     time("verify: openings", start);
 
     println!(
-        "{:<34}: {} bytes (statement 64, two roots, {} field elements)",
+        "{:<34}: {} bytes (statement 64, four roots, {} field elements)",
         "calldata",
-        64 + 64 + 24 * (proved.proof.stream.len() - 4),
-        proved.proof.stream.len() - 4
+        64 + 4 * 32 + 24 * (proved.proof.stream.len() - 8),
+        proved.proof.stream.len() - 8
     );
-    for (name, proof) in [
-        ("opening: witness", &openings.witness),
-        ("opening: wiring", &openings.wiring),
-        ("opening: quotient (two claims)", &openings.quotient),
-    ] {
-        println!("{name:<34}: {:.1} KiB", opening_bytes(proof) as f64 / 1024.0);
+    for (name, proof) in ["witness", "wiring", "h", "q", "g", "sum (on h)"].into_iter().zip(&openings.0) {
+        println!("{:<34}: {:.1} KiB", format!("opening: {name}"), opening_bytes(proof) as f64 / 1024.0);
     }
-    // Pinned by hand: `dfcbadec8510a4f447488cef75b7c0b12ac17d40bdb4114a181e0df1c27a63e2` since the hidden layouts
-    // took the gadget (HIDING.md); `b93236c8…` before, since the randomness is derived from one seed and the
-    // openings' transcripts have leanVM's shape; `2d6342b8…fcb` before that.
+    // Pinned by hand: `dfcbadec8510a4f447488cef75b7c0b12ac17d40bdb4114a181e0df1c27a63e2` with the hidden layouts,
+    // before the EIP's PCS claims.
     let hex: String = digest(&proved.proof, &openings)
         .iter()
         .map(|b| format!("{b:02x}"))

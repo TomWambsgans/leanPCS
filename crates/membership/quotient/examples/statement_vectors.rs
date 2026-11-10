@@ -4,16 +4,18 @@
 //!
 //! `cargo run --release -p quotient --example statement_vectors -- OUT [--full]`
 //!
-//! - `R` lines: the reduction alone ([`protocol::verify`]) on random nine-scalar streams (and a few of other
-//!   lengths, or with a root that is not two halves) at `2^16` to `2^23` rows (the layouts take `2^17` to `2^22`,
-//!   [`protocol::supported`]), and on the honest proofs below: the two roots and the four claims, or the rejection.
-//! - `Q` lines: the honest prover's inputs (input bits, the tables' seed, the masks) and the stream it sends.
-//! - `P` lines: whole proofs (the reduction and the three openings) on a small circuit of `2^17` rows, honest and
-//!   tampered, the openings in their raw form (one full Merkle path per query, [`opening::verify_paths`]), with
-//!   the Rust verifier's verdict on that raw form. With `--full`, also the membership circuit (`2^22` rows).
-//! - `I` lines: a circuit's size, its number of inputs and its commitment (the root of its wiring table), for the
-//!   small circuit and a circuit of one Keccak-256 (`2^17` rows), and with `--index` (or `--full`) the membership
-//!   circuit: the Lean builder and commitment must reproduce them.
+//! - `R` lines: the reduction alone ([`protocol::verify`]) on random 19-scalar streams (and a few of other
+//!   lengths, or with a root that is not two halves) at `2^12` to `2^23` rows (the commitments take `2^13` to
+//!   `2^22`, [`protocol::supported`]), and on the honest proofs below: the four commitments (root, out-of-domain
+//!   answer) and the six claims, or the rejection.
+//! - `Q` lines: the honest prover's inputs (input bits, the masks, the random rows, the blinding) and the stream it
+//!   sends.
+//! - `P` lines: whole proofs (the reduction and the six openings) on a small circuit of `2^17` rows, honest and
+//!   tampered, the openings in their raw form (one full Merkle path per query), with the Rust verifier's verdict on
+//!   that raw form. With `--full`, also the membership circuit (`2^22` rows).
+//! - `I` lines: a circuit's size, its number of inputs and its commitment (its wiring table's root and out-of-domain
+//!   answer), for the small circuit and a circuit of one Keccak-256 (`2^17` rows), and with `--index` (or `--full`)
+//!   the membership circuit: the Lean builder and commitment must reproduce them.
 //!
 //! Tokens are separated by spaces: a hash is 64 hex digits (its bytes in order), an element of `E` its three limbs
 //! `c0:c1:c2` in hex, a word of `K` 16 hex digits.
@@ -21,13 +23,11 @@
 use std::fmt::Write as _;
 
 use fiat_shamir::merkle::Hash;
-use primitives::field::{F64, F192};
+use primitives::field::F192;
 use primitives::test_rng::Rng;
 use quotient::circuit::{Builder, Circuit, Src, membership, membership_inputs, public_words};
-use quotient::opening::{self, Claim, Layout, commit, wire_proof};
-use quotient::protocol::{
-    Claims, Index, Openings, Randomness, open, prove_with_seed, quotient_layout, verify, wiring_layout, witness_layout,
-};
+use quotient::opening::{Claim, Commitment, wire_proof};
+use quotient::protocol::{Claims, Commitments, Index, Openings, Randomness, open, prove_with_seed, verify};
 use quotient::statement::{DEPTH, Secret, Statement};
 use quotient::transcript::Proof;
 use verifier::{MerkleOpenings, MerklePath};
@@ -60,11 +60,12 @@ fn claim_tokens(out: &mut String, claim: &Claim) {
     write!(out, " {}", hex_e(claim.value)).unwrap();
 }
 
-fn head(out: &mut String, tag: &str, log_rows: usize, index_root: &Hash, statement: &Statement, stream: &[F192]) {
+fn head(out: &mut String, tag: &str, log_rows: usize, index: &Commitment, statement: &Statement, stream: &[F192]) {
     write!(
         out,
-        "{tag} {log_rows} {} {} {} {}",
-        hex_hash(index_root),
+        "{tag} {log_rows} {} {} {} {} {}",
+        hex_hash(&index.root),
+        hex_e(index.ood),
         hex_hash(&statement.y),
         hex_hash(&statement.root),
         stream.len()
@@ -76,16 +77,19 @@ fn head(out: &mut String, tag: &str, log_rows: usize, index_root: &Hash, stateme
 }
 
 /// An `R` line: the reduction's verdict on a stream.
-fn reduction_line(log_rows: usize, index_root: &Hash, statement: &Statement, stream: &[F192]) -> String {
+fn reduction_line(log_rows: usize, index: &Commitment, statement: &Statement, stream: &[F192]) -> String {
     let mut out = String::new();
-    head(&mut out, "R", log_rows, index_root, statement, stream);
+    head(&mut out, "R", log_rows, index, statement, stream);
     let proof = Proof {
         stream: stream.to_vec(),
     };
-    match verify(index_root, statement, &proof, log_rows) {
-        Ok((roots, claims)) => {
-            write!(out, " ACCEPT {} {}", hex_hash(&roots[0]), hex_hash(&roots[1])).unwrap();
-            for claim in [&claims.witness, &claims.wiring, &claims.quotient, &claims.sum] {
+    match verify(index, statement, &proof, log_rows) {
+        Ok((commitments, claims)) => {
+            out.push_str(" ACCEPT");
+            for c in [commitments.witness, commitments.h, commitments.q, commitments.g] {
+                write!(out, " {} {}", hex_hash(&c.root), hex_e(c.ood)).unwrap();
+            }
+            for (_, claim) in claims.all() {
                 claim_tokens(&mut out, claim);
             }
         }
@@ -138,112 +142,80 @@ impl RawOpening {
 }
 
 /// The raw form of an honest (pruned) opening: the paths the Rust verifier expands it into.
-fn raw(layout: &Layout, root: &Hash, claims: &[Claim], proof: &fiat_shamir::transcript::Proof) -> RawOpening {
+fn raw(commitment: &Commitment, claim: &Claim, proof: &fiat_shamir::transcript::Proof) -> RawOpening {
+    use verifier::{Digest, E, Transcript};
+    let claim = commitment.pcs_claim(claim);
     let wired = wire_proof(proof);
-    let paths = opening::verify_paths(layout, root, claims, &wired).expect("an honest opening holds");
+    let mut transcript = Transcript::new(&wired, Digest(pcs_claim::iv(&claim)), Digest(pcs_claim::PUBLIC_DIGEST), false);
+    transcript.next_scalars(2).expect("the root's two scalars");
+    let _lambda = transcript.sample();
+    let zero = E::new(0, 0, 0);
+    let n = claim.n as usize;
+    verifier::whir::verify_whir(&mut transcript, n, 1u64 << n, pcs_claim::LOG_INV_RATE, zero, Digest(claim.root), &|_| zero)
+        .expect("the replay walks the proof");
     let raw = RawOpening {
         stream: wired.stream.clone(),
-        paths,
+        paths: transcript.finish().expect("the replay reads the whole proof"),
     };
-    opening::verify(layout, root, claims, &raw.proof()).expect("its raw form holds");
+    pcs_claim::verify_claim(&claim, &raw.proof()).expect("its raw form holds");
     raw
 }
 
-/// A whole proof: the reduction's stream and the three openings in raw form.
+/// A whole proof: the reduction's stream and the six openings in raw form.
 #[derive(Clone)]
 struct Whole {
     log_rows: usize,
-    index_root: Hash,
+    index: Commitment,
     statement: Statement,
     stream: Vec<F192>,
-    openings: [RawOpening; 3],
+    openings: [RawOpening; 6],
+}
+
+/// The commitment each claim of [`Claims::all`] is on.
+fn on(index: &Commitment, c: &Commitments) -> [Commitment; 5] {
+    [c.witness, *index, c.h, c.q, c.g]
 }
 
 impl Whole {
     fn of(
         log_rows: usize,
-        index_root: &Hash,
+        index: &Commitment,
         statement: &Statement,
         stream: &[F192],
-        roots: &[Hash; 2],
+        commitments: &Commitments,
         claims: &Claims,
         openings: &Openings,
     ) -> Self {
+        let on = on(index, commitments);
+        let all = claims.all();
         Self {
             log_rows,
-            index_root: *index_root,
+            index: *index,
             statement: *statement,
             stream: stream.to_vec(),
-            openings: [
-                raw(
-                    &witness_layout(log_rows),
-                    &roots[0],
-                    std::slice::from_ref(&claims.witness),
-                    &openings.witness,
-                ),
-                raw(
-                    &wiring_layout(log_rows),
-                    index_root,
-                    std::slice::from_ref(&claims.wiring),
-                    &openings.wiring,
-                ),
-                raw(
-                    &quotient_layout(log_rows),
-                    &roots[1],
-                    &[claims.quotient.clone(), claims.sum.clone()],
-                    &openings.quotient,
-                ),
-            ],
+            openings: std::array::from_fn(|i| raw(&on[all[i].0], all[i].1, &openings.0[i])),
         }
     }
 
-    /// The Rust verifier on the raw form: the reduction, then the three openings.
+    /// The Rust verifier on the raw form: the reduction, then the six openings.
     fn accepts(&self) -> bool {
         let proof = Proof {
             stream: self.stream.clone(),
         };
-        let Ok((roots, claims)) = verify(&self.index_root, &self.statement, &proof, self.log_rows) else {
+        let Ok((commitments, claims)) = verify(&self.index, &self.statement, &proof, self.log_rows) else {
             return false;
         };
-        let Claims {
-            witness,
-            wiring,
-            quotient,
-            sum,
-        } = claims;
-        opening::verify(
-            &witness_layout(self.log_rows),
-            &roots[0],
-            &[witness],
-            &self.openings[0].proof(),
-        )
-        .is_ok()
-            && opening::verify(
-                &wiring_layout(self.log_rows),
-                &self.index_root,
-                &[wiring],
-                &self.openings[1].proof(),
-            )
-            .is_ok()
-            && opening::verify(
-                &quotient_layout(self.log_rows),
-                &roots[1],
-                &[quotient, sum],
-                &self.openings[2].proof(),
-            )
-            .is_ok()
+        let on = on(&self.index, &commitments);
+        claims
+            .all()
+            .iter()
+            .zip(&self.openings)
+            .all(|((k, claim), raw)| pcs_claim::verify_claim(&on[*k].pcs_claim(claim), &raw.proof()).is_ok())
     }
 
     fn line(&self) -> String {
         let mut out = String::new();
-        head(
-            &mut out,
-            "P",
-            self.log_rows,
-            &self.index_root,
-            &self.statement,
-            &self.stream,
-        );
+        head(&mut out, "P", self.log_rows, &self.index, &self.statement, &self.stream);
         for opening in &self.openings {
             opening.tokens(&mut out);
         }
@@ -260,12 +232,15 @@ fn tampered(honest: &Whole) -> Vec<(&'static str, Whole)> {
         f(&mut w);
         cases.push((name, w));
     };
-    add("value", &|w| w.stream[4] += F192::ONE);
-    add("next", &|w| w.stream[8] += F192::Y);
+    add("value", &|w| w.stream[12] += F192::ONE);
+    add("next", &|w| w.stream[16] += F192::Y);
+    add("part value", &|w| w.stream[17] += F192::ONE);
     add("witness root", &|w| w.stream[0].c0 ^= 1);
+    add("witness ood", &|w| w.stream[2].c1 ^= 1);
     add("root not two halves", &|w| w.stream[3].c2 = 1);
     add("statement", &|w| w.statement.root[3] ^= 0x10);
-    add("index root", &|w| w.index_root[0] ^= 1);
+    add("index root", &|w| w.index.root[0] ^= 1);
+    add("index ood", &|w| w.index.ood += F192::ONE);
     add("whir scalar", &|w| w.openings[0].stream[5].c1 ^= 1 << 7);
     add("whir trailing scalar", &|w| {
         w.openings[2].stream.push(verifier::E::new(0, 0, 0))
@@ -315,19 +290,20 @@ fn toy() -> Circuit {
 
 /// An `I` line: a circuit's size, its inputs and its commitment, which the Lean builder must reproduce.
 fn index_line(name: &str, circuit: &Circuit) -> String {
-    let root = commit(&Index::new(circuit).table).root;
+    let index = Commitment::of(&Index::new(circuit).commit());
     format!(
-        "I {name} {} {} {} {}",
+        "I {name} {} {} {} {} {}",
         circuit.log_rows,
         circuit.used_rows,
         circuit.n_inputs(),
-        hex_hash(&root)
+        hex_hash(&index.root),
+        hex_e(index.ood)
     )
 }
 
-/// A `Q` line: the honest prover's inputs (the circuit by name, its input bits as bytes, the tables' seed, the
-/// masks) and the reduction's stream it sends, which the Lean prover must reproduce.
-fn prover_line(name: &str, inputs: &[bool], seed: &[u8; 32], masks: &[[F64; 3]; 4], stream: &[F192]) -> String {
+/// A `Q` line: the honest prover's inputs (the circuit by name, its input bits as bytes, the masks, the random
+/// rows, the blinding) and the reduction's stream it sends, which the Lean prover must reproduce.
+fn prover_line(name: &str, inputs: &[bool], randomness: &Randomness, stream: &[F192]) -> String {
     let mut out = format!("Q {name} {}", inputs.len());
     for byte in inputs.chunks(8) {
         let value = byte
@@ -336,11 +312,10 @@ fn prover_line(name: &str, inputs: &[bool], seed: &[u8; 32], masks: &[[F64; 3]; 
             .fold(0u8, |acc, (i, &bit)| acc | (bit as u8) << i);
         write!(out, " {value:02x}").unwrap();
     }
-    write!(out, " {}", hex_hash(seed)).unwrap();
-    for coeffs in masks {
-        for coeff in coeffs {
-            write!(out, " {:016x}", coeff.0).unwrap();
-        }
+    let words = [randomness.masks.as_flattened(), &randomness.rows[..], randomness.blind.as_flattened()].concat();
+    write!(out, " {}", words.len()).unwrap();
+    for word in words {
+        write!(out, " {:016x}", word.0).unwrap();
     }
     write!(out, " {}", stream.len()).unwrap();
     for &x in stream {
@@ -351,39 +326,29 @@ fn prover_line(name: &str, inputs: &[bool], seed: &[u8; 32], masks: &[[F64; 3]; 
 
 fn proofs(lines: &mut Vec<String>, rng: &mut Rng, name: &str, circuit: &Circuit, cases: &[(Statement, Vec<bool>)]) {
     let index = Index::new(circuit);
-    let index_committed = commit(&index.table);
+    let index_committed = index.commit();
+    let commitment = Commitment::of(&index_committed);
     for (statement, inputs) in cases {
         let cells = circuit.cells(inputs);
-        // The proof's seed; the masks and the tables' padding seed are derived from it (`Randomness::derive`).
+        // The proof's seed; its randomness is derived from it (`Randomness::derive`).
         let seed = random_hash(rng);
-        let randomness = Randomness::derive(&seed, &index_committed.root, statement, &cells);
-        let proved = prove_with_seed(circuit, &index, &index_committed.root, statement, &cells, &seed);
+        let randomness = Randomness::derive(&seed, &commitment, statement, &cells);
+        let proved = prove_with_seed(circuit, &index, &commitment, statement, &cells, &seed);
         assert!(proved.fits);
-        lines.push(prover_line(
-            name,
-            inputs,
-            &randomness.padding,
-            &randomness.masks,
-            &proved.proof.stream,
-        ));
-        let (stream, roots, claims) = (proved.proof.stream.clone(), proved.roots, proved.claims.clone());
-        let openings = open(proved.tables, &claims, &index, &index_committed);
+        lines.push(prover_line(name, inputs, &randomness, &proved.proof.stream));
+        let openings = open(&proved.tables, &proved.claims, &index_committed);
+        let stream = proved.proof.stream.clone();
         let honest = Whole::of(
             circuit.log_rows,
-            &index_committed.root,
+            &commitment,
             statement,
             &stream,
-            &roots,
-            &claims,
+            &proved.commitments,
+            &proved.claims,
             &openings,
         );
         assert!(honest.accepts(), "the honest proof is accepted");
-        lines.push(reduction_line(
-            circuit.log_rows,
-            &index_committed.root,
-            statement,
-            &stream,
-        ));
+        lines.push(reduction_line(circuit.log_rows, &commitment, statement, &stream));
         lines.push(honest.line());
         for (name, case) in tampered(&honest) {
             assert!(!case.accepts(), "the tampered proof ({name}) is rejected");
@@ -399,16 +364,19 @@ fn main() {
     let mut rng = Rng::new(0x5747_A7E5);
     let mut lines = Vec::new();
 
-    // The reduction on random streams, at sizes the layouts take (`2^17` to `2^22` rows) and two they do not.
-    for (log_rows, count) in [(16usize, 10), (17, 40), (20, 20), (22, 40), (23, 10)] {
+    // The reduction on random streams, at sizes the commitments take (`2^13` to `2^22` rows) and two they do not.
+    for (log_rows, count) in [(12usize, 10), (17, 40), (20, 20), (22, 40), (23, 10)] {
         for case in 0..count {
-            let index_root = random_hash(&mut rng);
+            let index = Commitment {
+                root: random_hash(&mut rng),
+                ood: random_e(&mut rng),
+            };
             let statement = Statement {
                 y: random_hash(&mut rng),
                 root: random_hash(&mut rng),
             };
-            let mut stream: Vec<F192> = (0..9).map(|_| random_e(&mut rng)).collect();
-            for root in [0, 2] {
+            let mut stream: Vec<F192> = (0..19).map(|_| random_e(&mut rng)).collect();
+            for root in [0, 3, 6, 9] {
                 stream[root].c2 = 0;
                 stream[root + 1].c2 = 0;
             }
@@ -422,7 +390,7 @@ fn main() {
                 9 => stream.truncate(3),
                 _ => {}
             }
-            lines.push(reduction_line(log_rows, &index_root, &statement, &stream));
+            lines.push(reduction_line(log_rows, &index, &statement, &stream));
         }
     }
 

@@ -11,6 +11,7 @@ description = "Zero-knowledge Merkle membership (Keccak-256) reduced to four eva
 workspace = true
 
 [dependencies]
+pcs_claim.workspace = true
 parallel.workspace = true
 primitives.workspace = true
 fiat_shamir.workspace = true
