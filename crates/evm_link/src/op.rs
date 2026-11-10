@@ -93,6 +93,33 @@ pub fn word(limbs: [u64; 3]) -> [u8; 32] {
     bytes
 }
 
+/// Code that reverses the bytes within each 16-byte half of the word on top of the stack (stack effect `(1, 1)`):
+/// a root as the transcript absorbs it, the two little-endian numbers of its halves (`s_0 · 2^128 + s_1`, a "root
+/// word"), to its 32 bytes as a PCS claim encodes them, and back (it is an involution). Four swaps of adjacent groups
+/// (bytes, pairs, quads, octets), 132 gas.
+pub fn reverse_halves() -> Vec<u8> {
+    let mut code = Vec::new();
+    for shift in [8usize, 16, 32, 64] {
+        // The low `shift` bits of every group of `2 shift`.
+        let mut mask = [0u8; 32];
+        for (i, byte) in mask.iter_mut().enumerate() {
+            let bit = 8 * (31 - i);
+            *byte = if bit % (2 * shift) < shift { 0xff } else { 0 };
+        }
+        let push_mask = [&[PUSH32][..], &mask].concat();
+        code.extend([DUP1]);
+        code.extend(push_usize(shift));
+        code.extend([SHR]);
+        code.extend(&push_mask);
+        code.extend([AND, SWAP1]);
+        code.extend(&push_mask);
+        code.extend([AND]);
+        code.extend(push_usize(shift));
+        code.extend([SHL, OR]);
+    }
+    code
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

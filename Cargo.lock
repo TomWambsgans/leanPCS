@@ -2065,6 +2065,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "pcs_claim"
+version = "0.1.0"
+dependencies = [
+ "evm_link",
+ "fiat_shamir",
+ "leanvm_statement",
+ "parallel",
+ "pcs",
+ "primitives",
+ "verifier",
+]
+
+[[package]]
 name = "pest"
 version = "2.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"

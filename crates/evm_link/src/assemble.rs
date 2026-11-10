@@ -66,6 +66,15 @@ pub(crate) fn assemble_program(program: &Program, options: &Options) -> Assemble
     let w = options.jump_width;
     let address = |id: u32| -> usize { program.scratch + 32 * layout.slot[&id] };
     let returned = layout.region;
+    // Where declared PCS claims are packed to be hashed: past the outputs.
+    let pack = returned + 32 * program.outputs;
+    let buffer = (program.items.iter())
+        .filter_map(|(item, _)| match item {
+            Item::DeclaredClaim(words) => Some(words.buffer()),
+            _ => None,
+        })
+        .max()
+        .unwrap_or(0);
     let tags = &options.tags;
 
     // `other`: the other entry; `fail`: the revert; `data_at`: the constants.
@@ -133,6 +142,40 @@ pub(crate) fn assemble_program(program: &Program, options: &Options) -> Assemble
                     put(&mut code, &mut tag_of, &check.concat(), tag);
                     check_at(&mut code, &mut tag_of, tag);
                 }
+                // The frame's index on the stack: the claim's bytes packed past the outputs, at `pack + 30`: the
+                // header `VERSION || n` (the low two bytes of the word at `pack`), the root (the word at `pack + 32`),
+                // then each element's low 24 bytes, from `pack + 64` on. An element's word is stored 8 bytes before
+                // its place, so its top 8 zero bytes land on the previous element's tail: the elements are stored
+                // last first, then the root (over the first element's 8 zero bytes), then the header.
+                Item::DeclaredClaim(ref words) => {
+                    let n = words.point.len();
+                    let mut bytes = Vec::new();
+                    let elements: Vec<usize> = [words.ood]
+                        .into_iter()
+                        .chain(words.point.iter().copied())
+                        .chain([words.value])
+                        .collect();
+                    for (k, &at) in elements.iter().enumerate().rev() {
+                        bytes.extend(push_usize(returned + 32 * at));
+                        bytes.push(MLOAD);
+                        bytes.extend(push_usize(pack + 64 + 24 * k - 8));
+                        bytes.push(MSTORE);
+                    }
+                    bytes.extend(push_usize(returned + 32 * words.root));
+                    bytes.push(MLOAD);
+                    bytes.extend(push_usize(pack + 32));
+                    bytes.push(MSTORE);
+                    bytes.extend(push_usize(((crate::PCS_VERSION as usize) << 8) | n));
+                    bytes.extend(push_usize(pack));
+                    bytes.push(MSTORE);
+                    bytes.extend(push_usize(words.claim_len()));
+                    bytes.extend(push_usize(pack + 30));
+                    bytes.extend([KECCAK256, SWAP1]);
+                    bytes.extend(push_usize(1 + 32 * words.index));
+                    bytes.extend([FRAMEDATALOAD, XOR]);
+                    put(&mut code, &mut tag_of, &bytes, tag);
+                    check_at(&mut code, &mut tag_of, tag);
+                }
                 Item::FailIf => check_at(&mut code, &mut tag_of, tag),
                 Item::OtherIf => put(
                     &mut code,
@@ -167,7 +210,7 @@ pub(crate) fn assemble_program(program: &Program, options: &Options) -> Assemble
     Assembled {
         code,
         tags: tag_of,
-        memory_words: (returned + 32 * program.outputs) / 32,
+        memory_words: (pack + buffer).div_ceil(32),
         other_patch,
         slots: layout.slots,
     }

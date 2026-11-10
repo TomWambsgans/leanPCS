@@ -11,7 +11,8 @@
 //!
 //! A code generator turns its graph into items: for each node, its operands' evaluation, its code (calldata offsets
 //! as [`Item::Calldata`]) and a [`Item::Store`] if it is read again; checks with [`Item::FailIf`]; the outputs with
-//! [`Item::Output`] and [`Item::CopyConst`] and the checks of the claims declared with [`declared`]. [`front`] is such
+//! [`Item::Output`] and [`Item::CopyConst`] and the checks of the claims declared with [`declared`] (or, in the EIP
+//! draft's encoding of a PCS claim, packed from their fields' words, with [`declared_claims`]). [`front`] is such
 //! a generator for any graph of nodes whose code works on their operands on the stack ([`front::Dag`]):
 //! `crates/leanvm/statement` (`src/evm/codegen.rs`) gives it its nodes' code, entry and outputs. `crates/membership/evm`
 //! keeps a generator of its own and calls [`assemble`] the same way. [`creation_code`] deploys a contract.
@@ -42,6 +43,13 @@ pub enum Item {
     /// unless the hash is payload `index` of that frame, the word at `1 + 32 index` of its `data` (`FRAMEDATALOAD`):
     /// unless the transaction declares the claim these words encode. Pops the index.
     Declared { first: usize, words: usize, index: usize },
+    /// With a frame's index on top of the stack: revert unless payload `index` of that frame is `keccak256` of the
+    /// PCS claim (the EIP draft's encoding, `crates/pcs_claim`) whose fields are these output words: the root (one
+    /// word, its 32 bytes as the claim has them), the out-of-domain answer, the point's `n` coordinates and the value
+    /// (elements of `E`, words with their top 64 bits zero). The claim's `82 + 24 n` bytes are packed in the memory
+    /// past the outputs, hashed, and compared with `FRAMEDATALOAD(1 + 32 index)`. Pops the index. The words may be
+    /// any outputs, in any order (claims may share a point's words).
+    DeclaredClaim(ClaimWords),
     /// Push `offset`, where bytes `offset..offset + len` of the call's calldata are, which the code reads.
     Calldata { offset: usize, len: usize },
     /// Pop, and revert if it is nonzero.
@@ -49,6 +57,31 @@ pub enum Item {
     /// Pop, and jump to the other entry ([`Options::other`]; the revert if there is none) if it is nonzero.
     OtherIf,
 }
+
+/// Where a PCS claim's fields are among the outputs, and its payload's index in the frame ([`Item::DeclaredClaim`]).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ClaimWords {
+    pub root: usize,
+    pub ood: usize,
+    pub point: Vec<usize>,
+    pub value: usize,
+    pub index: usize,
+}
+
+impl ClaimWords {
+    /// The claim's bytes: `82 + 24 n`.
+    pub fn claim_len(&self) -> usize {
+        82 + 24 * self.point.len()
+    }
+
+    /// Bytes of memory the packing takes past the outputs: the header's word, the root's, the elements'.
+    pub fn buffer(&self) -> usize {
+        64 + 24 * (self.point.len() + 2)
+    }
+}
+
+/// The PCS version a claim's first byte names (the EIP draft's version `1`, `pcs_claim::VERSION`).
+pub const PCS_VERSION: u8 = 1;
 
 /// How the program ends, once its outputs are written.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -84,7 +117,7 @@ impl Program {
 
     /// The program's checks, each one `JUMPDEST` in a measuring build.
     pub fn checks(&self) -> usize {
-        let checks = |item: &Item| matches!(item, Item::FailIf | Item::Declared { .. });
+        let checks = |item: &Item| matches!(item, Item::FailIf | Item::Declared { .. } | Item::DeclaredClaim(_));
         self.items.iter().filter(|(item, _)| checks(item)).count()
     }
 }
@@ -138,6 +171,22 @@ pub fn declared(calldata_len: usize, runs: &[usize]) -> Vec<Item> {
     for (index, &words) in runs.iter().enumerate() {
         items.extend(declare(calldata_len, first, words, index));
         first += words;
+    }
+    items
+}
+
+/// Items that revert unless the PCS claim of `words` is payload `words.index` of the frame the caller names.
+pub fn declare_claim(calldata_len: usize, words: ClaimWords) -> Vec<Item> {
+    let mut items = frame_index(calldata_len);
+    items.push(Item::DeclaredClaim(words));
+    items
+}
+
+/// [`pcs_frame_check`], then [`declare_claim`] of each claim.
+pub fn declared_claims(calldata_len: usize, claims: &[ClaimWords]) -> Vec<Item> {
+    let mut items = pcs_frame_check(calldata_len);
+    for words in claims {
+        items.extend(declare_claim(calldata_len, words.clone()));
     }
     items
 }

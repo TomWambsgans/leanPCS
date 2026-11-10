@@ -4,6 +4,7 @@
 [workspace]
 members = [
     "crates/evm_link",
+    "crates/pcs_claim",
     "crates/membership/*",
     "crates/leanvm/*",
     "crates/vendor/leanvm-c445e3d5/*",
@@ -32,6 +33,7 @@ verifier = { path = "crates/vendor/leanvm-c445e3d5/verifier" }
 flock = { path = "crates/vendor/flock-42422001" }
 # This repository.
 evm_link = { path = "crates/evm_link" }
+pcs_claim = { path = "crates/pcs_claim" }
 quotient = { path = "crates/membership/quotient" }
 leanvm_statement = { path = "crates/leanvm/statement" }
 leanvm_univariate = { path = "crates/leanvm/univariate" }
