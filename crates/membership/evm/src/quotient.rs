@@ -63,7 +63,7 @@ use revm::primitives::{Address, U256};
 use crate::codegen::{COMMITMENT, Ending, Entry, Word, compile, compile_linked};
 pub use crate::codegen::{Contract, SET_INDEX_ROOT, VERIFY, creation_code};
 use crate::contract::Recorder;
-use crate::machine::{TableId, element_word, layout_id, root_word};
+use crate::machine::{TableId, element_word, layout_id};
 use crate::record::{Graph, Sym, record};
 
 /// What the contract returns on a proof it accepts: the word 1, `abi.encode(true)`.
@@ -78,23 +78,23 @@ pub const VERIFIED: [u8; 32] = {
 /// [`openings`] (one per commitment: the witness table's claim, the wiring table's against the stored root, and
 /// the quotient table's two together), and returns [`VERIFIED`].
 pub fn contract(log_rows: usize) -> Contract {
-    build(log_rows, &entry(true, None), true)
+    build(log_rows, &entry(), true)
 }
 
 /// The same verifier, returning the commitments and the claims ([`decode`]) instead of checking them.
 pub fn claims_contract(log_rows: usize) -> Contract {
-    build(log_rows, &entry(true, None), false)
+    build(log_rows, &entry(), false)
 }
 
 /// [`contract`] as contracts of at most `limit` bytes of code each: itself if it fits (it does at EIP-170's 24,576),
 /// else a driver and the parts it `DELEGATECALL`s, which compute the same ([`evm_link`]). [`deploy`] deploys them.
 pub fn contract_linked(log_rows: usize, limit: usize) -> Contract {
-    build_linked(log_rows, &entry(true, None), true, limit)
+    build_linked(log_rows, &entry(), true, limit)
 }
 
 /// [`claims_contract`] as contracts of at most `limit` bytes of code each.
 pub fn claims_contract_linked(log_rows: usize, limit: usize) -> Contract {
-    build_linked(log_rows, &entry(true, None), false, limit)
+    build_linked(log_rows, &entry(), false, limit)
 }
 
 /// The init code deploying `contract` (either of the two above) for the circuit committed as `index_root`, owned
@@ -131,9 +131,8 @@ pub fn deploy(
     (address, transactions)
 }
 
-/// How the contract is entered: with the selector or not, and with the circuit's commitment in storage or else
-/// in the code (`index_root`).
-fn entry(selector: bool, index_root: Option<&Hash>) -> Entry {
+/// How the contract is entered ([`Entry`]).
+fn entry() -> Entry {
     let some_root = [0xa5; 32];
     let zero = Statement {
         y: [0; 32],
@@ -145,9 +144,7 @@ fn entry(selector: bool, index_root: Option<&Hash>) -> Entry {
         "the label is a name, the root and the statement"
     );
     Entry {
-        selector,
         name: label[..16].try_into().expect("a 16-byte name"),
-        index_root: index_root.copied(),
     }
 }
 
@@ -184,7 +181,7 @@ pub(crate) struct Recorded {
 /// it as Lean (`lean.rs`).
 #[cfg(test)]
 pub(crate) fn deployed(log_rows: usize) -> Recorded {
-    recorded(log_rows, &entry(true, None), true)
+    recorded(log_rows, &entry(), true)
 }
 
 fn recorded(log_rows: usize, entry: &Entry, declared: bool) -> Recorded {
@@ -208,9 +205,7 @@ fn recorded(log_rows: usize, entry: &Entry, declared: bool) -> Recorded {
         let number = |n: u64| Word::Const(U256::from(n).to_be_bytes());
         let header =
             |root: Word, table: TableId, claims: u64| vec![root, number(layout_id(table, log_rows)), number(claims)];
-        let index_root = entry
-            .index_root
-            .map_or(Word::StoredRoot, |root| Word::Const(root_word(&root)));
+        let index_root = Word::StoredRoot;
         let calls = [
             [header(Word::Calldata(COMMITMENT), TableId::Witness, 1), claim(&witness)].concat(),
             [header(index_root, TableId::Wiring, 1), claim(&wiring)].concat(),
@@ -698,7 +693,6 @@ mod tests {
         let codes = [
             hex(&contract(LOG_ROWS).code),
             hex(&claims_contract(LOG_ROWS).code),
-            hex(&build(LOG_ROWS, &entry(true, Some(&[0xa5; 32])), true).code),
             hex(&linked_code),
         ];
         assert_eq!(
@@ -706,7 +700,6 @@ mod tests {
             [
                 "0046ce04b9c998b1181158b5947e6789135b1ed3e05db9bd278ad3527a10bb7a",
                 "8e7b697a3bfc94129d495b530bf3a924ddd3b95fa382609f28ed1adfd10de38d",
-                "3986a856e2884faa094149ea776349e61d220d5d039f3fef14bffcd61508acb3",
                 "e3c3f38d0f5c415ce657bf909a1894e4a658df9d038b9649f4ca0be699b3cb28",
             ]
         );
@@ -763,32 +756,9 @@ mod tests {
 
         // The contract built up, one thing at a time.
         let honest = block.clone();
-        let in_code = |selector| entry(selector, Some(&index_root));
         let steps = [
-            (
-                "the verifier, returning the claims (root in code, no selector)",
-                build(LOG_ROWS, &in_code(false), false),
-                &data[4..],
-                &none,
-            ),
-            (
-                "+ 3 claims checked declared in the frame; word 1 out",
-                build(LOG_ROWS, &in_code(false), true),
-                &data[4..],
-                &honest,
-            ),
-            (
-                "+ selector, and no value",
-                build(LOG_ROWS, &in_code(true), true),
-                &data[..],
-                &honest,
-            ),
-            (
-                "+ index root from storage: cold SLOAD, halves reversed",
-                contract,
-                &data[..],
-                &honest,
-            ),
+            ("the verifier, returning the claims", claims_contract(LOG_ROWS), &data[..], &none),
+            ("+ 3 claims checked declared in the frame; word 1 out", contract, &data[..], &honest),
         ];
         println!();
         println!(

@@ -32,17 +32,13 @@ pub const COMMITMENT: usize = 64;
 pub const SCALARS: usize = COMMITMENT + 64;
 pub const SCALAR_BYTES: usize = 24;
 
-/// How calls enter the contract, and where it finds the circuit's commitment.
+/// How calls enter the contract: calldata starts with [`VERIFY`], and a call of the verifier carries no value. The
+/// circuit's commitment is in storage slot [`INDEX_ROOT_SLOT`], which the creation code writes and the owner may
+/// change ([`SET_INDEX_ROOT`]).
 #[derive(Clone, Copy, Debug)]
 pub struct Entry {
-    /// Calldata starts with [`VERIFY`], and a call of the verifier carries no value; otherwise calldata is the
-    /// arguments alone.
-    pub selector: bool,
     /// The transcript's label is the protocol's 16-byte name, the circuit's commitment, then the statement.
     pub name: [u8; 16],
-    /// The circuit's commitment: in the code, or (`None`) in storage slot [`INDEX_ROOT_SLOT`], which the creation
-    /// code writes and the owner may change ([`SET_INDEX_ROOT`]).
-    pub index_root: Option<[u8; 32]>,
 }
 
 /// `PUSH2` of an address in the code: one length whatever the address, so code can be laid out in two passes.
@@ -202,34 +198,22 @@ impl Compiler<'_> {
                 self.code(&[&[SWAP1][..], &low, &[AND, OR]].concat());
             }
             // The label, the name and the circuit's commitment then the statement copied from calldata.
-            Node::Seed => match self.entry.index_root {
-                Some(root) => {
-                    // At 0: the 48 bytes before the statement as two overlapping words.
-                    let prefix = [&self.entry.name[..], &root].concat();
-                    self.code(&[&push(&prefix[..32])[..], &[PUSH0, MSTORE]].concat());
-                    self.code(&[&push(&prefix[16..])[..], &push_usize(16), &[MSTORE]].concat());
-                    self.code(&push_usize(64));
-                    self.calldata(self.base, 64);
-                    self.code(&[&push_usize(48)[..], &[CALLDATACOPY]].concat());
-                    self.code(&[&push_usize(112)[..], &[PUSH0, KECCAK256]].concat());
+            Node::Seed => {
+                // At 16: the name as the low half of the word at 0, so the root, read from storage (a cold
+                // `SLOAD`, 2,100 gas), is the word at 32. The wiring table's claim takes it too, its halves
+                // reversed, written to its output word now.
+                let slot = push_usize(INDEX_ROOT_SLOT.into());
+                self.code(&[&push(&self.entry.name)[..], &[PUSH0, MSTORE], &slot, &[SLOAD]].concat());
+                if let Some(k) = self.stored_root {
+                    self.code(&[[DUP1].as_slice(), &reverse_halves()].concat());
+                    self.item(Item::Output(k));
                 }
-                None => {
-                    // At 16: the name as the low half of the word at 0, so the root, read from storage (a cold
-                    // `SLOAD`, 2,100 gas), is the word at 32. The wiring table's claim takes it too, its halves
-                    // reversed, written to its output word now.
-                    let slot = push_usize(INDEX_ROOT_SLOT.into());
-                    self.code(&[&push(&self.entry.name)[..], &[PUSH0, MSTORE], &slot, &[SLOAD]].concat());
-                    if let Some(k) = self.stored_root {
-                        self.code(&[[DUP1].as_slice(), &reverse_halves()].concat());
-                        self.item(Item::Output(k));
-                    }
-                    self.code(&[&push_usize(32)[..], &[MSTORE]].concat());
-                    self.code(&push_usize(64));
-                    self.calldata(self.base, 64);
-                    self.code(&[&push_usize(64)[..], &[CALLDATACOPY]].concat());
-                    self.code(&[&push_usize(112)[..], &push_usize(16), &[KECCAK256]].concat());
-                }
-            },
+                self.code(&[&push_usize(32)[..], &[MSTORE]].concat());
+                self.code(&push_usize(64));
+                self.calldata(self.base, 64);
+                self.code(&[&push_usize(64)[..], &[CALLDATACOPY]].concat());
+                self.code(&[&push_usize(112)[..], &push_usize(16), &[KECCAK256]].concat());
+            }
             Node::Hash(state, scalars, n) => {
                 // Every operand reaches the stack before any is written to the scratch words.
                 self.eval(state);
@@ -300,18 +284,10 @@ struct Compiled {
 }
 
 fn program(graph: &Graph, outputs: &[Word], ending: &Ending, entry: &Entry, inputs: usize, linkable: bool) -> Compiled {
-    assert!(
-        entry.selector || entry.index_root.is_some(),
-        "setIndexRoot needs a selector"
-    );
-    let base = if entry.selector { VERIFY.len() } else { 0 };
+    let base = VERIFY.len();
     // Then a byte, the index of the transaction's frame of PCS claims (a returning contract reads past it).
     let calldata_len = base + SCALARS + SCALAR_BYTES * inputs + 1;
     let stored_root = outputs.iter().position(|word| matches!(word, Word::StoredRoot));
-    assert!(
-        stored_root.is_none() || entry.index_root.is_none(),
-        "a stored root is in storage"
-    );
     let n = graph.nodes.len();
     let mut uses = vec![0u32; n];
     let output_nodes = || {
@@ -378,16 +354,14 @@ fn program(graph: &Graph, outputs: &[Word], ending: &Ending, entry: &Entry, inpu
     };
     // Not a call of the verifier: calldata of another length, or of another selector, or value.
     compiler.code(&[&[CALLDATASIZE][..], &push_usize(calldata_len), &[XOR]].concat());
-    if entry.selector {
-        let selector = [
-            &[PUSH0, CALLDATALOAD][..],
-            &push_usize(224),
-            &[SHR],
-            &push(&VERIFY),
-            &[XOR],
-        ];
-        compiler.code(&[&selector.concat()[..], &[OR, CALLVALUE, OR]].concat());
-    }
+    let selector = [
+        &[PUSH0, CALLDATALOAD][..],
+        &push_usize(224),
+        &[SHR],
+        &push(&VERIFY),
+        &[XOR],
+    ];
+    compiler.code(&[&selector.concat()[..], &[OR, CALLVALUE, OR]].concat());
     compiler.item(Item::OtherIf);
     for &id in &graph.nonzero {
         compiler.eval(id);
@@ -510,25 +484,24 @@ fn set_index_root(fail: usize) -> (Vec<u8>, Option<usize>) {
     (code, Some(owner))
 }
 
-fn options(entry: &Entry) -> Options<'static> {
+fn options() -> Options<'static> {
     let other: evm_link::Other<'static> = &set_index_root;
     Options {
         jump_width: 2,
-        other: entry.index_root.is_none().then_some(other),
+        other: Some(other),
         ..Options::default()
     }
 }
 
-/// The contract. A call of the verifier is calldata of the selector ([`VERIFY`], if `entry` has one) and the
-/// arguments: the statement, the commitments and `inputs` scalars of the proof, of `SCALAR_BYTES` each. On
-/// such a call, with no value, it reverts unless every node of `graph.nonzero` is nonzero and every node of
-/// `graph.zero` zero (checked in that order, after the entry's checks), else writes `outputs`
+/// The contract. A call of the verifier is calldata of the selector ([`VERIFY`]) and the arguments: the statement,
+/// the commitments and `inputs` scalars of the proof, of `SCALAR_BYTES` each. On such a call, with no value, it
+/// reverts unless every node of `graph.nonzero` is nonzero (checked after the entry's checks), else writes `outputs`
 /// to a region of fresh memory, one word each, and ends as `ending` says. Any other call is one of
-/// `setIndexRoot(bytes32 root)`, if the circuit's commitment is in storage, or reverts: from the owner, with no
-/// value, it stores `root` in slot [`INDEX_ROOT_SLOT`] and returns nothing.
+/// `setIndexRoot(bytes32 root)`, or reverts: from the owner, with no value, it stores `root` in slot
+/// [`INDEX_ROOT_SLOT`] and returns nothing.
 pub fn compile(graph: &Graph, outputs: &[Word], ending: &Ending, entry: &Entry, inputs: usize) -> Contract {
     let compiled = program(graph, outputs, ending, entry, inputs, false);
-    let assembled = evm_link::assemble(&compiled.program, &options(entry));
+    let assembled = evm_link::assemble(&compiled.program, &options());
     Contract {
         code: assembled.code,
         owner_at: assembled.other_patch,
@@ -555,7 +528,7 @@ pub fn compile_linked(
         return one;
     }
     let compiled = program(graph, outputs, ending, entry, inputs, true);
-    let linked = evm_link::link(&compiled.program, &options(entry), limit);
+    let linked = evm_link::link(&compiled.program, &options(), limit);
     Contract {
         code: linked.driver.code.code.clone(),
         owner_at: linked.driver.code.other_patch,
@@ -567,9 +540,8 @@ pub fn compile_linked(
     }
 }
 
-/// The creation code of `contract`, which its constructor's arguments follow in the init code: for a contract
-/// reading the circuit's commitment from storage, those of `constructor(bytes32 indexRoot, address owner)`,
-/// ABI-encoded (64 bytes), and none otherwise. It reverts on value, or on arguments of another length; else it
+/// The creation code of `contract`, which its constructor's arguments follow in the init code: those of
+/// `constructor(bytes32 indexRoot, address owner)`, ABI-encoded (64 bytes). It reverts on value, or on arguments of another length; else it
 /// stores `indexRoot` in slot [`INDEX_ROOT_SLOT`], writes the `owner` word into the code, and returns the code.
 pub fn creation_code(contract: &Contract) -> Vec<u8> {
     assert!(
