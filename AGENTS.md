@@ -6,19 +6,18 @@ licensing, and the conventions.
 
 ## What the implementation adds to the design note
 
-- **No OOD answer, so claims on one commitment go together.** leanVM's WHIR, which the implementation uses unchanged,
-  takes no out-of-domain sample at its first commitment: a root then binds only to a short (Johnson) list of tables
-  (≤ 323 at the code's parameters, ≤ 7,908 at the ones leanerVM certifies). So every claim on one commitment must be in
-  one declared claim and checked by one opening (a block that proved them separately would be forgeable at about
-  2^111 work), and the protocol must union-bound the challenges it draws before its claims over these lists
-  (≥ 130 bits remain here).
-- **The opening's Fiat–Shamir seed** has leanVM's transcript shape, the form `formal/WhirBridge` proves sound
-  (`family_sound`): one hash of a prefix fixed by the verifier (label, version, the layout's hash, `log_n`, the
-  rate) and the claims, a zero public digest, and the root as the proof's first two scalars, which the verifier
-  checks (`opening::iv`).
+- **The out-of-domain answer binds a root to one table**, as the EIP draft has it (`docs/PCS_CLAIM.md`). leanVM's
+  WHIR takes no out-of-domain sample at its first commitment, so a root alone binds only to a list of tables (the
+  level-0 lists leanerVM certifies: 87,315 at `2^15` words down to 3,564 at `2^28`). The commitment's answer `ood = f(z)`,
+  `z` derived from the root by Keccak-256, singles one out except with probability `Q · C(L, 2) · n / 2^192` (at least
+  156 bits as `Q/ε`; `WhirBridge.Pcs.ood_binding_rom`), so claims on one commitment are opened, aggregated and proven
+  separately, one opening a claim.
+- **The opening's Fiat–Shamir seed** is the claim alone: leanVM's transcript started from `keccak256(PCS_claim)` (the
+  dependency's payload) and a zero public digest, the root as the proof's first two scalars, which the verifier checks
+  (`pcs_claim::verify`), the form `formal/WhirBridge` proves sound (`WhirBridge.Pcs.pcs_sound`).
 - **The Fiat–Shamir states need not be in the header**, given the two points above.
-- **The forward-compatibility upgrade by one Schwartz–Zippel point** needs the new commitment to bind one table: an
-  OOD answer at commit time, or a root anyone recomputes from the public circuit.
+- **The forward-compatibility upgrade by one Schwartz–Zippel point** needs the new commitment to bind one table: the
+  out-of-domain answer gives it.
 - **ZK assumes a zero-knowledge PCS** (ZK-WHIR), as the EIP does; the reference openings are leanVM's WHIR, not yet
   ZK-WHIR. With the EIP's plain point claims the earlier hidden layouts (claims on a layout, a gadget) cannot be
   expressed, so the membership protocol now makes only its own public scalars simulatable: random rows, the masks and a
@@ -116,7 +115,7 @@ its PCS gas on both sides as the EIP draft has it.
 
 | | ZK Merkle membership | leanVM by recursion (128 signatures) |
 |---|---|---|
-| Prover | 7.2 s (reduction 4.0 s, openings 3.2 s), 8.6 GiB (`bench.sh`, 2026-11-10), with the EIP's claims (four commitments up to `2^28` words, six openings; `docs/membership/EIP_CLAIMS.md`); before them, with the hidden layouts, 2.2 s (reduction 1.46 s, openings 0.76 s) | trace → π1-rec3 → π2 and openings, on the PCS claims (`tests/pipeline.rs`, this Mac, load about 20, 2026-11-10, medians of 5): **8.3 s per proof** (median of 5, `bench.sh`, 2026-11-10: π1 with its openings 2.2 s, π2's five openings 3.4 s), 15.2 GB. Before the PCS claims (π2's three stacks opened once each, opening version 3): 2.06 s on this Mac, 0.59 s on an AMD EPYC 9355P (64 threads) |
+| Prover | 7.2 s (reduction 4.0 s, openings 3.2 s), 8.6 GiB (`bench.sh`, 2026-11-10), with the EIP's claims (four commitments up to `2^28` words, six openings; `docs/membership/EIP_CLAIMS.md`); before them, with the hidden layouts, 2.2 s (reduction 1.46 s, openings 0.76 s) | trace → π1-rec3 → π2 and openings, on the PCS claims (`tests/pipeline.rs`): **8.3 s per proof** (median of 5, `bench.sh`, 2026-11-10: π1 with its openings 2.2 s, π2's five openings 3.4 s), 15.2 GB. Before the PCS claims (π2's three stacks opened once each, opening version 3): 2.06 s on this Mac, 0.59 s on an AMD EPYC 9355P (64 threads) |
 | Calldata | 461 B | 1,101 B (61 zero) |
 | Gas | 18,899 execution; **52,856** transaction under EIP-8141 with `pcs_gas` in the floor (floor-bound: 64 · (461 + 193) + 11,000; standard 40,315) | 32,794 execution; frame transaction (EIP-8141, EIP-7976's floor, no base or per-frame cost): standard 49,678, floor **70,464** |
 | Claims | 6 declared | 8 (π1's 3, π2's 5), each the EIP draft's PCS claim |
@@ -128,9 +127,9 @@ its PCS gas on both sides as the EIP draft has it.
 - leanVM: at 400 signatures (the real proof), 33,740 execution; standard 50,648, floor 70,464; 99,912 with the frame
   and the PCS gas (`tests/pi2_real.rs`, `real_end_to_end`). π1 alone as a contract (the main line, 128 signatures):
   8,069 B calldata, 231,511 execution, 3 claims; standard 360,255, floor 516,416 (`keccak_gas_report`). The prover
-  on the PCS claims (one opening a claim, every opening on leanVM's ladder; this Mac, load about 20, 2026-11-10):
-  9.3 s a proof (π1 with its openings 2.9 s, π2 2.8 s, π2's five openings 3.7 s), against 2.06 s before (three
-  openings of π2's three stacks at version 3). **Capacity**: `q_flock` is `2^11` words a permutation, so `C1`
+  on the PCS claims (one opening a claim, every opening on leanVM's ladder): 8.3 s a proof (`bench.sh`, median of
+  5, 2026-11-10: π1 with its openings 2.2 s, π2's five openings 3.4 s), against 2.06 s before (three openings of
+  π2's three stacks at version 3). **Capacity**: `q_flock` is `2^11` words a permutation, so `C1`
   reaches WHIR's `2^28` words at about 470 signatures (1,000 do not fit, `tests/keccak_vm.rs`).
 
 ## Membership: what is proved
@@ -171,10 +170,13 @@ permutation; `formal/EndToEnd` proves them ([`formal/README.md`](formal/README.m
   - **the statement**: `KeccakArith.kvSoundness`, `kvCompleteness` (the Keccak VM's `KvHolds` against its valid
     executions), `KeccakFlushes.flushesSha3_eq`, the Keccak-f block `KeccakFlock.keccakFlockSpec` (sound, complete)
     and its structured terminal;
-  - **π1**, in one random permutation: knowledge soundness `UniKeccakSound.uniKnowledgeSoundnessKeccak_closed` (≤ 2^-64
-    at Q ≤ 2^64, 128.87 bits as Q/ε) and `uniKnowledgeSoundnessKeccakRec3_closed` (π1-rec3, 128.49 bits), explicit
-    extractor; completeness `UniKeccakComplete.uniCompletenessKeccak_closed`, `uniCompletenessKeccakRec3_closed`, for
-    an explicit Lean honest prover, δ = `Prob.deltaK` < 2^-169;
+  - **π1**, on the EIP's PCS claims (each commitment's out-of-domain answer read after its root, the claims
+    `pcsClaimsK` opened by `WhirBridge.Pcs.pcsVerifyWithHash`, the three openings charged once by
+    `WhirBridge.Pcs.pcs_union_sound`), in one random permutation: knowledge soundness
+    `UniKeccakSound.uniKnowledgeSoundnessKeccak_closed` (≤ 2^-64 at Q ≤ 2^64, 128.87 bits as Q/ε) and
+    `uniKnowledgeSoundnessKeccakRec3_closed` (π1-rec3, 128.49 bits), explicit extractor; completeness
+    `UniKeccakComplete.uniCompletenessKeccak_closed`, `uniCompletenessKeccakRec3_closed`, for an explicit Lean honest
+    prover, δ = `Prob.deltaK` < 2^-169, given a program IV of at least 32 bytes (the deployed one has 32);
   - **π1-rec3's graph**: the recorded graph computes π1-rec3's verifier off the merge hazard, for every permutation
     (`RecGraphKeccak.Sim.pi1GraphIsVerifierK`, no hypothesis); the hazard has ≤ 2^16 values of `t` per `p_0`, 2^-176
     (`hazard_probK`); a satisfied π2 circuit carries the graph's outputs (`pi1rec3K_end`);
@@ -200,7 +202,7 @@ permutation; `formal/EndToEnd` proves them ([`formal/README.md`](formal/README.m
   400 signatures. At 128, with the openings charged once at WhirBridge's `269 · 2^-137` a query: π1 128.93 bits as
   Q/ε (main line) and 128.79 (π1-rec3), π2 128.93, the recursion about 127.9; the Lean bounds, coarser, are 128.87,
   128.49 and 128.93 (`docs/leanvm/univariate/SPEC.md` §9).
-- **The Rust is ahead of the Lean on two protocol changes**: π2's PIOP is π2v2 (the ports out of the copy argument,
+- **The Rust is ahead of the Lean on π2** (π1 and its graph are on the PCS claims): π2's PIOP is π2v2 (the ports out of the copy argument,
   `P` committed in `Q`, `q` below `2N`; `t` 141.3 bits after the lists, π2 128.93 as `Q/ε` as before), and every
   commitment and claim of the line is the EIP draft's PCS claim (`crates/pcs_claim`: the out-of-domain answer read
   after each root and bound in the IVs for the setups, one point per claim, no layout word, `Q` in sixteen slots and
@@ -210,7 +212,8 @@ permutation; `formal/EndToEnd` proves them ([`formal/README.md`](formal/README.m
 
 ## Security notes
 
-- **Claims on one commitment are opened together** (above): a requirement on the block's aggregation of declared claims too.
+- **Claims on one commitment may be proven separately**: the out-of-domain answer binds the root (above), so the block's
+  aggregation needs no grouping of declared claims.
 - **WHIR's parameters.** The code's proximity-gap accounting omits a factor `2^(ℓ-1)` that leanerVM's theorems carry;
   leanerVM's certified parameters account for it.
 - **Hiding.** The reference openings (leanVM's WHIR) are not zero knowledge: the membership proof's zero knowledge
@@ -236,8 +239,8 @@ permutation; `formal/EndToEnd` proves them ([`formal/README.md`](formal/README.m
   (`formal/Implementation` must read its new `claims` and `Word.storedOod`), and the ZK theorem must move to
   `HIDING.md`'s argument. The Rust-side Lean-facing outputs changed: `Graph.lean`, the circuit (random rows:
   `dump_circuit`), the `statement_vectors` and `whir_bridge_vector` formats.
-- The leanVM line's PCS claims in Lean: the claims' encoding and the out-of-domain answers in `UniKeccak` (π1's
-  stream reads each commitment's answer after its root; the IV binds the setup's), `RecStatement`, `RecPiop` and
+- The leanVM line's PCS claims in Lean (π1 done: `UniKeccak`, `UniKeccakSound`, `UniKeccakComplete`,
+  `RecGraphKeccak`): `RecStatement`, `RecPiop` and
   `RecCompose` (π2v2, `Q`'s slots and its three claims, the extra inversion factor `B`, one opening a claim on
   leanVM's ladder); `formal/WhirBridge` for the claim-only transcript (`keccak256(PCS_claim)`). The Lean-facing
   outputs were regenerated with the Rust (`Emitted.lean`, `Data.lean` by `UPDATE_LEAN=1`; `lean_keccak_vectors`'s and

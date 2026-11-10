@@ -494,6 +494,8 @@ challenges offline, as it could on chain: the per-query bounds above hold, with 
 
 The 14 narrow challenges each start with 4 zero bytes (56); the real proofs have 59 (128 signatures) and 61 (400).
 
+*These figures predate the PCS claims (claims on layouts, checked by the old `PCS_OPEN` precompile); the current ones, on the EIP's PCS claims, are in `AGENTS.md` ("Numbers") and the EIP draft's benchmarks.*
+
 **The contract** at the reference shape (`tests/pi2_real.rs`, `real_gas`): 13,219 B of code (13,639 at 400
 signatures), one contract, the straight build deployable; 753 `FIELD_MUL`, 818 `XOR`, 6 Keccak-256 (1,208 B hashed), 230
 words of memory, 210 words written for the claims. Execution 27,641 (28,421 at 400), measured with `PCS_OPEN`;
@@ -665,6 +667,8 @@ smaller `N`.
 ## 11. π2's PIOP, measured end to end
 
 `crates/leanvm/rec/src/pi2/`; the protocol, the decisions and the prover's numbers are in [`PI2.md`](PI2.md).
+*These figures predate the PCS claims (claims on layouts, checked by the old `PCS_OPEN` precompile); the current ones, on the EIP's PCS claims, are in `AGENTS.md` ("Numbers") and the EIP draft's benchmarks.*
+
 `tests/pi2_real.rs`, `real_end_to_end`, on the real π1-rec3 proof at the reference shape (`PI2_VECTOR=keccak128_rec3`,
 the default; Mac Apple M4 Max, 16 cores):
 

@@ -69,6 +69,8 @@ alone is `2^29` words: **no proof**. `tests/keccak_vm.rs`, `keccak_stacks_agains
 
 ## Gas
 
+*These figures predate the PCS claims (claims on layouts, checked by the old `PCS_OPEN` precompile); the current ones, on the EIP's PCS claims, are in `AGENTS.md` ("Numbers") and the EIP draft's benchmarks.*
+
 Measured on revm (`tests/keccak_vm.rs`, `keccak_gas_report`), `KECCAK_MAIN`, point claims. Transaction gas excludes the
 21,000 base and uses EIP-7623. Measured with `PCS_OPEN`, `c` the price of one of its claims.
 
