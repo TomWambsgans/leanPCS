@@ -1,11 +1,11 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 import RecStatement.Lemmas.Side
-import RecStatement.Lemmas.Coset
+import RecStatement.Lemmas.Subspace
 
 /-!
 # The verifier's constants are the circuit's
 
-`SpecOf S G B pairOf portOf nz pubOf` says that the arithmetic's constants `S` (`CoreSpec`) are `Spec::of` of
+`SpecOf S G B pairOf portOf pubOf` says that the arithmetic's constants `S` (`CoreSpec`) are `Spec::of` of
 `RecPiop`'s circuit `G`, its points the Cantor basis `B` (`ω = Heap.omega B`):
 
 * the shape: `m = logN`, `r = logW`, `m ≤ n`;
@@ -15,9 +15,10 @@ import RecStatement.Lemmas.Coset
 * **the groups** partition the pairs' indices (`groups_perm`), a group's pairs of its role, its pull flag the
   pairs' (a pull-less pair is a port's), its formula theirs as a value on any cells (`group_formula`, at the powers of
   `γ` the verifier takes);
-* **the public side**: the zero coset is the first `nz = 2^k` ports (tag `N`, `w_k`'s coefficients, their public
-  fingerprints zero), the other terms enumerate the other ports (`portOf`), each term's tag `N + j` and its value
-  port `j`'s public fingerprint `F_j` (`term_value`), the tags below `2^28`, the walk a permutation of the terms.
+* **the ports' `Φ`**: its roles distinct (`phi_nodup`), its terms (flattened, `phiTerms`) enumerate distinct ports
+  (`portOf`), each term's role and row its port's hole's (`G.port j % W`, `G.port j / W`), its value the port's
+  public fingerprint `F_j` (`phi_value`); the ports in no term have zero public fingerprints (`zero_ports`: π1's zero
+  checks and their padding).
 
 This is the transcription's hypothesis: `Spec.of` computes these from the circuit's tables, as the Rust does; that
 they are `RecPiop`'s circuit's is the composition's link (the circuit compiler's, `RecCircuit`).
@@ -31,12 +32,15 @@ open Finset RecPiop
 
 variable {F : Type} [Field F] [CharP F 2] [DecidableEq F]
 
-/-- The empty term. -/
-def noTerm : ℕ × LinF F := (0, ⟨[], none⟩)
+/-- The `Φ` terms, flattened: `(role, row, value)`. -/
+def phiTerms (S : CoreSpec F) : List (ℕ × ℕ × LinF F) := S.phi.flatMap fun kt ↦ kt.2.map fun yl ↦ (kt.1, yl)
+
+/-- The empty `Φ` term. -/
+def noPhi : ℕ × ℕ × LinF F := (0, 0, ⟨[], none⟩)
 
 /-- **The verifier's constants are `G`'s.** -/
 structure SpecOf {n : ℕ} (S : CoreSpec F) (G : RecPiop.Circuit F) (B : QuotientSecurity.CantorBasis F n)
-    (pairOf : ℕ → Block × ℕ) (portOf : ℕ → ℕ) (nz : ℕ) (pubOf : List F → ℕ → List F) : Prop where
+    (pairOf : ℕ → Block × ℕ) (portOf : ℕ → ℕ) (pubOf : List F → ℕ → List F) : Prop where
   logN : S.logN = G.logN
   logRow : S.logRow = G.logW
   hn : G.logN ≤ n
@@ -54,19 +58,16 @@ structure SpecOf {n : ℕ} (S : CoreSpec F) (G : RecPiop.Circuit F) (B : Quotien
   group_formula : ∀ g ∈ S.groups, ∀ i ∈ g.pairs, ∀ (γ : F) (v : ℕ → F),
     g.formula.eval (powersList γ (S.maxGamma + 1)) (fun c ↦ v (c ^^^ g.role)) =
       (G.regionRole (pairOf i).1 (pairOf i).2).value γ (v 0) (fun c ↦ v ((pairOf i).2 ^^^ c))
-  walk_perm : S.walk.Perm (List.range S.publicTerms.length)
-  coset : (S.zeroCoset = none ∧ nz = 0) ∨
-    ∃ k, S.zeroCoset = some (G.N, k, subspaceCoeffsF k) ∧ nz = 2 ^ k ∧ k ≤ G.logN
-  nz_le : nz ≤ G.nP
-  zero_ports : ∀ j < nz, ∀ (pubs : List F) (γ : F), G.pubFp γ (pubOf pubs) j = 0
-  port_mem : ∀ J < S.publicTerms.length, nz ≤ portOf J ∧ portOf J < G.nP
-  port_inj : ∀ J < S.publicTerms.length, ∀ J' < S.publicTerms.length, portOf J = portOf J' → J = J'
-  port_surj : ∀ j, nz ≤ j → j < G.nP → ∃ J < S.publicTerms.length, portOf J = j
-  term_tag : ∀ J < S.publicTerms.length, (S.publicTerms.getD J noTerm).1 = G.N + portOf J
-  tags_lt : G.N + G.nP ≤ 2 ^ 28
-  term_value : ∀ J < S.publicTerms.length, ∀ (pubs : List F) (γ : F),
-    (S.publicTerms.getD J noTerm).2.eval (powersList γ (S.maxGamma + 1)) (fun c ↦ pubs.getD c 0) =
+  phi_nodup : (S.phi.map (·.1)).Nodup
+  phi_port_lt : ∀ J < (phiTerms S).length, portOf J < G.nP
+  phi_port_inj : ∀ J < (phiTerms S).length, ∀ J' < (phiTerms S).length, portOf J = portOf J' → J = J'
+  phi_role : ∀ J < (phiTerms S).length, ((phiTerms S).getD J noPhi).1 = G.port (portOf J) % G.W
+  phi_row : ∀ J < (phiTerms S).length, ((phiTerms S).getD J noPhi).2.1 = G.port (portOf J) / G.W
+  phi_value : ∀ J < (phiTerms S).length, ∀ (pubs : List F) (γ : F),
+    ((phiTerms S).getD J noPhi).2.2.eval (powersList γ (S.maxGamma + 1)) (fun c ↦ pubs.getD c 0) =
       G.pubFp γ (pubOf pubs) (portOf J)
+  zero_ports : ∀ j < G.nP, (∀ J < (phiTerms S).length, portOf J ≠ j) → ∀ (pubs : List F) (γ : F),
+    G.pubFp γ (pubOf pubs) j = 0
 
 /-! ## The Cantor basis's points, bit by bit -/
 

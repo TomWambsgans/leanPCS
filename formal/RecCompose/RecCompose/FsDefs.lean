@@ -54,8 +54,9 @@ abbrev cc : RecStatement.Circuit := Data.circuit
 /-- The public data's bytes (`2 · 32 + 17 · 24`). -/
 abbrev pLen : ℕ := 472
 
-/-- The stream's bytes: the public data, `W`'s and `Q`'s roots, the `2^4 + 1` values. -/
-abbrev sLen : ℕ := 944
+/-- The stream's bytes: the public data, `W`'s and `Q`'s commitments (roots and out-of-domain answers), the `2^4 + 2`
+values. -/
+abbrev sLen : ℕ := 1016
 
 /-! ## The chain -/
 
@@ -238,11 +239,11 @@ def p2View (π : P2Pf) : FSt2 × List (RMsg E) :=
   ((π.iv, π.input, pubBytes π.proof.stream), (p2Msgs π).map UniSound.toRMsg)
 
 /-- **The transcript's inputs to the arithmetic**: the public scalars, `α, β, γ`, `t`, the `16` fold values, `ξ`,
-`ρ`. -/
+`s`, `ρ`. -/
 def p2Inputs (π : P2Pf) (ch : List (List E)) : Inputs E :=
   let vals := ((p2Msgs π).getD 2 default).2
   ⟨(stOf (p2View π).1).2, (ch.getD 0 []).getD 0 0, (ch.getD 0 []).getD 1 0, (ch.getD 0 []).getD 2 0,
-    (ch.getD 1 []).getD 0 0, vals.take 16, vals.getD 16 0, (ch.getD 2 []).getD 0 0⟩
+    (ch.getD 1 []).getD 0 0, vals.take 16, vals.getD 16 0, vals.getD 17 0, (ch.getD 2 []).getD 0 0⟩
 
 /-- **The arithmetic's values** on the transcript. -/
 def p2Out (π : P2Pf) (ch : List (List E)) : Out E := (Spec.of cc).core.run (p2Inputs π ch)
@@ -251,13 +252,14 @@ def p2Out (π : P2Pf) (ch : List (List E)) : Out E := (Spec.of cc).core.run (p2I
 def p2Reduced (π : P2Pf) (ch : List (List E)) : RecStatement.Reduced :=
   ⟨(p2Inputs π ch).scalars, (p2Inputs π ch).scalars.map pairPoint,
     ((((p2Msgs π).getD 0 default).1.getD default), (((p2Msgs π).getD 1 default).1.getD default)),
+    ((((p2Msgs π).getD 0 default).2.getD 0 0), (((p2Msgs π).getD 1 default).2.getD 0 0)),
     p2Inputs π ch, p2Out π ch⟩
 
 /-! ## The layouts, the shapes, the decoders -/
 
 theorem newOK_setup : NewOK 25 24 25 [(0, 2 ^ 24), (1, 2 ^ 24)] := by decide +kernel
 
-theorem newOK_quotient : NewOK 29 24 28 (RecStatement.quotientChunks 24) := by decide +kernel
+theorem newOK_quotient : NewOK 28 24 28 (RecStatement.quotientChunks 24) := by decide +kernel
 
 /-- `W`'s shape: the plain layout of `2^24` words. -/
 @[reducible] noncomputable def shW : WhirShape := UniSound.plainShape 24 le_rfl (by norm_num)
@@ -266,9 +268,9 @@ theorem newOK_quotient : NewOK 29 24 28 (RecStatement.quotientChunks 24) := by d
 @[reducible] noncomputable def shS : WhirShape :=
   WhirShape.large 25 24 25 [(0, 2 ^ 24), (1, 2 ^ 24)] newOK_setup (by decide) (by decide)
 
-/-- `Q`'s shape: `h` and `q`'s four chunks, three limbs each, `2^28` words, `29` variables. -/
+/-- `Q`'s shape: sixteen slots of `2^24` (`h`, `q`, `P`, `q_P`), `2^28` words, `28` variables. -/
 @[reducible] noncomputable def shQ : WhirShape :=
-  WhirShape.large 29 24 28 (RecStatement.quotientChunks 24) newOK_quotient (by decide) (by decide)
+  WhirShape.large 28 24 28 (RecStatement.quotientChunks 24) newOK_quotient (by decide) (by decide)
 
 /-- The Keccak π1's `k`-th opening's variables at the reference shape: the plain layout of `27`, `26`, `23` variables
 (`C1`, `C2`, the setup; its layout word's byte `24`, `UniKeccakSound.uniShapesK_ref`). -/
@@ -330,10 +332,10 @@ noncomputable def clW (π : P2Pf) (ch : List (List E)) : Stmt shW.L.stacking :=
 noncomputable def clS (π : P2Pf) (ch : List (List E)) : Stmt shS.L.stacking :=
   toStmt shS.L [⟨(p2Out π ch).setupPoint, (p2Inputs π ch).ξ⟩]
 
-/-- `Q`'s two claims (the combination at `t`, `h`'s top coefficient). -/
+/-- `Q`'s three claims (the identity's, the pushes', `h`'s top coefficient), in one opening. -/
 noncomputable def clQ (π : P2Pf) (ch : List (List E)) : Stmt shQ.L.stacking :=
   toStmt shQ.L [⟨(p2Out π ch).quotientPoint, (p2Out π ch).quotientValue⟩,
-    ⟨(p2Out π ch).sumPoint, (p2Out π ch).sumValue⟩]
+    ⟨(p2Out π ch).pushesPoint, (p2Out π ch).pushesValue⟩, ⟨(p2Out π ch).sumPoint, (p2Out π ch).sumValue⟩]
 
 /-- π1's `k`-th call's claims on its plain layout. -/
 noncomputable def cl1 (D : RecDeployment) (k : ℕ) (π : P2Pf) (ch : List (List E)) : Stmt (sh1 k).L.stacking :=
@@ -426,19 +428,19 @@ def p2Adv (A : RecAdversary) (s : SOut) : OracleComp Common.RandomPermutationOra
 
 /-! ## The check, the links -/
 
-/-- **The verifier's check** (what an accepting run satisfies): the stream of `944` bytes, the challenges of the
+/-- **The verifier's check** (what an accepting run satisfies): the stream of `1016` bytes, the challenges of the
 rounds' lengths, and the value the contract requires nonzero. -/
 def p2Check (π : P2Pf) (ch : List (List E)) : Prop :=
   π.proof.stream.size = sLen ∧ ch.length = 3 ∧ (ch.getD 0 []).length = 3 ∧ (ch.getD 1 []).length = 1 ∧
     (ch.getD 2 []).length = 1 ∧ (p2Out π ch).all ≠ 0
 
-/-- **A candidate is good**: at `W`'s round, a stack satisfying `W`'s claim; at `Q`'s, one satisfying both of
-`Q`'s. -/
+/-- **A candidate is good**: at `W`'s round, a stack satisfying `W`'s claim; at `Q`'s, one satisfying `Q`'s three. -/
 def p2Good (i : ℕ) (π : P2Pf) (ch : List (List E)) (c : Option Stk) : Prop :=
   if i = 0 then ∃ q, c = some q ∧
       ClaimOn (layoutsOf cc.logN).1 q ((p2Out π ch).witnessPoint, (p2Out π ch).fold)
   else if i = 1 then ∃ q, c = some q ∧
       ClaimOn (layoutsOf cc.logN).2.1 q ((p2Out π ch).quotientPoint, (p2Out π ch).quotientValue) ∧
+      ClaimOn (layoutsOf cc.logN).2.1 q ((p2Out π ch).pushesPoint, (p2Out π ch).pushesValue) ∧
       ClaimOn (layoutsOf cc.logN).2.1 q ((p2Out π ch).sumPoint, (p2Out π ch).sumValue)
   else True
 
@@ -469,7 +471,7 @@ def Pi2SetupBridge (D : RecDeployment) (hs : UniKeccakSound.UniShapesK D.pi1) : 
   simulateQ keccakCallsOverQueryPermutation (loggedKC (p2Setup D hs)) =
     (fun t : RecSetupTrees => (rootsB2 t, setupTr2 t)) <$> D.setupTreesWith Common.queryPermutation
 
-/-- **WALK**: on a stream of `944` bytes, in every lawful monad and over every permutation, π2's run's verdict and
+/-- **WALK**: on a stream of `1016` bytes, in every lawful monad and over every permutation, π2's run's verdict and
 result are the chain's challenges read by the value the contract requires nonzero and the result `p2Reduced`, the
 chain over Keccak-256 the sponge over the permutation. -/
 def Pi2Walk : Prop :=

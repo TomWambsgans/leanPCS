@@ -27,7 +27,7 @@ the last answer, `s₂ = H(s₁)` on `s₁`'s `32` bytes). So `α`'s chain is re
 * **`recCompleteness2_of_staged2`**: `RecCompleteness2 D P1 P2 (deltaStaged2 M ct N εα εt εpow)`,
   `deltaStaged2 = (εα + (2N + 1) / 2^256 + M / 2^192) + (εt + ct / 2^192) + εpow + rpmError N` (stage A's hashed
   inputs bounded by the run's `N` block calls, `hc_of_qc`).
-* **`delta2'`**, **`delta2'_le`**: π2's numbers (`M = 2^25 + 36`, `ct = 2^27`); below `2^-164` at `N ≤ 2^50`,
+* **`delta2'`**, **`delta2'_le`**: π2's numbers (`M = 2^25 + 36`, `ct = 9 · 2^24`); below `2^-164` at `N ≤ 2^50`,
   `εα, εt ≤ 2^-200`, `εpow ≤ 2^-300`.
 -/
 
@@ -262,8 +262,8 @@ theorem recCompleteness2_of_staged2 {D : RecStatement.RecDeployment} {P1 : RecSt
 /-! ## π2's numbers -/
 
 /-- **π2's completeness error**, `α`'s input fresh but with probability `εα`: the copy argument's `(2^25 + 36) |E|²`
-bad triples, `t`'s `2^27`. -/
-noncomputable def delta2' (N : ℕ) (εα εt εpow : ℝ≥0∞) : ℝ≥0∞ := deltaStaged2 (2 ^ 25 + 36) (2 ^ 27) N εα εt εpow
+bad triples, `t`'s `9 · 2^24`. -/
+noncomputable def delta2' (N : ℕ) (εα εt εpow : ℝ≥0∞) : ℝ≥0∞ := deltaStaged2 (2 ^ 25 + 36) (9 * 2 ^ 24) N εα εt εpow
 
 /-- **`δ2` in bits**: below `2^-164` at `N ≤ 2^50`, `εα, εt ≤ 2^-200`, `εpow ≤ 2^-300`. -/
 theorem delta2'_le {N : ℕ} {εα εt εpow : ℝ≥0∞} (hN : N ≤ 2 ^ 50) (ha : εα ≤ (2 : ℝ≥0∞)⁻¹ ^ 200)
@@ -288,13 +288,15 @@ theorem delta2'_le {N : ℕ} {εα εt εpow : ℝ≥0∞} (hN : N ≤ 2 ^ 50) (
           norm_num
       _ = (2 : ℝ≥0∞)⁻¹ ^ 166 := E2ECompleteness.two_pow_mul_inv_pow 26 166
       _ = 2 ^ 4 * x := (E2ECompleteness.two_pow_mul_inv_pow 4 166).symm
-  have hc : ((2 ^ 27 : ℕ) : ℝ≥0∞) / 2 ^ 192 ≤ 2 ^ 5 * x := by
+  have hc : ((9 * 2 ^ 24 : ℕ) : ℝ≥0∞) / 2 ^ 192 ≤ 36 * x := by
     refine le_of_eq ?_
-    calc ((2 ^ 27 : ℕ) : ℝ≥0∞) / 2 ^ 192 = 2 ^ 27 * (2 : ℝ≥0∞)⁻¹ ^ (165 + 27) := by
-          rw [ENNReal.div_eq_inv_mul, ← ENNReal.inv_pow, mul_comm]
-          norm_num
-      _ = (2 : ℝ≥0∞)⁻¹ ^ 165 := E2ECompleteness.two_pow_mul_inv_pow 27 165
-      _ = 2 ^ 5 * x := (E2ECompleteness.two_pow_mul_inv_pow 5 165).symm
+    calc ((9 * 2 ^ 24 : ℕ) : ℝ≥0∞) / 2 ^ 192 = 9 * (2 ^ 24 * (2 : ℝ≥0∞)⁻¹ ^ (168 + 24)) := by
+          rw [ENNReal.div_eq_inv_mul, ← ENNReal.inv_pow]
+          push_cast
+          ring
+      _ = 9 * (2 : ℝ≥0∞)⁻¹ ^ 168 := by rw [E2ECompleteness.two_pow_mul_inv_pow 24 168]
+      _ = 9 * (2 ^ 2 * x) := by rw [hx, E2ECompleteness.two_pow_mul_inv_pow 2 168]
+      _ = 36 * x := by ring
   have hd : εt ≤ x := ht.trans (hsmall 200 (by norm_num))
   have he : εpow ≤ x := hp.trans (hsmall 300 (by norm_num))
   have hf : rpmError N ≤ x := by
@@ -306,9 +308,9 @@ theorem delta2'_le {N : ℕ} {εα εt εpow : ℝ≥0∞} (hN : N ≤ 2 ^ 50) (
       _ = (2 : ℝ≥0∞)⁻¹ ^ 408 := E2ECompleteness.two_pow_mul_inv_pow _ 408
       _ ≤ x := hsmall 408 (by norm_num)
   unfold delta2' deltaStaged2
-  calc _ ≤ (x + (x + 2 ^ 4 * x)) + (x + 2 ^ 5 * x) + x + x :=
+  calc _ ≤ (x + (x + 2 ^ 4 * x)) + (x + 36 * x) + x + x :=
         add_le_add (add_le_add (add_le_add (add_le_add h0 (add_le_add ha' hb)) (add_le_add hd hc)) he) hf
-    _ = 53 * x := by ring
+    _ = 57 * x := by ring
     _ ≤ 2 ^ 6 * x := by gcongr; norm_num
     _ = (2 : ℝ≥0∞)⁻¹ ^ 164 := by rw [hx]; exact E2ECompleteness.two_pow_mul_inv_pow 6 164
 

@@ -27,7 +27,7 @@ import ZK.ProverBridgeParam
 
 **Finding (the named fact `Pi2RunAt` as stated is not provable).** Its first conjunct claims the staged verdict is
 `expW2`'s at every pure `(Ht, Ft)`; on a π1 proof with no honest witness (the graph rejecting, or before
-`Pi2WitnessComplete`) the staged run hashes `fixLen 536` of the writer's input, `536` zero bytes, where the prover hashes
+`Pi2WitnessComplete`) the staged run hashes `fixLen 560` of the writer's input, `560` zero bytes, where the prover hashes
 its `64`-byte input: the second components may differ. Only the event matters (the graph accepting), where the witness
 is honest; `rejects_at_good` (`Pi2CallsOpenR`) uses `pi2RunAt_good` instead.
 -/

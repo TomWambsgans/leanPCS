@@ -15,19 +15,20 @@ only through its shape, which for the Keccak π1-rec3 (`Data.circuit`) is `2^24`
 
 ```
 N (ε + 5 N / 2^256) + N (e2 + 8 N / 2^256) + 2 N² / 2^256 + (2^81 + Q)² / 2^508,
-ε = 269 · 2^-137 = 2^-128.93,   e2 = 9952 · 3564 · (5 · 2^24 − 1) / 2^192 = 2^-140.60
+ε = 269 · 2^-137 = 2^-128.93,   e2 = 9952 · 3564 · (3 · 2^24 − 1) / 2^192 = 2^-141.33
 ```
 
 * **the openings, once for all three** (`Compose.prEvent_doomF_le`, `WhirBridge.largeShapes`: `W` of `2^24` words, the
   setup `2^25`, `Q` `2^28`), at the exact certified per-group bound `ε` (`WhirBridge.εExact`);
 * **the chain** (`Compose.knowledgeSoundness_listChainU_closed128`): the rounds' largest error times its lists
-  (`Compose.maxErrK`), `e2`, the identity at `t` over `L_W L_Q` (`RecPiop.bits_t`; the copy argument's `L_W`-term is
-  `2^-153.13`, `ρ`'s `2^-163.01`: `pi2_rounds_le`), and the collisions;
+  (`Compose.maxErrK`), `e2`, π2v2's two identities at `t` over `L_W L_Q` (`RecPiop.bits_t`; the copy argument's and
+  the ports' `L_W`-term is `2^-152.72`, `ρ`'s (`W`'s fold and `Q`'s combined claim) `2^-162.75`: `pi2_rounds_le`), and
+  the collisions;
 * **the seed's pair** (`Compose.prEvent_pairTr_le`: π2's seed `name ‖ iv ‖ input`, its IV an answer);
 * the random permutation, as `uniBound128`'s.
 
 At `Q = 2^64` it is `2^-64.93` (in exact rationals: the openings `2^-64.93`,
-the chain's rounds `2^-76.60`, the collisions `2^-125`, the pair `2^-127`): **`pi2Bound_le_bits`**, at most `2^-64` for
+the chain's rounds `2^-77.33`, the collisions `2^-125`, the pair `2^-127`): **`pi2Bound_le_bits`**, at most `2^-64` for
 `Q ≤ 2^64`, i.e. at least 128 bits as `Q / ε2`.
 -/
 
@@ -39,9 +40,9 @@ open scoped ENNReal
 /-- `N`: every count of the bound at `Q` adversary calls. -/
 def pi2N (Q : ℕ) : ℕ := 2 ^ 33 + Q
 
-/-- **π2's rounds' largest error times its lists**: the identity at `t`, `L_W L_Q (5 N − 1)/|E|` at `N = 2^24`. -/
+/-- **π2's rounds' largest error times its lists**: the identities at `t`, `L_W L_Q (3 N − 1)/|E|` at `N = 2^24`. -/
 noncomputable def pi2RoundErr : ℝ≥0∞ :=
-  ((9952 * 3564 * (5 * 2 ^ 24 - 1) : ℕ) : ℝ≥0∞) / (Fintype.card E : ℝ≥0∞)
+  ((9952 * 3564 * (3 * 2 ^ 24 - 1) : ℕ) : ℝ≥0∞) / (Fintype.card E : ℝ≥0∞)
 
 /-- **π2's bound** `ε2` at `Q` adversary calls. -/
 noncomputable def pi2Bound (Q : ℕ) : ℝ≥0∞ :=
@@ -55,8 +56,8 @@ noncomputable def pi2Bound (Q : ℕ) : ℝ≥0∞ :=
 theorem card_E_eq : Fintype.card E = 2 ^ 192 := LeanVM.Protocol.card_E
 
 /-- **Each of π2's rounds' errors, times the lists of the roots before it, is at most `pi2RoundErr`** (`RecPiop.err` at
-`N = 2^24`, rows of `16`, the ports' `d_j` summing to `3`): the copy argument over `L_W`, the identity at `t` and `W`'s
-fold at `ρ` over `L_W L_Q`. -/
+`N = 2^24`, rows of `16`, the ports' `d_j` summing to `3`): the copy argument and the ports over `L_W`, the identities
+at `t` and `ρ` (`W`'s fold, `Q`'s combined claim) over `L_W L_Q`. -/
 theorem pi2_rounds_le (G : RecPiop.Circuit E) (hN : G.logN = 24) (hW : G.logW = 4) (d : ℕ → ℕ)
     (hd : ∑ j ∈ range G.nP, d j = 3) :
     ((9952 : ℕ) : ℝ≥0∞) * RecPiop.err G d 0 ≤ pi2RoundErr ∧
@@ -64,7 +65,7 @@ theorem pi2_rounds_le (G : RecPiop.Circuit E) (hN : G.logN = 24) (hW : G.logW = 
       ((9952 * 3564 : ℕ) : ℝ≥0∞) * RecPiop.err G d 2 ≤ pi2RoundErr := by
   have hE : (Fintype.card E : ℝ≥0∞) ≠ 0 := by rw [card_E_eq]; positivity
   have hEt : (Fintype.card E : ℝ≥0∞) ≠ ⊤ := ENNReal.natCast_ne_top _
-  have key : ∀ a b : ℕ, a * b ≤ 9952 * 3564 * (5 * 2 ^ 24 - 1) →
+  have key : ∀ a b : ℕ, a * b ≤ 9952 * 3564 * (3 * 2 ^ 24 - 1) →
       (a : ℝ≥0∞) * ((b : ℝ≥0∞) / (Fintype.card E : ℝ≥0∞)) ≤ pi2RoundErr := by
     intro a b hab
     unfold pi2RoundErr
@@ -103,7 +104,7 @@ theorem eps128_eq : (269 : ℝ≥0∞) * (2 : ℝ≥0∞)⁻¹ ^ 137 = ((269 * 2
   rw [mul_div_assoc, show (256 : ℕ) = 119 + 137 from rfl, WhirBridge.two_pow_div_two_pow]
 
 /-- `pi2RoundErr` over `2^256`. -/
-theorem pi2RoundErr_eq : pi2RoundErr = ((9952 * 3564 * (5 * 2 ^ 24 - 1) * 2 ^ 64 : ℕ) : ℝ≥0∞) / 2 ^ 256 := by
+theorem pi2RoundErr_eq : pi2RoundErr = ((9952 * 3564 * (3 * 2 ^ 24 - 1) * 2 ^ 64 : ℕ) : ℝ≥0∞) / 2 ^ 256 := by
   unfold pi2RoundErr
   rw [card_E_eq]
   simp only [Nat.cast_mul, Nat.cast_pow, Nat.cast_ofNat]
@@ -125,9 +126,9 @@ theorem pi2Bound_le_bits (Q : ℕ) (hQ : Q ≤ 2 ^ 64) : pi2Bound Q ≤ (2 : ℝ
       ((5 * pi2N Q : ℕ) : ℝ≥0∞) / 2 ^ 256) ≤ ((X * (269 * 2 ^ 119 + 5 * X) : ℕ) : ℝ≥0∞) / 2 ^ 256 := by
     rw [a256, d256]
     exact le256 (Nat.mul_le_mul hN (by omega))
-  have b2 : (pi2N Q : ℝ≥0∞) * (((9952 * 3564 * (5 * 2 ^ 24 - 1) * 2 ^ 64 : ℕ) : ℝ≥0∞) / 2 ^ 256 +
+  have b2 : (pi2N Q : ℝ≥0∞) * (((9952 * 3564 * (3 * 2 ^ 24 - 1) * 2 ^ 64 : ℕ) : ℝ≥0∞) / 2 ^ 256 +
       ((8 * pi2N Q : ℕ) : ℝ≥0∞) / 2 ^ 256) ≤
-      ((X * (9952 * 3564 * (5 * 2 ^ 24 - 1) * 2 ^ 64 + 8 * X) : ℕ) : ℝ≥0∞) / 2 ^ 256 := by
+      ((X * (9952 * 3564 * (3 * 2 ^ 24 - 1) * 2 ^ 64 + 8 * X) : ℕ) : ℝ≥0∞) / 2 ^ 256 := by
     rw [a256, d256]
     exact le256 (Nat.mul_le_mul hN (by omega))
   have b3 : ((2 * pi2N Q ^ 2 : ℕ) : ℝ≥0∞) / 2 ^ 256 ≤ ((2 * X ^ 2 : ℕ) : ℝ≥0∞) / 2 ^ 256 :=

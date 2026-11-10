@@ -132,26 +132,54 @@ theorem vreadValuesEnd {γ δ : Type} {f : List E → E → UniStatement.ChanM I
   simp [List.flatMap_append]
   omega
 
+/-- **The fold values, `ξ` and `s`, read back**: the prover has just written the scalars `xs ++ [x, y]`; the verifier,
+at the writer's end before them, reads `xs` (`next_scalars`), then `x`, then `y` (`next_scalar`). -/
+theorem vreadValuesEnd2 {γ δ : Type} {f : List E → E → E → UniStatement.ChanM Id γ} {p : WrM Id δ} {pos n : ℕ}
+    {w : Wr} {xs : List E} {x y : E} {K : γ → δ → ℕ → Wr → List E → Prop} (hn : xs.length = n)
+    (e : pos = w.stream.size)
+    (h2 : StepsE (f xs x y) p (w.stream.size + ((xs ++ [x, y]).flatMap scalarWire).length)
+      (w.append ((xs ++ [x, y]).flatMap scalarWire)) (fun c d p2 w2 z2 ↦ K c d p2 w2 ([] ++ ([] ++ ([] ++ z2))))) :
+    StepsE (UniStatement.nextScalars (m := Id) n >>= fun a ↦ UniStatement.nextScalar (m := Id) >>= fun ξ ↦
+      UniStatement.nextScalar (m := Id) >>= fun sv ↦ f a ξ sv) p pos
+      (w.append ((xs ++ [x, y]).flatMap scalarWire)) K := by
+  subst hn e
+  have hr := UniKeccakComplete.nextScalars_reads xs
+  refine StepsE.vread (P := w.stream.toList) (B := xs.flatMap scalarWire) (Q := scalarWire x ++ scalarWire y) hr
+    (by simp [List.flatMap_append]) ?_ |> StepsE.pos_start (by simp; try omega)
+  refine StepsE.vread (P := w.stream.toList ++ xs.flatMap scalarWire) (B := scalarWire x) (Q := scalarWire y)
+    (UniKeccakComplete.nextScalar_reads x) (by simp [List.flatMap_append]) ?_ |> StepsE.pos_start (by simp; try omega)
+  refine StepsE.vread (P := w.stream.toList ++ xs.flatMap scalarWire ++ scalarWire x) (B := scalarWire y) (Q := [])
+    (UniKeccakComplete.nextScalar_reads y) (by simp [List.flatMap_append]) ?_ |> StepsE.pos_start (by simp; try omega)
+  refine StepsE.pos_start ?_ h2
+  simp [List.flatMap_append]
+  omega
+
 /-- **The verifier's run and the honest prover's, in step**: on the prover's stream, π2's verifier reads the public
-values, `W`'s and `Q`'s roots, the fold values and `ξ` the prover writes, and draws its challenges; it ends at the end
-of the prover's stream, its arithmetic's inputs the prover's. -/
-theorem reduce_steps (Hk : List UInt8 → Digest) (G : RecPiop.Circuit E) (view : Circuit)
-    (setupStack : Array K) (input : List UInt8) (values : List PublicValue) (w : ℕ → K) (seed : Digest)
-    (hmatch : List.Forall₂ ReadMatch view.reads values) (hrow : view.logRow = G.logW) :
+values, `W`'s and `Q`'s roots and out-of-domain answers, the fold values, `ξ` and `s` the prover writes, and draws its
+challenges; it ends at the end of the prover's stream, its arithmetic's inputs the prover's. -/
+theorem reduce_steps (Hk : List UInt8 → Digest) (G : RecPiop.Circuit E) (ood : ℕ → Digest → Array K → E)
+    (view : Circuit) (setupStack : Array K) (input : List UInt8) (values : List PublicValue) (w : ℕ → K)
+    (seed : Digest) (hmatch : List.Forall₂ ReadMatch view.reads values) (hrow : view.logRow = G.logW) :
     StepsE (Pi2H.reduceWithH (m := Id) (Pure.pure ∘ Hk) (Spec.of view) (UniStatement.publicWordsOf input))
-      (pi2ProveStreamWith (m := Id) (Pure.pure ∘ Hk) G view.reads setupStack input values w) 0 (Wr.start seed)
+      (pi2ProveStreamWith (m := Id) (Pure.pure ∘ Hk) G (Spec.of view).core ood view.reads setupStack input values w)
+      0 (Wr.start seed)
       (fun r out pos w' _ ↦ pos = w'.stream.size ∧ out.stream = w'.stream ∧ r.inputs = out.inputs ∧
         r.scalars = out.inputs.scalars ∧ r.out = (Spec.of view).core.run r.inputs ∧
         w'.stream.toList = publicWire (view.reads.zip values) ++ rootWord (digestScalars out.wTree.root) ++
-          rootWord (digestScalars out.qTree.root) ++ (out.inputs.a ++ [out.inputs.ξ]).flatMap scalarWire ∧
+          scalarWire (ood (layoutsOf G.logN).1.logN out.wTree.root out.wStack) ++
+          rootWord (digestScalars out.qTree.root) ++
+          scalarWire (ood (layoutsOf G.logN).2.1.logN out.qTree.root out.qStack) ++
+          (out.inputs.a ++ [out.inputs.ξ, out.inputs.s]).flatMap scalarWire ∧
         out.wTree = E2ECompleteness.commitWithH (m := Id) (Pure.pure ∘ Hk) (layoutsOf G.logN).1.logN out.wStack ∧
         out.qTree = E2ECompleteness.commitWithH (m := Id) (Pure.pure ∘ Hk) (layoutsOf G.logN).2.1.logN out.qStack ∧
         out.inputs = ⟨publicScalarsOf input values, out.inputs.α, out.inputs.β, out.inputs.γ, out.inputs.t,
           foldValues G.logN G.logW (wTableB G w) out.inputs.t, xiOf G.logN setupStack out.inputs.β out.inputs.t,
-          out.inputs.ρ⟩ ∧
+          sOf G.logN (pNovel G w) out.inputs.t, out.inputs.ρ⟩ ∧
         out.wStack = placePublic (layoutsOf G.logN).1 (fun i ↦ (wTableB G w).getD i 0) ∧
-        out.qStack = placePublic (layoutsOf G.logN).2.1 (qEntry G.logN (hNovel G w out.inputs.α out.inputs.β
-          out.inputs.γ) (qNovel G w out.inputs.α out.inputs.β out.inputs.γ))) := by
+        out.qStack = placePublic (layoutsOf G.logN).2.1 (qEntry G.logN (hNovel G w out.inputs.α out.inputs.β)
+          (qNovel G w out.inputs.α out.inputs.β out.inputs.γ
+            (phiOn (Spec.of view).core (publicScalarsOf input values) out.inputs.γ))
+          (pNovel G w) (qpNovel G w out.inputs.γ))) := by
   unfold Pi2H.reduceWithH pi2ProveStreamWith
   dsimp only
   apply StepsE.pbind (sendPublic_writes _ _)
@@ -168,6 +196,8 @@ theorem reduce_steps (Hk : List UInt8 → Digest) (G : RecPiop.Circuit E) (view 
   apply StepsE.pos_start (pos0 := ((Wr.start seed).append (publicWire (view.reads.zip values))).stream.size)
     (by simp)
   apply StepsE.vreadEnd (UniKeccakComplete.nextRoot_reads _)
+  apply StepsE.pbind (UniKeccakComplete.sendScalar_writes _ _)
+  apply vreadEndAt (by simp; try omega) (UniKeccakComplete.nextScalar_reads _)
   apply stepsE_sample Hk
   case e => simp; omega
   apply stepsE_sample Hk
@@ -177,10 +207,12 @@ theorem reduce_steps (Hk : List UInt8 → Digest) (G : RecPiop.Circuit E) (view 
   apply StepsE.plift
   apply StepsE.pbind (UniKeccakComplete.sendRoot_writes _ _)
   apply vreadEndAt (by simp only [UniKeccakComplete.Wr.sampled_stream]) (UniKeccakComplete.nextRoot_reads _)
+  apply StepsE.pbind (UniKeccakComplete.sendScalar_writes _ _)
+  apply vreadEndAt (by simp; try omega) (UniKeccakComplete.nextScalar_reads _)
   apply stepsE_sample Hk
   case e => simp; omega
   apply StepsE.pbind (UniKeccakComplete.sendScalars_writes _ _)
-  apply vreadValuesEnd
+  apply vreadValuesEnd2
   case hn => simp [foldValues, Spec.of, hrow]
   case e => simp only [UniKeccakComplete.Wr.sampled_stream]
   apply stepsE_sample Hk
@@ -193,58 +225,42 @@ theorem reduce_steps (Hk : List UInt8 → Digest) (G : RecPiop.Circuit E) (view 
   · simp [Wr.start]
 
 /-- **The honest prover's output** over Keccak-256 `Hk`, from the seed of the IV and the public input. -/
-def proverOut (Hk : List UInt8 → Digest) (G : RecPiop.Circuit E) (view : Circuit) (setupStack : Array K)
-    (iv input : List UInt8) (values : List PublicValue) (w : ℕ → K) : Pi2Out :=
-  ((pi2ProveStreamWith (m := Id) (Pure.pure ∘ Hk) G view.reads setupStack input values w).run
+def proverOut (Hk : List UInt8 → Digest) (G : RecPiop.Circuit E) (ood : ℕ → Digest → Array K → E) (view : Circuit)
+    (setupStack : Array K) (iv input : List UInt8) (values : List PublicValue) (w : ℕ → K) : Pi2Out :=
+  ((pi2ProveStreamWith (m := Id) (Pure.pure ∘ Hk) G (Spec.of view).core ood view.reads setupStack input values w).run
     (Wr.start (Hk (RecStatement.name ++ iv ++ input)))).1
 
 /-- **π2's verifier accepts the run of the honest prover's stream**: over a pure permutation `F` (Keccak-256 `Hk`), at
 the seed of the IV and the public input, `runWith` returns the arithmetic on the prover's inputs, nothing of the stream
-left; the stream is the public values, `W`'s and `Q`'s roots' words and the values' scalars; the trees are the stacks'
-commitments. -/
-theorem runWith_honest (Hk : List UInt8 → Digest) (G : RecPiop.Circuit E) (view : Circuit)
-    (setupStack : Array K) (iv input : List UInt8) (values : List PublicValue) (w : ℕ → K)
+left; the stream is the public values, `W`'s and `Q`'s roots' words and answers and the values' scalars; the trees are
+the stacks' commitments. -/
+theorem runWith_honest (Hk : List UInt8 → Digest) (G : RecPiop.Circuit E) (ood : ℕ → Digest → Array K → E)
+    (view : Circuit) (setupStack : Array K) (iv input : List UInt8) (values : List PublicValue) (w : ℕ → K)
     (hmatch : List.Forall₂ ReadMatch view.reads values) (hrow : view.logRow = G.logW) :
-    ∃ r, (Pi2H.runWithH (m := Id) (Pure.pure ∘ Hk) (Spec.of view) iv input
-        (proverOut Hk G view setupStack iv input values w).stream).result = .ok r ∧
-      r.inputs = (proverOut Hk G view setupStack iv input values w).inputs ∧
-      r.scalars = (proverOut Hk G view setupStack iv input values w).inputs.scalars ∧
-      r.out = (Spec.of view).core.run r.inputs ∧
-      (proverOut Hk G view setupStack iv input values w).stream.toList =
-        publicWire (view.reads.zip values) ++
-          rootWord (digestScalars (proverOut Hk G view setupStack iv input values w).wTree.root) ++
-          rootWord (digestScalars (proverOut Hk G view setupStack iv input values w).qTree.root) ++
-          ((proverOut Hk G view setupStack iv input values w).inputs.a ++
-            [(proverOut Hk G view setupStack iv input values w).inputs.ξ]).flatMap scalarWire ∧
-      (proverOut Hk G view setupStack iv input values w).wTree =
-        E2ECompleteness.commitWithH (m := Id) (Pure.pure ∘ Hk) (layoutsOf G.logN).1.logN
-          (proverOut Hk G view setupStack iv input values w).wStack ∧
-      (proverOut Hk G view setupStack iv input values w).qTree =
-        E2ECompleteness.commitWithH (m := Id) (Pure.pure ∘ Hk) (layoutsOf G.logN).2.1.logN
-          (proverOut Hk G view setupStack iv input values w).qStack ∧
-      (proverOut Hk G view setupStack iv input values w).inputs =
-        ⟨publicScalarsOf input values, (proverOut Hk G view setupStack iv input values w).inputs.α,
-          (proverOut Hk G view setupStack iv input values w).inputs.β,
-          (proverOut Hk G view setupStack iv input values w).inputs.γ,
-          (proverOut Hk G view setupStack iv input values w).inputs.t,
-          foldValues G.logN G.logW (wTableB G w) (proverOut Hk G view setupStack iv input values w).inputs.t,
-          xiOf G.logN setupStack (proverOut Hk G view setupStack iv input values w).inputs.β
-            (proverOut Hk G view setupStack iv input values w).inputs.t,
-          (proverOut Hk G view setupStack iv input values w).inputs.ρ⟩ ∧
-      (proverOut Hk G view setupStack iv input values w).wStack =
-        placePublic (layoutsOf G.logN).1 (fun i ↦ (wTableB G w).getD i 0) ∧
-      (proverOut Hk G view setupStack iv input values w).qStack =
-        placePublic (layoutsOf G.logN).2.1 (qEntry G.logN
-          (hNovel G w (proverOut Hk G view setupStack iv input values w).inputs.α
-            (proverOut Hk G view setupStack iv input values w).inputs.β
-            (proverOut Hk G view setupStack iv input values w).inputs.γ)
-          (qNovel G w (proverOut Hk G view setupStack iv input values w).inputs.α
-            (proverOut Hk G view setupStack iv input values w).inputs.β
-            (proverOut Hk G view setupStack iv input values w).inputs.γ)) := by
+    let o := proverOut Hk G ood view setupStack iv input values w
+    ∃ r, (Pi2H.runWithH (m := Id) (Pure.pure ∘ Hk) (Spec.of view) iv input o.stream).result = .ok r ∧
+      r.inputs = o.inputs ∧ r.scalars = o.inputs.scalars ∧ r.out = (Spec.of view).core.run r.inputs ∧
+      o.stream.toList = publicWire (view.reads.zip values) ++ rootWord (digestScalars o.wTree.root) ++
+          scalarWire (ood (layoutsOf G.logN).1.logN o.wTree.root o.wStack) ++
+          rootWord (digestScalars o.qTree.root) ++
+          scalarWire (ood (layoutsOf G.logN).2.1.logN o.qTree.root o.qStack) ++
+          (o.inputs.a ++ [o.inputs.ξ, o.inputs.s]).flatMap scalarWire ∧
+      o.wTree = E2ECompleteness.commitWithH (m := Id) (Pure.pure ∘ Hk) (layoutsOf G.logN).1.logN o.wStack ∧
+      o.qTree = E2ECompleteness.commitWithH (m := Id) (Pure.pure ∘ Hk) (layoutsOf G.logN).2.1.logN o.qStack ∧
+      o.inputs = ⟨publicScalarsOf input values, o.inputs.α, o.inputs.β, o.inputs.γ, o.inputs.t,
+          foldValues G.logN G.logW (wTableB G w) o.inputs.t, xiOf G.logN setupStack o.inputs.β o.inputs.t,
+          sOf G.logN (pNovel G w) o.inputs.t, o.inputs.ρ⟩ ∧
+      o.wStack = placePublic (layoutsOf G.logN).1 (fun i ↦ (wTableB G w).getD i 0) ∧
+      o.qStack = placePublic (layoutsOf G.logN).2.1 (qEntry G.logN (hNovel G w o.inputs.α o.inputs.β)
+          (qNovel G w o.inputs.α o.inputs.β o.inputs.γ
+            (phiOn (Spec.of view).core (publicScalarsOf input values) o.inputs.γ))
+          (pNovel G w) (qpNovel G w o.inputs.γ)) := by
+  intro o
   set seed := Hk (RecStatement.name ++ iv ++ input) with hseed
   obtain ⟨r, b, pos', w', zs, ⟨hp, -, hv⟩, hpos, hstream, hinp, hsc, hout, hws, hwt, hqt, hi, hwsk, hqsk⟩ :=
-    reduce_steps Hk G view setupStack input values w seed hmatch hrow
-  have hb : proverOut Hk G view setupStack iv input values w = b := by
+    reduce_steps Hk G ood view setupStack input values w seed hmatch hrow
+  have hb : o = b := by
+    show proverOut Hk G ood view setupStack iv input values w = b
     unfold proverOut
     rw [← hseed, hp]
   rw [hb]

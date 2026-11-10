@@ -268,8 +268,11 @@ def publicTerms : List PublicTerm := [
   ⟨16777252, ⟨[(⟨0x1, 0x0, 0x0, 0⟩, 26)], none⟩⟩,
   ⟨16777253, ⟨[(⟨0x1, 0x0, 0x0, 0⟩, 7), (⟨0x1, 0x0, 0x0, 1⟩, 6)], none⟩⟩]
 
+/-- Each public term's hole (`σ`'s preimage of its tag): `Spec::phi` reads its row and role. -/
+def holes : List ℕ := [16400399, 16400415, 16400431, 16400447, 16400463, 16400479, 16400495, 16400511, 16400527, 16400543, 16400559, 16400575, 16400591, 16400607, 16400623, 16400639, 16400655, 16400671, 16400687, 16400703, 16400719, 16400735, 16400751, 16400767, 16400783, 16400799, 16400815, 16400831, 16400847, 16400863, 16400879, 16400895, 16400911, 16400927, 16400943, 16400959, 16400975, 16400991]
+
 /-- **π2's circuit** as its verifier reads it. -/
-def circuit : Circuit := ⟨24, 4, formulas, pairs, reads, publicTerms⟩
+def circuit : Circuit := ⟨24, 4, formulas, pairs, reads, publicTerms, holes⟩
 
 /-- π1's contract IV (`Compiled::pi1_iv`: π1-rec3's at the reference setup root). -/
 def pi1Iv : List UInt8 := hexBytes "c76853ee27ccbd70709a79c3c3f03d2ac08c31e7b0c1dfe5ce31d6b5d9dd70f3"

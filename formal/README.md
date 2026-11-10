@@ -170,9 +170,9 @@ cited is sorry-free, without `native_decide`, on `propext`, `Classical.choice`, 
 | [`UniKeccakSound`](UniKeccakSound/README.md) | π1's knowledge soundness |
 | [`UniKeccakComplete`](UniKeccakComplete/README.md) | an explicit Lean honest prover, and π1's completeness |
 | [`RecGraphKeccak`](RecGraphKeccak/README.md) | π1-rec3's recorded graph, graph = verifier off the merge hazard, the hazard's probability, π2's circuit for the graph |
-| [`RecCircuit`](RecCircuit/README.md), [`RecPiop`](RecPiop) | the circuit compiler transcribed, and a satisfied compiled circuit carries the graph's outputs; π2's PIOP |
+| [`RecCircuit`](RecCircuit/README.md), [`RecPiop`](RecPiop) | the circuit compiler transcribed, and a satisfied compiled circuit carries the graph's outputs; π2's PIOP (π2v3) |
 | [`RecStatement`](RecStatement/README.md) | π2's verifier, the contract and the recursion's end statements |
-| [`RecCompose`](RecCompose/README.md) | their proofs |
+| [`RecCompose`](RecCompose/README.md) | their proofs, π2v3 (the openings still `formal/`'s layout words: `RecCompose/README.md`, "Status") |
 
 They build on older shared libraries: `Lv42` (leanVM 42422001's instruction set without its hash instruction: five
 instructions, the machine, the five shared tables, the M3 instance, with the bytecode guarantee

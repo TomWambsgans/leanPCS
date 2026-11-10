@@ -17,7 +17,7 @@ links them:
   every block a pair (in block order, roles in order), its formula deduplicated by first appearance (`formulasOf`, the
   Rust's `id`), an expression's coefficients in `K`, a port's fingerprint `1, Y, Y²` or `1, Y, γ, γY`; the reads, the
   roots then the elements (`publicCounts`: one past the largest index the ports and calls name); one public term per
-  port, tag `N + j`.
+  port, tag `N + j`, and its hole, the port's position (`holesOf`).
 * **`callOf`**: a call word in the verifier's terms (a constant word its 32 bytes).
 * **`validB`**: `RecPiop.Circuit.Valid` of `toPiop`, decided by loops over the positions, the blocks and the ports
   (`RecCompose.Valid`: `validB_sound`).
@@ -118,10 +118,15 @@ def publicTermsOf (c : RecCircuit.Circuit) : List RecStatement.PublicTerm :=
   (List.range c.ports.size).map fun j ↦
     ⟨2 ^ c.logN + j, ⟨termOf (publicCounts c).1 (c.ports.getD j default).source, none⟩⟩
 
-/-- **`adapt`**: the Lean compiler's circuit as π2's verifier reads it. -/
+/-- The public terms' holes: port `j`'s position (which `σ` sends to the tag `N + j`). -/
+def holesOf (c : RecCircuit.Circuit) : List ℕ :=
+  (List.range c.ports.size).map fun j ↦ (c.ports.getD j default).position
+
+/-- **`adapt`**: the Lean compiler's circuit as π2's verifier reads it, with each public term's hole. -/
 def viewOf (c : RecCircuit.Circuit) : RecStatement.Circuit :=
   ⟨c.logN, c.logWidth, formulasOf c, pairsOf c,
-    List.replicate (publicCounts c).1 .root ++ List.replicate (publicCounts c).2 .scalar, publicTermsOf c⟩
+    List.replicate (publicCounts c).1 .root ++ List.replicate (publicCounts c).2 .scalar, publicTermsOf c,
+    holesOf c⟩
 
 /-- A call word in the verifier's terms: a constant word its 32 bytes. -/
 def callOf : RecCircuit.CallWord → RecStatement.CallWord

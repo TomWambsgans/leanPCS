@@ -126,10 +126,6 @@ The build fails if a headline definition or theorem uses an axiom beyond Lean's 
 #guard_msgs in
 #print axioms RecStatement.ind_eval_closed
 
-/-- info: 'RecStatement.coset_closed' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms RecStatement.coset_closed
-
 /-- info: 'RecStatement.cellsList_eq_cellsOf' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms RecStatement.cellsList_eq_cellsOf
@@ -142,9 +138,21 @@ The build fails if a headline definition or theorem uses an axiom beyond Lean's 
 #guard_msgs in
 #print axioms RecStatement.push_side
 
-/-- info: 'RecStatement.publicSide_eq' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'RecStatement.phiAt_eq' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms RecStatement.publicSide_eq
+#print axioms RecStatement.phiAt_eq
+
+/-- info: 'RecStatement.phiPoly_eval_port' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecStatement.phiPoly_eval_port
+
+/-- info: 'RecStatement.run_quotientValue' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecStatement.run_quotientValue
+
+/-- info: 'RecStatement.run_pushesValue' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecStatement.run_pushesValue
 
 /-- info: 'RecStatement.all_ne_zero_iff' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
@@ -162,9 +170,9 @@ The build fails if a headline definition or theorem uses an axiom beyond Lean's 
 #guard_msgs in
 #print axioms RecStatement.run_u
 
-/-- info: 'RecStatement.run_digitsScale' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'RecStatement.digitsScale_eq' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms RecStatement.run_digitsScale
+#print axioms RecStatement.digitsScale_eq
 
 /-- info: 'RecStatement.pairZ_eq_zHat' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in

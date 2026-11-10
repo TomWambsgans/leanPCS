@@ -262,12 +262,12 @@ end Chunks
 /-- **π2's three layouts at `m = 24`** (`prover::layouts(24)`): `W`, `Q`, the setup. -/
 theorem layoutsOf_24 : RecStatement.layoutsOf 24 =
     (PcsQuotient.Layout.ofChunks 24 24 24 [(0, 2 ^ 24)],
-      PcsQuotient.Layout.ofChunks 29 24 28 (RecStatement.quotientChunks 24),
+      PcsQuotient.Layout.ofChunks 28 24 28 (RecStatement.quotientChunks 24),
       PcsQuotient.Layout.ofChunks 25 24 25 [(0, 2 ^ 24), (1, 2 ^ 24)]) := rfl
 
 theorem newOK_w : WhirBridge.NewOK 24 24 24 [(0, 2 ^ 24)] := by decide +kernel
 
-theorem newOK_q : WhirBridge.NewOK 29 24 28 (RecStatement.quotientChunks 24) := by decide +kernel
+theorem newOK_q : WhirBridge.NewOK 28 24 28 (RecStatement.quotientChunks 24) := by decide +kernel
 
 theorem newOK_s : WhirBridge.NewOK 25 24 25 [(0, 2 ^ 24), (1, 2 ^ 24)] := by decide +kernel
 
@@ -289,7 +289,7 @@ theorem pi2Layout_w : Pi2Layout (RecStatement.layoutsOf 24).1 := by
 
 theorem pi2Layout_q : Pi2Layout (RecStatement.layoutsOf 24).2.1 := by
   rw [layoutsOf_24]
-  exact ⟨⟨29, 24, 28, _, rfl, newOK_q, nodup_q, by norm_num, le_rfl⟩⟩
+  exact ⟨⟨28, 24, 28, _, rfl, newOK_q, nodup_q, by norm_num, le_rfl⟩⟩
 
 theorem pi2Layout_s : Pi2Layout (RecStatement.layoutsOf 24).2.2 := by
   rw [layoutsOf_24]

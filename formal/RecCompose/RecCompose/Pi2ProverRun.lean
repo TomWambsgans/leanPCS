@@ -20,11 +20,13 @@ open RecStatement LeanVM.Parameters LeanVM.Protocol LeanVM.Protocol.KeccakHash
 variable {m : Type → Type} [Monad m] [LawfulMonad m] (H : List UInt8 → m Digest)
 
 /-- **The prover leaves the honest stacks and inputs.** -/
-theorem pi2ProveStreamWith_holds (G : RecPiop.Circuit E) (reads : List Read) (setupStack : Array K)
+theorem pi2ProveStreamWith_holds (G : RecPiop.Circuit E) (S : CoreSpec E) (ood : ℕ → Digest → Array K → E)
+    (reads : List Read) (setupStack : Array K)
     (input : List UInt8) (values : List PublicValue) (w : ℕ → K) (s : UniComplete.Wr) :
-    Holds ((pi2ProveStreamWith H G reads setupStack input values w).run s) fun r ↦
+    Holds ((pi2ProveStreamWith H G S ood reads setupStack input values w).run s) fun r ↦
       (fun j ↦ r.1.wStack.getD j 0) = honestW G w ∧
-        (fun j ↦ r.1.qStack.getD j 0) = honestQ G w r.1.inputs.α r.1.inputs.β r.1.inputs.γ ∧
+        (fun j ↦ r.1.qStack.getD j 0) = honestQ G S (publicScalarsOf input values) w r.1.inputs.α r.1.inputs.β
+          r.1.inputs.γ ∧
           r.1.inputs = honestInputs G setupStack w (publicScalarsOf input values) r.1.inputs.α r.1.inputs.β
             r.1.inputs.γ r.1.inputs.t r.1.inputs.ρ := by
   unfold pi2ProveStreamWith
@@ -37,16 +39,18 @@ theorem pi2ProveStreamWith_holds (G : RecPiop.Circuit E) (reads : List Read) (se
 /-- **Every run of the honest prover, at a setup of the deployment, leaves true claims and a passing check** off the
 bad challenges it drew (`pi2_honest` at the run's own stacks and inputs). -/
 theorem pi2ProveStreamWith_claims {D : RecDeployment} {C : Pi2Circuits D} (Fa : Pi2Facts D C)
-    (hcol : Pi2SetupColumns D C) (roots : RecSetupRoots) (reads : List Read) (input : List UInt8)
+    (hcol : Pi2SetupColumns D C) (roots : RecSetupRoots) (ood : ℕ → Digest → Array K → E) (reads : List Read)
+    (input : List UInt8)
     (values : List PublicValue) (w : ℕ → K)
     (hw : (C.G roots).Satisfies (Fa.pubOf roots (publicScalarsOf input values)) (RecCircuit.emb w))
     (s : UniComplete.Wr) :
-    Holds ((pi2ProveStreamWith H (C.G roots) reads (D.circuitAt roots.pi1).setupStack input values w).run s)
+    Holds ((pi2ProveStreamWith H (C.G roots) (Spec.of (D.circuitAt roots.pi1).circuit).core ood reads
+        (D.circuitAt roots.pi1).setupStack input values w).run s)
       fun r ↦ ¬ BadCopy (C.G roots) w (Fa.pubOf roots (publicScalarsOf input values)) r.1.inputs.α r.1.inputs.β
           r.1.inputs.γ → ¬ BadT (C.G roots) w r.1.inputs.α r.1.inputs.β r.1.inputs.γ r.1.inputs.t →
         ((Spec.of (D.circuitAt roots.pi1).circuit).core.run r.1.inputs).all ≠ 0 ∧
           Pi2ClaimsHold D roots r.1.inputs (fun j ↦ r.1.wStack.getD j 0) (fun j ↦ r.1.qStack.getD j 0) := by
-  refine holds_mono (pi2ProveStreamWith_holds H _ reads _ input values w s) fun r ⟨hW, hQ, hI⟩ hb ht ↦ ?_
+  refine holds_mono (pi2ProveStreamWith_holds H _ _ ood reads _ input values w s) fun r ⟨hW, hQ, hI⟩ hb ht ↦ ?_
   rw [hW, hQ, hI]
   exact pi2_honest Fa hcol roots w _ _ _ _ _ _ hw hb ht
 

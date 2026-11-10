@@ -47,14 +47,14 @@ theorem holds2_pi2_of {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D) (hch
     (input : Vector UInt8 32) (rows : List ℕ) (q : D.pi1.Stack rows) (hfit : D.pi1.shape.RowsFit rows)
     (hrel : D.pi1.HonestRelation D.flock rows input q) :
     (pi2Staged D C (pi2Facts hD C hchk) (P1k input rows q) input).Holds2 D P1
-      (pi2Prover D C (pi2Facts hD C hchk) PcsQuotient.nonceFuel) input rows q 536 (badSet2 C.G) (badT2 C.G)
-      (2 ^ 25 + 36) (2 ^ 27) N εα (tFreshBound2 N εα)
+      (pi2Prover D C (pi2Facts hD C hchk) PcsQuotient.nonceFuel) input rows q 560 (badSet2 C.G) (badT2 C.G)
+      (2 ^ 25 + 36) (9 * 2 ^ 24) N εα (tFreshBound2 N εα)
       ((N : ℝ≥0∞) * missProb Whir.queryGrindingBits ^ PcsQuotient.nonceFuel) where
   experiment := pi2ExperimentLe_of hD C (pi2Facts hD C hchk) hwc hP input rows q hfit hrel
   duplex := hdup input rows q hfit hrel
   cost := hcost input rows q hfit hrel
   L_ne := by norm_num
-  inp_length _ := fixLen_length 536 _
+  inp_length _ := fixLen_length 560 _
   alphaFresh := hal input rows q hfit hrel
   badCard p := card_badCopy_pi2 (pi2Facts hD C hchk) p.1 p.2.1 p.2.2
   badTCard fp := card_badT_pi2 (pi2Facts hD C hchk) fp.1.1 fp.1.2.1 fp.1.2.2 fp.2.1 fp.2.2.1 fp.2.2.2

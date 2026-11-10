@@ -44,13 +44,15 @@ attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
 
 /-! ## `W`'s root -/
 
-/-- **Round `0`'s message is `W`'s root** the stream names (bytes `472 … 504`), without scalars. -/
+/-- **Round `0`'s message is `W`'s commitment** the stream names (its root at bytes `472 … 504`, its out-of-domain
+answer). -/
 theorem msgK_p2View_zero (π : P2Pf) :
-    msgK p2View π 0 = (some (toB (UniStatement.rootOf (UniSound.halvesAt π.proof.stream pLen))), []) :=
+    msgK p2View π 0 = (some (toB (UniStatement.rootOf (UniSound.halvesAt π.proof.stream pLen))),
+      (List.range 1).map fun k => UniSound.scalarAt π.proof.stream (pLen + 32 + 24 * k)) :=
   rfl
 
-/-- The public data's reads: `C1`'s root at byte `0`, `C2`'s at `32`; `W`'s at `472`, `Q`'s at `504`. -/
-theorem rootsAt_cc : rootsAt cc.reads = [0, 32, 472, 504] := by decide
+/-- The public data's reads: `C1`'s root at byte `0`, `C2`'s at `32`; `W`'s at `472`, `Q`'s at `528`. -/
+theorem rootsAt_cc : rootsAt cc.reads = [0, 32, 472, 528] := by decide
 
 theorem rootReads_cc : rootReads cc.reads = 2 := by decide
 

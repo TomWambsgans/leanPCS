@@ -45,16 +45,19 @@ def reduceWithH (s : Spec) (statement : List E) : ChanM m Reduced := do
       pubs := pubs ++ [lo, hi]
     | .scalar => pubs := pubs ++ [← UniStatement.nextScalar (m := m)]
   let wRoot ← UniStatement.nextRoot (m := m)
+  let wOod ← UniStatement.nextScalar (m := m)
   let α ← UniKeccakComplete.sampleH H
   let β ← UniKeccakComplete.sampleH H
   let γ ← UniKeccakComplete.sampleH H
   let qRoot ← UniStatement.nextRoot (m := m)
+  let qOod ← UniStatement.nextScalar (m := m)
   let t ← UniKeccakComplete.sampleH H
   let a ← UniStatement.nextScalars (m := m) (2 ^ s.logRow)
   let ξ ← UniStatement.nextScalar (m := m)
+  let sv ← UniStatement.nextScalar (m := m)
   let ρ ← UniKeccakComplete.sampleH H
-  let inp : Inputs E := ⟨pubs, α, β, γ, t, a, ξ, ρ⟩
-  return ⟨pubs, pubs.map pairPoint, (wRoot, qRoot), inp, s.core.run inp⟩
+  let inp : Inputs E := ⟨pubs, α, β, γ, t, a, ξ, sv, ρ⟩
+  return ⟨pubs, pubs.map pairPoint, (wRoot, qRoot), (wOod, qOod), inp, s.core.run inp⟩
 
 /-- `RecStatement.runWith` with Keccak-256 `H`. -/
 def runWithH (s : Spec) (iv publicInput : List UInt8) (stream : Array UInt8) : m Outcome := do
@@ -277,13 +280,16 @@ theorem reads_reduceWithH (H : List UInt8 → m Digest) (s : RecStatement.Spec) 
   refine reads_mono (reads_bind (reads_forIn RecStatement.Read.bytes pubsStep _ (fun rd b ↦ ?_) s.reads stmt)
     fun pubs _ ↦
       reads_bind reads_nextRoot fun wRoot _ ↦
+      reads_bind reads_nextScalar fun wOod _ ↦
       reads_bind (reads_sampleH H) fun α _ ↦
       reads_bind (reads_sampleH H) fun β _ ↦
       reads_bind (reads_sampleH H) fun γ _ ↦
       reads_bind reads_nextRoot fun qRoot _ ↦
+      reads_bind reads_nextScalar fun qOod _ ↦
       reads_bind (reads_sampleH H) fun t _ ↦
       reads_bind (reads_nextScalars _) fun a _ ↦
       reads_bind reads_nextScalar fun ξ _ ↦
+      reads_bind reads_nextScalar fun sv _ ↦
       reads_bind (reads_sampleH H) fun ρ _ ↦ reads_pure _) (by unfold pi2Bytes; omega) ?_
   · cases rd with
     | integer bytes =>
@@ -301,7 +307,7 @@ theorem reads_reduceWithH (H : List UInt8 → m Digest) (s : RecStatement.Spec) 
       rintro d cur st ⟨x, hx, hst⟩
       subst hx hst
       rfl
-  · rintro d cur r ⟨pubs, hpubs, w, -, α, -, β, -, γ, -, q, -, t, -, a, -, ξ, -, ρ, -, hr⟩
+  · rintro d cur r ⟨pubs, hpubs, w, -, wo, -, α, -, β, -, γ, -, q, -, qo, -, t, -, a, -, ξ, -, sv, -, ρ, -, hr⟩
     subst hr
     exact ⟨hpubs, rfl⟩
 

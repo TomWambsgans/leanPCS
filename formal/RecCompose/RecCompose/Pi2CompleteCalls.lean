@@ -122,6 +122,8 @@ theorem decodeWith_claims (reg : List (List UInt8 × Opener)) (root lw : List UI
 
 theorem countOfWord_numberWord_two : countOfWord (UniStatement.numberWord 2) = some 2 := by decide
 
+theorem countOfWord_numberWord_three : countOfWord (UniStatement.numberWord 3) = some 3 := by decide
+
 /-! ## The registry -/
 
 theorem layoutWord_getD23 (code m : ℕ) (L : PcsQuotient.Layout) :

@@ -43,16 +43,15 @@ theorem cc_logRow : cc.logRow = 4 := rfl
 
 theorem layoutsOf_cc : layoutsOf cc.logN =
     (PcsQuotient.Layout.ofChunks 24 24 24 [(0, 2 ^ 24)],
-      PcsQuotient.Layout.ofChunks 29 24 28 (quotientChunks 24),
+      PcsQuotient.Layout.ofChunks 28 24 28 (quotientChunks 24),
       PcsQuotient.Layout.ofChunks 25 24 25 [(0, 2 ^ 24), (1, 2 ^ 24)]) := by
   rw [cc_logN]
-  simp only [layoutsOf, certifiedFrom, minCertifiedStack, show (20 : ℕ) ≤ 24 by norm_num, ite_true]
   rfl
 
 /-- `W`'s layout at the real circuit. -/
 abbrev lW : PcsQuotient.Layout := PcsQuotient.Layout.ofChunks 24 24 24 [(0, 2 ^ 24)]
 /-- `Q`'s layout at the real circuit. -/
-abbrev lQ : PcsQuotient.Layout := PcsQuotient.Layout.ofChunks 29 24 28 (quotientChunks 24)
+abbrev lQ : PcsQuotient.Layout := PcsQuotient.Layout.ofChunks 28 24 28 (quotientChunks 24)
 /-- The setup's layout at the real circuit. -/
 abbrev lS : PcsQuotient.Layout := PcsQuotient.Layout.ofChunks 25 24 25 [(0, 2 ^ 24), (1, 2 ^ 24)]
 
@@ -190,25 +189,33 @@ theorem readEntry_congr (L : PcsQuotient.Layout) (hp : L.logPiece = none) (s s' 
 
 /-! ## The run's points -/
 
+theorem padded_length {F : Type} [Field F] (p : List F) (n : ℕ) : (padded p n).length = n := by
+  simp [padded]
+
 theorem p2Out_witnessPoint_length (π : P2Pf) (ch : List (List E)) : (p2Out π ch).witnessPoint.length = 24 := by
   unfold p2Out
-  rw [run_witnessPoint, spec_core_logN, spec_core_logRow]
-  simp [digitsList, cc_logN, cc_logRow]
+  rw [run_witnessPoint, padded_length, spec_core_logN, cc_logN]
+  rfl
 
 theorem p2Out_setupPoint_length (π : P2Pf) (ch : List (List E)) : (p2Out π ch).setupPoint.length = 25 := by
   unfold p2Out
-  rw [run_setupPoint, spec_core_logN]
-  simp [digitsList, cc_logN]
-
-theorem p2Out_quotientPoint_length (π : P2Pf) (ch : List (List E)) : (p2Out π ch).quotientPoint.length = 29 := by
-  unfold p2Out
-  rw [run_quotientPoint, List.length_append, run_uList_length, spec_core_logN, cc_logN]
+  rw [run_setupPoint, padded_length, spec_core_logN, cc_logN]
   rfl
 
-theorem p2Out_sumPoint_length (π : P2Pf) (ch : List (List E)) : (p2Out π ch).sumPoint.length = 29 := by
+theorem p2Out_quotientPoint_length (π : P2Pf) (ch : List (List E)) : (p2Out π ch).quotientPoint.length = 28 := by
   unfold p2Out
-  rw [run_sumPoint, spec_core_logN, cc_logN]
-  simp
+  rw [run_quotientPoint, padded_length, spec_core_logN, cc_logN]
+  rfl
+
+theorem p2Out_pushesPoint_length (π : P2Pf) (ch : List (List E)) : (p2Out π ch).pushesPoint.length = 28 := by
+  unfold p2Out
+  rw [run_pushesPoint, padded_length, spec_core_logN, cc_logN]
+  rfl
+
+theorem p2Out_sumPoint_length (π : P2Pf) (ch : List (List E)) : (p2Out π ch).sumPoint.length = 28 := by
+  unfold p2Out
+  rw [run_sumPoint, padded_length, spec_core_logN, cc_logN]
+  rfl
 
 theorem clW_claims (π : P2Pf) (ch : List (List E)) :
     (clW π ch).claims = [⟨(p2Out π ch).witnessPoint, (p2Out π ch).fold⟩] :=
@@ -224,13 +231,25 @@ theorem clS_claims (π : P2Pf) (ch : List (List E)) :
     subst hc
     exact p2Out_setupPoint_length π ch
 
+theorem toStmt_claims_of3 {L : WhirBridge.Layout} {cs : List WhirBridge.Claim}
+    (hshort : cs.length ≤ 3) (hwide : ∀ c ∈ cs, c.point.length = L.vars) :
+    (Compose.toStmt L cs).claims = cs := by
+  have he := Compose.extra_length_le L
+  unfold Compose.toStmt
+  have hc : cs.length + L.stacking.extra.length ≤ 2 ^ 46 + 1 ∧ ∀ c ∈ cs, c.point.length = L.stacking.vars :=
+    ⟨by simp only [WhirBridge.Layout.stacking]; omega, hwide⟩
+  split
+  · rfl
+  · exact absurd hc ‹_›
+
 theorem clQ_claims (π : P2Pf) (ch : List (List E)) :
     (clQ π ch).claims = [⟨(p2Out π ch).quotientPoint, (p2Out π ch).quotientValue⟩,
-      ⟨(p2Out π ch).sumPoint, (p2Out π ch).sumValue⟩] :=
-  Bridge.toStmt_claims_of (by simp) fun c hc => by
+      ⟨(p2Out π ch).pushesPoint, (p2Out π ch).pushesValue⟩, ⟨(p2Out π ch).sumPoint, (p2Out π ch).sumValue⟩] :=
+  toStmt_claims_of3 (by simp) fun c hc => by
     simp only [List.mem_cons, List.not_mem_nil, or_false] at hc
-    rcases hc with rfl | rfl
+    rcases hc with rfl | rfl | rfl
     · exact p2Out_quotientPoint_length π ch
+    · exact p2Out_pushesPoint_length π ch
     · exact p2Out_sumPoint_length π ch
 
 /-! ## The openings' `OKP` -/
@@ -295,13 +314,17 @@ theorem okp_Q : WhirOp.OKP p2Tc p2Good (p2Setup D hs) p2Fix (p2Stk D)
   rw [ite_eq_right (by decide), ite_eq_left rfl]
   have h1 := h _ (by rw [clQ_claims]; exact List.mem_cons_self)
   have h2 := h _ (by rw [clQ_claims]; exact List.mem_cons_of_mem _ List.mem_cons_self)
-  refine ⟨stackOf q, rfl, ?_, ?_⟩
+  have h3 := h _ (by rw [clQ_claims]; exact List.mem_cons_of_mem _ (List.mem_cons_of_mem _ List.mem_cons_self))
+  refine ⟨stackOf q, rfl, ?_, ?_, ?_⟩
   · rw [layoutsOf_cc]
     exact (claimOn_iff' lQ shQ.L layoutTr_Q rfl lanes_Q.1 lanes_Q.2 q _ _
       (p2Out_quotientPoint_length π ch)).mpr h1
   · rw [layoutsOf_cc]
     exact (claimOn_iff' lQ shQ.L layoutTr_Q rfl lanes_Q.1 lanes_Q.2 q _ _
-      (p2Out_sumPoint_length π ch)).mpr h2
+      (p2Out_pushesPoint_length π ch)).mpr h2
+  · rw [layoutsOf_cc]
+    exact (claimOn_iff' lQ shQ.L layoutTr_Q rfl lanes_Q.1 lanes_Q.2 q _ _
+      (p2Out_sumPoint_length π ch)).mpr h3
 
 /-- **An opening of no `2^25`-word stack has no stack.** -/
 theorem p2StkNone (o : WhirOp P2Pf E Stk) (h : o.S.L.logN ≠ 25) : p2Stk D o = none := by
@@ -382,7 +405,7 @@ end Ops
 noncomputable def p2Shapes : List (ExactShape εExact) :=
   [plainShapeE 24 le_rfl (by norm_num),
     ExactShape.large 25 24 25 [(0, 2 ^ 24), (1, 2 ^ 24)] newOK_setup (by decide) (by decide),
-    ExactShape.large 29 24 28 (quotientChunks 24) newOK_quotient (by decide) (by decide),
+    ExactShape.large 28 24 28 (quotientChunks 24) newOK_quotient (by decide) (by decide),
     plainShapeE 27 (by norm_num) (by norm_num), plainShapeE 26 (by norm_num) (by norm_num),
     UniKeccakSound.plainShapeE23]
 
@@ -457,10 +480,10 @@ theorem p2Tc_bound_one : (p2Tc 1).commit.bound = 3564 := by
 theorem facL_p2 : ∀ j < 3, facL (fun i => (p2Tc i).commit) 0 (pi2Spec.K.rounds.take (j + 1)) = pi2Fac j := by
   intro j hj
   interval_cases j
-  · rw [show pi2Spec.K.rounds.take (0 + 1) = [⟨true, 0, 2⟩] from rfl]
+  · rw [show pi2Spec.K.rounds.take (0 + 1) = [⟨true, 1, 2⟩] from rfl]
     simp only [facL, ite_true, p2Tc_bound_zero, mul_one]
     rfl
-  · rw [show pi2Spec.K.rounds.take (1 + 1) = [⟨true, 0, 2⟩, ⟨true, 0, 0⟩] from rfl]
+  · rw [show pi2Spec.K.rounds.take (1 + 1) = [⟨true, 1, 2⟩, ⟨true, 1, 0⟩] from rfl]
     simp only [facL, ite_true, Nat.reduceAdd, p2Tc_bound_zero, p2Tc_bound_one, mul_one]
     rfl
   · rw [show pi2Spec.K.rounds.take (2 + 1) = RecPiop.pi2Rounds 4 from rfl]

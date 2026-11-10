@@ -65,27 +65,64 @@ theorem modelKappa_eq : (pi2Model Fa roots hcol).setup.κP = kappaPoly (C.G root
     (omega_injOn_N (by omega)) fun i hi ↦ ?_
   rw [(pi2Model Fa roots hcol).setup.κ_eval i hi, kappaPoly_omega _ (by omega) hi]
 
+variable (S : CoreSpec E) (pubs : List E)
+
 /-- **`h`'s model polynomial of the honest stack is the prover's.** -/
 theorem modelH_eq (w : ℕ → K) (α β γ : E) :
-    (pi2Model Fa roots hcol).hP (honestQ (C.G roots) w α β γ) =
-      UniKeccakComplete.AlgC.novP (C.G roots).logN fun j ↦ (hNovel (C.G roots) w α β γ).getD j 0 := by
+    (pi2Model Fa roots hcol).hP (honestQ (C.G roots) S pubs w α β γ) =
+      UniKeccakComplete.AlgC.novP (C.G roots).logN fun j ↦ (hNovel (C.G roots) w α β).getD j 0 := by
   have hm := view_logN Fa roots
   have h24 := logN_G Fa roots
   show hPoly (qTable (D.circuitAt roots.pi1).circuit.logN _) (D.circuitAt roots.pi1).circuit.logN = _
   rw [hm]
   unfold hPoly
-  exact UniKeccakComplete.AlgC.novP_congr _ fun k hk ↦ qCoef_honest_h _ w α β γ (by omega) hk
+  exact UniKeccakComplete.AlgC.novP_congr _ fun k hk ↦ qCoef_honest_h _ S pubs w α β γ (by omega) hk
 
 /-- **`q`'s model polynomial of the honest stack is the prover's.** -/
 theorem modelQ_eq (w : ℕ → K) (α β γ : E) :
-    (pi2Model Fa roots hcol).qP (honestQ (C.G roots) w α β γ) =
-      UniKeccakComplete.AlgC.novP ((C.G roots).logN + 2) fun j ↦ (qNovel (C.G roots) w α β γ).getD j 0 := by
+    (pi2Model Fa roots hcol).qP (honestQ (C.G roots) S pubs w α β γ) =
+      UniKeccakComplete.AlgC.novP ((C.G roots).logN + 1) fun j ↦
+        (qNovel (C.G roots) w α β γ (phiOn S pubs γ)).getD j 0 := by
   have hm := view_logN Fa roots
   have h24 := logN_G Fa roots
   show qPoly (qTable (D.circuitAt roots.pi1).circuit.logN _) (D.circuitAt roots.pi1).circuit.logN = _
   rw [hm]
   unfold qPoly
-  exact UniKeccakComplete.AlgC.novP_congr _ fun k hk ↦ qCoef_honest_q _ w α β γ (by omega) hk
+  exact UniKeccakComplete.AlgC.novP_congr _ fun k hk ↦ qCoef_honest_q _ S pubs w α β γ (by omega) hk
+
+/-- **`P`'s model polynomial of the honest stack is the prover's.** -/
+theorem modelP_eq (w : ℕ → K) (α β γ : E) :
+    (pi2Model Fa roots hcol).pP (honestQ (C.G roots) S pubs w α β γ) = pushPolyH (C.G roots) w := by
+  have hm := view_logN Fa roots
+  have h24 := logN_G Fa roots
+  show pPoly (qTable (D.circuitAt roots.pi1).circuit.logN _) (D.circuitAt roots.pi1).circuit.logN = _
+  rw [hm]
+  unfold pPoly pushPolyH
+  exact UniKeccakComplete.AlgC.novP_congr _ fun k hk ↦ pCoef_honest _ S pubs w α β γ (by omega) hk
+
+/-- **`q_P`'s model polynomial of the honest stack is the prover's.** -/
+theorem modelQP_eq (w : ℕ → K) (α β γ : E) :
+    (pi2Model Fa roots hcol).qPP (honestQ (C.G roots) S pubs w α β γ) =
+      UniKeccakComplete.AlgC.novP ((C.G roots).logN + 1) fun j ↦ ofK ((qpNovel (C.G roots) w γ).getD j 0) := by
+  have hm := view_logN Fa roots
+  have h24 := logN_G Fa roots
+  show qpPoly (qTable (D.circuitAt roots.pi1).circuit.logN _) (D.circuitAt roots.pi1).circuit.logN = _
+  rw [hm]
+  unfold qpPoly
+  exact UniKeccakComplete.AlgC.novP_congr _ fun k hk ↦ qpCoef_honest _ S pubs w α β γ (by omega) hk
+
+/-- **The prover's `s` is `P(t)`.** -/
+theorem sOf_eq (G : RecPiop.Circuit E) (w : ℕ → K) (t : E) :
+    sOf G.logN (pNovel G w) t = (pushPolyH G w).eval t := by
+  unfold sOf pushPolyH
+  rw [UniKeccakComplete.AlgC.novP_eval]
+  refine Finset.sum_congr rfl fun k hk ↦ ?_
+  rw [UniKeccakComplete.AlgC.getD_map_ofK]
+  congr 1
+  unfold UniKeccakComplete.AlgC.novX
+  refine Finset.prod_congr rfl fun l hl ↦ ?_
+  rw [digitsList_getD t (by have := mem_range.mp hl; omega)]
+  simp only [wP_eval_sq]
 
 /-! ## `ξ` and the fold values -/
 

@@ -6,12 +6,12 @@ import RecStatement.Lemmas.SpecLink
 # `SpecOf`: the verifier's constants are the compiled circuit's
 
 For a compiled circuit whose view (`viewOf`, `adapt` transcribed) is `Data.circuit` and which is valid,
-**`specOf_data`**: `SpecOf (Spec.of Data.circuit).core c.circuit.toPiop basisE (pairOfC …) (16 + ·) 16 (pubOfC …)`.
+**`specOf_data`**: `SpecOf (Spec.of Data.circuit).core c.circuit.toPiop basisE (pairOfC …) (16 + ·) (pubOfC …)`.
 
 * `Data`'s own facts (π2's circuit for the Keccak VM's π1-rec3 at 128 signatures), by kernel decision on its small
   terms, none on `Data.pi1Iv`, `Data.pi1Calls`, `Data.digest` or `Data.setupRoot` (`data_*`): `maxGamma = 1`, its
-  `36` public terms the zero coset's `16` (tags `N .. N + 15`, `w_4`) then `20` others, the walk a permutation of them,
-  three four-limb ports (`List.mergeSort` taken off first, the lists being sorted: `List.mergeSort_of_pairwise`);
+  `36` public terms `16` of value zero then `20` others, all of whose holes are at role `15` (`data_phi`: `Φ` one
+  role's list), three four-limb ports;
 * the recursion's constants (`core_c`: `Spec.of`'s in `K`, embedded, are `normalisedConstantsF` of the blocks' basis,
   `RecStatement.normConsts_of_spec`), the pairs' `Ẑ_s(c_p)` (`pairZ_eq_zHat`; the coset constants nonzero by the
   Cantor basis's independence, `zConst_ne_zero`);
@@ -38,19 +38,13 @@ theorem data_four : ((List.range 36).map fun j ↦ if (Data.publicTerms.getD j d
 
 theorem data_reads_roots : Data.reads.count .root = 2 := by decide +kernel
 
-theorem data_walk : (tagWalk ((Data.publicTerms.drop 16).map (·.tag))).Perm (List.range 20) := by
-  unfold tagWalk
-  rw [List.mergeSort_of_pairwise (by decide +kernel)]
-  decide +kernel
+theorem data_holes_length : Data.holes.length = 36 := by decide +kernel
 
-theorem data_zeroCoset : zeroCosetOf Data.publicTerms =
-    (some (16777216, 4, subspaceCoefficients 4), Data.publicTerms.drop 16) := by
-  unfold zeroCosetOf
-  dsimp only
-  rw [List.mergeSort_of_pairwise (by decide +kernel)]
-  split_ifs with h
-  · congr 1
-  · exact absurd (by decide +kernel) h
+/-- **`Φ`'s terms**: one role, `15`, the `20` ports of nonzero value in order, each its hole's row and its value. -/
+theorem data_phi : phiOf Data.circuit = [(15, (List.range 20).map fun J ↦
+    (Data.holes.getD (16 + J) 0 / 16, (Data.publicTerms.getD (16 + J) default).value))] := by decide +kernel
+
+theorem data_holes_role : ∀ J < 20, Data.holes.getD (16 + J) 0 % 16 = 15 := by decide +kernel
 
 /-! ## The view's shape from `Data` -/
 
@@ -77,12 +71,18 @@ theorem viewOf_roots : (publicCounts C).1 = 2 := by
   rw [data_reads_roots, List.count_append, List.count_replicate_self, List.count_replicate] at h
   simpa using h
 
+theorem viewOf_holes : holesOf C = Data.holes := congrArg Circuit.holes hview
+
 theorem viewOf_ports : C.ports.size = 36 := by
   have h := congrArg List.length (viewOf_terms hview)
   rw [data_terms_length] at h
   simpa [publicTermsOf] using h
 
 end View
+
+theorem holesOf_getD (C : RecCircuit.Circuit) {j : ℕ} (hj : j < C.ports.size) :
+    (holesOf C).getD j 0 = (C.ports.getD j default).position := by
+  simp [holesOf, List.getD_eq_getElem?_getD, hj]
 
 theorem publicTermsOf_getD (C : RecCircuit.Circuit) {j : ℕ} (hj : j < C.ports.size) :
     (publicTermsOf C).getD j default =
@@ -265,24 +265,6 @@ theorem pair_z_eq (p : Pair) (hs : p.logRows ≤ 20) :
       cosetConstantsF (blockBasis (Heap.omega UniComplete.Domain.basisE) 4) 20 := map_cosetConstants 4 20
   rw [hm, pairZ_eq_zHat _ hs (fun j hj ↦ zConst_ne_zero (by omega)), UniComplete.Domain.omega_basisE]
   rfl
-
-theorem map_subspaceStep {F F' : Type} [Field F] [Field F'] (φ : F →+* F') (a : List F) :
-    (subspaceStep a).map φ = subspaceStep (a.map φ) := by
-  unfold subspaceStep
-  rw [List.map_map, List.length_map]
-  refine List.map_congr_left fun i _ ↦ ?_
-  simp only [Function.comp, map_add, map_getD]
-  split_ifs <;> simp
-
-theorem map_subspaceCoeffsF {F F' : Type} [Field F] [Field F'] (φ : F →+* F') (k : ℕ) :
-    (subspaceCoeffsF k : List F).map φ = subspaceCoeffsF k := by
-  unfold subspaceCoeffsF
-  induction k with
-  | zero => simp
-  | succ k ih =>
-    rw [List.range_succ, List.foldl_append, List.foldl_append]
-    simp only [List.foldl_cons, List.foldl_nil]
-    rw [map_subspaceStep, ih]
 
 /-! ## The formulas as the roles' values -/
 

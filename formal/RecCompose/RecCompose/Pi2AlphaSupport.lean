@@ -11,7 +11,7 @@ import RecCompose.Pi2SimAt
 `G a` (**`GAcc`**): π1's prover returned a proof and π1-rec3's graph accepted it. On every outcome of the run against
 the lazy oracles (`Pi2AlphaChain.runAt_read`: the outcome is the pure run at its cache's answers):
 
-* **`gAcc_length`**: stage A's outcome with `G` has `α`'s input of `536` bytes (`fixLen` keeps it): the graph accepting,
+* **`gAcc_length`**: stage A's outcome with `G` has `α`'s input of `560` bytes (`fixLen` keeps it): the graph accepting,
   the witness is honest (`Pi2WitnessComplete`), so the public values match the reads (`fixLen_aAt`);
 * **`accA_pi2`**, **`accB_pi2`**: off `G` the verdict's first component is `false` (π1's none, or the graph's
   rejection: `cAt_fst`).
@@ -54,11 +54,11 @@ theorem cAt_of_not (Ht : List UInt8 → Digest) (Ft : KeccakState → KeccakStat
     rw [hp] at hb
     simpa using hb
 
-/-- **Stage A with `G` has `α`'s input of `536` bytes**, on every outcome. -/
+/-- **Stage A with `G` has `α`'s input of `560` bytes**, on every outcome. -/
 theorem gAcc_length (hD : D.Real) (hwc : Pi2WitnessComplete D C Fa)
     (P1k : OracleComp KeccakCalls (Option UniKeccak.KeccakProof)) {c : Cache} {p : StA × Cache}
     (hp : p ∈ support ((simulateQ ro (stageA callKeccak256 callKeccakF1600 D C Fa P1k input)).run c))
-    (hG : GAcc p.1) : (UniKeccakComplete.Prob.tInput p.1.wr).length = 536 := by
+    (hG : GAcc p.1) : (UniKeccakComplete.Prob.tInput p.1.wr).length = 560 := by
   have e := Pi2C.runAt_read hp
   rw [runAt_stageA] at e
   rw [← e] at hG ⊢
@@ -84,8 +84,8 @@ theorem accA_pi2 (P1k : OracleComp KeccakCalls (Option UniKeccak.KeccakProof)) (
   generalize Pi2C.readH z.2 = Ht
   generalize Pi2C.readF z.2 = Ft
   have h : (runAt Ht Ft ((pi2Staged D C Fa P1k input).tail a s₁ s₂ s₃)).1.1 =
-      (cAt Ht Ft D C input (bAt Ht D C a s₁ s₂ s₃)
-        (Ht (UniKeccakComplete.Prob.tInput (bAt Ht D C a s₁ s₂ s₃).wr))).1 := by
+      (cAt Ht Ft D C input (bAt Ht D C input a s₁ s₂ s₃)
+        (Ht (UniKeccakComplete.Prob.tInput (bAt Ht D C input a s₁ s₂ s₃).wr))).1 := by
     unfold runAt
     simp only [Pi2Staged.tail, pi2Staged, simulateQ_bind, simulateQ_pure, simulateQ_queryH, sim_stageB,
       sim_stageC]

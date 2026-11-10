@@ -27,7 +27,6 @@ open RecStatement LeanVM.Parameters Primitives
 
 theorem spec_reads_data : (Spec.of Data.circuit).reads = Data.reads := by
   unfold Spec.of
-  rw [show Data.circuit.publicTerms = Data.publicTerms from rfl, data_zeroCoset]
   rfl
 
 theorem data_pi2Pubs (input : List UInt8) (stream : Array UInt8) : pi2Pubs (Spec.of Data.circuit) input stream =
@@ -39,13 +38,12 @@ theorem data_pi2Pubs (input : List UInt8) (stream : Array UInt8) : pi2Pubs (Spec
 
 theorem data_elementIndices : ∀ e < 17, (elementIndices Data.reads).getD e 0 = 8 + e := by decide +kernel
 
-theorem data_rootsAt : rootsAt Data.reads = [0, 32, 472, 504] := by decide +kernel
+theorem data_rootsAt : rootsAt Data.reads = [0, 32, 472, 528] := by decide +kernel
 
-theorem data_pi2Bytes : pi2Bytes (Spec.of Data.circuit) = 944 := by
+theorem data_pi2Bytes : pi2Bytes (Spec.of Data.circuit) = 1016 := by
   unfold pi2Bytes
   rw [spec_reads_data, show (Spec.of Data.circuit).logRow = 4 by
     unfold Spec.of
-    rw [show Data.circuit.publicTerms = Data.publicTerms from rfl, data_zeroCoset]
     rfl]
   decide +kernel
 
@@ -65,7 +63,7 @@ theorem data_calls_length : Data.pi1Calls.length = 3 := by decide +kernel
 theorem run_data {D : RecDeployment} (hD : D.Real) {roots : RecSetupRoots} {input : Vector UInt8 32}
     {stream : Array UInt8} {r : Reduced}
     (hr : (run (Spec.of (D.circuitAt roots.pi1).circuit) [] input.toList stream).result = .ok r) :
-    stream.size = 944 ∧ r.scalars = pi2Pubs (Spec.of Data.circuit) input.toList stream ∧
+    stream.size = 1016 ∧ r.scalars = pi2Pubs (Spec.of Data.circuit) input.toList stream ∧
       r.pairPoints = r.scalars.map pairPoint := by
   rw [show (D.circuitAt roots.pi1).circuit = Data.circuit from hD.1 _] at hr
   have h := holds_id (runWith_post (m := Id) (fun x ↦ pure (LeanVM.Semantics.keccakF1600 x))

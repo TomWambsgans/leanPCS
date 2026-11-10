@@ -7,7 +7,8 @@ import UniStatement.Rec
 # π2's circuit as its verifier reads it
 
 The verifier of π2 (`pi2::verifier`) is built from `pi2::circuit::Circuit` without its setup columns
-`σ`, `κ` (which the setup's commitment and the circuit's digest bind, and which the verifier never reads):
+`σ`, `κ` (which the setup's commitment and the circuit's digest bind, and of which the verifier reads only the
+public terms' holes, `σ`'s preimages of their tags):
 
 * a **coefficient** (`Coeff`) is an element of `E` (three 64-bit limbs, low first) times a power `γ^gamma` of
   the copy argument's third challenge;
@@ -17,8 +18,9 @@ The verifier of π2 (`pi2::verifier`) is built from `pi2::circuit::Circuit` with
   formula `formula` of its row (`pulls = false`: a hole, pulling nothing);
 * the **reads** (`Read`): how the public data after the public input's four words comes from the stream (an
   integer, a root's two halves, an element of `E`);
-* the **public terms** (`PublicTerm`): the verifier adds `1/(α + F + β ω_tag)`, `F` the term's linear form of the
-  public scalars;
+* the **public terms** (`PublicTerm`): port `j`'s value `F_J`, a linear form of the public scalars, which the hole
+  pushing to its tag `ω_tag` must push; π2v2 checks it by the ports' term `T` (`Φ_k` by rows, `PI2.md` §1), for which
+  the verifier reads each term's **hole** (`holes`: the position `σ` sends to the tag; its row and role);
 * π1's claims are words (`CallWord`): constants, π1's roots as the stream carries them, π1's claims'
   elements (public scalars), and the coordinates of π1-rec3's pair points of them.
 
@@ -89,7 +91,8 @@ structure PublicTerm where
   value : Lin
   deriving DecidableEq, Repr, Inhabited
 
-/-- **π2's circuit** as the verifier reads it (`pi2::circuit::Circuit` without `σ`, `κ`). -/
+/-- **π2's circuit** as the verifier reads it (`pi2::circuit::Circuit` without `σ`, `κ`, but each public term's
+hole, `σ`'s preimage of its tag, which `Spec::of` reads off `σ`). -/
 structure Circuit where
   logN : ℕ
   logRow : ℕ
@@ -97,6 +100,8 @@ structure Circuit where
   pairs : List Pair
   reads : List Read
   publicTerms : List PublicTerm
+  /-- Each public term's hole: the position `σ` sends to its tag. -/
+  holes : List ℕ
   deriving Inhabited
 
 /-- **A word of one of π1's claims** (`spec::CallWord`). -/

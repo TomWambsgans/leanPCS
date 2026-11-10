@@ -68,12 +68,12 @@ random-permutation model and do not formally compose with the EVM one, which hol
 
 **The recursive verifier** (`RecDeployment.contractWith`) is the contract (`pi2::contract`): π2's verifier on the
 calldata (`runWith`: the public input, then the stream with π1's roots and claims' elements, `W`'s and `Q`'s roots and
-the 17 values), then **six declared claims**, each decoded under the contract's registry (`machine::decode`: a known
+out-of-domain answers and the 18 values), then **six declared claims**, each decoded under the contract's registry (`machine::decode`: a known
 layout word, which fixes the variables, `k ≥ 1` claims, the exact length, every element's top 64 bits zero) and
 opened by the Statement's WHIR opening: **π1's three** (`C1`, `C2`, π1's setup `F`, on the Keccak VM's layouts
 `UniKeccak.layoutWordsK`; their points the coordinates the contract derives from π1-rec3's pair challenges) on the
 plain layout of π1's stacks (`UniStatement.pcsOpenWith`, as `UniKeccak.verifyWithK`), and **π2's three** (`W`, the
-setup, `Q` with its two claims in one call) on π2's layouts (`PcsQuotient.openingWith`, `quotient::opening`). π1's
+setup, `Q` with its three claims in one call) on π2's layouts (`PcsQuotient.openingWith`, `quotient::opening`). π1's
 verifier itself never runs: π2 proves its graph accepted. The deployed EVM bytecode is linked to this model **by
 transcription and test**, not by a Lean proof (unlike the membership verifier's `Evm.evm_accepts_iff_verifyWith`):
 `contract.rs`'s parity tests (`parity`, `parity_deployable`). The deployed contract hard-codes π2's IV (`inst.iv`, the

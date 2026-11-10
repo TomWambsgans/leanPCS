@@ -148,10 +148,10 @@ theorem cHOnly_reduceWithH (s : Spec) (stmt : List E) : CHOnly (Pi2H.reduceWithH
     · exact (cHOnly_nextInteger b).bind fun _ ↦ cHOnly_pure _
     · exact cHOnly_nextRoot.bind fun _ ↦ cHOnly_pure _
     · exact cHOnly_nextScalar.bind fun _ ↦ cHOnly_pure _
-  · exact cHOnly_nextRoot.bind fun _ ↦ cHOnly_sampleH.bind fun _ ↦ cHOnly_sampleH.bind fun _ ↦
-      cHOnly_sampleH.bind fun _ ↦ cHOnly_nextRoot.bind fun _ ↦ cHOnly_sampleH.bind fun _ ↦
-      (cHOnly_nextScalars _).bind fun _ ↦ cHOnly_nextScalar.bind fun _ ↦ cHOnly_sampleH.bind fun _ ↦
-      cHOnly_pure _
+  · exact cHOnly_nextRoot.bind fun _ ↦ cHOnly_nextScalar.bind fun _ ↦ cHOnly_sampleH.bind fun _ ↦
+      cHOnly_sampleH.bind fun _ ↦ cHOnly_sampleH.bind fun _ ↦ cHOnly_nextRoot.bind fun _ ↦
+      cHOnly_nextScalar.bind fun _ ↦ cHOnly_sampleH.bind fun _ ↦ (cHOnly_nextScalars _).bind fun _ ↦
+      cHOnly_nextScalar.bind fun _ ↦ cHOnly_nextScalar.bind fun _ ↦ cHOnly_sampleH.bind fun _ ↦ cHOnly_pure _
 
 /-- **The contract's run on the calldata only hashes.** -/
 theorem hOnly_runWithH (s : Spec) (iv input : List UInt8) (stream : Array UInt8) :
@@ -188,16 +188,17 @@ theorem wHOnly_sendPublic : ∀ l : List (Read × PublicValue), WHOnly (sendPubl
   | (.scalar, .root _) :: rest => wHOnly_sendPublic rest
   | (.scalar, .scalar _) :: rest => (wHOnly_sendScalar _).bind fun _ ↦ wHOnly_sendPublic rest
 
-theorem wHOnly_pre2 (G : RecPiop.Circuit E) (reads : List Read) (values : List PublicValue) (w : ℕ → K) :
-    WHOnly (pre2 callKeccak256 G reads values w) := by
+theorem wHOnly_pre2 (G : RecPiop.Circuit E) (ood : ℕ → Digest → Array K → E) (reads : List Read)
+    (values : List PublicValue) (w : ℕ → K) : WHOnly (pre2 callKeccak256 G ood reads values w) := by
   unfold pre2
   exact (wHOnly_sendPublic _).bind fun _ ↦ (wHOnly_lift (E2ECompleteness.hOnly_commitWithH _ _)).bind fun _ ↦
-    (wHOnly_sendRoot _).bind fun _ ↦ wHOnly_pure _
+    (wHOnly_sendRoot _).bind fun _ ↦ (wHOnly_sendScalar _).bind fun _ ↦ wHOnly_pure _
 
-theorem wHOnly_mid2 (G : RecPiop.Circuit E) (w : ℕ → K) (α β γ : E) : WHOnly (mid2 callKeccak256 G w α β γ) := by
+theorem wHOnly_mid2 (G : RecPiop.Circuit E) (S : CoreSpec E) (ood : ℕ → Digest → Array K → E) (pubs : List E)
+    (w : ℕ → K) (α β γ : E) : WHOnly (mid2 callKeccak256 G S ood pubs w α β γ) := by
   unfold mid2
   exact (wHOnly_lift (E2ECompleteness.hOnly_commitWithH _ _)).bind fun _ ↦ (wHOnly_sendRoot _).bind fun _ ↦
-    wHOnly_pure _
+    (wHOnly_sendScalar _).bind fun _ ↦ wHOnly_pure _
 
 theorem wHOnly_post2 (G : RecPiop.Circuit E) (setupStack : Array K) (input : List UInt8) (values : List PublicValue)
     (w : ℕ → K) (wS : Array K) (wT : LeanVM.Prover.Tree) (qS : Array K) (qT : LeanVM.Prover.Tree) (α β γ t : E) :
@@ -264,12 +265,12 @@ theorem disc_stageA (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
     refine (disc_pi1GraphVerifierWithH D _ input p1).bind fun _ ↦
       (disc_of_hOnly (hOnly_setupTreesWithH2 D)).bind fun tr ↦
       (disc_of_hOnly (hOnly_ivOfH D tr.roots)).bind fun iv ↦ (disc_of_hOnly (hOnly_queryH _)).bind fun seed ↦ ?_
-    exact (disc_of_hOnly (wHOnly_pre2 _ _ _ _ _)).bind fun _ ↦ disc_pure _
+    exact (disc_of_hOnly (wHOnly_pre2 _ _ _ _ _ _)).bind fun _ ↦ disc_pure _
 
-theorem disc_stageB (D : RecDeployment) (C : Pi2Circuits D) (a : StA) (s₁ s₂ s₃ : Digest) :
-    Disc (stageB callKeccak256 D C a s₁ s₂ s₃) := by
+theorem disc_stageB (D : RecDeployment) (C : Pi2Circuits D) (input : Vector UInt8 32) (a : StA) (s₁ s₂ s₃ : Digest) :
+    Disc (stageB callKeccak256 D C input a s₁ s₂ s₃) := by
   unfold stageB
-  exact (disc_of_hOnly (wHOnly_mid2 _ _ _ _ _ _)).bind fun _ ↦ disc_pure _
+  exact (disc_of_hOnly (wHOnly_mid2 _ _ _ _ _ _ _ _ _)).bind fun _ ↦ disc_pure _
 
 theorem disc_stageC (D : RecDeployment) (C : Pi2Circuits D) (input : Vector UInt8 32) (b : StB) (st : Digest) :
     Disc (stageC callKeccak256 callKeccakF1600 D C input b st) := by
@@ -291,7 +292,7 @@ theorem disc_pi2Staged (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D 
   unfold Pi2P.Pi2Staged.run Pi2P.staged3 Pi2P.Pi2Staged.tail
   refine (disc_stageA D C Fa P1k hP input).bind fun a ↦ (disc_of_hOnly (hOnly_queryH _)).bind fun _ ↦
     (disc_of_hOnly (hOnly_queryH _)).bind fun _ ↦ (disc_of_hOnly (hOnly_queryH _)).bind fun _ ↦ ?_
-  refine ((disc_stageB D C a _ _ _).bind fun b ↦ (disc_of_hOnly (hOnly_queryH _)).bind fun st ↦
+  refine ((disc_stageB D C input a _ _ _).bind fun b ↦ (disc_of_hOnly (hOnly_queryH _)).bind fun st ↦
     (disc_stageC D C input b st).bind fun _ ↦ disc_pure _).bind fun _ ↦ disc_pure _
 
 /-- **`Pi2RunDuplex` for a disciplined π1 prover** (`Pi1Disc`, named). -/

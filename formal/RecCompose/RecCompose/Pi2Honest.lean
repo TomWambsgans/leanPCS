@@ -8,23 +8,23 @@ import RecCompose.Pi2HonestQ
 
 **`pi2_honest`**: at a setup of the real deployment's circuit (the compiled circuit `C.G roots`, its facts `Fa`, the setup
 columns `hcol`), for a witness `w` satisfying the circuit at the public limbs of the scalars, the honest prover's stacks
-(`honestW`: `W`'s placed table; `honestQ`: `h`'s and `q`'s novel coefficients placed) and the honest inputs of the
-verifier's arithmetic (`honestInputs`: the true fold values at `t`, `ξ = κ(t) + β σ(t)` from the setup's halves, any
-`ρ`): **the verifier's one check passes and π2's four claims hold on the stacks** (`Pi2ClaimsHold`), unless
+(`honestW`: `W`'s placed table; `honestQ`: the sixteen slots of `h`, `q`, `P`, `q_P` placed) and the honest inputs of
+the verifier's arithmetic (`honestInputs`: the true fold values at `t`, `ξ = κ(t) + β σ(t)` from the setup's halves,
+`s = P(t)`, any `ρ`): **the verifier's one check passes and π2's five claims hold on the stacks** (`Pi2ClaimsHold`),
+unless
 
-* **`BadCopy`** (`α, β, γ`): a pulled `d_pull(i) = α + w_i + β ω_i`, a `d_push(i) = α + P_i + β ω_{σ_i}` or a public
-  `d_pub(j) = α + F_j + β ω_{N+j}` is zero;
-* **`BadT`** (`t`): `t ∈ V_{m+2}` (`w_{m+2}(t) = 0`) or `c_h + c_q = d_pull(t) d_push(t) + Z_V(t) = 0`.
+* **`BadCopy`** (`α, β`): a non-hole's `d_pull(i) = α + w_i + β ω_i` or `d_push(i) = α + P_v(i) + κ_i + β ω_{σ_i}` is
+  zero;
+* **`BadT`** (`t`): `t ∈ V_{m+1}` (`w_{m+1}(t) = 0`), `c_h = d_pull(t) d_push(t) = 0`, `c_h + c_q = 0`, or
+  `α + P_v(t) + κ(t) + β σ(t) = 0`.
 
-The proof: the model's polynomials of the honest stacks are the prover's (`modelW_eq`, `modelSigma_eq`,
-`modelKappa_eq`, `modelH_eq`, `modelQ_eq`: by the stacks' placement and interpolation on `V_m`), `q` the honest one
-(`novP_qNovel`), so the identity is zero; `Σ_V h` is the target (`sum_hValues`); `ξ` is the setup's claim
-(`xiOf_eq`); the fold values are `W`'s true ones; so `RecPiop.Post2` holds, and `checks_claims_iff_post2` with the
-model's claims (`claims_of_model`) gives the claims.
+The proof: the model's polynomials of the honest stacks are the prover's (by the stacks' placement and interpolation
+on `V_m` and on the coset), `q` and `q_P` the honest ones (`novP_qNovel`, `novP_qpNovel`), so the identity and `P`'s
+definition are zero; `Σ_V h = 0` (`sum_hValues`); `ξ` is the setup's claim; the fold values are `W`'s true ones;
+`s = P(t)`; so `RecPiop.Post2` holds, and `checks_claims_iff_post2` with the model's claims gives the claims.
 
-**Counting** (`card_badCopy_le`, `card_badT_le`): at most `(2N + n_P) |E|²` triples `(α, β, γ)` are bad (each
-denominator is zero on `|E|²` of them, `α` being determined by `β, γ`), and for a good triple at most `8N` points `t`
-(`V_{m+2}`'s `4N`, and the roots of `d_pull d_push + Z_V`, a nonzero polynomial of degree below `4N`).
+**Counting** (`card_badCopy_le`, `card_badT_le`): at most `2N |E|²` triples `(α, β, γ)` are bad (each denominator is
+zero on `|E|²` of them, `α` being determined by `β, γ`), and for a good triple at most `9N` points `t`.
 -/
 
 set_option linter.unusedSectionVars false
@@ -39,15 +39,18 @@ open RecStatement LeanVM.Parameters Finset Polynomial
 def honestW (G : RecPiop.Circuit E) (w : ℕ → K) : Stk :=
   fun j ↦ (placePublic (layoutsOf G.logN).1 fun i ↦ (wTableB G w).getD i 0).getD j 0
 
-/-- **The honest `Q` stack**: `h`'s and `q`'s novel coefficients placed under `Q`'s layout (the prover's `qStack`). -/
-def honestQ (G : RecPiop.Circuit E) (w : ℕ → K) (α β γ : E) : Stk :=
-  fun j ↦ (placePublic (layoutsOf G.logN).2.1 (qEntry G.logN (hNovel G w α β γ) (qNovel G w α β γ))).getD j 0
+/-- **The honest `Q` stack**: the sixteen slots placed under `Q`'s layout (the prover's `qStack`), `Φ` the
+verifier's at the public scalars `pubs`. -/
+def honestQ (G : RecPiop.Circuit E) (S : CoreSpec E) (pubs : List E) (w : ℕ → K) (α β γ : E) : Stk :=
+  fun j ↦ (placePublic (layoutsOf G.logN).2.1 (qEntry G.logN (hNovel G w α β) (qNovel G w α β γ (phiOn S pubs γ))
+    (pNovel G w) (qpNovel G w γ))).getD j 0
 
-/-- **The honest inputs** of the verifier's arithmetic: the scalars, the challenges, the true fold values at `t` and
-`ξ` from the setup's halves (the prover's `inputs`). -/
+/-- **The honest inputs** of the verifier's arithmetic: the scalars, the challenges, the true fold values at `t`,
+`ξ` from the setup's halves and `s = P(t)` (the prover's `inputs`). -/
 def honestInputs (G : RecPiop.Circuit E) (setupStack : Array K) (w : ℕ → K) (scalars : List E)
     (α β γ t ρ : E) : Inputs E :=
-  ⟨scalars, α, β, γ, t, foldValues G.logN G.logW (wTableB G w) t, xiOf G.logN setupStack β t, ρ⟩
+  ⟨scalars, α, β, γ, t, foldValues G.logN G.logW (wTableB G w) t, xiOf G.logN setupStack β t,
+    sOf G.logN (pNovel G w) t, ρ⟩
 
 /-- **The witness's polynomial** (degree below `N`): its novel coefficients'. -/
 noncomputable def witnessPoly (G : RecPiop.Circuit E) (w : ℕ → K) : E[X] :=
@@ -60,18 +63,27 @@ noncomputable def sigmaPoly (G : RecPiop.Circuit E) : E[X] :=
 noncomputable def kappaPoly (G : RecPiop.Circuit E) : E[X] :=
   UniKeccakComplete.AlgC.novP G.logN fun j ↦ (UniComplete.novelOfValuesE G.logN (kappaValues G)).getD j 0
 
-/-- **The copy argument's bad challenges**: a pulled `d_pull`, a `d_push` on `V_m` or a public `d_pub` zero. -/
-def BadCopy (G : RecPiop.Circuit E) (w : ℕ → K) (pub : ℕ → List E) (α β γ : E) : Prop :=
-  (∃ i < G.N, ¬ G.IsHole i ∧ RecPiop.dPull pi2Omega (RecCircuit.emb w) α β i = 0) ∨
-    (∃ i < G.N, G.dPush pi2Omega (RecCircuit.emb w) α β γ i = 0) ∨
-      (∃ j < G.nP, G.dPub pi2Omega pub α β γ j = 0)
+/-- **`P`'s polynomial** (degree below `N`): `P`'s novel coefficients'. -/
+noncomputable def pushPolyH (G : RecPiop.Circuit E) (w : ℕ → K) : E[X] :=
+  UniKeccakComplete.AlgC.novP G.logN fun j ↦ ((pNovel G w).map ofK).getD j 0
 
-/-- **The bad points `t`**: `t ∈ V_{m+2}`, or `c_h + c_q = d_pull(t) d_push(t) + Z_V(t)` zero. -/
+/-- **The copy argument's bad challenges**: a non-hole's `d_pull` or `d_push` on `V_m` zero (π2v3: neither the
+public limbs `pub` nor `γ` enter, the ports being out of the copy argument). -/
+def BadCopy (G : RecPiop.Circuit E) (w : ℕ → K) (_pub : ℕ → List E) (α β _γ : E) : Prop :=
+  (∃ i < G.N, ¬ G.IsHole i ∧ RecPiop.dPull pi2Omega (RecCircuit.emb w) α β i = 0) ∨
+    (∃ i < G.N, ¬ G.IsHole i ∧ G.dPushV pi2Omega (RecCircuit.emb w) α β i = 0)
+
+/-- **The honest push denominator** `α + P + κ + β σ`. -/
+noncomputable def dPushH (G : RecPiop.Circuit E) (w : ℕ → K) (α β : E) : E[X] :=
+  C α + pushPolyH G w + kappaPoly G + C β * sigmaPoly G
+
+/-- **The bad points `t`**: `t ∈ V_{m+1}`, `c_h = d_pull(t) d_push(t)` zero, `c_h + c_q` zero, or
+`α + P_v(t) + κ(t) + β σ(t)` zero. -/
 def BadT (G : RecPiop.Circuit E) (w : ℕ → K) (α β γ t : E) : Prop :=
-  QuotientSecurity.sq^[G.logN + 2] t = 0 ∨
-    (RecPiop.dPullP (witnessPoly G w) α β *
-        (C α + G.pushPoly pi2Omega (kappaPoly G) (witnessPoly G w) γ + C β * sigmaPoly G) +
-      G.zV pi2Omega).eval t = 0
+  QuotientSecurity.sq^[G.logN + 1] t = 0 ∨
+    (RecPiop.dPullP (witnessPoly G w) α β * dPushH G w α β).eval t = 0 ∨
+    (RecPiop.dPullP (witnessPoly G w) α β * dPushH G w α β + G.zV pi2Omega).eval t = 0 ∨
+    (C α + G.pushPolyV pi2Omega (witnessPoly G w) γ + kappaPoly G + C β * sigmaPoly G).eval t = 0
 
 /-! ## Facts of the honest objects -/
 
@@ -104,20 +116,39 @@ theorem kappaPoly_omega (G : RecPiop.Circuit E) (hm : G.logN ≤ 28) {i : ℕ} (
   rw [Array.getD_eq_getD_getElem?, Array.getElem?_ofFn]
   simp only [show i < G.N from hi, dite_true, Option.getD_some]
 
-theorem hNovel_omega (G : RecPiop.Circuit E) (w : ℕ → K) (α β γ : E) (hm : G.logN ≤ 28) {i : ℕ} (hi : i < G.N) :
-    (UniKeccakComplete.AlgC.novP G.logN fun j ↦ (hNovel G w α β γ).getD j 0).eval (pi2Omega i) =
-      (hValues G w α β γ).getD i 0 :=
-  novP_values_omega hm _ (size_hValues w α β γ) hi
+theorem hNovel_omega (G : RecPiop.Circuit E) (w : ℕ → K) (α β : E) (hm : G.logN ≤ 28) {i : ℕ} (hi : i < G.N) :
+    (UniKeccakComplete.AlgC.novP G.logN fun j ↦ (hNovel G w α β).getD j 0).eval (pi2Omega i) =
+      (hValues G w α β).getD i 0 :=
+  novP_values_omega hm _ (size_hValues w α β) hi
+
+/-- **`P`'s polynomial takes `P_v + κ`** on `V_m`, for a witness at a circuit over `K`. -/
+theorem pushPolyH_omega (G : RecPiop.Circuit E) (hK : KCircuit G) (w : ℕ → K) {pub : ℕ → List E}
+    (hw : G.Satisfies pub (RecCircuit.emb w)) (hm : G.logN ≤ 28) {i : ℕ} (hi : i < G.N) :
+    (pushPolyH G w).eval (pi2Omega i) = pvValue G w i := by
+  unfold pushPolyH
+  have e : ((pNovel G w).map ofK) = UniComplete.novelOfValuesK G.logN (pColumn G w) := rfl
+  rw [e, novP_valuesK_omega hm _ (size_pColumn w) hi]
+  unfold pColumn
+  rw [Array.getD_eq_getD_getElem?, Array.getElem?_ofFn]
+  simp only [show i < G.N from hi, dite_true, Option.getD_some]
+  exact limb_zero_of_mem (pvValue_mem hK w hw hi)
+
+/-- The honest polynomials are `HonestPolys`. -/
+theorem honestPolys (G : RecPiop.Circuit E) (w : ℕ → K) (α β : E) (S : RecPiop.SetupPolys G pi2Omega)
+    (hσ : S.σP = sigmaPoly G) (hκ : S.κP = kappaPoly G) :
+    HonestPolys G w α β S (witnessPoly G w)
+      (UniKeccakComplete.AlgC.novP G.logN fun j ↦ (hNovel G w α β).getD j 0) (pushPolyH G w) :=
+  ⟨rfl, hσ, hκ, rfl, rfl⟩
 
 /-! ## The stacks read back -/
 
 theorem layoutW_eq {m : ℕ} (hm : 20 ≤ m) :
     (layoutsOf m).1 = PcsQuotient.Layout.ofChunks m m (max m minCertifiedStack) [(0, 2 ^ m)] := by
-  simp only [layoutsOf, certifiedFrom, hm, ite_true]
+  simp only [layoutsOf, stackVars, minCertifiedStack, hm, ite_true]
 
 theorem layoutQ_eq {m : ℕ} (hm : 20 ≤ m) :
-    (layoutsOf m).2.1 = PcsQuotient.Layout.ofChunks (m + 5) m (max (m + 4) minCertifiedStack) (quotientChunks m) := by
-  simp only [layoutsOf, certifiedFrom, hm, ite_true]
+    (layoutsOf m).2.1 = PcsQuotient.Layout.ofChunks (m + 4) m (max (m + 4) minCertifiedStack) (quotientChunks m) := by
+  simp only [layoutsOf, stackVars, minCertifiedStack, hm, ite_true]
 
 /-- **`W`'s layout reads back the honest table.** -/
 theorem readW_honest (G : RecPiop.Circuit E) (w : ℕ → K) (hm : 20 ≤ G.logN) {i : ℕ} (hi : i < 2 ^ G.logN) :
@@ -128,33 +159,32 @@ theorem readW_honest (G : RecPiop.Circuit E) (w : ℕ → K) (hm : 20 ≤ G.logN
     (by simp only [minCertifiedStack, PcsQuotient.laneFold]; omega) (List.mem_singleton_self _)
     (Nat.div_eq_of_lt hi))
 
-theorem mem_quotientChunks_h {m l : ℕ} (hl : l < 3) : (8 * l, 2 ^ m) ∈ quotientChunks m := by
+theorem mem_quotientChunks {m c : ℕ} (hc : c = 0 ∨ c = 2 ∨ c = 3 ∨ c = 4 ∨ c = 6 ∨ c = 7 ∨ c = 8 ∨ c = 10 ∨ c = 11 ∨
+    c = 13 ∨ c = 14 ∨ c = 15) : (c, 2 ^ m) ∈ quotientChunks m := by
   unfold quotientChunks
-  simp only [List.mem_flatMap, List.mem_range, List.mem_cons]
-  exact ⟨l, hl, Or.inl rfl⟩
-
-theorem mem_quotientChunks_q {m l d : ℕ} (hl : l < 3) (hd : d < 4) : (8 * l + 4 + d, 2 ^ m) ∈ quotientChunks m := by
-  unfold quotientChunks
-  simp only [List.mem_flatMap, List.mem_range, List.mem_cons, List.mem_map]
-  exact ⟨l, hl, Or.inr ⟨d, hd, rfl⟩⟩
+  rcases hc with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> simp
 
 /-- **`Q`'s layout reads back the honest table** at a listed chunk. -/
-theorem readQ_honest (G : RecPiop.Circuit E) (w : ℕ → K) (α β γ : E) (hm : 20 ≤ G.logN) {c i : ℕ}
-    (hc : (c, 2 ^ G.logN) ∈ quotientChunks G.logN) (hi : i / 2 ^ G.logN = c) :
-    (layoutsOf G.logN).2.1.readEntry (honestQ G w α β γ) i =
-      qEntry G.logN (hNovel G w α β γ) (qNovel G w α β γ) i := by
+theorem readQ_honest (G : RecPiop.Circuit E) (S : CoreSpec E) (pubs : List E) (w : ℕ → K) (α β γ : E)
+    (hm : 20 ≤ G.logN) {c i : ℕ} (hc : (c, 2 ^ G.logN) ∈ quotientChunks G.logN) (hi : i / 2 ^ G.logN = c) :
+    (layoutsOf G.logN).2.1.readEntry (honestQ G S pubs w α β γ) i =
+      qEntry G.logN (hNovel G w α β) (qNovel G w α β γ (phiOn S pubs γ)) (pNovel G w) (qpNovel G w γ) i := by
   unfold honestQ
   rw [layoutQ_eq hm]
   exact readEntry_placePublic _ (placePublic_logPiece _ _ _ _) _ i (block_mem_ofChunks
     (by simp only [minCertifiedStack, PcsQuotient.laneFold]; omega) hc hi)
 
-theorem qEntry_at (m : ℕ) (hN qN : Array E) {pd kind l : ℕ} (hpd : pd < 2 ^ (m + 2)) (hk : kind < 2) :
-    qEntry m hN qN (pd + 2 ^ (m + 2) * (kind + 2 * l)) =
-      if kind = 0 then (if pd < 2 ^ m then limbN (hN.getD pd 0) l else 0) else limbN (qN.getD pd 0) l := by
+theorem qEntry_at (m : ℕ) (hN qN : Array E) (pN qpN : Array K) {pd kind l : ℕ} (hpd : pd < 2 ^ (m + 1))
+    (hk : kind < 2) :
+    qEntry m hN qN pN qpN (pd + 2 ^ (m + 1) * (kind + 2 * l)) =
+      if l < 3 then (if kind = 0 then (if pd < 2 ^ m then limbN (hN.getD pd 0) l else 0)
+        else limbN (qN.getD pd 0) l)
+      else if l = 3 then (if kind = 0 then (if pd < 2 ^ m then 0 else pN.getD (pd - 2 ^ m) 0) else qpN.getD pd 0)
+      else 0 := by
   unfold qEntry
-  have h1 : (pd + 2 ^ (m + 2) * (kind + 2 * l)) % 2 ^ (m + 2) = pd := by
+  have h1 : (pd + 2 ^ (m + 1) * (kind + 2 * l)) % 2 ^ (m + 1) = pd := by
     rw [Nat.add_mul_mod_self_left, Nat.mod_eq_of_lt hpd]
-  have h2 : (pd + 2 ^ (m + 2) * (kind + 2 * l)) / 2 ^ (m + 2) = kind + 2 * l := by
+  have h2 : (pd + 2 ^ (m + 1) * (kind + 2 * l)) / 2 ^ (m + 1) = kind + 2 * l := by
     rw [Nat.add_mul_div_left _ _ (Nat.two_pow_pos _), Nat.div_eq_of_lt hpd, zero_add]
   have h3 : (kind + 2 * l) / 2 = l := by omega
   have h4 : (kind + 2 * l) % 2 = kind := by omega
@@ -175,34 +205,66 @@ theorem limbs_sum_eq (x : E) : ∑ l ∈ range 3, yE ^ l * ofK (limbN x l) = x :
   rw [yE_eq]
   ring
 
-/-- **`h`'s coefficient read back from the honest `Q`** (`pd < N`). -/
-theorem qCoef_honest_h (G : RecPiop.Circuit E) (w : ℕ → K) (α β γ : E) (hm : 20 ≤ G.logN) {pd : ℕ}
-    (hpd : pd < 2 ^ G.logN) :
-    qCoef (qTable G.logN (honestQ G w α β γ)) G.logN 0 pd = (hNovel G w α β γ).getD pd 0 := by
-  have hpd' : pd < 2 ^ (G.logN + 2) := lt_of_lt_of_le hpd (Nat.pow_le_pow_right (by norm_num) (by omega))
-  unfold qCoef qTable
-  conv_rhs => rw [← limbs_sum_eq ((hNovel G w α β γ).getD pd 0)]
-  refine Finset.sum_congr rfl fun l hl ↦ ?_
-  have hl' := mem_range.mp hl
-  rw [readQ_honest G w α β γ hm (mem_quotientChunks_h hl') (by rw [chunk_of, Nat.div_eq_of_lt hpd]; ring),
-    qEntry_at _ _ _ hpd' (by norm_num)]
-  simp [hpd]
+theorem chunk_div {m pd j : ℕ} (_hpd : pd < 2 ^ (m + 1)) :
+    (pd + 2 ^ (m + 1) * j) / 2 ^ m = pd / 2 ^ m + 2 * j := by
+  rw [pow_succ, show 2 ^ m * 2 * j = 2 ^ m * (2 * j) by ring, Nat.add_mul_div_left _ _ (Nat.two_pow_pos _)]
 
-/-- **`q`'s coefficient read back from the honest `Q`** (`pd < 4N`). -/
-theorem qCoef_honest_q (G : RecPiop.Circuit E) (w : ℕ → K) (α β γ : E) (hm : 20 ≤ G.logN) {pd : ℕ}
-    (hpd : pd < 2 ^ (G.logN + 2)) :
-    qCoef (qTable G.logN (honestQ G w α β γ)) G.logN 1 pd = (qNovel G w α β γ).getD pd 0 := by
-  have hd : pd / 2 ^ G.logN < 4 := by
-    rw [Nat.div_lt_iff_lt_mul (Nat.two_pow_pos _)]
-    rw [pow_add] at hpd
-    omega
+theorem pd_div_lt {m pd : ℕ} (hpd : pd < 2 ^ (m + 1)) : pd / 2 ^ m < 2 := by
+  rw [Nat.div_lt_iff_lt_mul (Nat.two_pow_pos _)]
+  rw [pow_succ] at hpd
+  omega
+
+/-- **`h`'s coefficient read back from the honest `Q`** (`pd < N`). -/
+theorem qCoef_honest_h (G : RecPiop.Circuit E) (S : CoreSpec E) (pubs : List E) (w : ℕ → K) (α β γ : E)
+    (hm : 20 ≤ G.logN) {pd : ℕ} (hpd : pd < 2 ^ G.logN) :
+    qCoef (qTable G.logN (honestQ G S pubs w α β γ)) G.logN 0 pd = (hNovel G w α β).getD pd 0 := by
+  have hpd' : pd < 2 ^ (G.logN + 1) := lt_of_lt_of_le hpd (Nat.pow_le_pow_right (by norm_num) (by omega))
   unfold qCoef qTable
-  conv_rhs => rw [← limbs_sum_eq ((qNovel G w α β γ).getD pd 0)]
+  conv_rhs => rw [← limbs_sum_eq ((hNovel G w α β).getD pd 0)]
   refine Finset.sum_congr rfl fun l hl ↦ ?_
   have hl' := mem_range.mp hl
-  rw [readQ_honest G w α β γ hm (mem_quotientChunks_q (d := pd / 2 ^ G.logN) hl' hd)
-      (by rw [chunk_of]; ring),
-    qEntry_at _ _ _ hpd (by norm_num)]
+  rw [readQ_honest G S pubs w α β γ hm (c := 4 * l) (mem_quotientChunks (by omega))
+      (by rw [chunk_div hpd', Nat.div_eq_of_lt hpd]; ring),
+    qEntry_at _ _ _ _ _ hpd' (by norm_num)]
+  simp [hpd, hl']
+
+/-- **`q`'s coefficient read back from the honest `Q`** (`pd < 2N`). -/
+theorem qCoef_honest_q (G : RecPiop.Circuit E) (S : CoreSpec E) (pubs : List E) (w : ℕ → K) (α β γ : E)
+    (hm : 20 ≤ G.logN) {pd : ℕ} (hpd : pd < 2 ^ (G.logN + 1)) :
+    qCoef (qTable G.logN (honestQ G S pubs w α β γ)) G.logN 1 pd =
+      (qNovel G w α β γ (phiOn S pubs γ)).getD pd 0 := by
+  have hd := pd_div_lt hpd
+  unfold qCoef qTable
+  conv_rhs => rw [← limbs_sum_eq ((qNovel G w α β γ (phiOn S pubs γ)).getD pd 0)]
+  refine Finset.sum_congr rfl fun l hl ↦ ?_
+  have hl' := mem_range.mp hl
+  rw [readQ_honest G S pubs w α β γ hm (c := pd / 2 ^ G.logN + 2 * (1 + 2 * l))
+      (mem_quotientChunks (by generalize pd / 2 ^ G.logN = d at hd; omega))
+      (chunk_div hpd),
+    qEntry_at _ _ _ _ _ hpd (by norm_num)]
+  simp [hl']
+
+/-- **`P`'s coefficient read back from the honest `Q`** (`k < N`). -/
+theorem pCoef_honest (G : RecPiop.Circuit E) (S : CoreSpec E) (pubs : List E) (w : ℕ → K) (α β γ : E)
+    (hm : 20 ≤ G.logN) {k : ℕ} (hk : k < 2 ^ G.logN) :
+    pCoef (qTable G.logN (honestQ G S pubs w α β γ)) G.logN k = ((pNovel G w).map ofK).getD k 0 := by
+  have hpd : k + 2 ^ G.logN < 2 ^ (G.logN + 1) := by rw [pow_succ]; omega
+  unfold pCoef qTable
+  rw [readQ_honest G S pubs w α β γ hm (c := 13) (mem_quotientChunks (by omega))
+      (by rw [chunk_div hpd, Nat.add_div_right _ (Nat.two_pow_pos _), Nat.div_eq_of_lt hk]),
+    qEntry_at _ _ _ _ _ hpd (by norm_num), UniKeccakComplete.AlgC.getD_map_ofK]
+  simp
+
+/-- **`q_P`'s coefficient read back from the honest `Q`** (`pd < 2N`). -/
+theorem qpCoef_honest (G : RecPiop.Circuit E) (S : CoreSpec E) (pubs : List E) (w : ℕ → K) (α β γ : E)
+    (hm : 20 ≤ G.logN) {pd : ℕ} (hpd : pd < 2 ^ (G.logN + 1)) :
+    qpCoef (qTable G.logN (honestQ G S pubs w α β γ)) G.logN pd = ofK ((qpNovel G w γ).getD pd 0) := by
+  have hd := pd_div_lt hpd
+  unfold qpCoef qTable
+  rw [readQ_honest G S pubs w α β γ hm (c := pd / 2 ^ G.logN + 2 * (1 + 2 * 3))
+      (mem_quotientChunks (by generalize pd / 2 ^ G.logN = d at hd; omega))
+      (chunk_div hpd),
+    qEntry_at _ _ _ _ _ hpd (by norm_num)]
   simp
 
 end RecCompose

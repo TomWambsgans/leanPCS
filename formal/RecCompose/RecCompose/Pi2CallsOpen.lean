@@ -231,7 +231,7 @@ theorem openSeqH_eq (H : List UInt8 → Id Digest) (F : KeccakState → Id Kecca
 theorem pi2Prover_some {D : RecDeployment} {C : Pi2Circuits D} (Fa : Pi2Facts D C) (Hk : List UInt8 → Digest)
     (F : KeccakState → Id KeccakState) (fuel : ℕ) (input : Vector UInt8 32) (p1 : UniKeccak.KeccakProof)
     (proof : RecProof) (hp : Id.run (pi2ProverWith (m := Id) (Pure.pure ∘ Hk) F D C Fa fuel input p1) = some proof) :
-    proof.stream = (outOf D Hk (rootsH D Hk F) (C.G (rootsH D Hk F)) input
+    proof.stream = (outOf D Hk (rootsH D Hk F) (C.G (rootsH D Hk F)) pi2Ood input
         (pi2Choice D C Fa (rootsH D Hk F) input p1.stream).1 (pi2Choice D C Fa (rootsH D Hk F) input p1.stream).2).stream ∧
       proof.c1 = p1.c1 ∧ proof.c2 = p1.c2 ∧ proof.f = p1.setup := by
   rw [pi2ProverWith_run, pi2ProveWith_run, logN_G Fa] at hp
@@ -265,20 +265,20 @@ theorem pi2Pi1Openings {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D) (hc
   have hview : (D.circuitAt (rootsH D Ht Ft).pi1).circuit = Data.circuit := hD.1 _
   obtain ⟨hps, hc1, hc2, hcf⟩ := pi2Prover_some (pi2Facts hD C hchk) Ht Ft _ input p1 proof hpr
   -- π2's run on the honest stream, over `Ht` and over Keccak-f[1600]
-  obtain ⟨r, hr, -, hsc, -, -, -, -, hi, -, -⟩ := runWith_honest Ht (C.G (rootsH D Ht Ft))
+  obtain ⟨r, hr, -, hsc, -, -, -, -, hi, -, -⟩ := runWith_honest Ht (C.G (rootsH D Ht Ft)) pi2Ood
     (D.circuitAt (rootsH D Ht Ft).pi1).circuit (D.circuitAt (rootsH D Ht Ft).pi1).setupStack
     (ivOf D Ht (rootsH D Ht Ft)) input.toList (pi2Choice D C (pi2Facts hD C hchk) (rootsH D Ht Ft) input p1.stream).1
     (pi2Choice D C (pi2Facts hD C hchk) (rootsH D Ht Ft) input p1.stream).2 hmatch
     (by rw [hview, (pi2Facts hD C hchk).logW]; rfl)
   obtain ⟨hpost, -⟩ := holds_id (Pi2H.runWithH_post (m := Id) (Pure.pure ∘ Ht)
     (Spec.of (D.circuitAt (rootsH D Ht Ft).pi1).circuit) (ivOf D Ht (rootsH D Ht Ft)) input.toList
-    (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) input
+    (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) pi2Ood input
       (pi2Choice D C (pi2Facts hD C hchk) (rootsH D Ht Ft) input p1.stream).1
       (pi2Choice D C (pi2Facts hD C hchk) (rootsH D Ht Ft) input p1.stream).2).stream)
   obtain ⟨hsz, hsc', hpp⟩ := hpost r hr
   obtain ⟨r', hr', hsc'', -⟩ := run_ok_of_runWith (m := Id) _ input.toList _ [] r hsz hsc' hpp
   have hscal : pi2Scalars D (rootsH D Ht Ft) input
-      (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) input
+      (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) pi2Ood input
         (pi2Choice D C (pi2Facts hD C hchk) (rootsH D Ht Ft) input p1.stream).1
         (pi2Choice D C (pi2Facts hD C hchk) (rootsH D Ht Ft) input p1.stream).2).stream =
       publicScalarsOf input.toList (pi2Choice D C (pi2Facts hD C hchk) (rootsH D Ht Ft) input p1.stream).1 := by

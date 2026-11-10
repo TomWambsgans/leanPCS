@@ -156,12 +156,13 @@ theorem wr_sendPublic : ∀ l : List (Read × PublicValue), φ.wr (sendPublic (m
   | (.scalar, .integer _) :: rest => wr_sendPublic rest
   | (.scalar, .root _) :: rest => wr_sendPublic rest
 
-theorem wr_pi2ProveStreamWith (G : RecPiop.Circuit E) (reads : List Read) (setupStack : Array K)
+theorem wr_pi2ProveStreamWith (G : RecPiop.Circuit E) (S : CoreSpec E) (ood : ℕ → Digest → Array K → E)
+    (reads : List Read) (setupStack : Array K)
     (input : List UInt8) (values : List PublicValue) (w : ℕ → K) :
-    φ.wr (pi2ProveStreamWith H G reads setupStack input values w) =
-      pi2ProveStreamWith (fun x ↦ φ.app (H x)) G reads setupStack input values w := by
+    φ.wr (pi2ProveStreamWith H G S ood reads setupStack input values w) =
+      pi2ProveStreamWith (fun x ↦ φ.app (H x)) G S ood reads setupStack input values w := by
   simp only [pi2ProveStreamWith, Morph.wr_bind, wr_sendPublic, Morph.wr_lift, Morph.app_commitWithH,
-    Morph.wr_sendRoot, Morph.wr_sampleW, Morph.wr_sendScalars, Morph.wr_get, Morph.wr_pure]
+    Morph.wr_sendRoot, Morph.wr_sendScalar, Morph.wr_sampleW, Morph.wr_sendScalars, Morph.wr_get, Morph.wr_pure]
 
 variable (hprove : ∀ (fuel : ℕ) (L : PcsQuotient.Layout) (tree : LeanVM.Prover.Tree) (stack : Array K)
     (claims : List PcsQuotient.Claim),
@@ -169,10 +170,12 @@ variable (hprove : ∀ (fuel : ℕ) (L : PcsQuotient.Layout) (tree : LeanVM.Prov
       E2ECompleteness.proveOpeningWithH (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) fuel L tree stack claims)
 
 include hprove in
-theorem app_pi2ProveWith (fuel : ℕ) (G : RecPiop.Circuit E) (view : Circuit) (setupStack : Array K)
-    (setupTree : LeanVM.Prover.Tree) (iv input : List UInt8) (values : List PublicValue) (w : ℕ → K) :
-    φ.app (pi2ProveWith H F fuel G view setupStack setupTree iv input values w) =
-      pi2ProveWith (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) fuel G view setupStack setupTree iv input values w := by
+theorem app_pi2ProveWith (fuel : ℕ) (G : RecPiop.Circuit E) (ood : ℕ → Digest → Array K → E) (view : Circuit)
+    (setupStack : Array K) (setupTree : LeanVM.Prover.Tree) (iv input : List UInt8) (values : List PublicValue)
+    (w : ℕ → K) :
+    φ.app (pi2ProveWith H F fuel G ood view setupStack setupTree iv input values w) =
+      pi2ProveWith (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) fuel G ood view setupStack setupTree iv input values
+        w := by
   simp only [pi2ProveWith, φ.app_bind, φ.app_pure, ← Morph.wr_run φ, wr_pi2ProveStreamWith, hprove]
 
 include hprove in
@@ -201,14 +204,17 @@ theorem app_expW2 (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
     | none => exact φ.app_pure _
     | some p2 => simp only [φ.app_bind, φ.app_pure, app_verifierWithH2 φ H F hopen]
 
-theorem wr_pre2 (G : RecPiop.Circuit E) (reads : List Read) (values : List PublicValue) (w : ℕ → K) :
-    φ.wr (pre2 H G reads values w) = pre2 (fun x ↦ φ.app (H x)) G reads values w := by
+theorem wr_pre2 (G : RecPiop.Circuit E) (ood : ℕ → Digest → Array K → E) (reads : List Read)
+    (values : List PublicValue) (w : ℕ → K) :
+    φ.wr (pre2 H G ood reads values w) = pre2 (fun x ↦ φ.app (H x)) G ood reads values w := by
   simp only [pre2, Morph.wr_bind, wr_sendPublic, Morph.wr_lift, Morph.app_commitWithH, Morph.wr_sendRoot,
-    Morph.wr_pure]
+    Morph.wr_sendScalar, Morph.wr_pure]
 
-theorem wr_mid2 (G : RecPiop.Circuit E) (w : ℕ → K) (α β γ : E) :
-    φ.wr (mid2 H G w α β γ) = mid2 (fun x ↦ φ.app (H x)) G w α β γ := by
-  simp only [mid2, Morph.wr_bind, Morph.wr_lift, Morph.app_commitWithH, Morph.wr_sendRoot, Morph.wr_pure]
+theorem wr_mid2 (G : RecPiop.Circuit E) (S : CoreSpec E) (ood : ℕ → Digest → Array K → E) (pubs : List E)
+    (w : ℕ → K) (α β γ : E) :
+    φ.wr (mid2 H G S ood pubs w α β γ) = mid2 (fun x ↦ φ.app (H x)) G S ood pubs w α β γ := by
+  simp only [mid2, Morph.wr_bind, Morph.wr_lift, Morph.app_commitWithH, Morph.wr_sendRoot, Morph.wr_sendScalar,
+    Morph.wr_pure]
 
 theorem wr_post2 (G : RecPiop.Circuit E) (setupStack : Array K) (input : List UInt8) (values : List PublicValue)
     (w : ℕ → K) (wS : Array K) (wT : LeanVM.Prover.Tree) (qS : Array K) (qT : LeanVM.Prover.Tree) (α β γ t : E) :
@@ -229,8 +235,8 @@ theorem app_stageA (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
     simp only [φ.app_bind, φ.app_pure, app_pi1GraphVerifierWithH φ H F hopen, app_setupTreesWithH2, app_ivOfH,
       ← Morph.wr_run φ, wr_pre2]
 
-theorem app_stageB (D : RecDeployment) (C : Pi2Circuits D) (a : StA) (s₁ s₂ s₃ : Digest) :
-    φ.app (stageB H D C a s₁ s₂ s₃) = stageB (fun x ↦ φ.app (H x)) D C a s₁ s₂ s₃ := by
+theorem app_stageB (D : RecDeployment) (C : Pi2Circuits D) (input : Vector UInt8 32) (a : StA) (s₁ s₂ s₃ : Digest) :
+    φ.app (stageB H D C input a s₁ s₂ s₃) = stageB (fun x ↦ φ.app (H x)) D C input a s₁ s₂ s₃ := by
   simp only [stageB, φ.app_bind, φ.app_pure, ← Morph.wr_run φ, wr_mid2]
 
 include hopen hprove in
@@ -290,9 +296,9 @@ theorem sim_stageA (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
   rw [Morph.sim_H, Morph.sim_F] at h
   exact h
 
-theorem sim_stageB (D : RecDeployment) (C : Pi2Circuits D) (a : StA) (s₁ s₂ s₃ : Digest) :
-    simulateQ impl (stageB callKeccak256 D C a s₁ s₂ s₃) = stageB (implH impl) D C a s₁ s₂ s₃ := by
-  have h := app_stageB (Morph.sim impl) callKeccak256 D C a s₁ s₂ s₃
+theorem sim_stageB (D : RecDeployment) (C : Pi2Circuits D) (input : Vector UInt8 32) (a : StA) (s₁ s₂ s₃ : Digest) :
+    simulateQ impl (stageB callKeccak256 D C input a s₁ s₂ s₃) = stageB (implH impl) D C input a s₁ s₂ s₃ := by
+  have h := app_stageB (Morph.sim impl) callKeccak256 D C input a s₁ s₂ s₃
   rw [Morph.sim_H] at h
   exact h
 

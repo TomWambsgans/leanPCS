@@ -12,7 +12,7 @@ The facts the honest prover's algebra (`Pi2Honest.lean`) reads its computations 
 * **the transform** (`PcsQuotient.Domain.values`, `coefficients`): `values k offset c` at `p` is the novel-basis
   polynomial of `c` at `offset + B(p)` (`values_getD_novP`), and the polynomial of `coefficients k offset v` takes `v`
   there (`novP_coefficients_eval`);
-* **the coset** `β_{m+2} + V_{m+2}`: its point `p` is `ω_{2^(m+2) ⊕ p}` (`cosetPoint_eq`), a cell moves it by `ω_c`
+* **the coset** `β_{m+1} + V_{m+1}`: its point `p` is `ω_{2^(m+1) ⊕ p}` (`cosetPoint_eq`), a cell moves it by `ω_c`
   (`cosetPoint_xor`), and it is off `V_m` (`cosetPoint_ne`);
 * **the stacks**: a public layout reads back the table it placed (`readEntry_placePublic`), at `W`'s and `Q`'s layouts
   (`wTab_place`, `qTable_place`).
@@ -85,9 +85,9 @@ theorem novP_valuesK_omega {k : ℕ} (hk : k ≤ 28) (v : Array K) (hv : v.size 
 
 theorem xor_lt_pow {a b n : ℕ} (ha : a < 2 ^ n) (hb : b < 2 ^ n) : a ^^^ b < 2 ^ n := Nat.xor_lt_two_pow ha hb
 
-/-- **The coset's point `p` is `ω_{2^(m+2) ⊕ p}`.** -/
-theorem cosetPoint_eq {m p : ℕ} (hm : m + 2 < 28) (hp : p < 2 ^ (m + 2)) :
-    cosetPoint m p = pi2Omega (2 ^ (m + 2) ^^^ p) := by
+/-- **The coset's point `p` is `ω_{2^(m+1) ⊕ p}`.** -/
+theorem cosetPoint_eq {m p : ℕ} (hm : m + 1 < 28) (hp : p < 2 ^ (m + 1)) :
+    cosetPoint m p = pi2Omega (2 ^ (m + 1) ^^^ p) := by
   have hp28 : p < 2 ^ 28 := lt_of_lt_of_le hp (Nat.pow_le_pow_right (by norm_num) (by omega))
   unfold cosetPoint cosetOffset
   rw [UniComplete.Domain.embed_add, ← UniComplete.Domain.point_two_pow (by omega), ofK_point_eq hp28, pi2Omega_eq,
@@ -95,32 +95,32 @@ theorem cosetPoint_eq {m p : ℕ} (hm : m + 2 < 28) (hp : p < 2 ^ (m + 2)) :
   rfl
 
 /-- **A cell moves a coset point by `ω_c`.** -/
-theorem cosetPoint_xor {m p c : ℕ} (hm : m + 2 < 28) (hp : p < 2 ^ (m + 2)) (hc : c < 2 ^ (m + 2)) :
+theorem cosetPoint_xor {m p c : ℕ} (hm : m + 1 < 28) (hp : p < 2 ^ (m + 1)) (hc : c < 2 ^ (m + 1)) :
     cosetPoint m (p ^^^ c) = cosetPoint m p + pi2Omega c := by
   rw [cosetPoint_eq hm (xor_lt_pow hp hc), cosetPoint_eq hm hp, pi2Omega_eq, pi2Omega_eq, pi2Omega_eq,
     ← UniComplete.Domain.pointE_xor, Nat.xor_assoc]
 
-theorem two_pow_xor_testBit {m p : ℕ} (hp : p < 2 ^ (m + 2)) : (2 ^ (m + 2) ^^^ p).testBit (m + 2) = true := by
+theorem two_pow_xor_testBit {m p : ℕ} (hp : p < 2 ^ (m + 1)) : (2 ^ (m + 1) ^^^ p).testBit (m + 1) = true := by
   rw [Nat.testBit_xor, Nat.testBit_two_pow_self, Nat.testBit_eq_false_of_lt hp]
   rfl
 
 /-- The coset's indices are distinct. -/
-theorem cosetPoint_inj {m : ℕ} (hm : m + 2 < 28) {a b : ℕ} (ha : a < 2 ^ (m + 2)) (hb : b < 2 ^ (m + 2))
+theorem cosetPoint_inj {m : ℕ} (hm : m + 1 < 28) {a b : ℕ} (ha : a < 2 ^ (m + 1)) (hb : b < 2 ^ (m + 1))
     (h : cosetPoint m a = cosetPoint m b) : a = b := by
   rw [cosetPoint_eq hm ha, cosetPoint_eq hm hb] at h
-  have h32 : ∀ x < 2 ^ (m + 2), 2 ^ (m + 2) ^^^ x < 2 ^ 32 := fun x hx ↦
+  have h32 : ∀ x < 2 ^ (m + 1), 2 ^ (m + 1) ^^^ x < 2 ^ 32 := fun x hx ↦
     lt_of_lt_of_le (xor_lt_pow (Nat.pow_lt_pow_right (by norm_num) (Nat.lt_succ_self _)) (lt_trans hx
       (Nat.pow_lt_pow_right (by norm_num) (Nat.lt_succ_self _)))) (Nat.pow_le_pow_right (by norm_num) (by omega))
   have := (RecPiop.Points.ofCantor UniComplete.Domain.basisE).inj _ (h32 a ha) _ (h32 b hb) h
-  have e := congrArg (2 ^ (m + 2) ^^^ ·) this
+  have e := congrArg (2 ^ (m + 1) ^^^ ·) this
   simpa [← Nat.xor_assoc] using e
 
 /-- **The coset is off `V_m`.** -/
-theorem cosetPoint_ne {m p j : ℕ} (hm : m + 2 < 28) (hp : p < 2 ^ (m + 2)) (hj : j < 2 ^ m) :
+theorem cosetPoint_ne {m p j : ℕ} (hm : m + 1 < 28) (hp : p < 2 ^ (m + 1)) (hj : j < 2 ^ m) :
     cosetPoint m p ≠ pi2Omega j := by
   rw [cosetPoint_eq hm hp]
   intro h
-  have h32a : 2 ^ (m + 2) ^^^ p < 2 ^ 32 :=
+  have h32a : 2 ^ (m + 1) ^^^ p < 2 ^ 32 :=
     lt_of_lt_of_le (xor_lt_pow (Nat.pow_lt_pow_right (by norm_num) (Nat.lt_succ_self _)) (lt_trans hp
       (Nat.pow_lt_pow_right (by norm_num) (Nat.lt_succ_self _)))) (Nat.pow_le_pow_right (by norm_num) (by omega))
   have h32b : j < 2 ^ 32 := lt_of_lt_of_le hj (Nat.pow_le_pow_right (by norm_num) (by omega))
@@ -192,6 +192,107 @@ theorem block_mem_ofChunks {vars lc logN : ℕ} {chunks : List (ℕ × ℕ)} (hl
     subst h0
     rw [hpow, Nat.mul_assoc, Nat.add_mul_div_left _ _ hpos]
     ring
+
+/-! ## `K` inside `E` -/
+
+theorem ofK_mem_subK (a : K) : ofK a ∈ subK := ⟨a, rfl⟩
+
+theorem limb_zero_of_mem {x : E} (hx : x ∈ subK) : ofK (x.limb 0) = x := by
+  obtain ⟨a, rfl⟩ := hx
+  rfl
+
+/-- **A stage of the transform commutes with `K → E`.** -/
+theorem stageF_map (fwd : Bool) (lam : ℕ → K) (k : ℕ) (a : ℕ → K) (p : ℕ) :
+    algebraMap K E (Bridge.Ntt.stageF fwd lam k a p) =
+      Bridge.Ntt.stageF fwd lam k (fun i ↦ algebraMap K E (a i)) p := by
+  unfold Bridge.Ntt.stageF
+  simp only [Algebra.algebraMap_self, RingHom.id_apply]
+  split_ifs <;> simp [map_add, map_mul]
+
+theorem coefficientsF_map (lamOf : ℕ → ℕ → K) : ∀ (m : ℕ) (v : ℕ → K) (p : ℕ),
+    algebraMap K E (Bridge.Ntt.coefficientsF lamOf m v p) =
+      Bridge.Ntt.coefficientsF lamOf m (fun i ↦ algebraMap K E (v i)) p
+  | 0, _, _ => rfl
+  | m + 1, v, p => by
+    rw [Bridge.Ntt.coefficientsF_succ, Bridge.Ntt.coefficientsF_succ, stageF_map]
+    congr 1
+    funext i
+    exact coefficientsF_map lamOf m v i
+
+theorem valuesF_map (lamOf : ℕ → ℕ → K) : ∀ (m : ℕ) (v : ℕ → K) (p : ℕ),
+    algebraMap K E (Bridge.Ntt.valuesF lamOf m v p) = Bridge.Ntt.valuesF lamOf m (fun i ↦ algebraMap K E (v i)) p
+  | 0, _, _ => rfl
+  | m + 1, v, p => by
+    rw [Bridge.Ntt.valuesF_succ, Bridge.Ntt.valuesF_succ, valuesF_map lamOf m]
+    congr 1
+    funext i
+    exact stageF_map _ _ _ _ i
+
+/-- **The `K` transform, embedded, is the `E` transform of the embedded values.** -/
+theorem coefficients_map_ofK {r : ℕ} (off : K) (v : Array K) (hv : v.size = 2 ^ r) {p : ℕ} (hp : p < 2 ^ r) :
+    ofK ((PcsQuotient.Domain.coefficients r off v).getD p 0) =
+      (PcsQuotient.Domain.coefficients r off (v.map ofK)).getD p 0 := by
+  rw [Bridge.Ntt.coefficients_getD_K' r off v hv p hp,
+    Bridge.Ntt.coefficients_getD_E' r off (v.map ofK) (by rw [Array.size_map, hv]) p hp]
+  refine (coefficientsF_map _ r _ p).trans ?_
+  congr 1
+  funext i
+  exact (UniKeccakComplete.AlgC.getD_map_ofK v i).symm
+
+/-- **The `E` transform of embedded values is embedded.** -/
+theorem values_mem_subK {r : ℕ} (off : K) (c : Array E) (hc : c.size = 2 ^ r) (hK : ∀ i < 2 ^ r, c.getD i 0 ∈ subK)
+    {p : ℕ} (hp : p < 2 ^ r) : (PcsQuotient.Domain.values r off c).getD p 0 ∈ subK := by
+  choose! a ha using fun i hi ↦ hK i hi
+  have e : (PcsQuotient.Domain.values r off c).getD p 0 =
+      algebraMap K E (Bridge.Ntt.valuesF (Bridge.Ntt.lamAt (PcsQuotient.Domain.chain off r)) r
+        (fun i ↦ if i < 2 ^ r then a i else 0) p) := by
+    rw [Bridge.Ntt.values_getD_E' r off c hc p hp, valuesF_map]
+    unfold Bridge.Ntt.valuesF
+    refine Bridge.Ntt.foldr_congr (m := r) true _ (List.range r) (fun k hk ↦ List.mem_range.mp hk)
+      (fun i hi ↦ ?_) p hp
+    simp only [hi, ite_true]
+    exact (ha i hi).symm
+  rw [e]
+  exact ofK_mem_subK _
+
+/-! ## A circuit over `K` -/
+
+/-- **A circuit over `K`**: `κ` in `K`, and every internal role's value in `K` on cells in `K` (the compiled
+circuits: `kCircuit_toPiop`). -/
+structure KCircuit (G : RecPiop.Circuit E) : Prop where
+  kappa : ∀ i, G.kappa i ∈ subK
+  value : ∀ (b : RecPiop.Block) (k : ℕ) (γ own : E) (cell : ℕ → E), (G.regionRole b k).isPort = false →
+    own ∈ subK → (∀ c, cell c ∈ subK) → (G.regionRole b k).value γ own cell ∈ subK
+
+theorem list_sum_mem_subK {l : List E} (h : ∀ x ∈ l, x ∈ subK) : l.sum ∈ subK := list_sum_mem h
+
+/-- **The compiled circuits are over `K`.** -/
+theorem kCircuit_toPiop (C : RecCircuit.Circuit) : KCircuit C.toPiop where
+  kappa i := ofK_mem_subK _
+  value b k γ own cell hp ho hc := by
+    have hr : ∃ f, C.toPiop.regionRole b k = RecCircuit.toRole f := by
+      unfold RecPiop.Circuit.regionRole
+      simp only [RecCircuit.Circuit.toPiop]
+      refine ⟨((C.regions.toList.getD b.region default).roles.toList.getD k .forward), ?_⟩
+      rw [show ([] : List (RecPiop.Role E)) = (fun r : RecCircuit.Region ↦ r.roles.toList.map RecCircuit.toRole)
+          default from rfl, RecCircuit.list_getD_map,
+        show (RecPiop.Role.forward : RecPiop.Role E) = RecCircuit.toRole .forward from rfl, RecCircuit.list_getD_map]
+    obtain ⟨f, hf⟩ := hr
+    rw [hf] at hp ⊢
+    cases f with
+    | forward => exact ho
+    | port ls => simp [RecCircuit.toRole, RecPiop.Role.isPort] at hp
+    | expr q =>
+      show RecPiop.Poly2.eval (RecCircuit.toPoly2 q) cell ∈ subK
+      unfold RecPiop.Poly2.eval RecCircuit.toPoly2
+      refine add_mem (list_sum_mem_subK fun x hx ↦ ?_) (list_sum_mem_subK fun x hx ↦ ?_)
+      · simp only [List.map_map, List.mem_map, Function.comp] at hx
+        obtain ⟨t, -, rfl⟩ := hx
+        exact mul_mem (by simp only [Algebra.algebraMap_self, RingHom.id_apply]; exact ofK_mem_subK _) (hc _)
+      · simp only [List.map_map, List.mem_map, Function.comp] at hx
+        obtain ⟨t, -, rfl⟩ := hx
+        exact mul_mem (by simp only [Algebra.algebraMap_self, RingHom.id_apply]; exact ofK_mem_subK _)
+          (mul_mem (hc _) (hc _))
 
 end RecCompose
 

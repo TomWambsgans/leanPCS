@@ -201,7 +201,6 @@ include hD hchk in
 def pi2Facts : Pi2Facts D C where
   pairOf roots := pairOfC (C.compiled (D.pi1IvAt roots.pi1)).circuit
   portOf _ J := 16 + J
-  nz _ := 16
   pubOf roots := pubOfC (C.compiled (D.pi1IvAt roots.pi1)).circuit
   spec roots := by
     obtain ⟨hview, -, hval⟩ := viewChecked_at C hchk roots

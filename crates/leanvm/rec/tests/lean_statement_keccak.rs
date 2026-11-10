@@ -7,7 +7,8 @@
 //!   `formal/RecStatement/RecStatement/Data.lean` is what [`render`] writes now; `UPDATE_LEAN=1` rewrites it.
 //!
 //! **The data** is what π2's verifier is built from (`pi2::verifier::Spec::of`): the circuit's shape, its formulas, its
-//! (block, role) pairs, the reads of the public data, the public terms, then the instance's constants (π1's contract
+//! (block, role) pairs, the reads of the public data, the public terms and their holes (each term's hole position,
+//! whose row and role π2v2's verifier reads: `Spec::phi`), then the instance's constants (π1's contract
 //! IV, the setup's root, the circuit's digest) and π1's claims as the circuit names their words
 //! (`spec::CallWord`). Not `σ` and not `κ`: the setup commits them, the digest and the root bind them, and the verifier
 //! reads neither.
@@ -225,10 +226,28 @@ fn render(circuit: &Circuit, calls: &[Vec<CallWord>], c: &Constants) -> String {
         .collect();
     writeln!(w, "{}]", items.join(",\n")).unwrap();
     writeln!(w).unwrap();
+    // Each public term's hole, the position `σ` sends to its tag (`Spec::of`'s `hole`): π2v2's verifier reads its row
+    // and role (`Spec::phi`).
+    let hole: std::collections::HashMap<u32, usize> = (0..circuit.n())
+        .filter(|&i| circuit.sigma[i] as usize >= circuit.n())
+        .map(|i| (circuit.sigma[i], i))
+        .collect();
+    writeln!(
+        w,
+        "/-- Each public term's hole (`σ`'s preimage of its tag): `Spec::phi` reads its row and role. -/"
+    )
+    .unwrap();
+    writeln!(
+        w,
+        "def holes : List ℕ := [{}]",
+        circuit.public.iter().map(|t| hole[&t.tag].to_string()).collect::<Vec<_>>().join(", ")
+    )
+    .unwrap();
+    writeln!(w).unwrap();
     writeln!(w, "/-- **π2's circuit** as its verifier reads it. -/").unwrap();
     writeln!(
         w,
-        "def circuit : Circuit := ⟨{}, {}, formulas, pairs, reads, publicTerms⟩",
+        "def circuit : Circuit := ⟨{}, {}, formulas, pairs, reads, publicTerms, holes⟩",
         circuit.log_n, circuit.log_row
     )
     .unwrap();

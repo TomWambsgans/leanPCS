@@ -52,6 +52,36 @@ digest. These are long evaluations, not builds: run them outside the build lock.
 writes the Rust prover's setup, `W` and `Q` roots and its stream byte for byte on 2/2 vectors (the compiler's example at
 `2^9`, `2^10` positions; `crates/leanvm/rec/tests/lean_pi2_prover.rs`).
 
+## Status of the move to π2v3 (branch `lean-pi2v2`, on `c61d42e1`)
+
+The Rust's π2 is **π2v3** (`PI2.md` §2: π2v2's PIOP, the ports out of the copy argument by `T` and `Φ_k`, `P`
+committed in `Q` with its definition, `q` below `2N`; on the EIP's PCS claims: each commitment its root and
+out-of-domain answer, `Q` sixteen slots, its claims the identity's, the pushes' after `ρ`, the sum). **The whole
+leanVM line builds on π2v3** (sorry-free, the guards pass), the end theorems now about π2v3:
+
+* **`RecPiop`**: logUp with poles, the copy argument over the internal positions and the ports by `T`
+  (`(4N − 1 + Σ_j d_j)/|F|`), both identities below `3N` (`(3N − 1)/|F|`), `Q`'s identity and pushes' claims (round 2
+  `2^r/|F|`); `qClaim_of_eval` (completeness).
+* **`RecStatement`**: π2v3's verifier (`Φ_k` by rows from `Data.holes`, the inversion with `B`, `Q`'s three claims on
+  sixteen slots, `m + 4` variables, the out-of-domain answers read after each root, `s` among the values).
+* **`RecCompose`**: `pi2RoundErr = 2^-141.33`, `pi2Bound` unchanged (128.93 bits as `Q/ε`); the tables' layer on
+  sixteen slots; the Fiat–Shamir layer on the `1016`-byte stream (`W`'s root at `472`, `Q`'s at `528`, each with its
+  answer; `Q`'s call of three claims, `28` variables); the honest prover (`Pi2Prover`: `h` zero at the holes, `P` and
+  `q_P`, the `2N` coset, `Φ` by the verifier's `phiAt`, the answers by `pi2Ood`) and its algebra (`KCircuit`: `q_P` in
+  `K`; `pi2_honest`); the bad challenges `2N |E|²` and, for a witness, `9N` points `t`; the completeness chain at `α`'s
+  `560`-byte input, `t`'s `88`-byte input, contract counts at most `3`. `delta2 ≤ 2^-164` as before.
+* **The data**: `Data.lean` is `f1e33516`'s circuit with its holes (`36` public terms, `17` elements), `Emitted.lean`
+  `7eac7544`'s, the π1 these Lean statements of π1 describe (main's π1 is on the EIP's claims; `UniKeccak` is not yet).
+
+**Not done**: (1) the openings switch (one `WhirBridge.Pcs` opening per claim, the IV of the PCS claims, the setup's
+answer in the IV, the union bound over lists dropped by `ood_binding_rom`): the openings keep `formal/`'s layout-word
+interface, and the out-of-domain answers are read but checked by nothing; (2) `Q`'s layout is `quotientChunks`' twelve
+slots, the empty slots forced zero by the read, while the Rust commits the plain sixteen-slot stack: with plain
+openings the empty slots are the prover's, and the soundness argument must allow them (`h` of degree below `2N`,
+`P`'s digit `0`), or the Rust must constrain them; (3) so the honest prover's `Q` stack is not the Rust's and
+`lean_pi2_prover`'s vectors are not regenerated; (4) rebasing onto π1 on the EIP's claims (main's `Data.lean` and
+`Emitted.lean`).
+
 ## The end theorems
 
 **Knowledge soundness** (`RealEnd.lean`, `FsClosed.lean`):

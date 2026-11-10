@@ -6,7 +6,7 @@ import RecCompose.Chan
 # π2's run: its public data and its success do not depend on the hashes
 
 `RecStatement.runWith F s iv input stream`, over any lawful monad and any permutation `F`, at any IV: it succeeds exactly
-when the stream has `pi2Bytes s` bytes (π2's public data, `W`'s and `Q`'s roots, the `2^r` fold values and `ξ`; the
+when the stream has `pi2Bytes s` bytes (π2's public data, `W`'s and `Q`'s roots and out-of-domain answers, the `2^r` fold values, `ξ` and `s`; the
 challenges read none), and then its public scalars are `pi2Pubs s input stream` (the statement's four words, then the
 public reads at their offsets) and its pair points theirs (`runWith_post`). So the run over the permutation and the
 run over Keccak-f[1600] at any other IV (`RecStatement.run`) agree on them (`run_ok_of_runWith`).
@@ -34,7 +34,7 @@ def pi2Pubs (s : RecStatement.Spec) (input : List UInt8) (stream : Array UInt8) 
 
 /-- **The bytes π2's verifier reads**: the public reads, `W`'s and `Q`'s roots, the `2^r` fold values and `ξ`. -/
 def pi2Bytes (s : RecStatement.Spec) : ℕ :=
-  (s.reads.map RecStatement.Read.bytes).sum + (32 + (32 + (24 * 2 ^ s.logRow + 24)))
+  (s.reads.map RecStatement.Read.bytes).sum + (32 + (24 + (32 + (24 + (24 * 2 ^ s.logRow + (24 + 24))))))
 
 section Generic
 
@@ -48,13 +48,16 @@ theorem reads_reduceWith (F : KeccakState → m KeccakState) (s : RecStatement.S
   refine reads_mono (reads_bind (reads_forIn RecStatement.Read.bytes pubsStep _ (fun rd b ↦ ?_) s.reads stmt)
     fun pubs _ ↦
       reads_bind reads_nextRoot fun wRoot _ ↦
+      reads_bind reads_nextScalar fun wOod _ ↦
       reads_bind (reads_sample F) fun α _ ↦
       reads_bind (reads_sample F) fun β _ ↦
       reads_bind (reads_sample F) fun γ _ ↦
       reads_bind reads_nextRoot fun qRoot _ ↦
+      reads_bind reads_nextScalar fun qOod _ ↦
       reads_bind (reads_sample F) fun t _ ↦
       reads_bind (reads_nextScalars _) fun a _ ↦
       reads_bind reads_nextScalar fun ξ _ ↦
+      reads_bind reads_nextScalar fun sv _ ↦
       reads_bind (reads_sample F) fun ρ _ ↦ reads_pure _) (by unfold pi2Bytes; omega) ?_
   · cases rd with
     | integer bytes =>
@@ -72,7 +75,7 @@ theorem reads_reduceWith (F : KeccakState → m KeccakState) (s : RecStatement.S
       rintro d cur st ⟨x, hx, hst⟩
       subst hx hst
       rfl
-  · rintro d cur r ⟨pubs, hpubs, w, -, α, -, β, -, γ, -, q, -, t, -, a, -, ξ, -, ρ, -, hr⟩
+  · rintro d cur r ⟨pubs, hpubs, w, -, wo, -, α, -, β, -, γ, -, q, -, qo, -, t, -, a, -, ξ, -, sv, -, ρ, -, hr⟩
     subst hr
     exact ⟨hpubs, rfl⟩
 

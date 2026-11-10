@@ -15,60 +15,59 @@ import RecPiop.Vanishing
 /-!
 # RecPiop: the soundness of π2's PIOP, generic over circuits
 
-π2 is the outer proof of the recursive EVM verifier for leanVM 42422001 (`crates/leanvm/rec`,
-`PI2.md`, `SPEC-REC.md` §2.3, §12; branch `leanvm-rec` @ 4247e37, the final PIOP: the setup as
-`κ`, `κ + σ` claimed at `β` and `ξ = κ(t) + βσ(t)` sent, no `h(t)`, the zero ports first). Its
-copy argument carries the computation: every position pulls `(w(ω_i), ω_i)` (but the holes) and
-pushes `(P(ω_i), σ(ω_i))`, `P = w + Σ_p I_p (E_p + w) + κ`. Everything here is generic in the
-layout (any `N`, row width, regions, blocks, `σ`, `κ`, ports): the circuit's optimisation can
-move on.
+π2 is the outer proof of the recursive EVM verifier (`crates/leanvm/rec`, `PI2.md`, `SPEC-REC.md` §2.3, §12), here
+**π2v3** (transcript `leanvm-rec-pi2v3`: π2v2's PIOP, the ports out of the copy argument, `P` committed in `Q` with
+its definition, `q` below `2N`, with `Q`'s claims on the EIP's plain point claims: the identity's, the pushes' after
+`ρ`, the sum; the setup as `κ`, `κ + σ` claimed at `β`, `ξ = κ(t) + βσ(t)` and `s = P(t)` sent, no
+`h(t)`). Its copy argument carries the computation over the internal positions: every non-hole pulls
+`(w(ω_i), ω_i)` and pushes `(P(ω_i) + κ(ω_i), σ(ω_i))`, `P = P_v = w + Σ_{p internal} I_p (E_p + w)` on `V_m`; the
+holes carry the ports, by the term `T = Σ_{port pairs} I_p (E_p + Φ_k)`. Everything here is generic in the layout
+(any `N`, row width, regions, blocks, `σ`, `κ`, ports, any `Φ` taking the public fingerprints at the holes).
 
 1. **The circuit** (`RecPiop.Circuit`): `Circuit` (regions of `Forward | Expr | Port` roles, the
    `Expr` formulas of degree at most two, aligned blocks, `σ`, `κ`, the ports); `Valid`, decided
    by `validate` (`validate_eq_true_iff`; `pi2::circuit::Circuit::validate` and
    `spec::Circuit::check_shape`: no formula reads a hole, `κ` only at expression slots, `σ` a
    bijection onto the non-holes and the ports' tags); `Satisfies`, the relation.
-2. **The copy argument in characteristic two** (`RecPiop.LogUp`, `RecPiop.Copy`):
+2. **The copy argument and the ports in characteristic two** (`RecPiop.LogUp`, `RecPiop.Copy`):
    * set-based logUp: the log-derivative sum of a family of (value, tag) pairs is zero as a
-     rational function exactly when every pair is even (`cleared_eq_zero_iff`); if some pair is
-     odd, at most `(|s| − 1)·|F|` points `(α, β)` make it zero with nonzero denominators
-     (`card_logSum_eq_zero_le`, Schwartz–Zippel on the cleared numerator, in leanerVM's
-     `sideProduct_collision` style; `prob_logSum_eq_zero_le`);
-   * every tag twice, so mod 2 is equality (`eq_of_even_of_pair`): the family zero mod 2 gives
-     every non-hole's pull equal to the push meant for it and every port's push equal to its
-     public fingerprint (`copy_of_even`, `copy_of_cleared_eq_zero`);
-   * the identities give the sum, holes out of the pulls through `1 + 1_S`
-     (`logSum_of_copyOK`); **`card_copyOK_le`**, **`prob_copyOK_le`**: a witness that does not
-     satisfy the circuit reaches the state after `α, β, γ` with probability at most
-     `(3N − 1 + Σ_j d_j)/|F|`; the ports' `d_j` are `0` (three limbs) and `1` (four limbs) for
+     rational function exactly when every pair is even (`cleared_eq_zero_iff`); **with poles**: plus one term
+     `c_k/(d(a_k) d(b_k))` per hole, the poles apart from the family's pairs, it is zero as a rational function
+     exactly when the family is even and every `c_k` zero, and otherwise at most `(|s| + 2|H| − 1)·|F|` points
+     `(α, β)` make it zero with nonzero denominators (`clearedP_ne_zero`, `card_poles_eq_zero_le`);
+   * every internal tag twice, so mod 2 is equality (`eq_of_even_of_pair`, `copy_of_even`);
+   * the identity gives the sum with poles (`logSum_of_copyOK`): at a non-hole `h = 1/d_pull + 1/d_push`, at the
+     hole of port `j` `h = c_j/(d(a_j) d(b_j))`, `c_j = E_p + F_j` the ports' term; **`card_copyOK_le`**,
+     **`prob_copyOK_le`**: a witness that does not satisfy the circuit reaches the state after `α, β, γ` with
+     probability at most `(4N − 1 + Σ_j d_j)/|F|`; the ports' `d_j` are `0` (three limbs) and `1` (four limbs) for
      limbs in `K` (`RecPiop.Ports`, `bind_elem`, `bind_root`).
-3. **The quotient identity** (`RecPiop.Indicator`, `RecPiop.Identity`, `RecPiop.Sum`): the
+3. **The quotient identities** (`RecPiop.Indicator`, `RecPiop.Identity`, `RecPiop.Sum`): the
    (block, role) indicators, one on their coset, zero on the rest of `V_m`, of degree at most
-   `N − 2^s` (`ind_eval_mem`, `ind_eval_not_mem`, `natDegree_ind_le`); the push polynomial takes
-   the pushes on `V_m`, `1_S` the holes (`pushPoly_eval`, `holePoly_eval`); the identity evaluates
-   on `V_m` to the copy argument's (`idPoly_eval_omega`, `copyOK_of_idPoly`); its degrees (`P` at
-   most `3(N − 1)`, the identity at most `5N − 1`, `natDegree_pushPoly_le`,
-   `natDegree_idPoly_le`) and Schwartz–Zippel in `t` (`card_idPoly_eval_eq_zero_le`); `Σ_V h` is
-   `h`'s top novel coefficient (`sum_tablePoly_omega`); `Z_V` is the digit `w_m`, what the
-   verifier evaluates (`zV_eq_digitPoly`, `zV_eval_eq`, `RecPiop.Vanishing`).
+   `N − 2^s` (`ind_eval_mem`, `ind_eval_not_mem`, `natDegree_ind_le`); the internal pushes with `κ` take the push
+   values on `V_m`, `1_S` the holes, `T` the ports' term (`pushPolyV_eval`, `holePoly_eval`, `tPoly_eval`); with
+   `P`'s definition `P + P_v + q_P Z_V`, the copy identity evaluates on `V_m` to the copy argument's
+   (`idPoly_eval_omega`, `copyOK_of_idPoly`); both identities have degree at most `3N − 1`
+   (`natDegree_idPoly_le`, `natDegree_defPoly_le`), Schwartz–Zippel in `t` (`card_idPoly_eval_eq_zero_le`);
+   `Σ_V h` is `h`'s top novel coefficient (`sum_tablePoly_omega`); `Z_V` is the digit `w_m`, what the verifier
+   evaluates (`zV_eq_digitPoly`, `zV_eval_eq`, `RecPiop.Vanishing`).
 4. **The dataflow lemma** (`RecPiop.Dataflow`): the copy constraints are the witness being a
    fixed point of the circuit's dataflow (`copy_iff_flow`, `satisfies_iff`): expression slots
    (`expr_slot`), constants (`constant_slot`), forward chains (`forward_slot`,
    `forward_chain`, `expr_chain`), and the pushes never read a hole (`push_congr_off_holes`).
 5. **The rounds** (`RecPiop.Rounds`, `RecPiop.Fold`): `piop`, π2's PIOP in `Compose.Piop`'s form
-   for any chain with π2's rounds (`W` → `α, β, γ`; `Q` → `t`; the fold values and `ξ` → `ρ`; the
-   claims), its errors proved: `(3N − 1 + Σ_j d_j)/|F|`, `(5N − 1)/|F|`, `(2^r − 1)/|F|`
-   (`sound_zero`, `sound_one`, `sound_two`; `W`'s fold binds the fold values,
-   `card_foldAt_eq_le`; with them and `ξ` right, `Q`'s claim is the identity at `t`,
-   `qClaim_iff`). In bits at `N = 2^24`, `r = 4`, `|F| = 2^192`, times the lists
-   `L_W = 9,952`, `L_Q = 3,564` (`RecPiop.Numbers`): 153.1, 140.6, 163.0.
+   for any chain with π2's rounds (`W` → `α, β, γ`; `Q` → `t`; the fold values, `ξ` and `s` → `ρ`; the
+   claims), its errors proved: `(4N − 1 + Σ_j d_j)/|F|`, `(3N − 1)/|F|`, `2^r/|F|`
+   (`sound_zero`, `sound_one`, `sound_two`; `W`'s fold binds the fold values, `card_foldAt_eq_le`; with them and
+   `ξ` right, `Q`'s pushes' claim is a nonzero line in `ρ` unless `s = P(t)` and `P`'s definition hold at `t`, and
+   then the identity's claim is the identity at `t`, `card_qClaim_le`). In bits at `N = 2^24`, `r = 4`,
+   `|F| = 2^192`, times the lists `L_W = 9,952`, `L_Q = 3,564` (`RecPiop.Numbers`): 152.7, 141.3, 162.9.
 
 **Left to the next layers** (named, not assumed here): the tables' layer `Model` (`W`'s candidate's
-polynomial and fold values with `cells_fold`, `Q`'s `h` and `q`, the setup's polynomials), the
-binding hypothesis `hbind` for the candidates (limbs in `K`: `Ports`), the verifier's arithmetic
-(the indicators' closed form `w_m/(Ẑ_s(t) + Ẑ_s(c_p))`, the zero coset's
-closed form, the fold's siblings), and the Fiat–Shamir layer and the openings (ListChainU's
-`hlink`: the openings' claims give `Post2`).
+polynomial and fold values with `cells_fold`, `Q`'s `h`, `q`, `P`, `q_P`, the setup's polynomials, the ports'
+`Φ_k` with their values at the holes, the identity's claim's constant `c_3`), the binding hypothesis `hbind` for the candidates
+(limbs in `K`: `Ports`), the verifier's arithmetic (the indicators' closed form `w_m/(Ẑ_s(t) + Ẑ_s(c_p))`, `Φ_k` by
+rows, the fold's siblings), and the Fiat–Shamir layer and the openings (ListChainU's `hlink`: the openings'
+claims give `Post2`).
 
 The build fails if a headline theorem's axioms grow beyond Lean's three standard ones.
 -/
@@ -104,10 +103,6 @@ The build fails if a headline theorem's axioms grow beyond Lean's three standard
 /-- info: 'RecPiop.Circuit.copy_of_even' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms RecPiop.Circuit.copy_of_even
-
-/-- info: 'RecPiop.Circuit.copy_of_cleared_eq_zero' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms RecPiop.Circuit.copy_of_cleared_eq_zero
 
 /-- info: 'RecPiop.Circuit.logSum_of_copyOK' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
@@ -181,10 +176,6 @@ The build fails if a headline theorem's axioms grow beyond Lean's three standard
 #guard_msgs in
 #print axioms RecPiop.Circuit.pair_unique
 
-/-- info: 'RecPiop.Circuit.pushPoly_eval' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms RecPiop.Circuit.pushPoly_eval
-
 /-- info: 'RecPiop.Circuit.holePoly_eval' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms RecPiop.Circuit.holePoly_eval
@@ -197,10 +188,6 @@ The build fails if a headline theorem's axioms grow beyond Lean's three standard
 #guard_msgs in
 #print axioms RecPiop.Circuit.copyOK_of_idPoly
 
-/-- info: 'RecPiop.Circuit.natDegree_pushPoly_le' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms RecPiop.Circuit.natDegree_pushPoly_le
-
 /-- info: 'RecPiop.Circuit.natDegree_idPoly_le' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms RecPiop.Circuit.natDegree_idPoly_le
@@ -208,6 +195,14 @@ The build fails if a headline theorem's axioms grow beyond Lean's three standard
 /-- info: 'RecPiop.Circuit.card_idPoly_eval_eq_zero_le' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms RecPiop.Circuit.card_idPoly_eval_eq_zero_le
+
+/-- info: 'RecPiop.Circuit.pushPolyV_eval' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecPiop.Circuit.pushPolyV_eval
+
+/-- info: 'RecPiop.Circuit.natDegree_pushPolyV_le' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecPiop.Circuit.natDegree_pushPolyV_le
 
 /-- info: 'RecPiop.SetupPolys.ofInterpolate' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
@@ -228,14 +223,6 @@ The build fails if a headline theorem's axioms grow beyond Lean's three standard
 /-- info: 'RecPiop.Circuit.bind_root' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms RecPiop.Circuit.bind_root
-
-/-- info: 'RecPiop.Circuit.qClaim_iff' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms RecPiop.Circuit.qClaim_iff
-
-/-- info: 'RecPiop.Circuit.qClaim_iff_normalised' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms RecPiop.Circuit.qClaim_iff_normalised
 
 /-- info: 'RecPiop.pre_post' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
@@ -276,3 +263,27 @@ The build fails if a headline theorem's axioms grow beyond Lean's three standard
 /-- info: 'RecPiop.Circuit.zV_eval_eq' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms RecPiop.Circuit.zV_eval_eq
+
+/-- info: 'RecPiop.card_poles_eq_zero_le' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecPiop.card_poles_eq_zero_le
+
+/-- info: 'RecPiop.clearedP_ne_zero' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecPiop.clearedP_ne_zero
+
+/-- info: 'RecPiop.Circuit.tPoly_eval' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecPiop.Circuit.tPoly_eval
+
+/-- info: 'RecPiop.Circuit.natDegree_defPoly_le' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecPiop.Circuit.natDegree_defPoly_le
+
+/-- info: 'RecPiop.card_pushComb_le' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecPiop.card_pushComb_le
+
+/-- info: 'RecPiop.Circuit.card_qClaim_le' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecPiop.Circuit.card_qClaim_le

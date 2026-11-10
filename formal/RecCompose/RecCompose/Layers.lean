@@ -17,8 +17,8 @@ compiled circuit's relation, but with probability `ε2 Q`) refined into the laye
 
 * **`Pi2FsLayer D`** (the Fiat–Shamir layer and the openings; **proved at the real deployment**, `pi2FsLayer_real`,
   `FsClosed.lean`): for every round-by-round
-  sound protocol on π2's rounds (`RecPiop.pi2Rounds 4`: `W`'s root then `α, β, γ`; `Q`'s root then `t`; the fold values
-  and `ξ` then `ρ`), its errors times the lists of the roots before them at most `e`, whose state before round `0` is a
+  sound protocol on π2's rounds (`RecPiop.pi2Rounds 4`: `W`'s root then `α, β, γ`; `Q`'s root then `t`; the fold values,
+  `ξ` and `s` then `ρ`), its errors times the lists of the roots before them at most `e`, whose state before round `0` is a
   property `P` of `W`'s candidate and whose last state follows from π2's checks (`all ≠ 0`) with the four claims true on
   the candidates (`Pi2ClaimsHold`), π2's experiment accepts while no candidate of `W` (as π2's extractor lists them) has
   `P`, with probability at most `pi2BoundE e Q`. It is `UniSound.FsLayer128` for π2: its proof is the port of
@@ -122,21 +122,22 @@ point, the multilinear extension the value (`opening::Claim`; `eqBits`, the firs
 def ClaimOn (L : PcsQuotient.Layout) (stack : Stk) (c : List E × E) : Prop :=
   ∑ i ∈ range (2 ^ L.vars), PcsQuotient.eqBits c.1 i * ofK (L.readEntry stack i) = c.2
 
-/-- **π2's four claims hold of the candidates**, for the run's inputs at the setup's roots: `W`'s (its fold at `ρ`) of
-`cW`, `Q`'s two (the combination at `t`, `h`'s top coefficient) of `cQ`, the setup's (at `β`, value `ξ`) of the setup's
-table (`Pi2Circuit.setupStack`). -/
+/-- **π2's five claims hold of the candidates** (π2v3), for the run's inputs at the setup's roots: `W`'s (its fold at
+`ρ`) of `cW`, `Q`'s three (the identity's, the pushes', `h`'s top coefficient) of `cQ`, the setup's (at `β`, value `ξ`)
+of the setup's table (`Pi2Circuit.setupStack`). -/
 def Pi2ClaimsHold (D : RecDeployment) (roots : RecSetupRoots) (inp : Inputs E) (cW cQ : Stk) : Prop :=
   let c := D.circuitAt roots.pi1
   let out := (Spec.of c.circuit).core.run inp
   ClaimOn (layoutsOf c.circuit.logN).1 cW (out.witnessPoint, out.fold) ∧
     ClaimOn (layoutsOf c.circuit.logN).2.1 cQ (out.quotientPoint, out.quotientValue) ∧
+    ClaimOn (layoutsOf c.circuit.logN).2.1 cQ (out.pushesPoint, out.pushesValue) ∧
     ClaimOn (layoutsOf c.circuit.logN).2.1 cQ (out.sumPoint, out.sumValue) ∧
     ClaimOn (layoutsOf c.circuit.logN).2.2 (fun j ↦ c.setupStack.getD j 0) (out.setupPoint, inp.ξ)
 
-/-- The opened transcript of a run's first two rounds, on the candidates `cW`, `cQ` (round `0`: `W`'s root, `α, β, γ`;
-round `1`: `Q`'s root, `t`). -/
-def pi2Opened (cW cQ : Stk) (inp : Inputs E) : Compose.Opened Stk E :=
-  [((some cW, []), [inp.α, inp.β, inp.γ]), ((some cQ, []), [inp.t])]
+/-- The opened transcript of a run's first two rounds, on the candidates `cW`, `cQ` (round `0`: `W`'s root, its
+out-of-domain answer `ow`, `α, β, γ`; round `1`: `Q`'s root, its answer `oq`, `t`). -/
+def pi2Opened (cW cQ : Stk) (ow oq : List E) (inp : Inputs E) : Compose.Opened Stk E :=
+  [((some cW, ow), [inp.α, inp.β, inp.γ]), ((some cQ, oq), [inp.t])]
 
 /-! ## The Fiat–Shamir layer -/
 
@@ -167,11 +168,11 @@ def Pi2FsLayer (D : RecDeployment) : Prop :=
     (∀ roots, ∀ j < 3, (pi2Fac j : ℝ≥0∞) * (R roots).err j ≤ e) →
     ∀ (P : RecSetupRoots → Pi2St → Stk → Prop),
       (∀ roots s c m, (R roots).pre s [] (some c, m) → P roots s c) →
-      (∀ roots (s : Pi2St) (cW cQ : Stk) (inp : Inputs E), inp.scalars = s.2 →
+      (∀ roots (s : Pi2St) (cW cQ : Stk) (ow oq : List E) (inp : Inputs E), inp.scalars = s.2 →
         inp.a.length = 2 ^ (Spec.of (D.circuitAt roots.pi1).circuit).core.logRow →
         ((Spec.of (D.circuitAt roots.pi1).circuit).core.run inp).all ≠ 0 →
         Pi2ClaimsHold D roots inp cW cQ →
-        (R roots).post s (pi2Opened cW cQ inp) (none, inp.a ++ [inp.ξ]) [inp.ρ]) →
+        (R roots).post s (pi2Opened cW cQ ow oq inp) (none, inp.a ++ [inp.ξ, inp.s]) [inp.ρ]) →
       ∀ (A : RecAdversary) (Q : ℕ), (∀ roots, QueryCostAtMost (A roots) permutationCallCost Q) →
         Pr{let z ← recSoundnessExperiment2 D A}[acc z = true ∧
           ¬ ∃ w ∈ outcomeCandidates D z, P (rts z) (pi2StmtOf D z) (stkOf w)] ≤ pi2BoundE e Q
@@ -233,10 +234,9 @@ has it, its limbs in `K` at the scalars the verifier reads.) -/
 structure Pi2Facts (D : RecDeployment) (C : Pi2Circuits D) where
   pairOf : RecSetupRoots → ℕ → RecPiop.Block × ℕ
   portOf : RecSetupRoots → ℕ → ℕ
-  nz : RecSetupRoots → ℕ
   pubOf : RecSetupRoots → List E → ℕ → List E
   spec : ∀ roots, SpecOf (Spec.of (D.circuitAt roots.pi1).circuit).core (C.G roots) UniComplete.Domain.basisE
-    (pairOf roots) (portOf roots) (nz roots) (pubOf roots)
+    (pairOf roots) (portOf roots) (pubOf roots)
   valid : ∀ roots, (C.G roots).Valid
   logN : ∀ roots, (C.G roots).logN = 24
   logW : ∀ roots, (C.G roots).logW = 4
@@ -252,22 +252,27 @@ noncomputable abbrev pi2Omega : ℕ → E := Heap.omega UniComplete.Domain.basis
 
 /-- **The tables' layer** (open, `lean-rec-compose`): for each setup, what the candidates stand for (`RecPiop.Model` of
 the compiled circuit: `W`'s polynomial `wP c`, of degree below `N`, taking the candidate's witness values on `V_m`, and
-its true fold values, the cells from them the row's cells `w(t + ω_x)`; `Q`'s `h` below `N` and `q` below `4N`; the
-setup's `σ`, `κ`), and the claims, true on the candidates, as the model's values: `Q`'s two the identity's combination
-`(1 + ρ') h(t) + ρ' q(t)` and `Σ_V h` the target, the setup's `ξ = κ(t) + β σ(t)`, `W`'s its true fold at `ρ`
-(`RecStatement.checks_claims_iff_post2`'s left side; the claims' points are `run_u`, `run_digitsScale`, `RecPiop`'s
-`sum_tablePoly_omega`). -/
+its true fold values, the cells from them the row's cells `w(t + ω_x)`; `Q`'s `h`, `P` below `N`, `q`, `q_P` below `2N`; the
+setup's `σ`, `κ`; the ports' `Φ`, `phiPoly`; the identity claim's constant `c_3`), and the claims, true on the
+candidates, as the model's values (π2v3): `Q`'s identity claim normalised (`idEq`), its pushes' claim (`pushEq`) and
+`Σ_V h = 0`, the setup's `ξ = κ(t) + β σ(t)`, `W`'s its true fold at `ρ` (`RecStatement.checks_claims_iff_post2`'s left
+side; the claims' values are `run_quotientValue`, `run_pushesValue`, their points `run_u`, `digitsScale_eq`,
+`RecPiop`'s `sum_tablePoly_omega`). -/
 structure Pi2Tables (D : RecDeployment) (C : Pi2Circuits D) where
   model : ∀ roots, RecPiop.Model (C.G roots) pi2Omega Stk
+  phi_eq : ∀ roots pub γ, (model roots).phi pub γ = phiPoly (C.G roots) UniComplete.Domain.basisE pub γ
+  idC_eq : ∀ roots, (model roots).idC = c3Of (Spec.of (D.circuitAt roots.pi1).circuit).core
   witness_eval : ∀ roots (c : Stk), ∀ i < (C.G roots).N,
     ((model roots).wP c).eval (pi2Omega i) = ofK (witnessOfStk D roots c i)
   claims : ∀ roots (cW cQ : Stk) (inp : Inputs E),
     ((Spec.of (D.circuitAt roots.pi1).circuit).core.run inp).all ≠ 0 → Pi2ClaimsHold D roots inp cW cQ →
-      ((Spec.of (D.circuitAt roots.pi1).circuit).core.run inp).combination =
-          (1 + ((Spec.of (D.circuitAt roots.pi1).circuit).core.run inp).rhoQ) * ((model roots).hP cQ).eval inp.t +
-            ((Spec.of (D.circuitAt roots.pi1).circuit).core.run inp).rhoQ * ((model roots).qP cQ).eval inp.t ∧
-        ((Spec.of (D.circuitAt roots.pi1).circuit).core.run inp).target =
-          ∑ i ∈ range (C.G roots).N, ((model roots).hP cQ).eval (pi2Omega i) ∧
+      idEq ((Spec.of (D.circuitAt roots.pi1).circuit).core.run inp) (c3Of (Spec.of (D.circuitAt roots.pi1).circuit).core)
+          ((Spec.of (D.circuitAt roots.pi1).circuit).core.run inp).rhoQ (((model roots).hP cQ).eval inp.t)
+          (((model roots).qP cQ).eval inp.t) (((model roots).pP cQ).eval inp.t) (((model roots).qPP cQ).eval inp.t)
+          (QuotientSecurity.sq^[(C.G roots).logN] inp.t) inp.s ∧
+        pushEq ((Spec.of (D.circuitAt roots.pi1).circuit).core.run inp) inp.ρ (((model roots).pP cQ).eval inp.t)
+          (((model roots).qPP cQ).eval inp.t) (QuotientSecurity.sq^[(C.G roots).logN] inp.t) inp.s ∧
+        ∑ i ∈ range (C.G roots).N, ((model roots).hP cQ).eval (pi2Omega i) = 0 ∧
         inp.ξ = (model roots).setup.κP.eval inp.t + inp.β * (model roots).setup.σP.eval inp.t ∧
         ((Spec.of (D.circuitAt roots.pi1).circuit).core.run inp).fold =
           RecPiop.foldAt (C.G roots).logW ((model roots).fold cW inp.t) inp.ρ
@@ -462,18 +467,18 @@ theorem pi2Piop_pre (C : Pi2Circuits D) (Fa : Pi2Facts D C) (T : Pi2Tables D C) 
 
 /-- **The protocol's last state follows from π2's check with true claims** (`checks_claims_iff_post2`). -/
 theorem pi2Piop_post (C : Pi2Circuits D) (Fa : Pi2Facts D C) (T : Pi2Tables D C) (roots : RecSetupRoots)
-    (s : Pi2St) (cW cQ : Stk) (inp : Inputs E) (hs : inp.scalars = s.2)
+    (s : Pi2St) (cW cQ : Stk) (ow oq : List E) (inp : Inputs E) (hs : inp.scalars = s.2)
     (ha : inp.a.length = 2 ^ (Spec.of (D.circuitAt roots.pi1).circuit).core.logRow)
     (hall : ((Spec.of (D.circuitAt roots.pi1).circuit).core.run inp).all ≠ 0)
     (hcl : Pi2ClaimsHold D roots inp cW cQ) :
-    (pi2Piop C Fa T roots).post s (pi2Opened cW cQ inp) (none, inp.a ++ [inp.ξ]) [inp.ρ] := by
+    (pi2Piop C Fa T roots).post s (pi2Opened cW cQ ow oq inp) (none, inp.a ++ [inp.ξ, inp.s]) [inp.ρ] := by
   have hS := Fa.spec roots
   have ha' : inp.a.length = 2 ^ (C.G roots).logW := by rw [ha, hS.logRow]
-  obtain ⟨hc, ht, hξ, hf⟩ := T.claims roots cW cQ inp hall hcl
-  have key := (checks_claims_iff_post2 hS (Fa.valid roots) inp (T.model roots) (fun s ↦ Fa.pubOf roots s.2) s
-    (by rw [hs]) cW cQ ha').mp ⟨hall, hc, ht, hξ, hf⟩
-  change RecPiop.post (C.G roots) pi2Omega (T.model roots) (fun s ↦ Fa.pubOf roots s.2) s (pi2Opened cW cQ inp)
-    (none, inp.a ++ [inp.ξ]) [inp.ρ]
+  obtain ⟨hi, hp, ht, hξ, hf⟩ := T.claims roots cW cQ inp hall hcl
+  have key := (checks_claims_iff_post2 hS (Fa.valid roots) inp (T.model roots) (T.phi_eq roots) (T.idC_eq roots)
+    (fun s ↦ Fa.pubOf roots s.2) s (by rw [hs]) cW cQ ha').mp ⟨hall, hi, hp, ht, hξ, hf⟩
+  change RecPiop.post (C.G roots) pi2Omega (T.model roots) (fun s ↦ Fa.pubOf roots s.2) s (pi2Opened cW cQ ow oq inp)
+    (none, inp.a ++ [inp.ξ, inp.s]) [inp.ρ]
   unfold RecPiop.post
   rw [ite_eq_right (by simp [pi2Opened]), ite_eq_right (by simp [pi2Opened]), ite_eq_left (by simp [pi2Opened])]
   exact ⟨cW, cQ, rfl, rfl, key.2.2⟩

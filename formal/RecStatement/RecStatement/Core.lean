@@ -1,37 +1,41 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Transcribed from `crates/leanvm/rec/src/pi2/verifier.rs`
 -- (`reduce`'s arithmetic after the transcript: `coeff`, `lin`, `formula`, the digits, the row's cells by the
--- siblings' fold, the blocks' `Ẑ_s(t)`, the groups' and the public side's fractions along `tag_walk`, the zero coset in
--- closed form, the pushes' sum, the identity, the one inversion, the claims), branch `leanvm-rec` @ 2b22581. `sq` is
+-- siblings' fold, the blocks' `Ẑ_s(t)`, the groups' fractions, the ports' `Φ_k` by rows, the internal pushes' and the
+-- ports' fractions, the identity, the one inversion, the claims), π2v3 (`leanvm-rec-pi2v3`: π2v2's PIOP on the
+-- EIP's plain point claims, `stack_vars`). `sq` is
 -- `formal/QuotientSecurity`'s (`Cantor.lean`).
 import Mathlib.Algebra.Field.Basic
 import QuotientSecurity.Cantor
 
 /-!
-# The verifier's arithmetic at `t`, over any field
+# The verifier's arithmetic at `t`, over any field (π2v3)
 
 `pi2::verifier::reduce` after it has read the stream and drawn its challenges: a function of the public scalars,
-`α, β, γ, t`, the fold values `a_k`, `ξ` and `ρ`, **generic in the field** as the Rust is generic in its
+`α, β, γ, t`, the fold values `a_k`, `ξ`, `s` and `ρ`, **generic in the field** as the Rust is generic in its
 `Scalar` (the deployed verifier runs it on `E`, `RecStatement.Verifier`; the lemmas, `RecStatement.Lemmas`, prove
 what it computes over any field of characteristic two). Every intermediate value is a field of `Out`, in the Rust's
 order (`PI2.md` §2, steps 1–7):
 
-1. the digits `w_0 … w_{m+2}`, `w_{l+1} = w_l² + w_l` (`sq`);
+1. the digits `w_0 … w_{m+1}`, `w_{l+1} = w_l² + w_l` (`sq`);
 2. the row's cells `v_c` by the siblings' fold (`cellsList`, `PI2.md` §9 lever 3a: the odd child is the even one
    plus the difference);
 3. `Ẑ_s(t)` for every block size (`zHat`), each group's indicators summed as one fraction `N_g/D_g`
    (`fraction`), `w_m` factored out;
-4. the public side, its terms along the walk (`walkDens`: `β ω_τ` updated by the bits that differ) and the zero
-   coset's closed form `β^(2^k−1)/F(Y)` (`cosetSum`);
-5. the pushes' sum `A/B` and the pull-less groups' `S_n/S_d` (`pushSums`);
-6. `d_pull`, `D_n`, `Y`, `X`; the one inversion of `S_d Y · w_{m+2} · D`; the digits' inverses down from
-   `1/w_{m+2}`;
-7. the claims: `W` at `(ρ, ρ², …, w_r, …, w_{m−1})` (`foldAt`'s value), `Q` at `(u, ρ', y_0, y_1)` and at the top
-   coefficient, the setup at `(w_0, …, w_{m−1}, β)`.
+4. the ports' `Φ_k(t)/w_m = G_n/G_d = Σ_J F_J/(w_r + ω_{y_J})` for each port role (`phiFrac`);
+5. the internal pushes' `A/B` over the pulling groups and the ports' `R_n/R_d = Σ_g (N_g/D_g)(E_g + Δ + Φ_k)` over
+   the pull-less ones (`pushSums`), `Δ = d_pull + d_push`, `d_pull = α + v_0 + βt`, `d_push = α + s + ξ`;
+6. `D_n`, `num_1`, `num_3`; the one inversion of `R_d Y · w_{m+1} · B · c_h D_n`; the digits' inverses down from
+   `1/w_{m+1}`;
+7. the claims, each a point of its stack (`stackVars`; past the table's coordinates, zeros): `W` at
+   `(ρ, ρ², …, w_r, …, w_{m−1})` (`foldAt`'s value), the setup at `(w_0, …, w_{m−1}, β)`, `Q` at `(u_0, …, u_m, ρ',
+   y_0, y_1)` (the identity's, weighing `P` and `q_P` by `c_3 = y_0 y_1/L_0`), at `(u_0, …, u_m, ρ, 1, 1)` (the
+   pushes') and at `(1^m, 0, 0, y_0, y_1)` (the top coefficient, value `0`).
 
-**Deviations, none changing a value**: the Rust skips a product by a coefficient equal to one and a zero
-coefficient of the subspace polynomial (here the product is taken: `1 · x = x`, `0 · x = 0`); `γ^g` is read from
-the list of powers as the Rust's `gammas[g]` (for `g = 0` the Rust takes the value itself, `gammas[0] = 1`); the
-inverse is the field's (the Rust's is the norm's, `RecStatement.Inverse`, the same value; the runner checks it).
+**Deviations, none changing a value**: the Rust skips a product by a coefficient equal to one and, for a one-pair
+group, its numerator `1` (here the products are taken: `1 · x = x`); `γ^g` is read from the list of powers as the
+Rust's `gammas[g]` (for `g = 0` the Rust takes the value itself, `gammas[0] = 1`); the inverse is the field's (the
+Rust's is the norm's, `RecStatement.Inverse`, the same value); a port role's fraction of no term (which the Rust's
+`Spec::of` never makes, and which would panic) is `(0, 1)`.
 -/
 
 namespace RecStatement
@@ -84,18 +88,16 @@ def powersList (γ : F) (n : ℕ) : List F := (List.range n).map (γ ^ ·)
 /-! ## The verifier's constants over `F` -/
 
 /-- **What the arithmetic is built from**, over `F`: the shape, the pairs (`(s, Ẑ_s(c_p))`), the groups, the
-normalised recursion's constants, the public terms (tag, value) and the walk's order, the zero coset (first tag, `k`,
-`w_k`'s coefficients), the highest power of `γ`, the extension's coordinates `(y_0, y_1)` and scale `s`, and the
-points `ω`. -/
+normalised recursion's constants, the ports of nonzero value by role (`(k, [(y_J, F_J)])`: the hole's row and the
+port's value), the highest power of `γ`, the extension's coordinates `(y_0, y_1)` and scale `s`, and the points
+`ω`. -/
 structure CoreSpec (F : Type) where
   logN : ℕ
   logRow : ℕ
   pairs : List (ℕ × F)
   groups : List (GroupF F)
   c : List F
-  publicTerms : List (ℕ × LinF F)
-  walk : List ℕ
-  zeroCoset : Option (ℕ × ℕ × List F)
+  phi : List (ℕ × List (ℕ × LinF F))
   maxGamma : ℕ
   y0 : F
   y1 : F
@@ -114,6 +116,7 @@ structure Inputs (F : Type) where
   t : F
   a : List F
   ξ : F
+  s : F
   ρ : F
 
 /-! ## The steps -/
@@ -163,74 +166,54 @@ def fraction : List F → F × F
 def groupDens (S : CoreSpec F) (zt : List F) (g : GroupF F) : List F :=
   g.pairs.map fun p ↦ let q := S.pairs.getD p (0, 0); zt.getD q.1 0 + q.2
 
-/-- `β ω_τ` along the walk: the first `β ω_τ`, each next the last one plus `β β_b` (`β_b = ω(2^b)`) for every bit `b`
-in which the tags differ. -/
-def betaTagNext (ω : ℕ → F) (β : F) (last : Option (ℕ × F)) (tag : ℕ) : F :=
-  match last with
-  | none => β * ω tag
-  | some (lt, lv) => (List.range 28).foldl (fun acc b ↦
-      if (lt ^^^ tag).testBit b then acc + β * ω (2 ^ b) else acc) lv
-
-/-- **The public terms' denominators** `α + F_J + β ω_τ`, in the walk's order. -/
-def walkDens (S : CoreSpec F) (gs pubs : List F) (α β : F) : List F :=
-  (S.walk.foldl (fun (acc : List F × Option (ℕ × F)) j ↦
-    let term := S.publicTerms.getD j (0, ⟨[], none⟩)
-    let bt := betaTagNext S.ω β acc.2 term.1
-    (acc.1 ++ [α + term.2.eval gs (fun c ↦ pubs.getD c 0) + bt], some (term.1, bt))) ([], none)).1
-
 /-- `x` squared `i` times: `x^(2^i)`. -/
 def sqIter (x : F) (i : ℕ) : F := (fun y ↦ y * y)^[i] x
 
-/-- One step of `subspace_coefficients`: `s(Σ a_i X^(2^i)) = Σ a_i² X^(2^(i+1)) + Σ a_i X^(2^i)`. -/
-def subspaceStep (a : List F) : List F :=
-  (List.range (a.length + 1)).map fun i ↦
-    (if i = 0 then 0 else a.getD (i - 1) 0 * a.getD (i - 1) 0) + a.getD i 0
+/-- **A port role's `Φ_k(t)/w_m` as one fraction** `G_n/G_d = Σ_J F_J/(w_r + ω_{y_J})`: from the first term
+`(F_0, w_r + ω_{y_0})`, `N ← N x + D F`, `D ← D x`. -/
+def phiFrac (ω : ℕ → F) (gs pubs : List F) (wr : F) : List (ℕ × LinF F) → F × F
+  | [] => (0, 1)
+  | (y, l) :: rest => rest.foldl (fun nd yl ↦
+      (nd.1 * (wr + ω yl.1) + nd.2 * yl.2.eval gs (fun c ↦ pubs.getD c 0), nd.2 * (wr + ω yl.1)))
+      (l.eval gs (fun c ↦ pubs.getD c 0), wr + ω y)
 
-/-- **`subspace_coefficients(k)`**: the coefficients `a_i` of `w_k = s^k = Σ_{i ≤ k} a_i X^(2^i)`, low first. -/
-def subspaceCoeffsF (k : ℕ) : List F := (List.range k).foldl (fun a _ ↦ subspaceStep a) [1]
+/-- `add` of the pushes' fractions: `(a, b) ↦ (a d + b X, b d)`, or the first term `(X, d)`. -/
+def addFrac : Option (F × F) → F → F → Option (F × F)
+  | some (a, b), x, d => some (a * d + b * x, b * d)
+  | none, x, d => some (x, d)
 
-/-- `b_rest`: `[β^(2^k − 2^0), …, β^(2^k − 2^(k−1)), 1]`, `b_rest_i = b_rest_{i+1} · β^(2^i)` down from `i = k − 1`. -/
-def bRestList (β : F) (k : ℕ) : List F :=
-  (List.range k).reverse.foldl (fun acc i ↦
-    (if i + 1 = k then sqIter β i else acc.headD 1 * sqIter β i) :: acc) [1]
-
-/-- **The zero coset's sum in closed form** `(β^(2^k−1), F(Y))`, `Y = α + β ω_c`,
-`F(Y) = Y^(2^k) + Σ_{i<k} a_i Y^(2^i) β^(2^k − 2^i)`. -/
-def cosetSum (ω : ℕ → F) (α β : F) (tag k : ℕ) (a : List F) : F × F :=
-  let y := α + β * ω tag
-  let rest := bRestList β k
-  ((rest.headD 1), (List.range k).foldl (fun f i ↦ f + a.getD i 0 * (sqIter y i * rest.getD i 1)) (sqIter y k))
-
-/-- The public side's fraction: the walked terms' and the zero coset's, combined. -/
-def publicSide (S : CoreSpec F) (gs pubs : List F) (α β : F) : Option (F × F) :=
-  let side := if S.publicTerms.isEmpty then none else some (fraction (walkDens S gs pubs α β))
-  let coset := S.zeroCoset.map fun (tag, k, a) ↦ cosetSum S.ω α β tag k a
-  match side, coset with
-  | some (n, d), some (nz, dz) => some (n * dz + d * nz, d * dz)
-  | side, none => side
-  | none, coset => coset
-
-/-- **One group's step of the pushes' sum**: a group adds `N_g X/D_g` to `A/B` (`X = E_g(v_{c ⊕ k_g}) + v_0`; one
-pair, `X/d`), and a pull-less group `N_g/D_g` to `S_n/S_d`. -/
-def pushStep (gs cells : List F) (v0 : F) (acc : Option (F × F) × Option (F × F)) (gf : GroupF F × (F × F)) :
-    Option (F × F) × Option (F × F) :=
+/-- **One group's step of the pushes' sums**: a pulling group adds `N_g X/D_g` to `A/B` (`X = E_g(v_{c ⊕ k_g}) +
+v_0`; one pair, `X/d`); a pull-less group adds `N_g X/(D_g G_d)` to `R_n/R_d`, `X = (E_g + Δ) G_d + w_m G_n` for its
+role's `Φ`, `E_g + Δ` (and `D_g`) for a role of no port of nonzero value. -/
+def pushStep (gs cells : List F) (v0 delta : F) (wPhi : List (ℕ × F × F))
+    (acc : Option (F × F) × Option (F × F)) (gf : GroupF F × (F × F)) : Option (F × F) × Option (F × F) :=
   let g := gf.1
   let nd := gf.2
-  let value := g.formula.eval gs (fun c ↦ cells.getD (c ^^^ g.role) 0) + v0
+  let e := g.formula.eval gs (fun c ↦ cells.getD (c ^^^ g.role) 0)
   let single := g.pairs.length = 1
-  let term := if single then value else nd.1 * value
-  let ab := match acc.1 with
-    | some (a, b) => some (a * nd.2 + b * term, b * nd.2)
-    | none => some (term, nd.2)
-  let s := if g.pulls then acc.2 else match acc.2 with
-    | some (a, b) => if single then some (a * nd.2 + b, b * nd.2) else some (a * nd.2 + b * nd.1, b * nd.2)
-    | none => some (nd.1, nd.2)
-  (ab, s)
+  if g.pulls then
+    let value := e + v0
+    (addFrac acc.1 (if single then value else nd.1 * value) nd.2, acc.2)
+  else
+    let vd : F × F := match wPhi.find? (·.1 = g.role) with
+      | some (_, n, d) => ((e + delta) * d + n, nd.2 * d)
+      | none => (e + delta, nd.2)
+    (acc.1, addFrac acc.2 (if single then vd.1 else nd.1 * vd.1) vd.2)
 
-/-- **The pushes' sum and the pull-less groups'** `(A, B, S_n, S_d)` (`pushStep` over the groups). -/
-def pushSums (S : CoreSpec F) (gs cells : List F) (v0 : F) (fracs : List (F × F)) : F × F × F × F :=
-  let r := (S.groups.zip fracs).foldl (pushStep gs cells v0) (none, none)
+/-- **The internal pushes' sum and the ports'** `(A, B, R_n, R_d)` (`pushStep` over the groups). -/
+def pushSums (S : CoreSpec F) (gs cells : List F) (v0 delta : F) (wPhi : List (ℕ × F × F))
+    (fracs : List (F × F)) : F × F × F × F :=
+  let r := (S.groups.zip fracs).foldl (pushStep gs cells v0 delta wPhi) (none, none)
   ((r.1.map (·.1)).getD 0, (r.1.map (·.2)).getD 1, (r.2.map (·.1)).getD 0, (r.2.map (·.2)).getD 1)
+
+/-- **The stacks' variables** (`stack_vars`): `W` `m`, `Q` `m + 4` (sixteen slots of `2^m`), the setup `m + 1`, each
+at least `24` (`MIN_CERTIFIED_STACK`) from `m = 20` (`CERTIFIED_FROM`), else at least `15` (`MIN_LOG_STACK`). -/
+def stackVars (m : ℕ) : ℕ × ℕ × ℕ :=
+  let least := if 20 ≤ m then 24 else 15
+  (max m least, max (m + 4) least, max (m + 1) least)
+
+/-- A point resized to a stack's variables (`resize(vars, 0)`): zeros past the table's coordinates. -/
+def padded (p : List F) (vars : ℕ) : List F := (p ++ List.replicate vars 0).take vars
 
 /-- **Every value the arithmetic computes**, in the Rust's order. -/
 structure Out (F : Type) where
@@ -238,41 +221,43 @@ structure Out (F : Type) where
   cells : List F
   zt : List F
   groupFracs : List (F × F)
-  publicDens : List F
-  publicSide : Option (F × F)
+  phis : List (ℕ × F × F)
   num : F
   den : F
-  sNum : F
-  sDen : F
+  rNum : F
+  rDen : F
   dPull : F
-  dNum : F
+  dPush : F
+  delta : F
+  ch : F
   y : F
-  x : F
-  publicNum : F
-  publicDen : F
+  dN : F
+  num1 : F
+  num3 : F
   p1 : F
   p2 : F
+  p3 : F
+  cd : F
   all : F
   invAll : F
+  invP3 : F
   invP2 : F
-  target : F
-  invP1 : F
   invTop : F
-  wInvs : List F
   rhoQ : F
-  combination : F
-  uList : List F
-  digitsScale : F
+  wInvs : List F
   quotientValue : F
+  pushesValue : F
+  uList : List F
   rhos : List F
   fold : F
   witnessPoint : List F
   quotientPoint : List F
+  pushesPoint : List F
   sumPoint : List F
   sumValue : F
   setupPoint : List F
 
-/-- `1/w_l = (1 + w_l)/w_{l+1}` down from `1/w_{m+2}`: the list `1/w_0, …, 1/w_{m+2}`. -/
+/-- `1/w_l = (1 + w_l)/w_{l+1}` down from `1/w_top`: the list `1/w_0, …, 1/w_top`. -/
 def wInvsList (w : List F) (top : ℕ) (invTop : F) : List F :=
   (List.range top).reverse.foldl (fun acc l ↦ ((1 + w.getD l 0) * acc.headD 0) :: acc) [invTop]
 
@@ -286,74 +271,84 @@ def CoreSpec.run (S : CoreSpec F) (inp : Inputs F) : Out F :=
   let m := S.logN
   let r := S.logRow
   let t := inp.t
-  let w := digitsList t (m + 3)
+  let w := digitsList t (m + 2)
   let cells := cellsList S.ω w r inp.a
   let v0 := cells.getD 0 0
   let zt := (List.range (S.maxLogRows + 1)).map fun s ↦ zHat S.c s t
   let fracs := S.groups.map fun g ↦ fraction (groupDens S zt g)
   let gs := powersList inp.γ (S.maxGamma + 1)
-  let dens := walkDens S gs inp.scalars inp.α inp.β
-  let side := publicSide S gs inp.scalars inp.α inp.β
-  let (num, den, sNum, sDen) := pushSums S gs cells v0 fracs
   let wm := w.getD m 0
-  let wTop := w.getD (m + 2) 0
+  let wTop := w.getD (m + 1) 0
+  let phis := S.phi.map fun kt ↦ (kt.1, phiFrac S.ω gs inp.scalars (w.getD r 0) kt.2)
   let dPull := inp.α + v0 + inp.β * t
-  let dNum := (inp.α + v0 + inp.ξ) * den + wm * num
-  let y := dPull * dNum + wm * den
-  let x := (sDen + wm * sNum) * dNum + dPull * den * sDen
-  let publicNum := (side.map (·.1)).getD 0
-  let publicDen := (side.map (·.2)).getD 1
-  let p1 := sDen * y
+  let dPush := inp.α + inp.s + inp.ξ
+  let delta := dPull + dPush
+  let wPhi := phis.map fun knd ↦ (knd.1, wm * knd.2.1, knd.2.2)
+  let (num, den, rNum, rDen) := pushSums S gs cells v0 delta wPhi fracs
+  let ch := dPull * dPush
+  let y := ch + wm
+  let dN := (inp.α + v0 + inp.ξ) * den + wm * num
+  let num1 := delta * rDen + wm * rNum
+  let num3 := dN + dPush * den
+  let p1 := rDen * y
   let p2 := p1 * wTop
-  let all := p2 * publicDen
+  let p3 := p2 * den
+  let cd := ch * dN
+  let all := p3 * cd
   let invAll := all⁻¹
-  let invP2 := invAll * publicDen
-  let target := publicNum * invAll * p2
-  let invP1 := invP2 * wTop
+  let invP3 := invAll * cd
+  let invP2 := invP3 * den
   let invTop := invP2 * p1
-  let wInvs := wInvsList w (m + 2) invTop
-  let rhoQ := wm * den * sDen * invP1
-  let combination := x * invP1
-  let uList := (List.range (m + 2)).map fun l ↦ 1 + wInvs.getD l 0 + wInvs.getD (l + 1) 0
-  let digitsScale := t * wInvs.getD (m + 2) 0
-  let quotientValue := S.scale * digitsScale * combination
+  let rhoQ := wm * (invP2 * (rDen * wTop))
+  let wInvs := wInvsList w (m + 1) invTop
+  let l0 := (1 + S.y0) * (1 + S.y1)
+  let c3 := S.y0 * S.y1 * l0⁻¹
+  let scaleL0 := S.scale * l0⁻¹
+  let st := S.scale * t
+  let quotientValue := st * invP3 * (num1 * den + c3 * (rDen * (ch * (wm * (inp.s * den)) + num3)))
+  let pushesValue := scaleL0 * t * ((1 + inp.ρ) * (wm * wm * (inp.s * den)) + inp.ρ * num3) * (invP3 * p1) *
+    wInvs.getD m 0
+  let uList := (List.range (m + 1)).map fun l ↦ 1 + wInvs.getD l 0 + wInvs.getD (l + 1) 0
+  let vars := stackVars m
   let rhos := (List.range r).map fun l ↦ sqIter inp.ρ l
   { digits := w
     cells := cells
     zt := zt
     groupFracs := fracs
-    publicDens := dens
-    publicSide := side
+    phis := phis
     num := num
     den := den
-    sNum := sNum
-    sDen := sDen
+    rNum := rNum
+    rDen := rDen
     dPull := dPull
-    dNum := dNum
+    dPush := dPush
+    delta := delta
+    ch := ch
     y := y
-    x := x
-    publicNum := publicNum
-    publicDen := publicDen
+    dN := dN
+    num1 := num1
+    num3 := num3
     p1 := p1
     p2 := p2
+    p3 := p3
+    cd := cd
     all := all
     invAll := invAll
+    invP3 := invP3
     invP2 := invP2
-    target := target
-    invP1 := invP1
     invTop := invTop
-    wInvs := wInvs
     rhoQ := rhoQ
-    combination := combination
-    uList := uList
-    digitsScale := digitsScale
+    wInvs := wInvs
     quotientValue := quotientValue
+    pushesValue := pushesValue
+    uList := uList
     rhos := rhos
     fold := foldW rhos r inp.a
-    witnessPoint := rhos ++ (w.drop r).take (m - r)
-    quotientPoint := uList ++ [rhoQ, S.y0, S.y1]
-    sumPoint := List.replicate m 1 ++ [0, 0, 0] ++ [S.y0, S.y1]
-    sumValue := S.scale * target
-    setupPoint := w.take m ++ [inp.β] }
+    witnessPoint := padded (rhos ++ (w.drop r).take (m - r)) vars.1
+    quotientPoint := padded (uList ++ [rhoQ, S.y0, S.y1]) vars.2.1
+    pushesPoint := padded (uList ++ [inp.ρ, 1, 1]) vars.2.1
+    sumPoint := padded (List.replicate m 1 ++ [0, 0] ++ [S.y0, S.y1]) vars.2.1
+    sumValue := 0
+    setupPoint := padded (w.take m ++ [inp.β]) vars.2.2 }
 
 end RecStatement

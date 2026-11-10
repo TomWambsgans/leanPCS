@@ -308,6 +308,233 @@ theorem prob_logSum_eq_zero_le [SampleableType F] (s : Finset ι) (e : ι → F 
 
 end Count
 
+/-! ## Poles of two denominators
+
+π2v2's copy sum (`PI2.md` §7) is the log-derivative sum of the internal positions' pulls and pushes plus one term
+`c_k / (d(a_k) d(b_k))` per hole, `c_k` the ports' term `T` there, `a_k` the hole's pull pair and `b_k` its push pair
+(to the outside tag). The poles `a_k` are apart from every pair of the family and from each other, the `b_k` too:
+then the sum is zero as a rational function exactly when the family is even and every `c_k` is zero
+(`clearedP_ne_zero`), and otherwise at most `(|s| + 2|H| − 1)·|F|` points `(α, β)` make it zero with nonzero
+denominators (`card_poles_eq_zero_le`). -/
+
+section Poles
+
+open MvPolynomial
+
+variable [DecidableEq F] {κ : Type} [DecidableEq κ]
+
+/-- The substitution `X₀ = q₀.1 + q₀.2 Y`, `X₁ = Y`: it kills `q₀`'s denominator and no other pair's. -/
+noncomputable def killAt (q₀ : F × F) : MvPolynomial (Fin 2) F →ₐ[F] Polynomial F :=
+  aeval ![Polynomial.C q₀.1 + Polynomial.C q₀.2 * Polynomial.X, Polynomial.X]
+
+theorem killAt_linD (q₀ q : F × F) :
+    killAt q₀ (linD q) = Polynomial.C (q₀.1 + q.1) + Polynomial.C (q₀.2 + q.2) * Polynomial.X := by
+  simp only [killAt, linD, map_add, map_mul, aeval_X, aeval_C, Matrix.cons_val_zero,
+    Matrix.cons_val_one, Polynomial.algebraMap_eq]
+  ring
+
+theorem killAt_C (q₀ : F × F) (x : F) : killAt q₀ (C x) = Polynomial.C x := by
+  simp [killAt, Polynomial.algebraMap_eq]
+
+theorem killAt_self (q₀ : F × F) : killAt q₀ (linD q₀) = 0 := by
+  rw [killAt_linD, CharTwo.add_self_eq_zero, CharTwo.add_self_eq_zero, Polynomial.C_0, zero_mul,
+    add_zero]
+
+theorem killAt_ne {q₀ q : F × F} (hq : q ≠ q₀) : killAt q₀ (linD q) ≠ 0 := by
+  intro h0
+  rw [killAt_linD] at h0
+  have h1 := congrArg (fun p => Polynomial.coeff p 0) h0
+  have h2 := congrArg (fun p => Polynomial.coeff p 1) h0
+  simp only [Polynomial.coeff_add, Polynomial.coeff_zero, Polynomial.coeff_C,
+    Polynomial.coeff_C_mul, Polynomial.coeff_X_zero, Polynomial.coeff_X_one] at h1 h2
+  simp at h1 h2
+  apply hq
+  exact Prod.ext (CharTwo.add_eq_zero.mp h1).symm (CharTwo.add_eq_zero.mp h2).symm
+
+/-- The pairs of a family with poles: its odd pairs and both poles of every term. -/
+def polesU (O : Finset (F × F)) (H : Finset κ) (a b : κ → F × F) : Finset (F × F) :=
+  O ∪ (H.image a ∪ H.image b)
+
+/-- **The cleared polynomial with poles**: the numerator of
+`Σ_{q ∈ O} 1/d(q) + Σ_{k ∈ H} c_k/(d(a_k) d(b_k))` over the product of `polesU`'s denominators. -/
+noncomputable def clearedP (O : Finset (F × F)) (H : Finset κ) (a b : κ → F × F) (c : κ → F) :
+    MvPolynomial (Fin 2) F :=
+  ∑ q ∈ O, ∏ q' ∈ (polesU O H a b).erase q, linD q' +
+    ∑ k ∈ H, C (c k) * ∏ q' ∈ ((polesU O H a b).erase (a k)).erase (b k), linD q'
+
+/-- **The poles are apart** from the family's pairs and from each other. -/
+structure PolesApart (O : Finset (F × F)) (H : Finset κ) (a b : κ → F × F) : Prop where
+  a_O : ∀ k ∈ H, a k ∉ O
+  b_O : ∀ k ∈ H, b k ∉ O
+  a_b : ∀ k ∈ H, ∀ k' ∈ H, a k ≠ b k'
+  a_inj : ∀ k ∈ H, ∀ k' ∈ H, a k = a k' → k = k'
+
+theorem mem_polesU_left {O : Finset (F × F)} {H : Finset κ} {a b : κ → F × F} {q : F × F} (hq : q ∈ O) :
+    q ∈ polesU O H a b := Finset.mem_union_left _ hq
+
+theorem mem_polesU_a {O : Finset (F × F)} {H : Finset κ} {a b : κ → F × F} {k : κ} (hk : k ∈ H) :
+    a k ∈ polesU O H a b := Finset.mem_union_right _ (Finset.mem_union_left _ (Finset.mem_image_of_mem a hk))
+
+theorem mem_polesU_b {O : Finset (F × F)} {H : Finset κ} {a b : κ → F × F} {k : κ} (hk : k ∈ H) :
+    b k ∈ polesU O H a b := Finset.mem_union_right _ (Finset.mem_union_right _ (Finset.mem_image_of_mem b hk))
+
+/-- **The cleared polynomial with poles is the sum's numerator.** -/
+theorem eval_clearedP {O : Finset (F × F)} {H : Finset κ} {a b : κ → F × F} (c : κ → F)
+    (hA : PolesApart O H a b) (α β : F) (h : ∀ q ∈ polesU O H a b, den α β q ≠ 0) :
+    eval ![α, β] (clearedP O H a b c) = (∏ q ∈ polesU O H a b, den α β q) *
+      (∑ q ∈ O, (den α β q)⁻¹ + ∑ k ∈ H, c k * (den α β (a k) * den α β (b k))⁻¹) := by
+  unfold clearedP
+  rw [map_add, map_sum, map_sum, mul_add, Finset.mul_sum, Finset.mul_sum]
+  congr 1
+  · refine Finset.sum_congr rfl fun q hq => ?_
+    have hqU : q ∈ polesU O H a b := mem_polesU_left hq
+    rw [map_prod]
+    simp only [eval_linD]
+    rw [← Finset.mul_prod_erase _ (fun q => den α β q) hqU]
+    field_simp [h q hqU]
+  · refine Finset.sum_congr rfl fun k hk => ?_
+    have haU : a k ∈ polesU O H a b := mem_polesU_a hk
+    have hbU : b k ∈ polesU O H a b := mem_polesU_b hk
+    have hbU' : b k ∈ (polesU O H a b).erase (a k) :=
+      Finset.mem_erase.mpr ⟨(hA.a_b k hk k hk).symm, hbU⟩
+    rw [map_mul, eval_C, map_prod]
+    simp only [eval_linD]
+    rw [← Finset.mul_prod_erase _ (fun q => den α β q) haU,
+      ← Finset.mul_prod_erase _ (fun q => den α β q) hbU']
+    have ha0 := h _ haU
+    have hb0 := h _ hbU
+    field_simp
+
+theorem totalDegree_clearedP_le (O : Finset (F × F)) (H : Finset κ) (a b : κ → F × F) (c : κ → F) :
+    (clearedP O H a b c).totalDegree ≤ (polesU O H a b).card - 1 := by
+  unfold clearedP
+  refine (totalDegree_add _ _).trans (max_le ?_ ?_)
+  · refine (totalDegree_finsetSum _ _).trans (Finset.sup_le fun q hq => ?_)
+    refine (totalDegree_finsetProd _ _).trans ?_
+    calc ∑ q' ∈ (polesU O H a b).erase q, (linD q').totalDegree
+        ≤ ∑ _q' ∈ (polesU O H a b).erase q, 1 := Finset.sum_le_sum fun q' _ => totalDegree_linD_le q'
+      _ = _ := by
+        rw [Finset.sum_const, smul_eq_mul, mul_one, Finset.card_erase_of_mem (mem_polesU_left hq)]
+  · refine (totalDegree_finsetSum _ _).trans (Finset.sup_le fun k hk => ?_)
+    refine (totalDegree_mul _ _).trans ?_
+    rw [totalDegree_C, zero_add]
+    refine (totalDegree_finsetProd _ _).trans ?_
+    calc ∑ q' ∈ ((polesU O H a b).erase (a k)).erase (b k), (linD q').totalDegree
+        ≤ ∑ _q' ∈ ((polesU O H a b).erase (a k)).erase (b k), 1 :=
+          Finset.sum_le_sum fun q' _ => totalDegree_linD_le q'
+      _ ≤ _ := by
+        rw [Finset.sum_const, smul_eq_mul, mul_one]
+        refine Finset.card_erase_le.trans (le_of_eq ?_)
+        rw [Finset.card_erase_of_mem (mem_polesU_a hk)]
+
+/-- **The cleared polynomial with poles is not zero** if the family has an odd pair or some term is not zero. -/
+theorem clearedP_ne_zero {O : Finset (F × F)} {H : Finset κ} {a b : κ → F × F} (c : κ → F)
+    (hA : PolesApart O H a b) (hne : O.Nonempty ∨ ∃ k ∈ H, c k ≠ 0) : clearedP O H a b c ≠ 0 := by
+  rcases hne with ⟨q₀, hq₀⟩ | ⟨k₀, hk₀, hc₀⟩
+  · intro h
+    have himg : killAt q₀ (clearedP O H a b c) =
+        ∏ q' ∈ (polesU O H a b).erase q₀, killAt q₀ (linD q') := by
+      unfold clearedP
+      rw [map_add, map_sum, map_sum, Finset.sum_eq_single q₀, Finset.sum_eq_zero, add_zero, map_prod]
+      · intro k hk
+        rw [map_mul, map_prod]
+        refine mul_eq_zero_of_right _ (Finset.prod_eq_zero (i := q₀) ?_ (killAt_self q₀))
+        refine Finset.mem_erase.mpr ⟨fun h' => hA.b_O k hk (h' ▸ hq₀), Finset.mem_erase.mpr
+          ⟨fun h' => hA.a_O k hk (h' ▸ hq₀), mem_polesU_left hq₀⟩⟩
+      · intro q hq hqq
+        rw [map_prod]
+        exact Finset.prod_eq_zero (Finset.mem_erase.mpr ⟨fun h' => hqq h'.symm, mem_polesU_left hq₀⟩)
+          (killAt_self q₀)
+      · intro h'
+        exact absurd hq₀ h'
+    have : ∏ q' ∈ (polesU O H a b).erase q₀, killAt q₀ (linD q') ≠ 0 :=
+      Finset.prod_ne_zero_iff.mpr fun q' hq' => killAt_ne (Finset.ne_of_mem_erase hq')
+    rw [← himg, h, map_zero] at this
+    exact this rfl
+  · intro h
+    have hmem : ∀ k ∈ H, k ≠ k₀ → a k₀ ∈ ((polesU O H a b).erase (a k)).erase (b k) := fun k hk hkk =>
+      Finset.mem_erase.mpr ⟨hA.a_b k₀ hk₀ k hk, Finset.mem_erase.mpr
+        ⟨fun h' => hkk (hA.a_inj k₀ hk₀ k hk h').symm, mem_polesU_a hk₀⟩⟩
+    have himg : killAt (a k₀) (clearedP O H a b c) = Polynomial.C (c k₀) *
+        ∏ q' ∈ ((polesU O H a b).erase (a k₀)).erase (b k₀), killAt (a k₀) (linD q') := by
+      unfold clearedP
+      rw [map_add, map_sum, map_sum, Finset.sum_eq_zero, zero_add, Finset.sum_eq_single k₀]
+      · rw [map_mul, map_prod, killAt_C]
+      · intro k hk hkk
+        rw [map_mul, map_prod]
+        exact mul_eq_zero_of_right _ (Finset.prod_eq_zero (hmem k hk hkk) (killAt_self _))
+      · intro h'
+        exact absurd hk₀ h'
+      · intro q hq
+        rw [map_prod]
+        exact Finset.prod_eq_zero (Finset.mem_erase.mpr ⟨fun h' => hA.a_O k₀ hk₀ (by rw [h']; exact hq),
+          mem_polesU_a hk₀⟩) (killAt_self _)
+    have : Polynomial.C (c k₀) *
+        ∏ q' ∈ ((polesU O H a b).erase (a k₀)).erase (b k₀), killAt (a k₀) (linD q') ≠ 0 :=
+      mul_ne_zero (Polynomial.C_ne_zero.mpr hc₀) (Finset.prod_ne_zero_iff.mpr fun q' hq' =>
+        killAt_ne (Finset.ne_of_mem_erase (Finset.mem_of_mem_erase hq')))
+    rw [← himg, h, map_zero] at this
+    exact this rfl
+
+/-- **logUp with poles, counting form.** If the family has an odd pair or some term is not zero, at most
+`(|s| + 2|H| − 1)·|F|` points `(α, β)` have every denominator nonzero and the sum zero. -/
+theorem card_poles_eq_zero_le [Fintype F] (s : Finset ι) (e : ι → F × F) (H : Finset κ)
+    (a b : κ → F × F) (c : κ → F) (ha : ∀ x ∈ s, ∀ k ∈ H, e x ≠ a k)
+    (hb : ∀ x ∈ s, ∀ k ∈ H, e x ≠ b k) (hab : ∀ k ∈ H, ∀ k' ∈ H, a k ≠ b k')
+    (hainj : ∀ k ∈ H, ∀ k' ∈ H, a k = a k' → k = k') (hne : ¬ EvenAll s e ∨ ∃ k ∈ H, c k ≠ 0) :
+    (univ.filter fun ab : F × F => (∀ x ∈ s, den ab.1 ab.2 (e x) ≠ 0) ∧
+        (∀ k ∈ H, den ab.1 ab.2 (a k) ≠ 0 ∧ den ab.1 ab.2 (b k) ≠ 0) ∧
+        logSum s e ab.1 ab.2 + ∑ k ∈ H, c k * (den ab.1 ab.2 (a k) * den ab.1 ab.2 (b k))⁻¹ = 0).card ≤
+      (s.card + 2 * H.card - 1) * Fintype.card F := by
+  classical
+  set O := oddPairs s e
+  have hOs : ∀ q ∈ O, ∃ x ∈ s, e x = q := fun q hq =>
+    Finset.mem_image.mp (Finset.mem_filter.mp hq).1
+  have hA : PolesApart O H a b :=
+    ⟨fun k hk hO => by obtain ⟨x, hx, he⟩ := hOs _ hO; exact ha x hx k hk he,
+     fun k hk hO => by obtain ⟨x, hx, he⟩ := hOs _ hO; exact hb x hx k hk he, hab, hainj⟩
+  have hne' : O.Nonempty ∨ ∃ k ∈ H, c k ≠ 0 := by
+    rcases hne with h | h
+    · exact Or.inl (oddPairs_nonempty s e h)
+    · exact Or.inr h
+  have hP := clearedP_ne_zero c hA hne'
+  have hU : (polesU O H a b).card ≤ s.card + 2 * H.card := by
+    unfold polesU
+    refine (Finset.card_union_le _ _).trans ?_
+    have h1 : O.card ≤ s.card := card_oddPairs_le s e
+    have h2 := (Finset.card_union_le (H.image a) (H.image b)).trans
+      (Nat.add_le_add (Finset.card_image_le (s := H) (f := a)) (Finset.card_image_le (s := H) (f := b)))
+    omega
+  have hdeg : (clearedP O H a b c).totalDegree ≤ s.card + 2 * H.card - 1 :=
+    (totalDegree_clearedP_le O H a b c).trans (Nat.sub_le_sub_right hU 1)
+  have hsz := card_zeros_le (clearedP O H a b c) hP hdeg
+  rw [card_pairs_eq]
+  refine (Finset.card_le_card fun v hv => ?_).trans hsz
+  rw [Finset.mem_filter] at hv ⊢
+  refine ⟨Finset.mem_univ _, ?_⟩
+  obtain ⟨hd, hk, hs⟩ := hv.2
+  have hv' : (![v 0, v 1] : Fin 2 → F) = v := by
+    funext i
+    fin_cases i <;> rfl
+  have hden : ∀ q ∈ polesU O H a b, den (v 0) (v 1) q ≠ 0 := by
+    intro q hq
+    rcases Finset.mem_union.mp hq with hq | hq
+    · obtain ⟨x, hx, rfl⟩ := hOs q hq
+      exact hd x hx
+    · rcases Finset.mem_union.mp hq with hq | hq
+      · obtain ⟨k, hk', rfl⟩ := Finset.mem_image.mp hq
+        exact (hk k hk').1
+      · obtain ⟨k, hk', rfl⟩ := Finset.mem_image.mp hq
+        exact (hk k hk').2
+  have := eval_clearedP c hA (v 0) (v 1) hden
+  rw [hv'] at this
+  rw [this]
+  unfold logSum at hs
+  rw [sum_eq_sum_oddPairs s e fun q => (den (v 0) (v 1) q)⁻¹] at hs
+  rw [hs, mul_zero]
+
+end Poles
+
 /-! ## Every tag twice -/
 
 /-- **Mod 2 is equality when every tag occurs twice.** If every pair of the family is even, `x` is a

@@ -498,9 +498,9 @@ theorem pcsCalls_cc (pi1 : List (List CallWord)) (sr : List UInt8) (stream : Arr
           claimWords r.witness,
         [rootWordOfBytes sr, (RecStatement.layoutWords cc.logN).2.2, UniStatement.numberWord 1] ++
           claimWords r.setup,
-        [streamWord stream 504, (RecStatement.layoutWords cc.logN).2.1, UniStatement.numberWord 2] ++
-          claimWords r.quotient ++ claimWords r.sum] := by
-  have h1 : rootsAt cc.reads = [0, 32, 472, 504] := by decide
+        [streamWord stream 528, (RecStatement.layoutWords cc.logN).2.1, UniStatement.numberWord 3] ++
+          claimWords r.quotient ++ claimWords r.pushes ++ claimWords r.sum] := by
+  have h1 : rootsAt cc.reads = [0, 32, 472, 528] := by decide
   have h2 : rootReads cc.reads = 2 := by decide
   unfold pcsCalls
   rw [h1, h2]
@@ -523,7 +523,7 @@ theorem pi1Lay_vars (k : ℕ) (hk : k < 3) : UniStatement.layoutWordVars (pi1Lay
 
 theorem hexOne_count : countOfWord hexOne = some 1 := by decide
 
-theorem countOfWord_numberWord_two : countOfWord (UniStatement.numberWord 2) = some 2 := by decide
+theorem countOfWord_numberWord_three : countOfWord (UniStatement.numberWord 3) = some 3 := by decide
 
 section Pi1
 
@@ -602,10 +602,12 @@ theorem pi1Open (D : RecDeployment) (hD : RecDeployment.Real D) (π : P2Pf) (ch 
 /-! ## π2's three calls -/
 
 theorem msgK_p2View_0 (π : P2Pf) :
-    msgK p2View π 0 = (some (toB (UniStatement.rootOf (UniSound.halvesAt π.proof.stream 472))), []) := rfl
+    msgK p2View π 0 = (some (toB (UniStatement.rootOf (UniSound.halvesAt π.proof.stream 472))),
+      (List.range 1).map fun k => UniSound.scalarAt π.proof.stream (504 + 24 * k)) := rfl
 
 theorem msgK_p2View_1 (π : P2Pf) :
-    msgK p2View π 1 = (some (toB (UniStatement.rootOf (UniSound.halvesAt π.proof.stream 504))), []) := rfl
+    msgK p2View π 1 = (some (toB (UniStatement.rootOf (UniSound.halvesAt π.proof.stream 528))),
+      (List.range 1).map fun k => UniSound.scalarAt π.proof.stream (560 + 24 * k)) := rfl
 
 /-- **`W`'s call** is F2's opening with the Statement's early stop on `W`'s layout, on the composed opening's input. -/
 theorem wOpen (D : RecDeployment) (π : P2Pf) (ch : List (List E)) (hlen : π.proof.stream.size = sLen) :
@@ -667,28 +669,33 @@ theorem sOpen (D : RecDeployment) (π : P2Pf) (ch : List (List E)) :
     (clS π ch) _ (by rw [clS_claims]; rfl) π.proof.setup, Bridge.keccakCallsWith_queryPermutation]
   rfl
 
-/-- **`Q`'s call** (its two claims), on `Q`'s layout. -/
+/-- **`Q`'s call** (its three claims), on `Q`'s layout. -/
 theorem qOpen (D : RecDeployment) (π : P2Pf) (ch : List (List E)) (hlen : π.proof.stream.size = sLen) :
     pcsOpenAt Common.queryPermutation (registryOf D.pi1.shape cc.logN)
-        ([streamWord π.proof.stream 504, (RecStatement.layoutWords cc.logN).2.1, UniStatement.numberWord 2] ++
-          claimWords (p2Reduced π ch).quotient ++ claimWords (p2Reduced π ch).sum) π.proof.q =
+        ([streamWord π.proof.stream 528, (RecStatement.layoutWords cc.logN).2.1, UniStatement.numberWord 3] ++
+          claimWords (p2Reduced π ch).quotient ++ claimWords (p2Reduced π ch).pushes ++
+            claimWords (p2Reduced π ch).sum) π.proof.q =
       simulateQ keccakCallsOverQueryPermutation (Soundness.ourVerifierEarly shQ.L shQ.R
         (WhirOp.input p2View (⟨shQ, clQ, fun π => π.proof.q, .round 1 stackOf⟩ : WhirOp P2Pf E Stk) π ch)) := by
-  have hdec := decodeWith_mk (registryOf D.pi1.shape cc.logN) (streamWord π.proof.stream 504)
-    (RecStatement.layoutWords cc.logN).2.1 (.pi2 lQ) [(p2Reduced π ch).quotient, (p2Reduced π ch).sum]
-    (streamWord_length _ _ (by rw [hlen]; decide)) (lookup_lq _) (by simp) countOfWord_numberWord_two
+  have hdec := decodeWith_mk (registryOf D.pi1.shape cc.logN) (streamWord π.proof.stream 528)
+    (RecStatement.layoutWords cc.logN).2.1 (.pi2 lQ)
+    [(p2Reduced π ch).quotient, (p2Reduced π ch).pushes, (p2Reduced π ch).sum]
+    (streamWord_length _ _ (by rw [hlen]; decide)) (lookup_lq _) (by simp) countOfWord_numberWord_three
     (fun c hc => by
       simp only [List.mem_cons, List.not_mem_nil, or_false] at hc
-      rcases hc with rfl | rfl
+      rcases hc with rfl | rfl | rfl
       · exact p2Out_quotientPoint_length π ch
+      · exact p2Out_pushesPoint_length π ch
       · exact p2Out_sumPoint_length π ch)
-  have e : [streamWord π.proof.stream 504, (RecStatement.layoutWords cc.logN).2.1, UniStatement.numberWord 2] ++
-      claimWords (p2Reduced π ch).quotient ++ claimWords (p2Reduced π ch).sum =
-      [streamWord π.proof.stream 504, (RecStatement.layoutWords cc.logN).2.1,
-        UniStatement.numberWord [(p2Reduced π ch).quotient, (p2Reduced π ch).sum].length] ++
-        ([(p2Reduced π ch).quotient, (p2Reduced π ch).sum].map claimWords).flatten := by simp
+  have e : [streamWord π.proof.stream 528, (RecStatement.layoutWords cc.logN).2.1, UniStatement.numberWord 3] ++
+      claimWords (p2Reduced π ch).quotient ++ claimWords (p2Reduced π ch).pushes ++
+        claimWords (p2Reduced π ch).sum =
+      [streamWord π.proof.stream 528, (RecStatement.layoutWords cc.logN).2.1,
+        UniStatement.numberWord [(p2Reduced π ch).quotient, (p2Reduced π ch).pushes, (p2Reduced π ch).sum].length] ++
+        ([(p2Reduced π ch).quotient, (p2Reduced π ch).pushes, (p2Reduced π ch).sum].map claimWords).flatten := by
+    simp
   have hin : WhirOp.input p2View (⟨shQ, clQ, fun π => π.proof.q, .round 1 stackOf⟩ : WhirOp P2Pf E Stk) π ch =
-      ((rootOfWord (streamWord π.proof.stream 504), clQ π ch), π.proof.q) := by
+      ((rootOfWord (streamWord π.proof.stream 528), clQ π ch), π.proof.q) := by
     show ((ofB (((msgK p2View π 1).1).getD (Vector.replicate 32 0)), clQ π ch), π.proof.q) = _
     rw [msgK_p2View_1]
     simp only [Option.getD_some, Bridge.ofB_toB]
@@ -757,8 +764,9 @@ theorem step_ch (D : RecDeployment) (hD : RecDeployment.Real D) (π : P2Pf) (hle
           claimWords (p2Reduced π ch).witness,
         [rootWordOfBytes (digestBytes (p2Roots π).pi2), (RecStatement.layoutWords cc.logN).2.2,
           UniStatement.numberWord 1] ++ claimWords (p2Reduced π ch).setup,
-        [streamWord π.proof.stream 504, (RecStatement.layoutWords cc.logN).2.1, UniStatement.numberWord 2] ++
-          claimWords (p2Reduced π ch).quotient ++ claimWords (p2Reduced π ch).sum] := by
+        [streamWord π.proof.stream 528, (RecStatement.layoutWords cc.logN).2.1, UniStatement.numberWord 3] ++
+          claimWords (p2Reduced π ch).quotient ++ claimWords (p2Reduced π ch).pushes ++
+            claimWords (p2Reduced π ch).sum] := by
     rw [pcsCalls_cc]
     rw [show (pi1CallsWith D.pi1Calls (p2Roots π).pi1.bytecode).map
         (·.map (callWord cc.reads π.proof.stream (p2Reduced π ch))) = pi1Words D π ch from rfl]

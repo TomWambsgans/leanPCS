@@ -17,8 +17,8 @@ the random permutation is `P1` (part of `Pi2ExperimentLe`).
 **`pi2Staged D C Fa P1k input rows q : Pi2Staged`**, π2's experiment's stages over the two calls:
 
 * `A` (`stageA`): the setup, `P1k`, π1-rec3's graph on its proof (`a1`), then π2's prover up to `α`: its setup, IV, the
-  witness it takes, the seed, the public values, `W`'s commitment and root (`pre2`); `inp` `α`'s input, `536` bytes
-  (`fixLen`: `tInput` of the writer, `536` bytes when the values match the reads);
+  witness it takes, the seed, the public values, `W`'s commitment and root (`pre2`); `inp` `α`'s input, `560` bytes
+  (`fixLen`: `tInput` of the writer, `560` bytes when the values match the reads);
 * the three chained answers `α, β, γ`; `B` (`stageB`) `Q`'s stack, commitment and root (`mid2`); `t`'s query on the
   writer's input; `C` (`stageC`) the values at `t`, `ρ` (`post2`), the three openings and the contract
   (`Pi2H.verifierWithH`); a proof of `P1k`'s none is the pair `(false, false)`;
@@ -37,7 +37,7 @@ one opening's proof of work or its proof is accepted, `pi2_accepts`, π1's openi
   over it, the code commutes with the simulation, the none branch's dummy calls change nothing);
 * `Pi2RunAt`: at pure `(H, F)` the staged run is the experiment at `Id`, its priors and challenges the honest prover's
   (the code's commutation and the prover's split at `α` and `t`, `runAt_stagedU`'s analogue);
-* `Pi2RunDuplex`, `Pi2RunCost N`, `Pi2HashBeforeAlpha` (no `32`- or `536`-byte input hashed in `A`, `P1k`'s included),
+* `Pi2RunDuplex`, `Pi2RunCost N`, `Pi2HashBeforeAlpha` (no `32`- or `560`-byte input hashed in `A`, `P1k`'s included),
   `Pi2TFresh εt`;
 * `Pi2Pi1Openings`: at pure `(H, F)`, on a π1 proof the graph accepts with an honest witness, the contract's three π1
   openings of π2's honest proof accept (the calls' agreement, `Pi1OpeningsAgree`'s at an explicit Keccak-256);
@@ -71,22 +71,27 @@ section With
 
 variable {m : Type → Type} [Monad m] (H : List UInt8 → m Digest) (F : KeccakState → m KeccakState)
 
-/-- **Before `α`**: the public values, `W`'s stack, commitment and root (`pi2ProveStreamWith`'s first lines). -/
-def pre2 (G : RecPiop.Circuit E) (reads : List Read) (values : List PublicValue) (w : ℕ → K) :
-    UniComplete.WrM m (Array K × LeanVM.Prover.Tree) := do
+/-- **Before `α`**: the public values, `W`'s stack, commitment, root and out-of-domain answer
+(`pi2ProveStreamWith`'s first lines). -/
+def pre2 (G : RecPiop.Circuit E) (ood : ℕ → Digest → Array K → E) (reads : List Read) (values : List PublicValue)
+    (w : ℕ → K) : UniComplete.WrM m (Array K × LeanVM.Prover.Tree) := do
   sendPublic (reads.zip values)
   let wStack := placePublic (layoutsOf G.logN).1 fun i ↦ (wTableB G w).getD i 0
   let wTree ← (StateT.lift (E2ECompleteness.commitWithH H (layoutsOf G.logN).1.logN wStack) :
     UniComplete.WrM m LeanVM.Prover.Tree)
   UniComplete.sendRoot (digestScalars wTree.root)
+  UniComplete.sendScalar (ood (layoutsOf G.logN).1.logN wTree.root wStack)
   return (wStack, wTree)
 
-/-- **From `γ` to `t`**: `Q`'s stack, commitment and root. -/
-def mid2 (G : RecPiop.Circuit E) (w : ℕ → K) (α β γ : E) : UniComplete.WrM m (Array K × LeanVM.Prover.Tree) := do
-  let qStack := placePublic (layoutsOf G.logN).2.1 (qEntry G.logN (hNovel G w α β γ) (qNovel G w α β γ))
+/-- **From `γ` to `t`**: `Q`'s stack, commitment, root and out-of-domain answer. -/
+def mid2 (G : RecPiop.Circuit E) (S : CoreSpec E) (ood : ℕ → Digest → Array K → E) (pubs : List E) (w : ℕ → K)
+    (α β γ : E) : UniComplete.WrM m (Array K × LeanVM.Prover.Tree) := do
+  let qStack := placePublic (layoutsOf G.logN).2.1 (qEntry G.logN (hNovel G w α β) (qNovel G w α β γ (phiOn S pubs γ))
+    (pNovel G w) (qpNovel G w γ))
   let qTree ← (StateT.lift (E2ECompleteness.commitWithH H (layoutsOf G.logN).2.1.logN qStack) :
     UniComplete.WrM m LeanVM.Prover.Tree)
   UniComplete.sendRoot (digestScalars qTree.root)
+  UniComplete.sendScalar (ood (layoutsOf G.logN).2.1.logN qTree.root qStack)
   return (qStack, qTree)
 
 /-- **After `t`**: the values at `t`, `ρ`, the output. -/
@@ -95,10 +100,11 @@ def post2 (G : RecPiop.Circuit E) (setupStack : Array K) (input : List UInt8) (v
     UniComplete.WrM m Pi2Out := do
   let a := foldValues G.logN G.logW (wTableB G w) t
   let ξ := xiOf G.logN setupStack β t
-  UniComplete.sendScalars (a ++ [ξ])
+  let sv := sOf G.logN (pNovel G w) t
+  UniComplete.sendScalars (a ++ [ξ, sv])
   let ρ ← UniComplete.sampleW H
   let c ← get
-  return ⟨c.stream, wS, wT, qS, qT, ⟨publicScalarsOf input values, α, β, γ, t, a, ξ, ρ⟩⟩
+  return ⟨c.stream, wS, wT, qS, qT, ⟨publicScalarsOf input values, α, β, γ, t, a, ξ, sv, ρ⟩⟩
 
 end With
 
@@ -169,14 +175,16 @@ noncomputable def stageA (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts 
     let iv ← Pi2H.ivOfH H D tr.roots
     let vw := pi2Choice D C Fa tr.roots input p1.stream
     let seed ← H (RecStatement.name ++ iv ++ input.toList)
-    let (ws, wr) ← (pre2 H (C.G tr.roots) (D.circuitAt tr.roots.pi1).circuit.reads vw.1 vw.2).run
+    let (ws, wr) ← (pre2 H (C.G tr.roots) pi2Ood (D.circuitAt tr.roots.pi1).circuit.reads vw.1 vw.2).run
       (UniComplete.Wr.start seed)
     return ⟨trees, some p1, a1, tr.roots, tr.pi2, vw, ws.1, ws.2, wr⟩
 
 /-- **Stage B**: after `α, β, γ` (their hashes `s₁, s₂, s₃`), `Q`. -/
-def stageB (D : RecDeployment) (C : Pi2Circuits D) (a : StA) (s₁ s₂ s₃ : Digest) : m StB := do
+def stageB (D : RecDeployment) (C : Pi2Circuits D) (input : Vector UInt8 32) (a : StA) (s₁ s₂ s₃ : Digest) :
+    m StB := do
   let w3 := absorbW (absorbW (absorbW a.wr s₁) s₂) s₃
-  let (qs, wr) ← (mid2 H (C.G a.roots) a.vw.2 (chalP s₁) (chalP s₂) (chalP s₃)).run w3
+  let (qs, wr) ← (mid2 H (C.G a.roots) (Spec.of (D.circuitAt a.roots.pi1).circuit).core pi2Ood
+    (publicScalarsOf input.toList a.vw.1) a.vw.2 (chalP s₁) (chalP s₂) (chalP s₃)).run w3
   return ⟨a, chalP s₁, chalP s₂, chalP s₃, qs.1, qs.2, wr⟩
 
 /-- **Stage C**: after `t` (its hash `st`), the rest of the prover, its openings and the contract. -/
@@ -195,7 +203,7 @@ noncomputable def stageC (D : RecDeployment) (C : Pi2Circuits D) (input : Vector
     let pS ← E2ECompleteness.proveOpeningWithH H F PcsQuotient.nonceFuel (layoutsOf G.logN).2.2 b.a.setupTree
       c.setupStack [⟨o.setupPoint, out.inputs.ξ⟩]
     let pQ ← E2ECompleteness.proveOpeningWithH H F PcsQuotient.nonceFuel (layoutsOf G.logN).2.1 out.qTree out.qStack
-      [⟨o.quotientPoint, o.quotientValue⟩, ⟨o.sumPoint, o.sumValue⟩]
+      [⟨o.quotientPoint, o.quotientValue⟩, ⟨o.pushesPoint, o.pushesValue⟩, ⟨o.sumPoint, o.sumValue⟩]
     match pW, pS, pQ with
     | some x, some y, some z =>
       let v ← Pi2H.verifierWithH H F D b.a.trees.roots input ⟨out.stream, p1.c1, p1.c2, p1.setup, x, y, z⟩
@@ -214,10 +222,10 @@ noncomputable def pi2Staged (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Fac
   β := StB
   ρ := Pr2
   τ := Pr2 × E × E × E
-  inp a := fixLen 536 (UniKeccakComplete.Prob.tInput a.wr)
+  inp a := fixLen 560 (UniKeccakComplete.Prob.tInput a.wr)
   pr a := (a.roots, a.vw.2, Fa.pubOf a.roots (publicScalarsOf input.toList a.vw.1))
   A := stageA callKeccak256 callKeccakF1600 D C Fa P1k input
-  B := stageB callKeccak256 D C
+  B := stageB callKeccak256 D C input
   tin b := UniKeccakComplete.Prob.tInput b.wr
   prT b := ((b.a.roots, b.a.vw.2, Fa.pubOf b.a.roots (publicScalarsOf input.toList b.a.vw.1)), b.α, b.β, b.γ)
   C := stageC callKeccak256 callKeccakF1600 D C input
@@ -227,9 +235,9 @@ open Classical in
 noncomputable def badSet2 (C' : RecSetupRoots → RecPiop.Circuit E) (p : Pr2) : Finset (E × E × E) :=
   Finset.univ.filter fun v ↦ BadCopy (C' p.1) p.2.1 p.2.2 v.1 v.2.1 v.2.2
 
-/-- **The bad `t`**: off the bad triples, `BadT`. -/
+/-- **The bad `t`**: for a witness, off the bad triples, `BadT`. -/
 def badT2 (C' : RecSetupRoots → RecPiop.Circuit E) (fp : Pr2 × E × E × E) (t : E) : Prop :=
-  ¬ BadCopy (C' fp.1.1) fp.1.2.1 fp.1.2.2 fp.2.1 fp.2.2.1 fp.2.2.2 ∧ BadT (C' fp.1.1) fp.1.2.1 fp.2.1 fp.2.2.1 fp.2.2.2 t
+  (C' fp.1.1).Satisfies fp.1.2.2 (RecCircuit.emb fp.1.2.1) ∧ ¬ BadCopy (C' fp.1.1) fp.1.2.1 fp.1.2.2 fp.2.1 fp.2.2.1 fp.2.2.2 ∧ BadT (C' fp.1.1) fp.1.2.1 fp.2.1 fp.2.2.1 fp.2.2.2 t
 
 /-! ## The named inputs -/
 
@@ -266,14 +274,14 @@ def Pi2RunAt (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
       (runAt Ht Ft (pi2Staged D C Fa (P1k input rows q) input).run).2 =
           (((rootsH D Ht Ft), (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).2,
             Fa.pubOf (rootsH D Ht Ft) (publicScalarsOf input.toList (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1)),
-          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
+          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) pi2Ood input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
             (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).2).inputs.α,
-          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
+          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) pi2Ood input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
             (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).2).inputs.β,
-          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
+          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) pi2Ood input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
             (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).2).inputs.γ) ∧
       (runAt Ht Ft (pi2Staged D C Fa (P1k input rows q) input).run).1.2.2 =
-          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
+          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) pi2Ood input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
             (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).2).inputs.t ∧
       (runAt Ht Ft (pi2Staged D C Fa (P1k input rows q) input).run).1.2.1 =
         (runAt Ht Ft (pi2Staged D C Fa (P1k input rows q) input).run).2
@@ -294,13 +302,13 @@ def Pi2RunCost (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
     D.pi1.HonestRelation D.flock rows input q →
     Common.QueryCostAtMost (pi2Staged D C Fa (P1k input rows q) input).run hashBlocks N
 
-/-- **Named: before `α`, nothing of `32` or `536` bytes is hashed** (`hashA_stagedU`'s analogue; `P1k`'s hashes, the
+/-- **Named: before `α`, nothing of `32` or `560` bytes is hashed** (`hashA_stagedU`'s analogue; `P1k`'s hashes, the
 setup's leaves and nodes, the graph's openings, π2's IV, digest and seed preimages, `W`'s tree). -/
 def Pi2HashBeforeAlpha (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
     (P1k : Vector UInt8 32 → (rows : List ℕ) → D.pi1.Stack rows → OracleComp KeccakCalls (Option UniKeccak.KeccakProof)) :
     Prop :=
   ∀ (input : Vector UInt8 32) (rows : List ℕ) (q : D.pi1.Stack rows), D.pi1.shape.RowsFit rows →
-    D.pi1.HonestRelation D.flock rows input q → HashOK (GoodL 536) (pi2Staged D C Fa (P1k input rows q) input).A
+    D.pi1.HonestRelation D.flock rows input q → HashOK (GoodL 560) (pi2Staged D C Fa (P1k input rows q) input).A
 
 /-- **Named: `t`'s input is fresh** but with probability `εt` (`TQueryFresh`'s analogue). -/
 def Pi2TFresh (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
@@ -438,23 +446,23 @@ theorem rejects_at {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D) (Fa : P
       rw [hz2] at hB
       have hbad : ¬ BadCopy (C.G (rootsH D Ht Ft)) (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).2
           (Fa.pubOf (rootsH D Ht Ft) (publicScalarsOf input.toList (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1))
-          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
+          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) pi2Ood input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
             (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).2).inputs.α
-          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
+          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) pi2Ood input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
             (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).2).inputs.β
-          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
+          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) pi2Ood input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
             (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).2).inputs.γ :=
         fun hb ↦ hB (Finset.mem_filter.mpr ⟨Finset.mem_univ _, hb⟩)
       have ht : ¬ BadT (C.G (rootsH D Ht Ft)) (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).2
-          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
+          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) pi2Ood input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
             (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).2).inputs.α
-          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
+          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) pi2Ood input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
             (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).2).inputs.β
-          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
+          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) pi2Ood input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
             (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).2).inputs.γ
-          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
+          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) pi2Ood input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
             (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).2).inputs.t :=
-        fun hb ↦ hT ⟨hbad, hb⟩
+        fun hb ↦ hT ⟨hgood.2.1, hbad, hb⟩
       have hacc := pi2_accepts D hD C Fa Ft Ht PcsQuotient.nonceFuel input p1 hgood (logN_G Fa _)
         (by rw [Fa.logW]; rfl) proof hpr hroots hbad ht (hpo Ht Ft input p1 proof hgood ha1 hpr)
       exact absurd (hacc.symm.trans ha2) (by decide)
@@ -551,13 +559,13 @@ theorem holds_pi2 {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D) (hchk : 
     (input : Vector UInt8 32) (rows : List ℕ) (q : D.pi1.Stack rows) (hfit : D.pi1.shape.RowsFit rows)
     (hrel : D.pi1.HonestRelation D.flock rows input q) :
     (pi2Staged D C (pi2Facts hD C hchk) (P1k input rows q) input).Holds D P1
-      (pi2Prover D C (pi2Facts hD C hchk) PcsQuotient.nonceFuel) input rows q 536 (badSet2 C.G) (badT2 C.G)
-      (2 ^ 25 + 36) (2 ^ 27) N εt ((N : ℝ≥0∞) * missProb Whir.queryGrindingBits ^ PcsQuotient.nonceFuel) where
+      (pi2Prover D C (pi2Facts hD C hchk) PcsQuotient.nonceFuel) input rows q 560 (badSet2 C.G) (badT2 C.G)
+      (2 ^ 25 + 36) (9 * 2 ^ 24) N εt ((N : ℝ≥0∞) * missProb Whir.queryGrindingBits ^ PcsQuotient.nonceFuel) where
   experiment := hexp input rows q hfit hrel
   duplex := hdup input rows q hfit hrel
   cost := hcost input rows q hfit hrel
   L_ne := by norm_num
-  inp_length _ := fixLen_length 536 _
+  inp_length _ := fixLen_length 560 _
   hashA := hhash input rows q hfit hrel
   badCard p := card_badCopy_pi2 (pi2Facts hD C hchk) p.1 p.2.1 p.2.2
   badTCard fp := card_badT_pi2 (pi2Facts hD C hchk) fp.1.1 fp.1.2.1 fp.1.2.2 fp.2.1 fp.2.2.1 fp.2.2.2

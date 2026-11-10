@@ -10,7 +10,7 @@ import RecCompose.Pi2TFreshPi2
 
 `Holds2` asks `α`'s input to be fresh after stage A on every outcome (but with probability `εα`). On π2's staged run
 that fails off the graph's acceptance: when π1's prover returns none, or the witness π2 takes is not honest, `α`'s
-input is `fixLen`'s `536` zeros, which nothing keeps π1-rec3's prover from hashing. There the verdict's first component
+input is `fixLen`'s `560` zeros, which nothing keeps π1-rec3's prover from hashing. There the verdict's first component
 (π1-rec3's graph's) is `false`, so the experiment's event cannot happen. So:
 
 * **`Pi2Staged.Holds3`**: `Holds2` with a predicate `G` of stage A's output and `Gβ` of stage B's, `alphaFresh` and
@@ -285,7 +285,7 @@ theorem tFresh_ofG (S : Pi2Staged) {δ : Type} (T : S.α → Digest → Digest �
     (hTap : ∀ a s₁ s₂ s₃, APq (fun _ _ ↦ True) [default] (T a s₁ s₂ s₃))
     (hT32 : ∀ a s₁ s₂ s₃, HashOK (fun m ↦ m.length ≠ 32) (T a s₁ s₂ s₃))
     {NT : ℕ} (hTc : ∀ a s₁ s₂ s₃, HC (T a s₁ s₂ s₃) NT)
-    (htin : ∀ a s₁ s₂ s₃ d, (S.tin (g a s₁ s₂ s₃ d)).length = 64 ∧
+    (htin : ∀ a s₁ s₂ s₃ d, (S.tin (g a s₁ s₂ s₃ d)).length = tLen ∧
       (S.tin (g a s₁ s₂ s₃ d)).take 32 = digestBytes s₃)
     {L : ℕ} (hL : L ≠ 32) (hinp : ∀ a, (S.inp a).length = L) {KA : ℕ} (hA : HC S.A KA)
     (G : S.α → Prop) (Gβ : S.β → Prop) (hg : ∀ a s₁ s₂ s₃ d, Gβ (g a s₁ s₂ s₃ d) → G a) {εα : ℝ≥0∞}
@@ -382,7 +382,7 @@ theorem tFresh_ofG (S : Pi2Staged) {δ : Type} (T : S.α → Digest → Digest �
       have hn : (Sum.inl (S.tin (g p.1 s₁ s₂ u z.1)) : Bytes ⊕ KeccakState) ≠ .inl (digestBytes s₂) := fun h ↦ by
         have := congrArg List.length (Sum.inl_injective h)
         rw [hl, length_digestBytes] at this
-        omega
+        exact absurd this (by decide)
       dsimp only at hz
       rw [QueryCache.cacheQuery_of_ne _ _ hn] at hz
       exact ⟨_, hz, hl, ht⟩
@@ -430,8 +430,8 @@ theorem pi2TFresh_ofG {D : RecDeployment} (C : Pi2Circuits D) (Fa : Pi2Facts D C
       p.2 (.inl ((pi2Staged D C Fa P1k input).inp p.1)) ≠ none ∧ G p.1] ≤ εα) :
     Pr{let p ← (simulateQ ro (pi2Staged D C Fa P1k input).pre).run ∅}[
       p.2 (.inl ((pi2Staged D C Fa P1k input).tin p.1.1)) ≠ none ∧ G p.1.1.a] ≤ tFreshBound2 N εα := by
-  refine TF.tFresh_ofG (pi2Staged D C Fa P1k input) (fun a s₁ s₂ s₃ ↦ treeB C a s₁ s₂ s₃)
-    (fun a s₁ s₂ s₃ qT ↦ outB C a s₁ s₂ s₃ qT) (fun a s₁ s₂ s₃ ↦ stageB_eq D C a s₁ s₂ s₃)
+  refine TF.tFresh_ofG (pi2Staged D C Fa P1k input) (fun a s₁ s₂ s₃ ↦ treeB C input a s₁ s₂ s₃)
+    (fun a s₁ s₂ s₃ qT ↦ outB C input a s₁ s₂ s₃ qT) (fun a s₁ s₂ s₃ ↦ stageB_eq D C input a s₁ s₂ s₃)
     (fun a s₁ s₂ s₃ ↦ TF.apq_commitWithH _ _ _ (List.mem_singleton_self _))
     (fun a s₁ s₂ s₃ ↦ UniKeccakComplete.Prob.HashOK.mono (fun m h ↦ h.1) (E2ECompleteness.hashOK_commitWithH _ _))
     (NT := E2ECompleteness.Cost.treeCost muQ)
@@ -439,8 +439,8 @@ theorem pi2TFresh_ofG {D : RecDeployment} (C : Pi2Circuits D) (Fa : Pi2Facts D C
       unfold treeB E2ECompleteness.Cost.treeCost
       rw [logN_G Fa]
       exact hc_of_qc (E2ECompleteness.Cost.qc_commitWithH _ _))
-    (fun a s₁ s₂ s₃ qT ↦ tin_stageB_length C a s₁ s₂ s₃ qT) (by norm_num : (536 : ℕ) ≠ 32)
-    (fun a ↦ fixLen_length 536 _) ((pi2Staged D C Fa P1k input).hc_A hcost) G (fun b : StB ↦ G b.a)
+    (fun a s₁ s₂ s₃ qT ↦ tin_stageB_length C input a s₁ s₂ s₃ qT) (by norm_num : (560 : ℕ) ≠ 32)
+    (fun a ↦ fixLen_length 560 _) ((pi2Staged D C Fa P1k input).hc_A hcost) G (fun b : StB ↦ G b.a)
     (fun _ _ _ _ _ h ↦ h) hα |>.trans (le_of_eq ?_)
   unfold tFreshBound2
   rfl

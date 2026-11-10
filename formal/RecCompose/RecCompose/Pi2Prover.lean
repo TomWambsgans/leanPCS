@@ -1,11 +1,12 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Transcribed from `crates/leanvm/rec/src/pi2/prover.rs`
--- (`halves`, `public_scalars`, `prove_with`, `quotient_on_extension`, `open`; `PI2.md` §3), branch `leanvm-rec-opt`.
+-- (`halves`, `public_scalars`, `prove_with`, `h_on_v`, `quotient_on_extension`, `open`; `PI2.md` §3), π2v3.
 -- The writer and the commitments are `formal/UniComplete`'s (`Wr`, `sendRoot`, `sampleW`, `commitWithH`), the WHIR
 -- openings `formal/EndToEnd/Completeness`'s (`proveOpeningWithH`), the transforms `formal/Statement`'s
 -- (`PcsQuotient.Domain.values`, `coefficients`).
 import RecCompose.Tables
 import UniKeccakComplete.K.Prover
 import UniKeccakComplete.K.AlgHPoly
+import WhirBridge.PcsClaim
 
 /-!
 # π2's honest prover
@@ -16,20 +17,24 @@ circuit as π2's PIOP reads it (`RecPiop.Circuit E`: positions, roles, blocks, `
 
 1. **the public values** (`PublicValue`), each as its read takes it (`sendInteger`, `sendRoot` of `halvesOf`, `sendScalar`);
 2. **`W`**: the witness's basis-`B` coefficients (`bCoefficients`), placed under `W`'s layout (`placePublic`),
-   committed (`commitWithH`), its root's halves; `α, β, γ`;
-3. **`h` on `V_m`** (`hValues`): `[pull]/(α + w_i + β ω_i) + 1/(α + P_i + β ω_{σ_i})`, `P_i` the circuit's push; its
-   novel coefficients;
-4. **`q` on the extension coset** `D = β_{m+2} + V_{m+2}` (`qValues`, `4N` points, disjoint from `V_m`): `w`, `σ`, `κ`, `h`
-   by the transform (`onCoset`), the row's cells `w(x + ω_c)` (index `p ⊕ c`), each pair's indicator (`indAt`, the
-   polynomial `RecPiop.Circuit.ind` at the point), the push `P`, `d_pull`, `d_push`, and
-   `q = (h d_pull d_push + (1 + 1_S) d_push + d_pull) / Z_V`; `q`'s novel coefficients (`coefficients` at `D`'s offset);
-5. **`Q`**: `h`'s and `q`'s novel coefficients, three limbs each (`qEntry`: entry `pd + 2^(m+2)(kind + 2 limb)`), placed
-   under `Q`'s layout, committed, its root's halves; `t`;
-6. **the values at `t`**: the `2^r` fold values (`foldValues`: `W`'s table's partial evaluation at `w_r(t), …, w_{m−1}(t)`)
-   and `ξ = κ(t) + β σ(t)` from the setup's halves `κ`, `κ + σ` (`xiOf`, PI2.md §9); `ρ`.
+   committed (`commitWithH`), its root's halves and its out-of-domain answer (`ood`, a parameter: the EIP's
+   `f(ood_point(n, root))` deployed); `α, β, γ`;
+3. **`h` and `P` on `V_m`** (`hValues`, `pColumn`): `h = (1 + 1_S)(1/(α + w_i + β ω_i) + 1/(α + P_v + κ + β ω_{σ_i}))`,
+   zero at a hole, and `P_v = pushV + κ` (a pair's formula of its row, the position's own value at a forward and a hole,
+   limb `0`); their novel coefficients;
+4. **`q` and `q_P` on the extension coset** `D = β_{m+1} + V_{m+1}` (`qValues`, `qpValues`, `2N` points, disjoint from
+   `V_m`): `w`, `σ`, `κ`, `h`, `P` by the transform (`onCoset`), the row's cells `w(x + ω_c)` (index `p ⊕ c`), each pair's
+   indicator, `P_v` (`pvAtCoset`), the ports' `T = Σ I_p (E_p + Φ_k)` (`tAtCoset`, `Φ` the verifier's `phiAt`),
+   `d_pull`, `d_push = α + P + κ + βσ`, `q = (h d_pull d_push + (1 + 1_S)(d_push + d_pull) + T) / Z_V` and
+   `q_P = (P + P_v) / Z_V`; their novel coefficients (`coefficients` at `D`'s offset);
+5. **`Q`**: sixteen slots of `N` (`qEntry`: slot `digit + 2 kind + 4 limb`: `h`, `q` three limbs each, `P` at digit `1`
+   and `q_P` at limb code `3`, four zero slots), placed under `Q`'s layout, committed, its root's halves and its answer;
+   `t`;
+6. **the values at `t`**: the `2^r` fold values (`foldValues`), `ξ = κ(t) + β σ(t)` (`xiOf`, PI2.md §9) and
+   `s = P(t)` (`sOf`); `ρ`.
 
-`pi2ProveWith` adds the seed `keccak(NAME ‖ IV ‖ public input)` and the three WHIR openings (`W`'s claim, the setup's,
-`Q`'s two, in the contract's call order), the claims the verifier's arithmetic on the prover's own inputs
+`pi2ProveWith` adds the seed `keccak(NAME ‖ IV ‖ public input)` and the WHIR openings (`W`'s claim, the setup's, `Q`'s
+three, in the contract's call order), the claims the verifier's arithmetic on the prover's own inputs
 (`CoreSpec.run`, which the verifier's run on the stream reproduces); `none` if a proof of work fails.
 
 Decisions: the prover is mathematical, not vectorised: one value per point, the indicators by their products (no
@@ -107,12 +112,20 @@ def wValues : Array K := Array.ofFn (n := G.N) fun i ↦ w i.val
 /-- **`W`'s table**: the witness's basis-`B` coefficients (`b_coefficients` of its novel ones). -/
 def wTableB : Array K := UniStatement.bCoefficients G.logN (wValues G w)
 
-/-- **`h` on `V_m`** (`prove_with`'s step 2): `[pull]/(α + w_i + β ω_i) + 1/(α + P_i + β ω_{σ_i})`, a hole pulling
-nothing. -/
-def hValues (α β γ : E) : Array E :=
+/-- **`P_v` at position `i`** (`h_on_v`'s `p`): `pushV + κ`, a pair's formula of its row, the position's own value at a
+forward and at a hole. -/
+def pvValue (i : ℕ) : E := G.pushV (RecCircuit.emb w) i + G.kappa i
+
+/-- **`P`'s column on `V_m`**: `P_v`'s limb `0` (`P_v` is in `K` for a witness). -/
+def pColumn : Array K := Array.ofFn (n := G.N) fun i ↦ (pvValue G w i.val).limb 0
+
+/-- **`h` on `V_m`** (`h_on_v`): `(1 + 1_S)(1/d_pull + 1/d_push)`, `d_pull = α + w_i + β ω_i`,
+`d_push = α + P_v + κ + β ω_{σ_i}`: zero at a hole. -/
+def hValues (α β : E) : Array E :=
   Array.ofFn (n := G.N) fun i ↦
-    (if (G.role i.val).isPort then 0 else (α + ofK (w i.val) + β * UniStatement.pointE i.val)⁻¹) +
-      (α + G.push (fun j ↦ ofK (w j)) γ i.val + β * UniStatement.pointE (G.sigma i.val))⁻¹
+    if (G.role i.val).isPort then 0 else
+      (α + ofK (w i.val) + β * UniStatement.pointE i.val)⁻¹ +
+        (α + G.pushV (RecCircuit.emb w) i.val + β * UniStatement.pointE (G.sigma i.val))⁻¹
 
 /-- `σ`'s points on `V_m`. -/
 def sigmaValues : Array E := Array.ofFn (n := G.N) fun i ↦ UniStatement.pointE (G.sigma i.val)
@@ -120,24 +133,18 @@ def sigmaValues : Array E := Array.ofFn (n := G.N) fun i ↦ UniStatement.pointE
 /-- `κ` on `V_m`. -/
 def kappaValues : Array E := Array.ofFn (n := G.N) fun i ↦ G.kappa i.val
 
-/-- **The extension coset's offset** `β_{m+2}` (`beta()[m + 2]`). -/
-def cosetOffset (m : ℕ) : K := UniStatement.beta.getD (m + 2) 0
+/-- **The extension coset's offset** `β_{m+1}` (`extension_offset`). -/
+def cosetOffset (m : ℕ) : K := UniStatement.beta.getD (m + 1) 0
 
-/-- The coset's point `p`: `β_{m+2} + B(p)`. -/
+/-- The coset's point `p`: `β_{m+1} + B(p)`. -/
 def cosetPoint (m p : ℕ) : E := ofK (cosetOffset m + PcsQuotient.Domain.point p)
 
-/-- **Novel coefficients' polynomial on the coset** (`on_d`): `4N` values, the coefficients padded with zeros. -/
+/-- **Novel coefficients' polynomial on the coset** (`on_extension`): `2N` values, the coefficients padded with zeros. -/
 def onCoset (m : ℕ) (c : Array E) : Array E :=
-  PcsQuotient.Domain.values (m + 2) (cosetOffset m) (Array.ofFn (n := 2 ^ (m + 2)) fun i ↦ c.getD i.val 0)
+  PcsQuotient.Domain.values (m + 1) (cosetOffset m) (Array.ofFn (n := 2 ^ (m + 1)) fun i ↦ c.getD i.val 0)
 
 /-- `Z_V(x) = w_m(x)`. -/
 def zvAt (m : ℕ) (x : E) : E := (fun y ↦ y * y + y)^[m] x
-
-/-- **A pair's indicator at a point off `V_m`**: `Z_V(x) / (Π_{j ∉ p} (ω_{c_p} + ω_j) · Π_{j ∈ p} (x + ω_j))`, the
-polynomial `RecPiop.Circuit.ind` there. -/
-def indAt (p : RecPiop.Block × ℕ) (x : E) : E :=
-  zvAt G.logN x * ((∏ j ∈ G.compl p, (UniStatement.pointE (G.pairBase p) + UniStatement.pointE j)) *
-    ∏ j ∈ (range G.N).filter (G.InPair p), (x + UniStatement.pointE j))⁻¹
 
 /-- **The pairs as a list** (`G.pairs`' elements, each once): every non-forward role of every block. -/
 def pairsList : List (RecPiop.Block × ℕ) :=
@@ -154,47 +161,80 @@ def pairData : List ((RecPiop.Block × ℕ) × E × List ℕ) :=
 def indFrom (m : ℕ) (c : E) (pos : List ℕ) (x : E) : E :=
   zvAt m x * (c * (pos.map fun j ↦ x + UniStatement.pointE j).prod)⁻¹
 
-/-- **The push polynomial at coset point `p`** (`P = w + Σ_p I_p (E_p + w) + κ`), from `w` and `κ` on the coset, the
-cells `w(x + ω_c)` at `p ⊕ c`, the pairs' data `pd`. -/
-def pushAtCoset (pd : List ((RecPiop.Block × ℕ) × E × List ℕ)) (m : ℕ) (wD κD : Array E) (γ : E) (p : ℕ) : E :=
-  wD.getD p 0 + (pd.map fun d ↦ indFrom m d.2.1 d.2.2 (cosetPoint m p) *
-    ((G.regionRole d.1.1 d.1.2).value γ (wD.getD p 0) (fun c ↦ wD.getD (p ^^^ (d.1.2 ^^^ c)) 0) +
-      wD.getD p 0)).sum + κD.getD p 0
+/-- **A pair's formula at coset point `p`**, from `w` on the coset: the cells `w(x + ω_c)` at `p ⊕ c`. -/
+def formulaAtCoset (d : (RecPiop.Block × ℕ) × E × List ℕ) (wD : Array E) (γ : E) (p : ℕ) : E :=
+  (G.regionRole d.1.1 d.1.2).value γ (wD.getD p 0) (fun c ↦ wD.getD (p ^^^ (d.1.2 ^^^ c)) 0)
+
+/-- **`P_v` at coset point `p`** (`w + Σ_{internal p} I_p (E_p + w)`). -/
+def pvAtCoset (pd : List ((RecPiop.Block × ℕ) × E × List ℕ)) (m : ℕ) (wD : Array E) (γ : E) (p : ℕ) : E :=
+  wD.getD p 0 + ((pd.filter fun d ↦ !(G.regionRole d.1.1 d.1.2).isPort).map fun d ↦
+    indFrom m d.2.1 d.2.2 (cosetPoint m p) * (formulaAtCoset G d wD γ p + wD.getD p 0)).sum
+
+/-- **The ports' `T` at coset point `p`** (`Σ_{port p} I_p (E_p + Φ_k)`, `Φ` given). -/
+def tAtCoset (pd : List ((RecPiop.Block × ℕ) × E × List ℕ)) (m : ℕ) (wD : Array E) (γ : E) (phi : E → ℕ → E)
+    (p : ℕ) : E :=
+  ((pd.filter fun d ↦ (G.regionRole d.1.1 d.1.2).isPort).map fun d ↦
+    indFrom m d.2.1 d.2.2 (cosetPoint m p) * (formulaAtCoset G d wD γ p + phi (cosetPoint m p) d.1.2)).sum
 
 /-- **The holes' indicator at coset point `p`** (`1_S`): the port pairs' indicators. -/
 def holeAtCoset (pd : List ((RecPiop.Block × ℕ) × E × List ℕ)) (m p : ℕ) : E :=
   ((pd.filter fun d ↦ (G.regionRole d.1.1 d.1.2).isPort).map fun d ↦ indFrom m d.2.1 d.2.2 (cosetPoint m p)).sum
 
 /-- **`h`'s novel coefficients** (`2^m`). -/
-def hNovel (α β γ : E) : Array E := UniComplete.novelOfValuesE G.logN (hValues G w α β γ)
+def hNovel (α β : E) : Array E := UniComplete.novelOfValuesE G.logN (hValues G w α β)
 
-/-- **`q` on the extension coset** (`quotient_on_extension`): `(h d_pull d_push + (1 + 1_S) d_push + d_pull) / Z_V`. -/
-def qValues (α β γ : E) : Array E :=
+/-- **`P`'s novel coefficients** (`2^m`, in `K`). -/
+def pNovel : Array K := PcsQuotient.Domain.coefficients G.logN 0 (pColumn G w)
+
+/-- **`q` on the extension coset** (`quotient_on_extension`):
+`(h d_pull d_push + (1 + 1_S)(d_push + d_pull) + T) / Z_V`, `d_push = α + P + κ + βσ`. -/
+def qValues (α β γ : E) (phi : E → ℕ → E) : Array E :=
   let m := G.logN
   let wD := onCoset m (UniComplete.novelOfValuesK m (wValues G w))
   let σD := onCoset m (UniComplete.novelOfValuesE m (sigmaValues G))
   let κD := onCoset m (UniComplete.novelOfValuesE m (kappaValues G))
-  let hD := onCoset m (hNovel G w α β γ)
+  let hD := onCoset m (hNovel G w α β)
+  let pD := onCoset m ((pNovel G w).map ofK)
   let pd := pairData G
-  Array.ofFn (n := 2 ^ (m + 2)) fun p ↦
+  Array.ofFn (n := 2 ^ (m + 1)) fun p ↦
     let x := cosetPoint m p.val
     let dPull := α + wD.getD p.val 0 + β * x
-    let dPush := α + pushAtCoset G pd m wD κD γ p.val + β * σD.getD p.val 0
-    (hD.getD p.val 0 * dPull * dPush + (1 + holeAtCoset G pd m p.val) * dPush + dPull) * (zvAt m x)⁻¹
+    let dPush := α + pD.getD p.val 0 + κD.getD p.val 0 + β * σD.getD p.val 0
+    (hD.getD p.val 0 * dPull * dPush + (1 + holeAtCoset G pd m p.val) * (dPush + dPull) +
+      tAtCoset G pd m wD γ phi p.val) * (zvAt m x)⁻¹
 
-/-- **`q`'s novel coefficients** (`4N`): the transform at the coset's offset. -/
-def qNovel (α β γ : E) : Array E :=
-  PcsQuotient.Domain.coefficients (G.logN + 2) (cosetOffset G.logN) (qValues G w α β γ)
+/-- **`q_P` on the extension coset**: `(P + P_v) / Z_V`. -/
+def qpValues (γ : E) : Array E :=
+  let m := G.logN
+  let wD := onCoset m (UniComplete.novelOfValuesK m (wValues G w))
+  let pD := onCoset m ((pNovel G w).map ofK)
+  Array.ofFn (n := 2 ^ (m + 1)) fun p ↦
+    (pD.getD p.val 0 + pvAtCoset G (pairData G) m wD γ p.val) * (zvAt m (cosetPoint m p.val))⁻¹
+
+/-- **`q`'s novel coefficients** (`2N`): the transform at the coset's offset. -/
+def qNovel (α β γ : E) (phi : E → ℕ → E) : Array E :=
+  PcsQuotient.Domain.coefficients (G.logN + 1) (cosetOffset G.logN) (qValues G w α β γ phi)
+
+/-- **`q_P`'s novel coefficients** (`2N`, in `K`: the transform of its values' limb `0`, `q_P` being in `K` for a
+witness). -/
+def qpNovel (γ : E) : Array K :=
+  PcsQuotient.Domain.coefficients (G.logN + 1) (cosetOffset G.logN) ((qpValues G w γ).map fun x ↦ x.limb 0)
 
 /-- Limb `l` of an element of `E` (`0` past the third). -/
 def limbN (x : E) (l : ℕ) : K := if h : l < 3 then x.limb ⟨l, h⟩ else 0
 
-/-- **`Q`'s table**: entry `pd + 2^(m+2)(kind + 2 limb)` is limb `limb` of `h`'s (kind `0`, `pd < N`) or `q`'s (kind `1`)
-novel coefficient `pd` (`chunk = 8 limb + 4 kind + digit`). -/
-def qEntry (m : ℕ) (hN qN : Array E) (i : ℕ) : K :=
-  let pd := i % 2 ^ (m + 2)
-  let kl := i / 2 ^ (m + 2)
-  if kl % 2 = 0 then (if pd < 2 ^ m then limbN (hN.getD pd 0) (kl / 2) else 0) else limbN (qN.getD pd 0) (kl / 2)
+/-- **`Q`'s table** (sixteen slots of `2^m`): entry `pd + 2^(m+1)(kind + 2 limb)`, `pd < 2N`: at limbs `0, 1, 2`, `h`'s
+(kind `0`, `pd < N`) or `q`'s (kind `1`) novel coefficient `pd`, that limb; at limb code `3`, `P`'s coefficient
+`pd − N` (kind `0`, digit `1`) or `q_P`'s (kind `1`); zero elsewhere. -/
+def qEntry (m : ℕ) (hN qN : Array E) (pN qpN : Array K) (i : ℕ) : K :=
+  let pd := i % 2 ^ (m + 1)
+  let kl := i / 2 ^ (m + 1)
+  if kl / 2 < 3 then
+    (if kl % 2 = 0 then (if pd < 2 ^ m then limbN (hN.getD pd 0) (kl / 2) else 0)
+      else limbN (qN.getD pd 0) (kl / 2))
+  else if kl / 2 = 3 then
+    (if kl % 2 = 0 then (if pd < 2 ^ m then 0 else pN.getD (pd - 2 ^ m) 0) else qpN.getD pd 0)
+  else 0
 
 /-- **The fold values at `t`** (`folds`): `a_k = Σ_j eq(j; w_r(t), …, w_{m−1}(t)) T_{k + 2^r j}`, `k < 2^r`. -/
 def foldValues (m r : ℕ) (T : Array K) (t : E) : List E :=
@@ -209,6 +249,15 @@ def xiOf (m : ℕ) (setupStack : Array K) (β t : E) : E :=
   let kappaT := UniStatement.multilinearEval ((setupStack.extract 0 (2 ^ m)).toList.map ofK) pt
   let sumT := UniStatement.multilinearEval ((setupStack.extract (2 ^ m) (2 * 2 ^ m)).toList.map ofK) pt
   kappaT + β * (kappaT + sumT)
+
+/-- **`s = P(t)`** from `P`'s novel coefficients: `Σ_k P_k Π_{l : k_l = 1} w_l(t)`. -/
+def sOf (m : ℕ) (pN : Array K) (t : E) : E :=
+  ∑ k ∈ range (2 ^ m), ofK (pN.getD k 0) *
+    ∏ l ∈ range m, if k.testBit l then (digitsList t (m + 3)).getD l 0 else 1
+
+/-- **The ports' `Φ_k(x)`** the prover uses: the verifier's (`phiAt`) at the public scalars. -/
+def phiOn (S : CoreSpec E) (pubs : List E) (γ : E) (x : E) (k : ℕ) : E :=
+  phiAt S (powersList γ (S.maxGamma + 1)) pubs x k
 
 end Honest
 
@@ -228,51 +277,60 @@ section With
 
 variable {m : Type → Type} [Monad m] (H : List UInt8 → m Digest) (F : KeccakState → m KeccakState)
 
-/-- **The prover's stream** (`prove_with`), from the seed: the public values, `W` and `α, β, γ`, `Q` and `t`, the
-values at `t` and `ρ`. -/
-def pi2ProveStreamWith (G : RecPiop.Circuit E) (reads : List Read) (setupStack : Array K) (input : List UInt8)
-    (values : List PublicValue) (w : ℕ → K) : UniComplete.WrM m Pi2Out := do
+/-- **The prover's stream** (`prove_with`), from the seed: the public values, `W` (its root, its out-of-domain
+answer `ood n root stack`) and `α, β, γ`, `Q` (its root, its answer) and `t`, the values at `t` (`a`, `ξ`, `s`) and
+`ρ`. -/
+def pi2ProveStreamWith (G : RecPiop.Circuit E) (S : CoreSpec E) (ood : ℕ → Digest → Array K → E)
+    (reads : List Read) (setupStack : Array K) (input : List UInt8) (values : List PublicValue) (w : ℕ → K) :
+    UniComplete.WrM m Pi2Out := do
   let n := G.logN
   let (lw, lq, _) := layoutsOf n
   sendPublic (reads.zip values)
+  let pubs := publicScalarsOf input values
   -- W
   let tb := wTableB G w
   let wStack := placePublic lw fun i ↦ tb.getD i 0
   let wTree ← (StateT.lift (E2ECompleteness.commitWithH H lw.logN wStack) : UniComplete.WrM m LeanVM.Prover.Tree)
   UniComplete.sendRoot (digestScalars wTree.root)
+  UniComplete.sendScalar (ood lw.logN wTree.root wStack)
   let α ← UniComplete.sampleW H
   let β ← UniComplete.sampleW H
   let γ ← UniComplete.sampleW H
   -- Q
-  let hN := hNovel G w α β γ
-  let qN := qNovel G w α β γ
-  let qStack := placePublic lq (qEntry n hN qN)
+  let hN := hNovel G w α β
+  let qN := qNovel G w α β γ (phiOn S pubs γ)
+  let pN := pNovel G w
+  let qpN := qpNovel G w γ
+  let qStack := placePublic lq (qEntry n hN qN pN qpN)
   let qTree ← (StateT.lift (E2ECompleteness.commitWithH H lq.logN qStack) : UniComplete.WrM m LeanVM.Prover.Tree)
   UniComplete.sendRoot (digestScalars qTree.root)
+  UniComplete.sendScalar (ood lq.logN qTree.root qStack)
   let t ← UniComplete.sampleW H
   -- the values at t
   let a := foldValues n G.logW tb t
   let ξ := xiOf n setupStack β t
-  UniComplete.sendScalars (a ++ [ξ])
+  let s := sOf n pN t
+  UniComplete.sendScalars (a ++ [ξ, s])
   let ρ ← UniComplete.sampleW H
   let c ← get
-  return ⟨c.stream, wStack, wTree, qStack, qTree, ⟨publicScalarsOf input values, α, β, γ, t, a, ξ, ρ⟩⟩
+  return ⟨c.stream, wStack, wTree, qStack, qTree, ⟨pubs, α, β, γ, t, a, ξ, s, ρ⟩⟩
 
 /-- **π2's honest prover** over `H`, `F` (`prove_with`, then `open`): the seed `keccak(NAME ‖ IV ‖ public input)`, the
-stream, then the three WHIR openings in the contract's order (`W`'s one claim, the setup's one, `Q`'s two), at the
-claims of the verifier's arithmetic (`CoreSpec.run` of the circuit's view) on the prover's inputs; the stream and the
-three proofs, or `none` if a proof of work fails. -/
-def pi2ProveWith (fuel : ℕ) (G : RecPiop.Circuit E) (view : Circuit) (setupStack : Array K)
-    (setupTree : LeanVM.Prover.Tree) (iv input : List UInt8) (values : List PublicValue) (w : ℕ → K) :
-    m (Option (Array UInt8 × Compile.Proof × Compile.Proof × Compile.Proof)) := do
+stream, then the WHIR openings in the contract's order (`W`'s one claim, the setup's one, `Q`'s three), at the claims
+of the verifier's arithmetic (`CoreSpec.run` of the circuit's view) on the prover's inputs; the stream and the three
+proofs, or `none` if a proof of work fails. -/
+def pi2ProveWith (fuel : ℕ) (G : RecPiop.Circuit E) (ood : ℕ → Digest → Array K → E) (view : Circuit)
+    (setupStack : Array K) (setupTree : LeanVM.Prover.Tree) (iv input : List UInt8) (values : List PublicValue)
+    (w : ℕ → K) : m (Option (Array UInt8 × Compile.Proof × Compile.Proof × Compile.Proof)) := do
   let seed ← H (RecStatement.name ++ iv ++ input)
-  let (out, _) ← (pi2ProveStreamWith H G view.reads setupStack input values w).run (UniComplete.Wr.start seed)
+  let (out, _) ← (pi2ProveStreamWith H G (Spec.of view).core ood view.reads setupStack input values w).run
+    (UniComplete.Wr.start seed)
   let o := (Spec.of view).core.run out.inputs
   let (lw, lq, ls) := layoutsOf G.logN
   let pW ← E2ECompleteness.proveOpeningWithH H F fuel lw out.wTree out.wStack [⟨o.witnessPoint, o.fold⟩]
   let pS ← E2ECompleteness.proveOpeningWithH H F fuel ls setupTree setupStack [⟨o.setupPoint, out.inputs.ξ⟩]
   let pQ ← E2ECompleteness.proveOpeningWithH H F fuel lq out.qTree out.qStack
-    [⟨o.quotientPoint, o.quotientValue⟩, ⟨o.sumPoint, o.sumValue⟩]
+    [⟨o.quotientPoint, o.quotientValue⟩, ⟨o.pushesPoint, o.pushesValue⟩, ⟨o.sumPoint, o.sumValue⟩]
   return do
     let a ← pW
     let b ← pS
@@ -280,5 +338,10 @@ def pi2ProveWith (fuel : ℕ) (G : RecPiop.Circuit E) (view : Circuit) (setupSta
     pure (out.stream, a, b, c)
 
 end With
+
+/-- **The deployed out-of-domain answer** (`pcs_claim::commit_words`' `ood`): the stack's multilinear polynomial at the
+root's out-of-domain point (`WhirBridge.Pcs.oodPoint`, `ood_point`), bit `0` of an index the first coordinate. -/
+def pi2Ood (n : ℕ) (root : Digest) (stack : Array K) : E :=
+  UniStatement.multilinearEval (stack.toList.map ofK) (WhirBridge.Pcs.oodPoint n root).toList
 
 end RecCompose

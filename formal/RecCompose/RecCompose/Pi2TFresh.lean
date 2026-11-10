@@ -50,13 +50,16 @@ namespace TF
 attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
   LeanVM.Protocol.Compile.instFintypeKState
 
-/-! ## Answers and `64`-byte hits -/
+/-! ## Answers and `t`-input hits -/
+
+/-- **`t`'s input length** (π2v3): `s₃`'s `32` bytes, `Q`'s root word (`32`), its out-of-domain answer (`24`). -/
+abbrev tLen : ℕ := 88
 
 /-- `u` answers a cached hash query. -/
 def Ans (c : Cache) (u : Digest) : Prop := ∃ m, c (.inl m) = some u
 
-/-- **A `64`-byte hit at `u`**: a cached `64`-byte input begins with `u`'s bytes. -/
-def Hit64 (c : Cache) (u : Digest) : Prop := ∃ m, c (.inl m) ≠ none ∧ m.length = 64 ∧ m.take 32 = digestBytes u
+/-- **A `t`-input hit at `u`**: a cached `tLen`-byte input begins with `u`'s bytes. -/
+def Hit64 (c : Cache) (u : Digest) : Prop := ∃ m, c (.inl m) ≠ none ∧ m.length = tLen ∧ m.take 32 = digestBytes u
 
 open Classical in
 theorem sum_ans_le {c : Cache} {K : ℕ} (hc : CacheBound c K) :
@@ -78,14 +81,14 @@ theorem sum_hit64_le {c : Cache} {K : ℕ} (hc : CacheBound c K) :
   exact (sum_hit_le L (Hit64 c) fun u ⟨m, hmc, _, ht⟩ ↦ ⟨m, hm m hmc, ht⟩).trans
     (by exact_mod_cast hL : ((L.card : ℕ) : ℝ≥0∞) ≤ K)
 
-/-! ## Computations whose `64`-byte queries begin with a received digest -/
+/-! ## Computations whose `tLen`-byte queries begin with a received digest -/
 
-/-- **`APq Q R X`**: every `64`-byte query of `X` begins with a digest in `R`, `R` growing by each answer; `Q` of the
+/-- **`APq Q R X`**: every `tLen`-byte query of `X` begins with a digest in `R`, `R` growing by each answer; `Q` of the
 output and the final list. -/
 inductive APq {α : Type} (Q : α → List Digest → Prop) : List Digest → OracleComp KeccakCalls α → Prop
   | ret {R : List Digest} (a : α) : Q a R → APq Q R (pure a)
   | query {R : List Digest} (x : Bytes) (k : Digest → OracleComp KeccakCalls α) :
-      (x.length = 64 → ∃ a ∈ R, x.take 32 = digestBytes a) → (∀ u, APq Q (u :: R) (k u)) →
+      (x.length = tLen → ∃ a ∈ R, x.take 32 = digestBytes a) → (∀ u, APq Q (u :: R) (k u)) →
       APq Q R (callKeccak256 x >>= k)
 
 theorem APq.weakenQ {α : Type} {Q Q' : α → List Digest → Prop} (hQ : ∀ a R, Q a R → Q' a R) {R : List Digest}
@@ -113,7 +116,7 @@ theorem APq.sub {α : Type} {Q : α → List Digest → Prop} {R : List Digest} 
   | query x k hx _ ih =>
     refine .query x k hx fun u ↦ (ih u).weakenQ fun a R' h ↦ ⟨h.1, fun d hd ↦ h.2 d (List.mem_cons_of_mem _ hd)⟩
 
-theorem apq_H (x : Bytes) {R : List Digest} (hx : x.length = 64 → ∃ a ∈ R, x.take 32 = digestBytes a) :
+theorem apq_H (x : Bytes) {R : List Digest} (hx : x.length = tLen → ∃ a ∈ R, x.take 32 = digestBytes a) :
     APq (fun v R' ↦ v ∈ R' ∧ ∀ d ∈ R, d ∈ R') R (callKeccak256 x) := by
   rw [← bind_pure (callKeccak256 x)]
   exact .query x _ hx fun u ↦ .ret u ⟨List.mem_cons_self, fun d hd ↦ List.mem_cons_of_mem _ hd⟩
@@ -162,8 +165,8 @@ theorem apq_levels (k : ℕ) : ∀ (level : Array Digest) (R : List Digest), def
     unfold LeanVM.Prover.levelsWithHash LeanVM.Prover.parentsWithHash
     refine (apq_arrayMapM _ (fun R' ↦ default ∈ R' ∧ ∀ d ∈ level, d ∈ R')
       (fun R₁ R₂ h h12 ↦ ⟨h12 _ h.1, fun d hd' ↦ h12 d (h.2 d hd')⟩)
-      (fun j R₁ h ↦ apq_H _ fun _ ↦ ⟨level.getD (2 * j) default,
-        (getD_mem_or level (2 * j)).elim (fun h' ↦ h.2 _ h') (fun h' ↦ by rw [h']; exact h.1), take_digestBytes _ _⟩)
+      (fun j R₁ h ↦ apq_H _ fun hl ↦ absurd hl (by
+        rw [List.length_append, E2ECompleteness.length_digestBytes, E2ECompleteness.length_digestBytes]; decide))
       _ R ⟨hd, hl⟩).bind fun up R' h ↦ (ih up R' (h.2 _ hd) h.1).bind fun _ _ _ ↦ .ret _ trivial
 
 /-- **A Merkle tree over rows of `64` words**: `512`-byte leaves, then the levels. -/
@@ -172,7 +175,7 @@ theorem apq_buildTree (height : ℕ) (word : LeanVM.Protocol.Compile.Word) (hw :
     APq (fun _ _ ↦ True) R (LeanVM.Prover.buildTreeWithHash callKeccak256 height word) := by
   unfold LeanVM.Prover.buildTreeWithHash LeanVM.Prover.leafDigestsWithHash
   refine (apq_arrayMapM _ (fun _ ↦ True) (fun _ _ _ _ ↦ trivial)
-    (fun i R₁ _ ↦ apq_H _ fun h64 ↦ absurd h64 (by rw [E2ECompleteness.length_flatMap_kBytes, hw]; omega))
+    (fun i R₁ _ ↦ apq_H _ fun h64 ↦ absurd h64 (by rw [E2ECompleteness.length_flatMap_kBytes, hw]; decide))
     _ R trivial).bind fun leaves R' h ↦
       (apq_levels height leaves R' (h.2 _ hR) h.1).bind fun _ _ _ ↦ .ret _ trivial
 
@@ -288,7 +291,7 @@ theorem tFresh_of (S : Pi2Staged) {δ : Type} (T : S.α → Digest → Digest �
     (hTap : ∀ a s₁ s₂ s₃, APq (fun _ _ ↦ True) [default] (T a s₁ s₂ s₃))
     (hT32 : ∀ a s₁ s₂ s₃, HashOK (fun m ↦ m.length ≠ 32) (T a s₁ s₂ s₃))
     {NT : ℕ} (hTc : ∀ a s₁ s₂ s₃, HC (T a s₁ s₂ s₃) NT)
-    (htin : ∀ a s₁ s₂ s₃ d, (S.tin (g a s₁ s₂ s₃ d)).length = 64 ∧
+    (htin : ∀ a s₁ s₂ s₃ d, (S.tin (g a s₁ s₂ s₃ d)).length = tLen ∧
       (S.tin (g a s₁ s₂ s₃ d)).take 32 = digestBytes s₃)
     {L : ℕ} (hL : L ≠ 32) (hinp : ∀ a, (S.inp a).length = L) {KA : ℕ} (hA : HC S.A KA) {εα : ℝ≥0∞}
     (hα : Pr{let p ← (simulateQ ro S.A).run ∅}[p.2 (.inl (S.inp p.1)) ≠ none] ≤ εα) :
@@ -369,7 +372,7 @@ theorem tFresh_of (S : Pi2Staged) {δ : Type} (T : S.α → Digest → Digest �
       have hn : (Sum.inl (S.tin (g p.1 s₁ s₂ u z.1)) : Bytes ⊕ KeccakState) ≠ .inl (digestBytes s₂) := fun h ↦ by
         have := congrArg List.length (Sum.inl_injective h)
         rw [hl, length_digestBytes] at this
-        omega
+        exact absurd this (by decide)
       dsimp only at hz
       rw [QueryCache.cacheQuery_of_ne _ _ hn] at hz
       exact ⟨_, hz, hl, ht⟩

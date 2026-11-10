@@ -137,11 +137,11 @@ include hD in
 `ρ`'s, the setup's table good, and the check, make the opened transcript `pi2Opened` then `ρ`'s round, the claims
 true (`Pi2ClaimsHold`), so the protocol's last state holds. -/
 theorem hlink_p2 (R : RecSetupRoots → Compose.Piop pi2K Stk)
-    (hpost : ∀ roots (s : Pi2St) (cW cQ : Stk) (inp : Inputs E), inp.scalars = s.2 →
+    (hpost : ∀ roots (s : Pi2St) (cW cQ : Stk) (ow oq : List E) (inp : Inputs E), inp.scalars = s.2 →
       inp.a.length = 2 ^ (Spec.of (D.circuitAt roots.pi1).circuit).core.logRow →
       ((Spec.of (D.circuitAt roots.pi1).circuit).core.run inp).all ≠ 0 →
       Pi2ClaimsHold D roots inp cW cQ →
-      (R roots).post s (pi2Opened cW cQ inp) (none, inp.a ++ [inp.ξ]) [inp.ρ])
+      (R roots).post s (pi2Opened cW cQ ow oq inp) (none, inp.a ++ [inp.ξ, inp.s]) [inp.ρ])
     (π : P2Pf) (ch : List (List E)) (cs : List (Option Stk)) (hc : p2Check π ch)
     (hl : cs.length = pi2Spec.K.rounds.length)
     (hg : ∀ i (h : i < cs.length), (pi2Spec.K.spec i).root → p2Good i π ch cs[i])
@@ -158,20 +158,20 @@ theorem hlink_p2 (R : RecSetupRoots → Compose.Piop pi2K Stk)
   rw [ite_eq_left rfl] at g0
   rw [ite_eq_right (by decide), ite_eq_left rfl] at g1
   obtain ⟨cW, hcW, hW⟩ := g0
-  obtain ⟨cQ, hcQ, hQ1, hQ2⟩ := g1
+  obtain ⟨cQ, hcQ, hQ1, hQ2, hQ3⟩ := g1
   have hcs : cs = [some cW, some cQ, none] := by
     rw [list_three_eq cs hl3 none]
     simp only [List.getD_eq_getElem _ _ (show 0 < cs.length by omega),
       List.getD_eq_getElem _ _ (show 1 < cs.length by omega), List.getD_eq_getElem _ _ (show 2 < cs.length by omega)]
     rw [hcW, hcQ, n2]
-  have hvals : ((p2Msgs π).getD 2 default).2 = (p2Inputs π ch).a ++ [(p2Inputs π ch).ξ] := by
+  have hvals : ((p2Msgs π).getD 2 default).2 = (p2Inputs π ch).a ++ [(p2Inputs π ch).ξ, (p2Inputs π ch).s] := by
     show ((p2Msgs π).getD 2 default).2 = ((p2Msgs π).getD 2 default).2.take 16 ++
-      [((p2Msgs π).getD 2 default).2.getD 16 0]
-    refine (take_getD_eq _ 16 ?_ 0).symm
+      [((p2Msgs π).getD 2 default).2.getD 16 0, ((p2Msgs π).getD 2 default).2.getD 17 0]
     rw [p2Msgs_eq]
-    simp
+    rfl
   have hcirc := circuitAt_real D hD (rootsOfOut π.roots).pi1
-  have hpost' := hpost (rootsOfOut π.roots) (stOf (p2View π).1) cW cQ (p2Inputs π ch) rfl (by
+  have hpost' := hpost (rootsOfOut π.roots) (stOf (p2View π).1) cW cQ
+    [UniSound.scalarAt π.proof.stream 504] [UniSound.scalarAt π.proof.stream 560] (p2Inputs π ch) rfl (by
       rw [hcirc, spec_core_logRow]
       show (((p2Msgs π).getD 2 default).2.take 16).length = 2 ^ 4
       rw [p2Msgs_eq]
@@ -180,8 +180,8 @@ theorem hlink_p2 (R : RecSetupRoots → Compose.Piop pi2K Stk)
       simp only
       rw [hcirc]
       unfold p2GoodS at hgS
-      rw [layoutsOf_cc] at hW hQ1 hQ2 hgS ⊢
-      exact ⟨hW, hQ1, hQ2, hgS⟩)
+      rw [layoutsOf_cc] at hW hQ1 hQ2 hQ3 hgS ⊢
+      exact ⟨hW, hQ1, hQ2, hQ3, hgS⟩)
   obtain ⟨a, b, c, rfl⟩ : ∃ a b c, ch = [a, b, c] := ⟨_, _, _, list_three_eq ch hch []⟩
   simp only [List.getD_cons_zero, List.getD_cons_succ] at hc0 hc1 hc2
   obtain ⟨a0, a1, a2, rfl⟩ : ∃ x y z, a = [x, y, z] := ⟨_, _, _, list_three_eq a hc0 0⟩

@@ -2,11 +2,14 @@
 
 # RecStatement
 
-The recursion's outer proof π2 (`crates/leanvm/rec`, `PI2.md` §2, §8–§9; branch `leanvm-rec` @ 2b22581, the final
-protocol: the setup committed as `κ` and `κ + σ`, `ξ = κ(t) + βσ(t)` sent, no `h(t)`, the zero checks as an aligned
-coset of ports in closed form `β^15/F(Y)`, the row fold's siblings, the normalised `Q` claim
-`(1 + ρ')h + ρ'q = X/(S_d Y)`, one inversion, every claim in `machine.rs`'s one encoding, π1's claims at points the
-contract derives from π1-rec3's narrow pair challenges), **for the recursion of the Keccak VM**: π1 is
+The recursion's outer proof π2 (`crates/leanvm/rec`, `PI2.md` §2, §8–§9), **π2v3** (`leanvm-rec-pi2v3`: the ports
+out of the copy argument, checked by the ports' term `T = Σ_{port pairs} I_p (E_p + Φ_k)` with `Φ_k` by rows
+(`Data.holes`: each public term's hole); `P`, the internal pushes, committed in `Q` with its definition
+`P = P_v + Z_V q_P`; `q`, `q_P` below `2N`; `s = P(t)` sent; `Q` sixteen slots (`m + 4` variables) and three claims:
+the identity's at `(u, ρ', y_0, y_1)`, weighing `P`, `q_P` by `c_3`, the pushes' at `(u, ρ, 1, 1)`, `ρ` drawn after
+`s`, the sum at `(1^m, 0, 0, y_0, y_1)`; the out-of-domain answers read after each root; one inversion of
+`R_d Y w_{m+1} B c_h D_n`), with the openings at `formal/`'s interface (the layout words, `Q`'s claims in one call;
+the EIP's PCS claims are the openings' switch), **for the recursion of the Keccak VM**: π1 is
 [`UniKeccak`](../UniKeccak/README.md)'s verifier (leanVM 9d50c92a3's Keccak VM) at π1-rec3's Fiat–Shamir shape
 (`keccakRec3`) and the point-claim ABI, at the 128-signature reference shape (`RecGraphKeccak.Pi1.keccak128`), its
 recorded graph [`RecGraphKeccak`](../RecGraphKeccak/README.md)'s `pi1GraphK`. In the files a reviewer reads:
@@ -66,8 +69,10 @@ stale.)
    [`Reduction.lean`](RecStatement/Reduction.lean): the derived adversaries (`pi1Adversary`, `hazardAdversary`) and
    **`RecKnowledgeSoundnessReduction`** (end to end, as an explicit reduction).
 8. [`Lemmas/`](RecStatement/Lemmas): `Arith` (fractions, digits, the fold, the siblings' fold), `Side` (the pushes'
-   sums, the walk), `Subspace` (the indicators' closed form), `Coset` (the zero coset's), `SpecOf` (the transcription's
-   hypothesis), `Push`, `Public`, **`Main`** (`checks_claims_iff`), `SpecLink` (`Spec::of`'s constants are `SpecOf`'s).
+   sums, `Φ`'s fractions), `Subspace` (the indicators' closed form), `SpecOf` (the transcription's hypothesis, with
+   `Φ`'s terms and their ports), `Push` (`push_side`), `Phi` (`phiPoly`, `V_{m−r}`'s Lagrange basis by rows,
+   **`phiAt_eq`**), **`Main`** (`checks_claims_iff`, the claims' values), `SpecLink` (`Spec::of`'s constants are
+   `SpecOf`'s).
 
 ## Rust → Lean
 
@@ -310,7 +315,8 @@ public fingerprints):
 
 * **`ind_eval_closed`** (`Subspace`): at `t ∉ V_m`, `Ẑ_s(t) + Ẑ_s(c_p) ≠ 0` and
   `(G.ind ω p).eval t = w_m(t)/(Ẑ_s(t) + Ẑ_s(c_p))`;
-* **`coset_closed`** (`Coset`): `F(Y) = Π_{u<2^k} (Y + β ω_u)` and `Σ_u 1/(Y + βω_u) = β^(2^k−1)/F(Y)`;
+* **`phiAt_eq`** (`Phi`): the verifier's `Φ_k(t) = w_m G_n/G_d` is `phiPoly`'s value, `phiPoly` of degree below
+  `N` taking each port's public fingerprint at its hole (`phiPoly_eval_port`);
 * **`cellsList_eq_cellsOf`** (`Arith`): the siblings' fold is `RecPiop.cellsOf` (`ω_{2k+1} = ω_{2k} + 1`);
   **`foldW_eq_foldAt`**: `W`'s fold is `RecPiop.foldAt`;
 * **`push_side`** (`Push`): `B ≠ 0`, `S_d ≠ 0`, `Σ_p I_p(t)(E_p + v_0) = w_m A/B`, `1_S(t) = w_m S_n/S_d`;

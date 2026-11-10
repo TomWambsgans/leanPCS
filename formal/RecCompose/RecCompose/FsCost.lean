@@ -408,6 +408,48 @@ theorem length_mem_absorbsI_p2 (s : FSt2) (B : ℕ) : ∀ (i : ℕ) (rs : List R
 theorem allQ_hash256' {x : List UInt8} (hx : x.length ≤ 2 ^ 32) : AllQueriesSatisfy (hash256 x) Short :=
   UniSound.allQ_hash256 (hx.trans (by norm_num))
 
+open Soundness in
+/-- **An opening of at most three claims of at most `2^30` coordinates makes short queries only**
+(`Soundness.allQ_ourVerifier`'s, three claims: `Q`'s). -/
+theorem allQ_ourVerifier3 (L : WhirBridge.Layout) (R : ℕ) (w : (Digest × Stmt L.stacking) × Proof)
+    (h3 : w.1.2.claims.length ≤ 3) (hv : L.vars ≤ 2 ^ 30) :
+    AllQueriesSatisfy (ourVerifier L R w) Short := by
+  rw [ourVerifier_eq]
+  by_cases hne : w.1.2.claims.isEmpty = false
+  swap
+  · simp only [hne]; trivial
+  simp only [hne, ↓reduceIte]
+  refine allQueriesSatisfy_bind (allQueriesSatisfy_bind (LeanVM.Rpm.allQ_queryH ?_)
+    fun _ => LeanVM.Rpm.allQ_queryF _) fun seed => ?_
+  · rw [List.length_append, openingPrefix_length, length_claimsBytes, Soundness.length_flat]
+    have hpt : ∀ c ∈ w.1.2.claims, c.point.length + 1 ≤ 2 ^ 30 + 1 := fun c hc => by
+      have := w.1.2.wide c hc
+      simp only [WhirBridge.Layout.stacking] at this
+      omega
+    have hs := List.sum_le_length_nsmul (w.1.2.claims.map fun c => c.point.length + 1)
+      (2 ^ 30 + 1) (by simpa using hpt)
+    simp only [List.length_map, smul_eq_mul] at hs
+    have : w.1.2.claims.length * (2 ^ 30 + 1) ≤ 3 * (2 ^ 30 + 1) := Nat.mul_le_mul_right _ h3
+    omega
+  · by_cases hr : WhirBridge.rootOf w.2 = some w.1.1
+    · simp only [hr, ↓reduceIte]
+      exact LeanVM.Rpm.allQ_runProof _ seed _ (widthsLE_variantProg _ _ _)
+    · simp only [hr, ↓reduceIte]; trivial
+
+/-- `UniSound.allQ_opsRun` for openings of at most three claims. -/
+theorem allQ_opsRun3 {Pf F M St : Type} (view : Pf → St × List (RMsg F)) :
+    ∀ (ops : List (WhirOp Pf F M)) (π : Pf) (ch : List (List F)),
+      (∀ o ∈ ops, (o.cl π ch).claims.length ≤ 3 ∧ o.S.L.vars ≤ 2 ^ 30) →
+        AllQueriesSatisfy (opsRun view ops π ch) Short
+  | [], _, _, _ => trivial
+  | o :: os, π, ch, h => by
+    simp only [opsRun]
+    refine allQueriesSatisfy_bind (allQ_ourVerifier3 _ _ _ (h o List.mem_cons_self).1
+      (h o List.mem_cons_self).2) fun _ => ?_
+    rw [map_eq_bind_pure_comp]
+    exact allQueriesSatisfy_bind (allQ_opsRun3 view os π ch fun o' ho' =>
+      h o' (List.mem_cons_of_mem _ ho')) fun _ => LeanVM.Rpm.allQ_pure _
+
 /-- **The composed verifier calls `π` at most `2^48` times**: at most `4 + 6 + 46492` queries (the IV's, the chain's,
 the six openings'), each short. -/
 theorem cost_p2Ver (D : RecDeployment) (hD : RecDeployment.Real D) (π : P2Pf) :
@@ -427,11 +469,11 @@ theorem cost_p2Ver (D : RecDeployment) (hD : RecDeployment.Real D) (π : P2Pf) :
     refine allQueriesSatisfy_bind (allQ_hash256' (by rw [length_digIn_real hD]; norm_num)) fun d => ?_
     refine allQueriesSatisfy_bind (allQ_hash256' (by rw [length_ivIn]; norm_num)) fun _ => ?_
     exact LeanVM.Rpm.allQ_pure _
-  have hops : ∀ (π' : P2Pf) ch, ∀ o ∈ p2Ops D, (o.cl π' ch).claims.length ≤ 2 ∧ o.S.L.vars ≤ 2 ^ 30 := by
+  have hops : ∀ (π' : P2Pf) ch, ∀ o ∈ p2Ops D, (o.cl π' ch).claims.length ≤ 3 ∧ o.S.L.vars ≤ 2 ^ 30 := by
     intro π' ch o ho
     simp only [p2Ops, List.mem_cons, List.mem_nil_iff, or_false] at ho
-    have h1 : ∀ k, (cl1 D k π' ch).claims.length ≤ 2 := fun k =>
-      (toStmt_length_le _ _).trans (max_le ((pi1Claims_length D hD.2.1 π' ch k).trans (by norm_num)) le_rfl)
+    have h1 : ∀ k, (cl1 D k π' ch).claims.length ≤ 3 := fun k =>
+      (toStmt_length_le _ _).trans (max_le ((pi1Claims_length D hD.2.1 π' ch k).trans (by norm_num)) (by norm_num))
     have hv1 : ∀ k, (sh1 k).L.vars ≤ 2 ^ 30 := fun k => (pi1Vars_hi k).trans (by norm_num)
     rcases ho with rfl | rfl | rfl | rfl | rfl | rfl
     · exact ⟨h1 0, hv1 0⟩
@@ -445,7 +487,7 @@ theorem cost_p2Ver (D : RecDeployment) (hD : RecDeployment.Real D) (π : P2Pf) :
     refine allQueriesSatisfy_bind hiv fun x => ?_
     rw [map_eq_bind_pure_comp]
     refine allQueriesSatisfy_bind ?_ fun _ => LeanVM.Rpm.allQ_pure _
-    have hmsg : ∀ m ∈ (p2View (setIv2 x.2.2.2 π)).2, m.2.length ≤ 17 := by
+    have hmsg : ∀ m ∈ (p2View (setIv2 x.2.2.2 π)).2, m.2.length ≤ 18 := by
       intro m hm
       have e : (p2View (setIv2 x.2.2.2 π)).2 = (p2Msgs (setIv2 x.2.2.2 π)).map UniSound.toRMsg := rfl
       rw [e, p2Msgs_eq] at hm
@@ -458,11 +500,11 @@ theorem cost_p2Ver (D : RecDeployment) (hD : RecDeployment.Real D) (π : P2Pf) :
       rw [p2Label_length]
       norm_num
     · intro e he
-      have := length_mem_absorbsI_p2 _ 17 0 _ _ hmsg e he
+      have := length_mem_absorbsI_p2 _ 18 0 _ _ hmsg e he
       simp only [pLen] at this
       omega
     · simp only [Function.comp_apply, pure_bind]
-      exact allQueriesSatisfy_bind (UniSound.allQ_opsRun _ _ _ _ (hops _ _)) fun _ => LeanVM.Rpm.allQ_pure _
+      exact allQueriesSatisfy_bind (allQ_opsRun3 _ _ _ _ (hops _ _)) fun _ => LeanVM.Rpm.allQ_pure _
   refine (LeanVM.Rpm.isWeightBound_of_isTotalQueryBound hashBlocks (2 ^ 32) htot
     (hall.mono fun _ h => LeanVM.Rpm.hashBlocks_le_of_short h)).mono ?_
   norm_num

@@ -89,7 +89,7 @@ noncomputable def pi2ProverWith (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi
   let iv ← Pi2H.ivOfH H D trees.roots
   let vw := pi2Choice D C Fa trees.roots input p1.stream
   let c := D.circuitAt trees.roots.pi1
-  let res ← pi2ProveWith H F fuel (C.G trees.roots) c.circuit c.setupStack trees.pi2 iv input.toList vw.1 vw.2
+  let res ← pi2ProveWith H F fuel (C.G trees.roots) pi2Ood c.circuit c.setupStack trees.pi2 iv input.toList vw.1 vw.2
   return res.map fun x ↦ ⟨x.1, p1.c1, p1.c2, p1.setup, x.2.1, x.2.2.1, x.2.2.2⟩
 
 end With
@@ -109,33 +109,35 @@ noncomputable def pi2Prover (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Fac
 
 /-- **The prover's run at a pure permutation**: the stream, then the three openings at the arithmetic's claims. -/
 theorem pi2ProveWith_run (Hk : List UInt8 → Digest) (F : KeccakState → Id KeccakState) (fuel : ℕ)
-    (G : RecPiop.Circuit E) (view : Circuit) (setupStack : Array K) (setupTree : LeanVM.Prover.Tree)
-    (iv input : List UInt8) (values : List PublicValue) (w : ℕ → K) :
-    Id.run (pi2ProveWith (m := Id) (Pure.pure ∘ Hk) F fuel G view setupStack setupTree iv input values w) =
+    (G : RecPiop.Circuit E) (ood : ℕ → Digest → Array K → E) (view : Circuit) (setupStack : Array K)
+    (setupTree : LeanVM.Prover.Tree) (iv input : List UInt8) (values : List PublicValue) (w : ℕ → K) :
+    Id.run (pi2ProveWith (m := Id) (Pure.pure ∘ Hk) F fuel G ood view setupStack setupTree iv input values w) =
       (E2ECompleteness.proveOpeningWithH (m := Id) (Pure.pure ∘ Hk) F fuel (layoutsOf G.logN).1
-        (proverOut Hk G view setupStack iv input values w).wTree
-        (proverOut Hk G view setupStack iv input values w).wStack
-        [⟨((Spec.of view).core.run (proverOut Hk G view setupStack iv input values w).inputs).witnessPoint,
-          ((Spec.of view).core.run (proverOut Hk G view setupStack iv input values w).inputs).fold⟩]).bind
+        (proverOut Hk G ood view setupStack iv input values w).wTree
+        (proverOut Hk G ood view setupStack iv input values w).wStack
+        [⟨((Spec.of view).core.run (proverOut Hk G ood view setupStack iv input values w).inputs).witnessPoint,
+          ((Spec.of view).core.run (proverOut Hk G ood view setupStack iv input values w).inputs).fold⟩]).bind
         fun a ↦
       (E2ECompleteness.proveOpeningWithH (m := Id) (Pure.pure ∘ Hk) F fuel (layoutsOf G.logN).2.2 setupTree setupStack
-        [⟨((Spec.of view).core.run (proverOut Hk G view setupStack iv input values w).inputs).setupPoint,
-          (proverOut Hk G view setupStack iv input values w).inputs.ξ⟩]).bind fun b ↦
+        [⟨((Spec.of view).core.run (proverOut Hk G ood view setupStack iv input values w).inputs).setupPoint,
+          (proverOut Hk G ood view setupStack iv input values w).inputs.ξ⟩]).bind fun b ↦
       (E2ECompleteness.proveOpeningWithH (m := Id) (Pure.pure ∘ Hk) F fuel (layoutsOf G.logN).2.1
-        (proverOut Hk G view setupStack iv input values w).qTree
-        (proverOut Hk G view setupStack iv input values w).qStack
-        [⟨((Spec.of view).core.run (proverOut Hk G view setupStack iv input values w).inputs).quotientPoint,
-          ((Spec.of view).core.run (proverOut Hk G view setupStack iv input values w).inputs).quotientValue⟩,
-         ⟨((Spec.of view).core.run (proverOut Hk G view setupStack iv input values w).inputs).sumPoint,
-          ((Spec.of view).core.run (proverOut Hk G view setupStack iv input values w).inputs).sumValue⟩]).bind fun c ↦
-      some ((proverOut Hk G view setupStack iv input values w).stream, a, b, c) := rfl
+        (proverOut Hk G ood view setupStack iv input values w).qTree
+        (proverOut Hk G ood view setupStack iv input values w).qStack
+        [⟨((Spec.of view).core.run (proverOut Hk G ood view setupStack iv input values w).inputs).quotientPoint,
+          ((Spec.of view).core.run (proverOut Hk G ood view setupStack iv input values w).inputs).quotientValue⟩,
+         ⟨((Spec.of view).core.run (proverOut Hk G ood view setupStack iv input values w).inputs).pushesPoint,
+          ((Spec.of view).core.run (proverOut Hk G ood view setupStack iv input values w).inputs).pushesValue⟩,
+         ⟨((Spec.of view).core.run (proverOut Hk G ood view setupStack iv input values w).inputs).sumPoint,
+          ((Spec.of view).core.run (proverOut Hk G ood view setupStack iv input values w).inputs).sumValue⟩]).bind fun c ↦
+      some ((proverOut Hk G ood view setupStack iv input values w).stream, a, b, c) := rfl
 
 /-- **π2's honest prover at a pure permutation**: `pi2ProveWith` at the setup's trees, the contract's IV and the witness
 it takes, π1's openings first. -/
 theorem pi2ProverWith_run (Hk : List UInt8 → Digest) (F : KeccakState → Id KeccakState) (D : RecDeployment)
     (C : Pi2Circuits D) (Fa : Pi2Facts D C) (fuel : ℕ) (input : Vector UInt8 32) (p1 : UniKeccak.KeccakProof) :
     Id.run (pi2ProverWith (m := Id) (Pure.pure ∘ Hk) F D C Fa fuel input p1) =
-      (Id.run (pi2ProveWith (m := Id) (Pure.pure ∘ Hk) F fuel (C.G (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots)
+      (Id.run (pi2ProveWith (m := Id) (Pure.pure ∘ Hk) F fuel (C.G (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots) pi2Ood
         (D.circuitAt (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots.pi1).circuit
         (D.circuitAt (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots.pi1).setupStack (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).pi2
         (ivOf D Hk (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots) input.toList
@@ -160,27 +162,27 @@ theorem pi2_accepts (D : RecDeployment) (hD : D.Real) (C : Pi2Circuits D) (Fa : 
       (pi2Choice D C Fa (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots input p1.stream).2
       (Fa.pubOf (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots
         (publicScalarsOf input.toList (pi2Choice D C Fa (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots input p1.stream).1))
-      (outOf D Hk (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots (C.G (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots) input
+      (outOf D Hk (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots (C.G (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots) pi2Ood input
         (pi2Choice D C Fa (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots input p1.stream).1
         (pi2Choice D C Fa (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots input p1.stream).2).inputs.α
-      (outOf D Hk (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots (C.G (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots) input
+      (outOf D Hk (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots (C.G (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots) pi2Ood input
         (pi2Choice D C Fa (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots input p1.stream).1
         (pi2Choice D C Fa (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots input p1.stream).2).inputs.β
-      (outOf D Hk (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots (C.G (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots) input
+      (outOf D Hk (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots (C.G (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots) pi2Ood input
         (pi2Choice D C Fa (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots input p1.stream).1
         (pi2Choice D C Fa (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots input p1.stream).2).inputs.γ)
     (ht : ¬ BadT (C.G (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots)
       (pi2Choice D C Fa (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots input p1.stream).2
-      (outOf D Hk (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots (C.G (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots) input
+      (outOf D Hk (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots (C.G (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots) pi2Ood input
         (pi2Choice D C Fa (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots input p1.stream).1
         (pi2Choice D C Fa (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots input p1.stream).2).inputs.α
-      (outOf D Hk (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots (C.G (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots) input
+      (outOf D Hk (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots (C.G (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots) pi2Ood input
         (pi2Choice D C Fa (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots input p1.stream).1
         (pi2Choice D C Fa (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots input p1.stream).2).inputs.β
-      (outOf D Hk (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots (C.G (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots) input
+      (outOf D Hk (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots (C.G (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots) pi2Ood input
         (pi2Choice D C Fa (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots input p1.stream).1
         (pi2Choice D C Fa (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots input p1.stream).2).inputs.γ
-      (outOf D Hk (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots (C.G (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots) input
+      (outOf D Hk (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots (C.G (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots) pi2Ood input
         (pi2Choice D C Fa (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots input p1.stream).1
         (pi2Choice D C Fa (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots input p1.stream).2).inputs.t)
     (hpi1 : ∃ ops, pi1OpsOf D (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots input proof.stream = some ops ∧
@@ -192,7 +194,7 @@ theorem pi2_accepts (D : RecDeployment) (hD : D.Real) (C : Pi2Circuits D) (Fa : 
   have hmatch' := hmatch
   rw [hview] at hmatch
   -- the algebra (`lean-pi2-alg`'s `pi2_honest`), at the prover's inputs and stacks
-  obtain ⟨-, -, -, -, -, -, -, -, hi, hwsk, hqsk⟩ := runWith_honest Hk (C.G (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots)
+  obtain ⟨-, -, -, -, -, -, -, -, hi, hwsk, hqsk⟩ := runWith_honest Hk (C.G (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots) pi2Ood
     (D.circuitAt (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots.pi1).circuit
     (D.circuitAt (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots.pi1).setupStack (ivOf D Hk (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots)
     input.toList (pi2Choice D C Fa (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots input p1.stream).1
@@ -200,7 +202,7 @@ theorem pi2_accepts (D : RecDeployment) (hD : D.Real) (C : Pi2Circuits D) (Fa : 
   have halg := pi2_honest Fa (pi2SetupColumns_of_real hD C hroots) (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots
     (pi2Choice D C Fa (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots input p1.stream).2
     (publicScalarsOf input.toList (pi2Choice D C Fa (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots input p1.stream).1)
-    _ _ _ _ (outOf D Hk (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots (C.G (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots) input
+    _ _ _ _ (outOf D Hk (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots (C.G (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots) pi2Ood input
         (pi2Choice D C Fa (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots input p1.stream).1
         (pi2Choice D C Fa (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots input p1.stream).2).inputs.ρ hwS hbad ht
 
@@ -237,16 +239,16 @@ theorem pi2_accepts (D : RecDeployment) (hD : D.Real) (C : Pi2Circuits D) (Fa : 
         simp only [Option.bind_some, Option.map_some, Option.some.injEq] at hres
         subst hres
         rw [htree] at hS
-        exact contract_accepts D F Hk _ (C.G (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots) hview hGN hrow
+        exact contract_accepts D F Hk _ (C.G (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots) pi2Ood hview hGN hrow
           (by rw [hD.2.1]; rfl) (by rw [← htree]; rfl) input _ _ hmatch fuel p1.c1 p1.c2 p1.setup pW pS pQ
           (by obtain ⟨h1, h2⟩ := halg; exact ⟨by rw [hi]; exact h1, by rw [hwsk, hqsk, hi]; exact h2⟩)
           hW hS hQ hpi1
 
 /-! ## π2's completeness -/
 
-/-- **π2's completeness error**: the copy argument's `(2^25 + 36) |E|²` bad triples, `t`'s `2^27` bad points, `N` block
-calls, `t`'s cache hit `εt`, the proofs of work `εpow`. -/
-noncomputable def delta2 (N : ℕ) (εt εpow : ℝ≥0∞) : ℝ≥0∞ := deltaStaged (2 ^ 25 + 36) (2 ^ 27) N εt εpow
+/-- **π2's completeness error**: the copy argument's `(2^25 + 36) |E|²` bad triples (`2N`, π2v3), `t`'s `9 · 2^24`
+bad points (`9N`), `N` block calls, `t`'s cache hit `εt`, the proofs of work `εpow`. -/
+noncomputable def delta2 (N : ℕ) (εt εpow : ℝ≥0∞) : ℝ≥0∞ := deltaStaged (2 ^ 25 + 36) (9 * 2 ^ 24) N εt εpow
 
 /-! ## The algebra's counts at π2's numbers -/
 
@@ -258,26 +260,29 @@ theorem card_badCopy_pi2 {D : RecDeployment} {C : Pi2Circuits D} (Fa : Pi2Facts 
     (w : ℕ → K) (pub : ℕ → List E) :
     (Finset.univ.filter fun v : E × E × E ↦ BadCopy (C.G roots) w pub v.1 v.2.1 v.2.2).card ≤
       (2 ^ 25 + 36) * 2 ^ 384 := by
-  refine (card_badCopy_le _ (Fa.valid roots) w pub).trans ?_
+  refine (card_badCopy_le _ w pub).trans ?_
   rw [RecPiop.Circuit.N, logN_G Fa roots, LeanVM.Protocol.card_E]
   calc 2 * 2 ^ 24 * (2 ^ 192) ^ 2 = 2 ^ 25 * 2 ^ 384 := by ring
     _ ≤ (2 ^ 25 + 36) * 2 ^ 384 := Nat.mul_le_mul_right _ (by omega)
 
 open Classical in
-/-- **`t`'s bad points at π2's circuit** (`lean-pi2-alg`'s `card_badT_le` at `N = 2^24`): off `BadCopy`, at most
-`2^27`, `Holds.badTCard`'s `ct`, for `badT` the event `¬ BadCopy ∧ BadT`. -/
+/-- **`t`'s bad points at π2's circuit** (`card_badT_le` at `N = 2^24`): for a witness, off `BadCopy`, at most
+`9 · 2^24`, `Holds.badTCard`'s `ct`, for `badT` the event `Satisfies ∧ ¬ BadCopy ∧ BadT`. -/
 theorem card_badT_pi2 {D : RecDeployment} {C : Pi2Circuits D} (Fa : Pi2Facts D C) (roots : RecSetupRoots)
     (w : ℕ → K) (pub : ℕ → List E) (α β γ : E) (hnh : ∃ i < (C.G roots).N, ¬ (C.G roots).IsHole i) :
-    ∃ T : Finset E, T.card ≤ 2 ^ 27 ∧
-      ∀ t, (¬ BadCopy (C.G roots) w pub α β γ ∧ BadT (C.G roots) w α β γ t) → t ∈ T := by
-  by_cases hbad : BadCopy (C.G roots) w pub α β γ
-  · exact ⟨∅, by simp, fun t ht ↦ absurd hbad ht.1⟩
-  · refine ⟨_, (card_badT_le _ (Fa.valid roots) (by rw [logN_G Fa roots]; omega) w pub α β γ hbad hnh).trans
-      (by rw [RecPiop.Circuit.N, logN_G Fa roots]; norm_num), fun t ht ↦ ?_⟩
-    exact Finset.mem_filter.mpr ⟨Finset.mem_univ _, ht.2⟩
+    ∃ T : Finset E, T.card ≤ 9 * 2 ^ 24 ∧
+      ∀ t, ((C.G roots).Satisfies pub (RecCircuit.emb w) ∧ ¬ BadCopy (C.G roots) w pub α β γ ∧
+        BadT (C.G roots) w α β γ t) → t ∈ T := by
+  by_cases hw : (C.G roots).Satisfies pub (RecCircuit.emb w)
+  · by_cases hbad : BadCopy (C.G roots) w pub α β γ
+    · exact ⟨∅, by simp, fun t ht ↦ absurd hbad ht.2.1⟩
+    · refine ⟨_, (card_badT_le _ (Fa.valid roots) (kCircuit_toPiop _) (by rw [logN_G Fa roots]; omega) w pub hw
+        α β γ hbad hnh).trans (by rw [RecPiop.Circuit.N, logN_G Fa roots]), fun t ht ↦ ?_⟩
+      exact Finset.mem_filter.mpr ⟨Finset.mem_univ _, ht.2.2⟩
+  · exact ⟨∅, by simp, fun t ht ↦ absurd ht.1 hw⟩
 
 /-- **Named input: π2's completeness experiment in the two-call model** (`Pi2Staged.Holds` at `α`'s input of `536`
-bytes, the copy argument's bad triples `(2^25 + 36) |E|²`, `t`'s `2^27` per prior, `N` block calls, `εt`, `εpow`), for
+bytes, the copy argument's bad triples `(2^25 + 36) |E|²`, `t`'s `9 · 2^24` per prior, `N` block calls, `εt`, `εpow`), for
 every honest statement: the code-level bridge. Its `rejectGood` is `pi2_accepts` (proved) with the proofs of work's
 grinding; its `badCard`, `badTCard` the algebra's counts (`lean-pi2-alg`: `card_badCopy_le`, `card_badT_le`); the rest
 (the experiment as the staged two-call run with P1, the graph's check, `pi2Prover` and the contract; its duplex shape;
@@ -288,7 +293,7 @@ def Pi2StagedFacts (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C) (
   ∀ (input : Vector UInt8 32) (rows : List ℕ) (q : D.pi1.Stack rows), D.pi1.shape.RowsFit rows →
     D.pi1.HonestRelation D.flock rows input q →
       ∃ (S : Pi2Staged) (Bad : S.ρ → Finset (E × E × E)) (badT : S.τ → E → Prop),
-        S.Holds D P1 (pi2Prover D C Fa fuel) input rows q 536 Bad badT (2 ^ 25 + 36) (2 ^ 27) N εt εpow
+        S.Holds D P1 (pi2Prover D C Fa fuel) input rows q 560 Bad badT (2 ^ 25 + 36) (9 * 2 ^ 24) N εt εpow
 
 /-- **π2's completeness**: `RecCompleteness2 D P1 (pi2Prover D C Fa fuel) (delta2 N εt εpow)`. -/
 theorem recCompleteness2_pi2 {D : RecDeployment} {C : Pi2Circuits D} {Fa : Pi2Facts D C} {P1 : Pi1Prover D}
@@ -297,7 +302,7 @@ theorem recCompleteness2_pi2 {D : RecDeployment} {C : Pi2Circuits D} {Fa : Pi2Fa
   recCompleteness2_of_staged h
 
 /-- **`δ2` in bits**: below `2^-164` for at most `2^50` block calls, `εt ≤ 2^-200` and `εpow ≤ 2^-300` (the copy
-argument's `2^-166`, `t`'s `2^-165`, the rest below `2^-170` each). -/
+argument's `2^-166`, `t`'s `9 · 2^-168`, the rest below `2^-170` each). -/
 theorem delta2_le {N : ℕ} {εt εpow : ℝ≥0∞} (hN : N ≤ 2 ^ 50) (ht : εt ≤ (2 : ℝ≥0∞)⁻¹ ^ 200)
     (hp : εpow ≤ (2 : ℝ≥0∞)⁻¹ ^ 300) : delta2 N εt εpow ≤ (2 : ℝ≥0∞)⁻¹ ^ 164 := by
   set x : ℝ≥0∞ := (2 : ℝ≥0∞)⁻¹ ^ 170 with hx
@@ -312,13 +317,15 @@ theorem delta2_le {N : ℕ} {εt εpow : ℝ≥0∞} (hN : N ≤ 2 ^ 50) (ht : �
           norm_num
       _ = (2 : ℝ≥0∞)⁻¹ ^ 166 := E2ECompleteness.two_pow_mul_inv_pow 26 166
       _ = 2 ^ 4 * x := (E2ECompleteness.two_pow_mul_inv_pow 4 166).symm
-  have hc : ((2 ^ 27 : ℕ) : ℝ≥0∞) / 2 ^ 192 ≤ 2 ^ 5 * x := by
+  have hc : ((9 * 2 ^ 24 : ℕ) : ℝ≥0∞) / 2 ^ 192 ≤ 36 * x := by
     refine le_of_eq ?_
-    calc ((2 ^ 27 : ℕ) : ℝ≥0∞) / 2 ^ 192 = 2 ^ 27 * (2 : ℝ≥0∞)⁻¹ ^ (165 + 27) := by
-          rw [ENNReal.div_eq_inv_mul, ← ENNReal.inv_pow, mul_comm]
-          norm_num
-      _ = (2 : ℝ≥0∞)⁻¹ ^ 165 := E2ECompleteness.two_pow_mul_inv_pow 27 165
-      _ = 2 ^ 5 * x := (E2ECompleteness.two_pow_mul_inv_pow 5 165).symm
+    calc ((9 * 2 ^ 24 : ℕ) : ℝ≥0∞) / 2 ^ 192 = 9 * (2 ^ 24 * (2 : ℝ≥0∞)⁻¹ ^ (168 + 24)) := by
+          rw [ENNReal.div_eq_inv_mul, ← ENNReal.inv_pow]
+          push_cast
+          ring
+      _ = 9 * (2 : ℝ≥0∞)⁻¹ ^ 168 := by rw [E2ECompleteness.two_pow_mul_inv_pow 24 168]
+      _ = 9 * (2 ^ 2 * x) := by rw [hx, E2ECompleteness.two_pow_mul_inv_pow 2 168]
+      _ = 36 * x := by ring
   have hd : εt ≤ x := ht.trans (hsmall 200 (by norm_num))
   have he : εpow ≤ x := hp.trans (hsmall 300 (by norm_num))
   have hf : rpmError N ≤ x := by
@@ -330,9 +337,9 @@ theorem delta2_le {N : ℕ} {εt εpow : ℝ≥0∞} (hN : N ≤ 2 ^ 50) (ht : �
       _ = (2 : ℝ≥0∞)⁻¹ ^ 408 := E2ECompleteness.two_pow_mul_inv_pow _ 408
       _ ≤ x := hsmall 408 (by norm_num)
   unfold delta2 deltaStaged
-  calc _ ≤ (x + 2 ^ 4 * x) + (x + 2 ^ 5 * x) + x + x :=
+  calc _ ≤ (x + 2 ^ 4 * x) + (x + 36 * x) + x + x :=
         add_le_add (add_le_add (add_le_add (add_le_add ha hb) (add_le_add hd hc)) he) hf
-    _ = 52 * x := by ring
+    _ = 56 * x := by ring
     _ ≤ 2 ^ 6 * x := by gcongr; norm_num
     _ = (2 : ℝ≥0∞)⁻¹ ^ 164 := by rw [hx]; exact E2ECompleteness.two_pow_mul_inv_pow 6 164
 

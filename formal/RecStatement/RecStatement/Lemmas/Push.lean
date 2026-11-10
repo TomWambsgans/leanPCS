@@ -2,15 +2,18 @@
 import RecStatement.Lemmas.SpecOf
 
 /-!
-# The push side at `t`: the indicators, the groups, the holes
+# The push side at `t`: the indicators, the groups, the ports
 
 Under `SpecOf`, at a `t` outside `V_m` (`w_m(t) ≠ 0`), what the verifier's push side computes
-(`PI2.md` §2 steps 3 and 5):
+(`PI2.md` §2 steps 3–5):
 
 * each pair's denominator `Ẑ_s(t) + Ẑ_s(c_p)` is nonzero and `I_p(t) = w_m(t)/d_p` (`pairDen_ind`, from
   `ind_eval_closed`);
-* the pushes' sum is `RecPiop`'s: `Σ_p I_p(t) (E_p(v_{k_p ⊕ ·}) + v_0) = w_m A/B`, `B ≠ 0` (`push_side`);
-* the holes' indicator is `1_S(t) = w_m S_n/S_d`, `S_d ≠ 0` (`push_side`).
+* each port role's `Φ` denominators `w_r(t) + ω_y` are nonzero (`phiDen_ne_zero`: `w_{m−r}` sends `ω_y` to zero and
+  `w_r(t)` to `w_m(t)`);
+* the internal pushes are `RecPiop`'s: `P_v(t) = v_0 + w_m A/B`, `B ≠ 0` (`push_side`);
+* the ports' fraction is the holes' indicator times `Δ` plus the ports' term: `1_S(t) Δ + T(t) = w_m R_n/R_d`,
+  `R_d ≠ 0`, for any `Φ` taking the verifier's values `phiAt` at `t` (`push_side`).
 -/
 
 set_option linter.unusedSectionVars false
@@ -80,7 +83,7 @@ theorem accFold_getD (xs : List (F × F)) (hd : ∀ xd ∈ xs, xd.2 ≠ 0) :
 section Pairs
 
 variable {n : ℕ} {S : CoreSpec F} {G : RecPiop.Circuit F} {B : QuotientSecurity.CantorBasis F n}
-  {pairOf : ℕ → Block × ℕ} {portOf : ℕ → ℕ} {nz : ℕ} {pubOf : List F → ℕ → List F}
+  {pairOf : ℕ → Block × ℕ} {portOf : ℕ → ℕ} {pubOf : List F → ℕ → List F}
 
 /-- A pair's denominator `Ẑ_s(t) + Ẑ_s(c_p)`, `Ẑ_s(t)` read from `zt`. -/
 def pairDen (S : CoreSpec F) (zt : List F) (i : ℕ) : F := zt.getD (S.pairs.getD i (0, 0)).1 0 + (S.pairs.getD i (0, 0)).2
@@ -107,7 +110,7 @@ theorem logRows_le_max (S : CoreSpec F) {i : ℕ} (hi : i < S.pairs.length) :
   exact List.getElem_mem hi
 
 /-- **A pair's indicator at `t`**: its denominator nonzero, `I_p(t) = w_m(t)/d_p`. -/
-theorem pairDen_ind (hS : SpecOf S G B pairOf portOf nz pubOf) (hV : G.Valid) {t : F}
+theorem pairDen_ind (hS : SpecOf S G B pairOf portOf pubOf) (hV : G.Valid) {t : F}
     (ht : QuotientSecurity.sq^[G.logN] t ≠ 0) {i : ℕ} (hi : i < S.pairs.length) :
     pairDen S (ztOf S t) i ≠ 0 ∧
       (G.ind (Heap.omega B) (pairOf i)).eval t = QuotientSecurity.sq^[G.logN] t / pairDen S (ztOf S t) i := by
@@ -135,40 +138,95 @@ theorem omega_odd (hn : 1 ≤ n) (k : ℕ) : Heap.omega B (2 * k + 1) = Heap.ome
   exact Heap.omega_xor_one B hn (2 * k)
 
 /-- The run's row cells are `cellsOf`. -/
-theorem run_cells (hS : SpecOf S G B pairOf portOf nz pubOf) (hV : G.Valid) (inp : Inputs F) {x : ℕ}
+theorem run_cells (hS : SpecOf S G B pairOf portOf pubOf) (hV : G.Valid) (inp : Inputs F) {x : ℕ}
     (hx : x < 2 ^ G.logW) :
     (S.run inp).cells.getD x 0 = cellsOf G.logW (Heap.omega B) (fun k ↦ inp.a.getD k 0) inp.t x := by
   have h1n : 1 ≤ n := by have := hV.logW_lt; have := hS.hn; omega
-  show (cellsList S.ω (digitsList inp.t (S.logN + 3)) S.logRow inp.a).getD x 0 = _
+  show (cellsList S.ω (digitsList inp.t (S.logN + 2)) S.logRow inp.a).getD x 0 = _
   rw [hS.omega, hS.logRow]
   refine cellsList_eq_cellsOf (Heap.omega B) (omega_odd h1n) inp.t _ (fun l hl ↦ digitsList_getD inp.t ?_) inp.a hx
   have := hV.logW_lt; rw [hS.logN]; omega
 
 /-- The groups' pairs are pairs. -/
-theorem mem_groups_lt (hS : SpecOf S G B pairOf portOf nz pubOf) {g : GroupF F} (hg : g ∈ S.groups) {i : ℕ}
+theorem mem_groups_lt (hS : SpecOf S G B pairOf portOf pubOf) {g : GroupF F} (hg : g ∈ S.groups) {i : ℕ}
     (hi : i ∈ g.pairs) : i < S.pairs.length :=
   List.mem_range.mp (hS.groups_perm.mem_iff.mp (List.mem_flatMap.mpr ⟨g, hg, hi⟩))
 
-/-- **The push side at `t`** (`PI2.md` §2 steps 3, 5): `B ≠ 0`, `S_d ≠ 0`, the pushes' sum
-`Σ_p I_p(t)(E_p + v_0) = w_m A/B`, and the holes' indicator `1_S(t) = w_m S_n/S_d`. -/
-theorem push_side (hS : SpecOf S G B pairOf portOf nz pubOf) (hV : G.Valid) (inp : Inputs F)
-    (ht : QuotientSecurity.sq^[G.logN] inp.t ≠ 0) :
-    (S.run inp).den ≠ 0 ∧ (S.run inp).sDen ≠ 0 ∧
-      ∑ p ∈ G.pairs, (G.ind (Heap.omega B) p).eval inp.t *
-          ((G.regionRole p.1 p.2).value inp.γ (cellsOf G.logW (Heap.omega B) (fun k ↦ inp.a.getD k 0) inp.t 0)
-            (fun c ↦ cellsOf G.logW (Heap.omega B) (fun k ↦ inp.a.getD k 0) inp.t (p.2 ^^^ c)) +
-            cellsOf G.logW (Heap.omega B) (fun k ↦ inp.a.getD k 0) inp.t 0) =
-        QuotientSecurity.sq^[G.logN] inp.t * (S.run inp).num / (S.run inp).den ∧
-      (G.holePoly (Heap.omega B)).eval inp.t =
-        QuotientSecurity.sq^[G.logN] inp.t * (S.run inp).sNum / (S.run inp).sDen := by
+/-- **The verifier's `Φ_k(t)`**: `w_m G_n/G_d` of role `k`'s fraction, zero for a role of no port of nonzero
+value. -/
+def phiAt (S : CoreSpec F) (gs pubs : List F) (t : F) (k : ℕ) : F :=
+  match S.phi.find? (·.1 = k) with
+  | some kt => QuotientSecurity.sq^[S.logN] t * (phiFrac S.ω gs pubs (QuotientSecurity.sq^[S.logRow] t) kt.2).1 /
+      (phiFrac S.ω gs pubs (QuotientSecurity.sq^[S.logRow] t) kt.2).2
+  | none => 0
+
+theorem mem_phiTerms {S : CoreSpec F} {kt : ℕ × List (ℕ × LinF F)} (hkt : kt ∈ S.phi) {yl : ℕ × LinF F}
+    (hyl : yl ∈ kt.2) : (kt.1, yl) ∈ phiTerms S :=
+  List.mem_flatMap.mpr ⟨kt, hkt, List.mem_map.mpr ⟨yl, hyl, rfl⟩⟩
+
+/-- A `Φ` term's row is below `2^(m − r)`. -/
+theorem phiTerm_row_lt (hS : SpecOf S G B pairOf portOf pubOf) (hV : G.Valid) {x : ℕ × ℕ × LinF F}
+    (hx : x ∈ phiTerms S) : x.2.1 < 2 ^ (G.logN - G.logW) := by
+  obtain ⟨J, hJ, rfl⟩ := List.getElem_of_mem hx
+  have e : (phiTerms S)[J] = (phiTerms S).getD J noPhi := by
+    rw [List.getD_eq_getElem?_getD, List.getElem?_eq_getElem hJ, Option.getD_some]
+  rw [e, hS.phi_row J hJ]
+  have hp := (G.port_lt hV (hS.phi_port_lt J hJ)).1
+  have hW : 0 < G.W := Nat.two_pow_pos _
+  rw [Nat.div_lt_iff_lt_mul hW]
+  have : G.N = 2 ^ (G.logN - G.logW) * G.W := by
+    unfold Circuit.N Circuit.W
+    rw [← pow_add, Nat.sub_add_cancel hV.logW_lt.le]
+  omega
+
+/-- **A `Φ` denominator at `t` off `V_m` is nonzero**: `w_r(t) + ω_y ≠ 0` for `y < 2^(m − r)`. -/
+theorem phiDen_ne_zero (hS : SpecOf S G B pairOf portOf pubOf) (hV : G.Valid) {t : F}
+    (ht : QuotientSecurity.sq^[G.logN] t ≠ 0) {y : ℕ} (hy : y < 2 ^ (G.logN - G.logW)) :
+    QuotientSecurity.sq^[G.logW] t + Heap.omega B y ≠ 0 := by
+  intro h0
+  have he : QuotientSecurity.sq^[G.logW] t = Heap.omega B y := CharTwo.add_eq_zero.mp h0
+  apply ht
+  have hn := hS.hn
+  have hy' : y < 2 ^ n := lt_of_lt_of_le hy (Nat.pow_le_pow_right (by norm_num) (by omega))
+  rw [show G.logN = (G.logN - G.logW) + G.logW by have := hV.logW_lt; omega, Function.iterate_add_apply, he,
+    Heap.sq_iterate_omega B _ hy', Nat.shiftRight_eq_div_pow, Nat.div_eq_of_lt hy, Heap.omega_zero]
+
+/-- The run's `Φ` lookup is `phiAt`'s, scaled by `w_m`. -/
+theorem find_wPhi (S : CoreSpec F) (gs pubs : List F) (wm wr : F) (k : ℕ) :
+    ((S.phi.map fun kt ↦ (kt.1, phiFrac S.ω gs pubs wr kt.2)).map fun knd ↦ (knd.1, wm * knd.2.1, knd.2.2)).find?
+        (·.1 = k) =
+      (S.phi.find? (·.1 = k)).map fun kt ↦ (kt.1, wm * (phiFrac S.ω gs pubs wr kt.2).1,
+        (phiFrac S.ω gs pubs wr kt.2).2) := by
+  rw [List.map_map, List.find?_map]
+  rfl
+
+/-- **The push side at `t`** (`PI2.md` §2 steps 3–5): `B ≠ 0`, `R_d ≠ 0`, the internal pushes
+`P_v(t) = v_0 + w_m A/B`, and the ports' fraction `1_S(t) Δ + T(t) = w_m R_n/R_d`, for any `Φ` taking the verifier's
+`Φ_k(t)` (`phiAt`). -/
+theorem push_side (hS : SpecOf S G B pairOf portOf pubOf) (hV : G.Valid) (inp : Inputs F)
+    (ht : QuotientSecurity.sq^[G.logN] inp.t ≠ 0) (Φ : ℕ → Polynomial F)
+    (hΦ : ∀ k, (Φ k).eval inp.t = phiAt S (powersList inp.γ (S.maxGamma + 1)) inp.scalars inp.t k) :
+    (S.run inp).den ≠ 0 ∧ (S.run inp).rDen ≠ 0 ∧
+      G.pvAt (Heap.omega B) (cellsOf G.logW (Heap.omega B) (fun k ↦ inp.a.getD k 0) inp.t) inp.γ inp.t =
+        cellsOf G.logW (Heap.omega B) (fun k ↦ inp.a.getD k 0) inp.t 0 +
+          QuotientSecurity.sq^[G.logN] inp.t * (S.run inp).num / (S.run inp).den ∧
+      (G.holePoly (Heap.omega B)).eval inp.t * (S.run inp).delta +
+          G.tAt (Heap.omega B) Φ (cellsOf G.logW (Heap.omega B) (fun k ↦ inp.a.getD k 0) inp.t) inp.γ inp.t =
+        QuotientSecurity.sq^[G.logN] inp.t * (S.run inp).rNum / (S.run inp).rDen := by
   set v := cellsOf G.logW (Heap.omega B) (fun k ↦ inp.a.getD k 0) inp.t with hv
   set wm := QuotientSecurity.sq^[G.logN] inp.t with hwm
   set zt := ztOf S inp.t with hzt
   set gs := powersList inp.γ (S.maxGamma + 1) with hgs
   set cells := (S.run inp).cells with hcells
   set d := pairDen S zt with hd
+  set delta := (S.run inp).delta with hdelta
   have hW : 0 < 2 ^ G.logW := Nat.two_pow_pos _
   have hcell : ∀ x < 2 ^ G.logW, cells.getD x 0 = v x := fun x hx ↦ run_cells hS hV inp hx
+  -- the digits the run reads
+  have hwmR : (digitsList inp.t (S.logN + 2)).getD S.logN 0 = wm := by
+    rw [digitsList_getD inp.t (by omega), hS.logN]
+  have hwrR : (digitsList inp.t (S.logN + 2)).getD S.logRow 0 = QuotientSecurity.sq^[G.logW] inp.t := by
+    rw [digitsList_getD inp.t (by rw [hS.logRow, hS.logN]; have := hV.logW_lt; omega), hS.logRow]
   -- the pairs' denominators and indicators
   have hdi : ∀ i < S.pairs.length, d i ≠ 0 ∧ (G.ind (Heap.omega B) (pairOf i)).eval inp.t = wm / d i :=
     fun i hi ↦ pairDen_ind hS hV ht hi
@@ -192,81 +250,142 @@ theorem push_side (hS : SpecOf S G B pairOf portOf nz pubOf) (hV : G.Valid) (inp
     show (fraction (groupDens S zt g)).1 = 1
     rw [groupDens_eq, hi]
     rfl
+  -- the `Φ` fractions
+  set wPhi := ((S.phi.map fun kt ↦ (kt.1, phiFrac S.ω gs inp.scalars
+    ((digitsList inp.t (S.logN + 2)).getD S.logRow 0) kt.2)).map fun knd ↦
+      (knd.1, (digitsList inp.t (S.logN + 2)).getD S.logN 0 * knd.2.1, knd.2.2)) with hwPhi
+  have hphiDen : ∀ kt ∈ S.phi, ∀ yl ∈ kt.2, (digitsList inp.t (S.logN + 2)).getD S.logRow 0 + S.ω yl.1 ≠ 0 := by
+    intro kt hkt yl hyl
+    rw [hwrR, hS.omega]
+    exact phiDen_ne_zero hS hV ht (phiTerm_row_lt hS hV (mem_phiTerms hkt hyl))
+  -- each port group's value over its denominator
+  have hpv : ∀ g ∈ S.groups, ∀ nd : F × F, nd.2 ≠ 0 →
+      (portVD gs cells delta wPhi (g, nd)).2 ≠ 0 ∧
+        (portVD gs cells delta wPhi (g, nd)).1 / (portVD gs cells delta wPhi (g, nd)).2 =
+          (g.formula.eval gs (fun c ↦ cells.getD (c ^^^ g.role) 0) + delta + phiAt S gs inp.scalars inp.t g.role) /
+            nd.2 := by
+    intro g hg nd hnd
+    unfold portVD
+    rw [hwPhi, find_wPhi]
+    unfold phiAt
+    cases hf : S.phi.find? (·.1 = g.role) with
+    | none => simp [hnd]
+    | some kt =>
+      have hkt := List.mem_of_find?_eq_some hf
+      have hpf := phiFrac_spec S.ω gs inp.scalars _ kt.2 (hphiDen kt hkt)
+      have hd0 : (phiFrac S.ω gs inp.scalars ((digitsList inp.t (S.logN + 2)).getD S.logRow 0) kt.2).2 ≠ 0 := by
+        rw [hpf.1]
+        exact List.prod_ne_zero fun h0 ↦ by
+          obtain ⟨yl, hyl, he⟩ := List.mem_map.mp h0
+          exact hphiDen kt hkt yl hyl he
+      simp only [Option.map_some]
+      refine ⟨mul_ne_zero hnd hd0, ?_⟩
+      rw [hwmR, hwrR] at *
+      rw [hS.logN, hS.logRow]
+      rw [← hwrR] at hd0 ⊢
+      field_simp
+      rw [hwm]
+      ring
   -- the run's sums
-  have hps : pushSums S gs cells (cells.getD 0 0) (S.groups.map fr) = ((S.run inp).num, (S.run inp).den,
-      (S.run inp).sNum, (S.run inp).sDen) := rfl
-  rw [pushSums_eq S gs cells _ _ hsingle, zip_map_self] at hps
+  have hps : pushSums S gs cells (cells.getD 0 0) delta wPhi (S.groups.map fr) = ((S.run inp).num,
+      (S.run inp).den, (S.run inp).rNum, (S.run inp).rDen) := rfl
+  rw [pushSums_eq S gs cells _ _ _ _ hsingle, zip_map_self] at hps
   simp only [Prod.mk.injEq] at hps
-  obtain ⟨hnum, hden, hsnum, hsden⟩ := hps
+  obtain ⟨hnum, hden, hrnum, hrden⟩ := hps
   set L := S.groups.map fun g ↦ (g, fr g) with hL
-  have hLd : ∀ xd ∈ L.map (pushTerm gs cells (cells.getD 0 0)), xd.2 ≠ 0 := by
-    intro xd hxd
-    obtain ⟨gf, hgf, rfl⟩ := List.mem_map.mp hxd
-    obtain ⟨g, hg, rfl⟩ := List.mem_map.mp hgf
-    rw [show (pushTerm gs cells (cells.getD 0 0) (g, fr g)).2 = (fr g).2 from rfl, (hgr g hg).1]
-    exact (hgr g hg).2.2
-  have hLh : ∀ xd ∈ (L.filter fun gf ↦ !gf.1.pulls).map (·.2), xd.2 ≠ 0 := by
+  have hLd : ∀ xd ∈ (L.filter fun gf ↦ gf.1.pulls).map (intTerm gs cells (cells.getD 0 0)), xd.2 ≠ 0 := by
     intro xd hxd
     obtain ⟨gf, hgf, rfl⟩ := List.mem_map.mp hxd
     obtain ⟨g, hg, rfl⟩ := List.mem_map.mp (List.mem_filter.mp hgf).1
-    rw [(hgr g hg).1]
+    rw [show (intTerm gs cells (cells.getD 0 0) (g, fr g)).2 = (fr g).2 from rfl, (hgr g hg).1]
     exact (hgr g hg).2.2
+  have hLp : ∀ xd ∈ (L.filter fun gf ↦ !gf.1.pulls).map (portTerm gs cells delta wPhi), xd.2 ≠ 0 := by
+    intro xd hxd
+    obtain ⟨gf, hgf, rfl⟩ := List.mem_map.mp hxd
+    obtain ⟨g, hg, rfl⟩ := List.mem_map.mp (List.mem_filter.mp hgf).1
+    have := (hpv g hg (fr g) (by rw [(hgr g hg).1]; exact (hgr g hg).2.2)).1
+    exact this
   obtain ⟨hA2, hA1⟩ := accFold_getD _ hLd
-  obtain ⟨hS2, hS1⟩ := accFold_getD _ hLh
+  obtain ⟨hR2, hR1⟩ := accFold_getD _ hLp
   rw [hden] at hA2
   rw [hnum, ← hA2] at hA1
-  rw [hsden] at hS2
-  rw [hsnum, ← hS2] at hS1
+  rw [hrden] at hR2
+  rw [hrnum, ← hR2] at hR1
   have hden0 : (S.run inp).den ≠ 0 := by
     rw [hA2]
     exact List.prod_ne_zero fun h0 ↦ by
       obtain ⟨xd, hxd, he⟩ := List.mem_map.mp h0
       exact hLd xd hxd he
-  have hsden0 : (S.run inp).sDen ≠ 0 := by
-    rw [hS2]
+  have hrden0 : (S.run inp).rDen ≠ 0 := by
+    rw [hR2]
     exact List.prod_ne_zero fun h0 ↦ by
       obtain ⟨xd, hxd, he⟩ := List.mem_map.mp h0
-      exact hLh xd hxd he
-  refine ⟨hden0, hsden0, ?_, ?_⟩
-  · -- the pushes' sum, over the pairs' indices
-    set h : ℕ → F := fun i ↦ ((G.regionRole (pairOf i).1 (pairOf i).2).value inp.γ (v 0)
-      (fun c ↦ v ((pairOf i).2 ^^^ c)) + v 0) * (d i)⁻¹ with hh
-    have hsum : ((L.map (pushTerm gs cells (cells.getD 0 0))).map fun xd ↦ xd.1 / xd.2).sum =
-        ∑ i ∈ range S.pairs.length, h i := by
-      rw [List.map_map, hL, List.map_map]
+      exact hLp xd hxd he
+  have hv0 : cells.getD 0 0 = v 0 := hcell 0 hW
+  refine ⟨hden0, hrden0, ?_, ?_⟩
+  · -- the internal pushes, over the pairs' indices
+    set h : ℕ → F := fun i ↦ if (G.regionRole (pairOf i).1 (pairOf i).2).isPort then 0 else
+      ((G.regionRole (pairOf i).1 (pairOf i).2).value inp.γ (v 0) (fun c ↦ v ((pairOf i).2 ^^^ c)) + v 0) *
+        (d i)⁻¹ with hh
+    have hsum : ((((L.filter fun gf ↦ gf.1.pulls).map (intTerm gs cells (cells.getD 0 0)))).map
+        fun xd ↦ xd.1 / xd.2).sum = ∑ i ∈ range S.pairs.length, h i := by
+      rw [List.map_map, sum_filter_map, hL, List.map_map]
       calc _ = (S.groups.map fun g ↦ (g.pairs.map h).sum).sum := congrArg List.sum (List.map_congr_left fun g hg ↦ by
             obtain ⟨h1, h2, h3⟩ := hgr g hg
-            simp only [Function.comp, pushTerm]
-            rw [h2, h1, mul_comm _ (_ + _), mul_mul_div_cancel _ _ _ h3, List.map_map, ← List.sum_map_mul_left]
-            refine congrArg List.sum (List.map_congr_left fun i hi ↦ ?_)
-            simp only [Function.comp, hh]
-            congr 1
-            rw [hS.group_formula g hg i hi inp.γ (fun x ↦ cells.getD x 0), hcell 0 hW]
-            congr 1
-            refine Role.value_congr _ _ (fun _ ↦ rfl) fun c hc ↦ ?_
-            have hp := hS.pair_mem i (mem_groups_lt hS hg hi)
-            exact hcell _ (Nat.xor_lt_two_pow (Circuit.mem_pairs.mp hp).2.1 (Circuit.regionRole_reads_lt hV hp hc)))
+            simp only [Function.comp]
+            by_cases hp : g.pulls
+            · simp only [hp, ite_true, intTerm]
+              rw [h2, h1, mul_comm _ (_ + _), mul_mul_div_cancel _ _ _ h3, List.map_map, ← List.sum_map_mul_left]
+              refine congrArg List.sum (List.map_congr_left fun i hi ↦ ?_)
+              have hpi := hS.group_pulls g hg i hi
+              rw [hp] at hpi
+              simp only [Function.comp, hh]
+              rw [ite_eq_right (by simpa using hpi)]
+              congr 1
+              rw [hS.group_formula g hg i hi inp.γ (fun x ↦ cells.getD x 0), hv0]
+              congr 1
+              refine Role.value_congr _ _ (fun _ ↦ rfl) fun c hc ↦ ?_
+              have hp' := hS.pair_mem i (mem_groups_lt hS hg hi)
+              exact hcell _ (Nat.xor_lt_two_pow (Circuit.mem_pairs.mp hp').2.1 (Circuit.regionRole_reads_lt hV hp' hc))
+            · have hpf : g.pulls = false := by simpa using hp
+              simp only [hp, Bool.false_eq_true, ite_false]
+              symm
+              refine List.sum_eq_zero fun x hx ↦ ?_
+              obtain ⟨i, hi, rfl⟩ := List.mem_map.mp hx
+              have hpi := hS.group_pulls g hg i hi
+              rw [hpf] at hpi
+              simp only [hh]
+              rw [ite_eq_left (by simpa using hpi.symm)])
         _ = ∑ i ∈ range S.pairs.length, h i := by
             rw [← sum_flatMap_map, (hS.groups_perm.map h).sum_eq, list_range_sum]
-    have hbij : ∑ p ∈ G.pairs, (G.ind (Heap.omega B) p).eval inp.t *
+    have hbij : ∑ p ∈ G.intPairs, (G.ind (Heap.omega B) p).eval inp.t *
         ((G.regionRole p.1 p.2).value inp.γ (v 0) (fun c ↦ v (p.2 ^^^ c)) + v 0) =
         ∑ i ∈ range S.pairs.length, wm * h i := by
+      unfold Circuit.intPairs
+      rw [Finset.sum_filter]
       symm
       refine Finset.sum_nbij pairOf (fun i hi ↦ hS.pair_mem i (Finset.mem_range.mp hi))
         (fun i hi j hj hij ↦ hS.pair_inj i (Finset.mem_range.mp hi) j (Finset.mem_range.mp hj) hij)
         (fun p hp ↦ ?_) (fun i hi ↦ ?_)
       · obtain ⟨i, hi, rfl⟩ := hS.pair_surj p hp
         exact ⟨i, Finset.mem_range.mpr hi, rfl⟩
-      · rw [(hdi i (Finset.mem_range.mp hi)).2, hh]
-        ring
+      · simp only [hh]
+        by_cases hc : (G.regionRole (pairOf i).1 (pairOf i).2).isPort = true
+        · simp [hc]
+        · have hc' : (G.regionRole (pairOf i).1 (pairOf i).2).isPort = false := by simpa using hc
+          rw [ite_eq_right hc, ite_eq_left hc', (hdi i (Finset.mem_range.mp hi)).2]
+          ring
+    unfold Circuit.pvAt
     rw [hbij, ← Finset.mul_sum, ← hsum, hA1]
     field_simp
-  · -- the holes
-    set hh' : ℕ → F := fun i ↦ if (G.regionRole (pairOf i).1 (pairOf i).2).isPort then (d i)⁻¹ else 0 with hhh
-    have hsum : ((((L.filter fun gf ↦ !gf.1.pulls).map (·.2))).map fun xd ↦ xd.1 / xd.2).sum =
-        ∑ i ∈ range S.pairs.length, hh' i := by
+  · -- the ports
+    set h : ℕ → F := fun i ↦ if (G.regionRole (pairOf i).1 (pairOf i).2).isPort then
+      ((G.regionRole (pairOf i).1 (pairOf i).2).value inp.γ (v 0) (fun c ↦ v ((pairOf i).2 ^^^ c)) + delta +
+        phiAt S gs inp.scalars inp.t (pairOf i).2) * (d i)⁻¹ else 0 with hh
+    have hsum : ((((L.filter fun gf ↦ !gf.1.pulls).map (portTerm gs cells delta wPhi))).map
+        fun xd ↦ xd.1 / xd.2).sum = ∑ i ∈ range S.pairs.length, h i := by
       rw [List.map_map, sum_filter_map, hL, List.map_map]
-      calc _ = (S.groups.map fun g ↦ (g.pairs.map hh').sum).sum := congrArg List.sum (List.map_congr_left fun g hg ↦ by
+      calc _ = (S.groups.map fun g ↦ (g.pairs.map h).sum).sum := congrArg List.sum (List.map_congr_left fun g hg ↦ by
             obtain ⟨h1, h2, h3⟩ := hgr g hg
             simp only [Function.comp]
             by_cases hp : g.pulls
@@ -276,34 +395,58 @@ theorem push_side (hS : SpecOf S G B pairOf portOf nz pubOf) (hV : G.Valid) (inp
               obtain ⟨i, hi, rfl⟩ := List.mem_map.mp hx
               have hpi := hS.group_pulls g hg i hi
               rw [hp] at hpi
-              simp only [hhh]
-              split_ifs with hc
-              · exact absurd hc (by simpa using hpi)
-              · rfl
-            · simp only [hp, Bool.not_false, ite_true]
-              rw [h2, h1, mul_div_cancel_left₀ _ h3, List.map_map]
+              simp only [hh]
+              rw [ite_eq_right (by simpa using hpi)]
+            · have hpf : g.pulls = false := by simpa using hp
+              simp only [hp, Bool.not_false, ite_true]
+              have hq := (hpv g hg (fr g) (by rw [h1]; exact h3)).2
+              set V := g.formula.eval gs (fun c ↦ cells.getD (c ^^^ g.role) 0) + delta +
+                phiAt S gs inp.scalars inp.t g.role with hV'
+              have e : (portTerm gs cells delta wPhi (g, fr g)).1 / (portTerm gs cells delta wPhi (g, fr g)).2 =
+                  V * ((g.pairs.map d).map (·⁻¹)).sum := by
+                rw [show (portTerm gs cells delta wPhi (g, fr g)).1 / (portTerm gs cells delta wPhi (g, fr g)).2 =
+                  (fr g).1 * ((portVD gs cells delta wPhi (g, fr g)).1 / (portVD gs cells delta wPhi (g, fr g)).2)
+                  from by unfold portTerm; ring, hq, h2, h1]
+                field_simp
+              rw [e, List.map_map, ← List.sum_map_mul_left]
               refine congrArg List.sum (List.map_congr_left fun i hi ↦ ?_)
               have hpi := hS.group_pulls g hg i hi
-              simp only [Function.comp, hhh]
-              split_ifs with hc
-              · rfl
-              · exact absurd (by simpa [hp] using hpi.symm) hc)
-        _ = ∑ i ∈ range S.pairs.length, hh' i := by
-            rw [← sum_flatMap_map, (hS.groups_perm.map hh').sum_eq, list_range_sum]
-    have hhole : (G.holePoly (Heap.omega B)).eval inp.t = ∑ i ∈ range S.pairs.length, wm * hh' i := by
-      unfold Circuit.holePoly
-      rw [Polynomial.eval_finsetSum, Finset.sum_filter]
+              rw [hpf] at hpi
+              simp only [Function.comp, hh]
+              rw [ite_eq_left (by simpa using hpi.symm), hV']
+              have hval : g.formula.eval gs (fun c ↦ cells.getD (c ^^^ g.role) 0) =
+                  (G.regionRole (pairOf i).1 (pairOf i).2).value inp.γ (v 0) (fun c ↦ v ((pairOf i).2 ^^^ c)) := by
+                rw [hS.group_formula g hg i hi inp.γ (fun x ↦ cells.getD x 0)]
+                refine Role.value_congr _ _ (fun _ ↦ hv0) fun c hc ↦ ?_
+                have hp' := hS.pair_mem i (mem_groups_lt hS hg hi)
+                exact hcell _ (Nat.xor_lt_two_pow (Circuit.mem_pairs.mp hp').2.1
+                  (Circuit.regionRole_reads_lt hV hp' hc))
+              rw [hval, hS.group_role g hg i hi])
+        _ = ∑ i ∈ range S.pairs.length, h i := by
+            rw [← sum_flatMap_map, (hS.groups_perm.map h).sum_eq, list_range_sum]
+    have hbij : ∑ p ∈ G.portPairs, (G.ind (Heap.omega B) p).eval inp.t *
+        ((G.regionRole p.1 p.2).value inp.γ (v 0) (fun c ↦ v (p.2 ^^^ c)) + delta + (Φ p.2).eval inp.t) =
+        ∑ i ∈ range S.pairs.length, wm * h i := by
+      unfold Circuit.portPairs
+      rw [Finset.sum_filter]
       symm
       refine Finset.sum_nbij pairOf (fun i hi ↦ hS.pair_mem i (Finset.mem_range.mp hi))
         (fun i hi j hj hij ↦ hS.pair_inj i (Finset.mem_range.mp hi) j (Finset.mem_range.mp hj) hij)
         (fun p hp ↦ ?_) (fun i hi ↦ ?_)
       · obtain ⟨i, hi, rfl⟩ := hS.pair_surj p hp
         exact ⟨i, Finset.mem_range.mpr hi, rfl⟩
-      · simp only [hhh]
+      · simp only [hh, hΦ]
         split_ifs
         · rw [(hdi i (Finset.mem_range.mp hi)).2]; ring
         · ring
-    rw [hhole, ← Finset.mul_sum, ← hsum, hS1]
+    have hT : (G.holePoly (Heap.omega B)).eval inp.t * delta + G.tAt (Heap.omega B) Φ v inp.γ inp.t =
+        ∑ p ∈ G.portPairs, (G.ind (Heap.omega B) p).eval inp.t *
+          ((G.regionRole p.1 p.2).value inp.γ (v 0) (fun c ↦ v (p.2 ^^^ c)) + delta + (Φ p.2).eval inp.t) := by
+      unfold Circuit.holePoly Circuit.tAt
+      rw [Polynomial.eval_finsetSum, Finset.sum_mul, ← Finset.sum_add_distrib]
+      refine Finset.sum_congr rfl fun p _ ↦ ?_
+      ring
+    rw [hT, hbij, ← Finset.mul_sum, ← hsum, hR1]
     field_simp
 
 end Pairs

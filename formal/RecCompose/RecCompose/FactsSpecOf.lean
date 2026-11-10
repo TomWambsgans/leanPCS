@@ -5,8 +5,8 @@ import RecCompose.FactsSpec
 # `SpecOf (Spec.of Data.circuit).core` of a compiled circuit whose view is `Data.circuit`
 
 **`specOf_data`**: the compiler accepted (`compile r = .ok c`), the view is `Data.circuit`, the circuit valid; then the
-verifier's constants are the compiled circuit's, its pairs `pairOfC` (the slots), its ports after the zero coset's `16`
-in order (`16 + J`), its public limbs `pubOfC`.
+verifier's constants are the compiled circuit's, its pairs `pairOfC` (the slots), `Φ`'s terms the ports after the `16`
+of value zero in order (`16 + J`), its public limbs `pubOfC`.
 -/
 
 set_option linter.unusedSectionVars false
@@ -17,34 +17,28 @@ open RecStatement LeanVM.Parameters Primitives Finset
 
 /-! ## `Spec.of Data.circuit`'s fields -/
 
-theorem spec_publicTerms : (Spec.of Data.circuit).publicTerms = Data.publicTerms.drop 16 := by
+theorem spec_phi : (Spec.of Data.circuit).phi = phiOf Data.circuit := by
   unfold Spec.of
-  rw [show Data.circuit.publicTerms = Data.publicTerms from rfl, data_zeroCoset]
-
-theorem spec_zeroCoset : (Spec.of Data.circuit).zeroCoset = some (16777216, 4, subspaceCoefficients 4) := by
-  unfold Spec.of
-  rw [show Data.circuit.publicTerms = Data.publicTerms from rfl, data_zeroCoset]
+  dsimp only
 
 theorem spec_maxGamma : (Spec.of Data.circuit).maxGamma = 1 := by
   unfold Spec.of
-  rw [show Data.circuit.publicTerms = Data.publicTerms from rfl, data_zeroCoset]
+  dsimp only
   exact data_maxGamma
 
 theorem spec_pairs : (Spec.of Data.circuit).pairs = Data.pairs.map fun p ↦
     (⟨p.logRows, (pairConstants p 4 (cosetConstants 4 20)).1 * ((pairConstants p 4 (cosetConstants 4 20)).2)⁻¹⟩ :
       SpecPair) := by
   unfold Spec.of
-  rw [show Data.circuit.publicTerms = Data.publicTerms from rfl, data_zeroCoset]
   dsimp only
   exact List.map_congr_left fun p _ ↦ rfl
 
 theorem spec_groups : (Spec.of Data.circuit).groups = groupsOf Data.circuit := by
   unfold Spec.of
-  rw [show Data.circuit.publicTerms = Data.publicTerms from rfl, data_zeroCoset]
+  dsimp only
 
 theorem spec_c : (Spec.of Data.circuit).c = normalisedConstants (cosetConstants 4 20) := by
   unfold Spec.of
-  rw [show Data.circuit.publicTerms = Data.publicTerms from rfl, data_zeroCoset]
   dsimp only
   rw [show Data.circuit.logRow = 4 from rfl, show Data.circuit.logN = 24 from rfl]
 
@@ -60,27 +54,28 @@ theorem core_c_data : (Spec.of Data.circuit).core.c =
   simp only [Spec.core, spec_c]
   exact core_c 4 20
 
-theorem core_zeroCoset : (Spec.of Data.circuit).core.zeroCoset =
-    some (16777216, 4, (subspaceCoefficients 4).map kE) := by
-  simp only [Spec.core, spec_zeroCoset, Option.map_some]
-
-theorem core_walk : (Spec.of Data.circuit).core.walk = tagWalk ((Data.publicTerms.drop 16).map (·.tag)) := by
-  simp only [Spec.core, spec_publicTerms]
-
 theorem core_pairs : (Spec.of Data.circuit).core.pairs = Data.pairs.map fun p ↦
     (p.logRows, kE ((pairConstants p 4 (cosetConstants 4 20)).1 * ((pairConstants p 4 (cosetConstants 4 20)).2)⁻¹)) := by
   simp only [Spec.core, spec_pairs, List.map_map]
   rfl
 
-theorem core_publicTerms : (Spec.of Data.circuit).core.publicTerms =
-    (Data.publicTerms.drop 16).map fun t ↦ (t.tag, t.value.toF) := by
-  simp only [Spec.core, spec_publicTerms]
+theorem core_phi : (Spec.of Data.circuit).core.phi = [(15, (List.range 20).map fun J ↦
+    (Data.holes.getD (16 + J) 0 / 16, (Data.publicTerms.getD (16 + J) default).value.toF))] := by
+  simp only [Spec.core, spec_phi, data_phi, List.map_cons, List.map_nil, List.map_map]
+  rfl
 
-theorem core_terms_getD {J : ℕ} (hJ : J < 20) : (Spec.of Data.circuit).core.publicTerms.getD J noTerm =
-    ((Data.publicTerms.getD (16 + J) default).tag, (Data.publicTerms.getD (16 + J) default).value.toF) := by
-  have hl : (Data.publicTerms.drop 16).length = 20 := by rw [List.length_drop, data_terms_length]
-  rw [core_publicTerms, List.getD_eq_getElem _ _ (by rw [List.length_map, hl]; exact hJ), List.getElem_map,
-    List.getElem_drop, List.getD_eq_getElem _ _ (by rw [data_terms_length]; omega)]
+theorem core_phiTerms : phiTerms (Spec.of Data.circuit).core = (List.range 20).map fun J ↦
+    (15, Data.holes.getD (16 + J) 0 / 16, (Data.publicTerms.getD (16 + J) default).value.toF) := by
+  rw [phiTerms, core_phi, List.flatMap_cons, List.flatMap_nil, List.append_nil, List.map_map]
+  rfl
+
+theorem core_phiTerms_length : (phiTerms (Spec.of Data.circuit).core).length = 20 := by
+  rw [core_phiTerms, List.length_map, List.length_range]
+
+theorem core_phiTerms_getD {J : ℕ} (hJ : J < 20) : (phiTerms (Spec.of Data.circuit).core).getD J noPhi =
+    (15, Data.holes.getD (16 + J) 0 / 16, (Data.publicTerms.getD (16 + J) default).value.toF) := by
+  rw [core_phiTerms, List.getD_eq_getElem _ _ (by rw [List.length_map, List.length_range]; exact hJ),
+    List.getElem_map, List.getElem_range]
 
 /-! ## The assembly -/
 
@@ -88,7 +83,7 @@ theorem core_terms_getD {J : ℕ} (hJ : J < 20) : (Spec.of Data.circuit).core.pu
 theorem specOf_data {r : RecCircuit.Recorded} {c : RecCircuit.Compiled} (hc : RecCircuit.compile r = .ok c)
     (hview : viewOf c.circuit = Data.circuit) (hV : c.circuit.toPiop.Valid) :
     SpecOf (Spec.of Data.circuit).core c.circuit.toPiop UniComplete.Domain.basisE (pairOfC c.circuit) (fun J ↦ 16 + J)
-      16 (pubOfC c.circuit) := by
+      (pubOfC c.circuit) := by
   have hlogN := viewOf_logN hview
   have hlogW := viewOf_logW hview
   have hports := viewOf_ports hview
@@ -98,8 +93,8 @@ theorem specOf_data {r : RecCircuit.Recorded} {c : RecCircuit.Compiled} (hc : Re
   have hterms := viewOf_terms hview
   have hslen : (Spec.of Data.circuit).core.pairs.length = (slots c.circuit).length := by
     rw [core_pairs, List.length_map, ← hpairs, pairsOf_length]
-  have htl : (Spec.of Data.circuit).core.publicTerms.length = 20 := by
-    rw [core_publicTerms, List.length_map, List.length_drop, data_terms_length]
+  have htl := core_phiTerms_length
+  have hholes := viewOf_holes hview
   have hnP : c.circuit.toPiop.nP = 36 := by
     show (c.circuit.ports.toList.map (·.position)).length = 36
     rw [List.length_map, Array.length_toList, hports]
@@ -117,6 +112,14 @@ theorem specOf_data {r : RecCircuit.Recorded} {c : RecCircuit.Compiled} (hc : Re
       ⟨2 ^ 24 + j, ⟨termOf 2 (c.circuit.ports.getD j default).source, none⟩⟩ := by
     intro j hj
     rw [← hterms, publicTermsOf_getD _ (by rw [hports]; exact hj), hlogN, hroots]
+  have hport : ∀ j < 36, c.circuit.toPiop.port j = Data.holes.getD j 0 := by
+    intro j hj
+    have hsz : j < c.circuit.ports.size := by rw [hports]; exact hj
+    rw [← hholes, holesOf_getD _ hsz]
+    simp only [RecPiop.Circuit.port, RecCircuit.Circuit.toPiop, List.getD_eq_getElem?_getD,
+      Array.getD_eq_getD_getElem?, List.getElem?_map, Array.getElem?_toList]
+    rw [Array.getElem?_eq_getElem hsz]
+    rfl
   have hgam := powersList_two
   exact {
     logN := hlogN.symm
@@ -189,32 +192,28 @@ theorem specOf_data {r : RecCircuit.Recorded} {c : RecCircuit.Compiled} (hc : Re
       congr 1
       funext x
       rw [Nat.xor_comm]
-    walk_perm := by
-      rw [htl, core_walk]
-      exact data_walk
-    coset := by
-      refine Or.inr ⟨4, ?_, rfl, by rw [show c.circuit.toPiop.logN = c.circuit.logN from rfl, hlogN]; norm_num⟩
-      have hm : (subspaceCoefficients 4).map kE = (subspaceCoeffsF 4 : List E) :=
-        map_subspaceCoeffsF (algebraMap K E) 4
-      rw [core_zeroCoset, hN, hm, show (2 : ℕ) ^ 24 = 16777216 from rfl]
-    nz_le := by rw [hnP]; norm_num
-    zero_ports := fun j hj pubs γ ↦ by
+    phi_nodup := by rw [core_phi]; simp
+    phi_port_lt := fun J hJ ↦ by rw [htl] at hJ; rw [hnP]; omega
+    phi_port_inj := fun J _ J' _ h ↦ by omega
+    phi_role := fun J hJ ↦ by
+      rw [htl] at hJ
+      rw [core_phiTerms_getD hJ, hport _ (by omega), hW, data_holes_role J hJ]
+    phi_row := fun J hJ ↦ by
+      rw [htl] at hJ
+      rw [core_phiTerms_getD hJ, hport _ (by omega), hW]
+    zero_ports := fun j hj hnot pubs γ ↦ by
+      have hj16 : j < 16 := by
+        by_contra h
+        exact hnot (j - 16) (by rw [htl]; rw [hnP] at hj; omega) (by omega)
       have h := hsrc j (by omega)
-      have ht := data_zero_terms j hj
+      have ht := data_zero_terms j hj16
       rw [h] at ht
       unfold RecPiop.Circuit.pubFp pubOfC
       rw [hroots]
       rcases termOf_eq_nil ht with hz | hz <;> rw [hz] <;> exact fpList_zero _ γ
-    port_mem := fun J hJ ↦ by rw [htl] at hJ; rw [hnP]; omega
-    port_inj := fun J _ J' _ h ↦ by omega
-    port_surj := fun j hj hj' ↦ ⟨j - 16, by rw [htl]; rw [hnP] at hj'; omega, by omega⟩
-    term_tag := fun J hJ ↦ by
+    phi_value := fun J hJ pubs γ ↦ by
       rw [htl] at hJ
-      rw [core_terms_getD hJ, hsrc _ (by omega), hN]
-    tags_lt := by rw [hN, hnP]; norm_num
-    term_value := fun J hJ pubs γ ↦ by
-      rw [htl] at hJ
-      rw [core_terms_getD hJ, hsrc _ (by omega), core_maxGamma]
+      rw [core_phiTerms_getD hJ, hsrc _ (by omega), core_maxGamma]
       have hJ' : 16 + J < c.circuit.toPiop.nP := by rw [hnP]; omega
       unfold RecPiop.Circuit.pubFp pubOfC
       rw [limbs_toPiop hc hJ', hroots]
