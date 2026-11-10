@@ -2,8 +2,8 @@
 
 # leanvm_univariate (π1)
 
-A univariate PIOP for the Keccak VM's statement (leanVM `9d50c92a3`), for the EVM with the aggregated `PCS_OPEN`
-precompile: two proof commitments and one setup commitment, the bus as a grand product in a committed heap, every
+A univariate PIOP for the Keccak VM's statement (leanVM `9d50c92a3`), for the EVM with aggregated PCS claims
+(declared in a transaction's frame, the EIP draft): two proof commitments and one setup commitment, the bus as a grand product in a committed heap, every
 identity checked at one point, Flock on the Keccak-f block, one point claim per commitment.
 
 - `verifier`: the verifier (`reduce`), generic over the scalar; `contract`: it compiled to EVM code, its calldata,
@@ -23,7 +23,7 @@ cargo test --release -p leanvm_univariate --test keccak_vm -- --ignored --nocapt
 LEANVM_TRACE=<trace> cargo test --release -p leanvm_univariate --test prove_real -- --ignored --nocapture --test-threads 1
 ```
 
-`tests/vectors/` holds real proofs (calldata, `PCS_OPEN` inputs, gas): `keccak.txt` (32 signatures, `KECCAK_MAIN`),
+`tests/vectors/` holds real proofs (calldata, the claims declared, gas): `keccak.txt` (32 signatures, `KECCAK_MAIN`),
 `keccak128_rec3.txt` (128, `KECCAK_REC3`, the reference) and `keccak_rec3.txt` (400, `KECCAK_REC3`), replayed by
 `tests/evm_vectors.rs` and written by `tests/prove_real.rs` (`WRITE_VECTORS=<dir>`). `tests/lean_keccak_vectors.rs`
 writes the vectors of `formal/UniKeccak`'s differential runner.

@@ -4,8 +4,8 @@
 
 A Keccak VM proof verified on the EVM by recursion. π1 is `crates/leanvm/univariate`'s π1-rec3 (`KECCAK_REC3`); π2 is
 a univariate SNARK of π1-rec3's verifier minus its openings, its circuit compiled from π1's recorded verifier graph
-(`circuit`, D16v); the contract (`pi2::contract`) runs π2's verifier only and passes π1's and π2's claims to
-`PCS_OPEN` (7 claims in 6 calls, `crates/membership/evm/src/machine.rs`'s ABI).
+(`circuit`, D16v); the contract (`pi2::contract`) runs π2's verifier only and checks π1's and π2's claims
+declared in its transaction's frame of PCS claims (7 claims as 6, `crates/membership/evm/src/machine.rs`'s encoding).
 
 On the real 128-signature proof (the reference, `crates/leanvm/univariate/tests/vectors/keccak128_rec3.txt`):
 1,004 B of calldata, 27,641 gas of execution, 42,997 of transaction gas (EIP-7623, claims free, without the 21,000
@@ -22,7 +22,7 @@ LEANVM_TRACE=<trace dir> cargo test --release -p leanvm_rec --test pipeline -- -
 ```
 
 `real_end_to_end` proves π2 on the real π1-rec3 proof, verifies its openings, and runs the contract on the real
-calldata with `PCS_OPEN` attesting exactly the openings' claims (and rejects flipped bytes). `pipeline` runs the
+calldata with its frame declaring exactly the openings' claims (and rejects flipped bytes). `pipeline` runs the
 recursion from a Keccak VM trace (`crates/leanvm/univariate/src/prover/dump_keccak`): the per-circuit setup once, then
 warm passes of π1-rec3's proof and openings (π2's witness compiled on π1's stream while π1's openings run,
 `prover::prove::prove_streaming`), π2's proof and openings, each phase's median; it checks the proofs against the

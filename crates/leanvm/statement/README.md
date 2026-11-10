@@ -12,7 +12,7 @@ The Keccak VM's statement and the verifier pieces built on it, generic over the 
   ([`docs/leanvm/flock/KECCAK.md`](../../../docs/leanvm/flock/KECCAK.md));
 - `transcript`: the Keccak-256 Fiat–Shamir chain (`KeccakChannel`, `KeccakWriter`, the shapes `FsShape`);
 - `evm`: the recorder that runs a verifier on a symbolic scalar, the nodes' code for `crates/evm_link`, a revm
-  machine with `FIELD_MUL` and a mock `PCS_OPEN`, deployment;
+  machine with `FIELD_MUL` and EIP-8141's frame introspection over a frame of PCS claims, deployment;
 - `shapes`: the measured workloads (leanVM `9d50c92a3`, 32 to 1,000 signatures; the reference is 128) and the
   program IV the contracts are built with.
 
