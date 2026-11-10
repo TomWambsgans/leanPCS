@@ -1,8 +1,8 @@
--- Part of this repository. MIT OR Apache-2.0; see AGENTS.md and AGENTS.md. The tables' polynomials are
--- `crates/leanvm/rec/src/pi2/prover.rs`'s (`W` committed in the basis `B`, `Q`'s `h`, `q` in the novel basis, the
--- setup's `κ`, `κ + σ` in the basis `B`), read through `formal/Statement`'s public layouts
--- (`PcsQuotient.Layout.ofChunks`, `readEntry`); the novel basis and its sums are `formal/UniComplete`'s (`AlgC.novP`)
--- and `formal/QuotientSecurity`'s (`tablePoly`).
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The tables' polynomials are
+-- `crates/leanvm/rec/src/pi2/prover.rs`'s (`W` committed in the basis `B`, `Q`'s sixteen slots in the novel basis, the
+-- setup's `κ`, `κ + σ` in the basis `B`), each claim a point of the whole stack (the EIP draft's PCS claims,
+-- `crates/pcs_claim`); the novel basis and its sums are `formal/UniComplete`'s (`AlgC.novP`) and
+-- `formal/QuotientSecurity`'s (`tablePoly`).
 import RecCompose.Layers
 import UniKeccakComplete.K.AlgCBasis
 import UniSound.Ids.Cantor
@@ -10,29 +10,33 @@ import UniSound.Ids.Cantor
 /-!
 # π2's tables' layer
 
-`Pi2Tables D C` (`Layers.lean`) from the stacks: what each candidate stands for, and π2's four claims on the candidates
-as the model's values.
+`Pi2Tables D C` (`Layers.lean`) from the stacks: what each candidate stands for, and π2's claims on the candidates as
+the model's values. Each claim is the multilinear value of its whole stack at its point (`ClaimOn`, `UniSound.mleStk`;
+`mleStk_eq`: the `eqBits` sum), the points padded to the stacks' variables (`W` `m`, `Q` `m + 4`, the setup `m + 1` at
+π2's `m = 24`).
 
-* **`W`** (`m` variables, the basis `B`): its table `T` (the stack read under `W`'s layout) is the witness's column in the
-  basis `B`; its polynomial is `w(x) = Σ_i T_i Π_l (s^l(x) if i_l else 1 + s^l(x))` (`wPoly`, degree below `2^m`), which
-  takes the witness's values on `V_m` (`wPoly_eval_pointE`: `s^l(ω_x) = ω_{x >> l}`, so it is `basisValue`). Its
-  **true fold values** at `t` are the table's partial evaluation at the high digits `w_r(t), …, w_{m−1}(t)` (`wFold`);
-  the verifier's cells from them are the row's cells `w(t + ω_x)`, `x < 2^r` (`cells_wFold`: `s^l` is additive and
-  `ω_{x >> l} = 0` for `l ≥ r`), and `W`'s claim at `(ρ, ρ², …, w_r(t), …)` is their fold at `ρ` (`claim_wFold`).
-* **`Q`** (`m + 5` variables: the position, two digits, the kind, two limb bits): its table (`qTable`) is zero outside
-  `quotient_chunks` (`qZero`, `readEntry_ofChunks_zero`); `h` and `q` are its kind-`0` and kind-`1` coefficients
-  `c_0 + Y c_1 + Y² c_2` in the novel basis (`hPoly`, `qPoly`: degrees below `N` and `4N`). At
-  `(u, ρ', y₀, y₁)`, `u_l = w_l/(1 + w_l)`, the claim is the scale, `Π_l (1 + w_l)⁻¹ = t/w_{m+2}` and the combination
-  `(1 + ρ') h(t) + ρ' q(t)` (`claim_quotient`); at `(1^m, 0, 0, 0, y₀, y₁)` the scale and `h`'s top coefficient
-  (`claim_sum`), which is `Σ_V h` (`sum_novP_omega`, `RecPiop.sum_tablePoly_omega`).
-* **The setup** (`m + 1` variables): its table is the setup stack in order (`readEntry_ofChunks_two`): `κ`'s basis-`B`
-  coefficients, then those of `κ + σ` (`setupStack_getD`); its claim at `(w_0(t), …, w_{m−1}(t), β)` is
-  `κ(t) + β σ(t)` (`claim_setup`) for the columns' basis-`B` polynomials, which take `κ`, `ω_σ` on `V_m`
-  (`wPoly_bCoefficients`).
+* **`W`** (`m` variables, the basis `B`): its stack `T` is the witness's column in the basis `B`; its polynomial is
+  `w(x) = Σ_i T_i Π_l (s^l(x) if i_l else 1 + s^l(x))` (`wPoly`, degree below `2^m`), which takes the witness's values on
+  `V_m` (`wPoly_eval_pointE`: `s^l(ω_x) = ω_{x >> l}`, so it is `basisValue`). Its **true fold values** at `t` are the
+  stack's partial evaluation at the high digits `w_r(t), …, w_{m−1}(t)` (`wFold`); the verifier's cells from them are
+  the row's cells `w(t + ω_x)`, `x < 2^r` (`cells_wFold`), and `W`'s claim at `(ρ, ρ², …, w_r(t), …)` is their fold at
+  `ρ` (`claim_wFold`).
+* **`Q`** (`m + 4` variables: the position, the digit, the kind, two limb bits; slot `digit + 2 kind + 4 limb`): the
+  plain sixteen-slot stack, every slot the prover's. `h` is its kind-`0` coefficients `c_0 + Y c_1 + Y² c_2` in the
+  novel basis on `m + 1` digits (`hPoly`: `h_0 + Z_V h_1`, the second digit in slots `1, 5, 9`, degree below `2N`), `q`
+  the kind-`1` ones; at limb code `3`, `S` (slot `12`, digit `0`: `sPoly`, below `N`), `P` (slot `13`) and `q_P` (slots
+  `14, 15`). At `(u, ρ', y₀, y₁)`, `u_l = w_l/(1 + w_l)`, the claim is `Π_l (1 + w_l)⁻¹` times
+  `s((1 + ρ') h(t) + ρ' q(t)) + y₀ y₁ ((1 + ρ') (S(t) + w_m P(t)) + ρ' q_P(t))` (`claim_quotient`): `P`'s share
+  `P(t) + S(t)/Z_V(t)`; the pushes' at `(u, ρ, 1, 1)` likewise (`claim_pushes`); the sum's at `(1^m, 0, 0, y₀, y₁)` is
+  `s h_top + y₀ y₁ S_top` (`claim_sum`), which is `s Σ_V (h + c_3 S)` (`sum_novP_omega`, `sum_novP_succ_omega`:
+  `Z_V` vanishes on `V_m`).
+* **The setup** (`m + 1` variables): its stack is `κ`'s basis-`B` coefficients, then those of `κ + σ`
+  (`setupStack_getD`); its claim at `(w_0(t), …, w_{m−1}(t), β)` is `κ(t) + β σ(t)` (`claim_setup`) for the columns'
+  basis-`B` polynomials, which take `κ`, `ω_σ` on `V_m` (`wPoly_bCoefficients`).
 
 **`pi2Tables D C Fa hcol : Pi2Tables D C`**, from the circuit's facts (`Pi2Facts`: `SpecOf`, `2^24` positions, rows
 of `16`) and one named input, **`Pi2SetupColumns D C`**: the deployment's setup columns `σ`, `κ` (which the setup's
-table commits) are the compiled circuit's (which the PIOP reads) at every setup (proved from `RecDeployment.Real`'s
+stack commits) are the compiled circuit's (which the PIOP reads) at every setup (proved from `RecDeployment.Real`'s
 `SetupFromCompiler`: `pi2SetupColumns_of_real`, `Real.lean`). `pi2Extraction_of_fs`, `pi2Layers_of_fs`: π2's
 extraction and layers with it in place of `Pi2Tables`.
 -/
@@ -281,48 +285,6 @@ namespace RecCompose
 open RecStatement LeanVM.Parameters LeanVM.Protocol Finset Polynomial
 open scoped ENNReal
 
-/-! ## Public layouts -/
-
-/-- **A public layout holds nothing outside its chunks**: an entry whose chunk (`i / 2^lc`) is none of the listed ones
-reads `0`. -/
-theorem readEntry_ofChunks_zero {vars lc logN : ℕ} {chunks : List (ℕ × ℕ)}
-    (hlane : logN - PcsQuotient.laneFold ≤ lc) (hlen : ∀ p ∈ chunks, p.2 ≤ 2 ^ lc) (stack : ℕ → K) {i : ℕ}
-    (hi : ∀ p ∈ chunks, p.1 ≠ i / 2 ^ lc) :
-    (PcsQuotient.Layout.ofChunks vars lc logN chunks).readEntry stack i = 0 := by
-  obtain ⟨d, hd⟩ : ∃ d, lc = (logN - PcsQuotient.laneFold) + d := ⟨lc - (logN - PcsQuotient.laneFold), by omega⟩
-  set a := logN - PcsQuotient.laneFold with ha
-  have hpos : 0 < 2 ^ a := Nat.two_pow_pos a
-  have hnone : (PcsQuotient.Layout.ofChunks vars lc logN chunks).lanes.findIdx?
-      (· = PcsQuotient.Lane.block (i / 2 ^ a)) = none := by
-    rw [List.findIdx?_eq_none_iff]
-    intro x hx
-    rw [decide_eq_false_iff_not]
-    intro heq
-    simp only [PcsQuotient.Layout.ofChunks, List.mem_flatMap] at hx
-    obtain ⟨⟨c, len⟩, hc, hx⟩ := hx
-    simp only [List.mem_map, List.mem_range] at hx
-    obtain ⟨j, hj, rfl⟩ := hx
-    simp only [PcsQuotient.Lane.block.injEq] at heq
-    have hlenc : len ≤ 2 ^ lc := hlen (c, len) hc
-    have hjd : j < 2 ^ d := by
-      have h1 : (len + 2 ^ a - 1) / 2 ^ a ≤ 2 ^ d := by
-        rw [Nat.div_le_iff_le_mul_add_pred hpos]
-        rw [hd, pow_add] at hlenc
-        generalize 2 ^ a * 2 ^ d = P at hlenc ⊢
-        generalize 2 ^ a = A at hpos ⊢
-        omega
-      rw [← ha] at hj
-      omega
-    have hd' : lc - a = d := by omega
-    rw [hd'] at heq
-    refine hi (c, len) hc ?_
-    show c = i / 2 ^ lc
-    rw [hd, pow_add, ← Nat.div_div_eq_div_mul, ← heq, mul_comm c, Nat.add_comm, Nat.add_mul_div_left _ _
-      (Nat.two_pow_pos d), Nat.div_eq_of_lt hjd, zero_add]
-  have hlp : (PcsQuotient.Layout.ofChunks vars lc logN chunks).logPiece = none := rfl
-  have hlg : (PcsQuotient.Layout.ofChunks vars lc logN chunks).logN = logN := rfl
-  simp only [PcsQuotient.Layout.readEntry, hlp, PcsQuotient.Layout.logLane, hlg, ← ha, hnone]
-
 end RecCompose
 
 namespace RecCompose
@@ -400,13 +362,13 @@ open scoped ENNReal
 
 /-! ## `Q`: the novel basis (π2v3: sixteen slots) -/
 
-/-- `Q`'s table: its stack read under `Q`'s layout (`m + 4` variables: the position's `m` bits, the digit, the kind,
-the limb's two bits; entry `pd + 2^(m+1) (kind + 2 limb)`, `pd = position + 2^m digit`). -/
-def qTable (m : ℕ) (c : Stk) (i : ℕ) : K := (layoutsOf m).2.1.readEntry c i
-
 /-- **`Q`'s coefficient** of kind `kind` (`0` for `h`, `1` for `q`) at the novel index `pd < 2N`: its limbs
-`c_0 + Y c_1 + Y² c_2`, limb `l` at slot `digit + 2 kind + 4 l`. -/
+`c_0 + Y c_1 + Y² c_2`, limb `l` at slot `digit + 2 kind + 4 l` (the stack's entry `pd + 2^(m+1) (kind + 2 l)`,
+`pd = position + 2^m digit`). -/
 def qCoef (T : ℕ → K) (m kind pd : ℕ) : E := ∑ l ∈ range 3, yE ^ l * ofK (T (pd + 2 ^ (m + 1) * (kind + 2 * l)))
+
+/-- **`S`'s coefficient** at `k < N` (slot `12`: digit `0`, kind `0`, limb code `3`; the honest prover's zero). -/
+def sCoef (T : ℕ → K) (m k : ℕ) : E := ofK (T (k + 2 ^ (m + 1) * (0 + 2 * 3)))
 
 /-- **`P`'s coefficient** at `k < N` (slot `13`: digit `1`, kind `0`, limb code `3`). -/
 def pCoef (T : ℕ → K) (m k : ℕ) : E := ofK (T (k + 2 ^ m + 2 ^ (m + 1) * (0 + 2 * 3)))
@@ -414,52 +376,21 @@ def pCoef (T : ℕ → K) (m k : ℕ) : E := ofK (T (k + 2 ^ m + 2 ^ (m + 1) * (
 /-- **`q_P`'s coefficient** at `pd < 2N` (slots `14, 15`: kind `1`, limb code `3`). -/
 def qpCoef (T : ℕ → K) (m pd : ℕ) : E := ofK (T (pd + 2 ^ (m + 1) * (1 + 2 * 3)))
 
-/-- **`h`**: `Q`'s kind-`0` coefficients in the novel basis on `m` digits (degree below `N`). -/
-noncomputable def hPoly (T : ℕ → K) (m : ℕ) : E[X] := UniKeccakComplete.AlgC.novP m (qCoef T m 0)
+/-- **`h`**: `Q`'s kind-`0` coefficients in the novel basis on `m + 1` digits (degree below `2N`: `h_0 + Z_V h_1`, the
+second digit in slots `1, 5, 9`, the honest prover's zeros). -/
+noncomputable def hPoly (T : ℕ → K) (m : ℕ) : E[X] := UniKeccakComplete.AlgC.novP (m + 1) (qCoef T m 0)
 
 /-- **`q`**: `Q`'s kind-`1` coefficients in the novel basis on `m + 1` digits (degree below `2N`). -/
 noncomputable def qPoly (T : ℕ → K) (m : ℕ) : E[X] := UniKeccakComplete.AlgC.novP (m + 1) (qCoef T m 1)
+
+/-- **`S`** (slot `12`, degree below `N`). -/
+noncomputable def sPoly (T : ℕ → K) (m : ℕ) : E[X] := UniKeccakComplete.AlgC.novP m (sCoef T m)
 
 /-- **`P`** (degree below `N`). -/
 noncomputable def pPoly (T : ℕ → K) (m : ℕ) : E[X] := UniKeccakComplete.AlgC.novP m (pCoef T m)
 
 /-- **`q_P`** (degree below `2N`). -/
 noncomputable def qpPoly (T : ℕ → K) (m : ℕ) : E[X] := UniKeccakComplete.AlgC.novP (m + 1) (qpCoef T m)
-
-/-- **`Q`'s table is zero at its empty slots** `1, 5, 9` (`h`'s digit `1`) and `12` (limb code `3`, digit `0`,
-kind `0`). -/
-structure QZero (T : ℕ → K) (m : ℕ) : Prop where
-  h_high : ∀ k < 2 ^ m, ∀ l < 3, T (k + 2 ^ m + 2 ^ (m + 1) * (0 + 2 * l)) = 0
-  p_low : ∀ k < 2 ^ m, T (k + 2 ^ (m + 1) * (0 + 2 * 3)) = 0
-
-theorem qChunks_mem {m : ℕ} {p : ℕ × ℕ} (hp : p ∈ quotientChunks m) :
-    p.2 = 2 ^ m ∧ (p.1 = 0 ∨ p.1 = 2 ∨ p.1 = 3 ∨ p.1 = 4 ∨ p.1 = 6 ∨ p.1 = 7 ∨ p.1 = 8 ∨ p.1 = 10 ∨ p.1 = 11 ∨
-      p.1 = 13 ∨ p.1 = 14 ∨ p.1 = 15) := by
-  unfold quotientChunks at hp
-  simp only [List.map_cons, List.map_nil, List.mem_cons, List.not_mem_nil, or_false] at hp
-  rcases hp with h | h | h | h | h | h | h | h | h | h | h | h <;> subst h <;> simp
-
-/-- **`Q`'s layout's zeros** (π2's `m ≥ 20`: its stack has `max(m + 4, 24)` variables, lanes of at most `2^m`). -/
-theorem qZero {m : ℕ} (hm : 20 ≤ m) (c : Stk) : QZero (qTable m c) m := by
-  have hQ : (layoutsOf m).2.1 = PcsQuotient.Layout.ofChunks (m + 4) m (max (m + 4) 24) (quotientChunks m) := by
-    simp only [layoutsOf, stackVars, hm, ite_true]
-  have hlane : max (m + 4) 24 - PcsQuotient.laneFold ≤ m := by
-    simp only [PcsQuotient.laneFold]; omega
-  have hlen : ∀ p ∈ quotientChunks m, p.2 ≤ 2 ^ m := fun p hp ↦ (qChunks_mem hp).1.le
-  have hslot : ∀ k < 2 ^ m, ∀ j, (k + 2 ^ m * j) / 2 ^ m = j := fun k hk j ↦ by
-    rw [Nat.add_mul_div_left _ _ (Nat.two_pow_pos m), Nat.div_eq_of_lt hk, zero_add]
-  refine ⟨fun k hk l hl ↦ ?_, fun k hk ↦ ?_⟩
-  · unfold qTable
-    rw [hQ]
-    refine readEntry_ofChunks_zero hlane hlen c fun p hp heq ↦ ?_
-    rw [show k + 2 ^ m + 2 ^ (m + 1) * (0 + 2 * l) = k + 2 ^ m * (1 + 4 * l) by rw [pow_succ]; ring,
-      hslot k hk] at heq
-    rcases (qChunks_mem hp).2 with h | h | h | h | h | h | h | h | h | h | h | h <;> omega
-  · unfold qTable
-    rw [hQ]
-    refine readEntry_ofChunks_zero hlane hlen c fun p hp heq ↦ ?_
-    rw [show k + 2 ^ (m + 1) * (0 + 2 * 3) = k + 2 ^ m * 12 by rw [pow_succ]; ring, hslot k hk] at heq
-    rcases (qChunks_mem hp).2 with h | h | h | h | h | h | h | h | h | h | h | h <;> omega
 
 /-! ### The weights of `Q`'s claims -/
 
@@ -518,38 +449,18 @@ open scoped ENNReal
 
 /-! ### `Q`'s claims -/
 
-theorem qCoef_zero_of {T : ℕ → K} {m kind pd : ℕ} (h : ∀ l < 3, T (pd + 2 ^ (m + 1) * (kind + 2 * l)) = 0) :
-    qCoef T m kind pd = 0 := by
-  unfold qCoef
-  refine Finset.sum_eq_zero fun l hl ↦ ?_
-  rw [h l (Finset.mem_range.mp hl), UniSound.Ids.ofK_zero, mul_zero]
-
-/-- `h`'s coefficients at the novel indices below `2N`: only those below `N`. -/
-theorem sum_qc0 {T : ℕ → K} {m : ℕ} (hz : QZero T m) (w : ℕ → E) :
-    ∑ pd ∈ range (2 ^ (m + 1)), qCoef T m 0 pd * UniKeccakComplete.AlgC.novX (m + 1) pd w =
-      ∑ k ∈ range (2 ^ m), qCoef T m 0 k * UniKeccakComplete.AlgC.novX m k w := by
-  rw [show range (2 ^ (m + 1)) = range (2 ^ m + 2 ^ m) by rw [pow_succ, mul_two], Finset.sum_range_add]
-  have h2 : ∑ x ∈ range (2 ^ m), qCoef T m 0 (2 ^ m + x) * UniKeccakComplete.AlgC.novX (m + 1) (2 ^ m + x) w = 0 :=
-    Finset.sum_eq_zero fun k hk ↦ by
-      have hq : qCoef T m 0 (2 ^ m + k) = 0 := qCoef_zero_of fun l hl ↦ by
-        rw [show 2 ^ m + k = k + 2 ^ m by ring]
-        exact hz.h_high k (Finset.mem_range.mp hk) l hl
-      rw [hq, zero_mul]
-  rw [h2, add_zero]
-  exact Finset.sum_congr rfl fun k hk ↦ by rw [UniKeccakComplete.AlgC.novX_low (Finset.mem_range.mp hk)]
-
-/-- `P`'s slot on the `2N` novel indices: `w_m P` (digit `1`). -/
-theorem sum_pc {T : ℕ → K} {m : ℕ} (hz : QZero T m) (w : ℕ → E) :
+/-- `S`'s and `P`'s slots on the `2N` novel indices: `S` (digit `0`) plus `w_m P` (digit `1`). -/
+theorem sum_pc (T : ℕ → K) (m : ℕ) (w : ℕ → E) :
     ∑ pd ∈ range (2 ^ (m + 1)), ofK (T (pd + 2 ^ (m + 1) * (0 + 2 * 3))) * UniKeccakComplete.AlgC.novX (m + 1) pd w =
-      w m * ∑ k ∈ range (2 ^ m), pCoef T m k * UniKeccakComplete.AlgC.novX m k w := by
+      ∑ k ∈ range (2 ^ m), sCoef T m k * UniKeccakComplete.AlgC.novX m k w +
+        w m * ∑ k ∈ range (2 ^ m), pCoef T m k * UniKeccakComplete.AlgC.novX m k w := by
   rw [show range (2 ^ (m + 1)) = range (2 ^ m + 2 ^ m) by rw [pow_succ, mul_two], Finset.sum_range_add]
-  have h1 : ∑ x ∈ range (2 ^ m), ofK (T (x + 2 ^ (m + 1) * (0 + 2 * 3))) *
-      UniKeccakComplete.AlgC.novX (m + 1) x w = 0 :=
-    Finset.sum_eq_zero fun k hk ↦ by rw [hz.p_low k (Finset.mem_range.mp hk), UniSound.Ids.ofK_zero, zero_mul]
-  rw [h1, zero_add, Finset.mul_sum]
-  refine Finset.sum_congr rfl fun k hk ↦ ?_
-  rw [UniKeccakComplete.AlgC.novX_high (Finset.mem_range.mp hk), pCoef, show 2 ^ m + k = k + 2 ^ m by ring]
-  ring
+  refine congrArg₂ (· + ·) ?_ ?_
+  · exact Finset.sum_congr rfl fun k hk ↦ by rw [UniKeccakComplete.AlgC.novX_low (Finset.mem_range.mp hk), sCoef]
+  · rw [Finset.mul_sum]
+    refine Finset.sum_congr rfl fun k hk ↦ ?_
+    rw [UniKeccakComplete.AlgC.novX_high (Finset.mem_range.mp hk), pCoef, show 2 ^ m + k = k + 2 ^ m by ring]
+    ring
 
 /-- A point's weight at `u_l = w_l/(1 + w_l)`: the novel monomial times `Π_l (1 + w_l)⁻¹`. -/
 theorem eqBits_digits {u : List E} {n : ℕ} (hu : u.length = n) {w : ℕ → E} (hw : ∀ l < n, 1 + w l ≠ 0)
@@ -604,18 +515,19 @@ theorem limbs_sum_ones (f : ℕ → E) : ∑ l ∈ range 4, PcsQuotient.eqBits [
     show (2 : ℕ).testBit 0 = false from rfl, show (2 : ℕ).testBit 1 = true from rfl,
     show (3 : ℕ).testBit 0 = true from rfl, show (3 : ℕ).testBit 1 = true from rfl, CharTwo.add_self_eq_zero]
 
-/-- **`Q`'s identity claim** at `(u, ρ', y₀, y₁)`: `Π_l (1 + w_l)⁻¹ (s ((1 + ρ') h + ρ' q) + y₀ y₁ ((1 + ρ') w_m P +
+/-- **`Q`'s identity claim** at `(u, ρ', y₀, y₁)`: `Π_l (1 + w_l)⁻¹ (s ((1 + ρ') h + ρ' q) + y₀ y₁ ((1 + ρ') (S + w_m P) +
 ρ' q_P))` at the digits `w`. -/
-theorem claim_quotient {T : ℕ → K} {m : ℕ} (hz : QZero T m) {u : List E} (hu : u.length = m + 1) {w : ℕ → E}
+theorem claim_quotient {T : ℕ → K} {m : ℕ} {u : List E} (hu : u.length = m + 1) {w : ℕ → E}
     (hw : ∀ l < m + 1, 1 + w l ≠ 0) (huw : ∀ l < m + 1, u.getD l 0 = w l / (1 + w l)) (ρ' : E) :
     ∑ i ∈ range (2 ^ (m + 4)), PcsQuotient.eqBits (u ++ [ρ', extension.1.1, extension.1.2]) i * ofK (T i) =
       (∏ l ∈ range (m + 1), (1 + w l)⁻¹) *
-        (extension.2 * ((1 + ρ') * ∑ k ∈ range (2 ^ m), qCoef T m 0 k * UniKeccakComplete.AlgC.novX m k w +
+        (extension.2 * ((1 + ρ') * ∑ k ∈ range (2 ^ (m + 1)), qCoef T m 0 k * UniKeccakComplete.AlgC.novX (m + 1) k w +
           ρ' * ∑ k ∈ range (2 ^ (m + 1)), qCoef T m 1 k * UniKeccakComplete.AlgC.novX (m + 1) k w) +
-        extension.1.1 * extension.1.2 * ((1 + ρ') * (w m * ∑ k ∈ range (2 ^ m), pCoef T m k *
+        extension.1.1 * extension.1.2 * ((1 + ρ') * (∑ k ∈ range (2 ^ m), sCoef T m k *
+          UniKeccakComplete.AlgC.novX m k w + w m * ∑ k ∈ range (2 ^ m), pCoef T m k *
           UniKeccakComplete.AlgC.novX m k w) +
           ρ' * ∑ k ∈ range (2 ^ (m + 1)), qpCoef T m k * UniKeccakComplete.AlgC.novX (m + 1) k w)) := by
-  rw [claim_Q hu hw huw, ← sum_qc0 hz w, ← sum_pc hz w]
+  rw [claim_Q hu hw huw, ← sum_pc T m w]
   congr 1
   have key : ∀ pd, UniKeccakComplete.AlgC.novX (m + 1) pd w *
       ((1 + ρ') * ∑ l ∈ range 4, PcsQuotient.eqBits [extension.1.1, extension.1.2] l *
@@ -634,14 +546,15 @@ theorem claim_quotient {T : ℕ → K} {m : ℕ} (hz : QZero T m) {u : List E} (
     Finset.sum_add_distrib, Finset.sum_add_distrib, ← Finset.mul_sum, ← Finset.mul_sum, ← Finset.mul_sum,
     ← Finset.mul_sum]
 
-/-- **`Q`'s pushes' claim** at `(u, ρ, 1, 1)`: `Π_l (1 + w_l)⁻¹ ((1 + ρ) w_m P + ρ q_P)`. -/
-theorem claim_pushes {T : ℕ → K} {m : ℕ} (hz : QZero T m) {u : List E} (hu : u.length = m + 1) {w : ℕ → E}
+/-- **`Q`'s pushes' claim** at `(u, ρ, 1, 1)`: `Π_l (1 + w_l)⁻¹ ((1 + ρ) (S + w_m P) + ρ q_P)`. -/
+theorem claim_pushes {T : ℕ → K} {m : ℕ} {u : List E} (hu : u.length = m + 1) {w : ℕ → E}
     (hw : ∀ l < m + 1, 1 + w l ≠ 0) (huw : ∀ l < m + 1, u.getD l 0 = w l / (1 + w l)) (ρ : E) :
     ∑ i ∈ range (2 ^ (m + 4)), PcsQuotient.eqBits (u ++ [ρ, 1, 1]) i * ofK (T i) =
       (∏ l ∈ range (m + 1), (1 + w l)⁻¹) *
-        ((1 + ρ) * (w m * ∑ k ∈ range (2 ^ m), pCoef T m k * UniKeccakComplete.AlgC.novX m k w) +
+        ((1 + ρ) * (∑ k ∈ range (2 ^ m), sCoef T m k * UniKeccakComplete.AlgC.novX m k w +
+            w m * ∑ k ∈ range (2 ^ m), pCoef T m k * UniKeccakComplete.AlgC.novX m k w) +
           ρ * ∑ k ∈ range (2 ^ (m + 1)), qpCoef T m k * UniKeccakComplete.AlgC.novX (m + 1) k w) := by
-  rw [claim_Q hu hw huw, ← sum_pc hz w]
+  rw [claim_Q hu hw huw, ← sum_pc T m w]
   congr 1
   have key : ∀ pd, UniKeccakComplete.AlgC.novX (m + 1) pd w *
       ((1 + ρ) * ∑ l ∈ range 4, PcsQuotient.eqBits [1, 1] l * ofK (T (pd + 2 ^ (m + 1) * (0 + 2 * l))) +
@@ -653,10 +566,10 @@ theorem claim_pushes {T : ℕ → K} {m : ℕ} (hz : QZero T m) {u : List E} (hu
     ring
   rw [Finset.sum_congr rfl fun pd _ ↦ key pd, Finset.sum_add_distrib, ← Finset.mul_sum, ← Finset.mul_sum]
 
-/-- **`Q`'s sum claim** at `(1^m, 0, 0, y₀, y₁)`: the scale times `h`'s top coefficient. -/
-theorem claim_sum {T : ℕ → K} {m : ℕ} (hz : QZero T m) :
+/-- **`Q`'s sum claim** at `(1^m, 0, 0, y₀, y₁)`: the scale times `h`'s top coefficient plus `y₀ y₁` times `S`'s. -/
+theorem claim_sum (T : ℕ → K) (m : ℕ) :
     ∑ i ∈ range (2 ^ (m + 4)), PcsQuotient.eqBits (List.replicate m 1 ++ [0, 0] ++ [extension.1.1, extension.1.2])
-      i * ofK (T i) = extension.2 * qCoef T m 0 (2 ^ m - 1) := by
+      i * ofK (T i) = extension.2 * qCoef T m 0 (2 ^ m - 1) + extension.1.1 * extension.1.2 * sCoef T m (2 ^ m - 1) := by
   have hrep : (List.replicate m (1 : E)).length = m := List.length_replicate
   rw [List.append_assoc, sum_range_two_pow_add m _ 4]
   have happ : ∀ pos < 2 ^ m, ∀ c, PcsQuotient.eqBits (List.replicate m 1 ++ ([0, 0] ++ [extension.1.1,
@@ -684,10 +597,7 @@ theorem claim_sum {T : ℕ → K} {m : ℕ} (hz : QZero T m) :
   have hidx : ∀ l, 2 ^ m - 1 + 2 ^ m * (0 + 2 ^ 2 * l) = 2 ^ m - 1 + 2 ^ (m + 1) * (0 + 2 * l) := fun l ↦ by
     rw [pow_add]; ring
   simp only [hidx]
-  have hlt : 2 ^ m - 1 < 2 ^ m := Nat.sub_lt (Nat.two_pow_pos m) Nat.one_pos
-  rw [show (2 : ℕ) ^ 2 = 4 from rfl, limbs_sum _ (by
-    show ofK (T (2 ^ m - 1 + 2 ^ (m + 1) * (0 + 2 * 3))) = 0
-    rw [hz.p_low _ hlt, UniSound.Ids.ofK_zero])]
+  rw [show (2 : ℕ) ^ 2 = 4 from rfl, limbs_sum4]
   rfl
 
 end RecCompose
@@ -744,6 +654,14 @@ theorem sum_novP_omega {m : ℕ} (hm : m ≤ 32) (d : ℕ → E) :
         (h.trans hbits.symm))
     (fun h ↦ absurd (Finset.mem_range.mpr hlt) h), ite_eq_left hbits]
 
+/-- **A novel polynomial on `m + 1` digits on `V_m`** is its first `m` digits' (`h_0 + Z_V h_1`: the digit `w_m`, which
+is `Z_V`, vanishes on `V_m`). -/
+theorem novP_succ_eval_omega {m : ℕ} (hm : m ≤ 32) (d : ℕ → E) {i : ℕ} (hi : i < 2 ^ m) :
+    (UniKeccakComplete.AlgC.novP (m + 1) d).eval (pi2Omega i) = (UniKeccakComplete.AlgC.novP m d).eval (pi2Omega i) := by
+  have hi32 : i < 2 ^ 32 := lt_of_lt_of_le hi (Nat.pow_le_pow_right (by norm_num) hm)
+  rw [UniKeccakComplete.AlgC.novP_succ, Polynomial.eval_add, Polynomial.eval_mul, wP_eval_sq,
+    sq_iterate_pi2Omega m hi32, Nat.shiftRight_eq_div_pow, Nat.div_eq_of_lt hi, pi2Omega_zero, zero_mul, add_zero]
+
 end RecCompose
 
 namespace RecCompose
@@ -752,40 +670,6 @@ open RecStatement LeanVM.Parameters LeanVM.Protocol Finset Polynomial
 open scoped ENNReal
 
 /-! ## The setup: the basis `B` -/
-
-/-- **A public layout of two full chunks reads its stack in order**: `readEntry stack i = stack i`, `i < 2^(lc + 1)`. -/
-theorem readEntry_ofChunks_two {vars lc logN : ℕ} (hlane : logN - PcsQuotient.laneFold ≤ lc) (stack : ℕ → K)
-    {i : ℕ} (hi : i < 2 ^ (lc + 1)) :
-    (PcsQuotient.Layout.ofChunks vars lc logN [(0, 2 ^ lc), (1, 2 ^ lc)]).readEntry stack i = stack i := by
-  obtain ⟨d, hd⟩ : ∃ d, lc = (logN - PcsQuotient.laneFold) + d := ⟨lc - (logN - PcsQuotient.laneFold), by omega⟩
-  set a := logN - PcsQuotient.laneFold with ha
-  have hpos : 0 < 2 ^ a := Nat.two_pow_pos a
-  have hcount : (2 ^ lc + 2 ^ a - 1) / 2 ^ a = 2 ^ d := by
-    rw [hd, pow_add]
-    have : 2 ^ a * 2 ^ d + 2 ^ a - 1 = 2 ^ d * 2 ^ a + (2 ^ a - 1) := by
-      have : 1 ≤ 2 ^ a := hpos; rw [mul_comm]; omega
-    rw [this, Nat.add_comm, Nat.add_mul_div_right _ _ hpos, Nat.div_eq_of_lt (by omega), zero_add]
-  have hd' : lc - a = d := by omega
-  have hlanes : (PcsQuotient.Layout.ofChunks vars lc logN [(0, 2 ^ lc), (1, 2 ^ lc)]).lanes =
-      (List.range (2 ^ d + 2 ^ d)).map PcsQuotient.Lane.block := by
-    simp only [PcsQuotient.Layout.ofChunks, List.flatMap_cons, List.flatMap_nil, List.append_nil, ← ha, hcount, hd',
-      zero_mul, zero_add, one_mul]
-    rw [List.range_add, List.map_append, List.map_map]
-    rfl
-  have hb : i / 2 ^ a < 2 ^ d + 2 ^ d := by
-    rw [Nat.div_lt_iff_lt_mul hpos]
-    rw [hd, pow_succ, pow_add] at hi
-    nlinarith
-  have hfind : (PcsQuotient.Layout.ofChunks vars lc logN [(0, 2 ^ lc), (1, 2 ^ lc)]).lanes.findIdx?
-      (· = PcsQuotient.Lane.block (i / 2 ^ a)) = some (i / 2 ^ a) := by
-    rw [hlanes, List.findIdx?_eq_some_iff_getElem]
-    refine ⟨by simpa using hb, by simp, fun j hj ↦ ?_⟩
-    simp only [List.getElem_map, List.getElem_range, decide_eq_true_eq, PcsQuotient.Lane.block.injEq]
-    omega
-  have hlp : (PcsQuotient.Layout.ofChunks vars lc logN [(0, 2 ^ lc), (1, 2 ^ lc)]).logPiece = none := rfl
-  have hlg : (PcsQuotient.Layout.ofChunks vars lc logN [(0, 2 ^ lc), (1, 2 ^ lc)]).logN = logN := rfl
-  simp only [PcsQuotient.Layout.readEntry, hlp, PcsQuotient.Layout.logLane, hlg, ← ha, hfind]
-  rw [mul_comm, Nat.div_add_mod]
 
 /-- **The basis-`B` column's polynomial takes the column's values**: `wPoly m (bCoefficients m v)` at `ω_i` is `v_i`
 (`m ≤ 28`: UniComplete's `evalB_bCoefficients`, `pEval_colPolyK_pointE`). -/
@@ -919,8 +803,9 @@ theorem pow_view_N2 (Fa : Pi2Facts D C) (roots : RecSetupRoots) :
     2 ^ ((D.circuitAt roots.pi1).circuit.logN + 1) = 2 * (C.G roots).N := by
   rw [pow_succ, pow_view_N Fa roots]; ring
 
-/-- `W`'s table: the stack read under `W`'s layout. -/
-def wTab (D : RecDeployment) (roots : RecSetupRoots) (c : Stk) (i : ℕ) : K := (wLayout D roots).readEntry c i
+/-- `W`'s table: the stack's words (its leading `N`, `w`'s basis-`B` coefficients). -/
+def wTab (_D : RecDeployment) (_roots : RecSetupRoots) (c : Stk) (i : ℕ) : K := c i
+
 
 /-- `κ`'s basis-`B` coefficients (the setup table's first half). -/
 def kappaB (D : RecDeployment) (roots : RecSetupRoots) : Array K :=
@@ -956,19 +841,21 @@ noncomputable def pi2SetupPolys (hcol : Pi2SetupColumns D C) : RecPiop.SetupPoly
     simp [hi']
 
 /-- **What the candidates stand for** at a setup: `W`'s basis-`B` polynomial and its true fold values, `Q`'s `h`, `q`,
-`P`, `q_P` in the novel basis, the setup's polynomials, the ports' `phiPoly`, the identity claim's `c_3`. -/
+`P`, `q_P`, `S` in the novel basis, the setup's polynomials, the ports' `phiPoly`, the identity claim's `c_3`. -/
 noncomputable def pi2Model (hcol : Pi2SetupColumns D C) : RecPiop.Model (C.G roots) pi2Omega Stk where
   setup := pi2SetupPolys Fa roots hcol
   wP c := wPoly (D.circuitAt roots.pi1).circuit.logN (wTab D roots c)
   wP_deg c := (natDegree_wPoly_lt _ _).trans_eq (pow_view_N Fa roots)
-  hP c := hPoly (qTable (D.circuitAt roots.pi1).circuit.logN c) (D.circuitAt roots.pi1).circuit.logN
-  hP_deg c := (UniKeccakComplete.AlgC.novP_natDegree_lt _ _).trans_eq (pow_view_N Fa roots)
-  qP c := qPoly (qTable (D.circuitAt roots.pi1).circuit.logN c) (D.circuitAt roots.pi1).circuit.logN
+  hP c := hPoly c (D.circuitAt roots.pi1).circuit.logN
+  hP_deg c := (UniKeccakComplete.AlgC.novP_natDegree_lt _ _).trans_eq (pow_view_N2 Fa roots)
+  qP c := qPoly c (D.circuitAt roots.pi1).circuit.logN
   qP_deg c := (UniKeccakComplete.AlgC.novP_natDegree_lt _ _).trans_eq (pow_view_N2 Fa roots)
-  pP c := pPoly (qTable (D.circuitAt roots.pi1).circuit.logN c) (D.circuitAt roots.pi1).circuit.logN
+  pP c := pPoly c (D.circuitAt roots.pi1).circuit.logN
   pP_deg c := (UniKeccakComplete.AlgC.novP_natDegree_lt _ _).trans_eq (pow_view_N Fa roots)
-  qPP c := qpPoly (qTable (D.circuitAt roots.pi1).circuit.logN c) (D.circuitAt roots.pi1).circuit.logN
+  qPP c := qpPoly c (D.circuitAt roots.pi1).circuit.logN
   qPP_deg c := (UniKeccakComplete.AlgC.novP_natDegree_lt _ _).trans_eq (pow_view_N2 Fa roots)
+  sP c := sPoly c (D.circuitAt roots.pi1).circuit.logN
+  sP_deg c := (UniKeccakComplete.AlgC.novP_natDegree_lt _ _).trans_eq (pow_view_N Fa roots)
   phi pub γ := phiPoly (C.G roots) UniComplete.Domain.basisE pub γ
   phi_deg pub γ k := natDegree_phiPoly_lt (Fa.valid roots) pub γ k
   phi_eval pub γ j hj := phiPoly_eval_port (Fa.valid roots) (Fa.spec roots).hn pub γ hj
@@ -1035,10 +922,20 @@ theorem extension_scale_ne_zero : extension.2 ≠ 0 := by
 theorem extension_L0 : (1 + extension.1.1) * (1 + extension.1.2) = extension.2 := by
   rw [ext_y0, ext_y1, ext_scale, one_add_mul_inv one_add_yE_ne_zero, one_add_mul_inv one_add_yE_sq_ne_zero, mul_inv]
 
-/-- The layouts at π2's `m ≥ 20`: the setup's public layout of a `max(m + 1, 24)`-variable stack. -/
-theorem setupLayout_eq {m : ℕ} (hm : 20 ≤ m) : (layoutsOf m).2.2 =
-    PcsQuotient.Layout.ofChunks (m + 1) m (max (m + 1) 24) [(0, 2 ^ m), (1, 2 ^ m)] := by
-  simp only [layoutsOf, stackVars, hm, ite_true]
+/-- **A PCS claim's multilinear value as the `eqBits` sum** (characteristic two: `1 + p + 1 = p`), on a point of the
+stack's variables. -/
+theorem mleStk_eq (c : Stk) {p : List E} {n : ℕ} (hp : p.length = n) :
+    UniSound.mleStk c n p = ∑ i ∈ range (2 ^ n), PcsQuotient.eqBits p i * ofK (c i) := by
+  unfold UniSound.mleStk
+  rw [← Finset.sum_range (fun i ↦ UniSound.cubeEq p n i * ofK (c i))]
+  refine Finset.sum_congr rfl fun i _ ↦ ?_
+  rw [eqBits_eq_prod, hp]
+  congr 1
+  unfold UniSound.cubeEq
+  refine Finset.prod_congr rfl fun k _ ↦ ?_
+  split_ifs
+  · rw [add_comm (1 : E), add_assoc, CharTwo.add_self_eq_zero, add_zero]
+  · rw [add_zero]
 
 /-- **π2's tables' layer**: the model `pi2Model` and its link with the claims, from the circuit's facts and the setup's
 columns. -/
@@ -1069,15 +966,15 @@ noncomputable def pi2Tables (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Fac
       exact right_ne_zero_of_mul (left_ne_zero_of_mul (left_ne_zero_of_mul h))
     rw [← hm] at hT
     have hw : ∀ l < m + 1, 1 + QuotientSecurity.sq^[l] inp.t ≠ 0 := fun l hl ↦ one_add_digit_ne_zero hT hl
+    have hwm : QuotientSecurity.sq^[m] inp.t ≠ 0 := digit_ne_zero_of_le (by omega) hT
     have huw : ∀ l < m + 1, (S.run inp).uList.getD l 0 =
         QuotientSecurity.sq^[l] inp.t / (1 + QuotientSecurity.sq^[l] inp.t) := fun l hl ↦
       run_u hS inp hall (by rw [← hm]; exact hl)
     have hu : (S.run inp).uList.length = m + 1 := by rw [run_uList_length, hSm]
     have hDne : ∏ l ∈ range (m + 1), (1 + QuotientSecurity.sq^[l] inp.t)⁻¹ ≠ 0 :=
       prod_inv_ne_zero_gen (F := E) (n := m + 1) (f := fun l ↦ 1 + QuotientSecurity.sq^[l] inp.t) hw
-    have hv : (layoutsOf m).2.1.vars = m + 4 := rfl
-    have hT' := hT
-    rw [hm] at hT'
+    have hzv : ((C.G roots).zV pi2Omega).eval inp.t = QuotientSecurity.sq^[m] inp.t := by
+      rw [RecPiop.Circuit.zV_eval_eq (C.G roots) UniComplete.Domain.basisE hS.hn, ← hm]
     have hqval := run_quotientValue hS inp hall
     have hpval := run_pushesValue hS inp hall
     rw [← hm] at hqval hpval
@@ -1089,78 +986,80 @@ noncomputable def pi2Tables (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Fac
     · -- `Q`'s identity claim
       unfold ClaimOn at hQ1
       dsimp only at hQ1
-      rw [hv, run_quotientPoint, hSm, hqv, padded_eq (by simp [hu]), spec_core_y0, spec_core_y1] at hQ1
-      have hc := claim_quotient (qZero hm20 cQ) hu hw huw (S.run inp).rhoQ
-      unfold qTable at hc
+      rw [run_quotientPoint, hSm, hqv, padded_eq (by simp [hu]), spec_core_y0, spec_core_y1,
+        mleStk_eq _ (by simp [hu])] at hQ1
+      have hc := claim_quotient (T := cQ) hu hw huw (S.run inp).rhoQ
       rw [hc, hqval, hscale] at hQ1
       unfold idEq
-      show _ = (1 + (S.run inp).rhoQ) * (hPoly (qTable m cQ) m).eval inp.t +
-        (S.run inp).rhoQ * (qPoly (qTable m cQ) m).eval inp.t + c3Of S * ((1 + (S.run inp).rhoQ) *
-          QuotientSecurity.sq^[(C.G roots).logN] inp.t * (pPoly (qTable m cQ) m).eval inp.t +
-          (S.run inp).rhoQ * (qpPoly (qTable m cQ) m).eval inp.t)
-      unfold hPoly qPoly pPoly qpPoly qTable
-      rw [novP_eval_sq, novP_eval_sq, novP_eval_sq, novP_eval_sq, ← hm]
+      show _ = (1 + (S.run inp).rhoQ) * (hPoly cQ m).eval inp.t +
+        (S.run inp).rhoQ * (qPoly cQ m).eval inp.t + c3Of S * ((1 + (S.run inp).rhoQ) *
+          QuotientSecurity.sq^[(C.G roots).logN] inp.t * ((pPoly cQ m).eval inp.t +
+            (sPoly cQ m).eval inp.t / ((C.G roots).zV pi2Omega).eval inp.t) +
+          (S.run inp).rhoQ * (qpPoly cQ m).eval inp.t)
+      rw [hzv]
+      unfold hPoly qPoly pPoly qpPoly sPoly
+      rw [novP_eval_sq, novP_eval_sq, novP_eval_sq, novP_eval_sq, novP_eval_sq, ← hm]
       have hs := extension_scale_ne_zero
       apply cancel_left_gen (mul_ne_zero hs hDne)
       rw [← hQ1, hc3]
       field_simp
+      ring
     · -- `Q`'s pushes' claim
       unfold ClaimOn at hQ2
       dsimp only at hQ2
-      rw [hv, run_pushesPoint, hSm, hqv, padded_eq (by simp [hu])] at hQ2
-      have hc := claim_pushes (qZero hm20 cQ) hu hw huw inp.ρ
-      unfold qTable at hc
+      rw [run_pushesPoint, hSm, hqv, padded_eq (by simp [hu]), mleStk_eq _ (by simp [hu])] at hQ2
+      have hc := claim_pushes (T := cQ) hu hw huw inp.ρ
       rw [hc, hpval, hscale, spec_core_y0, spec_core_y1, extension_L0, mul_inv_cancel₀ extension_scale_ne_zero,
         one_mul] at hQ2
       unfold pushEq
-      show _ = (1 + inp.ρ) * QuotientSecurity.sq^[(C.G roots).logN] inp.t * (pPoly (qTable m cQ) m).eval inp.t +
-        inp.ρ * (qpPoly (qTable m cQ) m).eval inp.t
-      unfold pPoly qpPoly qTable
-      rw [novP_eval_sq, novP_eval_sq, ← hm]
+      show _ = (1 + inp.ρ) * QuotientSecurity.sq^[(C.G roots).logN] inp.t * ((pPoly cQ m).eval inp.t +
+          (sPoly cQ m).eval inp.t / ((C.G roots).zV pi2Omega).eval inp.t) +
+        inp.ρ * (qpPoly cQ m).eval inp.t
+      rw [hzv]
+      unfold pPoly qpPoly sPoly
+      rw [novP_eval_sq, novP_eval_sq, novP_eval_sq, ← hm]
       apply cancel_left_gen hDne
       rw [← hQ2]
+      field_simp
       ring
     · -- `Q`'s sum claim
       unfold ClaimOn at hQ3
       dsimp only at hQ3
-      rw [hv, run_sumPoint, run_sumValue, spec_core_y0, spec_core_y1, hSm, hqv,
-        padded_eq (by simp)] at hQ3
-      have hc := claim_sum (qZero hm20 cQ)
-      unfold qTable at hc
-      rw [hc] at hQ3
-      have h2 : qCoef ((layoutsOf m).2.1.readEntry cQ) m 0 (2 ^ m - 1) = 0 :=
-        (mul_eq_zero.mp hQ3).resolve_left extension_scale_ne_zero
-      show ∑ i ∈ range (C.G roots).N, (hPoly (qTable m cQ) m).eval (pi2Omega i) = 0
+      rw [run_sumPoint, run_sumValue, spec_core_y0, spec_core_y1, hSm, hqv,
+        padded_eq (by simp), mleStk_eq _ (by simp)] at hQ3
+      rw [claim_sum cQ m] at hQ3
+      show ∑ i ∈ range (C.G roots).N, ((hPoly cQ m).eval (pi2Omega i) +
+        c3Of S * (sPoly cQ m).eval (pi2Omega i)) = 0
       rw [← pow_view_N Fa roots]
-      unfold hPoly
-      rw [sum_novP_omega (by omega)]
-      unfold qTable
-      exact h2
+      have hm32 : m ≤ 32 := by omega
+      rw [Finset.sum_congr rfl fun i hi ↦ by
+        rw [hPoly, novP_succ_eval_omega hm32 _ (Finset.mem_range.mp hi)], Finset.sum_add_distrib,
+        ← Finset.mul_sum]
+      unfold sPoly
+      rw [sum_novP_omega hm32, sum_novP_omega hm32, hc3]
+      have hs := extension_scale_ne_zero
+      apply cancel_left_gen hs
+      rw [mul_zero, ← hQ3]
+      field_simp
     · -- the setup's claim
       unfold ClaimOn at hS3
-      have hv2 : (layoutsOf m).2.2.vars = m + 1 := rfl
       have hsv : (stackVars m).2.2 = m + 1 := by simp only [stackVars, hm20, ite_true]; omega
-      rw [hv2, run_setupPoint, hSm, hsv, padded_eq (by simp [digitsList]; omega), claim_setup] at hS3
-      have hlane : max (m + 1) 24 - PcsQuotient.laneFold ≤ m := by
-        simp only [PcsQuotient.laneFold]; omega
-      have hT0 : ∀ k < 2 ^ m, (layoutsOf m).2.2.readEntry (fun j ↦ (D.circuitAt roots.pi1).setupStack.getD j 0) k =
-          (kappaB D roots).getD k 0 := fun k hk ↦ by
-        rw [setupLayout_eq hm20, readEntry_ofChunks_two hlane _ (by rw [pow_succ]; omega)]
-        exact (setupStack_getD _ hk).1
-      have hT1 : ∀ k < 2 ^ m, (layoutsOf m).2.2.readEntry (fun j ↦ (D.circuitAt roots.pi1).setupStack.getD j 0) k +
-          (layoutsOf m).2.2.readEntry (fun j ↦ (D.circuitAt roots.pi1).setupStack.getD j 0) (k + 2 ^ m) =
-          (sigmaB D roots).getD k 0 := fun k hk ↦ by
-        rw [hT0 k hk, setupLayout_eq hm20, readEntry_ofChunks_two hlane _ (by rw [pow_succ]; omega),
-          (setupStack_getD _ hk).2]
+      rw [run_setupPoint, hSm, hsv, padded_eq (by simp [digitsList]; omega),
+        mleStk_eq _ (by simp [digitsList]; omega), claim_setup] at hS3
+      have hT0 : ∀ k < 2 ^ m, (D.circuitAt roots.pi1).setupStack.getD k 0 = (kappaB D roots).getD k 0 :=
+        fun k hk ↦ (setupStack_getD _ hk).1
+      have hT1 : ∀ k < 2 ^ m, (D.circuitAt roots.pi1).setupStack.getD k 0 +
+          (D.circuitAt roots.pi1).setupStack.getD (k + 2 ^ m) 0 = (sigmaB D roots).getD k 0 := fun k hk ↦ by
+        rw [hT0 k hk, (setupStack_getD _ hk).2]
         show (kappaB D roots).getD k 0 + ((kappaB D roots).getD k 0 + (sigmaB D roots).getD k 0) = _
         rw [← add_assoc, CharTwo.add_self_eq_zero, zero_add]
       rw [wPoly_congr hT0, wPoly_congr hT1] at hS3
       exact hS3.symm
     · -- `W`'s claim
       unfold ClaimOn at hW
-      have hv1 : (layoutsOf m).1.vars = m := rfl
       have hwv : (stackVars m).1 = m := by simp only [stackVars, hm20, ite_true]; omega
-      rw [hv1, run_witnessPoint, hSm, hSr, hwv, padded_eq (by simp [digitsList]; omega)] at hW
+      rw [run_witnessPoint, hSm, hSr, hwv, padded_eq (by simp [digitsList]; omega),
+        mleStk_eq _ (by simp [digitsList]; omega)] at hW
       rw [claim_wFold (by omega) _ inp.t inp.ρ] at hW
       have e : (C.G roots).logW = (D.circuitAt roots.pi1).circuit.logRow := (view_logRow Fa roots).symm
       refine hW.symm.trans ?_

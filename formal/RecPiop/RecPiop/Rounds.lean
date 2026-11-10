@@ -34,7 +34,8 @@ plain sixteen-slot stack, so the prover also chooses slots `1, 5, 9` (`h`'s seco
 `P`'s limb code and kind, digit `0`); the honest prover leaves them zero. The claims then read `h = h_0 + Z_V h_1`
 (below `2N`, `Σ_V h = Σ_V h_0`: `hP` is that `h`) and `P`'s share as `P(t) + S(t)/Z_V(t)`: at the challenge `t`,
 `P`'s effective polynomial is `pEff = P + S(t)/Z_V(t)` (a constant shift, `t` fixed), and `Post1` and `Post2` are
-stated with it.
+stated with it. `Q`'s sum claim reads `h`'s top coefficient with limb `3` at digit `0`, `S`'s slot: it states
+`Σ_V (h + c S) = 0` (`SumOK`, `c = idC`), which is `Σ_V h = 0` (`SumH`) for `S = 0`.
 
 **The states** (`pre`, `post`, for a statement `s` with public limbs `pubOf s`):
 
@@ -43,9 +44,10 @@ stated with it.
 * after `α, β, γ`: **`CopyOK`** (some `h` meets the identity on `V_m` and sums to zero);
 * before `t`: **both identities zero as polynomials** for `Q`'s candidate, `Σ_V h = 0` (`Pre1`);
 * after `t`: `t ∉ V_m`, **both identities zero at `t`** with `P`'s effective polynomial `pEff` (`P + S(t)/Z_V(t)`),
-  and `Σ_V h = 0` (`Post1`);
+  and `Σ_V (h + c S) = 0` (`Post1`);
 * before `ρ`: the state after `t`;
-* after `ρ`: **the claims hold** (`Post2`): `Σ_V h = 0`, the setup's claim `ξ = κ(t) + βσ(t)`, `Q`'s identity and
+* after `ρ`: **the claims hold** (`Post2`): `Σ_V (h + c S) = 0`, the setup's claim
+ `ξ = κ(t) + βσ(t)`, `Q`'s identity and
   pushes' claims (`QClaim`, with the verifier's `d_pull`, `d_push = α + s + ξ`, `1_S`, `T`, `P_v` from the fold values,
   `ξ`, `s`, and `P`'s share `P(t) + S(t)/Z_V(t)`), and `W`'s fold at `ρ` (`foldAt`).
 
@@ -546,8 +548,18 @@ theorem rd_append_self (q : Compose.Opened M F) (x : (Option M × List F) × Lis
 public limbs. -/
 def Rel (s : St) (c : M) : Prop := G.Satisfies (pubOf s) (fun i => (Mo.wP c).eval (ω i))
 
-/-- **`Σ_V h` is zero.** -/
-def SumOK (cQ : M) : Prop := ∑ i ∈ range G.N, (Mo.hP cQ).eval (ω i) = 0
+/-- **`Σ_V h` is zero** (the copy argument's sum, `Pre1`). -/
+def SumH (cQ : M) : Prop := ∑ i ∈ range G.N, (Mo.hP cQ).eval (ω i) = 0
+
+/-- **The sum claim's statement**: `Σ_V (h + c S) = 0`, `c` the identity claim's constant (`idC`, `c_3`). `Q`'s sum claim
+reads `h`'s top coefficient with limb `3`'s slot at digit `0`, which is `S`'s (slot `12`): with `S = 0` it is `Σ_V h = 0`
+(`sumH_of_sumOK`), and `S ≠ 0` is caught at `t` (`sound_one`). -/
+def SumOK (cQ : M) : Prop := ∑ i ∈ range G.N, ((Mo.hP cQ).eval (ω i) + Mo.idC * (Mo.sP cQ).eval (ω i)) = 0
+
+theorem sumH_of_sumOK {cQ : M} (hS : Mo.sP cQ = 0) (h : SumOK G ω Mo cQ) : SumH G ω Mo cQ := by
+  unfold SumOK at h
+  unfold SumH
+  simpa [hS] using h
 
 /-- **`P`'s effective polynomial at `t`**: `P + S(t)/Z_V(t)`, the constant shift by which the claims read `Q`'s slot
 `12` (`S`) with `P`'s; its value at `t` is the claims' `P(t) + S(t)/Z_V(t)` (`pEff_eval`), and it is `P` for `S = 0`
@@ -596,7 +608,7 @@ def S0 (s : St) (cW : M) (c : List F) : Prop :=
 state follows on `V_m`, `copyOK_of_idPoly`, and `S ≠ 0` is caught at `t`). -/
 def Pre1 (s : St) (cW : M) (c₀ : List F) (cQ : M) : Prop :=
   idOf G ω Mo pubOf s cW cQ (abc c₀).1 (abc c₀).2.1 (abc c₀).2.2 = 0 ∧
-    defOf G ω Mo cW cQ (abc c₀).2.2 = 0 ∧ SumOK G ω Mo cQ
+    defOf G ω Mo cW cQ (abc c₀).2.2 = 0 ∧ SumH G ω Mo cQ
 
 /-- **The state after `t`**: `t ∉ V_m`, both identities zero at `t` with `P`'s effective polynomial
 `P + S(t)/Z_V(t)`, `Σ_V h = 0`. -/
@@ -786,8 +798,8 @@ theorem sound_one (hV : G.Valid) (d : ℕ → ℕ) (s : St) (p : Compose.Opened 
       have e : List.ofFn v = [v 0] := by rw [List.ofFn_succ, List.ofFn_zero]
       rw [e] at h1
       exact h1
-    by_cases hsum : SumOK G ω Mo cQ
-    · by_cases hS : Mo.sP cQ = 0
+    by_cases hS : Mo.sP cQ = 0
+    · by_cases hsum : SumH G ω Mo cQ
       · -- `S = 0`: the identities with `P` itself
         have hne : ¬ (idOf G ω Mo pubOf s cW cQ (abc c₀).1 (abc c₀).2.1 (abc c₀).2.2 = 0 ∧
             defOf G ω Mo cW cQ (abc c₀).2.2 = 0) := fun h => hnp ⟨h.1, h.2, hsum⟩
@@ -801,17 +813,18 @@ theorem sound_one (hV : G.Valid) (d : ℕ → ℕ) (s : St) (p : Compose.Opened 
           exact ⟨hev, hdv⟩
         · exact Circuit.card_idPoly_eval_eq_zero_le hV Mo.setup (Mo.phi_deg _ _) (Mo.wP_deg cW) (Mo.hP_deg cQ)
             (Mo.qP_deg cQ) (Mo.pP_deg cQ) (Mo.qPP_deg cQ) _ _ _ hne
-      · -- `S ≠ 0`: `Z_V·def + S` vanishes at `t`
-        refine (card_fin1_le (fun c => ¬ pre G ω Mo pubOf s p m ∧ post G ω Mo pubOf s p m c)
-          (fun t => (G.zV ω).eval t ≠ 0 ∧ (G.defPoly ω (Mo.wP cW)
-            (Mo.pP cQ + C ((Mo.sP cQ).eval t / (G.zV ω).eval t)) (Mo.qPP cQ) (abc c₀).2.2).eval t = 0)
-          fun v hv => ?_).trans
-            (Circuit.card_defPoly_shift_le hV (Mo.wP_deg cW) (Mo.pP_deg cQ) (Mo.qPP_deg cQ) (Mo.sP_deg cQ) hS _)
-        obtain ⟨hz, -, hdv, -⟩ := hpost1 v hv.2
-        rw [List.getD_cons_zero] at hz hdv
-        exact ⟨hz, hdv⟩
-    · rw [Finset.filter_false_of_mem fun v _ h => hsum (hpost1 v h.2).2.2.2]
-      exact Nat.zero_le _
+      · rw [Finset.filter_false_of_mem fun v _ h => hsum (sumH_of_sumOK G ω Mo hS (hpost1 v h.2).2.2.2)]
+        exact Nat.zero_le _
+    · -- `S ≠ 0`: `Z_V·def + S` vanishes at `t`
+      refine (card_fin1_le (fun c => ¬ pre G ω Mo pubOf s p m ∧ post G ω Mo pubOf s p m c)
+        (fun t => (G.zV ω).eval t ≠ 0 ∧ (G.defPoly ω (Mo.wP cW)
+          (Mo.pP cQ + C ((Mo.sP cQ).eval t / (G.zV ω).eval t)) (Mo.qPP cQ) (abc c₀).2.2).eval t = 0)
+        fun v hv => ?_).trans
+          (Circuit.card_defPoly_shift_le hV (Mo.wP_deg cW) (Mo.pP_deg cQ) (Mo.qPP_deg cQ) (Mo.sP_deg cQ) hS _)
+      obtain ⟨hz, -, hdv, -⟩ := hpost1 v hv.2
+      rw [List.getD_cons_zero] at hz hdv
+      exact ⟨hz, hdv⟩
+
   · rw [Finset.filter_false_of_mem fun v _ h => hex (by
       obtain ⟨cW, cQ, hW, hQ, -⟩ := (hpost _).mp h.2
       exact ⟨cW, cQ, hW, hQ⟩)]

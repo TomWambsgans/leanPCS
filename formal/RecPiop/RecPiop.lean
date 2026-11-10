@@ -62,7 +62,9 @@ holes carry the ports, by the term `T = Σ_{port pairs} I_p (E_p + Φ_k)`. Every
    `ξ` right, `Q`'s pushes' claim is a nonzero line in `ρ` unless `s = P(t)` and `P`'s definition hold at `t`, and
    then the identity's claim is the identity at `t`, `card_qClaim_le`). **`Q`'s empty slots** (`PI2.md` §2): the
    prover chooses `Q`'s slots `1, 5, 9` (`h`'s second digit, so `h` below `2N`, `Σ_V h` unchanged) and `12` (`S`,
-   below `N`, which the claims read as `P(t) + S(t)/Z_V(t)`; `Model.sP`); the states after `t` are stated with
+   below `N`, which the claims read as `P(t) + S(t)/Z_V(t)` and the sum claim as `Σ_V (h + c S) = 0`; `Model.sP`);
+   the states after `t` are stated with
+
    `P`'s effective polynomial `pEff = P + S(t)/Z_V(t)`, and for `S ≠ 0` the nonzero `Z_V·def + S` (degree at most
    `4N − 1`) vanishes at `t` (`card_defPoly_shift_le`), so round `1` stays `(4N − 1)/|F|`. In bits at `N = 2^24`,
    `r = 4`, `|F| = 2^192`, times the lists `L_W = 9,952`, `L_Q = 3,564` (`RecPiop.Numbers`): 152.7, 140.9, 162.9.

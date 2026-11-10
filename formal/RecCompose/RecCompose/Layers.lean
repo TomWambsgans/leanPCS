@@ -262,7 +262,9 @@ the compiled circuit: `W`'s polynomial `wP c`, of degree below `N`, taking the c
 its true fold values, the cells from them the row's cells `w(t + ω_x)`; `Q`'s `P` and `S` (slot `12`) below `N`, `h`
 (`h_0 + Z_V h_1`, the second digit in slots `1, 5, 9`), `q`, `q_P` below `2N`; the setup's `σ`, `κ`; the ports' `Φ`,
 `phiPoly`; the identity claim's constant `c_3`), and the claims, true on the candidates, as the model's values (π2v3,
-`P`'s share `P(t) + S(t)/Z_V(t)`): `Q`'s identity claim normalised (`idEq`), its pushes' claim (`pushEq`) and
+`P`'s share `P(t) + S(t)/Z_V(t)`, the sum `Σ_V (h + c_3 S)`): `Q`'s identity claim normalised (`idEq`), its pushes'
+claim (`pushEq`) and
+
 `Σ_V h = 0`, the setup's `ξ = κ(t) + β σ(t)`, `W`'s its true fold at `ρ` (`RecStatement.checks_claims_iff_post2`'s left
 side; the claims' values are `run_quotientValue`, `run_pushesValue`, their points `run_u`, `digitsScale_eq`,
 `RecPiop`'s `sum_tablePoly_omega`). -/
@@ -282,7 +284,8 @@ structure Pi2Tables (D : RecDeployment) (C : Pi2Circuits D) where
         pushEq ((Spec.of (D.circuitAt roots.pi1).circuit).core.run inp) inp.ρ
           (((model roots).pP cQ).eval inp.t + ((model roots).sP cQ).eval inp.t / ((C.G roots).zV pi2Omega).eval inp.t)
           (((model roots).qPP cQ).eval inp.t) (QuotientSecurity.sq^[(C.G roots).logN] inp.t) inp.s ∧
-        ∑ i ∈ range (C.G roots).N, ((model roots).hP cQ).eval (pi2Omega i) = 0 ∧
+        ∑ i ∈ range (C.G roots).N, (((model roots).hP cQ).eval (pi2Omega i) +
+          (model roots).idC * ((model roots).sP cQ).eval (pi2Omega i)) = 0 ∧
         inp.ξ = (model roots).setup.κP.eval inp.t + inp.β * (model roots).setup.σP.eval inp.t ∧
         ((Spec.of (D.circuitAt roots.pi1).circuit).core.run inp).fold =
           RecPiop.foldAt (C.G roots).logW ((model roots).fold cW inp.t) inp.ρ
