@@ -313,7 +313,9 @@ theorem checks_claims_iff (hS : SpecOf S G B pairOf portOf pubOf) (hV : G.Valid)
     exact ⟨h0, ((hclaims h0).1).mpr hi, ((hclaims h0).2).mpr hp, hs, hξ, by rw [run_fold hS inp, hf]⟩
 
 /-- **The same with `RecPiop.Post2`**, for any tables' model `Mo` whose `Φ` is `phiPoly` and whose constant is
-`c_3` (its `h`, `q`, `P`, `q_P`, the setup's `σ`, `κ`, `W`'s true fold values), the statement `s` with the public
+`c_3` (its `h`, `q`, `P`, `q_P`, `S`, the setup's `σ`, `κ`, `W`'s true fold values; `P`'s share of the claims read as
+`P(t) + S(t)/Z_V(t)`, `Q`'s empty slot `12` the prover's), the statement `s` with the public
+
 limbs `pubOf` of the public scalars, the fold values `a` (`2^r` of them), `ξ` and `s` the round's message. -/
 theorem checks_claims_iff_post2 {St M : Type} (hS : SpecOf S G B pairOf portOf pubOf) (hV : G.Valid)
     (inp : Inputs F) (Mo : Model G (Heap.omega B) M) (hphi : ∀ pub γ, Mo.phi pub γ = phiPoly G B pub γ)
@@ -321,9 +323,10 @@ theorem checks_claims_iff_post2 {St M : Type} (hS : SpecOf S G B pairOf portOf p
     (hpub : pubOf' s = pubOf inp.scalars) (cW cQ : M) (ha : inp.a.length = 2 ^ G.logW) :
     ((S.run inp).all ≠ 0 ∧
         idEq (S.run inp) (c3Of S) (S.run inp).rhoQ ((Mo.hP cQ).eval inp.t) ((Mo.qP cQ).eval inp.t)
-          ((Mo.pP cQ).eval inp.t) ((Mo.qPP cQ).eval inp.t) (QuotientSecurity.sq^[G.logN] inp.t) inp.s ∧
-        pushEq (S.run inp) inp.ρ ((Mo.pP cQ).eval inp.t) ((Mo.qPP cQ).eval inp.t)
+          ((Mo.pP cQ).eval inp.t + (Mo.sP cQ).eval inp.t / (G.zV (Heap.omega B)).eval inp.t) ((Mo.qPP cQ).eval inp.t)
           (QuotientSecurity.sq^[G.logN] inp.t) inp.s ∧
+        pushEq (S.run inp) inp.ρ ((Mo.pP cQ).eval inp.t + (Mo.sP cQ).eval inp.t / (G.zV (Heap.omega B)).eval inp.t)
+          ((Mo.qPP cQ).eval inp.t) (QuotientSecurity.sq^[G.logN] inp.t) inp.s ∧
         ∑ i ∈ range G.N, (Mo.hP cQ).eval (Heap.omega B i) = 0 ∧
         inp.ξ = Mo.setup.κP.eval inp.t + inp.β * Mo.setup.σP.eval inp.t ∧
         (S.run inp).fold = foldAt G.logW (Mo.fold cW inp.t) inp.ρ) ↔
