@@ -203,6 +203,17 @@ and `num_3`). The third claim, `h`'s top coefficient `Σ_V h = 0`, is at `(1^m, 
 weigh `h`'s three limbs alone (slot `12` at limb code 3 is zero). The identity's and the pushes' claims share their
 position coordinates (the contract writes them once).
 
+**The empty slots are not constrained, and need not be.** With plain PCS claims `Q`'s commitment is its sixteen-slot
+stack, so the prover chooses slots `1, 5, 9, 12` too; the honest prover leaves them zero. Slots `1, 5, 9` are `h`'s
+second digit `h_1` (`h = h_0 + Z_V h_1`): in the identity `c_h Z_V h_1` joins the quotient (`q + c_h h_1`, still below
+`2N`), and `Σ_V h = Σ_V h_0`, so a cheating prover gains nothing: the identity, read at the random `t` as a polynomial
+identity in `t` (every committed polynomial fixed before `t`; degree below `4N`, error `4N/|E|`), is the honest one with
+that quotient. Slot `12`, `S` (below `N`), sits at `P`'s limb code and kind, at digit 0: the pushes' claim (exact but for
+`1/|E|`, as above) then reads `S(t) + w_m P(t) = w_m s` and the definition `w_m q_P(t) = s + P_v(t)`, so
+`w_m² q_P = w_m P + S + w_m P_v` at `t`, every term fixed before `t`: as polynomials, but with probability below
+`4N/|E|`, so `w_m` (degree `N`) divides `S` (degree below `N`), and `S = 0`. Both terms are below `2^-165` at the
+reference shape; `formal/RecPiop`'s soundness carries them (the honest `Q` the plain stack, its empty slots zero).
+
 **The claims** (5, after π1's 3), each a point of its stack (past the table's coordinates, zeros):
 
 - `W` at `(ρ, ρ², …, ρ^{2^{r-1}}, w_r, …, w_{m-1})`, value `Σ_k eq(ρ⃗, k) a_k`;
