@@ -4,12 +4,14 @@
 
 A Keccak VM proof verified on the EVM by recursion. π1 is `crates/leanvm/univariate`'s π1-rec3 (`KECCAK_REC3`); π2 is
 a univariate SNARK of π1-rec3's verifier minus its openings, its circuit compiled from π1's recorded verifier graph
-(`circuit`, D16v); the contract (`pi2::contract`) runs π2's verifier only and checks π1's and π2's claims
-declared in its transaction's frame of PCS claims (7 claims as 6, `crates/membership/evm/src/machine.rs`'s encoding).
+(`circuit`, D16v); the contract (`pi2::contract`) runs π2's verifier only and checks π1's three and π2's five
+claims declared in its transaction's frame of PCS claims, each the EIP draft's PCS claim (`crates/pcs_claim`: a
+commitment's root and out-of-domain answer, one point, its value; one opening a claim).
 
 On the real 128-signature proof (the reference, `crates/leanvm/univariate/tests/vectors/keccak128_rec3.txt`):
-1,004 B of calldata, 27,641 gas of execution, 42,997 of transaction gas (EIP-7623, claims free, without the 21,000
-base); one contract of 13.2 KB. π2 is π2v2 (`PI2.md`: the ports out of the copy argument, `Q` `12N` words).
+1,101 B of calldata, 32,794 gas of execution; as an EIP-8141 frame transaction (EIP-7976's floor, without the base and
+per-frame costs) standard 49,678, floor 70,464, and 99,912 with its frame of PCS claims and their PCS gas. π2 is π2v2
+(`PI2.md`: the ports out of the copy argument), `Q` sixteen slots of `N` words.
 
 Design: [`SPEC-REC.md`](../../../docs/leanvm/rec/SPEC-REC.md) (the recursion), [`PI2.md`](../../../docs/leanvm/rec/PI2.md)
 (π2's PIOP), [`SPEC-POINTS.md`](../../../docs/leanvm/rec/SPEC-POINTS.md) (the claims' points).

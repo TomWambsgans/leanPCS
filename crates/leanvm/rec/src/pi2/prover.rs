@@ -1,8 +1,8 @@
-// Part of this repository. The quotient's computation on an extension coset, the tables' layouts and the openings
-// follow crates/membership/quotient/src/protocol.rs (`prove_with_randomness`, adapted there from leanVM's `flock::quotient`,
+// Part of this repository. The quotient's computation on an extension coset follows
+// crates/membership/quotient/src/protocol.rs (`prove_with_randomness`, adapted there from leanVM's `flock::quotient`,
 // branch PCS-openings-aggregation, commit 651453c6), without its hiding; the transforms are crates/membership/quotient's
-// (`ntt`, AVX-512), the commitments and openings leanVM's WHIR (c445e3d5) through `quotient::opening`. MIT OR
-// Apache-2.0; see AGENTS.md. The commitments and openings are now the EIP draft's PCS claims (`crates/pcs_claim`).
+// (`ntt`, AVX-512), the commitments and openings the EIP draft's PCS claims (`crates/pcs_claim`, leanVM's WHIR at
+// c445e3d5). MIT OR Apache-2.0; see AGENTS.md.
 //! π2's prover (`PI2.md` §3), for any [`Circuit`]:
 //!
 //! 1. `w`'s novel coefficients (one transform on `V_m`), then its `B` coefficients (subset sums): the table `W`,

@@ -65,8 +65,10 @@ one χ gate on bits (3,878,612 of 2^22 rows), its claims opened by leanVM's WHIR
 - `crates/leanvm/rec` (π2): a univariate SNARK of π1-rec3's verifier minus its openings: the recorded verifier
   compiled into π2's circuit (`circuit`, D16v, `2^24` positions; the witness replayed per proof from a plan made once
   per circuit, `circuit::plan`), π2's PIOP (π2v2: the ports out of the copy argument, the pushes `P` committed in `Q`
-  with their definition, `q` below `2N`) and its contract (`pi2`), which runs π2's
-  verifier and checks π1's and π2's claims declared. Design: [`SPEC-REC.md`](docs/leanvm/rec/SPEC-REC.md),
+  with their definition, `q` below `2N`; `Q` in sixteen slots so that its three claims are points of its stack) and
+  its contract (`pi2`), which runs π2's verifier and checks π1's three and π2's five claims declared. Every commitment
+  and opening of the line is the EIP draft's PCS claim (`crates/pcs_claim`: a root and an out-of-domain answer, one
+  point per claim, one opening per claim, PCS version 1). Design: [`SPEC-REC.md`](docs/leanvm/rec/SPEC-REC.md),
   [`PI2.md`](docs/leanvm/rec/PI2.md), [`SPEC-POINTS.md`](docs/leanvm/rec/SPEC-POINTS.md).
 - `crates/leanvm/statement` (`leanvm_statement`): the shared parts: the VM's tables, flushes and constraints, Flock's
   verifier and the Keccak-f block's structured terminal, the Keccak-256 chain, the EVM recorder, code and machine,
@@ -107,23 +109,28 @@ Build with `RUSTFLAGS="-C target-cpu=native"`. On a Zen 5 host (AMD EPYC 9355P) 
 ## Numbers (M4 Max, 16 cores, but where a machine is named)
 
 Gas is transaction gas without the 21,000 base (EIP-7623), without the frame of PCS claims and the claims' intrinsic
-gas (the EIP draft: 5,000 a transaction with claims, 1,000 a claim), which are given apart below.
+gas (the EIP draft: 5,000 a transaction with claims, 1,000 a claim), which are given apart below; the leanVM column
+gives the EIP-8141 frame transaction (EIP-7976's floor; without `FRAME_TX_INTRINSIC_COST` and the per-frame costs),
+its PCS gas on both sides as the EIP draft has it.
 
 | | ZK Merkle membership | leanVM by recursion (128 signatures) |
 |---|---|---|
-| Prover | 2.2 s (reduction 1.46 s, openings 0.76 s), 5.9 GiB, before the x86 work. h1 (Ryzen 7 PRO 8700GE, AVX-512), load 9–14: 3.6 s (reduction 2.46 s, openings 1.14 s), 6.2 GiB, against 8.4 s (6.45 s, 1.92 s) before. h2 (Core Ultra 7 265, AVX2), load 10: 2.3 s (1.5 s, 0.8 s), against 5.0 s | trace → π1-rec3 → π2 and openings: **0.59 s per proof** (π1 with its openings 0.34, π2 0.195 + 0.051 openings), 1.7 s per circuit once, 12.6 GB (`tests/pipeline.rs`; AMD EPYC 9355P, 64 threads, load 14–21, 2026-11-09, medians of 5 passes, three runs interleaved with the start's 2.16 s: 3.7×; 0.586 s again on main after the merge, load 1–3). Format-preserving alone 0.81 s (2.7×); with π2v2 0.69 s; with opening version 3 0.59 s. The Mac: 4.1 s before the work |
-| Calldata | 253 B | 1,005 B |
-| Gas | 14,831 execution, **18,855** transaction (14,289 and 18,309 with `PCS_OPEN`) | 28,459 execution, **43,819** transaction (64,320 under EIP-7976; 27,641 and 42,997 with `PCS_OPEN`) |
-| Claims | 4 in 3 declared | 7 in 6 declared |
-| With the frame (1 + 32 B a claim) and intrinsic gas | 28,407 (97 B, 8,000) | 57,883 (193 B, 11,000) |
-| Deployment | 6,314-byte code, 1,428,094 gas | one contract of 13.2 KB |
+| Prover | 2.2 s (reduction 1.46 s, openings 0.76 s), 5.9 GiB, before the x86 work. h1 (Ryzen 7 PRO 8700GE, AVX-512), load 9–14: 3.6 s (reduction 2.46 s, openings 1.14 s), 6.2 GiB, against 8.4 s (6.45 s, 1.92 s) before. h2 (Core Ultra 7 265, AVX2), load 10: 2.3 s (1.5 s, 0.8 s), against 5.0 s | trace → π1-rec3 → π2 and openings, on the PCS claims (`tests/pipeline.rs`, this Mac, load about 20, 2026-11-10, medians of 5): **9.3 s per proof** (π1 with its openings 2.9 s, π2 2.8 s, π2's five openings 3.7 s), 2.0 s per circuit once, 15.2 GB. Before (π2's three stacks opened once each at version 3, π1's at version 3): 2.06 s on this Mac, 0.59 s on an AMD EPYC 9355P (64 threads) |
+| Calldata | 253 B | 1,101 B (61 zero) |
+| Gas | 14,831 execution, **18,855** transaction (14,289 and 18,309 with `PCS_OPEN`) | 32,794 execution; frame transaction (EIP-8141, EIP-7976's floor, no base or per-frame cost): standard 49,678, floor **70,464** |
+| Claims | 4 in 3 declared | 8 (π1's 3, π2's 5), each the EIP draft's PCS claim |
+| With the frame (1 + 32 B a claim) and the PCS gas | 28,407 (97 B, 8,000) | **99,912** (257 B, `pcs_gas` 13,000 on both sides; the floor binds) |
+| Deployment | 6,314-byte code, 1,428,094 gas | one contract |
 
 - Membership: checking the claims declared costs 61 gas once (the frame's mode and scheme) and 43 a claim beyond its
   `KECCAK256`. Its verifier: reduction < 1 ms, openings 5 ms (248 / 278 / 333 KiB).
-- leanVM: at 400 signatures (the real proof), 29,257 execution and 44,593 transaction gas (28,421 and 43,753 with
-  `PCS_OPEN`), 58,669 with the frame and the claims' intrinsic gas. π1 alone as a contract costs 358,957 transaction gas at 128
-  signatures (8,020 B calldata, 3 claims). **Capacity**: `q_flock` is `2^11` words a permutation, so `C1` reaches
-  WHIR's `2^28` words at about 470 signatures (1,000 do not fit, `tests/keccak_vm.rs`).
+- leanVM: at 400 signatures (the real proof), 33,740 execution; standard 50,648, floor 70,464; 99,912 with the frame
+  and the PCS gas (`tests/pi2_real.rs`, `real_end_to_end`). π1 alone as a contract (the main line, 128 signatures):
+  8,069 B calldata, 231,511 execution, 3 claims; standard 360,255, floor 516,416 (`keccak_gas_report`). The prover
+  on the PCS claims (one opening a claim, every opening on leanVM's ladder; this Mac, load about 20, 2026-11-10):
+  9.3 s a proof (π1 with its openings 2.9 s, π2 2.8 s, π2's five openings 3.7 s), against 2.06 s before (three
+  openings of π2's three stacks at version 3). **Capacity**: `q_flock` is `2^11` words a permutation, so `C1`
+  reaches WHIR's `2^28` words at about 470 signatures (1,000 do not fit, `tests/keccak_vm.rs`).
 
 ## Membership: what is proved
 
@@ -192,14 +199,13 @@ permutation; `formal/EndToEnd` proves them ([`formal/README.md`](formal/README.m
   400 signatures. At 128, with the openings charged once at WhirBridge's `269 · 2^-137` a query: π1 128.93 bits as
   Q/ε (main line) and 128.79 (π1-rec3), π2 128.93, the recursion about 127.9; the Lean bounds, coarser, are 128.87,
   128.49 and 128.93 (`docs/leanvm/univariate/SPEC.md` §9).
-- **The Rust is ahead of the Lean on two protocol changes** (branch `perf/recursion-prover`, merged): π2's PIOP is
-  π2v2 (the ports out of the copy argument, `P` committed in `Q`, `q` below `2N`; `t` 141.3 bits after the lists, π2
-  128.93 as `Q/ε` as before), and the recursion's six openings are opening version 3 (WHIR's deeper levels on
-  another ladder, `pcs::whir::RECURSION_SCHEDULE`; the layout words' byte 21 is 3). `formal/RecPiop`, `RecStatement`
-  and `RecCompose` state π2v1, and `formal/` the version-2 layout words and ladder: what changes is listed in
-  [`PI2.md`](docs/leanvm/rec/PI2.md) §10 and under Remaining. Version 3's ladders are not in leanerVM's `certTable`:
-  `params/whir_params.py --recursion` computes its certificate groups, at least 128.98 bits past level 0 at
-  `2^24 … 2^28` (128.88 at `2^23`). The membership line keeps version 2.
+- **The Rust is ahead of the Lean on two protocol changes**: π2's PIOP is π2v2 (the ports out of the copy argument,
+  `P` committed in `Q`, `q` below `2N`; `t` 141.3 bits after the lists, π2 128.93 as `Q/ε` as before), and every
+  commitment and claim of the line is the EIP draft's PCS claim (`crates/pcs_claim`: the out-of-domain answer read
+  after each root and bound in the IVs for the setups, one point per claim, no layout word, `Q` in sixteen slots and
+  π2's five claims, one opening per claim on leanVM's ladder, PCS version 1). `formal/RecPiop`, `RecStatement` and
+  `RecCompose` state π2v1 and the layout-word claims: what changes is listed in [`PI2.md`](docs/leanvm/rec/PI2.md)
+  §10 and under Remaining.
 
 ## Security notes
 
@@ -227,13 +233,12 @@ permutation; `formal/EndToEnd` proves them ([`formal/README.md`](formal/README.m
 - The membership line's claims name their layout by a small id (`machine::layout_id`, `256 · table + log_rows`) that
   the mock knows, not by a layout word in the EIP draft's format (version at byte 21, `n` at byte 24, `placed` at
   25..32), which the leanVM line's claims follow; moving it changes the contract's constants and `formal/Statement`.
-- The recursion's WHIR ladder (opening version 3) in Lean: leanerVM's `Whir.ladder` and `certTable` for its
-  schedule (`shapeOK`), `formal/WhirBridge`'s Large* and `RecCompose`'s openings at its counts and version, the
-  layout words' version byte in `UniKeccak` and `RecStatement`; and π2v2 in `RecPiop`, `RecStatement`, `RecCompose`
-  (`PI2.md` §10). Their Lean-facing outputs are stale until then: `lean_graph_keccak` (`Emitted.lean`: π1's three
-  layout words, byte 21 `00` → `03`; it fails in `cargo test`), `lean_statement_keccak` (`Data.lean`: π1's IV, π2v2's
-  spec; ignored), `lean_keccak_vectors` (the regenerated vectors), `lean_pi2_prover` (π2v2's stream). Each is
-  rewritten with `UPDATE_LEAN=1` together with the Lean side.
+- The leanVM line's PCS claims in Lean: the claims' encoding and the out-of-domain answers in `UniKeccak` (π1's
+  stream reads each commitment's answer after its root; the IV binds the setup's), `RecStatement`, `RecPiop` and
+  `RecCompose` (π2v2, `Q`'s slots and its three claims, the extra inversion factor `B`, one opening a claim on
+  leanVM's ladder); `formal/WhirBridge` for the claim-only transcript (`keccak256(PCS_claim)`). The Lean-facing
+  outputs were regenerated with the Rust (`Emitted.lean`, `Data.lean` by `UPDATE_LEAN=1`; `lean_keccak_vectors`'s and
+  `lean_pi2_prover`'s files when their tests run), so the Lean runners read the new format.
 - The recursion prover: a lower-degree `SHA3` leaf by committing its seven address products `fp·o` in `C1` (54.5 →
   28.5 pieces; measured on the batched quotients, about 11 ms a proof, with the same stream length and Keccak-f
   count: a π1 format change not yet worth it).
@@ -248,10 +253,9 @@ leanEthereum) and is licensed, like leanVM, under the MIT license ([`LICENSE-MIT
   formalizes): `crates/vendor/leanvm-c445e3d5/*`, unchanged but for a header line, except: `verifier/src/lib.rs`
   makes the WHIR verifier public; `pcs`'s `src/whir.rs`, `src/whir_ntt_ext.rs` and `src/ntt/additive_ntt_f64.rs` add
   low-memory paths (the last also fixes an aliasing bug of the in-place encodes); `primitives/src/hash.rs` and
-  `fiat_shamir/src/lib.rs` carry test-only trace hooks behind a `trace` feature. A second WHIR ladder, for the
-  recursion's openings (opening version 3), leanVM's unchanged: `pcs`'s `src/whir_config.rs` (the RS-domain
-  schedule a parameter, `RECURSION_SCHEDULE`) and `src/whir.rs` (`config_for_schedule`), `verifier/src/whir.rs`
-  (`Ladder::Recursion`, its query table, `verify_whir_on`, `ladder`). Prover speedups, the same commitments
+  `fiat_shamir/src/lib.rs` carry test-only trace hooks behind a `trace` feature. A lane tensor may carry a scale for
+  every lane of the cube (`pcs`'s `src/whir.rs`, `LaneTensor`, `tensor_lane_rounds`), for a claim at a point of the
+  whole stack opened against a commitment of its leading lanes (`crates/pcs_claim`). Prover speedups, the same commitments
   and proofs (each file's header lists them): `pcs`'s `src/whir.rs`, `src/whir_induce.rs`,
   `src/ntt/additive_ntt_f64.rs` (the encode into the kept codeword in place, the gathers, the induces, the E rounds, a
   commit that keeps its codeword) and `benches/lanes.rs` (new); `primitives/src/hash.rs` (the AVX-512 batched

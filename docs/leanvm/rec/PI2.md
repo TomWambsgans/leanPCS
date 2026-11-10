@@ -20,6 +20,13 @@ cargo test --release -p leanvm_rec --test pi2 -- --ignored --nocapture gas_repor
 
 ## 0. Results
 
+**With the EIP draft's PCS claims** (§2, §8; `real_end_to_end`, this Mac, 2026-11-10): 1,101 B of calldata (61 zero),
+32,794 execution at 128 signatures (33,740 at 400); as an EIP-8141 frame transaction (EIP-7976's floor, without the base
+and per-frame costs) standard 49,678, floor 70,464; with the frame of PCS claims (257 B, 8 claims) and the PCS gas
+(13,000 on both sides) 99,912. The prover (`tests/pipeline.rs`, load about 20): π2's proof 2.8 s and its five openings
+3.7 s, each opening one claim on leanVM's ladder (a `2^28` opening of `Q` about 1.1 s, its deeper commitments most of
+it). The figures below predate the PCS claims.
+
 **The contract, on the real circuit** (D16v × π1-rec3, `real_end_to_end` on `keccak128_rec3.txt`; no 21,000 base),
 measured with `PCS_OPEN`, its claims priced `c = 0`. With the frame of claims (`AGENTS.md`): 1,005 B, 28,459
 execution, 43,819 EIP-7623 and 64,320 EIP-7976 at 128 signatures; 29,257 and 44,593 at 400; apart from the frame
@@ -120,33 +127,36 @@ by its claims: §6).
 
 ## 2. The protocol
 
-**Transcript** (`KeccakChannel`): the seed `keccak(NAME ‖ IV ‖ public input)`, `NAME = "leanvm-rec-pi2v2"`, then the
+**Transcript** (`KeccakChannel`): the seed `keccak(NAME ‖ IV ‖ public input)`, `NAME = "leanvm-rec-pi2v3"`, then the
 stream:
 
-1. the public data: π1's roots `C1`, `C2` (32 bytes each, the claims' root words, §8), π1's claims' 17 distinct
-   elements (14 narrow challenges and 3 values, 24 bytes each);
-2. `W`'s root; `α, β, γ`;
-3. `Q`'s root; `t`;
+1. the public data: π1's roots `C1`, `C2` (32 bytes each, as they are, §8), π1's claims' 19 distinct elements (its
+   two out-of-domain answers, 14 narrow challenges and 3 values, 24 bytes each);
+2. `W`'s commitment: its root, then its out-of-domain answer; `α, β, γ`;
+3. `Q`'s commitment; `t`;
 4. the `2^r` fold values `a_k`, `ξ = κ(t) + β σ(t)` and `s = P(t)` (18 values for D16v); `ρ`.
 
 The first challenge hashes the state and everything before it: the public data is bound there, not by a separate
-`keccak(public data)`. The **IV** is `keccak("leanvm-rec-iv-v2" ‖ π1's contract IV ‖ the setup root ‖ the circuit's
-digest ‖ the three layout words)` (`prover::iv`), a constant of the code; `Q`'s layout word is π2v2's.
+`keccak(public data)`. Each commitment is the EIP draft's (`crates/pcs_claim`, `docs/PCS_CLAIM.md`): a root and the
+out-of-domain answer `f(z)`, `z` derived from the root, which binds the root to one polynomial; the challenges after
+it are drawn knowing both. The **IV** is `keccak("leanvm-rec-iv-v3" ‖ π1's contract IV ‖ the setup root ‖ the setup's
+out-of-domain answer ‖ the circuit's digest ‖ log_n)` (`prover::iv`), a constant of the code.
 
-**The tables.**
+**The stacks.** Every commitment is of a whole stack (the EIP's committed polynomial: its `2^n` words, the zero tail
+included), and every claim a point of it.
 
-| table | content | variables | stack | basis |
-|---|---|---:|---:|---|
-| `W` | `w` | `m` | `max(m, 24)` | `B` (`B_k = Π_l (w_l or 1 + w_l)`) |
-| `Q` | `h` (below `N`, three limbs), `q` (below `2N`: two chunks, three limbs), `P` (below `N`, in `K`), `q_P` (below `2N`, in `K`): 12 chunks of `N` | `m + 6` (position, a digit, three kind bits, two limb digits) | `m + 4`: 48 lanes of `2^(m-2)` | novel |
-| setup | `κ` then `κ + σ` | `m + 1` | `max(m + 1, 24)` | `B` |
+| stack | content | variables | words | basis |
+|---|---|---:|---|---|
+| `W` | `w` | `max(m, 24)` | `2^m`, its leading lanes | `B` (`B_k = Π_l (w_l or 1 + w_l)`) |
+| `Q` | sixteen slots of `N` (`verifier::QUOTIENT_SLOTS`): `h` (below `N`, three limbs), `q` (below `2N`: two chunks, three limbs), `P` (below `N`, in `K`), `q_P` (below `2N`, in `K`), four zero slots | `m + 4` | all 64 lanes | novel |
+| setup | `κ` then `κ + σ` | `max(m + 1, 24)` | `2^(m+1)`, its leading lanes | `B` |
 
-`Q`'s chunk `c = 16 limb + 2 kind + digit`, the kinds `h = 000`, `q = 001`, `P = 010`, `q_P = 101` (bits `(k_0, k_1,
-k_2)` at the claim's coordinates `(ρ', ρ, z)`, below); `prover::quotient_chunks` lists them in the stack's order. The
-stacks are at least `2^24` words, the smallest leanerVM's certified parameters cover at version 2; the openings are
-version 3's (§8: WHIR's deeper levels on the recursion's ladder), whose query ladders, at every stack size `2^15 …
-2^28`, are the prover's eta search's and the verifier's table's alike (`stacks_take_the_recursion_ladder`) and
-`params/whir_params.py --recursion`'s. Small
+`Q`'s slot is `digit + 2 kind + 4 limb`: `h`'s limb `l` at `(0, 0, l)`, `q`'s at `(digit, 1, l)` (`l < 3`); at limb
+code 3, `P` at `(1, 0, 3)` (its one chunk at digit 1) and `q_P` at `(digit, 1, 3)`; slots `1, 5, 9` (`h`'s second
+digit) and `12` are zero (`verifier::{h_slot, q_slot, P_SLOT, QP_SLOT, EMPTY_SLOTS}`). A point of `Q`'s stack is then
+`(position (m), digit, kind, limb bit 0, limb bit 1)`, and its weight on the slots is a product over these bits: the
+claims below choose them so as to weigh what each needs. The stacks are at least `2^24` words, the smallest leanerVM's
+certified parameters cover; every opening is the PCS version 1's (leanVM's WHIR at rate `1/2` on its ladder). Small
 test circuits take `2^15` stacks.
 
 **The verifier at `t`** (`verifier::reduce`, generic over `Scalar`):
@@ -162,36 +172,49 @@ test circuits take `2^15` stacks.
 6. the ports: `Φ_k(t) = w_m G_n / G_d`, `G_n / G_d = Σ_J F_J / (w_r + ω_{y_J})` (three products a port of nonzero value),
    and `R_n / R_d = Σ_g (N_g/D_g)(E_g + Δ + Φ_{k_g})` over the port groups, `Δ = d_pull + d_push`, `d_pull = α + v_0 +
    βt`, `d_push = α + s + ξ`: the identity's right side `(1 + 1_S) Δ + T` is `Δ + w_m R_n / R_d`;
-7. `Q`'s claim (below), and one inversion, of `R_d Y · w_{m+1} · c_h D_n` (required nonzero), by the norm (two
-   Frobenius maps from the limbs' shifts, 76 products); `1/w_{m+1}` from it, and `1/w_l = (1 + w_l)/w_{l+1}` down to
-   `l = 0`. `c_h = d_pull d_push` nonzero makes `1 + ρ'` nonzero, so that the claim binds `h(t)` and `P(t)`; `D_n = (α +
+7. `Q`'s claims (below), and one inversion, of `R_d Y · w_{m+1} · B · c_h D_n` (required nonzero), by the norm (two
+   Frobenius maps from the limbs' shifts, 76 products); `1/w_{m+1}` and `1/B` from it, and `1/w_l = (1 + w_l)/w_{l+1}`
+   down to `l = 0`. `c_h = d_pull d_push` nonzero makes `1 + ρ'` nonzero, so that the claim binds `h(t)`; `D_n = (α +
    v_0 + ξ) B + w_m A = B (α + P_v(t) + ξ)` is there for the contract (its graph then computes `A` and `B` together:
-   §4 item 13). A nonzero `w_{m+1}` puts `t` off `V_{m+1}`, so every group's and port's denominator is nonzero too.
+   §4 item 13); `B` (the pushes' denominator) is required nonzero on its own since the claims divide by it (an honest
+   proof fails it only at a `t` where a pull group's denominator vanishes). A nonzero `w_{m+1}` puts `t` off
+   `V_{m+1}`, so every group's and port's denominator is nonzero too.
 
-**Q's claim.** The identity at `t` is `c_h h(t) + c_q q(t) = Δ + w_m R_n / R_d` (`c_q = w_m`), normalised: `(1 + ρ')
+**Q's claims.** The identity at `t` is `c_h h(t) + c_q q(t) = Δ + w_m R_n / R_d` (`c_q = w_m`), normalised: `(1 + ρ')
 h(t) + ρ' q(t) = num_1 / (R_d Y)` at `ρ' = c_q / Y`, `Y = c_h + c_q`, `num_1 = Δ R_d + w_m R_n`. `P`'s definition is
-`w_m q_P(t) = s + P_v(t) = num_3 / B`, `num_3 = (s + v_0) B + w_m A = D_n + d_push B`. One claim on `Q` holds them and
-`P(t) = s`: at the kinds' coordinates `(ρ', ρ, z)`, `z = ρ² B`, the kinds' weights are `(1 + ρ')(1 + ρ)(1 + z)` (`h`),
-`ρ'(1 + ρ)(1 + z)` (`q`), `(1 + ρ')ρ(1 + z)` (`P`) and `ρ'(1 + ρ) z` (`q_P`), so the claim's value is
-`(1 + ρ)(1 + z) num_1 / (R_d Y) + (1 + ρ')ρ(1 + z) s + ρ'(1 + ρ) ρ² num_3 / w_m`: `z`'s factor `B` cancels `q_P`'s
-`1/B`. As a polynomial in `ρ` it is `e_1 (1 + ρ)(1 + ρ² B) + e_2 (1 + ρ')ρ(1 + ρ² B) + e_3 ρ'(1 + ρ)ρ² B` plus the
-true value, `e_1, e_2, e_3` the three relations' errors: the three polynomials are independent for `B ≠ 0` (the first
-alone has a constant term, the second alone a linear one), and `ρ' ∉ {0, 1}`, so a false relation leaves a nonzero
-polynomial of degree 3 in `ρ`.
+`w_m q_P(t) = s + P_v(t) = num_3 / B`, `num_3 = (s + v_0) B + w_m A = D_n + d_push B`. A slot's weighted value is `D`
+times its polynomial's value at `t`, `D = s_E t / w_{m+1}` (`(y_0, y_1)` and `s_E` the limbs' coordinates and scale, as
+`crates/membership/quotient`; `Π_{l ≤ m} (1 + w_l)^{-1}` telescopes to `t / w_{m+1}`), at the digit coordinate `u_m`
+(weights `1 + u_m`, `u_m`), the limbs' `L_l = eq((y_0, y_1), l)`. Each claim on `Q` is a point of its whole stack, a
+product weight on the slots' bits, so one claim cannot carry the three relations with fresh randomness between them;
+two claims at the position `u` do:
 
-**The claims** (4 in 3 calls, after π1's 3):
+- **the identity's**, at `(u, ρ', y_0, y_1)`: `h` and `q` at the kind coordinate `ρ'` (the identity's own ratio) and
+  the limbs' `L_l`, and limb code 3 at `y_0 y_1`, which weighs `P` (at digit 1: `u_m (1 + ρ')`) and `q_P`
+  (`ρ'`, digits): value `(D / Y)(num_1 / R_d + c_3 (c_h w_m s + num_3 / B))`, `c_3 = y_0 y_1 / L_0`
+  (`u_m / (1 + u_m) = w_m`);
+- **the pushes'**, at `(u, ρ, 1, 1)`: limb code 3 alone (`P` by `u_m (1 + ρ)`, `q_P` by `ρ`, digits): value
+  `(D / L_0)((1 + ρ) w_m s + ρ num_3 / (w_m B))`.
+
+`ρ` is drawn after `s`: a false `P(t) = s` or a false definition leaves the pushes' claim a nonzero polynomial of
+degree 1 in `ρ` (both errors are fixed before `ρ`), false but with probability `1/|E|`; with those two true, the
+identity's claim holds exactly when the identity does (`P`'s and `q_P`'s share in it is then the verifier's, from `s`
+and `num_3`). The third claim, `h`'s top coefficient `Σ_V h = 0`, is at `(1^m, 0, 0, y_0, y_1)`: digit 0 and kind 0
+weigh `h`'s three limbs alone (slot `12` at limb code 3 is zero). The identity's and the pushes' claims share their
+position coordinates (the contract writes them once).
+
+**The claims** (5, after π1's 3), each a point of its stack (past the table's coordinates, zeros):
 
 - `W` at `(ρ, ρ², …, ρ^{2^{r-1}}, w_r, …, w_{m-1})`, value `Σ_k eq(ρ⃗, k) a_k`;
-- `Q` at `(u_0, …, u_m, ρ', ρ, z, y_0, y_1)`, `u_l = w_l/(1 + w_l) = 1 + 1/w_l + 1/w_{l+1}`, value
-  `s_E t ((1 + z)((1 + ρ) num_1 + c_h ρ s R_d) + (1 + ρ) ρ² num_3 R_d) / (w_{m+1} Y R_d)` (`(y_0, y_1)` and `s_E` the
-  limbs' coordinates and scale, as `crates/membership/quotient`; `Π_{l ≤ m} (1 + w_l)^{-1}` telescopes to
-  `t / w_{m+1}`); and at `(1^m, 0, 0, 0, 0, y_0, y_1)`, `h`'s top coefficient `Σ_V h`, value `0`;
-- the setup at `(w_0, …, w_{m-1}, β)`, value `ξ` (its halves `κ`, `κ + σ`: `(1 + β) κ + β (κ + σ) = κ + βσ`).
+- the setup at `(w_0, …, w_{m-1}, β)`, value `ξ` (its halves `κ`, `κ + σ`: `(1 + β) κ + β (κ + σ) = κ + βσ`);
+- `Q` at `(u_0, …, u_m, ρ', y_0, y_1)`, `u_l = w_l/(1 + w_l) = 1 + 1/w_l + 1/w_{l+1}`, the identity's value; at
+  `(u_0, …, u_m, ρ, 1, 1)`, the pushes'; at `(1^m, 0, 0, y_0, y_1)`, value `0`.
 
-**The contract** (`contract`): reads the stream, runs the verifier, then checks 6 claims declared: π1's three (their
-words `circuit::spec::Circuit::calls`: constants, the stream's roots, the elements read, the pairs' coordinates
-derived from their challenges), then `W`'s (one claim), the setup's (one; its root a constant) and `Q`'s (two). Layout
-words: π1's as the vector's; π2's `prover::layout_word` (§8).
+**The contract** (`contract`): reads the stream, runs the verifier, then checks 8 claims declared, each the EIP draft's
+PCS claim (`evm_link::declared_claims`: its `82 + 24 n` bytes packed and hashed, the hash a payload of the frame):
+π1's three (their fields `circuit::spec::Circuit::calls`: constants, the stream's roots, the elements read, its
+out-of-domain answers among them, the pairs' coordinates derived from their challenges), then `W`'s, the setup's (its
+commitment a constant) and `Q`'s three.
 
 ## 3. The prover (`prover`)
 
@@ -266,12 +289,12 @@ at role 15).
 
 - `lib`: an indicator is one on its coset and zero on `V_m`'s rest (every alignment and size); `Φ`'s basis (`w_r(ω_i)
   = ω_{i >> r}`, `w_m = w_{m-r} ∘ w_r`, `V_{m-r}`'s Lagrange basis sums to one off `V_m`); the inverse; the stacks'
-  WHIR ladders (version 3) are the verifier's at every stack size, and the layout words carry the version.
+  `Q`'s slots are their bits (`quotient_slots_are_their_bits`).
 - `tests/pi2.rs`, D16v synthetic circuits and the interface's own example (padded, through `adapt`):
-  - the honest proof's four claims hold and its three openings verify;
+  - the honest proof's five claims hold and their openings verify (`pcs_claim::verify_claim`);
   - witness mutations (random constrained positions): a false claim;
   - a changed element, a changed public input (a dishonest port, the identity kept by the prover): exactly the sum's
-    claim is false, `[true, true, false, true]` (§7's lemma at work);
+    claim is false, `[true, true, true, true, false]` (§7's lemma at work);
   - flipped stream bytes: claims the openings do not prove;
   - the contract equals the Rust verifier word for word, on the honest stream and a random
     one; it accepts the honest proof with its frame declaring exactly its claims, and rejects flipped bytes.
@@ -323,38 +346,22 @@ three openings charged once (`269 · 2^-137` a query), π2 keeps 128.93 bits as 
 
 ## 8. The claims' encoding, the IVs, the setup path
 
-- **One encoding for the six claims.** Every claim is `machine.rs`'s `root word, layout word, k, k × (point,
-  value)`:
-  - every root word is `machine.rs`'s, `s_0 · 2^128 + s_1` (`machine::root_word`: each 16-byte half of the hash
-    reversed). π1's prover sends a root as its two WHIR scalars, so π1's stream carries `C1`'s and `C2`'s root words as
-    they are, and the circuit's root ports pack the stream's bytes as they are (`circuit::compile`). π2's `W` and `Q`
-    roots are in calldata so; π1's setup root `F` and π2's setup root are constants so;
-  - every layout word names its stack: π1's are `leanvm_univariate::contract::layout_word`'s (shape, version, code,
-    variables, words placed); π2's `prover::layout_word`'s, in the same format (the tag `"pi2"`, `log_n`, the version,
-    the codes `0x5601` `W`, `0x5602` `Q`, `0x5603` setup, the variables, the words placed: `Q`'s `m + 6` and `12N` in
-    π2v2). π2's IV hashes these words;
-  - **the version** (byte 21 of every layout word: 3) fixes WHIR's parameters: all six openings are version 3's,
-    leanVM's commitment (rate `1/2`, 64 lanes, so the roots are version 2's) and WHIR's deeper levels on the
-    recursion's ladder (`pcs::whir::RECURSION_SCHEDULE`, `verifier::whir::Ladder::Recursion`): after the 6-variable
-    fold of level 0 at rate `1/2`, 4-variable folds at rates `1/4, 1/8, 1/16, …` (one rate bit a level; leanVM's
-    ladder, version 2, takes three: `1/16, 1/128, …`), every block at least `2^8` positions; the same eta search and
-    128-bit checks give the counts (`2^28`: `225, 112, 75, 56, 45, 35` queries against version 2's `225, 56, 32, 23, 18,
-    14`). Each deeper codeword is an eighth of the one before (version 2: a half), the first an eighth of version 2's:
-    the levels past the first commit about 15% of what they did, and an opening proof is about 27% longer (548
-    queries against 368 at `2^28`). In leanerVM's certificate model (`Params/Check.lean`'s groups, computed by
-    `params/whir_params.py --recursion`, at the level-0 slacks of the certified table) every group of the deeper
-    levels is at least 128.98 bits at `2^24 … 2^28` (128.88 at `2^23`), level 0 being version 2's; those ladders are not
-    in `certTable` (a new table, checked by `shapeOK`, would certify them). `quotient::opening` opens π2's tables in
-    version 3 (`Version::V3`, the `_with` functions) and π1's `leanvm_univariate::prover::opening` is version 3; the
-    membership line keeps version 2. The contract's gas does not depend on the version, nor a claim's intrinsic gas;
-  - the openings are found by a registry keyed by the layout word (`contract::registry`): π1's layouts are opened by
-    `leanvm_univariate`'s opening, π2's three by `quotient::opening`; `Q`'s two claims stay in one declared claim (one
-    opening).
-  - The mock frame decodes (`leanvm_statement::evm::machine::{decode, PcsFrame::decoding}`): it declares a claim
-    only if it decodes under the registry (a known layout word, which fixes the variables; `k ≥ 1`; the exact length;
-    every element's top 64 bits zero) into a registered opening (the root as its opening has it, the layout word, the
-    claims). The end-to-end tests register π1's openings from the vector's inputs (`contract::pi1_opening`) and π2's
-    from the proof's roots and the reduction (`contract::openings`), so a claim in another format fails them.
+- **One encoding for the eight claims**: the EIP draft's PCS claim (`crates/pcs_claim`, `docs/PCS_CLAIM.md`), `version
+  || n || root || ood || point || value`, `82 + 24 n` bytes, its Keccak-256 a payload of the transaction's frame of PCS
+  claims:
+  - every root is the commitment's 32 bytes as they are: π1's prover sends a root's bytes, so π1's stream carries
+    `C1`'s and `C2`'s as the claims encode them, and the circuit's root ports pack the stream's bytes as they are
+    (`circuit::compile`); π2's `W` and `Q` roots are in calldata so; π1's setup root `F` and π2's setup root are
+    constants so;
+  - every out-of-domain answer is an element: π1's two are elements of its stream (public elements of π2), π2's two
+    after their roots, the setups' constants;
+  - every claim is a point of its commitment's whole stack (`n` its variables), its value the polynomial's there;
+  - **one PCS version** (1): leanVM's WHIR at rate `1/2` on its ladder (`pcs::whir::DEPLOYED_SCHEDULE`), every opening
+    one claim's (`pcs_claim::open_words`, `verify_claim`); the stacks' leading lanes are committed alone (the
+    commitment of the whole stack), the opening's rows padded back (`pcs_claim::commit_words`).
+- **The mock frame** (`leanvm_statement::evm::machine::PcsFrame`) declares encoded claims; a measuring run declares any
+  well-formed one. The end-to-end tests declare π1's claims from the vector (written by π1's prover from its openings)
+  and π2's from the proof's commitments and reduction (`prover::claims`), so a claim in another format fails them.
 - **The holes on the setup path.** `Spec::of` and `Setup::new` assert `Circuit::validate`, which also requires `κ` zero
   off the expression slots.
 - **Derived instances.** The circuit compiler takes the program's IV (`compile::Inputs::program_iv`) and derives

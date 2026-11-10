@@ -3,8 +3,9 @@
 # leanvm_univariate (π1)
 
 A univariate PIOP for the Keccak VM's statement (leanVM `9d50c92a3`), for the EVM with aggregated PCS claims
-(declared in a transaction's frame, the EIP draft): two proof commitments and one setup commitment, the bus as a grand product in a committed heap, every
-identity checked at one point, Flock on the Keccak-f block, one point claim per commitment.
+(declared in a transaction's frame, the EIP draft): two proof commitments and one setup commitment (each a root and
+an out-of-domain answer, `crates/pcs_claim`), the bus as a grand product in a committed heap, every identity checked at
+one point, Flock on the Keccak-f block, one PCS claim per commitment (a point of its whole stack).
 
 - `verifier`: the verifier (`reduce`), generic over the scalar; `contract`: it compiled to EVM code, its calldata,
   its gas; `prover`: the prover, on traces leanVM writes (`prover/dump_keccak`).
@@ -14,8 +15,8 @@ identity checked at one point, Flock on the Keccak-f block, one point claim per 
   [`PROVER.md`](../../../docs/leanvm/univariate/PROVER.md),
   [`KECCAK.md`](../../../docs/leanvm/univariate/KECCAK.md) (the VM, workloads, gas, measurements).
 
-At the reference workload (128 signatures) the contract alone takes 8,020 B of calldata, 230,985 gas of execution and
-358,957 of transaction gas (EIP-7623, claims free).
+At the reference workload (128 signatures) the contract alone takes 8,069 B of calldata and 231,511 gas of execution;
+as an EIP-8141 frame transaction (EIP-7976's floor) standard 360,255, floor 516,416, without its frame of claims.
 
 ```sh
 cargo test --release -p leanvm_univariate                                                  # contract == Rust verifier, vectors, Flock

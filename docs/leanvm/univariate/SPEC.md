@@ -111,17 +111,18 @@ unchanged would cost the contract a byte swap of the four words, about 110 gas (
 nothing. It is documented here and in `contract.rs`.
 
 The transcript is a Keccak-256 chain (`leanvm_statement::transcript::KeccakChannel`). A challenge is one Keccak-256
-of the state and the calldata bytes read since the last one. A scalar is 24 bytes, a root half 16: one of the root's
-two WHIR scalars (`hash_to_scalars`, the opening's first two), big-endian, so that a root's 32 bytes are its claim's
-root word `s_0 · 2^128 + s_1` (`crates/membership/evm/src/machine.rs`), which the contract passes as it is. The seed
-is the Keccak-256 of the name `leanVM-univar-v1`, the contract's IV (§13, F2: it binds the program, the setup roots,
-the shape, the layout words and the variant) and the public input. There are no announced sizes beyond the row
-counts: one shape class per contract. The order:
+of the state and the calldata bytes read since the last one. A scalar is 24 bytes, a root half 16 (big-endian, so
+that a root's 32 bytes are its bytes as they are, the root a PCS claim encodes, which the contract passes as it is). A
+commitment is the EIP draft's (`crates/pcs_claim`, `docs/PCS_CLAIM.md`): its root, then its out-of-domain answer
+`f(z)` (a scalar), `z` derived from the root alone, which binds the root to one polynomial before any challenge. The
+seed is the Keccak-256 of the name `leanVM-univar-v1`, the contract's IV (§13, F2: it binds the program, the setup
+commitment, the shape and the variant) and the public input. There are no announced sizes beyond the row counts: one
+shape class per contract. The order:
 
-1. The six row counts (§13, F1), then the `C1` root. Then `α ∈ E^4` (the tuple weights), `β` (the fingerprint shift)
-   and `γ` (the batching of `C1`-only constraints).
+1. The six row counts (§13, F1), then `C1`'s commitment (root, out-of-domain answer). Then `α ∈ E^4` (the tuple
+   weights), `β` (the fingerprint shift) and `γ` (the batching of `C1`-only constraints).
 2. Flock (§7): its rounds, challenges and values.
-3. The `C2` root, then `t`.
+3. `C2`'s commitment, then `t`.
 4. The values at `t` (§8).
 5. `ρ`, which combines each commitment's relations.
 6. On the main line: `λ`, which batches the three commitments, then the batching sumcheck's rounds and its three
@@ -306,7 +307,7 @@ The weakest round is `t` on the main line and the narrow pairs at π1-rec3. At 3
 **Fiat–Shamir and the PCS (§13, F3).** WHIR is leanVM's, unchanged. In the query-bounded random-permutation model of
 the end theorems an adversary of `Q` permutation queries breaks π1 with probability about `Q (ε_WHIR + ε_round)`,
 `ε_round` the weakest round after its lists: the openings' Fiat–Shamir transcripts are domain-separated (each seeded
-by its own layout word and claims) and share the adversary's queries, so the three openings (`C1`, `C2`, `F`) are
+by its own PCS claim, `keccak256(PCS_claim)`) and share the adversary's queries, so the three openings (`C1`, `C2`, `F`) are
 charged once, at `WhirBridge`'s exact certified bound `269 · 2^-137 = 2^-128.93` a query (the setup's `2^23` stack is
 certified too). That is **128.93 bits** as `Q/ε` on the main line and **128.79** at π1-rec3 (`Q = 2^64`); 128.64 and
 128.86 at π1-rec3's 32 and 400 signatures. The setup's `F` cannot join a proof commitment without losing its `L = 1`.
@@ -427,27 +428,26 @@ The design's refinements, by the labels the code cites. Each entry states the ru
    `Shape::validate` rejects only a memory of one cell, a height of 32 or more, and a `SHA3` height below 7 (Flock's
    seven fixed zerocheck coordinates; `VerifierError::InvalidShape`).
 
-8. **F2: the IV, the layout words, the setup root.**
-   - `contract::SetupRoots`: the root the IV binds is a code constant, the setup commitment `F`'s (from the program
-     and the shape, `prover::setup::f_root`; `REFERENCE.f` is the 128-signature shape's, `067244be…`). The gas
-     reports use `REFERENCE` for every shape (the gas does not depend on the root); a deployment for another shape
-     takes its own `F`.
-   - A claim's layout word (`contract::layout_word`) is a 32-byte constant: the shape's 8 bytes (`log_memory`,
-     `log_bytecode`, the six heights), the opening's version (byte 21: 3, `prover::opening::VERSION`, WHIR on the
-     recursion's ladder, below), the opening's code (`0x5501` `C1`, `0x5502` `C2`, `0x5503` the setup, bytes
-     22..24), the stack's `vars` (byte 24) and `placed` (bytes 25..32, the words the blocks fill). WHIR's verifier
-     reads `vars` and `placed` from it, and accepts version 3 alone. `contract::layout_words` gives the three
-     openings' words, `C1`, `C2`, the setup.
-   - The openings (`prover::opening`, version 3): leanVM's commitment (rate `1/2`, 64 lanes), and WHIR's deeper
-     levels on the recursion's ladder (`pcs::whir::RECURSION_SCHEDULE`, `verifier::whir::Ladder::Recursion`: rates
-     `1/2, 1/4, 1/8, …`, one rate bit a level instead of three, every block at least `2^8` positions), the same eta
-     search and 128-bit checks; `params/whir_params.py --recursion`. Version 2 was leanVM's ladder.
+8. **F2: the IV, the setup commitment, the claims.**
+   - `contract::SetupRoots`: the commitment the IV binds is a code constant, the setup commitment `F`'s root and
+     out-of-domain answer (from the program and the shape, `prover::setup::shape_roots`; `REFERENCE` is the
+     128-signature shape's, root `067244be…`). The gas reports use `REFERENCE` for every shape (the gas does not depend
+     on it); a deployment for another shape takes its own `F`.
+   - Each claim is the EIP draft's PCS claim (`crates/pcs_claim`): the stack in its `vars` variables (its `2^vars`
+     words, the zero tail past its blocks included: the claim is a point of the whole stack, as the batching sumcheck
+     leaves it, §8), committed as `(root, ood)`, at the batch's point, of the value the prover sends; its encoding
+     `version || n || root || ood || point || value` hashed is a payload of the transaction's frame of PCS claims
+     (`evm_link::declared_claims`). No layout word: a verifier knows the stack's size from `n`, and the commitment of
+     a stack's leading lanes is the whole stack's (`pcs_claim::commit_words`).
+   - The openings (`prover::opening`, `crates/pcs_claim`): one a claim, the PCS version 1's: leanVM's WHIR at rate
+     `1/2` on its ladder (`pcs::whir::DEPLOYED_SCHEDULE`), its transcript seeded by `keccak256(PCS_claim)`, proving
+     `f(z) = ood` and `f(point) = value` at one random combination.
    - `verifier::layouts(shape)` is public (and `Reduced::layouts`): the stacks depend on the shape alone.
-   - The contract's IV is `keccak("leanVM-univar-iv" ‖ program IV ‖ F ‖ shape bytes ‖ the three layout words ‖
-     variant bytes)` (`contract::contract_iv`; the variant bytes are `"keccak-vm"`, the skip and the Fiat–Shamir
+   - The contract's IV is `keccak("leanVM-univar-iv" ‖ program IV ‖ F's root ‖ F's out-of-domain answer ‖ shape bytes
+     ‖ variant bytes)` (`contract::contract_iv`; the variant bytes are `"keccak-vm"`, the skip and the Fiat–Shamir
      shape's code); the seed is `keccak(name ‖ IV ‖ public input)`. It costs no gas.
-   - Prover: seed the transcript with `contract_iv(shape, variant, program IV, roots)`; declare the claims with the
-     layout words.
+   - Prover: seed the transcript with `contract_iv(shape, variant, program IV, roots)`; send each commitment's root
+     and out-of-domain answer; open each claim.
 
 9. **F3, F6, F7, F8** (documentation):
    - F3: §9's PCS figure (the three openings charged once at `269 · 2^-137` a query, in the query-bounded model);

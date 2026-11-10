@@ -5,10 +5,11 @@ and prints, per level, the Johnson list bound L the search assumes and every sou
     python3 params/whir_params.py
     python3 params/whir_params.py --large     # the stack sizes 2^24 ..= 2^28 of a leanVM PIOP (below)
 
-    python3 params/whir_params.py --recursion # PCS_OPEN version 3: the recursion's ladder (below)
+    python3 params/whir_params.py --recursion # a second ladder, a design alternative (below)
 
-`--recursion`: the leanVM recursion's openings (`PCS_OPEN` version 3, `pcs::whir::RECURSION_SCHEDULE`,
-`verifier::whir::Ladder::Recursion`): the same level 0 (rate 1/2, a 6-variable fold), then 4-variable folds whose
+`--recursion`: a second ladder, once the leanVM recursion's openings (opening version 3, removed from the code: every
+opening is now the EIP draft's PCS version 1, leanVM's ladder): the same level 0 (rate 1/2, a 6-variable fold), then
+4-variable folds whose
 rates fall one bit a level (1/4, 1/8, 1/16, ...; every block at least 2^8 positions) instead of three. Per stack size
 2^15 ..= 2^28: the code's eta search on that ladder (the counts the prover and the verifier's table use), every term
 of the code's accounting, and leanerVM's certificate groups (`Params/Check.lean`'s FoldOK, OodOK, QueryOK, FinalOK,
@@ -339,7 +340,7 @@ def report_large():
 
 
 # ---------------------------------------------------------------------------------------------------------
-# --recursion: PCS_OPEN version 3 (pcs::whir::RECURSION_SCHEDULE)
+# --recursion: the second ladder (once opening version 3, `RECURSION_SCHEDULE`; no longer in the code)
 # ---------------------------------------------------------------------------------------------------------
 
 DEPLOYED = (3, 1, 0)  # whir_config.rs: DEPLOYED_SCHEDULE (initial, subsequent, min_log_block)
@@ -448,7 +449,7 @@ def proof_bytes(levels, lanes0=64):
 
 
 def report_recursion():
-    print("== PCS_OPEN version 3: the recursion's ladder (pcs::whir::RECURSION_SCHEDULE: 5 bits, then 3, blocks >= 2^8)")
+    print("== the second ladder (once opening version 3: 5 bits, then 3, blocks >= 2^8; no longer in the code)")
     print("   per level: rate, fold, queries | the code's accounting (whir_config.rs): pg / query+17 / ood / alg bits"
           " | leanerVM's groups at the chosen slack e/2^22: fold / ood / query+17 bits")
     for log_n in range(15, 29):

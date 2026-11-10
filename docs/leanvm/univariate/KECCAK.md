@@ -99,10 +99,11 @@ is measured (`crates/leanvm/rec/tests/keccak_vm_rec.rs`). The contract's gas dep
 | **128 signatures** | 116 | 70, 9,232 B | 8,476 / 6,633 | 15,668,416 (93.4%) | 21 / 133 | 13,219 B | 27,641 |
 | 400 signatures | 118 | 71, 9,424 B | 8,673 / 6,885 | 15,940,800 (95.0%) | 22 / 144 | 13,639 B | 28,421 |
 
-**On the real proofs** (`crates/leanvm/rec/tests/pi2_real.rs`, `real_end_to_end`; π2v2, `docs/leanvm/rec/PI2.md`). The
-recursion's contract accepts with its frame declaring its 7 claims as 6, and 18 flipped calldata bytes are
-rejected. π2v1's figures, at opening version 2, in brackets. All measured with `PCS_OPEN`; with the frame of claims,
-1,005 B, 28,459 execution and 43,819 transaction at 128 signatures, 29,257 and 44,593 at 400.
+**On the real proofs** (`crates/leanvm/rec/tests/pi2_real.rs`, `real_end_to_end`; π2v2, `docs/leanvm/rec/PI2.md`). With
+the EIP draft's PCS claims the recursion's contract accepts with its frame declaring its 8 claims (21 flipped calldata
+bytes rejected): 1,101 B, 32,794 execution at 128 signatures (33,740 at 400), as an EIP-8141 frame transaction 70,464
+(the floor), 99,912 with the frame of claims and the PCS gas. The table below predates the PCS claims: π2v1's figures,
+at opening version 2, in brackets, all measured with `PCS_OPEN`.
 
 | | 128 signatures | 400 signatures |
 |---|---:|---:|

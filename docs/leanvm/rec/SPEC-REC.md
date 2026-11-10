@@ -4,9 +4,10 @@
 
 A proof of a Keccak VM execution (leanVM `9d50c92a3`'s tables, `docs/leanvm/univariate/KECCAK.md`) verified on the EVM
 by recursion: π1 is the univariate proof, π2 a SNARK of π1's verifier, and the contract runs π2's verifier only. At the
-reference shape (128 signatures) the real proof verifies for **28,459 gas of execution, 43,819 under EIP-7623** (1,005 B
-of calldata, 7 claims declared as 6; 27,641 and 42,997 with `PCS_OPEN`; π2v2, `PI2.md`), apart from the frame of
-claims (193 B) and their 11,000 intrinsic gas. Code: `crates/leanvm/rec`; π2's PIOP in
+reference shape (128 signatures) the real proof verifies for **32,794 gas of execution** (1,101 B of calldata; as an
+EIP-8141 frame transaction, EIP-7976's floor, standard 49,678 and floor 70,464), its 8 claims declared (π1's 3, π2's
+5, each the EIP draft's PCS claim, `crates/pcs_claim`; π2v2, `PI2.md`): 99,912 with the frame of claims (257 B) and
+their PCS gas (13,000, on both sides). The figures below that predate the PCS claims are marked so. Code: `crates/leanvm/rec`; π2's PIOP in
 [`PI2.md`](PI2.md); the claims' points in [`SPEC-POINTS.md`](SPEC-POINTS.md).
 
 Every number is marked:
@@ -413,24 +414,26 @@ history).
 
 The protocol as built is `PI2.md` §2. In outline:
 
-- **Setup** (constants of the contract): the root of the setup (`κ`, `κ + σ`); π2's IV,
-  `keccak("leanvm-rec-iv-v2" ‖ π1's contract IV ‖ the setup root ‖ the circuit's digest ‖ the three layout words)`
-  (`prover::iv`); π1's setup root `F` and π1's layout words, which π1's calls need.
-- **Public inputs:** the public input (32 B), π1's roots `C1`, `C2`, π1's claims' elements (14 `z_j`, 3 values).
+- **Setup** (constants of the contract): the commitment of the setup (`κ`, `κ + σ`: root and out-of-domain answer);
+  π2's IV, `keccak("leanvm-rec-iv-v3" ‖ π1's contract IV ‖ the setup root ‖ its out-of-domain answer ‖ the circuit's
+  digest ‖ log_n)` (`prover::iv`); π1's setup commitment `F`, which π1's claims need.
+- **Public inputs:** the public input (32 B), π1's roots `C1`, `C2`, π1's claims' elements (its 2 out-of-domain
+  answers, 14 `z_j`, 3 values).
 - **The transcript** (Keccak-256, on chain, `KeccakChannel`'s shape):
-  1. the seed `keccak("leanvm-rec-pi2v2" ‖ IV ‖ public input)`; the public data in the stream, absorbed by the first
+  1. the seed `keccak("leanvm-rec-pi2v3" ‖ IV ‖ public input)`; the public data in the stream, absorbed by the first
      challenge;
-  2. `W`'s root, then `α`, `β`, `γ`;
-  3. `Q`'s root, then `t`;
+  2. `W`'s commitment (root, out-of-domain answer), then `α`, `β`, `γ`;
+  3. `Q`'s commitment, then `t`;
   4. the row's 16 fold values `a_k`, `ξ = κ(t) + βσ(t)` and `s = P(t)` (18 values); then `ρ`.
 - **The verifier**, at `t`: the digits; the row's cells from the `a_k`; the (block, role) indicators; the internal
   pushes `P_v(t)`; the ports' `Φ` and their term; `d_pull`, `d_push = α + s + ξ`; the identity and `P`'s definition,
   all as fractions with one inversion at the end.
-- **Claims** (4 in 3 calls): `W` at `(ρ, ρ², ρ⁴, ρ⁸, w_4(t), …, w_23(t))`; `Q`, the identity's combination of `h(t)` and
-  `q(t)`, `P(t) = s` and `P`'s definition in one claim (at `(u_0, …, u_24, ρ', ρ, ρ² B, y_0, y_1)`), and the sum
-  `Σ_V h = 0` at the top coefficient's point; the setup at `(w_0(t), …, w_23(t), β)`, value `ξ`.
-- **The contract**, in order: reads the stream; runs π2's verifier; checks π1's 3 claims declared (with
-  π1's roots, layout words and setup root); then π2's (`W`, the setup, `Q`).
+- **Claims** (5, each a point of its commitment's whole stack, `PI2.md` §2): `W` at `(ρ, ρ², ρ⁴, ρ⁸, w_4(t), …,
+  w_23(t))`; the setup at `(w_0(t), …, w_23(t), β)`, value `ξ`; on `Q`'s sixteen slots, the identity's combination of
+  `h(t)` and `q(t)` (at `(u_0, …, u_24, ρ', y_0, y_1)`, which weighs `P` and `q_P` too), `P(t) = s` and `P`'s
+  definition combined by `ρ` (at `(u_0, …, u_24, ρ, 1, 1)`), and the sum `Σ_V h = 0` at the top coefficient's point.
+- **The contract**, in order: reads the stream; runs π2's verifier; checks π1's 3 claims declared (with π1's roots,
+  out-of-domain answers and setup commitment); then π2's 5 (`W`, the setup, `Q`'s three).
 
 ## 5. Soundness (modelled; the Lean bounds)
 
@@ -683,8 +686,8 @@ the default; Mac Apple M4 Max, 16 cores):
 Each item says whether it touches π1's Fiat–Shamir shape or claims, π2's, or only the contract. The π2 side is
 detailed in `PI2.md` §8–§9.
 
-1. **One claim encoding** (`machine.rs`'s `root word, layout word, k, k × (point, value)`) for π1's and π2's claims,
-   and **π1's IV binds its variant** (`contract_iv` hashes `variant_bytes`: the tag `"keccak-vm"`, the skip and the
+1. **One claim encoding** (the EIP draft's PCS claim, `crates/pcs_claim`; before it, `machine.rs`'s `root word, layout
+   word, k, k × (point, value)`) for π1's and π2's claims, and **π1's IV binds its variant** (`contract_iv` hashes `variant_bytes`: the tag `"keccak-vm"`, the skip and the
    Fiat–Shamir shape's code).
 2. **π2's values are 17** (π2's claims; 18 in π2v2, with `s = P(t)`). `ξ = κ(t) + βσ(t)` replaces `σ(t)`, `κ(t)`
    (the setup committed as `κ`, `κ + σ`, its claim at `β`); `h(t)` is not sent, `Q`'s claim being the identity's
@@ -702,17 +705,20 @@ detailed in `PI2.md` §8–§9.
 8. **The batch two variables a round** (**π1's Fiat–Shamir shape**: `FsShape::Rec3`; `SPEC-POINTS.md`). 14 narrow
    challenges for the point's coordinates; π2's ports bind the 14 challenges and the contract derives the coordinates
    (`CallWord::Pair`).
-9. **π1's stream carries its roots as root words** (π1's stream, not its Fiat–Shamir shape or its verifier: π1's
-   prover sends each root as its two WHIR scalars, `hash_to_scalars`). π1's contract's `C1`, `C2` words then decode to
-   the commitments, and π2's root ports read the stream's bytes as they are.
+9. **π1's stream carries its roots as they are, each followed by its out-of-domain answer** (with the PCS claims:
+   the roots the claims encode; before them, the root words of `machine.rs`), and π2's root ports read the stream's
+   bytes as they are.
 10. **The padding's look-ahead** (π2's circuit: `layout::pad_counts`, §10.4 item 12).
 11. **π2v2: the ports out of the copy argument, `P` committed, `q` below `2N`** (π2's PIOP, transcript, `Q`'s layout;
     `PI2.md` §1, §2, §7). `Q` `15N → 12N` words on a `2N` coset (not `4N`), one more value, `t` at `3N` (141.3 bits
     after the union, from 140.6); the contract 27,641 execution and 43,009 EIP-7623 (from 28,325 and 43,309); π2's
     prover about 60 ms less a proof (`PI2.md` §0).
-12. **Opening version 3: the recursion's WHIR ladder** (the six openings' deeper levels at rates `1/4, 1/8, …`,
-    `pcs::whir::RECURSION_SCHEDULE`; the layout words' version byte 3): about 80 ms less a proof. On the regenerated
-    proofs at the IV without the BLAKE2s-era words: 42,997 EIP-7623 at 128 signatures (59 zero bytes), 43,753 at 400.
+12. **Opening version 3: the recursion's WHIR ladder** (historical: the six openings' deeper levels at rates `1/4,
+    1/8, …`): about 80 ms less a proof, then 42,997 EIP-7623 at 128 signatures. Removed with the PCS claims, whose one
+    version is leanVM's ladder.
+13. **The EIP draft's PCS claims** (`crates/pcs_claim`): every commitment a root and an out-of-domain answer, every
+    claim one point of a whole stack, one opening a claim; `Q` in sixteen slots and π2's five claims (`PI2.md` §2).
+    1,101 B of calldata, 32,794 execution, 99,912 with the frame of claims and the PCS gas (EIP-8141, the floor).
 
 **Dropped:**
 
