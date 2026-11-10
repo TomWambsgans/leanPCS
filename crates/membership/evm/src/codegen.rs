@@ -320,7 +320,7 @@ fn program(graph: &Graph, outputs: &[Word], ending: &Ending, entry: &Entry, inpu
             _ => None,
         })
     };
-    for root in graph.nonzero.iter().chain(&graph.zero).copied().chain(output_nodes()) {
+    for root in graph.nonzero.iter().copied().chain(output_nodes()) {
         uses[root as usize] += 1;
     }
     for at in (0..n).rev() {
@@ -392,10 +392,6 @@ fn program(graph: &Graph, outputs: &[Word], ending: &Ending, entry: &Entry, inpu
     for &id in &graph.nonzero {
         compiler.eval(id);
         compiler.code(&[ISZERO]);
-        compiler.item(Item::FailIf);
-    }
-    for &id in &graph.zero {
-        compiler.eval(id);
         compiler.item(Item::FailIf);
     }
     if linkable {

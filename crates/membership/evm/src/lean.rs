@@ -59,7 +59,6 @@ pub fn render() -> String {
         ending,
         inputs,
     } = deployed(LOG_ROWS);
-    assert!(graph.zero.is_empty(), "the deployed contract requires nothing zero");
     let Ending::Declared(runs) = ending else {
         unreachable!("the deployed contract checks declared claims")
     };

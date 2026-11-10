@@ -67,17 +67,11 @@ fn random_calldata(rng: &mut Rng) -> Vec<u8> {
 /// Calldata the Rust verifier rejects as degenerate: the copy identity's denominator `d · d' + w_m` is zero, which
 /// the prover controls through `next`, sent after `t`.
 fn degenerate(index_root: &Hash, log_rows: usize, rng: &mut Rng) -> Vec<u8> {
-    degenerate_in(index_root, log_rows, rng, quotient::protocol::Inverse::Compute)
-}
-
-/// [`degenerate`] under the label of mode `inverse`: the calldata of the commitments and the five values, without
-/// a hint.
-fn degenerate_in(index_root: &Hash, log_rows: usize, rng: &mut Rng, inverse: quotient::protocol::Inverse) -> Vec<u8> {
     let statement = Statement {
         y: random_bytes(rng),
         root: random_bytes(rng),
     };
-    let mut chain = ProverChain::new(&quotient::protocol::label_in(index_root, &statement, inverse));
+    let mut chain = ProverChain::new(&quotient::protocol::label(index_root, &statement));
     chain.send_root(&random_bytes(rng));
     let (alpha, beta) = (chain.sample(), chain.sample());
     let _gamma = chain.sample();
@@ -299,86 +293,6 @@ fn degenerate_proofs_revert_at(limit: usize) {
                 call(&codes.1, &near, &PcsFrame::declaring_all()).output,
                 Some(VERIFIED.to_vec())
             );
-        }
-    }
-}
-
-/// Hint mode (`Inverse::Hint`), at every size: random calldata with the hint that fits it (`protocol::hint`)
-/// reduces, the claims contract returning what `verify_in` leaves and the contract passing against a frame declaring
-/// them and one declaring everything; any bit of the hint flipped, both revert, even when the frame declares
-/// everything, as `verify_in` rejects: the check `product · hint = 1` is compiled, and it alone stops a wrong hint.
-/// A transcript whose product is zero takes no hint. And the hint saves the inverse's products and their gas.
-#[test]
-fn hint_transcripts_agree() {
-    use quotient::protocol::{Inverse, hint, verify_in};
-    use crate::quotient::{claims_contract_in, contract_in};
-    let mut rng = Rng::new(0x41E);
-    // The hint goes between the arguments and the frame's index.
-    let with_hint = |data: &[u8], hint: F192| {
-        [&data[..ARGS_LEN], &[hint.c2, hint.c1, hint.c0].map(u64::to_be_bytes).concat()[..], &[PCS_FRAME]].concat()
-    };
-    let hinted = |index_root: &Hash, data: &[u8], log_rows: usize| -> Option<Vec<u8>> {
-        let (statement, proof) = parse(data);
-        let hint = hint(index_root, &statement, &proof, log_rows).ok()?;
-        Some(with_hint(data, hint))
-    };
-    let parse_hinted = |data: &[u8]| {
-        let (statement, mut proof) = parse(&[&data[..ARGS_LEN], &[PCS_FRAME]].concat());
-        let word = |at: usize| u64::from_be_bytes(data[at..at + 8].try_into().unwrap());
-        proof.stream.push(F192::new(word(ARGS_LEN + 16), word(ARGS_LEN + 8), word(ARGS_LEN)));
-        (statement, proof)
-    };
-    for log_rows in LOG_ROWS {
-        let index_root = random_bytes(&mut rng);
-        let claims = deploy(&claims_contract_in(log_rows, Inverse::Hint, None), &index_root);
-        let calling = deploy(&contract_in(log_rows, Inverse::Hint, None), &index_root);
-        let compute = deploy(&contract(log_rows), &index_root);
-        for _ in 0..16 {
-            let data = hinted(&index_root, &random_calldata(&mut rng), log_rows).expect("a nonzero product");
-            assert_eq!(data.len(), CALLDATA_LEN + 24);
-            let (statement, proof) = parse_hinted(&data);
-            let expected = verify_in(&index_root, &statement, &proof, log_rows, Inverse::Hint).expect("a reduction");
-            let returned = call(&claims, &data, &PcsFrame::default()).output;
-            assert_eq!(returned.as_deref().and_then(|output| decode(output, log_rows)), Some(expected.clone()));
-            let mut block = PcsFrame::default();
-            for (root, id, claims) in openings(&index_root, &expected.0, &expected.1, log_rows) {
-                block.declare(&root, id, &claims);
-            }
-            assert_eq!(call(&calling, &data, &block).output, Some(VERIFIED.to_vec()));
-            assert_eq!(call(&calling, &data, &PcsFrame::default()).output, None);
-            let attested = call(&calling, &data, &PcsFrame::declaring_all());
-            assert_eq!(attested.output, Some(VERIFIED.to_vec()));
-            for bit in (0..192).step_by(7) {
-                let mut flipped = data.clone();
-                flipped[ARGS_LEN + 23 - bit / 8] ^= 1 << (bit % 8);
-                let (statement, proof) = parse_hinted(&flipped);
-                assert_eq!(
-                    verify_in(&index_root, &statement, &proof, log_rows, Inverse::Hint).err(),
-                    Some(VerifyError::Degenerate)
-                );
-                assert_eq!(call(&claims, &flipped, &PcsFrame::default()).output, None, "bit {bit}");
-                assert_eq!(call(&calling, &flipped, &PcsFrame::declaring_all()).output, None, "bit {bit}");
-            }
-            // The compute contract on hint calldata, and on it without the hint, which it reads under its own label.
-            assert_eq!(call(&compute, &data, &PcsFrame::declaring_all()).output, None);
-            let without = &[&data[..ARGS_LEN], &[PCS_FRAME]].concat();
-            assert_eq!(call(&compute, without, &block).output, None);
-            let gas = (attested.execution, call(&compute, without, &PcsFrame::declaring_all()).execution);
-            assert!(gas.0 + 1_000 < gas.1, "2^{log_rows}: hint {} against compute {}", gas.0, gas.1);
-        }
-        // A zero product, under the hint mode's label: no hint passes.
-        let data = degenerate_in(&index_root, log_rows, &mut rng, Inverse::Hint);
-        let (statement, proof) = parse(&data);
-        assert_eq!(hint(&index_root, &statement, &proof, log_rows), Err(VerifyError::Degenerate));
-        for hint in [F192::ZERO, F192::ONE, rng.ext()] {
-            let data = with_hint(&data, hint);
-            let (statement, proof) = parse_hinted(&data);
-            assert_eq!(
-                verify_in(&index_root, &statement, &proof, log_rows, Inverse::Hint).err(),
-                Some(VerifyError::Degenerate)
-            );
-            assert_eq!(call(&claims, &data, &PcsFrame::default()).output, None);
-            assert_eq!(call(&calling, &data, &PcsFrame::declaring_all()).output, None);
         }
     }
 }

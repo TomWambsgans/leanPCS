@@ -9,9 +9,9 @@ use std::ops::{Add, Mul};
 use primitives::field::F192;
 use quotient::protocol::Scalar;
 
-/// The most scalars a transcript step absorbs: the five values and the hint (`quotient::protocol::Inverse::Hint`).
+/// The most scalars a transcript step absorbs: the five values.
 /// Only the first `n` of a [`Node::Hash`]'s slots are its operands (the rest zero), so the bound changes no graph.
-pub const MAX_ABSORBED: usize = 6;
+pub const MAX_ABSORBED: usize = 5;
 
 /// One recorded value. Operands are indices of earlier nodes.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -40,9 +40,6 @@ pub struct Graph {
     index: HashMap<Node, u32>,
     /// The values the verifier requires to be nonzero.
     pub nonzero: Vec<u32>,
-    /// The values the verifier requires to be zero: none in the membership protocol, the hint's check in
-    /// `quotient::protocol::Inverse::Hint`.
-    pub zero: Vec<u32>,
 }
 
 thread_local! {
@@ -130,12 +127,4 @@ impl Scalar for Sym {
         true
     }
 
-    fn is_zero(self) -> bool {
-        assert!(
-            self.value().is_none_or(|value| value == F192::ZERO),
-            "a constant required zero is zero"
-        );
-        GRAPH.with_borrow_mut(|graph| graph.zero.push(self.0));
-        true
-    }
 }
