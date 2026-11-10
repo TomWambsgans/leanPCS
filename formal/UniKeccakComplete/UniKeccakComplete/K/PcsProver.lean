@@ -433,14 +433,16 @@ theorem qc_pcsSpongeH (bytes : Bytes) (B : ℕ) (hB : bytes.length < 136 * B) :
   unfold pcsSpongeH
   exact (qc_H_le (k := B) hB).bind_le (fun iv ↦ (qc_F _).bind_le (fun _ ↦ qc_pure _ 0) le_rfl) le_rfl
 
-/-- **The PCS prover's cost**: its IV (`6` blocks: a claim of at most `28` coordinates), the seed's permutation, the
-root's two absorptions and the runner. -/
-theorem cost_pcsProveH (fuel n : ℕ) (hn : n ≤ 28) (tree : Tree) (stack : Array K) (pt : List E) (v : E) :
+/-- **The PCS prover's cost**: its IV (a claim of at most `w` coordinates), the seed's permutation, the root's two
+absorptions and the runner. -/
+theorem cost_pcsProveH (fuel n : ℕ) (tree : Tree) (stack : Array K) (pt : List E) (v : E) {w : ℕ}
+    (hw : pt.length ≤ w) :
     QC (pcsProveH callKeccak256 callKeccakF1600 fuel n tree stack pt v)
-      (6 + 3 + (4 + (2 + whirBound)) * blockFactor costHeight fuel) := by
+      ((82 + 24 * w) / 136 + 1 + 3 + (4 + (2 + whirBound)) * blockFactor costHeight fuel) := by
   unfold pcsProveH
   split
-  · refine (qc_pcsSpongeH _ 6 (by rw [WhirBridge.Pcs.claimBytes_length]; omega)).bind_le (fun sp ↦
+  · rename_i hpt
+    refine (qc_pcsSpongeH _ ((82 + 24 * w) / 136 + 1) (by rw [WhirBridge.Pcs.claimBytes_length]; omega)).bind_le (fun sp ↦
       (qc_absorb _ _ _).bind_le (fun sp ↦ (qc_absorb _ _ _).bind_le (fun sp ↦
         (cost_runFromWithHash fuel costHeight _ _ sp [tree] _ _ (costs_vso _ _ _)
           (wordsLE_openingScript _ stack _)).bind_le (fun _ ↦ qc_pure _ 0) le_rfl) le_rfl) le_rfl) (by omega)

@@ -103,7 +103,7 @@ def CoreFailsOnlyAtPow3 (D : KDeployment) (flock : FlockProverH) : Prop :=
       ¬ BadT D.shape (proverTChallenge3 H (flock H) D input rows q).1
         (proverTChallenge3 H (flock H) D input rows q).2 →
       uniProverRec3With (m := Id) H F (flock H) D input rows q = none →
-      ∃ (L : PcsQuotient.Layout) (tree : LeanVM.Prover.Tree) (stack : Array K) (claims : List PcsQuotient.Claim),
-        E2ECompleteness.proveOpeningWithH (m := Id) H F PcsQuotient.nonceFuel L tree stack claims = none
+      ∃ (n : ℕ) (tree : LeanVM.Prover.Tree) (stack : Array K) (pt : List E) (v : E), pt.length = n ∧
+        pcsProveH (m := Id) H F PcsQuotient.nonceFuel n tree stack pt v = none
 
 end UniKeccakComplete.Rec3

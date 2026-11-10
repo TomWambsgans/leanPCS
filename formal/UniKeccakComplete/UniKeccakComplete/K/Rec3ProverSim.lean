@@ -81,7 +81,7 @@ theorem wr_proveStreamRec3With [LawfulMonad m] [LawfulMonad n] (commit : Commitm
     φ.wr (proveStreamRec3With H commit flock tr) =
       proveStreamRec3With (fun x ↦ φ.app (H x)) commit' flock' tr := by
   simp only [proveStreamRec3With, Morph.wr_bind, Morph.wr_forIn_list, Morph.wr_sendInteger, Morph.wr_pure,
-    Morph.wr_lift, hcommit, Morph.wr_sendRoot, wr_drawRunW, Morph.wr_sampleW, Morph.wr_map, hflock,
+    Morph.wr_lift, hcommit, Morph.wr_sendRoot, Morph.wr_sendScalar, wr_drawRunW, Morph.wr_sampleW, Morph.wr_map, hflock,
     Morph.wr_sendScalars, wr_batchRounds3, Morph.wr_get]
 
 end Stream

@@ -272,6 +272,29 @@ structure StreamFacts (commit : Commitment → ℕ → Array K → Id Committed)
     min (layoutIn (layoutsK tr.shape (Shape.c2ColumnsK tr.shape)) x.1).vars
       (((layoutsK tr.shape (Shape.c2ColumnsK tr.shape)).map (·.2.vars)).foldl max 0)
 
+/-- At the shape's own `C2` columns, a commitment's layout has its PCS claim's variables (`stackVarsK`), at most the
+batch's rounds. -/
+theorem min_layoutIn_eq (s : UniStatement.Shape) (c : Commitment) :
+    min (layoutIn (layoutsK s (Shape.c2ColumnsK s)) c).vars
+      (((layoutsK s (Shape.c2ColumnsK s)).map (·.2.vars)).foldl max 0) = stackVarsK s c := by
+  have e : layoutsK s (Shape.c2ColumnsK s) = layoutsOfK s := rfl
+  rw [e]
+  unfold stackVarsK
+  rw [layoutsOf_eq]
+  have e1 : (Commitment.c2 == Commitment.c1) = false := by decide
+  have e2 : (Commitment.setup == Commitment.c1) = false := by decide
+  have e3 : (Commitment.setup == Commitment.c2) = false := by decide
+  cases c <;> simp [layoutIn, List.lookup, e1, e2, e3]
+
+/-- **A claim's point has its PCS claim's variables**, for `C2`'s columns the shape's. -/
+theorem claim_length {commit : Commitment → ℕ → Array K → Id Committed} {tr : Trace} {out : CoreOut}
+    (hf : StreamFacts commit tr out) (hC2 : C2ColumnsHonest tr) {c c' : Commitment} {pt : List E} {v : E}
+    (hfind : out.claims.find? (·.1 == c) = some (c', pt, v)) : pt.length = stackVarsK tr.shape c := by
+  have hc : c' = c := by simpa using List.find?_some hfind
+  subst hc
+  rw [hf.points hC2 _ (List.mem_of_find?_eq_some hfind)]
+  exact min_layoutIn_eq _ _
+
 /-! #### Peeling a `StateT` program's binds -/
 
 theorem peel {σ α β : Type} {x : StateT σ Id α} {f : α → StateT σ Id β} {P : β → Prop} {s : σ}

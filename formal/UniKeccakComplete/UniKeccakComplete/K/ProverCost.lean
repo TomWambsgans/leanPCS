@@ -276,10 +276,10 @@ def streamBlocks (shape : UniStatement.Shape) (kF : ℕ) : ℕ :=
   treeCost (UniKeccak.c1LayoutK shape).vars + 6 + kF +
     treeCost (((UniKeccak.layoutsOfK shape).lookup .c2).getD default).vars + 3 + batchVarsBound shape
 
-/-- **The stream's bytes**: the row counts, the two roots, Flock's, the values at `t`, the batching rounds' two
-scalars each, the three claims' values. -/
+/-- **The stream's bytes**: the row counts, the two roots and their out-of-domain answers, Flock's, the values at
+`t`, the batching rounds' two scalars each, the three claims' values. -/
 def streamBytes (shape : UniStatement.Shape) (rows wF : ℕ) : ℕ :=
-  4 * rows + 64 + wF + 24 * valuesBound + 48 * batchVarsBound shape + 72
+  4 * rows + 112 + wF + 24 * valuesBound + 48 * batchVarsBound shape + 72
 
 theorem length_combined (f : Commitment → Option (Commitment × Combined)) :
     (commitments.filterMap f).length ≤ 3 :=
@@ -303,12 +303,14 @@ theorem wc_proveStreamWith (flock : FlockProver (OracleComp KeccakCalls)) (kF wF
     (fun _ _ _ ↦ ?_) (by omega) (by omega)
   refine wc_seq (wc_lift (qc_commitReal _ _ _)) (fun committed1 _ _ ↦ ?_) (by omega) (by omega)
   refine wc_seq (wc_sendRoot _) (fun _ _ _ ↦ ?_) (by omega) (by omega)
+  refine wc_seq (wc_sendScalar _) (fun _ _ _ ↦ ?_) (by omega) (by omega)
   refine wc_seq (wc_samplesW 4) (fun alphas _ _ ↦ ?_) (by omega) (by omega)
   refine wc_seq wc_sampleW (fun beta _ _ ↦ ?_) (by omega) (by omega)
   refine wc_seq wc_sampleW (fun gamma _ _ ↦ ?_) (by omega) (by omega)
   refine wc_seq (wc_map some hF) (fun flockOut _ _ ↦ ?_) (by omega) (by omega)
   refine wc_seq (wc_lift (qc_commitReal _ _ _)) (fun committed2 _ _ ↦ ?_) (by omega) (by omega)
   refine wc_seq (wc_sendRoot _) (fun _ _ _ ↦ ?_) (by omega) (by omega)
+  refine wc_seq (wc_sendScalar _) (fun _ _ _ ↦ ?_) (by omega) (by omega)
   refine wc_seq wc_sampleW (fun t _ _ ↦ ?_) (by omega) (by omega)
   have ha := Bounds.atT_facts tr (c2DataOf tr (eqKernel alphas) beta gamma) alphas beta gamma t flockOut
   have hvars := Bounds.batchVars_atT tr (c2DataOf tr (eqKernel alphas) beta gamma) alphas beta gamma t flockOut
@@ -339,6 +341,12 @@ open E2ECompleteness.Cost (blockFactor)
 /-- **The prover's opening's blocks**, a claim of at most `v` coordinates: its IV, its seed's permutation, the
 root's two absorptions, WHIR's prover at its fixed height (E2ECompleteness's `cost_proveOpeningWithH`). -/
 def openP (fuel v : ℕ) : ℕ := (76 + 24 * (v + 1)) / 136 + 1 + 3 + (4 + (2 + whirBound)) * blockFactor costHeight fuel
+
+/-- **A PCS opening's cost** is at most `openP` (`cost_pcsProveH`: its IV `82 + 24 v` bytes, under `openP`'s). -/
+theorem qc_pcsProve1 (fuel n : ℕ) (tree : LeanVM.Prover.Tree) (stack : Array K) (pt : List E) (value : E) {v : ℕ}
+    (hv : pt.length ≤ v) :
+    QC (pcsProveH callKeccak256 callKeccakF1600 fuel n tree stack pt value) (openP fuel v) :=
+  (cost_pcsProveH fuel n tree stack pt value hv).mono (by unfold openP; omega)
 
 theorem qc_proveOpening1 (fuel : ℕ) (L : PcsQuotient.Layout) (tree : LeanVM.Prover.Tree) (stack : Array K)
     (pt : List E) (value : E) {v : ℕ} (hv : pt.length ≤ v) :
@@ -385,7 +393,7 @@ set_option hygiene false in
 /-- One step of the three openings' walk (`hc`, `h1` … `h3` the local facts on the claims, `hS` on the stream). -/
 macro "open_step" : tactic => `(tactic| first
   | exact fun p hp ↦ by rw [stream_of_some hp]; exact hS
-  | refine costP_seq_qc (qc_proveOpening1 _ _ _ _ _ _ (v := batchVarsBound tr.shape) (by first
+  | refine costP_seq_qc (qc_pcsProve1 _ _ _ _ _ _ (v := batchVarsBound tr.shape) (by first
       | exact hc _ _ _ (List.mem_of_find?_eq_some h1)
       | exact hc _ _ _ (List.mem_of_find?_eq_some h2)
       | exact hc _ _ _ (List.mem_of_find?_eq_some h3))) (fun _ ↦ ?_) (by omega))
@@ -403,7 +411,7 @@ theorem costP_proveWith (flock : FlockProver (OracleComp KeccakCalls)) (kF wF : 
   simp only [bind_assoc, pure_bind]
   refine costP_seq_qc (qc_setupTreeOf tr) (fun tree ↦ ?_) (by unfold uniProverCost; omega)
   refine costP_seq_qc (qc_H_le (k := (163 + programIv.length) / 136 + 1) (by
-    simp only [List.length_append, ivTag_length, len_digestBytes, shapeBytes_length, layoutWordsK_length,
+    simp only [List.length_append, ivTag_length, len_digestBytes, shapeBytes_length, elementBytes24_length,
       variantBytesK_length]
     omega))
     (fun d ↦ ?_) (by unfold uniProverCost; omega)
@@ -559,11 +567,11 @@ theorem proverBlocks_reference (D : UniKeccak.KDeployment) (hD : D.shape = kecca
   norm_num [treeCost, blockFactor, whirBound, costHeight, PcsQuotient.nonceFuel]
   omega
 
-/-- **The honest stream at the reference shape**: the six row counts (`24`), the two roots (`64`), the values at `t`,
-`27` batching rounds (`48` bytes each), the claims' three values: `5608` bytes, and Flock's. -/
+/-- **The honest stream at the reference shape**: the six row counts (`24`), the two roots and their out-of-domain answers (`112`), the values at `t`,
+`27` batching rounds (`48` bytes each), the claims' three values: `5656` bytes, and Flock's. -/
 theorem proverStream_reference (D : UniKeccak.KDeployment) (hD : D.shape = keccakRefShape)
     (w : ℕ → UniKeccak.KeccakVariant → ℕ) :
-    proverStream D 6 w = 5608 + w 32 UniKeccak.keccakMain := by
+    proverStream D 6 w = 5656 + w 32 UniKeccak.keccakMain := by
   obtain ⟨-, -, -, h4⟩ := reference_stackVars
   unfold proverStream streamBytes
   rw [hD, reference_flockLogN, h4, valuesBound_eq]

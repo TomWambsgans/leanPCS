@@ -4,6 +4,7 @@
 -- Ported to the Keccak VM from `formal/UniComplete/UniComplete/Rec3CoreRun.lean`.
 import UniKeccakComplete.K.Rec3Hyp
 import UniKeccakComplete.K.CoreRun
+import UniKeccakComplete.K.Mapping
 
 /-!
 # π1-rec3's honest prover's run at a pure hash (`proveRec3With` in `Id`)
@@ -119,6 +120,7 @@ theorem streamRun3_facts (H : List UInt8 → Id Digest) (commit : Commitment →
   refine peel fun _ s0 _ ↦ ?_
   refine peel_lift ?_
   refine peel fun _ s1 _ ↦ ?_
+  refine peel fun _ s1' _ ↦ ?_
   refine peel fun alphas s2 _ ↦ ?_
   refine peel fun beta s3 _ ↦ ?_
   refine peel fun gamma s4 _ ↦ ?_
@@ -126,6 +128,7 @@ theorem streamRun3_facts (H : List UInt8 → Id Digest) (commit : Commitment →
   try dsimp only
   refine peel_lift ?_
   refine peel fun _ s6 _ ↦ ?_
+  refine peel fun _ s6' _ ↦ ?_
   refine peel fun t s7 _ ↦ ?_
   refine peel fun _ s8 _ ↦ ?_
   refine peel fun rho s9 _ ↦ ?_
@@ -160,6 +163,7 @@ theorem streamValues3 (H : List UInt8 → Id Digest) (commit : Commitment → �
   refine peel fun _ s0 _ ↦ ?_
   refine peel_lift ?_
   refine peel fun _ s1 _ ↦ ?_
+  refine peel fun _ s1' _ ↦ ?_
   refine peel fun alphas s2 _ ↦ ?_
   refine peel fun beta s3 _ ↦ ?_
   refine peel fun gamma s4 _ ↦ ?_
@@ -167,6 +171,7 @@ theorem streamValues3 (H : List UInt8 → Id Digest) (commit : Commitment → �
   try dsimp only
   refine peel_lift ?_
   refine peel fun _ s6 _ ↦ ?_
+  refine peel fun _ s6' _ ↦ ?_
   refine peel fun t s7 _ ↦ ?_
   refine peel fun _ s8 _ ↦ ?_
   refine peel fun rho s9 _ ↦ ?_
@@ -197,7 +202,7 @@ variable (H : List UInt8 → Digest) (F : KeccakState → KeccakState)
 the deployment's `A0`, `B0` constants. -/
 def proverSeed3 (programIv : List UInt8) (tr : Trace) : Digest :=
   seedOf (m := Id) H (contractIvOf (m := Id) H tr.shape keccakRec3 programIv
-    ⟨(setupTreeOf (m := Id) H tr).root⟩) tr.publicInput
+    (setupRootsOf tr (setupTreeOf (m := Id) H tr))) tr.publicInput
 
 /-- **π1-rec3's stream's run** from its seed: output and writer. -/
 def streamRun3 (flock : FlockProver Id) (programIv : List UInt8) (tr : Trace) : CoreOut × Wr :=
@@ -208,16 +213,16 @@ def streamRun3 (flock : FlockProver Id) (programIv : List UInt8) (tr : Trace) : 
 theorem proveRec3With_eq (fuel : ℕ) (flock : FlockProver Id) (programIv : List UInt8) (tr : Trace) :
     proveRec3With (m := Id) H F fuel flock programIv tr =
       (claimProof H F fuel (setupTreeOf (m := Id) H tr) (streamRun3 H flock programIv tr).1
-          (layoutWordsK tr.shape) .c1).bind fun p1 ↦
+          tr.shape .c1).bind fun p1 ↦
       (claimProof H F fuel (setupTreeOf (m := Id) H tr) (streamRun3 H flock programIv tr).1
-          (layoutWordsK tr.shape) .c2).bind fun p2 ↦
+          tr.shape .c2).bind fun p2 ↦
       (claimProof H F fuel (setupTreeOf (m := Id) H tr) (streamRun3 H flock programIv tr).1
-          (layoutWordsK tr.shape) .setup).bind fun p3 ↦
+          tr.shape .setup).bind fun p3 ↦
       some ⟨(streamRun3 H flock programIv tr).1.stream, p1, p2, p3⟩ := by
   simp only [proveRec3With, idBind, idPure, streamRun3, proverSeed3]
   generalize (StateT.run (proveStreamRec3With (m := Id) H (commitReal (m := Id) H) flock tr)
     (Wr.start (seedOf (m := Id) H (contractIvOf (m := Id) H tr.shape keccakRec3 programIv
-      ⟨(setupTreeOf (m := Id) H tr).root⟩) tr.publicInput))).1 = out
+      (setupRootsOf tr (setupTreeOf (m := Id) H tr))) tr.publicInput))).1 = out
   generalize setupTreeOf (m := Id) H tr = tree
   unfold claimProof
   split <;> split <;> split <;> (try simp only [openingFor, *]) <;> rfl
@@ -230,11 +235,11 @@ theorem proveRec3With_eq_some (fuel : ℕ) (flock : FlockProver Id) (programIv :
     proveRec3With (m := Id) H F fuel flock programIv tr = some π ↔
       ∃ p1 p2 p3,
         claimProof H F fuel (setupTreeOf (m := Id) H tr) (streamRun3 H flock programIv tr).1
-          (layoutWordsK tr.shape) .c1 = some p1 ∧
+          tr.shape .c1 = some p1 ∧
         claimProof H F fuel (setupTreeOf (m := Id) H tr) (streamRun3 H flock programIv tr).1
-          (layoutWordsK tr.shape) .c2 = some p2 ∧
+          tr.shape .c2 = some p2 ∧
         claimProof H F fuel (setupTreeOf (m := Id) H tr) (streamRun3 H flock programIv tr).1
-          (layoutWordsK tr.shape) .setup = some p3 ∧
+          tr.shape .setup = some p3 ∧
         π = ⟨(streamRun3 H flock programIv tr).1.stream, p1, p2, p3⟩ := by
   rw [proveRec3With_eq, Option.bind_eq_some_iff]
   simp only [Option.bind_eq_some_iff, Option.some.injEq]
@@ -250,17 +255,14 @@ theorem proveRec3With_eq_none (fuel : ℕ) (flock : FlockProver Id) (programIv :
     (h : proveRec3With (m := Id) H F fuel flock programIv tr = none) :
     let tree := setupTreeOf (m := Id) H tr
     let out := (streamRun3 H flock programIv tr).1
-    let words := layoutWordsK tr.shape
+    let words := tr.shape
     (∃ c ∈ [Commitment.c1, .c2, .setup], out.claims.find? (·.1 == c) = none) ∨
     (∃ c' pt v, out.claims.find? (·.1 == .c1) = some (c', pt, v) ∧
-      E2ECompleteness.proveOpeningWithH (m := Id) H F fuel (plainLayout (layoutWordVars (words.getD 0 [])))
-        out.c1.2.tree out.c1.1 [⟨pt, v⟩] = none) ∨
+      pcsProveH (m := Id) H F fuel (stackVarsK words .c1) out.c1.2.tree out.c1.1 pt v = none) ∨
     (∃ c' pt v, out.claims.find? (·.1 == .c2) = some (c', pt, v) ∧
-      E2ECompleteness.proveOpeningWithH (m := Id) H F fuel (plainLayout (layoutWordVars (words.getD 1 [])))
-        out.c2.2.tree out.c2.1 [⟨pt, v⟩] = none) ∨
+      pcsProveH (m := Id) H F fuel (stackVarsK words .c2) out.c2.2.tree out.c2.1 pt v = none) ∨
     (∃ c' pt v, out.claims.find? (·.1 == .setup) = some (c', pt, v) ∧
-      E2ECompleteness.proveOpeningWithH (m := Id) H F fuel (plainLayout (layoutWordVars (words.getD 2 [])))
-        tree out.setup [⟨pt, v⟩] = none) := by
+      pcsProveH (m := Id) H F fuel (stackVarsK words .setup) tree out.setup pt v = none) := by
   intro tree out words
   rw [proveRec3With_eq] at h
   change ((claimProof H F fuel tree out words .c1).bind fun p1 ↦ (claimProof H F fuel tree out words .c2).bind
@@ -288,26 +290,36 @@ end Pieces
 /-- **`proveRec3With` fails only at an opening**: if it returns `none`, one of the three WHIR openings returned
 `none` (every commitment has a claim, `claims_fst`). -/
 theorem fails_only_at_opening3 (H : List UInt8 → Digest) (F : KeccakState → KeccakState) (fuel : ℕ)
-    (flock : FlockProver Id) (programIv : List UInt8) (tr : Trace)
+    (flock : FlockProver Id) (programIv : List UInt8) (tr : Trace) (hon : TraceHonest tr)
     (hnone : proveRec3With (m := Id) H F fuel flock programIv tr = none) :
-    ∃ (L : PcsQuotient.Layout) (tree : LeanVM.Prover.Tree) (stack : Array K) (claims : List PcsQuotient.Claim),
-      E2ECompleteness.proveOpeningWithH (m := Id) H F fuel L tree stack claims = none := by
+    ∃ (n : ℕ) (tree : LeanVM.Prover.Tree) (stack : Array K) (pt : List E) (v : E), pt.length = n ∧
+      pcsProveH (m := Id) H F fuel n tree stack pt v = none := by
   have hf : StreamFacts3 (commitReal (m := Id) H) tr (streamRun3 H flock programIv tr).1 :=
     streamRun3_facts H (commitReal (m := Id) H) _ tr _
-  rcases proveRec3With_eq_none H F _ _ _ _ hnone with hmiss | ⟨_, pt, v, -, h⟩ | ⟨_, pt, v, -, h⟩ |
-      ⟨_, pt, v, -, h⟩
+  have hC2 := c2ColumnsHonest_of_traceHonest hon
+  have hlen : ∀ {c c' : Commitment} {pt : List E} {v : E},
+      (streamRun3 H flock programIv tr).1.claims.find? (·.1 == c) = some (c', pt, v) →
+        pt.length = stackVarsK tr.shape c := by
+    intro c c' pt v hfind
+    have hc : c' = c := by simpa using List.find?_some hfind
+    subst hc
+    rw [hf.points hC2 _ (List.mem_of_find?_eq_some hfind)]
+    exact min_layoutIn_eq _ _
+  rcases proveRec3With_eq_none H F _ _ _ _ hnone with hmiss | ⟨_, pt, v, hfd, h⟩ | ⟨_, pt, v, hfd, h⟩ |
+      ⟨_, pt, v, hfd, h⟩
   · exfalso
     obtain ⟨c, hc, hn⟩ := hmiss
     have hc' : c ∈ (streamRun3 H flock programIv tr).1.claims.map (·.1) := by
       rw [hf.claims_fst]; exact hc
     obtain ⟨x, hx, rfl⟩ := List.mem_map.mp hc'
     exact absurd (by simp : (x.1 == x.1) = true) (List.find?_eq_none.mp hn x hx)
-  all_goals exact ⟨_, _, _, _, h⟩
+  all_goals exact ⟨_, _, _, pt, v, hlen hfd, h⟩
 
 /-- **π1-rec3's honest prover fails only at an opening** (`CoreFailsOnlyAtPow3`), every shape and every Flock
 prover; the bad events are not used. -/
 theorem coreFailsOnlyAtPow3 (D : KDeployment) (flock : FlockProverH) : CoreFailsOnlyAtPow3 D flock :=
-  fun _ _ _ _ _ H F _ _ hnone ↦ fails_only_at_opening3 H F _ _ _ _ hnone
+  fun input rows q hfit hrel H F _ _ hnone ↦ fails_only_at_opening3 H F _ _ _ _
+    (Mapping.honestTrace_honest D input rows q hfit hrel) hnone
 
 end UniKeccakComplete.Rec3
 

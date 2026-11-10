@@ -28,7 +28,7 @@ the cost facts are proved of the honest one, **`flockProveH`** (`FlockCommutes.l
    * **`Prob.proverCost_flockProveH : ProverCost flockProveH D (2 ^ 47)`** (`cost_uniProverWith`,
      `proverBlocks_reference`);
    * **`Prob.proverStreamSize_flockProveH : ProverStreamSize flockProveH D (2 ^ 14)`** (`costP_uniProverWith` read on
-     the support, `CostP.mem_support`; `proverStream_reference`: `5608 + 3696` bytes).
+     the support, `CostP.mem_support`; `proverStream_reference`: `5656 + 3696` bytes).
 3. **The total** (`totalCostK_le`): the setup (one tree of `2^23` words), the prover's `2^47`, the verifier on `2^14`
    bytes: at most `2^48` block calls (as the original `Prob.lean`'s `totalCost_le`).
 
@@ -236,7 +236,7 @@ theorem proverCost_flockProveH (D : KDeployment) (hD : D.shape = keccakRefShape)
     (by rw [flockBlocks_main_reference]; norm_num) (by rw [flockBytes_reference]; norm_num))
 
 /-- **Every proof the honest prover can output has a stream of at most `2^14` bytes** at the reference shape (at
-most `5608 + 3696`). -/
+most `5656 + 3696`). -/
 theorem proverStreamSize_flockProveH (D : KDeployment) (hD : D.shape = keccakRefShape) :
     ProverStreamSize flockProveH D (2 ^ 14) := by
   intro input rows q hfit _ π hπ

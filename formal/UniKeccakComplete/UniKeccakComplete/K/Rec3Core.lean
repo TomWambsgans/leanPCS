@@ -33,8 +33,8 @@ open UniComplete
 
 open ProverRun
 open UniKeccakSound (keccakRefShape)
-open UniKeccakComplete.Core (claims_shape ref_word_c1 ref_word_c2 ref_word_setup commitReal_tree commitReal_halves
-  rootRead_digestScalars)
+open UniKeccakComplete.Core (claims_shape commitReal_tree commitReal_halves rootRead_rootHalves pcsOpenKH_of
+  setupRoots_eq)
 
 /-! ## The honest proof is accepted -/
 
@@ -55,28 +55,29 @@ theorem accepts_of_trace3 (D : KDeployment) (H : List UInt8 → Digest) (F : Kec
   have htree : setupTreeKWithH (m := Id) H F D = setupTreeOf (m := Id) H tr := by
     unfold setupTreeKWithH setupTreeOf
     rw [hsetup, hshape]
+  have hroots := setupRoots_eq D tr (setupTreeOf (m := Id) H tr) hshape hsetup
   have hiv : KDeployment.ivWithH (m := Id) H D keccakRec3 (D.setupRoots (setupTreeOf (m := Id) H tr)) =
       contractIvOf (m := Id) H tr.shape keccakRec3 D.programIv
-        ⟨(setupTreeOf (m := Id) H tr).root⟩ := by
-    rw [hshape]; rfl
+        (setupRootsOf tr (setupTreeOf (m := Id) H tr)) := by
+    rw [hroots, hshape]; rfl
   have hC2 := c2ColumnsHonest_of_traceHonest hon
   -- The prover's proof.
   obtain ⟨p1, p2, p3, h1, h2, h3, rfl⟩ := (proveRec3With_eq_some H F _ _ _ _ π).mp hπ
   -- The verifier's run on the prover's stream.
-  obtain ⟨R, hrunR, hopR, hmatR, hrootR⟩ := runWithKH_syncs3 H (commitReal (m := Id) H)
+  obtain ⟨R, hrunR, hopR, hmatR, hrootR, hoodR⟩ := runWithKH_syncs3 H (commitReal (m := Id) H)
     (FlockP.flockProve (m := Id) (Pure.pure ∘ H)) tr
     (contractIvOf (m := Id) H tr.shape keccakRec3 D.programIv
-      ⟨(setupTreeOf (m := Id) H tr).root⟩) hon.valid hon.rowsFit (fun _ ↦ 0) hflock
+      (setupRootsOf tr (setupTreeOf (m := Id) H tr))) hon.valid hon.rowsFit (fun _ ↦ 0) hflock
     (fun _ ↦ 0) hbatch
   have hacc := runWithKH_accepts3 H (commitReal (m := Id) H) (FlockP.flockProve (m := Id) (Pure.pure ∘ H)) tr
     (contractIvOf (m := Id) H tr.shape keccakRec3 D.programIv
-      ⟨(setupTreeOf (m := Id) H tr).root⟩) hon.valid hon.rowsFit (fun _ ↦ 0) hflock
+      (setupRootsOf tr (setupTreeOf (m := Id) H tr))) hon.valid hon.rowsFit (fun _ ↦ 0) hflock
     (fun _ ↦ 0) hbatch rfl rfl
   have hrun_eq : proverRun3 H (commitReal (m := Id) H) (FlockP.flockProve (m := Id) (Pure.pure ∘ H)) tr
       (contractIvOf (m := Id) H tr.shape keccakRec3 D.programIv
-        ⟨(setupTreeOf (m := Id) H tr).root⟩) =
+        (setupRootsOf tr (setupTreeOf (m := Id) H tr))) =
       streamRun3 H (FlockP.flockProve (m := Id) (Pure.pure ∘ H)) D.programIv tr := rfl
-  rw [hrun_eq] at hrunR hopR hrootR hacc
+  rw [hrun_eq] at hrunR hopR hrootR hoodR hacc
   have hf : StreamFacts3 (commitReal (m := Id) H) tr
       (streamRun3 H (FlockP.flockProve (m := Id) (Pure.pure ∘ H)) D.programIv tr).1 :=
     streamRun3_facts H (commitReal (m := Id) H) _ tr _
@@ -84,7 +85,7 @@ theorem accepts_of_trace3 (D : KDeployment) (H : List UInt8 → Digest) (F : Kec
       (streamRun3 H (FlockP.flockProve (m := Id) (Pure.pure ∘ H)) D.programIv tr).1 :=
     streamValues3 H (commitReal (m := Id) H) _ tr _
   generalize (streamRun3 H (FlockP.flockProve (m := Id) (Pure.pure ∘ H)) D.programIv tr).1 = out
-    at hf hv h1 h2 h3 hopR hrootR hrunR hacc ⊢
+    at hf hv h1 h2 h3 hopR hrootR hoodR hrunR hacc ⊢
   -- The claims.
   obtain ⟨pt1, v1, pt2, v2, pt3, v3, hcl⟩ := claims_shape _ hf.claims_fst
   have hmem : ∀ x ∈ [(Commitment.c1, pt1, v1), (.c2, pt2, v2), (.setup, pt3, v3)], x ∈ out.claims := by
@@ -117,35 +118,31 @@ theorem accepts_of_trace3 (D : KDeployment) (H : List UInt8 → Digest) (F : Kec
   rw [← e1.2.1, ← e1.2.2] at ho1
   rw [← e2.2.1, ← e2.2.2] at ho2
   rw [← e3.2.1, ← e3.2.2] at ho3
-  have ho1' : E2ECompleteness.proveOpeningWithH (m := Id) H F PcsQuotient.nonceFuel (plainLayout 27)
-      (E2ECompleteness.commitWithH (m := Id) H 27 (c1Stack tr)) (c1Stack tr) [⟨pt1, stackEval (c1Stack tr) pt1⟩] =
+  have ho1' : pcsProveH (m := Id) H F PcsQuotient.nonceFuel 27
+      (E2ECompleteness.commitWithH (m := Id) H 27 (c1Stack tr)) (c1Stack tr) pt1 (stackEval (c1Stack tr) pt1) =
       some p1 := by
-    have : E2ECompleteness.proveOpeningWithH (m := Id) H F PcsQuotient.nonceFuel
-        (plainLayout (layoutWordVars ((layoutWordsK tr.shape).getD 0 []))) out.c1.2.tree out.c1.1 [⟨pt1, v1⟩] =
+    have : pcsProveH (m := Id) H F PcsQuotient.nonceFuel (stackVarsK tr.shape .c1) out.c1.2.tree out.c1.1 pt1 v1 =
         some p1 := ho1
-    simp only [hf.c1, commitReal_tree, href, ref_word_c1, ref_c1Layout, hv1] at this
+    simp only [hf.c1, commitReal_tree, href, reference_stackVars_c1, ref_c1Layout, hv1] at this
     exact this
-  have ho2' : E2ECompleteness.proveOpeningWithH (m := Id) H F PcsQuotient.nonceFuel (plainLayout 26)
-      (E2ECompleteness.commitWithH (m := Id) H 26 out.c2.1) out.c2.1 [⟨pt2, stackEval out.c2.1 pt2⟩] =
-      some p2 := by
-    have : E2ECompleteness.proveOpeningWithH (m := Id) H F PcsQuotient.nonceFuel
-        (plainLayout (layoutWordVars ((layoutWordsK tr.shape).getD 1 []))) out.c2.2.tree out.c2.1 [⟨pt2, v2⟩] =
+  have ho2' : pcsProveH (m := Id) H F PcsQuotient.nonceFuel 26
+      (E2ECompleteness.commitWithH (m := Id) H 26 out.c2.1) out.c2.1 pt2 (stackEval out.c2.1 pt2) = some p2 := by
+    have : pcsProveH (m := Id) H F PcsQuotient.nonceFuel (stackVarsK tr.shape .c2) out.c2.2.tree out.c2.1 pt2 v2 =
         some p2 := ho2
-    simp only [hf.c2, commitReal_tree, href, ref_word_c2, ref_c2Layout, hv2] at this
+    simp only [hf.c2, commitReal_tree, href, reference_stackVars_c2, ref_c2Layout, hv2] at this
     exact this
-  have ho3' : E2ECompleteness.proveOpeningWithH (m := Id) H F PcsQuotient.nonceFuel (plainLayout 23)
-      (E2ECompleteness.commitWithH (m := Id) H 23 (setupStackOf tr)) (setupStackOf tr)
-      [⟨pt3, stackEval (setupStackOf tr) pt3⟩] = some p3 := by
-    have : E2ECompleteness.proveOpeningWithH (m := Id) H F PcsQuotient.nonceFuel
-        (plainLayout (layoutWordVars ((layoutWordsK tr.shape).getD 2 [])))
+  have ho3' : pcsProveH (m := Id) H F PcsQuotient.nonceFuel 23
+      (E2ECompleteness.commitWithH (m := Id) H 23 (setupStackOf tr)) (setupStackOf tr) pt3
+      (stackEval (setupStackOf tr) pt3) = some p3 := by
+    have : pcsProveH (m := Id) H F PcsQuotient.nonceFuel (stackVarsK tr.shape .setup)
         (E2ECompleteness.commitWithH (m := Id) H (setupLayout tr.shape).vars (setupStackOf tr)) out.setup
-        [⟨pt3, v3⟩] = some p3 := ho3
-    simp only [hf.setup, href, ref_word_setup, ref_setupLayout, hv3] at this
+        pt3 v3 = some p3 := ho3
+    simp only [hf.setup, href, reference_stackVars_setup, ref_setupLayout, hv3] at this
     exact this
-  -- WHIR accepts each.
-  have a1 := pcsOpen_honest_k H F _ (vars := 27) (by norm_num) (by norm_num) _ hs1 pt1 hl1 ho1'
-  have a2 := pcsOpen_honest_k H F _ (vars := 26) (by norm_num) (by norm_num) _ hs2' pt2 hl2 ho2'
-  have a3 := pcsOpen_honest_k H F _ (vars := 23) (by norm_num) (by norm_num) _ hs3 pt3 hl3 ho3'
+  -- The claims' openings accept each.
+  have a1 := pcsOpenKH_of H F _ (n := 27) (by norm_num) (by norm_num) _ hs1 pt1 hl1 ho1'
+  have a2 := pcsOpenKH_of H F _ (n := 26) (by norm_num) (by norm_num) _ hs2' pt2 hl2 ho2'
+  have a3 := pcsOpenKH_of H F _ (n := 23) (by norm_num) (by norm_num) _ hs3 pt3 hl3 ho3'
   -- The verifier.
   show verifyWithKH (m := Id) H F D.shape keccakRec3
     (KDeployment.ivWithH (m := Id) H D keccakRec3 (D.setupRoots (setupTreeKWithH (m := Id) H F D)))
@@ -157,13 +154,14 @@ theorem accepts_of_trace3 (D : KDeployment) (H : List UInt8 → Digest) (F : Kec
   · rw [← hshape, ← hpi]; rfl
   · rw [hrunR]
   · rw [hopR, hcl]; rfl
-  · simp only [hrootR, hf.c1, commitReal_halves, rootRead_digestScalars, rootOf_digestScalars, hD, ref_word_c1,
-      href, ref_c1Layout, hv1]
+  · simp only [hrootR, hoodR, hf.c1, commitReal_halves, rootRead_rootHalves, rootOf_rootHalves,
+      hD, reference_stackVars_c1, href, ref_c1Layout, hv1]
     exact a1
-  · simp only [hrootR, hf.c2, commitReal_halves, rootRead_digestScalars, rootOf_digestScalars, hD, ref_word_c2,
-      href, ref_c2Layout, hv2]
+  · simp only [hrootR, hoodR, hf.c2, commitReal_halves, rootRead_rootHalves, rootOf_rootHalves,
+      hD, reference_stackVars_c2, href, ref_c2Layout, hv2]
     exact a2
-  · simp only [hD, ref_word_setup, hv3, KDeployment.setupRoots, setupTree_eq, href, ref_setupLayout]
+  · rw [hroots]
+    simp only [setupRootsOf, hD, reference_stackVars_setup, hv3, setupTree_eq, href, ref_setupLayout]
     exact a3
 
 /-! ## The staged challenges are the prover's -/
@@ -186,14 +184,16 @@ theorem front_challenges3 (H : List UInt8 → Digest) (flock : FlockProver Id) (
   set tr := honestTrace D input rows q
   set c1 := E2ECompleteness.commitWithH (m := Id) H (c1LayoutK tr.shape).vars (c1Stack tr)
   set seed := proverSeed3 H D.programIv tr
-  have hw2 : ((Wr.start seed).append (tr.rows.flatMap fun n ↦ integerWire n 4)).append
-      (rootWord (commitReal (m := Id) H .c1 (c1LayoutK tr.shape).vars (c1Stack tr)).halves) =
-      ⟨Prob.prefixStream rows c1, 0, seed, #[]⟩ := rfl
-  set s₁ := H (digestBytes seed ++ ((Prob.prefixStream rows c1).extract 0 (Prob.prefixStream rows c1).size).toList)
-  have h1 : Wr.sampled H ⟨Prob.prefixStream rows c1, 0, seed, #[]⟩ =
-      (Prob.chal s₁, ⟨Prob.prefixStream rows c1, (Prob.prefixStream rows c1).size, s₁, #[Prob.chal s₁]⟩) := rfl
-  have h2 : Wr.sampled H ⟨Prob.prefixStream rows c1, (Prob.prefixStream rows c1).size, s₁, #[Prob.chal s₁]⟩ =
-      (Prob.chal (H (digestBytes s₁)), writerAfter3 rows c1 s₁ (H (digestBytes s₁))) := by
+  have hw2 : (((Wr.start seed).append (tr.rows.flatMap fun n ↦ integerWire n 4)).append
+      (rootWord (commitReal (m := Id) H .c1 (c1LayoutK tr.shape).vars (c1Stack tr)).halves)).append
+      (scalarWire (pcsOod (c1LayoutK tr.shape).vars (c1Stack tr)
+        (rootOf (commitReal (m := Id) H .c1 (c1LayoutK tr.shape).vars (c1Stack tr)).halves))) =
+      ⟨Prob.prefixStream rows c1 (Prob.oodOf tr c1), 0, seed, #[]⟩ := rfl
+  set s₁ := H (digestBytes seed ++ ((Prob.prefixStream rows c1 (Prob.oodOf tr c1)).extract 0 (Prob.prefixStream rows c1 (Prob.oodOf tr c1)).size).toList)
+  have h1 : Wr.sampled H ⟨Prob.prefixStream rows c1 (Prob.oodOf tr c1), 0, seed, #[]⟩ =
+      (Prob.chal s₁, ⟨Prob.prefixStream rows c1 (Prob.oodOf tr c1), (Prob.prefixStream rows c1 (Prob.oodOf tr c1)).size, s₁, #[Prob.chal s₁]⟩) := rfl
+  have h2 : Wr.sampled H ⟨Prob.prefixStream rows c1 (Prob.oodOf tr c1), (Prob.prefixStream rows c1 (Prob.oodOf tr c1)).size, s₁, #[Prob.chal s₁]⟩ =
+      (Prob.chal (H (digestBytes s₁)), writerAfter3 rows c1 (Prob.oodOf tr c1) s₁ (H (digestBytes s₁))) := by
     simp only [Wr.sampled, Prob.extract_size_toList, List.append_nil]
     rfl
   unfold frontOf3

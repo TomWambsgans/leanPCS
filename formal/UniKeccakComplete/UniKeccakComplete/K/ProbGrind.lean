@@ -83,6 +83,17 @@ theorem simulateQ_someImpl {α : Type} (H : Bytes → Digest) (F : KeccakState �
     simp only [simulateQ_query_bind, OracleQuery.input_query, monadLift_self, OracleQuery.cont_query]
     exact ih (totalImpl H F t)
 
+/-- **A PCS opening that fails at a pure `(H, F)` fails at `Option`.** -/
+theorem pcsProveH_some_none {H : Bytes → Digest} {F : KeccakState → KeccakState} {fuel n : ℕ} {tree : Tree}
+    {stack : Array K} {pt : List E} {v : E}
+    (h : pcsProveH (m := Id) H F fuel n tree stack pt v = none) :
+    pcsProveH (m := Option) (fun x ↦ some (H x)) (fun s ↦ some (F s)) fuel n tree stack pt v = some none := by
+  have e1 := simulateQ_pcsProveH (someImpl H F) fuel n tree stack pt v
+  have e2 := simulateQ_pcsProveH (totalImpl H F) fuel n tree stack pt v
+  rw [simulateQ_someImpl, e2] at e1
+  rw [← h]
+  exact e1.symm
+
 /-- **An opening that fails at a pure `(H, F)` fails at `Option`.** -/
 theorem proveOpeningWithH_some_none {H : Bytes → Digest} {F : KeccakState → KeccakState} {fuel : ℕ}
     {L : PcsQuotient.Layout} {tree : Tree} {stack : Array K} {claims : List PcsQuotient.Claim}
@@ -177,6 +188,16 @@ theorem one_le_powPot_of_opening_none (ℓ : Log) (Ht : Bytes → Digest) {L : P
   exact one_le_powPot_of_findNonce_ext (by decide) (by norm_num [PcsQuotient.nonceFuel])
     (by norm_num [PcsQuotient.nonceFuel]) hsp hf
 
+/-- **A PCS opening failing at the log's extension** (its point of the opening's variables) puts the potential at
+least at `1`. -/
+theorem one_le_powPot_of_pcs_none (ℓ : Log) (Ht : Bytes → Digest) {n : ℕ} {tree : Tree} {stack : Array K}
+    {pt : List E} {v : E} (hpt : pt.length = n)
+    (h : pcsProveH (m := Id) Ht (fun s ↦ (lookF ℓ s).getD winState) PcsQuotient.nonceFuel n tree stack pt v = none) :
+    1 ≤ powPot Whir.queryGrindingBits PcsQuotient.nonceFuel ℓ := by
+  obtain ⟨sp, hsp, hf⟩ := pcsProveH_eq_some_none (pcsProveH_some_none h) hpt
+  exact one_le_powPot_of_findNonce_ext (by decide) (by norm_num [PcsQuotient.nonceFuel])
+    (by norm_num [PcsQuotient.nonceFuel]) hsp hf
+
 /-! ## The staged run at a hash function and a permutation -/
 
 variable (flock : FlockProverH) (D : UniKeccak.KDeployment)
@@ -223,8 +244,8 @@ theorem one_le_powPot_of_rejectedU (hc : ProverCommutes flock D) (hf : FlockSimC
   dsimp only at hrej hab ht
   cases hπ : uniProverWith (m := Id) Ht Ft (flock Ht) D input rows q with
   | none =>
-    obtain ⟨L, tree, stack, claims, hfail⟩ := hpow input rows q hfit hrel Ht Ft hab ht hπ
-    exact one_le_powPot_of_opening_none ℓ Ht hfail
+    obtain ⟨n, tree, stack, pt, v, hpt, hfail⟩ := hpow input rows q hfit hrel Ht Ft hab ht hπ
+    exact one_le_powPot_of_pcs_none ℓ Ht hpt hfail
   | some π =>
     exfalso
     have hv := hacc input rows q hfit hrel Ht Ft π hπ hab ht

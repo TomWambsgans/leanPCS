@@ -76,7 +76,8 @@ theorem pcsOpenKH_of (H : List UInt8 → Digest) (F : KeccakState → KeccakStat
 /-- **The setup's commitment the verifier holds is the prover's**, its stack the deployment's. -/
 theorem setupRoots_eq (D : KDeployment) (tr : Trace) (tree : LeanVM.Prover.Tree) (hshape : tr.shape = D.shape)
     (hsetup : setupStackOf tr = setupStackK D.prog D.shape) : D.setupRoots tree = setupRootsOf tr tree := by
-  simp only [KDeployment.setupRoots, setupRootsOf, setupOodK, pcsOod, stackEval, pcsZ, hsetup, hshape]
+  simp only [KDeployment.setupRoots, setupRootsOf, setupOodK, pcsOod, stackEval, pcsZ, hsetup]
+  rw [hshape]
 
 /-- Three claims on `C1`, `C2`, the setup, in order. -/
 theorem claims_shape (l : List (Commitment × List E × E)) (h : l.map (·.1) = [.c1, .c2, .setup]) :
@@ -201,10 +202,10 @@ theorem accepts_of_trace (D : KDeployment) (H : List UInt8 → Digest) (F : Kecc
   · rw [← hshape, ← hpi]; rfl
   · rw [hrunR]
   · rw [hopR, hcl]; rfl
-  · simp only [hrootR, hoodR, hf.c1, commitReal_halves, commitReal_tree, rootRead_rootHalves, rootOf_rootHalves,
+  · simp only [hrootR, hoodR, hf.c1, commitReal_halves, rootRead_rootHalves, rootOf_rootHalves,
       hD, reference_stackVars_c1, href, ref_c1Layout, hv1]
     exact a1
-  · simp only [hrootR, hoodR, hf.c2, commitReal_halves, commitReal_tree, rootRead_rootHalves, rootOf_rootHalves,
+  · simp only [hrootR, hoodR, hf.c2, commitReal_halves, rootRead_rootHalves, rootOf_rootHalves,
       hD, reference_stackVars_c2, href, ref_c2Layout, hv2]
     exact a2
   · rw [hroots]
@@ -235,25 +236,27 @@ theorem coreAccepts_reference (D : KDeployment) (hD : D.shape = keccakRefShape) 
 /-- **`proveWith` fails only at an opening**: if it returns `none`, one of the three WHIR openings returned `none`
 (every commitment has a claim, `claims_complete`). -/
 theorem fails_only_at_opening (H : List UInt8 → Digest) (F : KeccakState → KeccakState) (fuel : ℕ)
-    (flock : FlockProver Id) (programIv : List UInt8) (tr : Trace)
+    (flock : FlockProver Id) (programIv : List UInt8) (tr : Trace) (hon : TraceHonest tr)
     (hnone : proveWith (m := Id) H F fuel flock programIv tr = none) :
-    ∃ (L : PcsQuotient.Layout) (tree : LeanVM.Prover.Tree) (stack : Array K) (claims : List PcsQuotient.Claim),
-      E2ECompleteness.proveOpeningWithH (m := Id) H F fuel L tree stack claims = none := by
+    ∃ (n : ℕ) (tree : LeanVM.Prover.Tree) (stack : Array K) (pt : List E) (v : E), pt.length = n ∧
+      pcsProveH (m := Id) H F fuel n tree stack pt v = none := by
   have hf : StreamFacts (commitReal (m := Id) H) tr (streamRun H flock programIv tr).1 :=
     streamRun_facts H (commitReal (m := Id) H) _ tr _
-  rcases proveWith_eq_none H F _ _ _ _ hnone with hmiss | ⟨_, pt, v, -, h⟩ | ⟨_, pt, v, -, h⟩ |
-      ⟨_, pt, v, -, h⟩
+  have hC2 := c2ColumnsHonest_of_traceHonest hon
+  rcases proveWith_eq_none H F _ _ _ _ hnone with hmiss | ⟨_, pt, v, hfd, h⟩ | ⟨_, pt, v, hfd, h⟩ |
+      ⟨_, pt, v, hfd, h⟩
   · exfalso
     obtain ⟨c, hc, hn⟩ := hmiss
     have hc' : c ∈ (streamRun H flock programIv tr).1.claims.map (·.1) := by
       rw [hf.claims_fst]; exact hc
     obtain ⟨x, hx, rfl⟩ := List.mem_map.mp hc'
     exact absurd (by simp : (x.1 == x.1) = true) (List.find?_eq_none.mp hn x hx)
-  all_goals exact ⟨_, _, _, _, h⟩
+  all_goals exact ⟨_, _, _, pt, v, claim_length hf hC2 hfd, h⟩
 
 /-- **The honest prover fails only at an opening** (`Prob.CoreFailsOnlyAtPow`), every shape. -/
 theorem coreFailsOnlyAtPow (D : KDeployment) : Prob.CoreFailsOnlyAtPow D flockProveH :=
-  fun _ _ _ _ _ H F _ _ hnone ↦ fails_only_at_opening H F _ _ _ _ hnone
+  fun input rows q hfit hrel H F _ _ hnone ↦ fails_only_at_opening H F _ _ _ _
+    (Mapping.honestTrace_honest D input rows q hfit hrel) hnone
 
 end UniKeccakComplete.Core
 

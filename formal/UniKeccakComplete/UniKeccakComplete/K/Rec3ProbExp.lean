@@ -41,8 +41,8 @@ open LeanVM.Protocol.Compile.Rom (implH implF simulateQ_queryH)
 open UniStatement UniKeccak
 open E2ECompleteness (HashOK hashOK_callKeccak256 Disc)
 open UniKeccakComplete.Prob (chal ProverA firstInput tInput afterT GoodL goodL_of_length hashOK_commitWithH
-  duplexVm_map_iff qc_bind_support FlockSimCommutes run_sampleW run_sendRoot ivTag_length len_digestBytes
-  shapeBytes_length elementBytes24_length name_length)
+  duplexVm_map_iff qc_bind_support FlockSimCommutes run_sampleW run_sendRoot run_sendScalar ivTag_length len_digestBytes
+  shapeBytes_length elementBytes24_length variantBytesK_length name_length)
 open scoped ENNReal
 open Common (queryPermutation)
 
@@ -124,7 +124,7 @@ structure MidU3 where
 def midU3 (input : Vector UInt8 32) (rows : List ℕ) (q : D.Stack rows) (a : ProverA) (s₁ s₂ : Digest) :
     OracleComp KeccakCalls ((E × FlockOut × Committed) × Wr) :=
   (midB3 callKeccak256 (commitReal callKeccak256) (flock callKeccak256) (honestTrace D input rows q)
-    (squares (chal s₁) 4) (chal s₂)).run (writerAfter3 rows a.c1 s₁ s₂)
+    (squares (chal s₁) 4) (chal s₂)).run (writerAfter3 rows a.c1 a.ood s₁ s₂)
 
 /-- **π1-rec3's experiment's stages**: `A` the setup and the prover before the bus challenges; `B` the prover from
 `γ` to `C2`'s root (`midB`); `t`'s input the writer's (`tInput`), its prior Flock's point; `C` the prover after `t`
@@ -168,8 +168,8 @@ theorem simulateQ_midU3 (hf : FlockSimCommutes flock) {r : Type → Type} [Monad
     (s₁ s₂ : Digest) :
     simulateQ impl (midU3 flock D input rows q a s₁ s₂) =
       (midB3 (implH impl) (commitReal (implH impl)) (flock (implH impl)) (honestTrace D input rows q)
-        (squares (chal s₁) 4) (chal s₂)).run (writerAfter3 rows a.c1 s₁ s₂) := by
-  simp only [midU3, midB3, StateT.run_bind, run_sampleW, StateT.run_lift, run_sendRoot, commitReal, bind_assoc,
+        (squares (chal s₁) 4) (chal s₂)).run (writerAfter3 rows a.c1 a.ood s₁ s₂) := by
+  simp only [midU3, midB3, StateT.run_bind, run_sampleW, StateT.run_lift, run_sendRoot, run_sendScalar, commitReal, bind_assoc,
     pure_bind, StateT.run_pure, simulateQ_bind, simulateQ_pure, simulateQ_queryH, hf impl,
     E2ECompleteness.simulateQ_commitWithH]
 
@@ -196,7 +196,7 @@ theorem hashA_stagedU3 (hpiv : 32 ≤ D.programIv.length) (input : Vector UInt8 
     E2ECompleteness.HashOK.bind (hashOK_callKeccak256 (goodL_of_length (Or.inr (Or.inr (Or.inl ?_))))) fun _ ↦
     E2ECompleteness.HashOK.bind (hashOK_commitWithH _ _) fun _ ↦ E2ECompleteness.HashOK.pure _ _
   · simp only [List.length_append, ivTag_length, len_digestBytes, shapeBytes_length, elementBytes24_length,
-      honestTrace]
+      variantBytesK_length, honestTrace]
     omega
   · simp [name_length, len_digestBytes, honestTrace]
 

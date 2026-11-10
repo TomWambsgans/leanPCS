@@ -27,7 +27,7 @@ its zerocheck coordinates the squares of one challenge), so no Flock lemma is ne
 * **The prover** (`costP_proveRec3With`, `uniProverCost3`): the setup's tree, the Keccak contract's IV at
   `keccakRec3` (`163` bytes and the program IV), the seed, the stream, three openings (`Cost.openP`).
 * **At the reference shape** (`proverBlocks3_reference`): at most `2^47` block calls (nearly all the three WHIR
-  provers'), the stream at most `6904` bytes beyond Flock's (`proverStream3_reference`); for the honest Flock prover
+  provers'), the stream at most `6952` bytes beyond Flock's (`proverStream3_reference`); for the honest Flock prover
   **`cost_rec3_flockProveH`** (`2^47`) and **`streamSize_rec3_flockProveH`** (`2^14`), and the total
   **`totalCostK3_le`** (`2^48`).
 -/
@@ -128,7 +128,7 @@ def streamBlocks3 (shape : UniStatement.Shape) (kF : ℕ) : ℕ :=
 /-- **π1-rec3's stream's bytes**: the row counts, the two roots, Flock's, the values at `t`, `96` a batch variable,
 the three claims' values. -/
 def streamBytes3 (shape : UniStatement.Shape) (rows wF : ℕ) : ℕ :=
-  4 * rows + 64 + wF + 24 * valuesBound + 96 * batchVarsBound shape + 72
+  4 * rows + 112 + wF + 24 * valuesBound + 96 * batchVarsBound shape + 72
 
 /-- **π1-rec3's stream's cost**, given Flock's prover's at its `log_n` and `keccakRec3`. -/
 theorem wc_proveStreamRec3With (flock : FlockProver (OracleComp KeccakCalls)) (kF wF : ℕ) (tr : Trace)
@@ -142,12 +142,14 @@ theorem wc_proveStreamRec3With (flock : FlockProver (OracleComp KeccakCalls)) (k
     (fun _ _ _ ↦ ?_) (by omega) (by omega)
   refine wc_seq (wc_lift (qc_commitReal _ _ _)) (fun committed1 _ _ ↦ ?_) (by omega) (by omega)
   refine wc_seq (wc_sendRoot _) (fun _ _ _ ↦ ?_) (by omega) (by omega)
+  refine wc_seq (wc_sendScalar _) (fun _ _ _ ↦ ?_) (by omega) (by omega)
   refine wc_seq (wc_drawRunW 4) (fun alphas _ _ ↦ ?_) (by omega) (by omega)
   refine wc_seq wc_sampleW (fun beta _ _ ↦ ?_) (by omega) (by omega)
   refine wc_seq wc_sampleW (fun gamma _ _ ↦ ?_) (by omega) (by omega)
   refine wc_seq (wc_map some hF) (fun flockOut _ _ ↦ ?_) (by omega) (by omega)
   refine wc_seq (wc_lift (qc_commitReal _ _ _)) (fun committed2 _ _ ↦ ?_) (by omega) (by omega)
   refine wc_seq (wc_sendRoot _) (fun _ _ _ ↦ ?_) (by omega) (by omega)
+  refine wc_seq (wc_sendScalar _) (fun _ _ _ ↦ ?_) (by omega) (by omega)
   refine wc_seq wc_sampleW (fun t _ _ ↦ ?_) (by omega) (by omega)
   have ha := Bounds.atT_facts tr (c2DataOf tr (eqKernel alphas) beta gamma) alphas beta gamma t flockOut
   have hvars := Bounds.batchVars_atT tr (c2DataOf tr (eqKernel alphas) beta gamma) alphas beta gamma t flockOut
@@ -191,7 +193,7 @@ theorem costP_proveRec3With (flock : FlockProver (OracleComp KeccakCalls)) (kF w
   simp only [bind_assoc, pure_bind]
   refine costP_seq_qc (qc_setupTreeOf tr) (fun tree ↦ ?_) (by unfold uniProverCost3; omega)
   refine costP_seq_qc (qc_H_le (k := (163 + programIv.length) / 136 + 1) (by
-    simp only [List.length_append, ivTag_length, len_digestBytes, shapeBytes_length, layoutWordsK_length,
+    simp only [List.length_append, ivTag_length, len_digestBytes, shapeBytes_length, elementBytes24_length,
       variantBytesK_length]
     omega))
     (fun d ↦ ?_) (by unfold uniProverCost3; omega)
@@ -284,11 +286,11 @@ theorem proverBlocks3_reference (D : UniKeccak.KDeployment) (hD : D.shape = kecc
   norm_num [treeCost, blockFactor, whirBound, costHeight, PcsQuotient.nonceFuel]
   omega
 
-/-- **π1-rec3's honest stream at the reference shape**: the six row counts (`24`), the two roots (`64`), the `173`
-values at `t`, `27` batch variables (`96` bytes each), the claims' three values: `6904` bytes, and Flock's. -/
+/-- **π1-rec3's honest stream at the reference shape**: the six row counts (`24`), the two roots and their out-of-domain answers (`112`), the `173`
+values at `t`, `27` batch variables (`96` bytes each), the claims' three values: `6952` bytes, and Flock's. -/
 theorem proverStream3_reference (D : UniKeccak.KDeployment) (hD : D.shape = keccakRefShape)
     (w : ℕ → UniKeccak.KeccakVariant → ℕ) :
-    proverStream3 D 6 w = 6904 + w 32 UniKeccak.keccakRec3 := by
+    proverStream3 D 6 w = 6952 + w 32 UniKeccak.keccakRec3 := by
   obtain ⟨-, -, -, h4⟩ := reference_stackVars
   unfold proverStream3 streamBytes3
   rw [hD, reference_flockLogN, h4, valuesBound_eq]
@@ -314,7 +316,7 @@ theorem cost_rec3_flockProveH (D : UniKeccak.KDeployment) (hD : D.shape = keccak
     (by rw [flockBlocks_rec3_reference]; norm_num) (by rw [flockBytes_rec3_reference]; norm_num))
 
 /-- **Every proof π1-rec3's honest prover can output has a stream of at most `2^14` bytes** at the reference shape
-(`6904 + 3696`; the π1-rec3 analogue of `Prob.ProverStreamSize`). -/
+(`6952 + 3696`; the π1-rec3 analogue of `Prob.ProverStreamSize`). -/
 theorem streamSize_rec3_flockProveH (D : UniKeccak.KDeployment) (hD : D.shape = keccakRefShape)
     (input : Vector UInt8 32) (rows : List ℕ) (q : D.Stack rows) (hfit : D.shape.RowsFit rows)
     (_ : D.HonestRelation KeccakFlock.keccakFlockSpec rows input q) (π : UniKeccak.KeccakProof)

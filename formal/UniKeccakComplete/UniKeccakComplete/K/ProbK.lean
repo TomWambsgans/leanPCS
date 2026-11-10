@@ -46,7 +46,7 @@ theorem stagedU_holds {Ns NP S Nv : ℕ} (hc : ProverCommutes flock D) (hf : Flo
         hashBlocks Nv)
     (hcost : ProverCost flock D NP) (hstream : ProverStreamSize flock D S) (htot : Ns + (NP + Nv) ≤ 2 ^ 48)
     (hacc : CoreAccepts D flock) (hpow : CoreFailsOnlyAtPow D flock) (hbad : BadFpCard D (2 ^ 22 - 1))
-    (hbadT : BadTCard D.shape (2 ^ 15)) (htf : TQueryFresh flock D ((2 : ℝ≥0∞)⁻¹ ^ 200))
+    (hbadT : BadTCard D.shape (2 ^ 15)) (htf : TQueryFresh flock D ((2 : ℝ≥0∞)⁻¹ ^ 200)) (hpiv : 32 ≤ D.programIv.length)
     (input : Vector UInt8 32) (rows : List ℕ) (q : D.Stack rows) (hfit : D.shape.RowsFit rows)
     (hrel : D.HonestRelation KeccakFlock.keccakFlockSpec rows input q) :
     (stagedU flock D input rows q).Holds D keccakMain (uniProverRP flock D) input rows q
@@ -55,7 +55,7 @@ theorem stagedU_holds {Ns NP S Nv : ℕ} (hc : ProverCommutes flock D) (hf : Flo
   have hQ := cost_stagedU flock D hset hver hcost hstream input rows q hfit hrel
   refine ⟨experiment_staged flock D hc input rows q, ?_⟩
   refine ⟨duplexVm_stagedU flock D hdup input rows q hfit hrel, hQ.mono htot, fun a ↦ firstInput_length hfit.1 a.2,
-    hashA_stagedU flock D input rows q, hbad input rows q hfit hrel, hbadT, htf input rows q hfit hrel, ?_⟩
+    hashA_stagedU flock D hpiv input rows q, hbad input rows q hfit hrel, hbadT, htf input rows q hfit hrel, ?_⟩
   refine (rejectGood_uni flock D hc hf hacc hpow input rows q hfit hrel hQ).trans ?_
   calc ((Ns + (NP + Nv) : ℕ) : ℝ≥0∞) * missProb Whir.queryGrindingBits ^ PcsQuotient.nonceFuel
       ≤ ((2 ^ 48 : ℕ) : ℝ≥0∞) * missProb Whir.queryGrindingBits ^ PcsQuotient.nonceFuel := by
@@ -70,11 +70,11 @@ theorem kStagedK_of_core {Ns NP S Nv : ℕ} (hflock : FlockCommutes flock)
         hashBlocks Nv)
     (hcost : ProverCost flock D NP) (hstream : ProverStreamSize flock D S) (htot : Ns + (NP + Nv) ≤ 2 ^ 48)
     (hacc : CoreAccepts D flock) (hpow : CoreFailsOnlyAtPow D flock) (hbad : BadFpCard D (2 ^ 22 - 1))
-    (hbadT : BadTCard D.shape (2 ^ 15)) (htf : TQueryFresh flock D ((2 : ℝ≥0∞)⁻¹ ^ 200)) :
+    (hbadT : BadTCard D.shape (2 ^ 15)) (htf : TQueryFresh flock D ((2 : ℝ≥0∞)⁻¹ ^ 200)) (hpiv : 32 ≤ D.programIv.length) :
     KStagedK D keccakMain (uniProverRP flock D) := fun input rows q hfit hrel ↦
   ⟨stagedU flock D input rows q, _, _,
     stagedU_holds flock D (proverCommutes_of_flock hflock D) (flockSimCommutes_of_commutes hflock)
-      (proverDuplex_of_flock hflock D) hset hver hcost hstream htot hacc hpow hbad hbadT htf input rows q hfit hrel⟩
+      (proverDuplex_of_flock hflock D) hset hver hcost hstream htot hacc hpow hbad hbadT htf hpiv input rows q hfit hrel⟩
 
 /-- **Completeness of the Keccak verifier (main line)**, `deltaK < 2^-169`, from the named hypotheses. -/
 theorem uniCompletenessKeccak_of_core {Ns NP S Nv : ℕ} (hflock : FlockCommutes flock)
@@ -84,10 +84,10 @@ theorem uniCompletenessKeccak_of_core {Ns NP S Nv : ℕ} (hflock : FlockCommutes
         hashBlocks Nv)
     (hcost : ProverCost flock D NP) (hstream : ProverStreamSize flock D S) (htot : Ns + (NP + Nv) ≤ 2 ^ 48)
     (hacc : CoreAccepts D flock) (hpow : CoreFailsOnlyAtPow D flock) (hbad : BadFpCard D (2 ^ 22 - 1))
-    (hbadT : BadTCard D.shape (2 ^ 15)) (htf : TQueryFresh flock D ((2 : ℝ≥0∞)⁻¹ ^ 200)) :
+    (hbadT : BadTCard D.shape (2 ^ 15)) (htf : TQueryFresh flock D ((2 : ℝ≥0∞)⁻¹ ^ 200)) (hpiv : 32 ≤ D.programIv.length) :
     UniCompletenessKeccak KeccakFlock.keccakFlockSpec D (uniProverRP flock D) deltaK :=
   uniCompletenessKeccak_end D _
-    (kStagedK_of_core flock D hflock hset hver hcost hstream htot hacc hpow hbad hbadT htf)
+    (kStagedK_of_core flock D hflock hset hver hcost hstream htot hacc hpow hbad hbadT htf hpiv)
 
 end UniKeccakComplete.Prob
 

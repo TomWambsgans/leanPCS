@@ -47,6 +47,7 @@ theorem streamValues (H : List UInt8 → Digest) (commit : Commitment → ℕ �
   refine peel fun _ s0 _ ↦ ?_
   refine peel_lift ?_
   refine peel fun _ s1 _ ↦ ?_
+  refine peel fun _ s1' _ ↦ ?_
   refine peel fun alphas s2 _ ↦ ?_
   refine peel fun beta s3 _ ↦ ?_
   refine peel fun gamma s4 _ ↦ ?_
@@ -54,6 +55,7 @@ theorem streamValues (H : List UInt8 → Digest) (commit : Commitment → ℕ �
   dsimp only
   refine peel_lift ?_
   refine peel fun _ s6 _ ↦ ?_
+  refine peel fun _ s6' _ ↦ ?_
   refine peel fun t s7 _ ↦ ?_
   refine peel fun _ s8 _ ↦ ?_
   refine peel fun rho s9 _ ↦ ?_
@@ -85,7 +87,8 @@ def frontFrom (tr : Trace) (committed1 : Committed) (alphas : List E) (beta : E)
   let w6 := ((flock logN keccakMain tr.qflock).run w5).2
   let c2 := c2DataOf tr (eqKernel alphas) beta gamma
   let committed2 : Committed := commit .c2 (((layoutsOfK shape).lookup .c2).getD default).vars c2.stack
-  let w7 := w6.append (rootWord committed2.halves)
+  let w7 := (w6.append (rootWord committed2.halves)).append
+    (scalarWire (pcsOod (((layoutsOfK shape).lookup .c2).getD default).vars c2.stack (rootOf committed2.halves)))
   let t := (Wr.sampled H w7).1
   let w8 := (Wr.sampled H w7).2
   let a := atTOf tr c2 alphas beta gamma t flockOut
@@ -102,14 +105,20 @@ theorem frontOf_eq (tr : Trace) (w0 : Wr) :
     frontOf H commit flock tr w0 =
       frontFrom H commit flock tr (commit .c1 (c1LayoutK tr.shape).vars (c1Stack tr))
         ((samplesW (m := Id) (Pure.pure ∘ H) 4).run
-          ((w0.append (tr.rows.flatMap fun n ↦ integerWire n 4)).append
-            (rootWord (commit .c1 (c1LayoutK tr.shape).vars (c1Stack tr)).halves))).1
+          (((w0.append (tr.rows.flatMap fun n ↦ integerWire n 4)).append
+            (rootWord (commit .c1 (c1LayoutK tr.shape).vars (c1Stack tr)).halves)).append
+            (scalarWire (pcsOod (c1LayoutK tr.shape).vars (c1Stack tr)
+              (rootOf (commit .c1 (c1LayoutK tr.shape).vars (c1Stack tr)).halves))))).1
         (Wr.sampled H ((samplesW (m := Id) (Pure.pure ∘ H) 4).run
-          ((w0.append (tr.rows.flatMap fun n ↦ integerWire n 4)).append
-            (rootWord (commit .c1 (c1LayoutK tr.shape).vars (c1Stack tr)).halves))).2).1
+          (((w0.append (tr.rows.flatMap fun n ↦ integerWire n 4)).append
+            (rootWord (commit .c1 (c1LayoutK tr.shape).vars (c1Stack tr)).halves)).append
+            (scalarWire (pcsOod (c1LayoutK tr.shape).vars (c1Stack tr)
+              (rootOf (commit .c1 (c1LayoutK tr.shape).vars (c1Stack tr)).halves))))).2).1
         (Wr.sampled H ((samplesW (m := Id) (Pure.pure ∘ H) 4).run
-          ((w0.append (tr.rows.flatMap fun n ↦ integerWire n 4)).append
-            (rootWord (commit .c1 (c1LayoutK tr.shape).vars (c1Stack tr)).halves))).2).2 := rfl
+          (((w0.append (tr.rows.flatMap fun n ↦ integerWire n 4)).append
+            (rootWord (commit .c1 (c1LayoutK tr.shape).vars (c1Stack tr)).halves)).append
+            (scalarWire (pcsOod (c1LayoutK tr.shape).vars (c1Stack tr)
+              (rootOf (commit .c1 (c1LayoutK tr.shape).vars (c1Stack tr)).halves))))).2).2 := rfl
 
 end Front
 
@@ -128,25 +137,25 @@ theorem sampled_start (H : List UInt8 → Digest) (s : Array UInt8) (st : Digest
 
 /-- **The five bus challenges from the stream's prefix**: `s₁ = H(seed ‖ prefix)`, `s_{k+1} = H(s_k)`; the writer
 after them is `Prob.writerAfter`. -/
-theorem samples_prefix (H : List UInt8 → Digest) (rows : List ℕ) (c1 : LeanVM.Prover.Tree) (seed : Digest)
+theorem samples_prefix (H : List UInt8 → Digest) (rows : List ℕ) (c1 : LeanVM.Prover.Tree) (ood : E) (seed : Digest)
     (s₁ s₂ s₃ s₄ s₅ : Digest)
     (h₁ : s₁ = H (digestBytes seed ++
-      ((Prob.prefixStream rows c1).extract 0 (Prob.prefixStream rows c1).size).toList))
+      ((Prob.prefixStream rows c1 ood).extract 0 (Prob.prefixStream rows c1 ood).size).toList))
     (h₂ : s₂ = H (digestBytes s₁)) (h₃ : s₃ = H (digestBytes s₂)) (h₄ : s₄ = H (digestBytes s₃))
     (h₅ : s₅ = H (digestBytes s₄)) :
-    ((samplesW (m := Id) (Pure.pure ∘ H) 4).run ⟨Prob.prefixStream rows c1, 0, seed, #[]⟩).1 =
+    ((samplesW (m := Id) (Pure.pure ∘ H) 4).run ⟨Prob.prefixStream rows c1 ood, 0, seed, #[]⟩).1 =
         [Prob.chal s₁, Prob.chal s₂, Prob.chal s₃, Prob.chal s₄] ∧
-      Wr.sampled H ((samplesW (m := Id) (Pure.pure ∘ H) 4).run ⟨Prob.prefixStream rows c1, 0, seed, #[]⟩).2 =
-        (Prob.chal s₅, Prob.writerAfter rows c1 s₁ s₂ s₃ s₄ s₅) := by
+      Wr.sampled H ((samplesW (m := Id) (Pure.pure ∘ H) 4).run ⟨Prob.prefixStream rows c1 ood, 0, seed, #[]⟩).2 =
+        (Prob.chal s₅, Prob.writerAfter rows c1 ood s₁ s₂ s₃ s₄ s₅) := by
   subst h₁ h₂ h₃ h₄ h₅
-  have h4 : (samplesW (m := Id) (Pure.pure ∘ H) 4).run ⟨Prob.prefixStream rows c1, 0, seed, #[]⟩ =
-      ([(Wr.sampled H ⟨Prob.prefixStream rows c1, 0, seed, #[]⟩).1,
-        (Wr.sampled H (Wr.sampled H ⟨Prob.prefixStream rows c1, 0, seed, #[]⟩).2).1,
-        (Wr.sampled H (Wr.sampled H (Wr.sampled H ⟨Prob.prefixStream rows c1, 0, seed, #[]⟩).2).2).1,
+  have h4 : (samplesW (m := Id) (Pure.pure ∘ H) 4).run ⟨Prob.prefixStream rows c1 ood, 0, seed, #[]⟩ =
+      ([(Wr.sampled H ⟨Prob.prefixStream rows c1 ood, 0, seed, #[]⟩).1,
+        (Wr.sampled H (Wr.sampled H ⟨Prob.prefixStream rows c1 ood, 0, seed, #[]⟩).2).1,
+        (Wr.sampled H (Wr.sampled H (Wr.sampled H ⟨Prob.prefixStream rows c1 ood, 0, seed, #[]⟩).2).2).1,
         (Wr.sampled H (Wr.sampled H (Wr.sampled H (Wr.sampled H
-          ⟨Prob.prefixStream rows c1, 0, seed, #[]⟩).2).2).2).1],
+          ⟨Prob.prefixStream rows c1 ood, 0, seed, #[]⟩).2).2).2).1],
         (Wr.sampled H (Wr.sampled H (Wr.sampled H (Wr.sampled H
-          ⟨Prob.prefixStream rows c1, 0, seed, #[]⟩).2).2).2).2) := rfl
+          ⟨Prob.prefixStream rows c1 ood, 0, seed, #[]⟩).2).2).2).2) := rfl
   rw [h4]
   refine ⟨?_, ?_⟩ <;> (simp only [sampled_start, sampled_absorbed]; try rfl)
 
@@ -166,15 +175,20 @@ theorem front_challenges (H : List UInt8 → Digest) (flock : FlockProver Id) (D
       (frontOf H (commitReal (m := Id) H) flock (honestTrace D input rows q)
         (Wr.start (proverSeed H D.programIv (honestTrace D input rows q)))).1.t =
         (Prob.proverTChallenge H flock D input rows q).2 := by
-  have hw2 : ((Wr.start (proverSeed H D.programIv (honestTrace D input rows q))).append
+  have hw2 : (((Wr.start (proverSeed H D.programIv (honestTrace D input rows q))).append
         ((honestTrace D input rows q).rows.flatMap fun n ↦ integerWire n 4)).append
       (rootWord (commitReal (m := Id) H .c1 (c1LayoutK (honestTrace D input rows q).shape).vars
-        (c1Stack (honestTrace D input rows q))).halves) =
+        (c1Stack (honestTrace D input rows q))).halves)).append
+      (scalarWire (pcsOod (c1LayoutK (honestTrace D input rows q).shape).vars (c1Stack (honestTrace D input rows q))
+        (rootOf (commitReal (m := Id) H .c1 (c1LayoutK (honestTrace D input rows q).shape).vars
+          (c1Stack (honestTrace D input rows q))).halves))) =
       ⟨Prob.prefixStream rows (E2ECompleteness.commitWithH (m := Id) H
-          (c1LayoutK (honestTrace D input rows q).shape).vars (c1Stack (honestTrace D input rows q))), 0,
+          (c1LayoutK (honestTrace D input rows q).shape).vars (c1Stack (honestTrace D input rows q)))
+          (Prob.oodOf (honestTrace D input rows q) (E2ECompleteness.commitWithH (m := Id) H
+            (c1LayoutK (honestTrace D input rows q).shape).vars (c1Stack (honestTrace D input rows q)))), 0,
         proverSeed H D.programIv (honestTrace D input rows q), #[]⟩ := rfl
   obtain ⟨hα, hβ⟩ := samples_prefix H rows (E2ECompleteness.commitWithH (m := Id) H
-      (c1LayoutK (honestTrace D input rows q).shape).vars (c1Stack (honestTrace D input rows q)))
+      (c1LayoutK (honestTrace D input rows q).shape).vars (c1Stack (honestTrace D input rows q))) _
     (proverSeed H D.programIv (honestTrace D input rows q)) _ _ _ _ _ rfl rfl rfl rfl rfl
   rw [frontOf_eq, hw2, hα, hβ]
   exact ⟨rfl, rfl, rfl, rfl⟩

@@ -45,7 +45,7 @@ theorem stagedU3_holds {Ns NP S NV : ℕ} (hc : ProverCommutes3 flock D) (hf : F
     (hcost : ProverCost3 flock D NP) (hstream : ProverStreamSize3 flock D S) (hvcost : VerifierCost3 D S NV)
     (htot : Ns + (NP + NV) ≤ 2 ^ 48) (hacc : CoreAccepts3 D flock) (hpow : CoreFailsOnlyAtPow3 D flock)
     (hbad : BadFpCard D (2 ^ 22 - 1)) (hbadT : BadTCard D.shape (2 ^ 15))
-    (htf : TQueryFresh3 flock D ((2 : ℝ≥0∞)⁻¹ ^ 200))
+    (htf : TQueryFresh3 flock D ((2 : ℝ≥0∞)⁻¹ ^ 200)) (hpiv : 32 ≤ D.programIv.length)
     (input : Vector UInt8 32) (rows : List ℕ) (q : D.Stack rows) (hfit : D.shape.RowsFit rows)
     (hrel : D.HonestRelation KeccakFlock.keccakFlockSpec rows input q) :
     (stagedU3 flock D input rows q).Holds D (uniProverRec3RP flock D) input rows q
@@ -53,7 +53,7 @@ theorem stagedU3_holds {Ns NP S NV : ℕ} (hc : ProverCommutes3 flock D) (hf : F
       ((2 : ℝ≥0∞)⁻¹ ^ 200) ((2 : ℝ≥0∞)⁻¹ ^ 304) := by
   have hQ := cost_stagedU3 flock D hset hcost hstream hvcost input rows q hfit hrel
   refine ⟨experiment_staged3 flock D hc input rows q, duplexVm_stagedU3 flock D hdup input rows q hfit hrel,
-    hQ.mono htot, fun a ↦ Prob.firstInput_length hfit.1 a.2, hashA_stagedU3 flock D input rows q,
+    hQ.mono htot, fun a ↦ Prob.firstInput_length hfit.1 a.2, hashA_stagedU3 flock D hpiv input rows q,
     hbad input rows q hfit hrel, hbadT, htf input rows q hfit hrel, ?_⟩
   refine (rejectGood3 flock D hc hf hacc hpow input rows q hfit hrel hQ).trans ?_
   calc ((Ns + (NP + NV) : ℕ) : ℝ≥0∞) * missProb Whir.queryGrindingBits ^ PcsQuotient.nonceFuel
@@ -76,13 +76,13 @@ theorem uniCompletenessKeccakRec3_of_core {Ns NP S NV : ℕ} (hflock : FlockComm
     (hcost : ProverCost3 flock D NP) (hstream : ProverStreamSize3 flock D S) (hvcost : VerifierCost3 D S NV)
     (htot : Ns + (NP + NV) ≤ 2 ^ 48) (hacc : CoreAccepts3 D flock) (hpow : CoreFailsOnlyAtPow3 D flock)
     (hbad : BadFpCard D (2 ^ 22 - 1)) (hbadT : BadTCard D.shape (2 ^ 15))
-    (htf : TQueryFresh3 flock D ((2 : ℝ≥0∞)⁻¹ ^ 200)) :
+    (htf : TQueryFresh3 flock D ((2 : ℝ≥0∞)⁻¹ ^ 200)) (hpiv : 32 ≤ D.programIv.length) :
     UniCompletenessKeccakRec3 KeccakFlock.keccakFlockSpec D (uniProverRec3RP flock D) deltaK := by
   have h := uniCompletenessKeccakRec3_of_staged3 (F := KeccakFlock.keccakFlockSpec) (D := D)
     (P := uniProverRec3RP flock D) fun input rows q hfit hrel ↦
       ⟨stagedU3 flock D input rows q, _, _,
         stagedU3_holds flock D hc (flockSimCommutes_of_commutes hflock) hdup hset hcost hstream hvcost htot hacc
-          hpow hbad hbadT htf input rows q hfit hrel⟩
+          hpow hbad hbadT htf hpiv input rows q hfit hrel⟩
   exact fun input rows q hfit hrel ↦ (h input rows q hfit hrel).trans delta3_le_deltaK
 
 end UniKeccakComplete.Rec3

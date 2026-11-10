@@ -22,18 +22,18 @@ open scoped ENNReal
 namespace UniKeccakComplete
 
 /-- **Completeness of the Keccak verifier (main line)**, closed: no hypothesis beyond the deployment's shape and its
-program IV's length. -/
+program IV's length (at least a digest's `32` bytes, at most `2^16`). -/
 theorem uniCompletenessKeccak_closed (D : KDeployment) (hD : D.shape = UniKeccakSound.keccakRefShape)
-    (hiv : D.programIv.length ≤ 2 ^ 16) :
+    (hiv : D.programIv.length ≤ 2 ^ 16) (hpiv : 32 ≤ D.programIv.length) :
     UniCompletenessKeccak KeccakFlock.keccakFlockSpec D (Prob.uniProverRP flockProveH D) Prob.deltaK :=
-  uniCompletenessKeccak_ref D hD hiv (Core.coreAccepts_reference D hD) (Core.coreFailsOnlyAtPow D)
+  uniCompletenessKeccak_ref D hD hiv hpiv (Core.coreAccepts_reference D hD) (Core.coreFailsOnlyAtPow D)
 
 /-- **Completeness of the Keccak π1 at π1-rec3's shape**, closed: no hypothesis beyond the deployment's shape and its
-program IV's length. -/
+program IV's length (at least a digest's `32` bytes, at most `2^16`). -/
 theorem uniCompletenessKeccakRec3_closed (D : KDeployment) (hD : D.shape = UniKeccakSound.keccakRefShape)
-    (hiv : D.programIv.length ≤ 2 ^ 16) :
+    (hiv : D.programIv.length ≤ 2 ^ 16) (hpiv : 32 ≤ D.programIv.length) :
     UniCompletenessKeccakRec3 KeccakFlock.keccakFlockSpec D (Rec3.uniProverRec3RP flockProveH D) Prob.deltaK :=
-  uniCompletenessKeccakRec3_ref D hD hiv (Rec3.coreAccepts3_reference D hD) (Rec3.coreFailsOnlyAtPow3 D flockProveH)
+  uniCompletenessKeccakRec3_ref D hD hiv hpiv (Rec3.coreAccepts3_reference D hD) (Rec3.coreFailsOnlyAtPow3 D flockProveH)
 
 end UniKeccakComplete
 

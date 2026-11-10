@@ -742,8 +742,10 @@ theorem run_midB (flock : FlockProver (OracleComp KeccakCalls)) (tr : Trace) (al
         (flock (keccakR1csLogSize + tr.shape.heights.getD opSha3 0) keccakMain tr.qflock).run p.2 >>= fun q ↦
           commitReal callKeccak256 .c2 (((layoutsOfK tr.shape).lookup .c2).getD default).vars
               (c2DataOf tr (eqKernel alphas) beta p.1).stack >>= fun c ↦
-            pure ((p.1, q.1, c), { q.2 with stream := q.2.stream ++ (rootWord c.halves).toArray }) := by
-  simp only [midB, StateT.run_bind, StateT.run_lift, run_sendRoot, bind_assoc, pure_bind, StateT.run_pure]
+            pure ((p.1, q.1, c), { q.2 with stream := q.2.stream ++ (rootWord c.halves).toArray ++
+              (scalarWire (pcsOod (((layoutsOfK tr.shape).lookup .c2).getD default).vars
+                (c2DataOf tr (eqKernel alphas) beta p.1).stack (rootOf c.halves))).toArray }) := by
+  simp only [midB, StateT.run_bind, StateT.run_lift, run_sendRoot, run_sendScalar, bind_assoc, pure_bind, StateT.run_pure]
 
 /-- **The staged run after the first bus challenge**: `s₂ … s₅`, then `B` (`γ`, Flock, `C2`). -/
 def preTail (S : KStaged) (a : S.α) (s₁ : Digest) : OracleComp KeccakCalls (S.β × (List E × E)) := do
@@ -776,7 +778,7 @@ theorem chainF_preTail (D : KDeployment) (input : Vector UInt8 32) (rows : List 
   simp only [stagedU, midU, bind_assoc, pure_bind]
   rw [run_midB]
   simp only [bind_assoc, pure_bind]
-  have h1 := wch_sampleW (pre := fun _ ↦ True) (writerAfter rows a.2.c1 s₁ s₂ s₃ s₄ s₅) trivial
+  have h1 := wch_sampleW (pre := fun _ ↦ True) (writerAfter rows a.2.c1 a.2.ood s₁ s₂ s₃ s₄ s₅) trivial
   refine ChainF.mono (n := 1 + flockStepsD D) (N := 1 + (flockStepsD D + c2Cost D))
     (n' := flockStepsD D + 1) (N' := flockStepsD D + c2Cost D + 1)
     (ChainF.bind (n₂ := flockStepsD D) (N₂ := flockStepsD D + c2Cost D) (fun p s hp ↦ ?_) h1) (by omega) (by omega)
@@ -797,7 +799,7 @@ open TFresh
 
 /-- **`t`'s query is fresh for Flock's honest prover**, at every deployment: its input is cached when asked with
 probability at most `tFreshBound D = (tSteps D + 1) · tCache D / 2^256`. -/
-theorem tQueryFresh_flockProve (D : KDeployment) :
+theorem tQueryFresh_flockProve (D : KDeployment) (hpiv : 32 ≤ D.programIv.length) :
     TQueryFresh (fun H ↦ FlockP.flockProve H) D (tFreshBound D) := by
   intro input rows q hfit _
   have hmono := prEvent_mono ((simulateQ ro (stagedU flockP D input rows q).pre).run ∅)
@@ -812,7 +814,7 @@ theorem tQueryFresh_flockProve (D : KDeployment) :
     (cacheBound_run (hc_stageA flockP D input rows q) cacheBound_empty hp).mono (by omega)
   have hx : p.2 (.inl ((stagedU flockP D input rows q).inp p.1)) = none := by
     by_contra h
-    rcases cache_of_hashOK (hashA_stagedU flockP D input rows q) ∅ hp _ h with h' | h'
+    rcases cache_of_hashOK (hashA_stagedU flockP D hpiv input rows q) ∅ hp _ h with h' | h'
     · exact h' rfl
     · exact h'.2 (firstInput_length hfit.1 p.1.2)
   exact prHit_le _ (fun (z : MidU × (List E × E)) ↦ z.1.mw.2.state) (fun _ _ h ↦ h) (tCache D) (tSteps D)
@@ -857,10 +859,10 @@ theorem tFreshBound_reference (D : KDeployment) (hD : D.shape = keccakRefShape) 
 
 /-- **`t`'s query is fresh at the reference Keccak shape**, with probability of a cache hit at most `2^-200`, for
 Flock's honest prover (`flockProveH`). -/
-theorem tQueryFresh_reference (D : KDeployment) (hD : D.shape = keccakRefShape) :
+theorem tQueryFresh_reference (D : KDeployment) (hD : D.shape = keccakRefShape) (hpiv : 32 ≤ D.programIv.length) :
     TQueryFresh (fun H ↦ FlockP.flockProve H) D ((2 : ℝ≥0∞)⁻¹ ^ 200) :=
   fun input rows q hfit hrel ↦
-    (tQueryFresh_flockProve D input rows q hfit hrel).trans (tFreshBound_reference D hD)
+    (tQueryFresh_flockProve D hpiv input rows q hfit hrel).trans (tFreshBound_reference D hD)
 
 end UniKeccakComplete.Prob
 

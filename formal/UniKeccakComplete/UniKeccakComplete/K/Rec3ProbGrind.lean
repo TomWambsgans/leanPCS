@@ -38,7 +38,7 @@ open LeanVM.Protocol.Compile LeanVM.Protocol.Compile.Rom
 open LeanVM.Protocol.Rom
 open UniStatement
 open E2ECompleteness (ro runAt)
-open UniKeccakComplete.Prob (winState one_le_powPot_of_opening_none FlockSimCommutes BadT)
+open UniKeccakComplete.Prob (winState one_le_powPot_of_pcs_none FlockSimCommutes BadT)
 open scoped ENNReal
 
 set_option autoImplicit false
@@ -95,8 +95,8 @@ theorem one_le_powPot_of_rejectedU3 (hc : ProverCommutes3 flock D)
   dsimp only at hrej hab ht
   cases hπ : uniProverRec3With (m := Id) Ht Ft (flock Ht) D input rows q with
   | none =>
-    obtain ⟨L, tree, stack, claims, hfail⟩ := hpow input rows q hfit hrel Ht Ft hab ht hπ
-    exact one_le_powPot_of_opening_none ℓ Ht hfail
+    obtain ⟨n, tree, stack, pt, v, hpt, hfail⟩ := hpow input rows q hfit hrel Ht Ft hab ht hπ
+    exact one_le_powPot_of_pcs_none ℓ Ht hpt hfail
   | some π =>
     exfalso
     have hacc' := hacc input rows q hfit hrel Ht Ft π hπ hab ht

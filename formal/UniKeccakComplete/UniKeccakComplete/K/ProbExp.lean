@@ -120,7 +120,7 @@ structure MidU where
 def midU (input : Vector UInt8 32) (rows : List ℕ) (q : D.Stack rows) (a : ProverA) (s₁ s₂ s₃ s₄ s₅ : Digest) :
     OracleComp KeccakCalls ((E × FlockOut × Committed) × Wr) :=
   (midB callKeccak256 (commitReal callKeccak256) (flock callKeccak256) (honestTrace D input rows q)
-    [chal s₁, chal s₂, chal s₃, chal s₄] (chal s₅)).run (writerAfter rows a.c1 s₁ s₂ s₃ s₄ s₅)
+    [chal s₁, chal s₂, chal s₃, chal s₄] (chal s₅)).run (writerAfter rows a.c1 a.ood s₁ s₂ s₃ s₄ s₅)
 
 /-- **The experiment's stages**: `A` the setup and the prover before the bus challenges; `B` the prover from `γ` to
 `C2`'s root (`midB`); `t`'s input the writer's (`tInput`), its prior Flock's point; `C` the prover after `t`
@@ -164,8 +164,8 @@ theorem simulateQ_midU (hf : FlockSimCommutes flock) {r : Type → Type} [Monad 
     (s₁ s₂ s₃ s₄ s₅ : Digest) :
     simulateQ impl (midU flock D input rows q a s₁ s₂ s₃ s₄ s₅) =
       (midB (implH impl) (commitReal (implH impl)) (flock (implH impl)) (honestTrace D input rows q)
-        [chal s₁, chal s₂, chal s₃, chal s₄] (chal s₅)).run (writerAfter rows a.c1 s₁ s₂ s₃ s₄ s₅) := by
-  simp only [midU, midB, StateT.run_bind, run_sampleW, StateT.run_lift, run_sendRoot, commitReal, bind_assoc,
+        [chal s₁, chal s₂, chal s₃, chal s₄] (chal s₅)).run (writerAfter rows a.c1 a.ood s₁ s₂ s₃ s₄ s₅) := by
+  simp only [midU, midB, StateT.run_bind, run_sampleW, StateT.run_lift, run_sendRoot, run_sendScalar, commitReal, bind_assoc,
     pure_bind, StateT.run_pure, simulateQ_bind, simulateQ_pure, simulateQ_queryH, hf impl,
     E2ECompleteness.simulateQ_commitWithH]
 
@@ -196,6 +196,10 @@ theorem shapeBytes_length (s : UniStatement.Shape) : (shapeBytes s).length = 8 :
 
 theorem elementBytes24_length (x : E) : (elementBytes24 x).length = 24 := by
   simp [elementBytes24, elementWord, be64]
+
+theorem variantBytesK_length (v : KeccakVariant) : (variantBytesK v).length = 11 := by
+  simp only [variantBytesK, List.length_append, List.length_cons, List.length_nil]
+  rw [show "keccak-vm".toUTF8.toList.length = 9 by decide +kernel]
 
 /-- Lengths other than the bus chain's. -/
 theorem goodL_of_length {m : Bytes} (h : m.length = 512 ∨ m.length = 64 ∨ m.length = 80 ∨ 113 ≤ m.length) :
@@ -243,7 +247,7 @@ theorem hashA_stagedU (hpiv : 32 ≤ D.programIv.length) (input : Vector UInt8 3
     E2ECompleteness.HashOK.bind (hashOK_callKeccak256 (goodL_of_length (Or.inr (Or.inr (Or.inl ?_))))) fun _ ↦
     E2ECompleteness.HashOK.bind (hashOK_commitWithH _ _) fun _ ↦ E2ECompleteness.HashOK.pure _ _
   · simp only [List.length_append, ivTag_length, len_digestBytes, shapeBytes_length, elementBytes24_length,
-      honestTrace]
+      variantBytesK_length, honestTrace]
     omega
   · simp [name_length, len_digestBytes, honestTrace]
 
