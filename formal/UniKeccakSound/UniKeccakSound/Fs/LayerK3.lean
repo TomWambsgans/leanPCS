@@ -64,11 +64,11 @@ theorem fsLayer128K3_holds' (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ
     simp only [uRoundsK3, rec3Rounds, List.mem_append, List.mem_cons,
       List.mem_replicate, List.not_mem_nil, or_false] at hr
     rcases hr with (((rfl | hr) | rfl | rfl) | ⟨-, rfl⟩) | rfl
-    · show 0 ≤ 2 ^ 30
-      exact Nat.zero_le _
+    · show 1 ≤ 2 ^ 30
+      norm_num
     · exact hFlv r hr
-    · show 0 ≤ 2 ^ 30
-      exact Nat.zero_le _
+    · show 1 ≤ 2 ^ 30
+      norm_num
     · exact hnV
     · show 8 ≤ 2 ^ 30
       norm_num

@@ -27,7 +27,7 @@ attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
 
 section Rest
 
-variable (shape : UniStatement.Shape) (roots : SetupRoots) (proof : KeccakProof)
+variable (shape : UniStatement.Shape) (roots : SetupRootsK) (proof : KeccakProof)
 variable {m : Type → Type} [Monad m] (F : KeccakState → m KeccakState)
 
 /-- **`verifyWithK` is the run, then `restRK`** on an accepting run's result. -/
@@ -81,23 +81,19 @@ theorem uniVerifierBridgeK3_of_walk (D : KDeployment) {F : KeccakVm.KeccakFlockS
   swap
   · -- not π1-rec3's result: `verifyWithK` rejects
     refine (le_of_eq (Soundness.zero_of_support _ _ _ (fun b hb hbt => ?_) s)).trans zero_le
-    exact hg (restRK_good D.shape π.roots (kpOf π) Common.queryPermutation _ b hb hbt)
+    exact hg (restRK_good D.shape (skOf D π.roots) (kpOf π) Common.queryPermutation _ b hb hbt)
   obtain ⟨p1, v1, p2, v2, p3, v3, ho, hm, l1, l2, l3⟩ := hg
-  have l1' : p1.length = wvK D 0 := l1
-  have l2' : p2.length = wvK D 1 := l2
-  have l3' : p3.length = wvK D 2 := l3
-  have hcheck : uniCheckK3 D F3 nV np C π ch :=
-    ⟨hfits, hz, wellFormedK_of_good D _ p1 v1 p2 v2 p3 v3 ho hm l1' l2' l3'⟩
-  -- the claims
-  have hx1 : (cl1K3 D F3 nV np C π ch).claims = [(⟨p1, v1⟩ : PcsQuotient.Claim)].map Bridge.claimTr := by
-    rw [cl1K3, show claimsOf (uOutK3 D F3 nV np C π ch) .c1 = [⟨p1, v1⟩] by simp [claimsOf, ho]]
-    exact claims_uClK D 0 p1 v1 l1'
-  have hx2 : (cl2K3 D F3 nV np C π ch).claims = [(⟨p2, v2⟩ : PcsQuotient.Claim)].map Bridge.claimTr := by
-    rw [cl2K3, show claimsOf (uOutK3 D F3 nV np C π ch) .c2 = [⟨p2, v2⟩] by simp [claimsOf, ho]]
-    exact claims_uClK D 1 p2 v2 l2'
-  have hx3 : (cl3K3 D F3 nV np C π ch).claims = [(⟨p3, v3⟩ : PcsQuotient.Claim)].map Bridge.claimTr := by
-    rw [cl3K3, show claimsOf (uOutK3 D F3 nV np C π ch) .setup = [⟨p3, v3⟩] by simp [claimsOf, ho]]
-    exact claims_uClK D 2 p3 v3 l3'
+  have hwf : WellFormedK D (uOutK3 D F3 nV np C π ch) := by
+    refine ⟨by rw [ho]; rfl, ?_, ?_, ?_, hm⟩
+    · simp [claimsOf, ho]; exact l1
+    · simp [claimsOf, ho]; exact l2
+    · simp [claimsOf, ho]; exact l3
+  have hcheck : uniCheckK3 D F3 nV np C π ch := ⟨hfits, hz, hwf⟩
+  -- the point claims
+  have hwo : (uOutK3 D F3 nV np C π ch).openings.map Prod.fst = commitments := by rw [ho]; rfl
+  have e1 : ptvK (uOutK3 D F3 nV np C π ch) .c1 = (p1, v1) := ptvK_of_mem (bs := none) hwo (by rw [ho]; simp)
+  have e2 : ptvK (uOutK3 D F3 nV np C π ch) .c2 = (p2, v2) := ptvK_of_mem (bs := none) hwo (by rw [ho]; simp)
+  have e3 : ptvK (uOutK3 D F3 nV np C π ch) .setup = (p3, v3) := ptvK_of_mem (bs := none) hwo (by rw [ho]; simp)
   -- the rounds' roots
   have hroots : (uOutK3 D F3 nV np C π ch).roots =
       (((uDone (uRoundsK3 F3 nV np) π ch).getD 0 default).1.1.getD default,
@@ -113,39 +109,53 @@ theorem uniVerifierBridgeK3_of_walk (D : KDeployment) {F : KeccakVm.KeccakFlockS
     rw [hroots]
     exact root_at _ π ch _ (by rw [length_rec3Rounds]; omega) hlch (by
       rw [rec3Rounds_c2])
-  -- `verifyWithK`'s three calls, F2's early-stop openings
-  rw [restRK_unroll D.shape π.roots (kpOf π) Common.queryPermutation _ p1 v1 p2 v2 p3 v3 ho hm,
-    show layoutWordVars ((layoutWordsK D.shape).getD 0 []) = wvK D 0 from rfl,
-    show layoutWordVars ((layoutWordsK D.shape).getD 1 []) = wvK D 1 from rfl,
-    show layoutWordVars ((layoutWordsK D.shape).getD 2 []) = wvK D 2 from rfl,
-    pcsOpen_eq_earlyK (wvK D 0) (hs.lo 0 (by decide)) (hs.hi 0 (by decide)) _ _ _ hx1,
-    pcsOpen_eq_earlyK (wvK D 1) (hs.lo 1 (by decide)) (hs.hi 1 (by decide)) _ _ _ hx2,
-    pcsOpen_eq_earlyK (wvK D 2) (hs.lo 2 (by decide)) (hs.hi 2 (by decide)) _ _ _ hx3]
+  -- `verifyWithK`'s three PCS openings, answered over `π`
+  rw [restRK_unroll D.shape (skOf D π.roots) (kpOf π) Common.queryPermutation _ p1 v1 p2 v2 p3 v3 ho hm,
+    pcsOpenK_eq, pcsOpenK_eq, pcsOpenK_eq]
   -- the composed side's three openings
   unfold uOpsK3 uniOpsK3
   -- C1
-  rw [seqAnd_cons, sim_opsRun_cons]
-  refine early_le_rpm _ _ _ _ _ _ _ _ ?_ (fun s => ?_) (fun s => ?_) s
-  · exact Prod.ext (Prod.ext hr1 rfl) rfl
+  rw [seqAnd_cons, sim_gopsRun_cons]
+  refine eq_le_rpm _ _ _ _ _ _ ?_ (fun s => ?_) (fun s => ?_) s
+  · show verK3 D F3 nV np C 0 _ π ch = _
+    unfold verK3 oodK3
+    simp only [comK]
+    rw [e1]
+    simp only [GOp.root, opK3]
+    rw [hr1]
+    rfl
   · refine Soundness.zero_of_support _ _ _ (fun x hx => ?_) s
     rw [seqAnd_false _ x hx]
     exact Bool.false_ne_true
   -- C2
-  rw [seqAnd_cons, sim_opsRun_cons]
-  refine early_le_rpm _ _ _ _ _ _ _ _ ?_ (fun s => ?_) (fun s => ?_) s
-  · exact Prod.ext (Prod.ext hr2 rfl) rfl
+  rw [seqAnd_cons, sim_gopsRun_cons]
+  refine eq_le_rpm _ _ _ _ _ _ ?_ (fun s => ?_) (fun s => ?_) s
+  · show verK3 D F3 nV np C 1 _ π ch = _
+    unfold verK3 oodK3
+    simp only [comK]
+    rw [e2]
+    simp only [GOp.root, opK3]
+    rw [hr2]
+    rfl
   · refine Soundness.zero_of_support _ _ _ (fun x hx => ?_) s
     rw [seqAnd_false _ x hx]
     exact Bool.false_ne_true
   -- the setup
-  rw [seqAnd_cons, sim_opsRun_cons]
-  refine early_le_rpm _ _ _ _ _ _ _ _ ?_ (fun s => ?_) (fun s => ?_) s
-  · exact Prod.ext (Prod.ext (Soundness.ofB_toB_root _) rfl) rfl
+  rw [seqAnd_cons, sim_gopsRun_cons]
+  refine eq_le_rpm _ _ _ _ _ _ ?_ (fun s => ?_) (fun s => ?_) s
+  · show verK3 D F3 nV np C 2 _ π ch = _
+    unfold verK3 oodK3
+    simp only [comK]
+    rw [e3]
+    rw [show GOp.root (uView (uRoundsK3 F3 nV np))
+        (opK3 F3 nV np C hs 2 (by decide) (.setup (fun π => toB π.roots.bytecode) (colFK D))) π =
+        toB π.roots.bytecode from rfl, Soundness.ofB_toB_root]
+    rfl
   · refine Soundness.zero_of_support _ _ _ (fun x hx => ?_) s
     rw [seqAnd_false _ x hx]
     exact Bool.false_ne_true
   -- every opening accepted
-  rw [seqAnd, sim_opsRun_nil, simulateQ_pure]
+  rw [seqAnd, sim_gopsRun_nil, simulateQ_pure]
   refine Soundness.le_pure _ _ _ _ _ (fun _ => ⟨hcheck, fun k hk => ?_⟩) s
   have hk3 : k < 3 := hk
   interval_cases k <;> rfl

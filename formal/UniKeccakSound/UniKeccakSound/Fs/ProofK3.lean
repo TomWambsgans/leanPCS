@@ -33,7 +33,7 @@ variable (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ : ℕ} (F3 : KFloc
   (C : UniCodeK3 D F3 nV np) (hs : UniShapesK D)
 
 /-- The three openings at the honest setup column. -/
-noncomputable abbrev uOpsK3 : List (WhirOp UPf E Stk) := uniOpsK3 F3 nV np C hs (colFK D)
+noncomputable abbrev uOpsK3 : List (GOp UPf E Stk) := uniOpsK3 F3 nV np C hs (colFK D)
 
 /-- The chain of π1-rec3's rounds. -/
 noncomputable abbrev uSpecK3 : ChainSpecU E FSt := uniSpec (uRoundsK3 F3 nV np)
@@ -46,30 +46,24 @@ theorem hcov_uniK3 : ∀ i < (uSpecK3 F3 nV np).K.rounds.length, ((uSpecK3 F3 nV
   · exact ⟨_, List.mem_cons_of_mem _ List.mem_cons_self, _, rfl⟩
 
 theorem hok_uniK3 : ∀ o ∈ uOpsK3 D F3 nV np C hs,
-    WhirOp.OK (uniTcK hs) (uniGoodK3 D F3 nV np C) (uSetupK D hs) (uFixK D) o := by
+    GOp.OK (uniTcK hs) (uniGoodK3 D F3 nV np C) (uSetupK D hs) (uFixK D) o := by
   intro o ho
   simp only [uOpsK3, uniOpsK3, List.mem_cons, List.mem_nil_iff, or_false] at ho
   rcases ho with rfl | rfl | rfl
-  · refine whirOp_ok_tableCode _ _ _ 0 rdTab (uniTcK hs) (by unfold uniTcK; rw [ite_eq_left rfl]) _
-      (fun π ch t h => ?_) _ _
+  · refine gop_ok_tableCode _ _ _ _ _ _ _ _ 0 rdTab (uniTcK hs) (by unfold uniTcK; rw [ite_eq_left rfl]) _
+      (fun π ch q h => ?_) _ _
     rw [uniGoodK3, ite_eq_left rfl]
-    exact ⟨rdTab t, rfl, fun cl hcl =>
-      (tabEval_rdTab _ t _ ((cl1K3 D F3 nV np C π ch).wide cl hcl)).symm.trans (h cl hcl)⟩
-  · refine whirOp_ok_tableCode _ _ _ (F3.prog.rounds.length + 1) rdTab (uniTcK hs)
-      (by unfold uniTcK; rw [ite_eq_right (Nat.succ_ne_zero _)]) _ (fun π ch t h => ?_) _ _
+    exact ⟨_, rfl, (tabEval_rdTab _ _ _ h.1).symm.trans ((tabEval_tabOf _ _ _).trans h.2)⟩
+  · refine gop_ok_tableCode _ _ _ _ _ _ _ _ (F3.prog.rounds.length + 1) rdTab (uniTcK hs)
+      (by unfold uniTcK; rw [ite_eq_right (Nat.succ_ne_zero _)]) _ (fun π ch q h => ?_) _ _
     rw [uniGoodK3, ite_eq_right (Nat.succ_ne_zero _), ite_eq_left rfl]
-    exact ⟨rdTab t, rfl, fun cl hcl =>
-      (tabEval_rdTab _ t _ ((cl2K3 D F3 nV np C π ch).wide cl hcl)).symm.trans (h cl hcl)⟩
-  · exact whirOp_ok_stack _ _ _ _ _ _ _ (uFixK D) fun s _ => LeanVM.Rpm.digestToRpm_ofRpm s
+    exact ⟨_, rfl, (tabEval_rdTab _ _ _ h.1).symm.trans ((tabEval_tabOf _ _ _).trans h.2)⟩
+  · exact gop_ok_stack _ _ _ _ _ _ _ _ _ _ (uFixK D) fun s _ => LeanVM.Rpm.digestToRpm_ofRpm s
 
 theorem hS_uniK3 (π : UPf) (ch : List (List E))
-    (h : ∀ o ∈ uOpsK3 D F3 nV np C hs, WhirOp.SetupHolds o π ch) : uniGoodSK3 D F3 nV np C π ch := by
+    (h : ∀ o ∈ uOpsK3 D F3 nV np C hs, GOp.SetupHolds o π ch) : uniGoodSK3 D F3 nV np C π ch := by
   have h3 := h _ (List.mem_cons_of_mem _ (List.mem_cons_of_mem _ List.mem_cons_self))
-  intro cl hcl
-  have := h3 cl hcl
-  rw [← this]
-  exact (plain_tableEvalK _ (hs.lo 2 (by decide)) (hs.hi 2 (by decide)) _ _
-    ((cl3K3 D F3 nV np C π ch).wide cl hcl)).symm
+  exact (plain_tableEvalK _ (hs.lo 2 (by decide)) (hs.hi 2 (by decide)) _ _ h3.1).symm.trans h3.2
 
 /-! ### The last link -/
 
@@ -91,7 +85,7 @@ theorem hlink_uniK3 (R : RbrPiop (uRoundsK3 F3 nV np) USt Stk)
   obtain ⟨hdf, hzv, hwf⟩ := hc
   have hlen : cs.length = F3.prog.rounds.length + 4 + np := by
     rw [hl]
-    exact length_rec3Rounds _ _ _ 1
+    exact length_rec3Rounds _ _ _
   have h0 : 0 < cs.length := by omega
   have h1 : F3.prog.rounds.length + 1 < cs.length := by omega
   have hs0 : ((uSpecK3 F3 nV np).K.spec 0).root := by
@@ -132,16 +126,9 @@ theorem hlink_uniK3 (R : RbrPiop (uRoundsK3 F3 nV np) USt Stk)
   have hop : opened cs (uView (uRoundsK3 F3 nV np) π).2 ch =
       openedOf F3.prog.rounds.length q1 q2 (uDone (uRoundsK3 F3 nV np) π ch) :=
     opened_eq_openedOf _ q1 q2 _ ch cs hch (by rw [hlu]; exact hl) hcand
-  obtain ⟨hwo, hw1, hw2, hw3, -⟩ := hwf
-  have e1 : (cl1K3 D F3 nV np C π ch).claims = claimsOf (uOutK3 D F3 nV np C π ch) .c1 :=
-    mkStmt_claims (plainL (wvK D 0)) (extra_plainL _) _ (claimsOf_length_le _ hwo _) hw1
-  have e2 : (cl2K3 D F3 nV np C π ch).claims = claimsOf (uOutK3 D F3 nV np C π ch) .c2 :=
-    mkStmt_claims (plainL (wvK D 1)) (extra_plainL _) _ (claimsOf_length_le _ hwo _) hw2
-  have e3 : (cl3K3 D F3 nV np C π ch).claims = claimsOf (uOutK3 D F3 nV np C π ch) .setup :=
-    mkStmt_claims (plainL (wvK D 2)) (extra_plainL _) _ (claimsOf_length_le _ hwo _) hw3
+  obtain ⟨hwo, -, -, -, -⟩ := hwf
   have hCH : ClaimsHoldK D (uOutK3 D F3 nV np C π ch) q1 q2 :=
-    claimsHoldK_of D _ q1 q2 (by rw [← e1]; exact hc1) (by rw [← e2]; exact hc2)
-      (by rw [← e3]; exact hgS)
+    claimsHoldK_of D _ hwo q1 q2 hc1 hc2 hgS
   obtain ⟨p, m, ch', he, hpost⟩ :=
     hFin (uStK3 F3 nV np π) _ _ q1 q2 hdf (length_uTailK _ _) hzv hCH
   exact ⟨p, m, ch', hop.trans he, hpost⟩
@@ -161,7 +148,7 @@ def UniBreaksRelK3 (z : OutK UPf E (List Bool)) : Prop :=
 structure UniNumbersK3 : Prop where
   chain : (uSpecK3 F3 nV np).K.nQ ≤ 2 ^ 10
   verifier : ∀ π, Common.QueryCostAtMost (verU (uSpecK3 F3 nV np) (uView (uRoundsK3 F3 nV np))
-    (opsRun (uView (uRoundsK3 F3 nV np)) (uOpsK3 D F3 nV np C hs)) π) LeanVM.Rpm.hashBlocks (2 ^ 80)
+    (gopsRun (uView (uRoundsK3 F3 nV np)) (uOpsK3 D F3 nV np C hs)) π) LeanVM.Rpm.hashBlocks (2 ^ 80)
 
 theorem breaksOK_of_relK3 (R : RbrPiop (uRoundsK3 F3 nV np) USt Stk)
     (hpre : ∀ s c m, R.pre s [] (some c, m) → RelK F D s c) (z : OutK UPf E (List Bool))
@@ -178,15 +165,9 @@ theorem breaksOK_of_relK3 (R : RbrPiop (uRoundsK3 F3 nV np) USt Stk)
   obtain ⟨q, -, rfl⟩ := hc'
   exact h3 _ hc q rfl (hpre _ _ _ hpre')
 
-theorem sumQO_leK3 : ((uOpsK3 D F3 nV np C hs).map fun o => o.S.QO).sum ≤ 3 * 10122 := by
-  have q : ∀ k (hk : k < 3), kQueries (wvK D k) ≤ 10122 := fun k hk =>
-    kQueries_le _ (hs.lo k hk) (hs.hi k hk)
-  have q0 := q 0 (by decide)
-  have q1 := q 1 (by decide)
-  have q2 := q 2 (by decide)
-  simp only [uOpsK3, uniOpsK3, List.map_cons, List.map_nil, List.sum_cons, List.sum_nil]
-  try dsimp only [shapeKK, plainShapeK]
-  omega
+theorem sumQO_leK3 : ((uOpsK3 D F3 nV np C hs).map fun o => o.QO).sum ≤ 3 * 10122 := by
+  simp only [uOpsK3, uniOpsK3, opK3, List.map_cons, List.map_nil, List.sum_cons, List.sum_nil]
+  norm_num
 
 theorem maxErrK_uniK3 (R : RbrPiop (uRoundsK3 F3 nV np) USt Stk) (e : ℝ≥0∞) (herr : ∀ j, R.err j ≤ e) :
     maxErrK (uSpecK3 F3 nV np).K (fun i => (uniTcK hs i).commit) (liftPiop (uSpecK3 F3 nV np).K R rfl) ≤
@@ -203,12 +184,15 @@ round sends at most `2^30` scalars (`(2^10 + 3 · 10122) · 2^32 ≤ 2^80`). -/
 theorem uniNumbersK3_of (hnQ : (uSpecK3 F3 nV np).K.nQ ≤ 2 ^ 10)
     (hnv : ∀ r ∈ uRoundsK3 F3 nV np, r.nv ≤ 2 ^ 30) : UniNumbersK3 D F3 nV np C hs := by
   refine ⟨hnQ, fun π => ?_⟩
+  have hg : ∀ ch, IsTotalQueryBound (gopsRun (uView (uRoundsK3 F3 nV np)) (uOpsK3 D F3 nV np C hs) π ch)
+      (3 * 10122) := fun ch =>
+    (isTotalQueryBound_gopsRun _ _ _ _).mono (sumQO_leK3 D F3 nV np C hs)
   have htot : IsTotalQueryBound (verU (uSpecK3 F3 nV np) (uView (uRoundsK3 F3 nV np))
-      (opsRun (uView (uRoundsK3 F3 nV np)) (uOpsK3 D F3 nV np C hs)) π)
-      ((uSpecK3 F3 nV np).K.nQ + ((uOpsK3 D F3 nV np C hs).map fun o => o.S.QO).sum) := by
+      (gopsRun (uView (uRoundsK3 F3 nV np)) (uOpsK3 D F3 nV np C hs)) π)
+      ((uSpecK3 F3 nV np).K.nQ + 3 * 10122) := by
     unfold verU
     exact isTotalQueryBound_bind (isTotalQueryBound_chainU _ _ _) fun ch =>
-      isTotalQueryBound_bind (n₂ := 0) (isTotalQueryBound_opsRun _ _ _ _) fun _ => trivial
+      isTotalQueryBound_bind (n₂ := 0) (hg ch) fun _ => trivial
   have hmsg : ∀ m ∈ (uView (uRoundsK3 F3 nV np) π).2, m.2.length ≤ 2 ^ 30 := by
     intro m hm
     have hfit := fitsAll_uView (uRoundsK3 F3 nV np) π
@@ -219,17 +203,12 @@ theorem uniNumbersK3_of (hnQ : (uSpecK3 F3 nV np).K.nQ ≤ 2 ^ 10)
     rw [List.getD_eq_getElem _ _ hi] at this
     rw [this.2, List.getD_eq_getElem _ _ hi']
     exact hnv _ (List.getElem_mem hi')
-  have hops : ∀ ch, ∀ o ∈ uOpsK3 D F3 nV np C hs,
-      (o.cl π ch).claims.length ≤ 2 ∧ o.S.L.vars ≤ 2 ^ 30 := by
-    intro ch o ho
+  have hops : ∀ ch, AllQueriesSatisfy (gopsRun (uView (uRoundsK3 F3 nV np)) (uOpsK3 D F3 nV np C hs) π ch)
+      Short := fun ch => allQ_gopsRunK _ _ _ _ fun o ho r π' ch' => by
     simp only [uOpsK3, uniOpsK3, List.mem_cons, List.mem_nil_iff, or_false] at ho
-    have hk : ∀ k < 3, wvK D k ≤ 2 ^ 30 := fun k hk => (hs.hi k hk).trans (by norm_num)
-    rcases ho with rfl | rfl | rfl
-    · exact ⟨(mkStmt_length_le _ (extra_plainL _) _).trans (by norm_num), hk 0 (by decide)⟩
-    · exact ⟨(mkStmt_length_le _ (extra_plainL _) _).trans (by norm_num), hk 1 (by decide)⟩
-    · exact ⟨(mkStmt_length_le _ (extra_plainL _) _).trans (by norm_num), hk 2 (by decide)⟩
+    rcases ho with rfl | rfl | rfl <;> exact allQ_pcsOpenC _ _ _ _ _ _
   have hall : AllQueriesSatisfy (verU (uSpecK3 F3 nV np) (uView (uRoundsK3 F3 nV np))
-      (opsRun (uView (uRoundsK3 F3 nV np)) (uOpsK3 D F3 nV np C hs)) π) Short := by
+      (gopsRun (uView (uRoundsK3 F3 nV np)) (uOpsK3 D F3 nV np C hs)) π) Short := by
     unfold verU ChainSpecU.chain
     rw [map_eq_bind_pure_comp, bind_assoc]
     refine allQueriesSatisfy_bind (allQ_runM _ _ ?_ ?_) fun sts => ?_
@@ -239,12 +218,85 @@ theorem uniNumbersK3_of (hnQ : (uSpecK3 F3 nV np).K.nQ ≤ 2 ^ 10)
       have := length_mem_absorbsI _ (2 ^ 30) 0 _ _ hmsg e he
       omega
     · simp only [Function.comp_apply, pure_bind]
-      exact allQueriesSatisfy_bind (allQ_opsRun _ _ _ _ (hops _)) fun _ => LeanVM.Rpm.allQ_pure _
-  have hq := sumQO_leK3 D F3 nV np C hs
+      exact allQueriesSatisfy_bind (hops _) fun _ => LeanVM.Rpm.allQ_pure _
   refine (LeanVM.Rpm.isWeightBound_of_isTotalQueryBound hashBlocks (2 ^ 32) htot
     (hall.mono fun _ h => LeanVM.Rpm.hashBlocks_le_of_short h)).mono ?_
   have h80 : (2 ^ 10 + 3 * 10122) * 2 ^ 32 ≤ (2 : ℕ) ^ 80 := by norm_num
   exact (Nat.mul_le_mul_right _ (by omega)).trans h80
+
+/-! ### The openings, once: the PCS union -/
+
+/-- The `k`-th opening's verifier is `verK3 k`. -/
+theorem uOpsK_ver3 (k : Fin (uOpsK3 D F3 nV np C hs).length) :
+    ((uOpsK3 D F3 nV np C hs).get k).ver = verK3 D F3 nV np C k.val := by
+  obtain ⟨k, hk⟩ := k
+  have hk3 : k < 3 := hk
+  interval_cases k <;> rfl
+
+/-- The `k`-th opening's doom: every candidate of its stack's variables violates `holdsK3 k`. -/
+theorem gDoomed_uOpsK3 (k : Fin (uOpsK3 D F3 nV np C hs).length) (π : UPf) (ch : List (List E))
+    (c : KeccakCalls.QueryCache) :
+    GDoomed (uView (uRoundsK3 F3 nV np)) ((uOpsK3 D F3 nV np C hs).get k) π ch c ↔
+      ∀ q ∈ Candidates (wvK D k.val) logInvRate (code₀ (wvK D k.val) logInvRate).thr
+          (Rom.extract (fun x ↦ c (.inl x))
+            (ofB (GOp.root (uView (uRoundsK3 F3 nV np)) ((uOpsK3 D F3 nV np C hs).get k) π))
+            (rootHeight (wvK D k.val) logInvRate) (2 ^ laneFold)),
+        ¬ holdsK3 D F3 nV np C k.val π ch q := by
+  obtain ⟨k, hk⟩ := k
+  have hk3 : k < 3 := hk
+  interval_cases k <;> exact Iff.rfl
+
+/-- **An opening's statement in the PCS union**: its size's index, its PCS claim (the root it reads, its
+out-of-domain answer, its point claim), its opening proof; a dummy claim where its point has not its stack's
+variables (the opening rejects there). -/
+noncomputable def pcsStmtK3 (w : GUIn (uOpsK3 D F3 nV np C hs)) : Pcs.PSt pcsKShapes × Proof :=
+  if h : (ptvK (uOutK3 D F3 nV np C w.2.1 w.2.2) (comK w.1.val)).1.length = wvK D w.1.val then
+    (⟨pcsIdxK (wvK D w.1.val),
+      ⟨ofB (GOp.root (uView (uRoundsK3 F3 nV np)) ((uOpsK3 D F3 nV np C hs).get w.1) w.2.1),
+        oodK3 D F3 nV np C w.2.1 w.2.2 (comK w.1.val), (ptvK (uOutK3 D F3 nV np C w.2.1 w.2.2) (comK w.1.val)).1,
+        (ptvK (uOutK3 D F3 nV np C w.2.1 w.2.2) (comK w.1.val)).2,
+        h.trans (pcsIdxK_n _ (hs.lo w.1.val w.1.isLt) (hs.hi w.1.val w.1.isLt)).symm⟩⟩,
+      (kpOf w.2.1).openingOf (comK w.1.val))
+  else (⟨pcsIdxK 23, Pcs.dummy _⟩, (kpOf w.2.1).openingOf (comK w.1.val))
+
+theorem pcsStmtK_pos3 (w : GUIn (uOpsK3 D F3 nV np C hs))
+    (h : (ptvK (uOutK3 D F3 nV np C w.2.1 w.2.2) (comK w.1.val)).1.length = wvK D w.1.val) :
+    pcsStmtK3 D F3 nV np C hs w =
+      (⟨pcsIdxK (wvK D w.1.val),
+        ⟨ofB (GOp.root (uView (uRoundsK3 F3 nV np)) ((uOpsK3 D F3 nV np C hs).get w.1) w.2.1),
+          oodK3 D F3 nV np C w.2.1 w.2.2 (comK w.1.val), (ptvK (uOutK3 D F3 nV np C w.2.1 w.2.2) (comK w.1.val)).1,
+          (ptvK (uOutK3 D F3 nV np C w.2.1 w.2.2) (comK w.1.val)).2,
+          h.trans (pcsIdxK_n _ (hs.lo w.1.val w.1.isLt) (hs.hi w.1.val w.1.isLt)).symm⟩⟩,
+        (kpOf w.2.1).openingOf (comK w.1.val)) := by
+  unfold pcsStmtK3
+  split
+  · rfl
+  · contradiction
+
+/-- **The three PCS openings, charged once**: their union is sound at
+`(QA + 10122) (εExact + 5 (QA + 10122) / 2^256)` (`WhirBridge.Pcs.pcs_union_sound` over `pcsKShapes`). -/
+theorem hU_uniK3 : GUnionSound (uView (uRoundsK3 F3 nV np)) (uOpsK3 D F3 nV np C hs)
+    (fun QA => ((QA + 10122 : ℕ) : ℝ≥0∞) * (εExact + ((5 * (QA + 10122) : ℕ) : ℝ≥0∞) / 2 ^ 256)) := by
+  intro A QA hA
+  refine (romExperiment_le_map A _ (Pcs.pUVer pcsKShapes Pcs.oodPoint) (pcsStmtK3 D F3 nV np C hs)
+    (fun w => (ptvK (uOutK3 D F3 nV np C w.2.1 w.2.2) (comK w.1.val)).1.length = wvK D w.1.val)
+    (fun w => ?_) _ (Pcs.PUDoomed pcsKShapes Pcs.oodPoint) (fun w c hok hd => ?_)).trans
+    (Pcs.pcs_union_sound pcsKShapes Pcs.oodPoint _ QA ((isQueryBound_map_iff _ _ _ _ _).mpr hA) 10122
+      pcsKShapes_QO)
+  · show GOp.run _ _ _ _ = _
+    unfold GOp.run
+    rw [uOpsK_ver3]
+    unfold verK3 pcsOpenC pcsStmtK3
+    split_ifs with h
+    · exact (pcsVerifier_congrK (pcsIdxK_n _ (hs.lo w.1.val w.1.isLt) (hs.hi w.1.val w.1.isLt)) _ _ _ _ h _
+        _).symm
+    · rfl
+  · have hd' := (gDoomed_uOpsK3 D F3 nV np C hs w.1 w.2.1 w.2.2 c).1 hd
+    unfold Pcs.PUDoomed
+    rw [pcsStmtK_pos3 D F3 nV np C hs w hok]
+    refine (pcsDoomed_congrK (pcsIdxK_n _ (hs.lo w.1.val w.1.isLt) (hs.hi w.1.val w.1.isLt)) _ _ _ _ hok
+      _ _ c).2 fun q hq => Or.inr fun he => hd' q hq
+        ⟨hok, (colEval_plainL _ (hs.lo w.1.val w.1.isLt) (hs.hi w.1.val w.1.isLt) q _ hok).symm.trans he⟩
 
 end Facts
 

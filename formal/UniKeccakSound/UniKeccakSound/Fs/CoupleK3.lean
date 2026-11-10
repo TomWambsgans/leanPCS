@@ -35,11 +35,11 @@ opening accepting. -/
 def UniVerifierBridgeK3 : Prop :=
   ∀ (π : UPf) (s : Common.PermutationEdges KeccakState),
     Pr{let b ← (simulateQ Common.lazyRandomPermutationOracles
-        (verifyWithK Common.queryPermutation D.shape keccakRec3 π.iv.toList π.roots π.input (kpOf π))).run' s}[
+        (verifyWithK Common.queryPermutation D.shape keccakRec3 π.iv.toList (skOf D π.roots) π.input (kpOf π))).run' s}[
         b = true] ≤
       Pr{let v ← (simulateQ Common.lazyRandomPermutationOracles
           (simulateQ keccakCallsOverQueryPermutation (verU (uSpecK3 F3 nV np) (uView (uRoundsK3 F3 nV np))
-            (opsRun (uView (uRoundsK3 F3 nV np)) (uOpsK3 D F3 nV np C hs)) π))).run' s}[
+            (gopsRun (uView (uRoundsK3 F3 nV np)) (uOpsK3 D F3 nV np C hs)) π))).run' s}[
         uniCheckK3 D F3 nV np C π v.1 ∧ ∀ k < (uOpsK3 D F3 nV np C hs).length, v.2.getD k false = true]
 
 /-- **EXTRACTOR READING**: a candidate stack of `C1`'s root that the composed extractor reads off the setup's log and
@@ -105,7 +105,7 @@ theorem step_leK3 (hV : UniVerifierBridgeK3 D F3 nV np C hs) (hX : UniExtractBri
       simulateQ keccakCallsOverQueryPermutation (hash256 (ivInputK3 D (D.setupRoots a.1))) >>= fun iv =>
         (fun v => (iv, v)) <$> simulateQ keccakCallsOverQueryPermutation
           (verU (uSpecK3 F3 nV np) (uView (uRoundsK3 F3 nV np))
-            (opsRun (uView (uRoundsK3 F3 nV np)) (uOpsK3 D F3 nV np C hs)) (setIv iv (piOfK D a))) := by
+            (gopsRun (uView (uRoundsK3 F3 nV np)) (uOpsK3 D F3 nV np C hs)) (setIv iv (piOfK D a))) := by
     rw [uVerIvK3, simulateQ_bind]
     simp only [simulateQ_map]
     rfl

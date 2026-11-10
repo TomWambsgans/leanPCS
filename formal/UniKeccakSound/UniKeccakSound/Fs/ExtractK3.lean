@@ -21,7 +21,8 @@ open LeanVM.Protocol.Compile LeanVM.Protocol.EndToEnd WhirBridge UniStatement Un
 
 /-- **Round `0`'s message is `C1`'s root** the stream names, without scalars. -/
 theorem msgK_uView_c1K3 {F : KeccakVm.KeccakFlockSpec} {κ : ℕ} (F3 : KFlockSound F κ keccakRec3) (nV np : ℕ)
-    (π : UPf) : msgK (uView (uRoundsK3 F3 nV np)) π 0 = (some (toB (c1RootOfK (kpOf π))), []) :=
+    (π : UPf) : msgK (uView (uRoundsK3 F3 nV np)) π 0 =
+      (some (toB (c1RootOfK (kpOf π))), [scalarAt π.proof.stream (24 + 32 + 24 * 0)]) :=
   rfl
 
 /-- **The extractor's reading, with `C1`'s variables below `256`**: a candidate of `C1`'s root that the composed
