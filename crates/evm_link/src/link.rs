@@ -66,8 +66,8 @@ fn heights(items: &[(Item, crate::Tag)]) -> Vec<usize> {
             Item::Code(bytes) => stack_effect(bytes),
             Item::Store(_) => (0, 1),
             Item::Load(_) | Item::Calldata { .. } => (1, 0),
-            Item::Output(_) | Item::FailIf | Item::OtherIf => (-1, 1),
-            Item::CopyConst { .. } | Item::PcsOpen { .. } | Item::Seam => (0, 0),
+            Item::Output(_) | Item::FailIf | Item::OtherIf | Item::Declared { .. } => (-1, 1),
+            Item::CopyConst { .. } | Item::Seam => (0, 0),
         };
         assert!(reads as isize <= height, "an item reads below the stack");
         height += effect;
@@ -106,7 +106,7 @@ impl<'a> Cutter<'a> {
     fn new(program: &'a Program) -> Self {
         let items = &program.items;
         let n = items.len();
-        let ends_run = |item: &Item| matches!(item, Item::Output(_) | Item::CopyConst { .. } | Item::PcsOpen { .. });
+        let ends_run = |item: &Item| matches!(item, Item::Output(_) | Item::CopyConst { .. } | Item::Declared { .. });
         // The outputs region is the last part's, and the other entry the driver's.
         let first_output = items.iter().position(|(item, _)| ends_run(item)).unwrap_or(n);
         let after_other = items
@@ -280,7 +280,7 @@ impl<'a> Cutter<'a> {
             Item::Load(_) | Item::Output(_) | Item::FailIf | Item::OtherIf => 4,
             Item::Calldata { .. } => 3,
             Item::Seam => 0,
-            Item::CopyConst { .. } | Item::PcsOpen { .. } => 30,
+            Item::CopyConst { .. } | Item::Declared { .. } => 30,
         }
     }
 

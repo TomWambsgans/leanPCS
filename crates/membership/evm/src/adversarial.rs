@@ -1,11 +1,10 @@
 // Part of this repository: adversarial tests (commit 5ff0904), adapted to the selector,
-// the index root in storage, the strict check of `PCS_OPEN`'s reply and the word 1 returned; the test of any
-// returned data passing is turned around (`only_the_word_one_passes`), as is that of calldata dropping a root's
-// third limb. MIT OR Apache-2.0; see AGENTS.md.
-//! Adversarial tests of the verifier contract and of its calls of `PCS_OPEN`, none of which needs a proof: the
-//! contract's claims are compared with the Rust verifier's on random and tampered calldata, degenerate proofs are
-//! built from the transcript, the bytecode is walked for its stack, jumps and gas, and the calls are answered by
-//! precompiles other than the mock.
+// the index root in storage, the checks of the declared claims (once of `PCS_OPEN`'s reply) and the word 1
+// returned; the test of calldata dropping a root's third limb is turned around. MIT OR Apache-2.0; see AGENTS.md.
+//! Adversarial tests of the verifier contract and of its checks of the claims its transaction declares, none of
+//! which needs a proof: the contract's claims are compared with the Rust verifier's on random and tampered calldata,
+//! degenerate proofs are built from the transcript, the bytecode is walked for its stack, jumps and gas, and the
+//! frame of PCS claims is made of other kinds.
 
 use std::collections::BTreeMap;
 
@@ -15,29 +14,25 @@ use primitives::test_rng::Rng;
 use quotient::protocol::{VerifyError, verify};
 use quotient::statement::Statement;
 use quotient::transcript::{Proof, ProverChain, TranscriptError, root_scalars, scalars_root};
-use revm::context::result::{ExecutionResult, Output};
-use revm::context::{Cfg, Context, ContextTr, LocalContextTr, TxEnv};
-use revm::database::{CacheDB, EmptyDB};
-use revm::handler::{EthPrecompiles, ExecuteEvm, MainBuilder, MainContext, PrecompileProvider};
-use revm::interpreter::interpreter_types::{InterpreterTypes, StackTr};
-use revm::interpreter::{CallInput, Gas, InputsImpl, InstructionContext, InstructionResult, InterpreterResult, gas};
-use revm::primitives::hardfork::SpecId;
-use revm::primitives::{Address, Bytes, TxKind, U256};
+use revm::primitives::Address;
 
-use crate::codegen::INDEX_ROOT_SLOT;
-use crate::machine::{Chain, FIELD_MUL, FIELD_MUL_GAS, LOG_ROWS, Outcome, PCS_OPEN, PcsOpen, root_word};
+use crate::machine::{
+    Chain, DEP_VERIFY_FRAME_MODE, FIELD_MUL, FIELD_MUL_GAS, Frame, LOG_ROWS, Outcome, PcsFrame, claim_input, root_word,
+};
 use crate::quotient::{
-    Contract, VERIFIED, VERIFY, calldata, claims_contract, claims_contract_linked, contract, contract_linked, decode,
-    openings,
+    Contract, PCS_FRAME, VERIFIED, VERIFY, calldata, claims_contract, claims_contract_linked, contract,
+    contract_linked, decode, openings,
 };
 
 /// The selector, then the statement, the commitments and the proof's five scalars.
-const CALLDATA_LEN: usize = 4 + 64 + 64 + 5 * 24;
+const ARGS_LEN: usize = 4 + 64 + 64 + 5 * 24;
+/// Then the index of the frame of PCS claims.
+const CALLDATA_LEN: usize = ARGS_LEN + 1;
 
 /// Calldata as the statement and proof it stands for: the inverse of [`calldata`].
 fn parse(data: &[u8]) -> (Statement, Proof) {
     assert_eq!(data.len(), CALLDATA_LEN);
-    let data = &data[4..];
+    let data = &data[4..ARGS_LEN];
     let word = |at: usize| u64::from_be_bytes(data[at..at + 8].try_into().unwrap());
     let mut stream = vec![];
     for i in 0..4 {
@@ -59,12 +54,13 @@ fn random_bytes<const N: usize>(rng: &mut Rng) -> [u8; N] {
     std::array::from_fn(|_| rng.next_u8())
 }
 
-/// The selector of `verify`, then random arguments.
+/// The selector of `verify`, random arguments, and the frame [`PCS_FRAME`].
 fn random_calldata(rng: &mut Rng) -> Vec<u8> {
     VERIFY
         .iter()
         .copied()
-        .chain((4..CALLDATA_LEN).map(|_| rng.next_u8()))
+        .chain((4..ARGS_LEN).map(|_| rng.next_u8()))
+        .chain([PCS_FRAME])
         .collect()
 }
 
@@ -101,13 +97,13 @@ fn degenerate_in(index_root: &Hash, log_rows: usize, rng: &mut Rng, inverse: quo
     calldata(&statement, &chain.into_proof()).expect("roots of 128 bits")
 }
 
-/// The block holding the openings of the claims the Rust verifier leaves on `data`, if it leaves any.
-fn block_for(index_root: &Hash, data: &[u8], log_rows: usize) -> PcsOpen {
+/// The frame declaring the claims the Rust verifier leaves on `data`, if it leaves any.
+fn block_for(index_root: &Hash, data: &[u8], log_rows: usize) -> PcsFrame {
     let (statement, proof) = parse(data);
-    let mut block = PcsOpen::default();
+    let mut block = PcsFrame::default();
     if let Ok((roots, claims)) = verify(index_root, &statement, &proof, log_rows) {
         for (root, id, claims) in openings(index_root, &roots, &claims, log_rows) {
-            block.register(&root, id, &claims);
+            block.declare(&root, id, &claims);
         }
     }
     block
@@ -132,22 +128,22 @@ fn deploy(contract: &Contract, index_root: &Hash) -> Deployed {
     }
 }
 
-/// A call of the contract, in a block whose openings are `block`'s.
-fn call(deployed: &Deployed, data: &[u8], block: &PcsOpen) -> Outcome {
+/// A call of the contract, in a transaction whose frame of PCS claims is `block`.
+fn call(deployed: &Deployed, data: &[u8], block: &PcsFrame) -> Outcome {
     deployed.chain.call(deployed.address, data, block)
 }
 
 /// The verifiers on one calldata, each check one assertion: the claims contract returns what `verify` leaves; the
-/// contract succeeds, returning the word 1, against the openings of those claims exactly when `verify` accepts, and
-/// fails against `other`'s, a block for other claims.
-fn agree(index_root: &Hash, log_rows: usize, codes: &(Deployed, Deployed), data: &[u8], other: &PcsOpen) -> bool {
+/// contract succeeds, returning the word 1, against a frame declaring those claims exactly when `verify` accepts,
+/// and fails against `other`, a frame of other claims.
+fn agree(index_root: &Hash, log_rows: usize, codes: &(Deployed, Deployed), data: &[u8], other: &PcsFrame) -> bool {
     let (statement, proof) = parse(data);
     let expected = verify(index_root, &statement, &proof, log_rows);
     assert_ne!(
         expected.as_ref().err(),
         Some(&VerifyError::Transcript(TranscriptError::NotARoot))
     );
-    let returned = call(&codes.0, data, &PcsOpen::default()).output;
+    let returned = call(&codes.0, data, &PcsFrame::default()).output;
     assert_eq!(
         returned.as_deref().and_then(|output| decode(output, log_rows)),
         expected.clone().ok(),
@@ -193,13 +189,13 @@ fn linked_builds_are_parts() {
             assert!(contract.code.len() <= LINKED && contract.parts.iter().all(|part| part.len() <= LINKED));
             let owner = contract.owner_at.expect("the driver holds setIndexRoot");
             assert!(owner < contract.code.len());
-            // No part stores anything, nor calls anything but `PCS_OPEN` (`STATICCALL`).
+            // No part stores anything, nor calls anything.
             for part in &contract.parts {
                 let mut pc = 0;
                 while pc < part.len() {
                     let op = part[pc];
                     assert!(
-                        ![0x55, 0xf0, 0xf1, 0xf2, 0xf4, 0xf5, 0xff].contains(&op),
+                        ![0x55, 0xf0, 0xf1, 0xf2, 0xf4, 0xf5, 0xfa, 0xff].contains(&op),
                         "opcode {op:#04x} in a part"
                     );
                     pc += 1 + if (0x60..=0x7f).contains(&op) {
@@ -215,7 +211,7 @@ fn linked_builds_are_parts() {
     }
 }
 
-/// Random calldata, at every size of circuit `PCS_OPEN` knows, with random and extreme index roots.
+/// Random calldata, at every size of circuit the block knows, with random and extreme index roots.
 #[test]
 fn random_calldata_agrees() {
     LIMITS.into_iter().for_each(random_calldata_agrees_at);
@@ -228,13 +224,13 @@ fn random_calldata_agrees_at(limit: usize) {
             let codes = codes(&index_root, log_rows, limit);
             let mut extremes: Vec<Vec<u8>> = [0u8, 0xff, 0x80, 0x01]
                 .iter()
-                .map(|&b| [&VERIFY[..], &[b; CALLDATA_LEN - 4]].concat())
+                .map(|&b| [&VERIFY[..], &[b; ARGS_LEN - 4], &[PCS_FRAME]].concat())
                 .collect();
             // Roots of all ones, scalars of all zeros, and the reverse.
             let mut mixed = vec![0xff; 128];
-            mixed.resize(CALLDATA_LEN - 4, 0);
-            extremes.push([&VERIFY[..], &mixed.iter().map(|b| !b).collect::<Vec<_>>()].concat());
-            extremes.push([&VERIFY[..], &mixed].concat());
+            mixed.resize(ARGS_LEN - 4, 0);
+            extremes.push([&VERIFY[..], &mixed.iter().map(|b| !b).collect::<Vec<_>>(), &[PCS_FRAME]].concat());
+            extremes.push([&VERIFY[..], &mixed, &[PCS_FRAME]].concat());
             let other = block_for(&index_root, &random_calldata(&mut rng), log_rows);
             let samples = extremes.into_iter().chain((0..200).map(|_| random_calldata(&mut rng)));
             for data in samples {
@@ -245,8 +241,8 @@ fn random_calldata_agrees_at(limit: usize) {
 }
 
 /// Every single-bit change of a calldata, at the smallest and the largest circuit: the verifiers agree on every
-/// change of the arguments, the openings of the original's claims never pass the changed calldata, and every
-/// change of the selector reverts.
+/// change of the arguments, the original's claims never pass the changed calldata, and every change of the selector
+/// reverts, as does every change of the frame's index (the transaction has no such frame).
 #[test]
 fn bit_flips_agree() {
     LIMITS.into_iter().for_each(bit_flips_agree_at);
@@ -264,9 +260,12 @@ fn bit_flips_agree_at(limit: usize) {
             let mut data = base.clone();
             data[bit / 8] ^= 1 << (bit % 8);
             if bit < 32 {
-                assert_eq!(call(&codes.0, &data, &PcsOpen::default()).output, None, "bit {bit}");
+                assert_eq!(call(&codes.0, &data, &PcsFrame::default()).output, None, "bit {bit}");
                 assert_eq!(call(&codes.1, &data, &honest).output, None, "bit {bit}");
-                assert_eq!(call_with(&codes.1, &data, Reply::Attest).output, None, "bit {bit}");
+                assert_eq!(call(&codes.1, &data, &PcsFrame::declaring_all()).output, None, "bit {bit}");
+            } else if bit >= 8 * ARGS_LEN {
+                assert_eq!(call(&codes.1, &data, &honest).output, None, "bit {bit}");
+                assert_eq!(call(&codes.1, &data, &PcsFrame::declaring_all()).output, None, "bit {bit}");
             } else {
                 assert!(agree(&index_root, log_rows, &codes, &data, &honest), "bit {bit}");
             }
@@ -275,7 +274,7 @@ fn bit_flips_agree_at(limit: usize) {
 }
 
 /// The one rejection a prover can reach without grinding a hash: both contracts revert where the Rust verifier
-/// finds a zero denominator, the calling one even when `PCS_OPEN` attests everything; one bit off, all accept.
+/// finds a zero denominator, the calling one even when its frame declares everything; one bit off, all accept.
 /// No other test reaches the contract's nonzero check: with it compiled out (`ISZERO` and its jump replaced by a
 /// `POP`), every other test of the crate passes.
 #[test]
@@ -288,7 +287,7 @@ fn degenerate_proofs_revert_at(limit: usize) {
     for log_rows in [*LOG_ROWS.start(), 20, *LOG_ROWS.end()] {
         let index_root = random_bytes(&mut rng);
         let codes = codes(&index_root, log_rows, limit);
-        let other = PcsOpen::default();
+        let other = PcsFrame::default();
         for _ in 0..8 {
             let data = degenerate(&index_root, log_rows, &mut rng);
             let (statement, proof) = parse(&data);
@@ -297,12 +296,12 @@ fn degenerate_proofs_revert_at(limit: usize) {
                 Some(VerifyError::Degenerate)
             );
             assert!(!agree(&index_root, log_rows, &codes, &data, &other));
-            assert_eq!(call_with(&codes.1, &data, Reply::Attest).output, None);
+            assert_eq!(call(&codes.1, &data, &PcsFrame::declaring_all()).output, None);
             let mut near = data.clone();
-            near[CALLDATA_LEN - 1] ^= 1;
+            near[ARGS_LEN - 1] ^= 1;
             assert!(agree(&index_root, log_rows, &codes, &near, &other));
             assert_eq!(
-                call_with(&codes.1, &near, Reply::Attest).output,
+                call(&codes.1, &near, &PcsFrame::declaring_all()).output,
                 Some(VERIFIED.to_vec())
             );
         }
@@ -310,8 +309,8 @@ fn degenerate_proofs_revert_at(limit: usize) {
 }
 
 /// Hint mode (`Inverse::Hint`), at every size: random calldata with the hint that fits it (`protocol::hint`)
-/// reduces, the claims contract returning what `verify_in` leaves and the contract passing against their openings
-/// and when `PCS_OPEN` attests everything; any bit of the hint flipped, both revert, even when `PCS_OPEN` attests
+/// reduces, the claims contract returning what `verify_in` leaves and the contract passing against a frame declaring
+/// them and one declaring everything; any bit of the hint flipped, both revert, even when the frame declares
 /// everything, as `verify_in` rejects: the check `product · hint = 1` is compiled, and it alone stops a wrong hint.
 /// A transcript whose product is zero takes no hint. And the hint saves the inverse's products and their gas.
 #[test]
@@ -319,15 +318,19 @@ fn hint_transcripts_agree() {
     use quotient::protocol::{Inverse, hint, verify_in};
     use crate::quotient::{claims_contract_in, contract_in};
     let mut rng = Rng::new(0x41E);
+    // The hint goes between the arguments and the frame's index.
+    let with_hint = |data: &[u8], hint: F192| {
+        [&data[..ARGS_LEN], &[hint.c2, hint.c1, hint.c0].map(u64::to_be_bytes).concat()[..], &[PCS_FRAME]].concat()
+    };
     let hinted = |index_root: &Hash, data: &[u8], log_rows: usize| -> Option<Vec<u8>> {
         let (statement, proof) = parse(data);
         let hint = hint(index_root, &statement, &proof, log_rows).ok()?;
-        Some([data, &[hint.c2, hint.c1, hint.c0].map(u64::to_be_bytes).concat()[..]].concat())
+        Some(with_hint(data, hint))
     };
     let parse_hinted = |data: &[u8]| {
-        let (statement, mut proof) = parse(&data[..CALLDATA_LEN]);
+        let (statement, mut proof) = parse(&[&data[..ARGS_LEN], &[PCS_FRAME]].concat());
         let word = |at: usize| u64::from_be_bytes(data[at..at + 8].try_into().unwrap());
-        proof.stream.push(F192::new(word(CALLDATA_LEN + 16), word(CALLDATA_LEN + 8), word(CALLDATA_LEN)));
+        proof.stream.push(F192::new(word(ARGS_LEN + 16), word(ARGS_LEN + 8), word(ARGS_LEN)));
         (statement, proof)
     };
     for log_rows in LOG_ROWS {
@@ -340,32 +343,32 @@ fn hint_transcripts_agree() {
             assert_eq!(data.len(), CALLDATA_LEN + 24);
             let (statement, proof) = parse_hinted(&data);
             let expected = verify_in(&index_root, &statement, &proof, log_rows, Inverse::Hint).expect("a reduction");
-            let returned = call(&claims, &data, &PcsOpen::default()).output;
+            let returned = call(&claims, &data, &PcsFrame::default()).output;
             assert_eq!(returned.as_deref().and_then(|output| decode(output, log_rows)), Some(expected.clone()));
-            let mut block = PcsOpen::default();
+            let mut block = PcsFrame::default();
             for (root, id, claims) in openings(&index_root, &expected.0, &expected.1, log_rows) {
-                block.register(&root, id, &claims);
+                block.declare(&root, id, &claims);
             }
             assert_eq!(call(&calling, &data, &block).output, Some(VERIFIED.to_vec()));
-            assert_eq!(call(&calling, &data, &PcsOpen::default()).output, None);
-            let attested = call_with(&calling, &data, Reply::Attest);
+            assert_eq!(call(&calling, &data, &PcsFrame::default()).output, None);
+            let attested = call(&calling, &data, &PcsFrame::declaring_all());
             assert_eq!(attested.output, Some(VERIFIED.to_vec()));
             for bit in (0..192).step_by(7) {
                 let mut flipped = data.clone();
-                flipped[data.len() - 1 - bit / 8] ^= 1 << (bit % 8);
+                flipped[ARGS_LEN + 23 - bit / 8] ^= 1 << (bit % 8);
                 let (statement, proof) = parse_hinted(&flipped);
                 assert_eq!(
                     verify_in(&index_root, &statement, &proof, log_rows, Inverse::Hint).err(),
                     Some(VerifyError::Degenerate)
                 );
-                assert_eq!(call(&claims, &flipped, &PcsOpen::default()).output, None, "bit {bit}");
-                assert_eq!(call_with(&calling, &flipped, Reply::Attest).output, None, "bit {bit}");
+                assert_eq!(call(&claims, &flipped, &PcsFrame::default()).output, None, "bit {bit}");
+                assert_eq!(call(&calling, &flipped, &PcsFrame::declaring_all()).output, None, "bit {bit}");
             }
             // The compute contract on hint calldata, and on it without the hint, which it reads under its own label.
-            assert_eq!(call_with(&compute, &data, Reply::Attest).output, None);
-            let without = &data[..CALLDATA_LEN];
+            assert_eq!(call(&compute, &data, &PcsFrame::declaring_all()).output, None);
+            let without = &[&data[..ARGS_LEN], &[PCS_FRAME]].concat();
             assert_eq!(call(&compute, without, &block).output, None);
-            let gas = (attested.execution, call_with(&compute, without, Reply::Attest).execution);
+            let gas = (attested.execution, call(&compute, without, &PcsFrame::declaring_all()).execution);
             assert!(gas.0 + 1_000 < gas.1, "2^{log_rows}: hint {} against compute {}", gas.0, gas.1);
         }
         // A zero product, under the hint mode's label: no hint passes.
@@ -373,19 +376,19 @@ fn hint_transcripts_agree() {
         let (statement, proof) = parse(&data);
         assert_eq!(hint(&index_root, &statement, &proof, log_rows), Err(VerifyError::Degenerate));
         for hint in [F192::ZERO, F192::ONE, rng.ext()] {
-            let data = [&data[..], &[hint.c2, hint.c1, hint.c0].map(u64::to_be_bytes).concat()[..]].concat();
+            let data = with_hint(&data, hint);
             let (statement, proof) = parse_hinted(&data);
             assert_eq!(
                 verify_in(&index_root, &statement, &proof, log_rows, Inverse::Hint).err(),
                 Some(VerifyError::Degenerate)
             );
-            assert_eq!(call(&claims, &data, &PcsOpen::default()).output, None);
-            assert_eq!(call_with(&calling, &data, Reply::Attest).output, None);
+            assert_eq!(call(&claims, &data, &PcsFrame::default()).output, None);
+            assert_eq!(call(&calling, &data, &PcsFrame::declaring_all()).output, None);
         }
     }
 }
 
-/// Calldata of any other length reverts, whatever it holds and whatever `PCS_OPEN` says.
+/// Calldata of any other length reverts, whatever it holds and whatever its frame declares.
 #[test]
 fn other_lengths_revert() {
     LIMITS.into_iter().for_each(other_lengths_revert_at);
@@ -399,16 +402,16 @@ fn other_lengths_revert_at(limit: usize) {
     for len in (0..=CALLDATA_LEN + 64).filter(|&len| len != CALLDATA_LEN) {
         let mut data = full.clone();
         data.resize(len, 0);
-        assert_eq!(call(&codes.0, &data, &PcsOpen::default()).output, None, "{len}");
-        assert_eq!(call_with(&codes.1, &data, Reply::Attest).output, None, "{len}");
+        assert_eq!(call(&codes.0, &data, &PcsFrame::default()).output, None, "{len}");
+        assert_eq!(call(&codes.1, &data, &PcsFrame::declaring_all()).output, None, "{len}");
     }
     // Zero bytes past the end are not the same calldata: the size is checked, not the bytes read.
     let mut long = full.clone();
     long.extend([0; 8]);
-    assert_eq!(call_with(&codes.1, &long, Reply::Attest).output, None);
+    assert_eq!(call(&codes.1, &long, &PcsFrame::declaring_all()).output, None);
 }
 
-/// A commitment's word in calldata is the word `PCS_OPEN` reads for its root, and roots and words correspond one
+/// A commitment's word in calldata is the word a claim encodes for its root, and roots and words correspond one
 /// to one.
 #[test]
 fn root_words_are_the_calldata_words() {
@@ -448,152 +451,7 @@ fn calldata_of_a_proof_that_is_not_a_root() {
     assert_ne!(calldata(&statement, &wide).expect("a proof scalar's 192 bits"), data);
 }
 
-/// How `PCS_OPEN` answers, in place of the mock's lookup.
-#[derive(Clone, Copy, Debug)]
-enum Reply {
-    /// The word 1, to everything.
-    Attest,
-    /// The word 0: "no", in an ABI that answers every call.
-    Zero,
-    /// A revert carrying the word 1.
-    RevertOne,
-    /// Two words.
-    Long,
-    /// The word 1 but its first byte: 31 bytes.
-    Short,
-    /// Nothing.
-    Nothing,
-    /// No precompile at the address: an empty account.
-    Absent,
-}
-
-struct Rogue {
-    eth: EthPrecompiles,
-    reply: Reply,
-    warm: bool,
-    inputs: Vec<Vec<u8>>,
-}
-
-impl<CTX: ContextTr> PrecompileProvider<CTX> for Rogue {
-    type Output = InterpreterResult;
-
-    fn set_spec(&mut self, spec: <CTX::Cfg as Cfg>::Spec) -> bool {
-        let changed = <EthPrecompiles as PrecompileProvider<CTX>>::set_spec(&mut self.eth, spec);
-        changed | !std::mem::replace(&mut self.warm, true)
-    }
-
-    fn run(
-        &mut self,
-        context: &mut CTX,
-        address: &Address,
-        inputs: &InputsImpl,
-        is_static: bool,
-        gas_limit: u64,
-    ) -> Result<Option<InterpreterResult>, String> {
-        if *address != PCS_OPEN || matches!(self.reply, Reply::Absent) {
-            return self.eth.run(context, address, inputs, is_static, gas_limit);
-        }
-        let input = match &inputs.input {
-            CallInput::SharedBuffer(range) => context
-                .local()
-                .shared_memory_buffer_slice(range.clone())
-                .map_or_else(Vec::new, |slice| slice.to_vec()),
-            CallInput::Bytes(bytes) => bytes.to_vec(),
-        };
-        self.inputs.push(input);
-        let one = U256::from(1).to_be_bytes_vec();
-        let (result, output) = match self.reply {
-            Reply::Attest => (InstructionResult::Return, one),
-            Reply::Zero => (InstructionResult::Return, vec![0; 32]),
-            Reply::RevertOne => (InstructionResult::Revert, one),
-            Reply::Long => (InstructionResult::Return, [one.clone(), one].concat()),
-            Reply::Short => (InstructionResult::Return, one[1..].to_vec()),
-            Reply::Nothing | Reply::Absent => (InstructionResult::Return, vec![]),
-        };
-        Ok(Some(InterpreterResult {
-            result,
-            gas: Gas::new(gas_limit),
-            output: output.into(),
-        }))
-    }
-
-    fn warm_addresses(&self) -> Box<impl Iterator<Item = Address>> {
-        let pcs = (!matches!(self.reply, Reply::Absent)).then_some(PCS_OPEN);
-        Box::new(self.eth.warm_addresses().chain(pcs))
-    }
-
-    fn contains(&self, address: &Address) -> bool {
-        (*address == PCS_OPEN && !matches!(self.reply, Reply::Absent)) || self.eth.contains(address)
-    }
-}
-
-/// `machine::field_mul`, which is private there.
-fn field_mul<W: InterpreterTypes, H: ?Sized>(context: InstructionContext<'_, H, W>) {
-    gas!(context.interpreter, FIELD_MUL_GAS);
-    let Some(([a], b)) = context.interpreter.stack.popn_top() else {
-        context.interpreter.halt(InstructionResult::StackUnderflow);
-        return;
-    };
-    let element = |w: U256| {
-        let [c0, c1, c2, _] = w.into_limbs();
-        F192::new(c0, c1, c2)
-    };
-    let product = element(a) * element(*b);
-    *b = U256::from_limbs([product.c0, product.c1, product.c2, 0]);
-}
-
-struct Called {
-    output: Option<Vec<u8>>,
-    inputs: Vec<Vec<u8>>,
-    /// Its execution gas: the transaction's without its base and calldata.
-    execution: u64,
-}
-
-/// [`call`], with `PCS_OPEN` answering as `reply` says: on the deployment's accounts (its parts', if any), its
-/// stored root checked.
-fn call_with(deployed: &Deployed, data: &[u8], reply: Reply) -> Called {
-    let (contract, caller) = (deployed.address, Address::with_last_byte(0xca));
-    let db: CacheDB<EmptyDB> = deployed.chain.db();
-    let root = U256::from(INDEX_ROOT_SLOT);
-    assert_eq!(
-        db.cache.accounts[&contract].storage.get(&root).copied(),
-        Some(U256::from_be_bytes(deployed.index_root))
-    );
-    let mut evm = Context::mainnet()
-        .with_db(db)
-        .modify_cfg_chained(|cfg| cfg.spec = SpecId::CANCUN)
-        .build_mainnet()
-        .with_precompiles(Rogue {
-            eth: EthPrecompiles::default(),
-            reply,
-            warm: false,
-            inputs: vec![],
-        });
-    evm.instruction.insert_instruction(FIELD_MUL, field_mul);
-    let tx = TxEnv::builder()
-        .caller(caller)
-        .kind(TxKind::Call(contract))
-        .data(Bytes::copy_from_slice(data))
-        .gas_limit(10_000_000)
-        .build()
-        .expect("a transaction");
-    let result = evm.transact_one(tx).expect("a valid transaction");
-    let execution = result.gas_used() - crate::machine::transaction_gas(data, 0, 0);
-    let output = match result {
-        ExecutionResult::Success {
-            output: Output::Call(output),
-            ..
-        } => Some(output.to_vec()),
-        _ => None,
-    };
-    Called {
-        output,
-        inputs: std::mem::take(&mut evm.precompiles.inputs),
-        execution,
-    }
-}
-
-/// A driver whose parts are not where it calls them reverts, whatever `PCS_OPEN` says: with every part missing, the
+/// A driver whose parts are not where it calls them reverts, whatever its frame declares: with every part missing, the
 /// last only, or one before it (an account without code runs nothing and returns nothing); with them all it passes.
 #[test]
 fn a_driver_without_its_parts_reverts() {
@@ -638,21 +496,21 @@ fn a_driver_without_its_parts_reverts() {
         };
         let passes = missing.iter().all(|&m| !m);
         assert_eq!(
-            call_with(&deployed, &data, Reply::Attest).output.is_some(),
+            call(&deployed, &data, &PcsFrame::declaring_all()).output.is_some(),
             passes,
             "{missing:?}"
         );
     }
     let deployed = deploy(&contract, &index_root);
     assert_eq!(
-        call_with(&deployed, &data, Reply::Attest).output,
+        call(&deployed, &data, &PcsFrame::declaring_all()).output,
         Some(VERIFIED.to_vec())
     );
 }
 
 /// What linking costs the membership verifier, which fits one contract: linked into contracts of at most 8, 4 and 2
-/// KB, its execution on calldata every check of which passes, with `PCS_OPEN` attesting every call at no gas (the
-/// gas does not depend on the values: straight-line code), and its deployment, each contract by a transaction:
+/// KB, its execution on calldata every check of which passes, its frame declaring every claim (the gas does not
+/// depend on the values: straight-line code), and its deployment, each contract by a transaction:
 /// `cargo test --release -p evm -- --ignored --nocapture linked_gas_report`.
 #[test]
 #[ignore]
@@ -661,7 +519,7 @@ fn linked_gas_report() {
     let index_root = random_bytes(&mut rng);
     let data = random_calldata(&mut rng);
     let log_rows = *LOG_ROWS.end();
-    let straight = call_with(&deploy(&contract(log_rows), &index_root), &data, Reply::Attest).execution;
+    let straight = call(&deploy(&contract(log_rows), &index_root), &data, &PcsFrame::declaring_all()).execution;
     println!(
         "| limit | contracts | code bytes (driver; parts) | execution | added | deployment gas (EIP-7623, without 21,000 a transaction) |"
     );
@@ -675,7 +533,7 @@ fn linked_gas_report() {
             address: address.expect("a deployment"),
             index_root,
         };
-        let called = call_with(&deployed, &data, Reply::Attest);
+        let called = call(&deployed, &data, &PcsFrame::declaring_all());
         assert_eq!(called.output, Some(VERIFIED.to_vec()));
         let deployment: u64 = transactions
             .iter()
@@ -693,46 +551,70 @@ fn linked_gas_report() {
     }
 }
 
-/// The contract takes a call to attest only if it succeeds returning exactly the word 1: the word 0, a reverted
-/// call carrying the word 1, two words, 31 bytes, nothing and an absent precompile all revert, at the first call.
+/// The contract takes its claims as declared only in the frame calldata names, if it is a dependency verification
+/// frame of PCS claims holding their hashes as payloads `0, 1, 2`, in order: the frame after another one, named so,
+/// passes; a frame of another mode, of the leanSPHINCS scheme (whose message hashes its sender chooses), or of no
+/// scheme, a frame the transaction does not have, the claims in another order, one left out or one more first, all
+/// revert.
 #[test]
-fn only_the_word_one_passes() {
-    LIMITS.into_iter().for_each(only_the_word_one_passes_at);
+fn only_a_frame_of_pcs_claims_passes() {
+    LIMITS.into_iter().for_each(only_a_frame_of_pcs_claims_passes_at);
 }
 
-fn only_the_word_one_passes_at(limit: usize) {
+fn only_a_frame_of_pcs_claims_passes_at(limit: usize) {
     let mut rng = Rng::new(0x0DA7A);
     let index_root = random_bytes(&mut rng);
     let deployed = deploy(&contract_linked(22, limit), &index_root);
     let data = random_calldata(&mut rng);
-    for (reply, passes) in [
-        (Reply::Attest, true),
-        (Reply::Zero, false),
-        (Reply::RevertOne, false),
-        (Reply::Long, false),
-        (Reply::Short, false),
-        (Reply::Nothing, false),
-        (Reply::Absent, false),
-    ] {
-        let called = call_with(&deployed, &data, reply);
-        assert_eq!(called.output, passes.then(|| VERIFIED.to_vec()), "{reply:?}");
-        let calls = match reply {
-            Reply::Attest => 3,
-            Reply::Absent => 0,
-            _ => 1,
-        };
-        assert_eq!(called.inputs.len(), calls, "{reply:?}");
+    let honest = block_for(&index_root, &data, 22);
+    let claims = honest.claims().to_vec();
+    assert_eq!(claims.len(), 3);
+    let passes = |data: &[u8], block: &PcsFrame| {
+        let outcome = call(&deployed, data, block);
+        assert!(outcome.output.as_ref().is_none_or(|output| *output == VERIFIED));
+        outcome.output.is_some()
+    };
+    assert!(passes(&data, &honest));
+    // After another frame, as calldata names it.
+    let mut second = honest.clone();
+    second.before.push(Frame {
+        mode: 0,
+        data: honest.data(),
+    });
+    let mut named = data.clone();
+    *named.last_mut().unwrap() = 1;
+    assert!(passes(&named, &second));
+    assert!(!passes(&data, &second), "the frame before it is not of PCS claims");
+    assert!(!passes(&named, &honest), "the transaction has no second frame");
+    // Other kinds of frames.
+    for (mode, scheme) in [(0, 0x12), (DEP_VERIFY_FRAME_MODE, 0x10), (DEP_VERIFY_FRAME_MODE, 0x00)] {
+        let mut other = honest.clone();
+        (other.mode, other.scheme) = (mode, scheme);
+        assert!(!passes(&data, &other), "mode {mode}, scheme {scheme:#04x}");
+        other.declare_all = true;
+        assert!(!passes(&data, &other), "mode {mode}, scheme {scheme:#04x}, declaring all");
     }
+    // Other payloads.
+    let frame = |claims: &[Vec<u8>]| {
+        let mut block = PcsFrame::default();
+        claims.iter().for_each(|claim| block.declare_input(claim.clone()));
+        block
+    };
+    let reversed: Vec<Vec<u8>> = claims.iter().rev().cloned().collect();
+    assert!(!passes(&data, &frame(&reversed)));
+    assert!(!passes(&data, &frame(&claims[..2])));
+    assert!(!passes(&data, &frame(&[vec![0; 32], claims[0].clone(), claims[1].clone(), claims[2].clone()])));
+    assert!(passes(&data, &frame(&[claims.clone(), vec![vec![1]]].concat())), "a fourth claim, unread");
 }
 
-/// The three inputs the contract sends are, byte for byte, those the mock is given for the Rust verifier's claims,
-/// in order: no more calls, no other bytes. The wiring table's is against the root in storage.
+/// The claims the contract checks are, byte for byte, the Rust verifier's, in order: no more, no other bytes. The
+/// wiring table's is against the root in storage.
 #[test]
-fn inputs_are_the_rust_openings() {
-    LIMITS.into_iter().for_each(inputs_are_the_rust_openings_at);
+fn claims_are_the_rust_openings() {
+    LIMITS.into_iter().for_each(claims_are_the_rust_openings_at);
 }
 
-fn inputs_are_the_rust_openings_at(limit: usize) {
+fn claims_are_the_rust_openings_at(limit: usize) {
     let mut rng = Rng::new(0x1A9);
     for log_rows in LOG_ROWS {
         let index_root = random_bytes(&mut rng);
@@ -743,11 +625,11 @@ fn inputs_are_the_rust_openings_at(limit: usize) {
             let (roots, claims) = verify(&index_root, &statement, &proof, log_rows).expect("a reduction");
             let expected: Vec<Vec<u8>> = openings(&index_root, &roots, &claims, log_rows)
                 .iter()
-                .map(|(root, id, claims)| crate::machine::pcs_open_input(root, *id, claims))
+                .map(|(root, id, claims)| claim_input(root, *id, claims))
                 .collect();
-            let called = call_with(&deployed, &data, Reply::Attest);
-            assert_eq!(called.output, Some(VERIFIED.to_vec()));
-            assert_eq!(called.inputs, expected);
+            let outcome = call(&deployed, &data, &PcsFrame::declaring_all());
+            assert_eq!(outcome.output, Some(VERIFIED.to_vec()));
+            assert_eq!(outcome.claims, expected);
         }
     }
 }
@@ -759,8 +641,9 @@ struct Walk {
     gas: BTreeMap<&'static str, u64>,
     max_stack: usize,
     memory_words: u64,
-    /// `(offset, size)` of each `STATICCALL`'s input.
+    /// `(offset, size)` of each claim checked: what the last `KECCAK256` before a payload's `FRAMEDATALOAD` hashed.
     calls: Vec<(u64, u64)>,
+    hashed: Option<(u64, u64)>,
     /// Where each `JUMPI` would go.
     jumps: Vec<u64>,
     end: usize,
@@ -771,7 +654,7 @@ fn memory_cost(words: u64) -> u64 {
 }
 
 /// Walk `code` from its start to its `STOP` or `RETURN`, no jump taken, pricing each instruction as Cancun (and
-/// Prague, Osaka) does with `PCS_OPEN` warm and free and the first `SLOAD` of a slot cold. Offsets and sizes must
+/// Prague, Osaka) does, with the first `SLOAD` of a slot cold, and EIP-8141's `FRAMEPARAM` and `FRAMEDATALOAD`. Offsets and sizes must
 /// be pushed constants.
 fn walk(code: &[u8]) -> Walk {
     let mut walk = Walk::default();
@@ -868,6 +751,7 @@ fn walk(code: &[u8]) -> Walk {
             0x20 => {
                 let (offset, size) = (pop(&mut stack), pop(&mut stack));
                 let cost = 30 + 6 * size.unwrap().div_ceil(32) + expand(&mut walk, offset, size);
+                walk.hashed = Some((offset.unwrap(), size.unwrap()));
                 stack.push(None);
                 ("KECCAK256", cost)
             }
@@ -882,17 +766,20 @@ fn walk(code: &[u8]) -> Walk {
                 walk.jumps.push(dest);
                 ("JUMPI", 10)
             }
-            0xfa => {
+            0xb3 => {
                 pop(&mut stack);
-                let address = pop(&mut stack);
-                assert_eq!(address, Some(0x12));
-                let (offset, size) = (pop(&mut stack), pop(&mut stack));
-                let (ret_offset, ret_size) = (pop(&mut stack), pop(&mut stack));
-                assert_eq!((ret_offset, ret_size), (Some(0), Some(32)));
-                walk.calls.push((offset.unwrap(), size.unwrap()));
-                let cost = 100 + expand(&mut walk, offset, size) + expand(&mut walk, ret_offset, ret_size);
+                pop(&mut stack);
                 stack.push(None);
-                ("STATICCALL", cost)
+                ("FRAMEPARAM", 2)
+            }
+            0xb1 => {
+                let offset = pop(&mut stack).expect("a constant offset");
+                pop(&mut stack);
+                if offset >= 1 {
+                    walk.calls.push(walk.hashed.expect("a claim hashed"));
+                }
+                stack.push(None);
+                ("FRAMEDATALOAD", 3)
             }
             0x00 => {
                 walk.end = pc;
@@ -943,8 +830,8 @@ fn gas_by_opcode() {
         let block = block_for(&index_root, &data, log_rows);
         let mut totals = vec![];
         for (name, compiled, block) in [
-            ("returning", &returning, PcsOpen::default()),
-            ("calling", &calling, block),
+            ("returning", &returning, PcsFrame::default()),
+            ("checking", &calling, block),
         ] {
             let code = &compiled.code;
             let walk = walk(code);
@@ -975,11 +862,11 @@ fn gas_by_opcode() {
                     walk.memory_words
                 );
                 println!("  {:?}", walk.gas);
-                println!("  calls (offset, size): {:?}", walk.calls);
+                println!("  claims (offset, size): {:?}", walk.calls);
             }
             assert!(code.len() <= 24_576, "{name}: {} bytes", code.len());
         }
-        // The calls read the region back to back to its end, each `3 + k (v + 1)` words: the witness table's claim
+        // The claims are the region back to back to its end, each `3 + k (v + 1)` words: the witness table's claim
         // in `m + 1` variables, the wiring table's in `m`, the quotient table's two in `m + 6`.
         let m = log_rows as u64 + 2;
         let calls = walk(&calling.code).calls;
@@ -991,22 +878,4 @@ fn gas_by_opcode() {
             println!("difference: {}", totals[1] - totals[0]);
         }
     }
-}
-
-/// A call `PCS_OPEN` cannot pay for fails, returning nothing, and the contract reverts.
-#[test]
-fn out_of_gas_in_the_call_reverts() {
-    LIMITS.into_iter().for_each(out_of_gas_in_the_call_reverts_at);
-}
-
-fn out_of_gas_in_the_call_reverts_at(limit: usize) {
-    let mut rng = Rng::new(0x006);
-    let index_root = random_bytes(&mut rng);
-    let deployed = deploy(&contract_linked(22, limit), &index_root);
-    let data = random_calldata(&mut rng);
-    let mut block = block_for(&index_root, &data, 22);
-    block.claim_gas = 4_000_000;
-    assert_eq!(call(&deployed, &data, &block).output, None);
-    block.claim_gas = 1_000_000;
-    assert_eq!(call(&deployed, &data, &block).output, Some(VERIFIED.to_vec()));
 }

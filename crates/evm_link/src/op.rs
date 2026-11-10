@@ -43,12 +43,16 @@ pub const DELEGATECALL: u8 = 0xf4;
 pub const STATICCALL: u8 = 0xfa;
 pub const REVERT: u8 = 0xfd;
 
-/// The address of `PCS_OPEN`: the first no mainnet precompile takes (Prague's last is `0x11`).
-pub const PCS_OPEN: [u8; 20] = {
-    let mut address = [0; 20];
-    address[19] = 0x12;
-    address
-};
+/// EIP-8141's `FRAMEDATALOAD`: the word of frame `frameIndex`'s `data` at `offset` (on top), as `CALLDATALOAD`.
+pub const FRAMEDATALOAD: u8 = 0xb1;
+/// EIP-8141's `FRAMEPARAM`: parameter `param` of frame `frameIndex` (on top).
+pub const FRAMEPARAM: u8 = 0xb3;
+/// `FRAMEPARAM`'s parameter of a frame's mode.
+pub const FRAMEPARAM_MODE: u8 = 0x02;
+/// EIP-8288's mode of a dependency verification frame.
+pub const DEP_VERIFY_FRAME_MODE: u8 = 4;
+/// The scheme of PCS claims, a dependency verification frame's first byte (the EIP draft's `PCS_SCHEME`).
+pub const PCS_SCHEME: u8 = 0x12;
 
 /// The revert every failed check jumps to.
 pub const REVERT_CODE: [u8; 4] = [JUMPDEST, PUSH0, PUSH0, REVERT];
@@ -94,6 +98,7 @@ pub fn arity(op: u8) -> (usize, usize) {
     match op {
         STOP | JUMPDEST => (0, 0),
         0x01..=0x07 | 0x0a | 0x0b | FIELD_MUL | 0x10..=0x14 | AND | OR | XOR | 0x1a..=0x1d | KECCAK256 => (2, 1),
+        FRAMEDATALOAD | FRAMEPARAM => (2, 1),
         0x08 | 0x09 => (3, 1),
         ISZERO | NOT | CALLDATALOAD | MLOAD | SLOAD | 0x31 | 0x3b | 0x3f | 0x40 => (1, 1),
         0x30

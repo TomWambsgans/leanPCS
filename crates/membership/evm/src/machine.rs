@@ -1,17 +1,19 @@
 // Adapted from leanVM (https://github.com/leanEthereum/leanVM), branch PCS-openings-aggregation, commit 651453c6,
-// file crates/membership/evm/src/machine.rs; new here: the mock `PCS_OPEN`, and the `Chain` that deploys contracts and keeps
+// file crates/membership/evm/src/machine.rs; new here: EIP-8141's frame introspection and a frame of PCS claims, and the `Chain` that deploys contracts and keeps
 // their storage across transactions. MIT OR Apache-2.0; see AGENTS.md.
-//! revm with `FIELD_MUL`, and with a mock of the precompile `PCS_OPEN`.
+//! revm with `FIELD_MUL`, and with the frames of an EIP-8141 transaction, its frame of PCS claims among them.
 //!
-//! # `PCS_OPEN`
+//! # PCS claims
 //!
-//! The precompile at [`PCS_OPEN`] attests that claims on one commitment are those of an opening the block's
-//! builder aggregated: the openings travel beside the transactions, and the precompile only looks a call up
-//! among them. A call carries **every** claim on its commitment, as one opening does: an opening is of one
-//! random combination of its claims, and that alone binds them to one table, leanVM's WHIR taking no
-//! out-of-domain sample at its first commitment (two openings of one root could be of two tables).
+//! A transaction declares the claims its contract checks in a frame of PCS claims (the EIP draft,
+//! `eip-draft_leanPCS.md`): an EIP-8288 dependency verification frame whose `data` is `PCS_SCHEME` then the
+//! Keccak-256 of each claim, which the block's aggregated proof proves. The contract finds them with EIP-8141's
+//! introspection, which this machine has: `FRAMEPARAM` (`0xb3`, 2 gas; the mode and the length of `data`) and
+//! `FRAMEDATALOAD` (`0xb1`, 3 gas). [`PcsFrame`] is such a frame, standing for a block that proves its claims.
 //!
-//! **Input**: `3 + k (v + 1)` words of 32 bytes, nothing more:
+//! **A claim** is the claims of one opening, on one commitment: an opening is of one random combination of its claims,
+//! and that alone binds them to one table, leanVM's WHIR taking no out-of-domain sample at its first commitment (two
+//! openings of one root could be of two tables). Its bytes ([`claim_input`]) are `3 + k (v + 1)` words of 32 bytes:
 //!
 //! 1. the commitment: its Merkle root `r` as the word `s_0 · 2^128 + s_1`, `s_h` the little-endian number of
 //!    bytes `16 h .. 16 h + 16` of `r` (the two scalars of [`quotient::transcript::root_scalars`]);
@@ -21,32 +23,22 @@
 //! 4. each claim: its point's `v` coordinates, then its value. A field element of `GF(2^192)` is the low 192
 //!    bits of its word, limb 0 lowest, and its top 64 bits are zero.
 //!
-//! **Output**: the word 1 if one of the block's openings is of exactly these claims, in this order, on the table
-//! committed as this root under this layout, and nothing otherwise, an input of another length included. Such an
-//! opening is one [`quotient::opening::verify`] accepts for the layout the id names: its transcript's IV hashes
-//! that layout's prefix ([`quotient::opening::prefix`]: the label, the version, the layout's hash, its size, WHIR's
-//! rate) then these claims, words 4 onwards as field elements, and its proof's first two scalars are the root's,
-//! word 1's two halves (`formal/WhirBridge`, `family_sound`). The ids name distinct prefixes. A call
-//! fails only for lack of gas. A contract takes a call to attest only if it succeeded and returned exactly 32 bytes,
-//! the word 1: a failed call and an address without the precompile return nothing, and anything else (the word 0,
-//! a revert with data, more words) is not an attestation either.
+//! The block proves it by an opening [`quotient::opening::verify`] accepts for the layout the id names: its
+//! transcript's IV hashes that layout's prefix ([`quotient::opening::prefix`]: the label, the version, the layout's
+//! hash, its size, WHIR's rate) then these claims, words 4 onwards as field elements, and its proof's first two
+//! scalars are the root's, word 1's two halves (`formal/WhirBridge`, `family_sound`). The ids name distinct prefixes.
 //!
-//! **Why this encoding.** Every word is one the contract already holds as an EVM word, so marshalling a call is
-//! an `MSTORE` a word: a field element as `XOR` and `FIELD_MUL` work on it, a root as the calldata carries it and
-//! the transcript absorbs it (the raw root would take some forty instructions per root to reverse the bytes of
-//! its halves, which a native precompile does for free). Words of fixed width, with no offsets and no length
-//! but `k`, leave one way to parse an input, whose length the layout and `k` fix; with the top bits zero, a
-//! list of claims has one encoding, and a call is a lookup of its bytes. The layout is named, not sent: the
-//! protocol fixes it, and its lanes would be up to 64 more words.
+//! **Why this encoding.** Every word is one the contract already holds as an EVM word, so writing a claim is an
+//! `MSTORE` a word: a field element as `XOR` and `FIELD_MUL` work on it, a root as the calldata carries it and the
+//! transcript absorbs it. Words of fixed width, with no offsets and no length but `k`, leave one way to parse a
+//! claim, whose length the layout and `k` fix; with the top bits zero, a list of claims has one encoding, and its hash
+//! names it. The layout is named, not sent: the protocol fixes it, and its lanes would be up to 64 more words.
 //!
-//! **Gas**: [`PcsOpen::call_gas`] a call plus [`PcsOpen::claim_gas`] a claim (`k` as the input's third word says,
-//! read before anything is checked; none if the input is shorter), both zero by default, so that what the calls
-//! cost the contract is measured apart. No gas a byte of input: the caller paid for writing it to memory, and a
-//! claim's price stands for its share of the block's aggregated proof. A real precompile's price should depend on
-//! the table the layout names, not on `k` alone: the tables are of `2^15` to `2^28` words, and what a claim adds to
-//! the block's aggregated proof (and to its builder's work) grows with the table's size.
+//! **Gas.** A transaction with `c` PCS claims pays `5,000 + 1,000 c` intrinsic gas for their share of the block's
+//! aggregated proof ([`dependency_gas`]), apart from what this machine measures, and its frame of PCS claims is
+//! `1 + 32 c` bytes of the transaction.
 
-use std::collections::HashSet;
+use std::cell::RefCell;
 
 use fiat_shamir::merkle::Hash;
 use primitives::field::F192;
@@ -54,21 +46,28 @@ use quotient::opening::{Claim, Layout};
 use quotient::protocol::{quotient_layout, wiring_layout, witness_layout};
 use quotient::transcript::root_scalars;
 use revm::context::result::{ExecutionResult, Output};
-use revm::context::{Cfg, Context, ContextTr, LocalContextTr, TxEnv};
+use revm::context::{Context, TxEnv};
 use revm::database::{CacheDB, EmptyDB};
-use revm::handler::{EthPrecompiles, ExecuteCommitEvm, MainBuilder, MainContext, PrecompileProvider};
-use revm::interpreter::interpreter_types::{InterpreterTypes, StackTr};
-use revm::interpreter::{CallInput, Gas, InputsImpl, InstructionContext, InstructionResult, InterpreterResult, gas};
+use revm::handler::{ExecuteCommitEvm, MainBuilder, MainContext};
+use revm::interpreter::interpreter_types::{InterpreterTypes, MemoryTr, StackTr};
+use revm::interpreter::{InstructionContext, InstructionResult, gas};
 use revm::primitives::hardfork::SpecId;
-use revm::primitives::{Address, Bytes, TxKind, U256};
+use revm::primitives::{Address, Bytes, TxKind, U256, keccak256};
 use revm::state::AccountInfo;
 
 /// The opcode of `FIELD_MUL`, unassigned on mainnet.
 pub const FIELD_MUL: u8 = 0x0c;
 pub const FIELD_MUL_GAS: u64 = 10;
 
-/// The address of `PCS_OPEN`: the first no mainnet precompile takes (Prague's last is `0x11`).
-pub const PCS_OPEN: Address = Address::with_last_byte(0x12);
+/// EIP-8141's `FRAMEDATALOAD` and `FRAMEPARAM`, and their gas.
+pub const FRAMEDATALOAD: u8 = 0xb1;
+pub const FRAMEPARAM: u8 = 0xb3;
+const FRAMEDATALOAD_GAS: u64 = 3;
+const FRAMEPARAM_GAS: u64 = 2;
+const KECCAK256: u8 = 0x20;
+/// EIP-8288's mode of a dependency verification frame, and the scheme of PCS claims (the EIP draft's `PCS_SCHEME`).
+pub const DEP_VERIFY_FRAME_MODE: u8 = 4;
+pub const PCS_SCHEME: u8 = 0x12;
 
 fn element(word: U256) -> F192 {
     let [c0, c1, c2, _] = word.into_limbs();
@@ -86,18 +85,18 @@ fn field_mul<W: InterpreterTypes, H: ?Sized>(context: InstructionContext<'_, H, 
     *b = U256::from_limbs([product.c0, product.c1, product.c2, 0]);
 }
 
-/// A field element as `PCS_OPEN` reads it: limb 0 lowest, the top 64 bits zero.
+/// A field element as a claim encodes it: limb 0 lowest, the top 64 bits zero.
 pub fn element_word(x: F192) -> [u8; 32] {
     U256::from_limbs([x.c0, x.c1, x.c2, 0]).to_be_bytes()
 }
 
-/// A root as `PCS_OPEN` reads it: `s_0 · 2^128 + s_1`, its two scalars as the transcript carries them.
+/// A root as a claim encodes it: `s_0 · 2^128 + s_1`, its two scalars as the transcript carries them.
 pub fn root_word(root: &Hash) -> [u8; 32] {
     let [s0, s1] = root_scalars(root);
     U256::from_limbs([s1.c0, s1.c1, s0.c0, s0.c1]).to_be_bytes()
 }
 
-/// The tables of the membership protocol (`quotient::protocol`), as `PCS_OPEN` names their layouts.
+/// The tables of the membership protocol (`quotient::protocol`), as claims name their layouts.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TableId {
     Witness = 1,
@@ -105,13 +104,13 @@ pub enum TableId {
     Quotient = 3,
 }
 
-/// The rows, `2^log_rows`, for which `PCS_OPEN` knows the protocol's layouts: where each of its three tables is
+/// The rows, `2^log_rows`, for which the block proves claims on the protocol's layouts: where each of its three tables is
 /// a stack leanVM's WHIR commits, of `2^15` to `2^28` words in at most 64 lanes, and the two secret ones have
 /// hidden layouts (`quotient::protocol::MIN_LOG_ROWS`, `docs/membership/HIDING.md`).
 pub const LOG_ROWS: std::ops::RangeInclusive<usize> = quotient::protocol::MIN_LOG_ROWS..=22;
 
-/// The rows of the layouts a `PCS_OPEN` taking tables past WHIR's `2^28` words would know
-/// ([`PcsOpen::large_tables`]): every size the reduction takes (`quotient::protocol::reduction_supported`).
+/// The rows of the layouts a block proving claims on tables past WHIR's `2^28` words would know: every size the
+/// reduction takes (`quotient::protocol::reduction_supported`).
 pub const LARGE_LOG_ROWS: std::ops::RangeInclusive<usize> =
     quotient::protocol::MIN_LOG_ROWS..=quotient::protocol::MAX_REDUCTION_LOG_ROWS;
 
@@ -121,7 +120,7 @@ pub fn layout_id(table: TableId, log_rows: usize) -> u64 {
     256 * table as u64 + log_rows as u64
 }
 
-/// The layout an id names, if `PCS_OPEN` knows it.
+/// The layout an id names, if the block proves claims on it.
 pub fn layout(id: U256) -> Option<Layout> {
     let id = u64::try_from(id).ok()?;
     let log_rows = (id % 256) as usize;
@@ -134,7 +133,7 @@ pub fn layout(id: U256) -> Option<Layout> {
     LOG_ROWS.contains(&log_rows).then(|| table(log_rows))
 }
 
-/// [`layout`] for a `PCS_OPEN` that also takes the larger tables, to [`LARGE_LOG_ROWS`].
+/// [`layout`] for a block that also proves claims on the larger tables, to [`LARGE_LOG_ROWS`].
 pub fn layout_large(id: U256) -> Option<Layout> {
     let id = u64::try_from(id).ok()?;
     let log_rows = (id % 256) as usize;
@@ -147,9 +146,9 @@ pub fn layout_large(id: U256) -> Option<Layout> {
     LARGE_LOG_ROWS.contains(&log_rows).then(|| table(log_rows))
 }
 
-/// The input of `PCS_OPEN` for `claims` on the table committed as `root`, under layout `id`.
-pub fn pcs_open_input(root: &Hash, id: u64, claims: &[Claim]) -> Vec<u8> {
-    let vars = layout_large(U256::from(id)).expect("a layout PCS_OPEN knows").vars;
+/// The claim the opening of `claims` on the table committed as `root`, under layout `id`, proves: its bytes.
+pub fn claim_input(root: &Hash, id: u64, claims: &[Claim]) -> Vec<u8> {
+    let vars = layout_large(U256::from(id)).expect("a layout the block knows").vars;
     assert!(!claims.is_empty() && claims.iter().all(|claim| claim.point.len() == vars));
     let mut input = root_word(root).to_vec();
     input.extend(U256::from(id).to_be_bytes::<32>());
@@ -162,118 +161,194 @@ pub fn pcs_open_input(root: &Hash, id: u64, claims: &[Claim]) -> Vec<u8> {
     input
 }
 
-/// A mock of `PCS_OPEN`: the openings standing for a block's, each as the one input that names it, and its
-/// prices. It parses an input only as far as its length, `3 + k (v + 1)` words for the layout it names: an input it
-/// holds is well formed, being made by [`pcs_open_input`].
-#[derive(Clone, Debug, Default)]
-pub struct PcsOpen {
-    attested: HashSet<Vec<u8>>,
-    /// Gas a call costs.
-    pub call_gas: u64,
-    /// Gas a claim costs.
-    pub claim_gas: u64,
-    /// Whether it also takes the layouts past WHIR's `2^28` words ([`layout_large`]): the assumption a circuit
-    /// above `2^22` rows, such as an SLH-DSA circuit's (a proof-of-concept since removed), needs. Off, it knows [`layout`]'s only.
-    pub large_tables: bool,
+/// A frame as EIP-8141's introspection shows it: its mode and its `data`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Frame {
+    pub mode: u8,
+    pub data: Vec<u8>,
 }
 
-impl PcsOpen {
-    /// A `PCS_OPEN` that also takes the tables past WHIR's `2^28` words ([`PcsOpen::large_tables`]).
-    pub fn large() -> Self {
+/// A transaction's frame of PCS claims, standing for a block that proves them: payload `j` of its `data` is the
+/// Keccak-256 of the `j`-th claim declared. By default it is the transaction's first frame, as [`crate::quotient`]'s
+/// calldata names it; [`PcsFrame::before`] puts frames before it, and [`PcsFrame::mode`] and [`PcsFrame::scheme`]
+/// make it another kind of frame, for tests.
+#[derive(Clone, Debug)]
+pub struct PcsFrame {
+    claims: Vec<Vec<u8>>,
+    /// The transaction's frames before it.
+    pub before: Vec<Frame>,
+    /// Its mode, `DEP_VERIFY_FRAME_MODE`.
+    pub mode: u8,
+    /// Its first byte, `PCS_SCHEME`.
+    pub scheme: u8,
+    /// Every payload read is the hash of what the contract last hashed: a frame declaring whatever the contract
+    /// checks, for runs on calldata of no proof.
+    pub declare_all: bool,
+}
+
+impl Default for PcsFrame {
+    fn default() -> Self {
         Self {
-            large_tables: true,
+            claims: Vec::new(),
+            before: Vec::new(),
+            mode: DEP_VERIFY_FRAME_MODE,
+            scheme: PCS_SCHEME,
+            declare_all: false,
+        }
+    }
+}
+
+impl PcsFrame {
+    /// A frame declaring whatever the contract checks ([`PcsFrame::declare_all`]).
+    pub fn declaring_all() -> Self {
+        Self {
+            declare_all: true,
             ..Self::default()
         }
     }
 
-    /// Take an opening of `claims`, all together, on the table committed as `root`, under layout `id`, to be in
-    /// the block.
-    pub fn register(&mut self, root: &Hash, id: u64, claims: &[Claim]) {
-        self.attested.insert(pcs_open_input(root, id, claims));
+    /// Declare, as its next payload, the claim the opening of `claims`, all together, on the table committed as
+    /// `root`, under layout `id`, proves.
+    pub fn declare(&mut self, root: &Hash, id: u64, claims: &[Claim]) {
+        self.declare_input(claim_input(root, id, claims));
     }
 
-    /// What a call with `input` costs, and whether it attests.
-    fn run(&self, input: &[u8]) -> (u64, bool) {
-        let claims = input
-            .get(64..96)
-            .map_or(0, |k| U256::from_be_slice(k).saturating_to::<u64>());
-        let gas = self.claim_gas.saturating_mul(claims).saturating_add(self.call_gas);
-        (gas, Self::well_sized(input, self.large_tables) && self.attested.contains(input))
+    /// Declare a claim of these bytes as its next payload.
+    pub fn declare_input(&mut self, input: Vec<u8>) {
+        self.claims.push(input);
     }
 
-    /// Whether `input` is `3 + k (v + 1)` words, `k ≥ 1` its third word and `v` the variables of the layout its
-    /// second names.
-    fn well_sized(input: &[u8], large_tables: bool) -> bool {
-        let word = |i: usize| input.get(32 * i..32 * i + 32).map(U256::from_be_slice);
-        let (Some(id), Some(k)) = (word(1), word(2)) else {
-            return false;
-        };
-        let known = if large_tables { layout_large(id) } else { layout(id) };
-        let (Some(layout), Ok(k)) = (known, u64::try_from(k)) else {
-            return false;
-        };
-        let words = (layout.vars as u64 + 1)
-            .checked_mul(k)
-            .and_then(|claims| claims.checked_add(3));
-        k >= 1 && words.and_then(|words| words.checked_mul(32)) == Some(input.len() as u64)
+    /// The claims declared, in order.
+    pub fn claims(&self) -> &[Vec<u8>] {
+        &self.claims
+    }
+
+    /// Its `data`: its scheme, then each claim's hash.
+    pub fn data(&self) -> Vec<u8> {
+        let mut data = vec![self.scheme];
+        self.claims.iter().for_each(|claim| data.extend(keccak256(claim).0));
+        data
+    }
+
+    /// The transaction's frames: those before it, then it.
+    pub fn frames(&self) -> Vec<Frame> {
+        let mut frames = self.before.clone();
+        frames.push(Frame {
+            mode: self.mode,
+            data: self.data(),
+        });
+        frames
     }
 }
 
-/// Mainnet's precompiles and `PCS_OPEN`.
-struct Precompiles<'a> {
-    eth: EthPrecompiles,
-    pcs_open: &'a PcsOpen,
-    /// Whether the journal has been told the addresses, `PCS_OPEN`'s among them, which makes it warm.
-    warm: bool,
+/// A transaction's intrinsic gas for `claims` PCS claims (the EIP draft): `5,000` if it has any, and `1,000` a claim.
+pub fn dependency_gas(claims: usize) -> u64 {
+    if claims == 0 { 0 } else { 5_000 + 1_000 * claims as u64 }
 }
 
-impl<CTX: ContextTr> PrecompileProvider<CTX> for Precompiles<'_> {
-    type Output = InterpreterResult;
+/// The running transaction's frames, and what its contract hashed and checked.
+#[derive(Default)]
+struct Running {
+    frames: Vec<Frame>,
+    declare_all: bool,
+    /// The bytes the last `KECCAK256` hashed.
+    last: Vec<u8>,
+    /// Before each read of a payload (a frame's `data` past its first byte), what the last `KECCAK256` hashed: the
+    /// claims the contract checked.
+    checked: Vec<Vec<u8>>,
+}
 
-    fn set_spec(&mut self, spec: <CTX::Cfg as Cfg>::Spec) -> bool {
-        let changed = <EthPrecompiles as PrecompileProvider<CTX>>::set_spec(&mut self.eth, spec);
-        changed | !std::mem::replace(&mut self.warm, true)
-    }
+thread_local! {
+    static RUNNING: RefCell<Running> = RefCell::default();
+}
 
-    fn run(
-        &mut self,
-        context: &mut CTX,
-        address: &Address,
-        inputs: &InputsImpl,
-        is_static: bool,
-        gas_limit: u64,
-    ) -> Result<Option<InterpreterResult>, String> {
-        if *address != PCS_OPEN {
-            return self.eth.run(context, address, inputs, is_static, gas_limit);
+/// `FRAMEPARAM`: the mode (`0x02`) or the length of `data` (`0x04`) of a frame of the transaction; another parameter,
+/// or a frame it does not have, halts.
+fn frame_param<W: InterpreterTypes, H: ?Sized>(context: InstructionContext<'_, H, W>) {
+    gas!(context.interpreter, FRAMEPARAM_GAS);
+    let Some(([index], param)) = context.interpreter.stack.popn_top() else {
+        context.interpreter.halt(InstructionResult::StackUnderflow);
+        return;
+    };
+    let value = RUNNING.with_borrow(|running| {
+        let frame = running.frames.get(usize::try_from(index).ok()?)?;
+        match u8::try_from(*param).ok()? {
+            0x02 => Some(U256::from(frame.mode)),
+            0x04 => Some(U256::from(frame.data.len())),
+            _ => None,
         }
-        let input = match &inputs.input {
-            CallInput::SharedBuffer(range) => context
-                .local()
-                .shared_memory_buffer_slice(range.clone())
-                .map_or_else(Vec::new, |slice| slice.to_vec()),
-            CallInput::Bytes(bytes) => bytes.to_vec(),
-        };
-        let (cost, attested) = self.pcs_open.run(&input);
-        let mut result = InterpreterResult {
-            result: InstructionResult::Return,
-            gas: Gas::new(gas_limit),
-            output: Bytes::new(),
-        };
-        if !result.gas.record_cost(cost) {
-            result.result = InstructionResult::PrecompileOOG;
-        } else if attested {
-            result.output = Bytes::from(U256::from(1).to_be_bytes_vec());
+    });
+    match value {
+        Some(value) => *param = value,
+        None => context.interpreter.halt(InstructionResult::InvalidFEOpcode),
+    }
+}
+
+/// `FRAMEDATALOAD`: the word of a frame's `data` at an offset, zero past its end, as `CALLDATALOAD`; a frame the
+/// transaction does not have halts. A read past the first byte keeps what the last `KECCAK256` hashed, as a claim
+/// checked; with [`PcsFrame::declare_all`], it reads that hash.
+fn frame_data_load<W: InterpreterTypes, H: ?Sized>(context: InstructionContext<'_, H, W>) {
+    gas!(context.interpreter, FRAMEDATALOAD_GAS);
+    let Some(([offset], index)) = context.interpreter.stack.popn_top() else {
+        context.interpreter.halt(InstructionResult::StackUnderflow);
+        return;
+    };
+    let offset = usize::try_from(offset).unwrap_or(usize::MAX);
+    let word = RUNNING.with_borrow_mut(|running| {
+        let data = &running.frames.get(usize::try_from(*index).ok()?)?.data;
+        let mut word = [0u8; 32];
+        if offset < data.len() {
+            let n = 32.min(data.len() - offset);
+            word[..n].copy_from_slice(&data[offset..offset + n]);
         }
-        Ok(Some(result))
+        if offset >= 1 {
+            let last = running.last.clone();
+            if running.declare_all {
+                word = keccak256(&last).0;
+            }
+            running.checked.push(last);
+        }
+        Some(U256::from_be_bytes(word))
+    });
+    match word {
+        Some(word) => *index = word,
+        None => context.interpreter.halt(InstructionResult::InvalidFEOpcode),
     }
+}
 
-    fn warm_addresses(&self) -> Box<impl Iterator<Item = Address>> {
-        Box::new(self.eth.warm_addresses().chain([PCS_OPEN]))
+/// `KECCAK256`, as revm's, keeping the bytes it hashed.
+fn keccak256_keeping<W: InterpreterTypes, H: ?Sized>(context: InstructionContext<'_, H, W>) {
+    let Some([offset, len]) = context.interpreter.stack.popn() else {
+        context.interpreter.halt(InstructionResult::StackUnderflow);
+        return;
+    };
+    let Ok(len) = usize::try_from(len) else {
+        context.interpreter.halt(InstructionResult::InvalidOperandOOG);
+        return;
+    };
+    match gas::keccak256_cost(len) {
+        Some(cost) if context.interpreter.gas.record_cost(cost) => {}
+        _ => {
+            context.interpreter.halt(InstructionResult::OutOfGas);
+            return;
+        }
     }
-
-    fn contains(&self, address: &Address) -> bool {
-        *address == PCS_OPEN || self.eth.contains(address)
-    }
+    let bytes = if len == 0 {
+        Vec::new()
+    } else {
+        let Ok(from) = usize::try_from(offset) else {
+            context.interpreter.halt(InstructionResult::InvalidOperandOOG);
+            return;
+        };
+        if !context.interpreter.resize_memory(from, len) {
+            context.interpreter.halt(InstructionResult::MemoryOOG);
+            return;
+        }
+        context.interpreter.memory.slice_len(from, len).to_vec()
+    };
+    let hash = keccak256(&bytes);
+    RUNNING.with_borrow_mut(|running| running.last = bytes);
+    let _ = context.interpreter.stack.push(U256::from_be_bytes(hash.0));
 }
 
 /// What a transaction did.
@@ -281,9 +356,11 @@ impl<CTX: ContextTr> PrecompileProvider<CTX> for Precompiles<'_> {
 pub struct Outcome {
     /// What it returned (a creation: the code it deployed), or `None` if it reverted or halted.
     pub output: Option<Vec<u8>>,
-    /// The gas of its execution, its calls of `PCS_OPEN` included: the transaction's without its base cost and its
-    /// calldata. A creation's includes its 32,000, its init code's 2 a word and its code's deposit, 200 a byte.
+    /// The gas of its execution: the transaction's without its base cost, its calldata, its frames' `data` and its
+    /// claims' intrinsic gas ([`dependency_gas`]). A creation's includes its 32,000, its init code's 2 a word and its code's deposit, 200 a byte.
     pub execution: u64,
+    /// The claims it checked against its frame of PCS claims, in order: what it hashed before each payload read.
+    pub claims: Vec<Vec<u8>>,
 }
 
 /// A transaction's gas: its base cost, then the larger of its calldata at the standard rate plus `execution`, and
@@ -314,7 +391,7 @@ impl Chain {
         self.db.clone()
     }
 
-    /// Run a transaction from `from`, sending `value` wei, in a block whose openings are `pcs_open`'s, and keep
+    /// Run a transaction from `from`, sending `value` wei, whose frame of PCS claims is `pcs`, and keep
     /// what it changes; and the address of the contract it created, if any. Each transaction starts cold
     /// (EIP-2929): its first `SLOAD` of a slot costs 2,100.
     pub(crate) fn run(
@@ -323,7 +400,7 @@ impl Chain {
         to: TxKind,
         data: &[u8],
         value: U256,
-        pcs_open: &PcsOpen,
+        pcs: &PcsFrame,
     ) -> (Outcome, Option<Address>) {
         // Senders have funds for the value; gas is free.
         let nonce = self
@@ -339,13 +416,16 @@ impl Chain {
         let mut evm = Context::mainnet()
             .with_db(&mut self.db)
             .modify_cfg_chained(|cfg| cfg.spec = SpecId::CANCUN)
-            .build_mainnet()
-            .with_precompiles(Precompiles {
-                eth: EthPrecompiles::default(),
-                pcs_open,
-                warm: false,
-            });
+            .build_mainnet();
         evm.instruction.insert_instruction(FIELD_MUL, field_mul);
+        evm.instruction.insert_instruction(FRAMEPARAM, frame_param);
+        evm.instruction.insert_instruction(FRAMEDATALOAD, frame_data_load);
+        evm.instruction.insert_instruction(KECCAK256, keccak256_keeping);
+        RUNNING.set(Running {
+            frames: pcs.frames(),
+            declare_all: pcs.declare_all,
+            ..Running::default()
+        });
         let tx = TxEnv::builder()
             .caller(from)
             .nonce(nonce)
@@ -356,6 +436,7 @@ impl Chain {
             .build()
             .expect("a transaction");
         let result = evm.transact_commit(tx).expect("a valid transaction");
+        let claims = RUNNING.take().checked;
         let execution = result.gas_used() - transaction_gas(data, 0, 0);
         let (output, created) = match result {
             ExecutionResult::Success {
@@ -368,32 +449,32 @@ impl Chain {
             } => (Some(output.to_vec()), created),
             _ => (None, None),
         };
-        (Outcome { output, execution }, created)
+        (Outcome { output, execution, claims }, created)
     }
 
     /// Deploy a contract by a transaction of `init_code` from [`DEPLOYER`]: its address, unless the creation
     /// failed, and the transaction's outcome.
     pub fn deploy(&mut self, init_code: &[u8]) -> (Option<Address>, Outcome) {
-        let (outcome, created) = self.run(DEPLOYER, TxKind::Create, init_code, U256::ZERO, &PcsOpen::default());
+        let (outcome, created) = self.run(DEPLOYER, TxKind::Create, init_code, U256::ZERO, &PcsFrame::default());
         (created, outcome)
     }
 
-    /// Send `calldata` and `value` wei from `from` to `to`, in a transaction of a block whose openings are
-    /// `pcs_open`'s, and keep what it changes.
+    /// Send `calldata` and `value` wei from `from` to `to`, in a transaction whose frame of PCS claims is `pcs`, and
+    /// keep what it changes.
     pub fn transact(
         &mut self,
         from: Address,
         to: Address,
         calldata: &[u8],
         value: U256,
-        pcs_open: &PcsOpen,
+        pcs: &PcsFrame,
     ) -> Outcome {
-        self.run(from, TxKind::Call(to), calldata, value, pcs_open).0
+        self.run(from, TxKind::Call(to), calldata, value, pcs).0
     }
 
     /// The same from [`CALLER`] with no value, leaving the chain as it was.
-    pub fn call(&self, to: Address, calldata: &[u8], pcs_open: &PcsOpen) -> Outcome {
-        self.clone().transact(CALLER, to, calldata, U256::ZERO, pcs_open)
+    pub fn call(&self, to: Address, calldata: &[u8], pcs: &PcsFrame) -> Outcome {
+        self.clone().transact(CALLER, to, calldata, U256::ZERO, pcs)
     }
 
     /// The code of the account at `address`.
@@ -416,11 +497,11 @@ impl Chain {
 mod tests {
     use super::*;
 
-    /// Every layout `PCS_OPEN` knows is a stack leanVM's WHIR commits, and the ids name distinct openings'
-    /// prefixes (`quotient::opening::prefix`); ids outside the table name none.
+    /// Every layout the block knows is a stack leanVM's WHIR commits, and the ids name distinct openings' prefixes
+    /// (`quotient::opening::prefix`); ids outside the table name none.
     #[test]
     fn layouts_are_known_by_id() {
-        let mut prefixes = HashSet::new();
+        let mut prefixes = std::collections::HashSet::new();
         for log_rows in LOG_ROWS {
             for table in [TableId::Witness, TableId::Wiring, TableId::Quotient] {
                 let layout = layout(U256::from(layout_id(table, log_rows))).expect("a layout");
@@ -437,40 +518,22 @@ mod tests {
         assert_eq!(layout(U256::MAX), None);
     }
 
-    /// An input attests only at its length, `3 + k (v + 1)` words: one word or byte more or fewer, `k` of 0 or
-    /// one more claim than the words hold, an unknown layout, do not.
+    /// A frame of PCS claims: its scheme byte, then each claim's Keccak-256, after the frames before it.
     #[test]
-    fn inputs_of_another_length_do_not_attest() {
-        let (root, id) = ([3; 32], layout_id(TableId::Wiring, 20));
-        let vars = layout(U256::from(id)).expect("a layout").vars;
-        let claims = [Claim {
-            point: vec![F192::ONE; vars],
-            value: F192::ZERO,
-        }];
-        let input = pcs_open_input(&root, id, &claims);
-        let mut block = PcsOpen::default();
-        block.register(&root, id, &claims);
-        assert!(block.run(&input).1);
-        for len in [
-            0,
-            31,
-            64,
-            96,
-            input.len() - 32,
-            input.len() - 1,
-            input.len() + 1,
-            input.len() + 32,
-        ] {
-            let mut other = input.clone();
-            other.resize(len, 0);
-            assert!(!PcsOpen::well_sized(&other, false), "{len}");
-            assert!(!block.run(&other).1, "{len}");
-        }
-        for (at, byte) in [(95, 0), (95, 2), (62, 9), (40, 1)] {
-            let mut other = input.clone();
-            other[at] = byte;
-            assert!(!PcsOpen::well_sized(&other, false), "{at} {byte}");
-        }
+    fn frame_data_is_the_claims_hashes() {
+        let mut pcs = PcsFrame::default();
+        pcs.declare_input(vec![1, 2, 3]);
+        pcs.declare_input(Vec::new());
+        let data = pcs.data();
+        assert_eq!(data.len(), 1 + 64);
+        assert_eq!(data[0], PCS_SCHEME);
+        assert_eq!(&data[1..33], &keccak256([1, 2, 3]).0[..]);
+        assert_eq!(&data[33..], &keccak256([]).0[..]);
+        pcs.before.push(Frame { mode: 0, data: vec![7] });
+        let frames = pcs.frames();
+        assert_eq!(frames.len(), 2);
+        assert_eq!(frames[1], Frame { mode: DEP_VERIFY_FRAME_MODE, data });
+        assert_eq!((dependency_gas(0), dependency_gas(3)), (0, 8_000));
     }
 
     /// The root's word is its two scalars, the high one first.

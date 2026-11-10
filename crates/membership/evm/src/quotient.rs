@@ -1,10 +1,11 @@
 // Adapted from leanVM (https://github.com/leanEthereum/leanVM), branch PCS-openings-aggregation, commit 651453c6,
-// file crates/membership/evm/src/quotient.rs; new here: the calls of `PCS_OPEN`, the selector, the index root in storage, its
+// file crates/membership/evm/src/quotient.rs; new here: the checks of the declared claims, the selector, the index root in storage, its
 // deployment and `setIndexRoot`. MIT OR Apache-2.0; see AGENTS.md.
 //! The membership verifier (`quotient::protocol::reduce`) as a contract, its ABI, and its deployment.
 //!
-//! The contract ([`contract`]) has `PCS_OPEN` ([`crate::machine`]) check the four claims a proof leaves, in three
-//! calls ([`openings`]), and returns the word 1; without the calls ([`claims_contract`]), it returns the commitments'
+//! The contract ([`contract`]) checks that its transaction declares the four claims a proof leaves, as three claims
+//! of openings ([`openings`]) in its frame of PCS claims ([`crate::machine`]), and returns the word 1; without the
+//! checks ([`claims_contract`]), it returns the commitments'
 //! four scalars, three claims as a point then a value, and the value of the claim at the fixed point. Its code
 //! depends on the circuit's size alone: the circuit's commitment (the index root) is in storage, where it can be
 //! changed (the README's "Forward compatibility").
@@ -12,7 +13,7 @@
 //! # ABI
 //!
 //! **`verify(bytes32 y, bytes32 root, bytes proof)`**, selector [`VERIFY`] (`0xde12c640`), its arguments
-//! **packed**, not ABI-encoded: calldata is exactly 252 bytes,
+//! **packed**, not ABI-encoded, then the index of the transaction's frame of PCS claims: calldata is exactly 253 bytes,
 //!
 //! | bytes      | what                                                                                      |
 //! |------------|-------------------------------------------------------------------------------------------|
@@ -22,27 +23,29 @@
 //! | `68..100`  | the witness table's commitment: its two 16-byte scalars, each big-endian, the first first |
 //! | `100..132` | the quotient table's commitment, likewise                                                 |
 //! | `132..252` | the proof's five scalars, 24 bytes each, big-endian                                       |
+//! | `252`      | the index of the transaction's frame of PCS claims                                        |
 //!
 //! `proof` is bytes `68..252`, 184 bytes, as [`calldata`] writes them. The contract reverts on calldata of another
-//! length or selector, on value, and on a proof the verifier rejects or whose claims `PCS_OPEN` does not attest
-//! (each call must succeed and return exactly the word 1); otherwise it returns [`VERIFIED`], the word 1, as
+//! length or selector, on value, and on a proof the verifier rejects or whose claims the transaction does not declare
+//! (the frame byte 252 names must be a dependency verification frame of PCS claims, and its payloads `0, 1, 2` the
+//! hashes of the three claims, in order); otherwise it returns [`VERIFIED`], the word 1, as
 //! `abi.encode(true)`, which no account without code returns. It writes nothing, so a `STATICCALL` will do. A
 //! Solidity caller holding `proof` as `bytes calldata` (184 bytes) writes
 //!
 //! ```solidity
-//! (bool ok, bytes memory ret) = verifier.staticcall(abi.encodePacked(bytes4(0xde12c640), y, root, proof));
+//! (bool ok, bytes memory ret) = verifier.staticcall(abi.encodePacked(bytes4(0xde12c640), y, root, proof, frame));
 //! require(ok && ret.length == 32 && abi.decode(ret, (bool)));
 //! ```
 //!
 //! Declaring `verify(bytes32,bytes32,bytes) returns (bool)` in an interface and calling it would ABI-encode `proof`
-//! (with an offset, a length and padding: 324 bytes of calldata), and revert.
+//! (with an offset, a length and padding: 324 bytes of calldata), and revert. `frame` is a `uint8`.
 //!
 //! **`setIndexRoot(bytes32 indexRoot)`**, selector [`SET_INDEX_ROOT`] (`0xcdaf736c`), ABI-encoded (36 bytes): from
 //! the owner, with no value, it stores `indexRoot` in slot 0 and returns nothing; otherwise it reverts. The owner is
 //! fixed at deployment, and can make the contract accept proofs for any circuit: an owner of 0 fixes the root for
 //! good (no one signs for the zero address). The README's trustless upgrade, which anyone could call to move the
-//! root to the same circuit committed for another version of `PCS_OPEN`, proving it by two openings that agree at a
-//! Fiat-Shamir point (Schwartz-Zippel), is left for when `PCS_OPEN` has versions.
+//! root to the same circuit committed for another version of the PCS, proving it by two openings that agree at a
+//! Fiat-Shamir point (Schwartz-Zippel), is left for when the PCS has versions.
 //!
 //! **Deployment**: `constructor(bytes32 indexRoot, address owner)`. The init code ([`init_code`]) is the creation
 //! code, then the two arguments ABI-encoded (64 bytes); it stores `indexRoot`, the Merkle root of the circuit's
@@ -54,7 +57,7 @@
 //! [`contract_in`] and [`claims_contract_in`] build the same verifier for proofs of another protocol,
 //! `quotient::protocol::Inverse::Hint`, its transcript named `pcs-quotient-kh1`: the proof carries a sixth scalar,
 //! the inverse the verifier would otherwise compute, which it checks (`product · hint + 1` must be zero, else it
-//! reverts). Calldata is 276 bytes, the hint at `252..276`, 24 bytes big-endian. Either verifier may hold the
+//! reverts). Calldata is 277 bytes, the hint at `252..276`, 24 bytes big-endian, then the frame's index. Either verifier may hold the
 //! circuit's commitment in storage, as above, or in its code (no constructor arguments, no `setIndexRoot`,
 //! deployed by [`creation_code`]). The deployed contract, and `formal/`, are of the compute mode.
 
@@ -80,14 +83,14 @@ pub const VERIFIED: [u8; 32] = {
 };
 
 /// The contract verifying proofs against the circuit of `2^log_rows` rows whose commitment the deployment stores
-/// ([`init_code`]): it reverts unless `PCS_OPEN` attests the claims a proof leaves, in the three calls of
+/// ([`init_code`]): it reverts unless its transaction declares the claims a proof leaves, the three of
 /// [`openings`] (one per commitment: the witness table's claim, the wiring table's against the stored root, and
 /// the quotient table's two together), and returns [`VERIFIED`].
 pub fn contract(log_rows: usize) -> Contract {
     build(log_rows, &entry(true, None), true)
 }
 
-/// The same verifier, returning the commitments and the claims ([`decode`]) instead of calling `PCS_OPEN`.
+/// The same verifier, returning the commitments and the claims ([`decode`]) instead of checking them.
 pub fn claims_contract(log_rows: usize) -> Contract {
     build(log_rows, &entry(true, None), false)
 }
@@ -105,8 +108,8 @@ pub fn claims_contract_linked(log_rows: usize, limit: usize) -> Contract {
 
 /// [`contract`] for proofs in mode `inverse` (`quotient::protocol::Inverse`), with the circuit's commitment in
 /// storage (`None`, deployed by [`init_code`] or [`deploy`]) or in the code (deployed by [`creation_code`] alone,
-/// with no constructor arguments and no `setIndexRoot`). With [`Inverse::Hint`] calldata is 276 bytes: the proof
-/// is 208, the hint the sixth scalar, bytes `252..276`. `contract_in(log_rows, Inverse::Compute, None)` is
+/// with no constructor arguments and no `setIndexRoot`). With [`Inverse::Hint`] calldata is 277 bytes: the proof
+/// is 208, the hint the sixth scalar, bytes `252..276`, then the frame's index. `contract_in(log_rows, Inverse::Compute, None)` is
 /// [`contract`].
 pub fn contract_in(log_rows: usize, inverse: Inverse, index_root: Option<&Hash>) -> Contract {
     build_in(log_rows, &entry_in(true, index_root, inverse), true, inverse)
@@ -177,32 +180,32 @@ fn entry_in(selector: bool, index_root: Option<&Hash>, inverse: Inverse) -> Entr
     }
 }
 
-fn build(log_rows: usize, entry: &Entry, pcs_open: bool) -> Contract {
-    build_in(log_rows, entry, pcs_open, Inverse::Compute)
+fn build(log_rows: usize, entry: &Entry, declared: bool) -> Contract {
+    build_in(log_rows, entry, declared, Inverse::Compute)
 }
 
 /// `entry`'s name must be `inverse`'s ([`entry_in`]).
-fn build_in(log_rows: usize, entry: &Entry, pcs_open: bool, inverse: Inverse) -> Contract {
+fn build_in(log_rows: usize, entry: &Entry, declared: bool, inverse: Inverse) -> Contract {
     let Recorded {
         graph,
         outputs,
         ending,
         inputs,
-    } = recorded(log_rows, entry, pcs_open, inverse);
+    } = recorded(log_rows, entry, declared, inverse);
     compile(&graph, &outputs, &ending, entry, inputs)
 }
 
-fn build_linked(log_rows: usize, entry: &Entry, pcs_open: bool, limit: usize) -> Contract {
-    build_linked_in(log_rows, entry, pcs_open, limit, Inverse::Compute)
+fn build_linked(log_rows: usize, entry: &Entry, declared: bool, limit: usize) -> Contract {
+    build_linked_in(log_rows, entry, declared, limit, Inverse::Compute)
 }
 
-fn build_linked_in(log_rows: usize, entry: &Entry, pcs_open: bool, limit: usize, inverse: Inverse) -> Contract {
+fn build_linked_in(log_rows: usize, entry: &Entry, declared: bool, limit: usize, inverse: Inverse) -> Contract {
     let Recorded {
         graph,
         outputs,
         ending,
         inputs,
-    } = recorded(log_rows, entry, pcs_open, inverse);
+    } = recorded(log_rows, entry, declared, inverse);
     compile_linked(&graph, &outputs, &ending, entry, inputs, limit)
 }
 
@@ -222,7 +225,7 @@ pub(crate) fn deployed(log_rows: usize) -> Recorded {
     recorded(log_rows, &entry(true, None), true, Inverse::Compute)
 }
 
-fn recorded(log_rows: usize, entry: &Entry, pcs_open: bool, inverse: Inverse) -> Recorded {
+fn recorded(log_rows: usize, entry: &Entry, declared: bool, inverse: Inverse) -> Recorded {
     assert_eq!(&entry.name, inverse.name(), "the entry's name is the mode's");
     let ((reduced, read), graph) = record(|| {
         let mut recorder = Recorder::new();
@@ -239,7 +242,7 @@ fn recorded(log_rows: usize, entry: &Entry, pcs_open: bool, inverse: Inverse) ->
     } = reduced;
     let node = |sym: &Sym| Word::Node(sym.0);
     let claim = |(point, value): &(Vec<Sym>, Sym)| point.iter().chain([value]).map(node).collect::<Vec<_>>();
-    let (outputs, ending) = if pcs_open {
+    let (outputs, ending) = if declared {
         let number = |n: u64| Word::Const(U256::from(n).to_be_bytes());
         let header =
             |root: Word, table: TableId, claims: u64| vec![root, number(layout_id(table, log_rows)), number(claims)];
@@ -260,7 +263,7 @@ fn recorded(log_rows: usize, entry: &Entry, pcs_open: bool, inverse: Inverse) ->
             ]
             .concat(),
         ];
-        (calls.concat(), Ending::PcsOpen(calls.iter().map(Vec::len).collect()))
+        (calls.concat(), Ending::Declared(calls.iter().map(Vec::len).collect()))
     } else {
         let mut outputs: Vec<Word> = roots.iter().flatten().map(node).collect();
         for pair in [&witness, &wiring, &quotient] {
@@ -277,7 +280,7 @@ fn recorded(log_rows: usize, entry: &Entry, pcs_open: bool, inverse: Inverse) ->
     }
 }
 
-/// The calls of `PCS_OPEN` that [`contract`] makes, as a root, a layout id and the claims opened together: those of
+/// The claims [`contract`] checks, as a root, a layout id and the claims opened together: those of
 /// the commitments and the claims a proof leaves ([`quotient::protocol::verify`]), as
 /// [`quotient::protocol::verify_openings`] opens them.
 pub fn openings(
@@ -310,7 +313,11 @@ pub fn set_index_root_calldata(index_root: &Hash) -> Vec<u8> {
     [&SET_INDEX_ROOT[..], index_root].concat()
 }
 
-/// A statement and its proof as calldata verifying them: the selector, then the arguments packed. A commitment's
+/// The index of the transaction's frame of PCS claims that calldata names ([`calldata`]): the first frame.
+pub const PCS_FRAME: u8 = 0;
+
+/// A statement and its proof as calldata verifying them: the selector, the arguments packed, then a byte, the index
+/// of the transaction's frame of PCS claims ([`PCS_FRAME`]; a contract returning the claims reads past it). A commitment's
 /// two scalars are 128-bit, and calldata has room for no more: a proof with a larger one, which the Rust verifier
 /// rejects, has no calldata (`NotARoot`). A proof of another length has calldata of another length, which the
 /// contract rejects as the Rust verifier does.
@@ -327,6 +334,7 @@ pub fn calldata(statement: &Statement, proof: &Proof) -> Result<Vec<u8>, Transcr
         };
         limbs.iter().for_each(|limb| data.extend(limb.to_be_bytes()));
     }
+    data.push(PCS_FRAME);
     Ok(data)
 }
 
@@ -382,7 +390,7 @@ mod tests {
 
     use super::*;
     use crate::codegen::INDEX_ROOT_SLOT;
-    use crate::machine::{CALLER, Chain, DEPLOYER, PcsOpen, transaction_gas};
+    use crate::machine::{CALLER, Chain, DEPLOYER, PcsFrame, dependency_gas, transaction_gas};
     use primitives::test_rng::Rng;
     use quotient::circuit::{LOG_ROWS, membership, membership_inputs};
     use quotient::opening::commit;
@@ -432,11 +440,11 @@ mod tests {
     const LIMITS: [usize; 2] = [24_576, 2_048];
 
     /// A block whose openings are of the claims the Rust verifier leaves, if it leaves any.
-    fn block_for(index_root: &Hash, statement: &Statement, proof: &Proof) -> PcsOpen {
-        let mut block = PcsOpen::default();
+    fn block_for(index_root: &Hash, statement: &Statement, proof: &Proof) -> PcsFrame {
+        let mut block = PcsFrame::default();
         if let Ok((roots, claims)) = verify(index_root, statement, proof, LOG_ROWS) {
             for (root, id, claims) in openings(index_root, &roots, &claims, LOG_ROWS) {
-                block.register(&root, id, &claims);
+                block.declare(&root, id, &claims);
             }
         }
         block
@@ -459,7 +467,7 @@ mod tests {
         let (chain, address) = deployed(&claims_contract_linked(LOG_ROWS, limit), &index_root);
         let returned = |statement: &Statement, proof: &Proof| {
             let output = chain
-                .call(address, &calldata(statement, proof).unwrap(), &PcsOpen::default())
+                .call(address, &calldata(statement, proof).unwrap(), &PcsFrame::default())
                 .output;
             output.as_deref().and_then(|output| decode(output, LOG_ROWS))
         };
@@ -484,7 +492,7 @@ mod tests {
 
         let mut long = calldata(&statement, &proof).unwrap();
         long.push(0);
-        let none = PcsOpen::default();
+        let none = PcsFrame::default();
         assert!(chain.call(address, &long, &none).output.is_none());
         assert!(chain.call(address, &long[..long.len() - 2], &none).output.is_none());
     }
@@ -493,14 +501,14 @@ mod tests {
     /// claims, all together, under its layout: those the Rust verifier leaves, on the honest proof and on
     /// tampered ones, which leave other claims than the honest proof's.
     #[test]
-    fn contract_has_pcs_open_check_the_claims() {
-        LIMITS.into_iter().for_each(contract_has_pcs_open_check_the_claims_at);
+    fn contract_checks_the_declared_claims() {
+        LIMITS.into_iter().for_each(contract_checks_the_declared_claims_at);
     }
 
-    fn contract_has_pcs_open_check_the_claims_at(limit: usize) {
+    fn contract_checks_the_declared_claims_at(limit: usize) {
         let (index_root, statement, proof) = HONEST.clone();
         let (chain, address) = deployed(&contract_linked(LOG_ROWS, limit), &index_root);
-        let succeeds = |statement: &Statement, proof: &Proof, block: &PcsOpen| {
+        let succeeds = |statement: &Statement, proof: &Proof, block: &PcsFrame| {
             let output = chain.call(address, &calldata(statement, proof).unwrap(), block).output;
             assert!(output.as_ref().is_none_or(|output| *output == VERIFIED));
             output.is_some()
@@ -512,13 +520,13 @@ mod tests {
         let (roots, claims) = verify(&index_root, &statement, &proof, LOG_ROWS).expect("a reduction");
         let calls = openings(&index_root, &roots, &claims, LOG_ROWS);
         let block_of = |calls: &[(Hash, u64, Vec<Claim>)]| {
-            let mut block = PcsOpen::default();
+            let mut block = PcsFrame::default();
             calls
                 .iter()
-                .for_each(|(root, id, claims)| block.register(root, *id, claims));
+                .for_each(|(root, id, claims)| block.declare(root, *id, claims));
             block
         };
-        assert!(!succeeds(&statement, &proof, &PcsOpen::default()));
+        assert!(!succeeds(&statement, &proof, &PcsFrame::default()));
         for missing in 0..3 {
             let mut some = calls.to_vec();
             some.remove(missing);
@@ -571,7 +579,7 @@ mod tests {
         let honest = block_for(&index_root, &statement, &proof);
         let data = calldata(&statement, &proof).unwrap();
         assert_eq!(data[..4], [0xde, 0x12, 0xc6, 0x40]);
-        assert_eq!(data.len(), 252);
+        assert_eq!((data.len(), data[252]), (253, PCS_FRAME));
         let succeeds = |data: &[u8]| {
             let output = chain.call(address, data, &honest).output;
             assert!(output.as_ref().is_none_or(|output| *output == VERIFIED));
@@ -594,7 +602,7 @@ mod tests {
         assert!(!succeeds(&[]));
         // `proof` ABI-encoded, as a call through a Solidity interface would: its offset, its length, padding.
         let word = |n: u64| U256::from(n).to_be_bytes::<32>();
-        let encoded = [&data[..68], &word(96), &word(184), &data[68..], &[0; 8]].concat();
+        let encoded = [&data[..68], &word(96), &word(184), &data[68..252], &[0; 8]].concat();
         assert_eq!(encoded.len(), 324);
         assert!(!succeeds(&encoded));
 
@@ -640,20 +648,20 @@ mod tests {
         assert_eq!(deployed_code, code);
 
         // Against another root, the proof leaves other claims, which the contract asks for when it holds that
-        // root: the claims contract returns those the Rust verifier leaves, and the contract has `PCS_OPEN` check
-        // them, the wiring table's against that root.
+        // root: the claims contract returns those the Rust verifier leaves, and the contract checks that the
+        // transaction declares them, the wiring table's against that root.
         let data = calldata(&statement, &proof).unwrap();
         let mut other_root = index_root;
         other_root[9] ^= 1;
         let expected = verify(&other_root, &statement, &proof, LOG_ROWS).expect("a reduction");
         let (returning, at) = deployed(&claims_contract_linked(LOG_ROWS, limit), &other_root);
-        let output = returning.call(at, &data, &PcsOpen::default()).output;
+        let output = returning.call(at, &data, &PcsFrame::default()).output;
         assert_eq!(output.and_then(|output| decode(&output, LOG_ROWS)), Some(expected));
         let (honest, other) = (
             block_for(&index_root, &statement, &proof),
             block_for(&other_root, &statement, &proof),
         );
-        let succeeds = |chain: &Chain, block: &PcsOpen| chain.call(address, &data, block).output.is_some();
+        let succeeds = |chain: &Chain, block: &PcsFrame| chain.call(address, &data, block).output.is_some();
         assert!(succeeds(&chain, &honest));
         assert!(!succeeds(&chain, &other));
         let (elsewhere, at) = deployed(&contract, &other_root);
@@ -662,7 +670,7 @@ mod tests {
 
         // `setIndexRoot` reverts, leaving the root, from anyone but the owner, with value, or on calldata of
         // another length or selector.
-        let none = PcsOpen::default();
+        let none = PcsFrame::default();
         let set = set_index_root_calldata(&other_root);
         let mut wrong = set.clone();
         wrong[3] ^= 1;
@@ -707,7 +715,7 @@ mod tests {
         for init in [short, &long[..], no_owner, &init[..init.len() - 64]] {
             assert_eq!(chain.deploy(init).0, None, "{}", init.len());
         }
-        let paid = chain.run(DEPLOYER, TxKind::Create, &init, U256::from(1), &PcsOpen::default());
+        let paid = chain.run(DEPLOYER, TxKind::Create, &init, U256::from(1), &PcsFrame::default());
         assert_eq!(paid.1, None);
 
         let (address, outcome) = chain.deploy(&init);
@@ -781,11 +789,11 @@ mod tests {
     });
 
     /// [`block_for`] in mode `inverse`, at `log_rows`.
-    fn block_in(index_root: &Hash, statement: &Statement, proof: &Proof, log_rows: usize, inverse: Inverse) -> PcsOpen {
-        let mut block = PcsOpen::default();
+    fn block_in(index_root: &Hash, statement: &Statement, proof: &Proof, log_rows: usize, inverse: Inverse) -> PcsFrame {
+        let mut block = PcsFrame::default();
         if let Ok((roots, claims)) = verify_in(index_root, statement, proof, log_rows, inverse) {
             for (root, id, claims) in openings(index_root, &roots, &claims, log_rows) {
-                block.register(&root, id, &claims);
+                block.declare(&root, id, &claims);
             }
         }
         block
@@ -809,12 +817,12 @@ mod tests {
 
     /// The hint-mode builds the tests run on: the circuit's commitment in storage or in the code, each as one
     /// contract and linked into parts of at most 2,048 bytes; the claims contract or the contract.
-    fn hint_builds(index_root: &Hash, pcs_open: bool) -> Vec<(String, Chain, Address)> {
+    fn hint_builds(index_root: &Hash, declared: bool) -> Vec<(String, Chain, Address)> {
         let mut builds = Vec::new();
         for in_code in [false, true] {
             let entry = entry_in(true, in_code.then_some(index_root), Inverse::Hint);
             for limit in LIMITS {
-                let contract = build_linked_in(TOY_ROWS, &entry, pcs_open, limit, Inverse::Hint);
+                let contract = build_linked_in(TOY_ROWS, &entry, declared, limit, Inverse::Hint);
                 let (chain, address) = deployed_any(&contract, index_root);
                 builds.push((format!("in code {in_code}, limit {limit}"), chain, address));
             }
@@ -824,14 +832,14 @@ mod tests {
 
     /// The hint contract's ABI: calldata is the membership one's with the hint, the sixth scalar, after the five.
     #[test]
-    fn hint_calldata_is_276_bytes() {
+    fn hint_calldata_is_277_bytes() {
         let [(_, statement, compute), (_, _, hinted)] = &*TOY;
         let data = calldata(statement, hinted).unwrap();
-        assert_eq!(data.len(), 276);
-        assert_eq!(calldata(statement, compute).unwrap().len(), 252);
+        assert_eq!(data.len(), 277);
+        assert_eq!(calldata(statement, compute).unwrap().len(), 253);
         let hint = hinted.stream[9];
         let be: Vec<u8> = [hint.c2, hint.c1, hint.c0].iter().flat_map(|l| l.to_be_bytes()).collect();
-        assert_eq!(data[252..], be[..]);
+        assert_eq!(data[252..276], be[..]);
         assert_eq!(&entry_in(true, None, Inverse::Hint).name, b"pcs-quotient-kh1");
         assert_eq!(entry_in(true, None, Inverse::Compute).name, entry(true, None).name);
     }
@@ -850,7 +858,7 @@ mod tests {
         for (name, chain, address) in hint_builds(&index_root, false) {
             let returned = |statement: &Statement, proof: &Proof| {
                 let output = chain
-                    .call(address, &calldata(statement, proof).unwrap(), &PcsOpen::default())
+                    .call(address, &calldata(statement, proof).unwrap(), &PcsFrame::default())
                     .output;
                 output.as_deref().and_then(|output| decode(output, TOY_ROWS))
             };
@@ -871,7 +879,7 @@ mod tests {
             assert_eq!(returned(&other, &proof), verify(&index_root, &other, &proof), "{name}");
 
             let data = calldata(&statement, &proof).unwrap();
-            let none = PcsOpen::default();
+            let none = PcsFrame::default();
             assert!(chain.call(address, &[&data[..], &[0]].concat(), &none).output.is_none(), "{name}");
             assert!(chain.call(address, &data[..data.len() - 1], &none).output.is_none(), "{name}");
             assert!(chain.call(address, &data[..252], &none).output.is_none(), "{name}");
@@ -883,7 +891,7 @@ mod tests {
             &build_in(TOY_ROWS, &entry_in(true, None, Inverse::Hint), false, Inverse::Hint),
             &other_root,
         );
-        let output = chain.call(address, &calldata(&statement, &proof).unwrap(), &PcsOpen::default()).output;
+        let output = chain.call(address, &calldata(&statement, &proof).unwrap(), &PcsFrame::default()).output;
         assert_eq!(output.as_deref().and_then(|output| decode(output, TOY_ROWS)), None);
         assert_eq!(verify(&other_root, &statement, &proof), None);
     }
@@ -893,7 +901,7 @@ mod tests {
     /// Proofs do not cross modes: the hint contract reverts on the compute proof, with its openings or with the hint
     /// appended, and the compute contract on the hint proof, as it is or without its hint.
     #[test]
-    fn hint_contract_has_pcs_open_check_the_claims() {
+    fn hint_contract_checks_the_declared_claims() {
         let [(index_root, compute_statement, compute_proof), (_, statement, proof)] = TOY.clone();
         let honest = block_in(&index_root, &statement, &proof, TOY_ROWS, Inverse::Hint);
         let compute_honest = block_in(&index_root, &compute_statement, &compute_proof, TOY_ROWS, Inverse::Compute);
@@ -905,13 +913,13 @@ mod tests {
         let mut dropped = proof.clone();
         dropped.stream.pop();
         for (name, chain, address) in hint_builds(&index_root, true) {
-            let succeeds = |data: &[u8], block: &PcsOpen| {
+            let succeeds = |data: &[u8], block: &PcsFrame| {
                 let output = chain.call(address, data, block).output;
                 assert!(output.as_ref().is_none_or(|output| *output == VERIFIED));
                 output.is_some()
             };
             assert!(succeeds(&data, &honest), "{name}");
-            assert!(!succeeds(&data, &PcsOpen::default()), "{name}");
+            assert!(!succeeds(&data, &PcsFrame::default()), "{name}");
             assert!(!succeeds(&data, &compute_honest), "{name}");
             let mut tampered = proof.clone();
             for at in 0..proof.stream.len() {
@@ -924,20 +932,21 @@ mod tests {
             // The compute proof with the hint the hint verifier wants: it reduces, but to other claims.
             let crossed = calldata(&compute_statement, &appended).unwrap();
             let own = block_in(&index_root, &compute_statement, &appended, TOY_ROWS, Inverse::Hint);
-            assert!(succeeds(&crossed, &own), "{name}: the mock attests whatever it holds");
+            assert!(succeeds(&crossed, &own), "{name}: the frame declares whatever it holds");
             assert!(!succeeds(&crossed, &compute_honest), "{name}");
             assert!(!succeeds(&calldata(&compute_statement, &compute_proof).unwrap(), &compute_honest), "{name}");
         }
         let compute = deployed_any(&contract_in(TOY_ROWS, Inverse::Compute, Some(&index_root)), &index_root);
-        let call = |data: &[u8], block: &PcsOpen| compute.0.call(compute.1, data, block).output.is_some();
+        let call = |data: &[u8], block: &PcsFrame| compute.0.call(compute.1, data, block).output.is_some();
         assert!(call(&calldata(&compute_statement, &compute_proof).unwrap(), &compute_honest));
         assert!(!call(&data, &honest));
         assert!(!call(&calldata(&statement, &dropped).unwrap(), &honest));
         let dropped_own = block_in(&index_root, &statement, &dropped, TOY_ROWS, Inverse::Compute);
-        assert!(call(&calldata(&statement, &dropped).unwrap(), &dropped_own), "the mock attests whatever it holds");
+        assert!(call(&calldata(&statement, &dropped).unwrap(), &dropped_own), "the frame declares whatever it holds");
     }
 
-    /// The hint mode against the compute mode at the deployed size, on honest proofs of each, `PCS_OPEN` at 0 gas:
+    /// The hint mode against the compute mode at the deployed size, on honest proofs of each, without the claims'
+    /// frame and intrinsic gas:
     /// `cargo test --release -p evm -- --ignored --nocapture gas_report_hint`. Makes two full-size proofs, one at a
     /// time (some 10 GB each).
     #[test]
@@ -957,7 +966,7 @@ mod tests {
                 rows.push((inverse, in_code, data.len(), contract.field_muls, contract.code.len(), outcome.execution, tx));
             }
         }
-        println!("At 2^{LOG_ROWS} rows, PCS_OPEN at 0 gas; transaction gas without its 21,000 base, under EIP-7623:");
+        println!("At 2^{LOG_ROWS} rows, without the claims' frame and intrinsic gas; transaction gas without its 21,000 base, under EIP-7623:");
         println!(
             "{:<8} {:<8} {:>9} {:>9} {:>6} {:>9} {:>9}",
             "mode", "root", "calldata", "FIELD_MUL", "code", "execution", "EIP-7623"
@@ -992,8 +1001,8 @@ mod tests {
     fn gas_report() {
         let (index_root, statement, proof) = proof(&mut Rng::new(0x6A6));
         let data = calldata(&statement, &proof).unwrap();
-        let mut block = block_for(&index_root, &statement, &proof);
-        let none = PcsOpen::default();
+        let block = block_for(&index_root, &statement, &proof);
+        let none = PcsFrame::default();
         let deploy = |contract: &Contract| {
             let init = match contract.owner_at {
                 Some(_) => init_code(contract, &index_root, OWNER),
@@ -1009,13 +1018,13 @@ mod tests {
         let contract = contract(LOG_ROWS);
         let zeros = data.iter().filter(|&&byte| byte == 0).count();
         println!(
-            "calldata   : {} bytes, {zeros} of them zero: selector 4, statement 64, commitments 64, proof scalars 120",
+            "calldata   : {} bytes, {zeros} of them zero: selector 4, statement 64, commitments 64, proof scalars 120, frame 1",
             data.len()
         );
         println!("FIELD_MUL  : {}", contract.field_muls);
         println!("KECCAK256  : {}", contract.hashes);
-        println!("PCS_OPEN   : 3 calls for the 4 claims: witness 1, wiring 1, quotient 2 together");
-        println!("SLOAD      : 1, cold (2,100 gas): the index root, for the transcript's seed and the wiring call");
+        println!("claims     : 3 declared for the 4: witness 1, wiring 1, quotient 2 together");
+        println!("SLOAD      : 1, cold (2,100 gas): the index root, for the transcript's seed and the wiring claim");
         println!(
             "code       : {} bytes (EIP-170 limit 24,576), the same for every circuit of 2^{LOG_ROWS} rows",
             grouped(contract.code.len() as u64)
@@ -1033,7 +1042,7 @@ mod tests {
                 &none,
             ),
             (
-                "+ PCS_OPEN: 3 calls at 0 gas, each reply checked; word 1 out",
+                "+ 3 claims checked declared in the frame; word 1 out",
                 build(LOG_ROWS, &in_code(false), true),
                 &data[4..],
                 &honest,
@@ -1053,9 +1062,9 @@ mod tests {
         ];
         println!();
         println!(
-            "The contract built up, PCS_OPEN at 0 gas; transaction gas without its 21,000 base, and the zero bytes"
+            "The contract built up, without the claims' frame and intrinsic gas; transaction gas without its 21,000 base,"
         );
-        println!("of calldata from which EIP-7976's floor (64 a byte) binds:");
+        println!("and the zero bytes of calldata from which EIP-7976's floor (64 a byte) binds:");
         println!(
             "{:<58} {:>6} {:>9} {:>7} {:>10} {:>7} {:>10} {:>7} {:>6}",
             "", "bytes", "execution", "added", "EIP-7623", "added", "EIP-7976", "added", "floor"
@@ -1094,24 +1103,23 @@ mod tests {
         let at_zero = chain.call(address, &data, &block);
         assert_eq!(at_zero.output, Some(VERIFIED.to_vec()));
         println!();
-        println!("PCS_OPEN at 0 gas a call and c a claim; transaction gas, and (without its 21,000 base):");
+        assert_eq!(at_zero.claims, block.claims(), "the contract checks the three claims declared, in order");
+        // The transaction also carries its frame of PCS claims, as calldata, and pays their intrinsic gas.
+        let frame = block.data();
+        let carried = [&data[..], &frame[..]].concat();
+        let claims = dependency_gas(block.claims().len());
         println!(
-            "{:>8} {:>10} {:>24} {:>24}",
-            "c", "execution", "EIP-7623 (40/byte)", "EIP-7976 (64/byte)"
+            "With its frame of PCS claims ({} bytes: the scheme, 3 hashes) and the claims' intrinsic gas ({}):",
+            frame.len(),
+            grouped(claims)
         );
-        for claim_gas in [0, 2_000, 5_000, 20_000] {
-            block.claim_gas = claim_gas;
-            let outcome = chain.call(address, &data, &block);
-            assert_eq!(outcome.output, Some(VERIFIED.to_vec()));
-            assert_eq!(outcome.execution, at_zero.execution + 4 * claim_gas);
-            println!(
-                "{:>8} {:>10} {:>24} {:>24}",
-                grouped(claim_gas),
-                grouped(outcome.execution),
-                with_base(tx(&data, outcome.execution, 40)),
-                with_base(tx(&data, outcome.execution, 64)),
-            );
-        }
+        println!("{:>10} {:>24} {:>24}", "execution", "EIP-7623 (40/byte)", "EIP-7976 (64/byte)");
+        println!(
+            "{:>10} {:>24} {:>24}",
+            grouped(at_zero.execution),
+            with_base(tx(&carried, at_zero.execution, 40) + claims),
+            with_base(tx(&carried, at_zero.execution, 64) + claims),
+        );
 
         // A creation's execution holds its 32,000, its init code's 2 a word, the constructor's and the deposit.
         let size = contract.code.len() as u64;

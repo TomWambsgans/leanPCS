@@ -9,7 +9,7 @@
 //! A node's value is computed where it is first needed, from its operands' values on the stack: a value read once is
 //! left there for its reader, one read more than once is also kept in a memory slot ([`Item::Store`]) and read from it
 //! after ([`Item::Load`]). The program checks the values it must (zero, or nonzero), then writes its outputs, then ends:
-//! it returns them, or calls `PCS_OPEN` on runs of them and returns the word 1.
+//! it returns them, or checks that the transaction declares the claims runs of them encode and returns the word 1.
 
 use crate::{Ending, Item, Program, Tag};
 
@@ -77,7 +77,9 @@ pub struct Source<'a, D> {
     pub entry_tag: Tag,
     pub checks: Vec<(u32, Check)>,
     pub outputs: Vec<Word>,
-    /// Calls of `PCS_OPEN` on these runs of the outputs, back to back, then the word 1 returned; or (`None`) the
+    /// Checks that the transaction declares the claims these runs of the outputs encode, back to back, as payloads
+    /// `0, 1, ...` of the frame of PCS claims the caller names in the last byte of calldata ([`crate::declared`]),
+    /// then the word 1 returned; or (`None`) the
     /// outputs returned.
     pub calls: Option<Vec<usize>>,
     /// With calls: each call's input at the region's start, written just before the call and only where the region
@@ -300,7 +302,7 @@ pub fn compile<D: Dag>(source: &Source<D>) -> Compiled {
         // Each call's writes, then the call, its input at the region's start.
         let runs = source.calls.as_ref().expect("calls");
         let mut region = 0;
-        for (writes, &words) in plan.iter().zip(runs) {
+        for (index, (writes, &words)) in plan.iter().zip(runs).enumerate() {
             for &(at, k) in writes {
                 match &source.outputs[k] {
                     &Word::Node(id) => {
@@ -316,7 +318,10 @@ pub fn compile<D: Dag>(source: &Source<D>) -> Compiled {
                 }
                 compiler.item(Item::Output(at));
             }
-            compiler.item(Item::PcsOpen { first: 0, words });
+            if index == 0 {
+                crate::pcs_frame_check(source.calldata_len).into_iter().for_each(|item| compiler.item(item));
+            }
+            crate::declare(source.calldata_len, 0, words, index).into_iter().for_each(|item| compiler.item(item));
             region = region.max(words);
         }
         return Compiled {
@@ -380,11 +385,7 @@ pub fn compile<D: Dag>(source: &Source<D>) -> Compiled {
     }
     if let Some(runs) = &source.calls {
         assert_eq!(runs.iter().sum::<usize>(), outputs.len(), "the calls cover the region");
-        let mut first = 0;
-        for &words in runs {
-            compiler.item(Item::PcsOpen { first, words });
-            first += words;
-        }
+        crate::declared(source.calldata_len, runs).into_iter().for_each(|item| compiler.item(item));
     }
     Compiled {
         program: Program {

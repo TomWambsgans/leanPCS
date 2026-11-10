@@ -18,7 +18,7 @@
 //! stack at a cut), then the ranges of the call's calldata the part reads, which the driver copies after it
 //! ([`Item::Calldata`] marks every calldata offset, so that a part reads them where they are). A part returns the
 //! values it computes for later parts, which the driver keeps in the region, in words no later part reads any more.
-//! The last part writes the outputs and ends as the program does (its calls of `PCS_OPEN`); the driver then returns
+//! The last part writes the outputs and ends as the program does (its checks of the declared claims); the driver then returns
 //! the word 1 only if the last part returned exactly that, or else (a returning program) what it returned. So:
 //!
 //! - a value read from another part costs what a value from a slot costs (`CALLDATALOAD` at a constant offset, as
@@ -31,7 +31,7 @@
 //!
 //! A part is a pure function of its calldata: the driver trusts it with nothing but what it computes, its address is
 //! in the driver's code (written at deployment, after the parts are deployed), and its code has no `SSTORE`, no
-//! `CREATE` and no call but `PCS_OPEN`'s (it may be called by anyone, to no effect). The program's checks revert in
+//! `CREATE` and no call (it may be called by anyone, to no effect). The program's checks revert in
 //! the part that makes them, which reverts the driver; a part not there (an address without code) returns nothing,
 //! which reverts the driver too.
 //!
@@ -39,8 +39,8 @@
 //!
 //! A code generator turns its graph into items: for each node, its operands' evaluation, its code (calldata offsets
 //! as [`Item::Calldata`]), a [`Item::Store`] if it is read again, and a [`Item::Seam`]; checks with
-//! [`Item::FailIf`]; the outputs with [`Item::Output`] and [`Item::CopyConst`] and the calls of `PCS_OPEN` with
-//! [`Item::PcsOpen`], all after the last seam (the outputs region is the last part's: a linkable program computes
+//! [`Item::FailIf`]; the outputs with [`Item::Output`] and [`Item::CopyConst`] and the checks of the claims declared
+//! with [`declared`], all after the last seam (the outputs region is the last part's: a linkable program computes
 //! every output's node before it writes the first). [`front`] is such a generator for any graph of nodes whose code
 //! works on their operands on the stack ([`front::Dag`]): `crates/leanvm_statement` (`src/evm/codegen.rs`) gives it
 //! its nodes' code, entry and outputs, and its `src/evm/contract.rs` goes from the recorded verifier to deployed
@@ -73,9 +73,10 @@ pub enum Item {
     Output(usize),
     /// Copy `words` constant words, from `data` on in [`Program::data`], to output words `first` on.
     CopyConst { first: usize, words: usize, data: usize },
-    /// Call `PCS_OPEN` on `words` output words from `first` on, and revert unless it attests: unless it succeeds,
-    /// returning exactly the word 1.
-    PcsOpen { first: usize, words: usize },
+    /// With a frame's index on top of the stack: hash `words` output words from `first` on (`KECCAK256`), and revert
+    /// unless the hash is payload `index` of that frame, the word at `1 + 32 index` of its `data` (`FRAMEDATALOAD`):
+    /// unless the transaction declares the claim these words encode. Pops the index.
+    Declared { first: usize, words: usize, index: usize },
     /// Push the offset at which bytes `offset..offset + len` of the call's calldata are in this contract's: the same
     /// in one contract or the driver, elsewhere in a part, which is passed only the calldata it reads.
     Calldata { offset: usize, len: usize },
@@ -92,7 +93,7 @@ pub enum Item {
 pub enum Ending {
     /// Return the outputs.
     Return,
-    /// Return the word 1 (after its calls of `PCS_OPEN` attested).
+    /// Return the word 1 (after its checks of the declared claims passed).
     Attest,
 }
 
@@ -121,9 +122,62 @@ impl Program {
 
     /// The program's checks (and calls), each one `JUMPDEST` in a measuring build.
     pub fn checks(&self) -> usize {
-        let checks = |item: &Item| matches!(item, Item::FailIf | Item::PcsOpen { .. });
+        let checks = |item: &Item| matches!(item, Item::FailIf | Item::Declared { .. });
         self.items.iter().filter(|(item, _)| checks(item)).count()
     }
+}
+
+/// Items that push the index of the transaction's frame of PCS claims, which the caller gives as the last byte of the
+/// calldata (of `calldata_len` bytes).
+pub fn frame_index(calldata_len: usize) -> Vec<Item> {
+    use crate::op::{CALLDATALOAD, SHR, push_usize};
+    vec![
+        Item::Calldata {
+            offset: calldata_len - 1,
+            len: 1,
+        },
+        Item::Code([&[CALLDATALOAD][..], &push_usize(248), &[SHR]].concat()),
+    ]
+}
+
+/// Items that revert unless the frame the caller names ([`frame_index`]) is a dependency verification frame of PCS
+/// claims: its mode `DEP_VERIFY_FRAME_MODE` and its first byte `PCS_SCHEME`. Its payloads then declare PCS claims; the
+/// same bytes elsewhere (a message hash of a leanSPHINCS frame, which its sender chooses, say) declare nothing.
+pub fn pcs_frame_check(calldata_len: usize) -> Vec<Item> {
+    use crate::op::*;
+    let mut items = frame_index(calldata_len);
+    let check = [
+        &push_usize(FRAMEPARAM_MODE.into())[..],
+        &[DUP2, FRAMEPARAM],
+        &push_usize(DEP_VERIFY_FRAME_MODE.into()),
+        &[XOR, SWAP1, PUSH0, FRAMEDATALOAD],
+        &push_usize(248),
+        &[SHR],
+        &push_usize(PCS_SCHEME.into()),
+        &[XOR, OR],
+    ];
+    items.push(Item::Code(check.concat()));
+    items.push(Item::FailIf);
+    items
+}
+
+/// Items that revert unless the claim `words` output words from `first` on encode is payload `index` of the frame the
+/// caller names. A payload past the frame's `data` reads as zero, which no hash is but with probability `2^-256`.
+pub fn declare(calldata_len: usize, first: usize, words: usize, index: usize) -> Vec<Item> {
+    let mut items = frame_index(calldata_len);
+    items.push(Item::Declared { first, words, index });
+    items
+}
+
+/// [`pcs_frame_check`], then [`declare`] of these runs of the outputs, back to back, as payloads `0, 1, ...`.
+pub fn declared(calldata_len: usize, runs: &[usize]) -> Vec<Item> {
+    let mut items = pcs_frame_check(calldata_len);
+    let mut first = 0;
+    for (index, &words) in runs.iter().enumerate() {
+        items.extend(declare(calldata_len, first, words, index));
+        first += words;
+    }
+    items
 }
 
 /// The tags of the code the assembler adds.

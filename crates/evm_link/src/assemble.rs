@@ -1,5 +1,5 @@
 // Part of this repository; the assembly of a straight-line program (values kept in memory slots reused after their
-// last read, one revert, constants copied from the code, the calls of `PCS_OPEN`) is moved here from
+// last read, one revert, constants copied from the code, the calls of `PCS_OPEN`, since the checks of declared claims) is moved here from
 // crates/membership/evm/src/codegen.rs (adapted from leanVM (https://github.com/leanEthereum/leanVM), branch
 // PCS-openings-aggregation, commit 651453c6) and crates/leanvm_statement/src/evm/codegen.rs, unchanged; new here: a
 // contract that runs part of a program (values from and to the other parts, the driver's calls). MIT OR Apache-2.0;
@@ -201,23 +201,16 @@ pub(crate) fn assemble_frame(frame: &Frame, program: &Program, options: &Options
                     ];
                     put(&mut code, &mut tag_of, &bytes.concat(), tag);
                 }
-                // `STATICCALL(gas, PCS_OPEN, input, input length, 0, 32)`: the call attests iff it succeeds and returns
-                // exactly one word, the word 1 (then at 0, the hashing scratch, free by now). A failed or reverted
-                // call, an absent precompile, the word 0, or more or fewer bytes, revert.
-                Item::PcsOpen { first, words } => {
-                    let call = [
-                        &push_usize(32)[..],
-                        &[PUSH0],
-                        &push_usize(32 * words),
+                // The frame's index on the stack: `KECCAK256` of the words, against `FRAMEDATALOAD` of the payload.
+                Item::Declared { first, words, index } => {
+                    let check = [
+                        &push_usize(32 * words)[..],
                         &push_usize(returned + 32 * first),
-                        &push(&PCS_OPEN),
-                        &[GAS, STATICCALL, ISZERO, RETURNDATASIZE],
-                        &push_usize(32),
-                        &[XOR, OR, PUSH0, MLOAD],
-                        &push_usize(1),
-                        &[XOR, OR],
+                        &[KECCAK256, SWAP1],
+                        &push_usize(1 + 32 * index),
+                        &[FRAMEDATALOAD, XOR],
                     ];
-                    put(&mut code, &mut tag_of, &call.concat(), tag);
+                    put(&mut code, &mut tag_of, &check.concat(), tag);
                     check_at(&mut code, &mut tag_of, tag);
                 }
                 Item::FailIf => check_at(&mut code, &mut tag_of, tag),
@@ -323,7 +316,7 @@ pub(crate) fn assemble_frame(frame: &Frame, program: &Program, options: &Options
                         put(&mut code, &mut tag_of, &forward, tags.ending);
                     }
                     // The word 1, if the last part returned exactly it (an account without code returns nothing,
-                    // and copying 32 bytes of less halts), as it does once every call of `PCS_OPEN` attested.
+                    // and copying 32 bytes of less halts), as it does once every declared claim checked.
                     Ending::Attest => {
                         let check = [
                             &push_usize(32)[..],

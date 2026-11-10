@@ -19,7 +19,7 @@ use quotient::statement::Statement;
 use quotient::transcript::Proof;
 
 use crate::codegen::{Ending, VERIFY, Word};
-use crate::machine::pcs_open_input;
+use crate::machine::claim_input;
 use crate::quotient::{Recorded, deployed, openings};
 use crate::record::Node;
 
@@ -60,8 +60,10 @@ pub fn render() -> String {
         inputs,
     } = deployed(LOG_ROWS);
     assert!(graph.zero.is_empty(), "the deployed contract requires nothing zero");
-    let Ending::PcsOpen(runs) = ending else {
-        unreachable!("the deployed contract calls PCS_OPEN")
+    // The Lean text keeps the words of `PCS_OPEN`'s calls: they are the claims the contract checks declared, run for
+    // run, and `formal/` states them so.
+    let Ending::Declared(runs) = ending else {
+        unreachable!("the deployed contract checks declared claims")
     };
     let mut out = String::new();
     let w = &mut out;
@@ -194,7 +196,8 @@ pub fn render() -> String {
     out
 }
 
-/// A proof and statement read back from calldata of the verifier ([`crate::quotient::calldata`]'s inverse).
+/// A proof and statement read back from calldata of the verifier ([`crate::quotient::calldata`]'s inverse, without
+/// its last byte, the frame's index).
 fn parse(calldata: &[u8]) -> (Statement, Proof) {
     assert_eq!(calldata.len(), 252);
     let be = |at: usize| u64::from_be_bytes(calldata[at..at + 8].try_into().unwrap());
@@ -214,15 +217,15 @@ fn parse(calldata: &[u8]) -> (Statement, Proof) {
     (statement, Proof { stream })
 }
 
-/// What the deployed contract hands `PCS_OPEN` for `calldata`, by the Rust verifier: the three calls' inputs back
-/// to back, or `None` where the verifier rejects.
+/// The claims the deployed contract checks declared for `calldata` (without its frame byte), by the Rust verifier:
+/// the three claims back to back, or `None` where the verifier rejects.
 pub fn expected(index_root: &Hash, calldata: &[u8]) -> Option<Vec<u8>> {
     let (statement, proof) = parse(calldata);
     let (roots, claims) = quotient::protocol::verify(index_root, &statement, &proof, LOG_ROWS).ok()?;
     Some(
         openings(index_root, &roots, &claims, LOG_ROWS)
             .iter()
-            .flat_map(|(root, id, claims)| pcs_open_input(root, *id, claims))
+            .flat_map(|(root, id, claims)| claim_input(root, *id, claims))
             .collect(),
     )
 }
@@ -231,8 +234,8 @@ fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-/// `count` lines of test vectors: an index root, calldata of the verifier, and the words the Rust verifier has
-/// `PCS_OPEN` check (or `reject`), each in hex, separated by spaces.
+/// `count` lines of test vectors: an index root, calldata of the verifier (without its frame byte), and the claims the
+/// Rust verifier has the contract check declared (or `reject`), each in hex, separated by spaces.
 pub fn vectors(seed: u64, count: usize) -> String {
     let mut rng = primitives::test_rng::Rng::new(seed);
     let mut out = String::new();
@@ -249,8 +252,8 @@ pub fn vectors(seed: u64, count: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::machine::{Chain, PcsOpen};
-    use crate::quotient::{calldata, contract, init_code};
+    use crate::machine::{Chain, PcsFrame};
+    use crate::quotient::{PCS_FRAME, calldata, contract, init_code};
     use revm::primitives::Address;
 
     fn graph_path() -> std::path::PathBuf {
@@ -274,7 +277,7 @@ mod tests {
         );
     }
 
-    /// The vectors' expected words are what the contract hands `PCS_OPEN`: the contract succeeds against a block
+    /// The vectors' expected words are the claims the contract checks: the contract succeeds against a frame
     /// holding exactly those openings.
     #[test]
     fn vectors_are_the_contracts_calls() {
@@ -289,18 +292,20 @@ mod tests {
             let mut data = VERIFY.to_vec();
             data.extend((0..248).map(|_| rng.next_u8()));
             let (statement, proof) = parse(&data);
-            assert_eq!(calldata(&statement, &proof).unwrap(), data, "parse inverts calldata");
+            assert_eq!(calldata(&statement, &proof).unwrap(), [&data[..], &[PCS_FRAME]].concat(), "parse inverts calldata");
             let words = expected(&index_root, &data).expect("random calldata reduces");
             let (roots, claims) =
                 quotient::protocol::verify(&index_root, &statement, &proof, LOG_ROWS).expect("a reduction");
-            let mut block = PcsOpen::default();
+            let mut block = PcsFrame::default();
             let mut joined = Vec::new();
             for (root, id, claims) in openings(&index_root, &roots, &claims, LOG_ROWS) {
-                block.register(&root, id, &claims);
-                joined.extend(pcs_open_input(&root, id, &claims));
+                block.declare(&root, id, &claims);
+                joined.extend(claim_input(&root, id, &claims));
             }
             assert_eq!(words, joined);
-            assert!(chain.call(address, &data, &block).output.is_some());
+            let outcome = chain.call(address, &[&data[..], &[PCS_FRAME]].concat(), &block);
+            assert!(outcome.output.is_some());
+            assert_eq!(outcome.claims.concat(), words, "the contract checks the vector's words");
         }
     }
 

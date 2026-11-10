@@ -1,5 +1,5 @@
 // Adapted from leanVM (https://github.com/leanEthereum/leanVM), branch PCS-openings-aggregation, commit 651453c6,
-// file crates/membership/evm/src/codegen.rs; new here: the calls of `PCS_OPEN`, the selector, the index root in storage
+// file crates/membership/evm/src/codegen.rs; new here: the checks of the declared claims, the selector, the index root in storage
 // (`Entry`), `setIndexRoot` and the creation code; the assembly is now `crates/evm_link`'s, which also links the
 // program into contracts that each fit EIP-170's limit ([`compile_linked`]). MIT OR Apache-2.0; see AGENTS.md.
 //! A recorded graph as EVM bytecode: straight-line code, a value used once left on the stack and a shared one
@@ -52,7 +52,7 @@ fn push2(at: usize) -> [u8; 3] {
 }
 
 /// Reverse the bytes of each 16-byte half of the word on top of the stack, which makes a root's bytes the word
-/// `PCS_OPEN` reads ([`crate::machine::root_word`]): `x = ((x >> s) & m) | ((x & m) << s)` for `s` of 8, 4, 2
+/// a claim encodes ([`crate::machine::root_word`]): `x = ((x >> s) & m) | ((x & m) << s)` for `s` of 8, 4, 2
 /// and 1 bytes, `m` the low `s` bytes of every `2s`-byte lane (33 gas each).
 fn reverse_halves() -> Vec<u8> {
     let mut code = Vec::new();
@@ -87,7 +87,7 @@ pub enum Word {
     Const([u8; 32]),
     /// The word of the arguments at this offset.
     Calldata(usize),
-    /// The circuit's commitment, in storage, as `PCS_OPEN` reads a root: the seed writes it, having read it.
+    /// The circuit's commitment, in storage, as a claim encodes a root: the seed writes it, having read it.
     StoredRoot,
 }
 
@@ -95,9 +95,10 @@ pub enum Word {
 pub enum Ending {
     /// Return it.
     Return,
-    /// Call `PCS_OPEN` on each of these runs of words of it, in order and back to back; revert unless every call
-    /// succeeds returning the word 1, and return the word 1.
-    PcsOpen(Vec<usize>),
+    /// Revert unless the transaction declares the claims these runs of words of it encode, in order and back to back,
+    /// as payloads `0, 1, ...` of the frame of PCS claims the caller names in the last byte of calldata
+    /// ([`evm_link::declared`]); return the word 1.
+    Declared(Vec<usize>),
 }
 
 /// No tags: this contract's gas is not broken down by phase.
@@ -214,8 +215,8 @@ impl Compiler<'_> {
                 }
                 None => {
                     // At 16: the name as the low half of the word at 0, so the root, read from storage (a cold
-                    // `SLOAD`, 2,100 gas), is the word at 32. The wiring table's call of `PCS_OPEN` takes it too,
-                    // its halves reversed, written to its output word now.
+                    // `SLOAD`, 2,100 gas), is the word at 32. The wiring table's claim takes it too, its halves
+                    // reversed, written to its output word now.
                     let slot = push_usize(INDEX_ROOT_SLOT.into());
                     self.code(&[&push(&self.entry.name)[..], &[PUSH0, MSTORE], &slot, &[SLOAD]].concat());
                     if let Some(k) = self.stored_root {
@@ -304,7 +305,8 @@ fn program(graph: &Graph, outputs: &[Word], ending: &Ending, entry: &Entry, inpu
         "setIndexRoot needs a selector"
     );
     let base = if entry.selector { VERIFY.len() } else { 0 };
-    let calldata_len = base + SCALARS + SCALAR_BYTES * inputs;
+    // Then a byte, the index of the transaction's frame of PCS claims (a returning contract reads past it).
+    let calldata_len = base + SCALARS + SCALAR_BYTES * inputs + 1;
     let stored_root = outputs.iter().position(|word| matches!(word, Word::StoredRoot));
     assert!(
         stored_root.is_none() || entry.index_root.is_none(),
@@ -454,13 +456,9 @@ fn program(graph: &Graph, outputs: &[Word], ending: &Ending, entry: &Entry, inpu
         compiler.item(Item::Output(k));
         k += 1;
     }
-    if let Ending::PcsOpen(runs) = ending {
-        assert_eq!(runs.iter().sum::<usize>(), outputs.len(), "the calls cover the region");
-        let mut first = 0;
-        for &words in runs {
-            compiler.item(Item::PcsOpen { first, words });
-            first += words;
-        }
+    if let Ending::Declared(runs) = ending {
+        assert_eq!(runs.iter().sum::<usize>(), outputs.len(), "the claims cover the region");
+        evm_link::declared(calldata_len, runs).into_iter().for_each(|item| compiler.item(item));
     }
     if let Some(k) = compiler.stored_root {
         let written = compiler
@@ -482,7 +480,7 @@ fn program(graph: &Graph, outputs: &[Word], ending: &Ending, entry: &Entry, inpu
             outputs: outputs.len(),
             ending: match ending {
                 Ending::Return => evm_link::Ending::Return,
-                Ending::PcsOpen(_) => evm_link::Ending::Attest,
+                Ending::Declared(_) => evm_link::Ending::Attest,
             },
             calldata_len,
         },
@@ -617,9 +615,9 @@ pub fn creation_code(contract: &Contract) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::machine::{Chain, PcsOpen, root_word};
+    use crate::machine::{Chain, PcsFrame, root_word};
 
-    /// The root's bytes, their halves reversed, are the word `PCS_OPEN` reads.
+    /// The root's bytes, their halves reversed, are the word a claim encodes.
     #[test]
     fn reversed_halves_are_the_root_word() {
         let root: [u8; 32] = std::array::from_fn(|i| (i as u8).wrapping_mul(37) ^ 0xc5);
@@ -642,14 +640,17 @@ mod tests {
         };
         let mut chain = Chain::default();
         let address = chain.deploy(&creation_code(&contract)).0.expect("a deployment");
-        let output = chain.call(address, &[], &PcsOpen::default()).output;
+        let output = chain.call(address, &[], &PcsFrame::default()).output;
         assert_eq!(output, Some(root_word(&root).to_vec()));
     }
 
-    /// The opcodes and `PCS_OPEN`'s address are the machine's.
+    /// The opcodes, the frame's mode and the scheme of PCS claims are the machine's.
     #[test]
     fn opcodes_are_the_machines() {
-        assert_eq!(FIELD_MUL, crate::machine::FIELD_MUL);
-        assert_eq!(evm_link::op::PCS_OPEN, crate::machine::PCS_OPEN.into_array());
+        use crate::machine as m;
+        use evm_link::op;
+        assert_eq!(FIELD_MUL, m::FIELD_MUL);
+        assert_eq!((op::FRAMEDATALOAD, op::FRAMEPARAM), (m::FRAMEDATALOAD, m::FRAMEPARAM));
+        assert_eq!((op::DEP_VERIFY_FRAME_MODE, op::PCS_SCHEME), (m::DEP_VERIFY_FRAME_MODE, m::PCS_SCHEME));
     }
 }
