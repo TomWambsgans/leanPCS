@@ -23,8 +23,8 @@ RUSTFLAGS="-C target-cpu=native" cargo test --release -p leanvm_univariate --lib
   whose coordinates are the largest stack's variables (27 at the reference shape, 128 signatures; 28 at 400). With
   the 3 values, one element a coordinate would be 30 elements (720 B).
 - **Why `r` stays.** `C1` carries Flock's ring switch, a claim on `q_flock` at 64 Frobenius twists of a point that
-  Flock's sumchecks drew. With `PCS_OPEN`'s point claims, a sumcheck over `q_flock`'s variables is the only reduction
-  of that claim, so its point needs fresh challenges.
+  Flock's sumchecks drew. With point claims only (`machine.rs`'s encoding), a sumcheck over `q_flock`'s variables is
+  the only reduction of that claim, so its point needs fresh challenges.
   - DEEP does not remove that sumcheck, so it saves no coordinate.
   - Gemini, Zeromorph and the univariate sumcheck give each coordinate back as a claim's value, or worse (§2).
 - **What changes:** how many challenges generate `r`. The batch runs two variables a round, on `V_2`'s coordinate
@@ -55,7 +55,7 @@ Flock (a′)'s ring switch is one of `C1`'s relations:
 
 `P = (χ_in', χ_rest)` holds challenges of Flock's lincheck and zerocheck rounds.
 
-- `PCS_OPEN` takes point claims (`E`-linear evaluations), so this 64-point claim must become point claims on `C1`.
+- A declared claim holds point claims (`E`-linear evaluations), so this 64-point claim must become point claims on `C1`.
 - The 64 values `q̂(P^(2^k))` are not known. Sending them would make 64 claims and 64 values on chain.
 - So it is reduced by a sumcheck over `q_flock`'s variables. Binius's ring switch ends the same way.
 - A sumcheck's challenge must be drawn after its round's message. A challenge known earlier lets the prover answer
@@ -157,8 +157,8 @@ Keccak-f):
   pair's two call words are `y_0`, `y_1` of a port, not ports themselves (`CallWord::Pair`); the map
   `z ↦ (y_0(z), y_1(z))` is injective (`y_0 + β_1 y_1 = z`), so binding the `z_j` binds `r`. `public_from_calls`
   recovers `z` and checks both coordinates.
-- **The contract.** It reads the 14 `z_j` and derives the coordinates of the three `PCS_OPEN` calls: a pair costs one
-  squaring, one product by `β_1` and two additions. `r` is written once for the three calls (`PI2.md` §9, lever 3b).
+- **The contract.** It reads the 14 `z_j` and derives the coordinates of π1's three claims: a pair costs one
+  squaring, one product by `β_1` and two additions. `r` is written once for the three claims (`PI2.md` §9, lever 3b).
 
 **Measured** (`leanvm_statement` `transcript::tests`, `leanvm_univariate` `domain::tests`):
 

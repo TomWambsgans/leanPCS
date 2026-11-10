@@ -104,7 +104,8 @@ theorem support_forIn_false {ι : Type} {spec : OracleSpec ι} {β : Type}
         exact Or.inl this
       · exact Or.inr ⟨x, hx, hxf⟩
 
-/-- `PCS_OPEN` rejects a claim whose point has another number of coordinates than the layout's variables, at once. -/
+/-- The opening check rejects a claim whose point has another number of coordinates than the layout's variables,
+at once. -/
 theorem pcsOpenWith_of_length_ne {m : Type → Type} [Monad m] (F : LeanVM.Semantics.KeccakState → m LeanVM.Semantics.KeccakState)
     (vars : ℕ) (root : Digest) (pt : List E) (v : E) (p : LeanVM.Protocol.Compile.Proof) (h : pt.length ≠ vars) :
     UniStatement.pcsOpenWith F vars root [⟨pt, v⟩] p = pure false := by

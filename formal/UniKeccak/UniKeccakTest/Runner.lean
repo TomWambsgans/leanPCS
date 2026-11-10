@@ -13,10 +13,10 @@ import UniKeccak
 * **Verifier vectors**: the Lean verifier (`UniKeccak.runK`, compiled evaluation, not the kernel) on every vector's
   calldata, compared with the Rust verifier's on every value it states: the verdict (stream error or not, and which),
   every challenge drawn, every value it requires to be zero, the accept bit, the number of relations, each stack's
-  variables, every opening handed to `PCS_OPEN` (point claims with their points and values, or weighted claims with
+  variables, every opening it leaves, declared (point claims with their points and values, or weighted claims with
   their points, terms in order, values) and no matrices; the setup (the three Keccak layout words, the Keccak
   contract's IV from the program's IV and the setup roots), the row counts the stream announces, the run's layouts
-  against the shape's (`layoutsOfK`); on the real proofs, every `PCS_OPEN` input the contract calls with, word for
+  against the shape's (`layoutsOfK`); on the real proofs, every claim the contract checks declared, word for
   word (`pcsCallsK`).
 * **Self-tests**: every Keccak run's shape is valid, the Keccak layouts' `C1` holds `q_flock` at `h + 11` variables
   and the 50 lane columns, `SOURCE` is a permutation of the lanes.
@@ -299,13 +299,13 @@ def compare (v : Vector') : Except String (Option String) := do
       c == c' && l.vars == l'.vars && l.blocks == l'.blocks
     if !(sameLayouts && r.layouts.length == (layoutsOfK shape).length) then
       return some "the run's layouts are not layoutsOfK the shape"
-    -- A real proof's PCS_OPEN inputs (the contract's), word for word: the Lean's calls at the vector's roots.
+    -- A real proof's claims (the contract's), word for word: the Lean's calls at the vector's roots.
     if !v.calls.isEmpty then
       let lean := (pcsCallsK shape roots r).map List.toArray
       if lean.length != v.calls.length then
-        return some s!"PCS_OPEN calls: Lean {lean.length}, the contract {v.calls.length}"
+        return some s!"claims: Lean {lean.length}, the contract {v.calls.length}"
       for (i, (a, b)) in (List.range lean.length).zip (lean.zip v.calls) do
-        if a != b then return some s!"PCS_OPEN call {i}: Lean {hexOf a}, the contract {hexOf b}"
+        if a != b then return some s!"claim {i}: Lean {hexOf a}, the contract {hexOf b}"
     return none
 
 /-- One terminal vector: `structuredTerminal` against the Rust's structured and walked values. -/
@@ -402,7 +402,7 @@ def main : IO Unit := do
         let (a, r) := ((tally.find? (·.1 == key)).map (·.2)).getD (0, 0)
         tally := (tally.filter (·.1 != key)) ++ [(key, if v.accept then (a + 1, r) else (a, r + 1))]
         IO.println s!"AGREE {v.id} {v.shape} {v.flock} {v.claims} {v.kind}: {if v.accept then "accept" else
-          s!"reject{(v.error.map (" " ++ ·)).getD ""}"}, {v.challenges.length} challenges, {v.zeros.length} checks, {v.openings.length} openings{if v.calls.isEmpty then "" else s!", {v.calls.length} PCS_OPEN calls word for word"}"
+          s!"reject{(v.error.map (" " ++ ·)).getD ""}"}, {v.challenges.length} challenges, {v.zeros.length} checks, {v.openings.length} openings{if v.calls.isEmpty then "" else s!", {v.calls.length} claims word for word"}"
       | .ok (some d) =>
         failures := failures ++ [s!"{v.id}: {d}"]
         IO.println s!"DISAGREE {v.id} {v.shape} {v.flock} {v.claims} {v.kind}: {d}"

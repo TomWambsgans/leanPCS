@@ -1,7 +1,7 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. π1-rec3's honest prover is `formal/UniKeccakComplete`'s
 -- (`K/Rec3Prover.lean`, `proveRec3With`, after `crates/leanvm/univariate`'s `KECCAK_REC3`); here with two hashes, as
 -- the recursion runs it (`crates/leanvm/rec`: π1's Fiat–Shamir is the real Keccak-256, which π2's circuit recomputes;
--- its Merkle trees and WHIR openings are the `PCS_OPEN` precompile's, in the random-permutation model).
+-- its Merkle trees and WHIR openings are those the block proves the claims by, in the random-permutation model).
 -- Uses leanerVM (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`,
 -- commit 6175f1a0, MIT OR Apache-2.0): Keccak-256 over Keccak-f[1600] (`keccak256`), the two calls `KeccakCalls` and
 -- their simulation lemmas.

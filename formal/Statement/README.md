@@ -343,9 +343,9 @@ check the ones they use by kernel evaluation (`formal/EndToEnd/Bridge/Claims/Con
   `statementWords`; the Rust writes it out (same value).
 * The statement's prover takes its padding uniform; the deployed prover expands a 32-byte seed by
   ChaCha12 keyed by Keccak-256 (`Table::hidden`), which the test reproduces (`PcsQuotientTest/ChaCha.lean`).
-* The EVM contract (`crates/membership/evm`) computes the reduction and calls `PCS_OPEN` for the openings; F5 and
+* The EVM contract (`crates/membership/evm`) computes the reduction and checks its claims declared; F5 and
   `formal/EndToEnd/Evm` prove that its recorded graph accepts exactly when `verifyWith` does
-  (`evm_accepts_iff_verifyWith`), with `PCS_OPEN`'s semantics an explicit definition (`pcsOpen`).
+  (`evm_accepts_iff_verifyWith`), with what the block proves of a claim an explicit definition (`pcsOpen`).
 
 **What is proved** (`formal/README.md`, "End-to-end theorems"; each on `propext`, `Classical.choice`,
 `Quot.sound`):
@@ -377,7 +377,7 @@ check the ones they use by kernel evaluation (`formal/EndToEnd/Bridge/Claims/Con
   to a fixed hash.
 * `StatementBinds`: a pigeonhole, immediate; not proved in Lean.
 * The EVM contract: `formal/EndToEnd/Evm` (`evm_accepts_iff_verifyWith`, `evm_accepts_iff_exists`); the
-  bytecode equal to the recorded graph and the `PCS_OPEN` mock equal to `openingWith` by tests.
+  bytecode equal to the recorded graph and the claims' opening (`opening::verify`) equal to `openingWith` by tests.
 
 ## Building and testing
 

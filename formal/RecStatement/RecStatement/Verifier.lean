@@ -10,7 +10,7 @@ import RecStatement.Core
 # π2's verifier on calldata
 
 **The transcript** (`KeccakChannel`, `PI2.md` §2): the seed `keccak(NAME ‖ IV ‖ public input)`,
-`NAME = "leanvm-rec-pi2v1"`; the stream holds the public data (`Read`s: π1's roots `C1`, `C2` as `PCS_OPEN`'s
+`NAME = "leanvm-rec-pi2v1"`; the stream holds the public data (`Read`s: π1's roots `C1`, `C2` as the claims'
 root words, π1's claims' elements: the pair challenges and the values), `W`'s root, then `α, β, γ` are drawn;
 `Q`'s root, then `t`; the `2^r` fold values and `ξ = κ(t) + βσ(t)`, then `ρ`. The first challenge hashes the state
 and everything read before it: the public data is bound there. Then the arithmetic (`CoreSpec.run`, over `E`, its

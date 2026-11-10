@@ -10,7 +10,7 @@ import UniKeccakComplete.K.ProverCost
 import E2ECompleteness.Grinding
 
 /-!
-# π2's three `PCS_OPEN` calls decoded
+# π2's three claims decoded
 
 The contract's calls for `W`, the setup and `Q` (`pcsCalls`' last three: a root word, π2's layout word, the count, then
 each claim's coordinates and value as element words) decode under the registry (`decodeWith`) to the root the word

@@ -38,7 +38,7 @@ open scoped ENNReal
 /-- **The contract's π1 openings are the calldata's**: on every outcome of π2's knowledge-soundness experiment whose
 contract accepts, the first three calls decode under the registry, to the openings `pi1OpsOf` reads off the calldata
 (π2's run over Keccak-f[1600]). π1's three calls read only the stream's public data (π1's roots, its claims' elements
-and their pair points) and the setup's root, not the transcript's hashes; the contract's `PCS_OPEN` rejects a call
+and their pair points) and the setup's root, not the transcript's hashes; the opening check rejects a claim
 that does not decode. -/
 def CallsPure (D : RecDeployment) : Prop :=
   ∀ (A : RecAdversary), ∀ z ∈ support (recSoundnessExperiment2 D A), (acc z) = true →

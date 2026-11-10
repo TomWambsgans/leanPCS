@@ -71,7 +71,7 @@ theorem hazardCoupling (D : RecDeployment) : HazardCoupling D := by
 
 /-! ## π1-rec3's coupling -/
 
-/-- **A π1 opening as the contract's `PCS_OPEN` opens it**: by its layout word's registered opener. -/
+/-- **A π1 opening as the block opens the contract's claim**: by its layout word's registered opener. -/
 def openAt {m : Type → Type} [Monad m] (F : LeanVM.Semantics.KeccakState → m LeanVM.Semantics.KeccakState)
     (reg : List (List UInt8 × Opener)) (o : Pi1Opening) (p : Compile.Proof) : m Bool :=
   match reg.lookup o.2.1 with
@@ -91,7 +91,7 @@ def openSeq {m : Type → Type} [Monad m] (F : LeanVM.Semantics.KeccakState → 
 π1-rec3's graph accepts with the contract's π1 openings `ops` (read off the calldata) off the merge hazard, the graph
 being π1-rec3's verifier there: `pi1KeccakVerifierWith` (π1's run over Keccak-f[1600], then `C1`, `C2`, the setup opened
 over `π`) on π1's proof of `s` with the recursive proof's three π1 opening proofs is, as a computation, the contract's
-three π1 `PCS_OPEN` calls `openSeq` of `ops`.
+three π1 claims opened, `openSeq` of `ops`.
 
 Why it holds (`OpeningsAgree.lean`, `pi1OpeningsAgree`): off the hazard `Pi1GraphIsVerifierK` makes the graph's
 outputs `RecGraphKeccak.verifierOutputsWithK`'s at the reference shape (`D.pi1.shape = keccak128`), so the Keccak run

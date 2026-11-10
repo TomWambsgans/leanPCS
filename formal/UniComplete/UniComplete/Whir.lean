@@ -231,8 +231,8 @@ the stream) is the root. -/
 theorem rootOf_digestScalars (d : Digest) : UniStatement.rootOf (digestScalars d) = d := by
   simp [UniStatement.rootOf, digestOfScalars_digestScalars]
 
-/-- **`PCS_OPEN` accepts the honest opening** (`UniStatement.pcsOpenWith` over `F`, Keccak-256 over `F`), at the
-root the stream carries as two halves: `pcsOpen_honest` at `H = keccak256With F` through `openingWith_eqH`. -/
+/-- **A claim's opening check accepts the honest opening** (`UniStatement.pcsOpenWith` over `F`, Keccak-256 over `F`),
+at the root the stream carries as two halves: `pcsOpen_honest` at `H = keccak256With F` through `openingWith_eqH`. -/
 theorem pcsOpenWith_honest (F : KeccakState → KeccakState) (fuel : ℕ) {vars : ℕ} (h1 : 24 ≤ vars)
     (h2 : vars ≤ 28) (stack : Array K) (hs : stack.size = 2 ^ vars) (pt : List E) (hpt : pt.length = vars)
     {π : Compile.Proof}

@@ -23,7 +23,7 @@ about the PIOP's mathematics:
   rounds' errors). It is `Compose.knowledgeSoundness_listChainK_closed_rpm` for the univariate
   verifier: its proof is the port of `ListChainK` to the univariate transcript (24-byte scalars,
   roots as two reversed 16-byte halves, the seed `name ‖ iv ‖ input`; see `FsLayer`'s
-  docstring), the five `PCS_OPEN` calls as `WhirOp`s (`WhirShape.large`: `C1`, `C2`, the setup
+  docstring), the five claims' openings as `WhirOp`s (`WhirShape.large`: `C1`, `C2`, the setup
   and `A0`, `B0` at `2^24 … 2^28` words), the setup's three trees and its IV, and the extractor's
   reading (`uniExtractor`'s replay, Merkle inversion and decoders list the chain's candidates).
 
@@ -52,7 +52,7 @@ open scoped ENNReal
 noncomputable def mleStk (c : Stk) (n : ℕ) (pt : List E) : E :=
   ∑ x : Fin (2 ^ n), cubeEq pt n x.val * ofK (c x.val)
 
-/-- The layout word of a commitment's `PCS_OPEN` call (`layoutWords`: `C1`, `C2`, the setup). -/
+/-- The layout word of a commitment's claim (`layoutWords`: `C1`, `C2`, the setup). -/
 def wordIndex : Commitment → ℕ
   | .c1 => 0
   | .c2 => 1

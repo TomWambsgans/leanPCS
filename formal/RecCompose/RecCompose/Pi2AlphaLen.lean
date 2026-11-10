@@ -13,7 +13,7 @@ in `pi2Staged`'s stage A, is shorter (`Short`):
 
 * **`hashOK_setupTreesWithH2`**: the setup's two trees (π1's Keccak setup stack, π2's `κ`, `κ + σ`: `512`-byte leaves,
   `64`-byte nodes);
-* **`hashOK_graph`**: π1-rec3's graph with its three `PCS_OPEN`s, from its block count (`3 · gOpen` blocks, so no
+* **`hashOK_graph`**: π1-rec3's graph with its three claims' openings, from its block count (`3 · gOpen` blocks, so no
   query of `136 · 3 · gOpen < 2^26` bytes or more; **`hashOK_of_qc`**);
 * π1-rec3's prover: the named `Pi1HashShort` (`Pi2P1`). The tools a concrete prover's census uses are here: Merkle
   trees of rows of at most `192` words (`hashOK_buildTree`, `hashOK_commitWithH`), WHIR openings
@@ -224,7 +224,7 @@ theorem hashOK_setupTreesWithH2 (D : RecDeployment) :
 
 /-! ## π1-rec3's graph -/
 
-/-- **π1-rec3's graph with its three `PCS_OPEN`s** (`3 · gOpen` blocks). -/
+/-- **π1-rec3's graph with its three claims' openings** (`3 · gOpen` blocks). -/
 theorem hashOK_graph (hg : GraphsAgree) (D : RecDeployment) (roots : UniStatement.SetupRoots)
     (input : Vector UInt8 32) (p : UniKeccak.KeccakProof) :
     HashOK Short (Pi2H.pi1GraphVerifierWithH callKeccak256 callKeccakF1600 D roots input p) :=

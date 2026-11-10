@@ -10,7 +10,7 @@ recursion and the prover. The protocol is `SPEC.md`, Flock's part `SPEC-FLOCK.md
 The prover (`src/prover/`) proves real leanVM `9d50c92a3` executions (`cargo leanvm aggregate --xmss N`, N = 32, 128,
 400):
 - the Rust verifier accepts, the three WHIR openings verify, and the straight and deployable contracts accept the real
-  calldata, with `PCS_OPEN` attesting exactly the claims the openings prove; mutated proofs are rejected;
+  calldata, with the frame declaring exactly the claims the openings prove; mutated proofs are rejected;
 - π2 (`crates/leanvm/rec`) proves the real 128- and 400-signature π1-rec3 proofs, and the recursion's contract accepts
   them.
 
@@ -70,7 +70,7 @@ alone is `2^29` words: **no proof**. `tests/keccak_vm.rs`, `keccak_stacks_agains
 ## Gas
 
 Measured on revm (`tests/keccak_vm.rs`, `keccak_gas_report`), `KECCAK_MAIN`, point claims. Transaction gas excludes the
-21,000 base and uses EIP-7623. `c` is the price of a `PCS_OPEN` claim.
+21,000 base and uses EIP-7623. Measured with `PCS_OPEN`, `c` the price of one of its claims.
 
 | signatures | largest stack | calldata | execution | `FIELD_MUL` | claims / calls | tx, `c` = 0 | tx, `c` = 5,000 |
 |---:|---:|---:|---:|---:|---:|---:|---:|
@@ -100,8 +100,9 @@ is measured (`crates/leanvm/rec/tests/keccak_vm_rec.rs`). The contract's gas dep
 | 400 signatures | 118 | 71, 9,424 B | 8,673 / 6,885 | 15,940,800 (95.0%) | 22 / 144 | 13,639 B | 28,421 |
 
 **On the real proofs** (`crates/leanvm/rec/tests/pi2_real.rs`, `real_end_to_end`; π2v2, `docs/leanvm/rec/PI2.md`). The
-recursion's contract accepts with `PCS_OPEN` attesting its 7 claims in 6 calls, and 18 flipped calldata bytes are
-rejected. π2v1's figures, at `PCS_OPEN` version 2, in brackets.
+recursion's contract accepts with its frame declaring its 7 claims as 6, and 18 flipped calldata bytes are
+rejected. π2v1's figures, at opening version 2, in brackets. All measured with `PCS_OPEN`; with the frame of claims,
+1,005 B, 28,459 execution and 43,819 transaction at 128 signatures, 29,257 and 44,593 at 400.
 
 | | 128 signatures | 400 signatures |
 |---|---:|---:|
@@ -129,14 +130,14 @@ its openings 0.70 s; what depends on the circuit only (π1's setup roots, π2's 
 calldata has more zero bytes.
 
 **On an AMD EPYC 9355P** (Zen 5, 32 cores / 64 threads, 2026-11-09, `tests/pipeline.rs`, medians of 5 warm passes,
-three interleaved runs). At the end of that work, with `PCS_OPEN` version 3 and π1's batched quotients (load 14–21):
+three interleaved runs). At the end of that work, with opening version 3 and π1's batched quotients (load 14–21):
 **0.59 s a proof**, against 2.16 s at its start (3.7×): π1-rec3's proof and openings 0.34 s, π2's proof 0.195 s, its
 openings 0.051 s, peak RSS 12.6 GB. Before version 3 and the batched quotients (load 4–19): **0.69 s a proof**, against 2.18 s at the start of that work (3.1×): π1-rec3's
 proof and openings 0.39 s (1.47 s, with π2's compile on the critical path), π2's witness 7 ms replayed while π1's
 openings run (0.62 s compiled), π2's proof 0.195 s (0.54 s), its openings 0.106 s (0.16 s); per circuit 1.7 s once
 (π2's circuit and witness plan 1.15 s); peak RSS 13.8 GB (12.65 GB). Without the π2v2 protocol change (the same proofs
 as before), 0.81 s (2.7×). π1 alone (`keccak_prover_benchmark`): 0.40 s, 0.94 s before. leanVM `9d50c92a3`'s own
-prover on the same machine: 0.19 s. With `PCS_OPEN` version 3 (WHIR's deeper levels at rates `1/4, 1/8, …` after
+prover on the same machine: 0.19 s. With opening version 3 (WHIR's deeper levels at rates `1/4, 1/8, …` after
 the rate-`1/2` level 0, not `1/16, 1/128, …`: `PROVER.md` item 10, `PI2.md` §8; interleaved against version 2 at load
 14–42): π1's three openings 0.064 → 0.033 s (π1 0.385 → 0.354 s in its quieter runs, peak 7.2 → 6.2 GB), π2's
 0.108 → 0.054 s, the pipeline about 80 ms less a proof (best passes 0.678 → 0.590 s; medians of 40 passes under that

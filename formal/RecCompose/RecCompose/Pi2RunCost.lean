@@ -22,7 +22,7 @@ staged run at a π1 prover of at most `2^47` block calls (`Pi1Cost D P1k`, named
 
 * the setup twice (`setup2`: π1's one tree, `treeCost 23` at the reference shape, `UniKeccakSound.setupVars_ref`;
   π2's setup tree `treeCost 25`), π1-rec3's prover (`2^47`, `Pi1Cost`);
-* the graph's three `PCS_OPEN`s (`gOpen`: a call of at most `31` words, `GraphsAgree` and `RecGraphKeccak.Emitted`'s
+* the graph's three openings (`gOpen`: a claim of at most `31` words, `GraphsAgree` and `RecGraphKeccak.Emitted`'s
   calls), π2's IV twice (`ivC`: `σ`'s `4 · 2^24` bytes, `κ`'s `8 · 2^24`, the encoding's `24264 + 64`, the IV's `208`), the
   seed (`80` bytes), `W`'s tree (`treeCost 24`);
 * the chain (`536`, `32`, `32` bytes), `Q`'s tree (`treeCost 28`), `t` (`64` bytes), `ρ` (`440` bytes);
@@ -334,7 +334,7 @@ theorem cp_post2 (G : RecPiop.Circuit E) (hW : G.logW = 4) (setupStack : Array K
     omega
   · simp [length_foldValues, hW]
 
-/-! ## The graph's three `PCS_OPEN`s -/
+/-! ## The graph's three claims' openings -/
 
 theorem mapM_option_length {γ δ : Type} {f : γ → Option δ} :
     ∀ {l : List γ} {l' : List δ}, l.mapM f = some l' → l'.length = l.length
@@ -448,7 +448,7 @@ theorem graph_calls_le (hg : GraphsAgree) {iv pub : List UInt8} {s : Array UInt8
   exact (length_flatMap_le _ 32 (length_wordBytes_le _ _) ws).trans
     (Nat.mul_le_mul_left _ (emitted_calls_le ws hws'))
 
-/-- `PCS_OPEN`'s cost on a claim count and variables of at most `X` words. -/
+/-- The opening check's cost on a claim count and variables of at most `X` words. -/
 theorem qc_openingW (L : PcsQuotient.Layout) (root : Digest) (claims : List PcsQuotient.Claim)
     (p : LeanVM.Protocol.Compile.Proof) (X : ℕ) (hX : claims.length * (L.vars + 1) ≤ X)
     (hL : L.logN - PcsQuotient.laneFold + PcsQuotient.logInvRate ≤ 12 * costHeight) :
@@ -481,7 +481,7 @@ theorem mem_modify_snd {γ δ : Type} {g : γ × δ → γ × δ} (hg : ∀ x, (
     · obtain ⟨y, hy, he⟩ := mem_modify_snd hg h
       exact ⟨y, List.mem_cons_of_mem _ hy, he⟩
 
-/-- **π1-rec3's graph with its three `PCS_OPEN`s**: at most `3 · gOpen` blocks. -/
+/-- **π1-rec3's graph with its three claims' openings**: at most `3 · gOpen` blocks. -/
 theorem qc_pi1GraphVerifierWithH (hg : GraphsAgree) (D : RecDeployment) (roots : UniStatement.SetupRoots)
     (input : Vector UInt8 32) (p : UniKeccak.KeccakProof) :
     QC (Pi2H.pi1GraphVerifierWithH callKeccak256 callKeccakF1600 D roots input p) (3 * gOpen) := by
@@ -555,7 +555,7 @@ theorem registry_ok (shape : UniStatement.Shape) {w : List UInt8} {op : Opener}
 /-- The contract's opening: a count of at most `2`, at most `255` variables. -/
 noncomputable def cOpen : ℕ := (76 + 24 * 512) / 136 + 1 + vOpen
 
-/-- **`PCS_OPEN` on a call whose count is at most two**: at most `cOpen` blocks. -/
+/-- **The opening check of a claim whose count is at most two**: at most `cOpen` blocks. -/
 theorem qc_pcsOpenAtH (shape : UniStatement.Shape) (words : List (List UInt8)) (p : Compile.Proof)
     (hk : CountOK words) : QC (Pi2H.pcsOpenAtH callKeccak256 callKeccakF1600 (registryOf shape 24) words p) cOpen := by
   unfold Pi2H.pcsOpenAtH

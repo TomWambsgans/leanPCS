@@ -67,7 +67,7 @@ section Generic
 
 variable {m : Type → Type} [Monad m] [LawfulMonad m]
 
-/-- **`PCS_OPEN` answers `false` to a call that does not decode.** -/
+/-- **The opening check answers `false` to a claim that does not decode.** -/
 theorem holds_pcsOpenAt (F : KeccakState → m KeccakState) (reg : List (List UInt8 × Opener))
     (words : List (List UInt8)) (p : LeanVM.Protocol.Compile.Proof) :
     Holds (pcsOpenAt F reg words p) fun b ↦ b = true → (decodeWith reg words).isSome := by

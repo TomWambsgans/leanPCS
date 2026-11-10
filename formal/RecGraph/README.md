@@ -26,7 +26,7 @@ lake env lean ../RecGraph/RecGraphTest/SimAxioms.lean                # the simul
 - [`Node.lean`](RecGraph/Node.lean): `leanvm_statement::evm::record`'s `Node` (`const`, `statement`, `input` at a byte
   offset with a length, `add`, `mul`, `seed`, `hash` of a state and a run of stream bytes, `low`, `narrow` (π1-rec2's
   160-bit challenges), `bits`, `ringWeight`), `codegen::Word` (`node`, `const`, `stream`), `Graph` (nodes, zero and
-  nonzero checks, kernels, `PCS_OPEN` call words, stream length). The pair derivation is additions and products: no new
+  nonzero checks, kernels, the claims' words, stream length). The pair derivation is additions and products: no new
   kinds.
 - [`Semantics.lean`](RecGraph/Semantics.lean): **`evalGraph F g iv publicInput stream`**, over a permutation `F` of the
   Keccak state in any monad (the random-permutation model's style, as `UniStatement`'s verifier is written): every

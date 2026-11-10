@@ -16,7 +16,7 @@ membership proof:
   of `stackSetupS` at the plain shapes), is the Statement's `setupTreesWith` over `π`, its roots as
   bytes (`rootsB`) and its log the trees' evaluations (`setupTr`);
 * **`UniVerifierBridge`** (the verifier): from any state of the lazily sampled permutation, the
-  Statement's `verifyWith` (the run on the stream, its early stops, the five `PCS_OPEN` calls)
+  Statement's `verifyWith` (the run on the stream, its early stops, the five claims' openings)
   accepts at most as often as the composed verifier (the chain over the univariate encoding and the
   five openings, `verU`) satisfies `uniCheck` and all five openings accept;
 * **`UniExtractBridge`** (the extractor's reading): a candidate of `C1`'s root that the composed

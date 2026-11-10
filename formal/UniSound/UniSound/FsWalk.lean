@@ -8,7 +8,7 @@ import UniSound.FinalLink
 # The verifier bridge's two halves: the walk is the chain, then the openings
 
 `UniVerifierBridge` (`FsCouple.lean`) compares the Statement's `verifyWith` (the walk on the stream,
-`runWith`, then the five `PCS_OPEN` calls) with the composed verifier (the chain `verU`, then the
+`runWith`, then the five claims' openings) with the composed verifier (the chain `verU`, then the
 five openings `opsRun`). It splits at the walk:
 
 * **`UniWalk`** (the walk is the chain): on a stream of the main line's length (`uLen`: the row
@@ -18,8 +18,8 @@ five openings `opsRun`). It splits at the walk:
   value the chain program requires zero vanish), the result the chain program's (`uOut`);
 * **`UniWalkReject`** (a stream of another length is rejected): every outcome of the walk over `π`
   rejects (the stream runs out, `StreamExhausted`, or is left unread, `StreamNotConsumed`);
-* the openings (`uniVerifierBridge_of_walk`, the remaining half): the Statement's five `PCS_OPEN`
-  calls are F2's `ourVerifierEarly` at the plain layouts (`Bridge.openingWith_eq_ourVerifier'`),
+* the openings (`uniVerifierBridge_of_walk`, the remaining half): the Statement's five claims'
+  openings are F2's `ourVerifierEarly` at the plain layouts (`Bridge.openingWith_eq_ourVerifier'`),
   which accept at most as often as the composed openings (`Soundness.early_le`), and acceptance
   makes the result well formed (`uniCheck`).
 -/

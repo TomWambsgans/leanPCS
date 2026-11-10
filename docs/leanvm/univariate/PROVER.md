@@ -11,18 +11,18 @@ contract's Keccak-256 chain) and one WHIR opening per commitment (`C1`, `C2`, th
 
 On real executions (32, 128 and 400 signatures) and both variants: the Rust verifier accepts; the three WHIR
 openings verify; the straight contract and the deployable one (`crates/evm_link`, parts of at most 24,576 bytes)
-accept the real calldata, word for word with the Rust verifier, with `PCS_OPEN` attesting exactly the claims the
-openings prove; both reject a flipped byte and any call left unattested; five stream mutations are rejected by the
+accept the real calldata, word for word with the Rust verifier, with the frame declaring exactly the claims the
+openings prove; both reject a flipped byte and any claim left undeclared; five stream mutations are rejected by the
 Rust verifier. The real proofs' gas is in `KECCAK.md` ("The real proofs' gas").
 
 **Rust→EVM test vectors.** `tests/vectors/` holds three real proofs: `keccak.txt` (32 signatures, `KECCAK_MAIN`),
 `keccak128_rec3.txt` (128 signatures, `KECCAK_REC3`: the reference workload, the recursion's inner proof) and
-`keccak_rec3.txt` (400 signatures, `KECCAK_REC3`). Each holds the calldata, the `PCS_OPEN` inputs the contract calls
-with, the committed roots, the verdict and the gas, straight and deployed. `tests/evm_vectors.rs` replays them with no
-prover and no trace, the contract binding the vector's own `F` (its third call's root): both builds accept at the
-recorded gas, call `PCS_OPEN` with exactly the recorded inputs, and revert on 13 mutations each (a row count, `C1`'s
-root, two scalars, a batching round, the last byte or the public input flipped; each call left unattested; each
-attested value flipped). `tests/lean_keccak_vectors.rs` turns the real proofs and solved sample streams into the Lean
+`keccak_rec3.txt` (400 signatures, `KECCAK_REC3`). Each holds the calldata, the claims the contract checks
+declared, the committed roots, the verdict and the gas, straight and deployed. `tests/evm_vectors.rs` replays them with
+no prover and no trace, the contract binding the vector's own `F` (its third call's root): both builds accept at the
+recorded gas, check exactly the recorded claims declared, and revert on 13 mutations each (a row count, `C1`'s
+root, two scalars, a batching round, the last byte or the public input flipped; each claim left undeclared; each
+declared value flipped). `tests/lean_keccak_vectors.rs` turns the real proofs and solved sample streams into the Lean
 transcription's differential vectors.
 
 ## How it runs
@@ -144,7 +144,7 @@ transcription's differential vectors.
    batch with an odd number of variables (the setup's `2^23` against `2^25`, say) zero-extends itself past its words'
    rounds. Then the stacks' values at the end point.
 10. **The openings** (`opening.rs`): one point claim per commitment, leanVM's WHIR (vendored from c445e3d5) at rate
-    `1/2`, its transcript seeded by a prefix that binds `PCS_OPEN`'s 32-byte layout word, whose `vars` and `placed`
+    `1/2`, its transcript seeded by a prefix that binds the claim's 32-byte layout word, whose `vars` and `placed`
     the verifier reads. Version 3 (the layout word's byte 21): WHIR's deeper levels on the recursion's ladder
     (`pcs::whir::RECURSION_SCHEDULE`: rates `1/2, 1/4, 1/8, …` after the rate-`1/2` level 0, not leanVM's `1/2,
     1/16, 1/128, …`), so the levels past the first commit an eighth of what they did and the openings take about half

@@ -16,8 +16,8 @@ roots are Merkle roots of WHIR encodings, which the model does not have).
 of `modelVals`, the chain the graph's leaves hold on `calldataOf` (`leafVals_calldataOf`).
 
 `graph_iff_verifyWith` (**F5**): on the calldata of a model proof `π` (its statement, the roots
-`H(enc₁ g)`, `H(enc₂ R)` the model's chain absorbs, its five values), the contract reaches its calls
-of `PCS_OPEN` and the claims it hands them hold of the tables whose polynomials are `π`'s messages,
+`H(enc₁ g)`, `H(enc₂ R)` the model's chain absorbs, its five values), the contract reaches its checks
+of declared claims and the claims it checks hold of the tables whose polynomials are `π`'s messages,
 exactly when no `1 + w_k(t)` vanishes and `Wire.verifyWith` accepts `π`.
 -/
 
@@ -187,7 +187,7 @@ theorem graph_iff_verifyWith (hfr : FrobOK limbs) (π : ChainProof (params hF σ
 (`IsF192`), on the calldata of a model proof `π` — its statement's bytes, the roots `H(enc₁ g)` and
 `H(enc₂ R)` that `Wire.verifyWith` absorbs, its five values — with tables `cW`, `cQ` whose
 polynomials are `π`'s messages and a wiring table `cF` of `σ`: the contract (the graph, `run`)
-reaches its calls of `PCS_OPEN` with claims (`run_words`) that hold of `cW`, `cF`, `cQ` exactly when
+reaches its checks of declared claims with claims (`run_words`) that hold of `cW`, `cF`, `cQ` exactly when
 no `1 + w_k(t)` vanishes and the model's verifier with the deployed `Wire` accepts `π`. -/
 theorem graph_is_verifier (π : ChainProof (params hF σ) (bounds hF σ))
     (cW : (Fin (22 + 1 + 1 + 1) → Bool) → F) (cF : (Fin (22 + 2) → Bool) → F)
@@ -213,7 +213,7 @@ theorem graph_is_verifier (π : ChainProof (params hF σ) (bounds hF σ))
         (wire hF σ idx).verifyWith (m := Id) H π = true) :=
   graph_iff_verifyWith hF σ H idx (frobOK hF) π cW cF hcF cQ hg hR
 
-/-- **F5, the words**: when the contract reaches its calls, it hands `PCS_OPEN` the model's claims
+/-- **F5, the words**: when the contract reaches its checks, it checks the model's claims declared
 (`run_words`, the Frobenius discharged). -/
 theorem graph_words (sb : Vector UInt8 64) (r₁ r₂ : Bytes32) (x0 x1 x2 x3 x4 : F) (ws : List Nat)
     (h : run H idx (calldataOf limbs sb r₁ r₂ [x0, x1, x2, x3, x4]) = some ws) :

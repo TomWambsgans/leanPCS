@@ -1,6 +1,6 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
--- The calldata is `crates/membership/evm/src/quotient.rs`'s `calldata`; the calls of `PCS_OPEN` are
--- `crates/membership/evm/src/quotient.rs`'s `build` and `crates/membership/evm/src/machine.rs`'s `pcs_open_input`.
+-- The calldata is `crates/membership/evm/src/quotient.rs`'s `calldata`; the claims it checks declared are
+-- `crates/membership/evm/src/quotient.rs`'s `build` and `crates/membership/evm/src/machine.rs`'s `claim_input`.
 import Evm.Formula
 import Evm.PcsOpen
 import Bridge.Verifier
@@ -14,13 +14,13 @@ bytes, `Compose.toB ir`), on the calldata of a proof (`calldata`: the statement'
 roots, the five values, as `quotient.rs` writes them). Here, against the statement's verifier
 `PcsQuotient.verifyWith` at `π = Keccak-f[1600]`:
 
-* **`run_calldata`**: the contract reaches its three calls of `PCS_OPEN` exactly when
+* **`run_calldata`**: the contract reaches its three checks of declared claims exactly when
   `PcsQuotient.reduce` accepts the reduction, and then its calls are exactly `callsOf`: the witness
   table's root, layout and claim, the circuit's commitment, the wiring layout and claim, the quotient
   table's root, layout and two claims, of the statement's reduction — the same roots, layout ids,
   points and values, byte for byte (`openInput`);
-* **`evm_accepts_iff_verifyWith`**: with `PCS_OPEN`'s semantics `pcsOpen` (the input read as the
-  precompile reads it, then the statement's `PcsQuotient.opening` with the proof's opening of the
+* **`evm_accepts_iff_verifyWith`**: with what the block proves of a claim `pcsOpen` (the claim read
+  as the block reads it, then the statement's `PcsQuotient.opening` with the proof's opening of the
   table the layout names, `openingProofs`), the contract accepts exactly when
   `PcsQuotient.verifyWith` accepts;
 * `verifyWith_of_calldata_none`: a proof with no calldata (a root's scalars naming no digest) is one
@@ -60,7 +60,7 @@ def calldata (stmt : PcsQuotient.Statement) (p : PcsQuotient.ReductionProof) : O
       [p.values[0], p.values[1], p.values[2], p.values[3], p.next])
   | _, _ => none
 
-/-- **The calls of `PCS_OPEN` of the statement's reduction**: the witness table's root, the witness
+/-- **The claims the contract checks declared, of the statement's reduction**: the witness table's root, the witness
 layout's id, its claim; the circuit's commitment `ir`, the wiring layout's id, its claim; the quotient
 table's root, the quotient layout's id, its two claims. -/
 def callsOf (ir : Digest) (r : PcsQuotient.Reduced) : List (List UInt8) :=
@@ -225,8 +225,8 @@ local notation "CD" => calldataOf limbsEquiv (stmt.y ++ stmt.root) (Compose.toB 
   [p.values[0], p.values[1], p.values[2], p.values[3], p.next]
 
 include h₁ h₂ in
-/-- **The contract on a proof's calldata calls `PCS_OPEN` exactly as the statement's reduction
-leaves its claims**: it reaches its calls exactly when `PcsQuotient.reduce` (at Keccak-f[1600], the
+/-- **The contract on a proof's calldata checks declared exactly the claims the statement's
+reduction leaves**: it reaches its checks exactly when `PcsQuotient.reduce` (at Keccak-f[1600], the
 circuit's commitment `ir` stored as its 32 bytes) accepts, and its calls are then `callsOf` of the
 reduction: the same root words, layout ids, claim points and values, byte for byte. -/
 theorem run_calldata :
@@ -297,7 +297,7 @@ theorem openingProofs_quotient (proof : PcsQuotient.Proof) :
     openingProofs proof (layoutId 3 22) = proof.quotient := by
   simp [openingProofs, openingsOf, layoutId]
 
-/-- **`PCS_OPEN` on the calls of an accepted reduction is the statement's three openings.** -/
+/-- **The opening check on the claims of an accepted reduction is the statement's three openings.** -/
 theorem all_callsOf (proof : PcsQuotient.Proof) (ir : Digest) (r : PcsQuotient.Reduced)
     (hl : r.claims.witness.point.length = 25 ∧ r.claims.wiring.point.length = 24 ∧
       r.claims.quotient.point.length = 30 ∧ r.claims.sum.point.length = 30) :
@@ -331,7 +331,8 @@ theorem calldata_eq_some {stmt : PcsQuotient.Statement} {p : PcsQuotient.Reducti
   · cases h
 
 /-- **The contract's verdict is the statement's verifier's** (`Bool` equality): on the calldata of a
-proof, with `PCS_OPEN` the opening check `pcsOpen` given the proof's three openings, the deployed
+proof, with what the block proves of a claim the opening check `pcsOpen` given the proof's three openings, the
+deployed
 contract (F5's graph, the deployed Keccak-256, the circuit's commitment `ir` in storage) accepts
 exactly when `PcsQuotient.verifyWith` at Keccak-f[1600] accepts. -/
 theorem evm_accepts_eq_verifyWith (ir : Digest) (stmt : PcsQuotient.Statement)
@@ -354,8 +355,8 @@ theorem evm_accepts_eq_verifyWith (ir : Digest) (stmt : PcsQuotient.Statement)
 /-- **The EVM contract accepts exactly when `PcsQuotient.verifyWith` accepts** (at `π =
 Keccak-f[1600]`, the deployed Keccak-256): on the calldata of a statement and proof (`calldata`), the
 deployed contract — F5's recorded graph run on it (`Implementation.accepts`), its index root the
-circuit's commitment `ir` (the setup root, from storage) — with `PCS_OPEN`'s semantics `pcsOpen` (the
-input read as the precompile reads it, then `PcsQuotient.opening` with the proof's opening of the
+circuit's commitment `ir` (the setup root, from storage) — with what the block proves of a claim `pcsOpen`
+(the claim read as the block reads it, then `PcsQuotient.opening` with the proof's opening of the
 table its layout names, `openingProofs`), accepts iff the statement's verifier accepts the proof. -/
 theorem evm_accepts_iff_verifyWith (ir : Digest) (stmt : PcsQuotient.Statement)
     (proof : PcsQuotient.Proof) {cd : List UInt8} (hcd : calldata stmt proof.reduction = some cd) :
@@ -396,7 +397,7 @@ theorem evm_reaches_iff (ir : Digest) (stmt : PcsQuotient.Statement) (p : PcsQuo
   have h := congrArg Option.isSome (run_calldata ir stmt p h₁ h₂)
   simpa using h
 
-/-- **The contract hands `PCS_OPEN` exactly the statement's claims**: when it reaches its calls,
+/-- **The contract checks declared exactly the statement's claims**: when it reaches its checks,
 they are `callsOf` of the statement's accepted reduction (roots, layout ids, points and values, byte
 for byte). -/
 theorem evm_calls (ir : Digest) (stmt : PcsQuotient.Statement) (p : PcsQuotient.ReductionProof)

@@ -46,7 +46,7 @@ inductive Node where
   | ringWeight (kernel n : Nat)
   deriving DecidableEq, Repr, Inhabited
 
-/-- **A word a `PCS_OPEN` call takes** (`codegen::Word`, but `Stored`: π1's contract stores nothing). -/
+/-- **A word of a claim** (`codegen::Word`, but `Stored`: π1's contract stores nothing). -/
 inductive Word where
   /-- A recorded value: an element of `E`, as `element_word` writes it. -/
   | node (id : Nat)
@@ -58,7 +58,7 @@ inductive Word where
 
 /-- **A recorded verifier** (`record::Graph` with what `contract::calls` reads of the recording): its nodes in
 creation order, the values it requires zero and then nonzero (in the order required), each ring-weight node's
-operands, the words of its `PCS_OPEN` calls (in call order), and the stream's length. -/
+operands, the words of its claims (in order), and the stream's length. -/
 structure Graph where
   nodes : Array Node
   zero : List Nat

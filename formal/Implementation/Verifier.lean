@@ -9,10 +9,10 @@ The end theorems of layer F5, for the calldata of a statement's 64 bytes `sb`, t
 `r₁`, `r₂` and five values (`calldataOf`, as `crates/membership/evm/src/quotient.rs` writes it), the index root
 `idx` and any hash `H`, in any field `F` whose limbs are `F192`'s (`IsF192`, with `FrobOK`):
 
-* `run_isSome_iff`: the contract reaches its calls of `PCS_OPEN` exactly when the product of the
+* `run_isSome_iff`: the contract reaches its checks of declared claims exactly when the product of the
   denominators is not zero, i.e. when every `1 + w_k(t)` and the denominator `Params.Accepts` asks
   nonzero are not zero (`check_eq`), at the challenges of the model's chain (`modelVals`);
-* `run_words`: and then the words it hands `PCS_OPEN` are the three calls of the model's claims: the
+* `run_words`: and then the words it checks declared are three claims, the model's: the
   root word of `r₁`, the witness layout, one claim, the witness claim of
   `claims_iff_accepts_ofCantor`; the root word of the index root, the wiring layout, one claim, the
   wiring claim; the root word of `r₂`, the quotient layout, two claims, the quotient claim and the
@@ -108,7 +108,7 @@ theorem sumPointWords_elem :
     elem_zero hF, hK.y0, hK.y1, List.ofFn_const]
   simp [List.replicate_succ, List.append_assoc]
 
-/-- **The words the contract hands `PCS_OPEN` are the model's claims**: when it reaches its calls,
+/-- **The words the contract checks declared are the model's claims**: when it reaches its checks,
 they are, back to back, the root word of `r₁`, the witness layout's id, one claim, the witness
 claim (point, value); the root word of the index root, the wiring layout's id, one claim, the
 wiring claim; the root word of `r₂`, the quotient layout's id, two claims, the quotient claim and
@@ -166,8 +166,8 @@ theorem run_words (hfr : FrobOK limbs) (ws : List Nat) (h : run H idx CD = some 
     exact hQ.trans (quotient_eq hK _ le24 σ (basis_hb0 hF) (basis_hb hF))
   · exact hS.trans (sum_eq _ le24 σ (basis_hb0 hF) (basis_hb hF) hK.scale)
 
-/-- **The contract accepts exactly what the model accepts.** With `PCS_OPEN` attesting the claims
-it is handed exactly when they hold of the tables `cW` (the witness table under `r₁`), `cF` (the
+/-- **The contract accepts exactly what the model accepts.** With the block attesting the claims
+the contract checks exactly when they hold of the tables `cW` (the witness table under `r₁`), `cF` (the
 circuit's wiring table under the index root, a table of `σ`) and `cQ` (under `r₂`) — the claims
 being the model's (`run_words`) — the contract reaches its calls and they hold exactly when no
 `1 + w_k(t)` vanishes and `Params.Accepts` holds of the polynomials the tables hold

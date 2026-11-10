@@ -83,7 +83,7 @@ structure Block where
 inductive Source where
   /-- The statement's four 64-bit words, big-endian, word `l` limb `l`. -/
   | statement
-  /-- Root `i`'s 32-byte `PCS_OPEN` word as four big-endian words, bytes `24 − 8l .. 32 − 8l` limb `l`. -/
+  /-- Root `i`'s 32-byte claim word as four big-endian words, bytes `24 − 8l .. 32 − 8l` limb `l`. -/
   | root (i : ℕ)
   /-- Element `i`: its limbs `c0, c1, c2`. -/
   | element (i : ℕ)
@@ -103,7 +103,7 @@ structure Port where
   source : Source
   deriving DecidableEq, Inhabited, Repr
 
-/-- A 32-byte word of one of π1's `PCS_OPEN` inputs (`CallWord`); a constant word is its big-endian number. -/
+/-- A 32-byte word of one of π1's claims (`CallWord`); a constant word is its big-endian number. -/
 inductive CallWord where
   | const (w : ℕ)
   | root (i : ℕ)
@@ -125,7 +125,7 @@ structure Circuit where
   kappa : Array (ℕ × K)
   /-- Port `J`'s outside tag is `N + J`, in block order. -/
   ports : Array Port
-  /-- π1's `PCS_OPEN` inputs, in call order. -/
+  /-- π1's claims, in call order. -/
   calls : List (List CallWord)
   deriving Inhabited
 

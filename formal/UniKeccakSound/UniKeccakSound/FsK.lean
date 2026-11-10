@@ -35,7 +35,7 @@ def stackForK (D : KDeployment) (c1 c2 : Stk) : Commitment → Stk
   | .c2 => c2
   | .setup => fun i => (setupStackK D.prog D.shape).getD i 0
 
-/-- **The claims the Keccak verifier hands `PCS_OPEN` hold** of the candidates `c1`, `c2` and the setup's stack: each
+/-- **The claims the Keccak verifier leaves, declared, hold** of the candidates `c1`, `c2` and the setup's stack: each
 commitment's point claim on its stack's multilinear extension at its Keccak layout word's variables
 (`verifyWithK`'s `layoutWordVars`). -/
 def ClaimsHoldK (D : KDeployment) (r : Reduced) (c1 c2 : Stk) : Prop :=

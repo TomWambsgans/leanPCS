@@ -440,7 +440,7 @@ def freeReadsOk (streamLen : ℕ) : Bool :=
     a == b || (c.freeReads.getD a default).1 + 24 ≤ (c.freeReads.getD b default).1 ||
       (c.freeReads.getD b default).1 + 24 ≤ (c.freeReads.getD a default).1
 
-/-- **`machine::root_word`** of a call's 32 bytes (M1): each 16-byte half reversed, the word `PCS_OPEN` takes for a
+/-- **`machine::root_word`** of a call's 32 bytes (M1): each 16-byte half reversed, the word a claim holds for a
 root (`s_0 · 2^128 + s_1`, the two scalars the transcript carries). -/
 def _root_.RecCircuit.rootWordBytes (b : List UInt8) : List UInt8 := (b.take 16).reverse ++ (b.drop 16).reverse
 
@@ -464,7 +464,7 @@ def graphOk (r : Recorded) : Bool :=
   r.iv.length == 32
 
 /-- **A word of π2's calls against π1's** (`compile.rs`'s call words), at position `k` of its call: a constant word
-its bytes (word 0, a setup root, as `PCS_OPEN`'s root word); a stream word (word 0 only) a root port at its offset; a
+its bytes (word 0, a setup root, as a claim's root word); a stream word (word 0 only) a root port at its offset; a
 node word (never word 0) a live node of the expanded graph, a constant (its `element_word`), an element port's node,
 or a pair's coordinate of an element port's challenge. -/
 def wordOk (r : Recorded) (k : ℕ) : CallWord → Word → Bool

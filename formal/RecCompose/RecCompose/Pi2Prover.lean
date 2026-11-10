@@ -46,7 +46,7 @@ open RecStatement LeanVM.Parameters LeanVM.Semantics LeanVM.Protocol LeanVM.Prot
 /-! ## The public values -/
 
 /-- **A public value** as the stream carries it (`PublicValue`): an integer, 32 bytes as they are (π1's roots as
-`PCS_OPEN`'s root words), an element of `E`. -/
+the claims' root words), an element of `E`. -/
 inductive PublicValue where
   | integer (x : ℕ)
   | root (bytes : List UInt8)

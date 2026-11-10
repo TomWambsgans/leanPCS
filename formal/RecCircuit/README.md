@@ -21,12 +21,12 @@ theorem Compiled.compile_sound_end (hc : compile (ofRG g rootsAt iv) = .ok c) {p
   with `V = rgVals g iv (pubW w) (streamW r w)` (`RecGraph.evalNodes` of `g` over Keccak-f[1600]):
   - the statement port carries the public input's four words as RecGraph reads them (`beWordAt`);
   - root `i`'s port carries the big-endian words of the stream's bytes `at + 24, at + 16, at + 8, at`, which are
-    `PCS_OPEN`'s root word's limbs: π1's stream carries a root as its root word, its two WHIR scalars;
+    a claim's root word's limbs: π1's stream carries a root as its root word, its two WHIR scalars;
   - the `m`-th zero port carries `V`'s value of the `m`-th zero check whose image is not a constant, and every other
     zero check is 0 (`compile_sound_zero_end`, `compile_sound_zero_const`);
-  - **the `PCS_OPEN` inputs π2's verifier rebuilds from the ports** (`Circuit.callInputs`, `spec.rs`'s
+  - **the claims π2's verifier rebuilds from the ports** (`Circuit.callInputs`, `spec.rs`'s
     `Circuit::call_inputs`) are `g`'s call words in RecGraph's semantics, call by call and word by word, as
-    `PCS_OPEN` takes them (`pcsWord`): a setup root (a constant word 0, the hash as π1's contract holds it) as its root
+    a claim holds them (`pcsWord`): a setup root (a constant word 0, the hash as π1's contract holds it) as its root
     word (`machine::root_word`: each 16-byte half reversed). Every other word is byte for byte the same, a stream root
     (already its root word) and pairs' coordinates included (`compile_sound_callInputs`, `compile_sound_calls`).
     Before R1 a stream root's word was reversed too, which named a root other than the one π1's prover commits.
@@ -107,7 +107,7 @@ The Rust compiler asserts the same typing (`assert_typed` in `compile.rs`, with 
 | `SoundRG` | the ports against `RecGraph.evalNodes`, given `ExpandSound` |
 | `WeightSim` | `weightAt_eq_tower`, `weightSym_sim`: the ring switch's weight on `E` and on the recorder's symbols |
 | `ExpandProof` | `expandSound`: the expansion keeps RecGraph's elements, on every accepted graph |
-| `Calls` | `Circuit.callInputs` (π2's rebuild of π1's `PCS_OPEN` inputs), `pair_val`, `compile_sound_calls`, `compile_sound_callInputs` |
+| `Calls` | `Circuit.callInputs` (π2's rebuild of π1's claims), `pair_val`, `compile_sound_calls`, `compile_sound_callInputs` |
 | `End` | `EndStatement`, `compile_sound_end` |
 | `Complete` | **completeness**: the honest witness (`word`: the words in value order, `layout.rs`'s; `witness`: each position's pulled value's word) satisfies the circuit (`witness_satisfied`) and RecPiop's copy constraints (`witness_copy`) and encodes the public input and the stream (`pubW_witness`, `streamW_witness`), for every public input and stream of the graph's length; `zero_port_sat` (a zero port's limbs on any satisfying witness) |
 

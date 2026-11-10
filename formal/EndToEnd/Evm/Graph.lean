@@ -4,7 +4,7 @@ import Implementation.Field192
 /-!
 # The contract's words, exactly
 
-F5's `graph_words` reads the words the contract writes for `PCS_OPEN` as elements (`elem`, their low
+F5's `graph_words` reads the words the contract writes for its claims as elements (`elem`, their low
 `192` bits) and states those elements. Here, on `Primitives.F192` (mumbai's `E`) with its Rust limbs
 (`limbsEquiv`), the words themselves:
 
@@ -61,7 +61,7 @@ variable (H : List UInt8 → Vector UInt8 32) (idx : Bytes32) (sb : Vector UInt8
 
 local notation "CD" => calldataOf limbsEquiv sb r₁ r₂ [x0, x1, x2, x3, x4]
 
-/-- **The words the contract writes for `PCS_OPEN`, exactly**: when it reaches its calls (on the
+/-- **The words the contract writes for its claims, exactly**: when it reaches its checks (on the
 calldata of a statement's 64 bytes, two roots and five values), they are the root word of `r₁`, the
 witness layout's id, one claim, the words of `Formula.witness`; the root word of the index root, the
 wiring layout's id, one claim, the words of `Formula.wiring`; the root word of `r₂`, the quotient

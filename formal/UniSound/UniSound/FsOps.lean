@@ -9,7 +9,7 @@ import UniSound.FsChain
 and `C2` (round `nF + 1`'s), opened by the computable decoder (`tableCode`, the candidates read
 back as stacks, `rdTab`); the setup's stack `F`, and Flock's `A0`, `B0` (the setup's roots), each
 a `WhirShape.large` of a plain layout (`plainL v`: one chunk of `2^v` words, lane `l` its block
-`l`, `PCS_OPEN`'s layout), at the deployment's layout words' variables (`UniShapes`: `24 … 28`).
+`l`, the claims' layout), at the deployment's layout words' variables (`UniShapes`: `24 … 28`).
 
 * **The check** (`uniCheck`): the transcript completes the rounds, every value the chain program
   requires zero is, and its result is well formed (one point claim per commitment, of its
@@ -141,7 +141,7 @@ theorem tabEval_rdTab (L : WhirBridge.Layout) (T : Tab L) (p : List E) (hp : p.l
 
 /-! ## The plain layouts, the shapes -/
 
-/-- **A plain layout** of `2^v` words (`plainLayout`, `PCS_OPEN`'s): one chunk, lane `l` its block
+/-- **A plain layout** of `2^v` words (`plainLayout`, the claims'): one chunk, lane `l` its block
 `l`. -/
 abbrev plainL (v : ℕ) : WhirBridge.Layout := WhirBridge.Layout.new v v v [(0, 2 ^ v)]
 

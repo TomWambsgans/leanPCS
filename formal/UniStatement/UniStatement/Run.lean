@@ -17,7 +17,7 @@ words (`contractIvWith`, `Opening.lean`).
 
 **The run** (`runWith`, `rust_verifier`): the seed `keccak(name ‖ IV ‖ public input)`, `reduceWith`, then
 `finish`. **The verdict** (`Outcome.accepts`): no error and every value the verifier collected is zero. Then
-the openings (`Opening.lean`) check the claims it hands `PCS_OPEN`.
+the openings (`Opening.lean`) check the claims it leaves, declared.
 
 **The setup constants as data**: the measured shapes (`workloads`, leanVM's own `gas-dump` runs of the
 aggregation guest at 32 to 2,000 signatures; `reference` is 1,000), the guest's bytecode (`2^23` words, so

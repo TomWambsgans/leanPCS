@@ -703,7 +703,7 @@ theorem costP_runWithKH (shape : Shape) (iv publicInput : List UInt8) (stream : 
       omega]
     exact (costP_walk shape _ v seed stream m).bind fun z rem hz r hr ↦ hz r hr
 
-/-- `PCS_OPEN`'s cost: a claim of at most `255` coordinates (`46` blocks of IV), then the opening's run. -/
+/-- The opening check's cost: a claim of at most `255` coordinates (`46` blocks of IV), then the opening's run. -/
 def openCost : ℕ := 46 + E2ECompleteness.Cost.vOpen
 
 theorem qc_pcsOpenWithH (vars : ℕ) (hv : vars ≤ 255) (root : Digest) (pt : List E) (value : E)

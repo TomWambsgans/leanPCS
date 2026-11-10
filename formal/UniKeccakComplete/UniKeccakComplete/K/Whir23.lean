@@ -56,8 +56,8 @@ theorem pcsOpen_honestK (H : Bytes → Digest) (F : KeccakState → KeccakState)
     (fun c hc ↦ by rw [List.mem_singleton] at hc; subst hc; exact hpt)
     (plain_holds (by omega) (by omega) stack hs pt hpt) (plain_multilinear vars _) hπ
 
-/-- **`PCS_OPEN` accepts the honest opening** (`UniStatement.pcsOpenWith` over `F`), at the root the stream carries
-as two halves, `23 ≤ vars ≤ 28`: `UniComplete.pcsOpenWith_honest` down to `2^23` words. -/
+/-- **A claim's opening check accepts the honest opening** (`UniStatement.pcsOpenWith` over `F`), at the root the stream
+carries as two halves, `23 ≤ vars ≤ 28`: `UniComplete.pcsOpenWith_honest` down to `2^23` words. -/
 theorem pcsOpenWith_honestK (F : KeccakState → KeccakState) (fuel : ℕ) {vars : ℕ} (h1 : 23 ≤ vars)
     (h2 : vars ≤ 28) (stack : Array K) (hs : stack.size = 2 ^ vars) (pt : List E) (hpt : pt.length = vars)
     {π : Compile.Proof}

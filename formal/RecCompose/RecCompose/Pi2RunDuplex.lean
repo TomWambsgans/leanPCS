@@ -18,7 +18,7 @@ calls do (`Pi1Disc D P1k`, named).
   (`hOnly_ivOfH`: the digest's three hashes and the IV's), the seed, π2's prover's stream (`wHOnly_pre2`, `mid2`,
   `post2`: the public values, the commitments, the challenges) and the contract's run on the calldata
   (`cHOnly_runWithH`: the channel's calculus `CHOnly`, every challenge a Keccak-256 call).
-* **The permutation is called by the openings only**, each disciplined: π1-rec3's prover's (`Pi1Disc`), the graph's three `PCS_OPEN`s and the contract's six (`disc_pcsOpenWithH`,
+* **The permutation is called by the openings only**, each disciplined: π1-rec3's prover's (`Pi1Disc`), the graph's three claims' openings and the contract's six (`disc_pcsOpenWithH`,
   `disc_openingWithH`), π2's prover's three (`disc_proveOpeningWithH`).
 * **The staged run** (`disc_pi2Staged`): for any `P1k` that is disciplined (`Disc`).
 -/
@@ -207,7 +207,7 @@ theorem wHOnly_post2 (G : RecPiop.Circuit E) (setupStack : Array K) (input : Lis
 
 /-! ## The verifiers -/
 
-/-- **π1-rec3's graph with its three `PCS_OPEN`s is disciplined.** -/
+/-- **π1-rec3's graph with its three claims' openings is disciplined.** -/
 theorem disc_pi1GraphVerifierWithH (D : RecDeployment) (roots : UniStatement.SetupRoots) (input : Vector UInt8 32)
     (p : UniKeccak.KeccakProof) : Disc (Pi2H.pi1GraphVerifierWithH callKeccak256 callKeccakF1600 D roots input p) := by
   unfold Pi2H.pi1GraphVerifierWithH
@@ -222,7 +222,7 @@ theorem disc_pi1GraphVerifierWithH (D : RecDeployment) (roots : UniStatement.Set
         · refine (disc_forIn_list _ _ _ fun x s ↦ ?_).bind fun _ ↦ disc_pure _
           exact (UniKeccakComplete.disc_pcsOpenWithH _ _ _ _).bind fun _ ↦ disc_pure _
 
-/-- **`PCS_OPEN` on a call's words is disciplined.** -/
+/-- **The opening check on a claim's words is disciplined.** -/
 theorem disc_pcsOpenAtH (reg : List (List UInt8 × Opener)) (words : List (List UInt8)) (p : Compile.Proof) :
     Disc (Pi2H.pcsOpenAtH callKeccak256 callKeccakF1600 reg words p) := by
   unfold Pi2H.pcsOpenAtH

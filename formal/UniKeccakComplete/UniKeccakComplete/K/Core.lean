@@ -18,7 +18,7 @@ Flock's honest prover on the Keccak-f block (`flockProveH`) at the reference sha
   returns is accepted by `KDeployment.verifierWithH` at `keccakMain`: the verifier's run on the prover's stream
   accepts (`runWithKH_syncs`, `runWithKH_accepts`: the counts' checks, Flock's collected value — zero for the honest
   Keccak-f prover, `FlockP.flockSyncs_trace` — and the batch's terminal are zero) with the prover's three point
-  claims and no matrices' claim, and the three `PCS_OPEN` calls accept WHIR's honest openings (`pcsOpen_honest_k`,
+  claims and no matrices' claim, and the three claims' openings accept WHIR's honest openings (`pcsOpen_honest_k`,
   at `27, 26, 23` variables, `ref_word`: each claim's value is its stack's extension at its point, `streamValues`;
   each point has its stack's variables, `StreamFacts.points`; the stacks' sizes, `c1Stack_size`, `c2Stack_size`,
   `setupStackOf_size`; each root is the committed tree's, `rootRead_digestScalars`, `rootOf_digestScalars`, the

@@ -4,9 +4,9 @@
 
 The univariate PIOP's verifier (`crates/leanvm/univariate`, `docs/leanvm/univariate/SPEC.md`) as computable Lean: the
 transcript, the domain, the tables, the heap, the claims, Flock's verifier, the stacks, the batch, the shape class,
-the run on calldata, `PCS_OPEN` and the contract's IV, the commitments' encodings and the deployment. It was written
-for leanVM 42422001 (iteration 2, `leanvm-univariate` `ad49e74`) and is now the shared part of the Keccak VM's
-verifier: [`formal/UniKeccak`](../UniKeccak/README.md) instantiates it (the `Variant`, the `SHA3` table of
+the run on calldata, the claims' opening and the contract's IV, the commitments' encodings and the deployment. It
+was written for leanVM 42422001 (iteration 2, `leanvm-univariate` `ad49e74`) and is now the shared part of the Keccak
+VM's verifier: [`formal/UniKeccak`](../UniKeccak/README.md) instantiates it (the `Variant`, the `SHA3` table of
 `KeccakTables.lean`) and states the end theorems against `KeccakVm.KvHolds`. No `sorry`, no
 `native_decide`; the root's guards (`UniStatement.lean`) check the verifier's axioms.
 
@@ -47,7 +47,7 @@ lake env lean ../UniStatement/UniStatementTest/KeccakTables.lean    # the Keccak
 11. [`Run.lean`](UniStatement/Run.lean): the run on calldata (`runWith`, `run`), the verdict, the row counts a
     stream announces (`rowsOf`, `rowsBytes`), the setup constants (the measured shapes, the program's IV).
 12. [`Opening.lean`](UniStatement/Opening.lean): the layout words, the contract's IV (`contractIvWith`), the
-    reference setup roots, `PCS_OPEN` as the Statement's opening and its inputs word for word (`pcsCalls`), and
+    reference setup roots, a claim's opening as the Statement's and the claims word for word (`pcsCalls`), and
     **`verifyWith`**, the whole verifier (the main line: the run, then five calls).
 13. [`Mapping.lean`](UniStatement/Mapping.lean): basis `B` ↔ values, the rows' order (`rowPosition`), the setup's tables.
 14. [`Security.lean`](UniStatement/Security.lean): the deployment, the
@@ -82,7 +82,7 @@ lake env lean ../UniStatement/UniStatementTest/KeccakTables.lean    # the Keccak
 | `ring_tower.rs`: `ring_map`, `Tower::{theta, leaves}`, `conjugate`, `into_subfield`, `target`, `coefficients`, `weight_at` | `Flock.towerRingMap`, `Flock.towerTheta`, `Flock.towerLeaves`, `Flock.conjugate`, `Flock.intoSubfield`, `Flock.towerTarget`, `Flock.towerCoefficients`, `Flock.towerWeightAt` |
 | `verifier.rs`: `Shape` (`heights`, `heap`, `constraint_vars`, `validate`, `least_rows`), `degree`, `factor_columns`, `sent_columns`, `linearise`, `tuple_degree`, `chunks`, `quotient_terms`, `table_part`, `layouts`, `stack_layouts`, `batch`, `reduce`, `Reduced`, `Opening`, `Claims`, `FLOCK_*` | `Shape` (the heights), `Shape.validate`, `Shape.leastRows`, `degree`, `factorColumns`, `sentColumns`, `linearise`, `tupleDegree`, `chunks`, `quotientTerms`, `tablePart`, `layoutsOf`, `layouts`, `batch`, **`reduceWith`** (its steps 0, 5 and 6 as `countBits`, `constraintRelation`, `heapRelations`), `Reduced`, `Opening`, `ClaimsMode`, `flock*` |
 | `contract.rs`: `rust_verifier`, `NAME`, `SetupRoots::REFERENCE`, `shape_bytes`, `layout_word`, `layout_words`, `contract_iv`, `calls` (`opening_words`, `combined_words`); `machine.rs`: `element_word`; `shapes.rs`: `WORKLOADS`, `PROGRAM_IV`, `Shape::of` | `runWith`/`run`, `name`, `referenceRoots`, `shapeBytes`, `layoutWord`, `layoutWords`, `contractIvWith`/`contractIv`, `pcsCalls` (`openingWords`, `combinedWords`), `elementWord`; `workloads`, `programIv`, `shapeOf`/`shapeWith` |
-| `machine.rs`: `PCS_OPEN`'s ABI (mocked, `attesting_all`) | `pcsOpenWith` = `PcsQuotient.openingWith` on `plainLayout` (the layout word's `vars`) |
+| `machine.rs`: the claims' encoding (the frame mocked, `declaring_all`) | `pcsOpenWith` = `PcsQuotient.openingWith` on `plainLayout` (the layout word's `vars`) |
 | `contract.rs`: the five calls (C1, C2, setup, A0, B0) | `verifyWith` |
 
 Deviations, none changing a value: a `List`/`Array` stands for a `Vec`, an out-of-range read gives `0` where the
@@ -116,15 +116,15 @@ holds row counts, of which only `⌈log₂ rows⌉` is read: `shapeWith`); the r
 
 The verifier is tested through `UniKeccak`'s runner (`UniKeccakTest/Runner.lean`, 90/90 vectors of
 `crates/leanvm/univariate/tests/lean_keccak_vectors.rs` agree with the Rust on every value, the real Keccak proofs'
-`PCS_OPEN` inputs word for word) and `UniStatementTest/KeccakTables.lean` (the Keccak VM's tables against
+claims word for word) and `UniStatementTest/KeccakTables.lean` (the Keccak VM's tables against
 `tables_keccak()`).
 
 ## Open points
 
-1. **`PCS_OPEN`'s WHIR instance is a choice**: the Rust mocks the precompile; the statements take the
+1. **The claims' WHIR instance is a choice**: the Rust mocks the frame of claims; the statements take the
    Statement's opening (label, version, layout identifier, rate `1/2`) on the plain layout of each stack, its
    size the call's layout word's `vars` (byte 24). The word's `placed` (the words the blocks fill) and code are
-   bound by the contract's IV, not read by this opening (the Rust's precompile reads `placed` to know the
+   bound by the contract's IV, not read by this opening (the Rust's opening reads `placed` to know the
    committed lanes). The root word's reading (here: the two halves as `digestOfScalars` for the stream's roots,
    the bytes as `digestOfBytes32` for the reference setup roots) is the Rust's: its prover sends a root as its two
    WHIR scalars (`prove::halves`, `hash_to_scalars`; a prover sending the
@@ -139,6 +139,6 @@ The verifier is tested through `UniKeccak`'s runner (`UniKeccakTest/Runner.lean`
    leanVM's digest is little-endian. One function (`publicWordsOf`, which `publicInputOf` shares) changes when the
    contract does.
 4. **Weighted mode with Flock's bit-slice end or no Flock argument** makes no check in the contract (every
-   stream of the right length with counts in range is accepted; `PCS_OPEN` checks all), the point-claim ABI with
+   stream of the right length with counts in range is accepted; the openings check all), the point-claim ABI with
    the bit-slice end (extension B) leaves its batch terminal to the bit-slice claim (lever 5a), and every check of
    the main line is affine in the scalar read just before it: sound only with the openings.

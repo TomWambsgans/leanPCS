@@ -12,7 +12,7 @@ import UniKeccakSound.Fs.VerifierK
 # π2's verifier bridge
 
 **`pi2VerifierBridge`**: from any state of the lazily sampled permutation, π2's contract past its IV
-(`contractRest`: π2's run on the stream, then the six `PCS_OPEN` calls) accepts at most as often as the composed
+(`contractRest`: π2's run on the stream, then its six claims opened) accepts at most as often as the composed
 verifier (the chain `pi2Spec`, then the six openings `p2Ops`) passes `p2Check` with every opening accepting, from the
 walk (`Pi2Walk`, `Pi2WalkReject`):
 

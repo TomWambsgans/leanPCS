@@ -56,8 +56,8 @@ combination `Σ_i μ_i ẑ(i, p)` of them to the opening. That combination is no
 A WHIR claim, weighted or not, is an `E`-linear form of the words, `y ↦ ν y` on each: one of the 64 `E`-dimensions
 of the `GF(2)`-linear maps `K → E`. So the combination is 64 claims at Frobenius-twisted points whose values are
 unknown: ring switching's 64 values cannot be compressed with `E`-linear claims alone (its message is an element of
-`E ⊗ K`, as in leanVM's ring switch and Diamond–Posen's). A `PCS_OPEN` claim type that ring-switches inside the
-opening would remove the slices from calldata; `PCS_OPEN` has none, so the 64 values stay.
+`E ⊗ K`, as in leanVM's ring switch and Diamond–Posen's). A claim type that ring-switches inside the
+opening would remove the slices from calldata; the declared claims have none, so the 64 values stay.
 
 **The ring map's cost** is inherent once the contract computes `T`: a map with fewer Frobenius powers would leave a
 nonzero `δ ∈ E ⊗ K` that it sends to zero. The tower order brings it from `64 · 63` squarings to `6 · 64` squarings

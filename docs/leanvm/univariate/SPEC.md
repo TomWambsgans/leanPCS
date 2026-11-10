@@ -23,9 +23,9 @@ the sixth (§1). The proof of it is not leanVM's:
   multisets equal modulo 2 (§5.1).
 - **The hash argument** is Flock on a Keccak-f[1600] block, one permutation a `SHA3` row, with a univariate skip of 3
   and the lincheck's terminal computed from the block's structure (§7).
-- **Claims.** On the main line (`PCS_OPEN`'s ABI, point claims), one batching sumcheck over the three stacks turns
-  every commitment's relations into one point claim: 3 claims in 3 calls (`C1`, `C2`, `F`). Extension W (weighted
-  claims) drops that sumcheck.
+- **Claims.** On the main line (`machine.rs`'s claim encoding, point claims), one batching sumcheck over the three
+  stacks turns every commitment's relations into one point claim: 3 claims, declared as 3 (`C1`, `C2`, `F`). Extension
+  W (weighted claims) drops that sumcheck.
 - **Result** at the reference workload (128 signatures), measured: 8,020 B of calldata, 230,985 gas of execution,
   358,957 transaction gas (EIP-7623, claim price 0, without the 21,000 base). §10 and `KECCAK.md` have the other
   workloads.
@@ -86,8 +86,8 @@ Table rows XOR 24,260, MUL 36,229, SET 24,626, DEREF 35,812, JUMP 15,509, `SHA3`
 | `C1` | first | `q_flock` (values, `2^11` words a `SHA3` row: `2^26`); every table column (basis `B`), `SHA3`'s 50 lanes among them; one counter-inverse column `z_T` per table; memory (4 columns, `V_20`); bytecode final count (`V_18`) | `2^26.21` / `2^27` |
 | `C2` | after `α, β, γ` and Flock | the heap `T` (`2^22` E), `Q_tree`, one leaf quotient `Q_b` per heap block, the constraint quotient `Q_W`, each E-valued as three K-limb columns | `2^25.35` / `2^26` |
 
-The setup root is a constant in the code (no `SLOAD`). The `C1` and `C2` roots are in calldata. Each commitment is
-opened by **one** `PCS_OPEN` call. WHIR takes no OOD sample at level 0, so a root binds only a list of tables and
+The setup root is a constant in the code (no `SLOAD`). The `C1` and `C2` roots are in calldata. Each commitment's
+claims are **one** declared claim. WHIR takes no OOD sample at level 0, so a root binds only a list of tables and
 all claims on it must be checked together (AGENTS.md). `src/stacks.rs` gives each column an aligned block, largest
 first. A claim reads only its column's block. Nothing relies on the stack's unused words, nor on the zero padding of
 a column shorter than its lane, which leanVM's `Layout::new` does not force (`PROVER.md`, "The stacks' unused
@@ -112,7 +112,7 @@ nothing. It is documented here and in `contract.rs`.
 
 The transcript is a Keccak-256 chain (`leanvm_statement::transcript::KeccakChannel`). A challenge is one Keccak-256
 of the state and the calldata bytes read since the last one. A scalar is 24 bytes, a root half 16: one of the root's
-two WHIR scalars (`hash_to_scalars`, the opening's first two), big-endian, so that a root's 32 bytes are its `PCS_OPEN`
+two WHIR scalars (`hash_to_scalars`, the opening's first two), big-endian, so that a root's 32 bytes are its claim's
 root word `s_0 · 2^128 + s_1` (`crates/membership/evm/src/machine.rs`), which the contract passes as it is. The seed
 is the Keccak-256 of the name `leanVM-univar-v1`, the contract's IV (§13, F2: it binds the program, the setup roots,
 the shape, the layout words and the variant) and the public input. There are no announced sizes beyond the row
@@ -256,25 +256,25 @@ A push fingerprint the sent values give is derived (`D'_j = D_j + eq(α, 2)(g + 
 
 Each commitment's relations are combined by the powers of `ρ` (`Relations::combine`).
 
-**Claims, main line: `PCS_OPEN`'s ABI** (`crates/membership/evm/src/machine.rs`: point claims, `c` each). A batching
+**Claims, main line: the claims' encoding** (`crates/membership/evm/src/machine.rs`: point claims, `c` each). A batching
 sumcheck takes `Σ_k λ^k Σ_u W_k(u) C_k(u) = Σ_k λ^k v_k` over the longest stack (27 variables at 128 signatures), the
 others zero-extended. With `KECCAK_MAIN` it has two scalars a round; with `KECCAK_REC3` it runs two variables a
 round (`transcript::sumcheck_pairs_drawn`). Then come the three stacks' values at its point `r`. The verifier
 evaluates every `W_k(r)` (`verifier::weight_at`): columns at one row point share their eq factor, selector factors
 share their high bits, Frobenius twists are cached (`stacks::EqCache`), `q_flock`'s slot terms share the eq of their
 instance coordinates, and the ring-switch term is evaluated by its map (§7). The result is one point claim per
-commitment: 3 claims in 3 calls.
+commitment: 3 claims, declared as 3.
 
-**What the contract itself checks.** The verifier is linearised: every relation it states is a claim handed to
-`PCS_OPEN`. The checks it makes itself are the row counts' range (§13, F1), Flock's lincheck terminal and, in point
+**What the contract itself checks.** The verifier is linearised: every relation it states is a claim it checks
+declared. The checks it makes itself are the row counts' range (§13, F1), Flock's lincheck terminal and, in point
 mode, the batching sumcheck's terminal; each is affine in the last scalar read before it. So with the openings
 mocked, a stream solved for those scalars is accepted at any challenges (`tests/lean_keccak_vectors.rs` builds such
 streams); that is expected, not a bug. The verdict means something only together with the openings.
 
-**Extension W: weighted claims** (`Claims::Weighted`). A call is `root, layout, k`, then per claim its points (each a
+**Extension W: weighted claims** (`Claims::Weighted`). A claim is `root, layout, k`, then per claim its points (each a
 column's low coordinates), its terms (`column | point << 32 | twist << 48`, then the coefficient) and its value. The
-precompile evaluates the weight, as leanVM's own WHIR verifier does. No batching sumcheck. Price `c` a claim; the
-precompile's work grows with the terms. It is kept because the Lean vectors cover it (`tests/lean_keccak_vectors.rs`)
+block's opening evaluates the weight, as leanVM's own WHIR verifier does. No batching sumcheck. Price `c` a claim; the
+opening's work grows with the terms. It is kept because the Lean vectors cover it (`tests/lean_keccak_vectors.rs`)
 and the parity tests run it; the prover has no opening for it.
 
 ## 9. Soundness
@@ -349,10 +349,10 @@ signatures, `KECCAK_REC3`, on an Apple M4 Max: 3.65 s warm (median of 3), 6.86 G
 1. **Capacity.** `C1` exceeds WHIR's `2^28` words above about 470 signatures (`KECCAK.md`, "What remains").
 2. **The main line pays for faithfulness in execution.**
    - The point ABI forces a batching sumcheck, whose weight carries the ring switch's 64 Frobenius-twisted eq terms:
-     the cost leanVM's verifier pays at WHIR's terminal point. Extension W moves it to the precompile.
+     the cost leanVM's verifier pays at WHIR's terminal point. Extension W moves it to the block's openings.
    - Execution binds on the main line, so `c` shows at once (+3c).
-3. **Extension W is a precompile change.** Its price per claim should grow with the terms, which the table does not
-   charge.
+3. **Extension W changes what the block proves.** Its price per claim should grow with the terms, which the table
+   does not charge.
 4. **Faithfulness deltas** (the statement is the same):
    - `CountsNonzero` by inverse columns `z_T` instead of leanVM's count product;
    - the `SHA3` lanes committed twice, with `copy = ℓ(q_flock)` (and `END_BIT` on `in_16`) in `Q_W`;
@@ -432,7 +432,7 @@ The design's refinements, by the labels the code cites. Each entry states the ru
      and the shape, `prover::setup::f_root`; `REFERENCE.f` is the 128-signature shape's, `067244be…`). The gas
      reports use `REFERENCE` for every shape (the gas does not depend on the root); a deployment for another shape
      takes its own `F`.
-   - `PCS_OPEN`'s layout word (`contract::layout_word`) is a 32-byte constant: the shape's 8 bytes (`log_memory`,
+   - A claim's layout word (`contract::layout_word`) is a 32-byte constant: the shape's 8 bytes (`log_memory`,
      `log_bytecode`, the six heights), the opening's version (byte 21: 3, `prover::opening::VERSION`, WHIR on the
      recursion's ladder, below), the opening's code (`0x5501` `C1`, `0x5502` `C2`, `0x5503` the setup, bytes
      22..24), the stack's `vars` (byte 24) and `placed` (bytes 25..32, the words the blocks fill). WHIR's verifier
@@ -446,7 +446,7 @@ The design's refinements, by the labels the code cites. Each entry states the ru
    - The contract's IV is `keccak("leanVM-univar-iv" ‖ program IV ‖ F ‖ shape bytes ‖ the three layout words ‖
      variant bytes)` (`contract::contract_iv`; the variant bytes are `"keccak-vm"`, the skip and the Fiat–Shamir
      shape's code); the seed is `keccak(name ‖ IV ‖ public input)`. It costs no gas.
-   - Prover: seed the transcript with `contract_iv(shape, variant, program IV, roots)`; call `PCS_OPEN` with the
+   - Prover: seed the transcript with `contract_iv(shape, variant, program IV, roots)`; declare the claims with the
      layout words.
 
 9. **F3, F6, F7, F8** (documentation):
@@ -476,7 +476,7 @@ The design's refinements, by the labels the code cites. Each entry states the ru
     Rust (`ring_tower::weight_at`). The report's `FIELD_MUL` count is the graph's, without the kernel's.
 
 12. **Lever 5a** (extension B, a bit-slice claim type on the ABI) is not built: no claim of the Keccak VM's π1 is on
-    bit slices. `PCS_OPEN` takes point claims, or weighted claims under extension W.
+    bit slices. A declared claim holds point claims, or weighted claims under extension W.
 
 13. **The Lean transcription's findings** (documentation):
     - `weight_at` keys `q_flock`'s slot rows by their point (entry 4), not by the slot;

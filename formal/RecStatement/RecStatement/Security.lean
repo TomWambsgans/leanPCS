@@ -35,7 +35,7 @@ random-permutation model and do not formally compose with the EVM one, which hol
    permutation `π` for π2's own Fiat–Shamir (the contract's transcript and IV), the circuit's digest, the WHIR
    commitments and the six openings. If the contract accepts, π2's explicit extractor (`recExtractor2`) outputs
    π1's stream `s` on which **the Keccak π1-rec3's recorded graph, run with Keccak-f[1600]**, accepts, its three
-   `PCS_OPEN` calls being the contract's (which `PCS_OPEN` attested) (`Pi1GraphAccepts`); but with probability `ε2 Q`.
+   claims being the contract's (which the block proved) (`Pi1GraphAccepts`); but with probability `ε2 Q`.
 2. **End to end, against the Keccak VM's `KvHolds`, as an explicit reduction** (`RecKnowledgeSoundnessReduction`,
    `Reduction.lean`): for every adversary `A` of `Q` queries against the recursive verifier, the end-to-end
    extractor fails while the contract accepts with probability at most `ε2 Q` plus the probabilities that two
@@ -68,7 +68,7 @@ random-permutation model and do not formally compose with the EVM one, which hol
 
 **The recursive verifier** (`RecDeployment.contractWith`) is the contract (`pi2::contract`): π2's verifier on the
 calldata (`runWith`: the public input, then the stream with π1's roots and claims' elements, `W`'s and `Q`'s roots and
-the 17 values), then **six `PCS_OPEN` calls**, each decoded under the contract's registry (`machine::decode`: a known
+the 17 values), then **six declared claims**, each decoded under the contract's registry (`machine::decode`: a known
 layout word, which fixes the variables, `k ≥ 1` claims, the exact length, every element's top 64 bits zero) and
 opened by the Statement's WHIR opening: **π1's three** (`C1`, `C2`, π1's setup `F`, on the Keccak VM's layouts
 `UniKeccak.layoutWordsK`; their points the coordinates the contract derives from π1-rec3's pair challenges) on the
@@ -253,7 +253,7 @@ def RecSetupTrees.roots (t : RecSetupTrees) : RecSetupRoots := ⟨⟨t.pi1.root�
 def RecSetupTrees.evaluations (t : RecSetupTrees) : List (List UInt8 × Digest) :=
   PcsQuotient.Tree.evaluations t.pi1 ++ PcsQuotient.Tree.evaluations t.pi2
 
-/-! ## `PCS_OPEN` -/
+/-! ## The declared claims' openings -/
 
 /-- How a layout word's opening is checked: π1's (the plain layout of `2^vars` words, `UniStatement.pcsOpenWith`) or
 π2's (its layout, `PcsQuotient.openingWith`). -/
@@ -306,7 +306,8 @@ def decodeWith (registry : List (List UInt8 × Opener)) (words : List (List UInt
   if !(1 ≤ k ∧ words.length = 3 + k * (v + 1) ∧ root.length = 32) then none
   pure (rootOfWord root, opener, ← claimsOfWords words k v)
 
-/-- **`PCS_OPEN`** over `F` on one call's words: decoded under the registry, then the registered opening. -/
+/-- **A declared claim's opening** over `F` on one claim's words: decoded under the registry, then the registered
+opening. -/
 def pcsOpenAt {m : Type → Type} [Monad m] (F : KeccakState → m KeccakState) (registry : List (List UInt8 × Opener))
     (words : List (List UInt8)) (proof : Compile.Proof) : m Bool :=
   match decodeWith registry words with
@@ -345,7 +346,7 @@ def RecDeployment.ivWith (D : RecDeployment) (roots : RecSetupRoots) : m (List U
   RecStatement.ivWith F (D.pi1IvAt roots.pi1) digest (digestBytes roots.pi2) c.circuit.logN
 
 /-- **The contract** over `F` on the setup's roots: π2's verifier on the calldata (its IV `ivWith`), its verdict, then
-the six `PCS_OPEN` calls, word for word as the contract makes them (`pcsCalls`, π1's `F` root word and π2's setup root
+the six claims, word for word as the contract checks them declared (`pcsCalls`, π1's `F` root word and π2's setup root
 the setup's), each decoded and opened (`pcsOpenAt`). Its verdict, and the calls' words (none if the verifier
 rejects). -/
 def RecDeployment.contractWith (D : RecDeployment) (roots : RecSetupRoots) (input : Vector UInt8 32)
@@ -408,7 +409,7 @@ def contractPi1Openings (registry : List (List UInt8 × Opener)) (calls : List (
 /-- **The Keccak π1-rec3's graph accepts at Keccak-f[1600], its calls the contract's** (π2's part's conclusion): π2's
 circuit computes the Keccak π1-rec3's recorded verifier graph (`RecGraphKeccak.Pi1.pi1GraphK`) with the real
 Keccak-f[1600] (`RecCircuit.compile_sound`, `RecGraphKeccak.pi1rec3K_end`); on π1's IV, the public input and the
-stream `s`, the graph's checks hold and its three `PCS_OPEN` calls are the contract's `ops`: their layouts and claims,
+stream `s`, the graph's checks hold and its three claims are the contract's `ops`: their layouts and claims,
 and `C1`'s and `C2`'s roots, which `s` carries (`F`'s root is the setup's, a constant of the contract, which the graph
 holds as the code's reference). -/
 def Pi1GraphAccepts (iv1 : List UInt8) (input : Vector UInt8 32) (s : Array UInt8) (ops : List Pi1Opening) : Prop :=
@@ -599,7 +600,7 @@ def RecKnowledgeSoundness2With (D : RecDeployment) (ext : RecExtractor2) (ε2 : 
 
 /-- **π2's knowledge soundness** (provable in the random-permutation model): if the contract accepts, π2's explicit
 extractor `recExtractor2` outputs π1's stream, on which the Keccak π1-rec3's recorded graph run with Keccak-f[1600]
-accepts, its three `PCS_OPEN` calls the contract's (which `PCS_OPEN` attested); but with probability `ε2 Q`. -/
+accepts, its three claims the contract's (which the block proved); but with probability `ε2 Q`. -/
 def RecKnowledgeSoundness2 (D : RecDeployment) (ε2 : ℕ → ℝ≥0∞) : Prop :=
   RecKnowledgeSoundness2With D (recExtractor2 D) ε2
 

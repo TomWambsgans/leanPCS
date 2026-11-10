@@ -1,15 +1,15 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Transcribed from `crates/leanvm/rec/src/pi2/contract.rs`
 -- (`read_indices`, `number`, `root_word`, `call_words`, `expected_calls`), branch `leanvm-rec` @ 2b22581; π1's contract
 -- IV is `formal/UniKeccak`'s (`contractIvKWith`, `variantBytesK`: `crates/leanvm/univariate/src/contract.rs`'s
--- `variant_bytes`, `contract_iv_for`). `PCS_OPEN`'s ABI is `crates/membership/evm/src/machine.rs`'s
+-- `variant_bytes`, `contract_iv_for`). The claims' encoding is `crates/membership/evm/src/machine.rs`'s
 -- (`crates/leanvm/statement/src/evm/machine.rs`: `element_word`, `root_word`).
 import RecStatement.Verifier
 import UniKeccak.Opening
 
 /-!
-# The six `PCS_OPEN` calls, word for word
+# The six claims, word for word
 
-The contract calls `PCS_OPEN` six times, each with `machine.rs`'s ABI (`root word, layout word, k, k × (point,
+The contract checks six claims declared, each in `machine.rs`'s encoding (`root word, layout word, k, k × (point,
 value)`, 32-byte words), in this order (`contract::call_words`):
 
 1. **π1's three** (`C1`, `C2`, π1's setup `F`), their words as the circuit names them (`CallWord`): constants (π1's
@@ -47,7 +47,7 @@ def rootReads (reads : List Read) : ℕ := (reads.filter (· = .root)).length
 /-- The stream's 32 bytes from `at`. -/
 def streamWord (stream : Array UInt8) (at' : ℕ) : List UInt8 := (stream.extract at' (at' + 32)).toList
 
-/-- **`root_word(root)`**: `PCS_OPEN`'s root word of a root's 32 bytes, each 16-byte half reversed (an involution). -/
+/-- **`root_word(root)`**: a claim's root word of a root's 32 bytes, each 16-byte half reversed (an involution). -/
 def rootWordOfBytes (h : List UInt8) : List UInt8 := (h.take 16).reverse ++ ((h.drop 16).take 16).reverse
 
 /-- A claim's words: its coordinates, then its value. -/

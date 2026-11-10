@@ -5,7 +5,7 @@ import UniSound.Fs
 # The sumcheck's folds are the claims' multilinear extensions
 
 The batching sumcheck folds its tables on their coordinates, low first (`foldAll`, `foldOnce`'s
-`f(2i) + x (f(2i) + f(2i+1))`); the claims `PCS_OPEN` checks are multilinear extensions written as
+`f(2i) + x (f(2i) + f(2i+1))`); the claims the block proves are multilinear extensions written as
 sums, `Σ_u eq(p, u) f(u)` (`cubeEq`, `mleStk`, `mleArr`). **`foldAll_eq_sum`**: they are the same,
 `foldAll f r i = Σ_{u < 2^|r|} eq(r, u) f(i 2^|r| + u)`; so a stack's point claim at the batch's
 point is its table's fold there (`mleStk_eq_foldAll`), the glue `UniFinal` needs between the

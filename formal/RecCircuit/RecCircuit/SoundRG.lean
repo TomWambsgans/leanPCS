@@ -13,7 +13,7 @@ node (`ExpandProof.lean` proves it for every accepted graph, `expandSound`).
 * `compile_sound_statement`: the statement port carries the public input's four words as `RecGraph` reads them
   (`beWordAt`, the `statement` nodes' values);
 * `compile_sound_root`: root `i`'s port carries the big-endian words of the 32 bytes `RecGraph`'s call word
-  `Word.stream at` outputs, bytes `24, 16, 8, 0` (the `PCS_OPEN` root word's limbs: π1's stream carries a root as its
+  `Word.stream at` outputs, bytes `24, 16, 8, 0` (a claim's root word's limbs: π1's stream carries a root as its
   root word);
 * `compile_sound_element`: element `e`'s port carries `RecGraph`'s value of any original node the expansion maps to the
   calls' `e`-th element node;

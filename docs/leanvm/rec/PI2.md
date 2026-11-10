@@ -2,7 +2,7 @@
 
 # π2's PIOP: prover, verifier, contract, gas
 
-π2 proves that π1's recorded verifier (the Keccak VM's π1-rec3, `SPEC-REC.md` §1) accepts and outputs its `PCS_OPEN`
+π2 proves that π1's recorded verifier (the Keccak VM's π1-rec3, `SPEC-REC.md` §1) accepts and outputs its PCS
 claims. Its circuit is `SPEC-REC.md` §10's; this file is its PIOP, **π2v2** (transcript `leanvm-rec-pi2v2`: the ports
 out of the copy argument, `P` committed in `Q`, `q` below `2N`; §1, §7). Code in `crates/leanvm/rec/src/pi2/`; the Lean
 proofs are in `formal/RecCompose`, and are of π2v1 (§10). Numbers are **measured** unless marked modelled.
@@ -20,8 +20,10 @@ cargo test --release -p leanvm_rec --test pi2 -- --ignored --nocapture gas_repor
 
 ## 0. Results
 
-**The contract, on the real circuit** (D16v × π1-rec3, `real_end_to_end` on `keccak128_rec3.txt`; `c = 0`, no
-21,000 base):
+**The contract, on the real circuit** (D16v × π1-rec3, `real_end_to_end` on `keccak128_rec3.txt`; no 21,000 base),
+measured with `PCS_OPEN`, its claims priced `c = 0`. With the frame of claims (`AGENTS.md`): 1,005 B, 28,459
+execution, 43,819 EIP-7623 and 64,320 EIP-7976 at 128 signatures; 29,257 and 44,593 at 400; apart from the frame
+(193 B) and the claims' 11,000 intrinsic gas:
 
 | | 128 signatures (reference) | 400 signatures |
 |---|---:|---:|
@@ -34,11 +36,11 @@ cargo test --release -p leanvm_rec --test pi2 -- --ignored --nocapture gas_repor
 | EIP-7976 | 64,256 | 64,256 |
 
 At `c = 0` the standard price binds (`16 · 945 + 4 · 59 + 27,641`). The contract at the reference shape: 753
-`FIELD_MUL`s, 818 `XOR`s, 6 Keccak-256 (1,208 B), 230 words of memory, 210 words written for `PCS_OPEN`; the straight
+`FIELD_MUL`s, 818 `XOR`s, 6 Keccak-256 (1,208 B), 230 words of memory, 210 words written for the claims; the straight
 build is the deployable one. The execution depends on the circuit alone: `real_gas` and `tests/keccak_vm_rec.rs`
 measure it on a sample stream (4 zero bytes: 43,657 at 128 signatures, 44,437 at 400).
 
-Against π2v1 (§10, at `PCS_OPEN` version 2: 980 B with 66 zero bytes, 28,325 execution, 43,213; 44,041 at 400): 24 B
+Against π2v1 (§10, at opening version 2: 980 B with 66 zero bytes, 28,325 execution, 43,213; 44,041 at 400): 24 B
 more calldata (`s`), 684 less execution (the public side's walk and zero coset gone, the identity's fractions fewer),
 and the version-3 proofs' bytes, so EIP-7623 −216 at 128 signatures and −288 at 400; EIP-7976, where the floor binds,
 +1,536 (62,720 → 64,256).
@@ -71,10 +73,10 @@ Since then (2026-11-09, the same box, `tests/pi2_bench.rs`, median of 5, load 10
 `Q`'s table and commit 0.074; openings `W` 0.010, `Q` 0.081, setup 0.013), peak 9.9 GB: `Q` and `W` keep their
 codewords until their openings (+1.8 GB in the pipeline), `Q`'s stack is the setup's from one proof to the next, the
 transforms are `quotient::ntt`'s multi-column ones, and the copy sum is checked as `h`'s top coefficient. End to end,
-the pipeline took 0.69 s a proof (π2's proof 0.195 s, its openings 0.106 s); with `PCS_OPEN` version 3 (§8) its openings
+the pipeline took 0.69 s a proof (π2's proof 0.195 s, its openings 0.106 s); with opening version 3 (§8) its openings
 take 0.051 s and the pipeline 0.59 s (`KECCAK.md`).
 
-**`PCS_OPEN` version 3** (§8: WHIR's deeper levels on the recursion's ladder; 2026-11-09, the same box, interleaved
+**Opening version 3** (§8: WHIR's deeper levels on the recursion's ladder; 2026-11-09, the same box, interleaved
 against the version-2 build, load 14–42 from other jobs): π2's openings 0.100 → 0.048 s in their quiet passes (`W`
 0.009 → 0.006, `Q` 0.079 → 0.033, setup 0.012 → 0.008; `pi2_bench`, medians 0.100–0.109 → 0.047–0.055 s), their
 proofs 284,920 / 314,200 / 296,680 → 347,320 / 405,432 / 365,224 bytes; π1-rec3's three openings 0.064 → 0.033 s
@@ -121,7 +123,7 @@ by its claims: §6).
 **Transcript** (`KeccakChannel`): the seed `keccak(NAME ‖ IV ‖ public input)`, `NAME = "leanvm-rec-pi2v2"`, then the
 stream:
 
-1. the public data: π1's roots `C1`, `C2` (32 bytes each, `PCS_OPEN`'s root words, §8), π1's claims' 17 distinct
+1. the public data: π1's roots `C1`, `C2` (32 bytes each, the claims' root words, §8), π1's claims' 17 distinct
    elements (14 narrow challenges and 3 values, 24 bytes each);
 2. `W`'s root; `α, β, γ`;
 3. `Q`'s root; `t`;
@@ -186,7 +188,7 @@ polynomial of degree 3 in `ρ`.
   `t / w_{m+1}`); and at `(1^m, 0, 0, 0, 0, y_0, y_1)`, `h`'s top coefficient `Σ_V h`, value `0`;
 - the setup at `(w_0, …, w_{m-1}, β)`, value `ξ` (its halves `κ`, `κ + σ`: `(1 + β) κ + β (κ + σ) = κ + βσ`).
 
-**The contract** (`contract`): reads the stream, runs the verifier, then calls `PCS_OPEN` 6 times: π1's three (their
+**The contract** (`contract`): reads the stream, runs the verifier, then checks 6 claims declared: π1's three (their
 words `circuit::spec::Circuit::calls`: constants, the stream's roots, the elements read, the pairs' coordinates
 derived from their challenges), then `W`'s (one claim), the setup's (one; its root a constant) and `Q`'s (two). Layout
 words: π1's as the vector's; π2's `prover::layout_word` (§8).
@@ -272,7 +274,7 @@ at role 15).
     claim is false, `[true, true, false, true]` (§7's lemma at work);
   - flipped stream bytes: claims the openings do not prove;
   - the contract equals the Rust verifier word for word, straight and deployable, on the honest stream and a random
-    one; it accepts the honest proof with `PCS_OPEN` attesting exactly its calls, and rejects flipped bytes.
+    one; it accepts the honest proof with its frame declaring exactly its claims, and rejects flipped bytes.
 - `tests/pi2_real.rs`, the real circuits (`PI2_VECTOR=keccak128_rec3`, the default, or `keccak_rec3`): `real_gas`, the
   gas and parity (straight, deployable) of D16v; `real_end_to_end` as in §0 (also `PI2_LAYOUT=d32v`: 1,388 B of
   calldata, 51,940 execution, accepted). The claims holding on the real tables are the degrees' check (§1): a `q` or
@@ -320,11 +322,11 @@ then after the union):
 three openings charged once (`269 · 2^-137` a query), π2 keeps 128.93 bits as `Q/ε` at `Q = 2^64`, as π2v1
 (`RecCompose.pi2Bound`, `pi2Bound_le_bits`, proved for π2v1).
 
-## 8. The `PCS_OPEN` ABI, the IVs, the setup path
+## 8. The claims' encoding, the IVs, the setup path
 
-- **One `PCS_OPEN` ABI for the six calls.** Every call is `machine.rs`'s `root word, layout word, k, k × (point,
+- **One encoding for the six claims.** Every claim is `machine.rs`'s `root word, layout word, k, k × (point,
   value)`:
-  - every root word is `PCS_OPEN`'s, `s_0 · 2^128 + s_1` (`machine::root_word`: each 16-byte half of the hash
+  - every root word is `machine.rs`'s, `s_0 · 2^128 + s_1` (`machine::root_word`: each 16-byte half of the hash
     reversed). π1's prover sends a root as its two WHIR scalars, so π1's stream carries `C1`'s and `C2`'s root words as
     they are, and the circuit's root ports pack the stream's bytes as they are (`circuit::compile`). π2's `W` and `Q`
     roots are in calldata so; π1's setup root `F` and π2's setup root are constants so;
@@ -345,14 +347,15 @@ three openings charged once (`269 · 2^-137` a query), π2 keeps 128.93 bits as 
     levels is at least 128.98 bits at `2^24 … 2^28` (128.88 at `2^23`), level 0 being version 2's; those ladders are not
     in `certTable` (a new table, checked by `shapeOK`, would certify them). `quotient::opening` opens π2's tables in
     version 3 (`Version::V3`, the `_with` functions) and π1's `leanvm_univariate::prover::opening` is version 3; the
-    membership line keeps version 2. The contract's gas does not depend on the version (`PCS_OPEN`'s claims priced 0);
-  - a precompile is a registry keyed by the layout word (`contract::registry`): π1's layouts are opened by
-    `leanvm_univariate`'s opening, π2's three by `quotient::opening`; `Q`'s two claims stay in one call (one opening).
-  - The mock decodes (`leanvm_statement::evm::machine::{decode, PcsOpen::decoding}`): an input attests only if it
-    decodes under the registry (a known layout word, which fixes the variables; `k ≥ 1`; the exact length; every
-    element's top 64 bits zero) into a registered opening (the root as its opening has it, the layout word, the
+    membership line keeps version 2. The contract's gas does not depend on the version, nor a claim's intrinsic gas;
+  - the openings are found by a registry keyed by the layout word (`contract::registry`): π1's layouts are opened by
+    `leanvm_univariate`'s opening, π2's three by `quotient::opening`; `Q`'s two claims stay in one declared claim (one
+    opening).
+  - The mock frame decodes (`leanvm_statement::evm::machine::{decode, PcsFrame::decoding}`): it declares a claim
+    only if it decodes under the registry (a known layout word, which fixes the variables; `k ≥ 1`; the exact length;
+    every element's top 64 bits zero) into a registered opening (the root as its opening has it, the layout word, the
     claims). The end-to-end tests register π1's openings from the vector's inputs (`contract::pi1_opening`) and π2's
-    from the proof's roots and the reduction (`contract::openings`), so a call in another format fails them.
+    from the proof's roots and the reduction (`contract::openings`), so a claim in another format fails them.
 - **The holes on the setup path.** `Spec::of` and `Setup::new` assert `Circuit::validate`, which also requires `κ` zero
   off the expression slots.
 - **Derived instances.** The circuit compiler takes the program's IV (`compile::Inputs::program_iv`) and derives
@@ -463,7 +466,7 @@ What it touches:
   offsets (`FsDefs`' `sLen` 944 → 968, `p2Inputs`, `FsWalk`'s `p2Msgs_eq`: 18 scalars), `FsVerifier`'s layout words,
   `FactsSpec`'s zero coset, and the prover vectors (`tests/lean_pi2_prover.rs`' `STREAM`, `QROOT`).
 
-`PCS_OPEN` version 3 (§8) touches, beyond that, what the Lean side states of the openings and the layout words (no
+Opening version 3 (§8) touches, beyond that, what the Lean side states of the openings and the layout words (no
 file of `formal/` is changed here):
 
 - `formal/WhirBridge` (`Large*`, `Verifier.lean`'s `version`): its theorems are about version 2 (leanVM's ladder, the

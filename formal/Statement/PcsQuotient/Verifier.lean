@@ -22,8 +22,8 @@ permutation; deployed, Keccak-f[1600] (`verify`), at `logRows = 22` and the memb
 commitment (`Circuit.lean`, `Security.lean`).
 
 The EVM contract (`crates/membership/evm`) is the reduction, recorded from the same Rust code
-(`crates/membership/evm/src/record.rs`); it leaves the claims to the PCS_OPEN aggregation layer, which this
-verifier checks with WHIR directly.
+(`crates/membership/evm/src/record.rs`); it leaves the claims, declared, to the block's aggregated proof; this
+verifier checks them with WHIR directly.
 -/
 
 @[expose] public section

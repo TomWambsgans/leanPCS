@@ -1,5 +1,5 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The main line's `UniSound/FsOps.lean` and π1-rec3's
--- `UniSound/Rec3/FsOps3.lean` for the Keccak verifier (`formal/UniKeccak`'s `verifyWithK`: three `PCS_OPEN` calls).
+-- `UniSound/Rec3/FsOps3.lean` for the Keccak verifier (`formal/UniKeccak`'s `verifyWithK`: three claims' openings).
 import UniKeccakSound.FsK
 import UniKeccakSound.Fs.Whir23
 
@@ -9,7 +9,7 @@ import UniKeccakSound.Fs.Whir23
 `UniSound/FsOps.lean`'s openings for the Keccak verifier's main line (`uniOpsK`): `C1` (round `0`'s root) and `C2`
 (round `nF + 1`'s), opened by the computable decoder (`uniTcK`, `tableCode` of their shapes, the candidates read back
 as stacks, `rdTab`), and the setup's stack `F` at the setup's root, each a plain layout (`plainL v`: one chunk of
-`2^v` words, `PCS_OPEN`'s layout) at its Keccak layout word's variables (`wvK`, `layoutWordsK`), opened at
+`2^v` words, the claims' layout) at its Keccak layout word's variables (`wvK`, `layoutWordsK`), opened at
 `plainShapeK` (`Whir23.lean`: `2^23 ..= 2^28` words).
 
 * **The proof the chain reads is `UniSound.UPf`** (the input, a `UniProof`, the transcript's IV, the setup's roots):

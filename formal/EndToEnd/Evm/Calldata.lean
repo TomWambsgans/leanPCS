@@ -12,7 +12,8 @@ reduction proof whose roots' scalars name digests (`calldata_surjective`: the st
 each root's halves reversed back, each value's limbs read big-endian — the inverse of `quotient.rs`'s
 `calldata`, the tests' `parse`). So over **all** calldata:
 
-**`evm_accepts_iff_exists`**: with `PCS_OPEN` the opening check `pcsOpen` given the openings `w`, `f`,
+**`evm_accepts_iff_exists`**: with what the block proves of a claim the opening check `pcsOpen` given the
+openings `w`, `f`,
 `q` of the three tables, the contract accepts `cd` exactly when `cd` is the calldata of a statement
 and a reduction proof that, with those openings, the statement's verifier accepts.
 -/
@@ -108,7 +109,7 @@ theorem calldata_surjective {cd : List UInt8} (h : WellFormed cd) :
   exact e
 
 /-- **On any calldata, the contract accepts exactly the proofs the statement's verifier accepts**:
-with `PCS_OPEN`'s semantics `pcsOpen` given the openings `w`, `f`, `q` of the three tables, the
+with what the block proves of a claim `pcsOpen` given the openings `w`, `f`, `q` of the three tables, the
 deployed contract (F5's graph, the deployed Keccak-256, the circuit's commitment `ir` in storage)
 accepts the calldata `cd` exactly when `cd` is the calldata of a statement and a reduction proof that,
 with those openings, `PcsQuotient.verify` (`verifyWith` at Keccak-f[1600]) accepts. -/

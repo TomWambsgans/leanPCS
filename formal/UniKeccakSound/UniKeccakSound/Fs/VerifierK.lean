@@ -194,8 +194,8 @@ end Support
 
 /-! ## The three openings -/
 
-/-- **`PCS_OPEN` is F2's opening with the Statement's early stop**, on the plain layout of `23 … 28` variables, its
-two calls answered over `π`. -/
+/-- **The opening check is F2's opening with the Statement's early stop**, on the plain layout of `23 … 28` variables,
+its two calls answered over `π`. -/
 theorem pcsOpen_eq_earlyK (v : ℕ) (h1 : 23 ≤ v) (h2 : v ≤ 28) (root : Digest)
     (x : Stmt (plainL v).stacking) (cs : List PcsQuotient.Claim)
     (hx : x.claims = cs.map Bridge.claimTr) (p : Compile.Proof) :

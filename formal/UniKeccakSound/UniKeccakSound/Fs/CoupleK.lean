@@ -13,7 +13,7 @@ import Soundness.Final
   setup's stack at its plain shape), is the Keccak experiment's `setupTreeKWith` over `π`, its root as bytes and its
   log the tree's evaluations (`Soundness.treeTr`);
 * **`UniVerifierBridgeK`** (the verifier): from any state of the lazily sampled permutation, `verifyWithK` (the run on
-  the stream, its early stops, the three `PCS_OPEN` calls) accepts at most as often as the composed verifier (the
+  the stream, its early stops, the three claims' openings) accepts at most as often as the composed verifier (the
   chain over the univariate encoding and the three openings) satisfies `uniCheckK` with all three openings
   accepting;
 * **`UniExtractBridgeK`** (the extractor's reading): a candidate of `C1`'s root that the composed extractor reads off

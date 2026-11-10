@@ -397,7 +397,7 @@ variable (σ : Equiv.Perm (Fin (22 + 2) → Bool)) (H : List UInt8 → Vector UI
 /-- **F5 on `Primitives.F192`**: `graph_is_verifier` with the field of `crates/primitives`
 (CompPoly's `BF64.Ext3`) and its Rust limbs, no field hypothesis left. On the calldata of a model
 proof `π`, with tables `cW`, `cQ` whose polynomials are `π`'s messages and a wiring table `cF` of
-`σ`: the contract reaches its calls of `PCS_OPEN` with claims that hold of `cW`, `cF`, `cQ` exactly
+`σ`: the contract reaches its checks of declared claims with claims that hold of `cW`, `cF`, `cQ` exactly
 when no `1 + w_k(t)` vanishes and the model's verifier with the deployed `Wire` accepts `π`. -/
 theorem graph_is_verifier_F192
     (π : ChainProof (params isF192_primitives σ) (bounds isF192_primitives σ))
@@ -428,8 +428,8 @@ theorem graph_is_verifier_F192
         (wire isF192_primitives σ idx).verifyWith (m := Id) H π = true) :=
   graph_is_verifier isF192_primitives σ H idx π cW cF hcF cQ hg hR
 
-/-- **F5 on `Primitives.F192`, the words**: when the contract reaches its calls, it hands
-`PCS_OPEN` the model's claims (`graph_words`, no field hypothesis left). -/
+/-- **F5 on `Primitives.F192`, the words**: when the contract reaches its checks, it checks
+the model's claims declared (`graph_words`, no field hypothesis left). -/
 theorem graph_words_F192 (sb : Vector UInt8 64) (r₁ r₂ : Bytes32)
     (x0 x1 x2 x3 x4 : Primitives.F192) (ws : List Nat)
     (h : run H idx (calldataOf limbsEquiv sb r₁ r₂ [x0, x1, x2, x3, x4]) = some ws) :

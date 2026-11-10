@@ -3,8 +3,8 @@
 # RecCompose: the recursive verifier's end theorems
 
 The recursive EVM verifier for the Keccak VM's proofs (leanVM 9d50c92a3's `SHA3` table, the 128-signature reference;
-`crates/leanvm/rec`): the contract runs π2's verifier, then six `PCS_OPEN` calls (π1's `C1`, `C2`, `F`; π2's `W`, the
-setup, `Q`). Its statements are `RecStatement`'s (`RecStatement/Security.lean`, `Reduction.lean`;
+`crates/leanvm/rec`): the contract runs π2's verifier, then checks six claims declared (π1's `C1`, `C2`, `F`; π2's
+`W`, the setup, `Q`). Its statements are `RecStatement`'s (`RecStatement/Security.lean`, `Reduction.lean`;
 [`../RecStatement/README.md`](../RecStatement/README.md)). π2's circuit computes π1-rec3's Fiat–Shamir with the real
 Keccak-f[1600], while π1-rec3's theorems (`UniKeccakSound`, `UniKeccakComplete`) are in the random-permutation model,
 so the statements come in three forms:

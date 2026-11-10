@@ -15,8 +15,8 @@ and `C2`'s root, on `C1`'s column `q_flock`; it leaves
   `d = towerCoefficients map`, one of `C1`'s relations: the term of twist `ringTwist`), and
 * the **matrices' reduction, pending** (`Pending`, lever 4a): the claim
   `Σ_(x, y) G(x, y) L̂(x) ŝ(y) = claim`, `G = Â0 + α B̂0` at the row and column points, whose
-  `k + 6` rounds the batching sumcheck runs as its `λ³` term; its terminal hands `PCS_OPEN` the
-  claims on `A0`, `B0`.
+  `k + 6` rounds the batching sumcheck runs as its `λ³` term; its terminal leaves the
+  claims on `A0`, `B0`, declared.
 
 The end theorem (`UniSound.Final`) takes **one** hypothesis about Flock, `FlockSound κ` below (`κ`
 the hash table's log-height, `q_flock` of `2^(8 + κ)` cells), whose fields the Flock proof must

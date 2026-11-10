@@ -1,7 +1,7 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The node semantics are `crates/leanvm/rec/src/eval.rs`'s
 -- (`evaluate`, `call_inputs`, `checks`), on `formal/UniStatement`'s definitions of the transcript (`KeccakChannel`:
 -- `seedWith`, `beWordAt`, `challengeOf`, `narrowE`), the bit fields (`intBits`), the ring switch's weight
--- (`Flock.towerWeightAt`) and `PCS_OPEN`'s words (`elementWord`).
+-- (`Flock.towerWeightAt`) and the claims' words (`elementWord`).
 import RecGraph.Node
 import UniStatement.Rec
 
@@ -12,7 +12,7 @@ import UniStatement.Rec
 contract's IV and the public input, over a permutation `F` of the Keccak state in any monad (the random permutation
 `π` in the model, Keccak-f[1600] deployed: the random-permutation model's style, `formal/QuotientRpm`,
 `Common.RandomPermutationOracles`, as `formal/UniStatement`'s verifier is written); then what the graph outputs: the
-bytes of each `PCS_OPEN` call (`Word.node` an element's word, `Word.const` a constant, `Word.stream` 32 bytes of the
+bytes of each claim (`Word.node` an element's word, `Word.const` a constant, `Word.stream` 32 bytes of the
 stream: a root), the values required zero, the values required nonzero. A stream of another length than the graph's
 has no outputs (`none`: the contract checks the calldata's length; the verifier rejects it, `StreamExhausted` or
 `StreamNotConsumed`).
@@ -72,7 +72,7 @@ def ringWeightValue (ops : List E) (n : ℕ) : E :=
 /-- The 32 big-endian bytes of `w mod 2^256` (a constant word). -/
 def beBytes32 (w : ℕ) : List UInt8 := (List.range 32).map fun k ↦ ((w >>> (8 * (31 - k))) % 256).toUInt8
 
-/-- **What a graph outputs** (`eval::call_inputs`, `eval::checks`): each `PCS_OPEN` call's bytes, in call order, the
+/-- **What a graph outputs** (`eval::call_inputs`, `eval::checks`): each claim's bytes, in order, the
 values required zero, the values required nonzero. -/
 structure Outputs where
   calls : List (List UInt8)

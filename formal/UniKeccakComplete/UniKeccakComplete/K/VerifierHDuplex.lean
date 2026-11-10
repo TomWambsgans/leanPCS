@@ -84,7 +84,7 @@ theorem disc_forIn_list {α β : Type} (l : List α) (b : β) (f : α → β →
     | done b => exact disc_pure b
     | yield b => exact ih b
 
-/-- `PCS_OPEN` is disciplined (WithHash's opening). -/
+/-- The opening check is disciplined (WithHash's opening). -/
 theorem disc_pcsOpenWithH (vars : ℕ) (root : Digest) (claims : List PcsQuotient.Claim)
     (proof : LeanVM.Protocol.Compile.Proof) :
     Disc (pcsOpenWithH callKeccak256 callKeccakF1600 vars root claims proof) :=

@@ -5,7 +5,7 @@
 The recursion's outer proof π2 (`crates/leanvm/rec`, `PI2.md` §2, §8–§9; branch `leanvm-rec` @ 2b22581, the final
 protocol: the setup committed as `κ` and `κ + σ`, `ξ = κ(t) + βσ(t)` sent, no `h(t)`, the zero checks as an aligned
 coset of ports in closed form `β^15/F(Y)`, the row fold's siblings, the normalised `Q` claim
-`(1 + ρ')h + ρ'q = X/(S_d Y)`, one inversion, every `PCS_OPEN` call in `machine.rs`'s one ABI, π1's claims at points the
+`(1 + ρ')h + ρ'q = X/(S_d Y)`, one inversion, every claim in `machine.rs`'s one encoding, π1's claims at points the
 contract derives from π1-rec3's narrow pair challenges), **for the recursion of the Keccak VM**: π1 is
 [`UniKeccak`](../UniKeccak/README.md)'s verifier (leanVM 9d50c92a3's Keccak VM) at π1-rec3's Fiat–Shamir shape
 (`keccakRec3`) and the point-claim ABI, at the 128-signature reference shape (`RecGraphKeccak.Pi1.keccak128`), its
@@ -55,10 +55,10 @@ stale.)
    highest power of `γ`, the walk).
 5. [`Verifier.lean`](RecStatement/Verifier.lean): the norm's inverse, the extension, `Spec.core` (the constants over
    `E`), the layouts and layout words, **the IV**, `pairPoint`, **`reduceWith`**, `runWith`/`run`.
-6. [`Calls.lean`](RecStatement/Calls.lean): **the six `PCS_OPEN` calls word for word** (`pcsCalls`), the Keccak
+6. [`Calls.lean`](RecStatement/Calls.lean): **the six claims word for word** (`pcsCalls`), the Keccak
    π1-rec3's contract IV (`pi1IvWith`, `UniKeccak.contractIvKWith … keccakRec3`).
 7. [`Security.lean`](RecStatement/Security.lean): π2's circuit with `σ`, `κ` (`Pi2Circuit`: its digest and setup table
-   over `F`), the deployment and `RecDeployment.Real`, the setup (π1's one tree, π2's), `PCS_OPEN` decoded under the
+   over `F`), the deployment and `RecDeployment.Real`, the setup (π1's one tree, π2's), a claim decoded under the
    registry and opened, the contract, the Keccak π1-rec3 at Keccak-f[1600] (its verifier and its recorded graph), the extractors, the experiments,
    **`RecKnowledgeSoundness2`**, **`RecCompleteness2`** (π2's part), the merge hazard on accepted streams
    (`Pi1HazardAccepted`), the hypotheses (`Pi1FsKeccak`, `Pi1HazardKeccak`, `Pi1CompletenessKeccak`,
@@ -362,7 +362,7 @@ value; π1's contract IV and layout words are now `UniKeccak`'s, checked against
 **Evaluated** (in `RecCompose`, by running Lean): the digest and the setup root of the Lean compiler's `σ`, `κ` at π1's
 reference IV are `Data.digest`, `Data.setupRoot` (`DigestChecked`, `SetupRootChecked`, `rec-real-check`).
 
-**Defined, not tested**: `PCS_OPEN`'s WHIR (the Rust has a mock), the extractors, the experiments, the Props.
+**Defined, not tested**: the claims' WHIR (the Rust mocks the frame), the extractors, the experiments, the Props.
 
 ## Open points
 
@@ -386,7 +386,7 @@ reference IV are `Data.digest`, `Data.setupRoot` (`DigestChecked`, `SetupRootChe
 3. **`A0`, `B0`** are deployment constants the Keccak contract's IV hashes (`UniKeccak.KDeployment`), not commitments:
    `Real` does not pin them. The Rust's `Data.pi1Iv` is at `SetupRoots::REFERENCE` (= `referenceRootsK`: the Keccak
    128 setup's `F` and the two constants); the model's contract derives π1's IV at the setup's own roots.
-4. **`PCS_OPEN`'s WHIR instance is a choice**, as in UniStatement: π1's calls on the plain layout of `2^vars` words (the
+4. **The claims' WHIR instance is a choice**, as in UniStatement: π1's calls on the plain layout of `2^vars` words (the
    layout word's byte 24), π2's on π2's public layouts (`quotient::opening`); the registry decodes as `machine::decode`.
 5. **The degenerate events** (`all = 0`: `t ∈ V_{m+2}`, `c_h + c_q = 0`, a vanishing public denominator) reject; they
    matter for completeness only (`all_ne_zero_iff` names them).

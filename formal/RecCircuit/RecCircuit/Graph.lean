@@ -37,7 +37,7 @@ inductive Node where
   | ringWeight (kernel n : ℕ)
   deriving DecidableEq, Repr, Inhabited, Hashable
 
-/-- **A word a `PCS_OPEN` call takes** (`codegen::Word`, but `Stored`). -/
+/-- **A word of a claim** (`codegen::Word`, but `Stored`). -/
 inductive Word where
   | node (id : ℕ)
   | const (w : ℕ)

@@ -19,7 +19,7 @@ with the Keccak VM in place of leanVM 42422001:
   with the Keccak VM's entries, the memory's addresses). The Keccak-f block's matrices (`2^34` entries) are never
   committed. The verifier's setup root is its root (`KDeployment.setupRoots`).
 * **The verifier** (`KDeployment.verifierKWith … v`): the Keccak contract's IV (`contractIvKWith`, binding the variant
-  `v`), then `verifyWithK` (the run, three `PCS_OPEN` calls). `keccakMain` is the main line, `keccakRec3` π1-rec3's
+  `v`), then `verifyWithK` (the run, three claims' openings). `keccakMain` is the main line, `keccakRec3` π1-rec3's
   shape under the recursion.
 * **The relation** (`KDeployment.RelationK F`): `KeccakVm.KvHolds F prog s input q`, `M3Holds (keccakIsaInstance prog
   s) input q ∧ KeccakAux F prog s q`, at the proof's sizes `s` (the shape's memory, the proof's row counts), `F` the

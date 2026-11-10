@@ -16,7 +16,7 @@ decoder `p2Tc 0 = colCode shW…`) reads off the setup's evaluations and a permu
 extractor's list (`wCandidates`) on the same evaluations, for a stream that holds `W`'s root (`pLen + 32` bytes):
 
 * **round `0`'s message is `W`'s root** the stream names (`msgK_p2View_zero`: its halves at byte `472`), and the
-  Statement's root, `PCS_OPEN`'s root word of the stream's `32` bytes there (`streamRoot`, at `rootsAt cc.reads`'s
+  Statement's root, the claim's root word of the stream's `32` bytes there (`streamRoot`, at `rootsAt cc.reads`'s
   `W` entry), is the same digest (`streamRoot_eq`, for a stream holding those bytes);
 * **the composed candidate is a stack of mumbai's decoder** (`decodeColumns` = `Column.mk` of `decodeStacks` at `2^24`
   words, rate `1/2`), and the Statement's word is mumbai's `committedLeaves` (`committedWord_eq`), which agrees with the
@@ -24,7 +24,7 @@ extractor's list (`wCandidates`) on the same evaluations, for a stream that hold
   stack (`mem_decodeStacks_congr`), last of `candidates`.
 
 **`Pi2ExtractBridge` (`FsDefs.lean`) needs the stream's length**: on a stream shorter than `504` bytes the composed view
-reads `W`'s root's missing bytes as zeros in place (`halvesAt`, big-endian words by `getD`), while `PCS_OPEN`'s root
+reads `W`'s root's missing bytes as zeros in place (`halvesAt`, big-endian words by `getD`), while the claim's root
 word of the shorter slice (`streamWord`, then each half reversed) shifts them, so the two roots, and the two lists,
 can differ. The composed event's check (`p2Check`) has the stream's `944` bytes.
 -/
@@ -60,7 +60,7 @@ theorem revRoot_toB (d : Digest) : UniSound.revRoot (toB d) = rootWordOfBytes (d
   unfold UniSound.revRoot rootWordOfBytes
   rw [Bridge.toB_toList, List.take_of_length_le (l := (digestBytes d).drop 16) (by simp [hl])]
 
-/-- **`PCS_OPEN`'s root word of the stream's 32 bytes names the root the stream's halves name**, on a stream that holds
+/-- **The claim's root word of the stream's 32 bytes names the root the stream's halves name**, on a stream that holds
 them. -/
 theorem streamRoot_eq (b : Array UInt8) (o : ℕ) (h : o + 32 ≤ b.size) :
     streamRoot b o = UniStatement.rootOf (UniSound.halvesAt b o) := by

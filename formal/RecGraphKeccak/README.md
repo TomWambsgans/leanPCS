@@ -27,8 +27,8 @@ cargo test --release -p leanvm_rec --test lean_graph_keccak                 # fa
 - [`Emitted.lean`](RecGraphKeccak/Emitted.lean): **the Keccak π1-rec3 graph**, written by
   `crates/leanvm/rec/tests/lean_graph_keccak.rs` (a self-contained renderer on `leanvm_univariate::contract::
   {record_verifier, calls, Recorded}` and `leanvm_statement::evm::{record::Node, codegen::Word}`): 10,848 nodes (9,871
-  additions and products, 69 Keccak-256 calls), 14 zero checks, no nonzero check, 1 ring-weight kernel, 3 `PCS_OPEN`
-  calls of 31, 30, 27 words, a stream of 9,232 bytes (`C1`'s root at 24, `C2`'s at 3,752). Data only. Builds in about
+  additions and products, 69 Keccak-256 calls), 14 zero checks, no nonzero check, 1 ring-weight kernel, 3 claims
+  of 31, 30, 27 words, a stream of 9,232 bytes (`C1`'s root at 24, `C2`'s at 3,752). Data only. Builds in about
   7 s.
 - [`Pi1/Flock.lean`](RecGraphKeccak/Pi1/Flock.lean), [`Pi1/Verifier.lean`](RecGraphKeccak/Pi1/Verifier.lean): **the
   Keccak verifier as a `RecGraph.Prog` program**, in the Rust's operation order: `frontK` (the lincheck's 11 rounds),

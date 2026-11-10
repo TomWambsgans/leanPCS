@@ -6,7 +6,7 @@ public import UniStatement.Transcript
 public import UniStatement.Stacks
 
 /-!
-# The batching sumcheck (`batch`, SPEC.md §8 and §13): `PCS_OPEN`'s point-claim ABI
+# The batching sumcheck (`batch`, SPEC.md §8 and §13): the claims' point-claim encoding
 
 **A swappable module.** The verifier hands it one combined (weighted) claim per commitment and the stacks'
 layouts; it returns one **point claim** per commitment. `λ` batches the commitments; a sumcheck of degree 2
@@ -14,7 +14,7 @@ over the longest stack's variables (the others zero-extended) takes `Σ_k λ^k �
 `r`; the prover sends each `C_k(r[..vars_k])`; the verifier checks the sum with `W_k(r)` (`weightAt`, over
 all of `r`, the ring-switch term by its map) and the zero extension `Π_{j ≥ vars_k} (1 + r_j)` (collected,
 `StackBatchTerminal`). With Flock's bit-slice end (extension B), `C1`'s call also carries the bit-slice claim.
-Extension W (`Claims.weighted`) skips this module: the weighted claims go to `PCS_OPEN` as they are.
+Extension W (`Claims.weighted`) skips this module: the weighted claims are declared as they are.
 
 **Flock's matrices' reduction runs here** (iteration 2, lever 4a; `Flock.Pending`): its sum
 `Σ_(x, y) G(x, y) L̂(x) ŝ(y)` over `k + 6` variables joins the batch as the next power of `λ` (`λ³`, after the
@@ -31,7 +31,7 @@ namespace UniStatement
 
 open LeanVM.Parameters LeanVM.Semantics
 
-/-- **What a commitment's one `PCS_OPEN` call carries** (`Opening`). -/
+/-- **What a commitment's one declared claim carries** (`Opening`). -/
 inductive Opening where
   /-- One weighted claim (extension W). -/
   | weighted (claim : Combined)

@@ -5,7 +5,7 @@ import UniKeccakComplete.K.VerifierH
 /-!
 # When the whole Keccak verifier accepts
 
-`verifyWithKH` (the run, then three `PCS_OPEN` calls) accepts at pure `H`, `F` when the run accepts with the three
+`verifyWithKH` (the run, then three claims' openings) accepts at pure `H`, `F` when the run accepts with the three
 point claims on `C1`, `C2` and the setup in order (no matrices' claim), and each of the three openings accepts
 (`verifyWithKH_of_calls`).
 -/

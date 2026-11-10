@@ -5,7 +5,7 @@ import UniKeccakComplete.K.AlgCRun
 import UniKeccakComplete.K.SyncBasic
 
 /-!
-# π1's own `PCS_OPEN` calls, decoded
+# π1's own claims, decoded
 
 `decodePi1Call` (`RecStatement.Security`) reads the Keccak π1's contract's call bytes (`UniKeccak.pcsCallsK`:
 `UniStatement.openingWords` of a point claim, under the Keccak layout words `UniKeccak.layoutWordsK`: the root word,

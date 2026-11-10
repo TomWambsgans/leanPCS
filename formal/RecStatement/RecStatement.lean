@@ -19,7 +19,7 @@ import RecStatement.Lemmas.SpecLink
 * **the verifier** (`run`, `runWith`): the seed of π2's IV (`iv`: π1's contract IV, the setup root, the circuit's
   digest, the layout words), the public data in the stream, `W`'s root then `α, β, γ`, `Q`'s root then `t`, the 17
   values then `ρ`, and the arithmetic at `t` (`CoreSpec.run`, over any field), its constants `Spec.of` of the
-  circuit's tables (`Data`, emitted by the Rust); the six `PCS_OPEN` calls word for word (`pcsCalls`);
+  circuit's tables (`Data`, emitted by the Rust); the six claims word for word (`pcsCalls`);
 * **the verifier-arithmetic lemmas** (`Lemmas`), over any field of characteristic two, under `SpecOf` (the constants
   are `RecPiop`'s circuit's on a Cantor basis): the indicators' closed form (`ind_eval_closed`), the zero coset's
   (`coset_closed`), the siblings' fold (`cellsList_eq_cellsOf`), `W`'s fold (`foldW_eq_foldAt`), the push side

@@ -34,7 +34,7 @@ inductive Node where
   | low (a : Nat)
   deriving DecidableEq, Repr, Inhabited
 
-/-- A word the contract writes for its calls of `PCS_OPEN` (`codegen::Word`). -/
+/-- A word the contract writes for its checks of declared claims (`codegen::Word`). -/
 inductive Word where
   /-- A recorded value. -/
   | node (i : Nat)
@@ -42,7 +42,7 @@ inductive Word where
   | const (w : Nat)
   /-- The word of the arguments (calldata after the selector) at this offset. -/
   | calldata (offset : Nat)
-  /-- The circuit's commitment, as `PCS_OPEN` reads a root. -/
+  /-- The circuit's commitment, as a claim's root word. -/
   | storedRoot
   deriving DecidableEq, Repr, Inhabited
 

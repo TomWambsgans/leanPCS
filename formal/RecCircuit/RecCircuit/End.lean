@@ -2,11 +2,11 @@
 import RecCircuit.Calls
 
 /-!
-# The end theorems: π2's ports and π1's `PCS_OPEN` inputs are π1's graph's
+# The end theorems: π2's ports and π1's claims are π1's graph's
 
 For every recorded graph `g` (`RecGraph.Graph`) the compiler accepts (`compile (ofRG g rootsAt iv) = .ok c`: the
 transcription of `compile.rs` ran, and every check of `Check.lean` passed), on every witness satisfying π2's PIOP
-(`RecPiop`'s `Satisfies`): the ports and the `PCS_OPEN` inputs π2's verifier rebuilds from them are what `g` outputs
+(`RecPiop`'s `Satisfies`): the ports and the claims π2's verifier rebuilds from them are what `g` outputs
 in `RecGraph`'s semantics (`RecGraph.evalNodes` over Keccak-f[1600]) on the public input and the stream the witness
 encodes (`pubW`, `streamW`). No hypothesis is left (`ExpandSound` is `expandSound`):
 
@@ -14,7 +14,7 @@ encodes (`pubW`, `streamW`). No hypothesis is left (`ExpandSound` is `expandSoun
 * `compile_sound_element_end`: an element port, `RecGraph`'s value of any original node mapped to its node;
 * `compile_sound_zero_end`, `compile_sound_zero_const`: the `m`-th zero port carries the `m`-th zero check whose image
   is not a constant; every other zero check is `0`;
-* `compile_sound_calls`, `compile_sound_callInputs` (`Calls.lean`): π1's `PCS_OPEN` inputs.
+* `compile_sound_calls`, `compile_sound_callInputs` (`Calls.lean`): π1's claims.
 
 `compile_sound_end` bundles them.
 -/
@@ -73,9 +73,9 @@ theorem compile_sound_zero_const (hc : compile (ofRG g rootsAt iv) = .ok c) (iv'
   rw [valE_elem (hx.trans (congrArg some (stepP_const _ _ _ _ _))), h0]
 
 /-- **What the end theorem states** of a compiled circuit `c` for `g` and a witness `w`: π2's ports and the
-`PCS_OPEN` inputs its verifier rebuilds from them are π1's graph's outputs in `RecGraph`'s semantics over
+claims its verifier rebuilds from them are π1's graph's outputs in `RecGraph`'s semantics over
 Keccak-f[1600], on the public input and the stream the witness encodes: the statement's words, the roots' words (the
-stream's bytes), the zero checks' values (the constant ones `0`), the calls' bytes as `PCS_OPEN` takes them (`pcsWord`:
+stream's bytes), the zero checks' values (the constant ones `0`), the claims' bytes as a claim holds them (`pcsWord`:
 a setup root as its root word). -/
 def EndStatement (g : RecGraph.Graph) (rootsAt : List ℕ) (iv : List UInt8) (c : Compiled) (w : ℕ → K) : Prop :=
     (∀ J < c.circuit.ports.size, (c.circuit.ports.getD J default).source = .statement →

@@ -1,6 +1,6 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. π1-rec3's honest proof is accepted: `Core.lean`'s
 -- `accepts_of_trace`, `coreAccepts_reference` for π1-rec3's verifier (`KDeployment.verifierWithH` at `keccakRec3`,
--- three `PCS_OPEN` calls) and prover (`Rec3Prover.lean`).
+-- three claims' openings) and prover (`Rec3Prover.lean`).
 -- Ported to the Keccak VM from `formal/UniComplete/UniComplete/Rec3Core.lean`.
 import UniKeccakComplete.K.Rec3CoreBatch
 import UniKeccakComplete.K.Rec3CoreRun

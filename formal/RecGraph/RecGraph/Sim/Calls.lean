@@ -4,7 +4,7 @@ import RecGraph.Sim.ComposeSpec
 /-!
 # The calls' bytes: the graph's words against `pcsCalls`
 
-The recorded graph's `PCS_OPEN` words (`callsOf`: a root as the stream's 32 bytes at its first half's offset, the
+The recorded graph's claim words (`callsOf`: a root as the stream's 32 bytes at its first half's offset, the
 layout and setup-root words as constants, the claim count `1`, the point's and the value's elements) read, byte for
 byte, as `UniStatement`'s `pcsCalls` (`rootWord` of `next_root`'s halves, the layout words, `numberWord 1`,
 `elementWord`):

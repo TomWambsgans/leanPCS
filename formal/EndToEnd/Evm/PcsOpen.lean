@@ -1,29 +1,29 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- Transcribed from `crates/membership/evm/src/machine.rs` (`element_word`, `root_word`, `layout_id`, `layout`,
--- `pcs_open_input`, `PcsOpen::well_sized`, the input format of its module documentation).
+-- `claim_input`, the claims' format of its module documentation).
 import PcsQuotient.Verifier
 import Implementation.Calldata
 import Soundness.Defs
 
 /-!
-# `PCS_OPEN`: its input, and what it attests
+# A declared claim: its words, and what the block proves of it
 
-The contract hands the precompile `PCS_OPEN` (`crates/membership/evm/src/machine.rs`) one input per commitment:
+The contract checks one claim declared per commitment (`crates/membership/evm/src/machine.rs`):
 `3 + k (v + 1)` words of 32 bytes, each big-endian — the root's word (`rootWordOf`,
 `s₀ · 2^128 + s₁`, the root's two scalars as the transcript carries them), the layout's id
 (`layoutId`, `256 · table + log_rows`), the number `k` of claims, then each claim's `v` coordinates
 and its value, each element of `E` the word of its limbs (`elementWord`, `c0 + 2^64 c1 + 2^128 c2`,
-its top 64 bits zero). `openInput` writes such an input (`pcs_open_input`); `parse` reads one as the
-precompile reads it (`well_sized`: whole words, an id naming a layout it knows (`layoutOf`, `layout`),
+its top 64 bits zero). `openInput` writes such a claim (`claim_input`); `parse` reads one as the
+block reads it (whole words, an id naming a layout it knows (`layoutOf`, `layout`),
 `k ≥ 1`, exactly the length the layout's `v` and `k` fix, element words below `2^192`);
 `parse_openInput` proves it reads back exactly what `openInput` wrote.
 
-**`PCS_OPEN`'s semantics** (`pcsOpen`), the named model of the precompile: the input read by
+**What the block proves of a declared claim** (`pcsOpen`), its named model: the claim read by
 `parse`, then the statement's opening check `PcsQuotient.opening` (WHIR over Keccak-f[1600],
 `opening::verify`) for the layout its id names, at the root and claims read, with the opening proof
-the block carries for the call (`proofFor id`); an input `parse` does not read attests nothing. The
-mock attests an input when the block holds an opening of exactly those claims that
-`opening::verify` accepted: that the mock and `opening::verify` are this (`PcsQuotient.opening`) is
+the block carries for the claim (`proofFor id`); a claim `parse` does not read is proved by nothing.
+The mock frame stands for a block that proves a claim by an opening of exactly those claims that
+`opening::verify` accepts: that `opening::verify` is this (`PcsQuotient.opening`) is
 tested, not proved (`crates/membership/evm`'s tests, `formal/Statement`'s differential tests).
 -/
 
@@ -36,7 +36,7 @@ open Implementation (beNat beBytes limbsNat natLimbs)
 
 /-! ## Words -/
 
-/-- **`machine::element_word`**: an element of `E` as `PCS_OPEN` reads it, the number
+/-- **`machine::element_word`**: an element of `E` as a claim holds it, the number
 `c0 + 2^64 c1 + 2^128 c2` of its limbs (`F192`'s `(c0, c1, c2)`), its top 64 bits zero. -/
 def elementWord (x : E) : ℕ := limbsNat (Soundness.eLimbs x)
 
@@ -48,7 +48,7 @@ theorem elementOf_elementWord (x : E) : elementOf (elementWord x) = x := by
 
 theorem elementWord_lt (x : E) : elementWord x < 2 ^ 192 := Implementation.limbsNat_lt _
 
-/-- **`machine::root_word`**: a root as `PCS_OPEN` reads it, `s₀ · 2^128 + s₁`, `s_h` the
+/-- **`machine::root_word`**: a root as a claim holds it, `s₀ · 2^128 + s₁`, `s_h` the
 little-endian number of bytes `16 h .. 16 h + 16` of the root, i.e. of its words `d₀ + 2^64 d₁` and
 `d₂ + 2^64 d₃` (`root_scalars`; the digest's words little-endian, `digestBytes`). -/
 def rootWordOf (d : Digest) : ℕ :=
@@ -113,12 +113,12 @@ theorem layoutOf_quotient : layoutOf (layoutId 3 22) = some (quotientLayout 22) 
 def claimWords (claims : List Claim) : List ℕ :=
   claims.flatMap fun c => (c.point ++ [c.value]).map elementWord
 
-/-- **`PCS_OPEN`'s input, as words** (`machine::pcs_open_input`): the root's word, the layout's id,
+/-- **A claim, as words** (`machine::claim_input`): the root's word, the layout's id,
 the number of claims, then the claims. -/
 def openWords (root : Digest) (id : ℕ) (claims : List Claim) : List ℕ :=
   [rootWordOf root, id, claims.length] ++ claimWords claims
 
-/-- **`PCS_OPEN`'s input**: its words, each 32 bytes big-endian (`MSTORE`). -/
+/-- **A claim's bytes**: its words, each 32 bytes big-endian (`MSTORE`). -/
 def openInput (root : Digest) (id : ℕ) (claims : List Claim) : List UInt8 :=
   (openWords root id claims).flatMap (beBytes 32)
 
@@ -135,7 +135,7 @@ def claimsOfWords (v : ℕ) : ℕ → List ℕ → List Claim
   | k + 1, ws =>
     ⟨(ws.take v).map elementOf, elementOf (ws.getD v 0)⟩ :: claimsOfWords v k (ws.drop (v + 1))
 
-/-- **How `PCS_OPEN` reads its input** (`machine::PcsOpen::well_sized` and the format of
+/-- **How the block reads a declared claim** (the claims' format of
 `machine.rs`): whole words; a root word, an id naming a layout (`layoutOf`), `k ≥ 1`, then exactly
 `k (v + 1)` words, `v` the layout's variables, each an element word (below `2^192`): the root, the id,
 the layout and the claims. -/
@@ -152,10 +152,10 @@ def parse (input : List UInt8) : Option (Digest × ℕ × Layout × List Claim) 
     | _ => none
   else none
 
-/-- **`PCS_OPEN`'s semantics**: the input as the precompile reads it (`parse`), checked by the
+/-- **What the block proves of a declared claim**: the claim as the block reads it (`parse`), checked by the
 statement's opening check (`PcsQuotient.opening`, WHIR over Keccak-f[1600], `opening::verify`) of the
 layout its id names, at the root and claims read, with the opening proof `proofFor id` the block
-carries for the call; nothing else attests. -/
+carries for the claim; nothing else is proved. -/
 def pcsOpen (proofFor : ℕ → Compile.Proof) (input : List UInt8) : Bool :=
   match parse input with
   | some (root, id, L, claims) => opening L root claims (proofFor id)
@@ -236,7 +236,7 @@ theorem claimsOfWords_claimWords (v : ℕ) : ∀ (claims : List Claim),
     rw [List.length_cons, claimsOfWords, e, List.take_left' hp, hg, hd, ih, List.map_map]
     simp [Function.comp_def, elementOf_elementWord]
 
-/-- **`PCS_OPEN` reads back exactly what `openInput` writes**: the root, the id, the layout it names
+/-- **`parse` reads back exactly what `openInput` writes**: the root, the id, the layout it names
 and the claims, when there are claims, each of the layout's variables. -/
 theorem parse_openInput {root : Digest} {id : ℕ} {L : Layout} {claims : List Claim}
     (hL : layoutOf id = some L) (hne : claims ≠ []) (hv : ∀ c ∈ claims, c.point.length = L.vars)
@@ -270,7 +270,7 @@ theorem parse_openInput {root : Digest} {id : ℕ} {L : Layout} {claims : List C
   rw [if_pos ⟨hk1, length_claimWords L.vars claims hv, hall⟩, digestOfWord_rootWordOf,
     claimsOfWords_claimWords L.vars claims hv]
 
-/-- **`PCS_OPEN` on an input `openInput` wrote** is the opening check of the layout its id names, at
+/-- **`pcsOpen` on a claim `openInput` wrote** is the opening check of the layout its id names, at
 that root and those claims, with the block's opening for it. -/
 theorem pcsOpen_openInput (proofFor : ℕ → Compile.Proof) {root : Digest} {id : ℕ} {L : Layout}
     {claims : List Claim} (hL : layoutOf id = some L) (hne : claims ≠ [])

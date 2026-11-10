@@ -19,7 +19,7 @@ The verifier of π2 (`pi2::verifier`) is built from `pi2::circuit::Circuit` with
   integer, a root's two halves, an element of `E`);
 * the **public terms** (`PublicTerm`): the verifier adds `1/(α + F + β ω_tag)`, `F` the term's linear form of the
   public scalars;
-* π1's `PCS_OPEN` calls are words (`CallWord`): constants, π1's roots as the stream carries them, π1's claims'
+* π1's claims are words (`CallWord`): constants, π1's roots as the stream carries them, π1's claims'
   elements (public scalars), and the coordinates of π1-rec3's pair points of them.
 
 A `List` stands for a `Vec`; an index out of range reads a default (`getD`), where the Rust would panic (the
@@ -99,7 +99,7 @@ structure Circuit where
   publicTerms : List PublicTerm
   deriving Inhabited
 
-/-- **A word of one of π1's `PCS_OPEN` inputs** (`spec::CallWord`). -/
+/-- **A word of one of π1's claims** (`spec::CallWord`). -/
 inductive CallWord where
   /-- A constant word. -/
   | const (word : List UInt8)

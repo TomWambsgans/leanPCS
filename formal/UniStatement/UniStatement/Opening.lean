@@ -1,5 +1,5 @@
--- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. `PCS_OPEN`'s ABI is `crates/membership/evm/src/machine.rs`'s
--- (as `crates/leanvm/statement/src/evm/machine.rs` mocks it), its layout words and the contract's IV
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Claims are `crates/membership/evm/src/machine.rs`'s
+-- (as `crates/leanvm/statement/src/evm/machine.rs` declares them), its layout words and the contract's IV
 -- `crates/leanvm/univariate/src/contract.rs`'s (`layout_word`, `layout_words`, `shape_bytes`, `contract_iv`,
 -- `SetupRoots`); its semantics is this repository's `formal/Statement` opening (`PcsQuotient.openingWith`:
 -- leanerVM `mumbai` 6175f1a0's WHIR verifier, MIT OR Apache-2.0).
@@ -9,17 +9,17 @@ public import UniStatement.Run
 public import PcsQuotient.Opening
 
 /-!
-# `PCS_OPEN`, the layout words and the contract's IV: the shared pieces
+# The claims' opening, the layout words and the contract's IV: the shared pieces
 
-**`PCS_OPEN`** (`machine.rs`'s ABI: a root, a layout word, `k` point claims, each `v` coordinates and a
+**A declared claim** (`machine.rs`'s encoding: a root, a layout word, `k` point claims, each `v` coordinates and a
 value): "the block's openings hold exactly these claims on that commitment under that layout". As in
 `formal/Statement` (`formal/EndToEnd/Evm`'s `pcsOpen`), its meaning here is **the Statement's opening**,
 `PcsQuotient.openingWith` (leanVM's WHIR verifier, mumbai's `verifyStackedOpening`, seeded as
-`opening.rs` seeds it), on the call's opening proof, for the **plain layout** of a stack of `2^vars`
+`opening.rs` seeds it), on the claim's opening proof, for the **plain layout** of a stack of `2^vars`
 words (`plainLayout`: lane `l` holds block `l`, so a claim's weight on the stack is `eq(point, ·)`: a point
-claim on the stack's multilinear extension), `vars` read from the call's **layout word** (iteration 2, F2:
-`layoutWord`, byte 24). The Rust has only a mock (`PcsOpen::attesting_all`): which WHIR instance the
-precompile runs is not specified there; this is the choice the statements are made under.
+claim on the stack's multilinear extension), `vars` read from the claim's **layout word** (iteration 2, F2:
+`layoutWord`, byte 24). The Rust has only a mock frame (`PcsFrame::declaring_all`): which WHIR instance
+the block's proof runs is not specified there; this is the choice the statements are made under.
 
 **The layout words** (iteration 2, F2; `contract::layout_word`): 32 bytes, the shape's 8 (`shapeBytes`: `log_memory`,
 `log_bytecode`, the six heights), the opening's code (bytes 22..24: `0x5501` `C1`, `0x5502` `C2`, `0x5503` the
@@ -79,7 +79,7 @@ def layoutWord (s : Shape) (code vars placed : ℕ) : List UInt8 :=
 /-- The stack's variables a layout word names (byte `24`): what the opening reads it for. -/
 def layoutWordVars (word : List UInt8) : ℕ := (word.getD 24 0).toNat
 
-/-! ### `PCS_OPEN`'s inputs, word for word (`contract::calls`, `opening_words`, `combined_words`) -/
+/-! ### The claims, word for word (`contract::calls`, `opening_words`, `combined_words`) -/
 
 /-- The eight big-endian bytes of a 64-bit word. -/
 def be64 (w : UInt64) : List UInt8 := (List.range 8).map fun k ↦ (w >>> (8 * (7 - k)).toUInt64).toUInt8
@@ -115,7 +115,7 @@ def openingWords (root layout : List UInt8) : Opening → List UInt8
 def ivTag : List UInt8 := "leanVM-univar-iv".toUTF8.toList
 
 /-- **A proof**: the stream (calldata after the selector and the public input: the row counts, then the rest),
-and the opening proof the block holds for each of the three `PCS_OPEN` calls (mumbai's format,
+and the opening proof the block holds for each of the three claims (mumbai's format,
 `Compile.Proof`). -/
 structure UniProof where
   stream : Array UInt8
@@ -130,8 +130,8 @@ section With
 
 variable {m : Type → Type} [Monad m] (F : KeccakState → m KeccakState)
 
-/-- **`PCS_OPEN`** over `F`: the claims on the stack of `2^vars` words committed as `root`, against the
-call's opening proof. -/
+/-- **A declared claim's opening** over `F`: the claims on the stack of `2^vars` words committed as `root`,
+against the claim's opening proof. -/
 def pcsOpenWith (vars : ℕ) (root : Digest) (claims : List PcsQuotient.Claim) (proof : Compile.Proof) :
     m Bool :=
   PcsQuotient.openingWith F (plainLayout vars) root claims proof

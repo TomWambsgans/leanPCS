@@ -39,8 +39,8 @@ Proved here, for any field `F` with `F192`'s limb representation (`IsF192`: `XOR
   checked by computation (`consts`, `basis`);
 * `leafVals_calldataOf`: on calldata, the leaves are the statement's halves and the challenges of
   `Wire.verifyWith`'s Keccak-256 chain, byte for byte;
-* `graph_reaches_iff`, `graph_words`, `graph_is_verifier` (**F5**): the contract reaches its calls
-  of `PCS_OPEN` exactly when the denominators do not vanish, hands it the model's claims, and with
+* `graph_reaches_iff`, `graph_words`, `graph_is_verifier` (**F5**): the contract reaches its checks
+  of declared claims exactly when the denominators do not vanish, hands it the model's claims, and with
   those claims true of the tables is exactly the model's `Wire.verifyWith` (deployed `Wire`,
   `wire`) accepting, but for the challenges where some `1 + w_k(t)` vanishes.
 

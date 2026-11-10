@@ -43,7 +43,7 @@ The steps of `reduce` at iteration 2 (`ad49e74`), which `UniKeccak.reduceWithK` 
    point claims (the ABI).
 
 The verdict is `reduce`'s: no error, every collected value zero, the stream consumed (`run`, `Accepts`). What
-`PCS_OPEN` then checks of the claims is `Opening.lean`'s.
+the block then proves of the claims is `Opening.lean`'s.
 
 Degrees are `ℕ`, whose subtraction saturates as the Rust's `degree` (F5); every Rust `u64` here stays below
 `2^64` at a valid shape (heights at most `31`).
@@ -190,9 +190,9 @@ def tableDegrees (t : Table) : ℕ × ℕ :=
   (t.flushes.pull.zip t.flushes.push).foldl (fun (acc : ℕ × ℕ) (pulled, pushed) ↦
     (acc.1 + tupleDegree pulled, acc.2 + tupleDegree pushed)) (1, 0)
 
-/-- **How the relations reach `PCS_OPEN`** (`Claims`). -/
+/-- **How the relations reach the declared claims** (`Claims`). -/
 inductive ClaimsMode where
-  /-- `PCS_OPEN`'s ABI: point claims, by the batching sumcheck. -/
+  /-- The claims' encoding: point claims, by the batching sumcheck. -/
   | point
   /-- Extension W: one weighted claim per commitment. -/
   | weighted

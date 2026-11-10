@@ -21,10 +21,10 @@ value is an EVM word (a natural number below `2^256`), and
 
 The hash `H` is a parameter: Keccak-256 (`KECCAK256`) as deployed, any function in the model.
 `run` adds what the contract checks before its calls: the calldata's length and selector, and that
-every node of `nonzero` is not zero; it gives the words written for the calls of `PCS_OPEN`
+every node of `nonzero` is not zero; it gives the words written for its checks of declared claims
 (`outputs`: a node's value, a constant, a word of calldata, or the stored root with its halves
-reversed, as `PCS_OPEN` reads a root). The value of the call is not modelled (the contract
-reverts on any).
+reversed, as a claim's root word). Whether a claim is declared is not modelled (the contract
+reverts on any that is not).
 -/
 
 namespace Implementation
@@ -72,7 +72,7 @@ def valuesOf (H : List UInt8 → Vector UInt8 32) (idx cd : List UInt8) (l : Lis
 def values (H : List UInt8 → Vector UInt8 32) (idx cd : List UInt8) : Array Nat :=
   valuesOf H idx cd nodes
 
-/-- A root as `PCS_OPEN` reads it (`machine::root_word`): the little-endian numbers of its two
+/-- A root as a claim's root word (`machine::root_word`): the little-endian numbers of its two
 16-byte halves, the first high. -/
 def rootWord (r : List UInt8) : Nat := leNat (r.take 16) * 2 ^ 128 + leNat (r.drop 16)
 
@@ -104,12 +104,12 @@ def splitRuns {α : Type} : List Nat → List α → List (List α)
   | [], _ => []
   | n :: ns, l => l.take n :: splitRuns ns (l.drop n)
 
-/-- The inputs of the calls of `PCS_OPEN`: the words as `runs` cuts them, each 32 bytes big-endian. -/
+/-- The claims the contract checks declared: the words as `runs` cuts them, each 32 bytes big-endian. -/
 def calls (words : List Nat) : List (List UInt8) :=
   (splitRuns runs words).map fun ws => ws.flatMap (beBytes 32)
 
-/-- **The contract's verdict**: it returns the word 1 exactly when it reaches its calls and every
-call attests (`attest`, `PCS_OPEN`). -/
+/-- **The contract's verdict**: it returns the word 1 exactly when it reaches its checks and every
+claim is attested (`attest`: declared, so proved by the block). -/
 def accepts (attest : List UInt8 → Bool) (H : List UInt8 → Vector UInt8 32) (idx : Vector UInt8 32)
     (cd : List UInt8) : Bool :=
   match run H idx cd with

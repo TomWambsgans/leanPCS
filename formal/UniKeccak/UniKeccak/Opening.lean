@@ -1,13 +1,13 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Transcribed from `crates/leanvm/univariate/src/contract.rs`
 -- (`variant_bytes`, `contract_iv`, `layout_words`, `calls`) and
 -- `crates/leanvm/univariate/tests/keccak_vm.rs` (`KECCAK_RUNS`, `KECCAK_LOG_BYTECODE`: leanVM 9d50c92a3's runs);
--- `PCS_OPEN`'s semantics is `UniStatement`'s (`pcsOpenWith`, this repository's `formal/Statement` opening).
+-- A declared claim's opening is `UniStatement`'s (`pcsOpenWith`, this repository's `formal/Statement` opening).
 module
 
 public import UniKeccak.Verifier
 
 /-!
-# The Keccak contract's IV, its `PCS_OPEN` calls, and the whole Keccak verifier
+# The Keccak contract's IV, its claims, and the whole Keccak verifier
 
 * **The layout words** (`layoutWordsK`, `layout_words(shape)`): the three words of `UniStatement.layoutWord`, `C1`,
   `C2` and the setup, from the Keccak VM's layouts (`layoutsOfK`).
@@ -67,8 +67,8 @@ end With
 def contractIvK (s : Shape) (v : KeccakVariant) (programIv : List UInt8) (roots : SetupRoots) : List UInt8 :=
   Id.run (contractIvKWith (m := Id) (fun x ↦ pure (keccakF1600 x)) s v programIv roots)
 
-/-- **`calls`** on the Keccak VM: the contract's `PCS_OPEN` inputs, in call order, one per commitment (`C1`'s and
-`C2`'s roots the stream's, the setup's a constant), each with its Keccak layout word; no matrices' calls. -/
+/-- **`calls`** on the Keccak VM: the claims the contract checks declared, in order, one per commitment (`C1`'s and
+`C2`'s roots the stream's, the setup's a constant), each with its Keccak layout word; no matrices' claims. -/
 def pcsCallsK (shape : Shape) (roots : SetupRoots) (r : Reduced) : List (List UInt8) :=
   let words := layoutWordsK shape
   let header : Commitment → List UInt8 × List UInt8
@@ -78,7 +78,7 @@ def pcsCallsK (shape : Shape) (roots : SetupRoots) (r : Reduced) : List (List UI
   r.openings.map fun (c, o) ↦ openingWords (header c).1 (header c).2 o
 
 /-- **A Keccak proof**: the stream (the row counts, then the rest) and the opening proof the block holds for each of
-the three `PCS_OPEN` calls (mumbai's format). -/
+the three claims (mumbai's format). -/
 structure KeccakProof where
   stream : Array UInt8
   c1 : Compile.Proof
@@ -93,7 +93,7 @@ section With
 variable {m : Type → Type} [Monad m] (F : KeccakState → m KeccakState)
 
 /-- **The Keccak verifier** over `F`: the run on the stream (point claims; its row counts read and range-checked
-there), its verdict, the three `PCS_OPEN` calls (`C1`, `C2`, the setup) with their layout words. -/
+there), its verdict, the three claims' openings (`C1`, `C2`, the setup) with their layout words. -/
 def verifyWithK (shape : Shape) (v : KeccakVariant) (iv : List UInt8) (roots : SetupRoots)
     (publicInput : Vector UInt8 32) (proof : KeccakProof) : m Bool := do
   let o ← runWithK F shape iv publicInput.toList proof.stream v .point

@@ -739,7 +739,7 @@ theorem walk_finish {β : Type} {v : ChanM Id Reduced} {p : WrM Id β} {seed : D
   rw [chan_run_bind, finish_chanAt]
   rfl
 
-/-- **The Keccak verifier on the honest prover's stream, main line** (`keccakMain`, `PCS_OPEN`'s point claims), at a
+/-- **The Keccak verifier on the honest prover's stream, main line** (`keccakMain`, the claims' point claims), at a
 pure Keccak-256 `H`, from a valid shape and row counts that fit, any commitment function, Flock's prover synchronising
 (`FlockSyncs`, its collected value `zero`) and the batching sumcheck's (`BatchSyncsAt`, its terminal `terminal`): the
 run returns `R`, its openings the prover's point claims (in the combined claims' order), no matrices' claim, its roots

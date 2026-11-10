@@ -2,15 +2,15 @@
 import RecCircuit.ExpandProof
 
 /-!
-# π1's `PCS_OPEN` inputs, rebuilt from π2's ports
+# π1's claims, rebuilt from π2's ports
 
-π2's verifier makes π1's `PCS_OPEN` calls from π2's public inputs, which the ports carry (`spec.rs`'s
+π2's verifier makes π1's claims from π2's public inputs, which the ports carry (`spec.rs`'s
 `Circuit::call_inputs`): a constant word as it is; a root its port's word (`word_limbs`'s inverse); an element its
 port's `element_word`; a pair's coordinate (π1-rec3's paired batch) `element_word` of `pair_point` of its element's
 port (`Circuit.callWordBytes`, `Circuit.callInputs`).
 
 On a satisfied circuit the compiler accepted, each of these words is π1's graph's word in `RecGraph`'s semantics over
-Keccak-f[1600] (`compile_sound_calls`) as `PCS_OPEN` takes it (`pcsWord`): a setup root (a constant word 0) as its
+Keccak-f[1600] (`compile_sound_calls`) as a claim holds it (`pcsWord`): a setup root (a constant word 0) as its
 root word (`machine::root_word`, each 16-byte half of the hash reversed), all other words byte for byte, a stream root
 included (π1's stream carries a root as its root word, its two WHIR scalars). The calls check
 (`callsOk`) ties π2's call words to π1's; the pair's semantics (`pair_val`) is `pair_point`'s on the expanded graph's
@@ -39,20 +39,20 @@ def limbsE (ls : List K) : E := eNew (K.lane (ls.getD 0 0)) (K.lane (ls.getD 1 0
 /-- A source's port's limbs. -/
 def sourceLimbs (w : ℕ → K) (s : Source) : List K := C.portLimbs w ((C.portOf s).getD 0)
 
-/-- **π1's `PCS_OPEN` word rebuilt from π2's ports** (`Circuit::call_inputs` on the public inputs the ports carry). -/
+/-- **π1's claim word rebuilt from π2's ports** (`Circuit::call_inputs` on the public inputs the ports carry). -/
 def callWordBytes (w : ℕ → K) : CallWord → List UInt8
   | .const x => wordBytes32 x
   | .root i => limbsBytes (C.sourceLimbs w (.root i))
   | .element e => UniStatement.elementWord (limbsE (C.sourceLimbs w (.element e)))
   | .pair e co => UniStatement.elementWord ((pairPoint (limbsE (C.sourceLimbs w (.element e)))).getD co 0)
 
-/-- **π1's `PCS_OPEN` inputs rebuilt from π2's ports**, in call order. -/
+/-- **π1's claims rebuilt from π2's ports**, in call order. -/
 def callInputs (w : ℕ → K) : List (List UInt8) := C.calls.map (·.flatMap (C.callWordBytes w))
 
 end Circuit
 
-/-- **The word of a `PCS_OPEN` call at position `k`**, of the graph's word `w` and its bytes: a setup root (a constant
-word 0, the hash as π1's contract holds it) as `PCS_OPEN`'s root word (`machine::root_word`); every other word as it
+/-- **The word of a claim at position `k`**, of the graph's word `w` and its bytes: a setup root (a constant
+word 0, the hash as π1's contract holds it) as a claim's root word (`machine::root_word`); every other word as it
 is, a stream root included (the stream's 32 bytes are the root's root word). -/
 def pcsWord (k : ℕ) : RecGraph.Word → List UInt8 → List UInt8
   | .const _, bytes => if k = 0 then rootWordBytes bytes else bytes
@@ -113,7 +113,7 @@ theorem beNat_eq_leNat_reverse (s : List UInt8) : beNat s = leNat s.reverse := b
 theorem be64_beNat (s : List UInt8) (hs : s.length = 8) : be64 (UInt64.ofNat (beNat s)) = s := by
   rw [beNat_eq_leNat_reverse, be64_leNat _ (by simpa using hs), List.reverse_reverse]
 
-/-- **A root port's word is the root's `PCS_OPEN` word**: the stream's 32 bytes as they are. -/
+/-- **A root port's word is the root's claim word**: the stream's 32 bytes as they are. -/
 theorem root_bytes (raw : List UInt8) (hr : raw.length = 32) :
     Circuit.limbsBytes ((List.range 4).map fun l => F64.ofNat (beNat (slice raw ([24, 16, 8, 0].getD l 0) 8))) =
       raw := by
@@ -360,9 +360,9 @@ theorem call_node_lt (hc : compile (ofRG g rootsAt iv) = .ok c) {ci k id : ℕ} 
   have := ht.2.2 _ hm1 _ hm2
   simpa [ofRG] using this
 
-/-- **π2's `PCS_OPEN` inputs, rebuilt from its ports, are π1's graph's call words**, in `RecGraph`'s semantics over
-Keccak-f[1600], on the public input and the stream the witness encodes: word by word, word 0 (each call's root) as
-`PCS_OPEN` takes it (`pcsWord`: a setup root as its root word), pairs' coordinates included. -/
+/-- **π2's rebuilt claims of π1, from its ports, are π1's graph's call words**, in `RecGraph`'s semantics over
+Keccak-f[1600], on the public input and the stream the witness encodes: word by word, word 0 (each claim's root) as
+a claim holds it (`pcsWord`: a setup root as its root word), pairs' coordinates included. -/
 theorem compile_sound_calls (hc : compile (ofRG g rootsAt iv) = .ok c) {pub : ℕ → List F192} {w : ℕ → K}
     (hw : c.circuit.toPiop.Satisfies pub (emb w)) :
     c.circuit.calls.length = g.calls.length ∧
@@ -459,8 +459,8 @@ theorem flatMap_range {α β : Type} (l : List α) (d : α) (f : α → List β)
     rw [List.flatMap_cons, List.length_cons, List.range_succ_eq_map, List.flatMap_cons, List.flatMap_map, ih]
     rfl
 
-/-- **π2's `PCS_OPEN` inputs, rebuilt from its ports, call by call**: each call's bytes are π1's graph's as `PCS_OPEN`
-takes them (a setup root as its root word). -/
+/-- **π2's rebuilt claims of π1, from its ports, claim by claim**: each claim's bytes are π1's graph's as a claim
+holds them (a setup root as its root word). -/
 theorem compile_sound_callInputs (hc : compile (ofRG g rootsAt iv) = .ok c) {pub : ℕ → List F192} {w : ℕ → K}
     (hw : c.circuit.toPiop.Satisfies pub (emb w)) :
     c.circuit.callInputs w = g.calls.map fun ws => (List.range ws.length).flatMap fun k =>

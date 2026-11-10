@@ -8,7 +8,7 @@ import UniSound.Ids.Model
 # Graph = verifier for the Keccak VM's π1-rec3: the statement, and its reduction
 
 * `verifierOutputsWithK`: the outputs of `UniKeccak`'s verifier at `keccakRec3` and the point-claim ABI (`runWithK`, its
-  three `PCS_OPEN` calls `pcsCallsK`, the values it collected as zeros, nothing nonzero), on the shape and setup
+  three claims `pcsCallsK`, the values it collected as zeros, nothing nonzero), on the shape and setup
   roots the graph was recorded with (`keccak128`, `referenceRootsK`).
 * `MergeHazardK`: the merge hazard of the Keccak verifier. `combine` merges points by value in `UniKeccak`,
   by symbol in the graph; the merge that changes a weight is of `y(t)` (the `SHA3` table's `q_flock` slot point, its
@@ -29,7 +29,7 @@ section With
 variable {m : Type → Type} [Monad m] (F : KeccakState → m KeccakState)
 
 /-- **The Keccak verifier's outputs** at π1-rec3's Fiat–Shamir shape (`keccakRec3`) and the point-claim ABI: the run
-on the stream (`runWithK`), and on success its `PCS_OPEN` inputs (`pcsCallsK`) and the values it collected as zeros;
+on the stream (`runWithK`), and on success its claims (`pcsCallsK`) and the values it collected as zeros;
 nothing is required nonzero. A run that ends in an error has none. -/
 def verifierOutputsWithK (shape : UniStatement.Shape) (roots : SetupRoots) (iv publicInput : List UInt8) (stream : Array UInt8) :
     m (Option Outputs) := do

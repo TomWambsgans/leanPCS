@@ -6,7 +6,7 @@ import UniKeccakComplete.K.Batch
 # What the verifier's relations and claims mean on the stacks
 
 The verifier states its relations as terms `coefficient · column(point)` (`UniStatement.Term`) and combines each
-commitment's by the powers of `ρ` (`combine`); `PCS_OPEN`, through the batching sumcheck, checks each combined claim
+commitment's by the powers of `ρ` (`combine`); the block, through the batching sumcheck, proves each combined claim
 against its committed stack. Their meaning on a stack (`2^vars` words of `K`, read in `E`):
 
 * **a term's value** (`termEval`): the pairing of its weight on the stack (`denseWeight` of the one-term claim: its
@@ -15,8 +15,8 @@ against its committed stack. Their meaning on a stack (`2^vars` words of `K`, re
 * **a relation holds** (`Relation.Holds`): its terms' values add up to its value, each term on its own commitment's
   stack and layout;
 * **a combined claim holds** (`Combined.Holds`): the pairing of its weight (`denseWeight`) with the stack is its
-  value. This is what the batching sumcheck reduces to its point claim (and what `PCS_OPEN`'s weighted claim,
-  extension W, would check directly).
+  value. This is what the batching sumcheck reduces to its point claim (and what a weighted claim,
+  extension W, would have the block prove directly).
 -/
 
 namespace UniKeccakComplete

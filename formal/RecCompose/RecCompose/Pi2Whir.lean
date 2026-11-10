@@ -31,7 +31,7 @@ permutation `F`:
 * **At π2's layouts** (`pi2Layout`: `W`, `Q`, the setup at `m = 24`): `NewOK` by decision on the chunks' numbers,
   admissibility by `WhirBridge.admissible_large` (`24`, `28`, `25` variables): **`pi2Open_honest`**,
   **`pi2OpeningWith_honest`** (the Statement's `openingWith`, `commitWith`, `proveOpeningWith` over `F`, as the
-  contract's `PCS_OPEN` runs them), **`pi2Open_fails_only_at_pow`**.
+  block runs them for the contract's claims), **`pi2Open_fails_only_at_pow`**.
 
 No stack is evaluated: the stacks are arbitrary; only the layouts' numbers are decided by the kernel.
 -/
@@ -307,8 +307,8 @@ theorem pi2Open_honest (H : Bytes → Digest) (F : KeccakState → KeccakState) 
   obtain ⟨⟨vars, lc, logN, chunks, rfl, hok, hd, h24, h28⟩⟩ := hL
   exact ofChunks_open_honest H F fuel hok hd (by omega) (WhirBridge.admissible_large h24 h28) stack claims hne hcl hπ
 
-/-- **`PCS_OPEN` accepts π2's honest openings**: the Statement's `openingWith` over `F` (Keccak-256 the sponge over
-`F`) accepts every proof the Statement's `proveOpeningWith` makes of true claims on the stack's `commitWith`. -/
+/-- **The opening check accepts π2's honest openings**: the Statement's `openingWith` over `F` (Keccak-256 the sponge
+over `F`) accepts every proof the Statement's `proveOpeningWith` makes of true claims on the stack's `commitWith`. -/
 theorem pi2OpeningWith_honest (F : KeccakState → KeccakState) (fuel : ℕ) {L : PcsQuotient.Layout}
     (hL : Pi2Layout L) (stack : Array K) (claims : List PcsQuotient.Claim) (hne : claims ≠ [])
     (hcl : ∀ c ∈ claims, c.point.length = L.vars ∧ ClaimOn L (fun j ↦ stack.getD j 0) (c.point, c.value))

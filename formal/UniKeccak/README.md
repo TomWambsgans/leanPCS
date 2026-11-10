@@ -7,7 +7,7 @@ The Keccak VM (`docs/leanvm/univariate/KECCAK.md`, `formal/KeccakVm`) is leanVM 
 
 - **its verifier as computable Lean**, `reduce` of `crates/leanvm/univariate/src/verifier.rs` at a `Variant`, for
   the main line (`KECCAK_MAIN`) and π1-rec3's shape (`KECCAK_REC3`), with the contract's IV and its
-  three `PCS_OPEN` calls (`contract.rs`);
+  three claims (`contract.rs`);
 - **the end statements**, against the Keccak VM's relation `KeccakVm.KvHolds F`: knowledge soundness and completeness
   of the main line and of π1-rec3's shape. `F : KeccakVm.KeccakFlockSpec` (the Keccak-f block) is a parameter.
 
@@ -97,15 +97,15 @@ reads the vectors of `crates/leanvm/univariate/tests/lean_keccak_vectors.rs`:
     full table, `2^h − 1`, random), 1 count out of range, 3 mutations, 1 truncated stream and 1 extended stream;
   - the main line at 128 and 1,000 signatures: random, accepting and mutated streams;
   - **the three real Keccak proofs** (`tests/vectors/keccak.txt`, main line at 32 signatures; `keccak128_rec3.txt`,
-    π1-rec3 at the 128-signature reference; `keccak_rec3.txt`, π1-rec3 at 400 signatures), with the contract's `PCS_OPEN` inputs, and three mutations each. Their IV binds their
+    π1-rec3 at the 128-signature reference; `keccak_rec3.txt`, π1-rec3 at 400 signatures), with the claims the contract checks declared, and three mutations each. Their IV binds their
     own setup root `F` (`SETUPROOTS`, as `tests/evm_vectors.rs` builds their contract).
 - On every vector, the Lean and the Rust agree on **every value**: the result (and its error), every challenge
   (narrow ones as drawn), every value required to be zero (the counts' range checks, Flock's structured terminal,
   the batch's terminal), the verdict, the number of relations, each stack's variables, every opening (point claims:
   point and value; weighted claims: points, terms in order, value, relations), no matrices; the row counts the stream
   announces; the five Keccak layout words; the Keccak contract's IV (`contractIvK` of the program's IV and the
-  vector's roots); the run's layouts are `layoutsOfK` of the shape. On the real proofs, **every `PCS_OPEN` input the
-  contract calls with**, word for word (`pcsCallsK`).
+  vector's roots); the run's layouts are `layoutsOfK` of the shape. On the real proofs, **every claim the
+  contract checks declared**, word for word (`pcsCallsK`).
 - Self-tests: every Keccak run's shape is valid; `C1` holds `q_flock` at `h_SHA3 + 11` variables and the `SHA3`
   table's 86 columns; `source` is a permutation of the lanes with `rho`'s rotations; there are 40 shift offsets;
   `C1` is `2^28` words at 400 signatures.
@@ -114,15 +114,15 @@ reads the vectors of `crates/leanvm/univariate/tests/lean_keccak_vectors.rs`:
 `keccak128_rec3.txt` and more shapes):
 - **90/90 vectors agree on every value**: 31 accepted by both and 59 rejected by both. By kind (accepted/rejected):
   accept 14/0, counts 12/0, badcount 0/6, random 0/14, mutate 2/18, truncate 0/6, extend 0/6, real 3/0, real-mutate
-  0/9 (the real proofs: `keccak.txt`, `keccak128_rec3.txt`, `keccak_rec3.txt`, each with every `PCS_OPEN` input word
+  0/9 (the real proofs: `keccak.txt`, `keccak128_rec3.txt`, `keccak_rec3.txt`, each with every claim word
   for word). The two accepted mutations are weighted-mode streams mutated after the last check: weighted mode collects no
-  batch terminal, so only `PCS_OPEN` would reject them.
+  batch terminal, so only the openings would reject them.
 - 14/14 terminal vectors agree: the structured terminal, the Rust's walk and Lean's walk.
 - All 6 self-tests hold.
 - The vectors take 346 s (h1 earlier: 428 s); the whole run takes about 30 minutes, most of it the 14 Lean walks of the `2^17`-position
   block in the interpreter.
 
-**Defined, not tested**: `PCS_OPEN`'s WHIR (the Rust has only a mock), the setup's commitment, `kvColumn`/`kvStack`,
+**Defined, not tested**: the claims' WHIR (the Rust only mocks the frame), the setup's commitment, `kvColumn`/`kvStack`,
 `setupStackK`, the extractor, the experiments, the Props. `verifyWithK`'s run and calls are the tested `runK` and
 `pcsCallsK`'s claims.
 

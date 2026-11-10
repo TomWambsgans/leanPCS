@@ -7,8 +7,8 @@ import RecGraphKeccak.Circuit
 
 RecGraphKeccak's `pi1rec3K_end` (RecCircuit's `compile_sound_end` at the Keccak π1-rec3's emitted graph; no hypothesis
 but the compiler's run `hc`): on π2's circuit for the Keccak π1-rec3's emitted graph, every witness satisfying π2's PIOP has ports and rebuilt
-`PCS_OPEN` inputs equal to the graph's outputs over Keccak-f[1600] (`EndStatement`: the statement's words, the roots'
-words, the zero checks' values, the constant ones `0`, π1's three calls word for word, word 0 as `PCS_OPEN`'s root
+claims equal to the graph's outputs over Keccak-f[1600] (`EndStatement`: the statement's words, the roots'
+words, the zero checks' values, the constant ones `0`, π1's three claims word for word, word 0 as a claim's root
 word `pcsWord`). What is left to the field `Pi2Layers.circuit` is the bridge from that statement, read at π2's
 public limbs, to RecStatement's `Pi1GraphAccepts` with the contract's π1 openings (`CircuitBridge`), and that the
 Lean recording of π1-rec3's verifier is the emitted graph (`GraphsAgree`).
@@ -35,7 +35,7 @@ open scoped ENNReal
 
 /-- **π1's roots' words in π2's calls name π1-rec3's WHIR roots** (the composition's finding; the fix, option (a),
 branch `fix-pi1-root`, merged): the word 0 of π1's `C1`, `C2` calls the circuit rebuilds from a root's 32 stream bytes
-`raw` (`RecCircuit.pcsWord 0 (.stream at) raw`), decoded as the contract's `PCS_OPEN` decodes it (`rootOfWord`), is the
+`raw` (`RecCircuit.pcsWord 0 (.stream at) raw`), decoded as the contract's claims are decoded (`rootOfWord`), is the
 digest π1-rec3's verifier opens (`UniStatement.rootOf` of the halves `nextRoot` reads, which is `rootOfWord raw`). At
 `leanvm-rec` d93c375 it was false: `pcsWord` reversed each 16-byte half and π2's stream carried the reversed word (the
 real vectors: π2's stream started `b25c056f…`, π1's `C1` root `f30c504d…`), so the contract decoded `digestOfBytes32 raw`;

@@ -19,7 +19,7 @@ code text the Statement's, only the hash changed:
   `sumcheckDrawnH`, `sumcheckPairsDrawnH`;
 * Flock on the Keccak-f block: `Flock.zerocheckFsH`, `Flock.ringEndH`, `frontKH`, `verifyWalkedKH`;
 * the batch `batchKH`, the walk `reduceWithKH`, the run on calldata `runWithKH`;
-* the Keccak contract's IV `contractIvKWithH`, `KDeployment.ivWithH`; `PCS_OPEN` `pcsOpenWithH` (WithHash's
+* the Keccak contract's IV `contractIvKWithH`, `KDeployment.ivWithH`; a claim's opening `pcsOpenWithH` (WithHash's
   `openingWithH`), the verifier `verifyWithKH`, the deployed verifier `KDeployment.verifierWithH`;
 * the setup `setupTreeKWithH` (WithHash's `commitWithH`).
 

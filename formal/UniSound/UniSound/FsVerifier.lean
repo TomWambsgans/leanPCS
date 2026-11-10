@@ -26,7 +26,7 @@ import Soundness.EarlyStop
   word's variables, and `Flock`'s matrices' claim of `A0`'s and `B0`'s: `restR_good`, since
   `PcsQuotient.openingWith` rejects claims of another length before any query); on such a result
   it is the five calls one after the other, their verdicts and-ed (`restR_unroll`, `seqAnd`), each
-  `PCS_OPEN` call F2's `ourVerifierEarly` on the plain layout (`pcsOpen_eq_early`, by
+  claim's opening F2's `ourVerifierEarly` on the plain layout (`pcsOpen_eq_early`, by
   `Bridge.openingWith_eq_ourVerifier'`), on the composed openings' inputs (the roots by
   `UniOutRoots` and the rounds' roots, `root_at`; the claims `cl1 … cl5`, `claims_uCl`), so it
   accepts at most as often as the five `ourVerifier`s all do (`early_le_rpm`, five times), and its
@@ -194,7 +194,7 @@ section Support
 variable (shape : UniStatement.Shape) (roots : SetupRoots) (proof : UniProof)
 variable {ι : Type} {spec : OracleSpec.{0, 0} ι} (F : KeccakState → OracleComp spec KeccakState)
 
-/-- **`PCS_OPEN` rejects a claim of another length**, before any query. -/
+/-- **The opening check rejects a claim of another length**, before any query. -/
 theorem pcsOpen_len (vars : ℕ) (root : Digest) (pt : List E) (v : E) (p : Compile.Proof) :
     ∀ b ∈ support (pcsOpenWith F vars root [⟨pt, v⟩] p), b = true → pt.length = vars := by
   intro b hb hbt
@@ -225,7 +225,7 @@ end Support
 
 /-! ## The five openings -/
 
-/-- **`PCS_OPEN` is F2's opening with the Statement's early stop**, on the plain layout of
+/-- **The opening check is F2's opening with the Statement's early stop**, on the plain layout of
 `24 … 28` variables, its two calls answered over `π`. -/
 theorem pcsOpen_eq_early (v : ℕ) (h1 : 24 ≤ v) (h2 : v ≤ 28) (root : Digest)
     (x : Stmt (plainL v).stacking) (cs : List PcsQuotient.Claim)
