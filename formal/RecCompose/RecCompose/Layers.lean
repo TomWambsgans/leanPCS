@@ -24,11 +24,13 @@ compiled circuit's relation, but with probability `ε2 Q`) refined into the laye
   `P`, with probability at most `pi2BoundE e Q`. It is `UniSound.FsLayer128` for π2: its proof is the port of
   `UniSound/{Fs128, FsGame128, FsFinal128}.lean` (and the bridges `FsCouple`, `FsVerifier`, `FsWalk*`, `FsExtract`,
   `FsSetup`) to π2's transcript, through `Compose.knowledgeSoundness_listChainU_closed128` (π2's three rounds),
-  `Compose.prEvent_doomF_le` at `WhirBridge.largeShapes` (`W` of `2^24` words, the setup `2^25`, `Q` `2^28`, once per
-  fresh query) and `Compose.prEvent_pairTr_le` (π2's seed `name ‖ iv ‖ input`).
+  `WhirBridge.Pcs.pcs_union_sound` for π2's five PCS openings (`W` of `2^24` words, the setup `2^25`, `Q`'s three
+  `2^28`, charged once) and `Compose.prEvent_pairTr_le` (π2's seed `name ‖ iv ‖ input`).
 * **`Pi2Tables D C`** (the tables' layer; **open, `lean-rec-compose`**): what the candidates stand for (`RecPiop.Model`:
-  `W`'s polynomial, which takes the candidate's witness values on `V_m`, and its true fold values; `Q`'s `h`, `q`; the
-  setup's `σ`, `κ`), and the claims on the candidates as the model's values (`checks_claims_iff_post2`'s left side).
+  `W`'s polynomial, which takes the candidate's witness values on `V_m`, and its true fold values; `Q`'s `h`, `q`, `P`,
+  `q_P` and the empty slot `S`; the setup's `σ`, `κ`), and the claims on the candidates as the model's values
+  (`checks_claims_iff_post2`'s left side).
+
 * **`Pi2Facts D C`** (the circuit's facts, established by the compiler's checks and tests, `RecCircuitTest/Main.lean`,
   `RecStatementTest/Runner.lean`; `SpecOf` by `RecStatement.Lemmas.SpecLink` and the circuit compiler, `lean-rec-statement`
   and `lean-rec-circuit`): `SpecOf` of π2's verifier's constants and the compiled circuit, the circuit valid, its shape
@@ -62,13 +64,14 @@ abbrev Pi2St : Type := Vector UInt8 32 × List E
 /-- A decoded stack as its words. -/
 def stkOf {n : ℕ} (w : Vector K n) : Stk := fun j ↦ w.toArray.getD j 0
 
-/-- **A stack's witness values** `w(ω_i)` (its table read back through `W`'s layout, `basisValue` in the `B` basis). -/
+/-- **A stack's witness values** `w(ω_i)` (its leading `N` words, `w`'s coefficients in the `B` basis, read back:
+`basisValue`). -/
 def witnessOfStk (D : RecDeployment) (roots : RecSetupRoots) (c : Stk) : ℕ → K :=
   let cc := (D.circuitAt roots.pi1).circuit
-  let table := Array.ofFn (n := 2 ^ cc.logN) fun i ↦ (wLayout D roots).readEntry c i.val
+  let table := Array.ofFn (n := 2 ^ cc.logN) fun i ↦ c i.val
   fun i ↦ UniStatement.basisValue table cc.logN i
 
-theorem witnessOf_eq (D : RecDeployment) (roots : RecSetupRoots) (w : Vector K (2 ^ (wLayout D roots).logN)) :
+theorem witnessOf_eq (D : RecDeployment) (roots : RecSetupRoots) (w : Vector K (2 ^ wVars D roots)) :
     witnessOf D roots w = witnessOfStk D roots (stkOf w) := rfl
 
 /-- **π2's public scalars from the calldata** (π2's run over Keccak-f[1600], any IV: they are the stream's public data,
@@ -117,22 +120,24 @@ def pi2Fac (j : ℕ) : ℕ := if j = 0 then 9952 else 9952 * 3564
 
 /-! ## The claims on the candidates -/
 
-/-- **A claim holds of a stack under a layout**: the table the layout reads off the stack (`readEntry`) has, at the
-point, the multilinear extension the value (`opening::Claim`; `eqBits`, the first coordinate the lowest bit). -/
-def ClaimOn (L : PcsQuotient.Layout) (stack : Stk) (c : List E × E) : Prop :=
-  ∑ i ∈ range (2 ^ L.vars), PcsQuotient.eqBits c.1 i * ofK (L.readEntry stack i) = c.2
+/-- **A PCS claim holds of a stack of `vars` variables**: the stack's multilinear polynomial (its `2^vars` words, word
+`i` at the cube point of `i`'s bits, the first coordinate the lowest bit) has the value at the point
+(`UniSound.mleStk`, as π1's `UniKeccakSound.ClaimsHoldK`; `WhirBridge.Pcs.colEval`, what a PCS opening proves). -/
+def ClaimOn (vars : ℕ) (stack : Stk) (c : List E × E) : Prop :=
+  UniSound.mleStk stack vars c.1 = c.2
 
-/-- **π2's five claims hold of the candidates** (π2v3), for the run's inputs at the setup's roots: `W`'s (its fold at
-`ρ`) of `cW`, `Q`'s three (the identity's, the pushes', `h`'s top coefficient) of `cQ`, the setup's (at `β`, value `ξ`)
-of the setup's table (`Pi2Circuit.setupStack`). -/
+/-- **π2's five claims hold of the candidates** (π2v3 on the PCS claims), for the run's inputs at the setup's
+commitments: `W`'s (its fold at `ρ`) of `cW`, `Q`'s three (the identity's, the pushes', the sum's) of `cQ`, the setup's
+(at `β`, value `ξ`) of the setup's stack (`Pi2Circuit.setupStack`, zeros beyond), each a point of its whole stack
+(`stackVars`: `W`'s, `Q`'s, the setup's variables). -/
 def Pi2ClaimsHold (D : RecDeployment) (roots : RecSetupRoots) (inp : Inputs E) (cW cQ : Stk) : Prop :=
   let c := D.circuitAt roots.pi1
   let out := (Spec.of c.circuit).core.run inp
-  ClaimOn (layoutsOf c.circuit.logN).1 cW (out.witnessPoint, out.fold) ∧
-    ClaimOn (layoutsOf c.circuit.logN).2.1 cQ (out.quotientPoint, out.quotientValue) ∧
-    ClaimOn (layoutsOf c.circuit.logN).2.1 cQ (out.pushesPoint, out.pushesValue) ∧
-    ClaimOn (layoutsOf c.circuit.logN).2.1 cQ (out.sumPoint, out.sumValue) ∧
-    ClaimOn (layoutsOf c.circuit.logN).2.2 (fun j ↦ c.setupStack.getD j 0) (out.setupPoint, inp.ξ)
+  ClaimOn (stackVars c.circuit.logN).1 cW (out.witnessPoint, out.fold) ∧
+    ClaimOn (stackVars c.circuit.logN).2.1 cQ (out.quotientPoint, out.quotientValue) ∧
+    ClaimOn (stackVars c.circuit.logN).2.1 cQ (out.pushesPoint, out.pushesValue) ∧
+    ClaimOn (stackVars c.circuit.logN).2.1 cQ (out.sumPoint, out.sumValue) ∧
+    ClaimOn (stackVars c.circuit.logN).2.2 (fun j ↦ c.setupStack.getD j 0) (out.setupPoint, inp.ξ)
 
 /-- The opened transcript of a run's first two rounds, on the candidates `cW`, `cQ` (round `0`: `W`'s root, its
 out-of-domain answer `ow`, `α, β, γ`; round `1`: `Q`'s root, its answer `oq`, `t`). -/
@@ -141,10 +146,10 @@ def pi2Opened (cW cQ : Stk) (ow oq : List E) (inp : Inputs E) : Compose.Opened S
 
 /-! ## The Fiat–Shamir layer -/
 
-/-- **π2's bound at the rounds' error `e`** (`pi2Bound`'s form): the openings once, the chain, the seed's pair, the
-permutation. -/
+/-- **π2's bound at the rounds' error `e`** (`pi2Bound`'s form): the openings once (`pi2OpenErr`), the chain, the
+seed's pair, the permutation. -/
 noncomputable def pi2BoundE (e : ℝ≥0∞) (Q : ℕ) : ℝ≥0∞ :=
-  (pi2N Q : ℝ≥0∞) * (269 * (2 : ℝ≥0∞)⁻¹ ^ 137 + ((5 * pi2N Q : ℕ) : ℝ≥0∞) / 2 ^ 256) +
+  (pi2N Q : ℝ≥0∞) * (pi2OpenErr + ((5 * pi2N Q : ℕ) : ℝ≥0∞) / 2 ^ 256) +
     (pi2N Q : ℝ≥0∞) * (e + ((8 * pi2N Q : ℕ) : ℝ≥0∞) / 2 ^ 256) +
       ((2 * pi2N Q ^ 2 : ℕ) : ℝ≥0∞) / 2 ^ 256 +
         ((2 ^ 81 + Q : ℕ) : ℝ≥0∞) ^ 2 / 2 ^ 508
@@ -154,15 +159,17 @@ theorem pi2BoundE_roundErr (Q : ℕ) : pi2BoundE pi2RoundErr Q = pi2Bound Q := r
 /-- **The Fiat–Shamir layer for π2** (proved at the real deployment: `pi2FsLayer_real`, `FsClosed.lean`): for every family, over the setup's roots, of
 round-by-round sound protocols on π2's rounds, their errors times the lists of the roots before them at most `e`, whose
 state before round `0` is a property `P` of `W`'s candidate and whose state after `ρ` follows from π2's check
-(`all ≠ 0`, the contract's one) with the four claims true on the candidates, the contract accepts while no candidate of
+(`all ≠ 0`, the contract's one) with π2's five claims true on the candidates (`Pi2ClaimsHold`), the contract accepts
+while no candidate of
 `W`'s committed word (π2's extractor's list) has `P` with probability at most `pi2BoundE e Q`.
 
 Its proof (`FsDefs.lean` … `FsClosed.lean`) is `UniSound.fsLayer128_holds`'s for π2's transcript: the chain
-`Compose.ChainSpecU` over π2's encoding (the 24-byte scalars, the roots' reversed halves, the public data as round
-`0`'s bytes before `W`'s root), `Compose.knowledgeSoundness_listChainU_closed128`, π2's three openings as `WhirOp`s on
-π2's public layouts (`W` `2^24`, the setup `2^25`, `Q` `2^28`) bounded once (`Compose.prEvent_doomF_le_large`), the
-seed's pair (`Compose.prEvent_pairTr_le`), and the bridges from `recSoundnessExperiment2` to the composed game (the
-setup's four trees and π2's IV, the verifier as the chain, the extractor's decoders listing the chain's candidates). -/
+`Compose.ChainSpecU` over π2's encoding (the 24-byte scalars, the roots' bytes and out-of-domain answers, the public
+data as round `0`'s bytes before `W`'s root), `Compose.knowledgeSoundness_listChainU_closed128`, π2's five PCS openings
+(`W` `2^24`, the setup `2^25`, `Q`'s three `2^28`; `Compose.GOps`, as π1's `UniKeccakSound.Fs.PcsOpK`) bounded once
+(`WhirBridge.Pcs.pcs_union_sound`, as π1's `hU_uniK`), the seed's pair (`Compose.prEvent_pairTr_le`), and the bridges
+from `recSoundnessExperiment2` to the composed game (the setup's trees with their answers and π2's IV, the verifier as
+the chain, the extractor's decoders listing the chain's candidates). -/
 def Pi2FsLayer (D : RecDeployment) : Prop :=
   ∀ (R : RecSetupRoots → Compose.Piop pi2K Stk) (e : ℝ≥0∞),
     (∀ roots, ∀ j < 3, (pi2Fac j : ℝ≥0∞) * (R roots).err j ≤ e) →
@@ -195,13 +202,13 @@ structure Pi2Circuits (D : RecDeployment) where
 variable {D : RecDeployment}
 
 /-- `compile_ok` at π1's contract IV of the setup's roots (32 bytes, `pi1IvAt_length`). -/
-theorem Pi2Circuits.compile_okAt (C : Pi2Circuits D) (roots : UniStatement.SetupRoots) :
+theorem Pi2Circuits.compile_okAt (C : Pi2Circuits D) (roots : UniKeccak.SetupRootsK) :
     RecCircuit.compile (RecCircuit.ofRG RecGraphKeccak.Pi1.pi1GraphK C.rootsAt (D.pi1IvAt roots)) =
       .ok (C.compiled (D.pi1IvAt roots)) :=
   C.compile_ok _ (D.pi1IvAt_length roots)
 
 /-- `stream_eq` at π1's contract IV of the setup's roots. -/
-theorem Pi2Circuits.stream_eqAt (C : Pi2Circuits D) (roots : UniStatement.SetupRoots) (w : ℕ → K) :
+theorem Pi2Circuits.stream_eqAt (C : Pi2Circuits D) (roots : UniKeccak.SetupRootsK) (w : ℕ → K) :
     D.pi1Stream w = ((C.compiled (D.pi1IvAt roots)).streamW
       (RecCircuit.ofRG RecGraphKeccak.Pi1.pi1GraphK C.rootsAt (D.pi1IvAt roots)) w).toArray :=
   C.stream_eq _ (D.pi1IvAt_length roots) w
@@ -252,9 +259,10 @@ noncomputable abbrev pi2Omega : ℕ → E := Heap.omega UniComplete.Domain.basis
 
 /-- **The tables' layer** (open, `lean-rec-compose`): for each setup, what the candidates stand for (`RecPiop.Model` of
 the compiled circuit: `W`'s polynomial `wP c`, of degree below `N`, taking the candidate's witness values on `V_m`, and
-its true fold values, the cells from them the row's cells `w(t + ω_x)`; `Q`'s `h`, `P` below `N`, `q`, `q_P` below `2N`; the
-setup's `σ`, `κ`; the ports' `Φ`, `phiPoly`; the identity claim's constant `c_3`), and the claims, true on the
-candidates, as the model's values (π2v3): `Q`'s identity claim normalised (`idEq`), its pushes' claim (`pushEq`) and
+its true fold values, the cells from them the row's cells `w(t + ω_x)`; `Q`'s `P` and `S` (slot `12`) below `N`, `h`
+(`h_0 + Z_V h_1`, the second digit in slots `1, 5, 9`), `q`, `q_P` below `2N`; the setup's `σ`, `κ`; the ports' `Φ`,
+`phiPoly`; the identity claim's constant `c_3`), and the claims, true on the candidates, as the model's values (π2v3,
+`P`'s share `P(t) + S(t)/Z_V(t)`): `Q`'s identity claim normalised (`idEq`), its pushes' claim (`pushEq`) and
 `Σ_V h = 0`, the setup's `ξ = κ(t) + β σ(t)`, `W`'s its true fold at `ρ` (`RecStatement.checks_claims_iff_post2`'s left
 side; the claims' values are `run_quotientValue`, `run_pushesValue`, their points `run_u`, `digitsScale_eq`,
 `RecPiop`'s `sum_tablePoly_omega`). -/
@@ -268,9 +276,11 @@ structure Pi2Tables (D : RecDeployment) (C : Pi2Circuits D) where
     ((Spec.of (D.circuitAt roots.pi1).circuit).core.run inp).all ≠ 0 → Pi2ClaimsHold D roots inp cW cQ →
       idEq ((Spec.of (D.circuitAt roots.pi1).circuit).core.run inp) (c3Of (Spec.of (D.circuitAt roots.pi1).circuit).core)
           ((Spec.of (D.circuitAt roots.pi1).circuit).core.run inp).rhoQ (((model roots).hP cQ).eval inp.t)
-          (((model roots).qP cQ).eval inp.t) (((model roots).pP cQ).eval inp.t) (((model roots).qPP cQ).eval inp.t)
-          (QuotientSecurity.sq^[(C.G roots).logN] inp.t) inp.s ∧
-        pushEq ((Spec.of (D.circuitAt roots.pi1).circuit).core.run inp) inp.ρ (((model roots).pP cQ).eval inp.t)
+          (((model roots).qP cQ).eval inp.t)
+          (((model roots).pP cQ).eval inp.t + ((model roots).sP cQ).eval inp.t / ((C.G roots).zV pi2Omega).eval inp.t)
+          (((model roots).qPP cQ).eval inp.t) (QuotientSecurity.sq^[(C.G roots).logN] inp.t) inp.s ∧
+        pushEq ((Spec.of (D.circuitAt roots.pi1).circuit).core.run inp) inp.ρ
+          (((model roots).pP cQ).eval inp.t + ((model roots).sP cQ).eval inp.t / ((C.G roots).zV pi2Omega).eval inp.t)
           (((model roots).qPP cQ).eval inp.t) (QuotientSecurity.sq^[(C.G roots).logN] inp.t) inp.s ∧
         ∑ i ∈ range (C.G roots).N, ((model roots).hP cQ).eval (pi2Omega i) = 0 ∧
         inp.ξ = (model roots).setup.κP.eval inp.t + inp.β * (model roots).setup.σP.eval inp.t ∧
