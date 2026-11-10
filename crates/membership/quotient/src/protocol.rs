@@ -151,7 +151,7 @@ pub const MIN_LOG_ROWS: usize = 17;
 pub const MAX_LOG_ROWS: usize = 22;
 
 /// The most rows the reduction alone takes (its domain's basis, `m + 3 <= EXT_BASIS`): circuits past
-/// [`MAX_LOG_ROWS`] reduce to claims on tables leanVM's WHIR cannot commit, for a `PCS_OPEN` that takes larger
+/// [`MAX_LOG_ROWS`] reduce to claims on tables leanVM's WHIR cannot commit, for a block whose openings take larger
 /// tables ([`verify_reduction_in`]).
 pub const MAX_REDUCTION_LOG_ROWS: usize = domain::EXT_BASIS - 5;
 
@@ -1169,7 +1169,7 @@ pub fn verify_in(
 }
 
 /// [`verify_in`] at any size the reduction takes ([`reduction_supported`]), past the sizes whose claims leanVM's
-/// WHIR opens: the commitments and the claims, for a `PCS_OPEN` that takes the tables.
+/// WHIR opens: the commitments and the claims, for a block whose openings take the tables.
 pub fn verify_reduction_in(
     index_root: &Hash,
     statement: &Statement,

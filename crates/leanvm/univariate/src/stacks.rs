@@ -1,6 +1,6 @@
 // Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! Where every column sits in its commitment's stack (SPEC.md §3), and the weight a claim's terms put on the stack:
-//! what the batching sumcheck of `PCS_OPEN`'s point-claim ABI evaluates at its end point (SPEC.md §8).
+//! what the batching sumcheck of the point claims' encoding evaluates at its end point (SPEC.md §8).
 //!
 //! A stack is a K-table of `2^vars` words, its MLE over `vars` variables (low first). A column of `2^v` words sits in
 //! an aligned block at `offset` (largest first): its word `i` is the stack's `offset + i`. An E-valued column is three

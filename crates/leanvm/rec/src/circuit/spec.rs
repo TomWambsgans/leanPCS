@@ -42,7 +42,7 @@
 //! ([`Circuit::pairs`]): `P = w + Σ_(b,k) I_(b,k)·(F_(b,k) − w) + κ`.
 //!
 //! **The public side.** [`PublicInputs`] are `π1`'s statement (32 bytes), its commitments' roots and its claims'
-//! distinct elements. Each port's [`Source`] says which; [`Circuit::calls`] rebuilds `π1`'s `PCS_OPEN` inputs from
+//! distinct elements. Each port's [`Source`] says which; [`Circuit::calls`] rebuilds `π1`'s claims from
 //! them, as `π2`'s contract will (`machine.rs`'s ABI: 32-byte words).
 
 use leanvm_statement::field::{E, K};
@@ -178,7 +178,7 @@ pub struct Port {
     pub source: Source,
 }
 
-/// A 32-byte word of one of `π1`'s `PCS_OPEN` inputs.
+/// A 32-byte word of one of `π1`'s claims.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CallWord {
     Const([u8; 32]),
@@ -246,7 +246,7 @@ pub struct Circuit {
     pub kappa: Vec<(u32, K)>,
     /// Port `J`'s outside tag is `N + J`. In block order: block by block, row by row, role by role.
     pub ports: Vec<Port>,
-    /// `π1`'s `PCS_OPEN` inputs, in call order.
+    /// `π1`'s claims, in call order.
     pub calls: Vec<Vec<CallWord>>,
 }
 
@@ -363,7 +363,7 @@ impl Circuit {
             .collect()
     }
 
-    /// `π1`'s `PCS_OPEN` inputs from the public inputs.
+    /// `π1`'s claims from the public inputs.
     pub fn call_inputs(&self, public: &PublicInputs) -> Vec<Vec<u8>> {
         self.calls
             .iter()
@@ -381,7 +381,7 @@ impl Circuit {
             .collect()
     }
 
-    /// The public inputs that give these `PCS_OPEN` inputs (`None` if they are not of the calls' shape, or disagree
+    /// The public inputs that give these claims (`None` if they are not of the calls' shape, or disagree
     /// on a repeated element).
     pub fn public_from_calls(&self, statement: [u8; 32], inputs: &[Vec<u8>]) -> Option<PublicInputs> {
         let roots_len = self.calls.iter().flatten().filter_map(|w| match w {

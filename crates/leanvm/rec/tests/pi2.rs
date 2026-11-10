@@ -2,12 +2,12 @@
 //! π2's PIOP (`src/pi2`, `PI2.md`), end to end on synthetic circuits built with the interface, D16v and D32v:
 //!
 //! - `small_*`: the honest proof's four claims hold and its three openings verify (`quotient::opening::verify`, what
-//!   `PCS_OPEN` checks); a witness that breaks one copy, one formula or one public element leaves a false claim; a
+//!   the block proves); a witness that breaks one copy, one formula or one public element leaves a false claim; a
 //!   flipped byte of the stream gives claims the openings do not prove;
 //! - `the_interface_example`: the circuit compiler's own example (`circuit::spec::example`), padded, through the
 //!   adapter;
 //! - `contract_*`: the verifier compiled to EVM is the Rust verifier word for word, straight and deployable, and
-//!   accepts the honest proof with `PCS_OPEN` attesting its claims, and rejects a flipped byte;
+//!   accepts the honest proof with its frame of PCS claims declaring them, and rejects a flipped byte;
 //! - `gas_report` (ignored): the contract at the target shapes, D16v (`N = 2^24`) and D32v (`N = 2^23`);
 //! - `prove_target` (ignored): the prover at a target shape.
 //!

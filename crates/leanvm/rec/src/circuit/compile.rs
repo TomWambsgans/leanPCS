@@ -542,7 +542,7 @@ pub fn compile_keeping<P: Permutation>(
     ports.port(&mut b, &statement_limb, Source::Statement);
     let mut roots: Vec<[u8; 32]> = Vec::new();
     let mut root_of: BTreeMap<usize, u32> = BTreeMap::new();
-    // A root is public as `PCS_OPEN`'s root word (one ABI for the eight calls), which is the
+    // A root is public as a claim's root word (one encoding for the claims), which is the
     // stream's 32 bytes as they are: π1's prover sends a root as its two WHIR scalars, big-endian
     // (`leanvm_univariate::prover::prove::halves`), and π1's own contract passes them so. Its
     // limbs `L_l` are the big-endian words of the stream's bytes `24 − 8l .. 32 − 8l` (`spec::word_limbs`).
@@ -563,7 +563,7 @@ pub fn compile_keeping<P: Permutation>(
         let mut words = Vec::new();
         for (k, w) in call.iter().enumerate() {
             words.push(match *w {
-                // A setup root (word 0): `PCS_OPEN`'s root word (M1) of the hash π1's contract holds as it is.
+                // A setup root (word 0): a claim's root word (M1) of the hash π1's contract holds as it is.
                 Word::Const(bytes) if k == 0 => CallWord::Const(root_word(&bytes)),
                 Word::Const(bytes) => CallWord::Const(bytes),
                 Word::Stream(at) => CallWord::Root(root_of[&at]),

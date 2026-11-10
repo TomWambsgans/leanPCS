@@ -11,6 +11,6 @@ whir_root b0dabdbdaede699c7e3c4a45d8fa867d3f824dc2872829219b2a18b60756a0f3
 whir_root d6b8a25d9e316dec32fd84d810fa8e728f111cf0acb44403e1313bec8d8ff3ef
 whir_root 734a48974fafaf7cc40a490abdd688f27150c96626910ee2c0664b72d3c78453
 accepts true
-gas_straight 222928
-gas_deployed 238182
+gas_straight 223248
+gas_deployed 238523
 contracts 4

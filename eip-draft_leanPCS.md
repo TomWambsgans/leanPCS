@@ -78,7 +78,7 @@ EIP-8288 then applies to dependencies in place of triples:
 
 ### Reading PCS claims
 
-A contract checks that `PCS_claim` holds by finding `keccak256(PCS_claim)` among the payloads of a frame `i` of its transaction such that `FRAMEPARAM(0x02, i)` is `DEP_VERIFY_FRAME_MODE` and the first byte of the frame's `data` is `PCS_SCHEME`. The payload `j < k` is the 32 bytes at offset `1 + 32 * j` of the `data`, which `FRAMEDATACOPY` reads; the caller may give `i` and `j`. A valid block proves every dependency of its transactions, so a claim found this way holds.
+A contract checks that `PCS_claim` holds by finding `keccak256(PCS_claim)` among the payloads of a frame `i` of its transaction such that `FRAMEPARAM(0x02, i)` is `DEP_VERIFY_FRAME_MODE` and the first byte of the frame's `data` is `PCS_SCHEME`. The payload `j < k` is the word at offset `1 + 32 * j` of the `data`, which `FRAMEDATALOAD` reads; the caller may give `i` and `j`. A valid block proves every dependency of its transactions, so a claim found this way holds.
 
 ## Rationale
 
@@ -104,7 +104,7 @@ Keccak-256 is the EVM's hash, so a contract hashes its PCS claims with `KECCAK25
 
 ### Why no precompile
 
-EIP-8288 already exposes dependencies to contracts through frame introspection. With Keccak-256 and fixed-width payloads, checking a PCS claim takes one `KECCAK256`, two `FRAMEPARAM` (the mode and the length) and two `FRAMEDATACOPY` (the scheme byte and the payload), given the frame and the payload's index. A precompile would do the same lookup, with an address, a gas schedule and failure rules of its own.
+EIP-8288 already exposes dependencies to contracts through frame introspection. With Keccak-256 and fixed-width payloads, checking a PCS claim takes one `KECCAK256`, one `FRAMEPARAM` (the mode) and two `FRAMEDATALOAD` (the scheme byte and the payload), given the frame and the payload's index: in the reference contracts, 61 gas once for the frame's mode and scheme, and 43 gas a claim beyond its hash. A contract may skip the bound `j < k`: past the frame's `data`, `FRAMEDATALOAD` reads zero, which no Keccak-256 output is but with probability `2^-256`. A precompile would do the same lookup, with an address, a gas schedule and failure rules of its own.
 
 ### Why PCS claims travel only in mode 1 wrappers
 

@@ -943,7 +943,7 @@ fn verify_paths_with(
     use verifier::{Digest, E, Transcript};
     let one = E::new(1, 0, 0);
     let zero = E::new(0, 0, 0);
-    // An opening of no claims proves nothing (its target and weight are zero), and `PCS_OPEN` takes at least one.
+    // An opening of no claims proves nothing (its target and weight are zero), and a claim has at least one.
     if claims.is_empty() || claims.iter().any(|claim| claim.point.len() != layout.vars) {
         return Err(verifier::VerifierError::WhirShape);
     }

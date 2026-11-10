@@ -10,7 +10,7 @@
 //!   limbs (the statement, a root) as `(L_0 + Y L_1) + γ (L_2 + Y L_3)`, a root's two 16-byte halves. Both bind the
 //!   limbs (the first is injective on `K³`, the second for all but one `γ`), as the interface's `Σ γ^l L_l` does: its
 //!   `Circuit::check` compares the limbs.
-//! - The public data: π1's roots (32 bytes each, as `PCS_OPEN`'s root words: each 16-byte half of the hash reversed,
+//! - The public data: π1's roots (32 bytes each, as claims' root words: each 16-byte half of the hash reversed,
 //!   which π1's stream carries as they are), then its claims' elements (24 bytes each); the
 //!   statement is the public input the seed hashes.
 

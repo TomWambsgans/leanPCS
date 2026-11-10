@@ -181,12 +181,12 @@ impl Setup {
     }
 }
 
-/// The codes of π2's tables in their `PCS_OPEN` layout words (π1's are `0x5501` … `0x5503`).
+/// The codes of π2's tables in their claims' layout words (π1's are `0x5501` … `0x5503`).
 pub const WITNESS_CODE: u16 = 0x5601;
 pub const QUOTIENT_CODE: u16 = 0x5602;
 pub const SETUP_CODE: u16 = 0x5603;
 
-/// A `PCS_OPEN` layout word of π2's tables, in π1's format (`leanvm_univariate::contract::
+/// A claims' layout word of π2's tables, in π1's format (`leanvm_univariate::contract::
 /// layout_word`): bytes 0..8 the tag `"pi2"` then `log_n` (π1's are its shape's bytes, each below 32), the opening's
 /// version (byte 21, [`OPENING_VERSION`]), the table's code (bytes 22..24), its variables (byte 24) and the words its
 /// lanes fill (`placed`, bytes 25..32). A precompile's registry maps it to the layout (`quotient::opening::Layout`, a
@@ -232,7 +232,7 @@ pub fn iv(pi1_iv: &[u8; 32], circuit_digest: &[u8; 32], setup_root: &Hash, log_n
 }
 
 /// A public value as the stream carries it, one per [`Read`]: an integer, 32 bytes as they are (π1's roots as
-/// `PCS_OPEN`'s root words, which its calls take as they are), an element of `E`.
+/// claims' root words, which its calls take as they are), an element of `E`.
 #[derive(Clone, Copy, Debug)]
 pub enum PublicValue {
     Integer(u64),
@@ -1391,7 +1391,7 @@ pub fn open(proved: Proved, setup: &Setup) -> (Reduced<E>, [Hash; 2], Openings) 
     (reduced, roots, openings)
 }
 
-/// What `PCS_OPEN` checks of π2's three calls: each opening against its root and layout, with `opening::verify_with`
+/// What the block's openings prove of π2's three calls: each opening against its root and layout, with `opening::verify_with`
 /// in [`OPENING_VERSION`].
 pub fn verify_openings(
     log_n: usize,

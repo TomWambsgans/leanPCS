@@ -77,7 +77,7 @@ pub fn evaluate(graph: &Graph, seed: [u8; 32], public: &[u8; 32], stream: &[u8])
     values
 }
 
-/// The `PCS_OPEN` calls' input bytes, as the contract writes them, from the evaluated graph.
+/// The claims' bytes, as the contract writes them, from the evaluated graph.
 pub fn call_inputs(recorded: &Recorded, values: &[Value], stream: &[u8]) -> Vec<Vec<u8>> {
     calls(recorded)
         .iter()

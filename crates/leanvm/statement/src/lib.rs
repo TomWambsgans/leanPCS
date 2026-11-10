@@ -9,7 +9,7 @@
 //!   switch); [`keccak_flock`]: the Keccak-f block and its structured terminal.
 //! - [`transcript`]: the Keccak-256 Fiat–Shamir chain ([`transcript::KeccakChannel`], [`transcript::KeccakWriter`]).
 //! - [`evm`]: the recorder that runs a verifier on a symbolic scalar, the nodes' code for `evm_link`, and a revm
-//!   machine with `FIELD_MUL` and a mock `PCS_OPEN`.
+//!   machine with `FIELD_MUL` and EIP-8141's frame introspection over a frame of PCS claims.
 //! - [`shapes`]: the measured workloads (the reference: 128 signatures) and the program's IV.
 
 #![forbid(unsafe_code)]

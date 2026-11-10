@@ -289,16 +289,16 @@ pub struct Reduced<S> {
     pub layouts: Vec<(Commitment, StackLayout)>,
 }
 
-/// What a commitment's one `PCS_OPEN` call carries.
+/// What a commitment's one claim carries.
 #[derive(Clone, Debug)]
 pub enum Opening<S> {
     /// One weighted claim (extension W, SPEC.md §8).
     Weighted(Combined<S>),
-    /// One point claim, `PCS_OPEN`'s ABI (after the batching sumcheck).
+    /// One point claim, the claims' encoding (after the batching sumcheck).
     Point { point: Vec<S>, value: S },
 }
 
-/// How the relations reach `PCS_OPEN` (SPEC.md §8).
+/// How the relations reach the claims (SPEC.md §8).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Claims {
     /// `crates/membership/evm/src/machine.rs`'s ABI: point claims. One batching sumcheck over the stacks (the longest, the
@@ -314,7 +314,7 @@ pub enum Claims {
 pub const RING_TWIST: u8 = u8::MAX;
 
 /// The Keccak VM's main line (`KECCAK.md`): the univariate skip of 3 (M3's cheaper terminal), the slices sent and the
-/// structured terminal, `PCS_OPEN`'s point claims.
+/// structured terminal, the point claims.
 pub const KECCAK_MAIN: Variant = Variant { skip: 3, fs: FsShape::Main };
 
 /// The Keccak VM's π1 under the recursion (`crates/leanvm/rec/tests/keccak_vm_rec.rs`): [`KECCAK_MAIN`] with π1-rec3's

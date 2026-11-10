@@ -1,7 +1,7 @@
 // Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! The inner verifier's graph, counted: what `π2`'s circuit must hold (SPEC-REC.md §1).
 //!
-//! Only **live** nodes count: those the `PCS_OPEN` calls' words or the checks read, through their operands (a hash
+//! Only **live** nodes count: those the claims' words or the checks read, through their operands (a hash
 //! reads the state before it, a challenge its hash, the ring switch's kernel its operands). The recorder shares equal
 //! subterms (one node per distinct operation), so the counts are of distinct operations, as a circuit computes them.
 
@@ -46,7 +46,7 @@ impl Ops {
     }
 }
 
-/// One claim the inner verifier hands `PCS_OPEN`: its commitment, its point's nodes and its value's node.
+/// One claim the inner verifier checks declared: its commitment, its point's nodes and its value's node.
 #[derive(Clone, Debug)]
 pub struct ClaimShape {
     pub name: String,
@@ -145,7 +145,7 @@ pub fn live(graph: &Graph, outputs: impl IntoIterator<Item = u32>) -> Vec<bool> 
     live
 }
 
-/// The graph's outputs: every node a call of `PCS_OPEN` writes, and every checked value.
+/// The graph's outputs: every node a claim writes, and every checked value.
 pub fn outputs(recorded: &Recorded) -> Vec<u32> {
     let graph = &recorded.graph;
     let words = calls(recorded).concat();

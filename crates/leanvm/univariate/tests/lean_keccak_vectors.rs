@@ -2,7 +2,7 @@
 //! Test vectors for the Lean transcription of the Keccak VM's verifier (`formal/UniKeccak`): `reduce` with
 //! the Keccak VM (`KECCAK.md`) on random, accepting and mutated streams and on the real Keccak proofs of
 //! `tests/vectors/keccak*.txt`, each with the Rust verifier's verdict and its intermediate values (every challenge,
-//! every value it requires to be zero, the claims it hands `PCS_OPEN`); and the Keccak-f block's structured lincheck
+//! every value it requires to be zero, the claims it checks declared); and the Keccak-f block's structured lincheck
 //! terminal (`keccak_flock::structured_terminal`) on random inputs at every skip, with the walked terminal's value.
 //!
 //! `KECCAK_VECTORS_OUT=$PWD/keccak_vectors.txt cargo test --release -p leanvm_univariate --test lean_keccak_vectors -- --ignored --nocapture`
@@ -12,7 +12,7 @@
 //! `tests/evm_vectors.rs` builds its contract), `CONTRACTIV` `contract::contract_iv(shape, variant, program_iv,
 //! roots)`, `LAYOUTWORDS 3 <C1> <C2> <setup>` `contract::layout_words(shape)`. The configuration
 //! (`<flock>` in the `VECTOR` line) is `keccak` (`KECCAK_MAIN`) or `keccak_rec3` (`KECCAK_REC3`). A real proof's
-//! vector carries the contract's `PCS_OPEN` inputs (`PCSOPEN <hex>`, the vector file's `pcs_open` lines). Terminal
+//! vector carries the contract's claims (`PCSOPEN <hex>`, the vector file's `pcs_open` lines). Terminal
 //! vectors are one line each:
 //!
 //! ```text
@@ -585,7 +585,7 @@ fn lean_keccak_vectors() {
             w.emit(&config, "mutate", &iv, &public, &mutated);
         }
 
-        // The real Keccak proofs, if there, with the contract's PCS_OPEN inputs, and three mutations each.
+        // The real Keccak proofs, if there, with the contract's claims, and three mutations each.
         let dir = std::env::var("KECCAK_REAL_DIR").unwrap_or_else(|_| "tests/vectors".to_string());
         for file in ["keccak.txt", "keccak128_rec3.txt", "keccak_rec3.txt"] {
             let Ok(text) = std::fs::read_to_string(format!("{dir}/{file}")) else {

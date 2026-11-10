@@ -2,7 +2,7 @@
 // the claim as the IV, a zero public digest, the root the proof's first two scalars); the commitment and the proof are
 // leanVM's WHIR (`pcs`, vendored from leanVM commit c445e3d5) unchanged, and the check is its verifier (`verifier`).
 // MIT OR Apache-2.0; see AGENTS.md.
-//! What `PCS_OPEN` checks, for the univariate PIOP's commitments: one point claim on a whole stack (SPEC.md §8, the
+//! What the block's openings prove, for the univariate PIOP's commitments: one point claim on a whole stack (SPEC.md §8, the
 //! point-claim ABI), proven and verified with leanVM's WHIR at rate `1/2`, `64` lanes at its first fold, on the
 //! recursion's ladder (version 3: `pcs::whir::RECURSION_SCHEDULE`, rates `1/2, 1/4, 1/8, ...`; the commitment is
 //! leanVM's).
@@ -27,7 +27,7 @@ pub const LANE_FOLD: usize = 6;
 pub const LOG_INV_RATE: usize = 1;
 const LABEL: &[u8; 20] = b"leanvm-univariate-op";
 /// The version of this opening (its transcript, WHIR's configuration at c445e3d5): 2 since the layout word is
-/// `PCS_OPEN`'s 32 bytes (SPEC.md §13, F2); 3 since WHIR's deeper levels follow the recursion's ladder
+/// a claim's 32 bytes (SPEC.md §13, F2); 3 since WHIR's deeper levels follow the recursion's ladder
 /// (`pcs::whir::RECURSION_SCHEDULE`, `verifier::whir::Ladder::Recursion`). The layout word carries it, byte
 /// [`VERSION_BYTE`]: a precompile reads the parameters off the word, and accepts no other version here.
 pub const VERSION: u64 = 3;
@@ -71,7 +71,7 @@ pub fn commit_keeping_codeword(words: &[F64], vars: usize, placed: u64) -> Commi
     }
 }
 
-/// The opening's IV: Keccak-256 of the label, the version, `PCS_OPEN`'s layout word (32 bytes: the shape, the
+/// The opening's IV: Keccak-256 of the label, the version, a claim's layout word (32 bytes: the shape, the
 /// opening's code, the stack's variables and placed words: `contract::layout_word`), the stack's variables, the
 /// rate, then the point's coordinates and the value (three 8-byte little-endian limbs each).
 pub fn iv(layout: &[u8; 32], vars: usize, point: &[F192], value: F192) -> [u8; 32] {

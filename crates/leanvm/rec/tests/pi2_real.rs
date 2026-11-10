@@ -6,8 +6,8 @@
 //! - `real_gas`: the contract's gas on the real circuits, D16v (the verifier's gas depends on the circuit alone),
 //!   parity with the Rust verifier, straight and deployable;
 //! - `real_end_to_end` (`PI2_LAYOUT=d16v|d32v`, `PI2_VECTOR=keccak128_rec3|keccak_rec3`): π2's prover on the real
-//!   witness, its three openings verified (`quotient::opening::verify`, what `PCS_OPEN` checks), and the contract
-//!   accepting the proof with `PCS_OPEN` attesting exactly its calls: π1's three (the vector's inputs, which π1's
+//!   witness, its three openings verified (`quotient::opening::verify`, what the block's openings prove), and the contract
+//!   accepting the proof with its frame of PCS claims declaring exactly its claims: π1's three (the vector's inputs, which π1's
 //!   openings prove) and π2's three; a flipped calldata byte is rejected.
 //!
 //! `cargo test --release -p leanvm_rec --test pi2_real -- --ignored --nocapture --test-threads 1`

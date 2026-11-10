@@ -41,7 +41,7 @@ pub struct Proof {
 pub struct OpeningProof {
     pub commitment: Commitment,
     pub root: Hash,
-    /// Its `PCS_OPEN` layout word, which carries `vars` and `placed`.
+    /// Its claims' layout word, which carries `vars` and `placed`.
     pub layout: [u8; 32],
     pub vars: usize,
     pub placed: u64,
@@ -50,7 +50,7 @@ pub struct OpeningProof {
     pub proof: fiat_shamir::transcript::Proof,
 }
 
-/// The `PCS_OPEN` layout word of a commitment of `shape` (`contract::layout_words`, SPEC.md §13, F2).
+/// The claims' layout word of a commitment of `shape` (`contract::layout_words`, SPEC.md §13, F2).
 pub fn layout_word(shape: &Shape, commitment: Commitment) -> [u8; 32] {
     let words = layout_words(shape);
     match commitment {
@@ -130,9 +130,9 @@ fn minor_faults() -> u64 {
 
 /// The root's two 128-bit halves as the stream carries them: its two scalars as WHIR's transcript has them
 /// (`fiat_shamir::merkle::hash_to_scalars`, each the little-endian number of 16 of the hash's bytes, the opening's
-/// first two scalars), each sent big-endian. The stream's 32 bytes are then the root's `PCS_OPEN` root word
+/// first two scalars), each sent big-endian. The stream's 32 bytes are then the root's claim root word
 /// (`leanvm_statement::evm::machine::root_word`, each 16-byte half of the hash reversed), the word the contract
-/// passes as it is; before, they were the hash's bytes as they are, a word a decoding `PCS_OPEN` reads as another
+/// passes as it is; before, they were the hash's bytes as they are, a word the claims' decoding reads as another
 /// root.
 pub fn halves(root: &Hash) -> [E; 2] {
     fiat_shamir::merkle::hash_to_scalars(root).map(|s| E::new(s.c0, s.c1, s.c2))

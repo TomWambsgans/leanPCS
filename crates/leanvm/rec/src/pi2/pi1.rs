@@ -1,8 +1,8 @@
 // Part of this repository. The mapping of π1's call words follows `crate::circuit::compile` (the ports). MIT OR
 // Apache-2.0; see AGENTS.md.
-//! π1's three `PCS_OPEN` calls as the circuit's interface names their words (`circuit::spec::CallWord`), from π1-rec3's
+//! π1's three claims as the circuit's interface names their words (`circuit::spec::CallWord`), from π1-rec3's
 //! recorded verifier (`leanvm_univariate::contract`, at the reference shape): constants (the setup root as
-//! `PCS_OPEN`'s root words), π1's two roots (`C1`, `C2`, root words in calldata), and its claims' distinct elements in
+//! claims' root words), π1's two roots (`C1`, `C2`, root words in calldata), and its claims' distinct elements in
 //! first appearance. The contract of a synthetic circuit appends
 //! these, its words from calldata, as the real circuit's contract does.
 
@@ -43,7 +43,7 @@ pub fn pi1_calls() -> Pi1Calls {
             call.iter()
                 .enumerate()
                 .map(|(k, w)| match *w {
-                    // A setup root: `PCS_OPEN`'s root word, as `circuit::compile` makes it.
+                    // A setup root: a claim's root word, as `circuit::compile` makes it.
                     Word::Const(bytes) if k == 0 => CallWord::Const(root_word(&bytes)),
                     Word::Const(bytes) => CallWord::Const(bytes),
                     Word::Stream(at) => CallWord::Root(roots[&at]),

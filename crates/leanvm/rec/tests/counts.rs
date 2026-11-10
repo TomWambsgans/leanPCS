@@ -2,7 +2,7 @@
 //! The inner verifier's graph on real proofs, and its counts (SPEC-REC.md §1).
 //!
 //! - `the_graph_is_the_verifier_on_real_proofs`: the recorded graph, evaluated on each committed real proof
-//!   (`crates/leanvm/univariate/tests/vectors/`), writes exactly the `PCS_OPEN` inputs the contract wrote, and its
+//!   (`crates/leanvm/univariate/tests/vectors/`), writes exactly the claims the contract wrote, and its
 //!   checks hold: the evaluator is the witness generator's core.
 //! - `count_report` (ignored): the graph's counts at the reference shape, for the Keccak VM's two variants.
 //!
@@ -60,7 +60,7 @@ fn the_graph_is_the_verifier_on_real_proofs() {
             let inputs = call_inputs(&recorded, &values, stream);
             assert_eq!(
                 inputs, v.calls,
-                "{name}: the evaluated graph writes the recorded PCS_OPEN inputs"
+                "{name}: the evaluated graph writes the recorded claims"
             );
             let (zero, nonzero) = checks(&recorded.graph, &values);
             assert!(

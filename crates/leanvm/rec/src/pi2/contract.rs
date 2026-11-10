@@ -160,8 +160,8 @@ pub fn registry(inst: &Instance) -> Vec<([u8; 32], usize)> {
     out
 }
 
-/// π2's three openings as the block holds them: the roots the proof commits, the layout words, the claims of the
-/// reduction (not the contract's call words, which must decode to these).
+/// π2's three openings, in the order the contract checks their claims (`W`, the setup, `Q`): the roots the proof
+/// commits, the layout words, the claims of the reduction (not the contract's call words, which must decode to these).
 pub fn openings(inst: &Instance, reduced: &Reduced<E>, roots: &[Hash; 2]) -> Vec<Opening> {
     let [w, q, s] = layout_words(inst.spec.log_n);
     vec![
@@ -171,14 +171,14 @@ pub fn openings(inst: &Instance, reduced: &Reduced<E>, roots: &[Hash; 2]) -> Vec
             claims: vec![reduced.witness.clone()],
         },
         Opening {
-            root: roots[1],
-            layout: q,
-            claims: vec![reduced.quotient.clone(), reduced.sum.clone()],
-        },
-        Opening {
             root: inst.setup_root,
             layout: s,
             claims: vec![reduced.setup.clone()],
+        },
+        Opening {
+            root: roots[1],
+            layout: q,
+            claims: vec![reduced.quotient.clone(), reduced.sum.clone()],
         },
     ]
 }
