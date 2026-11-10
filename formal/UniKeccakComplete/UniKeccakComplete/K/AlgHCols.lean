@@ -70,7 +70,7 @@ theorem forIn_heap (g : Block × ℕ → Relation) (c : Block × ℕ → List (C
     simp [Array.append_assoc]
 
 /-- **The heap's relations, written out.** -/
-theorem heapRelations_eq (shape : Shape) (active : List E) (parts : List TablePart) (weights : Array E)
+theorem heapRelations_eq (shape : UniStatement.Shape) (active : List E) (parts : List TablePart) (weights : Array E)
     (beta heapValue constraintValue memoryPull memoryPush bytecodePull bytecodePush : E) (w : List E)
     (constraintChunks : List ℕ) :
     heapRelations shape active parts weights beta heapValue constraintValue memoryPull memoryPush bytecodePull
@@ -119,21 +119,21 @@ theorem forIn_deg {α : Type} (F : α → E × Array Term × E × ℕ → Id (Fo
     rfl
 
 /-- One table's step of `Shape.constraintDegreeK`'s fold. -/
-def cDegStep (shape : Shape) (d : ℕ) (table : Table) : ℕ :=
+def cDegStep (shape : UniStatement.Shape) (d : ℕ) (table : Table) : ℕ :=
   let r := shape.heights.getD table.opcode 0
   let n := 2 ^ r
   let d := if table.opcode = opJump then max d (degree n 2) else d
   let d := max d (degree ((n - 1) * (1 + table.countColumns.length)) n)
   if table.opcode = opSha3 then max d (degree (r * (n / 2)) n) else d
 
-theorem constraintDegree_eq (shape : Shape) :
+theorem constraintDegree_eq (shape : UniStatement.Shape) :
     (Shape.constraintDegreeK shape) = max (tablesKeccak.foldl (cDegStep shape) 0) (degree (2 ^ shape.logMemory) 3) := rfl
 
 theorem id_bind_snd {α β γ δ : Type} (A : Id α) (B : α → Id β) (f : α → β → γ) (g : α → δ) :
     ((do let s ← A; let s1 ← B s; pure (f s s1, g s)) : Id (γ × δ)).2 = g (Id.run A) := rfl
 
 /-- **`constraintRelationK`'s degree is `Shape.constraintDegreeK`** (for six parts or more). -/
-theorem constraintRelation_degree (shape : Shape) (parts : List TablePart) (publicWords : List E)
+theorem constraintRelation_degree (shape : UniStatement.Shape) (parts : List TablePart) (publicWords : List E)
     (gamma t constraintValue : E) (w : List E) (hp : tablesKeccak.length ≤ parts.length) :
     (constraintRelationK shape parts publicWords gamma t constraintValue w).2 = (Shape.constraintDegreeK shape) := by
   unfold constraintRelationK
@@ -205,7 +205,7 @@ theorem blockCols_eq {tr : Trace} (hon : TraceHonest tr) (active : List E) (weig
     rw [leafDegree_table hl, atParts_getD _ _ _ _ ht6, (atPart_degrees _ _ _ _ _).1, (atPart_degrees _ _ _ _ _).2]
   · rw [leafDegree_unused hl]
 
-theorem c2Columns_eq (shape : Shape) : Shape.c2ColumnsK shape =
+theorem c2Columns_eq (shape : UniStatement.Shape) : Shape.c2ColumnsK shape =
     [(.heap, shape.heap.h, true), (.treeQuotient 0, shape.heap.h, true), (.treeQuotient 1, 0, true)] ++
       ((chunks ((Shape.constraintDegreeK shape) + 1)).zip (List.range (chunks ((Shape.constraintDegreeK shape) + 1)).length)).map
         (fun x ↦ (Column.constraintQuotient x.2, x.1, true)) ++

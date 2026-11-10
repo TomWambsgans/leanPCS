@@ -28,7 +28,7 @@ open UniComplete
 
 open UniStatement UniKeccak LeanVM.Parameters LeanVM.Semantics LeanVM.Protocol LeanVM.Protocol.KeccakHash
 open UniKeccakComplete.Prob (chal ProverA firstInput prefixStream tInput afterT run_forIn_send run_sendRoot
-  run_sampleW extract_size_toList)
+  run_sendScalar run_sampleW extract_size_toList oodOf)
 
 section With
 
@@ -44,6 +44,7 @@ def midB3 (commit : Commitment → ℕ → Array K → m Committed) (flock : Flo
   let committed2 ← (StateT.lift (commit .c2 (((layoutsOfK tr.shape).lookup .c2).getD default).vars c2.stack) :
     WrM m Committed)
   sendRoot committed2.halves
+  sendScalar (pcsOod (((layoutsOfK tr.shape).lookup .c2).getD default).vars c2.stack (rootOf committed2.halves))
   return (gamma, out, committed2)
 
 /-- **The stream from `t` on** (`proveStreamRec3With`'s text from `let a := atTOf …`). -/
@@ -87,6 +88,7 @@ def streamTail3 (commit : Commitment → ℕ → Array K → m Committed) (flock
   let committed2 ← (StateT.lift (commit .c2 (((layoutsOfK shape).lookup .c2).getD default).vars c2.stack) :
     WrM m Committed)
   sendRoot committed2.halves
+  sendScalar (pcsOod (((layoutsOfK shape).lookup .c2).getD default).vars c2.stack (rootOf committed2.halves))
   let t ← sampleW H
   let a := atTOf tr c2 alphas beta gamma t flockOut
   sendScalars a.values
@@ -119,6 +121,7 @@ theorem proveStreamRec3With_split (commit : Commitment → ℕ → Array K → m
         sendInteger rows 4
       let committed1 ← (StateT.lift (commit .c1 (c1LayoutK tr.shape).vars (c1Stack tr)) : WrM m Committed)
       sendRoot committed1.halves
+      sendScalar (pcsOod (c1LayoutK tr.shape).vars (c1Stack tr) (rootOf committed1.halves))
       let alphas ← drawRunW H 4
       let beta ← sampleW H
       streamTail3 H commit flock tr committed1 alphas beta) := rfl
@@ -141,13 +144,12 @@ variable {m : Type → Type} [Monad m] (H : List UInt8 → m Digest) (F : Keccak
 /-- **The three openings** after the stream (`proveRec3With`'s text after `let (out, _) ← …`). -/
 def openingsTail3 (fuel : ℕ) (tr : Trace) (tree : LeanVM.Prover.Tree) (out : CoreOut) :
     m (Option KeccakProof) := do
-  let words := layoutWordsK tr.shape
   let openOne (c : Commitment) (pt : List E) (value : E) : m (Option Compile.Proof) :=
-    let (stack, tree, word) : Array K × LeanVM.Prover.Tree × List UInt8 := match c with
-      | .c1 => (out.c1.1, out.c1.2.tree, words.getD 0 [])
-      | .c2 => (out.c2.1, out.c2.2.tree, words.getD 1 [])
-      | .setup => (out.setup, tree, words.getD 2 [])
-    E2ECompleteness.proveOpeningWithH H F fuel (plainLayout (layoutWordVars word)) tree stack [⟨pt, value⟩]
+    let (stack, tree) : Array K × LeanVM.Prover.Tree := match c with
+      | .c1 => (out.c1.1, out.c1.2.tree)
+      | .c2 => (out.c2.1, out.c2.2.tree)
+      | .setup => (out.setup, tree)
+    pcsProveH H F fuel (stackVarsK tr.shape c) tree stack pt value
   let p1 ← match out.claims.find? (·.1 == .c1) with
     | some (_, pt, v) => openOne .c1 pt v
     | none => pure none
@@ -168,7 +170,7 @@ theorem proveRec3With_split (fuel : ℕ) (flock : FlockProver m) (programIv : Li
     (tr : Trace) :
     proveRec3With H F fuel flock programIv tr = (do
       let tree ← setupTreeOf H tr
-      let iv ← contractIvOf H tr.shape keccakRec3 programIv ⟨tree.root⟩
+      let iv ← contractIvOf H tr.shape keccakRec3 programIv (setupRootsOf tr tree)
       let seed ← seedOf H iv tr.publicInput
       let (out, _) ← (proveStreamRec3With H (commitReal H) flock tr).run (Wr.start seed)
       openingsTail3 H F fuel tr tree out) := rfl
@@ -177,8 +179,8 @@ end With
 
 /-- **The writer after π1-rec3's two bus challenges**: the prefix absorbed, the state `s₂`, the challenges drawn
 (`chal s₁`, the squares' root, and `β = chal s₂`). -/
-def writerAfter3 (rows : List ℕ) (c1 : LeanVM.Prover.Tree) (s₁ s₂ : Digest) : Wr :=
-  ⟨prefixStream rows c1, (prefixStream rows c1).size, s₂, #[chal s₁, chal s₂]⟩
+def writerAfter3 (rows : List ℕ) (c1 : LeanVM.Prover.Tree) (ood : E) (s₁ s₂ : Digest) : Wr :=
+  ⟨prefixStream rows c1 ood, (prefixStream rows c1 ood).size, s₂, #[chal s₁, chal s₂]⟩
 
 section Run
 
@@ -194,12 +196,12 @@ theorem run_proveStreamRec3With (flock : FlockProver m) (tr : Trace) (seed : Dig
     (proveStreamRec3With H (commitReal H) flock tr).run (Wr.start seed) = (do
       let c1 ← E2ECompleteness.commitWithH H (c1LayoutK tr.shape).vars (c1Stack tr)
       let s₁ ← H (digestBytes seed ++
-        ((prefixStream tr.rows c1).extract 0 (prefixStream tr.rows c1).size).toList)
+        ((prefixStream tr.rows c1 (oodOf tr c1)).extract 0 (prefixStream tr.rows c1 (oodOf tr c1)).size).toList)
       let s₂ ← H (digestBytes s₁)
-      (streamTail3 H (commitReal H) flock tr ⟨c1, digestScalars c1.root⟩
-        (squares (chal s₁) 4) (chal s₂)).run (writerAfter3 tr.rows c1 s₁ s₂)) := by
+      (streamTail3 H (commitReal H) flock tr ⟨c1, rootHalves c1.root⟩
+        (squares (chal s₁) 4) (chal s₂)).run (writerAfter3 tr.rows c1 (oodOf tr c1) s₁ s₂)) := by
   rw [proveStreamRec3With_split, StateT.run_bind, run_forIn_send]
-  · simp only [pure_bind, StateT.run_bind, StateT.run_lift, commitReal, bind_assoc, run_sendRoot,
+  · simp only [pure_bind, StateT.run_bind, StateT.run_lift, commitReal, bind_assoc, run_sendRoot, run_sendScalar,
       drawRunW_four, run_sampleW, extract_size_toList, List.append_nil, Wr.start]
     rfl
   · intro r u w
@@ -215,17 +217,17 @@ variable {m : Type → Type} [Monad m] (H : List UInt8 → m Digest) (F : Keccak
 def proverA3 (D : KDeployment) (input : Vector UInt8 32) (rows : List ℕ) (q : D.Stack rows) : m ProverA := do
   let tr := honestTrace D input rows q
   let tree ← setupTreeOf H tr
-  let iv ← contractIvOf H tr.shape keccakRec3 D.programIv ⟨tree.root⟩
+  let iv ← contractIvOf H tr.shape keccakRec3 D.programIv (setupRootsOf tr tree)
   let seed ← seedOf H iv tr.publicInput
   let c1 ← E2ECompleteness.commitWithH H (c1LayoutK tr.shape).vars (c1Stack tr)
-  return ⟨tree, iv, seed, c1⟩
+  return ⟨tree, iv, seed, c1, oodOf tr c1⟩
 
 /-- **π1-rec3's prover after the two bus challenges**: the stream's tail on the writer after them, the openings. -/
 def proverC3 (flock : FlockProver m) (D : KDeployment) (input : Vector UInt8 32) (rows : List ℕ) (q : D.Stack rows)
     (a : ProverA) (s₁ s₂ : Digest) : m (Option KeccakProof) := do
   let tr := honestTrace D input rows q
-  let (out, _) ← (streamTail3 H (commitReal H) flock tr ⟨a.c1, digestScalars a.c1.root⟩
-    (squares (chal s₁) 4) (chal s₂)).run (writerAfter3 rows a.c1 s₁ s₂)
+  let (out, _) ← (streamTail3 H (commitReal H) flock tr ⟨a.c1, rootHalves a.c1.root⟩
+    (squares (chal s₁) 4) (chal s₂)).run (writerAfter3 rows a.c1 a.ood s₁ s₂)
   openingsTail3 H F PcsQuotient.nonceFuel tr a.tree out
 
 /-- **π1-rec3's honest prover, cut at the bus challenges**, in any lawful monad. -/
@@ -244,7 +246,7 @@ theorem uniProverRec3With_split [LawfulMonad m] (flock : FlockProver m) (D : KDe
 def proverD3 (D : KDeployment) (input : Vector UInt8 32) (rows : List ℕ) (q : D.Stack rows) (a : ProverA)
     (s₁ s₂ : Digest) (x : (E × FlockOut × Committed) × Wr) (st : Digest) : m (Option KeccakProof) := do
   let tr := honestTrace D input rows q
-  let (out, _) ← (tailT3 H tr ⟨a.c1, digestScalars a.c1.root⟩ (squares (chal s₁) 4) (chal s₂) x.1.1
+  let (out, _) ← (tailT3 H tr ⟨a.c1, rootHalves a.c1.root⟩ (squares (chal s₁) 4) (chal s₂) x.1.1
     (some x.1.2.1) x.1.2.2 (chal st)).run (afterT x.2 st)
   openingsTail3 H F PcsQuotient.nonceFuel tr a.tree out
 
@@ -253,7 +255,7 @@ theorem proverC3_split [LawfulMonad m] (flock : FlockProver m) (D : KDeployment)
     (rows : List ℕ) (q : D.Stack rows) (a : ProverA) (s₁ s₂ : Digest) :
     proverC3 H F flock D input rows q a s₁ s₂ = (do
       let x ← (midB3 H (commitReal H) flock (honestTrace D input rows q) (squares (chal s₁) 4) (chal s₂)).run
-        (writerAfter3 rows a.c1 s₁ s₂)
+        (writerAfter3 rows a.c1 a.ood s₁ s₂)
       let st ← H (tInput x.2)
       proverD3 H F D input rows q a s₁ s₂ x st) := by
   simp only [proverC3, streamTail3_cut, StateT.run_bind, bind_assoc]
@@ -280,7 +282,7 @@ def proverTChallenge3 (H : List UInt8 → Digest) (flock : FlockProver Id) (D : 
   let s₁ := H (firstInput rows a)
   let s₂ := H (digestBytes s₁)
   let x := (midB3 (m := Id) H (commitReal (m := Id) H) flock (honestTrace D input rows q) (squares (chal s₁) 4)
-    (chal s₂)).run (writerAfter3 rows a.c1 s₁ s₂)
+    (chal s₂)).run (writerAfter3 rows a.c1 a.ood s₁ s₂)
   (x.1.2.1.point, chal (H (tInput x.2)))
 
 end UniKeccakComplete.Rec3

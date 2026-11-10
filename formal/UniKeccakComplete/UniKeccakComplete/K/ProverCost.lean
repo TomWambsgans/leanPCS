@@ -272,13 +272,13 @@ def StreamOK (V : ℕ) (out : CoreOut) (s : Wr) : Prop :=
 
 /-- **The stream's blocks beyond its bytes**: `C1`'s and `C2`'s trees, the challenges (`α ∈ E^4`, `β`, `γ`, `t`,
 `ρ`, `λ`, one per batching round), Flock's. -/
-def streamBlocks (shape : Shape) (kF : ℕ) : ℕ :=
+def streamBlocks (shape : UniStatement.Shape) (kF : ℕ) : ℕ :=
   treeCost (UniKeccak.c1LayoutK shape).vars + 6 + kF +
     treeCost (((UniKeccak.layoutsOfK shape).lookup .c2).getD default).vars + 3 + batchVarsBound shape
 
 /-- **The stream's bytes**: the row counts, the two roots, Flock's, the values at `t`, the batching rounds' two
 scalars each, the three claims' values. -/
-def streamBytes (shape : Shape) (rows wF : ℕ) : ℕ :=
+def streamBytes (shape : UniStatement.Shape) (rows wF : ℕ) : ℕ :=
   4 * rows + 64 + wF + 24 * valuesBound + 48 * batchVarsBound shape + 72
 
 theorem length_combined (f : Commitment → Option (Commitment × Combined)) :
@@ -377,7 +377,7 @@ theorem stream_of_some {s : Array UInt8} {p1 p2 p3 : Option LeanVM.Protocol.Comp
 
 /-- **The honest prover's blocks**: the setup's tree, the IV, the seed, the stream (its blocks and its bytes),
 three openings of claims of at most `batchVarsBound` coordinates. -/
-def uniProverCost (shape : Shape) (programIvLen rows kF wF : ℕ) : ℕ :=
+def uniProverCost (shape : UniStatement.Shape) (programIvLen rows kF wF : ℕ) : ℕ :=
   treeCost (setupLayout shape).vars + ((163 + programIvLen) / 136 + 1) + 1 +
     (streamBlocks shape kF + streamBytes shape rows wF) + 3 * openP PcsQuotient.nonceFuel (batchVarsBound shape)
 
@@ -452,7 +452,7 @@ def FlockCost (flock : FlockProverH) (k w : ℕ → UniKeccak.KeccakVariant → 
   ∀ logN v words, WC (flock callKeccak256 logN v words) (k logN v) (w logN v) fun _ _ ↦ True
 
 /-- Flock's `log_n` at a shape: the Keccak-f block's `17` and `SHA3`'s height. -/
-abbrev flockLogN (shape : Shape) : ℕ := keccakR1csLogSize + shape.heights.getD opSha3 0
+abbrev flockLogN (shape : UniStatement.Shape) : ℕ := keccakR1csLogSize + shape.heights.getD opSha3 0
 
 /-- **The deployed honest prover's block count**, at `rows` row counts, Flock's prover's costs `k`, `w`. -/
 def proverBlocks (D : UniKeccak.KDeployment) (rows : ℕ) (k w : ℕ → UniKeccak.KeccakVariant → ℕ) : ℕ :=
@@ -521,12 +521,12 @@ theorem reference_flockLogN : flockLogN keccakRefShape = 32 := by decide +kernel
 
 theorem reference_sha3Height : keccakRefShape.heights.getD opSha3 0 = 15 := by decide +kernel
 
-theorem c1LayoutK_eq (s : Shape) : UniKeccak.c1LayoutK s = StackLayout.new (c1Columns s) := rfl
+theorem c1LayoutK_eq (s : UniStatement.Shape) : UniKeccak.c1LayoutK s = StackLayout.new (c1Columns s) := rfl
 
-theorem c2LayoutK_eq (s : Shape) :
+theorem c2LayoutK_eq (s : UniStatement.Shape) :
     ((UniKeccak.layoutsOfK s).lookup .c2).getD default = StackLayout.new (UniKeccak.Shape.c2ColumnsK s) := rfl
 
-theorem setupLayout_eq (s : Shape) : setupLayout s = StackLayout.new (setupColumns s) := rfl
+theorem setupLayout_eq (s : UniStatement.Shape) : setupLayout s = StackLayout.new (setupColumns s) := rfl
 
 /-- **At the reference shape, the stacks have `27`, `26`, `23` variables and the batching sumcheck `27` rounds**
 (`Reference.lean`'s `reference_vars`). -/

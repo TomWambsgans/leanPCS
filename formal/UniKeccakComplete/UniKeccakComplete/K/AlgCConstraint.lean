@@ -112,7 +112,7 @@ theorem forIn_id_spec {α β γ : Type} (l : List α) (init : β) (f : α → β
 
 /-- `SHA3`'s inner step on (known, terms, power): a lane copy and its port word, at the power's `γ`, and `END_BIT`
 in the known part for `in_16`. -/
-def relInner (sh : Shape) (t gamma : E) (w : List E) (x : Table × TablePart) (s : E × Array Term × E) (c : ℕ) :
+def relInner (sh : UniStatement.Shape) (t gamma : E) (w : List E) (x : Table × TablePart) (s : E × Array Term × E) (c : ℕ) :
     E × Array Term × E :=
   match keccakSlot (x.1.columns.getD c "") with
   | some slot =>
@@ -128,7 +128,7 @@ def relInner (sh : Shape) (t gamma : E) (w : List E) (x : Table × TablePart) (s
 
 /-- **The verifier's step over one table** (`constraintRelationK`'s loop body, as a function): the known part, the
 terms, the power, the degree. -/
-def relBody (sh : Shape) (t gamma : E) (w : List E) (s : E × Array Term × E × ℕ) (x : Table × TablePart) :
+def relBody (sh : UniStatement.Shape) (t gamma : E) (w : List E) (s : E × Array Term × E × ℕ) (x : Table × TablePart) :
     E × Array Term × E × ℕ :=
   let r := sh.heights.getD x.1.opcode 0
   let vR := vanishingRatio w r sh.constraintVars
@@ -160,14 +160,14 @@ def relBody (sh : Shape) (t gamma : E) (w : List E) (s : E × Array Term × E ×
       max s.2.2.2 (degree ((2 ^ r - 1) * (1 + x.1.countColumns.length)) (2 ^ r)))
 
 /-- The public lines' step. -/
-def relPublic (sh : Shape) (t gamma : E) (w : List E) (b : E × Array Term × E) (a : (E × E) × ℕ) :
+def relPublic (sh : UniStatement.Shape) (t gamma : E) (w : List E) (b : E × Array Term × E) (a : (E × E) × ℕ) :
     E × Array Term × E :=
   (b.1 + b.2.2 * vanishingRatio w 1 sh.constraintVars * (a.1.1 + t * (a.1.1 + a.1.2)),
     b.2.1.push (term (.memory a.2) (w.take sh.logMemory) (b.2.2 * vanishingRatio w 1 sh.constraintVars)),
     b.2.2 * gamma)
 
 /-- **`constraintRelationK` as folds** of `relBody` over the tables and `relPublic` over the lines. -/
-theorem constraintRelation_eq (sh : Shape) (parts : List TablePart) (pw : List E) (gamma t cv : E) (w : List E) :
+theorem constraintRelation_eq (sh : UniStatement.Shape) (parts : List TablePart) (pw : List E) (gamma t cv : E) (w : List E) :
     constraintRelationK sh parts pw gamma t cv w =
       let s := (tablesKeccak.zip parts).foldl (relBody sh t gamma w) (0, #[], 1, 0)
       let p := ([(pw.getD 0 0, pw.getD 2 0), (pw.getD 1 0, pw.getD 3 0), ((0 : E), (0 : E))].zip

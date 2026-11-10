@@ -23,7 +23,7 @@ after them (`proverC`) and the verifier (`verdictW`); `expW = (·.1) <$> (staged
 from `uniProverWith_split`). Then:
 
 * **`hashA_stagedU`**: stage A hashes `512`-byte leaves, `64`-byte nodes, the IV's `280 + |IV|` bytes and the
-  seed's `80`: never `32` or `88` (`GoodL 88`);
+  seed's `80`: never `32` or `112` (`GoodL 112`);
 * **`duplexVm_stagedU`**: the duplex discipline, from `ProverDuplex`, the setup's (`hOnly_setupTreesWithH`) and the
   verifier's (`disc_verifierWithH`), through the map (`duplexVm_map_iff`);
 * **`cost_stagedU`**: at most `setupCost D + (N + verifierCost D S)` block calls, from `ProverCost N`,
@@ -194,22 +194,19 @@ theorem ivTag_length : ivTag.length = 16 := by decide +kernel
 
 theorem shapeBytes_length (s : UniStatement.Shape) : (shapeBytes s).length = 8 := by simp [shapeBytes]
 
-theorem layoutWord_length (s : UniStatement.Shape) (code vars placed : ℕ) : (layoutWord s code vars placed).length = 32 := by
-  simp [layoutWord, shapeBytes_length]
-
-theorem layoutWordsK_length (s : UniStatement.Shape) : (layoutWordsK s).flatten.length = 96 := by
-  simp [layoutWordsK, layoutWord_length]
+theorem elementBytes24_length (x : E) : (elementBytes24 x).length = 24 := by
+  simp [elementBytes24, elementWord, be64]
 
 /-- Lengths other than the bus chain's. -/
-theorem goodL_of_length {m : Bytes} (h : m.length = 512 ∨ m.length = 64 ∨ m.length = 80 ∨ 150 ≤ m.length) :
-    GoodL 88 m := by
+theorem goodL_of_length {m : Bytes} (h : m.length = 512 ∨ m.length = 64 ∨ m.length = 80 ∨ 113 ≤ m.length) :
+    GoodL 112 m := by
   refine ⟨?_, ?_⟩ <;> omega
 
 /-- A Merkle tree of rows of `64` words hashes `512`-byte leaves and `64`-byte nodes (`E2ECompleteness.HashLen`'s
-`hashOK_buildTree`, at `GoodL 88`). -/
+`hashOK_buildTree`, at `GoodL 112`). -/
 theorem hashOK_buildTree (height : ℕ) (word : LeanVM.Protocol.Compile.Word)
     (hw : ∀ p, (word p).length = 64) :
-    HashOK (GoodL 88) (LeanVM.Prover.buildTreeWithHash callKeccak256 height word) := by
+    HashOK (GoodL 112) (LeanVM.Prover.buildTreeWithHash callKeccak256 height word) := by
   unfold LeanVM.Prover.buildTreeWithHash
   refine E2ECompleteness.HashOK.bind ?_ fun leaves ↦ E2ECompleteness.HashOK.bind ?_ fun _ ↦
     E2ECompleteness.HashOK.pure _ _
@@ -218,7 +215,7 @@ theorem hashOK_buildTree (height : ℕ) (word : LeanVM.Protocol.Compile.Word)
       (fun i ↦ hashOK_callKeccak256 (goodL_of_length (Or.inl ?_))) _
     rw [E2ECompleteness.length_flatMap_kBytes, hw]
   · suffices h : ∀ k (level : Array Digest),
-        HashOK (GoodL 88) (LeanVM.Prover.levelsWithHash callKeccak256 k level) from h _ _
+        HashOK (GoodL 112) (LeanVM.Prover.levelsWithHash callKeccak256 k level) from h _ _
     intro k
     induction k with
     | zero => intro level; exact E2ECompleteness.HashOK.pure _ _
@@ -233,19 +230,20 @@ theorem hashOK_buildTree (height : ℕ) (word : LeanVM.Protocol.Compile.Word)
       rw [List.length_append, E2ECompleteness.length_digestBytes, E2ECompleteness.length_digestBytes]
 
 theorem hashOK_commitWithH (μ : ℕ) (stack : Array K) :
-    HashOK (GoodL 88) (E2ECompleteness.commitWithH callKeccak256 μ stack) :=
+    HashOK (GoodL 112) (E2ECompleteness.commitWithH callKeccak256 μ stack) :=
   hashOK_buildTree _ _ (E2ECompleteness.length_stackWordFast μ 1 stack)
 
 /-- **Stage A hashes nothing of the bus chain's lengths.** -/
-theorem hashA_stagedU (input : Vector UInt8 32) (rows : List ℕ) (q : D.Stack rows) :
-    HashOK (GoodL 88) (stagedU flock D input rows q).A := by
+theorem hashA_stagedU (hpiv : 32 ≤ D.programIv.length) (input : Vector UInt8 32) (rows : List ℕ) (q : D.Stack rows) :
+    HashOK (GoodL 112) (stagedU flock D input rows q).A := by
   simp only [stagedU, proverA, setupTreeOf, setupTreeKWithH, contractIvOf, seedOf, bind_assoc, pure_bind]
   refine E2ECompleteness.HashOK.bind (hashOK_commitWithH _ _) fun _ ↦
     E2ECompleteness.HashOK.bind (hashOK_commitWithH _ _) fun _ ↦
     E2ECompleteness.HashOK.bind (hashOK_callKeccak256 (goodL_of_length (Or.inr (Or.inr (Or.inr ?_))))) fun _ ↦
     E2ECompleteness.HashOK.bind (hashOK_callKeccak256 (goodL_of_length (Or.inr (Or.inr (Or.inl ?_))))) fun _ ↦
     E2ECompleteness.HashOK.bind (hashOK_commitWithH _ _) fun _ ↦ E2ECompleteness.HashOK.pure _ _
-  · simp only [List.length_append, ivTag_length, len_digestBytes, shapeBytes_length, layoutWordsK_length]
+  · simp only [List.length_append, ivTag_length, len_digestBytes, shapeBytes_length, elementBytes24_length,
+      honestTrace]
     omega
   · simp [name_length, len_digestBytes, honestTrace]
 

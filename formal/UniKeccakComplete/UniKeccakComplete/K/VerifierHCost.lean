@@ -596,12 +596,12 @@ theorem cc_batchKH (fs : FsShape) (combined : List (Commitment × Combined))
 
 /-- The walk's challenges, but the sumchecks' rounds: the two runs (`α ∈ E^4`, Flock's sampled coordinates), then
 `β`, `γ`, Flock's `z`, its `α`, the ring map's six, `t`, `ρ`, `λ`, two blocks each. -/
-def walkCost (shape : Shape) (v : UniKeccak.KeccakVariant) : ℕ :=
+def walkCost (shape : UniStatement.Shape) (v : UniKeccak.KeccakVariant) : ℕ :=
   drawCost v.fs 4 + drawCost v.fs (keccakR1csLogSize + shape.heights.getD opSha3 0 - v.skip - Flock.nFixed) + 26
 
 /-- **The walk, point claims** (either variant): at most `walkCost` blocks beyond the potential, and at most three
 openings. -/
-theorem cc_reduceWithKH (shape : Shape) (publicWords : List E) (v : UniKeccak.KeccakVariant) :
+theorem cc_reduceWithKH (shape : UniStatement.Shape) (publicWords : List E) (v : UniKeccak.KeccakVariant) :
     CC (reduceWithKH callKeccak256 shape publicWords v .point) (walkCost shape v) 0
       fun r ↦ r.openings.length ≤ 3 := by
   unfold reduceWithKH walkCost
@@ -610,6 +610,7 @@ theorem cc_reduceWithKH (shape : Shape) (publicWords : List E) (v : UniKeccak.Ke
   · exact cc_throw_bind _ _ _ _ _
   · refine cc_free (cc_countBits _) fun _ _ ↦ ?_
     refine cc_free cc_nextRoot fun _ _ ↦ ?_
+    refine cc_free (cc_mono cc_nextScalar le_rfl (Nat.zero_le _) fun _ h ↦ h) fun _ _ ↦ ?_
     refine cc_seq (cc_drawRunH _ _) (fun _ _ ↦ ?_) (by omega)
     refine cc_seq cc_sampleH (fun _ _ ↦ ?_) (by omega)
     refine cc_seq cc_sampleH (fun _ _ ↦ ?_) (by omega)
@@ -617,6 +618,7 @@ theorem cc_reduceWithKH (shape : Shape) (publicWords : List E) (v : UniKeccak.Ke
     obtain ⟨point, end_⟩ := x
     dsimp only
     refine cc_free cc_nextRoot fun _ _ ↦ ?_
+    refine cc_free (cc_mono cc_nextScalar le_rfl (Nat.zero_le _) fun _ h ↦ h) fun _ _ ↦ ?_
     refine cc_seq cc_sampleH (fun _ _ ↦ ?_) (by omega)
     refine cc_free (cc_mono (cc_forIn_list (k := 0) _ _ _ fun _ _ ↦ cc_free (cc_tablePart _ _ _ _ _) fun _ _ ↦
       cc_pure (P := fun _ ↦ True) trivial 0) (by simp) le_rfl fun _ h ↦ h) fun _ _ ↦ ?_
@@ -641,23 +643,15 @@ theorem name_length : name.length = 16 := by decide +kernel
 
 theorem ivTag_length : ivTag.length = 16 := by decide +kernel
 
-theorem shapeBytes_length (s : Shape) : (shapeBytes s).length = 8 := by simp [shapeBytes]
+theorem shapeBytes_length (s : UniStatement.Shape) : (shapeBytes s).length = 8 := by simp [shapeBytes]
 
-theorem layoutWord_length (s : Shape) (code vars placed : ℕ) : (layoutWord s code vars placed).length = 32 := by
-  simp [layoutWord, shapeBytes_length]
-
-theorem layoutWordsK_length (s : Shape) : (UniKeccak.layoutWordsK s).flatten.length = 96 := by
-  simp [UniKeccak.layoutWordsK, layoutWord_length]
+theorem elementBytes24_length (x : E) : (UniKeccak.elementBytes24 x).length = 24 := by
+  simp [UniKeccak.elementBytes24, elementWord, be64]
 
 theorem keccakTag_length : "keccak-vm".toUTF8.toList.length = 9 := by decide +kernel
 
 theorem variantBytesK_length (v : UniKeccak.KeccakVariant) : (UniKeccak.variantBytesK v).length = 11 := by
   simp only [UniKeccak.variantBytesK, List.length_append, keccakTag_length, List.length_cons, List.length_nil]
-
-theorem layoutWordVars_le (w : List UInt8) : layoutWordVars w ≤ 255 := by
-  unfold layoutWordVars
-  have := UInt8.toNat_lt (w.getD 24 0)
-  omega
 
 /-- Budget can only help a cost without postcondition. -/
 theorem CostP.weaken {α : Type} {X : OracleComp KeccakCalls α} {n n' : ℕ} (hX : CostP X n fun _ _ ↦ True)
@@ -667,7 +661,7 @@ theorem CostP.weaken {α : Type} {X : OracleComp KeccakCalls α} {n n' : ℕ} (h
   exact h'.mono fun _ _ _ ↦ trivial
 
 /-- **The walk** from the start of a stream: the potential is three per byte. -/
-theorem costP_walk (shape : Shape) (publicWords : List E) (v : UniKeccak.KeccakVariant) (seed : Digest)
+theorem costP_walk (shape : UniStatement.Shape) (publicWords : List E) (v : UniKeccak.KeccakVariant) (seed : Digest)
     (stream : Array UInt8) (m : ℕ) :
     CostP ((do
         let r ← reduceWithKH callKeccak256 shape publicWords v .point
@@ -685,7 +679,7 @@ theorem costP_walk (shape : Shape) (publicWords : List E) (v : UniKeccak.KeccakV
   exact h2.mono fun z rem hz a ha ↦ ⟨(hz a ha).1, by have := (hz a ha).2.2; omega⟩
 
 /-- **The run on calldata**: the seed, then the walk; at most three openings, `m` blocks left. -/
-theorem costP_runWithKH (shape : Shape) (iv publicInput : List UInt8) (stream : Array UInt8)
+theorem costP_runWithKH (shape : UniStatement.Shape) (iv publicInput : List UInt8) (stream : Array UInt8)
     (v : UniKeccak.KeccakVariant) (m : ℕ) :
     CostP (runWithKH callKeccak256 shape iv publicInput stream v .point)
       ((16 + iv.length + publicInput.length) / 136 + 1 + (walkCost shape v + 3 * stream.size + m))
@@ -703,20 +697,17 @@ theorem costP_runWithKH (shape : Shape) (iv publicInput : List UInt8) (stream : 
       omega]
     exact (costP_walk shape _ v seed stream m).bind fun z rem hz r hr ↦ hz r hr
 
-/-- The opening check's cost: a claim of at most `255` coordinates (`46` blocks of IV), then the opening's run. -/
+/-- The opening check's cost, a bound: a PCS claim's check costs `6` blocks of IV, its seed's permutation and the
+run of the claim's program (`cost_pcsVerify`), below this (the bound of the earlier openings, kept). -/
 def openCost : ℕ := 46 + E2ECompleteness.Cost.vOpen
 
-theorem qc_pcsOpenWithH (vars : ℕ) (hv : vars ≤ 255) (root : Digest) (pt : List E) (value : E)
+theorem qc_pcsOpenKH (n : ℕ) (root : Digest) (ood : E) (pt : List E) (value : E)
     (p : LeanVM.Protocol.Compile.Proof) :
-    QC (pcsOpenWithH callKeccak256 callKeccakF1600 vars root [⟨pt, value⟩] p) openCost :=
-  E2ECompleteness.Cost.cost_openingWithH (plainLayout vars) root _ p
-    (by
-      show vars - PcsQuotient.laneFold + PcsQuotient.logInvRate ≤ 12 * LeanVM.Protocol.Verifier.costHeight
-      simp only [PcsQuotient.laneFold, PcsQuotient.logInvRate, LeanVM.Protocol.Verifier.costHeight]
-      omega) 46
-    (by
-      show 76 + 24 * (1 * (vars + 1)) < 136 * 46
-      omega)
+    QC (pcsOpenKH callKeccak256 callKeccakF1600 n root ood pt value p) openCost := by
+  unfold pcsOpenKH
+  split
+  · exact (cost_pcsVerify _ _ _).mono (by unfold openCost E2ECompleteness.Cost.vOpen; omega)
+  · exact qc_pure _ _
 
 theorem qc_forIn_list {γ β : Type} (l : List γ) (b : β) (f : γ → β → OracleComp KeccakCalls (ForInStep β))
     {c : ℕ} (hf : ∀ a s, QC (f a s) c) : QC (forIn l b f) (l.length * c) := by
@@ -730,7 +721,7 @@ theorem qc_forIn_list {γ β : Type} (l : List γ) (b : β) (f : γ → β → O
     | yield b => exact ih b
 
 /-- **The verifier**: the run, then at most three openings. -/
-theorem costP_verifyWithKH (shape : Shape) (v : UniKeccak.KeccakVariant) (iv : List UInt8) (roots : SetupRoots)
+theorem costP_verifyWithKH (shape : UniStatement.Shape) (v : UniKeccak.KeccakVariant) (iv : List UInt8) (roots : UniKeccak.SetupRootsK)
     (publicInput : Vector UInt8 32) (proof : UniKeccak.KeccakProof) :
     CostP (verifyWithKH callKeccak256 callKeccakF1600 shape v iv roots publicInput proof)
       ((16 + iv.length + 32) / 136 + 1 + (walkCost shape v + 3 * proof.stream.size + 3 * openCost))
@@ -749,7 +740,7 @@ theorem costP_verifyWithKH (shape : Shape) (v : UniKeccak.KeccakVariant) (iv : L
       refine (qc_forIn_list (c := openCost) _ _ _ fun x s ↦ ?_).bind_le (b := 0) (fun s ↦ ?_) ?_
       · split
         split
-        · exact (qc_pcsOpenWithH _ (layoutWordVars_le _) _ _ _ _).bind_le (fun _ ↦ qc_pure _ 0) (by omega)
+        · exact (qc_pcsOpenKH _ _ _ _ _ _).bind_le (fun _ ↦ qc_pure _ 0) (by omega)
         · exact qc_pure _ _
       · split <;> exact qc_pure _ _
       · have : r.openings.length * openCost ≤ 3 * openCost := Nat.mul_le_mul_right _ hl
@@ -764,18 +755,18 @@ block), the walk, three per stream byte, the three openings. -/
 def verifierCost (D : UniKeccak.KDeployment) (v : UniKeccak.KeccakVariant) (S : ℕ) : ℕ :=
   ivCost D + 1 + walkCost D.shape v + 3 * S + 3 * openCost
 
-theorem ivInput_length (s : Shape) (v : UniKeccak.KeccakVariant) (programIv : List UInt8) (roots : SetupRoots) :
-    (ivTag ++ programIv ++ digestBytes roots.bytecode ++
-      shapeBytes s ++ (UniKeccak.layoutWordsK s).flatten ++ UniKeccak.variantBytesK v).length =
-      163 + programIv.length := by
-  simp only [List.length_append, ivTag_length, len_digestBytes, shapeBytes_length, layoutWordsK_length,
+theorem ivInput_length (s : UniStatement.Shape) (v : UniKeccak.KeccakVariant) (programIv : List UInt8) (roots : UniKeccak.SetupRootsK) :
+    (ivTag ++ programIv ++ digestBytes roots.f ++ UniKeccak.elementBytes24 roots.fOod ++
+      shapeBytes s ++ UniKeccak.variantBytesK v).length =
+      91 + programIv.length := by
+  simp only [List.length_append, ivTag_length, len_digestBytes, shapeBytes_length, elementBytes24_length,
     variantBytesK_length]
   omega
 
 /-- **The deployed Keccak verifier over the two calls makes at most `verifierCost D v S` block calls** on any proof
 whose stream has at most `S` bytes, whatever its opening proofs, for either variant (`keccakMain`, `keccakRec3`; any
 variant). -/
-theorem cost_verifierWithH (D : UniKeccak.KDeployment) (v : UniKeccak.KeccakVariant) (roots : SetupRoots)
+theorem cost_verifierWithH (D : UniKeccak.KDeployment) (v : UniKeccak.KeccakVariant) (roots : UniKeccak.SetupRootsK)
     (input : Vector UInt8 32) (proof : UniKeccak.KeccakProof) (S : ℕ) (hS : proof.stream.size ≤ S) :
     Common.QueryCostAtMost (KDeployment.verifierWithH callKeccak256 callKeccakF1600 D v roots input proof)
       hashBlocks (verifierCost D v S) := by
@@ -783,17 +774,15 @@ theorem cost_verifierWithH (D : UniKeccak.KDeployment) (v : UniKeccak.KeccakVari
   unfold KDeployment.verifierWithH KDeployment.ivWithH contractIvKWithH callKeccak256
   rw [bind_assoc, costP_query_bind]
   refine ⟨?_, fun d ↦ ?_⟩
-  · show (ivTag ++ D.programIv ++ digestBytes roots.bytecode ++
-      shapeBytes D.shape ++ (UniKeccak.layoutWordsK D.shape).flatten ++
-      UniKeccak.variantBytesK v).length / 136 + 1 ≤ _
+  · show (ivTag ++ D.programIv ++ digestBytes roots.f ++ UniKeccak.elementBytes24 roots.fOod ++
+      shapeBytes D.shape ++ UniKeccak.variantBytesK v).length / 136 + 1 ≤ _
     rw [ivInput_length]
     unfold verifierCost ivCost
     omega
   · rw [pure_bind]
     refine (costP_verifyWithKH D.shape v (digestBytes d) roots input proof).weaken ?_
-    show _ ≤ verifierCost D v S - ((ivTag ++ D.programIv ++ digestBytes roots.bytecode ++
-      shapeBytes D.shape ++ (UniKeccak.layoutWordsK D.shape).flatten ++
-      UniKeccak.variantBytesK v).length / 136 + 1)
+    show _ ≤ verifierCost D v S - ((ivTag ++ D.programIv ++ digestBytes roots.f ++ UniKeccak.elementBytes24 roots.fOod ++
+      shapeBytes D.shape ++ UniKeccak.variantBytesK v).length / 136 + 1)
     rw [ivInput_length, len_digestBytes]
     unfold verifierCost ivCost
     omega
@@ -811,7 +800,7 @@ theorem openCost_le : openCost ≤ 121492 := by
   norm_num
 
 /-- **The main line's verifier** (`cost_verifierWithH` at `keccakMain`). -/
-theorem cost_verifierWithH_main (D : UniKeccak.KDeployment) (roots : SetupRoots) (input : Vector UInt8 32)
+theorem cost_verifierWithH_main (D : UniKeccak.KDeployment) (roots : UniKeccak.SetupRootsK) (input : Vector UInt8 32)
     (proof : UniKeccak.KeccakProof) (S : ℕ) (hS : proof.stream.size ≤ S) :
     Common.QueryCostAtMost
       (KDeployment.verifierWithH callKeccak256 callKeccakF1600 D UniKeccak.keccakMain roots input proof)
@@ -819,7 +808,7 @@ theorem cost_verifierWithH_main (D : UniKeccak.KDeployment) (roots : SetupRoots)
   cost_verifierWithH D _ roots input proof S hS
 
 /-- **π1-rec3's verifier** (`cost_verifierWithH` at `keccakRec3`). -/
-theorem cost_verifierWithH_rec3 (D : UniKeccak.KDeployment) (roots : SetupRoots) (input : Vector UInt8 32)
+theorem cost_verifierWithH_rec3 (D : UniKeccak.KDeployment) (roots : UniKeccak.SetupRootsK) (input : Vector UInt8 32)
     (proof : UniKeccak.KeccakProof) (S : ℕ) (hS : proof.stream.size ≤ S) :
     Common.QueryCostAtMost
       (KDeployment.verifierWithH callKeccak256 callKeccakF1600 D UniKeccak.keccakRec3 roots input proof)
@@ -827,11 +816,11 @@ theorem cost_verifierWithH_rec3 (D : UniKeccak.KDeployment) (roots : SetupRoots)
   cost_verifierWithH D _ roots input proof S hS
 
 /-- `walkCost` at the main line: two per sampled coordinate. -/
-theorem walkCost_main (shape : Shape) :
+theorem walkCost_main (shape : UniStatement.Shape) :
     walkCost shape UniKeccak.keccakMain = 8 + 2 * (17 + shape.heights.getD opSha3 0 - 3 - 7) + 26 := rfl
 
 /-- `walkCost` at π1-rec3: `30`, whatever the shape. -/
-theorem walkCost_rec3 (shape : Shape) : walkCost shape UniKeccak.keccakRec3 = 30 := rfl
+theorem walkCost_rec3 (shape : UniStatement.Shape) : walkCost shape UniKeccak.keccakRec3 = 30 := rfl
 
 end Top
 

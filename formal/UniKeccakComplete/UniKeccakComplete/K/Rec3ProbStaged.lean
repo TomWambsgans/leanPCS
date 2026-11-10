@@ -33,7 +33,7 @@ honest witness the experiment is the verdict of a two-call computation of π1-re
   most `εpow` (`Holds.rejectGood`, the grinding).
 
 Decisions: as `ProbStaged.lean` (no coins, the experiment an equality; the bad sets parameters of `Holds`; the first
-chain input `88` bytes); `α` is `alphaOf3 s₁ = squares (chal s₁) 4`, π1-rec3's draw (`drawRunW … 4`,
+chain input `112` bytes); `α` is `alphaOf3 s₁ = squares (chal s₁) 4`, π1-rec3's draw (`drawRunW … 4`,
 `drawRunH .rec3 4`), so the staged run's bus challenges are the prover's `proverChallenges3`.
 -/
 
@@ -52,7 +52,7 @@ namespace UniKeccakComplete.Rec3
 /-- **π1-rec3's `α`** from the first bus answer: `squares (chal s₁) 4 = (c, c², c⁴, c⁸)`. -/
 def alphaOf3 (s : Digest) : List E := squares (PcsQuotient.Transcript.challengeOf s) 4
 
-/-- **The experiment's stages** (no coins): `A` up to the first bus-challenge input (`inp`, `88` bytes), the two
+/-- **The experiment's stages** (no coins): `A` up to the first bus-challenge input (`inp`, `112` bytes), the two
 chained answers, `B` up to `t`'s input (`tin`; `pr` the prior `t`'s bad set depends on, Flock's point), `t`'s answer,
 `C` the rest (the prover's tail and the verifier), its output the verdict. -/
 structure KStaged3 where
@@ -104,10 +104,10 @@ structure KStaged3.Holds (S : KStaged3) (D : KDeployment) (P : KProver D) (input
   duplex : DuplexVm S.run []
   /-- At most `N` block calls (`hashBlocks`). -/
   cost : Common.QueryCostAtMost S.run hashBlocks N
-  /-- The first bus-challenge input has `88` bytes. -/
-  inp_length : ∀ a, (S.inp a).length = 88
-  /-- Before it, nothing of the chain's lengths (`32`, `88`) is hashed. -/
-  hashA : HashOK (GoodL 88) S.A
+  /-- The first bus-challenge input has `112` bytes. -/
+  inp_length : ∀ a, (S.inp a).length = 112
+  /-- Before it, nothing of the chain's lengths (`32`, `112`) is hashed. -/
+  hashA : HashOK (GoodL 112) S.A
   /-- At most `Nbad` bad values of `β` for each `α`. -/
   badCard : ∀ alphas, ∃ T : Finset E, T.card ≤ Nbad ∧ ∀ b, bad alphas b → b ∈ T
   /-- At most `ct` bad values of `t` for each prior. -/

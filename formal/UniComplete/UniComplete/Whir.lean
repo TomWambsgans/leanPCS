@@ -9,6 +9,7 @@ import UniStatement.Opening
 import E2ECompleteness.ProverOpening
 import Bridge.Opening
 import Completeness.Opening
+import UniSound.FsWalkProof
 
 /-!
 # Honest WHIR openings at the univariate verifier's plain layouts
@@ -226,10 +227,18 @@ theorem pcsOpen_honest (H : Bytes → Digest) (F : KeccakState → KeccakState) 
     (fun c hc ↦ by rw [List.mem_singleton] at hc; subst hc; exact hpt)
     (plain_holds (by omega) (by omega) stack hs pt hpt) (plain_multilinear vars _) hπ
 
+/-- **A root's halves as the prover sends them carry its bytes** (`rootHalves`: what `next_root` reads from them). -/
+theorem rootWord_rootHalves (d : Digest) : UniStatement.rootWord (UniStatement.rootHalves d) = digestBytes d := by
+  have h := UniSound.rootWord_halvesAt (digestBytes d).toArray 0 (by simp [UniSound.length_digestBytes])
+  have e : UniSound.halvesAt (digestBytes d).toArray 0 = UniStatement.rootHalves d := rfl
+  rw [e] at h
+  rw [h, UniSound.bytesAt]
+  simp [UniSound.length_digestBytes]
+
 /-- **A root read back from its two halves** (`next_root`, how the verifier reads `C1`'s and `C2`'s roots from
-the stream) is the root. -/
-theorem rootOf_digestScalars (d : Digest) : UniStatement.rootOf (digestScalars d) = d := by
-  simp [UniStatement.rootOf, digestOfScalars_digestScalars]
+the stream) is the root, the halves the prover's (`rootHalves`: the root's bytes as they are). -/
+theorem rootOf_rootHalves (d : Digest) : UniStatement.rootOf (UniStatement.rootHalves d) = d :=
+  digestBytes_injective (by rw [UniSound.digestBytes_rootOf, rootWord_rootHalves])
 
 /-- **A claim's opening check accepts the honest opening** (`UniStatement.pcsOpenWith` over `F`, Keccak-256 over `F`),
 at the root the stream carries as two halves: `pcsOpen_honest` at `H = keccak256With F` through `openingWith_eqH`. -/
@@ -241,10 +250,10 @@ theorem pcsOpenWith_honest (F : KeccakState → KeccakState) (fuel : ℕ) {vars 
       (E2ECompleteness.commitWithH (m := Id) (keccak256With (m := Id) fun s ↦ pure (F s)) vars stack) stack
       [⟨pt, stackEval stack pt⟩] = some π) :
     UniStatement.pcsOpenWith (m := Id) (fun s ↦ pure (F s)) vars
-      (UniStatement.rootOf (digestScalars
+      (UniStatement.rootOf (UniStatement.rootHalves
         (E2ECompleteness.commitWithH (m := Id) (keccak256With (m := Id) fun s ↦ pure (F s)) vars stack).root))
       [⟨pt, stackEval stack pt⟩] π = true := by
-  rw [rootOf_digestScalars, UniStatement.pcsOpenWith, E2ECompleteness.openingWith_eqH]
+  rw [rootOf_rootHalves, UniStatement.pcsOpenWith, E2ECompleteness.openingWith_eqH]
   exact pcsOpen_honest _ F fuel h1 h2 stack hs pt hpt hπ
 
 /-- **The same with the Statement's prover and commitment** over `F` (`PcsQuotient.proveOpeningWith`,
@@ -256,7 +265,7 @@ theorem pcsOpenWith_honest' (F : KeccakState → KeccakState) (fuel : ℕ) {vars
       (PcsQuotient.commitWith (m := Id) (fun s ↦ pure (F s)) vars stack) stack
       [⟨pt, stackEval stack pt⟩] = some π) :
     UniStatement.pcsOpenWith (m := Id) (fun s ↦ pure (F s)) vars
-      (UniStatement.rootOf (digestScalars
+      (UniStatement.rootOf (UniStatement.rootHalves
         (PcsQuotient.commitWith (m := Id) (fun s ↦ pure (F s)) vars stack).root))
       [⟨pt, stackEval stack pt⟩] π = true := by
   rw [E2ECompleteness.proveOpeningWith_eqH, E2ECompleteness.commitWith_eqH] at hπ
@@ -312,8 +321,8 @@ end UniComplete
 /-- info: 'UniComplete.pcsOpen_honest' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in #print axioms UniComplete.pcsOpen_honest
 
-/-- info: 'UniComplete.rootOf_digestScalars' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in #print axioms UniComplete.rootOf_digestScalars
+/-- info: 'UniComplete.rootOf_rootHalves' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in #print axioms UniComplete.rootOf_rootHalves
 
 /-- info: 'UniComplete.pcsOpenWith_honest' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in #print axioms UniComplete.pcsOpenWith_honest

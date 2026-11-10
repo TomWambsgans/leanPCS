@@ -913,7 +913,7 @@ def AtTOnOne (a : AtT) : Prop := ∀ r ∈ a.relations, ∀ t ∈ r.terms, t.col
 /-- **Every term's point covers its column**: on its commitment's layout (the verifier's `UniKeccak.layoutsK shape
 c2Columns`), every block of its column has at most as many variables as its point has coordinates. (A slot of
 `q_flock` has no blocks of its own; `q_flock`'s are its.) -/
-def AtTCovers (shape : Shape) (a : AtT) : Prop :=
+def AtTCovers (shape : UniStatement.Shape) (a : AtT) : Prop :=
   ∀ r ∈ a.relations, ∀ t ∈ r.terms,
     ∀ b ∈ (layoutIn (UniKeccak.layoutsK shape a.c2Columns) t.column.commitment).limbs t.column, b.2.1 ≤ t.point.length
 
@@ -929,10 +929,10 @@ def AtTSlotsMaximal (a : AtT) : Prop :=
     ∀ q ∈ pointsOn a.relations .c1, t.point <+: q → q = t.point
 
 /-- **The verifier's relations are well-formed for `combine`**, at the layouts `UniKeccak.layoutsK shape a.c2Columns`. -/
-def AtTWellFormed (shape : Shape) (a : AtT) : Prop := AtTOnOne a ∧ AtTCovers shape a ∧ AtTSlotsMaximal a
+def AtTWellFormed (shape : UniStatement.Shape) (a : AtT) : Prop := AtTOnOne a ∧ AtTCovers shape a ∧ AtTSlotsMaximal a
 
 /-- Under `AtTWellFormed`, every relation on `c` has its terms on `c`, and they read their own points. -/
-theorem atTWellFormed_readsOwn {shape : Shape} {a : AtT} (hwf : AtTWellFormed shape a) (c : Commitment) :
+theorem atTWellFormed_readsOwn {shape : UniStatement.Shape} {a : AtT} (hwf : AtTWellFormed shape a) (c : Commitment) :
     (∀ r ∈ a.relations, r.commitment = c → ∀ t ∈ r.terms, t.column.commitment = c) ∧
     ∀ r ∈ a.relations, r.commitment = c → ∀ t ∈ r.terms,
       ReadsOwnPoint (layoutIn (UniKeccak.layoutsK shape a.c2Columns) c) (pointsOn a.relations c) t.column t.point := by
@@ -953,7 +953,7 @@ theorem atTWellFormed_readsOwn {shape : Shape} {a : AtT} (hwf : AtTWellFormed sh
 
 /-- **The combined claims the prover hands the batch hold whenever the relations do** (`proveStreamWith`'s
 `combined`, on the layouts `UniKeccak.layoutsK shape a.c2Columns` the batch reads them at), for well-formed relations. -/
-theorem atT_combined_hold (shape : Shape) (a : AtT) (stackOf : Commitment → Array K) (rho : E)
+theorem atT_combined_hold (shape : UniStatement.Shape) (a : AtT) (stackOf : Commitment → Array K) (rho : E)
     (hwf : AtTWellFormed shape a)
     (hholds : ∀ r ∈ a.relations, Relation.Holds (layoutIn (UniKeccak.layoutsK shape a.c2Columns)) stackOf a.ringMap r) :
     ∀ p ∈ commitments.filterMap (fun c ↦ (combine a.relations c rho).map (c, ·)),
@@ -1138,7 +1138,7 @@ theorem keccakSlot_lt' {t : Table} (ht : t ∈ tablesKeccak) (hop : t.opcode = o
 
 /-- **`constraintRelationK`'s terms**: the tables' columns and counter inverses at `w.take r`, `q_flock`'s slots
 at `y(t)` of `SHA3`'s height (slots below `2^11`), the memory's limbs at `w.take lm`. -/
-theorem constraintRelation_terms (shape : Shape) (parts : List TablePart) (publicWords : List E)
+theorem constraintRelation_terms (shape : UniStatement.Shape) (parts : List TablePart) (publicWords : List E)
     (gamma t constraintValue : E) (w : List E) (Q : Term → Prop)
     (htable : ∀ op c k, Q (term (.table op c) (w.take (shape.heights.getD op 0)) k))
     (hinv : ∀ op k, Q (term (.inverse op) (w.take (shape.heights.getD op 0)) k))
@@ -1171,7 +1171,7 @@ theorem constraintRelation_terms (shape : Shape) (parts : List TablePart) (publi
     · exact pushT_good hs (hinv _ _)
 
 /-- **`heapRelations`' terms**: the heap, the tree quotient, the leaf and constraint quotients' chunks. -/
-theorem heapRelations_terms (shape : Shape) (active : List E) (parts : List TablePart) (weights : Array E)
+theorem heapRelations_terms (shape : UniStatement.Shape) (active : List E) (parts : List TablePart) (weights : Array E)
     (beta heapValue constraintValue memoryPull memoryPush bytecodePull bytecodePush : E) (w : List E)
     (constraintChunks : List ℕ) (Q : Term → Prop)
     (hheap : ∀ P k, Q (term .heap P k)) (htree : ∀ c P k, Q (term (.treeQuotient c) P k))
@@ -1432,18 +1432,18 @@ theorem mem_limbs_new {cols : List (Column × ℕ × Bool)} {column : Column} {b
     exact ⟨x.2.2, by simpa using hx⟩
 
 /-- `C1`'s layout is `StackLayout.new` of `Reference`'s `c1Columns` (`layouts`' `c1`). -/
-theorem layoutIn_c1 (shape : Shape) (c2 : List (Column × ℕ × Bool)) :
+theorem layoutIn_c1 (shape : UniStatement.Shape) (c2 : List (Column × ℕ × Bool)) :
     layoutIn (UniKeccak.layoutsK shape c2) .c1 = StackLayout.new (c1Columns shape) := rfl
 
-theorem layoutIn_setup (shape : Shape) (c2 : List (Column × ℕ × Bool)) :
+theorem layoutIn_setup (shape : UniStatement.Shape) (c2 : List (Column × ℕ × Bool)) :
     layoutIn (UniKeccak.layoutsK shape c2) .setup =
       StackLayout.new [(.bytecodeTuple, shape.logBytecode + 4, false), (.address, shape.logMemory, false)] := rfl
 
-theorem layoutIn_c2 (shape : Shape) (c2 : List (Column × ℕ × Bool)) :
+theorem layoutIn_c2 (shape : UniStatement.Shape) (c2 : List (Column × ℕ × Bool)) :
     layoutIn (UniKeccak.layoutsK shape c2) .c2 = StackLayout.new c2 := rfl
 
 /-- A column's variables on `C1`. -/
-def c1Vars (shape : Shape) : Column → ℕ
+def c1Vars (shape : UniStatement.Shape) : Column → ℕ
   | .qflock => shape.heights.getD opSha3 0 + 11
   | .table op _ => shape.heights.getD op 0
   | .inverse op => shape.heights.getD op 0
@@ -1451,7 +1451,7 @@ def c1Vars (shape : Shape) : Column → ℕ
   | .bytecodeFinal => shape.logBytecode
   | _ => 0
 
-theorem vars_c1 {shape : Shape} {c2 : List (Column × ℕ × Bool)} {column : Column} {b : ℕ × ℕ × ℕ}
+theorem vars_c1 {shape : UniStatement.Shape} {c2 : List (Column × ℕ × Bool)} {column : Column} {b : ℕ × ℕ × ℕ}
     (hb : b ∈ (layoutIn (UniKeccak.layoutsK shape c2) .c1).limbs column) : b.2.1 = c1Vars shape column := by
   rw [layoutIn_c1] at hb
   obtain ⟨eV, h⟩ := mem_limbs_new hb
@@ -1486,12 +1486,12 @@ theorem vars_c1 {shape : Shape} {c2 : List (Column × ℕ × Bool)} {column : Co
     rfl
 
 /-- A column's variables on the setup. -/
-def setupVars (shape : Shape) : Column → ℕ
+def setupVars (shape : UniStatement.Shape) : Column → ℕ
   | .bytecodeTuple => shape.logBytecode + 4
   | .address => shape.logMemory
   | _ => 0
 
-theorem vars_setup {shape : Shape} {c2 : List (Column × ℕ × Bool)} {column : Column} {b : ℕ × ℕ × ℕ}
+theorem vars_setup {shape : UniStatement.Shape} {c2 : List (Column × ℕ × Bool)} {column : Column} {b : ℕ × ℕ × ℕ}
     (hb : b ∈ (layoutIn (UniKeccak.layoutsK shape c2) .setup).limbs column) : b.2.1 = setupVars shape column := by
   rw [layoutIn_setup] at hb
   obtain ⟨eV, h⟩ := mem_limbs_new hb
@@ -1510,7 +1510,7 @@ theorem le_foldl_max : ∀ (l : List ℕ) (a : ℕ), a ≤ l.foldl max a ∧ ∀
     · exact (le_max_right a x).trans h1
     · exact h2 x hx
 
-theorem height_le_constraintVars (shape : Shape) (op : ℕ) :
+theorem height_le_constraintVars (shape : UniStatement.Shape) (op : ℕ) :
     shape.heights.getD op 0 ≤ shape.constraintVars := by
   unfold Shape.constraintVars
   rw [List.getD_eq_getElem?_getD]
@@ -1519,7 +1519,7 @@ theorem height_le_constraintVars (shape : Shape) (op : ℕ) :
   | some x =>
     exact (le_foldl_max _ 0).2 x (List.mem_append_left _ (List.mem_of_getElem? h))
 
-theorem logMemory_le_constraintVars (shape : Shape) : shape.logMemory ≤ shape.constraintVars :=
+theorem logMemory_le_constraintVars (shape : UniStatement.Shape) : shape.logMemory ≤ shape.constraintVars :=
   (le_foldl_max _ 0).2 _ (List.mem_append_right _ (List.mem_singleton_self _))
 
 theorem le_log2Ceil {k n : ℕ} (h : 2 ^ k ≤ n) : k ≤ log2Ceil n := by
@@ -1539,7 +1539,7 @@ theorem le_log2Ceil {k n : ℕ} (h : 2 ^ k ≤ n) : k ≤ log2Ceil n := by
       omega
 
 /-- The heap's height covers the bytecode (`2^lb` of its leaves). -/
-theorem logBytecode_le_h (shape : Shape) : shape.logBytecode ≤ shape.heap.h := by
+theorem logBytecode_le_h (shape : UniStatement.Shape) : shape.logBytecode ≤ shape.heap.h := by
   show shape.logBytecode ≤ (HeapLayout.new shape.logMemory shape.logBytecode shape.heights).h
   have e : (HeapLayout.new shape.logMemory shape.logBytecode shape.heights).h =
       log2Ceil (((([(Leaves.memory, shape.logMemory), (Leaves.bytecode, shape.logBytecode)] ++
@@ -1551,11 +1551,11 @@ theorem logBytecode_le_h (shape : Shape) : shape.logBytecode ≤ shape.heap.h :=
   rw [List.mem_mergeSort]
   simp
 
-theorem length_w (shape : Shape) (t : E) :
+theorem length_w (shape : UniStatement.Shape) (t : E) :
     (digits t (max shape.heap.h (shape.constraintVars + 4) + 2)).length =
       max shape.heap.h (shape.constraintVars + 4) + 2 := Domain.length_digits _ _
 
-theorem length_take_w {shape : Shape} {t : E} {n : ℕ} (hn : n ≤ shape.constraintVars ∨ n ≤ shape.heap.h) :
+theorem length_take_w {shape : UniStatement.Shape} {t : E} {n : ℕ} (hn : n ≤ shape.constraintVars ∨ n ≤ shape.heap.h) :
     ((digits t (max shape.heap.h (shape.constraintVars + 4) + 2)).take n).length = n := by
   rw [List.length_take, length_w]
   omega
@@ -1566,7 +1566,7 @@ theorem length_take_w {shape : Shape} {t : E} {n : ℕ} (hn : n ≤ shape.constr
 at `w.take e`, `e` the chunk's size): not proved here; it needs every chunk size of the quotients to be at most
 `w`'s length `max h (r_W + 4) + 2` (a degree bound on the tables) and the chunks' columns matched to their
 terms (each chunk's column listed once in `c2Columns`, at its term's size). -/
-def AtTCoversC2 (shape : Shape) (a : AtT) : Prop :=
+def AtTCoversC2 (shape : UniStatement.Shape) (a : AtT) : Prop :=
   ∀ r ∈ a.relations, ∀ t ∈ r.terms, t.column.commitment = .c2 →
     ∀ b ∈ (layoutIn (UniKeccak.layoutsK shape a.c2Columns) .c2).limbs t.column, b.2.1 ≤ t.point.length
 

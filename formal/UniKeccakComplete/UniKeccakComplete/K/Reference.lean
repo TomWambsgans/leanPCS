@@ -164,7 +164,7 @@ theorem sum_map_flatMap {α β : Type} (L : List α) (F : α → List β) (g : �
 
 /-- **`C2`'s words**: the heap's and the tree quotient's (`E`-valued, `h`, `h`, `0` variables), the constraint
 quotient's chunks, and the heap blocks' leaf quotients. -/
-theorem c2_pieceWords (s : Shape) :
+theorem c2_pieceWords (s : UniStatement.Shape) :
     pieceWords (Shape.c2ColumnsK s) =
       3 * 2 ^ s.heap.h + 3 * 2 ^ s.heap.h + 3 * 2 ^ 0 +
         ((chunks (Shape.constraintDegreeK s + 1)).map fun e ↦ 3 * 2 ^ e).sum + (s.heap.blocks.map leafWords).sum := by
@@ -189,7 +189,7 @@ theorem c2_pieceWords (s : Shape) :
 /-! ### The reference shape -/
 
 /-- `C1`'s columns (`layouts`' `c1`). -/
-def c1Columns (shape : Shape) : List (Column × ℕ × Bool) :=
+def c1Columns (shape : UniStatement.Shape) : List (Column × ℕ × Bool) :=
   let heights := shape.heights
   [(.qflock, heights.getD opSha3 0 + qflockRowBits, false)] ++
     tablesKeccak.flatMap (fun t ↦
@@ -200,10 +200,10 @@ def c1Columns (shape : Shape) : List (Column × ℕ × Bool) :=
     [(.bytecodeFinal, shape.logBytecode, false)]
 
 /-- The setup's columns (`layouts`' `setup`). -/
-def setupColumns (shape : Shape) : List (Column × ℕ × Bool) :=
+def setupColumns (shape : UniStatement.Shape) : List (Column × ℕ × Bool) :=
   [(.bytecodeTuple, shape.logBytecode + 4, false), (.address, shape.logMemory, false)]
 
-theorem layoutsOf_eq (s : Shape) :
+theorem layoutsOf_eq (s : UniStatement.Shape) :
     layoutsOfK s = [(.c1, StackLayout.new (c1Columns s)), (.c2, StackLayout.new (Shape.c2ColumnsK s)),
       (.setup, StackLayout.new (setupColumns s))] := rfl
 
@@ -225,18 +225,22 @@ theorem reference_vars : (layoutsOfK keccakRefShape).map (·.2.vars) = [27, 26, 
   rw [layoutsOf_eq]
   simp only [List.map_cons, List.map_nil, reference_c1Vars, reference_c2Vars, reference_setupVars]
 
-theorem layoutWordVars_layoutWord (s : Shape) (code vars placed : ℕ) :
-    layoutWordVars (layoutWord s code vars placed) = vars % 256 := rfl
-
-/-- **The Keccak layout words name `27, 26, 23` variables.** -/
-theorem reference_wordVars : (layoutWordsK keccakRefShape).map layoutWordVars = [27, 26, 23] := by
-  unfold layoutWordsK
-  simp only [List.map_cons, List.map_nil, layoutWordVars_layoutWord]
+/-- **The reference shape's PCS claims are on `27`, `26`, `23` variables** (`stackVarsK`: `C1`'s, `C2`'s, the
+setup's stack). -/
+theorem reference_stackVars_c1 : stackVarsK keccakRefShape .c1 = 27 := by
+  unfold stackVarsK
   rw [layoutsOf_eq]
-  show [(StackLayout.new (c1Columns keccakRefShape)).vars % 256,
-    (StackLayout.new (Shape.c2ColumnsK keccakRefShape)).vars % 256,
-    (StackLayout.new (setupColumns keccakRefShape)).vars % 256] = _
-  rw [reference_c1Vars, reference_c2Vars, reference_setupVars]
+  exact reference_c1Vars
+
+theorem reference_stackVars_c2 : stackVarsK keccakRefShape .c2 = 26 := by
+  unfold stackVarsK
+  rw [layoutsOf_eq]
+  exact reference_c2Vars
+
+theorem reference_stackVars_setup : stackVarsK keccakRefShape .setup = 23 := by
+  unfold stackVarsK
+  rw [layoutsOf_eq]
+  exact reference_setupVars
 
 end UniKeccakComplete
 
@@ -244,6 +248,6 @@ end UniKeccakComplete
 #guard_msgs in
 #print axioms UniKeccakComplete.reference_vars
 
-/-- info: 'UniKeccakComplete.reference_wordVars' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'UniKeccakComplete.reference_stackVars_c2' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms UniKeccakComplete.reference_wordVars
+#print axioms UniKeccakComplete.reference_stackVars_c2

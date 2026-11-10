@@ -96,10 +96,9 @@ variable {m n : Type → Type} [Monad m] [LawfulMonad m] [Monad n] [LawfulMonad 
 /-- **π1-rec3's honest prover commutes with a monad morphism** that commutes with Flock's prover and with the opening
 (`hopen`, WithHash's `simulateQ_proveOpeningWithH` for `simulateQ`). -/
 theorem app_proveRec3With
-    (hopen : ∀ (fuel : ℕ) (L : PcsQuotient.Layout) (tree : LeanVM.Prover.Tree) (stack : Array K)
-      (claims : List PcsQuotient.Claim),
-      φ.app (E2ECompleteness.proveOpeningWithH H F fuel L tree stack claims) =
-        E2ECompleteness.proveOpeningWithH (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) fuel L tree stack claims)
+    (hopen : ∀ (fuel n : ℕ) (tree : LeanVM.Prover.Tree) (stack : Array K) (pt : List E) (v : E),
+      φ.app (pcsProveH H F fuel n tree stack pt v) =
+        pcsProveH (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) fuel n tree stack pt v)
     (flock : FlockProver m) (flock' : FlockProver n) (hflock : ∀ logN v q, φ.wr (flock logN v q) = flock' logN v q)
     (fuel : ℕ) (programIv : List UInt8) (tr : Trace) :
     φ.app (proveRec3With H F fuel flock programIv tr) =
@@ -121,10 +120,9 @@ theorem app_proveRec3With
 /-- **π1-rec3's deployed honest prover commutes with a monad morphism** that commutes with Flock's prover and with
 the opening. -/
 theorem app_uniProverRec3With
-    (hopen : ∀ (fuel : ℕ) (L : PcsQuotient.Layout) (tree : LeanVM.Prover.Tree) (stack : Array K)
-      (claims : List PcsQuotient.Claim),
-      φ.app (E2ECompleteness.proveOpeningWithH H F fuel L tree stack claims) =
-        E2ECompleteness.proveOpeningWithH (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) fuel L tree stack claims)
+    (hopen : ∀ (fuel n : ℕ) (tree : LeanVM.Prover.Tree) (stack : Array K) (pt : List E) (v : E),
+      φ.app (pcsProveH H F fuel n tree stack pt v) =
+        pcsProveH (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) fuel n tree stack pt v)
     (flock : FlockProver m) (flock' : FlockProver n) (hflock : ∀ logN v q, φ.wr (flock logN v q) = flock' logN v q)
     (D : UniKeccak.KDeployment) (input : Vector UInt8 32) (rows : List ℕ) (q : D.Stack rows) :
     φ.app (uniProverRec3With H F flock D input rows q) =
@@ -145,9 +143,9 @@ theorem simulateQ_proveRec3With (flock : FlockProverH) (hflock : FlockCommutes f
     simulateQ impl (proveRec3With callKeccak256 callKeccakF1600 fuel (flock callKeccak256) programIv tr) =
       proveRec3With (implH impl) (implF impl) fuel (flock (implH impl)) programIv tr := by
   have h := app_proveRec3With (Morph.sim impl) callKeccak256 callKeccakF1600
-    (fun fuel L tree stack claims ↦ by
+    (fun fuel n tree stack pt v ↦ by
       rw [Morph.sim_H, Morph.sim_F]
-      exact E2ECompleteness.simulateQ_proveOpeningWithH impl fuel L tree stack claims)
+      exact simulateQ_pcsProveH impl fuel n tree stack pt v)
     (flock callKeccak256) (flock (implH impl)) (fun logN v q ↦ by rw [hflock, Morph.sim_H]) fuel
     programIv tr
   rw [Morph.sim_H, Morph.sim_F] at h

@@ -52,14 +52,14 @@ theorem sim_callHash : (fun x ↦ (Morph.sim hashToCalls).app (callHash x)) = ca
   funext fun x ↦ simulateQ_spec_query hashToCalls x
 
 /-- **The run on calldata only hashes.** -/
-theorem hOnly_runWithKH (shape : Shape) (iv publicInput : List UInt8) (stream : Array UInt8)
+theorem hOnly_runWithKH (shape : UniStatement.Shape) (iv publicInput : List UInt8) (stream : Array UInt8)
     (v : UniKeccak.KeccakVariant) (mode : ClaimsMode) :
     HOnly (runWithKH callKeccak256 shape iv publicInput stream v mode) := by
   rw [← sim_callHash, ← Morph.app_runWithKH (Morph.sim hashToCalls) callHash]
   exact hOnly_simulateQ_hash _
 
 /-- The contract's IV only hashes. -/
-theorem hOnly_ivWithH (D : UniKeccak.KDeployment) (v : UniKeccak.KeccakVariant) (roots : SetupRoots) :
+theorem hOnly_ivWithH (D : UniKeccak.KDeployment) (v : UniKeccak.KeccakVariant) (roots : UniKeccak.SetupRootsK) :
     HOnly (KDeployment.ivWithH callKeccak256 D v roots) := by
   rw [← sim_callHash, ← Morph.app_ivWithH (Morph.sim hashToCalls) callHash]
   exact hOnly_simulateQ_hash _
@@ -84,14 +84,17 @@ theorem disc_forIn_list {α β : Type} (l : List α) (b : β) (f : α → β →
     | done b => exact disc_pure b
     | yield b => exact ih b
 
-/-- The opening check is disciplined (WithHash's opening). -/
-theorem disc_pcsOpenWithH (vars : ℕ) (root : Digest) (claims : List PcsQuotient.Claim)
+/-- A claim's opening check is disciplined (`disc_pcsVerify`). -/
+theorem disc_pcsOpenKH (n : ℕ) (root : Digest) (ood : E) (pt : List E) (v : E)
     (proof : LeanVM.Protocol.Compile.Proof) :
-    Disc (pcsOpenWithH callKeccak256 callKeccakF1600 vars root claims proof) :=
-  E2ECompleteness.disc_openingWithH _ _ _ _
+    Disc (pcsOpenKH callKeccak256 callKeccakF1600 n root ood pt v proof) := by
+  unfold pcsOpenKH
+  split
+  · exact disc_pcsVerify _ _ _
+  · exact disc_pure _
 
 /-- **The verifier is disciplined**, from any earlier answers. -/
-theorem disc_verifyWithKH (shape : Shape) (v : UniKeccak.KeccakVariant) (iv : List UInt8) (roots : SetupRoots)
+theorem disc_verifyWithKH (shape : UniStatement.Shape) (v : UniKeccak.KeccakVariant) (iv : List UInt8) (roots : UniKeccak.SetupRootsK)
     (publicInput : Vector UInt8 32) (proof : UniKeccak.KeccakProof) :
     Disc (verifyWithKH callKeccak256 callKeccakF1600 shape v iv roots publicInput proof) := by
   unfold verifyWithKH
@@ -103,19 +106,19 @@ theorem disc_verifyWithKH (shape : Shape) (v : UniKeccak.KeccakVariant) (iv : Li
     · refine (disc_forIn_list _ _ _ fun x s ↦ ?_).bind fun s ↦ ?_
       · split
         split
-        · exact (disc_pcsOpenWithH _ _ _ _).bind fun _ ↦ disc_pure _
+        · exact (disc_pcsOpenKH _ _ _ _ _ _).bind fun _ ↦ disc_pure _
         · exact disc_pure _
       · split <;> exact disc_pure _
 
 /-- **The deployed verifier is disciplined**, from any earlier answers. -/
-theorem disc_verifierWithH (D : UniKeccak.KDeployment) (v : UniKeccak.KeccakVariant) (roots : SetupRoots)
+theorem disc_verifierWithH (D : UniKeccak.KDeployment) (v : UniKeccak.KeccakVariant) (roots : UniKeccak.SetupRootsK)
     (input : Vector UInt8 32) (proof : UniKeccak.KeccakProof) :
     Disc (KDeployment.verifierWithH callKeccak256 callKeccakF1600 D v roots input proof) := by
   unfold KDeployment.verifierWithH
   exact (disc_of_hOnly (hOnly_ivWithH _ _ _)).bind fun _ ↦ disc_verifyWithKH _ _ _ _ _ _
 
 /-- **The deployed verifier follows the duplex discipline** (mumbai's `DuplexVm`, from no earlier answer). -/
-theorem duplexVm_verifierWithH (D : UniKeccak.KDeployment) (v : UniKeccak.KeccakVariant) (roots : SetupRoots)
+theorem duplexVm_verifierWithH (D : UniKeccak.KDeployment) (v : UniKeccak.KeccakVariant) (roots : UniKeccak.SetupRootsK)
     (input : Vector UInt8 32) (proof : UniKeccak.KeccakProof) :
     DuplexVm (KDeployment.verifierWithH callKeccak256 callKeccakF1600 D v roots input proof) [] :=
   (duplexVm_iff_duplexP _ _).mpr (disc_verifierWithH D v roots input proof [])

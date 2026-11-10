@@ -103,6 +103,13 @@ def rootOf (halves : E × E) : Digest :=
   #v[LeanVM.Rpm.bytesLane w, LeanVM.Rpm.bytesLane (w.drop 8), LeanVM.Rpm.bytesLane (w.drop 16),
     LeanVM.Rpm.bytesLane (w.drop 24)]
 
+/-- **A root's two halves as the prover sends them** (`prover::prove::halves`): the halves `next_root` reads from
+the root's 32 bytes (`digestBytes`), so that `rootWord (rootHalves d) = digestBytes d` and `rootOf (rootHalves d) = d`
+(`UniComplete.rootWord_rootHalves`, `UniComplete.rootOf_rootHalves`). -/
+def rootHalves (d : Digest) : E × E :=
+  let b := (digestBytes d).toArray
+  (eNew (beWordAt b 8) (beWordAt b 0) 0, eNew (beWordAt b 24) (beWordAt b 16) 0)
+
 /-- `combined_words(claim)`: its points (a count, then each its length and coordinates), its terms (a count, then
 each `column | point << 32 | twist << 48` and its coefficient), its value. -/
 def combinedWords (claim : Combined) : List UInt8 :=

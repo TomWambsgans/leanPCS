@@ -247,7 +247,7 @@ theorem PartsOK.length {parts : List TablePart} (h : PartsOK parts) : parts.leng
 /-! ## The constraint quotient's degree -/
 
 /-- `Shape.constraintDegreeK`'s step. -/
-def cdStep (shape : Shape) (d : ℕ) (table : Table) : ℕ :=
+def cdStep (shape : UniStatement.Shape) (d : ℕ) (table : Table) : ℕ :=
   let r := shape.heights.getD table.opcode 0
   let n := 2 ^ r
   let d := if table.opcode = opJump then max d (degree n 2) else d
@@ -264,7 +264,7 @@ theorem foldl_zip_fst {α β δ : Type} (g : δ → α → δ) :
     exact foldl_zip_fst g l l' _ (by simpa using h)
 
 /-- **The constraint quotient's degree is the shape's**, whatever the parts' values (one part per table). -/
-theorem constraintRelationK_snd (shape : Shape) (parts : List TablePart) (h : tablesKeccak.length ≤ parts.length)
+theorem constraintRelationK_snd (shape : UniStatement.Shape) (parts : List TablePart) (h : tablesKeccak.length ≤ parts.length)
     (publicWords : List E) (gamma t constraintValue : E) (w : List E) :
     (constraintRelationK shape parts publicWords gamma t constraintValue w).2 = Shape.constraintDegreeK shape := by
   unfold constraintRelationK
@@ -309,7 +309,7 @@ theorem foldl_append_toList {α β : Type} (G : α → Array β) :
     rw [List.foldl_cons, foldl_append_toList G l, Array.toList_append, List.flatMap_cons, List.append_assoc]
 
 /-- **The heap's leaf columns are the blocks'**, whatever the other arguments. -/
-theorem heapRelations_snd (shape : Shape) (active : List E) (parts : List TablePart) (weights : Array E)
+theorem heapRelations_snd (shape : UniStatement.Shape) (active : List E) (parts : List TablePart) (weights : Array E)
     (beta heapValue constraintValue memoryPull memoryPush bytecodePull bytecodePush : E) (w : List E)
     (constraintChunks : List ℕ) :
     (heapRelations shape active parts weights beta heapValue constraintValue memoryPull memoryPush bytecodePull
@@ -447,7 +447,7 @@ theorem colWords_chunkCols (index d : ℕ) :
 
 /-- **`C2`'s columns at given parts**: the heap's, the tree quotient's, the constraint quotient's chunks at the
 shape's degree, each heap block's leaf quotient's (a table's at its part's degrees). -/
-def c2ColumnsWith (shape : Shape) (parts : List TablePart) : List (Column × ℕ × Bool) :=
+def c2ColumnsWith (shape : UniStatement.Shape) (parts : List TablePart) : List (Column × ℕ × Bool) :=
   let h := shape.heap.h
   let constraintChunks := chunks (Shape.constraintDegreeK shape + 1)
   [(.heap, h, true), (.treeQuotient 0, h, true), (.treeQuotient 1, 0, true)] ++
@@ -476,7 +476,7 @@ theorem three_le_colWords_chunks (index d : ℕ) :
 
 /-- **The walk's `C2` columns fill at most the shape's words**: a table's leaf quotient at its table's degrees
 is the shape's, at zero degrees (a failed read) one chunk of one word. -/
-theorem colWords_c2ColumnsWith_le (shape : Shape) {parts : List TablePart} (hp : PartsOK parts) :
+theorem colWords_c2ColumnsWith_le (shape : UniStatement.Shape) {parts : List TablePart} (hp : PartsOK parts) :
     colWords (c2ColumnsWith shape parts) ≤ colWords (Shape.c2ColumnsK shape) := by
   unfold c2ColumnsWith Shape.c2ColumnsK
   dsimp only
@@ -507,9 +507,9 @@ theorem colWords_c2ColumnsWith_le (shape : Shape) {parts : List TablePart} (hp :
       exact Nat.mul_le_mul_left 3 (le_trans (by simp) (one_le_sum_pow (chunks_ne_nil (Nat.succ_pos _))))
 
 /-- **The batching sumcheck's variables bound**: the largest of the shape's stacks' variables. -/
-def batchVarsBound (shape : Shape) : ℕ := ((layoutsOfK shape).map (·.2.vars)).foldl max 0
+def batchVarsBound (shape : UniStatement.Shape) : ℕ := ((layoutsOfK shape).map (·.2.vars)).foldl max 0
 
-theorem batchVars_le (shape : Shape) (cols : List (Column × ℕ × Bool))
+theorem batchVars_le (shape : UniStatement.Shape) (cols : List (Column × ℕ × Bool))
     (h : colWords cols ≤ colWords (Shape.c2ColumnsK shape)) :
     ((layoutsK shape cols).map (·.2.vars)).foldl max 0 ≤ batchVarsBound shape := by
   have := vars_new_mono h

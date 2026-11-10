@@ -11,7 +11,7 @@ import UniKeccakComplete.Chain
 
 Right after `C1`'s root π1-rec3's prover (`drawRunW … 4`, `sampleW`) and verifier (`drawRunH .rec3 4`) draw the bus
 challenges as **two** chained Keccak-256 answers: `s₁ = H(x)` with `x` the state, the six row counts and `C1`'s root
-word (`88` bytes), `α = squares (chal s₁) 4 = (c, c², c⁴, c⁸)`; then `s₂ = H(s₁)` (`32` bytes), `β = chal s₂`.
+word (`112` bytes), `α = squares (chal s₁) 4 = (c, c², c⁴, c⁸)`; then `s₂ = H(s₁)` (`32` bytes), `β = chal s₂`.
 
 **`prEvent_staged2_le`**: for a computation of this shape (`staged2 chal alphaOf inp A C`: `A` up to the first input
 `inp a` of length `L ≠ 32`, the two answers, `C` anything) whose `A` hashes only inputs of other lengths than `32`

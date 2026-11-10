@@ -268,14 +268,14 @@ theorem aligned_layoutIn (stackLayouts : List (Commitment × StackLayout)) (h : 
   | some x => exact h x (List.mem_of_find?_eq_some hf)
 
 /-- **The verifier's layouts are aligned** (`layoutsK`: three `StackLayout.new`). -/
-theorem aligned_layouts (shape : Shape) (c2Columns : List (Column × ℕ × Bool)) :
+theorem aligned_layouts (shape : UniStatement.Shape) (c2Columns : List (Column × ℕ × Bool)) :
     ∀ x ∈ UniKeccak.layoutsK shape c2Columns, Aligned x.2 := by
   intro x hx
   simp only [UniKeccak.layoutsK, List.mem_cons, List.not_mem_nil, or_false] at hx
   rcases hx with rfl | rfl | rfl <;> exact aligned_new _
 
 /-- The verifier's stacks have at least `15` variables (`StackLayout.new`'s `MIN_STACKED_LOG`). -/
-theorem batchVars_layouts_ge (shape : Shape) (c2Columns : List (Column × ℕ × Bool)) :
+theorem batchVars_layouts_ge (shape : UniStatement.Shape) (c2Columns : List (Column × ℕ × Bool)) :
     15 ≤ batchVars (UniKeccak.layoutsK shape c2Columns) := by
   have hmem : (Commitment.c2, StackLayout.new c2Columns) ∈ UniKeccak.layoutsK shape c2Columns := by
     simp [UniKeccak.layoutsK]

@@ -579,14 +579,14 @@ theorem constraintQuotient_mul {tr : Trace} (hH : TraceHonest tr) (hS : Small tr
 /-! ### The degree -/
 
 /-- `Shape.constraintDegreeK`'s step over the tables. -/
-def degStep (shape : Shape) (d : ℕ) (table : Table) : ℕ :=
+def degStep (shape : UniStatement.Shape) (d : ℕ) (table : Table) : ℕ :=
   let r := shape.heights.getD table.opcode 0
   let n := 2 ^ r
   let d := if table.opcode = opJump then max d (degree n 2) else d
   let d := max d (degree ((n - 1) * (1 + table.countColumns.length)) n)
   if table.opcode = opSha3 then max d (degree (r * (n / 2)) n) else d
 
-theorem constraintDegree_eq (shape : Shape) :
+theorem constraintDegree_eq (shape : UniStatement.Shape) :
     (Shape.constraintDegreeK shape) = max (tablesKeccak.foldl (degStep shape) 0) (degree (2 ^ shape.logMemory) 3) := rfl
 
 theorem foldl_ge {α : Type} (f : ℕ → α → ℕ) (hmono : ∀ d x, d ≤ f d x) :
@@ -602,13 +602,13 @@ theorem foldl_comp_le {α : Type} (f : ℕ → α → ℕ) (hmono : ∀ d x, d �
     · exact le_trans (hc d x) (foldl_ge f hmono ys _)
     · exact foldl_comp_le f hmono c hc ys _ x h
 
-theorem degStep_mono (shape : Shape) (d : ℕ) (table : Table) : d ≤ degStep shape d table := by
+theorem degStep_mono (shape : UniStatement.Shape) (d : ℕ) (table : Table) : d ≤ degStep shape d table := by
   unfold degStep
   dsimp only
   split_ifs <;> omega
 
 /-- **The constraint degree bounds each table's quotient degrees** (JUMP's, the counters', `SHA3`'s copies'). -/
-theorem le_constraintDegree (shape : Shape) {table : Table} (htab : table ∈ tablesKeccak) :
+theorem le_constraintDegree (shape : UniStatement.Shape) {table : Table} (htab : table ∈ tablesKeccak) :
     (table.opcode = opJump → degree (2 ^ shape.heights.getD table.opcode 0) 2 ≤ (Shape.constraintDegreeK shape)) ∧
     degree ((2 ^ shape.heights.getD table.opcode 0 - 1) * (1 + table.countColumns.length))
       (2 ^ shape.heights.getD table.opcode 0) ≤ (Shape.constraintDegreeK shape) ∧
@@ -630,7 +630,7 @@ theorem le_constraintDegree (shape : Shape) {table : Table} (htab : table ∈ ta
       (fun d x ↦ by unfold degStep; dsimp only; split_ifs <;> omega)
     simpa [hB] using this
 
-theorem public_le_constraintDegree (shape : Shape) : degree (2 ^ shape.logMemory) 3 ≤ (Shape.constraintDegreeK shape) := by
+theorem public_le_constraintDegree (shape : UniStatement.Shape) : degree (2 ^ shape.logMemory) 3 ≤ (Shape.constraintDegreeK shape) := by
   rw [constraintDegree_eq]
   exact le_max_right _ _
 

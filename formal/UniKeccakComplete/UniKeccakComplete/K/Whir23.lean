@@ -66,10 +66,10 @@ theorem pcsOpenWith_honestK (F : KeccakState → KeccakState) (fuel : ℕ) {vars
       (E2ECompleteness.commitWithH (m := Id) (keccak256With (m := Id) fun s ↦ pure (F s)) vars stack) stack
       [⟨pt, stackEval stack pt⟩] = some π) :
     UniStatement.pcsOpenWith (m := Id) (fun s ↦ pure (F s)) vars
-      (UniStatement.rootOf (digestScalars
+      (UniStatement.rootOf (UniStatement.rootHalves
         (E2ECompleteness.commitWithH (m := Id) (keccak256With (m := Id) fun s ↦ pure (F s)) vars stack).root))
       [⟨pt, stackEval stack pt⟩] π = true := by
-  rw [rootOf_digestScalars, UniStatement.pcsOpenWith, E2ECompleteness.openingWith_eqH]
+  rw [rootOf_rootHalves, UniStatement.pcsOpenWith, E2ECompleteness.openingWith_eqH]
   exact pcsOpen_honestK _ F fuel h1 h2 stack hs pt hpt hπ
 
 /-- **The same with the Statement's prover and commitment** over `F`, `23 ≤ vars ≤ 28`:
@@ -81,7 +81,7 @@ theorem pcsOpenWith_honestK' (F : KeccakState → KeccakState) (fuel : ℕ) {var
       (PcsQuotient.commitWith (m := Id) (fun s ↦ pure (F s)) vars stack) stack
       [⟨pt, stackEval stack pt⟩] = some π) :
     UniStatement.pcsOpenWith (m := Id) (fun s ↦ pure (F s)) vars
-      (UniStatement.rootOf (digestScalars
+      (UniStatement.rootOf (UniStatement.rootHalves
         (PcsQuotient.commitWith (m := Id) (fun s ↦ pure (F s)) vars stack).root))
       [⟨pt, stackEval stack pt⟩] π = true := by
   rw [E2ECompleteness.proveOpeningWith_eqH, E2ECompleteness.commitWith_eqH] at hπ

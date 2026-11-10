@@ -52,7 +52,7 @@ theorem heights_le_31 {t : ℕ} (ht : t < 6) : tr.height t ≤ 31 := by
     exact List.getElem_mem _)
   omega
 
-theorem cDegStep_le (shape : Shape) (B : ℕ) (table : Table) (d : ℕ) (hc : table.countColumns.length ≤ 27)
+theorem cDegStep_le (shape : UniStatement.Shape) (B : ℕ) (table : Table) (d : ℕ) (hc : table.countColumns.length ≤ 27)
     (hr : shape.heights.getD table.opcode 0 ≤ 31) (hB : 2 ^ (shape.heights.getD table.opcode 0) * 28 ≤ B + 1) :
     cDegStep shape d table ≤ max d B := by
   unfold cDegStep

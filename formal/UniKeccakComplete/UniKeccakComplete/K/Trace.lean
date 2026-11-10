@@ -32,7 +32,7 @@ open UniStatement UniKeccak LeanVM.Parameters LeanVM.Semantics LeanVM.Protocol L
 
 /-- **The placed trace**: what the prover proves (the Rust's `Trace`, its rows placed). -/
 structure Trace where
-  shape : Shape
+  shape : UniStatement.Shape
   rows : List ℕ
   /-- Per table (opcode order), per column, `2^h` values, rows at the PIOP's positions. -/
   tables : List (List (Array K))

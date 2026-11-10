@@ -22,7 +22,7 @@ Proved here for Flock's honest prover `FlockP.flockProve` (as `fun H ↦ FlockP.
 * **`tQueryFresh3_reference`**: at the reference Keccak shape, `εt = 2^-200` (`n = 72`, `M ≤ 2^28`: `73 · 2^28 / 2^256
   < 2^-200`).
 
-**The chain still holds at π1-rec3.** The argument is `ProbTFresh.lean`'s: after the first bus challenge (`88` bytes,
+**The chain still holds at π1-rec3.** The argument is `ProbTFresh.lean`'s: after the first bus challenge (`112` bytes,
 fresh by its length, `hashA_stagedU3`) only **one** more (`β`, `s₂ = H(s₁)`, `preTail3`), then `γ` and Flock's prover
 at `keccakRec3` (`TFresh.wend_flockProve`, whose draw at the rec3 shape is at most one challenge, bounded here by the
 main line's count), then `C2`'s tree. So `n = 1 + 1 + flockSteps 32 3 = 72` at the reference shape (an upper bound;

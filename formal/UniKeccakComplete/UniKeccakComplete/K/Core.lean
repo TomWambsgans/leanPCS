@@ -54,7 +54,29 @@ theorem commitReal_tree (H : List UInt8 → Digest) (c : Commitment) (vars : ℕ
 
 theorem commitReal_halves (H : List UInt8 → Digest) (c : Commitment) (vars : ℕ) (stack : Array K) :
     (commitReal (m := Id) H c vars stack).halves =
-      digestScalars (E2ECompleteness.commitWithH (m := Id) H vars stack).root := rfl
+      rootHalves (E2ECompleteness.commitWithH (m := Id) H vars stack).root := rfl
+
+/-- A root's halves as the prover sends them are read back as they are (no top limbs). -/
+theorem rootRead_rootHalves (d : Digest) : rootRead (rootHalves d) = rootHalves d := by
+  simp only [rootRead, rootHalves, (UniSound.limb_eNew_lane _ _ _).1, (UniSound.limb_eNew_lane _ _ _).2]
+
+/-- **The honest PCS opening is accepted by the verifier's claim check** (`pcsOpenKH`), at `23 ≤ n ≤ 28`. -/
+theorem pcsOpenKH_of (H : List UInt8 → Digest) (F : KeccakState → KeccakState) (fuel : ℕ) {n : ℕ}
+    (h1 : 23 ≤ n) (h2 : n ≤ 28) (stack : Array K) (hs : stack.size = 2 ^ n) (pt : List E) (hpt : pt.length = n)
+    {π : Compile.Proof}
+    (hπ : pcsProveH (m := Id) H F fuel n (E2ECompleteness.commitWithH (m := Id) H n stack) stack pt
+      (stackEval stack pt) = some π) :
+    pcsOpenKH (m := Id) (fun b ↦ pure (H b)) (fun s ↦ pure (F s)) n
+      (E2ECompleteness.commitWithH (m := Id) H n stack).root
+      (pcsOod n stack (E2ECompleteness.commitWithH (m := Id) H n stack).root) pt (stackEval stack pt) π = true := by
+  unfold pcsOpenKH
+  simp only [hpt, ↓reduceDIte]
+  exact pcsVerify_pcsProveH H F fuel h1 h2 stack hs pt hpt hπ
+
+/-- **The setup's commitment the verifier holds is the prover's**, its stack the deployment's. -/
+theorem setupRoots_eq (D : KDeployment) (tr : Trace) (tree : LeanVM.Prover.Tree) (hshape : tr.shape = D.shape)
+    (hsetup : setupStackOf tr = setupStackK D.prog D.shape) : D.setupRoots tree = setupRootsOf tr tree := by
+  simp only [KDeployment.setupRoots, setupRootsOf, setupOodK, pcsOod, stackEval, pcsZ, hsetup, hshape]
 
 /-- Three claims on `C1`, `C2`, the setup, in order. -/
 theorem claims_shape (l : List (Commitment × List E × E)) (h : l.map (·.1) = [.c1, .c2, .setup]) :
@@ -62,10 +84,6 @@ theorem claims_shape (l : List (Commitment × List E × E)) (h : l.map (·.1) = 
   rcases l with _ | ⟨⟨a, pt1, v1⟩, _ | ⟨⟨b, pt2, v2⟩, _ | ⟨⟨c, pt3, v3⟩, _ | _⟩⟩⟩ <;> simp at h
   obtain ⟨rfl, rfl, rfl⟩ := h
   exact ⟨_, _, _, _, _, _, rfl⟩
-
-theorem ref_word_c1 : layoutWordVars ((layoutWordsK keccakRefShape).getD 0 []) = 27 := by rw [ref_word]; rfl
-theorem ref_word_c2 : layoutWordVars ((layoutWordsK keccakRefShape).getD 1 []) = 26 := by rw [ref_word]; rfl
-theorem ref_word_setup : layoutWordVars ((layoutWordsK keccakRefShape).getD 2 []) = 23 := by rw [ref_word]; rfl
 
 set_option maxHeartbeats 1000000 in
 /-- **The honest proof is accepted**, for an honest trace at the reference shape (its setup the deployment's) whose
@@ -84,28 +102,29 @@ theorem accepts_of_trace (D : KDeployment) (H : List UInt8 → Digest) (F : Kecc
   have htree : setupTreeKWithH (m := Id) H F D = setupTreeOf (m := Id) H tr := by
     unfold setupTreeKWithH setupTreeOf
     rw [hsetup, hshape]
+  have hroots := setupRoots_eq D tr (setupTreeOf (m := Id) H tr) hshape hsetup
   have hiv : KDeployment.ivWithH (m := Id) H D keccakMain (D.setupRoots (setupTreeOf (m := Id) H tr)) =
       contractIvOf (m := Id) H tr.shape keccakMain D.programIv
-        ⟨(setupTreeOf (m := Id) H tr).root⟩ := by
-    rw [hshape]; rfl
+        (setupRootsOf tr (setupTreeOf (m := Id) H tr)) := by
+    rw [hroots, hshape]; rfl
   have hC2 := c2ColumnsHonest_of_traceHonest hon
   -- The prover's proof.
   obtain ⟨p1, p2, p3, h1, h2, h3, rfl⟩ := (proveWith_eq_some H F _ _ _ _ π).mp hπ
   -- The verifier's run on the prover's stream.
-  obtain ⟨R, hrunR, hopR, hmatR, hrootR⟩ := runWithKH_syncs H (commitReal (m := Id) H)
+  obtain ⟨R, hrunR, hopR, hmatR, hrootR, hoodR⟩ := runWithKH_syncs H (commitReal (m := Id) H)
     (FlockP.flockProve (m := Id) (Pure.pure ∘ H)) tr
     (contractIvOf (m := Id) H tr.shape keccakMain D.programIv
-      ⟨(setupTreeOf (m := Id) H tr).root⟩) hon.valid hon.rowsFit (fun _ ↦ 0) hflock
+      (setupRootsOf tr (setupTreeOf (m := Id) H tr))) hon.valid hon.rowsFit (fun _ ↦ 0) hflock
     (fun _ ↦ 0) hbatch
   have hacc := runWithKH_accepts H (commitReal (m := Id) H) (FlockP.flockProve (m := Id) (Pure.pure ∘ H)) tr
     (contractIvOf (m := Id) H tr.shape keccakMain D.programIv
-      ⟨(setupTreeOf (m := Id) H tr).root⟩) hon.valid hon.rowsFit (fun _ ↦ 0) hflock
+      (setupRootsOf tr (setupTreeOf (m := Id) H tr))) hon.valid hon.rowsFit (fun _ ↦ 0) hflock
     (fun _ ↦ 0) hbatch rfl rfl
   have hrun_eq : proverRun H (commitReal (m := Id) H) (FlockP.flockProve (m := Id) (Pure.pure ∘ H)) tr
       (contractIvOf (m := Id) H tr.shape keccakMain D.programIv
-        ⟨(setupTreeOf (m := Id) H tr).root⟩) =
+        (setupRootsOf tr (setupTreeOf (m := Id) H tr))) =
       streamRun H (FlockP.flockProve (m := Id) (Pure.pure ∘ H)) D.programIv tr := rfl
-  rw [hrun_eq] at hrunR hopR hrootR hacc
+  rw [hrun_eq] at hrunR hopR hrootR hoodR hacc
   have hf : StreamFacts (commitReal (m := Id) H) tr
       (streamRun H (FlockP.flockProve (m := Id) (Pure.pure ∘ H)) D.programIv tr).1 :=
     streamRun_facts H (commitReal (m := Id) H) _ tr _
@@ -113,7 +132,7 @@ theorem accepts_of_trace (D : KDeployment) (H : List UInt8 → Digest) (F : Kecc
       (streamRun H (FlockP.flockProve (m := Id) (Pure.pure ∘ H)) D.programIv tr).1 :=
     streamValues H (commitReal (m := Id) H) _ tr _
   generalize (streamRun H (FlockP.flockProve (m := Id) (Pure.pure ∘ H)) D.programIv tr).1 = out
-    at hf hv h1 h2 h3 hopR hrootR hrunR hacc ⊢
+    at hf hv h1 h2 h3 hopR hrootR hoodR hrunR hacc ⊢
   -- The claims.
   obtain ⟨pt1, v1, pt2, v2, pt3, v3, hcl⟩ := claims_shape _ hf.claims_fst
   have hmem : ∀ x ∈ [(Commitment.c1, pt1, v1), (.c2, pt2, v2), (.setup, pt3, v3)], x ∈ out.claims := by
@@ -146,35 +165,31 @@ theorem accepts_of_trace (D : KDeployment) (H : List UInt8 → Digest) (F : Kecc
   rw [← e1.2.1, ← e1.2.2] at ho1
   rw [← e2.2.1, ← e2.2.2] at ho2
   rw [← e3.2.1, ← e3.2.2] at ho3
-  have ho1' : E2ECompleteness.proveOpeningWithH (m := Id) H F PcsQuotient.nonceFuel (plainLayout 27)
-      (E2ECompleteness.commitWithH (m := Id) H 27 (c1Stack tr)) (c1Stack tr) [⟨pt1, stackEval (c1Stack tr) pt1⟩] =
+  have ho1' : pcsProveH (m := Id) H F PcsQuotient.nonceFuel 27
+      (E2ECompleteness.commitWithH (m := Id) H 27 (c1Stack tr)) (c1Stack tr) pt1 (stackEval (c1Stack tr) pt1) =
       some p1 := by
-    have : E2ECompleteness.proveOpeningWithH (m := Id) H F PcsQuotient.nonceFuel
-        (plainLayout (layoutWordVars ((layoutWordsK tr.shape).getD 0 []))) out.c1.2.tree out.c1.1 [⟨pt1, v1⟩] =
+    have : pcsProveH (m := Id) H F PcsQuotient.nonceFuel (stackVarsK tr.shape .c1) out.c1.2.tree out.c1.1 pt1 v1 =
         some p1 := ho1
-    simp only [hf.c1, commitReal_tree, href, ref_word_c1, ref_c1Layout, hv1] at this
+    simp only [hf.c1, commitReal_tree, href, reference_stackVars_c1, ref_c1Layout, hv1] at this
     exact this
-  have ho2' : E2ECompleteness.proveOpeningWithH (m := Id) H F PcsQuotient.nonceFuel (plainLayout 26)
-      (E2ECompleteness.commitWithH (m := Id) H 26 out.c2.1) out.c2.1 [⟨pt2, stackEval out.c2.1 pt2⟩] =
-      some p2 := by
-    have : E2ECompleteness.proveOpeningWithH (m := Id) H F PcsQuotient.nonceFuel
-        (plainLayout (layoutWordVars ((layoutWordsK tr.shape).getD 1 []))) out.c2.2.tree out.c2.1 [⟨pt2, v2⟩] =
+  have ho2' : pcsProveH (m := Id) H F PcsQuotient.nonceFuel 26
+      (E2ECompleteness.commitWithH (m := Id) H 26 out.c2.1) out.c2.1 pt2 (stackEval out.c2.1 pt2) = some p2 := by
+    have : pcsProveH (m := Id) H F PcsQuotient.nonceFuel (stackVarsK tr.shape .c2) out.c2.2.tree out.c2.1 pt2 v2 =
         some p2 := ho2
-    simp only [hf.c2, commitReal_tree, href, ref_word_c2, ref_c2Layout, hv2] at this
+    simp only [hf.c2, commitReal_tree, href, reference_stackVars_c2, ref_c2Layout, hv2] at this
     exact this
-  have ho3' : E2ECompleteness.proveOpeningWithH (m := Id) H F PcsQuotient.nonceFuel (plainLayout 23)
-      (E2ECompleteness.commitWithH (m := Id) H 23 (setupStackOf tr)) (setupStackOf tr)
-      [⟨pt3, stackEval (setupStackOf tr) pt3⟩] = some p3 := by
-    have : E2ECompleteness.proveOpeningWithH (m := Id) H F PcsQuotient.nonceFuel
-        (plainLayout (layoutWordVars ((layoutWordsK tr.shape).getD 2 [])))
+  have ho3' : pcsProveH (m := Id) H F PcsQuotient.nonceFuel 23
+      (E2ECompleteness.commitWithH (m := Id) H 23 (setupStackOf tr)) (setupStackOf tr) pt3
+      (stackEval (setupStackOf tr) pt3) = some p3 := by
+    have : pcsProveH (m := Id) H F PcsQuotient.nonceFuel (stackVarsK tr.shape .setup)
         (E2ECompleteness.commitWithH (m := Id) H (setupLayout tr.shape).vars (setupStackOf tr)) out.setup
-        [⟨pt3, v3⟩] = some p3 := ho3
-    simp only [hf.setup, href, ref_word_setup, ref_setupLayout, hv3] at this
+        pt3 v3 = some p3 := ho3
+    simp only [hf.setup, href, reference_stackVars_setup, ref_setupLayout, hv3] at this
     exact this
-  -- WHIR accepts each.
-  have a1 := pcsOpen_honest_k H F _ (vars := 27) (by norm_num) (by norm_num) _ hs1 pt1 hl1 ho1'
-  have a2 := pcsOpen_honest_k H F _ (vars := 26) (by norm_num) (by norm_num) _ hs2' pt2 hl2 ho2'
-  have a3 := pcsOpen_honest_k H F _ (vars := 23) (by norm_num) (by norm_num) _ hs3 pt3 hl3 ho3'
+  -- The claims' openings accept each.
+  have a1 := pcsOpenKH_of H F _ (n := 27) (by norm_num) (by norm_num) _ hs1 pt1 hl1 ho1'
+  have a2 := pcsOpenKH_of H F _ (n := 26) (by norm_num) (by norm_num) _ hs2' pt2 hl2 ho2'
+  have a3 := pcsOpenKH_of H F _ (n := 23) (by norm_num) (by norm_num) _ hs3 pt3 hl3 ho3'
   -- The verifier.
   show verifyWithKH (m := Id) H F D.shape keccakMain
     (KDeployment.ivWithH (m := Id) H D keccakMain (D.setupRoots (setupTreeKWithH (m := Id) H F D)))
@@ -186,13 +201,14 @@ theorem accepts_of_trace (D : KDeployment) (H : List UInt8 → Digest) (F : Kecc
   · rw [← hshape, ← hpi]; rfl
   · rw [hrunR]
   · rw [hopR, hcl]; rfl
-  · simp only [hrootR, hf.c1, commitReal_halves, rootRead_digestScalars, rootOf_digestScalars, hD, ref_word_c1,
-      href, ref_c1Layout, hv1]
+  · simp only [hrootR, hoodR, hf.c1, commitReal_halves, commitReal_tree, rootRead_rootHalves, rootOf_rootHalves,
+      hD, reference_stackVars_c1, href, ref_c1Layout, hv1]
     exact a1
-  · simp only [hrootR, hf.c2, commitReal_halves, rootRead_digestScalars, rootOf_digestScalars, hD, ref_word_c2,
-      href, ref_c2Layout, hv2]
+  · simp only [hrootR, hoodR, hf.c2, commitReal_halves, commitReal_tree, rootRead_rootHalves, rootOf_rootHalves,
+      hD, reference_stackVars_c2, href, ref_c2Layout, hv2]
     exact a2
-  · simp only [hD, ref_word_setup, hv3, KDeployment.setupRoots, setupTree_eq, href, ref_setupLayout]
+  · rw [hroots]
+    simp only [setupRootsOf, hD, reference_stackVars_setup, hv3, setupTree_eq, href, ref_setupLayout]
     exact a3
 
 /-! ## The core facts of `ProbHyp.lean` -/

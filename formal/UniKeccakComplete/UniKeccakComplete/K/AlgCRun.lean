@@ -1358,7 +1358,7 @@ theorem commitment_of_columns (rel : Relation) (c : Column) (cs : List Column)
 
 /-- **The heap's relations are on `C2`** (A7): `T(t)`, the tree, the root, every block's leaf identity (a term
 on the heap first), and the constraint quotient's chunks (`constraintChunks` nonempty). -/
-theorem heapRelations_c2 (shape : Shape) (active : List E) (parts : List TablePart) (weights : Array E)
+theorem heapRelations_c2 (shape : UniStatement.Shape) (active : List E) (parts : List TablePart) (weights : Array E)
     (beta heapValue constraintValue memoryPull memoryPush bytecodePull bytecodePush : E) (w : List E)
     (constraintChunks : List ℕ) (hchunks : constraintChunks ≠ []) :
     ∀ rel ∈ (heapRelations shape active parts weights beta heapValue constraintValue memoryPull memoryPush
@@ -1472,11 +1472,11 @@ theorem runFormE_addAt (at_ : ℕ → E) : ∀ (f : Form) (mono : List ℕ) (c :
       · simp only [runFormE_cons, runFormE_addAt at_ rest mono c]
         ring
 
-theorem runFormE_addScaled (at_ : ℕ → E) (weight : E) : ∀ (g f : Form),
-    formE (f.addScaled g weight) at_ = formE f at_ + weight * formE g at_
+theorem runFormE_addScaled (at_ : ℕ → E) (weight : E) : ∀ (g' f : Form),
+    formE (f.addScaled g' weight) at_ = formE f at_ + weight * formE g' at_
   | [], f => by simp [Form.addScaled, formE]
-  | mc :: g, f => by
-    have ih := runFormE_addScaled at_ weight g (f.addAt mc.1 (weight * mc.2))
+  | mc :: g', f => by
+    have ih := runFormE_addScaled at_ weight g' (f.addAt mc.1 (weight * mc.2))
     simp only [Form.addScaled, List.foldl_cons] at ih ⊢
     rw [ih, runFormE_addAt, runFormE_cons]
     ring

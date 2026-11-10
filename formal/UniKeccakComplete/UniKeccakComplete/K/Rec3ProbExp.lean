@@ -25,7 +25,7 @@ prover after `t` (`proverD3`) and the verdict (`verdictW3`); `expW3 = (·.1.1) <
 (**`expW3_eq_staged`**, from `uniProverRec3With_split`, `proverC3_split`). Then:
 
 * **`hashA_stagedU3`**: stage A hashes `512`-byte leaves, `64`-byte nodes, π1-rec3's IV preimage (`280 + |IV|`
-  bytes and the variant's, `variantBytes`) and the seed's `80`: never `32` or `88` (`GoodL 88`);
+  bytes and the variant's, `variantBytes`) and the seed's `80`: never `32` or `112` (`GoodL 112`);
 * **`duplexVm_stagedU3`**: the duplex discipline, from `ProverDuplex3`, the setup's (`hOnly_setupTreesWithH`) and
   `VerifierDisc3`, through the map (`Prob.duplexVm_map_iff`);
 * **`cost_stagedU3`**: at most `setupCost D + (NP + NV)` block calls, from `ProverCost3 NP`, `ProverStreamSize3 S`
@@ -42,7 +42,7 @@ open UniStatement UniKeccak
 open E2ECompleteness (HashOK hashOK_callKeccak256 Disc)
 open UniKeccakComplete.Prob (chal ProverA firstInput tInput afterT GoodL goodL_of_length hashOK_commitWithH
   duplexVm_map_iff qc_bind_support FlockSimCommutes run_sampleW run_sendRoot ivTag_length len_digestBytes
-  shapeBytes_length layoutWordsK_length name_length)
+  shapeBytes_length elementBytes24_length name_length)
 open scoped ENNReal
 open Common (queryPermutation)
 
@@ -187,15 +187,16 @@ def TQueryFresh3 (εt : ℝ≥0∞) : Prop :=
 
 /-- **Stage A hashes nothing of the bus chain's lengths** (π1-rec3's IV preimage is the main line's with the
 variant's bytes appended: still at least `280` bytes). -/
-theorem hashA_stagedU3 (input : Vector UInt8 32) (rows : List ℕ) (q : D.Stack rows) :
-    HashOK (GoodL 88) (stagedU3 flock D input rows q).A := by
+theorem hashA_stagedU3 (hpiv : 32 ≤ D.programIv.length) (input : Vector UInt8 32) (rows : List ℕ) (q : D.Stack rows) :
+    HashOK (GoodL 112) (stagedU3 flock D input rows q).A := by
   simp only [stagedU3, proverA3, setupTreeOf, setupTreeKWithH, contractIvOf, seedOf, bind_assoc, pure_bind]
   refine E2ECompleteness.HashOK.bind (hashOK_commitWithH _ _) fun _ ↦
     E2ECompleteness.HashOK.bind (hashOK_commitWithH _ _) fun _ ↦
     E2ECompleteness.HashOK.bind (hashOK_callKeccak256 (goodL_of_length (Or.inr (Or.inr (Or.inr ?_))))) fun _ ↦
     E2ECompleteness.HashOK.bind (hashOK_callKeccak256 (goodL_of_length (Or.inr (Or.inr (Or.inl ?_))))) fun _ ↦
     E2ECompleteness.HashOK.bind (hashOK_commitWithH _ _) fun _ ↦ E2ECompleteness.HashOK.pure _ _
-  · simp only [List.length_append, ivTag_length, len_digestBytes, shapeBytes_length, layoutWordsK_length]
+  · simp only [List.length_append, ivTag_length, len_digestBytes, shapeBytes_length, elementBytes24_length,
+      honestTrace]
     omega
   · simp [name_length, len_digestBytes, honestTrace]
 

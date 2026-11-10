@@ -57,7 +57,8 @@ def flockWriterOf3 (tr : Trace) (w0 : Wr) : Wr :=
   let w1 := w0.append (tr.rows.flatMap fun n ↦ integerWire n 4)
   let stack1 := c1Stack tr
   let committed1 : Committed := commit .c1 (UniKeccak.c1LayoutK shape).vars stack1
-  let w2 := w1.append (rootWord committed1.halves)
+  let w2 := (w1.append (rootWord committed1.halves)).append
+    (scalarWire (pcsOod (UniKeccak.c1LayoutK shape).vars stack1 (rootOf committed1.halves)))
   let w3 := (Wr.sampled H w2).2
   let w4 := (Wr.sampled H w3).2
   (Wr.sampled H w4).2
@@ -69,7 +70,8 @@ def frontOf3 (tr : Trace) (w0 : Wr) : FrontOut × Wr :=
   let w1 := w0.append (tr.rows.flatMap fun n ↦ integerWire n 4)
   let stack1 := c1Stack tr
   let committed1 : Committed := commit .c1 (UniKeccak.c1LayoutK shape).vars stack1
-  let w2 := w1.append (rootWord committed1.halves)
+  let w2 := (w1.append (rootWord committed1.halves)).append
+    (scalarWire (pcsOod (UniKeccak.c1LayoutK shape).vars stack1 (rootOf committed1.halves)))
   let alphas := squares (Wr.sampled H w2).1 4
   let w3 := (Wr.sampled H w2).2
   let beta := (Wr.sampled H w3).1
@@ -81,7 +83,9 @@ def frontOf3 (tr : Trace) (w0 : Wr) : FrontOut × Wr :=
   let w6 := ((flock logN UniKeccak.keccakRec3 tr.qflock).run w5).2
   let c2 := c2DataOf tr (eqKernel alphas) beta gamma
   let committed2 : Committed := commit .c2 (((UniKeccak.layoutsOfK shape).lookup .c2).getD default).vars c2.stack
-  let w7 := w6.append (rootWord committed2.halves)
+  let w7 := (w6.append (rootWord committed2.halves)).append
+    (scalarWire (pcsOod (((UniKeccak.layoutsOfK shape).lookup .c2).getD default).vars c2.stack
+      (rootOf committed2.halves)))
   let t := (Wr.sampled H w7).1
   let w8 := (Wr.sampled H w7).2
   let a := atTOf tr c2 alphas beta gamma t flockOut
@@ -123,6 +127,9 @@ theorem reduce_steps3 (H : List UInt8 → Digest) (commit : Commitment → ℕ �
       (fun R out posF wF zs ↦ posF = wF.stream.size ∧ out.stream = wF.stream ∧
         R.openings = out.claims.map pointOpening ∧ R.matrices = none ∧
         R.roots = (rootRead out.c1.2.halves, rootRead out.c2.2.halves) ∧
+        R.oods = (pcsOod (UniKeccak.c1LayoutK tr.shape).vars out.c1.1 (rootOf out.c1.2.halves),
+          pcsOod (((UniKeccak.layoutsOfK tr.shape).lookup .c2).getD default).vars out.c2.1
+            (rootOf out.c2.2.halves)) ∧
         zs = countChecks tr.rows tr.shape.heights ++
           [zero (flockWriterOf3 H commit tr (Wr.start seed)),
             terminal (frontOf3 H commit flock tr (Wr.start seed)).2]) := by
@@ -131,17 +138,30 @@ theorem reduce_steps3 (H : List UInt8 → Digest) (commit : Commitment → ℕ �
   apply StepsE.pbind (rows_writes tr.rows _ (fun _ _ ↦ rfl) _)
   apply StepsE.plift
   apply StepsE.pbind (sendRoot_writes _ _)
+  apply StepsE.pbind (sendScalar_writes _ _)
   apply StepsE.vread (P := [])
-    (Q := rootWord (commit .c1 (UniKeccak.c1LayoutK tr.shape).vars (c1Stack tr)).halves)
+    (Q := rootWord (commit .c1 (UniKeccak.c1LayoutK tr.shape).vars (c1Stack tr)).halves ++
+      scalarWire (pcsOod (UniKeccak.c1LayoutK tr.shape).vars (c1Stack tr)
+        (rootOf (commit .c1 (UniKeccak.c1LayoutK tr.shape).vars (c1Stack tr)).halves)))
     (countBits_reads hlen h32)
   · simp [Wr.start]
   apply StepsE.pos_start (pos0 := (tr.rows.flatMap fun n ↦ integerWire n 4).length) (by simp)
-  apply StepsE.vread (Q := []) (nextRoot_reads (commit .c1 (UniKeccak.c1LayoutK tr.shape).vars (c1Stack tr)).halves)
+  apply StepsE.vread
+    (Q := scalarWire (pcsOod (UniKeccak.c1LayoutK tr.shape).vars (c1Stack tr)
+      (rootOf (commit .c1 (UniKeccak.c1LayoutK tr.shape).vars (c1Stack tr)).halves)))
+    (nextRoot_reads (commit .c1 (UniKeccak.c1LayoutK tr.shape).vars (c1Stack tr)).halves)
+  · simp [Wr.start]
+  apply StepsE.pos_start (pos0 := ((tr.rows.flatMap fun n ↦ integerWire n 4) ++
+    rootWord (commit .c1 (UniKeccak.c1LayoutK tr.shape).vars (c1Stack tr)).halves).length) (by simp)
+  apply StepsE.vread (Q := []) (nextScalar_reads (pcsOod (UniKeccak.c1LayoutK tr.shape).vars (c1Stack tr)
+    (rootOf (commit .c1 (UniKeccak.c1LayoutK tr.shape).vars (c1Stack tr)).halves)))
   · simp [Wr.start]
   apply StepsE.bind_pos (h1 := steps_drawRun H _)
   case e => simp [Wr.start]
-  set w2 := ((Wr.start seed).append (tr.rows.flatMap fun n ↦ integerWire n 4)).append
-    (rootWord (commit .c1 (UniKeccak.c1LayoutK tr.shape).vars (c1Stack tr)).halves) with hw2
+  set w2 := (((Wr.start seed).append (tr.rows.flatMap fun n ↦ integerWire n 4)).append
+    (rootWord (commit .c1 (UniKeccak.c1LayoutK tr.shape).vars (c1Stack tr)).halves)).append
+      (scalarWire (pcsOod (UniKeccak.c1LayoutK tr.shape).vars (c1Stack tr)
+        (rootOf (commit .c1 (UniKeccak.c1LayoutK tr.shape).vars (c1Stack tr)).halves))) with hw2
   set alphas := squares (Wr.sampled H w2).1 4 with halphas
   set w3 := (Wr.sampled H w2).2 with hw3
   apply StepsE.bind_pos (h1 := Steps.sample H w3)
@@ -159,14 +179,24 @@ theorem reduce_steps3 (H : List UInt8 → Digest) (commit : Commitment → ℕ �
   set w6 := ((flock (keccakR1csLogSize + tr.shape.heights.getD opSha3 0) UniKeccak.keccakRec3 tr.qflock).run
     w5).2 with hw6
   apply StepsE.plift
-  apply StepsE.pbind (sendRoot_writes _ _)
-  apply StepsE.vreadEnd (nextRoot_reads _)
   set c2 := c2DataOf tr (eqKernel alphas) beta gamma with hc2
   set committed2 := commit .c2 (((UniKeccak.layoutsOfK tr.shape).lookup .c2).getD default).vars c2.stack
     with hcm2
+  apply StepsE.pbind (sendRoot_writes _ _)
+  apply StepsE.pbind (sendScalar_writes _ _)
+  apply StepsE.pos_start (pos0 := w6.stream.toList.length) (by simp)
+  apply StepsE.vread (P := w6.stream.toList)
+    (Q := scalarWire (pcsOod (((UniKeccak.layoutsOfK tr.shape).lookup .c2).getD default).vars c2.stack
+      (rootOf committed2.halves))) (nextRoot_reads committed2.halves)
+  · simp
+  apply StepsE.pos_start (pos0 := (w6.append (rootWord committed2.halves)).stream.size) (by simp)
+  apply StepsE.vreadEnd (nextScalar_reads (pcsOod (((UniKeccak.layoutsOfK tr.shape).lookup .c2).getD default).vars
+    c2.stack (rootOf committed2.halves)))
   apply StepsE.bind_pos (h1 := Steps.sample H _)
   case e => simp
-  set w7 := w6.append (rootWord committed2.halves) with hw7
+  set w7 := (w6.append (rootWord committed2.halves)).append
+    (scalarWire (pcsOod (((UniKeccak.layoutsOfK tr.shape).lookup .c2).getD default).vars c2.stack
+      (rootOf committed2.halves))) with hw7
   set t := (Wr.sampled H w7).1 with ht
   set w8 := (Wr.sampled H w7).2 with hw8
   set a := atTOf tr c2 alphas beta gamma t (some fo) with ha
@@ -235,7 +265,7 @@ theorem reduce_steps3 (H : List UInt8 → Digest) (commit : Commitment → ℕ �
       rfl
   apply StepsE.pget
   apply StepsE.pure
-  refine ⟨rfl, rfl, rfl, rfl, rfl, ?_⟩
+  refine ⟨rfl, rfl, rfl, rfl, rfl, rfl, ?_⟩
   simp only [List.nil_append, List.append_nil, List.cons_append]
   rfl
 
@@ -266,13 +296,17 @@ theorem runWithKH_syncs3 (H : List UInt8 → Digest) (commit : Commitment → �
               terminal (frontOf3 H commit flock tr (Wr.start (seedAt H iv tr.publicInput))).2]).toArray⟩ ∧
       R.openings = (proverRun3 H commit flock tr iv).1.claims.map pointOpening ∧ R.matrices = none ∧
       R.roots = (rootRead (proverRun3 H commit flock tr iv).1.c1.2.halves,
-        rootRead (proverRun3 H commit flock tr iv).1.c2.2.halves) := by
+        rootRead (proverRun3 H commit flock tr iv).1.c2.2.halves) ∧
+      R.oods = (pcsOod (UniKeccak.c1LayoutK tr.shape).vars (proverRun3 H commit flock tr iv).1.c1.1
+          (rootOf (proverRun3 H commit flock tr iv).1.c1.2.halves),
+        pcsOod (((UniKeccak.layoutsOfK tr.shape).lookup .c2).getD default).vars (proverRun3 H commit flock tr iv).1.c2.1
+          (rootOf (proverRun3 H commit flock tr iv).1.c2.2.halves)) := by
   have hlen : tr.rows.length = tr.shape.heights.length := by rw [hfit.1, hvalid.1]
-  obtain ⟨R, out, posF, wF, zs, hs, hpos, hstr, hop, hmat, hroot, hzs⟩ :=
+  obtain ⟨R, out, posF, wF, zs, hs, hpos, hstr, hop, hmat, hroot, hood, hzs⟩ :=
     reduce_steps3 H commit flock tr _ hvalid.2 hlen (rows_lt_32 hvalid.1 hvalid.2 hfit) zero hflock terminal hbatch
   have hP : proverRun3 H commit flock tr iv = (out, wF) := hs.1
   rw [hP]
-  refine ⟨R, ?_, hop, hmat, hroot⟩
+  refine ⟨R, ?_, hop, hmat, hroot, hood⟩
   dsimp only
   rw [hstr, runWithKH_eq, walk_finish hs hpos, hzs]
 

@@ -13,7 +13,7 @@ import UniKeccak.Security
 
 The Keccak verifier's completeness experiment (`keccakCompletenessExperiment D v P`: the setup, the prover `P`, the
 Keccak verifier of variant `v`, all over one random permutation `π`) has the univariate verifier's shape: the bus
-challenges `α₁ … α₄, β` are five chained Keccak-256 answers right after `C1`'s root (the first input `88` bytes: the
+challenges `α₁ … α₄, β` are five chained Keccak-256 answers right after `C1`'s root (the first input `112` bytes: the
 state, the six row counts, the root word), then Flock's point, then the point challenge `t`. **What is proved here**
 (`uniCompletenessKeccak_of_staged`): if for every honest witness the experiment is the verdict of a two-call
 computation of this shape (`KStaged`, `KStaged.Holds`), then
@@ -38,7 +38,7 @@ set_option autoImplicit false
 
 namespace UniKeccakComplete.Prob
 
-/-- **The experiment's stages** (no coins): `A` up to the first bus-challenge input (`inp`, `88` bytes), the five
+/-- **The experiment's stages** (no coins): `A` up to the first bus-challenge input (`inp`, `112` bytes), the five
 chained answers, `B` up to `t`'s input (`tin`; `pr` the prior `t`'s bad set depends on, Flock's point), `t`'s answer,
 `C` the rest (the prover's tail and the verifier), its output the verdict. -/
 structure KStaged where
@@ -91,10 +91,10 @@ structure KStaged.Good (S : KStaged) (bad badT : List E → E → Prop) (Nbad ct
   duplex : DuplexVm S.run []
   /-- At most `N` block calls (`hashBlocks`). -/
   cost : Common.QueryCostAtMost S.run hashBlocks N
-  /-- The first bus-challenge input has `88` bytes. -/
-  inp_length : ∀ a, (S.inp a).length = 88
-  /-- Before it, nothing of the chain's lengths (`32`, `88`) is hashed. -/
-  hashA : HashOK (GoodL 88) S.A
+  /-- The first bus-challenge input has `112` bytes. -/
+  inp_length : ∀ a, (S.inp a).length = 112
+  /-- Before it, nothing of the chain's lengths (`32`, `112`) is hashed. -/
+  hashA : HashOK (GoodL 112) S.A
   /-- At most `Nbad` bad values of `β` for each `α`. -/
   badCard : ∀ alphas, ∃ T : Finset E, T.card ≤ Nbad ∧ ∀ b, bad alphas b → b ∈ T
   /-- At most `ct` bad values of `t` for each prior. -/

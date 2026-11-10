@@ -5,6 +5,7 @@
 import UniKeccakComplete.K.Quotients
 import UniKeccakComplete.K.Batch
 import E2ECompleteness.WithHash
+import UniKeccakComplete.K.PcsProver
 
 /-!
 # The honest prover (`prove.rs`) of the Keccak VM, on a placed trace
@@ -232,6 +233,7 @@ def proveStreamWith (commit : Commitment → ℕ → Array K → m Committed) (f
   let stack1 := c1Stack tr
   let committed1 ← (StateT.lift (commit .c1 (UniKeccak.c1LayoutK shape).vars stack1) : WrM m Committed)
   sendRoot committed1.halves
+  sendScalar (pcsOod (UniKeccak.c1LayoutK shape).vars stack1 (rootOf committed1.halves))
   let alphas ← samplesW H 4
   let beta ← sampleW H
   let gamma ← sampleW H
@@ -243,6 +245,7 @@ def proveStreamWith (commit : Commitment → ℕ → Array K → m Committed) (f
   let committed2 ← (StateT.lift (commit .c2 (((UniKeccak.layoutsOfK shape).lookup .c2).getD default).vars c2.stack) :
     WrM m Committed)
   sendRoot committed2.halves
+  sendScalar (pcsOod (((UniKeccak.layoutsOfK shape).lookup .c2).getD default).vars c2.stack (rootOf committed2.halves))
   -- 4.–7. The values at t.
   let t ← sampleW H
   let a := atTOf tr c2 alphas beta gamma t flockOut
@@ -276,10 +279,11 @@ section With
 
 variable {m : Type → Type} [Monad m] (H : List UInt8 → m Digest) (F : KeccakState → m KeccakState)
 
-/-- The real commitment: the WHIR tree of the stack (`commitWithH`), its root's halves. -/
+/-- The real commitment: the WHIR tree of the stack (`commitWithH`), its root's halves (`rootHalves`: its bytes as
+they are, `prover::prove::halves`). -/
 def commitReal (_ : Commitment) (vars : ℕ) (stack : Array K) : m Committed := do
   let tree ← E2ECompleteness.commitWithH H vars stack
-  return ⟨tree, digestScalars tree.root⟩
+  return ⟨tree, rootHalves tree.root⟩
 
 /-- The setup's tree, as the experiment computes it (`setupTreeKWith`), from the trace's setup stack. -/
 def setupTreeOf (tr : Trace) : m LeanVM.Prover.Tree :=
@@ -288,29 +292,34 @@ def setupTreeOf (tr : Trace) : m LeanVM.Prover.Tree :=
 /-- The seed of the contract's IV (`keccak(name ‖ IV ‖ public input)`). -/
 def seedOf (iv publicInput : List UInt8) : m Digest := H (name ++ iv ++ publicInput)
 
-/-- The Keccak contract's IV with Keccak-256 `H` (`contract_iv_for(·, Keccak(v), ·, ·)`, `contractIvKWith`). -/
-def contractIvOf (shape : Shape) (v : UniKeccak.KeccakVariant) (programIv : List UInt8) (roots : SetupRoots) :
-    m (List UInt8) := do
-  let d ← H (ivTag ++ programIv ++ digestBytes roots.bytecode ++
-    shapeBytes shape ++ (UniKeccak.layoutWordsK shape).flatten ++ UniKeccak.variantBytesK v)
+/-- The Keccak contract's IV with Keccak-256 `H` (`contract_iv_for(·, Keccak(v), ·, ·)`, `contractIvKWith`): the
+setup's commitment (its root and out-of-domain answer). -/
+def contractIvOf (shape : UniStatement.Shape) (v : UniKeccak.KeccakVariant) (programIv : List UInt8)
+    (roots : UniKeccak.SetupRootsK) : m (List UInt8) := do
+  let d ← H (ivTag ++ programIv ++ digestBytes roots.f ++ UniKeccak.elementBytes24 roots.fOod ++
+    shapeBytes shape ++ UniKeccak.variantBytesK v)
   return digestBytes d
 
+/-- The setup's commitment as the prover computes it: the tree's root and the setup stack's out-of-domain answer. -/
+def setupRootsOf (tr : Trace) (tree : LeanVM.Prover.Tree) : UniKeccak.SetupRootsK :=
+  ⟨tree.root, pcsOod (setupLayout tr.shape).vars (setupStackOf tr) tree.root⟩
+
 /-- **The honest prover** over `H`, `F` (`prove`) of the main line (`keccakMain`): the setup's tree, the Keccak
-contract's IV (the setup's root and the deployment's `A0`, `B0` constants `a0`, `b0`), the seed, the stream, then
-the three WHIR openings (`C1`, `C2`, the setup); `none` if a proof of work fails. -/
+contract's IV (the setup's commitment, `setupRootsOf`), the seed, the stream, then the three PCS claims' openings
+(`C1`, `C2`, the setup: `pcsProveH` at the commitment's stack variables `stackVarsK`); `none` if a proof of work
+fails. -/
 def proveWith (fuel : ℕ) (flock : FlockProver m) (programIv : List UInt8) (tr : Trace) :
     m (Option UniKeccak.KeccakProof) := do
   let tree ← setupTreeOf H tr
-  let iv ← contractIvOf H tr.shape UniKeccak.keccakMain programIv ⟨tree.root⟩
+  let iv ← contractIvOf H tr.shape UniKeccak.keccakMain programIv (setupRootsOf tr tree)
   let seed ← seedOf H iv tr.publicInput
   let (out, _) ← (proveStreamWith H (commitReal H) flock tr).run (Wr.start seed)
-  let words := UniKeccak.layoutWordsK tr.shape
   let openOne (c : Commitment) (pt : List E) (value : E) : m (Option Compile.Proof) :=
-    let (stack, tree, word) : Array K × LeanVM.Prover.Tree × List UInt8 := match c with
-      | .c1 => (out.c1.1, out.c1.2.tree, words.getD 0 [])
-      | .c2 => (out.c2.1, out.c2.2.tree, words.getD 1 [])
-      | .setup => (out.setup, tree, words.getD 2 [])
-    E2ECompleteness.proveOpeningWithH H F fuel (plainLayout (layoutWordVars word)) tree stack [⟨pt, value⟩]
+    let (stack, tree) : Array K × LeanVM.Prover.Tree := match c with
+      | .c1 => (out.c1.1, out.c1.2.tree)
+      | .c2 => (out.c2.1, out.c2.2.tree)
+      | .setup => (out.setup, tree)
+    pcsProveH H F fuel (UniKeccak.stackVarsK tr.shape c) tree stack pt value
   let p1 ← match out.claims.find? (·.1 == .c1) with
     | some (_, pt, v) => openOne .c1 pt v
     | none => pure none

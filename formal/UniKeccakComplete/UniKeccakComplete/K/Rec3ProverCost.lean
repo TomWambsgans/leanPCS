@@ -121,13 +121,13 @@ theorem wc_batchRounds3 (lambda : E) (vars : ℕ) (st : BatchState) :
 
 /-- **π1-rec3's stream's blocks beyond its bytes**: `C1`'s and `C2`'s trees, the challenges (one for `α`, `β`, `γ`,
 `t`, `ρ`, `λ`, at most one per batch variable), Flock's. -/
-def streamBlocks3 (shape : Shape) (kF : ℕ) : ℕ :=
+def streamBlocks3 (shape : UniStatement.Shape) (kF : ℕ) : ℕ :=
   treeCost (UniKeccak.c1LayoutK shape).vars + 3 + kF +
     treeCost (((UniKeccak.layoutsOfK shape).lookup .c2).getD default).vars + 3 + batchVarsBound shape
 
 /-- **π1-rec3's stream's bytes**: the row counts, the two roots, Flock's, the values at `t`, `96` a batch variable,
 the three claims' values. -/
-def streamBytes3 (shape : Shape) (rows wF : ℕ) : ℕ :=
+def streamBytes3 (shape : UniStatement.Shape) (rows wF : ℕ) : ℕ :=
   4 * rows + 64 + wF + 24 * valuesBound + 96 * batchVarsBound shape + 72
 
 /-- **π1-rec3's stream's cost**, given Flock's prover's at its `log_n` and `keccakRec3`. -/
@@ -174,7 +174,7 @@ section Prover
 
 /-- **π1-rec3's honest prover's blocks**: the setup's tree, the IV at `keccakRec3`, the seed, the stream (its blocks
 and its bytes), three openings of claims of at most `batchVarsBound` coordinates. -/
-def uniProverCost3 (shape : Shape) (programIvLen rows kF wF : ℕ) : ℕ :=
+def uniProverCost3 (shape : UniStatement.Shape) (programIvLen rows kF wF : ℕ) : ℕ :=
   treeCost (setupLayout shape).vars + ((163 + programIvLen) / 136 + 1) + 1 +
     (streamBlocks3 shape kF + streamBytes3 shape rows wF) + 3 * openP PcsQuotient.nonceFuel (batchVarsBound shape)
 

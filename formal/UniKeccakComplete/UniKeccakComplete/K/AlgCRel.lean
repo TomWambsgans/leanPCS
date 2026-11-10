@@ -218,7 +218,7 @@ theorem tableAt_of {tr : Trace} (hH : TraceHonest tr) (c2 : C2Data) (cols : List
 
 
 /-- The bytecode's block is in the heap: `lb < h`. -/
-theorem logBytecode_lt_heap (s : Shape) : s.logBytecode < s.heap.h := by
+theorem logBytecode_lt_heap (s : UniStatement.Shape) : s.logBytecode < s.heap.h := by
   unfold Shape.heap HeapLayout.new
   simp only []
   generalize hS : List.mergeSort ([(Leaves.memory, s.logMemory), (Leaves.bytecode, s.logBytecode)] ++

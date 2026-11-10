@@ -46,7 +46,7 @@ theorem treeQuotient_exact_fits (tr : Trace) (weights : Array E) (beta : E) (hH 
 
 /-- **`h ≤ 28` when `C2` fits WHIR's `2^28` words** (the heap's three limbs are blocks of `C2`'s stack; in fact then
 `h ≤ 26`): the hypothesis `h ≤ 28` of the layer is the openings'. -/
-theorem heap_h_le_of_c2 (shape : Shape) (hvars : (((layoutsOfK shape).lookup .c2).getD default).vars ≤ 28) :
+theorem heap_h_le_of_c2 (shape : UniStatement.Shape) (hvars : (((layoutsOfK shape).lookup .c2).getD default).vars ≤ 28) :
     shape.heap.h ≤ 28 := by
   rw [c2Layout_eq] at hvars
   have hnd := c2Names_nodup shape

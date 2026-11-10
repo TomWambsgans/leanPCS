@@ -75,7 +75,7 @@ theorem eK_eq (c : UInt64) : eK c = ofK (K.ofLane c) := by
   rw [ofK_eq_ofLimbs]
   rfl
 
-theorem gen_eq : gen = ofK g := by
+theorem gen_eq : gen = ofK LeanVM.Parameters.g := by
   rw [gen, eK_eq]
   rfl
 
@@ -90,10 +90,10 @@ theorem K.pow_two_pow_sixtyFour (a : K) : a ^ 2 ^ 64 = a := by
 
 
 theorem K.eq_sum_bits (a : K) :
-    a = ∑ i : Fin 64, if a.toBitVec.getLsbD i then g ^ (i : ℕ) else 0 := by
+    a = ∑ i : Fin 64, if a.toBitVec.getLsbD i then LeanVM.Parameters.g ^ (i : ℕ) else 0 := by
   apply BF64.toQuot_injective
-  have hg : BF64.toQuot g = AdjoinRoot.root BF64.basePoly := by
-    rw [BF64.toQuot, BF64.toPolyBF64, g, K.ofBits, BF64.toBitVec_ofBitVec,
+  have hg : BF64.toQuot LeanVM.Parameters.g = AdjoinRoot.root BF64.basePoly := by
+    rw [BF64.toQuot, BF64.toPolyBF64, LeanVM.Parameters.g, K.ofBits, BF64.toBitVec_ofBitVec,
       show BitVec.ofNat 64 2 = (1 <<< 1 : BitVec 64) by decide,
       BinaryField.toPoly_one_shiftLeft 1 (by norm_num), pow_one, AdjoinRoot.mk_X]
   have hsum : ∀ (s : Finset (Fin 64)) (f : Fin 64 → K),
@@ -112,7 +112,7 @@ theorem K.eq_sum_bits (a : K) :
 
 /-- The embedding of a cell in `E` is its bits packed by the powers of `x`. -/
 theorem ofK_eq_sum_cellBit (a : K) :
-    ofK a = ∑ i : Fin (2 ^ Lv42.Parameters.Flock.kSkip), ofK (g ^ i.val) * Lv42.Protocol.cellBit a i := by
+    ofK a = ∑ i : Fin (2 ^ Lv42.Parameters.Flock.kSkip), ofK (LeanVM.Parameters.g ^ i.val) * Lv42.Protocol.cellBit a i := by
   conv_lhs => rw [K.eq_sum_bits a]
   change algebraMap K E _ = _
   rw [map_sum (algebraMap K E)]

@@ -36,24 +36,24 @@ theorem mem_usedList {lm lb : ℕ} {hs : List ℕ} {l : Leaves} {r : ℕ} (h : (
     cases h
     exact ⟨ht, rfl⟩
 
-theorem used_mem (s : Shape) {b : Block} (hb : b ∈ s.heap.blocks) (hu : blockUsed b) :
+theorem used_mem (s : UniStatement.Shape) {b : Block} (hb : b ∈ s.heap.blocks) (hu : blockUsed b) :
     (b.leaves, b.r) ∈ usedList s.logMemory s.logBytecode s.heights :=
   (used_perm s.logMemory s.logBytecode s.heights).mem_iff.mp
     (List.mem_map.mpr ⟨b, List.mem_filter.mpr ⟨hb, decide_eq_true hu⟩, rfl⟩)
 
-theorem block_r_memory (s : Shape) {b : Block} (hb : b ∈ s.heap.blocks) (hl : b.leaves = .memory) :
+theorem block_r_memory (s : UniStatement.Shape) {b : Block} (hb : b ∈ s.heap.blocks) (hl : b.leaves = .memory) :
     b.r = s.logMemory :=
   (mem_usedList (used_mem s hb (by unfold blockUsed; rw [hl]; simp))).1 hl
 
-theorem block_r_bytecode (s : Shape) {b : Block} (hb : b ∈ s.heap.blocks) (hl : b.leaves = .bytecode) :
+theorem block_r_bytecode (s : UniStatement.Shape) {b : Block} (hb : b ∈ s.heap.blocks) (hl : b.leaves = .bytecode) :
     b.r = s.logBytecode :=
   (mem_usedList (used_mem s hb (by unfold blockUsed; rw [hl]; simp))).2.1 hl
 
-theorem block_r_table (s : Shape) {b : Block} (hb : b ∈ s.heap.blocks) {t : ℕ} (hl : b.leaves = .table t) :
+theorem block_r_table (s : UniStatement.Shape) {b : Block} (hb : b ∈ s.heap.blocks) {t : ℕ} (hl : b.leaves = .table t) :
     t < s.heights.length ∧ b.r = s.heights.getD t 0 :=
   (mem_usedList (used_mem s hb (by unfold blockUsed; rw [hl]; simp))).2.2 t hl
 
-theorem block_r_le (s : Shape) {b : Block} (hb : b ∈ s.heap.blocks) : b.r ≤ s.heap.h - 1 := by
+theorem block_r_le (s : UniStatement.Shape) {b : Block} (hb : b ∈ s.heap.blocks) : b.r ≤ s.heap.h - 1 := by
   have hL : LayoutOK s.heap := layoutOK_new _ _ _
   have h1 := hL.lo b hb
   have h2 := hL.hi b hb

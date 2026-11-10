@@ -199,6 +199,7 @@ def proveStreamRec3With (commit : Commitment → ℕ → Array K → m Committed
   let stack1 := c1Stack tr
   let committed1 ← (StateT.lift (commit .c1 (UniKeccak.c1LayoutK shape).vars stack1) : WrM m Committed)
   sendRoot committed1.halves
+  sendScalar (pcsOod (UniKeccak.c1LayoutK shape).vars stack1 (rootOf committed1.halves))
   let alphas ← drawRunW H 4
   let beta ← sampleW H
   let gamma ← sampleW H
@@ -210,6 +211,7 @@ def proveStreamRec3With (commit : Commitment → ℕ → Array K → m Committed
   let committed2 ← (StateT.lift (commit .c2 (((UniKeccak.layoutsOfK shape).lookup .c2).getD default).vars c2.stack) :
     WrM m Committed)
   sendRoot committed2.halves
+  sendScalar (pcsOod (((UniKeccak.layoutsOfK shape).lookup .c2).getD default).vars c2.stack (rootOf committed2.halves))
   -- 4.–7. The values at t.
   let t ← sampleW H
   let a := atTOf tr c2 alphas beta gamma t flockOut
@@ -244,20 +246,20 @@ section With
 variable {m : Type → Type} [Monad m] (H : List UInt8 → m Digest) (F : KeccakState → m KeccakState)
 
 /-- **π1-rec3's honest prover** over `H`, `F`: the setup's tree, the Keccak contract's IV at `keccakRec3`, the seed,
-the stream, then the three WHIR openings (`C1`, `C2`, the setup); `none` if a proof of work fails. -/
+the stream, then the three PCS claims' openings (`C1`, `C2`, the setup, `pcsProveH`); `none` if a proof of work
+fails. -/
 def proveRec3With (fuel : ℕ) (flock : FlockProver m) (programIv : List UInt8) (tr : Trace) :
     m (Option UniKeccak.KeccakProof) := do
   let tree ← setupTreeOf H tr
-  let iv ← contractIvOf H tr.shape UniKeccak.keccakRec3 programIv ⟨tree.root⟩
+  let iv ← contractIvOf H tr.shape UniKeccak.keccakRec3 programIv (setupRootsOf tr tree)
   let seed ← seedOf H iv tr.publicInput
   let (out, _) ← (proveStreamRec3With H (commitReal H) flock tr).run (Wr.start seed)
-  let words := UniKeccak.layoutWordsK tr.shape
   let openOne (c : Commitment) (pt : List E) (value : E) : m (Option Compile.Proof) :=
-    let (stack, tree, word) : Array K × LeanVM.Prover.Tree × List UInt8 := match c with
-      | .c1 => (out.c1.1, out.c1.2.tree, words.getD 0 [])
-      | .c2 => (out.c2.1, out.c2.2.tree, words.getD 1 [])
-      | .setup => (out.setup, tree, words.getD 2 [])
-    E2ECompleteness.proveOpeningWithH H F fuel (plainLayout (layoutWordVars word)) tree stack [⟨pt, value⟩]
+    let (stack, tree) : Array K × LeanVM.Prover.Tree := match c with
+      | .c1 => (out.c1.1, out.c1.2.tree)
+      | .c2 => (out.c2.1, out.c2.2.tree)
+      | .setup => (out.setup, tree)
+    pcsProveH H F fuel (UniKeccak.stackVarsK tr.shape c) tree stack pt value
   let p1 ← match out.claims.find? (·.1 == .c1) with
     | some (_, pt, v) => openOne .c1 pt v
     | none => pure none

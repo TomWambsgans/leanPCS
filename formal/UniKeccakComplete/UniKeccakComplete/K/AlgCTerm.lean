@@ -604,7 +604,7 @@ theorem termEval_new_E {cols : List (Column × ℕ × Bool)} {column : Column} {
 /-! ### `C1` -/
 
 /-- **`C1`'s columns** (the text of `layoutsK`). -/
-def c1ColsOf (shape : Shape) : List (Column × ℕ × Bool) :=
+def c1ColsOf (shape : UniStatement.Shape) : List (Column × ℕ × Bool) :=
   let heights := shape.heights
   [(.qflock, heights.getD opSha3 0 + 11, false)] ++
     tablesKeccak.flatMap (fun t ↦
@@ -614,7 +614,7 @@ def c1ColsOf (shape : Shape) : List (Column × ℕ × Bool) :=
     (List.range 4).map (fun k ↦ (Column.memory k, shape.logMemory, false)) ++
     [(.bytecodeFinal, shape.logBytecode, false)]
 
-theorem c1Layout_eq (shape : Shape) : c1LayoutK shape = StackLayout.new (c1ColsOf shape) := rfl
+theorem c1Layout_eq (shape : UniStatement.Shape) : c1LayoutK shape = StackLayout.new (c1ColsOf shape) := rfl
 
 /-- **`C1`'s column names**, independent of the shape. -/
 def c1Names : List Column :=
@@ -622,7 +622,7 @@ def c1Names : List Column :=
     [.inverse t.opcode]) ++ (List.range 4).map Column.memory ++ [.bytecodeFinal]
 
 /-- A `C1` column's variables. -/
-def c1VarsOf (shape : Shape) : Column → ℕ
+def c1VarsOf (shape : UniStatement.Shape) : Column → ℕ
   | .qflock => shape.heights.getD opSha3 0 + 11
   | .table t _ => shape.heights.getD t 0
   | .inverse t => shape.heights.getD t 0
@@ -630,15 +630,15 @@ def c1VarsOf (shape : Shape) : Column → ℕ
   | .bytecodeFinal => shape.logBytecode
   | _ => 0
 
-theorem c1ColsOf_eq_map (shape : Shape) :
+theorem c1ColsOf_eq_map (shape : UniStatement.Shape) :
     c1ColsOf shape = c1Names.map fun col ↦ (col, c1VarsOf shape col, false) := by
   simp [c1ColsOf, c1Names, List.map_flatMap, Function.comp_def, c1VarsOf]
 
-theorem c1ColsOf_fst (shape : Shape) : (c1ColsOf shape).map Prod.fst = c1Names := by
+theorem c1ColsOf_fst (shape : UniStatement.Shape) : (c1ColsOf shape).map Prod.fst = c1Names := by
   rw [c1ColsOf_eq_map, List.map_map]
   exact List.map_id _
 
-theorem c1ColsOf_vars (shape : Shape) {column : Column} :
+theorem c1ColsOf_vars (shape : UniStatement.Shape) {column : Column} :
     ∀ p ∈ c1ColsOf shape, p.1 = column → p.2 = (c1VarsOf shape column, false) := by
   rw [c1ColsOf_eq_map]
   intro p hp h
@@ -663,7 +663,7 @@ theorem c1Names_count_bytecodeFinal : c1Names.count .bytecodeFinal = 1 := by dec
 
 theorem c1Names_count_qflock : c1Names.count .qflock = 1 := by decide +kernel
 
-theorem termCount_c1 (shape : Shape) {column : Column} (h : c1Names.count column = 1) :
+theorem termCount_c1 (shape : UniStatement.Shape) {column : Column} (h : c1Names.count column = 1) :
     ((c1ColsOf shape).map Prod.fst).count column = 1 := by
   rw [c1ColsOf_fst]; exact h
 
@@ -755,21 +755,21 @@ theorem termEval_c1_qflockSlot (tr : Trace) (rm : Option (List E)) {slot : ℕ} 
   ring
 
 /-- **The layouts the verifier states** are `C1`'s and the setup's, whatever `C2`'s columns. -/
-theorem layoutIn_c1 (shape : Shape) (cols : List (Column × ℕ × Bool)) :
+theorem layoutIn_c1 (shape : UniStatement.Shape) (cols : List (Column × ℕ × Bool)) :
     layoutIn (layoutsK shape cols) .c1 = c1LayoutK shape := rfl
 
-theorem layoutIn_setup (shape : Shape) (cols : List (Column × ℕ × Bool)) :
+theorem layoutIn_setup (shape : UniStatement.Shape) (cols : List (Column × ℕ × Bool)) :
     layoutIn (layoutsK shape cols) .setup = setupLayout shape := rfl
 
 /-! ### The setup -/
 
 /-- **The setup's columns** (the text of `layoutsK`). -/
-def setupColsOf (shape : Shape) : List (Column × ℕ × Bool) :=
+def setupColsOf (shape : UniStatement.Shape) : List (Column × ℕ × Bool) :=
   [(.bytecodeTuple, shape.logBytecode + 4, false), (.address, shape.logMemory, false)]
 
-theorem setupLayout_eq (shape : Shape) : setupLayout shape = StackLayout.new (setupColsOf shape) := rfl
+theorem setupLayout_eq (shape : UniStatement.Shape) : setupLayout shape = StackLayout.new (setupColsOf shape) := rfl
 
-theorem setup_limbs (shape : Shape) :
+theorem setup_limbs (shape : UniStatement.Shape) :
     (∃ o₁, (setupLayout shape).limbs .bytecodeTuple = [(0, shape.logBytecode + 4, o₁)] ∧
       o₁ + 2 ^ (shape.logBytecode + 4) ≤ 2 ^ (setupLayout shape).vars) ∧
     (∃ o₂, (setupLayout shape).limbs .address = [(0, shape.logMemory, o₂)] ∧
@@ -808,7 +808,7 @@ theorem setupStackOf_getD (tr : Trace) {o₁ o₂ : ℕ}
   · rfl
 
 /-- The setup's two blocks are disjoint. -/
-theorem setup_disjoint (shape : Shape) {o₁ o₂ : ℕ}
+theorem setup_disjoint (shape : UniStatement.Shape) {o₁ o₂ : ℕ}
     (h₁ : (setupLayout shape).limbs .bytecodeTuple = [(0, shape.logBytecode + 4, o₁)])
     (h₂ : (setupLayout shape).limbs .address = [(0, shape.logMemory, o₂)]) :
     o₁ + 2 ^ (shape.logBytecode + 4) ≤ o₂ ∨ o₂ + 2 ^ shape.logMemory ≤ o₁ := by

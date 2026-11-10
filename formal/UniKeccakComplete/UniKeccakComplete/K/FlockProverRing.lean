@@ -172,8 +172,8 @@ theorem ringHolds_pure (q : Array K) (chiRest xs map : List E) (hxs : xs.length 
     simp [lincheckWitness, hxs, keccakR1csLogSize]
   rw [towerTarget_eq]
   -- The right side: `Σ_i x^i Φ(s_i)`, each slice the sum of the words' bits against `eq`.
-  have hs : ∀ i ∈ range 64, ofK (g ^ i) * phiT f 6 ((xs.foldl foldHigh (lincheckWitness q chiRest)).toList.getD i 0)
-      = ∑ u ∈ range (2 ^ p.length), ofK (g ^ i) * (phiT f 6 (eqB p u) * Lv42.Protocol.cellBit (q.getD u 0) i) := by
+  have hs : ∀ i ∈ range 64, ofK (LeanVM.Parameters.g ^ i) * phiT f 6 ((xs.foldl foldHigh (lincheckWitness q chiRest)).toList.getD i 0)
+      = ∑ u ∈ range (2 ^ p.length), ofK (LeanVM.Parameters.g ^ i) * (phiT f 6 (eqB p u) * Lv42.Protocol.cellBit (q.getD u 0) i) := by
     intro i hi
     rw [toList_getD, slices_eq q chiRest xs hxs (mem_range.mp hi), phiT_sum, mul_sum]
     refine sum_congr rfl fun u _ ↦ ?_
@@ -181,7 +181,7 @@ theorem ringHolds_pure (q : Array K) (chiRest xs map : List E) (hxs : xs.length 
   rw [sum_congr rfl hs, sum_comm]
   refine sum_congr rfl fun u hu ↦ ?_
   rw [eqKernel_getD _ (mem_range.mp hu), towerRingMap_eq, hmap, ofK_eq_sum_cellBit, mul_sum,
-    ← Fin.sum_univ_eq_sum_range (fun i ↦ ofK (g ^ i) * (phiT f 6 (eqB p u) * Lv42.Protocol.cellBit (q.getD u 0) i))]
+    ← Fin.sum_univ_eq_sum_range (fun i ↦ ofK (LeanVM.Parameters.g ^ i) * (phiT f 6 (eqB p u) * Lv42.Protocol.cellBit (q.getD u 0) i))]
   refine sum_congr rfl fun i _ ↦ ?_
   ring
 

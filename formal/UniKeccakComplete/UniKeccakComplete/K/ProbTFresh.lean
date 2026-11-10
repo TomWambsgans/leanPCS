@@ -27,7 +27,7 @@ challenge), is already cached when it is asked with probability at most `εt`. P
 * **`tQueryFresh_reference`**: at the reference Keccak shape, `εt = 2^-200` (`n = 75`, `M ≤ 2^28`, in fact
   `M = 34,078,798 < 2^26`: `(75 + 1) · 2^28 / 2^256 < 2^-221`).
 
-**The argument (a chain of challenges).** After the first bus challenge (`88` bytes, fresh by its length,
+**The argument (a chain of challenges).** After the first bus challenge (`112` bytes, fresh by its length,
 `hashA_stagedU`), every challenge until `t` hashes the previous challenge's answer first (`sampleW`: the state, then
 the bytes since): the bus chain's `s₂ … s₅`, `γ`, Flock's (its sampled coordinates, the skip's `z`, the rounds', `α`,
 the lincheck's eleven, the ring map's six). Call the current answer `s`. *Invariant*: no cached input begins with `s`'s 32

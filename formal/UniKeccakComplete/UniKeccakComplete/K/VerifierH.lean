@@ -7,6 +7,7 @@
 -- Ported to the Keccak VM from `formal/UniComplete/UniComplete/VerifierH.lean` and `Rec3VerifierH.lean`.
 import UniKeccak.Security
 import E2ECompleteness.WithHash
+import UniKeccak.Pcs
 
 /-!
 # The Keccak verifier and setup with Keccak-256 an explicit call
@@ -214,7 +215,7 @@ def batchKH (fs : FsShape) (combined : List (Commitment × Combined)) (layouts :
   return openings.toList
 
 /-- `UniKeccak.reduceWithK` with Keccak-256 `H`. -/
-def reduceWithKH (shape : Shape) (publicWords : List E) (v : KeccakVariant) (mode : ClaimsMode) :
+def reduceWithKH (shape : UniStatement.Shape) (publicWords : List E) (v : KeccakVariant) (mode : ClaimsMode) :
     ChanM m Reduced := do
   if !shape.validate true then throw .invalidShape
   let fs := v.fs
@@ -224,6 +225,7 @@ def reduceWithKH (shape : Shape) (publicWords : List E) (v : KeccakVariant) (mod
   let h := heap.h
   let counts ← countBits (m := m) heights
   let root1 ← nextRoot (m := m)
+  let ood1 ← nextScalar (m := m)
   let alphas ← drawRunH H fs 4
   let beta ← sampleH H
   let gamma ← sampleH H
@@ -231,6 +233,7 @@ def reduceWithKH (shape : Shape) (publicWords : List E) (v : KeccakVariant) (mod
   let logN := keccakR1csLogSize + heights.getD opSha3 0
   let (flockPoint, flockEnd) ← verifyWalkedKH H logN v
   let root2 ← nextRoot (m := m)
+  let ood2 ← nextScalar (m := m)
   let t ← sampleH H
   let w := digits t (max h (rW + 4) + 2)
   let active := (counts.zip heights).map fun (bits, r) ↦ activeVanishingFromBits w bits r
@@ -290,10 +293,10 @@ def reduceWithKH (shape : Shape) (publicWords : List E) (v : KeccakVariant) (mod
   let openings ← match mode with
     | .weighted => pure (combined.map fun (c, claim) ↦ (c, Opening.weighted claim))
     | .point => batchKH H fs combined stackLayouts ringMap
-  return ⟨(root1, root2), openings, none, relations.size, stackVars, stackLayouts⟩
+  return ⟨(root1, root2), openings, none, relations.size, stackVars, stackLayouts, (ood1, ood2)⟩
 
 /-- `UniKeccak.runWithK` with Keccak-256 `H`. -/
-def runWithKH (shape : Shape) (iv publicInput : List UInt8) (stream : Array UInt8) (v : KeccakVariant)
+def runWithKH (shape : UniStatement.Shape) (iv publicInput : List UInt8) (stream : Array UInt8) (v : KeccakVariant)
     (mode : ClaimsMode) : m Outcome := do
   let seed ← seedWithH H iv publicInput
   let walkM : ChanM m Reduced := do
@@ -304,14 +307,14 @@ def runWithKH (shape : Shape) (iv publicInput : List UInt8) (stream : Array UInt
   return ⟨result, chan⟩
 
 /-- `UniKeccak.contractIvKWith` with Keccak-256 `H`. -/
-def contractIvKWithH (s : Shape) (v : KeccakVariant) (programIv : List UInt8) (roots : SetupRoots) :
+def contractIvKWithH (s : UniStatement.Shape) (v : KeccakVariant) (programIv : List UInt8) (roots : SetupRootsK) :
     m (List UInt8) := do
-  let d ← H (ivTag ++ programIv ++ digestBytes roots.bytecode ++
-    shapeBytes s ++ (layoutWordsK s).flatten ++ variantBytesK v)
+  let d ← H (ivTag ++ programIv ++ digestBytes roots.f ++ elementBytes24 roots.fOod ++
+    shapeBytes s ++ variantBytesK v)
   return digestBytes d
 
 /-- `KDeployment.ivWith` with Keccak-256 `H`. -/
-def KDeployment.ivWithH (D : KDeployment) (v : KeccakVariant) (roots : SetupRoots) : m (List UInt8) :=
+def KDeployment.ivWithH (D : KDeployment) (v : KeccakVariant) (roots : SetupRootsK) : m (List UInt8) :=
   contractIvKWithH H D.shape v D.programIv roots
 
 end With
@@ -320,36 +323,32 @@ section With
 
 variable {m : Type → Type} [Monad m] (H : List UInt8 → m Digest) (F : KeccakState → m KeccakState)
 
-/-- `pcsOpenWith` with Keccak-256 `H`: WithHash's `openingWithH` on the plain layout. -/
-def pcsOpenWithH (vars : ℕ) (root : Digest) (claims : List PcsQuotient.Claim)
-    (proof : LeanVM.Protocol.Compile.Proof) : m Bool :=
-  E2ECompleteness.openingWithH H F (plainLayout vars) root claims proof
+/-- `UniKeccak.pcsOpenK` with Keccak-256 `H`: `WhirBridge.Pcs.pcsVerifyWithHash` on the PCS claim. -/
+def pcsOpenKH (n : ℕ) (root : Digest) (ood : E) (pt : List E) (v : E) (p : Compile.Proof) : m Bool :=
+  if h : pt.length = n then
+    WhirBridge.Pcs.pcsVerifyWithHash H F (WhirBridge.Pcs.oodPoint n) ⟨root, ood, pt, v, h⟩ p
+  else pure false
 
 /-- `UniKeccak.verifyWithK` with Keccak-256 `H`. -/
-def verifyWithKH (shape : Shape) (v : KeccakVariant) (iv : List UInt8) (roots : SetupRoots)
+def verifyWithKH (shape : UniStatement.Shape) (v : KeccakVariant) (iv : List UInt8) (roots : SetupRootsK)
     (publicInput : Vector UInt8 32) (proof : KeccakProof) : m Bool := do
   let o ← runWithKH H shape iv publicInput.toList proof.stream v .point
   if !o.accepts then return false
   match o.result with
   | .error _ => return false
   | .ok r =>
-    let words := layoutWordsK shape
-    let callOf : Commitment → Digest × List UInt8 × LeanVM.Protocol.Compile.Proof
-      | .c1 => (rootOf r.roots.1, words.getD 0 [], proof.c1)
-      | .c2 => (rootOf r.roots.2, words.getD 1 [], proof.c2)
-      | .setup => (roots.bytecode, words.getD 2 [], proof.setup)
     let mut ok := r.openings.map (·.1) == commitments
     for (c, opening) in r.openings do
       match opening with
       | .point pt value none =>
-        let (root, word, p) := callOf c
-        ok := ok && (← pcsOpenWithH H F (layoutWordVars word) root [⟨pt, value⟩] p)
+        ok := ok && (← pcsOpenKH H F (stackVarsK shape c) (commitOfK roots r c).1 (commitOfK roots r c).2 pt value
+          (proof.openingOf c))
       | _ => ok := false
     if r.matrices.isSome then ok := false
     return ok
 
 /-- `KDeployment.verifierWith` with Keccak-256 `H`. -/
-def KDeployment.verifierWithH (D : KDeployment) (v : KeccakVariant) (roots : SetupRoots)
+def KDeployment.verifierWithH (D : KDeployment) (v : KeccakVariant) (roots : SetupRootsK)
     (input : Vector UInt8 32) (proof : KeccakProof) : m Bool := do
   verifyWithKH H F D.shape v (← KDeployment.ivWithH H D v roots) roots input proof
 
@@ -395,35 +394,33 @@ theorem batchK_eqH (fs : FsShape) (combined : List (Commitment × Combined))
 
 /-- The walk at `H = keccak256With F`: its parts rewritten, the rest the same code (a plain `rfl` from the two
 names times out in the elaborator). -/
-theorem reduceWithK_eqH (shape : Shape) (publicWords : List E) (v : KeccakVariant) (mode : ClaimsMode) :
+theorem reduceWithK_eqH (shape : UniStatement.Shape) (publicWords : List E) (v : KeccakVariant) (mode : ClaimsMode) :
     reduceWithK F shape publicWords v mode = reduceWithKH (keccak256With F) shape publicWords v mode := by
   unfold reduceWithK reduceWithKH
   simp only [drawRun_eqH, sample_eqH, verifyWalkedK_eqH, batchK_eqH]
   rfl
 
-theorem runWithK_eqH (shape : Shape) (iv publicInput : List UInt8) (stream : Array UInt8) (v : KeccakVariant)
+theorem runWithK_eqH (shape : UniStatement.Shape) (iv publicInput : List UInt8) (stream : Array UInt8) (v : KeccakVariant)
     (mode : ClaimsMode) :
     runWithK F shape iv publicInput stream v mode = runWithKH (keccak256With F) shape iv publicInput stream v mode := by
   unfold runWithK runWithKH
   simp only [seedWith_eqH, reduceWithK_eqH]
 
-theorem contractIvKWith_eqH (s : Shape) (v : KeccakVariant) (programIv : List UInt8) (roots : SetupRoots) :
+theorem contractIvKWith_eqH (s : UniStatement.Shape) (v : KeccakVariant) (programIv : List UInt8) (roots : SetupRootsK) :
     contractIvKWith F s v programIv roots = contractIvKWithH (keccak256With F) s v programIv roots := rfl
 
-theorem ivWith_eqH (D : KDeployment) (v : KeccakVariant) (roots : SetupRoots) :
+theorem ivWith_eqH (D : KDeployment) (v : KeccakVariant) (roots : SetupRootsK) :
     D.ivWith F v roots = KDeployment.ivWithH (keccak256With F) D v roots := rfl
 
-theorem pcsOpenWith_eqH (vars : ℕ) (root : Digest) (claims : List PcsQuotient.Claim)
-    (proof : LeanVM.Protocol.Compile.Proof) :
-    pcsOpenWith F vars root claims proof = pcsOpenWithH (keccak256With F) F vars root claims proof :=
-  E2ECompleteness.openingWith_eqH F _ _ _ _
+theorem pcsOpenK_eqH (n : ℕ) (root : Digest) (ood : E) (pt : List E) (v : E) (p : Compile.Proof) :
+    pcsOpenK F n root ood pt v p = pcsOpenKH (keccak256With F) F n root ood pt v p := rfl
 
-theorem verifyWithK_eqH (shape : Shape) (v : KeccakVariant) (iv : List UInt8) (roots : SetupRoots)
+theorem verifyWithK_eqH (shape : UniStatement.Shape) (v : KeccakVariant) (iv : List UInt8) (roots : SetupRootsK)
     (publicInput : Vector UInt8 32) (proof : KeccakProof) :
     verifyWithK F shape v iv roots publicInput proof =
       verifyWithKH (keccak256With F) F shape v iv roots publicInput proof := by
   unfold verifyWithK verifyWithKH
-  simp only [runWithK_eqH, pcsOpenWith_eqH]
+  simp only [runWithK_eqH, pcsOpenK_eqH]
   rfl
 
 /-- **The deployed Keccak verifier at `H = keccak256With F`** is the Statement's. -/

@@ -46,13 +46,13 @@ theorem c2Of_heapB_size : (c2Of tr alphas beta gamma).heapB.size = 2 ^ tr.shape.
   rw [bOfNovelE, AlgC.subsetSumsE_size, novelOfValuesE, Bridge.Ntt.coefficients_size,
     heapValues_size _ _ _ (layoutOK_new _ _ _)]
 
-theorem mem_c2_heap (shape : Shape) : (Column.heap, shape.heap.h, true) ∈ Shape.c2ColumnsK shape := by
+theorem mem_c2_heap (shape : UniStatement.Shape) : (Column.heap, shape.heap.h, true) ∈ Shape.c2ColumnsK shape := by
   rw [c2Columns_eq]; simp
 
-theorem mem_c2_tree0 (shape : Shape) : (Column.treeQuotient 0, shape.heap.h, true) ∈ Shape.c2ColumnsK shape := by
+theorem mem_c2_tree0 (shape : UniStatement.Shape) : (Column.treeQuotient 0, shape.heap.h, true) ∈ Shape.c2ColumnsK shape := by
   rw [c2Columns_eq]; simp
 
-theorem mem_c2_tree1 (shape : Shape) : (Column.treeQuotient 1, 0, true) ∈ Shape.c2ColumnsK shape := by
+theorem mem_c2_tree1 (shape : UniStatement.Shape) : (Column.treeQuotient 1, 0, true) ∈ Shape.c2ColumnsK shape := by
   rw [c2Columns_eq]; simp
 
 /-- A term on the heap, on `C2`. -/
@@ -63,7 +63,7 @@ theorem termEval_heap {pt : List E} (hpt : pt.length = tr.shape.heap.h) (rm : Op
   exact termEval_c2col _ (mem_c2_heap tr.shape) (fun j ↦ Column.noConfusion) (fun _ _ ↦ rfl) c2Of_heapB_size hpt rm k
 
 
-theorem treeShape (shape : Shape) : AlgC.ChunkShape [shape.heap.h, 0] :=
+theorem treeShape (shape : UniStatement.Shape) : AlgC.ChunkShape [shape.heap.h, 0] :=
   Or.inr (Or.inl ⟨_, _, rfl, (layoutOK_new _ _ _).one_le⟩)
 
 /-- A term on the tree quotient's chunk `c`, on `C2`. -/

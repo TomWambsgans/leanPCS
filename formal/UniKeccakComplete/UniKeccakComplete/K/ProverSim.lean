@@ -194,7 +194,7 @@ theorem wr_proveStreamWith (commit : Commitment → ℕ → Array K → m Commit
     (tr : Trace) :
     φ.wr (proveStreamWith H commit flock tr) =
       proveStreamWith (fun x ↦ φ.app (H x)) commit' flock' tr := by
-  simp only [proveStreamWith, wr_bind, wr_forIn_list, wr_sendInteger, wr_pure, wr_lift, hcommit, wr_sendRoot,
+  simp only [proveStreamWith, wr_bind, wr_forIn_list, wr_sendInteger, wr_pure, wr_lift, hcommit, wr_sendRoot, wr_sendScalar,
     wr_samplesW, wr_sampleW, wr_map, hflock, wr_sendScalars, wr_batchRounds, wr_get]
 
 end Prover
@@ -218,18 +218,17 @@ theorem app_seedOf (iv publicInput : List UInt8) :
     φ.app (seedOf H iv publicInput) = seedOf (fun x ↦ φ.app (H x)) iv publicInput := rfl
 
 omit [LawfulMonad m] [LawfulMonad n] in
-theorem app_contractIvOf (shape : Shape) (v : UniKeccak.KeccakVariant) (programIv : List UInt8)
-    (roots : SetupRoots) :
+theorem app_contractIvOf (shape : UniStatement.Shape) (v : UniKeccak.KeccakVariant) (programIv : List UInt8)
+    (roots : UniKeccak.SetupRootsK) :
     φ.app (contractIvOf H shape v programIv roots) = contractIvOf (fun x ↦ φ.app (H x)) shape v programIv roots := by
   simp only [contractIvOf, φ.app_bind, φ.app_pure]
 
 /-- **The honest prover commutes with a monad morphism** that commutes with Flock's prover and with the opening
 (`hopen`, WithHash's `simulateQ_proveOpeningWithH` for `simulateQ`). -/
 theorem app_proveWith
-    (hopen : ∀ (fuel : ℕ) (L : PcsQuotient.Layout) (tree : LeanVM.Prover.Tree) (stack : Array K)
-      (claims : List PcsQuotient.Claim),
-      φ.app (E2ECompleteness.proveOpeningWithH H F fuel L tree stack claims) =
-        E2ECompleteness.proveOpeningWithH (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) fuel L tree stack claims)
+    (hopen : ∀ (fuel n : ℕ) (tree : LeanVM.Prover.Tree) (stack : Array K) (pt : List E) (v : E),
+      φ.app (pcsProveH H F fuel n tree stack pt v) =
+        pcsProveH (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) fuel n tree stack pt v)
     (flock : FlockProver m) (flock' : FlockProver n) (hflock : ∀ logN v q, φ.wr (flock logN v q) = flock' logN v q)
     (fuel : ℕ) (programIv : List UInt8) (tr : Trace) :
     φ.app (proveWith H F fuel flock programIv tr) =
@@ -251,10 +250,9 @@ theorem app_proveWith
 /-- **The deployed honest prover commutes with a monad morphism** that commutes with Flock's prover and with the
 opening. -/
 theorem app_uniProverWith
-    (hopen : ∀ (fuel : ℕ) (L : PcsQuotient.Layout) (tree : LeanVM.Prover.Tree) (stack : Array K)
-      (claims : List PcsQuotient.Claim),
-      φ.app (E2ECompleteness.proveOpeningWithH H F fuel L tree stack claims) =
-        E2ECompleteness.proveOpeningWithH (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) fuel L tree stack claims)
+    (hopen : ∀ (fuel n : ℕ) (tree : LeanVM.Prover.Tree) (stack : Array K) (pt : List E) (v : E),
+      φ.app (pcsProveH H F fuel n tree stack pt v) =
+        pcsProveH (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) fuel n tree stack pt v)
     (flock : FlockProver m) (flock' : FlockProver n) (hflock : ∀ logN v q, φ.wr (flock logN v q) = flock' logN v q)
     (D : UniKeccak.KDeployment) (input : Vector UInt8 32) (rows : List ℕ) (q : D.Stack rows) :
     φ.app (uniProverWith H F flock D input rows q) =
@@ -290,9 +288,9 @@ theorem simulateQ_proveWith (flock : FlockProverH) (hflock : FlockCommutes flock
     simulateQ impl (proveWith callKeccak256 callKeccakF1600 fuel (flock callKeccak256) programIv tr) =
       proveWith (implH impl) (implF impl) fuel (flock (implH impl)) programIv tr := by
   have h := Morph.app_proveWith (Morph.sim impl) callKeccak256 callKeccakF1600
-    (fun fuel L tree stack claims ↦ by
+    (fun fuel n tree stack pt v ↦ by
       rw [Morph.sim_H, Morph.sim_F]
-      exact E2ECompleteness.simulateQ_proveOpeningWithH impl fuel L tree stack claims)
+      exact simulateQ_pcsProveH impl fuel n tree stack pt v)
     (flock callKeccak256) (flock (implH impl)) (fun logN v q ↦ by rw [hflock, Morph.sim_H]) fuel
     programIv tr
   rw [Morph.sim_H, Morph.sim_F] at h

@@ -12,10 +12,10 @@ import E2ECompleteness.Regular
 
 Right after `C1`'s root the univariate prover (and the verifier, `reduceWithH`) draws the bus challenges
 `α₁, …, α₄, β` as five chained Keccak-256 answers (`sampleW`, `sampleH`): `s₁ = H(x)` with `x` the state, the six
-row counts and `C1`'s root word (`88` bytes), then `s_{k+1} = H(s_k)` (`32` bytes each); `α_k = challengeOf s_k`,
+row counts and `C1`'s root word and its out-of-domain answer (`112` bytes), then `s_{k+1} = H(s_k)` (`32` bytes each); `α_k = challengeOf s_k`,
 `β = challengeOf s₅`. In the two-call random-oracle model these answers are uniform as long as the queries are
-fresh, and they are fresh **by their lengths** (`GoodL 88`: everything hashed before them has another length than
-`32` and `88`), but for repetitions inside the chain (`s_k = s_j`, `j < k`, each `2^-256`).
+fresh, and they are fresh **by their lengths** (`GoodL 112`: everything hashed before them has another length than
+`32` and `112`), but for repetitions inside the chain (`s_k = s_j`, `j < k`, each `2^-256`).
 
 **`prEvent_staged5_le`**: for a computation of this shape (`staged5 chal inp A C`: `A` up to the first input
 `inp a` of length `L ≠ 32`, the five answers, `C` anything) whose `A` hashes only inputs of other lengths than `32`

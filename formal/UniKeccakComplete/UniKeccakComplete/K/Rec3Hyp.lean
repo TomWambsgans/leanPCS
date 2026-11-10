@@ -73,7 +73,7 @@ def ProverStreamSize3 (flock : FlockProverH) (D : KDeployment) (S : ℕ) : Prop 
 
 /-- **π1-rec3's deployed verifier makes at most `N` block calls** on a proof whose stream has at most `S` bytes. -/
 def VerifierCost3 (D : KDeployment) (S N : ℕ) : Prop :=
-  ∀ (roots : SetupRoots) (input : Vector UInt8 32) (proof : KeccakProof), proof.stream.size ≤ S →
+  ∀ (roots : UniKeccak.SetupRootsK) (input : Vector UInt8 32) (proof : KeccakProof), proof.stream.size ≤ S →
     Common.QueryCostAtMost (KDeployment.verifierWithH callKeccak256 callKeccakF1600 D keccakRec3 roots input proof)
       hashBlocks N
 

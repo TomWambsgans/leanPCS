@@ -35,14 +35,14 @@ def c2Words' (c2 : C2Data) : Column → ℕ → Array K := fun column limb ↦
     | none => #[]
   | _ => #[]
 
-theorem c2Layout_eq (shape : Shape) :
+theorem c2Layout_eq (shape : UniStatement.Shape) :
     ((layoutsOfK shape).lookup .c2).getD default = StackLayout.new (Shape.c2ColumnsK shape) := rfl
 
 theorem c2Stack_eq (tr : Trace) (weights : Array E) (beta gamma : E) :
     (c2DataOf tr weights beta gamma).stack =
       placeStack (StackLayout.new (Shape.c2ColumnsK tr.shape)) (c2Words' (c2DataOf tr weights beta gamma)) := rfl
 
-theorem layoutIn_c2 (shape : Shape) (cols : List (Column × ℕ × Bool)) :
+theorem layoutIn_c2 (shape : UniStatement.Shape) (cols : List (Column × ℕ × Bool)) :
     layoutIn (layoutsK shape cols) .c2 = StackLayout.new cols := rfl
 
 /-! ### `C2`'s names are distinct -/
@@ -82,7 +82,7 @@ theorem mem_shapeBlockCols_fst {x : Block × ℕ} {col : Column} (h : col ∈ (s
     obtain ⟨c, -, rfl⟩ := List.mem_map.mp h
     exact ⟨c, rfl⟩
 
-theorem c2Names_nodup (shape : Shape) : ((Shape.c2ColumnsK shape).map Prod.fst).Nodup := by
+theorem c2Names_nodup (shape : UniStatement.Shape) : ((Shape.c2ColumnsK shape).map Prod.fst).Nodup := by
   rw [c2Columns_eq]
   simp only [List.map_append, List.map_cons, List.map_nil, List.map_flatMap, List.map_map]
   have hB : ((chunks ((Shape.constraintDegreeK shape) + 1)).zip (List.range (chunks ((Shape.constraintDegreeK shape) + 1)).length)).map
@@ -122,7 +122,7 @@ theorem c2Names_nodup (shape : Shape) : ((Shape.c2ColumnsK shape).map Prod.fst).
       exact Column.noConfusion
 
 /-- **A term on a `C2` column** listed once with `(v, true)`: `k ·` the extension of its `E` words. -/
-theorem termEval_c2col {shape : Shape} (data : Column → ℕ → Array K) {column : Column} {v : ℕ}
+theorem termEval_c2col {shape : UniStatement.Shape} (data : Column → ℕ → Array K) {column : Column} {v : ℕ}
     (hmem : (column, v, true) ∈ Shape.c2ColumnsK shape) (hq : ∀ j, column ≠ .qflockSlot j) {D : Array E}
     (hD : ∀ l < 3, data column l = limbWords D l) (hsize : D.size = 2 ^ v) {pt : List E} (hpt : pt.length = v)
     (rm : Option (List E)) (k : E) :

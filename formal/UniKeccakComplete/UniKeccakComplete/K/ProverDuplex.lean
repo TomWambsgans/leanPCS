@@ -130,6 +130,7 @@ macro "wh_step" : tactic => `(tactic| first
       (wHOnly_sendInteger _ _).bind fun _ ↦ wHOnly_pure _).bind fun _ ↦ ?_
   | with_reducible_and_instances refine (wHOnly_lift (hcommit _ _ _)).bind fun _ ↦ ?_
   | with_reducible_and_instances refine (wHOnly_sendRoot _).bind fun _ ↦ ?_
+  | with_reducible_and_instances refine (wHOnly_sendScalar _).bind fun _ ↦ ?_
   | with_reducible_and_instances refine (wHOnly_sendScalars _).bind fun _ ↦ ?_
   | with_reducible_and_instances refine wHOnly_sampleW.bind fun _ ↦ ?_
   | with_reducible_and_instances refine (wHOnly_samplesW _).bind fun _ ↦ ?_
@@ -178,15 +179,15 @@ section Prover
 theorem hOnly_setupTreeOf (tr : Trace) : HOnly (setupTreeOf callKeccak256 tr) :=
   E2ECompleteness.hOnly_commitWithH _ _
 
-theorem hOnly_contractIvOf (shape : Shape) (v : UniKeccak.KeccakVariant) (programIv : List UInt8)
-    (roots : SetupRoots) :
+theorem hOnly_contractIvOf (shape : UniStatement.Shape) (v : UniKeccak.KeccakVariant) (programIv : List UInt8)
+    (roots : UniKeccak.SetupRootsK) :
     HOnly (contractIvOf callKeccak256 shape v programIv roots) :=
   (hOnly_queryH _).bind fun _ ↦ hOnly_pure _
 
 /-- One step of the openings' walk. -/
 macro "disc_step" : tactic => `(tactic| first
   | with_reducible_and_instances exact disc_pure _
-  | with_reducible_and_instances refine (E2ECompleteness.disc_proveOpeningWithH _ _ _ _ _).bind fun _ ↦ ?_
+  | with_reducible_and_instances refine (disc_pcsProveH _ _ _ _ _ _).bind fun _ ↦ ?_
   | with_reducible_and_instances refine (disc_pure _).bind fun _ ↦ ?_
   | dsimp only)
 

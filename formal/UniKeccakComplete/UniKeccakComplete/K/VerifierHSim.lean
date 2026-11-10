@@ -4,6 +4,7 @@
 -- `formal/EndToEnd/Completeness/E2ECompleteness/WithHash.lean`'s `simulateQ_openingWithH`, `simulateQ_commitWithH`.
 -- Ported to the Keccak VM from `formal/UniComplete/UniComplete/VerifierHSim.lean`.
 import UniKeccakComplete.K.VerifierH
+import UniKeccakComplete.K.PcsProver
 
 /-!
 # The univariate verifier commutes with simulation
@@ -284,7 +285,7 @@ macro "chan_closeK" : tactic => `(tactic| (chan_pushK; repeat (first
   | chan_pushK)))
 
 /-- **The Keccak walk commutes with the morphism**, at every variant and claims mode. -/
-theorem chan_reduceWithKH (shape : Shape) (publicWords : List E) (v : UniKeccak.KeccakVariant) (mode : ClaimsMode) :
+theorem chan_reduceWithKH (shape : UniStatement.Shape) (publicWords : List E) (v : UniKeccak.KeccakVariant) (mode : ClaimsMode) :
     φ.chan (reduceWithKH H shape publicWords v mode) =
       reduceWithKH (fun x ↦ φ.app (H x)) shape publicWords v mode := by
   unfold reduceWithKH
@@ -296,7 +297,7 @@ omit [LawfulMonad m] [LawfulMonad n] in
 theorem app_seedWithH (iv publicInput : List UInt8) :
     φ.app (seedWithH H iv publicInput) = seedWithH (fun x ↦ φ.app (H x)) iv publicInput := rfl
 
-theorem app_runWithKH (shape : Shape) (iv publicInput : List UInt8) (stream : Array UInt8)
+theorem app_runWithKH (shape : UniStatement.Shape) (iv publicInput : List UInt8) (stream : Array UInt8)
     (v : UniKeccak.KeccakVariant) (mode : ClaimsMode) :
     φ.app (runWithKH H shape iv publicInput stream v mode) =
       runWithKH (fun x ↦ φ.app (H x)) shape iv publicInput stream v mode := by
@@ -304,27 +305,41 @@ theorem app_runWithKH (shape : Shape) (iv publicInput : List UInt8) (stream : Ar
     chan_finish, chan_pure]
 
 omit [LawfulMonad m] [LawfulMonad n] in
-theorem app_contractIvKWithH (s : Shape) (v : UniKeccak.KeccakVariant) (programIv : List UInt8)
-    (roots : SetupRoots) :
+theorem app_contractIvKWithH (s : UniStatement.Shape) (v : UniKeccak.KeccakVariant) (programIv : List UInt8)
+    (roots : UniKeccak.SetupRootsK) :
     φ.app (contractIvKWithH H s v programIv roots) = contractIvKWithH (fun x ↦ φ.app (H x)) s v programIv roots := by
   simp only [contractIvKWithH, φ.app_bind, φ.app_pure]
 
 omit [LawfulMonad m] [LawfulMonad n] in
-theorem app_ivWithH (D : UniKeccak.KDeployment) (v : UniKeccak.KeccakVariant) (roots : SetupRoots) :
+theorem app_ivWithH (D : UniKeccak.KDeployment) (v : UniKeccak.KeccakVariant) (roots : UniKeccak.SetupRootsK) :
     φ.app (KDeployment.ivWithH H D v roots) =
       KDeployment.ivWithH (fun x ↦ φ.app (H x)) D v roots :=
   app_contractIvKWithH φ H _ _ _ _
 
 variable (F : KeccakState → m KeccakState)
 
-/-- **The Keccak verifier commutes with a monad morphism that commutes with the opening** (`hopen`, WithHash's
-`simulateQ_openingWithH` for `simulateQ`). -/
-theorem app_verifyWithKH
-    (hopen : ∀ (L : PcsQuotient.Layout) (root : Digest) (claims : List PcsQuotient.Claim)
+omit [LawfulMonad m] [LawfulMonad n] in
+/-- A claim's opening commutes with a monad morphism that commutes with the PCS check. -/
+theorem app_pcsOpenKH
+    (hopen : ∀ (n : ℕ) (zOf : Digest → Vector E n) (x : WhirBridge.Pcs.Claim1 n)
       (proof : LeanVM.Protocol.Compile.Proof),
-      φ.app (E2ECompleteness.openingWithH H F L root claims proof) =
-        E2ECompleteness.openingWithH (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) L root claims proof)
-    (shape : Shape) (v : UniKeccak.KeccakVariant) (iv : List UInt8) (roots : SetupRoots)
+      φ.app (WhirBridge.Pcs.pcsVerifyWithHash H F zOf x proof) =
+        WhirBridge.Pcs.pcsVerifyWithHash (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) zOf x proof)
+    (n : ℕ) (root : Digest) (ood : E) (pt : List E) (v : E) (p : LeanVM.Protocol.Compile.Proof) :
+    φ.app (pcsOpenKH H F n root ood pt v p) = pcsOpenKH (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) n root ood pt v p := by
+  unfold pcsOpenKH
+  split
+  · exact hopen _ _ _ _
+  · exact φ.app_pure _
+
+/-- **The Keccak verifier commutes with a monad morphism that commutes with the PCS check** (`hopen`,
+`simulateQ_pcsVerify` for `simulateQ`). -/
+theorem app_verifyWithKH
+    (hopen : ∀ (n : ℕ) (zOf : Digest → Vector E n) (x : WhirBridge.Pcs.Claim1 n)
+      (proof : LeanVM.Protocol.Compile.Proof),
+      φ.app (WhirBridge.Pcs.pcsVerifyWithHash H F zOf x proof) =
+        WhirBridge.Pcs.pcsVerifyWithHash (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) zOf x proof)
+    (shape : UniStatement.Shape) (v : UniKeccak.KeccakVariant) (iv : List UInt8) (roots : UniKeccak.SetupRootsK)
     (publicInput : Vector UInt8 32) (proof : UniKeccak.KeccakProof) :
     φ.app (verifyWithKH H F shape v iv roots publicInput proof) =
       verifyWithKH (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) shape v iv roots publicInput proof := by
@@ -338,18 +353,18 @@ theorem app_verifyWithKH
       congr 1
       · congr 1; funext x s
         split
-        · simp only [φ.app_bind, φ.app_pure, pcsOpenWithH, hopen]
+        · simp only [φ.app_bind, φ.app_pure, app_pcsOpenKH φ H F hopen]
         · exact φ.app_pure _
       · funext s
         split <;> exact φ.app_pure _
 
 /-- **The deployed Keccak verifier commutes with a monad morphism that commutes with the opening.** -/
 theorem app_verifierWithH
-    (hopen : ∀ (L : PcsQuotient.Layout) (root : Digest) (claims : List PcsQuotient.Claim)
+    (hopen : ∀ (n : ℕ) (zOf : Digest → Vector E n) (x : WhirBridge.Pcs.Claim1 n)
       (proof : LeanVM.Protocol.Compile.Proof),
-      φ.app (E2ECompleteness.openingWithH H F L root claims proof) =
-        E2ECompleteness.openingWithH (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) L root claims proof)
-    (D : UniKeccak.KDeployment) (v : UniKeccak.KeccakVariant) (roots : SetupRoots) (input : Vector UInt8 32)
+      φ.app (WhirBridge.Pcs.pcsVerifyWithHash H F zOf x proof) =
+        WhirBridge.Pcs.pcsVerifyWithHash (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) zOf x proof)
+    (D : UniKeccak.KDeployment) (v : UniKeccak.KeccakVariant) (roots : UniKeccak.SetupRootsK) (input : Vector UInt8 32)
     (proof : UniKeccak.KeccakProof) :
     φ.app (KDeployment.verifierWithH H F D v roots input proof) =
       KDeployment.verifierWithH (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) D v roots input proof := by
@@ -381,14 +396,14 @@ theorem Morph.sim_F : (fun s ↦ (Morph.sim impl).app (callKeccakF1600 s)) = imp
   funext fun s ↦ simulateQ_queryF impl s
 
 /-- **The deployed Keccak verifier over the two calls commutes with any simulation.** -/
-theorem simulateQ_verifierWithH (D : UniKeccak.KDeployment) (v : UniKeccak.KeccakVariant) (roots : SetupRoots)
+theorem simulateQ_verifierWithH (D : UniKeccak.KDeployment) (v : UniKeccak.KeccakVariant) (roots : UniKeccak.SetupRootsK)
     (input : Vector UInt8 32) (proof : UniKeccak.KeccakProof) :
     simulateQ impl (KDeployment.verifierWithH callKeccak256 callKeccakF1600 D v roots input proof) =
       KDeployment.verifierWithH (implH impl) (implF impl) D v roots input proof := by
   have h := Morph.app_verifierWithH (Morph.sim impl) callKeccak256 callKeccakF1600
-    (fun L root claims proof ↦ by
+    (fun n zOf x proof ↦ by
       rw [Morph.sim_H, Morph.sim_F]
-      exact E2ECompleteness.simulateQ_openingWithH impl L root claims proof) D v roots input proof
+      exact simulateQ_pcsVerify impl zOf x proof) D v roots input proof
   rw [Morph.sim_H, Morph.sim_F] at h
   exact h
 
