@@ -9,6 +9,7 @@ import WhirBridge.Family
 import WhirBridge.Verifier
 import WhirBridge.Gaps
 import WhirBridge.Large
+import WhirBridge.Pcs
 
 /-!
 # The WHIR bridge
@@ -17,8 +18,10 @@ import WhirBridge.Large
 Fiat-Shamir soundness in the random-oracle model for every valid layout (`opening_sound`) and for
 the protocol's witness, wiring and quotient layouts at every supported size (`ours_sound`), in
 table terms (`Layout.holds_iff`, `Table::read` for the hidden layouts; the hidden layouts' gadget,
-one more stack claim of value zero, `gadget_holds_iff`). The headline theorems use only `propext`,
-`Classical.choice` and `Quot.sound`.
+one more stack claim of value zero, `gadget_holds_iff`); and the EIP's PCS opening, version 1
+(`crates/pcs_claim`; `WhirBridge/Pcs.lean`: `pcs_sound`, `pcs_sound_any`, the binding of the
+out-of-domain answer `two_openings_one_polynomial`, `ood_binding`, `ood_binding_rom`). The headline
+theorems use only `propext`, `Classical.choice` and `Quot.sound`.
 -/
 
 /-- info: 'WhirBridge.isMultiaffine_layoutClaimWeight' depends on axioms: [propext, Classical.choice, Quot.sound] -/
