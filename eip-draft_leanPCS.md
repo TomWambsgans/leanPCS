@@ -18,9 +18,9 @@ This EIP lets a transaction declare PCS claims ("PCS" for "Polynomial Commitment
 
 ## Motivation
 
-Today, verifying a pre-quantum SNARK onchain costs about 200,000 gas thanks to the elliptic-curve precompiles. Post-quantum STARKs, based on hash functions, are much larger, and much more expensive to verify. Recursive aggregation amortizes this cost: a single STARK per block proves all the others. [EIP-8288](https://eips.ethereum.org/EIPS/eip-8288) was initially designed to aggregate whole STARKs, which would require enshrining a new STARK-friendly ISA, such as RISC-V.
+Today, verifying a pre-quantum SNARK onchain costs about 200,000 gas thanks to the elliptic-curve precompiles. Post-quantum STARKs are much larger, and much more expensive to verify. Recursive aggregation amortizes this cost: a single STARK per block proves all the others. [EIP-8288](https://eips.ethereum.org/EIPS/eip-8288) was initially designed to aggregate whole STARKs, which would require enshrining a new STARK-friendly ISA, such as RISC-V.
 
-The majority of the work of a STARK verifier is checking PCS openings. With this EIP, Ethereum aggregates this heavy part, and smart contracts run the rest of the verifier in the EVM (this part is called the "polynomial interactive oracle proof" (PIOP)). The PIOP mostly does arithmetic in some finite field. We pick binary fields for their simplicity and their state of the art performance. The EVM can already add field elements with `XOR` (`0x18`). For efficient field multiplication, we introduce a new `MULFIELD` EVM instruction.
+STARKs are complicated. The good news is: the majority (in term of proof size and verification time) of a STARK verification is much simpler: it's just PCS openings. With this EIP, Ethereum aggregates the PCS part (big proof size) part, and smart contracts run the rest of the STARK verification in the EVM (small proof size) (this part is called the "polynomial interactive oracle proof" (PIOP)). The PIOP mostly computes a few hashes (for Fiat-Shamir) and does arithmetic in some finite field. We pick binary fields for their simplicity and their state of the art performance. The EVM can already add field elements with `XOR` (`0x18`). For efficient field multiplication, we introduce a new `MULFIELD` EVM instruction.
 
 The goal of this EIP is to get most of the benefits (cheap onchain STARK verification) from [EIP-8288](https://eips.ethereum.org/EIPS/eip-8288) without the complexity of enshrining a new ISA.
 
@@ -31,7 +31,7 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 | Constant                     | Value  |
 |------------------------------|--------|
 | `PCS_SCHEME`                 | `0x12` |
-| `MAX_PCS_VARIABLES`          | `12`   |
+| `MAX_PCS_VARIABLES`          | `32`   |
 | `PCS_TX_GAS`                 | `5000` |
 | `PCS_CLAIM_GAS`              | `1000` |
 | `MAX_PCS_CLAIMS_PER_TX`      | `256`  |
@@ -69,16 +69,20 @@ This EIP replaces the dependency format of EIP-8288, its `(scheme, data_hash, ve
 
 EIP-8288 then applies to dependencies in place of triples:
 
-- **Frames.** A dependency verification frame declares dependencies of one scheme: its `data` is `scheme || payload_0 || ... || payload_{k-1}`, with `1 <= k <= MAX_DEPENDENCIES_PER_FRAME`, and its dependencies are the `scheme || payload_j`. A frame whose `data` has another form is invalid.
+- **Frames.** A dependency verification frame declares dependencies of one scheme: its `data` is `scheme || payload_0 || ... || payload_{k-1}`, with `1 <= k <= MAX_DEPENDENCIES_PER_FRAME`, and its dependencies are the `scheme || payload_j`.
 - **`dependencies(tx)`** is the sorted, deduplicated list of the dependencies of the transaction's frames, where a `msg_hash` of 32 zero bytes stands for `compute_sig_hash(tx)`.
-- **`get_deps_hash(deps)`** is `keccak256(concat(deps))`: EIP-8288's `DEPS_HASH` is Keccak-256.
+- **`get_deps_hash(deps)`** is `keccak256(concat(deps))`: We use Keccak-256 in place of EIP-8288's `DEPS_HASH`.
 - **The recursive STARK** proves a leanSPHINCS dependency from its signature, and a PCS dependency from `(PCS_claim, opening_proof)`: it checks that `PCS_claim` hashes to the payload and that `pcs_verify(PCS_claim, opening_proof)` holds.
 - **Gas.** A transaction with `s` leanSPHINCS and `c` PCS dependencies in its frames, duplicates included, pays `LEANSPHINCS_VERIFICATION_GAS * s + PCS_CLAIM_GAS * c`, plus `PCS_TX_GAS` if `c > 0`, as intrinsic gas. Dependency verification frames have `limits.execution = 0`.
 - **Mempool.** EIP-8288's limits on leanSPHINCS dependencies stay. `dependencies(tx)` holds at most `MAX_PCS_CLAIMS_PER_TX` PCS dependencies, which travel only in mode 1 wrappers.
 
 ### Reading PCS claims
 
-A contract checks that `PCS_claim` holds by finding `keccak256(PCS_claim)` among the payloads of a frame `i` of its transaction such that `FRAMEPARAM(0x02, i)` is `DEP_VERIFY_FRAME_MODE` and the first byte of the frame's `data` is `PCS_SCHEME`. The payload `j < k` is the word at offset `1 + 32 * j` of the `data`, which `FRAMEDATALOAD` reads; the caller may give `i` and `j`. A valid block proves every dependency of its transactions, so a claim found this way holds.
+A valid block proves every dependency of its transactions. So a contract can rely on `PCS_claim` if its transaction declares it, which the contract checks in three steps, given a frame index `i` and a payload index `j`:
+
+1. `FRAMEPARAM(0x02, i)` is `DEP_VERIFY_FRAME_MODE`: frame `i` is a dependency verification frame.
+2. The first byte of `FRAMEDATALOAD(0, i)` is `PCS_SCHEME`: its dependencies are PCS claims.
+3. `FRAMEDATALOAD(1 + 32 * j, i)` is `keccak256(PCS_claim)`: its payload `j` declares `PCS_claim`.
 
 ## Rationale
 
@@ -88,31 +92,23 @@ For a PCS like WHIR, 192 bits is large enough to get provable 128-bit security i
 
 ### Why `MULFIELD` is an instruction
 
-A STARK verifier does many field multiplications, and a precompile call costs at least 100 gas. CPUs multiply binary polynomials natively, with `PCLMULQDQ` on x86 and `PMULL` on ARM, so 10 gas is conservative.
+A STARK verifier does many field multiplications, and a precompile call costs at least 100 gas. CPUs multiply binary polynomials natively, with `PCLMULQDQ` on x86 and `PMULL` on ARM, and a zkEVM can typically use the same finite field in order to make field mutliplication very cheap, hence the choice of only 10 gas. TODO: double check ??
 
 ### Why WHIR
 
-Verifying WHIR is mostly checking Merkle paths, which is exactly the part that aggregation removes. WHIR can also be made zero-knowledge by changing only the prover, so private applications can use the same scheme.
+WHIR is a state of the art multilinear PCS. WHIR can also be made zero-knowledge by changing only the prover (committing to random masks), so private applications can use the same scheme. A multilinear PCS can easily be transformed into a univariate one (but not vice versa).
 
 ### Why a new dependency format
 
-EIP-8288's triples are shaped for whole STARKs: a statement's hash and a verification key's hash. Here no scheme has a verification key. A signature needs its message and its public key, which its account contract reads in the frame. A PCS claim needs only its hash, because the contract computes `point` and `value` itself while verifying its proof. So each scheme fixes its payload's width, 64 bytes a signature and 32 bytes a PCS claim, and a frame holds one scheme: a contract reads payload `j` at a fixed offset, without parsing the frame. `get_deps_hash` hashes each dependency with its scheme byte, keeping schemes apart.
-
-### Why Keccak-256
-
-Keccak-256 is the EVM's hash, so a contract hashes its PCS claims with `KECCAK256`, and Keccak-f, a permutation of 64-bit words, is cheap to prove with binary fields. Contracts, clients and the aggregation STARK compute the same hash.
-
-### Why no precompile
-
-EIP-8288 already exposes dependencies to contracts through frame introspection. With Keccak-256 and fixed-width payloads, checking a PCS claim takes one `KECCAK256`, one `FRAMEPARAM` (the mode) and two `FRAMEDATALOAD` (the scheme byte and the payload), given the frame and the payload's index: in the reference contracts, 61 gas once for the frame's mode and scheme, and 43 gas a claim beyond its hash. A contract may skip the bound `j < k`: past the frame's `data`, `FRAMEDATALOAD` reads zero, which no Keccak-256 output is but with probability `2^-256`. A precompile would do the same lookup, with an address, a gas schedule and failure rules of its own.
+EIP-8288's triples, a statement's hash and a verification key's hash, are made for whole STARKs. Neither scheme here has a verification key. A signature needs its message and public key (64 bytes); a PCS claim needs only its hash (32 bytes), since the contract computes the claim itself.
 
 ### Why PCS claims travel only in mode 1 wrappers
 
-The sender aggregates the openings of its transaction client side, into one STARK that it broadcasts in a mode 1 wrapper. The mempool then verifies one STARK, whatever the number of PCS claims. `PCS_TX_GAS` pays for that STARK, once per transaction, and `PCS_CLAIM_GAS` pays for each PCS claim's share of the aggregation. A mode 0 wrapper would instead make the mempool verify one opening per PCS claim, over every transaction in the wrapper. For the same reason, PCS claims need no per-wrapper limit: each one adds only its 32 bytes, which its transaction already carries.
+The sender aggregates the openings of its transaction client side, into one STARK that it broadcasts in a mode 1 wrapper. The mempool then verifies one STARK, whatever the number of PCS claims. `PCS_TX_GAS` pays for that STARK, once per transaction, and `PCS_CLAIM_GAS` pays for what each PCS claim adds onchain: a dependency of the block, which the block's STARK proves.
 
 ### Upgrades
 
-The field cannot change, but the PCS can. New proofs simply use the new version, but commitments stored in contracts, such as the commitment to a circuit, must be migrated. Following an idea of Justin Drake, a fork adds version $v + 1$, and removes version $v$ after a deprecation period.
+The field cannot change, but the PCS can: a fork can add a version $v + 1$ that brings the latest performance improvements of PCSs. A PCS used for witness commitment can easily use it, without upgrading the old smart contract. Commitments stored in contracts, typically circuit verification keys, can also be migrated (thanks JD):
 
 To migrate a stored commitment `com` to `com'`, a contract derives a random point $r$ from both commitments by Fiat-Shamir, and requires its transaction to declare two PCS claims: `com` under version $v$ and `com'` under version $v + 1$ take the same value $y$ at $r$. If `com` and `com'` commit to different polynomials, this check passes with probability at most $n / 2^{192}$ (Schwartz–Zippel).
 
@@ -166,15 +162,7 @@ def mulfield(a, b):  # multiplication in E
 
 ## Security Considerations
 
-The security of PCS claims relies on EIP-8288 and on the soundness of each PCS version. In the list-decoding regime, the out-of-domain answer in a commitment is what binds it to a single polynomial.
-
-The Fiat-Shamir transcript of a WHIR proof starts from the PCS claim only, not from the transcript of the application. This is believed to be sound, but it has not been formally analyzed yet.
-
-A contract MUST check that the frame it reads is a dependency verification frame whose first byte is `PCS_SCHEME`: the same 32 bytes in another frame, or a `msg_hash` in a leanSPHINCS frame, which its sender chooses, prove nothing.
-
-A declared PCS claim only proves that the claim is true. Each application must still verify the rest of its proof correctly, for example by deriving evaluation points by Fiat-Shamir after its commitments are fixed.
-
-Removing a PCS version makes unmigrated commitments unusable, for example commitments hardcoded in contract code. Gas, `MAX_PCS_VARIABLES`, `MAX_PCS_CLAIMS_PER_TX` and the restriction to mode 1 wrappers bound denial-of-service risks, as in EIP-8288.
+TBD
 
 ## Copyright
 
