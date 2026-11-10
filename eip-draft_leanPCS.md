@@ -181,7 +181,7 @@ def mulfield(a, b):  # multiplication in E
 
 The security of PCS claims relies on EIP-8288 and on the soundness of each PCS version.
 
-**Binding.** In the list-decoding regime, a root binds a list of at most $L$ polynomials ($L \le 323$ at the reference parameters). The out-of-domain answer selects one: an adversary trying $Q$ roots finds one where two polynomials of its list agree at $z$ with probability at most $Q \cdot L^2 \cdot n / 2^{192}$. A PCS version without this binding would make separately declared claims on one commitment forgeable.
+**Binding.** In the list-decoding regime, a root binds a list of at most $L$ polynomials (at the reference parameters, $L$ goes from 87,315 at $n = 15$ down to 3,564 at $n = 28$). The out-of-domain answer selects one: an adversary trying $Q$ roots finds one where two polynomials of its list agree at $z$ with probability at most $Q \cdot \binom{L}{2} \cdot n / 2^{192}$, that is at most $Q \cdot 2^{-156}$. A PCS version without this binding would make separately declared claims on one commitment forgeable.
 
 **Fiat-Shamir.** The transcript of an opening starts from the PCS claim only, not from the transcript of the application. The application's own Fiat-Shamir must therefore fix its commitments before it draws the points it claims at.
 

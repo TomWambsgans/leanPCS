@@ -63,13 +63,14 @@ One WHIR opening proves both `f(z) = ood` and `f(point) = value`:
 ## Why the out-of-domain answer binds
 
 In the list-decoding regime a root does not bind one polynomial: the committed words are within the decoding radius
-of a list of at most `L` codewords (`L <= 323` at these parameters, the Johnson bound leanVM's profile is computed
-at), so two openings of one root, made separately, could be of two polynomials of the list. The answer at `z` singles
+of a list of at most `L` codewords (the level-0 lists leanerVM certifies: `L` from 87,315 at `n = 15` down to 3,564 at
+`n = 28`; leanVM's `whir_config.rs` computes a smaller Johnson bound, which is not certified), so two openings of one root, made separately, could be of two polynomials of the list. The answer at `z` singles
 one out. `z` is a random-oracle output of the root, so it is drawn after the list is fixed; two distinct multilinear
 polynomials in `n` variables agree at a uniform point of `E^n` with probability at most `n / 2^192`
 (Schwartz–Zippel), so the probability that two members of a root's list share an answer at `z` is at most
-`C(L, 2) · n / 2^192 <= 2^-171` (`L = 323`, `n = 28`). An adversary trying `Q` roots succeeds with probability at most
-`Q · C(L, 2) · n / 2^192`: about 171 bits as `Q/ε`. Every claim opened against `(root, ood)` is therefore of the one
+`C(L, 2) · n / 2^192`: between `2^-156.3` (`n = 15`) and `2^-164.6` (`n = 28`). An adversary trying `Q` roots succeeds
+with probability at most `Q · C(L, 2) · n / 2^192` (plus `Q(Q+1)/2^256` for the hash), at least 156 bits as `Q/ε`:
+`formal/WhirBridge` proves it (`WhirBridge.Pcs.ood_binding_rom`), and the opening's soundness (`pcs_sound`). Every claim opened against `(root, ood)` is therefore of the one
 list member with that answer, and claims on one commitment may be opened, aggregated and proven separately.
 
 ## The EVM check (`evm_link`)
