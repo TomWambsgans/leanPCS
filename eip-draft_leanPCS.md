@@ -14,7 +14,7 @@ requires: 8141, 8288
 
 ## Abstract
 
-This EIP lets a transaction declare PCS claims ("PCS" for "Polynomial Commitment Scheme"), each stating that a committed multilinear polynomial takes a given value at a given point, as [EIP-8288](https://eips.ethereum.org/EIPS/eip-8288) dependencies. Contracts read the declared claims through frame introspection, and the block proves them. This EIP also introduces a new EVM instruction `MULFIELD` that multiplies two elements of the finite field $\mathrm{GF}(2^{192})$. Together, they let users cheaply verify post-quantum STARKs (scalable transparent arguments of knowledge) onchain. All the heavy PCS opening proofs of a block are aggregated into a single STARK.
+This EIP lets a transaction declare PCS claims ("PCS" for "Polynomial Commitment Scheme"), each stating that a committed multilinear polynomial takes a given value at a given point, as [EIP-8288](https://eips.ethereum.org/EIPS/eip-8288) dependencies. Contracts read the declared claims through frame introspection, and the block proves them. This EIP also introduces a new EVM instruction `MULFIELD` that multiplies two elements of the finite field $\mathrm{GF}(2^{192})$. Together, they let users cheaply verify STARKs (aka post-quantum hash-based SNARKs) onchain. All the heavy PCS opening proofs of a block are aggregated into a single STARK.
 
 ## Motivation
 
@@ -31,7 +31,7 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 | Constant                     | Value  |
 |------------------------------|--------|
 | `PCS_SCHEME`                 | `0x12` |
-| `MAX_PCS_VARIABLES`          | `28`   |
+| `MAX_PCS_VARIABLES`          | `12`   |
 | `PCS_TX_GAS`                 | `5000` |
 | `PCS_CLAIM_GAS`              | `1000` |
 | `MAX_PCS_CLAIMS_PER_TX`      | `256`  |
@@ -48,17 +48,15 @@ The instruction `MULFIELD` (`0x1f`) pops `a` and `b`, ignores their top 64 bits,
 
 ### PCS claims
 
-A PCS claim states that the multilinear polynomial $f$ over $K$ in `n` variables committed to as `root` takes the values `value_1, ..., value_m` (in $E$) at `point_1, ..., point_m` (in $E^n$). It is encoded in 32-byte words:
+A PCS claim states that the multilinear polynomial over $K$ in `n` variables committed to as `commitment` takes the value `value` (in $E$) at `point` (in $E^n$), under PCS version `version`:
 
 ```
-PCS_claim = root || layout || m || point_1 || value_1 || ... || point_m || value_m
+PCS_claim = version (1 byte) || n (1 byte) || commitment (56 bytes) || point (24 * n bytes) || value (24 bytes)
 ```
 
-where `m` is a number, each point is `n` words, and an element of $E$ is its word, as `MULFIELD` takes it, with its top 64 bits zero. `layout` describes the commitment: its byte 21 is the PCS version, its byte 24 is `n`, and its bytes 25 to 31 are `placed`, the number of $f$'s coefficients, from the first, that the commitment holds (the others are zero); the version fixes how the other bytes, and `root`, are read. A PCS claim is well-formed if its version is supported, `1 <= n <= MAX_PCS_VARIABLES`, `m >= 1`, every element's top 64 bits are zero, and it is `32 * (3 + m * (n + 1))` bytes long.
+Under the hood, `commitment` is a 32-byte Merkle root and a 24-byte out-of-domain answer (in $E$). A PCS claim is well-formed if `version` is supported, `1 <= n <= MAX_PCS_VARIABLES`, and it is `82 + 24 * n` bytes long.
 
-A PCS claim carries **every** point at which its commitment is opened: one opening proves them all, at one random combination. Two claims on one root are not bound to one polynomial (see Security Considerations).
-
-Each PCS version defines a verifier `pcs_verify(PCS_claim, opening_proof)`, false if `PCS_claim` is not well-formed, whose Fiat-Shamir transcript starts from `PCS_claim`. The versions are the reference implementation's: `2` is leanVM's WHIR at rate 1/2, in the list-decoding regime; `3` is the same with the codes of its deeper levels at rates 1/4, 1/8, …. Versions `0` and `1` are not used.
+Each PCS version defines a verifier `pcs_verify(PCS_claim, opening_proof)`. We start at version `1`: WHIR at rate 1/2, in the list-decoding regime.
 
 ### Dependencies
 
@@ -74,7 +72,7 @@ EIP-8288 then applies to dependencies in place of triples:
 - **Frames.** A dependency verification frame declares dependencies of one scheme: its `data` is `scheme || payload_0 || ... || payload_{k-1}`, with `1 <= k <= MAX_DEPENDENCIES_PER_FRAME`, and its dependencies are the `scheme || payload_j`. A frame whose `data` has another form is invalid.
 - **`dependencies(tx)`** is the sorted, deduplicated list of the dependencies of the transaction's frames, where a `msg_hash` of 32 zero bytes stands for `compute_sig_hash(tx)`.
 - **`get_deps_hash(deps)`** is `keccak256(concat(deps))`: EIP-8288's `DEPS_HASH` is Keccak-256.
-- **The recursive STARK** proves a leanSPHINCS dependency from its signature, and a PCS dependency from `(PCS_claim, opening_proof)`: it checks that `PCS_claim` hashes to the payload and that `pcs_verify(PCS_claim, opening_proof)` holds. A PCS dependency whose claim is not well-formed, an unsupported version included, cannot be proven, so its transaction cannot be included.
+- **The recursive STARK** proves a leanSPHINCS dependency from its signature, and a PCS dependency from `(PCS_claim, opening_proof)`: it checks that `PCS_claim` hashes to the payload and that `pcs_verify(PCS_claim, opening_proof)` holds.
 - **Gas.** A transaction with `s` leanSPHINCS and `c` PCS dependencies in its frames, duplicates included, pays `LEANSPHINCS_VERIFICATION_GAS * s + PCS_CLAIM_GAS * c`, plus `PCS_TX_GAS` if `c > 0`, as intrinsic gas. Dependency verification frames have `limits.execution = 0`.
 - **Mempool.** EIP-8288's limits on leanSPHINCS dependencies stay. `dependencies(tx)` holds at most `MAX_PCS_CLAIMS_PER_TX` PCS dependencies, which travel only in mode 1 wrappers.
 
@@ -116,7 +114,7 @@ The sender aggregates the openings of its transaction client side, into one STAR
 
 The field cannot change, but the PCS can. New proofs simply use the new version, but commitments stored in contracts, such as the commitment to a circuit, must be migrated. Following an idea of Justin Drake, a fork adds version $v + 1$, and removes version $v$ after a deprecation period.
 
-To migrate a stored commitment `com` to `com'`, a contract derives a random point $r$ from both commitments by Fiat-Shamir, and requires its transaction to declare two PCS claims: `com` under version $v$ and `com'` under version $v + 1$ take the same value $y$ at $r$. If `com` and `com'` commit to different polynomials, this check passes with probability at most $n / 2^{192}$ (Schwartz–Zippel). This needs `com'` to bind one polynomial, which a root does not by itself (see Security Considerations): the commitments that need migrating, such as a circuit's, are of public polynomials, and anyone can recompute `com'` from them.
+To migrate a stored commitment `com` to `com'`, a contract derives a random point $r$ from both commitments by Fiat-Shamir, and requires its transaction to declare two PCS claims: `com` under version $v$ and `com'` under version $v + 1$ take the same value $y$ at $r$. If `com` and `com'` commit to different polynomials, this check passes with probability at most $n / 2^{192}$ (Schwartz–Zippel).
 
 ## Backwards Compatibility
 
@@ -168,9 +166,9 @@ def mulfield(a, b):  # multiplication in E
 
 ## Security Considerations
 
-The security of PCS claims relies on EIP-8288 and on the soundness of each PCS version. In the list-decoding regime with no out-of-domain sample at commitment time, a root binds only to a short list of polynomials (at most 323 at the reference parameters). This is why a PCS claim carries every point at which its commitment is opened: if a block proved claims on one root separately, they could be of different polynomials of the list, which is forgeable at about $2^{111}$ work. A protocol must also union-bound the challenges it draws before its claims over these lists.
+The security of PCS claims relies on EIP-8288 and on the soundness of each PCS version. In the list-decoding regime, the out-of-domain answer in a commitment is what binds it to a single polynomial.
 
-The Fiat-Shamir transcript of a WHIR proof starts from the PCS claim only, not from the transcript of the application. For the reference implementation's transcript, one hash of a prefix the verifier fixes and the claims, with the root as the proof's first two scalars, this is proved sound in Lean (`formal/WhirBridge`).
+The Fiat-Shamir transcript of a WHIR proof starts from the PCS claim only, not from the transcript of the application. This is believed to be sound, but it has not been formally analyzed yet.
 
 A contract MUST check that the frame it reads is a dependency verification frame whose first byte is `PCS_SCHEME`: the same 32 bytes in another frame, or a `msg_hash` in a leanSPHINCS frame, which its sender chooses, prove nothing.
 
