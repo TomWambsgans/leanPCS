@@ -3,24 +3,23 @@
 //! for the Lean interpreter of that graph (`formal/Implementation`, layer F5 of `formal/README.md`).
 //!
 //! The graph is what [`crate::quotient::contract`] compiles: `quotient::protocol::reduce` run on the recorder,
-//! with the outputs the three claims it checks declared. [`render`] writes it, with the constants the reduction
+//! with the outputs the fields of the six PCS claims it checks declared. [`render`] writes it, with the constants the reduction
 //! reads (the Cantor basis, `tau`, `b`, the extension's coordinates), as Lean definitions; the test
 //! `graph_lean_is_current` fails when the checked-in file is not what [`render`] writes now (run it with
 //! `UPDATE_LEAN=1` to rewrite the file). [`vectors`] writes calldata and what the Rust verifier makes of it, the
-//! words of the three calls, for the Lean executable to compare with its interpretation of the graph.
+//! six claims' bytes, for the Lean executable to compare with its interpretation of the graph.
 
 use std::fmt::Write;
 
-use fiat_shamir::merkle::Hash;
 use primitives::field::{F64, F192};
+use quotient::opening::Commitment;
 use quotient::domain::{beta, coordinates, row_vanishing};
 use quotient::protocol::{extension, label};
 use quotient::statement::Statement;
 use quotient::transcript::Proof;
 
 use crate::codegen::{Ending, VERIFY, Word};
-use crate::machine::claim_input;
-use crate::quotient::{Recorded, deployed, openings};
+use crate::quotient::{CALLDATA_LEN, Recorded, deployed, pcs_claims};
 use crate::record::Node;
 
 /// The rows of the deployed circuit.
@@ -59,7 +58,7 @@ pub fn render() -> String {
         ending,
         inputs,
     } = deployed(LOG_ROWS);
-    let Ending::Declared(runs) = ending else {
+    let Ending::Declared(claims) = ending else {
         unreachable!("the deployed contract checks declared claims")
     };
     let mut out = String::new();
@@ -90,9 +89,9 @@ pub fn render() -> String {
     .unwrap();
     writeln!(
         w,
-        "required nonzero, {} output words in {} claims checked declared, {inputs} scalars of the proof read.",
+        "required nonzero, {} output words, {} PCS claims checked declared, {inputs} scalars of the proof read.",
         outputs.len(),
-        runs.len()
+        claims.len()
     )
     .unwrap();
     writeln!(w, "-/").unwrap();
@@ -135,7 +134,7 @@ pub fn render() -> String {
     writeln!(w).unwrap();
     writeln!(
         w,
-        "/-- The words the contract writes, the claims it checks declared back to back. -/"
+        "/-- The words the contract writes, each once: the fields of the claims it checks declared. -/"
     )
     .unwrap();
     writeln!(w, "def outputs : List Word := [").unwrap();
@@ -145,14 +144,24 @@ pub fn render() -> String {
             Word::Const(bytes) => format!("Word.const {}", word(bytes)),
             Word::Calldata(offset) => format!("Word.calldata {offset}"),
             Word::StoredRoot => "Word.storedRoot".to_string(),
+            Word::StoredOod => "Word.storedOod".to_string(),
         };
         let comma = if i + 1 < outputs.len() { "," } else { "" };
         writeln!(w, "  {text}{comma}").unwrap();
     }
     writeln!(w, "]").unwrap();
     writeln!(w).unwrap();
-    writeln!(w, "/-- How many words each claim takes, in order. -/").unwrap();
-    writeln!(w, "def runs : List Nat := {}", list(&runs, |x| x.to_string())).unwrap();
+    writeln!(
+        w,
+        "/-- Each PCS claim, in order: the output words of its root, its out-of-domain answer, its point, its value. -/"
+    )
+    .unwrap();
+    writeln!(
+        w,
+        "def claims : List (Nat × Nat × List Nat × Nat) := {}",
+        list(&claims, |c| format!("({}, {}, {}, {})", c.root, c.ood, list(&c.point, |x| x.to_string()), c.value))
+    )
+    .unwrap();
     writeln!(w).unwrap();
     let zero = Statement {
         y: [0; 32],
@@ -162,7 +171,16 @@ pub fn render() -> String {
     writeln!(
         w,
         "def name : List Nat := {}",
-        list(&label(&[0; 32], &zero)[..16], |b| format!("0x{b:02x}"))
+        list(
+            &label(
+                &Commitment {
+                    root: [0; 32],
+                    ood: F192::ZERO,
+                },
+                &zero
+            )[..16],
+            |b| format!("0x{b:02x}")
+        )
     )
     .unwrap();
     writeln!(w).unwrap();
@@ -196,52 +214,64 @@ pub fn render() -> String {
 /// A proof and statement read back from calldata of the verifier ([`crate::quotient::calldata`]'s inverse, without
 /// its last byte, the frame's index).
 fn parse(calldata: &[u8]) -> (Statement, Proof) {
-    assert_eq!(calldata.len(), 252);
+    assert_eq!(calldata.len(), CALLDATA_LEN - 1);
     let be = |at: usize| u64::from_be_bytes(calldata[at..at + 8].try_into().unwrap());
     let statement = Statement {
         y: calldata[4..36].try_into().unwrap(),
         root: calldata[36..68].try_into().unwrap(),
     };
+    let scalar = |i: usize| {
+        let at = 196 + 24 * i;
+        F192::new(be(at + 16), be(at + 8), be(at))
+    };
     let mut stream = Vec::new();
-    for i in 0..4 {
-        let at = 68 + 16 * i;
-        stream.push(F192::new(be(at + 8), be(at), 0));
+    for k in 0..4 {
+        let root: [u8; 32] = calldata[68 + 32 * k..100 + 32 * k].try_into().unwrap();
+        stream.extend(quotient::transcript::root_scalars(&root));
+        stream.push(scalar(k));
     }
-    for i in 0..5 {
-        let at = 132 + 24 * i;
-        stream.push(F192::new(be(at + 16), be(at + 8), be(at)));
-    }
+    stream.extend((4..crate::quotient::INPUTS).map(scalar));
     (statement, Proof { stream })
 }
 
 /// The claims the deployed contract checks declared for `calldata` (without its frame byte), by the Rust verifier:
-/// the three claims back to back, or `None` where the verifier rejects.
-pub fn expected(index_root: &Hash, calldata: &[u8]) -> Option<Vec<u8>> {
+/// the six claims' bytes back to back, or `None` where the verifier rejects.
+pub fn expected(index: &Commitment, calldata: &[u8]) -> Option<Vec<u8>> {
     let (statement, proof) = parse(calldata);
-    let (roots, claims) = quotient::protocol::verify(index_root, &statement, &proof, LOG_ROWS).ok()?;
-    Some(
-        openings(index_root, &roots, &claims, LOG_ROWS)
-            .iter()
-            .flat_map(|(root, id, claims)| claim_input(root, *id, claims))
-            .collect(),
-    )
+    let (commitments, claims) = quotient::protocol::verify(index, &statement, &proof, LOG_ROWS).ok()?;
+    Some(pcs_claims(index, &commitments, &claims).iter().flat_map(|claim| claim.encode()).collect())
 }
 
 fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-/// `count` lines of test vectors: an index root, calldata of the verifier (without its frame byte), and the claims the
-/// Rust verifier has the contract check declared (or `reject`), each in hex, separated by spaces.
+/// Random calldata of the verifier (without its frame byte), its roots' words arbitrary.
+fn random_calldata(rng: &mut primitives::test_rng::Rng) -> Vec<u8> {
+    let mut calldata = VERIFY.to_vec();
+    calldata.extend((4..CALLDATA_LEN - 1).map(|_| rng.next_u8()));
+    calldata
+}
+
+fn random_index(rng: &mut primitives::test_rng::Rng) -> Commitment {
+    Commitment {
+        root: std::array::from_fn(|_| rng.next_u8()),
+        ood: F192::new(rng.next_u64(), rng.next_u64(), rng.next_u64()),
+    }
+}
+
+/// `count` lines of test vectors: an index commitment (its root, its out-of-domain answer as 24 bytes), calldata of
+/// the verifier (without its frame byte), and the claims the Rust verifier has the contract check declared (or
+/// `reject`), each in hex, separated by spaces.
 pub fn vectors(seed: u64, count: usize) -> String {
     let mut rng = primitives::test_rng::Rng::new(seed);
     let mut out = String::new();
     for _ in 0..count {
-        let index_root: Hash = std::array::from_fn(|_| rng.next_u8());
-        let mut calldata = VERIFY.to_vec();
-        calldata.extend((0..248).map(|_| rng.next_u8()));
-        let expected = expected(&index_root, &calldata).map_or("reject".to_string(), |words| hex(&words));
-        writeln!(out, "{} {} {expected}", hex(&index_root), hex(&calldata)).unwrap();
+        let index = random_index(&mut rng);
+        let calldata = random_calldata(&mut rng);
+        let expected = expected(&index, &calldata).map_or("reject".to_string(), |words| hex(&words));
+        let ood = pcs_claim::element_bytes(index.ood);
+        writeln!(out, "{} {} {} {expected}", hex(&index.root), hex(&ood), hex(&calldata)).unwrap();
     }
     out
 }
@@ -279,25 +309,24 @@ mod tests {
     #[test]
     fn vectors_are_the_contracts_calls() {
         let mut rng = primitives::test_rng::Rng::new(0x1ea4);
-        let index_root: Hash = std::array::from_fn(|_| rng.next_u8());
+        let index = random_index(&mut rng);
         let mut chain = Chain::default();
         let address = chain
-            .deploy(&init_code(&contract(LOG_ROWS), &index_root, Address::with_last_byte(0x0e)))
+            .deploy(&init_code(&contract(LOG_ROWS), &index, Address::with_last_byte(0x0e)))
             .0
             .expect("a deployment");
         for _ in 0..8 {
-            let mut data = VERIFY.to_vec();
-            data.extend((0..248).map(|_| rng.next_u8()));
+            let data = random_calldata(&mut rng);
             let (statement, proof) = parse(&data);
             assert_eq!(calldata(&statement, &proof).unwrap(), [&data[..], &[PCS_FRAME]].concat(), "parse inverts calldata");
-            let words = expected(&index_root, &data).expect("random calldata reduces");
-            let (roots, claims) =
-                quotient::protocol::verify(&index_root, &statement, &proof, LOG_ROWS).expect("a reduction");
+            let words = expected(&index, &data).expect("random calldata reduces");
+            let (commitments, claims) =
+                quotient::protocol::verify(&index, &statement, &proof, LOG_ROWS).expect("a reduction");
             let mut block = PcsFrame::default();
             let mut joined = Vec::new();
-            for (root, id, claims) in openings(&index_root, &roots, &claims, LOG_ROWS) {
-                block.declare(&root, id, &claims);
-                joined.extend(claim_input(&root, id, &claims));
+            for claim in pcs_claims(&index, &commitments, &claims) {
+                block.declare(&claim);
+                joined.extend(claim.encode());
             }
             assert_eq!(words, joined);
             let outcome = chain.call(address, &[&data[..], &[PCS_FRAME]].concat(), &block);

@@ -1,6 +1,6 @@
 // Adapted from leanVM (https://github.com/leanEthereum/leanVM), branch PCS-openings-aggregation, commit 651453c6,
-// file crates/membership/evm/src/codegen.rs; new here: the checks of the declared claims, the selector, the index root in storage
-// (`Entry`), `setIndexRoot` and the creation code; the assembly is now `crates/evm_link`'s. MIT OR Apache-2.0; see
+// file crates/membership/evm/src/codegen.rs; new here: the checks of the declared claims, the selector, the index commitment in
+// storage (`Entry`), `setIndexCommitment` and the creation code; the assembly is now `crates/evm_link`'s. MIT OR Apache-2.0; see
 // AGENTS.md.
 //! A recorded graph as EVM bytecode: straight-line code, a value used once left on the stack and a shared one
 //! kept in a memory slot, which is reused after its last read.
@@ -8,33 +8,34 @@
 use evm_link::op::{
     AND, CALLDATACOPY, CALLDATALOAD, CALLDATASIZE, CALLER, CALLVALUE, CODECOPY, CODESIZE, DUP1, DUP2, FIELD_MUL,
     ISZERO, JUMPDEST, JUMPI, KECCAK256, MLOAD, MSTORE, OR, PUSH0, PUSH32, RETURN, REVERT, SHL, SHR, SLOAD, SSTORE,
-    STOP, SWAP1, SWAP2, XOR, push, push_usize,
+    STOP, SWAP1, XOR, push, push_usize,
 };
-use evm_link::{Item, Options, Program};
+use evm_link::{ClaimWords, Item, Options, Program};
 
 use crate::record::{Graph, Node};
 
-/// Memory below the slots is scratch for hashing: the seed's 112 bytes (at 0, or at 16 when the circuit's
-/// commitment is in storage), or a state and the scalars it absorbs.
-const SEED_SCRATCH: usize = 0x80;
+/// Memory below the slots is scratch for hashing: the seed's 136 bytes (at 16), or a state and the scalars it absorbs.
+const SEED_SCRATCH: usize = 0xa0;
 
 /// The selector of `verify(bytes32,bytes32,bytes)`, the first 4 bytes of the `keccak256` of that signature: calldata
 /// starting with it is a proof to verify.
 pub const VERIFY: [u8; 4] = [0xde, 0x12, 0xc6, 0x40];
-/// The selector of `setIndexRoot(bytes32)`.
-pub const SET_INDEX_ROOT: [u8; 4] = [0xcd, 0xaf, 0x73, 0x6c];
-/// The storage slot holding the circuit's commitment, when the code does not.
+/// The selector of `setIndexCommitment(bytes32,bytes32)`.
+pub const SET_INDEX: [u8; 4] = [0xda, 0xb9, 0x9d, 0xbd];
+/// The storage slots holding the circuit's commitment: its root, and its out-of-domain answer (as a word, the top
+/// 64 bits zero).
 pub const INDEX_ROOT_SLOT: u8 = 0;
+pub const INDEX_OOD_SLOT: u8 = 1;
 
-/// Where the arguments (calldata after the selector, if any) hold the statement's two words, then the commitments;
-/// the proof's scalars follow them.
+/// Where the arguments (calldata after the selector, if any) hold the statement's two words, then the four
+/// commitments' roots; the proof's other scalars follow them.
 pub const COMMITMENT: usize = 64;
-pub const SCALARS: usize = COMMITMENT + 64;
+pub const SCALARS: usize = COMMITMENT + 4 * 32;
 pub const SCALAR_BYTES: usize = 24;
 
 /// How calls enter the contract: calldata starts with [`VERIFY`], and a call of the verifier carries no value. The
-/// circuit's commitment is in storage slot [`INDEX_ROOT_SLOT`], which the creation code writes and the owner may
-/// change ([`SET_INDEX_ROOT`]).
+/// circuit's commitment is in storage slots [`INDEX_ROOT_SLOT`] and [`INDEX_OOD_SLOT`], which the creation code
+/// writes and the owner may change ([`SET_INDEX`]).
 #[derive(Clone, Copy, Debug)]
 pub struct Entry {
     /// The transcript's label is the protocol's 16-byte name, the circuit's commitment, then the statement.
@@ -45,29 +46,6 @@ pub struct Entry {
 fn push2(at: usize) -> [u8; 3] {
     assert!(at < 1 << 16, "an address of two bytes");
     [0x61, (at >> 8) as u8, at as u8]
-}
-
-/// Reverse the bytes of each 16-byte half of the word on top of the stack, which makes a root's bytes the word
-/// a claim encodes ([`crate::machine::root_word`]): `x = ((x >> s) & m) | ((x & m) << s)` for `s` of 8, 4, 2
-/// and 1 bytes, `m` the low `s` bytes of every `2s`-byte lane (33 gas each).
-fn reverse_halves() -> Vec<u8> {
-    let mut code = Vec::new();
-    for bytes in [8, 4, 2, 1] {
-        let mask: [u8; 32] = std::array::from_fn(|i| if i % (2 * bytes) >= bytes { 0xff } else { 0 });
-        let shift = push_usize(8 * bytes);
-        code.extend(
-            [
-                &push(&mask)[..],
-                &[DUP2, DUP2, AND],
-                &shift,
-                &[SHL, SWAP2],
-                &shift,
-                &[SHR, AND, OR],
-            ]
-            .concat(),
-        );
-    }
-    code
 }
 
 /// A field element as a word: limb 0 lowest.
@@ -83,18 +61,19 @@ pub enum Word {
     Const([u8; 32]),
     /// The word of the arguments at this offset.
     Calldata(usize),
-    /// The circuit's commitment, in storage, as a claim encodes a root: the seed writes it, having read it.
+    /// The circuit's commitment's root and out-of-domain answer, in storage: the seed writes them, having read them.
     StoredRoot,
+    StoredOod,
 }
 
 /// What the contract does with its output region, once written.
 pub enum Ending {
     /// Return it.
     Return,
-    /// Revert unless the transaction declares the claims these runs of words of it encode, in order and back to back,
-    /// as payloads `0, 1, ...` of the frame of PCS claims the caller names in the last byte of calldata
-    /// ([`evm_link::declared`]); return the word 1.
-    Declared(Vec<usize>),
+    /// Revert unless the transaction declares these PCS claims, their fields words of the region, as payloads `0,
+    /// 1, ...` of the frame of PCS claims the caller names in the last byte of calldata
+    /// ([`evm_link::declared_claims`]); return the word 1.
+    Declared(Vec<ClaimWords>),
 }
 
 /// No tags: this contract's gas is not broken down by phase.
@@ -105,8 +84,9 @@ struct Compiler<'a> {
     entry: &'a Entry,
     /// Where calldata holds the arguments: after the selector, if any.
     base: usize,
-    /// The output word of [`Word::StoredRoot`], if the seed writes it.
+    /// The output words of [`Word::StoredRoot`] and [`Word::StoredOod`], if the seed writes them.
     stored_root: Option<usize>,
+    stored_ood: Option<usize>,
     /// Kept in memory: used more than once, and not a constant.
     shared: Vec<bool>,
     done: Vec<bool>,
@@ -195,22 +175,29 @@ impl Compiler<'_> {
                 self.code(&[&push_usize(128)[..], &[SHL, SWAP1], &push_usize(64), &[SHL, OR]].concat());
                 self.code(&[&[SWAP1][..], &low, &[AND, OR]].concat());
             }
-            // The label, the name and the circuit's commitment then the statement copied from calldata.
+            // The label: the name, the circuit's commitment (its root and out-of-domain answer, read from storage:
+            // two cold `SLOAD`s), then the statement copied from calldata, 136 bytes from 16. The wiring table's
+            // claim takes the commitment too, written to its output words now.
             Node::Seed => {
-                // At 16: the name as the low half of the word at 0, so the root, read from storage (a cold
-                // `SLOAD`, 2,100 gas), is the word at 32. The wiring table's claim takes it too, its halves
-                // reversed, written to its output word now.
-                let slot = push_usize(INDEX_ROOT_SLOT.into());
-                self.code(&[&push(&self.entry.name)[..], &[PUSH0, MSTORE], &slot, &[SLOAD]].concat());
+                // The name as the low half of the word at 0; the answer's word at 56, its top 8 zero bytes under the
+                // root's word at 32, written after it.
+                self.code(&[&push(&self.entry.name)[..], &[PUSH0, MSTORE]].concat());
+                self.code(&[&push_usize(INDEX_OOD_SLOT.into())[..], &[SLOAD]].concat());
+                if let Some(k) = self.stored_ood {
+                    self.code(&[DUP1]);
+                    self.item(Item::Output(k));
+                }
+                self.code(&[&push_usize(56)[..], &[MSTORE]].concat());
+                self.code(&[&push_usize(INDEX_ROOT_SLOT.into())[..], &[SLOAD]].concat());
                 if let Some(k) = self.stored_root {
-                    self.code(&[[DUP1].as_slice(), &reverse_halves()].concat());
+                    self.code(&[DUP1]);
                     self.item(Item::Output(k));
                 }
                 self.code(&[&push_usize(32)[..], &[MSTORE]].concat());
                 self.code(&push_usize(64));
                 self.calldata(self.base, 64);
-                self.code(&[&push_usize(64)[..], &[CALLDATACOPY]].concat());
-                self.code(&[&push_usize(112)[..], &push_usize(16), &[KECCAK256]].concat());
+                self.code(&[&push_usize(88)[..], &[CALLDATACOPY]].concat());
+                self.code(&[&push_usize(136)[..], &push_usize(16), &[KECCAK256]].concat());
             }
             Node::Hash(state, scalars, n) => {
                 // Every operand reaches the stack before any is written to the scratch words.
@@ -262,6 +249,7 @@ fn program(graph: &Graph, outputs: &[Word], ending: &Ending, entry: &Entry, inpu
     // Then a byte, the index of the transaction's frame of PCS claims (a returning contract reads past it).
     let calldata_len = base + SCALARS + SCALAR_BYTES * inputs + 1;
     let stored_root = outputs.iter().position(|word| matches!(word, Word::StoredRoot));
+    let stored_ood = outputs.iter().position(|word| matches!(word, Word::StoredOod));
     let n = graph.nodes.len();
     let mut uses = vec![0u32; n];
     let output_nodes = || {
@@ -314,6 +302,7 @@ fn program(graph: &Graph, outputs: &[Word], ending: &Ending, entry: &Entry, inpu
         entry,
         base,
         stored_root,
+        stored_ood,
         shared,
         done: vec![false; n],
         depth,
@@ -373,28 +362,23 @@ fn program(graph: &Graph, outputs: &[Word], ending: &Ending, entry: &Entry, inpu
                 compiler.calldata(base + offset, 32);
                 compiler.code(&[CALLDATALOAD]);
             }
-            Word::StoredRoot if compiler.stored_root.is_some() => {
+            Word::StoredRoot | Word::StoredOod => {
                 k += 1;
                 continue;
-            }
-            Word::StoredRoot => {
-                let slot = push_usize(INDEX_ROOT_SLOT.into());
-                compiler.code(&[&slot[..], &[SLOAD], &reverse_halves()].concat());
             }
         }
         compiler.item(Item::Output(k));
         k += 1;
     }
-    if let Ending::Declared(runs) = ending {
-        assert_eq!(runs.iter().sum::<usize>(), outputs.len(), "the claims cover the region");
-        evm_link::declared(calldata_len, runs).into_iter().for_each(|item| compiler.item(item));
+    if let Ending::Declared(claims) = ending {
+        evm_link::declared_claims(calldata_len, claims).into_iter().for_each(|item| compiler.item(item));
     }
-    if let Some(k) = compiler.stored_root {
+    for k in [compiler.stored_root, compiler.stored_ood].into_iter().flatten() {
         let written = compiler
             .items
             .iter()
             .any(|(item, _)| matches!(item, Item::Output(at) if *at == k));
-        assert!(written, "the seed writes the stored root");
+        assert!(written, "the seed writes the stored commitment");
     }
     let count = |of: &dyn Fn(Node) -> bool| (0..n).filter(|&at| uses[at] > 0 && of(graph.nodes[at])).count();
     let absorbed = graph.nodes.iter().map(|node| match node {
@@ -418,20 +402,20 @@ fn program(graph: &Graph, outputs: &[Word], ending: &Ending, entry: &Entry, inpu
     }
 }
 
-/// `setIndexRoot(bytes32 root)`: revert unless calldata is its selector and `root`, with no value, from the owner;
-/// else store `root`. The owner is the word of a `PUSH32`, which the creation code writes.
-fn set_index_root(fail: usize) -> (Vec<u8>, Option<usize>) {
+/// `setIndexCommitment(bytes32 root, bytes32 ood)`: revert unless calldata is its selector, `root` and `ood`, with
+/// no value, from the owner; else store them. The owner is the word of a `PUSH32`, which the creation code writes.
+fn set_index(fail: usize) -> (Vec<u8>, Option<usize>) {
     let mut code = [
         &[JUMPDEST, PUSH0, CALLDATALOAD][..],
         &push_usize(224),
         &[SHR],
-        &push(&SET_INDEX_ROOT),
+        &push(&SET_INDEX),
     ]
     .concat();
     code.extend(
         [
             &[XOR, CALLDATASIZE][..],
-            &push_usize(4 + 32),
+            &push_usize(4 + 64),
             &[XOR, OR, CALLVALUE, OR, CALLER, PUSH32],
         ]
         .concat(),
@@ -439,12 +423,13 @@ fn set_index_root(fail: usize) -> (Vec<u8>, Option<usize>) {
     let owner = code.len();
     code.extend([0; 32]);
     code.extend([&[XOR, OR][..], &push2(fail), &[JUMPI], &push_usize(4), &[CALLDATALOAD]].concat());
-    code.extend([&push_usize(INDEX_ROOT_SLOT.into())[..], &[SSTORE, STOP]].concat());
+    code.extend([&push_usize(INDEX_ROOT_SLOT.into())[..], &[SSTORE]].concat());
+    code.extend([&push_usize(36)[..], &[CALLDATALOAD], &push_usize(INDEX_OOD_SLOT.into()), &[SSTORE, STOP]].concat());
     (code, Some(owner))
 }
 
 fn options() -> Options<'static> {
-    let other: evm_link::Other<'static> = &set_index_root;
+    let other: evm_link::Other<'static> = &set_index;
     Options {
         jump_width: 2,
         other: Some(other),
@@ -456,8 +441,8 @@ fn options() -> Options<'static> {
 /// the commitments and `inputs` scalars of the proof, of `SCALAR_BYTES` each. On such a call, with no value, it
 /// reverts unless every node of `graph.nonzero` is nonzero (checked after the entry's checks), else writes `outputs`
 /// to a region of fresh memory, one word each, and ends as `ending` says. Any other call is one of
-/// `setIndexRoot(bytes32 root)`, or reverts: from the owner, with no value, it stores `root` in slot
-/// [`INDEX_ROOT_SLOT`] and returns nothing.
+/// `setIndexCommitment(bytes32 root, bytes32 ood)`, or reverts: from the owner, with no value, it stores them in
+/// slots [`INDEX_ROOT_SLOT`] and [`INDEX_OOD_SLOT`] and returns nothing.
 pub fn compile(graph: &Graph, outputs: &[Word], ending: &Ending, entry: &Entry, inputs: usize) -> Contract {
     let compiled = program(graph, outputs, ending, entry, inputs);
     let assembled = evm_link::assemble(&compiled.program, &options());
@@ -471,11 +456,13 @@ pub fn compile(graph: &Graph, outputs: &[Word], ending: &Ending, entry: &Entry, 
 }
 
 /// The creation code of `contract`, which its constructor's arguments follow in the init code: those of
-/// `constructor(bytes32 indexRoot, address owner)`, ABI-encoded (64 bytes) (none for a contract without an owner, a
-/// test's). It reverts on value, or on arguments of another length; else it stores `indexRoot` in slot [`INDEX_ROOT_SLOT`], writes the `owner` word into the code, and returns the code.
+/// `constructor(bytes32 indexRoot, bytes32 indexOod, address owner)`, ABI-encoded (96 bytes) (none for a contract
+/// without an owner, a test's). It reverts on value, or on arguments of another length; else it stores `indexRoot`
+/// and `indexOod` in slots [`INDEX_ROOT_SLOT`] and [`INDEX_OOD_SLOT`], writes the `owner` word into the code, and
+/// returns the code.
 pub fn creation_code(contract: &Contract) -> Vec<u8> {
     let runtime = contract.code.len();
-    let arguments = if contract.owner_at.is_some() { 64 } else { 0 };
+    let arguments = if contract.owner_at.is_some() { 96 } else { 0 };
     // The revert is the last 4 bytes of the `prefix` bytes before the code.
     let build = |prefix: usize| {
         let length = [
@@ -497,7 +484,8 @@ pub fn creation_code(contract: &Contract) -> Vec<u8> {
                 ]
                 .concat(),
             );
-            code.extend([&push2(runtime + 32)[..], &[MLOAD], &push2(owner_at), &[MSTORE]].concat());
+            code.extend([&push2(runtime + 32)[..], &[MLOAD], &push_usize(INDEX_OOD_SLOT.into()), &[SSTORE]].concat());
+            code.extend([&push2(runtime + 64)[..], &[MLOAD], &push2(owner_at), &[MSTORE]].concat());
         }
         code.extend([&push2(runtime)[..], &[PUSH0, RETURN, JUMPDEST, PUSH0, PUSH0, REVERT]].concat());
         code
@@ -509,31 +497,12 @@ pub fn creation_code(contract: &Contract) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::machine::{Chain, PcsFrame, root_word};
 
-    /// The root's bytes, their halves reversed, are the word a claim encodes.
+    /// [`SET_INDEX`] is the selector of `setIndexCommitment(bytes32,bytes32)`.
     #[test]
-    fn reversed_halves_are_the_root_word() {
-        let root: [u8; 32] = std::array::from_fn(|i| (i as u8).wrapping_mul(37) ^ 0xc5);
-        let code = [
-            &[PUSH32][..],
-            &root,
-            &reverse_halves(),
-            &[PUSH0, MSTORE],
-            &push_usize(32),
-            &[PUSH0, RETURN],
-        ];
-        let contract = Contract {
-            code: code.concat(),
-            owner_at: None,
-            field_muls: 0,
-            hashes: 0,
-            memory_words: 1,
-        };
-        let mut chain = Chain::default();
-        let address = chain.deploy(&creation_code(&contract)).0.expect("a deployment");
-        let output = chain.call(address, &[], &PcsFrame::default()).output;
-        assert_eq!(output, Some(root_word(&root).to_vec()));
+    fn set_index_selector() {
+        let digest = primitives::hash::hash(b"setIndexCommitment(bytes32,bytes32)");
+        assert_eq!(SET_INDEX, digest[..4], "{:02x?}", &digest[..4]);
     }
 
     /// The opcodes, the frame's mode and the scheme of PCS claims are the machine's.

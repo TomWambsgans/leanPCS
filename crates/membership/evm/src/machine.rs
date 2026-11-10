@@ -11,40 +11,20 @@
 //! introspection, which this machine has: `FRAMEPARAM` (`0xb3`, 2 gas; the mode and the length of `data`) and
 //! `FRAMEDATALOAD` (`0xb1`, 3 gas). [`PcsFrame`] is such a frame, standing for a block that proves its claims.
 //!
-//! **A claim** is the claims of one opening, on one commitment: an opening is of one random combination of its claims,
-//! and that alone binds them to one table, leanVM's WHIR taking no out-of-domain sample at its first commitment (two
-//! openings of one root could be of two tables). Its bytes ([`claim_input`]) are `3 + k (v + 1)` words of 32 bytes:
+//! **A claim** is the EIP's PCS claim (`crates/pcs_claim`, `docs/PCS_CLAIM.md`): `version || n || root || ood ||
+//! point || value`, `82 + 24 n` bytes, one point a claim, on a commitment its root and out-of-domain answer bind to
+//! one table; the frame's payload is its Keccak-256. The block proves it by an opening `pcs_claim::verify` accepts.
 //!
-//! 1. the commitment: its Merkle root `r` as the word `s_0 · 2^128 + s_1`, `s_h` the little-endian number of
-//!    bytes `16 h .. 16 h + 16` of `r` (the two scalars of [`quotient::transcript::root_scalars`]);
-//! 2. the layout's id ([`layout_id`]), which fixes `v`, the table's variables, and which lane of the WHIR stack
-//!    holds which block of the table;
-//! 3. `k ≥ 1`, the number of claims;
-//! 4. each claim: its point's `v` coordinates, then its value. A field element of `GF(2^192)` is the low 192
-//!    bits of its word, limb 0 lowest, and its top 64 bits are zero.
-//!
-//! The block proves it by an opening [`quotient::opening::verify`] accepts for the layout the id names: its
-//! transcript's IV hashes that layout's prefix ([`quotient::opening::prefix`]: the label, the version, the layout's
-//! hash, its size, WHIR's rate) then these claims, words 4 onwards as field elements, and its proof's first two
-//! scalars are the root's, word 1's two halves (`formal/WhirBridge`, `family_sound`). The ids name distinct prefixes.
-//!
-//! **Why this encoding.** Every word is one the contract already holds as an EVM word, so writing a claim is an
-//! `MSTORE` a word: a field element as `XOR` and `FIELD_MUL` work on it, a root as the calldata carries it and the
-//! transcript absorbs it. Words of fixed width, with no offsets and no length but `k`, leave one way to parse a
-//! claim, whose length the layout and `k` fix; with the top bits zero, a list of claims has one encoding, and its hash
-//! names it. The layout is named, not sent: the protocol fixes it, and its lanes would be up to 64 more words.
-//!
-//! **Gas.** A transaction with `c` PCS claims pays `5,000 + 1,000 c` intrinsic gas for their share of the block's
-//! aggregated proof ([`dependency_gas`]), apart from what this machine measures, and its frame of PCS claims is
-//! `1 + 32 c` bytes of the transaction.
+//! **Gas.** A transaction with `c` PCS claims pays `pcs_gas = 5,000 + 1,000 c` ([`dependency_gas`]), apart from what
+//! this machine measures, and its frame of PCS claims is `1 + 32 c` bytes of the transaction. Under EIP-8141 a frame
+//! transaction pays the larger of its standard gas (16 a nonzero byte and 4 a zero byte of its frames' data, plus
+//! execution) and its floor (64 a byte, EIP-7976), the EIP draft adding `pcs_gas` to both ([`frame_gas`]).
 
 use std::cell::RefCell;
 
 use fiat_shamir::merkle::Hash;
 use primitives::field::F192;
-use quotient::opening::{Claim, Layout};
-use quotient::protocol::{quotient_layout, wiring_layout, witness_layout};
-use quotient::transcript::root_scalars;
+use pcs_claim::PcsClaim;
 use revm::context::result::{ExecutionResult, Output};
 use revm::context::{Context, TxEnv};
 use revm::database::{CacheDB, EmptyDB};
@@ -90,75 +70,10 @@ pub fn element_word(x: F192) -> [u8; 32] {
     U256::from_limbs([x.c0, x.c1, x.c2, 0]).to_be_bytes()
 }
 
-/// A root as a claim encodes it: `s_0 · 2^128 + s_1`, its two scalars as the transcript carries them.
+/// A root as the contract holds it: the word whose big-endian bytes are the root (calldata and storage carry it so;
+/// the transcript reads its halves, `quotient::transcript::root_scalars`).
 pub fn root_word(root: &Hash) -> [u8; 32] {
-    let [s0, s1] = root_scalars(root);
-    U256::from_limbs([s1.c0, s1.c1, s0.c0, s0.c1]).to_be_bytes()
-}
-
-/// The tables of the membership protocol (`quotient::protocol`), as claims name their layouts.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum TableId {
-    Witness = 1,
-    Wiring = 2,
-    Quotient = 3,
-}
-
-/// The rows, `2^log_rows`, for which the block proves claims on the protocol's layouts: where each of its three tables is
-/// a stack leanVM's WHIR commits, of `2^15` to `2^28` words in at most 64 lanes, and the two secret ones have
-/// hidden layouts (`quotient::protocol::MIN_LOG_ROWS`, `docs/membership/HIDING.md`).
-pub const LOG_ROWS: std::ops::RangeInclusive<usize> = quotient::protocol::MIN_LOG_ROWS..=22;
-
-/// The rows of the layouts a block proving claims on tables past WHIR's `2^28` words would know: every size the
-/// reduction takes (`quotient::protocol::reduction_supported`).
-pub const LARGE_LOG_ROWS: std::ops::RangeInclusive<usize> =
-    quotient::protocol::MIN_LOG_ROWS..=quotient::protocol::MAX_REDUCTION_LOG_ROWS;
-
-/// The id of the layout of `table` for a circuit of `2^log_rows` rows: `256 · table + log_rows`.
-pub fn layout_id(table: TableId, log_rows: usize) -> u64 {
-    assert!(LARGE_LOG_ROWS.contains(&log_rows), "no layout for 2^{log_rows} rows");
-    256 * table as u64 + log_rows as u64
-}
-
-/// The layout an id names, if the block proves claims on it.
-pub fn layout(id: U256) -> Option<Layout> {
-    let id = u64::try_from(id).ok()?;
-    let log_rows = (id % 256) as usize;
-    let table = match id / 256 {
-        1 => witness_layout,
-        2 => wiring_layout,
-        3 => quotient_layout,
-        _ => return None,
-    };
-    LOG_ROWS.contains(&log_rows).then(|| table(log_rows))
-}
-
-/// [`layout`] for a block that also proves claims on the larger tables, to [`LARGE_LOG_ROWS`].
-pub fn layout_large(id: U256) -> Option<Layout> {
-    let id = u64::try_from(id).ok()?;
-    let log_rows = (id % 256) as usize;
-    let table = match id / 256 {
-        1 => witness_layout,
-        2 => wiring_layout,
-        3 => quotient_layout,
-        _ => return None,
-    };
-    LARGE_LOG_ROWS.contains(&log_rows).then(|| table(log_rows))
-}
-
-/// The claim the opening of `claims` on the table committed as `root`, under layout `id`, proves: its bytes.
-pub fn claim_input(root: &Hash, id: u64, claims: &[Claim]) -> Vec<u8> {
-    let vars = layout_large(U256::from(id)).expect("a layout the block knows").vars;
-    assert!(!claims.is_empty() && claims.iter().all(|claim| claim.point.len() == vars));
-    let mut input = root_word(root).to_vec();
-    input.extend(U256::from(id).to_be_bytes::<32>());
-    input.extend(U256::from(claims.len()).to_be_bytes::<32>());
-    for claim in claims {
-        for &x in claim.point.iter().chain([&claim.value]) {
-            input.extend(element_word(x));
-        }
-    }
-    input
+    *root
 }
 
 /// A frame as EIP-8141's introspection shows it: its mode and its `data`.
@@ -207,10 +122,9 @@ impl PcsFrame {
         }
     }
 
-    /// Declare, as its next payload, the claim the opening of `claims`, all together, on the table committed as
-    /// `root`, under layout `id`, proves.
-    pub fn declare(&mut self, root: &Hash, id: u64, claims: &[Claim]) {
-        self.declare_input(claim_input(root, id, claims));
+    /// Declare `claim` as its next payload.
+    pub fn declare(&mut self, claim: &PcsClaim) {
+        self.declare_input(claim.encode());
     }
 
     /// Declare a claim of these bytes as its next payload.
@@ -363,14 +277,26 @@ pub struct Outcome {
     pub claims: Vec<Vec<u8>>,
 }
 
-/// A transaction's gas: its base cost, then the larger of its calldata at the standard rate plus `execution`, and
-/// of its calldata at the floor rate, `floor` gas a nonzero byte. EIP-7623 has a floor of 40, and 10 for a zero
-/// byte; EIP-7976 has 64 for every byte.
-pub fn transaction_gas(calldata: &[u8], execution: u64, floor: u64) -> u64 {
+/// A frame transaction's gas under EIP-8141 with the EIP draft's `pcs_gas`, without `FRAME_TX_INTRINSIC_COST` and
+/// the per-frame costs: the larger of the standard gas (16 a nonzero and 4 a zero byte of the verifying frame's
+/// `calldata` and of the frame of PCS claims, plus `execution`, plus `pcs_gas`) and the floor (64 a byte of both,
+/// EIP-7976's, plus `pcs_gas`). Returns `(standard, floor, gas)`.
+pub fn frame_gas(calldata: &[u8], pcs: &PcsFrame, execution: u64) -> (u64, u64, u64) {
+    let data = [calldata, &pcs.data()].concat();
+    let zeros = data.iter().filter(|&&byte| byte == 0).count() as u64;
+    let nonzeros = data.len() as u64 - zeros;
+    let pcs_gas = dependency_gas(pcs.claims().len());
+    let standard = 16 * nonzeros + 4 * zeros + execution + pcs_gas;
+    let floor = 64 * data.len() as u64 + pcs_gas;
+    (standard, floor, standard.max(floor))
+}
+
+/// A legacy transaction's gas (a deployment, `setIndexCommitment`): its base cost, then the larger of its calldata
+/// at the standard rate plus `execution`, and of its calldata at EIP-7976's floor, 64 gas a byte.
+pub fn transaction_gas(calldata: &[u8], execution: u64) -> u64 {
     let zeros = calldata.iter().filter(|&&byte| byte == 0).count() as u64;
     let nonzeros = calldata.len() as u64 - zeros;
-    let floor_gas = floor * nonzeros + if floor == 64 { 64 } else { floor / 4 } * zeros;
-    21_000 + (16 * nonzeros + 4 * zeros + execution).max(floor_gas)
+    21_000 + (16 * nonzeros + 4 * zeros + execution).max(64 * calldata.len() as u64)
 }
 
 /// Who deploys contracts.
@@ -431,7 +357,9 @@ impl Chain {
             .expect("a transaction");
         let result = evm.transact_commit(tx).expect("a valid transaction");
         let claims = RUNNING.take().checked;
-        let execution = result.gas_used() - transaction_gas(data, 0, 0);
+        // Cancun has no calldata floor: its gas is the base, the calldata at 16 and 4 a byte, and the execution.
+        let zeros = data.iter().filter(|&&byte| byte == 0).count() as u64;
+        let execution = result.gas_used() - 21_000 - 16 * (data.len() as u64 - zeros) - 4 * zeros;
         let (output, created) = match result {
             ExecutionResult::Success {
                 output: Output::Call(output),
@@ -491,27 +419,6 @@ impl Chain {
 mod tests {
     use super::*;
 
-    /// Every layout the block knows is a stack leanVM's WHIR commits, and the ids name distinct openings' prefixes
-    /// (`quotient::opening::prefix`); ids outside the table name none.
-    #[test]
-    fn layouts_are_known_by_id() {
-        let mut prefixes = std::collections::HashSet::new();
-        for log_rows in LOG_ROWS {
-            for table in [TableId::Witness, TableId::Wiring, TableId::Quotient] {
-                let layout = layout(U256::from(layout_id(table, log_rows))).expect("a layout");
-                assert!((15..=28).contains(&layout.log_n) && layout.lanes() <= 64);
-                assert!(
-                    prefixes.insert(quotient::opening::prefix(&layout)),
-                    "{table:?}, 2^{log_rows} rows"
-                );
-            }
-        }
-        for id in [0u64, 12, 256 + 12, 256 + 23, 4 * 256 + 22, 1 << 40] {
-            assert_eq!(layout(U256::from(id)), None, "{id}");
-        }
-        assert_eq!(layout(U256::MAX), None);
-    }
-
     /// A frame of PCS claims: its scheme byte, then each claim's Keccak-256, after the frames before it.
     #[test]
     fn frame_data_is_the_claims_hashes() {
@@ -530,13 +437,12 @@ mod tests {
         assert_eq!((dependency_gas(0), dependency_gas(3)), (0, 8_000));
     }
 
-    /// The root's word is its two scalars, the high one first.
+    /// The root's word is its bytes, and the transcript's two scalars are its halves.
     #[test]
     fn root_word_is_its_scalars() {
         let root: Hash = std::array::from_fn(|i| i as u8 + 1);
-        let word = root_word(&root);
-        let mut halves = [root[..16].to_vec(), root[16..].to_vec()];
-        halves.iter_mut().for_each(|half| half.reverse());
-        assert_eq!(word.to_vec(), halves.concat());
+        let [s0, s1] = quotient::transcript::root_scalars(&root);
+        let word = U256::from_limbs([s1.c0, s1.c1, s0.c0, s0.c1]).to_be_bytes::<32>();
+        assert_eq!(root_word(&root), word);
     }
 }

@@ -9,9 +9,10 @@ use std::ops::{Add, Mul};
 use primitives::field::F192;
 use quotient::protocol::Scalar;
 
-/// The most scalars a transcript step absorbs: the five values.
+/// The most scalars a transcript step absorbs: the quotient table's three commitments, each a root's two scalars and
+/// an out-of-domain answer.
 /// Only the first `n` of a [`Node::Hash`]'s slots are its operands (the rest zero), so the bound changes no graph.
-pub const MAX_ABSORBED: usize = 5;
+pub const MAX_ABSORBED: usize = 9;
 
 /// One recorded value. Operands are indices of earlier nodes.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]

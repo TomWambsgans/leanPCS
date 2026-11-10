@@ -14,9 +14,12 @@ use fiat_shamir::merkle::Hash;
 use primitives::field::F192;
 use primitives::hash::hash as keccak256;
 
-/// A root as the two scalars the stream carries: its 128-bit halves, each read as two little-endian words.
+/// A root as the two scalars the stream carries: its 128-bit halves, each a big-endian number (`c1` its first 8
+/// bytes, `c0` the next 8), so that `s_0 · 2^128 + s_1` is the word whose big-endian bytes are the root: the word
+/// the EVM reads it as from calldata or storage, and the root a PCS claim encodes.
 pub fn root_scalars(root: &Hash) -> [F192; 2] {
-    fiat_shamir::merkle::hash_to_scalars(root)
+    let word = |at: usize| u64::from_be_bytes(root[at..at + 8].try_into().expect("8 bytes"));
+    [F192::new(word(8), word(0), 0), F192::new(word(24), word(16), 0)]
 }
 
 /// The root two scalars of [`root_scalars`] stand for, if they are two halves (no third limb).
@@ -25,13 +28,9 @@ pub fn scalars_root(scalars: &[F192; 2]) -> Result<Hash, TranscriptError> {
         return Err(TranscriptError::NotARoot);
     }
     let mut root = [0u8; 32];
-    for (bytes, word) in
-        root.as_chunks_mut::<8>()
-            .0
-            .iter_mut()
-            .zip([scalars[0].c0, scalars[0].c1, scalars[1].c0, scalars[1].c1])
-    {
-        *bytes = word.to_le_bytes();
+    for (h, s) in scalars.iter().enumerate() {
+        root[16 * h..16 * h + 8].copy_from_slice(&s.c1.to_be_bytes());
+        root[16 * h + 8..16 * h + 16].copy_from_slice(&s.c0.to_be_bytes());
     }
     Ok(root)
 }
