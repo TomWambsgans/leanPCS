@@ -36,8 +36,8 @@ commutes with every monad morphism; branch `lean-uni-pstagec`'s `ProverSim.lean`
 * `CoreAccepts D flock`: when the prover's bus challenges (`proverChallenges H`, its writer's first five) avoid the
   bad set `BadFp` of the honest trace, its point challenge (`proverTChallenge H`, with Flock's point) avoids `BadT`,
   and the prover returns a proof, the deployed verifier at the same `H`, `F`, on the setup's roots at `H`, accepts it;
-* `CoreFailsOnlyAtPow D flock`: when they avoid them and the prover returns no proof, one of its WHIR opening provers
-  (`E2ECompleteness.proveOpeningWithH` at `H`, `F`, `nonceFuel` nonces) returns none. (`UniKeccakComplete.pcsOpen_fails_only_at_pow`
+* `CoreFailsOnlyAtPow D flock`: when they avoid them and the prover returns no proof, one of its PCS opening provers
+  (`pcsProveH` at `H`, `F`, `nonceFuel` nonces, on a point of its variables) returns none. (`pcsProveH_fails_only_at_pow`
   turns that into a failed `17`-bit search; the probability layer does it itself, `ProbGrind.lean`, tracking the
   sponge's shape, which the potential needs.)
 

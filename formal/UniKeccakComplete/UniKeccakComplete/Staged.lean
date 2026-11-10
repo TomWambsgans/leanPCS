@@ -14,7 +14,7 @@ import UniKeccak.Security
 The Keccak verifier's completeness experiment (`keccakCompletenessExperiment D v P`: the setup, the prover `P`, the
 Keccak verifier of variant `v`, all over one random permutation `π`) has the univariate verifier's shape: the bus
 challenges `α₁ … α₄, β` are five chained Keccak-256 answers right after `C1`'s root (the first input `112` bytes: the
-state, the six row counts, the root word), then Flock's point, then the point challenge `t`. **What is proved here**
+state, the six row counts, the root word, its out-of-domain answer), then Flock's point, then the point challenge `t`. **What is proved here**
 (`uniCompletenessKeccak_of_staged`): if for every honest witness the experiment is the verdict of a two-call
 computation of this shape (`KStaged`, `KStaged.Holds`), then
 

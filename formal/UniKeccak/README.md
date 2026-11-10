@@ -7,7 +7,10 @@ The Keccak VM (`docs/leanvm/univariate/KECCAK.md`, `formal/KeccakVm`) is leanVM 
 
 - **its verifier as computable Lean**, `reduce` of `crates/leanvm/univariate/src/verifier.rs` at a `Variant`, for
   the main line (`KECCAK_MAIN`) and π1-rec3's shape (`KECCAK_REC3`), with the contract's IV and its
-  three claims (`contract.rs`);
+  three claims (`contract.rs`): since the EIP draft's PCS claims each commitment's out-of-domain answer is read after
+  its root, the roots are carried as their bytes, the setup's commitment `(F, f(z))` is in the IV, and each claim is
+  the EIP's PCS claim `version ‖ n ‖ root ‖ ood ‖ point ‖ value`, opened by `formal/WhirBridge`'s
+  `WhirBridge.Pcs.pcsVerifyWithHash` (`crates/pcs_claim`'s `verify_claim`);
 - **the end statements**, against the Keccak VM's relation `KeccakVm.KvHolds F`: knowledge soundness and completeness
   of the main line and of π1-rec3's shape. `F : KeccakVm.KeccakFlockSpec` (the Keccak-f block) is a parameter.
 
@@ -41,13 +44,18 @@ KECCAK_VECTORS=<path>/keccak_vectors.txt lake env lean ../UniKeccak/UniKeccakTes
    Keccak-f block (`frontK`, `verifyWalkedK`), `Q_W` with the lanes' copies (`constraintRelationK`), the stacks
    (`layoutsK`, `Shape.c2ColumnsK`, `layoutsOfK`), a claim's weight (`weightAtK`), the batch (`batchK`), and
    **`reduceWithK`**, `runWithK`, `runK`.
-4. [`Opening.lean`](UniKeccak/Opening.lean): the variant's bytes (`variantBytesK`), the layout words
-   (`layoutWordsK`), the contract's IV (`contractIvKWith`, `contractIvK`), the calls (`pcsCallsK`), a proof
-   (`KeccakProof`), **`verifyWithK`** (the run, then three calls), the measured shapes (`keccakRuns`, `keccak400`).
+4. [`Opening.lean`](UniKeccak/Opening.lean) (module): the variant's bytes (`variantBytesK`), the setup's commitment
+   (`SetupRootsK`: its root `f` and out-of-domain answer `fOod`), the contract's IV (`contractIvKWith`,
+   `contractIvK`: no layout words, the setup's root and answer), the measured shapes (`keccakRuns`, `keccak400`).
+   [`Pcs.lean`](UniKeccak/Pcs.lean) (non-module, as `WhirBridge`): the commitments of a run (`commitOfK`), the PCS
+   claims (`pcsClaimK`, `pcsClaimsK`: the EIP's bytes; `pcsClaimWordsK`: the contract's words), a proof
+   (`KeccakProof`), a claim's opening (`pcsOpenK`, `WhirBridge.Pcs.pcsVerifyWithHash` at the claim's stack variables
+   `stackVarsK`), **`verifyWithK`** (the run, then the three claims' openings).
 5. [`Mapping.lean`](UniKeccak/Mapping.lean): **`C1` read as the Keccak VM's stack** (`kvColumn`, `kvStack`), the
    setup's table (`setupStackK`), and what the verifier fixes of the block (`KeccakFlockFits`).
 6. [`Security.lean`](UniKeccak/Security.lean): the deployment (`KDeployment`), the setup (`setupTreeKWith`), the
-   extractor (`uniExtractorK`), the experiments, **`UniKnowledgeSoundnessKeccak`**,
+   setup's commitment the verifier holds (`KDeployment.setupRoots`: the root and `setupOodK`, the setup stack's
+   multilinear extension at the root's out-of-domain point), the extractor (`uniExtractorK`), the experiments, **`UniKnowledgeSoundnessKeccak`**,
    **`UniKnowledgeSoundnessKeccakRec3`**, **`UniCompletenessKeccak`**, **`UniCompletenessKeccakRec3`**.
 
 ## Rust → Lean
@@ -64,8 +72,8 @@ KECCAK_VECTORS=<path>/keccak_vectors.txt lake env lean ../UniKeccak/UniKeccakTes
 | `verifier.rs`: `weight_at` (slot bits `= q_flock`'s variables − the point's) | `weightAtK` |
 | `verifier.rs`: `batch` (no pending matrices, no bit-slice claim) | `batchK` (rounds as `UniStatement.batchFs`: `sumcheckDrawn`, `sumcheckPairsDrawn`) |
 | `contract.rs`: `rust_verifier_with` | `runWithK`, `runK` |
-| `contract.rs`: `variant_bytes`, `layout_words`, `contract_iv`, `calls` | `variantBytesK`, `layoutWordsK`, `contractIvKWith`/`contractIvK`, `pcsCallsK` |
-| the Keccak contract's three calls (`C1`, `C2`, setup) | `verifyWithK` |
+| `contract.rs`: `variant_bytes`, `contract_iv`, `claims_with` (the EIP's `PcsClaim::encode`), `claims` | `variantBytesK`, `contractIvKWith`/`contractIvK`, `pcsClaimsK`, `pcsClaimWordsK` |
+| `pcs_claim::verify_claim` (each of the three claims: `C1`, `C2`, setup) | `pcsOpenK` (`WhirBridge.Pcs.pcsVerifyWithHash`), `verifyWithK` |
 | `tests/keccak_vm.rs`: `KECCAK_RUNS`, `KECCAK_LOG_BYTECODE`; `leanvm_rec/tests/keccak_vm_rec.rs`: `KECCAK_400` | `keccakRuns`, `keccakLogBytecode`, `keccakShapeOf`, `keccakShapeNamed`, `keccak400` |
 
 **Deviations**, none changing a value:
@@ -103,14 +111,19 @@ reads the vectors of `crates/leanvm/univariate/tests/lean_keccak_vectors.rs`:
   (narrow ones as drawn), every value required to be zero (the counts' range checks, Flock's structured terminal,
   the batch's terminal), the verdict, the number of relations, each stack's variables, every opening (point claims:
   point and value; weighted claims: points, terms in order, value, relations), no matrices; the row counts the stream
-  announces; the five Keccak layout words; the Keccak contract's IV (`contractIvK` of the program's IV and the
-  vector's roots); the run's layouts are `layoutsOfK` of the shape. On the real proofs, **every claim the
-  contract checks declared**, word for word (`pcsCallsK`).
+  announces; the commitments' out-of-domain answers (`OODS`); the Keccak contract's IV (`contractIvK` of the
+  program's IV and the vector's setup commitment, `SETUPROOTS <F> <f(z)>`); the run's layouts are `layoutsOfK` of
+  the shape. On the real proofs, **every PCS claim the contract checks declared**, byte for byte (`pcsClaimsK`
+  against the Rust's `PcsClaim::encode`, `PCSCLAIM`).
 - Self-tests: every Keccak run's shape is valid; `C1` holds `q_flock` at `h_SHA3 + 11` variables and the `SHA3`
   table's 86 columns; `source` is a permutation of the lanes with `rho`'s rotations; there are 40 shift offsets;
   `C1` is `2^28` words at 400 signatures.
 
-**Results** (h2, 2026-11-08, on the merged tree; the vector set now also holds the real 128-signature π1-rec3 proof
+**Results** (h1, 2026-11-10, on the PCS claims: the vectors regenerated by `lean_keccak_vectors.rs`, the real proofs'
+claims compared byte for byte): 90/90 agree, 31 accepted and 59 rejected by both, the same kinds as below; 14/14
+terminals; 528 s for the vectors.
+
+Earlier results (h2, 2026-11-08, on the merged tree; the vector set now also holds the real 128-signature π1-rec3 proof
 `keccak128_rec3.txt` and more shapes):
 - **90/90 vectors agree on every value**: 31 accepted by both and 59 rejected by both. By kind (accepted/rejected):
   accept 14/0, counts 12/0, badcount 0/6, random 0/14, mutate 2/18, truncate 0/6, extend 0/6, real 3/0, real-mutate
@@ -122,9 +135,10 @@ reads the vectors of `crates/leanvm/univariate/tests/lean_keccak_vectors.rs`:
 - The vectors take 346 s (h1 earlier: 428 s); the whole run takes about 30 minutes, most of it the 14 Lean walks of the `2^17`-position
   block in the interpreter.
 
-**Defined, not tested**: the claims' WHIR (the Rust only mocks the frame), the setup's commitment, `kvColumn`/`kvStack`,
-`setupStackK`, the extractor, the experiments, the Props. `verifyWithK`'s run and calls are the tested `runK` and
-`pcsCallsK`'s claims.
+**Defined, not tested**: the claims' WHIR (the Rust only mocks the frame; `pcsVerifyWithHash` is `formal/WhirBridge`'s
+transcription of `verify_claim`), the setup's commitment and out-of-domain answer, `kvColumn`/`kvStack`,
+`setupStackK`, the extractor, the experiments, the Props. `verifyWithK`'s run and claims are the tested `runK` and
+`pcsClaimsK`.
 
 ## The statements (`Security.lean`)
 
@@ -165,11 +179,11 @@ def UniCompletenessKeccak (F) (D) (P) (δ) : Prop := UniCompletenessKeccakWith F
 def UniCompletenessKeccakRec3 (F) (D) (P) (δ) : Prop := UniCompletenessKeccakWith F D keccakRec3 P δ
 ```
 
-- `KAdversary := SetupRoots → OracleComp RandomPermutationOracles (Vector UInt8 32 × KeccakProof)`.
+- `KAdversary := SetupRootsK → OracleComp RandomPermutationOracles (Vector UInt8 32 × KeccakProof)`.
 - `KeccakProof` is the stream and three opening proofs (`C1`, `C2`, the setup).
 - `D.Stack rows := Column (keccakIsaμ D.prog (D.sizes rows))`, and `D.HonestRelation F` is `KvHonest F`.
-- **The setup** is one WHIR commitment, of `setupStackK`. The contract's IV hashes its root (`SetupRoots`'s one
-  word, `F`).
+- **The setup** is one WHIR commitment, of `setupStackK`. The contract's IV hashes its root and its out-of-domain
+  answer (`SetupRootsK`: `F`, `f(z)`, `z = oodPoint 23 F`).
 - **The extractor** `uniExtractorK F` is the former `UniStatement.uniExtractor` on the Keccak `C1` (`c1LayoutK`, `2^μ` words), each candidate
   read as the Keccak VM's stack (`kvStack`), the first satisfying `KvHolds F`. `KvHolds` is decidable, so the
   extractor is computable for a computable `F`.

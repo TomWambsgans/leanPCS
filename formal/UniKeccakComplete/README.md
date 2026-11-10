@@ -17,15 +17,25 @@ systemd-run --scope -p MemoryMax=12G lake build UniKeccakComplete   # every file
 
 ```lean
 theorem UniKeccakComplete.uniCompletenessKeccak_closed (D : KDeployment)
-    (hD : D.shape = UniKeccakSound.keccakRefShape) (hiv : D.programIv.length ≤ 2 ^ 16) :
+    (hD : D.shape = UniKeccakSound.keccakRefShape) (hiv : D.programIv.length ≤ 2 ^ 16)
+    (hpiv : 32 ≤ D.programIv.length) :
     UniCompletenessKeccak KeccakFlock.keccakFlockSpec D (Prob.uniProverRP flockProveH D) Prob.deltaK
 theorem UniKeccakComplete.uniCompletenessKeccakRec3_closed (D : KDeployment)
-    (hD : D.shape = UniKeccakSound.keccakRefShape) (hiv : D.programIv.length ≤ 2 ^ 16) :
+    (hD : D.shape = UniKeccakSound.keccakRefShape) (hiv : D.programIv.length ≤ 2 ^ 16)
+    (hpiv : 32 ≤ D.programIv.length) :
     UniCompletenessKeccakRec3 KeccakFlock.keccakFlockSpec D (Rec3.uniProverRec3RP flockProveH D) Prob.deltaK
 theorem UniKeccakComplete.Prob.deltaK_lt : deltaK < (2 : ℝ≥0∞)⁻¹ ^ 169
 ```
 
 Both depend on `[propext, Classical.choice, Quot.sound]` only (the root's `#guard_msgs`).
+
+**On the EIP's PCS claims** (the verifier of `formal/UniKeccak`: each commitment's out-of-domain answer read after
+its root, the roots carried as their bytes, the setup's commitment `(root, ood)` in the contract's IV, one PCS claim
+per commitment opened by `WhirBridge.Pcs.pcsVerifyWithHash`). The prover sends each root's bytes (`rootHalves`) and
+its out-of-domain answer (`pcsOod`: the stack's multilinear extension at `WhirBridge.Pcs.oodPoint n root`), and opens
+each claim by `pcsProveH` (`K/PcsProver.lean`). `hpiv` (the program's IV at least a digest's `32` bytes; the deployed
+one has `32`) is new: the first bus-challenge input is now `112` bytes (the seed, the counts, `C1`'s root and its
+out-of-domain answer), and it is fresh by its length only if the IV's preimage (`91 + |IV|` bytes) has another.
 
 - **The provers.** `Prob.uniProverRP flockProveH D` is `uniProverWith` (`K/Witness.lean`) over the random
   permutation's two calls (Keccak-256 the sponge over `π`, `π` itself for WHIR's proofs of work), with Flock's honest
@@ -63,7 +73,16 @@ Both depend on `[propext, Classical.choice, Quot.sound]` only (the root's `#guar
   copies `lane − port − END_BIT`), the batching sumcheck with no matrices term (`denseWeight` at stride `2048`), Flock's
   prover on the Keccak-f block (one prover for both Fiat–Shamir shapes: zerocheck with skip `3` and `drawW`, `11`
   lincheck rounds, the `64` slices always sent, the ring map in tower order), the setup of one tree, the Keccak
-  contract's IV, three WHIR openings.
+  contract's IV (the setup's commitment, `setupRootsOf`), each root's bytes and out-of-domain answer, three PCS
+  claims' openings (`pcsProveH`).
+- **The PCS claim's opening** (`K/PcsProver.lean`): `pcsProveH` (the claim's sponge `F(seedInput(H(claim), 0))`, the
+  root's two scalars, then the Statement's opening script at the plain layout run against the claim's program
+  `verifyStackedOpening n 1 [(eq(z,·), ood), (eq(point,·), value)]`); `pcsProveH_eq_prove` (at a pure hash it is
+  mumbai's compiled honest prover of `openingProgram`: at the plain layout a claim's weight on the cube is `eq`,
+  `basisTable_pcs`); `pcsVerify_pcsProveH` (accepted at `23 ≤ n ≤ 28`, through `runProof_prove` and
+  `runI_openingProgram`); `pcsProveH_fails_only_at_pow`; its simulation, discipline, cost and failure in `Option`
+  (`simulateQ_pcsProveH`, `disc_pcsProveH`, `cost_pcsProveH`, `pcsProveH_eq_some_none`) and the verifier's
+  (`simulateQ_pcsVerify`, `disc_pcsVerify`, `cost_pcsVerify`).
 - **The verifier with Keccak-256 explicit** (`K/VerifierH`, `VerifierHSim`, `VerifierHDuplex`, `VerifierHCost`):
   `reduceWithK`, `verifyWithK`, `KDeployment.verifierWith`, `setupTreeKWith` with `H` explicit, equal to UniKeccak's
   at `H = keccak256With F`; they commute with simulation, follow the duplex discipline, and count their blocks.

@@ -48,7 +48,11 @@ lake env lean ../UniStatement/UniStatementTest/KeccakTables.lean    # the Keccak
     stream announces (`rowsOf`, `rowsBytes`), the setup constants (the measured shapes, the program's IV).
 12. [`Opening.lean`](UniStatement/Opening.lean): the layout words, the contract's IV (`contractIvWith`), the
     reference setup roots, a claim's opening as the Statement's and the claims word for word (`pcsCalls`), and
-    **`verifyWith`**, the whole verifier (the main line: the run, then five calls).
+    **`verifyWith`**, the whole verifier (the main line: the run, then five calls). **A root from the stream**
+    (`rootOf`): the digest whose bytes are the stream's 32 bytes, as they are (`rootWord`), since the EIP's PCS
+    claims (the prover sends a root's bytes, `rootHalves`); before them, the root's two scalars of WHIR's
+    transcript. `Reduced` (`Verifier.lean`) carries the out-of-domain answers the Keccak run reads after its roots
+    (`oods`; `(0, 0)` for this library's own runs).
 13. [`Mapping.lean`](UniStatement/Mapping.lean): basis `B` ↔ values, the rows' order (`rowPosition`), the setup's tables.
 14. [`Security.lean`](UniStatement/Security.lean): the deployment, the
     setup and its IV, `c1RootOf`, the adversary's types (the end statements are `UniKeccak`'s).

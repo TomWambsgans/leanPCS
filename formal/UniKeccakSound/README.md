@@ -36,9 +36,14 @@ theorem UniKeccakSound.uniKnowledgeSoundnessKeccakRec3_closed (D : KDeployment) 
 - **The bounds**: every round's error is at most `2^32/|E|` (main line) or `2^35/|E|` (π1-rec3). `uniBound128` is
   `UniSound`'s bound at `≥ 128` bits. Its numbers are `UniSound.uniBound128_le_bits` (`2^-64.87` at `Q = 2^64`) and
   `uniBound128_le_bits35` (`2^-64.49`): 128.87 and 128.49 bits as `Q / ε`.
-- **The three openings** (`C1`, `C2`, the setup) are charged once, as one union family, at `269 · 2^-137`. The
-  setup's `2^23`-word WHIR opening, below `WhirBridge.largeShapes` (`2^24 ..= 2^28`), is certified the same way in
-  `Fs/Whir23.lean` (`chkQ_23`, `decide +kernel`; family `kShapes = largeShapes ++ [plainShapeE23]`).
+- **The three openings are the EIP draft's PCS claims** (`UniKeccak.verifyWithK`: each commitment's out-of-domain
+  answer read after its root, `WhirBridge.Pcs.pcsVerifyWithHash`). They are charged once, as one union family over
+  the PCS claims of every size `2^23 ..= 2^28` (`WhirBridge.Pcs.pcs_union_sound`, `Fs/PcsOpK.lean`, the generic
+  opening layer `Compose.GOps`), at `269 · 2^-137` a query, the bound of the earlier openings: the bounds are
+  unchanged. The argument keeps the lists (a claim is checked against the stack the extractor decodes, `GDoomed`
+  read as `PcsDoomed`); the out-of-domain binding (`WhirBridge.Pcs.ood_binding_rom`) is not needed for it, so the
+  three claims on three commitments are proved separately. The setup's `2^23` words are admissible
+  (`Fs/Whir23.lean`, `admissible_k`).
 
 ## The route
 
@@ -60,7 +65,9 @@ The proof follows `UniSound`'s, layer by layer:
 - the `END_BIT` constant in `Q_W`'s `in_16` copy;
 - Flock's 11 lincheck rounds and its structured terminal, a zero inside Flock's last round. The states carry it from
   `C2`'s round on (`FlockDoneZ`), where `UniSound`'s states carry the pending matrices' claim;
-- three openings, and a setup of one tree;
+- three PCS claims' openings, each commitment's out-of-domain answer in the stream after its root (rounds
+  `⟨true, 1, ·⟩`), the roots read as their bytes (`UniStatement.rootOf`), and a setup of one tree whose commitment
+  `(root, f(z))` is in the IV;
 - the Keccak VM's relation `KvHolds` through `kvStack`.
 
 **One statement was strengthened in the process**: the bridge `DiffsEvalK` (`Ids/Build.lean`) assumes round `0` has

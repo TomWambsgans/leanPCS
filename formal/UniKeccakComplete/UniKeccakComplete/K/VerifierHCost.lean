@@ -746,8 +746,8 @@ theorem costP_verifyWithKH (shape : UniStatement.Shape) (v : UniKeccak.KeccakVar
       · have : r.openings.length * openCost ≤ 3 * openCost := Nat.mul_le_mul_right _ hl
         omega
 
-/-- The Keccak contract's IV: the tag, the program's IV, the setup's root, the shape, the three Keccak layout words
-and the variant's eleven bytes. -/
+/-- The Keccak contract's IV, a bound: its preimage (the tag, the program's IV, the setup's root and out-of-domain
+answer, the shape and the variant's eleven bytes: `91 + |IV|` bytes, `ivInput_length`) has at most `163 + |IV|`. -/
 def ivCost (D : UniKeccak.KDeployment) : ℕ := (163 + D.programIv.length) / 136 + 1
 
 /-- **The deployed Keccak verifier's block count** on a proof of a stream of at most `S` bytes: the IV, the seed (one

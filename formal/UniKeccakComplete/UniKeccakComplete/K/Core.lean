@@ -18,16 +18,17 @@ Flock's honest prover on the Keccak-f block (`flockProveH`) at the reference sha
   returns is accepted by `KDeployment.verifierWithH` at `keccakMain`: the verifier's run on the prover's stream
   accepts (`runWithKH_syncs`, `runWithKH_accepts`: the counts' checks, Flock's collected value — zero for the honest
   Keccak-f prover, `FlockP.flockSyncs_trace` — and the batch's terminal are zero) with the prover's three point
-  claims and no matrices' claim, and the three claims' openings accept WHIR's honest openings (`pcsOpen_honest_k`,
-  at `27, 26, 23` variables, `ref_word`: each claim's value is its stack's extension at its point, `streamValues`;
-  each point has its stack's variables, `StreamFacts.points`; the stacks' sizes, `c1Stack_size`, `c2Stack_size`,
-  `setupStackOf_size`; each root is the committed tree's, `rootRead_digestScalars`, `rootOf_digestScalars`, the
-  setup's the deployment's, `setupStackOf_honestTrace`); `verifyWithKH_of_calls` assembles them;
+  claims and no matrices' claim, and the three PCS claims' checks accept the honest openings (`pcsOpenKH_of`, at
+  `27, 26, 23` variables, `reference_stackVars_c1`: each claim's value is its stack's extension at its point,
+  `streamValues`; each point has its stack's variables, `StreamFacts.points`; the stacks' sizes, `c1Stack_size`,
+  `c2Stack_size`, `setupStackOf_size`; each root is the committed tree's, `rootRead_rootHalves`, `rootOf_rootHalves`,
+  each out-of-domain answer the prover's, the setup's commitment the deployment's, `setupRoots_eq`,
+  `setupStackOf_honestTrace`); `verifyWithKH_of_calls` assembles them;
 * **`coreAccepts_reference`**: `CoreAccepts D flockProveH` at the reference shape, the batch's hypothesis at the
   prover's state from `CoreBatch.lean`'s `batchSyncsAt_front`, the bad events moved from the staged challenges to the
   prover's state by `front_challenges`;
-* **`coreFailsOnlyAtPow`**: `proveWith` fails only at an opening (`proveWith_eq_none`, every commitment has a
-  claim, `claims_complete`), at every shape.
+* **`coreFailsOnlyAtPow`**: `proveWith` fails only at a PCS opening whose point has its variables
+  (`proveWith_eq_none`, every commitment has a claim, `claims_complete`, `claim_length`), at every shape.
 -/
 
 open UniStatement UniKeccak LeanVM LeanVM.Parameters LeanVM.Semantics LeanVM.Protocol LeanVM.Protocol.KeccakHash

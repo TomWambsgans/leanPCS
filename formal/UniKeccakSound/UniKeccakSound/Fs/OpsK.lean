@@ -8,18 +8,18 @@ import UniKeccakSound.Fs.PcsOpK
 
 `UniSound/FsOps.lean`'s openings for the Keccak verifier's main line (`uniOpsK`): `C1` (round `0`'s root) and `C2`
 (round `nF + 1`'s), opened by the computable decoder (`uniTcK`, `tableCode` of their shapes, the candidates read back
-as stacks, `rdTab`), and the setup's stack `F` at the setup's root, each a plain layout (`plainL v`: one chunk of
-`2^v` words, the claims' layout) at its Keccak layout word's variables (`wvK`, `layoutWordsK`), opened at
-`plainShapeK` (`Whir23.lean`: `2^23 ..= 2^28` words).
+as stacks, `rdTab`), and the setup's stack `F` at the setup's root, each the EIP's PCS claim on its stack's variables
+(`wvK`, `stackVarsK`; the candidates read through the plain layout `plainL v`, one chunk of `2^v` words), its opening
+`WhirBridge.Pcs.pcsVerifyWithHash` as a `Compose.GOp` (`Fs/PcsOpK.lean`, `2^23 ..= 2^28` words).
 
 * **The proof the chain reads is `UniSound.UPf`** (the input, a `UniProof`, the transcript's IV, the setup's roots):
   a Keccak proof is a `UniProof` (`upOf`, `kpOf`: `kpOf ⟨…, upOf p, …⟩ = p` by `rfl`), so the chain's statement
   and messages (`uView`, `uDone`) and every lemma about them are `UniSound`'s, at the main line's rounds
   (`uniRounds`); the tail is three scalars (`uTailK`, as π1-rec3's `uTail3`).
-* **`UniShapesK`**: the three layout words name `23 … 28` variables, `C1`'s and `C2`'s at least `24` (their roots'
+* **`UniShapesK`**: the three stacks have `23 … 28` variables, `C1`'s and `C2`'s at least `24` (their roots'
   lists at most `largeList ≤ 9952`, the chain's list term).
 * **The check** (`uniCheckK`): the transcript completes the rounds, every value the chain program requires zero is,
-  and its result is well formed (`WellFormedK`: one point claim per commitment, of its layout word's variables, no
+  and its result is well formed (`WellFormedK`: one point claim per commitment, of its stack's variables, no
   matrices' claim).
 * **`good`** (`uniGoodK`) and **`goodS`** (`uniGoodSK`: the setup's honest stack `setupStackK` satisfies its claim).
 -/

@@ -14,11 +14,11 @@ import UniKeccakComplete.K.PcsProver
 
 0. the six row counts (4-byte big-endian);
 1. `C1` (every column in basis `B`, `z_T`, the memory, the bytecode's final counts, `q_flock` as values), committed,
-   its root's halves; then `α ∈ E^4`, `β`, `γ`;
+   its root's bytes (`rootHalves`), its out-of-domain answer (`pcsOod`); then `α ∈ E^4`, `β`, `γ`;
 2. Flock on the Keccak-f block (a prover given as a function, `FlockProver`: its messages, the ring map; the
    verifier checks the lincheck's terminal itself, `structuredTerminal`, so nothing is left to the batch);
 3. the heap's values, its novel and basis-`B` coefficients; the quotients (exact divisions); `C2`, committed, its
-   root's halves; then `t`;
+   root's bytes and out-of-domain answer; then `t`;
 4. the values at `t`, in `reduceWith`'s order;
 5. `ρ`; the relations exactly as `reduceWith` states them (its own `tablePart` run on the values each table sends,
    and its pure `constraintRelation`, `heapRelations`, `combine`); the combined claims;
@@ -26,8 +26,8 @@ import UniKeccakComplete.K.PcsProver
    values at its point (no matrices' term, no `a`, `b`).
 
 `proveWith` adds the setup (its one tree, as the experiment's `setupTreeKWith`, recomputed), the Keccak contract's
-IV, the seed, and the three WHIR openings (`C1`, `C2`, the setup) (`proveOpeningWithH`, the Statement's honest opening): `none` if a proof of
-work fails. The commitments go through a function (`commit`), the real one `commitWithH`; the differential test
+IV (the setup's commitment: its root and out-of-domain answer, `setupRootsOf`), the seed, and the three PCS claims'
+openings (`C1`, `C2`, the setup: `pcsProveH`, `K/PcsProver.lean`): `none` if a proof of work fails. The commitments go through a function (`commit`), the real one `commitWithH`; the differential test
 passes stand-in roots.
 -/
 

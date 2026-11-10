@@ -12,9 +12,10 @@ up to `C1`'s root, the five bus challenges `α₁ … α₄, β` (`samplesW H 4`
 (**`uniProverWith_split`**):
 
 * **`proverA`**: the setup's tree (`setupTreeOf`), the Keccak contract's IV (`contractIvOf`), the seed (`seedOf`) and
-  `C1`'s commitment (`commitWithH`); the row counts (`countBytes`) and `C1`'s root word are written, not hashed;
+  `C1`'s commitment (`commitWithH`); the row counts (`countBytes`), `C1`'s root word and its out-of-domain answer are written, not hashed;
 * the five answers `s₁ = H(firstInput rows a)` (the seed's bytes, the `24` count bytes, the `32` root bytes:
-  `firstInput_length`, `112` bytes when there are six counts) and `s_{k+1} = H(digestBytes s_k)`;
+  `firstInput_length`, `112` bytes when there are six counts: the seed (`32`), the counts (`24`), the root (`32`),
+  its out-of-domain answer (`24`)) and `s_{k+1} = H(digestBytes s_k)`;
 * **`proverC`**: the stream's tail from `γ` (`streamTail`, `proveStreamWith`'s text from `let gamma`) on the writer
   after the five challenges (`writerAfter`), then the openings (`openingsTail`, `proveWith`'s text after the
   stream).

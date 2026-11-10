@@ -15,10 +15,10 @@ import UniKeccakSound.Fs.Whir23
 * **the pieces**: the setup's tree `setupTreeOf`, the IV `contractIvOf` (at `keccakMain`, the deployment's `A0`, `B0`
   constants `a0`, `b0`), the seed `proverSeed`, the stream's run `streamRun` (`(proveStreamWith …).run (Wr.start
   seed)`: output and writer), then the three openings `claimProof` (one commitment's: its claim found by `find?`,
-  `openingFor` its stack, tree and layout word);
+  `openingFor` its stack, tree and PCS claim's variables `stackVarsK`);
 * **`proveWith_eq`**: `proveWith` is those three, bound in `Option`; **`proveWith_eq_some`**: it returns `some π`
   exactly when each returns `some`, `π` the stream and those proofs; **`proveWith_eq_none`**: if it returns `none`,
-  a commitment has no claim or one of the three `proveOpeningWithH` calls (named with its layout, tree, stack and
+  a commitment has no claim or one of the three `pcsProveH` calls (named with its variables, tree, stack and
   claim) returned `none`;
 * **the stream's run** (`streamRun_facts`, a `StreamFacts`): every commitment has a claim (`claims_complete`:
   `combine` is `some` on each, as `atTOf` states a relation on each, `atTOf_cover`), `C1`'s and the setup's stacks
@@ -27,7 +27,7 @@ import UniKeccakSound.Fs.Whir23
   value a variable: no term grows. The Keccak verifier has no matrices' claim;
 * **`prover_none_pow`**: at the reference shape (`keccakRefShape`), if `proveWith` returns `none`, one of the three
   openings reached WHIR's `17`-bit proof of work at a sponge where every nonce below `fuel` fails
-  (`pcsOpen_fails_only_at_pow_k`, each opening at `27, 26, 23` variables, `reference_wordVars`; the setup's `2^23`
+  (`pcsProveH_fails_only_at_pow`, each opening at `27, 26, 23` variables, `reference_stackVars_c1`; the setup's `2^23`
   words are admissible by `UniKeccakSound.admissible_k`), for an honest trace (`TraceHonest`). The trace's honesty
   gives `C2ColumnsHonest tr` (`c2ColumnsHonest_of_traceHonest`).
 -/

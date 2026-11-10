@@ -26,10 +26,10 @@ cargo test --release -p leanvm_rec --test lean_graph_keccak                 # fa
 
 - [`Emitted.lean`](RecGraphKeccak/Emitted.lean): **the Keccak π1-rec3 graph**, written by
   `crates/leanvm/rec/tests/lean_graph_keccak.rs` (a self-contained renderer on `leanvm_univariate::contract::
-  {record_verifier, calls, Recorded}` and `leanvm_statement::evm::{record::Node, codegen::Word}`): 10,848 nodes (9,871
-  additions and products, 69 Keccak-256 calls), 14 zero checks, no nonzero check, 1 ring-weight kernel, 3 claims
-  of 31, 30, 27 words, a stream of 9,232 bytes (`C1`'s root at 24, `C2`'s at 3,752). Data only. Builds in about
-  7 s.
+  {record_verifier, calls, Recorded}` and `leanvm_statement::evm::{record::Node, codegen::Word}`), on the EIP's PCS
+  claims (each commitment's out-of-domain answer read after its root; each claim's words its root, answer, point and
+  value, `pcsClaimWordsK`): 10,850 nodes, 14 zero checks, no nonzero check, 1 ring-weight kernel, 3 claims, a stream
+  of 9,280 bytes. Data only. Builds in about 7 s.
 - [`Pi1/Flock.lean`](RecGraphKeccak/Pi1/Flock.lean), [`Pi1/Verifier.lean`](RecGraphKeccak/Pi1/Verifier.lean): **the
   Keccak verifier as a `RecGraph.Prog` program**, in the Rust's operation order: `frontK` (the lincheck's 11 rounds),
   `structuredTerminalS` (`keccak_flock::structured_terminal`, its memoised partial correlations, lazy `S::sum`s,
@@ -39,7 +39,7 @@ cargo test --release -p leanvm_rec --test lean_graph_keccak                 # fa
   ring end, `tablePart`, `combine`, `heapRelations`) are reused.
 - [`RecGraphKeccakTest/Pi1Check.lean`](RecGraphKeccakTest/Pi1Check.lean): `pi1GraphK = Emitted.graph`, node for node.
 - [`Main.lean`](RecGraphKeccak/Main.lean): the target. `verifierOutputsWithK` (`UniKeccak.runWithK` at `keccakRec3`,
-  `pcsCallsK`, the zeros), `MergeHazardK` (`Z_bad(t) = 0` at `keccak128`, `t` the challenge 52, `p_0` the challenge 45),
+  `pcsClaimWordsK`, the zeros), `MergeHazardK` (`Z_bad(t) = 0` at `keccak128`, `t` the challenge 52, `p_0` the challenge 45),
   **`Pi1GraphIsVerifierK`**, `Pi1SimK`, `pi1GraphIsVerifierK_of_sim`.
 - `Sim/`: the simulation of `UniKeccak.reduceWithK` by the program, in `RecGraph.Sim`'s framework (`Sim`, `PH`,
   `PSim`, `SimE`):
