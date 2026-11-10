@@ -1,5 +1,5 @@
 // Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
-//! π2's PIOP (`src/pi2`, `PI2.md`), end to end on synthetic circuits built with the interface, D16v and D32v:
+//! π2's PIOP (`src/pi2`, `PI2.md`), end to end on synthetic circuits built with the interface, D16v:
 //!
 //! - `small_*`: the honest proof's four claims hold and its three openings verify (`quotient::opening::verify`, what
 //!   the block proves); a witness that breaks one copy, one formula or one public element leaves a false claim; a
@@ -8,8 +8,8 @@
 //!   adapter;
 //! - `contract_*`: the verifier compiled to EVM is the Rust verifier word for word, straight and deployable, and
 //!   accepts the honest proof with its frame of PCS claims declaring them, and rejects a flipped byte;
-//! - `gas_report` (ignored): the contract at the target shapes, D16v (`N = 2^24`) and D32v (`N = 2^23`);
-//! - `prove_target` (ignored): the prover at a target shape.
+//! - `gas_report` (ignored): the contract at the D16v target shape (`N = 2^24`);
+//! - `prove_target` (ignored): the prover at the target shape.
 //!
 //! `cargo test --release -p leanvm_rec --test pi2 -- --nocapture` (and `--ignored gas_report`).
 
@@ -219,11 +219,6 @@ fn small_d16v() {
     honest_and_mutated(&built(&synth::small_d16v(11)), 24);
 }
 
-#[test]
-fn small_d32v() {
-    honest_and_mutated(&built(&synth::small_d32v(12)), 24);
-}
-
 /// The circuit compiler's example (`N = 32`), on `2^log_n` positions: the rows past it in no block (forwards, self-loops
 /// of 0), the ports' tags moved past the new `N`.
 fn padded_example(log_n: u8) -> (spec::Circuit, spec::Witness, spec::PublicInputs) {
@@ -373,11 +368,6 @@ fn contract_d16v() {
     contract_checks(synth::small_d16v(11));
 }
 
-#[test]
-fn contract_d32v() {
-    contract_checks(synth::small_d32v(12));
-}
-
 /// The contract at a target shape: built from the synthetic circuit's verifier (its gas depends on the shape alone:
 /// the pairs, the formulas, the public side), π1-rec's real calls appended.
 fn target_report(name: &str, design: Design) {
@@ -422,7 +412,6 @@ fn target_report(name: &str, design: Design) {
 #[ignore]
 fn gas_report() {
     target_report("D16v, N = 2^24 (pi1-rec)", synth::target_d16v());
-    target_report("D32v, N = 2^23 (pi1 main line)", synth::target_d32v());
 }
 
 fn peak_memory() -> String {
@@ -432,15 +421,12 @@ fn peak_memory() -> String {
         .unwrap_or_default()
 }
 
-/// The prover at a target shape: `PI2_TARGET=d16v` (default) or `d32v`, scaled to `2^PI2_LOG_N` positions if set (the
-/// same pairs, formulas and public side, smaller blocks).
+/// The prover at the D16v target shape, scaled to `2^PI2_LOG_N` positions if set (the same pairs, formulas and public
+/// side, smaller blocks).
 #[test]
 #[ignore]
 fn prove_target() {
-    let target = match std::env::var("PI2_TARGET").as_deref() {
-        Ok("d32v") => synth::target_d32v(),
-        _ => synth::target_d16v(),
-    };
+    let target = synth::target_d16v();
     let design = match std::env::var("PI2_LOG_N").ok().and_then(|v| v.parse().ok()) {
         Some(log_n) => synth::scaled(&target, log_n),
         None => target,

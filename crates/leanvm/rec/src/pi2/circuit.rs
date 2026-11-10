@@ -3,7 +3,7 @@
 //! (branch `leanvm-rec-circuit`, `circuit/spec.rs`) defines, which [`Circuit`] is built from (`pi2::adapt`).
 //!
 //! **Positions.** `N = 2^log_n` positions on the Cantor subspace `V_m`, position `i` at the point `ω_i`; a row is
-//! `2^log_row` consecutive positions (16 in D16v, 32 in D32v), position `i = row · 2^log_row + role`.
+//! `2^log_row` consecutive positions (16 in D16v), position `i = row · 2^log_row + role`.
 //!
 //! **Pushes.** Every position pulls its own value `(w(ω_i), ω_i)` and pushes `(P(ω_i), σ(ω_i))`, `σ` a setup column of
 //! tags (points `ω_j`: inside `V_m` for `j < N`, outside it for `N ≤ j < 2^28`). `P(ω_i)` is:

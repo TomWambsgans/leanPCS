@@ -82,7 +82,7 @@ pub const OPENING_VERSION: opening::Version = opening::Version::V3;
 pub const VERSION_BYTE: usize = 21;
 
 /// The smallest stack leanerVM's certified parameters cover at version 2 (`params/whir_params.py --large`), kept for
-/// the layouts: circuits of `2^CERTIFIED_FROM` positions or more commit no smaller stack (D32v's `W`, `2^23` words,
+/// the layouts: circuits of `2^CERTIFIED_FROM` positions or more commit no smaller stack (a `W` of `2^23` words
 /// takes a `2^24` stack, half its lanes absent); smaller circuits, the tests', take [`MIN_LOG_STACK`].
 pub const MIN_CERTIFIED_STACK: usize = 24;
 pub const CERTIFIED_FROM: usize = 20;
@@ -1446,7 +1446,7 @@ mod tests {
 
     /// π2's stacks are opened on the recursion's ladder at rate 1/2, the prover's configuration (`pcs`'s eta search)
     /// the verifier's (`verifier::whir::ladder`), at every stack size `2^15 … 2^28` (D16v's `W`, `Q`, setup: `2^24`,
-    /// `2^28`, `2^25`; D32v's `2^24`, `2^27`, `2^24`; the tests' from `2^15`); and the layout words carry the version.
+    /// `2^28`, `2^25`; the tests' from `2^15`); and the layout words carry the version.
     #[test]
     fn stacks_take_the_recursion_ladder() {
         assert_eq!(opening::LOG_INV_RATE, 1);

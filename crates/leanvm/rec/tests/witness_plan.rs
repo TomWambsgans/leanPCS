@@ -2,8 +2,7 @@
 //! π2's witness replayed from its plan (`circuit::plan::WitnessPlan`) is the compiler's (`circuit::compile::pi2`),
 //! word for word, with the same public inputs: on the committed real π1-rec3 proofs
 //! (`crates/leanvm/univariate/tests/vectors/keccak128_rec3.txt`, the reference shape, and `keccak_rec3.txt`, 400
-//! signatures: another shape, another circuit) and on a sample stream, the plan made on a zero stream; D16v, and D32v
-//! on the reference vector.
+//! signatures: another shape, another circuit) and on a sample stream, the plan made on a zero stream.
 //!
 //! `cargo test --release -p leanvm_rec --test witness_plan` (`-- --ignored --nocapture` for `replay_timing`).
 
@@ -88,20 +87,6 @@ fn replay_is_the_compilers_d16v() {
                 check(&plan, &recorded, Layout::D16v, &inputs);
             }
         }
-    });
-}
-
-#[test]
-fn replay_is_the_compilers_d32v() {
-    deep(|| {
-        let (recorded, public, stream) = real("keccak128_rec3");
-        let inputs = Inputs {
-            program_iv: PROGRAM_IV,
-            public,
-            stream: &stream,
-        };
-        let plan = WitnessPlan::new(&recorded, Layout::D32v, PROGRAM_IV);
-        check(&plan, &recorded, Layout::D32v, &inputs);
     });
 }
 

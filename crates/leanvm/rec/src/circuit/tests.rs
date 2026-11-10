@@ -4,7 +4,7 @@
 use leanvm_statement::field::K;
 use leanvm_statement::transcript::keccak256;
 
-use super::keccak::{Bit, D32, Permutation, Sponge, keccak_f};
+use super::keccak::{Bit, Permutation, Sponge, keccak_f};
 use super::keccak16::D16;
 use super::layout::{Builder, Finished, Value};
 use super::spec::PublicInputs;
@@ -94,11 +94,6 @@ fn the_reference_permutation_is_keccak() {
     keccak_f(&mut a);
     let bytes: Vec<u8> = a[..4].iter().flat_map(|l| l.to_le_bytes()).collect();
     assert_eq!(bytes, keccak256(&[]));
-}
-
-#[test]
-fn d32_keccak256_on_random_inputs() {
-    check_keccak(5, D32::new);
 }
 
 #[test]

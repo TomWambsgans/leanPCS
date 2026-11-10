@@ -1,9 +1,9 @@
 // Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
-//! `π2`'s circuit as its PIOP sees it (SPEC-REC.md §2.3, §2.4, §2.6): the interface between the circuit compiler
+//! `π2`'s circuit as its PIOP sees it (SPEC-REC.md §2.3, §2.4): the interface between the circuit compiler
 //! (`crate::circuit`) and `π2`'s prover and verifier (branch `leanvm-rec-piop`). Kept small and stable.
 //!
 //! **Positions.** `N = 2^log_n` positions `i = W·y + k`: row `y`, role `k < W`, rows of `W = 2^log_width`
-//! positions. `log_width = 4` is D16v (§2.4), `log_width = 5` is D32v (§2.6). The witness `w` is one `K` word a
+//! positions. `log_width = 4` is D16v (§2.4). The witness `w` is one `K` word a
 //! position ([`Witness`]).
 //!
 //! **Pulls and pushes.** Every position `i` has a pull `(w_i, i)` and a push `(P_i, σ_i)`, with

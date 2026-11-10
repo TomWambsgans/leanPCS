@@ -11,7 +11,7 @@
 //!   bytes and `E`, the checks, and the claims' points.
 //! - [`eval`]: the graph evaluated on a real proof's calldata, every node's value: the witness `π2`'s prover starts
 //!   from, checked against the recorded claims of the committed test vectors.
-//! - [`circuit`]: `π2`'s circuit (D16v or D32v) and its witness, compiled from the graph; `circuit::spec` is the
+//! - [`circuit`]: `π2`'s circuit (D16v) and its witness, compiled from the graph; `circuit::spec` is the
 //!   PIOP's interface (SPEC-REC.md §10).
 //! - [`pi2`]: `π2`'s PIOP: prover, verifier, contract.
 

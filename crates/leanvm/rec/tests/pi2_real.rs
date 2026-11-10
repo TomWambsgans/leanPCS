@@ -5,7 +5,7 @@
 //!
 //! - `real_gas`: the contract's gas on the real circuits, D16v (the verifier's gas depends on the circuit alone),
 //!   parity with the Rust verifier, straight and deployable;
-//! - `real_end_to_end` (`PI2_LAYOUT=d16v|d32v`, `PI2_VECTOR=keccak128_rec3|keccak_rec3`): π2's prover on the real
+//! - `real_end_to_end` (`PI2_VECTOR=keccak128_rec3|keccak_rec3`): π2's prover on the real
 //!   witness, its three openings verified (`quotient::opening::verify`, what the block's openings prove), and the contract
 //!   accepting the proof with its frame of PCS claims declaring exactly its claims: π1's three (the vector's inputs, which π1's
 //!   openings prove) and π2's three; a flipped calldata byte is rejected.
@@ -127,10 +127,7 @@ fn real_gas() {
 #[ignore]
 fn real_end_to_end() {
     deep(|| {
-        let layout = match std::env::var("PI2_LAYOUT").as_deref() {
-            Ok("d32v") => Layout::D32v,
-            _ => Layout::D16v,
-        };
+        let layout = Layout::D16v;
         let name = std::env::var("PI2_VECTOR").unwrap_or_else(|_| "keccak128_rec3".into());
         let start = std::time::Instant::now();
         let (v, c, pi1_iv) = real(&name, layout);

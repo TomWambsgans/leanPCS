@@ -91,7 +91,7 @@ without the BLAKE2s-era words (regenerated proofs), 42,997 (59 zero bytes) and 4
 `crate::circuit::spec` is the interface (SPEC-REC.md §10.1); `pi2::adapt` turns it into the PIOP's
 `pi2::circuit::Circuit`:
 
-- `N = 2^m` positions on `V_m`, rows of `2^r` (D16v `r = 4`, D32v `r = 5`); position `i` at `ω_i`.
+- `N = 2^m` positions on `V_m`, rows of `2^r` (D16v: `r = 4`); position `i` at `ω_i`.
 - **Internal positions.** Every position but the **holes** pulls `(w(ω_i), ω_i)` and pushes `(P_v(ω_i) + κ(ω_i),
   σ(ω_i))`, `σ(ω_i)` a position (inside `V_m`, never a hole): `P_v = w + Σ_int I_p (E_p + w)`, `I_p` the indicator of
   pair `p`'s coset (an internal pair: a (block, role) pair whose formula is not a forward nor a port; its formula `E_p`
@@ -127,7 +127,7 @@ stream:
    elements (14 narrow challenges and 3 values, 24 bytes each);
 2. `W`'s root; `α, β, γ`;
 3. `Q`'s root; `t`;
-4. the `2^r` fold values `a_k`, `ξ = κ(t) + β σ(t)` and `s = P(t)` (18 values for D16v, 34 for D32v); `ρ`.
+4. the `2^r` fold values `a_k`, `ξ = κ(t) + β σ(t)` and `s = P(t)` (18 values for D16v); `ρ`.
 
 The first challenge hashes the state and everything before it: the public data is bound there, not by a separate
 `keccak(public data)`. The **IV** is `keccak("leanvm-rec-iv-v2" ‖ π1's contract IV ‖ the setup root ‖ the circuit's
@@ -146,7 +146,7 @@ k_2)` at the claim's coordinates `(ρ', ρ, z)`, below); `prover::quotient_chunk
 stacks are at least `2^24` words, the smallest leanerVM's certified parameters cover at version 2; the openings are
 version 3's (§8: WHIR's deeper levels on the recursion's ladder), whose query ladders, at every stack size `2^15 …
 2^28`, are the prover's eta search's and the verifier's table's alike (`stacks_take_the_recursion_ladder`) and
-`params/whir_params.py --recursion`'s. D32v's `W` (`2^23` words) sits on a `2^24` stack, half its lanes absent. Small
+`params/whir_params.py --recursion`'s. Small
 test circuits take `2^15` stacks.
 
 **The verifier at `t`** (`verifier::reduce`, generic over `Scalar`):
@@ -255,10 +255,10 @@ words: π1's as the vector's; π2's `prover::layout_word` (§8).
 
 ## 5. The synthetic circuits (`synth`)
 
-Before the real circuit existed, `synth` built circuits with every row kind of SPEC-REC §2.4 / §2.6 (χ formulas, D
+Before the real circuit existed, `synth` built circuits with every row kind of SPEC-REC §2.4 (χ formulas, D
 units, XORs, packings, free bits, `E` products and sums, constants, ports of every source) and a witness satisfying them
-by construction (FIFO wiring), small (`2^11`, `2^12` positions) and at the design's target shapes (`2^24` and `2^23`,
-about 200 and 280 pairs, `target_d16v`, `target_d32v`). They remain the PIOP's tests and `gas_report`'s shapes. The real
+by construction (FIFO wiring), small (`2^11`, `2^12` positions) and at the design's target shape (`2^24`, about 200
+pairs, `target_d16v`). They remain the PIOP's tests and `gas_report`'s shapes. The real
 D16v circuit of the Keccak VM's π1 has 133 pairs at the reference shape (4 port pairs; 20 ports of nonzero value, all
 at role 15).
 
@@ -267,7 +267,7 @@ at role 15).
 - `lib`: an indicator is one on its coset and zero on `V_m`'s rest (every alignment and size); `Φ`'s basis (`w_r(ω_i)
   = ω_{i >> r}`, `w_m = w_{m-r} ∘ w_r`, `V_{m-r}`'s Lagrange basis sums to one off `V_m`); the inverse; the stacks'
   WHIR ladders (version 3) are the verifier's at every stack size, and the layout words carry the version.
-- `tests/pi2.rs`, D16v and D32v synthetic circuits and the interface's own example (padded, through `adapt`):
+- `tests/pi2.rs`, D16v synthetic circuits and the interface's own example (padded, through `adapt`):
   - the honest proof's four claims hold and its three openings verify;
   - witness mutations (random constrained positions): a false claim;
   - a changed element, a changed public input (a dishonest port, the identity kept by the prover): exactly the sum's
@@ -276,8 +276,7 @@ at role 15).
   - the contract equals the Rust verifier word for word, straight and deployable, on the honest stream and a random
     one; it accepts the honest proof with its frame declaring exactly its claims, and rejects flipped bytes.
 - `tests/pi2_real.rs`, the real circuits (`PI2_VECTOR=keccak128_rec3`, the default, or `keccak_rec3`): `real_gas`, the
-  gas and parity (straight, deployable) of D16v; `real_end_to_end` as in §0 (also `PI2_LAYOUT=d32v`: 1,388 B of
-  calldata, 51,940 execution, accepted). The claims holding on the real tables are the degrees' check (§1): a `q` or
+  gas and parity (straight, deployable) of D16v; `real_end_to_end` as in §0. The claims holding on the real tables are the degrees' check (§1): a `q` or
   `q_P` of a degree above `2N` would not be determined by `D`'s `2N` points, and its claim would fail.
 - `tests/pipeline.rs`: the prover timed from a trace, π2's proof and openings among its stages (§0).
 - `tests/keccak_vm_rec.rs`: π1-rec3 at 128 and 400 signatures compiled into D16v on a sample stream, the contract's gas

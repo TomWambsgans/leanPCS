@@ -57,12 +57,11 @@ fn compiled(recorded: &Recorded, layout: Layout, iv: [u8; 32], public: [u8; 32],
     c
 }
 
-/// Keccak-f's positions a permutation, by layout (SPEC-REC.md §2.4.1, §2.6; D16v's `kd` rows as measured by
+/// Keccak-f's positions a permutation, by layout (SPEC-REC.md §2.4.1; D16v's `kd` rows as measured by
 /// `circuit::tests::d16_rows_a_permutation`).
 fn keccak_positions(layout: Layout) -> usize {
     match layout {
         Layout::D16v => 16 * (1536 + 6144 + 160 + 344),
-        Layout::D32v => 32 * 25 * 64,
     }
 }
 

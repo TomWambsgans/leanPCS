@@ -18,7 +18,7 @@
 //!    row), the row's sources (another row), or zero (no row). A free end's pull, which is anywhere, is a source.
 //!
 //! The plan is checked against the compiler (`tests/witness_plan.rs`): on the real streams, on a sample stream,
-//! made on a zero stream, D16v and D32v.
+//! made on a zero stream.
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -255,7 +255,6 @@ impl WitnessPlan {
     pub fn compile(recorded: &Recorded, layout: Layout, inputs: &Inputs) -> (Compiled, WitnessPlan) {
         let (compiled, trace) = match layout {
             Layout::D16v => compile_keeping(recorded, 4, super::keccak16::D16::new, inputs, true),
-            Layout::D32v => compile_keeping(recorded, 5, super::keccak::D32::new, inputs, true),
         };
         let trace = trace.expect("kept");
         let plan = Self::of(&compiled, trace, recorded, inputs.program_iv);

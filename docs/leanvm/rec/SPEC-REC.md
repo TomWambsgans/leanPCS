@@ -380,7 +380,7 @@ The public data is in π2's stream, bound by its first challenge (§4).
 | `Q` (proof, after `α, β, γ`) | `h` (`3N`), `q` in 2 chunks (`6N`), `P` (`N`), `q_P` (`2N`) | `2^27.58` (25% under `2^28`; π2v1 `15N`, `2^27.91`) | `2^28`, 3,564 |
 | setup | `κ`, `κ + σ` | `2^25` | `L = 1` |
 
-### 2.6 D32v: the other layout
+### 2.6 D32v: the other layout (not implemented)
 
 **Rows = slices.** One row per `(round, z)`, 32 positions:
 
@@ -389,9 +389,10 @@ The public data is in π2's stream, bound by its first challenge (§4).
   `C`'s.
 
 There are no forwards in Keccak at all. Per permutation, 25 × 64 × 32 = 51,200 positions, a θ-prep slice row
-included. The verifier gets 32 fold values and `ξ` (33 values). The compiler builds it (`Layout::D32v`; rounds as in
-§10.4 item 7) and the PIOP proves it (`PI2_LAYOUT=d32v`), but its push side is several times D16v's (§10.3), and it has
-not been measured on the Keccak VM's π1.
+included. The verifier gets 32 fold values and `ξ` (33 values). Its push side is several times D16v's (§10.3). The compiler
+built it and the PIOP proved it (rounds as in §10.4 item 7; on the real 128-signature π1-rec3, 1,388 B of calldata and
+51,940 gas of execution), but D16v is the layout: this repository no longer carries D32v's code (it is in the git
+history).
 
 ## 3. Alternatives
 
@@ -552,10 +553,10 @@ cargo test --release -p leanvm_rec --lib                                        
 |---|---|
 | `spec.rs` | **the PIOP's interface**: rows of `W = 2^log_width` positions; region blocks of `W` role formulas (`Forward`, `Expr`: degree ≤ 2, `K` coefficients, no constant term; `Port`); `σ` as tag indices (a position, or `N + J` for port `J`); `κ` sparse; the ports and their `Source`s; π1's call words (`CallWord`: constants, stream words, elements, `Pair`). `Circuit::check` checks every pull against its push, the holes and the public limbs; `example()` is a toy for the PIOP's tests |
 | `layout.rs` | the framework: values placed at cells, `σ` derived, the invariant checked, blocks placed and padded (`pad_counts`), the witness |
-| `keccak.rs` | D32v's Keccak-f; Keccak-256's sponge (padding, later blocks by XOR units, the digest); constants |
+| `keccak.rs` | Keccak-256's sponge (padding, later blocks by XOR units, the digest); constants |
 | `keccak16.rs` | D16v's Keccak-f (`k0`, `k1`, `kd`, `kprep`) |
 | `units.rs` | free bits, packings, `E` units, ports |
-| `compile.rs` | `Recorded` → circuit and witness; `pi2(recorded, Layout::D16v / D32v, inputs)`; its rejections (`tests/compile_rejects.rs`) |
+| `compile.rs` | `Recorded` → circuit and witness; `pi2(recorded, Layout::D16v, inputs)`; its rejections (`tests/compile_rejects.rs`) |
 
 ### 10.2 The tests
 

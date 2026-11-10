@@ -512,94 +512,6 @@ fn sinks(width: usize) -> Vec<RowType> {
     .collect()
 }
 
-/// The row types of D32v (SPEC-REC.md §2.6): slice rows of 32 cells, the round constant split, θ's preparation, and
-/// the other row types widened to 32 cells.
-pub fn d32v_types() -> Vec<RowType> {
-    let mut types = vec![];
-    // A slice row: b (0–24, lane x + 5y), C_prev (25–29). A_j = χ(b) (+ RC on lane 0), C = Σ_y A_j,
-    // a'_{j+1}[x, y] = A_j[x, y] + C[x - 1] + C_prev[x + 1]; pushes the 25 a' and the 5 C.
-    for rc in [false, true] {
-        let chi = |x: usize, yy: usize| -> Formula {
-            let b = |i: usize| Lin::cell(i % 5 + 5 * yy);
-            let lin = b(x).plus(&b(x + 2));
-            let lin = if rc && x == 0 && yy == 0 {
-                lin.with_constant(Coeff::ONE)
-            } else {
-                lin
-            };
-            Formula::linear(lin).plus_product(Coeff::ONE, b(x + 1), b(x + 2))
-        };
-        let column = |x: usize| -> Formula {
-            let mut f = Formula::zero();
-            for yy in 0..5 {
-                let c = chi(x, yy);
-                f.lin = f.lin.plus(&c.lin);
-                f.products.extend(c.products);
-            }
-            f
-        };
-        let mut roles = vec![];
-        for yy in 0..5 {
-            for x in 0..5 {
-                let mut f = chi(x, yy);
-                let c = column((x + 4) % 5);
-                f.lin = f.lin.plus(&c.lin).plus(&Lin::cell(25 + (x + 1) % 5));
-                f.products.extend(c.products);
-                roles.push(Role::Expr(f));
-            }
-        }
-        roles.extend((0..5).map(|x| Role::Expr(column(x))));
-        roles.extend([Role::SelfFree(Free::Word), Role::SelfFree(Free::Word)]);
-        types.push(RowType {
-            name: if rc { "KS1" } else { "KS0" }.into(),
-            roles,
-        });
-    }
-    // θ's preparation: the 25 input bits forwarded, the five columns' sums.
-    let mut prep: Vec<Role> = (0..25).map(|_| Role::Forward).collect();
-    prep.extend((0..5).map(|x| Role::Expr(Formula::linear(lin_sum(&[x, x + 5, x + 10, x + 15, x + 20])))));
-    prep.extend([Role::SelfBit, Role::SelfBit]);
-    types.push(RowType {
-        name: "KSprep".into(),
-        roles: prep,
-    });
-    let mut xor = vec![];
-    for u in 0..16 {
-        xor.push(Role::Expr(Formula::linear(lin_sum(&[2 * u, 2 * u + 1]))));
-        xor.push(Role::Forward);
-    }
-    types.push(RowType {
-        name: "XOR".into(),
-        roles: xor,
-    });
-    for offset in [0usize, 31] {
-        let mut roles: Vec<Role> = (0..31).map(|_| Role::Forward).collect();
-        let mut lin = Lin::cell(31);
-        lin.terms
-            .extend((0..31).map(|e| (Coeff::k(1u64 << ((offset + e) % 64)), e as u16)));
-        roles.push(Role::Expr(Formula::linear(lin)));
-        types.push(RowType {
-            name: format!("Pack{offset}"),
-            roles,
-        });
-    }
-    let mut free: Vec<Role> = (0..16).map(|_| Role::SelfBit).collect();
-    free.extend((0..16).map(|k| Role::Expr(Formula::cell(k))));
-    types.push(RowType {
-        name: "Free".into(),
-        roles: free,
-    });
-    types.extend(e_units(32));
-    types.push(RowType {
-        name: "Const".into(),
-        roles: (0..32)
-            .map(|k| Role::Const(0x1000_0000_0000_0001 * (k as u64 + 1)))
-            .collect(),
-    });
-    types.extend(sinks(32));
-    types
-}
-
 fn index(types: &[RowType], name: &str) -> usize {
     types
         .iter()
@@ -665,34 +577,6 @@ pub fn small_d16v(log_n: usize) -> Design {
     }
 }
 
-/// A small D32v circuit with every row type, for tests.
-pub fn small_d32v(log_n: usize) -> Design {
-    let types = d32v_types();
-    let mut regions = vec![Region {
-        row_type: index(&types, "Free"),
-        blocks: vec![1],
-    }];
-    for name in [
-        "KSprep", "KS0", "KS1", "XOR", "Pack0", "Pack31", "Emul", "Eadd", "Const",
-    ] {
-        regions.push(Region {
-            row_type: index(&types, name),
-            blocks: vec![if name == "KS0" { 1 } else { 0 }],
-        });
-    }
-    regions.push(Region {
-        row_type: index(&types, "Free"),
-        blocks: vec![0],
-    });
-    regions.extend(small_sinks(&types));
-    Design {
-        log_n,
-        log_row: 5,
-        types,
-        regions,
-    }
-}
-
 /// A synthetic D16v circuit of `N = 2^24` positions, 86% used, with about 200 (block, role) pairs and 69 public terms
 /// (PI2.md §5): more pairs than the Keccak VM's π1-rec3 circuit (133 at 93.4%, SPEC-REC.md §10.3). Its rows by type:
 /// 107 Keccak-f permutations (K1 657,408 rows, K0 164,352, KD 41,088, Kprep 11,449), then the later blocks' XORs, the
@@ -743,31 +627,3 @@ pub fn scaled(design: &Design, log_n: usize) -> Design {
     out
 }
 
-/// D32v at its target shape (SPEC-REC.md §2.6, π1's main line): `N = 2^23` positions, 32-cell slice rows (131
-/// permutations of 1,600 slice rows), π1's 69 public terms.
-pub fn target_d32v() -> Design {
-    let types = d32v_types();
-    let region = |name: &str, blocks: Vec<usize>| Region {
-        row_type: index(&types, name),
-        blocks,
-    };
-    let mut regions = vec![
-        region("Free", vec![12]),
-        region("KSprep", vec![13]),
-        region("KS0", vec![17, 16]),
-        region("KS1", vec![13, 12]),
-        region("XOR", vec![11]),
-        region("Pack0", vec![10, 8]),
-        region("Pack31", vec![10, 8]),
-        region("Emul", vec![10, 9]),
-        region("Eadd", vec![10, 8]),
-        region("Const", vec![4]),
-    ];
-    regions.extend(pi1_sinks(&types));
-    Design {
-        log_n: 23,
-        log_row: 5,
-        types,
-        regions,
-    }
-}

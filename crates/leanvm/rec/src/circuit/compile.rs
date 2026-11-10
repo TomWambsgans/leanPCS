@@ -163,20 +163,17 @@ fn pair_coordinate(g: &Graph, id: u32) -> Option<(u32, u8)> {
     })
 }
 
-/// `π2`'s two layouts (SPEC-REC.md §2.4, §2.6).
+/// `π2`'s layout (SPEC-REC.md §2.4).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Layout {
     /// Rows of 16, Keccak-f in 130,944 positions ([`super::keccak16::D16`]).
     D16v,
-    /// Rows of 32, Keccak-f in 51,200 positions ([`super::keccak::D32`]).
-    D32v,
 }
 
 impl Layout {
     pub fn log_width(self) -> u8 {
         match self {
             Layout::D16v => 4,
-            Layout::D32v => 5,
         }
     }
 }
@@ -186,7 +183,6 @@ impl Layout {
 pub fn pi2(recorded: &Recorded, layout: Layout, inputs: &Inputs) -> Compiled {
     match layout {
         Layout::D16v => compile(recorded, 4, super::keccak16::D16::new, inputs),
-        Layout::D32v => compile(recorded, 5, super::keccak::D32::new, inputs),
     }
 }
 

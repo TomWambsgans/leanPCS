@@ -1,7 +1,6 @@
 // Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! π2's PIOP (SPEC-REC.md §2.3, §4, §7 R3; `PI2.md`): the virtual-push copy argument on the Cantor subspace, one
-//! quotient identity at `t`, four claims declared as three, for rows of `2^r` positions (D16v `r = 4`, D32v
-//! `r = 5`).
+//! quotient identity at `t`, four claims declared as three, for rows of `2^r` positions (D16v: `r = 4`).
 //!
 //! - [`circuit`]: the circuit as the PIOP sees it (pairs, formulas, `σ`, `κ`, the public side);
 //! - [`adapt`]: the circuit compiler's interface (`crate::circuit::spec`) as that circuit;
