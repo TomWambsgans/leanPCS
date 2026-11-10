@@ -1,7 +1,7 @@
 ---
 title: leanPCS
 description: Aggregate polynomial commitment openings and add a MULFIELD instruction, for cheap verification of STARKs onchain
-author: TBD
+author: Greg Hirsch
 discussions-to: https://ethereum-magicians.org/t/TBD
 status: Draft
 type: Standards Track
