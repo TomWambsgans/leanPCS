@@ -20,14 +20,15 @@ use crate::evm::record::{Graph, Node};
 
 /// The selector of `verify(bytes32,bytes)`: calldata starting with it is a proof to verify.
 pub const VERIFY: [u8; 4] = [0x8e, 0x76, 0x0a, 0xfe];
-/// Calldata: the selector, the public input's four 64-bit words (big-endian each, word 0 first), then the stream.
+/// Calldata: the selector, the public input's four 64-bit words (big-endian each, word 0 first), the stream, then a
+/// byte, the index of the transaction's frame of PCS claims (a returning contract reads past it).
 pub const PUBLIC_INPUT: usize = VERIFY.len();
 pub const STREAM: usize = PUBLIC_INPUT + 32;
 
 /// The phases of what is not the verifier's arithmetic.
 pub const ENTRY: &str = "entry: selector, length, no value";
-pub const CALLS: &str = "PCS_OPEN: claims written, calls, replies checked";
-pub const ROOTS: &str = "PCS_OPEN: fixed commitments read (cold SLOAD)";
+pub const CALLS: &str = "claims: written, hashed, checked declared in the frame";
+pub const ROOTS: &str = "claims: fixed commitments read (cold SLOAD)";
 pub const MEASURE: &str = "measurement only (JUMPDEST after each check, subtracted)";
 pub use evm_link::{LINK_CALL, LINK_PASS};
 
@@ -63,12 +64,12 @@ pub enum Word {
 pub enum Ending {
     /// Return it.
     Return,
-    /// Call `PCS_OPEN` on each of these runs of words of it, in order and back to back; revert unless every call
-    /// succeeds returning the word 1, and return the word 1.
-    PcsOpen(Vec<usize>),
-    /// As [`Ending::PcsOpen`], each call's input written at the region's start just before the call, and only where
-    /// the call before left another word (`evm_link::front::Source::reuse`): calls sharing a point write it once.
-    PcsOpenReusing(Vec<usize>),
+    /// Revert unless the transaction declares the claims these runs of words of it encode, in order and back to back,
+    /// as payloads `0, 1, ...` of the frame of PCS claims calldata names ([`evm_link::declared`]); return the word 1.
+    Declared(Vec<usize>),
+    /// As [`Ending::Declared`], each claim written at the region's start just before it is checked, and only where
+    /// the claim before left another word (`evm_link::front::Source::reuse`): claims sharing a point write it once.
+    DeclaredReusing(Vec<usize>),
 }
 
 /// The graph, with how the contract is seeded: the code of each node.
@@ -198,7 +199,7 @@ pub struct Deployable {
 
 /// The program, and what it computes.
 fn program(graph: &Graph, outputs: &[Word], ending: &Ending, entry: &Entry, linkable: bool) -> (Program, Stats) {
-    let calldata_len = STREAM + entry.stream_len;
+    let calldata_len = STREAM + entry.stream_len + 1;
     // Not a call of the verifier: calldata of another length, or of another selector, or value.
     let selector = [
         &[CALLDATASIZE][..],
@@ -252,9 +253,9 @@ fn program(graph: &Graph, outputs: &[Word], ending: &Ending, entry: &Entry, link
         outputs: words,
         calls: match ending {
             Ending::Return => None,
-            Ending::PcsOpen(runs) | Ending::PcsOpenReusing(runs) => Some(runs.clone()),
+            Ending::Declared(runs) | Ending::DeclaredReusing(runs) => Some(runs.clone()),
         },
-        reuse: matches!(ending, Ending::PcsOpenReusing(_)),
+        reuse: matches!(ending, Ending::DeclaredReusing(_)),
         calls_tag: CALLS,
         scratch,
         calldata_len,
@@ -277,7 +278,8 @@ fn program(graph: &Graph, outputs: &[Word], ending: &Ending, entry: &Entry, link
                 _ => 0,
             })
             .sum(),
-        checks: graph.zero.len() + graph.nonzero.len() + 1,
+        // The entry's, the graph's, and the frame's of PCS claims (`evm_link::pcs_frame_check`), if the program has one.
+        checks: graph.zero.len() + graph.nonzero.len() + 1 + usize::from(!matches!(ending, Ending::Return)),
     };
     (compiled.program, stats)
 }

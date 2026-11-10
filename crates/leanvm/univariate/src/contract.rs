@@ -6,24 +6,25 @@
 //! **Calldata**: selector, the public input (four 64-bit words, each big-endian: `(cell0.c0, cell0.c1, cell1.c0,
 //! cell1.c1)`; leanVM's 32-byte digest has its words little-endian, so a caller reverses each word's 8 bytes, SPEC.md
 //! §4), then the stream: the six row counts, `C1`'s root, Flock's messages, `C2`'s root, the values at `t`, the
-//! batching sumcheck (SPEC.md §8, §13). The contract is built for one shape class (the heights), which the
+//! batching sumcheck (SPEC.md §8, §13), then a byte, the index of the transaction's frame of PCS claims. The contract is built for one shape class (the heights), which the
 //! transcript's IV binds with the setup root and the layout words.
 //!
-//! **Calls**: one `PCS_OPEN` call per commitment, each with one weighted claim (SPEC.md §8): words `root, layout,
+//! **Claims**: one per commitment, which the contract checks its transaction declares (a payload of its frame of PCS
+//! claims is the claim's Keccak-256), each with one weighted claim (SPEC.md §8): words `root, layout,
 //! k = 1, P`, the `P` points (a length, then the coordinates), the claim's `m` terms (`column | point << 32 |
 //! twist << 48`, then the coefficient) and its value; or, with point claims, `root, layout, 1`, the point and the
 //! value. The setup root is a constant in the code (no `SLOAD`).
 //!
 //! **Root words**. `C1`'s and `C2`'s are the stream's 32 bytes as they are:
 //! the prover sends each root as its two WHIR scalars (`prover::prove::halves`, `hash_to_scalars`), so those bytes
-//! are `PCS_OPEN`'s root word `s_0 · 2^128 + s_1` (`crates/membership/evm/src/machine.rs`), which a decoding precompile reads as
-//! the root the opening is of. The setup root's word is the hash as it is ([`SetupRoots`]), not its root
-//! word: a precompile with machine.rs's decoding reads it as another root (`root_word` of it), so this contract,
-//! deployed alone, needs `Word::Const(root_word(..))` there (free: constants). π2's contract, which makes π1's calls,
-//! passes their root words (`crates/leanvm/rec`, `circuit::compile`).
+//! are a claim's root word `s_0 · 2^128 + s_1` (`crates/membership/evm/src/machine.rs`), which decodes as the root
+//! the opening is of. The setup root's word is the hash as it is ([`SetupRoots`]), not its root word: machine.rs's
+//! decoding reads it as another root (`root_word` of it), so this contract, deployed alone, needs
+//! `Word::Const(root_word(..))` there (free: constants). π2's contract, which checks π1's claims, passes their root
+//! words (`crates/leanvm/rec`, `circuit::compile`).
 
 use leanvm_statement::evm::codegen::{CALLS, Contract, ENTRY, Ending, Entry, MEASURE, VERIFY, Word, compile, word};
-use leanvm_statement::evm::machine::{Outcome, PcsOpen, call};
+use leanvm_statement::evm::machine::{Outcome, PCS_FRAME, PcsFrame, call};
 use leanvm_statement::evm::record::{Graph, Recorder, Sym, record};
 use leanvm_statement::field::E;
 use leanvm_statement::transcript::{Checks, KeccakChannel, keccak_seed};
@@ -66,7 +67,7 @@ impl SetupRoots {
     };
 }
 
-/// The opening a `PCS_OPEN` call is for, its code in the layout word.
+/// The opening a claim is for, its code in the layout word.
 fn layout_code(commitment: Commitment) -> u16 {
     match commitment {
         Commitment::C1 => 0x5501,
@@ -87,7 +88,7 @@ pub fn shape_bytes(shape: &Shape) -> [u8; 8] {
     bytes
 }
 
-/// A `PCS_OPEN` call's layout word (SPEC.md §13, F2): the shape's bytes (bytes 0..8), the opening's version (21:
+/// A claim's layout word (SPEC.md §13, F2): the shape's bytes (bytes 0..8), the opening's version (21:
 /// `prover::opening::VERSION`, which fixes WHIR's parameters), the opening's code (22..24), the stack's variables (24)
 /// and the words its blocks fill, `placed` (25..32), which WHIR's verifier needs to know the committed lanes. Each
 /// shape's stacks have their own words.
@@ -228,7 +229,7 @@ fn opening_words<T: Copy, W: Clone>(
     }
 }
 
-/// The calls of `PCS_OPEN`, as runs of output words.
+/// The claims the contract checks declared, as runs of output words.
 pub fn calls(recorded: &Recorded) -> Vec<Vec<Word>> {
     let reduced = &recorded.reduced;
     let layouts = layout_words(&recorded.shape);
@@ -255,12 +256,19 @@ pub fn compile_verifier(recorded: &Recorded, program_iv: &[u8; 32], measure: boo
         measure,
     };
     let calls = calls(recorded);
-    let ending = Ending::PcsOpen(calls.iter().map(Vec::len).collect());
+    let ending = Ending::Declared(calls.iter().map(Vec::len).collect());
     compile(&recorded.graph, &calls.concat(), &ending, &entry)
 }
 
-pub fn calldata(public_words: &[u8; 32], stream: &[u8]) -> Vec<u8> {
+/// The proof's calldata: the selector, the public input, the stream (what the committed vectors hold).
+pub fn proof_calldata(public_words: &[u8; 32], stream: &[u8]) -> Vec<u8> {
     [&VERIFY[..], public_words, stream].concat()
+}
+
+/// Calldata verifying a proof: [`proof_calldata`], then the index of the transaction's frame of PCS claims
+/// ([`PCS_FRAME`]).
+pub fn calldata(public_words: &[u8; 32], stream: &[u8]) -> Vec<u8> {
+    [&proof_calldata(public_words, stream)[..], &[PCS_FRAME]].concat()
 }
 
 /// A stream of the shape's length, its bytes pseudo-random as a proof's are (the contract's gas does not depend on
@@ -340,7 +348,7 @@ pub struct GasReport {
     pub phases: Vec<PhaseGas>,
     pub claims: usize,
     pub calls: usize,
-    /// Terms of each call's claim, and words written for `PCS_OPEN`.
+    /// Terms of each claim, and words written for it.
     pub terms: Vec<(String, usize, usize)>,
     pub pcs_words: usize,
     pub relations: usize,
@@ -355,15 +363,12 @@ pub struct GasReport {
 }
 
 impl GasReport {
-    pub fn execution_at(&self, c: u64) -> u64 {
-        self.execution + c * self.claims as u64
-    }
-
-    /// Transaction gas without its 21,000 base: `floor` 40 for EIP-7623 (10 a zero byte), 64 for EIP-7976.
-    pub fn transaction(&self, c: u64, floor: u64) -> u64 {
+    /// Transaction gas without its 21,000 base, without its frame of PCS claims and their intrinsic gas: `floor` 40
+    /// for EIP-7623 (10 a zero byte), 64 for EIP-7976.
+    pub fn transaction(&self, floor: u64) -> u64 {
         let nonzero = (self.calldata_bytes - self.calldata_zero_bytes) as u64;
         let zero = self.calldata_zero_bytes as u64;
-        let standard = 16 * nonzero + 4 * zero + self.execution_at(c);
+        let standard = 16 * nonzero + 4 * zero + self.execution;
         let floor_gas = floor * nonzero + if floor == 64 { 64 } else { floor / 4 } * zero;
         standard.max(floor_gas)
     }
@@ -374,8 +379,8 @@ impl GasReport {
     }
 }
 
-/// Measure the verifier for `shape`: build it, run it on sample calldata with every call attested, and check the
-/// run's gas against a run at another claim price and the phases against the total.
+/// Measure the verifier for `shape`: build it, run it on sample calldata with every claim declared, and check the
+/// phases against the total.
 pub fn measure(shape: &Shape, iv: &[u8; 32], variant: Variant, mode: Claims) -> GasReport {
     let recorded = record_verifier(shape, variant, mode);
     let contract = compile_verifier(&recorded, iv, true);
@@ -385,15 +390,9 @@ pub fn measure(shape: &Shape, iv: &[u8; 32], variant: Variant, mode: Claims) -> 
     let all_calls = calls(&recorded);
     let claims = recorded.reduced.openings.len();
     let calls_count = all_calls.len();
-    let run = |claim_gas: u64| -> Outcome {
-        let block = PcsOpen::attesting_all(claim_gas);
-        let outcome = call(&contract.code, &[], &data, &block);
-        assert_eq!(outcome.output.as_deref(), Some(&word([1, 0, 0])[..]), "the measuring run returns 1");
-        assert_eq!(outcome.pcs_calls.len(), calls_count, "one call per commitment");
-        outcome
-    };
-    let outcome = run(0);
-    assert_eq!(run(1000).execution, outcome.execution + 1000 * claims as u64);
+    let outcome: Outcome = call(&contract.code, &[], &data, &PcsFrame::declaring_all());
+    assert_eq!(outcome.output.as_deref(), Some(&word([1, 0, 0])[..]), "the measuring run returns 1");
+    assert_eq!(outcome.claims.len(), calls_count, "one claim per commitment");
     let mut phases: Vec<PhaseGas> = Vec::new();
     for (pc, &gas) in outcome.gas_by_pc.iter().enumerate() {
         if gas == 0 {
@@ -408,7 +407,7 @@ pub fn measure(shape: &Shape, iv: &[u8; 32], variant: Variant, mode: Claims) -> 
     let total: u64 = phases.iter().map(|p| p.gas).sum();
     assert_eq!(total, outcome.execution, "the instructions' gas is the execution's");
     let measured = phases.iter().find(|p| p.phase == MEASURE).map_or(0, |p| p.gas);
-    assert_eq!(measured, contract.checks as u64 + calls_count as u64, "one JUMPDEST a check and a call");
+    assert_eq!(measured, contract.checks as u64 + calls_count as u64, "one JUMPDEST a check and a claim");
     phases.retain(|p| p.phase != MEASURE);
     phases.sort_by_key(|p| std::cmp::Reverse(p.gas));
     let terms: Vec<(String, usize, usize)> = recorded
@@ -470,7 +469,7 @@ fn expected_words(reduced: &Reduced<E>, recorded: &Recorded, stream: &[u8]) -> V
     out
 }
 
-/// The contract, built to return what it would hand `PCS_OPEN` and every value it checks, against the Rust verifier
+/// The contract, built to return the claims it would check declared and every value it checks, against the Rust verifier
 /// on the same calldata: word for word.
 pub fn parity(shape: &Shape, iv: &[u8; 32], public_words: &[u8; 32], stream: &[u8], variant: Variant, mode: Claims) {
     parity_with(shape, iv, &SetupRoots::REFERENCE, public_words, stream, variant, mode);
@@ -504,7 +503,7 @@ pub fn parity_with(
         rust_verifier_with(shape, iv, setup, public_words, stream, variant, mode).expect("the stream's length");
     let mut expected = expected_words(&reduced, &recorded, stream);
     expected.extend(zero.iter().chain(&nonzero).map(|&x| leanvm_statement::evm::machine::element_word(x)));
-    let outcome = call(&contract.code, &[], &calldata(public_words, stream), &PcsOpen::default());
+    let outcome = call(&contract.code, &[], &calldata(public_words, stream), &PcsFrame::default());
     let output = outcome.output.expect("the measuring build does not revert");
     assert_eq!(output.len(), 32 * expected.len(), "words returned");
     for (k, (got, want)) in output.chunks(32).zip(&expected).enumerate() {
@@ -512,7 +511,7 @@ pub fn parity_with(
     }
 }
 
-/// What the contract writes and how it ends: the calls of `PCS_OPEN` (`verify`), or those words and every checked
+/// What the contract writes and how it ends: the claims checked declared (`verify`), or those words and every checked
 /// value returned (`!verify`, for parity).
 fn ends(recorded: &Recorded, iv: &[u8; 32], verify: bool, measure: bool) -> (Vec<Word>, Ending, Entry) {
     let entry = Entry {
@@ -523,7 +522,7 @@ fn ends(recorded: &Recorded, iv: &[u8; 32], verify: bool, measure: bool) -> (Vec
     };
     let calls = calls(recorded);
     if verify {
-        let ending = Ending::PcsOpen(calls.iter().map(Vec::len).collect());
+        let ending = Ending::Declared(calls.iter().map(Vec::len).collect());
         (calls.concat(), ending, entry)
     } else {
         let checks = recorded.graph.zero.iter().chain(&recorded.graph.nonzero);
@@ -577,16 +576,9 @@ pub fn measure_deployable(
     let data = calldata(&[0x5a; 32], &stream);
     let straight = measure(shape, iv, variant, mode);
     let calls_count = straight.calls;
-    let run = |claim_gas: u64| -> Outcome {
-        let outcome = installed
-            .chain
-            .call(installed.address, &data, &PcsOpen::attesting_all(claim_gas));
-        assert_eq!(outcome.output.as_deref(), Some(&word([1, 0, 0])[..]), "the measuring run returns 1");
-        assert_eq!(outcome.pcs_calls.len(), calls_count, "one call per commitment");
-        outcome
-    };
-    let outcome = run(0);
-    assert_eq!(run(1000).execution, outcome.execution + 1000 * straight.claims as u64);
+    let outcome: Outcome = installed.chain.call(installed.address, &data, &PcsFrame::declaring_all());
+    assert_eq!(outcome.output.as_deref(), Some(&word([1, 0, 0])[..]), "the measuring run returns 1");
+    assert_eq!(outcome.claims.len(), calls_count, "one claim per commitment");
     let mut phases: Vec<PhaseGas> = Vec::new();
     for (address, gas_by_pc) in &outcome.gas_by_code {
         let tags = &installed
@@ -611,7 +603,7 @@ pub fn measure_deployable(
     assert_eq!(
         measured,
         (real.checks + calls_count + parts + (parts > 0) as usize) as u64,
-        "one JUMPDEST a check, a call of PCS_OPEN, a call of a part and the last part's word"
+        "one JUMPDEST a check, a claim, a call of a part and the last part's word"
     );
     phases.retain(|p| p.phase != MEASURE);
     phases.sort_by_key(|p| std::cmp::Reverse(p.gas));
@@ -660,7 +652,7 @@ pub fn parity_deployable(
     );
     let output = installed
         .chain
-        .call(installed.address, &calldata(public_words, stream), &PcsOpen::default())
+        .call(installed.address, &calldata(public_words, stream), &PcsFrame::default())
         .output
         .expect("a measuring build does not revert");
     let (reduced, zero, nonzero) =

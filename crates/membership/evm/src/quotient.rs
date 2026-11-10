@@ -730,7 +730,8 @@ mod tests {
 
     /// The membership contracts' bytecode, pinned: the code of the deployed contract, of the claims contract, of
     /// the contract with the root in its code, and of the deployed contract linked into parts of 2,048 bytes (the
-    /// driver's then the parts', back to back), each its Keccak-256, as at 2607d40 (before the inverse hint mode).
+    /// driver's then the parts', back to back), each its Keccak-256, as since the claims are checked declared in a frame
+    /// of PCS claims, with the frame's index a byte of calldata.
     #[test]
     fn membership_bytecode_is_pinned() {
         let hex = |code: &[u8]| -> String { primitives::hash::hash(code).iter().map(|b| format!("{b:02x}")).collect() };
@@ -745,10 +746,10 @@ mod tests {
         assert_eq!(
             codes,
             [
-                "090dbf41625e9c66df8a6359d00b6cd060f5f39a66139b59d975992ff0e6e32b",
-                "b1630107e2502d02cb458cc5752f300e3fcf2ee4e6772d6e5a88804ed0b8c5c7",
-                "62ba3abb9e3ab9e9f4a1fe23ad2cf30fce62cbc742596188de8f891f855e1db0",
-                "47d5a8e6135abfd897cc68224821b8fe0801149565e8c5806a03c158be15489f",
+                "4fb7f8f15e21491aa6288782f9b3d12e3740c8dd3c1eb94e5d16bd55c97b1757",
+                "348dd7df733e928d63afd2c98c6c3e04900a269b652959da8e5946930c0ce5f6",
+                "50321732185e4d460759df6388fe66af502a3bdf878b5a86c41846dfec7c0a07",
+                "0fafd10b05bd1e1a3cd5143dfc1805490692650db65a74542e62176d27e4faf7",
             ]
         );
     }
