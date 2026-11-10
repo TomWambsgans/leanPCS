@@ -1,11 +1,10 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The model, the experiments' shape and the form of the
 -- statements are `UniStatement/Security.lean`'s and `RecSecurity.lean`'s (after `formal/Statement`'s
 -- `PcsQuotient.Security` and leanerVM `mumbai` 6175f1a0's `Statement/LeanVm.lean`, MIT OR Apache-2.0); the relation is
--- `formal/KeccakVm`'s (`KvHolds`).
-module
-
-public import UniKeccak.Mapping
-public import UniStatement.Security
+-- `formal/KeccakVm`'s (`KvHolds`). A non-module file (it imports `UniKeccak/Pcs.lean`).
+import UniKeccak.Mapping
+import UniKeccak.Pcs
+import UniStatement.Security
 
 /-!
 # Knowledge soundness and completeness of the Keccak verifier, against the Keccak VM's relation
@@ -17,10 +16,11 @@ with the Keccak VM in place of leanVM 42422001:
   shape (valid: `Shape.validate` with Flock, so `h_SHA3 ≥ 7`), leanVM's program IV.
 * **The setup** (`setupTreeKWith`): the one WHIR commitment of the setup stack (`setupStackK`: the bytecode's tuples
   with the Keccak VM's entries, the memory's addresses). The Keccak-f block's matrices (`2^34` entries) are never
-  committed. The verifier's setup root is its root (`KDeployment.setupRoots`).
-* **The verifier** (`KDeployment.verifierKWith … v`): the Keccak contract's IV (`contractIvKWith`, binding the variant
-  `v`), then `verifyWithK` (the run, three claims' openings). `keccakMain` is the main line, `keccakRec3` π1-rec3's
-  shape under the recursion.
+  committed. The verifier's setup commitment is its root and the stack's value at the root's out-of-domain point
+  (`KDeployment.setupRoots`, `setupOodK`: the EIP's PCS commitment, `crates/pcs_claim`).
+* **The verifier** (`KDeployment.verifierWith … v`): the Keccak contract's IV (`contractIvKWith`, binding the variant
+  `v` and the setup commitment), then `verifyWithK` (the run, three PCS claims' openings). `keccakMain` is the main
+  line, `keccakRec3` π1-rec3's shape under the recursion.
 * **The relation** (`KDeployment.RelationK F`): `KeccakVm.KvHolds F prog s input q`, `M3Holds (keccakIsaInstance prog
   s) input q ∧ KeccakAux F prog s q`, at the proof's sizes `s` (the shape's memory, the proof's row counts), `F` the
   Keccak-f block (`KeccakVm.KeccakFlockSpec`, a parameter: its inhabitant is built elsewhere; the verifier fixes its
@@ -32,8 +32,6 @@ with the Keccak VM in place of leanVM 42422001:
 * **Completeness** is for a prover given as a parameter (`KProver`): its proof of a statement with a `KvHonest` stack,
   at row counts that fit the shape (`Shape.RowsFit`), is rejected with probability at most `δ`.
 -/
-
-@[expose] public section
 
 namespace UniKeccak
 
@@ -48,7 +46,7 @@ open scoped ENNReal
 /-- **The Keccak VM's deployment**: the program, the shape (its heights; valid), leanVM's program IV. -/
 structure KDeployment where
   prog : KeccakVm.Program
-  shape : Shape
+  shape : UniStatement.Shape
   programIv : List UInt8
   valid : shape.Valid
   logBytecode_eq : shape.logBytecode = prog.logSize
@@ -56,7 +54,7 @@ structure KDeployment where
 /-- The memory has at least two cells. -/
 theorem KDeployment.logMemory_pos (D : KDeployment) : 0 < D.shape.logMemory := by
   have h := D.valid.2
-  unfold Shape.validate at h
+  unfold UniStatement.Shape.validate at h
   by_contra hc
   have hlt : D.shape.logMemory < 1 := by omega
   simp [hlt] at h
@@ -91,9 +89,16 @@ def KDeployment.HonestRelation (F : KeccakVm.KeccakFlockSpec) (D : KDeployment) 
 
 /-! ### The setup -/
 
-/-- The setup's roots the verifier holds: the setup stack's commitment (`F`). -/
-def KDeployment.setupRoots (_D : KDeployment) (tree : LeanVM.Prover.Tree) : SetupRoots :=
-  ⟨tree.root⟩
+/-- **The setup's out-of-domain answer** at a root: the setup stack's multilinear polynomial (word `i` at the cube
+point of `i`'s bits, bit `0` first: `multilinearEval`) at the root's out-of-domain point
+(`WhirBridge.Pcs.oodPoint`, on the setup stack's variables). -/
+def setupOodK (D : KDeployment) (root : Digest) : E :=
+  multilinearEval ((setupStackK D.prog D.shape).toList.map ofK)
+    (WhirBridge.Pcs.oodPoint (setupLayout D.shape).vars root).toList
+
+/-- **The setup commitment the verifier holds**: the setup stack's root (`F`) and its out-of-domain answer. -/
+def KDeployment.setupRoots (D : KDeployment) (tree : LeanVM.Prover.Tree) : SetupRootsK :=
+  ⟨tree.root, setupOodK D tree.root⟩
 
 section With
 
@@ -104,11 +109,11 @@ def setupTreeKWith (D : KDeployment) : m LeanVM.Prover.Tree :=
   PcsQuotient.commitWith F (setupLayout D.shape).vars (setupStackK D.prog D.shape)
 
 /-- **The transcript's IV** over `F` (`contract_iv` at the variant `v`). -/
-def KDeployment.ivWith (D : KDeployment) (v : KeccakVariant) (roots : SetupRoots) : m (List UInt8) :=
+def KDeployment.ivWith (D : KDeployment) (v : KeccakVariant) (roots : SetupRootsK) : m (List UInt8) :=
   contractIvKWith F D.shape v D.programIv roots
 
 /-- **The deployed Keccak verifier** of variant `v` over `F` on the setup's roots: its IV, then `verifyWithK`. -/
-def KDeployment.verifierWith (D : KDeployment) (v : KeccakVariant) (roots : SetupRoots) (input : Vector UInt8 32)
+def KDeployment.verifierWith (D : KDeployment) (v : KeccakVariant) (roots : SetupRootsK) (input : Vector UInt8 32)
     (proof : KeccakProof) : m Bool := do
   verifyWithK F D.shape v (← D.ivWith F v roots) roots input proof
 
@@ -157,8 +162,8 @@ abbrev KExtractor (D : KDeployment) : Type :=
 
 /-! ### Knowledge soundness -/
 
-/-- An adversary: given the setup's roots, a public input and a Keccak proof, with coins, `π` and `π⁻¹`. -/
-abbrev KAdversary : Type := SetupRoots → OracleComp RandomPermutationOracles (Vector UInt8 32 × KeccakProof)
+/-- An adversary: given the setup commitment, a public input and a Keccak proof, with coins, `π` and `π⁻¹`. -/
+abbrev KAdversary : Type := SetupRootsK → OracleComp RandomPermutationOracles (Vector UInt8 32 × KeccakProof)
 
 /-- An outcome: the statement and the proof, the verdict, the setup's evaluations, the transcript. -/
 abbrev KOutcome : Type :=
@@ -233,5 +238,3 @@ def UniCompletenessKeccakRec3 (F : KeccakVm.KeccakFlockSpec) (D : KDeployment) (
   UniCompletenessKeccakWith F D keccakRec3 P δ
 
 end UniKeccak
-
-end

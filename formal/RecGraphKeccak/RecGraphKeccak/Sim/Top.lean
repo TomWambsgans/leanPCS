@@ -7,7 +7,7 @@ import RecGraph.Sim.Calls
 
 On `RecGraph.Sim.Calls`'s lemmas:
 
-* `calls_eqK`: the recorded calls' bytes (`callsOfK`) are `UniKeccak.pcsCallsK`'s, for a run related by `RedRK`;
+* `calls_eqK`: the recorded calls' bytes (`callsOfK`) are `UniKeccak.pcsClaimWordsK`'s, for a run related by `RedRK`;
 * `pi1SimK_of_reduce`: if `Pi1.reduceK keccak128` simulates `UniKeccak.reduceWithK … keccakRec3 .point` (`SimE`, off
   the hazard at challenges `45` and `52`, the outputs related by `RedRK`) from any state like the one the statement
   words leave, then `Pi1SimK`: the seed and the statement words couple the recorder with `Chan.start`; a run that
@@ -25,30 +25,28 @@ section Calls
 
 variable (π : KeccakState → KeccakState) (iv publicInput : List UInt8) (stream : Array UInt8)
 
-/-- **The calls' bytes are `pcsCalls`'s**, for a run related by `RedR`, on a stream of the record's length. -/
-theorem calls_eqK {st : RecState} {red : ReducedS} {r : Reduced} (hg : Good st)
+/-- **The calls' bytes are `pcsClaimWordsK`'s**, for a run related by `RedRK`, on a stream of the record's
+length. -/
+theorem calls_eqK {st : RecState} {red : ReducedSK} {r : Reduced} (hg : Good st)
     (hR : RedRK π iv publicInput stream st red r) (hb : InputsBelow st) (hs : stream.size = st.cursor) :
     (callsOfK st red).map (·.flatMap (RecGraph.wordBytes stream (evalAll π iv publicInput stream st))) =
-      UniKeccak.pcsCallsK keccak128 referenceRootsK r := by
-  obtain ⟨hr1, hr2, hop, hm⟩ := hR
+      UniKeccak.pcsClaimWordsK referenceRootsK r := by
+  obtain ⟨hr1, hr2, hop, hm, ho1, ho2⟩ := hR
   have hw1 := rootWord_of π iv publicInput stream hg hr1 hb hs
   have hw2 := rootWord_of π iv publicInput stream hg hr2 hb hs
   have h1na := hr1.2.2.1
   have h2na := hr2.2.2.1
-  have hl0 : ((UniKeccak.layoutWordsK keccak128).getD 0 []).length = 32 := by simp [UniKeccak.layoutWordsK, layoutWord_length]
-  have hl1 : ((UniKeccak.layoutWordsK keccak128).getD 1 []).length = 32 := by simp [UniKeccak.layoutWordsK, layoutWord_length]
-  have hl2 : ((UniKeccak.layoutWordsK keccak128).getD 2 []).length = 32 := by simp [UniKeccak.layoutWordsK, layoutWord_length]
-  unfold UniKeccak.pcsCallsK callsOfK
+  have hel : (elementWord referenceRootsK.fOod).length = 32 := by simp [elementWord, be64]
+  unfold UniKeccak.pcsClaimWordsK callsOfK
   simp only [List.map_map]
   refine map_eq_of_forall₂ hop ?_
   rintro ⟨c, point, value⟩ y ⟨ptE, vE, rfl, hpt, hv⟩
   simp only at hpt hv
   cases c <;>
   simp only [Function.comp_apply, h1na, h2na, List.flatMap_append, List.flatMap_cons, List.flatMap_nil,
-    List.append_nil, RecGraph.wordBytes, openingWords, Option.isSome_none, Bool.false_eq_true, ↓reduceIte,
-    Option.map_none, Option.getD_none, flatMap_nodes π iv publicInput stream hpt, valE_evalAll, hv.2, hw1, hw2,
-    beBytes32_one, beBytes32_beNat _ hl0, beBytes32_beNat _ hl1, beBytes32_beNat _ hl2,
-    beBytes32_beNat _ (digestBytes_len _), List.append_assoc]
+    List.append_nil, RecGraph.wordBytes, UniKeccak.rootBytesK, UniKeccak.commitOfK,
+    flatMap_nodes π iv publicInput stream hpt, valE_evalAll, hv.2, hw1, hw2, ho1.2, ho2.2,
+    beBytes32_beNat _ hel, beBytes32_beNat _ (digestBytes_len _), List.append_assoc]
 
 end Calls
 
@@ -70,7 +68,7 @@ abbrev walkUK (π : KeccakState → KeccakState) (publicInput : List UInt8) : Ch
 /-- The outputs of a walk's outcome. -/
 def outcomeOutputsK (x : Except UniError Reduced × Chan) : Option Outputs :=
   match x.1 with
-  | .ok r => some ⟨UniKeccak.pcsCallsK keccak128 referenceRootsK r, x.2.zeros.toList, []⟩
+  | .ok r => some ⟨UniKeccak.pcsClaimWordsK referenceRootsK r, x.2.zeros.toList, []⟩
   | .error _ => none
 
 theorem verifierOutputs_eqK (π : KeccakState → KeccakState) (iv publicInput : List UInt8) (stream : Array UInt8) :
@@ -108,12 +106,12 @@ theorem run_vals_recordK {α : Type} (π : KeccakState → KeccakState) (iv publ
   obtain ⟨h1, h2, -⟩ := run_vals π iv publicInput stream p RecState.start start_kinv
   rw [h1, ← h2]
 
-theorem streamLen_recordedGraphK (p : Prog ReducedS) :
+theorem streamLen_recordedGraphK (p : Prog ReducedSK) :
     (recordedGraphK p).streamLen = (p.record RecState.start).2.cursor := by
   unfold recordedGraphK RecState.graph
   rfl
 
-theorem outputsOf_recordedGraphK (p : Prog ReducedS) (stream : Array UInt8) (vals : Array Value) :
+theorem outputsOf_recordedGraphK (p : Prog ReducedSK) (stream : Array UInt8) (vals : Array Value) :
     outputsOf (recordedGraphK p) stream vals =
       ⟨(callsOfK (p.record RecState.start).2 (p.record RecState.start).1).map
           (·.flatMap (RecGraph.wordBytes stream vals)),
@@ -122,7 +120,7 @@ theorem outputsOf_recordedGraphK (p : Prog ReducedS) (stream : Array UInt8) (val
   rfl
 
 theorem outcomeOutputs_okK (b : Reduced) (c : Chan) :
-    outcomeOutputsK (.ok b, c) = some ⟨UniKeccak.pcsCallsK keccak128 referenceRootsK b, c.zeros.toList, []⟩ := rfl
+    outcomeOutputsK (.ok b, c) = some ⟨UniKeccak.pcsClaimWordsK referenceRootsK b, c.zeros.toList, []⟩ := rfl
 
 theorem outcomeOutputs_errorK (e : UniError) (c : Chan) : outcomeOutputsK (.error e, c) = none := rfl
 

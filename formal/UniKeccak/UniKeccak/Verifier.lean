@@ -295,10 +295,12 @@ def reduceWithK (shape : Shape) (publicWords : List E) (v : KeccakVariant) (mode
   let heap := shape.heap
   let rW := shape.constraintVars
   let h := heap.h
-  -- 0. The tables' row counts (F1): six 32-bit integers, absorbed with C1's root.
+  -- 0. The tables' row counts (F1): six 32-bit integers, absorbed with C1's commitment.
   let counts ← countBits (m := m) heights
-  -- 1. C1, then the bus's and the constraints' challenges; α drawn as the shape has it.
+  -- 1. C1's commitment (its root, then its out-of-domain answer: `crates/pcs_claim`), then the bus's and the
+  -- constraints' challenges; α drawn as the shape has it.
   let root1 ← nextRoot (m := m)
+  let ood1 ← nextScalar (m := m)
   let alphas ← drawRun F fs 4
   let beta ← sample F
   let gamma ← sample F
@@ -306,8 +308,10 @@ def reduceWithK (shape : Shape) (publicWords : List E) (v : KeccakVariant) (mode
   -- 2. Flock on the Keccak-f block, on C1's q_flock: the structured terminal, no matrices.
   let logN := keccakR1csLogSize + heights.getD opSha3 0
   let (flockPoint, flockEnd) ← verifyWalkedK F logN v
-  -- 3. C2, then the point; the active rows' vanishing polynomials from the counts' bits (F1b).
+  -- 3. C2's commitment (root, out-of-domain answer), then the point; the active rows' vanishing polynomials from
+  -- the counts' bits (F1b).
   let root2 ← nextRoot (m := m)
+  let ood2 ← nextScalar (m := m)
   let t ← sample F
   let w := digits t (max h (rW + 4) + 2)
   let active := (counts.zip heights).map fun (bits, r) ↦ activeVanishingFromBits w bits r
@@ -374,7 +378,7 @@ def reduceWithK (shape : Shape) (publicWords : List E) (v : KeccakVariant) (mode
   let openings ← match mode with
     | .weighted => pure (combined.map fun (c, claim) ↦ (c, Opening.weighted claim))
     | .point => batchK F fs combined stackLayouts ringMap
-  return ⟨(root1, root2), openings, none, relations.size, stackVars, stackLayouts⟩
+  return ⟨(root1, root2), openings, none, relations.size, stackVars, stackLayouts, (ood1, ood2)⟩
 
 /-- **The Keccak verifier on calldata** over `F` (`rust_verifier`): the seed of the IV (the
 contract's, `contractIvKWith`) and the public input, the walk, nothing of the stream left. -/

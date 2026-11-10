@@ -26,6 +26,16 @@ namespace RecGraphKeccak.Pi1
 
 open LeanVM.Parameters UniStatement UniStatement.Flock RecGraph RecGraph.Pi1
 
+/-- **What the Keccak program leaves** (`Reduced` on the recorder): the two roots (each its halves), the two
+commitments' out-of-domain answers (each read after its root: the EIP's PCS commitments), and one point claim per
+commitment. -/
+structure ReducedSK where
+  root1 : Sym × Sym
+  root2 : Sym × Sym
+  ood1 : Sym
+  ood2 : Sym
+  openings : List (Commitment × List Sym × Sym)
+
 /-- **The constraint quotient's identity** on the Keccak VM (step 5 of `reduce`). -/
 def constraintRelationK (shape : Shape) (parts : List TablePartS) (publicWords : List Sym)
     (gamma t constraintValue : Sym) (w : List Sym) : Prog RelationS := do
@@ -185,7 +195,7 @@ def batchK (combined : List (Commitment × CombinedS)) (layouts : List (Commitme
 
 /-- **The Keccak VM's π1-rec3 verifier** (`reduce` with `KECCAK_REC3`, `Claims::Point`), on the
 recorder, from the public input's words. -/
-def reduceK (shape : Shape) (publicWords : List Sym) : Prog ReducedS := do
+def reduceK (shape : Shape) (publicWords : List Sym) : Prog ReducedSK := do
   let heights := shape.heights
   let heap := shape.heap
   let rW := shape.constraintVars
@@ -193,8 +203,9 @@ def reduceK (shape : Shape) (publicWords : List Sym) : Prog ReducedS := do
   let fs := FsShape.rec3
   -- 0. The row counts.
   let counts ← countBits heights
-  -- 1. C1, α (squares), β, γ.
+  -- 1. C1's commitment (root, out-of-domain answer), α (squares), β, γ.
   let root1 ← nextRoot
+  let ood1 ← nextScalar
   let alphas ← drawRun fs 4
   let beta ← sample
   let gamma ← sample
@@ -202,8 +213,9 @@ def reduceK (shape : Shape) (publicWords : List Sym) : Prog ReducedS := do
   -- 2. Flock on the Keccak-f block, its structured terminal.
   let logN := keccakR1csLogSize + heights.getD opSha3 0
   let (flockPoint, map, target) ← verifyWalkedK logN UniKeccak.keccakRec3.skip fs
-  -- 3. C2, t, the digits, Z_act.
+  -- 3. C2's commitment (root, out-of-domain answer), t, the digits, Z_act.
   let root2 ← nextRoot
+  let ood2 ← nextScalar
   let t ← sample
   let w ← digits t (max h (rW + 4) + 2)
   let mut active : Array Sym := #[]
@@ -272,7 +284,7 @@ def reduceK (shape : Shape) (publicWords : List Sym) : Prog ReducedS := do
   let _ ← one
   let stackLayouts := UniKeccak.layoutsK shape c2Columns
   let openings ← batchK combined.toList stackLayouts (some map)
-  return ⟨root1, root2, openings⟩
+  return ⟨root1, root2, ood1, ood2, openings⟩
 
 /-- **The reference workload's shape**: the Keccak VM at 128 signatures (leanVM 9d50c92a3, `UniKeccak.keccakRuns`'
 `"keccak128"`: 721,598 memory cells, rows XOR, MUL, SET, DEREF, JUMP, SHA3 `[24260, 36229, 24626, 35812, 15509,
@@ -288,42 +300,44 @@ theorem keccak128_run : ("keccak128", 128, 721598, [24260, 36229, 24626, 35812, 
 theorem keccak128_logs : keccak128.logMemory = 20 ∧ keccak128.logBytecode = 18 := by decide
 
 /-- **The Keccak VM's `SetupRoots::REFERENCE`** (`crates/leanvm/univariate/src/contract.rs`): the 128-signature
-reference's setup root `F` (`067244be…`, the real `keccak128_rec3.txt` proof's `whir_root`), the 32-byte word read as
-the digest of those bytes, as the Rust's.
-`record_verifier` binds them: the setup call's root word is `F`. -/
-def referenceRootsK : SetupRoots :=
-  ⟨digestOfBytes32 (bytesOfHex "067244bea80942b5cacaa61c28ca748d0ae4ba6c106739ab109c9c07296e1ca5")⟩
+reference's setup commitment, its root `F` (`067244be…`, the real `keccak128_rec3.txt` proof's setup claim's root, the
+32-byte word read as the digest of those bytes, as the Rust's) and its out-of-domain answer (`REFERENCE_F_OOD`, limb
+`0` first). `record_verifier` binds them: the setup claim's first two words. -/
+def referenceRootsK : UniKeccak.SetupRootsK :=
+  ⟨digestOfBytes32 (bytesOfHex "067244bea80942b5cacaa61c28ca748d0ae4ba6c106739ab109c9c07296e1ca5"),
+    eNew 0x20e3e5cea9674063 0x56b47388a81d6fff 0x1667157a1c2b0b6b⟩
 
 /-- The shape the program is recorded at. -/
 abbrev shapeK : Shape := keccak128
 
 /-- **The recorded Keccak verifier** (`record_verifier_with`): the recorder's start (the seed), the public input's
 four words, then `reduceK` at `leanvm_rec::REFERENCE`. -/
-def pi1Rec3K : Prog ReducedS := do
+def pi1Rec3K : Prog ReducedSK := do
   let mut words : Array Sym := #[]
   for k in [0:4] do
     words := words.push (← statement k)
   reduceK shapeK words.toList
 
-/-- **`contract::calls`** on the Keccak VM: each point claim's words (its root, its Keccak layout word, one claim, its
-point, its value); a root in the stream is the word at its first half's offset; the setup's root `F` the reference
-setup's (`SetupRoots::REFERENCE`, which `record_verifier` binds). -/
-def callsOfK (st : RecState) (red : ReducedS) : List (List Word) :=
-  let words := UniKeccak.layoutWordsK shapeK
+/-- **`contract::claims`** on the Keccak VM: each point claim's words, the EIP's PCS claim's fields as the contract
+holds them (its root, its out-of-domain answer, its point, its value); a root in the stream is the word at its first
+half's offset, an answer read from the stream its node; the setup's root `F` and answer the reference setup's
+(`SetupRoots::REFERENCE`, which `record_verifier` binds). -/
+def callsOfK (st : RecState) (red : ReducedSK) : List (List Word) :=
   let streamAt (half : Sym) : Word :=
     match st.nodes[half]? with
     | some (.input off _) => .stream off
     | _ => .stream 0
   red.openings.map fun (c, point, value) ↦
-    let (root, layout) : Word × List UInt8 := match c with
-      | .c1 => (streamAt red.root1.1, words.getD 0 [])
-      | .c2 => (streamAt red.root2.1, words.getD 1 [])
-      | .setup => (.const (beNat (LeanVM.Protocol.KeccakHash.digestBytes referenceRootsK.bytecode)), words.getD 2 [])
-    [root, .const (beNat layout), .const 1] ++ point.map Word.node ++ [.node value]
+    let (root, ood) : Word × Word := match c with
+      | .c1 => (streamAt red.root1.1, .node red.ood1)
+      | .c2 => (streamAt red.root2.1, .node red.ood2)
+      | .setup => (.const (beNat (LeanVM.Protocol.KeccakHash.digestBytes referenceRootsK.f)),
+          .const (beNat (elementWord referenceRootsK.fOod)))
+    [root, ood] ++ point.map Word.node ++ [.node value]
 
 /-- A program's recorded graph, from the recorder's start, with the Keccak calls' words (`callsOfK`) and its stream's
 length; no nonzero check. -/
-def recordedGraphK (p : Prog ReducedS) : Graph :=
+def recordedGraphK (p : Prog ReducedSK) : Graph :=
   { (p.record RecState.start).2.graph (callsOfK (p.record RecState.start).2 (p.record RecState.start).1)
       (p.record RecState.start).2.cursor with nonzero := [] }
 

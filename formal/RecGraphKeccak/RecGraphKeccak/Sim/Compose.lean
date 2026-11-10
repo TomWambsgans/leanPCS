@@ -6,7 +6,7 @@ import RecGraphKeccak.Sim.ComposeSpec
 
 `reduce_simQK`: from the parts (`Sim/ComposeSpec.lean`; Flock is `flockSpecK`, proved), `Pi1.reduceK keccak128 words`
 simulates `UniKeccak.reduceWithK (Fp π) keccak128 publicWords keccakRec3 .point` for the runs ending off the hazard
-(`SimE … NoHazardAtK`), the outputs related by `RedRK` (the roots at their stream offsets `24` and `3752`, the
+(`SimE … NoHazardAtK`), the outputs related by `RedRK` (the roots at their stream offsets `24` and `3776`, the
 openings, no pending matrices). The proof is `RecGraph.Sim.reduce_simQ`'s, step for step, at the Keccak shape: the
 tables `tablesKeccak`, Flock's 3696 bytes and 49 challenges, `t` the challenge 52 and `p_0` the challenge 45.
 -/
@@ -168,12 +168,18 @@ theorem reduce_simQK (PR : PartRep) (hPR : PartRepGrows PR) {TS : Table → List
   have hch1 : chIds s1 = [] := by rw [hl1, hch, List.eq_nil_of_length_eq_zero hl1n]; rfl
   have hcur1' : s1.cursor = 24 := by rw [hcur1, hcur, heights_lengthK]
   have hG1 : Grows s1 s1 := Grows.refl s1
-  -- 1. C1's root, α, β, γ.
+  -- 1. C1's root and out-of-domain answer, α, β, γ.
   refine SimE.bind ((sim_nextRoot π iv publicInput stream s1).withChIds.withCursor) ?_
-  intro s2 root1 root1E g2 gr2 hR
-  obtain ⟨⟨⟨hr1a, hr1b, hr1na, hr1nb⟩, l2, hl2, hl2n⟩, hcur2⟩ := hR
-  regrow g1 gr2
-  have hch2 : chIds s2 = [] := by rw [hl2, hch1, List.eq_nil_of_length_eq_zero hl2n]; rfl
+  intro s2r root1 root1E g2r gr2r hR
+  obtain ⟨⟨⟨hr1a, hr1b, hr1na, hr1nb⟩, l2r, hl2r, hl2rn⟩, hcur2r⟩ := hR
+  regrow g1 gr2r
+  have hch2r : chIds s2r = [] := by rw [hl2r, hch1, List.eq_nil_of_length_eq_zero hl2rn]; rfl
+  have hG2r : Grows s2r s2r := Grows.refl s2r
+  refine SimE.bind ((sim_nextScalar π iv publicInput stream s2r).withChIds.withCursor) ?_
+  intro s2 ood1 ood1E g2 gr2 hR
+  obtain ⟨⟨hood1, l2, hl2, hl2n⟩, hcur2⟩ := hR
+  regrow g2r gr2
+  have hch2 : chIds s2 = [] := by rw [hl2, hch2r, List.eq_nil_of_length_eq_zero hl2n]; rfl
   have hG2 : Grows s2 s2 := Grows.refl s2
   refine SimE.bind ((sim_drawRun_rec3 s2 4).withChIds.withCursor) ?_
   intro s3 alphas alphasE g3 gr3 hR
@@ -207,18 +213,25 @@ theorem reduce_simQK (PR : PartRep) (hPR : PartRepGrows PR) {TS : Table → List
   rw [hlen6] at hp0
   have hlen7 : (chIds s7).length = 52 := by rw [hl7, List.length_append, hlen6, hl7n]
   have hG7 : Grows s7 s7 := Grows.refl s7
-  have hcur7' : s7.cursor = 3752 := by
-    rw [hcur7, ps6.cursor, hcur5, hcur4, hcur3, hcur2, hcur1']
-  clear hcur7 hcur5 hcur4 hcur3 hcur2 hcur1 hcur hl1 hl1n hl2 hl2n hl3 hl3n hch1 hch2 hch4 hch5 hlen5 hlen6 hl7 hl7n
+  have hcur7' : s7.cursor = 3776 := by
+    rw [hcur7, ps6.cursor, hcur5, hcur4, hcur3, hcur2, hcur2r, hcur1']
+  clear hcur7 hcur5 hcur4 hcur3 hcur2 hcur2r hcur1 hcur hl1 hl1n hl2 hl2n hl2r hl2rn hl3 hl3n hch1 hch2 hch2r hch4
+    hch5 hlen5 hlen6 hl7 hl7n
   dsimp only
-  -- 3. C2's root, t, the digits, Z_act.
+  -- 3. C2's root and out-of-domain answer, t, the digits, Z_act.
   refine SimE.bind ((sim_nextRoot π iv publicInput stream s7).withChIds) ?_
-  intro s8 root2 root2E g8 gr8 hR
-  obtain ⟨⟨hr2a, hr2b, hr2na, hr2nb⟩, l8, hl8, hl8n⟩ := hR
-  regrow g7 gr8
-  have hlen8 : (chIds s8).length = 52 := by rw [hl8, List.length_append, hlen7, hl8n]
-  have hG8 : Grows s8 s8 := Grows.refl s8
+  intro s8r root2 root2E g8r gr8r hR
+  obtain ⟨⟨hr2a, hr2b, hr2na, hr2nb⟩, l8r, hl8r, hl8rn⟩ := hR
+  regrow g7 gr8r
+  have hlen8r : (chIds s8r).length = 52 := by rw [hl8r, List.length_append, hlen7, hl8rn]
+  have hG8r : Grows s8r s8r := Grows.refl s8r
   rw [hcur7'] at hr2na hr2nb
+  refine SimE.bind ((sim_nextScalar π iv publicInput stream s8r).withChIds) ?_
+  intro s8 ood2 ood2E g8 gr8 hR
+  obtain ⟨hood2, l8, hl8, hl8n⟩ := hR
+  regrow g8r gr8
+  have hlen8 : (chIds s8).length = 52 := by rw [hl8, List.length_append, hlen8r, hl8n]
+  have hG8 : Grows s8 s8 := Grows.refl s8
   refine SimE.bind (sim_sample π iv publicInput stream s8) ?_
   intro s9 t tE g9 gr9 hR
   obtain ⟨ht, hch9, -, -⟩ := hR
@@ -435,10 +448,10 @@ theorem reduce_simQK (PR : PartRep) (hPR : PartRepGrows PR) {TS : Table → List
     intro s46 openings b g46 gr46 hop
     have hk45 := g45.inv.kinv
     refine Sim.pure_of_pstep (PStep.refl s46 g46) ⟨⟨hr1a.sg hk45 gr46, hr1b.sg hk45 gr46, ?_, ?_⟩,
-      ⟨hr2a.sg hk45 gr46, hr2b.sg hk45 gr46, nodes_grow (hG8.trans gr46) hr2na,
-        nodes_grow (hG8.trans gr46) hr2nb⟩, hop, rfl⟩
-    · rw [← hcur1']; exact nodes_grow (hG2.trans gr46) hr1na
-    · rw [← hcur1']; exact nodes_grow (hG2.trans gr46) hr1nb
+      ⟨hr2a.sg hk45 gr46, hr2b.sg hk45 gr46, nodes_grow (hG8r.trans gr46) hr2na,
+        nodes_grow (hG8r.trans gr46) hr2nb⟩, hop, rfl, hood1.sg hk45 gr46, hood2.sg hk45 gr46⟩
+    · rw [← hcur1']; exact nodes_grow (hG2r.trans gr46) hr1na
+    · rw [← hcur1']; exact nodes_grow (hG2r.trans gr46) hr1nb
   · intro hnP c hc
     rw [not_not] at hnP
     have hsize : (chIds s44).length = c.challenges.size := by

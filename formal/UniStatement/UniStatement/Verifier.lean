@@ -207,8 +207,9 @@ def flockBitSlice : Flock.Variant := ⟨4, .claim⟩
 def flockLeanvmSkip : Flock.Variant := ⟨6, .weighted⟩
 
 /-- **What the verifier leaves** (`Reduced`): the two roots (each its halves), one opening per commitment,
-Flock's claims on `A0`, `B0`, the number of relations combined, each stack's variables, and (iteration 2) the
-three stacks' layouts, a function of the shape alone (`layoutsOf`). -/
+Flock's claims on `A0`, `B0`, the number of relations combined, each stack's variables, (iteration 2) the
+three stacks' layouts, a function of the shape alone (`layoutsOf`), and the two commitments' out-of-domain
+answers (the EIP's PCS claims, `crates/pcs_claim`: each read right after its root). -/
 structure Reduced where
   roots : (E × E) × (E × E)
   openings : List (Commitment × Opening)
@@ -216,6 +217,7 @@ structure Reduced where
   relations : ℕ
   stackVars : List (Commitment × ℕ)
   layouts : List (Commitment × StackLayout)
+  oods : E × E
   deriving Inhabited
 
 /-- **The setup stack's columns** (`stack_layouts`' setup): the bytecode's tuples (`lb + 4`), the memory's

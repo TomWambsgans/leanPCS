@@ -14,10 +14,11 @@ import UniKeccak
   calldata, compared with the Rust verifier's on every value it states: the verdict (stream error or not, and which),
   every challenge drawn, every value it requires to be zero, the accept bit, the number of relations, each stack's
   variables, every opening it leaves, declared (point claims with their points and values, or weighted claims with
-  their points, terms in order, values) and no matrices; the setup (the three Keccak layout words, the Keccak
-  contract's IV from the program's IV and the setup roots), the row counts the stream announces, the run's layouts
-  against the shape's (`layoutsOfK`); on the real proofs, every claim the contract checks declared, word for
-  word (`pcsCallsK`).
+  their points, terms in order, values) and no matrices, the two commitments' out-of-domain answers the run read;
+  the setup (the Keccak contract's IV from the program's IV and the setup commitment, its root and out-of-domain
+  answer), the row counts the stream announces, the run's layouts against the shape's (`layoutsOfK`); on the real
+  proofs, every PCS claim the contract checks declared, byte for byte (`pcsClaimsK`), and the setup commitment the
+  setup claim names.
 * **Self-tests**: every Keccak run's shape is valid, the Keccak layouts' `C1` holds `q_flock` at `h + 11` variables
   and the 50 lane columns, `SOURCE` is a permutation of the lanes.
 
@@ -155,9 +156,9 @@ structure Vector' where
   matrices : Bool
   shapeLine : Option (ℕ × ℕ × List ℕ)
   programIv : Option (Array UInt8)
-  setupRoots : List (Array UInt8)
+  setupRoots : List String
   contractIv : Option (Array UInt8)
-  layoutWords : List (Array UInt8)
+  oods : Option (List E)
   counts : Option (List ℕ)
   calls : List (Array UInt8)
 
@@ -206,15 +207,13 @@ def parseVector (lines : List String) : Except String Vector' := do
       | _, _, _ => none
     | _ => none
   let programIv ← (byKey "PROGRAMIV").mapM fun ts ↦ hexBytes (ts.headD "")
-  let setupRoots ← ((byKey "SETUPROOTS").getD []).mapM hexBytes
+  let setupRoots := (byKey "SETUPROOTS").getD []
   let contractIv ← (byKey "CONTRACTIV").mapM fun ts ↦ hexBytes (ts.headD "")
-  let layoutWords ← match byKey "LAYOUTWORDS" with
-    | some (_ :: ws) => ws.mapM hexBytes
-    | _ => pure []
+  let oods ← (byKey "OODS").mapM fun ts ↦ (many eElem).run' ts
   let counts := (byKey "COUNTS").map fun ts ↦ (ts.drop 1).filterMap String.toNat?
-  let calls ← ((lines.map tokens).filter (·.head? == some "PCSOPEN")).mapM fun ts ↦ hexBytes ((ts.drop 1).headD "")
+  let calls ← ((lines.map tokens).filter (·.head? == some "PCSCLAIM")).mapM fun ts ↦ hexBytes ((ts.drop 1).headD "")
   pure ⟨id, shape, flock, claims, kind, iv, publicInput, stream, error, challenges, zeros, nonzeros,
-    accept, relations, stackVars, openings, matrices, shapeLine, programIv, setupRoots, contractIv, layoutWords,
+    accept, relations, stackVars, openings, matrices, shapeLine, programIv, setupRoots, contractIv, oods,
     counts, calls⟩
 
 /-- The configuration a vector names. -/
@@ -253,13 +252,10 @@ def compare (v : Vector') : Except String (Option String) := do
   let some mode := modeNamed v.claims | throw s!"unknown claims {v.claims}"
   if !(shape.heights.length == 6 && shape.validate true) then
     return some s!"the shape is not valid (F5): {repr shape}"
-  -- The setup: the Keccak layout words, the setup roots, the Keccak contract's IV.
-  let words := layoutWordsK shape
-  if words.map List.toArray != v.layoutWords then
-    return some s!"layout words: Lean {words.map fun w ↦ hexOf w.toArray}, Rust {v.layoutWords.map hexOf}"
-  let roots : SetupRoots ← match v.setupRoots with
-    | [f] => pure ⟨digestOfBytes32 f.toList⟩
-    | _ => throw "no SETUPROOTS line (one word, the setup's root F)"
+  -- The setup: the setup commitment (root, out-of-domain answer), the Keccak contract's IV.
+  let roots : SetupRootsK ← match v.setupRoots with
+    | [f, ood] => pure ⟨digestOfBytes32 (← hexBytes f).toList, ← eOf ood⟩
+    | _ => throw "no SETUPROOTS line (the setup's root F and its out-of-domain answer)"
   match v.programIv, v.contractIv with
   | some p, some c =>
     let iv := contractIvK shape variant p.toList roots
@@ -294,18 +290,31 @@ def compare (v : Vector') : Except String (Option String) := do
     for (i, (a, b)) in (List.range r.openings.length).zip (r.openings.zip v.openings) do
       if !sameOpening a b then return some s!"opening {i} ({a.1.name}) differs"
     if r.matrices.isSome || v.matrices then return some "matrices: the Keccak verifier has none"
+    -- The commitments' out-of-domain answers, each read after its root.
+    match v.oods with
+    | some oods =>
+      if [r.oods.1, r.oods.2] != oods then
+        return some s!"oods: Lean {[r.oods.1, r.oods.2].map eHex}, Rust {oods.map eHex}"
+    | none => return some "a run with a result but no OODS line"
     -- The stacks' layouts are the shape's alone (layoutsOfK, the Rust's layouts_for(shape, Keccak)).
     let sameLayouts := (r.layouts.zip (layoutsOfK shape)).all fun ((c, l), (c', l')) ↦
       c == c' && l.vars == l'.vars && l.blocks == l'.blocks
     if !(sameLayouts && r.layouts.length == (layoutsOfK shape).length) then
       return some "the run's layouts are not layoutsOfK the shape"
-    -- A real proof's claims (the contract's), word for word: the Lean's calls at the vector's roots.
+    -- A real proof's claims (the contract's), byte for byte: the Lean's PCS claims at the vector's setup
+    -- commitment; each claim's `n` its stack's variables (`stackVarsK`).
     if !v.calls.isEmpty then
-      let lean := (pcsCallsK shape roots r).map List.toArray
+      let lean := (pcsClaimsK roots r).map List.toArray
       if lean.length != v.calls.length then
         return some s!"claims: Lean {lean.length}, the contract {v.calls.length}"
       for (i, (a, b)) in (List.range lean.length).zip (lean.zip v.calls) do
         if a != b then return some s!"claim {i}: Lean {hexOf a}, the contract {hexOf b}"
+      for ((c, o), b) in r.openings.zip v.calls do
+        match o with
+        | .point pt _ _ =>
+          if pt.length != stackVarsK shape c then return some s!"claim on {c.name}: n {pt.length}, not its stack's"
+          if (b.toList.getD 1 0).toNat != stackVarsK shape c then return some s!"claim on {c.name}: its n byte"
+        | _ => return some "a weighted claim among the real proof's"
     return none
 
 /-- One terminal vector: `structuredTerminal` against the Rust's structured and walked values. -/
@@ -346,7 +355,7 @@ def vectorsOf (lines : List String) : List (List String) :=
 def selfTests : List (String × Bool) :=
   let shapes := keccakRuns.map fun (_, _, cells, rows) ↦ keccakShapeOf cells rows
   let valid := shapes.all fun s ↦ s.heights.length == 6 && s.validate true
-  let c1 (s : Shape) : StackLayout := ((layoutsOfK s).lookup .c1).getD default
+  let c1 (s : UniStatement.Shape) : StackLayout := ((layoutsOfK s).lookup .c1).getD default
   let qflock := shapes.all fun s ↦
     ((c1 s).limbs .qflock).map (·.2.1) == [s.heights.getD 5 0 + 11]
   let lanes := shapes.all fun s ↦
@@ -402,7 +411,7 @@ def main : IO Unit := do
         let (a, r) := ((tally.find? (·.1 == key)).map (·.2)).getD (0, 0)
         tally := (tally.filter (·.1 != key)) ++ [(key, if v.accept then (a + 1, r) else (a, r + 1))]
         IO.println s!"AGREE {v.id} {v.shape} {v.flock} {v.claims} {v.kind}: {if v.accept then "accept" else
-          s!"reject{(v.error.map (" " ++ ·)).getD ""}"}, {v.challenges.length} challenges, {v.zeros.length} checks, {v.openings.length} openings{if v.calls.isEmpty then "" else s!", {v.calls.length} claims word for word"}"
+          s!"reject{(v.error.map (" " ++ ·)).getD ""}"}, {v.challenges.length} challenges, {v.zeros.length} checks, {v.openings.length} openings{if v.calls.isEmpty then "" else s!", {v.calls.length} PCS claims byte for byte"}"
       | .ok (some d) =>
         failures := failures ++ [s!"{v.id}: {d}"]
         IO.println s!"DISAGREE {v.id} {v.shape} {v.flock} {v.claims} {v.kind}: {d}"

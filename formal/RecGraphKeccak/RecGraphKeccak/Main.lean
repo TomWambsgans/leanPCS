@@ -2,14 +2,15 @@
 -- on the shape's hash table's height).
 import RecGraph.Pi1.Main
 import RecGraphKeccak.Pi1.Verifier
+import UniKeccak.Pcs
 import UniSound.Ids.Model
 
 /-!
 # Graph = verifier for the Keccak VM's π1-rec3: the statement, and its reduction
 
 * `verifierOutputsWithK`: the outputs of `UniKeccak`'s verifier at `keccakRec3` and the point-claim ABI (`runWithK`, its
-  three claims `pcsCallsK`, the values it collected as zeros, nothing nonzero), on the shape and setup
-  roots the graph was recorded with (`keccak128`, `referenceRootsK`).
+  three PCS claims' words `pcsClaimWordsK`, the values it collected as zeros, nothing nonzero), on the shape and
+  setup commitment the graph was recorded with (`keccak128`, `referenceRootsK`).
 * `MergeHazardK`: the merge hazard of the Keccak verifier. `combine` merges points by value in `UniKeccak`,
   by symbol in the graph; the merge that changes a weight is of `y(t)` (the `SHA3` table's `q_flock` slot point, its
   `h_SHA3 = 15` coordinates) into a `C1` point starting with `t` or into Flock's point: `Z_bad(t) = 0`,
@@ -29,13 +30,13 @@ section With
 variable {m : Type → Type} [Monad m] (F : KeccakState → m KeccakState)
 
 /-- **The Keccak verifier's outputs** at π1-rec3's Fiat–Shamir shape (`keccakRec3`) and the point-claim ABI: the run
-on the stream (`runWithK`), and on success its claims (`pcsCallsK`) and the values it collected as zeros;
-nothing is required nonzero. A run that ends in an error has none. -/
-def verifierOutputsWithK (shape : UniStatement.Shape) (roots : SetupRoots) (iv publicInput : List UInt8) (stream : Array UInt8) :
-    m (Option Outputs) := do
+on the stream (`runWithK`), and on success its PCS claims' words (`pcsClaimWordsK`) and the values it collected as
+zeros; nothing is required nonzero. A run that ends in an error has none. -/
+def verifierOutputsWithK (shape : UniStatement.Shape) (roots : UniKeccak.SetupRootsK) (iv publicInput : List UInt8)
+    (stream : Array UInt8) : m (Option Outputs) := do
   let o ← UniKeccak.runWithK F shape iv publicInput stream UniKeccak.keccakRec3 .point
   return match o.result with
-    | .ok r => some ⟨UniKeccak.pcsCallsK shape roots r, o.chan.zeros.toList, []⟩
+    | .ok r => some ⟨UniKeccak.pcsClaimWordsK roots r, o.chan.zeros.toList, []⟩
     | .error _ => none
 
 end With
@@ -73,7 +74,7 @@ def Pi1SimK : Prop :=
 
 /-- `evalGraph_recorded` for `recordedGraphK`. -/
 theorem evalGraph_recordedGraphK (π : KeccakState → KeccakState) (iv publicInput : List UInt8) (stream : Array UInt8)
-    (p : Prog RecGraph.Pi1.ReducedS) :
+    (p : Prog ReducedSK) :
     evalGraph (m := Id) (fun s ↦ pure (π s)) (recordedGraphK p) iv publicInput stream =
       if stream.size = (recordedGraphK p).streamLen then
         some (outputsOf (recordedGraphK p) stream

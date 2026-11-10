@@ -3,7 +3,7 @@
 -- (`keccakIsaInstance`, after `formal/Lv42`'s `leanIsaInstance`).
 module
 
-public import UniKeccak.Opening
+public import UniKeccak.Verifier
 public import UniStatement.Mapping
 public import KeccakVm.Instance
 

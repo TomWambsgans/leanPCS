@@ -150,10 +150,12 @@ def ShapeSpecK (TS : Table → List E → TablePart × List Relation → Prop) (
 def NoHazardAtK (c : Chan) : Prop :=
   ¬ (53 ≤ c.challenges.size ∧ HazardK (c.challenges.getD 45 0) (c.challenges.getD 52 0))
 
-/-- **What `reduceK` leaves, represented**: the roots (at `24` and `3752`), the openings, no pending matrices. -/
+/-- **What `reduceK` leaves, represented**: the roots (at `24` and `3776`), the openings, no pending matrices, the
+two out-of-domain answers. -/
 def RedRK (π : KeccakState → KeccakState) (iv publicInput : List UInt8) (stream : Array UInt8) (st : RecState)
-    (red : ReducedS) (r : Reduced) : Prop :=
-  RootR π iv publicInput stream st red.root1 r.roots.1 24 ∧ RootR π iv publicInput stream st red.root2 r.roots.2 3752 ∧
-    OpeningsR π iv publicInput stream st red.openings r.openings ∧ r.matrices = none
+    (red : RecGraphKeccak.Pi1.ReducedSK) (r : Reduced) : Prop :=
+  RootR π iv publicInput stream st red.root1 r.roots.1 24 ∧ RootR π iv publicInput stream st red.root2 r.roots.2 3776 ∧
+    OpeningsR π iv publicInput stream st red.openings r.openings ∧ r.matrices = none ∧
+    Rp π iv publicInput stream st red.ood1 r.oods.1 ∧ Rp π iv publicInput stream st red.ood2 r.oods.2
 
 end RecGraphKeccak.Sim
