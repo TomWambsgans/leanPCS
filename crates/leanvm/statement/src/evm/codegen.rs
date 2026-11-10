@@ -4,9 +4,8 @@
 // reused after its last read; here for leanVM's verifier: the transcript absorbs runs of calldata, a check is of zero
 // or of nonzero, commitments come from calldata or storage, every byte of code carries the phase it computes, and a
 // measuring build that never reverts. The compilation and the assembly are now `crates/evm_link`'s (`front`, and
-// `assemble` or `link`), this file the code of each node, the entry and the outputs. MIT OR Apache-2.0; see AGENTS.md.
-//! A recorded graph as EVM bytecode: one contract ([`compile`]), or contracts that each fit EIP-170's limit
-//! ([`compile_deployable`]).
+// `assemble`), this file the code of each node, the entry and the outputs. MIT OR Apache-2.0; see AGENTS.md.
+//! A recorded graph as EVM bytecode, one contract ([`compile`]).
 
 use evm_link::front::{self, Check, Dag, Piece, Source};
 pub use evm_link::op::word;
@@ -14,7 +13,7 @@ use evm_link::op::{
     AND, CALLDATACOPY, CALLDATALOAD, CALLDATASIZE, CALLVALUE, FIELD_MUL, KECCAK256, MSTORE, OR, PUSH0, SHR, SLOAD, XOR,
     push, push_usize,
 };
-use evm_link::{Linked, Options, Program, Tags};
+use evm_link::{Options, Program, Tags};
 
 use crate::evm::record::{Graph, Node};
 
@@ -30,7 +29,6 @@ pub const ENTRY: &str = "entry: selector, length, no value";
 pub const CALLS: &str = "claims: written, hashed, checked declared in the frame";
 pub const ROOTS: &str = "claims: fixed commitments read (cold SLOAD)";
 pub const MEASURE: &str = "measurement only (JUMPDEST after each check, subtracted)";
-pub use evm_link::{LINK_CALL, LINK_PASS};
 
 /// EIP-170's limit on a contract's code.
 pub const MAX_CODE: usize = 24_576;
@@ -184,21 +182,8 @@ pub struct Contract {
     pub memory_words: usize,
 }
 
-/// The same program as contracts that each fit ([`evm_link::link`]): a driver, which a verifying call is sent to,
-/// and the parts it `DELEGATECALL`s.
-pub struct Deployable {
-    pub linked: Linked,
-    pub calldata_len: usize,
-    pub field_muls: usize,
-    pub xors: usize,
-    pub hashes: usize,
-    pub hashed_bytes: usize,
-    /// The program's checks, its entry's included: one `JUMPDEST` each in a measuring build, and one a part's call.
-    pub checks: usize,
-}
-
 /// The program, and what it computes.
-fn program(graph: &Graph, outputs: &[Word], ending: &Ending, entry: &Entry, linkable: bool) -> (Program, Stats) {
+fn program(graph: &Graph, outputs: &[Word], ending: &Ending, entry: &Entry) -> (Program, Stats) {
     let calldata_len = STREAM + entry.stream_len + 1;
     // Not a call of the verifier: calldata of another length, or of another selector, or value.
     let selector = [
@@ -259,7 +244,6 @@ fn program(graph: &Graph, outputs: &[Word], ending: &Ending, entry: &Entry, link
         calls_tag: CALLS,
         scratch,
         calldata_len,
-        linkable,
     };
     let compiled = front::compile(&source);
     let n = graph.nodes.len();
@@ -302,8 +286,6 @@ fn options(measure: bool, jump_width: usize) -> Options<'static> {
             measure: MEASURE,
             ending: CALLS,
             tail: ENTRY,
-            call: LINK_CALL,
-            pass: LINK_PASS,
         },
     }
 }
@@ -312,7 +294,7 @@ fn options(measure: bool, jump_width: usize) -> Options<'static> {
 /// with no value. It reverts unless every node of `graph.zero` is zero and every one of `graph.nonzero` nonzero, else
 /// writes `outputs` to a region of fresh memory, one word each, and ends as `ending` says.
 pub fn compile(graph: &Graph, outputs: &[Word], ending: &Ending, entry: &Entry) -> Contract {
-    let (program, stats) = program(graph, outputs, ending, entry, false);
+    let (program, stats) = program(graph, outputs, ending, entry);
     let assembled = evm_link::assemble(&program, &options(entry.measure, 3));
     Contract {
         code: assembled.code,
@@ -324,52 +306,5 @@ pub fn compile(graph: &Graph, outputs: &[Word], ending: &Ending, entry: &Entry) 
         hashed_bytes: stats.hashed_bytes,
         checks: stats.checks,
         memory_words: assembled.memory_words,
-    }
-}
-
-/// The same contract, as contracts of at most `limit` bytes of code each: the one contract [`compile`] makes if it
-/// fits, else a driver and parts.
-pub fn compile_deployable(graph: &Graph, outputs: &[Word], ending: &Ending, entry: &Entry, limit: usize) -> Deployable {
-    let (plain, stats) = program(graph, outputs, ending, entry, false);
-    let one = evm_link::assemble(&plain, &options(entry.measure, 3));
-    let linked = if one.code.len() <= limit {
-        evm_link::link(&plain, &options(entry.measure, 3), limit)
-    } else {
-        // Every part is under 64 KB: two bytes a jump.
-        let (program, _) = program(graph, outputs, ending, entry, true);
-        evm_link::link(&program, &options(entry.measure, 2), limit)
-    };
-    deployable(linked, stats)
-}
-
-/// The same contracts cut where `like`'s are (the same program, built as `entry` says): a measuring build of `like`,
-/// whose gas is `like`'s and one a check.
-pub fn compile_deployable_like(
-    graph: &Graph,
-    outputs: &[Word],
-    ending: &Ending,
-    entry: &Entry,
-    like: &Deployable,
-) -> Deployable {
-    let starts = like.linked.starts();
-    let (plain, stats) = program(graph, outputs, ending, entry, false);
-    let linked = if starts.is_empty() {
-        evm_link::link_at(&plain, &options(entry.measure, 3), &[])
-    } else {
-        let (program, _) = program(graph, outputs, ending, entry, true);
-        evm_link::link_at(&program, &options(entry.measure, 2), &starts)
-    };
-    deployable(linked, stats)
-}
-
-fn deployable(linked: Linked, stats: Stats) -> Deployable {
-    Deployable {
-        linked,
-        calldata_len: stats.calldata_len,
-        field_muls: stats.field_muls,
-        xors: stats.xors,
-        hashes: stats.hashes,
-        hashed_bytes: stats.hashed_bytes,
-        checks: stats.checks,
     }
 }

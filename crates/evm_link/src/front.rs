@@ -2,7 +2,7 @@
 // repository's crates/membership/evm/src/codegen.rs (adapted from leanVM (https://github.com/leanEthereum/leanVM), branch
 // PCS-openings-aggregation, commit 651453c6): the compilation of a recorded graph to straight-line code, a value used
 // once left on the stack and a shared one kept in a memory slot, the deeper operand evaluated first; here for any graph
-// whose nodes' code works on their operands on the stack, with the seams of [`crate::link`]. MIT OR Apache-2.0; see
+// whose nodes' code works on their operands on the stack. MIT OR Apache-2.0; see
 // AGENTS.md.
 //! A recorded graph as a straight-line [`Program`].
 //!
@@ -13,7 +13,7 @@
 
 use crate::{Ending, Item, Program, Tag};
 
-/// A piece of a node's code: instructions, or a push of a calldata offset (which [`crate::link`] may move).
+/// A piece of a node's code: instructions, or a push of a calldata offset.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Piece {
     Code(Vec<u8>),
@@ -92,9 +92,6 @@ pub struct Source<'a, D> {
     /// Bytes of memory the nodes' code uses as scratch, from 0.
     pub scratch: usize,
     pub calldata_len: usize,
-    /// Put seams between nodes, and compute every output's node before the first is written, for [`crate::link`];
-    /// otherwise the program is the plain one, for [`crate::assemble`].
-    pub linkable: bool,
 }
 
 /// A compiled program, and how often each node is read.
@@ -111,7 +108,6 @@ struct Compiler<'a, D> {
     depth: Vec<u32>,
     items: Vec<(Item, Tag)>,
     tag: Tag,
-    seams: bool,
 }
 
 /// The operands a node is computed from: one, for two equal ones.
@@ -167,9 +163,6 @@ impl<D: Dag> Compiler<'_, D> {
         if self.shared[at] {
             self.done[at] = true;
             self.item(Item::Store(id));
-        }
-        if self.seams && !self.dag.is_const(id) {
-            self.item(Item::Seam);
         }
         self.tag = outer;
     }
@@ -229,16 +222,7 @@ pub fn compile<D: Dag>(source: &Source<D>) -> Compiled {
             }
         }
     }
-    let mut kept = uses.clone();
-    if source.linkable {
-        // An output's node is kept, so that every output is written in the last part, after the last seam.
-        for &k in &written {
-            if let Word::Node(id) = source.outputs[k] {
-                kept[id as usize] += 1;
-            }
-        }
-    }
-    let shared: Vec<bool> = (0..n).map(|at| kept[at] > 1 && !dag.is_const(at as u32)).collect();
+    let shared: Vec<bool> = (0..n).map(|at| uses[at] > 1 && !dag.is_const(at as u32)).collect();
     let mut depth = vec![1u32; n];
     for at in 0..n {
         let of = |id: u32| if shared[id as usize] { 1 } else { depth[id as usize] };
@@ -273,7 +257,6 @@ pub fn compile<D: Dag>(source: &Source<D>) -> Compiled {
         depth,
         items: Vec::new(),
         tag: source.entry_tag,
-        seams: source.linkable,
     };
     compiler.code(source.entry.clone());
     compiler.item(Item::FailIf);
@@ -286,18 +269,6 @@ pub fn compile<D: Dag>(source: &Source<D>) -> Compiled {
         compiler.item(Item::FailIf);
     }
     compiler.tag = source.calls_tag;
-    if source.linkable {
-        for &k in &written {
-            if let Word::Node(id) = source.outputs[k]
-                && !dag.is_const(id)
-                && !compiler.done[id as usize]
-            {
-                compiler.eval(id);
-                compiler.tag = source.calls_tag;
-                compiler.code(vec![crate::op::POP]);
-            }
-        }
-    }
     if let Some(plan) = plan {
         // Each call's writes, then the call, its input at the region's start.
         let runs = source.calls.as_ref().expect("calls");

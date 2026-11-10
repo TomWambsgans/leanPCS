@@ -10,9 +10,8 @@ contract's Keccak-256 chain) and one WHIR opening per commitment (`C1`, `C2`, th
 ## Status
 
 On real executions (32, 128 and 400 signatures) and both variants: the Rust verifier accepts; the three WHIR
-openings verify; the straight contract and the deployable one (`crates/evm_link`, parts of at most 24,576 bytes)
-accept the real calldata, word for word with the Rust verifier, with the frame declaring exactly the claims the
-openings prove; both reject a flipped byte and any claim left undeclared; five stream mutations are rejected by the
+openings verify; the contract accepts the real calldata, word for word with the Rust verifier, with the frame
+declaring exactly the claims the openings prove; it rejects a flipped byte and any claim left undeclared; five stream mutations are rejected by the
 Rust verifier. The real proofs' gas is in `KECCAK.md` ("The real proofs' gas").
 
 **Rust→EVM test vectors.** `tests/vectors/` holds three real proofs: `keccak.txt` (32 signatures, `KECCAK_MAIN`),
@@ -66,7 +65,7 @@ transcription's differential vectors.
 
    - `proves_and_verifies_keccak` (`KECCAK_MAIN`) and `proves_and_verifies_keccak_rec3` (`KECCAK_REC3`): the proof,
      the quotients' degrees, every combined claim against its stack, the Rust verifier, the WHIR openings, the
-     straight and deployable contracts on the real calldata (word-for-word parity with the Rust verifier), each call's
+     contract on the real calldata (word-for-word parity with the Rust verifier), each call's
      input against the claim its opening proves, and the mutations. With `WRITE_VECTORS=<dir>` each writes its test
      vector (`VECTOR_FILE` names it).
    - `identities_hold_on_the_domain` (the bus balance, the copies on every row, the counters), `setup_roots` (the

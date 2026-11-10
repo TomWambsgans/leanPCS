@@ -1,23 +1,21 @@
 // Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! The Rust→EVM test vectors (`tests/vectors/*.txt`): a real proof's calldata (without the frame byte a verifying call
-//! appends), the claims the contract checks declared (which the openings prove), the verdict and the gas, straight and
-//! deployed. Written by
+//! appends), the claims the contract checks declared (which the openings prove), the verdict and the gas. Written by
 //! `tests/prove_real.rs` (`WRITE_VECTORS=<dir>`), replayed by `tests/evm_vectors.rs` with no prover and no trace.
 //!
 //! The format is lines of `key value`, the bytes in lowercase hex: `config`, `shape` (`log_memory log_bytecode` and
 //! the six row counts), `public`, `calldata`, one `pcs_open` line per claim in order (the key from when they were
 //! calls of a precompile), one `whir_root` line per claim in order (the root of the commitment the claim is on, as the prover committed it: the hash whose two
 //! scalars, `hash_to_scalars`, are its WHIR opening's first two; written by the prover's run, not read off the
-//! contract's calls), `accepts`, `gas_straight`, `gas_deployed`, `contracts`; `#` starts a comment.
+//! contract's calls), `accepts`, `gas_straight`; `#` starts a comment. Vectors written before this repository dropped
+//! its linker also carry `gas_deployed` and `contracts` (the build cut into EIP-170 contracts), which are not read.
 
 #![allow(dead_code)]
 
-use leanvm_statement::evm::codegen::{Ending, Entry, compile_deployable};
-use leanvm_statement::evm::deploy::{Deployed, deploy};
-use leanvm_univariate::contract::{NAME, Recorded, calls};
 use leanvm_univariate::{KECCAK_MAIN, KECCAK_REC3, Shape, Variant};
 
 /// The program's IV the vectors' contracts are built with (`leanvm_statement::shapes::PROGRAM_IV`).
+#[allow(unused_imports)]
 pub use leanvm_statement::shapes::PROGRAM_IV;
 
 pub struct Vector {
@@ -31,8 +29,6 @@ pub struct Vector {
     pub whir_roots: Vec<[u8; 32]>,
     pub accepts: bool,
     pub gas_straight: u64,
-    pub gas_deployed: u64,
-    pub contracts: usize,
     /// What the proof is of, written as a comment line under the header (not read back).
     pub note: String,
 }
@@ -87,8 +83,6 @@ pub fn write(v: &Vector) -> String {
     }
     out.push_str(&format!("accepts {}\n", v.accepts));
     out.push_str(&format!("gas_straight {}\n", v.gas_straight));
-    out.push_str(&format!("gas_deployed {}\n", v.gas_deployed));
-    out.push_str(&format!("contracts {}\n", v.contracts));
     out
 }
 
@@ -106,8 +100,6 @@ pub fn read(text: &str) -> Vector {
         whir_roots: Vec::new(),
         accepts: false,
         gas_straight: 0,
-        gas_deployed: 0,
-        contracts: 0,
         note: String::new(),
     };
     for line in text.lines().filter(|l| !l.starts_with('#') && !l.is_empty()) {
@@ -128,8 +120,7 @@ pub fn read(text: &str) -> Vector {
             "whir_root" => v.whir_roots.push(unhex(value).try_into().expect("32 bytes")),
             "accepts" => v.accepts = value == "true",
             "gas_straight" => v.gas_straight = value.parse().expect("a number"),
-            "gas_deployed" => v.gas_deployed = value.parse().expect("a number"),
-            "contracts" => v.contracts = value.parse().expect("a number"),
+            "gas_deployed" | "contracts" => {}
             other => panic!("no key {other}"),
         }
     }
@@ -148,18 +139,4 @@ pub fn pi1_abi(input: &[u8]) -> Vec<u8> {
         x[..32].copy_from_slice(&leanvm_statement::evm::machine::root_word(&raw));
     }
     x
-}
-
-/// The deployable verifying build of `recorded` (`crates/evm_link`: contracts of at most 24,576 bytes), deployed.
-pub fn deployable(recorded: &Recorded) -> Deployed {
-    let call_words = calls(recorded);
-    let ending = Ending::Declared(call_words.iter().map(Vec::len).collect());
-    let entry = Entry {
-        name: NAME,
-        iv: recorded.iv(&PROGRAM_IV),
-        stream_len: recorded.stream_len,
-        measure: false,
-    };
-    let real = compile_deployable(&recorded.graph, &call_words.concat(), &ending, &entry, 24_576);
-    deploy(&real, &[])
 }

@@ -8,7 +8,7 @@
 
 use leanvm_statement::shapes::{PROGRAM_IV, WORKLOADS, by_xmss};
 use leanvm_univariate::claims::Commitment;
-use leanvm_univariate::contract::{GasReport, measure, measure_deployable, parity, record_verifier, sample_stream};
+use leanvm_univariate::contract::{GasReport, measure, parity, record_verifier, sample_stream};
 use leanvm_univariate::verifier::layouts;
 use leanvm_univariate::{Claims, KECCAK_MAIN, Shape};
 
@@ -116,15 +116,5 @@ fn keccak_gas_report() {
             );
             phases(report);
         }
-        // Deployable: the Keccak contract cut into EIP-170 contracts.
-        let shape = Shape::of(&by_xmss(400).shape);
-        let deployable = measure_deployable(&shape, &PROGRAM_IV, KECCAK_MAIN, Claims::Point, 24_576);
-        println!(
-            "\nKeccak VM, 400 signatures, deployable: {} contracts, execution {} (straight {}), tx EIP-7623: {}",
-            deployable.contracts.len(),
-            deployable.report.execution,
-            deployable.straight,
-            deployable.report.transaction(40),
-        );
     });
 }

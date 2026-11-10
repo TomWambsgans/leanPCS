@@ -83,10 +83,9 @@ one χ gate on bits (3,878,612 of 2^22 rows), its claims opened by leanVM's WHIR
 
 **Shared.**
 
-- `crates/evm_link`: the compilation and assembly the code generators share, and the linker that cuts a program too
-  big for EIP-170 into a driver and parts of at most 24,576 bytes it `DELEGATECALL`s, computing the same. The
-  membership contract fits and is assembled byte for byte as without the linker (its tests also run on it linked
-  into 2 KB parts); π1's contract is 4 parts.
+- `crates/evm_link`: the compilation and assembly into one contract that the code generators share. The membership
+  contract (6,314 B) and π2's (13.2 KB) fit EIP-170; π1's own contract (about 86 KB) does not, and is built only to
+  test it against its Rust verifier and to record the vectors' claims (the recursion verifies π1 inside π2).
 - `crates/vendor/leanvm-c445e3d5`: leanVM `c445e3d5`'s `primitives`, `fiat_shamir`, `pcs`, `parallel`, `verifier`,
   `bench`.
 - `params/`: the parameter calculators (WHIR's, π1's and π2's soundness bits).
@@ -154,7 +153,7 @@ permutation; `formal/EndToEnd` proves them ([`formal/README.md`](formal/README.m
 
 ## leanVM: what is proved and tested
 
-- **Tested.** π1's contract equals its Rust verifier word for word (straight and linked into EIP-170 parts); the real
+- **Tested.** π1's contract equals its Rust verifier word for word; the real
   proofs at 32, 128 and 400 signatures (committed vectors) are accepted with their frame of PCS claims declaring
   exactly the claims their WHIR openings prove, and mutations are rejected. π2's proof of the real 128-signature π1-rec3 proof is
   accepted by its contract, its openings verify, flipped calldata bytes are rejected, every pull of the circuit equals

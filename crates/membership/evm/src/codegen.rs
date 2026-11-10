@@ -1,13 +1,13 @@
 // Adapted from leanVM (https://github.com/leanEthereum/leanVM), branch PCS-openings-aggregation, commit 651453c6,
 // file crates/membership/evm/src/codegen.rs; new here: the checks of the declared claims, the selector, the index root in storage
-// (`Entry`), `setIndexRoot` and the creation code; the assembly is now `crates/evm_link`'s, which also links the
-// program into contracts that each fit EIP-170's limit ([`compile_linked`]). MIT OR Apache-2.0; see AGENTS.md.
+// (`Entry`), `setIndexRoot` and the creation code; the assembly is now `crates/evm_link`'s. MIT OR Apache-2.0; see
+// AGENTS.md.
 //! A recorded graph as EVM bytecode: straight-line code, a value used once left on the stack and a shared one
 //! kept in a memory slot, which is reused after its last read.
 
 use evm_link::op::{
     AND, CALLDATACOPY, CALLDATALOAD, CALLDATASIZE, CALLER, CALLVALUE, CODECOPY, CODESIZE, DUP1, DUP2, FIELD_MUL,
-    ISZERO, JUMPDEST, JUMPI, KECCAK256, MLOAD, MSTORE, OR, POP, PUSH0, PUSH32, RETURN, REVERT, SHL, SHR, SLOAD, SSTORE,
+    ISZERO, JUMPDEST, JUMPI, KECCAK256, MLOAD, MSTORE, OR, PUSH0, PUSH32, RETURN, REVERT, SHL, SHR, SLOAD, SSTORE,
     STOP, SWAP1, SWAP2, XOR, push, push_usize,
 };
 use evm_link::{Item, Options, Program};
@@ -113,8 +113,6 @@ struct Compiler<'a> {
     /// Stack words evaluating a node takes.
     depth: Vec<u32>,
     items: Vec<(Item, &'static str)>,
-    /// For [`evm_link::link`]: a seam after every node.
-    seams: bool,
 }
 
 impl Compiler<'_> {
@@ -235,45 +233,21 @@ impl Compiler<'_> {
             self.done[at] = true;
             self.item(Item::Store(id));
         }
-        if self.seams && !matches!(self.graph.nodes[at], Node::Const(_)) {
-            self.item(Item::Seam);
-        }
     }
 }
 
 /// A contract, and what one call of it executes: its code is straight-line, so every instruction runs once.
 #[derive(Clone)]
 pub struct Contract {
-    /// The code, with no owner ([`creation_code`] writes one at `owner_at`); a driver's, with no parts' addresses.
+    /// The code, with no owner ([`creation_code`] writes one at `owner_at`).
     pub code: Vec<u8>,
     /// Where the code holds its owner, the word a `PUSH32` pushes, if it reads the circuit's commitment from
     /// storage.
     pub owner_at: Option<usize>,
     pub field_muls: usize,
     pub hashes: usize,
-    /// Memory it touches, in words (a driver's: its own).
+    /// Memory it touches, in words.
     pub memory_words: usize,
-    /// The parts it `DELEGATECALL`s in order, if it is a driver ([`compile_linked`]), and where its code holds each
-    /// one's address (the 20 bytes of a `PUSH20`).
-    pub parts: Vec<Vec<u8>>,
-    pub part_at: Vec<usize>,
-}
-
-impl Contract {
-    /// The driver calling its parts at `addresses`: a contract with no parts left to place.
-    pub fn calling(&self, addresses: &[[u8; 20]]) -> Contract {
-        assert_eq!(addresses.len(), self.parts.len(), "an address a part");
-        let mut code = self.code.clone();
-        for (&at, address) in self.part_at.iter().zip(addresses) {
-            code[at..at + 20].copy_from_slice(address);
-        }
-        Contract {
-            code,
-            parts: Vec::new(),
-            part_at: Vec::new(),
-            ..self.clone()
-        }
-    }
 }
 
 /// The program, and the setIndexRoot tail's maker.
@@ -283,7 +257,7 @@ struct Compiled {
     hashes: usize,
 }
 
-fn program(graph: &Graph, outputs: &[Word], ending: &Ending, entry: &Entry, inputs: usize, linkable: bool) -> Compiled {
+fn program(graph: &Graph, outputs: &[Word], ending: &Ending, entry: &Entry, inputs: usize) -> Compiled {
     let base = VERIFY.len();
     // Then a byte, the index of the transaction's frame of PCS claims (a returning contract reads past it).
     let calldata_len = base + SCALARS + SCALAR_BYTES * inputs + 1;
@@ -306,13 +280,8 @@ fn program(graph: &Graph, outputs: &[Word], ending: &Ending, entry: &Entry, inpu
             }
         }
     }
-    let mut kept = uses.clone();
-    if linkable {
-        // An output's node is kept, so that every output is written in the last part, after the last seam.
-        output_nodes().for_each(|id| kept[id as usize] += 1);
-    }
     let shared: Vec<bool> = (0..n)
-        .map(|at| kept[at] > 1 && !matches!(graph.nodes[at], Node::Const(_)))
+        .map(|at| uses[at] > 1 && !matches!(graph.nodes[at], Node::Const(_)))
         .collect();
     let mut depth = vec![1u32; n];
     for at in 0..n {
@@ -344,13 +313,11 @@ fn program(graph: &Graph, outputs: &[Word], ending: &Ending, entry: &Entry, inpu
         graph,
         entry,
         base,
-        // Linked, the seed's part is not the outputs': the last part reads the root again (a warm `SLOAD`).
-        stored_root: if linkable { None } else { stored_root },
+        stored_root,
         shared,
         done: vec![false; n],
         depth,
         items: Vec::new(),
-        seams: linkable,
     };
     // Not a call of the verifier: calldata of another length, or of another selector, or value.
     compiler.code(&[&[CALLDATASIZE][..], &push_usize(calldata_len), &[XOR]].concat());
@@ -367,14 +334,6 @@ fn program(graph: &Graph, outputs: &[Word], ending: &Ending, entry: &Entry, inpu
         compiler.eval(id);
         compiler.code(&[ISZERO]);
         compiler.item(Item::FailIf);
-    }
-    if linkable {
-        for id in output_nodes() {
-            if !matches!(graph.nodes[id as usize], Node::Const(_)) && !compiler.done[id as usize] {
-                compiler.eval(id);
-                compiler.code(&[POP]);
-            }
-        }
     }
     // The region is fresh memory: a zero word is left as it is, and a run of constants is copied from the code
     // (`CODECOPY` and its three operands, 12 gas and 3 a word) when that is cheaper than a `PUSH` of each nonzero
@@ -500,7 +459,7 @@ fn options() -> Options<'static> {
 /// `setIndexRoot(bytes32 root)`, or reverts: from the owner, with no value, it stores `root` in slot
 /// [`INDEX_ROOT_SLOT`] and returns nothing.
 pub fn compile(graph: &Graph, outputs: &[Word], ending: &Ending, entry: &Entry, inputs: usize) -> Contract {
-    let compiled = program(graph, outputs, ending, entry, inputs, false);
+    let compiled = program(graph, outputs, ending, entry, inputs);
     let assembled = evm_link::assemble(&compiled.program, &options());
     Contract {
         code: assembled.code,
@@ -508,46 +467,13 @@ pub fn compile(graph: &Graph, outputs: &[Word], ending: &Ending, entry: &Entry, 
         field_muls: compiled.field_muls,
         hashes: compiled.hashes,
         memory_words: assembled.memory_words,
-        parts: Vec::new(),
-        part_at: Vec::new(),
-    }
-}
-
-/// The same contract as contracts of at most `limit` bytes of code each ([`evm_link::link`]): the one [`compile`]
-/// makes if it fits, else a driver (the entry, `setIndexRoot`, and the program's start) and the parts it calls.
-pub fn compile_linked(
-    graph: &Graph,
-    outputs: &[Word],
-    ending: &Ending,
-    entry: &Entry,
-    inputs: usize,
-    limit: usize,
-) -> Contract {
-    let one = compile(graph, outputs, ending, entry, inputs);
-    if one.code.len() <= limit {
-        return one;
-    }
-    let compiled = program(graph, outputs, ending, entry, inputs, true);
-    let linked = evm_link::link(&compiled.program, &options(), limit);
-    Contract {
-        code: linked.driver.code.code.clone(),
-        owner_at: linked.driver.code.other_patch,
-        field_muls: compiled.field_muls,
-        hashes: compiled.hashes,
-        memory_words: linked.driver.code.memory_words,
-        parts: linked.parts.iter().map(|part| part.code.code.clone()).collect(),
-        part_at: linked.driver.code.chunk_patches.clone(),
     }
 }
 
 /// The creation code of `contract`, which its constructor's arguments follow in the init code: those of
-/// `constructor(bytes32 indexRoot, address owner)`, ABI-encoded (64 bytes). It reverts on value, or on arguments of another length; else it
-/// stores `indexRoot` in slot [`INDEX_ROOT_SLOT`], writes the `owner` word into the code, and returns the code.
+/// `constructor(bytes32 indexRoot, address owner)`, ABI-encoded (64 bytes) (none for a contract without an owner, a
+/// test's). It reverts on value, or on arguments of another length; else it stores `indexRoot` in slot [`INDEX_ROOT_SLOT`], writes the `owner` word into the code, and returns the code.
 pub fn creation_code(contract: &Contract) -> Vec<u8> {
-    assert!(
-        contract.parts.is_empty(),
-        "a driver calling its parts at their addresses"
-    );
     let runtime = contract.code.len();
     let arguments = if contract.owner_at.is_some() { 64 } else { 0 };
     // The revert is the last 4 bytes of the `prefix` bytes before the code.
@@ -603,8 +529,6 @@ mod tests {
             field_muls: 0,
             hashes: 0,
             memory_words: 1,
-            parts: Vec::new(),
-            part_at: Vec::new(),
         };
         let mut chain = Chain::default();
         let address = chain.deploy(&creation_code(&contract)).0.expect("a deployment");

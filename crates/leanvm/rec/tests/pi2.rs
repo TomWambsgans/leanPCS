@@ -6,7 +6,7 @@
 //!   flipped byte of the stream gives claims the openings do not prove;
 //! - `the_interface_example`: the circuit compiler's own example (`circuit::spec::example`), padded, through the
 //!   adapter;
-//! - `contract_*`: the verifier compiled to EVM is the Rust verifier word for word, straight and deployable, and
+//! - `contract_*`: the verifier compiled to EVM is the Rust verifier word for word, and
 //!   accepts the honest proof with its frame of PCS claims declaring them, and rejects a flipped byte;
 //! - `gas_report` (ignored): the contract at the D16v target shape (`N = 2^24`);
 //! - `prove_target` (ignored): the prover at the target shape.
@@ -328,8 +328,7 @@ fn contract_checks(design: Design) {
         // Word for word, on the honest stream and on a random one.
         let words = contract::parity(&inst, &recorded, &f.public_input, &stream);
         contract::parity(&inst, &recorded, &[0x5a; 32], &sample_stream(stream.len(), 7));
-        let parts = contract::parity_deployable(&inst, &recorded, &f.public_input, &stream);
-        println!("parity: {words} words, deployable in {parts} contract(s)");
+        println!("parity: {words} words");
 
         // The honest proof: the contract checks π1's claims and those the openings prove, declared.
         let (reduced, roots, openings) = open(proved, &f.setup);
@@ -399,12 +398,11 @@ fn target_report(name: &str, design: Design) {
         );
         let inst = Instance::new(circuit, &spec, [0x44; 32], &[0x33; 32], &pi1.calls);
         let recorded = record_verifier(&spec);
-        let report = contract::measure(&inst, &recorded, true);
+        let report = contract::measure(&inst, &recorded);
         print!("{}", report.table(&name));
         let stream = sample_stream(recorded.stream_len, 11);
         contract::parity(&inst, &recorded, &[0x5a; 32], &stream);
-        let parts = contract::parity_deployable(&inst, &recorded, &[0x5a; 32], &stream);
-        println!("{name}: parity straight and deployable ({parts} contracts)");
+        println!("{name}: parity");
     });
 }
 

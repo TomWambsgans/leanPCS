@@ -48,7 +48,7 @@ fn trace() -> Option<(Trace, f64)> {
 }
 
 mod vectors;
-use vectors::{deployable, name_of as vector_name};
+use vectors::name_of as vector_name;
 
 /// The allocator leanVM's own CLI and benches run on (jemalloc, freed pages kept: `bench::Jemalloc`), so that the
 /// prover is measured as leanVM's is; on glibc's every large buffer faults its pages in again.
@@ -241,7 +241,7 @@ fn end_to_end(variant: Variant) {
     let data = calldata(&public, &proof.stream);
     let stream = proof.stream.clone();
     let opened = whir_roots.clone();
-    let (accepted, rejected, gas, linked, calls) = deep(move || {
+    let (accepted, rejected, gas, calls) = deep(move || {
         let recorded = record_verifier_with(&shape, variant, Claims::Point, &roots);
         assert_eq!(recorded.stream_len, stream.len(), "the contract's stream is the proof's");
         // The measuring build, word for word against the Rust verifier, on this accepting stream.
@@ -280,23 +280,11 @@ fn end_to_end(variant: Variant) {
         let mut rejected = accepts(&bad, &blocks[0]) as usize;
         // Every claim must be declared.
         rejected += blocks[1..].iter().filter(|b| accepts(&data, b)).count();
-        // The deployable verifying build (crates/evm_link, contracts of at most 24,576 bytes), likewise.
-        let deployed = deployable(&recorded);
-        let linked = |data: &[u8], block: &PcsFrame| deployed.chain.call(deployed.address, data, block);
-        let linked_run = linked(&data, &blocks[0]);
-        let linked_ok = linked_run.output.as_deref() == Some(&one[..])
-            && linked(&bad, &blocks[0]).output.is_none()
-            && blocks[1..].iter().all(|b| linked(&data, b).output.is_none());
-        let deployed_gas = linked_run.execution;
-        (ok.output.clone(), rejected, ok.execution, (deployed.contracts.len(), linked_ok, deployed_gas), calls)
+        (ok.output.clone(), rejected, ok.execution, calls)
     });
     println!(
-        "  the contract returns {:?} on the real proof, {gas} gas of execution; parity with the Rust verifier; the \
-         deployable build ({} contracts) accepts it: {}, {} gas of execution",
+        "  the contract returns {:?} on the real proof, {gas} gas of execution; parity with the Rust verifier",
         accepted.as_ref().map(|o| o[31]),
-        linked.0,
-        linked.1,
-        linked.2
     );
     assert_eq!(accepted.as_deref(), Some(&word([1, 0, 0])[..]), "the contract accepts the real proof");
     // The Rust→EVM test vector (tests/vectors/): the proof's calldata, the claims declared, the verdict and the gas.
@@ -311,8 +299,6 @@ fn end_to_end(variant: Variant) {
             whir_roots,
             accepts: true,
             gas_straight: gas,
-            gas_deployed: linked.2,
-            contracts: linked.0,
             note: format!(
                 "the Keccak VM (leanVM 9d50c92a3, KECCAK.md), its run without the fill blocks: rows {:?}",
                 trace.rows
@@ -324,7 +310,6 @@ fn end_to_end(variant: Variant) {
         println!("  test vector written to {}", path.display());
     }
     assert_eq!(rejected, 0, "the contract rejects a mutated proof, and a proof with one call not attested");
-    assert!(linked.1, "the deployable build accepts the real proof, and rejects the mutations");
 
     // Mutations: a root, a value early on, the middle, a final value, a sumcheck round.
     let mut refused = 0;

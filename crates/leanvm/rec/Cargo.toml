@@ -14,6 +14,8 @@ workspace = true
 [dependencies]
 leanvm_statement.workspace = true
 leanvm_univariate.workspace = true
+# The verifying contract's creation code (its deployment's gas).
+evm_link.workspace = true
 # pi2 (src/pi2): crates/membership/quotient's Cantor basis, transforms and opening layouts; leanVM's WHIR (c445e3d5).
 quotient.workspace = true
 primitives.workspace = true

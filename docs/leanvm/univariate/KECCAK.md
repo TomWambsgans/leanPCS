@@ -9,7 +9,7 @@ recursion and the prover. The protocol is `SPEC.md`, Flock's part `SPEC-FLOCK.md
 `KECCAK_REC3`) is recorded, compiled to EVM code, run on revm, and checked word for word against the Rust verifier.
 The prover (`src/prover/`) proves real leanVM `9d50c92a3` executions (`cargo leanvm aggregate --xmss N`, N = 32, 128,
 400):
-- the Rust verifier accepts, the three WHIR openings verify, and the straight and deployable contracts accept the real
+- the Rust verifier accepts, the three WHIR openings verify, and the contract accepts the real
   calldata, with the frame declaring exactly the claims the openings prove; mutated proofs are rejected;
 - π2 (`crates/leanvm/rec`) proves the real 128- and 400-signature π1-rec3 proofs, and the recursion's contract accepts
   them.
@@ -79,8 +79,8 @@ Measured on revm (`tests/keccak_vm.rs`, `keccak_gas_report`), `KECCAK_MAIN`, poi
 | 400 | 2^28 | 8,116 B | 236,976 | 5,364 | 3 / 3 | 366,484 | 381,484 |
 | 1,000 (`C1` over `2^28`: infeasible) | 2^30 | 8,308 B | 247,340 | 5,531 | 3 / 3 | 379,908 | 394,908 |
 
-The 400-signature contract, cut into EIP-170 contracts, is 4 contracts with 252,591 of execution and 382,099
-transaction gas. The 1,000-signature row is a contract no WHIR opening could serve.
+The 400-signature contract, cut into EIP-170 contracts by a linker this repository no longer carries, was 4
+contracts with 252,591 of execution and 382,099 transaction gas. The 1,000-signature row is a contract no WHIR opening could serve.
 
 **Where it goes.** At 128 signatures the calldata is the selector and public input (36 B), the row counts (24 B), the
 two roots (64 B), Flock's 154 scalars (3,696 B), the 118 values at `t` (2,832 B) and the batching sumcheck's 27 rounds
@@ -172,6 +172,7 @@ The committed vectors are `tests/vectors/keccak.txt` (32 signatures, `KECCAK_MAI
 ### The real proofs' gas
 
 The contract's execution at a claim price of 0, from `prove_real`. It equals the gas measured from the shapes alone.
+The last column is the same contract cut into EIP-170 contracts, by a linker this repository no longer carries.
 
 | signatures | π1 | calldata | straight | deployable (contracts) |
 |---:|---|---:|---:|---:|

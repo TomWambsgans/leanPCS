@@ -1751,6 +1751,7 @@ name = "leanvm_rec"
 version = "0.1.0"
 dependencies = [
  "bench",
+ "evm_link",
  "fiat_shamir",
  "leanvm_statement",
  "leanvm_univariate",

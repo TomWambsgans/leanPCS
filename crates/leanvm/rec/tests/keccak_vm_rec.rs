@@ -77,7 +77,7 @@ fn report(name: &str, shape: &Shape) -> usize {
         &compiled.finished.circuit.calls,
     );
     let pi2_recorded = pi2_contract::record_verifier(&spec);
-    let gas = pi2_contract::measure(&inst, &pi2_recorded, true);
+    let gas = pi2_contract::measure(&inst, &pi2_recorded);
     print!("{}", gas.table(&format!("{name}: the recursion's contract (π2 D16v)")));
     let pi2_stream = pi2_contract::sample_stream(pi2_recorded.stream_len, 13);
     pi2_contract::parity(&inst, &pi2_recorded, &[0x5a; 32], &pi2_stream);

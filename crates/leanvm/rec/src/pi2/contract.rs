@@ -26,12 +26,8 @@
 //! (`machine::PcsFrame::decoding`).
 
 use fiat_shamir::merkle::Hash;
-use leanvm_statement::evm::codegen::{
-    CALLS, Contract, Deployable, Ending, Entry, MAX_CODE, MEASURE, VERIFY, Word, compile, compile_deployable,
-    compile_deployable_like, word,
-};
-use leanvm_statement::evm::deploy::{deploy, install};
-use leanvm_statement::evm::machine::{self, Opening, Outcome, PCS_FRAME, PcsFrame, call, decode, element_word};
+use leanvm_statement::evm::codegen::{CALLS, Contract, Ending, Entry, MEASURE, VERIFY, Word, compile, word};
+use leanvm_statement::evm::machine::{self, Chain, Opening, Outcome, PCS_FRAME, PcsFrame, call, decode, element_word};
 use leanvm_statement::evm::record::{Graph, Recorder, Sym, record};
 use leanvm_statement::field::E;
 use leanvm_statement::transcript::{Checks, KeccakChannel, keccak_seed};
@@ -388,34 +384,6 @@ pub fn parity(inst: &Instance, recorded: &Recorded, public_input: &[u8; 32], str
     expected.len()
 }
 
-/// [`parity`] for the deployable build (cut into contracts of at most [`MAX_CODE`] bytes where the verifying build
-/// is). Returns how many contracts.
-pub fn parity_deployable(inst: &Instance, recorded: &Recorded, public_input: &[u8; 32], stream: &[u8]) -> usize {
-    let (outputs, ending) = ends(inst, recorded, false);
-    let returning = compile_deployable(
-        &recorded.graph,
-        &outputs,
-        &ending,
-        &entry(inst, recorded, false),
-        MAX_CODE,
-    );
-    let measuring = compile_deployable_like(
-        &recorded.graph,
-        &outputs,
-        &ending,
-        &entry(inst, recorded, true),
-        &returning,
-    );
-    let installed = install(&measuring, &[]);
-    let output = installed
-        .chain
-        .call(installed.address, &calldata(public_input, stream), &PcsFrame::default())
-        .output
-        .expect("a measuring build does not revert");
-    compare(&output, &expected_return(inst, recorded, public_input, stream));
-    returning.linked.parts.len() + 1
-}
-
 /// The verifying contract on `calldata`, its frame of PCS claims declaring exactly `openings`, in order ([`block`]):
 /// whether it returned the word 1, and the claims it checked.
 pub fn run(inst: &Instance, recorded: &Recorded, calldata: &[u8], openings: &[Opening]) -> (bool, Vec<Vec<u8>>) {
@@ -473,10 +441,9 @@ pub struct GasReport {
     pub hashed_bytes: usize,
     pub checks: usize,
     pub memory_words: usize,
-    /// The deployable build: the verifying call's execution, and each contract's code bytes and deployment
-    /// (execution, and transaction under EIP-7623 without the base), the driver first.
-    pub deployable_execution: Option<u64>,
-    pub contracts: Vec<(usize, u64, u64)>,
+    /// The verifying contract's deployment: its code bytes, the execution, and the transaction gas under EIP-7623
+    /// without the base.
+    pub deployment: (usize, u64, u64),
 }
 
 impl GasReport {
@@ -525,10 +492,8 @@ impl GasReport {
         line(
             &mut s,
             format!(
-                "execution: {} straight{}; {} claims in {} declared, {} words hashed",
+                "execution: {}; {} claims in {} declared, {} words hashed",
                 self.execution,
-                self.deployable_execution
-                    .map_or(String::new(), |d| format!(", {d} deployable")),
                 self.claims,
                 self.calls,
                 self.pcs_words
@@ -537,15 +502,13 @@ impl GasReport {
         for p in &self.phases {
             line(&mut s, format!("   {:>7}  {}", p.gas, p.phase));
         }
-        for (k, (bytes, exec, tx)) in self.contracts.iter().enumerate() {
-            line(
-                &mut s,
-                format!(
-                    "   contract {k} ({}): {bytes} B, deployment {exec} execution, {tx} tx (EIP-7623, no base)",
-                    if k == 0 { "driver" } else { "part" }
-                ),
-            );
-        }
+        line(
+            &mut s,
+            format!(
+                "   deployment: {} B of code, {} execution, {} tx (EIP-7623, no base)",
+                self.deployment.0, self.deployment.1, self.deployment.2
+            ),
+        );
         line(
             &mut s,
             format!(
@@ -556,20 +519,6 @@ impl GasReport {
                 self.transaction(true, 64)
             ),
         );
-        if let Some(d) = self.deployable_execution {
-            let mut deployed = self.clone();
-            deployed.execution = d;
-            line(
-                &mut s,
-                format!(
-                    "deployable: EIP-7623 {} / {} with the claims; EIP-7976 {} / {}",
-                    deployed.transaction(false, 40),
-                    deployed.transaction(true, 40),
-                    deployed.transaction(false, 64),
-                    deployed.transaction(true, 64)
-                ),
-            );
-        }
         s
     }
 }
@@ -605,9 +554,9 @@ fn phases_of(codes: &[&[u64]], tags: &dyn Fn(usize, usize) -> &'static str) -> V
     phases
 }
 
-/// Measure the contract (straight, and deployable when `deployable`): run its measuring build on sample calldata with
-/// every claim declared, and check the phases against the total.
-pub fn measure(inst: &Instance, recorded: &Recorded, deployable: bool) -> GasReport {
+/// Measure the contract: run its measuring build on sample calldata with every claim declared, and check the phases
+/// against the total; and deploy the verifying build.
+pub fn measure(inst: &Instance, recorded: &Recorded) -> GasReport {
     let contract = compile_verifier(inst, recorded, true);
     let stream = sample_stream(recorded.stream_len, 0x6A5);
     let data = calldata(&[0x5a; 32], &stream);
@@ -638,7 +587,7 @@ pub fn measure(inst: &Instance, recorded: &Recorded, deployable: bool) -> GasRep
     );
     phases.retain(|p| p.phase != MEASURE);
     phases.sort_by_key(|p| std::cmp::Reverse(p.gas));
-    let mut report = GasReport {
+    let report = GasReport {
         calldata_bytes: data.len(),
         calldata_zero_bytes: data.iter().filter(|&&b| b == 0).count(),
         stream_bytes: stream.len(),
@@ -654,54 +603,18 @@ pub fn measure(inst: &Instance, recorded: &Recorded, deployable: bool) -> GasRep
         hashed_bytes: contract.hashed_bytes,
         checks: contract.checks,
         memory_words: contract.memory_words,
-        deployable_execution: None,
-        contracts: vec![],
+        deployment: deployment(&compile_verifier(inst, recorded, false)),
     };
-    if deployable {
-        let (outputs, ending) = ends(inst, recorded, true);
-        let real: Deployable = compile_deployable(
-            &recorded.graph,
-            &outputs,
-            &ending,
-            &entry(inst, recorded, false),
-            MAX_CODE,
-        );
-        let deployed = deploy(&real, &[]);
-        let measuring =
-            compile_deployable_like(&recorded.graph, &outputs, &ending, &entry(inst, recorded, true), &real);
-        let installed = install(&measuring, &[]);
-        let outcome: Outcome = installed.chain.call(installed.address, &data, &attesting);
-        assert_eq!(
-            outcome.output.as_deref(),
-            Some(&word([1, 0, 0])[..]),
-            "the measuring run returns 1"
-        );
-        let tags = |code: usize, pc: usize| -> &'static str {
-            let address = outcome.gas_by_code[code].0;
-            let contract = installed
-                .contracts
-                .iter()
-                .find(|c| c.address == address)
-                .expect("a contract of the deployment");
-            contract.tags.get(pc).copied().unwrap_or(CALLS)
-        };
-        let codes: Vec<&[u64]> = outcome.gas_by_code.iter().map(|(_, g)| &g[..]).collect();
-        let phases = phases_of(&codes, &tags);
-        let measured = phases.iter().find(|p| p.phase == MEASURE).map_or(0, |p| p.gas);
-        let parts = real.linked.parts.len();
-        assert_eq!(
-            measured,
-            (real.checks + calls.len() + parts + (parts > 0) as usize) as u64,
-            "one JUMPDEST a check, a claim, a call of a part and the last part's word"
-        );
-        report.deployable_execution = Some(outcome.execution - measured);
-        let mut contracts: Vec<(usize, u64, u64)> = deployed
-            .contracts
-            .iter()
-            .map(|c| (c.code_bytes, c.execution, c.transaction(40)))
-            .collect();
-        contracts.rotate_right(1);
-        report.contracts = contracts;
-    }
     report
+}
+
+/// `contract` deployed by a transaction (no constructor arguments): its code bytes, the deployment's execution, and
+/// its transaction gas under EIP-7623 without the base.
+fn deployment(contract: &Contract) -> (usize, u64, u64) {
+    let init = evm_link::creation_code(&contract.code, &[]);
+    let mut chain = Chain::default();
+    let (address, execution) = chain.deploy(&init);
+    let address = address.expect("the contract deploys");
+    assert_eq!(chain.code(address), contract.code);
+    (contract.code.len(), execution, machine::transaction_gas(&init, execution, 40) - 21_000)
 }

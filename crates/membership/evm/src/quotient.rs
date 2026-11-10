@@ -60,7 +60,7 @@ use quotient::statement::Statement;
 use quotient::transcript::{Proof, TranscriptError, scalars_root};
 use revm::primitives::{Address, U256};
 
-use crate::codegen::{COMMITMENT, Ending, Entry, Word, compile, compile_linked};
+use crate::codegen::{COMMITMENT, Ending, Entry, Word, compile};
 pub use crate::codegen::{Contract, SET_INDEX_ROOT, VERIFY, creation_code};
 use crate::contract::Recorder;
 use crate::machine::{TableId, element_word, layout_id};
@@ -86,49 +86,24 @@ pub fn claims_contract(log_rows: usize) -> Contract {
     build(log_rows, &entry(), false)
 }
 
-/// [`contract`] as contracts of at most `limit` bytes of code each: itself if it fits (it does at EIP-170's 24,576),
-/// else a driver and the parts it `DELEGATECALL`s, which compute the same ([`evm_link`]). [`deploy`] deploys them.
-pub fn contract_linked(log_rows: usize, limit: usize) -> Contract {
-    build_linked(log_rows, &entry(), true, limit)
-}
-
-/// [`claims_contract`] as contracts of at most `limit` bytes of code each.
-pub fn claims_contract_linked(log_rows: usize, limit: usize) -> Contract {
-    build_linked(log_rows, &entry(), false, limit)
-}
-
 /// The init code deploying `contract` (either of the two above) for the circuit committed as `index_root`, owned
-/// by `owner`: its creation code, then the constructor's two arguments. A driver's parts must be placed first
-/// ([`Contract::calling`]; [`deploy`] does both).
+/// by `owner`: its creation code, then the constructor's two arguments.
 pub fn init_code(contract: &Contract, index_root: &Hash, owner: Address) -> Vec<u8> {
     assert!(contract.owner_at.is_some(), "a contract reading its root from storage");
     [&creation_code(contract)[..], index_root, owner.into_word().as_slice()].concat()
 }
 
-/// Deploy `contract` on `chain` for the circuit committed as `index_root`, owned by `owner`, each contract by a
-/// transaction: its parts, if any, then it, calling them at their addresses. Its address, unless a creation failed,
-/// and each transaction's init code and execution gas (the parts', then its).
+/// Deploy `contract` on `chain` for the circuit committed as `index_root`, owned by `owner`, by a transaction: its
+/// address, unless the creation failed, and the transaction's init code and execution gas.
 pub fn deploy(
     chain: &mut crate::machine::Chain,
     contract: &Contract,
     index_root: &Hash,
     owner: Address,
-) -> (Option<Address>, Vec<(Vec<u8>, u64)>) {
-    let mut transactions = Vec::new();
-    let mut addresses = Vec::new();
-    for part in &contract.parts {
-        let init = evm_link::creation_code(part, &[]);
-        let (address, outcome) = chain.deploy(&init);
-        transactions.push((init, outcome.execution));
-        match address {
-            Some(address) => addresses.push(address.into_array()),
-            None => return (None, transactions),
-        }
-    }
-    let init = init_code(&contract.calling(&addresses), index_root, owner);
+) -> (Option<Address>, (Vec<u8>, u64)) {
+    let init = init_code(contract, index_root, owner);
     let (address, outcome) = chain.deploy(&init);
-    transactions.push((init, outcome.execution));
-    (address, transactions)
+    (address, (init, outcome.execution))
 }
 
 /// How the contract is entered ([`Entry`]).
@@ -156,16 +131,6 @@ fn build(log_rows: usize, entry: &Entry, declared: bool) -> Contract {
         inputs,
     } = recorded(log_rows, entry, declared);
     compile(&graph, &outputs, &ending, entry, inputs)
-}
-
-fn build_linked(log_rows: usize, entry: &Entry, declared: bool, limit: usize) -> Contract {
-    let Recorded {
-        graph,
-        outputs,
-        ending,
-        inputs,
-    } = recorded(log_rows, entry, declared);
-    compile_linked(&graph, &outputs, &ending, entry, inputs, limit)
 }
 
 /// What a contract is compiled from: the graph the recorder leaves, the words the contract writes (the calls'
@@ -380,17 +345,12 @@ mod tests {
     /// The tests' proof, made once for all of them: a full-size proof takes some 10 GB.
     static HONEST: LazyLock<(Hash, Statement, Proof)> = LazyLock::new(|| proof(&mut Rng::new(0xE8)));
 
-    /// A chain holding `contract`, deployed for the circuit committed as `index_root` and owned by [`OWNER`] (a
-    /// driver's parts first).
+    /// A chain holding `contract`, deployed for the circuit committed as `index_root` and owned by [`OWNER`].
     fn deployed(contract: &Contract, index_root: &Hash) -> (Chain, Address) {
         let mut chain = Chain::default();
         let (address, _) = deploy(&mut chain, contract, index_root, OWNER);
         (chain, address.expect("a deployment"))
     }
-
-    /// The builds the tests below run on: the one contract, and the same linked into a driver and parts of at most
-    /// 2,048 bytes each.
-    const LIMITS: [usize; 2] = [24_576, 2_048];
 
     /// A block whose openings are of the claims the Rust verifier leaves, if it leaves any.
     fn block_for(index_root: &Hash, statement: &Statement, proof: &Proof) -> PcsFrame {
@@ -412,12 +372,8 @@ mod tests {
     /// proof and on tampered ones, and the contract reverts on calldata of another length.
     #[test]
     fn contract_is_the_verifier() {
-        LIMITS.into_iter().for_each(contract_is_the_verifier_at);
-    }
-
-    fn contract_is_the_verifier_at(limit: usize) {
         let (index_root, statement, mut proof) = HONEST.clone();
-        let (chain, address) = deployed(&claims_contract_linked(LOG_ROWS, limit), &index_root);
+        let (chain, address) = deployed(&claims_contract(LOG_ROWS), &index_root);
         let returned = |statement: &Statement, proof: &Proof| {
             let output = chain
                 .call(address, &calldata(statement, proof).unwrap(), &PcsFrame::default())
@@ -455,12 +411,8 @@ mod tests {
     /// tampered ones, which leave other claims than the honest proof's.
     #[test]
     fn contract_checks_the_declared_claims() {
-        LIMITS.into_iter().for_each(contract_checks_the_declared_claims_at);
-    }
-
-    fn contract_checks_the_declared_claims_at(limit: usize) {
         let (index_root, statement, proof) = HONEST.clone();
-        let (chain, address) = deployed(&contract_linked(LOG_ROWS, limit), &index_root);
+        let (chain, address) = deployed(&contract(LOG_ROWS), &index_root);
         let succeeds = |statement: &Statement, proof: &Proof, block: &PcsFrame| {
             let output = chain.call(address, &calldata(statement, proof).unwrap(), block).output;
             assert!(output.as_ref().is_none_or(|output| *output == VERIFIED));
@@ -523,12 +475,8 @@ mod tests {
     /// succeeds, another selector, the arguments without one or ABI-encoded, and value revert.
     #[test]
     fn contract_checks_its_selector() {
-        LIMITS.into_iter().for_each(contract_checks_its_selector_at);
-    }
-
-    fn contract_checks_its_selector_at(limit: usize) {
         let (index_root, statement, proof) = HONEST.clone();
-        let (mut chain, address) = deployed(&contract_linked(LOG_ROWS, limit), &index_root);
+        let (mut chain, address) = deployed(&contract(LOG_ROWS), &index_root);
         let honest = block_for(&index_root, &statement, &proof);
         let data = calldata(&statement, &proof).unwrap();
         assert_eq!(data[..4], [0xde, 0x12, 0xc6, 0x40]);
@@ -578,27 +526,16 @@ mod tests {
     /// alike: the one the deployment stores, then the one `setIndexRoot` stores, from the owner only.
     #[test]
     fn contract_reads_the_index_root_from_storage() {
-        LIMITS
-            .into_iter()
-            .for_each(contract_reads_the_index_root_from_storage_at);
-    }
-
-    fn contract_reads_the_index_root_from_storage_at(limit: usize) {
         let (index_root, statement, proof) = HONEST.clone();
-        let contract = contract_linked(LOG_ROWS, limit);
+        let contract = contract(LOG_ROWS);
         let (mut chain, address) = deployed(&contract, &index_root);
         let stored = |chain: &Chain| chain.storage(address, U256::from(INDEX_ROOT_SLOT)).to_be_bytes::<32>();
         assert_eq!(stored(&chain), index_root);
-        // The code deployed is the contract's, its owner written in, and a driver's parts' addresses, which hold them.
+        // The code deployed is the contract's, its owner written in.
         let mut code = contract.code.clone();
         let at = contract.owner_at.expect("an owner");
         code[at..at + 32].copy_from_slice(OWNER.into_word().as_slice());
-        let deployed_code = chain.code(address);
-        for (part, &at) in contract.parts.iter().zip(&contract.part_at) {
-            code[at..at + 20].copy_from_slice(&deployed_code[at..at + 20]);
-            assert_eq!(chain.code(Address::from_slice(&deployed_code[at..at + 20])), *part);
-        }
-        assert_eq!(deployed_code, code);
+        assert_eq!(chain.code(address), code);
 
         // Against another root, the proof leaves other claims, which the contract asks for when it holds that
         // root: the claims contract returns those the Rust verifier leaves, and the contract checks that the
@@ -607,7 +544,7 @@ mod tests {
         let mut other_root = index_root;
         other_root[9] ^= 1;
         let expected = verify(&other_root, &statement, &proof, LOG_ROWS).expect("a reduction");
-        let (returning, at) = deployed(&claims_contract_linked(LOG_ROWS, limit), &other_root);
+        let (returning, at) = deployed(&claims_contract(LOG_ROWS), &other_root);
         let output = returning.call(at, &data, &PcsFrame::default()).output;
         assert_eq!(output.and_then(|output| decode(&output, LOG_ROWS)), Some(expected));
         let (honest, other) = (
@@ -681,26 +618,18 @@ mod tests {
         assert!(contract.code.len() <= 24_576, "EIP-170");
     }
 
-    /// The membership contracts' bytecode, pinned: the code of the deployed contract, of the claims contract, of
-    /// the contract with the root in its code, and of the deployed contract linked into parts of 2,048 bytes (the
-    /// driver's then the parts', back to back), each its Keccak-256, as since the claims are checked declared in a frame
+    /// The membership contracts' bytecode, pinned: the code of the deployed contract and of the claims contract, each
+    /// its Keccak-256, as since the claims are checked declared in a frame
     /// of PCS claims, with the frame's index a byte of calldata, and `FIELD_MUL` is `0x1f`.
     #[test]
     fn membership_bytecode_is_pinned() {
         let hex = |code: &[u8]| -> String { primitives::hash::hash(code).iter().map(|b| format!("{b:02x}")).collect() };
-        let linked = contract_linked(LOG_ROWS, 2_048);
-        let linked_code = [&linked.code[..], &linked.parts.concat()].concat();
-        let codes = [
-            hex(&contract(LOG_ROWS).code),
-            hex(&claims_contract(LOG_ROWS).code),
-            hex(&linked_code),
-        ];
+        let codes = [hex(&contract(LOG_ROWS).code), hex(&claims_contract(LOG_ROWS).code)];
         assert_eq!(
             codes,
             [
                 "0046ce04b9c998b1181158b5947e6789135b1ed3e05db9bd278ad3527a10bb7a",
                 "8e7b697a3bfc94129d495b530bf3a924ddd3b95fa382609f28ed1adfd10de38d",
-                "e3c3f38d0f5c415ce657bf909a1894e4a658df9d038b9649f4ca0be699b3cb28",
             ]
         );
     }

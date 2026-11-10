@@ -1,61 +1,26 @@
 // Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
-//! A verifier compiled to straight-line EVM code, as one contract, or as contracts each within EIP-170's 24,576 bytes.
+//! A verifier compiled to straight-line EVM code, as one contract.
 //!
 //! This repository's contracts are not written by hand: a verifier written on a scalar type is run on a scalar that
-//! records every operation, and the recorded graph is compiled (`crates/membership/evm`, `crates/leanvm_statement`). The code
-//! is straight-line, the cheapest code to run, so it grows with what the verifier computes: the membership verifier
-//! is 6,308 bytes, leanVM's 117 KB. This crate takes the compiled program, a list of [`Item`]s (code, and the values
-//! kept in memory slots), and either assembles it into one contract ([`assemble`], as the code generators always
-//! did, byte for byte), or **links** it into contracts that each fit ([`link`]), computing exactly the same.
-//!
-//! # Linking
-//!
-//! The program is cut at [`Item::Seam`]s, which a code generator puts after each node's evaluation, into runs of at
-//! most `limit` bytes of code each. The first run is the **driver**, the contract a verifying call is sent to: it
-//! starts the program (the entry's checks, the other entry such as `setIndexRoot`, then as much of the verifier as
-//! fits), then `DELEGATECALL`s each other run, a **part**, a contract of its own, in order. A part's calldata is the
-//! **values region** the driver keeps (every value a run computes that a later run reads, and the words left on the
-//! stack at a cut), then the ranges of the call's calldata the part reads, which the driver copies after it
-//! ([`Item::Calldata`] marks every calldata offset, so that a part reads them where they are). A part returns the
-//! values it computes for later parts, which the driver keeps in the region, in words no later part reads any more.
-//! The last part writes the outputs and ends as the program does (its checks of the declared claims); the driver then returns
-//! the word 1 only if the last part returned exactly that, or else (a returning program) what it returned. So:
-//!
-//! - a value read from another part costs what a value from a slot costs (`CALLDATALOAD` at a constant offset, as
-//!   `MLOAD`), and calldata is read as in one contract, at constant offsets;
-//! - every part runs on the driver's storage (`DELEGATECALL`): a commitment in storage is read as in one contract;
-//! - what linking adds is one cold `DELEGATECALL` a part (2,600 gas), the copies (3 gas a word of calldata a part
-//!   reads, and of values returned) and memory: each part's own (its slots, and the values it returns), and the
-//!   driver's (the region and the copies). A cut is chosen among the last twelfth of the code that fits where the
-//!   fewest values are live, at about 12 gas a value passed against 2,600 gas a part.
-//!
-//! A part is a pure function of its calldata: the driver trusts it with nothing but what it computes, its address is
-//! in the driver's code (written at deployment, after the parts are deployed), and its code has no `SSTORE`, no
-//! `CREATE` and no call (it may be called by anyone, to no effect). The program's checks revert in
-//! the part that makes them, which reverts the driver; a part not there (an address without code) returns nothing,
-//! which reverts the driver too.
+//! records every operation, and the recorded graph is compiled (`crates/membership/evm`, `crates/leanvm/statement`).
+//! The code is straight-line, the cheapest code to run, so it grows with what the verifier computes: the membership
+//! verifier is 6,314 bytes, π2's 13.2 KB. This crate takes the compiled program, a list of [`Item`]s (code, and the
+//! values kept in memory slots), and assembles it into one contract ([`assemble`]).
 //!
 //! # Using it from a verifier's code generator
 //!
 //! A code generator turns its graph into items: for each node, its operands' evaluation, its code (calldata offsets
-//! as [`Item::Calldata`]), a [`Item::Store`] if it is read again, and a [`Item::Seam`]; checks with
-//! [`Item::FailIf`]; the outputs with [`Item::Output`] and [`Item::CopyConst`] and the checks of the claims declared
-//! with [`declared`], all after the last seam (the outputs region is the last part's: a linkable program computes
-//! every output's node before it writes the first). [`front`] is such a generator for any graph of nodes whose code
-//! works on their operands on the stack ([`front::Dag`]): `crates/leanvm_statement` (`src/evm/codegen.rs`) gives it
-//! its nodes' code, entry and outputs, and its `src/evm/contract.rs` goes from the recorded verifier to deployed
-//! contracts (`deploy`), their gas measured per phase across contracts (`measure_deployable`) and checked against
-//! the Rust verifier (`parity_deployable`). `crates/membership/evm` keeps a generator of its own and calls [`assemble`] and
-//! [`link`] the same way.
+//! as [`Item::Calldata`]) and a [`Item::Store`] if it is read again; checks with [`Item::FailIf`]; the outputs with
+//! [`Item::Output`] and [`Item::CopyConst`] and the checks of the claims declared with [`declared`]. [`front`] is such
+//! a generator for any graph of nodes whose code works on their operands on the stack ([`front::Dag`]):
+//! `crates/leanvm/statement` (`src/evm/codegen.rs`) gives it its nodes' code, entry and outputs. `crates/membership/evm`
+//! keeps a generator of its own and calls [`assemble`] the same way. [`creation_code`] deploys a contract.
 
 mod assemble;
 pub mod front;
-mod link;
 pub mod op;
 
-pub use link::{Linked, Part, creation_code, link, link_at};
-
-use assemble::{End, Frame, assemble_frame};
+use assemble::assemble_program;
 
 /// What an item's code computes, for a breakdown of the gas (a protocol's phase).
 pub type Tag = &'static str;
@@ -77,15 +42,12 @@ pub enum Item {
     /// unless the hash is payload `index` of that frame, the word at `1 + 32 index` of its `data` (`FRAMEDATALOAD`):
     /// unless the transaction declares the claim these words encode. Pops the index.
     Declared { first: usize, words: usize, index: usize },
-    /// Push the offset at which bytes `offset..offset + len` of the call's calldata are in this contract's: the same
-    /// in one contract or the driver, elsewhere in a part, which is passed only the calldata it reads.
+    /// Push `offset`, where bytes `offset..offset + len` of the call's calldata are, which the code reads.
     Calldata { offset: usize, len: usize },
     /// Pop, and revert if it is nonzero.
     FailIf,
     /// Pop, and jump to the other entry ([`Options::other`]; the revert if there is none) if it is nonzero.
     OtherIf,
-    /// The program may be cut here: no memory but the slots holds anything read later (the stack may).
-    Seam,
 }
 
 /// How the program ends, once its outputs are written.
@@ -97,7 +59,7 @@ pub enum Ending {
     Attest,
 }
 
-/// A straight-line program: what a code generator hands to [`assemble`] or [`link`].
+/// A straight-line program: what a code generator hands to [`assemble`].
 #[derive(Clone, Debug)]
 pub struct Program {
     /// Each item, and what its code computes.
@@ -120,7 +82,7 @@ impl Program {
         if copies { self.data.clone() } else { Vec::new() }
     }
 
-    /// The program's checks (and calls), each one `JUMPDEST` in a measuring build.
+    /// The program's checks, each one `JUMPDEST` in a measuring build.
     pub fn checks(&self) -> usize {
         let checks = |item: &Item| matches!(item, Item::FailIf | Item::Declared { .. });
         self.items.iter().filter(|(item, _)| checks(item)).count()
@@ -189,10 +151,6 @@ pub struct Tags {
     pub ending: Tag,
     /// The revert and the data after the code.
     pub tail: Tag,
-    /// The driver's calls of the other contracts.
-    pub call: Tag,
-    /// Values passed between contracts: written, copied, read back onto the stack; calldata copied.
-    pub pass: Tag,
 }
 
 impl Default for Tags {
@@ -201,15 +159,9 @@ impl Default for Tags {
             measure: "measurement only (JUMPDEST after each check, subtracted)",
             ending: "ending",
             tail: "revert, data",
-            call: LINK_CALL,
-            pass: LINK_PASS,
         }
     }
 }
-
-/// The default tags of what linking adds.
-pub const LINK_CALL: Tag = "linking: DELEGATECALL of each part (cold), its success checked";
-pub const LINK_PASS: Tag = "linking: calldata copied, values returned, kept and read back";
 
 /// Code the other entry runs: given the revert's address, its bytes, and where in them a word is to be written at
 /// deployment (an owner), if anywhere.
@@ -249,21 +201,53 @@ pub struct Assembled {
     pub memory_words: usize,
     /// Where [`Options::other`]'s word to write at deployment is.
     pub other_patch: Option<usize>,
-    /// The driver's: where it holds each other contract's address (the 20 bytes of a `PUSH20`), in order of call.
-    pub chunk_patches: Vec<usize>,
     /// Memory slots it reuses.
     pub slots: usize,
 }
 
-/// The whole program as one contract (its seams ignored).
+/// The program as one contract.
 pub fn assemble(program: &Program, options: &Options) -> Assembled {
-    let frame = Frame {
-        items: &program.items,
-        stack_in: Vec::new(),
-        imports: Default::default(),
-        pinned: Vec::new(),
-        window: None,
-        end: End::Program,
+    assemble_program(program, options)
+}
+
+/// The creation code of `runtime`, which the constructor's arguments follow in the init code: one word for each of
+/// `slots`, which it stores there. It reverts on value or on arguments of another length, else returns `runtime`.
+pub fn creation_code(runtime: &[u8], slots: &[u8]) -> Vec<u8> {
+    use crate::op::*;
+    let arguments = 32 * slots.len();
+    // The revert is the last 4 bytes of the `prefix` bytes before the code.
+    let build = |prefix: usize| {
+        let length = [
+            &[CODESIZE][..],
+            &push_fixed(prefix + runtime.len() + arguments, 2),
+            &[XOR, CALLVALUE, OR],
+        ];
+        let mut code = [&length.concat()[..], &push_fixed(prefix - 4, 2), &[JUMPI]].concat();
+        // The code and the arguments, to memory at 0.
+        let copy = [
+            &push_fixed(runtime.len() + arguments, 2)[..],
+            &push_fixed(prefix, 2),
+            &[PUSH0, CODECOPY],
+        ];
+        code.extend(copy.concat());
+        for (k, &slot) in slots.iter().enumerate() {
+            let store = [
+                &push_fixed(runtime.len() + 32 * k, 2)[..],
+                &[MLOAD],
+                &push_usize(slot.into()),
+                &[SSTORE],
+            ];
+            code.extend(store.concat());
+        }
+        code.extend(
+            [
+                &push_fixed(runtime.len(), 2)[..],
+                &[PUSH0, RETURN, JUMPDEST, PUSH0, PUSH0, REVERT],
+            ]
+            .concat(),
+        );
+        code
     };
-    assemble_frame(&frame, program, options)
+    let prefix = build(4).len();
+    [build(prefix), runtime.to_vec()].concat()
 }

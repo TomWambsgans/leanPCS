@@ -667,8 +667,7 @@ the default; Mac Apple M4 Max, 16 cores):
 
 - π1-rec3's real proof → its circuit and witness → π2's proof → its three openings verify (`quotient::opening::verify`,
   what the block proves) → the contract accepts, its frame declaring exactly the 7 claims as 6 (π1's 3, π2's 4
-  as 3) → 18 flipped calldata bytes are each rejected. The contract is the Rust verifier word for word, straight and
-  deployable.
+  as 3) → 18 flipped calldata bytes are each rejected. The contract is the Rust verifier word for word.
 - π2v2, with `PCS_OPEN`: calldata 1,004 B (59 zero), execution 27,641, EIP-7623 42,997 (floor 38,390), EIP-7976
   64,256. At 400 signatures (`PI2_VECTOR=keccak_rec3`): 1,004 B (61 zero), execution 28,421, EIP-7623 43,753. With
   the frame of claims: 1,005 B, execution 28,459, EIP-7623 43,819 (29,257 and 44,593 at 400). The prover's timings

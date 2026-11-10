@@ -20,8 +20,7 @@ use crate::machine::{
     Chain, DEP_VERIFY_FRAME_MODE, FIELD_MUL, FIELD_MUL_GAS, Frame, LOG_ROWS, Outcome, PcsFrame, claim_input, root_word,
 };
 use crate::quotient::{
-    Contract, PCS_FRAME, VERIFIED, VERIFY, calldata, claims_contract, claims_contract_linked, contract,
-    contract_linked, decode, openings,
+    Contract, PCS_FRAME, VERIFIED, VERIFY, calldata, claims_contract, contract, decode, openings,
 };
 
 /// The selector, then the statement, the commitments and the proof's five scalars.
@@ -153,64 +152,20 @@ fn agree(index_root: &Hash, log_rows: usize, codes: &(Deployed, Deployed), data:
 }
 
 /// The claims contract and the contract, deployed for `index_root`.
-fn codes(index_root: &Hash, log_rows: usize, limit: usize) -> (Deployed, Deployed) {
+fn codes(index_root: &Hash, log_rows: usize) -> (Deployed, Deployed) {
     (
-        deploy(&claims_contract_linked(log_rows, limit), index_root),
-        deploy(&contract_linked(log_rows, limit), index_root),
+        deploy(&claims_contract(log_rows), index_root),
+        deploy(&contract(log_rows), index_root),
     )
-}
-
-/// The builds every test below runs on: the one contract (it fits EIP-170's limit), and the same program linked into
-/// contracts of at most [`LINKED`] bytes, a driver and the parts it `DELEGATECALL`s (`evm_link`).
-const LIMITS: [usize; 2] = [24_576, LINKED];
-const LINKED: usize = 2_048;
-
-/// The linked build is a driver and parts, each of at most [`LINKED`] bytes, the driver holding the entry and
-/// `setIndexRoot`, and each deployed by a transaction.
-#[test]
-fn linked_builds_are_parts() {
-    for log_rows in LOG_ROWS {
-        for contract in [
-            claims_contract_linked(log_rows, LINKED),
-            contract_linked(log_rows, LINKED),
-        ] {
-            assert!(contract.parts.len() >= 2, "{} parts", contract.parts.len());
-            assert!(contract.code.len() <= LINKED && contract.parts.iter().all(|part| part.len() <= LINKED));
-            let owner = contract.owner_at.expect("the driver holds setIndexRoot");
-            assert!(owner < contract.code.len());
-            // No part stores anything, nor calls anything.
-            for part in &contract.parts {
-                let mut pc = 0;
-                while pc < part.len() {
-                    let op = part[pc];
-                    assert!(
-                        ![0x55, 0xf0, 0xf1, 0xf2, 0xf4, 0xf5, 0xfa, 0xff].contains(&op),
-                        "opcode {op:#04x} in a part"
-                    );
-                    pc += 1 + if (0x60..=0x7f).contains(&op) {
-                        (op - 0x5f) as usize
-                    } else {
-                        0
-                    };
-                }
-            }
-            let deployed = deploy(&contract, &[7; 32]);
-            assert_eq!(deployed.chain.code(deployed.address).len(), contract.code.len());
-        }
-    }
 }
 
 /// Random calldata, at every size of circuit the block knows, with random and extreme index roots.
 #[test]
 fn random_calldata_agrees() {
-    LIMITS.into_iter().for_each(random_calldata_agrees_at);
-}
-
-fn random_calldata_agrees_at(limit: usize) {
     let mut rng = Rng::new(0xADD);
     for log_rows in LOG_ROWS {
         for index_root in [[0; 32], [0xff; 32], random_bytes(&mut rng)] {
-            let codes = codes(&index_root, log_rows, limit);
+            let codes = codes(&index_root, log_rows);
             let mut extremes: Vec<Vec<u8>> = [0u8, 0xff, 0x80, 0x01]
                 .iter()
                 .map(|&b| [&VERIFY[..], &[b; ARGS_LEN - 4], &[PCS_FRAME]].concat())
@@ -234,14 +189,10 @@ fn random_calldata_agrees_at(limit: usize) {
 /// reverts, as does every change of the frame's index (the transaction has no such frame).
 #[test]
 fn bit_flips_agree() {
-    LIMITS.into_iter().for_each(bit_flips_agree_at);
-}
-
-fn bit_flips_agree_at(limit: usize) {
     let mut rng = Rng::new(0xF11);
     for log_rows in [*LOG_ROWS.start(), *LOG_ROWS.end()] {
         let index_root = random_bytes(&mut rng);
-        let codes = codes(&index_root, log_rows, limit);
+        let codes = codes(&index_root, log_rows);
         let base = random_calldata(&mut rng);
         let honest = block_for(&index_root, &base, log_rows);
         assert_eq!(call(&codes.1, &base, &honest).output, Some(VERIFIED.to_vec()));
@@ -268,14 +219,10 @@ fn bit_flips_agree_at(limit: usize) {
 /// `POP`), every other test of the crate passes.
 #[test]
 fn degenerate_proofs_revert() {
-    LIMITS.into_iter().for_each(degenerate_proofs_revert_at);
-}
-
-fn degenerate_proofs_revert_at(limit: usize) {
     let mut rng = Rng::new(0xDE6);
     for log_rows in [*LOG_ROWS.start(), 20, *LOG_ROWS.end()] {
         let index_root = random_bytes(&mut rng);
-        let codes = codes(&index_root, log_rows, limit);
+        let codes = codes(&index_root, log_rows);
         let other = PcsFrame::default();
         for _ in 0..8 {
             let data = degenerate(&index_root, log_rows, &mut rng);
@@ -300,13 +247,9 @@ fn degenerate_proofs_revert_at(limit: usize) {
 /// Calldata of any other length reverts, whatever it holds and whatever its frame declares.
 #[test]
 fn other_lengths_revert() {
-    LIMITS.into_iter().for_each(other_lengths_revert_at);
-}
-
-fn other_lengths_revert_at(limit: usize) {
     let mut rng = Rng::new(0x1E2);
     let index_root = random_bytes(&mut rng);
-    let codes = codes(&index_root, 22, limit);
+    let codes = codes(&index_root, 22);
     let full = random_calldata(&mut rng);
     for len in (0..=CALLDATA_LEN + 64).filter(|&len| len != CALLDATA_LEN) {
         let mut data = full.clone();
@@ -360,104 +303,6 @@ fn calldata_of_a_proof_that_is_not_a_root() {
     assert_ne!(calldata(&statement, &wide).expect("a proof scalar's 192 bits"), data);
 }
 
-/// A driver whose parts are not where it calls them reverts, whatever its frame declares: with every part missing, the
-/// last only, or one before it (an account without code runs nothing and returns nothing); with them all it passes.
-#[test]
-fn a_driver_without_its_parts_reverts() {
-    let mut rng = Rng::new(0xD21);
-    let index_root = random_bytes(&mut rng);
-    let data = random_calldata(&mut rng);
-    let contract = contract_linked(22, LINKED);
-    let count = contract.parts.len();
-    assert!(count >= 2);
-    for missing in [
-        vec![true; count],
-        vec![false; count - 1].into_iter().chain([true]).collect(),
-        {
-            let mut first = vec![false; count];
-            first[0] = true;
-            first
-        },
-    ] {
-        let mut chain = Chain::default();
-        let addresses: Vec<[u8; 20]> = contract
-            .parts
-            .iter()
-            .zip(&missing)
-            .map(|(part, &missing)| {
-                if missing {
-                    [0x99; 20]
-                } else {
-                    chain
-                        .deploy(&evm_link::creation_code(part, &[]))
-                        .0
-                        .expect("a part")
-                        .into_array()
-                }
-            })
-            .collect();
-        let init = crate::quotient::init_code(&contract.calling(&addresses), &index_root, Address::ZERO);
-        let address = chain.deploy(&init).0.expect("a driver");
-        let deployed = Deployed {
-            chain,
-            address,
-        };
-        let passes = missing.iter().all(|&m| !m);
-        assert_eq!(
-            call(&deployed, &data, &PcsFrame::declaring_all()).output.is_some(),
-            passes,
-            "{missing:?}"
-        );
-    }
-    let deployed = deploy(&contract, &index_root);
-    assert_eq!(
-        call(&deployed, &data, &PcsFrame::declaring_all()).output,
-        Some(VERIFIED.to_vec())
-    );
-}
-
-/// What linking costs the membership verifier, which fits one contract: linked into contracts of at most 8, 4 and 2
-/// KB, its execution on calldata every check of which passes, its frame declaring every claim (the gas does not
-/// depend on the values: straight-line code), and its deployment, each contract by a transaction:
-/// `cargo test --release -p evm -- --ignored --nocapture linked_gas_report`.
-#[test]
-#[ignore]
-fn linked_gas_report() {
-    let mut rng = Rng::new(0x6A7);
-    let index_root = random_bytes(&mut rng);
-    let data = random_calldata(&mut rng);
-    let log_rows = *LOG_ROWS.end();
-    let straight = call(&deploy(&contract(log_rows), &index_root), &data, &PcsFrame::declaring_all()).execution;
-    println!(
-        "| limit | contracts | code bytes (driver; parts) | execution | added | deployment gas (EIP-7623, without 21,000 a transaction) |"
-    );
-    println!("|---:|---:|---|---:|---:|---:|");
-    for limit in [24_576, 8_192, 4_096, 2_048] {
-        let contract = contract_linked(log_rows, limit);
-        let mut chain = Chain::default();
-        let (address, transactions) = crate::quotient::deploy(&mut chain, &contract, &index_root, Address::ZERO);
-        let deployed = Deployed {
-            chain,
-            address: address.expect("a deployment"),
-        };
-        let called = call(&deployed, &data, &PcsFrame::declaring_all());
-        assert_eq!(called.output, Some(VERIFIED.to_vec()));
-        let deployment: u64 = transactions
-            .iter()
-            .map(|(init, execution)| crate::machine::transaction_gas(init, *execution, 40) - 21_000)
-            .sum();
-        let sizes: Vec<String> = contract.parts.iter().map(|part| part.len().to_string()).collect();
-        println!(
-            "| {limit} | {} | {}; {} | {} | +{} | {deployment} |",
-            1 + contract.parts.len(),
-            contract.code.len(),
-            sizes.join(", "),
-            called.execution,
-            called.execution - straight,
-        );
-    }
-}
-
 /// The contract takes its claims as declared only in the frame calldata names, if it is a dependency verification
 /// frame of PCS claims holding their hashes as payloads `0, 1, 2`, in order: the frame after another one, named so,
 /// passes; a frame of another mode, of the leanSPHINCS scheme (whose message hashes its sender chooses), or of no
@@ -465,13 +310,9 @@ fn linked_gas_report() {
 /// revert.
 #[test]
 fn only_a_frame_of_pcs_claims_passes() {
-    LIMITS.into_iter().for_each(only_a_frame_of_pcs_claims_passes_at);
-}
-
-fn only_a_frame_of_pcs_claims_passes_at(limit: usize) {
     let mut rng = Rng::new(0x0DA7A);
     let index_root = random_bytes(&mut rng);
-    let deployed = deploy(&contract_linked(22, limit), &index_root);
+    let deployed = deploy(&contract(22), &index_root);
     let data = random_calldata(&mut rng);
     let honest = block_for(&index_root, &data, 22);
     let claims = honest.claims().to_vec();
@@ -518,14 +359,10 @@ fn only_a_frame_of_pcs_claims_passes_at(limit: usize) {
 /// wiring table's is against the root in storage.
 #[test]
 fn claims_are_the_rust_openings() {
-    LIMITS.into_iter().for_each(claims_are_the_rust_openings_at);
-}
-
-fn claims_are_the_rust_openings_at(limit: usize) {
     let mut rng = Rng::new(0x1A9);
     for log_rows in LOG_ROWS {
         let index_root = random_bytes(&mut rng);
-        let deployed = deploy(&contract_linked(log_rows, limit), &index_root);
+        let deployed = deploy(&contract(log_rows), &index_root);
         for _ in 0..20 {
             let data = random_calldata(&mut rng);
             let (statement, proof) = parse(&data);

@@ -36,8 +36,8 @@ execution, 43,819 EIP-7623 and 64,320 EIP-7976 at 128 signatures; 29,257 and 44,
 | EIP-7976 | 64,256 | 64,256 |
 
 At `c = 0` the standard price binds (`16 · 945 + 4 · 59 + 27,641`). The contract at the reference shape: 753
-`FIELD_MUL`s, 818 `XOR`s, 6 Keccak-256 (1,208 B), 230 words of memory, 210 words written for the claims; the straight
-build is the deployable one. The execution depends on the circuit alone: `real_gas` and `tests/keccak_vm_rec.rs`
+`FIELD_MUL`s, 818 `XOR`s, 6 Keccak-256 (1,208 B), 230 words of memory, 210 words written for the claims; one
+contract of 13.2 KB, within EIP-170. The execution depends on the circuit alone: `real_gas` and `tests/keccak_vm_rec.rs`
 measure it on a sample stream (4 zero bytes: 43,657 at 128 signatures, 44,437 at 400).
 
 Against π2v1 (§10, at opening version 2: 980 B with 66 zero bytes, 28,325 execution, 43,213; 44,041 at 400): 24 B
@@ -273,10 +273,10 @@ at role 15).
   - a changed element, a changed public input (a dishonest port, the identity kept by the prover): exactly the sum's
     claim is false, `[true, true, false, true]` (§7's lemma at work);
   - flipped stream bytes: claims the openings do not prove;
-  - the contract equals the Rust verifier word for word, straight and deployable, on the honest stream and a random
+  - the contract equals the Rust verifier word for word, on the honest stream and a random
     one; it accepts the honest proof with its frame declaring exactly its claims, and rejects flipped bytes.
 - `tests/pi2_real.rs`, the real circuits (`PI2_VECTOR=keccak128_rec3`, the default, or `keccak_rec3`): `real_gas`, the
-  gas and parity (straight, deployable) of D16v; `real_end_to_end` as in §0. The claims holding on the real tables are the degrees' check (§1): a `q` or
+  gas, deployment and parity of D16v; `real_end_to_end` as in §0. The claims holding on the real tables are the degrees' check (§1): a `q` or
   `q_P` of a degree above `2N` would not be determined by `D`'s `2N` points, and its claim would fail.
 - `tests/pipeline.rs`: the prover timed from a trace, π2's proof and openings among its stages (§0).
 - `tests/keccak_vm_rec.rs`: π1-rec3 at 128 and 400 signatures compiled into D16v on a sample stream, the contract's gas

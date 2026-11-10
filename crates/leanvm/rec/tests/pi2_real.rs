@@ -4,7 +4,7 @@
 //! signatures; `keccak_rec3.txt`, 400), through the adapter (`pi2::adapt`):
 //!
 //! - `real_gas`: the contract's gas on the real circuits, D16v (the verifier's gas depends on the circuit alone),
-//!   parity with the Rust verifier, straight and deployable;
+//!   parity with the Rust verifier;
 //! - `real_end_to_end` (`PI2_VECTOR=keccak128_rec3|keccak_rec3`): π2's prover on the real
 //!   witness, its three openings verified (`quotient::opening::verify`, what the block's openings prove), and the contract
 //!   accepting the proof with its frame of PCS claims declaring exactly its claims: π1's three (the vector's inputs, which π1's
@@ -106,12 +106,11 @@ fn gas(name: &str, layout: Layout) {
     // The setup root does not change the gas: a placeholder, as the univariate contract's reports.
     let inst = Instance::new(&circuit, &spec, [0x44; 32], &pi1_iv, &c.finished.circuit.calls);
     let recorded = record_verifier(&spec);
-    let report = contract::measure(&inst, &recorded, true);
+    let report = contract::measure(&inst, &recorded);
     print!("{}", report.table(&format!("{name} × {layout:?} (real circuit)")));
     let stream = sample_stream(recorded.stream_len, 13);
     contract::parity(&inst, &recorded, &[0x5a; 32], &stream);
-    let parts = contract::parity_deployable(&inst, &recorded, &[0x5a; 32], &stream);
-    println!("parity: straight and deployable ({parts} contracts)\n");
+    println!("parity\n");
 }
 
 #[test]

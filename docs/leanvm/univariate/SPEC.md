@@ -336,8 +336,8 @@ and the design is almost size-independent (the values at `t` are fixed; Flock's 
 the logarithms of the sizes).
 **Calldata at 128 signatures**: selector and public input 36 B, row counts 24 B, two roots 64 B, Flock's 154 scalars
 3,696 B, the 118 values at `t` 2,832 B, the batching sumcheck (27 rounds of 2 scalars, 3 values) 1,368 B. The
-contract is execution-bound (`16 B + execution` above `40 B`). The deployable build, the per-phase report and the
-recursion's contract are in `KECCAK.md`.
+contract is execution-bound (`16 B + execution` above `40 B`). The per-phase report and the recursion's contract are in
+`KECCAK.md`.
 
 ## 11. Prover
 

@@ -108,7 +108,7 @@ The Keccak VM fits WHIR's `2^28`-word commitments up to about 470 signatures. De
 crates/
   membership/quotient      the membership proof: circuit, prover, Rust verifier, hiding openings
   membership/evm           its verifier as EVM bytecode; revm with FIELD_MUL and EIP-8141 frames; gas
-  evm_link                 compiles a recorded verifier graph, assembles it, links it into EIP-170 contracts
+  evm_link                 compiles a recorded verifier graph and assembles it into one contract
   leanvm/statement         the Keccak VM's statement, Flock's verifier, the Keccak-256 chain, the EVM recorder
   leanvm/univariate        π1: the univariate PIOP's verifier, contract and prover (package leanvm_univariate)
   leanvm/rec               π2 and the recursion's contract (package leanvm_rec)
