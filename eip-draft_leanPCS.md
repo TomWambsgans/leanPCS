@@ -94,12 +94,12 @@ A valid block proves every dependency of its transactions. So a contract can rel
 
 ### Benchmarks
 
-Two applications of the reference implementation, with their PIOPs as straight-line EVM contracts and their PCS claims declared in a frame. Gas is priced as for an EIP-8141 frame transaction, whose calldata floor is [EIP-7976](./eip-7976.md)'s, and excludes `FRAME_TX_INTRINSIC_COST` and the per-frame costs. PIOP is the gas of the frame that verifies the PIOP: its execution and its calldata. Total is `max(standard, floor)` for that frame and the frame of PCS claims, with `pcs_gas` in both. Prover is the measured prover time plus 0.1 s per PCS claim, a heuristic for the client-side aggregation of its opening.
+Two applications of the reference implementation, with their PIOPs as straight-line EVM contracts and their PCS claims declared in a frame. Gas is priced as for an EIP-8141 frame transaction, whose calldata floor is [EIP-7976](./eip-7976.md)'s, and excludes `FRAME_TX_INTRINSIC_COST` and the per-frame costs. PIOP is the gas of the frame that verifies the PIOP: its execution and its calldata. Total is `max(standard, floor)` for that frame and the frame of PCS claims, with `pcs_gas` in both. Prover is the measured prover time plus 0.1 s per PCS claim, a heuristic for the client-side aggregation of its opening. The membership proof is zero-knowledge assuming a zero-knowledge PCS opening (ZK-WHIR); the reference implementation's openings are plain WHIR, which has the same claims and gas.
 
 | Application | Prover (M4 Max) | Calldata | PIOP | PCS claims | Total |
 |---|---|---|---|---|---|
-| Zero-knowledge membership in a Keccak-256 Merkle tree of depth 32 | TBD | TBD | TBD | TBD | TBD |
-| leanVM verification (here 128 leanXMSS signatures), i.e. any computation thanks to recursion | TBD | TBD | TBD | TBD | TBD |
+| Zero-knowledge membership in a Keccak-256 Merkle tree of depth 32 | 7.8 s | 461 bytes | 29,504 gas | 6 | 52,856 gas |
+| leanVM verification (here 128 leanXMSS signatures), i.e. any computation thanks to recursion | 9.1 s | 1,101 bytes | 70,464 gas | 8 | 99,912 gas |
 
 ### Why a 192-bit field
 
@@ -145,7 +145,18 @@ To migrate a stored commitment `com` to `com'` (same `n`), a contract derives a 
 
 ### PCS claims
 
-TBD.
+Let `n = 15`, `f_i` the big-endian integer of the last 8 bytes of `keccak256("leanPCS-test" || i)` (`i` as 8 big-endian bytes) for `0 <= i < 2^15`, and `point_j` the element given by the last 24 bytes of `keccak256("leanPCS-point" || j)` (`j` as 1 byte). Then:
+
+| | |
+|---|---|
+| `root` | `0xbb8bf6812454571b29372e3814e0191723474a9b1d7d168996583a20ad8f571d` |
+| `z_0` | `0x4d6ecf1f234f956695633f79174496ff57a2989512eab8ff` |
+| `ood` | `0x0a49bdd16e116e295326a21aafaa2fdf33776694660edebf` |
+| `value` | `0x873b3af84c179f9afeb4782f18feab9696f4f5e643b83441` |
+| `PCS_claim` | 442 bytes, starting `0x010fbb8bf681…` |
+| `keccak256(PCS_claim)` | `0x0222bb22c488ace98574fe97002cd35168ed13dc80650b5efbc812643221e108` |
+
+`pcs_verify` accepts the reference implementation's opening of this claim, and rejects it for `value + 1`.
 
 ## Reference Implementation
 
