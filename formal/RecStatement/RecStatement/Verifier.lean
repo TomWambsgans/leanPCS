@@ -1,12 +1,12 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Transcribed from `crates/leanvm/rec/src/pi2/verifier.rs`
 -- (`NAME`, `frobenius`, `inverse`, `extension`, `reduce`'s transcript, `statement_words`, `verify`) and
--- `crates/leanvm/rec/src/pi2/prover.rs` (`stack_vars`, `QUOTIENT_SLOTS`, `layout_word`, `layout_words`, `iv`), π2v3
--- (`leanvm-rec-pi2v3`). The openings are `formal/`'s interface (`PcsQuotient` layouts and layout words, version 2,
--- `Q`'s claims in one opening; the IV of the layout words): the EIP's PCS claims (the commitments' out-of-domain
--- answers' binding, the setup's in the IV, one opening per claim) are the openings' switch, not stated here. The channel is `formal/UniStatement`'s (`KeccakChannel`); the layouts are
--- `formal/Statement`'s (`PcsQuotient.Layout.ofChunks`, `Layout::new`).
+-- `crates/leanvm/rec/src/pi2/prover.rs` (`stack_vars`, `QUOTIENT_SLOTS`, `EMPTY_SLOTS`, `iv`), π2v3
+-- (`leanvm-rec-pi2v3`), on the EIP draft's PCS claims (`crates/pcs_claim`: each commitment a root and its
+-- out-of-domain answer, one point claim per claim; the claims and their openings are `Calls.lean`'s and
+-- `Security.lean`'s). The channel is `formal/UniStatement`'s (`KeccakChannel`).
 import RecStatement.Spec
 import RecStatement.Core
+import UniKeccak.Opening
 
 /-!
 # π2's verifier on calldata
@@ -19,14 +19,14 @@ answer), then `α, β, γ` are drawn; `Q`'s commitment, then `t`; the `2^r` fold
 and everything read before it: the public data is bound there. Then the arithmetic (`CoreSpec.run`, over `E`, its
 constants `Spec.of`'s: `Spec.core`), which requires one value nonzero (`Out.all`, the contract's one nonzero check).
 
-**The IV** (`prover::iv`): `keccak("leanvm-rec-iv-v2" ‖ π1's contract IV ‖ the setup's root ‖ the circuit's digest ‖
-W's, Q's and the setup's layout words)`; each layout word (`layout_word`) is the tag `"pi2"`, `log_n`, the table's
-code (`0x5601` `W`, `0x5602` `Q`, `0x5603` the setup), its variables and the words its lanes fill.
+**The IV** (`prover::iv`): `keccak("leanvm-rec-iv-v3" ‖ π1's contract IV ‖ the setup's root ‖ the setup's
+out-of-domain answer ‖ the circuit's digest ‖ log_n)`.
 
-**The tables' layouts** (`prover::layouts`, public layouts of `quotient::opening`): `W` (`m` variables, one chunk of
-`N`), `Q` (`m + 4`: the position, a digit, the kind, two limb bits: sixteen slots of `N`, `digit + 2 kind + 4 limb`,
-`h` and `q`'s two digits for limbs `0..2`, `P` (digit 1) and `q_P` at limb code `3`, four zero slots), the setup
-(`m + 1`: `κ` then `κ + σ`), on stacks of at least `2^24` words (`2^15` below `2^20` positions: `stackVars`).
+**The stacks** (`PI2.md` §2): `W` (`w` in its leading lanes), `Q` (`m + 4` variables: the position, a digit, the kind,
+two limb bits: sixteen slots of `N`, `digit + 2 kind + 4 limb`, `h` and `q`'s two digits for limbs `0..2`, `P`
+(digit 1) and `q_P` at limb code `3`; slots `1, 5, 9, 12` the honest prover's zeros), the setup (`κ` then `κ + σ`),
+on stacks of at least `2^24` words (`2^15` below `2^20` positions: `stackVars`); every claim a point of its whole
+stack.
 
 **The inverse**: the arithmetic takes the field's; the Rust's is the norm's (`normInverse`: two Frobenius maps
 from the limbs' shifts, Itoh–Tsujii on the norm in `K`), the same value for a nonzero element (the runner checks it on
@@ -104,45 +104,24 @@ def Spec.core (s : Spec) : CoreSpec E :=
     scale := extension.2
     ω := UniStatement.pointE }
 
-/-! ## The layouts, the layout words, the IV -/
+/-! ## The stacks, the IV -/
 
 /-- `MIN_LOG_STACK`, `MIN_CERTIFIED_STACK`, `CERTIFIED_FROM` (`prover.rs`). -/
 def minLogStack : ℕ := 15
 def minCertifiedStack : ℕ := 24
 def certifiedFrom : ℕ := 20
 
-/-- **`Q`'s slots** (`QUOTIENT_SLOTS`, `h_slot`, `q_slot`, `P_SLOT`, `QP_SLOT`): slot `digit + 2 kind + 4 limb`, `h`'s
-limb `l` at `4 l`, `q`'s at `4 l + 2, 4 l + 3`, `P` at `13`, `q_P` at `14, 15`; slots `1, 5, 9, 12` are zero. -/
-def quotientChunks (m : ℕ) : List (ℕ × ℕ) :=
-  [0, 2, 3, 4, 6, 7, 8, 10, 11, 13, 14, 15].map fun c ↦ (c, 2 ^ m)
+/-- **`Q`'s slots** (`QUOTIENT_SLOTS`, `h_slot`, `q_slot`, `P_SLOT`, `QP_SLOT`, `EMPTY_SLOTS`): slot
+`digit + 2 kind + 4 limb`, `h`'s limb `l` at `4 l`, `q`'s at `4 l + 2, 4 l + 3`, `P` at `13`, `q_P` at `14, 15`; the
+honest prover leaves slots `1, 5, 9, 12` zero (`emptySlots`), which nothing constrains: the commitment is the whole
+sixteen-slot stack (`PI2.md` §2, "The empty slots are not constrained"). -/
+def quotientSlots : List ℕ := [0, 2, 3, 4, 6, 7, 8, 10, 11, 13, 14, 15]
 
-/-- **`layouts(m)`**: `W`, `Q`, the setup (`Layout::new(vars, m, stack, chunks)`). -/
-def layoutsOf (m : ℕ) : PcsQuotient.Layout × PcsQuotient.Layout × PcsQuotient.Layout :=
-  (PcsQuotient.Layout.ofChunks m m (stackVars m).1 [(0, 2 ^ m)],
-    PcsQuotient.Layout.ofChunks (m + 4) m (stackVars m).2.1 (quotientChunks m),
-    PcsQuotient.Layout.ofChunks (m + 1) m (stackVars m).2.2 [(0, 2 ^ m), (1, 2 ^ m)])
-
-/-- `Layout::placed`: the words the lanes fill. -/
-def placed (L : PcsQuotient.Layout) : ℕ := L.lanes.length * 2 ^ L.logLane
-
-/-- The tables' codes (`WITNESS_CODE`, `QUOTIENT_CODE`, `SETUP_CODE`). -/
-def witnessCode : ℕ := 0x5601
-def quotientCode : ℕ := 0x5602
-def setupCode : ℕ := 0x5603
-
-/-- **`layout_word(code, m, layout)`**: `"pi2\0"`, `m` (byte 4), the code (bytes 22..24, big-endian), the variables
-(byte 24), the words placed (bytes 25..32, big-endian). -/
-def layoutWord (code m : ℕ) (L : PcsQuotient.Layout) : List UInt8 :=
-  "pi2".toUTF8.toList ++ [0, m.toUInt8] ++ List.replicate 17 (0 : UInt8) ++ [(code >>> 8).toUInt8, code.toUInt8,
-    L.vars.toUInt8] ++ (List.range 7).map fun k ↦ (placed L >>> (8 * (6 - k))).toUInt8
-
-/-- **`layout_words(m)`**: `W`'s, `Q`'s, the setup's. -/
-def layoutWords (m : ℕ) : List UInt8 × List UInt8 × List UInt8 :=
-  let (w, q, s) := layoutsOf m
-  (layoutWord witnessCode m w, layoutWord quotientCode m q, layoutWord setupCode m s)
+/-- The slots the honest prover leaves zero. -/
+def emptySlots : List ℕ := [1, 5, 9, 12]
 
 /-- The IV's tag. -/
-def ivTag : List UInt8 := "leanvm-rec-iv-v2".toUTF8.toList
+def ivTag : List UInt8 := "leanvm-rec-iv-v3".toUTF8.toList
 
 /-- The transcript's name (`NAME`). -/
 def name : List UInt8 := "leanvm-rec-pi2v3".toUTF8.toList
@@ -151,17 +130,19 @@ section With
 
 variable {m : Type → Type} [Monad m] (F : KeccakState → m KeccakState)
 
-/-- **`iv(pi1_iv, digest, setup_root, m)`** over `F`. -/
-def ivWith (pi1Iv digest setupRoot : List UInt8) (logN : ℕ) : m (List UInt8) := do
-  let (w, q, s) := layoutWords logN
-  let d ← keccak256With F (ivTag ++ pi1Iv ++ setupRoot ++ digest ++ w ++ q ++ s)
+/-- **`iv(pi1_iv, digest, setup_root, setup_ood, log_n)`** over `F`: the Keccak-256 of the tag, π1's contract IV, the
+setup's root (its 32 bytes) and out-of-domain answer (24 bytes, `UniKeccak.elementBytes24`), the circuit's digest and
+`log_n` (a byte). -/
+def ivWith (pi1Iv setupRoot : List UInt8) (setupOod : E) (digest : List UInt8) (logN : ℕ) : m (List UInt8) := do
+  let d ← keccak256With F (ivTag ++ pi1Iv ++ setupRoot ++ UniKeccak.elementBytes24 setupOod ++ digest ++
+    [logN.toUInt8])
   return digestBytes d
 
 end With
 
 /-- The IV over Keccak-f[1600]: the deployed contract's constant. -/
-def iv (pi1Iv digest setupRoot : List UInt8) (logN : ℕ) : List UInt8 :=
-  Id.run (ivWith (m := Id) (fun x ↦ pure (keccakF1600 x)) pi1Iv digest setupRoot logN)
+def iv (pi1Iv setupRoot : List UInt8) (setupOod : E) (digest : List UInt8) (logN : ℕ) : List UInt8 :=
+  Id.run (ivWith (m := Id) (fun x ↦ pure (keccakF1600 x)) pi1Iv setupRoot setupOod digest logN)
 
 /-! ## The run -/
 

@@ -1,29 +1,29 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Transcribed from `crates/leanvm/rec/src/pi2/contract.rs`
--- (`read_indices`, `number`, `root_word`, `call_words`, `expected_calls`), π2v2; π1's contract
+-- (`read_indices`, `claim_words`, `expected_calls`), π2v3 on the EIP's PCS claims; π1's contract
 -- IV is `formal/UniKeccak`'s (`contractIvKWith`, `variantBytesK`: `crates/leanvm/univariate/src/contract.rs`'s
--- `variant_bytes`, `contract_iv_for`). The claims' encoding is `crates/membership/evm/src/machine.rs`'s
--- (`crates/leanvm/statement/src/evm/machine.rs`: `element_word`, `root_word`).
+-- `variant_bytes`, `contract_iv_for`). The claims' words are `contract::claim_words`' (`element_word`: an element's
+-- limbs big-endian in the low 24 bytes of a 32-byte word).
 import RecStatement.Verifier
 import UniKeccak.Opening
 
 /-!
-# The six claims, word for word
+# The eight claims, word for word
 
-The contract checks six claims declared, each in `machine.rs`'s encoding (`root word, layout word, k, k × (point,
-value)`, 32-byte words), in this order (`contract::call_words`):
+The contract checks eight claims declared, each the EIP draft's PCS claim (`crates/pcs_claim`, `docs/PCS_CLAIM.md`)
+in its words (`contract::claim_words`: the root's 32 bytes, the out-of-domain answer, the point's coordinates, the
+value, each element its 32-byte word `element_word`), in this order:
 
-1. **π1's three** (`C1`, `C2`, π1's setup `F`), their words as the circuit names them (`CallWord`): constants (π1's
-   layout words, the Keccak VM's `UniKeccak.layoutWordsK`, the claim counts, `F`'s root word), π1's roots `C1`, `C2`
-   (the stream's 32 bytes at their reads), π1's claims' elements (public scalars, `element_word`), and the
-   coordinates `y_0(z_j), y_1(z_j)` of π1-rec3's pair challenges `z_j` (`pair_point`), which the contract derives;
-2. **`W`'s** (one claim; its root the stream's 32 bytes), **the setup's** (one claim; its root a constant,
-   `root_word` of the setup's root: each 16-byte half reversed), **`Q`'s** (its three claims, the identity's, the
-   pushes', the sum, in one call: one opening, the interface `formal/` states; the Rust opens each claim apart).
+1. **π1's three** (`C1`, `C2`, π1's setup `F`), their words as the circuit names them (`CallWord`): constants (the
+   setup's root, its 32 bytes, and its out-of-domain answer, which the deployment substitutes: `pi1CallsWith`), π1's
+   roots `C1`, `C2` (the stream's 32 bytes at their reads), π1's claims' elements (public scalars, `element_word`: the
+   out-of-domain answers and the values among them), and the coordinates `y_0(z_j), y_1(z_j)` of π1-rec3's pair
+   challenges `z_j` (`pair_point`), which the contract derives;
+2. **`W`'s** (its root the stream's 32 bytes, its answer the stream's), **the setup's** (root and answer constants),
+   **`Q`'s three** (the identity's, the pushes', the sum, each on `Q`'s root and answer).
 
-**π1's contract IV** (`contract_iv_for` at `KECCAK_REC3`, `UniKeccak.contractIvKWith`): the Keccak-256
-of the tag, the program IV, π1's three setup roots (`F`, and the deployment's constants `A0`, `B0`), the shape's bytes,
-the Keccak VM's five layout words (`layoutWordsK`), then the variant's bytes: `"keccak-vm"`, the skip `3` and the
-Fiat–Shamir shape's code `3` (`Rec3`).
+**π1's contract IV** (`contract_iv_for` at `KECCAK_REC3`, `UniKeccak.contractIvKWith`): the Keccak-256 of the tag,
+the program IV, π1's setup commitment (`F`'s root and out-of-domain answer), the shape's bytes, then the variant's
+bytes: `"keccak-vm"`, the skip `3` and the Fiat–Shamir shape's code `3` (`Rec3`).
 -/
 
 namespace RecStatement
@@ -49,9 +49,6 @@ def rootReads (reads : List Read) : ℕ := (reads.filter (· = .root)).length
 /-- The stream's 32 bytes from `at`. -/
 def streamWord (stream : Array UInt8) (at' : ℕ) : List UInt8 := (stream.extract at' (at' + 32)).toList
 
-/-- **`root_word(root)`**: a claim's root word of a root's 32 bytes, each 16-byte half reversed (an involution). -/
-def rootWordOfBytes (h : List UInt8) : List UInt8 := (h.take 16).reverse ++ ((h.drop 16).take 16).reverse
-
 /-- A claim's words: its coordinates, then its value. -/
 def claimWords (c : List E × E) : List (List UInt8) := (c.1 ++ [c.2]).map UniStatement.elementWord
 
@@ -64,18 +61,20 @@ def callWord (reads : List Read) (stream : Array UInt8) (r : Reduced) : CallWord
     let pp := r.pairPoints.getD ((elementIndices reads).getD e 0) (0, 0)
     UniStatement.elementWord (if c = 0 then pp.1 else pp.2)
 
-/-- **`expected_calls`**: the six calls' words, in order: π1's, then `W`'s, the setup's, `Q`'s. -/
-def pcsCalls (c : Circuit) (pi1 : List (List CallWord)) (setupRoot : List UInt8) (stream : Array UInt8)
-    (r : Reduced) : List (List (List UInt8)) :=
+/-- **`expected_calls`**: the eight claims' words, in order: π1's (`pi1`, the circuit's words), then `W`'s, the
+setup's (its root's 32 bytes and its answer the deployment's), `Q`'s identity, pushes' and sum claims. -/
+def pcsCalls (c : Circuit) (pi1 : List (List CallWord)) (setupRoot : List UInt8) (setupOod : E)
+    (stream : Array UInt8) (r : Reduced) : List (List (List UInt8)) :=
   let at' := rootsAt c.reads
   let n := rootReads c.reads
-  let (lw, lq, ls) := layoutWords c.logN
-  let head (root lid : List UInt8) (k : ℕ) : List (List UInt8) := [root, lid, UniStatement.numberWord k]
+  let wHead := [streamWord stream (at'.getD n 0), UniStatement.elementWord r.oods.1]
+  let qHead := [streamWord stream (at'.getD (n + 1) 0), UniStatement.elementWord r.oods.2]
   pi1.map (·.map (callWord c.reads stream r)) ++
-    [head (streamWord stream (at'.getD n 0)) lw 1 ++ claimWords r.witness,
-     head (rootWordOfBytes setupRoot) ls 1 ++ claimWords r.setup,
-     head (streamWord stream (at'.getD (n + 1) 0)) lq 3 ++ claimWords r.quotient ++ claimWords r.pushes ++
-       claimWords r.sum]
+    [wHead ++ claimWords r.witness,
+     [setupRoot, UniStatement.elementWord setupOod] ++ claimWords r.setup,
+     qHead ++ claimWords r.quotient,
+     qHead ++ claimWords r.pushes,
+     qHead ++ claimWords r.sum]
 
 /-- The stream's length: the public data, `W`'s and `Q`'s commitments (roots and out-of-domain answers), the
 `2^r + 2` values. -/
@@ -92,15 +91,15 @@ section With
 variable {m : Type → Type} [Monad m] (F : KeccakState → m KeccakState)
 
 /-- **`contract_iv_for(shape, KECCAK_REC3, program_iv, roots)`** over `F`: the Keccak π1-rec3's
-contract IV (`UniKeccak.contractIvKWith … keccakRec3`). -/
-def pi1IvWith (s : UniStatement.Shape) (programIv : List UInt8) (roots : UniStatement.SetupRoots) :
+contract IV (`UniKeccak.contractIvKWith … keccakRec3`) at π1's setup commitment. -/
+def pi1IvWith (s : UniStatement.Shape) (programIv : List UInt8) (roots : UniKeccak.SetupRootsK) :
     m (List UInt8) :=
   UniKeccak.contractIvKWith F s UniKeccak.keccakRec3 programIv roots
 
 end With
 
 /-- The Keccak π1-rec3's contract IV over Keccak-f[1600] (`UniKeccak.contractIvK … keccakRec3`). -/
-def pi1Iv (s : UniStatement.Shape) (programIv : List UInt8) (roots : UniStatement.SetupRoots) : List UInt8 :=
+def pi1Iv (s : UniStatement.Shape) (programIv : List UInt8) (roots : UniKeccak.SetupRootsK) : List UInt8 :=
   Id.run (pi1IvWith (m := Id) (fun x ↦ pure (keccakF1600 x)) s programIv roots)
 
 end RecStatement

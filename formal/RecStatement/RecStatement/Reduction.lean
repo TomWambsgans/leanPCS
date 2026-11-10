@@ -66,7 +66,7 @@ def pi1Adversary (D : RecDeployment) (A : RecAdversary) : Pi1Adversary :=
 /-! ## The reduction -/
 
 /-- **Knowledge soundness of the recursive verifier against the Keccak VM's relation (`KvHolds D.flock`), end to end,
-as a reduction** (π2's verifier and the six openings; the explicit extractor `recExtractor`: π2's, then the Keccak
+as a reduction** (π2's verifier and the eight openings; the explicit extractor `recExtractor`: π2's, then the Keccak
 π1's). For every adversary
 `A` of `Q` calls of `π` and `π⁻¹`:
 
