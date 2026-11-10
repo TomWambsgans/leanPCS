@@ -396,4 +396,133 @@ theorem pcs_family_sound (A : OracleComp KeccakCalls (Claim1 n × Proof)) (QA : 
 
 end Sound
 
+/-! ## The transcription's acceptance implies the proven program's -/
+
+/-- **Acceptance by the transcription implies acceptance by the proven program**: with the answers
+`H` and `F`, if `verify_claim` accepts, the proof's first two scalars encode the claim's root and
+the seeded verifier of `pcs_family_sound` (`seed1`, `variantProg` reading the root from the proof)
+accepts. -/
+theorem pcsVerify_imp {H : Bytes → Option Digest} {F : KeccakState → Option KeccakState}
+    {zOf : Digest → Vector E n} {x : Claim1 n} {π : Proof}
+    (h : pcsVerifyWithHash H F zOf x π = some true) :
+    rootOf π = some x.root ∧
+      LeanVM.Protocol.Compile.Rom.verify H F (seed1 x)
+        (variantProg (stacking n) logInvRate (claimsOf (zOf x.root) x)) π = some true := by
+  unfold pcsVerifyWithHash at h
+  by_cases hn : minVars ≤ n ∧ n ≤ maxVars
+  swap
+  · rw [if_neg hn] at h
+    exact absurd h (by simp [pure])
+  rw [if_pos hn] at h
+  simp only [bind, Option.bind_eq_some_iff] at h
+  obtain ⟨iv, hiv, seed, hseed, h⟩ := h
+  split_ifs at h with hr
+  swap
+  · exact absurd h (by simp [pure])
+  refine ⟨hr, ?_⟩
+  simp only [LeanVM.Protocol.Compile.Rom.verify, Seed.run, Seed.hsRun, seed1, bind,
+    Option.bind_eq_some_iff]
+  refine ⟨seed, ⟨[iv], ⟨iv, ?_, rfl⟩, ?_⟩, ?_⟩
+  · simpa using hiv
+  · simpa [publicDigest_eq] using hseed
+  · rwa [← prog_eq]
+
+/-! ## In the random-oracle model -/
+
+/-- **`verify_claim` as an oracle computation** on an adversary's output: a claim and a proof. -/
+def pcsVerifier (zOf : Digest → Vector E n) (w : Claim1 n × Proof) : OracleComp KeccakCalls Bool :=
+  pcsVerifyWithHash callKeccak256 callKeccakF1600 zOf w.1 w.2
+
+/-- The seed's computation. -/
+def seedComp1 (x : Claim1 n) : OracleComp KeccakCalls KeccakState :=
+  callKeccak256 (claimBytes x) >>= fun iv ↦ callKeccakF1600 (seedInput iv default)
+
+theorem pcsVerifier_eq (zOf : Digest → Vector E n) (w : Claim1 n × Proof) :
+    pcsVerifier zOf w = if minVars ≤ n ∧ n ≤ maxVars then
+      (seedComp1 w.1 >>= fun seed ↦
+        if rootOf w.2 = some w.1.root then
+          runProofWithHash callKeccak256 callKeccakF1600
+            (variantProg (stacking n) logInvRate (claimsOf (zOf w.1.root) w.1)) seed w.2
+        else pure false) else pure false := by
+  rw [pcsVerifier, pcsVerifyWithHash]
+  by_cases hn : minVars ≤ n ∧ n ≤ maxVars
+  · rw [if_pos hn, if_pos hn, seedComp1, bind_assoc, prog_eq, publicDigest_eq]
+  · rw [if_neg hn, if_neg hn]
+
+theorem verifierFam_seeds_eq {R : ℕ} (zOf : Digest → Vector E n) (w : Claim1 n × Proof) :
+    verifierFam (seeds zOf) (famProgram (stacking n) R) w =
+      seedComp1 w.1 >>= fun seed ↦
+        runProofWithHash callKeccak256 callKeccakF1600
+          (variantProg (stacking n) R (claimsOf (zOf w.1.root) w.1)) seed w.2 := by
+  rw [verifierFam_seeds]
+  simp only [verifierComp, LeanVM.Protocol.Compile.Rom.verify, Seed.run, Seed.hsRun, seed1,
+    seedComp1, bind_assoc, pure_bind, List.nil_append, List.getD_cons_zero]
+
+/-- **The event**: every candidate of the word extracted for the claim's root (mumbai's `extract`
+from the oracle's answers, at level 0's shape) violates `f(z) = ood` or `f(point) = value`, `f` its
+polynomial (`colEval`) and `z = zOf root`. -/
+def PcsDoomed (zOf : Digest → Vector E n) (w : Claim1 n × Proof)
+    (cache : KeccakCalls.QueryCache) : Prop :=
+  ∀ q ∈ Candidates n logInvRate (code₀ n logInvRate).thr
+      (extract (fun x ↦ cache (.inl x)) w.1.root (rootHeight n logInvRate) (2 ^ laneFold)),
+    colEval q (zOf w.1.root).toList ≠ w.1.ood ∨ colEval q w.1.point ≠ w.1.value
+
+theorem bound_eq_openingBound (zOf : Digest → Vector E n) (QA : ℕ) :
+    (QA + variantQueries : ℕ) * (εWhir + failBound (seeds zOf) (QA + variantQueries)) =
+      openingBound QA := by
+  have ho : (seeds zOf).offs = [] := rfl
+  rw [variantQueries_eq, openingBound, failBound, ho]
+  simp [εWhir]
+
+/-- Version 1's shapes are admissible at rate `1/2`. -/
+theorem admissible_v1 : ∀ n, minVars ≤ n → n ≤ maxVars → Whir.Admissible n logInvRate := by
+  decide +kernel
+
+/-- **Fiat-Shamir soundness of version 1's opening** (`verify_claim`), in the two-oracle
+random-oracle model, at every supported `15 ≤ n ≤ 28` and for every out-of-domain derivation
+`zOf`: an adversary of at most `QA` queries to Keccak-256 and Keccak-f[1600] outputs a claim and a
+proof; the verifier accepts while every candidate of the word extracted for the claim's root
+violates `f(zOf root) = ood` or `f(point) = value` with probability at most
+`(QA + 10122) · (2^-128 + 5 (QA + 10122) / 2^256)`. -/
+theorem pcs_sound (h1 : minVars ≤ n) (h2 : n ≤ maxVars) (zOf : Digest → Vector E n)
+    (A : OracleComp KeccakCalls (Claim1 n × Proof)) (QA : ℕ) (hA : IsTotalQueryBound A QA) :
+    Pr{let z ← romExperiment A (pcsVerifier zOf)}[z.1.2 = true ∧ PcsDoomed zOf z.1.1 z.2] ≤
+      openingBound QA := by
+  have hw := admissible_v1 n h1 h2
+  have hfam := pcs_family_sound hw zOf A QA hA
+  rw [bound_eq_openingBound zOf QA] at hfam
+  refine le_trans ?_ hfam
+  have hV : verifierFam (seeds zOf) (famProgram (stacking n) logInvRate) =
+      fun w ↦ seedComp1 w.1 >>= fun seed ↦
+        runProofWithHash callKeccak256 callKeccakF1600
+          (variantProg (stacking n) logInvRate (claimsOf (zOf w.1.root) w.1)) seed w.2 :=
+    funext fun w ↦ verifierFam_seeds_eq zOf w
+  have hO : pcsVerifier zOf = fun w ↦ if minVars ≤ n ∧ n ≤ maxVars then
+      (seedComp1 w.1 >>= fun seed ↦
+        if rootOf w.2 = some w.1.root then
+          runProofWithHash callKeccak256 callKeccakF1600
+            (variantProg (stacking n) logInvRate (claimsOf (zOf w.1.root) w.1)) seed w.2
+        else pure false) else pure false := funext fun w ↦ pcsVerifier_eq zOf w
+  rw [hV, hO]
+  refine romExperiment_le_of_reject A (fun w ↦ seedComp1 w.1)
+    (fun w seed ↦ runProofWithHash callKeccak256 callKeccakF1600
+      (variantProg (stacking n) logInvRate (claimsOf (zOf w.1.root) w.1)) seed w.2)
+    (fun _ ↦ minVars ≤ n ∧ n ≤ maxVars) (fun w ↦ rootOf w.2 = some w.1.root)
+    (fun w cache ↦ PcsDoomed zOf w cache)
+    (fun w cache ↦ Doomed1 logInvRate zOf w cache) fun w cache _ hr hbad ↦ ?_
+  intro r hr' q hq
+  rw [hr'] at hr
+  obtain rfl := (Option.some.inj hr).symm
+  have hq' : q ∈ Candidates n logInvRate (code₀ n logInvRate).thr
+      (extract (fun x ↦ cache (.inl x)) w.1.root (rootHeight n logInvRate) (2 ^ laneFold)) := hq
+  rcases hbad q hq' with hne | hne
+  · exact ⟨⟨(zOf w.1.root).toList, w.1.ood⟩, List.mem_cons_self ..,
+      fun h ↦ hne ((holds_iff (n := n) q ⟨(zOf w.1.root).toList, w.1.ood⟩).1 h)⟩
+  · exact ⟨⟨w.1.point, w.1.value⟩, List.mem_cons_of_mem _ (List.mem_singleton_self _),
+      fun h ↦ hne ((holds_iff (n := n) q ⟨w.1.point, w.1.value⟩).1 h)⟩
+
+/-- **The numbers**: against `2^64` queries the bound is at most `2^-63` (`opening_bound_le`). -/
+theorem pcs_bound_le {QA : ℕ} (hQ : QA ≤ 2 ^ 64) : openingBound QA ≤ (2 : ℝ≥0∞)⁻¹ ^ 63 :=
+  opening_bound_le hQ
+
 end WhirBridge.Pcs
