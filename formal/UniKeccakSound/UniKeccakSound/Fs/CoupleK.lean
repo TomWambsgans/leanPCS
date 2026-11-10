@@ -34,7 +34,7 @@ open OracleSpec OracleComp
 open scoped ENNReal
 
 attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
-  LeanVM.Protocol.Compile.instFintypeKState UniKeccak.layoutWordsK UniKeccak.setupStackK
+  LeanVM.Protocol.Compile.instFintypeKState UniKeccak.setupStackK UniKeccak.setupOodK
 
 /-! ## The bridge facts -/
 
@@ -56,11 +56,12 @@ opening accepting. -/
 def UniVerifierBridgeK : Prop :=
   ∀ (π : UPf) (s : Common.PermutationEdges KeccakState),
     Pr{let b ← (simulateQ Common.lazyRandomPermutationOracles
-        (verifyWithK Common.queryPermutation D.shape keccakMain π.iv.toList π.roots π.input (kpOf π))).run' s}[
+        (verifyWithK Common.queryPermutation D.shape keccakMain π.iv.toList (skOf D π.roots) π.input
+          (kpOf π))).run' s}[
         b = true] ≤
       Pr{let v ← (simulateQ Common.lazyRandomPermutationOracles
           (simulateQ keccakCallsOverQueryPermutation (verU (uSpecK Fl nV V) (uView (uRoundsK Fl nV V))
-            (opsRun (uView (uRoundsK Fl nV V)) (uOpsK D Fl nV V C hs)) π))).run' s}[
+            (gopsRun (uView (uRoundsK Fl nV V)) (uOpsK D Fl nV V C hs)) π))).run' s}[
         uniCheckK D Fl nV V C π v.1 ∧ ∀ k < (uOpsK D Fl nV V C hs).length, v.2.getD k false = true]
 
 /-- **EXTRACTOR READING**: a candidate stack of `C1`'s root that the composed extractor reads off the setup's log and
@@ -78,13 +79,14 @@ end Bridges
 
 /-! ## The experiments, a common prefix then the verifiers -/
 
-theorem rootsK_toB (D : KDeployment) (t : LeanVM.Prover.Tree) : rootsK D (toB t.root) = D.setupRoots t := by
-  simp only [rootsK, KDeployment.setupRoots, Soundness.ofB_toB_root]
+theorem rootsK_toB (D : KDeployment) (t : LeanVM.Prover.Tree) : rootsK D (toB t.root) = (⟨t.root⟩ : SetupRoots) := by
+  unfold rootsK
+  exact congrArg _ (Soundness.ofB_toB_root _)
 
 /-- The proof the composed game's verifier reads, from the setup's tree and the adversary's output. -/
-def piOfK (D : KDeployment) (a : LeanVM.Prover.Tree × ((Vector UInt8 32 × KeccakProof) × Common.OracleQueryLog)) :
+def piOfK (_D : KDeployment) (a : LeanVM.Prover.Tree × ((Vector UInt8 32 × KeccakProof) × Common.OracleQueryLog)) :
     UPf :=
-  ⟨a.2.1.1, upOf a.2.1.2, Vector.replicate 32 0, D.setupRoots a.1⟩
+  ⟨a.2.1.1, upOf a.2.1.2, Vector.replicate 32 0, ⟨a.1.root⟩⟩
 
 /-- **The common prefix**: the setup's tree over `π`, then the adversary given its roots, its queries logged. -/
 noncomputable def prefixUK (D : KDeployment) (A : KAdversary) :
@@ -103,11 +105,11 @@ theorem keccakSoundnessExperiment_eq (D : KDeployment) (A : KAdversary) :
 theorem run_logged_uAdvK (D : KDeployment) (A : KAdversary) (s : Bytes32) :
     (simulateQ Common.loggedOracles (uAdvK D A s)).run [] =
       (fun p => ((⟨p.1.1, upOf p.1.2, Vector.replicate 32 0, rootsK D s⟩ : UPf), p.2)) <$>
-        (simulateQ Common.loggedOracles (A (rootsK D s))).run [] := by
+        (simulateQ Common.loggedOracles (A (skOf D (rootsK D s)))).run [] := by
   rw [uAdvK, simulateQ_map, StateT.run_map]
 
 theorem uFixK_toB (D : KDeployment) (t : LeanVM.Prover.Tree) (π : UPf) :
-    uFixK D (toB t.root) π = { π with roots := D.setupRoots t } := by
+    uFixK D (toB t.root) π = { π with roots := ⟨t.root⟩ } := by
   rw [← rootsK_toB D t]
   rfl
 
@@ -159,7 +161,7 @@ theorem step_leK (hV : UniVerifierBridgeK D Fl nV V C hs) (hX : UniExtractBridge
       simulateQ keccakCallsOverQueryPermutation (hash256 (ivInputK D (D.setupRoots a.1))) >>= fun iv =>
         (fun v => (iv, v)) <$> simulateQ keccakCallsOverQueryPermutation
           (verU (uSpecK Fl nV V) (uView (uRoundsK Fl nV V))
-            (opsRun (uView (uRoundsK Fl nV V)) (uOpsK D Fl nV V C hs)) (setIv iv (piOfK D a))) := by
+            (gopsRun (uView (uRoundsK Fl nV V)) (uOpsK D Fl nV V C hs)) (setIv iv (piOfK D a))) := by
     rw [uVerIvK, simulateQ_bind]
     simp only [simulateQ_map]
     rfl

@@ -23,7 +23,7 @@ open LeanVM.Rpm (Short hashBlocks)
 open scoped ENNReal
 
 attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
-  LeanVM.Protocol.Compile.instFintypeKState UniKeccak.layoutWordsK UniKeccak.setupStackK
+  LeanVM.Protocol.Compile.instFintypeKState UniKeccak.setupStackK UniKeccak.setupOodK
 
 /-! ## The composition's facts -/
 

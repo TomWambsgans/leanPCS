@@ -31,7 +31,7 @@ open LeanVM.Rpm (Short hashBlocks)
 open scoped ENNReal
 
 attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
-  LeanVM.Protocol.Compile.instFintypeKState UniKeccak.setupStackK
+  LeanVM.Protocol.Compile.instFintypeKState UniKeccak.setupStackK UniKeccak.setupOodK
 
 /-! ## The plain layout's table is its stack, at `2^23 ..= 2^28` -/
 

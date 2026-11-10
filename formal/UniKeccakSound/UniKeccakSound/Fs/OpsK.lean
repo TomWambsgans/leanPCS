@@ -32,7 +32,7 @@ open OracleSpec OracleComp
 open scoped ENNReal
 
 attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
-  LeanVM.Protocol.Compile.instFintypeKState UniKeccak.setupStackK
+  LeanVM.Protocol.Compile.instFintypeKState UniKeccak.setupStackK UniKeccak.setupOodK
 
 /-! ## The Keccak proof as the chain reads it -/
 
@@ -51,6 +51,12 @@ def uTailK (rounds : List RoundSpec) (π : UPf) : List E :=
 
 @[simp] theorem length_uTailK (rounds : List RoundSpec) (π : UPf) : (uTailK rounds π).length = 3 := by
   simp [uTailK]
+
+/-- **The setup commitment of a setup root** at a deployment: the root and the setup stack's out-of-domain answer
+there (`setupOodK`; `KDeployment.setupRoots t = skOf D ⟨t.root⟩`). -/
+def skOf (D : KDeployment) (r : SetupRoots) : SetupRootsK := ⟨r.bytecode, setupOodK D r.bytecode⟩
+
+theorem setupRoots_skOf (D : KDeployment) (t : LeanVM.Prover.Tree) : D.setupRoots t = skOf D ⟨t.root⟩ := rfl
 
 /-! ## The stacks' variables and the shapes -/
 

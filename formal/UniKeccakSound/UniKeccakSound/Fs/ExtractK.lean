@@ -25,9 +25,10 @@ namespace UniKeccakSound
 open Compose QuotientRpm LeanVM LeanVM.Parameters LeanVM.Protocol LeanVM.Protocol.KeccakHash
 open LeanVM.Protocol.Compile LeanVM.Protocol.EndToEnd WhirBridge UniStatement UniSound UniKeccak
 
-/-- **Round `0`'s message is `C1`'s root** the stream names, without scalars. -/
+/-- **Round `0`'s message is `C1`'s commitment** the stream names: its root, then its out-of-domain answer. -/
 theorem msgK_uView_c1K {F : KeccakVm.KeccakFlockSpec} {κ : ℕ} (Fl : KFlockSound F κ keccakMain) (nV V : ℕ)
-    (π : UPf) : msgK (uView (uRoundsK Fl nV V)) π 0 = (some (toB (c1RootOfK (kpOf π))), []) :=
+    (π : UPf) : msgK (uView (uRoundsK Fl nV V)) π 0 =
+      (some (toB (c1RootOfK (kpOf π))), [scalarAt π.proof.stream (24 + 32 + 24 * 0)]) :=
   rfl
 
 /-- **What `C1`'s decoder lists**: under a root, the stacks mumbai's `decodeStacks` lists for the Merkle word, each

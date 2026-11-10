@@ -22,7 +22,7 @@ open OracleSpec OracleComp
 open scoped ENNReal
 
 attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
-  LeanVM.Protocol.Compile.instFintypeKState UniKeccak.setupStackK
+  LeanVM.Protocol.Compile.instFintypeKState UniKeccak.setupStackK UniKeccak.setupOodK
 
 /-! ## The Keccak contract's IV -/
 

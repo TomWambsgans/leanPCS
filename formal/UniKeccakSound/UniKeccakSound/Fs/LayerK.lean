@@ -83,11 +83,11 @@ theorem fsLayer128K_holds' (D : KDeployment) {F : KeccakVm.KeccakFlockSpec} {κ 
     simp only [uRoundsK, uniRounds, List.mem_append, List.mem_cons,
       List.mem_replicate, List.not_mem_nil, or_false] at hr
     rcases hr with ((rfl | hr) | rfl | rfl) | ⟨-, rfl⟩
-    · show 0 ≤ 2 ^ 30
-      exact Nat.zero_le _
+    · show 1 ≤ 2 ^ 30
+      norm_num
     · exact hFlv r hr
-    · show 0 ≤ 2 ^ 30
-      exact Nat.zero_le _
+    · show 1 ≤ 2 ^ 30
+      norm_num
     · exact hnV
     · show 2 ≤ 2 ^ 30
       norm_num
@@ -166,10 +166,8 @@ theorem c2Vars_ref : (StackLayout.new (Shape.c2ColumnsK keccakRefShape)).vars = 
     (by decide +kernel)]
   decide +kernel
 
-/-- `layoutWordsK`'s `C2` word is `C2`'s layout's (`layoutsOfK`'s `C2` entry). -/
-theorem layoutWordsK_c2 (s : UniStatement.Shape) :
-    (layoutWordsK s).getD 1 [] = layoutWord s (layoutCode .c2) (StackLayout.new (Shape.c2ColumnsK s)).vars
-      (StackLayout.new (Shape.c2ColumnsK s)).words := rfl
+/-- `C2`'s stack variables are `C2`'s layout's (`layoutsOfK`'s `C2` entry). -/
+theorem wvK_one (D : KDeployment) : wvK D 1 = (StackLayout.new (Shape.c2ColumnsK D.shape)).vars := rfl
 
 /-- **`LayoutVarsSmallK` at the reference shape.** -/
 theorem layoutVarsSmallK_ref (D : KDeployment) (hD : D.shape = keccakRefShape) : LayoutVarsSmallK D := by
@@ -183,8 +181,7 @@ theorem uniShapesK_ref (D : KDeployment) (hD : D.shape = keccakRefShape) : UniSh
   have h0 : wvK D 0 = 27 := by rw [wvK_zero D hs.c1, hD, c1Vars_ref]
   have h2 : wvK D 2 = 23 := by rw [wvK_two D hs.setup, hD, setupVars_ref]
   have h1 : wvK D 1 = 26 := by
-    unfold wvK
-    rw [hD, layoutWordsK_c2, layoutWordVars_layoutWordK _ _ _ _ (by rw [c2Vars_ref]; norm_num), c2Vars_ref]
+    rw [wvK_one, hD, c2Vars_ref]
   refine ⟨fun k hk => ?_, fun k hk => ?_, by omega, by omega⟩
   · interval_cases k <;> omega
   · interval_cases k <;> omega
