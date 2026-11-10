@@ -97,6 +97,9 @@ Two applications of the reference implementation, with their PIOPs as straight-l
 
 <!-- To reproduce both benchmarks: `sh bench.sh` in the reference implementation (https://github.com/TomWambsgans/leanPCS). -->
 
+(Note: As always in STARKs, you can always optimize)
+
+
 ### Why a 192-bit field
 
 For a PCS like WHIR, 192 bits is large enough to get provable 128-bit security in the list-decoding regime. TBD: what about a 128-bit field?
