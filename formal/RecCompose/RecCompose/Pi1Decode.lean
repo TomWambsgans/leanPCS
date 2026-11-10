@@ -3,15 +3,17 @@
 import RecCompose.Basic
 import UniKeccakComplete.K.AlgCRun
 import UniKeccakComplete.K.SyncBasic
+import UniSound.FsWalkProof
 
 /-!
 # π1's own claims, decoded
 
-`decodePi1Call` (`RecStatement.Security`) reads the Keccak π1's contract's call bytes (`UniKeccak.pcsCallsK`:
-`UniStatement.openingWords` of a point claim, under the Keccak layout words `UniKeccak.layoutWordsK`: the root word,
-the layout word, the count `1`, the coordinates, the value) back into the opening's root, layout word and claim (`decodePi1Call_point`), when the claim's point has the layout word's variables; the root is the setup's
-digest by its code `0x5503`, else the root word read back (`rootOfWord`), which is `UniStatement.rootOf` of the halves
-when their top limbs are zero (`rootOfWord_rootWord`).
+`decodePi1Call` (`RecStatement.Security`) reads the Keccak π1's contract's claim words (`UniKeccak.pcsClaimWordsK`: the
+root's 32 bytes, the out-of-domain answer's word, the point's coordinates' words, the value's word) back into the
+claim's root (`digestOfBytes32` of the bytes), answer, point and value (`decodePi1Call_claim`); `C1`'s and `C2`'s roots
+are the stream's bytes `rootWord h`, which read back to `rootOf h` (`digestOfBytes32_rootWord`), the setup's
+`digestBytes F`, which reads back to `F` (`digestOfBytes32_digestBytes`). A decoded claim's point has the word count
+less three coordinates (`claimOfWords_length`).
 -/
 
 namespace RecCompose.Pi1Decode
@@ -64,9 +66,6 @@ theorem elementOfWord_elementWord (x : E) : elementOfWord (elementWord x) = some
     elementWord x from e8.symm] at h8
   simp only [h24, h16, h8]
   exact congrArg some (UniKeccakComplete.eNew_limbs x)
-
-/-- The count word of `1`. -/
-theorem countOfWord_numberWord_one : countOfWord (numberWord 1) = some 1 := by decide
 
 /-! ## A root word read back -/
 
@@ -122,92 +121,12 @@ theorem getD_append_right (l r : List UInt8) (k : ℕ) : (l ++ r).getD (l.length
   rw [List.getD_eq_getElem?_getD, List.getD_eq_getElem?_getD, List.getElem?_append_right (by omega),
     Nat.add_sub_cancel_left]
 
-/-- **A root word read back** (`root_of_word` of `rootWord`) is the root of its halves (`rootOf`), when their top limbs
-are zero (as `nextRoot` reads them). -/
-theorem rootOfWord_rootWord (h : E × E) (h1 : h.1.limb 2 = 0) (h2 : h.2.limb 2 = 0) :
-    rootOfWord (rootWord h) = rootOf h := by
-  set a0 := (h.1.limb 0).lane
-  set a1 := (h.1.limb 1).lane
-  set b0 := (h.2.limb 0).lane
-  set b1 := (h.2.limb 1).lane
-  have hroot : rootOf h = #v[a0, a1, b0, b1] := by
-    unfold rootOf digestOfScalars
-    rw [ite_eq_left ⟨h1, h2⟩]
-    rfl
-  have hb : rootWordOfBytes (rootWord h) =
-      (be64 a0).reverse ++ ((be64 a1).reverse ++ ((be64 b0).reverse ++ (be64 b1).reverse)) := by
-    have e : rootWord h = (be64 a1 ++ be64 a0) ++ (be64 b1 ++ be64 b0) := by
-      simp only [rootWord, List.append_assoc]; rfl
-    unfold rootWordOfBytes
-    rw [e, List.take_left' (by simp), List.drop_left' (by simp),
-      List.take_of_length_le (by simp)]
-    simp only [List.reverse_append, List.append_assoc]
-  rw [hroot]
-  unfold rootOfWord
-  rw [hb]
-  unfold digestOfBytes32
-  have l8 : ∀ u : UInt64, (be64 u).reverse.length = 8 := fun u ↦ by simp
-  apply Vector.ext
-  intro j hj
-  simp only [Vector.getElem_ofFn]
-  interval_cases j
-  · refine le_fold a0 _ fun k hk ↦ ?_
-    rw [show 8 * 0 + k = k by ring, getD_append_left (by rw [l8]; exact hk), be64_reverse_getD a0 hk]
-  · refine le_fold a1 _ fun k hk ↦ ?_
-    rw [show 8 * 1 + k = (be64 a0).reverse.length + k by rw [l8], getD_append_right,
-      getD_append_left (by rw [l8]; exact hk), be64_reverse_getD a1 hk]
-  · refine le_fold b0 _ fun k hk ↦ ?_
-    rw [show 8 * 2 + k = (be64 a0).reverse.length + ((be64 a1).reverse.length + k) by rw [l8, l8]; ring,
-      getD_append_right, getD_append_right, getD_append_left (by rw [l8]; exact hk), be64_reverse_getD b0 hk]
-  · refine le_fold b1 _ fun k hk ↦ ?_
-    rw [show 8 * 3 + k = (be64 a0).reverse.length + ((be64 a1).reverse.length +
-        ((be64 b0).reverse.length + k)) by rw [l8, l8, l8]; ring,
-      getD_append_right, getD_append_right, getD_append_right, be64_reverse_getD b1 hk]
-
 /-! ## A call's words -/
 
 theorem length_digestBytes (d : Digest) : (digestBytes d).length = 32 := by
   have : digestBytes d = LeanVM.Rpm.lanesBytes d.toList := rfl
   rw [this, LeanVM.Rpm.length_lanesBytes]
   simp
-
-theorem length_layoutWord (s : UniStatement.Shape) (code vars placed : ℕ) : (UniStatement.layoutWord s code vars placed).length = 32 := by
-  simp [UniStatement.layoutWord, UniStatement.shapeBytes]
-
-theorem layoutWord_getD_22 (s : UniStatement.Shape) (code vars placed : ℕ) :
-    (UniStatement.layoutWord s code vars placed).getD 22 0 = (code >>> 8).toUInt8 := by
-  have e : UniStatement.layoutWord s code vars placed = (shapeBytes s ++ List.replicate 14 (0 : UInt8)) ++
-      ([(code >>> 8).toUInt8, code.toUInt8, vars.toUInt8] ++
-        (List.range 7).map fun k ↦ (placed >>> (8 * (6 - k))).toUInt8) := by
-    simp [UniStatement.layoutWord, List.append_assoc]
-  rw [e, show 22 = (shapeBytes s ++ List.replicate 14 (0 : UInt8)).length + 0 by simp [shapeBytes],
-    getD_append_right]
-  rfl
-
-theorem layoutWord_getD_23 (s : UniStatement.Shape) (code vars placed : ℕ) :
-    (UniStatement.layoutWord s code vars placed).getD 23 0 = code.toUInt8 := by
-  have e : UniStatement.layoutWord s code vars placed = (shapeBytes s ++ List.replicate 14 (0 : UInt8)) ++
-      ([(code >>> 8).toUInt8, code.toUInt8, vars.toUInt8] ++
-        (List.range 7).map fun k ↦ (placed >>> (8 * (6 - k))).toUInt8) := by
-    simp [UniStatement.layoutWord, List.append_assoc]
-  rw [e, show 23 = (shapeBytes s ++ List.replicate 14 (0 : UInt8)).length + 1 by simp [shapeBytes],
-    getD_append_right]
-  rfl
-
-/-- The code a layout word names (bytes `22`, `23`). -/
-def codeOf (word : List UInt8) : ℕ := (word.getD 22 0).toNat * 256 + (word.getD 23 0).toNat
-
-theorem codeOf_layoutWord (s : UniStatement.Shape) (code vars placed : ℕ) :
-    codeOf (UniStatement.layoutWord s code vars placed) = (code >>> 8).toUInt8.toNat * 256 + code.toUInt8.toNat := by
-  unfold codeOf
-  rw [layoutWord_getD_22, layoutWord_getD_23]
-
-/-- The Keccak π1's layout words (`UniKeccak.layoutWordsK`): `C1`'s, `C2`'s, the setup's, each its code's. -/
-theorem layoutWordsK_getD (s : UniStatement.Shape) :
-    (∃ v p, (UniKeccak.layoutWordsK s).getD 0 [] = UniStatement.layoutWord s 0x5501 v p) ∧
-      (∃ v p, (UniKeccak.layoutWordsK s).getD 1 [] = UniStatement.layoutWord s 0x5502 v p) ∧
-      (∃ v p, (UniKeccak.layoutWordsK s).getD 2 [] = UniStatement.layoutWord s 0x5503 v p) :=
-  ⟨⟨_, _, rfl⟩, ⟨_, _, rfl⟩, ⟨_, _, rfl⟩⟩
 
 /-- **Words of 32 bytes, concatenated, are cut back into them.** -/
 theorem chunks_flatten : ∀ (W : List (List UInt8)), (∀ w ∈ W, w.length = 32) →
@@ -257,57 +176,114 @@ theorem getD_append_right' {α : Type} (l r : List α) (k : ℕ) (d : α) : (l +
   rw [List.getD_eq_getElem?_getD, List.getD_eq_getElem?_getD, List.getElem?_append_right (by omega),
     Nat.add_sub_cancel_left]
 
-/-- **π1's call of a point claim, decoded** (`decodePi1Call` of `openingWords`): its root (the digest the root word reads
-back, the setup's by its code `0x5503`), its layout word and its claim, when the point has the layout word's variables. -/
-theorem decodePi1Call_point (root word : List UInt8) (pt : List E) (v : E) (hr : root.length = 32)
-    (hw : word.length = 32) (hpt : pt.length = layoutWordVars word) :
-    decodePi1Call (openingWords root word (.point pt v none)) =
-      some ((if codeOf word = 0x5503 then digestOfBytes32 root else rootOfWord root), word, [⟨pt, v⟩]) := by
-  set W : List (List UInt8) := [root, word, numberWord 1] ++ (pt.map elementWord ++ [elementWord v]) with hW
-  have hcall : openingWords root word (.point pt v none) = W.flatten := by
-    simp [openingWords, hW, List.flatten_append, List.flatMap, List.append_assoc]
+/-- Element words read back. -/
+theorem mapM_elementOfWord : ∀ l : List E, (l.map elementWord).mapM elementOfWord = some l
+  | [] => rfl
+  | x :: l => by
+    simp only [List.map_cons, List.mapM_cons, elementOfWord_elementWord, mapM_elementOfWord l]
+    rfl
+
+/-- `mapM` in `Option` keeps the length. -/
+theorem length_of_mapM_some {α β : Type} (f : α → Option β) :
+    ∀ (l : List α) (ys : List β), l.mapM f = some ys → ys.length = l.length
+  | [], ys, h => by simp only [List.mapM_nil] at h; cases h; rfl
+  | x :: l, ys, h => by
+    simp only [List.mapM_cons, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
+      Option.some.injEq] at h
+    obtain ⟨y, -, ys', hys', rfl⟩ := h
+    simp [length_of_mapM_some f l ys' hys']
+
+/-- **A decoded claim's point has its words' count less three coordinates.** -/
+theorem claimOfWords_length (w : List (List UInt8)) (x : Pi1Opening) (h : claimOfWords w = some x) :
+    x.2.2.1.length = w.length - 3 := by
+  unfold claimOfWords at h
+  simp only [Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def] at h
+  obtain ⟨root, -, oodW, -, valueW, -, h⟩ := h
+
+  split at h
+  · exact absurd h (by simp)
+  · simp only [Option.bind_eq_some_iff, Option.some.injEq] at h
+    obtain ⟨ood, -, pt, hpt, value, -, rfl⟩ := h
+    rw [length_of_mapM_some _ _ _ hpt]
+    simp
+    omega
+
+/-- **π1's claim words, decoded** (`decodePi1Call` of `pcsClaimWordsK`' words of a point claim): the root's bytes read
+back (`digestOfBytes32`), the out-of-domain answer, the point, the value. -/
+theorem decodePi1Call_claim (rootB : List UInt8) (ood : E) (pt : List E) (v : E) (hr : rootB.length = 32) :
+    decodePi1Call (rootB ++ elementWord ood ++ pt.flatMap elementWord ++ elementWord v) =
+      some (digestOfBytes32 rootB, ood, pt, v) := by
+  set W : List (List UInt8) := [rootB, elementWord ood] ++ (pt.map elementWord ++ [elementWord v]) with hW
+  have hcall : rootB ++ elementWord ood ++ pt.flatMap elementWord ++ elementWord v = W.flatten := by
+    simp [hW, List.flatten_append, List.flatMap, List.append_assoc]
   have hlen : ∀ w ∈ W, w.length = 32 := by
     intro w hw'
     simp only [hW, List.mem_append, List.mem_cons, List.mem_map, List.not_mem_nil, or_false] at hw'
-    rcases hw' with (rfl | rfl | rfl) | ⟨x, -, rfl⟩ | rfl <;> simp [hr, hw]
-  have hWl : W.length = 3 + (pt.length + 1) := by simp [hW]; omega
+    rcases hw' with (rfl | rfl) | ⟨x, -, rfl⟩ | rfl <;> simp [hr]
   have hflen : W.flatten.length = 32 * W.length := length_flatten_32 W hlen
-  have hWj : ∀ j < pt.length, W.getD (3 + j) [] = elementWord (pt.getD j 0) := by
-    intro j hj
-    rw [hW, show 3 + j = [root, word, numberWord 1].length + j from rfl, getD_append_right',
-      getD_append_left' _ (by simpa using hj), List.getD_eq_getElem?_getD, List.getElem?_map,
-      List.getElem?_eq_getElem hj, List.getD_eq_getElem?_getD, List.getElem?_eq_getElem hj]
-    rfl
-  have hWv : W.getD (3 + pt.length) [] = elementWord v := by
-    rw [hW, show 3 + pt.length = [root, word, numberWord 1].length + ((pt.map elementWord).length + 0) by simp,
-      getD_append_right', getD_append_right']
-    rfl
-  have hclaims : claimsOfWords W 1 (layoutWordVars word) = some [⟨pt, v⟩] := by
-    unfold claimsOfWords
-    rw [← hpt]
-    simp only [List.range_one, List.mapM_cons, List.mapM_nil, zero_mul, add_zero]
-    rw [mapM_range_eq_some 0 pt _ fun j hj ↦ by rw [hWj j hj, elementOfWord_elementWord], hWv,
-      elementOfWord_elementWord]
-    rfl
   unfold decodePi1Call
   rw [hcall, ite_eq_right (by rw [hflen]; omega), chunks_flatten W hlen]
-  have h0 : W.head? = some root := rfl
-  have h1 : W[1]? = some word := rfl
-  have h2 : W[2]? = some (numberWord 1) := rfl
-  simp only [h0, h1, h2, Option.bind_eq_bind, Option.bind_some, countOfWord_numberWord_one, hWl, ← hpt]
-  rw [hpt, hclaims]
-  simp [codeOf]
+  unfold claimOfWords
+  have h0 : W.head? = some rootB := rfl
+  have h1 : W[1]? = some (elementWord ood) := rfl
+  have hl : W.getLast? = some (elementWord v) := by
+    rw [hW, List.getLast?_append, List.getLast?_append]
+    simp
+  have hd : (W.drop 2).dropLast = pt.map elementWord := by simp [hW]
+  have hc : (3 ≤ W.length ∧ rootB.length = 32) := ⟨by simp [hW], hr⟩
+  have hm : pt.mapM (elementOfWord ∘ elementWord) = some pt := by
+    rw [← mapM_elementOfWord pt, List.mapM_map]
+  simp [h0, h1, hl, hd, hc, elementOfWord_elementWord, hm, rootOfWord]
+
 
 end RecCompose.Pi1Decode
+
+namespace RecCompose
+
+open RecStatement LeanVM.Parameters LeanVM.Protocol LeanVM.Protocol.KeccakHash
+
+/-- A digest's bytes read back. -/
+theorem digestOfBytes32_digestBytes (d : Digest) : UniStatement.digestOfBytes32 (digestBytes d) = d := by
+  have l8 : ∀ u : UInt64, (wordBytes u).length = 8 := fun u ↦ by simp [wordBytes]
+  have hw : ∀ (u : UInt64) {k : ℕ}, k < 8 → (wordBytes u).getD k 0 = (u >>> (8 * k).toUInt64).toUInt8 := by
+    intro u k hk
+    simp [wordBytes, List.getD_eq_getElem?_getD, hk]
+  obtain ⟨⟨l⟩, hl⟩ := d
+  match l, hl with
+  | [a, b, c, e], _ =>
+    have hb : digestBytes ⟨⟨[a, b, c, e]⟩, rfl⟩ = wordBytes a ++ (wordBytes b ++ (wordBytes c ++ wordBytes e)) := by
+      simp [digestBytes]
+    unfold UniStatement.digestOfBytes32
+    rw [hb]
+    apply Vector.ext
+    intro j hj
+    simp only [Vector.getElem_ofFn]
+    interval_cases j
+    · refine Pi1Decode.le_fold a _ fun k hk ↦ ?_
+      rw [show 8 * 0 + k = k by ring, Pi1Decode.getD_append_left (by rw [l8]; exact hk), hw a hk]
+    · refine Pi1Decode.le_fold b _ fun k hk ↦ ?_
+      rw [show 8 * 1 + k = (wordBytes a).length + k by rw [l8], Pi1Decode.getD_append_right,
+        Pi1Decode.getD_append_left (by rw [l8]; exact hk), hw b hk]
+    · refine Pi1Decode.le_fold c _ fun k hk ↦ ?_
+      rw [show 8 * 2 + k = (wordBytes a).length + ((wordBytes b).length + k) by rw [l8, l8]; ring,
+        Pi1Decode.getD_append_right, Pi1Decode.getD_append_right, Pi1Decode.getD_append_left (by rw [l8]; exact hk),
+        hw c hk]
+    · refine Pi1Decode.le_fold e _ fun k hk ↦ ?_
+      rw [show 8 * 3 + k = (wordBytes a).length + ((wordBytes b).length + ((wordBytes c).length + k)) by
+          rw [l8, l8, l8]; ring,
+        Pi1Decode.getD_append_right, Pi1Decode.getD_append_right, Pi1Decode.getD_append_right, hw e hk]
+
+/-- **A stream root's bytes read back** to the root π1's verifier names (`rootOf`). -/
+theorem digestOfBytes32_rootWord (h : E × E) : UniStatement.digestOfBytes32 (UniStatement.rootWord h) =
+    UniStatement.rootOf h := by
+  rw [← UniSound.digestBytes_rootOf, digestOfBytes32_digestBytes]
+
+end RecCompose
 
 /-- info: 'RecCompose.Pi1Decode.elementOfWord_elementWord' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms RecCompose.Pi1Decode.elementOfWord_elementWord
 
-/-- info: 'RecCompose.Pi1Decode.rootOfWord_rootWord' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'RecCompose.Pi1Decode.decodePi1Call_claim' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms RecCompose.Pi1Decode.rootOfWord_rootWord
-
-/-- info: 'RecCompose.Pi1Decode.decodePi1Call_point' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms RecCompose.Pi1Decode.decodePi1Call_point
+#print axioms RecCompose.Pi1Decode.decodePi1Call_claim

@@ -27,7 +27,7 @@ namespace RecCompose
 open UniStatement LeanVM.Parameters LeanVM.Semantics LeanVM.Protocol LeanVM.Protocol.KeccakHash
 
 attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
-  LeanVM.Protocol.Compile.instFintypeKState UniKeccak.layoutWordsK UniKeccak.setupStackK
+  LeanVM.Protocol.Compile.instFintypeKState UniKeccak.setupStackK
 
 /-- Three point openings, `C1`'s, `C2`'s and the setup's, no bit slice. -/
 def OpeningsShape (l : List (Commitment × Opening)) : Prop :=
@@ -189,6 +189,8 @@ theorem holdsE_reduceWithK_openings (F : KeccakState → m KeccakState) (shape :
   · exact holdsE_bind (holdsE_throw (m := m) _) fun _ h ↦ False.elim h
   refine holdsE_bind (holdsE_true (m := m) _) fun counts _ ↦ ?_
   refine holdsE_bind (holdsE_true (m := m) _) fun root1 _ ↦ ?_
+  refine holdsE_bind (holdsE_true (m := m) _) fun ood1 _ ↦ ?_
+
   refine holdsE_bind (holdsE_true (m := m) _) fun alphas _ ↦ ?_
   refine holdsE_bind (holdsE_true (m := m) _) fun beta _ ↦ ?_
   refine holdsE_bind (holdsE_true (m := m) _) fun gamma _ ↦ ?_

@@ -13,7 +13,7 @@ import RecCompose.Rpm
 * `pi1Coupling`: the π1 adversary built from π2's (`pi1Adversary`) likewise; for every fixed permutation and every
   prefix (the setup, `A`'s output and transcript) on which π2's extractor outputs a stream `s` accepted with the
   contract's π1 openings `ops` off the hazard, the contract accepts at most as often as its three π1 openings do
-  (`contract_le_openSeq`: the contract's acceptance needs all six; `loop_le`), and those are π1-rec3's verifier at
+  (`contract_le_openSeq`: the contract's acceptance needs all eight; `loop_le`), and those are π1-rec3's verifier at
   Keccak-f[1600] with its openings over `π` (**`Pi1OpeningsAgree`**, named below); `CallsPure` makes the contract's π1
   openings the calldata's `pi1OpsOf`.
 -/
@@ -71,36 +71,33 @@ theorem hazardCoupling (D : RecDeployment) : HazardCoupling D := by
 
 /-! ## π1-rec3's coupling -/
 
-/-- **A π1 opening as the block opens the contract's claim**: by its layout word's registered opener. -/
+/-- **A π1 opening as the block opens the contract's claim**: `UniKeccak.pcsOpenK` on the point's length
+(`pcsOpenWords` on the claim's words, decoded). -/
 def openAt {m : Type → Type} [Monad m] (F : LeanVM.Semantics.KeccakState → m LeanVM.Semantics.KeccakState)
-    (reg : List (List UInt8 × Opener)) (o : Pi1Opening) (p : Compile.Proof) : m Bool :=
-  match reg.lookup o.2.1 with
-  | none => pure false
-  | some (.pi1 vars) => UniStatement.pcsOpenWith F vars o.1 o.2.2 p
-  | some (.pi2 L) => PcsQuotient.openingWith F L o.1 o.2.2 p
+    (o : Pi1Opening) (p : Compile.Proof) : m Bool :=
+  UniKeccak.pcsOpenK F o.2.2.1.length o.1 o.2.1 o.2.2.1 o.2.2.2 p
 
 /-- **The contract's three π1 openings** `ops`, with the recursive proof's three π1 opening proofs. -/
 def openSeq {m : Type → Type} [Monad m] (F : LeanVM.Semantics.KeccakState → m LeanVM.Semantics.KeccakState)
-    (reg : List (List UInt8 × Opener)) (ops : List Pi1Opening) (proof : RecProof) : m Bool := do
-  let b1 ← openAt F reg (ops.getD 0 default) proof.c1
-  let b2 ← openAt F reg (ops.getD 1 default) proof.c2
-  let b3 ← openAt F reg (ops.getD 2 default) proof.f
+    (ops : List Pi1Opening) (proof : RecProof) : m Bool := do
+  let b1 ← openAt F (ops.getD 0 default) proof.c1
+  let b2 ← openAt F (ops.getD 1 default) proof.c2
+  let b3 ← openAt F (ops.getD 2 default) proof.f
   return b1 && b2 && b3
 
 /-- **Named hypothesis: π1-rec3's verifier at Keccak-f[1600] is the contract's three π1 openings**, on a stream `s`
 π1-rec3's graph accepts with the contract's π1 openings `ops` (read off the calldata) off the merge hazard, the graph
 being π1-rec3's verifier there: `pi1KeccakVerifierWith` (π1's run over Keccak-f[1600], then `C1`, `C2`, the setup opened
-over `π`) on π1's proof of `s` with the recursive proof's three π1 opening proofs is, as a computation, the contract's
-three π1 claims opened, `openSeq` of `ops`.
+over `π` at their stacks' variables `stackVarsK`) on π1's proof of `s` with the recursive proof's three π1 opening
+proofs is, as a computation, the contract's three π1 claims opened, `openSeq` of `ops` (each at its point's length).
 
 Why it holds (`OpeningsAgree.lean`, `pi1OpeningsAgree`): off the hazard `Pi1GraphIsVerifierK` makes the graph's
 outputs `RecGraphKeccak.verifierOutputsWithK`'s at the reference shape (`D.pi1.shape = keccak128`), so the Keccak run
-accepts and the graph's calls are `UniKeccak.pcsCallsK`' words; their decoding (`decodePi1Call`, which `Pi1GraphAccepts` compares
-with `ops`) gives back the verifier's openings: `elementOfWord ∘ elementWord`, `countOfWord ∘ numberWord`,
-`rootOfWord ∘ rootWord = rootOf` (`C1`, `C2`), and the contract's setup root word `rootWordOfBytes (digestBytes F)`
-naming `F` (`digestOfBytes32 ∘ digestBytes`); the verifier's openings at π1-rec3 are three point claims in
-`commitments` order, no matrix call; and π1's layout words are registered with π1's opener at their variables (no π2
-layout word equals one: their first bytes, `"pi2"` and the shape's). -/
+accepts and the graph's claims are `UniKeccak.pcsClaimWordsK`' words; their decoding (`decodePi1Call`, which
+`Pi1GraphAccepts` compares with `ops`) gives back the verifier's openings (`elementOfWord ∘ elementWord`,
+`digestOfBytes32 ∘ digestBytes`, the roots `rootOf`'s bytes); `F`'s commitment is the deployment's
+(`pi1CallsWith`); the verifier's openings at π1-rec3 are three point claims in `commitments` order, no matrix call;
+and the contract's points have `stackVarsK` coordinates (`Pi1CallsShape`: the calls' word counts). -/
 def Pi1OpeningsAgree (D : RecDeployment) : Prop :=
   RecGraphKeccak.Pi1GraphIsVerifierK →
     ∀ (roots : RecSetupRoots) (input : Vector UInt8 32) (proof : RecProof) (s : Array UInt8)
@@ -109,68 +106,42 @@ def Pi1OpeningsAgree (D : RecDeployment) : Prop :=
       Pi1GraphAccepts (D.pi1IvAt roots.pi1) input s ops →
       ¬ RecGraphKeccak.MergeHazardK LeanVM.Semantics.keccakF1600 (D.pi1IvAt roots.pi1) input.toList s →
         pi1KeccakVerifierWith queryPermutation D.pi1 roots.pi1 input (proof.pi1Proof s) =
-          openSeq queryPermutation (registryAt D roots) ops proof
+          openSeq queryPermutation ops proof
 
-theorem lookup_of_decodeWith (reg : List (List UInt8 × Opener)) (w : List (List UInt8))
-    (x : Digest × Opener × List PcsQuotient.Claim) (h : decodeWith reg w = some x) :
-    reg.lookup (w.getD 1 []) = some x.2.1 := by
-  unfold decodeWith at h
-  cases hw0 : w.head? with
-  | none => simp [hw0] at h
-  | some root =>
-    cases hw1 : w[1]? with
-    | none => simp [hw0, hw1] at h
-    | some layout =>
-      cases hl : reg.lookup layout with
-      | none => simp [hw0, hw1, hl] at h
-      | some op =>
-        simp only [hw0, hw1, hl, Option.bind_eq_bind, Option.bind_some] at h
-        have hg : w.getD 1 [] = layout := by rw [List.getD_eq_getElem?_getD, hw1, Option.getD_some]
-        rw [hg, hl]
-        simp only [Option.bind_eq_some_iff] at h
-        obtain ⟨a, -, k, -, h⟩ := h
-        split_ifs at h with hc
-        · simp at h
-        · obtain ⟨cl, -, hx⟩ := Option.bind_eq_some_iff.mp h
-          cases hx
-          rfl
-
-/-- A call the registry decodes is opened as its decoded opening. -/
-theorem pcsOpenAt_eq {m : Type → Type} [Monad m] (F : LeanVM.Semantics.KeccakState → m LeanVM.Semantics.KeccakState)
-    (reg : List (List UInt8 × Opener)) (w : List (List UInt8)) (p : Compile.Proof)
-    (x : Digest × Opener × List PcsQuotient.Claim) (h : decodeWith reg w = some x) :
-    pcsOpenAt F reg w p = openAt F reg (x.1, w.getD 1 [], x.2.2) p := by
-  have hl := lookup_of_decodeWith reg w x h
-  unfold pcsOpenAt openAt
+/-- A claim that decodes is opened as its decoded opening. -/
+theorem pcsOpenWords_eq {m : Type → Type} [Monad m]
+    (F : LeanVM.Semantics.KeccakState → m LeanVM.Semantics.KeccakState) (w : List (List UInt8)) (p : Compile.Proof)
+    (x : Pi1Opening) (h : claimOfWords w = some x) : pcsOpenWords F w p = openAt F x p := by
+  unfold pcsOpenWords openAt
   rw [h]
-  simp only [hl]
-  obtain ⟨root, op, claims⟩ := x
-  cases op <;> rfl
 
-/-- **The contract's six openings accept at most as often as its three π1 openings**, over any oracle answers. -/
-theorem loop_le (I : QueryImpl RandomPermutationOracles ProbComp) (reg : List (List UInt8 × Opener))
-    (calls : List (List (List UInt8))) (hlen : calls.length = 6) (proof : RecProof) (ops : List Pi1Opening)
-    (hops : contractPi1Openings reg calls = some ops) :
+/-- **The contract's eight openings accept at most as often as its three π1 openings**, over any oracle answers. -/
+theorem loop_le (I : QueryImpl RandomPermutationOracles ProbComp)
+    (calls : List (List (List UInt8))) (hlen : calls.length = 8) (proof : RecProof) (ops : List Pi1Opening)
+    (hops : contractPi1Openings calls = some ops) :
     Pr{let x ← simulateQ I (do
         let s ← forIn (calls.zip proof.openings) true fun x s ↦ do
-          let b ← pcsOpenAt queryPermutation reg x.1 x.2
+          let b ← pcsOpenWords queryPermutation x.1 x.2
           pure (ForInStep.yield (s && b))
-        pure (s, calls))}[x.1 = true ∧ contractPi1Openings reg x.2 = some ops] ≤
-      Pr{let b ← simulateQ I (openSeq queryPermutation reg ops proof)}[b = true] := by
+        pure (s, calls))}[x.1 = true ∧ contractPi1Openings x.2 = some ops] ≤
+      Pr{let b ← simulateQ I (openSeq queryPermutation ops proof)}[b = true] := by
   match calls, hlen with
-  | [w0, w1, w2, w3, w4, w5], _ =>
+  | [w0, w1, w2, w3, w4, w5, w6, w7], _ =>
     simp only [contractPi1Openings, List.take, List.mapM_cons, List.mapM_nil, Option.bind_eq_bind,
-      Option.bind_eq_some_iff, Option.map_eq_some_iff, Option.pure_def, Option.some.injEq] at hops
-    obtain ⟨_, ⟨x0, h0, rfl⟩, _, ⟨_, ⟨x1, h1, rfl⟩, _, ⟨_, ⟨x2, h2, rfl⟩, _, rfl, rfl⟩, rfl⟩, rfl⟩ := hops
+      Option.bind_eq_some_iff, Option.pure_def, Option.some.injEq] at hops
+    obtain ⟨x0, h0, _, ⟨x1, h1, _, ⟨x2, h2, _, rfl, rfl⟩, rfl⟩, rfl⟩ := hops
+
     simp only [RecProof.openings, List.zip_cons_cons, List.zip_nil_left, List.forIn_cons, List.forIn_nil,
-      bind_assoc, pure_bind, simulateQ_bind, simulateQ_pure, pcsOpenAt_eq _ _ _ _ _ h0, pcsOpenAt_eq _ _ _ _ _ h1,
-      pcsOpenAt_eq _ _ _ _ _ h2, openSeq, List.getD_cons_zero, List.getD_cons_succ]
+      bind_assoc, pure_bind, simulateQ_bind, simulateQ_pure, pcsOpenWords_eq _ _ _ _ h0, pcsOpenWords_eq _ _ _ _ h1,
+      pcsOpenWords_eq _ _ _ _ h2, openSeq, List.getD_cons_zero, List.getD_cons_succ]
     refine prEvent_bind_mono_of_forall_le _ _ _ _ _ fun b0 ↦ ?_
     refine prEvent_bind_mono_of_forall_le _ _ _ _ _ fun b1 ↦ ?_
     refine prEvent_bind_mono_of_forall_le _ _ _ _ _ fun b2 ↦ ?_
     refine prEvent_bind_le_of_forall_le _ _ _ fun b3 ↦ ?_
     refine prEvent_bind_le_of_forall_le _ _ _ fun b4 ↦ ?_
     refine prEvent_bind_le_of_forall_le _ _ _ fun b5 ↦ ?_
+    refine prEvent_bind_le_of_forall_le _ _ _ fun b6 ↦ ?_
+    refine prEvent_bind_le_of_forall_le _ _ _ fun b7 ↦ ?_
     refine Rpm.prEvent_pure_le _ _ _ _ fun h ↦ ?_
     simp only [Bool.and_eq_true] at h ⊢
     tauto
@@ -187,8 +158,8 @@ answers. -/
 theorem contract_le_openSeq (I : QueryImpl RandomPermutationOracles ProbComp) (D : RecDeployment)
     (roots : RecSetupRoots) (input : Vector UInt8 32) (proof : RecProof) (ops : List Pi1Opening) :
     Pr{let x ← simulateQ I (D.contractWith queryPermutation roots input proof)}[
-      x.1 = true ∧ contractPi1Openings (registryAt D roots) x.2 = some ops] ≤
-    Pr{let b ← simulateQ I (openSeq queryPermutation (registryAt D roots) ops proof)}[b = true] := by
+      x.1 = true ∧ contractPi1Openings x.2 = some ops] ≤
+    Pr{let b ← simulateQ I (openSeq queryPermutation ops proof)}[b = true] := by
   unfold RecDeployment.contractWith
   simp only [simulateQ_bind]
   refine prEvent_bind_le_of_forall_le _ _ _ fun iv ↦ ?_
@@ -202,10 +173,10 @@ theorem contract_le_openSeq (I : QueryImpl RandomPermutationOracles ProbComp) (D
       exact prEvent_pure_le_of_not _ _ (fun h ↦ Bool.false_ne_true h.1) _
     · rw [simulateQ_pure]
       exact prEvent_pure_le_of_not _ _ (fun h ↦ Bool.false_ne_true h.1) _
-    · rcases Classical.em (contractPi1Openings (registryAt D roots) (pcsCalls (D.circuitAt roots.pi1).circuit
-          (pi1CallsWith D.pi1Calls roots.pi1.bytecode) (digestBytes roots.pi2) proof.stream r) = some ops)
+    · rcases Classical.em (contractPi1Openings (pcsCalls (D.circuitAt roots.pi1).circuit
+          (pi1CallsWith D.pi1Calls roots.pi1) (digestBytes roots.pi2) roots.pi2Ood proof.stream r) = some ops)
         with hops | hops
-      · exact loop_le I _ _ (not_not.mp h2) proof ops hops
+      · exact loop_le I _ (not_not.mp h2) proof ops hops
       · rw [simulateQ_bind]
         refine prEvent_bind_le_of_forall_le _ _ _ fun b ↦ ?_
         rw [simulateQ_pure]
@@ -224,7 +195,7 @@ theorem pi1Adversary_eq (D : RecDeployment) (A : RecAdversary) (roots : RecSetup
 /-- The contract's π1 openings are the calldata's, on the outcome. -/
 def CallsGood (D : RecDeployment) (z : RecOutcome2) : Prop :=
   acc z = true → ∃ ops, pi1OpsOf D (rts z) (inp z) (prf z).stream = some ops ∧
-    contractPi1Openings (registryAt D (rts z)) (cls z) = some ops
+    contractPi1Openings (cls z) = some ops
 
 /-- **π1-rec3's coupling.** -/
 theorem pi1Coupling (D : RecDeployment) (hpure : CallsPure D) (hagree : Pi1OpeningsAgree D) : Pi1Coupling D := by

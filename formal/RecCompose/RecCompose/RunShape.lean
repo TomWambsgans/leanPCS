@@ -20,7 +20,7 @@ namespace RecCompose
 open UniStatement LeanVM.Parameters LeanVM.Semantics LeanVM.Protocol LeanVM.Protocol.KeccakHash
 
 attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
-  LeanVM.Protocol.Compile.instFintypeKState UniKeccak.layoutWordsK UniKeccak.setupStackK
+  LeanVM.Protocol.Compile.instFintypeKState UniKeccak.setupStackK
 
 section Generic
 
@@ -75,6 +75,7 @@ def ShapeOK (r : Reduced) : Prop :=
   r.matrices = none ∧ (r.roots.1.1.limb 2 = 0 ∧ r.roots.1.2.limb 2 = 0) ∧
     (r.roots.2.1.limb 2 = 0 ∧ r.roots.2.2.limb 2 = 0)
 
+set_option maxHeartbeats 1600000 in
 /-- **The Keccak verifier's reduction** (any shape, variant and claims' mode) returns no matrices' claim and roots
 read as two limbs. -/
 theorem holdsE_reduceWithK (F : KeccakState → m KeccakState) (shape : UniStatement.Shape) (stmt : List E)
