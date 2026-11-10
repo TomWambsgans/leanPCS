@@ -86,6 +86,17 @@ A valid block proves every dependency of its transactions. So a contract can rel
 
 ## Rationale
 
+### Benchmarks
+
+Two applications of the reference implementation, with their PIOPs as straight-line EVM contracts and their PCS claims declared in a frame. The PIOP column is the gas of the contract call that verifies the PIOP, with its calldata priced by EIP-7623 and without the 21,000 base cost; the totals add the frame (`1 + 32` bytes a claim) and the PCS intrinsic gas, with calldata priced by EIP-7623 or by [EIP-7976](./eip-7976.md)'s floor of 64 gas a byte.
+
+| Application | Prover (M4 Max) | Calldata | PIOP | PCS claims | Total (EIP-7623) | Total (EIP-7976) |
+|---|---|---|---|---|---|---|
+| Zero-knowledge membership in a Keccak-256 Merkle tree of depth 32 | 1.7 s | 253 bytes | 18,855 gas | 4 | about 30,000 gas | about 33,000 gas |
+| leanVM verification, i.e. any computation thanks to recursion | 2.1 s | 1,005 bytes | 43,819 gas | 7 | about 60,000 gas | about 91,000 gas |
+
+<!-- To reproduce both benchmarks: `sh bench.sh` in the reference implementation (https://github.com/TomWambsgans/leanPCS). -->
+
 ### Why a 192-bit field
 
 For a PCS like WHIR, 192 bits is large enough to get provable 128-bit security in the list-decoding regime. TBD: what about a 128-bit field?
