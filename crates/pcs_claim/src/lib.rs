@@ -30,7 +30,9 @@
 use fiat_shamir::digest_words;
 use fiat_shamir::merkle::Hash;
 use fiat_shamir::transcript::{Proof, ProverState};
-use pcs::whir::{LaneTensor, commit_tree_in, config_for_rate, recursive_prover_with_lane_tensors};
+use std::sync::Mutex;
+
+use pcs::whir::{LaneTensor, commit_tree_in, config_for_rate, inner_product_base_ext, recursive_prover_with_lane_tensors};
 use primitives::field::{F64, F192};
 use primitives::hash::hash as keccak256;
 use primitives::multilinear::{eq_table, mle_eval_par};
@@ -156,7 +158,24 @@ pub fn evaluate(words: &[F64], point: &[F192]) -> F192 {
     mle_eval_par(words, point)
 }
 
-/// A commitment, and what its openings need: the words, the Merkle tree of their codeword.
+/// [`evaluate`] of the `2^n` words (`n = point.len()`) whose leading whole lanes are `words` and the rest zero:
+/// `Σ_l eq(point_high, l) · Σ_y lane_l[y] eq(point_low, y)` over the lanes `words` holds.
+pub fn evaluate_lanes(words: &[F64], point: &[F192]) -> F192 {
+    let n = point.len();
+    let log_lane = n - LANE_FOLD;
+    let lane = 1usize << log_lane;
+    assert!(
+        words.len().is_multiple_of(lane) && words.len() <= 1 << n,
+        "whole lanes of the 2^n words"
+    );
+    let low = eq_table(&point[..log_lane]);
+    (0..words.len() / lane).fold(F192::ZERO, |acc, l| {
+        acc + eq_bits(&point[log_lane..], l) * inner_product_base_ext(&words[l * lane..(l + 1) * lane], &low)
+    })
+}
+
+/// A commitment, and what its openings need: the committed lanes' words, the Merkle tree of their codeword, and the
+/// codeword itself if it was kept (which the first opening reads its queried rows from, and frees).
 pub struct Committed {
     pub n: usize,
     pub root: Hash,
@@ -164,12 +183,18 @@ pub struct Committed {
     pub ood: F192,
     words: Vec<F64>,
     tree: Vec<Hash>,
+    codeword: Mutex<Option<Vec<F64>>>,
 }
 
 impl Committed {
-    /// The committed words.
+    /// The committed words: the leading whole lanes of `f`'s `2^n` (the rest zero).
     pub fn words(&self) -> &[F64] {
         &self.words
+    }
+
+    /// The words, given back.
+    pub fn into_words(self) -> Vec<F64> {
+        self.words
     }
 
     /// The claim that `f(point) = value` on this commitment.
@@ -186,7 +211,7 @@ impl Committed {
 
     /// The claim at `point` with `f`'s value there.
     pub fn claim_at(&self, point: Vec<F192>) -> PcsClaim {
-        let value = evaluate(&self.words, &point);
+        let value = evaluate_lanes(&self.words, &point);
         self.claim(point, value)
     }
 }
@@ -196,18 +221,49 @@ impl Committed {
 /// `2^(n-6)` words, and the out-of-domain answer. The words are moved in: an opening reads them.
 pub fn commit(words: Vec<F64>) -> Committed {
     let n = words.len().trailing_zeros() as usize;
-    assert!(
-        words.len().is_power_of_two() && (MIN_VARIABLES..=MAX_VARIABLES).contains(&n),
-        "2^n words, n from {MIN_VARIABLES} to {MAX_VARIABLES}"
-    );
+    assert!(words.len().is_power_of_two(), "2^n words");
+    commit_lanes(words, n)
+}
+
+/// [`commit`] to the `2^n` words whose leading whole lanes (of `2^(n-6)` words) are `words` and the rest zero, without
+/// encoding the zero lanes: leanVM's commitment of the leading lanes is the whole stack's (its root and its proofs are
+/// those of the `2^n` words: the zero lanes' codeword is zero, and a Merkle leaf hashes them first). The opening
+/// pads its rows back to the whole stack's ([`open`]).
+pub fn commit_lanes(words: Vec<F64>, n: usize) -> Committed {
+    check_lanes(&words, n);
     let (commitment, tree) = commit_tree_in(&words, n, LANE_FOLD, LOG_INV_RATE, Vec::new());
-    let ood = evaluate(&words, &ood_point(n, &commitment.root));
+    committed(words, n, commitment.root, tree, None)
+}
+
+/// [`commit_lanes`], keeping the codeword (`2^LOG_INV_RATE` words a word of the lanes), which the first opening reads
+/// its queried rows from instead of encoding them again, and frees. The root and the proofs are the same.
+pub fn commit_lanes_keeping_codeword(words: Vec<F64>, n: usize) -> Committed {
+    check_lanes(&words, n);
+    let (commitment, data) = pcs::whir::commit(&words, n, LANE_FOLD, LOG_INV_RATE);
+    committed(words, n, commitment.root, data.merkle_tree, Some(data.codeword))
+}
+
+fn check_lanes(words: &[F64], n: usize) {
+    assert!(
+        (MIN_VARIABLES..=MAX_VARIABLES).contains(&n),
+        "n from {MIN_VARIABLES} to {MAX_VARIABLES}"
+    );
+    let lane = 1usize << (n - LANE_FOLD);
+    assert!(
+        !words.is_empty() && words.len().is_multiple_of(lane) && words.len() <= 1 << n,
+        "whole leading lanes of the 2^n words"
+    );
+}
+
+fn committed(words: Vec<F64>, n: usize, root: Hash, tree: Vec<Hash>, codeword: Option<Vec<F64>>) -> Committed {
+    let ood = evaluate_lanes(&words, &ood_point(n, &root));
     Committed {
         n,
-        root: commitment.root,
+        root,
         ood,
         words,
         tree,
+        codeword: Mutex::new(codeword),
     }
 }
 
@@ -239,7 +295,9 @@ fn eq_tensor(point: &[F192], scale: F192) -> LaneTensor {
 }
 
 /// Prove `claim`, a claim on `committed` (its root, its out-of-domain answer, `n`): one WHIR opening of `f(z) =
-/// ood` and `f(point) = value`, combined by `1, λ`, `λ` the transcript's first challenge.
+/// ood` and `f(point) = value`, combined by `1, λ`, `λ` the transcript's first challenge. Its level-0 rows are the
+/// whole stack's (`64` words, the absent lanes' zeros leading), as a verifier that knows only `n` reads them. A kept
+/// codeword serves this opening and is freed.
 pub fn open(committed: &Committed, claim: &PcsClaim) -> Proof {
     let n = committed.n;
     assert!(
@@ -255,17 +313,31 @@ pub fn open(committed: &Committed, claim: &PcsClaim) -> Proof {
         eq_tensor(&ood_point(n, &committed.root), F192::ONE),
         eq_tensor(&claim.point, lambda),
     ];
+    let codeword = committed.codeword.lock().expect("the codeword").take();
     recursive_prover_with_lane_tensors(
         &config,
         n,
         &committed.words[..],
         &weight,
         target,
-        None,
+        codeword.as_deref(),
         &committed.tree[..],
         &mut ps,
     );
-    ps.into_proof()
+    let mut proof = ps.into_proof();
+    // Level 0's rows hold the committed lanes alone, the tail of a leaf's image: the whole stack's lead with the
+    // absent lanes' zeros (`pcs::whir::commit`).
+    let width = 1usize << LANE_FOLD;
+    if let Some(level0) = proof.merkle.first_mut() {
+        for row in &mut level0.leaf_data {
+            if row.len() < width {
+                let mut full = vec![F64::ZERO; width - row.len()];
+                full.extend_from_slice(row);
+                *row = full;
+            }
+        }
+    }
+    proof
 }
 
 fn ext(x: F192) -> verifier::E {

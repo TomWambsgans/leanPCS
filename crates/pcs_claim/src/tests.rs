@@ -196,3 +196,36 @@ fn false_claims_and_altered_proofs_are_rejected() {
     assert!(!verify(&small.encode(), &proof));
     assert!(!verify(&claim.encode()[1..], &proof));
 }
+
+/// A commitment of the leading lanes alone is the whole stack's (its root and out-of-domain answer), and its openings
+/// of claims at points of the whole stack are accepted by the verifier, which knows only `n`, with or without the
+/// codeword kept.
+#[test]
+fn leading_lanes_commit_and_open_as_the_whole_stack() {
+    let n = 16;
+    let lane = 1usize << (n - LANE_FOLD);
+    let mut rng = Rng::new(7);
+    for lanes in [1usize, 10, 33, 64] {
+        let mut full = words(n, lanes as u64);
+        full[lanes * lane..].iter_mut().for_each(|w| *w = F64::ZERO);
+        let whole = commit(full.clone());
+        let point = rng.ext_vec(n);
+        for keep in [false, true] {
+            let leading = full[..lanes * lane].to_vec();
+            let committed = if keep {
+                commit_lanes_keeping_codeword(leading, n)
+            } else {
+                commit_lanes(leading, n)
+            };
+            assert_eq!(committed.root, whole.root, "the root at {lanes} lanes");
+            assert_eq!(committed.ood, whole.ood, "the out-of-domain answer at {lanes} lanes");
+            let claim = committed.claim_at(point.clone());
+            assert_eq!(claim.value, naive(&full, &point));
+            assert_eq!(claim, whole.claim_at(point.clone()));
+            assert!(opens(&committed, &claim), "an opening at {lanes} lanes (codeword kept: {keep})");
+            let mut wrong = claim.clone();
+            wrong.value += F192::ONE;
+            assert!(!verify(&wrong.encode(), &wire_proof(&open(&committed, &claim))));
+        }
+    }
+}

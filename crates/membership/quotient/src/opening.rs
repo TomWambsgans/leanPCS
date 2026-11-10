@@ -3,7 +3,6 @@
 // crates/flock/src/quotient/opening.rs; `wire_proof` is leanVM's `keccak_gkr::batch_bench::scalar_proof`
 // (commit c445e3d5). The hidden layout adapts the padding of leanVM's `flock::membership` (same branch,
 // crates/flock/membership-zk.md) to tables that fill their stack; see HIDING.md. MIT OR Apache-2.0; see AGENTS.md.
-// Version 3 of the opening (the leanVM recursion's WHIR ladder, `Version`) added here; version 2 unchanged.
 //! The commitments the claims are opened against, with leanVM's WHIR **unchanged**: its commitments and proofs
 //! are those of its committer ([`pcs::whir::commit`]) and its prover ([`pcs::whir::recursive_prover_with_basis`]),
 //! made in less memory ([`pcs::whir::commit_tree`], [`pcs::whir::recursive_prover_with_lane_tensors`]), and its
@@ -21,10 +20,7 @@
 //! id, its size and WHIR's rate: [`prefix`]) and the claims, its public digest zero, and the root the proof's
 //! first two scalars, which the verifier checks are the root it expects ([`iv`]).
 //!
-//! Two [`Version`]s of the opening share the commitment (the same level-0 code, rate `1/2`, `64` lanes) and differ
-//! in WHIR's deeper levels: version 2, the membership line's ([`VERSION`]: leanVM's ladder), and version 3, the
-//! leanVM recursion's (`crates/leanvm/rec`: a ladder whose deeper levels keep a lower rate,
-//! `pcs::whir::RECURSION_SCHEDULE`). The functions without a version are version 2's; the `_with` ones take it.
+//! [`Version`] names this opening's one version ([`VERSION`]: leanVM's ladder); the `_with` functions take it.
 //!
 //! A **hidden** layout ([`Layout::hidden`]) makes the commitment and its opening independent of the table given
 //! the claims (`HIDING.md`): every lane's first piece of `2^LOG_PIECE` entries is random, the pieces the table's
@@ -37,10 +33,7 @@
 use fiat_shamir::digest_words;
 use fiat_shamir::merkle::Hash;
 use fiat_shamir::transcript::{Proof, ProverState};
-use pcs::whir::{
-    DEPLOYED_SCHEDULE, DomainSchedule, LaneTensor, RECURSION_SCHEDULE, commit_tree_in, config_for_schedule,
-    recursive_prover_with_lane_tensors,
-};
+use pcs::whir::{LaneTensor, commit_tree_in, config_for_rate, recursive_prover_with_lane_tensors};
 use primitives::field::{F64, F192, powers};
 use primitives::hash::hash as keccak256;
 use primitives::multilinear::{eq_table, mle_eval, mle_eval_par};
@@ -56,15 +49,11 @@ const LABEL: &[u8] = b"pcs-quotient-opening";
 /// keccak256(root ‖ claims))`, the root never absorbed.
 pub const VERSION: u64 = 2;
 
-/// A version of the opening, which fixes WHIR's ladder past its level 0 (the commitment is the same).
+/// The version of the opening: [`VERSION`], leanVM's WHIR ladder (rates `1/2, 1/16, 1/128, ...`), at the counts
+/// `formal/WhirBridge` imports.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Version {
-    /// [`VERSION`], the membership line's: leanVM's ladder (`pcs::whir::DEPLOYED_SCHEDULE`, rates `1/2, 1/16,
-    /// 1/128, ...`), at the counts `formal/WhirBridge` imports.
     V2,
-    /// The leanVM recursion's: `pcs::whir::RECURSION_SCHEDULE` (rates `1/2, 1/4, 1/8, ...`, every deeper block at
-    /// least `2^8` positions), the same eta search and 128-bit checks (`params/whir_params.py --recursion`).
-    V3,
 }
 
 impl Version {
@@ -72,23 +61,6 @@ impl Version {
     pub fn number(self) -> u64 {
         match self {
             Version::V2 => VERSION,
-            Version::V3 => 3,
-        }
-    }
-
-    /// WHIR's ladder: the prover's schedule.
-    pub fn schedule(self) -> DomainSchedule {
-        match self {
-            Version::V2 => DEPLOYED_SCHEDULE,
-            Version::V3 => RECURSION_SCHEDULE,
-        }
-    }
-
-    /// WHIR's ladder: the verifier's.
-    pub fn ladder(self) -> verifier::whir::Ladder {
-        match self {
-            Version::V2 => verifier::whir::Ladder::Deployed,
-            Version::V3 => verifier::whir::Ladder::Recursion,
         }
     }
 }
@@ -846,7 +818,7 @@ fn open_stack(
     codeword: Option<&[F64]>,
     claims: &[Claim],
 ) -> Proof {
-    let config = config_for_schedule(layout.log_n, LOG_INV_RATE, version.schedule()).expect("a supported WHIR shape");
+    let config = config_for_rate(layout.log_n, LOG_INV_RATE).expect("a supported WHIR shape");
     let mut ps = ProverState::new(
         digest_words(&iv_with(version, layout, claims)),
         digest_words(&PUBLIC_DIGEST),
@@ -1034,8 +1006,7 @@ fn verify_paths_with(
         });
         claims + gadget
     };
-    verifier::whir::verify_whir_on(
-        version.ladder(),
+    verifier::whir::verify_whir(
         &mut transcript,
         layout.log_n,
         layout.placed() as u64,
