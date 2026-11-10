@@ -4,8 +4,8 @@
 //! The opcodes the generated code uses, `PUSH` of numbers, and the stack effect of straight-line code.
 
 pub const STOP: u8 = 0x00;
-/// `FIELD_MUL`, the product in `GF(2^192)` of two words' low 192 bits (unassigned on mainnet).
-pub const FIELD_MUL: u8 = 0x0c;
+/// `FIELD_MUL`, the EIP draft's `MULFIELD` (unassigned on mainnet): the product in `GF(2^192)` of two words' low 192 bits.
+pub const FIELD_MUL: u8 = 0x1f;
 pub const ISZERO: u8 = 0x15;
 pub const AND: u8 = 0x16;
 pub const OR: u8 = 0x17;

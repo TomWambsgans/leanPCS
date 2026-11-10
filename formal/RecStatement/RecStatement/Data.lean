@@ -9,7 +9,7 @@ import RecStatement.Basic
 
 `pi2::circuit::Circuit` of `circuit::compile::pi2(record_verifier(KECCAK_128, KECCAK_REC3, Point), D16v)` through
 `pi2::adapt`: `2^24` positions, rows of `2^4`, 55 formulas, 133 (block, role) pairs (4 pull-less) in 66 groups, 19 reads,
-36 public terms (16 of them the zero coset); π1's 3 `PCS_OPEN` calls. Not `σ`, not `κ` (the setup's root and
+36 public terms (16 of them the zero coset); π1's 3 claims. Not `σ`, not `κ` (the setup's root and
 the circuit's digest bind them; the verifier reads neither). Data only.
 -/
 
@@ -277,7 +277,7 @@ def setupRoot : List UInt8 := hexBytes "4ed1291a3ab56b5ab89e5264042c8bc4e19d0995
 /-- The circuit's digest (`Circuit::digest`: its encoding with `σ`'s and `κ`'s hashes). -/
 def digest : List UInt8 := hexBytes "731e2ecad676447d234ef83bdaf63c1789d446de22ba9c95e9eafe64cc6c3857"
 
-/-- π1's `PCS_OPEN` calls as the circuit names their words (`spec::Circuit::calls`). -/
+/-- π1's claims as the circuit names their words (`spec::Circuit::calls`). -/
 def pi1Calls : List (List CallWord) := [
   [.root 0,
    .const (hexBytes "14120f100f100e0f000000000000000000000000000055011b000000049fc000"),

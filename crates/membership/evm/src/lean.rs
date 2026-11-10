@@ -3,7 +3,7 @@
 //! for the Lean interpreter of that graph (`formal/Implementation`, layer F5 of `formal/README.md`).
 //!
 //! The graph is what [`crate::quotient::contract`] compiles: `quotient::protocol::reduce` run on the recorder,
-//! with the outputs the three calls of `PCS_OPEN` take. [`render`] writes it, with the constants the reduction
+//! with the outputs the three claims it checks declared. [`render`] writes it, with the constants the reduction
 //! reads (the Cantor basis, `tau`, `b`, the extension's coordinates), as Lean definitions; the test
 //! `graph_lean_is_current` fails when the checked-in file is not what [`render`] writes now (run it with
 //! `UPDATE_LEAN=1` to rewrite the file). [`vectors`] writes calldata and what the Rust verifier makes of it, the
@@ -60,8 +60,6 @@ pub fn render() -> String {
         inputs,
     } = deployed(LOG_ROWS);
     assert!(graph.zero.is_empty(), "the deployed contract requires nothing zero");
-    // The Lean text keeps the words of `PCS_OPEN`'s calls: they are the claims the contract checks declared, run for
-    // run, and `formal/` states them so.
     let Ending::Declared(runs) = ending else {
         unreachable!("the deployed contract checks declared claims")
     };
@@ -93,7 +91,7 @@ pub fn render() -> String {
     .unwrap();
     writeln!(
         w,
-        "required nonzero, {} output words in {} calls of `PCS_OPEN`, {inputs} scalars of the proof read.",
+        "required nonzero, {} output words in {} claims checked declared, {inputs} scalars of the proof read.",
         outputs.len(),
         runs.len()
     )
@@ -138,7 +136,7 @@ pub fn render() -> String {
     writeln!(w).unwrap();
     writeln!(
         w,
-        "/-- The words the contract writes, the inputs of its calls of `PCS_OPEN` back to back. -/"
+        "/-- The words the contract writes, the claims it checks declared back to back. -/"
     )
     .unwrap();
     writeln!(w, "def outputs : List Word := [").unwrap();
@@ -154,7 +152,7 @@ pub fn render() -> String {
     }
     writeln!(w, "]").unwrap();
     writeln!(w).unwrap();
-    writeln!(w, "/-- How many words each call of `PCS_OPEN` takes, in order. -/").unwrap();
+    writeln!(w, "/-- How many words each claim takes, in order. -/").unwrap();
     writeln!(w, "def runs : List Nat := {}", list(&runs, |x| x.to_string())).unwrap();
     writeln!(w).unwrap();
     let zero = Statement {

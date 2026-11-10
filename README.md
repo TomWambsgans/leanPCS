@@ -4,19 +4,21 @@
 
 - We agree on:
   - one base field K, one extension field E (example: K = F_2^64, E = F_2^192)
-  - one PCS (example: WHIR in the LDR at rate 1/4)
-- We add a new instruction to perform extension field multiplication in E: MUL_FIELD.
+  - one PCS (example: WHIR in the LDR at rate 1/2)
+- We add a new instruction to perform extension field multiplication in E: MULFIELD.
 - Users can attach to each transaction a list of PCS claims.
 - Each PCS claim contains:
   - header:
-    - `num_variables` (1 byte)
-    - commitment (32 bytes + 1 E field element) -> Merkle hash + OOD_answer (the OOD point being Fiat-Shamir derived from the Merkle hash)
-    - opening point (`num_variables` E field elements)
-    - value (1 E field element)
+    - commitment: a Merkle root, and a layout word (the PCS version, `num_variables`, the coefficients committed)
+    - every opening point on that commitment (`num_variables` E field elements each), and its value (1 E field
+      element): with no OOD answer, a root binds only a short list of polynomials, so claims on one commitment go
+      together, proved by one opening
   - opening_proof (the PCS opening transcript, where Fiat-Shamir is seeded by the header)
+- The transaction declares each header by its Keccak-256, as an EIP-8288 dependency (a frame of PCS claims).
 - In the mempool, all the opening_proof 'disappear', and instead some STARK attests of their existence.
-- Each Ethereum block contains a list of "headers", one STARK proves them all.
-- We add a new magic precompile to the EVM: PCS_OPEN that takes as input header and attests that it is contained in the block's list of headers.
+- Each Ethereum block's STARK proves every header its transactions declare.
+- No precompile: a contract hashes the header it needs and finds it in its transaction's frame of PCS claims
+  (EIP-8141's frame introspection).
 
 ## Simplified example for R1CS: A.z ⊙ B.z = C.z in K
 
@@ -26,19 +28,20 @@
 - It seeds some Fiat-Shamir state (not necessarily the same hash function as the one used in WHIR! (this requires future security proofs))
 - Runs Spartan's sumchecks (1 zerocheck, 3 linchecks)
 - In the end, you get 4 opening claims: pointZ, valueZ, pointA, valueA, ...
-- Call PCS_OPEN(n, comZ, pointZ, valueZ), PCS_OPEN(n, comA, pointA, valueA), ...
+- Check that the transaction declares the headers (comZ, pointZ, valueZ), (comA, pointA, valueA), ...
 
 ## Forward compatibility
 
 - The witness polynomial of the STARK is easy to change (commitment / opening algorithms are offchain).
 - The difficult part is the polynomial representing the circuit whose commitment is hardcoded in a smart contract.
 
-In 2031, when WHIR 2.0 is released, how to upgrade the PCS_OPEN precompile? -> An idea from Justin D:
-- add a 'version' parameter to the arguments of the PCS_OPEN precompile. Initially it has version 1, and returns "invalid version" when called with version != 1.
-- Hardfork -> version 2 is introduced. Version 1 remains available for a period of time (1 year), and is afterward deleted.
+In 2031, when WHIR 2.0 is released, how to upgrade the PCS? -> An idea from Justin D:
+- each header carries a version (in its layout word). Initially one version is valid, and a block cannot prove a
+  header of another version.
+- Hardfork -> version v + 1 is introduced. Version v remains available for a period of time (1 year), and is afterward deleted.
 Every smart contract should:
 - put the commitment of the circuit in storage (not bytecode)
-- have a (trustless) function that lets any users calling it update the commitment (from v1 to v2). To prove that the new commitment is valid, we sample a random point (Fiat-Shamir) and require both PCS openings at version 1 and version 2 to agree on that point (Schwartz–Zippel).
+- have a (trustless) function that lets any users calling it update the commitment (from v to v + 1). To prove that the new commitment is valid, we sample a random point (Fiat-Shamir) and require both PCS openings at versions v and v + 1 to agree on that point (Schwartz–Zippel); the new root binds one polynomial because anyone can recompute it from the public circuit.
 
 TLDR: The PCS is relatively easy to upgrade, the only thing that cannot be upgraded is the (binary) field.
 
@@ -87,11 +90,11 @@ transaction gas under EIP-7623 at a claim price of 0, without the 21,000 base.
 | | **128 signatures (the reference)** | 400 signatures |
 |---|---:|---:|
 | VM execution | 154,148 cycles; tables of `2^14`–`2^16` rows, memory `2^20` | 473,348 cycles; `2^16`–`2^17` rows, memory `2^22` |
-| π1 prover (π1-rec3) | 2.7 s cold, 3.65 s warm median of 3; 6.9 GB. EPYC 9355P: 0.40 s warm (0.94 s before), 7.2 GB; with `PCS_OPEN` version 3 its openings 0.064 → 0.033 s, 6.2 GB | 4.7 s (main line), 14.4 GB |
-| π2 prover | 4.4 s + 1.7 s openings (and 3.8 s witness); 9.8 GB. EPYC 9355P (π2v2): 0.196 s + 0.104 s openings (and 7 ms witness), 9.9 GB, the openings 0.049 s with `PCS_OPEN` version 3; π2v1 before the work 0.54 + 0.16 s (and 0.61 s witness) | 3.0 s + 0.9 s openings (and 2.9 s witness); 9.8 GB |
+| π1 prover (π1-rec3) | 2.7 s cold, 3.65 s warm median of 3; 6.9 GB. EPYC 9355P: 0.40 s warm (0.94 s before), 7.2 GB; with opening version 3 its openings 0.064 → 0.033 s, 6.2 GB | 4.7 s (main line), 14.4 GB |
+| π2 prover | 4.4 s + 1.7 s openings (and 3.8 s witness); 9.8 GB. EPYC 9355P (π2v2): 0.196 s + 0.104 s openings (and 7 ms witness), 9.9 GB, the openings 0.049 s with opening version 3; π2v1 before the work 0.54 + 0.16 s (and 0.61 s witness) | 3.0 s + 0.9 s openings (and 2.9 s witness); 9.8 GB |
 | trace → π1 → π2, per proof (`tests/pipeline.rs`) | **0.59 s** on an AMD EPYC 9355P (64 threads, 2026-11-09, load 14–21; π1 with its openings 0.34, π2 0.195 + 0.051 openings, π2's witness 7 ms meanwhile), 3.7× its 2.16 s before; per circuit, once, 1.7 s; 12.6 GB. With opening version 3 (WHIR's deeper levels at rates 1/4, 1/8, …): about 80 ms less a proof (π1's openings −30 ms, π2's 0.108 → 0.054 s), best passes 0.68 → 0.59 s, 12.0 GB. The Mac: 4.1 s before | |
-| Calldata to the contract | 1,005 B | 1,004 B (with `PCS_OPEN`) |
-| Gas (real proof) | 28,459 execution; **43,819** transaction (27,641 and 42,997 with `PCS_OPEN`); 57,883 with the frame (193 B) and the claims' 11,000 intrinsic gas | 28,421 execution; 43,753 transaction, with `PCS_OPEN` (not remeasured) |
+| Calldata to the contract | 1,005 B | 1,005 B |
+| Gas (real proof) | 28,459 execution; **43,819** transaction (27,641 and 42,997 with `PCS_OPEN`); 57,883 with the frame (193 B) and the claims' 11,000 intrinsic gas | 29,257 execution; 44,593 transaction (28,421 and 43,753 with `PCS_OPEN`); 58,669 with the frame and the claims' intrinsic gas |
 | PCS claims | 7, declared as 6 | 7, as 6 |
 | Formal verification (Lean 4) | the VM's statement and arithmetization, the Keccak-f block, π1's knowledge soundness (≤ 2^-64 at 2^64 queries) and completeness (failure < 2^-169), π1-rec3's recorded graph = its verifier; the recursion: knowledge soundness as an explicit reduction (π2's part ≤ 2^-64, plus π1-rec3 at Keccak-f[1600]), completeness (failure 2^-164 plus two premises at Keccak-f[1600]); the compiled circuit's checks evaluated, not proved | |
 

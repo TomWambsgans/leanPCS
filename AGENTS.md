@@ -122,7 +122,8 @@ gas (the EIP draft: 5,000 a transaction with claims, 1,000 a claim), which are g
 
 - Membership: checking the claims declared costs 61 gas once (the frame's mode and scheme) and 43 a claim beyond its
   `KECCAK256`. Its verifier: reduction < 1 ms, openings 5 ms (248 / 278 / 333 KiB).
-- leanVM: at 400 signatures, 43,753 transaction gas with `PCS_OPEN` (not remeasured). π1 alone as a contract costs 358,957 transaction gas at 128
+- leanVM: at 400 signatures (the real proof), 29,257 execution and 44,593 transaction gas (28,421 and 43,753 with
+  `PCS_OPEN`), 58,669 with the frame and the claims' intrinsic gas. π1 alone as a contract costs 358,957 transaction gas at 128
   signatures (8,020 B calldata, 3 claims). **Capacity**: `q_flock` is `2^11` words a permutation, so `C1` reaches
   WHIR's `2^28` words at about 470 signatures (1,000 do not fit, `tests/keccak_vm.rs`).
 
@@ -225,10 +226,9 @@ permutation; `formal/EndToEnd` proves them ([`formal/README.md`](formal/README.m
   shared libraries that no end theorem uses ([`formal/README.md`](formal/README.md)).
 - leanVM: capacity beyond about 470 signatures.
 - Possible gas saving: absorb the membership index root in the byte order a claim encodes it (−132 gas).
-- The EIP draft and the code differ on the claim: the draft's is one point on a 56-byte commitment (a root and an
-  out-of-domain answer), the code's every point on one root, with no out-of-domain answer (leanVM's WHIR unchanged).
-  `formal/`, `docs/` and `README.md`'s design note still describe `PCS_OPEN`, as do the strings the Lean-facing
-  generators render (`crates/membership/evm/src/lean.rs`, `crates/leanvm/rec/tests/lean_{graph,statement}_keccak.rs`).
+- The membership line's claims name their layout by a small id (`machine::layout_id`, `256 · table + log_rows`) that
+  the mock knows, not by a layout word in the EIP draft's format (version at byte 21, `n` at byte 24, `placed` at
+  25..32), which the leanVM line's claims follow; moving it changes the contract's constants and `formal/Statement`.
 - The recursion's WHIR ladder (opening version 3) in Lean: leanerVM's `Whir.ladder` and `certTable` for its
   schedule (`shapeOK`), `formal/WhirBridge`'s Large* and `RecCompose`'s openings at its counts and version, the
   layout words' version byte in `UniKeccak` and `RecStatement`; and π2v2 in `RecPiop`, `RecStatement`, `RecCompose`

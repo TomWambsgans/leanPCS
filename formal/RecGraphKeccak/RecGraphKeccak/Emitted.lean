@@ -9,7 +9,7 @@ import RecGraph.Node
 
 `leanvm_univariate::contract::record_verifier` at the Keccak VM's 128-signature shape (`leanvm_rec::REFERENCE`), with
 `KECCAK_REC3` (`FsShape::Rec3`, a skip of 3) and `Claims::Point`: 10848 nodes (9871 additions
-and products of `E`, 69 Keccak-256 calls), 14 values required zero and 0 nonzero, 1 ring-weight kernels, 3 `PCS_OPEN`
+and products of `E`, 69 Keccak-256 calls), 14 values required zero and 0 nonzero, 1 ring-weight kernels, 3 claims
 calls of [31, 30, 27] words, a stream of 9232 bytes.
 
 Data only: nothing here is evaluated by the kernel; `RecGraph.Semantics` gives it its meaning, and the differential
@@ -10926,7 +10926,7 @@ def kernels : Array (List Nat) := #[
   [740, 731, 722, 713, 704, 695, 686, 677, 668, 659, 650, 473, 484, 495, 506, 517, 528, 539, 550, 561, 572, 583, 594, 605, 616, 627, 8705, 8706, 8707, 8708, 8709, 8710, 8711, 8712, 8713, 8714, 8715, 8716, 8717, 8718, 8719, 8720, 8721, 8722, 8723, 8724, 8725, 8726, 8727, 8728, 8729, 8730, 3815, 3817, 3819, 3821, 3823, 3825]
 ]
 
-/-- The words of `PCS_OPEN` call 0. -/
+/-- The words of claim 0. -/
 def call0 : List Word := [
   Word.stream 24,
   Word.const 0x14120f100f100e0f000000000000000000000000000055011b000000049fc000,
@@ -10961,7 +10961,7 @@ def call0 : List Word := [
   Word.node 8702
 ]
 
-/-- The words of `PCS_OPEN` call 1. -/
+/-- The words of claim 1. -/
 def call1 : List Word := [
   Word.stream 3752,
   Word.const 0x14120f100f100e0f000000000000000000000000000055021a000000028ce003,
@@ -10995,7 +10995,7 @@ def call1 : List Word := [
   Word.node 8703
 ]
 
-/-- The words of `PCS_OPEN` call 2. -/
+/-- The words of claim 2. -/
 def call2 : List Word := [
   Word.const 0x67244bea80942b5cacaa61c28ca748d0ae4ba6c106739ab109c9c07296e1ca5,
   Word.const 0x14120f100f100e0f000000000000000000000000000055031700000000500000,
@@ -11026,7 +11026,7 @@ def call2 : List Word := [
   Word.node 8704
 ]
 
-/-- The `PCS_OPEN` calls' words, in call order: `C1`, `C2`, the setup. -/
+/-- The claims' words, in order: `C1`, `C2`, the setup. -/
 def calls : List (List Word) := [call0, call1, call2]
 
 /-- The stream's bytes (calldata after the selector and the public input). -/

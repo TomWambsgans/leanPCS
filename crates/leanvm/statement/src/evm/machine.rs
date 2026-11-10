@@ -36,8 +36,8 @@ use revm::primitives::hardfork::SpecId;
 use revm::primitives::{Address, Bytes, TxKind, U256, keccak256};
 use revm::state::AccountInfo;
 
-/// The opcode of `FIELD_MUL`, unassigned on mainnet.
-pub const FIELD_MUL: u8 = 0x0c;
+/// The opcode of `FIELD_MUL`, the EIP draft's `MULFIELD` (`0x1f`, unassigned on mainnet).
+pub const FIELD_MUL: u8 = 0x1f;
 pub const FIELD_MUL_GAS: u64 = 10;
 
 /// EIP-8141's `FRAMEDATALOAD` and `FRAMEPARAM`, and their gas.

@@ -8,7 +8,7 @@
 //!
 //! **The data** is what π2's verifier is built from (`pi2::verifier::Spec::of`): the circuit's shape, its formulas, its
 //! (block, role) pairs, the reads of the public data, the public terms, then the instance's constants (π1's contract
-//! IV, the setup's root, the circuit's digest) and π1's `PCS_OPEN` calls as the circuit names their words
+//! IV, the setup's root, the circuit's digest) and π1's claims as the circuit names their words
 //! (`spec::CallWord`). Not `σ` and not `κ`: the setup commits them, the digest and the root bind them, and the verifier
 //! reads neither.
 //!
@@ -157,7 +157,7 @@ fn render(circuit: &Circuit, calls: &[Vec<CallWord>], c: &Constants) -> String {
     .unwrap();
     writeln!(
         w,
-        "{} public terms ({} of them of value zero, in no `Φ`); π1's {} `PCS_OPEN` calls. Not `σ`, not `κ` (the setup's root and",
+        "{} public terms ({} of them of value zero, in no `Φ`); π1's {} claims. Not `σ`, not `κ` (the setup's root and",
         circuit.public.len(),
         spec.ports - spec.phi.iter().map(|(_, terms)| terms.len()).sum::<usize>(),
         calls.len()
@@ -256,7 +256,7 @@ fn render(circuit: &Circuit, calls: &[Vec<CallWord>], c: &Constants) -> String {
     writeln!(w).unwrap();
     writeln!(
         w,
-        "/-- π1's `PCS_OPEN` calls as the circuit names their words (`spec::Circuit::calls`). -/"
+        "/-- π1's claims as the circuit names their words (`spec::Circuit::calls`). -/"
     )
     .unwrap();
     writeln!(w, "def pi1Calls : List (List CallWord) := [").unwrap();

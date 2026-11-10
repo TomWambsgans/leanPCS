@@ -8,7 +8,7 @@ import Implementation.Node
 # The deployed contract's graph
 
 `quotient::protocol::reduce` run on `crates/membership/evm/src/record.rs`'s recorder, at `2^22` rows: 631 nodes, 1 values
-required nonzero, 122 output words in 3 calls of `PCS_OPEN`, 5 scalars of the proof read.
+required nonzero, 122 output words in 3 claims checked declared, 5 scalars of the proof read.
 -/
 
 namespace Implementation.Emitted
@@ -659,7 +659,7 @@ def nodes : List Node := [
 /-- The values the contract requires nonzero, in the order checked. -/
 def nonzero : List Nat := [419]
 
-/-- The words the contract writes, the inputs of its calls of `PCS_OPEN` back to back. -/
+/-- The words the contract writes, the claims it checks declared back to back. -/
 def outputs : List Word := [
   Word.calldata 64,
   Word.const 0x116,
@@ -785,7 +785,7 @@ def outputs : List Word := [
   Word.node 630
 ]
 
-/-- How many words each call of `PCS_OPEN` takes, in order. -/
+/-- How many words each claim takes, in order. -/
 def runs : List Nat := [29, 28, 65]
 
 /-- The transcript's name, the label's first sixteen bytes. -/

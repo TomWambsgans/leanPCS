@@ -85,7 +85,7 @@ fn word_text(word: &Word) -> String {
 }
 
 /// The Lean file: the graph's nodes in creation order, its checks, its ring-weight kernels, the words of its
-/// `PCS_OPEN` calls, the stream's length and where it holds `C1`'s and `C2`'s roots.
+/// claims (which the contract checks declared), the stream's length and where it holds `C1`'s and `C2`'s roots.
 fn render(recorded: &Recorded) -> String {
     let graph = &recorded.graph;
     let call_words = calls(recorded);
@@ -115,7 +115,7 @@ fn render(recorded: &Recorded) -> String {
     .unwrap();
     writeln!(
         w,
-        "and products of `E`, {hashes} Keccak-256 calls), {} values required zero and {} nonzero, {} ring-weight kernels, {} `PCS_OPEN`",
+        "and products of `E`, {hashes} Keccak-256 calls), {} values required zero and {} nonzero, {} ring-weight kernels, {} claims",
         graph.zero.len(),
         graph.nonzero.len(),
         graph.kernels.len(),
@@ -172,7 +172,7 @@ fn render(recorded: &Recorded) -> String {
     writeln!(w, "]").unwrap();
     writeln!(w).unwrap();
     for (c, call) in call_words.iter().enumerate() {
-        writeln!(w, "/-- The words of `PCS_OPEN` call {c}. -/").unwrap();
+        writeln!(w, "/-- The words of claim {c}. -/").unwrap();
         writeln!(w, "def call{c} : List Word := [").unwrap();
         for (i, word) in call.iter().enumerate() {
             let comma = if i + 1 < call.len() { "," } else { "" };
@@ -182,7 +182,7 @@ fn render(recorded: &Recorded) -> String {
         writeln!(w).unwrap();
     }
     let call_names: Vec<String> = (0..call_words.len()).map(|c| format!("call{c}")).collect();
-    writeln!(w, "/-- The `PCS_OPEN` calls' words, in call order: `C1`, `C2`, the setup. -/").unwrap();
+    writeln!(w, "/-- The claims' words, in order: `C1`, `C2`, the setup. -/").unwrap();
     writeln!(w, "def calls : List (List Word) := [{}]", call_names.join(", ")).unwrap();
     writeln!(w).unwrap();
     writeln!(w, "/-- The stream's bytes (calldata after the selector and the public input). -/").unwrap();
