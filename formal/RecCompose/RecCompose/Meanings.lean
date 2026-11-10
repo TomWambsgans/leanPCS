@@ -8,7 +8,7 @@ import RecCompose.Pi2Run
 
 For `pi2Facts hD C hchk` (`Facts.lean`): **`statementPortMeaning`**, **`zeroPortsMeaning`**, **`callWordsAgree`**. On a run
 of π2's verifier that succeeds on the calldata, its public scalars are the statement's four words, π1's two roots' halves
-at the stream's offsets `0`, `32`, and the `17` elements at `64 + 24 j` (`data_pi2Pubs`, `runWith_post`); `pubOfC` of
+at the stream's offsets `0`, `32`, and the `19` elements at `64 + 24 j` (`data_pi2Pubs`, `runWith_post`); `pubOfC` of
 them is their limbs (`canon2` of a word or a half with no `Y²` limb is its two limbs). So the statement port carries the
 input's words, a zero port zeros, and the words the circuit rebuilds from its ports (`callWordBytes`, on a witness
 satisfying it at these limbs) are the contract's (`callWord`): a root port's four limbs rebuild the stream's 32 bytes
@@ -31,27 +31,27 @@ theorem spec_reads_data : (Spec.of Data.circuit).reads = Data.reads := by
 
 theorem data_pi2Pubs (input : List UInt8) (stream : Array UInt8) : pi2Pubs (Spec.of Data.circuit) input stream =
     UniStatement.publicWordsOf input ++ [halfAt stream 0, halfAt stream 16, halfAt stream 32, halfAt stream 48] ++
-      (List.range 17).map fun j ↦ scalarAt stream (64 + 24 * j) := by
+      (List.range 19).map fun j ↦ scalarAt stream (64 + 24 * j) := by
   unfold pi2Pubs
   rw [spec_reads_data]
   simp [Data.reads, foldReads, pubsStep, readValue, Read.bytes, List.range_succ]
 
-theorem data_elementIndices : ∀ e < 17, (elementIndices Data.reads).getD e 0 = 8 + e := by decide +kernel
+theorem data_elementIndices : ∀ e < 19, (elementIndices Data.reads).getD e 0 = 8 + e := by decide +kernel
 
-theorem data_rootsAt : rootsAt Data.reads = [0, 32, 472, 528] := by decide +kernel
+theorem data_rootsAt : rootsAt Data.reads = [0, 32, 520, 576] := by decide +kernel
 
-theorem data_pi2Bytes : pi2Bytes (Spec.of Data.circuit) = 1016 := by
+theorem data_pi2Bytes : pi2Bytes (Spec.of Data.circuit) = 1064 := by
   unfold pi2Bytes
   rw [spec_reads_data, show (Spec.of Data.circuit).logRow = 4 by
     unfold Spec.of
     rfl]
   decide +kernel
 
-/-- What `Data.pi1Calls`' words name: roots `0`, `1`; elements below `17`; pair coordinates `0`, `1`. -/
+/-- What `Data.pi1Calls`' words name: roots `0`, `1`; elements below `19`; pair coordinates `0`, `1`. -/
 def dataWordOk : CallWord → Bool
   | .root i => decide (i < 2)
-  | .element e => decide (e < 17)
-  | .pair e co => decide (e < 17) && decide (co < 2)
+  | .element e => decide (e < 19)
+  | .pair e co => decide (e < 19) && decide (co < 2)
   | .const _ => true
 
 theorem data_words : ∀ ci < 3, ∀ k < (Data.pi1Calls.getD ci []).length,
@@ -63,7 +63,7 @@ theorem data_calls_length : Data.pi1Calls.length = 3 := by decide +kernel
 theorem run_data {D : RecDeployment} (hD : D.Real) {roots : RecSetupRoots} {input : Vector UInt8 32}
     {stream : Array UInt8} {r : Reduced}
     (hr : (run (Spec.of (D.circuitAt roots.pi1).circuit) [] input.toList stream).result = .ok r) :
-    stream.size = 1016 ∧ r.scalars = pi2Pubs (Spec.of Data.circuit) input.toList stream ∧
+    stream.size = 1064 ∧ r.scalars = pi2Pubs (Spec.of Data.circuit) input.toList stream ∧
       r.pairPoints = r.scalars.map pairPoint := by
   rw [show (D.circuitAt roots.pi1).circuit = Data.circuit from hD.1 _] at hr
   have h := holds_id (runWith_post (m := Id) (fun x ↦ pure (LeanVM.Semantics.keccakF1600 x))
@@ -105,7 +105,7 @@ variable {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D) (hchk : Pi2ViewCh
 
 include hchk in
 /-- A port's source from `Data`'s public term. -/
-theorem source_of_term (roots : RecSetupRoots) {j : ℕ} (hj : j < 36) :
+theorem source_of_term (roots : RecSetupRoots) {j : ℕ} (hj : j < 38) :
     Data.publicTerms.getD j default = ⟨2 ^ 24 + j,
       ⟨termOf 2 ((C.compiled (D.pi1IvAt roots.pi1)).circuit.ports.getD j default).source, none⟩⟩ := by
   obtain ⟨hview, -, -⟩ := viewChecked_at C hchk roots
@@ -114,13 +114,13 @@ theorem source_of_term (roots : RecSetupRoots) {j : ℕ} (hj : j < 36) :
 
 include hchk in
 theorem statement_source (roots : RecSetupRoots) :
-    ((C.compiled (D.pi1IvAt roots.pi1)).circuit.ports.getD 32 default).source = .statement := by
-  have h := source_of_term C hchk roots (j := 32) (by norm_num)
-  have hd : Data.publicTerms.getD 32 default = ⟨16777248, ⟨[(⟨1, 0, 0, 0⟩, 0), (⟨0, 1, 0, 0⟩, 1), (⟨1, 0, 0, 1⟩, 2),
+    ((C.compiled (D.pi1IvAt roots.pi1)).circuit.ports.getD 34 default).source = .statement := by
+  have h := source_of_term C hchk roots (j := 34) (by norm_num)
+  have hd : Data.publicTerms.getD 34 default = ⟨16777250, ⟨[(⟨1, 0, 0, 0⟩, 0), (⟨0, 1, 0, 0⟩, 1), (⟨1, 0, 0, 1⟩, 2),
       (⟨0, 1, 0, 1⟩, 3)], none⟩⟩ := by decide +kernel
   rw [hd] at h
   have ht := congrArg (fun t : PublicTerm ↦ t.value.terms.length) h
-  cases hs : ((C.compiled (D.pi1IvAt roots.pi1)).circuit.ports.getD 32 default).source <;>
+  cases hs : ((C.compiled (D.pi1IvAt roots.pi1)).circuit.ports.getD 34 default).source <;>
     simp_all [termOf]
 
 include hD in
@@ -128,13 +128,13 @@ include hD in
 theorem statementPortMeaning : StatementPortMeaning D C (pi2Facts hD C hchk) := by
   intro roots input stream r hr
   obtain ⟨hview, -, -⟩ := viewChecked_at C hchk roots
-  refine ⟨32, by rw [viewOf_ports hview]; norm_num, statement_source C hchk roots, ?_⟩
-  show pubOfC (C.compiled (D.pi1IvAt roots.pi1)).circuit (pi2Scalars D roots input stream) 32 = _
+  refine ⟨34, by rw [viewOf_ports hview]; norm_num, statement_source C hchk roots, ?_⟩
+  show pubOfC (C.compiled (D.pi1IvAt roots.pi1)).circuit (pi2Scalars D roots input stream) 34 = _
   unfold pubOfC
   rw [statement_source C hchk roots, pi2Scalars_of_ok hr, (run_data hD hr).2.1, data_pi2Pubs]
   have e : ∀ k < 4, (UniStatement.publicWordsOf input.toList ++
       [halfAt stream 0, halfAt stream 16, halfAt stream 32, halfAt stream 48] ++
-      (List.range 17).map (fun j ↦ scalarAt stream (64 + 24 * j))).getD k 0 =
+      (List.range 19).map (fun j ↦ scalarAt stream (64 + 24 * j))).getD k 0 =
         UniStatement.eK (UniStatement.beWordAt input.toList.toArray (8 * k)) := by
     intro k hk
     interval_cases k <;> rfl
@@ -289,7 +289,7 @@ theorem callWordsAgree : CallWordsAgree D C (pi2Facts hD C hchk) := by
       bw _ 0 (by omega) (by norm_num), sw 0 (by norm_num), sw 8 (by norm_num), sw 16 (by norm_num),
       sw 24 (by norm_num)]
   | element e =>
-    have he : e < 17 := by simpa [dataWordOk, callOf] using hdw
+    have he : e < 19 := by simpa [dataWordOk, callOf] using hdw
     obtain ⟨J, hJs⟩ := Option.isSome_iff_exists.mp (hpe e rfl)
     obtain ⟨hJ, hsrc⟩ := RecCircuit.Compiled.portOf_spec hJs
     have hlimbs : c.circuit.portLimbs w J = RecCircuit.Compiled.limbsL (r.scalars.getD (8 + e) 0) := by
@@ -304,7 +304,7 @@ theorem callWordsAgree : CallWordsAgree D C (pi2Facts hD C hchk) := by
     rw [hJs, Option.getD_some, hlimbs, RecCircuit.limbsE_limbsL, data_elementIndices e he]
     exact ⟨rfl, length_elementWord _⟩
   | pair e co =>
-    have he : e < 17 ∧ co < 2 := by simpa [dataWordOk, callOf] using hdw
+    have he : e < 19 ∧ co < 2 := by simpa [dataWordOk, callOf] using hdw
     obtain ⟨J, hJs⟩ := Option.isSome_iff_exists.mp (hpp' e co rfl)
     obtain ⟨hJ, hsrc⟩ := RecCircuit.Compiled.portOf_spec hJs
     have hlimbs : c.circuit.portLimbs w J = RecCircuit.Compiled.limbsL (r.scalars.getD (8 + e) 0) := by

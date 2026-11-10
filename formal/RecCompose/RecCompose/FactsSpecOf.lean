@@ -59,20 +59,20 @@ theorem core_pairs : (Spec.of Data.circuit).core.pairs = Data.pairs.map fun p �
   simp only [Spec.core, spec_pairs, List.map_map]
   rfl
 
-theorem core_phi : (Spec.of Data.circuit).core.phi = [(15, (List.range 20).map fun J ↦
+theorem core_phi : (Spec.of Data.circuit).core.phi = [(15, (List.range 22).map fun J ↦
     (Data.holes.getD (16 + J) 0 / 16, (Data.publicTerms.getD (16 + J) default).value.toF))] := by
   simp only [Spec.core, spec_phi, data_phi, List.map_cons, List.map_nil, List.map_map]
   rfl
 
-theorem core_phiTerms : phiTerms (Spec.of Data.circuit).core = (List.range 20).map fun J ↦
+theorem core_phiTerms : phiTerms (Spec.of Data.circuit).core = (List.range 22).map fun J ↦
     (15, Data.holes.getD (16 + J) 0 / 16, (Data.publicTerms.getD (16 + J) default).value.toF) := by
   rw [phiTerms, core_phi, List.flatMap_cons, List.flatMap_nil, List.append_nil, List.map_map]
   rfl
 
-theorem core_phiTerms_length : (phiTerms (Spec.of Data.circuit).core).length = 20 := by
+theorem core_phiTerms_length : (phiTerms (Spec.of Data.circuit).core).length = 22 := by
   rw [core_phiTerms, List.length_map, List.length_range]
 
-theorem core_phiTerms_getD {J : ℕ} (hJ : J < 20) : (phiTerms (Spec.of Data.circuit).core).getD J noPhi =
+theorem core_phiTerms_getD {J : ℕ} (hJ : J < 22) : (phiTerms (Spec.of Data.circuit).core).getD J noPhi =
     (15, Data.holes.getD (16 + J) 0 / 16, (Data.publicTerms.getD (16 + J) default).value.toF) := by
   rw [core_phiTerms, List.getD_eq_getElem _ _ (by rw [List.length_map, List.length_range]; exact hJ),
     List.getElem_map, List.getElem_range]
@@ -95,8 +95,8 @@ theorem specOf_data {r : RecCircuit.Recorded} {c : RecCircuit.Compiled} (hc : Re
     rw [core_pairs, List.length_map, ← hpairs, pairsOf_length]
   have htl := core_phiTerms_length
   have hholes := viewOf_holes hview
-  have hnP : c.circuit.toPiop.nP = 36 := by
-    show (c.circuit.ports.toList.map (·.position)).length = 36
+  have hnP : c.circuit.toPiop.nP = 38 := by
+    show (c.circuit.ports.toList.map (·.position)).length = 38
     rw [List.length_map, Array.length_toList, hports]
   have hN : c.circuit.toPiop.N = 2 ^ 24 := by
     show 2 ^ c.circuit.logN = _
@@ -108,11 +108,11 @@ theorem specOf_data {r : RecCircuit.Recorded} {c : RecCircuit.Compiled} (hc : Re
   have hpd : ∀ i < (slots c.circuit).length, Data.pairs.getD i default = (pairsOf c.circuit).getD i default :=
     fun i _ ↦ by rw [hpairs]
   -- the source of a port, from `Data`'s public terms
-  have hsrc : ∀ j < 36, Data.publicTerms.getD j default =
+  have hsrc : ∀ j < 38, Data.publicTerms.getD j default =
       ⟨2 ^ 24 + j, ⟨termOf 2 (c.circuit.ports.getD j default).source, none⟩⟩ := by
     intro j hj
     rw [← hterms, publicTermsOf_getD _ (by rw [hports]; exact hj), hlogN, hroots]
-  have hport : ∀ j < 36, c.circuit.toPiop.port j = Data.holes.getD j 0 := by
+  have hport : ∀ j < 38, c.circuit.toPiop.port j = Data.holes.getD j 0 := by
     intro j hj
     have hsz : j < c.circuit.ports.size := by rw [hports]; exact hj
     rw [← hholes, holesOf_getD _ hsz]

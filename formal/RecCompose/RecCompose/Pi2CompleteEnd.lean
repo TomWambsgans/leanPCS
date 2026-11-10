@@ -23,7 +23,7 @@ import RecCompose.End
   challenges (π2's arithmetic passes and its claims hold, `contract_accepts`) and the proofs of work, π1's three
   openings accepted.
 * **`Pi2StagedFacts`** (named: the code-level bridge of the experiment to the two-call model, `Pi2Staged.Holds` at
-  `L = 536` (`α`'s input: the state and π1's two roots and 17 elements and `W`'s root), the copy argument's
+  `L = 608` (`α`'s input: the state and π1's two roots and 19 elements and `W`'s root), the copy argument's
   `(2^25 + 36) |E|²` bad triples (`2N + n_P`, `N = 2^24`, `n_P = 36`), `t`'s `2^27` (`8N`), `N` block calls, `εt`,
   `εpow`): its `rejectGood` is `pi2_accepts` with the grinding, its other fields the commutation, duplex shape, cost and
   lengths of the composed code (as UniComplete's `ProverSim`, `ProverDuplex`, `ProverCost`, `ProbTFresh`, `ProbGrind`
@@ -281,19 +281,19 @@ theorem card_badT_pi2 {D : RecDeployment} {C : Pi2Circuits D} (Fa : Pi2Facts D C
       exact Finset.mem_filter.mpr ⟨Finset.mem_univ _, ht.2.2⟩
   · exact ⟨∅, by simp, fun t ht ↦ absurd ht.1 hw⟩
 
-/-- **Named input: π2's completeness experiment in the two-call model** (`Pi2Staged.Holds` at `α`'s input of `536`
+/-- **Named input: π2's completeness experiment in the two-call model** (`Pi2Staged.Holds` at `α`'s input of `608`
 bytes, the copy argument's bad triples `(2^25 + 36) |E|²`, `t`'s `9 · 2^24` per prior, `N` block calls, `εt`, `εpow`), for
 every honest statement: the code-level bridge. Its `rejectGood` is `pi2_accepts` (proved) with the proofs of work's
 grinding; its `badCard`, `badTCard` the algebra's counts (`lean-pi2-alg`: `card_badCopy_le`, `card_badT_le`); the rest
 (the experiment as the staged two-call run with P1, the graph's check, `pi2Prover` and the contract; its duplex shape;
-its cost; nothing of length `32` or `536` hashed before `α`; `t`'s input fresh) the commutation, duplex and cost lemmas
+its cost; nothing of length `32` or `608` hashed before `α`; `t`'s input fresh) the commutation, duplex and cost lemmas
 of the composed code, as UniComplete proves them for π1 (`ProverSim`, `ProverDuplex`, `ProverCost`, `ProbTFresh`). -/
 def Pi2StagedFacts (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C) (P1 : Pi1Prover D) (fuel N : ℕ)
     (εt εpow : ℝ≥0∞) : Prop :=
   ∀ (input : Vector UInt8 32) (rows : List ℕ) (q : D.pi1.Stack rows), D.pi1.shape.RowsFit rows →
     D.pi1.HonestRelation D.flock rows input q →
       ∃ (S : Pi2Staged) (Bad : S.ρ → Finset (E × E × E)) (badT : S.τ → E → Prop),
-        S.Holds D P1 (pi2Prover D C Fa fuel) input rows q 560 Bad badT (2 ^ 25 + 36) (9 * 2 ^ 24) N εt εpow
+        S.Holds D P1 (pi2Prover D C Fa fuel) input rows q 608 Bad badT (2 ^ 25 + 36) (9 * 2 ^ 24) N εt εpow
 
 /-- **π2's completeness**: `RecCompleteness2 D P1 (pi2Prover D C Fa fuel) (delta2 N εt εpow)`. -/
 theorem recCompleteness2_pi2 {D : RecDeployment} {C : Pi2Circuits D} {Fa : Pi2Facts D C} {P1 : Pi1Prover D}

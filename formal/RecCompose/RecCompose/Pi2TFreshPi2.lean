@@ -8,7 +8,7 @@ import RecCompose.Pi2TFresh
 
 * **`Pi2AlphaFresh D C Fa P1k εα`** (named, replacing `Pi2HashBeforeAlpha`, which a π1 prover hashing `32`-byte inputs breaks, `Pi2Chain`): in
   the two-call random-oracle model, `α`'s input (`inp`, the state after the seed and π1's public data and `W`'s root,
-  `560` bytes) is already hashed after stage A with probability at most `εα`.
+  `608` bytes) is already hashed after stage A with probability at most `εα`.
 * **`stageB_eq`**: stage B is `Q`'s tree (`commitWithH`) then a pure writer, whose `t` input is `s₃`'s bytes and `Q`'s
   root word (**`tin_stageB`**, `64` bytes).
 * **`pi2TFresh_of`**: `Pi2TFresh D C Fa P1k (tFreshBound2 N εα)`, `tFreshBound2 N εα = εα + (4N + 6 + treeCost μQ) /
@@ -90,7 +90,7 @@ theorem tin_stageB_length {D : RecDeployment} (C : Pi2Circuits D) (input : Vecto
 /-! ## The named input and `t`'s freshness -/
 
 /-- **Named: `α`'s input is fresh** (replaces `Pi2HashBeforeAlpha`, false at π1-rec3's prover, which hashes `32`-byte
-inputs, `Pi2Chain`): in the two-call random-oracle model, `α`'s input (`560` bytes: the state after the seed, π1's
+inputs, `Pi2Chain`): in the two-call random-oracle model, `α`'s input (`608` bytes: the state after the seed, π1's
 public data, `W`'s root) is already hashed after stage A (the setup, `P1k`, π1-rec3's graph and its openings, π2's
 prover up to `W`'s root) with probability at most `εα`. -/
 def Pi2AlphaFresh (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
@@ -123,8 +123,8 @@ theorem pi2TFresh_of {D : RecDeployment} (C : Pi2Circuits D) (Fa : Pi2Facts D C)
       unfold treeB E2ECompleteness.Cost.treeCost
       rw [logN_G Fa]
       exact hc_of_qc (E2ECompleteness.Cost.qc_commitWithH _ _))
-    (fun a s₁ s₂ s₃ qT ↦ tin_stageB_length C input a s₁ s₂ s₃ qT) (by norm_num : (560 : ℕ) ≠ 32)
-    (fun a ↦ fixLen_length 560 _) ((pi2Staged D C Fa (P1k input rows q) input).hc_A (hcost input rows q hfit hrel))
+    (fun a s₁ s₂ s₃ qT ↦ tin_stageB_length C input a s₁ s₂ s₃ qT) (by norm_num : (608 : ℕ) ≠ 32)
+    (fun a ↦ fixLen_length 608 _) ((pi2Staged D C Fa (P1k input rows q) input).hc_A (hcost input rows q hfit hrel))
     (hα input rows q hfit hrel) |>.trans (le_of_eq ?_)
   unfold tFreshBound2
   rfl
@@ -171,14 +171,14 @@ theorem holds2_pi2 {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D) (hchk :
     (input : Vector UInt8 32) (rows : List ℕ) (q : D.pi1.Stack rows) (hfit : D.pi1.shape.RowsFit rows)
     (hrel : D.pi1.HonestRelation D.flock rows input q) :
     (pi2Staged D C (pi2Facts hD C hchk) (P1k input rows q) input).Holds2 D P1
-      (pi2Prover D C (pi2Facts hD C hchk) PcsQuotient.nonceFuel) input rows q 560 (badSet2 C.G) (badT2 C.G)
+      (pi2Prover D C (pi2Facts hD C hchk) PcsQuotient.nonceFuel) input rows q 608 (badSet2 C.G) (badT2 C.G)
       (2 ^ 25 + 36) (9 * 2 ^ 24) N εα (tFreshBound2 N εα)
       ((N : ℝ≥0∞) * missProb Whir.queryGrindingBits ^ PcsQuotient.nonceFuel) where
   experiment := hexp input rows q hfit hrel
   duplex := hdup input rows q hfit hrel
   cost := hcost input rows q hfit hrel
   L_ne := by norm_num
-  inp_length _ := fixLen_length 560 _
+  inp_length _ := fixLen_length 608 _
   alphaFresh := hal input rows q hfit hrel
   badCard p := card_badCopy_pi2 (pi2Facts hD C hchk) p.1 p.2.1 p.2.2
   badTCard fp := card_badT_pi2 (pi2Facts hD C hchk) fp.1.1 fp.1.2.1 fp.1.2.2 fp.2.1 fp.2.2.1 fp.2.2.2

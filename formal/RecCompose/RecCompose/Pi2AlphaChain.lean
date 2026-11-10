@@ -7,19 +7,19 @@ import RecCompose.Pi2TFresh
 /-!
 # `α`'s input is fresh: the chain from π2's `σ` hash
 
-`α`'s input is the state after the seed, π1's public data and `W`'s root (`560` bytes, beginning with the seed's
+`α`'s input is the state after the seed, π1's public data and `W`'s root (`608` bytes, beginning with the seed's
 `32`). Nothing before it is provably fresh by itself: π1-rec3's prover (stage A) hashes inputs of many lengths. But
 π2's IV begins with the hash of `σ`'s `4 · 2^24 = 2^26` bytes, longer than anything hashed before it (`Pi2AlphaLen`),
 so its answer is uniform; then each hash of π2's IV and seed holds the previous answer at a fixed offset:
 
-`σd = H(σ)`, `κd = H(κ)`, `d = H(enc ‖ σd ‖ κd)` (`σd` at `24264`, `24328` bytes), `iv = H(… ‖ d ‖ …)` (`d` at `80`,
-`208` bytes), `seed = H(name ‖ iv ‖ input)` (`iv` at `16`, `80` bytes), then `W`'s tree (no `560`-byte input) and
-`α`'s input (`seed` at `0`, `560` bytes).
+`σd = H(σ)`, `κd = H(κ)`, `d = H(enc ‖ σd ‖ κd)` (`σd` at `24464`, `24528` bytes), `iv = H(… ‖ d ‖ …)` (`d` at `80`,
+`208` bytes), `seed = H(name ‖ iv ‖ input)` (`iv` at `16`, `80` bytes), then `W`'s tree (no `608`-byte input) and
+`α`'s input (`seed` at `0`, `608` bytes).
 
 A query holding a fresh answer `u` at offset `o` is cached only if an input cached before `u` (at most `K + 4`) holds
 `u` there: a uniform `u` does with probability at most `(K + 4) / 2^256` (**`sum_hitAt_le`**). Four links:
 
-* **`chain_le`**: from a cache of at most `K` hashed inputs not holding `σ`'s, the chain's run caches a `560`-byte
+* **`chain_le`**: from a cache of at most `K` hashed inputs not holding `σ`'s, the chain's run caches a `608`-byte
   `α` input with probability at most `4 · (K + 4) / 2^256`.
 * **`runAt_of_mem_support`**: an outcome of a run against the lazy oracles is the pure run at any functions extending
   its final cache (so the code's facts at pure functions hold on every outcome).
@@ -91,16 +91,16 @@ theorem avg_hit_le {K K' : ℕ} (h : K' ≤ K + 4) (S : ℝ≥0∞) (hS : S ≤ 
 
 /-! ## The last link: `W`'s tree after a fresh seed -/
 
-/-- **After the seed**: a computation `T` hashing nothing of `560` bytes whose `α` input, when of `560` bytes, begins
-with the seed's: from the cache with the seed's query added, the input is cached only if a cached `560`-byte input began
+/-- **After the seed**: a computation `T` hashing nothing of `608` bytes whose `α` input, when of `608` bytes, begins
+with the seed's: from the cache with the seed's query added, the input is cached only if a cached `608`-byte input began
 with the seed (a hit). -/
-theorem chain_last {β : Type} (xs : Bytes) (hxs : xs.length ≠ 560) (T : Digest → OracleComp KeccakCalls β)
-    (inpOf : β → Bytes) (hT : ∀ s, HashOK (fun m ↦ m.length ≠ 560) (T s))
+theorem chain_last {β : Type} (xs : Bytes) (hxs : xs.length ≠ 608) (T : Digest → OracleComp KeccakCalls β)
+    (inpOf : β → Bytes) (hT : ∀ s, HashOK (fun m ↦ m.length ≠ 608) (T s))
     (hTinp : ∀ s (c : Cache) (z : β × Cache), z ∈ support ((simulateQ ro (T s)).run c) →
-      (inpOf z.1).length = 560 → (inpOf z.1).take 32 = digestBytes s) (c : Cache)
-    (s : Digest) (hnh : ¬ HitAt 560 0 c s) :
+      (inpOf z.1).length = 608 → (inpOf z.1).take 32 = digestBytes s) (c : Cache)
+    (s : Digest) (hnh : ¬ HitAt 608 0 c s) :
     Pr{let z ← (simulateQ ro (T s)).run (c.cacheQuery (.inl xs) s)}[
-      z.2 (.inl (inpOf z.1)) ≠ none ∧ (inpOf z.1).length = 560] = 0 := by
+      z.2 (.inl (inpOf z.1)) ≠ none ∧ (inpOf z.1).length = 608] = 0 := by
   refine prEvent_eq_zero_of_forall_mem_support _ _ fun z hz hev ↦ hnh ?_
   rcases cache_of_hashOK (hT s) _ hz _ hev.1 with h | h
   · have hne : (Sum.inl (inpOf z.1) : Bytes ⊕ KeccakState) ≠ .inl xs := fun e ↦
@@ -114,28 +114,28 @@ theorem chain_last {β : Type} (xs : Bytes) (hxs : xs.length ≠ 560) (T : Diges
 set_option maxHeartbeats 800000 in
 /-- **The chain from `σ`**: from a cache of at most `K` hashed inputs not holding `σ`'s input, the run of `σ`'s, `κ`'s,
 the digest's, the IV's and the seed's hashes (each later input holding the previous answer at its offset), then a
-computation hashing nothing of `560` bytes whose `α` input of `560` bytes begins with the seed, caches that input with
+computation hashing nothing of `608` bytes whose `α` input of `608` bytes begins with the seed, caches that input with
 probability at most `4 · (K + 4) / 2^256`. -/
 theorem chain_le {β : Type} (xσ xκ : Bytes) (fd : Digest → Digest → Bytes) (fiv fs : Digest → Bytes)
-    (hκ : xκ.length ≠ 24328) (hσ : xσ.length ≠ 24328)
-    (hfd : ∀ σ κ, (fd σ κ).length = 24328 ∧ ((fd σ κ).drop 24264).take 32 = digestBytes σ)
+    (hκ : xκ.length ≠ 24528) (hσ : xσ.length ≠ 24528)
+    (hfd : ∀ σ κ, (fd σ κ).length = 24528 ∧ ((fd σ κ).drop 24464).take 32 = digestBytes σ)
     (hfiv : ∀ d, (fiv d).length = 208 ∧ ((fiv d).drop 80).take 32 = digestBytes d)
     (hfs : ∀ iv, (fs iv).length = 80 ∧ ((fs iv).drop 16).take 32 = digestBytes iv)
-    (T : Digest → OracleComp KeccakCalls β) (inpOf : β → Bytes) (hT : ∀ s, HashOK (fun m ↦ m.length ≠ 560) (T s))
+    (T : Digest → OracleComp KeccakCalls β) (inpOf : β → Bytes) (hT : ∀ s, HashOK (fun m ↦ m.length ≠ 608) (T s))
     (hTinp : ∀ s (c : Cache) (z : β × Cache), z ∈ support ((simulateQ ro (T s)).run c) →
-      (inpOf z.1).length = 560 → (inpOf z.1).take 32 = digestBytes s)
+      (inpOf z.1).length = 608 → (inpOf z.1).take 32 = digestBytes s)
     (c : Cache) {K : ℕ} (hc : CacheBound c K) (h0 : c (.inl xσ) = none) :
     Pr{let z ← (simulateQ ro (callKeccak256 xσ >>= fun σd ↦ callKeccak256 xκ >>= fun κd ↦
         callKeccak256 (fd σd κd) >>= fun d ↦ callKeccak256 (fiv d) >>= fun iv ↦
         callKeccak256 (fs iv) >>= T)).run c}[
-      z.2 (.inl (inpOf z.1)) ≠ none ∧ (inpOf z.1).length = 560] ≤
+      z.2 (.inl (inpOf z.1)) ≠ none ∧ (inpOf z.1).length = 608] ≤
       4 * (((K + 4 : ℕ) : ℝ≥0∞) / 2 ^ 256) := by
   classical
   set B : ℝ≥0∞ := ((K + 4 : ℕ) : ℝ≥0∞) / 2 ^ 256
   rw [run_H_bind]
   -- `σ`: fresh; its answer is hit by the digest's length at most `K` times.
   refine (prEvent_query_le xσ c False (fun _ ↦ h0) _ _
-    (fun σd ↦ (if HitAt 24328 24264 c σd then 1 else 0) + 3 * B) fun σd ↦ ?_).trans ?_
+    (fun σd ↦ (if HitAt 24528 24464 c σd then 1 else 0) + 3 * B) fun σd ↦ ?_).trans ?_
   rotate_left
   · simp only [↓reduceIte, zero_add]
     rw [Finset.sum_add_distrib, ENNReal.add_div, sum_const_div]
@@ -149,8 +149,8 @@ theorem chain_le {β : Type} (xσ xκ : Bytes) (fd : Digest → Digest → Bytes
   rw [run_H_bind]
   set c₂ := (c.cacheQuery (.inl xσ) σd).cacheQuery (.inl xκ) κd with hc₂
   have hc₂b : CacheBound c₂ (K + 2) := (hc.cacheQuery_inl _ _).cacheQuery_inl _ _
-  -- the digest: fresh unless a cached `24328`-byte input held `σd`.
-  refine (prEvent_query_le (fd σd κd) c₂ (HitAt 24328 24264 c σd) (fun hn ↦ ?_) _ _
+  -- the digest: fresh unless a cached `24528`-byte input held `σd`.
+  refine (prEvent_query_le (fd σd κd) c₂ (HitAt 24528 24464 c σd) (fun hn ↦ ?_) _ _
     (fun d ↦ (if HitAt 208 80 c₂ d then 1 else 0) + 2 * B) fun d ↦ ?_).trans ?_
   · rcases hcd : c₂ (.inl (fd σd κd)) with _ | v
     · rfl
@@ -197,7 +197,7 @@ theorem chain_le {β : Type} (xσ xκ : Bytes) (fd : Digest → Digest → Bytes
   have hc₄b : CacheBound c₄ (K + 4) := hc₃b.cacheQuery_inl _ _
   -- the seed: fresh unless a cached `80`-byte input held `iv`; then `α`'s input is cached only at a hit.
   refine (prEvent_query_le (fs iv) c₄ (HitAt 80 16 c₃ iv) (fun hn ↦ ?_) _ _
-    (fun s ↦ if HitAt 560 0 c₄ s then 1 else 0) fun s ↦ ?_).trans ?_
+    (fun s ↦ if HitAt 608 0 c₄ s then 1 else 0) fun s ↦ ?_).trans ?_
   · rcases hcd : c₄ (.inl (fs iv)) with _ | v
     · rfl
     · exfalso
@@ -209,7 +209,7 @@ theorem chain_le {β : Type} (xσ xκ : Bytes) (fd : Digest → Digest → Bytes
       rw [hc₄, QueryCache.cacheQuery_of_ne _ _ h1] at hcd
       rw [hcd]
       exact Option.some_ne_none _
-  · by_cases hh : HitAt 560 0 c₄ s
+  · by_cases hh : HitAt 608 0 c₄ s
     · simp only [hh, ↓reduceIte]
       exact prEvent_le_one _
     · simp only [hh, ↓reduceIte]

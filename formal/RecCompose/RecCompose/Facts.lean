@@ -181,12 +181,12 @@ theorem four_sum (roots : RecSetupRoots) : ∑ j ∈ range (C.G roots).nP, C.d r
   have hports := viewOf_ports hview
   have hroots := viewOf_roots hview
   have hterms := viewOf_terms hview
-  have hnP : (C.G roots).nP = 36 := by
-    show ((C.compiled (D.pi1IvAt roots.pi1)).circuit.ports.toList.map (·.position)).length = 36
+  have hnP : (C.G roots).nP = 38 := by
+    show ((C.compiled (D.pi1IvAt roots.pi1)).circuit.ports.toList.map (·.position)).length = 38
     rw [List.length_map, Array.length_toList, hports]
   rw [hnP, ← data_four, list_range_sum_nat]
   refine Finset.sum_congr rfl fun j hj ↦ ?_
-  have hj' : j < 36 := Finset.mem_range.mp hj
+  have hj' : j < 38 := Finset.mem_range.mp hj
   rw [← hterms, publicTermsOf_getD _ (by rw [hports]; exact hj'), hroots]
   unfold Pi2Circuits.d
   have key := termOf_length_four 2 ((C.compiled (D.pi1IvAt roots.pi1)).circuit.ports.getD j default).source

@@ -10,7 +10,7 @@ import Common.Rerun
 # π2's chain `α, β, γ` when stage A hashes `32`-byte inputs
 
 **The finding.** `Pi2Staged.Holds.hashA` asks stage A (π2's experiment up to `α`'s query) to hash nothing of `32`
-(or `536`) bytes (`HashOK (GoodL 536)`), and `Pi2ProbStaged`'s named `Pi2HashBeforeAlpha` states it of `pi2Staged`.
+(or `608`) bytes (`HashOK (GoodL 608)`), and `Pi2ProbStaged`'s named `Pi2HashBeforeAlpha` states it of `pi2Staged`.
 **It need not hold**: stage A runs π1-rec3's prover (`P1k`), which may hash `32`-byte inputs (a challenge chained on
 the last answer, `s₂ = H(s₁)` on `s₁`'s `32` bytes). So `α`'s chain is restated here without it:
 

@@ -11,7 +11,7 @@ import RecStatement.Security
 # π2's challenges in the random-oracle model, and its completeness from the staged experiment
 
 π2's honest prover (and the contract, `reduceWith`) draws `α, β, γ` right after `W`'s root as three chained Keccak-256
-answers: `s₁ = H(x)` with `x` the state and everything read since the seed (π1's public data and `W`'s root: `536`
+answers: `s₁ = H(x)` with `x` the state and everything read since the seed (π1's public data and `W`'s root: `608`
 bytes on the real circuit, `2 · 32 + 17 · 24 + 32` after the `32`-byte state), then `s₂ = H(s₁)`, `s₃ = H(s₂)`
 (`32` bytes each); `α = chal s₁`, `β = chal s₂`, `γ = chal s₃`. Then `Q`'s root and `t = chal(H(s₃ ‖ Q's root))`
 (`64` bytes, a Merkle node's length). The copy argument's bad challenges (a vanishing pull, push or public denominator,

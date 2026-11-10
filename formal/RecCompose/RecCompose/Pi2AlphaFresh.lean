@@ -16,7 +16,7 @@ cached while π1-rec3's graph accepted (`GAcc`) with probability at most
 
   `alphaBound = 4 · (2 · setupR + 2^47 + 3 · gOpen + 4) / 2^256 ≤ 2^-204` (**`alphaBound_le`**).
 
-The proof: with `GAcc`, `α`'s input is the writer's `560` bytes (`gAcc_length`), so it suffices to bound their being
+The proof: with `GAcc`, `α`'s input is the writer's `608` bytes (`gAcc_length`), so it suffices to bound their being
 cached (**`prA_le`**). Stage A is the setup, π1-rec3's prover, its graph, the setup again (every input shorter than
 `2^26` bytes: `Pi2AlphaLen` and `Pi1HashShort`, at most `2 · setupR + 2^47 + 3 · gOpen` hashed inputs), then π2's IV, its seed and `W`'s
 tree: `Pi2AlphaChain.chain_le` from `σ`'s `2^26` bytes, not cached.
@@ -67,19 +67,19 @@ theorem runAt_pre2 (Ht : List UInt8 → Digest) (Ft : KeccakState → KeccakStat
 
 /-! ## `W`'s tree -/
 
-/-- A Merkle tree of rows of `64` words hashes `512`-byte leaves and `64`-byte nodes: nothing of `560` bytes. -/
+/-- A Merkle tree of rows of `64` words hashes `512`-byte leaves and `64`-byte nodes: nothing of `608` bytes. -/
 theorem hashOK_buildTree560 (height : ℕ) (word : LeanVM.Protocol.Compile.Word) (hw : ∀ p, (word p).length = 64) :
-    HashOK (fun m ↦ m.length ≠ 560) (LeanVM.Prover.buildTreeWithHash callKeccak256 height word) := by
+    HashOK (fun m ↦ m.length ≠ 608) (LeanVM.Prover.buildTreeWithHash callKeccak256 height word) := by
   unfold LeanVM.Prover.buildTreeWithHash
   refine E2ECompleteness.HashOK.bind ?_ fun leaves ↦ E2ECompleteness.HashOK.bind ?_ fun _ ↦
     E2ECompleteness.HashOK.pure _ _
   · unfold LeanVM.Prover.leafDigestsWithHash
     refine E2ECompleteness.HashOK.arrayMapM _ (fun i ↦ E2ECompleteness.hashOK_callKeccak256 ?_) _
-    show _ ≠ 560
+    show _ ≠ 608
     rw [E2ECompleteness.length_flatMap_kBytes, hw]
     norm_num
   · suffices h : ∀ k (level : Array Digest),
-        HashOK (fun m ↦ m.length ≠ 560) (LeanVM.Prover.levelsWithHash callKeccak256 k level) from h _ _
+        HashOK (fun m ↦ m.length ≠ 608) (LeanVM.Prover.levelsWithHash callKeccak256 k level) from h _ _
     intro k
     induction k with
     | zero => intro level; exact E2ECompleteness.HashOK.pure _ _
@@ -90,12 +90,12 @@ theorem hashOK_buildTree560 (height : ℕ) (word : LeanVM.Protocol.Compile.Word)
         E2ECompleteness.HashOK.pure _ _
       unfold LeanVM.Prover.parentsWithHash
       refine E2ECompleteness.HashOK.arrayMapM _ (fun j ↦ E2ECompleteness.hashOK_callKeccak256 ?_) _
-      show _ ≠ 560
+      show _ ≠ 608
       rw [List.length_append, length_digestBytes, length_digestBytes]
       norm_num
 
 theorem hashOK_commitWithH560 (μ : ℕ) (stack : Array K) :
-    HashOK (fun m ↦ m.length ≠ 560) (E2ECompleteness.commitWithH callKeccak256 μ stack) :=
+    HashOK (fun m ↦ m.length ≠ 608) (E2ECompleteness.commitWithH callKeccak256 μ stack) :=
   hashOK_buildTree560 _ _ (E2ECompleteness.length_stackWordFast μ 1 stack)
 
 /-! ## Stage A -/
@@ -107,13 +107,13 @@ theorem rawInp_start : (UniKeccakComplete.Prob.tInput (Wr.start default)).length
   simp [UniKeccakComplete.Prob.tInput, Wr.start, length_digestBytes]
 
 set_option maxHeartbeats 1600000 in
-/-- **Stage A caches its writer's `560`-byte input** with probability at most `4 · (K + 4) / 2^256`, `K` the hash count
+/-- **Stage A caches its writer's `608`-byte input** with probability at most `4 · (K + 4) / 2^256`, `K` the hash count
 before `σ`, for a π1 prover hashing short inputs. -/
 theorem prA_le {D : RecDeployment} (hD : D.Real) (hg : GraphsAgree) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
     (P1k : OracleComp KeccakCalls (Option UniKeccak.KeccakProof)) (input : Vector UInt8 32) {K₂ : ℕ}
     (hpS : HashOK Pi2A.Short P1k) (hpC : HC P1k K₂) :
     Pr{let p ← (simulateQ ro (stageA callKeccak256 callKeccakF1600 D C Fa P1k input)).run ∅}[
-      p.2 (.inl (rawInp p.1)) ≠ none ∧ (rawInp p.1).length = 560] ≤
+      p.2 (.inl (rawInp p.1)) ≠ none ∧ (rawInp p.1).length = 608] ≤
       4 * (((0 + setupR + K₂ + 3 * gOpen + setupR + 4 : ℕ) : ℝ≥0∞) / 2 ^ 256) := by
   classical
   have hsS := Pi2A.hashOK_setupTreesWithH2 D
@@ -187,7 +187,7 @@ theorem prA_le {D : RecDeployment} (hD : D.Real) (hg : GraphsAgree) (C : Pi2Circ
     · simp only [List.length_append, name_length, length_digestBytes, Vector.length_toList]
     · rw [List.append_assoc, List.drop_left' name_length]
       exact take_digestBytes _ _
-    · -- `W`'s tree hashes nothing of `560` bytes.
+    · -- `W`'s tree hashes nothing of `608` bytes.
       intro seed
       refine E2ECompleteness.HashOK.bind ?_ fun x ↦ ?_
       · obtain ⟨s', h, -, -⟩ := run_sendPublic ((D.circuitAt tr.roots.pi1).circuit.reads.zip
@@ -266,11 +266,11 @@ theorem alphaFresh_of {D : RecDeployment} (hD : D.Real) (hg : GraphsAgree) (C : 
       p.2 (.inl ((pi2Staged D C (pi2Facts hD C hchk) (P1k input rows q) input).inp p.1)) ≠ none ∧ GAcc p.1] ≤
       alphaBound := by
   have hwc := Pi2W.pi2WitnessComplete hD C hchk
-  refine (prEvent_mono_of_support _ _ (fun p ↦ p.2 (.inl (rawInp p.1)) ≠ none ∧ (rawInp p.1).length = 560)
+  refine (prEvent_mono_of_support _ _ (fun p ↦ p.2 (.inl (rawInp p.1)) ≠ none ∧ (rawInp p.1).length = 608)
     fun p hp hev ↦ ?_).trans ?_
   · have hl := gAcc_length C (pi2Facts hD C hchk) input hD hwc _ hp hev.2
     have e : (pi2Staged D C (pi2Facts hD C hchk) (P1k input rows q) input).inp p.1 = rawInp p.1 := by
-      show fixLen 560 (UniKeccakComplete.Prob.tInput p.1.wr) = _
+      show fixLen 608 (UniKeccakComplete.Prob.tInput p.1.wr) = _
       unfold fixLen
       simp only [hl, ↓reduceIte]
     have h1 := hev.1

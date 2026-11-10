@@ -12,9 +12,9 @@ import UniSound.FsGame
 
 The facts the assembly of π2's Fiat–Shamir layer takes about the composed verifier (`p2Ver`) and its IV:
 
-* **the lengths** of what it hashes: the circuit's encoding (`cc_encoding_length`, `24264` bytes, from its parts'
+* **the lengths** of what it hashes: the circuit's encoding (`cc_encoding_length`, `24464` bytes, from its parts'
   lengths and the data's list lengths only), σ's and κ's inputs (`4 · 2^24`, `8 · 2^24` bytes), the digest's
-  (`24328`), the IV's (`208`); the chain's queries (`nQ_p2 = 6`);
+  (`24528`), the IV's (`208`); the chain's queries (`nQ_p2 = 6`);
 * **`duplexVm_p2Ver`**, **`cost_p2Ver`**: the verifier uses only the two calls, and calls `π` at most `2^48` times
   (every query short: at most `46502` queries of at most `2^32` blocks; π1's three calls decode to one claim each);
 * **the IV moved into the adversary** (`expU_p2IvAdv`, `isTotalQueryBound_p2IvAdv`): the game with the IV in the
@@ -81,14 +81,14 @@ theorem length_flatMap_const {α : Type} (l : List α) (f : α → List UInt8) (
 
 theorem formulas_len : (cc.formulas.map formLen).sum = 16728 := by decide +kernel
 
-theorem publicTerms_len : (cc.publicTerms.map fun t ↦ 8 + linLen t.value).sum = 1864 := by decide +kernel
+theorem publicTerms_len : (cc.publicTerms.map fun t ↦ 8 + linLen t.value).sum = 1992 := by decide +kernel
 
-theorem pairs_length : cc.pairs.length = 133 := by decide +kernel
+theorem pairs_length : cc.pairs.length = 134 := by decide +kernel
 
-theorem reads_length : cc.reads.length = 19 := by decide +kernel
+theorem reads_length : cc.reads.length = 21 := by decide +kernel
 
-/-- **The circuit's encoding has `24264` bytes** (`Circuit::digest`'s bytes before the setup columns' hashes). -/
-theorem cc_encoding_length : cc.encoding.length = 24264 := by
+/-- **The circuit's encoding has `24464` bytes** (`Circuit::digest`'s bytes before the setup columns' hashes). -/
+theorem cc_encoding_length : cc.encoding.length = 24464 := by
   unfold RecStatement.Circuit.encoding
   simp only [List.length_append, length_le64]
   rw [List.length_flatMap, List.map_congr_left (fun f _ ↦ length_formula f), formulas_len,
@@ -150,7 +150,7 @@ theorem length_kappa_real (r : UniStatement.SetupRoots) : (kappaBytes (D.circuit
   rw [length_kappaBytes, circuitAt_n hD]
 
 theorem length_digIn_real (r : UniStatement.SetupRoots) (sg kp : Bytes32) :
-    (digIn (D.circuitAt r) sg kp).length = 24328 := by
+    (digIn (D.circuitAt r) sg kp).length = 24528 := by
   rw [length_digIn, circuitAt_circuit hD, cc_encoding_length]
 
 end Real
@@ -379,7 +379,7 @@ theorem pi1Claims_length (D : RecDeployment) (hc : D.pi1Calls = Data.pi1Calls) (
       simp only [Option.some.injEq] at h
       omega
 
-/-- The bytes a step absorbs: at most `472 + 32 + 24 B` for messages of at most `B` scalars. -/
+/-- The bytes a step absorbs: at most `520 + 32 + 24 B` for messages of at most `B` scalars. -/
 theorem length_mem_absorbsI_p2 (s : FSt2) (B : ℕ) : ∀ (i : ℕ) (rs : List RoundSpec)
     (ms : List (RMsg E)), (∀ m ∈ ms, m.2.length ≤ B) →
       ∀ e ∈ absorbsI (pi2Spec.encAt s) i rs ms, e.length ≤ pLen + 32 + 24 * B

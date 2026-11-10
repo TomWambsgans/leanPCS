@@ -10,7 +10,7 @@ For a compiled circuit whose view (`viewOf`, `adapt` transcribed) is `Data.circu
 
 * `Data`'s own facts (π2's circuit for the Keccak VM's π1-rec3 at 128 signatures), by kernel decision on its small
   terms, none on `Data.pi1Iv`, `Data.pi1Calls`, `Data.digest` or `Data.setupRoot` (`data_*`): `maxGamma = 1`, its
-  `36` public terms `16` of value zero then `20` others, all of whose holes are at role `15` (`data_phi`: `Φ` one
+  `38` public terms `16` of value zero then `22` others, all of whose holes are at role `15` (`data_phi`: `Φ` one
   role's list), three four-limb ports;
 * the recursion's constants (`core_c`: `Spec.of`'s in `K`, embedded, are `normalisedConstantsF` of the blocks' basis,
   `RecStatement.normConsts_of_spec`), the pairs' `Ẑ_s(c_p)` (`pairZ_eq_zHat`; the coset constants nonzero by the
@@ -29,22 +29,22 @@ open RecStatement LeanVM.Parameters Primitives Finset
 
 theorem data_maxGamma : Data.circuit.maxGamma = 1 := by decide +kernel
 
-theorem data_terms_length : Data.publicTerms.length = 36 := by decide +kernel
+theorem data_terms_length : Data.publicTerms.length = 38 := by decide +kernel
 
 theorem data_zero_terms : ∀ j < 16, (Data.publicTerms.getD j default).value.terms = [] := by decide +kernel
 
-theorem data_four : ((List.range 36).map fun j ↦ if (Data.publicTerms.getD j default).value.terms.length = 2 ∨
+theorem data_four : ((List.range 38).map fun j ↦ if (Data.publicTerms.getD j default).value.terms.length = 2 ∨
     (Data.publicTerms.getD j default).value.terms.length = 4 then 1 else 0).sum = 3 := by decide +kernel
 
 theorem data_reads_roots : Data.reads.count .root = 2 := by decide +kernel
 
-theorem data_holes_length : Data.holes.length = 36 := by decide +kernel
+theorem data_holes_length : Data.holes.length = 38 := by decide +kernel
 
-/-- **`Φ`'s terms**: one role, `15`, the `20` ports of nonzero value in order, each its hole's row and its value. -/
-theorem data_phi : phiOf Data.circuit = [(15, (List.range 20).map fun J ↦
+/-- **`Φ`'s terms**: one role, `15`, the `22` ports of nonzero value in order, each its hole's row and its value. -/
+theorem data_phi : phiOf Data.circuit = [(15, (List.range 22).map fun J ↦
     (Data.holes.getD (16 + J) 0 / 16, (Data.publicTerms.getD (16 + J) default).value))] := by decide +kernel
 
-theorem data_holes_role : ∀ J < 20, Data.holes.getD (16 + J) 0 % 16 = 15 := by decide +kernel
+theorem data_holes_role : ∀ J < 22, Data.holes.getD (16 + J) 0 % 16 = 15 := by decide +kernel
 
 /-! ## The view's shape from `Data` -/
 
@@ -73,7 +73,7 @@ theorem viewOf_roots : (publicCounts C).1 = 2 := by
 
 theorem viewOf_holes : holesOf C = Data.holes := congrArg Circuit.holes hview
 
-theorem viewOf_ports : C.ports.size = 36 := by
+theorem viewOf_ports : C.ports.size = 38 := by
   have h := congrArg List.length (viewOf_terms hview)
   rw [data_terms_length] at h
   simpa [publicTermsOf] using h

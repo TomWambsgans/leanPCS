@@ -10,7 +10,7 @@ import RecCompose.Pi2TFreshPi2
 
 `Holds2` asks `α`'s input to be fresh after stage A on every outcome (but with probability `εα`). On π2's staged run
 that fails off the graph's acceptance: when π1's prover returns none, or the witness π2 takes is not honest, `α`'s
-input is `fixLen`'s `560` zeros, which nothing keeps π1-rec3's prover from hashing. There the verdict's first component
+input is `fixLen`'s `608` zeros, which nothing keeps π1-rec3's prover from hashing. There the verdict's first component
 (π1-rec3's graph's) is `false`, so the experiment's event cannot happen. So:
 
 * **`Pi2Staged.Holds3`**: `Holds2` with a predicate `G` of stage A's output and `Gβ` of stage B's, `alphaFresh` and
@@ -439,8 +439,8 @@ theorem pi2TFresh_ofG {D : RecDeployment} (C : Pi2Circuits D) (Fa : Pi2Facts D C
       unfold treeB E2ECompleteness.Cost.treeCost
       rw [logN_G Fa]
       exact hc_of_qc (E2ECompleteness.Cost.qc_commitWithH _ _))
-    (fun a s₁ s₂ s₃ qT ↦ tin_stageB_length C input a s₁ s₂ s₃ qT) (by norm_num : (560 : ℕ) ≠ 32)
-    (fun a ↦ fixLen_length 560 _) ((pi2Staged D C Fa P1k input).hc_A hcost) G (fun b : StB ↦ G b.a)
+    (fun a s₁ s₂ s₃ qT ↦ tin_stageB_length C input a s₁ s₂ s₃ qT) (by norm_num : (608 : ℕ) ≠ 32)
+    (fun a ↦ fixLen_length 608 _) ((pi2Staged D C Fa P1k input).hc_A hcost) G (fun b : StB ↦ G b.a)
     (fun _ _ _ _ _ h ↦ h) hα |>.trans (le_of_eq ?_)
   unfold tFreshBound2
   rfl

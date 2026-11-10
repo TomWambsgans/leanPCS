@@ -10,8 +10,8 @@ import RecCompose.Pi2SimMorph
 * **`stream_split`**: π2's prover's stream (`pi2ProveStreamWith`) is `pre2`, the three chained challenges, `mid2`,
   `t`, `post2`, in any lawful monad (`UniKeccakComplete.Prob.run_sampleW`; after a challenge the next one's input is the
   answer's `32` bytes, `tInput_absorbW`).
-* **`tInput_pre2_length`**: on values matching the real circuit's reads, `α`'s input has `560` bytes (the state, the
-  public data's `472`, `W`'s root word), so `pi2Staged`'s `fixLen 560` keeps it.
+* **`tInput_pre2_length`**: on values matching the real circuit's reads, `α`'s input has `608` bytes (the state, the
+  public data's `520`, `W`'s root word), so `pi2Staged`'s `fixLen 608` keeps it.
 * **`runAt_staged_none`**, **`runAt_staged_a1`**, **`runAt_staged_good`**: at pure `(Ht, Ft)` the staged run's verdict
   is `(false, false)` when π1's prover returns none, its first component π1-rec3's graph's verdict otherwise, and on an
   honest witness (`Pi2Good`) the whole verdict is the experiment's (`expW2` at `Id`), its priors and challenges the
@@ -119,7 +119,7 @@ noncomputable def prOf (a : StA) : Pr2 := (a.roots, a.vw.2, Fa.pubOf a.roots (pu
 noncomputable def stagedAt (o : Option UniKeccak.KeccakProof) :
     ((Bool × Bool) × ((Pr2 × E × E × E) × E)) × (Pr2 × E × E × E) :=
   let a := aAt Ht Ft D C Fa input o
-  let s₁ := Ht (fixLen 560 (UniKeccakComplete.Prob.tInput a.wr))
+  let s₁ := Ht (fixLen 608 (UniKeccakComplete.Prob.tInput a.wr))
   let s₂ := Ht (digestBytes s₁)
   let s₃ := Ht (digestBytes s₂)
   let b := bAt Ht D C input a s₁ s₂ s₃
@@ -188,10 +188,10 @@ theorem bAt_wr (a : StA) (s₁ s₂ s₃ : Digest) : (bAt Ht D C input a s₁ s�
       (publicScalarsOf input.toList a.vw.1) a.vw.2 (chalP s₁) (chalP s₂) (chalP s₃)).run
       (absorbW (absorbW (absorbW a.wr s₁) s₂) s₃))).2 := rfl
 
-/-- **On an honest witness `α`'s input has `560` bytes** (at the real deployment): `fixLen` keeps it. -/
+/-- **On an honest witness `α`'s input has `608` bytes** (at the real deployment): `fixLen` keeps it. -/
 theorem fixLen_aAt (hD : D.Real)
     (hgood : Pi2Good D C Fa (rootsH D Ht Ft) input p1.stream (vwAt Ht Ft D C Fa input p1)) :
-    fixLen 560 (UniKeccakComplete.Prob.tInput (aAt Ht Ft D C Fa input (some p1)).wr) =
+    fixLen 608 (UniKeccakComplete.Prob.tInput (aAt Ht Ft D C Fa input (some p1)).wr) =
       UniKeccakComplete.Prob.tInput (aAt Ht Ft D C Fa input (some p1)).wr := by
   unfold fixLen
   split_ifs with h

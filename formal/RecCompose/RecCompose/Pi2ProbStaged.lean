@@ -17,8 +17,8 @@ the random permutation is `P1` (part of `Pi2ExperimentLe`).
 **`pi2Staged D C Fa P1k input rows q : Pi2Staged`**, π2's experiment's stages over the two calls:
 
 * `A` (`stageA`): the setup, `P1k`, π1-rec3's graph on its proof (`a1`), then π2's prover up to `α`: its setup, IV, the
-  witness it takes, the seed, the public values, `W`'s commitment and root (`pre2`); `inp` `α`'s input, `560` bytes
-  (`fixLen`: `tInput` of the writer, `560` bytes when the values match the reads);
+  witness it takes, the seed, the public values, `W`'s commitment and root (`pre2`); `inp` `α`'s input, `608` bytes
+  (`fixLen`: `tInput` of the writer, `608` bytes when the values match the reads);
 * the three chained answers `α, β, γ`; `B` (`stageB`) `Q`'s stack, commitment and root (`mid2`); `t`'s query on the
   writer's input; `C` (`stageC`) the values at `t`, `ρ` (`post2`), the three openings and the contract
   (`Pi2H.verifierWithH`); a proof of `P1k`'s none is the pair `(false, false)`;
@@ -37,7 +37,7 @@ one opening's proof of work or its proof is accepted, `pi2_accepts`, π1's openi
   over it, the code commutes with the simulation, the none branch's dummy calls change nothing);
 * `Pi2RunAt`: at pure `(H, F)` the staged run is the experiment at `Id`, its priors and challenges the honest prover's
   (the code's commutation and the prover's split at `α` and `t`, `runAt_stagedU`'s analogue);
-* `Pi2RunDuplex`, `Pi2RunCost N`, `Pi2HashBeforeAlpha` (no `32`- or `560`-byte input hashed in `A`, `P1k`'s included),
+* `Pi2RunDuplex`, `Pi2RunCost N`, `Pi2HashBeforeAlpha` (no `32`- or `608`-byte input hashed in `A`, `P1k`'s included),
   `Pi2TFresh εt`;
 * `Pi2Pi1Openings`: at pure `(H, F)`, on a π1 proof the graph accepts with an honest witness, the contract's three π1
   openings of π2's honest proof accept (the calls' agreement, `Pi1OpeningsAgree`'s at an explicit Keccak-256);
@@ -222,7 +222,7 @@ noncomputable def pi2Staged (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Fac
   β := StB
   ρ := Pr2
   τ := Pr2 × E × E × E
-  inp a := fixLen 560 (UniKeccakComplete.Prob.tInput a.wr)
+  inp a := fixLen 608 (UniKeccakComplete.Prob.tInput a.wr)
   pr a := (a.roots, a.vw.2, Fa.pubOf a.roots (publicScalarsOf input.toList a.vw.1))
   A := stageA callKeccak256 callKeccakF1600 D C Fa P1k input
   B := stageB callKeccak256 D C input
@@ -302,13 +302,13 @@ def Pi2RunCost (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
     D.pi1.HonestRelation D.flock rows input q →
     Common.QueryCostAtMost (pi2Staged D C Fa (P1k input rows q) input).run hashBlocks N
 
-/-- **Named: before `α`, nothing of `32` or `560` bytes is hashed** (`hashA_stagedU`'s analogue; `P1k`'s hashes, the
+/-- **Named: before `α`, nothing of `32` or `608` bytes is hashed** (`hashA_stagedU`'s analogue; `P1k`'s hashes, the
 setup's leaves and nodes, the graph's openings, π2's IV, digest and seed preimages, `W`'s tree). -/
 def Pi2HashBeforeAlpha (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
     (P1k : Vector UInt8 32 → (rows : List ℕ) → D.pi1.Stack rows → OracleComp KeccakCalls (Option UniKeccak.KeccakProof)) :
     Prop :=
   ∀ (input : Vector UInt8 32) (rows : List ℕ) (q : D.pi1.Stack rows), D.pi1.shape.RowsFit rows →
-    D.pi1.HonestRelation D.flock rows input q → HashOK (GoodL 560) (pi2Staged D C Fa (P1k input rows q) input).A
+    D.pi1.HonestRelation D.flock rows input q → HashOK (GoodL 608) (pi2Staged D C Fa (P1k input rows q) input).A
 
 /-- **Named: `t`'s input is fresh** but with probability `εt` (`TQueryFresh`'s analogue). -/
 def Pi2TFresh (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
@@ -559,13 +559,13 @@ theorem holds_pi2 {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D) (hchk : 
     (input : Vector UInt8 32) (rows : List ℕ) (q : D.pi1.Stack rows) (hfit : D.pi1.shape.RowsFit rows)
     (hrel : D.pi1.HonestRelation D.flock rows input q) :
     (pi2Staged D C (pi2Facts hD C hchk) (P1k input rows q) input).Holds D P1
-      (pi2Prover D C (pi2Facts hD C hchk) PcsQuotient.nonceFuel) input rows q 560 (badSet2 C.G) (badT2 C.G)
+      (pi2Prover D C (pi2Facts hD C hchk) PcsQuotient.nonceFuel) input rows q 608 (badSet2 C.G) (badT2 C.G)
       (2 ^ 25 + 36) (9 * 2 ^ 24) N εt ((N : ℝ≥0∞) * missProb Whir.queryGrindingBits ^ PcsQuotient.nonceFuel) where
   experiment := hexp input rows q hfit hrel
   duplex := hdup input rows q hfit hrel
   cost := hcost input rows q hfit hrel
   L_ne := by norm_num
-  inp_length _ := fixLen_length 560 _
+  inp_length _ := fixLen_length 608 _
   hashA := hhash input rows q hfit hrel
   badCard p := card_badCopy_pi2 (pi2Facts hD C hchk) p.1 p.2.1 p.2.2
   badTCard fp := card_badT_pi2 (pi2Facts hD C hchk) fp.1.1 fp.1.2.1 fp.1.2.2 fp.2.1 fp.2.2.1 fp.2.2.2

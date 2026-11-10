@@ -171,7 +171,7 @@ theorem hlink_p2 (R : RecSetupRoots → Compose.Piop pi2K Stk)
     rfl
   have hcirc := circuitAt_real D hD (rootsOfOut π.roots).pi1
   have hpost' := hpost (rootsOfOut π.roots) (stOf (p2View π).1) cW cQ
-    [UniSound.scalarAt π.proof.stream 504] [UniSound.scalarAt π.proof.stream 560] (p2Inputs π ch) rfl (by
+    [UniSound.scalarAt π.proof.stream 552] [UniSound.scalarAt π.proof.stream 608] (p2Inputs π ch) rfl (by
       rw [hcirc, spec_core_logRow]
       show (((p2Msgs π).getD 2 default).2.take 16).length = 2 ^ 4
       rw [p2Msgs_eq]

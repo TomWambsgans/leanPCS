@@ -14,14 +14,14 @@ import Compose.ListChainUDoom128S
 
 The objects `Compose.knowledgeSoundness_listChainU_closed128S` is applied to for π2's verifier at the real
 deployment's circuit (`cc = Data.circuit`: `2^24` positions, rows of `16`, the reads `C1`'s and `C2`'s roots then
-`17` elements, `472` bytes):
+`19` elements, `520` bytes):
 
 * **the chain** (`pi2Spec`, `Compose.ChainSpecU`): the statement `FSt2` (π2's IV, the public input, the public
-  data's `472` bytes), the label the seed's input `name ‖ iv ‖ input` (`RecStatement.name`, 16 bytes), the public
+  data's `520` bytes), the label the seed's input `name ‖ iv ‖ input` (`RecStatement.name`, 16 bytes), the public
   data the statement's bytes before round `0`'s message (`W`'s root), the messages as the stream carries them
   (`UniSound.uniEnc`: a root's reversed halves, `24`-byte scalars), `RecPiop.pi2Rounds 4`;
 * **the proof the chain reads** (`P2Pf`: the input, the recursive proof, the IV, the setup's four roots) and its view
-  (`p2View`: the stream's messages from byte `472`);
+  (`p2View`: the stream's messages from byte `520`);
 * **the six openings** (`p2Ops`), in the contract's order: the Keccak π1's `C1`, `C2`, `F` (plain layouts of `27`,
   `26`, `23` variables at the reference shape, `UniKeccakSound.plainShapeK`; nothing concluded of them: `p2Stk =
   none`), π2's `W` (round `0`, plain `2^24`), the setup (`κ`, `κ + σ`,
@@ -51,16 +51,16 @@ attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
 /-- The real deployment's circuit (`RecDeployment.Real`: at every IV). -/
 abbrev cc : RecStatement.Circuit := Data.circuit
 
-/-- The public data's bytes (`2 · 32 + 17 · 24`). -/
-abbrev pLen : ℕ := 472
+/-- The public data's bytes (`2 · 32 + 19 · 24`). -/
+abbrev pLen : ℕ := 520
 
 /-- The stream's bytes: the public data, `W`'s and `Q`'s commitments (roots and out-of-domain answers), the `2^4 + 2`
 values. -/
-abbrev sLen : ℕ := 1016
+abbrev sLen : ℕ := 1064
 
 /-! ## The chain -/
 
-/-- **π2's chain statement**: π2's IV, the public input, the public data's `472` bytes. -/
+/-- **π2's chain statement**: π2's IV, the public input, the public data's `520` bytes. -/
 abbrev FSt2 : Type := Vector UInt8 32 × Vector UInt8 32 × Vector UInt8 pLen
 
 /-- **The seed's input** (`runWith`): `name ‖ iv ‖ input`. -/
@@ -101,14 +101,14 @@ def p2K : ChainSpec E FSt2 where
     obtain ⟨h1, h2⟩ := List.append_inj h hl
     exact p2Stmt_inj s s' h1 h2
   label_len s := by
-    have : (p2Label s ++ s.2.2.toList).length = 552 := by
+    have : (p2Label s ++ s.2.2.toList).length = 600 := by
       simp [p2Label_length, pLen]
     rw [this]
     decide
   rounds := RecPiop.pi2Rounds 4
 
 /-- **An input refers to a digest**: `Compose.Refers`, or the digest is the root the input absorbs after a state
-(bytes `32 … 64`, `Q`'s) or after a state and the public data (bytes `504 … 536`, `W`'s). -/
+(bytes `32 … 64`, `Q`'s) or after a state and the public data (bytes `552 … 584`, `W`'s). -/
 def p2Rf (y : List UInt8) (d : Bytes32) : Prop :=
   Refers y d ∨ UniSound.revRoot d = (y.drop 32).take 32 ∨ UniSound.revRoot d = (y.drop (32 + pLen)).take 32
 
@@ -228,10 +228,10 @@ def setIv2 (iv : Vector UInt8 32) (π : P2Pf) : P2Pf := { π with iv := iv }
 /-- The setup's roots a proof carries. -/
 def p2Roots (π : P2Pf) : RecSetupRoots := rootsOfOut π.roots
 
-/-- The public data's `472` bytes (missing bytes `0`). -/
+/-- The public data's `520` bytes (missing bytes `0`). -/
 def pubBytes (b : Array UInt8) : Vector UInt8 pLen := Vector.ofFn fun i => b.getD i.val 0
 
-/-- **The rounds' messages the stream carries**, from byte `472`. -/
+/-- **The rounds' messages the stream carries**, from byte `520`. -/
 def p2Msgs (π : P2Pf) : List UniSound.UMsg := UniSound.msgsAt π.proof.stream pLen (RecPiop.pi2Rounds 4)
 
 /-- **What the chain reads of a proof**: the statement (the IV, the input, the public data) and the messages. -/
@@ -428,7 +428,7 @@ def p2Adv (A : RecAdversary) (s : SOut) : OracleComp Common.RandomPermutationOra
 
 /-! ## The check, the links -/
 
-/-- **The verifier's check** (what an accepting run satisfies): the stream of `1016` bytes, the challenges of the
+/-- **The verifier's check** (what an accepting run satisfies): the stream of `1064` bytes, the challenges of the
 rounds' lengths, and the value the contract requires nonzero. -/
 def p2Check (π : P2Pf) (ch : List (List E)) : Prop :=
   π.proof.stream.size = sLen ∧ ch.length = 3 ∧ (ch.getD 0 []).length = 3 ∧ (ch.getD 1 []).length = 1 ∧
@@ -471,7 +471,7 @@ def Pi2SetupBridge (D : RecDeployment) (hs : UniKeccakSound.UniShapesK D.pi1) : 
   simulateQ keccakCallsOverQueryPermutation (loggedKC (p2Setup D hs)) =
     (fun t : RecSetupTrees => (rootsB2 t, setupTr2 t)) <$> D.setupTreesWith Common.queryPermutation
 
-/-- **WALK**: on a stream of `1016` bytes, in every lawful monad and over every permutation, π2's run's verdict and
+/-- **WALK**: on a stream of `1064` bytes, in every lawful monad and over every permutation, π2's run's verdict and
 result are the chain's challenges read by the value the contract requires nonzero and the result `p2Reduced`, the
 chain over Keccak-256 the sponge over the permutation. -/
 def Pi2Walk : Prop :=
