@@ -19,11 +19,10 @@ licensing, and the conventions.
 - **The Fiat–Shamir states need not be in the header**, given the two points above.
 - **The forward-compatibility upgrade by one Schwartz–Zippel point** needs the new commitment to bind one table: an
   OOD answer at commit time, or a root anyone recomputes from the public circuit.
-- **ZK without changing the verifier**: true (`docs/membership/HIDING.md`), but at these sizes it is not leanVM's 4×
-  padding (which would exceed WHIR's 2^28 words): a random first piece per lane, 7 random lanes, and a *gadget* (a
-  fixed weight on nine first-piece entries, cancelled by the values there, batched as a claim of value zero) that makes
-  WHIR's lane rounds uniform for every challenge outside a set below 2^-188. The padding must cover the masks' lane:
-  without it, anyone could solve the masks from the opening and find the Merkle path.
+- **ZK assumes a zero-knowledge PCS** (ZK-WHIR), as the EIP does; the reference openings are leanVM's WHIR, not yet
+  ZK-WHIR. With the EIP's plain point claims the earlier hidden layouts (claims on a layout, a gadget) cannot be
+  expressed, so the membership protocol now makes only its own public scalars simulatable: random rows, the masks and a
+  blinding of `h` make the out-of-domain answers and the part values uniform (`docs/membership/HIDING.md`, a rank test).
 
 ## Implementation (`crates/`)
 
@@ -37,18 +36,20 @@ claims; the contracts' `PCS_OPEN` precompile is gone.
 `root`), reduced to four PCS claims by five field elements, as in leanVM's `flock::quotient` but on a circuit of
 one χ gate on bits (3,878,612 of 2^22 rows), its claims opened by leanVM's WHIR unchanged.
 
-- `crates/membership/quotient`: circuit, prover, Rust verifier (`protocol::reduce`), and the openings (`opening`), whose
-  hidden layouts make the roots and the openings hide the witness ([`HIDING.md`](docs/membership/HIDING.md)). The
+- `crates/membership/quotient`: circuit, prover, Rust verifier (`protocol::reduce`), and the openings (`opening`): the
+  EIP's PCS claims (`pcs_claim`), four commitments with out-of-domain answers (the witness `W`, the quotient table's
+  parts `H`, `Q`, `G`; `docs/membership/EIP_CLAIMS.md`) and six one-point claims; zero knowledge assuming a ZK PCS
+  ([`HIDING.md`](docs/membership/HIDING.md)). The
   prover's transforms are `ntt`'s (AVX-512, AVX2 or NEON lanes), split around one block-wise pass over the quotients'
   values; the `Index` keeps σ's values on the quotients' coset (512 MiB at 2^22 rows), which every proof reads.
 - `crates/membership/evm`: the same verifier compiled to EVM bytecode, run on revm with `FIELD_MUL` (10 gas), EIP-8141's
-  `FRAMEPARAM` and `FRAMEDATALOAD`, and a mock frame of PCS claims (`PcsFrame`; the claims' encoding in `machine.rs`):
-  one claim per commitment, three for the four claims. The contract's ABI (`verify(bytes32,bytes32,bytes)`, selector
-  `0xde12c640`, 252 bytes of packed arguments, then the frame's index: 253 bytes) and its deployment are in
-  `quotient.rs`: the circuit's commitment is a constructor argument kept in storage (read by one cold `SLOAD`), which a
-  fixed owner may change (`setIndexRoot`). It fails closed: the named frame must be a dependency verification frame
-  whose first byte is `PCS_SCHEME`, and its payloads `0, 1, 2` the claims' hashes, in order; calls with value, other
-  calldata lengths and degenerate proofs revert.
+  `FRAMEPARAM` and `FRAMEDATALOAD`, and a mock frame of PCS claims (`PcsFrame`): the six claims in the EIP's encoding
+  (`evm_link::declared_claims`). The contract's ABI (`verify(bytes32,bytes32,bytes)`, selector `0xde12c640`, 460 bytes
+  of packed arguments, then the frame's index: 461 bytes) and its deployment are in `quotient.rs`: the circuit's
+  commitment (root and out-of-domain answer) is a constructor argument kept in two storage slots (two cold `SLOAD`s),
+  which a fixed owner may change (`setIndexCommitment`). It fails closed: the named frame must be a dependency
+  verification frame whose first byte is `PCS_SCHEME`, and its payloads `0 .. 5` the claims' hashes, in order; calls
+  with value, other calldata lengths and degenerate proofs revert.
 - `formal/`: the Lean 4 proofs ([below](#membership-what-is-proved)).
 
 **leanVM proofs on the EVM, by recursion**: a leaf aggregate of leanXMSS signatures by leanVM's Keccak VM (commit
@@ -115,12 +116,12 @@ its PCS gas on both sides as the EIP draft has it.
 
 | | ZK Merkle membership | leanVM by recursion (128 signatures) |
 |---|---|---|
-| Prover | 2.2 s (reduction 1.46 s, openings 0.76 s), 5.9 GiB, before the x86 work. h1 (Ryzen 7 PRO 8700GE, AVX-512), load 9–14: 3.6 s (reduction 2.46 s, openings 1.14 s), 6.2 GiB, against 8.4 s (6.45 s, 1.92 s) before. h2 (Core Ultra 7 265, AVX2), load 10: 2.3 s (1.5 s, 0.8 s), against 5.0 s | trace → π1-rec3 → π2 and openings, on the PCS claims (`tests/pipeline.rs`, this Mac, load about 20, 2026-11-10, medians of 5): **9.3 s per proof** (π1 with its openings 2.9 s, π2 2.8 s, π2's five openings 3.7 s), 2.0 s per circuit once, 15.2 GB. Before (π2's three stacks opened once each at version 3, π1's at version 3): 2.06 s on this Mac, 0.59 s on an AMD EPYC 9355P (64 threads) |
-| Calldata | 253 B | 1,101 B (61 zero) |
-| Gas | 14,831 execution, **18,855** transaction (14,289 and 18,309 with `PCS_OPEN`) | 32,794 execution; frame transaction (EIP-8141, EIP-7976's floor, no base or per-frame cost): standard 49,678, floor **70,464** |
-| Claims | 4 in 3 declared | 8 (π1's 3, π2's 5), each the EIP draft's PCS claim |
-| With the frame (1 + 32 B a claim) and the PCS gas | 28,407 (97 B, 8,000) | **99,912** (257 B, `pcs_gas` 13,000 on both sides; the floor binds) |
-| Deployment | 6,314-byte code, 1,428,094 gas | one contract |
+| Prover | 7.4 s (reduction 4.1 s, openings 3.3 s), 8.6 GiB, median of 3 at load about 7, with the EIP's claims (four commitments up to `2^28` words, six openings; `docs/membership/EIP_CLAIMS.md`); before them, with the hidden layouts, 2.2 s (reduction 1.46 s, openings 0.76 s) | trace → π1-rec3 → π2 and openings, on the PCS claims (`tests/pipeline.rs`, this Mac, load about 20, 2026-11-10, medians of 5): **9.3 s per proof** (π1 with its openings 2.9 s, π2 2.8 s, π2's five openings 3.7 s), 2.0 s per circuit once, 15.2 GB. Before (π2's three stacks opened once each at version 3, π1's at version 3): 2.06 s on this Mac, 0.59 s on an AMD EPYC 9355P (64 threads) |
+| Calldata | 461 B | 1,101 B (61 zero) |
+| Gas | 18,899 execution; **52,856** transaction under EIP-8141 with `pcs_gas` in the floor (floor-bound: 64 · (461 + 193) + 11,000; standard 40,315) | 32,794 execution; frame transaction (EIP-8141, EIP-7976's floor, no base or per-frame cost): standard 49,678, floor **70,464** |
+| Claims | 6 declared | 8 (π1's 3, π2's 5), each the EIP draft's PCS claim |
+| With the frame (1 + 32 B a claim) and the PCS gas | included above (193 B, 11,000) | **99,912** (257 B, `pcs_gas` 13,000 on both sides; the floor binds) |
+| Deployment | 6,667-byte code, 1,536,984 gas | one contract |
 
 - Membership: checking the claims declared costs 61 gas once (the frame's mode and scheme) and 43 a claim beyond its
   `KECCAK256`. Its verifier: reduction < 1 ms, openings 5 ms (248 / 278 / 333 KiB).
@@ -212,8 +213,8 @@ permutation; `formal/EndToEnd` proves them ([`formal/README.md`](formal/README.m
 - **Claims on one commitment are opened together** (above): a requirement on the block's aggregation of declared claims too.
 - **WHIR's parameters.** The code's proximity-gap accounting omits a factor `2^(ℓ-1)` that leanerVM's theorems carry;
   leanerVM's certified parameters account for it.
-- **Hiding.** Unpadded openings would not be zero knowledge: the masks can be solved from an opened mask lane, and
-  per-coset fingerprints identify the Merkle path. The hiding layouts prevent both.
+- **Hiding.** The reference openings (leanVM's WHIR) are not zero knowledge: the membership proof's zero knowledge
+  assumes the EIP's ZK-WHIR (`HIDING.md`).
 - **The prover's low-memory paths** make the dense prover's commitments and proofs (differential tests in
   `crates/vendor/leanvm-c445e3d5/pcs` and `crates/membership/quotient`); the in-place NTT encodes are free of the
   aliasing bug Miri flags in leanVM's.
@@ -229,10 +230,12 @@ permutation; `formal/EndToEnd` proves them ([`formal/README.md`](formal/README.m
   of about 1,200 lines of the builder); (3) closed bounds at other shapes than the reference; (4) declarations in the
   shared libraries that no end theorem uses ([`formal/README.md`](formal/README.md)).
 - leanVM: capacity beyond about 470 signatures.
-- Possible gas saving: absorb the membership index root in the byte order a claim encodes it (−132 gas).
-- The membership line's claims name their layout by a small id (`machine::layout_id`, `256 · table + log_rows`) that
-  the mock knows, not by a layout word in the EIP draft's format (version at byte 21, `n` at byte 24, `placed` at
-  25..32), which the leanVM line's claims follow; moving it changes the contract's constants and `formal/Statement`.
+- Membership in Lean: the protocol of `docs/membership/EIP_CLAIMS.md` (the EIP's claims, four commitments with
+  out-of-domain answers, random rows, the blinding of `h`, big-endian root scalars) is ahead of `formal/` (Statement,
+  EndToEnd, QuotientZk, Implementation), which states the hidden layouts; `Graph.lean` is regenerated
+  (`formal/Implementation` must read its new `claims` and `Word.storedOod`), and the ZK theorem must move to
+  `HIDING.md`'s argument. The Rust-side Lean-facing outputs changed: `Graph.lean`, the circuit (random rows:
+  `dump_circuit`), the `statement_vectors` and `whir_bridge_vector` formats.
 - The leanVM line's PCS claims in Lean: the claims' encoding and the out-of-domain answers in `UniKeccak` (π1's
   stream reads each commitment's answer after its root; the IV binds the setup's), `RecStatement`, `RecPiop` and
   `RecCompose` (π2v2, `Q`'s slots and its three claims, the extra inversion factor `B`, one opening a claim on

@@ -24,7 +24,7 @@ use crate::domain::{self, beta, chain, coordinates, point, row_vanishing};
 use crate::ntt::{self, Ex8, Kx8};
 use crate::opening::{self, Claim, Commitment, Committed};
 use crate::statement::Statement;
-use crate::transcript::{Proof, ProverChain, TranscriptError, VerifierChain, scalars_root};
+use crate::transcript::{Proof, ProverChain, TranscriptError, VerifierChain, halves_root};
 
 /// The public bits are cells of the span of this many basis vectors: the `X` and `Y` cells of
 /// [`PUBLIC_ROWS`] rows.
@@ -1088,7 +1088,7 @@ pub fn verify_reduction(
     }; 4];
     for (c, (root, &ood)) in commitments.iter_mut().zip(reduced.roots.iter().zip(&reduced.oods)) {
         *c = Commitment {
-            root: scalars_root(root).map_err(VerifyError::Transcript)?,
+            root: halves_root(root).map_err(VerifyError::Transcript)?,
             ood,
         };
     }
@@ -1254,7 +1254,7 @@ pub(crate) mod tests {
             .iter()
             .map(|b| format!("{b:02x}"))
             .collect();
-        assert_eq!(hex, "08ba304a68e09e71a69a505676e692ef827b0915bec44f4c8dcd1cc059506836");
+        assert_eq!(hex, "114bb48504f9c256c38318bfd0736ab1b391d6c732b4c16fa387a50c50283ca4");
     }
 
     /// On a small circuit: an honest proof leaves six true claims that open, and a witness that breaks one gate,

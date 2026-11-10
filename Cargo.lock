@@ -1243,6 +1243,7 @@ version = "0.1.0"
 dependencies = [
  "evm_link",
  "fiat_shamir",
+ "pcs_claim",
  "primitives",
  "quotient",
  "revm",
@@ -2281,6 +2282,7 @@ dependencies = [
  "fiat_shamir",
  "parallel",
  "pcs",
+ "pcs_claim",
  "primitives",
  "rand 0.9.5",
  "rand_chacha 0.9.0",

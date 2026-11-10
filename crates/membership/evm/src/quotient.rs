@@ -52,7 +52,7 @@ use primitives::field::F192;
 use quotient::opening::{Claim, Commitment};
 use quotient::protocol::{Claims, Commitments, NAME, Reduced, label, reduce, sum_point};
 use quotient::statement::Statement;
-use quotient::transcript::{Proof, TranscriptError, scalars_root};
+use quotient::transcript::{Proof, TranscriptError, halves_root};
 use revm::primitives::Address;
 
 use crate::codegen::{COMMITMENT, Ending, Entry, SCALAR_BYTES, SCALARS, Word, compile};
@@ -262,7 +262,7 @@ pub fn calldata(statement: &Statement, proof: &Proof) -> Result<Vec<u8>, Transcr
             *stream.get(pair[0]).ok_or(TranscriptError::Exhausted)?,
             *stream.get(pair[1]).ok_or(TranscriptError::Exhausted)?,
         ];
-        data.extend(scalars_root(&halves)?);
+        data.extend(halves_root(&halves)?);
     }
     for (i, scalar) in stream.iter().enumerate() {
         if !ROOT_SCALARS.contains(&i) {
@@ -294,7 +294,7 @@ pub fn decode(output: &[u8], log_rows: usize) -> Option<(Commitments, Claims)> {
     let mut commitment = || {
         let c = take(3)?;
         Some(Commitment {
-            root: scalars_root(&[c[0], c[1]]).ok()?,
+            root: halves_root(&[c[0], c[1]]).ok()?,
             ood: c[2],
         })
     };

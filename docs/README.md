@@ -1,7 +1,9 @@
 # Design documents
 
-- [`membership/HIDING.md`](membership/HIDING.md): the hiding layouts that make the membership proof's commitments and
-  openings zero knowledge.
+- [`membership/HIDING.md`](membership/HIDING.md): the membership proof's zero knowledge, assuming a zero-knowledge PCS
+  opening (the reference openings are not yet ZK-WHIR).
+- [`membership/EIP_CLAIMS.md`](membership/EIP_CLAIMS.md): the membership protocol under the EIP's PCS claims, and its
+  cost.
 - leanVM line, π1 (`crates/leanvm/univariate`):
   - [`leanvm/univariate/SPEC.md`](leanvm/univariate/SPEC.md): the univariate PIOP;
   - [`leanvm/univariate/SPEC-FLOCK.md`](leanvm/univariate/SPEC-FLOCK.md): Flock's verifier as π1 runs it;

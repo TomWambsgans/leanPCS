@@ -8,22 +8,22 @@
 //! the last challenge, each a 256-bit big-endian word (limb 0 lowest, which is how the EVM holds a field
 //! element); the digest is the new state, and its low 192 bits the challenge. The protocol fixes how many
 //! scalars precede each challenge, so no length or tag is hashed. A commitment rides the stream as the two
-//! scalars of [`root_scalars`]; the seed is the Keccak-256 of a label that holds the statement.
+//! scalars of [`root_halves`]; the seed is the Keccak-256 of a label that holds the statement.
 
 use fiat_shamir::merkle::Hash;
 use primitives::field::F192;
 use primitives::hash::hash as keccak256;
 
-/// A root as the two scalars the stream carries: its 128-bit halves, each a big-endian number (`c1` its first 8
-/// bytes, `c0` the next 8), so that `s_0 · 2^128 + s_1` is the word whose big-endian bytes are the root: the word
-/// the EVM reads it as from calldata or storage, and the root a PCS claim encodes.
-pub fn root_scalars(root: &Hash) -> [F192; 2] {
+/// A root as the two scalars the membership stream carries: its 128-bit halves, each a big-endian number (`c1` its
+/// first 8 bytes, `c0` the next 8), so that `s_0 · 2^128 + s_1` is the word whose big-endian bytes are the root: the
+/// word the EVM reads it as from calldata or storage, and the root a PCS claim encodes.
+pub fn root_halves(root: &Hash) -> [F192; 2] {
     let word = |at: usize| u64::from_be_bytes(root[at..at + 8].try_into().expect("8 bytes"));
     [F192::new(word(8), word(0), 0), F192::new(word(24), word(16), 0)]
 }
 
-/// The root two scalars of [`root_scalars`] stand for, if they are two halves (no third limb).
-pub fn scalars_root(scalars: &[F192; 2]) -> Result<Hash, TranscriptError> {
+/// The root two scalars of [`root_halves`] stand for, if they are two halves (no third limb).
+pub fn halves_root(scalars: &[F192; 2]) -> Result<Hash, TranscriptError> {
     if scalars.iter().any(|s| s.c2 != 0) {
         return Err(TranscriptError::NotARoot);
     }
@@ -33,6 +33,12 @@ pub fn scalars_root(scalars: &[F192; 2]) -> Result<Hash, TranscriptError> {
         root[16 * h + 8..16 * h + 16].copy_from_slice(&s.c0.to_be_bytes());
     }
     Ok(root)
+}
+
+/// A root as two scalars, its 128-bit halves each read as two little-endian words (leanVM's `hash_to_scalars`): the
+/// encoding π2's stream uses (`crates/leanvm/rec`).
+pub fn root_scalars(root: &Hash) -> [F192; 2] {
+    fiat_shamir::merkle::hash_to_scalars(root)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -116,7 +122,7 @@ impl ProverChain {
     }
 
     pub fn send_root(&mut self, root: &Hash) {
-        root_scalars(root).into_iter().for_each(|x| self.send(x));
+        root_halves(root).into_iter().for_each(|x| self.send(x));
     }
 
     pub fn sample(&mut self) -> F192 {
@@ -152,7 +158,7 @@ impl<'a> VerifierChain<'a> {
 
     pub fn next_root(&mut self) -> Result<[F192; 2], TranscriptError> {
         let scalars = [self.next()?, self.next()?];
-        scalars_root(&scalars).map(|_| scalars)
+        halves_root(&scalars).map(|_| scalars)
     }
 
     pub fn sample(&mut self) -> F192 {
@@ -175,7 +181,7 @@ mod tests {
     #[test]
     fn roots_round_trip_and_sides_agree() {
         let root: Hash = std::array::from_fn(|i| (7 * i + 3) as u8);
-        assert_eq!(scalars_root(&root_scalars(&root)), Ok(root));
+        assert_eq!(halves_root(&root_halves(&root)), Ok(root));
         let mut p = ProverChain::new(b"label");
         p.send_root(&root);
         let a = p.sample();
@@ -183,7 +189,7 @@ mod tests {
         let b = p.sample();
         let proof = p.into_proof();
         let mut v = VerifierChain::new(b"label", &proof);
-        assert_eq!(v.next_root(), Ok(root_scalars(&root)));
+        assert_eq!(v.next_root(), Ok(root_halves(&root)));
         assert_eq!(v.sample(), a);
         assert_eq!(v.next(), Ok(F192::new(1, 2, 3)));
         assert_eq!(v.sample(), b);

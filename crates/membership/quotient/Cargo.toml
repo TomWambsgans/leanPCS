@@ -5,7 +5,7 @@ name = "quotient"
 version.workspace = true
 edition.workspace = true
 publish = false
-description = "Zero-knowledge Merkle membership (Keccak-256) reduced to four evaluation claims by five field elements"
+description = "Zero-knowledge Merkle membership (Keccak-256) reduced to six PCS claims (the EIP draft's encoding)"
 
 [lints]
 workspace = true

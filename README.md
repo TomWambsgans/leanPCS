@@ -70,11 +70,11 @@ to `root` (details: [`AGENTS.md`](AGENTS.md#membership-what-is-proved)).
 | | |
 |---|---|
 | Circuit | 34 Keccak-256 (χ gate on bits): 3,878,612 of 2^22 rows |
-| Prover | 3.6 s, 6.2 GiB peak on h1 (Ryzen 7 PRO 8700GE, 8 cores, AVX-512) at load 9–14, where the prover before the x86 work took 8.4 s; 2.3 s on h2 (Core Ultra 7 265, 20 cores, AVX2) at load 10, 5.0 s before; 2.2 s on an M4 Max (16 cores) before the x86 work |
-| Calldata to the contract | 253 bytes (2 roots + 5 field elements + statement, and the frame's index) |
-| PCS claims | 4, declared as 3 (97 bytes of frame) |
-| Gas | 14,831 execution; 18,855 transaction (without the 21,000 base); 28,407 with the frame and the claims' 8,000 intrinsic gas |
-| Contract deployment | 1.43 M gas |
+| Prover | 7.4 s, 8.6 GiB on an M4 Max (16 cores), median of 3 at load about 7 (four commitments, six openings; `docs/membership/EIP_CLAIMS.md`) |
+| Calldata to the contract | 461 bytes (statement, 4 roots, 11 field elements, and the frame's index) |
+| PCS claims | 6, in the EIP's encoding (193 bytes of frame) |
+| Gas | 18,899 execution; 52,856 transaction under EIP-8141 (floor-bound, `pcs_gas` in the floor; without the base and per-frame costs) |
+| Contract deployment | 1.54 M gas |
 | Formal verification (Lean 4) | knowledge soundness (≈ 2^-62 at 2^64 queries), completeness (failure < 2^-162) and zero knowledge (≈ 2^-113) proved end to end, in the random-permutation model; the contract proved to be the verifier (its bytecode by tests) |
 
 ### Key figures: one leanVM proof by recursion
@@ -114,7 +114,8 @@ crates/
   vendor/leanvm-c445e3d5   leanVM's WHIR stack (primitives, fiat_shamir, pcs, parallel, verifier, bench)
   vendor/flock-42422001    leanVM's Flock prover on c445e3d5's primitives (package flock) and the Keccak-f block
 docs/
-  membership/HIDING.md     the hiding layouts
+  membership/HIDING.md     zero knowledge, assuming a ZK PCS
+  membership/EIP_CLAIMS.md the membership protocol under the EIP's claims, and its cost
   leanvm/univariate/       π1: SPEC.md (the PIOP), SPEC-FLOCK.md, PROVER.md, KECCAK.md (the VM, gas, measurements)
   leanvm/rec/              π2: SPEC-REC.md (the recursion), PI2.md (π2's PIOP), SPEC-POINTS.md (the claims' points)
   leanvm/flock/KECCAK.md   the Keccak-f[1600] Flock block

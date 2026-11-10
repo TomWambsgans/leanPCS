@@ -13,7 +13,7 @@ use primitives::test_rng::Rng;
 use quotient::opening::Commitment;
 use quotient::protocol::{VerifyError, verify};
 use quotient::statement::Statement;
-use quotient::transcript::{Proof, ProverChain, TranscriptError, root_scalars, scalars_root};
+use quotient::transcript::{Proof, ProverChain, TranscriptError, root_halves, halves_root};
 use revm::primitives::Address;
 
 use crate::machine::{Chain, DEP_VERIFY_FRAME_MODE, FIELD_MUL, FIELD_MUL_GAS, Frame, Outcome, PcsFrame, root_word};
@@ -39,7 +39,7 @@ fn parse(data: &[u8]) -> (Statement, Proof) {
     let mut stream = vec![];
     for k in 0..4 {
         let root: [u8; 32] = data[64 + 32 * k..96 + 32 * k].try_into().unwrap();
-        stream.extend(root_scalars(&root));
+        stream.extend(root_halves(&root));
         stream.push(scalar(k));
     }
     stream.extend((4..INPUTS).map(scalar));
@@ -291,9 +291,9 @@ fn root_words_are_the_calldata_words() {
         let (_, proof) = parse(&data);
         assert_eq!(calldata(&parse(&data).0, &proof), Ok(data.clone()));
         for (i, at) in [(0, 68), (3, 100), (6, 132), (9, 164)] {
-            let root = scalars_root(&[proof.stream[i], proof.stream[i + 1]]).unwrap();
+            let root = halves_root(&[proof.stream[i], proof.stream[i + 1]]).unwrap();
             assert_eq!(root_word(&root)[..], data[at..at + 32]);
-            assert_eq!(root_scalars(&root), [proof.stream[i], proof.stream[i + 1]]);
+            assert_eq!(root_halves(&root), [proof.stream[i], proof.stream[i + 1]]);
         }
     }
 }

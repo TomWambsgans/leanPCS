@@ -227,7 +227,7 @@ fn parse(calldata: &[u8]) -> (Statement, Proof) {
     let mut stream = Vec::new();
     for k in 0..4 {
         let root: [u8; 32] = calldata[68 + 32 * k..100 + 32 * k].try_into().unwrap();
-        stream.extend(quotient::transcript::root_scalars(&root));
+        stream.extend(quotient::transcript::root_halves(&root));
         stream.push(scalar(k));
     }
     stream.extend((4..crate::quotient::INPUTS).map(scalar));

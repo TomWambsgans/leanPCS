@@ -71,7 +71,7 @@ pub fn element_word(x: F192) -> [u8; 32] {
 }
 
 /// A root as the contract holds it: the word whose big-endian bytes are the root (calldata and storage carry it so;
-/// the transcript reads its halves, `quotient::transcript::root_scalars`).
+/// the transcript reads its halves, `quotient::transcript::root_halves`).
 pub fn root_word(root: &Hash) -> [u8; 32] {
     *root
 }
@@ -441,7 +441,7 @@ mod tests {
     #[test]
     fn root_word_is_its_scalars() {
         let root: Hash = std::array::from_fn(|i| i as u8 + 1);
-        let [s0, s1] = quotient::transcript::root_scalars(&root);
+        let [s0, s1] = quotient::transcript::root_halves(&root);
         let word = U256::from_limbs([s1.c0, s1.c1, s0.c0, s0.c1]).to_be_bytes::<32>();
         assert_eq!(root_word(&root), word);
     }
