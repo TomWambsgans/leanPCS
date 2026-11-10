@@ -21,13 +21,13 @@ theorem length_digestBytes32 (d : Digest) : (digestBytes d).length = 32 := by
   | [_, _, _, _], _ => rfl
 
 /-- **π1's contract IV has 32 bytes**, at every deployment and every setup's roots. -/
-theorem pi1Iv_length (s : UniStatement.Shape) (programIv : List UInt8) (roots : UniStatement.SetupRoots) :
+theorem pi1Iv_length (s : UniStatement.Shape) (programIv : List UInt8) (roots : UniKeccak.SetupRootsK) :
     (pi1Iv s programIv roots).length = 32 := by
   simp only [pi1Iv, pi1IvWith, UniKeccak.contractIvKWith]
   exact length_digestBytes32 _
 
 /-- **π1's contract IV at the setup's roots has 32 bytes.** -/
-theorem RecDeployment.pi1IvAt_length (D : RecDeployment) (roots : UniStatement.SetupRoots) :
+theorem RecDeployment.pi1IvAt_length (D : RecDeployment) (roots : UniKeccak.SetupRootsK) :
     (D.pi1IvAt roots).length = 32 :=
   pi1Iv_length _ _ _
 

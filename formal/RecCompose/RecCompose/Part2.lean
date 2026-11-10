@@ -48,7 +48,7 @@ off the hazard, and π1-rec3's own extractor (on that stream, the proof's π1 op
 transcript) finds no stack satisfying `KvHolds D.flock`. -/
 def Pi1Event (D : RecDeployment) (z : RecOutcome2) : Prop :=
   (acc z) = true ∧ ∃ s ops, recExtractor2 D (rts z) (inp z) (evs z) (lg z) (prf z) = some s ∧
-    contractPi1Openings (registryAt D (rts z)) (cls z) = some ops ∧
+    contractPi1Openings (cls z) = some ops ∧
     Pi1GraphAccepts (D.pi1IvAt (rts z).pi1) (inp z) s ops ∧
     ¬ RecGraphKeccak.MergeHazardK LeanVM.Semantics.keccakF1600 (D.pi1IvAt (rts z).pi1) (inp z).toList s ∧
     ¬ ∃ q, UniKeccak.uniExtractorK D.flock D.pi1 (inp z) (evs z) (lg z) ((prf z).pi1Proof s) = some q ∧
@@ -101,7 +101,7 @@ theorem breaks_cases (D : RecDeployment) (z : RecOutcome2)
   · exact Or.inl h2
   refine Or.inr ?_
   have hex : ∃ s ops, recExtractor2 D (rts z) (inp z) (evs z) (lg z) (prf z) = some s ∧
-      contractPi1Openings (registryAt D (rts z)) (cls z) = some ops ∧
+      contractPi1Openings (cls z) = some ops ∧
       Pi1GraphAccepts (D.pi1IvAt (rts z).pi1) (inp z) s ops :=
     Classical.byContradiction fun hc ↦ h2 ⟨hacc, hc⟩
   obtain ⟨s, ops, hs, hops, hga⟩ := hex

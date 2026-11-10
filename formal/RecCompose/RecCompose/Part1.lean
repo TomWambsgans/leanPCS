@@ -16,7 +16,7 @@ contract's), from two named inputs:
   - `extraction` (**π2's Fiat–Shamir, openings and PIOP**, `Pi2Extraction`): if the contract accepts, some candidate
     of `W`'s committed word (as π2's extractor lists them) has witness values satisfying the circuit's relation
     (`RecPiop.Circuit.Satisfies`), but with probability `ε2 Q`. Its route: `Compose.ListChainU128` for π2's three
-    rounds, `Compose.prEvent_doomF_le` for π2's three openings, `RecPiop.piop` for the rounds' errors,
+    rounds, π2's five openings (`WhirBridge.Pcs`), `RecPiop.piop` for the rounds' errors,
     `RecStatement.checks_claims_iff_post2` for the verifier's arithmetic (`RecCompose.Pi2Layers`, `Numbers.lean`);
   - `circuit` (**the circuit computes π1-rec3's graph**): a witness satisfying the circuit, for the public limbs of
     `(roots, input, stream)`, holds a π1 stream (`D.pi1Stream`, RecCircuit's `decodeStream`) on which π1-rec3's graph
@@ -24,8 +24,8 @@ contract's), from two named inputs:
     `RecCircuit`'s end corollary: `compile_sound`, `SoundRG`'s `compile_sound_statement`, `_root`, `_element`,
     `_zero_rg` and `agree` (proved), with **`ExpandSound`** and the **`call_inputs`** correspondence (branch
     `lean-rec-circuit`, open).
-* **`CallsPure D`**: on every outcome of π2's experiment the contract accepts, its first three calls decode under the
-  registry to `pi1OpsOf` (π2's run over Keccak-f[1600] on the calldata: π1's calls read the stream's public data, not
+* **`CallsPure D`**: on every outcome of π2's experiment the contract accepts, its first three claims decode
+  (`claimOfWords`) to `pi1OpsOf` (π2's run over Keccak-f[1600] on the calldata: π1's calls read the stream's public data, not
   the transcript's hashes).
 -/
 
@@ -36,14 +36,14 @@ open OracleComp OracleSpec Common
 open scoped ENNReal
 
 /-- **The contract's π1 openings are the calldata's**: on every outcome of π2's knowledge-soundness experiment whose
-contract accepts, the first three calls decode under the registry, to the openings `pi1OpsOf` reads off the calldata
+contract accepts, the first three claims decode (`contractPi1Openings`), to the openings `pi1OpsOf` reads off the calldata
 (π2's run over Keccak-f[1600]). π1's three calls read only the stream's public data (π1's roots, its claims' elements
-and their pair points) and the setup's root, not the transcript's hashes; the opening check rejects a claim
+and their pair points) and the setup's commitment, not the transcript's hashes; the opening check rejects a claim
 that does not decode. -/
 def CallsPure (D : RecDeployment) : Prop :=
   ∀ (A : RecAdversary), ∀ z ∈ support (recSoundnessExperiment2 D A), (acc z) = true →
     ∃ ops, pi1OpsOf D (rts z) (inp z) (prf z).stream = some ops ∧
-      contractPi1Openings (registryAt D (rts z)) (cls z) = some ops
+      contractPi1Openings (cls z) = some ops
 
 /-- **π2's extraction for a relation `Rel` of `W`'s candidates**: in π2's experiment, the contract accepts while no
 candidate of `W`'s committed word (read off the setup's evaluations and the transcript, decoded as π2's extractor

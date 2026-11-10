@@ -40,38 +40,35 @@ abbrev cls : List (List (List UInt8)) := z.2.2.2.2
 
 end Outcome
 
-/-- **The setup roots the Keccak π1-rec3's graph was recorded at** (`RecGraphKeccak.verifierOutputsWithK … keccak128
-referenceRootsK`: the graph's setup call holds their `F` as a constant, which the contract replaces by the setup's).
-The one name every RecCompose file uses for them, so that a change of the reference roots is a change here. -/
-abbrev keccakRefRoots : UniStatement.SetupRoots := RecGraphKeccak.Pi1.referenceRootsK
-
-/-- The registry the contract decodes its calls under, at π1's setup roots. -/
-abbrev registryAt (D : RecDeployment) (roots : RecSetupRoots) : List (List UInt8 × Opener) :=
-  registryOf D.pi1.shape (D.circuitAt roots.pi1).circuit.logN
+/-- **The setup commitment the Keccak π1-rec3's graph was recorded at** (`RecGraphKeccak.verifierOutputsWithK …
+keccak128 referenceRootsK`: the graph's setup claim holds its `F` root and out-of-domain answer as constants, which the
+contract replaces by the setup's). The one name every RecCompose file uses for it, so that a change of the reference
+commitment is a change here. -/
+abbrev keccakRefRoots : UniKeccak.SetupRootsK := RecGraphKeccak.Pi1.referenceRootsK
 
 /-! ## `W`'s candidates -/
 
-/-- `W`'s layout at π1's setup roots. -/
-abbrev wLayout (D : RecDeployment) (roots : RecSetupRoots) : PcsQuotient.Layout :=
-  (layoutsOf (D.circuitAt roots.pi1).circuit.logN).1
+/-- `W`'s stack variables at π1's setup commitment (`(stackVars m).1`). -/
+abbrev wVars (D : RecDeployment) (roots : RecSetupRoots) : ℕ :=
+  (stackVars (D.circuitAt roots.pi1).circuit.logN).1
 
 /-- **`W`'s candidates** on given preimages, as `recExtractFrom2` lists them: the word committed under the root the
 stream names after π1's public data, decoded (fast path, unique decoder, list decoder). -/
 def wCandidates (D : RecDeployment) (roots : RecSetupRoots) (pre : Digest → ℕ → Option (List UInt8))
-    (proof : RecProof) : List (Vector K (2 ^ (wLayout D roots).logN)) :=
+    (proof : RecProof) : List (Vector K (2 ^ wVars D roots)) :=
   let c := (D.circuitAt roots.pi1).circuit
-  candidates (wLayout D roots).logN (committedWord pre (wLayout D roots).logN
+  candidates (wVars D roots) (committedWord pre (wVars D roots)
     (streamRoot proof.stream ((rootsAt c.reads).getD (rootReads c.reads) 0)))
 
-/-- **A candidate's witness values** `w(ω_i)` (its table read back, `basisValue` in the `B` basis), as
-`recExtractFrom2` reads them. -/
-def witnessOf (D : RecDeployment) (roots : RecSetupRoots) (w : Vector K (2 ^ (wLayout D roots).logN)) : ℕ → K :=
+/-- **A candidate's witness values** `w(ω_i)` (the stack's leading `N` words read back, `basisValue` in the `B` basis),
+as `recExtractFrom2` reads them. -/
+def witnessOf (D : RecDeployment) (roots : RecSetupRoots) (w : Vector K (2 ^ wVars D roots)) : ℕ → K :=
   let c := (D.circuitAt roots.pi1).circuit
-  let table := Array.ofFn (n := 2 ^ c.logN) fun i ↦ (wLayout D roots).readEntry (fun j ↦ w.toArray.getD j 0) i.val
+  let table := Array.ofFn (n := 2 ^ c.logN) fun i ↦ w.toArray.getD i.val 0
   fun i ↦ UniStatement.basisValue table c.logN i
 
 /-- `W`'s candidates of an outcome (on the preimages of its setup's evaluations and transcript). -/
-abbrev outcomeCandidates (D : RecDeployment) (z : RecOutcome2) : List (Vector K (2 ^ (wLayout D (rts z)).logN)) :=
+abbrev outcomeCandidates (D : RecDeployment) (z : RecOutcome2) : List (Vector K (2 ^ wVars D (rts z))) :=
   wCandidates D (rts z) (preimagesOf (evs z) (lg z)) (prf z)
 
 theorem recExtractFrom2_eq (D : RecDeployment) (roots : RecSetupRoots) (input : Vector UInt8 32)
@@ -113,13 +110,13 @@ read off the calldata, a candidate whose π1 stream π1-rec3's graph accepts wit
 accepted stream (the first such). -/
 theorem recExtractFrom2_of_mem (D : RecDeployment) (roots : RecSetupRoots) (input : Vector UInt8 32)
     (pre : Digest → ℕ → Option (List UInt8)) (proof : RecProof) (ops : List Pi1Opening)
-    (hops : pi1OpsOf D roots input proof.stream = some ops) (w : Vector K (2 ^ (wLayout D roots).logN))
+    (hops : pi1OpsOf D roots input proof.stream = some ops) (w : Vector K (2 ^ wVars D roots))
     (hw : w ∈ wCandidates D roots pre proof)
     (hacc : Pi1GraphAccepts (D.pi1IvAt roots.pi1) input (D.pi1Stream (witnessOf D roots w)) ops) :
     ∃ s, recExtractFrom2 D roots input pre proof = some s ∧ Pi1GraphAccepts (D.pi1IvAt roots.pi1) input s ops := by
   rw [recExtractFrom2_eq, hops]
   simp only
-  set f : Vector K (2 ^ (wLayout D roots).logN) → Option (Array UInt8) := fun w ↦
+  set f : Vector K (2 ^ wVars D roots) → Option (Array UInt8) := fun w ↦
     if pi1GraphAcceptsB (D.pi1IvAt roots.pi1) input (D.pi1Stream (witnessOf D roots w)) ops then
       some (D.pi1Stream (witnessOf D roots w)) else none with hf
   cases h : (wCandidates D roots pre proof).findSome? f with
