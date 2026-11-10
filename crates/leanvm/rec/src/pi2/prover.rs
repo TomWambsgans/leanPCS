@@ -2,7 +2,7 @@
 // follow crates/membership/quotient/src/protocol.rs (`prove_with_randomness`, adapted there from leanVM's `flock::quotient`,
 // branch PCS-openings-aggregation, commit 651453c6), without its hiding; the transforms are crates/membership/quotient's
 // (`ntt`, AVX-512), the commitments and openings leanVM's WHIR (c445e3d5) through `quotient::opening`. MIT OR
-// Apache-2.0; see AGENTS.md.
+// Apache-2.0; see AGENTS.md. The commitments and openings are now the EIP draft's PCS claims (`crates/pcs_claim`).
 //! π2's prover (`PI2.md` §3), for any [`Circuit`]:
 //!
 //! 1. `w`'s novel coefficients (one transform on `V_m`), then its `B` coefficients (subset sums): the table `W`,
@@ -17,10 +17,10 @@
 //!    quadratic form of the cells, `Quadratic`), the ports' `T = Σ I_p (E_p + Φ_k)`, `d_pull`, `d_push = α + P + κ +
 //!    βσ`, `q = (h d_pull d_push + (1 + 1_S)(d_push + d_pull) + T) / Z_V` and `q_P = (P + P_v) / Z_V`; their novel
 //!    coefficients (degree below `2N`);
-//! 4. the table `Q`: `h` (degree below `N`) and `q`'s two chunks, three limbs each, `P` and `q_P`'s two chunks:
-//!    `12 N` words, committed;
-//! 5. `t`; the fold values, `ξ = κ(t) + β σ(t)` (PI2.md §9) and `s = P(t)`; `ρ`; the claims (the verifier's), opened:
-//!    one opening per commitment, `Q`'s two claims together.
+//! 4. the stack `Q`: `h` (degree below `N`) and `q`'s two chunks, three limbs each, `P` and `q_P`'s two chunks, in
+//!    sixteen slots of `N` words (`verifier::QUOTIENT_SLOTS`, four of them zero), committed;
+//! 5. `t`; the fold values, `ξ = κ(t) + β σ(t)` (PI2.md §9) and `s = P(t)`; `ρ`; the claims (the verifier's five, each
+//!    a point of its commitment's whole stack), opened: one opening per claim (`pcs_claim`).
 
 use std::sync::Mutex;
 use std::time::Instant;
@@ -31,76 +31,14 @@ use leanvm_statement::transcript::{KeccakWriter, keccak_seed};
 use primitives::field::{F64, F192};
 use quotient::domain::{beta, chain, point};
 use quotient::ntt::{self, ESplat, Ex8, Kx8, Kx8U, MixedSum};
-use quotient::opening::{self, Committed, Layout, Table};
-use quotient::transcript::root_scalars;
+use pcs_claim::{Commitment, PcsClaim};
 
 use super::circuit::{Circuit, Formula, Lin, Read};
+pub use super::verifier::{
+    CERTIFIED_FROM, EMPTY_SLOTS, MIN_CERTIFIED_STACK, MIN_LOG_STACK, P_SLOT, QP_SLOT, QUOTIENT_SLOTS, h_slot, q_slot,
+    stack_vars,
+};
 use super::verifier::{self, NAME, Reduced, Spec, claim, to_e, to_f192};
-
-/// The smallest stack leanVM's WHIR takes.
-pub const MIN_LOG_STACK: usize = 15;
-
-/// The three tables' layouts (`quotient::opening::Layout`, public): `W` (`m` variables), `Q` (`m + 6`: the position,
-/// a digit, three kind bits, two limb digits; 12 chunks of `2^m`, [`quotient_chunks`]), the setup (`m + 1`: `κ` then
-/// `κ + σ`).
-pub struct Layouts {
-    pub witness: Layout,
-    pub quotient: Layout,
-    pub setup: Layout,
-}
-
-/// The kinds of `Q`'s chunks, their three bits the claim's coordinates `(ρ', ρ, ρ² B)`: `h` (degree below `N`, three
-/// limbs), `q` (below `2N`, three limbs), `P` (the internal pushes without `κ`, below `N`, in `K`) and `q_P` (`P`'s
-/// definition quotient, below `2N`, in `K`).
-pub const KIND_H: usize = 0b000;
-pub const KIND_Q: usize = 0b001;
-pub const KIND_P: usize = 0b010;
-pub const KIND_QP: usize = 0b101;
-
-/// The chunks of `Q`, chunk `c = 16 limb + 2 kind + digit`, in the stack's order: limb 0's `h`, `q` (two digits), `P`,
-/// `q_P` (two digits), then limb 1's and limb 2's `h` and `q` (12 chunks of `2^m`).
-pub fn quotient_chunks(log_n: usize) -> Vec<(usize, usize)> {
-    let n = 1usize << log_n;
-    let chunk = |limb: usize, kind: usize, digit: usize| (16 * limb + 2 * kind + digit, n);
-    let mut chunks = vec![];
-    for limb in 0..3 {
-        chunks.extend([chunk(limb, KIND_H, 0), chunk(limb, KIND_Q, 0), chunk(limb, KIND_Q, 1)]);
-        if limb == 0 {
-            chunks.extend([chunk(0, KIND_P, 0), chunk(0, KIND_QP, 0), chunk(0, KIND_QP, 1)]);
-        }
-    }
-    chunks
-}
-
-/// The version of π2's openings, and of π1's (`leanvm_univariate::prover::opening::VERSION`): WHIR on the recursion's
-/// ladder (`quotient::opening::Version::V3`, `pcs::whir::RECURSION_SCHEDULE`), its query counts per stack size
-/// `params/whir_params.py --recursion`'s (tested against the verifier's table).
-pub const OPENING_VERSION: opening::Version = opening::Version::V3;
-
-/// The layout word's byte that holds the opening's version (as π1's, `leanvm_univariate::prover::opening::
-/// VERSION_BYTE`).
-pub const VERSION_BYTE: usize = 21;
-
-/// The smallest stack leanerVM's certified parameters cover at version 2 (`params/whir_params.py --large`), kept for
-/// the layouts: circuits of `2^CERTIFIED_FROM` positions or more commit no smaller stack (a `W` of `2^23` words
-/// takes a `2^24` stack, half its lanes absent); smaller circuits, the tests', take [`MIN_LOG_STACK`].
-pub const MIN_CERTIFIED_STACK: usize = 24;
-pub const CERTIFIED_FROM: usize = 20;
-
-pub fn layouts(log_n: usize) -> Layouts {
-    let (m, n) = (log_n, 1usize << log_n);
-    let least = if m >= CERTIFIED_FROM {
-        MIN_CERTIFIED_STACK
-    } else {
-        MIN_LOG_STACK
-    };
-    let stack = |vars: usize| vars.max(least);
-    Layouts {
-        witness: Layout::new(m, m, stack(m), &[(0, n)]),
-        quotient: Layout::new(m + 6, m, stack(m + 4), &quotient_chunks(m)),
-        setup: Layout::new(m + 1, m, stack(m + 1), &[(0, n), (1, n)]),
-    }
-}
 
 /// Words copied by the workers in runs of this many (`parallel::map_collect` writes each run whole).
 const COPY_RUN: usize = 64;
@@ -116,16 +54,17 @@ pub fn extension_offset(log_n: usize) -> F64 {
 }
 
 /// The setup: `σ` and `κ` on the prover's extension coset `D` ([`extension_offset`]; fixed by the circuit, so
-/// computed once here, not per proof), and the committed table of their `B` coefficients.
+/// computed once here, not per proof), and the committed stack of their `B` coefficients (`κ`'s, then `κ + σ`'s).
 pub struct Setup {
     /// `σ`'s values on `V_m`, the points `ω_(σ(i))`.
     pub sigma_on_v: Vec<F64>,
     pub sigma_on_d: Vec<F64>,
     pub kappa_on_d: Vec<F64>,
-    pub table: Table,
-    pub committed: Committed,
-    /// `Q`'s stack, which a proof's opening hands back once done with it (`Lent`), for the next proof to build its
-    /// own `Q` in: every word of it is written again, so it need not be zeroed first (`12 N` words, 1.6 GB at `2^24`
+    /// The stack's words (`2^(m+1)`, its leading lanes).
+    pub words: Vec<F64>,
+    pub commitment: Commitment,
+    /// `Q`'s stack, which a proof's openings hand back once done with it, for the next proof to build its own `Q` in:
+    /// every word of it but the zero slots' is written again, so only those are zeroed (`16 N` words, 2.1 GB at `2^24`
     /// positions, kept between proofs).
     spare: Mutex<Vec<F64>>,
 }
@@ -142,25 +81,18 @@ impl Setup {
         // The halves `κ` and `κ + σ` (PI2.md §9): the claim at the last coordinate `β` is `κ(t) + β σ(t)`, the one value
         // `d_push` needs.
         let (sb, kb) = (b_coefficients(&sigma), b_coefficients(&kappa));
-        let skb: Vec<F64> = sb.iter().zip(&kb).map(|(&a, &b)| a + b).collect();
+        let mut words = kb;
+        words.extend(sb.iter().zip(&words[..n]).map(|(&a, &b)| a + b).collect::<Vec<F64>>());
         drop(sb);
-        let layout = layouts(m).setup;
-        let lane = 1usize << layout.log_lane();
-        let table = Table::new(layout, |_, block, out| {
-            let start = block * lane;
-            let src = if start >> m == 0 { &kb } else { &skb };
-            out.copy_from_slice(&src[start & (n - 1)..(start & (n - 1)) + lane]);
-        });
         // Kept with its codeword: every proof opens it, and reads its first queries' rows from it.
-        let committed = opening::commit_keeping_codeword(&table);
-        drop((kb, skb));
+        let commitment = pcs_claim::commit_words(&words, stack_vars(m)[2], true);
         let offset = extension_offset(m);
         Self {
             sigma_on_v,
             sigma_on_d: on_extension(&sigma, m, offset),
             kappa_on_d: on_extension(&kappa, m, offset),
-            table,
-            committed,
+            words,
+            commitment,
             spare: Mutex::new(Vec::new()),
         }
     }
@@ -177,55 +109,26 @@ impl Setup {
     }
 
     pub fn root(&self) -> Hash {
-        self.committed.root
+        self.commitment.root
+    }
+
+    /// The setup commitment's out-of-domain answer.
+    pub fn ood(&self) -> F192 {
+        self.commitment.ood
     }
 }
 
-/// The codes of π2's tables in their claims' layout words (π1's are `0x5501` … `0x5503`).
-pub const WITNESS_CODE: u16 = 0x5601;
-pub const QUOTIENT_CODE: u16 = 0x5602;
-pub const SETUP_CODE: u16 = 0x5603;
-
-/// A claims' layout word of π2's tables, in π1's format (`leanvm_univariate::contract::
-/// layout_word`): bytes 0..8 the tag `"pi2"` then `log_n` (π1's are its shape's bytes, each below 32), the opening's
-/// version (byte 21, [`OPENING_VERSION`]), the table's code (bytes 22..24), its variables (byte 24) and the words its
-/// lanes fill (`placed`, bytes 25..32). A precompile's registry maps it to the layout (`quotient::opening::Layout`, a
-/// function of `log_n` and the code: [`layouts`]), whose opening it checks in that version
-/// (`quotient::opening::verify_with`, whose transcript hashes that layout's id and the version).
-pub fn layout_word(code: u16, log_n: usize, layout: &Layout) -> [u8; 32] {
-    assert!(layout.vars < 256 && layout.placed() < 1 << 56 && log_n < 256);
-    let mut word = [0u8; 32];
-    word[..4].copy_from_slice(b"pi2\0");
-    word[4] = log_n as u8;
-    word[VERSION_BYTE] = OPENING_VERSION.number() as u8;
-    word[22..24].copy_from_slice(&code.to_be_bytes());
-    word[24] = layout.vars as u8;
-    word[25..].copy_from_slice(&(layout.placed() as u64).to_be_bytes()[1..]);
-    word
-}
-
-/// The three tables' layout words: `W`, `Q`, the setup.
-pub fn layout_words(log_n: usize) -> [[u8; 32]; 3] {
-    let l = layouts(log_n);
-    [
-        layout_word(WITNESS_CODE, log_n, &l.witness),
-        layout_word(QUOTIENT_CODE, log_n, &l.quotient),
-        layout_word(SETUP_CODE, log_n, &l.setup),
-    ]
-}
-
-/// π2's IV: Keccak-256 of a tag, π1's contract IV, the setup root, the circuit's digest and the three layout words.
-pub fn iv(pi1_iv: &[u8; 32], circuit_digest: &[u8; 32], setup_root: &Hash, log_n: usize) -> [u8; 32] {
-    let [w, q, s] = layout_words(log_n);
+/// π2's IV: Keccak-256 of a tag, π1's contract IV, the setup commitment (its root, its out-of-domain answer as a
+/// claim encodes it), the circuit's digest and `log_n` (one byte).
+pub fn iv(pi1_iv: &[u8; 32], circuit_digest: &[u8; 32], setup_root: &Hash, setup_ood: F192, log_n: usize) -> [u8; 32] {
     primitives::hash::hash(
         &[
-            b"leanvm-rec-iv-v2".as_slice(),
+            b"leanvm-rec-iv-v3".as_slice(),
             pi1_iv,
             setup_root,
+            &pcs_claim::element_bytes(setup_ood),
             circuit_digest,
-            &w,
-            &q,
-            &s,
+            &[log_n as u8],
         ]
         .concat(),
     )
@@ -259,12 +162,13 @@ pub fn public_scalars(public_input: &[u8; 32], values: &[PublicValue]) -> Vec<F1
     out
 }
 
-/// A proof: the stream (the calldata after the public input), the roots, and what the openings need.
+/// A proof: the stream (the calldata after the public input), the roots, and what the openings need: each stack's
+/// words and commitment.
 pub struct Proved {
     pub stream: Vec<u8>,
     pub roots: [Hash; 2],
-    pub witness: (Table, Committed),
-    pub quotient: (Table, Committed),
+    pub witness: (Vec<F64>, Commitment),
+    pub quotient: (Vec<F64>, Commitment),
     /// The verifier's reduction of the stream: its claims.
     pub reduced: Reduced<E>,
     /// Seconds per step.
@@ -1129,7 +1033,7 @@ pub fn prove_with(
         timings.push((name, clock.elapsed().as_secs_f64()));
         clock = Instant::now();
     };
-    let l = layouts(m);
+    let [wv, qv, _] = stack_vars(m);
     let mut writer = KeccakWriter::new(keccak_seed(&NAME, iv, public_input));
     for (read, value) in circuit.reads.iter().zip(values) {
         match (*read, *value) {
@@ -1144,57 +1048,23 @@ pub fn prove_with(
     // W: the B coefficients of w.
     let w_novel = ntt::coefficients_cols_of(&[w], F64::ZERO).pop().expect("one column");
     let w_b = b_coefficients(&w_novel);
-    let lane = 1usize << l.witness.log_lane();
-    // The stack is `w_b` itself when the layout's lanes hold its blocks in order.
-    let in_order = l.witness.placed() == n && (0..n / lane).all(|k| l.witness.block(k) == k);
-    let (witness, w_b) = if in_order {
-        let stack = w_b;
-        (
-            Table {
-                layout: l.witness,
-                stack,
-            },
-            None,
-        )
-    } else {
-        let table = Table::new(l.witness, |_, block, out| {
-            out.copy_from_slice(&w_b[block * lane..(block + 1) * lane])
-        });
-        (table, Some(w_b))
-    };
     // Kept with its codeword (twice the stack, 256 MB at `2^24` positions), as `Q`: its opening reads the rows its
-    // first queries open from it.
-    let witness_committed = opening::commit_keeping_codeword(&witness);
-    writer.send_root(root_scalars(&witness_committed.root).map(to_e));
+    // first queries open from it. The stack is `w_b` itself, its leading lanes.
+    let witness_committed = pcs_claim::commit_words(&w_b, wv, true);
+    writer.send_root(halves(&witness_committed.root).map(to_e));
+    writer.send(to_e(witness_committed.ood));
     let [alpha, beta_, gamma] = [(); 3].map(|_| to_f192(writer.sample()));
     lap("W: transform, commit", &mut timings);
 
     // h on V_m, limb by limb, and P_v ([`h_on_v`]).
     let gammas = super::circuit::gamma_powers(gamma, circuit.max_gamma());
-    // Q's stack, built in place: its lanes are the chunks in `quotient_chunks`'s order, so the stack is, in units of
-    // `N` words: `h`'s limb 0, `q`'s limb 0 (2), `P`, `q_P` (2), then `h` and `q` of limbs 1 and 2. Checked lane by
-    // lane against the table's layout (lane `L` holds block `b`: chunk `c = b·lane >> m`, `16 limb + 2 kind + digit`).
-    let qlane = 1usize << l.quotient.log_lane();
-    assert_eq!(l.quotient.placed(), 12 * n);
-    let unit = |limb: usize, kind: usize, digit: usize| -> usize {
-        match (limb, kind) {
-            (0, KIND_H) => 0,
-            (0, KIND_Q) => 1 + digit,
-            (0, KIND_P) => 3,
-            (0, KIND_QP) => 4 + digit,
-            (_, KIND_H) => 3 * limb + 3,
-            (_, KIND_Q) => 3 * limb + 4 + digit,
-            other => panic!("no chunk {other:?}"),
-        }
-    };
-    for lane in 0..12 * n / qlane {
-        let start = l.quotient.block(lane) * qlane;
-        let (c, within) = (start >> m, start & (n - 1));
-        let (limb, kind, digit) = (c >> 4, (c >> 1) & 7, c & 1);
-        assert_eq!(unit(limb, kind, digit) * n + within, lane * qlane, "Q's lane {lane}");
+    // Q's stack, built in place: sixteen slots of `N` words (`verifier::QUOTIENT_SLOTS`): `h`, a zero slot, `q`'s two
+    // digits, for each limb, then a zero slot, `P`, `q_P`'s two digits. Every word of it but the zero slots' is written
+    // below (`h_on_v`, then `quotient_on_extension`), whatever it holds: those are zeroed.
+    let mut stack: Vec<F64> = setup.stack(QUOTIENT_SLOTS * n);
+    for slot in EMPTY_SLOTS {
+        stack[slot * n..(slot + 1) * n].iter_mut().for_each(|x| *x = F64::ZERO);
     }
-    // Every word of it is written below (`h_on_v`, then `quotient_on_extension`), whatever it holds.
-    let mut stack: Vec<F64> = setup.stack(12 * n);
     let run = n.min(1 << 12);
     // The ports' values `F_J` in `Spec::phi`'s order.
     let port_values: Vec<F192> = spec
@@ -1208,13 +1078,19 @@ pub fn prove_with(
         "a port does not hold: the witness does not satisfy the circuit"
     );
     {
-        let (limb0, rest) = stack.split_at_mut(6 * n);
+        // Slots `4 l` (`h`), `4 l + 1` (zero), `4 l + 2, 4 l + 3` (`q`) for each limb; `12` (zero), `13` (`P`), `14, 15`
+        // (`q_P`).
+        let (limb0, rest) = stack.split_at_mut(4 * n);
         let (h0, limb0) = limb0.split_at_mut(n);
-        let (q0, limb0) = limb0.split_at_mut(2 * n);
-        let (p, qp) = limb0.split_at_mut(n);
-        let (h1, rest) = rest.split_at_mut(n);
-        let (q1, rest) = rest.split_at_mut(2 * n);
-        let (h2, q2) = rest.split_at_mut(n);
+        let q0 = &mut limb0[n..];
+        let (limb1, rest) = rest.split_at_mut(4 * n);
+        let (h1, limb1) = limb1.split_at_mut(n);
+        let q1 = &mut limb1[n..];
+        let (limb2, rest) = rest.split_at_mut(4 * n);
+        let (h2, limb2) = limb2.split_at_mut(n);
+        let q2 = &mut limb2[n..];
+        let (p, qp) = rest[n..].split_at_mut(n);
+        debug_assert_eq!((h_slot(1), q_slot(1), P_SLOT, QP_SLOT), (4, 6, 13, 14));
         h_on_v(
             circuit,
             &setup.sigma_on_v,
@@ -1257,20 +1133,15 @@ pub fn prove_with(
     }
     lap("q, q_P on the extension coset, their coefficients", &mut timings);
 
-    let quotient = Table {
-        layout: l.quotient.clone(),
-        stack,
-    };
-    // Kept with its codeword (twice the stack, 3.2 GB at `2^24` positions) until its opening, which reads the rows its
-    // first queries open from it rather than encode them again (the opening's largest step but the lane rounds and
-    // the next level's commitment; the commitment takes as long either way).
-    let quotient_committed = opening::commit_keeping_codeword(&quotient);
-    writer.send_root(root_scalars(&quotient_committed.root).map(to_e));
+    // Kept with its codeword (twice the stack, 4.3 GB at `2^24` positions) until its opening, which reads the rows its
+    // first queries open from it rather than encode them again.
+    let quotient = stack;
+    let quotient_committed = pcs_claim::commit_words(&quotient, qv, true);
+    writer.send_root(halves(&quotient_committed.root).map(to_e));
+    writer.send(to_e(quotient_committed.ood));
     let t = to_f192(writer.sample());
     lap("Q: table, commit", &mut timings);
 
-    // `w`'s `B` coefficients: the stack, when it holds them in order.
-    let w_b: &[F64] = w_b.as_deref().unwrap_or(&witness.stack);
     let digits: Vec<F192> = std::iter::successors(Some(t), |&x| Some(x * x + x))
         .take(m + 1)
         .collect();
@@ -1295,14 +1166,14 @@ pub fn prove_with(
         },
     );
     // ξ = κ(t) + β σ(t), from the setup's halves `κ` and `κ + σ`; `h(t)` is not sent (PI2.md §9).
-    let setup_stack = &setup.table.stack;
+    let setup_stack = &setup.words;
     let kappa_t = primitives::multilinear::mle_eval_par(&setup_stack[..n], &digits[..m]);
     let sum_t = primitives::multilinear::mle_eval_par(&setup_stack[n..2 * n], &digits[..m]);
     let xi = kappa_t + beta_ * (kappa_t + sum_t);
     // s = P(t) from its novel coefficients: `Σ_k P_k Π_l w_l^(k_l) = Π_l (1 + w_l) · MLE(P)(u)`, `u_l = w_l / (1 + w_l)`,
     // `Π_(l < m) (1 + w_l) = w_m / t`.
     let u: Vec<F192> = digits[..m].iter().map(|&x| x * (F192::ONE + x).inv()).collect();
-    let p_stack = &quotient.stack[unit(0, KIND_P, 0) * n..(unit(0, KIND_P, 0) + 1) * n];
+    let p_stack = &quotient[P_SLOT * n..(P_SLOT + 1) * n];
     let s = primitives::multilinear::mle_eval_par(p_stack, &u) * digits[m] * t.inv();
     folds.iter().chain([&xi, &s]).for_each(|&x| writer.send(to_e(x)));
     let _rho = writer.sample();
@@ -1313,38 +1184,41 @@ pub fn prove_with(
     Proved {
         stream,
         roots: [witness_committed.root, quotient_committed.root],
-        witness: (witness, witness_committed),
+        witness: (w_b, witness_committed),
         quotient: (quotient, quotient_committed),
         reduced,
         timings,
     }
 }
 
-/// `Q`'s stack in its opening, handed back to the setup's spare ([`Setup::stack`]) when the opening drops it.
-struct Lent<'a> {
-    stack: Vec<F64>,
-    spare: &'a Mutex<Vec<F64>>,
-}
-
-impl AsRef<[F64]> for Lent<'_> {
-    fn as_ref(&self) -> &[F64] {
-        &self.stack
-    }
-}
-
-impl Drop for Lent<'_> {
-    fn drop(&mut self) {
-        if let Ok(mut spare) = self.spare.lock() {
-            *spare = std::mem::take(&mut self.stack);
-        }
-    }
-}
-
-/// The three openings: `W`'s one claim, `Q`'s two, the setup's one.
+/// The five openings, one a claim: `W`'s, the setup's, `Q`'s identity, pushes and sum (the contract's order).
 pub struct Openings {
-    pub witness: fiat_shamir::transcript::Proof,
-    pub quotient: fiat_shamir::transcript::Proof,
-    pub setup: fiat_shamir::transcript::Proof,
+    pub proofs: [fiat_shamir::transcript::Proof; 5],
+}
+
+/// The five claims, in the contract's order (`W`, the setup, `Q`'s identity, pushes and sum): each the EIP draft's
+/// PCS claim on its commitment (the roots the proof commits, their out-of-domain answers, the setup's).
+pub fn claims(log_n: usize, reduced: &Reduced<E>, roots: &[Hash; 2], setup_root: &Hash, setup_ood: F192) -> [PcsClaim; 5] {
+    let [wv, qv, sv] = stack_vars(log_n);
+    let pcs = |vars: usize, root: &Hash, ood: F192, c: &(Vec<E>, E)| {
+        let (point, value) = claim(c);
+        assert_eq!(point.len(), vars, "a point of the whole stack");
+        PcsClaim {
+            n: vars as u8,
+            root: *root,
+            ood,
+            point,
+            value,
+        }
+    };
+    let [w_ood, q_ood] = reduced.oods.map(to_f192);
+    [
+        pcs(wv, &roots[0], w_ood, &reduced.witness),
+        pcs(sv, setup_root, setup_ood, &reduced.setup),
+        pcs(qv, &roots[1], q_ood, &reduced.quotient),
+        pcs(qv, &roots[1], q_ood, &reduced.pushes),
+        pcs(qv, &roots[1], q_ood, &reduced.sum),
+    ]
 }
 
 pub fn open(proved: Proved, setup: &Setup) -> (Reduced<E>, [Hash; 2], Openings) {
@@ -1355,6 +1229,7 @@ pub fn open(proved: Proved, setup: &Setup) -> (Reduced<E>, [Hash; 2], Openings) 
         reduced,
         ..
     } = proved;
+    let m = setup.sigma_on_v.len().trailing_zeros() as usize;
     let profile = std::env::var_os("PI2_PROFILE").is_some();
     let timed = |name: &str, f: &mut dyn FnMut() -> fiat_shamir::transcript::Proof| {
         let clock = Instant::now();
@@ -1364,79 +1239,54 @@ pub fn open(proved: Proved, setup: &Setup) -> (Reduced<E>, [Hash; 2], Openings) 
         }
         proof
     };
-    let (mut w, mut q) = (Some(witness), Some(quotient));
-    let openings = Openings {
-        witness: timed("W", &mut || {
-            let (table, committed) = w.take().expect("once");
-            opening::open_owned_with(OPENING_VERSION, table, committed, &[claim(&reduced.witness)])
-        }),
-        quotient: timed("Q", &mut || {
-            let (table, committed) = q.take().expect("once");
-            let stack = Lent {
-                stack: table.stack,
-                spare: &setup.spare,
-            };
-            opening::open_owned_stack_with(
-                OPENING_VERSION,
-                &table.layout,
-                stack,
-                committed,
-                &[claim(&reduced.quotient), claim(&reduced.sum)],
-            )
-        }),
-        setup: timed("setup", &mut || {
-            opening::open_with(OPENING_VERSION, &setup.table, &setup.committed, &[claim(&reduced.setup)])
-        }),
-    };
-    (reduced, roots, openings)
+    let [cw, cs, cq, cp, cz] = claims(m, &reduced, &roots, &setup.root(), setup.ood());
+    let (w_words, w_commitment) = witness;
+    let (q_words, q_commitment) = quotient;
+    let proofs = [
+        timed("W", &mut || pcs_claim::open_words(&w_words, &w_commitment, &cw)),
+        timed("setup", &mut || pcs_claim::open_words_keeping(&setup.words, &setup.commitment, &cs)),
+        timed("Q: identity", &mut || pcs_claim::open_words_keeping(&q_words, &q_commitment, &cq)),
+        timed("Q: pushes", &mut || pcs_claim::open_words_keeping(&q_words, &q_commitment, &cp)),
+        timed("Q: sum", &mut || pcs_claim::open_words(&q_words, &q_commitment, &cz)),
+    ];
+    drop(w_words);
+    // Q's stack back to the setup's spare, for the next proof's.
+    if let Ok(mut spare) = setup.spare.lock() {
+        *spare = q_words;
+    }
+    (reduced, roots, Openings { proofs })
 }
 
-/// What the block's openings prove of π2's three calls: each opening against its root and layout, with `opening::verify_with`
-/// in [`OPENING_VERSION`].
+/// What the block's openings prove of π2's five claims: each opening with `pcs_claim::verify_claim` (the EIP draft's
+/// `pcs_verify`).
 pub fn verify_openings(
     log_n: usize,
     reduced: &Reduced<E>,
     roots: &[Hash; 2],
     setup_root: &Hash,
+    setup_ood: F192,
     openings: &Openings,
 ) -> Result<(), ::verifier::VerifierError> {
-    let l = layouts(log_n);
-    use opening::wire_proof;
-    let verify = |layout: &Layout, root: &Hash, claims: &[opening::Claim], proof: &::verifier::Proof| {
-        opening::verify_with(OPENING_VERSION, layout, root, claims, proof)
-    };
-    verify(
-        &l.witness,
-        &roots[0],
-        &[claim(&reduced.witness)],
-        &wire_proof(&openings.witness),
-    )?;
-    verify(
-        &l.quotient,
-        &roots[1],
-        &[claim(&reduced.quotient), claim(&reduced.sum)],
-        &wire_proof(&openings.quotient),
-    )?;
-    verify(
-        &l.setup,
-        setup_root,
-        &[claim(&reduced.setup)],
-        &wire_proof(&openings.setup),
-    )
+    for (claim, proof) in claims(log_n, reduced, roots, setup_root, setup_ood).iter().zip(&openings.proofs) {
+        pcs_claim::verify_claim(claim, &pcs_claim::wire_proof(proof))?;
+    }
+    Ok(())
 }
 
-/// Whether each claim holds on the tables (by evaluation): `W`, `Q`'s identity, `Q`'s sum, the setup.
-pub fn claims_hold(proved: &Proved, setup: &Setup) -> [bool; 4] {
-    let holds = |table: &Table, c: &(Vec<E>, E)| {
-        let c = claim(c);
-        table.eval(&c.point) == c.value
+/// Whether each claim holds on the stacks (by evaluation), in the contract's order: `W`, the setup, `Q`'s identity,
+/// pushes and sum.
+pub fn claims_hold(proved: &Proved, setup: &Setup) -> [bool; 5] {
+    let holds = |words: &[F64], c: &(Vec<E>, E)| {
+        let (point, value) = claim(c);
+        pcs_claim::evaluate_lanes(words, &point) == value
     };
     let r = &proved.reduced;
     [
         holds(&proved.witness.0, &r.witness),
+        holds(&setup.words, &r.setup),
         holds(&proved.quotient.0, &r.quotient),
+        holds(&proved.quotient.0, &r.pushes),
         holds(&proved.quotient.0, &r.sum),
-        holds(&setup.table, &r.setup),
     ]
 }
 
@@ -1444,28 +1294,26 @@ pub fn claims_hold(proved: &Proved, setup: &Setup) -> [bool; 4] {
 mod tests {
     use super::*;
 
-    /// π2's stacks are opened on the recursion's ladder at rate 1/2, the prover's configuration (`pcs`'s eta search)
-    /// the verifier's (`verifier::whir::ladder`), at every stack size `2^15 … 2^28` (D16v's `W`, `Q`, setup: `2^24`,
-    /// `2^28`, `2^25`; the tests' from `2^15`); and the layout words carry the version.
+    /// `Q`'s slots: `h`, `q` (two digits) of three limbs, `P`, `q_P` (two digits) and four zero slots, sixteen in all,
+    /// each where its bits say (`digit + 2 kind + 4 limb`).
     #[test]
-    fn stacks_take_the_recursion_ladder() {
-        assert_eq!(opening::LOG_INV_RATE, 1);
-        assert_eq!(OPENING_VERSION.schedule(), pcs::whir::RECURSION_SCHEDULE);
-        for log_n in 15..=28 {
-            let config = pcs::whir::config_for_schedule(log_n, 1, OPENING_VERSION.schedule()).expect("a WHIR shape");
-            let shapes = config.level_shapes(log_n);
-            let (folds, rates, queries) =
-                ::verifier::whir::ladder(log_n, 1, OPENING_VERSION.ladder()).expect("a verifier shape");
-            assert_eq!(
-                (shapes.ks, &config.log_inv_rates, &config.queries[..]),
-                (folds, &rates, queries),
-                "2^{log_n} words"
-            );
+    fn quotient_slots_are_their_bits() {
+        let mut used = vec![false; QUOTIENT_SLOTS];
+        let mut take = |slot: usize, digit: usize, kind: usize, limb: usize| {
+            assert_eq!(slot, digit + 2 * kind + 4 * limb);
+            assert!(!std::mem::replace(&mut used[slot], true), "slot {slot} once");
+        };
+        for l in 0..3 {
+            take(h_slot(l), 0, 0, l);
+            take(q_slot(l), 0, 1, l);
+            take(q_slot(l) + 1, 1, 1, l);
         }
-        for m in [23, 24] {
-            for word in layout_words(m) {
-                assert_eq!(word[VERSION_BYTE] as u64, OPENING_VERSION.number());
-            }
+        take(P_SLOT, 1, 0, 3);
+        take(QP_SLOT, 0, 1, 3);
+        take(QP_SLOT + 1, 1, 1, 3);
+        for slot in EMPTY_SLOTS {
+            assert!(!used[slot], "slot {slot} is zero");
         }
+        assert_eq!(used.iter().filter(|&&u| u).count() + EMPTY_SLOTS.len(), QUOTIENT_SLOTS);
     }
 }

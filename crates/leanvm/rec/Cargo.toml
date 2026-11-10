@@ -18,6 +18,7 @@ leanvm_univariate.workspace = true
 evm_link.workspace = true
 # pi2 (src/pi2): crates/membership/quotient's Cantor basis, transforms and opening layouts; leanVM's WHIR (c445e3d5).
 quotient.workspace = true
+pcs_claim.workspace = true
 primitives.workspace = true
 fiat_shamir.workspace = true
 pcs.workspace = true

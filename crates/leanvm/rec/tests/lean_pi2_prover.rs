@@ -47,10 +47,10 @@ fn vector(log_n: u8, out: &mut String) {
     let (public_input, values) = adapt::public_values(&public);
     let spec = Spec::of(&circuit);
     let setup = Setup::new(&circuit);
-    let iv = prover::iv(&[0x11; 32], &circuit.digest(), &setup.root(), circuit.log_n);
+    let iv = prover::iv(&[0x11; 32], &circuit.digest(), &setup.root(), setup.ood(), circuit.log_n);
     let witness = adapt::witness(&w);
     let proved = prove(&circuit, &spec, &setup, &iv, &public_input, &values, &witness);
-    assert_eq!(claims_hold(&proved, &setup), [true; 4]);
+    assert_eq!(claims_hold(&proved, &setup), [true; 5]);
     writeln!(out, "VECTOR example {log_n}").unwrap();
     writeln!(out, "SHAPE {} {}", c.log_n, c.log_width).unwrap();
     for region in &c.regions {

@@ -1,15 +1,15 @@
 // Part of this repository. The mapping of π1's call words follows `crate::circuit::compile` (the ports). MIT OR
 // Apache-2.0; see AGENTS.md.
 //! π1's three claims as the circuit's interface names their words (`circuit::spec::CallWord`), from π1-rec3's
-//! recorded verifier (`leanvm_univariate::contract`, at the reference shape): constants (the setup root as
-//! claims' root words), π1's two roots (`C1`, `C2`, root words in calldata), and its claims' distinct elements in
-//! first appearance. The contract of a synthetic circuit appends
+//! recorded verifier (`leanvm_univariate::contract`, at the reference shape), each claim's words in the claim's
+//! order (root, out-of-domain answer, point, value): constants (the setup commitment), π1's two roots (`C1`, `C2`,
+//! in calldata as they are), and its claims' distinct elements (the out-of-domain answers among them) in first
+//! appearance. The contract of a synthetic circuit appends
 //! these, its words from calldata, as the real circuit's contract does.
 
 use std::collections::BTreeMap;
 
 use leanvm_statement::evm::codegen::Word;
-use leanvm_statement::evm::machine::root_word;
 use leanvm_statement::evm::record::Node;
 use leanvm_statement::field::E;
 use leanvm_univariate::contract::{calls, record_verifier};
@@ -39,12 +39,11 @@ pub fn pi1_calls() -> Pi1Calls {
     let mut element_of: BTreeMap<u32, u32> = BTreeMap::new();
     let out: Vec<Vec<CallWord>> = calls(&recorded)
         .iter()
-        .map(|call| {
-            call.iter()
-                .enumerate()
-                .map(|(k, w)| match *w {
-                    // A setup root: a claim's root word, as `circuit::compile` makes it.
-                    Word::Const(bytes) if k == 0 => CallWord::Const(root_word(&bytes)),
+        .map(|claim| {
+            claim
+                .words()
+                .into_iter()
+                .map(|w| match w {
                     Word::Const(bytes) => CallWord::Const(bytes),
                     Word::Stream(at) => CallWord::Root(roots[&at]),
                     Word::Node(id) => match graph.nodes[id as usize] {

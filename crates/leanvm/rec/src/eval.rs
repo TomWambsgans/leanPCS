@@ -77,20 +77,22 @@ pub fn evaluate(graph: &Graph, seed: [u8; 32], public: &[u8; 32], stream: &[u8])
     values
 }
 
-/// The claims' bytes, as the contract writes them, from the evaluated graph.
+/// The claims, as the contract checks them declared (the EIP draft's PCS claims, encoded), from the evaluated graph.
 pub fn call_inputs(recorded: &Recorded, values: &[Value], stream: &[u8]) -> Vec<Vec<u8>> {
     calls(recorded)
         .iter()
-        .map(|words| {
-            words
+        .map(|claim| {
+            let words: Vec<[u8; 32]> = claim
+                .words()
                 .iter()
-                .flat_map(|w| match w {
+                .map(|w| match w {
                     Word::Node(id) => element_word(values[*id as usize].e()),
                     Word::Const(bytes) => *bytes,
                     Word::Stream(at) => stream[*at..*at + 32].try_into().expect("a root"),
                     Word::Stored(_) => panic!("no stored words: the setup roots are code constants"),
                 })
-                .collect()
+                .collect();
+            crate::pi2::contract::claim_of_words(&words).encode()
         })
         .collect()
 }

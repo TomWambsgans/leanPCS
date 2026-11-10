@@ -125,7 +125,7 @@ fn render(recorded: &Recorded) -> String {
     writeln!(
         w,
         "calls of {} words, a stream of {} bytes.",
-        list(call_words.iter().map(Vec::len), |n| n.to_string()),
+        list(call_words.iter().map(|c| c.words().len()), |n| n.to_string()),
         recorded.stream_len
     )
     .unwrap();
@@ -171,8 +171,9 @@ fn render(recorded: &Recorded) -> String {
     }
     writeln!(w, "]").unwrap();
     writeln!(w).unwrap();
-    for (c, call) in call_words.iter().enumerate() {
-        writeln!(w, "/-- The words of claim {c}. -/").unwrap();
+    for (c, claim) in call_words.iter().enumerate() {
+        let call = claim.words();
+        writeln!(w, "/-- The words of claim {c}: its root, its out-of-domain answer, its point, its value. -/").unwrap();
         writeln!(w, "def call{c} : List Word := [").unwrap();
         for (i, word) in call.iter().enumerate() {
             let comma = if i + 1 < call.len() { "," } else { "" };

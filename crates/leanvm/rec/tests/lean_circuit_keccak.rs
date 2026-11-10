@@ -76,7 +76,8 @@ fn graph_text(recorded: &Recorded) -> String {
     }
     let cs = calls(recorded);
     writeln!(o, "calls {}", cs.len()).unwrap();
-    for c in &cs {
+    for claim in &cs {
+        let c = claim.words();
         let words: String = c
             .iter()
             .map(|w| match w {

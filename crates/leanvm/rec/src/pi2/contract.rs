@@ -3,58 +3,56 @@
 // AGENTS.md.
 //! π2's verifier as a contract: [`super::verifier::reduce`] recorded on `leanvm_statement`'s symbol, compiled to
 //! straight-line EVM code (`leanvm_statement::evm::codegen`, `crates/evm_link`), run on revm with `FIELD_MUL` and
-//! EIP-8141's frame introspection over a frame of PCS claims (`leanvm_statement::evm::machine`, point claims: `root,
-//! layout, k, k × (point, value)`).
+//! EIP-8141's frame introspection over a frame of PCS claims (`leanvm_statement::evm::machine`).
 //!
 //! **Calldata**: the selector, π1's public input (32 bytes, which the seed hashes), the stream: π1's roots and its
-//! claims' elements, `W`'s root, `Q`'s root, the `2^r + 2` values; then a byte, the index of the transaction's frame of
-//! PCS claims. **Claims**, checked declared in that frame in order: π1's (their words from calldata and constants:
-//! `circuit::spec::Circuit::calls`), then π2's three: `W` (one claim), the setup (one; its root a constant of the
-//! code), `Q` (two). Each is written at the region's start just before it is hashed, only where the one before left
-//! another word (`Ending::DeclaredReusing`, `PI2.md` §9): π1's at the batch's point write it once, the setup's reuses
-//! `W`'s digits.
+//! claims' elements, `W`'s commitment (root, out-of-domain answer), `Q`'s, the `2^r + 2` values; then a byte, the
+//! index of the transaction's frame of PCS claims. **Claims**, each the EIP draft's PCS claim (`crates/pcs_claim`,
+//! `docs/PCS_CLAIM.md`), checked declared in that frame in order (`evm_link::declared_claims`): π1's three (their
+//! words from calldata and constants: `circuit::spec::Circuit::calls`, each `root, ood, point, value`), then π2's
+//! five: `W`, the setup (its commitment a constant of the code), `Q`'s identity, pushes and sum
+//! (`verifier::Reduced::claims`). A claim's fields are written once each (π1's three share the batch's point, the
+//! setup's point `W`'s digits, `Q`'s claims their `u`), packed and hashed where it is checked.
 //!
-//! **One encoding for the six claims**: `machine.rs`'s, `root word, layout word, k, k × (point,
-//! value)`. Every root word is a claim's (`s_0 · 2^128 + s_1`, the two WHIR scalars of the root: each 16-byte half
-//! of the hash reversed). π1's roots are in calldata so, as π1's stream carries them (its prover sends a root as its
-//! two scalars), π2's `W` and `Q` likewise, and the setup roots are constants so (the root word of
-//! π1's setup hash, of π2's setup root); every layout word names its stack (π1's
-//! `leanvm_univariate::contract::layout_word`, π2's `prover::layout_word`: the code, the variables, the words placed).
-//! The block's prover is a registry keyed by the layout word ([`registry`]): π1's three layouts are checked by
-//! `leanvm_univariate`'s opening, π2's three by `quotient::opening`, and `Q`'s two claims are one, as one opening
-//! (AGENTS.md: two openings of one root could be of two tables). The tests declare openings of the registry
-//! (`machine::PcsFrame::decoding`).
+//! Every root is a commitment's 32 bytes as they are: π1's in calldata as its stream carries them (its prover sends a
+//! root's bytes), π2's `W` and `Q` likewise, and the setup roots constants; the out-of-domain answers are calldata's
+//! elements (π1's among its claims' elements, π2's after its roots) or constants (the setups').
 
 use fiat_shamir::merkle::Hash;
-use leanvm_statement::evm::codegen::{CALLS, Contract, Ending, Entry, MEASURE, VERIFY, Word, compile, word};
-use leanvm_statement::evm::machine::{self, Chain, Opening, Outcome, PCS_FRAME, PcsFrame, call, decode, element_word};
+use leanvm_statement::evm::codegen::{CALLS, Claim, Contract, Ending, Entry, MEASURE, VERIFY, Word, compile, word};
+use leanvm_statement::evm::machine::{
+    self, Chain, FrameTxGas, Outcome, PCS_FRAME, PcsFrame, call, element_word, frame_tx_gas,
+};
 use leanvm_statement::evm::record::{Graph, Recorder, Sym, record};
 use leanvm_statement::field::E;
 use leanvm_statement::transcript::{Checks, KeccakChannel, keccak_seed};
+use pcs_claim::PcsClaim;
+use primitives::field::F192;
 
 use super::circuit::{Circuit, Read};
-use super::prover::{layout_words, layouts};
 use super::verifier::{NAME, Reduced, Spec, reduce, statement_words};
 use crate::circuit::spec::CallWord;
 
-/// What the contract is built for: the circuit's verifier, its IV, the setup's root, and π1's calls. Built by
+/// What the contract is built for: the circuit's verifier, its IV, the setup's commitment, and π1's calls. Built by
 /// [`Instance::new`] from the validated circuit, which derives the IV.
 pub struct Instance<'a> {
     pub spec: &'a Spec,
     pub iv: [u8; 32],
     pub setup_root: Hash,
+    pub setup_ood: F192,
     pub pi1: &'a [Vec<CallWord>],
 }
 
 impl<'a> Instance<'a> {
-    /// The instance of `circuit` (validated here), its verifier `spec` (`Spec::of(circuit)`), the setup's root (the
-    /// commitment of `circuit`'s `σ`, `κ`: `prover::Setup::new(circuit).root()`), π1's contract IV (the circuit
+    /// The instance of `circuit` (validated here), its verifier `spec` (`Spec::of(circuit)`), the setup's commitment
+    /// (of `circuit`'s `σ`, `κ`: `prover::Setup::new(circuit)`'s `root()` and `ood()`), π1's contract IV (the circuit
     /// compiler's, `Compiled::pi1_iv`, derived from π1's recorded verifier) and π1's calls (the circuit's,
     /// `spec::Circuit::calls`). The IV is `prover::iv` of them.
     pub fn new(
         circuit: &Circuit,
         spec: &'a Spec,
         setup_root: Hash,
+        setup_ood: F192,
         pi1_iv: &[u8; 32],
         pi1: &'a [Vec<CallWord>],
     ) -> Self {
@@ -69,8 +67,9 @@ impl<'a> Instance<'a> {
         );
         Self {
             spec,
-            iv: super::prover::iv(pi1_iv, &circuit.digest(), &setup_root, circuit.log_n),
+            iv: super::prover::iv(pi1_iv, &circuit.digest(), &setup_root, setup_ood, circuit.log_n),
             setup_root,
+            setup_ood,
             pi1,
         }
     }
@@ -128,141 +127,56 @@ pub fn number(n: u64) -> [u8; 32] {
     bytes
 }
 
-/// A commitment as a claim encodes it (`machine::root_word`): `s_0 · 2^128 + s_1`, the two scalars of
-/// `quotient::transcript::root_scalars` (the words π2's stream encodes its roots as), each half of the hash reversed.
-pub fn root_word(root: &Hash) -> [u8; 32] {
-    machine::root_word(root)
-}
+/// A claim's fields in any word type: root, out-of-domain answer, point, value.
+pub type Fields<W> = (W, W, Vec<W>, W);
 
-/// The layouts the block must prove claims on for this contract, with each table's variables: π1's (the layout words of
-/// its calls, each call's variables read off its length) and π2's three ([`layout_words`]).
-pub fn registry(inst: &Instance) -> Vec<([u8; 32], usize)> {
-    let l = layouts(inst.spec.log_n);
-    let mut out: Vec<([u8; 32], usize)> = layout_words(inst.spec.log_n)
-        .into_iter()
-        .zip([l.witness.vars, l.quotient.vars, l.setup.vars])
-        .collect();
-    for call in inst.pi1 {
-        let (CallWord::Const(layout), CallWord::Const(k)) = (call[1], call[2]) else {
-            panic!("π1's layout words and claim counts are constants")
-        };
-        let k = u64::from_be_bytes(k[24..].try_into().expect("8 bytes")) as usize;
-        assert!(k >= 1 && (call.len() - 3) % k == 0, "a call of k claims");
-        let vars = (call.len() - 3) / k - 1;
-        if !out.iter().any(|(w, _)| *w == layout) {
-            out.push((layout, vars));
-        }
-    }
-    out
-}
-
-/// π2's three openings, in the order the contract checks their claims (`W`, the setup, `Q`): the roots the proof
-/// commits, the layout words, the claims of the reduction (not the contract's call words, which must decode to these).
-pub fn openings(inst: &Instance, reduced: &Reduced<E>, roots: &[Hash; 2]) -> Vec<Opening> {
-    let [w, q, s] = layout_words(inst.spec.log_n);
-    vec![
-        Opening {
-            root: roots[0],
-            layout: w,
-            claims: vec![reduced.witness.clone()],
-        },
-        Opening {
-            root: inst.setup_root,
-            layout: s,
-            claims: vec![reduced.setup.clone()],
-        },
-        Opening {
-            root: roots[1],
-            layout: q,
-            claims: vec![reduced.quotient.clone(), reduced.sum.clone()],
-        },
-    ]
-}
-
-/// π1's opening of a claim of π1's own contract (`leanvm_univariate`'s vectors: the layout word π1's, its variables at
-/// byte 24) on the commitment whose root the prover committed, `root` (the vector's `whir_root`, from the prover's
-/// output): what the block proves, whatever word 0 of the claim says.
-pub fn pi1_opening(input: &[u8], root: &Hash) -> Opening {
-    let opening = decode(input, |layout| Some(layout[24] as usize)).expect("π1's call is well formed");
-    Opening { root: *root, ..opening }
-}
-
-/// The openings a block must hold for the contract to accept `stream`: π1's (its calls the Rust verifier's reduction
-/// gives, decoded under the registry) and π2's ([`openings`], from the reduction and the proof's roots).
-pub fn expected_openings(
-    inst: &Instance,
-    recorded: &Recorded,
-    reduced: &Reduced<E>,
-    roots: &[Hash; 2],
-    stream: &[u8],
-) -> Vec<Opening> {
-    let registry = block(inst, &[]);
-    let calls = expected_calls(inst, recorded, reduced, stream);
-    let mut out: Vec<Opening> = calls[..inst.pi1.len()]
-        .iter()
-        .map(|words| registry.decode(&words.concat()).expect("π1's call decodes"))
-        .collect();
-    out.extend(openings(inst, reduced, roots));
-    out
-}
-
-/// The frame of PCS claims for this contract: its registry, and the openings it declares, in order.
-pub fn block(inst: &Instance, openings: &[Opening]) -> PcsFrame {
-    let mut block = PcsFrame::decoding(registry(inst));
-    for o in openings {
-        block.declare_opening(o.clone());
-    }
-    block
-}
-
-/// The words of the eight calls, in order, for any word type.
-fn call_words<T: Copy, W: Clone>(
+/// The eight claims' fields, in order (π1's three, then π2's five), for any word type.
+fn claim_words<T: Copy, W: Clone>(
     inst: &Instance,
     reduced: &Reduced<T>,
     roots_at: &[usize],
     stream: impl Fn(usize) -> W,
     constant: impl Fn([u8; 32]) -> W,
     scalar: impl Fn(T) -> W,
-) -> Vec<Vec<W>> {
+) -> Vec<Fields<W>> {
     let (_, elements) = read_indices(inst.spec);
     let roots = inst.spec.reads.iter().filter(|r| **r == Read::Root).count();
-    let mut out: Vec<Vec<W>> = inst
+    let word = |w: &CallWord| match *w {
+        CallWord::Const(bytes) => constant(bytes),
+        CallWord::Root(i) => stream(roots_at[i as usize]),
+        CallWord::Element(i) => scalar(reduced.public[elements[i as usize]]),
+        CallWord::Pair { element, coordinate } => scalar(reduced.pair_points[elements[element as usize]][coordinate as usize]),
+    };
+    let mut out: Vec<Fields<W>> = inst
         .pi1
         .iter()
         .map(|c| {
-            c.iter()
-                .map(|w| match *w {
-                    CallWord::Const(bytes) => constant(bytes),
-                    CallWord::Root(i) => stream(roots_at[i as usize]),
-                    CallWord::Element(i) => scalar(reduced.public[elements[i as usize]]),
-                    CallWord::Pair { element, coordinate } => {
-                        scalar(reduced.pair_points[elements[element as usize]][coordinate as usize])
-                    }
-                })
-                .collect()
+            assert!(c.len() >= 3, "a claim's root, out-of-domain answer, point and value");
+            let point = c[2..c.len() - 1].iter().map(word).collect();
+            (word(&c[0]), word(&c[1]), point, word(&c[c.len() - 1]))
         })
         .collect();
-    let [lw, lq, ls] = layout_words(inst.spec.log_n);
-    let claim = |(point, value): &(Vec<T>, T)| -> Vec<W> { point.iter().chain([value]).map(|&x| scalar(x)).collect() };
-    let head = |root: W, id: [u8; 32], k: u64| vec![root, constant(id), constant(number(k))];
-    // W, then the setup (its point's `w_4 … w_{m-1}` where W's are: the contract writes them once, PI2.md §9, lever
-    // 3b), then Q.
-    out.push([head(stream(roots_at[roots]), lw, 1), claim(&reduced.witness)].concat());
-    out.push([head(constant(root_word(&inst.setup_root)), ls, 1), claim(&reduced.setup)].concat());
-    out.push(
-        [
-            head(stream(roots_at[roots + 1]), lq, 2),
-            claim(&reduced.quotient),
-            claim(&reduced.sum),
-        ]
-        .concat(),
-    );
+    let field = |root: W, ood: W, (point, value): &(Vec<T>, T)| -> Fields<W> {
+        (root, ood, point.iter().map(|&x| scalar(x)).collect(), scalar(*value))
+    };
+    let [w_ood, q_ood] = reduced.oods;
+    let (w_root, q_root) = (|| stream(roots_at[roots]), || stream(roots_at[roots + 1]));
+    // W, the setup (its point's `w_4 … w_{m-1}` W's: written once), then Q's three.
+    out.push(field(w_root(), scalar(w_ood), &reduced.witness));
+    out.push(field(
+        constant(inst.setup_root),
+        constant(element_word(E::new(inst.setup_ood.c0, inst.setup_ood.c1, inst.setup_ood.c2))),
+        &reduced.setup,
+    ));
+    out.push(field(q_root(), scalar(q_ood), &reduced.quotient));
+    out.push(field(q_root(), scalar(q_ood), &reduced.pushes));
+    out.push(field(q_root(), scalar(q_ood), &reduced.sum));
     out
 }
 
-/// The calls as the contract's output words.
-pub fn calls(inst: &Instance, recorded: &Recorded) -> Vec<Vec<Word>> {
-    call_words(
+/// The claims as the contract's words.
+pub fn calls(inst: &Instance, recorded: &Recorded) -> Vec<Claim> {
+    claim_words(
         inst,
         &recorded.reduced,
         &recorded.roots_at,
@@ -270,11 +184,14 @@ pub fn calls(inst: &Instance, recorded: &Recorded) -> Vec<Vec<Word>> {
         Word::Const,
         |s: Sym| Word::Node(s.0),
     )
+    .into_iter()
+    .map(|(root, ood, point, value)| Claim { root, ood, point, value })
+    .collect()
 }
 
-/// The claims the Rust verifier's reduction of `stream` gives: what the contract must check declared.
+/// The claims the Rust verifier's reduction of `stream` gives, as words: what the contract must write.
 pub fn expected_calls(inst: &Instance, recorded: &Recorded, reduced: &Reduced<E>, stream: &[u8]) -> Vec<Vec<[u8; 32]>> {
-    call_words(
+    claim_words(
         inst,
         reduced,
         &recorded.roots_at,
@@ -282,6 +199,39 @@ pub fn expected_calls(inst: &Instance, recorded: &Recorded, reduced: &Reduced<E>
         |b| b,
         element_word,
     )
+    .into_iter()
+    .map(|(root, ood, point, value)| [root, ood].into_iter().chain(point).chain([value]).collect())
+    .collect()
+}
+
+/// The claims the Rust verifier's reduction of `stream` gives, as PCS claims: what the transaction must declare, in
+/// order, and the block's openings prove.
+pub fn expected_claims(inst: &Instance, recorded: &Recorded, reduced: &Reduced<E>, stream: &[u8]) -> Vec<PcsClaim> {
+    expected_calls(inst, recorded, reduced, stream)
+        .iter()
+        .map(|words| claim_of_words(words))
+        .collect()
+}
+
+/// A PCS claim from its words (root, out-of-domain answer, point, value; elements with their top 64 bits zero).
+pub fn claim_of_words(words: &[[u8; 32]]) -> PcsClaim {
+    let element = |w: &[u8; 32]| {
+        assert!(w[..8].iter().all(|&b| b == 0), "an element's top 64 bits are zero");
+        pcs_claim::element_of(w[8..].try_into().expect("24 bytes"))
+    };
+    let n = words.len() - 3;
+    PcsClaim {
+        n: n as u8,
+        root: words[0],
+        ood: element(&words[1]),
+        point: words[2..2 + n].iter().map(element).collect(),
+        value: element(&words[2 + n]),
+    }
+}
+
+/// A frame of PCS claims declaring `claims`, in order.
+pub fn block(claims: &[PcsClaim]) -> PcsFrame {
+    PcsFrame::of(claims.iter().map(PcsClaim::encode))
 }
 
 fn entry(inst: &Instance, recorded: &Recorded, measure: bool) -> Entry {
@@ -295,12 +245,10 @@ fn entry(inst: &Instance, recorded: &Recorded, measure: bool) -> Entry {
 
 /// The contract: it reverts unless its transaction declares every claim, and returns the word 1.
 pub fn compile_verifier(inst: &Instance, recorded: &Recorded, measure: bool) -> Contract {
-    let calls = calls(inst, recorded);
-    let ending = Ending::DeclaredReusing(calls.iter().map(Vec::len).collect());
     compile(
         &recorded.graph,
-        &calls.concat(),
-        &ending,
+        &[],
+        &Ending::Claims(calls(inst, recorded)),
         &entry(inst, recorded, measure),
     )
 }
@@ -309,13 +257,12 @@ pub fn compile_verifier(inst: &Instance, recorded: &Recorded, measure: bool) -> 
 fn ends(inst: &Instance, recorded: &Recorded, verify: bool) -> (Vec<Word>, Ending) {
     let calls = calls(inst, recorded);
     if verify {
-        let ending = Ending::DeclaredReusing(calls.iter().map(Vec::len).collect());
-        (calls.concat(), ending)
+        (Vec::new(), Ending::Claims(calls))
     } else {
         let checks = recorded.graph.zero.iter().chain(&recorded.graph.nonzero);
         let outputs = calls
-            .concat()
-            .into_iter()
+            .iter()
+            .flat_map(Claim::words)
             .chain(checks.map(|&(id, _)| Word::Node(id)))
             .collect();
         (outputs, Ending::Return)
@@ -384,35 +331,30 @@ pub fn parity(inst: &Instance, recorded: &Recorded, public_input: &[u8; 32], str
     expected.len()
 }
 
-/// The verifying contract on `calldata`, its frame of PCS claims declaring exactly `openings`, in order ([`block`]):
+/// The verifying contract on `calldata`, its frame of PCS claims declaring exactly `claims`, in order ([`block`]):
 /// whether it returned the word 1, and the claims it checked.
-pub fn run(inst: &Instance, recorded: &Recorded, calldata: &[u8], openings: &[Opening]) -> (bool, Vec<Vec<u8>>) {
+pub fn run(inst: &Instance, recorded: &Recorded, calldata: &[u8], claims: &[PcsClaim]) -> (bool, Vec<Vec<u8>>) {
     let contract = compile_verifier(inst, recorded, false);
-    let block = block(inst, openings);
-    let outcome = call(&contract.code, &[], calldata, &block);
+    let outcome = call(&contract.code, &[], calldata, &block(claims));
     (
         outcome.output.as_deref() == Some(&word([1, 0, 0])[..]),
         outcome.claims,
     )
 }
 
-/// The verifying contract's execution gas on `calldata` (without the claims' frame and intrinsic gas), and whether
-/// it accepted.
-pub fn verifying_execution(inst: &Instance, recorded: &Recorded, calldata: &[u8], openings: &[Opening]) -> (bool, u64) {
+/// The verifying contract's execution gas on `calldata` (without the claims' frame and PCS gas), and whether it
+/// accepted.
+pub fn verifying_execution(inst: &Instance, recorded: &Recorded, calldata: &[u8], claims: &[PcsClaim]) -> (bool, u64) {
     let contract = compile_verifier(inst, recorded, false);
-    let outcome = call(&contract.code, &[], calldata, &block(inst, openings));
+    let outcome = call(&contract.code, &[], calldata, &block(claims));
     (outcome.output.as_deref() == Some(&word([1, 0, 0])[..]), outcome.execution)
 }
 
-/// Transaction gas without the 21,000 base for `calldata` and `execution`: EIP-7623 (`floor` 40, 10 a zero byte) or
-/// EIP-7976 (`floor` 64, 64 a zero byte), against the standard `16` a byte (`4` a zero byte). With the claims, pass
-/// the frame of PCS claims' `data` after the calldata and add their intrinsic gas (`machine::dependency_gas`).
-pub fn transaction_of(calldata: &[u8], execution: u64, floor: u64) -> u64 {
-    let zero = calldata.iter().filter(|&&b| b == 0).count() as u64;
-    let nonzero = calldata.len() as u64 - zero;
-    let standard = 16 * nonzero + 4 * zero + execution;
-    let floor_gas = floor * nonzero + if floor == 64 { 64 } else { floor / 4 } * zero;
-    standard.max(floor_gas)
+/// A verifying call's frame-transaction gas (EIP-8141, EIP-7976's floor; without `FRAME_TX_INTRINSIC_COST` and the
+/// per-frame costs): its `calldata` and `execution`, and its frame of PCS claims declaring `claims` (or none).
+pub fn transaction_of(calldata: &[u8], execution: u64, claims: &[PcsClaim]) -> FrameTxGas {
+    let data = if claims.is_empty() { Vec::new() } else { block(claims).data() };
+    frame_tx_gas(calldata, execution, &data, claims.len())
 }
 
 /// One phase's share of a call.
@@ -428,11 +370,10 @@ pub struct GasReport {
     pub calldata_bytes: usize,
     pub calldata_zero_bytes: usize,
     pub stream_bytes: usize,
-    /// Without the claims' frame and intrinsic gas.
+    /// Without the claims' frame and PCS gas.
     pub execution: u64,
     pub phases: Vec<PhaseGas>,
     pub claims: usize,
-    pub calls: usize,
     pub pcs_words: usize,
     pub code_bytes: usize,
     pub field_muls: usize,
@@ -441,22 +382,25 @@ pub struct GasReport {
     pub hashed_bytes: usize,
     pub checks: usize,
     pub memory_words: usize,
-    /// The verifying contract's deployment: its code bytes, the execution, and the transaction gas under EIP-7623
-    /// without the base.
+    /// The verifying contract's deployment: its code bytes, the execution, and the creation transaction's gas without
+    /// its base (EIP-7976's floor).
     pub deployment: (usize, u64, u64),
 }
 
 impl GasReport {
-    /// Transaction gas without its 21,000 base: `floor` 40 for EIP-7623 (10 a zero byte), 64 for EIP-7976; with
-    /// `claims`, the frame of PCS claims too (`1 + 32` bytes a claim, counted nonzero) and their intrinsic gas.
-    pub fn transaction(&self, claims: bool, floor: u64) -> u64 {
-        let frame = if claims { 1 + 32 * self.calls as u64 } else { 0 };
-        let nonzero = (self.calldata_bytes - self.calldata_zero_bytes) as u64 + frame;
-        let zero = self.calldata_zero_bytes as u64;
-        let standard = 16 * nonzero + 4 * zero + self.execution;
-        let floor_gas = floor * nonzero + if floor == 64 { 64 } else { floor / 4 } * zero;
-        let intrinsic = if claims { machine::dependency_gas(self.calls) } else { 0 };
-        standard.max(floor_gas) + intrinsic
+    /// The frame transaction's gas (EIP-8141, EIP-7976's floor; without `FRAME_TX_INTRINSIC_COST` and the per-frame
+    /// costs), this sample calldata's zero bytes and the execution; with `claims`, a frame of PCS claims of
+    /// `self.claims` claims (`1 + 32` bytes a claim, their hashes counted nonzero) and their PCS gas.
+    pub fn transaction(&self, claims: bool) -> FrameTxGas {
+        let calldata: Vec<u8> = std::iter::repeat_n(1u8, self.calldata_bytes - self.calldata_zero_bytes)
+            .chain(std::iter::repeat_n(0u8, self.calldata_zero_bytes))
+            .collect();
+        let (data, count) = if claims {
+            (vec![1u8; 1 + 32 * self.claims], self.claims)
+        } else {
+            (Vec::new(), 0)
+        };
+        frame_tx_gas(&calldata, self.execution, &data, count)
     }
 
     pub fn calldata_gas(&self) -> u64 {
@@ -491,13 +435,7 @@ impl GasReport {
         );
         line(
             &mut s,
-            format!(
-                "execution: {}; {} claims in {} declared, {} words hashed",
-                self.execution,
-                self.claims,
-                self.calls,
-                self.pcs_words
-            ),
+            format!("execution: {}; {} claims, {} words written for them", self.execution, self.claims, self.pcs_words),
         );
         for p in &self.phases {
             line(&mut s, format!("   {:>7}  {}", p.gas, p.phase));
@@ -505,18 +443,17 @@ impl GasReport {
         line(
             &mut s,
             format!(
-                "   deployment: {} B of code, {} execution, {} tx (EIP-7623, no base)",
+                "   deployment: {} B of code, {} execution, {} tx (EIP-7976 floor, no base)",
                 self.deployment.0, self.deployment.1, self.deployment.2
             ),
         );
+        let (alone, with) = (self.transaction(false), self.transaction(true));
         line(
             &mut s,
             format!(
-                "EIP-7623 (no base): {}, with the claims' frame and intrinsic gas {}; EIP-7976: {} / {}",
-                self.transaction(false, 40),
-                self.transaction(true, 40),
-                self.transaction(false, 64),
-                self.transaction(true, 64)
+                "frame transaction (EIP-8141, EIP-7976 floor; sample calldata): standard {} / floor {}; with the frame of \
+                 PCS claims and pcs_gas: standard {} / floor {}, paid {}",
+                alone.standard, alone.floor, with.standard, with.floor, with.total
             ),
         );
         s
@@ -562,12 +499,8 @@ pub fn measure(inst: &Instance, recorded: &Recorded) -> GasReport {
     let data = calldata(&[0x5a; 32], &stream);
     assert_eq!(data.len(), contract.calldata_len);
     let calls = calls(inst, recorded);
-    let claims: usize = inst.pi1.len() + 4;
-    // A frame declaring every claim that is well formed under the registry (the format is checked even in a
-    // measuring run).
-    let mut attesting = PcsFrame::decoding(registry(inst));
-    attesting.declare_all = true;
-    let outcome: Outcome = call(&contract.code, &[], &data, &attesting);
+    // A frame declaring every well-formed claim (the format is checked even in a measuring run).
+    let outcome: Outcome = call(&contract.code, &[], &data, &PcsFrame::declaring_all());
     assert_eq!(
         outcome.output.as_deref(),
         Some(&word([1, 0, 0])[..]),
@@ -593,9 +526,8 @@ pub fn measure(inst: &Instance, recorded: &Recorded) -> GasReport {
         stream_bytes: stream.len(),
         execution: outcome.execution - measured,
         phases,
-        claims,
-        calls: calls.len(),
-        pcs_words: calls.iter().map(Vec::len).sum(),
+        claims: calls.len(),
+        pcs_words: calls.iter().map(|c| c.words().len()).sum(),
         code_bytes: contract.code.len(),
         field_muls: contract.field_muls,
         xors: contract.xors,
@@ -609,12 +541,12 @@ pub fn measure(inst: &Instance, recorded: &Recorded) -> GasReport {
 }
 
 /// `contract` deployed by a transaction (no constructor arguments): its code bytes, the deployment's execution, and
-/// its transaction gas under EIP-7623 without the base.
+/// its transaction gas with EIP-7976's floor, without the base.
 fn deployment(contract: &Contract) -> (usize, u64, u64) {
     let init = evm_link::creation_code(&contract.code, &[]);
     let mut chain = Chain::default();
     let (address, execution) = chain.deploy(&init);
     let address = address.expect("the contract deploys");
     assert_eq!(chain.code(address), contract.code);
-    (contract.code.len(), execution, machine::transaction_gas(&init, execution, 40) - 21_000)
+    (contract.code.len(), execution, machine::transaction_gas(&init, execution, 64) - 21_000)
 }

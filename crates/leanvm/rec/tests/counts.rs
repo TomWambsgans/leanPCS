@@ -45,9 +45,7 @@ fn the_graph_is_the_verifier_on_real_proofs() {
         for name in ["keccak", "keccak128_rec3", "keccak_rec3"] {
             let v = vector(name);
             let variant = vectors::variant_of(&v.config);
-            let roots = leanvm_univariate::contract::SetupRoots {
-                f: v.whir_roots[2],
-            };
+            let roots = vectors::setup_roots(&v);
             let recorded = leanvm_univariate::contract::record_verifier_with(&v.shape, variant, Claims::Point, &roots);
             let stream = &v.calldata[STREAM_AT..];
             assert_eq!(stream.len(), recorded.stream_len);
@@ -59,7 +57,7 @@ fn the_graph_is_the_verifier_on_real_proofs() {
             let values = evaluate(&recorded.graph, seed, &v.public, stream);
             let inputs = call_inputs(&recorded, &values, stream);
             assert_eq!(
-                inputs, v.calls,
+                inputs, v.claims,
                 "{name}: the evaluated graph writes the recorded claims"
             );
             let (zero, nonzero) = checks(&recorded.graph, &values);
@@ -77,7 +75,7 @@ fn the_graph_is_the_verifier_on_real_proofs() {
             let values = evaluate(&recorded.graph, seed, &v.public, &mutated);
             let (zero, _) = checks(&recorded.graph, &values);
             let broken =
-                call_inputs(&recorded, &values, &mutated) != v.calls || zero.iter().any(|x| *x != Default::default());
+                call_inputs(&recorded, &values, &mutated) != v.claims || zero.iter().any(|x| *x != Default::default());
             assert!(broken, "{name}: a mutated stream is caught");
             println!(
                 "{name}: {} nodes evaluated, {} calls equal to the vector's, {} zero and {} nonzero checks hold",

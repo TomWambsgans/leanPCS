@@ -8,8 +8,8 @@ import RecStatement.Basic
 # π2's circuit for π1-rec3, as its verifier reads it
 
 `pi2::circuit::Circuit` of `circuit::compile::pi2(record_verifier(KECCAK_128, KECCAK_REC3, Point), D16v)` through
-`pi2::adapt`: `2^24` positions, rows of `2^4`, 55 formulas, 133 (block, role) pairs (4 pull-less) in 66 groups, 19 reads,
-36 public terms (16 of them the zero coset); π1's 3 claims. Not `σ`, not `κ` (the setup's root and
+`pi2::adapt`: `2^24` positions, rows of `2^4`, 55 formulas, 134 (block, role) pairs (5 pull-less) in 66 groups, 21 reads,
+38 public terms (16 of them of value zero, in no `Φ`); π1's 3 claims. Not `σ`, not `κ` (the setup's root and
 the circuit's digest bind them; the verifier reads neither). Data only.
 -/
 
@@ -219,12 +219,13 @@ def pairs : List Pair := [
   ⟨1024512, 9, 7, 45, true⟩,
   ⟨1024512, 9, 8, 46, true⟩,
   ⟨1025024, 5, 15, 53, false⟩,
-  ⟨1025056, 1, 15, 54, false⟩,
-  ⟨1025058, 0, 15, 53, false⟩,
-  ⟨1025059, 0, 15, 54, false⟩]
+  ⟨1025056, 1, 15, 53, false⟩,
+  ⟨1025058, 1, 15, 54, false⟩,
+  ⟨1025060, 0, 15, 53, false⟩,
+  ⟨1025061, 0, 15, 54, false⟩]
 
 /-- The public data read from the stream (`Circuit::reads`). -/
-def reads : List Read := [.root, .root, .scalar, .scalar, .scalar, .scalar, .scalar, .scalar, .scalar, .scalar, .scalar, .scalar, .scalar, .scalar, .scalar, .scalar, .scalar, .scalar, .scalar]
+def reads : List Read := [.root, .root, .scalar, .scalar, .scalar, .scalar, .scalar, .scalar, .scalar, .scalar, .scalar, .scalar, .scalar, .scalar, .scalar, .scalar, .scalar, .scalar, .scalar, .scalar, .scalar]
 
 /-- The public side (`Circuit::public`): each term's tag and value. -/
 def publicTerms : List PublicTerm := [
@@ -260,30 +261,29 @@ def publicTerms : List PublicTerm := [
   ⟨16777245, ⟨[(⟨0x1, 0x0, 0x0, 0⟩, 21)], none⟩⟩,
   ⟨16777246, ⟨[(⟨0x1, 0x0, 0x0, 0⟩, 22)], none⟩⟩,
   ⟨16777247, ⟨[(⟨0x1, 0x0, 0x0, 0⟩, 23)], none⟩⟩,
-  ⟨16777248, ⟨[(⟨0x1, 0x0, 0x0, 0⟩, 0), (⟨0x0, 0x1, 0x0, 0⟩, 1), (⟨0x1, 0x0, 0x0, 1⟩, 2), (⟨0x0, 0x1, 0x0, 1⟩, 3)], none⟩⟩,
-  ⟨16777249, ⟨[(⟨0x1, 0x0, 0x0, 0⟩, 5), (⟨0x1, 0x0, 0x0, 1⟩, 4)], none⟩⟩,
-  ⟨16777250, ⟨[(⟨0x1, 0x0, 0x0, 0⟩, 24)], none⟩⟩,
-  ⟨16777251, ⟨[(⟨0x1, 0x0, 0x0, 0⟩, 7), (⟨0x1, 0x0, 0x0, 1⟩, 6)], none⟩⟩]
+  ⟨16777248, ⟨[(⟨0x1, 0x0, 0x0, 0⟩, 24)], none⟩⟩,
+  ⟨16777249, ⟨[(⟨0x1, 0x0, 0x0, 0⟩, 25)], none⟩⟩,
+  ⟨16777250, ⟨[(⟨0x1, 0x0, 0x0, 0⟩, 0), (⟨0x0, 0x1, 0x0, 0⟩, 1), (⟨0x1, 0x0, 0x0, 1⟩, 2), (⟨0x0, 0x1, 0x0, 1⟩, 3)], none⟩⟩,
+  ⟨16777251, ⟨[(⟨0x1, 0x0, 0x0, 0⟩, 5), (⟨0x1, 0x0, 0x0, 1⟩, 4)], none⟩⟩,
+  ⟨16777252, ⟨[(⟨0x1, 0x0, 0x0, 0⟩, 26)], none⟩⟩,
+  ⟨16777253, ⟨[(⟨0x1, 0x0, 0x0, 0⟩, 7), (⟨0x1, 0x0, 0x0, 1⟩, 6)], none⟩⟩]
 
 /-- **π2's circuit** as its verifier reads it. -/
 def circuit : Circuit := ⟨24, 4, formulas, pairs, reads, publicTerms⟩
 
 /-- π1's contract IV (`Compiled::pi1_iv`: π1-rec3's at the reference setup root). -/
-def pi1Iv : List UInt8 := hexBytes "1ad4a254a161308f2962fc57d22991f8b26826cbb534d169f3a3dfe97a4be9cb"
+def pi1Iv : List UInt8 := hexBytes "c76853ee27ccbd70709a79c3c3f03d2ac08c31e7b0c1dfe5ce31d6b5d9dd70f3"
 
 /-- The setup's root (`prover::Setup::new(circuit).root()`: the commitment of `κ`, `κ + σ`). -/
-def setupRoot : List UInt8 := hexBytes "4ed1291a3ab56b5ab89e5264042c8bc4e19d099529df269726fd90d44b480933"
+def setupRoot : List UInt8 := hexBytes "40ad4364c388c680553f6442522ebd3741244b7d33cdf682d635042c407b7155"
 
 /-- The circuit's digest (`Circuit::digest`: its encoding with `σ`'s and `κ`'s hashes). -/
-def digest : List UInt8 := hexBytes "731e2ecad676447d234ef83bdaf63c1789d446de22ba9c95e9eafe64cc6c3857"
+def digest : List UInt8 := hexBytes "32225e7bff0632baf1dc519cdecd755b82140c811bd29675a33a84187af8e599"
 
 /-- π1's claims as the circuit names their words (`spec::Circuit::calls`). -/
 def pi1Calls : List (List CallWord) := [
   [.root 0,
-   .const (hexBytes "14120f100f100e0f000000000000000000000000000055011b000000049fc000"),
-   .const (hexBytes "0000000000000000000000000000000000000000000000000000000000000001"),
-   .pair 0 0,
-   .pair 0 1,
+   .element 0,
    .pair 1 0,
    .pair 1 1,
    .pair 2 0,
@@ -308,43 +308,12 @@ def pi1Calls : List (List CallWord) := [
    .pair 11 1,
    .pair 12 0,
    .pair 12 1,
-   .element 13,
-   .element 14],
-  [.root 1,
-   .const (hexBytes "14120f100f100e0f000000000000000000000000000055021a000000028ce003"),
-   .const (hexBytes "0000000000000000000000000000000000000000000000000000000000000001"),
-   .pair 0 0,
-   .pair 0 1,
-   .pair 1 0,
-   .pair 1 1,
-   .pair 2 0,
-   .pair 2 1,
-   .pair 3 0,
-   .pair 3 1,
-   .pair 4 0,
-   .pair 4 1,
-   .pair 5 0,
-   .pair 5 1,
-   .pair 6 0,
-   .pair 6 1,
-   .pair 7 0,
-   .pair 7 1,
-   .pair 8 0,
-   .pair 8 1,
-   .pair 9 0,
-   .pair 9 1,
-   .pair 10 0,
-   .pair 10 1,
-   .pair 11 0,
-   .pair 11 1,
-   .pair 12 0,
-   .pair 12 1,
+   .pair 13 0,
+   .pair 13 1,
+   .element 14,
    .element 15],
-  [.const (hexBytes "8d74ca281ca6cacab54209a8be447206a51c6e29079c9c10ab3967106cbae40a"),
-   .const (hexBytes "14120f100f100e0f000000000000000000000000000055031700000000500000"),
-   .const (hexBytes "0000000000000000000000000000000000000000000000000000000000000001"),
-   .pair 0 0,
-   .pair 0 1,
+  [.root 1,
+   .element 16,
    .pair 1 0,
    .pair 1 1,
    .pair 2 0,
@@ -366,6 +335,37 @@ def pi1Calls : List (List CallWord) := [
    .pair 10 0,
    .pair 10 1,
    .pair 11 0,
-   .element 16]]
+   .pair 11 1,
+   .pair 12 0,
+   .pair 12 1,
+   .pair 13 0,
+   .pair 13 1,
+   .element 17],
+  [.const (hexBytes "067244bea80942b5cacaa61c28ca748d0ae4ba6c106739ab109c9c07296e1ca5"),
+   .const (hexBytes "00000000000000001667157a1c2b0b6b56b47388a81d6fff20e3e5cea9674063"),
+   .pair 1 0,
+   .pair 1 1,
+   .pair 2 0,
+   .pair 2 1,
+   .pair 3 0,
+   .pair 3 1,
+   .pair 4 0,
+   .pair 4 1,
+   .pair 5 0,
+   .pair 5 1,
+   .pair 6 0,
+   .pair 6 1,
+   .pair 7 0,
+   .pair 7 1,
+   .pair 8 0,
+   .pair 8 1,
+   .pair 9 0,
+   .pair 9 1,
+   .pair 10 0,
+   .pair 10 1,
+   .pair 11 0,
+   .pair 11 1,
+   .pair 12 0,
+   .element 18]]
 
 end RecStatement.Data

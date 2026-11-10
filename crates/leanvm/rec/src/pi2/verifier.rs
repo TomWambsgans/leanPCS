@@ -6,9 +6,9 @@
 //! the contract's verifier in Rust ([`verify`]); on the recorder's symbol it is the graph the contract is compiled from
 //! (`pi2::contract`). See `PI2.md` §2 for the protocol.
 //!
-//! The stream: the public data ([`Read`]s), `W`'s root, then `α, β, γ`; `Q`'s root, then `t`; the row's `2^r` fold
-//! values `a_k`, `ξ = κ(t) + β σ(t)` and `s = P(t)` (`P` the internal pushes, committed in `Q`), then `ρ`. At `t` the
-//! verifier computes, as fractions with one inversion at the end:
+//! The stream: the public data ([`Read`]s), `W`'s commitment (its root, its out-of-domain answer), then `α, β, γ`;
+//! `Q`'s commitment, then `t`; the row's `2^r` fold values `a_k`, `ξ = κ(t) + β σ(t)` and `s = P(t)` (`P` the internal
+//! pushes, committed in `Q`), then `ρ`. At `t` the verifier computes, as fractions with one inversion at the end:
 //!
 //! 1. the digits `w_l = w_l(t)`, `w_{l+1} = w_l^2 + w_l`, `l ≤ m + 1`;
 //! 2. the row's cells `v_c = w(t + ω_c) = Σ_k a_k eq(k, (w_l + ω_{c >> l})_{l<r})`;
@@ -20,16 +20,20 @@
 //!    of nonzero value (`y_J` the hole's row), and `R_n / R_d = Σ_g (N_g / D_g)(E_g + Δ + Φ_{k_g})` over the port
 //!    groups, `Δ = d_pull + d_push`, `d_pull = α + v_0 + β t`, `d_push = α + s + ξ`: the identity's right side is
 //!    `(1 + 1_S) Δ + T = Δ + w_m R_n / R_d`;
-//! 6. the claim on `Q`: the identity `h d_pull d_push + q w_m = Δ + w_m R_n / R_d` is one combination of `h(t)` and
-//!    `q(t)` (`c_h = d_pull d_push`, `c_q = w_m`, `Y = c_h + c_q`, `ρ' = w_m / Y`), `P(t) = s`, and the definition
-//!    `w_m q_P(t) = s + P_v(t)`, combined by `ρ` at the kinds' coordinates `(ρ', ρ, ρ² B)` (`PI2.md` §2);
-//! 7. one inversion of `R_d Y · w_{m+1} · c_h D_n` (nonzero required; `D_n = B (α + P_v(t) + ξ)`), and the digits'
+//! 6. the claims on `Q` (`PI2.md` §2): the identity `h d_pull d_push + q w_m = Δ + w_m R_n / R_d` is one combination
+//!    of `h(t)` and `q(t)` (`c_h = d_pull d_push`, `c_q = w_m`, `Y = c_h + c_q`, `ρ' = w_m / Y`); `P(t) = s` and the
+//!    definition `w_m q_P(t) = s + P_v(t)` are combined by `ρ`. Each claim is a point of `Q`'s whole stack (the EIP
+//!    draft's PCS claim): its sixteen slots of `2^m` are `slot = digit + 2 kind + 4 limb` ([`QUOTIENT_SLOTS`]), `h`
+//!    and `q` of limbs 0..2 at kinds 0 and 1, `P` (at digit 1) and `q_P` at limb code 3; so the identity's claim, at
+//!    `(u, ρ', y_0, y_1)`, also weighs `P` and `q_P` (by `y_0 y_1`), whose values the claim at `(u, ρ, 1, 1)` fixes;
+//! 7. one inversion of `R_d Y · w_{m+1} · B · c_h D_n` (nonzero required; `D_n = B (α + P_v(t) + ξ)`), and the digits'
 //!    inverses down from `1/w_{m+1}`: `1/w_l = (1 + w_l) / w_{l+1}`;
 //!
-//! and leaves four claims: `W` at `(ρ, ρ², …, ρ^{2^{r-1}}, w_r, …, w_{m-1})`, value `Σ_k eq(ρ⃗, k) a_k`; `Q` at
-//! `(u_0, …, u_m, ρ', ρ, ρ² B, y_0, y_1)`, `u_l = w_l / (1 + w_l)`, and at `(1^m, 0, 0, 0, 0, y_0, y_1)` (the top
-//! coefficient of `h`: `Σ_V h`), value `0`; the setup (its halves `κ` and `κ + σ`) at `(w_0, …, w_{m-1}, β)`, value
-//! `ξ`.
+//! and leaves five claims, each a point of a commitment's whole stack (its coordinates past the table's zero:
+//! [`stack_vars`]): `W` at `(ρ, ρ², …, ρ^{2^{r-1}}, w_r, …, w_{m-1})`, value `Σ_k eq(ρ⃗, k) a_k`; `Q` at
+//! `(u_0, …, u_m, ρ', y_0, y_1)`, `u_l = w_l / (1 + w_l)` (the identity, and `P`, `q_P` by `y_0 y_1`), at
+//! `(u_0, …, u_m, ρ, 1, 1)` (`P` and `q_P` alone) and at `(1^m, 0, 0, y_0, y_1)` (the top coefficient of `h`: `Σ_V h`),
+//! value `0`; the setup (its halves `κ` and `κ + σ`) at `(w_0, …, w_{m-1}, β)`, value `ξ`.
 
 use leanvm_statement::VerifierError;
 use leanvm_statement::field::E;
@@ -41,7 +45,44 @@ use quotient::domain::point;
 use super::circuit::{Circuit, Coeff, Formula, Lin, NONE, Read, coset_constants, pair_constants};
 
 /// The transcript's 16-byte name.
-pub const NAME: [u8; 16] = *b"leanvm-rec-pi2v2";
+pub const NAME: [u8; 16] = *b"leanvm-rec-pi2v3";
+
+/// The smallest stack leanVM's WHIR takes.
+pub const MIN_LOG_STACK: usize = 15;
+
+/// The smallest stack leanerVM's certified parameters cover (`params/whir_params.py --large`), kept for the stacks:
+/// circuits of `2^CERTIFIED_FROM` positions or more commit no smaller stack (a `W` of `2^23` words takes a `2^24`
+/// stack, half its lanes absent); smaller circuits, the tests', take [`MIN_LOG_STACK`].
+pub const MIN_CERTIFIED_STACK: usize = 24;
+pub const CERTIFIED_FROM: usize = 20;
+
+/// The variables of π2's three committed stacks at `2^log_n` positions: `W` (its `2^m` words), `Q` (sixteen slots of
+/// `2^m`, [`QUOTIENT_SLOTS`]) and the setup (`κ` then `κ + σ`: `2^(m+1)` words), each at least the smallest stack.
+pub fn stack_vars(log_n: usize) -> [usize; 3] {
+    let least = if log_n >= CERTIFIED_FROM {
+        MIN_CERTIFIED_STACK
+    } else {
+        MIN_LOG_STACK
+    };
+    [log_n.max(least), (log_n + 4).max(least), (log_n + 1).max(least)]
+}
+
+/// `Q`'s sixteen slots of `2^m` words: slot `digit + 2 kind + 4 limb`. `h` (one digit) and `q` (two) of limbs 0, 1, 2
+/// at kinds 0 and 1; at limb code 3, `P` (one chunk, at digit 1) and `q_P` (two digits, kind 1). Slots `1, 5, 9`
+/// (`h`'s second digit) and `12` are zero.
+pub const QUOTIENT_SLOTS: usize = 16;
+
+/// The slot of `h`'s limb `l`, of `q`'s limb `l` digit 0 (digit 1 the next), of `P`, of `q_P`'s digit 0.
+pub fn h_slot(l: usize) -> usize {
+    4 * l
+}
+pub fn q_slot(l: usize) -> usize {
+    2 + 4 * l
+}
+pub const P_SLOT: usize = 13;
+pub const QP_SLOT: usize = 14;
+/// The zero slots.
+pub const EMPTY_SLOTS: [usize; 4] = [1, 5, 9, 12];
 
 /// A pair as the verifier needs it: its block size `s` and `Z_{U_s}(c_p)`.
 #[derive(Clone, Copy, Debug)]
@@ -184,7 +225,8 @@ impl Spec {
     }
 }
 
-/// What [`reduce`] leaves: the public scalars, `W`'s and `Q`'s roots, and the four claims, each a point and a value.
+/// What [`reduce`] leaves: the public scalars, `W`'s and `Q`'s commitments, and the five claims, each a point of its
+/// commitment's whole stack and a value.
 #[derive(Clone, Debug)]
 pub struct Reduced<S> {
     pub public: Vec<S>,
@@ -192,10 +234,22 @@ pub struct Reduced<S> {
     /// take (`CallWord::Pair`); a contract computes only those its calls read.
     pub pair_points: Vec<[S; 2]>,
     pub roots: [[S; 2]; 2],
+    /// `W`'s and `Q`'s out-of-domain answers (`crates/pcs_claim`), read after their roots.
+    pub oods: [S; 2],
     pub witness: (Vec<S>, S),
+    /// `Q`'s identity (with `P`, `q_P` weighed by `y_0 y_1`).
     pub quotient: (Vec<S>, S),
+    /// `Q`'s `P` and `q_P`, combined by `ρ`.
+    pub pushes: (Vec<S>, S),
     pub sum: (Vec<S>, S),
     pub setup: (Vec<S>, S),
+}
+
+impl<S: Clone> Reduced<S> {
+    /// The five claims in the contract's order: `W`, the setup, then `Q`'s identity, pushes and sum.
+    pub fn claims(&self) -> [&(Vec<S>, S); 5] {
+        [&self.witness, &self.setup, &self.quotient, &self.pushes, &self.sum]
+    }
 }
 
 fn base<S: Scalar>(x: F64) -> S {
@@ -318,9 +372,13 @@ pub fn reduce_traced<S: Limbs, C: Channel<S>>(
             Read::Scalar => public.push(channel.next_scalar()?),
         }
     }
+    // Each commitment: its root, then its out-of-domain answer, which binds the root to one polynomial before the
+    // challenges (docs/PCS_CLAIM.md).
     let witness_root = channel.next_root()?;
+    let witness_ood = channel.next_scalar()?;
     let [alpha, beta, gamma] = [(); 3].map(|_| channel.sample());
     let quotient_root = channel.next_root()?;
+    let quotient_ood = channel.next_scalar()?;
     let t = channel.sample();
     let a = channel.next_scalars(1 << r)?;
     let xi = channel.next_scalar()?;
@@ -457,10 +515,11 @@ pub fn reduce_traced<S: Limbs, C: Channel<S>>(
     let _phase = enter("pi2: identity and claims");
     // The copy identity at `t`, `c_h h + c_q q = Δ + w_m R_n / R_d`, normalised: `(1 + ρ') h + ρ' q = num1 / (R_d Y)`
     // (`Y = c_h + c_q`, `ρ' = c_q / Y`, `1 + ρ' = c_h / Y`). The definition: `w_m q_P = s + v_0 + w_m A / B = num3 / B`.
-    // `Q`'s claim is at the kinds' coordinates `(ρ', ρ, z)`, `z = ρ² B`: the kinds' weights `(1 + ρ')(1 + ρ)(1 + z)` (h),
-    // `ρ'(1 + ρ)(1 + z)` (q), `(1 + ρ') ρ (1 + z)` (P), `ρ'(1 + ρ) z` (q_P), so that `z q_P = ρ² num3 / w_m` takes no
-    // `1/B`; with the digits' scale `t / w_{m+1}` the value is
-    // `t ((1 + z)((1 + ρ) num1 + c_h ρ s R_d) + (1 + ρ) ρ² num3 R_d) / (w_{m+1} Y R_d)`.
+    // With the digits' scale `D = scale t / w_{m+1}` (a chunk's weighted value is `D` times its polynomial's at `t`,
+    // `PI2.md` §2), `Q`'s claims are worth: the identity's, at `(u, ρ', y_0, y_1)`,
+    // `(D / Y)(num1 / R_d + c_3 (c_h w_m s + num3 / B))`, `c_3 = y_0 y_1 / ((1 + y_0)(1 + y_1))` (`P` at digit 1 weighs
+    // `u_m (1 + ρ') y_0 y_1`, `q_P` `ρ' y_0 y_1`); the pushes', at `(u, ρ, 1, 1)`,
+    // `(D / L_0)((1 + ρ) w_m s + ρ num3 / (w_m B))`, `L_0 = (1 + y_0)(1 + y_1)`.
     let c_h = d_pull * d_push;
     let y = c_h + w[m];
     // `D_n = B (α + P_v(t) + ξ)`, required nonzero with the rest: the pushes' fraction `A / B` whole in the check (the
@@ -468,47 +527,60 @@ pub fn reduce_traced<S: Limbs, C: Channel<S>>(
     let d_n = (alpha + v0 + xi) * den + w[m] * num;
     let num1 = delta * r_den + w[m] * r_num;
     let num3 = d_n + d_push * den;
-    let rho2 = rho.square();
-    let z = rho2 * den;
-    let numer = (one + z) * ((one + rho) * num1 + c_h * rho * (s * r_den)) + (one + rho) * rho2 * (num3 * r_den);
-    // One inversion: of `R_d Y`, `w_{m+1}`, `c_h` (nonzero: `1 + ρ'` is not zero, so the claim binds `h(t)` and `P(t)`)
-    // and `D_n`.
+    // One inversion: of `R_d Y`, `w_{m+1}`, `B`, `c_h` (nonzero: `1 + ρ'` is not zero, so the claim binds `h(t)` and
+    // `P(t)`) and `D_n`.
     let p1 = r_den * y;
     let p2 = p1 * w[m + 1];
+    let p3 = p2 * den;
     let cd = c_h * d_n;
-    let all = p2 * cd;
-    trace("identity", &[d_pull, d_push, d_n, num1, num3, y, z, numer, p1, p2, all]);
+    let all = p3 * cd;
+    trace("identity", &[d_pull, d_push, d_n, num1, num3, y, p1, p2, p3, all]);
     channel.require_nonzero(all, VerifierError::RecDegenerate)?;
     let inv_all = {
         let _phase = enter("pi2: the inversion");
         inverse(all)
     };
-    let inv_p2 = inv_all * cd;
+    let inv_p3 = inv_all * cd;
+    let inv_p2 = inv_p3 * den;
     let inv_top = inv_p2 * p1;
     let rho_q = w[m] * (inv_p2 * (r_den * w[m + 1]));
-    let combination = numer * inv_p2;
     // `1/w_l = (1 + w_l) / w_{l+1}` (as `w_{l+1} = w_l (1 + w_l)`), down from `1/w_{m+1}`.
     let mut w_invs = vec![S::zero(); m + 2];
     w_invs[m + 1] = inv_top;
     for l in (0..m + 1).rev() {
         w_invs[l] = (one + w[l]) * w_invs[l + 1];
     }
-    trace("inverse", &[inv_all, inv_p2, inv_top, rho_q, combination]);
+    let ([y0, y1], scale) = extension();
+    let l0 = (F192::ONE + y0) * (F192::ONE + y1);
+    let c3 = ext::<S>(y0 * y1 * l0.inv());
+    let scale_l0 = ext::<S>(scale * l0.inv());
+    let (y0, y1, scale) = (ext::<S>(y0), ext::<S>(y1), ext::<S>(scale));
+    let st = scale * t;
+    // The identity's value: `scale t (num1 B + c_3 R_d (c_h w_m s B + num3)) / (w_{m+1} Y R_d B)`.
+    let quotient_value = st * inv_p3 * (num1 * den + c3 * (r_den * (c_h * (w[m] * (s * den)) + num3)));
+    // The pushes': `(scale / L_0) t ((1 + ρ) w_m² s B + ρ num3) / (w_{m+1} w_m B)`, `1 / (w_{m+1} B) = R_d Y / p3`.
+    let pushes_value =
+        scale_l0 * t * ((one + rho) * (w[m].square() * (s * den)) + rho * num3) * (inv_p3 * p1) * w_invs[m];
+    trace("inverse", &[inv_all, inv_p3, inv_p2, inv_top, rho_q]);
     trace("digit inverses", &w_invs);
 
-    // `1/(1 + w_l) = 1/w_l + 1/w_{l+1}`; their product telescopes to `t / w_{m+1}`, in the value.
-    let ([y0, y1], scale) = extension();
-    let (y0, y1, scale) = (ext::<S>(y0), ext::<S>(y1), ext::<S>(scale));
+    // `1/(1 + w_l) = 1/w_l + 1/w_{l+1}`.
     let u: Vec<S> = (0..m + 1).map(|l| one + w_invs[l] + w_invs[l + 1]).collect();
-    let quotient_value = scale * t * combination;
-    let quotient_point = [&u[..], &[rho_q, rho, z, y0, y1]].concat();
-    let sum_point = [vec![one; m], vec![S::zero(); 4], vec![y0, y1]].concat();
+    let [wv, qv, sv] = stack_vars(m);
+    let padded = |point: Vec<S>, vars: usize| -> Vec<S> {
+        let mut point = point;
+        point.resize(vars, S::zero());
+        point
+    };
+    let quotient_point = padded([&u[..], &[rho_q, y0, y1]].concat(), qv);
+    let pushes_point = padded([&u[..], &[rho, one, one]].concat(), qv);
+    let sum_point = padded([vec![one; m], vec![S::zero(); 2], vec![y0, y1]].concat(), qv);
     trace("u", &u);
-    trace("quotient", &[rho_q, combination, quotient_value]);
+    trace("quotient", &[rho_q, quotient_value, pushes_value]);
 
     let mut rhos = vec![rho];
     for l in 1..r {
-        rhos.push(if l == 1 { rho2 } else { rhos[l - 1].square() });
+        rhos.push(rhos[l - 1].square());
     }
     let mut fold = a;
     for l in (0..r).rev() {
@@ -520,15 +592,17 @@ pub fn reduce_traced<S: Limbs, C: Channel<S>>(
     }
     trace("rhos", &rhos);
     trace("fold", &fold);
-    let witness_point = [&rhos[..], &w[r..m]].concat();
-    let setup_point = [&w[..m], &[beta]].concat();
+    let witness_point = padded([&rhos[..], &w[r..m]].concat(), wv);
+    let setup_point = padded([&w[..m], &[beta]].concat(), sv);
     let pair_points = public.iter().map(|&x| leanvm_statement::transcript::pair_point(x)).collect();
     Ok(Reduced {
         pair_points,
         public,
         roots: [witness_root, quotient_root],
+        oods: [witness_ood, quotient_ood],
         witness: (witness_point, fold[0]),
         quotient: (quotient_point, quotient_value),
+        pushes: (pushes_point, pushes_value),
         sum: (sum_point, S::zero()),
         setup: (setup_point, xi),
     })
@@ -563,12 +637,9 @@ pub fn to_e(x: F192) -> E {
     E::new(x.c0, x.c1, x.c2)
 }
 
-/// A claim of [`Reduced`] as `quotient::opening` takes it.
-pub fn claim((point, value): &(Vec<E>, E)) -> quotient::opening::Claim {
-    quotient::opening::Claim {
-        point: point.iter().map(|&x| to_f192(x)).collect(),
-        value: to_f192(*value),
-    }
+/// A claim of [`Reduced`] in the prover's field: its point and value.
+pub fn claim((point, value): &(Vec<E>, E)) -> (Vec<F192>, F192) {
+    (point.iter().map(|&x| to_f192(x)).collect(), to_f192(*value))
 }
 
 /// Pairs per position and the pair constants, for tests of the indicators against the circuit.

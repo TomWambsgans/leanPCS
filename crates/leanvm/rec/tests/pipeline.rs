@@ -73,7 +73,6 @@ fn trace_to_recursion() {
             claims: Claims::Point,
             check: false,
             garbage: false,
-            stand_in_roots: None,
             roots,
         };
         let recorded = leanvm_univariate::contract::record_verifier_with(&shape, KECCAK_REC3, Claims::Point, &roots);
@@ -97,7 +96,7 @@ fn trace_to_recursion() {
         let spec = Spec::of(&circuit);
         let setup = Setup::new(&circuit);
         let digest = circuit.digest();
-        let iv = prover::iv(&compiled.pi1_iv, &digest, &setup.root(), circuit.log_n);
+        let iv = prover::iv(&compiled.pi1_iv, &digest, &setup.root(), setup.ood(), circuit.log_n);
         let pi2_setup = started.elapsed().as_secs_f64();
         drop((compiled, pi1_proof));
         println!(
@@ -175,10 +174,10 @@ fn trace_to_recursion() {
                 );
             }
             assert_eq!(
-                verify_openings(circuit.log_n, &reduced, &roots2, &setup.root(), &openings),
+                verify_openings(circuit.log_n, &reduced, &roots2, &setup.root(), setup.ood(), &openings),
                 Ok(())
             );
-            let opened = format!("{:?}", (&openings.witness, &openings.quotient, &openings.setup)).into_bytes();
+            let opened = format!("{:?}", &openings.proofs).into_bytes();
             match &first {
                 None => first = Some((pi1_proof.stream.clone(), stream, opened)),
                 Some((s1, s2, o2)) => {

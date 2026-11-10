@@ -332,6 +332,16 @@ pub fn open(committed: &Committed, claim: &PcsClaim) -> Proof {
 /// level-0 rows are the whole stack's (`64` words, the absent lanes' zeros leading), as a verifier that knows only `n`
 /// reads them. A kept codeword serves this opening and is freed.
 pub fn open_words(words: &[F64], commitment: &Commitment, claim: &PcsClaim) -> Proof {
+    open_words_with(words, commitment, claim, true)
+}
+
+/// [`open_words`], reading a kept codeword without freeing it: for a commitment opened more than once (a claim at
+/// each of several points, a setup every proof opens).
+pub fn open_words_keeping(words: &[F64], commitment: &Commitment, claim: &PcsClaim) -> Proof {
+    open_words_with(words, commitment, claim, false)
+}
+
+fn open_words_with(words: &[F64], commitment: &Commitment, claim: &PcsClaim, free: bool) -> Proof {
     let n = commitment.n;
     assert!(
         claim.n as usize == n && claim.root == commitment.root && claim.ood == commitment.ood,
@@ -346,17 +356,20 @@ pub fn open_words(words: &[F64], commitment: &Commitment, claim: &PcsClaim) -> P
         eq_tensor(&ood_point(n, &commitment.root), F192::ONE),
         eq_tensor(&claim.point, lambda),
     ];
-    let codeword = commitment.codeword.lock().expect("the codeword").take();
+    let mut kept = commitment.codeword.lock().expect("the codeword");
+    let taken = if free { kept.take() } else { None };
+    let codeword = if free { taken.as_deref() } else { kept.as_deref() };
     recursive_prover_with_lane_tensors(
         &config,
         n,
         words,
         &weight,
         target,
-        codeword.as_deref(),
+        codeword,
         &commitment.tree[..],
         &mut ps,
     );
+    drop((taken, kept));
     let mut proof = ps.into_proof();
     // Level 0's rows hold the committed lanes alone, the tail of a leaf's image: the whole stack's lead with the
     // absent lanes' zeros (`pcs::whir::commit`).

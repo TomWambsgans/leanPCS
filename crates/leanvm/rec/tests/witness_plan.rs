@@ -37,10 +37,7 @@ fn deep<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> R {
 fn real(name: &str) -> (Recorded, [u8; 32], Vec<u8>) {
     let path = format!("{}/../univariate/tests/vectors/{name}.txt", env!("CARGO_MANIFEST_DIR"));
     let v = vectors::read(&std::fs::read_to_string(&path).expect("a committed vector"));
-    let roots = leanvm_univariate::contract::SetupRoots {
-        f: v.whir_roots[2],
-        ..leanvm_univariate::contract::SetupRoots::REFERENCE
-    };
+    let roots = vectors::setup_roots(&v);
     let recorded = leanvm_univariate::contract::record_verifier_with(
         &v.shape,
         vectors::variant_of(&v.config),

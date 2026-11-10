@@ -148,7 +148,7 @@ pub fn live(graph: &Graph, outputs: impl IntoIterator<Item = u32>) -> Vec<bool> 
 /// The graph's outputs: every node a claim writes, and every checked value.
 pub fn outputs(recorded: &Recorded) -> Vec<u32> {
     let graph = &recorded.graph;
-    let words = calls(recorded).concat();
+    let words: Vec<Word> = calls(recorded).iter().flat_map(|claim| claim.words()).collect();
     words
         .iter()
         .filter_map(|w| match w {

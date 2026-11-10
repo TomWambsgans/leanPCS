@@ -73,6 +73,7 @@ fn report(name: &str, shape: &Shape) -> usize {
         &circuit,
         &spec,
         [0x44; 32],
+        primitives::field::F192::new(5, 6, 7),
         &compiled.pi1_iv,
         &compiled.finished.circuit.calls,
     );

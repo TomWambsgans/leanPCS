@@ -1,8 +1,8 @@
 // Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! π2's PIOP (`src/pi2`, `PI2.md`), end to end on synthetic circuits built with the interface, D16v:
 //!
-//! - `small_*`: the honest proof's four claims hold and its three openings verify (`quotient::opening::verify`, what
-//!   the block proves); a witness that breaks one copy, one formula or one public element leaves a false claim; a
+//! - `small_*`: the honest proof's five claims hold and their openings verify (`pcs_claim::verify_claim`, what the
+//!   block proves); a witness that breaks one copy, one formula or one public element leaves a false claim; a
 //!   flipped byte of the stream gives claims the openings do not prove;
 //! - `the_interface_example`: the circuit compiler's own example (`circuit::spec::example`), padded, through the
 //!   adapter;
@@ -17,10 +17,12 @@
 static ALLOC: bench::Jemalloc = bench::Jemalloc;
 
 use leanvm_statement::evm::machine::element_word;
+use leanvm_statement::field::E;
+use pcs_claim::PcsClaim;
 use leanvm_rec::circuit::spec::{self, CallWord};
 use leanvm_rec::pi2::adapt;
 use leanvm_rec::pi2::circuit::{Circuit, NONE};
-use leanvm_rec::pi2::contract::{self, Instance, calldata, number, record_verifier, sample_stream};
+use leanvm_rec::pi2::contract::{self, Instance, calldata, record_verifier, sample_stream};
 use leanvm_rec::pi2::prover::{
     self, PublicValue, Setup, claims_hold, open, prove, prove_with, public_scalars, verify_openings,
 };
@@ -56,7 +58,7 @@ fn fixture(circuit: Circuit, witness: Vec<F64>, public_input: [u8; 32], values: 
         .expect("the witness satisfies the circuit");
     let spec = Spec::of(&circuit);
     let setup = Setup::new(&circuit);
-    let iv = prover::iv(&PI1_IV, &circuit.digest(), &setup.root(), circuit.log_n);
+    let iv = prover::iv(&PI1_IV, &circuit.digest(), &setup.root(), setup.ood(), circuit.log_n);
     Fixture {
         circuit,
         witness,
@@ -110,7 +112,7 @@ fn honest_and_mutated(f: &Fixture, mutations: usize) {
     );
     assert_eq!(
         claims_hold(&proved, &f.setup),
-        [true; 4],
+        [true; 5],
         "the honest proof's claims hold"
     );
     let stream = proved.stream.clone();
@@ -126,7 +128,7 @@ fn honest_and_mutated(f: &Fixture, mutations: usize) {
     );
     let (reduced, roots, openings) = open(proved, &f.setup);
     assert_eq!(
-        verify_openings(f.circuit.log_n, &reduced, &roots, &f.setup.root(), &openings),
+        verify_openings(f.circuit.log_n, &reduced, &roots, &f.setup.root(), f.setup.ood(), &openings),
         Ok(())
     );
 
@@ -136,7 +138,7 @@ fn honest_and_mutated(f: &Fixture, mutations: usize) {
         bad[at] ^= 0x20;
         let other = leanvm_rec::pi2::verifier::verify(&f.spec, &f.iv, &f.public_input, &bad).expect("the length");
         assert!(
-            verify_openings(f.circuit.log_n, &other, &roots, &f.setup.root(), &openings).is_err(),
+            verify_openings(f.circuit.log_n, &other, &roots, &f.setup.root(), f.setup.ood(), &openings).is_err(),
             "byte {at} flipped"
         );
     }
@@ -192,7 +194,7 @@ fn honest_and_mutated(f: &Fixture, mutations: usize) {
     // argument's sum, zero, is the false claim (PI2.md §7).
     assert_eq!(
         claims_hold(&proved, &f.setup),
-        [true, true, false, true],
+        [true, true, true, true, false],
         "a public element changed"
     );
     let mut public_input = f.public_input;
@@ -209,7 +211,7 @@ fn honest_and_mutated(f: &Fixture, mutations: usize) {
     );
     assert_eq!(
         claims_hold(&proved, &f.setup),
-        [true, true, false, true],
+        [true, true, true, true, false],
         "the public input changed"
     );
 }
@@ -257,10 +259,10 @@ fn the_interface_example() {
         &f.values,
         &f.witness,
     );
-    assert_eq!(claims_hold(&proved, &f.setup), [true; 4]);
+    assert_eq!(claims_hold(&proved, &f.setup), [true; 5]);
     let (reduced, roots, openings) = open(proved, &f.setup);
     assert_eq!(
-        verify_openings(f.circuit.log_n, &reduced, &roots, &f.setup.root(), &openings),
+        verify_openings(f.circuit.log_n, &reduced, &roots, &f.setup.root(), f.setup.ood(), &openings),
         Ok(())
     );
     // The value the port binds, changed: the sum's claim is false (the identity's holds, PI2.md §7).
@@ -277,33 +279,21 @@ fn the_interface_example() {
         &f.witness,
         false,
     );
-    assert_eq!(claims_hold(&proved, &f.setup), [true, true, false, true]);
+    assert_eq!(claims_hold(&proved, &f.setup), [true, true, true, true, false]);
 }
 
-/// π1's calls for a small circuit: five calls of the real ones' kinds (constants, the two roots, elements).
+/// π1's claims for a small circuit: five claims of the real ones' kinds (each its root, out-of-domain answer, point
+/// and value: the two roots, constants, elements).
 fn small_pi1() -> Vec<Vec<CallWord>> {
     let c = |b: u8| CallWord::Const([b; 32]);
-    let n = |k: u64| CallWord::Const(number(k));
+    let e = |k: u64| CallWord::Const(element_word(E::new(k, 0, 0)));
+    let x = CallWord::Element;
     vec![
-        vec![
-            CallWord::Root(0),
-            c(1),
-            n(1),
-            CallWord::Element(0),
-            CallWord::Element(1),
-            CallWord::Element(2),
-        ],
-        vec![
-            CallWord::Root(1),
-            c(2),
-            n(1),
-            CallWord::Element(0),
-            CallWord::Element(1),
-            CallWord::Element(1),
-        ],
-        vec![c(9), c(3), n(1), CallWord::Element(0), CallWord::Element(2)],
-        vec![c(8), c(4), n(1), CallWord::Element(2), c(0), CallWord::Element(1)],
-        vec![c(7), c(5), n(1), CallWord::Element(2), c(0), CallWord::Element(0)],
+        vec![CallWord::Root(0), x(0), x(1), x(2), x(1)],
+        vec![CallWord::Root(1), x(2), x(1), x(0), x(1)],
+        vec![c(9), e(3), x(0), x(2), x(2)],
+        vec![c(8), e(4), x(2), e(0), x(1)],
+        vec![c(7), e(5), x(2), e(0), x(0)],
     ]
 }
 
@@ -311,7 +301,7 @@ fn contract_checks(design: Design) {
     deep(move || {
         let f = built(&design);
         let pi1 = small_pi1();
-        let inst = Instance::new(&f.circuit, &f.spec, f.setup.root(), &PI1_IV, &pi1);
+        let inst = Instance::new(&f.circuit, &f.spec, f.setup.root(), f.setup.ood(), &PI1_IV, &pi1);
         assert_eq!(inst.iv, f.iv, "the instance's IV is the prover's");
         let recorded = record_verifier(&f.spec);
         let proved = prove(
@@ -333,24 +323,18 @@ fn contract_checks(design: Design) {
         // The honest proof: the contract checks π1's claims and those the openings prove, declared.
         let (reduced, roots, openings) = open(proved, &f.setup);
         assert_eq!(
-            verify_openings(f.circuit.log_n, &reduced, &roots, &f.setup.root(), &openings),
+            verify_openings(f.circuit.log_n, &reduced, &roots, &f.setup.root(), f.setup.ood(), &openings),
             Ok(())
         );
-        let expected: Vec<Vec<u8>> = contract::expected_calls(&inst, &recorded, &reduced, &stream)
-            .into_iter()
-            .map(|words| words.concat())
-            .collect();
+        let block = contract::expected_claims(&inst, &recorded, &reduced, &stream);
         let data = calldata(&f.public_input, &stream);
-        let block = contract::expected_openings(&inst, &recorded, &reduced, &roots, &stream);
         let (accepted, calls) = contract::run(&inst, &recorded, &data, &block);
         assert!(accepted, "the contract accepts the honest proof");
-        assert_eq!(calls, expected);
-        // π2's calls are the claims `opening::verify` accepted: their words, read back.
-        let pi2 = &calls[pi1.len()..];
-        let word = |input: &[u8], k: usize| -> [u8; 32] { input[32 * k..32 * k + 32].try_into().unwrap() };
-        assert_eq!(word(&pi2[0], 3), element_word(reduced.witness.0[0]));
-        assert_eq!(word(&pi2[2], 2), number(2), "Q's two claims in one call");
-        let _ = to_f192;
+        assert_eq!(calls, block.iter().map(PcsClaim::encode).collect::<Vec<_>>());
+        // π2's claims are those `pcs_claim::verify_claim` accepted.
+        let pi2 = prover::claims(f.circuit.log_n, &reduced, &roots, &f.setup.root(), f.setup.ood());
+        assert_eq!(block[pi1.len()..], pi2[..]);
+        assert_eq!(pi2[0].value, to_f192(reduced.witness.1));
         for at in [36, data.len() / 2, data.len() - 2, data.len() - 1] {
             let mut bad = data.clone();
             bad[at] ^= 1;
@@ -396,7 +380,7 @@ fn target_report(name: &str, design: Design) {
             pi1.roots <= 2 && pi1.elements <= 51,
             "the synthetic circuit's public data hold π1's"
         );
-        let inst = Instance::new(circuit, &spec, [0x44; 32], &[0x33; 32], &pi1.calls);
+        let inst = Instance::new(circuit, &spec, [0x44; 32], F192::new(5, 6, 7), &[0x33; 32], &pi1.calls);
         let recorded = record_verifier(&spec);
         let report = contract::measure(&inst, &recorded);
         print!("{}", report.table(&name));
@@ -458,7 +442,7 @@ fn prove_target() {
     let opening = start.elapsed().as_secs_f64();
     println!("prove {proving:.1} s, open {opening:.1} s; {}", peak_memory());
     assert_eq!(
-        verify_openings(f.circuit.log_n, &reduced, &roots, &f.setup.root(), &openings),
+        verify_openings(f.circuit.log_n, &reduced, &roots, &f.setup.root(), f.setup.ood(), &openings),
         Ok(())
     );
 }

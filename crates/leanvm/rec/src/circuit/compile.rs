@@ -24,7 +24,6 @@
 use std::collections::BTreeMap;
 
 use leanvm_statement::evm::codegen::Word;
-use leanvm_statement::evm::machine::root_word;
 use leanvm_statement::evm::record::{Graph, Node, Sym, record};
 use leanvm_statement::field::{E, K};
 use leanvm_statement::ring_tower;
@@ -243,7 +242,8 @@ pub fn compile_keeping<P: Permutation>(
     let pi1_iv = recorded.iv(&inputs.program_iv);
     let stream = inputs.stream;
     assert_eq!(stream.len(), recorded.stream_len);
-    let call_words: Vec<Vec<Word>> = calls(recorded);
+    // Each π1 claim's words in the claim's order: its root, its out-of-domain answer, its point, its value.
+    let call_words: Vec<Vec<Word>> = calls(recorded).iter().map(|claim| claim.words()).collect();
     let mapped = |w: &Word| match *w {
         Word::Node(id) => Word::Node(map[id as usize]),
         other => other,
@@ -538,10 +538,9 @@ pub fn compile_keeping<P: Permutation>(
     ports.port(&mut b, &statement_limb, Source::Statement);
     let mut roots: Vec<[u8; 32]> = Vec::new();
     let mut root_of: BTreeMap<usize, u32> = BTreeMap::new();
-    // A root is public as a claim's root word (one encoding for the claims), which is the
-    // stream's 32 bytes as they are: π1's prover sends a root as its two WHIR scalars, big-endian
-    // (`leanvm_univariate::prover::prove::halves`), and π1's own contract passes them so. Its
-    // limbs `L_l` are the big-endian words of the stream's bytes `24 − 8l .. 32 − 8l` (`spec::word_limbs`).
+    // A root is public as a claim encodes it, the stream's 32 bytes as they are: π1's prover sends a root's bytes
+    // (`leanvm_univariate::prover::prove::halves`), and π1's own contract passes them so. Its limbs `L_l` are the
+    // big-endian words of the stream's bytes `24 − 8l .. 32 − 8l` (`spec::word_limbs`).
     for &at in &recorded.roots_at {
         assert!(hashed[at..at + 32].iter().all(|&h| h), "a root is hashed");
         let root_limbs: Vec<Value> = (0..4)
@@ -557,10 +556,9 @@ pub fn compile_keeping<P: Permutation>(
     let mut circuit_calls: Vec<Vec<CallWord>> = Vec::new();
     for call in &call_words {
         let mut words = Vec::new();
-        for (k, w) in call.iter().enumerate() {
+        for w in call {
             words.push(match *w {
-                // A setup root (word 0): a claim's root word (M1) of the hash π1's contract holds as it is.
-                Word::Const(bytes) if k == 0 => CallWord::Const(root_word(&bytes)),
+                // A constant: the setup commitment's root and out-of-domain answer, a constant element.
                 Word::Const(bytes) => CallWord::Const(bytes),
                 Word::Stream(at) => CallWord::Root(root_of[&at]),
                 Word::Node(id) => match (g.nodes[id as usize], pair_coordinate(&g, id)) {

@@ -58,8 +58,16 @@ fn recorded(graph: Graph, reduced: Reduced<Sym>, stream_len: usize, roots_at: [u
 }
 
 fn reduced(roots: [[Sym; 2]; 2], openings: Vec<(Commitment, Opening<Sym>)>) -> Reduced<Sym> {
+    let ood = openings
+        .iter()
+        .find_map(|(_, o)| match o {
+            Opening::Point { value, .. } => Some(*value),
+            Opening::Weighted(_) => None,
+        })
+        .unwrap_or(Sym(0));
     Reduced {
         roots,
+        oods: [ood, ood],
         openings,
         relations: 0,
         stack_vars: vec![],
