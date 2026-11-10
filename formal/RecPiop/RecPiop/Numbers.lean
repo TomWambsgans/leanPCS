@@ -10,7 +10,8 @@ roots; `d_j = 1`, the other ports `0`, `RecPiop.Ports`), `|F| = 2^192`, and the 
 `W` and `Q` (`L_W = 9,952`, `L_Q = 3,564`), ListChainU's factors times `piop`'s errors are:
 
 * the copy argument and the ports `(α, β, γ)`, over `L_W`: `9952 (4·2^24 + 2)/2^192 ≤ 2^-152` (`bits_copy`; 152.72);
-* the identities at `t`, over `L_W L_Q`: `9952·3564 (3·2^24 − 1)/2^192 ≤ 2^-141` (`bits_t`; 141.33);
+* the identities at `t` (`h` below `2N`, `Q`'s empty slot `S`), over `L_W L_Q`: `9952·3564 (4·2^24 − 1)/2^192 ≤
+  2^-140` (`bits_t`; 140.92);
 * `W`'s fold and `Q`'s pushes' claim at `ρ`, over `L_W L_Q`: `9952·3564·16/2^192 ≤ 2^-162` (`bits_rho`; 162.92).
 -/
 
@@ -47,9 +48,9 @@ theorem bits_copy (G : Circuit F) (hN : G.logN = 24) (d : ℕ → ℕ)
   rw [ite_eq_left rfl, hF, N_of_logN hN, hd]
   exact mul_div_le_inv_pow (by positivity) (by norm_num)
 
-/-- **The identities at `t`, over `W`'s and `Q`'s lists: 141 bits.** -/
+/-- **The identities at `t`, over `W`'s and `Q`'s lists: 140 bits** (`(4N − 1)/|F|`, 140.92). -/
 theorem bits_t (G : Circuit F) (hN : G.logN = 24) (d : ℕ → ℕ) (hF : Fintype.card F = 2 ^ 192) :
-    ((9952 * 3564 : ℕ) : ℝ≥0∞) * err G d 1 ≤ 1 / 2 ^ 141 := by
+    ((9952 * 3564 : ℕ) : ℝ≥0∞) * err G d 1 ≤ 1 / 2 ^ 140 := by
   unfold err
   rw [ite_eq_right (by decide : (1 : ℕ) ≠ 0), ite_eq_left rfl, hF, N_of_logN hN]
   exact mul_div_le_inv_pow (by positivity) (by norm_num)

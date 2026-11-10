@@ -30,11 +30,12 @@ evaluates on `V_m`, where the definition pins `P` to `P_v`, to the pointwise ide
 (`idPoly_eval_omega`): if both are the zero polynomial and `Σ_V h = 0`, the state `CopyOK` holds
 (`copyOK_of_idPoly`).
 
-**The degrees** (`natDegree_idPoly_le`, `natDegree_defPoly_le`): with `w, σ, κ, h, P, Φ` below `N` and `q`, `q_P`
-below `2N`, the indicators are at most `N − 2^s` (`natDegree_ind_le`), the formulas at most `2(N − 1)` (a port's,
-linear, `N − 1`), so `P_v` at most `3(N − 1)`, `d_push` below `N`, `T` at most `2(N − 1)`, and both identities at
-most `3N − 1`. **Schwartz–Zippel in `t`** (`card_idPoly_eval_eq_zero_le`): unless both are zero, they vanish
-together at at most `3N − 1` points `t`.
+**The degrees** (`natDegree_idPoly_le`, `natDegree_defPoly_le`): with `w, σ, κ, P, Φ` below `N`, `h` below `2N`
+(`h = h_0 + Z_V h_1`, the prover's second digit `h_1` in `Q`'s slots `1, 5, 9`, `PI2.md` §2) and `q`, `q_P` below
+`2N`, the indicators are at most `N − 2^s` (`natDegree_ind_le`), the formulas at most `2(N − 1)` (a port's, linear,
+`N − 1`), so `P_v` at most `3(N − 1)`, `d_push` below `N`, `T` at most `2(N − 1)`, the copy identity at most
+`4N − 1` and `P`'s definition at most `3N − 1`. **Schwartz–Zippel in `t`** (`card_idPoly_eval_eq_zero_le`): unless
+both are zero, they vanish together at at most `4N − 1` points `t`.
 
 The setup's polynomials `σ`, `κ` (`SetupPolys`) are any of degree below `N` taking the columns'
 values on `V_m` (`SetupPolys.ofInterpolate` builds them by interpolation).
@@ -480,12 +481,12 @@ theorem natDegree_defPoly_le (hV : G.Valid) {wP pP qPP : F[X]} (hw : wP.natDegre
   refine natDegree_add_le_of_degree_le (natDegree_add_le_of_degree_le (by omega) (hv.trans (by omega)))
     (hD.trans (by omega))
 
-/-- **The copy identity has degree at most `3N − 1`**, for `w, σ, κ, h, P, Φ` below `N` and `q` below `2N`
-(`q·Z_V` dominates; `h·d_pull·d_push` is at most `3(N − 1)`, the rest at most `2(N − 1)`). -/
+/-- **The copy identity has degree at most `4N − 1`**, for `w, σ, κ, P, Φ` below `N` and `h`, `q` below `2N`
+(`h·d_pull·d_push` is at most `4N − 3`, `q·Z_V` at most `3N − 1`, the rest at most `2(N − 1)`). -/
 theorem natDegree_idPoly_le (hV : G.Valid) (S : SetupPolys G ω) {Φ : ℕ → F[X]}
     (hΦ : ∀ k, (Φ k).natDegree < G.N) {wP hP qP pP : F[X]}
-    (hw : wP.natDegree < G.N) (hh : hP.natDegree < G.N) (hq : qP.natDegree < 2 * G.N)
-    (hp : pP.natDegree < G.N) (α β γ : F) : (G.idPoly ω S Φ wP hP qP pP α β γ).natDegree ≤ 3 * G.N - 1 := by
+    (hw : wP.natDegree < G.N) (hh : hP.natDegree < 2 * G.N) (hq : qP.natDegree < 2 * G.N)
+    (hp : pP.natDegree < G.N) (α β γ : F) : (G.idPoly ω S Φ wP hP qP pP α β γ).natDegree ≤ 4 * G.N - 1 := by
   have h2 := N_ge_two hV
   have hpull := natDegree_dPullP_le (D := G.N - 1) (by omega) (by omega) α β (wP := wP)
   have hpush := natDegree_dPushP_le S hp α β
@@ -494,7 +495,7 @@ theorem natDegree_idPoly_le (hV : G.Valid) (S : SetupPolys G ω) {Φ : ℕ → F
   have hz := natDegree_zV_le (G := G) (ω := ω)
   have h1 : (1 + G.holePoly ω).natDegree ≤ G.N - 1 :=
     natDegree_add_le_of_degree_le (by rw [natDegree_one]; exact Nat.zero_le _) hhole
-  have hA := natDegree_mul_le_of_le (natDegree_mul_le_of_le hh.le hpull) hpush
+  have hA := natDegree_mul_le_of_le (natDegree_mul_le_of_le (Nat.le_sub_one_of_lt hh) hpull) hpush
   have hB := natDegree_mul_le_of_le h1 (natDegree_add_le_of_degree_le hpush hpull)
   have hD := natDegree_mul_le_of_le (Nat.le_sub_one_of_lt hq) hz
   unfold idPoly
@@ -513,20 +514,20 @@ theorem card_eval_eq_zero_le [Fintype F] (p : F[X]) (hp : p ≠ 0) :
   rw [Multiset.mem_toFinset, mem_roots hp, IsRoot.def]
   exact (Finset.mem_filter.mp ht).2
 
-/-- **The identities at a random point**: unless both are zero, they vanish together at at most `3N − 1` points
-`t`. -/
+/-- **The identities at a random point**: unless both are zero, they vanish together at at most `4N − 1` points
+`t` (`h` below `2N`). -/
 theorem card_idPoly_eval_eq_zero_le [Fintype F] (hV : G.Valid) (S : SetupPolys G ω) {Φ : ℕ → F[X]}
     (hΦ : ∀ k, (Φ k).natDegree < G.N) {wP hP qP pP qPP : F[X]} (hw : wP.natDegree < G.N)
-    (hh : hP.natDegree < G.N) (hq : qP.natDegree < 2 * G.N) (hp : pP.natDegree < G.N)
+    (hh : hP.natDegree < 2 * G.N) (hq : qP.natDegree < 2 * G.N) (hp : pP.natDegree < G.N)
     (hqp : qPP.natDegree < 2 * G.N) (α β γ : F)
     (hne : ¬ (G.idPoly ω S Φ wP hP qP pP α β γ = 0 ∧ G.defPoly ω wP pP qPP γ = 0)) :
     (univ.filter fun t => (G.idPoly ω S Φ wP hP qP pP α β γ).eval t = 0 ∧
-      (G.defPoly ω wP pP qPP γ).eval t = 0).card ≤ 3 * G.N - 1 := by
+      (G.defPoly ω wP pP qPP γ).eval t = 0).card ≤ 4 * G.N - 1 := by
   by_cases h1 : G.idPoly ω S Φ wP hP qP pP α β γ = 0
   · have h2 : G.defPoly ω wP pP qPP γ ≠ 0 := fun h => hne ⟨h1, h⟩
     exact (Finset.card_le_card fun t ht => Finset.mem_filter.mpr ⟨Finset.mem_univ _,
       (Finset.mem_filter.mp ht).2.2⟩).trans ((card_eval_eq_zero_le _ h2).trans
-        (natDegree_defPoly_le hV hw hp hqp γ))
+        ((natDegree_defPoly_le hV hw hp hqp γ).trans (by omega)))
   · exact (Finset.card_le_card fun t ht => Finset.mem_filter.mpr ⟨Finset.mem_univ _,
       (Finset.mem_filter.mp ht).2.1⟩).trans ((card_eval_eq_zero_le _ h1).trans
         (natDegree_idPoly_le hV S hΦ hw hh hq hp α β γ))

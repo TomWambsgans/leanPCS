@@ -46,7 +46,8 @@ holes carry the ports, by the term `T = Σ_{port pairs} I_p (E_p + Φ_k)`. Every
    `N − 2^s` (`ind_eval_mem`, `ind_eval_not_mem`, `natDegree_ind_le`); the internal pushes with `κ` take the push
    values on `V_m`, `1_S` the holes, `T` the ports' term (`pushPolyV_eval`, `holePoly_eval`, `tPoly_eval`); with
    `P`'s definition `P + P_v + q_P Z_V`, the copy identity evaluates on `V_m` to the copy argument's
-   (`idPoly_eval_omega`, `copyOK_of_idPoly`); both identities have degree at most `3N − 1`
+   (`idPoly_eval_omega`, `copyOK_of_idPoly`); with `h` below `2N` (`Q`'s empty slots `1, 5, 9`: `h = h_0 + Z_V h_1`)
+   the copy identity has degree at most `4N − 1`, `P`'s definition at most `3N − 1`
    (`natDegree_idPoly_le`, `natDegree_defPoly_le`), Schwartz–Zippel in `t` (`card_idPoly_eval_eq_zero_le`);
    `Σ_V h` is `h`'s top novel coefficient (`sum_tablePoly_omega`); `Z_V` is the digit `w_m`, what the verifier
    evaluates (`zV_eq_digitPoly`, `zV_eval_eq`, `RecPiop.Vanishing`).
@@ -56,14 +57,18 @@ holes carry the ports, by the term `T = Σ_{port pairs} I_p (E_p + Φ_k)`. Every
    `forward_chain`, `expr_chain`), and the pushes never read a hole (`push_congr_off_holes`).
 5. **The rounds** (`RecPiop.Rounds`, `RecPiop.Fold`): `piop`, π2's PIOP in `Compose.Piop`'s form
    for any chain with π2's rounds (`W` → `α, β, γ`; `Q` → `t`; the fold values, `ξ` and `s` → `ρ`; the
-   claims), its errors proved: `(4N − 1 + Σ_j d_j)/|F|`, `(3N − 1)/|F|`, `2^r/|F|`
+   claims), its errors proved: `(4N − 1 + Σ_j d_j)/|F|`, `(4N − 1)/|F|`, `2^r/|F|`
    (`sound_zero`, `sound_one`, `sound_two`; `W`'s fold binds the fold values, `card_foldAt_eq_le`; with them and
    `ξ` right, `Q`'s pushes' claim is a nonzero line in `ρ` unless `s = P(t)` and `P`'s definition hold at `t`, and
-   then the identity's claim is the identity at `t`, `card_qClaim_le`). In bits at `N = 2^24`, `r = 4`,
-   `|F| = 2^192`, times the lists `L_W = 9,952`, `L_Q = 3,564` (`RecPiop.Numbers`): 152.7, 141.3, 162.9.
+   then the identity's claim is the identity at `t`, `card_qClaim_le`). **`Q`'s empty slots** (`PI2.md` §2): the
+   prover chooses `Q`'s slots `1, 5, 9` (`h`'s second digit, so `h` below `2N`, `Σ_V h` unchanged) and `12` (`S`,
+   below `N`, which the claims read as `P(t) + S(t)/Z_V(t)`; `Model.sP`); the states after `t` are stated with
+   `P`'s effective polynomial `pEff = P + S(t)/Z_V(t)`, and for `S ≠ 0` the nonzero `Z_V·def + S` (degree at most
+   `4N − 1`) vanishes at `t` (`card_defPoly_shift_le`), so round `1` stays `(4N − 1)/|F|`. In bits at `N = 2^24`,
+   `r = 4`, `|F| = 2^192`, times the lists `L_W = 9,952`, `L_Q = 3,564` (`RecPiop.Numbers`): 152.7, 140.9, 162.9.
 
 **Left to the next layers** (named, not assumed here): the tables' layer `Model` (`W`'s candidate's
-polynomial and fold values with `cells_fold`, `Q`'s `h`, `q`, `P`, `q_P`, the setup's polynomials, the ports'
+polynomial and fold values with `cells_fold`, `Q`'s `h`, `q`, `P`, `q_P`, `S`, the setup's polynomials, the ports'
 `Φ_k` with their values at the holes, the identity's claim's constant `c_3`), the binding hypothesis `hbind` for the candidates
 (limbs in `K`: `Ports`), the verifier's arithmetic (the indicators' closed form `w_m/(Ẑ_s(t) + Ẑ_s(c_p))`, `Φ_k` by
 rows, the fold's siblings), and the Fiat–Shamir layer and the openings (ListChainU's `hlink`: the openings'
@@ -287,3 +292,7 @@ The build fails if a headline theorem's axioms grow beyond Lean's three standard
 /-- info: 'RecPiop.Circuit.card_qClaim_le' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms RecPiop.Circuit.card_qClaim_le
+
+/-- info: 'RecPiop.Circuit.card_defPoly_shift_le' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecPiop.Circuit.card_defPoly_shift_le
