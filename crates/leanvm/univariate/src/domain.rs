@@ -77,11 +77,6 @@ pub fn digits<S: Scalar>(t: S, count: usize) -> Vec<S> {
     std::iter::successors(Some(t), |&w| Some(w * w + w)).take(count).collect()
 }
 
-/// `w_l(ω_a)` for `l < count`: `ω_{a >> l}`.
-pub fn digits_of_point(a: u64, count: usize) -> Vec<E> {
-    (0..count).map(|l| point_e(a >> l)).collect()
-}
-
 /// `a[l][m]` with `y_l(x) = Σ_{m<r} a[l][m] x^(2^m)` and `y_l(ω_i) = i_l` for `i < 2^r`: the inverse of the
 /// transposed Moore matrix `M[j][m] = β_j^(2^m)`.
 pub fn coordinate_functionals(r: usize) -> Vec<Vec<K>> {

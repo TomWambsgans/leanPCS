@@ -214,10 +214,6 @@ impl Builder {
         r
     }
 
-    pub fn region_roles(&self, region: u16) -> &[Formula] {
-        &self.regions[region as usize].roles
-    }
-
     pub fn rows(&self) -> usize {
         self.row_region.len()
     }

@@ -629,39 +629,3 @@ pub fn measure_deployable(
     }
 }
 
-/// The deployable build against the Rust verifier: its returning build (cut where the verifying one would be) returns
-/// the words the Rust verifier computes, word for word. Returns how many contracts it was cut into.
-pub fn parity_deployable(
-    shape: &Shape,
-    iv: &[u8; 32],
-    public_words: &[u8; 32],
-    stream: &[u8],
-    variant: Variant,
-    mode: Claims,
-    limit: usize,
-) -> usize {
-    use leanvm_statement::evm::codegen::{compile_deployable, compile_deployable_like};
-    use leanvm_statement::evm::deploy::install;
-    let recorded = record_verifier(shape, variant, mode);
-    let (outputs, ending, entry) = ends(&recorded, iv, false, false);
-    let returning = compile_deployable(&recorded.graph, &outputs, &ending, &entry, limit);
-    let (outputs, ending, entry) = ends(&recorded, iv, false, true);
-    let installed = install(
-        &compile_deployable_like(&recorded.graph, &outputs, &ending, &entry, &returning),
-        &[],
-    );
-    let output = installed
-        .chain
-        .call(installed.address, &calldata(public_words, stream), &PcsFrame::default())
-        .output
-        .expect("a measuring build does not revert");
-    let (reduced, zero, nonzero) =
-        rust_verifier(shape, iv, public_words, stream, variant, mode).expect("the stream's length");
-    let mut expected = expected_words(&reduced, &recorded, stream);
-    expected.extend(zero.iter().chain(&nonzero).map(|&x| leanvm_statement::evm::machine::element_word(x)));
-    assert_eq!(output.len(), 32 * expected.len(), "words returned");
-    for (k, (got, want)) in output.chunks(32).zip(&expected).enumerate() {
-        assert_eq!(got, &want[..], "word {k}");
-    }
-    returning.linked.parts.len() + 1
-}

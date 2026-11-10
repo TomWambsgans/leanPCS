@@ -2,3 +2,4 @@ target/
 .build/
 .claude/
 __pycache__/
+crates/leanvm/rec/pi2_prover.txt

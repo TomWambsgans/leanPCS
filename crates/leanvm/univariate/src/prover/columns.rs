@@ -26,7 +26,7 @@ impl Column {
         Self { novel, b }
     }
 
-    /// Its novel coefficients alone, `b` empty: the stack takes the `B` ones from them (`Stack::put_b`).
+    /// Its novel coefficients alone, `b` empty: the stack takes the `B` ones from them.
     pub fn novel_only(values: &[F64]) -> Self {
         let mut novel = vec![F64::ZERO; values.len()];
         coefficients_from(values, &mut novel, F64::ZERO);

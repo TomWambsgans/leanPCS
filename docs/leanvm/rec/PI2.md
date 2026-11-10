@@ -14,7 +14,7 @@ cargo test --release -p leanvm_rec --test pi2 -- --nocapture                    
 cargo test --release -p leanvm_rec --test pi2_real -- --ignored --nocapture real_gas            # the real circuits' gas
 cargo test --release -p leanvm_rec --test pi2_real -- --ignored --nocapture real_end_to_end     # 2^24 prover, end to end (8 GB)
 PI2_VECTOR=keccak_rec3 cargo test --release -p leanvm_rec --test pi2_real -- --ignored --nocapture real_end_to_end   # 400 signatures
-PI2_REPEAT=5 PI2_PROFILE=1 cargo test --release -p leanvm_rec --test pi2_bench -- --ignored --nocapture             # prove, open, timed
+LEANVM_TRACE=<trace> cargo test --release -p leanvm_rec --test pipeline -- --ignored --nocapture                     # trace → π1 → π2, timed
 cargo test --release -p leanvm_rec --test pi2 -- --ignored --nocapture gas_report               # the synthetic target shapes
 ```
 
@@ -45,7 +45,7 @@ more calldata (`s`), 684 less execution (the public side's walk and zero coset g
 and the version-3 proofs' bytes, so EIP-7623 −216 at 128 signatures and −288 at 400; EIP-7976, where the floor binds,
 +1,536 (62,720 → 64,256).
 
-**The prover** on the real witness (128 signatures, `tests/pi2_bench.rs`; a 64-thread Zen 5 box shared with other
+**The prover** on the real witness (128 signatures, `tests/pi2_bench.rs`, since removed: `tests/pipeline.rs` times the same stages; a 64-thread Zen 5 box shared with other
 jobs, `RUSTFLAGS="-C target-cpu=x86-64-v4 -C target-feature=+gfni,+vpclmulqdq,+vaes,+pclmulqdq,+avx512vbmi,+aes,+bmi2"`,
 2026-11-08; π2v1 and π2v2 interleaved, 4 runs each at load 12–26, medians of the 20 passes; `PI2_PROFILE=1`):
 
@@ -279,7 +279,7 @@ at role 15).
   gas and parity (straight, deployable) of D16v; `real_end_to_end` as in §0 (also `PI2_LAYOUT=d32v`: 1,388 B of
   calldata, 51,940 execution, accepted). The claims holding on the real tables are the degrees' check (§1): a `q` or
   `q_P` of a degree above `2N` would not be determined by `D`'s `2N` points, and its claim would fail.
-- `tests/pi2_bench.rs`: the prover timed on the real circuit (§0).
+- `tests/pipeline.rs`: the prover timed from a trace, π2's proof and openings among its stages (§0).
 - `tests/keccak_vm_rec.rs`: π1-rec3 at 128 and 400 signatures compiled into D16v on a sample stream, the contract's gas
   and parity.
 - `tests/lean_pi2_prover.rs`: vectors for the Lean honest prover's differential test (`formal/RecCompose`, of π2v1:

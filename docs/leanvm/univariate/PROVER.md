@@ -56,7 +56,7 @@ transcription's differential vectors.
    included, block `i` at row `i`. Its input port is the row's input lanes with `END_BIT` added to lane 16, so its
    output port is the row's output lanes (`step(in) = Keccak-f(in ⊕ END_BIT·e₁₆)`). The witness (`z`, `A z`, `B z`, the
    lincheck's stripes) is `flock::keccak::generate_witness_with_ab_packed_and_lincheck`'s; `C1` commits `z` from
-   it (`Stack::put_k_words`), and the trace keeps no copy.
+   it, and the trace keeps no copy.
 4. **Proving and checking.** Build with `RUSTFLAGS="-C target-cpu=native"`, as leanVM's own `.cargo/config.toml`
    does (without it the field is about 25× slower), and set `LEANVM_TRACE=<dir of a dump_keccak trace>`:
 
@@ -76,8 +76,7 @@ transcription's differential vectors.
      pass's proof is checked to be the first's.
 
    Without a trace: `flock_skip` and `flock_keccak` (the skip kernels, Flock on the Keccak-f block), `evm_vectors`
-   (the committed vectors). `prove_quotients` (the quotients alone at fixed challenges, `sha3_leaf`), `prove_kernels`
-   (the transforms) and `prove_openings` (one opening alone) are ignored timing tests.
+   (the committed vectors).
 
 ## The prover, phase by phase (`src/prover/prove.rs`)
 

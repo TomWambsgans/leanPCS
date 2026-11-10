@@ -39,14 +39,6 @@ impl<S: Scalar> Form<S> {
         }
     }
 
-    /// `self += weight * other`.
-    pub fn add_scaled_form(&mut self, other: &Form<S>, weight: S) {
-        for (monomial, &coefficient) in &other.terms {
-            let entry = self.terms.entry(monomial.clone()).or_insert(S::zero());
-            *entry += weight * coefficient;
-        }
-    }
-
     /// The monomials and their coefficients: `[]` is 1, `[i]` is `x_i`, `[i, j]` is `x_i x_j`.
     pub fn terms(&self) -> impl Iterator<Item = (&[usize], &S)> {
         self.terms.iter().map(|(monomial, coefficient)| (monomial.as_slice(), coefficient))
@@ -168,10 +160,6 @@ impl Table {
         } else {
             vec![]
         }
-    }
-
-    pub fn n_constraints(&self) -> usize {
-        self.constraints(&vec![ZERO; self.width()]).len()
     }
 
     pub fn width(&self) -> usize {

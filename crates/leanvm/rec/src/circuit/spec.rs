@@ -355,14 +355,6 @@ impl Circuit {
             .collect()
     }
 
-    /// The public fingerprints `F_J`.
-    pub fn public_fingerprints(&self, public: &PublicInputs, gamma: E) -> Vec<E> {
-        self.public_limbs(public)
-            .iter()
-            .map(|l| fingerprint(l, gamma))
-            .collect()
-    }
-
     /// `π1`'s claims from the public inputs.
     pub fn call_inputs(&self, public: &PublicInputs) -> Vec<Vec<u8>> {
         self.calls

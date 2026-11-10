@@ -48,28 +48,6 @@ pub fn placement(rows: u64, r: usize) -> Vec<usize> {
     to
 }
 
-/// `data` cut into `to.len()` equal blocks, block `i` moved to `to[i]`, in place: only the blocks that move are
-/// copied out and back (a placement leaves the first coset's, half a table or more, where they are).
-pub fn permute_blocks<T: Copy + Send + Sync>(data: &mut [T], to: &[usize]) {
-    let block = data.len() / to.len();
-    assert_eq!(block * to.len(), data.len());
-    let moved: Vec<usize> = (0..to.len()).filter(|&i| to[i] != i).collect();
-    // The moved blocks, in `moved`'s order, then where each destination's block comes from in that buffer.
-    let mut temp: Vec<T> = Vec::with_capacity(moved.len() * block);
-    for &i in &moved {
-        temp.extend_from_slice(&data[i * block..(i + 1) * block]);
-    }
-    let mut source = vec![usize::MAX; to.len()];
-    for (j, &i) in moved.iter().enumerate() {
-        source[to[i]] = j;
-    }
-    parallel::chunks_mut(data, block, |p, chunk| {
-        if source[p] != usize::MAX {
-            chunk.copy_from_slice(&temp[source[p] * block..(source[p] + 1) * block]);
-        }
-    });
-}
-
 fn words(bytes: &[u8]) -> Vec<F64> {
     bytes
         .as_chunks::<8>()

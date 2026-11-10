@@ -130,86 +130,12 @@ impl Stack {
         super::poly::copy(&mut self.words[offset as usize..offset as usize + data.len()], data);
     }
 
-    /// Write a K-column's words into its block from 64-bit words (a packed bit witness's: `q_flock`).
-    pub fn put_k_words(&mut self, column: Column, data: &[u64]) {
-        let limbs = self.layout.limbs(column);
-        assert_eq!(limbs.len(), 1, "{column:?} is a K-column");
-        let (_, vars, offset) = limbs[0];
-        assert_eq!(data.len(), 1 << vars, "{column:?}'s size");
-        let block = &mut self.words[offset as usize..offset as usize + data.len()];
-        parallel::chunks_mut(block, 1 << 16, |k, chunk| {
-            for (w, &x) in chunk.iter_mut().zip(&data[k << 16..]) {
-                *w = F64(x);
-            }
-        });
-    }
-
-    /// Write a K-column's `B` coefficients into its block, from its novel ones (subset sums).
-    pub fn put_b(&mut self, column: Column, novel: &[F64]) {
-        let limbs = self.layout.limbs(column);
-        assert_eq!(limbs.len(), 1, "{column:?} is a K-column");
-        let (_, vars, offset) = limbs[0];
-        assert_eq!(novel.len(), 1 << vars, "{column:?}'s size");
-        quotient::ntt::subset_sums_from(novel, &mut self.words[offset as usize..offset as usize + novel.len()]);
-    }
-
-    /// [`Stack::put_b`] of several K-columns at once: every column's subset sums in the same dispatches.
-    pub fn put_b_many(&mut self, items: &[(Column, &[F64])]) {
-        let places: Vec<(usize, usize)> = items
-            .iter()
-            .map(|&(column, novel)| {
-                let limbs = self.layout.limbs(column);
-                assert_eq!(limbs.len(), 1, "{column:?} is a K-column");
-                let (_, vars, offset) = limbs[0];
-                assert_eq!(novel.len(), 1 << vars, "{column:?}'s size");
-                (offset as usize, novel.len())
-            })
-            .collect();
-        let dsts = self.blocks_mut(&places);
-        let mut jobs: Vec<(&[F64], &mut [F64])> = items.iter().map(|&(_, novel)| novel).zip(dsts).collect();
-        quotient::ntt::subset_sums_many(&mut jobs);
-    }
-
-    /// Several E-columns' limbs `(column, limb)`, to be written in place, in that order (all distinct).
-    pub fn limbs_mut_many(&mut self, which: &[(Column, usize)]) -> Vec<&mut [F64]> {
-        let places: Vec<(usize, usize)> = which
-            .iter()
-            .map(|&(column, limb)| {
-                let (_, vars, offset) = self.layout.limbs(column)[limb];
-                (offset as usize, 1 << vars)
-            })
-            .collect();
-        self.blocks_mut(&places)
-    }
-
-    /// The words `offset..offset + len` of each place, in the places' order (disjoint).
-    fn blocks_mut(&mut self, places: &[(usize, usize)]) -> Vec<&mut [F64]> {
-        let mut order: Vec<usize> = (0..places.len()).collect();
-        order.sort_by_key(|&k| places[k].0);
-        let mut out: Vec<Option<&mut [F64]>> = places.iter().map(|_| None).collect();
-        let (mut rest, mut at) = (&mut self.words[..], 0usize);
-        for k in order {
-            let (offset, len) = places[k];
-            assert!(offset >= at, "the blocks are disjoint");
-            let (block, tail) = std::mem::take(&mut rest)[offset - at..].split_at_mut(len);
-            out[k] = Some(block);
-            (rest, at) = (tail, offset + len);
-        }
-        out.into_iter().map(|b| b.expect("a block")).collect()
-    }
-
     /// A K-column's words as placed: its `B` coefficients.
     pub fn k(&self, column: Column) -> &[F64] {
         let limbs = self.layout.limbs(column);
         assert_eq!(limbs.len(), 1, "{column:?} is a K-column");
         let (_, vars, offset) = limbs[0];
         &self.words[offset as usize..offset as usize + (1 << vars)]
-    }
-
-    /// An E-column's limb `limb`, to be written in place.
-    pub fn limb_mut(&mut self, column: Column, limb: usize) -> &mut [F64] {
-        let (_, vars, offset) = self.layout.limbs(column)[limb];
-        &mut self.words[offset as usize..offset as usize + (1 << vars)]
     }
 
     /// An E-column's three limbs as placed.

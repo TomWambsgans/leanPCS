@@ -166,7 +166,7 @@ They cannot be made fewer (`SPEC-POINTS.md` §2):
 
 ## 2. π2's arithmetization
 
-### 2.1 The reference: `crates/membership/quotient` (measured, `tests/quotient_reference.rs`)
+### 2.1 The reference: `crates/membership/quotient` (measured)
 
 - **One gate, `V = X + C + Y·C`, four cells a row.** It is a χ on bits, an XOR when `Y = 0`, and a NOT.
 - **The wiring:** one logarithmic-derivative copy argument, with unique tags on both sides. It is sound in

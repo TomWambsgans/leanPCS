@@ -98,7 +98,6 @@ cargo bench -p quotient --bench membership                            # prover /
 cargo test --release -p evm -- --ignored --nocapture gas_report       # gas of the membership contract
 cargo test --release -p leanvm_univariate -p leanvm_rec               # the leanVM line
 LEANVM_TRACE=<trace> cargo test --release -p leanvm_rec --test pipeline -- --ignored --nocapture   # trace → π1 → π2, timed
-cargo test --release -p leanvm_rec --test pi2_bench -- --ignored --nocapture                    # π2's prove/open alone (PI2_PROFILE=1)
 ```
 
 Build with `RUSTFLAGS="-C target-cpu=native"`. On a Zen 5 host (AMD EPYC 9355P) rustc 1.99.1's LLVM crashes (SIGILL in
