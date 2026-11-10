@@ -447,4 +447,27 @@ theorem ood_binding_rom (hw : Whir.Admissible n logInvRate) {α : Type}
   rw [bindSum, Finset.sum_add_distrib, Finset.sum_const, Finset.card_range, nsmul_eq_mul,
     ← ENNReal.sum_div, sum_budget]
 
+/-! ## The numbers at version 1's shapes -/
+
+/-- Level 0's certified list at version 1's shapes (`certOf`, evaluated): `87315` at `n = 15` down
+to `3564` at `n = 28`; `C(L, 2) · n ≤ 2^36` at each. -/
+theorem listHi_v1 : ∀ n, minVars ≤ n → n ≤ maxVars →
+    (LeanVM.Protocol.Whir.Params.certOf n logInvRate 0).listHi *
+        ((LeanVM.Protocol.Whir.Params.certOf n logInvRate 0).listHi - 1) / 2 * n ≤ 2 ^ 36 := by
+  decide +kernel
+
+/-- **The binding's error per query at version 1's shapes**: `C(L, 2) · n / 2^192 ≤ 2^-156` for
+every `15 ≤ n ≤ 28`, `L` the certified list (`listMax ≤ listHi`). -/
+theorem δood_le (h1 : minVars ≤ n) (h2 : n ≤ maxVars) : δood n ≤ (2 : ℝ≥0∞)⁻¹ ^ 156 := by
+  have hw := admissible_v1 n h1 h2
+  have hc : (code₀ n logInvRate).listMax.choose 2 * n ≤ 2 ^ 36 := by
+    refine le_trans (Nat.mul_le_mul_right _ (Nat.choose_le_choose 2 (listMax_le_listHi hw))) ?_
+    rw [Nat.choose_two_right]
+    exact listHi_v1 n h1 h2
+  unfold δood
+  calc (((code₀ n logInvRate).listMax.choose 2 * n : ℕ) : ℝ≥0∞) / (2 : ℝ≥0∞) ^ 192
+      ≤ ((2 ^ 36 : ℕ) : ℝ≥0∞) / (2 : ℝ≥0∞) ^ 192 := by gcongr
+    _ = (2 : ℝ≥0∞)⁻¹ ^ 156 := by
+      rw [Nat.cast_pow, Nat.cast_ofNat, show (192 : ℕ) = 36 + 156 from rfl, two_pow_div_two_pow]
+
 end WhirBridge.Pcs

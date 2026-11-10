@@ -525,4 +525,98 @@ theorem pcs_sound (h1 : minVars ≤ n) (h2 : n ≤ maxVars) (zOf : Digest → Ve
 theorem pcs_bound_le {QA : ℕ} (hQ : QA ≤ 2 ^ 64) : openingBound QA ≤ (2 : ℝ≥0∞)⁻¹ ^ 63 :=
   opening_bound_le hQ
 
+/-! ## Claims on any number of variables -/
+
+/-- A claim on any number of variables: the adversary chooses `n`. -/
+abbrev AnyClaim : Type := Σ n, Claim1 n
+
+/-- **`verify_claim` on a claim of any `n`**, the out-of-domain derivation `zOf n` at each `n`. -/
+def pcsVerifierAny (zOf : (n : ℕ) → Digest → Vector E n) (w : AnyClaim × Proof) :
+    OracleComp KeccakCalls Bool :=
+  pcsVerifier (zOf w.1.1) (w.1.2, w.2)
+
+/-- The event at the claim's own `n`. -/
+def PcsDoomedAny (zOf : (n : ℕ) → Digest → Vector E n) (w : AnyClaim × Proof)
+    (cache : KeccakCalls.QueryCache) : Prop :=
+  PcsDoomed (zOf w.1.1) (w.1.2, w.2) cache
+
+/-- A claim on `m` variables, for the adversaries of the other `n`. -/
+def dummy (m : ℕ) : Claim1 m := ⟨default, 0, List.replicate m 0, 0, by simp⟩
+
+/-- The adversary's output read at `m` variables. -/
+def atVars (m : ℕ) (w : AnyClaim × Proof) : Claim1 m × Proof :=
+  if h : w.1.1 = m then (h ▸ w.1.2, w.2) else (dummy m, w.2)
+
+/-- The verifier accepts only claims of `15 ≤ n ≤ 28`. -/
+theorem vars_of_accept (zOf : (n : ℕ) → Digest → Vector E n)
+    (A : OracleComp KeccakCalls (AnyClaim × Proof)) :
+    ∀ z ∈ support (romExperiment A (pcsVerifierAny zOf)), z.1.2 = true →
+      minVars ≤ z.1.1.1.1 ∧ z.1.1.1.1 ≤ maxVars := by
+  intro z hz hacc
+  rw [romExperiment_eq, mem_support_bind_iff] at hz
+  obtain ⟨p, -, hz⟩ := hz
+  rw [support_map] at hz
+  obtain ⟨r, hr, rfl⟩ := hz
+  by_contra hn
+  have hV : pcsVerifierAny zOf p.1 = pure false := by
+    simp only [pcsVerifierAny, pcsVerifier, pcsVerifyWithHash]
+    exact if_neg hn
+  rw [hV, simulateQ_pure, StateT.run_pure, mem_support_pure_iff] at hr
+  rw [hr] at hacc
+  exact Bool.false_ne_true hacc
+
+/-- At one `m`, the experiment of any `n` restricted to `n = m` is the experiment of `m`. -/
+theorem prEvent_any_at_le (zOf : (n : ℕ) → Digest → Vector E n)
+    (A : OracleComp KeccakCalls (AnyClaim × Proof)) (m : ℕ) :
+    Pr{let z ← romExperiment A (pcsVerifierAny zOf)}[
+        (z.1.2 = true ∧ PcsDoomedAny zOf z.1.1 z.2) ∧ z.1.1.1.1 = m] ≤
+      Pr{let z ← romExperiment (atVars m <$> A) (pcsVerifier (zOf m))}[
+        z.1.2 = true ∧ PcsDoomed (zOf m) z.1.1 z.2] := by
+  rw [romExperiment_map, prEvent_map, romExperiment_eq, romExperiment_eq]
+  refine prEvent_bind_mono_of_forall_le _ _ _ _ _ fun p ↦ ?_
+  rw [prEvent_map, prEvent_map]
+  obtain ⟨⟨⟨n, x⟩, π⟩, c⟩ := p
+  by_cases hn : n = m
+  · subst hn
+    have hat : atVars n (⟨n, x⟩, π) = (x, π) := by simp [atVars]
+    dsimp only
+    rw [hat, show pcsVerifierAny zOf (⟨n, x⟩, π) = pcsVerifier (zOf n) (x, π) from rfl]
+    apply prEvent_mono
+    intro r hr
+    exact hr.1
+  · refine le_of_eq_of_le (prEvent_eq_zero_of_forall_mem_support _ _ fun r _ hev ↦ ?_) bot_le
+    exact hn hev.2
+
+/-- **Fiat-Shamir soundness of version 1's opening for claims of any `n`** (the adversary
+chooses `n`): a union over the `14` supported values, `14 · openingBound QA`. -/
+theorem pcs_sound_any (zOf : (n : ℕ) → Digest → Vector E n)
+    (A : OracleComp KeccakCalls (AnyClaim × Proof)) (QA : ℕ) (hA : IsTotalQueryBound A QA) :
+    Pr{let z ← romExperiment A (pcsVerifierAny zOf)}[z.1.2 = true ∧ PcsDoomedAny zOf z.1.1 z.2] ≤
+      14 * openingBound QA := by
+  have hmono : Pr{let z ← romExperiment A (pcsVerifierAny zOf)}[
+      z.1.2 = true ∧ PcsDoomedAny zOf z.1.1 z.2] ≤
+      Pr{let z ← romExperiment A (pcsVerifierAny zOf)}[∃ m ∈ Finset.Icc minVars maxVars,
+        (z.1.2 = true ∧ PcsDoomedAny zOf z.1.1 z.2) ∧ z.1.1.1.1 = m] :=
+    prEvent_mono_of_support _ _ _ fun z hz hev ↦
+      ⟨z.1.1.1.1, Finset.mem_Icc.2 (vars_of_accept zOf A z hz hev.1), hev, rfl⟩
+  refine hmono.trans ((prEvent_exists_finset_le_card_mul (ε := openingBound QA) _ _ _
+    fun m hm ↦ ?_).trans ?_)
+  · have hm' := Finset.mem_Icc.1 hm
+    refine (prEvent_any_at_le zOf A m).trans (pcs_sound hm'.1 hm'.2 (zOf m) _ QA ?_)
+    exact (isQueryBound_map_iff A (atVars m) QA _ _).mpr hA
+  · rw [show (Finset.Icc minVars maxVars).card = 14 from rfl]
+    norm_num
+
+/-- **The numbers**: against `2^64` queries, `14 · openingBound QA ≤ 2^-59`. -/
+theorem pcs_any_bound_le {QA : ℕ} (hQ : QA ≤ 2 ^ 64) :
+    14 * openingBound QA ≤ (2 : ℝ≥0∞)⁻¹ ^ 59 := by
+  calc 14 * openingBound QA ≤ 16 * (2 : ℝ≥0∞)⁻¹ ^ 63 := by
+        gcongr
+        · norm_num
+        · exact opening_bound_le hQ
+    _ = (2 : ℝ≥0∞)⁻¹ ^ 59 := by
+        rw [show (16 : ℝ≥0∞) = 2 ^ 4 by norm_num, show (63 : ℕ) = 4 + 59 from rfl, pow_add,
+          ← mul_assoc, ← mul_pow, ENNReal.mul_inv_cancel (by norm_num) (by norm_num), one_pow,
+          one_mul]
+
 end WhirBridge.Pcs
