@@ -1,14 +1,14 @@
 // Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! The Rust→EVM test vectors (`tests/vectors/*.txt`): a real proof's calldata (without the frame byte a verifying call
-//! appends), the claims the contract checks declared (which the openings prove), the verdict and the gas. Written by
-//! `tests/prove_real.rs` (`WRITE_VECTORS=<dir>`), replayed by `tests/evm_vectors.rs` with no prover and no trace.
+//! appends), the PCS claims the contract checks declared (which the proof's openings prove), the verdict and the gas.
+//! Written by `tests/prove_real.rs` (`WRITE_VECTORS=<dir>`), replayed by `tests/evm_vectors.rs` with no prover and no
+//! trace.
 //!
 //! The format is lines of `key value`, the bytes in lowercase hex: `config`, `shape` (`log_memory log_bytecode` and
-//! the six row counts), `public`, `calldata`, one `pcs_open` line per claim in order (the key from when they were
-//! calls of a precompile), one `whir_root` line per claim in order (the root of the commitment the claim is on, as the prover committed it: the hash whose two
-//! scalars, `hash_to_scalars`, are its WHIR opening's first two; written by the prover's run, not read off the
-//! contract's calls), `accepts`, `gas_straight`; `#` starts a comment. Vectors written before this repository dropped
-//! its linker also carry `gas_deployed` and `contracts` (the build cut into EIP-170 contracts), which are not read.
+//! the six row counts), `public`, `calldata`, one `claim` line per claim in order (the EIP draft's PCS claim as
+//! encoded, `crates/pcs_claim`: its commitment's root and out-of-domain answer, as the prover committed them, the
+//! point and the value; written by the prover's run, the claims its openings prove), `accepts`, `gas_straight` (the
+//! contract's execution gas); `#` starts a comment.
 
 #![allow(dead_code)]
 
@@ -23,10 +23,8 @@ pub struct Vector {
     pub shape: Shape,
     pub public: [u8; 32],
     pub calldata: Vec<u8>,
-    pub calls: Vec<Vec<u8>>,
-    /// The roots of the commitments the calls open, in call order, from the prover's output (its commitments' and
-    /// the setup's): what the block's openings open, whatever the contract encodes.
-    pub whir_roots: Vec<[u8; 32]>,
+    /// The PCS claims, encoded, in the contract's order (`C1`, `C2`, the setup `F`).
+    pub claims: Vec<Vec<u8>>,
     pub accepts: bool,
     pub gas_straight: u64,
     /// What the proof is of, written as a comment line under the header (not read back).
@@ -75,11 +73,8 @@ pub fn write(v: &Vector) -> String {
     out.push_str(&format!("shape {} {} {}\n", v.shape.log_memory, v.shape.log_bytecode, rows.join(" ")));
     out.push_str(&format!("public {}\n", hex(&v.public)));
     out.push_str(&format!("calldata {}\n", hex(&v.calldata)));
-    for call in &v.calls {
-        out.push_str(&format!("pcs_open {}\n", hex(call)));
-    }
-    for root in &v.whir_roots {
-        out.push_str(&format!("whir_root {}\n", hex(root)));
+    for claim in &v.claims {
+        out.push_str(&format!("claim {}\n", hex(claim)));
     }
     out.push_str(&format!("accepts {}\n", v.accepts));
     out.push_str(&format!("gas_straight {}\n", v.gas_straight));
@@ -96,8 +91,7 @@ pub fn read(text: &str) -> Vector {
         },
         public: [0; 32],
         calldata: Vec::new(),
-        calls: Vec::new(),
-        whir_roots: Vec::new(),
+        claims: Vec::new(),
         accepts: false,
         gas_straight: 0,
         note: String::new(),
@@ -116,27 +110,21 @@ pub fn read(text: &str) -> Vector {
             }
             "public" => v.public = unhex(value).try_into().expect("32 bytes"),
             "calldata" => v.calldata = unhex(value),
-            "pcs_open" => v.calls.push(unhex(value)),
-            "whir_root" => v.whir_roots.push(unhex(value).try_into().expect("32 bytes")),
+            "claim" => v.claims.push(unhex(value)),
             "accepts" => v.accepts = value == "true",
             "gas_straight" => v.gas_straight = value.parse().expect("a number"),
-            "gas_deployed" | "contracts" => {}
             other => panic!("no key {other}"),
         }
     }
     v
 }
 
-/// A claim of π1's own contract in the claims' encoding (`crates/membership/evm/src/machine.rs`),
-/// as π2's contract makes it: `C1`'s and `C2`'s root words are the stream's bytes, the ABI's already; a
-/// setup root's (`F`: layout code `0x5503`, the layout word's bytes 22..24) is the hash as it is, its word
-/// `root_word` of it.
-pub fn pi1_abi(input: &[u8]) -> Vec<u8> {
-    let mut x = input.to_vec();
-    let code = u16::from_be_bytes([x[32 + 22], x[32 + 23]]);
-    if (0x5503..=0x5505).contains(&code) {
-        let raw: [u8; 32] = x[..32].try_into().expect("a root");
-        x[..32].copy_from_slice(&leanvm_statement::evm::machine::root_word(&raw));
+/// The setup commitment a vector's contract binds: its setup claim's (the third), `F`'s root and out-of-domain
+/// answer, its program's and shape's own.
+pub fn setup_roots(v: &Vector) -> leanvm_univariate::contract::SetupRoots {
+    let claim = pcs_claim::PcsClaim::decode(&v.claims[2]).expect("a well-formed setup claim");
+    leanvm_univariate::contract::SetupRoots {
+        f: claim.root,
+        f_ood: leanvm_statement::field::E::new(claim.ood.c0, claim.ood.c1, claim.ood.c2),
     }
-    x
 }

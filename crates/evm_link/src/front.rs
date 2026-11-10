@@ -82,6 +82,10 @@ pub struct Source<'a, D> {
     /// then the word 1 returned; or (`None`) the
     /// outputs returned.
     pub calls: Option<Vec<usize>>,
+    /// Checks that the transaction declares these PCS claims (the EIP draft's encoding, [`crate::declared_claims`]),
+    /// their fields any of the outputs, as payloads `claims[j].index` of the frame of PCS claims the caller names, then
+    /// the word 1 returned. Not with `calls`.
+    pub claims: Vec<crate::ClaimWords>,
     /// With calls: each call's input at the region's start, written just before the call and only where the region
     /// does not hold that word already (a word of the call before at the same place, or a zero of fresh memory),
     /// instead of every run at its own place, all written first. Calls of one point (π1's three at the batch's
@@ -358,13 +362,22 @@ pub fn compile<D: Dag>(source: &Source<D>) -> Compiled {
         assert_eq!(runs.iter().sum::<usize>(), outputs.len(), "the calls cover the region");
         crate::declared(source.calldata_len, runs).into_iter().for_each(|item| compiler.item(item));
     }
+    if !source.claims.is_empty() {
+        assert!(source.calls.is_none(), "claims or calls, not both");
+        let fields = |c: &crate::ClaimWords| [c.root, c.ood, c.value].into_iter().chain(c.point.iter().copied()).max();
+        assert!(
+            source.claims.iter().filter_map(fields).all(|k| k < outputs.len()),
+            "a claim's fields are outputs"
+        );
+        crate::declared_claims(source.calldata_len, &source.claims).into_iter().for_each(|item| compiler.item(item));
+    }
     Compiled {
         program: Program {
             items: compiler.items,
             data,
             scratch: source.scratch,
             outputs: outputs.len(),
-            ending: if source.calls.is_some() {
+            ending: if source.calls.is_some() || !source.claims.is_empty() {
                 Ending::Attest
             } else {
                 Ending::Return

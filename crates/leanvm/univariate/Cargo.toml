@@ -20,6 +20,7 @@ fiat_shamir.workspace = true
 verifier.workspace = true
 parallel.workspace = true
 quotient.workspace = true
+pcs_claim.workspace = true
 # The ring switch's twisted weight: GF(2)-linear maps of E, eight at once with GFNI.
 gf2_linear.workspace = true
 # Flock's prover: leanVM 42422001's, vendored and ported onto c445e3d5 (crates/vendor/flock-42422001).

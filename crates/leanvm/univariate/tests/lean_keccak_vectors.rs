@@ -8,11 +8,12 @@
 //! `KECCAK_VECTORS_OUT=$PWD/keccak_vectors.txt cargo test --release -p leanvm_univariate --test lean_keccak_vectors -- --ignored --nocapture`
 //!
 //! `formal/UniKeccak/UniKeccakTest/Runner.lean` reads the file. Each verifier vector carries the contract's setup:
-//! `SETUPROOTS <f>` the setup root it binds (`SetupRoots::REFERENCE`, or for a real proof its own `F`, as
-//! `tests/evm_vectors.rs` builds its contract), `CONTRACTIV` `contract::contract_iv(shape, variant, program_iv,
-//! roots)`, `LAYOUTWORDS 3 <C1> <C2> <setup>` `contract::layout_words(shape)`. The configuration
-//! (`<flock>` in the `VECTOR` line) is `keccak` (`KECCAK_MAIN`) or `keccak_rec3` (`KECCAK_REC3`). A real proof's
-//! vector carries the contract's claims (`PCSOPEN <hex>`, the vector file's `pcs_open` lines). Terminal
+//! `SETUPROOTS <f> <ood>` the setup commitment it binds (`SetupRoots::REFERENCE`, or for a real proof its own `F`, as
+//! `tests/evm_vectors.rs` builds its contract: the root, then the out-of-domain answer as an element), `CONTRACTIV`
+//! `contract::contract_iv(shape, variant, program_iv, roots)`; an accepted run also `OODS 2 <C1> <C2>`, the
+//! commitments' out-of-domain answers the verifier read. The configuration (`<flock>` in the `VECTOR` line) is
+//! `keccak` (`KECCAK_MAIN`) or `keccak_rec3` (`KECCAK_REC3`). A real proof's vector carries the contract's claims
+//! (`PCSCLAIM <hex>`, the vector file's `claim` lines: the EIP draft's PCS claims, `crates/pcs_claim`). Terminal
 //! vectors are one line each:
 //!
 //! ```text
@@ -31,9 +32,7 @@ use leanvm_statement::keccak_flock::{KeccakWalked, structured_terminal};
 use leanvm_statement::shapes::PROGRAM_IV;
 use leanvm_statement::transcript::{Channel, Checks, KeccakChannel, keccak_seed, narrow, scalar_bytes};
 use leanvm_univariate::claims::Combined;
-use leanvm_univariate::contract::{
-    NAME, SetupRoots, contract_iv, layout_words, record_verifier, sample_stream,
-};
+use leanvm_univariate::contract::{NAME, SetupRoots, contract_iv, record_verifier, sample_stream};
 use leanvm_univariate::{Claims, KECCAK_MAIN, KECCAK_REC3, Opening, Reduced, Shape, Variant, reduce};
 
 /// Run `f` on a thread with a deep stack, as `tests/gas.rs` does.
@@ -290,13 +289,8 @@ impl Writer {
         )
         .unwrap();
         writeln!(out, "PROGRAMIV {}", hex(&config.program_iv)).unwrap();
-        writeln!(out, "SETUPROOTS {}", hex(&config.roots.f)).unwrap();
+        writeln!(out, "SETUPROOTS {} {}", hex(&config.roots.f), element(config.roots.f_ood)).unwrap();
         writeln!(out, "CONTRACTIV {}", hex(&config.contract_iv())).unwrap();
-        let words: Vec<String> = layout_words(&shape)
-            .iter()
-            .map(|w| hex(w))
-            .collect();
-        writeln!(out, "LAYOUTWORDS {} {}", words.len(), words.join(" ")).unwrap();
         let counts: Vec<String> = (0..6)
             .filter(|k| 4 * k + 4 <= stream.len())
             .map(|k| u32::from_be_bytes(stream[4 * k..4 * k + 4].try_into().unwrap()).to_string())
@@ -315,6 +309,7 @@ impl Writer {
         writeln!(out, "ACCEPT {}", r.accepts() as u8).unwrap();
         if let Ok(reduced) = &r.result {
             writeln!(out, "RELATIONS {}", reduced.relations).unwrap();
+            writeln!(out, "OODS {}", elements(&reduced.oods)).unwrap();
             let mut vars = format!("STACKVARS {}", reduced.stack_vars.len());
             for (commitment, v) in &reduced.stack_vars {
                 write!(vars, " {commitment:?} {v}").unwrap();
@@ -596,9 +591,8 @@ fn lean_keccak_vectors() {
             let mut shape_line: Vec<u64> = Vec::new();
             let mut public = [0u8; 32];
             let mut calldata = Vec::new();
-            let mut calls: Vec<Vec<u8>> = Vec::new();
+            let mut claims: Vec<Vec<u8>> = Vec::new();
             let mut accepts = false;
-            let mut whir_roots: Vec<Vec<u8>> = Vec::new();
             for line in text.lines().filter(|l| !l.starts_with('#') && !l.is_empty()) {
                 let (key, value) = line.split_once(' ').expect("key value");
                 match key {
@@ -606,9 +600,8 @@ fn lean_keccak_vectors() {
                     "shape" => shape_line = value.split(' ').map(|x| x.parse().expect("a number")).collect(),
                     "public" => public.copy_from_slice(&unhex(value)),
                     "calldata" => calldata = unhex(value),
-                    "pcs_open" => calls.push(unhex(value)),
+                    "claim" => claims.push(unhex(value)),
                     "accepts" => accepts = value == "true",
-                    "whir_root" => whir_roots.push(unhex(value)),
                     _ => {}
                 }
             }
@@ -627,15 +620,19 @@ fn lean_keccak_vectors() {
                 flock,
                 claims: point,
                 program_iv: PROGRAM_IV,
-                // The contract binds the proof's own setup root `F` (the third call's), as `tests/evm_vectors.rs`.
-                roots: SetupRoots {
-                    f: whir_roots[2].clone().try_into().expect("32 bytes"),
+                // The contract binds the proof's own setup commitment `F` (the third claim's), as `tests/evm_vectors.rs`.
+                roots: {
+                    let setup = pcs_claim::PcsClaim::decode(&claims[2]).expect("a well-formed setup claim");
+                    SetupRoots {
+                        f: setup.root,
+                        f_ood: E::new(setup.ood.c0, setup.ood.c1, setup.ood.c2),
+                    }
                 },
             };
             let iv = config.contract_iv();
             assert_eq!(&calldata[4..36], &public, "the calldata's public input");
             let stream = calldata[36..].to_vec();
-            let extra: String = calls.iter().map(|c| format!("PCSOPEN {}\n", hex(c))).collect();
+            let extra: String = claims.iter().map(|c| format!("PCSCLAIM {}\n", hex(c))).collect();
             assert!(accepts, "{config_name}: the vector's verdict");
             assert!(
                 w.emit_with(&config, "real", &iv, &public, &stream, &extra),

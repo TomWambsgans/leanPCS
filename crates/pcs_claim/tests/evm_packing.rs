@@ -153,11 +153,14 @@ fn elements_land_their_low_24_bytes() {
     assert_eq!(&word(x)[8..], &element_bytes(x));
 }
 
-/// `op::reverse_halves` maps a root word (`machine::root_word`) to the root's bytes, and back.
+/// `op::reverse_halves` maps a root word (`s_0 · 2^128 + s_1`: each 16-byte half of the root reversed) to the root's
+/// bytes, and back.
 #[test]
 fn reverse_halves_is_the_root_word_involution() {
     let root: [u8; 32] = std::array::from_fn(|i| (i as u8) * 7 + 1);
-    let root_word = machine::root_word(&root);
+    let mut root_word = root;
+    root_word[..16].reverse();
+    root_word[16..].reverse();
     // PUSH32 the root word, reverse its halves, return it.
     let code = [
         &[op::PUSH32][..],

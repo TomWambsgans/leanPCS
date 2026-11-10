@@ -33,12 +33,12 @@ fn deep<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> R {
 }
 
 /// The contract computes what the Rust verifier computes, word for word, on sample streams: the claims it checks
-/// declared and every value it checks (both modes, the smallest Keccak shape).
+/// declared and every value it checks (point claims, the PCS claims a contract checks; the smallest Keccak shape).
 #[test]
 fn keccak_contract_is_the_rust_verifier() {
     deep(|| {
         let shape = Shape::of(&by_xmss(32).shape);
-        for mode in [Claims::Point, Claims::Weighted] {
+        for mode in [Claims::Point] {
             let recorded = record_verifier(&shape, KECCAK_MAIN, mode);
             for seed in [1u64, 2] {
                 let stream = sample_stream(recorded.stream_len, seed);
@@ -61,15 +61,18 @@ fn keccak_stacks_against_whir() {
 }
 
 fn row(label: &str, xmss: usize, report: &GasReport, stack: usize) -> String {
+    let alone = report.transaction(false);
+    let with = report.transaction(true);
     format!(
-        "| {label} | {xmss} | 2^{stack} | {} | {} | {} | {} / {} | {} | {} |",
+        "| {label} | {xmss} | 2^{stack} | {} | {} | {} | {} | {} / {} | {} / {} |",
         report.calldata_bytes,
         report.execution,
         report.field_muls,
         report.claims,
-        report.calls,
-        report.transaction(40),
-        report.transaction(64),
+        alone.standard,
+        alone.floor,
+        with.standard,
+        with.floor,
     )
 }
 
@@ -88,8 +91,9 @@ fn phases(report: &GasReport) {
 fn keccak_gas_report() {
     deep(|| {
         println!(
-            "| configuration | signatures | largest stack | calldata B | execution | FIELD_MUL | claims / calls | \
-             tx EIP-7623 | EIP-7976 | (without the claims' frame and intrinsic gas)"
+            "| configuration | signatures | largest stack | calldata B | execution | FIELD_MUL | claims | \
+             standard / floor | with the frame of PCS claims and pcs_gas | (EIP-8141 frame transaction, EIP-7976 floor, \
+             without FRAME_TX_INTRINSIC_COST and per-frame costs)"
         );
         println!("|---|---:|---:|---:|---:|---:|---:|---:|---:|");
         let mut details = Vec::new();

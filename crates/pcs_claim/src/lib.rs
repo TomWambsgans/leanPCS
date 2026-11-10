@@ -174,29 +174,19 @@ pub fn evaluate_lanes(words: &[F64], point: &[F192]) -> F192 {
     })
 }
 
-/// A commitment, and what its openings need: the committed lanes' words, the Merkle tree of their codeword, and the
-/// codeword itself if it was kept (which the first opening reads its queried rows from, and frees).
-pub struct Committed {
+/// A commitment, and what its openings need but the words: the Merkle tree of the committed lanes' codeword, and the
+/// codeword itself if it was kept (which the first opening reads its queried rows from, and frees). The words are the
+/// caller's ([`commit_words`], [`open_words`]); [`Committed`] keeps them too.
+pub struct Commitment {
     pub n: usize,
     pub root: Hash,
     /// `f(ood_point(n, root))`.
     pub ood: F192,
-    words: Vec<F64>,
     tree: Vec<Hash>,
     codeword: Mutex<Option<Vec<F64>>>,
 }
 
-impl Committed {
-    /// The committed words: the leading whole lanes of `f`'s `2^n` (the rest zero).
-    pub fn words(&self) -> &[F64] {
-        &self.words
-    }
-
-    /// The words, given back.
-    pub fn into_words(self) -> Vec<F64> {
-        self.words
-    }
-
+impl Commitment {
     /// The claim that `f(point) = value` on this commitment.
     pub fn claim(&self, point: Vec<F192>, value: F192) -> PcsClaim {
         assert_eq!(point.len(), self.n);
@@ -207,6 +197,66 @@ impl Committed {
             point,
             value,
         }
+    }
+}
+
+/// Commit to the `2^n` words whose leading whole lanes (of `2^(n-6)` words) are `words` and the rest zero
+/// (`MIN_VARIABLES <= n <= MAX_VARIABLES`), without encoding the zero lanes: leanVM's commitment of the leading lanes
+/// is the whole stack's (its root and its proofs are those of the `2^n` words: the zero lanes' codeword is zero, and a
+/// Merkle leaf hashes them first; [`open_words`] pads its rows back to the whole stack's). With `keep_codeword`, the
+/// codeword (`2^LOG_INV_RATE` words a word of the lanes) is kept for the first opening; the root and the proofs are
+/// the same.
+pub fn commit_words(words: &[F64], n: usize, keep_codeword: bool) -> Commitment {
+    assert!(
+        (MIN_VARIABLES..=MAX_VARIABLES).contains(&n),
+        "n from {MIN_VARIABLES} to {MAX_VARIABLES}"
+    );
+    let lane = 1usize << (n - LANE_FOLD);
+    assert!(
+        !words.is_empty() && words.len().is_multiple_of(lane) && words.len() <= 1 << n,
+        "whole leading lanes of the 2^n words"
+    );
+    let (root, tree, codeword) = if keep_codeword {
+        let (commitment, data) = pcs::whir::commit(words, n, LANE_FOLD, LOG_INV_RATE);
+        (commitment.root, data.merkle_tree, Some(data.codeword))
+    } else {
+        let (commitment, tree) = commit_tree_in(words, n, LANE_FOLD, LOG_INV_RATE, Vec::new());
+        (commitment.root, tree, None)
+    };
+    let ood = evaluate_lanes(words, &ood_point(n, &root));
+    Commitment {
+        n,
+        root,
+        ood,
+        tree,
+        codeword: Mutex::new(codeword),
+    }
+}
+
+/// A commitment with its words: what [`open`] takes.
+pub struct Committed {
+    pub n: usize,
+    pub root: Hash,
+    /// `f(ood_point(n, root))`.
+    pub ood: F192,
+    commitment: Commitment,
+    words: Vec<F64>,
+}
+
+impl Committed {
+    /// The committed words: the leading whole lanes of `f`'s `2^n` (the rest zero).
+    pub fn words(&self) -> &[F64] {
+        &self.words
+    }
+
+    /// The commitment, without the words.
+    pub fn commitment(&self) -> &Commitment {
+        &self.commitment
+    }
+
+    /// The claim that `f(point) = value` on this commitment.
+    pub fn claim(&self, point: Vec<F192>, value: F192) -> PcsClaim {
+        self.commitment.claim(point, value)
     }
 
     /// The claim at `point` with `f`'s value there.
@@ -225,45 +275,23 @@ pub fn commit(words: Vec<F64>) -> Committed {
     commit_lanes(words, n)
 }
 
-/// [`commit`] to the `2^n` words whose leading whole lanes (of `2^(n-6)` words) are `words` and the rest zero, without
-/// encoding the zero lanes: leanVM's commitment of the leading lanes is the whole stack's (its root and its proofs are
-/// those of the `2^n` words: the zero lanes' codeword is zero, and a Merkle leaf hashes them first). The opening
-/// pads its rows back to the whole stack's ([`open`]).
+/// [`commit`] to the `2^n` words whose leading whole lanes are `words` and the rest zero ([`commit_words`]).
 pub fn commit_lanes(words: Vec<F64>, n: usize) -> Committed {
-    check_lanes(&words, n);
-    let (commitment, tree) = commit_tree_in(&words, n, LANE_FOLD, LOG_INV_RATE, Vec::new());
-    committed(words, n, commitment.root, tree, None)
+    owning(commit_words(&words, n, false), words)
 }
 
-/// [`commit_lanes`], keeping the codeword (`2^LOG_INV_RATE` words a word of the lanes), which the first opening reads
-/// its queried rows from instead of encoding them again, and frees. The root and the proofs are the same.
+/// [`commit_lanes`], keeping the codeword for the first opening ([`commit_words`]).
 pub fn commit_lanes_keeping_codeword(words: Vec<F64>, n: usize) -> Committed {
-    check_lanes(&words, n);
-    let (commitment, data) = pcs::whir::commit(&words, n, LANE_FOLD, LOG_INV_RATE);
-    committed(words, n, commitment.root, data.merkle_tree, Some(data.codeword))
+    owning(commit_words(&words, n, true), words)
 }
 
-fn check_lanes(words: &[F64], n: usize) {
-    assert!(
-        (MIN_VARIABLES..=MAX_VARIABLES).contains(&n),
-        "n from {MIN_VARIABLES} to {MAX_VARIABLES}"
-    );
-    let lane = 1usize << (n - LANE_FOLD);
-    assert!(
-        !words.is_empty() && words.len().is_multiple_of(lane) && words.len() <= 1 << n,
-        "whole leading lanes of the 2^n words"
-    );
-}
-
-fn committed(words: Vec<F64>, n: usize, root: Hash, tree: Vec<Hash>, codeword: Option<Vec<F64>>) -> Committed {
-    let ood = evaluate_lanes(&words, &ood_point(n, &root));
+fn owning(commitment: Commitment, words: Vec<F64>) -> Committed {
     Committed {
-        n,
-        root,
-        ood,
+        n: commitment.n,
+        root: commitment.root,
+        ood: commitment.ood,
+        commitment,
         words,
-        tree,
-        codeword: Mutex::new(codeword),
     }
 }
 
@@ -294,34 +322,39 @@ fn eq_tensor(point: &[F192], scale: F192) -> LaneTensor {
     }
 }
 
-/// Prove `claim`, a claim on `committed` (its root, its out-of-domain answer, `n`): one WHIR opening of `f(z) =
-/// ood` and `f(point) = value`, combined by `1, λ`, `λ` the transcript's first challenge. Its level-0 rows are the
-/// whole stack's (`64` words, the absent lanes' zeros leading), as a verifier that knows only `n` reads them. A kept
-/// codeword serves this opening and is freed.
+/// Prove `claim`, a claim on `committed` (its root, its out-of-domain answer, `n`): [`open_words`] of its words.
 pub fn open(committed: &Committed, claim: &PcsClaim) -> Proof {
-    let n = committed.n;
+    open_words(&committed.words, &committed.commitment, claim)
+}
+
+/// Prove `claim`, a claim on `commitment` of `words` (the leading whole lanes [`commit_words`] committed): one WHIR
+/// opening of `f(z) = ood` and `f(point) = value`, combined by `1, λ`, `λ` the transcript's first challenge. Its
+/// level-0 rows are the whole stack's (`64` words, the absent lanes' zeros leading), as a verifier that knows only `n`
+/// reads them. A kept codeword serves this opening and is freed.
+pub fn open_words(words: &[F64], commitment: &Commitment, claim: &PcsClaim) -> Proof {
+    let n = commitment.n;
     assert!(
-        claim.n as usize == n && claim.root == committed.root && claim.ood == committed.ood,
+        claim.n as usize == n && claim.root == commitment.root && claim.ood == commitment.ood,
         "a claim on this commitment"
     );
     let config = config_for_rate(n, LOG_INV_RATE).expect("a supported WHIR shape");
     let mut ps = ProverState::new(digest_words(&iv(claim)), digest_words(&PUBLIC_DIGEST));
-    ps.add_root(&committed.root);
+    ps.add_root(&commitment.root);
     let lambda = ps.sample();
     let target = claim.ood + lambda * claim.value;
     let weight = [
-        eq_tensor(&ood_point(n, &committed.root), F192::ONE),
+        eq_tensor(&ood_point(n, &commitment.root), F192::ONE),
         eq_tensor(&claim.point, lambda),
     ];
-    let codeword = committed.codeword.lock().expect("the codeword").take();
+    let codeword = commitment.codeword.lock().expect("the codeword").take();
     recursive_prover_with_lane_tensors(
         &config,
         n,
-        &committed.words[..],
+        words,
         &weight,
         target,
         codeword.as_deref(),
-        &committed.tree[..],
+        &commitment.tree[..],
         &mut ps,
     );
     let mut proof = ps.into_proof();

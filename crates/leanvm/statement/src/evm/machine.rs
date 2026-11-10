@@ -1,27 +1,19 @@
 // Adapted from this repository's crates/membership/evm/src/machine.rs (itself adapted from leanVM
 // (https://github.com/leanEthereum/leanVM), branch PCS-openings-aggregation, commit 651453c6): revm with `FIELD_MUL`
-// and EIP-8141's frame introspection over a frame of PCS claims, the same opcodes, claim encoding and transaction gas,
-// and a `Chain` that deploys contracts and keeps them across transactions; here the frame may declare claims of any
-// layout word, code may also be installed rather than deployed (it may pass EIP-170's limit), and an inspector gives
-// every instruction's gas, in every contract a call runs. MIT OR Apache-2.0; see AGENTS.md.
+// and EIP-8141's frame introspection over a frame of PCS claims, the same opcodes, and a `Chain` that deploys contracts
+// and keeps them across transactions; here the claims are the EIP draft's PCS claims (`crates/pcs_claim`), code may
+// also be installed rather than deployed (it may pass EIP-170's limit), and an inspector gives every instruction's gas,
+// in every contract a call runs. MIT OR Apache-2.0; see AGENTS.md.
 //! revm with `FIELD_MUL`, EIP-8141's frame introspection over a transaction's frame of PCS claims, and
 //! per-instruction gas.
 //!
 //! A contract checks that its transaction declares the claims it leaves: each claim's Keccak-256 is a payload of the
-//! frame of PCS claims calldata names (the EIP draft, `eip-draft_leanPCS.md`; `crates/membership/evm/src/machine.rs`),
-//! read with `FRAMEPARAM` (`0xb3`) and `FRAMEDATALOAD` (`0xb1`). A claim is this repository's: `3 + k (v + 1)` words,
-//! the commitment's root word, the layout's id, `k`, then each claim's `v` coordinates and its value, a field element
-//! being the low 192 bits of its word. It is every claim on its commitment, as one opening proves them.
-//!
-//! [`PcsFrame`] declares claims in two ways. **Byte strings** ([`PcsFrame::declare`]): what
-//! `crates/leanvm/univariate`'s vectors use. **Openings** of known layouts ([`PcsFrame::decoding`],
-//! [`PcsFrame::declare_opening`]): a registry keyed by the layout word, whose openings it encodes ([`Opening::input`]);
-//! [`decode`] reads a claim back under that encoding (the root word `s_0 · 2^128 + s_1` of [`root_word`], a layout
-//! word the registry knows, which fixes `v`, `k ≥ 1`, the exact length, every element's top 64 bits zero). A frame
-//! declaring everything ([`PcsFrame::declaring_all`]), for measuring runs, then declares only claims that decode.
+//! frame of PCS claims calldata names (the EIP draft, `eip-draft_leanPCS.md`), read with `FRAMEPARAM` (`0xb3`) and
+//! `FRAMEDATALOAD` (`0xb1`). A claim is the EIP draft's PCS claim (`crates/pcs_claim`, `docs/PCS_CLAIM.md`):
+//! `version || n || root || ood || point || value`, `82 + 24 n` bytes. [`PcsFrame`] declares encoded claims; a frame
+//! declaring everything ([`PcsFrame::declaring_all`]), for measuring runs, declares any well-formed one.
 
 use std::cell::RefCell;
-use std::collections::HashMap;
 
 use crate::field::E;
 use revm::bytecode::Bytecode;
@@ -74,80 +66,25 @@ fn field_mul<W: InterpreterTypes, H: ?Sized>(context: InstructionContext<'_, H, 
     *b = U256::from_limbs([product.c0, product.c1, product.c2, 0]);
 }
 
-/// A field element as a claim encodes it: limb 0 lowest, the top 64 bits zero.
+/// A field element as a contract holds it: limb 0 lowest, the top 64 bits zero (a claim encodes its low 24 bytes).
 pub fn element_word(x: E) -> [u8; 32] {
     U256::from_limbs([x.c0, x.c1, x.c2, 0]).to_be_bytes()
 }
 
-/// A claim's root word (`crates/membership/evm/src/machine.rs`): `s_0 · 2^128 + s_1`, `s_h` the little-endian number of the
-/// root's bytes `16 h .. 16 h + 16`, that is each 16-byte half reversed. Its own inverse.
-pub fn root_word(root: &[u8; 32]) -> [u8; 32] {
-    let mut out = *root;
-    out[..16].reverse();
-    out[16..].reverse();
-    out
-}
+/// The PCS version a claim's first byte names, and the EIP draft's bound on its variables (`crates/pcs_claim`).
+pub const PCS_VERSION: u8 = 1;
+pub const MAX_PCS_VARIABLES: usize = 32;
 
-/// The root a root word names ([`root_word`] is an involution).
-pub fn root_of_word(word: &[u8; 32]) -> [u8; 32] {
-    root_word(word)
-}
-
-/// A claim, decoded: the commitment's root (as its opening has it), the layout word, the claims.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Opening {
-    pub root: [u8; 32],
-    pub layout: [u8; 32],
-    pub claims: Vec<(Vec<E>, E)>,
-}
-
-impl Opening {
-    /// The input that names this opening: [`decode`]'s inverse.
-    pub fn input(&self) -> Vec<u8> {
-        let mut out = root_word(&self.root).to_vec();
-        out.extend(self.layout);
-        out.extend(U256::from(self.claims.len()).to_be_bytes::<32>());
-        for (point, value) in &self.claims {
-            for &x in point.iter().chain([value]) {
-                out.extend(element_word(x));
-            }
+/// Whether `bytes` are a well-formed PCS claim (the EIP draft's, `pcs_claim::PcsClaim::decode`): version
+/// [`PCS_VERSION`], `1 <= n <= MAX_PCS_VARIABLES`, exactly `82 + 24 n` bytes.
+pub fn well_formed(bytes: &[u8]) -> bool {
+    match bytes {
+        [version, n, ..] => {
+            let n = *n as usize;
+            *version == PCS_VERSION && (1..=MAX_PCS_VARIABLES).contains(&n) && bytes.len() == 82 + 24 * n
         }
-        out
+        _ => false,
     }
-}
-
-/// Decode `input` under the claims' encoding, the table's variables `vars(layout word)` (`None`: a layout the
-/// registry does not know). `None` unless the input is exactly `3 + k (v + 1)` words with `1 ≤ k`, and every element's top 64 bits are
-/// zero.
-pub fn decode(input: &[u8], vars: impl Fn(&[u8; 32]) -> Option<usize>) -> Option<Opening> {
-    let word = |k: usize| -> Option<[u8; 32]> { input.get(32 * k..32 * k + 32)?.try_into().ok() };
-    let (root, layout, count) = (word(0)?, word(1)?, word(2)?);
-    let v = vars(&layout)?;
-    if count[..24].iter().any(|&b| b != 0) {
-        return None;
-    }
-    let k = u64::from_be_bytes(count[24..].try_into().ok()?) as usize;
-    if k == 0 || input.len() != 32 * (3 + k * (v + 1)) {
-        return None;
-    }
-    let element = |w: [u8; 32]| -> Option<E> {
-        if w[..8].iter().any(|&b| b != 0) {
-            return None;
-        }
-        let [c0, c1, c2, _] = U256::from_be_bytes(w).into_limbs();
-        Some(E::new(c0, c1, c2))
-    };
-    let mut claims = Vec::with_capacity(k);
-    for c in 0..k {
-        let at = 3 + c * (v + 1);
-        let point = (0..v).map(|j| element(word(at + j)?)).collect::<Option<Vec<E>>>()?;
-        claims.push((point, element(word(at + v)?)?));
-    }
-    Some(Opening {
-        root: root_of_word(&root),
-        layout,
-        claims,
-    })
 }
 
 /// A frame as EIP-8141's introspection shows it: its mode and its `data`.
@@ -158,16 +95,13 @@ pub struct Frame {
 }
 
 /// A transaction's frame of PCS claims, standing for a block that proves them: payload `j` of its `data` is the
-/// Keccak-256 of the `j`-th claim declared. It is the transaction's first frame ([`PCS_FRAME`]) unless
-/// [`PcsFrame::before`] puts frames before it.
+/// Keccak-256 of the `j`-th claim declared (an encoded PCS claim, `crates/pcs_claim`). It is the transaction's first
+/// frame ([`PCS_FRAME`]) unless [`PcsFrame::before`] puts frames before it.
 #[derive(Clone, Debug)]
 pub struct PcsFrame {
     claims: Vec<Vec<u8>>,
-    /// The registry of layouts (layout word → the table's variables) whose openings it declares, and those openings.
-    layouts: HashMap<[u8; 32], usize>,
-    openings: Vec<Opening>,
-    /// Every payload read is the hash of what the contract last hashed, if that decodes under a known layout (any,
-    /// without a registry): a measuring run, whose claims are not those of a valid proof.
+    /// Every payload read is the hash of what the contract last hashed, if that is a well-formed claim: a measuring
+    /// run, whose claims are not those of a valid proof.
     pub declare_all: bool,
     /// The transaction's frames before it.
     pub before: Vec<Frame>,
@@ -180,8 +114,6 @@ impl Default for PcsFrame {
     fn default() -> Self {
         Self {
             claims: Vec::new(),
-            layouts: HashMap::new(),
-            openings: Vec::new(),
             declare_all: false,
             before: Vec::new(),
             mode: DEP_VERIFY_FRAME_MODE,
@@ -191,7 +123,7 @@ impl Default for PcsFrame {
 }
 
 impl PcsFrame {
-    /// A frame declaring whatever the contract checks: a measuring run.
+    /// A frame declaring whatever well-formed claim the contract checks: a measuring run.
     pub fn declaring_all() -> Self {
         Self {
             declare_all: true,
@@ -199,41 +131,24 @@ impl PcsFrame {
         }
     }
 
-    /// Declare a claim of these bytes as its next payload.
-    pub fn declare(&mut self, input: Vec<u8>) {
-        assert!(self.layouts.is_empty(), "a registry declares openings, not inputs");
-        self.claims.push(input);
+    /// A frame declaring these claims (encoded), in order.
+    pub fn of(claims: impl IntoIterator<Item = Vec<u8>>) -> Self {
+        let mut frame = Self::default();
+        claims.into_iter().for_each(|claim| frame.declare(claim));
+        frame
     }
 
-    /// A frame that declares openings of these layouts (layout word, the table's variables).
-    pub fn decoding(layouts: impl IntoIterator<Item = ([u8; 32], usize)>) -> Self {
-        let layouts: HashMap<[u8; 32], usize> = layouts.into_iter().collect();
-        assert!(!layouts.is_empty(), "a registry of at least one layout");
-        Self {
-            layouts,
-            ..Self::default()
-        }
+    /// Declare a claim (its encoding) as its next payload.
+    pub fn declare(&mut self, claim: Vec<u8>) {
+        self.claims.push(claim);
     }
 
-    /// Declare an opening, of a known layout, as its next payload: its root, layout word and claims.
-    pub fn declare_opening(&mut self, opening: Opening) {
-        let v = self.layouts.get(&opening.layout).expect("a layout the registry knows");
-        assert!(!opening.claims.is_empty() && opening.claims.iter().all(|(p, _)| p.len() == *v));
-        self.claims.push(opening.input());
-        self.openings.push(opening);
-    }
-
-    /// `input` decoded as the registry's claims are encoded.
-    pub fn decode(&self, input: &[u8]) -> Option<Opening> {
-        decode(input, |w| self.layouts.get(w).copied())
-    }
-
-    /// Whether a contract checking the claim `input` as payload `index` finds it declared.
-    pub fn declares(&self, input: &[u8], index: usize) -> bool {
+    /// Whether a contract checking the claim `claim` as payload `index` finds it declared.
+    pub fn declares(&self, claim: &[u8], index: usize) -> bool {
         if self.declare_all {
-            self.layouts.is_empty() || self.decode(input).is_some()
+            well_formed(claim)
         } else {
-            self.claims.get(index).is_some_and(|claim| claim == input)
+            self.claims.get(index).is_some_and(|c| c == claim)
         }
     }
 
@@ -497,9 +412,37 @@ pub struct Outcome {
     pub claims: Vec<Vec<u8>>,
 }
 
-/// A transaction's gas: its base cost, then the larger of its calldata at the standard rate plus `execution`, and
-/// of its calldata at the floor rate, `floor` gas a nonzero byte. EIP-7623 has a floor of 40, and 10 for a zero
-/// byte; EIP-7976 has 64 for every byte.
+/// A frame transaction's gas (EIP-8141, whose calldata floor is EIP-7976's), without `FRAME_TX_INTRINSIC_COST` and
+/// the per-frame costs: the verifying frame's `calldata` and `execution`, and the frame of PCS claims' `data` with
+/// its `claims` claims' gas (the EIP draft's `pcs_gas`, [`dependency_gas`], added to both sides).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FrameTxGas {
+    /// Every frame's data at 16 gas a nonzero byte and 4 a zero byte, the execution, the PCS gas.
+    pub standard: u64,
+    /// Every frame's data at 64 gas a byte (EIP-7976's floor), the PCS gas.
+    pub floor: u64,
+    /// The larger: what the transaction pays.
+    pub total: u64,
+}
+
+/// [`FrameTxGas`] of a verifying call: `calldata`, its `execution`, and its frame of PCS claims ([`PcsFrame::data`]
+/// and the number of claims; an empty `pcs_data` and `claims = 0` for none).
+pub fn frame_tx_gas(calldata: &[u8], execution: u64, pcs_data: &[u8], claims: usize) -> FrameTxGas {
+    let bytes = calldata.len() as u64 + pcs_data.len() as u64;
+    let zeros = calldata.iter().chain(pcs_data).filter(|&&b| b == 0).count() as u64;
+    let pcs = dependency_gas(claims);
+    let standard = 16 * (bytes - zeros) + 4 * zeros + execution + pcs;
+    let floor = 64 * bytes + pcs;
+    FrameTxGas {
+        standard,
+        floor,
+        total: standard.max(floor),
+    }
+}
+
+/// A legacy transaction's gas as revm reports it here (Cancun: no calldata floor): its base cost, its calldata at
+/// the standard rate and `execution`; [`frame_tx_gas`] for a verifying call's gas. `floor` (gas a nonzero byte; a
+/// zero byte's is a quarter, or 64 at 64) prices a floor if nonzero.
 pub fn transaction_gas(calldata: &[u8], execution: u64, floor: u64) -> u64 {
     let zeros = calldata.iter().filter(|&&byte| byte == 0).count() as u64;
     let nonzeros = calldata.len() as u64 - zeros;
@@ -626,10 +569,9 @@ impl Chain {
             .gas_limit(100_000_000)
             .build()
             .expect("a transaction");
-        let declare_all: Option<DeclareAll> = pcs.declare_all.then(|| {
-            let registry = pcs.clone();
-            Box::new(move |input: &[u8]| registry.declares(input, 0)) as DeclareAll
-        });
+        let declare_all: Option<DeclareAll> = pcs
+            .declare_all
+            .then(|| Box::new(|claim: &[u8]| well_formed(claim)) as DeclareAll);
         RUNNING.set(Running {
             frames: pcs.frames(),
             declare_all,

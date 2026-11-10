@@ -3,7 +3,7 @@
 //! and the quotients, `C2`, the values at `t`, the batching sumcheck, and the openings.
 //!
 //! It writes the stream the verifier reads (`crate::verifier::reduce`, through the contract's Keccak-256 chain) and
-//! one WHIR opening per commitment. Before the batching sumcheck it runs the verifier itself on the stream so far
+//! one WHIR opening per claim (`crates/pcs_claim`). Before the batching sumcheck it runs the verifier itself on the stream so far
 //! (weighted mode, which reads nothing after `ρ`) to learn the combined claims, as any prover may.
 
 use std::time::Instant;
@@ -26,45 +26,41 @@ use super::stack::{Stack, c1_columns, c2_columns};
 use super::trace::Trace;
 use super::weight::Weight;
 use crate::claims::{Column, Combined, Commitment};
-use crate::contract::{NAME, SetupRoots, contract_iv, layout_words};
+use crate::contract::{NAME, SetupRoots, contract_iv};
 use crate::heap::Leaves;
 use crate::stacks::StackLayout;
 use crate::verifier::{Claims, Opening, Shape, Variant, chunks, degree, reduce, sent_columns};
 
 /// What a proof is: the verifier's stream (calldata after the selector and the public input) and one WHIR opening
-/// per commitment, with the point claim it proves.
+/// per claim, with the PCS claim it proves.
 pub struct Proof {
     pub stream: Vec<u8>,
     pub openings: Vec<OpeningProof>,
 }
 
+/// One claim (the EIP draft's PCS claim, `crates/pcs_claim`: the stack in `vars` variables committed as `(root,
+/// ood)`, at `point`, of value `value`) and its opening.
 pub struct OpeningProof {
     pub commitment: Commitment,
     pub root: Hash,
-    /// Its claims' layout word, which carries `vars` and `placed`.
-    pub layout: [u8; 32],
+    pub ood: F192,
     pub vars: usize,
-    pub placed: u64,
     pub point: Vec<F192>,
     pub value: F192,
     pub proof: fiat_shamir::transcript::Proof,
 }
 
-/// The claims' layout word of a commitment of `shape` (`contract::layout_words`, SPEC.md §13, F2).
-pub fn layout_word(shape: &Shape, commitment: Commitment) -> [u8; 32] {
-    let words = layout_words(shape);
-    match commitment {
-        Commitment::C1 => words[0],
-        Commitment::C2 => words[1],
-        Commitment::Setup => words[2],
+impl OpeningProof {
+    /// The PCS claim it proves.
+    pub fn claim(&self) -> pcs_claim::PcsClaim {
+        pcs_claim::PcsClaim {
+            n: self.vars as u8,
+            root: self.root,
+            ood: self.ood,
+            point: self.point.clone(),
+            value: self.value,
+        }
     }
-}
-
-/// The stack's variables and placed words a layout word carries (bytes 24, and 25..32).
-pub fn layout_shape(word: &[u8; 32]) -> (usize, u64) {
-    let mut placed = [0u8; 8];
-    placed[1..].copy_from_slice(&word[25..]);
-    (word[24] as usize, u64::from_be_bytes(placed))
 }
 
 /// Every quotient's degree against the count the verifier declares, every stack's size, and the time of each phase.
@@ -128,14 +124,12 @@ fn minor_faults() -> u64 {
         .unwrap_or(0)
 }
 
-/// The root's two 128-bit halves as the stream carries them: its two scalars as WHIR's transcript has them
-/// (`fiat_shamir::merkle::hash_to_scalars`, each the little-endian number of 16 of the hash's bytes, the opening's
-/// first two scalars), each sent big-endian. The stream's 32 bytes are then the root's claim root word
-/// (`leanvm_statement::evm::machine::root_word`, each 16-byte half of the hash reversed), the word the contract
-/// passes as it is; before, they were the hash's bytes as they are, a word the claims' decoding reads as another
-/// root.
+/// The root's two 128-bit halves as the stream carries them (`Channel::next_root`: each 16-byte half big-endian, `c1`
+/// then `c0`), so that the stream's 32 bytes are the root's bytes as they are: the root a PCS claim encodes, which the
+/// contract passes as it is.
 pub fn halves(root: &Hash) -> [E; 2] {
-    fiat_shamir::merkle::hash_to_scalars(root).map(|s| E::new(s.c0, s.c1, s.c2))
+    let word = |at: usize| u64::from_be_bytes(root[at..at + 8].try_into().expect("8 bytes"));
+    [E::new(word(8), word(0), 0), E::new(word(24), word(16), 0)]
 }
 
 /// `tuple`'s fingerprint needs a sent value: one of its monomials reads an unsent column (`verifier::linearise`).
@@ -199,10 +193,7 @@ pub struct Config {
     /// Fill every stack's words past its blocks with pseudo-random words instead of zeros (a test that the verifier
     /// relies on nothing there).
     pub garbage: bool,
-    /// Send these root halves for `C1` and `C2` instead of the commitments' (no opening can then verify): a
-    /// byte-for-byte cross-check of the stream against a prover that commits nothing (`tests/prove_tiny.rs`).
-    pub stand_in_roots: Option<[[E; 2]; 2]>,
-    /// The setup root the contract's IV binds (SPEC.md §13, F2): `F`'s, which must be this program's and shape's
+    /// The setup commitment the contract's IV binds (SPEC.md §13, F2): `F`'s, which must be this program's and shape's
     /// (`setup::shape_roots`; at the reference shape `SetupRoots::REFERENCE`).
     pub roots: SetupRoots,
 }
@@ -266,21 +257,23 @@ pub fn prove_streaming(
     // queries open again: the prover's peak (C2's commitment) falls by it. The proof is the same.
     let low_memory = std::env::var_os("PI1_LOW_MEMORY").is_some_and(|v| v != "0");
     let committed1 = if low_memory {
-        opening::commit(&stack1.words, stack1.layout.vars, stack1.placed())
+        opening::commit(&stack1.words, stack1.layout.vars)
     } else {
-        opening::commit_keeping_codeword(&stack1.words, stack1.layout.vars, stack1.placed())
+        opening::commit_keeping_codeword(&stack1.words, stack1.layout.vars)
     };
-    let committed_f = opening::commit_keeping_codeword(&stack_f.words, stack_f.layout.vars, stack_f.placed());
-    // The contract binds F's root (and opens F against it): it must be this program's and shape's. Garbage in the
-    // unused words makes another F, which only a contract built for it accepts: that contract's root is used. (The
-    // stand-in roots' cross-check proves nothing.)
+    let committed_f = opening::commit_keeping_codeword(&stack_f.words, stack_f.layout.vars);
+    // The contract binds F's commitment (and its claim on F is against it): it must be this program's and shape's.
+    // Garbage in the unused words makes another F, which only a contract built for it accepts: that contract's is used.
     let roots = if config.garbage {
-        SetupRoots { f: committed_f.root }
+        SetupRoots {
+            f: committed_f.root,
+            f_ood: to_v(committed_f.ood),
+        }
     } else {
         config.roots
     };
-    if config.stand_in_roots.is_none() && committed_f.root != roots.f {
-        return Err("the contract's F root is not this program's and shape's (prover::setup::f_root)".into());
+    if committed_f.root != roots.f || to_v(committed_f.ood) != roots.f_ood {
+        return Err("the contract's F commitment is not this program's and shape's (prover::setup::shape_roots)".into());
     }
     report.roots = Some(roots);
     report.stacks.push((Commitment::C1, stack1.placed(), stack1.layout.vars));
@@ -294,7 +287,10 @@ pub fn prove_streaming(
     for &rows in &trace.rows {
         writer.send_integer(rows, 4);
     }
-    writer.send_root(config.stand_in_roots.map_or_else(|| halves(&committed1.root), |r| r[0]));
+    // C1's commitment: its root, then its out-of-domain answer, which binds the root to one polynomial before any
+    // challenge (docs/PCS_CLAIM.md).
+    writer.send_root(halves(&committed1.root));
+    writer.send(to_v(committed1.ood));
 
     // 2. The bus's and the constraints' challenges; with π1-rec (`FsShape::Rec`, SPEC-REC.md §1.4) α is (c, c², c⁴,
     // c⁸) of one challenge c, squared in E as the verifier squares it.
@@ -445,10 +441,11 @@ pub fn prove_streaming(
     if config.garbage {
         stack2.fill_unused(0xC2);
     }
-    let committed2 = opening::commit_keeping_codeword(&stack2.words, stack2.layout.vars, stack2.placed());
+    let committed2 = opening::commit_keeping_codeword(&stack2.words, stack2.layout.vars);
     report.stacks.push((Commitment::C2, stack2.placed(), stack2.layout.vars));
     clock.lap(&mut report, "C2: WHIR commit");
-    writer.send_root(config.stand_in_roots.map_or_else(|| halves(&committed2.root), |r| r[1]));
+    writer.send_root(halves(&committed2.root));
+    writer.send(to_v(committed2.ood));
 
     // 7. The point and the values at it, in the verifier's order.
     let t = from_v(writer.sample());
@@ -602,22 +599,12 @@ pub fn prove_streaming(
             for ((c, _), &value) in combined.iter().zip(&values) {
                 let (stack, committed) = stacks_of(*c);
                 let p = point[..stack.layout.vars].to_vec();
-                let layout = layout_word(&shape, *c);
-                if layout_shape(&layout) != (committed.vars, committed.placed) {
-                    return Err(format!(
-                        "{c:?}: the layout word's stack {:?} is not the committed one ({}, {})",
-                        layout_shape(&layout),
-                        committed.vars,
-                        committed.placed
-                    ));
-                }
-                let proof = opening::open(&stack.words, committed, &layout, &p, value);
+                let proof = opening::open(&stack.words, committed, &p, value);
                 openings.push(OpeningProof {
                     commitment: *c,
                     root: committed.root,
-                    layout,
-                    vars: committed.vars,
-                    placed: committed.placed,
+                    ood: committed.ood,
+                    vars: committed.n,
                     point: p,
                     value,
                     proof,
@@ -646,9 +633,9 @@ fn merkle_bytes(paths: &fiat_shamir::merkle::PrunedMerklePaths) -> usize {
 }
 
 /// Verify a proof: the verifier's `reduce` on the stream (its zero and nonzero checks held to account) and every
-/// opening's WHIR proof, its point and value the ones the verifier leaves, its layout word the contract's.
+/// opening's WHIR proof (`pcs_verify` of its PCS claim), its claim the one the verifier leaves.
 ///
-/// The contract binds `roots` in its IV (`contract::rust_verifier_with`), and the setup opening's root must be its
+/// The contract binds `roots` in its IV (`contract::rust_verifier_with`), and the setup claim's commitment must be its
 /// `F`.
 pub fn verify(
     trace_shape: &crate::verifier::Shape,
@@ -677,20 +664,21 @@ pub fn verify(
         if *commitment != mine.commitment || from_v(*value) != mine.value || point.iter().map(|&x| from_v(x)).collect::<Vec<_>>() != mine.point {
             return Err(format!("{commitment:?}: the opening is not of the verifier's claim"));
         }
-        // The root: the stream's for C1 and C2; the setup's is the contract's constant.
-        let root_ok = match commitment {
-            Commitment::C1 => reduced.roots[0] == halves(&mine.root),
-            Commitment::C2 => reduced.roots[1] == halves(&mine.root),
-            Commitment::Setup => mine.root == roots.f,
+        // The commitment: the stream's for C1 and C2 (its root and out-of-domain answer); the setup's is the
+        // contract's constant.
+        let commitment_ok = match commitment {
+            Commitment::C1 => reduced.roots[0] == halves(&mine.root) && reduced.oods[0] == to_v(mine.ood),
+            Commitment::C2 => reduced.roots[1] == halves(&mine.root) && reduced.oods[1] == to_v(mine.ood),
+            Commitment::Setup => mine.root == roots.f && to_v(mine.ood) == roots.f_ood,
         };
-        if !root_ok {
-            return Err(format!("{commitment:?}: the opening's root is not the stream's (or the contract's)"));
+        if !commitment_ok {
+            return Err(format!("{commitment:?}: the claim's commitment is not the stream's (or the contract's)"));
         }
-        let layout = layout_word(trace_shape, *commitment);
-        if mine.layout != layout {
-            return Err(format!("{commitment:?}: the opening's layout word is not the contract's"));
+        let stack_vars = reduced.stack_vars.iter().find(|(c, _)| c == commitment).map(|&(_, v)| v);
+        if stack_vars != Some(mine.vars) {
+            return Err(format!("{commitment:?}: the claim's variables are not the stack's"));
         }
-        opening::verify(&mine.root, &layout, &mine.point, mine.value, &opening::wire_proof(&mine.proof))
+        opening::verify(&mine.claim(), &opening::wire_proof(&mine.proof))
             .map_err(|e| format!("{commitment:?}: WHIR rejects: {e:?}"))?;
     }
     Ok(())

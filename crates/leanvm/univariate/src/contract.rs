@@ -5,43 +5,40 @@
 //!
 //! **Calldata**: selector, the public input (four 64-bit words, each big-endian: `(cell0.c0, cell0.c1, cell1.c0,
 //! cell1.c1)`; leanVM's 32-byte digest has its words little-endian, so a caller reverses each word's 8 bytes, SPEC.md
-//! §4), then the stream: the six row counts, `C1`'s root, Flock's messages, `C2`'s root, the values at `t`, the
-//! batching sumcheck (SPEC.md §8, §13), then a byte, the index of the transaction's frame of PCS claims. The contract is built for one shape class (the heights), which the
-//! transcript's IV binds with the setup root and the layout words.
+//! §4), then the stream: the six row counts, `C1`'s commitment (its root, its out-of-domain answer), Flock's messages,
+//! `C2`'s commitment, the values at `t`, the batching sumcheck (SPEC.md §8, §13), then a byte, the index of the
+//! transaction's frame of PCS claims. The contract is built for one shape class (the heights), which the transcript's
+//! IV binds with the setup commitment.
 //!
-//! **Claims**: one per commitment, which the contract checks its transaction declares (a payload of its frame of PCS
-//! claims is the claim's Keccak-256), each with one weighted claim (SPEC.md §8): words `root, layout,
-//! k = 1, P`, the `P` points (a length, then the coordinates), the claim's `m` terms (`column | point << 32 |
-//! twist << 48`, then the coefficient) and its value; or, with point claims, `root, layout, 1`, the point and the
-//! value. The setup root is a constant in the code (no `SLOAD`).
-//!
-//! **Root words**. `C1`'s and `C2`'s are the stream's 32 bytes as they are:
-//! the prover sends each root as its two WHIR scalars (`prover::prove::halves`, `hash_to_scalars`), so those bytes
-//! are a claim's root word `s_0 · 2^128 + s_1` (`crates/membership/evm/src/machine.rs`), which decodes as the root
-//! the opening is of. The setup root's word is the hash as it is ([`SetupRoots`]), not its root word: machine.rs's
-//! decoding reads it as another root (`root_word` of it), so this contract, deployed alone, needs
-//! `Word::Const(root_word(..))` there (free: constants). π2's contract, which checks π1's claims, passes their root
-//! words (`crates/leanvm/rec`, `circuit::compile`).
+//! **Claims**: one per commitment, each the EIP draft's PCS claim (`crates/pcs_claim`, `docs/PCS_CLAIM.md`): the
+//! stack in its `n` variables, committed as `(root, ood)`, at the batch's point, which the contract checks its
+//! transaction declares (a payload of its frame of PCS claims is the claim's Keccak-256,
+//! `evm_link::declared_claims`). `C1`'s and `C2`'s roots are the stream's 32 bytes as they are (the prover sends a
+//! root's bytes, `prover::prove::halves`), their out-of-domain answers the stream's elements after them; the setup
+//! commitment `F` is a constant of the code ([`SetupRoots`]: no `SLOAD`). Weighted claims (extension W, SPEC.md §8)
+//! are no PCS claim: the contract is built for point claims.
 
-use leanvm_statement::evm::codegen::{CALLS, Contract, ENTRY, Ending, Entry, MEASURE, VERIFY, Word, compile, word};
-use leanvm_statement::evm::machine::{Outcome, PCS_FRAME, PcsFrame, call};
+use leanvm_statement::evm::codegen::{CALLS, Claim, Contract, ENTRY, Ending, Entry, MEASURE, VERIFY, Word, compile, word};
+use leanvm_statement::evm::machine::{FrameTxGas, Outcome, PCS_FRAME, PcsFrame, call, element_word, frame_tx_gas};
 use leanvm_statement::evm::record::{Graph, Recorder, Sym, record};
 use leanvm_statement::field::E;
 use leanvm_statement::transcript::{Checks, KeccakChannel, keccak_seed};
 
-use crate::claims::{Combined, Commitment};
+use crate::claims::Commitment;
 use crate::verifier::{Claims, Opening, Reduced, Shape, Variant, reduce};
 
 /// The transcript's 16-byte name.
 pub const NAME: [u8; 16] = *b"leanVM-univar-v1";
 
-/// The root the contract's IV binds, a constant of the code (SPEC.md §13, F2): the setup commitment `F`'s, from the
-/// program and the shape (`prover::setup::f_root`). [`SetupRoots::REFERENCE`]'s `F` is the reference shape's (128
-/// signatures, `leanvm_statement::shapes::reference`), which the gas reports use for every shape (the gas does not
-/// depend on the root).
+/// The setup commitment the contract's IV binds, a constant of the code (SPEC.md §13, F2): `F`'s root and
+/// out-of-domain answer, from the program and the shape (`prover::setup::shape_roots`). [`SetupRoots::REFERENCE`]'s
+/// is the reference shape's (128 signatures, `leanvm_statement::shapes::reference`), which the gas reports use for
+/// every shape (the gas does not depend on it).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SetupRoots {
     pub f: [u8; 32],
+    /// `F`'s out-of-domain answer (`crates/pcs_claim`).
+    pub f_ood: E,
 }
 
 const fn digit(c: u8) -> u8 {
@@ -64,17 +61,13 @@ const fn hex32(text: &[u8; 64]) -> [u8; 32] {
 impl SetupRoots {
     pub const REFERENCE: Self = Self {
         f: hex32(b"067244bea80942b5cacaa61c28ca748d0ae4ba6c106739ab109c9c07296e1ca5"),
+        f_ood: E::new(REFERENCE_F_OOD[0], REFERENCE_F_OOD[1], REFERENCE_F_OOD[2]),
     };
 }
 
-/// The opening a claim is for, its code in the layout word.
-fn layout_code(commitment: Commitment) -> u16 {
-    match commitment {
-        Commitment::C1 => 0x5501,
-        Commitment::C2 => 0x5502,
-        Commitment::Setup => 0x5503,
-    }
-}
+/// [`SetupRoots::REFERENCE`]'s out-of-domain answer, limb 0 first (`tests/prove_real.rs` checks it against the
+/// reference trace's `F`).
+const REFERENCE_F_OOD: [u64; 3] = [0x20e3_e5ce_a967_4063, 0x56b4_7388_a81d_6fff, 0x1667_157a_1c2b_0b6b];
 
 /// The shape's bytes: `log_memory`, `log_bytecode`, then the six heights.
 pub fn shape_bytes(shape: &Shape) -> [u8; 8] {
@@ -88,32 +81,6 @@ pub fn shape_bytes(shape: &Shape) -> [u8; 8] {
     bytes
 }
 
-/// A claim's layout word (SPEC.md §13, F2): the shape's bytes (bytes 0..8), the opening's version (21:
-/// `prover::opening::VERSION`, which fixes WHIR's parameters), the opening's code (22..24), the stack's variables (24)
-/// and the words its blocks fill, `placed` (25..32), which WHIR's verifier needs to know the committed lanes. Each
-/// shape's stacks have their own words.
-pub fn layout_word(shape: &Shape, code: u16, vars: usize, placed: u64) -> [u8; 32] {
-    use crate::prover::opening::{VERSION, VERSION_BYTE};
-    assert!(vars < 256 && placed < 1 << 56);
-    let mut word = [0u8; 32];
-    word[..8].copy_from_slice(&shape_bytes(shape));
-    word[VERSION_BYTE] = VERSION as u8;
-    word[22..24].copy_from_slice(&code.to_be_bytes());
-    word[24] = vars as u8;
-    word[25..].copy_from_slice(&placed.to_be_bytes()[1..]);
-    word
-}
-
-/// The layout words the IV binds: the three openings', in call order (`C1`, `C2`, the setup).
-pub fn layout_words(shape: &Shape) -> [[u8; 32]; 3] {
-    let layouts = crate::verifier::layouts(shape);
-    let of = |c: Commitment| {
-        let layout = &layouts.iter().find(|(k, _)| *k == c).expect("a layout").1;
-        layout_word(shape, layout_code(c), layout.vars, layout.words())
-    };
-    [of(Commitment::C1), of(Commitment::C2), of(Commitment::Setup)]
-}
-
 /// The bytes the IV's preimage ends with: the tag `"keccak-vm"`, Flock's skip and the Fiat–Shamir shape's code.
 pub fn variant_bytes(variant: Variant) -> Vec<u8> {
     let mut out = b"keccak-vm".to_vec();
@@ -121,18 +88,15 @@ pub fn variant_bytes(variant: Variant) -> Vec<u8> {
     out
 }
 
-/// The IV the transcript's seed hashes (SPEC.md §13, F2): the Keccak-256 of a tag, the program's IV, the setup root
-/// ([`SetupRoots`]), the shape, the three layout words ([`layout_words`]) and [`variant_bytes`]. The seed then adds
-/// the public input. A constant of the code: it costs no gas.
+/// The IV the transcript's seed hashes (SPEC.md §13, F2): the Keccak-256 of a tag, the program's IV, the setup
+/// commitment ([`SetupRoots`]: `F`'s root and its out-of-domain answer, as a claim encodes them), the shape and
+/// [`variant_bytes`]. The seed then adds the public input. A constant of the code: it costs no gas.
 pub fn contract_iv(shape: &Shape, variant: Variant, program_iv: &[u8; 32], roots: &SetupRoots) -> [u8; 32] {
-    let words = layout_words(shape);
     let mut data = b"leanVM-univar-iv".to_vec();
     data.extend_from_slice(program_iv);
     data.extend_from_slice(&roots.f);
+    data.extend_from_slice(&element_word(roots.f_ood)[8..]);
     data.extend_from_slice(&shape_bytes(shape));
-    for w in &words {
-        data.extend_from_slice(w);
-    }
     data.extend_from_slice(&variant_bytes(variant));
     leanvm_statement::transcript::keccak256(&data)
 }
@@ -184,66 +148,42 @@ pub fn record_verifier_with(shape: &Shape, variant: Variant, mode: Claims, setup
     }
 }
 
-fn number(n: u64) -> Word {
-    let mut bytes = [0; 32];
-    bytes[24..].copy_from_slice(&n.to_be_bytes());
-    Word::Const(bytes)
-}
-
 fn scalar(sym: Sym) -> Word {
     Word::Node(sym.0)
 }
 
-/// A weighted claim's words, after its header: `P`, the points, `m`, the terms, the value.
-fn combined_words<T: Copy, W: Clone>(claim: &Combined<T>, word: impl Fn(T) -> W, number: impl Fn(u64) -> W) -> Vec<W> {
-    let mut words = vec![number(claim.points.len() as u64)];
-    for point in &claim.points {
-        words.push(number(point.len() as u64));
-        words.extend(point.iter().map(|&x| word(x)));
-    }
-    words.push(number(claim.terms.len() as u64));
-    for &(column, point, twist, coefficient) in &claim.terms {
-        words.push(number(column.id() | (point as u64) << 32 | (twist as u64) << 48));
-        words.push(word(coefficient));
-    }
-    words.push(word(claim.value));
-    words
+/// The claims the contract checks declared (point claims), in order: each commitment's root and out-of-domain answer
+/// (the stream's for `C1` and `C2`, the code's constants for `F`), the point and the value, in any word type.
+fn claims_with<T: Copy, W: Clone>(
+    recorded: &Recorded,
+    reduced: &Reduced<T>,
+    stream: impl Fn(usize) -> W,
+    constant: impl Fn([u8; 32]) -> W,
+    scalar: impl Fn(T) -> W + Copy,
+) -> Vec<(W, W, Vec<W>, W)> {
+    reduced
+        .openings
+        .iter()
+        .map(|(commitment, opening)| {
+            let Opening::Point { point, value } = opening else {
+                panic!("weighted claims are no PCS claims: the contract is built for point claims")
+            };
+            let (root, ood) = match commitment {
+                Commitment::C1 => (stream(recorded.roots_at[0]), scalar(reduced.oods[0])),
+                Commitment::C2 => (stream(recorded.roots_at[1]), scalar(reduced.oods[1])),
+                Commitment::Setup => (constant(recorded.roots.f), constant(element_word(recorded.roots.f_ood))),
+            };
+            (root, ood, point.iter().map(|&x| scalar(x)).collect(), scalar(*value))
+        })
+        .collect()
 }
 
-/// A commitment's call: its header (root, layout, claims), then its claims.
-fn opening_words<T: Copy, W: Clone>(
-    root: W,
-    layout: W,
-    opening: &Opening<T>,
-    word: impl Fn(T) -> W + Copy,
-    number: impl Fn(u64) -> W + Copy,
-) -> Vec<W> {
-    match opening {
-        Opening::Weighted(claim) => [vec![root, layout, number(1)], combined_words(claim, word, number)].concat(),
-        Opening::Point { point, value } => {
-            let mut words = vec![root, layout, number(1)];
-            words.extend(point.iter().map(|&x| word(x)));
-            words.push(word(*value));
-            words
-        }
-    }
-}
-
-/// The claims the contract checks declared, as runs of output words.
-pub fn calls(recorded: &Recorded) -> Vec<Vec<Word>> {
-    let reduced = &recorded.reduced;
-    let layouts = layout_words(&recorded.shape);
-    let roots = recorded.roots;
-    let mut out = Vec::new();
-    for (commitment, opening) in &reduced.openings {
-        let (root, layout) = match commitment {
-            Commitment::C1 => (Word::Stream(recorded.roots_at[0]), layouts[0]),
-            Commitment::C2 => (Word::Stream(recorded.roots_at[1]), layouts[1]),
-            Commitment::Setup => (Word::Const(roots.f), layouts[2]),
-        };
-        out.push(opening_words(root, Word::Const(layout), opening, scalar, number));
-    }
-    out
+/// The claims the contract checks declared, as words of the contract.
+pub fn calls(recorded: &Recorded) -> Vec<Claim> {
+    claims_with(recorded, &recorded.reduced, Word::Stream, Word::Const, scalar)
+        .into_iter()
+        .map(|(root, ood, point, value)| Claim { root, ood, point, value })
+        .collect()
 }
 
 /// `program_iv` is the program's (leanVM's digest of the bytecode and the R1CS); the contract's IV is derived from it
@@ -255,9 +195,7 @@ pub fn compile_verifier(recorded: &Recorded, program_iv: &[u8; 32], measure: boo
         stream_len: recorded.stream_len,
         measure,
     };
-    let calls = calls(recorded);
-    let ending = Ending::Declared(calls.iter().map(Vec::len).collect());
-    compile(&recorded.graph, &calls.concat(), &ending, &entry)
+    compile(&recorded.graph, &[], &Ending::Claims(calls(recorded)), &entry)
 }
 
 /// The proof's calldata: the selector, the public input, the stream (what the committed vectors hold).
@@ -363,14 +301,19 @@ pub struct GasReport {
 }
 
 impl GasReport {
-    /// Transaction gas without its 21,000 base, without its frame of PCS claims and their intrinsic gas: `floor` 40
-    /// for EIP-7623 (10 a zero byte), 64 for EIP-7976.
-    pub fn transaction(&self, floor: u64) -> u64 {
-        let nonzero = (self.calldata_bytes - self.calldata_zero_bytes) as u64;
-        let zero = self.calldata_zero_bytes as u64;
-        let standard = 16 * nonzero + 4 * zero + self.execution;
-        let floor_gas = floor * nonzero + if floor == 64 { 64 } else { floor / 4 } * zero;
-        standard.max(floor_gas)
+    /// The frame transaction's gas (EIP-8141 with EIP-7976's floor, without `FRAME_TX_INTRINSIC_COST` and the
+    /// per-frame costs): this calldata and execution, and a frame of PCS claims of `claims` claims, or none.
+    pub fn transaction(&self, claims: bool) -> FrameTxGas {
+        let calldata = vec![1u8; self.calldata_bytes - self.calldata_zero_bytes]
+            .into_iter()
+            .chain(vec![0u8; self.calldata_zero_bytes])
+            .collect::<Vec<u8>>();
+        let (data, count) = if claims {
+            (vec![1u8; 1 + 32 * self.calls], self.calls)
+        } else {
+            (Vec::new(), 0)
+        };
+        frame_tx_gas(&calldata, self.execution, &data, count)
     }
 
     pub fn calldata_gas(&self) -> u64 {
@@ -415,13 +358,7 @@ pub fn measure(shape: &Shape, iv: &[u8; 32], variant: Variant, mode: Claims) -> 
         .openings
         .iter()
         .zip(&all_calls)
-        .map(|((commitment, opening), words)| {
-            let terms = match opening {
-                Opening::Weighted(claim) => claim.terms.len(),
-                Opening::Point { .. } => 1,
-            };
-            (format!("{commitment:?}"), terms, words.len())
-        })
+        .map(|((commitment, _), claim)| (format!("{commitment:?}"), 1, claim.words().len()))
         .collect();
     let _ = ENTRY;
     GasReport {
@@ -432,7 +369,7 @@ pub fn measure(shape: &Shape, iv: &[u8; 32], variant: Variant, mode: Claims) -> 
         phases,
         claims,
         calls: calls_count,
-        pcs_words: all_calls.iter().map(Vec::len).sum(),
+        pcs_words: all_calls.iter().map(|c| c.words().len()).sum(),
         terms,
         relations: recorded.reduced.relations,
         code_bytes: contract.code.len(),
@@ -448,25 +385,39 @@ pub fn measure(shape: &Shape, iv: &[u8; 32], variant: Variant, mode: Claims) -> 
 
 /// The words `calls` writes, for the Rust verifier's claims on `stream`: what the contract must write.
 fn expected_words(reduced: &Reduced<E>, recorded: &Recorded, stream: &[u8]) -> Vec<[u8; 32]> {
-    use leanvm_statement::evm::machine::element_word;
-    let number = |n: u64| {
-        let mut bytes = [0u8; 32];
-        bytes[24..].copy_from_slice(&n.to_be_bytes());
-        bytes
-    };
     let root = |at: usize| -> [u8; 32] { stream[at..at + 32].try_into().unwrap() };
-    let layouts = layout_words(&recorded.shape);
-    let roots = recorded.roots;
-    let mut out = Vec::new();
-    for (commitment, opening) in &reduced.openings {
-        let (r, layout) = match commitment {
-            Commitment::C1 => (root(recorded.roots_at[0]), layouts[0]),
-            Commitment::C2 => (root(recorded.roots_at[1]), layouts[1]),
-            Commitment::Setup => (roots.f, layouts[2]),
-        };
-        out.extend(opening_words(r, layout, opening, element_word, number));
-    }
-    out
+    claims_with(recorded, reduced, root, |b| b, element_word)
+        .into_iter()
+        .flat_map(|(root, ood, point, value)| [root, ood].into_iter().chain(point).chain([value]))
+        .collect()
+}
+
+/// The PCS claims a proof's stream gives (the Rust verifier's reduction of it), in the contract's order: what its
+/// transaction must declare, and what the block's openings must prove.
+pub fn expected_claims(recorded: &Recorded, reduced: &Reduced<E>, stream: &[u8]) -> Vec<pcs_claim::PcsClaim> {
+    let f192 = |x: E| primitives::field::F192::new(x.c0, x.c1, x.c2);
+    reduced
+        .openings
+        .iter()
+        .map(|(commitment, opening)| {
+            let Opening::Point { point, value } = opening else {
+                panic!("weighted claims are no PCS claims")
+            };
+            let at = |k: usize| -> [u8; 32] { stream[recorded.roots_at[k]..recorded.roots_at[k] + 32].try_into().unwrap() };
+            let (root, ood) = match commitment {
+                Commitment::C1 => (at(0), reduced.oods[0]),
+                Commitment::C2 => (at(1), reduced.oods[1]),
+                Commitment::Setup => (recorded.roots.f, recorded.roots.f_ood),
+            };
+            pcs_claim::PcsClaim {
+                n: point.len() as u8,
+                root,
+                ood: f192(ood),
+                point: point.iter().map(|&x| f192(x)).collect(),
+                value: f192(*value),
+            }
+        })
+        .collect()
 }
 
 /// The contract, built to return the claims it would check declared and every value it checks, against the Rust verifier
@@ -494,15 +445,15 @@ pub fn parity_with(
     };
     let checks = recorded.graph.zero.iter().chain(&recorded.graph.nonzero);
     let outputs: Vec<Word> = calls(&recorded)
-        .concat()
-        .into_iter()
+        .iter()
+        .flat_map(Claim::words)
         .chain(checks.map(|&(id, _)| Word::Node(id)))
         .collect();
     let contract = compile(&recorded.graph, &outputs, &Ending::Return, &entry);
     let (reduced, zero, nonzero) =
         rust_verifier_with(shape, iv, setup, public_words, stream, variant, mode).expect("the stream's length");
     let mut expected = expected_words(&reduced, &recorded, stream);
-    expected.extend(zero.iter().chain(&nonzero).map(|&x| leanvm_statement::evm::machine::element_word(x)));
+    expected.extend(zero.iter().chain(&nonzero).map(|&x| element_word(x)));
     let outcome = call(&contract.code, &[], &calldata(public_words, stream), &PcsFrame::default());
     let output = outcome.output.expect("the measuring build does not revert");
     assert_eq!(output.len(), 32 * expected.len(), "words returned");

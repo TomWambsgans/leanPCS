@@ -2,7 +2,7 @@
 // and the Flock reduction are leanVM's at commit 42422001 (crates/verifier/src/{layout,bus,lib,flock}.rs there), read
 // through `leanvm_statement`'s port; the PIOP that checks them is new (SPEC.md), and so is its Fiat–Shamir shape π1-rec
 // (`docs/leanvm/rec/SPEC-REC.md` §1.4). MIT OR Apache-2.0; see AGENTS.md.
-//! The verifier of SPEC.md, generic over the scalar it computes on: from the proof's stream (two roots, Flock's
+//! The verifier of SPEC.md, generic over the scalar it computes on: from the proof's stream (two commitments, Flock's
 //! messages, the values at `t`) to one weighted claim per commitment.
 
 use leanvm_statement::field::E;
@@ -278,9 +278,12 @@ fn table_part<S: Scalar + PartialEq, C: Channel<S>>(
 /// `log2` of `q_flock`'s words a `SHA3` row: `2^(17 - 6)`, one Keccak-f block a row.
 pub const QFLOCK_ROW_BITS: usize = KECCAK_R1CS_LOG_SIZE - 6;
 
-/// What the verifier leaves: the two roots and one claim on each commitment.
+/// What the verifier leaves: the two commitments (their roots, their out-of-domain answers) and one claim on each
+/// commitment.
 pub struct Reduced<S> {
     pub roots: [[S; 2]; 2],
+    /// `C1`'s and `C2`'s out-of-domain answers (`crates/pcs_claim`), read after their roots.
+    pub oods: [S; 2],
     pub openings: Vec<(Commitment, Opening<S>)>,
     /// The relations combined, and each commitment's stack variables.
     pub relations: usize,
@@ -354,7 +357,10 @@ pub fn reduce<S: Scalar + PartialEq, C: Channel<S>>(
 
     // 1. C1, then the bus's and the constraints' challenges: α drawn one by one, or with π1-rec (c, c², c⁴, c⁸) of
     // one c (SPEC-REC.md §1.4; β stays independent of it).
+    // Its commitment: the root and the out-of-domain answer, which binds the root to one polynomial
+    // (docs/PCS_CLAIM.md) before the challenges.
     let root1 = channel.next_root()?;
+    let ood1 = channel.next_scalar()?;
     let alphas = variant.fs.draw(channel, 4);
     let beta = channel.sample();
     let gamma = channel.sample();
@@ -372,6 +378,7 @@ pub fn reduce<S: Scalar + PartialEq, C: Channel<S>>(
 
     // 3. C2, then the point.
     let root2 = channel.next_root()?;
+    let ood2 = channel.next_scalar()?;
     let t = channel.sample();
     let digit_count = h.max(r_w + 4) + 2;
     let w = {
@@ -651,6 +658,7 @@ pub fn reduce<S: Scalar + PartialEq, C: Channel<S>>(
     };
     Ok(Reduced {
         roots: [root1, root2],
+        oods: [ood1, ood2],
         openings,
         relations: relations.list.len(),
         stack_vars,

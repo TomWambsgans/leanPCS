@@ -47,7 +47,7 @@ pub struct Entry {
 }
 
 /// A word the contract writes to its output region.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Word {
     /// A recorded value.
     Node(u32),
@@ -58,16 +58,56 @@ pub enum Word {
     Stored(u8),
 }
 
-/// What the contract does with its output region, once written.
+/// A PCS claim (the EIP draft's, `crates/pcs_claim`) as the contract has its fields: the commitment's root (its 32
+/// bytes as the claim has them), its out-of-domain answer, the point's coordinates and the value (elements, words with
+/// their top 64 bits zero).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Claim {
+    pub root: Word,
+    pub ood: Word,
+    pub point: Vec<Word>,
+    pub value: Word,
+}
+
+impl Claim {
+    /// Its fields in the claim's order: the root, the out-of-domain answer, the point, the value.
+    pub fn words(&self) -> Vec<Word> {
+        [self.root, self.ood].into_iter().chain(self.point.iter().copied()).chain([self.value]).collect()
+    }
+}
+
+/// What the contract does once its checks pass.
 pub enum Ending {
-    /// Return it.
+    /// Write the outputs and return them.
     Return,
-    /// Revert unless the transaction declares the claims these runs of words of it encode, in order and back to back,
-    /// as payloads `0, 1, ...` of the frame of PCS claims calldata names ([`evm_link::declared`]); return the word 1.
-    Declared(Vec<usize>),
-    /// As [`Ending::Declared`], each claim written at the region's start just before it is checked, and only where
-    /// the claim before left another word (`evm_link::front::Source::reuse`): claims sharing a point write it once.
-    DeclaredReusing(Vec<usize>),
+    /// Revert unless the transaction declares these claims, in order, as payloads `0, 1, ...` of the frame of PCS
+    /// claims calldata names (`evm_link::declared_claims`); return the word 1. Their fields are written once each
+    /// (claims sharing a point's coordinates write them once).
+    Claims(Vec<Claim>),
+}
+
+/// The distinct words of `claims`, in first appearance, and each claim's fields as indices of them.
+pub fn claim_outputs(claims: &[Claim]) -> (Vec<Word>, Vec<evm_link::ClaimWords>) {
+    let mut words: Vec<Word> = Vec::new();
+    let mut at = |w: Word| match words.iter().position(|&x| x == w) {
+        Some(k) => k,
+        None => {
+            words.push(w);
+            words.len() - 1
+        }
+    };
+    let fields = claims
+        .iter()
+        .enumerate()
+        .map(|(index, c)| evm_link::ClaimWords {
+            root: at(c.root),
+            ood: at(c.ood),
+            point: c.point.iter().map(|&w| at(w)).collect(),
+            value: at(c.value),
+            index,
+        })
+        .collect();
+    (words, fields)
 }
 
 /// The graph, with how the contract is seeded: the code of each node.
@@ -195,6 +235,13 @@ fn program(graph: &Graph, outputs: &[Word], ending: &Ending, entry: &Entry) -> (
         &push(&VERIFY),
         &[XOR, OR, CALLVALUE, OR],
     ];
+    let (outputs, claims) = match ending {
+        Ending::Return => (outputs.to_vec(), Vec::new()),
+        Ending::Claims(claims) => {
+            assert!(outputs.is_empty(), "a contract checking claims writes their fields alone");
+            claim_outputs(claims)
+        }
+    };
     let words = outputs
         .iter()
         .map(|word| match *word {
@@ -236,11 +283,9 @@ fn program(graph: &Graph, outputs: &[Word], ending: &Ending, entry: &Entry) -> (
             .chain(graph.nonzero.iter().map(|&(id, _)| (id, Check::Nonzero)))
             .collect(),
         outputs: words,
-        calls: match ending {
-            Ending::Return => None,
-            Ending::Declared(runs) | Ending::DeclaredReusing(runs) => Some(runs.clone()),
-        },
-        reuse: matches!(ending, Ending::DeclaredReusing(_)),
+        calls: None,
+        claims,
+        reuse: false,
         calls_tag: CALLS,
         scratch,
         calldata_len,
@@ -262,7 +307,8 @@ fn program(graph: &Graph, outputs: &[Word], ending: &Ending, entry: &Entry) -> (
                 _ => 0,
             })
             .sum(),
-        // The entry's, the graph's, and the frame's of PCS claims (`evm_link::pcs_frame_check`), if the program has one.
+        // The entry's, the graph's, and the frame's of PCS claims (`evm_link::pcs_frame_check`), if the program has one
+        // (each claim's check is a check of its own, `Program::checks`).
         checks: graph.zero.len() + graph.nonzero.len() + 1 + usize::from(!matches!(ending, Ending::Return)),
     };
     (compiled.program, stats)
@@ -292,7 +338,8 @@ fn options(measure: bool, jump_width: usize) -> Options<'static> {
 
 /// The contract. A call of it is calldata of the selector, the public input and `entry.stream_len` bytes of stream,
 /// with no value. It reverts unless every node of `graph.zero` is zero and every one of `graph.nonzero` nonzero, else
-/// writes `outputs` to a region of fresh memory, one word each, and ends as `ending` says.
+/// writes `outputs` to a region of fresh memory, one word each, and returns them ([`Ending::Return`]), or checks the
+/// claims declared ([`Ending::Claims`], `outputs` empty).
 pub fn compile(graph: &Graph, outputs: &[Word], ending: &Ending, entry: &Entry) -> Contract {
     let (program, stats) = program(graph, outputs, ending, entry);
     let assembled = evm_link::assemble(&program, &options(entry.measure, 3));

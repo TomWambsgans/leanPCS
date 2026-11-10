@@ -1,9 +1,9 @@
 // Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! The setup commitment `F` (SPEC.md §3), computed from what it is fixed by: the program (leanVM's stacked bytecode)
-//! and the shape (the memory's and the bytecode's sizes). Its root is what a contract is generated with (SPEC.md §13,
-//! F2): [`shape_roots`].
+//! and the shape (the memory's and the bytecode's sizes). Its commitment (root and out-of-domain answer) is what a
+//! contract is generated with (SPEC.md §13, F2): [`shape_roots`].
 //!
-//! They are committed as every stack is (`opening::commit`: leanVM's WHIR at `c445e3d5`, rate `1/2`, 64 lanes).
+//! It is committed as every stack is (`opening::commit`: the EIP draft's PCS version 1, `crates/pcs_claim`).
 
 use fiat_shamir::merkle::Hash;
 use primitives::field::F64;
@@ -34,14 +34,16 @@ pub use crate::contract::SetupRoots;
 
 /// `F`'s root for `shape` and the program whose setup polynomials are `setup`.
 pub fn f_root(shape: &Shape, setup: &SetupPolys) -> Hash {
-    let f = f_stack(shape, setup);
-    opening::commit(&f.words, f.layout.vars, f.placed()).root
+    shape_roots(shape, setup).f
 }
 
-/// The root of `shape`'s contract: `F`'s.
+/// The setup commitment of `shape`'s contract: `F`'s root and out-of-domain answer.
 pub fn shape_roots(shape: &Shape, setup: &SetupPolys) -> SetupRoots {
+    let f = f_stack(shape, setup);
+    let committed = opening::commit(&f.words, f.layout.vars);
     SetupRoots {
-        f: f_root(shape, setup),
+        f: committed.root,
+        f_ood: super::poly::to_v(committed.ood),
     }
 }
 

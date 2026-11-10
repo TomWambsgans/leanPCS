@@ -5,10 +5,11 @@
 //! the proof's calldata followed by the frame byte ([`PCS_FRAME`]):
 //!
 //! - it accepts the calldata, at the recorded gas, when its frame of PCS claims declares exactly the recorded claims,
-//!   in order, and checks exactly those;
-//! - it reverts on mutations: a byte of the stream flipped (a root, a Flock scalar, a value at `t`, a round of the
-//!   batching sumcheck, the last byte), a row count changed, the public input changed, one claim left undeclared, a
-//!   byte of a declared claim flipped.
+//!   in order, and checks exactly those; their commitments are the stream's (`C1`'s and `C2`'s roots and
+//!   out-of-domain answers) and the contract's (`F`);
+//! - it reverts on mutations: a byte of the stream flipped (a root, an out-of-domain answer, a Flock scalar, a value at
+//!   `t`, a round of the batching sumcheck, the last byte), a row count changed, the public input changed, one claim
+//!   left undeclared, a byte of a declared claim flipped.
 //!
 //! `cargo test --release -p leanvm_univariate --test evm_vectors -- --nocapture`; with `UPDATE_VECTOR_GAS=1` it
 //! rewrites the vectors' `gas_straight` line to what it measures, and nothing else.
@@ -16,10 +17,10 @@
 mod vectors;
 
 use leanvm_statement::evm::codegen::word;
-use leanvm_statement::evm::machine::{PCS_FRAME, PcsFrame, call, root_of_word};
+use leanvm_statement::evm::machine::{PCS_FRAME, PcsFrame, call};
 use leanvm_univariate::Claims;
-use leanvm_univariate::contract::{SetupRoots, compile_verifier, record_verifier_with};
-use vectors::{PROGRAM_IV, Vector, read, variant_of};
+use leanvm_univariate::contract::{compile_verifier, record_verifier_with};
+use vectors::{PROGRAM_IV, Vector, read, setup_roots, variant_of};
 
 /// Run `f` on a thread with a deep stack: the code generator recurses along the graph.
 fn deep<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> R {
@@ -31,12 +32,8 @@ fn deep<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> R {
         .expect("no panic")
 }
 
-fn attesting(calls: &[Vec<u8>]) -> PcsFrame {
-    let mut pcs = PcsFrame::default();
-    for input in calls {
-        pcs.declare(input.clone());
-    }
-    pcs
+fn attesting(claims: &[Vec<u8>]) -> PcsFrame {
+    PcsFrame::of(claims.iter().cloned())
 }
 
 /// Calldata after the selector (4 bytes) and the public input (32): the stream.
@@ -45,39 +42,41 @@ const STREAM_AT: usize = 4 + 32;
 /// Replay `v`: the gas it measures.
 fn replay(v: Vector) -> u64 {
     let variant = variant_of(&v.config);
-    // The contract binds the proof's setup root `F` (the third call's: its program's and shape's own).
-    let roots = SetupRoots {
-        f: v.whir_roots[2],
-    };
+    // The contract binds the proof's setup commitment `F` (the third claim's: its program's and shape's own).
+    let roots = setup_roots(&v);
     let recorded = record_verifier_with(&v.shape, variant, Claims::Point, &roots);
     assert_eq!(STREAM_AT + recorded.stream_len, v.calldata.len(), "{}: the calldata is the shape's", v.config);
     let straight = compile_verifier(&recorded, &PROGRAM_IV, false);
     let one = word([1, 0, 0]);
-    let block = attesting(&v.calls);
+    let block = attesting(&v.claims);
     let framed = |data: &[u8]| [data, &[PCS_FRAME]].concat();
     let run_straight = |data: &[u8], block: &PcsFrame| call(&straight.code, &[], &framed(data), block);
 
     let update = std::env::var_os("UPDATE_VECTOR_GAS").is_some();
     let outcome = run_straight(&v.calldata, &block);
     assert_eq!(outcome.output.as_deref() == Some(&one[..]), v.accepts, "{}: the verdict", v.config);
-    assert_eq!(outcome.claims, v.calls, "{}: the claims checked are the recorded ones", v.config);
+    assert_eq!(outcome.claims, v.claims, "{}: the claims checked are the recorded ones", v.config);
     if !update {
         assert_eq!(outcome.execution, v.gas_straight, "{}: the gas of execution", v.config);
     }
-    println!("{}: accepts, {} gas of execution, {} claims", v.config, outcome.execution, v.calls.len());
-    // The roots the calls name, against the vector's committed roots (its
-    // `whir_root`s, the prover's): `C1`'s and `C2`'s words, the stream's bytes, are their claims' root words
-    // (`machine.rs` decodes them to those roots); the setup root's word is the hash as it is, which π2's
-    // contract passes as its root word (`pi1_abi`).
-    assert_eq!(v.whir_roots.len(), v.calls.len(), "{}: the vector has the committed roots", v.config);
-    for (k, (input, root)) in v.calls.iter().zip(&v.whir_roots).enumerate() {
-        let word: [u8; 32] = input[..32].try_into().expect("a root word");
-        match k {
-            0 | 1 => assert_eq!(&root_of_word(&word), root, "{}: call {k}'s word is its root's", v.config),
-            _ => assert_eq!(&word, root, "{}: call {k}'s word is the setup's hash", v.config),
+    println!("{}: accepts, {} gas of execution, {} claims", v.config, outcome.execution, v.claims.len());
+    // The claims' commitments: `C1`'s and `C2`'s roots are the stream's 32 bytes as they are, their out-of-domain
+    // answers the stream's 24 bytes after them (the prover's commitments); the setup's is `F`'s.
+    assert_eq!(v.claims.len(), 3, "{}: one claim per commitment", v.config);
+    for (k, claim) in v.claims.iter().enumerate() {
+        let decoded = pcs_claim::PcsClaim::decode(claim).expect("a well-formed claim");
+        if k < 2 {
+            let at = STREAM_AT + recorded.roots_at[k];
+            assert_eq!(&v.calldata[at..at + 32], &decoded.root, "{}: claim {k}'s root is the stream's", v.config);
+            assert_eq!(
+                &v.calldata[at + 32..at + 56],
+                &pcs_claim::element_bytes(decoded.ood),
+                "{}: claim {k}'s out-of-domain answer is the stream's",
+                v.config
+            );
+        } else {
+            assert_eq!(decoded.root, roots.f, "{}: the setup claim's root is F's", v.config);
         }
-        let abi: [u8; 32] = vectors::pi1_abi(input)[..32].try_into().expect("a root word");
-        assert_eq!(&root_of_word(&abi), root, "{}: call {k} in machine.rs's ABI is of its root", v.config);
     }
 
     // Mutations, each of which it must revert on.
@@ -91,22 +90,26 @@ fn replay(v: Vector) -> u64 {
     for (what, at) in [
         ("a row count", STREAM_AT + 3),
         ("C1's root", STREAM_AT + 24 + 5),
+        ("C1's out-of-domain answer", STREAM_AT + 24 + 32 + 3),
         ("a scalar a third in", STREAM_AT + stream_len / 3),
         ("a scalar half way", STREAM_AT + stream_len / 2),
         ("a batching round", STREAM_AT + stream_len - 200),
         ("the last byte", STREAM_AT + stream_len - 1),
         ("the public input", 4 + 7),
     ] {
-        mutants.push((format!("{what} flipped"), flip(at), attesting(&v.calls)));
+        mutants.push((format!("{what} flipped"), flip(at), attesting(&v.claims)));
     }
-    for k in 0..v.calls.len() {
-        let mut calls = v.calls.clone();
-        calls.remove(k);
-        mutants.push((format!("claim {k} not declared"), v.calldata.clone(), attesting(&calls)));
-        let mut calls = v.calls.clone();
-        let last = calls[k].len() - 1;
-        calls[k][last] ^= 1;
-        mutants.push((format!("claim {k}'s declared value flipped"), v.calldata.clone(), attesting(&calls)));
+    for k in 0..v.claims.len() {
+        let mut claims = v.claims.clone();
+        claims.remove(k);
+        mutants.push((format!("claim {k} not declared"), v.calldata.clone(), attesting(&claims)));
+        let mut claims = v.claims.clone();
+        let last = claims[k].len() - 1;
+        claims[k][last] ^= 1;
+        mutants.push((format!("claim {k}'s declared value flipped"), v.calldata.clone(), attesting(&claims)));
+        let mut claims = v.claims.clone();
+        claims[k][34] ^= 1;
+        mutants.push((format!("claim {k}'s declared out-of-domain answer flipped"), v.calldata.clone(), attesting(&claims)));
     }
     for (what, data, block) in &mutants {
         assert!(run_straight(data, block).output.is_none(), "{}: {what} must revert", v.config);

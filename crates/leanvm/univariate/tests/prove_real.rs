@@ -11,12 +11,11 @@
 //! `<dir>/<VECTOR_FILE>.txt`.
 
 use leanvm_statement::evm::codegen::word;
-use leanvm_statement::evm::machine::{PcsFrame, call, element_word, root_of_word};
+use leanvm_statement::evm::machine::{PcsFrame, call};
 use leanvm_statement::shapes::PROGRAM_IV;
 use leanvm_univariate::claims::Commitment;
 use leanvm_univariate::contract::{SetupRoots, calldata, compile_verifier, proof_calldata, record_verifier_with};
 use leanvm_univariate::prover::check::on_domain;
-use leanvm_univariate::prover::poly::to_v;
 use leanvm_univariate::prover::prove::{Config, OpeningProof, Proof, prove, verify};
 use leanvm_univariate::prover::trace::Trace;
 use leanvm_univariate::{Claims, KECCAK_MAIN, KECCAK_REC3, Variant};
@@ -79,33 +78,14 @@ fn copy(proof: &Proof, stream: Vec<u8>) -> Proof {
             .map(|o| OpeningProof {
                 commitment: o.commitment,
                 root: o.root,
-                layout: o.layout,
+                ood: o.ood,
                 vars: o.vars,
-                placed: o.placed,
                 point: o.point.clone(),
                 value: o.value,
                 proof: o.proof.clone(),
             })
             .collect(),
     }
-}
-
-/// A claim's root word (`crates/membership/evm/src/machine.rs`: `s_0 · 2^128 + s_1`) of the root a WHIR opening is of, read
-/// off the opening itself: its first two scalars, each 128 bits.
-fn whir_word(opening_stream: &[F192]) -> [u8; 32] {
-    let mut word = [0u8; 32];
-    for (h, s) in opening_stream[..2].iter().enumerate() {
-        assert_eq!(s.c2, 0, "a root scalar is 128-bit");
-        word[16 * h..16 * h + 8].copy_from_slice(&s.c1.to_be_bytes());
-        word[16 * h + 8..16 * h + 16].copy_from_slice(&s.c0.to_be_bytes());
-    }
-    word
-}
-
-fn number(n: u64) -> [u8; 32] {
-    let mut b = [0u8; 32];
-    b[24..].copy_from_slice(&n.to_be_bytes());
-    b
 }
 
 #[test]
@@ -147,7 +127,6 @@ fn end_to_end(variant: Variant) {
         claims: Claims::Point,
         check: true,
         garbage: false,
-        stand_in_roots: None,
         roots,
     };
     let _ = leanvm_univariate::prover::prove::MEMORY_PROBE.set(bench::peak_rss_bytes);
@@ -205,42 +184,23 @@ fn end_to_end(variant: Variant) {
         started.elapsed().as_secs_f64(),
         leanvm_univariate::prover::setup::hex(&roots.f)
     );
-    // The roots the openings are of, from the prover's output: each WHIR opening's first two scalars are its
-    // commitment's root's (`hash_to_scalars`), and the stream carries C1's and C2's as those scalars, so that the
-    // stream's 32 bytes are the root's claim word (machine.rs: `s_0 · 2^128 + s_1`).
+    // The claims the openings prove, from the prover's output: each WHIR opening's first two scalars are its
+    // commitment's root's (`hash_to_scalars`), and the stream carries C1's and C2's roots as they are, each followed by
+    // its out-of-domain answer, so that the contract passes them as the claims encode them.
     let order: Vec<Commitment> = proof.openings.iter().map(|o| o.commitment).collect();
-    assert_eq!(order, [Commitment::C1, Commitment::C2, Commitment::Setup], "the calls' order");
-    let mut whir_roots: Vec<[u8; 32]> = Vec::new();
+    assert_eq!(order, [Commitment::C1, Commitment::C2, Commitment::Setup], "the claims' order");
     for o in &proof.openings {
         let scalars = fiat_shamir::merkle::hash_to_scalars(&o.root);
         assert_eq!(o.proof.stream[..2], scalars, "{:?}: the WHIR opening's first two scalars are its root's", o.commitment);
-        if o.commitment == Commitment::C1 {
-            // After the six row counts.
-            assert_eq!(proof.stream[24..56], whir_word(&o.proof.stream), "C1's root word in the stream");
-        }
-        whir_roots.push(o.root);
     }
-
-    // The contract on the real calldata: its frame of PCS claims declares exactly the claims the openings prove (C1's and
-    // C2's root words their WHIR openings' first two scalars, the setup's root the contract's constant, the hash as it
-    // is; the layout words the contract's).
-    let mut inputs: Vec<Vec<u8>> = Vec::new();
-    for o in &proof.openings {
-        let root = match o.commitment {
-            Commitment::Setup => roots.f,
-            _ => whir_word(&o.proof.stream),
-        };
-        let mut input = root.to_vec();
-        input.extend(o.layout);
-        input.extend(number(1));
-        for &x in o.point.iter().chain([&o.value]) {
-            input.extend(element_word(to_v(x)));
-        }
-        inputs.push(input);
-    }
+    // After the six row counts: C1's root, then its out-of-domain answer.
+    let c1 = &proof.openings[0];
+    assert_eq!(proof.stream[24..56], c1.root, "C1's root in the stream");
+    assert_eq!(proof.stream[56..80], pcs_claim::element_bytes(c1.ood), "C1's out-of-domain answer in the stream");
+    assert_eq!(proof.openings[2].root, roots.f, "the setup claim's root is the contract's F");
+    let inputs: Vec<Vec<u8>> = proof.openings.iter().map(|o| o.claim().encode()).collect();
     let data = calldata(&public, &proof.stream);
     let stream = proof.stream.clone();
-    let opened = whir_roots.clone();
     let (accepted, rejected, gas, calls) = deep(move || {
         let recorded = record_verifier_with(&shape, variant, Claims::Point, &roots);
         assert_eq!(recorded.stream_len, stream.len(), "the contract's stream is the proof's");
@@ -252,13 +212,6 @@ fn end_to_end(variant: Variant) {
         assert_eq!(calls.len(), inputs.len(), "one claim per opening");
         for (k, (made, proven)) in calls.iter().zip(&inputs).enumerate() {
             assert_eq!(made, proven, "call {k}: the opening's claim");
-        }
-        // C1's and C2's claims, decoded (machine.rs: the root word, then the root it
-        // names), are of the roots the prover committed. The setup's constants are the hashes as they are (π1's own
-        // contract; π2 passes their root words).
-        for (k, (made, root)) in calls.iter().zip(&opened).enumerate().take(2) {
-            let word: [u8; 32] = made[..32].try_into().expect("a root word");
-            assert_eq!(&root_of_word(&word), root, "claim {k}: of the root the opening is of");
         }
         let attesting = |skip: Option<usize>| {
             let mut pcs = PcsFrame::default();
@@ -295,8 +248,7 @@ fn end_to_end(variant: Variant) {
             shape,
             public,
             calldata: proof_calldata(&public, &proof.stream),
-            calls: calls.clone(),
-            whir_roots,
+            claims: calls.clone(),
             accepts: true,
             gas_straight: gas,
             note: format!(
@@ -343,8 +295,8 @@ fn proves_and_verifies_keccak_rec3() {
     end_to_end(KECCAK_REC3);
 }
 
-/// The setup root a contract for this trace's program and shape is generated with (SPEC.md §13, F2): `F` from the
-/// program and the shape.
+/// The setup commitment a contract for this trace's program and shape is generated with (SPEC.md §13, F2): `F`'s root
+/// and out-of-domain answer, from the program and the shape (at the reference trace, `SetupRoots::REFERENCE`).
 #[test]
 #[ignore]
 fn setup_roots() {
@@ -354,9 +306,13 @@ fn setup_roots() {
     };
     let started = std::time::Instant::now();
     let setup = leanvm_univariate::prover::columns::setup_polys(&trace);
-    let f = leanvm_univariate::prover::setup::f_root(&trace.shape(), &setup);
+    let f = leanvm_univariate::prover::setup::shape_roots(&trace.shape(), &setup);
     println!("  shape {:?}", trace.shape());
-    println!("  F  {}", leanvm_univariate::prover::setup::hex(&f));
+    println!("  F  {}", leanvm_univariate::prover::setup::hex(&f.f));
+    println!("  F's out-of-domain answer, limbs {:#018x} {:#018x} {:#018x}", f.f_ood.c0, f.f_ood.c1, f.f_ood.c2);
+    if trace.shape() == leanvm_univariate::Shape::of(&leanvm_statement::shapes::reference().shape) {
+        assert_eq!(f, leanvm_univariate::contract::SetupRoots::REFERENCE, "the reference shape's F");
+    }
     println!("  in {:.2} s", started.elapsed().as_secs_f64());
 }
 
@@ -382,7 +338,6 @@ fn keccak_prover_benchmark() {
         claims: Claims::Point,
         check: false,
         garbage: false,
-        stand_in_roots: None,
         roots: contract_roots(&trace),
     };
     let mut phases: Vec<(String, Vec<f64>)> = Vec::new();
@@ -444,7 +399,6 @@ fn unused_words_are_not_relied_on() {
         claims: Claims::Point,
         check: true,
         garbage: true,
-        stand_in_roots: None,
         roots: contract_roots(&trace),
     };
     let witness = trace.keccak_flock();
