@@ -195,7 +195,7 @@ theorem vRows_ofCantor (t : E) : (_root_.Kc3.Params.ofCantor B hm σ pins random
 /-- **The Cantor instance matches the statement's constants**, given the pins' points and the wiring table
 carrying `σ`. -/
 theorem matches_ofCantor (s₀ : (Fin 24 → Bool) → E)
-    (hpins : ∀ k : Fin 11, ((pins k : cantorT B 22) : E) + shift (B.β 1) 2 = pinE k)
+    (hpins : ∀ k : Fin 11, (_root_.Kc3.Params.ofCantor B hm σ pins random).pinPt k = pinE k)
     (hcar : ∀ i, (tablePoly s₀).eval ((_root_.Kc3.Params.ofCantor B hm σ pins random).pt i) =
       (_root_.Kc3.Params.ofCantor B hm σ pins random).pt (σ i)) :
     Matches (_root_.Kc3.Params.ofCantor B hm σ pins random) s₀ where
