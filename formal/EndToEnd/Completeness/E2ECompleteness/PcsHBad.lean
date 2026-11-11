@@ -106,6 +106,20 @@ theorem card_quad_le {F : Type} [Fintype F] [DecidableEq F] [Field F] [CharP F 2
     ((card_union_le _ _).trans (add_le_add h₁ h₂)) h₃) |>.trans (le_of_eq ?_))
   ring
 
+/-- `card_quad_le` for a set of quadruples each degenerate, counted by `Nat.card`. -/
+theorem card_quad_le' {F : Type} [Fintype F] [DecidableEq F] [Field F] [CharP F 2] [SampleableType F] (AB : F → F → Prop)
+    (P : F → F → F[X]) (R : F → F → Prop) (A D : ℕ) (S : Finset (F × F × F × F))
+    (hS : ∀ x ∈ S, AB x.1 x.2.1 ∨ (¬ AB x.1 x.2.1 ∧ (P x.1 x.2.1).eval x.2.2.1 = 0) ∨ R x.2.2.1 x.2.2.2)
+    (hAB : ∀ T : Finset (F × F), (∀ p ∈ T, AB p.1 p.2) → T.card ≤ A * Nat.card F)
+    (hP : ∀ a b, ¬ AB a b → P a b ≠ 0 ∧ (P a b).natDegree ≤ D)
+    (hR : ∀ t (T : Finset F), (∀ ρ ∈ T, R t ρ) → T.card ≤ 1) :
+    S.card ≤ (A + D + 1) * Nat.card F ^ 3 := by
+  classical
+  rw [Nat.card_eq_fintype_card] at hAB ⊢
+  refine (card_le_card fun x hx => Finset.mem_filter.mpr ⟨Finset.mem_univ _, hS x hx⟩).trans
+    (card_quad_le AB P R A D (hAB _ fun p hp => (Finset.mem_filter.mp hp).2) hP
+      fun t => hR t _ fun ρ hρ => (Finset.mem_filter.mp hρ).2)
+
 /-! ## The novel basis's coefficients -/
 
 theorem nov_coeff (k : ℕ) (f : ℕ → E) {j : ℕ} (hj : j < 2 ^ k) (hz : ∀ i, j < i → i < 2 ^ k → f i = 0) :
@@ -140,6 +154,18 @@ theorem conic_card_gen (c θ : E) :
   have ha' := ha
   have hb' := hb
   have h2 : (2 : E) = 0 := CharTwo.two_eq_zero
+  by_contra hab
+  have hsub : (a + b) * (c + θ + 1) = 0 := by linear_combination (norm := char2_norm) ha' + hb'
+  rcases mul_eq_zero.mp hsub with h | h
+  · exact hab (CharTwo.add_eq_zero.mp h)
+  · have h1 : (1 : E) = 0 := by linear_combination (norm := char2_norm) ha' - (1 + a) * h
+    exact one_ne_zero h1
+
+theorem conic_card_gen' (c θ : E) (T : Finset E) (hT : ∀ ρ ∈ T, c * (1 + ρ) + ρ + θ * (1 + ρ) = 0) :
+    T.card ≤ 1 := by
+  refine Finset.card_le_one.mpr fun a ha b hb => ?_
+  have ha' := hT a ha
+  have hb' := hT b hb
   by_contra hab
   have hsub : (a + b) * (c + θ + 1) = 0 := by linear_combination (norm := char2_norm) ha' + hb'
   rcases mul_eq_zero.mp hsub with h | h
@@ -381,6 +407,115 @@ theorem card_ABad_le [DecidablePred fun p : E × E => ABad P w coins p.1 p.2] [D
   show q + Fintype.card (P.T × Fin 4) * (q + q) + q = (2 * P.nCells + 2) * q
   ring
 
+omit hM in
+/-- **The degenerate pairs**: at most `(2 n + 2) q`, `n` the cells. -/
+theorem card_ABad_le' (hZ : P.vCells = digitPoly 24) (hs : sCoef P ≠ 0) (T : Finset (E × E))
+    (hT : ∀ p ∈ T, ABad P w coins p.1 p.2) : T.card ≤ (2 * P.nCells + 2) * Nat.card E := by
+  rw [Nat.card_eq_fintype_card]
+  set q := Fintype.card E
+  classical
+  let γz : E → E := fun β => if h : ∃ α, (Epoly P α β (cW w coins) /ₘ P.vCells).eval 0 = 0 then h.choose else 0
+  have hsub : T ⊆
+      ((univ : Finset E).image fun a => (a, (0 : E))) ∪
+      ((univ : Finset (P.T × Fin 4)).biUnion fun i =>
+        ((univ : Finset E).image fun b => (P.cells (gH w coins) i + b * P.pt i, b)) ∪
+        ((univ : Finset E).image fun b => (P.cells (gH w coins) i + b * P.pt (P.σ i), b))) ∪
+      ((univ : Finset E).image fun b => (γz b, b)) := by
+    intro x hx
+    have hx' : ABad P w coins x.1 x.2 := hT x hx
+    unfold ABad at hx'
+    simp only [Finset.mem_union, Finset.mem_image, Finset.mem_univ, true_and, Finset.mem_biUnion]
+    rcases hx' with h | h | h
+    · exact Or.inl (Or.inl ⟨x.1, by rw [← h]⟩)
+    · push_neg at h
+      obtain ⟨i, hi⟩ := h
+      refine Or.inl (Or.inr ⟨i, ?_⟩)
+      by_cases h0 : x.1 + P.cells (gH w coins) i + x.2 * P.pt i = 0
+      · exact Or.inl ⟨x.2, Prod.ext (by linear_combination (norm := char2_norm) h0) rfl⟩
+      · exact Or.inr ⟨x.2, Prod.ext (by linear_combination (norm := char2_norm) hi h0) rfl⟩
+    · by_cases hβ : x.2 = 0
+      · exact Or.inl (Or.inl ⟨x.1, by rw [← hβ]⟩)
+      · refine Or.inr ⟨x.2, Prod.ext ?_ rfl⟩
+        have hex : ∃ α, (Epoly P α x.2 (cW w coins) /ₘ P.vCells).eval 0 = 0 := ⟨x.1, h⟩
+        simp only [γz, dif_pos hex]
+        exact gamma_root_unique P (cW w coins) hZ hs hβ hex.choose_spec h
+  refine (card_le_card hsub).trans ((card_union_le _ _).trans ?_)
+  refine (add_le_add ((card_union_le _ _).trans (add_le_add card_image_le
+    (card_biUnion_le.trans (Finset.sum_le_sum fun i _ => (card_union_le _ _).trans
+      (add_le_add card_image_le card_image_le))))) card_image_le).trans (le_of_eq ?_)
+  rw [Finset.sum_const, Finset.card_univ, Finset.card_univ, smul_eq_mul]
+  show q + Fintype.card (P.T × Fin 4) * (q + q) + q = (2 * P.nCells + 2) * q
+  ring
+
 end Good
+
+theorem conic_card_le' (t : E) (T : Finset E) (hT : ∀ ρ ∈ T, RBad t ρ) : T.card ≤ 1 :=
+  conic_card_gen' (t + QuotientSecurity.sq t * ofK (betaAt 1)) (ofK (betaAt 1)) T hT
+
+/-! ## The deployed circuit -/
+
+/-- **The evaluated check on the circuit's wiring table** (`crates/membership/quotient`'s wiring is fixed by the
+circuit): its entry `2^24 − 1` (the top coefficient, the sum of the cells' σ-points) is zero, and its entry
+`2^24 − 2` (the coefficient `s` of `α β` in `γ`) is not. -/
+def WiringCheck : Prop :=
+  (membership logRows).wiringTable.getD (2 ^ 24 - 1) 0 = 0 ∧ (membership logRows).wiringTable.getD (2 ^ 24 - 2) 0 ≠ 0
+
+theorem sigmaPoly_P0 : P0.sigmaPoly = Novel.nov 0 24 fun j => ofK ((membership logRows).wiringTable.getD j 0) := by
+  rw [sigmaPoly_P0_table]
+  exact tablePoly_idx 24 (fun j => ofK ((membership logRows).wiringTable.getD j 0))
+
+theorem sCoef_P0 (hW : WiringCheck) : sCoef P0 ≠ 0 := by
+  rw [sCoef_eq P0 vCells_eq _ sigmaPoly_P0 hW.1]
+  intro h
+  exact hW.2 (ofK_injective (h.trans Compose.Reduce.ofK_zero.symm))
+
+/-- **The degenerate challenges**: at most `(7 · 2^24 + 3) q³`. -/
+theorem card_badSet_le (hW : WiringCheck) (w : Secret) (coins : Coins) :
+    (badSet w coins).card ≤ (7 * 2 ^ 24 + 3) * Nat.card E ^ 3 := by
+  refine (card_quad_le' (ABad P0 w coins) (tPoly P0 (gH w coins)) RBad (2 ^ 25 + 2) (5 * 2 ^ 24) _ ?_ ?_ ?_
+    fun t T hT => conic_card_le' t T hT).trans (by norm_num)
+  · intro x hx
+    have hx2 : ¬ GoodAt w coins P0 x.1 x.2.1 x.2.2.1 x.2.2.2 := mem_badSet.mp hx
+    rcases em (ABad P0 w coins x.1 x.2.1) with h1 | h1
+    · exact Or.inl h1
+    rcases em ((tPoly P0 (gH w coins) x.1 x.2.1).eval x.2.2.1 = 0) with h2 | h2
+    · exact Or.inr (Or.inl ⟨h1, h2⟩)
+    rcases em (RBad x.2.2.1 x.2.2.2) with h3 | h3
+    · exact Or.inr (Or.inr h3)
+    exact absurd (goodAt_of P0 P0_matches w coins _ _ _ _ h1 h2 h3) hx2
+  · intro T hT
+    have := card_ABad_le' P0 w coins vCells_eq (sCoef_P0 hW) T hT
+    rw [nCells_P0] at this
+    exact this.trans (by norm_num)
+  · intro a b hab
+    have hc : ∀ i : P0.T × Fin 4, a + P0.cells (gH w coins) i + b * P0.pt i ≠ 0 ∧
+        a + P0.cells (gH w coins) i + b * P0.pt (P0.σ i) ≠ 0 := by
+      by_contra hn
+      exact hab (Or.inr (Or.inl hn))
+    obtain ⟨gm, hgm⟩ : ∃ gm : P0.Msg₁, gm.1 = gH w coins :=
+      ⟨⟨gH w coins, fun j => by rw [card_T_P0]; exact PcsBridge.Kc3.natDegree_witnessOfTable_lt _ j⟩, rfl⟩
+    exact ⟨tPoly_ne_zero P0 (gH w coins) vCells_eq a b (P0.pins 0, 0) (hc _),
+      tPoly_natDegree_le P0 (gH w coins) card_T_P0 gm hgm a b⟩
+
+/-- **The fraction of degenerate challenges** over `E`: at most `(7 · 2^24 + 3) / 2^192`. -/
+theorem badSet_density (hW : WiringCheck) (w : Secret) (coins : Coins) :
+    ((badSet w coins).card : ℝ≥0∞) / 2 ^ 768 ≤ (7 * 2 ^ 24 + 3 : ℝ≥0∞) / 2 ^ 192 := by
+  have h := card_badSet_le hW w coins
+  have hq : Nat.card E = 2 ^ 192 := BF64.nat_card_ext3
+  rw [hq] at h
+  have h' : ((badSet w coins).card : ℝ≥0∞) ≤ (7 * 2 ^ 24 + 3) * (2 ^ 192) ^ 3 := by exact_mod_cast h
+  calc _ ≤ (7 * 2 ^ 24 + 3) * (2 ^ 192) ^ 3 / 2 ^ 768 := ENNReal.div_le_div_right h' _
+    _ = (7 * 2 ^ 24 + 3 : ℝ≥0∞) / 2 ^ 192 := by
+        rw [show (2 : ℝ≥0∞) ^ 768 = 2 ^ 192 * (2 ^ 192) ^ 3 by rw [← pow_mul, ← pow_add],
+          ENNReal.mul_div_mul_right _ _ (by simp) (by simp)]
+
+/-- The number, below `2^-165`. -/
+theorem bad_bound_lt : (7 * 2 ^ 24 + 3 : ℝ≥0∞) / 2 ^ 192 < 2⁻¹ ^ 165 := by
+  have h1 : (7 * 2 ^ 24 + 3 : ℝ≥0∞) / 2 ^ 192 < 2 ^ 27 / 2 ^ 192 :=
+    ENNReal.div_lt_div_right (by simp) (by simp) (by norm_num)
+  have h2 : (2 ^ 27 : ℝ≥0∞) / 2 ^ 192 = 2⁻¹ ^ 165 := by
+    have e : (2 : ℝ≥0∞) ^ 27 / 2 ^ 192 = (2 ^ 27 * 1) / (2 ^ 27 * 2 ^ 165) := by norm_num
+    rw [e, ENNReal.mul_div_mul_left _ _ (by simp) (by simp), one_div, ENNReal.inv_pow]
+  exact h2 ▸ h1
 
 end E2ECompleteness.Pcs.H

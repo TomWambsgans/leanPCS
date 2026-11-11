@@ -129,4 +129,9 @@ theorem sigma_carries (i : P0.T × Fin 4) :
 theorem P0_matches : PcsBridge.Kc3.Matches P0 s₀ :=
   PcsBridge.Kc3.matches_ofCantor BE hm28 _ _ _ (fun k _ => rfl) s₀ pinPt_eq sigma_carries
 
+/-- **σ's polynomial is the wiring table's.** -/
+theorem sigmaPoly_P0_table : P0.sigmaPoly = tablePoly s₀ :=
+  PcsBridge.Kc3.sigmaPoly_eq BE hm28 (Kc3Deployed.deployedSigma BE hm28) (Kc3Deployed.deployedPins BE hm28)
+    (Kc3Deployed.deployedRandom BE hm28) s₀ sigma_carries
+
 end E2ECompleteness.Pcs.H

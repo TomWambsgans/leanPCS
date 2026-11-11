@@ -28,6 +28,7 @@ claims, and the witness, wiring and quotient tables satisfy them (**`honest_clai
 
 set_option autoImplicit false
 set_option linter.unusedSectionVars false
+set_option linter.constructorNameAsVariable false
 
 open Finset Polynomial
 open LeanVM LeanVM.Parameters PcsQuotient PcsQuotient.Domain QuotientSecurity
@@ -424,17 +425,41 @@ theorem honest_claims (w : Secret) (coins : Coins) {stmt : Statement} (hrel : Re
   claims_gen w coins (P := P0) (hM := P0_matches) (hZ := vCells_eq) (hsat := sat_P0 w coins hrel)
     (hh := hh_P0 w coins α β) (htop := hHat_top w coins α β hrel) (hG := hG) (μ := μ)
 
-open Classical in
+/-- The challenges where a denominator vanishes. -/
+def IsBad (w : Secret) (coins : Coins) (x : E × E × E × E) : Prop := ¬ GoodAt w coins P0 x.1 x.2.1 x.2.2.1 x.2.2.2
+
+/-- The elements of a finite type with a property. -/
+noncomputable def setOf' {F : Type} [Fintype F] (p : F → Prop) : Finset F :=
+  @Finset.filter _ p (fun _ => Classical.propDecidable _) Finset.univ
+
+theorem mem_setOf' {F : Type} [Fintype F] (p : F → Prop) (x : F) : x ∈ setOf' p ↔ p x := by
+  unfold setOf'
+  rw [@Finset.mem_filter _ p (fun _ => Classical.propDecidable _)]
+  exact ⟨fun h => h.2, fun h => ⟨Finset.mem_univ _, h⟩⟩
+
 /-- **The degenerate challenges**: those where a denominator vanishes. -/
-noncomputable def badSet (w : Secret) (coins : Coins) : Finset (E × E × E × E) :=
-  Finset.univ.filter fun x => ¬ GoodAt w coins P0 x.1 x.2.1 x.2.2.1 x.2.2.2
+@[irreducible] noncomputable def badSet (w : Secret) (coins : Coins) : Finset (E × E × E × E) :=
+  setOf' (IsBad w coins)
+
+theorem mem_badSet {w : Secret} {coins : Coins} {x : E × E × E × E} : x ∈ badSet w coins ↔ IsBad w coins x := by
+  unfold badSet
+  exact mem_setOf' _ x
+
+theorem isBad_mk {w : Secret} {coins : Coins} (α β t ρ : E) :
+    IsBad w coins (α, β, t, ρ) ↔ ¬ GoodAt w coins P0 α β t ρ := by
+  unfold IsBad
+  dsimp only
+  exact Iff.rfl
+
+theorem not_goodAt_of_mem {w : Secret} {coins : Coins} (α β t ρ : E) (hx : (α, β, t, ρ) ∈ badSet w coins) :
+    ¬ GoodAt w coins P0 α β t ρ := (isBad_mk α β t ρ).mp (mem_badSet.mp hx)
 
 /-- **The honest claims** (`PcsAccept.lean`'s `HonestClaims`) off `badSet`. -/
 theorem honestClaims_badSet : HonestClaims badSet := by
   intro stmt w hrel coins α β μ t ρ hx
   have hG : GoodAt w coins P0 α β t ρ := by
-    unfold badSet at hx
-    simpa only [Finset.mem_filter, Finset.mem_univ, true_and, not_not] using hx
+    by_contra hng
+    exact hx (mem_badSet.mpr ((isBad_mk α β t ρ).mpr hng))
   exact honest_claims w coins hrel α β μ t ρ hG
 
 end E2ECompleteness.Pcs.H
