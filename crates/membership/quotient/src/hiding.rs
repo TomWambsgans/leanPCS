@@ -19,7 +19,8 @@
 use primitives::field::{F64, F192};
 use primitives::test_rng::Rng;
 
-use crate::circuit::RANDOM_WORDS;
+use crate::circuit::{Circuit, RANDOM_WORDS};
+use crate::statement::Statement;
 use crate::opening::{Commitment, FIXED_OOD};
 use crate::protocol::tests::{toy, toy_cells, toy_statement};
 use crate::protocol::{H_BLIND, Index, Randomness, prove_with_randomness};
@@ -90,18 +91,39 @@ fn delta(
 fn revealed_scalars_are_uniform() {
     let mut rng = Rng::new(0x41D);
     let circuit = toy();
-    let index = Index::new(&circuit);
-    let commitment = Commitment::of(&index.commit());
     let x: [u8; 32] = std::array::from_fn(|_| rng.next_u64() as u8);
-    let statement = toy_statement(&x);
-    let cells = toy_cells(&circuit, &x);
+    let (statement, cells) = (toy_statement(&x), toy_cells(&circuit, &x));
+    check_uniform(&circuit, &statement, &cells, &mut rng);
+}
+
+/// [`revealed_scalars_are_uniform`] on the membership circuit (`2^22` rows), one secret: about 40 proofs without
+/// their openings, a minute or so on 64 threads: `cargo test --release -p quotient --lib hiding -- --ignored`.
+#[test]
+#[ignore]
+fn revealed_scalars_are_uniform_on_membership() {
+    use crate::circuit::{membership, membership_inputs};
+    use crate::statement::{DEPTH, Secret};
+    let mut rng = Rng::new(0x41F);
+    let circuit = membership();
+    let secret = Secret {
+        x: std::array::from_fn(|_| rng.next_u8()),
+        siblings: std::array::from_fn::<_, DEPTH, _>(|_| std::array::from_fn(|_| rng.next_u8())),
+        directions: rng.next_u64() as u32,
+    };
+    let cells = circuit.cells(&membership_inputs(&secret));
+    check_uniform(&circuit, &secret.statement(), &cells, &mut rng);
+}
+
+fn check_uniform(circuit: &Circuit, statement: &Statement, cells: &[F64], rng: &mut Rng) {
+    let index = Index::new(circuit);
+    let commitment = Commitment::of(&index.commit());
     let seed: [u8; 32] = std::array::from_fn(|_| rng.next_u8());
-    let base = Randomness::derive(&seed, &commitment, &statement, &cells);
+    let base = Randomness::derive(&seed, &commitment, statement, cells);
     let challenges: Vec<F192> = (0..5).map(|_| F192::new(rng.next_u64(), rng.next_u64(), rng.next_u64())).collect();
     FIXED.with(|fixed| *fixed.borrow_mut() = Some(challenges));
     let reveal = |randomness: &Randomness| {
         FIXED_OOD.with(|fixed| *fixed.borrow_mut() = Some((0x00D, 0)));
-        prove_with_randomness(&circuit, &index, &commitment, &statement, &cells, randomness)
+        prove_with_randomness(circuit, &index, &commitment, statement, cells, randomness)
             .proof
             .stream
     };

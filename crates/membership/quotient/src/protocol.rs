@@ -230,7 +230,28 @@ pub struct Index {
 }
 
 impl Index {
+    /// The circuit's index. Panics on a circuit whose wiring the protocol's soundness does not cover
+    /// ([`Circuit::errors_have_their_own_poles`]): no such circuit is indexed.
     pub fn new(circuit: &Circuit) -> Self {
+        assert!(
+            circuit.errors_have_their_own_poles(),
+            "a cycle of the wiring holds only rows' first cells and pins: the sum would not catch their errors"
+        );
+        Self::new_unchecked(circuit)
+    }
+
+    /// [`Index::new`] without the check: for the test that shows what the check prevents.
+    #[cfg(test)]
+    pub(crate) fn new_unchecked(circuit: &Circuit) -> Self {
+        Self::of(circuit)
+    }
+
+    #[cfg(not(test))]
+    fn new_unchecked(circuit: &Circuit) -> Self {
+        Self::of(circuit)
+    }
+
+    fn of(circuit: &Circuit) -> Self {
         let mut sigma = parallel::map_collect(circuit.sigma.len(), |i| point(circuit.sigma[i] as usize));
         ntt::coefficients(&mut sigma, F64::ZERO);
         let n = sigma.len();
@@ -546,6 +567,22 @@ pub(crate) fn prove_with_randomness(
     cells: &[F64],
     randomness: &Randomness,
 ) -> Proved {
+    prove_inner(circuit, index, commitment, statement, cells, randomness, false)
+}
+
+/// The prover, honest unless `absorb`: then, as a cheating prover would, it sets the sum's polynomial on the cells to
+/// `1/d + 1/d' + μ e / (d d')`, `e` the gates' and the pins' errors times `Z / Z_R` and `Z / Z_P` there, so that the
+/// quotient is a polynomial and the identity's claim holds whatever the witness; only the sum's claim can then
+/// reject (`tests::absorbed_errors_fail_the_sum`).
+fn prove_inner(
+    circuit: &Circuit,
+    index: &Index,
+    commitment: &Commitment,
+    statement: &Statement,
+    cells: &[F64],
+    randomness: &Randomness,
+    absorb: bool,
+) -> Proved {
     let Randomness { rows, blind } = randomness;
     assert!(
         supported(circuit.log_rows),
@@ -617,6 +654,26 @@ pub(crate) fn prove_with_randomness(
         });
     }
     drop(inner);
+    if absorb {
+        // `e` at a row's first cell: the gate times `Z / Z_R = Z' / Z_R'` there, the linearized polynomials'
+        // linear coefficients `1` and `Σ τ`; at pin `k`: `w + v_k` times `Z / Z_P = λ_k`.
+        let row_weight = row_vanishing(m).iter().fold(F64::ZERO, |acc, &t| acc + t).inv();
+        let (_, lambda) = pins();
+        let values = anchor_values(&statement.words());
+        let mut errors: Vec<(usize, F64)> = (0..n / 4)
+            .map(|r| (4 * r, gate(std::array::from_fn(|c| cells[4 * r + c])) * row_weight))
+            .collect();
+        errors.extend((0..PUBLIC_ROWS).map(|k| (anchor_cell(k), (cells[anchor_cell(k)] + values[k]) * lambda[k])));
+        for (x, e) in errors.into_iter().filter(|(_, e)| !e.is_zero()) {
+            let w = F192::from(cells[x]);
+            let d = alpha + w + beta_.mul_base(point(x));
+            let d_next = alpha + w + beta_.mul_base(point(circuit.sigma[x] as usize));
+            let add = mu.mul_base(e) * (d * d_next).inv();
+            for (h, c) in h_hat.iter_mut().zip([add.c0, add.c1, add.c2]) {
+                h[x] += F64(c);
+            }
+        }
+    }
     tracing::info_span!("coefficients").in_scope(|| h_hat.iter_mut().for_each(|h| ntt::coefficients(h, F64::ZERO)));
     drop(span);
 
@@ -1149,7 +1206,7 @@ pub(crate) mod tests {
             .iter()
             .map(|b| format!("{b:02x}"))
             .collect();
-        assert_eq!(hex, "462e0b363a595e436023e23e11b36b4718d5600d0aee18497a93ff61f2f37e58");
+        assert_eq!(hex, "c9938962d4d281fa556b53474652d93bbe6f33c308507b0561bb0b1fdba3d538");
     }
 
     /// The quotient table holds what [`table_slot`] says, for a witness: `h`'s top coefficient zero in every limb
@@ -1260,6 +1317,80 @@ pub(crate) mod tests {
             assert!(truth.contains(&false), "{name}: {truth:?}");
             assert!(truth[0] && truth[1], "{name}: {truth:?}");
         }
+    }
+
+    /// The cycle of `start`, from it.
+    fn cycle_of(circuit: &Circuit, start: usize) -> Vec<usize> {
+        let mut cycle = vec![start];
+        let mut i = circuit.sigma[start] as usize;
+        while i != start {
+            cycle.push(i);
+            i = circuit.sigma[i] as usize;
+        }
+        cycle
+    }
+
+    /// A cheating prover that absorbs a bad witness's errors into the sum's polynomial after `μ` ([`prove_inner`]):
+    /// the witness's, the wiring's and the identity's claims hold, and the sum's claim rejects, for a gate's error, a
+    /// pin's and a copy's, and for two equal gate errors that would cancel on a 2-cycle. As a negative control, on
+    /// the toy circuit with two rows' `X` cells made a cycle of their own (which `errors_have_their_own_poles`
+    /// rejects, and so [`Index::new`]), the same two errors cancel and every claim holds: the check has teeth.
+    #[test]
+    fn absorbed_errors_fail_the_sum() {
+        let mut rng = Rng::new(0xAB5);
+        let circuit = toy();
+        let x: [u8; 32] = std::array::from_fn(|_| rng.next_u64() as u8);
+        let statement = toy_statement(&x);
+        let cells = toy_cells(&circuit, &x);
+        let s = seed(&mut rng);
+        let cheat = |circuit: &Circuit, index: &Index, cells: &[F64]| {
+            let commitment = Commitment::of(&index.commit());
+            let randomness = Randomness::derive(&s, &commitment, &statement, cells);
+            truth(index, &prove_inner(circuit, index, &commitment, &statement, cells, &randomness, true))
+        };
+        let index = Index::new(&circuit);
+        assert_eq!(cheat(&circuit, &index, &cells), [true; 4], "a witness has no errors to absorb");
+
+        let some_row = PUBLIC_ROWS + 256 + 9000;
+        let (r1, r2) = (circuit.used_rows + 1, circuit.used_rows + 2);
+        assert!(circuit.rows[r1] == circuit.rows[r2] && circuit.rows[r1].x == Src::Zero, "two idle rows");
+        let both = |cells: &mut Vec<F64>| {
+            cells[4 * r1 + 3] += F64::ONE;
+            cells[4 * r2 + 3] += F64::ONE;
+        };
+        type Tamper<'a> = &'a dyn Fn(&mut Vec<F64>);
+        let cases: [(&str, Tamper); 4] = [
+            // A row's output and every reader of it: the copies hold, the row's gate (and its readers') do not.
+            ("gate", &|cells| cycle_of(&circuit, 4 * some_row + 3).into_iter().for_each(|i| cells[i] += F64::ONE)),
+            // A public word on its whole cycle: its pin fails (and the packing row that makes it).
+            ("pin", &|cells| cycle_of(&circuit, anchor_cell(2)).into_iter().for_each(|i| cells[i] += F64::ONE)),
+            // A reader that departs from what it reads.
+            ("copy", &|cells| cells[4 * some_row] += F64::ONE),
+            // Two idle rows' outputs, the same error twice.
+            ("two gates", &both),
+        ];
+        for (name, tamper) in cases {
+            let mut bad = cells.clone();
+            tamper(&mut bad);
+            assert_eq!(cheat(&circuit, &index, &bad), [true, true, true, false], "{name}");
+        }
+
+        // The negative control: the two idle rows' `X` cells, out of the zero's cycle, a cycle of their own.
+        let mut broken = toy();
+        for x in [4 * r1, 4 * r2] {
+            let before = (0..broken.sigma.len()).find(|&i| broken.sigma[i] as usize == x).unwrap();
+            broken.sigma[before] = broken.sigma[x];
+        }
+        (broken.sigma[4 * r1], broken.sigma[4 * r2]) = ((4 * r2) as u32, (4 * r1) as u32);
+        assert!(!broken.errors_have_their_own_poles());
+        let refused = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| Index::new(&broken)));
+        assert!(refused.is_err(), "the index refuses the circuit");
+        let mut bad = cells.clone();
+        (bad[4 * r1], bad[4 * r2]) = (F64(5), F64(5));
+        (bad[4 * r1 + 3], bad[4 * r2 + 3]) = (F64(5), F64(5));
+        assert_eq!(cheat(&broken, &Index::new_unchecked(&broken), &bad), [true; 4], "a witness of the broken circuit");
+        both(&mut bad);
+        assert_eq!(cheat(&broken, &Index::new_unchecked(&broken), &bad), [true; 4], "the two errors cancel");
     }
 
     /// [`Randomness::derive`] is a function of the seed, the circuit's commitment, the statement and the cells: the

@@ -27,8 +27,15 @@
 //! bits by 63 rows of Horner's rule (`(X, Y, C) = (b, 3, acc)`: `V = b + 2 acc`, `2` the generator of `K`'s
 //! polynomial basis, so the word is the number its bits spell), built after every other row. The first
 //! [`PUBLIC_ROWS`] rows are **anchors**: anchor `k` is `(0, 0, s_k)`, its `C` cell on the cycle of `s_k`, the
-//! packed word `k` for `k < 8`, then the constants `0`, `1` and `3`. The verifier pins the anchors' `C` cells to
-//! those values ([`anchor_cell`], `crate::protocol`), which pins every cell on their cycles.
+//! packed word `k` for `k < 8`, then the constants `0`, `1` and `3`, whose anchors read their constant as `Y` too:
+//! `(0, 1, 1)` and `(0, 3, 3)`. The verifier pins the anchors' `C` cells to those values ([`anchor_cell`],
+//! `crate::protocol`), which pins every cell on their cycles.
+//!
+//! **Every cycle of more than one cell holds a cell that is neither a row's first (`X`) cell nor a pinned one**,
+//! outside the random rows ([`Circuit::errors_have_their_own_poles`], which [`crate::protocol::Index::new`]
+//! asserts): the protocol's soundness needs it. A row's output cycle holds its `V` cell; the zero's holds the anchors'
+//! `Y` cells; the one's and the three's hold their anchors' `Y` cells, which is why those anchors read their constant
+//! twice. No random row carries the condition.
 
 use primitives::field::F64;
 use primitives::hash::{PI, RC, RHO, ROUNDS, STATE_LANES};
@@ -380,11 +387,9 @@ impl Builder {
         };
         let sources = [&words[..], &[Src::Zero, Src::One, Src::Three]].concat();
         for (row, &c) in self.rows[..PUBLIC_ROWS].iter_mut().zip(&sources) {
-            *row = Row {
-                x: Src::Zero,
-                y: Src::Zero,
-                c,
-            };
+            // A constant's anchor reads it as `Y` too, a cell of its cycle that is neither an `X` cell nor pinned.
+            let y = if matches!(c, Src::One | Src::Three) { c } else { Src::Zero };
+            *row = Row { x: Src::Zero, y, c };
         }
         self.rows.resize(n, IDLE);
         for (i, row) in self.port_rows.iter().enumerate() {
@@ -465,12 +470,16 @@ impl Circuit {
     }
 
     /// Whether every cycle of the wiring but a lone cell's holds a cell that is neither a row's first (`X`) cell nor
-    /// a pinned one ([`anchor_cell`]): what the protocol's soundness asks of the circuit. The protocol's identity
-    /// sets the sum's polynomial, at those cells, to the logarithmic derivative plus a multiple of the gate's or the
-    /// pin's error over `d d'`; walking a cycle from such a cell, each error is then the only term with a pole on the
-    /// line of its cell, so the sum vanishes identically in `α, β` only if every error is zero (`crate::protocol`).
+    /// a pinned one ([`anchor_cell`]), nor a cell of a random row: what the protocol's soundness asks of the circuit,
+    /// independently of the rows that make it zero knowledge. The protocol's identity sets the sum's polynomial, at
+    /// the `X` cells and the pinned ones, to the logarithmic derivative plus a multiple of the gate's or the pin's
+    /// error over `d d'`; walking a cycle from a cell of neither kind, each error is then the only term with a pole on
+    /// the line of its cell, so the sum vanishes identically in `α, β` only if every error is zero
+    /// (`crate::protocol`, `docs/membership/PERF_GAS.md`).
     pub fn errors_have_their_own_poles(&self) -> bool {
-        let pinned = |cell: usize| (0..PUBLIC_ROWS).any(|k| anchor_cell(k) == cell);
+        let pinned = |cell: usize| cell % 4 == 2 && cell / 4 < PUBLIC_ROWS;
+        let mut random = vec![false; self.rows.len()];
+        self.random_rows().into_iter().for_each(|r| random[r] = true);
         let mut seen = vec![false; self.sigma.len()];
         for start in 0..self.sigma.len() {
             if seen[start] {
@@ -480,7 +489,7 @@ impl Circuit {
             while !seen[at] {
                 seen[at] = true;
                 len += 1;
-                free |= at % 4 != 0 && !pinned(at);
+                free |= at % 4 != 0 && !pinned(at) && !random[at / 4];
                 at = self.sigma[at] as usize;
             }
             if len > 1 && !free {
@@ -871,9 +880,11 @@ mod tests {
             }
         }
         assert!((0..n).all(|r| anchors.iter().all(|&a| cycle[4 * r + 3] != cycle[a])));
-        // The anchors: `(0, 0, word or constant)`, each word the last of its 63 packing rows.
+        // The anchors: `(0, 0, word or zero)` and `(0, c, c)` for the constants one and three, each word the last of
+        // its 63 packing rows.
         for (k, row) in circuit.rows[..PUBLIC_ROWS].iter().enumerate() {
-            assert_eq!([row.x, row.y], [Src::Zero, Src::Zero]);
+            let y = if k > PUBLIC_WORDS { row.c } else { Src::Zero };
+            assert_eq!([row.x, row.y], [Src::Zero, y]);
             match k {
                 _ if k < PUBLIC_WORDS => {
                     assert_eq!(row.c, Src::Row((start + (k + 1) * (WORD_BITS - 1) - 1) as u32))

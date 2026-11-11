@@ -62,7 +62,9 @@ and simulates the openings with the ZK-PCS simulator.
 (test hooks in `transcript.rs` and `opening.rs`) and proves on the toy circuit (`2^17` rows). It changes one
 randomness word at a time and checks over `K` that both groups have full rank (15 and 3). It checks that both maps
 are affine: two words changed together move the scalars by the sum of their own changes, and a word scaled by an
-element of `K` by that multiple. It is a check at random challenges, not a proof for every challenge. A rank falls
+element of `K` by that multiple. `revealed_scalars_are_uniform_on_membership` (ignored by default, about 100 s on 64 threads:
+`cargo test --release -p quotient --lib hiding -- --ignored`) checks the same on the membership circuit at `2^22`
+rows. It is a check at random challenges, not a proof for every challenge. A rank falls
 short only on a set of challenges where some determinant of the challenges vanishes: probability at most its degree
 over `|E| = 2^192`. That bound is not written out here, but both maps being affine, it is a determinant's degree to
 bound, where the previous protocol's measured group had no such argument.

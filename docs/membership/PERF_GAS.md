@@ -36,7 +36,8 @@ Five changes, each needed by the next.
 1. **Public values as pinned words, not a weighted sum.** The circuit packs `y` and `root` into eight `K`-words
    (`Statement::words`, eight bytes big-endian each) by 63 rows of Horner's rule each (`(X, Y, C) = (b, 3, acc)`,
    `V = b + 2·acc`, `2` the generator of `K`'s polynomial basis). Eleven **anchor** rows `(0, 0, s_k)` put a cell
-   (`C`, cell `4k + 2`) on the cycle of each word and of the constants `0`, `1`, `3`. The verifier pins those eleven
+   (`C`, cell `4k + 2`) on the cycle of each word and of the constants `0`, `1`, `3`. The anchors of `1` and `3`
+   are `(0, 1, 1)` and `(0, 3, 3)`, for the soundness condition below. The verifier pins those eleven
    cells to the statement's words and the constants by interpolation: `g = gate / Z_R + (w + v) / Z_P` is a
    polynomial exactly when every gate holds and every pin holds, since `Z_R` (the rows' first cells) and `Z_P`
    (the pins, `C` cells) have no common root. The verifier evaluates `g(t)` with eleven more inverses in its one
@@ -78,11 +79,35 @@ logarithmic derivatives' sum and `B = Σ_x e(x) / (d d')(x)`.
   `α + w(x) + β x = 0` is shared only with the term of `x`'s predecessor on its cycle (through `d'`, when the two
   values agree). Walk each cycle from a cell outside `L`: the first error cell's pole is its term's alone, so its
   error is zero, and so on along the run. A free cell (its own cycle) has a double pole that nothing cancels.
-- The membership circuit and the toy circuit meet the condition. `Circuit::errors_have_their_own_poles` checks it,
-  in `circuit::tests::membership_is_a_wired_loop_free_circuit` and `protocol::tests::claims_hold_exactly_for_a_witness`.
-  Every cycle holds the `V` cell of the row it carries, or, for the constants, `Y` and `C` readers. Without the
-  condition it fails: a cycle made only of rows' first cells lets two errors cancel each other's poles.
+- **The circuit meets the condition by its structure, not by the random rows.**
+  - A row's output cycle holds its `V` cell.
+  - The packed words' cycles hold their last packing row's `V` cell.
+  - The zero's cycle holds the anchors' `Y` cells.
+  - The one's and the three's cycles hold their anchors' `Y` cells: those two anchors are `(0, 1, 1)` and
+    `(0, 3, 3)`, reading their constant twice.
+
+  Before this, the one's cycle (3,386 cells) had as its only such cells the `Y` cells of the five `(r, 1, s, r)`
+  random rows, so the zero-knowledge rows carried soundness. `Circuit::errors_have_their_own_poles` now leaves the
+  random rows' cells out of the count, so the check passes only on the structure. It is asserted in `Index::new`,
+  so no circuit violating it can be indexed, and also tested on the membership and toy circuits.
+- **The contract cannot check the condition.** It holds the circuit's commitment only, so `setIndexCommitment` (and
+  the deployment) must install only commitments of circuits indexed by `Index::new`, that is, circuits satisfying
+  the condition. This is the owner's duty, like installing the right circuit at all.
+- Without the condition the merge fails: a cycle made only of rows' first cells lets two errors cancel each other's
+  poles.
 - If `B ≡ 0`, then `A = 0` gives the copies, as before.
+- **Tested adversarially** (`protocol::tests::absorbed_errors_fail_the_sum`). A cheating prover absorbs a bad
+  witness's errors into `h` after `μ` (`h = 1/d + 1/d' + μ e/(d d')` on the cells; `protocol::prove_inner` with
+  `absorb`). The witness's, the wiring's and the identity's claims then hold, and the sum's claim rejects. This is
+  checked for:
+  - a gate error (a row's output changed on its whole cycle);
+  - a pin error (a public word changed on its cycle);
+  - a copy error;
+  - two equal gate errors on two idle rows.
+
+  As the negative control, the toy circuit is modified so that the two idle rows' `X` cells form a cycle of their
+  own. `errors_have_their_own_poles` is then false and `Index::new` panics; indexed without the check, the same two
+  errors cancel and every claim holds.
 
 ## Prover
 
@@ -129,7 +154,9 @@ revealed scalars. Both groups are affine in their randomness:
 - T's answer is affine in the 6 blinding words, the rows fixed, with rank 3 of 3. The blinding moves `q` by
   `b d d'`, and `μ g` does not depend on it.
 
-`hiding::revealed_scalars_are_uniform` checks the ranks and also that both maps are additive and `K`-linear. The
+`hiding::revealed_scalars_are_uniform` checks the ranks and also that both maps are additive and `K`-linear, on
+the toy circuit. `revealed_scalars_are_uniform_on_membership` (ignored by default) does the same on the membership
+circuit at `2^22` rows; it was run on h3 and passed in 97 s, with ranks 15 and 3. The
 non-affine group of main is gone. That group was the masks of `X` and `V` meeting in `G`, and the random rows'
 `v²`; it was measured over `GF(2)`, not argued, and its tests are removed. The argument is therefore stronger than
 on main: `RevealedUniform` is now two rank conditions, provable from a determinant's degree. Root hiding in the
