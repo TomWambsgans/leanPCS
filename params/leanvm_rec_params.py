@@ -35,17 +35,37 @@ CERTIFIED_L0 = uni.CERTIFIED_L0
 bits, err = uni.bits, uni.err
 
 # ---------------------------------------------------------------------------------------------------------------------
-# MEASURED: pi1-rec3's verifier (Claims::Point; SPEC-REC.md §1.2) and pi2's D16v circuit of it (§2.4.5, §10.3).
+# The committed real proofs (crates/leanvm/univariate/tests/vectors/): a proof's stream is its calldata past the
+# selector and the public word (`STREAM_AT`, crates/leanvm/rec/tests/counts.rs), read here rather than copied.
+VECTORS = os.path.join(HERE, "..", "crates", "leanvm", "univariate", "tests", "vectors")
+STREAM_AT = 4 + 32
+
+
+def vector_stream(name):
+    """The stream bytes of the committed vector `name`."""
+    with open(os.path.join(VECTORS, name + ".txt")) as f:
+        for line in f:
+            key, _, value = line.partition(" ")
+            if key == "calldata":
+                return len(value.strip()) // 2 - STREAM_AT
+    raise ValueError(f"{name}: no calldata")
+
+
+# MEASURED: pi1-rec3's verifier (Claims::Point; SPEC-REC.md §1.2) and pi2's D16v circuit of it (§2.4.5, §10.3); the
+# streams the vectors' (128 signatures: keccak128_rec3, the reference trace; 400: keccak_rec3).
 PI1_REC3 = {
-    128: dict(stream=9232, calls=70, perms=116, products=8476, linear=6633, challenges=14, values=3),
-    400: dict(stream=9424, calls=71, perms=118, products=8673, linear=6887, challenges=14, values=3),
+    128: dict(stream=vector_stream("keccak128_rec3"), calls=70, perms=116, products=8476, linear=6633, challenges=14,
+              values=3),
+    400: dict(stream=vector_stream("keccak_rec3"), calls=71, perms=118, products=8673, linear=6887, challenges=14,
+              values=3),
 }
 # pi1-rec4 (docs/leanvm/rec/PERF_GAS2.md): the challenges no message separates from one Keccak-f each, the ring map
 # after C2's commitment. The same stream, E operations and claims as pi1-rec3.
 PI1_REC4 = {
-    128: dict(stream=9280, calls=60, perms=106),
-    400: dict(stream=9472, calls=61, perms=108),
+    128: dict(stream=vector_stream("keccak128_rec4"), calls=60, perms=106),
+    400: dict(stream=vector_stream("keccak_rec4"), calls=61, perms=108),
 }
+assert all(PI1_REC4[x]["stream"] == PI1_REC3[x]["stream"] for x in PI1_REC3), "pi1-rec4's stream is pi1-rec3's"
 KECCAK_D16V = 130_944  # positions a Keccak-f[1600] (SPEC-REC.md §2.4.1; the design's 130,736)
 # A permutation whose caller reads its digest alone (lanes 0 .. 3): its last round's plane 0 (PERF_GAS2.md §2).
 KECCAK_D16V_DIGEST = 130_944 - 4 * 64 * 16
