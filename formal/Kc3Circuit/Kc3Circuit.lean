@@ -8,6 +8,7 @@ import Kc3Circuit.Pole
 import Kc3Circuit.Cells
 import Kc3Circuit.Words
 import Kc3Circuit.Sound
+import Kc3Circuit.Honest
 import Kc3Circuit.Transport
 
 /-!
@@ -16,7 +17,8 @@ import Kc3Circuit.Transport
 `PcsQuotient.membership 22` (`formal/Statement/PcsQuotient/Circuit.lean`) on the cells of a Cantor basis
 (`Kc3.Params.ofCantor`): `Kc3Deployed.deployedParams B hm`, its pole condition proved
 (`Kc3Deployed.poleCondition_deployed`), and cells satisfying it spelling a secret of the statement
-(`Kc3Deployed.relation_of_sat_deployed`).
+(`Kc3Deployed.relation_of_sat_deployed`), and the honest prover's cells satisfying it
+(`Kc3Deployed.sat_honest`, `Kc3Deployed.sat_honest_of_relation`).
 -/
 
 /-- info: 'Kc3Closed.pole_idx' depends on axioms: [propext, Classical.choice, Quot.sound] -/
@@ -34,3 +36,11 @@ import Kc3Circuit.Transport
 /-- info: 'Kc3Deployed.relation_of_sat_deployed' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms Kc3Deployed.relation_of_sat_deployed
+
+/-- info: 'Kc3Deployed.sat_honest' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms Kc3Deployed.sat_honest
+
+/-- info: 'Kc3Deployed.sat_honest_of_relation' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms Kc3Deployed.sat_honest_of_relation

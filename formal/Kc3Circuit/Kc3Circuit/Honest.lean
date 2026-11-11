@@ -617,4 +617,96 @@ theorem pinsC_honest (w : Secret) (rows : Fin randomWords → K) : PinsC (wH w r
   · rw [slot_val w rows (by norm_num) (anchor_c 9 (by norm_num) (by norm_num)), show 9 - 8 = 1 from rfl, valS_one]
   · rw [slot_val w rows (by norm_num) (anchor_c 10 (by norm_num) (by norm_num)), show 10 - 8 = 2 from rfl, valS_two]
 
+/-! ## The pins -/
+
+theorem ofNat_toNat (L : UInt64) : Primitives.F64.ofNat L.toNat = K.ofLane L := by
+  unfold Primitives.F64.ofNat K.ofLane
+  congr 1
+  apply BitVec.eq_of_toNat_eq
+  rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (UInt64.toNat_lt _)]
+  rfl
+
+theorem ofK_bK (b : Bool) : ofK (bK b) = bE b := by
+  cases b
+  · exact ofK_zero
+  · exact ofK_one
+
+/-- **An input row's `V` cell holds its input bit.** -/
+theorem input_bit (w : Secret) (rows : Fin randomWords → K) (k : ℕ) (hk : k < 8480) :
+    (membershipInputs w).getD k false = vOf (wH w rows) (qr.2.inputs.getD k 0) := by
+  have hm : qr.2.inputs.getD k 0 ∈ qr.2.inputs := by
+    simp [Array.getD_eq_getD_getElem?, inputs_size, hk]
+  obtain ⟨h1, h2⟩ := inputs_lt _ hm
+  have hS := size_lt_random
+  set r := qr.2.inputs.getD k 0 with hr
+  have hrow : closedRow r = ⟨.row r, .row r, .row r⟩ := by
+    rw [closedRow_built (by omega) (by omega) h2]
+    rcases builder_row r h1 h2 with ⟨-, h⟩ | ⟨hn, -⟩
+    · exact h
+    · exact absurd hm hn
+  have hreads : Reads r r := by
+    unfold Reads; rw [rows_getD r (by omega), hrow]; exact Or.inl rfl
+  unfold vOf wH
+  rw [hArr_out w rows r (by omega), (K_facts _).2 r (by omega), (bits_facts _).2.1 r (by omega) hreads,
+    inputsSet_input _ (membershipInputs_length w) k hk, ofK_bK, decide_bE]
+
+/-- **The honest cells' secret is the secret's**: its `y` and root are the statement's. -/
+theorem secret_honest (w : Secret) (rows : Fin randomWords → K) :
+    w.statement.y.toList = (secretOfW (wH w rows)).y ∧ w.statement.root.toList = (secretOfW (wH w rows)).root := by
+  obtain ⟨hx, hs, hd⟩ := secretOfInputs_fields (membershipInputs w) _ (input_bit w rows)
+  have := statement_secretOfInputs _ _ hx hs hd
+  rw [secretOfInputs_membershipInputs] at this
+  exact this
+
+/-- **The honest cells hold the statement's pins.** -/
+theorem pins_honest (w : Secret) (rows : Fin randomWords → K) : PinsIdx w.statement (wH w rows) := by
+  have hg := gates_honest w rows
+  have hc := copies_honest w rows
+  have hpc := pinsC_honest w rows
+  intro J hJ11
+  by_cases hJ : J < 8
+  · have hS := size_lt_random
+    have hA := pack_acc hg hc hpc J hJ 62 (by norm_num)
+    simp only [show 62 - 62 = 0 from rfl, Nat.zero_add] at hA
+    have hpack : packVal (bJ (wH w rows) J) = wH w rows (4 * (qr.2.rows.size + 63 * J + 62) + 3) := by rw [hA]; rfl
+    rw [packVal_eq] at hpack
+    have hJr : J < 2 ^ 22 := by omega
+    have hcell := read_cell hc hpc (c := 4 * J + 2) (by omega)
+      (by rw [slot_c J hJr, closedRow_anchor (by omega), anchorRow_c J hJ])
+      (by simp) (fun r' h => by cases h; omega)
+    rw [valE_row, ← hpack] at hcell
+    rw [hcell]
+    have hv : anchorValues w.statement.words J = w.statement.words.getD J 0 := by
+      unfold anchorValues; rw [if_pos (by show J < 8; exact hJ)]
+    rw [hv, words_getD _ J hJ, ← ofNat_toNat]
+    suffices hN : PcsCircuit.bitsToNat ((List.range 64).map (bJ (wH w rows) J)) =
+        (PcsQuotient.Transcript.beWord (if J < 4 then w.statement.y else w.statement.root).toList (8 * (J % 4))).toNat by
+      rw [hN]
+    apply Nat.eq_of_testBit_eq
+    intro t
+    by_cases ht : t < 64
+    · rw [PcsCircuit.bitsToNat_testBit, beWord_testBit _ _ _ ht]
+      have e1 : ((List.range 64).map (bJ (wH w rows) J)).getD t false = bJ (wH w rows) J t := by
+        simp [List.getD_eq_getElem?_getD, ht]
+      rw [e1]
+      unfold bJ
+      rw [pw_getD J t hJ ht]
+      obtain ⟨ey, er⟩ := secret_honest w rows
+      have hk := wire_index_lt J t ht
+      have hw := wire_bits hg hc hpc _ hk
+      by_cases h4 : J < 4
+      · simp only [h4, if_true] at hw ⊢
+        rw [hw.1, ← ey, show 8 * (8 * (J % 4) + 7 - t / 8) + t % 8 = 8 * (8 * (J % 4) + (7 - t / 8)) + t % 8 by omega,
+          bitOf_eq _ _ _ (Nat.mod_lt _ (by norm_num))]
+      · simp only [h4, if_false] at hw ⊢
+        rw [hw.2, ← er, show 8 * (8 * (J % 4) + 7 - t / 8) + t % 8 = 8 * (8 * (J % 4) + (7 - t / 8)) + t % 8 by omega,
+          bitOf_eq _ _ _ (Nat.mod_lt _ (by norm_num))]
+    · rw [Nat.testBit_lt_two_pow (lt_of_lt_of_le (bitsToNat_lt64 _) (Nat.pow_le_pow_right (by norm_num) (by omega))),
+        Nat.testBit_lt_two_pow (lt_of_lt_of_le (UInt64.toNat_lt _) (Nat.pow_le_pow_right (by norm_num) (by omega)))]
+  · have hv := anchorValues_const w.statement
+    rcases (by omega : J = 8 ∨ J = 9 ∨ J = 10) with rfl | rfl | rfl
+    · rw [hpc.1, hv.1, ofK_zero]
+    · rw [hpc.2.1, hv.2.1, ofK_one]
+    · rw [hpc.2.2, hv.2.2]
+
 end Kc3Closed
