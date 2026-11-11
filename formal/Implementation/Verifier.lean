@@ -7,9 +7,9 @@ import Implementation.Leaves
 `run_calldata`: on the calldata of a statement and a proof (`calldata`), with the deployed Keccak-256
 and the circuit's commitment `index` in storage (`deployed`), the contract reaches its checks of declared
 claims exactly when the Statement's reduction (`PcsQuotient.reduce`, over Keccak-f[1600]) accepts, and
-the six PCS claims it checks declared are then, byte for byte, the EIP encodings
-(`PcsQuotient.pcsClaimBytes`) of the reduction's six claims on their commitments, in the order of
-`Claims::all` (`checkPairs`). `accepts_calldata`: so the contract accepts exactly when every one of
+the three PCS claims it checks declared are then, byte for byte, the EIP encodings
+(`PcsQuotient.pcsClaimBytes`) of the reduction's three claims on their commitments, in the order of
+`Claims::on` (`checkPairs`). `accepts_calldata`: so the contract accepts exactly when every one of
 those claims is attested.
 -/
 
@@ -23,11 +23,10 @@ open LeanVM.Parameters LeanVM.Protocol LeanVM.Protocol.KeccakHash PcsQuotient Pc
 local notation "W" => word limbsEquiv
 local notation "EL" => elem limbsEquiv
 
-/-- **The six PCS claims of a reduced proof** with their commitments, in the order of `Claims::all`
+/-- **The three PCS claims of a reduced proof** with their commitments, in the order of `Claims::on`
 (`Reduced.checks` without the openings). -/
 def checkPairs (index : Commitment) (r : Reduced) : List (Commitment × Claim) :=
-  [(r.commitments.witness, r.claims.witness), (index, r.claims.wiring), (r.commitments.h, r.claims.h),
-    (r.commitments.q, r.claims.q), (r.commitments.g, r.claims.g), (r.commitments.h, r.claims.sum)]
+  [(r.commitments.witness, r.claims.witness), (index, r.claims.wiring), (r.commitments.table, r.claims.copy)]
 
 /-! ## Claims from words -/
 
@@ -60,37 +59,35 @@ theorem wordsBytes_eq {f : Word → ℕ} {wr wo wv : Word} {pw : List Word} {c :
 
 section Calldata
 
-variable (index : Commitment) (stmt : Statement) (p : ReductionProof) (frame : UInt8) (rw rh rq rg : Digest)
+variable (index : Commitment) (stmt : Statement) (p : ReductionProof) (frame : UInt8) (rw rt : Digest)
 
-local notation "CD" => cdOf stmt p frame rw rh rq rg
+local notation "CD" => cdOf stmt p frame rw rt
 local notation "E0" => deployed index CD
 
-variable {p rw rh rq rg} in
-theorem leafOK_calldata (hw : rootOfHalves p.witness.root = some rw) (hh : rootOfHalves p.h.root = some rh)
-    (hq : rootOfHalves p.q.root = some rq) (hg : rootOfHalves p.g.root = some rg) :
+variable {p rw rt} in
+theorem leafOK_calldata (hw : rootOfHalves p.witness.root = some rw) (ht : rootOfHalves p.table.root = some rt) :
     LeafOK E0 (chainVals index stmt p) := by
-  obtain ⟨s0, s1, s2, s3⟩ := vals_stmt index stmt p frame rw rh rq rg
-  obtain ⟨-, -, -, -, -, -, -, -, -, -, -, -, a0, a1, a2, a3, nx, qv, gv, cα, cβ, cγ, ct, cρ⟩ :=
-    vals_leaves index stmt frame hw hh hq hg
-  exact ⟨elem_of_word s0, elem_of_word s1, elem_of_word s2, elem_of_word s3, elem_of_word cα,
-    elem_of_word cβ, elem_of_word cγ, elem_of_word ct, elem_of_word a0, elem_of_word a1, elem_of_word a2,
-    elem_of_word a3, elem_of_word nx, elem_of_word cρ, elem_of_word qv, elem_of_word gv⟩
+  obtain ⟨-, -, -, -, -, -, x, c, vy, nx, cα, cβ, cμ, ct, cρ⟩ := vals_leaves index stmt frame hw ht
+  refine ⟨fun k hk => ?_, elem_of_word cα, elem_of_word cβ, elem_of_word cμ, elem_of_word ct, elem_of_word x,
+    elem_of_word c, elem_of_word vy, elem_of_word nx, elem_of_word cρ⟩
+  have hs : leaves₀.s.getD k 0 = k + 2 := by
+    simp only [leaves₀]
+    interval_cases k <;> rfl
+  rw [hs]
+  exact elem_of_word (vals_stmt index stmt p frame rw rt k hk)
 
-variable {p rw rh rq rg} in
-theorem oods_calldata (hw : rootOfHalves p.witness.root = some rw) (hh : rootOfHalves p.h.root = some rh)
-    (hq : rootOfHalves p.q.root = some rq) (hg : rootOfHalves p.g.root = some rg) :
-    val limbsEquiv E0 8 = p.witness.ood ∧ val limbsEquiv E0 17 = p.h.ood ∧
-      val limbsEquiv E0 20 = p.q.ood ∧ val limbsEquiv E0 23 = p.g.ood := by
-  obtain ⟨-, -, o0, -, -, o1, -, -, o2, -, -, o3, -⟩ := vals_leaves index stmt frame hw hh hq hg
-  exact ⟨elem_of_word o0, elem_of_word o1, elem_of_word o2, elem_of_word o3⟩
+variable {p rw rt} in
+theorem oods_calldata (hw : rootOfHalves p.witness.root = some rw) (ht : rootOfHalves p.table.root = some rt) :
+    val limbsEquiv E0 12 = p.witness.ood ∧ val limbsEquiv E0 21 = p.table.ood := by
+  obtain ⟨-, -, o0, -, -, o1, -⟩ := vals_leaves index stmt frame hw ht
+  exact ⟨elem_of_word o0, elem_of_word o1⟩
 
-theorem root_word (j : ℕ) (hj : j < 4) :
+theorem root_word (j : ℕ) (hj : j < 2) :
     beBytes 32 (wordOf E0 (values E0) (.calldata (64 + 32 * j))) =
-      digestBytes ([rw, rh, rq, rg][j]'(by simpa using hj)) := by
-  have hl := length_CD stmt p frame rw rh rq rg
-  show beBytes 32 (cdWord (CD) (4 + (64 + 32 * j))) = _
-  rw [cdWord_slice _ _ (by omega), show 4 + (64 + 32 * j) = 68 + 32 * j by ring,
-    roots_slice stmt p frame rw rh rq rg j hj, beBytes32_digest]
+      digestBytes ([rw, rt][j]'(by simpa using hj)) := by
+  have hl := length_CD stmt p frame rw rt
+  show beBytes 32 (cdWord (CD) (64 + 32 * j)) = _
+  rw [cdWord_slice _ _ (by omega), roots_slice stmt p frame rw rt j hj, beBytes32_digest]
 
 end Calldata
 
@@ -104,37 +101,27 @@ theorem nodes_words (e : Env) (pt : List ℕ) :
   simp only [List.flatMap_map]
   exact List.flatMap_congr fun k _ => node_word e k
 
-theorem sumPoint_words (e : Env) :
-    (sumPointWords.map Word.const).flatMap (fun w => beBytes 24 (wordOf e (values e) w)) =
-      (sumPoint PcsQuotient.logRows).flatMap elementBytes := by
-  have h : sumPointWords.map EL = sumPoint PcsQuotient.logRows := by
-    simp only [sumPointWords, List.map_append, List.map_replicate, List.map_cons, List.map_nil,
-      elem_one isF192_primitives, elem_zero isF192_primitives, elem_y0, elem_y1, sumPoint]
-    rfl
-  rw [← h, List.flatMap_map, List.flatMap_map]
-  exact List.flatMap_congr fun k _ => beBytes24_elem k
-
 /-! ## The contract on calldata -/
 
-theorem checkId_some : checkId = some 430 := by decide +kernel
+theorem checkId_some : checkId = some 247 := by decide +kernel
 
-theorem nonzero_eq : nonzero = [430] := rfl
+theorem nonzero_eq : nonzero = [247] := rfl
 
-theorem node_430 : ∃ a b, nodes[430]? = some (.mul a b) := ⟨401, 429, by decide +kernel⟩
+theorem node_247 : ∃ a b, nodes[247]? = some (.mul a b) := ⟨209, 246, by decide +kernel⟩
 
-theorem values_430_lt (e : Env) : (values e).getD 430 0 < B192 := by
-  obtain ⟨a, b, h⟩ := node_430
+theorem values_247_lt (e : Env) : (values e).getD 247 0 < B192 := by
+  obtain ⟨a, b, h⟩ := node_247
   rw [values_mul e h]
   exact mulE_lt _ _
 
 theorem word_zero : W (0 : E) = 0 := rfl
 
-theorem values_430_ne (e : Env) : (values e).getD 430 0 ≠ 0 ↔ val limbsEquiv e 430 ≠ 0 := by
+theorem values_247_ne (e : Env) : (values e).getD 247 0 ≠ 0 ↔ val limbsEquiv e 247 ≠ 0 := by
   constructor
   · intro h hv
     apply h
     have := congrArg W hv
-    rw [val, word_elem', Nat.mod_eq_of_lt (values_430_lt e), word_zero] at this
+    rw [val, word_elem', Nat.mod_eq_of_lt (values_247_lt e), word_zero] at this
     exact this
   · intro h hv
     apply h
@@ -147,36 +134,36 @@ theorem any_zero_iff (l : List E) : l.any (· = 0) = true ↔ l.prod = 0 := by
 /-- **The contract's claims on calldata** (F5): on the calldata of a statement and a proof, with the
 deployed Keccak-256 and the circuit's commitment `index` in storage, the contract reaches its checks
 exactly when the Statement's reduction accepts, and then checks declared, in order, the EIP encodings of
-the reduction's six claims on their commitments. -/
+the reduction's three claims on their commitments. -/
 theorem run_calldata (index : Commitment) (stmt : Statement) (p : ReductionProof) (frame : UInt8)
     (cd : List UInt8) (h : calldata stmt p frame = some cd) :
     (run (deployed index cd)).map calls =
       (reduce 22 index stmt p).map fun r => (checkPairs index r).map fun c => pcsClaimBytes c.1 c.2 := by
-  obtain ⟨rw, rh, rq, rg, hw, hh, hq, hg, rfl⟩ := calldata_some h
-  change (run (deployed index (cdOf stmt p frame rw rh rq rg))).map calls = _
-  set e := deployed index (cdOf stmt p frame rw rh rq rg) with he
+  obtain ⟨rw, rt, hw, ht, rfl⟩ := calldata_some h
+  change (run (deployed index (cdOf stmt p frame rw rt))).map calls = _
+  set e := deployed index (cdOf stmt p frame rw rt) with he
   set I := chainVals index stmt p with hIdef
-  have hI : LeafOK e I := leafOK_calldata index stmt frame hw hh hq hg
-  rw [reduce_eq index stmt p hw hh hq hg,
-    show claimsAt 22 stmt I.α I.β I.γ I.t I.ρ p.values p.next p.qValue p.gValue =
-      claimsAt PcsQuotient.logRows I.stmt I.α I.β I.γ I.t I.ρ I.a I.next I.qValue I.gValue from rfl,
+  have hI : LeafOK e I := leafOK_calldata index stmt frame hw ht
+  rw [reduce_eq index stmt p hw ht,
+    show claimsAt 22 stmt I.α I.β I.μ I.t I.ρ p.values p.next =
+      claimsAt PcsQuotient.logRows I.stmt I.α I.β I.μ I.t I.ρ I.v I.next from rfl,
     Formula.claimsAt_eq]
-  have h430 : val limbsEquiv e 430 = (Formula.denominators I).prod :=
-    checkId_spec (e := e) I hI 430 checkId_some
-  have hrun : run e = if (values e).getD 430 0 != 0 then some (outputs.map (wordOf e (values e)))
+  have h247 : val limbsEquiv e 247 = (Formula.denominators I).prod :=
+    checkId_spec (e := e) I hI 247 checkId_some
+  have hrun : run e = if (values e).getD 247 0 != 0 then some (outputs.map (wordOf e (values e)))
       else none := by
-    have hwf : WellFormed e.cd := wellFormed_CD stmt p frame rw rh rq rg
+    have hwf : WellFormed e.cd := wellFormed_CD stmt p frame rw rt
     rw [run, if_pos hwf, nonzero_eq]
     simp
   rw [hrun]
   by_cases hz : (Formula.denominators I).any (· = 0) = true
-  · have hv : (values e).getD 430 0 = 0 := by
+  · have hv : (values e).getD 247 0 = 0 := by
       by_contra hne
-      exact ((values_430_ne e).mp hne) (h430.trans ((any_zero_iff _).mp hz))
+      exact ((values_247_ne e).mp hne) (h247.trans ((any_zero_iff _).mp hz))
     rw [if_pos hz, hv]
     rfl
   · have hnz : (Formula.denominators I).prod ≠ 0 := fun h0 => hz ((any_zero_iff _).mpr h0)
-    have hv : (values e).getD 430 0 ≠ 0 := (values_430_ne e).mpr (h430 ▸ hnz)
+    have hv : (values e).getD 247 0 ≠ 0 := (values_247_ne e).mpr (h247 ▸ hnz)
     rw [if_neg hz, if_pos (by simpa using hv)]
     simp only [Option.map_some]
     congr 1
@@ -188,8 +175,8 @@ theorem run_calldata (index : Commitment) (stmt : Statement) (p : ReductionProof
     rw [ho] at hre
     have hcw : claimWords leaves₀ o = claims.map resolve := by
       simpa using hre
-    obtain ⟨hwP, hwV, hfP, hfV, hhP, hhV, hqP, hgP, hS⟩ := reduceIds_spec (e := e) I hI hnz o ho
-    obtain ⟨o0, o1, o2, o3⟩ := oods_calldata index stmt frame hw hh hq hg
+    obtain ⟨hwP, hwV, hfP, hfV, hcP, hcV⟩ := reduceIds_spec (e := e) I hI hnz o ho
+    obtain ⟨o0, o1⟩ := oods_calldata index stmt frame hw ht
     have hf0 : wordOf e (values e) (.const 0) = 0 := rfl
     rw [calls, List.map_congr_left (fun c _ => claimBytes_map _ hf0 c),
       show (fun c => wordsBytes (wordOf e (values e)) (resolve c)) = wordsBytes (wordOf e (values e)) ∘ resolve
@@ -202,21 +189,13 @@ theorem run_calldata (index : Commitment) (stmt : Statement) (p : ReductionProof
     have hval : ∀ (k : ℕ) (x : E), val limbsEquiv e k = x → beBytes 24 (wordOf e (values e) (.node k)) =
         elementBytes x := fun k x h => by rw [node_word, h]
     simp only [claimWords, checkPairs, List.map_cons, List.map_nil]
-    refine congrArg₂ List.cons ?_ (congrArg₂ List.cons ?_ (congrArg₂ List.cons ?_ (congrArg₂ List.cons ?_
-      (congrArg₂ List.cons ?_ (congrArg₂ List.cons ?_ rfl)))))
-    · exact wordsBytes_eq (root_word index stmt p frame rw rh rq rg 0 (by norm_num)) (hval _ _ o0)
+    refine congrArg₂ List.cons ?_ (congrArg₂ List.cons ?_ (congrArg₂ List.cons ?_ rfl))
+    · exact wordsBytes_eq (root_word index stmt p frame rw rt 0 (by norm_num)) (hval _ _ o0)
         (hlen _ _ hwP) (hpt _ _ hwP) (hval _ _ hwV)
     · exact wordsBytes_eq (beBytes32_digest index.root) (elementBytes_eq index.ood).symm
         (hlen _ _ hfP) (hpt _ _ hfP) (hval _ _ hfV)
-    · exact wordsBytes_eq (root_word index stmt p frame rw rh rq rg 1 (by norm_num)) (hval _ _ o1)
-        (hlen _ _ hhP) (hpt _ _ hhP) (hval _ _ hhV)
-    · exact wordsBytes_eq (root_word index stmt p frame rw rh rq rg 2 (by norm_num)) (hval _ _ o2)
-        (hlen _ _ hqP) (hpt _ _ hqP) (hval _ _ hI.qv)
-    · exact wordsBytes_eq (root_word index stmt p frame rw rh rq rg 3 (by norm_num)) (hval _ _ o3)
-        (hlen _ _ hgP) (hpt _ _ hgP) (hval _ _ hI.gv)
-    · exact wordsBytes_eq (root_word index stmt p frame rw rh rq rg 1 (by norm_num)) (hval _ _ o1)
-        (by simp [sumPointWords, Formula.claims, sumPoint, cellVars, PcsQuotient.logRows])
-        (sumPoint_words e) (hval _ _ hS)
+    · exact wordsBytes_eq (root_word index stmt p frame rw rt 1 (by norm_num)) (hval _ _ o1)
+        (hlen _ _ hcP) (hpt _ _ hcP) (hval _ _ hcV)
 
 /-- **The contract's verdict on calldata**: it accepts exactly when the Statement's reduction accepts and
 claim `k` of `checkPairs` (its EIP encoding) is attested, for every `k`. -/

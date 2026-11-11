@@ -141,22 +141,22 @@ theorem values_hash {k st : Nat} {xs : List Nat} (h : nodes[k]? = some (.hash st
 
 theorem values_seed {k : Nat} (h : nodes[k]? = some .seed) :
     (values e).getD k 0 =
-      beNat (e.H (bytesOf name ++ e.idx ++ (beBytes 32 e.ood).drop 8 ++ (e.cd.drop 4).take 64)).toList := by
+      beNat (e.H (bytesOf name ++ e.idx ++ (beBytes 32 e.ood).drop 8 ++ e.cd.take 64)).toList := by
   rw [values_getD e h]
   rfl
 
 theorem values_statement {k j : Nat} (h : nodes[k]? = some (.statement j)) :
-    (values e).getD k 0 = half (cdWord e.cd (4 + 32 * (j / 2))) j := by
+    (values e).getD k 0 = cdWord e.cd (8 * j) >>> 192 := by
   rw [values_getD e h]
   rfl
 
 theorem values_root {k j : Nat} (h : nodes[k]? = some (.root j)) :
-    (values e).getD k 0 = half (cdWord e.cd (4 + 64 + 32 * (j / 2))) j := by
+    (values e).getD k 0 = half (cdWord e.cd (64 + 32 * (j / 2))) j := by
   rw [values_getD e h]
   rfl
 
 theorem values_input {k i : Nat} (h : nodes[k]? = some (.input i)) :
-    (values e).getD k 0 = cdWord e.cd (4 + 192 + 24 * i) >>> 64 := by
+    (values e).getD k 0 = cdWord e.cd (128 + 24 * i) >>> 64 := by
   rw [values_getD e h]
   rfl
 

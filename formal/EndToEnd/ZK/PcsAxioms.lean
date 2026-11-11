@@ -15,6 +15,14 @@ import ZK.PcsFSClosed
 #guard_msgs (whitespace := lax) in
 #print axioms PcsQuotient.EndToEnd.RProg.trace_le
 
+/-- info: 'PcsQuotient.EndToEnd.RProg.trace_le_approx' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms PcsQuotient.EndToEnd.RProg.trace_le_approx
+
+/-- info: 'PcsQuotient.EndToEnd.ideal_joint' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms PcsQuotient.EndToEnd.ideal_joint
+
 /-- info: 'PcsQuotient.EndToEnd.rootOfHalves_rootHalves' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms PcsQuotient.EndToEnd.rootOfHalves_rootHalves

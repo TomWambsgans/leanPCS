@@ -181,7 +181,7 @@ srcDir = "Completeness"
 globs = ["E2ECompleteness"]
 
 # The deployed EVM contract is the statement's verifier (`Evm.lean`, `Evm/*.lean`): F5's recorded
-# graph, run on the calldata of a statement's proof, checks declared exactly the EIP encodings of the six PCS
+# graph, run on the calldata of a statement's proof, checks declared exactly the EIP encodings of the three PCS
 # claims `PcsQuotient.verifyWith` opens.
 [[lean_lib]]
 name = "Evm"
