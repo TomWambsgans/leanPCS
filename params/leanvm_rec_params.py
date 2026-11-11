@@ -27,16 +27,9 @@ import sys
 sys.dont_write_bytecode = True  # loading the other script must not write a __pycache__ next to it
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-
-
-def _load(name):
-    spec = importlib.util.spec_from_file_location(name, os.path.join(HERE, name + ".py"))
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
-
-
-uni = _load("leanvm_univariate_params")
+_spec = importlib.util.spec_from_file_location("leanvm_univariate_params", os.path.join(HERE, "leanvm_univariate_params.py"))
+uni = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(uni)
 LOGQ = uni.LOGQ
 CERTIFIED_L0 = uni.CERTIFIED_L0
 bits, err = uni.bits, uni.err
@@ -77,7 +70,8 @@ def pi2_stacks(log_n=LOG_N):
 
 
 def stack(words):
-    return max(24, math.ceil(math.log2(words) - 1e-9))
+    """A stack's variables, at least 24: the certified lists start at 2^24."""
+    return uni.stack_vars(words, floor=24)
 
 
 def pi2_rounds(log_n=LOG_N, row=ROW):
