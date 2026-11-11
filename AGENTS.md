@@ -264,7 +264,8 @@ leanEthereum) and is licensed, like leanVM, under the MIT license ([`LICENSE-MIT
   whole stack opened against a commitment of its leading lanes (`crates/pcs_claim`). Prover speedups, the same commitments
   and proofs (each file's header lists them): `pcs`'s `src/whir.rs`, `src/whir_induce.rs`,
   `src/ntt/additive_ntt_f64.rs` (the encode into the kept codeword in place, the gathers, the induces, the E rounds, a
-  commit that keeps its codeword) and `benches/lanes.rs` (new); `primitives/src/hash.rs` (the AVX-512 batched
+  commit that keeps its codeword, the lanes' products in one pass, several openings on one commitment at once, `eq` low
+  weights never written out: [`docs/leanvm/rec/PERF_PROVER.md`](docs/leanvm/rec/PERF_PROVER.md)) and `benches/lanes.rs` (new); `primitives/src/hash.rs` (the AVX-512 batched
   Keccak-256's transposes in registers); `parallel/src/lib.rs` (affine dispatches: each worker the same contiguous
   range of tasks every call); `bench/src/allocator.rs` (jemalloc's extents on transparent huge pages). The workspace `Cargo.toml` and
   `rustfmt.toml` follow leanVM's.

@@ -32,7 +32,9 @@
 // rounds given some of them (`recursive_prover_with_lane_tensors_known`), and several openings on one commitment at
 // once (`recursive_prover_with_lane_tensors_batch`, `LaneJob`): their lane rounds read the message twice in all (the
 // inner products in one pass, every opening's collapse in another), then each opening goes on as alone
-// (`after_lane_rounds`, the rest of `recursive_prover` from level 1's commitment).
+// (`after_lane_rounds`, the rest of `recursive_prover` from level 1's commitment). A lane tensor's low weight is a
+// `Low`: a table as before, or `eq(point, ·)`, read a chunk at a time as two small tables' product (`EqSplit`,
+// `Chunked`) and never written out.
 
 //! WHIR with `K = GF(2)[x]/(x^64+x^4+x^3+x+1)` and
 //! `E = K[y]/(y^3+y+1)`.
