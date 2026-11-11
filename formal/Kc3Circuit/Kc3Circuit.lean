@@ -4,3 +4,4 @@ import Kc3Circuit.BridgeBuild
 import Kc3Circuit.Wiring
 import Kc3Circuit.Closed
 import Kc3Circuit.Rows
+import Kc3Circuit.Pole
