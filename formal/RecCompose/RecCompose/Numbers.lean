@@ -21,9 +21,11 @@ N (ε + 5 N / 2^256) + N (e2 + 8 N / 2^256) + 2 N² / 2^256 + (2^81 + Q)² / 2^5
 * **the openings, charged once** (the eight PCS claims, π1's three, `W` of `2^24` words, the setup `2^25`, `Q`'s
   three `2^28`:
   `WhirBridge.Pcs.pcs_union_sound`'s union over their sizes, `(QA + QV) (ε + 5 (QA + QV) / 2^256)`, as π1's
-  `UniKeccakSound.hU_uniK`, `FsOps.hU_pcs`), at the exact certified per-group bound `269 · 2^-137`
-  (`WhirBridge.εExact`), with `Q`'s out-of-domain binding per query (`2^-156`, `FsBind.lean`; its
-  `N (N + 1) / 2^256` within the chain's `8 N / 2^256`): `pi2OpenErr` (`FsGame.lean`'s `le_pi2BoundE`);
+  `UniKeccakSound.hU_uniK`, `FsOps.prEvent_doomH_le`), at the exact certified per-group bound `269 · 2^-137`
+  (`WhirBridge.εExact`; `WhirBridge.Pcs.UnionO.pcs_union_sound_oracle`, the point read off Keccak-256 at `W`'s and
+  `Q`'s sizes), with `Q`'s out-of-domain binding per query (`δc 28 = C(3564, 2)/2^192 ≤ 2^-160 ≤ 2^-156`,
+  `FsBind.qOodBinding`; its `N (N + 1) / 2^256` within the chain's `8 N / 2^256`): `pi2OpenErr` (`FsGame.lean`'s
+  `le_pi2BoundE`);
 * **the chain** (`Compose.knowledgeSoundness_listChainU_closed128`): the rounds' largest error times its lists
   (`Compose.maxErrK`), `e2`, the identities at `t` with `Q`'s empty slot `S` over `L_W L_Q` (`RecPiop.err 1 =
   (4N − 1)/|F|`, `RecPiop.bits_t`; the copy argument's and the ports' `L_W`-term is `2^-152.3`, `ρ`'s (`W`'s fold and
@@ -46,8 +48,8 @@ def pi2N (Q : ℕ) : ℕ := 2 ^ 33 + Q
 
 /-- **The openings' per-query error** (`FsGame.lean`'s `le_pi2BoundE`): `WhirBridge.εExact = 269 · 2^-137`, the
 constant of `WhirBridge.Pcs.pcs_union_sound`'s term `(QA + QV) (ε + 5 (QA + QV) / 2^256)` for π2's eight PCS
-openings charged once (`FsOps.hU_pcs`), plus `2^-156 ≥ δood 28 = C(L_Q, 2) · 28 / 2^192`, the per-query error of
-`Q`'s out-of-domain binding (`FsBind.lean`, `QOodBinding δBind`: `Q`'s three claims on one stack). -/
+openings charged once (`FsOps.prEvent_doomH_le`), plus `2^-156 ≥ 2^-160 ≥ δc 28 = C(L_Q, 2) / 2^192`, the per-query
+error of `Q`'s out-of-domain binding (`FsBind.qOodBinding`: `Q`'s three claims on one stack). -/
 noncomputable def pi2OpenErr : ℝ≥0∞ := 269 * (2 : ℝ≥0∞)⁻¹ ^ 137 + (2 : ℝ≥0∞)⁻¹ ^ 156
 
 /-- **π2's rounds' largest error times its lists**: the identities at `t` with `Q`'s empty slot, `L_W L_Q (4 N − 1)/|E|`

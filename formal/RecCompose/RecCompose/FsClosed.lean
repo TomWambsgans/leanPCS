@@ -13,20 +13,19 @@ import RecCompose.FsBind
 /-!
 # π2's Fiat–Shamir layer, proved, and the end theorems without it
 
-**`pi2FsLayer_real`**: `Pi2FsLayer D` at the real deployment (`RecDeployment.Real D`), under `Q`'s out-of-domain
-binding (`QOodBinding δBind`, `FsBind.lean`: the PCS claims' out-of-domain point a random oracle of the root, as the
-EIP's security claim has it; the Statement derives it with `keccak256`, outside the permutation the model
-idealizes):
+**`pi2FsLayer_real`**: `Pi2FsLayer D` at the real deployment (`RecDeployment.Real D`), with no premise (`Q`'s
+out-of-domain binding is `FsBind.qOodBinding`: the contract reads `W`'s and `Q`'s out-of-domain points off Keccak-256
+over the permutation, `RecStatement.pcsOpenKO`):
 `pi2FsLayer_of` (FsGame.lean) with its bridges proved, the coupling `pi2GameLeV` (FsCouple.lean, from the setup's bridge
 `pi2SetupBridge`, the verifier's `pi2VerifierBridge` on the walk `pi2Walk`, `pi2WalkReject`, and the extractor's
 reading `pi2ExtractBridge`) and the composed verifier's facts (FsCost.lean), π1's shape the Keccak reference
 `keccak128` (`UniKeccakSound.uniShapesK_ref`: `C1`, `C2`, the setup at `2^27`, `2^26`, `2^23` words;
 `UniKeccakSound.layoutVarsSmallK_ref`); the eight PCS openings charged once and `Q`'s binding (`FsBind.lean`) in
-`pi2Bound`'s openings term (`pi2OpenErr = 269 · 2^-137 + 2^-156`).
+`pi2Bound`'s openings term (`pi2OpenErr = 269 · 2^-137 + 2^-156`, `δc 28 ≤ 2^-160` within the `2^-156`).
 
 **`recKnowledgeSoundness_reduction`** (the headline end-to-end soundness theorem), **`recKnowledgeSoundness2_closed`**,
 **`recKnowledgeSoundness_closed`**, **`recKnowledgeSoundness_closed_fs`**: `Final.lean`'s
-end theorems without `hfs`, under `QOodBinding δBind` (and, `lean-pi2-complete`, without `hcol`: `pi2SetupColumns_of_real`), and (`lean-pi2-facts`)
+end theorems without `hfs` (and, `lean-pi2-complete`, without `hcol`: `pi2SetupColumns_of_real`), and (`lean-pi2-facts`)
 without the circuit's facts and the ports' and calls' meaning: `Fa` is `pi2Facts hD C hchk` (`Facts.lean`), `hstmt`,
 `hzero`, `hcalls` are `statementPortMeaning`, `zeroPortsMeaning`, `callWordsAgree` (`Meanings.lean`). Their inputs left: the compiled circuits `C : Pi2Circuits D` at the emitted
 graph's roots (`hroots`), the Lean recording the emitted graph (`GraphsAgree`), and the view check `Pi2ViewChecked C`,

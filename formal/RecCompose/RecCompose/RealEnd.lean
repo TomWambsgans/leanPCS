@@ -10,11 +10,11 @@ import RecCompose.CompleteKeccakEnd
 The Keccak VM's recursion at the 128-signature reference (`realDeployment prog hprog`: π1-rec3 at
 `RecGraphKeccak.Pi1.keccak128`, π2's circuit the Lean compiler's on the emitted π1-rec3 graph at every IV). The inputs
 left are the evaluated checks of `RealDeployment.lean` (`GraphsAgree`, `DigestChecked`, `SetupRootChecked`,
-`IvChecked`, the last checked at three IVs and assumed at the others) and, for soundness, `Q`'s out-of-domain binding
-(`QOodBinding δBind`, `FsBind.lean`):
+`IvChecked`, the last checked at three IVs and assumed at the others); `Q`'s out-of-domain binding is proved
+(`FsBind.qOodBinding`, the point read off Keccak-256 over the permutation):
 
 * **`recKnowledgeSoundness_reduction_real`**: `FsClosed.recKnowledgeSoundness_reduction` there. Knowledge soundness
-  against the Keccak VM's `KvHolds`, as an explicit reduction, with no Fiat–Shamir premise but the binding's: the break is at most
+  against the Keccak VM's `KvHolds`, as an explicit reduction, with no Fiat–Shamir premise: the break is at most
   `pi2Bound Q ≤ 2^-64` (for `Q ≤ 2^64`) plus the probabilities that two explicit adversaries (`A` then π2's
   extractor) break π1-rec3 at Keccak-f[1600] or hit its merge hazard.
 * **`recCompleteness_real_K_fs_bits`** (`CompleteKeccakEnd.lean`): completeness of the composed honest prover, error
@@ -27,7 +27,7 @@ open RecStatement
 open scoped ENNReal
 
 /-- **Knowledge soundness of the recursive verifier at the real deployment, as an explicit reduction**: from the
-evaluated checks and `Q`'s out-of-domain binding (`QOodBinding δBind`, `FsBind.lean`),
+evaluated checks,
 `RecKnowledgeSoundnessReduction (realDeployment prog hprog) pi2Bound`, and
 `pi2Bound Q ≤ 2^-64` for `Q ≤ 2^64`. -/
 theorem recKnowledgeSoundness_reduction_real (prog : KeccakVm.Program)
