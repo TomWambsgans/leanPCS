@@ -409,8 +409,9 @@ lists `pcs_sound` quantifies over), in bits:
 | `L` | 87315 | 65939 | 53937 | 43620 | 34894 | 27718 | 22133 | 15692 | 12514 | 9952 | 7908 | 6296 | 4473 | 3564 |
 | bits | 156.3 | 157.0 | 157.5 | 158.0 | 158.6 | 159.2 | 159.7 | 160.7 | 161.3 | 161.9 | 162.5 | 163.1 | 164.0 | 164.6 |
 
-`δood_le` proves `≥ 156` at every `n`. `docs/PCS_CLAIM.md`'s `L ≤ 323` and `2^-171` are `whir_config.rs`'s own lists,
-which omit the fold group's row-union factor (above, "Errors at our sizes"); with the certified lists the bound is
+`δood_le` proves `≥ 156` at every `n`. An earlier `docs/PCS_CLAIM.md` gave `L ≤ 323` and `2^-171`, from
+`whir_config.rs`'s own lists, which omit the fold group's row-union factor (above, "Errors at our sizes"); it now gives
+the certified lists' bound: with them the bound is
 `2^-156.3` (`n = 15`) to `2^-164.6` (`n = 28`) per query (`156` bits or more as `Q/ε`; about `2^-92` at
 `Q = 2^64`).
 

@@ -364,7 +364,8 @@ def main():
         p = pi1(REFERENCE, variant)
         e, lean = lean_pi1(variant)
         raw_max = max(err(num, b) for _, num, b, _, _ in p["rounds"])
-        print(f"   {names[variant]}: Lean {lean:.2f} bits (every round"
+        kind = "Lean" if variant != "rec4" else "the Lean bound's form (no Lean proof of pi1-rec4)"
+        print(f"   {names[variant]}: {kind} {lean:.2f} bits (every round"
               f" ≤ 2^{LEAN_ROUND[variant]}/|E|, lists 9952² for every round: 2^{-bits(e):.2f} a query);"
               f" the calculator {p['total']:.2f} (largest round before its lists 2^{192 - bits(raw_max):.2f}/|E|,"
               f" weakest after its lists 2^{-bits(p['weakest'][1]):.2f})")

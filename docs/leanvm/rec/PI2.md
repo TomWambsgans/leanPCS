@@ -2,18 +2,20 @@
 
 # π2's PIOP: prover, verifier, contract, gas
 
-π2 proves that π1's recorded verifier (the Keccak VM's π1-rec3, `SPEC-REC.md` §1) accepts and outputs its PCS
-claims. Its circuit is `SPEC-REC.md` §10's; this file is its PIOP, **π2v2** (transcript `leanvm-rec-pi2v2`: the ports
-out of the copy argument, `P` committed in `Q`, `q` below `2N`; §1, §7). Code in `crates/leanvm/rec/src/pi2/`; the Lean
-proofs are in `formal/RecCompose`, and are of π2v1 (§10). Numbers are **measured** unless marked modelled.
+π2 proves that π1's recorded verifier (the Keccak VM's π1-rec4 since [`PERF_GAS2.md`](PERF_GAS2.md), π1-rec3 before,
+`SPEC-REC.md` §1) accepts and outputs its PCS claims. Its circuit is `SPEC-REC.md` §10's; this file is its PIOP,
+**π2v3** (transcript `leanvm-rec-pi2v3`, `pi2::verifier::NAME`): π2v2's PIOP (the ports out of the copy argument, `P`
+committed in `Q`, `q` below `2N`; §1, §7) on the EIP draft's PCS claims (§2, §8). Code in `crates/leanvm/rec/src/pi2/`;
+the Lean proofs are in `formal/RecCompose`, of π2v3 as of commit `f96a7938` (over π1-rec3, π1's claims encoded by the
+contract; §10). Numbers are **measured** unless marked modelled.
 
 ```sh
 export RUSTFLAGS="-C target-cpu=native"   # the field's native SIMD paths (AVX-512/GFNI on x86)
 cargo test --release -p leanvm_rec --lib pi2                                                  # indicators, Φ's basis, inverse, WHIR queries
 cargo test --release -p leanvm_rec --test pi2 -- --nocapture                                   # synthetic circuits, contract parity
 cargo test --release -p leanvm_rec --test pi2_real -- --ignored --nocapture real_gas            # the real circuits' gas
-cargo test --release -p leanvm_rec --test pi2_real -- --ignored --nocapture real_end_to_end     # 2^24 prover, end to end (8 GB)
-PI2_VECTOR=keccak_rec3 cargo test --release -p leanvm_rec --test pi2_real -- --ignored --nocapture real_end_to_end   # 400 signatures
+cargo test --release -p leanvm_rec --test pi2_real -- --ignored --nocapture real_end_to_end     # 2^24 prover, end to end (peak about 12.7 GB)
+PI2_VECTOR=keccak_rec4 cargo test --release -p leanvm_rec --test pi2_real -- --ignored --nocapture real_end_to_end   # 400 signatures
 LEANVM_TRACE=<trace> cargo test --release -p leanvm_rec --test pipeline -- --ignored --nocapture                     # trace → π1 → π2, timed
 cargo test --release -p leanvm_rec --test pi2 -- --ignored --nocapture gas_report               # the synthetic target shapes
 ```
@@ -232,12 +234,12 @@ reference shape; `formal/RecPiop`'s soundness carries them (the honest `Q` the p
 - `Q` at `(u_0, …, u_m, ρ', y_0, y_1)`, `u_l = w_l/(1 + w_l) = 1 + 1/w_l + 1/w_{l+1}`, the identity's value; at
   `(u_0, …, u_m, ρ, 1, 1)`, the pushes'; at `(1^m, 0, 0, y_0, y_1)`, value `0`.
 
-**The contract** (`contract`): reads the stream, runs the verifier, then checks 7 claims declared at payloads 1 … 7
-(the eighth, π1's on `C1`, is payload 0, which the seed hashed and the circuit computed), each the EIP draft's
-PCS claim (`evm_link::declared_claims`: its `82 + 24 n` bytes packed and hashed, the hash a payload of the frame):
-π1's other two (their fields `circuit::spec::Circuit::calls`: constants, the stream's roots, the elements read, its
-out-of-domain answers among them, the pairs' coordinates derived from their challenges), then `W`'s, the setup's (its
-commitment a constant) and `Q`'s three.
+**The contract** (`contract`): reads π1's three claims' hashes from the frame's payloads 0 … 2 into the seed (π2's
+circuit computes them from π1's run, since [`PERF_GAS2.md`](PERF_GAS2.md)), reads the stream, runs the verifier, then
+checks π2's five claims declared at payloads 3 … 7, each the EIP draft's PCS claim (`evm_link::declared_claims`: its
+`82 + 24 n` bytes packed and hashed, the hash a payload of the frame): `W`'s, the setup's (its commitment a constant)
+and `Q`'s three. (Before `PERF_GAS.md` it encoded π1's three claims too, from the stream and constants; `PERF_GAS.md`
+hashed `C1`'s in the circuit, at payload 0.)
 
 ## 3. The prover (`prover`)
 
@@ -321,14 +323,15 @@ at role 15).
   - flipped stream bytes: claims the openings do not prove;
   - the contract equals the Rust verifier word for word, on the honest stream and a random
     one; it accepts the honest proof with its frame declaring exactly its claims, and rejects flipped bytes.
-- `tests/pi2_real.rs`, the real circuits (`PI2_VECTOR=keccak128_rec3`, the default, or `keccak_rec3`): `real_gas`, the
+- `tests/pi2_real.rs`, the real circuits (`PI2_VECTOR=keccak128_rec4`, the default, or `keccak_rec4`; the
+  `keccak*_rec3` vectors give `PERF_GAS.md`'s π2, 941 B and 89,672 with the frame): `real_gas`, the
   gas, deployment and parity of D16v; `real_end_to_end` as in §0. The claims holding on the real tables are the degrees' check (§1): a `q` or
   `q_P` of a degree above `2N` would not be determined by `D`'s `2N` points, and its claim would fail.
 - `tests/pipeline.rs`: the prover timed from a trace, π2's proof and openings among its stages (§0).
-- `tests/keccak_vm_rec.rs`: π1-rec3 at 128 and 400 signatures compiled into D16v on a sample stream, the contract's gas
+- `tests/keccak_vm_rec.rs`: π1-rec4 (`leanvm_rec::PI1`) at 128 and 400 signatures compiled into D16v on a sample stream, the contract's gas
   and parity.
-- `tests/lean_pi2_prover.rs`: vectors for the Lean honest prover's differential test (`formal/RecCompose`, of π2v1:
-  §10).
+- `tests/lean_pi2_prover.rs`: vectors for the Lean honest prover's differential test (`formal/RecCompose`, of π2v3
+  as of `f96a7938`: §10).
 
 ## 7. Soundness (as SPEC-REC §5)
 
@@ -358,12 +361,13 @@ then after the union):
 | round | error | alone | after |
 |---|---|---:|---:|
 | the copy argument `(α, β, γ)`: `2N` fractions, the ports' poles, the four-limb ports' fingerprints (degree 1 in `γ`) | `(4N + 3)/2^192` over `L_W` | 166.0 | 152.7 |
-| `t`: the copy identity and `P`'s definition, each below `3N`, both must vanish | `(3N − 1)/2^192` over `L_W L_Q` | 166.4 | **141.3** |
+| `t`: the copy identity and `P`'s definition, both must vanish; below `3N` for the honest `Q`, below `4N` with its prover-filled empty slots (§2) | `4N/2^192` over `L_W L_Q` | 166.0 | **140.9** |
 | `ρ`: `W`'s fold (degree 15) | `15/2^192` over `L_W L_Q` | 188.1 | 163.0 |
 | `ρ`: `Q`'s claim (degree 3) | `3/2^192` over `L_W L_Q` | 190.4 | 165.3 |
 
-π2v1's rounds (`formal/RecPiop`'s `err`, which the Lean still states: §10) were the copy argument `(3N + 2)/2^192`
-(153.1 bits), `t` the identity below `5N` (140.6) and `ρ` (163.0). These depend only on `N` and the stacks. With the
+π2v1's rounds (§10) were the copy argument `(3N + 2)/2^192` (153.1 bits), `t` the identity below `5N` (140.6) and
+`ρ` (163.0). The Lean (`formal/RecPiop`'s `err`) states π2v3's, coarser: `(4N − 1 + Σ_j d_j)/|E|` for the copy
+argument and the ports, `(4N − 1)/|E|` at `t`, `2^r/|E|` at `ρ`. These depend only on `N` and the stacks. With the
 three openings charged once (`269 · 2^-137` a query), π2 keeps 128.93 bits as `Q/ε` at `Q = 2^64`, as π2v1
 (`RecCompose.pi2Bound`, `pi2Bound_le_bits`, proved for π2v1).
 

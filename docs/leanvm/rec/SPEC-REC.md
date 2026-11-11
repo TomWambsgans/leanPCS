@@ -6,7 +6,7 @@ A proof of a Keccak VM execution (leanVM `9d50c92a3`'s tables, `docs/leanvm/univ
 by recursion: π1 is the univariate proof, π2 a SNARK of π1's verifier, and the contract runs π2's verifier only. At the
 reference shape (128 signatures) the real proof verifies for **31,524 gas of execution** (577 B of calldata; as an
 EIP-8141 frame transaction, EIP-7976's floor, standard 40,708 and floor 36,928), its 8 claims declared (π1's 3, π2's
-5, each the EIP draft's PCS claim, `crates/pcs_claim`; π2v2, `PI2.md`; π1's three claims hashed in π2's circuit, π1 as
+5, each the EIP draft's PCS claim, `crates/pcs_claim`; π2v3, `PI2.md`; π1's three claims hashed in π2's circuit, π1 as
 π1-rec4, `PERF_GAS2.md`): 66,376 with the frame of claims (257 B) and their PCS gas (13,000, on both sides). The figures below that predate the PCS claims are marked so. Code: `crates/leanvm/rec`; π2's PIOP in
 [`PI2.md`](PI2.md); the claims' points in [`SPEC-POINTS.md`](SPEC-POINTS.md).
 
@@ -20,7 +20,7 @@ Every number is marked:
 ```sh
 export RUSTFLAGS="-C target-cpu=native"
 cargo test --release -p leanvm_rec -- --nocapture                                            # circuit, PIOP, contract
-cargo test --release -p leanvm_rec --test keccak_vm_rec -- --ignored --nocapture             # π1-rec3 under π2 at 128 and 400 (§1.2, §10.3)
+cargo test --release -p leanvm_rec --test keccak_vm_rec -- --ignored --nocapture             # π1-rec4 under π2 at 128 and 400 (§1.2, §10.3)
 cargo test --release -p leanvm_rec --test counts -- --include-ignored --nocapture            # π1's graph, its counts (§1)
 cargo test --release -p leanvm_rec --test pi2_real -- --ignored --nocapture real_end_to_end  # the real proof end to end (§11)
 ```
@@ -182,7 +182,7 @@ They cannot be made fewer (`SPEC-POINTS.md` §2):
 | | measured |
 |---|---|
 | rows per Keccak-f (one Keccak-256 of a 64-byte block) | **113,114** |
-| the Merkle path: 34 permutations | 3,878,612 of `2^22` rows (92.5%); at most 37 permutations fit |
+| the Merkle path: 34 permutations | 3,878,615 of `2^22` rows (92.5%); at most 37 permutations fit |
 | words per row at `2^22` rows | witness 5.00 (hidden), wiring 4.00, quotient **63.00** (`2^27.98`, hidden) |
 | words per cell (4 a row) | quotient 15.75 hidden; 13.75 without hiding (`h` 3, `q` 9, gate 1.75) |
 
@@ -228,7 +228,7 @@ That set is a coset of `U_s = span(β_4, …, β_(3+s))`, for a block of `2^s` r
 degree `N − 2^s < N`. The verifier needs one `Z_(U_s)(t)` per block size, a short linearized recursion, and then one
 division per pair (as built, normalised and summed by groups: `PI2.md` §2).
 
-The checks are (as built, π2v2: `PI2.md` §1, §2):
+The checks are (as built, π2v2's PIOP, π2v3 on the PCS claims: `PI2.md` §1, §2):
 
 - `h(x) = (1 + 1_S(x))(1/(α + w(x) + βx) + 1/(α + P(x) + κ(x) + βσ(x)))` on `V_m`: the copy argument over the
   positions but the holes (the ports' own positions, `1_S` their indicator), `P` without `κ` and the ports, committed;
@@ -453,12 +453,13 @@ charged once at `269 · 2^-137 = 2^-128.93` a query and `ε_round` its weakest r
 | round | error | alone | after the lists |
 |---|---|---:|---:|
 | the copy argument `(α, β, γ)`: `2N` fractions, the ports' poles (`PI2.md` §7) and the three four-limb ports' fingerprints (degree 1 in `γ`), over `W`'s list 9,952 | `(4N + 3)/2^192` | 166.0 | 152.7 |
-| `t`, the identity and `P`'s definition, each of degree `< 3N`, over `W`'s and `Q`'s lists (9,952 · 3,564 = `2^25.1`) | `(3N − 1)/2^192` | 166.4 | **141.3** |
+| `t`, the identity and `P`'s definition, of degree `< 4N` with `Q`'s prover-filled empty slots (`< 3N` for the honest `Q`; `PI2.md` §2), over `W`'s and `Q`'s lists (9,952 · 3,564 = `2^25.1`) | `4N/2^192` | 166.0 | **140.9** |
 | `ρ`, `W`'s fold (degree 15), over both lists | `15/2^192` | 188.1 | 163.0 |
 | `ρ`, `Q`'s claim (degree 3), over both lists | `3/2^192` | 190.4 | 165.3 |
 
-These are π2v2's; the Lean (`formal/RecPiop`'s `err`) states π2v1's: the copy argument `(3N + 2)/2^192` (153.1), `t`
-the identity of degree `< 5N` (140.6), `ρ` (163.0).
+These are π2v2's (π2v3's: the PCS claims change no round). π2v1's were the copy argument `(3N + 2)/2^192` (153.1),
+`t` the identity of degree `< 5N` (140.6), `ρ` (163.0). The Lean (`formal/RecPiop`'s `err`) states π2v3's, coarser:
+`(4N − 1 + Σ_j d_j)/|E|`, `(4N − 1)/|E|`, `2^r/|E|`.
 
 With its three openings once, π2 keeps **128.93 bits** as `Q/ε` at `Q = 2^64`: `RecCompose.pi2Bound`, which
 `formal/RecCompose` proves (`pi2Bound_le_bits`), is this bound.
@@ -478,7 +479,8 @@ With its three openings once, π1-rec3 keeps 128.79 bits as `Q/ε`; the Lean bou
 **The composition.** π2's knowledge soundness gives a π1-rec3 transcript on which π1's verifier (exactly its graph,
 Keccak-256 bit for bit) outputs the claimed claims. The block proves those claims, declared, and π1's soundness
 applies. The errors add: π2's, π1-rec3's and its merge hazard's (`2^16/|E|` a query, `RecGraphKeccak.hazard_probK`),
-about **127.9 bits** as `Q/ε` at `Q = 2^64` with the calculator's π1-rec3 rounds, 127.7 with the Lean's. The Lean
+about **127.9 bits** as `Q/ε` at `Q = 2^64` with the calculator's π1-rec3 rounds, 127.7 with the Lean's (127.86 with
+π1-rec4's, `PERF_GAS2.md`). It is below 128 because WHIR's `269 · 2^-137` a query is charged twice, once in π2's bound (which covers all eight openings) and again inside π1's; charged once, the sum would be 128.79 bits: a tighter composition proof, no code change. The Lean
 statement of this composition is `formal/RecCompose` (`formal/README.md`, "The recursion's end theorems"), with
 π1-rec3's two terms at the real Keccak-f[1600].
 
@@ -675,7 +677,8 @@ smaller `N`.
 *These figures predate the PCS claims (claims on layouts, checked by the old `PCS_OPEN` precompile); the current ones, on the EIP's PCS claims, are in `AGENTS.md` ("Numbers") and the EIP draft's benchmarks.*
 
 `tests/pi2_real.rs`, `real_end_to_end`, on the real π1-rec3 proof at the reference shape (`PI2_VECTOR=keccak128_rec3`,
-the default; Mac Apple M4 Max, 16 cores):
+then the default; the default is now `keccak128_rec4`, whose figures are `PERF_GAS2.md`'s, and the rec3 vectors give
+`PERF_GAS.md`'s π2, 941 B and 89,672 with the frame; Mac Apple M4 Max, 16 cores):
 
 - π1-rec3's real proof → its circuit and witness → π2's proof → its three openings verify (`quotient::opening::verify`,
   what the block proves) → the contract accepts, its frame declaring exactly the 7 claims as 6 (π1's 3, π2's 4
@@ -736,8 +739,10 @@ detailed in `PI2.md` §8–§9.
 - **The claims' point from 1–3 scalars**: not possible (`SPEC-POINTS.md` §2: `q_flock`'s ring switch needs a fresh
   sumcheck over its variables; DEEP, Gemini, Zeromorph give the coordinates back as values). Its pairs are item 8.
 - **D8v**: Keccak-f does not fit `2^24` in rows of 8 (`PI2.md` §9).
-- **20-byte reads of the narrow challenges**: a read width of its own in π2's stream, for the 4 zero bytes a challenge
-  that EIP-7623 already prices at 4.
+- **20-byte reads of the narrow challenges**: dropped here (a read width of its own in π2's stream, for the 4 zero
+  bytes a challenge that EIP-7623 prices at 4); adopted once the floor bound (`PERF_GAS.md`, `Read::Narrow`), then
+  gone from the calldata with π1's three claims hashed in π2's circuit (`PERF_GAS2.md`).
 - **Hand-scheduled kernels for the push side**: fewer pairs would need slack in `2^24` that π1-rec3 uses (93–95%
   of the positions).
-- **The selector** (4 B, 64 gas): every contract of the repository's codegen takes it.
+- **The selector** (4 B, 64 gas): kept here; since dropped from π2's contract (`PERF_GAS.md`) and the membership
+  contract (`docs/membership/PERF_GAS2.md`). Only π1's own contract, built for tests, still takes one.

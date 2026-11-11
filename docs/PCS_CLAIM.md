@@ -79,8 +79,8 @@ A contract holds a claim's fields as words: the root as one word (its 32 bytes a
 as a word with its top 64 bits zero. `Item::DeclaredClaim` packs the claim's `82 + 24 n` bytes in memory past the
 outputs (each element's word stored 8 bytes before its place, last element first, so that its top 8 zero bytes fall on
 the previous element's tail; then the root; then the header's two bytes), hashes them with `KECCAK256` and compares
-the hash with `FRAMEDATALOAD(1 + 32 j, i)` after the frame check (`FRAMEPARAM(0x02, i) = DEP_VERIFY_FRAME_MODE`, first
-byte `PCS_SCHEME`). Gas of one claim's check (`tests/evm_packing.rs`, `gas_per_claim`): 381 at `n = 15`, 465 at 20,
+the hash with `FRAMEDATALOAD(1 + 32 j, i)` after the frame check (`FRAMEPARAM(i, 0x02) = DEP_VERIFY_FRAME_MODE`, the first
+byte of `FRAMEDATALOAD(0, i)` `PCS_SCHEME`; the EIP draft's notation, the first argument on top of the stack). Gas of one claim's check (`tests/evm_packing.rs`, `gas_per_claim`): 381 at `n = 15`, 465 at 20,
 501 at 22, 531 at 24, 597 at 28. A contract whose transcript holds a root as its two scalars (`s_0 · 2^128 + s_1`, the
 halves' little-endian numbers) turns it into the root's bytes with `op::reverse_halves` (132 gas).
 

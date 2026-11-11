@@ -1292,6 +1292,7 @@ pub fn values_batch_serial(data: &mut [K8], offset: F64, runs: bool) {
 /// [`fold_batch`] by the calling worker alone.
 pub fn fold_batch_serial(src: &[K8], first: usize, dst: &mut [K8]) {
     let rows = dst.len();
+    assert!(rows.is_power_of_two(), "a coset of a power of two rows");
     assert_eq!(src.len() % rows, 0);
     let len = src.len() / rows;
     let e = rows.trailing_zeros() as usize;
@@ -1308,6 +1309,8 @@ pub fn fold_batch_serial(src: &[K8], first: usize, dst: &mut [K8]) {
         }
         b += 1;
     }
+    // `len` blocks, which need not be a power of two (`tensor` truncates them so too).
+    weights.truncate(len);
     // `fold_rows`' sum, row by row, in its order of terms.
     let src: *const u64 = src.as_ptr().cast();
     let dst = words(dst);
@@ -1345,6 +1348,7 @@ pub fn coefficients_batch(data: &mut [K8], offset: F64) {
 
 /// `crate::domain::values` on one column.
 pub fn values(data: &mut [F64], offset: F64) {
+    assert!(data.len().is_power_of_two(), "a column of a power of two words");
     if data.len() < 8 {
         return crate::domain::values(data, offset);
     }
@@ -1356,6 +1360,7 @@ pub fn values(data: &mut [F64], offset: F64) {
 /// [`values`] of `src`, written to `dst`.
 pub fn values_from(src: &[F64], dst: &mut [F64], offset: F64) {
     assert_eq!(src.len(), dst.len());
+    assert!(dst.len().is_power_of_two(), "a column of a power of two words");
     if dst.len() < 8 {
         dst.copy_from_slice(src);
         return crate::domain::values(dst, offset);
@@ -1377,6 +1382,7 @@ pub fn values_from(src: &[F64], dst: &mut [F64], offset: F64) {
 /// [`coefficients`] of `src`, written to `dst`.
 pub fn coefficients_from(src: &[F64], dst: &mut [F64], offset: F64) {
     assert_eq!(src.len(), dst.len());
+    assert!(dst.len().is_power_of_two(), "a column of a power of two words");
     if dst.len() < 8 {
         dst.copy_from_slice(src);
         return crate::domain::coefficients(dst, offset);
@@ -1397,6 +1403,7 @@ pub fn coefficients_from(src: &[F64], dst: &mut [F64], offset: F64) {
 
 /// `crate::domain::coefficients` on one column.
 pub fn coefficients(data: &mut [F64], offset: F64) {
+    assert!(data.len().is_power_of_two(), "a column of a power of two words");
     if data.len() < 8 {
         return crate::domain::coefficients(data, offset);
     }
@@ -1779,6 +1786,8 @@ fn novel_weights(len: usize, first: usize, e: usize) -> Vec<F64> {
 /// # Safety
 /// `src` holds `weights.len() dst_rows` rows, `dst` `dst_rows`, disjoint.
 unsafe fn fold_rows(src: *const u64, dst: *mut u64, dst_rows: usize, weights: &[F64]) {
+    // The tasks below cover `dst` whole only for a power of two rows.
+    assert!(dst_rows.is_power_of_two(), "a coset of a power of two rows");
     let (src, dst) = (SendPtr(src.cast_mut()), SendPtr(dst));
     if dst_rows < 64 {
         // Few rows: the blocks `h` split among the workers, their partial sums added.
@@ -1830,6 +1839,7 @@ unsafe fn fold_rows(src: *const u64, dst: *mut u64, dst_rows: usize, weights: &[
 /// A batch of novel coefficients folded onto the coset `ω_first + V_e` (`2^e ≤ src.len()`), into `dst`.
 pub fn fold_batch(src: &[K8], first: usize, dst: &mut [K8]) {
     let rows = dst.len();
+    assert!(rows.is_power_of_two(), "a coset of a power of two rows");
     assert_eq!(src.len() % rows, 0);
     let weights = novel_weights(src.len() / rows, first, rows.trailing_zeros() as usize);
     // SAFETY: `src` is `weights.len()` blocks of `dst`'s rows.
@@ -1884,6 +1894,7 @@ pub fn on_coset_prefix(novel: &[F64], first: usize, e: usize) -> Vec<F64> {
 /// `ṽ(bits(i) + δ)` for every `i < 2^e`, `ṽ` the multilinear of `values` (`2^r` of them, `e ≤ r`): the top `r - e`
 /// variables at `δ` (a fold), then the shifted cube of the rest.
 pub fn shifted_cube(values: &[F64], delta: &[F64], e: usize) -> Vec<F64> {
+    assert!(values.len().is_power_of_two(), "a column of a power of two words");
     let r = values.len().trailing_zeros() as usize;
     assert!(e <= r && delta.len() >= r);
     let mut out = if e == r {
@@ -1919,6 +1930,7 @@ pub fn shifted_cube(values: &[F64], delta: &[F64], e: usize) -> Vec<F64> {
 
 /// [`shifted_cube`] by the calling worker alone: the same values.
 pub fn shifted_cube_serial(values: &[F64], delta: &[F64], e: usize) -> Vec<F64> {
+    assert!(values.len().is_power_of_two(), "a column of a power of two words");
     let r = values.len().trailing_zeros() as usize;
     assert!(e <= r && delta.len() >= r);
     let size = 1usize << e;
@@ -1963,6 +1975,7 @@ pub fn shifted_cube_serial(values: &[F64], delta: &[F64], e: usize) -> Vec<F64> 
 fn column_cols(dsts: &mut [&mut [F64]], srcs: Option<&[&[F64]]>) -> Vec<Col> {
     let len = dsts.first().map_or(0, |d| d.len());
     assert!(dsts.iter().all(|d| d.len() == len));
+    assert!(dsts.is_empty() || len.is_power_of_two(), "columns of a power of two words");
     dsts.iter_mut()
         .enumerate()
         .map(|(c, d)| Col {
@@ -2045,9 +2058,11 @@ pub fn subset_sums_of_cols(srcs: &[&[F64]]) -> Vec<Vec<F64>> {
 /// [`values_from`] by the calling worker alone.
 pub fn values_from_serial(src: &[F64], dst: &mut [F64], offset: F64) {
     assert_eq!(src.len(), dst.len());
+    assert!(dst.len().is_power_of_two(), "a column of a power of two words");
     if dst.len() < 8 {
         dst.copy_from_slice(src);
-        return crate::domain::values(dst, offset);
+        // Not `crate::domain::values`, which dispatches to the pool (from a pool task, a nested dispatch).
+        return crate::domain::values_small(dst, offset);
     }
     let kind = Forward(Twiddles::new(offset, dst.len().trailing_zeros() as usize));
     // SAFETY: `dst`'s own words, eight a row, read first from `src`'s.
@@ -2089,7 +2104,7 @@ pub fn on_coset_prefix_serial(novel: &[F64], first: usize, out: &mut [F64]) {
         *o = (0..blocks).fold(F64::ZERO, |acc, h| acc + weights[h] * novel[i + h * size]);
     }
     if size < 8 {
-        return crate::domain::values(out, point(first));
+        return crate::domain::values_small(out, point(first));
     }
     let kind = Forward(Twiddles::new(point(first), e));
     // SAFETY: `out`'s own words, eight a row.
@@ -3810,6 +3825,80 @@ mod tests {
             }
             coefficients_upper(&mut got, offset);
             assert_eq!(got, column, "coefficients, 2^{m}");
+        }
+    }
+
+    /// The folds take any count of blocks, a power of two or not (on the pool and by one worker alike: the same
+    /// values, no read past the source), and refuse a coset of other than a power of two rows.
+    #[test]
+    fn folds_take_any_count_of_blocks() {
+        let mut next = rng(17);
+        for (rows, blocks) in [(8usize, 3usize), (8, 5), (64, 3), (128, 7), (1, 3)] {
+            let src: Vec<K8> = (0..rows * blocks).map(|_| K8(std::array::from_fn(|_| F64(next())))).collect();
+            let first = 7 << 20;
+            let weights = novel_weights(blocks, first, rows.trailing_zeros() as usize);
+            let want: Vec<K8> = (0..rows)
+                .map(|i| {
+                    K8(std::array::from_fn(|l| {
+                        (0..blocks).fold(F64::ZERO, |acc, h| acc + weights[h] * src[i + h * rows].0[l])
+                    }))
+                })
+                .collect();
+            let mut got = vec![K8::ZERO; rows];
+            fold_batch(&src, first, &mut got);
+            assert!(got == want, "fold_batch, {blocks} blocks of {rows} rows");
+            let mut got = vec![K8::ZERO; rows];
+            fold_batch_serial(&src, first, &mut got);
+            assert!(got == want, "fold_batch_serial, {blocks} blocks of {rows} rows");
+        }
+        let refuses = |f: &dyn Fn()| std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).is_err();
+        for rows in [3usize, 12, 96, 385] {
+            let src = vec![K8::ZERO; 2 * rows];
+            assert!(refuses(&|| fold_batch_serial(&src, 0, &mut vec![K8::ZERO; rows])), "serial, {rows} rows");
+            assert!(refuses(&|| fold_batch(&src, 0, &mut vec![K8::ZERO; rows])), "pool, {rows} rows");
+        }
+    }
+
+    /// The column transforms refuse a length other than a power of two (lengths 9 to 15 among them: one row of
+    /// eight words and a remainder), rather than transform part of it.
+    #[test]
+    fn column_transforms_refuse_other_lengths() {
+        let refuses = |f: &dyn Fn()| std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).is_err();
+        for len in [3usize, 6, 9, 12, 15, 24, 40] {
+            let src = vec![F64::ONE; len];
+            assert!(refuses(&|| values(&mut src.clone(), F64::ONE)), "values, {len}");
+            assert!(refuses(&|| coefficients(&mut src.clone(), F64::ONE)), "coefficients, {len}");
+            assert!(refuses(&|| values_from(&src, &mut src.clone(), F64::ONE)), "values_from, {len}");
+            assert!(refuses(&|| coefficients_from(&src, &mut src.clone(), F64::ONE)), "coefficients_from, {len}");
+            assert!(refuses(&|| values_from_serial(&src, &mut src.clone(), F64::ONE)), "values_from_serial, {len}");
+            assert!(refuses(&|| values_cols(&mut [&mut src.clone()[..]], F64::ONE)), "values_cols, {len}");
+            assert!(refuses(&|| std::mem::drop(shifted_cube(&src, &[F64::ONE; 8], 0))), "shifted_cube, {len}");
+        }
+    }
+
+    /// The one-worker column transforms dispatch nothing at any size, the smallest included: they run inside a pool
+    /// task, and give the pool's values.
+    #[test]
+    fn serial_column_transforms_run_inside_a_pool_task() {
+        let mut next = rng(19);
+        for m in 0..6usize {
+            let len = 1usize << m;
+            let novel: Vec<F64> = (0..4 * len).map(|_| F64(next())).collect();
+            let first = 3 << 20;
+            let mut want_values = vec![F64::ZERO; len];
+            values_from(&novel[..len], &mut want_values, point(first));
+            let want_coset = on_coset_prefix(&novel, first, m);
+            let got: Vec<(Vec<F64>, Vec<F64>)> = parallel::map_collect(4, |_| {
+                let mut values = vec![F64::ZERO; len];
+                values_from_serial(&novel[..len], &mut values, point(first));
+                let mut coset = vec![F64::ZERO; len];
+                on_coset_prefix_serial(&novel, first, &mut coset);
+                (values, coset)
+            });
+            for (values, coset) in got {
+                assert_eq!(values, want_values, "values_from_serial, 2^{m}");
+                assert_eq!(coset, want_coset, "on_coset_prefix_serial, 2^{m}");
+            }
         }
     }
 }

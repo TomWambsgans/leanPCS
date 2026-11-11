@@ -170,8 +170,9 @@ The weakest is the batch's narrow pairs in both; with the three openings charged
 `2^35/|E|`; the `α` query's sum is below `2^26/|E|`).
 
 **π2.** Its rounds are `main`'s: `N = 2^24`, `W`'s and `Q`'s lists, now four four-limb ports (the statement and the three
-claim hashes; `(4N + 4)/|E|` in the copy argument instead of `4N + 3`). **128.93 bits** as `Q/ε` (`t`, 141.33 after the
-lists, the weakest). `params/leanvm_rec_params.py`.
+claim hashes; `(4N + 4)/|E|` in the copy argument instead of `4N + 3`). **128.93 bits** as `Q/ε` (`t`, the weakest:
+140.92 after the lists, charged `4N/|E|` for the prover-filled empty slots of `Q`, `PI2.md` §2; 141.33 at `(3N − 1)/|E|`
+as first computed). `params/leanvm_rec_params.py`.
 
 **The circuit.** (a) The trimmed last round (§3) leaves every lane the caller reads constrained exactly as a whole
 permutation constrains it: the χ formula of plane `y` reads only round 22's outputs `A_22` of the lanes `π` sends to
@@ -183,7 +184,8 @@ payload, and a payload binds its claim by Keccak-256's collision resistance, whi
 every declared claim (the EIP's own assumption), as for `C1`'s on `main`.
 
 **The recursion**: π2's bound + π1-rec4's + the merge hazard (`2^16/|E|` a query): **127.86 bits** as `Q/ε` (127.70
-with the Lean's cap on π1's rounds), as on `main`: two bounds near `2^-128.9` a query each, summed.
+with the Lean's cap on π1's rounds), as on `main`: two bounds near `2^-128.9` a query each, summed. It is below 128
+because WHIR's `269 · 2^-137` a query is charged twice, once in π2's bound (which covers all eight openings) and again inside π1's; charged once, the sum would be 128.79 bits: a tighter composition proof, no code change.
 
 ## 6. The prover, A/B on h3
 

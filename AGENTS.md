@@ -87,9 +87,9 @@ by the table's layout; the row of `t` as three values; on [`PERF_GAS.md`](docs/m
 - `crates/leanvm/rec` (π2): a univariate SNARK of π1-rec4's verifier (`leanvm_rec::PI1`) minus its openings: the
   recorded verifier compiled into π2's circuit (`circuit`, D16v, `2^24` positions, each Keccak-f's last round making
   the lanes read alone; π1's three claims hashed in it, read from the frame; the witness replayed per proof from a plan
-  made once per circuit, `circuit::plan`), π2's PIOP (π2v2: the ports out of the copy argument, the pushes `P`
-  committed in `Q` with their definition, `q` below `2N`; `Q` in sixteen slots so that its three claims are points of
-  its stack) and its contract (`pi2`), which runs π2's verifier and checks π1's three (by the hashes its circuit
+  made once per circuit, `circuit::plan`), π2's PIOP (π2v3, transcript `leanvm-rec-pi2v3`: π2v2's PIOP, the ports out
+  of the copy argument, the pushes `P` committed in `Q` with their definition, `q` below `2N`, on the EIP's PCS claims;
+  `Q` in sixteen slots so that its three claims are points of its stack) and its contract (`pi2`), which runs π2's verifier and checks π1's three (by the hashes its circuit
   computes) and π2's five claims declared. Every commitment
   and opening of the line is the EIP draft's PCS claim (`crates/pcs_claim`: a root and an out-of-domain answer, one
   point per claim, one opening per claim, PCS version 1). Design: [`SPEC-REC.md`](docs/leanvm/rec/SPEC-REC.md),
@@ -133,7 +133,10 @@ Build with `RUSTFLAGS="-C target-cpu=native"`. On a Zen 5 host (AMD EPYC 9355P) 
 ## Numbers (provers: 8 threads of an AMD EPYC 9355P, but where a machine is named)
 
 The provers' times are medians of five interleaved runs on an idle host (2026-11-11), each of `bench.sh`'s commands
-run with `LEANVM_NUM_THREADS=8 taskset -c 0-7` (8 physical cores), the leanVM pipeline's own median of 5 passes a run.
+run with `LEANVM_NUM_THREADS=8 taskset -c 0-7` (8 physical cores), the leanVM pipeline's own median of 5 passes a run:
+`LEANVM_NUM_THREADS=8 BENCH_PIN="taskset -c 0-7" REPEAT=5 sh bench.sh`, which ends with the EIP draft's table (the
+prover column is the median plus 0.1 s a claim: 1.02 + 0.3 = 1.3 s and 2.62 + 0.8 = 3.4 s; the PIOP column
+`max(standard, floor)` of the PIOP's frame alone: 20,097 and 40,708).
 
 Gas is transaction gas without the 21,000 base (EIP-7623), without the frame of PCS claims and the claims' intrinsic
 gas (the EIP draft: 5,000 a transaction with claims, 1,000 a claim), which are given apart below; the leanVM column
@@ -149,8 +152,10 @@ its PCS gas on both sides as the EIP draft has it.
 | With the frame (1 + 32 B a claim) and the PCS gas | included above (97 B, 8,000) | **66,376** (257 B, `pcs_gas` 13,000 on both sides; the floor binds, standard 57,820; `866ba889`: 89,672; `f96a7938`: 99,912) |
 | Deployment | 4,866-byte code, 1,149,640 gas (`f96a7938`: 6,667 B, 1,536,984 gas) | one contract |
 
-- Membership: checking the claims declared costs 61 gas once (the frame's mode and scheme) and 43 a claim beyond its
-  `KECCAK256`. Its verifier: reduction < 1 ms, openings 5 ms (248 / 278 / 333 KiB).
+- Membership: its verifier: reduction < 1 ms, openings 6 ms (278 / 276 / 336 KiB: the witness's, the circuit's and
+  `T`'s; `cargo bench -p quotient --bench membership`, h3, 2026-11-11). Checking the claims declared cost 61 gas once
+  (the frame's mode and scheme) and 43 a claim beyond its `KECCAK256`, as measured at `f96a7938` (six claims; not
+  re-measured since).
 - leanVM: at 400 signatures (the real proof), 577 B, 35,761 execution; standard 44,933, floor 36,928; 66,376 with the
   frame and the PCS gas (π2's circuit at 99.4% of `2^24`; past it, the claims are hashed fewer, the last dropped
   first, down to all encoded by the contract) (`tests/pi2_real.rs`, `real_end_to_end`). π1 alone as a contract (the main line, 128 signatures):
@@ -209,9 +214,12 @@ hold for the current code, π1-rec4 checked against its Rust verifier (it has no
 
 - **Tested.** π1's contract equals its Rust verifier word for word; the real
   proofs at 32, 128 and 400 signatures (committed vectors) are accepted with their frame of PCS claims declaring
-  exactly the claims their WHIR openings prove, and mutations are rejected. π2's proof of the real 128-signature π1-rec3 proof is
-  accepted by its contract, its openings verify, flipped calldata bytes are rejected, every pull of the circuit equals
-  its push on the real witnesses, and the contract equals π2's Rust verifier.
+  exactly the claims their WHIR openings prove, and mutations are rejected. π2's proof of the real 128-signature π1-rec4 proof is
+  accepted by its contract, its openings verify, every calldata byte flipped (at bits 0 and 7) and the frame's attacks
+  (another mode or scheme, swapped payloads, a claim's field changed or missing, the index at another frame) are
+  rejected (`pi2_real.rs`, `frame_and_calldata_attacks`), every pull of the circuit equals its push on the real
+  witnesses, the circuit's digests and elements are the evaluator's on streams that are no proof
+  (`circuit.rs`, `keccak_rec4_128_any_stream`), and the contract equals π2's Rust verifier.
 - **Proved in Lean** (`formal/`, [`formal/README.md`](formal/README.md); sorry-free, no `native_decide`, on `propext`,
   `Classical.choice` and `Quot.sound` only, `#guard_msgs` in each library), at the 128-signature reference shape:
   - **the statement**: `KeccakArith.kvSoundness`, `kvCompleteness` (the Keccak VM's `KvHolds` against its valid
@@ -243,15 +251,21 @@ hold for the current code, π1-rec4 checked against its Rust verifier (it has no
   decoding) at the reference, zero and all-ones IVs, assumed at the others (`rec-real-check`, `rec-view-check`).
 - **Tested against the Rust, not proved**: π1's verifier transcription (`UniKeccakTest/Runner.lean`, 90 verifier and
   14 terminal vectors, the real proofs among them), the verifier's tables, the block's rows and terminal, the circuit
-  compiler (`rec-circuit-keccak`: the identical circuit), π2's statement data (`lean_statement_keccak.rs`), the emitted
-  graph (`lean_graph_keccak.rs`), π2's Lean prover on two small circuits. The deployed Rust provers are trusted for
+  compiler (`rec-circuit-keccak`: the identical circuit), the emitted graph (`lean_graph_keccak.rs`, π1-rec3's), π2's
+  Lean prover on two small circuits. π2's statement data (`RecStatement/Data.lean`) is `f96a7938`'s circuit's: the
+  current circuit (π1-rec4, its claims hashed) differs, so `lean_statement_keccak.rs`'s ignored
+  `keccak_statement_data_is_current` is stale until the port. The deployed Rust provers are trusted for
   completeness; the contract's bytecode is π2's Rust verifier by the Rust's tests.
 - **Modelled, not proved: soundness at other shapes.** `params/leanvm_univariate_params.py` and
   `params/leanvm_rec_params.py` give every round's bits at the code's degrees and the certified lists, at 32, 128 and
   400 signatures. At 128, with the openings charged once at WhirBridge's `269 · 2^-137` a query: π1 128.93 bits as
-  Q/ε (main line) and 128.79 (π1-rec3), π2 128.93, the recursion about 127.9; the Lean bounds, coarser, are 128.87,
-  128.49 and 128.93 (`docs/leanvm/univariate/SPEC.md` §9).
-- **The Lean follows the Rust's protocol as of `f96a7938`** (π2v3 on the EIP's PCS claims): π2's contract model checks the eight
+  Q/ε (main line), 128.79 (π1-rec4, as π1-rec3), π2 128.93 (its weakest round `t`, 140.92 after the lists, charged
+  `4N/|E|` for `Q`'s prover-filled empty slots), the recursion 127.86; the Lean bounds (of π1-rec3 and `f96a7938`'s
+  π2), coarser, are 128.87, 128.49 and 128.93 (`docs/leanvm/univariate/SPEC.md` §9). The recursion is below 128
+  because WHIR's `269 · 2^-137` a query is charged twice, in π2's bound (all eight openings) and again inside π1's:
+  charged once it would be 128.79 bits, a tighter composition proof with no code change.
+- **The Lean states `f96a7938`'s π2 over π1-rec3, not the deployed π2 over π1-rec4** (π2v3 on the EIP's PCS claims,
+  π1's three claims encoded by the contract): π2's contract model checks the eight
   claims (π1's three, π2's five), each `[root, ood, point, value]` opened by one PCS opening; π2's IV binds the setup's
   answer; `Q` is the plain sixteen-slot stack, its four empty slots the prover's: `RecPiop` reads `h` below `2N` and
   slot 12 inside `P`'s share, at round 1's error `(4N − 1)/|E|` (`docs/leanvm/rec/PI2.md`, "The empty slots").
@@ -267,6 +281,12 @@ hold for the current code, π1-rec4 checked against its Rust verifier (it has no
   leanerVM's certified parameters account for it.
 - **Hiding.** The reference openings (leanVM's WHIR) are not zero knowledge: the membership proof's zero knowledge
   assumes the EIP's ZK-WHIR (`HIDING.md`).
+- **Integrating the membership contract.** (1) The owner of `setIndexCommitment` can install any circuit commitment,
+  one that fails the pole condition included, and with it accept false statements: deploy with no owner (owner 0) in
+  production. (2) A proof binds only `(y, root)`, no application context (sender, action, nullifier domain): a proof
+  seen in the mempool can be resubmitted by anyone, so an application that uses `y` as a nullifier needs a signal of
+  its own in the statement. (3) The contract reads its index commitment from storage slots 0 and 1: call it
+  (`CALL`, `STATICCALL`), never `DELEGATECALL` it.
 - **The prover's low-memory paths** make the dense prover's commitments and proofs (differential tests in
   `crates/vendor/leanvm-c445e3d5/pcs` and `crates/membership/quotient`); the in-place NTT encodes are free of the
   aliasing bug Miri flags in leanVM's.
@@ -281,7 +301,7 @@ hold for the current code, π1-rec4 checked against its Rust verifier (it has no
   [`PERF_GAS2.md`](docs/leanvm/rec/PERF_GAS2.md) list ("What the Lean would need").
 - Membership: zero knowledge with a pre-proof phase (the distinguisher's queries before the proof); simulation-
   extractability.
-- leanVM in Lean: (1) the model gap: π2's circuit computes π1-rec3's Fiat–Shamir at the real Keccak-f[1600] while
+- leanVM in Lean (of `f96a7938`'s π2): (1) the model gap: π2's circuit computes π1-rec3's Fiat–Shamir at the real Keccak-f[1600] while
   π1-rec3's theorems are in the random-permutation model, so the soundness reduction's two π1 terms and the two
   completeness premises are left to the Fiat–Shamir heuristic for Keccak-f[1600]; (2) the compiler's IV uniformity
   (`RecCompose.PatchChecked`, which with the evaluated checks gives `IvChecked` at every IV; a relational simulation

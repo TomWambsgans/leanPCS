@@ -470,7 +470,9 @@ fn open_words_batch_with(words: &[F64], commitment: &Commitment, claims: &[PcsCl
             ps,
         })
         .collect();
-    let mut kept = commitment.codeword.lock().expect("the codeword");
+    // The codeword is only read under the lock, or taken whole: an opening that panicked leaves it kept or gone, and
+    // either serves the next (without it, an opening encodes its rows again), so a poisoned lock is recovered.
+    let mut kept = commitment.codeword.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let taken = if free { kept.take() } else { None };
     let codeword = if free { taken.as_deref() } else { kept.as_deref() };
     recursive_prover_with_lane_tensors_batch(

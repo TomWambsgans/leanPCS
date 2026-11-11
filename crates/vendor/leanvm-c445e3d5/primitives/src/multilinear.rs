@@ -1,6 +1,9 @@
 // Vendored from leanVM (https://github.com/leanEthereum/leanVM), commit c445e3d51a5a85031df47240595698f3b24897bf, file crates/primitives/src/multilinear.rs.
 // MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and AGENTS.md at the repository root).
 // CREDIT: https://github.com/succinctlabs/flock (`build_eq`), MIT OR Apache-2.0.
+// Changed here (a soundness fix of unsafe code, to report upstream): `fold_high_k` checked its table's even length
+// only with a `debug_assert`, so in release an odd length 15 mod 16 left the last seven output entries unwritten
+// before `assume_init` (other odd lengths, a wrong fold); it now asserts it. Its outputs are unchanged.
 //! Multilinear-extension utilities: the equality polynomial, single-variable
 //! folding, and MLE evaluation. Truth tables are indexed little-endian (variable
 //! `k` is bit `k`). Sumchecks here consume variables from either end, so folding
@@ -129,7 +132,8 @@ fn fold_low_k(table: &[F64], chi: F192) -> Vec<F192> {
 ///
 /// Eight entries share one batched mixed product ([`mul_base8`]).
 pub fn fold_high_k(table: &[F64], chi: F192) -> Vec<F192> {
-    debug_assert_eq!(table.len() % 2, 0);
+    // The `assume_init` below needs both halves of one length (an odd length leaves an entry unwritten).
+    assert_eq!(table.len() % 2, 0, "a table of an even length");
     let (lo, hi) = table.split_at(table.len() / 2);
     let mut out = Box::new_uninit_slice(lo.len()).into_vec();
     let (out8, out_tail) = out.as_chunks_mut::<8>();
@@ -309,6 +313,23 @@ mod tests {
                 let want: Vec<_> = (0..half).map(|i| interp(lifted[i], lifted[i + half], chi)).collect();
                 assert_eq!(got, want);
             }
+        }
+    }
+
+    /// [Added here.] `fold_high_k` refuses a table of an odd length (15 left seven entries unwritten), and folds
+    /// every even one, those of a scalar tail included.
+    #[test]
+    fn fold_high_k_refuses_odd_lengths() {
+        for len in [1usize, 3, 15, 31, 33] {
+            let table: Vec<F64> = (0..len as u64).map(|i| F64(i + 1)).collect();
+            let r = std::panic::catch_unwind(|| fold_high_k(&table, F192::Y));
+            assert!(r.is_err(), "length {len}");
+        }
+        for len in [2usize, 6, 14, 16, 30, 34] {
+            let table: Vec<F64> = (0..len as u64).map(|i| F64(3 * i + 1)).collect();
+            let half = len / 2;
+            let want: Vec<_> = (0..half).map(|i| interp_k(table[i], table[i + half], F192::Y)).collect();
+            assert_eq!(&*fold_high_k(&table, F192::Y), &want[..], "length {len}");
         }
     }
 }

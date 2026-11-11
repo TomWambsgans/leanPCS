@@ -5,17 +5,20 @@
 This document is the VM π1 proves and what it measures: the statement, the workloads, the capacity, the gas, the
 recursion and the prover. The protocol is `SPEC.md`, Flock's part `SPEC-FLOCK.md`, the prover's mechanics `PROVER.md`.
 
-**Status (2026-11-08): proven end to end on real executions.** The verifier (`verifier::reduce` with `KECCAK_MAIN` or
-`KECCAK_REC3`) is recorded, compiled to EVM code, run on revm, and checked word for word against the Rust verifier.
+**Status (2026-11-11): proven end to end on real executions.** The verifier (`verifier::reduce` with `KECCAK_MAIN` or
+`KECCAK_REC3`) is recorded, compiled to EVM code, run on revm, and checked word for word against the Rust verifier;
+with `KECCAK_REC4` (π1-rec4, the recursion's inner proof since `docs/leanvm/rec/PERF_GAS2.md`, which has no contract of
+its own) the Rust verifier's claims are checked against the openings'.
 The prover (`src/prover/`) proves real leanVM `9d50c92a3` executions (`cargo leanvm aggregate --xmss N`, N = 32, 128,
 400):
 - the Rust verifier accepts, the three WHIR openings verify, and the contract accepts the real
   calldata, with the frame declaring exactly the claims the openings prove; mutated proofs are rejected;
-- π2 (`crates/leanvm/rec`) proves the real 128- and 400-signature π1-rec3 proofs, and the recursion's contract accepts
-  them.
+- π2 (`crates/leanvm/rec`) proves the real 128- and 400-signature π1-rec4 proofs, and the recursion's contract accepts
+  them (π1-rec3's, which the Lean's recursion states, before `PERF_GAS2.md`).
 
 **The reference workload is 128 signatures** (`leanvm_statement::shapes::reference()`, `leanvm_rec::REFERENCE`): the
-committed vector `tests/vectors/keccak128_rec3.txt`, the contract's reference setup root, the recursion's reference.
+committed vector `tests/vectors/keccak128_rec4.txt` (π1-rec3's: `keccak128_rec3.txt`), the contract's reference setup
+root, the recursion's reference.
 The gas is a function of the shape, not of the proof: the real proofs run at the gas measured from the shapes.
 
 ## The statement
@@ -93,15 +96,17 @@ and 400 signatures.
 
 ### Under the recursion (`crates/leanvm/rec`)
 
-π1 is recorded with π1-rec3's Fiat–Shamir shape (`KECCAK_REC3`), compiled into π2's D16v circuit, and π2's contract
-is measured (`crates/leanvm/rec/tests/keccak_vm_rec.rs`). The contract's gas depends on the circuit alone.
+π1 is recorded with the recursion's Fiat–Shamir shape, compiled into π2's D16v circuit, and π2's contract is measured
+(`crates/leanvm/rec/tests/keccak_vm_rec.rs`). The contract's gas depends on the circuit alone. The table is π1-rec3's
+(`KECCAK_REC3`) before the PCS claims; the test now runs π1-rec4 (`leanvm_rec::PI1`), whose figures are
+`docs/leanvm/rec/PERF_GAS2.md`'s.
 
 | π1-rec3 | Keccak-f | Keccak-256 calls, stream | `E` products / linear | π2 positions used of 2^24 | π2 blocks / selector pairs | contract code | execution |
 |---|---:|---|---:|---:|---:|---:|---:|
 | **128 signatures** | 116 | 70, 9,232 B | 8,476 / 6,633 | 15,668,416 (93.4%) | 21 / 133 | 13,219 B | 27,641 |
 | 400 signatures | 118 | 71, 9,424 B | 8,673 / 6,885 | 15,940,800 (95.0%) | 22 / 144 | 13,639 B | 28,421 |
 
-**On the real proofs** (`crates/leanvm/rec/tests/pi2_real.rs`, `real_end_to_end`; π2v2, `docs/leanvm/rec/PI2.md`). With
+**On the real proofs** (`crates/leanvm/rec/tests/pi2_real.rs`, `real_end_to_end`; π2v3, `docs/leanvm/rec/PI2.md`). With
 the EIP draft's PCS claims the recursion's contract accepts with its frame declaring its 8 claims (21 flipped calldata
 bytes rejected): with π1-rec4 and π1's three claims hashed in π2's circuit, 577 B, 31,524 execution at 128 signatures
 (35,761 at 400), 66,376 with the frame of claims and the PCS gas (`docs/leanvm/rec/PERF_GAS2.md`). The table below predates the PCS claims: π2v1's figures,
@@ -166,11 +171,13 @@ run. The traces' sizes:
 ```sh
 LEANVM_TRACE=<dir> RUSTFLAGS="-C target-cpu=native" \
   cargo test --release -p leanvm_univariate --test prove_real -- --ignored --nocapture --test-threads 1 keccak
-PI2_VECTOR=keccak128_rec3 cargo test --release -p leanvm_rec --test pi2_real -- --ignored --nocapture real_end_to_end
+PI2_VECTOR=keccak128_rec4 cargo test --release -p leanvm_rec --test pi2_real -- --ignored --nocapture real_end_to_end
 ```
 
-The committed vectors are `tests/vectors/keccak.txt` (32 signatures, `KECCAK_MAIN`), `keccak128_rec3.txt` (128,
-`KECCAK_REC3`, the reference) and `keccak_rec3.txt` (400, `KECCAK_REC3`); `tests/evm_vectors.rs` replays them.
+The committed vectors are `tests/vectors/keccak.txt` (32 signatures, `KECCAK_MAIN`), `keccak128_rec4.txt` (128,
+`KECCAK_REC4`, the reference, the deployed recursion's π1) and `keccak_rec4.txt` (400, `KECCAK_REC4`), and
+`keccak128_rec3.txt`, `keccak_rec3.txt` (`KECCAK_REC3`, kept because the Lean proves π1-rec3 and the recursion over it);
+`tests/evm_vectors.rs` replays them (the rec4 ones against the Rust verifier, having no contract).
 
 ### The real proofs' gas
 
@@ -250,13 +257,15 @@ batching 0.87 s, `C1` commit 0.86 s, `C2` commit 0.64 s, tree 0.34 s, constraint
 2. **The prover's speed.** It is several times slower than leanVM `9d50c92a3`'s own prover on the same workload
    (above). Most of the gap is the protocol's: two proof commitments, their openings and the quotients, against
    leanVM's single commitment. What is left to try:
-   - on aarch64, a NEON `lanes` module for `crates/membership/quotient/src/ntt.rs`, which today multiplies one lane
-     at a time. It would speed up every transform: `C1`'s, the tree, the leaves, `Q_W`.
+   - on aarch64, `crates/membership/quotient/src/ntt.rs`'s `lanes` now multiply eight `K` elements a step with NEON
+     PMULLs (as AVX-512 or AVX2 on x86); the transforms' remaining aarch64 gap, if any, is unmeasured.
    - Flock's level-0 bit pass: two kernels were tried and neither was faster. One halved the products; the other read
      L1-resident nibble tables. Its cost is per-quad overhead, not multiplications or cache misses.
 3. **Lean.** The verifier's knowledge soundness and completeness (main line and π1-rec3), and the recursion's
-   knowledge soundness as a reduction to π1-rec3's at Keccak-f[1600], are proved at the reference shape
-   (`formal/README.md`); the model gap between the two and closed bounds at other shapes remain.
+   knowledge soundness as a reduction to π1-rec3's at Keccak-f[1600], of π2 as of commit `f96a7938` (over π1-rec3, π1's
+   claims encoded by the contract), are proved at the reference shape (`formal/README.md`); π1-rec4 and π2 hashing
+   π1's claims (`docs/leanvm/rec/PERF_GAS2.md`) are not yet stated; the model gap between the two and closed bounds at
+   other shapes remain.
 4. **Soundness at other shapes** is modelled only: `params/leanvm_univariate_params.py` gives every workload's rounds
    (`SPEC.md` §9: at 32 and 400 signatures the main line keeps 128.93 bits with the openings, π1-rec3 128.64 and
    128.86).

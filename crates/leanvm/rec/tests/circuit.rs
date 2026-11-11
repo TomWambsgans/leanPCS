@@ -1,12 +1,14 @@
 // Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! `π2`'s circuit compiled from `π1`'s recorded verifier (SPEC-REC.md §2, §10), its witness from the real Keccak VM
-//! proofs (`crates/leanvm/univariate/tests/vectors/`: π1-rec3's and the main line's).
+//! proofs (`crates/leanvm/univariate/tests/vectors/`: π1-rec4's, π1-rec3's and the main line's).
 //!
 //! - every position's pull equals its push, and the public side holds (`spec::Circuit::check`);
 //! - the circuit's calls, on its public inputs, are exactly the vector's claims;
 //! - every digest and every element is `eval::evaluate`'s;
 //! - a flipped stream byte, a changed public input, a changed witness word are each caught;
-//! - the layout's counts: `N`, the fill, the regions, the blocks and the selector pairs.
+//! - the layout's counts: `N`, the fill, the regions, the blocks and the selector pairs;
+//! - (`keccak_rec4_128_any_stream`, ignored) on streams that are no proof, the digests and elements still the
+//!   evaluator's.
 //!
 //! `cargo test --release -p leanvm_rec --test circuit -- --nocapture --test-threads 1`
 
@@ -297,8 +299,51 @@ fn keccak_rec3_128_d16v() {
     deep(|| run("keccak128_rec3", Layout::D16v, 24, (0.90, 0.99)));
 }
 
+/// The circuit evaluates π1-rec4's graph on streams that are no proof (the reference's with a byte flipped, and a
+/// random one): every digest and every element's limbs are the evaluator's, so the witness is the graph's on any stream,
+/// not only on an accepted one; how many zero checks hold is printed.
+#[test]
+#[ignore = "compiles the reference circuit twice (2^24 positions)"]
+fn keccak_rec4_128_any_stream() {
+    deep(|| {
+        let v = vector("keccak128_rec4");
+        let variant = vectors::variant_of(&v.config);
+        let recorded = record_verifier_with(&v.shape, variant, Claims::Point, &vectors::setup_roots(&v));
+        let stream = v.calldata[STREAM_AT..].to_vec();
+        let iv = recorded.iv(&PROGRAM_IV);
+        let mut flipped = stream.clone();
+        flipped[stream.len() / 2] ^= 1;
+        let random = leanvm_univariate::contract::sample_stream(stream.len(), 0xabcdef);
+        for (label, st) in [("flipped", flipped), ("random", random)] {
+            let m = compiled(&recorded, Layout::D16v, iv, v.public, &st);
+            let values = evaluate(&m.expanded, keccak_seed(&NAME, &iv, &v.public), &v.public, &st);
+            for (&id, digest) in &m.digests {
+                let mut bytes = [0u8; 32];
+                for (i, &d) in digest.iter().enumerate() {
+                    bytes[i / 8] |= (m.finished.words[d as usize].0 as u8) << (i % 8);
+                }
+                assert_eq!(Value::State(bytes), values[id as usize], "{label}: digest of node {id}");
+            }
+            for (&id, limbs) in &m.limbs {
+                let x = values[id as usize].e();
+                let words = limbs.map(|l| m.finished.words[l as usize]);
+                assert_eq!(words, [K(x.c0), K(x.c1), K(x.c2)], "{label}: limbs of node {id}");
+            }
+            let holding = (recorded.graph.zero.iter())
+                .filter(|&&(id, _)| values[m.map[id as usize] as usize].e() == leanvm_statement::field::E::default())
+                .count();
+            println!(
+                "{label} stream: {} digests, {} elements agree; zero checks holding {holding}/{}",
+                m.digests.len(),
+                m.limbs.len(),
+                recorded.graph.zero.len()
+            );
+        }
+    });
+}
+
 /// The main line (every challenge hashed, the batch one variable a round) at 32 signatures, D16v: it does not fit
-/// `2^24` (`2^25` at 53.6%), which is why the recursion proves π1-rec3.
+/// `2^24` (`2^25` at 53.6%), which is why the recursion proves π1-rec4 (π1-rec3 before it).
 #[test]
 fn keccak_32_d16v() {
     deep(|| run("keccak", Layout::D16v, 25, (0.50, 0.60)));
