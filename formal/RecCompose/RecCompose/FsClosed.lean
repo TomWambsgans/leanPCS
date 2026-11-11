@@ -43,21 +43,21 @@ round-by-round sound protocols on π2's rounds, their errors times the lists of 
 whose first state is a property `P` of `W`'s candidate and whose last state follows from π2's check with the four
 claims true, the contract accepts while no candidate of `W`'s committed word has `P` with probability at most
 `pi2BoundE e Q`. -/
-theorem pi2FsLayer_real (D : RecDeployment) (hD : D.Real) (hB : QOodBinding δBind) : Pi2FsLayer D := by
+theorem pi2FsLayer_real (D : RecDeployment) (hD : D.Real) : Pi2FsLayer D := by
   have hs : UniKeccakSound.UniShapesK D.pi1 := UniKeccakSound.uniShapesK_ref D.pi1 hD.2.2.1
   have hv : (UniStatement.setupLayout D.pi1.shape).vars < 256 :=
     (UniKeccakSound.layoutVarsSmallK_ref D.pi1 hD.2.2.1).setup
   exact pi2FsLayer_of D hD hs
     (fun P A => pi2GameLeV D hD hs hv (pi2VerifierBridge D hD pi2Walk pi2WalkReject) P A)
     (duplexVm_p2Ver D) (cost_p2Ver D hD) (isTotalQueryBound_p2IvAdv D) (expU_p2IvAdv D hs)
-    (extractorK_ivLog D hD) (hlab_p2 D hs) (p2BreaksRel_congr D) (by rw [nQ_p2]; norm_num) hB
+    (extractorK_ivLog D hD) (hlab_p2 D hs) (p2BreaksRel_congr D) (by rw [nQ_p2]; norm_num)
 
 /-- **π2's part, at the real deployment, closed in its Fiat–Shamir layer and the circuit's facts**:
 `RecKnowledgeSoundness2 D pi2Bound`, `pi2Bound Q ≤ 2^-64` for `Q ≤ 2^64` (128.93 bits as `Q / ε2`). -/
-theorem recKnowledgeSoundness2_closed (D : RecDeployment) (hD : D.Real) (hB : QOodBinding δBind) (C : Pi2Circuits D)
+theorem recKnowledgeSoundness2_closed (D : RecDeployment) (hD : D.Real) (C : Pi2Circuits D)
     (hroots : C.rootsAt = RecGraphKeccak.Emitted.rootsAt) (hg : GraphsAgree) (hchk : Pi2ViewChecked C) :
     RecKnowledgeSoundness2 D pi2Bound ∧ ∀ Q ≤ 2 ^ 64, pi2Bound Q ≤ (2 : ℝ≥0∞)⁻¹ ^ 64 :=
-  recKnowledgeSoundness2_final D hD C (pi2Facts hD C hchk) (pi2FsLayer_real D hD hB) hroots hg
+  recKnowledgeSoundness2_final D hD C (pi2Facts hD C hchk) (pi2FsLayer_real D hD) hroots hg
     (statementPortMeaning hD C hchk) (zeroPortsMeaning hD C hchk) (callWordsAgree hD C hchk)
 
 /-- **The recursive verifier's knowledge soundness, end to end, as an explicit reduction** (against the Keccak VM's
@@ -72,19 +72,19 @@ make at most `Q` calls, and
 
 No Fiat–Shamir hypothesis: bounding the last two terms is the Fiat–Shamir heuristic for Keccak-f[1600], applied by the
 reader to two explicit adversaries that run in `A`'s time plus π2's extractor's. -/
-theorem recKnowledgeSoundness_reduction (D : RecDeployment) (hD : D.Real) (hB : QOodBinding δBind) (C : Pi2Circuits D)
+theorem recKnowledgeSoundness_reduction (D : RecDeployment) (hD : D.Real) (C : Pi2Circuits D)
     (hroots : C.rootsAt = RecGraphKeccak.Emitted.rootsAt) (hg : GraphsAgree) (hchk : Pi2ViewChecked C) :
     RecKnowledgeSoundnessReduction D pi2Bound ∧ ∀ Q ≤ 2 ^ 64, pi2Bound Q ≤ (2 : ℝ≥0∞)⁻¹ ^ 64 :=
-  ⟨recKnowledgeSoundnessReduction_final D hD C (pi2Facts hD C hchk) (pi2FsLayer_real D hD hB) hroots hg
+  ⟨recKnowledgeSoundnessReduction_final D hD C (pi2Facts hD C hchk) (pi2FsLayer_real D hD) hroots hg
     (statementPortMeaning hD C hchk) (zeroPortsMeaning hD C hchk) (callWordsAgree hD C hchk),
     pi2Bound_le_bits⟩
 
 /-- **End to end, against the Keccak VM's `KvHolds`, closed in π2's Fiat–Shamir layer and the circuit's facts**, the Prop-premise
 corollary (`Pi1FsKeccak`, `Pi1HazardKeccak`: false as stated for unbounded adversaries). -/
-theorem recKnowledgeSoundness_closed (D : RecDeployment) (hD : D.Real) (hB : QOodBinding δBind) (C : Pi2Circuits D)
+theorem recKnowledgeSoundness_closed (D : RecDeployment) (hD : D.Real) (C : Pi2Circuits D)
     (hroots : C.rootsAt = RecGraphKeccak.Emitted.rootsAt) (hg : GraphsAgree) (hchk : Pi2ViewChecked C) (ε1 εh : ℕ → ℝ≥0∞) :
     RecKnowledgeSoundness D pi2Bound ε1 εh :=
-  recKnowledgeSoundness_final D hD C (pi2Facts hD C hchk) (pi2FsLayer_real D hD hB) hroots hg
+  recKnowledgeSoundness_final D hD C (pi2Facts hD C hchk) (pi2FsLayer_real D hD) hroots hg
     (statementPortMeaning hD C hchk) (zeroPortsMeaning hD C hchk) (callWordsAgree hD C hchk)
     ε1 εh
 
@@ -92,11 +92,11 @@ theorem recKnowledgeSoundness_closed (D : RecDeployment) (hD : D.Real) (hB : QOo
 facts**. The two premises are false as stated (they quantify over adversaries that grind Keccak-f[1600] offline for
 free): read them as the Fiat–Shamir heuristic for adversaries of bounded Keccak-f[1600] work, which Lean does not
 model. The statement without them is `recKnowledgeSoundness_reduction`. -/
-theorem recKnowledgeSoundness_closed_fs (D : RecDeployment) (hD : D.Real) (hB : QOodBinding δBind) (C : Pi2Circuits D)
+theorem recKnowledgeSoundness_closed_fs (D : RecDeployment) (hD : D.Real) (C : Pi2Circuits D)
     (hroots : C.rootsAt = RecGraphKeccak.Emitted.rootsAt) (hg : GraphsAgree) (hchk : Pi2ViewChecked C) (ε1 εh : ℕ → ℝ≥0∞)
     (h1 : Pi1FsKeccak D ε1) (hh : Pi1HazardKeccak D εh) :
     RecKnowledgeSoundnessWith D (recExtractor D) fun Q ↦ pi2Bound Q + ε1 Q + εh Q :=
-  recKnowledgeSoundness_final_fs D hD C (pi2Facts hD C hchk) (pi2FsLayer_real D hD hB) hroots hg
+  recKnowledgeSoundness_final_fs D hD C (pi2Facts hD C hchk) (pi2FsLayer_real D hD) hroots hg
     (statementPortMeaning hD C hchk) (zeroPortsMeaning hD C hchk) (callWordsAgree hD C hchk)
     ε1 εh h1 hh
 

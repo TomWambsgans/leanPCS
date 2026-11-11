@@ -277,8 +277,8 @@ theorem expU_p2IvAdv (D : RecDeployment) (hs : UniKeccakSound.UniShapesK D.pi1)
 
 /-! ## The composed verifier's calls of `π` -/
 
-/-- The openings' query counts: `8 · 10122` (`Q`'s three in one opening). -/
-theorem sumQO_p2 (D : RecDeployment) : ((p2Ops D).map fun o => o.QO).sum = 80976 := by
+/-- The openings' query counts: `8 · 10150` (`Q`'s three in one opening). -/
+theorem sumQO_p2 (D : RecDeployment) : ((p2Ops D).map fun o => o.QO).sum = 81200 := by
   simp [p2Ops, p2Pcs5, PcsOp.gop, qOp]
 
 /-- **A PCS claim's opening makes short queries only** (`UniKeccakSound.allQ_pcsOpenC`). -/
@@ -288,7 +288,9 @@ theorem allQ_pcsOp (o : PcsOp) (r : Digest) (π : P2Pf) (ch : List (List E)) :
   unfold PcsOp.ver
   split
   · trivial
-  · exact UniKeccakSound.allQ_pcsOpenC _ _ _ _ _ _
+  · split
+    · exact allQ_pcsOpenCO _ _ _ _ _ _
+    · exact UniKeccakSound.allQ_pcsOpenC _ _ _ _ _ _
 
 /-- **The composition's openings make short queries only.** -/
 theorem allQ_p2Ops (D : RecDeployment) : ∀ o ∈ p2Ops D, ∀ r π ch, AllQueriesSatisfy (o.ver r π ch) Short := by
@@ -334,11 +336,11 @@ theorem length_mem_absorbsI_p2 (s : FSt2) (B : ℕ) : ∀ (i : ℕ) (rs : List R
 theorem allQ_hash256' {x : List UInt8} (hx : x.length ≤ 2 ^ 32) : AllQueriesSatisfy (hash256 x) Short :=
   UniSound.allQ_hash256 (hx.trans (by norm_num))
 
-/-- **The composed verifier calls `π` at most `2^49` times**: at most `4 + 6 + 80976` queries (the IV's, the chain's,
+/-- **The composed verifier calls `π` at most `2^49` times**: at most `4 + 6 + 81200` queries (the IV's, the chain's,
 the eight openings'), each short. -/
 theorem cost_p2Ver (D : RecDeployment) (hD : RecDeployment.Real D) (π : P2Pf) :
     Common.QueryCostAtMost (p2Ver D π) LeanVM.Rpm.hashBlocks (2 ^ 49) := by
-  have htot : IsTotalQueryBound (p2Ver D π) (4 + (6 + 80976)) := by
+  have htot : IsTotalQueryBound (p2Ver D π) (4 + (6 + 81200)) := by
     unfold p2Ver
     refine isTotalQueryBound_bind (isTotalQueryBound_p2IvKC4 D π) fun x =>
       (isQueryBound_map_iff _ _ _ _ _).mpr ?_

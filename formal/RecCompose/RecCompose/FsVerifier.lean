@@ -311,8 +311,11 @@ theorem pi1Open (π : P2Pf) (ch : List (List E)) (k : ℕ) (hk : k < 3) (n : ℕ
     have hr : ofB (pi1Root D π k) = root := by
       unfold pi1Root
       rw [Soundness.ofB_toB_root, hroot, pi1Words_head D hc π ch k hk]
+    have hs : pi2Size n = false := by
+      rw [hn]
+      interval_cases k <;> rfl
     simp only [Option.map_some]
-    rw [hr, hpt, UniKeccakSound.pcsOpenK_eq]
+    rw [hr, hpt, hs, ite_eq_right Bool.false_ne_true, ite_eq_right Bool.false_ne_true, UniKeccakSound.pcsOpenK_eq]
 
 end Pi1
 
@@ -336,7 +339,7 @@ theorem wOpen (π : P2Pf) (ch : List (List E)) (hlen : π.proof.stream.size = sL
   rw [show (p2Reduced π ch).witness = ((p2Out π ch).witnessPoint, (p2Out π ch).fold) from rfl,
     claimOfWords_mk _ (streamWord_length _ _ (by rw [hlen]; decide))]
   dsimp only
-  rw [p2Out_witnessPoint_length, UniKeccakSound.pcsOpenK_eq,
+  rw [p2Out_witnessPoint_length, ite_eq_left (show pi2Size 24 = true from rfl), pcsOpenKO_eq,
     show rootOfWord (streamWord π.proof.stream 520) = _ from streamRoot_eq _ _ (by rw [hlen]; decide)]
   unfold GOp.run
   rw [show GOp.root p2View wOp π = toB (UniStatement.rootOf (UniSound.halvesAt π.proof.stream 520)) from rfl,
@@ -354,7 +357,8 @@ theorem sOpen (π : P2Pf) (ch : List (List E)) :
   rw [show (p2Reduced π ch).setup = ((p2Out π ch).setupPoint, (p2Inputs π ch).ξ) from rfl,
     claimOfWords_mk _ (FsBytes.length_digestBytes _)]
   dsimp only
-  rw [p2Out_setupPoint_length, UniKeccakSound.pcsOpenK_eq, FsBytes.rootOfWord_digestBytes]
+  rw [p2Out_setupPoint_length, ite_eq_left (show pi2Size 25 = true from rfl), pcsOpenKO_eq,
+    FsBytes.rootOfWord_digestBytes]
   unfold GOp.run
   rw [show GOp.root p2View (PcsOp.gop ⟨25, by norm_num, by norm_num, sCl, fun π => π.proof.setup,
     .setup (fun π => toB π.roots.pi2) (col0 _)⟩) π = toB π.roots.pi2 from rfl, Soundness.ofB_toB_root]
@@ -371,7 +375,7 @@ theorem qOpen (π : P2Pf) (ch : List (List E)) (hlen : π.proof.stream.size = sL
   unfold pcsOpenWords
   rw [claimOfWords_mk _ (streamWord_length _ _ (by rw [hlen]; decide))]
   dsimp only
-  rw [hpt, UniKeccakSound.pcsOpenK_eq,
+  rw [hpt, ite_eq_left (show pi2Size 28 = true from rfl), pcsOpenKO_eq,
     show rootOfWord (streamWord π.proof.stream 576) = _ from streamRoot_eq _ _ (by rw [hlen]; decide)]
   unfold GOp.run
   rw [show GOp.root p2View (PcsOp.gop ⟨28, lo, hi, cl, prf, .round 1 rd⟩) π =
@@ -380,6 +384,7 @@ theorem qOpen (π : P2Pf) (ch : List (List E)) (hlen : π.proof.stream.size = sL
   unfold PcsOp.ver
   dsimp only
   rw [hcl]
+  rfl
 
 /-! ## The bridge -/
 

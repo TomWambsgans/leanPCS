@@ -223,9 +223,21 @@ theorem pi1OpeningsAgree (D : RecDeployment) (hD : D.pi1.shape = RecGraphKeccak.
         (UniStatement.Commitment.c2, UniStatement.Opening.point pt2 v2 none),
         (UniStatement.Commitment.setup, UniStatement.Opening.point pt3 v3 none)] == UniStatement.commitments) = true :=
       rfl
+    have hs1 : pi2Size (UniKeccak.stackVarsK RecGraphKeccak.Pi1.keccak128 UniStatement.Commitment.c1) = false := by
+      rw [show RecGraphKeccak.Pi1.keccak128 = UniKeccakSound.keccakRefShape from rfl,
+        UniKeccakComplete.reference_stackVars_c1]
+      rfl
+    have hs2 : pi2Size (UniKeccak.stackVarsK RecGraphKeccak.Pi1.keccak128 UniStatement.Commitment.c2) = false := by
+      rw [show RecGraphKeccak.Pi1.keccak128 = UniKeccakSound.keccakRefShape from rfl,
+        UniKeccakComplete.reference_stackVars_c2]
+      rfl
+    have hs3 : pi2Size (UniKeccak.stackVarsK RecGraphKeccak.Pi1.keccak128 UniStatement.Commitment.setup) = false := by
+      rw [show RecGraphKeccak.Pi1.keccak128 = UniKeccakSound.keccakRefShape from rfl,
+        UniKeccakComplete.reference_stackVars_setup]
+      rfl
     simp only [hcm, hmat, Option.isSome_none, Bool.false_eq_true, ↓reduceIte, List.forIn_cons, List.forIn_nil,
       bind_assoc, pure_bind, Bool.true_and, List.getD_cons_zero, List.getD_cons_succ, UniKeccak.commitOfK,
-      UniKeccak.KeccakProof.openingOf, hl0, hl1, hl2]
+      UniKeccak.KeccakProof.openingOf, hl0, hl1, hl2, hs1, hs2, hs3]
 
 end RecCompose
 

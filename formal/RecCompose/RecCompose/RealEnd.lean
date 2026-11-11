@@ -32,10 +32,10 @@ evaluated checks and `Q`'s out-of-domain binding (`QOodBinding δBind`, `FsBind.
 `pi2Bound Q ≤ 2^-64` for `Q ≤ 2^64`. -/
 theorem recKnowledgeSoundness_reduction_real (prog : KeccakVm.Program)
     (hprog : RecGraphKeccak.Pi1.keccak128.logBytecode = prog.logSize) (hg : GraphsAgree) (hd : DigestChecked)
-    (hs : SetupRootChecked) (hiv : IvChecked) (hB : QOodBinding δBind) :
+    (hs : SetupRootChecked) (hiv : IvChecked) :
     RecKnowledgeSoundnessReduction (realDeployment prog hprog) pi2Bound ∧
       ∀ Q ≤ 2 ^ 64, pi2Bound Q ≤ (2 : ℝ≥0∞)⁻¹ ^ 64 :=
-  recKnowledgeSoundness_reduction _ (realDeployment_real prog hprog hg hd hs) hB (pi2Circuits_real prog hprog hg hiv) rfl
+  recKnowledgeSoundness_reduction _ (realDeployment_real prog hprog hg hd hs) (pi2Circuits_real prog hprog hg hiv) rfl
     hg (pi2ViewChecked_real prog hprog hg hiv)
 
 end RecCompose

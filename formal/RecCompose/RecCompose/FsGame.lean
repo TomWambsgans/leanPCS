@@ -18,7 +18,7 @@ import Compose.SeedPair
 **`pi2FsLayer_of`**: `Pi2FsLayer D` at the real deployment from the coupling (`Pi2GameLeV`'s inequality, `hG`), the
 composed verifier's facts (its duplex shape and cost, the IV moved into the adversary, the extractor's word unchanged
 by the IV's log, the seed's first 32 bytes, the event read through the transcript's answers) and `Q`'s binding
-(`QOodBinding δBind`, a premise: `FsBind.lean`), as `UniSound.fsLayer128_of_gameV`:
+(`qOodBinding`, proved: `FsBind.lean`), as `UniSound.fsLayer128_of_gameV`:
 
 * `rpm_le_kcS`: the random-permutation game to the two-oracle game (the permutation's term);
 * the IV moved into the adversary (`hexpU`), the event to the framework's `BreaksOK` at the protocol of the setup's
@@ -29,7 +29,7 @@ by the IV's log, the seed's first 32 bytes, the event read through the transcrip
 * the openings' doom (`prEvent_doomFG_p2Ops_le`: the eight PCS claims once through `WhirBridge.Pcs.pcs_union_sound`,
   and `Q`'s binding) and the seed's pair (`prEvent_pairTr_expLG_le`);
 * the numbers (`le_pi2BoundE`): the openings' `(N + 10122)(εExact + 5 (N + 10122)/2^256)` and the binding's
-  `N δood 28 ≤ N 2^-156` in `pi2Bound`'s openings term (`pi2OpenErr ≥ εExact + 2^-156`, `Pi2OpenErrOK`), its
+  `N δc 28 ≤ N 2^-160 ≤ N 2^-156` in `pi2Bound`'s openings term (`pi2OpenErr ≥ εExact + 2^-156`, `Pi2OpenErrOK`), its
   `N (N + 1)/2^256` in the chain's term (`8 N` there against the chain's `7 N`).
 -/
 
@@ -66,17 +66,17 @@ chain's at `N`, the permutation's at `QS 2^32 + Q + 2^49` calls, `N` the two-ora
 trees, the adversary and the IV, the chain, the openings). -/
 theorem le_pi2BoundE (hOE : Pi2OpenErrOK) (e : ℝ≥0∞) (Q QS nQ nRf : ℕ) (hQS : QS ≤ 3 * 2 ^ 24 + 2 ^ 21)
     (hnQ : nQ ≤ 2 ^ 10) (hr : nRf ≤ 5) (d p m : ℝ≥0∞)
-    (hd : d ≤ bndU (QS + (QS + Q + 4) + nQ + 80976) + δBind (QS + (QS + Q + 4) + nQ + 80976))
-    (hp : p ≤ ((2 * (QS + (QS + Q + 4) + nQ + 80976) ^ 2 : ℕ) : ℝ≥0∞) / 2 ^ 256)
+    (hd : d ≤ bndU (QS + (QS + Q + 4) + nQ + 81200) + δBind (QS + (QS + Q + 4) + nQ + 81200))
+    (hp : p ≤ ((2 * (QS + (QS + Q + 4) + nQ + 81200) ^ 2 : ℕ) : ℝ≥0∞) / 2 ^ 256)
     (hm : m ≤ e) :
-    d + p + ((QS + (QS + Q + 4) + nQ + 80976 : ℕ) : ℝ≥0∞) *
-        (m + (((nRf + 2) * (QS + (QS + Q + 4) + nQ + 80976) : ℕ) : ℝ≥0∞) / 2 ^ 256) +
+    d + p + ((QS + (QS + Q + 4) + nQ + 81200 : ℕ) : ℝ≥0∞) *
+        (m + (((nRf + 2) * (QS + (QS + Q + 4) + nQ + 81200) : ℕ) : ℝ≥0∞) / 2 ^ 256) +
       ((QS * 2 ^ 32 + Q + 2 ^ 49 : ℕ) : ℝ≥0∞) ^ 2 / 2 ^ 508 ≤ pi2BoundE e Q := by
   have h33 : (2 : ℕ) ^ 33 = 8589934592 := by norm_num
   have h24 : (2 : ℕ) ^ 24 = 16777216 := by norm_num
   have h21 : (2 : ℕ) ^ 21 = 2097152 := by norm_num
   have h10 : (2 : ℕ) ^ 10 = 1024 := by norm_num
-  set N := QS + (QS + Q + 4) + nQ + 80976 with hNdef
+  set N := QS + (QS + Q + 4) + nQ + 81200 with hNdef
   set M := pi2N Q with hMdef
   have hNM : N + 10122 ≤ M := by rw [hNdef, hMdef]; unfold pi2N; omega
   have hN1 : N + 1 ≤ M := le_trans (Nat.add_le_add_left (by norm_num) N) hNM
@@ -84,10 +84,11 @@ theorem le_pi2BoundE (hOE : Pi2OpenErrOK) (e : ℝ≥0∞) (Q QS nQ nRf : ℕ) (
   -- the openings, once
   have b1 : bndU N ≤ (M : ℝ≥0∞) * (εExact + ((5 * M : ℕ) : ℝ≥0∞) / 2 ^ 256) :=
     mul_le_mul' (Nat.cast_le.mpr hNM) (add_le_add le_rfl (le256' (Nat.mul_le_mul_left 5 hNM)))
-  -- `Q`'s binding: `N δood 28` in the openings' term
-  have b2 : (N : ℝ≥0∞) * Pcs.δood 28 ≤ (M : ℝ≥0∞) * (2 : ℝ≥0∞)⁻¹ ^ 156 :=
-    mul_le_mul' (Nat.cast_le.mpr hNle) (Pcs.δood_le (by decide) (by decide))
-  have b12 : bndU N + (N : ℝ≥0∞) * Pcs.δood 28 ≤
+  -- `Q`'s binding: `N δc 28` in the openings' term
+  have b2 : (N : ℝ≥0∞) * Pcs.δc 28 ≤ (M : ℝ≥0∞) * (2 : ℝ≥0∞)⁻¹ ^ 156 :=
+    mul_le_mul' (Nat.cast_le.mpr hNle) (δc_28_le.trans
+      (pow_le_pow_right_of_le_one' (ENNReal.inv_le_one.mpr (by norm_num)) (by norm_num)))
+  have b12 : bndU N + (N : ℝ≥0∞) * Pcs.δc 28 ≤
       (M : ℝ≥0∞) * (pi2OpenErr + ((5 * M : ℕ) : ℝ≥0∞) / 2 ^ 256) := by
     refine (add_le_add b1 b2).trans ?_
     rw [← mul_add]
@@ -122,16 +123,16 @@ theorem le_pi2BoundE (hOE : Pi2OpenErrOK) (e : ℝ≥0∞) (Q QS nQ nRf : ℕ) (
     have h81 : (3 * 2 ^ 24 + 2 ^ 21) * 2 ^ 32 + 2 ^ 49 ≤ (2 : ℕ) ^ 81 := by norm_num
     calc QS * 2 ^ 32 + Q + 2 ^ 49 = (QS * 2 ^ 32 + 2 ^ 49) + Q := by ring
       _ ≤ 2 ^ 81 + Q := Nat.add_le_add_right ((Nat.add_le_add_right h32 _).trans h81) Q
-  have hd' : d ≤ bndU N + (N : ℝ≥0∞) * Pcs.δood 28 + ((N * (N + 1) : ℕ) : ℝ≥0∞) / 2 ^ 256 := by
+  have hd' : d ≤ bndU N + (N : ℝ≥0∞) * Pcs.δc 28 + ((N * (N + 1) : ℕ) : ℝ≥0∞) / 2 ^ 256 := by
     refine hd.trans (le_of_eq ?_)
     unfold δBind
     ring
   unfold pi2BoundE
-  calc _ ≤ (bndU N + (N : ℝ≥0∞) * Pcs.δood 28) + ((N * (N + 1) : ℕ) : ℝ≥0∞) / 2 ^ 256 + p +
+  calc _ ≤ (bndU N + (N : ℝ≥0∞) * Pcs.δc 28) + ((N * (N + 1) : ℕ) : ℝ≥0∞) / 2 ^ 256 + p +
         (N : ℝ≥0∞) * (m + (((nRf + 2) * N : ℕ) : ℝ≥0∞) / 2 ^ 256) +
         ((QS * 2 ^ 32 + Q + 2 ^ 49 : ℕ) : ℝ≥0∞) ^ 2 / 2 ^ 508 :=
       add_le_add (add_le_add (add_le_add hd' le_rfl) le_rfl) le_rfl
-    _ = (bndU N + (N : ℝ≥0∞) * Pcs.δood 28) + p +
+    _ = (bndU N + (N : ℝ≥0∞) * Pcs.δc 28) + p +
         (((N * (N + 1) : ℕ) : ℝ≥0∞) / 2 ^ 256 + (N : ℝ≥0∞) * (m + (((nRf + 2) * N : ℕ) : ℝ≥0∞) / 2 ^ 256)) +
         ((QS * 2 ^ 32 + Q + 2 ^ 49 : ℕ) : ℝ≥0∞) ^ 2 / 2 ^ 508 := by ring
     _ ≤ (M : ℝ≥0∞) * (pi2OpenErr + ((5 * M : ℕ) : ℝ≥0∞) / 2 ^ 256) + ((2 * M ^ 2 : ℕ) : ℝ≥0∞) / 2 ^ 256 +
@@ -254,7 +255,7 @@ end Links
 /-- **π2's Fiat–Shamir layer from its bridges** at the real deployment: the coupling (`hG`), the composed verifier's
 duplex shape and cost (`hdup`, `hcost`), the IV in the adversary (`hIvAdv`, `hexpU`), the extractor's word before the
 IV's log (`hext`), the seed's first 32 bytes (`hlab`), the event read through the transcript's answers (`hcongr`),
-the chain's queries (`hnQ`), and `Q`'s binding (`hB`, a premise: `FsBind.lean`). -/
+the chain's queries (`hnQ`); `Q`'s binding is proved (`qOodBinding`, `FsBind.lean`). -/
 theorem pi2FsLayer_of (D : RecDeployment) (hD : RecDeployment.Real D) (hs : UniKeccakSound.UniShapesK D.pi1)
     (hG : ∀ (P : RecSetupRoots → Pi2St → Stk → Prop) (A : RecAdversary),
       Pr{let z ← recSoundnessExperiment2 D A}[acc z = true ∧
@@ -280,7 +281,7 @@ theorem pi2FsLayer_of (D : RecDeployment) (hD : RecDeployment.Real D) (hs : UniK
     (hcongr : ∀ (P : RecSetupRoots → Pi2St → Stk → Prop) (z : P2Pf × (List (List E) × List Bool))
       (tr tr' : Transcript), (∀ x, lookTr tr x = lookTr tr' x) → P2BreaksRel D P (z, tr) →
         P2BreaksRel D P (z, tr'))
-    (hnQ : pi2Spec.K.nQ ≤ 2 ^ 10) (hB : QOodBinding δBind) :
+    (hnQ : pi2Spec.K.nQ ≤ 2 ^ 10) :
     Pi2FsLayer D := by
   intro R e herr P hpre hpost A Q hQ
   obtain ⟨A₀, hA₀, hle⟩ := rpm_le_kcS (p2Setup D hs) (hOnly_p2Setup D hs) (p2QS D) (p2QS D * 2 ^ 32)
@@ -314,10 +315,10 @@ theorem pi2FsLayer_of (D : RecDeployment) (hD : RecDeployment.Real D) (hs : UniK
     isTotalQueryBound_preU _ _ _ _ (isTotalQueryBound_withSetupG _ _ _ _ _ (isTotalQueryBound_p2Setup D hs)
       (hIvAdv A₀ _ hA₀))
   -- The openings once, and `Q`'s binding.
-  have hdoom := prEvent_doomFG_p2Ops_le D X _ hX δBind hB
+  have hdoom := prEvent_doomFG_p2Ops_le D X _ hX
   -- The seed's pair.
   have hpair := prEvent_pairTr_expLG_le p2View X (p2Ops D) _ hX RecStatement.name name_length
-  have hsum : ((p2Ops D).map fun o => o.QO).sum = 80976 := by simp [p2Ops, p2Pcs5, PcsOp.gop, qOp]
+  have hsum : ((p2Ops D).map fun o => o.QO).sum = 81200 := by simp [p2Ops, p2Pcs5, PcsOp.gop, qOp]
   refine (hG P A).trans (hle.trans (add_le_add (hkc.trans hmain) le_rfl) |>.trans ?_)
   rw [hsum] at hpair ⊢
   exact le_pi2BoundE pi2OpenErrOK e Q (p2QS D) pi2Spec.K.nQ pi2Spec.nRf (p2QS_le D hs) hnQ (show 5 ≤ 5 by decide)
