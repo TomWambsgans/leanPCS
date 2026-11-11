@@ -2,6 +2,8 @@
 import RecCompose.Basic
 import RecCompose.IvLength
 import RecCircuit.Check
+import RecCircuit.Piop
+import RecCircuit.Decode
 
 /-!
 # π2's part: `RecKnowledgeSoundness2`, from π2's layers

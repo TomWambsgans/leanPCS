@@ -131,7 +131,8 @@ theorem collision_or_empty {g : RecGraph.Graph} {iv1 : List UInt8} {input : Vect
     right
     have hjr := List.mem_range.mp (List.mem_of_find?_eq_some hj)
     have hne := List.find?_some hj
-    refine ⟨fun he ↦ by simp [he] at hne, ?_⟩
+    simp only [bne_iff_ne, ne_eq] at hne
+    refine ⟨hne, ?_⟩
     have := hh j hjr
     unfold claimHash at this
     exact this
