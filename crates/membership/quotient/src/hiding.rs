@@ -2,14 +2,17 @@
 //! The rank conditions of `HIDING.md`, checked exactly on the toy circuit at fixed random challenges.
 //!
 //! With the challenges fixed, the scalars a proof reveals besides the roots (the two out-of-domain answers and the
-//! four `a_j`; `next` is the public wiring's, and the four claims' values follow from them) are functions of the
-//! prover's randomness, affine in each group below once the groups before it are fixed. A group's scalars are
-//! uniform, whatever the witness, if its map has full rank over `K` (each scalar three `K`-coordinates):
+//! three row values `X`, `C`, `V + Y` at `t`; `next` is the public wiring's, and the three claims' values follow from
+//! them) are functions of the prover's randomness, affine in each group below once the groups before it are fixed. A
+//! group's scalars are uniform, whatever the witness, if its map has full rank over `K` (each scalar three
+//! `K`-coordinates):
 //!
-//! - **W**: `a_0 .. a_3` and the witness table's out-of-domain answer, over the random rows' words (15 coordinates
-//!   over [`RANDOM_WORDS`]): every cell of a random row is affine in its two words, and `W` is linear in the cells;
-//! - **T**: the quotient table's out-of-domain answer, over the blinding of `h` (3 over `3 H_BLIND`), the random rows
-//!   fixed: the blinding is `h`'s coefficients past `n` and moves `q` by `b d d'`.
+//! - **W**: the three row values and the witness table's out-of-domain answer, over the random rows' words (12
+//!   coordinates over [`RANDOM_WORDS`]): every cell of a random row is affine in its two words, and `W` is linear in
+//!   the cells;
+//! - **T**: the quotient table's out-of-domain answer, over the blinding of `h` (3 over `3 FREE_BLIND`), the random
+//!   rows fixed: the free blinding `b_0, b_1` is `h`'s coefficients `n, n + 1` and moves `q` by `b d d'`; `b_2`,
+//!   solved for so that `q`'s coefficient `n` is zero, is affine in them.
 //!
 //! Both maps are affine: [`revealed_scalars_are_uniform`] checks that two words changed together move the scalars
 //! by the sum of their own changes, and a word scaled by an element of `K` by that multiple.
@@ -23,13 +26,13 @@ use crate::circuit::{Circuit, RANDOM_WORDS};
 use crate::statement::Statement;
 use crate::opening::{Commitment, FIXED_OOD};
 use crate::protocol::tests::{toy, toy_cells, toy_statement};
-use crate::protocol::{H_BLIND, Index, Randomness, prove_with_randomness};
+use crate::protocol::{FREE_BLIND, Index, Randomness, prove_with_randomness};
 use crate::transcript::FIXED;
 
 /// Where the revealed scalars sit in the proof's stream: the out-of-domain answers of the witness table and of the
-/// quotient table; the `a_j`.
+/// quotient table; the row values.
 const OOD: [usize; 2] = [2, 5];
-const A: [usize; 4] = [6, 7, 8, 9];
+const A: [usize; 3] = [6, 7, 8];
 
 /// The rank over `K` of `columns`, each a vector of `K`-coordinates, by Gaussian elimination.
 fn rank(mut columns: Vec<Vec<F64>>) -> usize {
@@ -116,6 +119,8 @@ fn revealed_scalars_are_uniform_on_membership() {
 
 fn check_uniform(circuit: &Circuit, statement: &Statement, cells: &[F64], rng: &mut Rng) {
     let index = Index::new(circuit);
+    // The wiring's coefficient `n − 2` is not zero: the prover's `b_2` exists but at one value of `α`.
+    assert!(!index.wiring()[index.wiring().len() - 2].is_zero());
     let commitment = Commitment::of(&index.commit());
     let seed: [u8; 32] = std::array::from_fn(|_| rng.next_u8());
     let base = Randomness::derive(&seed, &commitment, statement, cells);
@@ -128,7 +133,7 @@ fn check_uniform(circuit: &Circuit, statement: &Statement, cells: &[F64], rng: &
             .stream
     };
     let w: Vec<Word> = (0..RANDOM_WORDS).map(Word::Row).collect();
-    let t: Vec<Word> = (0..3).flat_map(|e| (0..H_BLIND).map(move |i| Word::Blind(e, i))).collect();
+    let t: Vec<Word> = (0..3).flat_map(|e| (0..FREE_BLIND).map(move |i| Word::Blind(e, i))).collect();
     let groups = [
         ("W", [&A[..], &OOD[..1]].concat(), w),
         ("T", OOD[1..].to_vec(), t),

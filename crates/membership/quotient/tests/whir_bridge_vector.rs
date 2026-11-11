@@ -5,7 +5,7 @@
 //! stream's first two scalars, one opening of `f(z) = ood` and `f(point) = value`):
 //!
 //! * `public`: an opening of a pseudo-random table of `2^15` words;
-//! * `witness`, `wiring`, `copy`, `sum`: the four openings of a membership proof on a circuit of `2^17` rows, by
+//! * `witness`, `wiring`, `copy`: the three openings of a membership proof on a circuit of `2^17` rows, by
 //!   the real prover.
 //!
 //! Each vector carries its claim's bytes (`pcsclaim`), from which the Lean recomputes the IV and the out-of-domain
@@ -102,7 +102,7 @@ fn whir_bridge_vector() {
     let openings = open(&proved.tables, &proved.claims, &index_committed);
     let c = &proved.commitments;
     let on = [c.witness, commitment, c.table];
-    let names = ["witness", "wiring", "copy", "sum"];
+    let names = ["witness", "wiring", "copy"];
     for (((k, claim), proof), name) in proved.claims.all().into_iter().zip(&openings.0).zip(names) {
         let claim = on[k].pcs_claim(claim);
         assert!(pcs_claim::verify(&claim.encode(), &pcs_claim::wire_proof(proof)), "{name}");

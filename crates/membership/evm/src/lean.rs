@@ -18,7 +18,7 @@ use quotient::protocol::{extension, label};
 use quotient::statement::Statement;
 use quotient::transcript::Proof;
 
-use crate::codegen::{Ending, VERIFY, Word};
+use crate::codegen::{Ending, Word};
 use crate::quotient::{CALLDATA_LEN, Recorded, deployed, pcs_claims};
 use crate::record::Node;
 
@@ -184,9 +184,6 @@ pub fn render() -> String {
     )
     .unwrap();
     writeln!(w).unwrap();
-    writeln!(w, "/-- The selector of `verify(bytes32,bytes32,bytes)`. -/").unwrap();
-    writeln!(w, "def selector : List Nat := {}", list(&VERIFY, |b| format!("0x{b:02x}"))).unwrap();
-    writeln!(w).unwrap();
     writeln!(w, "/-- `quotient::domain::beta()`: the Cantor basis of `GF(2^64)`. -/").unwrap();
     writeln!(w, "def beta : List Nat := {}", list(beta().iter(), |&x| base(x))).unwrap();
     writeln!(w).unwrap();
@@ -217,16 +214,16 @@ fn parse(calldata: &[u8]) -> (Statement, Proof) {
     assert_eq!(calldata.len(), CALLDATA_LEN - 1);
     let be = |at: usize| u64::from_be_bytes(calldata[at..at + 8].try_into().unwrap());
     let statement = Statement {
-        y: calldata[4..36].try_into().unwrap(),
-        root: calldata[36..68].try_into().unwrap(),
+        y: calldata[..32].try_into().unwrap(),
+        root: calldata[32..64].try_into().unwrap(),
     };
     let scalar = |i: usize| {
-        let at = 132 + 24 * i;
+        let at = 128 + 24 * i;
         F192::new(be(at + 16), be(at + 8), be(at))
     };
     let mut stream = Vec::new();
     for k in 0..2 {
-        let root: [u8; 32] = calldata[68 + 32 * k..100 + 32 * k].try_into().unwrap();
+        let root: [u8; 32] = calldata[64 + 32 * k..96 + 32 * k].try_into().unwrap();
         stream.extend(quotient::transcript::root_halves(&root));
         stream.push(scalar(k));
     }
@@ -235,7 +232,7 @@ fn parse(calldata: &[u8]) -> (Statement, Proof) {
 }
 
 /// The claims the deployed contract checks declared for `calldata` (without its frame byte), by the Rust verifier:
-/// the four claims' bytes back to back, or `None` where the verifier rejects.
+/// the three claims' bytes back to back, or `None` where the verifier rejects.
 pub fn expected(index: &Commitment, calldata: &[u8]) -> Option<Vec<u8>> {
     let (statement, proof) = parse(calldata);
     let (commitments, claims) = quotient::protocol::verify(index, &statement, &proof, LOG_ROWS).ok()?;
@@ -248,9 +245,7 @@ fn hex(bytes: &[u8]) -> String {
 
 /// Random calldata of the verifier (without its frame byte), its roots' words arbitrary.
 fn random_calldata(rng: &mut primitives::test_rng::Rng) -> Vec<u8> {
-    let mut calldata = VERIFY.to_vec();
-    calldata.extend((4..CALLDATA_LEN - 1).map(|_| rng.next_u8()));
-    calldata
+    (0..CALLDATA_LEN - 1).map(|_| rng.next_u8()).collect()
 }
 
 fn random_index(rng: &mut primitives::test_rng::Rng) -> Commitment {
@@ -287,9 +282,9 @@ mod tests {
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../formal/Implementation/Graph.lean")
     }
 
-    /// The checked-in Lean graph is the deployed contract's: `UPDATE_LEAN=1` rewrites it. On the branch
-    /// `perf/membership-gas` the contract is that of the one quotient table (`docs/membership/PERF_GAS.md`) and
-    /// `formal/` still the six claims': the graph is stale until the Lean is ported, so the check is ignored here.
+    /// The checked-in Lean graph is the deployed contract's: `UPDATE_LEAN=1` rewrites it. The contract is that of
+    /// `docs/membership/PERF_GAS2.md` (three claims, no selector) and `formal/` still the six claims': the graph is
+    /// stale until the Lean is ported, so the check is ignored here.
     #[test]
     #[ignore = "formal/Implementation/Graph.lean is the six-claim contract's until the Lean is ported (PERF_GAS.md)"]
     fn graph_lean_is_current() {

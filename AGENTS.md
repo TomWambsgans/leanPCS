@@ -4,13 +4,14 @@ Notes for contributors (people and agents): what the implementation adds to the 
 [`README.md`](README.md), where things are, what is proved, tested and measured, what remains, provenance and
 licensing, and the conventions.
 
-**The Lean lags the Rust (2026-11-11).** The membership protocol (one quotient in one table: four claims on two
-commitments, [`docs/membership/PERF_GAS.md`](docs/membership/PERF_GAS.md)) and π2's calldata (π1's claim on `C1`
+**The Lean lags the Rust (2026-11-11).** The membership protocol (one quotient in one table: three claims on two
+commitments and the circuit's, [`docs/membership/PERF_GAS2.md`](docs/membership/PERF_GAS2.md), on
+[`PERF_GAS.md`](docs/membership/PERF_GAS.md)'s four) and π2's calldata (π1's claim on `C1`
 hashed in π2's circuit, 20-byte narrow challenges, no selector: [`docs/leanvm/rec/PERF_GAS.md`](docs/leanvm/rec/PERF_GAS.md);
 then π1-rec4's transcript and π1's three claims hashed: [`docs/leanvm/rec/PERF_GAS2.md`](docs/leanvm/rec/PERF_GAS2.md))
 changed after the Lean was written. `formal/` proves the protocols of commit `f96a7938` (membership: six claims on
-four commitments; π2: π1-rec3's three claims encoded by the contract). What the port needs is in the two `PERF_GAS.md`,
-"What the Lean needs", and in `PERF_GAS2.md`. The provers' speedups ([`docs/membership/PERF_PROVER.md`](docs/membership/PERF_PROVER.md),
+four commitments; π2: π1-rec3's three claims encoded by the contract). What the port needs is in the `PERF_GAS.md`s and
+`PERF_GAS2.md`s, "What the Lean needs". The provers' speedups ([`docs/membership/PERF_PROVER.md`](docs/membership/PERF_PROVER.md),
 [`docs/leanvm/rec/PERF_PROVER.md`](docs/leanvm/rec/PERF_PROVER.md)) change no proof. Each change was reviewed
 adversarially (soundness, zero knowledge, the contract against the verifier, the prover's unsafe code and
 determinism) before it was merged.
@@ -45,25 +46,27 @@ dependency verification frame of scheme `PCS_SCHEME`), which the contract reads 
 claims; the contracts' `PCS_OPEN` precompile is gone.
 
 **Zero-knowledge Merkle membership** with Keccak-256 (depth 32: `y = H(x | 0x11..)`, path from `H(x | 0x22..)` to
-`root`), reduced to four PCS claims on two commitments by seven field elements, as in leanVM's `flock::quotient` but
+`root`), reduced to three PCS claims on two commitments and the circuit's by six field elements, as in leanVM's
+`flock::quotient` but
 on a circuit of one χ gate on bits (3,878,615 of 2^22 rows, the public values packed into eight pinned `K`-words),
 its claims opened by leanVM's WHIR unchanged. The protocol is that of
-[`docs/membership/PERF_GAS.md`](docs/membership/PERF_GAS.md) (one quotient in one table with the sum's polynomial);
+[`docs/membership/PERF_GAS2.md`](docs/membership/PERF_GAS2.md) (one quotient in one table with `x h`, the sum checked
+by the table's layout; the row of `t` as three values; on [`PERF_GAS.md`](docs/membership/PERF_GAS.md)'s);
 `formal/` proves the previous one (`f96a7938`: six claims on four commitments, [below](#membership-what-is-proved)).
 
 - `crates/membership/quotient`: circuit, prover, Rust verifier (`protocol::reduce`), and the openings (`opening`): the
   EIP's PCS claims (`pcs_claim`), two commitments with out-of-domain answers (the witness `W`; the quotient table `T`,
-  the quotient `q` and the sum's polynomial `h`; `docs/membership/PERF_GAS.md`) and four one-point claims; zero
+  the quotient `q` and `x h`; `docs/membership/PERF_GAS2.md`) and three one-point claims; zero
   knowledge assuming a ZK PCS ([`HIDING.md`](docs/membership/HIDING.md)). The
   prover's transforms are `ntt`'s (AVX-512, AVX2 or NEON lanes), split around one block-wise pass over the quotient's
   values; the `Index` keeps σ's values on the quotient's coset (256 MiB at 2^22 rows), which every proof reads.
 - `crates/membership/evm`: the same verifier compiled to EVM bytecode, run on revm with `FIELD_MUL` (10 gas), EIP-8141's
-  `FRAMEPARAM` and `FRAMEDATALOAD`, and a mock frame of PCS claims (`PcsFrame`): the four claims in the EIP's encoding
-  (`evm_link::declared_claims`). The contract's ABI (`verify(bytes32,bytes32,bytes)`, selector `0xde12c640`, 300 bytes
-  of packed arguments, then the frame's index: 301 bytes) and its deployment are in `quotient.rs`: the circuit's
+  `FRAMEPARAM` and `FRAMEDATALOAD`, and a mock frame of PCS claims (`PcsFrame`): the three claims in the EIP's encoding
+  (`evm_link::declared_claims`). The contract's ABI (no selector: 272 bytes of packed arguments, then the frame's
+  index: 273 bytes) and its deployment are in `quotient.rs`: the circuit's
   commitment (root and out-of-domain answer) is a constructor argument kept in two storage slots (two cold `SLOAD`s),
   which a fixed owner may change (`setIndexCommitment`). It fails closed: the named frame must be a dependency
-  verification frame whose first byte is `PCS_SCHEME`, and its payloads `0 .. 3` the claims' hashes, in order; calls
+  verification frame whose first byte is `PCS_SCHEME`, and its payloads `0 .. 2` the claims' hashes, in order; calls
   with value, other calldata lengths and degenerate proofs revert.
 - `formal/`: the Lean 4 proofs ([below](#membership-what-is-proved)).
 
@@ -107,7 +110,7 @@ its claims opened by leanVM's WHIR unchanged. The protocol is that of
 **Shared.**
 
 - `crates/evm_link`: the compilation and assembly into one contract that the code generators share. The membership
-  contract (5,304 B) and π2's (14.5 KB) fit EIP-170; π1's own contract (about 86 KB) does not, and is built only to
+  contract (4,866 B) and π2's (14.5 KB) fit EIP-170; π1's own contract (about 86 KB) does not, and is built only to
   test it against its Rust verifier and to record the vectors' claims (the recursion verifies π1 inside π2).
 - `crates/vendor/leanvm-c445e3d5`: leanVM `c445e3d5`'s `primitives`, `fiat_shamir`, `pcs`, `parallel`, `verifier`,
   `bench`.
@@ -139,12 +142,12 @@ its PCS gas on both sides as the EIP draft has it.
 
 | | ZK Merkle membership | leanVM by recursion (128 signatures) |
 |---|---|---|
-| Prover | **1.23 s** (reduction 0.60 s, openings 0.62 s), 6.0 GiB: four openings on two commitments (`docs/membership/PERF_GAS.md`) with the prover's speedups (`docs/membership/PERF_PROVER.md`). The protocol of `f96a7938` there: 2.29 s (1.49 s, 0.79 s), 8.6 GiB; 2.8 s on the M4 Max (high power mode) | trace → π1-rec4 → π2 and openings (`tests/pipeline.rs`): **2.62 s per proof** (π1-rec4 0.86 s, its openings 0.18 s, π2 0.79 s, π2's five openings 0.79 s), 15.1 GB; `866ba889` (π1-rec3, `C1`'s claim hashed): 2.62 s ([`PERF_GAS2.md`](docs/leanvm/rec/PERF_GAS2.md) §6). `f96a7938` there: 2.82 s (π1-rec3 with its openings 1.12 s, π2 0.86 s, its openings 0.85 s); 3.7 s on the M4 Max. Before the PCS claims (π2's three stacks opened once each, opening version 3): 2.06 s on the M4 Max, 0.59 s on an AMD EPYC 9355P (64 threads) |
-| Calldata | 301 B (`f96a7938`: 461 B; `docs/membership/PERF_GAS.md`) | **577 B** (4 zero): π1's three claims hashed in π2's circuit ([`PERF_GAS2.md`](docs/leanvm/rec/PERF_GAS2.md)); `866ba889`: 941 B (`C1`'s claim alone, [`PERF_GAS.md`](docs/leanvm/rec/PERF_GAS.md)); `f96a7938`: 1,101 B |
-| Gas | 16,414 execution; **36,520** transaction under EIP-8141 with `pcs_gas` in the floor (floor-bound: 64 · (301 + 129) + 9,000; standard 32,258; the PIOP's frame alone 21,194, its standard binding). `f96a7938`: 52,856 | 31,524 execution; frame transaction (EIP-8141, EIP-7976's floor, no base or per-frame cost): standard 40,708, floor **36,928** (`866ba889`: 37,406, 52,366, 60,224; `f96a7938`: 32,794, 49,678, 70,464) |
-| Claims | 4 declared (`f96a7938`: 6) | 8 (π1's 3, π2's 5), each the EIP draft's PCS claim |
-| With the frame (1 + 32 B a claim) and the PCS gas | included above (129 B, 9,000) | **66,376** (257 B, `pcs_gas` 13,000 on both sides; the floor binds, standard 57,820; `866ba889`: 89,672; `f96a7938`: 99,912) |
-| Deployment | 5,304-byte code, 1,242,838 gas (`f96a7938`: 6,667 B, 1,536,984 gas) | one contract |
+| Prover | **1.02 s** (reduction 0.67 s, openings 0.34 s), 6.0 GiB: three openings (`docs/membership/PERF_GAS2.md`; four, `PERF_GAS.md`: 1.23 s) with the prover's speedups (`docs/membership/PERF_PROVER.md`). The protocol of `f96a7938` there: 2.29 s (1.49 s, 0.79 s), 8.6 GiB; 2.8 s on the M4 Max (high power mode) | trace → π1-rec4 → π2 and openings (`tests/pipeline.rs`): **2.62 s per proof** (π1-rec4 0.86 s, its openings 0.18 s, π2 0.79 s, π2's five openings 0.79 s), 15.1 GB; `866ba889` (π1-rec3, `C1`'s claim hashed): 2.62 s ([`PERF_GAS2.md`](docs/leanvm/rec/PERF_GAS2.md) §6). `f96a7938` there: 2.82 s (π1-rec3 with its openings 1.12 s, π2 0.86 s, its openings 0.85 s); 3.7 s on the M4 Max. Before the PCS claims (π2's three stacks opened once each, opening version 3): 2.06 s on the M4 Max, 0.59 s on an AMD EPYC 9355P (64 threads) |
+| Calldata | 273 B (`PERF_GAS.md`'s: 301 B; `f96a7938`: 461 B; `docs/membership/PERF_GAS2.md`) | **577 B** (4 zero): π1's three claims hashed in π2's circuit ([`PERF_GAS2.md`](docs/leanvm/rec/PERF_GAS2.md)); `866ba889`: 941 B (`C1`'s claim alone, [`PERF_GAS.md`](docs/leanvm/rec/PERF_GAS.md)); `f96a7938`: 1,101 B |
+| Gas | 15,753 execution; **31,680** transaction under EIP-8141 with `pcs_gas` in the floor (floor-bound: 64 · (273 + 97) + 8,000; standard 29,649; the PIOP's frame alone 20,097, its standard binding). `PERF_GAS.md`'s: 36,520; `f96a7938`: 52,856 | 31,524 execution; frame transaction (EIP-8141, EIP-7976's floor, no base or per-frame cost): standard 40,708, floor **36,928** (`866ba889`: 37,406, 52,366, 60,224; `f96a7938`: 32,794, 49,678, 70,464) |
+| Claims | 3 declared (`PERF_GAS.md`'s: 4; `f96a7938`: 6) | 8 (π1's 3, π2's 5), each the EIP draft's PCS claim |
+| With the frame (1 + 32 B a claim) and the PCS gas | included above (97 B, 8,000) | **66,376** (257 B, `pcs_gas` 13,000 on both sides; the floor binds, standard 57,820; `866ba889`: 89,672; `f96a7938`: 99,912) |
+| Deployment | 4,866-byte code, 1,149,640 gas (`f96a7938`: 6,667 B, 1,536,984 gas) | one contract |
 
 - Membership: checking the claims declared costs 61 gas once (the frame's mode and scheme) and 43 a claim beyond its
   `KECCAK256`. Its verifier: reduction < 1 ms, openings 5 ms (248 / 278 / 333 KiB).
@@ -160,10 +163,10 @@ its PCS gas on both sides as the EIP draft has it.
 
 **Of the previous protocol** (commit `f96a7938`: six claims on four commitments, the masks, the public bits as a
 weighted sum), not of the current one: the port is listed in
-[`docs/membership/PERF_GAS.md`](docs/membership/PERF_GAS.md), "What the Lean needs". The current protocol's soundness
-and zero knowledge are argued there and in `HIDING.md`, reviewed adversarially, and tested
-(`protocol::tests::absorbed_errors_fail_the_sum`, the rank tests); the openings' four `2^-128` a query dominate
-(about 126 bits as `Q/ε`).
+[`docs/membership/PERF_GAS.md`](docs/membership/PERF_GAS.md) and [`PERF_GAS2.md`](docs/membership/PERF_GAS2.md),
+"What the Lean needs". The current protocol's soundness and zero knowledge are argued there and in `HIDING.md`, and
+tested (`protocol::tests::absorbed_errors_fail_the_copy_claim`, the rank tests); the openings' three `2^-128` a query
+dominate (about 126.4 bits as `Q/ε`).
 
 `formal/Statement` (`PcsQuotient`) states the relation (Keccak-256 Merkle membership over the deployed Keccak-256), the
 protocol on the EIP's PCS claims (`docs/membership/EIP_CLAIMS.md`: four commitments with out-of-domain answers, six
@@ -271,7 +274,7 @@ hold for the current code, π1-rec4 checked against its Rust verifier (it has no
 ## Remaining
 
 - Membership in Lean: the port to the current protocol ([`docs/membership/PERF_GAS.md`](docs/membership/PERF_GAS.md),
-  "What the Lean needs"; `graph_lean_is_current` is ignored until then).
+  [`PERF_GAS2.md`](docs/membership/PERF_GAS2.md), "What the Lean needs"; `graph_lean_is_current` is ignored until then).
 - leanVM in Lean: the Lean states the previous π2 (`f96a7938`: π1-rec3's three claims encoded by the contract,
   24-byte challenges, a selector); the current one (π1-rec4, its three claims hashed in π2's circuit, read from the
   frame, D16v's trimmed last rounds) needs the changes [`PERF_GAS.md`](docs/leanvm/rec/PERF_GAS.md) and

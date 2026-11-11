@@ -1,22 +1,27 @@
 // Part of this repository. Adapted from leanVM (https://github.com/leanEthereum/leanVM), branch
 // PCS-openings-aggregation, commit 651453c6, crates/flock/src/quotient/circuit.rs: the wiring is the same; the
 // gate (one χ on bits instead of a full adder on GF(4)), the Keccak-256 statement, the anchors with the packing of
-// the public words and the random rows' shapes are new. MIT OR Apache-2.0; see AGENTS.md.
+// the public words and the random rows' shapes are new; the gate's roles swapped (`docs/membership/PERF_GAS2.md`, so
+// that the verifier needs three of the row's values at `t`, not four). MIT OR Apache-2.0; see AGENTS.md.
 //! Rows of one gate and the permutation that wires them, and the circuit of the membership statement.
 //!
-//! **The gate.** A row has four cells, `X, Y, C, V`, and says `V = X + C + Y·C`. On bits that is
-//! `X ⊕ (C ∧ ¬Y)`: Keccak's χ when `(X, Y, C)` are `(a[x], a[x+1], a[x+2])`, an XOR when `Y = 0`, a NOT when
-//! `X = 1, Y = 0`. A free input bit is a row whose three inputs are wired to its own output, so the gate reads
+//! **The gate.** A row has four cells, `X, Y, C, V`, and says `V = Y + C + X·C`. On bits that is
+//! `Y ⊕ (C ∧ ¬X)`: Keccak's χ when `(X, Y, C)` are `(a[x+1], a[x], a[x+2])`, an XOR when `X = 0`, a NOT when
+//! `X = 0, Y = 1`. A free input bit is a row whose three inputs are wired to its own output, so the gate reads
 //! `v = v + v + v^2`, that is `v^2 = v`. Every other row reads constants or rows before it, and the gate sends
 //! bits to bits: by induction every cell is a bit, and the one the circuit computes.
 //!
+//! The product is of the row's first cell `X` (role 0, the cell the copy argument reads at `t`) and `C` (role 2), the
+//! rest is `V + Y`: the verifier needs the row's values at `t` only through `X`, `C` and `V + Y`, three linear forms
+//! of the row's four polynomials that one claim of the witness table binds ([`crate::protocol`]).
+//!
 //! **Lane circuits** (an SLH-DSA proof-of-concept since removed: `docs/leanvm/flock/KECCAK.md` §4.3 in the history). The gate is an identity of `K = GF(2^64)`, and the
 //! argument does not need the cells to be bits. A lane circuit has `K`-valued cells besides its bits:
-//! - a **free-`K` row** ([`Builder::free_k`]) reads its own output as `X` and `1` as `Y`, so the gate reads
-//!   `v = v + C + C`: any value;
-//! - a product is one row ([`Builder::mul`]: `(X, Y, C) = (b, a, b)`, `V = a·b`), and with `Y` a bit `s`, `χ` is a
-//!   lane mux: `X + C·(1 + s)`;
-//! - a **port** ([`Builder::port`]) is a row at a reserved index of the port region, `(X, Y, C, V) = (O, 1, I, O)`:
+//! - a **free-`K` row** ([`Builder::free_k`]) reads its own output as `Y` and `0` as `X` and `C`, so the gate
+//!   reads `v = v`: any value;
+//! - a product is one row ([`Builder::mul`]: `(X, Y, C) = (a, b, b)`, `V = a·b`), and with `X` a bit `s`, `χ` is a
+//!   lane mux: `Y + C·(1 + s)`;
+//! - a **port** ([`Builder::port`]) is a row at a reserved index of the port region, `(X, Y, C, V) = (1, O, I, O)`:
 //!   `O` free (or read from a row), `I` read from its source. Another argument (Flock, for Keccak-f) is to prove
 //!   the region's cells; here they are only rows.
 //!
@@ -24,7 +29,7 @@
 //! over `K` by [`Circuit::outputs_k`], in the order they were built.
 //!
 //! **The public values** are eight `K`-words ([`crate::statement::Statement::words`]), each packed from its 64
-//! bits by 63 rows of Horner's rule (`(X, Y, C) = (b, 3, acc)`: `V = b + 2 acc`, `2` the generator of `K`'s
+//! bits by 63 rows of Horner's rule (`(X, Y, C) = (3, b, acc)`: `V = b + 2 acc`, `2` the generator of `K`'s
 //! polynomial basis, so the word is the number its bits spell), built after every other row. The first
 //! [`PUBLIC_ROWS`] rows are **anchors**: anchor `k` is `(0, 0, s_k)`, its `C` cell on the cycle of `s_k`, the
 //! packed word `k` for `k < 8`, then the constants `0`, `1` and `3`, whose anchors read their constant as `Y` too:
@@ -47,7 +52,7 @@ pub const PUBLIC_ROWS: usize = PUBLIC_WORDS + 3;
 /// The public `K`-words, of [`WORD_BITS`] bits each.
 pub const PUBLIC_WORDS: usize = 8;
 pub const WORD_BITS: usize = 64;
-/// The constant the packing rows read as `Y`: `V = X + C + 3 C = X + 2 C`.
+/// The constant the packing rows read as `X`: `V = Y + C + 3 C = Y + 2 C`.
 pub const THREE: F64 = F64(3);
 
 /// The cell the verifier pins for anchor `k`: its `C` cell (`X` cells are the gate's rows, which the pins avoid).
@@ -68,8 +73,8 @@ pub fn anchor_values(words: &[F64; PUBLIC_WORDS]) -> [F64; PUBLIC_ROWS] {
 pub const LOG_ROWS: usize = 22;
 
 /// The **random rows**: idle rows the builder turns into rows of two free cells ([`Src::Free`], each its own cycle),
-/// the last ones of the circuit outside a port region, of three shapes in turn ([`RandomShape`]): `(r, 0, s, r +
-/// s)`, `(r, s, 0, r)`, `(r, 1, s, r)`. A witness leaves them zero; the prover fills each with two fresh random
+/// the last ones of the circuit outside a port region, of three shapes in turn ([`RandomShape`]): `(0, r, s, r +
+/// s)`, `(s, r, 0, r)`, `(1, r, s, r)`. A witness leaves them zero; the prover fills each with two fresh random
 /// values ([`Circuit::randomize`], `HIDING.md`), which every cell of the row depends on affinely: they make the
 /// witness table's evaluations and out-of-domain answer uniform, and its root hide.
 pub const RANDOM_ROWS: usize = 16;
@@ -79,11 +84,11 @@ pub const RANDOM_WORDS: usize = 2 * RANDOM_ROWS;
 /// The shapes of the random rows, `(X, Y, C, V)` for the words `(r, s)`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RandomShape {
-    /// `(r, 0, s, r + s)`.
+    /// `(0, r, s, r + s)`.
     Sum,
-    /// `(r, s, 0, r)`.
+    /// `(s, r, 0, r)`.
     Select,
-    /// `(r, 1, s, r)`.
+    /// `(1, r, s, r)`.
     Pass,
 }
 
@@ -95,9 +100,9 @@ impl RandomShape {
 
     fn row(self) -> Row {
         let (x, y, c) = match self {
-            Self::Sum => (Src::Free, Src::Zero, Src::Free),
+            Self::Sum => (Src::Zero, Src::Free, Src::Free),
             Self::Select => (Src::Free, Src::Free, Src::Zero),
-            Self::Pass => (Src::Free, Src::One, Src::Free),
+            Self::Pass => (Src::One, Src::Free, Src::Free),
         };
         Row { x, y, c }
     }
@@ -105,9 +110,9 @@ impl RandomShape {
     /// The row's four cells for its words.
     pub fn cells(self, r: F64, s: F64) -> [F64; 4] {
         match self {
-            Self::Sum => [r, F64::ZERO, s, r + s],
-            Self::Select => [r, s, F64::ZERO, r],
-            Self::Pass => [r, F64::ONE, s, r],
+            Self::Sum => [F64::ZERO, r, s, r + s],
+            Self::Select => [s, r, F64::ZERO, r],
+            Self::Pass => [F64::ONE, r, s, r],
         }
     }
 }
@@ -124,7 +129,7 @@ pub enum Src {
     Free,
 }
 
-/// One gate: `V = X + C + Y·C`.
+/// One gate: `V = Y + C + X·C`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Row {
     pub x: Src,
@@ -138,9 +143,9 @@ const IDLE: Row = Row {
     c: Src::Zero,
 };
 
-/// The gate on bits: `x ⊕ (c ∧ ¬y)`.
+/// The gate on bits: `y ⊕ (c ∧ ¬x)`.
 pub fn gate_bits(x: u8, y: u8, c: u8) -> u8 {
-    x ^ (c & !y & 1)
+    y ^ (c & !x & 1)
 }
 
 /// A lane of 64 wires, bit `z` at index `z`.
@@ -208,30 +213,30 @@ impl Builder {
         b
     }
 
-    /// A free `K` value: a row reading its own output as `X`, `1` as `Y` and `0` as `C`, so `V = V + 0 + 0`.
+    /// A free `K` value: a row reading its own output as `Y` and `0` as `X` and `C`, so `V = V + 0 + 0`.
     pub fn free_k(&mut self) -> Src {
         let at = Src::Row(self.rows.len() as u32);
-        self.row(at, Src::One, Src::Zero)
+        self.row(Src::Zero, at, Src::Zero)
     }
 
-    /// `a · b` in `K`, one row `(X, Y, C) = (b, a, b)`: `V = b + b + a·b`.
+    /// `a · b` in `K`, one row `(X, Y, C) = (a, b, b)`: `V = b + b + a·b`.
     pub fn mul(&mut self, a: Src, b: Src) -> Src {
         match (a, b) {
             (Src::Zero, _) | (_, Src::Zero) => Src::Zero,
             (Src::One, v) | (v, Src::One) => v,
-            _ => self.row(b, a, b),
+            _ => self.row(a, b, b),
         }
     }
 
-    /// Port `index` of the region: the row `(X, Y, C) = (out, 1, input)`, `out` its own output where `None` (a
-    /// free value). The gate reads `V = X + C + C = X`, so the four cells are `(O, 1, I, O)`. Returns `V`.
+    /// Port `index` of the region: the row `(X, Y, C) = (1, out, input)`, `out` its own output where `None` (a
+    /// free value). The gate reads `V = Y + C + C = Y`, so the four cells are `(1, O, I, O)`. Returns `V`.
     pub fn port(&mut self, index: usize, out: Option<Src>, input: Src) -> Src {
         let row = self.port_start + index;
         assert!(self.port_rows[index].is_none(), "port {index} placed twice");
         let at = Src::Row(row as u32);
         self.port_rows[index] = Some(Row {
-            x: out.unwrap_or(at),
-            y: Src::One,
+            x: Src::One,
+            y: out.unwrap_or(at),
             c: input,
         });
         self.placed.push((row as u32, self.rows.len() as u32));
@@ -270,7 +275,7 @@ impl Builder {
         match a {
             Src::Zero => Src::One,
             Src::One => Src::Zero,
-            _ => self.row(Src::One, Src::Zero, a),
+            _ => self.row(Src::Zero, Src::One, a),
         }
     }
 
@@ -278,7 +283,7 @@ impl Builder {
         match (a, b) {
             (Src::Zero, v) | (v, Src::Zero) => v,
             (Src::One, v) | (v, Src::One) => self.not(v),
-            _ => self.row(a, Src::Zero, b),
+            _ => self.row(Src::Zero, a, b),
         }
     }
 
@@ -291,7 +296,7 @@ impl Builder {
                 let not_b = self.not(b);
                 self.xor(a, not_b)
             }
-            _ => self.row(a, b, c),
+            _ => self.row(b, a, c),
         }
     }
 
@@ -371,7 +376,7 @@ impl Builder {
         for (word, bits) in words.iter_mut().zip(public) {
             let mut acc = bits[WORD_BITS - 1];
             for &bit in bits[..WORD_BITS - 1].iter().rev() {
-                acc = self.row(bit, Src::Three, acc);
+                acc = self.row(Src::Three, bit, acc);
             }
             *word = acc;
         }
@@ -551,20 +556,20 @@ pub fn read_k(v: &[F64], src: Src) -> F64 {
     }
 }
 
-/// The gate over `K`: `x + c + y·c`.
+/// The gate over `K`: `y + c + x·c`.
 pub fn gate_k(x: F64, y: F64, c: F64) -> F64 {
-    x + c + y * c
+    y + c + x * c
 }
 
 impl Circuit {
     /// Every row's output over `K`. The rows are evaluated in the order they were built (the ports where they
-    /// were placed, the public rows last); a free row (one whose `X` reads itself: a free bit or a free `K`
+    /// were placed, the public rows last); a free row (one whose `Y` reads itself: a free bit or a free `K`
     /// value) takes `free(row, outputs so far)`, and every other row its gate.
     pub fn outputs_k(&self, mut free: impl FnMut(u32, &[F64]) -> F64) -> Vec<F64> {
         let mut v = vec![F64::ZERO; self.rows.len()];
         let mut eval = |r: usize, v: &mut Vec<F64>| {
             let row = self.rows[r];
-            v[r] = if row.x == Src::Row(r as u32) {
+            v[r] = if row.y == Src::Row(r as u32) {
                 free(r as u32, v)
             } else {
                 gate_k(read_k(v, row.x), read_k(v, row.y), read_k(v, row.c))
@@ -733,7 +738,7 @@ mod tests {
             let cells = circuit.cells_k(&v);
             assert_eq!(circuit.check_k(&cells), Ok(()));
             let Src::Row(port) = free_port else { unreachable!() };
-            assert_eq!(&cells[4 * port as usize..4 * port as usize + 4], [vo, F64::ONE, va * vc, vo]);
+            assert_eq!(&cells[4 * port as usize..4 * port as usize + 4], [F64::ONE, vo, va * vc, vo]);
             let mut bad = cells.clone();
             bad[4 * port as usize + 2] += F64::ONE;
             assert!(circuit.check_k(&bad).is_err());
