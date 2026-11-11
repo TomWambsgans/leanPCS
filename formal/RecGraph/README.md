@@ -58,36 +58,15 @@ lake env lean ../RecGraph/RecGraphTest/SimAxioms.lean                # the simul
 
 ## The theorems (proved, sorry-free, on Lean's three axioms: `RecGraph.lean`'s guards)
 
-```lean
--- Commute.lean: for every program, pure permutation π, IV, public input and stream
-theorem run_vals {α : Type} (p : Prog α) (st : RecState) (hk : KInv st) :
-    (p.run π iv publicInput stream (st, evalAll π iv publicInput stream st)).2.2 =
-        evalAll π iv publicInput stream (p.run π iv publicInput stream (st, evalAll π iv publicInput stream st)).2.1 ∧
-      ((p.run π iv publicInput stream (st, evalAll π iv publicInput stream st)).1,
-        (p.run π iv publicInput stream (st, evalAll π iv publicInput stream st)).2.1) = p.record st ∧
-      KInv (p.run π iv publicInput stream (st, evalAll π iv publicInput stream st)).2.1
-
-theorem record_eval {α : Type} (p : Prog α) (calls : List (List Word)) (len : Nat) :
-    Id.run (evalNodes (m := Id) (fun s ↦ pure (π s)) ((p.record RecState.start).2.graph calls len) iv publicInput
-        stream) =
-      (p.run π iv publicInput stream (RecState.start, evalAll π iv publicInput stream RecState.start)).2.2
-
--- Values.lean: for a recorder state with the invariant RecInv, and an operation whose operands it holds (OpOK),
--- the operation's node has the operation's meaning on E (Op.value: the constant; the public word; the stream's
--- bytes at the cursor; the challenge of Keccak-256 over π of the state and the bytes read since, narrow or not;
--- the sum; the product; the bit field; ring_tower::weight_at), the smart constructors' folds, dropped zeros and
--- ones, x + x = 0 and hash-consed nodes included
-theorem op_val (st : RecState) (h : RecInv st) (o : Op) (hok : OpOK st o) :
-    valE (evalAll π iv publicInput stream (st.op o).2) (st.op o).1 =
-      Op.value π publicInput stream st (evalAll π iv publicInput stream st) o
-theorem op_inv (st : RecState) (h : RecInv st) (o : Op) (hok : OpOK st o) : RecInv (st.op o).2
-theorem op_lt (st : RecState) (h : RecInv st) (o : Op) (hok : OpOK st o) : (st.op o).1 < (st.op o).2.nodes.size
-theorem record_inv {α : Type} (p : Prog α) (st : RecState) (h : RecInv st) (hs : p.Scoped st) :
-    RecInv (p.record st).2
-theorem start_inv : RecInv RecState.start
--- and per operation: new_val, constant_val, add_val, mul_val, bits_val, input_val, statement_val, sample_val,
--- ringWeight_val, and their …_inv
-```
+- `Commute.lean`: **`run_vals`** (for every program, pure permutation, IV, public input and stream, running the
+  program evaluates exactly the nodes it records, and keeps `KInv`), **`record_eval`** (`evalNodes` of the recorded
+  graph is the program's run on `E`).
+- `Values.lean`: **`op_val`** (for a recorder state with `RecInv` and an operation whose operands it holds, `OpOK`, the
+  operation's node has the operation's meaning on `E`: the constant, the public word, the stream's bytes at the
+  cursor, the challenge of Keccak-256 over `π`, narrow or not, the sum, the product, the bit field,
+  `ring_tower::weight_at`; folds, dropped zeros and ones, `x + x = 0` and hash-consed nodes included), `op_inv`,
+  `op_lt`, `record_inv`, `start_inv`, and per operation `new_val`, `constant_val`, `add_val`, `mul_val`, `bits_val`,
+  `input_val`, `statement_val`, `sample_val`, `ringWeight_val` with their `…_inv`.
 
 ## Graph = verifier
 
