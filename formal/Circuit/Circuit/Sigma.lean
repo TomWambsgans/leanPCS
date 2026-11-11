@@ -7,7 +7,7 @@ import Circuit.Wiring
 /-!
 # The deployed σ
 
-`membership.sigma`, the wiring `finish` builds (and the Rust's, `CircuitTest/Dump.lean`), is a
+`membership.sigma`, the wiring `finish` builds (the previous protocol's), is a
 permutation of the `4 · 2^22` cells (`membership_sigma_lt`, `membership_sigma_inj`), and every
 `X`, `Y`, `C` cell is on the cycle of what it reads (`membership_sigma_reads`): the `V` cell
 `4 r' + 3` of the row `r'` it reads, or the constant's anchor, cell `4 · 320` (bit 0 of word 5) for
