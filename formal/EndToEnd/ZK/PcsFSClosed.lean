@@ -6,7 +6,7 @@ import ZK.PcsEnd
 /-!
 # The Fiat–Shamir hypothesis, proved
 
-**`fiatShamirUniform_closed`**: `FiatShamirUniform εfs₀`, `εfs₀ = 113 · δq L ≤ 2^-162` (`εfs₀_le`): the challenge
+**`fiatShamirUniform_closed`**: `FiatShamirUniform εfs₀`, `εfs₀ = 58 · δq L ≤ 2^-163` (`εfs₀_le`): the challenge
 phase run for real is within its tracked queries' cost of the ideal run (`close`), whose challenges are uniform
 (`ideal_challenges`), and that cost is at most `εfs₀` (`phase_bound`).
 
@@ -21,19 +21,19 @@ namespace PcsQuotient.EndToEnd
 
 open FProg
 
-/-- The Fiat–Shamir term: `113` tracked queries, each at most `δq L`. -/
-noncomputable def εfs₀ : ℝ≥0∞ := 113 * δq phaseL
+/-- The Fiat–Shamir term: `58` tracked queries, each at most `δq L`. -/
+noncomputable def εfs₀ : ℝ≥0∞ := 58 * δq phaseL
 
-theorem εfs₀_le : εfs₀ ≤ ((2 : ℝ≥0∞) ^ 162)⁻¹ := by
+theorem εfs₀_le : εfs₀ ≤ ((2 : ℝ≥0∞) ^ 163)⁻¹ := by
   have hL : (phaseL : ℝ≥0∞) ≤ 2 ^ 22 := by unfold phaseL; norm_num
-  calc εfs₀ = 113 * (phaseL * pmax + phaseL * nInv) := rfl
-    _ ≤ 113 * (2 ^ 22 * pmax + 2 ^ 22 * pmax) := by gcongr; exact nInv_le_pmax
-    _ ≤ 2 ^ 30 * pmax := by
+  calc εfs₀ = 58 * (phaseL * pmax + phaseL * nInv) := rfl
+    _ ≤ 58 * (2 ^ 22 * pmax + 2 ^ 22 * pmax) := by gcongr; exact nInv_le_pmax
+    _ ≤ 2 ^ 29 * pmax := by
         rw [← two_mul, ← mul_assoc, ← mul_assoc]
         gcongr
         norm_num
-    _ = ((2 : ℝ≥0∞) ^ 162)⁻¹ := by
-        rw [pmax_eq, show (2 : ℝ≥0∞) ^ 192 = 2 ^ 30 * 2 ^ 162 by rw [← pow_add],
+    _ = ((2 : ℝ≥0∞) ^ 163)⁻¹ := by
+        rw [pmax_eq, show (2 : ℝ≥0∞) ^ 192 = 2 ^ 29 * 2 ^ 163 by rw [← pow_add],
           ENNReal.mul_inv (by simp) (by simp), ← mul_assoc, ENNReal.mul_inv_cancel (by simp) (by simp), one_mul]
 
 /-- **The simulator's Fiat–Shamir challenges are within `εfs₀` of uniform.** -/
@@ -50,7 +50,7 @@ theorem fiatShamirUniform_closed : FiatShamirUniform εfs₀ := by
 /-- **Zero knowledge of the membership proof, assuming a zero-knowledge PCS**, with the Fiat–Shamir term proved:
 for every PCS simulator `sim` within `εpcs` (`PcsZeroKnowledge`), if the revealed scalars are uniform at all but `εr`
 of the challenges (`RevealedUniform`), the simulator `zkSimulator sim` is within `εpcs Q + εr + εfs₀` of the honest
-prover, `εfs₀ ≤ 2^-162` (`εfs₀_le`). -/
+prover, `εfs₀ ≤ 2^-163` (`εfs₀_le`). -/
 theorem zeroKnowledge_pcs_closed (sim : PcsSimulator) (εpcs : ℕ → ℝ≥0∞) (εr : ℝ≥0∞)
     (hpcs : PcsZeroKnowledge sim εpcs) (hrev : RevealedUniform εr) :
     ZeroKnowledgeWith sim.s₀ (zkSimulator sim) sim.oracle (fun Q ↦ εpcs Q + εr + εfs₀) :=

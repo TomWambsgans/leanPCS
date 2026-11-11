@@ -26,11 +26,11 @@ import ZK.PcsAxioms
 # Zero knowledge, end to end (the EIP's PCS claims)
 
 `PcsQuotient.ZeroKnowledgeWith` (`formal/Statement`, `Security.lean`) for the simulator `PcsQuotient.zkSimulator`
-(`Zk.lean`), assuming a zero-knowledge PCS (`docs/membership/HIDING.md`):
+(`Zk.lean`), assuming a zero-knowledge PCS (`docs/membership/PROTOCOL.md`, "Zero knowledge"):
 
 **`PcsQuotient.EndToEnd.zeroKnowledge_pcs_closed`** (`ZK/PcsFSClosed.lean`):
 `PcsZeroKnowledge sim εpcs → RevealedUniform εr →
-ZeroKnowledgeWith sim.s₀ (zkSimulator sim) sim.oracle (fun Q ↦ εpcs Q + εr + εfs₀)`, `εfs₀ ≤ 2^-162` (`εfs₀_le`),
+ZeroKnowledgeWith sim.s₀ (zkSimulator sim) sim.oracle (fun Q ↦ εpcs Q + εr + εfs₀)`, `εfs₀ ≤ 2^-163` (`εfs₀_le`),
 from `zeroKnowledge_pcs` (`ZK/PcsEnd.lean`, with `FiatShamirUniform εfs` as a hypothesis) and
 `fiatShamirUniform_closed`.
 
@@ -47,10 +47,11 @@ from `zeroKnowledge_pcs` (`ZK/PcsEnd.lean`, with `FiatShamirUniform εfs` as a h
 * `ZK/PcsEnd.lean`: the end theorem under `FiatShamirUniform`; `ZK/PcsAxioms.lean`: the axioms.
 * The Fiat–Shamir term (`fiatShamirUniform_closed`, `ZK/PcsFSClosed.lean`): `ZK/PcsFresh.lean` (the lazily
   sampled permutation against independent uniform answers on tracked queries: `close`, the cost `badB` along the
-  ideal run), `ZK/PcsPhaseF.lean` (the challenge phase with its `113` challenge calls tracked), `ZK/PcsExtract.lean`,
+  ideal run), `ZK/PcsPhaseF.lean` (the challenge phase with its `58` permutation calls tracked: `W`'s and `T`'s out-of-domain points, `24`
+  and `28`, and the chain's `α, β, μ, t` one call each and `ρ` two), `ZK/PcsExtract.lean`,
   `ZK/PcsStream.lean`, `ZK/PcsPhi.lean`, `ZK/PcsIdealC.lean` (the ideal run's challenges are uniform:
   `ideal_challenges`), `ZK/PcsBad*.lean`, `ZK/PcsAdds.lean`, `ZK/PcsNF.lean`, `ZK/PcsInj.lean` (each tracked input is
-  injective in a value drawn just before it, among at most `5 · 2^19 + 140` edges: `phase_bound`).
+  injective in a value drawn just before it, among at most `5 · 2^19 + 90` edges: `phase_bound`).
 
 `ZK/ProverBridge{Eager,Hom,Param}.lean` (random-permutation lemmas kept from the hidden-layout protocol's proof,
 which was removed) are not imported here; `RecCompose` imports `ZK/ProverBridgeEager.lean` and
