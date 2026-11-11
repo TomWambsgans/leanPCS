@@ -69,16 +69,19 @@ straight-line extractor and the simulator, in one random permutation; `EndToEnd/
   `q = q₀ + b₂ E` on the coset of `4 n` points, `mulX`/`divX` the products and quotients by `x` in the novel basis,
   `Kc3Deployed.sat_honest` for the randomized cells). For the Statement's prover; the deployed Rust prover is trusted
   for completeness.
-- **Zero knowledge, under two hypotheses.** `PcsQuotient.EndToEnd.zeroKnowledge_pcs_closed : PcsZeroKnowledge sim εpcs
-  → RevealedUniform εr δr → ZeroKnowledgeWith sim.s₀ (zkSimulator sim) sim.oracle (fun Q ↦ εpcs Q + εr + δr + εfs₀)`
-  (`EndToEnd/ZK/PcsFSClosed.lean`; hypotheses and simulator in `Statement/PcsQuotient/Zk.lean`), `εfs₀ = 58 · δq L ≤
-  2^-163` proved (`fiatShamirUniform_closed`). `PcsZeroKnowledge` is the EIP's ZK-WHIR assumption (the reference
-  openings are not zero knowledge). `RevealedUniform εr δr` (outside `εr` of the challenges, the five revealed scalars
-  are within statistical distance `δr` of uniform) is not proved: group 1 (`W`'s answer, `X`, `C`, `V + Y`) is
-  `K`-affine in the random rows with a linear part fixed by the challenges, exact at full rank; group 2 (`T`'s
-  answer) is `K`-affine in the six blinding words with a linear part that depends on the random rows (through
-  `d d'` and `b₂`), rank-deficient on a nonempty zero set of minors, so `δr ≈ 2^-59` (reasoned, not proved;
-  [`PROTOCOL.md`](../docs/membership/PROTOCOL.md), "Zero knowledge"). Single proof, the distinguisher's queries after it.
+- **Zero knowledge, under two hypotheses.** `PcsQuotient.EndToEnd.zeroKnowledge_pcs_slack : PcsZeroKnowledge sim
+  εpcs → Group1Uniform ε1 → ZeroKnowledgeWith sim.s₀ (zkSimulator sim) sim.oracle (fun Q ↦ εpcs Q + ε1 + εslack +
+  εfs₀)` (`EndToEnd/ZK/PcsSpan.lean`; the simulator and `PcsZeroKnowledge` in `Statement/PcsQuotient/Zk.lean`),
+  `εslack = 2^-127 + 27·2^-192 ≤ 2^-126` and `εfs₀ = 58 · δq L ≤ 2^-163` proved (`spanFail_le`,
+  `fiatShamirUniform_closed`). `PcsZeroKnowledge` is the EIP's ZK-WHIR assumption (the reference openings are not
+  zero knowledge). `Group1Uniform ε1` (outside `ε1` of the challenges, `W`'s answer and `X`, `C`, `V + Y` are uniform
+  under uniform random rows: the 32 words' `K`-linear map, fixed by the challenges, of rank 12) is not proved: it
+  needs the map's `K`-linearity through the transforms and a non-vanishing certificate of a `12 × 12` minor on the
+  circuit's last rows (heuristically `ε1 ≈ |K|^-20`). `T`'s answer is proved uniform given everything else
+  (`revealedUniform_slack`: `RevealedUniform (ε1 + εslack) 0`) through the quotient table's four slack words, whose
+  weights depend on `T`'s out-of-domain point alone ([`PROTOCOL.md`](../docs/membership/PROTOCOL.md), "Zero
+  knowledge"); the general `zeroKnowledge_pcs_closed` takes `RevealedUniform εr δr` itself. Single proof, the
+  distinguisher's queries after it.
 - **The EVM contract is the verifier.** `Evm.evm_accepts_iff_verifyWith` (`EndToEnd/Evm/Contract.lean`): on a
   statement's and proof's calldata (273 bytes, no selector), the contract's recorded graph (`Implementation/Graph.lean`:
   537 nodes, 39 output words, three claims checked declared), with the stored index commitment and what the block
@@ -153,7 +156,7 @@ theorem RecCompose.recKnowledgeSoundness_reduction_real (prog : KeccakVm.Program
 | Trusted | the Lean kernel and three axioms; Keccak-f[1600] a random permutation, Keccak-256 its sponge; mumbai's definitions (Keccak, the model, `verifyStackedOpening`, the decoders); the prover's randomness uniform (deployed: a Keccak-256 KDF, `Randomness::derive`, so computational ZK) | the same; the deployed Rust provers for completeness |
 | Tested against the Rust | the Statement (`membership-differential`: 121 reductions, 18 honest and tampered proofs at `2^17` rows, the small, toy and membership circuits' commitments, all agreeing); the Statement's prover (the reduction's stream at `2^17` rows, and its proof accepted); the circuit's rows and σ (`kc3-dump-circuit`, SHA-256 `7b73dc3b…`); bytecode = graph (`graph_lean_is_current`, `Implementation/Diff.lean` on 1000 calldata); `FIELD_MUL` = `mulE` by vectors; `pcs_claim::verify` = `pcsOpening` (`WhirBridge/Test/CheckPcs.lean`) | π1's verifier (`UniKeccakTest/Runner.lean`: 90/90 verifier and 14/14 terminal vectors, the real proofs among them); the verifier's tables, the block's rows and terminal, `sha3Step`; the circuit compiler (`rec-circuit-keccak`, `padCounts` on 202 cases); π2's Lean prover on two small circuits; `RecStatement/Data.lean` is what the Rust emitted at `f96a7938`; the bytecode is π2's Rust verifier by the Rust's tests (`parity`) |
 | Evaluated, not proved | `WiringCheck` (completeness's hypothesis: the wiring's coefficient `n − 2` nonzero, `membership-wiring-check`) | `GraphsAgree`, `DigestChecked`, `SetupRootChecked`, `IvChecked` |
-| Not covered | simulation-extractability; `RevealedUniform` (stated, reasoned at `δr ≈ 2^-59`, not proved); ZK with queries before the proof, or for several proofs; the RPM theorems and the EVM one do not formally compose; `StatementBinds` (immediate, not proved); pruned Merkle paths | the model gap (π1-rec3 in the RPM, π2's circuit at Keccak-f[1600]); `PatchChecked`; other shapes than the reference; no Lean differential run of π2's verifier |
+| Not covered | simulation-extractability; `Group1Uniform` (stated, not proved); ZK with queries before the proof, or for several proofs; the RPM theorems and the EVM one do not formally compose; `StatementBinds` (immediate, not proved); pruned Merkle paths | the model gap (π1-rec3 in the RPM, π2's circuit at Keccak-f[1600]); `PatchChecked`; other shapes than the reference; no Lean differential run of π2's verifier |
 
 ## Libraries
 
@@ -221,8 +224,8 @@ leanVM line's vectors are `f96a7938`'s (see Status).
    recursion's `GraphsAgree`, `DigestChecked`, `SetupRootChecked`, `IvChecked` (evaluated at three IVs and assumed at the
    others: `IvUniform.ivChecked_of_patchChecked` reduces it to `PatchChecked`, not proved).
 4. **Other shapes**: π1's closed bounds are at the reference shape.
-5. **Membership**: `RevealedUniform εr δr` proved (group 1 from a determinant's degree; group 2's `δr`, about `2^-59`
-   with blinding words in `K`, from the minors' degree in the random rows); zero knowledge with a pre-proof phase;
+5. **Membership**: `Group1Uniform` proved (the rank 12 of the random rows' map off a determinant's zero set);
+   `WiringCheck` by a kernel proof; zero knowledge with a pre-proof phase;
    simulation-extractability; a few lemmas duplicated between the soundness and completeness lines
    (`Soundness/PcsVH*.lean`, `tableEval_eq_mle`, `tau_systemL`).
 6. Declarations in the shared libraries that no end theorem uses (the previous protocol's F1 and F0 in

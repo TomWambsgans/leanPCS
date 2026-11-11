@@ -130,8 +130,9 @@ transaction gas without the 21,000 base (EIP-7623) and without the frame's per-f
   knowledge soundness with no hypothesis (`Soundness.knowledgeSoundness`: about 2^-62.4 at 2^64 queries, 126.4 bits as
   Q/ε, the three PCS openings' WHIR soundness proved under mumbai's, the pole condition proved of the circuit),
   completeness under one evaluated check (`WiringCheck`, the wiring's coefficient `n − 2` nonzero; δ < 2^-163), zero
-  knowledge under `PcsZeroKnowledge` (the EIP's ZK-WHIR) and `RevealedUniform εr δr` (stated, not proved: the revealed
-  scalars are uniform up to `δr`, about 2^-59 with blinding words in `K`), its contract = its verifier; of
+  knowledge under `PcsZeroKnowledge` (the EIP's ZK-WHIR) and `Group1Uniform` (stated, not proved: the random rows' map
+  to `W`'s answer and the row values of rank 12 off a small set of challenges; `T`'s answer is proved uniform through
+  the slack words, 2^-126), its contract = its verifier; of
   `f96a7938`'s leanVM line, the Keccak VM's statement, the Keccak-f block, π1's knowledge
   soundness (≤ 2^-64 at 2^64 queries) and completeness (< 2^-169, given a program IV of 32 to 2^16 bytes), π1-rec3's
   recorded graph = its verifier, the recursion's knowledge soundness as an explicit reduction and its completeness under
@@ -164,9 +165,9 @@ transaction gas without the 21,000 base (EIP-7623) and without the frame's per-f
 ## Remaining
 
 - The leanVM line's Lean port to the deployed recursion ([`docs/LEAN_PORT.md`](docs/LEAN_PORT.md)).
-- Membership: `RevealedUniform εr δr` proved (group 1 from a determinant's degree; group 2's `δr` from the degree of
-  the blinding map's minors in the random rows); `WiringCheck` by a kernel proof; zero knowledge with a pre-proof phase
-  (the distinguisher's queries before the proof); simulation-extractability.
+- Membership: `Group1Uniform` proved (the random rows' rank 12 off a determinant's zero set); `WiringCheck` by a
+  kernel proof; zero knowledge with a pre-proof phase (the distinguisher's queries before the proof);
+  simulation-extractability.
 - leanVM in Lean: the model gap (π2's circuit computes π1's Fiat–Shamir at the real Keccak-f[1600], π1's theorems are
   in the random-permutation model); the compiler's IV uniformity (`RecCompose.PatchChecked`); closed bounds at other
   shapes than the reference ([`formal/README.md`](formal/README.md), "Remaining").

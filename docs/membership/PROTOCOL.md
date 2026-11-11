@@ -9,7 +9,8 @@ WHIR. The verifier is `protocol::reduce`, generic in its scalar, so the same cod
 
 The Lean in `formal/` states and proves this protocol ([`../../formal/README.md`](../../formal/README.md),
 "Membership: the end theorems"): knowledge soundness with no hypothesis, completeness under one evaluated check, zero
-knowledge under the ZK-PCS assumption and `RevealedUniform`, the contract = the verifier.
+knowledge under the ZK-PCS assumption and `Group1Uniform` (group 1 below; group 2 is proved), the contract = the
+verifier.
 
 Notation: `K = GF(2^64)`, `E = GF(2^192)`, `m = log_rows + 2` (`m = 24` at `2^22` rows), `n = 2^m` cells, the cells
 the additive subspace of the domain (`domain.rs`), `X_j` the subspace polynomials of the novel basis, `Z = X_n` the
@@ -190,8 +191,9 @@ the out-of-domain point **alone**. Limb 3 was zero before; the table's commitmen
 
 So at the challenges where both conditions hold the revealed scalars are exactly uniform (`δr = 0` in
 `formal/Statement/PcsQuotient/Zk.lean`'s `RevealedUniform εr δr`), and `εr` is the probability of the challenges where
-one fails: about `2^-127` for group 2, and for group 1 the probability that the 32 words' weights fail to reach rank
-12 (reasoned to be negligible, the map having 20 more columns than its rank; not written out). **Why the slack
+one fails: for group 2 at most `2^-127 + 27 · 2^-192` (proved in Lean, `spanFail_le`), and for group 1 the probability
+that the 32 words' weights fail to reach rank 12 (the hypothesis `Group1Uniform`; reasoned to be negligible, the map
+having 20 more columns than its rank; not written out). **Why the slack
 words**: without them group 2 rested on the blinding, whose map to `T`'s answer depends on the random rows (through
 `(b_0 + b_1 X_1 + b_2 X_2) d d'` and `b_2 = q_n / γ`), so its rank could fall short on a set of random rows, and a
 rank condition over `K` on three weights in `E` alone fails with probability about `1 / |K|` (three random elements of

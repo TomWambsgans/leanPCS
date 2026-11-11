@@ -11,10 +11,9 @@ needs; the intermediate protocols of `866ba889` were never ported.
 
 Ported (`lean/membership`). What remains:
 
-- **`RevealedUniform εr δr`** (zero knowledge's hypothesis besides the PCS's): group 1 (`W`'s answer and `X`, `C`,
-  `V + Y`) from a determinant's degree; group 2's `δr` from the degree in the random rows of the `3 × 3` minors of the
-  blinding's map to `T`'s answer (about `2^-59`: the blinding words are in `K`; [`membership/PROTOCOL.md`](membership/PROTOCOL.md),
-  "Zero knowledge").
+- **`Group1Uniform ε1`** (zero knowledge's hypothesis besides the PCS's; `T`'s part is proved through the slack
+  words, `εslack ≤ 2^-126`): the random rows' `K`-linear map to `W`'s answer and `X`, `C`, `V + Y` of rank 12 but on a
+  small set of challenges ([`membership/PROTOCOL.md`](membership/PROTOCOL.md), "Zero knowledge").
 - **`WiringCheck`** (completeness's evaluated hypothesis: the wiring's coefficient `n − 2` nonzero) by a kernel proof.
 - Deduplication between the soundness and completeness lines (`Soundness/PcsVH*.lean` copy
   `E2ECompleteness.Pcs{WithHash,Duplex,Cost}`; `tableEval_eq_mle`, `tau_systemL`).
