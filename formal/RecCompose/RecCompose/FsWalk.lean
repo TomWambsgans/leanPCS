@@ -38,7 +38,6 @@ open OracleSpec OracleComp
 
 attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
   LeanVM.Protocol.Compile.instFintypeKState UniStatement.setupStack
-  RecStatement.layoutWords
 
 /-! ## The circuit's reads -/
 

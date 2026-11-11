@@ -1,191 +1,45 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md; conventions: see AGENTS.md. The port of
--- `formal/UniSound/UniSound/FsOps.lean` and `FsProof.lean`'s facts (`hok_uni`, `hcov_uni`, `hS_uni`, `maxErrK_uni`, the
--- shapes) to π2's six openings; π1's `2^23`-word opening is `formal/UniKeccakSound/UniKeccakSound/Fs/Whir23.lean`'s.
+-- `formal/UniSound/UniSound/FsOps.lean` and `FsProof.lean`'s facts (`hok_uni`, `hcov_uni`, `hS_uni`, `maxErrK_uni`) to
+-- π2's openings on the EIP's PCS claims, after `formal/UniKeccakSound/UniKeccakSound/Fs/ProofK.lean` (`hok_uniK`,
+-- `hU_uniK`: the openings charged once through `WhirBridge.Pcs.pcs_union_sound`).
 import RecCompose.FsDefs
 import RecCompose.Tables
 import Bridge.Verifier
-import WhirBridge.Union
 
 /-!
 # π2's openings: what the framework needs of them
 
-* **the layouts** (`layoutsOf_cc`): `W`'s, `Q`'s and the setup's public layouts at `m = 24`, F2's `shW`, `shQ`, `shS`
-  (`layoutTr_W`, `layoutTr_Q`, `layoutTr_S`);
-* **a claim on a public layout's stack is F2's on its column** (`claimOn_iff`): `ClaimOn` (`readEntry`, `eqBits`) is
-  F2's `tableEval` (`Blocks.table`, `eqEval`) for a layout of distinct blocks (`readEntry_public`);
+* **the run's points** have their stacks' variables (`p2Out_witnessPoint_length`, …: `24`, `25`, `28`);
+* **a PCS claim's point claim on a stack is `ClaimOn`** (`colEval_iff_claimOn`): the stack's polynomial
+  (`WhirBridge.Pcs.colEval`, `eq` of the point and a word's bits) is its multilinear extension (`UniSound.mleStk`);
 * **the openings' `OKP`** (`okp_W`, `okp_Q`: the decoders list the candidates' stacks, a stack satisfying the
-  opening's claims is good; π1's three: no stack); `hcov`, `hfit`, and **`hS`** (the setup's claim on its table, from
-  its opening);
-* **the shapes at once** (`p2Shapes`: plain `2^24` (`W`), the setup's `2^25`, `Q`'s `2^28`, and the Keccak π1's plain
-  `2^27` (`C1`), `2^26` (`C2`), `2^23` (its setup, `UniKeccakSound.plainShapeE23`, certified at the same `εExact`);
-  their prefixes distinct) and the openings' query counts (`sumQO_p2`); the decoders' lists (`L_W = 9952`, `L_Q = 3564`) and
-  `maxErrK` (`maxErrK_le`).
+  opening's claims is good; π1's three: no stack, `okp_pi1`); `hcov`, `hfit`, and **`hS`** (the setup's claim on its
+  table, from its opening);
+* **the eight openings once** (`hU_pcs`): each opening's statement is one of `WhirBridge.Pcs.pcs_union_sound`'s
+  union over version 1's sizes `2^23 ..= 2^28` at `εExact` (`UniKeccakSound.pcsKShapes`), for any list of
+  `PcsOp`s: `Compose.GUnionSound` at `(QA + 10122) (εExact + 5 (QA + 10122) / 2^256)`;
+* the decoders' lists (`L_W = 9952`, `L_Q = 3564`) and `maxErrK` (`maxErrK_p2`).
 -/
 
 set_option linter.unusedSectionVars false
 
 namespace RecCompose
 
+-- `Layers.lean`'s instance of `SampleableType E` (the one `Pi2FsLayer`'s protocols are at), not `Completeness`'s.
+attribute [local instance high] LeanVM.Protocol.instSampleableTypeE
+
 open RecStatement Compose QuotientRpm LeanVM LeanVM.Parameters LeanVM.Protocol LeanVM.Protocol.KeccakHash
 open LeanVM.Protocol.Compile LeanVM.Protocol.EndToEnd WhirBridge Finset
 open OracleSpec OracleComp
+open LeanVM.Protocol.Rom (romExperiment romExperiment_map romExperiment_eq)
 open scoped ENNReal
 
 attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
   LeanVM.Protocol.Compile.instFintypeKState UniStatement.setupStack
-  RecStatement.layoutWords
-
-/-! ## The layouts -/
 
 theorem cc_logN : cc.logN = 24 := rfl
 
 theorem cc_logRow : cc.logRow = 4 := rfl
-
-theorem layoutsOf_cc : layoutsOf cc.logN =
-    (PcsQuotient.Layout.ofChunks 24 24 24 [(0, 2 ^ 24)],
-      PcsQuotient.Layout.ofChunks 28 24 28 (quotientChunks 24),
-      PcsQuotient.Layout.ofChunks 25 24 25 [(0, 2 ^ 24), (1, 2 ^ 24)]) := by
-  rw [cc_logN]
-  rfl
-
-/-- `W`'s layout at the real circuit. -/
-abbrev lW : PcsQuotient.Layout := PcsQuotient.Layout.ofChunks 24 24 24 [(0, 2 ^ 24)]
-/-- `Q`'s layout at the real circuit. -/
-abbrev lQ : PcsQuotient.Layout := PcsQuotient.Layout.ofChunks 28 24 28 (quotientChunks 24)
-/-- The setup's layout at the real circuit. -/
-abbrev lS : PcsQuotient.Layout := PcsQuotient.Layout.ofChunks 25 24 25 [(0, 2 ^ 24), (1, 2 ^ 24)]
-
-theorem layoutTr_W : Bridge.layoutTr lW = shW.L := Bridge.layoutTr_ofChunks_zero 24 24 24 (2 ^ 24)
-
-theorem layoutTr_Q : Bridge.layoutTr lQ = shQ.L := by decide +kernel
-
-theorem layoutTr_S : Bridge.layoutTr lS = shS.L := by decide +kernel
-
-theorem lanes_W : (∀ l ∈ lW.lanes, ∃ b, l = .block b) ∧ lW.lanes.Nodup := by
-  constructor
-  · intro l hl
-    simp only [PcsQuotient.Layout.ofChunks, List.flatMap_cons, List.flatMap_nil, List.append_nil,
-      List.mem_map] at hl
-    obtain ⟨j, -, rfl⟩ := hl
-    exact ⟨_, rfl⟩
-  · decide +kernel
-
-theorem lanes_Q : (∀ l ∈ lQ.lanes, ∃ b, l = .block b) ∧ lQ.lanes.Nodup := by
-  constructor
-  · intro l hl
-    simp only [PcsQuotient.Layout.ofChunks, List.mem_flatMap, List.mem_map] at hl
-    obtain ⟨_, -, j, -, rfl⟩ := hl
-    exact ⟨_, rfl⟩
-  · decide +kernel
-
-theorem lanes_S : (∀ l ∈ lS.lanes, ∃ b, l = .block b) ∧ lS.lanes.Nodup := by
-  constructor
-  · intro l hl
-    simp only [PcsQuotient.Layout.ofChunks, List.mem_flatMap, List.mem_map] at hl
-    obtain ⟨_, -, j, -, rfl⟩ := hl
-    exact ⟨_, rfl⟩
-  · decide +kernel
-
-/-! ## A claim on a public layout's stack is F2's -/
-
-theorem getD_toArray {μ : ℕ} (q : Column μ) (j : ℕ) : q.values.toArray.getD j 0 = q.values.getD j 0 := by
-  by_cases h : j < 2 ^ μ
-  · simp [Array.getD, Vector.getD, h]
-  · simp [Array.getD, Vector.getD, h]
-
-/-- **A column's words read through a public layout of distinct blocks are F2's table.** -/
-theorem readEntry_public (L : PcsQuotient.Layout) (hp : L.logPiece = none)
-    (hb : ∀ l ∈ L.lanes, ∃ b, l = .block b) (hnd : L.lanes.Nodup) (q : Column L.logN) (i : ℕ) :
-    L.readEntry (stackOf q) i = (Bridge.layoutTr L).table q i := by
-  have hlog : (Bridge.layoutTr L).toBlocks.logLane = L.logLane := rfl
-  have hlen : (Bridge.layoutTr L).toBlocks.lanes = L.lanes.length := by
-    simp [WhirBridge.Layout.toBlocks, WhirBridge.Blocks.lanes, Bridge.layoutTr]
-  have hgetD : ∀ l (hl : l < L.lanes.length) b, L.lanes[l] = .block b →
-      (Bridge.layoutTr L).toBlocks.blocks.getD l 0 = b := by
-    intro l hl b hlb
-    simp only [WhirBridge.Layout.toBlocks, Bridge.layoutTr, List.map_map]
-    rw [List.getD_eq_getElem _ _ (by simpa using hl), List.getElem_map]
-    simp only [Function.comp_apply, hlb]
-    rfl
-  have htab : (Bridge.layoutTr L).table q i = (Bridge.layoutTr L).toBlocks.table q i := by
-    unfold WhirBridge.Layout.table
-    rw [Bridge.layoutTr_logPiece, hp]
-  rw [htab]
-  unfold WhirBridge.Blocks.table PcsQuotient.Layout.readEntry
-  rw [hp, hlog, hlen]
-  simp only
-  rcases hf : L.lanes.findIdx? (· = PcsQuotient.Lane.block (i / 2 ^ L.logLane)) with _ | l
-  · refine (Finset.sum_eq_zero fun l hl => ?_).symm
-    have hl' := Finset.mem_range.mp hl
-    obtain ⟨b, hb'⟩ := hb _ (List.getElem_mem hl')
-    rw [hgetD l hl' b hb']
-    rw [List.findIdx?_eq_none_iff] at hf
-    have := hf (L.lanes[l]) (List.getElem_mem hl')
-    rw [hb'] at this
-    simp only [decide_eq_false_iff_not] at this
-    rw [ite_eq_right_iff]
-    intro h
-    exact absurd (by rw [h]) this
-  · obtain ⟨hl, hlv, -⟩ := List.findIdx?_eq_some_iff_getElem.mp hf
-    simp only [decide_eq_true_eq] at hlv
-    dsimp only
-    rw [Finset.sum_eq_single l]
-    · rw [hgetD l hl _ hlv, ite_eq_left rfl]
-      show q.values.toArray.getD _ 0 = _
-      rw [getD_toArray]
-      congr 1
-      ring
-    · intro l' hl' hne
-      have hl'' := Finset.mem_range.mp hl'
-      obtain ⟨b, hb'⟩ := hb _ (List.getElem_mem hl'')
-      rw [hgetD l' hl'' b hb']
-      rw [ite_eq_right_iff]
-      intro h
-      have heq : L.lanes[l'] = L.lanes[l] := by
-        rw [hb', hlv, h]
-      exact absurd ((List.Nodup.getElem_inj_iff hnd).mp heq) hne
-    · intro h
-      exact absurd (Finset.mem_range.mpr hl) h
-
-/-- **A claim on a public layout's stack is F2's on its column**: `ClaimOn` (the statement's `readEntry`, `eqBits`)
-is `tableEval` of `layoutTr`, for a point of the layout's variables. -/
-theorem claimOn_iff (L : PcsQuotient.Layout) (hp : L.logPiece = none)
-    (hb : ∀ l ∈ L.lanes, ∃ b, l = .block b) (hnd : L.lanes.Nodup) (q : Column L.logN) (pt : List E) (v : E)
-    (hpt : pt.length = L.vars) :
-    ClaimOn L (stackOf q) (pt, v) ↔ (Bridge.layoutTr L).tableEval q pt = v := by
-  unfold ClaimOn WhirBridge.Layout.tableEval
-  have : ∑ i ∈ range (2 ^ L.vars), PcsQuotient.eqBits pt i * ofK (L.readEntry (stackOf q) i) =
-      ∑ t ∈ range (2 ^ (Bridge.layoutTr L).vars),
-        ofK ((Bridge.layoutTr L).table q t) * Verifier.eqEval (boolPoint (Bridge.layoutTr L).vars t) pt := by
-    rw [Bridge.layoutTr_vars]
-    refine Finset.sum_congr rfl fun i _ => ?_
-    rw [readEntry_public L hp hb hnd q i, Bridge.eqBits_eq, WhirBridge.eqBits_eq_boolPoint, hpt, mul_comm]
-  simp only
-  rw [this]
-
-/-- `claimOn_iff` at a layout given up to `layoutTr`. -/
-theorem claimOn_iff' (L : PcsQuotient.Layout) (L' : WhirBridge.Layout) (hLL : Bridge.layoutTr L = L')
-    (hp : L.logPiece = none) (hb : ∀ l ∈ L.lanes, ∃ b, l = .block b) (hnd : L.lanes.Nodup)
-    (q : Column L'.logN) (pt : List E) (v : E) (hpt : pt.length = L.vars) :
-    ClaimOn L (stackOf q) (pt, v) ↔ L'.tableEval q pt = v := by
-  subst hLL
-  exact claimOn_iff L hp hb hnd q pt v hpt
-
-/-- **A public layout reads its stack below its lanes' words only.** -/
-theorem readEntry_congr (L : PcsQuotient.Layout) (hp : L.logPiece = none) (s s' : Stk)
-    (h : ∀ j < L.lanes.length * 2 ^ L.logLane, s j = s' j) (i : ℕ) : L.readEntry s i = L.readEntry s' i := by
-  unfold PcsQuotient.Layout.readEntry
-  rw [hp]
-  simp only
-  rcases hf : L.lanes.findIdx? (· = PcsQuotient.Lane.block (i / 2 ^ L.logLane)) with _ | l
-  · rfl
-  · obtain ⟨hl, -, -⟩ := List.findIdx?_eq_some_iff_getElem.mp hf
-    dsimp only
-    refine h _ ?_
-    have hm : i % 2 ^ L.logLane < 2 ^ L.logLane := Nat.mod_lt _ (Nat.two_pow_pos _)
-    calc l * 2 ^ L.logLane + i % 2 ^ L.logLane < l * 2 ^ L.logLane + 2 ^ L.logLane := by omega
-      _ = (l + 1) * 2 ^ L.logLane := by ring
-      _ ≤ L.lanes.length * 2 ^ L.logLane := Nat.mul_le_mul_right _ hl
 
 /-! ## The run's points -/
 
@@ -217,141 +71,108 @@ theorem p2Out_sumPoint_length (π : P2Pf) (ch : List (List E)) : (p2Out π ch).s
   rw [run_sumPoint, padded_length, spec_core_logN, cc_logN]
   rfl
 
-theorem clW_claims (π : P2Pf) (ch : List (List E)) :
-    (clW π ch).claims = [⟨(p2Out π ch).witnessPoint, (p2Out π ch).fold⟩] :=
-  Bridge.toStmt_claims_of (by simp) fun c hc => by
-    rw [List.mem_singleton] at hc
-    subst hc
-    exact p2Out_witnessPoint_length π ch
+/-! ## A PCS claim's point claim is `ClaimOn` -/
 
-theorem clS_claims (π : P2Pf) (ch : List (List E)) :
-    (clS π ch).claims = [⟨(p2Out π ch).setupPoint, (p2Inputs π ch).ξ⟩] :=
-  Bridge.toStmt_claims_of (by simp) fun c hc => by
-    rw [List.mem_singleton] at hc
-    subst hc
-    exact p2Out_setupPoint_length π ch
+/-- **A stack's polynomial at a point of its variables is its multilinear extension** (`UniSound.mleStk`, `ClaimOn`'s),
+for a stack whose words below `2^n` are the column's. -/
+theorem colEval_eq_mle {n : ℕ} (q : Column n) (s : Stk) (hs : ∀ i < 2 ^ n, q.values.getD i 0 = s i)
+    (pt : List E) (hp : pt.length = n) : Pcs.colEval q pt = UniSound.mleStk s n pt := by
+  unfold Pcs.colEval UniSound.mleStk
+  refine Finset.sum_congr rfl fun x _ => ?_
+  have he := UniSound.eqEval_boolPoint x.val pt
+  rw [hp] at he
+  rw [LeanVM.Protocol.Whir.Complete.eqEval_comm, he, hs x.val x.isLt]
 
-theorem toStmt_claims_of3 {L : WhirBridge.Layout} {cs : List WhirBridge.Claim}
-    (hshort : cs.length ≤ 3) (hwide : ∀ c ∈ cs, c.point.length = L.vars) :
-    (Compose.toStmt L cs).claims = cs := by
-  have he := Compose.extra_length_le L
-  unfold Compose.toStmt
-  have hc : cs.length + L.stacking.extra.length ≤ 2 ^ 46 + 1 ∧ ∀ c ∈ cs, c.point.length = L.stacking.vars :=
-    ⟨by simp only [WhirBridge.Layout.stacking]; omega, hwide⟩
-  split
-  · rfl
-  · exact absurd hc ‹_›
+theorem colEval_iff_claimOn {n : ℕ} (q : Column n) (s : Stk) (hs : ∀ i < 2 ^ n, q.values.getD i 0 = s i)
+    (pt : List E) (v : E) (hp : pt.length = n) : Pcs.colEval q pt = v ↔ ClaimOn n s (pt, v) := by
+  rw [colEval_eq_mle q s hs pt hp]
+  rfl
 
-theorem clQ_claims (π : P2Pf) (ch : List (List E)) :
-    (clQ π ch).claims = [⟨(p2Out π ch).quotientPoint, (p2Out π ch).quotientValue⟩,
-      ⟨(p2Out π ch).pushesPoint, (p2Out π ch).pushesValue⟩, ⟨(p2Out π ch).sumPoint, (p2Out π ch).sumValue⟩] :=
-  toStmt_claims_of3 (by simp) fun c hc => by
-    simp only [List.mem_cons, List.not_mem_nil, or_false] at hc
-    rcases hc with rfl | rfl | rfl
-    · exact p2Out_quotientPoint_length π ch
-    · exact p2Out_pushesPoint_length π ch
-    · exact p2Out_sumPoint_length π ch
+/-- A round's candidate read back is the column's words (`rdP`, the plain layout's table, `2^23 ..= 2^28` words). -/
+theorem rdP_getD (n : ℕ) (h1 : 23 ≤ n) (h2 : n ≤ 28) (q : Column n) (i : ℕ) (hi : i < 2 ^ n) :
+    q.values.getD i 0 = rdP n q i := by
+  unfold rdP UniSound.rdTab
+  have hi' : i < 2 ^ (UniSound.plainL n).vars := hi
+  rw [dite_eq_left hi']
+  simp only [tabOf, Vector.getElem_ofFn]
+  exact (UniKeccakSound.plainL_tableK n h1 h2 q i hi).symm
+
+/-- A column of an array's words is the array's words below `2^n`. -/
+theorem colOf_getD (a : Array K) (n i : ℕ) (hi : i < 2 ^ n) :
+    (UniSound.colOf a n).values.getD i 0 = a.getD i 0 := by
+  simp [UniSound.colOf, Vector.getD, hi]
 
 /-! ## The openings' `OKP` -/
 
-section Ops
+section Facts
 
 variable (D : RecDeployment) (hs : UniKeccakSound.UniShapesK D.pi1)
 
-theorem p2Tc_zero : p2Tc 0 = colCode shW.L shW.R shW.adm := by
+/-- `W`'s opening (`p2Pcs5`'s fourth). -/
+noncomputable abbrev wOp : GOp P2Pf E Stk :=
+  PcsOp.gop ⟨24, by norm_num, by norm_num, wCl, fun π => π.proof.w, .round 0 (rdP 24)⟩
+
+theorem p2Tc_zero : p2Tc 0 = tableCode (UniSound.plainL 24) logInvRate (shK 24 (by norm_num) (by norm_num)).adm
+    UniSound.rdTab := by
   unfold p2Tc
-  exact ite_eq_left rfl
-
-theorem p2Tc_one : p2Tc 1 = colCode shQ.L shQ.R shQ.adm := by
-  unfold p2Tc
-  exact ite_eq_right (by decide)
-
-theorem colCode_dec (L : WhirBridge.Layout) (R : ℕ) (hw : Whir.Admissible L.logN R)
-    (w : Fin (2 ^ WhirBridge.rootHeight L.logN R) → Option (List UInt8)) :
-    (colCode L R hw).dec w = (decodeColumns L.logN R (wordOfMerkle (WhirBridge.rootHeight L.logN R)
-      (2 ^ WhirBridge.laneFold) w)).map stackOf := by
-  simp only [colCode]
-
-theorem colCode_mem (L : WhirBridge.Layout) (R : ℕ) (hw : Whir.Admissible L.logN R)
-    (w : Fin (2 ^ WhirBridge.rootHeight L.logN R) → Option (List UInt8)) (q : Column L.logN)
-    (hq : q ∈ Candidates L.logN R (code₀ L.logN R).thr
-      (wordOfMerkle (WhirBridge.rootHeight L.logN R) (2 ^ WhirBridge.laneFold) w)) :
-    stackOf q ∈ (colCode L R hw).dec w := by
-  rw [colCode_dec]
-  exact List.mem_map_of_mem ((mem_decodeColumns hw _ q).mpr hq)
-
-theorem colCode_height (L : WhirBridge.Layout) (R : ℕ) (hw : Whir.Admissible L.logN R) :
-    (colCode L R hw).height = WhirBridge.rootHeight L.logN R := by simp only [colCode]
-
-theorem colCode_leafLen (L : WhirBridge.Layout) (R : ℕ) (hw : Whir.Admissible L.logN R) :
-    (colCode L R hw).leafLen = 8 * 2 ^ WhirBridge.laneFold := by simp only [colCode]
-
-/-- **`W`'s opening**: its decoder lists the candidates' stacks, and a stack satisfying its claim is good. -/
-theorem okp_W : WhirOp.OKP p2Tc p2Good (p2Setup D hs) p2Fix (p2Stk D)
-    (⟨shW, clW, fun π => π.proof.w, .round 0 stackOf⟩ : WhirOp P2Pf E Stk) := by
-  unfold WhirOp.OKP
-  dsimp only
-  rw [p2Tc_zero]
-  refine ⟨colCode_height _ _ _, colCode_leafLen _ _ _, fun w q hq => colCode_mem shW.L shW.R shW.adm w q hq,
-    fun π ch q h => ?_⟩
-  unfold p2Good
   rw [ite_eq_left rfl]
-  refine ⟨stackOf q, rfl, ?_⟩
-  have hcl := h _ (by rw [clW_claims]; exact List.mem_singleton_self _)
-  rw [layoutsOf_cc]
-  exact (claimOn_iff' lW shW.L layoutTr_W rfl lanes_W.1 lanes_W.2 q _ _
-    (p2Out_witnessPoint_length π ch)).mpr hcl
 
-/-- **`Q`'s opening**: its decoder lists the candidates' stacks, and a stack satisfying its two claims is good. -/
-theorem okp_Q : WhirOp.OKP p2Tc p2Good (p2Setup D hs) p2Fix (p2Stk D)
-    (⟨shQ, clQ, fun π => π.proof.q, .round 1 stackOf⟩ : WhirOp P2Pf E Stk) := by
-  unfold WhirOp.OKP
-  dsimp only
-  rw [p2Tc_one]
-  refine ⟨colCode_height _ _ _, colCode_leafLen _ _ _, fun w q hq => colCode_mem shQ.L shQ.R shQ.adm w q hq,
-    fun π ch q h => ?_⟩
-  unfold p2Good
-  rw [ite_eq_right (by decide), ite_eq_left rfl]
-  have h1 := h _ (by rw [clQ_claims]; exact List.mem_cons_self)
-  have h2 := h _ (by rw [clQ_claims]; exact List.mem_cons_of_mem _ List.mem_cons_self)
-  have h3 := h _ (by rw [clQ_claims]; exact List.mem_cons_of_mem _ (List.mem_cons_of_mem _ List.mem_cons_self))
-  refine ⟨stackOf q, rfl, ?_, ?_, ?_⟩
-  · rw [layoutsOf_cc]
-    exact (claimOn_iff' lQ shQ.L layoutTr_Q rfl lanes_Q.1 lanes_Q.2 q _ _
-      (p2Out_quotientPoint_length π ch)).mpr h1
-  · rw [layoutsOf_cc]
-    exact (claimOn_iff' lQ shQ.L layoutTr_Q rfl lanes_Q.1 lanes_Q.2 q _ _
-      (p2Out_pushesPoint_length π ch)).mpr h2
-  · rw [layoutsOf_cc]
-    exact (claimOn_iff' lQ shQ.L layoutTr_Q rfl lanes_Q.1 lanes_Q.2 q _ _
-      (p2Out_sumPoint_length π ch)).mpr h3
+theorem p2Tc_one : p2Tc 1 = tableCode (UniSound.plainL 28) logInvRate (shK 28 (by norm_num) (by norm_num)).adm
+    UniSound.rdTab := by
+  unfold p2Tc
+  rw [ite_eq_right (by decide)]
 
-/-- **An opening of no `2^25`-word stack has no stack.** -/
-theorem p2StkNone (o : WhirOp P2Pf E Stk) (h : o.S.L.logN ≠ 25) : p2Stk D o = none := by
+/-- **`W`'s opening's `OKP`**: its decoder lists the candidates' stacks, and a stack its claim holds of satisfies
+`W`'s claim (`ClaimOn`). -/
+theorem okp_W : GOp.OKP p2Tc p2Good (p2Setup D hs) p2Fix (p2Stk D) wOp := by
+  refine gop_okp_tableCode (UniSound.plainL 24) logInvRate (shK 24 (by norm_num) (by norm_num)).adm _ _ _
+    (fun r π ch => PcsOp.queries _ r π ch) (fun r π ch => PcsOp.duplex _ r π ch) 0 UniSound.rdTab p2Tc p2Tc_zero
+    p2Good (fun π ch q h => ?_) _ _ _
+  obtain ⟨ood, pt, v, hcl, hl, -, hv⟩ := h
+  simp only [wCl, Option.some.injEq, Prod.mk.injEq] at hcl
+  obtain ⟨-, rfl, rfl⟩ := hcl
+  rw [p2Good, ite_eq_left rfl]
+  exact ⟨_, rfl, (colEval_iff_claimOn q _ (rdP_getD 24 (by norm_num) (by norm_num) q) _ _ hl).1 hv⟩
+
+theorem claim_of_holdsQ (o : PcsOp) (ho : o.n = 28) (pt : List E) (v : E) {π : P2Pf} {ch : List (List E)}
+    {q : Column 28} (hcl : ∀ ood pt' v', o.cl π ch = some (ood, pt', v') → pt' = pt ∧ v' = v)
+    (h : o.holds π ch (cast (by rw [ho]) q)) : ClaimOn 28 (rdP 28 q) (pt, v) := by
+  obtain ⟨n, lo, hi, cl, prf, tgt⟩ := o
+  simp only at ho
+  subst ho
+  obtain ⟨ood, pt', v', hc, hl, -, hv⟩ := h
+  obtain ⟨rfl, rfl⟩ := hcl _ _ _ hc
+  exact (colEval_iff_claimOn q _ (rdP_getD 28 (by norm_num) (by norm_num) q) _ _ hl).1 hv
+
+/-- **`Q`'s opening's `OKP`** (its three claims as one opening): its decoder lists the candidates' stacks, and a
+stack its three claims hold of satisfies `Q`'s three (`ClaimOn`). -/
+theorem okp_Q : GOp.OKP p2Tc p2Good (p2Setup D hs) p2Fix (p2Stk D) qOp := by
+  refine gop_okp_tableCode (UniSound.plainL 28) logInvRate (shK 28 (by norm_num) (by norm_num)).adm _ _ _
+    qOp.queries qOp.duplex 1 UniSound.rdTab p2Tc p2Tc_one p2Good (fun π ch q h => ?_) _ _ _
+  obtain ⟨h1, h2, h3⟩ := h
+  rw [p2Good, ite_eq_right (by decide), ite_eq_left rfl]
+  refine ⟨_, rfl, claim_of_holdsQ qIdOp rfl _ _ (fun _ _ _ hc => ?_) h1,
+    claim_of_holdsQ qPushOp rfl _ _ (fun _ _ _ hc => ?_) h2, claim_of_holdsQ qSumOp rfl _ _ (fun _ _ _ hc => ?_) h3⟩
+  · simp only [qIdOp, qIdCl, Option.some.injEq, Prod.mk.injEq] at hc
+    exact ⟨hc.2.1.symm, hc.2.2.symm⟩
+  · simp only [qPushOp, qPushCl, Option.some.injEq, Prod.mk.injEq] at hc
+    exact ⟨hc.2.1.symm, hc.2.2.symm⟩
+  · simp only [qSumOp, qSumCl, Option.some.injEq, Prod.mk.injEq] at hc
+    exact ⟨hc.2.1.symm, hc.2.2.symm⟩
+
+/-- **The other openings carry no stack** (their stacks are not of `2^25` words). -/
+theorem p2StkNone (o : GOp P2Pf E Stk) (h : o.μ ≠ 25) : p2Stk D o = none := by
   unfold p2Stk
-  exact dite_eq_right_iff.mpr fun h' => absurd h' h
-
-/-- **π1's openings**: nothing to show (no stack). -/
-theorem okp_pi1 (k : ℕ) (r : P2Pf → Bytes32) (q₀ : Column (sh1 k).L.logN) (prf : P2Pf → Compile.Proof) :
-    WhirOp.OKP p2Tc p2Good (p2Setup D hs) p2Fix (p2Stk D)
-      (⟨sh1 k, cl1 D k, prf, .setup r q₀⟩ : WhirOp P2Pf E Stk) := by
-  unfold WhirOp.OKP
-  dsimp only
-  intro f hf
-  rw [p2StkNone D _ (by
-    show pi1Vars k ≠ 25
-    unfold pi1Vars
-    split_ifs <;> decide)] at hf
-  exact absurd hf (by simp)
-
-/-- **The setup's opening's stack** is the setup's table at the proof's roots. -/
-theorem p2StkSetup :
-    p2Stk D (⟨shS, clS, fun π => π.proof.setup, .setup (fun π => π.roots.2) (col0 _)⟩ : WhirOp P2Pf E Stk) =
-      some fun π => setupCol D (p2Roots π) := by
-  unfold p2Stk
-  split_ifs with h
+  split
+  · next h' => exact absurd h' h
   · rfl
-  · exact absurd rfl h
+
+/-- **π1's openings' `OKP`**: setup openings without a stack. -/
+theorem okp_pi1 (n : ℕ) (lo : 23 ≤ n) (hi : n ≤ 28) (hn : n ≠ 25)
+    (cl : P2Pf → List (List E) → Option (E × List E × E)) (prf : P2Pf → Compile.Proof) (r : P2Pf → Bytes32)
+    (q₀ : Column n) :
+    GOp.OKP p2Tc p2Good (p2Setup D hs) p2Fix (p2Stk D) (PcsOp.gop ⟨n, lo, hi, cl, prf, .setup r q₀⟩) :=
+  gop_okp_none _ _ _ _ _ _ r q₀ rfl (p2StkNone D _ hn)
 
 /-- **Every round with a root is opened**: `W`'s and `Q`'s. -/
 theorem hcov_p2 : ∀ i < pi2Spec.K.rounds.length, (pi2Spec.K.spec i).root →
@@ -359,112 +180,27 @@ theorem hcov_p2 : ∀ i < pi2Spec.K.rounds.length, (pi2Spec.K.spec i).root →
   intro i hi hr
   have hi3 : i < 3 := hi
   interval_cases i
-  · exact ⟨_, List.mem_cons_of_mem _ (List.mem_cons_of_mem _ (List.mem_cons_of_mem _ List.mem_cons_self)),
-      stackOf, rfl⟩
-  · exact ⟨_, List.mem_cons_of_mem _ (List.mem_cons_of_mem _ (List.mem_cons_of_mem _ (List.mem_cons_of_mem _
-      (List.mem_cons_of_mem _ List.mem_cons_self)))), stackOf, rfl⟩
+  · exact ⟨wOp, by simp [p2Ops, p2Pcs5, wOp], rdP 24, rfl⟩
+  · exact ⟨qOp, by simp [p2Ops], rdP 28, rfl⟩
   · exact absurd hr (by decide)
 
 /-- **The stream's messages fit the rounds.** -/
 theorem hfit_p2 (π : P2Pf) : FitsAll pi2Spec.K.rounds (p2View π).2 :=
   UniSound.fitsAll_msgsAt _ _ _
 
-/-- The setup's table read off its column (`2^25` words) is the table (`readEntry` reads below `2^25`). -/
-theorem claimOn_setupCol (roots : RecSetupRoots) (c : List E × E) :
-    ClaimOn lS (stackOf (setupCol D roots)) c ↔ ClaimOn lS (fun j ↦ (setupStackAt D roots).getD j 0) c := by
-  have hlen : lS.lanes.length * 2 ^ lS.logLane = 2 ^ 25 := by decide +kernel
-  have hr : ∀ i, lS.readEntry (stackOf (setupCol D roots)) i =
-      lS.readEntry (fun j ↦ (setupStackAt D roots).getD j 0) i :=
-    readEntry_congr lS rfl _ _ fun j hj => by
-      rw [hlen] at hj
-      have hj' : j < 33554432 := by norm_num at hj; exact hj
-      simp [stackOf, setupCol, UniSound.colOf, Array.getD, hj']
-  unfold ClaimOn
-  simp only [hr]
-
-/-- **The setup's opening gives the setup's claim on its table** (`hS`). -/
+/-- **The setup's claim on its table, from its opening's** (`GOp.SetupHoldsP` of the setup's opening, its stack the
+setup's table at the proof's commitments). -/
 theorem hS_p2 (π : P2Pf) (ch : List (List E))
-    (h : ∀ o ∈ p2Ops D, WhirOp.SetupHoldsP (p2Stk D) o π ch) : p2GoodS D π ch := by
-  have h5 := h _ (List.mem_cons_of_mem _ (List.mem_cons_of_mem _ (List.mem_cons_of_mem _ (List.mem_cons_of_mem _
-    List.mem_cons_self))) :
-    (⟨shS, clS, fun π => π.proof.setup, .setup (fun π => π.roots.2) (col0 _)⟩ : WhirOp P2Pf E Stk) ∈ p2Ops D)
-  unfold WhirOp.SetupHoldsP at h5
-  dsimp only at h5
-  have hcl := h5 _ (p2StkSetup D) _ (by rw [clS_claims]; exact List.mem_singleton_self _)
-  unfold p2GoodS
-  rw [layoutsOf_cc]
-  exact (claimOn_setupCol D _ _).mp ((claimOn_iff' lS shS.L layoutTr_S rfl lanes_S.1 lanes_S.2 _ _ _
-    (p2Out_setupPoint_length π ch)).mpr hcl)
-
-end Ops
-
-/-! ## The shapes, at once -/
-
-/-- **π2's contract's shapes**: plain `2^24` (`W`), the setup's `2^25`, `Q`'s `2^28`, and the Keccak π1's plain `2^27`
-(`C1`), `2^26` (`C2`) and `2^23` (its setup, `UniKeccakSound.plainShapeE23`), at `εExact`. -/
-noncomputable def p2Shapes : List (ExactShape εExact) :=
-  [plainShapeE 24 le_rfl (by norm_num),
-    ExactShape.large 25 24 25 [(0, 2 ^ 24), (1, 2 ^ 24)] newOK_setup (by decide) (by decide),
-    ExactShape.large 28 24 28 (quotientChunks 24) newOK_quotient (by decide) (by decide),
-    plainShapeE 27 (by norm_num) (by norm_num), plainShapeE 26 (by norm_num) (by norm_num),
-    UniKeccakSound.plainShapeE23]
-
-theorem p2Shapes_logN : p2Shapes.map (fun s ↦ s.L.logN) = [24, 25, 28, 27, 26, 23] := rfl
-
-theorem p2Shapes_nodup : (p2Shapes.map fun s ↦ openingPrefix s.L s.R).Nodup := by
-  refine nodup_prefix_of_logN (fun s hs ↦ ?_) (by rw [p2Shapes_logN]; decide)
-  have h := List.mem_map_of_mem (f := fun s : ExactShape εExact ↦ s.L.logN) hs
-  rw [p2Shapes_logN] at h
-  simp at h
-  omega
-
-theorem p2Shapes_QO : ∀ s ∈ p2Shapes, s.QO ≤ 9018 := by
-  intro s hs
-  obtain ⟨h24, h25, h26, h27, h28⟩ := largeQueries_eq
-  have h23 := UniKeccakSound.queries23_eq
-  simp only [p2Shapes, List.mem_cons, List.not_mem_nil, or_false] at hs
-  rcases hs with rfl | rfl | rfl | rfl | rfl | rfl
-  · show largeQueries 24 ≤ 9018
-    omega
-  · show largeQueries 25 ≤ 9018
-    omega
-  · show largeQueries 28 ≤ 9018
-    omega
-  · show largeQueries 27 ≤ 9018
-    omega
-  · show largeQueries 26 ≤ 9018
-    omega
-  · show UniKeccakSound.queries23 ≤ 9018
-    omega
-
-/-- **The six openings' shapes are among `p2Shapes`.** -/
-theorem hops_p2 (D : RecDeployment) : ∀ o ∈ p2Ops D, ∃ s ∈ p2Shapes, s.L = o.S.L ∧ s.R = o.S.R := by
-  intro o ho
-  simp only [p2Ops, List.mem_cons, List.not_mem_nil, or_false] at ho
-  rcases ho with rfl | rfl | rfl | rfl | rfl | rfl
-  · exact ⟨_, List.mem_cons_of_mem _ (List.mem_cons_of_mem _ (List.mem_cons_of_mem _ List.mem_cons_self)),
-      rfl, rfl⟩
-  · exact ⟨_, List.mem_cons_of_mem _ (List.mem_cons_of_mem _ (List.mem_cons_of_mem _ (List.mem_cons_of_mem _
-      List.mem_cons_self))), rfl, rfl⟩
-  · exact ⟨_, List.mem_cons_of_mem _ (List.mem_cons_of_mem _ (List.mem_cons_of_mem _ (List.mem_cons_of_mem _
-      (List.mem_cons_of_mem _ List.mem_cons_self)))), rfl, rfl⟩
-  · exact ⟨_, List.mem_cons_self, rfl, rfl⟩
-  · exact ⟨_, List.mem_cons_of_mem _ List.mem_cons_self, rfl, rfl⟩
-  · exact ⟨_, List.mem_cons_of_mem _ (List.mem_cons_of_mem _ List.mem_cons_self), rfl, rfl⟩
-
-/-- **The six openings' queries**: `8318 + 7928 + 6499 + 7183 + 7546 + 9018` (π1's `C1`, `C2`, setup at `2^27`,
-`2^26`, `2^23` words, then `W`, π2's setup, `Q`). -/
-theorem sumQO_p2 (D : RecDeployment) : ((p2Ops D).map fun o => o.S.QO).sum = 46492 := by
-  obtain ⟨h24, h25, h26, h27, h28⟩ := largeQueries_eq
-  have h23 := UniKeccakSound.queries23_eq
-  have k0 : UniKeccakSound.kQueries 27 = largeQueries 27 := rfl
-  have k1 : UniKeccakSound.kQueries 26 = largeQueries 26 := rfl
-  have k2 : UniKeccakSound.kQueries 23 = UniKeccakSound.queries23 := rfl
-  have e0 : pi1Vars 0 = 27 := rfl
-  have e1 : pi1Vars 1 = 26 := rfl
-  have e2 : pi1Vars 2 = 23 := rfl
-  simp only [p2Ops, List.map_cons, List.map_nil, List.sum_cons, List.sum_nil, e0, e1, e2, k0, k1, k2, h23, h24, h25,
-    h26, h27, h28, Nat.reduceAdd]
+    (h : ∀ o ∈ p2Ops D, GOp.SetupHoldsP (p2Stk D) o π ch) : p2GoodS D π ch := by
+  have hm : (PcsOp.gop ⟨25, by norm_num, by norm_num, sCl, fun π => π.proof.setup,
+      .setup (fun π => toB π.roots.pi2) (col0 _)⟩) ∈ p2Ops D := by
+    simp [p2Ops, p2Pcs5]
+  have h5 := h _ hm
+  unfold GOp.SetupHoldsP at h5
+  obtain ⟨ood, pt, v, hcl, hl, -, hv⟩ := h5 (fun π => setupCol D π.roots.pi1) rfl
+  simp only [sCl, Option.some.injEq, Prod.mk.injEq] at hcl
+  obtain ⟨-, rfl, rfl⟩ := hcl
+  exact (colEval_iff_claimOn _ _ (fun i hi => colOf_getD _ 25 i hi) _ _ hl).1 hv
 
 /-! ## The lists, `maxErrK` -/
 
@@ -501,11 +237,138 @@ theorem maxErrK_p2 (R : Compose.Piop pi2Spec.K Stk) (e : ℝ≥0∞)
   rw [facL_p2 j hj3]
   exact herr j hj3
 
-end RecCompose
+end Facts
 
-/-- info: 'RecCompose.readEntry_public' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms RecCompose.readEntry_public
+/-! ## The openings once: the PCS union -/
+
+section Union
+
+/-- **An opening's statement in the PCS union**: its size's index, its PCS claim (the root it reads, the
+out-of-domain answer, the point and value), its opening proof; a dummy claim where it has no claim or its point has not
+its stack's variables (the opening rejects there). -/
+noncomputable def PcsOp.stmt (o : PcsOp) (π : P2Pf) (ch : List (List E)) : Pcs.PSt UniKeccakSound.pcsKShapes × Proof :=
+  match o.cl π ch with
+  | some (ood, pt, v) =>
+    if h : pt.length = o.n then
+      (⟨UniKeccakSound.pcsIdxK o.n, ⟨ofB (o.rootB π), ood, pt, v,
+        h.trans (UniKeccakSound.pcsIdxK_n _ o.lo o.hi).symm⟩⟩, o.prf π)
+    else (⟨UniKeccakSound.pcsIdxK 23, Pcs.dummy _⟩, o.prf π)
+  | none => (⟨UniKeccakSound.pcsIdxK 23, Pcs.dummy _⟩, o.prf π)
+
+/-- An opening has a claim of its stack's variables. -/
+def PcsOp.Ok (o : PcsOp) (π : P2Pf) (ch : List (List E)) : Prop :=
+  ∃ ood pt v, o.cl π ch = some (ood, pt, v) ∧ pt.length = o.n
+
+/-- The root a `PcsOp`'s `GOp` reads is its `rootB`. -/
+theorem PcsOp.root_gop (o : PcsOp) (π : P2Pf) : GOp.root p2View o.gop π = o.rootB π := by
+  obtain ⟨n, lo, hi, cl, prf, tgt⟩ := o
+  cases tgt <;> rfl
+
+/-- **An opening's run is the union's verifier on its statement**, where it has a claim of its stack's variables. -/
+theorem PcsOp.run_ok (o : PcsOp) (π : P2Pf) (ch : List (List E)) (hok : o.Ok π ch) :
+    GOp.run p2View o.gop π ch = Pcs.pUVer UniKeccakSound.pcsKShapes Pcs.oodPoint (o.stmt π ch) := by
+  obtain ⟨ood, pt, v, hc, hl⟩ := hok
+  unfold GOp.run
+  rw [PcsOp.root_gop]
+  show o.ver _ π ch = _
+  unfold PcsOp.ver PcsOp.stmt
+  rw [hc]
+  dsimp only
+  rw [dite_eq_left hl]
+  unfold UniKeccakSound.pcsOpenC Pcs.pUVer
+  rw [dite_eq_left hl]
+  exact (UniKeccakSound.pcsVerifier_congrK (UniKeccakSound.pcsIdxK_n _ o.lo o.hi) _ _ _ _ hl _ _).symm
+
+/-- **An opening without a claim of its stack's variables rejects.** -/
+theorem PcsOp.run_nok (o : PcsOp) (π : P2Pf) (ch : List (List E)) (hok : ¬ o.Ok π ch) :
+    GOp.run p2View o.gop π ch = pure false := by
+  unfold GOp.run
+  show o.ver _ π ch = _
+  unfold PcsOp.ver
+  rcases hc : o.cl π ch with _ | ⟨ood, pt, v⟩
+  · rfl
+  · dsimp only
+    unfold UniKeccakSound.pcsOpenC
+    have hl : ¬ pt.length = o.n := fun hl => hok ⟨ood, pt, v, hc, hl⟩
+    rw [dite_eq_right hl]
+
+/-- **An opening's doom is the union's on its statement**, where it has a claim of its stack's variables. -/
+theorem PcsOp.doomed_imp (o : PcsOp) (π : P2Pf) (ch : List (List E)) (c : KeccakCalls.QueryCache)
+    (hok : o.Ok π ch) (hd : GDoomed p2View o.gop π ch c) :
+    Pcs.PUDoomed UniKeccakSound.pcsKShapes Pcs.oodPoint (o.stmt π ch) c := by
+  obtain ⟨ood, pt, v, hc, hl⟩ := hok
+  unfold Pcs.PUDoomed PcsOp.stmt
+  rw [hc]
+  dsimp only
+  rw [dite_eq_left hl]
+  refine (UniKeccakSound.pcsDoomed_congrK (UniKeccakSound.pcsIdxK_n _ o.lo o.hi) _ _ _ _ hl _ _ c).2
+    fun q hq => ?_
+  by_contra hn
+  simp only [not_or, not_not] at hn
+  refine hd q ?_ ⟨ood, pt, v, hc, hl, hn.1, hn.2⟩
+  rw [PcsOp.root_gop]
+  exact hq
+
+/-- The union's bound at `QA` queries: `(QA + 10122) (εExact + 5 (QA + 10122) / 2^256)`. -/
+noncomputable def bndU (QA : ℕ) : ℝ≥0∞ :=
+  ((QA + 10122 : ℕ) : ℝ≥0∞) * (εExact + ((5 * (QA + 10122) : ℕ) : ℝ≥0∞) / 2 ^ 256)
+
+/-- **Any list of PCS claims' openings, charged once**: their union is sound at `bndU`
+(`WhirBridge.Pcs.pcs_union_sound` over `UniKeccakSound.pcsKShapes`). -/
+theorem hU_pcs (L : List PcsOp) : GUnionSound p2View (L.map PcsOp.gop) bndU := by
+  classical
+  intro A QA hA
+  set f : GUIn (L.map PcsOp.gop) → PcsOp := fun w => L[w.1.val]'(by simpa using w.1.isLt) with hf
+  have hget : ∀ w : GUIn (L.map PcsOp.gop), (L.map PcsOp.gop).get w.1 = (f w).gop := by
+    intro w
+    simp [hf]
+  refine (UniKeccakSound.romExperiment_le_map A _ (Pcs.pUVer UniKeccakSound.pcsKShapes Pcs.oodPoint)
+    (fun w => (f w).stmt w.2.1 w.2.2) (fun w => (f w).Ok w.2.1 w.2.2) (fun w => ?_) _
+    (Pcs.PUDoomed UniKeccakSound.pcsKShapes Pcs.oodPoint) (fun w c hok hd => ?_)).trans
+    (Pcs.pcs_union_sound UniKeccakSound.pcsKShapes Pcs.oodPoint _ QA ((isQueryBound_map_iff _ _ _ _ _).mpr hA)
+      10122 UniKeccakSound.pcsKShapes_QO)
+  · show GOp.run p2View ((L.map PcsOp.gop).get w.1) w.2.1 w.2.2 = _
+    rw [hget]
+    by_cases hok : (f w).Ok w.2.1 w.2.2
+    · rw [ite_eq_left hok]
+      exact PcsOp.run_ok _ _ _ hok
+    · rw [ite_eq_right hok]
+      exact PcsOp.run_nok _ _ _ hok
+  · refine PcsOp.doomed_imp _ _ _ c hok ?_
+    have : GDoomed p2View ((L.map PcsOp.gop).get w.1) w.2.1 w.2.2 c := hd
+    rwa [hget] at this
+
+end Union
+
+/-! ## The openings' runs -/
+
+/-- The openings' verdicts have their count. -/
+theorem length_of_mem_gopsRun (π : P2Pf) (ch : List (List E)) :
+    ∀ (L : List (GOp P2Pf E Stk)) (bs : List Bool), bs ∈ support (gopsRun p2View L π ch) → bs.length = L.length
+  | [], bs, h => by
+    simp only [gopsRun, support_pure, Set.mem_singleton_iff] at h
+    subst h
+    rfl
+  | o :: L, bs, h => by
+    simp only [gopsRun, mem_support_bind_iff, support_map, Set.mem_image] at h
+    obtain ⟨b, -, bs', hbs', rfl⟩ := h
+    simp [length_of_mem_gopsRun π ch L bs' hbs']
+
+/-- The eight verdicts as the composition's six: the first five, then `Q`'s three and-ed. -/
+def mergeB (bs : List Bool) : List Bool :=
+  (List.range 5).map (bs.getD · false) ++ [bs.getD 5 false && (bs.getD 6 false && bs.getD 7 false)]
+
+/-- **The composition's openings run the eight**, `Q`'s three as one. -/
+theorem gopsRun_p2Ops (D : RecDeployment) (π : P2Pf) (ch : List (List E)) :
+    gopsRun p2View (p2Ops D) π ch = mergeB <$> gopsRun p2View (p2Ops8 D) π ch := by
+  simp only [p2Ops, p2Ops8, p2Pcs, p2Pcs5, List.map_cons, List.map_nil, List.cons_append, List.nil_append, gopsRun,
+    map_bind, map_pure]
+  refine bind_congr fun b1 => bind_congr fun b2 => bind_congr fun b3 => bind_congr fun b4 =>
+    bind_congr fun b5 => ?_
+  simp only [GOp.run, qOp, PcsOp.gop, bind_assoc, pure_bind]
+  rfl
+
+end RecCompose
 
 /-- info: 'RecCompose.hS_p2' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
@@ -514,3 +377,7 @@ end RecCompose
 /-- info: 'RecCompose.maxErrK_p2' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms RecCompose.maxErrK_p2
+
+/-- info: 'RecCompose.hU_pcs' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecCompose.hU_pcs

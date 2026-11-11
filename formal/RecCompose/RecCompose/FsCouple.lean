@@ -17,13 +17,13 @@ the setup bridge (`pi2SetupBridge`), the verifier bridge (`Pi2VerifierBridge`, a
 reading (`pi2ExtractBridge`):
 
 * both experiments are the setup's trees and the adversary given their roots, its queries logged (`prefix2`,
-  `recSoundnessExperiment2_eq`, `rpmGameS2_eq` by the setup bridge: `p2Adv A (rootsB2 t)` is `A t.roots`, since
-  `rootsOfOut (rootsB2 t) = t.roots`), then their verifiers on the same state of the permutation
+  `recSoundnessExperiment2_eq`, `rpmGameS2_eq` by the setup bridge: `p2Adv A (rootsB2 t)` is `A t.roots`, `rootsB2 t` the trees'
+  commitments), then their verifiers on the same state of the permutation
   (`Soundness.prEvent_le_of_continuations`);
 * there both first compute π2's IV, the same four Keccak-256 calls (`ivWith_eq_p2IvKC4`: the circuit's digest's three,
   then the IV's), then (`step2_le`) π2's event is impossible if π2's extractor's list holds a candidate with `P`, and
-  otherwise follows from the contract's acceptance, which the verifier bridge bounds by the composed check with the six
-  openings accepting, on whose outcomes `P2BreaksRel` holds: the check gives the stream's `944` bytes, so every
+  otherwise follows from the contract's acceptance, which the verifier bridge bounds by the composed check with the
+  openings accepting, on whose outcomes `P2BreaksRel` holds: the check gives the stream's `1064` bytes, so every
   composed candidate is in π2's extractor's list (`pi2ExtractBridge`), at the setup's roots and the statement's
   public scalars (`pi2Pubs_pubBytes`, `pi2Scalars_real`).
 -/
@@ -39,7 +39,6 @@ open scoped ENNReal
 
 attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
   LeanVM.Protocol.Compile.instFintypeKState UniStatement.setupStack
-  RecStatement.layoutWords
 
 /-! ## The coupling's statement -/
 
@@ -74,14 +73,10 @@ theorem recSoundnessExperiment2_eq (D : RecDeployment) (A : RecAdversary) :
   unfold recSoundnessExperiment2 prefix2
   simp only [bind_assoc, pure_bind]
 
-theorem rootsOfOut_rootsB2 (t : RecSetupTrees) : rootsOfOut (rootsB2 t) = t.roots := by
-  unfold rootsOfOut rootsB2 RecSetupTrees.roots
-  simp only [UniSound.rootsOfS, Soundness.ofB_toB_root]
-
 theorem run_logged_p2Adv (A : RecAdversary) (s : SOut) :
     (simulateQ Common.loggedOracles (p2Adv A s)).run [] =
       (fun p => ((⟨p.1.1, p.1.2, Vector.replicate 32 0, s⟩ : P2Pf), p.2)) <$>
-        (simulateQ Common.loggedOracles (A (rootsOfOut s))).run [] := by
+        (simulateQ Common.loggedOracles (A s)).run [] := by
   rw [p2Adv, simulateQ_map, StateT.run_map]
 
 theorem rpmGameS2_eq (D : RecDeployment) (hs : UniKeccakSound.UniShapesK D.pi1) (hS : Pi2SetupBridge D hs)
@@ -92,7 +87,7 @@ theorem rpmGameS2_eq (D : RecDeployment) (hs : UniKeccakSound.UniShapesK D.pi1) 
           pure ((piOf2 a, v), setupTr2 a.1, a.2.2)) := by
   unfold rpmGameS prefix2
   rw [hS]
-  simp only [bind_map_left, bind_assoc, pure_bind, run_logged_p2Adv, rootsOfOut_rootsB2]
+  simp only [bind_map_left, bind_assoc, pure_bind, run_logged_p2Adv, rootsB2]
   rfl
 
 /-! ## π2's IV -/
@@ -106,14 +101,12 @@ theorem ivWith_eq_p2IvKC4 (D : RecDeployment) (hD : RecDeployment.Real D) (π : 
   unfold RecDeployment.ivWith Pi2Circuit.digestWith RecStatement.ivWith p2IvKC4 ivIn digIn sigmaBytes kappaBytes
   dsimp only
   rw [hlog]
-  generalize RecStatement.layoutWords cc.logN = lw
-  obtain ⟨w, q, s⟩ := lw
   simp only [simulateQ_bind, simulateQ_pure, UniSound.simulateQ_hash256, bind_map_left, map_bind, map_pure,
     bind_assoc, pure_bind, Bridge.toB_toList]
 
 theorem p2Roots_piOf2 (a : RecSetupTrees × ((Vector UInt8 32 × RecProof) × Common.OracleQueryLog)) :
     p2Roots (piOf2 a) = a.1.roots :=
-  rootsOfOut_rootsB2 a.1
+  rfl
 
 /-! ## The verifiers, outcome by outcome -/
 
@@ -121,7 +114,7 @@ section Step
 
 variable (D : RecDeployment) (hD : RecDeployment.Real D) (P : RecSetupRoots → Pi2St → Stk → Prop)
 
-/-- **The statement's public scalars at the composed view**, on a stream of `944` bytes. -/
+/-- **The statement's public scalars at the composed view**, on a stream of `1064` bytes. -/
 theorem stOf_p2View (hD : RecDeployment.Real D) (π : P2Pf) (hsz : π.proof.stream.size = sLen) :
     stOf (p2View π).1 = (π.input, pi2Scalars D (p2Roots π) π.input π.proof.stream) := by
   show (π.input, pi2Pubs (Spec.of cc) π.input.toList (pubBytes π.proof.stream).toArray) = _
@@ -152,7 +145,7 @@ theorem step2_le (hV : Pi2VerifierBridge D)
   have hR : simulateQ keccakCallsOverQueryPermutation (p2Ver D (piOf2 a)) =
       simulateQ keccakCallsOverQueryPermutation (p2IvKC4 D (piOf2 a)) >>= fun x =>
         (fun v => (x, v)) <$> simulateQ keccakCallsOverQueryPermutation
-          (verU pi2Spec p2View (opsRun p2View (p2Ops D)) (setIv2 x.2.2.2 (piOf2 a))) := by
+          (verU pi2Spec p2View (gopsRun p2View (p2Ops D)) (setIv2 x.2.2.2 (piOf2 a))) := by
     rw [p2Ver, simulateQ_bind]
     simp only [simulateQ_map]
   rw [hL, hR]
@@ -163,7 +156,7 @@ theorem step2_le (hV : Pi2VerifierBridge D)
   · refine le_trans (le_of_eq (prEvent_eq_zero_of_forall_mem_support _ _ ?_)) zero_le
     intro v _ hb
     exact hb.2 hext
-  -- otherwise no candidate of the composed extractor has `P`, on a stream of `944` bytes
+  -- otherwise no candidate of the composed extractor has `P`, on a stream of `1064` bytes
   have hnone : ∀ v : List (List E) × List Bool, p2Check (setIv2 x.2.2.2 (piOf2 a)) v.1 →
       ∀ c ∈ extractorK (fun i => (p2Tc i).commit) p2View
         ((setIv2 x.2.2.2 (piOf2 a), v), setupTr2 a.1 ++ evalTr (permutationQueries a.2.2)),

@@ -15,14 +15,15 @@ only through its shape, which for the Keccak π1-rec3 (`Data.circuit`) is `2^24`
 
 ```
 N (ε + 5 N / 2^256) + N (e2 + 8 N / 2^256) + 2 N² / 2^256 + (2^81 + Q)² / 2^508,
-ε = 269 · 2^-137 = 2^-128.93,   e2 = 9952 · 3564 · (4 · 2^24 − 1) / 2^192 = 2^-140.92
+ε = 269 · 2^-137 + 2^-156 = 2^-128.93,   e2 = 9952 · 3564 · (4 · 2^24 − 1) / 2^192 = 2^-140.92
 ```
 
-* **the openings, charged once** (π2's five PCS claims, `W` of `2^24` words, the setup `2^25`, `Q`'s three `2^28`:
+* **the openings, charged once** (the eight PCS claims, π1's three, `W` of `2^24` words, the setup `2^25`, `Q`'s
+  three `2^28`:
   `WhirBridge.Pcs.pcs_union_sound`'s union over their sizes, `(QA + QV) (ε + 5 (QA + QV) / 2^256)`, as π1's
-  `UniKeccakSound.hU_uniK`), at the exact certified per-group bound `ε` (`WhirBridge.εExact`, `pi2OpenErr`). **To be
-  re-derived by the Fiat–Shamir layer** on the PCS claims (`FsOps.lean`, `FsGame.lean`): the term's form is
-  `pcs_union_sound`'s with `QA + QV ≤ N`; should its constant change, `pi2OpenErr` is the one place to change;
+  `UniKeccakSound.hU_uniK`, `FsOps.hU_pcs`), at the exact certified per-group bound `269 · 2^-137`
+  (`WhirBridge.εExact`), with `Q`'s out-of-domain binding per query (`2^-156`, `FsBind.lean`; its
+  `N (N + 1) / 2^256` within the chain's `8 N / 2^256`): `pi2OpenErr` (`FsGame.lean`'s `le_pi2BoundE`);
 * **the chain** (`Compose.knowledgeSoundness_listChainU_closed128`): the rounds' largest error times its lists
   (`Compose.maxErrK`), `e2`, the identities at `t` with `Q`'s empty slot `S` over `L_W L_Q` (`RecPiop.err 1 =
   (4N − 1)/|F|`, `RecPiop.bits_t`; the copy argument's and the ports' `L_W`-term is `2^-152.3`, `ρ`'s (`W`'s fold and
@@ -43,10 +44,11 @@ open scoped ENNReal
 /-- `N`: every count of the bound at `Q` adversary calls. -/
 def pi2N (Q : ℕ) : ℕ := 2 ^ 33 + Q
 
-/-- **The openings' per-query error** (`WhirBridge.εExact`, `269 · 2^-137`): the constant of
-`WhirBridge.Pcs.pcs_union_sound`'s term `(QA + QV) (ε + 5 (QA + QV) / 2^256)` for π2's five PCS openings (a
-placeholder for the Fiat–Shamir layer's derivation, `Numbers.lean`'s docstring). -/
-noncomputable def pi2OpenErr : ℝ≥0∞ := 269 * (2 : ℝ≥0∞)⁻¹ ^ 137
+/-- **The openings' per-query error** (`FsGame.lean`'s `le_pi2BoundE`): `WhirBridge.εExact = 269 · 2^-137`, the
+constant of `WhirBridge.Pcs.pcs_union_sound`'s term `(QA + QV) (ε + 5 (QA + QV) / 2^256)` for π2's eight PCS
+openings charged once (`FsOps.hU_pcs`), plus `2^-156 ≥ δood 28 = C(L_Q, 2) · 28 / 2^192`, the per-query error of
+`Q`'s out-of-domain binding (`FsBind.lean`, `QOodBinding δBind`: `Q`'s three claims on one stack). -/
+noncomputable def pi2OpenErr : ℝ≥0∞ := 269 * (2 : ℝ≥0∞)⁻¹ ^ 137 + (2 : ℝ≥0∞)⁻¹ ^ 156
 
 /-- **π2's rounds' largest error times its lists**: the identities at `t` with `Q`'s empty slot, `L_W L_Q (4 N − 1)/|E|`
 at `N = 2^24` (`RecPiop.err 1`). -/
@@ -112,6 +114,10 @@ theorem eps128_eq : (269 : ℝ≥0∞) * (2 : ℝ≥0∞)⁻¹ ^ 137 = ((269 * 2
   simp only [Nat.cast_mul, Nat.cast_pow, Nat.cast_ofNat]
   rw [mul_div_assoc, show (256 : ℕ) = 119 + 137 from rfl, WhirBridge.two_pow_div_two_pow]
 
+/-- `2^-156` over `2^256`. -/
+theorem eps156_eq : (2 : ℝ≥0∞)⁻¹ ^ 156 = ((2 ^ 100 : ℕ) : ℝ≥0∞) / 2 ^ 256 := by
+  rw [Nat.cast_pow, Nat.cast_ofNat, show (256 : ℕ) = 100 + 156 from rfl, WhirBridge.two_pow_div_two_pow]
+
 /-- `pi2RoundErr` over `2^256`. -/
 theorem pi2RoundErr_eq : pi2RoundErr = ((9952 * 3564 * (4 * 2 ^ 24 - 1) * 2 ^ 64 : ℕ) : ℝ≥0∞) / 2 ^ 256 := by
   unfold pi2RoundErr
@@ -124,15 +130,16 @@ theorem pi2RoundErr_eq : pi2RoundErr = ((9952 * 3564 * (4 * 2 ^ 24 - 1) * 2 ^ 64
 `2^64`), i.e. at least `128` bits as `Q / ε2`. -/
 theorem pi2Bound_le_bits (Q : ℕ) (hQ : Q ≤ 2 ^ 64) : pi2Bound Q ≤ (2 : ℝ≥0∞)⁻¹ ^ 64 := by
   unfold pi2Bound pi2OpenErr
-  rw [pi2RoundErr_eq, eps128_eq]
+  rw [pi2RoundErr_eq, eps128_eq, eps156_eq, a256]
   have hN : pi2N Q ≤ 18446744082299486208 := by
     unfold pi2N
     have : (2 : ℕ) ^ 64 = 18446744073709551616 := by norm_num
     have : (2 : ℕ) ^ 33 = 8589934592 := by norm_num
     omega
   set X : ℕ := 18446744082299486208 with hX
-  have b1 : (pi2N Q : ℝ≥0∞) * (((269 * 2 ^ 119 : ℕ) : ℝ≥0∞) / 2 ^ 256 +
-      ((5 * pi2N Q : ℕ) : ℝ≥0∞) / 2 ^ 256) ≤ ((X * (269 * 2 ^ 119 + 5 * X) : ℕ) : ℝ≥0∞) / 2 ^ 256 := by
+  have b1 : (pi2N Q : ℝ≥0∞) * (((269 * 2 ^ 119 + 2 ^ 100 : ℕ) : ℝ≥0∞) / 2 ^ 256 +
+      ((5 * pi2N Q : ℕ) : ℝ≥0∞) / 2 ^ 256) ≤
+      ((X * (269 * 2 ^ 119 + 2 ^ 100 + 5 * X) : ℕ) : ℝ≥0∞) / 2 ^ 256 := by
     rw [a256, d256]
     exact le256 (Nat.mul_le_mul hN (by omega))
   have b2 : (pi2N Q : ℝ≥0∞) * (((9952 * 3564 * (4 * 2 ^ 24 - 1) * 2 ^ 64 : ℕ) : ℝ≥0∞) / 2 ^ 256 +

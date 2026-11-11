@@ -57,8 +57,8 @@ writes the Rust prover's setup, `W` and `Q` roots and its stream byte for byte o
 
 π1 (`UniKeccak`, `UniKeccakSound`, `UniKeccakComplete`, `RecGraphKeccak`) and `RecStatement` state the EIP draft's PCS
 claims (`RecStatement` 954a238e: eight claims `[root, ood, point…, value]`, `pcsOpenWords`, IV v3). **The base of
-RecCompose builds on them** (every module of the file table but the Fiat–Shamir layer `Fs*`, `GenericSetupLog`,
-`RealEnd`, and the completeness side `Pi2Prover*`, `Pi2Honest*`, `Pi2Whir`, `Pi2Complete*`, `Pi2Calls*`, `Pi2Prob*`,
+RecCompose builds on them**, and so does **the Fiat–Shamir layer** (`Fs*`, `GenericSetupLog`, `RealEnd`: branch
+`lean-pi2v3-fs`), every module of the file table but the completeness side `Pi2Prover*`, `Pi2Honest*`, `Pi2Whir`, `Pi2Complete*`, `Pi2Calls*`, `Pi2Prob*`,
 `Pi2Sim*`, `Pi2Alpha*`, `Pi2Run{Cost,Duplex}`, `Pi2TFresh*`, `Pi2Chain`, `Pi2P1`, `Pi2Witness`, `Pi2Closed`,
 `Pi1Keccak*`, `CompleteKeccakEnd`, which are being moved):
 
@@ -67,8 +67,16 @@ RecCompose builds on them** (every module of the file table but the Fiat–Shami
   claim **`Σ_V (h + c_3 S) = 0`** (`RecPiop.SumOK`; `SumH`, `Σ_V h = 0`, in `Pre1`): the sum claim reads `S`'s slot with
   `h`'s top coefficient, so the earlier `Σ_V h = 0` could not be read off it. Round 1 `(4N − 1)/|F|`;
   `pi2RoundErr = 9952 · 3564 · (4 · 2^24 − 1)/2^192` (`2^-140.92`); `pi2Bound Q ≤ 2^-64` at `Q ≤ 2^64` still.
-* **The openings' term** of `pi2Bound` is a placeholder, `pi2OpenErr = 269 · 2^-137` in `WhirBridge.Pcs.pcs_union_sound`'s
-  form `N (ε + 5 N/2^256)`, for the Fiat–Shamir layer to re-derive (as π1's `UniKeccakSound.hU_uniK`).
+* **The openings' term** of `pi2Bound`, `N (pi2OpenErr + 5 N/2^256)`, `pi2OpenErr = 269 · 2^-137 + 2^-156`: the eight
+  PCS openings charged once (`FsOps.hU_pcs`, `WhirBridge.Pcs.pcs_union_sound` over version 1's sizes, as π1's
+  `UniKeccakSound.hU_uniK`), and **`Q`'s out-of-domain binding** per query (`FsBind.lean`). The contract opens `Q`'s
+  three claims separately; the chain needs one candidate of `Q`'s root satisfying all three, which holds when the
+  root's list is separated at its out-of-domain point (`WhirBridge.Pcs.two_openings_one_polynomial`). That is the
+  premise **`QOodBinding δBind`** of `pi2FsLayer_real` and the end theorems: `WhirBridge.Pcs.ood_binding_rom` proves it
+  (`δBind QA = QA · δood 28 + QA (QA + 1)/2^256`, `δood 28 ≤ 2^-156`) for the out-of-domain point a random oracle of
+  the root, but the Statement derives the point with `keccak256` (`WhirBridge.Pcs.oodPoint`, outside the permutation
+  the model idealizes), a fixed function of the root there. Its `N (N + 1)/2^256` sits in the chain's `8 N/2^256`.
+  `pi2Bound Q ≤ 2^-64` at `Q ≤ 2^64` (`2^-64.93` at `2^64`, 128.93 bits as `Q/ε2`).
 * **The claims on the candidates** (`Layers.lean`: `ClaimOn vars stack (point, value)` is `UniSound.mleStk`, each claim a
   point of its whole stack); `W`'s witness values the stack's leading `N` words (`wVars`, `witnessOf`).
 * **π1's claims**: the contract opens each at its point's length, π1's verifier at `stackVarsK`; `Pi1CallsShape`
@@ -82,8 +90,8 @@ RecCompose builds on them** (every module of the file table but the Fiat–Shami
 
 | Theorem | Statement | Premises |
 |---|---|---|
-| **`recKnowledgeSoundness_reduction_real prog hprog`** | `RecKnowledgeSoundnessReduction (realDeployment prog hprog) pi2Bound ∧ ∀ Q ≤ 2^64, pi2Bound Q ≤ 2^-64` | the evaluated checks `GraphsAgree`, `DigestChecked`, `SetupRootChecked`, `IvChecked` |
-| **`recKnowledgeSoundness_reduction D`** | `RecKnowledgeSoundnessReduction D pi2Bound ∧ ∀ Q ≤ 2^64, pi2Bound Q ≤ 2^-64` | `hD : D.Real`, `C : Pi2Circuits D`, `hroots : C.rootsAt = RecGraphKeccak.Emitted.rootsAt`, `GraphsAgree`, `Pi2ViewChecked C` |
+| **`recKnowledgeSoundness_reduction_real prog hprog`** | `RecKnowledgeSoundnessReduction (realDeployment prog hprog) pi2Bound ∧ ∀ Q ≤ 2^64, pi2Bound Q ≤ 2^-64` | the evaluated checks `GraphsAgree`, `DigestChecked`, `SetupRootChecked`, `IvChecked`; `QOodBinding δBind` (`FsBind.lean`, above) |
+| **`recKnowledgeSoundness_reduction D`** | `RecKnowledgeSoundnessReduction D pi2Bound ∧ ∀ Q ≤ 2^64, pi2Bound Q ≤ 2^-64` | `hD : D.Real`, `QOodBinding δBind`, `C : Pi2Circuits D`, `hroots : C.rootsAt = RecGraphKeccak.Emitted.rootsAt`, `GraphsAgree`, `Pi2ViewChecked C` |
 | `recKnowledgeSoundness2_closed D` | `RecKnowledgeSoundness2 D pi2Bound ∧ ∀ Q ≤ 2^64, pi2Bound Q ≤ 2^-64` (π2's part) | as above |
 | `recKnowledgeSoundness_closed D` | `RecKnowledgeSoundness D pi2Bound ε1 εh` | as above |
 | `recKnowledgeSoundness_closed_fs D` | `RecKnowledgeSoundnessWith D (recExtractor D) fun Q ↦ pi2Bound Q + ε1 Q + εh Q` | as above, and `Pi1FsKeccak D ε1`, `Pi1HazardKeccak D εh` (false as stated, above) |
@@ -131,7 +139,7 @@ The library at the Keccak VM:
 | `Basic.lean` | π2's outcome's fields; `keccakRefRoots : SetupRootsK`; `W`'s stack variables `wVars`, its candidates and their witness values (the stack's leading `N` words) as π2's extractor reads them; `pi1GraphAcceptsB_iff`; `recExtractFrom2_of_mem` (one accepted candidate suffices). |
 | `Part1.lean` | `CallsPure` (the contract's first three claims decode to `pi1OpsOf`), `Pi2Extraction`, `Pi2Layers`; **`recKnowledgeSoundness2_of_layers`**. |
 | `Circuit.lean` | `GraphsAgree`; `Pi2Layers.circuit` from `RecGraphKeccak.pi1rec3K_end` and `CircuitBridge`; `compile_ok` from the compiler's run on the emitted graph and `GraphsAgree`; `Pi1RootWordOk` (the root-word fix's named dependence). |
-| `Numbers.lean` | **`pi2Bound`** (`ε2`; the openings' constant `pi2OpenErr`, a placeholder in `WhirBridge.Pcs.pcs_union_sound`'s form for the Fiat–Shamir layer), `pi2RoundErr` (`(4N − 1)` over `L_W L_Q`, `2^-140.92`), `pi2_rounds_le`, **`pi2Bound_le_bits`**. |
+| `Numbers.lean` | **`pi2Bound`** (`ε2`; the openings' constant `pi2OpenErr = 269 · 2^-137 + 2^-156`: `pcs_union_sound`'s per-group bound and `Q`'s binding), `pi2RoundErr` (`(4N − 1)` over `L_W L_Q`, `2^-140.92`), `pi2_rounds_le`, **`pi2Bound_le_bits`**. |
 | `Part2.lean` | the three events (`HazardEvent` on `Pi1HazardAccepted`), `ExperimentsAgree`, `HazardCoupling`, `Pi1Coupling`, `breaks_cases`; **`recKnowledgeSoundnessReduction_of_part1`** (the reduction), `recKnowledgeSoundness_of_reduction`, **`recKnowledgeSoundness_of_part1`**. The derived adversaries are `RecStatement/Reduction.lean`'s. |
 | `Complete.lean` | `CompletenessAgree`, `CompletenessPi1Coupling`; **`recCompleteness_of_part1`**. |
 | `Layers.lean` | `Pi2FsLayer` (π2's Fiat–Shamir layer), `Pi2Tables` (the tables' layer, proved in `Tables.lean`), `Pi2Circuits`, `Pi2Facts`; `ClaimOn` (a PCS claim of a stack, `mleStk`), `Pi2ClaimsHold` (the five claims on `stackVars`); `pi2Piop`, `hbind_of`, `indep_K`, `satisfies_congr`; **`pi2Extraction_of_layers`**, `pi2Layers_of`. |
@@ -152,12 +160,12 @@ The library at the Keccak VM:
 | `Meanings.lean` | **`statementPortMeaning`**, **`zeroPortsMeaning`**, **`callWordsAgree`** for `pi2Facts`. |
 | `Layouts.lean` | **`pi1CallsShape_of_real`** (the layout-word check is gone with the layout words). |
 | `Final.lean` | `recKnowledgeSoundness2_final`, `recKnowledgeSoundnessReduction_final`, `recKnowledgeSoundness_final`, `recKnowledgeSoundness_final_fs`: the end theorems from the named inputs left. |
-| `FsDefs.lean` | π2's Fiat–Shamir layer's objects: the chain `pi2Spec` (the label `name ‖ iv ‖ input`, the public data's 472 bytes before `W`'s root), the proof `P2Pf` and its view, the six openings `p2Ops`, the setup's stacks `p2Stk`, the composed setup `p2Setup`, the IV `p2IvKC4`, the composed verifier `p2Ver`, the bridge facts' Props. |
-| `FsOps.lean` | the openings' `OKP`, coverage, `hS_p2` (the setup's claim), `ClaimOn` as F2's `tableEval` on public layouts, the shapes at once (`p2Shapes`, with `UniKeccakSound.plainShapeE23`), `maxErrK_p2`. |
-| `FsSetup.lean`, `FsExtract.lean`, `FsWalk.lean`, `GenericSetupLog.lean` | **`pi2SetupBridge`**, the setup's facts and `okp_setupOp`; **`pi2ExtractBridge`**; **`pi2Walk`** (π2's run is the chain), **`pi2WalkReject`**, `pi2Scalars_real`; the logged plain tree (`simulateQ_loggedKC_stackSetupS`). |
-| `FsVerifier.lean`, `FsCouple.lean`, `FsCost.lean` | **`pi2VerifierBridge`** (the contract's six calls below the composed openings), **`pi2GameLeV`** (the coupling), the composed verifier's cost, the IV moved into the adversary (`expU_p2IvAdv`), `hlab_p2`. |
-| `FsGame.lean`, `FsClosed.lean` | **`pi2FsLayer_of`** (through `Compose.knowledgeSoundness_listChainU_closed128S`, `prEvent_doomF_le`, `prEvent_pairTr_expL_le`, `le_pi2BoundE`); **`pi2FsLayer_real`**; **`recKnowledgeSoundness_reduction`**, **`recKnowledgeSoundness2_closed`**, **`recKnowledgeSoundness_closed`**, **`recKnowledgeSoundness_closed_fs`**. |
-| `RealEnd.lean` | **`recKnowledgeSoundness_reduction_real`**: `recKnowledgeSoundness_reduction` at `realDeployment prog hprog`, from the four evaluated checks. |
+| `FsDefs.lean` | π2's Fiat–Shamir layer's objects: the chain `pi2Spec` (the label `name ‖ iv ‖ input`, the public data's 520 bytes before `W`'s root), the proof `P2Pf` (the setup's commitments `RecSetupRoots` as the setup's output) and its view, **the eight PCS openings** `p2Pcs` (`PcsOp`: `pcsOpenC` on `plainShapeK n` as a `Compose.GOp`), the composition's six `p2Ops` (`Q`'s three as one, `qOp`), the setup's stacks `p2Stk`, the composed setup `p2Setup` (`setupOut`: the roots with their out-of-domain answers), the IV `p2IvKC4` (v3), the composed verifier `p2Ver`, the bridge facts' Props. |
+| `FsOps.lean`, `FsBind.lean`, `FsBytes.lean` | the openings' `OKP`, coverage, `hS_p2` (the setup's claim), a PCS claim's point claim as `ClaimOn` (`colEval_iff_claimOn`), **`hU_pcs`** (any `PcsOp`s charged once through `WhirBridge.Pcs.pcs_union_sound` over `UniKeccakSound.pcsKShapes`), `gopsRun_p2Ops`, `maxErrK_p2`; `Q`'s binding: **`QOodBinding`**, `doomFG_p2Ops`, **`prEvent_doomFG_p2Ops_le`**; a digest's and an element's words read back. |
+| `FsSetup.lean`, `FsExtract.lean`, `FsWalk.lean`, `GenericSetupLog.lean` | **`pi2SetupBridge`** (the setup's output the trees' commitments), the setup's facts and `okp_setupOp`; **`pi2ExtractBridge`** (`W`'s decoder `tableCode` of the plain `2^24`, roots as their bytes); **`pi2Walk`** (π2's run is the chain), **`pi2WalkReject`**, `pi2Scalars_real`; the logged plain tree (`simulateQ_loggedKC_stackSetupS`). |
+| `FsVerifier.lean`, `FsCouple.lean`, `FsCost.lean` | **`pi2VerifierBridge`** (the contract's eight claims, decoded by `claimOfWords`, are the eight composed openings answered over `π`), **`pi2GameLeV`** (the coupling), the composed verifier's cost (`2^49` calls of `π`), the IV moved into the adversary (`expU_p2IvAdv`), `hlab_p2`. |
+| `FsGame.lean`, `FsClosed.lean` | **`pi2FsLayer_of`** (through `Compose.knowledgeSoundness_listChainU_closed128SG`, `prEvent_doomFG_p2Ops_le`, `prEvent_pairTr_expLG_le`, `le_pi2BoundE`); **`pi2FsLayer_real`** (under `QOodBinding δBind`); **`recKnowledgeSoundness_reduction`**, **`recKnowledgeSoundness2_closed`**, **`recKnowledgeSoundness_closed`**, **`recKnowledgeSoundness_closed_fs`**. |
+| `RealEnd.lean` | **`recKnowledgeSoundness_reduction_real`**: `recKnowledgeSoundness_reduction` at `realDeployment prog hprog`, from the four evaluated checks and `QOodBinding δBind`. |
 | `Pi2Prover.lean`, `Pi2ProverRun.lean` | **π2's honest prover** (`prover.rs` phase by phase: `pi2ProveStreamWith`, `pi2ProveWith`, over any Keccak-256 `H`); `pi2ProveStreamWith_holds`, `pi2ProveStreamWith_claims` (the stacks and inputs its run leaves). |
 | `Pi2HonestBase.lean`, `Pi2HonestCopy.lean`, `Pi2HonestQ.lean`, `Pi2Honest.lean`, `Pi2HonestMain.lean`, `Pi2HonestThm.lean`, `Pi2HonestCount.lean` | the honest prover's algebra: transforms and coset, the copy argument's sum, `q` on the extension coset; **`pi2_honest`** (off `BadCopy`, `BadT` the check passes and the four claims hold), `pi2_honest_post2`, `claims_of_model`; `card_badCopy_le`, `card_badT_le`. |
 | `Pi2Whir.lean`, `Pi2CompleteCalls.lean`, `Pi2CompleteH.lean`, `Pi2CompleteSync.lean`, `Pi2Complete.lean` | honest WHIR openings at π2's layouts (`pi2Open_honest`); π2's three calls decoded (`decodeWith_claims`); the verifier, contract and setup with Keccak-256 an explicit `H` (`…_eqH`); the verifier reads what the prover writes (`runWith_honest`); **`contract_accepts`** off the bad challenges, at one permutation. |

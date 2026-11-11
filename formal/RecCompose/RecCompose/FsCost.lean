@@ -4,6 +4,7 @@
 -- `uniBreaksRel_congr`), `Fs128.lean` (`hlab_uni`) and `FsCost.lean` (`uniNumbers_of`) to π2's composed verifier.
 import RecCompose.FsOps
 import RecCompose.FsWalk
+import RecCompose.FsBytes
 import UniSound.FsCost
 import UniSound.FsGame
 
@@ -14,9 +15,9 @@ The facts the assembly of π2's Fiat–Shamir layer takes about the composed ver
 
 * **the lengths** of what it hashes: the circuit's encoding (`cc_encoding_length`, `24464` bytes, from its parts'
   lengths and the data's list lengths only), σ's and κ's inputs (`4 · 2^24`, `8 · 2^24` bytes), the digest's
-  (`24528`), the IV's (`208`); the chain's queries (`nQ_p2 = 6`);
-* **`duplexVm_p2Ver`**, **`cost_p2Ver`**: the verifier uses only the two calls, and calls `π` at most `2^48` times
-  (every query short: at most `46502` queries of at most `2^32` blocks; π1's three calls decode to one claim each);
+  (`24528`), the IV's (`137`); the chain's queries (`nQ_p2 = 6`);
+* **`duplexVm_p2Ver`**, **`cost_p2Ver`**: the verifier uses only the two calls, and calls `π` at most `2^49` times
+  (every query short: at most `80986` queries of at most `2^32` blocks);
 * **the IV moved into the adversary** (`expU_p2IvAdv`, `isTotalQueryBound_p2IvAdv`): the game with the IV in the
   verifier is the one whose adversary computes it last, its log four entries longer (`ivLog`), none of a Merkle
   node's `64` or a leaf's `512` bytes, so the extractor reads the same word (`extractorK_ivLog`);
@@ -36,7 +37,6 @@ open LeanVM.Rpm (Short hashBlocks)
 
 attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
   LeanVM.Protocol.Compile.instFintypeKState UniStatement.setupStack
-  RecStatement.layoutWords
 
 /-! ## The circuit's encoding -/
 
@@ -100,27 +100,17 @@ theorem cc_encoding_length : cc.encoding.length = 24464 := by
 
 theorem length_ivTag : RecStatement.ivTag.length = 16 := by decide +kernel
 
-theorem length_pi2Tag : "pi2".toUTF8.toList.length = 3 := by decide +kernel
-
-theorem length_layoutWord (code m : ℕ) (L : PcsQuotient.Layout) : (RecStatement.layoutWord code m L).length = 32 := by
-  unfold RecStatement.layoutWord
-  simp only [List.length_append, length_pi2Tag, List.length_cons, List.length_nil, List.length_replicate,
-    List.length_map, List.length_range]
-
-theorem length_layoutWords (m : ℕ) : (RecStatement.layoutWords m).1.length = 32 ∧
-    (RecStatement.layoutWords m).2.1.length = 32 ∧ (RecStatement.layoutWords m).2.2.length = 32 := by
-  unfold RecStatement.layoutWords
-  exact ⟨length_layoutWord _ _ _, length_layoutWord _ _ _, length_layoutWord _ _ _⟩
-
 theorem length_digestBytes' (d : Digest) : (digestBytes d).length = 32 := UniSound.length_digestBytes d
 
-theorem length_pi1IvAt (D : RecDeployment) (r : UniStatement.SetupRoots) : (D.pi1IvAt r).length = 32 :=
+theorem length_pi1IvAt (D : RecDeployment) (r : UniKeccak.SetupRootsK) : (D.pi1IvAt r).length = 32 :=
   RecDeployment.pi1IvAt_length D r
 
-theorem length_ivIn (D : RecDeployment) (roots : RecSetupRoots) (d : Bytes32) : (ivIn D roots d).length = 208 := by
-  obtain ⟨h1, h2, h3⟩ := length_layoutWords cc.logN
-  simp only [ivIn, List.length_append, length_ivTag, length_pi1IvAt, length_digestBytes', Vector.length_toList, h1,
-    h2, h3]
+theorem length_elementBytes24 (x : E) : (UniKeccak.elementBytes24 x).length = 24 := by
+  simp [UniKeccak.elementBytes24, FsBytes.length_elementWord]
+
+theorem length_ivIn (D : RecDeployment) (roots : RecSetupRoots) (d : Bytes32) : (ivIn D roots d).length = 137 := by
+  simp only [ivIn, List.length_append, length_ivTag, length_pi1IvAt, length_digestBytes', Vector.length_toList,
+    length_elementBytes24, List.length_singleton]
 
 theorem length_sigmaBytes (c : Pi2Circuit) : (sigmaBytes c).length = 4 * c.n := by
   rw [sigmaBytes, length_flatMap_const _ _ 4 (fun i ↦ by simp [length_le64]), List.length_range]
@@ -136,20 +126,20 @@ section Real
 variable {D : RecDeployment} (hD : RecDeployment.Real D)
 include hD
 
-theorem circuitAt_circuit (r : UniStatement.SetupRoots) : (D.circuitAt r).circuit = cc := hD.1 _
+theorem circuitAt_circuit (r : UniKeccak.SetupRootsK) : (D.circuitAt r).circuit = cc := hD.1 _
 
-theorem circuitAt_n (r : UniStatement.SetupRoots) : (D.circuitAt r).n = 2 ^ 24 := by
+theorem circuitAt_n (r : UniKeccak.SetupRootsK) : (D.circuitAt r).n = 2 ^ 24 := by
   unfold Pi2Circuit.n
   rw [circuitAt_circuit hD]
   rfl
 
-theorem length_sigma_real (r : UniStatement.SetupRoots) : (sigmaBytes (D.circuitAt r)).length = 4 * 2 ^ 24 := by
+theorem length_sigma_real (r : UniKeccak.SetupRootsK) : (sigmaBytes (D.circuitAt r)).length = 4 * 2 ^ 24 := by
   rw [length_sigmaBytes, circuitAt_n hD]
 
-theorem length_kappa_real (r : UniStatement.SetupRoots) : (kappaBytes (D.circuitAt r)).length = 8 * 2 ^ 24 := by
+theorem length_kappa_real (r : UniKeccak.SetupRootsK) : (kappaBytes (D.circuitAt r)).length = 8 * 2 ^ 24 := by
   rw [length_kappaBytes, circuitAt_n hD]
 
-theorem length_digIn_real (r : UniStatement.SetupRoots) (sg kp : Bytes32) :
+theorem length_digIn_real (r : UniKeccak.SetupRootsK) (sg kp : Bytes32) :
     (digIn (D.circuitAt r) sg kp).length = 24528 := by
   rw [length_digIn, circuitAt_circuit hD, cc_encoding_length]
 
@@ -209,7 +199,7 @@ theorem duplexVm_p2Ver (D : RecDeployment) (π : P2Pf) : LeanVM.Rpm.DuplexVm (p2
   · rw [LeanVM.Rpm.duplexVm_iff_duplexP]
     exact ((hOnly_p2IvKC4 D π).duplexP []).mono fun _ _ _ => trivial
   · rw [map_eq_bind_pure_comp]
-    exact LeanVM.Rpm.DuplexVm.bind (duplexVm_verU _ _ _ (fun π ch => duplexVm_opsRun _ _ π ch) _)
+    exact LeanVM.Rpm.DuplexVm.bind (duplexVm_verU _ _ _ (fun π ch => duplexVm_gopsRun _ _ π ch) _)
       fun _ => trivial
 
 /-- **The adversary with the IV asks four more queries.** -/
@@ -233,7 +223,7 @@ theorem p2BreaksRel_congr (D : RecDeployment) (P : RecSetupRoots → Pi2St → S
 /-! ## The IV's log leaves the extractor's word -/
 
 theorem p2Tc_leafLen : (p2Tc 0).leafLen = 512 := by
-  rw [p2Tc_zero, colCode_leafLen]
+  rw [p2Tc_zero]
   rfl
 
 /-- **The extractor reads the same word after the IV's log**: none of its four entries has a Merkle node's `64` or a
@@ -275,7 +265,7 @@ theorem logImplKC_p2IvKC4 {β : Type} (D : RecDeployment) (π : P2Pf)
 and appending its four entries to the log, the experiment whose adversary computes the IV last. -/
 theorem expU_p2IvAdv (D : RecDeployment) (hs : UniKeccakSound.UniShapesK D.pi1)
     (A₀ : SOut → OracleComp KeccakCalls P2Pf) :
-    expU pi2Spec p2View (withSetupG (p2Setup D hs) p2Fix (p2IvAdv D A₀)) (opsRun p2View (p2Ops D)) =
+    expU pi2Spec p2View (withSetupG (p2Setup D hs) p2Fix (p2IvAdv D A₀)) (gopsRun p2View (p2Ops D)) =
       (fun w => (ivOut2 w.1, w.2 ++ ivLog D w.1.1 w.1.2.1)) <$> kcGameS (p2Setup D hs) p2Fix A₀ (p2Ver D) := by
   have hw : withSetupG (p2Setup D hs) p2Fix (p2IvAdv D A₀) =
       withSetupG (p2Setup D hs) p2Fix A₀ >>= fun π => (fun x => setIv2 x.2.2.2 π) <$> p2IvKC4 D π := by
@@ -287,97 +277,33 @@ theorem expU_p2IvAdv (D : RecDeployment) (hs : UniKeccakSound.UniShapesK D.pi1)
 
 /-! ## The composed verifier's calls of `π` -/
 
-theorem toStmt_length_le (L : WhirBridge.Layout) (cs : List WhirBridge.Claim) :
-    (toStmt L cs).claims.length ≤ max cs.length 2 := by
-  unfold toStmt
-  split_ifs
-  · exact le_max_left _ _
-  · simp [rejectClaims]
+/-- The openings' query counts: `8 · 10122` (`Q`'s three in one opening). -/
+theorem sumQO_p2 (D : RecDeployment) : ((p2Ops D).map fun o => o.QO).sum = 80976 := by
+  simp [p2Ops, p2Pcs5, PcsOp.gop, qOp]
 
-theorem length_mapM_option {α β : Type} (f : α → Option β) :
-    ∀ (l : List α) (l' : List β), l.mapM f = some l' → l'.length = l.length
-  | [], l', h => by
-    simp only [List.mapM_nil, pure, Option.some.injEq] at h
-    subst h
-    rfl
-  | a :: l, l', h => by
-    rw [List.mapM_cons] at h
-    cases hfa : f a with
-    | none => simp [hfa] at h
-    | some b =>
-      cases hl : l.mapM f with
-      | none => simp [hfa, hl] at h
-      | some bs =>
-        simp only [hfa, hl, Option.bind_eq_bind, Option.bind_some, Option.pure_def, Option.some.injEq] at h
-        subst h
-        simp [length_mapM_option f l bs hl]
+/-- **A PCS claim's opening makes short queries only** (`UniKeccakSound.allQ_pcsOpenC`). -/
+theorem allQ_pcsOp (o : PcsOp) (r : Digest) (π : P2Pf) (ch : List (List E)) :
+    AllQueriesSatisfy (o.gop.ver r π ch) Short := by
+  show AllQueriesSatisfy (o.ver r π ch) Short
+  unfold PcsOp.ver
+  split
+  · trivial
+  · exact UniKeccakSound.allQ_pcsOpenC _ _ _ _ _ _
 
-theorem claimsOfWords_length (words : List (List UInt8)) (k v : ℕ) (cs : List PcsQuotient.Claim)
-    (h : claimsOfWords words k v = some cs) : cs.length = k := by
-  rw [length_mapM_option _ _ _ h, List.length_range]
-
-/-- **A decoded call's claims are its count word's number.** -/
-theorem decodeWith_length (reg : List (List UInt8 × Opener)) (words : List (List UInt8))
-    (x : Digest × Opener × List PcsQuotient.Claim) (h : decodeWith reg words = some x) :
-    countOfWord (words.getD 2 []) = some x.2.2.length := by
-  unfold decodeWith at h
-  simp only [Option.bind_eq_bind, Option.pure_def] at h
-  rcases hr : words.head? with _ | root
-  · simp [hr] at h
-  rcases hl : words[1]? with _ | lay
-  · simp [hr, hl] at h
-  rcases ho : reg.lookup lay with _ | op
-  · simp [hr, hl, ho] at h
-  rcases h2 : words[2]? with _ | w2
-  · simp [hr, hl, h2] at h
-  rcases hk : countOfWord w2 with _ | k
-  · simp [hr, hl, h2, hk] at h
-  have hg : words.getD 2 [] = w2 := by simp [List.getD_eq_getElem?_getD, h2]
-  rw [hg, hk]
-  simp only [hr, hl, ho, h2, hk, Option.bind_some] at h
-  split_ifs at h
-  · simp at h
-  · rcases hc : claimsOfWords words k op.vars with _ | cs
-    · simp [hc] at h
-    · simp only [hc, Option.bind_some, Option.some.injEq] at h
-      subst h
-      rw [claimsOfWords_length _ _ _ _ hc]
-
-theorem count_one :
-    countOfWord (hexBytes "0000000000000000000000000000000000000000000000000000000000000001") = some 1 := by
-  decide
-
-theorem pi1Words_count (D : RecDeployment) (hc : D.pi1Calls = Data.pi1Calls) (π : P2Pf) (ch : List (List E))
-    (k : ℕ) : (pi1Words D π ch).getD k [] = [] ∨
-      ((pi1Words D π ch).getD k []).getD 2 [] =
-        hexBytes "0000000000000000000000000000000000000000000000000000000000000001" := by
-  unfold pi1Words pi1CallsWith
-  rw [hc]
-  rcases k with _ | _ | _ | k
-  · right
-    simp [Data.pi1Calls, callWord]
-  · right
-    simp [Data.pi1Calls, callWord]
-  · right
-    simp [Data.pi1Calls, callWord]
-  · left
-    simp [Data.pi1Calls]
-
-/-- **π1's calls decode to one claim each** (their count word is the constant `…01`). -/
-theorem pi1Claims_length (D : RecDeployment) (hc : D.pi1Calls = Data.pi1Calls) (π : P2Pf) (ch : List (List E))
-    (k : ℕ) : (pi1Claims D π ch k).length ≤ 1 := by
-  unfold pi1Claims
-  rcases hd : pi1Dec D π ch k with _ | ⟨r, op, cs⟩
-  · simp
-  · have h := decodeWith_length _ _ _ hd
-    simp only [List.length_map]
-    rcases pi1Words_count D hc π ch k with h0 | h1
-    · unfold pi1Dec at hd
-      rw [h0] at hd
-      simp [decodeWith] at hd
-    · rw [h1, count_one] at h
-      simp only [Option.some.injEq] at h
-      omega
+/-- **The composition's openings make short queries only.** -/
+theorem allQ_p2Ops (D : RecDeployment) : ∀ o ∈ p2Ops D, ∀ r π ch, AllQueriesSatisfy (o.ver r π ch) Short := by
+  intro o ho r π ch
+  simp only [p2Ops, p2Pcs5, List.map_cons, List.map_nil, List.cons_append, List.nil_append, List.mem_cons,
+    List.mem_nil_iff, or_false] at ho
+  rcases ho with rfl | rfl | rfl | rfl | rfl | rfl
+  · exact allQ_pcsOp _ r π ch
+  · exact allQ_pcsOp _ r π ch
+  · exact allQ_pcsOp _ r π ch
+  · exact allQ_pcsOp _ r π ch
+  · exact allQ_pcsOp _ r π ch
+  · exact allQueriesSatisfy_bind (allQ_pcsOp qIdOp r π ch) fun _ =>
+      allQueriesSatisfy_bind (allQ_pcsOp qPushOp r π ch) fun _ =>
+        allQueriesSatisfy_bind (allQ_pcsOp qSumOp r π ch) fun _ => LeanVM.Rpm.allQ_pure _
 
 /-- The bytes a step absorbs: at most `520 + 32 + 24 B` for messages of at most `B` scalars. -/
 theorem length_mem_absorbsI_p2 (s : FSt2) (B : ℕ) : ∀ (i : ℕ) (rs : List RoundSpec)
@@ -408,59 +334,17 @@ theorem length_mem_absorbsI_p2 (s : FSt2) (B : ℕ) : ∀ (i : ℕ) (rs : List R
 theorem allQ_hash256' {x : List UInt8} (hx : x.length ≤ 2 ^ 32) : AllQueriesSatisfy (hash256 x) Short :=
   UniSound.allQ_hash256 (hx.trans (by norm_num))
 
-open Soundness in
-/-- **An opening of at most three claims of at most `2^30` coordinates makes short queries only**
-(`Soundness.allQ_ourVerifier`'s, three claims: `Q`'s). -/
-theorem allQ_ourVerifier3 (L : WhirBridge.Layout) (R : ℕ) (w : (Digest × Stmt L.stacking) × Proof)
-    (h3 : w.1.2.claims.length ≤ 3) (hv : L.vars ≤ 2 ^ 30) :
-    AllQueriesSatisfy (ourVerifier L R w) Short := by
-  rw [ourVerifier_eq]
-  by_cases hne : w.1.2.claims.isEmpty = false
-  swap
-  · simp only [hne]; trivial
-  simp only [hne, ↓reduceIte]
-  refine allQueriesSatisfy_bind (allQueriesSatisfy_bind (LeanVM.Rpm.allQ_queryH ?_)
-    fun _ => LeanVM.Rpm.allQ_queryF _) fun seed => ?_
-  · rw [List.length_append, openingPrefix_length, length_claimsBytes, Soundness.length_flat]
-    have hpt : ∀ c ∈ w.1.2.claims, c.point.length + 1 ≤ 2 ^ 30 + 1 := fun c hc => by
-      have := w.1.2.wide c hc
-      simp only [WhirBridge.Layout.stacking] at this
-      omega
-    have hs := List.sum_le_length_nsmul (w.1.2.claims.map fun c => c.point.length + 1)
-      (2 ^ 30 + 1) (by simpa using hpt)
-    simp only [List.length_map, smul_eq_mul] at hs
-    have : w.1.2.claims.length * (2 ^ 30 + 1) ≤ 3 * (2 ^ 30 + 1) := Nat.mul_le_mul_right _ h3
-    omega
-  · by_cases hr : WhirBridge.rootOf w.2 = some w.1.1
-    · simp only [hr, ↓reduceIte]
-      exact LeanVM.Rpm.allQ_runProof _ seed _ (widthsLE_variantProg _ _ _)
-    · simp only [hr, ↓reduceIte]; trivial
-
-/-- `UniSound.allQ_opsRun` for openings of at most three claims. -/
-theorem allQ_opsRun3 {Pf F M St : Type} (view : Pf → St × List (RMsg F)) :
-    ∀ (ops : List (WhirOp Pf F M)) (π : Pf) (ch : List (List F)),
-      (∀ o ∈ ops, (o.cl π ch).claims.length ≤ 3 ∧ o.S.L.vars ≤ 2 ^ 30) →
-        AllQueriesSatisfy (opsRun view ops π ch) Short
-  | [], _, _, _ => trivial
-  | o :: os, π, ch, h => by
-    simp only [opsRun]
-    refine allQueriesSatisfy_bind (allQ_ourVerifier3 _ _ _ (h o List.mem_cons_self).1
-      (h o List.mem_cons_self).2) fun _ => ?_
-    rw [map_eq_bind_pure_comp]
-    exact allQueriesSatisfy_bind (allQ_opsRun3 view os π ch fun o' ho' =>
-      h o' (List.mem_cons_of_mem _ ho')) fun _ => LeanVM.Rpm.allQ_pure _
-
-/-- **The composed verifier calls `π` at most `2^48` times**: at most `4 + 6 + 46492` queries (the IV's, the chain's,
-the six openings'), each short. -/
+/-- **The composed verifier calls `π` at most `2^49` times**: at most `4 + 6 + 80976` queries (the IV's, the chain's,
+the eight openings'), each short. -/
 theorem cost_p2Ver (D : RecDeployment) (hD : RecDeployment.Real D) (π : P2Pf) :
-    Common.QueryCostAtMost (p2Ver D π) LeanVM.Rpm.hashBlocks (2 ^ 48) := by
-  have htot : IsTotalQueryBound (p2Ver D π) (4 + (6 + 46492)) := by
+    Common.QueryCostAtMost (p2Ver D π) LeanVM.Rpm.hashBlocks (2 ^ 49) := by
+  have htot : IsTotalQueryBound (p2Ver D π) (4 + (6 + 80976)) := by
     unfold p2Ver
     refine isTotalQueryBound_bind (isTotalQueryBound_p2IvKC4 D π) fun x =>
       (isQueryBound_map_iff _ _ _ _ _).mpr ?_
     unfold verU
     refine IsTotalQueryBound.mono (isTotalQueryBound_bind (isTotalQueryBound_chainU _ _ _) fun ch =>
-      isTotalQueryBound_bind (n₂ := 0) (UniSound.isTotalQueryBound_opsRun _ _ _ _) fun _ => trivial) ?_
+      isTotalQueryBound_bind (n₂ := 0) (isTotalQueryBound_gopsRun _ _ _ _) fun _ => trivial) ?_
     rw [nQ_p2, sumQO_p2 D]
   have hiv : AllQueriesSatisfy (p2IvKC4 D π) Short := by
     unfold p2IvKC4
@@ -469,19 +353,6 @@ theorem cost_p2Ver (D : RecDeployment) (hD : RecDeployment.Real D) (π : P2Pf) :
     refine allQueriesSatisfy_bind (allQ_hash256' (by rw [length_digIn_real hD]; norm_num)) fun d => ?_
     refine allQueriesSatisfy_bind (allQ_hash256' (by rw [length_ivIn]; norm_num)) fun _ => ?_
     exact LeanVM.Rpm.allQ_pure _
-  have hops : ∀ (π' : P2Pf) ch, ∀ o ∈ p2Ops D, (o.cl π' ch).claims.length ≤ 3 ∧ o.S.L.vars ≤ 2 ^ 30 := by
-    intro π' ch o ho
-    simp only [p2Ops, List.mem_cons, List.mem_nil_iff, or_false] at ho
-    have h1 : ∀ k, (cl1 D k π' ch).claims.length ≤ 3 := fun k =>
-      (toStmt_length_le _ _).trans (max_le ((pi1Claims_length D hD.2.1 π' ch k).trans (by norm_num)) (by norm_num))
-    have hv1 : ∀ k, (sh1 k).L.vars ≤ 2 ^ 30 := fun k => (pi1Vars_hi k).trans (by norm_num)
-    rcases ho with rfl | rfl | rfl | rfl | rfl | rfl
-    · exact ⟨h1 0, hv1 0⟩
-    · exact ⟨h1 1, hv1 1⟩
-    · exact ⟨h1 2, hv1 2⟩
-    · exact ⟨(toStmt_length_le _ _).trans (by simp), by decide⟩
-    · exact ⟨(toStmt_length_le _ _).trans (by simp), by decide⟩
-    · exact ⟨(toStmt_length_le _ _).trans (by simp), by decide⟩
   have hall : AllQueriesSatisfy (p2Ver D π) Short := by
     unfold p2Ver
     refine allQueriesSatisfy_bind hiv fun x => ?_
@@ -504,7 +375,8 @@ theorem cost_p2Ver (D : RecDeployment) (hD : RecDeployment.Real D) (π : P2Pf) :
       simp only [pLen] at this
       omega
     · simp only [Function.comp_apply, pure_bind]
-      exact allQueriesSatisfy_bind (allQ_opsRun3 _ _ _ _ (hops _ _)) fun _ => LeanVM.Rpm.allQ_pure _
+      exact allQueriesSatisfy_bind (UniKeccakSound.allQ_gopsRunK _ _ _ _ (allQ_p2Ops D)) fun _ =>
+        LeanVM.Rpm.allQ_pure _
   refine (LeanVM.Rpm.isWeightBound_of_isTotalQueryBound hashBlocks (2 ^ 32) htot
     (hall.mono fun _ h => LeanVM.Rpm.hashBlocks_le_of_short h)).mono ?_
   norm_num

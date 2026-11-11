@@ -4,7 +4,8 @@
 -- `preimage_merkle`, `leavesUnder_preimage`, `leavesUnder_congr` and `Soundness/MerkleWord.lean`'s
 -- `wordOfMerkle_merkleWord_eq`.
 import RecCompose.FsSetup
-import RecCompose.OpeningsAgree
+import RecCompose.FsOps
+import RecCompose.FsBytes
 import UniSound.FsExtract
 import UniSound.FsWalkProof
 
@@ -12,21 +13,22 @@ import UniSound.FsWalkProof
 # The extractor's reading: π2's extractor lists what the composed one lists
 
 **`pi2ExtractBridge_of`**: a candidate of `W`'s root that the composed extractor (`extractorK` at round `0`, `W`'s
-decoder `p2Tc 0 = colCode shW…`) reads off the setup's evaluations and a permutation transcript is a stack of π2's
+decoder `p2Tc 0`, `tableCode` of the plain shape of `2^24` words) reads off the setup's evaluations and a permutation transcript is a stack of π2's
 extractor's list (`wCandidates`) on the same evaluations, for a stream that holds `W`'s root (`pLen + 32` bytes):
 
-* **round `0`'s message is `W`'s root** the stream names (`msgK_p2View_zero`: its halves at byte `520`), and the
+* **round `0`'s message is `W`'s root** the stream names (`msgK_p2View_zero`: its bytes at byte `520`), and the
   Statement's root, the claim's root word of the stream's `32` bytes there (`streamRoot`, at `rootsAt cc.reads`'s
   `W` entry), is the same digest (`streamRoot_eq`, for a stream holding those bytes);
-* **the composed candidate is a stack of mumbai's decoder** (`decodeColumns` = `Column.mk` of `decodeStacks` at `2^24`
-  words, rate `1/2`), and the Statement's word is mumbai's `committedLeaves` (`committedWord_eq`), which agrees with the
+* **the composed candidate is a stack of mumbai's decoder** (`UniSound.mem_tableCode_cands`: `decodeStacks` at
+  `2^24` words, rate `1/2`, read back through the plain layout as the stack itself, `UniSound.rdTab_tabOf_plain`), and
+  the Statement's word is mumbai's `committedLeaves` (`committedWord_eq`), which agrees with the
   composed Merkle word on every column (`wordOfMerkle_merkleWord_eq`), so the Statement's list decoder lists the same
   stack (`mem_decodeStacks_congr`), last of `candidates`.
 
 **`Pi2ExtractBridge` (`FsDefs.lean`) needs the stream's length**: on a stream shorter than `552` bytes the composed view
 reads `W`'s root's missing bytes as zeros in place (`halvesAt`, big-endian words by `getD`), while the claim's root
-word of the shorter slice (`streamWord`, then each half reversed) shifts them, so the two roots, and the two lists,
-can differ. The composed event's check (`p2Check`) has the stream's `944` bytes.
+word of the shorter slice (`streamWord`) is shorter, so the two roots, and the two lists, can differ. The composed
+event's check (`p2Check`) has the stream's `1064` bytes.
 -/
 
 set_option linter.unusedSectionVars false
@@ -40,7 +42,6 @@ open scoped ENNReal
 
 attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
   LeanVM.Protocol.Compile.instFintypeKState UniStatement.setupStack
-  RecStatement.layoutWords
 
 /-! ## `W`'s root -/
 
@@ -56,22 +57,16 @@ theorem rootsAt_cc : rootsAt cc.reads = [0, 32, 520, 576] := by decide
 
 theorem rootReads_cc : rootReads cc.reads = 2 := by decide
 
-/-- A digest's bytes, each half reversed, are the stream's order of its root's halves (`revRoot`). -/
-theorem revRoot_toB (d : Digest) : UniSound.revRoot (toB d) = rootWordOfBytes (digestBytes d) := by
-  have hl := Pi1Decode.length_digestBytes d
-  unfold UniSound.revRoot rootWordOfBytes
-  rw [Bridge.toB_toList, List.take_of_length_le (l := (digestBytes d).drop 16) (by simp [hl])]
-
 /-- **The claim's root word of the stream's 32 bytes names the root the stream's halves name**, on a stream that holds
 them. -/
 theorem streamRoot_eq (b : Array UInt8) (o : ℕ) (h : o + 32 ≤ b.size) :
     streamRoot b o = UniStatement.rootOf (UniSound.halvesAt b o) := by
-  have hw : streamWord b o = UniSound.revRoot (toB (UniStatement.rootOf (UniSound.halvesAt b o))) := by
-    rw [UniSound.revRoot_halvesAt b o h]
+  have hw : streamWord b o = digestBytes (UniStatement.rootOf (UniSound.halvesAt b o)) := by
+    rw [← Bridge.toB_toList, ← UniSound.revRoot, UniSound.revRoot_halvesAt b o h]
     unfold streamWord
     rw [UniSound.toList_extract_eq, Nat.add_sub_cancel_left]
   unfold streamRoot
-  rw [hw, revRoot_toB, rootOfWord_rootWordOfBytes_digestBytes]
+  rw [hw, FsBytes.rootOfWord_digestBytes]
 
 /-! ## The Statement's word -/
 
@@ -93,10 +88,9 @@ theorem committedWord_eq (setupEvals : List (List UInt8 × Digest)) (T : Common.
   · exact Soundness.Replay.preimage_merkle setupEvals _ d' 64 (by decide)
   · exact Soundness.Replay.preimage_merkle setupEvals _ d' (8 * 64) (by decide)
 
-/-- `W`'s layout has `2^24` words (π2's circuit the real deployment's). -/
-theorem wLayout_logN (D : RecDeployment) (hD : RecDeployment.Real D) (roots : RecSetupRoots) :
-    (wLayout D roots).logN = 24 := by
-  unfold wLayout
+/-- `W`'s stack has `24` variables (π2's circuit the real deployment's). -/
+theorem wVars_eq (D : RecDeployment) (hD : RecDeployment.Real D) (roots : RecSetupRoots) : wVars D roots = 24 := by
+  unfold wVars
   rw [RecDeployment.circuitAt, hD.1]
   decide
 
@@ -127,22 +121,14 @@ theorem pi2ExtractBridge_of (D : RecDeployment) (hD : RecDeployment.Real D) (t :
   rw [h0] at hq
   obtain ⟨q', hq', he⟩ := List.mem_map.mp hq
   cases Option.some.inj he
-  have e0 : p2Tc 0 = colCode shW.L shW.R shW.adm := by
-    unfold p2Tc
-    rw [ite_eq_left rfl]
-  rw [e0, UniSound.cands_commit] at hq'
-  unfold colCode at hq'
-  dsimp only at hq'
-  rw [List.mem_map] at hq'
-  obtain ⟨c, hc, hcq⟩ := hq'
-  unfold decodeColumns at hc
-  rw [List.mem_map] at hc
-  obtain ⟨st, hst, hstc⟩ := hc
-  subst hstc hcq
+  rw [p2Tc_zero] at hq'
+  obtain ⟨st, hst, rfl⟩ := UniSound.mem_tableCode_cands _ _ _ _ _ hq'
+  rw [show UniSound.rdTab (tabOf (UniSound.plainL 24) ⟨st⟩) = stkOf st from
+    UniSound.rdTab_tabOf_plain 24 le_rfl (by norm_num) st]
   -- the Statement's word agrees with the composed one on every column
   have hst2 : st ∈ LeanVM.Extraction.decodeStacks 24 1
       (committedWord (preimagesOf t.evaluations T) 24 R) := by
-    refine Soundness.mem_decodeStacks_congr shW.adm (fun p hp => ?_) st hst
+    refine Soundness.mem_decodeStacks_congr (shK 24 (by norm_num) (by norm_num)).adm (fun p hp => ?_) st hst
     rw [committedWord_eq]
     exact Soundness.wordOfMerkle_merkleWord_eq _ _ _ _ hp
   -- the Statement's root and size
@@ -151,11 +137,11 @@ theorem pi2ExtractBridge_of (D : RecDeployment) (hD : RecDeployment.Real D) (t :
         R := by
     rw [RecDeployment.circuitAt, hD.1, rootsAt_cc, rootReads_cc]
     exact streamRoot_eq _ _ hsz
-  have hμ := wLayout_logN D hD t.roots
+  have hμ := wVars_eq D hD t.roots
   unfold wCandidates
   dsimp only
   rw [hroot]
-  generalize (wLayout D t.roots).logN = μ at hμ ⊢
+  generalize wVars D t.roots = μ at hμ ⊢
   subst hμ
   exact ⟨st, List.mem_append_right _ hst2, rfl⟩
 
