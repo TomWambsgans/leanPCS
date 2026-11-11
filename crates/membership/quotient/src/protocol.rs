@@ -50,7 +50,7 @@ use primitives::field::{F64, F192, F192Unreduced};
 use crate::circuit::{Circuit, PUBLIC_ROWS, PUBLIC_WORDS, RANDOM_WORDS, THREE, anchor_cell, anchor_values};
 use crate::domain::{self, beta, chain, point, row_vanishing};
 use crate::ntt::{self, ESplat, Ex8, Kx8, MixedSum};
-use crate::opening::{self, Claim, Commitment, Committed};
+use crate::opening::{self, Claim, Commitment, Committed, PcsClaim};
 use crate::statement::Statement;
 use crate::transcript::{Proof, ProverChain, TranscriptError, VerifierChain, halves_root};
 
@@ -124,15 +124,6 @@ pub const MIN_LOG_ROWS: usize = 13;
 /// The most rows: above `2^22` rows the quotient table (`m + 4` variables) is more than the `2^28` words leanVM's
 /// WHIR commits.
 pub const MAX_LOG_ROWS: usize = 22;
-
-/// The most rows the reduction alone takes (its domain's basis): circuits past [`MAX_LOG_ROWS`] reduce to claims on
-/// tables leanVM's WHIR cannot commit, for a block whose openings take larger tables ([`verify_reduction`]).
-pub const MAX_REDUCTION_LOG_ROWS: usize = domain::EXT_BASIS - 5;
-
-/// Whether the reduction alone takes a circuit of `2^log_rows` rows.
-pub fn reduction_supported(log_rows: usize) -> bool {
-    (MIN_LOG_ROWS..=MAX_REDUCTION_LOG_ROWS).contains(&log_rows)
-}
 
 /// Whether the commitments support a circuit of `2^log_rows` rows.
 pub fn supported(log_rows: usize) -> bool {
@@ -273,18 +264,8 @@ impl Index {
         index
     }
 
-    /// [`Index::new`] without the check: for the test that shows what the check prevents.
-    #[cfg(test)]
+    /// [`Index::new`] without the check (crate-visible for the test that shows what the check prevents).
     pub(crate) fn new_unchecked(circuit: &Circuit) -> Self {
-        Self::of(circuit)
-    }
-
-    #[cfg(not(test))]
-    fn new_unchecked(circuit: &Circuit) -> Self {
-        Self::of(circuit)
-    }
-
-    fn of(circuit: &Circuit) -> Self {
         let mut sigma = parallel::map_collect(circuit.sigma.len(), |i| point(circuit.sigma[i] as usize));
         ntt::coefficients(&mut sigma, F64::ZERO);
         let n = sigma.len();
@@ -307,10 +288,6 @@ impl Index {
     /// every proof makes of it ([`open`]).
     pub fn commit(&self) -> Committed {
         opening::commit_lanes_keeping_codeword(self.table.clone(), self.table.len().trailing_zeros() as usize)
-    }
-
-    fn sigma(&self) -> &[F64] {
-        &self.table
     }
 
     /// The committed wiring table: the wiring polynomial's `2^m` coefficients.
@@ -561,10 +538,36 @@ pub struct Claims {
 
 impl Claims {
     /// The claims in the order of [`Openings`], each with the table it is on: `0` the witness, `1` the wiring, `2`
-    /// the quotient table.
+    /// the quotient table ([`Claims::on`] names the commitments).
     pub fn all(&self) -> [(usize, &Claim); 3] {
         [(0, &self.witness), (1, &self.wiring), (2, &self.copy)]
     }
+
+    /// The claims in the order of [`Openings`], each with the commitment it is on: the witness table's, the
+    /// circuit's (`index`, the wiring), the quotient table's.
+    pub fn on<'a>(&'a self, index: &Commitment, commitments: &Commitments) -> [(Commitment, &'a Claim); 3] {
+        [(commitments.witness, &self.witness), (*index, &self.wiring), (commitments.table, &self.copy)]
+    }
+
+    /// The PCS claims, in that order: what [`verify_openings`] opens, and the EVM contract checks declared.
+    pub fn pcs_claims(&self, index: &Commitment, commitments: &Commitments) -> [PcsClaim; 3] {
+        self.on(index, commitments).map(|(on, claim)| on.pcs_claim(claim))
+    }
+}
+
+/// Where the reduction's scalars sit in a proof's stream ([`reduce`] reads them in this order): the witness table's
+/// root (two scalars) and out-of-domain answer, the quotient table's root and answer, the row values `X`, `C`, `V +
+/// Y` at `t` ([`row_values`]), and the wiring's value at `t`.
+pub mod stream {
+    pub const WITNESS_ROOT: usize = 0;
+    pub const WITNESS_OOD: usize = 2;
+    pub const TABLE_ROOT: usize = 3;
+    pub const TABLE_OOD: usize = 5;
+    /// The three row values, from here.
+    pub const ROW_VALUES: usize = 6;
+    pub const NEXT: usize = 9;
+    /// The scalars of a proof.
+    pub const LEN: usize = 10;
 }
 
 /// The two coordinates of the extension over the base field, and the scale of their weights `(1, Y, Y^2, Y^3)`.
@@ -705,17 +708,6 @@ pub struct Tables {
     pub table: Committed,
 }
 
-impl Tables {
-    /// The committed table a claim of [`Claims::all`] is on (`1`, the wiring, is the circuit's).
-    pub fn table(&self, k: usize) -> &Committed {
-        match k {
-            0 => &self.witness,
-            2 => &self.table,
-            _ => panic!("the wiring table is the index's"),
-        }
-    }
-}
-
 /// Prove `statement` from the cells of a witness, against the circuit committed as `index`, with randomness of its
 /// own, fresh per proof and never reused: a 32-byte seed from the operating system ([`fresh_seed`]), from which
 /// [`Randomness::derive`] makes the random rows' words and the blinding. Panics on a challenge the verifier
@@ -740,37 +732,25 @@ pub fn prove_with_seed(
     prove_with_randomness(circuit, index, commitment, statement, cells, &randomness)
 }
 
-/// [`prove`] with its randomness given. Crate-private: outside the crate, randomness reaches the prover only through
-/// [`Randomness::derive`] ([`prove`], [`prove_with_seed`]), so it cannot be reused across witnesses; the crate's
-/// tests use it to fix the random rows and the blinding. Panics on a challenge the verifier rejects.
-pub(crate) fn prove_with_randomness(
-    circuit: &Circuit,
-    index: &Index,
-    commitment: &Commitment,
-    statement: &Statement,
-    cells: &[F64],
-    randomness: &Randomness,
-) -> Proved {
-    prove_inner(circuit, index, commitment, statement, cells, randomness, Cheat::Honest)
-}
+/// The hooks of the tests' cheating prover (`tests::cheat`), which does what the honest one does but with a bad
+/// witness's errors: here, nothing.
+#[cfg(not(test))]
+mod cheat {
+    use primitives::field::{F64, F192};
 
-/// What the prover does with a sum that is not zero ([`prove_inner`]), as a cheating prover would. It sets the sum's
-/// polynomial on the cells to `1/d + 1/d' + μ e / (d d')`, `e` the gates' and the pins' errors times `Z / Z_R` and
-/// `Z / Z_P` there, so that the quotient is a polynomial whatever the witness; the sum over the cells is then not zero
-/// but for a witness, so `x h`'s low part has a coefficient `n`, which the table's digit 0 cannot hold
-/// (`tests::absorbed_errors_fail_the_copy_claim`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[cfg_attr(not(test), allow(dead_code))]
-pub(crate) enum Cheat {
-    /// The honest prover.
-    Honest,
-    /// The errors absorbed, `x h`'s coefficient `n` dropped.
-    Absorb,
-    /// The errors absorbed, `x h`'s coefficient `n` added to digit 1's first word (read through `ζ`, not `Z`).
-    AbsorbSpill,
-    /// The errors absorbed, then the sum over the cells made zero at one cell, whose value the identity then misses.
-    AbsorbBalance,
+    use crate::circuit::Circuit;
+    use crate::statement::Statement;
+
+    #[inline(always)]
+    pub(super) fn absorb(_: &Circuit, _: &Statement, _: &[F64], _: [F192; 3], _: [&mut [F64]; 3]) {}
+
+    #[inline(always)]
+    pub(super) fn spill(_: [F64; 3]) -> [F64; 3] {
+        [F64::ZERO; 3]
+    }
 }
+#[cfg(test)]
+use tests::cheat;
 
 /// `q_e[j] += limb e of Σ_k c_k f_k[j]` for each limb `e` and word `j`, the `f_k` columns over `K`, eight words a step
 /// and one reduction a limb.
@@ -799,14 +779,16 @@ fn limbs_element(e: impl Fn(usize) -> F64) -> F192 {
     F192::new(e(0).0, e(1).0, e(2).0)
 }
 
-fn prove_inner(
+/// [`prove`] with its randomness given. Crate-private: outside the crate, randomness reaches the prover only through
+/// [`Randomness::derive`] ([`prove`], [`prove_with_seed`]), so it cannot be reused across witnesses; the crate's
+/// tests use it to fix the random rows and the blinding. Panics on a challenge the verifier rejects.
+pub(crate) fn prove_with_randomness(
     circuit: &Circuit,
     index: &Index,
     commitment: &Commitment,
     statement: &Statement,
     cells: &[F64],
     randomness: &Randomness,
-    cheat: Cheat,
 ) -> Proved {
     let Randomness { rows, blind } = randomness;
     assert!(
@@ -911,32 +893,8 @@ fn prove_inner(
         });
     }
     drop(inner);
-    if cheat != Cheat::Honest {
-        // `e` at a row's first cell: the gate times `Z / Z_R = Z' / Z_R'` there, the linearized polynomials'
-        // linear coefficients `1` and `Σ τ`; at pin `k`: `w + v_k` times `Z / Z_P = λ_k`.
-        let row_weight = row_vanishing(m).iter().fold(F64::ZERO, |acc, &t| acc + t).inv();
-        let (_, lambda) = pins();
-        let values = anchor_values(&statement.words());
-        let mut errors: Vec<(usize, F64)> = (0..n / 4)
-            .map(|r| (4 * r, gate(std::array::from_fn(|c| cells[4 * r + c])) * row_weight))
-            .collect();
-        errors.extend((0..PUBLIC_ROWS).map(|k| (anchor_cell(k), (cells[anchor_cell(k)] + values[k]) * lambda[k])));
-        for (x, e) in errors.into_iter().filter(|(_, e)| !e.is_zero()) {
-            let w = F192::from(cells[x]);
-            let d = alpha + w + beta_.mul_base(point(x));
-            let d_next = alpha + w + beta_.mul_base(point(circuit.sigma[x] as usize));
-            let add = mu.mul_base(e) * (d * d_next).inv();
-            for (h, c) in h_slots(rest, n).into_iter().zip([add.c0, add.c1, add.c2]) {
-                h[x] += F64(c);
-            }
-        }
-    }
-    if cheat == Cheat::AbsorbBalance {
-        for h in h_slots(rest, n) {
-            let sum = h.iter().fold(F64::ZERO, |acc, &v| acc + v);
-            h[n / 2] += sum;
-        }
-    }
+    // A cheating prover's absorption of a bad witness's errors into `h` (the tests' alone: [`cheat`]).
+    cheat::absorb(circuit, statement, cells, [alpha, beta_, mu], h_slots(rest, n));
     drop(randomized);
     tracing::info_span!("coefficients")
         .in_scope(|| h_slots(rest, n).into_iter().for_each(|h| ntt::coefficients(h, F64::ZERO)));
@@ -947,7 +905,7 @@ fn prove_inner(
     // now: it is solved for once `q` is known, and added then as `b_2 w_1 d d'` ([`H_BLIND`]).
     let span = tracing::info_span!("Quotients").entered();
     let sigma_values = index.sigma_values();
-    let sigma = index.sigma();
+    let sigma = index.wiring();
     let extra: [[F64; H_BLIND]; 3] = std::array::from_fn(|e| [blind[e][0], blind[e][1], F64::ZERO]);
     tracing::info_span!("sum values").in_scope(|| {
         for ((h, column), extra) in h_slots(rest, n).into_iter().zip(quotients.chunks_exact_mut(big)).zip(&extra) {
@@ -1070,16 +1028,15 @@ fn prove_inner(
     // coefficient `n − 1`, zero when the sum over the cells is ([`mul_x`]).
     let inner = tracing::info_span!("tables").entered();
     let part = tracing::info_span!("x h").entered();
-    let mut spill = [F64::ZERO; 3];
+    let mut overflow = [F64::ZERO; 3];
     for (e, slot) in rest.chunks_exact_mut(big).enumerate() {
         let (low, high) = slot.split_at_mut(n);
-        let overflow = mul_x(low, high);
+        overflow[e] = mul_x(low, high);
         copy_par(low, high);
-        // Zero but for a witness that is not one: dropped (the honest prover's proof of it then fails), or spilled.
-        if cheat == Cheat::AbsorbSpill {
-            spill[e] = overflow;
-        }
     }
+    // Zero but for a witness that is not one: dropped (the honest prover's proof of it then fails), or spilled by a
+    // cheating prover ([`cheat`]).
+    let spill = cheat::spill(overflow);
 
     // `b_2`: `q = A_0 + Z x A_1` needs `q`'s high part `Q_h` (`q = q_low + Z Q_h`) to vanish at 0, its coefficient 0,
     // `q`'s coefficient `n`. `b_2` adds `b_2 E` to `q`, `E = w_1 d d'`, `d d' = α^2 + α β (x + σ) + w^2 + β w (x + σ) +
@@ -1171,7 +1128,7 @@ fn prove_inner(
     let digits: Vec<F192> = std::iter::successors(Some(t), |&w| Some(w * w + w)).take(m).collect();
     let a = evaluate_interleaved(witness.words(), 4, &digits[2..m]);
     row_values([a[0], a[1], a[2], a[3]], t, digits[1]).into_iter().for_each(|x| ps.send(x));
-    let next = evaluate_interleaved(index.sigma(), 1, &digits[..m])[0];
+    let next = evaluate_interleaved(index.wiring(), 1, &digits[..m])[0];
     ps.send(next);
     ps.sample();
 
@@ -1342,20 +1299,6 @@ pub fn verify(
     if !supported(log_rows) {
         return Err(VerifyError::Shape);
     }
-    verify_reduction(index, statement, proof, log_rows)
-}
-
-/// [`verify`] at any size the reduction takes ([`reduction_supported`]), past the sizes whose claims leanVM's
-/// WHIR opens: the commitments and the claims, for a block whose openings take the tables.
-pub fn verify_reduction(
-    index: &Commitment,
-    statement: &Statement,
-    proof: &Proof,
-    log_rows: usize,
-) -> Result<(Commitments, Claims), VerifyError> {
-    if !reduction_supported(log_rows) {
-        return Err(VerifyError::Shape);
-    }
     let mut stream = Stream {
         chain: VerifierChain::new(&label(index, statement), proof),
         statement: *statement,
@@ -1389,15 +1332,12 @@ pub struct Openings(pub [opening::Proof; 3]);
 /// Open a proof's `claims` on the tables it committed. The wiring's opening is about public data: anyone can make
 /// it; the index's kept codeword ([`Index::commit`]) serves it and is kept for the next proof's.
 pub fn open(tables: &Tables, claims: &Claims, index: &Committed) -> Openings {
-    Openings(claims.all().map(|(k, claim)| {
-        tracing::info_span!("Open").in_scope(|| {
-            if k == 1 {
-                opening::open_keeping(index, claim)
-            } else {
-                opening::open(tables.table(k), claim)
-            }
-        })
-    }))
+    let span = || tracing::info_span!("Open");
+    Openings([
+        span().in_scope(|| opening::open(&tables.witness, &claims.witness)),
+        span().in_scope(|| opening::open_keeping(index, &claims.wiring)),
+        span().in_scope(|| opening::open(&tables.table, &claims.copy)),
+    ])
 }
 
 /// A fingerprint of a proof and its openings: the Keccak-256 of every scalar, row word and digest they carry,
@@ -1444,9 +1384,8 @@ pub fn verify_openings(
     if !supported(log_rows) {
         return Err(verifier::VerifierError::WhirShape);
     }
-    let on = [&commitments.witness, index, &commitments.table];
-    for ((k, claim), proof) in claims.all().into_iter().zip(&openings.0) {
-        opening::verify(on[k], claim, proof)?;
+    for ((on, claim), proof) in claims.on(index, commitments).into_iter().zip(&openings.0) {
+        opening::verify(&on, claim, proof)?;
     }
     Ok(())
 }
@@ -1455,7 +1394,90 @@ pub fn verify_openings(
 pub(crate) mod tests {
     use super::*;
     use crate::circuit::{Builder, Src, public_words};
+    use cheat::Cheat;
     use primitives::test_rng::Rng;
+
+    /// The tests' cheating prover: [`prove_with_randomness`] with a bad witness's errors absorbed, by the hooks it
+    /// calls ([`cheat::absorb`], [`cheat::spill`]) while [`cheat::with`] sets how.
+    pub(crate) mod cheat {
+        use std::cell::Cell;
+
+        use super::super::*;
+
+        /// What the prover does with a sum that is not zero, as a cheating prover would. It sets the sum's polynomial
+        /// on the cells to `1/d + 1/d' + μ e / (d d')`, `e` the gates' and the pins' errors times `Z / Z_R` and `Z /
+        /// Z_P` there, so that the quotient is a polynomial whatever the witness; the sum over the cells is then not
+        /// zero but for a witness, so `x h`'s low part has a coefficient `n`, which the table's digit 0 cannot hold
+        /// (`absorbed_errors_fail_the_copy_claim`).
+        #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+        pub(crate) enum Cheat {
+            /// The honest prover.
+            Honest,
+            /// The errors absorbed, `x h`'s coefficient `n` dropped.
+            Absorb,
+            /// The errors absorbed, `x h`'s coefficient `n` added to digit 1's first word (read through `ζ`, not `Z`).
+            AbsorbSpill,
+            /// The errors absorbed, then the sum over the cells made zero at one cell, whose value the identity then
+            /// misses.
+            AbsorbBalance,
+        }
+
+        thread_local! {
+            static HOW: Cell<Cheat> = const { Cell::new(Cheat::Honest) };
+        }
+
+        /// `f` with the prover cheating `how`.
+        pub(crate) fn with<R>(how: Cheat, f: impl FnOnce() -> R) -> R {
+            HOW.set(how);
+            let out = f();
+            HOW.set(Cheat::Honest);
+            out
+        }
+
+        /// The errors absorbed into `h`'s values on the cells, `h` its three limbs.
+        pub(crate) fn absorb(
+            circuit: &Circuit,
+            statement: &Statement,
+            cells: &[F64],
+            [alpha, beta_, mu]: [F192; 3],
+            mut h: [&mut [F64]; 3],
+        ) {
+            let how = HOW.get();
+            let m = cell_vars(circuit.log_rows);
+            let n = 1usize << m;
+            if how != Cheat::Honest {
+                // `e` at a row's first cell: the gate times `Z / Z_R = Z' / Z_R'` there, the linearized polynomials'
+                // linear coefficients `1` and `Σ τ`; at pin `k`: `w + v_k` times `Z / Z_P = λ_k`.
+                let row_weight = row_vanishing(m).iter().fold(F64::ZERO, |acc, &t| acc + t).inv();
+                let (_, lambda) = pins();
+                let values = anchor_values(&statement.words());
+                let mut errors: Vec<(usize, F64)> = (0..n / 4)
+                    .map(|r| (4 * r, gate(std::array::from_fn(|c| cells[4 * r + c])) * row_weight))
+                    .collect();
+                errors.extend((0..PUBLIC_ROWS).map(|k| (anchor_cell(k), (cells[anchor_cell(k)] + values[k]) * lambda[k])));
+                for (x, e) in errors.into_iter().filter(|(_, e)| !e.is_zero()) {
+                    let w = F192::from(cells[x]);
+                    let d = alpha + w + beta_.mul_base(point(x));
+                    let d_next = alpha + w + beta_.mul_base(point(circuit.sigma[x] as usize));
+                    let add = mu.mul_base(e) * (d * d_next).inv();
+                    for (h, c) in h.iter_mut().zip([add.c0, add.c1, add.c2]) {
+                        h[x] += F64(c);
+                    }
+                }
+            }
+            if how == Cheat::AbsorbBalance {
+                for h in h.iter_mut() {
+                    let sum = h.iter().fold(F64::ZERO, |acc, &v| acc + v);
+                    h[n / 2] += sum;
+                }
+            }
+        }
+
+        /// The overflow of `x h`'s low part, spilled into the blinding or dropped.
+        pub(crate) fn spill(overflow: [F64; 3]) -> [F64; 3] {
+            if HOW.get() == Cheat::AbsorbSpill { overflow } else { [F64::ZERO; 3] }
+        }
+    }
 
     /// A size the commitments do not take is rejected, not a panic: the verifiers return an error before reading.
     #[test]
@@ -1506,10 +1528,8 @@ pub(crate) mod tests {
     }
 
     fn truth(index: &Index, proved: &Proved) -> [bool; 3] {
-        proved.claims.all().map(|(k, claim)| {
-            let words = if k == 1 { index.wiring() } else { proved.tables.table(k).words() };
-            opening::evaluate(words, &claim.point) == claim.value
-        })
+        let words = [proved.tables.witness.words(), index.wiring(), proved.tables.table.words()];
+        proved.claims.all().map(|(k, claim)| opening::evaluate(words[k], &claim.point) == claim.value)
     }
 
     /// The prover's output, pinned: the proof and its three openings on the toy circuit, so a change to how the
@@ -1666,7 +1686,12 @@ pub(crate) mod tests {
 
         let proved = prove(&circuit, &index, &commitment, &statement, &cells);
         assert_eq!(truth(&index, &proved), [true; 3]);
-        assert_eq!(proved.proof.stream.len(), 2 * 3 + 3 + 1);
+        assert_eq!(proved.proof.stream.len(), stream::LEN);
+        let s = &proved.proof.stream;
+        let root = |at: usize| halves_root(&[s[at], s[at + 1]]);
+        assert_eq!(root(stream::WITNESS_ROOT), Ok(proved.commitments.witness.root));
+        assert_eq!(root(stream::TABLE_ROOT), Ok(proved.commitments.table.root));
+        assert_eq!([s[stream::WITNESS_OOD], s[stream::TABLE_OOD]], [proved.commitments.witness.ood, proved.commitments.table.ood]);
         let openings = open(&proved.tables, &proved.claims, &index_committed);
         assert_eq!(
             verify_openings(circuit.log_rows, &commitment, &proved.commitments, &proved.claims, &openings),
@@ -1678,7 +1703,7 @@ pub(crate) mod tests {
         assert!(verify_openings(circuit.log_rows, &commitment, &proved.commitments, &proved.claims, &swapped).is_err());
 
         // A row value changed: the transcript replays with the change, and the witness claim no longer holds.
-        for at in 6..9 {
+        for at in stream::ROW_VALUES..stream::ROW_VALUES + 3 {
             let mut stream = proved.proof.stream.clone();
             stream[at] += F192::new(rng.next_u64(), rng.next_u64(), rng.next_u64());
             let proof = Proof { stream };
@@ -1747,7 +1772,7 @@ pub(crate) mod tests {
         cycle
     }
 
-    /// A cheating prover that absorbs a bad witness's errors into the sum's polynomial after `μ` ([`Cheat`]): the
+    /// A cheating prover that absorbs a bad witness's errors into the sum's polynomial after `μ` ([`cheat`]): the
     /// witness's and the wiring's claims hold, and the copy claim rejects, since the sum over the cells is then not
     /// zero and `x h` has a coefficient `n` that the table's digit 0 cannot hold, dropped ([`Cheat::Absorb`]) or put in
     /// digit 1 ([`Cheat::AbsorbSpill`]), or the sum is made zero at one cell, which the identity then misses
@@ -1766,7 +1791,7 @@ pub(crate) mod tests {
         let cheat = |circuit: &Circuit, index: &Index, cells: &[F64], how: Cheat| {
             let commitment = Commitment::of(&index.commit());
             let randomness = Randomness::derive(&s, &commitment, &statement, cells);
-            truth(index, &prove_inner(circuit, index, &commitment, &statement, cells, &randomness, how))
+            truth(index, &cheat::with(how, || prove_with_randomness(circuit, index, &commitment, &statement, cells, &randomness)))
         };
         let index = Index::new(&circuit);
         const CHEATS: [Cheat; 3] = [Cheat::Absorb, Cheat::AbsorbSpill, Cheat::AbsorbBalance];

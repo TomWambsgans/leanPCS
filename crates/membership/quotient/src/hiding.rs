@@ -26,13 +26,8 @@ use crate::circuit::{Circuit, RANDOM_WORDS};
 use crate::statement::Statement;
 use crate::opening::{Commitment, FIXED_OOD};
 use crate::protocol::tests::{toy, toy_cells, toy_statement};
-use crate::protocol::{FREE_BLIND, Index, Randomness, prove_with_randomness};
+use crate::protocol::{FREE_BLIND, Index, Randomness, prove_with_randomness, stream};
 use crate::transcript::FIXED;
-
-/// Where the revealed scalars sit in the proof's stream: the out-of-domain answers of the witness table and of the
-/// quotient table; the row values.
-const OOD: [usize; 2] = [2, 5];
-const A: [usize; 3] = [6, 7, 8];
 
 /// The rank over `K` of `columns`, each a vector of `K`-coordinates, by Gaussian elimination.
 fn rank(mut columns: Vec<Vec<F64>>) -> usize {
@@ -76,18 +71,18 @@ fn word(r: &mut Randomness, w: Word) -> &mut F64 {
     }
 }
 
-/// The change of the `revealed` scalars when `change` is applied to the randomness.
+/// The change of the `revealed` scalars when `change` is applied to the randomness `base`, whose stream is
+/// `before`.
 fn delta(
     reveal: &dyn Fn(&Randomness) -> Vec<F192>,
-    base: &Randomness,
+    (base, before): (&Randomness, &[F192]),
     revealed: &[usize],
     change: &dyn Fn(&mut Randomness),
 ) -> Vec<F64> {
-    let at = |stream: &[F192]| revealed.iter().map(|&i| stream[i]).collect::<Vec<_>>();
     let mut changed = base.clone();
     change(&mut changed);
-    let (before, after) = (at(&reveal(base)), at(&reveal(&changed)));
-    coordinates(&after.iter().zip(&before).map(|(&x, &y)| x + y).collect::<Vec<_>>())
+    let after = reveal(&changed);
+    coordinates(&revealed.iter().map(|&i| after[i] + before[i]).collect::<Vec<_>>())
 }
 
 #[test]
@@ -99,8 +94,8 @@ fn revealed_scalars_are_uniform() {
     check_uniform(&circuit, &statement, &cells, &mut rng);
 }
 
-/// [`revealed_scalars_are_uniform`] on the membership circuit (`2^22` rows), one secret: about 84 proofs without
-/// their openings (each change of a word proves the base again), a minute and a half on 64 threads: `cargo test --release -p quotient --lib hiding -- --ignored`.
+/// [`revealed_scalars_are_uniform`] on the membership circuit (`2^22` rows), one secret: 43 proofs without their
+/// openings, under a minute on 64 threads: `cargo test --release -p quotient --lib hiding -- --ignored`.
 #[test]
 #[ignore]
 fn revealed_scalars_are_uniform_on_membership() {
@@ -134,27 +129,30 @@ fn check_uniform(circuit: &Circuit, statement: &Statement, cells: &[F64], rng: &
     };
     let w: Vec<Word> = (0..RANDOM_WORDS).map(Word::Row).collect();
     let t: Vec<Word> = (0..3).flat_map(|e| (0..FREE_BLIND).map(move |i| Word::Blind(e, i))).collect();
+    let rows = stream::ROW_VALUES..stream::ROW_VALUES + 3;
     let groups = [
-        ("W", [&A[..], &OOD[..1]].concat(), w),
-        ("T", OOD[1..].to_vec(), t),
+        ("W", rows.chain([stream::WITNESS_OOD]).collect::<Vec<_>>(), w),
+        ("T", vec![stream::TABLE_OOD], t),
     ];
+    let before = reveal(&base);
+    let base = (&base, &before[..]);
     for (name, revealed, words) in &groups {
         let columns: Vec<Vec<F64>> = words
             .iter()
-            .map(|&w| delta(&reveal, &base, revealed, &|r| *word(r, w) += F64::ONE))
+            .map(|&w| delta(&reveal, base, revealed, &|r| *word(r, w) += F64::ONE))
             .collect();
         let r = rank(columns.clone());
         assert_eq!(r, 3 * revealed.len(), "group {name}: rank {r} of {} scalars", revealed.len());
         // Affine over `K`: two words together, and one word scaled.
         let (a, b) = (words[0], words[words.len() - 1]);
-        let together = delta(&reveal, &base, revealed, &|r| {
+        let together = delta(&reveal, base, revealed, &|r| {
             *word(r, a) += F64::ONE;
             *word(r, b) += F64::ONE;
         });
         let sum: Vec<F64> = columns[0].iter().zip(&columns[words.len() - 1]).map(|(&x, &y)| x + y).collect();
         assert_eq!(together, sum, "group {name} is not additive");
         let c = F64(rng.next_u64());
-        let scaled = delta(&reveal, &base, revealed, &|r| *word(r, a) += c);
+        let scaled = delta(&reveal, base, revealed, &|r| *word(r, a) += c);
         assert_eq!(scaled, columns[0].iter().map(|&x| x * c).collect::<Vec<_>>(), "group {name} is not K-linear");
     }
     FIXED.with(|fixed| *fixed.borrow_mut() = None);
