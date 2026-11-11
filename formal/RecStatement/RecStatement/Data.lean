@@ -9,7 +9,7 @@ import RecStatement.Basic
 
 `pi2::circuit::Circuit` of `circuit::compile::pi2(record_verifier(KECCAK_128, KECCAK_REC4))` (D16v) through
 `pi2::adapt`: `2^24` positions, rows of `2^4`, 63 formulas, 176 (block, role) pairs (7 pull-less) in 74 groups, 3 reads,
-99 public terms (95 of them of value zero, in no `Φ`); π1's 0 claims. Not `σ`, not `κ` (the setup's root and
+99 public terms (95 of them of value zero, in no `Φ`); 0 of π1's claims encoded by the contract. Not `σ`, not `κ` (the setup's root and
 the circuit's digest bind them; the verifier reads neither). Data only.
 -/
 
