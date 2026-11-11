@@ -16,7 +16,7 @@ after the last permutation, its first 32 bytes the digest. In the two-oracle ran
   (`chalL`), challenge `k + 1` the tail's triple `k`; **`wide_evalDistEq`**: on a uniform answer, at most five of them
   are independent uniform challenges (`draws`);
 * **the rate model** (`KeccakCallsR`): Keccak-256 answering a digest and a tail, Keccak-f[1600] as before;
-  `hashR` (the chain's reading), `liftKC` (a computation of the two-oracle model reads the digest only);
+  `hashR` (the chain's reading), `liftR` (a computation of the two-oracle model reads the digest only);
 * **the split** (`instR τ`): a computation of the rate model, its tails answered by a fixed `τ`, is one of the
   two-oracle model; a table of the rate model is a two-oracle table (`splitD`) and a tail table (`splitT`), and the
   computation's result and log on the one are the split computation's on the other (`eval_instR`, `log_instR`);
@@ -198,7 +198,7 @@ def hashR (x : List UInt8) : OracleComp KeccakCallsR (Bytes32 × TailP) :=
   callKeccak256R x >>= fun u => pure (toB u.1, u.2)
 
 /-- **A computation of the two-oracle model in the rate model**: Keccak-256 reads the digest only. -/
-def liftKC : QueryImpl KeccakCalls (OracleComp KeccakCallsR)
+def liftR : QueryImpl KeccakCalls (OracleComp KeccakCallsR)
   | .inl x => Prod.fst <$> (liftM (KeccakCallsR.query (.inl x)) : OracleComp KeccakCallsR (Digest × TailP))
   | .inr s => (liftM (KeccakCallsR.query (.inr s)) : OracleComp KeccakCallsR KeccakState)
 
@@ -219,15 +219,15 @@ def splitD (T : KTableR) : KTable
 def splitT (T : KTableR) (x : List UInt8) : TailP := (T (.inl x)).2
 
 /-- The split of a lifted computation is the computation. -/
-theorem instR_liftKC (τ : List UInt8 → TailP) {α : Type} (oa : OracleComp KeccakCalls α) :
-    simulateQ (instR τ) (simulateQ liftKC oa) = oa := by
+theorem instR_liftR (τ : List UInt8 → TailP) {α : Type} (oa : OracleComp KeccakCalls α) :
+    simulateQ (instR τ) (simulateQ liftR oa) = oa := by
   induction oa using OracleComp.inductionOn with
   | pure a => simp
   | query_bind t k ih =>
     rcases t with x | s
-    · simp only [simulateQ_bind, simulateQ_spec_query, liftKC, simulateQ_map, instR, ih,
+    · simp only [simulateQ_bind, simulateQ_spec_query, liftR, simulateQ_map, instR, ih,
         Functor.map_map, bind_map_left]
-    · simp only [simulateQ_bind, simulateQ_spec_query, liftKC, instR, ih]
+    · simp only [simulateQ_bind, simulateQ_spec_query, liftR, instR, ih]
 
 /-- **A rate computation on a rate table is its split on the split table.** -/
 theorem eval_instR {α : Type} (T : KTableR) (oa : OracleComp KeccakCallsR α) :
