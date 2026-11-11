@@ -1,5 +1,5 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
-import Soundness.PcsFinal
+import Soundness.PcsDeployed
 
 /-!
 # Knowledge soundness of the deployed membership proof (the EIP's PCS claims), end to end
@@ -40,3 +40,15 @@ protocol's own end-theorem files were removed (git history).
 /-- info: 'Soundness.knowledgeSoundness' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms Soundness.knowledgeSoundness
+
+/-- info: 'Soundness.knowledgeSoundness_of' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms Soundness.knowledgeSoundness_of
+
+/-- info: 'PcsKS.Deployed.matches_deployed' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms PcsKS.Deployed.matches_deployed
+
+/-- info: 'PcsKS.Deployed.stackRel_deployed' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms PcsKS.Deployed.stackRel_deployed

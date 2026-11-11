@@ -101,6 +101,43 @@ theorem sigmaPoly_eq (s₀ : (Fin 24 → Bool) → F)
 
 end Generic
 
+section Split
+
+variable {F : Type*} [Field F] [CharP F 2]
+
+theorem digitsEval_cons {m : ℕ} (c : (Fin (m + 1) → Bool) → F) (w : Fin (m + 1) → F) :
+    digitsEval c w = digitsEval (fun b => c (Fin.cons false b)) (fun k => w k.succ)
+      + w 0 * digitsEval (fun b => c (Fin.cons true b)) (fun k => w k.succ) := by
+  unfold digitsEval
+  rw [← Equiv.sum_comp (Fin.consEquiv fun _ : Fin (m + 1) => Bool), Fintype.sum_prod_type]
+  simp only [Fin.consEquiv, Equiv.coe_fn_mk, Fin.prod_univ_succ, Fin.cons_zero, Fin.cons_succ,
+    Fintype.sum_bool, Bool.false_eq_true, ite_false, ite_true]
+  rw [Finset.mul_sum, add_comm]
+  congr 1 <;> exact Finset.sum_congr rfl fun b _ => by ring
+
+/-- **A table's polynomial is the four row polynomials' combination** `Σ_j digit_j · g_j ∘ rowPoly`, `g` the
+table's quarters (`witnessOfTable`). -/
+theorem tablePoly_eval_split {k : ℕ} (c : (Fin (k + 1 + 1) → Bool) → F) (t : F) :
+    (tablePoly c).eval t =
+      ∑ j, (QuotientSecurity.digit j).eval t * ((witnessOfTable c j).comp rowPoly).eval t := by
+  have hw : (fun i : Fin k => sq^[((i.succ.succ : Fin (k + 1 + 1)) : ℕ)] t) =
+      fun i : Fin k => sq^[(i : ℕ)] (sq^[2] t) := by
+    funext i
+    rw [← Function.iterate_add_apply]
+    rfl
+  rw [tablePoly_eval, digitsEval_cons, digitsEval_cons, digitsEval_cons]
+  simp [Fin.sum_univ_four, witnessOfTable, QuotientSecurity.digit, rowPoly_eval, tablePoly_eval, hw,
+    QuotientSecurity.sq]
+  ring
+
+/-- **The cells of a table's quarters are the table's polynomial at the cells' points.** -/
+theorem cells_witnessOfTable [DecidableEq F] (P : _root_.Kc3.Params F) {k : ℕ} (c : (Fin (k + 1 + 1) → Bool) → F)
+    (i : P.T × Fin 4) : P.cells (witnessOfTable c) i = (tablePoly c).eval (P.pt i) := by
+  rw [← P.cellPoly_zero_eval_pt, tablePoly_eval_split]
+  simp [_root_.Kc3.Params.cellPoly, shift, Polynomial.eval_finsetSum, Polynomial.eval_comp]
+
+end Split
+
 /-! ## The rows -/
 
 /-- `row_vanishing(24)`'s coefficients in `E`. -/

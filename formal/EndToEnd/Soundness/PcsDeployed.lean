@@ -26,7 +26,7 @@ open Finset Polynomial
 namespace PcsKS.Deployed
 
 open QuotientRpm QuotientSecurity Compose LeanVM LeanVM.Parameters PcsQuotient PcsQuotient.Domain
-open PcsBridge.Kc3 Kc3Deployed Kc3Closed Kc3Wiring SoundPcs WhirBridge
+open PcsBridge.Kc3 Kc3Deployed Kc3Closed Kc3Wiring SoundPcs WhirBridge LeanVM.Protocol
 
 attribute [local irreducible] PcsQuotient.membershipBuilder Kc3Circuit.membershipBuild PcsQuotient.membership
 
@@ -109,4 +109,95 @@ theorem hpins_deployed (k : Fin 11) : P.pinPt k = pinE k := by
 theorem matches_deployed : Matches P (colFn wcol) :=
   matches_ofCantor B hm _ _ _ hβ (colFn wcol) hpins_deployed hcar_deployed
 
+/-! ## The relation -/
+
+theorem colFn_mk (st : Vector K (2 ^ 24)) (b : Fin 24 → Bool) :
+    colFn (⟨st⟩ : Column 24) b = ofK (st.toArray.getD (Completeness.idx b) 0) := by
+  have h1 : Whir.bitsEquiv 24 b = ⟨Completeness.idx b, Completeness.idx_lt b⟩ :=
+    Fin.ext (by rw [Whir.bitsEquiv_val, bitsToNat_eq_idx])
+  have hl : Completeness.idx b < 16777216 := Completeness.idx_lt b
+  unfold colFn
+  simp [tabFn, h1, hl, Array.getD_eq_getD_getElem?, Vector.getElem?_eq_getElem hl]
+
+/-- The stack's first `2^24` entries, as `inputBitsOfStack` reads them. -/
+def wHatOf (st : Vector K (2 ^ 24)) : Array K := Array.ofFn (n := 2 ^ 24) fun j => st.toArray.getD j.val 0
+
+/-- **The cells of the stack's quarters are the values `inputBitsOfStack` computes.** -/
+theorem cells_stack (st : Vector K (2 ^ 24)) (i : cantorT B 22 × Fin 4) :
+    P.cells (witnessOfTable (k := 22) (colFn (⟨st⟩ : Column 24))) i =
+      ofK ((values 24 0 (wHatOf st)).getD (idxE B hm i) 0) := by
+  have hsz : (wHatOf st).size = 2 ^ 24 := by simp [wHatOf]
+  have hlt : (idxE B hm i : ℕ) < 2 ^ 24 := (idxE B hm i).isLt
+  have hfn : colFn (⟨st⟩ : Column 24) = fun b => ofK ((wHatOf st).getD (Completeness.idx b) 0) := by
+    funext b
+    have hl : Completeness.idx b < 16777216 := Completeness.idx_lt b
+    rw [colFn_mk]
+    simp [wHatOf, Array.getD_eq_getD_getElem?, Array.getElem?_ofFn, hl, Vector.getElem?_eq_getElem hl]
+  refine (cells_witnessOfTable P _ i).trans ?_
+  rw [pt_deployed, Bridge.Ntt.values_getD_tablePoly hB (by decide) 0 _ hsz hlt, zero_add,
+    hfn, ← map_tablePoly,
+    show (ofK (point (idxE B hm i)) : E) = algebraMap K E (point (idxE B hm i)) from rfl,
+    Polynomial.eval_map, Polynomial.eval₂_at_apply]
+  rfl
+
+theorem ofK_eq_one_iff (a : K) : ofK a = 1 ↔ a = 1 := by
+  rw [← Compose.Reduce.ofK_one]
+  exact (algebraMap K E).injective.eq_iff
+
+theorem membership_logRows_eq : (membership PcsQuotient.logRows).logRows = 22 := by
+  unfold membership finish
+  rfl
+
+/-- **A satisfied witness table spells a secret** at the deployed instance. -/
+theorem stackRel_deployed : StackRel P (readWK P matches_deployed.card) := by
+  intro stmt st h
+  rw [readWK_fst] at h
+  have hs : stmtVals (stmt.y ++ stmt.root) = Kc3Deployed.stmtOf stmt := by
+    funext k
+    simp only [stmtVals, Kc3Deployed.stmtOf, stmtOf_bytes]
+  rw [hs] at h
+  have hr := relation_of_sat_deployed B hm stmt _ h
+  have e : inputBitsOfStack (membership PcsQuotient.logRows) st =
+      inputBits B hm (P.cells (witnessOfTable (k := 22) (colFn (⟨st⟩ : Column 24)))) := by
+    unfold inputBitsOfStack inputBits
+    rw [membership_logRows_eq]
+    refine List.map_congr_left fun r _ => ?_
+    by_cases hc : 4 * r + 3 < 4 * 2 ^ 22
+    · have hw : wIdx B hm (P.cells (witnessOfTable (k := 22) (colFn (⟨st⟩ : Column 24)))) (4 * r + 3) =
+          ofK ((values 24 0 (wHatOf st)).getD (4 * r + 3) 0) := by
+        unfold wIdx
+        rw [dif_pos hc, cells_stack, idx_cellOf]
+      rw [hw]
+      simp only [ofK_eq_one_iff]
+      rfl
+    · have hw : wIdx B hm (P.cells (witnessOfTable (k := 22) (colFn (⟨st⟩ : Column 24)))) (4 * r + 3) = 0 := by
+        unfold wIdx
+        rw [dif_neg hc]
+      have hv : (values (PcsQuotient.cellVars 22) 0 (Array.ofFn (n := 2 ^ PcsQuotient.cellVars 22) fun i =>
+          st.toArray.getD i.val 0)).getD (4 * r + 3) 0 = 0 := by
+        rw [Array.getD_eq_getD_getElem?, Array.getElem?_eq_none]
+        · rfl
+        · rw [Bridge.Ntt.values_size, Array.size_ofFn]
+          show 2 ^ 24 ≤ 4 * r + 3
+          omega
+      rw [hw, hv]
+      simp
+  unfold secretOfStack
+  rw [e]
+  exact hr
+
 end PcsKS.Deployed
+
+namespace Soundness
+
+open PcsKS.Deployed
+
+/-- **Knowledge soundness of the deployed membership proof in the random-permutation model**, for the Statement's
+extractor and experiment, with no hypothesis: an adversary of at most `Q` calls of `π`, `π⁻¹` makes the verifier
+accept while the extractor (reading the setup's tree and the adversary's transcript) outputs no secret of the
+statement with probability at most `ksBound Q`. -/
+theorem knowledgeSoundness : PcsQuotient.KnowledgeSoundness ksBound :=
+  knowledgeSoundness_of_matches P (Kc3Deployed.poleCondition_deployed B hm) matches_deployed stackRel_deployed
+    sigmaSize
+
+end Soundness
