@@ -133,6 +133,15 @@ pub fn open(committed: &Committed, claim: &Claim) -> Proof {
     pcs_claim::open(committed, &Commitment::of(committed).pcs_claim(claim))
 }
 
+/// [`open`] of each of `claims`, all on `committed`: each proof is the one [`open`] gives that claim alone, byte for
+/// byte, but the openings share their passes over the table (`pcs_claim::open_words_batch`: the lane rounds' two, and
+/// one encode of every opening's level-0 rows).
+pub fn open_batch(committed: &Committed, claims: &[&Claim]) -> Vec<Proof> {
+    let commitment = Commitment::of(committed);
+    let claims: Vec<PcsClaim> = claims.iter().map(|claim| commitment.pcs_claim(claim)).collect();
+    pcs_claim::open_words_batch(committed.words(), committed.commitment(), &claims)
+}
+
 /// [`open`], keeping a kept codeword for another opening. The same proof.
 pub fn open_keeping(committed: &Committed, claim: &Claim) -> Proof {
     let claim = Commitment::of(committed).pcs_claim(claim);

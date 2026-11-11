@@ -841,6 +841,91 @@ unsafe fn pairs<T: Kind>(lo: *mut u64, hi: *mut u64, len: usize, t: V) {
     }
 }
 
+/// Two layers at once on four runs of `len` rows (`p[0..4]`): the higher layer pairs `p[0]` with `p[2]` and `p[1]`
+/// with `p[3]` at twiddle `t1`, the lower `p[0]` with `p[1]` at `t2a` and `p[2]` with `p[3]` at `t2b`, in `T`'s order
+/// (the higher first going down): [`pairs`] twice, with one load and one store a row rather than two.
+///
+/// # Safety
+/// The four point to `len` rows each, of the caller's own, disjoint.
+#[inline(always)]
+unsafe fn quads<T: Kind>(p: [*mut u64; 4], len: usize, t1: V, t2a: V, t2b: V) {
+    // `C` rows of each run at a time, their butterflies interleaved: a row's four are two dependent layers, too short
+    // a chain for the out-of-order window to overlap the next row's on its own.
+    #[inline(always)]
+    unsafe fn rows<T: Kind, const C: usize>(at: [*mut u64; 4], t1: V, t2a: V, t2b: V) {
+        // SAFETY: the caller's `C` rows of each run.
+        unsafe {
+            let mut x: [[V; 4]; C] = std::array::from_fn(|c| at.map(|q| load(q.add(8 * c))));
+            let pair = |x: &mut [[V; 4]; C], a: usize, b: usize, t: V| {
+                for col in x.iter_mut() {
+                    (col[a], col[b]) = T::butterfly(col[a], col[b], t);
+                }
+            };
+            if T::DOWN {
+                pair(&mut x, 0, 2, t1);
+                pair(&mut x, 1, 3, t1);
+                pair(&mut x, 0, 1, t2a);
+                pair(&mut x, 2, 3, t2b);
+            } else {
+                pair(&mut x, 0, 1, t2a);
+                pair(&mut x, 2, 3, t2b);
+                pair(&mut x, 0, 2, t1);
+                pair(&mut x, 1, 3, t1);
+            }
+            for (c, col) in x.iter().enumerate() {
+                for (q, &v) in at.iter().zip(col) {
+                    store(q.add(8 * c), v);
+                }
+            }
+        }
+    }
+    let mut i = 0;
+    // SAFETY: rows `i .. i + C <= len` of the caller's.
+    unsafe {
+        while i + 2 <= len {
+            rows::<T, 2>(p.map(|q| q.add(8 * i)), t1, t2a, t2b);
+            i += 2;
+        }
+        if i < len {
+            rows::<T, 1>(p.map(|q| q.add(8 * i)), t1, t2a, t2b);
+        }
+    }
+}
+
+/// The order a pass runs its layers `0..n` in: `(layer, fused)`, `fused` meaning `layer` with `layer - 1` at once
+/// ([`quads`]), the highest first going down, else the lowest; the first layer alone when it reads a source.
+fn layer_steps(n: usize, down: bool, from_src: bool) -> Vec<(usize, bool)> {
+    let mut steps = Vec::new();
+    if down {
+        let mut top = n;
+        if from_src && top > 0 {
+            steps.push((top - 1, false));
+            top -= 1;
+        }
+        while top >= 2 {
+            steps.push((top - 1, true));
+            top -= 2;
+        }
+        if top == 1 {
+            steps.push((0, false));
+        }
+    } else {
+        let mut low = 0;
+        if from_src && n > 0 {
+            steps.push((0, false));
+            low = 1;
+        }
+        while low + 1 < n {
+            steps.push((low + 1, true));
+            low += 2;
+        }
+        if low < n {
+            steps.push((low, false));
+        }
+    }
+    steps
+}
+
 /// [`pairs`] read from `src_lo` and `src_hi` (another buffer's rows), written to `lo` and `hi`: a first layer's
 /// butterflies that also copy.
 ///
@@ -1015,11 +1100,28 @@ fn leaves<T: Kind>(
                     }
                 }
             };
+            // Layers `k` and `k - 1` at once: each block of layer `k`, its two halves layer `k - 1`'s blocks.
+            let fused = |k: usize| {
+                let h = 1usize << (k - 1);
+                let (t_hi, t_lo) = (kind.twiddle(k + shift, first >> (k + 1)), kind.twiddle(k - 1 + shift, first >> k));
+                for j in 0..size >> (k + 1) {
+                    let row = first + 4 * h * j;
+                    let (t1, t2a, t2b) = (
+                        splat((t_hi + kind.step(j)).0),
+                        splat((t_lo + kind.step(2 * j)).0),
+                        splat((t_lo + kind.step(2 * j + 1)).0),
+                    );
+                    quads::<T>([0, 1, 2, 3].map(|q| data.add(8 * (row + q * h))), h, t1, t2a, t2b);
+                }
+            };
+            for (k, two) in layer_steps(leaf, T::DOWN, src.is_some()) {
+                match two {
+                    true => fused(k),
+                    false => layer(k, if k + 1 == leaf && T::DOWN || k == 0 && !T::DOWN { src } else { None }),
+                }
+            }
             if T::DOWN {
-                (0..leaf).rev().for_each(|k| layer(k, if k + 1 == leaf { src } else { None }));
                 own(base);
-            } else {
-                (0..leaf).for_each(|k| layer(k, if k == 0 { src } else { None }));
             }
             if runs {
                 for g in 0..size / 8 {
@@ -1071,10 +1173,25 @@ fn wide<T: Kind>(
                     }
                 }
             };
-            if T::DOWN {
-                (0..g).rev().for_each(|j| layer(j, if j + 1 == g { src } else { None }));
-            } else {
-                (0..g).for_each(|j| layer(j, if j == 0 { src } else { None }));
+            // Layers `j` and `j - 1` at once: each block of `2 hs` lines of layer `j`, its two halves layer `j - 1`'s.
+            let fused = |j: usize| {
+                let k = a + j;
+                let (hs, q) = (1usize << j, 1usize << (j - 1));
+                for ub in (0..lines).step_by(2 * hs) {
+                    let t1 = splat(kind.twiddle(k + shift, line(ub) >> (k + 1)).0);
+                    let t2a = splat(kind.twiddle(k - 1 + shift, line(ub) >> k).0);
+                    let t2b = splat(kind.twiddle(k - 1 + shift, line(ub + hs) >> k).0);
+                    for u in ub..ub + q {
+                        let p = [u, u + q, u + hs, u + hs + q].map(|v| data.add(8 * line(v)));
+                        quads::<T>(p, width, t1, t2a, t2b);
+                    }
+                }
+            };
+            for (j, two) in layer_steps(g, T::DOWN, src.is_some()) {
+                match two {
+                    true => fused(j),
+                    false => layer(j, if j + 1 == g && T::DOWN || j == 0 && !T::DOWN { src } else { None }),
+                }
             }
         }
     });
@@ -2928,6 +3045,11 @@ fn row_steps() -> &'static [[u64; 3]; 32] {
 /// `base` holds `8 size` words of the caller's own.
 #[inline(always)]
 unsafe fn own_stepped<T: RowLanes>(kind: &T, base: *mut u64, first: usize, size: usize) {
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "vpclmulqdq"))]
+    if size.is_multiple_of(8) {
+        // SAFETY: forwarded; `first` is a multiple of `size`, so of eight.
+        return unsafe { own_transposed(kind, base, first, size) };
+    }
     let steps = row_steps();
     let mut t = kind.twiddles().row(first);
     let advance = |t: [V; 3], r: usize| {
@@ -2954,6 +3076,89 @@ unsafe fn own_stepped<T: RowLanes>(kind: &T, base: *mut u64, first: usize, size:
     }
 }
 
+/// [`own_transposed`]'s twiddle steps: from row `8 q` to `8 (q + 1)` a row's twiddles move by `B(2 d), B(4 d), B(8 d)`,
+/// `d = 8 (q ^ (q + 1)) = 8 (2^(z + 1) - 1)` for `z` the trailing ones of `q` (`B` is linear); entry `z`.
+#[cfg(all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "vpclmulqdq"))]
+fn group_steps() -> &'static [[u64; 3]; 32] {
+    static STEPS: std::sync::OnceLock<[[u64; 3]; 32]> = std::sync::OnceLock::new();
+    STEPS.get_or_init(|| {
+        std::array::from_fn(|z| {
+            let d = 8 * ((2usize << z) - 1);
+            // Past the domain's points (`z` above 28), steps no column of positions below `2^EXT_BASIS` takes.
+            match (8 * d) >> crate::domain::EXT_BASIS {
+                0 => [point(2 * d).0, point(4 * d).0, point(8 * d).0],
+                _ => [0; 3],
+            }
+        })
+    })
+}
+
+/// [`own_stepped`] eight rows at a time, transposed (AVX-512): lane `k` of vector `j` is row `R + k`'s word `j`, so a
+/// row's butterflies (between its words) are butterflies between whole vectors, each vector's twiddles the eight
+/// rows' (row `R + k`'s are row `R`'s plus `k`'s: `B` is linear). Each layer's products are then whole vector
+/// products rather than half of [`paired`]'s, and the swaps between lanes two transposes. The same butterflies, so
+/// the same values. [Added here: the rows' own layers took about a third of a transform's time.]
+///
+/// # Safety
+/// `base` holds `8 size` words of the caller's own, `size` and `first` multiples of eight.
+#[cfg(all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "vpclmulqdq"))]
+#[inline(always)]
+unsafe fn own_transposed<T: RowLanes>(kind: &T, base: *mut u64, first: usize, size: usize) {
+    debug_assert!(size.is_multiple_of(8) && first.is_multiple_of(8));
+    let o = &kind.twiddles().offsets;
+    // Lane `k` of `steps(s)` is `B(s k)`, row `k`'s part of a twiddle `B(s (R + k)) = B(s R) + B(s k)`.
+    let steps = |s: usize| from_array(std::array::from_fn(|k| point(s * k).0));
+    let (s2, s4, s8) = (steps(2), steps(4), steps(8));
+    // The lanes' constant parts of layers 1 and 0 (`Twiddles`' `c1`, `c0`): `B(2)` past lane 4, `B(2 (i / 2))` at lane
+    // `i`.
+    let [c2, c4, c6] = [2, 4, 6].map(|x| splat(point(x).0));
+    // Row `R`'s twiddles' scalar parts, stepped from group to group: from `R = 8 q` to `R + 8` they move by
+    // `B(2 d), B(4 d), B(8 d)`, `d = 8 (q ^ (q + 1))` ([`group_steps`]).
+    let mut b = [o[2] + point(2 * first), o[1] + point(4 * first), o[0] + point(8 * first)];
+    let steps8 = group_steps();
+    for g in (0..size).step_by(8) {
+        let [b2, b1, b0] = b;
+        let step = &steps8[((first + g) / 8).trailing_ones() as usize];
+        b = [b2 + F64(step[0]), b1 + F64(step[1]), b0 + F64(step[2])];
+        let t2 = xor(splat(b2.0), s2);
+        let t1 = xor(splat(b1.0), s4);
+        let t0 = xor(splat(b0.0), s8);
+        let (t1, t0) = ([t1, xor(t1, c2)], [t0, xor(t0, c2), xor(t0, c4), xor(t0, c6)]);
+        // SAFETY: rows `g..g + 8` of the caller's.
+        unsafe {
+            let p = base.add(8 * g);
+            let mut v = transpose(std::array::from_fn(|q| load(p.add(8 * q))));
+            let layer2 = |v: &mut [V; 8]| {
+                for i in 0..4 {
+                    (v[i], v[i + 4]) = T::butterfly(v[i], v[i + 4], t2);
+                }
+            };
+            let layer1 = |v: &mut [V; 8]| {
+                for (i, t) in [(0, t1[0]), (1, t1[0]), (4, t1[1]), (5, t1[1])] {
+                    (v[i], v[i + 2]) = T::butterfly(v[i], v[i + 2], t);
+                }
+            };
+            let layer0 = |v: &mut [V; 8]| {
+                for (h, t) in t0.iter().enumerate() {
+                    (v[2 * h], v[2 * h + 1]) = T::butterfly(v[2 * h], v[2 * h + 1], *t);
+                }
+            };
+            if T::DOWN {
+                layer2(&mut v);
+                layer1(&mut v);
+                layer0(&mut v);
+            } else {
+                layer0(&mut v);
+                layer1(&mut v);
+                layer2(&mut v);
+            }
+            for (q, x) in transpose(v).into_iter().enumerate() {
+                store(p.add(8 * q), x);
+            }
+        }
+    }
+}
+
 fn leaf<T: RowLanes>(block: &mut [F64], start: usize, kind: &T) {
     assert!(block.len().is_power_of_two() && block.len() >= 8 && start.is_multiple_of(block.len()));
     let size = block.len() / 8;
@@ -2975,11 +3180,28 @@ fn leaf<T: RowLanes>(block: &mut [F64], start: usize, kind: &T) {
                 pairs::<T>(base.add(8 * row), base.add(8 * (row + half)), half, t);
             }
         };
+        // Layers `k` and `k - 1` at once ([`quads`]), as [`leaves`] runs them.
+        let fused = |k: usize| {
+            let h = 1usize << (k - 1);
+            let (t_hi, t_lo) = (kind.twiddle(k + 3, first >> (k + 1)), kind.twiddle(k + 2, first >> k));
+            for j in 0..size >> (k + 1) {
+                let row = 4 * h * j;
+                let (t1, t2a, t2b) = (
+                    splat((t_hi + kind.step(j)).0),
+                    splat((t_lo + kind.step(2 * j)).0),
+                    splat((t_lo + kind.step(2 * j + 1)).0),
+                );
+                quads::<T>([0, 1, 2, 3].map(|q| base.add(8 * (row + q * h))), h, t1, t2a, t2b);
+            }
+        };
+        for (k, two) in layer_steps(leaf, T::DOWN, false) {
+            match two {
+                true => fused(k),
+                false => layer(k),
+            }
+        }
         if T::DOWN {
-            (0..leaf).rev().for_each(layer);
             own();
-        } else {
-            (0..leaf).for_each(layer);
         }
     }
 }
