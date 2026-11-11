@@ -163,7 +163,9 @@ per IV).
   claims, the narrow elements, `κ`, and an FNV-1a hash of `σ` over all 2^24 positions. It runs on the Keccak VM's
   π1-rec4 graph at the 128-signature reference (10,840 nodes, 16,125 expanded; 15 regions, 30 blocks, 99 ports: 93
   zero, 2 padding, the statement and 3 claim hashes; no call encoded, no root ported; 22,034 `κ`; 123 Keccak-f, 245
-  last-round planes unmade), every comparison identical.
+  last-round planes unmade), every comparison identical: `rec-circuit-diff` (the checked compiler, about 14 minutes on one
+  core; `--raw`, the transcription alone, about a minute) and `rec-circuit-keccak` on `RecGraphKeccak.Emitted.graph`
+  (the very term `pi1rec4K_end` is about) both print the Rust's circuit.
 - **The block padding** (`padCounts`, `layout.rs::pad_counts`) looks ahead: a region's next step is the digit count
   `j > k` with the most rows saved per added digit and role, so it passes over counts that save nothing (a carry:
   724,992 rows pad to 786,432 at both 2 and 3 digits). `RecCircuitTest/PadCounts.lean` compares `padCounts` with the
