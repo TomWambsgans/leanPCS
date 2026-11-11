@@ -1060,6 +1060,8 @@ pub enum Cheat {
     FillG(F192),
     /// An honest `Q` with this constant in `S`.
     FillS(F64),
+    /// An honest `Q`, `s` sent off `P(t)` by this.
+    ShiftS(F192),
 }
 
 /// [`prove_with`], with `Q` changed as `cheat` says.
@@ -1207,6 +1209,7 @@ pub fn prove_cheating(
             }
             Cheat::FillG(x) => (h0[0], h1[0], h2[0]) = (F64(x.c0), F64(x.c1), F64(x.c2)),
             Cheat::FillS(x) => s_words[0] = x,
+            Cheat::ShiftS(_) => {}
         }
     }
     lap("q, q_P on the extension coset, their coefficients", &mut timings);
@@ -1252,7 +1255,10 @@ pub fn prove_cheating(
     // `Π_(l < m) (1 + w_l) = w_m / t`.
     let u: Vec<F192> = digits[..m].iter().map(|&x| x * (F192::ONE + x).inv()).collect();
     let p_stack = &quotient[P_SLOT * n..(P_SLOT + 1) * n];
-    let s = primitives::multilinear::mle_eval_par(p_stack, &u) * digits[m] * t.inv();
+    let mut s = primitives::multilinear::mle_eval_par(p_stack, &u) * digits[m] * t.inv();
+    if let Cheat::ShiftS(e) = cheat {
+        s += e;
+    }
     folds.iter().chain([&xi, &s]).for_each(|&x| writer.send(to_e(x)));
     let _rho = writer.sample();
     lap("t: the values", &mut timings);

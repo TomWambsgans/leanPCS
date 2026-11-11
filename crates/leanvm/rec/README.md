@@ -6,16 +6,16 @@ A Keccak VM proof verified on the EVM by recursion. π1 is `crates/leanvm/univar
 `leanvm_rec::PI1`; π1-rec3 before `docs/leanvm/rec/PERF_GAS2.md`); π2 is a univariate SNARK of π1's verifier minus its
 openings, its circuit compiled from π1's recorded verifier graph (`circuit`, D16v), which also hashes π1's three
 claims; the contract (`pi2::contract`) runs π2's verifier only and checks π1's three (by their hashes, the frame's
-payloads 0 … 2, which the circuit computes) and π2's five claims declared in its transaction's frame of PCS claims,
+payloads 0 … 2, which the circuit computes) and π2's four claims declared in its transaction's frame of PCS claims,
 each the EIP draft's PCS claim (`crates/pcs_claim`: a commitment's root and out-of-domain answer, one point, its value;
 one opening a claim).
 
 On the real 128-signature proof (the reference, `crates/leanvm/univariate/tests/vectors/keccak128_rec4.txt`):
-577 B of calldata, 31,524 gas of execution; as an EIP-8141 frame transaction (EIP-7976's floor, without the base and
-per-frame costs) standard 40,708, floor 36,928, and 66,376 with its frame of PCS claims and their PCS gas
-(`docs/leanvm/rec/PERF_GAS2.md`; 89,672 with `C1`'s claim alone hashed, `PERF_GAS.md`). π2 is π2v3
-(transcript `leanvm-rec-pi2v3`, `PI2.md`: π2v2's PIOP, the ports out of the copy argument, on the EIP's PCS claims),
-`Q` sixteen slots of `N` words.
+577 B of calldata, 31,212 gas of execution; as an EIP-8141 frame transaction (EIP-7976's floor, without the base and
+per-frame costs) standard 40,396, floor 36,928, and 63,328 with its frame of PCS claims and their PCS gas
+(`docs/leanvm/rec/PERF_GAS3.md`; 66,376 with a claim of `Q`'s sum, `PERF_GAS2.md`; 89,672 with `C1`'s claim alone
+hashed, `PERF_GAS.md`). π2 is π2v4 (transcript `leanvm-rec-pi2v4`, `PI2.md`: π2v2's PIOP, the ports out of the copy
+argument, on the EIP's PCS claims, the copy argument's sum forced by `Q`'s layout), `Q` sixteen slots of `N` words.
 
 Design: [`SPEC-REC.md`](../../../docs/leanvm/rec/SPEC-REC.md) (the recursion), [`PI2.md`](../../../docs/leanvm/rec/PI2.md)
 (π2's PIOP), [`SPEC-POINTS.md`](../../../docs/leanvm/rec/SPEC-POINTS.md) (the claims' points).

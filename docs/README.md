@@ -20,9 +20,11 @@
   - [`leanvm/rec/SPEC-REC.md`](leanvm/rec/SPEC-REC.md): the recursion;
   - [`leanvm/rec/PI2.md`](leanvm/rec/PI2.md): π2's PIOP, prover, verifier, contract;
   - [`leanvm/rec/SPEC-POINTS.md`](leanvm/rec/SPEC-POINTS.md): π1's claims' points on chain;
-  - [`leanvm/rec/PERF_GAS2.md`](leanvm/rec/PERF_GAS2.md): the deployed recursion (π1-rec4, π1's three claims hashed in
-    π2's circuit, 577 B, 66,376 gas), on [`leanvm/rec/PERF_GAS.md`](leanvm/rec/PERF_GAS.md)'s (`C1`'s claim alone,
-    89,672 gas); each says what the Lean needs;
+  - [`leanvm/rec/PERF_GAS3.md`](leanvm/rec/PERF_GAS3.md): the deployed recursion's π2 (π2v4: the copy argument's sum
+    forced by `Q`'s layout, seven claims, 63,328 gas), on [`leanvm/rec/PERF_GAS2.md`](leanvm/rec/PERF_GAS2.md)'s
+    (π1-rec4, π1's three claims hashed in π2's circuit, 577 B, 66,376 gas), on
+    [`leanvm/rec/PERF_GAS.md`](leanvm/rec/PERF_GAS.md)'s (`C1`'s claim alone, 89,672 gas); each says what the Lean
+    needs;
   - [`leanvm/rec/PERF_PROVER.md`](leanvm/rec/PERF_PROVER.md): the recursion prover's speedups (the same proofs).
 
 The EIP draft is [`../eip-draft_leanPCS.md`](../eip-draft_leanPCS.md); the status and provenance, [`../AGENTS.md`](../AGENTS.md).

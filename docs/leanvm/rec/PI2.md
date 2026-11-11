@@ -4,10 +4,11 @@
 
 π2 proves that π1's recorded verifier (the Keccak VM's π1-rec4 since [`PERF_GAS2.md`](PERF_GAS2.md), π1-rec3 before,
 `SPEC-REC.md` §1) accepts and outputs its PCS claims. Its circuit is `SPEC-REC.md` §10's; this file is its PIOP,
-**π2v3** (transcript `leanvm-rec-pi2v3`, `pi2::verifier::NAME`): π2v2's PIOP (the ports out of the copy argument, `P`
-committed in `Q`, `q` below `2N`; §1, §7) on the EIP draft's PCS claims (§2, §8). Code in `crates/leanvm/rec/src/pi2/`;
-the Lean proofs are in `formal/RecCompose`, of π2v3 as of commit `f96a7938` (over π1-rec3, π1's claims encoded by the
-contract; §10). Numbers are **measured** unless marked modelled.
+**π2v4** (transcript `leanvm-rec-pi2v4`, `pi2::verifier::NAME`): π2v2's PIOP (the ports out of the copy argument, `P`
+committed in `Q`, `q` below `2N`; §1, §7) on the EIP draft's PCS claims (§2, §8), with the copy argument's sum forced
+by `Q`'s layout rather than claimed ([`PERF_GAS3.md`](PERF_GAS3.md); π2v3 had a third claim on `Q`). Code in
+`crates/leanvm/rec/src/pi2/`; the Lean proofs are in `formal/RecCompose`, of π2v3 as of commit `f96a7938` (over
+π1-rec3, π1's claims encoded by the contract; §10). Numbers are **measured** unless marked modelled.
 
 ```sh
 export RUSTFLAGS="-C target-cpu=native"   # the field's native SIMD paths (AVX-512/GFNI on x86)
@@ -21,6 +22,10 @@ cargo test --release -p leanvm_rec --test pi2 -- --ignored --nocapture gas_repor
 ```
 
 ## 0. Results
+
+**π2v4: the copy sum from `Q`'s layout** ([`PERF_GAS3.md`](PERF_GAS3.md); `real_end_to_end` on h3): 577 B of calldata,
+31,212 execution; floor 36,928, with the frame of PCS claims (225 B, seven claims) and the PCS gas (12,000) 63,328
+(66,376 before). The figures below predate it.
 
 **With π1-rec4 and π1's three claims hashed in π2's circuit** ([`PERF_GAS2.md`](PERF_GAS2.md); `real_end_to_end` on
 h3): 577 B of calldata, 31,524 execution; floor 36,928, with the frame of PCS claims and the PCS gas 66,376 (89,672
@@ -137,7 +142,7 @@ by its claims: §6).
 ## 2. The protocol
 
 **Transcript** (`KeccakChannel`): the seed `keccak(NAME ‖ IV ‖ public input ‖ frame words)`, `NAME =
-"leanvm-rec-pi2v3"`, the frame words the Keccak-256s of π1's claims hashed in the circuit (all three at 128 and 400
+"leanvm-rec-pi2v4"`, the frame words the Keccak-256s of π1's claims hashed in the circuit (all three at 128 and 400
 signatures: payloads 0, 1, 2 of the frame of PCS claims, `Read::Frame`; [`PERF_GAS.md`](PERF_GAS.md) §3,
 [`PERF_GAS2.md`](PERF_GAS2.md) §4), then the stream:
 
@@ -160,14 +165,16 @@ included), and every claim a point of it.
 | stack | content | variables | words | basis |
 |---|---|---:|---|---|
 | `W` | `w` | `max(m, 24)` | `2^m`, its leading lanes | `B` (`B_k = Π_l (w_l or 1 + w_l)`) |
-| `Q` | sixteen slots of `N` (`verifier::QUOTIENT_SLOTS`): `h` (below `N`, three limbs), `q` (below `2N`: two chunks, three limbs), `P` (below `N`, in `K`), `q_P` (below `2N`, in `K`), four zero slots | `m + 4` | all 64 lanes | novel |
+| `Q` | sixteen slots of `N` (`verifier::QUOTIENT_SLOTS`): `H = x h` (below `N`, three limbs), `q` (below `2N`: two chunks, three limbs), `P` (below `N`, in `K`), `q_P` (below `2N`, in `K`), four zero slots (`G`, `S`) | `m + 4` | all 64 lanes | novel |
 | setup | `κ` then `κ + σ` | `max(m + 1, 24)` | `2^(m+1)`, its leading lanes | `B` |
 
-`Q`'s slot is `digit + 2 kind + 4 limb`: `h`'s limb `l` at `(0, 0, l)`, `q`'s at `(digit, 1, l)` (`l < 3`); at limb
-code 3, `P` at `(1, 0, 3)` (its one chunk at digit 1) and `q_P` at `(digit, 1, 3)`; slots `1, 5, 9` (`h`'s second
-digit) and `12` are zero (`verifier::{h_slot, q_slot, P_SLOT, QP_SLOT, EMPTY_SLOTS}`). A point of `Q`'s stack is then
-`(position (m), digit, kind, limb bit 0, limb bit 1)`, and its weight on the slots is a product over these bits: the
-claims below choose them so as to weigh what each needs. The stacks are at least `2^24` words, the smallest leanerVM's
+`Q`'s slot is `b_0 + 2 b_1 + 4 limb` (π2v4, [`PERF_GAS3.md`](PERF_GAS3.md) §1): for limbs `l < 3`, `H = x h` at
+`(0, 0, l)`, `q`'s digit 0 at `(1, 0, l)` and digit 1 at `(0, 1, l)` (slots `4 l + 1`, `4 l + 2`: on the anti-diagonal,
+contiguous), the zero slot `G` at `(1, 1, l)`; at limb code 3, `P` at `(0, 0)`, `q_P`'s digits at `(1, 0)`, `(0, 1)`,
+the zero slot `S` at `(1, 1)` (`verifier::{h_slot, q_slot, P_SLOT, QP_SLOT, EMPTY_SLOTS}`). A point of `Q`'s stack is
+then `(position (m), b_0, b_1, limb bit 0, limb bit 1)`, and its weight on the slots is a product over these bits: the
+claims below choose them so as to weigh what each needs. (π2v3: slot `digit + 2 kind + 4 limb`, `h` at `(0, 0, l)`,
+`q` at `(digit, 1, l)`, `P` at `(1, 0, 3)`, `q_P` at `(digit, 1, 3)`, slots `1, 5, 9, 12` zero.) The stacks are at least `2^24` words, the smallest leanerVM's
 certified parameters cover; every opening is the PCS version 1's (leanVM's WHIR at rate `1/2` on its ladder). Small
 test circuits take `2^15` stacks.
 
@@ -184,71 +191,65 @@ test circuits take `2^15` stacks.
 6. the ports: `Φ_k(t) = w_m G_n / G_d`, `G_n / G_d = Σ_J F_J / (w_r + ω_{y_J})` (three products a port of nonzero value),
    and `R_n / R_d = Σ_g (N_g/D_g)(E_g + Δ + Φ_{k_g})` over the port groups, `Δ = d_pull + d_push`, `d_pull = α + v_0 +
    βt`, `d_push = α + s + ξ`: the identity's right side `(1 + 1_S) Δ + T` is `Δ + w_m R_n / R_d`;
-7. `Q`'s claims (below), and one inversion, of `R_d Y · w_{m+1} · B · c_h D_n` (required nonzero), by the norm (two
-   Frobenius maps from the limbs' shifts, 76 products); `1/w_{m+1}` and `1/B` from it, and `1/w_l = (1 + w_l)/w_{l+1}`
-   down to `l = 0`. `c_h = d_pull d_push` nonzero makes `1 + ρ'` nonzero, so that the claim binds `h(t)`; `D_n = (α +
-   v_0 + ξ) B + w_m A = B (α + P_v(t) + ξ)` is there for the contract (its graph then computes `A` and `B` together:
-   §4 item 13); `B` (the pushes' denominator) is required nonzero on its own since the claims divide by it (an honest
-   proof fails it only at a `t` where a pull group's denominator vanishes). A nonzero `w_{m+1}` puts `t` off
-   `V_{m+1}`, so every group's and port's denominator is nonzero too.
+7. `Q`'s claims (below), and one inversion, of `R_d Y_1 Y_2 · B · w_m · Y_3 · c_h D_n` (required nonzero; `Y_1 = c_h +
+   t w_m`, `Y_2 = c_h + t w_m²`, `Y_3 = 1 + ρ (1 + w_m)`), by the norm (two Frobenius maps from the limbs' shifts, 76
+   products); `1/w_m` and the others from it, and `1/w_l = (1 + w_l)/w_{l+1}` down to `l = 0`. `c_h = d_pull d_push`
+   nonzero makes `1 + z_0 = c_h / Y_1` and `1 + z_1 = c_h / Y_2` nonzero, so that the identity's claim binds `H(t)`;
+   `D_n = (α + v_0 + ξ) B + w_m A = B (α + P_v(t) + ξ)` is there for the contract (its graph then computes `A` and `B`
+   together: §4 item 13); `B` (the pushes' denominator) is required nonzero on its own since the claims divide by it
+   (an honest proof fails it only at a `t` where a pull group's denominator vanishes). A nonzero `w_m` puts `t` off
+   `V_m`, so every group's and port's denominator is nonzero too. (π2v3 inverted `R_d Y · w_{m+1} · B · c_h D_n`.)
 
-**Q's claims.** The identity at `t` is `c_h h(t) + c_q q(t) = Δ + w_m R_n / R_d` (`c_q = w_m`), normalised: `(1 + ρ')
-h(t) + ρ' q(t) = num_1 / (R_d Y)` at `ρ' = c_q / Y`, `Y = c_h + c_q`, `num_1 = Δ R_d + w_m R_n`. `P`'s definition is
-`w_m q_P(t) = s + P_v(t) = num_3 / B`, `num_3 = (s + v_0) B + w_m A = D_n + d_push B`. A slot's weighted value is `D`
-times its polynomial's value at `t`, `D = s_E t / w_{m+1}` (`(y_0, y_1)` and `s_E` the limbs' coordinates and scale, as
-`crates/membership/quotient`; `Π_{l ≤ m} (1 + w_l)^{-1}` telescopes to `t / w_{m+1}`), at the digit coordinate `u_m`
-(weights `1 + u_m`, `u_m`), the limbs' `L_l = eq((y_0, y_1), l)`. Each claim on `Q` is a point of its whole stack, a
-product weight on the slots' bits, so one claim cannot carry the three relations with fresh randomness between them;
-two claims at the position `u` do:
+**Q's claims** (π2v4: two; [`PERF_GAS3.md`](PERF_GAS3.md) §1–§2 for the soundness). The identity at `t` is `c_h h(t) +
+w_m q(t) = Δ + w_m R_n / R_d = num_1 / R_d`, `num_1 = Δ R_d + w_m R_n`; `P`'s definition is `w_m q_P(t) = s + P_v(t) =
+num_3 / B`, `num_3 = (s + v_0) B + w_m A = D_n + d_push B`. A slot's weighted value at the position coordinates `u` is
+`(t / w_m)` times its polynomial's value at `t` (`Π_{l < m} (1 + w_l)^{-1}` telescopes); the slot bits weigh `(1 +
+z_j, z_j)`, ratio `r_j = z_j / (1 + z_j)`; the limbs' `(y_0, y_1)` weigh limb `l` by `scale Y^l`, limb code 3 by
+`scale Y³` (`c_3 = Y³`). Each claim on `Q` is a point of its whole stack, a product weight on the slots' bits:
 
-- **the identity's**, at `(u, ρ', y_0, y_1)`: `h` and `q` at the kind coordinate `ρ'` (the identity's own ratio) and
-  the limbs' `L_l`, and limb code 3 at `y_0 y_1`, which weighs `P` (at digit 1: `u_m (1 + ρ')`) and `q_P`
-  (`ρ'`, digits): value `(D / Y)(num_1 / R_d + c_3 (c_h w_m s + num_3 / B))`, `c_3 = y_0 y_1 / L_0`
-  (`u_m / (1 + u_m) = w_m`);
-- **the pushes'**, at `(u, ρ, 1, 1)`: limb code 3 alone (`P` by `u_m (1 + ρ)`, `q_P` by `ρ`, digits): value
-  `(D / L_0)((1 + ρ) w_m s + ρ num_3 / (w_m B))`.
+- **the identity's**, at `(u, z_0, z_1, y_0, y_1)`, ratios `r_0 = a = t w_m / c_h`, `r_1 = a w_m` (`z_0 = t w_m / Y_1`,
+  `z_1 = t w_m² / Y_2`): `H + a q = t h + a q = (t / c_h) num_1 / R_d`; `G` weighs `a r_1 = t² w_m³ / c_h²`; at limb
+  code 3 `P + a q_P + a r_1 S`; value `scale t c_h (t num_1 B + Y³ R_d (c_h s B + t num_3)) / (w_m Y_1 Y_2 R_d B)`;
+- **the pushes'**, at `(u, ρ, z'_1, 1, 1)`, `z'_1 = ρ w_m / Y_3`: limb code 3 alone, ratios `ρ / (1 + ρ)` and `w_m ρ /
+  (1 + ρ)`, reading `P(t) + (ρ / (1 + ρ)) q_P(t) + (ρ² w_m / (1 + ρ)²) S(t)`; value `t (1 + ρ)((1 + ρ) w_m s B + ρ
+  num_3) / (w_m² B Y_3)`.
 
-`ρ` is drawn after `s`: a false `P(t) = s` or a false definition leaves the pushes' claim a nonzero polynomial of
-degree 1 in `ρ` (both errors are fixed before `ρ`), false but with probability `1/|E|`; with those two true, the
-identity's claim holds exactly when the identity does (`P`'s and `q_P`'s share in it is then the verifier's, from `s`
-and `num_3`). The third claim, `h`'s top coefficient `Σ_V h = 0`, is at `(1^m, 0, 0, y_0, y_1)`: digit 0 and kind 0
-weigh `h`'s three limbs and, at limb code 3, slot `12`, which is zero for the honest prover and, for any
-prover, but with probability `4N/|E|` ("The empty slots" below). The identity's and the pushes' claims share their
-position coordinates (the contract writes them once).
+`ρ` is drawn after `s`: times `(w_m / t) Y_3`, the pushes' claim is a polynomial of degree 2 in `ρ` in the errors of
+`P(t) = s`, of the definition and `S(t)`, zero only if all three are, false but with probability `2/|E|`. With those,
+the identity's claim times `c_h²` is `I(t) = 0`, `I = D² H + x w_m D q + x² w_m³ G + x D R` (degree below `5N`), so
+`I = 0` as a polynomial but with probability `5N/|E|`; at `x = 0`, `D(0)² H(0) = 0` and `D(0)` is a product of the
+copy argument's denominators at position 0, so `H(0) = 0`: `h = H / x` has degree below `N − 1`, **`Σ_V h = 0`**, and
+`h D + R = 0` on `V_m`. No claim reads the sum ([`PERF_GAS3.md`](PERF_GAS3.md) §2, with the negative control: a layout
+reading `G` through `w_m` alone lets a dishonest port through). The two claims share their position coordinates (the
+contract writes them once).
 
-**The empty slots are not constrained, and need not be.** With plain PCS claims `Q`'s commitment is its sixteen-slot
-stack, so the prover chooses slots `1, 5, 9, 12` too; the honest prover leaves them zero. Slots `1, 5, 9` are `h`'s
-second digit `h_1` (`h = h_0 + Z_V h_1`): in the identity `c_h Z_V h_1` joins the quotient (`q + c_h h_1`, still below
-`2N`), and `Σ_V h = Σ_V h_0`, so a cheating prover gains nothing: the identity, read at the random `t` as a polynomial
-identity in `t` (every committed polynomial fixed before `t`; degree below `4N`, error `4N/|E|`), is the honest one with
-that quotient. Slot `12`, `S` (below `N`), sits at `P`'s limb code and kind, at digit 0: the pushes' claim (exact but for
-`1/|E|`, as above) then reads `S(t) + w_m P(t) = w_m s` and the definition `w_m q_P(t) = s + P_v(t)`, so
-`w_m² q_P = w_m P + S + w_m P_v` at `t`, every term fixed before `t`: as polynomials, but with probability below
-`4N/|E|`, so `w_m` (degree `N`) divides `S` (degree below `N`), and `S = 0`. Both terms are below `2^-165` at the
-reference shape; `formal/RecPiop`'s soundness carries them (the honest `Q` the plain stack, its empty slots zero).
+**The empty slots** `G` (slots `3, 7, 11`) and `S` (slot `15`) are the prover's: `G` enters `I` as `x² w_m³ G`, which
+moves neither `H(0)` nor `h` on `V_m`; `S(t) = 0` is part of the pushes' claim. The honest prover leaves them zero.
+(π2v3's slots `1, 5, 9` (`h`'s second digit) and `12` were argued away at `4N/|E|`; π2v3 had a third claim, `Σ_V h = 0`
+as `h`'s top coefficient at `(1^m, 0, 0, y_0, y_1)`.)
 
-**The claims** (5, after π1's 3), each a point of its stack (past the table's coordinates, zeros):
+**The claims** (4, after π1's 3), each a point of its stack (past the table's coordinates, zeros):
 
 - `W` at `(ρ, ρ², …, ρ^{2^{r-1}}, w_r, …, w_{m-1})`, value `Σ_k eq(ρ⃗, k) a_k`;
 - the setup at `(w_0, …, w_{m-1}, β)`, value `ξ` (its halves `κ`, `κ + σ`: `(1 + β) κ + β (κ + σ) = κ + βσ`);
-- `Q` at `(u_0, …, u_m, ρ', y_0, y_1)`, `u_l = w_l/(1 + w_l) = 1 + 1/w_l + 1/w_{l+1}`, the identity's value; at
-  `(u_0, …, u_m, ρ, 1, 1)`, the pushes'; at `(1^m, 0, 0, y_0, y_1)`, value `0`.
+- `Q` at `(u_0, …, u_{m-1}, z_0, z_1, y_0, y_1)`, `u_l = w_l/(1 + w_l) = 1 + 1/w_l + 1/w_{l+1}`, the identity's value;
+  at `(u_0, …, u_{m-1}, ρ, z'_1, 1, 1)`, the pushes'.
 
 **The contract** (`contract`): reads π1's three claims' hashes from the frame's payloads 0 … 2 into the seed (π2's
 circuit computes them from π1's run, since [`PERF_GAS2.md`](PERF_GAS2.md)), reads the stream, runs the verifier, then
-checks π2's five claims declared at payloads 3 … 7, each the EIP draft's PCS claim (`evm_link::declared_claims`: its
+checks π2's four claims declared at payloads 3 … 6, each the EIP draft's PCS claim (`evm_link::declared_claims`: its
 `82 + 24 n` bytes packed and hashed, the hash a payload of the frame): `W`'s, the setup's (its commitment a constant)
-and `Q`'s three. (Before `PERF_GAS.md` it encoded π1's three claims too, from the stream and constants; `PERF_GAS.md`
+and `Q`'s two. (Before `PERF_GAS.md` it encoded π1's three claims too, from the stream and constants; `PERF_GAS.md`
 hashed `C1`'s in the circuit, at payload 0.)
 
 ## 3. The prover (`prover`)
 
 1. `w`'s novel coefficients (`quotient::ntt`), its `B` coefficients (subset sums): `W`, committed.
 2. `α, β, γ`; on `V_m` (`h_on_v`, eight rows at a time, one batched inversion a run of 4,096), in `Q`'s stack: `P_v`
-   (a pair's formula of its row, a forward's or a hole's own value) and `h` (zero at a hole), its sum checked to be zero (as `h`'s top novel coefficient),
-   and the ports checked (`T` zero at every hole; for any other `w`, `prove_with` sets `h = T/(d_pull d_push)` at a
-   dishonest hole, so the identity still holds and only the sum's claim is false: §6); `h`'s and `P`'s novel
-   coefficients.
+   (a pair's formula of its row, a forward's or a hole's own value) and `h` (zero at a hole; in `G`'s slots until step
+   4), its sum checked to be zero (as `h`'s top novel coefficient), and the ports checked (`T` zero at every hole; for
+   any other `w`, `prove_with` sets `h = T/(d_pull d_push)` at a dishonest hole, so the identity still holds, the sum
+   is not zero, and the identity's claim is false: §6); `h`'s and `P`'s novel coefficients.
 3. On `D = β_{m+1} + V_{m+1}` (`2N` points, disjoint from `V_m`), one coset of `V_m` at a time: `w`, `h`, `P` by
    transforms (five of `2^m` a coset), `σ`, `κ` with the setup (fixed by the circuit). Eight points at a time: the
    row's cells (`x + ω_c` stays in `D`), every pair's indicator (a chunk of 4,096 points at a time: a pair whose block
@@ -257,7 +258,8 @@ hashed `C1`'s in the circuit, at payload 0.)
    `Φ` by one batched inversion of `rows × ports` denominators, eight rows a vector), `d_pull`, `d_push`,
    `q = (h d_pull d_push + (1 + 1_S)(d_push + d_pull) + T) / Z_V` and `q_P = (P + P_v) / Z_V` (`Z_V` takes two values
    on `D`). Their novel coefficients: degree below `2N`, `2N` points determine them.
-4. `Q`, committed (its stack built in place, the setup's from one proof to the next; `Q` and `W` keep their codewords
+4. `H = x h` (`quotient::protocol::mul_x`, no multiplication; `h`'s top coefficient, zero, dropped) into `H`'s slots,
+   `G`'s zeroed; `Q`, committed (its stack built in place, the setup's from one proof to the next; `Q` and `W` keep their codewords
    until their openings, which read the queried rows from them); `t`; the fold values, `ξ` and `s = P(t)`; `ρ`; the verifier's claims,
    opened by `quotient::opening` (leanVM's WHIR unchanged, rate 1/2, the claims on one commitment in one opening).
    `PI2_PROFILE=1` prints the phases.
@@ -316,10 +318,13 @@ at role 15).
   = ω_{i >> r}`, `w_m = w_{m-r} ∘ w_r`, `V_{m-r}`'s Lagrange basis sums to one off `V_m`); the inverse; the stacks'
   `Q`'s slots are their bits (`quotient_slots_are_their_bits`).
 - `tests/pi2.rs`, D16v synthetic circuits and the interface's own example (padded, through `adapt`):
-  - the honest proof's five claims hold and their openings verify (`pcs_claim::verify_claim`);
+  - the honest proof's four claims hold and their openings verify (`pcs_claim::verify_claim`);
   - witness mutations (random constrained positions): a false claim;
-  - a changed element, a changed public input (a dishonest port, the identity kept by the prover): exactly the sum's
-    claim is false, `[true, true, true, true, false]` (§7's lemma at work);
+  - a changed element, a changed public input (a dishonest port, the identity kept by the prover): exactly the
+    identity's claim is false, `[true, true, false, true]` (§7's lemma and `PERF_GAS3.md` §2 at work);
+  - `the_copy_sum_from_the_layout`: the dishonest port with each way to place `x h`'s coefficient `N` (`prover::Cheat`),
+    the negative control (the cheat that a layout reading `G` through `w_m` accepts), `G` or `S` filled, `s` off
+    `P(t)` (`PERF_GAS3.md` §3);
   - flipped stream bytes: claims the openings do not prove;
   - the contract equals the Rust verifier word for word, on the honest stream and a random
     one; it accepts the honest proof with its frame declaring exactly its claims, and rejects flipped bytes.
@@ -347,10 +352,11 @@ a rational function `R(α, β)` with at most `2N` distinct linear factors in its
 `T(x_0) ≠ 0`, and the linear form `α + w(x_0) + β x_0` divides one denominator only: the other pulls' tags are other
 positions, no push targets a hole (`Circuit::validate`), and `τ_J` is outside `V_m`. Its residue `T(x_0) / (β (x_0 +
 τ_J))` is nonzero, so `R ≠ 0`. If the ports are honest, `R` is the logarithmic derivative's difference over the internal
-positions, both sides sets: `R ≠ 0` unless every internal pull is the push sent to it. The sum's claim is `R(α, β) = 0`:
+positions, both sides sets: `R ≠ 0` unless every internal pull is the push sent to it. The sum is zero (π2v4: forced by
+`Q`'s layout through the identity's claim, [`PERF_GAS3.md`](PERF_GAS3.md) §2; π2v3: its own claim), so `R(α, β) = 0`:
 probability at most `2N/2^192` for a nonzero `R` (its numerator's degree), and `2N/2^192` that a denominator vanishes on
 `V_m`: `4N/2^192` over `W`'s list, as π2v1's copy argument. The prover's side (`tests/pi2.rs`): a dishonest port with the
-identity kept makes exactly the sum's claim false.
+identity kept makes exactly the identity's claim false (π2v3: the sum's).
 
 **Committing `P` after `α, β`** is sound for the same reason: `P`'s values on `V_m` are pinned to `P_v`'s by its
 definition, so `d_push` on `V_m` is fixed by `W` before `α, β`.
@@ -361,19 +367,20 @@ then after the union):
 | round | error | alone | after |
 |---|---|---:|---:|
 | the copy argument `(α, β, γ)`: `2N` fractions, the ports' poles, the four-limb ports' fingerprints (degree 1 in `γ`) | `(4N + 3)/2^192` over `L_W` | 166.0 | 152.7 |
-| `t`: the copy identity and `P`'s definition, both must vanish; below `3N` for the honest `Q`, below `4N` with its prover-filled empty slots (§2) | `4N/2^192` over `L_W L_Q` | 166.0 | **140.9** |
+| `t`: the copy identity as the identity's claim reads it (`I`, below `5N`, §2) and `P`'s definition (below `3N`), both must vanish | `5N/2^192` over `L_W L_Q` | 165.7 | **140.6** |
 | `ρ`: `W`'s fold (degree 15) | `15/2^192` over `L_W L_Q` | 188.1 | 163.0 |
-| `ρ`: `Q`'s claim (degree 3) | `3/2^192` over `L_W L_Q` | 190.4 | 165.3 |
+| `ρ`: `Q`'s pushes' claim (degree 2) | `2/2^192` over `L_W L_Q` | 191.0 | 165.9 |
 
 π2v1's rounds (§10) were the copy argument `(3N + 2)/2^192` (153.1 bits), `t` the identity below `5N` (140.6) and
 `ρ` (163.0). The Lean (`formal/RecPiop`'s `err`) states π2v3's, coarser: `(4N − 1 + Σ_j d_j)/|E|` for the copy
 argument and the ports, `(4N − 1)/|E|` at `t`, `2^r/|E|` at `ρ`. These depend only on `N` and the stacks. With the
-three openings charged once (`269 · 2^-137` a query), π2 keeps 128.93 bits as `Q/ε` at `Q = 2^64`, as π2v1
-(`RecCompose.pi2Bound`, `pi2Bound_le_bits`, proved for π2v1).
+openings charged once (`269 · 2^-137` a query), π2 keeps 128.93 bits as `Q/ε` at `Q = 2^64`, as π2v1 and π2v3
+(`RecCompose.pi2Bound`, `pi2Bound_le_bits`, proved for π2v1). π2v3's `t` round was `4N` (140.9 bits after the lists),
+its `Q` claim at `ρ` of degree 3.
 
 ## 8. The claims' encoding, the IVs, the setup path
 
-- **One encoding for the eight claims**: the EIP draft's PCS claim (`crates/pcs_claim`, `docs/PCS_CLAIM.md`), `version
+- **One encoding for the seven claims** (eight before π2v4): the EIP draft's PCS claim (`crates/pcs_claim`, `docs/PCS_CLAIM.md`), `version
   || n || root || ood || point || value`, `82 + 24 n` bytes, its Keccak-256 a payload of the transaction's frame of PCS
   claims:
   - every root is the commitment's 32 bytes as they are: π1's prover sends a root's bytes, so π1's stream carries
@@ -477,8 +484,9 @@ y_1)` and `(1^m, 0, 0, 0, y_0, y_1)`, value the target. Its measured figures: 98
 at 128 signatures (44,041 at 400), 62,720 EIP-7976 (at the π1 contract IV without the BLAKE2s-era words; 43,309 and
 44,113 before it).
 
-**The Lean side** (`formal/RecPiop`, `RecStatement`, `RecCompose`) states and proves the protocol of this note: π2v3
-on the EIP draft's PCS claims. The contract model checks the eight declared claims (π1's three, π2's five), each a
+**The Lean side** (`formal/RecPiop`, `RecStatement`, `RecCompose`) states and proves π2v3 on the EIP draft's PCS
+claims, the protocol of this note before [`PERF_GAS3.md`](PERF_GAS3.md) (π2v4's port: that note's "What the Lean
+needs"). The contract model checks the eight declared claims (π1's three, π2's five), each a
 root, its out-of-domain answer, a point and a value, opened by one PCS opening (`WhirBridge.Pcs`), the eight charged
 once (`pcs_union_sound_oracle`); `Q`'s three claims are bound to one table by its answer (`qOodBinding`); `Q`'s empty
 slots are the prover's, handled as §2 says ("The empty slots"), at round 1's error `(4N − 1)/|E|`. The end theorems

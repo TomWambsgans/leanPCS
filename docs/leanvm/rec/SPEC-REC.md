@@ -4,10 +4,11 @@
 
 A proof of a Keccak VM execution (leanVM `9d50c92a3`'s tables, `docs/leanvm/univariate/KECCAK.md`) verified on the EVM
 by recursion: π1 is the univariate proof, π2 a SNARK of π1's verifier, and the contract runs π2's verifier only. At the
-reference shape (128 signatures) the real proof verifies for **31,524 gas of execution** (577 B of calldata; as an
-EIP-8141 frame transaction, EIP-7976's floor, standard 40,708 and floor 36,928), its 8 claims declared (π1's 3, π2's
-5, each the EIP draft's PCS claim, `crates/pcs_claim`; π2v3, `PI2.md`; π1's three claims hashed in π2's circuit, π1 as
-π1-rec4, `PERF_GAS2.md`): 66,376 with the frame of claims (257 B) and their PCS gas (13,000, on both sides). The figures below that predate the PCS claims are marked so. Code: `crates/leanvm/rec`; π2's PIOP in
+reference shape (128 signatures) the real proof verifies for **31,212 gas of execution** (577 B of calldata; as an
+EIP-8141 frame transaction, EIP-7976's floor, standard 40,396 and floor 36,928), its 7 claims declared (π1's 3, π2's
+4, each the EIP draft's PCS claim, `crates/pcs_claim`; π2v4, `PI2.md`, `PERF_GAS3.md`; π1's three claims hashed in
+π2's circuit, π1 as π1-rec4, `PERF_GAS2.md`): 63,328 with the frame of claims (225 B) and their PCS gas (12,000, on
+both sides). The figures below that predate the PCS claims are marked so. Code: `crates/leanvm/rec`; π2's PIOP in
 [`PI2.md`](PI2.md); the claims' points in [`SPEC-POINTS.md`](SPEC-POINTS.md).
 
 Every number is marked:
@@ -27,7 +28,8 @@ cargo test --release -p leanvm_rec --test pi2_real -- --ignored --nocapture real
 
 ## 0. Summary
 
-> Since [`PERF_GAS2.md`](PERF_GAS2.md) the recursion proves **π1-rec4** (π1-rec3 with the challenges no message
+> Since [`PERF_GAS3.md`](PERF_GAS3.md) π2 is **π2v4** (the copy argument's sum forced by `Q`'s layout: seven claims,
+> 63,328 gas with the frame). Since [`PERF_GAS2.md`](PERF_GAS2.md) the recursion proves **π1-rec4** (π1-rec3 with the challenges no message
 > separates drawn from one Keccak-f each and the ring map after `C2`'s commitment: 106 Keccak-f in its transcript, not
 > 116), π2's Keccak-f make their last round's lanes read alone, and π2's circuit hashes π1's three claims (577 B of
 > calldata, 66,376 gas with the frame). This note describes π1-rec3 and the π2 before them, which the Lean states.

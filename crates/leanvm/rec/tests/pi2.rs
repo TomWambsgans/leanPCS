@@ -333,7 +333,7 @@ fn identity_relations(proved: &Proved) -> (bool, bool) {
 ///   through `Z_V` (`H` and `G` at one kind, `q`'s two digits at the other): there `D Z_V G` cancels `σ D Z_V`, `x h`'s
 ///   overflow, as polynomials. Here it does not. On a witness (`σ = 0`) the cheat is the honest proof: every claim holds.
 /// - An honest `Q` with `G` filled: the identity's claim is false; with `S` filled: the identity's and the pushes'
-///   (which reads `S` at `ρ²`).
+///   (which reads `S` at `ρ²`). And `s` sent off `P(t)`: the pushes' claim is false.
 #[test]
 fn the_copy_sum_from_the_layout() {
     let f = built(&synth::small_d16v(11));
@@ -381,6 +381,9 @@ fn the_copy_sum_from_the_layout() {
     assert_eq!(claims_hold(&proved, &f.setup), [true, true, false, true], "G filled");
     let proved = prove_as(&f.values, Cheat::FillS(F64(5)));
     assert_eq!(claims_hold(&proved, &f.setup), [true, true, false, false], "S filled");
+    // `s` off `P(t)`: the pushes' claim, of degree 2 in `ρ` drawn after `s`, is false.
+    let proved = prove_as(&f.values, Cheat::ShiftS(F192::new(0, 0, 9)));
+    assert!(!claims_hold(&proved, &f.setup)[3], "s shifted");
 }
 
 /// π1's claims for a small circuit: five claims of the real ones' kinds (each its root, out-of-domain answer, point
