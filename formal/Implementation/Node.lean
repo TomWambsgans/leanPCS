@@ -16,7 +16,7 @@ namespace Implementation
 inductive Node where
   /-- A field element, its limbs `c0 + 2^64 c1 + 2^128 c2`. -/
   | const (c : Nat)
-  /-- A half of `y` (0, 1) or of `root` (2, 3). -/
+  /-- A `K`-word of the statement: of `y` (0 .. 4) or of `root` (4 .. 8), eight bytes big-endian each. -/
   | statement (k : Nat)
   /-- A half of a commitment's root: two a root, the high half first (`root_halves`). -/
   | root (k : Nat)
@@ -40,7 +40,7 @@ inductive Word where
   | node (i : Nat)
   /-- A constant word. -/
   | const (w : Nat)
-  /-- The word of the arguments (calldata after the selector) at this offset. -/
+  /-- The word of calldata at this offset (the arguments: no selector). -/
   | calldata (offset : Nat)
   /-- The circuit's commitment's root, as stored (slot 0): a claim's root word. -/
   | storedRoot
