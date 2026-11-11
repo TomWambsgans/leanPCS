@@ -14,9 +14,8 @@ round's digest and tail), then the three openings, which read the digest only (`
   permutation is `hashRP Common.queryPermutation`);
 * **`verWR`**, **`uVerIvK4`**: the composed verifier, and with the contract's IV (`ivInputK4`: the variant's bytes at
   `keccakRec4`);
-* **`UniWalkK4`**, **`UniWalkRejectK4`**, **`UniOutRootsK4`**: the deployed walk (`runWithK4`) is the wide chain on
-  streams of π1-rec4's length (`uLen4`) and rejects the others; the chain program names the roots at rounds `0` and
-  `28 + κ`;
+* **`UniWalkK4`**, **`UniWalkRejectK4`**: the deployed walk (`runWithK4`) is the wide chain on streams of π1-rec4's
+  length (`uLen4`) and rejects the others (the chain program's roots: `Link4.lean`'s `UniOutRootsK4`);
 * **`UniVerifierBridgeK4`**, **`UniExtractBridgeK4`**, **`UniGameLeVK4`**: the coupling's facts and the coupling, of
   `keccakSoundnessExperiment4` with the random-permutation game whose verifier reads the rate (`rpmGameSR`);
 * **`FsLayer128K4`**: the Fiat–Shamir layer at `≥ 128` bits for π1-rec4.
@@ -110,13 +109,6 @@ def UniWalkRejectK4 : Prop :=
   ∀ π : UPf, π.proof.stream.size ≠ uLen4 κ nV np →
     ∀ o ∈ support (runWithK4 Common.queryPermutation D.shape π.iv.toList π.input.toList
       π.proof.stream keccakRec4 .point), o.accepts = false
-
-/-- **The chain program's result names the roots the transcript carries** at rounds `0` (`C1`) and `28 + κ`
-(`C2`). -/
-def UniOutRootsK4 : Prop :=
-  ∀ (input : Vector UInt8 32) (rows : List ℕ) (done : Done) (tl : List E),
-    ((C.prog input rows).out done tl).roots =
-      ((done.getD 0 default).1.1.getD default, (done.getD (28 + κ) default).1.1.getD default)
 
 /-- **VERIFIER** (π1-rec4): from any state of the lazily sampled permutation, `verifyWithK4` on a proof accepts at
 most as often as the composed verifier (rate model, over the permutation) passes `uniCheck4` with every opening
