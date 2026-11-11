@@ -31,7 +31,9 @@ crates/leanvm/statement/src/layout.rs):
 - pi1-rec4 draws several challenges from one Keccak-f (`Channel::sample_wide`): alpha's c, beta, gamma and the
   zerocheck's c from one query; t and the ring map's f_0 .. f_3 (after C2's commitment) from one; rho, lambda and
   f_4, f_5 from one. A query's error is then the sum of its challenges' errors, each over the lists of the latest
-  commitment before it (the ring map's whole 6/|E| charged to both of its queries).
+  commitment before it (the ring map's whole 6/|E| charged to both of its queries, where the stage-by-stage bound
+  gives 4/|E| and 2/|E|: each f_j has at most one bad value given the earlier ones, formal/FlockSound's `ringBad`,
+  formal/UniKeccakSound/UniKeccakSound/Rec4/RingSplit.lean).
 
 The Fiat-Shamir composition is the Lean's (formal/UniSound/UniSound/Fs128.lean, `uniBound128`): an adversary of Q
 permutation queries breaks pi1 with probability about Q (eps_WHIR + max over rounds of the round's error times its

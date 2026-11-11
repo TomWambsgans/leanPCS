@@ -50,15 +50,12 @@ The bounds' arithmetic carries over but for one port.
 - **π1-rec4's soundness and completeness** (`UniKeccakSound`, `UniKeccakComplete`). Done on `lean/pi1-rec4`: the
   transcript (`UniStatement`'s `FsShape.rec4`, `sampleWide`, `challengeAt`; `UniKeccak.reduceWithK4`, `runWithK4`,
   `verifyWithK4`, tested by `UniKeccakTest/Runner.lean` on `keccak128_rec4.txt` and `keccak_rec4.txt`), the statements
-  `UniKnowledgeSoundnessKeccakRec4`, `UniCompletenessKeccakRec4`, and the ring map's two-block Schwartz–Zippel bound
-  (`UniKeccakSound.Rec4.ring_split`: `≤ 4/|E|` at `t`, then `≤ 2/|E|` at `ρ`). Left: the proofs.
-  - Soundness: the Fiat–Shamir layer for wide draws (`Compose.ListChainK` with one call's rate giving a round's
-    challenges, and `C2`'s call absorbing the slices before the root; the random-permutation transfer to a table that
-    answers the sponge's rate, which leanerVM's `keccak256_transfer2` does not state), Flock without its ring map
-    (`KFlockSound`'s rounds re-cut: `c'` into round `0`, `f_0 … f_3` into `C2`'s, `f_4, f_5` into the values'), the
-    PIOP's states re-indexed, the code link for `reduceWithK4`. A query's error is the sum of its challenges'; the cap
-    `2^35/|E|` holds, so `uniKnowledgeSoundnessKeccakRec3_closed`'s arithmetic carries over (128.49 bits)
-    ([`../formal/UniKeccakSound/README.md`](../formal/UniKeccakSound/README.md), "π1-rec4").
+  `UniKnowledgeSoundnessKeccakRec4`, `UniCompletenessKeccakRec4`, the ring map's two queries
+  (`UniKeccakSound.Rec4.ringBad_split_first`, `ringBad_split_second`: `≤ 4/|E|` at `t`, then `≤ 2/|E|` at `ρ`, from
+  `FlockSound.card_ringBad_le`), and the rate-extended transfer (`UniKeccakSound.Rec4.keccak256RateTransfer`:
+  leanerVM's generic two-oracle transfer with the 136-byte rate as `H`'s output, `q²/2^508`), and **soundness**:
+  `UniKeccakSound.uniKnowledgeSoundnessKeccakRec4_closed` (no hypothesis, `uniBound128 (2^35/|E|)`, 128.49 bits;
+  [`../formal/UniKeccakSound/README.md`](../formal/UniKeccakSound/README.md), "π1-rec4"). Left:
   - Completeness: the honest prover with wide draws and π1-rec4's staged chain (three wide calls for π1-rec3's
     thirteen), hypotheses `32 ≤ D.programIv.length ≤ 2^16` as before.
 - **The graph's compiler part** (`RecGraphKeccak`'s graph = verifier for π1-rec4 is done: `Sim.pi1GraphIsVerifierK4`,

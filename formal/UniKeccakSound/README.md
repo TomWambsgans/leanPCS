@@ -2,8 +2,9 @@
 
 # UniKeccakSound: knowledge soundness of the Keccak VM's univariate verifier
 
-This library proves `formal/UniKeccak`'s two knowledge-soundness statements, `UniKnowledgeSoundnessKeccak` (main
-line) and `UniKnowledgeSoundnessKeccakRec3` (π1-rec3's shape). Both are proved at the Keccak-f block
+This library proves `formal/UniKeccak`'s three knowledge-soundness statements, `UniKnowledgeSoundnessKeccak` (main
+line), `UniKnowledgeSoundnessKeccakRec3` (π1-rec3's shape) and `UniKnowledgeSoundnessKeccakRec4` (π1-rec4's, the
+wide draws; "π1-rec4" below). All three are proved at the Keccak-f block
 `KeccakFlock.keccakFlockSpec` with the explicit extractor `uniExtractorK`, for every deployment at the reference shape
 with leanVM's program IV, and with no other hypothesis. The proofs are sorry-free, use no `native_decide`, and rest
 on Lean's three axioms; the root's `#guard_msgs` checks this.
@@ -89,37 +90,43 @@ cd formal/EndToEnd   # on h1, under /root/pcs-quotient-fv/ only, with formal/lea
 systemd-run --scope -p MemoryMax=12G lake build UniKeccakSound   # every file; the root's #guard_msgs check the axioms
 ```
 
-## π1-rec4: not proved
+## π1-rec4: proved
 
-`UniKeccak.UniKnowledgeSoundnessKeccakRec4` (π1-rec4's verifier, `UniKeccak.verifyWithK4`) is stated, **not
-proved**. What is here: [`Rec4/RingSplit.lean`](UniKeccakSound/Rec4/RingSplit.lean), **`Rec4.ring_split`**: for a
-nonzero polynomial of degree at most `1` in each of six variables, split as four drawn with `t` and two drawn with `ρ`
-(`SPEC.md` §14.5 (2)), some coefficient in the first four vanishes with probability at most `4/|E|`, and where it does
-not, the polynomial vanishes in the last two with probability at most `2/|E|` (Mathlib's Schwartz–Zippel, in two
-blocks). That the ring switch's relation is such a polynomial is not stated here.
+**`UniKeccakSound.uniKnowledgeSoundnessKeccakRec4_closed`** ([`Rec4/Closed4.lean`](UniKeccakSound/Rec4/Closed4.lean)):
+for every deployment at the reference shape (`keccakRefShape`, 128 signatures) with leanVM's program IV,
+`UniKeccak.UniKnowledgeSoundnessKeccakRec4 KeccakFlock.keccakFlockSpec D (uniBound128 (2^35/|E|))` (π1-rec4's
+verifier `UniKeccak.verifyWithK4` in `keccakSoundnessExperiment4`, the explicit extractor `uniExtractorK`), and the
+bound at most `2^-64` for `Q ≤ 2^64` (`uniBound128_le_bits35`; 128.49 bits as `Q/ε`), **with no hypothesis**. The
+route is π1-rec3's, with the wide draws (one Keccak-256 call's rate gives up to five challenges):
 
-What a proof needs, against π1-rec3's (`FinalK3.lean`'s `uniKnowledgeSoundnessK3` from `KFlockSound`, `UniIdsK3`,
-`PairBatch`, `UniCodeK3`, `UniFinalK3`, `FsLayer128K3`):
+- **The PIOP** ([`Rec4/Piop4.lean`](UniKeccakSound/Rec4/Piop4.lean), [`Rec4/PiopSound4.lean`](UniKeccakSound/Rec4/PiopSound4.lean)):
+  `uniPiopK4 : RbrPiop (rec4Rounds κ nV np)`, its states π1-rec3's (`uniSK3`) on the transcript read as π1-rec3's
+  (`opT`), except after `C2`'s round (`c2St`, the map half drawn). Round `0`'s error is the bus's and Flock's first
+  round's; `C2`'s is the identities' at `t` plus the bad sets of `f_0 … f_3` (`60/|E|`, Flock's bad family, `15` a
+  challenge); the values' the combinations' plus those of `f_4, f_5` (`30/|E|`); the challenges of a wide draw are
+  independent ([`Rec4/Draws.lean`](UniKeccakSound/Rec4/Draws.lean)).
+- **The last link** ([`Rec4/Final4.lean`](UniKeccakSound/Rec4/Final4.lean), `uniFinalK4`): π1-rec3's
+  (`uniFinalK3_uniCodeK3At`) on `toRec3`, the identity model reading Flock's point only (`hzb_uniIdsK3`,
+  `hpolys_uniIdsK3`).
+- **The code-level link** ([`Rec4/Prog4.lean`](UniKeccakSound/Rec4/Prog4.lean), [`Rec4/ProgW.lean`](UniKeccakSound/Rec4/ProgW.lean),
+  [`Rec4/Link4.lean`](UniKeccakSound/Rec4/Link4.lean)): `reduceWithK4` after the counts is the wide chain program
+  `main4ProgK` (`C2`'s `64` slices before its root), up to `obsOf3` (`uniCodeK4At`).
+- **The Fiat–Shamir layer** ([`Rec4/FsSpec4.lean`](UniKeccakSound/Rec4/FsSpec4.lean), [`Rec4/FsOps4.lean`](UniKeccakSound/Rec4/FsOps4.lean),
+  [`Rec4/Bridge4.lean`](UniKeccakSound/Rec4/Bridge4.lean), [`Rec4/Walk4.lean`](UniKeccakSound/Rec4/Walk4.lean),
+  [`Rec4/Couple4.lean`](UniKeccakSound/Rec4/Couple4.lean), [`Rec4/Game4.lean`](UniKeccakSound/Rec4/Game4.lean)):
+  the transcript as Compose's wide chain (`uSpec4`, one call a round, `UniRf4`: six digests an input refers to);
+  the walk (`uniWalkK4`, `uniWalkRejectK4`: `runWithK4` is the wide chain over Keccak-256's rate); the coupling
+  with the random-permutation game whose verifier reads the rate (`uniGameLeVK4_holds`); the transfer to the rate
+  model (`rpm_le_kcSR`, [`Rec4/RpmRate*.lean`](UniKeccakSound/Rec4/RpmRate.lean), from `keccak256RateTransfer`,
+  `(QSπ+Q+QVπ)²/2^508`); and Compose's `knowledgeSoundness_listChainW_closed128R`
+  (`formal/Compose/Compose/Wide*.lean`: the rate model split at its tails for the trace, `prEvent_rate_le`), with
+  the three PCS openings charged once (`hU_uni4`), `fsLayer128K4_of_gameV'`.
+- [`Rec4/End4.lean`](UniKeccakSound/Rec4/End4.lean): every round's error at most `2^35/|E|` at the reference
+  (round `0`: `16 · 3,227,649 + ncv + 2^22 + 90`; `C2`'s: `19,339,139 + deg Z_bad + 60`; the values': `187 + 31`).
 
-1. **The Fiat–Shamir layer for wide draws** (`fsLayer128K3_holds`' analog). `Compose.ListChainK` models a round as a
-   root, then values, then `ns + 1` challenges from `ns + 1` successive Keccak-256 calls (`absorbs`, `chalsT`), over a
-   table of 32-byte answers. A wide draw takes its `ns + 1` challenges from **one** call's sponge rate, past the digest,
-   and π1-rec4's `C2` call absorbs the slices **before** the root (`encM` puts the root first). So the chain needs (a)
-   rounds whose challenges are one step's rate, with a table answering the rate (or the digest and an independent
-   tail), and a message with the root after values; and (b) **the random-permutation transfer to that table**:
-   leanerVM's `Common.keccak256_transfer2` (`Rpm.lean`, `ListChainKRpm.lean`) answers Keccak-256's digest; the rate's
-   other lanes (`rateTailOf`) are uniform for a fresh last permutation in the random-permutation model, but no transfer
-   here states it. Neither is in this repository.
-2. **Flock without its ring map** (`KFlockSound` with the map's six challenges moved out of Flock's rounds:
-   `f_0 … f_3` into `C2`'s round, `f_4, f_5` into the values' round, the zerocheck's first coordinate into round `0`),
-   the ring switch's bad events assigned to those rounds (`ring_split` is their bound in two blocks), and the PIOP
-   (`uniPiopK3`'s states) re-indexed: round `0` draws `c, β, γ, c'`; `C2`'s round `t, f_0 … f_3`; the values' round
-   `ρ, λ, f_4, f_5`.
-3. **The code link** (`UniCodeK3`'s analog for `reduceWithK4` on those rounds) and the last link.
-
-The arithmetic carries over: a query's error is the sum of its challenges' (π1-rec4's per-query sums are at most
-`2^35/|E|`, `params/leanvm_univariate_params.py`, `rounds(.., "rec4")`), so `uniBound128 (2^35/|E|)` and
-`uniBound128_le_bits35` (128.49 bits) would apply unchanged; this is modelled, not proved.
+Also: [`Rec4/RingSplit.lean`](UniKeccakSound/Rec4/RingSplit.lean) (`ringBad_split_first`, `ringBad_split_second`:
+the ring map's two queries, `≤ 4/|E|` then `≤ 2/|E|`) and [`Rec4/RateTransfer.lean`](UniKeccakSound/Rec4/RateTransfer.lean)
+(`keccak256RateTransfer`).
 
 ## What remains
 
