@@ -384,7 +384,7 @@ three openings charged once (`269 · 2^-137` a query), π2 keeps 128.93 bits as 
     after their roots, the setups' constants;
   - every claim is a point of its commitment's whole stack (`n` its variables), its value the polynomial's there;
   - **one PCS version** (1): leanVM's WHIR at rate `1/2` on its ladder (`pcs::whir::DEPLOYED_SCHEDULE`), every opening
-    one claim's (`pcs_claim::open_words`, `verify_claim`); the stacks' leading lanes are committed alone (the
+    one claim's (`pcs_claim::open`, `verify_claim`); the stacks' leading lanes are committed alone (the
     commitment of the whole stack), the opening's rows padded back (`pcs_claim::commit_words`).
 - **The mock frame** (`leanvm_statement::evm::machine::PcsFrame`) declares encoded claims; a measuring run declares any
   well-formed one. The end-to-end tests declare π1's claims from the vector (written by π1's prover from its openings)

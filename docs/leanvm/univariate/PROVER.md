@@ -149,7 +149,7 @@ transcription's differential vectors.
     out-of-domain answer (sent after the root, §4 of SPEC.md), the batch's point and the value; one opening of PCS
     version 1 (leanVM's WHIR, vendored from c445e3d5, at rate `1/2` on its ladder), its transcript seeded by
     `keccak256(PCS_claim)`, proving the out-of-domain answer and the claim at one random combination, its level-0
-    rows padded to the whole stack's (`pcs_claim::open_words`). Until the PCS claims the openings ran on another
+    rows padded to the whole stack's (`pcs_claim::open`). Until the PCS claims the openings ran on another
     ladder (version 3: deeper levels at rates `1/4, 1/8, …`), which took about half the time.
 
 ## The skip kernels (`crates/vendor/flock-42422001/src/zerocheck/skip.rs`)

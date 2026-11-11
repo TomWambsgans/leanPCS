@@ -20,33 +20,14 @@ fn main() {
         let words: Vec<F64> = (0..1usize << n).map(|_| F64(next())).collect();
         let point: Vec<F192> = (0..n).map(|_| F192::new(next(), next(), next())).collect();
         let start = Instant::now();
-        let committed = pcs_claim::commit(words);
+        let committed = pcs_claim::commit(words, false);
         let commit = start.elapsed().as_secs_f64();
         let claim = committed.claim_at(point);
         let start = Instant::now();
-        let proof = pcs_claim::open(&committed, &claim);
+        let proof = pcs_claim::open(committed.words(), &committed, &claim, pcs_claim::Codeword::Free);
         let open = start.elapsed().as_secs_f64();
         assert!(pcs_claim::verify(&claim.encode(), &pcs_claim::wire_proof(&proof)));
-        println!("n = {n}: commit {commit:.3} s, open {open:.3} s, peak RSS {:.2} GiB", peak_gib());
+        let peak = bench::peak_rss_bytes() as f64 / (1u64 << 30) as f64;
+        println!("n = {n}: commit {commit:.3} s, open {open:.3} s, peak RSS {peak:.2} GiB");
     }
-}
-
-fn peak_gib() -> f64 {
-    let mut usage: libc_rusage = unsafe { std::mem::zeroed() };
-    unsafe { getrusage(0, &mut usage) };
-    // macOS reports bytes, Linux kilobytes.
-    let bytes = if cfg!(target_os = "macos") { usage.ru_maxrss } else { usage.ru_maxrss * 1024 };
-    bytes as f64 / (1u64 << 30) as f64
-}
-
-#[repr(C)]
-struct libc_rusage {
-    ru_utime: [i64; 2],
-    ru_stime: [i64; 2],
-    ru_maxrss: i64,
-    rest: [i64; 13],
-}
-
-unsafe extern "C" {
-    fn getrusage(who: i32, usage: *mut libc_rusage) -> i32;
 }

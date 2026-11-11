@@ -30,7 +30,7 @@ In the order they were made. Times are h3's spans (`BENCH_TRACING=1`), 64 / 16 t
    a written-out `eq` table of the lane's `2^(n-6)` points (`Q`: 64 × (32 MiB of words + 96 MiB of table)); now rows
    of `2^10` words against weights in L1, accumulated unreduced (`dot_base`), times the row's weight: one read of the
    words. It was 9% of the prover's samples.
-2. **Tables committed up to their last nonzero lane** (`opening::commit_lanes`, on `pcs_claim::commit_lanes`, whose
+2. **Tables committed up to their last nonzero lane** (`opening::commit`, on `pcs_claim::commit`, whose
    commitment and openings of the leading lanes are those of the whole stack): `W` 33 lanes of 64, `H` 41, `Q` 45,
    `G` 57 (the gate's quotient's degree), so neither encoded nor zeroed nor read past them.
 3. **No copy on one thread**: the cells, the witness's and the sum's coefficients went into `W`, `H`, `G` and every
@@ -43,12 +43,12 @@ In the order they were made. Times are h3's spans (`BENCH_TRACING=1`), 64 / 16 t
    strided ones, every thread faulting the same huge pages at once; now each worker touches its own run of pages
    first. The commitments' encoding buffers are mapped the same way, and the commitments run largest first, so that
    each freed buffer serves the next. Together with (3), 0.65 → 0.31 s of reduction at 64 threads, 8.7 → 6.7 GiB.
-5. **The index keeps its codeword** (`Index::commit`; `opening::open_keeping`): the wiring's opening, which every
+5. **The index keeps its codeword** (`Index::commit`; `opening::open` with `Codeword::Keep`): the wiring's opening, which every
    proof makes, no longer encodes its queried rows again (3.4 / 4.6 ms; 256 MiB held with the index).
 6. **The cells' digest by the batched Keccak-256** (`cells_digest`, `hash_many` sixteen runs a task): 8.5 / 14 →
    1.2 / 2 ms. The same digest, so the same randomness.
-7. **All-zero lanes skipped** (`pcs::whir::commit_tree_skipping_in`, `encoded_rows_skipping`,
-   `recursive_prover_with_lane_tensors_skipping`, over the two-sweep encode of a message given block by block,
+7. **All-zero lanes skipped** (`pcs::whir::commit_tree_skipping_in`, `encoded_rows_skipping`
+   (then `recursive_prover_with_lane_tensors_skipping`, since folded into the batched openings), over the two-sweep encode of a message given block by block,
    `encode_two_sweep_blocks_with`): `pcs_claim` flags a commitment's all-zero lanes (a scan that reads them and little
    else) and encodes the others alone, the zero lanes' words of each row zero when it is hashed; an opening encodes
    its queried rows again the same way. `H` has 14 zero lanes of 41 (limb blinding past `H_BLIND`), `Q` 6 of 45. The

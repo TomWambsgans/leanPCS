@@ -20,6 +20,5 @@ parallel.workspace = true
 primitives = { workspace = true, features = ["test-util"] }
 evm_link.workspace = true
 leanvm_statement.workspace = true
-# The trace tree of `opening_time` (`PCS_CLAIM_TRACING`).
+# The peak memory `examples/open_timing.rs` reports.
 bench.workspace = true
-tracing.workspace = true

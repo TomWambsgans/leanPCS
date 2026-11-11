@@ -116,7 +116,7 @@ fn check_uniform(circuit: &Circuit, statement: &Statement, cells: &[F64], rng: &
     let index = Index::new(circuit);
     // The wiring's coefficient `n − 2` is not zero: the prover's `b_2` exists but at one value of `α`.
     assert!(!index.wiring()[index.wiring().len() - 2].is_zero());
-    let commitment = Commitment::of(&index.commit());
+    let commitment = Commitment::of(index.commit());
     let seed: [u8; 32] = std::array::from_fn(|_| rng.next_u8());
     let base = Randomness::derive(&seed, &commitment, statement, cells);
     let challenges: Vec<F192> = (0..5).map(|_| F192::new(rng.next_u64(), rng.next_u64(), rng.next_u64())).collect();

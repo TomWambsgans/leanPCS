@@ -18,9 +18,10 @@
 //!   cargo test --release -p quotient --test whir_large_params -- --ignored --nocapture large_public_openings
 
 use pcs::whir_config::WhirSecurityConfig;
+use pcs_claim::lean::bridge_vector;
+use pcs_claim::{Codeword, commit, open};
 use primitives::field::{F64, F192};
 use primitives::test_rng::Rng;
-use pcs_claim::PcsClaim;
 
 /// A ladder: per level `(fold, log_inv_rate, queries)`.
 type Ladder = &'static [(usize, usize, usize)];
@@ -159,64 +160,6 @@ fn whir_large_params_match_lean() {
     }
 }
 
-fn words(bytes: &[u8; 32]) -> [u64; 4] {
-    std::array::from_fn(|i| u64::from_le_bytes(bytes[8 * i..8 * i + 8].try_into().expect("8 bytes")))
-}
-
-fn line(tag: &str, values: impl IntoIterator<Item = u64>) -> String {
-    let mut s = tag.to_string();
-    for v in values {
-        s.push(' ');
-        s.push_str(&v.to_string());
-    }
-    s.push('\n');
-    s
-}
-
-fn limbs(x: &F192) -> [u64; 3] {
-    [x.c0, x.c1, x.c2]
-}
-
-/// The vector `formal/WhirBridge/Test/CheckLarge.lean` reads: the PCS claim's bytes (`pcs_claim`, the EIP's
-/// encoding), the root, the claim's point and value, the stream and one full path per query (the replay of
-/// `pcs_claim::verify`'s transcript, nothing checked).
-fn vector(name: &str, claim: &PcsClaim, proof: &fiat_shamir::transcript::Proof) -> String {
-    let wire = &pcs_claim::wire_proof(proof);
-    use verifier::{Digest, E, Transcript};
-    let mut transcript = Transcript::new(wire, Digest(pcs_claim::iv(claim)), Digest(pcs_claim::PUBLIC_DIGEST), false);
-    let halves = transcript.next_scalars(2).expect("the root's two scalars");
-    assert_eq!(Digest::from_halves(halves[0], halves[1]), Ok(Digest(claim.root)));
-    let _lambda = transcript.sample();
-    let zero = E::new(0, 0, 0);
-    let n = claim.n as usize;
-    verifier::whir::verify_whir(
-        &mut transcript,
-        n,
-        1u64 << n,
-        pcs_claim::LOG_INV_RATE,
-        zero,
-        Digest(claim.root),
-        &|_| zero,
-    )
-    .expect("the replay walks the proof");
-    let paths = transcript.finish().expect("the replay reads the whole proof");
-    let mut out = format!("vector {name}\n");
-    out += &line("pcsclaim", claim.encode().iter().map(|&b| b as u64));
-    out += &line("root", words(&claim.root));
-    out += &line("claim", claim.point.iter().chain([&claim.value]).flat_map(limbs));
-    out += &line("stream", proof.stream.iter().flat_map(limbs));
-    for path in &paths {
-        out += &line(
-            "open",
-            [path.leaf.len() as u64]
-                .into_iter()
-                .chain(path.leaf.iter().map(|k| k.0))
-                .chain(path.siblings.iter().flat_map(words)),
-        );
-    }
-    out + "end\n"
-}
-
 /// Openings at `2^24 ..= 2^MAX` words (`WHIR_LARGE_MAX`, default 26; the prover's memory grows with the table): the
 /// prover's opening of one claim verifies and a changed value is rejected; each opening is written
 /// (`target/whir_large_vector.txt`, or `$WHIR_LARGE_VECTOR`) for `formal/WhirBridge/Test/CheckLarge.lean`.
@@ -236,9 +179,9 @@ fn large_public_openings() {
         let table: Vec<F64> = (0..1u64 << n)
             .map(|k| F64((k + 1).wrapping_mul(0x9E37_79B9_7F4A_7C15).rotate_left(17)))
             .collect();
-        let committed = pcs_claim::commit(table);
+        let committed = commit(table, false);
         let claim = committed.claim_at(rng.ext_vec(n));
-        let proof = pcs_claim::open(&committed, &claim);
+        let proof = open(committed.words(), &committed, &claim, Codeword::Free);
         let proved = start.elapsed();
         let start = std::time::Instant::now();
         assert!(pcs_claim::verify(&claim.encode(), &pcs_claim::wire_proof(&proof)), "n = {n}");
@@ -246,7 +189,8 @@ fn large_public_openings() {
         let mut bad = claim.clone();
         bad.value += F192::ONE;
         assert!(!pcs_claim::verify(&bad.encode(), &pcs_claim::wire_proof(&proof)), "n = {n}: a wrong value");
-        out += &vector(&format!("public{n}"), &claim, &proof);
+        // `formal/WhirBridge/Test/CheckLarge.lean`'s vector.
+        out += &bridge_vector(&format!("public{n}"), &claim, &proof);
         println!(
             "n = {n}: committed and opened in {:.1} s, verified in {:.1} ms; a wrong value rejected",
             proved.as_secs_f64(),

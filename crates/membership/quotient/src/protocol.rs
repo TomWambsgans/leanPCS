@@ -50,7 +50,7 @@ use primitives::field::{F64, F192, F192Unreduced};
 use crate::circuit::{Circuit, PUBLIC_ROWS, PUBLIC_WORDS, RANDOM_WORDS, THREE, anchor_cell, anchor_values};
 use crate::domain::{self, beta, chain, point, row_vanishing};
 use crate::ntt::{self, ESplat, Ex8, Kx8, MixedSum};
-use crate::opening::{self, Claim, Commitment, Committed, PcsClaim};
+use crate::opening::{self, Claim, Codeword, Commitment, Committed, PcsClaim};
 use crate::statement::Statement;
 use crate::transcript::{Proof, ProverChain, TranscriptError, VerifierChain, halves_root};
 
@@ -240,9 +240,10 @@ pub fn fresh_seed() -> [u8; 32] {
 /// cell's point to its successor's.
 pub struct Index {
     pub log_rows: usize,
-    /// The wiring polynomial's `2^m` coefficients: the committed wiring table ([`Index::wiring`]). Private, so that
-    /// an index is only made by [`Index::new`], which checks the circuit.
-    table: Vec<F64>,
+    /// The committed wiring table, the wiring polynomial's `2^m` coefficients ([`Index::wiring`]), its codeword kept
+    /// for the opening every proof makes of it ([`open`]). Private, so that an index is only made by [`Index::new`],
+    /// which checks the circuit.
+    committed: Committed,
     /// The wiring polynomial's values on the quotients' coset, twice the cells: they depend on the circuit alone,
     /// and every proof reads them.
     sigma_values: Vec<F64>,
@@ -259,8 +260,9 @@ impl Index {
         let index = Self::new_unchecked(circuit);
         // The prover's `b_2` needs `σ`'s coefficient `n − 2` (`PERF_GAS2.md`): a property of the circuit, for
         // completeness (`Σ_cells σ(x) · x`, nonzero for wirings but rare ones).
-        let n = index.table.len();
-        assert!(!index.table[n - 2].is_zero(), "the wiring's coefficient n − 2 is zero: the prover's b_2 is not defined");
+        let wiring = index.wiring();
+        let n = wiring.len();
+        assert!(!wiring[n - 2].is_zero(), "the wiring's coefficient n − 2 is zero: the prover's b_2 is not defined");
         index
     }
 
@@ -277,22 +279,24 @@ impl Index {
         for (k, half) in sigma_values.chunks_exact_mut(n).enumerate() {
             ntt::values_from(&sigma, half, half_offset(coset(m), n, k));
         }
+        let committed = opening::commit(sigma, true);
+        assert_eq!(committed.words().len(), n, "the wiring's top lane is not zero");
         Self {
             log_rows: circuit.log_rows,
-            table: sigma,
+            committed,
             sigma_values,
         }
     }
 
-    /// The circuit's commitment: its wiring table's, which keeps its codeword (`2^(m + 1)` words) for the opening
-    /// every proof makes of it ([`open`]).
-    pub fn commit(&self) -> Committed {
-        opening::commit_lanes_keeping_codeword(self.table.clone(), self.table.len().trailing_zeros() as usize)
+    /// The circuit's commitment: its wiring table's, made with the index, which keeps its codeword (`2^(m + 1)` words)
+    /// for the opening every proof makes of it ([`open`]).
+    pub fn commit(&self) -> &Committed {
+        &self.committed
     }
 
     /// The committed wiring table: the wiring polynomial's `2^m` coefficients.
     pub fn wiring(&self) -> &[F64] {
-        &self.table
+        self.committed.words()
     }
 
     fn sigma_values(&self) -> &[F64] {
@@ -836,7 +840,7 @@ pub(crate) fn prove_with_randomness(
     tracing::info_span!("witness values").in_scope(|| two_halves(&w_hat, &[], &mut values));
     // `w`'s top coefficient, which `q`'s coefficient `2 n` reads.
     let w_top = w_hat[n - 1];
-    let witness = tracing::info_span!("Commit").in_scope(|| opening::commit(w_hat));
+    let witness = tracing::info_span!("Commit").in_scope(|| opening::commit(w_hat, false));
     ps.send_root(&witness.root);
     ps.send(witness.ood);
     drop(span);
@@ -1119,7 +1123,7 @@ pub(crate) fn prove_with_randomness(
     }
     drop(part);
     drop(inner);
-    let table = tracing::info_span!("Commit").in_scope(|| opening::commit(table));
+    let table = tracing::info_span!("Commit").in_scope(|| opening::commit(table, false));
     ps.send_root(&table.root);
     ps.send(table.ood);
     drop(span);
@@ -1334,9 +1338,9 @@ pub struct Openings(pub [opening::Proof; 3]);
 pub fn open(tables: &Tables, claims: &Claims, index: &Committed) -> Openings {
     let span = || tracing::info_span!("Open");
     Openings([
-        span().in_scope(|| opening::open(&tables.witness, &claims.witness)),
-        span().in_scope(|| opening::open_keeping(index, &claims.wiring)),
-        span().in_scope(|| opening::open(&tables.table, &claims.copy)),
+        span().in_scope(|| opening::open(&tables.witness, &claims.witness, Codeword::Free)),
+        span().in_scope(|| opening::open(index, &claims.wiring, Codeword::Keep)),
+        span().in_scope(|| opening::open(&tables.table, &claims.copy, Codeword::Free)),
     ])
 }
 
@@ -1541,13 +1545,13 @@ pub(crate) mod tests {
         let circuit = toy();
         let index = Index::new(&circuit);
         let index_committed = index.commit();
-        let commitment = Commitment::of(&index_committed);
+        let commitment = Commitment::of(index_committed);
         let x: [u8; 32] = std::array::from_fn(|_| rng.next_u64() as u8);
         let statement = toy_statement(&x);
         let cells = toy_cells(&circuit, &x);
         let randomness = Randomness::derive(&seed(&mut rng), &commitment, &statement, &cells);
         let proved = prove_with_randomness(&circuit, &index, &commitment, &statement, &cells, &randomness);
-        let openings = open(&proved.tables, &proved.claims, &index_committed);
+        let openings = open(&proved.tables, &proved.claims, index_committed);
         let hex: String = digest(&proved.proof, &openings)
             .iter()
             .map(|b| format!("{b:02x}"))
@@ -1577,7 +1581,7 @@ pub(crate) mod tests {
         let mut rng = Rng::new(0x7A);
         let circuit = toy();
         let index = Index::new(&circuit);
-        let commitment = Commitment::of(&index.commit());
+        let commitment = Commitment::of(index.commit());
         let x: [u8; 32] = std::array::from_fn(|_| rng.next_u64() as u8);
         let statement = toy_statement(&x);
         let cells = toy_cells(&circuit, &x);
@@ -1672,7 +1676,7 @@ pub(crate) mod tests {
         let circuit = toy();
         let index = Index::new(&circuit);
         let index_committed = index.commit();
-        let commitment = Commitment::of(&index_committed);
+        let commitment = Commitment::of(index_committed);
         let x: [u8; 32] = std::array::from_fn(|_| rng.next_u64() as u8);
         let statement = toy_statement(&x);
         let cells = toy_cells(&circuit, &x);
@@ -1692,7 +1696,7 @@ pub(crate) mod tests {
         assert_eq!(root(stream::WITNESS_ROOT), Ok(proved.commitments.witness.root));
         assert_eq!(root(stream::TABLE_ROOT), Ok(proved.commitments.table.root));
         assert_eq!([s[stream::WITNESS_OOD], s[stream::TABLE_OOD]], [proved.commitments.witness.ood, proved.commitments.table.ood]);
-        let openings = open(&proved.tables, &proved.claims, &index_committed);
+        let openings = open(&proved.tables, &proved.claims, index_committed);
         assert_eq!(
             verify_openings(circuit.log_rows, &commitment, &proved.commitments, &proved.claims, &openings),
             Ok(())
@@ -1789,7 +1793,7 @@ pub(crate) mod tests {
         let cells = toy_cells(&circuit, &x);
         let s = seed(&mut rng);
         let cheat = |circuit: &Circuit, index: &Index, cells: &[F64], how: Cheat| {
-            let commitment = Commitment::of(&index.commit());
+            let commitment = Commitment::of(index.commit());
             let randomness = Randomness::derive(&s, &commitment, &statement, cells);
             truth(index, &cheat::with(how, || prove_with_randomness(circuit, index, &commitment, &statement, cells, &randomness)))
         };
@@ -1859,7 +1863,7 @@ pub(crate) mod tests {
         let n = 1usize << m;
         let mut table: Vec<F64> = (0..n).map(|_| F64(rng.next_u64())).collect();
         table[n - n / 64..].fill(F64::ZERO);
-        let committed = opening::commit(table.clone());
+        let committed = opening::commit(table.clone(), false);
         assert!(committed.words().len() < n, "the zero lane is left out");
         let t = F192::new(rng.next_u64(), rng.next_u64(), rng.next_u64());
         let digits: Vec<F192> = std::iter::successors(Some(t), |&w| Some(w * w + w)).take(m).collect();

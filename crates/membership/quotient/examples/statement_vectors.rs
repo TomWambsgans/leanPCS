@@ -26,8 +26,8 @@ use fiat_shamir::merkle::Hash;
 use primitives::field::F192;
 use primitives::test_rng::Rng;
 use quotient::circuit::{Builder, Circuit, Src, membership, membership_inputs, public_words};
-use quotient::opening::{Claim, Commitment, wire_proof};
-use quotient::protocol::{Claims, Commitments, Index, Openings, Randomness, open, prove_with_seed, verify};
+use quotient::opening::{Claim, Commitment, PcsClaim, wire_proof};
+use quotient::protocol::{Claims, Commitments, Index, Openings, Randomness, open, prove_with_seed, stream, verify};
 use quotient::statement::{DEPTH, Secret, Statement};
 use quotient::transcript::Proof;
 use verifier::{MerkleOpenings, MerklePath};
@@ -142,22 +142,13 @@ impl RawOpening {
 }
 
 /// The raw form of an honest (pruned) opening: the paths the Rust verifier expands it into.
-fn raw(commitment: &Commitment, claim: &Claim, proof: &fiat_shamir::transcript::Proof) -> RawOpening {
-    use verifier::{Digest, E, Transcript};
-    let claim = commitment.pcs_claim(claim);
+fn raw(claim: &PcsClaim, proof: &fiat_shamir::transcript::Proof) -> RawOpening {
     let wired = wire_proof(proof);
-    let mut transcript = Transcript::new(&wired, Digest(pcs_claim::iv(&claim)), Digest(pcs_claim::PUBLIC_DIGEST), false);
-    transcript.next_scalars(2).expect("the root's two scalars");
-    let _lambda = transcript.sample();
-    let zero = E::new(0, 0, 0);
-    let n = claim.n as usize;
-    verifier::whir::verify_whir(&mut transcript, n, 1u64 << n, pcs_claim::LOG_INV_RATE, zero, Digest(claim.root), &|_| zero)
-        .expect("the replay walks the proof");
     let raw = RawOpening {
-        stream: wired.stream.clone(),
-        paths: transcript.finish().expect("the replay reads the whole proof"),
+        paths: pcs_claim::verify_claim_paths(claim, &wired).expect("the opening holds"),
+        stream: wired.stream,
     };
-    pcs_claim::verify_claim(&claim, &raw.proof()).expect("its raw form holds");
+    pcs_claim::verify_claim(claim, &raw.proof()).expect("its raw form holds");
     raw
 }
 
@@ -171,11 +162,6 @@ struct Whole {
     openings: [RawOpening; 3],
 }
 
-/// The commitment each claim of [`Claims::all`] is on.
-fn on(index: &Commitment, c: &Commitments) -> [Commitment; 3] {
-    [c.witness, *index, c.table]
-}
-
 impl Whole {
     fn of(
         log_rows: usize,
@@ -186,14 +172,13 @@ impl Whole {
         claims: &Claims,
         openings: &Openings,
     ) -> Self {
-        let on = on(index, commitments);
-        let all = claims.all();
+        let claims = claims.pcs_claims(index, commitments);
         Self {
             log_rows,
             index: *index,
             statement: *statement,
             stream: stream.to_vec(),
-            openings: std::array::from_fn(|i| raw(&on[all[i].0], all[i].1, &openings.0[i])),
+            openings: std::array::from_fn(|i| raw(&claims[i], &openings.0[i])),
         }
     }
 
@@ -205,12 +190,11 @@ impl Whole {
         let Ok((commitments, claims)) = verify(&self.index, &self.statement, &proof, self.log_rows) else {
             return false;
         };
-        let on = on(&self.index, &commitments);
         claims
-            .all()
+            .pcs_claims(&self.index, &commitments)
             .iter()
             .zip(&self.openings)
-            .all(|((k, claim), raw)| pcs_claim::verify_claim(&on[*k].pcs_claim(claim), &raw.proof()).is_ok())
+            .all(|(claim, raw)| pcs_claim::verify_claim(claim, &raw.proof()).is_ok())
     }
 
     fn line(&self) -> String {
@@ -232,12 +216,12 @@ fn tampered(honest: &Whole) -> Vec<(&'static str, Whole)> {
         f(&mut w);
         cases.push((name, w));
     };
-    add("value", &|w| w.stream[6] += F192::ONE);
-    add("next", &|w| w.stream[9] += F192::Y);
-    add("table ood", &|w| w.stream[5] += F192::ONE);
-    add("witness root", &|w| w.stream[0].c0 ^= 1);
-    add("witness ood", &|w| w.stream[2].c1 ^= 1);
-    add("root not two halves", &|w| w.stream[3].c2 = 1);
+    add("value", &|w| w.stream[stream::ROW_VALUES] += F192::ONE);
+    add("next", &|w| w.stream[stream::NEXT] += F192::Y);
+    add("table ood", &|w| w.stream[stream::TABLE_OOD] += F192::ONE);
+    add("witness root", &|w| w.stream[stream::WITNESS_ROOT].c0 ^= 1);
+    add("witness ood", &|w| w.stream[stream::WITNESS_OOD].c1 ^= 1);
+    add("root not two halves", &|w| w.stream[stream::TABLE_ROOT].c2 = 1);
     add("statement", &|w| w.statement.root[3] ^= 0x10);
     add("index root", &|w| w.index.root[0] ^= 1);
     add("index ood", &|w| w.index.ood += F192::ONE);
@@ -289,8 +273,8 @@ fn toy() -> Circuit {
 }
 
 /// An `I` line: a circuit's size, its inputs and its commitment, which the Lean builder must reproduce.
-fn index_line(name: &str, circuit: &Circuit) -> String {
-    let index = Commitment::of(&Index::new(circuit).commit());
+fn index_line(name: &str, circuit: &Circuit, index: &Index) -> String {
+    let index = Commitment::of(index.commit());
     format!(
         "I {name} {} {} {} {} {}",
         circuit.log_rows,
@@ -324,18 +308,23 @@ fn prover_line(name: &str, inputs: &[bool], randomness: &Randomness, stream: &[F
     out
 }
 
-fn proofs(lines: &mut Vec<String>, rng: &mut Rng, name: &str, circuit: &Circuit, cases: &[(Statement, Vec<bool>)]) {
-    let index = Index::new(circuit);
+fn proofs(
+    lines: &mut Vec<String>,
+    rng: &mut Rng,
+    name: &str,
+    (circuit, index): (&Circuit, &Index),
+    cases: &[(Statement, Vec<bool>)],
+) {
     let index_committed = index.commit();
-    let commitment = Commitment::of(&index_committed);
+    let commitment = Commitment::of(index_committed);
     for (statement, inputs) in cases {
         let cells = circuit.cells(inputs);
         // The proof's seed; its randomness is derived from it (`Randomness::derive`).
         let seed = random_hash(rng);
         let randomness = Randomness::derive(&seed, &commitment, statement, &cells);
-        let proved = prove_with_seed(circuit, &index, &commitment, statement, &cells, &seed);
+        let proved = prove_with_seed(circuit, index, &commitment, statement, &cells, &seed);
         lines.push(prover_line(name, inputs, &randomness, &proved.proof.stream));
-        let openings = open(&proved.tables, &proved.claims, &index_committed);
+        let openings = open(&proved.tables, &proved.claims, index_committed);
         let stream = proved.proof.stream.clone();
         let honest = Whole::of(
             circuit.log_rows,
@@ -402,18 +391,22 @@ fn main() {
             (Statement { y: x, root: x }, inputs)
         })
         .collect();
-    proofs(&mut lines, &mut rng, "small", &circuit, &cases);
+    let index = Index::new(&circuit);
+    proofs(&mut lines, &mut rng, "small", (&circuit, &index), &cases);
 
     // The circuits' commitments, which the Lean builder must reproduce.
-    lines.push(index_line("small", &circuit));
-    lines.push(index_line("toy", &toy()));
-    if args.iter().any(|a| a == "--index") || full {
-        lines.push(index_line("membership", &membership()));
-    }
+    lines.push(index_line("small", &circuit, &index));
+    let toy = toy();
+    lines.push(index_line("toy", &toy, &Index::new(&toy)));
+    let member = (args.iter().any(|a| a == "--index") || full).then(|| {
+        let circuit = membership();
+        let index = Index::new(&circuit);
+        lines.push(index_line("membership", &circuit, &index));
+        (circuit, index)
+    });
 
     // The membership circuit itself.
-    if full {
-        let circuit = membership();
+    if let Some((circuit, index)) = member.as_ref().filter(|_| full) {
         let secret = Secret {
             x: random_hash(&mut rng),
             siblings: std::array::from_fn::<_, DEPTH, _>(|_| random_hash(&mut rng)),
@@ -423,7 +416,7 @@ fn main() {
             &mut lines,
             &mut rng,
             "membership",
-            &circuit,
+            (circuit, index),
             &[(secret.statement(), membership_inputs(&secret))],
         );
     }
