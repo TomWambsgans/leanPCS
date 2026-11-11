@@ -23,9 +23,8 @@ cargo test --release -p leanvm_rec --test pi2 -- --ignored --nocapture gas_repor
 **With the EIP draft's PCS claims** (§2, §8; `real_end_to_end`, this Mac, 2026-11-10): 1,101 B of calldata (61 zero),
 32,794 execution at 128 signatures (33,740 at 400); as an EIP-8141 frame transaction (EIP-7976's floor, without the base
 and per-frame costs) standard 49,678, floor 70,464; with the frame of PCS claims (257 B, 8 claims) and the PCS gas
-(13,000 on both sides) 99,912. The prover (`tests/pipeline.rs`, load about 20): π2's proof 2.8 s and its five openings
-3.7 s, each opening one claim on leanVM's ladder (a `2^28` opening of `Q` about 1.1 s, its deeper commitments most of
-it). The figures below predate the PCS claims.
+(13,000 on both sides) 99,912. The prover (`tests/pipeline.rs` via `bench.sh`, M4 Max in high power mode, median of 5): π2's proof
+0.95 s and its five openings 1.25 s, each opening one claim on leanVM's ladder. The figures below predate the PCS claims.
 
 **The contract, on the real circuit** (D16v × π1-rec3, `real_end_to_end` on `keccak128_rec3.txt`; no 21,000 base),
 measured with `PCS_OPEN`, its claims priced `c = 0`. With the frame of claims (`AGENTS.md`): 1,005 B, 28,459

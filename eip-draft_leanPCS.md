@@ -98,8 +98,8 @@ Two applications of the reference implementation, with their PIOPs as straight-l
 
 | Application | Prover (M4 Max) | Calldata | PIOP | PCS claims | Total |
 |---|---|---|---|---|---|
-| Zero-knowledge membership in a Keccak-256 Merkle tree of depth 32 | 7.8 s | 461 bytes | 29,504 gas | 6 | 52,856 gas |
-| leanVM verification (here 128 leanXMSS signatures), i.e. any computation thanks to recursion | 9.1 s | 1,101 bytes | 70,464 gas | 8 | 99,912 gas |
+| Zero-knowledge membership in a Keccak-256 Merkle tree of depth 32 | 3.4 s | 461 bytes | 29,504 gas | 6 | 52,856 gas |
+| leanVM verification (here 128 leanXMSS signatures), i.e. any computation thanks to recursion | 4.5 s | 1,101 bytes | 70,464 gas | 8 | 99,912 gas |
 
 ### Why a 192-bit field
 

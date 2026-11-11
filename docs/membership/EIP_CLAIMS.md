@@ -38,7 +38,7 @@ Measured on the M4 Max (load average about 7 during the runs: another build was 
 |---|---|---|
 | commitments | 2 (`2^25`, `2^28`) + index | 4 (`2^25`, `2^27`, `2^28`, `2^25`) + index |
 | claims | 4, in 3 declared | 6 |
-| prover | 1.7–2.2 s | 7.4 s (median of 3: reduction 4.1 s, openings 3.3 s), 8.6 GiB |
+| prover | 1.7–2.2 s | 2.8 s (`bench.sh`, high power mode: reduction 1.71 s, openings 1.08 s), 8.6 GiB |
 | calldata | 253 B | 461 B |
 | execution | 14,831 | 18,899 |
 | transaction (EIP-8141, `pcs_gas` in the floor) | 30,400 | **52,856** (floor-bound: `64 · (461 + 193) + 11,000`) |

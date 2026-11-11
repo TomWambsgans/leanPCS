@@ -116,7 +116,7 @@ its PCS gas on both sides as the EIP draft has it.
 
 | | ZK Merkle membership | leanVM by recursion (128 signatures) |
 |---|---|---|
-| Prover | 7.2 s (reduction 4.0 s, openings 3.2 s), 8.6 GiB (`bench.sh`, 2026-11-10), with the EIP's claims (four commitments up to `2^28` words, six openings; `docs/membership/EIP_CLAIMS.md`); before them, with the hidden layouts, 2.2 s (reduction 1.46 s, openings 0.76 s) | trace → π1-rec3 → π2 and openings, on the PCS claims (`tests/pipeline.rs`): **8.3 s per proof** (median of 5, `bench.sh`, 2026-11-10: π1 with its openings 2.2 s, π2's five openings 3.4 s), 15.2 GB. Before the PCS claims (π2's three stacks opened once each, opening version 3): 2.06 s on this Mac, 0.59 s on an AMD EPYC 9355P (64 threads) |
+| Prover | 2.8 s (reduction 1.71 s, openings 1.08 s), 8.6 GiB (`bench.sh`, 2026-11-11, high power mode), with the EIP's claims (four commitments up to `2^28` words, six openings; `docs/membership/EIP_CLAIMS.md`); before them, with the hidden layouts, 2.2 s (reduction 1.46 s, openings 0.76 s) | trace → π1-rec3 → π2 and openings, on the PCS claims (`tests/pipeline.rs`): **3.7 s per proof** (median of 5, `bench.sh`, 2026-11-11, high power mode: π1-rec3 with its openings 1.41 s, π2 0.95 s, π2's five openings 1.25 s), 14.3 GB. Before the PCS claims (π2's three stacks opened once each, opening version 3): 2.06 s on this Mac, 0.59 s on an AMD EPYC 9355P (64 threads) |
 | Calldata | 461 B | 1,101 B (61 zero) |
 | Gas | 18,899 execution; **52,856** transaction under EIP-8141 with `pcs_gas` in the floor (floor-bound: 64 · (461 + 193) + 11,000; standard 40,315) | 32,794 execution; frame transaction (EIP-8141, EIP-7976's floor, no base or per-frame cost): standard 49,678, floor **70,464** |
 | Claims | 6 declared | 8 (π1's 3, π2's 5), each the EIP draft's PCS claim |
@@ -128,8 +128,8 @@ its PCS gas on both sides as the EIP draft has it.
 - leanVM: at 400 signatures (the real proof), 33,740 execution; standard 50,648, floor 70,464; 99,912 with the frame
   and the PCS gas (`tests/pi2_real.rs`, `real_end_to_end`). π1 alone as a contract (the main line, 128 signatures):
   8,069 B calldata, 231,511 execution, 3 claims; standard 360,255, floor 516,416 (`keccak_gas_report`). The prover
-  on the PCS claims (one opening a claim, every opening on leanVM's ladder): 8.3 s a proof (`bench.sh`, median of
-  5, 2026-11-10: π1 with its openings 2.2 s, π2's five openings 3.4 s), against 2.06 s before (three openings of
+  on the PCS claims (one opening a claim, every opening on leanVM's ladder): 3.7 s a proof (`bench.sh`, median of
+  5, 2026-11-11: π1-rec3 with its openings 1.41 s, π2 0.95 s, π2's five openings 1.25 s), against 2.06 s before (three openings of
   π2's three stacks at version 3). **Capacity**: `q_flock` is `2^11` words a permutation, so `C1`
   reaches WHIR's `2^28` words at about 470 signatures (1,000 do not fit, `tests/keccak_vm.rs`).
 
