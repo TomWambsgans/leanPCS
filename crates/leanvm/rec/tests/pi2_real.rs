@@ -6,9 +6,9 @@
 //! - `real_gas`: the contract's gas on the real circuits, D16v (the verifier's gas depends on the circuit alone),
 //!   parity with the Rust verifier;
 //! - `real_end_to_end` (`PI2_VECTOR=keccak128_rec4|keccak_rec4`, default `keccak128_rec4`): π2's prover on the real
-//!   witness, its five openings verified (`pcs_claim::verify_claim`, the EIP draft's `pcs_verify`: what the block's
+//!   witness, its four openings verified (`pcs_claim::verify_claim`, the EIP draft's `pcs_verify`: what the block's
 //!   openings prove), and the contract accepting the proof with its frame of PCS claims declaring exactly its claims:
-//!   π1's three (the vector's, which π1's openings prove) and π2's five; flipped calldata bytes and the frame's
+//!   π1's three (the vector's, which π1's openings prove) and π2's four; flipped calldata bytes and the frame's
 //!   attacks are rejected (`frame_and_calldata_attacks`). Its gas is the frame transaction's (EIP-8141, EIP-7976's
 //!   floor; without `FRAME_TX_INTRINSIC_COST` and the per-frame costs).
 //!
@@ -125,7 +125,7 @@ fn real_gas() {
 /// The contract against its frame and its calldata, on the real proof (`data`, its frame declaring `block`): it
 /// rejects a frame of another mode or scheme, swapped payloads, any claim's value, point or out-of-domain answer
 /// changed, a claim missing, a frame index naming a non-PCS frame, a PCS-scheme frame of another mode, calldata one
-/// byte longer or shorter, and every calldata byte flipped at bits 0 and 7; it accepts a ninth claim appended (the frame
+/// byte longer or shorter, and every calldata byte flipped at bits 0 and 7; it accepts an eighth claim appended (the frame
 /// may declare more) and the right index past a frame before it.
 fn frame_and_calldata_attacks(inst: &Instance, recorded: &contract::Recorded, data: &[u8], block: &[PcsClaim]) {
     use leanvm_statement::evm::codegen::word;
@@ -159,7 +159,7 @@ fn frame_and_calldata_attacks(inst: &Instance, recorded: &contract::Recorded, da
     assert!(!ok(data, &contract::block(&block[..block.len() - 1])), "a claim missing");
     let mut b = block.to_vec();
     b.push(block[0].clone());
-    assert!(ok(data, &contract::block(&b)), "a ninth claim appended");
+    assert!(ok(data, &contract::block(&b)), "an eighth claim appended");
     // A frame before the PCS frame: the index byte must name the PCS frame.
     let mut f = contract::block(block);
     f.before = vec![Frame {
@@ -238,7 +238,7 @@ fn real_end_to_end() {
         for (step, s) in &proved.timings {
             println!("   {s:>7.2} s  {step}");
         }
-        assert_eq!(claims_hold(&proved, &setup), [true; 5], "the claims hold on the stacks");
+        assert_eq!(claims_hold(&proved, &setup), [true; 4], "the claims hold on the stacks");
         let stream = proved.stream.clone();
         let start = std::time::Instant::now();
         let (reduced, roots, openings) = open(proved, &setup);
@@ -262,7 +262,7 @@ fn real_end_to_end() {
                     .sum::<usize>()
         };
         println!(
-            "pi2 openings W, setup, Q (identity, pushes, sum): {:?} bytes",
+            "pi2 openings W, setup, Q (identity, pushes): {:?} bytes",
             openings.proofs.iter().map(bytes).collect::<Vec<_>>()
         );
         assert_eq!(
@@ -270,10 +270,10 @@ fn real_end_to_end() {
             Ok(())
         );
 
-        // The contract: π1's three claims (the vector's, which π1's openings prove) and π2's five (the proof's
+        // The contract: π1's three claims (the vector's, which π1's openings prove) and π2's four (the proof's
         // commitments, its reduction's claims), declared exactly, in order, in its frame of PCS claims.
         let recorded = record_verifier(&spec);
-        // The frame: π1's claims (payloads 0, 1, 2), then π2's five. The contract encodes those at `payloads` from π2's
+        // The frame: π1's claims (payloads 0, 1, 2), then π2's four. The contract encodes those at `payloads` from π2's
         // public data and its reduction; it reads the others (π1's claims hashed in the circuit) as public words.
         let pi2_claims = prover::claims(circuit.log_n, &reduced, &roots, &setup.root(), setup.ood());
         let block: Vec<PcsClaim> = pi1_claims.iter().chain(&pi2_claims).cloned().collect();

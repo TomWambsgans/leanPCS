@@ -1,9 +1,13 @@
 // Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! π2's PIOP (`src/pi2`, `PI2.md`), end to end on synthetic circuits built with the interface, D16v:
 //!
-//! - `small_*`: the honest proof's five claims hold and their openings verify (`pcs_claim::verify_claim`, what the
+//! - `small_*`: the honest proof's four claims hold and their openings verify (`pcs_claim::verify_claim`, what the
 //!   block proves); a witness that breaks one copy, one formula or one public element leaves a false claim; a
 //!   flipped byte of the stream gives claims the openings do not prove;
+//! - `the_copy_sum_from_the_layout`: no claim reads the copy argument's sum (`PERF_GAS3.md`): a dishonest port, the
+//!   identity kept at its hole, leaves the identity's claim false whatever the prover does with `x h`'s coefficient `N`;
+//!   the negative control: the same cheat meets the relation of a layout reading `G` through `Z_V`; `G` or `S` filled
+//!   in an honest `Q`: a false claim;
 //! - `the_interface_example`: the circuit compiler's own example (`circuit::spec::example`), padded, through the
 //!   adapter;
 //! - `contract_*`: the verifier compiled to EVM is the Rust verifier word for word, and
@@ -24,7 +28,8 @@ use leanvm_rec::pi2::adapt;
 use leanvm_rec::pi2::circuit::{Circuit, NONE};
 use leanvm_rec::pi2::contract::{self, Instance, calldata, record_verifier, sample_stream};
 use leanvm_rec::pi2::prover::{
-    self, PublicValue, Setup, claims_hold, open, prove, prove_with, public_scalars, verify_openings,
+    self, Cheat, PublicValue, Proved, Setup, claims_hold, open, prove, prove_cheating, prove_with, public_scalars,
+    verify_openings,
 };
 use leanvm_rec::pi2::synth::{self, Built, Design};
 use leanvm_rec::pi2::verifier::{Spec, to_f192};
@@ -112,7 +117,7 @@ fn honest_and_mutated(f: &Fixture, mutations: usize) {
     );
     assert_eq!(
         claims_hold(&proved, &f.setup),
-        [true; 5],
+        [true; 4],
         "the honest proof's claims hold"
     );
     let stream = proved.stream.clone();
@@ -191,10 +196,11 @@ fn honest_and_mutated(f: &Fixture, mutations: usize) {
         false,
     );
     // The prover keeps the identity a polynomial one (`h = T / (d_pull d_push)` at the dishonest hole): the copy
-    // argument's sum, zero, is the false claim (PI2.md §7).
+    // argument's sum is not zero (PI2.md §7), so `x h` does not fit `H`'s slot, and the identity's claim is the false
+    // one (`PERF_GAS3.md`).
     assert_eq!(
         claims_hold(&proved, &f.setup),
-        [true, true, true, true, false],
+        [true, true, false, true],
         "a public element changed"
     );
     let mut public_input = f.public_input;
@@ -211,7 +217,7 @@ fn honest_and_mutated(f: &Fixture, mutations: usize) {
     );
     assert_eq!(
         claims_hold(&proved, &f.setup),
-        [true, true, true, true, false],
+        [true, true, false, true],
         "the public input changed"
     );
 }
@@ -259,13 +265,13 @@ fn the_interface_example() {
         &f.values,
         &f.witness,
     );
-    assert_eq!(claims_hold(&proved, &f.setup), [true; 5]);
+    assert_eq!(claims_hold(&proved, &f.setup), [true; 4]);
     let (reduced, roots, openings) = open(proved, &f.setup);
     assert_eq!(
         verify_openings(f.circuit.log_n, &reduced, &roots, &f.setup.root(), f.setup.ood(), &openings),
         Ok(())
     );
-    // The value the port binds, changed: the sum's claim is false (the identity's holds, PI2.md §7).
+    // The value the port binds, changed: the copy sum is not zero, and the identity's claim is false (PERF_GAS3.md).
     let mut other = public.clone();
     other.elements[0] = leanvm_statement::field::E::new(1, 0, 0);
     let (_, values) = adapt::public_values(&other);
@@ -279,7 +285,102 @@ fn the_interface_example() {
         &f.witness,
         false,
     );
-    assert_eq!(claims_hold(&proved, &f.setup), [true, true, true, true, false]);
+    assert_eq!(claims_hold(&proved, &f.setup), [true, true, false, true]);
+}
+
+/// `Q`'s identity at `t`, read off the stack slot by slot: the relation the identity's claim checks, and the one a
+/// layout reading `G` through `Z_V` alone would (the negative control). With `F_s` the slot `s` at `t`'s position
+/// coordinates (`(t / Z_V) f_s(t)`), `E_jk = Σ_{l<3} Y^l F_(j + 2k + 4l)`, `K_jk = F_(j + 2k + 12)` and the identity's
+/// ratios `a = z_0 / (1 + z_0) = t Z_V / c_h`, `b = a Z_V`: the claim holds iff `E_00 + a E_10 + b E_01 + a b E_11 =
+/// target`, `target` its value over `(1 + z_0)(1 + z_1) scale` less the limb code 3's share `Y³ (K_00 + a K_10 + b
+/// K_01 + a b K_11)`. The other layout (`H`, `G` at one kind, `q`'s digits at the other: `G` weighs `Z_V` against `H`)
+/// checks `E_00 + Z_V E_11 + a E_10 + b E_01 = target`. Returns whether each holds: (this layout's, the other's).
+fn identity_relations(proved: &Proved) -> (bool, bool) {
+    let (point, value) = leanvm_rec::pi2::verifier::claim(&proved.reduced.quotient);
+    let q = &proved.quotient.0;
+    let m = point.len() - 4;
+    // `u_0 = t / (1 + t)`.
+    let t = point[0] * (F192::ONE + point[0]).inv();
+    let z = (0..m).fold(t, |x, _| x * x + x);
+    let ratio = |c: F192| c * (F192::ONE + c).inv();
+    let (a, b) = (ratio(point[m]), ratio(point[m + 1]));
+    assert_eq!(b, a * z, "the identity's digit ratio");
+    let at = |slot: usize| {
+        let bits: Vec<F192> = (0..4).map(|k| F192::from(F64(((slot >> k) & 1) as u64))).collect();
+        pcs_claim::evaluate_lanes(q, &[&point[..m], &bits[..]].concat())
+    };
+    let f: Vec<F192> = (0..16).map(at).collect();
+    let y = F192::Y;
+    let y3 = y * y * y;
+    let e = |j: usize, k: usize| f[j + 2 * k] + y * f[j + 2 * k + 4] + y * y * f[j + 2 * k + 8];
+    let kp = |j: usize, k: usize| f[j + 2 * k + 12];
+    let (_, scale) = leanvm_rec::pi2::verifier::extension();
+    let weights = (F192::ONE + point[m]) * (F192::ONE + point[m + 1]) * scale;
+    let target = value * weights.inv() + y3 * (kp(0, 0) + a * kp(1, 0) + b * kp(0, 1) + a * b * kp(1, 1));
+    let this = e(0, 0) + a * e(1, 0) + b * e(0, 1) + a * b * e(1, 1);
+    let other = e(0, 0) + z * e(1, 1) + a * e(1, 0) + b * e(0, 1);
+    (this == target, other == target)
+}
+
+/// No claim reads the copy argument's sum (`PERF_GAS3.md`, lever 1): `H = x h` in one slot of `N` words, the identity's
+/// claim reading `G` through `t² Z_V³ / c_h` (as the polynomial `x² Z_V³` after its product by `d_pull d_push`), force
+/// `H(0) = 0`, so `h = H / x` has degree below `N - 1` and sums to zero on `V_m`.
+///
+/// - A dishonest port (a public element changed), the identity kept at its hole (`h = T / (d_pull d_push)`): the sum
+///   is not zero, and whatever the prover does with `x h`'s coefficient `N` (drops it, which moves `h(0)`; keeps it in
+///   `q`; drops it and puts the sum in `G`), the identity's claim is false and the other three hold.
+/// - The negative control: the last cheat (`Cheat::AbsorbInG`) meets the identity's relation of a layout that reads `G`
+///   through `Z_V` (`H` and `G` at one kind, `q`'s two digits at the other): there `D Z_V G` cancels `σ D Z_V`, `x h`'s
+///   overflow, as polynomials. Here it does not. On a witness (`σ = 0`) the cheat is the honest proof: every claim holds.
+/// - An honest `Q` with `G` filled: the identity's claim is false; with `S` filled: the identity's and the pushes'
+///   (which reads `S` at `ρ²`).
+#[test]
+fn the_copy_sum_from_the_layout() {
+    let f = built(&synth::small_d16v(11));
+    let prove_as = |values: &[PublicValue], cheat: Cheat| {
+        prove_cheating(
+            &f.circuit,
+            &f.spec,
+            &f.setup,
+            &f.iv,
+            &f.public_input,
+            values,
+            &f.witness,
+            false,
+            cheat,
+        )
+    };
+    // On a witness: the cheats that act on the sum are the honest proof.
+    for cheat in [Cheat::None, Cheat::AbsorbInG, Cheat::OverflowInQ] {
+        let proved = prove_as(&f.values, cheat);
+        assert_eq!(claims_hold(&proved, &f.setup), [true; 4], "{cheat:?} on a witness");
+        assert_eq!(identity_relations(&proved), (true, true), "{cheat:?} on a witness");
+    }
+    // A dishonest port.
+    let mut values = f.values.clone();
+    let k = values
+        .iter()
+        .position(|v| matches!(v, PublicValue::Scalar(_)))
+        .expect("an element");
+    if let PublicValue::Scalar(x) = &mut values[k] {
+        *x += F192::new(7, 0, 1);
+    }
+    for cheat in [Cheat::None, Cheat::AbsorbInG, Cheat::OverflowInQ] {
+        let proved = prove_as(&values, cheat);
+        assert_eq!(
+            claims_hold(&proved, &f.setup),
+            [true, true, false, true],
+            "{cheat:?}: a dishonest port"
+        );
+        let (this, other) = identity_relations(&proved);
+        assert!(!this, "{cheat:?}: the identity's relation");
+        assert_eq!(other, cheat == Cheat::AbsorbInG, "{cheat:?}: the other layout's relation (the negative control)");
+    }
+    // Slots an honest `Q` leaves zero, filled.
+    let proved = prove_as(&f.values, Cheat::FillG(F192::new(1, 2, 3)));
+    assert_eq!(claims_hold(&proved, &f.setup), [true, true, false, true], "G filled");
+    let proved = prove_as(&f.values, Cheat::FillS(F64(5)));
+    assert_eq!(claims_hold(&proved, &f.setup), [true, true, false, false], "S filled");
 }
 
 /// π1's claims for a small circuit: five claims of the real ones' kinds (each its root, out-of-domain answer, point

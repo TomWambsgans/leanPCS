@@ -9,17 +9,18 @@
 //!    committed (`2^m` words);
 //! 2. `α, β, γ`; the internal pushes `P_v` on `V_m` (a pair's formula, or the position's own value at a forward and
 //!    a hole), and `h = (1 + 1_S)(1/(α + w + βx) + 1/(α + P_v + κ + βσ))` there (eight rows at a time, one batched
-//!    inversion per run, `h_on_v`), in `Q`'s stack: zero at the holes, its sum zero; `h`'s and `P`'s novel
-//!    coefficients (`P` the interpolation of `P_v`);
+//!    inversion per run, `h_on_v`), in `Q`'s stack (in the zero slot `G`, until step 4): zero at the holes, its sum
+//!    zero; `h`'s and `P`'s novel coefficients (`P` the interpolation of `P_v`);
 //! 3. on the coset `D = β_{m+1} + V_{m+1}` (`2N` points, disjoint from `V_m`), one coset of `V_m` at a time: `w`,
 //!    `h`, `P` by transforms (`σ`, `κ` the setup's), the row's cells `w(x + ω_c)` (a coset of `V_r` stays in `D`),
 //!    every pair's indicator (one batched inversion per chunk of points), `P_v` (the internal groups' pushes as one
 //!    quadratic form of the cells, `Quadratic`), the ports' `T = Σ I_p (E_p + Φ_k)`, `d_pull`, `d_push = α + P + κ +
 //!    βσ`, `q = (h d_pull d_push + (1 + 1_S)(d_push + d_pull) + T) / Z_V` and `q_P = (P + P_v) / Z_V`; their novel
 //!    coefficients (degree below `2N`);
-//! 4. the stack `Q`: `h` (degree below `N`) and `q`'s two chunks, three limbs each, `P` and `q_P`'s two chunks, in
-//!    sixteen slots of `N` words (`verifier::QUOTIENT_SLOTS`, four of them zero), committed;
-//! 5. `t`; the fold values, `ξ = κ(t) + β σ(t)` (PI2.md §9) and `s = P(t)`; `ρ`; the claims (the verifier's five, each
+//! 4. the stack `Q`: `H = x h` (degree below `N`, as `Σ_V h = 0`: `quotient::protocol::mul_x`) and `q`'s two chunks,
+//!    three limbs each, `P` and `q_P`'s two chunks, in sixteen slots of `N` words (`verifier::QUOTIENT_SLOTS`, four of
+//!    them zero: `G`, `S`), committed;
+//! 5. `t`; the fold values, `ξ = κ(t) + β σ(t)` (PI2.md §9) and `s = P(t)`; `ρ`; the claims (the verifier's four, each
 //!    a point of its commitment's whole stack), opened: one opening per claim (`pcs_claim`).
 
 use std::sync::Mutex;
@@ -1038,6 +1039,42 @@ pub fn prove_with(
     w: &[F64],
     check: bool,
 ) -> Proved {
+    prove_cheating(circuit, spec, setup, iv, public_input, values, w, check, Cheat::None)
+}
+
+/// What a test's prover does to `Q` besides the honest steps ([`prove_cheating`]; `PERF_GAS3.md`, "Adversarial tests").
+/// For a `w` whose copy sum `σ = Σ_V h` is not zero (a dishonest port, the identity kept by `h = T / (d_pull d_push)`
+/// at its hole), `x h` has a coefficient `N`, which `H`'s slot cannot hold.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Cheat {
+    /// The honest steps: `H = x h` without its coefficient `N` (which is `x h` reduced mod `Z_V`: `h` moved at `0` by
+    /// `σ`, so that its sum is zero).
+    None,
+    /// As `None`, and `G` the constant `σ` (`(Z_V / x)(0) = 1`): with `q` the unmoved `h`'s, what keeps the identity
+    /// a polynomial one when `G` weighs `Z_V` against `H` (a layout with `q`'s two digits in one kind: the negative
+    /// control), not `x² Z_V³ / (d_pull d_push)`.
+    AbsorbInG,
+    /// `x h`'s coefficient `N` kept in `q`'s second digit's constant coefficient (`q + c Z_V`).
+    OverflowInQ,
+    /// An honest `Q` with this constant in every limb of `G`.
+    FillG(F192),
+    /// An honest `Q` with this constant in `S`.
+    FillS(F64),
+}
+
+/// [`prove_with`], with `Q` changed as `cheat` says.
+#[allow(clippy::too_many_arguments)]
+pub fn prove_cheating(
+    circuit: &Circuit,
+    spec: &Spec,
+    setup: &Setup,
+    iv: &[u8; 32],
+    public_input: &[u8; 32],
+    values: &[PublicValue],
+    w: &[F64],
+    check: bool,
+    cheat: Cheat,
+) -> Proved {
     let (m, r, n) = (circuit.log_n, circuit.log_row, circuit.n());
     assert_eq!(w.len(), n);
     assert_eq!(values.len(), circuit.reads.len());
@@ -1074,13 +1111,13 @@ pub fn prove_with(
 
     // h on V_m, limb by limb, and P_v ([`h_on_v`]).
     let gammas = super::circuit::gamma_powers(gamma, circuit.max_gamma());
-    // Q's stack, built in place: sixteen slots of `N` words (`verifier::QUOTIENT_SLOTS`): `h`, a zero slot, `q`'s two
-    // digits, for each limb, then a zero slot, `P`, `q_P`'s two digits. Every word of it but the zero slots' is written
-    // below (`h_on_v`, then `quotient_on_extension`), whatever it holds: those are zeroed.
+    // Q's stack, built in place: sixteen slots of `N` words (`verifier::QUOTIENT_SLOTS`): `H`, `q`'s two digits, the
+    // zero slot `G`, for each limb, then `P`, `q_P`'s two digits, the zero slot `S`. Every word of it but `S`'s is written
+    // below (`h_on_v` writes `h` into `G`'s slots, which are zeroed once `H = x h` is made from them; then
+    // `quotient_on_extension`), whatever it holds: `S` is zeroed.
     let mut stack: Vec<F64> = setup.stack(QUOTIENT_SLOTS * n);
-    for slot in EMPTY_SLOTS {
-        stack[slot * n..(slot + 1) * n].iter_mut().for_each(|x| *x = F64::ZERO);
-    }
+    let s_slot = EMPTY_SLOTS[3];
+    stack[s_slot * n..(s_slot + 1) * n].iter_mut().for_each(|x| *x = F64::ZERO);
     let run = n.min(1 << 12);
     // The ports' values `F_J` in `Spec::phi`'s order.
     let port_values: Vec<F192> = spec
@@ -1094,19 +1131,20 @@ pub fn prove_with(
         "a port does not hold: the witness does not satisfy the circuit"
     );
     {
-        // Slots `4 l` (`h`), `4 l + 1` (zero), `4 l + 2, 4 l + 3` (`q`) for each limb; `12` (zero), `13` (`P`), `14, 15`
-        // (`q_P`).
+        // Slots `4 l` (`H`), `4 l + 1, 4 l + 2` (`q`), `4 l + 3` (`G`, holding `h` meanwhile) for each limb; `12` (`P`),
+        // `13, 14` (`q_P`), `15` (`S`).
         let (limb0, rest) = stack.split_at_mut(4 * n);
-        let (h0, limb0) = limb0.split_at_mut(n);
-        let q0 = &mut limb0[n..];
+        let (hh0, limb0) = limb0.split_at_mut(n);
+        let (q0, h0) = limb0.split_at_mut(2 * n);
         let (limb1, rest) = rest.split_at_mut(4 * n);
-        let (h1, limb1) = limb1.split_at_mut(n);
-        let q1 = &mut limb1[n..];
+        let (hh1, limb1) = limb1.split_at_mut(n);
+        let (q1, h1) = limb1.split_at_mut(2 * n);
         let (limb2, rest) = rest.split_at_mut(4 * n);
-        let (h2, limb2) = limb2.split_at_mut(n);
-        let q2 = &mut limb2[n..];
-        let (p, qp) = rest[n..].split_at_mut(n);
-        debug_assert_eq!((h_slot(1), q_slot(1), P_SLOT, QP_SLOT), (4, 6, 13, 14));
+        let (hh2, limb2) = limb2.split_at_mut(n);
+        let (q2, h2) = limb2.split_at_mut(2 * n);
+        let (p, rest) = rest.split_at_mut(n);
+        let (qp, s_words) = rest.split_at_mut(2 * n);
+        debug_assert_eq!((h_slot(1), q_slot(1), P_SLOT, QP_SLOT, EMPTY_SLOTS), (4, 5, 12, 13, [3, 7, 11, 15]));
         h_on_v(
             circuit,
             &setup.sigma_on_v,
@@ -1125,12 +1163,19 @@ pub fn prove_with(
             let h = t * d.inv();
             (h0[i], h1[i], h2[i]) = (F64(h.c0), F64(h.c1), F64(h.c2));
         }
+        // `σ = Σ_V h`, for a test's cheat alone (the honest prover reads its zero as `h`'s top coefficient's, below).
+        let sigma = if cheat == Cheat::AbsorbInG {
+            (0..n).fold(F192::ZERO, |acc, i| acc + F192::new(h0[i].0, h1[i].0, h2[i].0))
+        } else {
+            F192::ZERO
+        };
         // The four columns' transforms in the same dispatches.
         ntt::coefficients_cols(&mut [&mut *h0, &mut *h1, &mut *h2, &mut *p], F64::ZERO);
-        // `Σ_V h` is `h`'s top novel coefficient (the claim `Q` opens at `(1^m, 0, …)`), read rather than summed.
-        let sum = F192::new(h0[n - 1].0, h1[n - 1].0, h2[n - 1].0);
+        // `Σ_V h` is a nonzero multiple of `h`'s top novel coefficient, read rather than summed: `H = x h` fits its
+        // slot (degree below `N`) exactly when it is zero.
+        let top = F192::new(h0[n - 1].0, h1[n - 1].0, h2[n - 1].0);
         assert!(
-            !check || sum == F192::ZERO,
+            !check || top == F192::ZERO,
             "the copy argument's sum is not zero: the witness does not satisfy the circuit"
         );
         lap("h, P on V_m, their coefficients", &mut timings);
@@ -1139,13 +1184,30 @@ pub fn prove_with(
             spec,
             setup,
             &w_novel,
-            [h0, h1, h2],
+            [&*h0, &*h1, &*h2],
             p,
             [alpha, beta_, gamma],
             &port_values,
-            [q0, q1, q2],
+            [&mut *q0, &mut *q1, &mut *q2],
             qp,
         );
+        // `H = x h` (`quotient::protocol::mul_x`; its coefficient `N`, `h`'s top one, zero for a witness, dropped), then
+        // `G`'s slots, which held `h`, zeroed.
+        for (h, hh) in [(&mut *h0, &mut *hh0), (&mut *h1, &mut *hh1), (&mut *h2, &mut *hh2)] {
+            quotient::protocol::mul_x(h, hh);
+            parallel::chunks_mut(h, COPY_RUN, |_, c| c.fill(F64::ZERO));
+        }
+        match cheat {
+            Cheat::None => {}
+            Cheat::AbsorbInG => (h0[0], h1[0], h2[0]) = (F64(sigma.c0), F64(sigma.c1), F64(sigma.c2)),
+            Cheat::OverflowInQ => {
+                for (q, c) in [(&mut *q0, top.c0), (&mut *q1, top.c1), (&mut *q2, top.c2)] {
+                    q[n] += F64(c);
+                }
+            }
+            Cheat::FillG(x) => (h0[0], h1[0], h2[0]) = (F64(x.c0), F64(x.c1), F64(x.c2)),
+            Cheat::FillS(x) => s_words[0] = x,
+        }
     }
     lap("q, q_P on the extension coset, their coefficients", &mut timings);
 
@@ -1208,14 +1270,14 @@ pub fn prove_with(
     }
 }
 
-/// The five openings, one a claim: `W`'s, the setup's, `Q`'s identity, pushes and sum (the contract's order).
+/// The four openings, one a claim: `W`'s, the setup's, `Q`'s identity and pushes (the contract's order).
 pub struct Openings {
-    pub proofs: [fiat_shamir::transcript::Proof; 5],
+    pub proofs: [fiat_shamir::transcript::Proof; 4],
 }
 
-/// The five claims, in the contract's order (`W`, the setup, `Q`'s identity, pushes and sum): each the EIP draft's
-/// PCS claim on its commitment (the roots the proof commits, their out-of-domain answers, the setup's).
-pub fn claims(log_n: usize, reduced: &Reduced<E>, roots: &[Hash; 2], setup_root: &Hash, setup_ood: F192) -> [PcsClaim; 5] {
+/// The four claims, in the contract's order (`W`, the setup, `Q`'s identity and pushes): each the EIP draft's PCS claim
+/// on its commitment (the roots the proof commits, their out-of-domain answers, the setup's).
+pub fn claims(log_n: usize, reduced: &Reduced<E>, roots: &[Hash; 2], setup_root: &Hash, setup_ood: F192) -> [PcsClaim; 4] {
     let [wv, qv, sv] = stack_vars(log_n);
     let pcs = |vars: usize, root: &Hash, ood: F192, c: &(Vec<E>, E)| {
         let (point, value) = claim(c);
@@ -1234,7 +1296,6 @@ pub fn claims(log_n: usize, reduced: &Reduced<E>, roots: &[Hash; 2], setup_root:
         pcs(sv, setup_root, setup_ood, &reduced.setup),
         pcs(qv, &roots[1], q_ood, &reduced.quotient),
         pcs(qv, &roots[1], q_ood, &reduced.pushes),
-        pcs(qv, &roots[1], q_ood, &reduced.sum),
     ]
 }
 
@@ -1256,20 +1317,20 @@ pub fn open(proved: Proved, setup: &Setup) -> (Reduced<E>, [Hash; 2], Openings) 
         }
         proof
     };
-    let [cw, cs, cq, cp, cz] = claims(m, &reduced, &roots, &setup.root(), setup.ood());
+    let [cw, cs, cq, cp] = claims(m, &reduced, &roots, &setup.root(), setup.ood());
     let (w_words, w_commitment) = witness;
     let (q_words, q_commitment) = quotient;
     let pw = timed("W", &mut || pcs_claim::open_words(&w_words, &w_commitment, &cw));
     let ps = timed("setup", &mut || pcs_claim::open_words_keeping(&setup.words, &setup.commitment, &cs));
-    // Q's three claims together: their lane rounds read the stack twice in all rather than twice each.
+    // Q's two claims together: their lane rounds read the stack twice in all rather than twice each.
     let clock = Instant::now();
-    let [pq, pp, pz]: [_; 3] = pcs_claim::open_words_batch(&q_words, &q_commitment, &[cq, cp, cz])
+    let [pq, pp]: [_; 2] = pcs_claim::open_words_batch(&q_words, &q_commitment, &[cq, cp])
         .try_into()
-        .unwrap_or_else(|_| unreachable!("three proofs"));
+        .unwrap_or_else(|_| unreachable!("two proofs"));
     if profile {
-        eprintln!("    open: {:7.3} s  Q: identity, pushes, sum", clock.elapsed().as_secs_f64());
+        eprintln!("    open: {:7.3} s  Q: identity, pushes", clock.elapsed().as_secs_f64());
     }
-    let proofs = [pw, ps, pq, pp, pz];
+    let proofs = [pw, ps, pq, pp];
     drop(w_words);
     // Q's stack back to the setup's spare, for the next proof's.
     if let Ok(mut spare) = setup.spare.lock() {
@@ -1278,7 +1339,7 @@ pub fn open(proved: Proved, setup: &Setup) -> (Reduced<E>, [Hash; 2], Openings) 
     (reduced, roots, Openings { proofs })
 }
 
-/// What the block's openings prove of π2's five claims: each opening with `pcs_claim::verify_claim` (the EIP draft's
+/// What the block's openings prove of π2's four claims: each opening with `pcs_claim::verify_claim` (the EIP draft's
 /// `pcs_verify`).
 pub fn verify_openings(
     log_n: usize,
@@ -1294,9 +1355,9 @@ pub fn verify_openings(
     Ok(())
 }
 
-/// Whether each claim holds on the stacks (by evaluation), in the contract's order: `W`, the setup, `Q`'s identity,
-/// pushes and sum.
-pub fn claims_hold(proved: &Proved, setup: &Setup) -> [bool; 5] {
+/// Whether each claim holds on the stacks (by evaluation), in the contract's order: `W`, the setup, `Q`'s identity and
+/// pushes.
+pub fn claims_hold(proved: &Proved, setup: &Setup) -> [bool; 4] {
     let holds = |words: &[F64], c: &(Vec<E>, E)| {
         let (point, value) = claim(c);
         pcs_claim::evaluate_lanes(words, &point) == value
@@ -1307,7 +1368,6 @@ pub fn claims_hold(proved: &Proved, setup: &Setup) -> [bool; 5] {
         holds(&setup.words, &r.setup),
         holds(&proved.quotient.0, &r.quotient),
         holds(&proved.quotient.0, &r.pushes),
-        holds(&proved.quotient.0, &r.sum),
     ]
 }
 
@@ -1315,23 +1375,26 @@ pub fn claims_hold(proved: &Proved, setup: &Setup) -> [bool; 5] {
 mod tests {
     use super::*;
 
-    /// `Q`'s slots: `h`, `q` (two digits) of three limbs, `P`, `q_P` (two digits) and four zero slots, sixteen in all,
-    /// each where its bits say (`digit + 2 kind + 4 limb`).
+    /// `Q`'s slots: `H`, `q` (two digits) of three limbs, `P`, `q_P` (two digits) and four zero slots, sixteen in all,
+    /// each where its bits say (`b_0 + 2 b_1 + 4 limb`): `H` and `P` at `(0, 0)`, the two digits at `(1, 0)` and
+    /// `(0, 1)` (contiguous slots), the zero slots at `(1, 1)` (`PERF_GAS3.md`).
     #[test]
     fn quotient_slots_are_their_bits() {
         let mut used = vec![false; QUOTIENT_SLOTS];
-        let mut take = |slot: usize, digit: usize, kind: usize, limb: usize| {
-            assert_eq!(slot, digit + 2 * kind + 4 * limb);
+        let mut take = |slot: usize, b0: usize, b1: usize, limb: usize| {
+            assert_eq!(slot, b0 + 2 * b1 + 4 * limb);
             assert!(!std::mem::replace(&mut used[slot], true), "slot {slot} once");
         };
         for l in 0..3 {
             take(h_slot(l), 0, 0, l);
-            take(q_slot(l), 0, 1, l);
-            take(q_slot(l) + 1, 1, 1, l);
+            take(q_slot(l), 1, 0, l);
+            take(q_slot(l) + 1, 0, 1, l);
+            assert_eq!(EMPTY_SLOTS[l], 3 + 4 * l, "G's limb {l} at (1, 1)");
         }
-        take(P_SLOT, 1, 0, 3);
-        take(QP_SLOT, 0, 1, 3);
-        take(QP_SLOT + 1, 1, 1, 3);
+        take(P_SLOT, 0, 0, 3);
+        take(QP_SLOT, 1, 0, 3);
+        take(QP_SLOT + 1, 0, 1, 3);
+        assert_eq!(EMPTY_SLOTS[3], 15, "S at (1, 1)");
         for slot in EMPTY_SLOTS {
             assert!(!used[slot], "slot {slot} is zero");
         }

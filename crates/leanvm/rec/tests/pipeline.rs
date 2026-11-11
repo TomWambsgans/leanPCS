@@ -1,7 +1,7 @@
 // Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! The recursion end to end, from a Keccak VM trace (leanVM 9d50c92a3, `crates/leanvm/univariate/src/prover/
 //! dump_keccak`) to π2's proof and openings, timed: π1-rec4's proof (with its three openings), π2's witness (replayed
-//! on π1's stream from the circuit's witness plan, `circuit::plan`), π2's proof and its five openings. π2 runs on its own
+//! on π1's stream from the circuit's witness plan, `circuit::plan`), π2's proof and its four openings. π2 runs on its own
 //! thread from π1's stream on: its witness is replayed while π1's openings run, then its proof waits for them (with
 //! `PIPELINE_OVERLAP=1` it does not: no faster, the machine being busy, `docs/leanvm/rec/PERF_PROVER.md`).
 //!

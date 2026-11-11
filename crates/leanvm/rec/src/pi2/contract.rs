@@ -9,9 +9,9 @@
 //! stream: `W`'s commitment (root, out-of-domain answer), `Q`'s, the values at `t`; then a byte, the index of the
 //! transaction's frame of PCS claims. **Claims**, each the EIP draft's PCS claim (`crates/pcs_claim`,
 //! `docs/PCS_CLAIM.md`), declared in that frame in order: π1's three, whose Keccak-256s (payloads 0 … 2) the contract
-//! reads into the seed and π2's circuit computes from π1's run (`docs/leanvm/rec/PERF_GAS2.md`); then π2's five,
-//! checked declared at payloads 3 … 7 (`evm_link::declared_claims`): `W`, the setup (its commitment a constant of the
-//! code), `Q`'s identity, pushes and sum (`verifier::Reduced::claims`). A claim's fields are written once each (the
+//! reads into the seed and π2's circuit computes from π1's run (`docs/leanvm/rec/PERF_GAS2.md`); then π2's four,
+//! checked declared at payloads 3 … 6 (`evm_link::declared_claims`): `W`, the setup (its commitment a constant of the
+//! code), `Q`'s identity and pushes (`verifier::Reduced::claims`). A claim's fields are written once each (the
 //! setup's point `W`'s digits, `Q`'s claims their `u`), packed and hashed where it is checked.
 //!
 //! Every root is a commitment's 32 bytes as they are: π2's `W` and `Q` in calldata as its stream carries them, the
@@ -142,11 +142,11 @@ pub fn frame_payloads(spec: &Spec) -> Vec<u8> {
 }
 
 /// Each claim the contract encodes ([`calls`]), its payload's index in the frame of PCS claims: π1's claims are
-/// payloads `0, 1, …` (those hashed in the circuit the verifier reads instead), then π2's five.
+/// payloads `0, 1, …` (those hashed in the circuit the verifier reads instead), then π2's four.
 pub fn payloads(inst: &Instance) -> Vec<usize> {
     let hashed: Vec<usize> = frame_payloads(inst.spec).iter().map(|&p| p as usize).collect();
     let pi1 = inst.pi1.len() + hashed.len();
-    (0..pi1).filter(|p| !hashed.contains(p)).chain(pi1..pi1 + 5).collect()
+    (0..pi1).filter(|p| !hashed.contains(p)).chain(pi1..pi1 + 4).collect()
 }
 
 /// The number `n` as a word.
@@ -159,7 +159,7 @@ pub fn number(n: u64) -> [u8; 32] {
 /// A claim's fields in any word type: root, out-of-domain answer, point, value.
 pub type Fields<W> = (W, W, Vec<W>, W);
 
-/// The eight claims' fields, in order (π1's three, then π2's five), for any word type.
+/// The seven claims' fields, in order (π1's three, then π2's four), for any word type.
 fn claim_words<T: Copy, W: Clone>(
     inst: &Instance,
     reduced: &Reduced<T>,
@@ -190,7 +190,7 @@ fn claim_words<T: Copy, W: Clone>(
     };
     let [w_ood, q_ood] = reduced.oods;
     let (w_root, q_root) = (|| stream(roots_at[roots]), || stream(roots_at[roots + 1]));
-    // W, the setup (its point's `w_4 … w_{m-1}` W's: written once), then Q's three.
+    // W, the setup (its point's `w_4 … w_{m-1}` W's: written once), then Q's two.
     out.push(field(w_root(), scalar(w_ood), &reduced.witness));
     out.push(field(
         constant(inst.setup_root),
@@ -199,7 +199,6 @@ fn claim_words<T: Copy, W: Clone>(
     ));
     out.push(field(q_root(), scalar(q_ood), &reduced.quotient));
     out.push(field(q_root(), scalar(q_ood), &reduced.pushes));
-    out.push(field(q_root(), scalar(q_ood), &reduced.sum));
     out
 }
 
