@@ -25,6 +25,11 @@
 
 use std::fmt::Write as _;
 
+#[path = "vectors/mod.rs"]
+mod vectors;
+
+use vectors::{deep, hex};
+
 use leanvm_statement::VerifierError;
 use leanvm_statement::field::{E, ONE, ZERO};
 use leanvm_statement::flock_min::walked_terminal_with;
@@ -72,16 +77,6 @@ fn stream_len(shape: &Shape, variant: Variant, claims: Claims) -> usize {
             cursor
         }
     }
-}
-
-/// Run `f` on a thread with a deep stack, as `tests/gas.rs` does.
-fn deep<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> R {
-    std::thread::Builder::new()
-        .stack_size(1 << 30)
-        .spawn(f)
-        .expect("a thread")
-        .join()
-        .expect("no panic")
 }
 
 /// The contract's chain, logging what the verifier draws and checks (narrow challenges as drawn).
@@ -264,16 +259,6 @@ fn accepting(config: &Config, iv: &[u8; 32], public: &[u8; 32], len: usize, seed
         "the solved stream is accepted"
     );
     stream
-}
-
-fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
-}
-
-fn unhex(t: &str) -> Vec<u8> {
-    (0..t.len() / 2)
-        .map(|i| u8::from_str_radix(&t[2 * i..2 * i + 2], 16).expect("hex"))
-        .collect()
 }
 
 fn element(x: E) -> String {
@@ -641,24 +626,8 @@ fn lean_keccak_vectors() {
                 println!("no {dir}/{file}: no real vector");
                 continue;
             };
-            let mut config_name = String::new();
-            let mut shape_line: Vec<u64> = Vec::new();
-            let mut public = [0u8; 32];
-            let mut calldata = Vec::new();
-            let mut claims: Vec<Vec<u8>> = Vec::new();
-            let mut accepts = false;
-            for line in text.lines().filter(|l| !l.starts_with('#') && !l.is_empty()) {
-                let (key, value) = line.split_once(' ').expect("key value");
-                match key {
-                    "config" => config_name = value.to_string(),
-                    "shape" => shape_line = value.split(' ').map(|x| x.parse().expect("a number")).collect(),
-                    "public" => public.copy_from_slice(&unhex(value)),
-                    "calldata" => calldata = unhex(value),
-                    "claim" => claims.push(unhex(value)),
-                    "accepts" => accepts = value == "true",
-                    _ => {}
-                }
-            }
+            let v = vectors::read(&text);
+            let config_name = v.config.clone();
             let flock = match config_name.as_str() {
                 "keccak" => main,
                 "keccak_rec3" => rec3,
@@ -666,26 +635,17 @@ fn lean_keccak_vectors() {
             };
             let config = Config {
                 name: format!("real-{}", file.trim_end_matches(".txt")),
-                shape: Shape {
-                    log_memory: shape_line[0] as usize,
-                    log_bytecode: shape_line[1] as usize,
-                    table_rows: std::array::from_fn(|k| shape_line[2 + k]),
-                },
+                shape: v.shape,
                 flock,
                 claims: point,
                 program_iv: PROGRAM_IV,
                 // The contract binds the proof's own setup commitment `F` (the third claim's), as `tests/evm_vectors.rs`.
-                roots: {
-                    let setup = pcs_claim::PcsClaim::decode(&claims[2]).expect("a well-formed setup claim");
-                    SetupRoots {
-                        f: setup.root,
-                        f_ood: E::new(setup.ood.c0, setup.ood.c1, setup.ood.c2),
-                    }
-                },
+                roots: vectors::setup_roots(&v),
             };
             let iv = config.contract_iv();
-            assert_eq!(&calldata[4..36], &public, "the calldata's public input");
-            let stream = calldata[36..].to_vec();
+            let (public, claims, accepts) = (v.public, &v.claims, v.accepts);
+            assert_eq!(&v.calldata[4..36], &public, "the calldata's public input");
+            let stream = v.stream().to_vec();
             let extra: String = claims.iter().map(|c| format!("PCSCLAIM {}\n", hex(c))).collect();
             assert!(accepts, "{config_name}: the vector's verdict");
             assert!(

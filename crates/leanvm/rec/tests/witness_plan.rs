@@ -2,7 +2,7 @@
 //! π2's witness replayed from its plan (`circuit::plan::WitnessPlan`) is the compiler's (`circuit::compile::pi2`),
 //! word for word, with the same public inputs: on the committed real π1-rec3 proofs
 //! (`crates/leanvm/univariate/tests/vectors/keccak128_rec3.txt`, the reference shape, and `keccak_rec3.txt`, 400
-//! signatures: another shape, another circuit) and on a sample stream, the plan made on a zero stream.
+//! signatures: another shape, another circuit), the plan made on a sample stream.
 //!
 //! `cargo test --release -p leanvm_rec --test witness_plan` (`-- --ignored --nocapture` for `replay_timing`).
 
@@ -14,40 +14,28 @@ mod vectors;
 
 use std::time::Instant;
 
-use leanvm_rec::circuit::compile::{Inputs, Layout, pi2};
+use leanvm_rec::circuit::compile::{Inputs, pi2};
 use leanvm_rec::circuit::plan::WitnessPlan;
 use leanvm_rec::pi2::adapt;
 use leanvm_rec::pi2::contract::sample_stream;
 use leanvm_statement::shapes::PROGRAM_IV;
 use leanvm_univariate::contract::Recorded;
 
-const STREAM_AT: usize = 4 + 32;
-
-fn deep<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> R {
-    std::thread::Builder::new()
-        .stack_size(1 << 30)
-        .spawn(f)
-        .expect("a thread")
-        .join()
-        .expect("no panic")
-}
-
 /// A committed vector's recorded verifier (π1's contract binds its setup root `F`), public input and stream.
 fn real(name: &str) -> (Recorded, [u8; 32], Vec<u8>) {
-    let path = format!("{}/../univariate/tests/vectors/{name}.txt", env!("CARGO_MANIFEST_DIR"));
-    let v = vectors::read(&std::fs::read_to_string(&path).expect("a committed vector"));
+    let v = vectors::committed(name);
     let roots = vectors::setup_roots(&v);
     let recorded = leanvm_univariate::contract::record_verifier_with(
         &v.shape,
         vectors::variant_of(&v.config),
         &roots,
     );
-    (recorded, v.public, v.calldata[STREAM_AT..].to_vec())
+    (recorded, v.public, v.calldata[vectors::PI1_STREAM_AT..].to_vec())
 }
 
 /// The plan's replay on `inputs` is the compiler's witness and public inputs.
-fn check(plan: &WitnessPlan, recorded: &Recorded, layout: Layout, inputs: &Inputs) {
-    let compiled = pi2(recorded, layout, inputs);
+fn check(plan: &WitnessPlan, recorded: &Recorded, inputs: &Inputs) {
+    let compiled = pi2(recorded, inputs);
     let (witness, public) = plan.witness(inputs);
     assert!(public == compiled.public, "the public inputs are the compiler's");
     assert_eq!(witness.len(), compiled.finished.witness.len());
@@ -67,21 +55,26 @@ fn check(plan: &WitnessPlan, recorded: &Recorded, layout: Layout, inputs: &Input
 
 #[test]
 fn replay_is_the_compilers_d16v() {
-    deep(|| {
+    vectors::deep(|| {
         for name in [leanvm_rec::PI1_VECTOR_128, leanvm_rec::PI1_VECTOR_400] {
             let (recorded, public, stream) = real(name);
-            let plan = WitnessPlan::new(&recorded, Layout::D16v, PROGRAM_IV);
+            // The plan of a compilation on a sample stream (which `WitnessPlan::compile` checks it replays), then
+            // replayed on the real proof's.
+            let sample = sample_stream(stream.len(), 7);
+            let sample = Inputs {
+                program_iv: PROGRAM_IV,
+                public: [3; 32],
+                stream: &sample,
+            };
+            let (_, plan) = WitnessPlan::compile(&recorded, &sample);
             // Keccak-f whole, and with the last round's planes of the lanes read: a digest's (1), a wide draw's (3, 4).
             assert_eq!(plan.templates(), 4, "four Keccak-f templates");
-            let sample = sample_stream(stream.len(), 7);
-            for (public, stream) in [(public, &stream), ([3; 32], &sample)] {
-                let inputs = Inputs {
-                    program_iv: PROGRAM_IV,
-                    public,
-                    stream,
-                };
-                check(&plan, &recorded, Layout::D16v, &inputs);
-            }
+            let inputs = Inputs {
+                program_iv: PROGRAM_IV,
+                public,
+                stream: &stream,
+            };
+            check(&plan, &recorded, &inputs);
         }
     });
 }
@@ -90,7 +83,7 @@ fn replay_is_the_compilers_d16v() {
 #[test]
 #[ignore]
 fn replay_timing() {
-    deep(|| {
+    vectors::deep(|| {
         parallel::init();
         let (recorded, public, stream) = real(leanvm_rec::PI1_VECTOR_128);
         let inputs = Inputs {
@@ -99,14 +92,14 @@ fn replay_timing() {
             stream: &stream,
         };
         let started = Instant::now();
-        let (compiled, plan) = WitnessPlan::compile(&recorded, Layout::D16v, &inputs);
+        let (compiled, plan) = WitnessPlan::compile(&recorded, &inputs);
         println!("compile and plan: {:.3} s", started.elapsed().as_secs_f64());
         let reference = adapt::witness(&compiled.finished.witness);
         drop(compiled);
         let repeat: usize = std::env::var("REPEAT").map_or(10, |x| x.parse().expect("a count"));
         for _ in 0..3 {
             let started = Instant::now();
-            let compiled = pi2(&recorded, Layout::D16v, &inputs);
+            let compiled = pi2(&recorded, &inputs);
             let witness = adapt::witness(&compiled.finished.witness);
             println!("compile + adapt: {:.4} s", started.elapsed().as_secs_f64());
             assert!(witness == reference);

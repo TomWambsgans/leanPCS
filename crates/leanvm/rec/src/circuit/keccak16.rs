@@ -38,7 +38,9 @@ use std::collections::VecDeque;
 
 use leanvm_statement::field::K;
 
-use super::keccak::{Bit, Constants, PI, Permutation, RC, RHO, UNMADE, spare};
+use primitives::hash::{PI, RC, RHO};
+
+use super::keccak::{Bit, Constants, UNMADE, spare};
 use super::layout::{Builder, PolyBuilder, Value, forwards};
 use super::spec::Formula;
 
@@ -152,8 +154,11 @@ impl D16 {
     }
 }
 
-impl Permutation for D16 {
-    fn permute(&mut self, b: &mut Builder, constants: &mut Constants, input: &[Bit], lanes: usize) -> Vec<Value> {
+impl D16 {
+    /// The permutation of `input` (index `64·lane + z`), whose constant bits it makes from `constants` (after
+    /// offering its rows' spare slots to it). Returns the output's 1600 values, of which the caller reads lanes
+    /// `0 .. lanes` only: the last round makes the planes of those lanes alone, the others' bits are [`UNMADE`].
+    pub fn permute(&mut self, b: &mut Builder, constants: &mut Constants, input: &[Bit], lanes: usize) -> Vec<Value> {
         assert_eq!(input.len(), 1600);
         assert!((1..=25).contains(&lanes));
         // The last round's planes: those of the lanes read (lane `x + 5y` is plane `y`'s). The other planes' χ rows of
@@ -202,7 +207,7 @@ impl Permutation for D16 {
                     continue;
                 }
                 for z in 0..64 {
-                    let row = row_of(yp, (z + RHO[l]) % 64);
+                    let row = row_of(yp, (z + RHO[l] as usize) % 64);
                     b.place(row, xp, a[64 * l + z]);
                     b.place(row, 5 + xp, d[l % 5][z]);
                 }

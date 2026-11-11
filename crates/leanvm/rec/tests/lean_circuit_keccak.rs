@@ -12,7 +12,7 @@ use leanvm_statement::VerifierError;
 use leanvm_statement::evm::codegen::Word;
 use leanvm_statement::evm::record::Node;
 use leanvm_statement::shapes::PROGRAM_IV;
-use leanvm_rec::circuit::compile::{Inputs, Layout, pi2};
+use leanvm_rec::circuit::compile::{Inputs, pi2};
 use leanvm_rec::circuit::spec::{CallWord, Circuit, Formula, Source};
 use leanvm_univariate::contract::{Recorded, calls, record_verifier};
 use leanvm_rec::REFERENCE;
@@ -177,7 +177,6 @@ fn emit(name: &str, recorded: &Recorded) {
     let stream: Vec<u8> = (0..recorded.stream_len).map(|i| (i * 37 + 11) as u8).collect();
     let c = pi2(
         recorded,
-        Layout::D16v,
         &Inputs {
             program_iv: PROGRAM_IV,
             public: [3; 32],

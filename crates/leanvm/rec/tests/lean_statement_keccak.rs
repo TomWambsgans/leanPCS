@@ -27,7 +27,7 @@ static ALLOC: bench::Jemalloc = bench::Jemalloc;
 use std::fmt::Write;
 
 use leanvm_statement::shapes::PROGRAM_IV;
-use leanvm_rec::circuit::compile::{Inputs, Layout, pi2};
+use leanvm_rec::circuit::compile::{Inputs, pi2};
 use leanvm_rec::circuit::spec::CallWord;
 use leanvm_rec::pi2::adapt;
 use leanvm_rec::pi2::circuit::{Circuit, Coeff, Formula, Lin, Read};
@@ -307,7 +307,6 @@ fn make(recorded: &Recorded, seed: usize, public: [u8; 32]) -> Made {
     let stream: Vec<u8> = (0..recorded.stream_len).map(|i| (i * (37 + 2 * seed) + 11 + seed) as u8).collect();
     let c = pi2(
         recorded,
-        Layout::D16v,
         &Inputs {
             program_iv: PROGRAM_IV,
             public,

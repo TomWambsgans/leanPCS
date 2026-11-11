@@ -1,74 +1,17 @@
-// Part of this repository. The round constants, rotations and lane permutation are Keccak's (FIPS 202), as in this
-// repository's crates/vendor/leanvm-c445e3d5/primitives/src/hash.rs (vendored from leanVM) and used by crates/membership/quotient/src/circuit.rs, whose
-// Keccak-f wiring (lane `x + 5y`, bit `z` at index `z`, lane `i` rotated by `RHO[i]` to `PI[i]`) this follows. MIT OR
-// Apache-2.0; see AGENTS.md.
-//! Keccak-f\[1600\] and Keccak-256 as rows (SPEC-REC.md §2.4.1, §2.4.2): the round constants, the [`Permutation`]
-//! interface D16v's template implements (`keccak16`), and [`Sponge`], Keccak-256 over any [`Permutation`]: the first
-//! block's rate from the input bits and the padding (fresh constants), its capacity known zero; later blocks XORed
-//! into the rate; the digest the first four lanes.
+// Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
+//! Keccak-256 as rows (SPEC-REC.md §2.4.1, §2.4.2): [`Sponge`], Keccak-256 over D16v's Keccak-f\[1600\] template
+//! (`keccak16`): the first block's rate from the input bits and the padding (fresh constants), its capacity known zero;
+//! later blocks XORed into the rate; the digest the first four lanes.
 
 use leanvm_statement::field::K;
 
+use super::keccak16::D16;
 use super::layout::{Builder, PolyBuilder, Units, Value, forwards};
 use super::spec::{Formula, Poly};
-
-/// The round constants.
-pub const RC: [u64; 24] = [
-    0x0000_0000_0000_0001,
-    0x0000_0000_0000_8082,
-    0x8000_0000_0000_808A,
-    0x8000_0000_8000_8000,
-    0x0000_0000_0000_808B,
-    0x0000_0000_8000_0001,
-    0x8000_0000_8000_8081,
-    0x8000_0000_0000_8009,
-    0x0000_0000_0000_008A,
-    0x0000_0000_0000_0088,
-    0x0000_0000_8000_8009,
-    0x0000_0000_8000_000A,
-    0x0000_0000_8000_808B,
-    0x8000_0000_0000_008B,
-    0x8000_0000_0000_8089,
-    0x8000_0000_0000_8003,
-    0x8000_0000_0000_8002,
-    0x8000_0000_0000_0080,
-    0x0000_0000_0000_800A,
-    0x8000_0000_8000_000A,
-    0x8000_0000_8000_8081,
-    0x8000_0000_0000_8080,
-    0x0000_0000_8000_0001,
-    0x8000_0000_8000_8008,
-];
-
-/// ρ's left rotation of lane `x + 5y`.
-pub const RHO: [usize; 25] = [
-    0, 1, 62, 28, 27, 36, 44, 6, 55, 20, 3, 10, 43, 25, 39, 41, 45, 15, 21, 8, 18, 2, 61, 56, 14,
-];
-
-/// Where π sends lane `x + 5y`: lane `y + 5·((2x + 3y) mod 5)`.
-pub const PI: [usize; 25] = {
-    let mut p = [0usize; 25];
-    let mut i = 0;
-    while i < 25 {
-        let (x, y) = (i % 5, i / 5);
-        p[i] = y + 5 * ((2 * x + 3 * y) % 5);
-        i += 1;
-    }
-    p
-};
 
 /// Keccak-256's rate, in lanes and bits.
 pub const RATE_LANES: usize = 17;
 pub const RATE_BITS: usize = 64 * RATE_LANES;
-
-/// Keccak-f\[1600\] in rows.
-pub trait Permutation {
-    /// The permutation of `input` (index `64·lane + z`), whose constant bits it makes from `constants` (after
-    /// offering its rows' spare slots to it). Returns the output's 1600 values, of which the caller reads lanes
-    /// `0 .. lanes` only: a template may leave the others unmade ([`UNMADE`]; D16v's last round makes the planes of
-    /// those lanes alone).
-    fn permute(&mut self, b: &mut Builder, constants: &mut Constants, input: &[Bit], lanes: usize) -> Vec<Value>;
-}
 
 /// An output bit a permutation did not make (its lane is not read).
 pub const UNMADE: Value = u32::MAX;
@@ -169,8 +112,8 @@ impl Xors {
 }
 
 /// Keccak-256's sponge on rows.
-pub struct Sponge<P: Permutation> {
-    pub permutation: P,
+pub struct Sponge {
+    pub permutation: D16,
     pub constants: Constants,
     pub xors: Xors,
     /// Permutations run.
@@ -190,10 +133,11 @@ pub struct Run {
     pub output: Vec<Value>,
 }
 
-impl<P: Permutation> Sponge<P> {
-    pub fn new(b: &mut Builder, permutation: P) -> Self {
+impl Sponge {
+    /// The sponge on D16v's permutation template, its rows' regions made first.
+    pub fn new(b: &mut Builder) -> Self {
         Self {
-            permutation,
+            permutation: D16::new(b),
             constants: Constants::new(),
             xors: Xors::new(b),
             permutations: 0,
@@ -262,25 +206,5 @@ impl<P: Permutation> Sponge<P> {
         let out = state[..64 * lanes].to_vec();
         assert!(!out.contains(&UNMADE), "the lanes asked for are made");
         out
-    }
-}
-
-/// Keccak-f\[1600\] on lanes, the reference.
-pub fn keccak_f(a: &mut [u64; 25]) {
-    for &rc in &RC {
-        let c: [u64; 5] = std::array::from_fn(|x| (0..5).fold(0, |acc, y| acc ^ a[x + 5 * y]));
-        for i in 0..25 {
-            a[i] ^= c[(i + 4) % 5] ^ c[(i + 1) % 5].rotate_left(1);
-        }
-        let mut b = [0u64; 25];
-        for i in 0..25 {
-            b[PI[i]] = a[i].rotate_left(RHO[i] as u32);
-        }
-        for y in 0..5 {
-            for x in 0..5 {
-                a[x + 5 * y] = b[x + 5 * y] ^ (!b[(x + 1) % 5 + 5 * y] & b[(x + 2) % 5 + 5 * y]);
-            }
-        }
-        a[0] ^= rc;
     }
 }

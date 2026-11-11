@@ -19,34 +19,14 @@ use leanvm_statement::evm::record::Node;
 use leanvm_statement::field::K;
 use leanvm_statement::shapes::PROGRAM_IV;
 use leanvm_statement::transcript::keccak_seed;
-use leanvm_rec::circuit::compile::{Compiled, Inputs, Layout, pi2};
+use leanvm_rec::circuit::compile::{Compiled, Inputs, pi2};
 use leanvm_rec::circuit::spec::Failure;
 use leanvm_rec::eval::{Value, evaluate};
 use leanvm_univariate::contract::{NAME, Recorded, record_verifier_with};
 
-const STREAM_AT: usize = 4 + 32;
-
-fn deep<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> R {
-    std::thread::Builder::new()
-        .stack_size(1 << 30)
-        .spawn(f)
-        .expect("a thread")
-        .join()
-        .expect("no panic")
-}
-
-fn vector(name: &str) -> vectors::Vector {
-    let path = format!(
-        "{}/../univariate/tests/vectors/{name}.txt",
-        env!("CARGO_MANIFEST_DIR")
-    );
-    vectors::read(&std::fs::read_to_string(&path).expect("a committed vector"))
-}
-
-fn compiled(recorded: &Recorded, layout: Layout, iv: [u8; 32], public: [u8; 32], stream: &[u8]) -> Compiled {
+fn compiled(recorded: &Recorded, iv: [u8; 32], public: [u8; 32], stream: &[u8]) -> Compiled {
     let c = pi2(
         recorded,
-        layout,
         &Inputs {
             program_iv: PROGRAM_IV,
             public,
@@ -57,13 +37,9 @@ fn compiled(recorded: &Recorded, layout: Layout, iv: [u8; 32], public: [u8; 32],
     c
 }
 
-/// Keccak-f's positions a permutation, by layout (SPEC-REC.md §2.4.1; D16v's `kd` rows as measured by
+/// Keccak-f's positions a permutation in D16v (SPEC-REC.md §2.4.1; its `kd` rows as measured by
 /// `circuit::tests::d16_rows_a_permutation`).
-fn keccak_positions(layout: Layout) -> usize {
-    match layout {
-        Layout::D16v => 16 * (1536 + 6144 + 160 + 344),
-    }
-}
+const KECCAK_POSITIONS: usize = 16 * (1536 + 6144 + 160 + 344);
 
 fn report(name: &str, layout: &str, c: &Compiled) {
     let s = &c.finished.stats;
@@ -123,22 +99,22 @@ fn claim_words(claim: &[u8]) -> Vec<u8> {
 }
 
 /// `(log N, the fill's bounds)` expected.
-fn run(name: &str, layout: Layout, log_n: u8, fill: (f64, f64)) {
-    let v = vector(name);
+fn run(name: &str, log_n: u8, fill: (f64, f64)) {
+    let v = vectors::committed(name);
     let variant = vectors::variant_of(&v.config);
     // The contract binds the proof's setup commitment `F` (the third claim's).
     let roots = vectors::setup_roots(&v);
     let recorded = record_verifier_with(&v.shape, variant, &roots);
-    let stream = v.calldata[STREAM_AT..].to_vec();
+    let stream = v.calldata[vectors::PI1_STREAM_AT..].to_vec();
     let iv = recorded.iv(&PROGRAM_IV);
-    let c = compiled(&recorded, layout, iv, v.public, &stream);
+    let c = compiled(&recorded, iv, v.public, &stream);
     let s = &c.finished.stats;
-    report(name, &format!("{layout:?}"), &c);
+    report(name, "D16v", &c);
     // The counts: N, the fill, Keccak-f's positions, a block or two a region.
-    assert_eq!(s.log_n, log_n, "{name} {layout:?}: N");
+    assert_eq!(s.log_n, log_n, "{name}: N");
     assert!(
         fill.0 <= s.fill() && s.fill() <= fill.1,
-        "{name} {layout:?}: the fill {}",
+        "{name}: the fill {}",
         s.fill()
     );
     let keccak: usize = s
@@ -150,7 +126,7 @@ fn run(name: &str, layout: Layout, log_n: u8, fill: (f64, f64)) {
     // Every permutation's rows, but the last rounds' planes no lane read needs (D16v: 64 `k1` rows a plane).
     assert_eq!(
         keccak << s.log_width,
-        c.permutations * keccak_positions(layout) - c.planes_unmade * 64 * 16,
+        c.permutations * KECCAK_POSITIONS - c.planes_unmade * 64 * 16,
         "{name}: Keccak-f's positions"
     );
     // At most two blocks a region on average; three where the rows fill `2^L` but for a few (π1-rec3 at 400
@@ -166,7 +142,7 @@ fn run(name: &str, layout: Layout, log_n: u8, fill: (f64, f64)) {
     assert_eq!(
         circuit.check(w, &c.public),
         Ok(()),
-        "{name} {layout:?}: the circuit holds"
+        "{name}: the circuit holds"
     );
     // The calls on the public inputs are the vector's claims, word by word (root, out-of-domain answer, point,
     // value: the claims the contract packs and hashes).
@@ -242,23 +218,29 @@ fn run(name: &str, layout: Layout, log_n: u8, fill: (f64, f64)) {
     }
     // A changed witness word at wired positions is caught.
     let mut seed = 0x2545_f491_4f6c_dd1du64;
-    let wired: Vec<usize> = (0..circuit.n()).filter(|&i| circuit.sigma[i] as usize != i).collect();
+    let mut bad = w.clone();
     for _ in 0..30 {
-        seed ^= seed << 13;
-        seed ^= seed >> 7;
-        seed ^= seed << 17;
-        let i = wired[seed as usize % wired.len()];
-        let mut bad = w.clone();
-        bad[i] = bad[i] + K(1 << (seed % 64));
+        let i = loop {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            let i = seed as usize % circuit.n();
+            if circuit.sigma[i] as usize != i {
+                break i;
+            }
+        };
+        let word = bad[i];
+        bad[i] = word + K(1 << (seed % 64));
         assert!(
             circuit.check(&bad, &c.public).is_err(),
             "{name}: a change at {i} is caught"
         );
+        bad[i] = word;
     }
     // A flipped stream byte (hashed, and in the middle) gives another witness the public side rejects.
     let mut mutated = stream.clone();
     mutated[stream.len() / 2] ^= 1;
-    let m = compiled(&recorded, layout, iv, v.public, &mutated);
+    let m = compiled(&recorded, iv, v.public, &mutated);
     assert_eq!(
         m.finished.circuit.sigma, circuit.sigma,
         "the circuit does not depend on the proof"
@@ -282,20 +264,20 @@ fn run(name: &str, layout: Layout, log_n: u8, fill: (f64, f64)) {
 /// π1-rec4 at the reference shape (128 signatures), D16v: `2^24` positions at 97.8% with π1's three claims hashed.
 #[test]
 fn keccak_rec4_128_d16v() {
-    deep(|| run("keccak128_rec4", Layout::D16v, 24, (0.95, 0.99)));
+    vectors::deep(|| run("keccak128_rec4", 24, (0.95, 0.99)));
 }
 
 /// π1-rec4 at 400 signatures, D16v: `2^24` positions at 99.5% with π1's three claims hashed.
 #[test]
 fn keccak_rec4_400_d16v() {
-    deep(|| run("keccak_rec4", Layout::D16v, 24, (0.95, 1.0)));
+    vectors::deep(|| run("keccak_rec4", 24, (0.95, 1.0)));
 }
 
 /// π1-rec3 (the Lean's) at the reference shape: its three claims do not fit `2^24`, so `C1`'s alone is hashed
 /// (96.5%).
 #[test]
 fn keccak_rec3_128_d16v() {
-    deep(|| run("keccak128_rec3", Layout::D16v, 24, (0.90, 0.99)));
+    vectors::deep(|| run("keccak128_rec3", 24, (0.90, 0.99)));
 }
 
 /// The circuit evaluates π1-rec4's graph on streams that are no proof (the reference's with a byte flipped, and a
@@ -304,17 +286,17 @@ fn keccak_rec3_128_d16v() {
 #[test]
 #[ignore = "compiles the reference circuit twice (2^24 positions)"]
 fn keccak_rec4_128_any_stream() {
-    deep(|| {
-        let v = vector("keccak128_rec4");
+    vectors::deep(|| {
+        let v = vectors::committed("keccak128_rec4");
         let variant = vectors::variant_of(&v.config);
         let recorded = record_verifier_with(&v.shape, variant, &vectors::setup_roots(&v));
-        let stream = v.calldata[STREAM_AT..].to_vec();
+        let stream = v.calldata[vectors::PI1_STREAM_AT..].to_vec();
         let iv = recorded.iv(&PROGRAM_IV);
         let mut flipped = stream.clone();
         flipped[stream.len() / 2] ^= 1;
         let random = leanvm_univariate::contract::sample_stream(stream.len(), 0xabcdef);
         for (label, st) in [("flipped", flipped), ("random", random)] {
-            let m = compiled(&recorded, Layout::D16v, iv, v.public, &st);
+            let m = compiled(&recorded, iv, v.public, &st);
             let values = evaluate(&m.expanded, keccak_seed(&NAME, &iv, &v.public), &v.public, &st);
             for (&id, digest) in &m.digests {
                 let mut bytes = [0u8; 32];
@@ -342,8 +324,19 @@ fn keccak_rec4_128_any_stream() {
 }
 
 /// The main line (every challenge hashed, the batch one variable a round) at 32 signatures, D16v: it does not fit
-/// `2^24` (`2^25` at 53.6%), which is why the recursion proves π1-rec4 (π1-rec3 before it).
+/// `2^24` (`2^25` at 53.6%), which is why the recursion proves π1-rec4 (π1-rec3 before it): the compiler refuses it.
 #[test]
-fn keccak_32_d16v() {
-    deep(|| run("keccak", Layout::D16v, 25, (0.50, 0.60)));
+fn keccak_32_d16v_does_not_fit() {
+    let refused = std::thread::Builder::new()
+        .stack_size(1 << 30)
+        .spawn(|| {
+            let v = vectors::committed("keccak");
+            let recorded = record_verifier_with(&v.shape, vectors::variant_of(&v.config), &vectors::setup_roots(&v));
+            compiled(&recorded, recorded.iv(&PROGRAM_IV), v.public, &v.calldata[vectors::PI1_STREAM_AT..]);
+        })
+        .expect("a thread")
+        .join()
+        .expect_err("the compiler refuses the main line");
+    let message = refused.downcast::<String>().expect("a formatted panic");
+    assert!(message.contains("does not fit 2^24 positions: 2^25"), "{message}");
 }

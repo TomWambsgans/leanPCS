@@ -59,16 +59,6 @@ fn contract_roots(trace: &Trace) -> SetupRoots {
     leanvm_univariate::prover::setup::shape_roots(&trace.shape(), &leanvm_univariate::prover::columns::setup_polys(trace))
 }
 
-/// Run `f` on a thread with a deep stack: the code generator recurses along the graph.
-fn deep<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> R {
-    std::thread::Builder::new()
-        .stack_size(1 << 30)
-        .spawn(f)
-        .expect("a thread")
-        .join()
-        .expect("no panic")
-}
-
 fn copy(proof: &Proof, stream: Vec<u8>) -> Proof {
     Proof {
         stream,
@@ -214,7 +204,7 @@ fn end_to_end(variant: Variant) {
         )
         .expect("the Rust verifier accepts");
         assert!(zero.iter().all(|x| *x == Default::default()) && nonzero.iter().all(|x| *x != Default::default()));
-        let recorded = deep(move || record_verifier_with(&shape, variant, &roots));
+        let recorded = vectors::deep(move || record_verifier_with(&shape, variant, &roots));
         let claims: Vec<Vec<u8>> = leanvm_univariate::contract::expected_claims(&recorded, &reduced, &proof.stream)
             .iter()
             .map(|c| c.encode())
@@ -225,7 +215,7 @@ fn end_to_end(variant: Variant) {
     let (accepted, rejected, gas, calls) = if wide {
         (Some(word([1, 0, 0]).to_vec()), 0, 0, inputs.clone())
     } else {
-        deep(move || {
+        vectors::deep(move || {
         let recorded = record_verifier_with(&shape, variant, &roots);
         assert_eq!(recorded.stream_len, stream.len(), "the contract's stream is the proof's");
         // The measuring build, word for word against the Rust verifier, on this accepting stream.
