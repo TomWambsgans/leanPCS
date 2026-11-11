@@ -3,6 +3,7 @@
 -- the relation of round `0`'s candidate, its last following from the verifier's checks with true claims); the protocol
 -- is `formal/RecPiop`'s `piop`, the verifier's arithmetic `formal/RecStatement`'s `checks_claims_iff_post2`.
 import RecCompose.Part1
+import RecCompose.Points
 import RecCompose.Numbers
 import RecStatement.Lemmas.Main
 import RecPiop
@@ -228,9 +229,6 @@ abbrev Pi2Circuits.G (C : Pi2Circuits D) (roots : RecSetupRoots) : RecPiop.Circu
 def Pi2Circuits.d (C : Pi2Circuits D) (roots : RecSetupRoots) (j : ℕ) : ℕ :=
   if ((C.compiled roots.pi1).circuit.ports.getD j default).source.limbs = 4 then 1 else 0
 
-/-- The subfield `K` of `E`. -/
-abbrev subK : Subfield E := (algebraMap K E).fieldRange
-
 /-- **The circuit's facts** (established, not proved here): `SpecOf` of π2's verifier's constants and the compiled
 circuit on the Cantor basis `UniComplete.Domain.basisE` (`ω = pointE`), its pairs, ports and public limbs `pubOf`
 (`RecStatement.Lemmas.SpecLink` proves `Spec::of`'s constants `SpecOf`'s, `lean-rec-statement`; that they are the
@@ -261,9 +259,6 @@ structure Pi2Facts (D : RecDeployment) (C : Pi2Circuits D) where
     (∀ x ∈ u, x ∈ subK) →
     (∀ γ, RecPiop.fpList ((C.G roots).limbs j) γ u = (C.G roots).pubFp γ (pubOf roots scalars) j) →
       u = pubOf roots scalars j
-
-/-- The points `ω_i` (`Heap.omega` of the Cantor basis, `pointE`). -/
-noncomputable abbrev pi2Omega : ℕ → E := Heap.omega UniComplete.Domain.basisE
 
 /-- **The tables' layer** (built by `pi2Tables`, `Tables.lean`): for each setup, what the candidates stand for
 (`RecPiop.Model` of the compiled circuit: `W`'s polynomial `wP c`, of degree below `N`, taking the candidate's witness
