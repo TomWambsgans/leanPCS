@@ -71,7 +71,7 @@ top limbs (`nextRoot` reads each half as two limbs, `eNew _ _ 0`). The verifier'
 (the roots' limbs are no longer needed since roots are read as their bytes, `UniStatement.rootOf`). -/
 def Pi1RunShape : Prop :=
   ∀ (iv publicInput : List UInt8) (stream : Array UInt8) (r : UniStatement.Reduced),
-    (UniKeccak.runK RecGraphKeccak.Pi1.keccak128 iv publicInput stream UniKeccak.keccakRec3 .point).result = .ok r →
+    (UniKeccak.runK4 RecGraphKeccak.Pi1.keccak128 iv publicInput stream UniKeccak.keccakRec4 .point).result = .ok r →
       r.matrices = none ∧ r.roots.1.1.limb 2 = 0 ∧ r.roots.1.2.limb 2 = 0 ∧ r.roots.2.1.limb 2 = 0 ∧
         r.roots.2.2.limb 2 = 0
 

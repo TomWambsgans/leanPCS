@@ -96,6 +96,15 @@ def Pi1Coupling (D : RecDeployment) : Prop :=
         Pr{let z ← pi1KeccakSoundnessExperiment D (pi1Adversary D A)}[
           UniKeccak.KBreaksKnowledgeSoundness D.flock D.pi1 (UniKeccak.uniExtractorK D.flock D.pi1) z]
 
+/-- **The contract's π1 openings are the declared claims decoded**, on the outcome. -/
+def CallsGood (z : RecOutcome2) : Prop :=
+  acc z = true → ∃ ops, (prf z).pi1Claims.mapM claimOfWords = some ops ∧ contractPi1Openings (cls z) = some ops
+
+/-- **On every accepted outcome, the contract's π1 openings are the declared claims decoded** (proved in
+`CallsPure.lean`: the contract's claims are the declared ones followed by π2's four, and an accepted opening decodes). -/
+def DeclaredGood (D : RecDeployment) : Prop :=
+  ∀ (A : RecAdversary), ∀ z ∈ support (recSoundnessExperiment2 D A), CallsGood z
+
 /-! ## The implication -/
 
 /-- **The graph's acceptance includes its checks.** -/

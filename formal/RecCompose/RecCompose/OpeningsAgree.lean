@@ -38,7 +38,7 @@ result has three point claims, without a bit-slice claim, in `commitments` order
 opening per commitment, and each commitment has a relation). -/
 def Pi1RunOpenings : Prop :=
   ∀ (iv publicInput : List UInt8) (stream : Array UInt8) (r : UniStatement.Reduced),
-    (UniKeccak.runK RecGraphKeccak.Pi1.keccak128 iv publicInput stream UniKeccak.keccakRec3 .point).result = .ok r →
+    (UniKeccak.runK4 RecGraphKeccak.Pi1.keccak128 iv publicInput stream UniKeccak.keccakRec4 .point).result = .ok r →
       ∃ pt1 v1 pt2 v2 pt3 v3, r.openings = [(.c1, .point pt1 v1 none), (.c2, .point pt2 v2 none),
         (.setup, .point pt3 v3 none)]
 

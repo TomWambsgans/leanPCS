@@ -16,7 +16,7 @@ import RecGraphKeccak.Pi1.Verifier4
 import RecGraphKeccak.Main4
 import UniKeccak.Verifier4
 import RecGraphKeccak.Emitted
-import RecCircuit.Sound
+import RecCircuit.Check
 import KeccakFlock.Complete
 
 /-!
@@ -443,6 +443,10 @@ bytes, the out-of-domain answer, the point, the value, 32-byte words), decoded (
 def decodePi1Call (call : List UInt8) : Option Pi1Opening :=
   if call.length % 32 ≠ 0 then none else claimOfWords (words32 call)
 
+/-- **The contract's π1 openings**: its first three claims decoded. -/
+def contractPi1Openings (calls : List (List (List UInt8))) : Option (List Pi1Opening) :=
+  (calls.take 3).mapM claimOfWords
+
 /-- **π1-rec4's graph accepts at Keccak-f[1600], its claims hashing to the declared ones** (π2's part's conclusion):
 π2's circuit computes π1-rec4's recorded verifier graph at π1's setup commitment (`pi1GraphAt`) with the real
 Keccak-f[1600] and the Keccak-256s of its claims (`RecCircuit`'s `ClaimHash` ports); on π1's IV, the public input and
@@ -524,9 +528,11 @@ def pi1GraphChecks (g : RecGraph.Graph) (iv1 : List UInt8) (input : Vector UInt8
 theorem pi1GraphChecks_graphAtSetup (g : RecGraph.Graph) (roots : UniKeccak.SetupRootsK) (iv1 : List UInt8)
     (input : Vector UInt8 32) (s : Array UInt8) :
     pi1GraphChecks (graphAtSetup g roots) iv1 input s = pi1GraphChecks g iv1 input s := by
-  simp only [pi1GraphChecks, RecGraph.evalGraphDeployed, RecGraph.evalGraph, graphAtSetup, RecGraph.evalNodes,
-    RecGraph.outputsOf]
-  split <;> rfl
+  unfold pi1GraphChecks RecGraph.evalGraphDeployed RecGraph.evalGraph
+  by_cases h : s.size = g.streamLen
+  · simp only [graphAtSetup, h, ite_true, RecGraph.evalNodes, RecGraph.outputsOf]
+    rfl
+  · simp only [graphAtSetup, h, ite_false]
 
 /-- **`Pi1GraphAccepts`, decided.** -/
 def pi1GraphAcceptsB (g : RecGraph.Graph) (iv1 : List UInt8) (input : Vector UInt8 32) (s : Array UInt8)

@@ -228,13 +228,71 @@ theorem runWithK_openings (F : KeccakState → m KeccakState) (shape : UniStatem
   · obtain ⟨result, chan⟩ := p
     exact holds_pure hp
 
+/-- **π1-rec4's batch makes one point claim per given claim, in order.** -/
+theorem holdsE_batchK4_openings (F : KeccakState → m KeccakState) (lambda : E)
+    (combined : List (Commitment × Combined)) (layouts : List (Commitment × StackLayout))
+    (ringMap : Option (List E)) (hc : combined.map (·.1) = [.c1, .c2, .setup]) :
+    HoldsE (UniKeccak.batchK4 F lambda combined layouts ringMap) OpeningsShape := by
+  obtain ⟨x1, x2, x3, rfl⟩ := list_three (by simpa using congrArg List.length hc)
+  obtain ⟨k1, a⟩ := x1
+  obtain ⟨k2, b⟩ := x2
+  obtain ⟨k3, d⟩ := x3
+  simp only [List.map_cons, List.map_nil, List.cons.injEq] at hc
+  obtain ⟨rfl, rfl, rfl, -⟩ := hc
+  unfold UniKeccak.batchK4
+  dsimp only
+  repeat (first
+    | (refine holdsE_bind (holdsE_nextScalars_length (m := m) _) fun vals hv ↦ ?_
+       obtain ⟨v1, v2, v3, rfl⟩ := list_three (l := vals) (by simpa using hv)
+       simp only [List.zip_cons_cons, List.zip_nil_right, List.foldl_cons, List.foldl_nil]
+       exact holdsE_bind (holdsE_true (m := m) _) fun _ _ ↦ holdsE_pure ⟨_, _, _, _, _, _, rfl⟩)
+    | refine holdsE_bind (holdsE_true (m := m) _) fun _ _ ↦ ?_)
+
+/-- **π1-rec4's reduction** (point claims) makes three point openings, `C1`'s, `C2`'s and the setup's. -/
+theorem holdsE_reduceWithK4_openings (F : KeccakState → m KeccakState) (shape : UniStatement.Shape) (stmt : List E) :
+    HoldsE (UniKeccak.reduceWithK4 F shape stmt UniKeccak.keccakRec4 .point) fun r ↦ OpeningsShape r.openings := by
+  unfold UniKeccak.reduceWithK4
+  dsimp only
+  split
+  · exact holdsE_bind (holdsE_throw (m := m) _) fun _ h ↦ False.elim h
+  repeat (first
+    | exact holdsE_pure (‹_ ∧ OpeningsShape _›).2
+    | exact holdsE_pure ‹OpeningsShape _›
+    | refine holdsE_bind (holdsE_batchK4_openings F _ _ _ _ ?_) fun y hy ↦ ?_
+    | refine holdsE_bind (holdsE_true (m := m) _) fun _ _ ↦ ?_
+    | split)
+  all_goals try exact holdsE_pure ‹OpeningsShape _›
+  all_goals
+    refine filterMap_combine_fst _ _ fun c hc ↦ ?_
+    simp only [commitments, List.mem_cons, List.not_mem_nil, or_false] at hc
+    rcases hc with rfl | rfl | rfl
+    · exact exists_push_of _ (exists_append_left _ (exists_push_of _ (exists_push_of _ (exists_push_of _
+        (exists_push_of _ (exists_push_of _ (exists_push_self _ rfl)))))))
+    · exact exists_push_of _ (exists_append_list _ (heapRelations_c2 _ _ _ _ _ _ _ _ _ _ _ _ _))
+    · exact exists_push_of _ (exists_append_left _ (exists_push_of _ (exists_push_of _ (exists_push_of _
+        (exists_push_of _ (exists_push_self _ rfl))))))
+
+/-- **π1-rec4's run, over any permutation**: a result has three point openings. -/
+theorem runWithK4_openings (F : KeccakState → m KeccakState) (shape : UniStatement.Shape) (iv publicInput : List UInt8)
+    (stream : Array UInt8) :
+    Holds (UniKeccak.runWithK4 F shape iv publicInput stream UniKeccak.keccakRec4 .point) fun o ↦
+      ∀ r, o.result = .ok r → OpeningsShape r.openings := by
+  unfold UniKeccak.runWithK4
+  refine holds_bind (holds_true _) fun seed _ ↦
+    holds_bind (Q := fun p ↦ ∀ a, p.1 = .ok a → OpeningsShape a.openings) ?_ fun p hp ↦ ?_
+  · refine holdsE_bind (Q := fun r : Reduced ↦ OpeningsShape r.openings)
+      (P := fun r : Reduced ↦ OpeningsShape r.openings) (holdsE_reduceWithK4_openings F shape _) (fun a ha ↦ ?_) _
+    exact holdsE_bind (holdsE_true (m := m) _) fun _ _ ↦ holdsE_pure ha
+  · obtain ⟨result, chan⟩ := p
+    exact holds_pure hp
+
 end Generic
 
-/-- **`Pi1RunOpenings`**: a run of the Keccak π1-rec3's verifier that returns a result has three point openings, no bit
-slice, in `commitments` order. -/
+/-- **`Pi1RunOpenings`**: a run of π1-rec4's verifier that returns a result has three point openings, no bit slice, in
+`commitments` order. -/
 theorem pi1RunOpenings : Pi1RunOpenings := by
   intro iv publicInput stream r hr
-  exact holds_id (runWithK_openings (m := Id) (fun s ↦ pure (keccakF1600 s)) RecGraphKeccak.Pi1.keccak128 iv
+  exact holds_id (runWithK4_openings (m := Id) (fun s ↦ pure (keccakF1600 s)) RecGraphKeccak.Pi1.keccak128 iv
     publicInput stream) r hr
 
 end RecCompose

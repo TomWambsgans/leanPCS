@@ -104,14 +104,42 @@ theorem runWithK_shape (F : KeccakState → m KeccakState) (shape : UniStatement
   · obtain ⟨result, chan⟩ := p
     exact holds_pure hp
 
+set_option maxHeartbeats 1600000 in
+/-- **The Keccak verifier's reduction at π1-rec4** returns no matrices' claim and roots read as two limbs. -/
+theorem holdsE_reduceWithK4 (F : KeccakState → m KeccakState) (shape : UniStatement.Shape) (stmt : List E)
+    (v : UniKeccak.KeccakVariant) (mode : ClaimsMode) :
+    HoldsE (UniKeccak.reduceWithK4 F shape stmt v mode) ShapeOK := by
+  unfold UniKeccak.reduceWithK4
+  dsimp only
+  repeat (first
+    | exact holdsE_pure ⟨rfl, ‹_›, ‹_›⟩
+    | exact holdsE_bind (holdsE_throw (m := m) _) fun _ h ↦ False.elim h
+    | refine holdsE_bind holdsE_nextRoot fun _ _ ↦ ?_
+    | (refine holdsE_bind (holdsE_pure_eq (m := m) _) fun _ h ↦ ?_; subst h; try dsimp only)
+    | refine holdsE_bind (holdsE_true (m := m) _) fun _ _ ↦ ?_
+    | split)
+
+/-- **The Keccak verifier's run at π1-rec4, over any permutation**: a result has no matrices' claim and roots read as
+two limbs. -/
+theorem runWithK4_shape (F : KeccakState → m KeccakState) (shape : UniStatement.Shape) (iv publicInput : List UInt8)
+    (stream : Array UInt8) (v : UniKeccak.KeccakVariant) (mode : ClaimsMode) :
+    Holds (UniKeccak.runWithK4 F shape iv publicInput stream v mode) fun o ↦ ∀ r, o.result = .ok r → ShapeOK r := by
+  unfold UniKeccak.runWithK4
+  refine holds_bind (holds_true _) fun seed _ ↦ holds_bind (Q := fun p ↦ ∀ a, p.1 = .ok a → ShapeOK a) ?_
+    fun p hp ↦ ?_
+  · exact holdsE_bind (holdsE_reduceWithK4 F shape _ v mode) (fun a ha ↦ holdsE_bind (holdsE_true (m := m) _)
+      fun _ _ ↦ holdsE_pure ha) _
+  · obtain ⟨result, chan⟩ := p
+    exact holds_pure hp
+
 end Generic
 
-/-- **`Pi1RunShape`**: a run of the Keccak π1-rec3's verifier that returns a result has no matrices' claim and roots
-whose halves have zero top limbs. -/
+/-- **`Pi1RunShape`**: a run of π1-rec4's verifier that returns a result has no matrices' claim and roots whose
+halves have zero top limbs. -/
 theorem pi1RunShape : Pi1RunShape := by
   intro iv publicInput stream r hr
-  have h := holds_id (runWithK_shape (m := Id) (fun s ↦ pure (keccakF1600 s)) RecGraphKeccak.Pi1.keccak128 iv
-    publicInput stream UniKeccak.keccakRec3 .point) r hr
+  have h := holds_id (runWithK4_shape (m := Id) (fun s ↦ pure (keccakF1600 s)) RecGraphKeccak.Pi1.keccak128 iv
+    publicInput stream UniKeccak.keccakRec4 .point) r hr
   exact ⟨h.1, h.2.1.1, h.2.1.2, h.2.2.1, h.2.2.2⟩
 
 end RecCompose
