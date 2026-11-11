@@ -1,12 +1,12 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 import RecGraphKeccak.Emitted
-import RecGraphKeccak.Pi1.Verifier
+import RecGraphKeccak.Pi1.Verifier4
 
 /-!
-# The Keccak VM's π1-rec3 program records the Rust's graph, node for node
+# The Keccak VM's π1-rec4 program records the Rust's graph, node for node
 
-`lake env lean ../RecGraphKeccak/RecGraphKeccakTest/Pi1Check.lean` (from `formal/EndToEnd`): `Pi1.pi1GraphK` (the
-program `Pi1.pi1Rec3K` recorded in Lean) against `Emitted.graph` (the Rust's recording, written by
+`lake env lean ../RecGraphKeccak/RecGraphKeccakTest/Pi1Check.lean` (from `formal/EndToEnd`): `Pi1.pi1GraphK4` (the
+program `Pi1.pi1Rec4K` recorded in Lean) against `Emitted.graph` (the Rust's recording, written by
 `crates/leanvm/rec/tests/lean_graph_keccak.rs`): the nodes, the zero and nonzero checks, the kernels, the calls' words
 and the stream's length, each equal. Compiled evaluation (`#eval`), not the kernel. Throws on the first difference,
 with the nodes around it.
@@ -17,7 +17,7 @@ open RecGraph RecGraphKeccak
 def showNode (n : Node) : String := reprStr n
 
 #eval show IO Unit from do
-  let g := Pi1.pi1GraphK
+  let g := Pi1.pi1GraphK4
   let e := Emitted.graph
   IO.println s!"Lean recording: {g.nodes.size} nodes, {g.zero.length} zeros, {g.nonzero.length} nonzeros, \
     {g.kernels.size} kernels, {g.calls.length} calls, stream {g.streamLen}"
@@ -46,4 +46,4 @@ def showNode (n : Node) : String := reprStr n
         IO.println s!"      Rust {reprStr b}"
     throw (IO.userError "calls differ")
   if g.streamLen != e.streamLen then throw (IO.userError "stream lengths differ")
-  IO.println "the zeros, nonzeros, kernels, calls and stream length are equal: pi1GraphK = Emitted.graph"
+  IO.println "the zeros, nonzeros, kernels, calls and stream length are equal: pi1GraphK4 = Emitted.graph"

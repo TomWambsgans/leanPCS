@@ -129,6 +129,7 @@ theorem op_pstep (st : RecState) (hg : Good st) (o : Op) (ho : Op.Arith o) (hok 
     exact g0.trans hs
   | input len => exact absurd ho id
   | sample narrow => exact absurd ho id
+  | wide k => exact absurd ho id
 
 end Ops
 

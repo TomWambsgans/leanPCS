@@ -3,7 +3,7 @@
 -- `KECCAK_LOG_BYTECODE`: leanVM 9d50c92a3's runs). The claims and their openings are `UniKeccak/Pcs.lean`'s.
 module
 
-public import UniKeccak.Verifier
+public import UniKeccak.Verifier4
 
 /-!
 # The Keccak contract's IV and the measured shapes
@@ -13,7 +13,7 @@ public import UniKeccak.Verifier
 * **The IV** (`contractIvKWith`, `contract_iv`): the Keccak-256 of the tag `"leanVM-univar-iv"`, the program's IV,
   the setup's root, its out-of-domain answer (`element_word(f_ood)[8..]`: limbs `c2, c1, c0` big-endian, 24 bytes),
   the shape's bytes, then the variant's bytes (`variantBytesK`: `"keccak-vm"`, the skip, the Fiat–Shamir shape's
-  code `Main` 0, `Rec` 1, `Rec2` 2, `Rec3` 3). No layout words: a claim names its stack's size by its `n`. The seed
+  code `Main` 0, `Rec` 1, `Rec2` 2, `Rec3` 3, `Rec4` 4). No layout words: a claim names its stack's size by its `n`. The seed
   is `keccak(name ‖ IV ‖ public input)`.
 * **The measured shapes** (`keccakRuns`, `keccakShapeNamed`): leanVM 9d50c92a3's runs at 32, 128, 400 and 1,000
   signatures, the bytecode `2^18` instructions, the memory `⌈log₂ cells⌉`.
@@ -31,6 +31,7 @@ def FsShape.code : FsShape → ℕ
   | .rec1 => 1
   | .rec2 => 2
   | .rec3 => 3
+  | .rec4 => 4
 
 /-- **`variant_bytes(v)`**: the tag `"keccak-vm"`, then the skip and the Fiat–Shamir shape's code. -/
 def variantBytesK (v : KeccakVariant) : List UInt8 :=

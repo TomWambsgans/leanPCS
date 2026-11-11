@@ -143,6 +143,7 @@ theorem op_grows_kinv (st : RecState) (o : Op) (hk : KInv st) : Grows st (st.op 
         else .low (st.new (.hash st.state st.absorbed st.cursor)).1) h1.2
       fun _ _ h ↦ by split at h <;> cases h
     exact ⟨h1.1.trans h2.1, h2.2⟩
+  | wide k => exact plain st _ hk fun _ _ h ↦ by cases h
   | add a b =>
     simp only [RecState.op, RecState.add, RecState.constant]
     split

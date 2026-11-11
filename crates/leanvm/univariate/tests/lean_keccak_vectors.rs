@@ -12,7 +12,7 @@
 //! `tests/evm_vectors.rs` builds its contract: the root, then the out-of-domain answer as an element), `CONTRACTIV`
 //! `contract::contract_iv(shape, variant, program_iv, roots)`; an accepted run also `OODS 2 <C1> <C2>`, the
 //! commitments' out-of-domain answers the verifier read. The configuration (`<flock>` in the `VECTOR` line) is
-//! `keccak` (`KECCAK_MAIN`) or `keccak_rec3` (`KECCAK_REC3`). A real proof's vector carries the contract's claims
+//! `keccak` (`KECCAK_MAIN`), `keccak_rec3` (`KECCAK_REC3`) or `keccak_rec4` (`KECCAK_REC4`). A real proof's vector carries the contract's claims
 //! (`PCSCLAIM <hex>`, the vector file's `claim` lines: the EIP draft's PCS claims, `crates/pcs_claim`). Terminal
 //! vectors are one line each:
 //!
@@ -21,7 +21,8 @@
 //! ```
 //!
 //! (each list a count then its elements; an element `c0:c1:c2`, lowercase hex limbs.) The logging channel and the
-//! accepting streams are this file's, with `sample_narrow` logged (π1-rec3's batch).
+//! accepting streams are this file's, with `sample_narrow` logged (π1-rec3's batch) and each challenge of a
+//! `sample_wide` in order (π1-rec4's wide draws).
 
 use std::fmt::Write as _;
 
@@ -40,7 +41,7 @@ use leanvm_statement::evm::record::{Recorder, record};
 use leanvm_univariate::claims::{Combined, Commitment};
 use leanvm_univariate::contract::{NAME, SetupRoots, contract_iv, record_verifier, sample_stream};
 use leanvm_univariate::verifier::expand_ring;
-use leanvm_univariate::{KECCAK_MAIN, KECCAK_REC3, Opening, Shape, Variant, reduce, reduce_combined};
+use leanvm_univariate::{KECCAK_MAIN, KECCAK_REC3, KECCAK_REC4, Opening, Shape, Variant, reduce, reduce_combined};
 
 /// How the vectors' verifier leaves its claims: point claims (`reduce`), or the combined claims before the batching
 /// sumcheck (`reduce_combined`, the ring switch's weight as its 64 twisted terms: extension W's weighted claims).
@@ -114,6 +115,12 @@ impl Channel<E> for Logging<'_> {
         let challenge = narrow(self.inner.sample());
         self.challenges.push(challenge);
         challenge
+    }
+
+    fn sample_wide(&mut self, count: usize) -> Vec<E> {
+        let challenges = self.inner.sample_wide(count);
+        self.challenges.extend_from_slice(&challenges);
+        challenges
     }
 
     fn require_zero(&mut self, value: E, _error: VerifierError) -> Result<(), VerifierError> {
@@ -491,7 +498,7 @@ fn terminal_vectors(out: &mut String, rng: &mut Rng) -> usize {
 }
 
 /// `KECCAK_VECTORS_OUT=<file> cargo test --release -p leanvm_univariate --test lean_keccak_vectors -- --ignored
-/// --nocapture` (`KECCAK_REAL_DIR`, default `tests/vectors`: the real proofs `keccak.txt`, `keccak128_rec3.txt`, `keccak_rec3.txt`, if there).
+/// --nocapture` (`KECCAK_REAL_DIR`, default `tests/vectors`: the real proofs `keccak.txt`, `keccak{128,}_rec{3,4}.txt`, if there).
 #[test]
 #[ignore]
 fn lean_keccak_vectors() {
@@ -500,6 +507,7 @@ fn lean_keccak_vectors() {
         let path = std::env::var("KECCAK_VECTORS_OUT").unwrap_or_else(|_| "target/keccak_vectors.txt".to_string());
         let main = ("keccak", KECCAK_MAIN);
         let rec3 = ("keccak_rec3", KECCAK_REC3);
+        let rec4 = ("keccak_rec4", KECCAK_REC4);
         let point = ("point", Claims::Point);
         let weighted = ("weighted", Claims::Weighted);
         let mut w = Writer::default();
@@ -512,7 +520,8 @@ fn lean_keccak_vectors() {
         let terminals = terminal_vectors(&mut w.out, &mut rng);
 
         // The full sets: the main line at the smallest run (both modes) and at 400 signatures, π1-rec3's shape at
-        // 400 signatures and the smallest, and π1-rec3 at the reference shape (128 signatures, the recursion's).
+        // 400 signatures and the smallest, π1-rec3 at the reference shape (128 signatures), and π1-rec4 (the
+        // recursion's) at the reference shape and at the smallest in both modes.
         let full = [
             (0, main, point),
             (0, main, weighted),
@@ -520,6 +529,9 @@ fn lean_keccak_vectors() {
             (2, rec3, point),
             (0, rec3, point),
             (1, rec3, point),
+            (1, rec4, point),
+            (0, rec4, point),
+            (0, rec4, weighted),
         ];
         for (c, &(run_index, flock, claims)) in full.iter().enumerate() {
             let config = config(run_index, flock, claims);
@@ -621,7 +633,7 @@ fn lean_keccak_vectors() {
 
         // The real Keccak proofs, if there, with the contract's claims, and three mutations each.
         let dir = std::env::var("KECCAK_REAL_DIR").unwrap_or_else(|_| "tests/vectors".to_string());
-        for file in ["keccak.txt", "keccak128_rec3.txt", "keccak_rec3.txt"] {
+        for file in ["keccak.txt", "keccak128_rec3.txt", "keccak_rec3.txt", "keccak128_rec4.txt", "keccak_rec4.txt"] {
             let Ok(text) = std::fs::read_to_string(format!("{dir}/{file}")) else {
                 println!("no {dir}/{file}: no real vector");
                 continue;
@@ -631,6 +643,7 @@ fn lean_keccak_vectors() {
             let flock = match config_name.as_str() {
                 "keccak" => main,
                 "keccak_rec3" => rec3,
+                "keccak_rec4" => rec4,
                 other => panic!("no configuration {other}"),
             };
             let config = Config {
