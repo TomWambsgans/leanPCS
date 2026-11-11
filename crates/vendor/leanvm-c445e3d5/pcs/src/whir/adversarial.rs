@@ -1,3 +1,5 @@
+// Part of this repository (new here, beside the vendored leanVM `c445e3d5` `crates/pcs/src/whir.rs`). MIT OR
+// Apache-2.0; see AGENTS.md.
 //! Adversarial tests of the lean prover paths (commit 411866f): `commit_tree_in`, `encoded_rows`, the lean
 //! deeper levels and `recursive_prover_with_lane_tensors`, each against the untouched `commit` /
 //! `recursive_prover_with_basis` on randomized shapes.

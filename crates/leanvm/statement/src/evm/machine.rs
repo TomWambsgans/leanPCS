@@ -222,25 +222,30 @@ fn frame_param<W: InterpreterTypes, H: ?Sized>(context: InstructionContext<'_, H
 }
 
 /// `FRAMEDATALOAD`: the word of a frame's `data` at an offset, zero past its end, as `CALLDATALOAD`; a frame the
-/// transaction does not have halts. A read past the first byte keeps what the last `KECCAK256` hashed, as a claim
-/// checked; in a measuring run it reads that hash, if the run declares it.
+/// transaction does not have halts. A claim's check (`evm_link`'s: `KECCAK256` of the claim, `SWAP1`, the payload's
+/// offset, `FRAMEDATALOAD`, compared) reads a payload with the claim's hash under its two operands: such a read keeps
+/// what that `KECCAK256` hashed, as a claim checked, and in a measuring run reads its hash, if the run declares it.
+/// Any other read (a payload a verifier reads as public data) checks nothing.
 fn frame_data_load<W: InterpreterTypes, H: ?Sized>(context: InstructionContext<'_, H, W>) {
     gas!(context.interpreter, FRAMEDATALOAD_GAS);
-    let Some(([offset], index)) = context.interpreter.stack.popn_top() else {
+    let Some([offset, index]) = context.interpreter.stack.popn() else {
         context.interpreter.halt(InstructionResult::StackUnderflow);
         return;
     };
+    // The word under the offset and the frame's index: a claim's hash, if this read checks it.
+    let under = context.interpreter.stack.top().map(|w| *w);
     let offset = usize::try_from(offset).unwrap_or(usize::MAX);
     let word = RUNNING.with_borrow_mut(|running| {
-        let data = &running.frames.get(usize::try_from(*index).ok()?)?.data;
+        let data = &running.frames.get(usize::try_from(index).ok()?)?.data;
         let mut word = [0u8; 32];
         if offset < data.len() {
             let n = 32.min(data.len() - offset);
             word[..n].copy_from_slice(&data[offset..offset + n]);
         }
-        // A payload read after a hash of a well-formed claim is a claim's check; another (a frame word a verifier
-        // reads as public data, after its seed or a transcript's hash) checks nothing.
-        if offset >= 1 && well_formed(&running.last) {
+        // A payload read with a well-formed claim's hash, the last `KECCAK256`'s, under its operands is that claim's
+        // check; another (a frame word a verifier reads as public data) checks nothing.
+        let checks = under.is_some_and(|w| w.to_be_bytes::<32>() == keccak256(&running.last).0);
+        if offset >= 1 && checks && well_formed(&running.last) {
             let last = running.last.clone();
             if running.declare_all.as_ref().is_some_and(|declares| declares(&last)) {
                 word = keccak256(&last).0;
@@ -250,7 +255,10 @@ fn frame_data_load<W: InterpreterTypes, H: ?Sized>(context: InstructionContext<'
         Some(U256::from_be_bytes(word))
     });
     match word {
-        Some(word) => *index = word,
+        // Two words popped, one pushed: there is room.
+        Some(word) => {
+            let _ = context.interpreter.stack.push(word);
+        }
         None => context.interpreter.halt(InstructionResult::InvalidFEOpcode),
     }
 }

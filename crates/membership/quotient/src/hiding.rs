@@ -96,8 +96,8 @@ fn revealed_scalars_are_uniform() {
     check_uniform(&circuit, &statement, &cells, &mut rng);
 }
 
-/// [`revealed_scalars_are_uniform`] on the membership circuit (`2^22` rows), one secret: about 40 proofs without
-/// their openings, a minute or so on 64 threads: `cargo test --release -p quotient --lib hiding -- --ignored`.
+/// [`revealed_scalars_are_uniform`] on the membership circuit (`2^22` rows), one secret: about 84 proofs without
+/// their openings (each change of a word proves the base again), a minute and a half on 64 threads: `cargo test --release -p quotient --lib hiding -- --ignored`.
 #[test]
 #[ignore]
 fn revealed_scalars_are_uniform_on_membership() {

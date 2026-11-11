@@ -127,8 +127,11 @@ fn trace_to_recursion() {
             let (done_tx, done_rx) = std::sync::mpsc::channel::<()>();
             let (plan, circuit, spec, setup, iv) = (&plan, &circuit, &spec, &setup, &iv);
             let (pi1_proof, streamed, pi1_done, out2) = std::thread::scope(|s| {
+                // The senders moved in here, so that a failure of π1's proof drops them as it unwinds: π2's thread
+                // then fails on its `recv` instead of waiting forever, and the scope's join reports both.
+                let (stream_tx, done_tx) = (stream_tx, done_tx);
                 let prover2 = s.spawn(move || {
-                    let stream = stream_rx.recv().expect("π1's stream");
+                    let stream = stream_rx.recv().expect("π1's stream: π1's proof failed before it");
                     let clock = Instant::now();
                     let (witness, public2) = adapt::replay(
                         plan,
@@ -141,7 +144,7 @@ fn trace_to_recursion() {
                     let (public_input, values) = adapt::public_values(&public2);
                     let replayed = clock.elapsed().as_secs_f64();
                     if serial {
-                        done_rx.recv().expect("π1's openings");
+                        done_rx.recv().expect("π1's openings: π1's proof failed after its stream");
                     }
                     let clock = Instant::now();
                     let proved = tracing::info_span!("π2: proof")
@@ -168,7 +171,8 @@ fn trace_to_recursion() {
                     .expect("π1's proof")
                 });
                 let pi1_done = started.elapsed().as_secs_f64();
-                done_tx.send(()).expect("π2 is running");
+                // π2 may have finished already (`PIPELINE_OVERLAP=1`: it never waits) or failed: its `join` says which.
+                let _ = done_tx.send(());
                 (proof, streamed, pi1_done, prover2.join().expect("no panic"))
             });
             let total = started.elapsed().as_secs_f64();

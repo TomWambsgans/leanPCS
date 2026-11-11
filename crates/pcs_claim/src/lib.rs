@@ -246,7 +246,8 @@ pub fn commit_words(words: &[F64], n: usize, keep_codeword: bool) -> Commitment 
     } else {
         // The encoding buffer, one replica of the codeword, mapped by the workers: as many words as `words`, though
         // the zero lanes take none of them, so that an opening's buffers find this memory again once it is freed.
-        let scratch = mapped_words(words.len());
+        // SAFETY: the encoding clears this buffer and writes every word it reads (`commit_tree_skipping_in`).
+        let scratch = unsafe { mapped_words(words.len()) };
         let (commitment, tree) = commit_tree_skipping_in(words, n, LANE_FOLD, LOG_INV_RATE, &zero_lanes, scratch);
         (commitment.root, tree, None)
     };
@@ -277,8 +278,11 @@ fn zero_lanes(words: &[F64], lane: usize) -> Vec<bool> {
 
 /// `len` words, unwritten, their memory mapped by the workers: each touches its own run of pages once, so that the
 /// kernel maps (and clears) them in parallel, before a pass whose first touches are strided and would fault the same
-/// pages from every thread at once. The caller writes each word before it reads it.
-pub fn mapped_words(len: usize) -> Vec<F64> {
+/// pages from every thread at once.
+///
+/// # Safety
+/// The words are uninitialised: the caller must write every word before reading it.
+pub unsafe fn mapped_words(len: usize) -> Vec<F64> {
     /// A run of pages one task touches: a transparent huge page.
     const RUN: usize = (2 << 20) / size_of::<F64>();
     /// The words of the smallest page, one touched in each.

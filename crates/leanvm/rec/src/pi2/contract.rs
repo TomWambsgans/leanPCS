@@ -65,6 +65,15 @@ impl<'a> Instance<'a> {
                 && spec.reads == circuit.reads,
             "the spec is the circuit's"
         );
+        // `pi1` are π1's claims the circuit does not hash, the frame payloads it reads its hashed ones: together π1's
+        // claims, each once, as [`payloads`] numbers them (`pi1.len() + hashed`).
+        let hashed = frame_payloads(spec);
+        let total = pi1.len() + hashed.len();
+        assert!(
+            hashed.windows(2).all(|p| p[0] < p[1]) && hashed.iter().all(|&p| (p as usize) < total),
+            "π1's calls are the circuit's claims it does not hash: {} calls, hashed payloads {hashed:?}",
+            pi1.len()
+        );
         Self {
             spec,
             iv: super::prover::iv(pi1_iv, &circuit.digest(), &setup_root, setup_ood, circuit.log_n),

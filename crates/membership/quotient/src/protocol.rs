@@ -235,8 +235,9 @@ pub fn fresh_seed() -> [u8; 32] {
 /// cell's point to its successor's.
 pub struct Index {
     pub log_rows: usize,
-    /// The wiring polynomial's `2^m` coefficients: the committed wiring table.
-    pub table: Vec<F64>,
+    /// The wiring polynomial's `2^m` coefficients: the committed wiring table ([`Index::wiring`]). Private, so that
+    /// an index is only made by [`Index::new`], which checks the circuit.
+    table: Vec<F64>,
     /// The wiring polynomial's values on the quotients' coset, twice the cells: they depend on the circuit alone,
     /// and every proof reads them.
     sigma_values: Vec<F64>,
@@ -269,7 +270,8 @@ impl Index {
         ntt::coefficients(&mut sigma, F64::ZERO);
         let n = sigma.len();
         let m = n.trailing_zeros() as usize;
-        let mut sigma_values = words(2 * n);
+        // SAFETY: each half is written whole by its transform below.
+        let mut sigma_values = unsafe { words(2 * n) };
         for (k, half) in sigma_values.chunks_exact_mut(n).enumerate() {
             ntt::values_from(&sigma, half, half_offset(coset(m), n, k));
         }
@@ -290,15 +292,24 @@ impl Index {
         &self.table
     }
 
+    /// The committed wiring table: the wiring polynomial's `2^m` coefficients.
+    pub fn wiring(&self) -> &[F64] {
+        &self.table
+    }
+
     fn sigma_values(&self) -> &[F64] {
         &self.sigma_values
     }
 }
 
-/// `len` words, every one of which the caller writes before it reads it, their pages mapped by the workers
-/// (`pcs_claim::mapped_words`: the passes that first write them would fault each page from every thread at once).
-fn words(len: usize) -> Vec<F64> {
-    pcs_claim::mapped_words(len)
+/// `len` words, their pages mapped by the workers (`pcs_claim::mapped_words`: the passes that first write them would
+/// fault each page from every thread at once).
+///
+/// # Safety
+/// The words are uninitialised: the caller must write every word before reading it.
+unsafe fn words(len: usize) -> Vec<F64> {
+    // SAFETY: the caller's.
+    unsafe { pcs_claim::mapped_words(len) }
 }
 
 /// `h`'s three limbs in the quotient table's kind-1 half `rest` ([`table_slot`]): limb `e` at `2 e n`.
@@ -346,7 +357,9 @@ fn top_layer(offset: F64, m: usize, k: usize) -> F64 {
 /// digits' and one of the high digits', the low sums accumulated unreduced, in parallel over the high index.
 fn evaluate_interleaved(coeffs: &[F64], step: usize, digits: &[F192]) -> Vec<F192> {
     let d = digits.len();
-    assert_eq!(coeffs.len(), step << d);
+    // A committed table may hold fewer words, its trailing zero lanes left out (`opening::commit`): the rest zero.
+    let len = coeffs.len();
+    assert!(len <= step << d && len.is_multiple_of(step), "the leading words of the {step} polynomials");
     // `t[i]` the product of the digits at `i`'s bits.
     let tensor = |digits: &[F192]| {
         let mut t = vec![F192::ONE];
@@ -363,7 +376,7 @@ fn evaluate_interleaved(coeffs: &[F64], step: usize, digits: &[F192]) -> Vec<F19
     let (low_weights, high_weights) = (tensor(&digits[..low]), tensor(&digits[low..]));
     let run = step << low;
     let sums: Vec<Vec<F192>> = parallel::map_collect(high_weights.len(), |high| {
-        let block = &coeffs[high * run..(high + 1) * run];
+        let block = &coeffs[(high * run).min(len)..((high + 1) * run).min(len)];
         let mut acc = vec![F192Unreduced::ZERO; step];
         for (lo, cs) in block.chunks_exact(step).enumerate() {
             for (a, &c) in acc.iter_mut().zip(cs) {
@@ -634,21 +647,24 @@ fn prove_inner(
     assert_eq!(cells.len(), n);
     assert!(m + 3 <= domain::EXT_BASIS);
     let mut ps = ProverChain::new(&label(commitment, statement));
-    let mut randomized = words(n);
+    // SAFETY: written whole by the copy below.
+    let mut randomized = unsafe { words(n) };
     copy_par(&mut randomized, cells);
     circuit.randomize(&mut randomized, rows);
     let cells = &randomized[..];
 
     // The witness: the cells' polynomial.
     let span = tracing::info_span!("Witness").entered();
-    let mut w_hat = words(n);
+    // SAFETY: written whole by the transform below.
+    let mut w_hat = unsafe { words(n) };
     tracing::info_span!("cells to coefficients").in_scope(|| ntt::coefficients_from(cells, &mut w_hat, F64::ZERO));
 
     // The witness's values on the quotient's coset, twice the cells: two cosets of the cells' size, offset by
     // `B(k n)`. They do not depend on the challenges: made here, while the coefficients are at hand.
     let big = 2 * n;
     let offset = coset(m);
-    let mut values = words(big);
+    // SAFETY: each half is written whole by its transform in `two_halves`.
+    let mut values = unsafe { words(big) };
     // The transforms in two parts where the cells are many: the layers above a leaf a pass over memory each, and
     // each leaf's own layers in the block-wise loop below, around the quotient's values, a block in cache.
     let fused = n >= ntt::LEAF_WORDS;
@@ -681,7 +697,9 @@ fn prove_inner(
     // for `h` ([`table_slot`]): limb `e` at `table_slot(1, e, n)`.
     let span = tracing::info_span!("Sum").entered();
     let inner = tracing::info_span!("inverses").entered();
-    let mut table = words(16 * n);
+    // SAFETY: every slot is written before it is read: `h`'s limbs by the inverses, `q`'s by the halves' transforms
+    // of `h`'s coefficients, and the blinding's digits and the empty limbs cleared before the commitment.
+    let mut table = unsafe { words(16 * n) };
     let (quotients, rest) = table.split_at_mut(4 * big);
     {
         let [h0, h1, h2] = h_slots(rest, n);
@@ -1228,7 +1246,7 @@ pub(crate) mod tests {
 
     fn truth(index: &Index, proved: &Proved) -> [bool; 4] {
         proved.claims.all().map(|(k, claim)| {
-            let words = if k == 1 { &index.table[..] } else { proved.tables.table(k).words() };
+            let words = if k == 1 { index.wiring() } else { proved.tables.table(k).words() };
             opening::evaluate(words, &claim.point) == claim.value
         })
     }
@@ -1408,13 +1426,19 @@ pub(crate) mod tests {
             cells[4 * r2 + 3] += F64::ONE;
         };
         type Tamper<'a> = &'a dyn Fn(&mut Vec<F64>);
-        let cases: [(&str, Tamper); 4] = [
+        let cases: [(&str, Tamper); 5] = [
             // A row's output and every reader of it: the copies hold, the row's gate (and its readers') do not.
             ("gate", &|cells| cycle_of(&circuit, 4 * some_row + 3).into_iter().for_each(|i| cells[i] += F64::ONE)),
             // A public word on its whole cycle: its pin fails (and the packing row that makes it).
             ("pin", &|cells| cycle_of(&circuit, anchor_cell(2)).into_iter().for_each(|i| cells[i] += F64::ONE)),
             // A reader that departs from what it reads.
             ("copy", &|cells| cells[4 * some_row] += F64::ONE),
+            // A copy alone: a row's `X` and `V` moved together, its gate (`V = X + C + Y·C`) holding, its `X` off its
+            // source and its `V` off its readers: no error for `h` to absorb, the logarithmic derivatives' sum off.
+            ("copy only", &|cells| {
+                cells[4 * some_row] += F64::ONE;
+                cells[4 * some_row + 3] += F64::ONE;
+            }),
             // Two idle rows' outputs, the same error twice.
             ("two gates", &both),
         ];
@@ -1440,6 +1464,28 @@ pub(crate) mod tests {
         assert_eq!(cheat(&broken, &Index::new_unchecked(&broken), &bad), [true; 4], "a witness of the broken circuit");
         both(&mut bad);
         assert_eq!(cheat(&broken, &Index::new_unchecked(&broken), &bad), [true; 4], "the two errors cancel");
+    }
+
+    /// A committed table whose top lane is zero holds fewer words (`opening::commit` leaves trailing zero lanes out):
+    /// the interleaved evaluation of the witness's row polynomials, and the claim on it, are the whole table's.
+    #[test]
+    fn a_trimmed_witness_table_evaluates_as_the_whole() {
+        let mut rng = Rng::new(0x7E1);
+        let m = 15;
+        let n = 1usize << m;
+        let mut table: Vec<F64> = (0..n).map(|_| F64(rng.next_u64())).collect();
+        table[n - n / 64..].fill(F64::ZERO);
+        let committed = opening::commit(table.clone());
+        assert!(committed.words().len() < n, "the zero lane is left out");
+        let t = F192::new(rng.next_u64(), rng.next_u64(), rng.next_u64());
+        let digits: Vec<F192> = std::iter::successors(Some(t), |&w| Some(w * w + w)).take(m).collect();
+        assert_eq!(
+            evaluate_interleaved(committed.words(), 4, &digits[2..m]),
+            evaluate_interleaved(&table, 4, &digits[2..m])
+        );
+        assert_eq!(evaluate_interleaved(committed.words(), 1, &digits), evaluate_interleaved(&table, 1, &digits));
+        let point: Vec<F192> = (0..m).map(|_| F192::new(rng.next_u64(), rng.next_u64(), rng.next_u64())).collect();
+        assert_eq!(opening::evaluate(committed.words(), &point), opening::evaluate(&table, &point));
     }
 
     /// [`Randomness::derive`] is a function of the seed, the circuit's commitment, the statement and the cells: the

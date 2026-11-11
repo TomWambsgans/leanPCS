@@ -46,10 +46,13 @@ PI1_REC3 = {
     400: dict(stream=9424, calls=71, perms=118, products=8673, linear=6887, challenges=14, values=3),
 }
 KECCAK_D16V = 130_944  # positions a Keccak-f[1600] (SPEC-REC.md §2.4.1; the design's 130,736)
-REST = {128: 478_912, 400: 489_408}  # free bits, packings, later blocks' XORs, E units, ports
+# Measured (`tests/circuit.rs`, keccak_rec3_*_d16v): pi2 hashes C1's claim in its circuit (docs/leanvm/rec/PERF_GAS.md),
+# 6 Keccak-f more than pi1's verifier: 16,482,912 and 16,756,288 positions of 2^24 used (main: 15,668,416 and 15,940,800).
+CLAIM_HASH_PERMS = 6
+REST = {128: 507_744, 400: 519_232}  # free bits, packings, later blocks' XORs, E units, ports (main: 478,912, 489,408)
 LOG_N = 24
 ROW = 16  # D16v: 16 positions a row, 16 fold values and xi at t
-PORT_DEGREES = 3  # the four-limb ports' fingerprints, degree 1 in gamma: the statement and pi1's two roots
+PORT_DEGREES = 3  # the four-limb ports' fingerprints, degree 1 in gamma: the statement, C2's root, C1's claim hash
 
 # pi2's commitments (PI2.md §2, π2v2): W the witness, 2^24 K-words; Q: h (3N), q < 2N (6N), the pushes P (N, in K)
 # and P's definition quotient q_P < 2N (2N, in K), 12N words (π2v1: h and q < 4N, 15N); the setup, kappa and
@@ -136,7 +139,7 @@ DESIGNS = {
 def design_size(design, xmss=128):
     """N for pi1-rec3 at `xmss` signatures: its permutations at the design's positions, plus D16v's measured rest
     (an approximation for the other designs)."""
-    total = PI1_REC3[xmss]["perms"] * keccak_positions(design) + REST[xmss]
+    total = (PI1_REC3[xmss]["perms"] + CLAIM_HASH_PERMS) * keccak_positions(design) + REST[xmss]
     log_n = math.ceil(math.log2(total))
     return dict(total=total, log_n=log_n, fill=total / 2 ** log_n, q=DESIGNS[design]["qwords"] * 2 ** log_n)
 
@@ -172,7 +175,7 @@ def grouped_rounds(k, vars_=BATCH_VARS, degree=2):
 def main():
     print("== pi1-rec3's verifier (MEASURED, Claims::Point)")
     for xmss, p in PI1_REC3.items():
-        used = p["perms"] * KECCAK_D16V + REST[xmss]
+        used = (p["perms"] + CLAIM_HASH_PERMS) * KECCAK_D16V + REST[xmss]
         print(f"  {xmss} signatures: stream {p['stream']:,} B, Keccak-256 {p['calls']}, Keccak-f {p['perms']}, E products"
               f" {p['products']:,}, linear {p['linear']:,}; claims at {p['challenges']} narrow challenges and"
               f" {p['values']} values; pi2 (D16v) {used:,} positions of 2^{LOG_N} ({100 * used / 2 ** LOG_N:.1f}%)")

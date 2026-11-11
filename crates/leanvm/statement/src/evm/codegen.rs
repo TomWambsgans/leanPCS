@@ -364,7 +364,8 @@ fn program(graph: &Graph, outputs: &[Word], ending: &Ending, entry: &Entry) -> (
             .filter(|&at| used(at))
             .map(|at| match graph.nodes[at] {
                 Node::Hash(_, from, to) => 32 + (to - from) as usize,
-                Node::Seed => 80,
+                // The name and IV's head, the public input and the frame words the seed reads (`Node::Seed`).
+                Node::Seed => 80 + 32 * entry.frame.len(),
                 _ => 0,
             })
             .sum(),
