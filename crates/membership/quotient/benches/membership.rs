@@ -68,12 +68,11 @@ fn main() {
     let witness_secs = time("witness (cells)", start);
     let start = Instant::now();
     let proved = prove_with_seed(&circuit, &index, &commitment, &statement, &cells, &seed);
-    let reduction_secs = time("reduction (commit four tables)", start);
+    let reduction_secs = time("reduction (commit two tables)", start);
     let peak_reduction = peak();
-    assert!(proved.fits);
     let start = Instant::now();
     let openings = open(&proved.tables, &proved.claims, &index_committed);
-    let opening_secs = time("openings (six WHIR)", start);
+    let opening_secs = time("openings (four WHIR)", start);
     let peak_openings = peak();
     println!(
         "{:<34}: {:>8.3} s",
@@ -90,16 +89,17 @@ fn main() {
     time("verify: openings", start);
 
     println!(
-        "{:<34}: {} bytes (statement 64, four roots, {} field elements)",
+        "{:<34}: {} bytes (statement 64, two roots, {} field elements)",
         "calldata",
-        64 + 4 * 32 + 24 * (proved.proof.stream.len() - 8),
-        proved.proof.stream.len() - 8
+        64 + 2 * 32 + 24 * (proved.proof.stream.len() - 4),
+        proved.proof.stream.len() - 4
     );
-    for (name, proof) in ["witness", "wiring", "h", "q", "g", "sum (on h)"].into_iter().zip(&openings.0) {
+    for (name, proof) in ["witness", "wiring", "copy (on T)", "sum (on T)"].into_iter().zip(&openings.0) {
         println!("{:<34}: {:.1} KiB", format!("opening: {name}"), opening_bytes(proof) as f64 / 1024.0);
     }
     // Pinned by hand: `dfcbadec8510a4f447488cef75b7c0b12ac17d40bdb4114a181e0df1c27a63e2` with the hidden layouts,
-    // before the EIP's PCS claims.
+    // before the EIP's PCS claims; `95df593db793e449baf7c43ace4d0f92db70ecb36572f53ec53253ab1751036d` with six claims on
+    // four commitments, before the one quotient table.
     let hex: String = digest(&proved.proof, &openings)
         .iter()
         .map(|b| format!("{b:02x}"))

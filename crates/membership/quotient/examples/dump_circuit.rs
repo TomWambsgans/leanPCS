@@ -4,17 +4,19 @@
 //! --example dump_circuit -- OUT`, then compare the two files' SHA-256.
 //!
 //! The format, little-endian `u32`s: the number of rows, the rows used, the number of inputs; each row's `X, Y, C`
-//! sources (`0` zero, `1` one, `2 + r` row `r`); the input rows; σ. It then prints the public words the circuit
-//! computes for a fixed secret, next to the statement's.
+//! sources (`0` zero, `1` one, `2` three, `3` free, `4 + r` row `r`); the input rows; σ. It then prints the public
+//! words the circuit computes for a fixed secret (its anchors' cells), next to the statement's.
 
-use quotient::circuit::{Src, WORD_BITS, membership, membership_inputs, read};
+use quotient::circuit::{PUBLIC_WORDS, Src, anchor_cell, membership, membership_inputs};
 use quotient::statement::Secret;
 
 fn code(src: Src) -> u32 {
     match src {
         Src::Zero => 0,
         Src::One => 1,
-        Src::Row(r) => r + 2,
+        Src::Three => 2,
+        Src::Free => 3,
+        Src::Row(r) => r + 4,
     }
 }
 
@@ -53,20 +55,9 @@ fn main() {
         siblings: std::array::from_fn(|l| std::array::from_fn(|i| (l * 101 + i * 13 + 5) as u8)),
         directions: 0xA5C3_1E77,
     };
-    let v = circuit.outputs(&membership_inputs(&secret));
-    let halves = secret.statement().halves();
-    for (word, half) in halves.iter().enumerate() {
-        let mut w: u128 = 0;
-        for j in 0..WORD_BITS {
-            let r = word * (WORD_BITS / 2) + j / 2;
-            let src = if j % 2 == 0 {
-                circuit.rows[r].x
-            } else {
-                circuit.rows[r].y
-            };
-            w |= (read(&v, src) as u128) << j;
-        }
-        let expected = (half.c0 as u128) | ((half.c1 as u128) << 64);
-        println!("word {word}: circuit {w:032x} statement {expected:032x}");
+    let cells = circuit.cells(&membership_inputs(&secret));
+    let words = secret.statement().words();
+    for (k, word) in words.iter().enumerate().take(PUBLIC_WORDS) {
+        println!("word {k}: circuit {:016x} statement {:016x}", cells[anchor_cell(k)].0, word.0);
     }
 }

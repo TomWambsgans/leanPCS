@@ -1,35 +1,51 @@
 // Part of this repository. Adapted from leanVM (https://github.com/leanEthereum/leanVM), branch
 // PCS-openings-aggregation, commit 651453c6, crates/flock/src/quotient.rs and crates/flock/src/membership.rs
-// (`Scalar`, `Channel`, `VerifyError`): the reduction is the same but for the gate (`V = X + C + Y·C` on bits,
-// degree 2) and the tables' layouts (stacks leanVM's WHIR commits as they are). MIT OR Apache-2.0; see AGENTS.md.
-//! The membership statement reduced to four evaluation claims by five field elements and no sumcheck.
+// (`Scalar`, `Channel`, `VerifyError`): the copy argument is the same but for the gate (`V = X + C + Y·C` on bits,
+// degree 2), the public values (pinned cells, not a weighted sum), the gate's quotient (with the pins, checked by a
+// claim of its own) and the one quotient table. MIT OR Apache-2.0; see AGENTS.md.
+//! The membership statement reduced to four evaluation claims on two commitments by seven field elements and no
+//! sumcheck.
 //!
 //! A multilinear claim at a point built from one field element `t` is a univariate evaluation ([`domain`]),
 //! so this is a gate-and-copy argument on an additive subspace: one gate on four cells a row ([`circuit`]),
-//! copy constraints and the public bits as one sum of logarithmic derivatives, and two quotients. No quotient
-//! value is sent, an identity being one claim on the table that holds its polynomials. The verifier is
-//! [`reduce`], generic in its scalar so that the same code is the EVM contract, and checks nothing but one
-//! nonzero product.
+//! copy constraints as one sum of logarithmic derivatives, the public values as cells pinned by interpolation, and
+//! one quotient, in one committed table with the sum's polynomial. No quotient value is sent: the claim on the
+//! quotient table is the combination its identity gives. The verifier is [`reduce`], generic in its scalar so that the same code is the
+//! EVM contract, and checks nothing but one nonzero product.
+//!
+//! **The tables** (`m = log_rows + 2`, `n = 2^m` cells): the witness `W` (the cells' polynomial `w`, `m`
+//! variables: the four row polynomials interleaved), the circuit's wiring (`m`, public), and the quotient table `T`
+//! (`m + 4`, [`table_slot`]): the copy argument's sum polynomial `h` (blinded, `deg < n + 2`) and the one quotient
+//! `q` (`deg < 2n`).
+//!
+//! **The identity**, with `d = α + w + β x`, `d' = α + w + β σ`, `Z = X_n` the cells' vanishing polynomial, and
+//! `g = gate / Z_R + (w + v) / Z_P` (`Z_R` vanishing on the rows' first cells, `Z_P` on the
+//! [`crate::circuit::PUBLIC_ROWS`] pinned cells, `v` the public values' interpolant on them):
+//! `Z q + d d' h = d + d' + μ Z g`, and `Σ_cells h = 0`, `μ` a challenge drawn after `W` and before `T`. On a cell
+//! the identity sets `h` to the logarithmic derivative plus `μ` times the gate's or the pin's error over `d d'`; the
+//! sum then vanishes, at random `α, β, μ`, only if the copies, the gates and the pins all hold: no cycle of the
+//! wiring lies within the rows' first cells and the pins but a free cell's own (the poles of `1 / (d d')` at the
+//! first cell of each run of them on a cycle are the error's alone; `PERF_GAS.md`).
+//!
+//! **The claims**: `W` at the row polynomials' point (four values `a_j` combined by `ρ`), the wiring at `t`, `T` at
+//! `t` with the identity's combination of `q` and `h` ([`copy_point`]), and `T` at `h`'s top coefficient
+//! ([`sum_point`]), whose value is zero.
 //!
 //! [`domain`]: crate::domain
 //! [`circuit`]: crate::circuit
 
 use std::ops::{Add, Mul};
+use std::sync::OnceLock;
 
 use fiat_shamir::merkle::Hash;
 use primitives::field::{F64, F192, F192Unreduced};
 
-use crate::circuit::{Circuit, PUBLIC_ROWS, RANDOM_ROWS};
-use crate::domain::{self, beta, chain, coordinates, point, row_vanishing};
+use crate::circuit::{Circuit, PUBLIC_ROWS, PUBLIC_WORDS, RANDOM_WORDS, THREE, anchor_cell, anchor_values};
+use crate::domain::{self, beta, chain, point, row_vanishing};
 use crate::ntt::{self, Ex8, Kx8};
 use crate::opening::{self, Claim, Commitment, Committed};
 use crate::statement::Statement;
 use crate::transcript::{Proof, ProverChain, TranscriptError, VerifierChain, halves_root};
-
-/// The public bits are cells of the span of this many basis vectors: the `X` and `Y` cells of
-/// [`PUBLIC_ROWS`] rows.
-const REGION: usize = 11;
-const _: () = assert!(PUBLIC_ROWS << 2 == 1 << REGION);
 
 /// Why the reduction rejected.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -42,7 +58,7 @@ pub enum VerifyError {
 }
 
 /// The protocol's 16-byte name, the transcript label's first bytes ([`label`]).
-pub const NAME: &[u8; 16] = b"pcs-quotient-kc1";
+pub const NAME: &[u8; 16] = b"pcs-quotient-kc2";
 
 /// What the verifier computes with: the field, or a recorder of its operations, which is how the EVM contract is
 /// written (`crates/membership/evm`).
@@ -70,17 +86,12 @@ impl Scalar for F192 {
 
 /// Where the verifier reads the statement and the proof, and draws its challenges.
 pub trait Channel<S> {
-    /// `y` then `root`, each as its two halves ([`crate::statement::halves`]).
-    fn statement(&mut self) -> [S; 4];
+    /// The statement's eight `K`-words ([`Statement::words`]): `y`'s four, then `root`'s.
+    fn statement(&mut self) -> [S; PUBLIC_WORDS];
     /// A commitment's root, as the two scalars it rides the proof as.
     fn next_root(&mut self) -> Result<[S; 2], TranscriptError>;
     fn next(&mut self) -> Result<S, TranscriptError>;
     fn sample(&mut self) -> S;
-    /// The values of the quotient table's parts `Q` and `G` at their points, the proof's last two scalars.
-    fn part_values(&mut self, q_point: &[S], g_point: &[S]) -> Result<[S; 2], TranscriptError> {
-        let _ = (q_point, g_point);
-        Ok([self.next()?, self.next()?])
-    }
     /// Nothing is left unread.
     fn finish(&mut self) -> Result<(), TranscriptError>;
 }
@@ -90,20 +101,21 @@ fn cell_vars(log_rows: usize) -> usize {
     log_rows + 2
 }
 
-/// The coefficients past `2^m` that blind the sum's polynomial `h`, per limb: `h + X_{2^m}·b_e`, which `h` keeps
-/// on the cells (`X_{2^m}` vanishes there) and which makes the evaluations of `H` and `Q` uniform (`HIDING.md`).
-pub const H_BLIND: usize = 8;
+/// The coefficients past `2^m` that blind the sum's polynomial `h`, per limb: `h + X_{2^m}·b_e`, which `h` keeps on
+/// the cells (`X_{2^m}` vanishes there) and which makes the quotient table's out-of-domain answer uniform
+/// (`HIDING.md`). Two, so that `h d d'` stays below degree `3 n` and `q` below `2 n`.
+pub const H_BLIND: usize = 2;
 
-/// The fewest rows: below `2^13` the wiring table (`m` variables) is smaller than the `2^15` words WHIR commits.
+/// The fewest rows: below `2^13` the witness and wiring tables (`m` variables) are smaller than the `2^15` words
+/// WHIR commits.
 pub const MIN_LOG_ROWS: usize = 13;
 
-/// The most rows: above `2^22` rows the quotient table `Q` (`m + 4` variables) is more than the `2^28` words
-/// leanVM's WHIR commits.
+/// The most rows: above `2^22` rows the quotient table (`m + 4` variables) is more than the `2^28` words leanVM's
+/// WHIR commits.
 pub const MAX_LOG_ROWS: usize = 22;
 
-/// The most rows the reduction alone takes (its domain's basis, `m + 3 <= EXT_BASIS`): circuits past
-/// [`MAX_LOG_ROWS`] reduce to claims on tables leanVM's WHIR cannot commit, for a block whose openings take larger
-/// tables ([`verify_reduction`]).
+/// The most rows the reduction alone takes (its domain's basis): circuits past [`MAX_LOG_ROWS`] reduce to claims on
+/// tables leanVM's WHIR cannot commit, for a block whose openings take larger tables ([`verify_reduction`]).
 pub const MAX_REDUCTION_LOG_ROWS: usize = domain::EXT_BASIS - 5;
 
 /// Whether the reduction alone takes a circuit of `2^log_rows` rows.
@@ -116,68 +128,55 @@ pub fn supported(log_rows: usize) -> bool {
     (MIN_LOG_ROWS..=MAX_LOG_ROWS).contains(&log_rows)
 }
 
-/// The variables of the committed tables, for `2^log_rows` rows: the witness `W` (`m + 1`: the four row
-/// polynomials' `2^m` coefficients, then their masks), the wiring (`m`, public), and the three parts of the
-/// quotient table (`m + 6` variables, too large to commit whole): `H` (`m + 3`), `Q` (`m + 4`), `G` (`m + 1`).
-pub fn table_vars(log_rows: usize) -> [usize; 5] {
+/// The variables of the committed tables, for `2^log_rows` rows: the witness `W` (`m`: the four row polynomials'
+/// coefficients interleaved), the wiring (`m`, public), and the quotient table `T` (`m + 4`, [`table_slot`]).
+pub fn table_vars(log_rows: usize) -> [usize; 3] {
     let m = cell_vars(log_rows);
-    [m + 1, m, m + 3, m + 4, m + 1]
+    [m, m, m + 4]
 }
 
-/// The quotient table `T` has `m + 6` variables: `m` for a coefficient, then a chunk's index `c = digit + 4 kind +
-/// 16 limb` (two bits each; kind `0` the sum's polynomial `h`, `1` the copy quotient `q`, `2` the gate's quotient;
-/// limb the extension's coordinate over `K`). It is committed as three subcubes, each its nonzero chunks:
-/// - `H`: kind `0`, digit bit 1 zero; variables the coefficient, digit bit 0, the limb (`h`'s `2^m` coefficients
-///   and its blinding past them);
-/// - `Q`: kind `1`; variables the coefficient, the digit, the limb (`q` whole: its `4·2^m` coefficients);
-/// - `G`: kind `2`, digit bit 1 zero, limb `0`; variables the coefficient, digit bit 0 (the gate's quotient).
+/// The quotient table's layout: word `i + n (digit + 2 limb + 8 kind)` (`m` variables a coefficient, then a digit,
+/// a limb's two bits and a kind), each `(kind, limb)` a polynomial of `2 n` coefficients over `K`:
+/// - kind 0, limb `e < 3`: limb `e` of the quotient `q`;
+/// - kind 1, limb `e < 3`: limb `e` of `h`, its blinding [`H_BLIND`] coefficients past `n`;
+/// - limb 3 of either kind: zero.
 ///
-/// `T(P) = w_H(P) H(P_H) + w_Q(P) Q(P_Q) + w_G(P) G(P_G)`, each part's point the free coordinates of `P` and its
-/// weight the `eq` of the fixed ones ([`quotient_parts`]).
-pub fn quotient_parts<S: Scalar>(point: &[S], m: usize) -> [(Vec<S>, S); 3] {
-    let one = S::constant(F192::ONE);
-    let low = &point[..m];
-    let (d0, d1, k0, k1, e0, e1) = (point[m], point[m + 1], point[m + 2], point[m + 3], point[m + 4], point[m + 5]);
-    [
-        ([low, &[d0, e0, e1]].concat(), (one + d1) * (one + k0) * (one + k1)),
-        ([low, &[d0, d1, e0, e1]].concat(), k0 * (one + k1)),
-        ([low, &[d0]].concat(), (one + d1) * (one + k0) * k1 * (one + e0) * (one + e1)),
-    ]
+/// A claim at `(u, u_m, y_0, y_1, k)` ([`extension`]'s `y`) reads `(1 + k) q + k h` at `t`, up to the scale of
+/// [`extension`] and the multilinear's normalisation, `q` and `h` as `K`-limbs of `E`-polynomials (a limb 3, which a
+/// prover may fill, as a fourth limb of weight `Y^3`).
+pub fn table_slot(kind: usize, limb: usize, n: usize) -> usize {
+    2 * n * (limb + 4 * kind)
 }
 
-/// The secret randomness of one proof (`HIDING.md`): the masks, three `K`-coefficients for each of the four row
-/// polynomials; the values of the [`RANDOM_ROWS`] random rows; and the blinding of the sum's polynomial,
-/// [`H_BLIND`] coefficients per limb. It must be uniform, secret, and **fresh per proof, never reused**: two
-/// proofs that share it let a guessed witness be confirmed. [`prove`] draws its own seed, [`prove_with_seed`] takes
-/// one; both derive this from it ([`Randomness::derive`]).
+/// The secret randomness of one proof (`HIDING.md`): the random rows' words ([`Circuit::randomize`]) and the
+/// blinding of the sum's polynomial, [`H_BLIND`] coefficients per limb. It must be uniform, secret, and **fresh per
+/// proof, never reused**: two proofs that share it let a guessed witness be confirmed. [`prove`] draws its own seed,
+/// [`prove_with_seed`] takes one; both derive this from it ([`Randomness::derive`]).
 #[derive(Clone)]
 pub struct Randomness {
-    /// `masks[j][i]`: coefficient `i` of row polynomial `j`'s mask.
-    pub masks: [[F64; 3]; 4],
-    /// The random rows' values, in the order of [`Circuit::random_rows`].
-    pub rows: [F64; RANDOM_ROWS],
+    /// The random rows' words, two a row, in the order of [`Circuit::random_rows`].
+    pub rows: [F64; RANDOM_WORDS],
     /// `blind[e][i]`: coefficient `2^m + i` of limb `e` of the sum's polynomial.
     pub blind: [[F64; H_BLIND]; 3],
 }
 
 /// The key derivation's tags: each in one use, none a prefix of another, each followed by fields of fixed length
 /// or (the cells' digests) after their count.
-const KDF_KEY: &[u8] = b"pcs-quotient-kdf-v2-key";
-const KDF_CELLS: &[u8] = b"pcs-quotient-kdf-v2-cells";
-const KDF_WORDS: &[u8] = b"pcs-quotient-kdf-v2-words";
+const KDF_KEY: &[u8] = b"pcs-quotient-kdf-v3-key";
+const KDF_CELLS: &[u8] = b"pcs-quotient-kdf-v3-cells";
+const KDF_WORDS: &[u8] = b"pcs-quotient-kdf-v3-words";
 
 impl Randomness {
     /// The randomness of a proof from its 32-byte `seed`, by Keccak-256 with distinct tags. A key binds the seed,
     /// the transcript's label (the protocol, the circuit's commitment and the statement: [`label`]) and a digest of
     /// the witness's cells; the words are those of Keccak-256(tag ‖ key ‖ `k`), `k = 0, 1, ...`, four a block, in
-    /// order: the masks (`masks[j][i]` word `3 j + i`), the random rows, the blinding (`blind[e][i]` word
-    /// `H_BLIND e + i`). A seed reused for another witness or another statement gives unrelated randomness; reused
-    /// for the same ones, it gives the same proof again. The seed must still be fresh per proof and secret:
-    /// [`prove`] draws it from the operating system.
+    /// order: the random rows' words, the blinding (`blind[e][i]` word `H_BLIND e + i`). A seed reused for another
+    /// witness or another statement gives unrelated randomness; reused for the same ones, it gives the same proof
+    /// again. The seed must still be fresh per proof and secret: [`prove`] draws it from the operating system.
     pub fn derive(seed: &[u8; 32], index: &Commitment, statement: &Statement, cells: &[F64]) -> Self {
         let label = label(index, statement);
         let key = primitives::hash::hash(&[KDF_KEY, seed, &label, &cells_digest(cells)].concat());
-        const WORDS: usize = 12 + RANDOM_ROWS + 3 * H_BLIND;
+        const WORDS: usize = RANDOM_WORDS + 3 * H_BLIND;
         let words: Vec<F64> = (0..WORDS.div_ceil(4) as u8)
             .flat_map(|k| {
                 let block = primitives::hash::hash(&[KDF_WORDS, &key, &[k]].concat());
@@ -185,9 +184,8 @@ impl Randomness {
             })
             .collect();
         Self {
-            masks: std::array::from_fn(|j| std::array::from_fn(|i| words[3 * j + i])),
-            rows: std::array::from_fn(|r| words[12 + r]),
-            blind: std::array::from_fn(|e| std::array::from_fn(|i| words[12 + RANDOM_ROWS + H_BLIND * e + i])),
+            rows: std::array::from_fn(|r| words[r]),
+            blind: std::array::from_fn(|e| std::array::from_fn(|i| words[RANDOM_WORDS + H_BLIND * e + i])),
         }
     }
 }
@@ -239,20 +237,41 @@ pub struct Index {
     pub log_rows: usize,
     /// The wiring polynomial's `2^m` coefficients: the committed wiring table.
     pub table: Vec<F64>,
-    /// The wiring polynomial's values on the quotients' coset, four times the cells: they depend on the circuit
-    /// alone, and every proof reads them.
+    /// The wiring polynomial's values on the quotients' coset, twice the cells: they depend on the circuit alone,
+    /// and every proof reads them.
     sigma_values: Vec<F64>,
 }
 
 impl Index {
+    /// The circuit's index. Panics on a circuit whose wiring the protocol's soundness does not cover
+    /// ([`Circuit::errors_have_their_own_poles`]): no such circuit is indexed.
     pub fn new(circuit: &Circuit) -> Self {
+        assert!(
+            circuit.errors_have_their_own_poles(),
+            "a cycle of the wiring holds only rows' first cells and pins: the sum would not catch their errors"
+        );
+        Self::new_unchecked(circuit)
+    }
+
+    /// [`Index::new`] without the check: for the test that shows what the check prevents.
+    #[cfg(test)]
+    pub(crate) fn new_unchecked(circuit: &Circuit) -> Self {
+        Self::of(circuit)
+    }
+
+    #[cfg(not(test))]
+    fn new_unchecked(circuit: &Circuit) -> Self {
+        Self::of(circuit)
+    }
+
+    fn of(circuit: &Circuit) -> Self {
         let mut sigma = parallel::map_collect(circuit.sigma.len(), |i| point(circuit.sigma[i] as usize));
         ntt::coefficients(&mut sigma, F64::ZERO);
         let n = sigma.len();
         let m = n.trailing_zeros() as usize;
-        let mut sigma_values = words(4 * n);
-        for (k, quarter) in sigma_values.chunks_exact_mut(n).enumerate() {
-            ntt::values_from(&sigma, quarter, quarter_offset(coset(m), n, k));
+        let mut sigma_values = words(2 * n);
+        for (k, half) in sigma_values.chunks_exact_mut(n).enumerate() {
+            ntt::values_from(&sigma, half, half_offset(coset(m), n, k));
         }
         Self {
             log_rows: circuit.log_rows,
@@ -282,17 +301,9 @@ fn words(len: usize) -> Vec<F64> {
     pcs_claim::mapped_words(len)
 }
 
-/// [`words`] of length `len` in an allocation of `capacity`, for a table written after them.
-fn words_in(len: usize, capacity: usize) -> Vec<F64> {
-    let mut v = words(capacity);
-    v.truncate(len);
-    v
-}
-
-/// The sum's polynomial's three limbs in the table `H` of `6 n` words: limb `e` at `2 e n` (each followed by its
-/// blinding's `n` words, `H`'s digit bit 0).
-fn h_limbs(h: &mut [F64], n: usize) -> [&mut [F64]; 3] {
-    let mut parts = h.chunks_exact_mut(n).step_by(2);
+/// `h`'s three limbs in the quotient table's kind-1 half `rest` ([`table_slot`]): limb `e` at `2 e n`.
+fn h_slots(rest: &mut [F64], n: usize) -> [&mut [F64]; 3] {
+    let mut parts = rest.chunks_exact_mut(n).step_by(2);
     std::array::from_fn(|_| parts.next().expect("three limbs"))
 }
 
@@ -316,23 +327,17 @@ fn add_scaled(words: &mut [F64], add: &[F64], scale: F64) {
     }
 }
 
-/// The words of a lane of a committed table of `2^vars` words (one of its `2^6` at WHIR's first fold).
-fn lane(vars: usize) -> usize {
-    1 << (vars - pcs_claim::LANE_FOLD)
-}
-
-/// The offset of the `k`-th quarter of the quotients' coset of `4 n` points (offset `offset`): the points
+/// The offset of the `k`-th half of the quotients' coset of `2 n` points (offset `offset`): the points
 /// `offset + B(k n + i)`, `i < n`, are those of the coset of `n` points offset `offset + B(k n)`.
-fn quarter_offset(offset: F64, n: usize, k: usize) -> F64 {
+fn half_offset(offset: F64, n: usize, k: usize) -> F64 {
     offset + point(k * n)
 }
 
-/// What the transform's two top layers, on the coset of `2^(m + 2)` points offset `offset`, make of a polynomial
-/// `a + b x^(2^m)`-like in the novel basis (coefficients `a` below `2^m`, `b` from `2^m` to `2^(m + 1)`): the
-/// `k`-th quarter's input is `a + c_k b`, for the `c_k` this returns. The top layer copies the lower half to the
-/// upper (whose coefficients are zero); the next takes `(a, b)` to `(a + λ b, a + (λ + 1) b)`, `λ` its twiddle.
-fn top_layers(offset: F64, m: usize, k: usize) -> F64 {
-    let lambda = chain(offset, m + 1)[m] + point(2 * (k >> 1));
+/// What the transform's top layer, on the coset of `2^(m + 1)` points offset `offset`, makes of a polynomial
+/// `a + X_n b` in the novel basis (coefficients `a` below `2^m`, `b` from `2^m` on): the `k`-th half's input is
+/// `a + c_k b`, `c_k = X_n` on that half, which this returns.
+fn top_layer(offset: F64, m: usize, k: usize) -> F64 {
+    let lambda = chain(offset, m + 1)[m];
     if k & 1 == 0 { lambda } else { lambda + F64::ONE }
 }
 
@@ -381,83 +386,74 @@ fn limbs8(x: &[F192; 8]) -> [Kx8; 3] {
     ]
 }
 
-/// Whether every word is zero, the words read in parallel.
-fn all_zero(words: &[F64]) -> bool {
-    const RUN: usize = 1 << 16;
-    parallel::find_first(words.len().div_ceil(RUN), |r| {
-        words[r * RUN..words.len().min((r + 1) * RUN)].iter().any(|w| !w.is_zero())
-    })
-    .is_none()
-}
-
-/// The offset of the quotients' coset, for `2^m` cells.
+/// The offset of the quotients' coset of `2^(m + 1)` points, for `2^m` cells.
 fn coset(m: usize) -> F64 {
-    domain::beta_ext()[m + 2]
+    domain::beta_ext()[m + 1]
 }
 
-/// The commitments a proof names: the witness table's and the quotient table's three parts'.
+/// The pinned cells' points `p_k` ([`anchor_cell`]) and their Lagrange weights `λ_k = 1 / Π_(j ≠ k) (p_k + p_j)`:
+/// the interpolant of values `v_k` on them is `v(x) = Z_P(x) Σ_k v_k λ_k / (x + p_k)`, `Z_P = Π_k (x + p_k)`.
+pub fn pins() -> &'static ([F64; PUBLIC_ROWS], [F64; PUBLIC_ROWS]) {
+    static PINS: OnceLock<([F64; PUBLIC_ROWS], [F64; PUBLIC_ROWS])> = OnceLock::new();
+    PINS.get_or_init(|| {
+        let p: [F64; PUBLIC_ROWS] = std::array::from_fn(|k| point(anchor_cell(k)));
+        let lambda = std::array::from_fn(|k| {
+            (0..PUBLIC_ROWS)
+                .filter(|&j| j != k)
+                .fold(F64::ONE, |acc, j| acc * (p[k] + p[j]))
+                .inv()
+        });
+        (p, lambda)
+    })
+}
+
+/// The interpolant of `values` on the pins, as monomial coefficients, lowest first.
+fn pin_interpolant(values: &[F64; PUBLIC_ROWS]) -> Vec<F64> {
+    let (p, lambda) = pins();
+    let mut out = vec![F64::ZERO; PUBLIC_ROWS];
+    for k in 0..PUBLIC_ROWS {
+        // `λ_k v_k Π_(j ≠ k) (x + p_j)`.
+        let mut basis = vec![F64::ONE];
+        for j in (0..PUBLIC_ROWS).filter(|&j| j != k) {
+            let mut next = vec![F64::ZERO; basis.len() + 1];
+            for (i, &c) in basis.iter().enumerate() {
+                next[i + 1] += c;
+                next[i] += c * p[j];
+            }
+            basis = next;
+        }
+        let scale = lambda[k] * values[k];
+        for (o, c) in out.iter_mut().zip(basis) {
+            *o += scale * c;
+        }
+    }
+    out
+}
+
+/// The commitments a proof names: the witness table's and the quotient table's.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Commitments {
     pub witness: Commitment,
-    pub h: Commitment,
-    pub q: Commitment,
-    pub g: Commitment,
+    pub table: Commitment,
 }
 
-/// What a proof leaves: six claims, one point each: on the witness table, the circuit's wiring table, the quotient
-/// table's three parts at the quotient point, and `H` at [`sum_point`].
+/// What a proof leaves: four claims, one point each: on the witness table, the circuit's wiring table, and the
+/// quotient table at [`copy_point`] and [`sum_point`].
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Claims {
     pub witness: Claim,
     pub wiring: Claim,
-    pub h: Claim,
-    pub q: Claim,
-    pub g: Claim,
-    /// On `H`, at a fixed point: the top coefficient of the sum's polynomial.
+    /// The identity's combination of `q` and `h` at `t`.
+    pub copy: Claim,
+    /// The top coefficient of the sum's polynomial: zero.
     pub sum: Claim,
 }
 
 impl Claims {
     /// The claims in the order of [`Openings`], each with the table it is on: `0` the witness, `1` the wiring, `2`
-    /// `H`, `3` `Q`, `4` `G`.
-    pub fn all(&self) -> [(usize, &Claim); 6] {
-        [
-            (0, &self.witness),
-            (1, &self.wiring),
-            (2, &self.h),
-            (3, &self.q),
-            (4, &self.g),
-            (2, &self.sum),
-        ]
-    }
-}
-
-/// The weight of bit `j` of a public word: the sum of a word's weighted bits is the element it is read as.
-fn bit_weight(j: usize) -> F192 {
-    if j < 64 {
-        F192::new(1 << j, 0, 0)
-    } else {
-        F192::new(0, 1 << (j - 64), 0)
-    }
-}
-
-/// The weight of a cell of the public region: `gamma^J` times its bit's, or zero off the `X` and `Y` cells.
-fn public_weight(cell: usize, gamma: F192) -> F192 {
-    if cell & 2 != 0 {
-        return F192::ZERO;
-    }
-    let (j, word) = ((cell & 1) | ((cell >> 2) & 63) << 1, cell >> 8);
-    (0..word).fold(bit_weight(j), |acc, _| acc * gamma)
-}
-
-/// `m_k` for coordinate `k` of the public region, `None` where it is a power of `gamma`: the region's weight is
-/// the product of `1 + x_k (1 + m_k)`.
-fn coordinate_weight(k: usize) -> Option<F192> {
-    match k {
-        0 => Some(bit_weight(1)),
-        1 => Some(F192::ZERO),
-        2..8 => Some(bit_weight(1 << (k - 1))),
-        _ => None,
+    /// the quotient table.
+    pub fn all(&self) -> [(usize, &Claim); 4] {
+        [(0, &self.witness), (1, &self.wiring), (2, &self.copy), (2, &self.sum)]
     }
 }
 
@@ -468,11 +464,18 @@ pub fn extension() -> ([F192; 2], F192) {
     ([y * d0.inv(), y2 * d1.inv()], (d0 * d1).inv())
 }
 
-/// The point of the claim on `H` at the top coefficient of the sum's polynomial: coefficient `2^m - 1` of digit
-/// `0`, its limbs weighed by the extension's coordinates.
+/// The point of the claim on the quotient table that the identity gives: `t`'s coordinates `u` (`m + 1`: the
+/// coefficient's and the digit's), [`extension`]'s two, then `kappa`, which weighs `h` against `q`.
+pub fn copy_point<S: Scalar>(u: &[S], kappa: S) -> Vec<S> {
+    let ([y0, y1], _) = extension();
+    [u, &[S::constant(y0), S::constant(y1), kappa]].concat()
+}
+
+/// The point of the claim on the quotient table at the top coefficient of the sum's polynomial: coefficient
+/// `2^m - 1` of digit `0`, its limbs weighed by the extension's coordinates, kind 1. Its value is zero.
 pub fn sum_point(log_rows: usize) -> Vec<F192> {
     let m = cell_vars(log_rows);
-    [&vec![F192::ONE; m][..], &[F192::ZERO], &extension().0].concat()
+    [&vec![F192::ONE; m][..], &[F192::ZERO], &extension().0, &[F192::ONE]].concat()
 }
 
 /// The transcript's seed: the protocol's name, the circuit's commitment (its root and out-of-domain answer) and the
@@ -508,6 +511,22 @@ fn batch_inverse(values: &mut [F192]) {
     }
 }
 
+/// Every lane of every vector of `values` inverted (all nonzero), by Montgomery's trick.
+fn batch_inverse_k(values: &mut [Kx8]) {
+    let mut prefix = Vec::with_capacity(values.len());
+    let mut acc = Kx8::splat(F64::ONE);
+    for &v in values.iter() {
+        prefix.push(acc);
+        acc = acc * v;
+    }
+    let mut inverse = Kx8::new(acc.to_row().0.map(|x| x.inv()));
+    for (v, p) in values.iter_mut().zip(prefix).rev() {
+        let next = inverse * *v;
+        *v = inverse * p;
+        inverse = next;
+    }
+}
+
 /// `x^-1` for a nonzero `x`, by its norm to `GF(2^64)`: `m = x^(2^64) x^(2^128)` makes `x m` the norm, whose
 /// inverse is its power `2^64 - 2`, reached through the powers `2^k - 1`.
 fn inverse<S: Scalar>(x: S) -> S {
@@ -531,19 +550,15 @@ fn inverse<S: Scalar>(x: S) -> S {
 /// A proof and what the prover keeps to open its claims.
 pub struct Proved {
     pub proof: Proof,
-    /// Whether the gate's quotient fits `G`, as it does for a witness.
-    pub fits: bool,
     pub commitments: Commitments,
     pub claims: Claims,
     pub tables: Tables,
 }
 
-/// The four tables a proof commits, which [`open`] consumes.
+/// The two tables a proof commits, which [`open`] consumes.
 pub struct Tables {
     pub witness: Committed,
-    pub h: Committed,
-    pub q: Committed,
-    pub g: Committed,
+    pub table: Committed,
 }
 
 impl Tables {
@@ -551,9 +566,7 @@ impl Tables {
     pub fn table(&self, k: usize) -> &Committed {
         match k {
             0 => &self.witness,
-            2 => &self.h,
-            3 => &self.q,
-            4 => &self.g,
+            2 => &self.table,
             _ => panic!("the wiring table is the index's"),
         }
     }
@@ -561,7 +574,7 @@ impl Tables {
 
 /// Prove `statement` from the cells of a witness, against the circuit committed as `index`, with randomness of its
 /// own, fresh per proof and never reused: a 32-byte seed from the operating system ([`fresh_seed`]), from which
-/// [`Randomness::derive`] makes the masks, the random rows and the blinding. Panics on a challenge the verifier
+/// [`Randomness::derive`] makes the random rows' words and the blinding. Panics on a challenge the verifier
 /// rejects.
 pub fn prove(circuit: &Circuit, index: &Index, commitment: &Commitment, statement: &Statement, cells: &[F64]) -> Proved {
     prove_with_seed(circuit, index, commitment, statement, cells, &fresh_seed())
@@ -579,14 +592,13 @@ pub fn prove_with_seed(
     cells: &[F64],
     seed: &[u8; 32],
 ) -> Proved {
-    let randomness =
-        tracing::info_span!("Randomness").in_scope(|| Randomness::derive(seed, commitment, statement, cells));
+    let randomness = Randomness::derive(seed, commitment, statement, cells);
     prove_with_randomness(circuit, index, commitment, statement, cells, &randomness)
 }
 
 /// [`prove`] with its randomness given. Crate-private: outside the crate, randomness reaches the prover only through
 /// [`Randomness::derive`] ([`prove`], [`prove_with_seed`]), so it cannot be reused across witnesses; the crate's
-/// tests use it to fix the masks and the padding. Panics on a challenge the verifier rejects.
+/// tests use it to fix the random rows and the blinding. Panics on a challenge the verifier rejects.
 pub(crate) fn prove_with_randomness(
     circuit: &Circuit,
     index: &Index,
@@ -595,7 +607,23 @@ pub(crate) fn prove_with_randomness(
     cells: &[F64],
     randomness: &Randomness,
 ) -> Proved {
-    let Randomness { masks, rows, blind } = randomness;
+    prove_inner(circuit, index, commitment, statement, cells, randomness, false)
+}
+
+/// The prover, honest unless `absorb`: then, as a cheating prover would, it sets the sum's polynomial on the cells to
+/// `1/d + 1/d' + μ e / (d d')`, `e` the gates' and the pins' errors times `Z / Z_R` and `Z / Z_P` there, so that the
+/// quotient is a polynomial and the identity's claim holds whatever the witness; only the sum's claim can then
+/// reject (`tests::absorbed_errors_fail_the_sum`).
+fn prove_inner(
+    circuit: &Circuit,
+    index: &Index,
+    commitment: &Commitment,
+    statement: &Statement,
+    cells: &[F64],
+    randomness: &Randomness,
+    absorb: bool,
+) -> Proved {
+    let Randomness { rows, blind } = randomness;
     assert!(
         supported(circuit.log_rows),
         "2^{} rows: the layouts take 2^{MIN_LOG_ROWS} to 2^{MAX_LOG_ROWS}",
@@ -604,75 +632,59 @@ pub(crate) fn prove_with_randomness(
     let m = cell_vars(circuit.log_rows);
     let n = 1usize << m;
     assert_eq!(cells.len(), n);
-    assert!(m > REGION + 2 && m + 3 <= domain::EXT_BASIS);
+    assert!(m + 3 <= domain::EXT_BASIS);
     let mut ps = ProverChain::new(&label(commitment, statement));
-    // The random rows: `X` and `V` (one cycle) take the row's random value.
     let mut randomized = words(n);
     copy_par(&mut randomized, cells);
-    for (&r, &value) in circuit.random_rows().iter().zip(rows) {
-        (randomized[4 * r], randomized[4 * r + 3]) = (value, value);
-    }
+    circuit.randomize(&mut randomized, rows);
     let cells = &randomized[..];
 
-    // The witness: four polynomials in the row, each with a multiple of the rows' vanishing polynomial.
+    // The witness: the cells' polynomial.
     let span = tracing::info_span!("Witness").entered();
-    // The witness table: the coefficients, then the masks, `2^(m + 1)` words, of which the lanes up to the masks'
-    // are written and committed (the rest are zero: `opening::commit_lanes`). The coefficients are written in its
-    // allocation, and the rest once the witness's values below have read them.
-    let mut w_hat = words_in(n, n + lane(m + 1));
+    let mut w_hat = words(n);
     tracing::info_span!("cells to coefficients").in_scope(|| ntt::coefficients_from(cells, &mut w_hat, F64::ZERO));
-    let mut mask = [F64::ZERO; 16];
-    for (j, coeffs) in masks.iter().enumerate() {
-        for (i, &coeff) in coeffs.iter().enumerate() {
-            mask[4 * i + j] = coeff;
-        }
-    }
 
-    // The witness's values on the quotients' coset, four times the cells: four cosets of the cells' size, offset by
+    // The witness's values on the quotient's coset, twice the cells: two cosets of the cells' size, offset by
     // `B(k n)`. They do not depend on the challenges: made here, while the coefficients are at hand.
-    let big = 4 * n;
+    let big = 2 * n;
     let offset = coset(m);
-    let offsets = chain(offset, m + 1);
     let mut values = words(big);
     // The transforms in two parts where the cells are many: the layers above a leaf a pass over memory each, and
-    // each leaf's own layers in the block-wise loop below, around the quotients' values, a block in cache.
+    // each leaf's own layers in the block-wise loop below, around the quotient's values, a block in cache.
     let fused = n >= ntt::LEAF_WORDS;
-    // The values on the four quarters of `coeffs + X_n extra` (`extra`'s coefficients from `n` on): `coeffs` with
-    // `extra` times `X_n`'s value on each quarter's coset added to its leading words ([`top_layers`]). Fused, one
-    // pass reads `coeffs` for the four quarters' first layers; else `coeffs` holds each quarter's input in turn.
-    let quarter_offsets: [F64; 4] = std::array::from_fn(|k| quarter_offset(offset, n, k));
-    let four_quarters = |coeffs: &mut [F64], extra: &[F64], out: &mut [F64]| {
-        let heads: [Vec<F64>; 4] =
-            std::array::from_fn(|k| extra.iter().map(|&c| top_layers(offset, m, k) * c).collect());
-        let mut quarters: Vec<&mut [F64]> = out.chunks_exact_mut(n).collect();
+    // The values on the two halves of `coeffs + X_n extra` (`extra`'s coefficients from `n` on): `coeffs` with
+    // `extra` times `X_n`'s value on each half's coset added to its leading words ([`top_layer`]). Fused, one pass
+    // reads `coeffs` for both halves' first layers; else `coeffs` holds each half's input in turn.
+    let half_offsets: [F64; 2] = std::array::from_fn(|k| half_offset(offset, n, k));
+    let two_halves = |coeffs: &mut [F64], extra: &[F64], out: &mut [F64]| {
+        let heads: [Vec<F64>; 2] = std::array::from_fn(|k| extra.iter().map(|&c| top_layer(offset, m, k) * c).collect());
+        let mut halves: Vec<&mut [F64]> = out.chunks_exact_mut(n).collect();
         if fused {
             let heads: Vec<&[F64]> = heads.iter().map(|h| &h[..]).collect();
-            ntt::values_upper_many(coeffs, &heads, &mut quarters, &quarter_offsets);
+            ntt::values_upper_many(coeffs, &heads, &mut halves, &half_offsets);
         } else {
-            for ((quarter, head), &at) in quarters.into_iter().zip(&heads).zip(&quarter_offsets) {
+            for ((half, head), &at) in halves.into_iter().zip(&heads).zip(&half_offsets) {
                 add_scaled(coeffs, head, F64::ONE);
-                ntt::values_from(coeffs, quarter, at);
+                ntt::values_from(coeffs, half, at);
                 add_scaled(coeffs, head, F64::ONE);
             }
         }
     };
-    // The mask's coefficients, from `n` on, times the cells' vanishing polynomial `X_n`.
-    tracing::info_span!("witness values").in_scope(|| four_quarters(&mut w_hat, &mask, &mut values));
-    let mut table = w_hat;
-    table.resize(n + lane(m + 1), F64::ZERO);
-    table[n..n + 16].copy_from_slice(&mask);
-    let witness = tracing::info_span!("Commit").in_scope(|| opening::commit_lanes(table, m + 1));
+    tracing::info_span!("witness values").in_scope(|| two_halves(&mut w_hat, &[], &mut values));
+    let witness = tracing::info_span!("Commit").in_scope(|| opening::commit(w_hat));
     ps.send_root(&witness.root);
     ps.send(witness.ood);
     drop(span);
-    let [alpha, beta_, gamma] = [(); 3].map(|_| ps.sample());
+    let [alpha, beta_, mu] = [(); 3].map(|_| ps.sample());
 
-    // The sum's polynomial on the cells, its coefficients a limb at a time, written in the table `H` ([`h_limbs`]).
+    // The sum's polynomial on the cells, its coefficients a limb at a time, written in the quotient table's slots
+    // for `h` ([`table_slot`]): limb `e` at `table_slot(1, e, n)`.
     let span = tracing::info_span!("Sum").entered();
     let inner = tracing::info_span!("inverses").entered();
-    let mut h_table = words(6 * n);
+    let mut table = words(16 * n);
+    let (quotients, rest) = table.split_at_mut(4 * big);
     {
-        let [h0, h1, h2] = h_limbs(&mut h_table, n);
+        let [h0, h1, h2] = h_slots(rest, n);
         let (alpha8, beta8) = (Ex8::splat(alpha), Ex8::splat(beta_));
         let beta_points = Ex8::from_limbs(limbs8(&std::array::from_fn(|l| beta_.mul_base(point(l)))));
         parallel::chunks_mut3(h0, h1, h2, 1 << 12, |chunk_index, h0, h1, h2| {
@@ -710,35 +722,47 @@ pub(crate) fn prove_with_randomness(
                     h[8 * s..8 * s + 8].copy_from_slice(&c.to_row().0);
                 }
             }
-            for k in 0..h0.len().min((1usize << REGION).saturating_sub(base)) {
-                let public = public_weight(base + k, gamma).mul_base(cells[base + k]);
-                (h0[k], h1[k], h2[k]) = (h0[k] + F64(public.c0), h1[k] + F64(public.c1), h2[k] + F64(public.c2));
-            }
         });
     }
     drop(inner);
+    if absorb {
+        // `e` at a row's first cell: the gate times `Z / Z_R = Z' / Z_R'` there, the linearized polynomials'
+        // linear coefficients `1` and `Σ τ`; at pin `k`: `w + v_k` times `Z / Z_P = λ_k`.
+        let row_weight = row_vanishing(m).iter().fold(F64::ZERO, |acc, &t| acc + t).inv();
+        let (_, lambda) = pins();
+        let values = anchor_values(&statement.words());
+        let mut errors: Vec<(usize, F64)> = (0..n / 4)
+            .map(|r| (4 * r, gate(std::array::from_fn(|c| cells[4 * r + c])) * row_weight))
+            .collect();
+        errors.extend((0..PUBLIC_ROWS).map(|k| (anchor_cell(k), (cells[anchor_cell(k)] + values[k]) * lambda[k])));
+        for (x, e) in errors.into_iter().filter(|(_, e)| !e.is_zero()) {
+            let w = F192::from(cells[x]);
+            let d = alpha + w + beta_.mul_base(point(x));
+            let d_next = alpha + w + beta_.mul_base(point(circuit.sigma[x] as usize));
+            let add = mu.mul_base(e) * (d * d_next).inv();
+            for (h, c) in h_slots(rest, n).into_iter().zip([add.c0, add.c1, add.c2]) {
+                h[x] += F64(c);
+            }
+        }
+    }
     drop(randomized);
     tracing::info_span!("coefficients")
-        .in_scope(|| h_limbs(&mut h_table, n).into_iter().for_each(|h| ntt::coefficients(h, F64::ZERO)));
+        .in_scope(|| h_slots(rest, n).into_iter().for_each(|h| ntt::coefficients(h, F64::ZERO)));
     drop(span);
 
-    // Both quotients, on the coset of the witness's values.
+    // The quotient, on the coset of the witness's values, written into the quotient table's slots for `q`'s limbs
+    // ([`table_slot`]), which hold `h`'s values first.
     let span = tracing::info_span!("Quotients").entered();
-    // `q_limbs`, the quotients' limbs, which become the table `Q`; `q_gate`, the gate's quotient, whose first half
-    // becomes the table `G`.
-    let mut q_limbs = words(3 * big);
-    let mut q_gate = words(big);
     let sigma_values = index.sigma_values();
     tracing::info_span!("sum values").in_scope(|| {
-        let h_limbs = h_limbs(&mut h_table, n);
         // `h + X_n b`: the blinding's coefficients, from `n` on.
-        for ((h, column), blind) in h_limbs.into_iter().zip(q_limbs.chunks_exact_mut(big)).zip(blind) {
-            four_quarters(h, blind, column);
+        for ((h, column), blind) in h_slots(rest, n).into_iter().zip(quotients.chunks_exact_mut(big)).zip(blind) {
+            two_halves(h, blind, column);
         }
     });
 
     let inner = tracing::info_span!("quotient values").entered();
-    let (b, tau) = (coordinates(REGION), row_vanishing(m));
+    let tau = row_vanishing(m);
     let row_poly = |x: F64| {
         chain(x, m - 1)
             .iter()
@@ -746,95 +770,84 @@ pub(crate) fn prove_with_randomness(
             .fold(F64::ZERO, |acc, (&w, &t)| acc + t * w)
     };
     let row_low: [F64; 4] = std::array::from_fn(|c| row_poly(point(c)));
-    let gammas = [gamma, gamma * gamma, (gamma * gamma) * (gamma * gamma)];
+    let offsets = chain(offset, m + 1);
     let (alpha8, beta8) = (Ex8::splat(alpha), Ex8::splat(beta_));
     let beta_points = Ex8::from_limbs(limbs8(&std::array::from_fn(|l| beta_.mul_base(point(l)))));
-    // The quotients' values on the `2^REGION` cells from `base`: `w` the witness's values there, `q` the sum's
-    // limbs (overwritten with `q`'s), `q_gate` the gate's quotient's.
-    let quotient_block = |base: usize, w_values: &[F64], q: [&mut [F64]; 3], q_gate: &mut [F64]| {
-        let w_at = |k: usize| offsets[k] + point(base >> k);
-        // The public weight on this block: its region coordinates are the low index's bits, shifted. The weight of
-        // cell `j` is `indicator · Π_k f_k(bit k of j)`, a tensor product over the region's coordinates, kept as the
-        // eight weights of its three lowest (`lo`, with the cell's word) times one of 256 of the others (`hi`, with
-        // its eight cells): the same products, a quarter of a multiplication a cell to make.
-        let indicator = (REGION..m).fold(F64::ONE, |acc, k| acc * (F64::ONE + w_at(k)));
-        let weights = (!indicator.is_zero()).then(|| {
-            let tensor = |init: F192, coordinates: std::ops::Range<usize>| {
-                let mut t = vec![init];
-                for k in coordinates {
-                    let shift = (k..REGION).fold(F64::ZERO, |acc, j| acc + b[j - k] * w_at(j));
-                    let slope = F192::ONE + coordinate_weight(k).unwrap_or_else(|| gammas[k - 8]);
-                    let low = F192::ONE + slope.mul_base(shift);
-                    for i in 0..t.len() {
-                        t.push(t[i] * (low + slope));
-                        t[i] *= low;
-                    }
-                }
-                t
-            };
-            let lo: [F192; 8] = tensor(F192::ONE, 0..3).try_into().expect("eight weights");
-            (Ex8::from_limbs(limbs8(&lo)), tensor(F192::from(indicator), 3..REGION))
-        });
-        let cell_vanishing = w_at(m).inv();
+    let lane_points = Kx8::new(std::array::from_fn(point));
+    let mu8 = Ex8::splat(mu);
+    // The pins: their points, and the public values' interpolant on them.
+    let (pin_points, _) = pins();
+    let interpolant = pin_interpolant(&anchor_values(&statement.words()));
+    // The quotient's values on the `len` points from `base`: `w` the witness's values there, `q` the sum's limbs
+    // (overwritten with `q`'s): `(h d d' + d + d') / Z + μ g`, `g` the gates' and pins' quotient.
+    let quotient_block = |base: usize, w_values: &[F64], q: [&mut [F64]; 3]| {
+        let len = w_values.len();
+        let cell_vanishing = (offsets[m] + point(base >> m)).inv();
         let row_base = row_poly(offset + point(base));
         let row_vanishing: [F64; 4] = std::array::from_fn(|c| (row_base + row_low[c]).inv());
-        // Eight cells at a time, lane `l` the `l`-th: `B(i + l) = B(i) + B(l)` for `i` a multiple of eight.
+        // Eight points at a time, lane `l` the `l`-th: `B(i + l) = B(i) + B(l)` for `i` a multiple of eight.
         let (cell_vanishing, row_vanishing) = (
             Kx8::splat(cell_vanishing),
             Kx8::new(std::array::from_fn(|l| row_vanishing[l & 3])),
         );
         let limb = |x: &[F64]| Kx8::load(x);
         let [q0, q1, q2] = q;
-        for low in (0..1 << REGION).step_by(8) {
+        let mut gates = Vec::with_capacity(len / 8);
+        let mut pinned = Vec::with_capacity(len / 8);
+        let mut z_pins = Vec::with_capacity(len / 8);
+        for low in (0..len).step_by(8) {
             let i = base + low;
+            let x = Kx8::splat(offset + point(i)) + lane_points;
             let w = limb(&w_values[low..]);
             let common = alpha8 + Ex8::from_k(w);
             let d = common + Ex8::splat(beta_.mul_base(offset + point(i))) + beta_points;
             let d_next = common + beta8.mul_k(limb(&sigma_values[i..]));
-            let mut q = Ex8::from_limbs([limb(&q0[low..]), limb(&q1[low..]), limb(&q2[low..])]);
-            if let Some((lo, hi)) = &weights {
-                q = q + lo.mul_k(w) * Ex8::splat(hi[low >> 3]);
-            }
-            let [c0, c1, c2] = ((q * d * d_next + d + d_next).mul_k(cell_vanishing)).limbs();
+            let h = Ex8::from_limbs([limb(&q0[low..]), limb(&q1[low..]), limb(&q2[low..])]);
+            let [c0, c1, c2] = ((h * d * d_next + d + d_next).mul_k(cell_vanishing)).limbs();
             for (out, c) in [&mut q0[..], &mut q1[..], &mut q2[..]].into_iter().zip([c0, c1, c2]) {
                 out[low..low + 8].copy_from_slice(&c.to_row().0);
             }
             let row = [w, w.xor_lanes(1), w.xor_lanes(2), w.xor_lanes(3)];
-            q_gate[low..low + 8].copy_from_slice(&(gate(row) * row_vanishing).to_row().0);
+            gates.push(gate(row) * row_vanishing);
+            // `w + v` and `Z_P` at the eight points.
+            let v = interpolant.iter().rev().fold(Kx8::splat(F64::ZERO), |acc, &c| acc * x + Kx8::splat(c));
+            pinned.push(w + v);
+            z_pins.push(pin_points.iter().fold(Kx8::splat(F64::ONE), |acc, &p| acc * (x + Kx8::splat(p))));
+        }
+        batch_inverse_k(&mut z_pins);
+        for (s, ((&gate, &num), &inv)) in gates.iter().zip(&pinned).zip(&z_pins).enumerate() {
+            let at = 8 * s;
+            let copy = Ex8::from_limbs([limb(&q0[at..]), limb(&q1[at..]), limb(&q2[at..])]);
+            let [c0, c1, c2] = (copy + mu8.mul_k(gate + num * inv)).limbs();
+            for (out, c) in [&mut q0[..], &mut q1[..], &mut q2[..]].into_iter().zip([c0, c1, c2]) {
+                out[at..at + 8].copy_from_slice(&c.to_row().0);
+            }
         }
     };
-    let block = if fused { ntt::LEAF_WORDS } else { 1 << REGION };
+    let block = if fused { ntt::LEAF_WORDS } else { n.min(1 << 11) };
     let w_ptr = parallel::SendPtr(values.as_mut_ptr());
-    let (q_ptr, gate_ptr) = (parallel::SendPtr(q_limbs.as_mut_ptr()), parallel::SendPtr(q_gate.as_mut_ptr()));
+    let q_ptr = parallel::SendPtr(quotients.as_mut_ptr());
     parallel::for_each(big / block, |task| {
         let start = task * block;
-        // SAFETY: the words `start..start + block` of each of the five columns are this task's alone.
-        let (w, mut q, gate) = unsafe {
+        // SAFETY: the words `start..start + block` of each of the four columns are this task's alone.
+        let (w, mut q) = unsafe {
             (
                 w_ptr.slice(start, block),
                 [0, 1, 2].map(|limb| q_ptr.slice(limb * big + start, block)),
-                gate_ptr.slice(start, block),
             )
         };
         if fused {
             let k = start / n;
-            let at = quarter_offset(offset, n, k);
+            let at = half_offset(offset, n, k);
             ntt::values_leaf(w, start - k * n, n, at);
             q.iter_mut().for_each(|q| ntt::values_leaf(q, start - k * n, n, at));
         }
-        for r in (0..block).step_by(1 << REGION) {
-            let run = r..r + (1 << REGION);
+        {
             let [q0, q1, q2] = &mut q;
-            quotient_block(
-                start + r,
-                &w[run.clone()],
-                [&mut q0[run.clone()], &mut q1[run.clone()], &mut q2[run.clone()]],
-                &mut gate[run],
-            );
+            quotient_block(start, w, [&mut q0[..], &mut q1[..], &mut q2[..]]);
         }
         if fused {
             q.iter_mut().for_each(|q| ntt::coefficients_leaf(q, start, big, offset));
-            ntt::coefficients_leaf(gate, start, big, offset);
         }
     });
     drop(inner);
@@ -845,129 +858,52 @@ pub(crate) fn prove_with_randomness(
             ntt::coefficients(column, offset)
         }
     };
-    tracing::info_span!("quotient coefficients").in_scope(|| q_limbs.chunks_exact_mut(big).for_each(backward));
-    tracing::info_span!("gate coefficients").in_scope(|| backward(&mut q_gate));
-
+    tracing::info_span!("quotient coefficients")
+        .in_scope(|| quotients[..3 * big].chunks_exact_mut(big).for_each(backward));
     drop(values);
 
-    // The quotient table's three parts ([`quotient_parts`]), each written up to its last lane that can be nonzero
-    // and committed as such (`opening::commit_lanes`: the commitment of the whole table, its other words zero).
-    // `G`, the gate's quotient's first `2^(m + 1)` coefficients: for a witness it has no others; for anything else
-    // what `G` leaves out is dropped, and the claims are then false. `Q`, the copy quotient's limbs, `4·2^m`
-    // coefficients each. `H`, the sum's polynomial's limbs with their blinding ([`h_limbs`]), without its last
-    // quarter (limb 3, zero).
+    // `q`'s empty limb; `h`'s blinding after each of its limbs, then the empty limb. The commitment leaves the zero
+    // lanes out of the encoding (`opening::commit`: 25 of `T`'s 64), and the trailing ones out of the table.
     let inner = tracing::info_span!("tables").entered();
-    let fits = all_zero(&q_gate[2 * n..]);
-    let mut g_table = q_gate;
-    g_table.truncate(2 * n);
-    g_table.shrink_to_fit();
-    let q_table = q_limbs;
-    for (limb, blinding) in h_table.chunks_exact_mut(n).skip(1).step_by(2).enumerate() {
-        zero_par(blinding);
-        blinding[..H_BLIND].copy_from_slice(&blind[limb]);
+    zero_par(&mut quotients[3 * big..]);
+    for (limb, digit) in rest[..3 * big].chunks_exact_mut(n).skip(1).step_by(2).enumerate() {
+        zero_par(digit);
+        digit[..H_BLIND].copy_from_slice(&blind[limb]);
     }
+    zero_par(&mut rest[3 * big..]);
     drop(inner);
-    // Committed largest first, the memory of each commitment's encoding buffer, freed, then serving the next's;
-    // their roots and answers sent in the transcript's order, `H`, `Q`, `G`. (`H`, opened twice, could keep its
-    // codeword for its openings, which would not encode its queried rows again: 1.3 GiB held through the openings,
-    // whose own buffers then map fresh memory, for no gain: `docs/membership/PERF_PROVER.md`.)
-    let [_, _, h_vars, q_vars, g_vars] = table_vars(circuit.log_rows);
-    let commit =
-        |table: Vec<F64>, vars: usize| tracing::info_span!("Commit").in_scope(|| opening::commit_lanes(table, vars));
-    let q = commit(q_table, q_vars);
-    let h = commit(h_table, h_vars);
-    let g = commit(g_table, g_vars);
-    for committed in [&h, &q, &g] {
-        ps.send_root(&committed.root);
-        ps.send(committed.ood);
-    }
+    let table = tracing::info_span!("Commit").in_scope(|| opening::commit(table));
+    ps.send_root(&table.root);
+    ps.send(table.ood);
     drop(span);
+
     let t = ps.sample();
-    let digits: Vec<F192> = std::iter::successors(Some(t), |&w| Some(w * w + w))
-        .take(m + 1)
-        .collect();
-    let span = tracing::info_span!("Evaluations").entered();
-    let at = evaluate_interleaved(&witness.words()[..n], 4, &digits[2..m]);
-    let a: [F192; 4] = std::array::from_fn(|j| at[j] + digits[m] * domain::evaluate(&mask, j, 4, &digits[2..4]));
+    let digits: Vec<F192> = std::iter::successors(Some(t), |&w| Some(w * w + w)).take(m).collect();
+    let a = evaluate_interleaved(witness.words(), 4, &digits[2..m]);
     a.iter().for_each(|&x| ps.send(x));
     let next = evaluate_interleaved(index.sigma(), 1, &digits[..m])[0];
     ps.send(next);
-
-    // `Q`'s and `G`'s values at their points, which the verifier's reduction computes after `ρ`: replayed on the
-    // proof so far, evaluated, sent.
     ps.sample();
-    let partial = ps.clone().into_proof();
-    let mut replay = Replay {
-        stream: Stream {
-            chain: VerifierChain::new(&label(commitment, statement), &partial),
-            statement: *statement,
-        },
-        tables: [q.words(), g.words()],
-        values: None,
-    };
-    tracing::info_span!("Replay").in_scope(|| reduce(&mut replay, circuit.log_rows).expect("a challenge to reject"));
-    let [v_q, v_g] = replay.values.expect("the part values");
-    ps.send(v_q);
-    ps.send(v_g);
 
     let proof = ps.into_proof();
-    drop(span);
     let (commitments, claims) = verify(commitment, statement, &proof, circuit.log_rows).expect("a challenge to reject");
     Proved {
         proof,
-        fits,
         commitments,
         claims,
-        tables: Tables { witness, h, q, g },
+        tables: Tables { witness, table },
     }
 }
 
-/// The prover's replay of the reduction on its proof so far, which evaluates `Q` and `G` where the reduction asks.
-struct Replay<'a> {
-    stream: Stream<'a>,
-    tables: [&'a [F64]; 2],
-    values: Option<[F192; 2]>,
-}
-
-impl Channel<F192> for Replay<'_> {
-    fn statement(&mut self) -> [F192; 4] {
-        self.stream.statement()
-    }
-
-    fn next_root(&mut self) -> Result<[F192; 2], TranscriptError> {
-        self.stream.next_root()
-    }
-
-    fn next(&mut self) -> Result<F192, TranscriptError> {
-        self.stream.next()
-    }
-
-    fn sample(&mut self) -> F192 {
-        self.stream.sample()
-    }
-
-    fn part_values(&mut self, q_point: &[F192], g_point: &[F192]) -> Result<[F192; 2], TranscriptError> {
-        let values = [opening::evaluate(self.tables[0], q_point), opening::evaluate(self.tables[1], g_point)];
-        self.values = Some(values);
-        Ok(values)
-    }
-
-    fn finish(&mut self) -> Result<(), TranscriptError> {
-        self.stream.finish()
-    }
-}
-
-/// What [`reduce`] leaves: the four commitments, each as its root's two scalars and its out-of-domain answer (the
-/// witness table, `H`, `Q`, `G`), and the six claims as a point and a value.
+/// What [`reduce`] leaves: the two commitments, each as its root's two scalars and its out-of-domain answer (the
+/// witness table, the quotient table), and the claims as a point and a value.
 pub struct Reduced<S> {
-    pub roots: [[S; 2]; 4],
-    pub oods: [S; 4],
+    pub roots: [[S; 2]; 2],
+    pub oods: [S; 2],
     pub witness: (Vec<S>, S),
     pub wiring: (Vec<S>, S),
-    pub h: (Vec<S>, S),
-    pub q: (Vec<S>, S),
-    pub g: (Vec<S>, S),
-    /// The value of the claim on `H` at [`sum_point`].
+    pub copy: (Vec<S>, S),
+    /// The value of the claim at [`sum_point`]: zero.
     pub sum: S,
 }
 
@@ -979,14 +915,12 @@ pub fn reduce<S: Scalar>(channel: &mut impl Channel<S>, log_rows: usize) -> Resu
     let base = |x: F64| S::constant(F192::from(x));
     let one = S::constant(F192::ONE);
 
-    let statement = channel.statement();
+    let public = channel.statement();
     let witness_root = channel.next_root().map_err(transcript)?;
     let witness_ood = channel.next().map_err(transcript)?;
-    let [alpha, beta_, gamma] = [(); 3].map(|_| channel.sample());
-    let mut parts = [(witness_root, witness_ood); 3];
-    for part in &mut parts {
-        *part = (channel.next_root().map_err(transcript)?, channel.next().map_err(transcript)?);
-    }
+    let [alpha, beta_, mu] = [(); 3].map(|_| channel.sample());
+    let table_root = channel.next_root().map_err(transcript)?;
+    let table_ood = channel.next().map_err(transcript)?;
     let t = channel.sample();
     let mut a = [t; 4];
     for value in &mut a {
@@ -994,10 +928,11 @@ pub fn reduce<S: Scalar>(channel: &mut impl Channel<S>, log_rows: usize) -> Resu
     }
     let next = channel.next().map_err(transcript)?;
     let rho = channel.sample();
+    channel.finish().map_err(transcript)?;
 
-    // `w_k(t)`, up to the two digits past the cells.
+    // `w_k(t)`, up to the digit past the cells: `w_m = Z`, the cells' vanishing polynomial.
     let mut w = vec![t];
-    for k in 0..m + 1 {
+    for k in 0..m {
         w.push(w[k] * w[k] + w[k]);
     }
 
@@ -1016,35 +951,22 @@ pub fn reduce<S: Scalar>(channel: &mut impl Channel<S>, log_rows: usize) -> Resu
     let x = row[0];
     let gate = gate(row);
 
-    // The public weight at `t`, and what the weighted public bits must sum to.
-    let b = coordinates(REGION);
-    let gamma2 = gamma * gamma;
-    let gammas = [gamma, gamma2, gamma2 * gamma2];
-    let mut public = (REGION..m).fold(one, |acc, k| acc * (one + w[k]));
-    for k in 0..REGION {
-        let coordinate = (k + 1..REGION).fold(w[k], |acc, j| acc + base(b[j - k]) * w[j]);
-        let slope = match coordinate_weight(k) {
-            Some(weight) => S::constant(F192::ONE + weight),
-            None => one + gammas[k - 8],
-        };
-        public = public * (one + coordinate * slope);
-    }
-    let target = statement[0] + gamma * statement[1] + gamma2 * (statement[2] + gamma * statement[3]) + gammas[2];
-
     let tau = row_vanishing(m);
     let rows = (0..m - 1).fold(S::constant(F192::ZERO), |acc, k| acc + base(tau[k]) * w[k]);
     let (d, d_next) = (alpha + x + beta_ * t, alpha + x + beta_ * next);
     let product = d * d_next;
-    let copies = d + d_next + public * x * product;
+    let z = w[m];
+    let (pin_points, lambda) = pins();
 
-    // One inversion: of every `1 + w_k`, of the copy identity's denominator, and of the rows' polynomial.
+    // One inversion: of every `1 + w_k`, of the copy identity's `Z + d d'`, of the rows' polynomial, and of every
+    // `t + p_k`.
     let mut denominators: Vec<S> = w.iter().map(|&w| one + w).collect();
-    denominators.extend([product + w[m], rows, product, one + rho]);
+    denominators.extend([z + product, rows]);
+    denominators.extend(pin_points.iter().map(|&p| t + base(p)));
     let mut prefix = vec![one];
     for &value in &denominators {
         prefix.push(*prefix.last().unwrap() * value);
     }
-    // (`product` is the copy identity's, used below.)
     let all = prefix[denominators.len()];
     if !all.is_nonzero() {
         return Err(VerifyError::Degenerate);
@@ -1055,39 +977,46 @@ pub fn reduce<S: Scalar>(channel: &mut impl Channel<S>, log_rows: usize) -> Resu
         inverses[i] = running * prefix[i];
         running = running * denominators[i];
     }
-    let u: Vec<S> = (0..m + 2).map(|k| w[k] * inverses[k]).collect();
-    let (copy_inverse, rows_inverse) = (inverses[m + 2], inverses[m + 3]);
-    let (product_inverse, rho_inverse) = (inverses[m + 4], inverses[m + 5]);
+    let u: Vec<S> = (0..m + 1).map(|k| w[k] * inverses[k]).collect();
+    let (copy_inverse, rows_inverse) = (inverses[m + 1], inverses[m + 2]);
+    let pin_inverses = &inverses[m + 3..];
     let middle = (3..m).fold(inverses[2], |acc, k| acc * inverses[k]);
     let wiring_scale = middle * inverses[0] * inverses[1];
-    let quotient_scale = wiring_scale * inverses[m] * inverses[m + 1];
+    let table_scale = wiring_scale * inverses[m];
+
+    // `g(t) = gate / Z_R + (w + v) / Z_P`, `v / Z_P = Σ_k v_k λ_k / (t + p_k)`: the words, then the constants
+    // `0` (no term), `1` and `3`.
+    let values = anchor_values(&[F64::ZERO; PUBLIC_WORDS]);
+    let mut pinned = x * pin_inverses.iter().fold(one, |acc, &inv| acc * inv);
+    for k in 0..PUBLIC_ROWS {
+        let weight = if k < PUBLIC_WORDS {
+            public[k] * base(lambda[k])
+        } else if values[k].is_zero() {
+            continue;
+        } else {
+            base(lambda[k] * values[k])
+        };
+        pinned = pinned + weight * pin_inverses[k];
+    }
+    debug_assert_eq!(values[PUBLIC_ROWS - 1], THREE);
+    let g_value = gate * rows_inverse + pinned;
+
+    // The identity's combination: `(1 + κ) q + κ h` with `κ = d d' / (Z + d d')` is
+    // `(Z q + d d' h) / (Z + d d') = (d + d' + μ Z g) / (Z + d d')`.
+    let ([_, _], scale) = extension();
+    let scale = S::constant(scale);
+    let kappa = product * copy_inverse;
+    let copy_value = scale * table_scale * (d + d_next + mu * z * g_value) * copy_inverse;
 
     let rho2 = rho * rho;
     let opened = (one + rho2) * (a[0] + rho * (a[0] + a[1])) + rho2 * (a[2] + rho * (a[2] + a[3]));
-    let ([y0, y1], scale) = extension();
-    let scale = S::constant(scale);
-    let identities = (one + rho) * copies * rows + rho * product * gate;
-
-    // The quotient table's claim, through its parts: `Q`'s and `G`'s values are the proof's last scalars, `H`'s
-    // follows from `T(P) = w_H H + w_Q Q + w_G G`, with `w_H^-1 = (1 + w_(m+1)) (product + w_m) / (product (1 + ρ))`.
-    let quotient_point = [&u[..], &[w[m] * copy_inverse, rho, S::constant(y0), S::constant(y1)]].concat();
-    let quotient_value = scale * quotient_scale * copy_inverse * rows_inverse * identities;
-    let [(h_point, _), (q_point, q_weight), (g_point, g_weight)] = quotient_parts(&quotient_point, m);
-    let [q_value, g_value] = channel.part_values(&q_point, &g_point).map_err(transcript)?;
-    channel.finish().map_err(transcript)?;
-    let h_inverse = (one + w[m + 1]) * (product + w[m]) * product_inverse * rho_inverse;
-    let h_value = (quotient_value + q_weight * q_value + g_weight * g_value) * h_inverse;
-    let [(_, h_ood), (_, q_ood), (_, g_ood)] = parts;
-    let [(h_root, _), (q_root, _), (g_root, _)] = parts;
     Ok(Reduced {
-        roots: [witness_root, h_root, q_root, g_root],
-        oods: [witness_ood, h_ood, q_ood, g_ood],
-        witness: ([&[rho, rho2][..], &u[2..m + 1]].concat(), opened * middle * inverses[m]),
+        roots: [witness_root, table_root],
+        oods: [witness_ood, table_ood],
+        witness: ([&[rho, rho2][..], &u[2..m]].concat(), opened * middle),
         wiring: (u[..m].to_vec(), next * wiring_scale),
-        h: (h_point, h_value),
-        q: (q_point, q_value),
-        g: (g_point, g_value),
-        sum: scale * target,
+        copy: (copy_point(&u, kappa), copy_value),
+        sum: S::constant(F192::ZERO),
     })
 }
 
@@ -1098,8 +1027,8 @@ pub struct Stream<'a> {
 }
 
 impl Channel<F192> for Stream<'_> {
-    fn statement(&mut self) -> [F192; 4] {
-        self.statement.halves()
+    fn statement(&mut self) -> [F192; PUBLIC_WORDS] {
+        self.statement.words().map(F192::from)
     }
 
     fn next_root(&mut self) -> Result<[F192; 2], TranscriptError> {
@@ -1119,8 +1048,8 @@ impl Channel<F192> for Stream<'_> {
     }
 }
 
-/// Verify a proof of `statement` against the circuit committed as `index`, down to the four commitments it names
-/// and six claims: it holds if every claim holds on its commitment (one opening a claim, [`verify_openings`]).
+/// Verify a proof of `statement` against the circuit committed as `index`, down to the two commitments it names
+/// and four claims: it holds if every claim holds on its commitment (one opening a claim, [`verify_openings`]).
 pub fn verify(
     index: &Commitment,
     statement: &Statement,
@@ -1152,23 +1081,21 @@ pub fn verify_reduction(
     let mut commitments = [Commitment {
         root: [0; 32],
         ood: F192::ZERO,
-    }; 4];
+    }; 2];
     for (c, (root, &ood)) in commitments.iter_mut().zip(reduced.roots.iter().zip(&reduced.oods)) {
         *c = Commitment {
             root: halves_root(root).map_err(VerifyError::Transcript)?,
             ood,
         };
     }
-    let [witness, h, q, g] = commitments;
+    let [witness, table] = commitments;
     let claim = |(point, value)| Claim { point, value };
     Ok((
-        Commitments { witness, h, q, g },
+        Commitments { witness, table },
         Claims {
             witness: claim(reduced.witness),
             wiring: claim(reduced.wiring),
-            h: claim(reduced.h),
-            q: claim(reduced.q),
-            g: claim(reduced.g),
+            copy: claim(reduced.copy),
             sum: Claim {
                 point: sum_point(log_rows),
                 value: reduced.sum,
@@ -1177,8 +1104,8 @@ pub fn verify_reduction(
     ))
 }
 
-/// The openings of a proof's six claims, in the order of [`Claims::all`].
-pub struct Openings(pub [opening::Proof; 6]);
+/// The openings of a proof's four claims, in the order of [`Claims::all`].
+pub struct Openings(pub [opening::Proof; 4]);
 
 /// Open a proof's `claims` on the tables it committed. The wiring's opening is about public data: anyone can make
 /// it; the index's kept codeword ([`Index::commit`]) serves it and is kept for the next proof's.
@@ -1227,7 +1154,7 @@ pub fn digest(proof: &Proof, openings: &Openings) -> Hash {
     primitives::hash::hash(&bytes)
 }
 
-/// Check the openings of the six claims against the commitments they name.
+/// Check the openings of the four claims against the commitments they name.
 pub fn verify_openings(
     log_rows: usize,
     index: &Commitment,
@@ -1238,7 +1165,7 @@ pub fn verify_openings(
     if !supported(log_rows) {
         return Err(verifier::VerifierError::WhirShape);
     }
-    let on = [&commitments.witness, index, &commitments.h, &commitments.q, &commitments.g];
+    let on = [&commitments.witness, index, &commitments.table];
     for ((k, claim), proof) in claims.all().into_iter().zip(&openings.0) {
         opening::verify(on[k], claim, proof)?;
     }
@@ -1299,16 +1226,16 @@ pub(crate) mod tests {
         std::array::from_fn(|_| rng.next_u8())
     }
 
-    fn truth(index: &Index, proved: &Proved) -> [bool; 6] {
+    fn truth(index: &Index, proved: &Proved) -> [bool; 4] {
         proved.claims.all().map(|(k, claim)| {
             let words = if k == 1 { &index.table[..] } else { proved.tables.table(k).words() };
             opening::evaluate(words, &claim.point) == claim.value
         })
     }
 
-    /// The prover's output, pinned: the proof and its six openings on the toy circuit, so a change to how the
-    /// prover computes cannot change a byte of what it proves. (Before the EIP's PCS claims, with the hidden
-    /// layouts, the pin was `8e39cf6a…`.)
+    /// The prover's output, pinned: the proof and its four openings on the toy circuit, so a change to how the
+    /// prover computes cannot change a byte of what it proves. (Before the one quotient table, with six claims on
+    /// four commitments, the pin was `114bb485…`; before the EIP's PCS claims, `8e39cf6a…`.)
     #[test]
     fn proofs_are_pinned() {
         let mut rng = Rng::new(0x1D);
@@ -1326,11 +1253,39 @@ pub(crate) mod tests {
             .iter()
             .map(|b| format!("{b:02x}"))
             .collect();
-        assert_eq!(hex, "114bb48504f9c256c38318bfd0736ab1b391d6c732b4c16fa387a50c50283ca4");
+        assert_eq!(hex, "c9938962d4d281fa556b53474652d93bbe6f33c308507b0561bb0b1fdba3d538");
     }
 
-    /// On a small circuit: an honest proof leaves six true claims that open, and a witness that breaks one gate,
-    /// one copy, one input's range or one public bit leaves a false one.
+    /// The quotient table holds what [`table_slot`] says, for a witness: `h`'s top coefficient zero in every limb
+    /// (the copy argument's sum over the cells), its blinding past its `n` coefficients and nothing after, `q` of
+    /// degree `2 n - 1`, and the empty limbs empty.
+    #[test]
+    fn the_quotient_table_is_laid_out() {
+        let mut rng = Rng::new(0x7A);
+        let circuit = toy();
+        let index = Index::new(&circuit);
+        let commitment = Commitment::of(&index.commit());
+        let x: [u8; 32] = std::array::from_fn(|_| rng.next_u64() as u8);
+        let statement = toy_statement(&x);
+        let cells = toy_cells(&circuit, &x);
+        let proved = prove(&circuit, &index, &commitment, &statement, &cells);
+        let n = 1 << cell_vars(circuit.log_rows);
+        // The committed words are the table's up to its last nonzero lane: the rest zero.
+        let mut words = proved.tables.table.words().to_vec();
+        assert!(words.len() <= 16 * n);
+        words.resize(16 * n, F64::ZERO);
+        let slot = |kind: usize, limb: usize| &words[table_slot(kind, limb, n)..table_slot(kind, limb, n) + 2 * n];
+        assert!(slot(0, 3).iter().chain(slot(1, 3)).all(|w| w.is_zero()));
+        for limb in 0..3 {
+            assert!(slot(1, limb)[n - 1].is_zero(), "h's top coefficient, limb {limb}");
+            assert!(slot(1, limb)[n..n + H_BLIND].iter().all(|w| !w.is_zero()));
+            assert!(slot(1, limb)[n + H_BLIND..].iter().all(|w| w.is_zero()));
+            assert!(slot(0, limb)[2 * n - 64..].iter().any(|w| !w.is_zero()), "q fills its 2 n coefficients");
+        }
+    }
+
+    /// On a small circuit: an honest proof leaves four true claims that open, and a witness that breaks one gate,
+    /// one copy, one input's range or one public value leaves a false one.
     #[test]
     fn claims_hold_exactly_for_a_witness() {
         let mut rng = Rng::new(0x51);
@@ -1347,11 +1302,11 @@ pub(crate) mod tests {
         for (i, &next) in circuit.sigma.iter().enumerate() {
             assert_eq!(cells[i], cells[next as usize]);
         }
+        assert!(circuit.errors_have_their_own_poles());
 
         let proved = prove(&circuit, &index, &commitment, &statement, &cells);
-        assert!(proved.fits);
-        assert_eq!(truth(&index, &proved), [true; 6]);
-        assert_eq!(proved.proof.stream.len(), 2 + 1 + 3 * 3 + 5 + 2);
+        assert_eq!(truth(&index, &proved), [true; 4]);
+        assert_eq!(proved.proof.stream.len(), 2 * 3 + 4 + 1);
         let openings = open(&proved.tables, &proved.claims, &index_committed);
         assert_eq!(
             verify_openings(circuit.log_rows, &commitment, &proved.commitments, &proved.claims, &openings),
@@ -1359,7 +1314,7 @@ pub(crate) mod tests {
         );
         // An opening of one claim does not open another.
         let mut swapped = Openings(openings.0.clone());
-        swapped.0.swap(2, 5);
+        swapped.0.swap(2, 3);
         assert!(verify_openings(circuit.log_rows, &commitment, &proved.commitments, &proved.claims, &swapped).is_err());
 
         // A proof made for one statement, read against another.
@@ -1370,33 +1325,35 @@ pub(crate) mod tests {
 
         let input_row = PUBLIC_ROWS + 5;
         let some_row = PUBLIC_ROWS + 256 + 9000;
+        let cycle_of = |start: usize| -> Vec<usize> {
+            let mut cycle = vec![start];
+            let mut i = circuit.sigma[start] as usize;
+            while i != start {
+                cycle.push(i);
+                i = circuit.sigma[i] as usize;
+            }
+            cycle
+        };
         type Tamper<'a> = &'a dyn Fn(&mut Vec<F64>);
-        let cases: [(&str, Tamper); 4] = [
+        let cases: [(&str, Tamper); 5] = [
             // A row's output alone.
             ("gate", &|cells| cells[4 * some_row + 3] += F64::ONE),
             // An input that is not a bit, wherever it is read.
             ("range", &|cells| {
-                let (from, to) = (cells[4 * input_row + 3], F64(0x1234_5678));
-                let cycle: Vec<usize> =
-                    std::iter::successors(Some(4 * input_row + 3), |&i| Some(circuit.sigma[i] as usize))
-                        .skip(1)
-                        .take_while(|&i| i != 4 * input_row + 3)
-                        .collect();
-                assert_eq!(cells[cycle[0]], from);
-                for i in cycle.into_iter().chain([4 * input_row + 3]) {
-                    cells[i] = to;
+                for i in cycle_of(4 * input_row + 3) {
+                    cells[i] = F64(0x1234_5678);
                 }
             }),
             // The constant one, read as zero everywhere.
             ("one", &|cells| {
-                let anchor = 4 * (4 * 64);
-                let mut i = anchor;
-                loop {
+                for i in cycle_of(anchor_cell(PUBLIC_WORDS + 1)) {
                     cells[i] = F64::ZERO;
-                    i = circuit.sigma[i] as usize;
-                    if i == anchor {
-                        break;
-                    }
+                }
+            }),
+            // A public word, changed on its whole cycle (the packing row that makes it no longer holds).
+            ("public", &|cells| {
+                for i in cycle_of(anchor_cell(2)) {
+                    cells[i] += F64::ONE;
                 }
             }),
             // A reader that departs from what it reads.
@@ -1409,6 +1366,80 @@ pub(crate) mod tests {
             assert!(truth.contains(&false), "{name}: {truth:?}");
             assert!(truth[0] && truth[1], "{name}: {truth:?}");
         }
+    }
+
+    /// The cycle of `start`, from it.
+    fn cycle_of(circuit: &Circuit, start: usize) -> Vec<usize> {
+        let mut cycle = vec![start];
+        let mut i = circuit.sigma[start] as usize;
+        while i != start {
+            cycle.push(i);
+            i = circuit.sigma[i] as usize;
+        }
+        cycle
+    }
+
+    /// A cheating prover that absorbs a bad witness's errors into the sum's polynomial after `μ` ([`prove_inner`]):
+    /// the witness's, the wiring's and the identity's claims hold, and the sum's claim rejects, for a gate's error, a
+    /// pin's and a copy's, and for two equal gate errors that would cancel on a 2-cycle. As a negative control, on
+    /// the toy circuit with two rows' `X` cells made a cycle of their own (which `errors_have_their_own_poles`
+    /// rejects, and so [`Index::new`]), the same two errors cancel and every claim holds: the check has teeth.
+    #[test]
+    fn absorbed_errors_fail_the_sum() {
+        let mut rng = Rng::new(0xAB5);
+        let circuit = toy();
+        let x: [u8; 32] = std::array::from_fn(|_| rng.next_u64() as u8);
+        let statement = toy_statement(&x);
+        let cells = toy_cells(&circuit, &x);
+        let s = seed(&mut rng);
+        let cheat = |circuit: &Circuit, index: &Index, cells: &[F64]| {
+            let commitment = Commitment::of(&index.commit());
+            let randomness = Randomness::derive(&s, &commitment, &statement, cells);
+            truth(index, &prove_inner(circuit, index, &commitment, &statement, cells, &randomness, true))
+        };
+        let index = Index::new(&circuit);
+        assert_eq!(cheat(&circuit, &index, &cells), [true; 4], "a witness has no errors to absorb");
+
+        let some_row = PUBLIC_ROWS + 256 + 9000;
+        let (r1, r2) = (circuit.used_rows + 1, circuit.used_rows + 2);
+        assert!(circuit.rows[r1] == circuit.rows[r2] && circuit.rows[r1].x == Src::Zero, "two idle rows");
+        let both = |cells: &mut Vec<F64>| {
+            cells[4 * r1 + 3] += F64::ONE;
+            cells[4 * r2 + 3] += F64::ONE;
+        };
+        type Tamper<'a> = &'a dyn Fn(&mut Vec<F64>);
+        let cases: [(&str, Tamper); 4] = [
+            // A row's output and every reader of it: the copies hold, the row's gate (and its readers') do not.
+            ("gate", &|cells| cycle_of(&circuit, 4 * some_row + 3).into_iter().for_each(|i| cells[i] += F64::ONE)),
+            // A public word on its whole cycle: its pin fails (and the packing row that makes it).
+            ("pin", &|cells| cycle_of(&circuit, anchor_cell(2)).into_iter().for_each(|i| cells[i] += F64::ONE)),
+            // A reader that departs from what it reads.
+            ("copy", &|cells| cells[4 * some_row] += F64::ONE),
+            // Two idle rows' outputs, the same error twice.
+            ("two gates", &both),
+        ];
+        for (name, tamper) in cases {
+            let mut bad = cells.clone();
+            tamper(&mut bad);
+            assert_eq!(cheat(&circuit, &index, &bad), [true, true, true, false], "{name}");
+        }
+
+        // The negative control: the two idle rows' `X` cells, out of the zero's cycle, a cycle of their own.
+        let mut broken = toy();
+        for x in [4 * r1, 4 * r2] {
+            let before = (0..broken.sigma.len()).find(|&i| broken.sigma[i] as usize == x).unwrap();
+            broken.sigma[before] = broken.sigma[x];
+        }
+        (broken.sigma[4 * r1], broken.sigma[4 * r2]) = ((4 * r2) as u32, (4 * r1) as u32);
+        assert!(!broken.errors_have_their_own_poles());
+        let refused = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| Index::new(&broken)));
+        assert!(refused.is_err(), "the index refuses the circuit");
+        let mut bad = cells.clone();
+        (bad[4 * r1], bad[4 * r2]) = (F64(5), F64(5));
+        (bad[4 * r1 + 3], bad[4 * r2 + 3]) = (F64(5), F64(5));
+        assert_eq!(cheat(&broken, &Index::new_unchecked(&broken), &bad), [true; 4], "a witness of the broken circuit");
+        both(&mut bad);
+        assert_eq!(cheat(&broken, &Index::new_unchecked(&broken), &bad), [true; 4], "the two errors cancel");
     }
 
     /// [`Randomness::derive`] is a function of the seed, the circuit's commitment, the statement and the cells: the
@@ -1424,9 +1455,7 @@ pub(crate) mod tests {
             root: [7; 32],
             ood: F192::ONE,
         };
-        let flat = |r: &Randomness| {
-            [r.masks.as_flattened(), &r.rows[..], r.blind.as_flattened()].concat()
-        };
+        let flat = |r: &Randomness| [&r.rows[..], r.blind.as_flattened()].concat();
         let base = flat(&Randomness::derive(&s, &index, &statement, &cells));
         assert_eq!(base, flat(&Randomness::derive(&s, &index, &statement, &cells)));
         assert!((1..base.len()).all(|k| !base[..k].contains(&base[k])), "distinct words");

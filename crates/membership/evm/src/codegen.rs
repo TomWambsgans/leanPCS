@@ -27,10 +27,10 @@ pub const SET_INDEX: [u8; 4] = [0xda, 0xb9, 0x9d, 0xbd];
 pub const INDEX_ROOT_SLOT: u8 = 0;
 pub const INDEX_OOD_SLOT: u8 = 1;
 
-/// Where the arguments (calldata after the selector, if any) hold the statement's two words, then the four
+/// Where the arguments (calldata after the selector, if any) hold the statement's two words, then the two
 /// commitments' roots; the proof's other scalars follow them.
 pub const COMMITMENT: usize = 64;
-pub const SCALARS: usize = COMMITMENT + 4 * 32;
+pub const SCALARS: usize = COMMITMENT + 2 * 32;
 pub const SCALAR_BYTES: usize = 24;
 
 /// How calls enter the contract: calldata starts with [`VERIFY`], and a call of the verifier carries no value. The
@@ -128,12 +128,13 @@ impl Compiler<'_> {
         }
         match self.graph.nodes[at] {
             Node::Const(limbs) => self.code(&push(&word(limbs))),
-            Node::Statement(k) | Node::Root(k) => {
-                let offset = match self.graph.nodes[at] {
-                    Node::Root(_) => self.base + COMMITMENT + 32 * (k as usize / 2),
-                    _ => self.base + 32 * (k as usize / 2),
-                };
-                self.calldata(offset, 32);
+            // A statement word: the eight bytes at `8 k`, the word's top.
+            Node::Statement(k) => {
+                self.calldata(self.base + 8 * k as usize, 32);
+                self.code(&[&[CALLDATALOAD][..], &push_usize(192), &[SHR]].concat());
+            }
+            Node::Root(k) => {
+                self.calldata(self.base + COMMITMENT + 32 * (k as usize / 2), 32);
                 self.code(&[CALLDATALOAD]);
                 if k % 2 == 0 {
                     self.code(&[&push_usize(128)[..], &[SHR]].concat());

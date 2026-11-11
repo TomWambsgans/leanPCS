@@ -4,7 +4,7 @@
 //! The statement: `y = H(x | 0x11^32)`, and a Merkle path of depth [`DEPTH`] from `H(x | 0x22^32)` up to
 //! `root`, with `H` = Keccak-256 (Ethereum's `keccak256`) of a 64-byte block.
 
-use primitives::field::F192;
+use primitives::field::{F64, F192};
 use primitives::hash::hash as keccak256;
 
 pub const DEPTH: usize = 32;
@@ -26,6 +26,13 @@ pub struct Statement {
 }
 
 impl Statement {
+    /// `y` then `root`, each as its four [`words`]: the eight `K`-words the circuit packs its public bits into and
+    /// the verifier pins (`quotient::protocol`).
+    pub fn words(&self) -> [F64; 8] {
+        let ([a, b, c, d], [e, f, g, h]) = (words(&self.y), words(&self.root));
+        [a, b, c, d, e, f, g, h]
+    }
+
     /// `y` then `root`, each as its two [`halves`].
     pub fn halves(&self) -> [F192; 4] {
         let ([y0, y1], [root0, root1]) = (halves(&self.y), halves(&self.root));
@@ -65,4 +72,10 @@ pub fn halves(bytes: &[u8; 32]) -> [F192; 2] {
         let v = u128::from_be_bytes(bytes[16 * h..16 * h + 16].try_into().unwrap());
         F192::new(v as u64, (v >> 64) as u64, 0)
     })
+}
+
+/// A 32-byte value as four `K`-words, eight bytes each read as a big-endian number: bit `j` of word `k` is bit
+/// `j % 8` of byte `8 k + 7 - j / 8`.
+pub fn words(bytes: &[u8; 32]) -> [F64; 4] {
+    std::array::from_fn(|k| F64(u64::from_be_bytes(bytes[8 * k..8 * k + 8].try_into().unwrap())))
 }

@@ -1,5 +1,9 @@
 # The membership line under the EIP's PCS claims
 
+**Superseded on the branch `perf/membership-gas`** by one quotient in one table (four claims on two commitments,
+36,520 gas): [`PERF_GAS.md`](PERF_GAS.md). This note records main's layout, the first fit of the protocol to the
+EIP's claims.
+
 The membership proof's claims are the EIP draft's: `version || n || commitment(root, ood) || point || value`, one
 point a claim, each a plain point evaluation of the whole committed multilinear (`crates/pcs_claim`,
 [`docs/PCS_CLAIM.md`](../PCS_CLAIM.md)). This note records how the protocol was fitted to them and what it costs.
