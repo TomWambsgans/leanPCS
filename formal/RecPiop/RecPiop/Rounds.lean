@@ -2,13 +2,13 @@
 -- `formal/Compose/Compose/ListChainK.lean`'s `Piop`, as `formal/UniSound/UniSound/Piop.lean` builds it
 -- for the univariate PIOP; the counting of uniform draws is `formal/UniSound/UniSound/Prob.lean`'s,
 -- for any field.
-import RecPiop.Identity
+import RecPiop.Layout
 import RecPiop.Fold
 import RecPiop.Vanishing
 import Compose.ListChainK
 
 /-!
-# π2's PIOP, round by round (π2v3)
+# π2's PIOP, round by round (π2v4)
 
 π2's rounds as the chain sees them (`pi2Rounds`; `PI2.md` §2):
 
@@ -18,51 +18,42 @@ import Compose.ListChainK
 | `1` | `Q`'s root and out-of-domain answer | `t` |
 | `2` | the `2^r` fold values `a_k`, `ξ = κ(t) + βσ(t)` and `s = P(t)` | `ρ` |
 
-then the claims (no challenge follows; π2v3): `W`'s fold at `ρ`; `Q`'s three: the identity's at `(u, ρ', y_0, y_1)`
-(the copy identity at `t`, weighing `P` and `q_P` too), the pushes' at `(u, ρ, 1, 1)` (`P(t) = s` and `P`'s definition
-at `t`, combined by `ρ`, drawn after `s`) and the top coefficient (`Σ_V h`); the setup's at `β`.
+then the claims (no challenge follows): `W`'s fold at `ρ`; `Q`'s two, the identity's at `(u, z_0, z_1, y_0, y_1)` and
+the pushes' at `(u, ρ, z'_1, 1, 1)`; the setup's at `β`. No claim reads `Σ_V h` (`PI2.md` §7, "The copy sum from `Q`'s
+layout").
 
-**The candidates** (`Model`): a candidate of `W`'s root stands for the witness's polynomial `w`
-(degree below `N`) and the true fold values `A_k(t)` at every `t`, with the verifier's cells from
-them the row's cells `w(t + ω_c)` (`cells_fold`: the `B` basis, the tables' layer); a candidate of
-`Q`'s root stands for `P`, `S` (below `N`), `h`, `q` and `q_P` (below `2N`); the setup's polynomials `σ`, `κ` are
-fixed (`L = 1`), and so are the ports' `Φ_k` (any polynomials below `N` taking the public fingerprints at the
-holes, `phi_eval`) and the identity's claim's weight `c` of `P`'s slots (`idC`, the limbs' `c_3`).
-
-**`Q`'s empty slots** (`PI2.md` §2, "The empty slots are not constrained, and need not be"): `Q`'s commitment is its
-plain sixteen-slot stack, so the prover also chooses slots `1, 5, 9` (`h`'s second digit `h_1`) and `12` (`S`, at
-`P`'s limb code and kind, digit `0`); the honest prover leaves them zero. The claims then read `h = h_0 + Z_V h_1`
-(below `2N`, `Σ_V h = Σ_V h_0`: `hP` is that `h`) and `P`'s share as `P(t) + S(t)/Z_V(t)`: at the challenge `t`,
-`P`'s effective polynomial is `pEff = P + S(t)/Z_V(t)` (a constant shift, `t` fixed), and `Post1` and `Post2` are
-stated with it. `Q`'s sum claim reads `h`'s top coefficient with limb `3` at digit `0`, `S`'s slot: it states
-`Σ_V (h + c S) = 0` (`SumOK`, `c = idC`), which is `Σ_V h = 0` (`SumH`) for `S = 0`.
+**The candidates** (`Model`): a candidate of `W`'s root stands for the witness's polynomial `w` (degree below `N`) and
+the true fold values `A_k(t)` at every `t` (`cells_fold`: the `B` basis, the tables' layer); a candidate of `Q`'s root
+for its slots: `H = x h`, `G`, `P`, `S` (below `N`), `q`, `q_P` (below `2N`), every one the prover's (`G`, `S` zero for
+the honest prover); the setup's polynomials `σ`, `κ` are fixed (`L = 1`), and so are the ports' `Φ_k` (any polynomials
+below `N` taking the public fingerprints at the holes, `phi_eval`) and the identity's claim's weight `c` of limb code `3`
+(`idC`, `Y³`).
 
 **The states** (`pre`, `post`, for a statement `s` with public limbs `pubOf s`):
 
-* before round `0`: **the relation** of `W`'s candidate (`Rel`: `Satisfies`, the copy constraints
-  and the public ports);
-* after `α, β, γ`: **`CopyOK`** (some `h` meets the identity on `V_m` and sums to zero);
-* before `t`: **both identities zero as polynomials** for `Q`'s candidate, `Σ_V h = 0` (`Pre1`);
-* after `t`: `t ∉ V_m`, **both identities zero at `t`** with `P`'s effective polynomial `pEff` (`P + S(t)/Z_V(t)`),
-  and `Σ_V (h + c S) = 0` (`Post1`);
+* before round `0`: **the relation** of `W`'s candidate (`Rel`: `Satisfies`, the copy constraints and the public
+  ports);
+* after `α, β, γ`: **`CopyOK4`** (some `h` meets the identity on `V_m` and sums to zero, or a denominator on `V_m`
+  vanishes);
+* before `t`: **`I = D² H + x Z_V D A + x² Z_V³ G + x D R` and `P`'s definition zero as polynomials** (`Pre1`), which
+  give `CopyOK4` by the layout lemma (`Circuit.copyOK4_of_iPoly`: `D(0) ≠ 0` forces `H(0) = 0`, `h = H/x` below
+  `N − 1` sums to zero over `V_m`, and `h D + R = 0` there);
+* after `t`: `t ∉ V_m`, both zero at `t` (`Post1`);
 * before `ρ`: the state after `t`;
-* after `ρ`: **the claims hold** (`Post2`): `Σ_V (h + c S) = 0`, the setup's claim
- `ξ = κ(t) + βσ(t)`, `Q`'s identity and
-  pushes' claims (`QClaim`, with the verifier's `d_pull`, `d_push = α + s + ξ`, `1_S`, `T`, `P_v` from the fold values,
-  `ξ`, `s`, and `P`'s share `P(t) + S(t)/Z_V(t)`), and `W`'s fold at `ρ` (`foldAt`).
+* after `ρ`: **the claims hold** (`Post2`): the setup's claim `ξ = κ(t) + βσ(t)`, `Q`'s identity and pushes' claims
+  (`QClaim`, with the verifier's `d_pull`, `d_push = α + s + ξ`, `1_S`, `T`, `P_v` from the fold values, `ξ` and `s`),
+  and `W`'s fold at `ρ` (`foldAt`).
 
-**The errors** (`err`, each proved, `piop`'s `sound`): round `0` `(4N − 1 + Σ_j d_j)/|F|`
-(`Circuit.card_copyOK_le`), round `1` `(4N − 1)/|F|`: for `S = 0` the identities' degrees (`h` below `2N`,
-`Circuit.card_idPoly_eval_eq_zero_le`), for `S ≠ 0` the nonzero polynomial `Z_V·def + S` of degree at most `4N − 1`,
-which `P`'s definition at `t` with `pEff` makes vanish (`Circuit.card_defPoly_shift_le`: were it zero, `Z_V`, of
-degree `N`, would divide `S`, below `N`); round `2` `2^r/|F|`: `W`'s fold binds the fold values but for `2^r − 1`
-points (`card_foldAt_eq_le`), and with them and `ξ` right the pushes' claim is a nonzero line in `ρ` unless
-`s = pEff(t)` and `P`'s definition holds at `t`, and then the identity's claim is the identity at `t`
-(`card_qClaim_le`, applied to `pEff`). ListChainU multiplies round
-`j`'s by the candidate lists of the roots of rounds `0..j`: `L_W`, `L_W L_Q`, `L_W L_Q`.
+**The errors** (`err`, each proved, `piop`'s `sound`): round `0` `(4N − 1 + Σ_j d_j)/|F|` (`Circuit.card_copyOK4_le`:
+the vanishing denominators, `2N` lines, the copy argument's rational function, `2N − 1`, the ports' `d_j`); round `1`
+`(5N − 1)/|F|` (`Circuit.card_iPoly_eval_eq_zero_le`: `I` below `5N`, the definition below `3N`); round `2`
+`(2^r + 1)/|F|`: `W`'s fold binds the fold values but for `2^r − 1` points (`card_foldAt_eq_le`), and with them and
+`ξ` right the pushes' claim, of degree 2 in `ρ`, binds `P(t) = s`, the definition at `t` and `S(t) = 0` but for two
+points, and then the identity's claim is `I(t) = 0` (`Circuit.card_qClaim_le`). ListChainU multiplies round `j`'s by
+the candidate lists of the roots of rounds `0..j`: `L_W`, `L_W L_Q`, `L_W L_Q`.
 
-**`d_j`** (`hbind`, a hypothesis of `piop`): port `j`'s bad `γ` for limbs that differ;
-`RecPiop.Ports` gives `0` (three limbs) and `1` (four limbs) for limbs in `K`.
+**`d_j`** (`hbind`, a hypothesis of `piop`): port `j`'s bad `γ` for limbs that differ; `RecPiop.Ports` gives `0`
+(three limbs) and `1` (four limbs) for limbs in `K`.
 -/
 
 set_option linter.unusedSectionVars false
@@ -213,13 +204,12 @@ def cellsOf (r : ℕ) (ω : ℕ → F) (a : ℕ → F) (t : F) (x : ℕ) : F :=
 theorem cellsOf_congr (r : ℕ) (ω : ℕ → F) {a a' : ℕ → F} (h : ∀ k < 2 ^ r, a k = a' k)
     (t : F) (x : ℕ) : cellsOf r ω a t x = cellsOf r ω a' t x :=
   Finset.sum_congr rfl fun k hk => by rw [h k (Finset.mem_range.mp hk)]
-
-/-- **What the candidates stand for** (the tables' layer, a parameter): `W`'s candidate the
-witness's polynomial and its fold values at every `t` (the verifier's cells from them are the
-row's cells), `Q`'s candidate `h`, `q`, `P`, `q_P` and `S`; and the fixed ones: the setup's polynomials, the ports' `Φ`
-(for any public limbs and `γ`), and the identity's claim's constant `c` (`c_3`). `h` is what the claims read,
-`h_0 + Z_V h_1` (below `2N`; the prover's second digit `h_1` in `Q`'s slots `1, 5, 9`), and `S` (below `N`) is `Q`'s
-slot `12`, which the claims read as `S(t)/Z_V(t)` added to `P(t)`; the honest prover's `h_1` and `S` are zero. -/
+/-- **What the candidates stand for** (the tables' layer, a parameter): `W`'s candidate the witness's polynomial and
+its fold values at every `t` (the verifier's cells from them are the row's cells), `Q`'s candidate its slots' polynomials
+(`PI2.md` §2): `H = x h` (`hP`, below `N`), `q` (`qP = A_0 + Z_V A_1`, below `2N`), `G` (`gP`, below `N`), `P`, `q_P`
+(`qPP`, below `2N`), `S` (`sP`, below `N`); and the fixed ones: the setup's polynomials, the ports' `Φ` (for any public
+limbs and `γ`), and the identity's claim's weight `c` of limb code `3` (`idC`, `Y³`). The honest prover's `G`, `S` are
+zero; any prover's are handled by the layout (`G` weighs `x² Z_V³` in `I`, `S(t) = 0` is in the pushes' claim). -/
 structure Model (G : Circuit F) (ω : ℕ → F) (M : Type) where
   setup : SetupPolys G ω
   phi : (ℕ → List F) → F → ℕ → F[X]
@@ -229,9 +219,11 @@ structure Model (G : Circuit F) (ω : ℕ → F) (M : Type) where
   wP : M → F[X]
   wP_deg : ∀ c, (wP c).natDegree < G.N
   hP : M → F[X]
-  hP_deg : ∀ c, (hP c).natDegree < 2 * G.N
+  hP_deg : ∀ c, (hP c).natDegree < G.N
   qP : M → F[X]
   qP_deg : ∀ c, (qP c).natDegree < 2 * G.N
+  gP : M → F[X]
+  gP_deg : ∀ c, (gP c).natDegree < G.N
   pP : M → F[X]
   pP_deg : ∀ c, (pP c).natDegree < G.N
   qPP : M → F[X]
@@ -250,33 +242,42 @@ def dPushAt (sv ξ α : F) : F := α + sv + ξ
 /-- The identity's coefficient of `h(t)`: `c_h = d_pull d_push`. -/
 def chAt (v : ℕ → F) (ξ sv α β t : F) : F := dPullAt v α β t * dPushAt sv ξ α
 
-/-- **The pushes' claim's polynomial in `ρ`**: `(1 + ρ) c_q e₂ + ρ e₃`, the errors of `P(t) = s` (`e₂`) and of `P`'s
-definition (`e₃`) at the claim's kind coordinate `ρ`. -/
-def pushComb (cq e₂ e₃ ρ : F) : F := (1 + ρ) * cq * e₂ + ρ * e₃
+/-- **The pushes' claim's polynomial in `ρ`** (times `(1 + ρ)² Z_V(t)`, π2v4): `(1 + ρ)² e₁ + ρ (1 + ρ) e₂ + ρ² e₃`, for
+the errors of `P(t) = s` (`e₁ = Z(P(t) + s)`), of `P`'s definition (`e₂ = Z q_P(t) + s + P_v(t)`) and of `S(t) = 0`
+(`e₃ = Z² S(t)`). Its coefficients are `e₁`, `e₂`, `e₁ + e₂ + e₃`. -/
+def pushComb (e₁ e₂ e₃ ρ : F) : F := (1 + ρ) ^ 2 * e₁ + ρ * (1 + ρ) * e₂ + ρ ^ 2 * e₃
 
-/-- **The pushes' claim is a line in `ρ`, nonzero unless both errors are**: at most one root, for `c_q ≠ 0`. -/
-theorem card_pushComb_le [Fintype F] {cq e₂ e₃ : F} (hcq : cq ≠ 0) (hne : ¬ (e₂ = 0 ∧ e₃ = 0)) :
-    (univ.filter fun ρ => pushComb cq e₂ e₃ ρ = 0).card ≤ 1 := by
-  by_cases h : cq * e₂ + e₃ = 0
-  · -- then `cq e₂ ≠ 0` and the line is the constant `cq e₂`
-    have h2 : cq * e₂ ≠ 0 := by
-      intro h0
-      apply hne
-      have he₂ : e₂ = 0 := (mul_eq_zero.mp h0).resolve_left hcq
-      refine ⟨he₂, ?_⟩
-      rw [h0, zero_add] at h
-      exact h
-    rw [Finset.filter_false_of_mem fun ρ _ hρ => h2 (by
-      unfold pushComb at hρ
-      linear_combination hρ - ρ * h)]
-    exact Nat.zero_le _
-  · refine (Finset.card_le_card (t := {cq * e₂ / (cq * e₂ + e₃)}) fun ρ hρ => ?_).trans
-      (Finset.card_singleton _).le
-    rw [Finset.mem_filter] at hρ
-    rw [Finset.mem_singleton, eq_div_iff h]
-    unfold pushComb at hρ
-    have h2 : (2 : F) = 0 := CharTwo.two_eq_zero
-    linear_combination hρ.2 - cq * e₂ * h2
+/-- **The pushes' claim is a polynomial of degree at most 2 in `ρ`, nonzero unless all three errors are**: at most two
+roots. -/
+theorem card_pushComb_le [Fintype F] {e₁ e₂ e₃ : F} (hne : ¬ (e₁ = 0 ∧ e₂ = 0 ∧ e₃ = 0)) :
+    (univ.filter fun ρ => pushComb e₁ e₂ e₃ ρ = 0).card ≤ 2 := by
+  classical
+  set p : F[X] := C e₁ + C e₂ * X + C (e₁ + e₂ + e₃) * X ^ 2 with hp
+  have h2 : (2 : F) = 0 := CharTwo.two_eq_zero
+  have hev : ∀ ρ, p.eval ρ = pushComb e₁ e₂ e₃ ρ := fun ρ => by
+    simp only [hp, eval_add, eval_mul, eval_C, eval_X, eval_pow, pushComb]
+    linear_combination (-(ρ * e₁)) * h2
+  have hc0 : p.coeff 0 = e₁ := by
+    simp only [hp, coeff_add, coeff_C_mul, coeff_X_pow, coeff_X, coeff_C]; norm_num
+  have hc1 : p.coeff 1 = e₂ := by
+    simp only [hp, coeff_add, coeff_C_mul, coeff_X_pow, coeff_X, coeff_C]; norm_num
+  have hc2 : p.coeff 2 = e₁ + e₂ + e₃ := by
+    simp only [hp, coeff_add, coeff_C_mul, coeff_X_pow, coeff_X, coeff_C]; norm_num
+  have hp0 : p ≠ 0 := by
+    intro h0
+    apply hne
+    have a0 : e₁ = 0 := by rw [← hc0, h0, coeff_zero]
+    have a1 : e₂ = 0 := by rw [← hc1, h0, coeff_zero]
+    have a2 : e₁ + e₂ + e₃ = 0 := by rw [← hc2, h0, coeff_zero]
+    refine ⟨a0, a1, ?_⟩
+    rw [a0, a1, zero_add, zero_add] at a2
+    exact a2
+  have hdeg : p.natDegree ≤ 2 := by
+    rw [hp]
+    compute_degree
+  refine (Finset.card_le_card fun ρ hρ => ?_).trans ((Circuit.card_eval_eq_zero_le p hp0).trans hdeg)
+  rw [Finset.mem_filter] at hρ ⊢
+  exact ⟨hρ.1, by rw [hev]; exact hρ.2⟩
 
 namespace Circuit
 
@@ -297,20 +298,23 @@ noncomputable def tAt (Φ : ℕ → F[X]) (v : ℕ → F) (γ t : F) : F :=
 noncomputable def rhsAt (Φ : ℕ → F[X]) (v : ℕ → F) (ξ sv α β γ t : F) : F :=
   (1 + (G.holePoly ω).eval t) * (dPushAt sv ξ α + dPullAt v α β t) + G.tAt ω Φ v γ t
 
-/-- **`Q`'s two claims at `t`** (π2v3; the claims' values the verifier's): `t ∉ V_m`, `c_h ≠ 0`, `Y = c_h + c_q ≠ 0`,
-**the identity's claim** `e₁ + c ((1 + ρ') c_q e₂ + ρ' e₃) = 0` and **the pushes' claim** `pushComb c_q e₂ e₃ ρ = 0`,
-at `ρ' = c_q/Y`, for the errors of the copy identity normalised, `e₁ = (1 + ρ')h(t) + ρ'q(t) + RHS/Y`, of `P(t) = s`,
-`e₂ = P(t) + s`, and of `P`'s definition, `e₃ = q_P(t) + (s + P_v(t))/c_q` (`c_q = Z_V(t)`). The identity's claim
-weighs `P` and `q_P` too, by the limbs' constant `c` (`c_3 = y_0 y_1/L_0`); `ρ` is drawn after `s`. -/
-def QClaim (Φ : ℕ → F[X]) (c : F) (v : ℕ → F) (ξ sv α β γ t ρ ht qt pt qpt : F) : Prop :=
-  (G.zV ω).eval t ≠ 0 ∧ chAt v ξ sv α β t ≠ 0 ∧ chAt v ξ sv α β t + (G.zV ω).eval t ≠ 0 ∧
-    ((1 + (G.zV ω).eval t / (chAt v ξ sv α β t + (G.zV ω).eval t)) * ht +
-        (G.zV ω).eval t / (chAt v ξ sv α β t + (G.zV ω).eval t) * qt +
-        G.rhsAt ω Φ v ξ sv α β γ t / (chAt v ξ sv α β t + (G.zV ω).eval t) +
-      c * ((1 + (G.zV ω).eval t / (chAt v ξ sv α β t + (G.zV ω).eval t)) * (G.zV ω).eval t * (pt + sv) +
-        (G.zV ω).eval t / (chAt v ξ sv α β t + (G.zV ω).eval t) *
-          (qpt + (sv + G.pvAt ω v γ t) / (G.zV ω).eval t)) = 0) ∧
-    pushComb ((G.zV ω).eval t) (pt + sv) (qpt + (sv + G.pvAt ω v γ t) / (G.zV ω).eval t) ρ = 0
+/-- **`Q`'s two claims at `t`** (π2v4, `PI2.md` §2; each the verifier's claim cleared of its denominators): `t ∉ V_m`,
+`c_h ≠ 0`, `Y_1 = c_h + t Z ≠ 0`, `Y_2 = c_h + t Z² ≠ 0`, `Y_3 = 1 + ρ + ρ Z ≠ 0` (`Z = Z_V(t)`); **the identity's
+claim** (its slots `H + a q + a r_1 G` and, by `c = Y³`, `P + a q_P + a r_1 S`, `a = t Z/c_h`, `r_1 = a Z`, times
+`c_h²`) `c_h² H + t Z c_h q + t² Z³ G + c (c_h² P + t Z c_h q_P + t² Z³ S) = t c_h RHS + c (c_h² s + t c_h (s +
+P_v(t)))`; and **the pushes' claim** `pushComb (Z (P + s)) (Z q_P + s + P_v(t)) (Z² S) ρ = 0`. `ρ` is drawn after
+`s`. -/
+def QClaim (Φ : ℕ → F[X]) (c : F) (v : ℕ → F) (ξ sv α β γ t ρ ht qt gt pt qpt st : F) : Prop :=
+  (G.zV ω).eval t ≠ 0 ∧ chAt v ξ sv α β t ≠ 0 ∧ chAt v ξ sv α β t + t * (G.zV ω).eval t ≠ 0 ∧
+    chAt v ξ sv α β t + t * (G.zV ω).eval t * (G.zV ω).eval t ≠ 0 ∧ 1 + ρ + ρ * (G.zV ω).eval t ≠ 0 ∧
+    chAt v ξ sv α β t ^ 2 * ht + t * (G.zV ω).eval t * chAt v ξ sv α β t * qt +
+        t ^ 2 * (G.zV ω).eval t ^ 3 * gt +
+        c * (chAt v ξ sv α β t ^ 2 * pt + t * (G.zV ω).eval t * chAt v ξ sv α β t * qpt +
+          t ^ 2 * (G.zV ω).eval t ^ 3 * st) =
+      t * chAt v ξ sv α β t * G.rhsAt ω Φ v ξ sv α β γ t +
+        c * (chAt v ξ sv α β t ^ 2 * sv + t * chAt v ξ sv α β t * (sv + G.pvAt ω v γ t)) ∧
+    pushComb ((G.zV ω).eval t * (pt + sv)) ((G.zV ω).eval t * qpt + sv + G.pvAt ω v γ t)
+      ((G.zV ω).eval t ^ 2 * st) ρ = 0
 
 variable {G ω} {n : ℕ}
 
@@ -353,27 +357,6 @@ theorem tAt_eq (hV : G.Valid) (hP : Points ω n) (Φ : ℕ → F[X]) (wP : F[X])
   refine Finset.sum_congr rfl fun p hp => ?_
   rw [value_cells_eq hV wP γ t hv hP (mem_portPairs.mp hp).1]
 
-/-- **With the true values (cells, `ξ`, `s = P(t)`), the multiplied-out copy identity at `t` is `idPoly`'s
-value.** -/
-theorem idPoly_eval_eq (hV : G.Valid) (hP : Points ω n) (S : SetupPolys G ω) (Φ : ℕ → F[X])
-    (wP hP' qP pP : F[X]) (α β γ t ξ sv : F) {v : ℕ → F} (hv : ∀ x < G.W, v x = wP.eval (t + ω x))
-    (hξ : ξ = S.κP.eval t + β * S.σP.eval t) (hs : sv = pP.eval t) :
-    (G.idPoly ω S Φ wP hP' qP pP α β γ).eval t =
-      chAt v ξ sv α β t * hP'.eval t + (G.zV ω).eval t * qP.eval t + G.rhsAt ω Φ v ξ sv α β γ t := by
-  have hW : 0 < G.W := Nat.two_pow_pos _
-  have hpull : dPullAt v α β t = (dPullP wP α β).eval t := by
-    unfold dPullAt dPullP
-    rw [hv 0 hW, hP.zero, add_zero]
-    simp
-  have hpush : dPushAt sv ξ α = (G.dPushP ω S pP α β).eval t := by
-    unfold dPushAt dPushP
-    simp only [eval_add, eval_mul, eval_C, hξ, hs]
-    ring
-  unfold idPoly chAt rhsAt
-  rw [tAt_eq hV hP Φ wP γ t hv, hpull, hpush]
-  simp only [eval_add, eval_mul, eval_one]
-  ring
-
 /-- **With the true cells, `P`'s definition at `t` is `P(t) + P_v(t) + c_q q_P(t)`.** -/
 theorem defPoly_eval_eq (hV : G.Valid) (hP : Points ω n) (wP pP qPP : F[X]) (γ t : F) {v : ℕ → F}
     (hv : ∀ x < G.W, v x = wP.eval (t + ω x)) :
@@ -383,147 +366,90 @@ theorem defPoly_eval_eq (hV : G.Valid) (hP : Points ω n) (wP pP qPP : F[X]) (γ
   simp only [eval_add, eval_mul]
   ring
 
+/-- **With the true values (cells, `ξ`, `s = P(t)`), `I(t)`** is `c_h² H(t) + t Z c_h A(t) + t² Z³ G(t) + t c_h RHS`. -/
+theorem iPoly_eval_eq (hV : G.Valid) (hP : Points ω n) (S : SetupPolys G ω) (Φ : ℕ → F[X])
+    (wP HP AP GP pP : F[X]) (α β γ t ξ sv : F) {v : ℕ → F} (hv : ∀ x < G.W, v x = wP.eval (t + ω x))
+    (hξ : ξ = S.κP.eval t + β * S.σP.eval t) (hs : sv = pP.eval t) :
+    (G.iPoly ω S Φ wP HP AP GP pP α β γ).eval t =
+      chAt v ξ sv α β t ^ 2 * HP.eval t + t * (G.zV ω).eval t * chAt v ξ sv α β t * AP.eval t +
+        t ^ 2 * (G.zV ω).eval t ^ 3 * GP.eval t + t * chAt v ξ sv α β t * G.rhsAt ω Φ v ξ sv α β γ t := by
+  have hW : 0 < G.W := Nat.two_pow_pos _
+  have hpull : dPullAt v α β t = (dPullP wP α β).eval t := by
+    unfold dPullAt dPullP
+    rw [hv 0 hW, hP.zero, add_zero]
+    simp
+  have hpush : dPushAt sv ξ α = (G.dPushP ω S pP α β).eval t := by
+    unfold dPushAt dPushP
+    simp only [eval_add, eval_mul, eval_C, hξ, hs]
+    ring
+  unfold iPoly dP rP chAt rhsAt
+  rw [tAt_eq hV hP Φ wP γ t hv, hpull, hpush]
+  simp only [eval_add, eval_mul, eval_one, eval_pow, eval_X]
+
 open Classical in
-/-- **`Q`'s claims at the true values, counted in `ρ`**: unless the identities hold at `t`, at most one `ρ` makes
-both claims true (for any `s`: a false `s` or a false definition is a nonzero line in `ρ`; with both true, the
-identity's claim is the identity at `t`). -/
+/-- **`Q`'s claims at the true values, counted in `ρ`** (π2v4): unless `I(t) = 0` and `P`'s definition holds at `t`, at
+most two `ρ` make both claims true (a false `s`, definition or `S(t)` makes the pushes' claim a nonzero polynomial of
+degree at most 2 in `ρ`; with all three right, the identity's claim is `I(t) = 0`). -/
 theorem card_qClaim_le [Fintype F] (hV : G.Valid) (hP : Points ω n) (S : SetupPolys G ω) (Φ : ℕ → F[X])
-    (c : F) (wP hP' qP pP qPP : F[X]) (α β γ t ξ sv : F) {v : ℕ → F}
+    (c : F) (wP HP AP GP pP qPP sP : F[X]) (α β γ t ξ sv : F) {v : ℕ → F}
     (hv : ∀ x < G.W, v x = wP.eval (t + ω x)) (hξ : ξ = S.κP.eval t + β * S.σP.eval t)
-    (hne : ¬ ((G.idPoly ω S Φ wP hP' qP pP α β γ).eval t = 0 ∧ (G.defPoly ω wP pP qPP γ).eval t = 0)) :
-    (univ.filter fun ρ => G.QClaim ω Φ c v ξ sv α β γ t ρ (hP'.eval t) (qP.eval t) (pP.eval t)
-      (qPP.eval t)).card ≤ 1 := by
+    (hne : ¬ ((G.iPoly ω S Φ wP HP AP GP pP α β γ).eval t = 0 ∧ (G.defPoly ω wP pP qPP γ).eval t = 0)) :
+    (univ.filter fun ρ => G.QClaim ω Φ c v ξ sv α β γ t ρ (HP.eval t) (AP.eval t) (GP.eval t) (pP.eval t)
+      (qPP.eval t) (sP.eval t)).card ≤ 2 := by
   classical
-  by_cases hnd : (G.zV ω).eval t ≠ 0 ∧ chAt v ξ sv α β t ≠ 0 ∧ chAt v ξ sv α β t + (G.zV ω).eval t ≠ 0
-  · obtain ⟨hcq, hch, hy⟩ := hnd
-    set cq := (G.zV ω).eval t
-    set ch := chAt v ξ sv α β t
-    set y := ch + cq
-    have hrq1 : 1 + cq / y = ch / y := by
-      have e : 1 + cq / y = (y + cq) / y := by rw [add_div, div_self hy]
-      rw [e]
-      congr 1
-      show ch + cq + cq = ch
-      rw [add_assoc, CharTwo.add_self_eq_zero, add_zero]
-    by_cases h23 : pP.eval t + sv = 0 ∧ qPP.eval t + (sv + G.pvAt ω v γ t) / cq = 0
-    · -- the pushes' relations hold: the identity's claim is the identity at `t`, false
+  have h2 : (2 : F) = 0 := CharTwo.two_eq_zero
+  by_cases hz : (G.zV ω).eval t ≠ 0
+  · set z := (G.zV ω).eval t with hzdef
+    set pv := G.pvAt ω v γ t
+    by_cases h23 : z * (pP.eval t + sv) = 0 ∧ z * qPP.eval t + sv + pv = 0 ∧ z ^ 2 * sP.eval t = 0
+    · -- `s = P(t)`, the definition and `S(t) = 0` hold: the identity's claim is `I(t) = 0`, false
+      obtain ⟨e1, e2, e3⟩ := h23
+      have hs : sv = pP.eval t := (CharTwo.add_eq_zero.mp ((mul_eq_zero.mp e1).resolve_left hz)).symm
+      have hS : sP.eval t = 0 := (mul_eq_zero.mp e3).resolve_left (pow_ne_zero 2 hz)
+      have hdef : (G.defPoly ω wP pP qPP γ).eval t = 0 := by
+        rw [defPoly_eval_eq hV hP wP pP qPP γ t hv, ← hs]
+        linear_combination e2
       rw [Finset.filter_false_of_mem (by
         intro ρ _ h
-        obtain ⟨-, -, -, hid, -⟩ := h
-        rw [show chAt v ξ sv α β t + (G.zV ω).eval t = y from rfl,
-          show (G.zV ω).eval t = cq from rfl] at hid
-        have hz : c * ((1 + cq / y) * cq * (pP.eval t + sv) +
-            cq / y * (qPP.eval t + (sv + G.pvAt ω v γ t) / cq)) = 0 := by
-          rw [h23.1, h23.2]; ring
-        rw [hz, add_zero] at hid
-        have hs : sv = pP.eval t := (CharTwo.add_eq_zero.mp h23.1).symm
+        obtain ⟨-, -, -, -, -, hid, -⟩ := h
         apply hne
-        constructor
-        · rw [idPoly_eval_eq hV hP S Φ wP hP' qP pP α β γ t ξ sv hv hξ hs]
-          rw [hrq1] at hid
-          have : (ch * hP'.eval t + cq * qP.eval t + G.rhsAt ω Φ v ξ sv α β γ t) / y = 0 := by
-            rw [← hid]; field_simp
-          rcases div_eq_zero_iff.mp this with h | h
-          · exact h
-          · exact absurd h hy
-        · rw [defPoly_eval_eq hV hP wP pP qPP γ t hv, ← hs]
-          have : (cq * qPP.eval t + (sv + G.pvAt ω v γ t)) / cq = 0 := by
-            rw [← h23.2]; field_simp
-          rcases div_eq_zero_iff.mp this with h | h
-          · rw [← h]; ring
-          · exact absurd h hcq)]
+        refine ⟨?_, hdef⟩
+        rw [iPoly_eval_eq hV hP S Φ wP HP AP GP pP α β γ t ξ sv hv hξ hs]
+        rw [← hs, hS] at hid
+        have hq : t * z * chAt v ξ sv α β t * qPP.eval t = t * chAt v ξ sv α β t * (sv + pv) := by
+          linear_combination t * chAt v ξ sv α β t * e2 - t * chAt v ξ sv α β t * (sv + pv) * h2
+        linear_combination hid + c * hq + (t * chAt v ξ sv α β t * G.rhsAt ω Φ v ξ sv α β γ t -
+          chAt v ξ sv α β t * t * z * c * qPP.eval t + chAt v ξ sv α β t * t * c * sv +
+          chAt v ξ sv α β t * t * c * pv) * h2)]
       exact Nat.zero_le _
-    · refine (Finset.card_le_card fun ρ hρ => ?_).trans (card_pushComb_le hcq h23)
+    · refine (Finset.card_le_card fun ρ hρ => ?_).trans (card_pushComb_le h23)
       rw [Finset.mem_filter] at hρ ⊢
-      exact ⟨hρ.1, hρ.2.2.2.2.2⟩
-  · rw [Finset.filter_false_of_mem (by intro ρ _ h; exact hnd ⟨h.1, h.2.1, h.2.2.1⟩)]
+      exact ⟨hρ.1, hρ.2.2.2.2.2.2.2⟩
+  · rw [Finset.filter_false_of_mem (by intro ρ _ h; exact hz h.1)]
     exact Nat.zero_le _
 
-/-- **`Q`'s claims hold at the true values** (completeness): where the identities hold at `t`, `s = P(t)` and the
-three denominators are nonzero, both claims hold at every `ρ`. -/
+/-- **`Q`'s claims hold at the true values** (completeness): where `I(t) = 0`, the definition holds at `t`, `s = P(t)`,
+`S(t) = 0` and the denominators are nonzero, both claims hold. -/
 theorem qClaim_of_eval (hV : G.Valid) (hP : Points ω n) (S : SetupPolys G ω) (Φ : ℕ → F[X])
-    (c : F) (wP hP' qP pP qPP : F[X]) (α β γ t ξ sv ρ : F) {v : ℕ → F}
+    (c : F) (wP HP AP GP pP qPP sP : F[X]) (α β γ t ξ sv ρ : F) {v : ℕ → F}
     (hv : ∀ x < G.W, v x = wP.eval (t + ω x)) (hξ : ξ = S.κP.eval t + β * S.σP.eval t) (hs : sv = pP.eval t)
-    (hid : (G.idPoly ω S Φ wP hP' qP pP α β γ).eval t = 0) (hdef : (G.defPoly ω wP pP qPP γ).eval t = 0)
-    (hcq : (G.zV ω).eval t ≠ 0) (hch : chAt v ξ sv α β t ≠ 0) (hy : chAt v ξ sv α β t + (G.zV ω).eval t ≠ 0) :
-    G.QClaim ω Φ c v ξ sv α β γ t ρ (hP'.eval t) (qP.eval t) (pP.eval t) (qPP.eval t) := by
-  set cq := (G.zV ω).eval t
-  set ch := chAt v ξ sv α β t
-  have e2 : pP.eval t + sv = 0 := by rw [hs]; exact CharTwo.add_self_eq_zero _
-  have e3 : qPP.eval t + (sv + G.pvAt ω v γ t) / cq = 0 := by
-    rw [defPoly_eval_eq hV hP wP pP qPP γ t hv, ← hs] at hdef
-    have : qPP.eval t = (sv + G.pvAt ω v γ t) / cq := by
-      field_simp
-      have h2 : (2 : F) = 0 := CharTwo.two_eq_zero
-      linear_combination hdef - (sv + G.pvAt ω v γ t) * h2
-    rw [this]
-    exact CharTwo.add_self_eq_zero _
-  have hid' := hid
-  rw [idPoly_eval_eq hV hP S Φ wP hP' qP pP α β γ t ξ sv hv hξ hs] at hid'
-  refine ⟨hcq, hch, hy, ?_, ?_⟩
-  · rw [e2, e3]
-    have e1 : (1 + cq / (ch + cq)) * hP'.eval t + cq / (ch + cq) * qP.eval t +
-        G.rhsAt ω Φ v ξ sv α β γ t / (ch + cq) = (ch * hP'.eval t + cq * qP.eval t + G.rhsAt ω Φ v ξ sv α β γ t) /
-          (ch + cq) := by
-      field_simp
-      have h2 : (2 : F) = 0 := CharTwo.two_eq_zero
-      linear_combination (hP'.eval t) * cq * h2
-    rw [e1, hid', zero_div]
-    ring
+    (hI : (G.iPoly ω S Φ wP HP AP GP pP α β γ).eval t = 0) (hdef : (G.defPoly ω wP pP qPP γ).eval t = 0)
+    (hS : sP.eval t = 0) (hz : (G.zV ω).eval t ≠ 0) (hch : chAt v ξ sv α β t ≠ 0)
+    (hy1 : chAt v ξ sv α β t + t * (G.zV ω).eval t ≠ 0)
+    (hy2 : chAt v ξ sv α β t + t * (G.zV ω).eval t * (G.zV ω).eval t ≠ 0)
+    (hy3 : 1 + ρ + ρ * (G.zV ω).eval t ≠ 0) :
+    G.QClaim ω Φ c v ξ sv α β γ t ρ (HP.eval t) (AP.eval t) (GP.eval t) (pP.eval t) (qPP.eval t) (sP.eval t) := by
+  have h2 : (2 : F) = 0 := CharTwo.two_eq_zero
+  rw [iPoly_eval_eq hV hP S Φ wP HP AP GP pP α β γ t ξ sv hv hξ hs] at hI
+  rw [defPoly_eval_eq hV hP wP pP qPP γ t hv, ← hs] at hdef
+  refine ⟨hz, hch, hy1, hy2, hy3, ?_, ?_⟩
+  · rw [hS, ← hs]
+    linear_combination hI + c * (t * chAt v ξ sv α β t) * hdef -
+      (t * chAt v ξ sv α β t * G.rhsAt ω Φ v ξ sv α β γ t + c * (t * chAt v ξ sv α β t * sv) +
+        c * (t * chAt v ξ sv α β t * G.pvAt ω v γ t)) * h2
   · unfold pushComb
-    rw [e2, e3]
-    ring
-
-/-- **`Q`'s claims hold at the true values, with an empty slot `S`** (completeness): `qClaim_of_eval` with `P`'s share
-read as `P(t) + S(t)/Z_V(t)`, where `S(t) = 0` (the honest `S` is zero). -/
-theorem qClaim_of_eval_sP (hV : G.Valid) (hP : Points ω n) (S : SetupPolys G ω) (Φ : ℕ → F[X])
-    (c : F) (wP hP' qP pP qPP sP : F[X]) (α β γ t ξ sv ρ : F) {v : ℕ → F}
-    (hv : ∀ x < G.W, v x = wP.eval (t + ω x)) (hξ : ξ = S.κP.eval t + β * S.σP.eval t) (hs : sv = pP.eval t)
-    (hid : (G.idPoly ω S Φ wP hP' qP pP α β γ).eval t = 0) (hdef : (G.defPoly ω wP pP qPP γ).eval t = 0)
-    (hcq : (G.zV ω).eval t ≠ 0) (hch : chAt v ξ sv α β t ≠ 0) (hy : chAt v ξ sv α β t + (G.zV ω).eval t ≠ 0)
-    (hS : sP.eval t = 0) :
-    G.QClaim ω Φ c v ξ sv α β γ t ρ (hP'.eval t) (qP.eval t) (pP.eval t + sP.eval t / (G.zV ω).eval t)
-      (qPP.eval t) := by
-  rw [hS, zero_div, add_zero]
-  exact qClaim_of_eval hV hP S Φ c wP hP' qP pP qPP α β γ t ξ sv ρ hv hξ hs hid hdef hcq hch hy
-
-open Classical in
-/-- **An empty slot `S ≠ 0` at a random point**: `Z_V·def + S` is a nonzero polynomial (were it zero, `Z_V`, of degree
-`N`, would divide `S`, below `N`) of degree at most `4N − 1`, and it vanishes at every `t ∉ V_m` where `P`'s
-definition holds with `P`'s share read as `P(t) + S(t)/Z_V(t)`: at most `4N − 1` such `t`. -/
-theorem card_defPoly_shift_le [Fintype F] (hV : G.Valid) {wP pP qPP sP : F[X]} (hw : wP.natDegree < G.N)
-    (hp : pP.natDegree < G.N) (hqp : qPP.natDegree < 2 * G.N) (hs : sP.natDegree < G.N) (hs0 : sP ≠ 0)
-    (γ : F) :
-    (univ.filter fun t => (G.zV ω).eval t ≠ 0 ∧
-      (G.defPoly ω wP (pP + C (sP.eval t / (G.zV ω).eval t)) qPP γ).eval t = 0).card ≤ 4 * G.N - 1 := by
-  have h2 := N_ge_two hV
-  set D := G.defPoly ω wP pP qPP γ with hD
-  have hne : G.zV ω * D + sP ≠ 0 := by
-    intro h0
-    have hdvd : G.zV ω ∣ sP := ⟨-D, by linear_combination h0⟩
-    have h1 := natDegree_le_of_dvd hdvd hs0
-    rw [natDegree_zV] at h1
-    omega
-  have hdeg : (G.zV ω * D + sP).natDegree ≤ 4 * G.N - 1 := by
-    have hDd := natDegree_defPoly_le (ω := ω) hV hw hp hqp γ
-    refine natDegree_add_le_of_degree_le ((natDegree_mul_le_of_le (natDegree_zV G ω).le hDd).trans ?_)
-      (by omega)
-    omega
-  refine (Finset.card_le_card fun t ht => ?_).trans ((card_eval_eq_zero_le _ hne).trans hdeg)
-  rw [Finset.mem_filter] at ht ⊢
-  refine ⟨Finset.mem_univ _, ?_⟩
-  obtain ⟨-, hz, hd⟩ := ht
-  have e : (G.defPoly ω wP (pP + C (sP.eval t / (G.zV ω).eval t)) qPP γ).eval t =
-      D.eval t + sP.eval t / (G.zV ω).eval t := by
-    rw [hD]
-    unfold defPoly
-    simp only [eval_add, eval_mul, eval_C]
-    ring
-  rw [e] at hd
-  rw [eval_add, eval_mul]
-  calc (G.zV ω).eval t * D.eval t + sP.eval t
-      = (G.zV ω).eval t * (D.eval t + sP.eval t / (G.zV ω).eval t) := by field_simp
-    _ = 0 := by rw [hd, mul_zero]
+    rw [hS, ← hs]
+    linear_combination (ρ * (1 + ρ)) * hdef + ((1 + ρ) ^ 2 * (G.zV ω).eval t * sv) * h2
 
 end Circuit
 
@@ -548,74 +474,29 @@ theorem rd_append_self (q : Compose.Opened M F) (x : (Option M × List F) × Lis
 public limbs. -/
 def Rel (s : St) (c : M) : Prop := G.Satisfies (pubOf s) (fun i => (Mo.wP c).eval (ω i))
 
-/-- **`Σ_V h` is zero** (the copy argument's sum, `Pre1`). -/
-def SumH (cQ : M) : Prop := ∑ i ∈ range G.N, (Mo.hP cQ).eval (ω i) = 0
-
-/-- **The sum claim's statement**: `Σ_V (h + c S) = 0`, `c` the identity claim's constant (`idC`, `c_3`). `Q`'s sum claim
-reads `h`'s top coefficient with limb `3`'s slot at digit `0`, which is `S`'s (slot `12`): with `S = 0` it is `Σ_V h = 0`
-(`sumH_of_sumOK`), and `S ≠ 0` is caught at `t` (`sound_one`). -/
-def SumOK (cQ : M) : Prop := ∑ i ∈ range G.N, ((Mo.hP cQ).eval (ω i) + Mo.idC * (Mo.sP cQ).eval (ω i)) = 0
-
-theorem sumH_of_sumOK {cQ : M} (hS : Mo.sP cQ = 0) (h : SumOK G ω Mo cQ) : SumH G ω Mo cQ := by
-  unfold SumOK at h
-  unfold SumH
-  simpa [hS] using h
-
-/-- **`P`'s effective polynomial at `t`**: `P + S(t)/Z_V(t)`, the constant shift by which the claims read `Q`'s slot
-`12` (`S`) with `P`'s; its value at `t` is the claims' `P(t) + S(t)/Z_V(t)` (`pEff_eval`), and it is `P` for `S = 0`
-(`pEff_of_sP`). -/
-noncomputable def pEff (cQ : M) (t : F) : F[X] := Mo.pP cQ + C ((Mo.sP cQ).eval t / (G.zV ω).eval t)
-
-theorem pEff_eval (cQ : M) (t : F) :
-    (pEff G ω Mo cQ t).eval t = (Mo.pP cQ).eval t + (Mo.sP cQ).eval t / (G.zV ω).eval t := by
-  simp [pEff]
-
-theorem pEff_of_sP {cQ : M} (h : Mo.sP cQ = 0) (t : F) : pEff G ω Mo cQ t = Mo.pP cQ := by
-  simp [pEff, h]
-
-/-- The copy identity of the candidates. -/
-noncomputable def idOf (s : St) (cW cQ : M) (α β γ : F) : F[X] :=
-  G.idPoly ω Mo.setup (Mo.phi (pubOf s) γ) (Mo.wP cW) (Mo.hP cQ) (Mo.qP cQ) (Mo.pP cQ) α β γ
+/-- **`I` of the candidates** (`iPoly`: `Q`'s `H`, `q`, `G` and `P`). -/
+noncomputable def iOf (s : St) (cW cQ : M) (α β γ : F) : F[X] :=
+  G.iPoly ω Mo.setup (Mo.phi (pubOf s) γ) (Mo.wP cW) (Mo.hP cQ) (Mo.qP cQ) (Mo.gP cQ) (Mo.pP cQ) α β γ
 
 /-- `P`'s definition of the candidates. -/
 noncomputable def defOf (cW cQ : M) (γ : F) : F[X] := G.defPoly ω (Mo.wP cW) (Mo.pP cQ) (Mo.qPP cQ) γ
 
-/-- The copy identity of the candidates with `P`'s effective polynomial at `t`. -/
-noncomputable def idEff (s : St) (cW cQ : M) (α β γ t : F) : F[X] :=
-  G.idPoly ω Mo.setup (Mo.phi (pubOf s) γ) (Mo.wP cW) (Mo.hP cQ) (Mo.qP cQ) (pEff G ω Mo cQ t) α β γ
-
-/-- `P`'s definition of the candidates with `P`'s effective polynomial at `t`. -/
-noncomputable def defEff (cW cQ : M) (γ t : F) : F[X] := G.defPoly ω (Mo.wP cW) (pEff G ω Mo cQ t) (Mo.qPP cQ) γ
-
-theorem idEff_of_sP {s : St} {cW cQ : M} (h : Mo.sP cQ = 0) (α β γ t : F) :
-    idEff G ω Mo pubOf s cW cQ α β γ t = idOf G ω Mo pubOf s cW cQ α β γ := by
-  unfold idEff idOf
-  rw [pEff_of_sP G ω Mo h]
-
-theorem defEff_of_sP {cW cQ : M} (h : Mo.sP cQ = 0) (γ t : F) :
-    defEff G ω Mo cW cQ γ t = defOf G ω Mo cW cQ γ := by
-  unfold defEff defOf
-  rw [pEff_of_sP G ω Mo h]
-
 /-- `(α, β, γ)` of round `0`'s challenges. -/
 def abc (c : List F) : F × F × F := (c.getD 0 0, c.getD 1 0, c.getD 2 0)
 
-/-- **The state after `α, β, γ`.** -/
+/-- **The state after `α, β, γ`** (π2v4): `CopyOK`, or a denominator on `V_m` vanishes (`CopyOK4`). -/
 def S0 (s : St) (cW : M) (c : List F) : Prop :=
-  G.CopyOK ω (pubOf s) (fun i => (Mo.wP cW).eval (ω i)) (abc c).1 (abc c).2.1 (abc c).2.2
+  G.CopyOK4 ω (pubOf s) (fun i => (Mo.wP cW).eval (ω i)) (abc c).1 (abc c).2.1 (abc c).2.2
 
-/-- **The state before `t`**: both identities zero as polynomials, `Σ_V h = 0` (whatever `S`: the copy argument's
-state follows on `V_m`, `copyOK_of_idPoly`, and `S ≠ 0` is caught at `t`). -/
+/-- **The state before `t`**: `I` and `P`'s definition zero as polynomials. -/
 def Pre1 (s : St) (cW : M) (c₀ : List F) (cQ : M) : Prop :=
-  idOf G ω Mo pubOf s cW cQ (abc c₀).1 (abc c₀).2.1 (abc c₀).2.2 = 0 ∧
-    defOf G ω Mo cW cQ (abc c₀).2.2 = 0 ∧ SumH G ω Mo cQ
+  iOf G ω Mo pubOf s cW cQ (abc c₀).1 (abc c₀).2.1 (abc c₀).2.2 = 0 ∧ defOf G ω Mo cW cQ (abc c₀).2.2 = 0
 
-/-- **The state after `t`**: `t ∉ V_m`, both identities zero at `t` with `P`'s effective polynomial
-`P + S(t)/Z_V(t)`, `Σ_V h = 0`. -/
+/-- **The state after `t`**: `t ∉ V_m`, `I` and `P`'s definition zero at `t`. -/
 def Post1 (s : St) (cW : M) (c₀ : List F) (cQ : M) (c₁ : List F) : Prop :=
   (G.zV ω).eval (c₁.getD 0 0) ≠ 0 ∧
-    (idEff G ω Mo pubOf s cW cQ (abc c₀).1 (abc c₀).2.1 (abc c₀).2.2 (c₁.getD 0 0)).eval (c₁.getD 0 0) = 0 ∧
-    (defEff G ω Mo cW cQ (abc c₀).2.2 (c₁.getD 0 0)).eval (c₁.getD 0 0) = 0 ∧ SumOK G ω Mo cQ
+    (iOf G ω Mo pubOf s cW cQ (abc c₀).1 (abc c₀).2.1 (abc c₀).2.2).eval (c₁.getD 0 0) = 0 ∧
+    (defOf G ω Mo cW cQ (abc c₀).2.2).eval (c₁.getD 0 0) = 0
 
 /-- The fold values of round `2`'s message. -/
 def foldVals (vals : List F) : ℕ → F := fun k => vals.getD k 0
@@ -626,19 +507,15 @@ def xiOf (r : ℕ) (vals : List F) : F := vals.getD (2 ^ r) 0
 /-- `s` of round `2`'s message. -/
 def sOf (r : ℕ) (vals : List F) : F := vals.getD (2 ^ r + 1) 0
 
-/-- **The claims** (the state after `ρ`): `Σ_V h = 0`, the setup's claim at `β`, `Q`'s two claims at `t` (`P`'s share
-read as `P(t) + S(t)/Z_V(t)`), `W`'s fold at `ρ`. -/
+/-- **The claims** (the state after `ρ`): the setup's claim at `β`, `Q`'s two claims at `t`, `W`'s fold at `ρ`. -/
 def Post2 (s : St) (cW : M) (c₀ : List F) (cQ : M) (c₁ vals c₂ : List F) : Prop :=
-  SumOK G ω Mo cQ ∧
-    xiOf G.logW vals = Mo.setup.κP.eval (c₁.getD 0 0) + (abc c₀).2.1 * Mo.setup.σP.eval (c₁.getD 0 0) ∧
-      G.QClaim ω (Mo.phi (pubOf s) (abc c₀).2.2) Mo.idC
-        (cellsOf G.logW ω (foldVals vals) (c₁.getD 0 0)) (xiOf G.logW vals) (sOf G.logW vals)
-        (abc c₀).1 (abc c₀).2.1 (abc c₀).2.2 (c₁.getD 0 0) (c₂.getD 0 0)
-        ((Mo.hP cQ).eval (c₁.getD 0 0)) ((Mo.qP cQ).eval (c₁.getD 0 0))
-        ((Mo.pP cQ).eval (c₁.getD 0 0) + (Mo.sP cQ).eval (c₁.getD 0 0) / (G.zV ω).eval (c₁.getD 0 0))
-        ((Mo.qPP cQ).eval (c₁.getD 0 0)) ∧
-      foldAt G.logW (foldVals vals) (c₂.getD 0 0) =
-        foldAt G.logW (Mo.fold cW (c₁.getD 0 0)) (c₂.getD 0 0)
+  xiOf G.logW vals = Mo.setup.κP.eval (c₁.getD 0 0) + (abc c₀).2.1 * Mo.setup.σP.eval (c₁.getD 0 0) ∧
+    G.QClaim ω (Mo.phi (pubOf s) (abc c₀).2.2) Mo.idC
+      (cellsOf G.logW ω (foldVals vals) (c₁.getD 0 0)) (xiOf G.logW vals) (sOf G.logW vals)
+      (abc c₀).1 (abc c₀).2.1 (abc c₀).2.2 (c₁.getD 0 0) (c₂.getD 0 0)
+      ((Mo.hP cQ).eval (c₁.getD 0 0)) ((Mo.qP cQ).eval (c₁.getD 0 0)) ((Mo.gP cQ).eval (c₁.getD 0 0))
+      ((Mo.pP cQ).eval (c₁.getD 0 0)) ((Mo.qPP cQ).eval (c₁.getD 0 0)) ((Mo.sP cQ).eval (c₁.getD 0 0)) ∧
+    foldAt G.logW (foldVals vals) (c₂.getD 0 0) = foldAt G.logW (Mo.fold cW (c₁.getD 0 0)) (c₂.getD 0 0)
 
 /-- **The state before a round's challenges.** -/
 def pre (s : St) (p : Compose.Opened M F) (m : Option M × List F) : Prop :=
@@ -660,12 +537,13 @@ def post (s : St) (p : Compose.Opened M F) (m : Option M × List F) (c : List F)
       Post2 G ω Mo pubOf s cW (rd p 0).2 cQ (rd p 1).2 m.2 c
   else False
 
-/-- **The rounds' errors**: `(4N − 1 + Σ_j d_j)/|F|` (the copy argument and the ports), `(4N − 1)/|F|` (the identities
-at `t`, `h` below `2N`, and the empty slot `S`), `2^r/|F|` (the fold and the pushes' claim at `ρ`). -/
+/-- **The rounds' errors** (π2v4): `(4N − 1 + Σ_j d_j)/|F|` (the copy argument, the ports and the vanishing
+denominators), `(5N − 1)/|F|` (`I`, below `5N`, and `P`'s definition at `t`), `(2^r + 1)/|F|` (`W`'s fold, `2^r − 1`;
+`Q`'s pushes' claim, `2`). -/
 noncomputable def err [Fintype F] (d : ℕ → ℕ) (j : ℕ) : ℝ≥0∞ :=
   if j = 0 then ((4 * G.N - 1 + ∑ i ∈ range G.nP, d i : ℕ) : ℝ≥0∞) / (Fintype.card F : ℝ≥0∞)
-  else if j = 1 then ((4 * G.N - 1 : ℕ) : ℝ≥0∞) / (Fintype.card F : ℝ≥0∞)
-  else ((2 ^ G.logW : ℕ) : ℝ≥0∞) / (Fintype.card F : ℝ≥0∞)
+  else if j = 1 then ((5 * G.N - 1 : ℕ) : ℝ≥0∞) / (Fintype.card F : ℝ≥0∞)
+  else ((2 ^ G.logW + 1 : ℕ) : ℝ≥0∞) / (Fintype.card F : ℝ≥0∞)
 
 end States
 
@@ -676,7 +554,8 @@ section Sound
 variable {St M : Type} {G : Circuit F} {ω : ℕ → F} (Mo : Model G ω M) (pubOf : St → ℕ → List F)
 variable {n : ℕ}
 
-/-- **The next round's state implies this round's after** (`Compose.Piop.pre_post`). -/
+/-- **The next round's state implies this round's after** (`Compose.Piop.pre_post`); round `0`'s by the layout
+lemma (`Circuit.copyOK4_of_iPoly`). -/
 theorem pre_post (hV : G.Valid) (hP : Points ω n) (hn : G.logN ≤ n) (s : St)
     (p : Compose.Opened M F) (m : Option M × List F) (c : List F) (m' : Option M × List F)
     (h : pre G ω Mo pubOf s (p ++ [(m, c)]) m') : post G ω Mo pubOf s p m c := by
@@ -691,9 +570,10 @@ theorem pre_post (hV : G.Valid) (hP : Points ω n) (hn : G.logN ≤ n) (s : St)
     subst hp
     have e : rd ([] ++ [(m, c)] : Compose.Opened M F) 0 = (m, c) := rfl
     rw [e] at hW hpre
-    obtain ⟨hid, hdef, hsum⟩ := hpre
-    exact ⟨cW, hW, Circuit.copyOK_of_idPoly hV hP hn Mo.setup (pubOf s) (Mo.phi (pubOf s) (abc c).2.2)
-      (Mo.wP cW) (Mo.hP cQ) (Mo.qP cQ) (Mo.pP cQ) (Mo.qPP cQ) _ _ _ (Mo.phi_eval _ _) hid hdef hsum⟩
+    obtain ⟨hI, hdef⟩ := hpre
+    exact ⟨cW, hW, Circuit.copyOK4_of_iPoly hV hP hn Mo.setup (pubOf s) (Mo.phi (pubOf s) (abc c).2.2)
+      (Mo.wP cW) (Mo.hP cQ) (Mo.qP cQ) (Mo.gP cQ) (Mo.pP cQ) (Mo.qPP cQ) _ _ _ (Mo.phi_eval _ _) hI hdef
+      (Mo.hP_deg cQ)⟩
   · rw [ite_eq_right h0]
     by_cases h1 : p.length = 1
     · rw [ite_eq_left h1]
@@ -709,7 +589,8 @@ theorem pre_post (hV : G.Valid) (hP : Points ω n) (hn : G.logN ≤ n) (s : St)
 
 variable [Fintype F] [SampleableType F]
 
-/-- **Round `0`'s error**: `(4N − 1 + Σ_j d_j)/|F|` over `α, β, γ` (the copy argument and the ports). -/
+/-- **Round `0`'s error**: `(4N − 1 + Σ_j d_j)/|F|` over `α, β, γ` (the copy argument, the ports, the vanishing
+denominators: `Circuit.card_copyOK4_le`). -/
 theorem sound_zero (hV : G.Valid) (hP : Points ω n) (hn : G.logN + 1 ≤ n) (d : ℕ → ℕ)
     (hbind : ∀ s c, ∀ j < G.nP, G.limbVals (fun i => (Mo.wP c).eval (ω i)) j ≠ pubOf s j →
       (univ.filter fun γ : F => G.push (fun i => (Mo.wP c).eval (ω i)) γ (G.port j) =
@@ -747,9 +628,9 @@ theorem sound_zero (hV : G.Valid) (hP : Points ω n) (hn : G.logN + 1 ≤ n) (d 
       rw [ite_eq_left List.length_nil]
       exact ⟨cW, hm, h'⟩)
     refine (card_fin3_le (fun c => ¬ pre G ω Mo pubOf s [] m ∧ post G ω Mo pubOf s [] m c)
-      (fun v => G.CopyOK ω (pubOf s) (fun i => (Mo.wP cW).eval (ω i))
+      (fun v => G.CopyOK4 ω (pubOf s) (fun i => (Mo.wP cW).eval (ω i))
       v.1 v.2.1 v.2.2) fun v hv => ?_).trans
-        (Circuit.card_copyOK_le ω hV hω (pubOf s) _ d (hbind s cW) hns)
+        (Circuit.card_copyOK4_le ω hV hω (pubOf s) _ d (hbind s cW) hns)
     have h2 := hv.2
     unfold post at h2
     rw [ite_eq_left List.length_nil] at h2
@@ -760,9 +641,8 @@ theorem sound_zero (hV : G.Valid) (hP : Points ω n) (hn : G.logN + 1 ≤ n) (d 
     rw [getD_ofFn v 0 (by norm_num), getD_ofFn v 1 (by norm_num), getD_ofFn v 2 (by norm_num)] at hS
     exact hS
 
-/-- **Round `1`'s error**: `(4N − 1)/|F|` over `t`: for `S = 0` the identities' degrees (`h` below `2N`); for `S ≠ 0`
-the nonzero `Z_V·def + S`, of degree at most `4N − 1`, which `P`'s definition at `t` with `P + S(t)/Z_V(t)` makes
-vanish (`Circuit.card_defPoly_shift_le`). -/
+/-- **Round `1`'s error**: `(5N − 1)/|F|` over `t`: unless `I` and `P`'s definition are zero, they vanish together at at
+most `5N − 1` points (`Circuit.card_iPoly_eval_eq_zero_le`). -/
 theorem sound_one (hV : G.Valid) (d : ℕ → ℕ) (s : St) (p : Compose.Opened M F)
     (hp : p.length = 1) (m : Option M × List F) :
     Pr{let c ← Compose.draws F (0 + 1)}[¬ pre G ω Mo pubOf s p m ∧ post G ω Mo pubOf s p m c] ≤
@@ -787,51 +667,27 @@ theorem sound_one (hV : G.Valid) (d : ℕ → ℕ) (s : St) (p : Compose.Opened 
       rw [ite_eq_right (by omega), ite_eq_left hp]
       exact ⟨cW, cQ, hW, hQ, h⟩)
     set c₀ := (rd p 0).2
-    have hpost1 : ∀ v : Fin 1 → F, post G ω Mo pubOf s p m (List.ofFn v) →
-        Post1 G ω Mo pubOf s cW c₀ cQ [v 0] := by
-      intro v hv
-      obtain ⟨cW', cQ', hW', hQ', h1⟩ := (hpost _).mp hv
-      rw [hW] at hW'
-      rw [hQ] at hQ'
-      cases Option.some.inj hW'
-      cases Option.some.inj hQ'
-      have e : List.ofFn v = [v 0] := by rw [List.ofFn_succ, List.ofFn_zero]
-      rw [e] at h1
-      exact h1
-    by_cases hS : Mo.sP cQ = 0
-    · by_cases hsum : SumH G ω Mo cQ
-      · -- `S = 0`: the identities with `P` itself
-        have hne : ¬ (idOf G ω Mo pubOf s cW cQ (abc c₀).1 (abc c₀).2.1 (abc c₀).2.2 = 0 ∧
-            defOf G ω Mo cW cQ (abc c₀).2.2 = 0) := fun h => hnp ⟨h.1, h.2, hsum⟩
-        refine (card_fin1_le (fun c => ¬ pre G ω Mo pubOf s p m ∧ post G ω Mo pubOf s p m c)
-          (fun t => (idOf G ω Mo pubOf s cW cQ (abc c₀).1 (abc c₀).2.1 (abc c₀).2.2).eval t = 0 ∧
-            (defOf G ω Mo cW cQ (abc c₀).2.2).eval t = 0)
-          fun v hv => ?_).trans ?_
-        · obtain ⟨-, hev, hdv, -⟩ := hpost1 v hv.2
-          rw [List.getD_cons_zero, idEff_of_sP G ω Mo pubOf hS] at hev
-          rw [List.getD_cons_zero, defEff_of_sP G ω Mo hS] at hdv
-          exact ⟨hev, hdv⟩
-        · exact Circuit.card_idPoly_eval_eq_zero_le hV Mo.setup (Mo.phi_deg _ _) (Mo.wP_deg cW) (Mo.hP_deg cQ)
-            (Mo.qP_deg cQ) (Mo.pP_deg cQ) (Mo.qPP_deg cQ) _ _ _ hne
-      · rw [Finset.filter_false_of_mem fun v _ h => hsum (sumH_of_sumOK G ω Mo hS (hpost1 v h.2).2.2.2)]
-        exact Nat.zero_le _
-    · -- `S ≠ 0`: `Z_V·def + S` vanishes at `t`
-      refine (card_fin1_le (fun c => ¬ pre G ω Mo pubOf s p m ∧ post G ω Mo pubOf s p m c)
-        (fun t => (G.zV ω).eval t ≠ 0 ∧ (G.defPoly ω (Mo.wP cW)
-          (Mo.pP cQ + C ((Mo.sP cQ).eval t / (G.zV ω).eval t)) (Mo.qPP cQ) (abc c₀).2.2).eval t = 0)
-        fun v hv => ?_).trans
-          (Circuit.card_defPoly_shift_le hV (Mo.wP_deg cW) (Mo.pP_deg cQ) (Mo.qPP_deg cQ) (Mo.sP_deg cQ) hS _)
-      obtain ⟨hz, -, hdv, -⟩ := hpost1 v hv.2
-      rw [List.getD_cons_zero] at hz hdv
-      exact ⟨hz, hdv⟩
-
+    refine (card_fin1_le (fun c => ¬ pre G ω Mo pubOf s p m ∧ post G ω Mo pubOf s p m c)
+      (fun t => (iOf G ω Mo pubOf s cW cQ (abc c₀).1 (abc c₀).2.1 (abc c₀).2.2).eval t = 0 ∧
+        (defOf G ω Mo cW cQ (abc c₀).2.2).eval t = 0)
+      fun v hv => ?_).trans
+        (Circuit.card_iPoly_eval_eq_zero_le hV Mo.setup (Mo.phi_deg _ _) (Mo.wP_deg cW) (Mo.hP_deg cQ)
+          (Mo.qP_deg cQ) (Mo.gP_deg cQ) (Mo.pP_deg cQ) (Mo.qPP_deg cQ) _ _ _ hnp)
+    obtain ⟨cW', cQ', hW', hQ', h1⟩ := (hpost _).mp hv.2
+    rw [hW] at hW'
+    rw [hQ] at hQ'
+    cases Option.some.inj hW'
+    cases Option.some.inj hQ'
+    have e : List.ofFn v = [v 0] := by rw [List.ofFn_succ, List.ofFn_zero]
+    rw [e] at h1
+    exact ⟨h1.2.1, h1.2.2⟩
   · rw [Finset.filter_false_of_mem fun v _ h => hex (by
       obtain ⟨cW, cQ, hW, hQ, -⟩ := (hpost _).mp h.2
       exact ⟨cW, cQ, hW, hQ⟩)]
     exact Nat.zero_le _
 
-/-- **Round `2`'s error**: `2^r/|F|` over `ρ` (`W`'s fold, `2^r − 1`; with the right fold values and `ξ`, `Q`'s
-pushes' claim, `1`). -/
+/-- **Round `2`'s error**: `(2^r + 1)/|F|` over `ρ` (`W`'s fold, `2^r − 1`; with the right fold values and `ξ`, `Q`'s
+pushes' claim, `2`: `Circuit.card_qClaim_le`). -/
 theorem sound_two (hV : G.Valid) (hP : Points ω n) (d : ℕ → ℕ) (s : St)
     (p : Compose.Opened M F) (hp : p.length = 2) (m : Option M × List F) :
     Pr{let c ← Compose.draws F (0 + 1)}[¬ pre G ω Mo pubOf s p m ∧ post G ω Mo pubOf s p m c] ≤
@@ -870,45 +726,41 @@ theorem sound_two (hV : G.Valid) (hP : Points ω n) (d : ℕ → ℕ) (s : St)
     · refine (card_fin1_le (fun c => ¬ pre G ω Mo pubOf s p m ∧ post G ω Mo pubOf s p m c)
         (fun ρ => foldAt G.logW (foldVals m.2) ρ =
         foldAt G.logW (Mo.fold cW t) ρ) fun v hv => ?_).trans
-          ((card_foldAt_eq_le G.logW hfold).trans (Nat.sub_le _ _))
-      have h2 := (hclaims _ hv.2).2.2.2
+          ((card_foldAt_eq_le G.logW hfold).trans (by have := @Nat.one_le_two_pow G.logW; omega))
+      have h2 := (hclaims _ hv.2).2.2
       rw [getD_ofFn v 0 (by norm_num)] at h2
       exact h2
     · push Not at hfold
       have hv : ∀ x < G.W, cellsOf G.logW ω (foldVals m.2) t x = (Mo.wP cW).eval (t + ω x) := fun x hx => by
         rw [cellsOf_congr G.logW ω hfold _ x, Mo.cells_fold cW _ x hx]
-      by_cases hok : SumOK G ω Mo cQ ∧
-          xiOf G.logW m.2 = Mo.setup.κP.eval t + (abc c₀).2.1 * Mo.setup.σP.eval t
+      by_cases hok : xiOf G.logW m.2 = Mo.setup.κP.eval t + (abc c₀).2.1 * Mo.setup.σP.eval t
       · by_cases hz : (G.zV ω).eval t = 0
         · -- `t ∈ V_m`: `Q`'s claims fail
-          rw [Finset.filter_false_of_mem fun v _ h => (hclaims _ h.2).2.2.1.1 hz]
+          rw [Finset.filter_false_of_mem fun v _ h => (hclaims _ h.2).2.1.1 hz]
           exact Nat.zero_le _
-        have hne : ¬ ((idEff G ω Mo pubOf s cW cQ (abc c₀).1 (abc c₀).2.1 (abc c₀).2.2 t).eval t = 0 ∧
-            (defEff G ω Mo cW cQ (abc c₀).2.2 t).eval t = 0) := fun h => hnp ⟨hz, h.1, h.2, hok.1⟩
+        have hne : ¬ ((iOf G ω Mo pubOf s cW cQ (abc c₀).1 (abc c₀).2.1 (abc c₀).2.2).eval t = 0 ∧
+            (defOf G ω Mo cW cQ (abc c₀).2.2).eval t = 0) := fun h => hnp ⟨hz, h.1, h.2⟩
         refine (card_fin1_le (fun c => ¬ pre G ω Mo pubOf s p m ∧ post G ω Mo pubOf s p m c)
           (fun ρ => G.QClaim ω (Mo.phi (pubOf s) (abc c₀).2.2) Mo.idC
             (cellsOf G.logW ω (foldVals m.2) t) (xiOf G.logW m.2) (sOf G.logW m.2)
-            (abc c₀).1 (abc c₀).2.1 (abc c₀).2.2 t ρ ((Mo.hP cQ).eval t) ((Mo.qP cQ).eval t)
-            ((pEff G ω Mo cQ t).eval t) ((Mo.qPP cQ).eval t)) fun v hv' => ?_).trans
-          ((Circuit.card_qClaim_le hV hP Mo.setup _ _ (Mo.wP cW) (Mo.hP cQ) (Mo.qP cQ) (pEff G ω Mo cQ t)
-            (Mo.qPP cQ) _ _ _ t _ _ hv hok.2 hne).trans Nat.one_le_two_pow)
-        have h2 := (hclaims _ hv'.2).2.2.1
+            (abc c₀).1 (abc c₀).2.1 (abc c₀).2.2 t ρ ((Mo.hP cQ).eval t) ((Mo.qP cQ).eval t) ((Mo.gP cQ).eval t)
+            ((Mo.pP cQ).eval t) ((Mo.qPP cQ).eval t) ((Mo.sP cQ).eval t)) fun v hv' => ?_).trans
+          ((Circuit.card_qClaim_le hV hP Mo.setup _ _ (Mo.wP cW) (Mo.hP cQ) (Mo.qP cQ) (Mo.gP cQ) (Mo.pP cQ)
+            (Mo.qPP cQ) (Mo.sP cQ) _ _ _ t _ _ hv hok hne).trans (by have := @Nat.one_le_two_pow G.logW; omega))
+        have h2 := (hclaims _ hv'.2).2.1
         rw [getD_ofFn v 0 (by norm_num)] at h2
-        rw [pEff_eval]
         exact h2
-      · rw [Finset.filter_false_of_mem fun v _ h => hok (by
-          have h2 := hclaims _ h.2
-          exact ⟨h2.1, h2.2.1⟩)]
+      · rw [Finset.filter_false_of_mem fun v _ h => hok (hclaims _ h.2).1]
         exact Nat.zero_le _
   · rw [Finset.filter_false_of_mem fun v _ h => hex (by
       obtain ⟨cW, cQ, hW, hQ, -⟩ := (hpost _).mp h.2
       exact ⟨cW, cQ, hW, hQ⟩)]
     exact Nat.zero_le _
 
-/-- **π2's PIOP in `Compose.Piop`'s form**, for any chain whose rounds are π2's: the states
-`pre`, `post`, the errors `err` (round `0` `(4N − 1 + Σ_j d_j)/|F|`, round `1` `(4N − 1)/|F|` (`h` below `2N`,
-the empty slot `S`), round `2` `2^r/|F|`), each proved. The hypotheses: a valid circuit, points injective on
-`[0, 2N)` (`n ≥ log N + 1`), and the ports' binding `d_j` (`RecPiop.Ports`). -/
+/-- **π2's PIOP in `Compose.Piop`'s form** (π2v4), for any chain whose rounds are π2's: the states `pre`, `post`, the
+errors `err` (round `0` `(4N − 1 + Σ_j d_j)/|F|`, round `1` `(5N − 1)/|F|`, round `2` `(2^r + 1)/|F|`), each proved.
+The hypotheses: a valid circuit, points injective on `[0, 2N)` (`n ≥ log N + 1`), and the ports' binding `d_j`
+(`RecPiop.Ports`). -/
 noncomputable def piop (K : Compose.ChainSpec F St) (hK : K.rounds = pi2Rounds G.logW)
     (hV : G.Valid) (hP : Points ω n) (hn : G.logN + 1 ≤ n) (d : ℕ → ℕ)
     (hbind : ∀ s c, ∀ j < G.nP, G.limbVals (fun i => (Mo.wP c).eval (ω i)) j ≠ pubOf s j →
