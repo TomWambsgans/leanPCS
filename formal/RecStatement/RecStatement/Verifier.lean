@@ -1,7 +1,7 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Transcribed from `crates/leanvm/rec/src/pi2/verifier.rs`
 -- (`NAME`, `frobenius`, `inverse`, `extension`, `reduce`'s transcript, `statement_words`, `verify`) and
--- `crates/leanvm/rec/src/pi2/prover.rs` (`stack_vars`, `QUOTIENT_SLOTS`, `EMPTY_SLOTS`, `iv`), π2v3
--- (`leanvm-rec-pi2v3`), on the EIP draft's PCS claims (`crates/pcs_claim`: each commitment a root and its
+-- `crates/leanvm/rec/src/pi2/prover.rs` (`stack_vars`, `QUOTIENT_SLOTS`, `EMPTY_SLOTS`, `iv`), π2v4
+-- (`leanvm-rec-pi2v4`, main 7e6d353c), on the EIP draft's PCS claims (`crates/pcs_claim`: each commitment a root and its
 -- out-of-domain answer, one point claim per claim; the claims and their openings are `Calls.lean`'s and
 -- `Security.lean`'s). The channel is `formal/UniStatement`'s (`KeccakChannel`).
 import RecStatement.Spec
@@ -11,9 +11,10 @@ import UniKeccak.Opening
 /-!
 # π2's verifier on calldata
 
-**The transcript** (`KeccakChannel`, `PI2.md` §2): the seed `keccak(NAME ‖ IV ‖ public input)`,
-`NAME = "leanvm-rec-pi2v3"`; the stream holds the public data (`Read`s: π1's roots `C1`, `C2`, π1's claims' elements:
-its out-of-domain answers, the pair challenges and the values), `W`'s commitment (its root, then its out-of-domain
+**The transcript** (`KeccakChannel`, `PI2.md` §2): the seed `keccak(NAME ‖ IV ‖ public input ‖ frame words)`,
+`NAME = "leanvm-rec-pi2v4"`, the frame words the payloads the `Read.frame`s name (the Keccak-256s of π1's claims π2's
+circuit hashes: all three at 128 signatures); the stream holds the public data of the claims the contract encodes
+(`Read`s: π1's roots, π1's claims' elements, a narrow one as its 20 bytes: none at 128 signatures), `W`'s commitment (its root, then its out-of-domain
 answer), then `α, β, γ` are drawn; `Q`'s commitment, then `t`; the `2^r` fold values, `ξ = κ(t) + βσ(t)` and
 `s = P(t)`, then `ρ`. The first challenge hashes the state
 and everything read before it: the public data is bound there. Then the arithmetic (`CoreSpec.run`, over `E`, its
@@ -22,9 +23,10 @@ constants `Spec.of`'s: `Spec.core`), which requires one value nonzero (`Out.all`
 **The IV** (`prover::iv`): `keccak("leanvm-rec-iv-v3" ‖ π1's contract IV ‖ the setup's root ‖ the setup's
 out-of-domain answer ‖ the circuit's digest ‖ log_n)`.
 
-**The stacks** (`PI2.md` §2): `W` (`w` in its leading lanes), `Q` (`m + 4` variables: the position, a digit, the kind,
-two limb bits: sixteen slots of `N`, `digit + 2 kind + 4 limb`, `h` and `q`'s two digits for limbs `0..2`, `P`
-(digit 1) and `q_P` at limb code `3`; slots `1, 5, 9, 12` the honest prover's zeros), the setup (`κ` then `κ + σ`),
+**The stacks** (`PI2.md` §2): `W` (`w` in its leading lanes), `Q` (`m + 4` variables: the position, two slot bits
+`b_0, b_1`, two limb bits: sixteen slots of `N`, `b_0 + 2 b_1 + 4 limb`; for limbs `0..2` `H = x h` at `(0, 0)`, `q`'s
+digits at `(1, 0)`, `(0, 1)`, `G` at `(1, 1)`; at limb code `3` `P`, `q_P`'s digits, `S`; `G`, `S` the honest
+prover's zeros), the setup (`κ` then `κ + σ`),
 on stacks of at least `2^24` words (`2^15` below `2^20` positions: `stackVars`); every claim a point of its whole
 stack.
 
@@ -78,6 +80,9 @@ def extension : (E × E) × E :=
   let d1 := 1 + y2
   ((yE * d0⁻¹, y2 * d1⁻¹), (d0 * d1)⁻¹)
 
+/-- `Y³` (`F192::Y` cubed): limb code `3`'s weight at `(y_0, y_1)`, over the scale. -/
+def yCubeE : E := yE * yE * yE
+
 /-- `base::<S>(x)`: an element of `K` in `E`. -/
 def kE (x : K) : E := ofK x
 
@@ -102,6 +107,7 @@ def Spec.core (s : Spec) : CoreSpec E :=
     y0 := extension.1.1
     y1 := extension.1.2
     scale := extension.2
+    yCube := yCubeE
     ω := UniStatement.pointE }
 
 /-! ## The stacks, the IV -/
@@ -112,19 +118,19 @@ def minCertifiedStack : ℕ := 24
 def certifiedFrom : ℕ := 20
 
 /-- **`Q`'s slots** (`QUOTIENT_SLOTS`, `h_slot`, `q_slot`, `P_SLOT`, `QP_SLOT`, `EMPTY_SLOTS`): slot
-`digit + 2 kind + 4 limb`, `h`'s limb `l` at `4 l`, `q`'s at `4 l + 2, 4 l + 3`, `P` at `13`, `q_P` at `14, 15`; the
-honest prover leaves slots `1, 5, 9, 12` zero (`emptySlots`), which nothing constrains: the commitment is the whole
-sixteen-slot stack (`PI2.md` §2, "The empty slots are not constrained"). -/
-def quotientSlots : List ℕ := [0, 2, 3, 4, 6, 7, 8, 10, 11, 13, 14, 15]
+`b_0 + 2 b_1 + 4 limb`, `H`'s limb `l` at `4 l`, `q`'s digits at `4 l + 1, 4 l + 2`, `G`'s at `4 l + 3`; `P` at `12`,
+`q_P` at `13, 14`, `S` at `15`. The honest prover leaves `G`'s and `S`'s slots zero (`emptySlots`); any prover's are
+handled by the identity's layout (`PI2.md` §7: `G` weighs `x² Z_V³`, `S(t) = 0` is in the pushes' claim). -/
+def quotientSlots : List ℕ := [0, 1, 2, 4, 5, 6, 8, 9, 10, 12, 13, 14]
 
-/-- The slots the honest prover leaves zero. -/
-def emptySlots : List ℕ := [1, 5, 9, 12]
+/-- The slots the honest prover leaves zero: `G`'s three limbs, then `S`. -/
+def emptySlots : List ℕ := [3, 7, 11, 15]
 
 /-- The IV's tag. -/
 def ivTag : List UInt8 := "leanvm-rec-iv-v3".toUTF8.toList
 
 /-- The transcript's name (`NAME`). -/
-def name : List UInt8 := "leanvm-rec-pi2v3".toUTF8.toList
+def name : List UInt8 := "leanvm-rec-pi2v4".toUTF8.toList
 
 section With
 
@@ -169,14 +175,11 @@ structure Reduced where
 /-- `W`'s claim: `(ρ, ρ², …, ρ^(2^(r−1)), w_r, …, w_{m−1})`, value `Σ_k eq(ρ⃗, k) a_k`. -/
 def Reduced.witness (r : Reduced) : List E × E := (r.out.witnessPoint, r.out.fold)
 
-/-- `Q`'s identity claim at `(u_0, …, u_m, ρ', y_0, y_1)`. -/
+/-- `Q`'s identity claim at `(u_0, …, u_{m−1}, z_0, z_1, y_0, y_1)`. -/
 def Reduced.quotient (r : Reduced) : List E × E := (r.out.quotientPoint, r.out.quotientValue)
 
-/-- `Q`'s pushes' claim at `(u_0, …, u_m, ρ, 1, 1)`. -/
+/-- `Q`'s pushes' claim at `(u_0, …, u_{m−1}, ρ, z'_1, 1, 1)`. -/
 def Reduced.pushes (r : Reduced) : List E × E := (r.out.pushesPoint, r.out.pushesValue)
-
-/-- `Q`'s claim at `h`'s top coefficient (`Σ_V h`), value `0`. -/
-def Reduced.sum (r : Reduced) : List E × E := (r.out.sumPoint, r.out.sumValue)
 
 /-- The setup's claim at `(w_0, …, w_{m−1}, β)`, value `ξ`. -/
 def Reduced.setup (r : Reduced) : List E × E := (r.out.setupPoint, r.inputs.ξ)
@@ -185,10 +188,24 @@ section With
 
 variable {m : Type → Type} [Monad m] (F : KeccakState → m KeccakState)
 
-/-- **`reduce`**: the public data, `W`'s root and out-of-domain answer, `α, β, γ`, `Q`'s, `t`, the fold values, `ξ`
-and `s`, `ρ`; then the arithmetic. -/
-def reduceWith (s : Spec) (statement : List E) : UniStatement.ChanM m Reduced := do
+/-- **`next_narrow`**: 20 bytes, big-endian, `c2` its first 4, `c1` the next 8, `c0` the last 8. -/
+def nextNarrow : UniStatement.ChanM m E := do
+  let b ← UniStatement.takeBytes (m := m) 20
+  return UniStatement.eNew (UniStatement.beWordAt b 12) (UniStatement.beWordAt b 4)
+    ((List.range 4).foldl (fun acc k ↦ (acc <<< 8) ||| (b.getD k 0).toUInt64) 0)
+
+/-- **`next_frame`**: the next frame word (`frame`'s `k`-th, `k` the frame reads before it), as the statement's four
+big-endian words; none left is `StreamExhausted`. -/
+def frameWords (frame : List (List UInt8)) (k : ℕ) : UniStatement.ChanM m (List E) :=
+  match frame[k]? with
+  | some w => return UniStatement.publicWordsOf w
+  | none => throw .streamExhausted
+
+/-- **`reduce`**: the public data (the frame words `frame` its `Read.frame`s read, in order), `W`'s root and
+out-of-domain answer, `α, β, γ`, `Q`'s, `t`, the fold values, `ξ` and `s`, `ρ`; then the arithmetic. -/
+def reduceWith (s : Spec) (statement : List E) (frame : List (List UInt8)) : UniStatement.ChanM m Reduced := do
   let mut pubs := statement
+  let mut k := 0
   for rd in s.reads do
     match rd with
     | .integer b => pubs := pubs ++ [UniStatement.eK (UInt64.ofNat (← UniStatement.nextInteger (m := m) b))]
@@ -196,6 +213,10 @@ def reduceWith (s : Spec) (statement : List E) : UniStatement.ChanM m Reduced :=
       let (lo, hi) ← UniStatement.nextRoot (m := m)
       pubs := pubs ++ [lo, hi]
     | .scalar => pubs := pubs ++ [← UniStatement.nextScalar (m := m)]
+    | .narrow => pubs := pubs ++ [← nextNarrow (m := m)]
+    | .frame _ =>
+      pubs := pubs ++ (← frameWords (m := m) frame k)
+      k := k + 1
   let wRoot ← UniStatement.nextRoot (m := m)
   let wOod ← UniStatement.nextScalar (m := m)
   let α ← UniStatement.sample F
@@ -222,12 +243,13 @@ def Outcome.accepts (o : Outcome) : Bool :=
   | .ok r => r.out.all != 0
   | .error _ => false
 
-/-- **π2's verifier on calldata** over `F` (`verify`): the seed of the IV and the public input, the reduction, nothing
-of the stream left. -/
-def runWith (s : Spec) (iv publicInput : List UInt8) (stream : Array UInt8) : m Outcome := do
-  let seed ← keccak256With F (name ++ iv ++ publicInput)
+/-- **π2's verifier on calldata** over `F` (`verify`): the seed of the IV, the public input and the frame words, the
+reduction, nothing of the stream left. -/
+def runWith (s : Spec) (iv publicInput : List UInt8) (frame : List (List UInt8)) (stream : Array UInt8) :
+    m Outcome := do
+  let seed ← keccak256With F (name ++ iv ++ publicInput ++ frame.flatten)
   let walk : UniStatement.ChanM m Reduced := do
-    let r ← reduceWith F s (UniStatement.publicWordsOf publicInput)
+    let r ← reduceWith F s (UniStatement.publicWordsOf publicInput) frame
     UniStatement.finish (m := m)
     return r
   let (result, chan) ← (walk.run).run (UniStatement.Chan.start seed stream)
@@ -236,7 +258,7 @@ def runWith (s : Spec) (iv publicInput : List UInt8) (stream : Array UInt8) : m 
 end With
 
 /-- The run over Keccak-f[1600]: the deployed contract's computation. -/
-def run (s : Spec) (iv publicInput : List UInt8) (stream : Array UInt8) : Outcome :=
-  Id.run (runWith (m := Id) (fun x ↦ pure (keccakF1600 x)) s iv publicInput stream)
+def run (s : Spec) (iv publicInput : List UInt8) (frame : List (List UInt8)) (stream : Array UInt8) : Outcome :=
+  Id.run (runWith (m := Id) (fun x ↦ pure (keccakF1600 x)) s iv publicInput frame stream)
 
 end RecStatement
