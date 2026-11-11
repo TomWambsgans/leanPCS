@@ -205,8 +205,8 @@ systemd-run --scope -p MemoryMax=16G lake exe rec-real-check --setup-only  # Set
 systemd-run --scope -p MemoryMax=12G lake exe rec-view-check               # viewCheck at two IVs
 ```
 
-A build of many libraries at once runs many `lean` processes; under a memory cap, restrict its CPUs (`taskset -c 0-3
-lake build …`).
+A build of many libraries at once runs many `lean` processes, each mapping several GB of imported `.olean`s; under a
+memory cap, limit lake's workers (`LEAN_NUM_THREADS=3 lake build …`).
 
 `#guard_msgs` in each library checks the axioms. The differential tests' commands are in the package READMEs; the
 leanVM line's vectors are `f96a7938`'s (see Status).
