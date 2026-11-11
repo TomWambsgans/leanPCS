@@ -19,22 +19,24 @@ compiled circuit's relation, but with probability `ε2 Q`) refined into the laye
   `FsClosed.lean`): for every round-by-round
   sound protocol on π2's rounds (`RecPiop.pi2Rounds 4`: `W`'s root then `α, β, γ`; `Q`'s root then `t`; the fold values,
   `ξ` and `s` then `ρ`), its errors times the lists of the roots before them at most `e`, whose state before round `0` is a
-  property `P` of `W`'s candidate and whose last state follows from π2's checks (`all ≠ 0`) with the four claims true on
-  the candidates (`Pi2ClaimsHold`), π2's experiment accepts while no candidate of `W` (as π2's extractor lists them) has
-  `P`, with probability at most `pi2BoundE e Q`. It is `UniSound.FsLayer128` for π2: its proof is the port of
+  property `P` of `W`'s candidate and whose last state follows from π2's checks (`all ≠ 0`) with π2's four claims true
+  on the candidates (`Pi2ClaimsHold`), π2's experiment accepts while no candidate of `W` (as π2's extractor lists them)
+  has `P`, with probability at most `pi2BoundE e Q`. It is `UniSound.FsLayer128` for π2: its proof is the port of
   `UniSound/{Fs128, FsGame128, FsFinal128}.lean` (and the bridges `FsCouple`, `FsVerifier`, `FsWalk*`, `FsExtract`,
   `FsSetup`) to π2's transcript, through `Compose.knowledgeSoundness_listChainU_closed128` (π2's three rounds),
-  `WhirBridge.Pcs.pcs_union_sound` for π2's five PCS openings (`W` of `2^24` words, the setup `2^25`, `Q`'s three
-  `2^28`, charged once) and `Compose.prEvent_pairTr_le` (π2's seed `name ‖ iv ‖ input`).
-* **`Pi2Tables D C`** (the tables' layer; **open, `lean-rec-compose`**): what the candidates stand for (`RecPiop.Model`:
-  `W`'s polynomial, which takes the candidate's witness values on `V_m`, and its true fold values; `Q`'s `h`, `q`, `P`,
-  `q_P` and the empty slot `S`; the setup's `σ`, `κ`), and the claims on the candidates as the model's values
+  `WhirBridge.Pcs.UnionO.pcs_union_sound_oracle` for the contract's seven PCS openings (π1's three declared claims, `W`
+  of `2^24` words, the setup `2^25`, `Q`'s two `2^28`, charged once) and `Compose.prEvent_pairTr_le` (π2's seed
+  `name ‖ iv ‖ input ‖ frame words`).
+* **`Pi2Tables D C`** (the tables' layer; built by `pi2Tables`, `Tables.lean`): what the candidates stand for
+  (`RecPiop.Model`: `W`'s polynomial, which takes the candidate's witness values on `V_m`, and its true fold values;
+  `Q`'s `H`, `q`, `G`, `P`, `q_P`, `S`; the setup's `σ`, `κ`), and the claims on the candidates as the model's values
   (`checks_claims_iff_post2`'s left side).
 
 * **`Pi2Facts D C`** (the circuit's facts, established by the compiler's checks and tests, `RecCircuitTest/Main.lean`,
-  `RecStatementTest/Runner.lean`; `SpecOf` by `RecStatement.Lemmas.SpecLink` and the circuit compiler, `lean-rec-statement`
-  and `lean-rec-circuit`): `SpecOf` of π2's verifier's constants and the compiled circuit, the circuit valid, its shape
-  (`2^24` positions, rows of `16`), the four-limb ports three, the public limbs determined by their fingerprint.
+  `RecStatementTest/Runner.lean`; `SpecOf` by `RecStatement.Lemmas.SpecLink` and the circuit compiler): `SpecOf` of
+  π2's verifier's constants and the compiled circuit, the circuit valid, its shape (`2^24` positions, rows of `16`), the
+  four-limb ports four (the statement and the Keccak-256s of π1's three claims), the public limbs determined by their
+  fingerprint.
 
 **Proved** (`pi2Extraction_of_layers`): from them, `Pi2Extraction D (the compiled circuit's relation) pi2Bound`. The
 protocol is `RecPiop.piop` at each setup's circuit (`pi2Piop`): its errors are `pi2_rounds_le`'s, the copy argument's
@@ -57,8 +59,8 @@ open scoped ENNReal
 /-- A candidate: a stack, as its words. -/
 abbrev Stk : Type := ℕ → K
 
-/-- π2's PIOP statement: the public input and π2's public scalars (the statement's four words, π1's roots' halves and
-claims' elements). -/
+/-- π2's PIOP statement: the public input and π2's public scalars (the statement's four words, then each frame word's
+four: the Keccak-256s of π1's three declared claims). -/
 abbrev Pi2St : Type := Vector UInt8 32 × List E
 
 /-- A decoded stack as its words. -/
@@ -74,16 +76,17 @@ def witnessOfStk (D : RecDeployment) (roots : RecSetupRoots) (c : Stk) : ℕ →
 theorem witnessOf_eq (D : RecDeployment) (roots : RecSetupRoots) (w : Vector K (2 ^ wVars D roots)) :
     witnessOf D roots w = witnessOfStk D roots (stkOf w) := rfl
 
-/-- **π2's public scalars from the calldata** (π2's run over Keccak-f[1600], any IV: they are the stream's public data,
-read before any hash). -/
-def pi2Scalars (D : RecDeployment) (roots : RecSetupRoots) (input : Vector UInt8 32) (stream : Array UInt8) :
+/-- **π2's public scalars from the calldata and the frame** (π2's run over Keccak-f[1600], any IV: the statement's
+words, the frame words the reads name, `frameOf proof.pi1Claims`, the stream's public data; read before any hash). -/
+def pi2Scalars (D : RecDeployment) (roots : RecSetupRoots) (input : Vector UInt8 32) (proof : RecProof) :
     List E :=
-  match (run (Spec.of (D.circuitAt roots.pi1).circuit) [] input.toList stream).result with
+  match (run (Spec.of (D.circuitAt roots.pi1).circuit) [] input.toList (frameOf proof.pi1Claims)
+      proof.stream).result with
   | .ok r => r.scalars
   | .error _ => []
 
 /-- π2's statement of an outcome. -/
-def pi2StmtOf (D : RecDeployment) (z : RecOutcome2) : Pi2St := (inp z, pi2Scalars D (rts z) (inp z) (prf z).stream)
+def pi2StmtOf (D : RecDeployment) (z : RecOutcome2) : Pi2St := (inp z, pi2Scalars D (rts z) (inp z) (prf z))
 
 /-- The statement's bytes: a zero byte, the public input, the scalars (an odd length: never a chain step's input). -/
 def pi2Label (s : Pi2St) : List UInt8 := 0 :: (s.1.toList ++ UniSound.scalars24 s.2)
@@ -126,17 +129,16 @@ def pi2Fac (j : ℕ) : ℕ := if j = 0 then 9952 else 9952 * 3564
 def ClaimOn (vars : ℕ) (stack : Stk) (c : List E × E) : Prop :=
   UniSound.mleStk stack vars c.1 = c.2
 
-/-- **π2's five claims hold of the candidates** (π2v3 on the PCS claims), for the run's inputs at the setup's
-commitments: `W`'s (its fold at `ρ`) of `cW`, `Q`'s three (the identity's, the pushes', the sum's) of `cQ`, the setup's
-(at `β`, value `ξ`) of the setup's stack (`Pi2Circuit.setupStack`, zeros beyond), each a point of its whole stack
-(`stackVars`: `W`'s, `Q`'s, the setup's variables). -/
+/-- **π2's four claims hold of the candidates** (π2v4 on the PCS claims), for the run's inputs at the setup's
+commitments: `W`'s (its fold at `ρ`) of `cW`, `Q`'s two (the identity's, the pushes') of `cQ`, the setup's (at `β`,
+value `ξ`) of the setup's stack (`Pi2Circuit.setupStack`, zeros beyond), each a point of its whole stack (`stackVars`:
+`W`'s, `Q`'s, the setup's variables). -/
 def Pi2ClaimsHold (D : RecDeployment) (roots : RecSetupRoots) (inp : Inputs E) (cW cQ : Stk) : Prop :=
   let c := D.circuitAt roots.pi1
   let out := (Spec.of c.circuit).core.run inp
   ClaimOn (stackVars c.circuit.logN).1 cW (out.witnessPoint, out.fold) ∧
     ClaimOn (stackVars c.circuit.logN).2.1 cQ (out.quotientPoint, out.quotientValue) ∧
     ClaimOn (stackVars c.circuit.logN).2.1 cQ (out.pushesPoint, out.pushesValue) ∧
-    ClaimOn (stackVars c.circuit.logN).2.1 cQ (out.sumPoint, out.sumValue) ∧
     ClaimOn (stackVars c.circuit.logN).2.2 (fun j ↦ c.setupStack.getD j 0) (out.setupPoint, inp.ξ)
 
 /-- The opened transcript of a run's first two rounds, on the candidates `cW`, `cQ` (round `0`: `W`'s root, its
@@ -159,15 +161,15 @@ theorem pi2BoundE_roundErr (Q : ℕ) : pi2BoundE pi2RoundErr Q = pi2Bound Q := r
 /-- **The Fiat–Shamir layer for π2** (proved at the real deployment: `pi2FsLayer_real`, `FsClosed.lean`): for every family, over the setup's roots, of
 round-by-round sound protocols on π2's rounds, their errors times the lists of the roots before them at most `e`, whose
 state before round `0` is a property `P` of `W`'s candidate and whose state after `ρ` follows from π2's check
-(`all ≠ 0`, the contract's one) with π2's five claims true on the candidates (`Pi2ClaimsHold`), the contract accepts
-while no candidate of
-`W`'s committed word (π2's extractor's list) has `P` with probability at most `pi2BoundE e Q`.
+(`all ≠ 0`, the contract's one) with π2's four claims true on the candidates (`Pi2ClaimsHold`), the contract accepts
+while no candidate of `W`'s committed word (π2's extractor's list) has `P` with probability at most `pi2BoundE e Q`.
 
 Its proof (`FsDefs.lean` … `FsClosed.lean`) is `UniSound.fsLayer128_holds`'s for π2's transcript: the chain
-`Compose.ChainSpecU` over π2's encoding (the 24-byte scalars, the roots' bytes and out-of-domain answers, the public
-data as round `0`'s bytes before `W`'s root), `Compose.knowledgeSoundness_listChainU_closed128`, π2's five PCS openings
-(`W` `2^24`, the setup `2^25`, `Q`'s three `2^28`; `Compose.GOps`, as π1's `UniKeccakSound.Fs.PcsOpK`) bounded once
-(`WhirBridge.Pcs.pcs_union_sound`, as π1's `hU_uniK`), the seed's pair (`Compose.prEvent_pairTr_le`), and the bridges
+`Compose.ChainSpecU` over π2's encoding (the seed's input `name ‖ iv ‖ input ‖ frame words` the statement's label; the
+24-byte scalars, the roots' bytes and out-of-domain answers; no public data in the stream at the reference),
+`Compose.knowledgeSoundness_listChainU_closed128`, the contract's seven PCS openings (π1's three declared claims, `W`
+`2^24`, the setup `2^25`, `Q`'s two `2^28`; `Compose.GOps`, as π1's `UniKeccakSound.Fs.PcsOpK`) bounded once
+(`WhirBridge.Pcs.UnionO.pcs_union_sound_oracle`), the seed's pair (`Compose.prEvent_pairTr_le`), and the bridges
 from `recSoundnessExperiment2` to the composed game (the setup's trees with their answers and π2's IV, the verifier as
 the chain, the extractor's decoders listing the chain's candidates). -/
 def Pi2FsLayer (D : RecDeployment) : Prop :=
@@ -186,40 +188,41 @@ def Pi2FsLayer (D : RecDeployment) : Prop :=
 
 /-! ## The compiled circuit and its facts -/
 
-/-- **π2's circuit, as the Lean compiler builds it** from π1-rec3's recorded graph at every 32-byte π1 IV
-(`Pi2Layers`' `rootsAt`, `compiled`, `compile_ok`, `stream_eq`). Only 32-byte IVs occur: π1's contract IV is a
-Keccak-256 digest (`RecDeployment.pi1IvAt_length`), and the checker rejects every other length (`graphOk`). The real
-deployment's is `RecCompose.pi2Circuits_real` (`RealDeployment.lean`), from one named Bool per IV
-(`RecCompose.IvChecked`). -/
+/-- **π2's circuit, as the Lean compiler builds it** from π1-rec4's recorded graph at each π1 setup commitment
+(`pi1GraphAt roots`), at π1's contract IV, π1's claims `Data.hashed` hashed in the circuit (`Pi2Layers`' `rootsAt`,
+`compiled`, `compile_ok`, `stream_eq`). The real deployment's is `RecCompose.pi2Circuits_real`
+(`RealDeployment.lean`). -/
 structure Pi2Circuits (D : RecDeployment) where
   rootsAt : List ℕ
-  compiled : List UInt8 → RecCircuit.Compiled
-  compile_ok : ∀ iv, iv.length = 32 →
-    RecCircuit.compile (RecCircuit.ofRG RecGraphKeccak.Pi1.pi1GraphK rootsAt iv) = .ok (compiled iv)
-  stream_eq : ∀ iv, iv.length = 32 → ∀ (w : ℕ → K),
-    D.pi1Stream w = ((compiled iv).streamW (RecCircuit.ofRG RecGraphKeccak.Pi1.pi1GraphK rootsAt iv) w).toArray
+  compiled : UniKeccak.SetupRootsK → RecCircuit.Compiled
+  compile_ok : ∀ roots,
+    RecCircuit.compile (RecCircuit.ofRG (pi1GraphAt roots) rootsAt (D.pi1IvAt roots) Data.hashed) =
+      .ok (compiled roots)
+  stream_eq : ∀ roots (w : ℕ → K),
+    D.pi1Stream w =
+      ((compiled roots).streamW (RecCircuit.ofRG (pi1GraphAt roots) rootsAt (D.pi1IvAt roots) Data.hashed) w).toArray
 
 variable {D : RecDeployment}
 
-/-- `compile_ok` at π1's contract IV of the setup's roots (32 bytes, `pi1IvAt_length`). -/
+/-- `compile_ok` at the setup's roots. -/
 theorem Pi2Circuits.compile_okAt (C : Pi2Circuits D) (roots : UniKeccak.SetupRootsK) :
-    RecCircuit.compile (RecCircuit.ofRG RecGraphKeccak.Pi1.pi1GraphK C.rootsAt (D.pi1IvAt roots)) =
-      .ok (C.compiled (D.pi1IvAt roots)) :=
-  C.compile_ok _ (D.pi1IvAt_length roots)
+    RecCircuit.compile (RecCircuit.ofRG (pi1GraphAt roots) C.rootsAt (D.pi1IvAt roots) Data.hashed) =
+      .ok (C.compiled roots) :=
+  C.compile_ok roots
 
-/-- `stream_eq` at π1's contract IV of the setup's roots. -/
+/-- `stream_eq` at the setup's roots. -/
 theorem Pi2Circuits.stream_eqAt (C : Pi2Circuits D) (roots : UniKeccak.SetupRootsK) (w : ℕ → K) :
-    D.pi1Stream w = ((C.compiled (D.pi1IvAt roots)).streamW
-      (RecCircuit.ofRG RecGraphKeccak.Pi1.pi1GraphK C.rootsAt (D.pi1IvAt roots)) w).toArray :=
-  C.stream_eq _ (D.pi1IvAt_length roots) w
+    D.pi1Stream w = ((C.compiled roots).streamW
+      (RecCircuit.ofRG (pi1GraphAt roots) C.rootsAt (D.pi1IvAt roots) Data.hashed) w).toArray :=
+  C.stream_eq roots w
 
 /-- The compiled circuit at the setup's roots, as `RecPiop`'s (`RecCircuit.Circuit.toPiop`). -/
 abbrev Pi2Circuits.G (C : Pi2Circuits D) (roots : RecSetupRoots) : RecPiop.Circuit E :=
-  (C.compiled (D.pi1IvAt roots.pi1)).circuit.toPiop
+  (C.compiled roots.pi1).circuit.toPiop
 
-/-- Port `j`'s binding count: `1` for a four-limb port (the statement, a root), `0` for three limbs. -/
+/-- Port `j`'s binding count: `1` for a four-limb port (the statement, a claim's Keccak-256), `0` for three limbs. -/
 def Pi2Circuits.d (C : Pi2Circuits D) (roots : RecSetupRoots) (j : ℕ) : ℕ :=
-  if ((C.compiled (D.pi1IvAt roots.pi1)).circuit.ports.getD j default).source.limbs = 4 then 1 else 0
+  if ((C.compiled roots.pi1).circuit.ports.getD j default).source.limbs = 4 then 1 else 0
 
 /-- The subfield `K` of `E`. -/
 abbrev subK : Subfield E := (algebraMap K E).fieldRange
@@ -229,7 +232,8 @@ circuit on the Cantor basis `UniComplete.Domain.basisE` (`ω = pointE`), its pai
 (`RecStatement.Lemmas.SpecLink` proves `Spec::of`'s constants `SpecOf`'s, `lean-rec-statement`; that they are the
 compiled circuit's is the compiler's, `lean-rec-circuit`, and the runners' comparison of the tables, compiled
 evaluation); the circuit valid (`RecPiop.Circuit.validate`, the Rust's `validate` and `check_shape`); `2^24` positions,
-rows of `16`; three four-limb ports (the statement, π1's two roots); as many public limbs as the port's, and
+rows of `16`; four four-limb ports (the statement, the Keccak-256s of π1's three claims); as many public limbs as the
+port's, and
 **determined by their fingerprint among limbs in `K`** (`pub_canon`: the copy argument's binding).
 
 (Composition, `lean-pi2-facts`: this field was `pub_K`, every public limb in `K` at every scalar list. With `SpecOf`'s
@@ -247,7 +251,7 @@ structure Pi2Facts (D : RecDeployment) (C : Pi2Circuits D) where
   valid : ∀ roots, (C.G roots).Valid
   logN : ∀ roots, (C.G roots).logN = 24
   logW : ∀ roots, (C.G roots).logW = 4
-  four : ∀ roots, ∑ j ∈ range (C.G roots).nP, C.d roots j = 3
+  four : ∀ roots, ∑ j ∈ range (C.G roots).nP, C.d roots j = 4
   pub_len : ∀ roots scalars, ∀ j < (C.G roots).nP, (pubOf roots scalars j).length = ((C.G roots).limbs j).length
   pub_canon : ∀ roots scalars, ∀ j < (C.G roots).nP, ∀ u : List E, u.length = ((C.G roots).limbs j).length →
     (∀ x ∈ u, x ∈ subK) →
@@ -257,35 +261,33 @@ structure Pi2Facts (D : RecDeployment) (C : Pi2Circuits D) where
 /-- The points `ω_i` (`Heap.omega` of the Cantor basis, `pointE`). -/
 noncomputable abbrev pi2Omega : ℕ → E := Heap.omega UniComplete.Domain.basisE
 
-/-- **The tables' layer** (open, `lean-rec-compose`): for each setup, what the candidates stand for (`RecPiop.Model` of
-the compiled circuit: `W`'s polynomial `wP c`, of degree below `N`, taking the candidate's witness values on `V_m`, and
-its true fold values, the cells from them the row's cells `w(t + ω_x)`; `Q`'s `P` and `S` (slot `12`) below `N`, `h`
-(`h_0 + Z_V h_1`, the second digit in slots `1, 5, 9`), `q`, `q_P` below `2N`; the setup's `σ`, `κ`; the ports' `Φ`,
-`phiPoly`; the identity claim's constant `c_3`), and the claims, true on the candidates, as the model's values (π2v3,
-`P`'s share `P(t) + S(t)/Z_V(t)`, the sum `Σ_V (h + c_3 S)`): `Q`'s identity claim normalised (`idEq`), its pushes'
-claim (`pushEq`) and
-
-`Σ_V h = 0`, the setup's `ξ = κ(t) + β σ(t)`, `W`'s its true fold at `ρ` (`RecStatement.checks_claims_iff_post2`'s left
-side; the claims' values are `run_quotientValue`, `run_pushesValue`, their points `run_u`, `digitsScale_eq`,
-`RecPiop`'s `sum_tablePoly_omega`). -/
+/-- **The tables' layer** (built by `pi2Tables`, `Tables.lean`): for each setup, what the candidates stand for
+(`RecPiop.Model` of the compiled circuit: `W`'s polynomial `wP c`, of degree below `N`, taking the candidate's witness
+values on `V_m`, and its true fold values, the cells from them the row's cells `w(t + ω_x)`; `Q`'s slots (`PI2.md` §2:
+slot `b_0 + 2 b_1 + 4 limb`) as `H`, `G`, `P`, `S` below `N` and `q = q_0 + Z_V q_1`, `q_P = q_{P,0} + Z_V q_{P,1}`
+below `2N`; the setup's `σ`, `κ`; the ports' `Φ`, `phiPoly`; the identity claim's constant `Y³`), and the claims, true
+on the candidates, as the model's values: `Q`'s identity claim (`idEq`) and pushes' claim (`pushEq`), each the slots'
+combination at its point, with the digits' values `q_0(t), q_1(t)`, `q_{P,0}(t), q_{P,1}(t)` of `q(t)`, `q_P(t)`; the
+setup's `ξ = κ(t) + β σ(t)`; `W`'s its true fold at `ρ` (`RecStatement.checks_claims_iff_post2`'s left side). -/
 structure Pi2Tables (D : RecDeployment) (C : Pi2Circuits D) where
   model : ∀ roots, RecPiop.Model (C.G roots) pi2Omega Stk
   phi_eq : ∀ roots pub γ, (model roots).phi pub γ = phiPoly (C.G roots) UniComplete.Domain.basisE pub γ
-  idC_eq : ∀ roots, (model roots).idC = c3Of (Spec.of (D.circuitAt roots.pi1).circuit).core
+  idC_eq : ∀ roots, (model roots).idC = (Spec.of (D.circuitAt roots.pi1).circuit).core.yCube
   witness_eval : ∀ roots (c : Stk), ∀ i < (C.G roots).N,
     ((model roots).wP c).eval (pi2Omega i) = ofK (witnessOfStk D roots c i)
   claims : ∀ roots (cW cQ : Stk) (inp : Inputs E),
     ((Spec.of (D.circuitAt roots.pi1).circuit).core.run inp).all ≠ 0 → Pi2ClaimsHold D roots inp cW cQ →
-      idEq ((Spec.of (D.circuitAt roots.pi1).circuit).core.run inp) (c3Of (Spec.of (D.circuitAt roots.pi1).circuit).core)
-          ((Spec.of (D.circuitAt roots.pi1).circuit).core.run inp).rhoQ (((model roots).hP cQ).eval inp.t)
-          (((model roots).qP cQ).eval inp.t)
-          (((model roots).pP cQ).eval inp.t + ((model roots).sP cQ).eval inp.t / ((C.G roots).zV pi2Omega).eval inp.t)
-          (((model roots).qPP cQ).eval inp.t) (QuotientSecurity.sq^[(C.G roots).logN] inp.t) inp.s ∧
-        pushEq ((Spec.of (D.circuitAt roots.pi1).circuit).core.run inp) inp.ρ
-          (((model roots).pP cQ).eval inp.t + ((model roots).sP cQ).eval inp.t / ((C.G roots).zV pi2Omega).eval inp.t)
-          (((model roots).qPP cQ).eval inp.t) (QuotientSecurity.sq^[(C.G roots).logN] inp.t) inp.s ∧
-        ∑ i ∈ range (C.G roots).N, (((model roots).hP cQ).eval (pi2Omega i) +
-          (model roots).idC * ((model roots).sP cQ).eval (pi2Omega i)) = 0 ∧
+      ∃ q0t q1t qp0t qp1t : E,
+        ((model roots).qP cQ).eval inp.t = q0t + QuotientSecurity.sq^[(C.G roots).logN] inp.t * q1t ∧
+        ((model roots).qPP cQ).eval inp.t = qp0t + QuotientSecurity.sq^[(C.G roots).logN] inp.t * qp1t ∧
+        idEq ((Spec.of (D.circuitAt roots.pi1).circuit).core.run inp)
+          (Spec.of (D.circuitAt roots.pi1).circuit).core.scale (Spec.of (D.circuitAt roots.pi1).circuit).core.yCube
+          inp.t (QuotientSecurity.sq^[(C.G roots).logN] inp.t) (((model roots).hP cQ).eval inp.t) q0t q1t
+          (((model roots).gP cQ).eval inp.t) (((model roots).pP cQ).eval inp.t) qp0t qp1t
+          (((model roots).sP cQ).eval inp.t) ∧
+        pushEq ((Spec.of (D.circuitAt roots.pi1).circuit).core.run inp) inp.t
+          (QuotientSecurity.sq^[(C.G roots).logN] inp.t) inp.ρ (((model roots).pP cQ).eval inp.t) qp0t qp1t
+          (((model roots).sP cQ).eval inp.t) ∧
         inp.ξ = (model roots).setup.κP.eval inp.t + inp.β * (model roots).setup.σP.eval inp.t ∧
         ((Spec.of (D.circuitAt roots.pi1).circuit).core.run inp).fold =
           RecPiop.foldAt (C.G roots).logW ((model roots).fold cW inp.t) inp.ρ
@@ -388,7 +390,7 @@ theorem hbind_of (C : Pi2Circuits D) (Fa : Pi2Facts D C) (T : Pi2Tables D C) (ro
   have hcan := Fa.pub_canon roots s.2 j hj _ hul hwK
   have hpush := fun γ ↦ RecPiop.Circuit.push_port hV hj (fun i ↦ ((T.model roots).wP c).eval (pi2Omega i)) γ
   unfold Pi2Circuits.d
-  rcases source_limbs ((C.compiled (D.pi1IvAt roots.pi1)).circuit.ports.getD j default).source with h3 | h4
+  rcases source_limbs ((C.compiled roots.pi1).circuit.ports.getD j default).source with h3 | h4
   · have e3 : List.range 3 = [0, 1, 2] := rfl
     rw [h3, e3] at hl
     have hl' : (C.G roots).limbs j = RecPiop.elemLimbs 0 1 2 Primitives.F192.Y := hl
@@ -478,6 +480,25 @@ theorem pi2Piop_pre (C : Pi2Circuits D) (Fa : Pi2Facts D C) (T : Pi2Tables D C) 
   rw [T.witness_eval roots c i hi]
   rfl
 
+theorem one_add_yE_ne_zero : (1 + yE : E) ≠ 0 := by decide +kernel
+
+theorem one_add_yE_sq_ne_zero : (1 + yE * yE : E) ≠ 0 := by
+  have e : (1 + yE * yE : E) = (1 + yE) * (1 + yE) := by
+    have h2 : (2 : E) = 0 := CharTwo.two_eq_zero
+    linear_combination (-yE) * h2
+  rw [e]
+  exact mul_ne_zero one_add_yE_ne_zero one_add_yE_ne_zero
+
+theorem ext_scale : extension.2 = ((1 + yE) * (1 + yE * yE))⁻¹ := by simp only [extension]
+
+theorem inv_mul_ne_zero_gen {F : Type} [Field F] {a b : F} (ha : a ≠ 0) (hb : b ≠ 0) : (a * b)⁻¹ ≠ 0 :=
+  inv_ne_zero (mul_ne_zero ha hb)
+
+/-- The extension's scale `1/((1 + Y)(1 + Y²))` is nonzero. -/
+theorem extension_scale_ne_zero : extension.2 ≠ 0 := by
+  rw [ext_scale]
+  exact inv_mul_ne_zero_gen one_add_yE_ne_zero one_add_yE_sq_ne_zero
+
 /-- **The protocol's last state follows from π2's check with true claims** (`checks_claims_iff_post2`). -/
 theorem pi2Piop_post (C : Pi2Circuits D) (Fa : Pi2Facts D C) (T : Pi2Tables D C) (roots : RecSetupRoots)
     (s : Pi2St) (cW cQ : Stk) (ow oq : List E) (inp : Inputs E) (hs : inp.scalars = s.2)
@@ -487,9 +508,10 @@ theorem pi2Piop_post (C : Pi2Circuits D) (Fa : Pi2Facts D C) (T : Pi2Tables D C)
     (pi2Piop C Fa T roots).post s (pi2Opened cW cQ ow oq inp) (none, inp.a ++ [inp.ξ, inp.s]) [inp.ρ] := by
   have hS := Fa.spec roots
   have ha' : inp.a.length = 2 ^ (C.G roots).logW := by rw [ha, hS.logRow]
-  obtain ⟨hi, hp, ht, hξ, hf⟩ := T.claims roots cW cQ inp hall hcl
-  have key := (checks_claims_iff_post2 hS (Fa.valid roots) inp (T.model roots) (T.phi_eq roots) (T.idC_eq roots)
-    (fun s ↦ Fa.pubOf roots s.2) s (by rw [hs]) cW cQ ha').mp ⟨hall, hi, hp, ht, hξ, hf⟩
+  obtain ⟨q0t, q1t, qp0t, qp1t, hq, hqp, hi, hp, hξ, hf⟩ := T.claims roots cW cQ inp hall hcl
+  have key := (checks_claims_iff_post2 hS (Fa.valid roots) inp extension_scale_ne_zero (T.model roots)
+    (T.phi_eq roots) (T.idC_eq roots) (fun s ↦ Fa.pubOf roots s.2) s (by rw [hs]) cW cQ ha' q0t q1t qp0t qp1t
+    hq hqp).mp ⟨hall, hi, hp, hξ, hf⟩
   change RecPiop.post (C.G roots) pi2Omega (T.model roots) (fun s ↦ Fa.pubOf roots s.2) s (pi2Opened cW cQ ow oq inp)
     (none, inp.a ++ [inp.ξ, inp.s]) [inp.ρ]
   unfold RecPiop.post
@@ -502,8 +524,8 @@ theorem pi2Piop_post (C : Pi2Circuits D) (Fa : Pi2Facts D C) (T : Pi2Tables D C)
 `Pi2Extraction` for the compiled circuit's relation, the public limbs of the statement's scalars, at `pi2Bound`. -/
 theorem pi2Extraction_of_layers (C : Pi2Circuits D) (Fa : Pi2Facts D C) (T : Pi2Tables D C)
     (hfs : Pi2FsLayer D) :
-    Pi2Extraction D (fun roots input stream w ↦ (C.G roots).Satisfies
-      (Fa.pubOf roots (pi2Scalars D roots input stream)) (RecCircuit.emb w)) pi2Bound := by
+    Pi2Extraction D (fun roots input proof w ↦ (C.G roots).Satisfies
+      (Fa.pubOf roots (pi2Scalars D roots input proof)) (RecCircuit.emb w)) pi2Bound := by
   intro A Q hQ
   have h := hfs (pi2Piop C Fa T) pi2RoundErr (pi2Piop_err C Fa T)
     (fun roots s c ↦ (C.G roots).Satisfies (Fa.pubOf roots s.2) (RecCircuit.emb (witnessOfStk D roots c)))
@@ -513,14 +535,14 @@ theorem pi2Extraction_of_layers (C : Pi2Circuits D) (Fa : Pi2Facts D C) (T : Pi2
   refine (prEvent_mono _ _ _ fun z hz ↦ ⟨hz.1, fun ⟨w, hw, hrel⟩ ↦ hz.2 ⟨w, hw, ?_⟩⟩).trans h
   exact hrel
 
-/-- **The circuit's corollary** (open, `lean-rec-circuit`: `ExpandSound` and `call_inputs`), for the public limbs of
-the statement's scalars: a witness satisfying the compiled circuit holds a π1 stream π1-rec3's graph accepts with the
-contract's openings on that calldata. -/
+/-- **The circuit's corollary** (`Pi2Layers.circuit`; RecCircuit's end theorem), for the public limbs of the
+statement's scalars: a witness satisfying the compiled circuit holds a π1 stream on which π1-rec4's graph at π1's setup
+commitment accepts, its claims hashing to the declared ones (when the proof declares as many as the graph makes). -/
 def Pi2CircuitAccepts (C : Pi2Circuits D) (Fa : Pi2Facts D C) : Prop :=
-  ∀ (roots : RecSetupRoots) (input : Vector UInt8 32) (stream : Array UInt8) (w : ℕ → K) (ops : List Pi1Opening),
-    (C.G roots).Satisfies (Fa.pubOf roots (pi2Scalars D roots input stream)) (RecCircuit.emb w) →
-      pi1OpsOf D roots input stream = some ops →
-        Pi1GraphAccepts (D.pi1IvAt roots.pi1) input (D.pi1Stream w) ops
+  ∀ (roots : RecSetupRoots) (input : Vector UInt8 32) (proof : RecProof) (w : ℕ → K),
+    proof.pi1Claims.length = RecGraphKeccak.Pi1.pi1GraphK4.calls.length →
+    (C.G roots).Satisfies (Fa.pubOf roots (pi2Scalars D roots input proof)) (RecCircuit.emb w) →
+      Pi1GraphAccepts (pi1GraphAt roots.pi1) (D.pi1IvAt roots.pi1) input (D.pi1Stream w) proof.pi1Claims
 
 /-- **π2's layers, assembled**: the compiled circuit, its facts, the tables' layer, the Fiat–Shamir layer and the
 circuit's corollary give `Pi2Layers D pi2Bound`. -/
@@ -530,7 +552,7 @@ noncomputable def pi2Layers_of (C : Pi2Circuits D) (Fa : Pi2Facts D C) (T : Pi2T
   compiled := C.compiled
   compile_ok := C.compile_ok
   stream_eq := C.stream_eq
-  pub roots input stream := Fa.pubOf roots (pi2Scalars D roots input stream)
+  pub roots input proof := Fa.pubOf roots (pi2Scalars D roots input proof)
   extraction := pi2Extraction_of_layers C Fa T hfs
   circuit := hcirc
 
