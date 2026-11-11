@@ -11,14 +11,11 @@ import LeanVM.Protocol.ExperimentBridge
 /-!
 # π1-rec4's prover, as π2's completeness takes it: an abstract program and four named facts
 
-There is no Lean honest prover for π1-rec4 in this library yet (π1-rec4's completeness is the statement
-`UniKeccak.UniCompletenessKeccakRec4`; the π1-rec4 port is to provide `pi1Rec4ProverK` and
-`uniCompletenessKeccakRec4_closed`, as `UniKeccakComplete` does for π1-rec3). π2's completeness is therefore stated for
-an **abstract** π1 prover `P1 : Pi1Prover D` (over the random permutation, as `RecCompleteness2` takes it) together
-with a **two-call program** `P1k : Pi1ProverK D` (its Keccak-256 and Keccak-f[1600] queries explicit), and the four
-properties the proof uses, each a named `Prop` about `P1k`, on honest statements only (row counts fitting the shape,
-`KvHonest D.flock`): the interface π1-rec3's prover met (`Pi1K.pi1ProverFactsK` at `f96a7938`), unchanged by π1-rec4
-(only the prover's program changes: π1-rec4's wide draws and staged chain).
+π2's completeness is stated for an **abstract** π1 prover `P1 : Pi1Prover D` (over the random permutation, as
+`RecCompleteness2` takes it) together with a **two-call program** `P1k : Pi1ProverK D` (its Keccak-256 and
+Keccak-f[1600] queries explicit), and the four properties the proof uses, each a named `Prop` about `P1k`, on honest
+statements only (row counts fitting the shape, `KvHonest D.flock`). The recursion's π1-rec4 prover meets them:
+`Pi1K.pi1ProverFactsK4` (`CompleteReal.lean`) for `Pi1K.pi1Rec4ProverK` and `Pi1K.p1kK4` (`Pi1Rec4Prover.lean`).
 
 * **`Pi1OverPerm D P1 P1k`**: `P1` is `P1k` with its two calls answered over `π` (Keccak-256 the sponge over `π`,
   Keccak-f[1600] `π` itself; `keccakCallsOverQueryPermutation`). A concrete prover proves it by writing its code over
