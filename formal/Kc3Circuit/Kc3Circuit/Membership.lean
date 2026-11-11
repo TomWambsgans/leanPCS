@@ -302,7 +302,7 @@ theorem spec_levels (s : Secret) (hsib : ∀ i < depth, (s.siblings.getD i []).l
 attribute [local irreducible] runB
 
 /-- A secret of the statement's shape: `x` and the `32` siblings are `32` bytes each. -/
-def _root_.PcsCircuit.Secret.WellFormed (s : Secret) : Prop :=
+def _root_.PcsCircuit.Secret.WellFormedK (s : Secret) : Prop :=
   s.x.length = 32 ∧ ∀ i < depth, (s.siblings.getD i []).length = 32
 
 /-- The input bits of the circuit are the secret's: `x`'s `256` bits, then each level's sibling and
@@ -345,7 +345,7 @@ theorem spec_membershipBuild_from (b0 : Builder) (hb0 : WF b0) (hs0 : b0.rows.si
     ∃ y root bf, runB membershipBuild b0 = ((y, root), bf) ∧
     WF bf ∧ bf.rows.size ≤ buildRows ∧ bf.inputs.size = 256 + 257 * depth ∧
     (∀ k < 256, Valid bf (y.getD k .zero) ∧ Valid bf (root.getD k .zero)) ∧
-    ∀ s : Secret, s.WellFormed → ∀ v, Sat v bf → SecretInputs s v bf.inputs →
+    ∀ s : Secret, s.WellFormedK → ∀ v, Sat v bf → SecretInputs s v bf.inputs →
       ∀ k < 256, read v (y.getD k .zero) = bitOf s.y k ∧ read v (root.getD k .zero) = bitOf s.root k := by
   have hfb : runB (freeBits 256) b0 =
       ((runB ((List.range 256).mapM fun _ => input) b0).1.toArray,
@@ -437,7 +437,7 @@ theorem spec_membershipBuild :
     ∃ y root bf, runB membershipBuild Builder.new = ((y, root), bf) ∧
     WF bf ∧ bf.rows.size ≤ buildRows ∧ bf.inputs.size = 256 + 257 * depth ∧
     (∀ k < 256, Valid bf (y.getD k .zero) ∧ Valid bf (root.getD k .zero)) ∧
-    ∀ s : Secret, s.WellFormed → ∀ v, Sat v bf → SecretInputs s v bf.inputs →
+    ∀ s : Secret, s.WellFormedK → ∀ v, Sat v bf → SecretInputs s v bf.inputs →
       ∀ k < 256, read v (y.getD k .zero) = bitOf s.y k ∧ read v (root.getD k .zero) = bitOf s.root k :=
   spec_membershipBuild_from Builder.new wf_new new_size rfl
 

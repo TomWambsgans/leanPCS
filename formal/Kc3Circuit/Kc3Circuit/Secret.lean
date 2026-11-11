@@ -156,7 +156,7 @@ theorem secretOfInputs_fields (bits : List Bool) (B : ℕ → Bool)
 
 /-! ## Any bits are a secret's -/
 
-theorem secretOfBits_wellFormed (bits : ℕ → Bool) : (PcsCircuit.secretOfBits bits).WellFormed := by
+theorem secretOfBits_wellFormed (bits : ℕ → Bool) : (PcsCircuit.secretOfBits bits).WellFormedK := by
   refine ⟨PcsCircuit.bytesOfBits_length _, fun i hi => ?_⟩
   simp only [PcsCircuit.secretOfBits, List.getD_eq_getElem?_getD, List.getElem?_map, List.getElem?_range hi,
     Option.map_some, Option.getD_some, PcsCircuit.bytesOfBits_length]

@@ -44,14 +44,14 @@ theorem facts_of (q : (List Src × List Src) × Builder) (y root : Array Kc3Circ
     (hwf : Kc3Circuit.WF bf) (hsize : bf.rows.size ≤ Kc3Circuit.buildRows)
     (hin : bf.inputs.size = 256 + 257 * PcsCircuit.depth)
     (hval : ∀ k < 256, Kc3Circuit.Valid bf (y.getD k .zero) ∧ Kc3Circuit.Valid bf (root.getD k .zero))
-    (hsem : ∀ s : PcsCircuit.Secret, s.WellFormed → ∀ v, Kc3Circuit.Sat v bf → Kc3Circuit.SecretInputs s v bf.inputs →
+    (hsem : ∀ s : PcsCircuit.Secret, s.WellFormedK → ∀ v, Kc3Circuit.Sat v bf → Kc3Circuit.SecretInputs s v bf.inputs →
       ∀ k < 256, Kc3Circuit.read v (y.getD k .zero) = PcsCircuit.bitOf s.y k ∧
         Kc3Circuit.read v (root.getD k .zero) = PcsCircuit.bitOf s.root k) :
     Kc3Circuit.WF (bTr q.2) ∧ (bTr q.2).rows.size ≤ Kc3Circuit.buildRows ∧
       q.2.inputs.size = 256 + 257 * PcsCircuit.depth ∧
       (∀ k < 256, Kc3Circuit.Valid (bTr q.2) (srcTr (q.1.1.getD k .zero)) ∧
         Kc3Circuit.Valid (bTr q.2) (srcTr (q.1.2.getD k .zero))) ∧
-      ∀ s : PcsCircuit.Secret, s.WellFormed → ∀ v, Kc3Circuit.Sat v (bTr q.2) →
+      ∀ s : PcsCircuit.Secret, s.WellFormedK → ∀ v, Kc3Circuit.Sat v (bTr q.2) →
         Kc3Circuit.SecretInputs s v q.2.inputs → ∀ k < 256,
           Kc3Circuit.read v (srcTr (q.1.1.getD k .zero)) = PcsCircuit.bitOf s.y k ∧
             Kc3Circuit.read v (srcTr (q.1.2.getD k .zero)) = PcsCircuit.bitOf s.root k := by
@@ -68,7 +68,7 @@ theorem builder_facts : Kc3Circuit.WF (bTr qr.2) ∧ (bTr qr.2).rows.size ≤ Kc
       qr.2.inputs.size = 256 + 257 * PcsCircuit.depth ∧
       (∀ k < 256, Kc3Circuit.Valid (bTr qr.2) (srcTr (qr.1.1.getD k .zero)) ∧
         Kc3Circuit.Valid (bTr qr.2) (srcTr (qr.1.2.getD k .zero))) ∧
-      ∀ s : PcsCircuit.Secret, s.WellFormed → ∀ v, Kc3Circuit.Sat v (bTr qr.2) →
+      ∀ s : PcsCircuit.Secret, s.WellFormedK → ∀ v, Kc3Circuit.Sat v (bTr qr.2) →
         Kc3Circuit.SecretInputs s v qr.2.inputs → ∀ k < 256,
           Kc3Circuit.read v (srcTr (qr.1.1.getD k .zero)) = PcsCircuit.bitOf s.y k ∧
             Kc3Circuit.read v (srcTr (qr.1.2.getD k .zero)) = PcsCircuit.bitOf s.root k := by

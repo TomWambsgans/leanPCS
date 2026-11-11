@@ -29,6 +29,9 @@ def CopiesIdx (w : ℕ → E) : Prop := ∀ c < 4 * 2 ^ 22, w (sigC c) = w c
 /-- The pinned cells hold the statement's words and the constants. -/
 def PinsIdx (s : Statement) (w : ℕ → E) : Prop := ∀ k < 11, w (4 * k + 2) = ofK (anchorValues s.words k)
 
+/-- The pinned constants: anchors `8`, `9`, `10` hold `0`, `1`, `3` in their `C` cells. -/
+def PinsC (w : ℕ → E) : Prop := w (4 * 8 + 2) = 0 ∧ w (4 * 9 + 2) = 1 ∧ w (4 * 10 + 2) = ofK three
+
 theorem sigC_lt (c : ℕ) (hc : c < 4 * 2 ^ 22) : sigC c < 4 * 2 ^ 22 := by
   have hc' : c < 4 * (membership 22).rows.size := by rw [rows_size]; exact hc
   have := sigma_lt _ _ cell_slots_lt hc'
@@ -85,6 +88,13 @@ theorem anchorValues_const (s : Statement) :
     anchorValues s.words 8 = 0 ∧ anchorValues s.words 9 = 1 ∧ anchorValues s.words 10 = three := by
   refine ⟨?_, ?_, ?_⟩ <;> simp [anchorValues, publicWords]
 
+theorem pinsC_of {s : Statement} {w : ℕ → E} (hp : PinsIdx s w) : PinsC w := by
+  have hv := anchorValues_const s
+  refine ⟨?_, ?_, ?_⟩
+  · rw [hp 8 (by norm_num), hv.1]; exact map_zero (algebraMap K E)
+  · rw [hp 9 (by norm_num), hv.2.1]; exact map_one (algebraMap K E)
+  · rw [hp 10 (by norm_num), hv.2.2]
+
 /-- The cell whose value a source's slot holds: row `r`'s `V` cell, the `C` cell of anchor `8`, `9` or `10`. -/
 def headCell : Src → ℕ
   | .zero => 34
@@ -94,21 +104,20 @@ def headCell : Src → ℕ
   | .free => 0
 
 /-- **A reading cell holds what it reads.** -/
-theorem read_cell {w : ℕ → E} {s : Statement} (hc : CopiesIdx w) (hp : PinsIdx s w) {c : ℕ} (hcl : c < 4 * 2 ^ 22)
+theorem read_cell {w : ℕ → E} (hc : CopiesIdx w) (hp : PinsC w) {c : ℕ} (hcl : c < 4 * 2 ^ 22)
     {src : Src} (hsrc : slotOfCell (membership 22).rows c = kSlot src) (hfree : src ≠ .free)
     (hrow : ∀ r', src = .row r' → r' < 2 ^ 22) : w c = valE w src := by
-  have hv := anchorValues_const s
   cases src with
   | free => exact absurd rfl hfree
   | zero =>
-    rw [copies_slot hc hcl (by norm_num) hsrc (anchor_c 8 (by norm_num) (by norm_num)), hp 8 (by norm_num), hv.1]
-    exact map_zero (algebraMap K E)
+    rw [copies_slot hc hcl (by norm_num) hsrc (anchor_c 8 (by norm_num) (by norm_num))]
+    exact hp.1
   | one =>
-    rw [copies_slot hc hcl (by norm_num) hsrc (anchor_c 9 (by norm_num) (by norm_num)), hp 9 (by norm_num), hv.2.1]
-    exact map_one (algebraMap K E)
+    rw [copies_slot hc hcl (by norm_num) hsrc (anchor_c 9 (by norm_num) (by norm_num))]
+    exact hp.2.1
   | three =>
-    rw [copies_slot hc hcl (by norm_num) hsrc (anchor_c 10 (by norm_num) (by norm_num)), hp 10 (by norm_num), hv.2.2]
-    rfl
+    rw [copies_slot hc hcl (by norm_num) hsrc (anchor_c 10 (by norm_num) (by norm_num))]
+    exact hp.2.2
   | row r' =>
     have := hrow r' rfl
     exact copies_slot hc hcl (by omega) hsrc (slotOfCell_out r')
@@ -131,7 +140,7 @@ theorem rowBelow_lt {s : Src} (h : RowBelow (qr.2.rows.size + 504) s) : ∀ r', 
   exact lt_of_lt_of_le (h r' hr) (le_trans size_lt_random (Nat.sub_le _ _))
 
 /-- **A row's `V` cell holds the gate's output on what it reads**, its three sources not free. -/
-theorem out_eq {w : ℕ → E} {s : Statement} (hg : GatesIdx w) (hc : CopiesIdx w) (hp : PinsIdx s w) (r : ℕ)
+theorem out_eq {w : ℕ → E} (hg : GatesIdx w) (hc : CopiesIdx w) (hp : PinsC w) (r : ℕ)
     (hr : r < 2 ^ 22) (hx : (closedRow r).x ≠ .free) (hy : (closedRow r).y ≠ .free) (hcf : (closedRow r).c ≠ .free) :
     w (4 * r + 3) = valE w (closedRow r).y + valE w (closedRow r).c + valE w (closedRow r).x * valE w (closedRow r).c := by
   have hb := closedRow_reads r

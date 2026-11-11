@@ -49,7 +49,7 @@ theorem srcs_not_free {r : ℕ} {src : Src} (h : src = .zero ∨ src = .one ∨ 
 theorem S_lt_random : qr.2.rows.size ≤ 2 ^ 22 - 16 := le_trans (Nat.le_add_right _ _) size_lt_random
 
 /-- **A built row's `V` cell holds a bit**, the gate's output on bits of what it reads. -/
-theorem built_bit (hg : GatesIdx w) (hc : CopiesIdx w) (hp : PinsIdx s w) :
+theorem built_bit (hg : GatesIdx w) (hc : CopiesIdx w) (hp : PinsC w) :
     ∀ r, 11 ≤ r → r < qr.2.rows.size → IsBit (w (4 * r + 3)) ∧
       vOf w r = Kc3Circuit.Row.eval (vOf w) ((bTr qr.2).rows.getD r .idle) := by
   intro r
@@ -91,7 +91,7 @@ theorem built_bit (hg : GatesIdx w) (hc : CopiesIdx w) (hp : PinsIdx s w) :
     rfl
 
 /-- **The bits of the `V` cells satisfy the built rows.** -/
-theorem sat_vOf (hg : GatesIdx w) (hc : CopiesIdx w) (hp : PinsIdx s w) : Kc3Circuit.Sat (vOf w) (bTr qr.2) :=
+theorem sat_vOf (hg : GatesIdx w) (hc : CopiesIdx w) (hp : PinsC w) : Kc3Circuit.Sat (vOf w) (bTr qr.2) :=
   fun r h1 h2 => (built_bit hg hc hp r h1 (by rw [bTr_size] at h2; exact h2)).2
 
 /-! ## The wires and the packing rows -/
@@ -103,7 +103,7 @@ theorem valE_row (r : ℕ) : valE w (.row r) = w (4 * r + 3) := rfl
 /-- Bit `j` of public word `J`, the bit its wire holds. -/
 def bJ (w : ℕ → E) (J j : ℕ) : Bool := Kc3Circuit.read (vOf w) (srcTr ((pw.getD J []).getD j .zero))
 
-theorem valE_wire (hg : GatesIdx w) (hc : CopiesIdx w) (hp : PinsIdx s w) (J j : ℕ) (hJ : J < 8) (hj : j < 64) :
+theorem valE_wire (hg : GatesIdx w) (hc : CopiesIdx w) (hp : PinsC w) (J j : ℕ) (hJ : J < 8) (hj : j < 64) :
     valE w ((pw.getD J []).getD j .zero) = bE (bJ w J j) := by
   unfold bJ
   refine valE_bit ?_
@@ -138,7 +138,7 @@ theorem closedRow_packing (J i : ℕ) (hJ : J < 8) (hi : i < 63) :
     packAll_getD pw _ J i pw_length (by rw [pw_len]; exact hJ) hi]
 
 /-- **The packing rows compute Horner's rule** on the word's bits, from bit `63` down. -/
-theorem pack_acc (hg : GatesIdx w) (hc : CopiesIdx w) (hp : PinsIdx s w) (J : ℕ) (hJ : J < 8) :
+theorem pack_acc (hg : GatesIdx w) (hc : CopiesIdx w) (hp : PinsC w) (J : ℕ) (hJ : J < 8) :
     ∀ i < 63, w (4 * (qr.2.rows.size + 63 * J + i) + 3) =
       ∑ t ∈ Finset.range (i + 2), bE (bJ w J (62 - i + t)) * X2 ^ t := by
   have hS := size_lt_random
@@ -207,12 +207,12 @@ theorem anchorRow_c (J : ℕ) (hJ : J < 8) : (anchorRow J).c = .row (qr.2.rows.s
 theorem packed_word (hg : GatesIdx w) (hc : CopiesIdx w) (hp : PinsIdx s w) (J : ℕ) (hJ : J < 8) :
     Primitives.F64.ofNat (PcsCircuit.bitsToNat ((List.range 64).map (bJ w J))) = s.words.getD J 0 := by
   have hS := size_lt_random
-  have hA := pack_acc hg hc hp J hJ 62 (by norm_num)
+  have hA := pack_acc hg hc (pinsC_of hp) J hJ 62 (by norm_num)
   simp only [show 62 - 62 = 0 from rfl, Nat.zero_add] at hA
   have hpack : packVal (bJ w J) = w (4 * (qr.2.rows.size + 63 * J + 62) + 3) := by rw [hA]; rfl
   rw [packVal_eq] at hpack
   have hJr : J < 2 ^ 22 := by omega
-  have hcell := read_cell hc hp (c := 4 * J + 2) (by omega)
+  have hcell := read_cell hc (pinsC_of hp) (c := 4 * J + 2) (by omega)
     (by rw [slot_c J hJr, closedRow_anchor (by omega), anchorRow_c J hJ])
     (by simp) (fun r' h => by cases h; omega)
   rw [valE_row, ← hpack, hp J (by omega)] at hcell
@@ -239,7 +239,7 @@ theorem word_bit (hg : GatesIdx w) (hc : CopiesIdx w) (hp : PinsIdx s w) (J j : 
 def secretOfW (w : ℕ → E) : PcsCircuit.Secret :=
   PcsCircuit.secretOfBits fun k => vOf w (qr.2.inputs.getD k 0)
 
-theorem wire_bits (hg : GatesIdx w) (hc : CopiesIdx w) (hp : PinsIdx s w) (k : ℕ) (hk : k < 256) :
+theorem wire_bits (hg : GatesIdx w) (hc : CopiesIdx w) (hp : PinsC w) (k : ℕ) (hk : k < 256) :
     Kc3Circuit.read (vOf w) (srcTr (qr.1.1.getD k .zero)) = PcsCircuit.bitOf (secretOfW w).y k ∧
       Kc3Circuit.read (vOf w) (srcTr (qr.1.2.getD k .zero)) = PcsCircuit.bitOf (secretOfW w).root k :=
   builder_facts.2.2.2.2 (secretOfW w) (secretOfBits_wellFormed _) (vOf w) (sat_vOf hg hc hp)
@@ -283,13 +283,13 @@ theorem bytes_eq (hg : GatesIdx w) (hc : CopiesIdx w) (hp : PinsIdx s w) :
     rw [if_pos (by omega), if_pos (by omega), show 8 * (8 * (p / 8 % 4) + 7 - (8 * (7 - p % 8) + t) / 8) +
       (8 * (7 - p % 8) + t) % 8 = 8 * p + t by omega, show 8 * (p / 8 % 4) + (7 - (8 * (7 - p % 8) + t) / 8) = p by
       omega, show (8 * (7 - p % 8) + t) % 8 = t by omega] at hb
-    rw [← bitOf_eq _ p t ht, ← (wire_bits hg hc hp (8 * p + t) (by omega)).1, hb]
+    rw [← bitOf_eq _ p t ht, ← (wire_bits hg hc (pinsC_of hp) (8 * p + t) (by omega)).1, hb]
   · refine list_eq_of_bits (Kc3Circuit.path_length _ _ (PcsCircuit.H_length _) _) (by simp) fun p hp32 t ht => ?_
     have hb := byte_bit hg hc hp (4 + p / 8) (8 * (7 - p % 8) + t) (by omega) (by omega)
     rw [if_neg (by omega), if_neg (by omega), show 8 * (8 * ((4 + p / 8) % 4) + 7 - (8 * (7 - p % 8) + t) / 8) +
       (8 * (7 - p % 8) + t) % 8 = 8 * p + t by omega, show 8 * ((4 + p / 8) % 4) + (7 - (8 * (7 - p % 8) + t) / 8) = p by
       omega, show (8 * (7 - p % 8) + t) % 8 = t by omega] at hb
-    rw [← bitOf_eq _ p t ht, ← (wire_bits hg hc hp (8 * p + t) (by omega)).2, hb]
+    rw [← bitOf_eq _ p t ht, ← (wire_bits hg hc (pinsC_of hp) (8 * p + t) (by omega)).2, hb]
 
 theorem inputs_size : qr.2.inputs.size = 8480 := by
   rw [builder_facts.2.2.1]; rfl
