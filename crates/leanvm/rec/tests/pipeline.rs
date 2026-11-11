@@ -56,6 +56,10 @@ fn trace_to_recursion() {
         let repeat: usize = std::env::var("PIPELINE_REPEAT").ok().map_or(3, |x| x.parse().expect("a count"));
         let cooldown: u64 = std::env::var("PIPELINE_COOLDOWN").ok().map_or(2, |x| x.parse().expect("seconds"));
         parallel::init();
+        let tracing = std::env::var_os("PIPELINE_TRACING").is_some();
+        if tracing {
+            bench::init_tracing();
+        }
 
         // The per-circuit setup.
         let started = Instant::now();
@@ -108,6 +112,8 @@ fn trace_to_recursion() {
         let mut first: Option<(Vec<u8>, Vec<u8>, Vec<u8>)> = None;
         for pass in 0..=repeat {
             std::thread::sleep(std::time::Duration::from_secs(cooldown));
+            // With `PIPELINE_TRACING`, the last pass's trace tree alone.
+            let _quiet = (tracing && pass != repeat).then(bench::suppress_tracing);
             let mut laps: Vec<(&str, f64)> = Vec::new();
             let started = Instant::now();
             let mut clock = Instant::now();
@@ -132,10 +138,12 @@ fn trace_to_recursion() {
                     );
                     (replayed, started.elapsed().as_secs_f64())
                 });
-                let (proof, _) = prove_streaming(&trace, trace.keccak_flock(), &PROGRAM_IV, config, |stream| {
-                    stream_tx.send(stream.to_vec()).expect("the replay waits")
-                })
-                .expect("π1's proof");
+                let (proof, _) = tracing::info_span!("π1-rec3").in_scope(|| {
+                    prove_streaming(&trace, trace.keccak_flock(), &PROGRAM_IV, config, |stream| {
+                        stream_tx.send(stream.to_vec()).expect("the replay waits")
+                    })
+                    .expect("π1's proof")
+                });
                 (proof, replayer.join().expect("no panic"))
             });
             lap(
@@ -144,10 +152,16 @@ fn trace_to_recursion() {
             );
             let (public_input, values) = adapt::public_values(&public2);
             lap("π2: the rest of its witness", &mut laps);
-            let proved = prove(&circuit, &spec, &setup, &iv, &public_input, &values, &witness);
+            let proved = tracing::info_span!("π2: proof")
+                .in_scope(|| prove(&circuit, &spec, &setup, &iv, &public_input, &values, &witness));
             lap("π2: proof", &mut laps);
+            if std::env::var_os("PI2_PROFILE").is_some() {
+                for (name, secs) in &proved.timings {
+                    eprintln!("    prove: {secs:7.3} s  {name}");
+                }
+            }
             let stream = proved.stream.clone();
-            let (reduced, roots2, openings) = open(proved, &setup);
+            let (reduced, roots2, openings) = tracing::info_span!("π2: openings").in_scope(|| open(proved, &setup));
             lap("π2: openings", &mut laps);
             laps.push(("total", started.elapsed().as_secs_f64()));
             laps.push(("(π2's witness replay, overlapped with π1's openings)", replaying));

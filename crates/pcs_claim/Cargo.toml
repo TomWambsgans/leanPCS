@@ -20,3 +20,6 @@ parallel.workspace = true
 primitives = { workspace = true, features = ["test-util"] }
 evm_link.workspace = true
 leanvm_statement.workspace = true
+# The trace tree of `opening_time` (`PCS_CLAIM_TRACING`).
+bench.workspace = true
+tracing.workspace = true

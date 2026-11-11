@@ -28,3 +28,5 @@ parallel.workspace = true
 [dev-dependencies]
 # The allocator of the proving runs: jemalloc, freed pages kept (crates/vendor/leanvm-c445e3d5/bench), as crates/leanvm/univariate's.
 bench.workspace = true
+# The trace tree of the pipeline's last pass (`PIPELINE_TRACING`).
+tracing.workspace = true

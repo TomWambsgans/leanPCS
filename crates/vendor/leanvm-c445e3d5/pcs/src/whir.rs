@@ -27,6 +27,12 @@
 // evaluation, the glue, the collapsed weight) take four products at a time (`mul4`, `mul_unreduced4`;
 // `vectored_ext_rounds_match_one_product_at_a_time`). A dense low weight is told from its first chunk, a sparse one's
 // entries collected in parallel (`sparse_lows`).
+// Also added here, for speed, every proof unchanged: the lane tensors' inner products with the committed lanes as a
+// public function (`dense_lane_inner_products`, which a commitment's out-of-domain answer is computed by), the lane
+// rounds given some of them (`recursive_prover_with_lane_tensors_known`), and several openings on one commitment at
+// once (`recursive_prover_with_lane_tensors_batch`, `LaneJob`): their lane rounds read the message twice in all (the
+// inner products in one pass, every opening's collapse in another), then each opening goes on as alone
+// (`after_lane_rounds`, the rest of `recursive_prover` from level 1's commitment).
 
 //! WHIR with `K = GF(2)[x]/(x^64+x^4+x^3+x+1)` and
 //! `E = K[y]/(y^3+y+1)`.
@@ -1411,7 +1417,7 @@ enum SparseLow {
 }
 
 /// Each tensor's [`SparseLow`].
-fn sparse_lows(weight: &[LaneTensor]) -> Vec<SparseLow> {
+fn sparse_lows(weight: &[&LaneTensor]) -> Vec<SparseLow> {
     weight
         .iter()
         .map(|tensor| {
@@ -1451,55 +1457,27 @@ fn sparse_lows(weight: &[LaneTensor]) -> Vec<SparseLow> {
 }
 
 /// `p_c[l] = Σ_x f(l, x) · low_c[x]` for every claim `c` and lane `l`, claim-major: in one pass over `f` for the
-/// dense low weights, at their nonzero entries for the sparse ones.
-fn lane_inner_products(f: &[F64], block: usize, weight: &[LaneTensor], sparse: &[SparseLow]) -> Vec<Vec<F192>> {
+/// dense low weights, at their nonzero entries for the sparse ones. A tensor whose products are `known` (one per
+/// committed lane) is not read. [Known products added here.]
+fn lane_inner_products(
+    f: &[F64],
+    block: usize,
+    weight: &[&LaneTensor],
+    sparse: &[SparseLow],
+    known: &[Option<&[F192]>],
+) -> Vec<Vec<F192>> {
     let n_lanes = f.len() / block;
-    let chunk = ROUND_CHUNK.min(block);
     let dense: Vec<usize> = (0..weight.len())
-        .filter(|&c| matches!(sparse[c], SparseLow::Dense))
+        .filter(|&c| matches!(sparse[c], SparseLow::Dense) && known[c].is_none())
         .collect();
-    // On a vector carry-less multiplier: the chunk's dense low weights packed once for `dot_base`, which takes
-    // eight terms at a time, then the lanes in turn against them.
-    #[cfg(all(target_arch = "x86_64", target_feature = "vpclmulqdq", target_feature = "avx2"))]
-    let fold = |acc: &mut Vec<F192Unreduced>, t: usize| {
-        use primitives::field::{Weights8, dot_base};
-        let x0 = t * chunk;
-        if !chunk.is_multiple_of(8) {
-            return lane_inner_products_chunk(f, block, weight, &dense, acc, x0, chunk);
-        }
-        let packed: Vec<Vec<Weights8>> = dense
-            .iter()
-            .map(|&c| {
-                let low = &weight[c].low[x0..x0 + chunk];
-                low.as_chunks::<8>().0.iter().map(Weights8::new).collect()
-            })
-            .collect();
-        for l in 0..n_lanes {
-            let lane = &f[l * block + x0..l * block + x0 + chunk];
-            for (w, &c) in packed.iter().zip(&dense) {
-                acc[c * n_lanes + l] ^= dot_base(w, lane);
-            }
-        }
-    };
-    #[cfg(not(all(target_arch = "x86_64", target_feature = "vpclmulqdq", target_feature = "avx2")))]
-    let fold = |acc: &mut Vec<F192Unreduced>, t: usize| {
-        lane_inner_products_chunk(f, block, weight, &dense, acc, t * chunk, chunk)
-    };
-    let mut sums = if dense.is_empty() {
-        vec![F192Unreduced::ZERO; weight.len() * n_lanes]
-    } else {
-        parallel::fold_reduce(
-            block / chunk,
-            || vec![F192Unreduced::ZERO; weight.len() * n_lanes],
-            fold,
-            |mut a, b| {
-                a.iter_mut().zip(b).for_each(|(a, b)| *a ^= b);
-                a
-            },
-        )
-    };
+    let lows: Vec<&[F192]> = dense.iter().map(|&c| &weight[c].low[..]).collect();
+    let dense_sums = dense_lane_sums(f, block, &lows);
+    let mut sums = vec![F192Unreduced::ZERO; weight.len() * n_lanes];
+    for (k, &c) in dense.iter().enumerate() {
+        sums[c * n_lanes..(c + 1) * n_lanes].copy_from_slice(&dense_sums[k * n_lanes..(k + 1) * n_lanes]);
+    }
     for (c, low) in sparse.iter().enumerate() {
-        if let SparseLow::Sparse(entries) = low {
+        if let (SparseLow::Sparse(entries), None) = (low, known[c]) {
             for l in 0..n_lanes {
                 for &(x, e) in entries {
                     sums[c * n_lanes + l] ^= e.mul_base_unreduced(f[l * block + x]);
@@ -1508,8 +1486,70 @@ fn lane_inner_products(f: &[F64], block: usize, weight: &[LaneTensor], sparse: &
         }
     }
     sums.chunks_exact(n_lanes)
+        .zip(known)
+        .map(|(claim, known)| match known {
+            Some(products) => {
+                assert_eq!(products.len(), n_lanes, "one known product per committed lane");
+                products.to_vec()
+            }
+            None => claim.iter().map(|s| s.reduce()).collect(),
+        })
+        .collect()
+}
+
+/// `p_c[l] = Σ_x f(l, x) · lows[c][x]` for every low weight `c` (`block` words each) and every lane `l` of `f`
+/// (whole lanes of `block` words), claim-major, in one pass over `f`: [`lane_inner_products`]' dense ones. [Added
+/// here: a commitment's out-of-domain answer from its lanes' products, which its openings' lane rounds reuse.]
+pub fn dense_lane_inner_products(f: &[F64], block: usize, lows: &[&[F192]]) -> Vec<Vec<F192>> {
+    let n_lanes = f.len() / block;
+    assert!(n_lanes >= 1 && f.len() == n_lanes * block, "whole lanes");
+    for low in lows {
+        assert_eq!(low.len(), block, "one low weight per word of a lane");
+    }
+    dense_lane_sums(f, block, lows)
+        .chunks_exact(n_lanes)
         .map(|claim| claim.iter().map(|s| s.reduce()).collect())
         .collect()
+}
+
+/// The unreduced sums of [`dense_lane_inner_products`], `lows.len() · n_lanes` of them, claim-major.
+fn dense_lane_sums(f: &[F64], block: usize, lows: &[&[F192]]) -> Vec<F192Unreduced> {
+    let n_lanes = f.len() / block;
+    if lows.is_empty() {
+        return Vec::new();
+    }
+    let chunk = ROUND_CHUNK.min(block);
+    // On a vector carry-less multiplier: the chunk's dense low weights packed once for `dot_base`, which takes
+    // eight terms at a time, then the lanes in turn against them.
+    #[cfg(all(target_arch = "x86_64", target_feature = "vpclmulqdq", target_feature = "avx2"))]
+    let fold = |acc: &mut Vec<F192Unreduced>, t: usize| {
+        use primitives::field::{Weights8, dot_base};
+        let x0 = t * chunk;
+        if !chunk.is_multiple_of(8) {
+            return lane_inner_products_chunk(f, block, lows, acc, x0, chunk);
+        }
+        let packed: Vec<Vec<Weights8>> = lows
+            .iter()
+            .map(|low| low[x0..x0 + chunk].as_chunks::<8>().0.iter().map(Weights8::new).collect())
+            .collect();
+        for l in 0..n_lanes {
+            let lane = &f[l * block + x0..l * block + x0 + chunk];
+            for (c, w) in packed.iter().enumerate() {
+                acc[c * n_lanes + l] ^= dot_base(w, lane);
+            }
+        }
+    };
+    #[cfg(not(all(target_arch = "x86_64", target_feature = "vpclmulqdq", target_feature = "avx2")))]
+    let fold = |acc: &mut Vec<F192Unreduced>, t: usize| lane_inner_products_chunk(f, block, lows, acc, t * chunk, chunk);
+    parallel::fold_reduce(
+        block / chunk,
+        || vec![F192Unreduced::ZERO; lows.len() * n_lanes],
+        fold,
+        |mut a, b| {
+            a.iter_mut().zip(b).for_each(|(a, b)| *a ^= b);
+            a
+        },
+    )
 }
 
 /// The dense low weights' terms of [`lane_inner_products`] over the words `x0 .. x0 + chunk` of every lane, one
@@ -1518,8 +1558,7 @@ fn lane_inner_products(f: &[F64], block: usize, weight: &[LaneTensor], sparse: &
 fn lane_inner_products_chunk(
     f: &[F64],
     block: usize,
-    weight: &[LaneTensor],
-    dense: &[usize],
+    lows: &[&[F192]],
     acc: &mut Vec<F192Unreduced>,
     x0: usize,
     chunk: usize,
@@ -1527,9 +1566,9 @@ fn lane_inner_products_chunk(
     let n_lanes = f.len() / block;
     for l in 0..n_lanes {
         let lane = &f[l * block + x0..l * block + x0 + chunk];
-        for &c in dense {
+        for (c, low) in lows.iter().enumerate() {
             let mut sum = F192Unreduced::ZERO;
-            for (&w, &e) in lane.iter().zip(&weight[c].low[x0..x0 + chunk]) {
+            for (&w, &e) in lane.iter().zip(&low[x0..x0 + chunk]) {
                 sum ^= e.mul_base_unreduced(w);
             }
             acc[c * n_lanes + l] ^= sum;
@@ -1537,105 +1576,131 @@ fn lane_inner_products_chunk(
     }
 }
 
-/// The lanes collapsed at the lane rounds' challenges `rs`: the folded witness `Σ_l eq(rs, l) · f(l, ·)`, the
-/// folded weight `Σ_c scales[c] · low_c`, and the message of the adjacent-pair round that follows.
-fn collapse_lanes(
-    f: &[F64],
-    block: usize,
-    rs: &[F192],
-    weight: &[LaneTensor],
-    sparse: &[SparseLow],
-    scales: &[F192],
-) -> (Vec<F192>, Vec<F192>, SumcheckMessage) {
+/// One opening's lane collapse ([`collapse_lanes`]): its lane rounds' challenges, and its tensors with their sparse
+/// forms and folded scales.
+struct Collapse<'w> {
+    rs: Vec<F192>,
+    tensors: Vec<(&'w LaneTensor, &'w SparseLow, F192)>,
+}
+
+/// The lanes collapsed at each opening's lane rounds' challenges `rs`: its folded witness `Σ_l eq(rs, l) · f(l, ·)`,
+/// its folded weight `Σ_c scales[c] · low_c`, and the message of the adjacent-pair round that follows; every
+/// opening's in one pass over `f`, a stage of its words read once for all of them. [Several openings at once added
+/// here.]
+fn collapse_lanes(f: &[F64], block: usize, jobs: &[Collapse<'_>]) -> Vec<(Vec<F192>, Vec<F192>, SumcheckMessage)> {
     let n_lanes = f.len() / block;
-    let coeffs = &build_eq_table_ext(rs)[..n_lanes];
+    let coeffs: Vec<Vec<F192>> = jobs
+        .iter()
+        .map(|job| build_eq_table_ext(&job.rs)[..n_lanes].to_vec())
+        .collect();
     #[cfg(all(target_arch = "x86_64", target_feature = "vpclmulqdq", target_feature = "avx512f"))]
-    let packed = collapse_avx512::pack(coeffs);
-    // SAFETY (x2): every task writes its whole window of both buffers before anything reads them.
-    let mut nf = unsafe { fold_out_buf(block) };
-    let mut nb = unsafe { fold_out_buf(block) };
-    let nf_base = parallel::SendPtr(nf.as_mut_ptr());
-    let nb_base = parallel::SendPtr(nb.as_mut_ptr());
+    let packed: Vec<Vec<collapse_avx512::Packed>> = coeffs.iter().map(|c| collapse_avx512::pack(c)).collect();
+    // SAFETY (x2 a job): every task writes its whole window of both buffers before anything reads them.
+    let mut out: Vec<(Vec<F192>, Vec<F192>)> = jobs
+        .iter()
+        .map(|_| unsafe { (fold_out_buf(block), fold_out_buf(block)) })
+        .collect();
+    let bases: Vec<(parallel::SendPtr<F192>, parallel::SendPtr<F192>)> = out
+        .iter_mut()
+        .map(|(nf, nb)| (parallel::SendPtr(nf.as_mut_ptr()), parallel::SendPtr(nb.as_mut_ptr())))
+        .collect();
     let chunk = ROUND_CHUNK.min(block);
-    let (u_0, u_2) = accumulate_msg(block / chunk, block / 2, F192Unreduced::ZERO, |t| {
+    let zero = (F192Unreduced::ZERO, F192Unreduced::ZERO);
+    let task = |t: usize| -> Vec<(F192Unreduced, F192Unreduced)> {
         let x0 = t * chunk;
         let stream = Stream::new();
-        let mut acc = (F192Unreduced::ZERO, F192Unreduced::ZERO);
+        let mut acc = vec![zero; jobs.len()];
         for s in (x0..x0 + chunk).step_by(STAGE) {
             let n = STAGE.min(x0 + chunk - s);
-            let mut stage = [[F192::ZERO; STAGE]; 2];
-            let [lo_f, lo_b] = &mut stage;
-            // The witness folded at the lanes' coefficients: on AVX-512 eight words at a time, every lane's
-            // products summed unreduced in registers ([`collapse_avx512`]).
-            #[cfg(all(target_arch = "x86_64", target_feature = "vpclmulqdq", target_feature = "avx512f"))]
-            let vectored = n.is_multiple_of(8);
-            #[cfg(not(all(target_arch = "x86_64", target_feature = "vpclmulqdq", target_feature = "avx512f")))]
-            let vectored = false;
-            if vectored {
+            for (j, job) in jobs.iter().enumerate() {
+                let mut stage = [[F192::ZERO; STAGE]; 2];
+                let [lo_f, lo_b] = &mut stage;
+                // The witness folded at the lanes' coefficients: on AVX-512 eight words at a time, every lane's
+                // products summed unreduced in registers ([`collapse_avx512`]).
                 #[cfg(all(target_arch = "x86_64", target_feature = "vpclmulqdq", target_feature = "avx512f"))]
-                // SAFETY: the features are enabled, every lane holds the stage's words, and `n` is whole vectors.
+                let vectored = n.is_multiple_of(8);
+                #[cfg(not(all(target_arch = "x86_64", target_feature = "vpclmulqdq", target_feature = "avx512f")))]
+                let vectored = false;
+                if vectored {
+                    #[cfg(all(target_arch = "x86_64", target_feature = "vpclmulqdq", target_feature = "avx512f"))]
+                    // SAFETY: the features are enabled, every lane holds the stage's words, and `n` is whole vectors.
+                    unsafe {
+                        collapse_avx512::stage(f, block, s, &packed[j], &mut lo_f[..n])
+                    };
+                } else {
+                    let mut sums = [F192Unreduced::ZERO; STAGE];
+                    for (l, &coeff) in coeffs[j].iter().enumerate() {
+                        for (sum, &w) in sums.iter_mut().zip(&f[l * block + s..l * block + s + n]) {
+                            *sum ^= coeff.mul_base_unreduced(w);
+                        }
+                    }
+                    for (d, sum) in lo_f[..n].iter_mut().zip(&sums) {
+                        *d = sum.reduce();
+                    }
+                }
+                // The dense low weights at every word, four products at a time ([`mul4`]), the sparse ones at
+                // their entries in the stage.
+                lo_b[..n].fill(F192::ZERO);
+                for &(tensor, _, scale) in job.tensors.iter().filter(|(_, low, _)| matches!(low, SparseLow::Dense)) {
+                    let low = &tensor.low[s..s + n];
+                    let (d4, d_rest) = lo_b[..n].as_chunks_mut::<4>();
+                    for (d, e) in d4.iter_mut().zip(low.as_chunks::<4>().0) {
+                        let p = mul4([scale; 4], *e);
+                        *d = std::array::from_fn(|i| d[i] + p[i]);
+                    }
+                    for (d, &e) in d_rest.iter_mut().zip(&low[n / 4 * 4..]) {
+                        *d += scale * e;
+                    }
+                }
+                for &(_, low, scale) in &job.tensors {
+                    if let SparseLow::Sparse(entries) = low {
+                        let from = entries.partition_point(|&(x, _)| x < s);
+                        for &(x, e) in entries[from..].iter().take_while(|&&(x, _)| x < s + n) {
+                            lo_b[x - s] += scale * e;
+                        }
+                    }
+                }
+                // SAFETY: distinct stages name disjoint in-bounds windows of each job's `nf` and `nb`, which stay
+                // borrowed for the whole dispatch.
                 unsafe {
-                    collapse_avx512::stage(f, block, s, &packed, &mut lo_f[..n])
-                };
-            } else {
-                let mut sums = [F192Unreduced::ZERO; STAGE];
-                for (l, &coeff) in coeffs.iter().enumerate() {
-                    for (sum, &w) in sums.iter_mut().zip(&f[l * block + s..l * block + s + n]) {
-                        *sum ^= coeff.mul_base_unreduced(w);
-                    }
+                    stream.copy(bases[j].0.slice(s, n), &lo_f[..n]);
+                    stream.copy(bases[j].1.slice(s, n), &lo_b[..n]);
                 }
-                for (d, sum) in lo_f[..n].iter_mut().zip(&sums) {
-                    *d = sum.reduce();
-                }
+                // `STAGE`, `ROUND_CHUNK` and `block` are powers of two, so no message pair straddles a stage.
+                let (u_0, u_2) = fold_msg_terms(&lo_f[..n], &lo_b[..n]);
+                acc[j].0 ^= u_0;
+                acc[j].1 ^= u_2;
             }
-            // The dense low weights at every word, four products at a time ([`mul4`]), the sparse ones at their
-            // entries in the stage.
-            lo_b[..n].fill(F192::ZERO);
-            for ((&scale, tensor), _) in scales
-                .iter()
-                .zip(weight)
-                .zip(sparse)
-                .filter(|(_, low)| matches!(low, SparseLow::Dense))
-            {
-                let low = &tensor.low[s..s + n];
-                let (d4, d_rest) = lo_b[..n].as_chunks_mut::<4>();
-                for (d, e) in d4.iter_mut().zip(low.as_chunks::<4>().0) {
-                    let p = mul4([scale; 4], *e);
-                    *d = std::array::from_fn(|i| d[i] + p[i]);
-                }
-                for (d, &e) in d_rest.iter_mut().zip(&low[n / 4 * 4..]) {
-                    *d += scale * e;
-                }
-            }
-            for (&scale, low) in scales.iter().zip(sparse) {
-                if let SparseLow::Sparse(entries) = low {
-                    let from = entries.partition_point(|&(x, _)| x < s);
-                    for &(x, e) in entries[from..].iter().take_while(|&&(x, _)| x < s + n) {
-                        lo_b[x - s] += scale * e;
-                    }
-                }
-            }
-            // SAFETY: distinct stages name disjoint in-bounds windows of `nf` and `nb`, which stay borrowed for
-            // the whole dispatch.
-            unsafe {
-                stream.copy(nf_base.slice(s, n), &lo_f[..n]);
-                stream.copy(nb_base.slice(s, n), &lo_b[..n]);
-            }
-            // `STAGE`, `ROUND_CHUNK` and `block` are powers of two, so no message pair straddles a stage.
-            let (u_0, u_2) = fold_msg_terms(&lo_f[..n], &lo_b[..n]);
-            acc.0 ^= u_0;
-            acc.1 ^= u_2;
         }
         acc
-    });
-    (
-        nf,
-        nb,
-        SumcheckMessage {
-            u_0: u_0.reduce(),
-            u_2: u_2.reduce(),
-        },
-    )
+    };
+    let xor = |mut a: Vec<(F192Unreduced, F192Unreduced)>, b: Vec<(F192Unreduced, F192Unreduced)>| {
+        for (a, b) in a.iter_mut().zip(b) {
+            a.0 ^= b.0;
+            a.1 ^= b.1;
+        }
+        a
+    };
+    // Sequentially for the small instances where dispatch costs more than the work ([`accumulate_msg`]).
+    const PAR_THRESHOLD: usize = 4096;
+    let sums = if block / 2 < PAR_THRESHOLD {
+        (0..block / chunk).map(task).fold(vec![zero; jobs.len()], xor)
+    } else {
+        parallel::map_reduce(block / chunk, || vec![zero; jobs.len()], task, xor)
+    };
+    out.into_iter()
+        .zip(sums)
+        .map(|((nf, nb), (u_0, u_2))| {
+            (
+                nf,
+                nb,
+                SumcheckMessage {
+                    u_0: u_0.reduce(),
+                    u_2: u_2.reduce(),
+                },
+            )
+        })
+        .collect()
 }
 
 /// The witness fold of [`collapse_lanes`] on AVX-512.
@@ -1727,21 +1792,32 @@ mod collapse_avx512 {
     }
 }
 
+/// One opening of a batch on one commitment ([`recursive_prover_with_lane_tensors_batch`]): its weight, the sum of
+/// the batch's tensors it names (in that order), its target and its transcript. [Added here.]
+pub struct LaneJob<'p> {
+    pub tensors: Vec<usize>,
+    pub target: F192,
+    pub ps: &'p mut ProverState,
+}
+
 /// The `initial_k` lane rounds on a lane-tensor weight, transcript operation for transcript operation those of
 /// [`SumcheckProver::fold_lane`] on the dense weight, leaving the prover where they leave it, and their
-/// challenges.
-fn tensor_lane_rounds<'a>(
-    f: &'a [F64],
+/// challenges: for each of `jobs`, all on the same message `f`, the tensors' inner products in one pass over `f`
+/// (but those `known`), the collapse in another ([`collapse_lanes`]). [Several openings at once, and the known
+/// products, added here; each job's rounds are those it would have alone.]
+fn tensor_lane_rounds(
+    f: &[F64],
     block: usize,
     initial_k: usize,
     weight: &[LaneTensor],
-    target: F192,
-    ps: &mut ProverState,
-) -> (SumcheckProver<'a>, Vec<F192>) {
+    known: &[Option<&[F192]>],
+    jobs: &mut [LaneJob<'_>],
+) -> Vec<(SumcheckProver<'static>, Vec<F192>)> {
     let n_lanes = f.len() / block;
     let width = 1usize << initial_k;
     // No tensor at all (an opening of no claims) is the zero weight, which the dense prover proves too.
     assert!(n_lanes <= width);
+    assert_eq!(known.len(), weight.len(), "one known entry per tensor");
     for tensor in weight {
         assert!(
             tensor.scales.len() == n_lanes || tensor.scales.len() == width,
@@ -1755,46 +1831,78 @@ fn tensor_lane_rounds<'a>(
         v.resize(width, F192::ZERO);
         v
     };
+    // The tensors some job reads.
+    let mut used = vec![false; weight.len()];
+    jobs.iter().flat_map(|job| &job.tensors).for_each(|&c| used[c] = true);
     let span = tracing::info_span!("Sumcheck round", round = 0, log_size = f.len().ilog2()).entered();
-    let mut scales: Vec<Vec<F192>> = weight.iter().map(|t| padded(t.scales.clone())).collect();
-    let sparse = sparse_lows(weight);
-    let mut inner: Vec<Vec<F192>> = lane_inner_products(f, block, weight, &sparse)
-        .into_iter()
-        .map(padded)
-        .collect();
+    let read: Vec<usize> = (0..weight.len()).filter(|&c| used[c]).collect();
+    let sparse = sparse_lows(&read.iter().map(|&c| &weight[c]).collect::<Vec<_>>());
+    let all_inner = lane_inner_products(
+        f,
+        block,
+        &read.iter().map(|&c| &weight[c]).collect::<Vec<_>>(),
+        &sparse,
+        &read.iter().map(|&c| known[c]).collect::<Vec<_>>(),
+    );
     drop(span);
-    let msg = tensor_msg(&scales, &inner);
-    send_msg(ps, msg, target);
-    let (mut t_r, mut quad) = (target, RoundQuad::from_msg(msg, target));
-    let mut rs = Vec::with_capacity(initial_k);
-    let mut collapsed = None;
-    for j in 0..initial_k {
-        let r = ps.sample();
-        rs.push(r);
-        t_r = quad.eval(r);
-        scales.iter_mut().chain(&mut inner).for_each(|v| fold_pairs(v, r));
-        let msg = if j + 1 < initial_k {
-            tensor_msg(&scales, &inner)
-        } else {
-            let _span = tracing::info_span!("Sumcheck round", round = j + 1, log_size = block.ilog2()).entered();
-            let last: Vec<F192> = scales.iter().map(|s| s[0]).collect();
-            let (nf, nb, msg) = collapse_lanes(f, block, &rs, weight, &sparse, &last);
-            collapsed = Some((nf, nb));
-            msg
-        };
-        quad = RoundQuad::from_msg(msg, t_r);
-        send_msg(ps, msg, t_r);
+    let at = |c: usize| read.binary_search(&c).expect("a tensor some job reads");
+    // Each job's rounds up to its last challenge.
+    let mut ends = Vec::with_capacity(jobs.len());
+    for job in jobs.iter_mut() {
+        let ps = &mut *job.ps;
+        let mut scales: Vec<Vec<F192>> = job.tensors.iter().map(|&c| padded(weight[c].scales.clone())).collect();
+        let mut inner: Vec<Vec<F192>> = job.tensors.iter().map(|&c| padded(all_inner[at(c)].clone())).collect();
+        let msg = tensor_msg(&scales, &inner);
+        send_msg(ps, msg, job.target);
+        let (mut t_r, mut quad) = (job.target, RoundQuad::from_msg(msg, job.target));
+        let mut rs = Vec::with_capacity(initial_k);
+        for j in 0..initial_k {
+            let r = ps.sample();
+            rs.push(r);
+            t_r = quad.eval(r);
+            scales.iter_mut().chain(&mut inner).for_each(|v| fold_pairs(v, r));
+            if j + 1 < initial_k {
+                let msg = tensor_msg(&scales, &inner);
+                quad = RoundQuad::from_msg(msg, t_r);
+                send_msg(ps, msg, t_r);
+            }
+        }
+        let last: Vec<F192> = scales.iter().map(|s| s[0]).collect();
+        ends.push((rs, t_r, last));
     }
-    let (nf, nb) = collapsed.expect("at least one lane round");
-    let prover = SumcheckProver {
-        f: Witness::Ext(nf),
-        combined_basis: nb,
-        t_r,
-        quad,
-        round: initial_k,
-        pending: Vec::new(),
-    };
-    (prover, rs)
+    let span = tracing::info_span!("Sumcheck round", round = initial_k, log_size = block.ilog2()).entered();
+    let collapses: Vec<Collapse<'_>> = jobs
+        .iter()
+        .zip(&ends)
+        .map(|(job, (rs, _, last))| Collapse {
+            rs: rs.clone(),
+            tensors: job
+                .tensors
+                .iter()
+                .zip(last)
+                .map(|(&c, &scale)| (&weight[c], &sparse[at(c)], scale))
+                .collect(),
+        })
+        .collect();
+    let collapsed = collapse_lanes(f, block, &collapses);
+    drop(span);
+    jobs.iter_mut()
+        .zip(ends)
+        .zip(collapsed)
+        .map(|((job, (rs, t_r, _)), (nf, nb, msg))| {
+            let quad = RoundQuad::from_msg(msg, t_r);
+            send_msg(job.ps, msg, t_r);
+            let prover = SumcheckProver {
+                f: Witness::Ext(nf),
+                combined_basis: nb,
+                t_r,
+                quad,
+                round: initial_k,
+                pending: Vec::new(),
+            };
+            (prover, rs)
+        })
+        .collect()
 }
 
 /// The witness: the committed K-message (borrowed from the caller, it is only
@@ -2135,11 +2243,40 @@ pub fn recursive_prover_with_lane_tensors(
     l0_tree: impl AsRef<[Hash]>,
     ps: &mut ProverState,
 ) {
+    recursive_prover_with_lane_tensors_known(
+        config,
+        log_n,
+        witness,
+        weight,
+        &vec![None; weight.len()],
+        target,
+        l0_codeword,
+        l0_tree,
+        ps,
+    );
+}
+
+/// [`recursive_prover_with_lane_tensors`], given some tensors' inner products with the committed lanes
+/// (`known[c]`, one per committed lane: `Σ_x witness(l, x) · weight[c].low[x]`, as
+/// [`dense_lane_inner_products`] gives them), which its lane rounds then do not compute. The proof is the same.
+/// [Added here.]
+#[allow(clippy::too_many_arguments)]
+pub fn recursive_prover_with_lane_tensors_known(
+    config: &ProverConfig,
+    log_n: usize,
+    witness: impl AsRef<[F64]>,
+    weight: &[LaneTensor],
+    known: &[Option<&[F192]>],
+    target: F192,
+    l0_codeword: Option<&[F64]>,
+    l0_tree: impl AsRef<[Hash]>,
+    ps: &mut ProverState,
+) {
     recursive_prover(
         config,
         log_n,
         witness,
-        Initial::Tensors(weight),
+        Initial::Tensors(weight, known),
         target,
         l0_codeword,
         l0_tree,
@@ -2151,19 +2288,18 @@ pub fn recursive_prover_with_lane_tensors(
 enum Initial<'w> {
     /// Written out over the committed lanes, with round 0's message if it is already known.
     Dense(Vec<F192>, Option<SumcheckMessage>),
-    Tensors(&'w [LaneTensor]),
+    /// Lane tensors, and the inner products known of some.
+    Tensors(&'w [LaneTensor], &'w [Option<&'w [F192]>]),
 }
 
-fn recursive_prover(
+/// The level-0 shape [`recursive_prover`] checks: the committed lanes and the lane block's length.
+fn l0_shape(
     config: &ProverConfig,
     log_n: usize,
-    witness: impl AsRef<[F64]>,
-    initial: Initial<'_>,
-    target: F192,
+    message_len: usize,
     l0_codeword: Option<&[F64]>,
-    l0_tree: impl AsRef<[Hash]>,
-    ps: &mut ProverState,
-) {
+    l0_tree_len: usize,
+) -> (usize, usize) {
     let r = config.level_steps;
     let initial_k = config.initial_k;
 
@@ -2184,9 +2320,8 @@ fn recursive_prover(
     // The committed lanes: only the ones that carry data, so the witness is a
     // whole number of lane blocks but generally NOT `2^log_n` words.
     let lane_block = 1usize << log_msg_cols_0;
-    let message = witness.as_ref();
-    let n_lanes = message.len() / lane_block;
-    assert_eq!(message.len(), n_lanes * lane_block, "witness is whole lane blocks");
+    let n_lanes = message_len / lane_block;
+    assert_eq!(message_len, n_lanes * lane_block, "witness is whole lane blocks");
     assert!(
         n_lanes >= 1 && n_lanes <= num_interleaved_0,
         "at most 2^initial_k lanes"
@@ -2194,13 +2329,105 @@ fn recursive_prover(
     if let Some(l0_codeword) = l0_codeword {
         assert_eq!(l0_codeword.len(), block_len_0 * n_lanes);
     }
-    assert_eq!(l0_tree.as_ref().len(), 2 * block_len_0 - 1);
+    assert_eq!(l0_tree_len, 2 * block_len_0 - 1);
+    (n_lanes, lane_block)
+}
+
+fn recursive_prover(
+    config: &ProverConfig,
+    log_n: usize,
+    witness: impl AsRef<[F64]>,
+    initial: Initial<'_>,
+    target: F192,
+    l0_codeword: Option<&[F64]>,
+    l0_tree: impl AsRef<[Hash]>,
+    ps: &mut ProverState,
+) {
+    let initial_k = config.initial_k;
+    let (_, lane_block) = l0_shape(config, log_n, witness.as_ref().len(), l0_codeword, l0_tree.as_ref().len());
+    let message = witness.as_ref();
 
     // Nothing is absorbed on entry. The commitment was bound by the `add_root` that
     // transmitted it, and the target is `sum_i lambda^i * claim_i` over claim values bound by their
     // own reads, with lambda drawn from the state: the state already determines both. Every caller
     // must therefore have transmitted its root before opening against it, which is what makes the
     // fold challenges depend on the commitment.
+
+    let sumcheck_span = tracing::info_span!("Sumcheck");
+    let (sc_prover, r_lane_fold) = match initial {
+        Initial::Dense(b_initial, initial_message) => {
+            let (mut sc_prover, start_msg) =
+                sumcheck_span.in_scope(|| SumcheckProver::new(message, b_initial, target, lane_block, initial_message));
+            send_msg(ps, start_msg, target);
+
+            let mut r_lane_fold = Vec::with_capacity(initial_k);
+            for j in 0..initial_k {
+                let r_j = ps.sample();
+                let msg = sumcheck_span.in_scope(|| sc_prover.fold_lane(r_j, lane_block, j + 1 == initial_k));
+                send_msg(ps, msg, sc_prover.claim());
+                r_lane_fold.push(r_j);
+            }
+            (sc_prover.into_ext(), r_lane_fold)
+        }
+        Initial::Tensors(weight, known) => {
+            let _entered = sumcheck_span.enter();
+            let mut jobs = [LaneJob {
+                tensors: (0..weight.len()).collect(),
+                target,
+                ps: &mut *ps,
+            }];
+            tensor_lane_rounds(message, lane_block, initial_k, weight, known, &mut jobs)
+                .pop()
+                .expect("one job")
+        }
+    };
+    drop(sumcheck_span);
+    after_lane_rounds(config, log_n, witness, sc_prover, r_lane_fold, l0_codeword, l0_tree, ps);
+}
+
+/// [`recursive_prover_with_lane_tensors`] of each of `jobs` (`known` as in
+/// [`recursive_prover_with_lane_tensors_known`]), all on one commitment: each job's proof is the one it gives alone,
+/// byte for byte, but the lane rounds of all of them read the message twice in all (the tensors' inner products in
+/// one pass, the lanes' collapse in another) rather than twice each. [Added here.]
+#[allow(clippy::too_many_arguments)]
+pub fn recursive_prover_with_lane_tensors_batch(
+    config: &ProverConfig,
+    log_n: usize,
+    witness: &[F64],
+    weight: &[LaneTensor],
+    known: &[Option<&[F192]>],
+    jobs: &mut [LaneJob<'_>],
+    l0_codeword: Option<&[F64]>,
+    l0_tree: &[Hash],
+) {
+    let (_, lane_block) = l0_shape(config, log_n, witness.len(), l0_codeword, l0_tree.len());
+    let started = {
+        let _span = tracing::info_span!("Sumcheck").entered();
+        tensor_lane_rounds(witness, lane_block, config.initial_k, weight, known, jobs)
+    };
+    for (job, (sc_prover, r_lane_fold)) in jobs.iter_mut().zip(started) {
+        after_lane_rounds(config, log_n, witness, sc_prover, r_lane_fold, l0_codeword, l0_tree, job.ps);
+    }
+}
+
+/// [`recursive_prover`] from the end of its lane rounds: level 1's commitment on.
+#[allow(clippy::too_many_arguments)]
+fn after_lane_rounds(
+    config: &ProverConfig,
+    log_n: usize,
+    witness: impl AsRef<[F64]>,
+    mut sc_prover: SumcheckProver<'static>,
+    r_lane_fold: Vec<F192>,
+    l0_codeword: Option<&[F64]>,
+    l0_tree: impl AsRef<[Hash]>,
+    ps: &mut ProverState,
+) {
+    let r = config.level_steps;
+    let initial_k = config.initial_k;
+    let (n_lanes, _) = l0_shape(config, log_n, witness.as_ref().len(), l0_codeword, l0_tree.as_ref().len());
+    let log_inv_rate_0 = config.log_inv_rates[0];
+    let block_len_0 = 1usize << (log_n - initial_k + log_inv_rate_0);
+    let num_interleaved_0 = 1usize << initial_k;
 
     // L0 codeword + tree are borrowed (reused from `commit`); the root itself is never needed
     // here, the caller having transmitted it.
@@ -2220,30 +2447,6 @@ fn recursive_prover(
     };
 
     let ood_count = |lvl: usize| -> usize { config.ood_samples.get(lvl).copied().unwrap_or(0) };
-
-    let sumcheck_span = tracing::info_span!("Sumcheck");
-    let (mut sc_prover, r_lane_fold) = match initial {
-        Initial::Dense(b_initial, initial_message) => {
-            let (mut sc_prover, start_msg) =
-                sumcheck_span.in_scope(|| SumcheckProver::new(message, b_initial, target, lane_block, initial_message));
-            send_msg(ps, start_msg, target);
-
-            let mut r_lane_fold = Vec::with_capacity(initial_k);
-            for j in 0..initial_k {
-                let r_j = ps.sample();
-                let msg = sumcheck_span.in_scope(|| sc_prover.fold_lane(r_j, lane_block, j + 1 == initial_k));
-                send_msg(ps, msg, sc_prover.claim());
-                r_lane_fold.push(r_j);
-            }
-            (sc_prover.into_ext(), r_lane_fold)
-        }
-        Initial::Tensors(weight) => {
-            let _entered = sumcheck_span.enter();
-            let (sc_prover, r_lane_fold) = tensor_lane_rounds(message, lane_block, initial_k, weight, target, ps);
-            (sc_prover.into_ext(), r_lane_fold)
-        }
-    };
-    drop(sumcheck_span);
 
     // Commit f^1 = folded (now E-valued) witness as wtns_1.
     let n1 = log_n - initial_k;

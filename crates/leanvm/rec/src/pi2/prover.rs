@@ -1242,13 +1242,17 @@ pub fn open(proved: Proved, setup: &Setup) -> (Reduced<E>, [Hash; 2], Openings) 
     let [cw, cs, cq, cp, cz] = claims(m, &reduced, &roots, &setup.root(), setup.ood());
     let (w_words, w_commitment) = witness;
     let (q_words, q_commitment) = quotient;
-    let proofs = [
-        timed("W", &mut || pcs_claim::open_words(&w_words, &w_commitment, &cw)),
-        timed("setup", &mut || pcs_claim::open_words_keeping(&setup.words, &setup.commitment, &cs)),
-        timed("Q: identity", &mut || pcs_claim::open_words_keeping(&q_words, &q_commitment, &cq)),
-        timed("Q: pushes", &mut || pcs_claim::open_words_keeping(&q_words, &q_commitment, &cp)),
-        timed("Q: sum", &mut || pcs_claim::open_words(&q_words, &q_commitment, &cz)),
-    ];
+    let pw = timed("W", &mut || pcs_claim::open_words(&w_words, &w_commitment, &cw));
+    let ps = timed("setup", &mut || pcs_claim::open_words_keeping(&setup.words, &setup.commitment, &cs));
+    // Q's three claims together: their lane rounds read the stack twice in all rather than twice each.
+    let clock = Instant::now();
+    let [pq, pp, pz]: [_; 3] = pcs_claim::open_words_batch(&q_words, &q_commitment, &[cq, cp, cz])
+        .try_into()
+        .unwrap_or_else(|_| unreachable!("three proofs"));
+    if profile {
+        eprintln!("    open: {:7.3} s  Q: identity, pushes, sum", clock.elapsed().as_secs_f64());
+    }
+    let proofs = [pw, ps, pq, pp, pz];
     drop(w_words);
     // Q's stack back to the setup's spare, for the next proof's.
     if let Ok(mut spare) = setup.spare.lock() {

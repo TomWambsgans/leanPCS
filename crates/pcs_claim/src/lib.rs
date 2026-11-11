@@ -32,7 +32,7 @@ use fiat_shamir::merkle::Hash;
 use fiat_shamir::transcript::{Proof, ProverState};
 use std::sync::Mutex;
 
-use pcs::whir::{LaneTensor, commit_tree_in, config_for_rate, inner_product_base_ext, recursive_prover_with_lane_tensors};
+use pcs::whir::{LaneJob, LaneTensor, commit_tree_in, config_for_rate, recursive_prover_with_lane_tensors_batch};
 use primitives::field::{F64, F192};
 use primitives::hash::hash as keccak256;
 use primitives::multilinear::{eq_table, mle_eval_par};
@@ -161,22 +161,38 @@ pub fn evaluate(words: &[F64], point: &[F192]) -> F192 {
 /// [`evaluate`] of the `2^n` words (`n = point.len()`) whose leading whole lanes are `words` and the rest zero:
 /// `Σ_l eq(point_high, l) · Σ_y lane_l[y] eq(point_low, y)` over the lanes `words` holds.
 pub fn evaluate_lanes(words: &[F64], point: &[F192]) -> F192 {
+    let log_lane = point.len() - LANE_FOLD;
+    combine_lanes(&lane_products(words, point), &point[log_lane..])
+}
+
+/// `Σ_y lane_l[y] eq(point_low, y)` for each lane `l` of `words` (its leading whole lanes of the `2^n` words, `n =
+/// point.len()`), in one pass over them: what an opening's lane rounds start from, at a tensor of `eq(point, ·)`.
+fn lane_products(words: &[F64], point: &[F192]) -> Vec<F192> {
     let n = point.len();
     let log_lane = n - LANE_FOLD;
     let lane = 1usize << log_lane;
     assert!(
-        words.len().is_multiple_of(lane) && words.len() <= 1 << n,
+        !words.is_empty() && words.len().is_multiple_of(lane) && words.len() <= 1 << n,
         "whole lanes of the 2^n words"
     );
     let low = eq_table(&point[..log_lane]);
-    (0..words.len() / lane).fold(F192::ZERO, |acc, l| {
-        acc + eq_bits(&point[log_lane..], l) * inner_product_base_ext(&words[l * lane..(l + 1) * lane], &low)
-    })
+    pcs::whir::dense_lane_inner_products(words, lane, &[&low])
+        .pop()
+        .expect("one low weight")
 }
 
-/// A commitment, and what its openings need but the words: the Merkle tree of the committed lanes' codeword, and the
-/// codeword itself if it was kept (which the first opening reads its queried rows from, and frees). The words are the
-/// caller's ([`commit_words`], [`open_words`]); [`Committed`] keeps them too.
+/// `Σ_l eq(high, l) · products[l]`.
+fn combine_lanes(products: &[F192], high: &[F192]) -> F192 {
+    products
+        .iter()
+        .enumerate()
+        .fold(F192::ZERO, |acc, (l, &p)| acc + eq_bits(high, l) * p)
+}
+
+/// A commitment, and what its openings need but the words: the Merkle tree of the committed lanes' codeword, the
+/// codeword itself if it was kept (which the first opening reads its queried rows from, and frees), and the committed
+/// lanes' products with the out-of-domain point's low weight, which every opening's lane rounds start from. The words
+/// are the caller's ([`commit_words`], [`open_words`]); [`Committed`] keeps them too.
 pub struct Commitment {
     pub n: usize,
     pub root: Hash,
@@ -184,6 +200,8 @@ pub struct Commitment {
     pub ood: F192,
     tree: Vec<Hash>,
     codeword: Mutex<Option<Vec<F64>>>,
+    /// `Σ_y lane_l[y] eq(z_low, y)` for each committed lane `l`, `z = ood_point(n, root)`.
+    ood_lanes: Vec<F192>,
 }
 
 impl Commitment {
@@ -223,13 +241,17 @@ pub fn commit_words(words: &[F64], n: usize, keep_codeword: bool) -> Commitment 
         let (commitment, tree) = commit_tree_in(words, n, LANE_FOLD, LOG_INV_RATE, Vec::new());
         (commitment.root, tree, None)
     };
-    let ood = evaluate_lanes(words, &ood_point(n, &root));
+    // The answer from the committed lanes' products with the point's low weight, which the openings reuse.
+    let z = ood_point(n, &root);
+    let ood_lanes = lane_products(words, &z);
+    let ood = combine_lanes(&ood_lanes, &z[n - LANE_FOLD..]);
     Commitment {
         n,
         root,
         ood,
         tree,
         codeword: Mutex::new(codeword),
+        ood_lanes,
     }
 }
 
@@ -342,37 +364,79 @@ pub fn open_words_keeping(words: &[F64], commitment: &Commitment, claim: &PcsCla
 }
 
 fn open_words_with(words: &[F64], commitment: &Commitment, claim: &PcsClaim, free: bool) -> Proof {
+    open_words_batch_with(words, commitment, std::slice::from_ref(claim), free)
+        .pop()
+        .expect("one proof")
+}
+
+/// [`open_words`] of each of `claims`, all on `commitment` of `words`: the proofs are those [`open_words`] gives each
+/// claim alone, byte for byte, but the out-of-domain point's weight is built once for all of them, and their lane
+/// rounds read the words twice in all rather than twice a claim (`pcs::whir::recursive_prover_with_lane_tensors_batch`).
+/// A kept codeword serves them all and is freed.
+pub fn open_words_batch(words: &[F64], commitment: &Commitment, claims: &[PcsClaim]) -> Vec<Proof> {
+    open_words_batch_with(words, commitment, claims, true)
+}
+
+/// [`open_words_batch`], reading a kept codeword without freeing it.
+pub fn open_words_batch_keeping(words: &[F64], commitment: &Commitment, claims: &[PcsClaim]) -> Vec<Proof> {
+    open_words_batch_with(words, commitment, claims, false)
+}
+
+fn open_words_batch_with(words: &[F64], commitment: &Commitment, claims: &[PcsClaim], free: bool) -> Vec<Proof> {
     let n = commitment.n;
-    assert!(
-        claim.n as usize == n && claim.root == commitment.root && claim.ood == commitment.ood,
-        "a claim on this commitment"
-    );
+    for claim in claims {
+        assert!(
+            claim.n as usize == n && claim.root == commitment.root && claim.ood == commitment.ood,
+            "a claim on this commitment"
+        );
+    }
     let config = config_for_rate(n, LOG_INV_RATE).expect("a supported WHIR shape");
-    let mut ps = ProverState::new(digest_words(&iv(claim)), digest_words(&PUBLIC_DIGEST));
-    ps.add_root(&commitment.root);
-    let lambda = ps.sample();
-    let target = claim.ood + lambda * claim.value;
-    let weight = [
-        eq_tensor(&ood_point(n, &commitment.root), F192::ONE),
-        eq_tensor(&claim.point, lambda),
-    ];
+    // Each claim's transcript and its weight `eq(z, ·) + λ eq(point, ·)`: the batch's tensors are the out-of-domain
+    // point's (its products with the lanes known from the commitment), then each claim's.
+    let mut states: Vec<ProverState> = Vec::with_capacity(claims.len());
+    let mut weight = vec![eq_tensor(&ood_point(n, &commitment.root), F192::ONE)];
+    let mut targets = Vec::with_capacity(claims.len());
+    for claim in claims {
+        let mut ps = ProverState::new(digest_words(&iv(claim)), digest_words(&PUBLIC_DIGEST));
+        ps.add_root(&commitment.root);
+        let lambda = ps.sample();
+        targets.push(claim.ood + lambda * claim.value);
+        weight.push(eq_tensor(&claim.point, lambda));
+        states.push(ps);
+    }
+    let mut known: Vec<Option<&[F192]>> = vec![None; weight.len()];
+    known[0] = Some(&commitment.ood_lanes);
+    let mut jobs: Vec<LaneJob<'_>> = states
+        .iter_mut()
+        .zip(&targets)
+        .enumerate()
+        .map(|(c, (ps, &target))| LaneJob {
+            tensors: vec![0, c + 1],
+            target,
+            ps,
+        })
+        .collect();
     let mut kept = commitment.codeword.lock().expect("the codeword");
     let taken = if free { kept.take() } else { None };
     let codeword = if free { taken.as_deref() } else { kept.as_deref() };
-    recursive_prover_with_lane_tensors(
+    recursive_prover_with_lane_tensors_batch(
         &config,
         n,
         words,
         &weight,
-        target,
+        &known,
+        &mut jobs,
         codeword,
         &commitment.tree[..],
-        &mut ps,
     );
+    drop(jobs);
     drop((taken, kept));
-    let mut proof = ps.into_proof();
-    // Level 0's rows hold the committed lanes alone, the tail of a leaf's image: the whole stack's lead with the
-    // absent lanes' zeros (`pcs::whir::commit`).
+    states.into_iter().map(|ps| whole_rows(ps.into_proof())).collect()
+}
+
+/// `proof` with level 0's rows padded to the whole stack's: they hold the committed lanes alone, the tail of a leaf's
+/// image, which the whole stack's leads with the absent lanes' zeros (`pcs::whir::commit`).
+fn whole_rows(mut proof: Proof) -> Proof {
     let width = 1usize << LANE_FOLD;
     if let Some(level0) = proof.merkle.first_mut() {
         for row in &mut level0.leaf_data {
