@@ -86,18 +86,15 @@ impl Chain {
         input.extend_from_slice(&self.state);
         for x in self.pending.drain(..) {
             input.extend_from_slice(&[0u8; 8]);
-            for limb in [x.c2, x.c1, x.c0] {
-                input.extend_from_slice(&limb.to_be_bytes());
-            }
+            input.extend_from_slice(&pcs_claim::element_bytes(x));
         }
         self.state = keccak256(&input);
-        let limb = |i: usize| u64::from_be_bytes(self.state[24 - 8 * i..32 - 8 * i].try_into().unwrap());
         self.draws += 1;
         #[cfg(test)]
         if let Some(x) = FIXED.with(|fixed| fixed.borrow().as_ref().map(|f| f[self.draws - 1])) {
             return x;
         }
-        F192::new(limb(0), limb(1), limb(2))
+        pcs_claim::element_of(self.state[8..].try_into().unwrap())
     }
 }
 

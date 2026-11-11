@@ -335,7 +335,7 @@ first ports, padded with constant-zero ports (`spec::Source::Pad`) to a power of
 are the aligned coset `ω_N + V_k`. A zero port is in no `Φ` (§1): it costs the verifier nothing, the padding included
 (kept from π2v1, whose verifier summed the coset in closed form).
 
-**Lever 3b: the claims' words written once** (`codegen::claim_outputs`, `Ending::Claims`, `Ending::ClaimsAt`). The
+**Lever 3b: the claims' words written once** (`evm_link::claim_outputs`, `Ending::Claims`). The
 claims' fields are written as the distinct words in first appearance, so claims sharing a point's coordinates write
 them once: π2's claims are ordered `W`, the setup, `Q`, so the setup's point reuses `W`'s digits `w_4 … w_{m-1}`, and
 `Q`'s identity and pushes claims share their position coordinates. A word written once is read once, so it is not

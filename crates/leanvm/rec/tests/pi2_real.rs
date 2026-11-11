@@ -128,10 +128,9 @@ fn real_gas() {
 /// byte longer or shorter, and every calldata byte flipped at bits 0 and 7; it accepts a ninth claim appended (the frame
 /// may declare more) and the right index past a frame before it.
 fn frame_and_calldata_attacks(inst: &Instance, recorded: &contract::Recorded, data: &[u8], block: &[PcsClaim]) {
-    use leanvm_statement::evm::codegen::word;
     use leanvm_statement::evm::machine::{Frame, PcsFrame, call};
     let code = contract::compile_verifier(inst, recorded, false).code;
-    let ok = |d: &[u8], f: &PcsFrame| call(&code, &[], d, f).output.as_deref() == Some(&word([1, 0, 0])[..]);
+    let ok = |d: &[u8], f: &PcsFrame| call(&code, &[], d, f).attests();
     let honest = contract::block(block);
     assert!(ok(data, &honest), "the honest frame");
     let mut f = contract::block(block);
@@ -319,26 +318,10 @@ fn real_end_to_end() {
             })
             .collect();
         assert!(!contract::run(&inst, &recorded, &data, &reversed).0, "π1's claims on other roots: rejected");
-        // A flipped byte anywhere: the public input, π1's roots, its elements, W's and Q's commitments, every value
-        // sent.
-        let n_roots = recorded.roots_at.len();
-        let (w_at, q_at) = (recorded.roots_at[n_roots - 2], recorded.roots_at[n_roots - 1]);
-        let values_at = q_at + 32 + 24;
-        let s = contract::STREAM_AT;
-        let mut flips = vec![0, 31, s + 5, s + 40, s + 64, s + 64 + 20 * 14 + 11, s + w_at - 1];
-        flips.extend([s + w_at, s + w_at + 31, s + w_at + 32 + 5, s + q_at + 7, s + q_at + 32 + 20]);
-        flips.extend((0..spec.values()).step_by(4).map(|k| s + values_at + 24 * k + k % 24));
-        // The last values, and the frame's index.
-        flips.extend([data.len() - 49, data.len() - 26, data.len() - 2, data.len() - 1]);
-        assert!(flips.len() >= 13);
-        for &at in &flips {
-            let mut bad = data.clone();
-            bad[at] ^= 1;
-            assert!(
-                !contract::run(&inst, &recorded, &bad, &block).0,
-                "calldata byte {at} flipped"
-            );
-        }
+        // The frame's index flipped (every other calldata byte: `frame_and_calldata_attacks`).
+        let mut bad = data.clone();
+        *bad.last_mut().expect("the index") ^= 1;
+        assert!(!contract::run(&inst, &recorded, &bad, &block).0, "the frame's index flipped");
         contract::parity(&inst, &recorded, &public_input, &hashed, &stream);
         frame_and_calldata_attacks(&inst, &recorded, &data, &block);
         // The transaction on the real calldata (its zero bytes are the proof's): a frame
@@ -366,10 +349,17 @@ fn real_end_to_end() {
             with.total
         );
         println!(
-            "end to end: π1's real proof → π2's proof ({} B of calldata) → the contract accepts, its frame declaring its {} claims; {} flipped bytes rejected",
+            "end to end: π1's real proof → π2's proof ({} B of calldata) → the contract accepts, its frame declaring its {} claims",
             data.len(),
             block.len(),
-            flips.len()
+        );
+        // The EIP draft's table (`bench.sh` reads this line): the PIOP's frame alone, `max(standard, floor)`.
+        println!(
+            "BENCH leanvm calldata={} piop={} claims={} total={}",
+            data.len(),
+            alone.total,
+            block.len(),
+            with.total
         );
     });
 }

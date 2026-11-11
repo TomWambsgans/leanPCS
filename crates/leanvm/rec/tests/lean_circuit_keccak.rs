@@ -42,6 +42,7 @@ fn node_line(node: &Node) -> String {
     match *node {
         Node::Const([a, b, c]) => format!("C {a} {b} {c}"),
         Node::Statement(k) => format!("S {k}"),
+        Node::Frame(..) => unreachable!("π1's graph reads no frame"),
         Node::Input { offset, len } => format!("I {offset} {len}"),
         Node::Add(a, b) => format!("A {a} {b}"),
         Node::Mul(a, b) => format!("M {a} {b}"),

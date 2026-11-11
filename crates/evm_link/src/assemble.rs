@@ -1,5 +1,5 @@
 // Part of this repository; the assembly of a straight-line program (values kept in memory slots reused after their
-// last read, one revert, constants copied from the code, since then the checks of declared claims) is moved here from
+// last read, one revert, constants copied from the code, since then the checks of declared PCS claims) is moved here from
 // crates/membership/evm/src/codegen.rs (adapted from leanVM (https://github.com/leanEthereum/leanVM), branch
 // PCS-openings-aggregation, commit 651453c6) and crates/leanvm_statement/src/evm/codegen.rs, unchanged. MIT OR
 // Apache-2.0; see AGENTS.md.
@@ -130,18 +130,6 @@ pub(crate) fn assemble_program(program: &Program, options: &Options) -> Assemble
                     ];
                     put(&mut code, &mut tag_of, &bytes.concat(), tag);
                 }
-                // The frame's index on the stack: `KECCAK256` of the words, against `FRAMEDATALOAD` of the payload.
-                Item::Declared { first, words, index } => {
-                    let check = [
-                        &push_usize(32 * words)[..],
-                        &push_usize(returned + 32 * first),
-                        &[KECCAK256, SWAP1],
-                        &push_usize(1 + 32 * index),
-                        &[FRAMEDATALOAD, XOR],
-                    ];
-                    put(&mut code, &mut tag_of, &check.concat(), tag);
-                    check_at(&mut code, &mut tag_of, tag);
-                }
                 // The frame's index on the stack: the claim's bytes packed past the outputs, at `pack + 30`: the
                 // header `VERSION || n` (the low two bytes of the word at `pack`), the root (the word at `pack + 32`),
                 // then each element's low 24 bytes, from `pack + 64` on. An element's word is stored 8 bytes before
@@ -165,7 +153,7 @@ pub(crate) fn assemble_program(program: &Program, options: &Options) -> Assemble
                     bytes.push(MLOAD);
                     bytes.extend(push_usize(pack + 32));
                     bytes.push(MSTORE);
-                    bytes.extend(push_usize(((crate::PCS_VERSION as usize) << 8) | n));
+                    bytes.extend(push_usize(((crate::wire::VERSION as usize) << 8) | n));
                     bytes.extend(push_usize(pack));
                     bytes.push(MSTORE);
                     bytes.extend(push_usize(words.claim_len()));

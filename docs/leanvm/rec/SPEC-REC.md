@@ -43,7 +43,7 @@ cargo test --release -p leanvm_rec --test pi2_real -- --ignored --nocapture real
 | EIP-8141 frame transaction (EIP-7976's floor): standard / floor | 40,708 / 36,928 | 44,933 / 36,928 |
 | with the frame (8 claims, 257 B) and `pcs_gas` 13,000 on both sides | **66,376** (floor; standard 57,820) | 66,376 (standard 62,033) |
 
-π1's main line on chain without recursion takes 8,069 B and 231,511 execution at 128 signatures
+π1's main line on chain without recursion takes 8,065 B and 231,489 execution at 128 signatures
 (`docs/leanvm/univariate/KECCAK.md`). It does not fit π2: at 32 signatures it already needs `N = 2^25` (§2.4.5), whose
 quotient table exceeds WHIR's `2^28` words. Hence π1-rec4.
 
