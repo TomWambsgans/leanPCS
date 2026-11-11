@@ -39,7 +39,25 @@ lists), the three openings charged once at WhirBridge's exact certified bound 26
 is the weakest round after its lists, not the sum of the rounds (printed too: the interactive protocol's error).
 """
 from fractions import Fraction
+import importlib.util
 import math
+import os
+import sys
+
+sys.dont_write_bytecode = True  # loading the other script must not write a __pycache__ next to it
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+
+
+def load(name):
+    """Another script of params/ as a module (`python3 -I` keeps params/ off the path)."""
+    spec = importlib.util.spec_from_file_location(name, os.path.join(HERE, name + ".py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+whir = load("whir_params")
 
 LOGQ = 192  # |E| = 2^192
 NARROW = 160  # pi1-rec3's batch challenges: the hash's low 160 bits
@@ -77,10 +95,12 @@ QFLOCK_ROW_BITS = FLOCK_LOG_SIZE - PACKING  # 11: q_flock's words a SHA3 row, an
 LINCHECK_ROUNDS = QFLOCK_ROW_BITS
 RING_MAP = 6
 
-# Certified level-0 Johnson lists for public layouts at rate 1/2 (WhirBridge `largeShapes`, `params/whir_params.py
-# --large`), by stack variables; the Lean bound takes the largest, 9,952, for every round.
-CERTIFIED_L0 = {24: 9952, 25: 7908, 26: 6296, 27: 4473, 28: 3564}
-LEAN_LIST = 9952
+# Certified level-0 Johnson lists for public layouts at rate 1/2, by stack variables: `listHi` of leanerVM's level-0
+# certificates (`params/whir_params.py --large`, equal to WhirBridge's `largeList`); the Lean bound takes the largest,
+# 9,952, for every round.
+CERTIFIED_L0 = {m: whir.Cert(*whir.CERT_R1[m][0]).list_hi for m in whir.LARGE}
+assert CERTIFIED_L0 == whir.LEAN_LIST, "listHi = largeList (listHi_large)"
+LEAN_LIST = max(CERTIFIED_L0.values())
 # WhirBridge.εExact: the exact certified per-group bound of an opening (the weakest group at 2^24 ..= 2^28 has
 # 128.95 bits; the setup's 2^23 is certified in formal/UniKeccakSound/UniKeccakSound/Fs/Whir23.lean), charged once for
 # all of a proof's openings in the query-bounded random-permutation model. Every opening is the EIP draft's PCS
@@ -141,9 +161,9 @@ def heap_blocks(lm, lb, heights):
     return d + 1, blocks
 
 
-def stack_vars(words):
-    """StackLayout::new: the placed words' log2, at least 15."""
-    return max(15, log2_ceil(max(words, 2)))
+def stack_vars(words, floor=15):
+    """StackLayout::new: the placed words' log2 (rounded up), at least `floor` (15: WHIR's smallest stack)."""
+    return max(floor, log2_ceil(max(math.ceil(words), 2)))
 
 
 def analyse(xmss):

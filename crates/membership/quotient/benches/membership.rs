@@ -49,7 +49,7 @@ fn main() {
     let start = Instant::now();
     let index = Index::new(&circuit);
     let index_committed = index.commit();
-    let commitment = Commitment::of(&index_committed);
+    let commitment = Commitment::of(index_committed);
     time("index (wiring table, committed)", start);
     let peak_index = peak();
 
@@ -71,7 +71,7 @@ fn main() {
     let reduction_secs = time("reduction (commit two tables)", start);
     let peak_reduction = peak();
     let start = Instant::now();
-    let openings = open(&proved.tables, &proved.claims, &index_committed);
+    let openings = open(&proved.tables, &proved.claims, index_committed);
     let opening_secs = time("openings (three WHIR)", start);
     let peak_openings = peak();
     println!(

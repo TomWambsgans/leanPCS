@@ -81,16 +81,16 @@ fn run(seed: u64, cases: usize, min_n: usize, max_n: usize) {
             })
             .collect();
         // Each claim alone, from the kept codeword (not freed): the reference.
-        let want: Vec<_> = claims.iter().map(|c| open_words_keeping(&words, &kept, c)).collect();
+        let want: Vec<_> = claims.iter().map(|c| open(&words, &kept, c, Codeword::Keep)).collect();
         for (c, proof) in claims.iter().zip(&want) {
             assert!(verify(&c.encode(), &wire_proof(proof)), "{at}: a proof verifies");
         }
-        assert_eq!(open_words_batch_keeping(&words, &kept, &claims), want, "{at}: batched, kept");
-        assert_eq!(open_words_batch(&words, &kept, &claims[..3]), want[..3], "{at}: batched, then freed");
-        assert_eq!(open_words_batch(&words, &kept, &claims[1..]), want[1..], "{at}: batched, encoded again");
-        assert_eq!(open_words(&words, &kept, &claims[2]), want[2], "{at}: alone, encoded again");
-        assert_eq!(open_words_batch(&words, &lean, &claims), want, "{at}: batched, never kept");
-        assert_eq!(open_words(&words, &lean, &claims[3]), want[3], "{at}: alone, never kept");
+        assert_eq!(open_batch(&words, &kept, &claims, Codeword::Keep), want, "{at}: batched, kept");
+        assert_eq!(open_batch(&words, &kept, &claims[..3], Codeword::Free), want[..3], "{at}: batched, then freed");
+        assert_eq!(open_batch(&words, &kept, &claims[1..], Codeword::Free), want[1..], "{at}: batched, encoded again");
+        assert_eq!(open(&words, &kept, &claims[2], Codeword::Free), want[2], "{at}: alone, encoded again");
+        assert_eq!(open_batch(&words, &lean, &claims, Codeword::Free), want, "{at}: batched, never kept");
+        assert_eq!(open(&words, &lean, &claims[3], Codeword::Free), want[3], "{at}: alone, never kept");
     }
 }
 

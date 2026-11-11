@@ -66,10 +66,6 @@ impl HeapLayout {
         }
         Self { h: d + 1, blocks }
     }
-
-    pub fn leaves(&self) -> u64 {
-        1 << (self.h - 1)
-    }
 }
 
 fn leaves_order(leaves: Leaves) -> usize {

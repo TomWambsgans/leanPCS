@@ -2,8 +2,8 @@
 //! Flock on the Keccak-f\[1600\] block (`flock::keccak`, docs/leanvm/univariate/FLOCK.md, "The block"), end to end:
 //!
 //! - the verifier's walk (`leanvm_statement::keccak_flock`, on `E`) is the prover's (`flock::keccak`, on `F192`);
-//! - `prover::flock::prove`'s stream is accepted by `flock_min::verify_walked_with::<_, Keccak>` (the structured terminal,
-//!   docs/leanvm/univariate/FLOCK.md, "The structured terminal") and by `verify_walked_with::<_, KeccakWalked>` (M1's walked terminal) at skips of 3 and 6,
+//! - `prover::flock::prove`'s stream is accepted by `flock_min::verify_walked::<_, Keccak>` and its ring switch (the structured terminal,
+//!   docs/leanvm/univariate/FLOCK.md, "The structured terminal") and by `verify_walked::<_, KeccakWalked>` (M1's walked terminal) at skips of 3 and 6,
 //!   both eq points; the slices are the witness's at the verifier's point;
 //! - a witness with one state bit flipped (its rows' own values kept, so the zerocheck still holds) and a stream with
 //!   one slice changed are rejected, by both terminals;
@@ -117,7 +117,8 @@ fn verify_with<C: WalkedCircuit>(
     point: &[E],
 ) -> Result<(), VerifierError> {
     let mut channel = KeccakChannel::new(seed, stream, Checks::Enforce);
-    let (theirs, _end) = flock_min::verify_walked_with::<E, C>(log_n, variant, &mut channel)?;
+    let (theirs, slices) = flock_min::verify_walked::<E, C>(log_n, variant, &mut channel, None)?;
+    flock_min::ring_end(&slices, &mut channel);
     channel.finish()?;
     assert_eq!(theirs, point, "the slices' point");
     Ok(())
@@ -170,11 +171,11 @@ fn flock_keccak_end_to_end() {
     let inputs: Vec<[u64; LANES]> = (0..121).map(|_| rng.state()).collect();
     let mut w = witness(&inputs);
     let log_n = K_LOG + 7;
-    check_end_to_end(&w, log_n, "128 blocks", &[(3, FsShape::Rec), (6, FsShape::Rec), (3, FsShape::Main), (6, FsShape::Main)]);
+    check_end_to_end(&w, log_n, "128 blocks", &[(3, FsShape::Rec3), (6, FsShape::Rec3), (3, FsShape::Main), (6, FsShape::Main)]);
     // A flipped state bit (A_9 lane 13 bit 40 of block 77): rejected at both skips.
     flip_state_bit(&mut w, 77, 64 * block::a_word(9, 13) + 40);
     for skip in [3, 6] {
-        let v = variant(skip, FsShape::Rec);
+        let v = variant(skip, FsShape::Rec3);
         let seed = keccak_seed(b"flock keccak bad", &[skip as u8; 32], &[0; 32]);
         let (verdict, ..) = run(&w, v, log_n, seed);
         assert!(verdict.is_err(), "skip {skip}: a flipped bit is rejected ({verdict:?})");
@@ -191,7 +192,7 @@ fn flock_keccak_4096() {
     let inputs: Vec<[u64; LANES]> = (0..3959).map(|_| rng.state()).collect();
     let log_n = K_LOG + 12;
     let mut w = witness(&inputs);
-    check_end_to_end(&w, log_n, "4,096 blocks", &[(3, FsShape::Rec), (6, FsShape::Rec)]);
+    check_end_to_end(&w, log_n, "4,096 blocks", &[(3, FsShape::Rec3), (6, FsShape::Rec3)]);
     // Benchmark: witness and proof, median of 3.
     let median = |mut x: Vec<f64>| {
         x.sort_by(f64::total_cmp);
@@ -209,7 +210,7 @@ fn flock_keccak_4096() {
             .collect(),
     );
     for skip in [3, 6] {
-        let v = variant(skip, FsShape::Rec);
+        let v = variant(skip, FsShape::Rec3);
         let seed = keccak_seed(b"flock keccak 4k!", &[skip as u8; 32], &[0; 32]);
         let mut times = Vec::new();
         let mut reductions = Vec::new();
@@ -231,7 +232,7 @@ fn flock_keccak_4096() {
     }
     // A flipped output bit of block 1000: rejected.
     flip_state_bit(&mut w, 1000, 64 * block::port_word(4, block::ROLE_X) + 9);
-    let v = variant(3, FsShape::Rec);
+    let v = variant(3, FsShape::Rec3);
     let seed = keccak_seed(b"flock keccak bad", &[3; 32], &[1; 32]);
     let (verdict, ..) = run(&w, v, log_n, seed);
     assert!(verdict.is_err(), "a flipped output bit is rejected ({verdict:?})");

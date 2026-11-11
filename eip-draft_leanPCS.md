@@ -99,7 +99,7 @@ Two applications of the reference implementation, with their PIOPs as straight-l
 | Application | Prover (8 threads of an AMD EPYC 9355P) | Calldata | PIOP | PCS claims | Total |
 |---|---|---|---|---|---|
 | Zero-knowledge membership in a Keccak-256 Merkle tree of depth 32 | 1.3 s | 273 bytes | 20,097 gas | 3 | 31,680 gas |
-| leanVM verification (here 128 leanXMSS signatures), i.e. any computation thanks to recursion | 3.3 s | 577 bytes | 40,708 gas | 8 | 66,376 gas |
+| leanVM verification (here 128 leanXMSS signatures), i.e. any computation thanks to recursion | 3.0 s | 577 bytes | 40,396 gas | 7 | 63,328 gas |
 
 ### Why a 192-bit field
 

@@ -11,10 +11,10 @@ use quotient::ntt::Fill;
 
 use super::columns::SetupPolys;
 use super::opening;
-use super::stack::{Stack, setup_columns};
+use super::stack::Stack;
 use crate::claims::Column;
 use crate::stacks::StackLayout;
-use crate::verifier::Shape;
+use crate::verifier::{Shape, setup_columns};
 
 /// `F`'s stack: the 16 tuple slots interleaved (word `slot + 16 k`, `k` a basis-`B` coefficient), the addresses.
 pub fn f_stack(shape: &Shape, setup: &SetupPolys) -> Stack {
@@ -32,18 +32,13 @@ pub fn f_stack(shape: &Shape, setup: &SetupPolys) -> Stack {
 /// The roots a contract is built with (the contract's type: its IV binds them, SPEC.md §13, F2).
 pub use crate::contract::SetupRoots;
 
-/// `F`'s root for `shape` and the program whose setup polynomials are `setup`.
-pub fn f_root(shape: &Shape, setup: &SetupPolys) -> Hash {
-    shape_roots(shape, setup).f
-}
-
 /// The setup commitment of `shape`'s contract: `F`'s root and out-of-domain answer.
 pub fn shape_roots(shape: &Shape, setup: &SetupPolys) -> SetupRoots {
     let f = f_stack(shape, setup);
     let committed = opening::commit(&f.words, f.layout.vars);
     SetupRoots {
         f: committed.root,
-        f_ood: super::poly::to_v(committed.ood),
+        f_ood: committed.ood.into(),
     }
 }
 

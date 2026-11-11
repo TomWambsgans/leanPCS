@@ -19,11 +19,11 @@ use leanvm_statement::scalar::Scalar;
 use leanvm_statement::shapes::PROGRAM_IV;
 use leanvm_statement::transcript::{Channel, keccak_seed};
 use leanvm_rec::REFERENCE;
-use leanvm_rec::circuit::compile::{Compiled, Inputs, Layout, pi2};
+use leanvm_rec::circuit::compile::{Compiled, Inputs, pi2};
 use leanvm_rec::eval::evaluate;
 use leanvm_univariate::claims::Commitment;
 use leanvm_univariate::contract::{NAME, Recorded, SetupRoots};
-use leanvm_univariate::{KECCAK_REC3, Opening, Reduced};
+use leanvm_univariate::{KECCAK_REC4, Opening, Reduced};
 
 const PUBLIC: [u8; 32] = [3; 32];
 
@@ -41,13 +41,14 @@ fn deep<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> R {
 }
 
 fn point(point: Vec<Sym>, value: Sym) -> Opening<Sym> {
-    Opening::Point { point, value }
+    Opening { point, value }
 }
 
 fn recorded(graph: Graph, reduced: Reduced<Sym>, stream_len: usize, roots_at: [usize; 2]) -> Recorded {
     Recorded {
         shape: REFERENCE,
-        variant: KECCAK_REC3,
+        // π1-rec4's: every claim of these graphs hashed in the circuit.
+        variant: KECCAK_REC4,
         roots: SetupRoots::REFERENCE,
         graph,
         reduced,
@@ -58,13 +59,7 @@ fn recorded(graph: Graph, reduced: Reduced<Sym>, stream_len: usize, roots_at: [u
 }
 
 fn reduced(roots: [[Sym; 2]; 2], openings: Vec<(Commitment, Opening<Sym>)>) -> Reduced<Sym> {
-    let ood = openings
-        .iter()
-        .find_map(|(_, o)| match o {
-            Opening::Point { value, .. } => Some(*value),
-            Opening::Weighted(_) => None,
-        })
-        .unwrap_or(Sym(0));
+    let ood = openings.first().map_or(Sym(0), |(_, o)| o.value);
     Reduced {
         roots,
         oods: [ood, ood],
@@ -107,7 +102,6 @@ fn compile(recorded: &Recorded) -> Compiled {
     let stream = stream(recorded);
     pi2(
         recorded,
-        Layout::D16v,
         &Inputs {
             program_iv: PROGRAM_IV,
             public: PUBLIC,

@@ -4,7 +4,7 @@
 
 Both provers of the EIP draft's benchmarks: the membership proof (`crates/membership/quotient`) and the recursion's
 pipeline (`crates/leanvm/rec/tests/pipeline.rs`: leanVM's trace of 128 signatures → π1-rec4 and its three openings →
-π2 and its five openings). Every change below is a prover change: the proofs are the same byte for byte, so the
+π2 and its four openings). Every change below is a prover change: the proofs are the same byte for byte, so the
 calldata, the claims, the gas and the Lean are untouched. Superseded figures (64 threads, the M4 Max, earlier
 protocols) are in [`HISTORY.md`](HISTORY.md), "Provers".
 
@@ -21,8 +21,8 @@ It builds first (unpinned), then runs the two provers `REPEAT` times interleaved
 and reports their medians: the membership figure is `cargo bench -p quotient --bench membership`'s prover total (one
 cold proof a run), the leanVM figure the pipeline's total (`PIPELINE_REPEAT=5`, each run itself the median of five
 warm passes). Then the gas: the membership contract's `gas_report` and π2's `real_end_to_end`. It ends with the EIP
-draft's table: the prover column is the median plus 0.1 s a PCS claim (1.01 + 3 · 0.1 = 1.3 s; 2.52 + 8 · 0.1 =
-3.3 s), the PIOP column `max(standard, floor)` of the PIOP's frame alone (20,097 and 40,708 gas).
+draft's table: the prover column is the median plus 0.1 s a PCS claim (1.01 + 3 · 0.1 = 1.3 s; 2.29 + 7 · 0.1 =
+3.0 s), the PIOP column `max(standard, floor)` of the PIOP's frame alone (20,097 and 40,396 gas).
 
 The proofs are pinned: the membership bench prints a proof digest (and `protocol::tests::proofs_are_pinned` pins a
 toy circuit's), and the pipeline asserts the Keccak-256 fingerprints of π1's stream and openings and π2's stream and
@@ -39,9 +39,9 @@ openings (`REFERENCE_PRINTS`). A prover change must leave them as they are.
 | **membership: prover total** | **1.01 s** | 6.0 GiB |
 | leanVM: π1-rec4, trace to its stream | 0.86 s | |
 | leanVM: π1-rec4's three openings (π2's witness replayed meanwhile, about 0.01 s) | 0.18 s | |
-| leanVM: π2's proof | 0.75 s | |
-| leanVM: π2's five openings | 0.73 s | |
-| **leanVM: total a proof** | **2.52 s** | 15.6 GB |
+| leanVM: π2's proof | 0.74 s | |
+| leanVM: π2's four openings (π2v4; π2v3's five: 0.73 s) | 0.51 s | |
+| **leanVM: total a proof** (π2v3: 2.52 s) | **2.29 s** | 15.6 GB |
 
 From `perf` at 8 threads: membership, Keccak-f (the Merkle leaves and nodes) 28%, the WHIR encodes' radix-8 layers
 (`run_layers`) 20% and their sweeps 7%, the kernel clearing fresh pages 6%, the quotient's block-wise pass 5%,
@@ -55,15 +55,15 @@ Each in the file its header names; every one keeps the proofs.
 
 - **Out-of-domain answers in one pass** over every lane, unreduced `dot_base` products (`pcs::whir::dense_lane_inner_products`;
   `pcs_claim::evaluate_lanes`), and the lane products kept for the openings' first lane round
-  (`pcs_claim::Commitment::ood_lanes`, `recursive_prover_with_lane_tensors_known`).
-- **Several openings on one commitment at once** (π2's `Q`: `pcs_claim::open_words_batch`,
+  (`pcs_claim::Commitment::ood_lanes`, `recursive_prover_with_lane_tensors_batch`'s `known`).
+- **Several openings on one commitment at once** (π2's `Q`: `pcs_claim::open_batch`,
   `recursive_prover_with_lane_tensors_batch`): their lane rounds read the stack twice in all, not twice each.
 - **`eq` low weights never written out** (`pcs::whir::Low::Eq`): the product of two tables of `2^11`, exact.
-- **Tables committed up to their last nonzero lane** (`pcs_claim::commit_lanes`, `opening::commit_lanes`): the
+- **Tables committed up to their last nonzero lane** (`pcs_claim::commit`, `opening::commit`): the
   commitment and openings of the leading lanes are those of the whole stack.
 - **All-zero lanes skipped** in commitments, openings' re-encodes and lane rounds (`pcs::whir::commit_tree_skipping_in`,
-  `encoded_rows_skipping`, `recursive_prover_with_lane_tensors_skipping`, `lane_inner_products`, `collapse_lanes`,
-  `dense_lane_inner_products_skipping`), and left out of kept codewords (`commit_skipping`, `L0Rows::Compact`,
+  `encoded_rows_skipping`, `lane_inner_products`, `collapse_lanes`,
+  `dense_lane_inner_products_skipping`), and left out of kept codewords (`commit_skipping`, `KeptCodeword`,
   `AdditiveNttF64::encode_two_sweep_blocks_into`): π2's `Q` keeps 3 rather than 4 GiB.
 - **The encode in two block-wise sweeps** from the message as it lies (`AdditiveNttF64::encode_two_sweep_with`,
   `encode_two_sweep_blocks_with`), into the kept codeword in place.
@@ -72,8 +72,8 @@ Each in the file its header names; every one keeps the proofs.
 - **Memory mapped by the workers** (`pcs_claim::mapped_words`): each worker first-touches its own pages; the
   commitments run largest first so that each freed buffer serves the next.
 - **No copies on one thread** in the membership prover: the quarters' transforms read their source as their first
-  pass writes them (`ntt::values_upper`, `values_upper_many`); the witness's values made in `W`'s allocation.
-- **The membership index keeps its codeword** (`opening::commit_lanes_keeping_codeword`, `opening::open_keeping`): the wiring's opening, made
+  pass writes them (`ntt::values_upper_many`); the witness's values made in `W`'s allocation.
+- **The membership index keeps its codeword** (`Index::commit`, `opening::open` with `Codeword::Keep`): the wiring's opening, made
   by every proof, encodes no rows again.
 - **The cells' digest by the batched Keccak-256** (`protocol::cells_digest`, `hash_many`): the same digest.
 - **The public weight's tensor factored** in the quotient's block-wise pass (`protocol.rs`, `quotient_block`): one
@@ -98,7 +98,8 @@ Measured, no gain or a loss:
 - The openings concurrently on OS threads sharing the pool: slower, +1.5 to 2.7 GiB.
 - A batch's level-0 rows encoded once for all its openings, or `LEAN_BATCH` 16: holds every opening's level-1
   commitment at once (+1.5 GiB).
-- π1's openings overlapping π2's proof (`PIPELINE_OVERLAP=1`): the machine is saturated; no gain, +0.4 GB.
+- π1's openings overlapping π2's proof (a `PIPELINE_OVERLAP` knob, since removed): the machine is saturated; no gain,
+  +0.4 GB.
 - Reusing `Q`'s codeword buffer between proofs, caching π1's setup commitment `F`: each well under 1%.
 - Shrinking the commitments' encoding buffer to the encoded lanes: the openings then map fresh memory.
 

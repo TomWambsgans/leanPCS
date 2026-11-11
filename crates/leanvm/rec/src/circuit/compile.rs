@@ -20,7 +20,7 @@
 //!   24-byte scalar, a bit field of a read of more than 8 bytes, an empty hashed read;
 //! - `Add`, `Mul` → `E` units on limbs (a product, a square, a sum), constants → `κ` slots;
 //! - the calls' elements, `π1`'s roots, the statement, and the zero checks → **ports** (`spec::Source`);
-//! - π1's claims [`HASHED_CLAIMS`] → their encoding's Keccak-256 in the circuit, a port (`Source::ClaimHash`): the
+//! - π1's claims [`hashed_claims`] → their encoding's Keccak-256 in the circuit, a port (`Source::ClaimHash`): the
 //!   contract reads it from the frame of PCS claims and encodes the other claims only (`docs/leanvm/rec/SPEC-REC.md` §2.4.6).
 //!
 //! The witness is the framework's: the free bits and limbs given, everything else computed by the formulas.
@@ -32,26 +32,36 @@ use leanvm_statement::evm::record::{Graph, Node, Sym, record};
 use leanvm_statement::field::{E, K};
 use leanvm_statement::ring_tower;
 use leanvm_statement::scalar::Scalar;
+use leanvm_statement::transcript::FsShape;
 use leanvm_univariate::contract::{NAME, Recorded, calls};
 
-use super::keccak::{Bit, Constants, Permutation, Sponge};
+use super::keccak::{Bit, Constants, Sponge};
 use super::layout::{Builder, Finished, Value};
 use super::spec::{CallWord, PublicInputs, Source};
 use super::units::{Arith, Bools, Copies, Limbs, Op, Packer, Ports};
 
-/// π1's claims (their indices among `calls(recorded)`) whose Keccak-256 π2's circuit computes: the claim's encoding
-/// (the EIP draft's, `pcs_claim`) hashed in the circuit, its digest a public word ([`Source::ClaimHash`]) that the
-/// contract reads from the transaction's frame of PCS claims, so that the claim's own words (its root, its
-/// out-of-domain answer, its value, the coordinates no other claim has) leave calldata (`docs/leanvm/rec/SPEC-REC.md` §2.4.6).
-/// The three claims (`C1`'s at 27 variables at 128 signatures, 28 at 400: six permutations; `C2`'s six; `F`'s five)
-/// fit `2^24` positions with π1-rec4's transcript and D16v's trimmed last rounds (`docs/leanvm/rec/SPEC-REC.md` §2.4.5). A
-/// circuit that would not fit [`FIT_LOG_N`] with them hashes fewer, the last dropped first, down to none
-/// ([`compile_keeping`]).
-pub const HASHED_CLAIMS: &[usize] = &[0, 1, 2];
+/// π1's claims (their indices among `calls(recorded)`) whose Keccak-256 π2's circuit computes for π1's Fiat–Shamir
+/// shape: the claim's encoding (the EIP draft's, `pcs_claim`) hashed in the circuit, its digest a public word
+/// ([`Source::ClaimHash`]) that the contract reads from the transaction's frame of PCS claims, so that the claim's own
+/// words (its root, its out-of-domain answer, its value, the coordinates no other claim has) leave calldata
+/// (`docs/leanvm/rec/SPEC-REC.md` §2.4.6). As many as fit [`FIT_LOG_N`]: π1-rec4's three (`C1`'s at 27 variables at 128
+/// signatures, 28 at 400: six permutations; `C2`'s six; `F`'s five), with its transcript and D16v's trimmed last
+/// rounds (`docs/leanvm/rec/SPEC-REC.md` §2.4.5); π1-rec3's longer transcript leaves room for `C1`'s alone; the main line's
+/// circuit fits with none.
+pub fn hashed_claims(fs: FsShape) -> &'static [usize] {
+    match fs {
+        FsShape::Rec4 => &[0, 1, 2],
+        FsShape::Rec3 => &[0],
+        FsShape::Main => &[],
+    }
+}
 
-/// The positions `π2`'s circuit must fit for [`HASHED_CLAIMS`] to be hashed: `2^24`, whose quotient table (`16N`
-/// words) is WHIR's largest certified stack.
+/// The positions `π2`'s circuit must fit: `2^24`, whose quotient table (`16N` words) is WHIR's largest certified
+/// stack.
 pub const FIT_LOG_N: u8 = 24;
+
+/// D16v's rows: 16 positions ([`super::keccak16::D16`]: Keccak-f in 130,944 positions; SPEC-REC.md §2.4).
+pub const LOG_WIDTH: u8 = 4;
 
 /// What the Lean compiler checks before the expansion (`formal/RecCircuit/RecCircuit/Expand.lean`, `Graph.typed`):
 /// node 0 is the seed (π1's recorder makes it first, `Recorder::new`, and the expansion replays the graph from it);
@@ -105,7 +115,7 @@ pub fn expand(graph: &Graph) -> (Graph, Vec<u32>) {
             let m = |id: u32| map[id as usize];
             let s = match *node {
                 Node::Const([a, b, c]) => Sym::constant(E::new(a, b, c)),
-                Node::Statement(_) | Node::Input { .. } | Node::Seed => Sym::new(*node),
+                Node::Statement(_) | Node::Frame(..) | Node::Input { .. } | Node::Seed => Sym::new(*node),
                 Node::Add(a, b) => m(a) + m(b),
                 Node::Mul(a, b) => m(a) * m(b),
                 Node::Hash(s, from, to) => Sym::new(Node::Hash(m(s).0, from, to)),
@@ -192,27 +202,17 @@ fn pair_coordinate(g: &Graph, id: u32) -> Option<(u32, u8)> {
     })
 }
 
-/// `π2`'s layout (SPEC-REC.md §2.4).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Layout {
-    /// Rows of 16, Keccak-f in 130,944 positions ([`super::keccak16::D16`]).
-    D16v,
+/// `π2`'s circuit (D16v) for `recorded`, with the witness of a real proof's inputs. The circuit (`σ`, `κ`, the
+/// regions and blocks, the ports and calls) depends on `recorded` only. It panics on a circuit past
+/// `2^`[`FIT_LOG_N`] positions.
+pub fn pi2(recorded: &Recorded, inputs: &Inputs) -> Compiled {
+    compile(recorded, inputs, false).0
 }
 
-impl Layout {
-    pub fn log_width(self) -> u8 {
-        match self {
-            Layout::D16v => 4,
-        }
-    }
-}
-
-/// `π2`'s circuit for `recorded` in `layout`, with the witness of a real proof's inputs. The circuit (`σ`, `κ`, the
-/// regions and blocks, the ports and calls) depends on `recorded` only.
-pub fn pi2(recorded: &Recorded, layout: Layout, inputs: &Inputs) -> Compiled {
-    match layout {
-        Layout::D16v => compile(recorded, 4, super::keccak16::D16::new, inputs),
-    }
+/// [`pi2`], and the [`Trace`] the witness plan reads (`super::plan`).
+pub fn pi2_traced(recorded: &Recorded, inputs: &Inputs) -> (Compiled, Trace) {
+    let (compiled, trace) = compile(recorded, inputs, true);
+    (compiled, trace.expect("kept"))
 }
 
 /// Where a given word (a free value's, a self-referential slot's) comes from: the inputs' bits and bytes.
@@ -254,45 +254,12 @@ pub struct Trace {
     pub claim_hashes: Vec<[Value; 4]>,
 }
 
-/// Compile `recorded` with the permutation template `make` (rows of `2^log_width`), on a real proof's inputs.
-pub fn compile<P: Permutation>(
-    recorded: &Recorded,
-    log_width: u8,
-    make: impl Fn(&mut Builder) -> P,
-    inputs: &Inputs,
-) -> Compiled {
-    compile_keeping(recorded, log_width, make, inputs, false).0
-}
-
-/// [`compile`], and with `keep` its [`Trace`]. π1's claims [`HASHED_CLAIMS`] are hashed in the circuit if it then fits
-/// `2^`[`FIT_LOG_N`] positions; else none is (the circuit depends on `recorded` alone either way).
-pub fn compile_keeping<P: Permutation>(
-    recorded: &Recorded,
-    log_width: u8,
-    make: impl Fn(&mut Builder) -> P,
-    inputs: &Inputs,
-    keep: bool,
-) -> (Compiled, Option<Trace>) {
+/// Compile `recorded` on a real proof's inputs, π1's claims [`hashed_claims`] hashed in the circuit; with `keep`, its
+/// [`Trace`].
+fn compile(recorded: &Recorded, inputs: &Inputs, keep: bool) -> (Compiled, Option<Trace>) {
     let claims = calls(recorded).len();
-    let mut hashed: Vec<usize> = HASHED_CLAIMS.iter().copied().filter(|&ci| ci < claims).collect();
-    loop {
-        let out = compile_hashing(recorded, log_width, &make, inputs, keep, &hashed);
-        if hashed.is_empty() || out.0.finished.circuit.log_n <= FIT_LOG_N {
-            return out;
-        }
-        hashed.pop();
-    }
-}
-
-/// [`compile_keeping`] with π1's claims `hashed` (indices among `calls(recorded)`) hashed in the circuit.
-pub fn compile_hashing<P: Permutation>(
-    recorded: &Recorded,
-    log_width: u8,
-    make: &impl Fn(&mut Builder) -> P,
-    inputs: &Inputs,
-    keep: bool,
-    hashed_claims: &[usize],
-) -> (Compiled, Option<Trace>) {
+    let hashed_claims: Vec<usize> =
+        hashed_claims(recorded.variant.fs).iter().copied().filter(|&ci| ci < claims).collect();
     let mut given: Vec<(Value, Given)> = Vec::new();
     let (g, map) = expand(&recorded.graph);
     let pi1_iv = recorded.iv(&inputs.program_iv);
@@ -318,11 +285,10 @@ pub fn compile_hashing<P: Permutation>(
             _ => None,
         })
         .chain(zero.iter().copied());
-    let live = crate::count::live(&g, outputs);
+    let live = live(&g, outputs);
 
-    let mut b = Builder::new(log_width);
-    let permutation = make(&mut b);
-    let mut sponge = Sponge::new(&mut b, permutation);
+    let mut b = Builder::new(LOG_WIDTH);
+    let mut sponge = Sponge::new(&mut b);
     let mut bools = Bools::new(&mut b);
     let mut packer = Packer::new(&mut b);
     let mut arith = Arith::new(&mut b);
@@ -459,6 +425,7 @@ pub fn compile_hashing<P: Permutation>(
         let zero_pair = |b: &mut Builder, consts: &mut Constants| [consts.fresh(b, K(0)), consts.fresh(b, K(0))];
         let (l, can_end): (Limbs, bool) = match *node {
             Node::Const([c0, c1, c2]) => ([c0, c1, c2].map(|c| sponge.constants.fresh(&mut b, K(c))), true),
+            Node::Frame(..) => unreachable!("π1's graph reads no frame"),
             Node::Statement(k) => {
                 let [z1, z2] = zero_pair(&mut b, &mut sponge.constants);
                 ([statement_limb[k as usize], z1, z2], true)
@@ -685,7 +652,7 @@ pub fn compile_hashing<P: Permutation>(
                     other => panic!("a claim's word {other:?}"),
                 }
             }
-            assert_eq!(encoding.len(), 82 + 24 * n, "the claim's encoding");
+            assert_eq!(encoding.len(), pcs_claim::claim_len(n), "the claim's encoding");
             let digest = sponge.keccak256(&mut b, &message);
             let digest_bit = |i: usize| digest[i];
             let limbs4: [Value; 4] = std::array::from_fn(|l| {
@@ -733,7 +700,7 @@ pub fn compile_hashing<P: Permutation>(
         .collect();
     let mut roots_at: Vec<usize> = Vec::new();
     // A root is public as a claim encodes it, the stream's 32 bytes as they are: π1's prover sends a root's bytes
-    // (`leanvm_univariate::prover::prove::halves`), and π1's own contract passes them so. Its limbs `L_l` are the
+    // (`KeccakWriter::send_root`), and π1's own contract passes them so. Its limbs `L_l` are the
     // big-endian words of the stream's bytes `24 − 8l .. 32 − 8l` (`spec::word_limbs`).
     for &at in recorded.roots_at.iter().filter(|at| named.contains(at)) {
         roots_at.push(at);
@@ -793,6 +760,12 @@ pub fn compile_hashing<P: Permutation>(
         .collect();
     let keccak_permutations = sponge.permutations;
     let (finished, internals) = b.finish_keeping(keep);
+    assert!(
+        finished.circuit.log_n <= FIT_LOG_N,
+        "π2's circuit does not fit 2^{FIT_LOG_N} positions: 2^{} for {:?}, its claims {hashed_claims:?} hashed",
+        finished.circuit.log_n,
+        recorded.variant.fs
+    );
     let elements: Vec<E> = element_nodes
         .iter()
         .map(|id| {
@@ -834,3 +807,29 @@ pub fn compile_hashing<P: Permutation>(
     };
     (compiled, trace)
 }
+
+/// A node's operands: what it reads (a hash the state before it, a challenge its hash, the ring switch's kernel its
+/// operands).
+fn operands(graph: &Graph, node: Node) -> Vec<u32> {
+    match node {
+        Node::Add(a, b) | Node::Mul(a, b) => vec![a, b],
+        Node::Hash(s, _, _) => vec![s],
+        Node::Low(h) | Node::Narrow(h) | Node::Wide(h, _) | Node::Bits(h, _, _) => vec![h],
+        Node::RingWeight(k, _) => graph.kernels[k as usize].clone(),
+        Node::Const(_) | Node::Statement(_) | Node::Frame(..) | Node::Input { .. } | Node::Seed => vec![],
+    }
+}
+
+/// The nodes `outputs` read, through their operands.
+pub fn live(graph: &Graph, outputs: impl IntoIterator<Item = u32>) -> Vec<bool> {
+    let mut live = vec![false; graph.nodes.len()];
+    let mut stack: Vec<u32> = outputs.into_iter().collect();
+    while let Some(id) = stack.pop() {
+        if std::mem::replace(&mut live[id as usize], true) {
+            continue;
+        }
+        stack.extend(operands(graph, graph.nodes[id as usize]));
+    }
+    live
+}
+

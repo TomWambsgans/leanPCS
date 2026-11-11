@@ -20,32 +20,36 @@
 //!    of nonzero value (`y_J` the hole's row), and `R_n / R_d = Σ_g (N_g / D_g)(E_g + Δ + Φ_{k_g})` over the port
 //!    groups, `Δ = d_pull + d_push`, `d_pull = α + v_0 + β t`, `d_push = α + s + ξ`: the identity's right side is
 //!    `(1 + 1_S) Δ + T = Δ + w_m R_n / R_d`;
-//! 6. the claims on `Q` (`PI2.md` §2): the identity `h d_pull d_push + q w_m = Δ + w_m R_n / R_d` is one combination
-//!    of `h(t)` and `q(t)` (`c_h = d_pull d_push`, `c_q = w_m`, `Y = c_h + c_q`, `ρ' = w_m / Y`); `P(t) = s` and the
-//!    definition `w_m q_P(t) = s + P_v(t)` are combined by `ρ`. Each claim is a point of `Q`'s whole stack (the EIP
-//!    draft's PCS claim): its sixteen slots of `2^m` are `slot = digit + 2 kind + 4 limb` ([`QUOTIENT_SLOTS`]), `h`
-//!    and `q` of limbs 0..2 at kinds 0 and 1, `P` (at digit 1) and `q_P` at limb code 3; so the identity's claim, at
-//!    `(u, ρ', y_0, y_1)`, also weighs `P` and `q_P` (by `y_0 y_1`), whose values the claim at `(u, ρ, 1, 1)` fixes;
-//! 7. one inversion of `R_d Y · w_{m+1} · B · c_h D_n` (nonzero required; `D_n = B (α + P_v(t) + ξ)`), and the digits'
-//!    inverses down from `1/w_{m+1}`: `1/w_l = (1 + w_l) / w_{l+1}`;
+//! 6. the claims on `Q` (`PI2.md` §2, §7): `Q`'s sixteen slots of `2^m` are `slot = b_0 + 2 b_1 + 4 limb`
+//!    ([`QUOTIENT_SLOTS`]): `H = x h` at `(0, 0)`, `q`'s two digits at `(1, 0)` and `(0, 1)`, a zero slot `G` at
+//!    `(1, 1)`, for limbs 0..2; at limb code 3 `P`, `q_P`'s two digits and a zero slot `S`, likewise. The identity
+//!    `c_h h(t) + w_m q(t) = Δ + w_m R_n / R_d` (`c_h = d_pull d_push`), times `t`, is the claim at `(u, z_0, z_1, y_0,
+//!    y_1)` whose slot ratios are `a = z_0 / (1 + z_0) = t w_m / c_h` and `b = z_1 / (1 + z_1) = a w_m`: `H + a q_0 + b
+//!    q_1 = t h + a q`, and `G` weighs `a b`, which carries `t² w_m³`. With `H` one slot (degree below `N`) the
+//!    identity at `x = 0` forces `H(0) = 0`, so `h = H / x` has degree below `N - 1` and `Σ_V h = 0`: no claim reads
+//!    the sum. `P(t) = s` and the definition `w_m q_P(t) = s + P_v(t)` (and `S(t) = 0`) are the claim at `(u, ρ, z'_1,
+//!    1, 1)`, `z'_1 / (1 + z'_1) = w_m ρ / (1 + ρ)`: limb code 3 alone, a polynomial of degree 2 in `ρ`;
+//! 7. one inversion of `R_d B · Y_1 Y_2 · w_m · Y_3 · c_h D_n` (nonzero required; `Y_1 = c_h + t w_m`, `Y_2 = c_h +
+//!    t w_m²`, `Y_3 = 1 + ρ (1 + w_m)`, `D_n = B (α + P_v(t) + ξ)`), and the digits' inverses down from `1/w_m`:
+//!    `1/w_l = (1 + w_l) / w_{l+1}`;
 //!
-//! and leaves five claims, each a point of a commitment's whole stack (its coordinates past the table's zero:
+//! and leaves four claims, each a point of a commitment's whole stack (its coordinates past the table's zero:
 //! [`stack_vars`]): `W` at `(ρ, ρ², …, ρ^{2^{r-1}}, w_r, …, w_{m-1})`, value `Σ_k eq(ρ⃗, k) a_k`; `Q` at
-//! `(u_0, …, u_m, ρ', y_0, y_1)`, `u_l = w_l / (1 + w_l)` (the identity, and `P`, `q_P` by `y_0 y_1`), at
-//! `(u_0, …, u_m, ρ, 1, 1)` (`P` and `q_P` alone) and at `(1^m, 0, 0, y_0, y_1)` (the top coefficient of `h`: `Σ_V h`),
-//! value `0`; the setup (its halves `κ` and `κ + σ`) at `(w_0, …, w_{m-1}, β)`, value `ξ`.
+//! `(u_0, …, u_{m-1}, z_0, z_1, y_0, y_1)`, `u_l = w_l / (1 + w_l)` (the identity, and `P`, `q_P` by `y_0 y_1`), and at
+//! `(u_0, …, u_{m-1}, ρ, z'_1, 1, 1)` (`P`, `q_P` and `S` alone); the setup (its halves `κ` and `κ + σ`) at `(w_0, …,
+//! w_{m-1}, β)`, value `ξ`.
 
 use leanvm_statement::VerifierError;
 use leanvm_statement::field::E;
 use leanvm_statement::scalar::{Scalar, enter};
-use leanvm_statement::transcript::{Channel, Checks, KeccakChannel, keccak_seed};
+use leanvm_statement::transcript::{Channel, Checks, KeccakChannel, keccak256, statement_words};
 use primitives::field::{F64, F192};
 use quotient::domain::point;
 
-use super::circuit::{Circuit, Coeff, Formula, Lin, NONE, Read, coset_constants, pair_constants};
+use super::circuit::{Circuit, Coeff, Formula, Lin, Read, coset_constants, pair_constants};
 
 /// The transcript's 16-byte name.
-pub const NAME: [u8; 16] = *b"leanvm-rec-pi2v3";
+pub const NAME: [u8; 16] = *b"leanvm-rec-pi2v4";
 
 /// The smallest stack leanVM's WHIR takes.
 pub const MIN_LOG_STACK: usize = 15;
@@ -67,22 +71,23 @@ pub fn stack_vars(log_n: usize) -> [usize; 3] {
     [log_n.max(least), (log_n + 4).max(least), (log_n + 1).max(least)]
 }
 
-/// `Q`'s sixteen slots of `2^m` words: slot `digit + 2 kind + 4 limb`. `h` (one digit) and `q` (two) of limbs 0, 1, 2
-/// at kinds 0 and 1; at limb code 3, `P` (one chunk, at digit 1) and `q_P` (two digits, kind 1). Slots `1, 5, 9`
-/// (`h`'s second digit) and `12` are zero.
+/// `Q`'s sixteen slots of `2^m` words: slot `b_0 + 2 b_1 + 4 limb` (`PI2.md` §2). For limbs 0, 1, 2: `H = x h` (one
+/// digit) at `(0, 0)`, `q`'s two digits at `(1, 0)` and `(0, 1)` (slots `4 l + 1`, `4 l + 2`: contiguous), a zero slot
+/// `G` at `(1, 1)`; at limb code 3, `P` at `(0, 0)`, `q_P`'s two digits at `(1, 0)` and `(0, 1)`, a zero slot `S` at
+/// `(1, 1)`.
 pub const QUOTIENT_SLOTS: usize = 16;
 
-/// The slot of `h`'s limb `l`, of `q`'s limb `l` digit 0 (digit 1 the next), of `P`, of `q_P`'s digit 0.
+/// The slot of `H`'s limb `l`, of `q`'s limb `l` digit 0 (digit 1 the next), of `P`, of `q_P`'s digit 0.
 pub fn h_slot(l: usize) -> usize {
     4 * l
 }
 pub fn q_slot(l: usize) -> usize {
-    2 + 4 * l
+    1 + 4 * l
 }
-pub const P_SLOT: usize = 13;
-pub const QP_SLOT: usize = 14;
-/// The zero slots.
-pub const EMPTY_SLOTS: [usize; 4] = [1, 5, 9, 12];
+pub const P_SLOT: usize = 12;
+pub const QP_SLOT: usize = 13;
+/// The zero slots: `G`'s three limbs, then `S`.
+pub const EMPTY_SLOTS: [usize; 4] = [3, 7, 11, 15];
 
 /// A pair as the verifier needs it: its block size `s` and `Z_{U_s}(c_p)`.
 #[derive(Clone, Copy, Debug)]
@@ -225,7 +230,7 @@ impl Spec {
     }
 }
 
-/// What [`reduce`] leaves: the public scalars, `W`'s and `Q`'s commitments, and the five claims, each a point of its
+/// What [`reduce`] leaves: the public scalars, `W`'s and `Q`'s commitments, and the four claims, each a point of its
 /// commitment's whole stack and a value.
 #[derive(Clone, Debug)]
 pub struct Reduced<S> {
@@ -237,18 +242,33 @@ pub struct Reduced<S> {
     /// `W`'s and `Q`'s out-of-domain answers (`crates/pcs_claim`), read after their roots.
     pub oods: [S; 2],
     pub witness: (Vec<S>, S),
-    /// `Q`'s identity (with `P`, `q_P` weighed by `y_0 y_1`).
+    /// `Q`'s identity (with `P`, `q_P` and `S` weighed by `y_0 y_1`), which also gives `Σ_V h = 0` (`PI2.md` §7).
     pub quotient: (Vec<S>, S),
-    /// `Q`'s `P` and `q_P`, combined by `ρ`.
+    /// `Q`'s `P`, `q_P` and `S`, combined by `ρ`.
     pub pushes: (Vec<S>, S),
-    pub sum: (Vec<S>, S),
     pub setup: (Vec<S>, S),
 }
 
-impl<S: Clone> Reduced<S> {
-    /// The five claims in the contract's order: `W`, the setup, then `Q`'s identity, pushes and sum.
-    pub fn claims(&self) -> [&(Vec<S>, S); 5] {
-        [&self.witness, &self.setup, &self.quotient, &self.pushes, &self.sum]
+/// π2's three committed stacks, which its claims are on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Pi2Stack {
+    /// `W`, the witness.
+    Witness,
+    /// The setup (`κ`, `κ + σ`): its commitment is the contract's constant.
+    Setup,
+    /// `Q`, the quotients and the pushes.
+    Quotient,
+}
+
+impl<S> Reduced<S> {
+    /// The four claims in the contract's order, each with its stack: `W`, the setup, then `Q`'s identity and pushes.
+    pub fn claims(&self) -> [(Pi2Stack, &(Vec<S>, S)); 4] {
+        [
+            (Pi2Stack::Witness, &self.witness),
+            (Pi2Stack::Setup, &self.setup),
+            (Pi2Stack::Quotient, &self.quotient),
+            (Pi2Stack::Quotient, &self.pushes),
+        ]
     }
 }
 
@@ -257,7 +277,7 @@ fn base<S: Scalar>(x: F64) -> S {
 }
 
 fn ext<S: Scalar>(x: F192) -> S {
-    S::constant(E::new(x.c0, x.c1, x.c2))
+    S::constant(x.into())
 }
 
 fn coeff<S: Scalar>(c: &Coeff, gammas: &[S]) -> S {
@@ -340,27 +360,12 @@ pub fn extension() -> ([F192; 2], F192) {
     quotient::protocol::extension()
 }
 
-/// The verifier: the public data and the proof read from `channel`, down to the four claims. `statement` is the
+/// The verifier: the public data and the proof read from `channel`, down to the claims. `statement` is the
 /// public input's four words. It rejects only a challenge at which a denominator vanishes.
 pub fn reduce<S: Limbs, C: Channel<S>>(
     spec: &Spec,
     statement: [S; 4],
     channel: &mut C,
-) -> Result<Reduced<S>, VerifierError> {
-    reduce_traced(spec, statement, channel, &mut |_, _| {})
-}
-
-/// What [`reduce_traced`] hands its trace: a step's name and its values (`formal/RecStatement`'s differential test
-/// compares every one with the Lean verifier's).
-pub type Trace<'a, S> = &'a mut dyn FnMut(&'static str, &[S]);
-
-/// [`reduce`], handing every intermediate value to `trace` after the step that computes it. The trace only reads
-/// values already computed: the arithmetic, its order and (on the recorder's symbol) the graph are [`reduce`]'s.
-pub fn reduce_traced<S: Limbs, C: Channel<S>>(
-    spec: &Spec,
-    statement: [S; 4],
-    channel: &mut C,
-    trace: Trace<'_, S>,
 ) -> Result<Reduced<S>, VerifierError> {
     let (m, r) = (spec.log_n, spec.log_row);
     let one = S::one();
@@ -386,18 +391,16 @@ pub fn reduce_traced<S: Limbs, C: Channel<S>>(
     let xi = channel.next_scalar()?;
     let s = channel.next_scalar()?;
     let rho = channel.sample();
-    trace("challenges", &[alpha, beta, gamma, t, rho]);
 
     let w = {
         let _phase = enter("pi2: digits");
         let mut w = vec![t];
-        for l in 0..m + 1 {
+        for l in 0..m {
             let x = w[l];
             w.push(x.square() + x);
         }
         w
     };
-    trace("digits", &w);
 
     // The row's cells: fold the top variable first, each fold splitting by the next bit of `c`. Siblings `2k`, `2k + 1`
     // fold at `z` and `z + 1` (`ω_{2k+1} = ω_{2k} + β_0`, `β_0 = 1`): the odd one is the even one plus the difference
@@ -420,7 +423,6 @@ pub fn reduce_traced<S: Limbs, C: Channel<S>>(
         }
         layer.into_iter().map(|v| v[0]).collect::<Vec<S>>()
     };
-    trace("cells", &cells);
     let v0 = cells[0];
 
     // `Ẑ_s(t)` for every block size.
@@ -433,7 +435,6 @@ pub fn reduce_traced<S: Limbs, C: Channel<S>>(
         }
         zt
     };
-    trace("zt", &zt);
 
     // Each group's indicators, summed: `Σ_p 1/d_p = N_g / D_g`, by `N ← N d + D`, `D ← D d`. `Z_V(t) = w_m`
     // multiplies every indicator: it is factored out.
@@ -455,7 +456,6 @@ pub fn reduce_traced<S: Limbs, C: Channel<S>>(
             })
             .collect()
     };
-    trace("groups", &groups.iter().flat_map(|&(n, d)| [n, d]).collect::<Vec<S>>());
     let gammas = leanvm_statement::scalar::powers(gamma, spec.max_gamma + 1);
 
     // `Φ_k(t) / w_m = G_n / G_d = Σ_J F_J / (w_r + ω_{y_J})` for each port role: `N ← N d + D F`, `D ← D d`.
@@ -473,7 +473,6 @@ pub fn reduce_traced<S: Limbs, C: Channel<S>>(
             })
             .collect()
     };
-    trace("phi", &phis.iter().flat_map(|&(_, n, d)| [n, d]).collect::<Vec<S>>());
 
     let d_pull = alpha + v0 + beta * t;
     let d_push = alpha + s + xi;
@@ -512,73 +511,81 @@ pub fn reduce_traced<S: Limbs, C: Channel<S>>(
             ports.1.unwrap_or(one),
         )
     };
-    trace("push", &[num, den, r_num, r_den]);
 
     let _phase = enter("pi2: identity and claims");
-    // The copy identity at `t`, `c_h h + c_q q = Δ + w_m R_n / R_d`, normalised: `(1 + ρ') h + ρ' q = num1 / (R_d Y)`
-    // (`Y = c_h + c_q`, `ρ' = c_q / Y`, `1 + ρ' = c_h / Y`). The definition: `w_m q_P = s + v_0 + w_m A / B = num3 / B`.
-    // With the digits' scale `D = scale t / w_{m+1}` (a chunk's weighted value is `D` times its polynomial's at `t`,
-    // `PI2.md` §2), `Q`'s claims are worth: the identity's, at `(u, ρ', y_0, y_1)`,
-    // `(D / Y)(num1 / R_d + c_3 (c_h w_m s + num3 / B))`, `c_3 = y_0 y_1 / ((1 + y_0)(1 + y_1))` (`P` at digit 1 weighs
-    // `u_m (1 + ρ') y_0 y_1`, `q_P` `ρ' y_0 y_1`); the pushes', at `(u, ρ, 1, 1)`,
-    // `(D / L_0)((1 + ρ) w_m s + ρ num3 / (w_m B))`, `L_0 = (1 + y_0)(1 + y_1)`.
+    // The copy identity at `t`, `c_h h + w_m q = Δ + w_m R_n / R_d = num1 / R_d`; the definition `w_m q_P = s + v_0 +
+    // w_m A / B = num3 / B`. A slot's weighted value at the position coordinates `u` is `(t / w_m)` times its
+    // polynomial's value at `t` (`Π_{l < m} (1 + w_l)^{-1}` telescopes); the limbs' `(y_0, y_1)` weigh limb `l` by
+    // `scale Y^l` (`Y³` at limb code 3). `Q`'s claims (`PI2.md` §2):
+    // - the identity's, at `(u, z_0, z_1, y_0, y_1)`, slot ratios `a = t w_m / c_h`, `b = a w_m` (`z_0 = t w_m / Y_1`,
+    //   `z_1 = t w_m² / Y_2`, `Y_1 = c_h + t w_m`, `Y_2 = c_h + t w_m²`, so `1 + z_0 = c_h / Y_1`, `1 + z_1 = c_h /
+    //   Y_2`): `H + a q_0 + b q_1 = t h + a q = (t / c_h) num1 / R_d`, and at limb code 3 `P + a q_P = s + t num3 /
+    //   (c_h B)`; its value `scale t c_h (t num1 B + Y³ R_d (c_h s B + t num3)) / (w_m Y_1 Y_2 R_d B)`;
+    // - the pushes', at `(u, ρ, z'_1, 1, 1)` (`z'_1 = ρ w_m / Y_3`, `Y_3 = 1 + ρ + ρ w_m`: ratios `a' = ρ / (1 + ρ)`,
+    //   `b' = a' w_m`), limb code 3 alone: `P + a' q_P`, value `t (1 + ρ)((1 + ρ) w_m s B + ρ num3) / (w_m² B Y_3)`.
+    let z = w[m];
     let c_h = d_pull * d_push;
-    let y = c_h + w[m];
+    let tz = t * z;
+    let y1 = c_h + tz;
+    let y2 = c_h + tz * z;
+    let y3 = one + rho + rho * z;
     // `D_n = B (α + P_v(t) + ξ)`, required nonzero with the rest: the pushes' fraction `A / B` whole in the check (the
     // contract computes `A` and `B` together, not `B`'s factors kept for `A`).
-    let d_n = (alpha + v0 + xi) * den + w[m] * num;
-    let num1 = delta * r_den + w[m] * r_num;
+    let d_n = (alpha + v0 + xi) * den + z * num;
+    let num1 = delta * r_den + z * r_num;
     let num3 = d_n + d_push * den;
-    // One inversion: of `R_d Y`, `w_{m+1}`, `B`, `c_h` (nonzero: `1 + ρ'` is not zero, so the claim binds `h(t)` and
-    // `P(t)`) and `D_n`.
-    let p1 = r_den * y;
-    let p2 = p1 * w[m + 1];
+    // One inversion: of `R_d`, `Y_1`, `Y_2`, `B`, `w_m`, `Y_3`, `c_h` (nonzero: `1 + z_0`, `1 + z_1` are not zero, so the
+    // claim binds `H(t)`) and `D_n`.
+    let p1 = r_den * y1;
+    let p2 = p1 * y2;
     let p3 = p2 * den;
+    let p4 = p3 * z;
+    let p5 = p4 * y3;
     let cd = c_h * d_n;
-    let all = p3 * cd;
-    trace("identity", &[d_pull, d_push, d_n, num1, num3, y, p1, p2, p3, all]);
+    let all = p5 * cd;
     channel.require_nonzero(all, VerifierError::RecDegenerate)?;
     let inv_all = {
         let _phase = enter("pi2: the inversion");
         inverse(all)
     };
-    let inv_p3 = inv_all * cd;
+    let inv_p5 = inv_all * cd;
+    let inv_y3 = inv_p5 * p4;
+    let inv_p4 = inv_p5 * y3;
+    let inv_z = inv_p4 * p3;
+    let inv_p3 = inv_p4 * z;
     let inv_p2 = inv_p3 * den;
-    let inv_top = inv_p2 * p1;
-    let rho_q = w[m] * (inv_p2 * (r_den * w[m + 1]));
-    // `1/w_l = (1 + w_l) / w_{l+1}` (as `w_{l+1} = w_l (1 + w_l)`), down from `1/w_{m+1}`.
-    let mut w_invs = vec![S::zero(); m + 2];
-    w_invs[m + 1] = inv_top;
-    for l in (0..m + 1).rev() {
+    let inv_y2 = inv_p2 * p1;
+    let inv_p1 = inv_p2 * y2;
+    let inv_y1 = inv_p1 * r_den;
+    // `1/w_l = (1 + w_l) / w_{l+1}` (as `w_{l+1} = w_l (1 + w_l)`), down from `1/w_m`.
+    let mut w_invs = vec![S::zero(); m + 1];
+    w_invs[m] = inv_z;
+    for l in (0..m).rev() {
         w_invs[l] = (one + w[l]) * w_invs[l + 1];
     }
-    let ([y0, y1], scale) = extension();
-    let l0 = (F192::ONE + y0) * (F192::ONE + y1);
-    let c3 = ext::<S>(y0 * y1 * l0.inv());
-    let scale_l0 = ext::<S>(scale * l0.inv());
-    let (y0, y1, scale) = (ext::<S>(y0), ext::<S>(y1), ext::<S>(scale));
-    let st = scale * t;
-    // The identity's value: `scale t (num1 B + c_3 R_d (c_h w_m s B + num3)) / (w_{m+1} Y R_d B)`.
-    let quotient_value = st * inv_p3 * (num1 * den + c3 * (r_den * (c_h * (w[m] * (s * den)) + num3)));
-    // The pushes': `(scale / L_0) t ((1 + ρ) w_m² s B + ρ num3) / (w_{m+1} w_m B)`, `1 / (w_{m+1} B) = R_d Y / p3`.
-    let pushes_value =
-        scale_l0 * t * ((one + rho) * (w[m].square() * (s * den)) + rho * num3) * (inv_p3 * p1) * w_invs[m];
-    trace("inverse", &[inv_all, inv_p3, inv_p2, inv_top, rho_q]);
-    trace("digit inverses", &w_invs);
+    let ([ey0, ey1], escale) = extension();
+    let c3 = ext::<S>(F192::Y * F192::Y * F192::Y);
+    let (y0, y1c, scale) = (ext::<S>(ey0), ext::<S>(ey1), ext::<S>(escale));
+    let z0 = tz * inv_y1;
+    let z1 = tz * z * inv_y2;
+    let zp1 = rho * z * inv_y3;
+    // The identity's value: `scale t c_h (t num1 B + Y³ R_d (c_h s B + t num3)) / (w_m Y_1 Y_2 R_d B)`.
+    let quotient_value =
+        scale * t * c_h * (t * (num1 * den) + c3 * (r_den * (c_h * (s * den) + t * num3))) * inv_p4;
+    // The pushes': `t (1 + ρ)((1 + ρ) w_m s B + ρ num3) / (w_m² B Y_3)`, `1 / (w_m B Y_3) = R_d Y_1 Y_2 / p_5`.
+    let one_rho = one + rho;
+    let pushes_value = t * one_rho * (one_rho * (z * (s * den)) + rho * num3) * (inv_p5 * p2) * inv_z;
 
     // `1/(1 + w_l) = 1/w_l + 1/w_{l+1}`.
-    let u: Vec<S> = (0..m + 1).map(|l| one + w_invs[l] + w_invs[l + 1]).collect();
+    let u: Vec<S> = (0..m).map(|l| one + w_invs[l] + w_invs[l + 1]).collect();
     let [wv, qv, sv] = stack_vars(m);
     let padded = |point: Vec<S>, vars: usize| -> Vec<S> {
         let mut point = point;
         point.resize(vars, S::zero());
         point
     };
-    let quotient_point = padded([&u[..], &[rho_q, y0, y1]].concat(), qv);
-    let pushes_point = padded([&u[..], &[rho, one, one]].concat(), qv);
-    let sum_point = padded([vec![one; m], vec![S::zero(); 2], vec![y0, y1]].concat(), qv);
-    trace("u", &u);
-    trace("quotient", &[rho_q, quotient_value, pushes_value]);
+    let quotient_point = padded([&u[..], &[z0, z1, y0, y1c]].concat(), qv);
+    let pushes_point = padded([&u[..], &[rho, zp1, one, one]].concat(), qv);
 
     let mut rhos = vec![rho];
     for l in 1..r {
@@ -592,8 +599,6 @@ pub fn reduce_traced<S: Limbs, C: Channel<S>>(
         }
         fold.truncate(half);
     }
-    trace("rhos", &rhos);
-    trace("fold", &fold);
     let witness_point = padded([&rhos[..], &w[r..m]].concat(), wv);
     let setup_point = padded([&w[..m], &[beta]].concat(), sv);
     let pair_points = public.iter().map(|&x| leanvm_statement::transcript::pair_point(x)).collect();
@@ -605,66 +610,38 @@ pub fn reduce_traced<S: Limbs, C: Channel<S>>(
         witness: (witness_point, fold[0]),
         quotient: (quotient_point, quotient_value),
         pushes: (pushes_point, pushes_value),
-        sum: (sum_point, S::zero()),
         setup: (setup_point, xi),
     })
 }
 
-/// The public input's four words, as calldata carries them: big-endian each.
-pub fn statement_words(public_input: &[u8; 32]) -> [E; 4] {
-    std::array::from_fn(|k| {
-        E::new(
-            u64::from_be_bytes(public_input[8 * k..8 * k + 8].try_into().unwrap()),
-            0,
-            0,
-        )
-    })
-}
 
 /// The transcript's seed: the Keccak-256 of the name, the IV, the public input, then the frame words (`Read::Frame`,
 /// in order: the hashed claims' Keccak-256s), which the contract reads from the frame of PCS claims.
 pub fn seed(iv: &[u8; 32], public_input: &[u8; 32], frame: &[[u8; 32]]) -> [u8; 32] {
-    if frame.is_empty() {
-        return keccak_seed(&NAME, iv, public_input);
-    }
-    let words: Vec<u8> = frame.concat();
-    leanvm_statement::transcript::keccak256(&[&NAME[..], iv, public_input, &words].concat())
+    keccak256(&[&NAME[..], iv, public_input, &frame.concat()].concat())
 }
 
 /// The verifier on `E` with the Keccak-256 chain, the contract's in Rust: the stream must be read whole. `frame` are
-/// the frame words its `Read::Frame`s read, in order.
+/// the frame words its `Read::Frame`s read, in order; `checks` what it does with the identities it requires (enforced,
+/// or collected for a comparison with the contract), returned as they end.
 pub fn verify(
     spec: &Spec,
     iv: &[u8; 32],
     public_input: &[u8; 32],
     frame: &[[u8; 32]],
     stream: &[u8],
-) -> Result<Reduced<E>, VerifierError> {
-    let mut channel = KeccakChannel::new(seed(iv, public_input, frame), stream, Checks::Enforce);
+    checks: Checks,
+) -> Result<(Reduced<E>, Checks), VerifierError> {
+    let mut channel = KeccakChannel::new(seed(iv, public_input, frame), stream, checks);
     channel.frame = frame.to_vec();
     let reduced = reduce(spec, statement_words(public_input), &mut channel)?;
     channel.finish()?;
-    Ok(reduced)
-}
-
-/// `E` as the prover's field.
-pub fn to_f192(x: E) -> F192 {
-    F192::new(x.c0, x.c1, x.c2)
-}
-
-pub fn to_e(x: F192) -> E {
-    E::new(x.c0, x.c1, x.c2)
+    Ok((reduced, channel.checks))
 }
 
 /// A claim of [`Reduced`] in the prover's field: its point and value.
 pub fn claim((point, value): &(Vec<E>, E)) -> (Vec<F192>, F192) {
-    (point.iter().map(|&x| to_f192(x)).collect(), to_f192(*value))
-}
-
-/// Pairs per position and the pair constants, for tests of the indicators against the circuit.
-pub fn covered(circuit: &Circuit, i: usize) -> Option<usize> {
-    let p = circuit.pair_of()[i];
-    (p != NONE).then_some(p as usize)
+    (point.iter().map(|&x| x.into()).collect(), (*value).into())
 }
 
 #[cfg(test)]

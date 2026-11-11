@@ -1,10 +1,10 @@
 // Part of this repository. Adapted from leanVM (https://github.com/leanEthereum/leanVM), branch
-// PCS-openings-aggregation, commit 651453c6, crates/flock/src/membership.rs (`Statement`, `Secret`, `halves`),
+// PCS-openings-aggregation, commit 651453c6, crates/flock/src/membership.rs (`Statement`, `Secret`),
 // with the Keccak-256 statement (new here). MIT OR Apache-2.0; see AGENTS.md.
 //! The statement: `y = H(x | 0x11^32)`, and a Merkle path of depth [`DEPTH`] from `H(x | 0x22^32)` up to
 //! `root`, with `H` = Keccak-256 (Ethereum's `keccak256`) of a 64-byte block.
 
-use primitives::field::{F64, F192};
+use primitives::field::F64;
 use primitives::hash::hash as keccak256;
 
 pub const DEPTH: usize = 32;
@@ -32,12 +32,6 @@ impl Statement {
         let ([a, b, c, d], [e, f, g, h]) = (words(&self.y), words(&self.root));
         [a, b, c, d, e, f, g, h]
     }
-
-    /// `y` then `root`, each as its two [`halves`].
-    pub fn halves(&self) -> [F192; 4] {
-        let ([y0, y1], [root0, root1]) = (halves(&self.y), halves(&self.root));
-        [y0, y1, root0, root1]
-    }
 }
 
 /// What the prover knows. Bit `i` of `directions` says the sibling is on the left at level `i`.
@@ -64,14 +58,6 @@ impl Secret {
             root,
         }
     }
-}
-
-/// A 32-byte value as two field elements, sixteen bytes each read as a big-endian number in the low two limbs.
-pub fn halves(bytes: &[u8; 32]) -> [F192; 2] {
-    std::array::from_fn(|h| {
-        let v = u128::from_be_bytes(bytes[16 * h..16 * h + 16].try_into().unwrap());
-        F192::new(v as u64, (v >> 64) as u64, 0)
-    })
 }
 
 /// A 32-byte value as four `K`-words, eight bytes each read as a big-endian number: bit `j` of word `k` is bit

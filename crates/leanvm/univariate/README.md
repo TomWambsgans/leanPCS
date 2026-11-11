@@ -17,8 +17,8 @@ one point, Flock on the Keccak-f block, one PCS claim per commitment (a point of
   [`PROVER.md`](../../../docs/leanvm/univariate/PROVER.md),
   [`KECCAK.md`](../../../docs/leanvm/univariate/KECCAK.md) (the VM, workloads, capacity, vectors).
 
-At the reference workload (128 signatures) the contract alone takes 8,069 B of calldata and 231,511 gas of execution;
-as an EIP-8141 frame transaction (EIP-7976's floor) standard 360,255, floor 516,416, without its frame of claims.
+At the reference workload (128 signatures) the contract alone takes 8,065 B of calldata and 231,489 gas of execution;
+as an EIP-8141 frame transaction (EIP-7976's floor) standard 360,169, floor 516,160, without its frame of claims.
 
 ```sh
 cargo test --release -p leanvm_univariate                                                  # contract == Rust verifier, vectors, Flock

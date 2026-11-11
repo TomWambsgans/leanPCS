@@ -3,8 +3,8 @@
 `formal/` states and proves the protocols of commit `f96a7938`: membership with six claims on four commitments
 ([`HISTORY.md`](HISTORY.md), "Membership at f96a7938"), and π2v3 over π1-rec3 with π1's three claims encoded by the
 contract. The deployed ones are [`membership/PROTOCOL.md`](membership/PROTOCOL.md) (three claims on two commitments
-and the circuit's) and [`leanvm/rec/SPEC-REC.md`](leanvm/rec/SPEC-REC.md) (π2v3 over π1-rec4, π1's three claims hashed
-in π2's circuit). This is what the port needs; the intermediate protocols of `866ba889` were never ported.
+and the circuit's) and [`leanvm/rec/SPEC-REC.md`](leanvm/rec/SPEC-REC.md) (π2v4 over π1-rec4, π1's three claims hashed
+in π2's circuit, the copy sum forced by `Q`'s layout). This is what the port needs; the intermediate protocols of `866ba889` were never ported.
 
 ## Membership
 
@@ -58,20 +58,36 @@ The bounds' arithmetic carries over but for one port.
 - **The graph** (`RecGraphKeccak`; `Emitted.lean` is `f96a7938`'s π1-rec3 graph, the hazard `MergeHazardK` π1-rec3's):
   the `Wide` node; `pi1GraphIsVerifierK` and `GraphsAgree` for π1-rec4.
 - **The compiler** (`RecCircuit`, `rec-circuit-keccak`): `Wide` packings; D16v's trimmed last round (a template per
-  plane count, the unmade outputs, the free ends of `A_22`); the hashed claims' sections (message bits, copy units,
-  the free bits of an element with their packing and zero check, the digest's `ClaimHash` port); the fallback that
-  drops the last hashed claim (`compile_keeping`); a claim still encoded reads its narrow elements as 20 bytes;
-  `DigestChecked`, `SetupRootChecked`, `IvChecked` re-evaluated.
+  plane count, the unmade outputs, the free ends of `A_22`); the hashed claims' sections (message bits, copy units, the
+  free bits of an element with their packing and zero check, the digest's `ClaimHash` port); the claims hashed by π1's
+  shape (`compile::hashed_claims`: none, `[0]`, `[0, 1, 2]`), a circuit past `2^24` refused; a claim still encoded reads
+  its narrow elements as 20 bytes; `DigestChecked`, `SetupRootChecked`, `IvChecked` re-evaluated.
 - **The statement data** (`RecStatement/Data.lean`, `f96a7938`'s circuit: π1-rec3, 22 blocks, 134 pairs, 38 public
   terms): the reads (`Read.narrow`, 20 bytes; `Read.frame p`, four scalars from the frame), the `ClaimHash` ports and
   their terms, π1's calls (none encoded at 128 and 400 signatures), the digest and setup root, the seed over the frame
   words.
-- **The contract model** (`RecCompose`): no selector; the seed over three frame words (payloads 0 … 2); π2's five
-  claims at payloads 3 … 7 (`Ending::ClaimsAt`); no π1 element or root in calldata. `pi1rec3K_end` extended to "a
+- **The contract model** (`RecCompose`): no selector; the seed over three frame words (payloads 0 … 2); π2's four
+  claims at payloads 3 … 6 (`Ending::Claims`, each claim with its payload; seven openings charged once by
+  `pcs_union_sound_oracle`, `qOodBinding` over `Q`'s two claims); no π1 element or root in calldata. `pi1rec3K_end` extended to "a
   satisfied π2 circuit carries the Keccak-256s of the graph's three claims"; the extractor of
   `recKnowledgeSoundness_reduction_real` then names π1's claims by their hashes, with a Keccak-256 collision term (or
   the frame's binding as an assumption, as for every declared claim). The copy argument's round in `pi2Bound`:
   `(4N + 4)/|E|` (the statement and three hashes) against `(4N + 3)/|E|`; 128.93 bits unchanged.
+
+- **π2v4, the copy sum from `Q`'s layout** ([`leanvm/rec/PI2.md`](leanvm/rec/PI2.md) §2, §7):
+  - `RecStatement` (the statement and verifier): the transcript name `leanvm-rec-pi2v4`; `Q`'s slots (`H = x h` at
+    `(0, 0)`, `q`'s digits at `(1, 0)`, `(0, 1)`, `G` at `(1, 1)`; at limb code 3 `P`, `q_P`'s digits, `S`); the digits
+    to `w_m`; the inversion of `R_d Y_1 Y_2 B w_m Y_3 · c_h D_n`; the identity's claim at `(u_0 … u_{m-1}, t w_m / Y_1,
+    t w_m² / Y_2, y_0, y_1)` and its value, the pushes' at `(u_0 … u_{m-1}, ρ, ρ w_m / Y_3, 1, 1)` and its value; no sum
+    claim; `Calls.lean`: seven claims.
+  - `RecPiop` (soundness): the pushes' claim as a polynomial of degree 2 in `ρ` binding `P(t) = s`, the definition and
+    `S(t) = 0`; the identity's claim as `I(t) = 0`, `I = D² H + x Z D A + x² Z³ G + x D R` (below `5N`), and the lemma
+    "`I = 0` and `D(0) ≠ 0` give `H(0) = 0`, `h = H / x` of degree below `N − 1`, `Σ_V h = 0`, `h D + R = 0` on `V_m`",
+    replacing the sum claim and the empty slots' argument; `Rounds.lean`'s `err` at `t` `(5N − 1)/|E|`, at `ρ` `2/|E|`
+    for `Q` (`pi2Bound` stays 128.93 bits).
+  - `RecCompose` completeness: the honest `Q` (`H` by `mul_x`, the slots, `G = S = 0`: `Pi2Prover*`, `Pi2Honest*`) and
+    the nonvanishing of `Y_1`, `Y_2`, `Y_3` (`Pi2Complete*`).
+  - Vectors: `tests/lean_pi2_prover.rs`, `tests/lean_statement_keccak.rs` regenerated with the port.
 
 ## Lean-facing files
 

@@ -2,7 +2,8 @@
 //! The Keccak VM's π1-rec3 at the reference shape (128 signatures, `leanvm_rec::REFERENCE`) as a vector of
 //! `formal/RecCircuit`'s differential runner (`RecCircuitTest/Main.lean`): its recorded graph as text and the circuit
 //! the Rust compiler makes of it (D16v), in the format of the runner's vectors. The circuit exercises
-//! `layout::pad_counts`'s look-ahead (21 blocks; at 400 signatures 22, where the one-digit greedy made 70).
+//! `layout::pad_counts`'s look-ahead (26 blocks; 22 in f96a7938's circuit, `formal/RecStatement/RecStatement/Data.lean`;
+//! at 400 signatures the one-digit greedy made 70).
 //!
 //! `LEAN_CIRCUIT_OUT=dir cargo test --release -p leanvm_rec --test lean_circuit_keccak -- --ignored --nocapture`
 
@@ -12,11 +13,11 @@ use leanvm_statement::VerifierError;
 use leanvm_statement::evm::codegen::Word;
 use leanvm_statement::evm::record::Node;
 use leanvm_statement::shapes::PROGRAM_IV;
-use leanvm_rec::circuit::compile::{Inputs, Layout, pi2};
+use leanvm_rec::circuit::compile::{Inputs, pi2};
 use leanvm_rec::circuit::spec::{CallWord, Circuit, Formula, Source};
 use leanvm_univariate::contract::{Recorded, calls, record_verifier};
 use leanvm_rec::REFERENCE;
-use leanvm_univariate::{Claims, KECCAK_REC3};
+use leanvm_univariate::KECCAK_REC3;
 
 
 fn deep<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> R {
@@ -42,6 +43,7 @@ fn node_line(node: &Node) -> String {
     match *node {
         Node::Const([a, b, c]) => format!("C {a} {b} {c}"),
         Node::Statement(k) => format!("S {k}"),
+        Node::Frame(..) => unreachable!("π1's graph reads no frame"),
         Node::Input { offset, len } => format!("I {offset} {len}"),
         Node::Add(a, b) => format!("A {a} {b}"),
         Node::Mul(a, b) => format!("M {a} {b}"),
@@ -177,7 +179,6 @@ fn emit(name: &str, recorded: &Recorded) {
     let stream: Vec<u8> = (0..recorded.stream_len).map(|i| (i * 37 + 11) as u8).collect();
     let c = pi2(
         recorded,
-        Layout::D16v,
         &Inputs {
             program_iv: PROGRAM_IV,
             public: [3; 32],
@@ -207,7 +208,7 @@ fn emit(name: &str, recorded: &Recorded) {
 #[ignore = "the Keccak VM's π1-rec3 graph and circuit (2^24 positions): about a minute"]
 fn keccak_pi1_rec3() {
     deep(|| {
-        let recorded = record_verifier(&REFERENCE, KECCAK_REC3, Claims::Point);
+        let recorded = record_verifier(&REFERENCE, KECCAK_REC3);
         emit("keccak_pi1_rec3", &recorded)
     });
 }

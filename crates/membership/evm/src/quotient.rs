@@ -4,7 +4,7 @@
 //! The membership verifier (`quotient::protocol::reduce`) as a contract, its ABI, and its deployment.
 //!
 //! The contract ([`contract`]) checks that its transaction declares the three PCS claims a proof leaves
-//! ([`pcs_claims`]: the EIP's encoding, `crates/pcs_claim`) in its frame of PCS claims ([`crate::machine`]), and
+//! ([`pcs_claims`]: the EIP's encoding, `crates/pcs_claim`) in its frame of PCS claims (`evm_link::machine`), and
 //! returns the word 1; without the checks ([`claims_contract`]), it returns the commitments and the claims. Its code
 //! depends on the circuit's size alone: the circuit's commitment (its index table's root and out-of-domain answer)
 //! is in storage, where its owner can change it.
@@ -43,22 +43,24 @@
 //! root as its 32 bytes, the out-of-domain answer as a word) in slots 0 and 1, writes `owner` into the code, and
 //! reverts on value or on arguments of another length.
 
-use std::collections::HashMap;
-
-use evm_link::ClaimWords;
-use pcs_claim::PcsClaim;
+use evm_link::machine::Chain;
+use pcs_claim::{PcsClaim, element_bytes, element_of};
 use primitives::field::F192;
 use quotient::opening::{Claim, Commitment};
-use quotient::protocol::{Claims, Commitments, NAME, Reduced, label, reduce};
+use quotient::protocol::{Claims, Commitments, Reduced, reduce};
 use quotient::statement::Statement;
-use quotient::transcript::{Proof, TranscriptError, halves_root};
+use quotient::transcript::{Proof, TranscriptError, halves_root, root_halves};
 use revm::primitives::Address;
 
-use crate::codegen::{COMMITMENT, Ending, Entry, SCALAR_BYTES, SCALARS, Word, compile};
+use crate::codegen::{COMMITMENT, Ending, SCALAR_BYTES, SCALARS, Word, compile};
 pub use crate::codegen::{Contract, SET_INDEX, creation_code};
 use crate::contract::Recorder;
-use crate::machine::element_word;
 use crate::record::{Graph, Sym, record};
+
+/// An element as a contract holds it, a word: limb 0 lowest, the top 64 bits zero.
+pub fn element_word(x: F192) -> [u8; 32] {
+    evm_link::op::word([x.c0, x.c1, x.c2])
+}
 
 /// What the contract returns on a proof it accepts: the word 1, `abi.encode(true)`.
 pub const VERIFIED: [u8; 32] = {
@@ -80,25 +82,24 @@ const ROOT_SCALARS: [usize; 4] = [0, 1, 3, 4];
 /// ([`init_code`]): it reverts unless its transaction declares the three claims a proof leaves ([`pcs_claims`]), and
 /// returns [`VERIFIED`].
 pub fn contract(log_rows: usize) -> Contract {
-    build(log_rows, &entry(), true)
+    build(log_rows, true)
 }
 
 /// The same verifier, returning the commitments and the claims ([`decode`]) instead of checking them.
 pub fn claims_contract(log_rows: usize) -> Contract {
-    build(log_rows, &entry(), false)
+    build(log_rows, false)
 }
 
 /// The init code deploying `contract` (either of the two above) for the circuit committed as `index`, owned by
 /// `owner`: its creation code, then the constructor's three arguments.
 pub fn init_code(contract: &Contract, index: &Commitment, owner: Address) -> Vec<u8> {
-    assert!(contract.owner_at.is_some(), "a contract reading its commitment from storage");
     [&creation_code(contract)[..], &index.root, &element_word(index.ood), owner.into_word().as_slice()].concat()
 }
 
 /// Deploy `contract` on `chain` for the circuit committed as `index`, owned by `owner`, by a transaction: its
 /// address, unless the creation failed, and the transaction's init code and execution gas.
 pub fn deploy(
-    chain: &mut crate::machine::Chain,
+    chain: &mut Chain,
     contract: &Contract,
     index: &Commitment,
     owner: Address,
@@ -108,34 +109,14 @@ pub fn deploy(
     (address, (init, outcome.execution))
 }
 
-/// How the contract is entered ([`Entry`]).
-fn entry() -> Entry {
-    let some = Commitment {
-        root: [0xa5; 32],
-        ood: F192::new(1, 2, 3),
-    };
-    let zero = Statement {
-        y: [0; 32],
-        root: [0; 32],
-    };
-    let label = label(&some, &zero);
-    assert!(
-        label.len() == 136 && label[16..48] == some.root && label[48..72] == element_word(some.ood)[8..],
-        "the label is a name, the commitment and the statement"
-    );
-    Entry {
-        name: label[..16].try_into().expect("a 16-byte name"),
-    }
-}
-
-fn build(log_rows: usize, entry: &Entry, declared: bool) -> Contract {
+fn build(log_rows: usize, declared: bool) -> Contract {
     let Recorded {
         graph,
         outputs,
         ending,
         inputs,
-    } = recorded(log_rows, entry, declared);
-    compile(&graph, &outputs, &ending, entry, inputs)
+    } = recorded(log_rows, declared);
+    compile(&graph, &outputs, &ending, inputs)
 }
 
 /// What a contract is compiled from: the graph the recorder leaves, the words the contract writes (the claims'
@@ -151,28 +132,10 @@ pub(crate) struct Recorded {
 /// it as Lean (`lean.rs`).
 #[cfg(test)]
 pub(crate) fn deployed(log_rows: usize) -> Recorded {
-    recorded(log_rows, &entry(), true)
+    recorded(log_rows, true)
 }
 
-/// The output words, each written once however many claims read it.
-#[derive(Default)]
-struct Region {
-    words: Vec<Word>,
-    index: HashMap<String, usize>,
-}
-
-impl Region {
-    fn at(&mut self, word: Word) -> usize {
-        let key = format!("{word:?}");
-        *self.index.entry(key).or_insert_with(|| {
-            self.words.push(word);
-            self.words.len() - 1
-        })
-    }
-}
-
-fn recorded(log_rows: usize, entry: &Entry, declared: bool) -> Recorded {
-    assert_eq!(&entry.name, NAME, "the entry's name is the protocol's");
+fn recorded(log_rows: usize, declared: bool) -> Recorded {
     let ((reduced, read), graph) = record(|| {
         let mut recorder = Recorder::new();
         let reduced = reduce(&mut recorder, log_rows).unwrap_or_else(|_| unreachable!("a recorder rejects nothing"));
@@ -188,24 +151,21 @@ fn recorded(log_rows: usize, entry: &Entry, declared: bool) -> Recorded {
     assert_eq!(read as usize, INPUTS);
     let node = |sym: &Sym| Word::Node(sym.0);
     let (outputs, ending) = if declared {
-        let mut region = Region::default();
+        // The claims' fields, each word written once however many claims read it.
         let root = |k: usize| Word::Calldata(COMMITMENT + 32 * k);
-        let claim = |region: &mut Region, root: Word, ood: Word, point: Vec<Word>, value: Word, index: usize| {
-            ClaimWords {
-                root: region.at(root),
-                ood: region.at(ood),
-                point: point.into_iter().map(|w| region.at(w)).collect(),
-                value: region.at(value),
-                index,
-            }
+        let claim = |root: Word, ood: Word, (point, value): &(Vec<Sym>, Sym), index: usize| evm_link::Claim {
+            root,
+            ood,
+            point: point.iter().map(node).collect(),
+            value: node(value),
+            index,
         };
-        let nodes = |point: &[Sym]| point.iter().map(node).collect::<Vec<_>>();
-        let claims = vec![
-            claim(&mut region, root(0), node(&oods[0]), nodes(&witness.0), node(&witness.1), 0),
-            claim(&mut region, Word::StoredRoot, Word::StoredOod, nodes(&wiring.0), node(&wiring.1), 1),
-            claim(&mut region, root(1), node(&oods[1]), nodes(&copy.0), node(&copy.1), 2),
-        ];
-        (region.words, Ending::Declared(claims))
+        let (words, claims) = evm_link::claim_outputs(&[
+            claim(root(0), node(&oods[0]), &witness, 0),
+            claim(Word::StoredRoot, Word::StoredOod, &wiring, 1),
+            claim(root(1), node(&oods[1]), &copy, 2),
+        ]);
+        (words, Ending::Declared(claims))
     } else {
         let mut outputs: Vec<Word> = Vec::new();
         for (root, ood) in roots.iter().zip(&oods) {
@@ -228,8 +188,7 @@ fn recorded(log_rows: usize, entry: &Entry, declared: bool) -> Recorded {
 /// The PCS claims [`contract`] checks declared, in order: those a proof leaves ([`quotient::protocol::verify`]) on
 /// their commitments, as [`quotient::protocol::verify_openings`] opens them.
 pub fn pcs_claims(index: &Commitment, commitments: &Commitments, claims: &Claims) -> Vec<PcsClaim> {
-    let on = [commitments.witness, *index, commitments.table];
-    claims.all().iter().map(|(k, claim)| on[*k].pcs_claim(claim)).collect()
+    claims.pcs_claims(index, commitments).to_vec()
 }
 
 /// The calldata of `setIndexCommitment(index)`.
@@ -257,11 +216,30 @@ pub fn calldata(statement: &Statement, proof: &Proof) -> Result<Vec<u8>, Transcr
     }
     for (i, scalar) in stream.iter().enumerate() {
         if !ROOT_SCALARS.contains(&i) {
-            [scalar.c2, scalar.c1, scalar.c0].iter().for_each(|limb| data.extend(limb.to_be_bytes()));
+            data.extend(element_bytes(*scalar));
         }
     }
     data.push(PCS_FRAME);
     Ok(data)
+}
+
+/// A statement and proof read back from the verifier's arguments ([`calldata`]'s inverse, without its last byte, the
+/// frame's index).
+pub fn parse(arguments: &[u8]) -> (Statement, Proof) {
+    assert_eq!(arguments.len(), CALLDATA_LEN - 1);
+    let scalar = |i: usize| element_of(arguments[SCALARS + SCALAR_BYTES * i..][..SCALAR_BYTES].try_into().unwrap());
+    let mut stream = Vec::new();
+    for k in 0..2 {
+        let root: [u8; 32] = arguments[COMMITMENT + 32 * k..][..32].try_into().unwrap();
+        stream.extend(root_halves(&root));
+        stream.push(scalar(k));
+    }
+    stream.extend((2..INPUTS).map(scalar));
+    let statement = Statement {
+        y: arguments[..32].try_into().unwrap(),
+        root: arguments[32..64].try_into().unwrap(),
+    };
+    (statement, Proof { stream })
 }
 
 /// What [`claims_contract`] returned: the two commitments and the three claims.
@@ -270,10 +248,7 @@ pub fn decode(output: &[u8], log_rows: usize) -> Option<(Commitments, Claims)> {
         .as_chunks::<32>()
         .0
         .iter()
-        .map(|word| {
-            let limb = |i: usize| u64::from_be_bytes(word[24 - 8 * i..32 - 8 * i].try_into().unwrap());
-            (limb(3) == 0).then(|| F192::new(limb(0), limb(1), limb(2)))
-        })
+        .map(|word| (word[..8] == [0; 8]).then(|| element_of(word[8..].try_into().unwrap())))
         .collect::<Option<_>>()?;
     let [w, wiring, table] = quotient::protocol::table_vars(log_rows);
     let mut rest = &words[..];
@@ -312,13 +287,12 @@ mod tests {
 
     use super::*;
     use crate::codegen::{INDEX_OOD_SLOT, INDEX_ROOT_SLOT};
-    use revm::primitives::U256;
-    use crate::machine::{CALLER, Chain, DEPLOYER, PcsFrame, frame_gas, transaction_gas};
+    use evm_link::machine::{CALLER, DEPLOYER, PcsFrame, transaction_gas};
     use primitives::test_rng::Rng;
-    use quotient::circuit::{LOG_ROWS, membership, membership_inputs};
-    use quotient::protocol::{Index, prove_with_seed, verify};
+    use quotient::circuit::{Circuit, LOG_ROWS, membership, membership_inputs};
+    use quotient::protocol::{Index, NAME, label, prove_with_seed, verify};
     use quotient::statement::{DEPTH, Secret};
-    use revm::primitives::TxKind;
+    use revm::primitives::{TxKind, U256};
 
     /// Who may change the circuit's commitment.
     const OWNER: Address = Address::with_last_byte(0x0e);
@@ -332,15 +306,21 @@ mod tests {
             directions: 0x5A3C_96F0,
         };
         let statement = secret.statement();
-        let circuit = membership();
+        let (circuit, index, commitment) = &*CIRCUIT;
         let cells = circuit.cells(&membership_inputs(&secret));
-        let index = Index::new(&circuit);
-        let commitment = Commitment::of(&index.commit());
         // The proof's seed from the test generator, so that the tests repeat: `prove` draws a fresh one.
         let seed = std::array::from_fn(|_| rng.next_u64() as u8);
-        let proved = prove_with_seed(&circuit, &index, &commitment, &statement, &cells, &seed);
-        (commitment, statement, proved.proof)
+        let proved = prove_with_seed(circuit, index, commitment, &statement, &cells, &seed);
+        (*commitment, statement, proved.proof)
     }
+
+    /// The deployed circuit, its index and its commitment, made once for all the proofs.
+    static CIRCUIT: LazyLock<(Circuit, Index, Commitment)> = LazyLock::new(|| {
+        let circuit = membership();
+        let index = Index::new(&circuit);
+        let commitment = Commitment::of(index.commit());
+        (circuit, index, commitment)
+    });
 
     /// The tests' proof, made once for all of them.
     static HONEST: LazyLock<(Commitment, Statement, Proof)> = LazyLock::new(|| proof(&mut Rng::new(0xE8)));
@@ -353,9 +333,23 @@ mod tests {
     }
 
     fn block_of(claims: &[PcsClaim]) -> PcsFrame {
-        let mut block = PcsFrame::default();
-        claims.iter().for_each(|claim| block.declare(claim));
-        block
+        PcsFrame::of(claims.iter().map(PcsClaim::encode))
+    }
+
+    /// The contract's seed writes the transcript's label as `quotient::protocol::label` lays it out: the name, the
+    /// circuit's commitment (its root, its out-of-domain answer's 24 bytes), then the statement.
+    #[test]
+    fn label_is_the_seeds_layout() {
+        let some = Commitment {
+            root: [0xa5; 32],
+            ood: F192::new(1, 2, 3),
+        };
+        let statement = Statement {
+            y: [0x11; 32],
+            root: [0x22; 32],
+        };
+        let expected = [&NAME[..], &some.root, &element_bytes(some.ood), &statement.y, &statement.root].concat();
+        assert_eq!(label(&some, &statement), expected);
     }
 
     /// A block proving the claims the Rust verifier leaves, if it leaves any.
@@ -431,9 +425,12 @@ mod tests {
         let mut elsewhere = all.clone();
         elsewhere[2].root = commitments.witness.root;
         assert!(!succeeds(&statement, &proof, &block_of(&elsewhere)));
-        let mut valued = all.clone();
-        valued[2].value += F192::ONE;
-        assert!(!succeeds(&statement, &proof, &block_of(&valued)));
+        // Each claim with another value, alone: every claim's check is reached.
+        for k in 0..all.len() {
+            let mut valued = all.clone();
+            valued[k].value += F192::ONE;
+            assert!(!succeeds(&statement, &proof, &block_of(&valued)), "{k}");
+        }
 
         let mut tampered = proof.clone();
         for at in 0..proof.stream.len() {
@@ -483,7 +480,7 @@ mod tests {
         assert!(!succeeds(&[]));
         assert!(chain.transact(CALLER, address, &data, U256::from(1), &honest).output.is_none());
         assert_eq!(chain.transact(CALLER, address, &data, U256::ZERO, &honest).output, Some(VERIFIED.to_vec()));
-        assert_eq!(chain.storage(address, U256::from(INDEX_ROOT_SLOT)).to_be_bytes::<32>(), index.root);
+        assert_eq!(chain.storage(address, INDEX_ROOT_SLOT), index.root);
     }
 
     /// The circuit's commitment is the one in storage, for the transcript and for the wiring table's claim alike: the
@@ -494,12 +491,11 @@ mod tests {
         let contract = contract(LOG_ROWS);
         let (mut chain, address) = deployed(&contract, &index);
         let stored = |chain: &Chain| {
-            let word = |slot: u8| chain.storage(address, U256::from(slot)).to_be_bytes::<32>();
-            (word(INDEX_ROOT_SLOT), word(INDEX_OOD_SLOT))
+            (chain.storage(address, INDEX_ROOT_SLOT), chain.storage(address, INDEX_OOD_SLOT))
         };
         assert_eq!(stored(&chain), (index.root, element_word(index.ood)));
         let mut code = contract.code.clone();
-        let at = contract.owner_at.expect("an owner");
+        let at = contract.owner_at;
         code[at..at + 32].copy_from_slice(OWNER.into_word().as_slice());
         assert_eq!(chain.code(address), code);
 
@@ -557,13 +553,13 @@ mod tests {
         for init in [&init[..init.len() - 1], &long[..], &init[..init.len() - 32], &init[..init.len() - 96]] {
             assert_eq!(chain.deploy(init).0, None, "{}", init.len());
         }
-        let paid = chain.run(DEPLOYER, TxKind::Create, &init, U256::from(1), &PcsFrame::default());
-        assert_eq!(paid.1, None);
+        let (_, created) = chain.run(DEPLOYER, TxKind::Create, &init, U256::from(1), &PcsFrame::default());
+        assert_eq!(created, None);
         let (address, outcome) = chain.deploy(&init);
         let address = address.expect("a deployment");
         assert_eq!(outcome.output.as_deref(), Some(&chain.code(address)[..]));
-        assert_eq!(chain.storage(address, U256::from(INDEX_ROOT_SLOT)).to_be_bytes::<32>(), index.root);
-        assert_eq!(chain.storage(address, U256::from(INDEX_OOD_SLOT)).to_be_bytes::<32>(), element_word(index.ood));
+        assert_eq!(chain.storage(address, INDEX_ROOT_SLOT), index.root);
+        assert_eq!(chain.storage(address, INDEX_OOD_SLOT), element_word(index.ood));
         assert!(contract.code.len() <= 24_576, "EIP-170");
     }
 
@@ -600,6 +596,7 @@ mod tests {
     #[test]
     #[ignore]
     fn gas_report() {
+        use evm_link::machine::frame_tx_gas;
         let (index, statement, proof) = proof(&mut Rng::new(0x6A6));
         let data = calldata(&statement, &proof).unwrap();
         let block = block_for(&index, &statement, &proof);
@@ -621,30 +618,29 @@ mod tests {
         println!("SLOAD      : 2, cold (4,200 gas): the index commitment's root and out-of-domain answer");
         println!("code       : {} bytes (EIP-170 limit 24,576)", grouped(contract.code.len() as u64));
         println!("memory     : {} words", contract.memory_words);
-        let (standard, floor, gas) = frame_gas(&data, &block, outcome.execution);
+        let gas = block.tx_gas(&data, outcome.execution);
+        // The EIP draft's PIOP column: the frame verifying the PIOP alone (its calldata and execution, no PCS gas).
+        let piop = frame_tx_gas(&data, outcome.execution, &[], 0);
         println!();
         println!("Under EIP-8141 (EIP-7976's floor) with the EIP draft's pcs_gas in both, without FRAME_TX_INTRINSIC_COST");
         println!("and the per-frame costs; the frame of PCS claims is {} bytes:", block.data().len());
         println!("execution {}", grouped(outcome.execution));
-        println!("standard  {}  (16/4 a byte of calldata and frame, execution, pcs_gas)", grouped(standard));
-        println!("floor     {}  (64 a byte of calldata and frame, pcs_gas)", grouped(floor));
-        println!("gas       {}", grouped(gas));
-        // The EIP draft's PIOP column: the frame verifying the PIOP alone (its calldata and execution, no PCS gas),
-        // `max(standard, floor)`.
-        let piop_standard = 16 * (data.len() - zeros) as u64 + 4 * zeros as u64 + outcome.execution;
-        let piop_floor = 64 * data.len() as u64;
+        println!("standard  {}  (16/4 a byte of calldata and frame, execution, pcs_gas)", grouped(gas.standard));
+        println!("floor     {}  (64 a byte of calldata and frame, pcs_gas)", grouped(gas.floor));
+        println!("gas       {}", grouped(gas.total));
         println!(
             "PIOP      {}  (the PIOP's frame alone: standard {}, floor {})",
-            grouped(piop_standard.max(piop_floor)),
-            grouped(piop_standard),
-            grouped(piop_floor)
+            grouped(piop.total),
+            grouped(piop.standard),
+            grouped(piop.floor)
         );
+        // The EIP draft's table (`bench.sh` reads this line).
         println!(
-            "EIP table: calldata {} bytes, PIOP {} gas, {} claims, total {} gas",
+            "BENCH membership calldata={} piop={} claims={} total={}",
             data.len(),
-            grouped(piop_standard.max(piop_floor)),
+            piop.total,
             block.claims().len(),
-            grouped(gas)
+            gas.total
         );
         println!();
         println!(

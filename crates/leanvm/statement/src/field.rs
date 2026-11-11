@@ -181,6 +181,19 @@ impl From<K> for E {
     }
 }
 
+/// The provers' field (leanVM's `F192`) is this one, limb for limb.
+impl From<primitives::field::F192> for E {
+    fn from(x: primitives::field::F192) -> Self {
+        Self::new(x.c0, x.c1, x.c2)
+    }
+}
+
+impl From<E> for primitives::field::F192 {
+    fn from(x: E) -> Self {
+        Self::new(x.c0, x.c1, x.c2)
+    }
+}
+
 impl Add for E {
     type Output = Self;
     fn add(self, rhs: Self) -> Self {

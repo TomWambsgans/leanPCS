@@ -79,6 +79,35 @@ pub trait Channel<S: Scalar> {
     }
 }
 
+/// What draws challenges: a verifier's [`Channel`], or the prover's [`KeccakWriter`] (the same chain), so that the
+/// Fiat–Shamir shapes' runs of challenges ([`FsShape::draw`], `leanvm_univariate`'s draws) are written once for both.
+pub trait Draws<S: Scalar> {
+    /// One challenge ([`Channel::sample`]).
+    fn one(&mut self) -> S;
+    /// `count` challenges from one hash ([`Channel::sample_wide`]).
+    fn wide(&mut self, count: usize) -> Vec<S>;
+}
+
+impl<S: Scalar, C: Channel<S>> Draws<S> for C {
+    fn one(&mut self) -> S {
+        self.sample()
+    }
+
+    fn wide(&mut self, count: usize) -> Vec<S> {
+        self.sample_wide(count)
+    }
+}
+
+impl Draws<E> for KeccakWriter {
+    fn one(&mut self) -> E {
+        self.sample()
+    }
+
+    fn wide(&mut self, count: usize) -> Vec<E> {
+        self.sample_wide(count)
+    }
+}
+
 /// Keccak-256's rate in bytes.
 pub const RATE_BYTES: usize = 136;
 
@@ -116,37 +145,35 @@ pub fn challenge_at(out: &[u8; RATE_BYTES], k: usize) -> E {
 }
 
 /// The verifier's Fiat–Shamir shape: which runs of challenges are drawn one by one, and which derived
-/// (`docs/leanvm/rec/SPEC-REC.md` §1.4).
+/// (`docs/leanvm/rec/SPEC-REC.md` §1.4). The discriminant is the shape's code in the contract's IV
+/// (`leanvm_univariate`'s `variant_bytes`, which the Lean reads); codes 1 and 2 were π1-rec's and π1-rec2's, which
+/// no variant uses any more.
 ///
 /// Two runs may be derived: Flock's zerocheck eq point after its seven fixed coordinates (`flock_min`), and the bus's
-/// tuple weights `α` (`crates/leanvm/univariate`'s `reduce`). Every other challenge is drawn in both shapes, and the
+/// tuple weights `α` (`crates/leanvm/univariate`'s `reduce`). Every other challenge is drawn in every shape, and the
 /// stream, the claims and their points' structure are the same; only the challenges' values differ.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum FsShape {
     /// Every challenge drawn, one Keccak-256 each: leanVM's shape, the main line's.
     #[default]
-    Main,
-    /// `π1-rec`: in each of the two runs, the first challenge `c` is drawn and the others are `c², c⁴, …`, each the
-    /// square of the one before (no hash). 24 fewer Keccak-256 calls on the main line (131 → 107 Keccak-f).
-    Rec,
-    /// `π1-rec2`'s (`docs/leanvm/rec/SPEC-REC.md` §12): [`FsShape::Rec`], and the batching sumcheck's challenges of
-    /// [`NARROW_BITS`] bits ([`Channel::sample_narrow`]): the claims' point, which the recursion's contract carries in
-    /// calldata, has four zero bytes a coordinate.
-    Rec2,
-    /// `π1-rec3`'s (SPEC-REC.md §12, univariate `SPEC.md` §14.1): [`FsShape::Rec2`] with the batching sumcheck two variables a
-    /// round ([`sumcheck_pairs_drawn`]): one narrow challenge `z_j` a pair, the point's two coordinates
-    /// [`pair_point`]`(z_j)`, so 14 challenges for 27 coordinates.
-    Rec3,
-    /// `π1-rec4`'s (`docs/leanvm/univariate/SPEC.md` §14.4): [`FsShape::Rec3`] with the challenges no message separates drawn
-    /// from one Keccak-f ([`Channel::sample_wide`]), and the ring switch's map drawn after `C2`'s commitment: `α`'s `c`,
-    /// `β`, `γ` and the zerocheck's `c` from the call that absorbs `C1`'s commitment; the slices absorbed with `C2`'s
-    /// commitment, then `t` and the map's `f_0 … f_3`; after the values at `t`, `ρ`, the batch's `λ` and `f_4`, `f_5`.
-    /// 106 Keccak-f in π1's transcript at the reference shape instead of 116.
-    Rec4,
+    Main = 0,
+    /// `π1-rec3`'s (SPEC-REC.md §1.4, §12, univariate `SPEC.md` §14.1): in each of the two runs, the first challenge
+    /// `c` is drawn and the others are `c², c⁴, …`, each the square of the one before (no hash); the batching
+    /// sumcheck's challenges are of [`NARROW_BITS`] bits ([`Channel::sample_narrow`]: the claims' point, which the
+    /// recursion carries, has four zero bytes a coordinate) and take two variables a round ([`sumcheck_pairs_drawn`]):
+    /// one narrow challenge `z_j` a pair, the point's two coordinates [`pair_point`]`(z_j)`, so 14 challenges for 27
+    /// coordinates.
+    Rec3 = 3,
+    /// `π1-rec4`'s (`docs/leanvm/univariate/SPEC.md` §14.4): [`FsShape::Rec3`] with the challenges no message separates
+    /// drawn from one Keccak-f ([`Channel::sample_wide`]), and the ring switch's map drawn after `C2`'s commitment:
+    /// `α`'s `c`, `β`, `γ` and the zerocheck's `c` from the call that absorbs `C1`'s commitment; the slices absorbed
+    /// with `C2`'s commitment, then `t` and the map's `f_0 … f_3`; after the values at `t`, `ρ`, the batch's `λ` and
+    /// `f_4`, `f_5`. 106 Keccak-f in π1's transcript at the reference shape instead of 116.
+    Rec4 = 4,
 }
 
 /// The bits of a narrow challenge: its top limb's low 32 (`c2 < 2^32`). Soundness: a sumcheck round of degree 2 errs
-/// with probability `2/2^160`; π1-rec2's batch, 27 rounds over `C1`'s and `C2`'s lists (`2^24.3`), at `2^-130`.
+/// with probability `2/2^160`; the paired batch, 27 rounds over `C1`'s and `C2`'s lists (`2^24.3`), at `2^-130`.
 pub const NARROW_BITS: usize = 160;
 
 /// The narrow challenge of a hash's challenge: its limb 2 cut to 32 bits.
@@ -155,24 +182,20 @@ pub fn narrow(x: E) -> E {
 }
 
 impl FsShape {
-    /// A run of `count` challenges that `π1-rec` derives: drawn one by one ([`FsShape::Main`]), or the first drawn and
-    /// each next the square of the one before ([`FsShape::Rec`]).
-    pub fn draw<S: Scalar, C: Channel<S> + ?Sized>(self, channel: &mut C, count: usize) -> Vec<S> {
+    /// A run of `count` challenges: drawn one by one ([`FsShape::Main`]), or the first drawn and each next the square
+    /// of the one before (π1-rec3, π1-rec4).
+    pub fn draw<S: Scalar>(self, draws: &mut impl Draws<S>, count: usize) -> Vec<S> {
         match self {
-            FsShape::Main => channel.samples(count),
-            FsShape::Rec | FsShape::Rec2 | FsShape::Rec3 | FsShape::Rec4 if count == 0 => Vec::new(),
-            FsShape::Rec | FsShape::Rec2 | FsShape::Rec3 | FsShape::Rec4 => squares(channel.sample(), count),
+            FsShape::Main => (0..count).map(|_| draws.one()).collect(),
+            FsShape::Rec3 | FsShape::Rec4 if count == 0 => Vec::new(),
+            FsShape::Rec3 | FsShape::Rec4 => squares(draws.one(), count),
         }
     }
 
-    /// The batching sumcheck's challenges are narrow ([`NARROW_BITS`]).
-    pub fn narrow_batch(self) -> bool {
-        matches!(self, FsShape::Rec2 | FsShape::Rec3 | FsShape::Rec4)
-    }
-
-    /// The batching sumcheck takes two variables a round ([`sumcheck_pairs_drawn`]).
+    /// The batching sumcheck takes two variables a round with narrow challenges ([`sumcheck_pairs_drawn`],
+    /// [`NARROW_BITS`]); on the main line, one variable a round with whole challenges.
     pub fn paired_batch(self) -> bool {
-        matches!(self, FsShape::Rec3 | FsShape::Rec4)
+        self != FsShape::Main
     }
 
     /// The challenges no message separates come from one wide draw ([`Channel::sample_wide`]; π1-rec4).
@@ -330,13 +353,17 @@ pub fn scalar_bytes(x: E) -> [u8; 24] {
     bytes
 }
 
-/// The bytes of a root half in calldata: 16 bytes, big-endian.
-pub fn half_bytes(x: E) -> [u8; 16] {
-    assert_eq!(x.c2, 0, "a root half is 128-bit");
-    let mut bytes = [0; 16];
-    bytes[..8].copy_from_slice(&x.c1.to_be_bytes());
-    bytes[8..].copy_from_slice(&x.c0.to_be_bytes());
-    bytes
+/// A root's two 128-bit halves as the stream carries them ([`Channel::next_root`]: each 16-byte half big-endian, `c1`
+/// then `c0`), so that the stream's 32 bytes are the root's bytes as they are.
+pub fn root_halves(root: &[u8; 32]) -> [E; 2] {
+    let word = |at: usize| u64::from_be_bytes(root[at..at + 8].try_into().expect("8 bytes"));
+    [E::new(word(8), word(0), 0), E::new(word(24), word(16), 0)]
+}
+
+/// A 32-byte word as the statement reads it: four big-endian 64-bit words, each an element's low limb (the public
+/// input's words, low first; a frame word, [`Channel::next_frame`]).
+pub fn statement_words(word: &[u8; 32]) -> [E; 4] {
+    std::array::from_fn(|k| E::new(u64::from_be_bytes(word[8 * k..8 * k + 8].try_into().expect("8 bytes")), 0, 0))
 }
 
 /// The challenge a Keccak state gives: its low 192 bits, limb 0 lowest.
@@ -361,6 +388,24 @@ pub enum Checks {
     Enforce,
     /// Hold none to account: collect every value required to be zero, then every one required to be nonzero.
     Collect { zero: Vec<E>, nonzero: Vec<E> },
+}
+
+impl Checks {
+    /// [`Checks::Collect`], nothing collected yet.
+    pub fn collect() -> Self {
+        Checks::Collect {
+            zero: Vec::new(),
+            nonzero: Vec::new(),
+        }
+    }
+
+    /// Every check collected holds (what is required zero is, what is required nonzero is); enforced checks held.
+    pub fn hold(&self) -> bool {
+        match self {
+            Checks::Enforce => true,
+            Checks::Collect { zero, nonzero } => zero.iter().all(|x| *x == ZERO) && nonzero.iter().all(|x| *x != ZERO),
+        }
+    }
 }
 
 /// A wide draw on the message `input` (the state, then the bytes since the last challenge): the next state (the
@@ -476,10 +521,7 @@ impl Channel<E> for KeccakChannel<'_> {
 
     fn next_frame(&mut self) -> Result<[E; 4], VerifierError> {
         require(!self.frame.is_empty(), VerifierError::StreamExhausted)?;
-        let word = self.frame.remove(0);
-        Ok(std::array::from_fn(|k| {
-            E::new(u64::from_be_bytes(word[8 * k..8 * k + 8].try_into().unwrap()), 0, 0)
-        }))
+        Ok(statement_words(&self.frame.remove(0)))
     }
 
     fn next_narrow(&mut self) -> Result<E, VerifierError> {
@@ -515,8 +557,9 @@ impl KeccakWriter {
         self.stream.extend(&scalar_bytes(x)[4..]);
     }
 
-    pub fn send_root(&mut self, halves: [E; 2]) {
-        halves.into_iter().for_each(|half| self.stream.extend(half_bytes(half)));
+    /// A commitment's root, its 32 bytes as they are ([`Channel::next_root`] reads them as [`root_halves`]).
+    pub fn send_root(&mut self, root: &[u8; 32]) {
+        self.stream.extend(root);
     }
 
     /// A packed integer of `bytes` bytes, big-endian ([`Channel::next_integer`]).
@@ -556,14 +599,15 @@ mod tests {
         let seed = keccak_seed(b"leanVM-flock-gas", &[7; 32], &[9; 32]);
         let mut writer = KeccakWriter::new(seed);
         writer.send(E::new(8, 0, 0));
-        writer.send_root([E::new(1, 2, 0), E::new(3, 4, 0)]);
+        let root: [u8; 32] = std::array::from_fn(|i| i as u8 * 7 + 1);
+        writer.send_root(&root);
         let a = writer.sample();
         let b = writer.sample();
         writer.send(E::new(5, 6, 7));
         let c = writer.sample();
         let mut channel = KeccakChannel::new(seed, &writer.stream, Checks::Enforce);
         assert_eq!(channel.next_scalar(), Ok(E::new(8, 0, 0)));
-        assert_eq!(channel.next_root(), Ok([E::new(1, 2, 0), E::new(3, 4, 0)]));
+        assert_eq!(channel.next_root(), Ok(root_halves(&root)));
         assert_eq!((channel.sample(), channel.sample()), (a, b));
         assert_eq!(channel.next_scalar(), Ok(E::new(5, 6, 7)));
         assert_eq!(channel.sample(), c);

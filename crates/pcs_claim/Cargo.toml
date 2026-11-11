@@ -10,6 +10,7 @@ description = "The EIP draft's PCS claim: its encoding, its commitment (a WHIR r
 workspace = true
 
 [dependencies]
+evm_link.workspace = true
 primitives.workspace = true
 fiat_shamir.workspace = true
 pcs.workspace = true
@@ -18,8 +19,6 @@ parallel.workspace = true
 
 [dev-dependencies]
 primitives = { workspace = true, features = ["test-util"] }
-evm_link.workspace = true
 leanvm_statement.workspace = true
-# The trace tree of `opening_time` (`PCS_CLAIM_TRACING`).
+# The peak memory `examples/open_timing.rs` reports.
 bench.workspace = true
-tracing.workspace = true

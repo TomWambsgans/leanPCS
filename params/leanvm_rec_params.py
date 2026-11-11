@@ -6,15 +6,16 @@ rounds of k variables (docs/leanvm/univariate/SPEC.md §14.3).
 
     python3 -I params/leanvm_rec_params.py
 
-MEASURED (crates/leanvm/rec: tests/counts.rs, tests/keccak_vm_rec.rs, tests/circuit.rs; SPEC-REC.md §1.2, §2.4.5,
+MEASURED (crates/leanvm/rec: tests/counts.rs, tests/pi2_real.rs, tests/circuit.rs; SPEC-REC.md §1.2, §2.4.5,
 §10.3): pi1-rec3's and pi1-rec4's verifier graphs and pi2's positions at 128 and 400 signatures. MODELLED (here):
 every soundness figure, the other arithmetizations' sizes, the k-variable rounds' permutations.
 
-pi2's rounds are those of its PIOP on the PCS claims (docs/leanvm/rec/PI2.md §2, §7; the Lean,
-formal/RecPiop/RecPiop/Rounds.lean `err`, states coarser ones: (4N - 1 + sum d_j)/|E|, (4N - 1)/|E|, 2^r/|E|): the
-copy argument (alpha, beta, gamma) over W's list, the two identities at t, W's fold and Q's claim at rho over W's and
-Q's lists. The composition adds pi2's bound and pi1-rec4's (RecCompose's `RecKnowledgeSoundnessReduction`, stated
-for pi1-rec3), each with its openings charged once.
+pi2's rounds are π2v2's PIOP's, as π2v4 runs it on the PCS claims (docs/leanvm/rec/PI2.md §2, §7;
+the copy sum from Q's layout, two claims on Q, PI2.md §2; the Lean, formal/RecPiop/RecPiop/Rounds.lean
+`err`, states π2v3's, coarser: (4N - 1 + sum d_j)/|E|, (4N - 1)/|E|, 2^r/|E|): the copy argument (alpha, beta, gamma)
+over W's list, the two identities at t, W's fold and Q's pushes' claim at rho over W's and Q's lists. The
+composition adds pi2's bound and pi1-rec4's (RecCompose's `RecKnowledgeSoundnessReduction`, stated for pi1-rec3),
+each with its openings charged once.
 """
 from fractions import Fraction
 import importlib.util
@@ -25,32 +26,46 @@ import sys
 sys.dont_write_bytecode = True  # loading the other script must not write a __pycache__ next to it
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-
-
-def _load(name):
-    spec = importlib.util.spec_from_file_location(name, os.path.join(HERE, name + ".py"))
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
-
-
-uni = _load("leanvm_univariate_params")
+_spec = importlib.util.spec_from_file_location("leanvm_univariate_params", os.path.join(HERE, "leanvm_univariate_params.py"))
+uni = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(uni)
 LOGQ = uni.LOGQ
 CERTIFIED_L0 = uni.CERTIFIED_L0
 bits, err = uni.bits, uni.err
 
 # ---------------------------------------------------------------------------------------------------------------------
-# MEASURED: pi1-rec3's verifier (Claims::Point; SPEC-REC.md §1.2) and pi2's D16v circuit of it (§2.4.5, §10.3).
+# The committed real proofs (crates/leanvm/univariate/tests/vectors/): a proof's stream is its calldata past the
+# selector and the public word (`PI1_STREAM_AT`, crates/leanvm/univariate/tests/vectors/mod.rs), read here rather
+# than copied.
+VECTORS = os.path.join(HERE, "..", "crates", "leanvm", "univariate", "tests", "vectors")
+STREAM_AT = 4 + 32
+
+
+def vector_stream(name):
+    """The stream bytes of the committed vector `name`."""
+    with open(os.path.join(VECTORS, name + ".txt")) as f:
+        for line in f:
+            key, _, value = line.partition(" ")
+            if key == "calldata":
+                return len(value.strip()) // 2 - STREAM_AT
+    raise ValueError(f"{name}: no calldata")
+
+
+# MEASURED: pi1-rec3's verifier (point claims; SPEC-REC.md §1.2) and pi2's D16v circuit of it (§2.4.5, §10.3); the
+# streams the vectors' (128 signatures: keccak128_rec3, the reference trace; 400: keccak_rec3).
 PI1_REC3 = {
-    128: dict(stream=9232, calls=70, perms=116, products=8476, linear=6633, challenges=14, values=3),
-    400: dict(stream=9424, calls=71, perms=118, products=8673, linear=6887, challenges=14, values=3),
+    128: dict(stream=vector_stream("keccak128_rec3"), calls=70, perms=116, products=8476, linear=6633, challenges=14,
+              values=3),
+    400: dict(stream=vector_stream("keccak_rec3"), calls=71, perms=118, products=8673, linear=6887, challenges=14,
+              values=3),
 }
 # pi1-rec4 (docs/leanvm/univariate/SPEC.md §14.4): the challenges no message separates from one Keccak-f each, the
 # ring map after C2's commitment. The same stream, E operations and claims as pi1-rec3.
 PI1_REC4 = {
-    128: dict(stream=9280, calls=60, perms=106),
-    400: dict(stream=9472, calls=61, perms=108),
+    128: dict(stream=vector_stream("keccak128_rec4"), calls=60, perms=106),
+    400: dict(stream=vector_stream("keccak_rec4"), calls=61, perms=108),
 }
+assert all(PI1_REC4[x]["stream"] == PI1_REC3[x]["stream"] for x in PI1_REC3), "pi1-rec4's stream is pi1-rec3's"
 KECCAK_D16V = 130_944  # positions a Keccak-f[1600] (SPEC-REC.md §2.4.1; the design's 130,736)
 # A permutation whose caller reads its digest alone (lanes 0 .. 3): its last round's plane 0 (SPEC-REC.md §2.4.1).
 KECCAK_D16V_DIGEST = 130_944 - 4 * 64 * 16
@@ -74,7 +89,8 @@ def pi2_stacks(log_n=LOG_N):
 
 
 def stack(words):
-    return max(24, math.ceil(math.log2(words) - 1e-9))
+    """A stack's variables, at least 24: the certified lists start at 2^24."""
+    return uni.stack_vars(words, floor=24)
 
 
 def pi2_rounds(log_n=LOG_N, row=ROW):
@@ -88,20 +104,21 @@ def pi2_rounds(log_n=LOG_N, row=ROW):
         # (α, β) with at most 2N linear factors, plus the vanishing denominators (4N), and the four-limb ports'
         # fingerprints, degree 1 in γ.
         ("copy argument (α, β, γ): 2N fractions, the ports' poles and fingerprints", 4 * n + PORT_DEGREES, lw),
-        # Two identities at t, each of degree below 3N, which must both vanish: the copy identity
-        # h d_pull d_push + (1 + 1_S)(d_push + d_pull) + T = q Z_V (d_push of the committed P) and P's definition
-        # P = P_v + Z_V q_P. The bound is the larger's, not the sum. Below 3N for the honest Q; with the slots the
-        # prover fills (h_1 in 1, 5, 9; S in 12: PI2.md §2, "The empty slots") the identities reach degree < 4N, so
-        # the round is charged 4N (as PI2.md's argument and RecPiop's `err`, 4N - 1).
-        ("t: the copy identity and P's definition, degree < 4N with the empty slots", 4 * n, lw * lq),
+        # π2v4 (docs/leanvm/rec/PI2.md §2, §7): two identities at t which must both vanish: the copy identity as the
+        # identity's claim reads it, times c_h = d_pull d_push, I = D² H + x Z_V D q + x² Z_V³ G + x D R (H = x h, G the
+        # zero slot the prover fills; degree < 5N), and P's definition P = P_v + Z_V q_P (< 3N). The bound is the
+        # larger's, not the sum (π2v3: < 4N with its prover-filled empty slots; π2v1: one identity below 5N).
+        ("t: the copy identity (as read with H = x h) and P's definition, degree < 5N", 5 * n, lw * lq),
         (f"ρ: W's fold (degree {row - 1})", row - 1, lw * lq),
-        # Q's one claim combines h(t), q(t), P(t) = s and q_P's definition by ρ: degree 3 in ρ.
-        ("ρ: Q's claim (the identity, P(t) = s, P's definition), degree 3", 3, lw * lq),
+        # π2v4: Q's pushes' claim, times Y_3 = 1 + ρ + ρ Z_V, is (1 + ρ)² e_P + ρ (1 + ρ) e_def + ρ² Z_V S(t) in the
+        # errors of P(t) = s and q_P's definition at t: degree 2 in ρ, zero iff all three are (π2v3's one claim, the
+        # identity's ratio too: degree 3).
+        ("ρ: Q's pushes' claim (P(t) = s, P's definition, S(t) = 0), degree 2", 2, lw * lq),
     ]
 
 
 def pi2_bound():
-    """pi2's weakest round after its lists, and its bits at Q = 2^64 with its three openings once (`pi2Bound`)."""
+    """pi2's weakest round after its lists, and its bits at Q = 2^64 with its openings charged once (the per-query WHIR term, whatever their number; `pi2Bound`)."""
     _, _, rs = pi2_rounds()
     worst = max(err(num, LOGQ) * union for _, num, union in rs)
     return worst, uni.per_query(worst)
@@ -186,7 +203,7 @@ def grouped_rounds(k, vars_=BATCH_VARS, degree=2):
 
 
 def main():
-    print("== pi1-rec3's verifier (MEASURED, Claims::Point)")
+    print("== pi1-rec3's verifier (MEASURED, point claims)")
     for xmss, p in PI1_REC3.items():
         used = (p["perms"] + CLAIM_HASH_PERMS) * KECCAK_D16V + REST[xmss]
         print(f"  {xmss} signatures: stream {p['stream']:,} B, Keccak-256 {p['calls']}, Keccak-f {p['perms']}, E products"

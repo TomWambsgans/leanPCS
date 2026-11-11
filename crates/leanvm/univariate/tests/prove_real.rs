@@ -14,11 +14,11 @@ use leanvm_statement::evm::codegen::word;
 use leanvm_statement::evm::machine::{PcsFrame, call};
 use leanvm_statement::shapes::PROGRAM_IV;
 use leanvm_univariate::claims::Commitment;
-use leanvm_univariate::contract::{SetupRoots, calldata, compile_verifier, proof_calldata, record_verifier_with};
+use leanvm_univariate::contract::{SetupRoots, calldata, compile_verifier, record_verifier_with};
 use leanvm_univariate::prover::check::on_domain;
 use leanvm_univariate::prover::prove::{Config, OpeningProof, Proof, prove, verify};
 use leanvm_univariate::prover::trace::Trace;
-use leanvm_univariate::{Claims, KECCAK_MAIN, KECCAK_REC3, KECCAK_REC4, Variant};
+use leanvm_univariate::{KECCAK_MAIN, KECCAK_REC3, KECCAK_REC4, Variant};
 use primitives::field::F192;
 
 fn dir() -> Option<std::path::PathBuf> {
@@ -57,16 +57,6 @@ static ALLOCATOR: bench::Jemalloc = bench::Jemalloc;
 /// The root of the trace's contract: its program's and shape's `F`.
 fn contract_roots(trace: &Trace) -> SetupRoots {
     leanvm_univariate::prover::setup::shape_roots(&trace.shape(), &leanvm_univariate::prover::columns::setup_polys(trace))
-}
-
-/// Run `f` on a thread with a deep stack: the code generator recurses along the graph.
-fn deep<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> R {
-    std::thread::Builder::new()
-        .stack_size(1 << 30)
-        .spawn(f)
-        .expect("a thread")
-        .join()
-        .expect("no panic")
 }
 
 fn copy(proof: &Proof, stream: Vec<u8>) -> Proof {
@@ -124,7 +114,7 @@ fn end_to_end(variant: Variant) {
     let roots = contract_roots(&trace);
     let config = Config {
         variant,
-        claims: Claims::Point,
+        low_memory: false,
         check: true,
         garbage: false,
         roots,
@@ -211,11 +201,10 @@ fn end_to_end(variant: Variant) {
             &public,
             &stream,
             variant,
-            Claims::Point,
         )
         .expect("the Rust verifier accepts");
         assert!(zero.iter().all(|x| *x == Default::default()) && nonzero.iter().all(|x| *x != Default::default()));
-        let recorded = deep(move || record_verifier_with(&shape, variant, Claims::Point, &roots));
+        let recorded = vectors::deep(move || record_verifier_with(&shape, variant, &roots));
         let claims: Vec<Vec<u8>> = leanvm_univariate::contract::expected_claims(&recorded, &reduced, &proof.stream)
             .iter()
             .map(|c| c.encode())
@@ -226,14 +215,14 @@ fn end_to_end(variant: Variant) {
     let (accepted, rejected, gas, calls) = if wide {
         (Some(word([1, 0, 0]).to_vec()), 0, 0, inputs.clone())
     } else {
-        deep(move || {
-        let recorded = record_verifier_with(&shape, variant, Claims::Point, &roots);
+        vectors::deep(move || {
+        let recorded = record_verifier_with(&shape, variant, &roots);
         assert_eq!(recorded.stream_len, stream.len(), "the contract's stream is the proof's");
         // The measuring build, word for word against the Rust verifier, on this accepting stream.
-        leanvm_univariate::contract::parity_with(&shape, &PROGRAM_IV, &roots, &public, &stream, variant, Claims::Point);
+        leanvm_univariate::contract::parity_with(&shape, &PROGRAM_IV, &roots, &public, &stream, variant);
         let contract = compile_verifier(&recorded, &PROGRAM_IV, false);
-        // The claims the contract checks are those the openings prove.
-        let calls = call(&contract.code, &[], &data, &PcsFrame::declaring_all()).claims;
+        // The claims the contract checks, its frame declaring those the openings prove, are those.
+        let calls = call(&contract.code, &[], &data, &PcsFrame::of(inputs.iter().cloned())).claims;
         assert_eq!(calls.len(), inputs.len(), "one claim per opening");
         for (k, (made, proven)) in calls.iter().zip(&inputs).enumerate() {
             assert_eq!(made, proven, "call {k}: the opening's claim");
@@ -248,8 +237,7 @@ fn end_to_end(variant: Variant) {
             pcs
         };
         let blocks: Vec<PcsFrame> = std::iter::once(attesting(None)).chain((0..calls.len()).map(|k| attesting(Some(k)))).collect();
-        let one = word([1, 0, 0]);
-        let accepts = |data: &[u8], block: &PcsFrame| call(&contract.code, &[], data, block).output.as_deref() == Some(&one[..]);
+        let accepts = |data: &[u8], block: &PcsFrame| call(&contract.code, &[], data, block).attests();
         let ok = call(&contract.code, &[], &data, &blocks[0]);
         let mut bad = data.clone();
         // The stream's last byte, before the frame's.
@@ -277,7 +265,7 @@ fn end_to_end(variant: Variant) {
             config: name.to_string(),
             shape,
             public,
-            calldata: proof_calldata(&public, &proof.stream),
+            calldata: [&vectors::SELECTOR[..], &public, &proof.stream].concat(),
             claims: calls.clone(),
             accepts: true,
             gas_straight: gas,
@@ -378,7 +366,7 @@ fn keccak_prover_benchmark() {
     let cooldown: u64 = std::env::var("PI1_COOLDOWN").ok().map_or(2, |x| x.parse().expect("seconds"));
     let config = Config {
         variant,
-        claims: Claims::Point,
+        low_memory: false,
         check: false,
         garbage: false,
         roots: contract_roots(&trace),
@@ -439,7 +427,7 @@ fn unused_words_are_not_relied_on() {
     };
     let config = Config {
         variant: KECCAK_MAIN,
-        claims: Claims::Point,
+        low_memory: false,
         check: true,
         garbage: true,
         roots: contract_roots(&trace),

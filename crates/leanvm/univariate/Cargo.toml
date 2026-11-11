@@ -12,7 +12,7 @@ workspace = true
 
 [dependencies]
 leanvm_statement.workspace = true
-revm.workspace = true
+evm_link.workspace = true
 # The prover (src/prover): leanVM's WHIR (c445e3d5) and its verifier, the Cantor transforms of crates/membership/quotient.
 primitives.workspace = true
 pcs.workspace = true

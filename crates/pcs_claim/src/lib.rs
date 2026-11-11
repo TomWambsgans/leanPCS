@@ -17,10 +17,11 @@
 //!
 //! - [`PcsClaim`]: the claim, [`PcsClaim::encode`], [`PcsClaim::decode`] (well-formedness), [`PcsClaim::hash`]
 //!   (`keccak256(PCS_claim)`, the dependency's payload).
-//! - [`commit`]: the commitment to `2^n` words (`n` from [`MIN_VARIABLES`] to [`MAX_VARIABLES`]), its root and
-//!   out-of-domain answer.
-//! - [`open`]: one opening proving `f(z) = ood` and `f(point) = value` together, at one random combination;
-//!   [`verify`]: the EIP's `pcs_verify(PCS_claim, opening_proof)` for [`VERSION`].
+//! - [`commit`] (owning the words) and [`commit_words`] (borrowing them): the commitment to `2^n` words (`n` from
+//!   [`MIN_VARIABLES`] to [`MAX_VARIABLES`]), its root and out-of-domain answer.
+//! - [`open`] ([`open_batch`] for several claims on one commitment): one opening proving `f(z) = ood` and
+//!   `f(point) = value` together, at one random combination; [`verify`]: the EIP's `pcs_verify(PCS_claim,
+//!   opening_proof)` for [`VERSION`].
 //!
 //! **Variables.** `f(x) = Σ_i f_i Π_j (x_j if bit j of i is 1, else 1 - x_j)`, `f_i` the `i`-th committed word,
 //! bit 0 the least significant: `x_0 .. x_{n-7}` are the coordinates inside one of WHIR's `64` lanes of `2^(n-6)`
@@ -33,18 +34,18 @@ use fiat_shamir::transcript::{Proof, ProverState};
 use std::sync::Mutex;
 
 use pcs::whir::{
-    LaneJob, LaneTensor, Low, commit_tree_skipping_in, config_for_rate, recursive_prover_with_lane_tensors_batch,
+    KeptCodeword, LaneJob, LaneTensor, Low, commit_tree_skipping_in, config_for_rate, eq_bits,
+    recursive_prover_with_lane_tensors_batch,
 };
 use primitives::field::{F64, F192};
 use primitives::hash::hash as keccak256;
 use primitives::multilinear::mle_eval_par;
 
-/// The PCS version this crate implements: leanVM's WHIR (commit `c445e3d5`) at rate `1/2`, its deployed ladder
-/// (`pcs::whir::DEPLOYED_SCHEDULE`, `verifier::whir::Ladder::Deployed`), `64` lanes at its first fold.
-pub const VERSION: u8 = 1;
-
-/// The EIP's bound on `n` (`MAX_PCS_VARIABLES`): a claim with more variables is not well-formed.
-pub const MAX_PCS_VARIABLES: usize = 32;
+// The claim's wire format (`evm_link::wire`, which the contracts pack): `VERSION` is the PCS version this crate
+// implements, leanVM's WHIR (commit `c445e3d5`) at rate `1/2`, its deployed ladder (`pcs::whir::DEPLOYED_SCHEDULE`,
+// `verifier::whir::Ladder::Deployed`), `64` lanes at its first fold; `MAX_PCS_VARIABLES` the EIP's bound on `n` (a
+// claim with more variables is not well-formed); `claim_len(n)` its `82 + 24 n` bytes.
+pub use evm_link::wire::{ELEMENT_BYTES, MAX_PCS_VARIABLES, VERSION, claim_len};
 
 /// The variables [`VERSION`] commits and opens: WHIR's stacks of `2^15` to `2^28` words. A well-formed claim with
 /// `n` outside this range is not supported: [`verify`] rejects it, the prover panics.
@@ -57,19 +58,11 @@ pub const LOG_INV_RATE: usize = 1;
 /// WHIR's first fold: `2^6` lanes.
 pub const LANE_FOLD: usize = 6;
 
-/// The bytes of an element of `E`.
-pub const ELEMENT_BYTES: usize = 24;
-
 /// The domain tag of the out-of-domain point's derivation ([`ood_point`]).
 pub const OOD_TAG: &[u8] = b"leanPCS-ood";
 
 /// The public digest the opening's transcript starts from: zero.
 pub const PUBLIC_DIGEST: [u8; 32] = [0; 32];
-
-/// The bytes of a claim on `n` variables: `82 + 24 n`.
-pub const fn claim_len(n: usize) -> usize {
-    2 + 32 + ELEMENT_BYTES + ELEMENT_BYTES * n + ELEMENT_BYTES
-}
 
 /// An element of `E` as a claim encodes it: the 192-bit integer `c0 | c1 << 64 | c2 << 128` (`c_k` the coefficient
 /// of `X^k`), big-endian, 24 bytes: the low 24 bytes of the EVM word `MULFIELD` takes.
@@ -126,12 +119,11 @@ impl PcsClaim {
     /// The claim `bytes` encode, if they are well-formed: version [`VERSION`], `1 <= n <= MAX_PCS_VARIABLES`, and
     /// exactly [`claim_len`]`(n)` bytes.
     pub fn decode(bytes: &[u8]) -> Option<Self> {
-        let (&version, rest) = bytes.split_first()?;
-        let (&n, rest) = rest.split_first()?;
-        let vars = n as usize;
-        if version != VERSION || !(1..=MAX_PCS_VARIABLES).contains(&vars) || bytes.len() != claim_len(vars) {
+        if !evm_link::wire::well_formed(bytes) {
             return None;
         }
+        let (n, rest) = (bytes[1], &bytes[2..]);
+        let vars = n as usize;
         let root: [u8; 32] = rest[..32].try_into().ok()?;
         let elements: Vec<F192> = rest[32..]
             .as_chunks::<ELEMENT_BYTES>()
@@ -146,6 +138,22 @@ impl PcsClaim {
             point: elements[1..=vars].to_vec(),
             value: elements[vars + 1],
         })
+    }
+
+    /// The claim whose fields a contract holds as these words (`evm_link::Claim`): the root's 32 bytes, each element's
+    /// word (its top 64 bits zero, its low 24 bytes [`element_bytes`]).
+    pub fn of_words(words: &evm_link::Claim<[u8; 32]>) -> Self {
+        let element = |w: &[u8; 32]| {
+            assert!(w[..8].iter().all(|&b| b == 0), "an element's top 64 bits are zero");
+            element_of(w[8..].try_into().expect("24 bytes"))
+        };
+        Self {
+            n: words.point.len() as u8,
+            root: words.root,
+            ood: element(&words.ood),
+            point: words.point.iter().map(element).collect(),
+            value: element(&words.value),
+        }
     }
 
     /// `keccak256(PCS_claim)`: the payload of the claim's dependency, and the opening's transcript IV ([`iv`]).
@@ -193,18 +201,18 @@ fn combine_lanes(products: &[F192], high: &[F192]) -> F192 {
 /// A commitment, and what its openings need but the words: the Merkle tree of the committed lanes' codeword, the
 /// codeword itself if it was kept (which the first opening reads its queried rows from, and frees), and the committed
 /// lanes' products with the out-of-domain point's low weight, which every opening's lane rounds start from. The words
-/// are the caller's ([`commit_words`], [`open_words`]); [`Committed`] keeps them too.
+/// are the caller's ([`commit_words`], [`open`]); [`Committed`] keeps them too.
 pub struct Commitment {
     pub n: usize,
     pub root: Hash,
     /// `f(ood_point(n, root))`.
     pub ood: F192,
     tree: Vec<Hash>,
-    codeword: Mutex<Option<Vec<F64>>>,
+    codeword: Mutex<Option<KeptCodeword>>,
     /// `Σ_y lane_l[y] eq(z_low, y)` for each committed lane `l`, `z = ood_point(n, root)`.
     ood_lanes: Vec<F192>,
-    /// Which committed lanes are all zero: not encoded, at the commitment nor at an opening's queried rows. A kept
-    /// codeword is then the other lanes' alone (`pcs::whir::commit_skipping`), which the openings spread back.
+    /// Which committed lanes are all zero ([`zero_lanes`]): not encoded, at the commitment nor at an opening's queried
+    /// rows, and left out of the openings' lane passes. A kept codeword says itself which lanes it holds.
     zero_lanes: Vec<bool>,
 }
 
@@ -225,9 +233,9 @@ impl Commitment {
 /// Commit to the `2^n` words whose leading whole lanes (of `2^(n-6)` words) are `words` and the rest zero
 /// (`MIN_VARIABLES <= n <= MAX_VARIABLES`), without encoding the zero lanes: leanVM's commitment of the leading lanes
 /// is the whole stack's (its root and its proofs are those of the `2^n` words: the zero lanes' codeword is zero, and a
-/// Merkle leaf hashes them first; [`open_words`] pads its rows back to the whole stack's). With `keep_codeword`, the
-/// codeword (`2^LOG_INV_RATE` words a word of the lanes) is kept for the first opening; the root and the proofs are
-/// the same.
+/// Merkle leaf hashes them first; [`open`] pads its rows back to the whole stack's). With `keep_codeword`, the
+/// codeword (`2^LOG_INV_RATE` words a word of the lanes not all zero) is kept for the openings; the root and the
+/// proofs are the same.
 pub fn commit_words(words: &[F64], n: usize, keep_codeword: bool) -> Commitment {
     assert!(
         (MIN_VARIABLES..=MAX_VARIABLES).contains(&n),
@@ -238,30 +246,25 @@ pub fn commit_words(words: &[F64], n: usize, keep_codeword: bool) -> Commitment 
         !words.is_empty() && words.len().is_multiple_of(lane) && words.len() <= 1 << n,
         "whole leading lanes of the 2^n words"
     );
-    // The all-zero lanes are encoded neither at the commitment nor at an opening's rows; a kept codeword is the other
-    // lanes' alone.
-    let mut zero_lanes = zero_lanes(words, lane);
+    commit_flagged(words, n, keep_codeword, zero_lanes(words, lane))
+}
+
+/// [`commit_words`], the all-zero lanes `zero` (a flag a lane of `words`) already found.
+fn commit_flagged(words: &[F64], n: usize, keep_codeword: bool, zero: Vec<bool>) -> Commitment {
     let (root, tree, codeword) = if keep_codeword {
-        match pcs::whir::commit_skipping(words, n, LANE_FOLD, LOG_INV_RATE, &zero_lanes) {
-            Some((commitment, data)) => (commitment.root, data.merkle_tree, Some(data.codeword)),
-            None => {
-                // No lane skipped: the whole codeword, and no lane flagged (a flag would say it is left out).
-                zero_lanes.fill(false);
-                let (commitment, data) = pcs::whir::commit(words, n, LANE_FOLD, LOG_INV_RATE);
-                (commitment.root, data.merkle_tree, Some(data.codeword))
-            }
-        }
+        let (commitment, codeword, tree) = pcs::whir::commit_skipping(words, n, LANE_FOLD, LOG_INV_RATE, &zero);
+        (commitment.root, tree, Some(codeword))
     } else {
         // The encoding buffer, one replica of the codeword, mapped by the workers: as many words as `words`, though
         // the zero lanes take none of them, so that an opening's buffers find this memory again once it is freed.
         // SAFETY: the encoding clears this buffer and writes every word it reads (`commit_tree_skipping_in`).
         let scratch = unsafe { mapped_words(words.len()) };
-        let (commitment, tree) = commit_tree_skipping_in(words, n, LANE_FOLD, LOG_INV_RATE, &zero_lanes, scratch);
+        let (commitment, tree) = commit_tree_skipping_in(words, n, LANE_FOLD, LOG_INV_RATE, &zero, scratch);
         (commitment.root, tree, None)
     };
     // The answer from the committed lanes' products with the point's low weight, which the openings reuse.
     let z = ood_point(n, &root);
-    let ood_lanes = lane_products(words, &z, Some(&zero_lanes));
+    let ood_lanes = lane_products(words, &z, Some(&zero));
     let ood = combine_lanes(&ood_lanes, &z[n - LANE_FOLD..]);
     Commitment {
         n,
@@ -270,13 +273,13 @@ pub fn commit_words(words: &[F64], n: usize, keep_codeword: bool) -> Commitment 
         tree,
         codeword: Mutex::new(codeword),
         ood_lanes,
-        zero_lanes,
+        zero_lanes: zero,
     }
 }
 
 /// Which lanes (of `lane` words) of `words` are all zero, read in parallel: a run of a lane is read up to its first
 /// nonzero word, so that the scan reads the zero lanes and little else.
-fn zero_lanes(words: &[F64], lane: usize) -> Vec<bool> {
+pub fn zero_lanes(words: &[F64], lane: usize) -> Vec<bool> {
     const RUN: usize = 1 << 16;
     let run = RUN.min(lane);
     let zero_runs =
@@ -309,30 +312,24 @@ pub unsafe fn mapped_words(len: usize) -> Vec<F64> {
     v
 }
 
-/// A commitment with its words: what [`open`] takes.
+/// A commitment with its words ([`commit`]); it reads as its [`Commitment`].
 pub struct Committed {
-    pub n: usize,
-    pub root: Hash,
-    /// `f(ood_point(n, root))`.
-    pub ood: F192,
-    commitment: Commitment,
+    pub commitment: Commitment,
     words: Vec<F64>,
+}
+
+impl std::ops::Deref for Committed {
+    type Target = Commitment;
+
+    fn deref(&self) -> &Commitment {
+        &self.commitment
+    }
 }
 
 impl Committed {
     /// The committed words: the leading whole lanes of `f`'s `2^n` (the rest zero).
     pub fn words(&self) -> &[F64] {
         &self.words
-    }
-
-    /// The commitment, without the words.
-    pub fn commitment(&self) -> &Commitment {
-        &self.commitment
-    }
-
-    /// The claim that `f(point) = value` on this commitment.
-    pub fn claim(&self, point: Vec<F192>, value: F192) -> PcsClaim {
-        self.commitment.claim(point, value)
     }
 
     /// The claim at `point` with `f`'s value there.
@@ -343,30 +340,25 @@ impl Committed {
 }
 
 /// Commit to `f`, given by its `2^n` words (`MIN_VARIABLES <= n <= MAX_VARIABLES`): leanVM's commitment
-/// ([`pcs::whir::commit`]'s root and tree, encoded one replica of the codeword at a time) of the `64` lanes of
-/// `2^(n-6)` words, and the out-of-domain answer. The words are moved in: an opening reads them.
-pub fn commit(words: Vec<F64>) -> Committed {
-    let n = words.len().trailing_zeros() as usize;
+/// ([`pcs::whir::commit`]'s root and tree) of the `64` lanes of `2^(n-6)` words, and the out-of-domain answer, its
+/// trailing all-zero lanes left out of the words kept ([`commit_words`]: the commitment and every opening are the
+/// whole table's). The words are moved in: an opening reads them. `keep_codeword` as [`commit_words`]'s.
+pub fn commit(mut words: Vec<F64>, keep_codeword: bool) -> Committed {
     assert!(words.len().is_power_of_two(), "2^n words");
-    commit_lanes(words, n)
-}
-
-/// [`commit`] to the `2^n` words whose leading whole lanes are `words` and the rest zero ([`commit_words`]).
-pub fn commit_lanes(words: Vec<F64>, n: usize) -> Committed {
-    owning(commit_words(&words, n, false), words)
-}
-
-/// [`commit_lanes`], keeping the codeword for the first opening ([`commit_words`]).
-pub fn commit_lanes_keeping_codeword(words: Vec<F64>, n: usize) -> Committed {
-    owning(commit_words(&words, n, true), words)
-}
-
-fn owning(commitment: Commitment, words: Vec<F64>) -> Committed {
+    let n = words.len().trailing_zeros() as usize;
+    assert!(
+        (MIN_VARIABLES..=MAX_VARIABLES).contains(&n),
+        "n from {MIN_VARIABLES} to {MAX_VARIABLES}"
+    );
+    let lane = 1usize << (n - LANE_FOLD);
+    let mut zero = zero_lanes(&words, lane);
+    let lanes = zero.iter().rposition(|&z| !z).map_or(1, |last| last + 1);
+    zero.truncate(lanes);
+    words.truncate(lanes * lane);
+    // The allocation past them returned (the allocator shrinks a large one in place), for the memory to come.
+    words.shrink_to_fit();
     Committed {
-        n: commitment.n,
-        root: commitment.root,
-        ood: commitment.ood,
-        commitment,
+        commitment: commit_flagged(&words, n, keep_codeword, zero),
         words,
     }
 }
@@ -377,13 +369,6 @@ fn owning(commitment: Commitment, words: Vec<F64>) -> Committed {
 /// which the verifier checks are the claim's root before anything else.
 pub fn iv(claim: &PcsClaim) -> [u8; 32] {
     claim.hash()
-}
-
-/// `eq(point, bits of index)`, coordinate 0 first.
-fn eq_bits(point: &[F192], index: usize) -> F192 {
-    point.iter().enumerate().fold(F192::ONE, |w, (k, &p)| {
-        w * if (index >> k) & 1 == 1 { p } else { F192::ONE + p }
-    })
 }
 
 /// `scale · eq(point, ·)` on the stack, as a lane tensor: word `y` of lane `l` weighs `scale · eq(point_high, l) ·
@@ -398,45 +383,28 @@ fn eq_tensor(point: &[F192], scale: F192) -> LaneTensor {
     }
 }
 
-/// Prove `claim`, a claim on `committed` (its root, its out-of-domain answer, `n`): [`open_words`] of its words.
-pub fn open(committed: &Committed, claim: &PcsClaim) -> Proof {
-    open_words(&committed.words, &committed.commitment, claim)
+/// What an opening does with a commitment's kept codeword, which serves it: frees it, or keeps it for another opening
+/// (a claim at each of several points, a setup every proof opens).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Codeword {
+    Free,
+    Keep,
 }
 
 /// Prove `claim`, a claim on `commitment` of `words` (the leading whole lanes [`commit_words`] committed): one WHIR
 /// opening of `f(z) = ood` and `f(point) = value`, combined by `1, λ`, `λ` the transcript's first challenge. Its
 /// level-0 rows are the whole stack's (`64` words, the absent lanes' zeros leading), as a verifier that knows only `n`
-/// reads them. A kept codeword serves this opening and is freed.
-pub fn open_words(words: &[F64], commitment: &Commitment, claim: &PcsClaim) -> Proof {
-    open_words_with(words, commitment, claim, true)
-}
-
-/// [`open_words`], reading a kept codeword without freeing it: for a commitment opened more than once (a claim at
-/// each of several points, a setup every proof opens).
-pub fn open_words_keeping(words: &[F64], commitment: &Commitment, claim: &PcsClaim) -> Proof {
-    open_words_with(words, commitment, claim, false)
-}
-
-fn open_words_with(words: &[F64], commitment: &Commitment, claim: &PcsClaim, free: bool) -> Proof {
-    open_words_batch_with(words, commitment, std::slice::from_ref(claim), free)
+/// reads them.
+pub fn open(words: &[F64], commitment: &Commitment, claim: &PcsClaim, codeword: Codeword) -> Proof {
+    open_batch(words, commitment, std::slice::from_ref(claim), codeword)
         .pop()
         .expect("one proof")
 }
 
-/// [`open_words`] of each of `claims`, all on `commitment` of `words`: the proofs are those [`open_words`] gives each
-/// claim alone, byte for byte, but the out-of-domain point's weight is built once for all of them, and their lane
-/// rounds read the words twice in all rather than twice a claim (`pcs::whir::recursive_prover_with_lane_tensors_batch`).
-/// A kept codeword serves them all and is freed.
-pub fn open_words_batch(words: &[F64], commitment: &Commitment, claims: &[PcsClaim]) -> Vec<Proof> {
-    open_words_batch_with(words, commitment, claims, true)
-}
-
-/// [`open_words_batch`], reading a kept codeword without freeing it.
-pub fn open_words_batch_keeping(words: &[F64], commitment: &Commitment, claims: &[PcsClaim]) -> Vec<Proof> {
-    open_words_batch_with(words, commitment, claims, false)
-}
-
-fn open_words_batch_with(words: &[F64], commitment: &Commitment, claims: &[PcsClaim], free: bool) -> Vec<Proof> {
+/// [`open`] of each of `claims`, all on `commitment` of `words`: the proofs are those [`open`] gives each claim alone,
+/// byte for byte, but the out-of-domain point's weight is built once for all of them, and their lane rounds read the
+/// words twice in all rather than twice a claim (`pcs::whir::recursive_prover_with_lane_tensors_batch`).
+pub fn open_batch(words: &[F64], commitment: &Commitment, claims: &[PcsClaim], codeword: Codeword) -> Vec<Proof> {
     let n = commitment.n;
     for claim in claims {
         assert!(
@@ -473,8 +441,8 @@ fn open_words_batch_with(words: &[F64], commitment: &Commitment, claims: &[PcsCl
     // The codeword is only read under the lock, or taken whole: an opening that panicked leaves it kept or gone, and
     // either serves the next (without it, an opening encodes its rows again), so a poisoned lock is recovered.
     let mut kept = commitment.codeword.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    let taken = if free { kept.take() } else { None };
-    let codeword = if free { taken.as_deref() } else { kept.as_deref() };
+    let taken = if codeword == Codeword::Free { kept.take() } else { None };
+    let l0_codeword = if codeword == Codeword::Free { taken.as_ref() } else { kept.as_ref() };
     recursive_prover_with_lane_tensors_batch(
         &config,
         n,
@@ -482,7 +450,7 @@ fn open_words_batch_with(words: &[F64], commitment: &Commitment, claims: &[PcsCl
         &weight,
         &known,
         &mut jobs,
-        codeword,
+        l0_codeword,
         Some(&commitment.zero_lanes),
         &commitment.tree[..],
     );
@@ -535,6 +503,15 @@ pub fn verify(claim_bytes: &[u8], proof: &verifier::Proof) -> bool {
 
 /// [`verify`] of a decoded claim, with the verifier's error.
 pub fn verify_claim(claim: &PcsClaim, proof: &verifier::Proof) -> Result<(), verifier::VerifierError> {
+    verify_claim_paths(claim, proof).map(|_| ())
+}
+
+/// [`verify_claim`], returning the Merkle paths it checked: one full path a query, the pruned batches expanded (as
+/// `verifier::Transcript::finish` returns them), which the Lean vectors carry ([`lean`]).
+pub fn verify_claim_paths(
+    claim: &PcsClaim,
+    proof: &verifier::Proof,
+) -> Result<Vec<verifier::MerklePath>, verifier::VerifierError> {
     use verifier::{Digest, E, Transcript};
     let n = claim.n as usize;
     if !(MIN_VARIABLES..=MAX_VARIABLES).contains(&n) || claim.point.len() != n {
@@ -567,7 +544,59 @@ pub fn verify_claim(claim: &PcsClaim, proof: &verifier::Proof) -> Result<(), ver
         Digest(claim.root),
         &weight,
     )?;
-    transcript.finish().map(|_| ())
+    transcript.finish()
+}
+
+/// The text the Lean checks of `formal/WhirBridge` read: lines of a tag and decimal numbers.
+pub mod lean {
+    use super::*;
+
+    /// `tag v_0 v_1 ...`, one line.
+    pub fn line(tag: &str, values: impl IntoIterator<Item = u64>) -> String {
+        let mut s = tag.to_string();
+        for v in values {
+            s.push(' ');
+            s.push_str(&v.to_string());
+        }
+        s.push('\n');
+        s
+    }
+
+    /// A digest's four little-endian words.
+    pub fn words(digest: &[u8; 32]) -> [u64; 4] {
+        digest_words(digest).map(|w| w.0)
+    }
+
+    pub fn limbs(x: &F192) -> [u64; 3] {
+        [x.c0, x.c1, x.c2]
+    }
+
+    /// An opening's stream and one `open` line a query (the leaf's length and words, then the siblings), its paths
+    /// those [`verify_claim_paths`] checks.
+    pub fn opening(claim: &PcsClaim, proof: &Proof) -> String {
+        let paths = verify_claim_paths(claim, &wire_proof(proof)).expect("the opening verifies");
+        let mut out = line("stream", proof.stream.iter().flat_map(limbs));
+        for path in &paths {
+            out += &line(
+                "open",
+                [path.leaf.len() as u64]
+                    .into_iter()
+                    .chain(path.leaf.iter().map(|k| k.0))
+                    .chain(path.siblings.iter().flat_map(words)),
+            );
+        }
+        out
+    }
+
+    /// The vector `formal/WhirBridge`'s `Test/Check.lean` and `Test/CheckLarge.lean` read: the claim's bytes, the
+    /// root, the claim's point and value, then [`opening`].
+    pub fn bridge_vector(name: &str, claim: &PcsClaim, proof: &Proof) -> String {
+        let mut out = format!("vector {name}\n");
+        out += &line("pcsclaim", claim.encode().iter().map(|&b| b as u64));
+        out += &line("root", words(&claim.root));
+        out += &line("claim", claim.point.iter().chain([&claim.value]).flat_map(limbs));
+        out + &opening(claim, proof) + "end\n"
+    }
 }
 
 #[cfg(test)]

@@ -16,7 +16,7 @@ use leanvm_statement::layout::{
 };
 use leanvm_statement::multilinear::{eq_kernel, log2_ceil};
 use leanvm_statement::scalar::{Scalar, enter};
-use leanvm_statement::transcript::{Channel, FsShape, sumcheck_drawn, sumcheck_pairs_drawn};
+use leanvm_statement::transcript::{Channel, Draws, FsShape, squares, sumcheck, sumcheck_pairs_drawn};
 use leanvm_statement::VerifierError;
 
 use crate::claims::{COMMITMENTS, Column, Combined, Commitment, Relations, Term, term};
@@ -78,9 +78,6 @@ impl Shape {
 /// A quotient's degree `plus - minus`, or 0 where a small domain makes it negative (SPEC.md §13, F5).
 pub fn degree(plus: u64, minus: u64) -> u64 {
     plus.saturating_sub(minus)
-}
-
-impl Shape {
 }
 
 /// The columns whose values a table's rows send at `t` besides its counters: every factor of a product in its
@@ -192,9 +189,6 @@ fn quotient_terms<S: Scalar>(
 struct TablePart<S> {
     pull: S,
     push: S,
-    /// `deg(R P_pull)`, `deg P_push` over `n - 1`.
-    pull_degree: usize,
-    push_degree: usize,
     sent: Vec<Option<S>>,
 }
 
@@ -222,7 +216,6 @@ fn table_part<S: Scalar + PartialEq, C: Channel<S>>(
     let _phase = enter("bus: fingerprints and leaf products");
     let mut pull = S::one();
     let mut push = S::one();
-    let (mut pull_degree, mut push_degree) = (1, 0);
     let flushes = table.flushes.pull.iter().zip(&table.flushes.push);
     for (pulled, pushed) in flushes {
         // The pull fingerprint: computed if every column is sent, else sent and bound.
@@ -239,16 +232,7 @@ fn table_part<S: Scalar + PartialEq, C: Channel<S>>(
             value
         };
         // The push fingerprint: the pull's plus their difference, when the sent values give it; else sent and bound.
-        let difference: Vec<Form> = pushed
-            .iter()
-            .zip(pulled)
-            .map(|(a, b)| {
-                let mut d = a.clone();
-                d.add_scaled(b, E::new(1, 0, 0));
-                d
-            })
-            .collect();
-        let (known_difference, difference_terms) = linearise(&difference, weights, &sent);
+        let (known_difference, difference_terms) = linearise(&flush_difference(pushed, pulled), weights, &sent);
         let d_push = if difference_terms.is_empty() {
             d_pull + known_difference
         } else {
@@ -263,23 +247,56 @@ fn table_part<S: Scalar + PartialEq, C: Channel<S>>(
         };
         pull *= d_pull;
         push *= d_push;
-        pull_degree += tuple_degree(pulled);
-        push_degree += tuple_degree(pushed);
     }
-    Ok(TablePart {
-        pull,
-        push,
-        pull_degree,
-        push_degree,
-        sent,
-    })
+    Ok(TablePart { pull, push, sent })
+}
+
+/// A flush's push tuple minus its pull tuple, form by form.
+pub fn flush_difference(pushed: &[Form], pulled: &[Form]) -> Vec<Form> {
+    pushed
+        .iter()
+        .zip(pulled)
+        .map(|(a, b)| {
+            let mut d = a.clone();
+            d.add_scaled(b, E::new(1, 0, 0));
+            d
+        })
+        .collect()
+}
+
+/// The coefficients of a table block's leaf quotient at height `r`: `deg(R P_pull)` and `deg P_push` over `n - 1`,
+/// sized for the height's fewest rows ([`Shape::least_rows`], SPEC.md §13, F1).
+pub fn table_leaf_count(table: &Table, r: usize) -> u64 {
+    let n = 1u64 << r;
+    let pull = 1 + table.flushes.pull.iter().map(|tuple| tuple_degree(tuple)).sum::<usize>();
+    let push: usize = table.flushes.push.iter().map(|tuple| tuple_degree(tuple)).sum();
+    degree(pull.max(push) as u64 * (n - 1) + (n - Shape::least_rows(r)), n) + 1
+}
+
+/// The constraint quotient's coefficients (step 5 of [`reduce_combined`]): its identities' largest degree, plus one.
+pub fn constraint_count(shape: &Shape) -> u64 {
+    let heights = shape.heights();
+    let mut most = 0u64;
+    for table in tables() {
+        let r = heights[table.opcode];
+        let n = 1u64 << r;
+        if table.opcode == OP_JUMP {
+            most = most.max(degree(n, 2));
+        }
+        let counts = table.count_columns().count() as u64;
+        most = most.max(degree((n - 1) * (1 + counts), n));
+        if table.opcode == OP_SHA3 {
+            most = most.max(degree(r as u64 * (n / 2), n));
+        }
+    }
+    most.max(degree(1u64 << shape.log_memory, 3)) + 1
 }
 
 /// `log2` of `q_flock`'s words a `SHA3` row: `2^(17 - 6)`, one Keccak-f block a row.
 pub const QFLOCK_ROW_BITS: usize = KECCAK_R1CS_LOG_SIZE - 6;
 
-/// What the verifier leaves: the two commitments (their roots, their out-of-domain answers) and one claim on each
-/// commitment.
+/// What the verifier leaves: the two commitments (their roots, their out-of-domain answers) and one point claim on
+/// each commitment.
 pub struct Reduced<S> {
     pub roots: [[S; 2]; 2],
     /// `C1`'s and `C2`'s out-of-domain answers (`crates/pcs_claim`), read after their roots.
@@ -292,35 +309,61 @@ pub struct Reduced<S> {
     pub layouts: Vec<(Commitment, StackLayout)>,
 }
 
-/// What a commitment's one claim carries.
+/// A commitment's one claim: its stack's value at `point` (the batching sumcheck's end point, cut to the stack's
+/// variables).
 #[derive(Clone, Debug)]
-pub enum Opening<S> {
-    /// One weighted claim (extension W, SPEC.md §8).
-    Weighted(Combined<S>),
-    /// One point claim, the claims' encoding (after the batching sumcheck).
-    Point { point: Vec<S>, value: S },
+pub struct Opening<S> {
+    pub point: Vec<S>,
+    pub value: S,
 }
 
-/// How the relations reach the claims (SPEC.md §8).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Claims {
-    /// `crates/membership/evm/src/machine.rs`'s ABI: point claims. One batching sumcheck over the stacks (the longest, the
-    /// others zero-extended) turns every commitment's relations into one point claim at its end point.
-    Point,
-    /// Extension W: one weighted claim per commitment, its terms evaluated by the precompile.
-    Weighted,
+/// What the verifier leaves before the batching sumcheck ([`reduce_combined`]): the commitments, the relations on each
+/// combined into one weighted claim (SPEC.md §8), and what the batch draws its weights with.
+pub struct Combination<S> {
+    pub roots: [[S; 2]; 2],
+    pub oods: [S; 2],
+    /// One weighted claim per commitment, the ring switch's weight one term ([`RING_TWIST`]: [`expand_ring`] writes it
+    /// as its 64 twisted terms).
+    pub combined: Vec<(Commitment, Combined<S>)>,
+    pub relations: usize,
+    pub layouts: Vec<(Commitment, StackLayout)>,
+    /// The ring switch's map, which the [`RING_TWIST`] term's weight reads.
+    pub ring_map: Vec<S>,
+    /// The batch's `λ` when drawn with `ρ` (π1-rec4); else the batch draws it.
+    pub lambda: Option<S>,
 }
 
-/// The twist field of the term that stands for the whole ring-switch weight `Φ(eq(p, ·))` on the main line: the
-/// batch's weight evaluates it at its point by [`ring_tower::weight_at`] (64 twisted eq products and the map's stages)
-/// rather than as 64 terms with explicit coefficients (SPEC.md §13).
+/// The twist field of the term that stands for the whole ring-switch weight `Φ(eq(p, ·))`: the batch's weight
+/// evaluates it at its point by [`ring_tower::weight_at`] (64 twisted eq products and the map's stages) rather than as
+/// 64 terms with explicit coefficients (SPEC.md §13).
 pub const RING_TWIST: u8 = u8::MAX;
+
+/// `claim` with its ring-switch term ([`RING_TWIST`]) written as the 64 twisted terms of the same weight, their
+/// coefficients the map's ([`ring_tower::coefficients`]) times the term's: extension W's form of the claim, which the
+/// prover's weights read.
+pub fn expand_ring<S: Scalar>(claim: &Combined<S>, map: &[S]) -> Combined<S> {
+    let mut terms = Vec::with_capacity(claim.terms.len() + 63);
+    for &(column, p, twist, coefficient) in &claim.terms {
+        if twist == RING_TWIST {
+            let coefficients = ring_tower::coefficients(map);
+            terms.extend(coefficients.iter().enumerate().map(|(k, &c)| (column, p, k as u8, coefficient * c)));
+        } else {
+            terms.push((column, p, twist, coefficient));
+        }
+    }
+    Combined {
+        points: claim.points.clone(),
+        terms,
+        value: claim.value,
+        relations: claim.relations,
+    }
+}
 
 /// The Keccak VM's main line (`KECCAK.md`): the univariate skip of 3 (M3's cheaper terminal), the slices sent and the
 /// structured terminal, the point claims.
 pub const KECCAK_MAIN: Variant = Variant { skip: 3, fs: FsShape::Main };
 
-/// The Keccak VM's π1 under the recursion (`crates/leanvm/rec/tests/keccak_vm_rec.rs`): [`KECCAK_MAIN`] with π1-rec3's
+/// The Keccak VM's π1 under the recursion as `formal/` states it: [`KECCAK_MAIN`] with π1-rec3's
 /// Fiat–Shamir shape (`FsShape::Rec3`).
 pub const KECCAK_REC3: Variant = Variant { skip: 3, fs: FsShape::Rec3 };
 
@@ -330,21 +373,68 @@ pub const KECCAK_REC3: Variant = Variant { skip: 3, fs: FsShape::Rec3 };
 /// circuit runs it.
 pub const KECCAK_REC4: Variant = Variant { skip: 3, fs: FsShape::Rec4 };
 
-/// The verifier (SPEC.md §4–§8): `public_words` are the public input's four 64-bit words, low first.
+/// The challenges after `C1`'s commitment: the bus's `α` (one by one, or with π1-rec3 `c, c², c⁴, c⁸` of one `c`),
+/// `β`, the constraints' `γ`; under π1-rec4 one wide draw that also gives Flock's zerocheck its first eq coordinate.
+pub fn bus_challenges<S: Scalar>(fs: FsShape, draws: &mut impl Draws<S>) -> (Vec<S>, S, S, Option<S>) {
+    if fs.wide() {
+        let [c, beta, gamma, eq_first]: [S; 4] = draws.wide(4).try_into().unwrap_or_else(|_| panic!("four challenges"));
+        (squares(c, 4), beta, gamma, Some(eq_first))
+    } else {
+        let alphas = fs.draw(draws, 4);
+        let beta = draws.one();
+        (alphas, beta, draws.one(), None)
+    }
+}
+
+/// The challenge after `C2`'s commitment, `t`; under π1-rec4 one wide draw that also gives the ring switch's map's
+/// first four challenges.
+pub fn point_challenge<S: Scalar>(fs: FsShape, draws: &mut impl Draws<S>) -> (S, Vec<S>) {
+    if fs.wide() {
+        let mut drawn = draws.wide(5);
+        let map = drawn.split_off(1);
+        (drawn[0], map)
+    } else {
+        (draws.one(), Vec::new())
+    }
+}
+
+/// π1-rec4's draw after the values at `t`: `ρ`, the batch's `λ` and the ring switch's map's last two challenges.
+pub fn late_challenges<S: Scalar>(draws: &mut impl Draws<S>) -> (S, S, [S; 2]) {
+    let [rho, lambda, f4, f5]: [S; 4] = draws.wide(4).try_into().unwrap_or_else(|_| panic!("four challenges"));
+    (rho, lambda, [f4, f5])
+}
+
+/// The verifier (SPEC.md §4–§8): `public_words` are the public input's four 64-bit words, low first. Its claims: one
+/// point claim a commitment ([`reduce_combined`], then the batching sumcheck).
 pub fn reduce<S: Scalar + PartialEq, C: Channel<S>>(
     shape: &Shape,
     public_words: [S; 4],
     channel: &mut C,
     variant: Variant,
-    mode: Claims,
 ) -> Result<Reduced<S>, VerifierError> {
+    let c = reduce_combined(shape, public_words, channel, variant)?;
+    let openings = batch(channel, variant.fs, &c.combined, &c.layouts, &c.ring_map, c.lambda)?;
+    Ok(Reduced {
+        roots: c.roots,
+        oods: c.oods,
+        openings,
+        relations: c.relations,
+        stack_vars: c.layouts.iter().map(|(c, l)| (*c, l.vars)).collect(),
+        layouts: c.layouts,
+    })
+}
+
+/// The verifier up to the batching sumcheck: the stream up to the values at `t`, every relation, and `ρ`'s
+/// combination of each commitment's into one weighted claim. It reads nothing after `ρ`, so a prover runs it on its
+/// stream so far to learn the claims.
+pub fn reduce_combined<S: Scalar + PartialEq, C: Channel<S>>(
+    shape: &Shape,
+    public_words: [S; 4],
+    channel: &mut C,
+    variant: Variant,
+) -> Result<Combination<S>, VerifierError> {
     shape.validate()?;
     let tables = tables();
-    let mut c2_columns: Vec<(Column, usize, bool)> = vec![
-        (Column::Heap, shape.heap().h, true),
-        (Column::TreeQuotient(0), shape.heap().h, true),
-        (Column::TreeQuotient(1), 0, true),
-    ];
     let heights = shape.heights();
     let heap = shape.heap();
     let r_w = shape.constraint_vars();
@@ -367,16 +457,7 @@ pub fn reduce<S: Scalar + PartialEq, C: Channel<S>>(
     // (docs/PCS_CLAIM.md) before the challenges.
     let root1 = channel.next_root()?;
     let ood1 = channel.next_scalar()?;
-    // π1-rec4: α's c, β, γ and Flock's zerocheck's first eq coordinate are one wide draw (no message separates them).
-    let (alphas, beta, gamma, eq_first) = if variant.fs.wide() {
-        let [c, beta, gamma, eq_first]: [S; 4] =
-            channel.sample_wide(4).try_into().unwrap_or_else(|_| panic!("four challenges"));
-        (leanvm_statement::transcript::squares(c, 4), beta, gamma, Some(eq_first))
-    } else {
-        let alphas = variant.fs.draw(channel, 4);
-        let beta = channel.sample();
-        (alphas, beta, channel.sample(), None)
-    };
+    let (alphas, beta, gamma, eq_first) = bus_challenges(variant.fs, channel);
     let weights = {
         let _phase = enter("bus: fingerprints and leaf products");
         eq_kernel(&alphas)
@@ -386,26 +467,14 @@ pub fn reduce<S: Scalar + PartialEq, C: Channel<S>>(
     // row), its terminal by the block's structure, the slices sent; its ring switch's map and target (FLOCK.md).
     // π1-rec4: the ring switch's map is drawn later (with t, then with ρ).
     let log_flock = KECCAK_R1CS_LOG_SIZE + heights[OP_SHA3];
-    let (flock_point, mut flock_end, flock_slices) = if variant.fs.wide() {
-        let (point, slices) = flock_min::verify_walked_deferred::<S, Keccak>(log_flock, variant, channel, eq_first)?;
-        (point, None, slices)
-    } else {
-        let (point, end) = flock_min::verify_walked_with::<S, Keccak>(log_flock, variant, channel)?;
-        (point, Some(end), Vec::new())
-    };
+    let (flock_point, flock_slices) = flock_min::verify_walked::<S, Keccak>(log_flock, variant, channel, eq_first)?;
+    let mut flock_end = (!variant.fs.wide()).then(|| flock_min::ring_end(&flock_slices, channel));
 
     // 3. C2, then the point. π1-rec4: t and the ring switch's map's f_0 … f_3 are one wide draw, which absorbs the
     // slices and C2's commitment.
     let root2 = channel.next_root()?;
     let ood2 = channel.next_scalar()?;
-    let mut ring_map_drawn: Vec<S> = Vec::new();
-    let t = if variant.fs.wide() {
-        let mut drawn = channel.sample_wide(5);
-        ring_map_drawn = drawn.split_off(1);
-        drawn[0]
-    } else {
-        channel.sample()
-    };
+    let (t, mut ring_map_drawn) = point_challenge(variant.fs, channel);
     let digit_count = h.max(r_w + 4) + 2;
     let w = {
         let _phase = enter("digits, vanishing polynomials, coordinates");
@@ -477,7 +546,6 @@ pub fn reduce<S: Scalar + PartialEq, C: Channel<S>>(
     let constraint_value = channel.next_scalar()?;
 
     // 5. The constraint quotient's identity, on C1 but for Q_W(t), which is sent.
-    let mut quotient_degree: u64 = 0;
     {
         let _phase = enter("constraints: Q_W identity (counters, JUMP, limb copies, public input)");
         let mut known = S::zero();
@@ -490,7 +558,6 @@ pub fn reduce<S: Scalar + PartialEq, C: Channel<S>>(
         };
         for (table, part) in tables.iter().zip(&parts) {
             let r = heights[table.opcode];
-            let n = 1u64 << r;
             let lift = vanishing_ratio(&w, r, r_w);
             let at = |column| Column::Table {
                 table: table.opcode,
@@ -505,7 +572,6 @@ pub fn reduce<S: Scalar + PartialEq, C: Channel<S>>(
                 terms.push(term(at(inverse), &w[..r], g1 * cond));
                 let g2 = next(&mut power) * lift;
                 known += g2 * cond * (flag + one);
-                quotient_degree = quotient_degree.max(degree(n, 2));
             }
             // Counters nonzero on every row (padding rows' counters are free, so a prover sets them nonzero):
             // z Π c + 1.
@@ -516,8 +582,6 @@ pub fn reduce<S: Scalar + PartialEq, C: Channel<S>>(
             let g = next(&mut power) * lift;
             terms.push(term(Column::Inverse(table.opcode), &w[..r], g * counters));
             known += g;
-            let counts = table.count_columns().count() as u64;
-            quotient_degree = quotient_degree.max(degree((n - 1) * (1 + counts), n));
             // SHA3's lane copies equal q_flock's port words: copy_j - ℓ_j, ℓ_j read through y(t).
             if table.opcode == OP_SHA3 {
                 let functionals = coordinate_functionals(r);
@@ -533,7 +597,6 @@ pub fn reduce<S: Scalar + PartialEq, C: Channel<S>>(
                         }
                     }
                 }
-                quotient_degree = quotient_degree.max(degree((r as u64) * (n / 2), n));
             }
         }
         // The public input: the memory's limbs at cells 0 and 1 are the public lines (leanVM's binding).
@@ -545,16 +608,10 @@ pub fn reduce<S: Scalar + PartialEq, C: Channel<S>>(
             terms.push(term(Column::Memory(k), &w[..lm], g));
             known += g * (low + t * (low + high));
         }
-        quotient_degree = quotient_degree.max(degree(1 << lm, 3));
         relations.push(terms, constraint_value * w[r_w] + known);
     }
-    let constraint_chunks = chunks(quotient_degree + 1);
-    c2_columns.extend(
-        constraint_chunks
-            .iter()
-            .enumerate()
-            .map(|(c, &e)| (Column::ConstraintQuotient(c), e, true)),
-    );
+    let constraint_chunks = chunks(constraint_count(shape));
+    let mut leaf_chunks: Vec<(usize, Vec<usize>)> = Vec::new();
 
     // 6. C2: the heap's tree, root and leaves, and Q_W's value.
     {
@@ -590,13 +647,13 @@ pub fn reduce<S: Scalar + PartialEq, C: Channel<S>>(
                 .collect();
             let n = 1u64 << block.r;
             let wr = w[block.r];
-            let (pull, push, degree, scale) = match block.leaves {
+            let (pull, push, count, scale) = match block.leaves {
                 Leaves::Unused => {
                     relations.push(vec![term(Column::Heap, &mixed, one)], one);
                     continue;
                 }
-                Leaves::Memory => (memory_pull, memory_push, degree(2 * (n - 1), n), wr),
-                Leaves::Bytecode => (bytecode_pull, bytecode_push, degree(2 * (n - 1), n), wr),
+                Leaves::Memory => (memory_pull, memory_push, degree(2 * (n - 1), n) + 1, wr),
+                Leaves::Bytecode => (bytecode_pull, bytecode_push, degree(2 * (n - 1), n) + 1, wr),
                 Leaves::Table(t) => {
                     // Padding rows' leaves are 1, whatever they hold: (R P_pull + P_push) Z_pad + (R + 1) Z_act
                     // = Q w_r, here times Z_act (Z_pad Z_act = w_r): R (P_pull w_r + Z_act^2) + Q w_r Z_act =
@@ -604,18 +661,11 @@ pub fn reduce<S: Scalar + PartialEq, C: Channel<S>>(
                     let part = &parts[t];
                     let z = active[t];
                     let square = z * z;
-                    let rows = Shape::least_rows(block.r);
-                    let d = degree((part.pull_degree.max(part.push_degree) as u64) * (n - 1) + (n - rows), n);
-                    (part.pull * wr + square, part.push * wr + square, d, wr * z)
+                    let count = table_leaf_count(&tables[t], block.r);
+                    (part.pull * wr + square, part.push * wr + square, count, wr * z)
                 }
             };
-            let sizes = chunks(degree + 1);
-            c2_columns.extend(
-                sizes
-                    .iter()
-                    .enumerate()
-                    .map(|(chunk, &e)| (Column::LeafQuotient { block: index, chunk }, e, true)),
-            );
+            let sizes = chunks(count);
             let mut terms = vec![term(Column::Heap, &mixed, pull)];
             terms.extend(quotient_terms(
                 |chunk| Column::LeafQuotient { block: index, chunk },
@@ -624,6 +674,7 @@ pub fn reduce<S: Scalar + PartialEq, C: Channel<S>>(
                 scale,
             ));
             relations.push(terms, push);
+            leaf_chunks.push((index, sizes));
         }
         let terms = quotient_terms(Column::ConstraintQuotient, &constraint_chunks, &w, one);
         relations.push(terms, constraint_value);
@@ -631,57 +682,28 @@ pub fn reduce<S: Scalar + PartialEq, C: Channel<S>>(
 
     // 8 (π1-rec4). ρ, the batch's λ and the map's f_4, f_5: one wide draw after the values at t. The ring switch's
     // relation, whose target the map gives, is then pushed where 7 pushes it, before the combination.
-    let mut drawn_lambda: Option<S> = None;
-    let mut drawn_rho: Option<S> = None;
-    if variant.fs.wide() {
-        let [rho, lambda, f4, f5]: [S; 4] =
-            channel.sample_wide(4).try_into().unwrap_or_else(|_| panic!("four challenges"));
-        (drawn_rho, drawn_lambda) = (Some(rho), Some(lambda));
-        ring_map_drawn.extend([f4, f5]);
+    let late = variant.fs.wide().then(|| late_challenges(channel));
+    if let Some((_, _, tail)) = late {
+        ring_map_drawn.extend(tail);
         flock_end = Some(flock_min::ring_end_at(&flock_slices, ring_map_drawn));
     }
 
     // 7. Flock's claim on q_flock: the ring switch's weight `Φ(eq(p, ·))`, as one term evaluated at the batch's point
-    // (point claims, SPEC.md §13) or as its 64 twisted terms (weighted claims).
+    // (SPEC.md §13).
     let End { map, target } = flock_end.expect("the ring switch's end");
-    let mut ring_map: Option<Vec<S>> = None;
-    match mode {
-        Claims::Point => {
-            relations.push(
-                vec![Term {
-                    column: Column::Qflock,
-                    point: flock_point.clone(),
-                    twist: RING_TWIST,
-                    coefficient: S::one(),
-                }],
-                target,
-            );
-            ring_map = Some(map);
-        }
-        Claims::Weighted => {
-            let coefficients = {
-                let _phase = enter("ring switch: map, coefficients, target");
-                ring_tower::coefficients(&map)
-            };
-            relations.push(
-                coefficients
-                    .iter()
-                    .enumerate()
-                    .map(|(k, &coefficient)| Term {
-                        column: Column::Qflock,
-                        point: flock_point.clone(),
-                        twist: k as u8,
-                        coefficient,
-                    })
-                    .collect(),
-                target,
-            );
-        }
-    }
+    relations.push(
+        vec![Term {
+            column: Column::Qflock,
+            point: flock_point,
+            twist: RING_TWIST,
+            coefficient: S::one(),
+        }],
+        target,
+    );
 
     // 8. One claim per commitment.
-    let rho = match drawn_rho {
-        Some(rho) => rho,
+    let rho = match late {
+        Some((rho, ..)) => rho,
         None => channel.sample(),
     };
     let combined: Vec<(Commitment, Combined<S>)> = {
@@ -691,19 +713,14 @@ pub fn reduce<S: Scalar + PartialEq, C: Channel<S>>(
             .filter_map(|&commitment| relations.combine(commitment, rho).map(|claim| (commitment, claim)))
             .collect()
     };
-    let layouts = stack_layouts(shape, &c2_columns);
-    let stack_vars = layouts.iter().map(|(c, l)| (*c, l.vars)).collect();
-    let openings = match mode {
-        Claims::Weighted => combined.into_iter().map(|(c, claim)| (c, Opening::Weighted(claim))).collect(),
-        Claims::Point => batch(channel, variant.fs, &combined, &layouts, ring_map.as_deref(), drawn_lambda)?,
-    };
-    Ok(Reduced {
+    Ok(Combination {
         roots: [root1, root2],
         oods: [ood1, ood2],
-        openings,
+        combined,
         relations: relations.list.len(),
-        stack_vars,
-        layouts,
+        layouts: stack_layouts(shape, &c2_columns(h, &constraint_chunks, &leaf_chunks)),
+        ring_map: map,
+        lambda: late.map(|(_, lambda, _)| lambda),
     })
 }
 
@@ -732,40 +749,55 @@ pub fn layouts(shape: &Shape) -> Vec<(Commitment, StackLayout)> {
         }
     }
     let words = [E::default(); 4];
-    reduce(shape, words, &mut Null, KECCAK_MAIN, Claims::Weighted).expect("a valid shape").layouts
+    reduce_combined(shape, words, &mut Null, KECCAK_MAIN).expect("a valid shape").layouts
 }
 
 /// The stacks' layouts, `C2`'s from its column list (`C1`: `q_flock` of `2^11` words a `SHA3` row, the tables'
 /// columns and inverses, the memory, the bytecode's final counts).
-pub fn stack_layouts(shape: &Shape, c2_columns: &[(Column, usize, bool)]) -> Vec<(Commitment, StackLayout)> {
+fn stack_layouts(shape: &Shape, c2_columns: &[(Column, usize, bool)]) -> Vec<(Commitment, StackLayout)> {
+    vec![
+        (Commitment::C1, StackLayout::new(&c1_columns(shape))),
+        (Commitment::C2, StackLayout::new(c2_columns)),
+        (Commitment::Setup, StackLayout::new(&setup_columns(shape))),
+    ]
+}
+
+/// `C1`'s columns: `q_flock` of `2^11` words a `SHA3` row, the tables' columns and inverses, the memory, the
+/// bytecode's final counts.
+pub fn c1_columns(shape: &Shape) -> Vec<(Column, usize, bool)> {
     let heights = shape.heights();
-    let mut c1: Vec<(Column, usize, bool)> =
-        vec![(Column::Qflock, heights[OP_SHA3] + QFLOCK_ROW_BITS, false)];
+    let mut c1: Vec<(Column, usize, bool)> = vec![(Column::Qflock, heights[OP_SHA3] + QFLOCK_ROW_BITS, false)];
     for table in tables() {
         let h = heights[table.opcode];
-        c1.extend((0..table.width()).map(|column| {
-            (
-                Column::Table {
-                    table: table.opcode,
-                    column,
-                },
-                h,
-                false,
-            )
-        }));
+        c1.extend((0..table.width()).map(|column| (Column::Table { table: table.opcode, column }, h, false)));
         c1.push((Column::Inverse(table.opcode), h, false));
     }
     c1.extend((0..4).map(|k| (Column::Memory(k), shape.log_memory, false)));
     c1.push((Column::BytecodeFinal, shape.log_bytecode, false));
-    let setup = vec![
+    c1
+}
+
+/// The setup's columns: the bytecode's tuples and the memory's addresses.
+pub fn setup_columns(shape: &Shape) -> Vec<(Column, usize, bool)> {
+    vec![
         (Column::BytecodeTuple, shape.log_bytecode + 4, false),
         (Column::Address, shape.log_memory, false),
-    ];
-    vec![
-        (Commitment::C1, StackLayout::new(&c1)),
-        (Commitment::C2, StackLayout::new(c2_columns)),
-        (Commitment::Setup, StackLayout::new(&setup)),
     ]
+}
+
+/// `C2`'s columns: the heap, the tree quotient's two chunks, the constraint quotient's chunks, then each heap
+/// block's leaf quotient's chunks (`leaf_chunks`: the block, its chunks' sizes).
+pub fn c2_columns(h: usize, constraint_chunks: &[usize], leaf_chunks: &[(usize, Vec<usize>)]) -> Vec<(Column, usize, bool)> {
+    let mut c2 = vec![
+        (Column::Heap, h, true),
+        (Column::TreeQuotient(0), h, true),
+        (Column::TreeQuotient(1), 0, true),
+    ];
+    c2.extend(constraint_chunks.iter().enumerate().map(|(c, &e)| (Column::ConstraintQuotient(c), e, true)));
+    for (block, sizes) in leaf_chunks {
+        c2.extend(sizes.iter().enumerate().map(|(chunk, &e)| (Column::LeafQuotient { block: *block, chunk }, e, true)));
+    }
+    c2
 }
 
 /// A combined claim's weight at the stack point `r`: every term's eq weight on its column's blocks; the ring-switch
@@ -779,7 +811,7 @@ fn weight_at<S: Scalar>(
     layout: &StackLayout,
     r: &[S],
     base_id: usize,
-    ring_map: Option<&[S]>,
+    ring_map: &[S],
 ) -> S {
     let mut cache = EqCache::new(r);
     let basis = limb_basis::<S>();
@@ -835,9 +867,8 @@ fn weight_at<S: Scalar>(
     for ((p, len, twist), sum) in rows {
         let point = &claim.points[p];
         let row = if twist == RING_TWIST {
-            let map = ring_map.expect("the ring map of a ring-switch term");
             let _phase = enter("claims: the ring switch's weight at the batch's point");
-            S::ring_weight(&point[..len], &cache.one_plus_r()[..len], map)
+            S::ring_weight(&point[..len], &cache.one_plus_r()[..len], ring_map)
         } else {
             cache.row(base_id + p, point, len, twist)
         };
@@ -854,18 +885,18 @@ fn weight_at<S: Scalar>(
 }
 
 /// The batching sumcheck (SPEC.md §8): `Σ_k λ^k Σ_u W_k(u) C_k(u)` over the longest stack, the others zero-extended;
-/// at its end point `r`, the prover sends each `C_k(r)` and the verifier checks the sum with `W_k(r)`.
-///
+/// at its end point `r`, the prover sends each `C_k(r)` and the verifier checks the sum with `W_k(r)`. `λ` is drawn
+/// here unless π1-rec4 drew it with `ρ`; the rounds take one variable each (the main line) or, with narrow challenges,
+/// two (π1-rec3, π1-rec4: `SPEC.md` §14.1).
 pub fn batch<S: Scalar + PartialEq, C: Channel<S>>(
     channel: &mut C,
     fs: FsShape,
     combined: &[(Commitment, Combined<S>)],
     layouts: &[(Commitment, StackLayout)],
-    ring_map: Option<&[S]>,
+    ring_map: &[S],
     drawn_lambda: Option<S>,
 ) -> Result<Vec<(Commitment, Opening<S>)>, VerifierError> {
     let _phase = enter("claims: batching sumcheck to point claims");
-    // π1-rec4 drew λ with ρ.
     let lambda = match drawn_lambda {
         Some(lambda) => lambda,
         None => channel.sample(),
@@ -877,13 +908,11 @@ pub fn batch<S: Scalar + PartialEq, C: Channel<S>>(
         target += scale * claim.value;
         scale *= lambda;
     }
-    // π1-rec2 (`FsShape::Rec2`): the rounds' challenges narrow, 160 bits; π1-rec3 (`FsShape::Rec3`): narrow and two
-    // variables a round (`SPEC.md` §14.1).
     let (r, last) = if fs.paired_batch() {
-        let (r, _, last) = sumcheck_pairs_drawn(channel, target, 2, vars, fs.narrow_batch())?;
+        let (r, _, last) = sumcheck_pairs_drawn(channel, target, 2, vars, true)?;
         (r, last)
     } else {
-        sumcheck_drawn(channel, target, 3, &vec![None; vars], fs.narrow_batch())?
+        sumcheck(channel, target, 3, &vec![None; vars])?
     };
     let values = channel.next_scalars(combined.len())?;
     let _weights = enter("claims: the batch's weights at its point (eq, selectors, twists)");
@@ -898,7 +927,7 @@ pub fn batch<S: Scalar + PartialEq, C: Channel<S>>(
         scale *= lambda;
         openings.push((
             *commitment,
-            Opening::Point {
+            Opening {
                 point: r[..layout.vars].to_vec(),
                 value,
             },

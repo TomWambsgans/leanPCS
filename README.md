@@ -78,14 +78,14 @@ verifier (π1 with Fiat–Shamir shaped for π2) minus its openings; the contrac
 | | **128 signatures (the reference)** | 400 signatures |
 |---|---:|---:|
 | VM execution | 154,148 cycles; tables of `2^14`–`2^16` rows, memory `2^20` | 473,348 cycles; `2^16`–`2^17` rows, memory `2^22` |
-| Prover, trace → π1 → π2 and openings | **2.52 s**, 15.6 GB, on 8 threads of an AMD EPYC 9355P (median of 5, 2026-11-11) | |
+| Prover, trace → π1 → π2 and openings | **2.29 s**, 15.6 GB, on 8 threads of an AMD EPYC 9355P (median of 5, 2026-11-11) | |
 | Calldata | 577 B (4 zero): π1's three claims hashed in π2's circuit, no selector | 577 B |
-| Gas (EIP-8141 frame transaction, EIP-7976 floor, no base or per-frame cost) | 31,524 execution; standard 40,708, floor 36,928; with the frame (257 B) and `pcs_gas` 13,000: **66,376** (the floor binds) | 35,761 execution; 66,376 |
-| PCS claims | 8: π1's 3, π2's 5 | 8 |
+| Gas (EIP-8141 frame transaction, EIP-7976 floor, no base or per-frame cost) | 31,212 execution; standard 40,396, floor 36,928; with the frame (225 B) and `pcs_gas` 12,000: **63,328** (the floor binds) | 35,452 execution; 63,328 |
+| PCS claims | 7: π1's 3, π2's 4 | 7 |
 | Lean 4 | the VM's statement, the Keccak-f block, π1's knowledge soundness (≤ 2^-64 at 2^64 queries) and completeness; the recursion's knowledge soundness as an explicit reduction and its completeness; all of π2 over π1-rec3 at `f96a7938`, not yet ported ([`docs/LEAN_PORT.md`](docs/LEAN_PORT.md)) | |
 
-π1 alone as a contract (no recursion) at 128 signatures: 8,069 B of calldata, 231,511 execution; standard 360,255,
-floor 516,416. The Keccak VM fits WHIR's `2^28`-word commitments up to about 470 signatures.
+π1 alone as a contract (no recursion) at 128 signatures: 8,065 B of calldata, 231,489 execution; standard 360,169,
+floor 516,160. The Keccak VM fits WHIR's `2^28`-word commitments up to about 470 signatures.
 
 Where things are, what is proved and what remains: [`AGENTS.md`](AGENTS.md). The design documents:
 [`docs/README.md`](docs/README.md). Code under `crates/` is MIT OR Apache-2.0, derived from leanVM.
@@ -109,7 +109,7 @@ cargo test --release -p evm -- --ignored --nocapture gas_report          # the c
 cargo test --release -p leanvm_univariate -p leanvm_rec
 cargo test --release -p leanvm_univariate --test keccak_vm -- --ignored --nocapture keccak_gas_report  # π1's gas
 cargo test --release -p leanvm_univariate --test evm_vectors              # the committed real proofs replayed
-cargo test --release -p leanvm_rec --test keccak_vm_rec -- --ignored --nocapture                       # π2's circuit, gas
+cargo test --release -p leanvm_rec --test pi2_real -- --ignored --nocapture real_gas                 # π2's circuit, gas
 PI2_VECTOR=keccak128_rec4 cargo test --release -p leanvm_rec --test pi2_real -- --ignored --nocapture real_end_to_end
 LEANVM_TRACE=<trace> PI1_VARIANT=rec4 cargo test --release -p leanvm_univariate --test prove_real -- --ignored \
   --nocapture keccak_prover_benchmark                                    # π1's prover on a real trace

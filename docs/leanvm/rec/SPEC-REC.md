@@ -14,7 +14,7 @@ verifier, or **modelled** by `params/leanvm_rec_params.py` (`python3 -I`) from t
 ```sh
 export RUSTFLAGS="-C target-cpu=native"
 cargo test --release -p leanvm_rec -- --nocapture                                            # circuit, PIOP, contract
-cargo test --release -p leanvm_rec --test keccak_vm_rec -- --ignored --nocapture             # π1-rec4 under π2 at 128 and 400 (§1.2, §10.3)
+cargo test --release -p leanvm_rec --test pi2_real -- --ignored --nocapture real_gas         # π1-rec4 under π2 at 128 and 400 (§1.2, §10.3)
 cargo test --release -p leanvm_rec --test counts -- --include-ignored --nocapture            # π1's graph, its counts (§1)
 cargo test --release -p leanvm_rec --test pi2_real -- --ignored --nocapture real_end_to_end  # the real proof end to end (§11)
 ```
@@ -32,18 +32,18 @@ cargo test --release -p leanvm_rec --test pi2_real -- --ignored --nocapture real
   **D16v** (§2.4): one copy argument in which a position's **push is a degree-2 expression of its row** (a "virtual
   push"); rows of 16 positions; Keccak-f in 130,944 positions (126,848 when only the digest is read); `E` in `K`-limbs.
 - **The contract** reads π1's three claims' hashes from the frame of PCS claims (payloads 0 … 2) into π2's seed, runs
-  π2's verifier, and checks π2's five claims declared (payloads 3 … 7).
+  π2's verifier, and checks π2's four claims declared (payloads 3 … 6).
 
 | measured, no 21,000 base | 128 signatures (reference) | 400 signatures |
 |---|---:|---:|
 | π1-rec4's verifier: Keccak-256 calls / Keccak-f / stream | 60 / 106 / 9,280 B | 61 / 108 / 9,472 B |
 | π2's positions (D16v, `N = 2^24`, the three claims hashed) | 16,413,312 (97.8%) | 16,684,592 (99.4%) |
 | calldata (zero bytes) | 577 B (4) | 577 B (5) |
-| execution | **31,524** | 35,761 |
-| EIP-8141 frame transaction (EIP-7976's floor): standard / floor | 40,708 / 36,928 | 44,933 / 36,928 |
-| with the frame (8 claims, 257 B) and `pcs_gas` 13,000 on both sides | **66,376** (floor; standard 57,820) | 66,376 (standard 62,033) |
+| execution | **31,212** | 35,452 |
+| EIP-8141 frame transaction (EIP-7976's floor): standard / floor | 40,396 / 36,928 | 44,624 / 36,928 |
+| with the frame (7 claims, 225 B) and `pcs_gas` 12,000 on both sides | **63,328** (floor; standard 55,996) | 63,328 (standard 60,224) |
 
-π1's main line on chain without recursion takes 8,069 B and 231,511 execution at 128 signatures
+π1's main line on chain without recursion takes 8,065 B and 231,489 execution at 128 signatures
 (`docs/leanvm/univariate/KECCAK.md`). It does not fit π2: at 32 signatures it already needs `N = 2^25` (§2.4.5), whose
 quotient table exceeds WHIR's `2^28` words. Hence π1-rec4.
 
@@ -57,24 +57,24 @@ bytes `from..to`; `Low`, its low 192 bits; `Narrow`, its low 160; `Wide(hash, k)
 after its last permutation); `E`'s `Add`, `Mul` and constants; bit fields of the row counts; the ring switch's kernel;
 the checks; the claims' words. This graph is the circuit π2 proves.
 
-- **`src/count.rs`** counts the **live** nodes (those the calls or the checks read). The ring kernel is expanded by
+- **`tests/counts/count.rs`** counts the **live** nodes (those the calls or the checks read). The ring kernel is expanded by
   recording `ring_tower::weight_at` on fresh symbols.
 - **`src/eval.rs`** evaluates every node on a real proof. `tests/counts.rs`, `the_graph_is_the_verifier_on_real_proofs`:
   on the committed vectors (`keccak.txt`, the main line at 32 signatures; `keccak128_rec3`, `keccak_rec3`,
   `keccak128_rec4`, `keccak_rec4` at 128 and 400), the graph writes exactly the vectors' claims, every check holds, and
   a flipped stream byte breaks them. This is the reference π2's witness is checked against.
 
-### 1.2 The counts (measured, `Claims::Point`)
+### 1.2 The counts (measured, point claims)
 
 | | π1-rec4, 128 (`REFERENCE`) | π1-rec4, 400 | π1-rec3, 128 | π1-rec3, 400 |
 |---|---:|---:|---:|---:|
-| stream bytes | 9,280 | 9,472 | 9,232 | 9,424 |
+| stream bytes | 9,280 | 9,472 | 9,280 | 9,472 |
 | Keccak-256 calls (seed included) | 60 | 61 | 70 | 71 |
 | Keccak-f[1600] permutations | 106 | 108 | 116 | 118 |
 | `E` products / linear operations (kernels expanded) | | | 8,476 / 6,633 | 8,673 / 6,887 |
 | claims: points / distinct challenges / values | 3 / 14 / 3 | 3 / 14 / 3 | 3 / 14 / 3 | 3 / 14 / 3 |
 
-`tests/keccak_vm_rec.rs` records these on a sample stream; `tests/counts.rs`'s `count_report` prints the full table
+`tests/counts.rs`'s `count_report` prints these and the full table
 (reads, constants, checks, packings) for `KECCAK_MAIN`, `KECCAK_REC3` and `KECCAK_REC4`. The verifier inverts nothing
 (its checks are against zero), and Flock's terminal is the structured one (`docs/leanvm/univariate/FLOCK.md`: about 3K
 `E` operations at a skip of 3), so the arithmetic is small next to the Keccak-f.
@@ -121,10 +121,10 @@ The three claims, on `C1`, `C2` and `F`, are at the batching sumcheck's point `r
 commitment's variables (`verifier::batch`): 27 variables at the reference shape, 28 at 400 signatures. The Keccak VM
 never commits Flock's matrices `A0`, `B0`. `r` is generated by 14 narrow challenges `z_j` (the paired batch). π2's
 circuit derives the coordinates, encodes each claim (`version ‖ n ‖ root ‖ ood ‖ point ‖ value`, `82 + 24 n` bytes) and
-hashes it (§2.4.6): nothing of π1's claims is in calldata. A claim the contract encodes instead (the fallback) carries
-its distinct elements, which cannot be fewer: sumcheck challenges are sequential (a point derived from one seed lets
-the prover know them in advance), and `q_flock`'s ring switch needs a fresh sumcheck over its variables (DEEP, Gemini,
-Zeromorph and a univariate batch give the coordinates back as values).
+hashes it (§2.4.6): nothing of π1's claims is in calldata. A claim the contract encodes instead (π1-rec3's `C2` and `F`,
+§2.4.6) carries its distinct elements, which cannot be fewer: sumcheck challenges are sequential (a point derived from
+one seed lets the prover know them in advance), and `q_flock`'s ring switch needs a fresh sumcheck over its variables
+(DEEP, Gemini, Zeromorph and a univariate batch give the coordinates back as values).
 
 ## 2. π2's arithmetization
 
@@ -225,7 +225,7 @@ is forwarded through the other. Degree 2 throughout.
 
 **The last round makes only the lanes read.** A caller reads lanes 0 … 3 (the digest) at the end of a Keccak-256, the
 whole state after a later block. Round 23's χ rows of plane `y` make lanes `5y … 5y + 4`, so a permutation that ends a
-call needs only plane 0's 64 `k0` rows: `Permutation::permute` takes the lanes read; `Sponge::keccak256_lanes` asks for
+call needs only plane 0's 64 `k0` rows: `D16::permute` takes the lanes read; `Sponge::keccak256_lanes` asks for
 25 in a later block and the caller's in the last (4, or `4 + 3k` for a wide draw's challenge `k`: planes 0 … 2 or
 0 … 3). The planes not made leave their outputs `UNMADE`; their inputs (the lanes of `A_22` they would read) end at
 free ends, and `D_23[x][z]` still ends at its `k0` row. Rounds 0 … 22 are whole (`C_23`, so `D_23`, reads every lane of
@@ -266,7 +266,7 @@ self-loop pushing `b²` and a slot that produces `b`, 2 positions a bit.
 | the ring kernel | expanded (§1.1) |
 | spare slots | an expression slot with nothing to end pulls a constant's segment |
 
-#### 2.4.5 Totals (measured, `tests/keccak_vm_rec.rs`, `tests/circuit.rs`)
+#### 2.4.5 Totals (measured, `tests/circuit.rs`, `tests/pi2_real.rs`)
 
 At 128 signatures: 123 Keccak-f (π1-rec4's 106, the claims' 17; 63 with a trimmed last round) and about 0.56M other
 positions (free bits, packings, later blocks' XORs, `E` units, ports): **16,413,312 of `2^24` (97.8%)**. At 400
@@ -281,7 +281,7 @@ model.)
 
 #### 2.4.6 Public inputs
 
-The public inputs (`compile::HASHED_CLAIMS = [0, 1, 2]`) are the 32-byte public input and the Keccak-256 of each of
+The public inputs (`compile::hashed_claims(Rec4) = [0, 1, 2]`) are the 32-byte public input and the Keccak-256 of each of
 π1's three claims, which the contract reads from payloads 0, 1, 2 of the frame of PCS claims (`Read::Frame`) into π2's
 seed. The row counts are not public: they are stream bytes hashed by π1's transcript (§10.4 item 3).
 
@@ -292,11 +292,11 @@ stream's bits (π1's transcript hashed them; `units::Copies` gives an endable co
 replayed by the witness plan from the element's limbs) packed into limbs checked equal to the element's (an `E` sum, a
 zero port).
 
-**The fallback** (`compile_keeping`, `FIT_LOG_N = 24`): a circuit that does not fit `2^24` with the three hashes drops
-the last and compiles again (`[0, 1]`, `[0]`, `[]`). The recursion's capacity (π1's `C1` at `2^28` words near 470
-signatures) is kept, the bytes are not: the contract then encodes the claim, its root `C2` (32 bytes, as it is) and
-distinct elements (the out-of-domain answer, the narrow challenges as their low 20 bytes, `Read::Narrow`, the values)
-in π2's stream, the elements ports. No vector exercises it at 128 or 400 signatures.
+**The claims hashed, by π1's shape** (`compile::hashed_claims`, `FIT_LOG_N = 24`): as many as fit `2^24`, the last
+dropped first: π1-rec4 hashes its three, π1-rec3 (a longer transcript, the Lean's) `C1`'s alone (`[0]`), the main line
+none (it does not fit `2^24` at all); a circuit past `2^24` is refused (a panic). A claim the circuit does not hash the
+contract encodes: its root `C2` (32 bytes, as it is) and distinct elements (the out-of-domain answer, the narrow
+challenges as their low 20 bytes, `Read::Narrow`, the values) in π2's stream, the elements ports.
 
 **Each public word `J` binds through one port**, a hole of its producing row whose formula is the fingerprint of the
 word's limbs, which must be `F_J`. The hole pushes it to an outside tag `τ_J ∉ V_m`; π2's PIOP (`PI2.md` §1) checks it
@@ -359,20 +359,21 @@ The protocol as built is `PI2.md` §2. In outline:
 - **Setup** (the contract's constants): the setup's commitment (`κ`, `κ + σ`: root and out-of-domain answer); π2's
   IV, `keccak("leanvm-rec-iv-v3" ‖ π1's contract IV ‖ the setup root ‖ its answer ‖ the circuit's digest ‖ log_n)`
   (`prover::iv`); π1's setup commitment `F`.
-- **Public inputs:** the public input (32 B) and π1's three claims' Keccak-256s (frame payloads 0 … 2); with the
-  fallback (§2.4.6), the public data of the claims the contract encodes, in the stream.
-- **The transcript** (Keccak-256, `KeccakChannel`): the seed `keccak("leanvm-rec-pi2v3" ‖ IV ‖ public input ‖ the
+- **Public inputs:** the public input (32 B) and π1's three claims' Keccak-256s (frame payloads 0 … 2); for a shape that
+  hashes fewer (§2.4.6), the public data of the claims the contract encodes, in the stream.
+- **The transcript** (Keccak-256, `KeccakChannel`): the seed `keccak("leanvm-rec-pi2v4" ‖ IV ‖ public input ‖ the
   claims' hashes)`; `W`'s commitment (root, answer), then `α`, `β`, `γ`; `Q`'s commitment, then `t`; the row's 16 fold
   values `a_k`, `ξ = κ(t) + βσ(t)` and `s = P(t)` (18 values); then `ρ`.
 - **The verifier** at `t`: the digits; the row's cells from the `a_k`; the (block, role) indicators; `P_v(t)`; the
   ports' `Φ` and their term; `d_pull`, `d_push = α + s + ξ`; the identity and `P`'s definition, as fractions with one
   inversion at the end.
-- **Claims** (5, each a point of its commitment's whole stack): `W` at `(ρ, ρ², ρ⁴, ρ⁸, w_4(t), …, w_23(t))`; the setup
-  at `(w_0(t), …, w_23(t), β)`, value `ξ`; on `Q`'s sixteen slots, the identity's combination of `h(t)` and `q(t)` (at
-  `(u_0, …, u_24, ρ', y_0, y_1)`), `P(t) = s` and `P`'s definition combined by `ρ` (at `(u_0, …, u_24, ρ, 1, 1)`), and
-  `Σ_V h = 0` at the top coefficient's point.
-- **The contract**: the claims' hashes from the frame into the seed; the stream; π2's verifier; π2's 5 claims declared
-  at payloads 3 … 7 (`W`, the setup, `Q`'s three).
+- **Claims** (4, each a point of its commitment's whole stack): `W` at `(ρ, ρ², ρ⁴, ρ⁸, w_4(t), …, w_23(t))`; the setup
+  at `(w_0(t), …, w_23(t), β)`, value `ξ`; on `Q`'s sixteen slots (`H = x h`, `q`'s digits on the slot bits'
+  anti-diagonal), the identity's combination of `H(t)` and `q(t)` (at `(u_0, …, u_23, z_0, z_1, y_0, y_1)`), which also
+  forces `Σ_V h = 0`, and `P(t) = s`, `P`'s definition and `Q`'s zero slot `S` combined by `ρ` (at `(u_0, …, u_23, ρ,
+  z'_1, 1, 1)`) (`PI2.md` §2, §7; π2v3 had a third claim, `Σ_V h = 0` at `h`'s top coefficient).
+- **The contract**: the claims' hashes from the frame into the seed; the stream; π2's verifier; π2's 4 claims declared
+  at payloads 3 … 6 (`W`, the setup, `Q`'s two).
 
 ## 5. Soundness (modelled; the Lean bounds)
 
@@ -387,13 +388,15 @@ probability about `Q (ε_WHIR + ε_round)`, the openings charged once at `269 ·
 | round | error | alone | after |
 |---|---|---:|---:|
 | the copy argument `(α, β, γ)`: `2N` fractions, the ports' poles (`PI2.md` §7), the four four-limb ports (the statement, the three claims' hashes; degree 1 in `γ`), over `W`'s list 9,952 | `(4N + 4)/2^192` | 166.0 | 152.7 |
-| `t`: the identity and `P`'s definition, degree `< 4N` with `Q`'s prover-filled empty slots (`< 3N` for the honest `Q`; `PI2.md` §2), over `W`'s and `Q`'s lists (9,952 · 3,564) | `4N/2^192` | 166.0 | **140.9** |
+| `t`: the identity as the identity's claim reads it (`I = D² H + x Z_V D q + x² Z_V³ G + x D R`, degree `< 5N`, `PI2.md` §7) and `P`'s definition (`< 3N`), over `W`'s and `Q`'s lists (9,952 · 3,564) | `5N/2^192` | 165.7 | **140.6** |
 | `ρ`: `W`'s fold (degree 15), over both lists | `15/2^192` | 188.1 | 163.0 |
-| `ρ`: `Q`'s claim (degree 3), over both lists | `3/2^192` | 190.4 | 165.3 |
+| `ρ`: `Q`'s pushes' claim (degree 2), over both lists | `2/2^192` | 191.0 | 165.9 |
 
-With its openings once, π2 keeps **128.93 bits** as `Q/ε` at `Q = 2^64`. The Lean (`formal/RecPiop`'s `err`) states
-coarser rounds, `(4N − 1 + Σ_j d_j)/|E|`, `(4N − 1)/|E|`, `2^r/|E|`, for `f96a7938`'s π2, and proves the same bound
-(`RecCompose.pi2Bound`, `pi2Bound_le_bits`).
+With its openings once, π2v4 keeps **128.93 bits** as `Q/ε` at `Q = 2^64` (modelled, the table above). The Lean's
+128.93 bits (`RecCompose.pi2Bound`, `pi2Bound_le_bits`) are of π2v3 at `f96a7938`, from its coarser rounds
+(`formal/RecPiop`'s `err`: `(4N − 1 + Σ_j d_j)/|E|`, `t` at `(4N − 1)/|E|`, `2^r/|E|`), not of π2v4 (`t` at `5N`): the
+two figures are equal because the openings' `2^-128.93` a query dominates every round's, not because the Lean covers
+π2v4 (`docs/LEAN_PORT.md`).
 
 **π1-rec4's rounds** are the main line's (`docs/leanvm/univariate/SPEC.md` §9; `C1`'s list 4,473, `C2`'s 6,296 at 128
 signatures) but for these (bits after the lists, `python3 -I params/leanvm_univariate_params.py`):
@@ -421,7 +424,7 @@ claim (the EIP's assumption).
 for bit) outputs the claims whose hashes the frame declares; the block proves them, and π1's soundness applies. The
 errors add: π2's, π1-rec4's and the merge hazard's (`2^16/|E|` a query, `RecGraphKeccak.hazard_probK`): **127.86 bits**
 as `Q/ε` at `Q = 2^64` (127.70 with the Lean's cap on π1's rounds). It is below 128 because WHIR's `269 · 2^-137` a query
-is charged twice, once in π2's bound (which covers all eight openings) and again inside π1's; charged once, the sum
+is charged twice, once in π2's bound (which covers all seven openings) and again inside π1's; charged once, the sum
 would be 128.79 bits. That needs a tighter composition proof, no code change; the 127.86 bits are accepted as they are.
 The Lean statement of this composition is `formal/RecCompose`, for `f96a7938`'s π2 over π1-rec3 (π1-rec3's two terms at
 the real Keccak-f[1600]); what it needs for π1-rec4 and the hashed claims: `docs/LEAN_PORT.md`.
@@ -435,16 +438,19 @@ challenges offline, as it could on chain: the per-query bounds above hold, with 
 commitments `W`, `Q` (2 × 56: a root and an out-of-domain answer each), its 18 values (432: 16 fold values, `ξ`, `s`),
 the frame's index (1). The real proofs have 4 zero bytes at 128 signatures, 5 at 400.
 
-**The contract**: 14,513 B of code at 128 signatures (16,472 at 400), under EIP-170's 24,576; 786 `FIELD_MUL`s, 176
-selector pairs (232 at 400). Execution 31,524 (35,761 at 400), by phase at 128 signatures: indicators 8,784 + 904, push
-formulas 8,551, the claims written, hashed and checked 4,013, identity and claims 2,574, the fold 2,337, the inversion
-1,208, digits 920, transcript 797, calldata reads 776, ports 510, setup 124, entry 26. It depends on the circuit, not
+**The contract**: 14,328 B of code at 128 signatures (16,287 at 400), under EIP-170's 24,576; 798 `FIELD_MUL`s, 176
+selector pairs (232 at 400). Execution 31,212 (35,452 at 400), by phase at 128 signatures: indicators 8,812 + 913, push
+formulas 8,558, the claims written, hashed and checked 3,422, identity and claims 2,897, the fold 2,336, the inversion
+1,208, digits 832, transcript 797, calldata reads 776, ports 512, setup 123, entry 26. It depends on the circuit, not
 on the proof.
 
-**Pricing** (EIP-8141 frame transaction, EIP-7976's floor, no base or per-frame cost): standard 40,708, floor
-`64 · 577 = 36,928` (44,933 and 36,928 at 400); with the frame (8 claims, 257 B) and `pcs_gas` 13,000 on both sides,
-**66,376** at both shapes, the floor binding (standard 57,820 and 62,033). The floor leaves 8,556 gas of execution to
-spare at 128 signatures (4,343 at 400). A byte is 64 gas, a claim `64 · 33 + 1,000 = 3,112`.
+**Pricing** (EIP-8141 frame transaction, EIP-7976's floor, no base or per-frame cost): standard 40,396, floor
+`64 · 577 = 36,928` (44,624 and 36,928 at 400); with the frame (7 claims, 225 B) and `pcs_gas` 12,000 on both sides,
+**63,328** at both shapes (`64 · (577 + 225) + 12,000`), the floor binding (standard 55,996 and 60,224). The floor
+leaves 7,332 gas of execution to spare at 128 signatures (3,104 at 400). A byte is 64 gas, a claim `64 · 32 + 1,000 =
+3,048` (its frame word; the frame's byte of length is per frame). By item at 128 signatures: the statement, the frame's
+index and header and the `5,000`, 7,176; `W`'s and `Q`'s commitments, 7,168; the 18 values, 27,648; π1's three claims,
+9,144; π2's four, 12,192.
 
 ## 7. Build history
 
@@ -455,8 +461,8 @@ and π1-rec2 (`FsShape::Rec`, `Rec2`) led to π1-rec3 and π1-rec4 (§12). Earli
 ## 8. Margins and limits
 
 1. **D16v's margins.** 97.8% of `2^24` at the reference shape, 99.4% at 400 signatures; `Q` is `2^27.58` words (`12N`),
-   fixed by `N`. Past `2^24` the fallback (§2.4.6) hashes fewer claims; the limit is π1's own stacks (`C1` at `2^28`
-   words near 470 signatures, `docs/leanvm/univariate/KECCAK.md`).
+   fixed by `N`. A shape past `2^24` with π1-rec4's three hashes would need fewer (§2.4.6: the compiler refuses it); the
+   limit is π1's own stacks (`C1` at `2^28` words near 470 signatures, `docs/leanvm/univariate/KECCAK.md`).
 2. **π1-rec4 is not leanVM's Fiat–Shamir shape.** Its derivations, wide draws and paired narrow batch are standard but
    not leanVM's; π1's IV binds the shape (`variant_bytes`). The EVM's `KECCAK256` gives the digest alone, so π1-rec4 has
    no contract of its own: its vectors are checked against the Rust verifier, and π2's circuit runs it.
@@ -487,7 +493,7 @@ cargo test --release -p leanvm_rec --lib                                        
 | `keccak.rs` | Keccak-256's sponge (padding, later blocks by XOR units, the digest, the lanes read); constants |
 | `keccak16.rs` | D16v's Keccak-f (`k0`, `k1`, `kd`, `kprep`), its last round trimmed to the lanes read |
 | `units.rs` | free bits, packings, `E` units, copies, ports |
-| `compile.rs` | `Recorded` → circuit and witness; the hashed claims and the fallback (`compile_keeping`); its rejections (`tests/compile_rejects.rs`) |
+| `compile.rs` | `Recorded` → circuit and witness; the hashed claims by shape (`hashed_claims`); its rejections (`tests/compile_rejects.rs`) |
 | `plan.rs` | the witness replayed per proof from a plan made once per circuit (`WitnessPlan`; `tests/witness_plan.rs`) |
 
 ### 10.2 The tests
@@ -497,10 +503,11 @@ cargo test --release -p leanvm_rec --lib                                        
   their words; D16v's 8,184 rows a permutation (`d16_rows_a_permutation`); a trimmed last round's rate lanes against
   the native sponge at 13, 16 and 17 lanes (`d16_rate_lanes_on_random_inputs`).
 - **The real proofs** (`tests/circuit.rs`: `keccak_rec4_128_d16v`, `keccak_rec4_400_d16v`, `keccak_rec3_128_d16v` at
-  `2^24`; `keccak_32_d16v`, the main line, at `2^25`): `Circuit::check` holds; the calls on the public inputs are the
-  vector's claims; every digest and live element's limbs equal `eval::evaluate`'s; a changed statement byte, element
-  limb, root byte or claim hash (`Failure::Public`), changed witness words at wired positions and a flipped stream byte
-  (`σ`, `κ` unchanged: the circuit depends on the recorded graph only) are caught; `N` and the fill are asserted.
+  `2^24`; `keccak_32_d16v_does_not_fit`: the main line, `2^25`, refused): `Circuit::check` holds; the calls on the
+  public inputs are the vector's claims; every digest and live element's limbs equal `eval::evaluate`'s; a changed
+  statement byte, element limb, root byte or claim hash (`Failure::Public`), changed witness words at wired positions
+  and a flipped stream byte (`σ`, `κ` unchanged: the circuit depends on the recorded graph only) are caught; `N` and the
+  fill are asserted.
   `keccak_rec4_128_any_stream` (ignored): on streams that are no proof every digest and element is the evaluator's.
 - **The compiler's rejections** (`tests/compile_rejects.rs`): graphs that would compile into a circuit not
   constraining what the graph means are refused.
@@ -572,14 +579,14 @@ selector pairs. So D16v is the layout even where D32v fits a smaller `N`.
 `tests/pi2_real.rs`, `real_end_to_end`, on the real π1-rec4 proof (`PI2_VECTOR=keccak128_rec4`, the default;
 `keccak_rec4` at 400 signatures; the `keccak*_rec3` vectors give π2 over π1-rec3 with `C1`'s claim alone hashed):
 
-- π1's real proof → its circuit and witness → π2's proof → its five openings verify (`pcs_claim::verify_claim`, what
-  the block proves) → the contract accepts, its frame declaring exactly the 8 claims (π1's three as the vector's
-  openings prove them, π2's five); the contract equals π2's Rust verifier word for word (`contract::parity`).
+- π1's real proof → its circuit and witness → π2's proof → its four openings verify (`pcs_claim::verify_claim`, what
+  the block proves) → the contract accepts, its frame declaring exactly the 7 claims (π1's three as the vector's
+  openings prove them, π2's four); the contract equals π2's Rust verifier word for word (`contract::parity`).
 - **Rejected**: π1's claims on other roots; 21 chosen calldata bytes flipped at bit 0 (across the public input, π2's
   commitments and values, and the frame's index); and (`frame_and_calldata_attacks`) a frame of another mode or scheme,
   swapped payloads, any claim's value, point or out-of-domain answer changed, a claim missing, an index naming a
   non-PCS frame or a PCS-scheme frame of another mode, calldata one byte longer or shorter, and **every one of the 576
-  calldata bytes before the index flipped at bits 0 and 7**. Accepted: a ninth claim appended, the right index past a
+  calldata bytes before the index flipped at bits 0 and 7**. Accepted: an eighth claim appended, the right index past a
   frame before it.
 - Figures: §0, §6; the prover's timings (`tests/pipeline.rs`, `bench.sh`): `docs/PERF_PROVER.md`.
 
@@ -607,6 +614,9 @@ Each item says which layer it touches. The π2 side is detailed in `PI2.md` §8�
     `2N` coset (`PI2.md` §1, §2, §7).
 12. **The EIP draft's PCS claims**: every commitment a root and an out-of-domain answer, every claim one point of a
     whole stack, one opening a claim; `Q` in sixteen slots, π2's five claims (`PI2.md` §2).
+15. **The copy sum from `Q`'s layout** (π2v4, π2's PIOP): `H = x h` in one slot, `q`'s digits on the slot bits'
+    anti-diagonal, the fourth slot read through `x² Z_V³`: the identity's claim forces `Σ_V h = 0`, and π2's claims are
+    four (`PI2.md` §2, §7).
 13. **No selector**: π2's contract has one entry; π1's own contract, built for tests, keeps one.
 14. **π1-rec4** (**π1's shape**: `FsShape::Rec4`, its code 4 in π1's IV): the wide draws and the ring map after `C2`:
     106 Keccak-f instead of 116 (§1.3).

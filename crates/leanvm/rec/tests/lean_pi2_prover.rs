@@ -50,7 +50,7 @@ fn vector(log_n: u8, out: &mut String) {
     let iv = prover::iv(&[0x11; 32], &circuit.digest(), &setup.root(), setup.ood(), circuit.log_n);
     let witness = adapt::witness(&w);
     let proved = prove(&circuit, &spec, &setup, &iv, &public_input, &values, &witness);
-    assert_eq!(claims_hold(&proved, &setup), [true; 5]);
+    assert_eq!(claims_hold(&proved, &setup), [true; 4]);
     writeln!(out, "VECTOR example {log_n}").unwrap();
     writeln!(out, "SHAPE {} {}", c.log_n, c.log_width).unwrap();
     for region in &c.regions {

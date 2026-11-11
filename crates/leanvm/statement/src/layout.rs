@@ -69,7 +69,6 @@ impl Add for Form<E> {
 }
 
 pub const K_BITS: usize = 64;
-pub const FLOCK_K_SKIP: usize = 6; // log2_ceil(K_BITS)
 
 fn cols<const N: usize>(columns: &[&str], names: [&str; N]) -> [usize; N] {
     names.map(|name| {

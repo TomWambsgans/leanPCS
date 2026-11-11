@@ -70,28 +70,37 @@ claim on a conic binds three row values (−1,536), no selector (−256).
 
 ## leanVM
 
-| | before the PCS claims (π2v2, `PCS_OPEN`) | `f96a7938` (`formal/` states it) | `866ba889` | now |
-|---|---:|---:|---:|---:|
-| inner proof | π1-rec3 | π1-rec3 | π1-rec3 | π1-rec4 |
-| π1's claims | encoded by the contract | encoded by the contract (24-byte challenges, selector) | `C1`'s hashed in π2's circuit (20-byte challenges, no selector) | all three hashed |
-| calldata | 1,004 B (59 zero) | 1,101 B (61 zero) | 941 B (8 zero) | 577 B (4 zero) |
-| execution | 27,641 | 32,794 (33,740 at 400) | 37,406 | 31,524 |
-| standard / floor | 42,997 (EIP-7623) / 64,256 | 49,678 / 70,464 | 52,366 / 60,224 | 40,708 / 36,928 |
-| with the frame | | 99,912 | 89,672 (90,952 at 400) | 66,376 |
-| contract | 13,219 B | 13.2 KB | 17,185 B, 205 selector pairs | 14,513 B, 176 pairs |
-| π2's positions of `2^24` | 15,668,416 (93.4%) | | 16,482,912 (98.2%) | 16,413,312 (97.8%) |
-| prover | 2.06 s M4 Max; 0.59 s on 64 threads | 3.7 s M4 Max (π1-rec3 1.41, π2 0.95, openings 1.25), 14.3 GB; 2.82 s on 8 threads | 2.62 s on 8 threads | 2.52 s on 8 threads |
+| | before the PCS claims (π2v2, `PCS_OPEN`) | `f96a7938` (`formal/` states it) | `866ba889` | `bbb0255c` (π2v3) | now (π2v4) |
+|---|---:|---:|---:|---:|---:|
+| inner proof | π1-rec3 | π1-rec3 | π1-rec3 | π1-rec4 | π1-rec4 |
+| π1's claims | encoded by the contract | encoded by the contract (24-byte challenges, selector) | `C1`'s hashed in π2's circuit (20-byte challenges, no selector) | all three hashed | all three hashed |
+| π2's claims | | 5 | 5 | 5 (`W`, setup, `Q`'s identity, pushes, sum) | 4 (`W`, setup, `Q`'s identity, pushes) |
+| calldata | 1,004 B (59 zero) | 1,101 B (61 zero) | 941 B (8 zero) | 577 B (4 zero) | 577 B (4 zero) |
+| execution | 27,641 | 32,794 (33,740 at 400) | 37,406 | 31,524 (35,761 at 400) | 31,212 (35,452 at 400) |
+| standard / floor | 42,997 (EIP-7623) / 64,256 | 49,678 / 70,464 | 52,366 / 60,224 | 40,708 / 36,928 | 40,396 / 36,928 |
+| with the frame | | 99,912 | 89,672 (90,952 at 400) | 66,376 | 63,328 |
+| contract | 13,219 B | 13.2 KB | 17,185 B, 205 selector pairs | 14,513 B, 176 pairs | 14,328 B, 176 pairs |
+| π2's positions of `2^24` | 15,668,416 (93.4%) | | 16,482,912 (98.2%) | 16,413,312 (97.8%) | 16,413,312 (97.8%) |
+| prover | 2.06 s M4 Max; 0.59 s on 64 threads | 3.7 s M4 Max (π1-rec3 1.41, π2 0.95, openings 1.25), 14.3 GB; 2.82 s on 8 threads | 2.62 s on 8 threads | 2.52 s on 8 threads | 2.29 s on 8 threads (π2's openings 0.73 → 0.51 s) |
 
 The `866ba889` round, step by step from `f96a7938`: narrow challenges as 20 bytes (`Read::Narrow`, −56 B, 96,328),
 no selector (−4 B, 96,072), `C1`'s claim hashed (`HASHED_CLAIMS = [0]`, −100 B, 89,672). Then (`perf2/leanvm-gas`,
 −23,296 gas): π1-rec4, D16v's trimmed last rounds, all three claims hashed; the three hashes needed 17,972,736
 positions (107.1%) with `866ba889`'s transcript, 16,664,192 with π1-rec4, 16,413,312 with the trimmed rounds.
 
+π2v3 → π2v4 (`perf3/leanvm-claims`, −3,048 gas): `Q`'s sum claim (`h`'s top coefficient at `(1^m, 0, 0, y_0, y_1)`)
+replaced by `Q`'s layout (`H = x h` in one slot, `q`'s digits on the slot bits' anti-diagonal, the fourth slot read
+through `x² Z_V³`; `PI2.md` §7), one Q opening fewer. π2v3's slots: `h` at `(0, 0)`, its second digit (zero) at `(1,
+0)`, `q`'s digits at `(0, 1)`, `(1, 1)`; `S` (zero) at limb code 3's `(0, 0)`, `P` at `(1, 0)`, `q_P` at `(0, 1)`,
+`(1, 1)`; the identity's claim at the digit ratio `w_m` and kind ratio `ρ' = w_m / (c_h + w_m)`, the pushes' at
+`(u, ρ, 1, 1)` (degree 1 in `ρ`); its empty slots argued at `4N/|E|` (`t`: 140.9 bits). Examined and not possible in
+this PIOP: one claim for `Q`'s identity and pushes, fewer values at `t` (`PI2.md` §9).
+
 ### π1
 
 - **π1-rec3 → π1-rec4** (2026-11-11): π1-rec3 drew every challenge by its own Keccak-256 call (70 calls, 116
-  Keccak-f, 9,232 B of stream); π1-rec4 draws the challenges no message separates from one Keccak-f (60 calls, 106
-  Keccak-f, 9,280 B), at the same 128.79 bits. π1-rec3 stays in the code (the Lean states it; its vectors and
+  Keccak-f, 9,280 B of stream); π1-rec4 draws the challenges no message separates from one Keccak-f (60 calls, 106
+  Keccak-f, the same 9,280 B), at the same 128.79 bits. π1-rec3 stays in the code (the Lean states it; its vectors and
   contract remain). Earlier shapes: π1-rec (`FsShape::Rec`: `α` and the zerocheck's eq point as powers), π1-rec2
   (narrow batch challenges), π1-rec3 (the batch two variables a round: 14 challenges instead of 27; π1's claims 408 B
   of calldata instead of 720, 744 at 400 signatures).
@@ -137,8 +146,8 @@ prover's optimisations, 4.4 s + 1.7 s openings and 3.8 s of witness, 9.8 GB.
 ## Removed lines
 
 - **SLH-DSA proof of concept** (`crates/slh_dsa`, `SPEC-FAST.md` in git): the Keccak-f Flock block and its structured
-  terminal were designed for it (milestones M1, M3; `crates/membership/quotient/src/circuit.rs` cites its §4.3 for
-  lane circuits). Its §4.5 linked the block's ports to a membership-style witness by a quotient `Q_link`; the Keccak VM
+  terminal were designed for it (milestones M1, M3; the lane circuits of its §4.3, kept in
+  `crates/membership/quotient/src/circuit.rs` and used by nothing else, were removed later). Its §4.5 linked the block's ports to a membership-style witness by a quotient `Q_link`; the Keccak VM
   uses `Q_W`'s copy identities instead.
 - **The BLAKE2s VM** (leanVM `42422001`'s BLAKE2s block and π1 over it): removed from the Rust and from `formal/`
   (`Lv42`, `UniStatement` keep comments of that era). `formal/README.upstream.md` (deleted) was leanVM's

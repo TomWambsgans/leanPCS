@@ -5,12 +5,11 @@
 
 use leanvm_statement::N_TABLES;
 use leanvm_statement::layout::{SEP_BYTECODE, SEP_MEM, SEP_STATE, gpow};
-use primitives::field::{F64, F192, g_pow, g_powers, mul_by_g};
+use primitives::field::{F64, F192, g_pow, mul_by_g};
 use quotient::ntt::Kx8;
 
 use super::fingerprint::Fingerprint;
 use super::prints::{Print, product};
-use super::poly::{batch_invert, from_v};
 use super::trace::Trace;
 use crate::domain::is_active;
 use crate::heap::{HeapLayout, Leaves};
@@ -49,7 +48,7 @@ impl Bus {
     /// The memory cell's pulled fingerprint (`count` its final count) or pushed one (`count = 1`).
     pub fn memory(&self, address: F64, count: F64, limbs: [F64; 3]) -> F192 {
         let w = &self.weights;
-        let mut acc = self.beta + w[0] * from_v(SEP_MEM) + w[1].mul_base(address) + w[2].mul_base(count);
+        let mut acc = self.beta + w[0] * F192::from(SEP_MEM) + w[1].mul_base(address) + w[2].mul_base(count);
         for (k, &limb) in limbs.iter().enumerate() {
             acc += w[3 + k].mul_base(limb);
         }
@@ -64,91 +63,8 @@ impl Bus {
     /// `β + fp(SEP_STATE, pc, 1)`.
     pub fn state(&self, pc: F192) -> F192 {
         let w = &self.weights;
-        self.beta + w[0] * from_v(SEP_STATE) + w[1] * pc + w[2]
+        self.beta + w[0] * F192::from(SEP_STATE) + w[1] * pc + w[2]
     }
-}
-
-/// Table `t`'s leaves: `Π_j D'_j / Π_j D_j` on its active rows, 1 on its padding rows. Fails (returns the row) if
-/// a pulled fingerprint vanishes.
-pub fn table_leaves(trace: &Trace, t: usize, bus: &Bus) -> Result<Vec<F192>, usize> {
-    assert!(trace.placed, "the rows at the verifier's positions");
-    let columns = &trace.tables[t];
-    let r = trace.heights[t];
-    let n = 1usize << r;
-    let rows = trace.rows[t];
-    let active = |i: usize| is_active(i as u64, rows, r);
-    let (pull, push) = (&bus.pull[t], &bus.push[t]);
-    // The pull and push products, eight rows at a time (one at a time below eight rows).
-    let mut den = vec![F192::ONE; n];
-    let mut num = vec![F192::ONE; n];
-    if n >= 8 {
-        let prints = |list: &[Fingerprint]| -> Vec<Print<usize>> { list.iter().map(|f| Print::new(f, |c| c)).collect() };
-        let (pull, push) = (prints(pull), prints(push));
-        parallel::chunks_mut2(&mut den, &mut num, 1 << 10, |b, den, num| {
-            for (k, (d, m)) in den.chunks_exact_mut(8).zip(num.chunks_exact_mut(8)).enumerate() {
-                let at = (b << 10) + 8 * k;
-                let col = |c: usize| Kx8::load(&columns[c][at..]);
-                d.copy_from_slice(&product(&pull, col).to_array());
-                m.copy_from_slice(&product(&push, col).to_array());
-            }
-        });
-    } else {
-        for i in 0..n {
-            den[i] = pull.iter().fold(F192::ONE, |acc, f| acc * f.at(|c| columns[c][i]));
-            num[i] = push.iter().fold(F192::ONE, |acc, f| acc * f.at(|c| columns[c][i]));
-        }
-    }
-    parallel::for_each_mut(&mut den, |i, d| {
-        if !active(i) {
-            *d = F192::ONE;
-        }
-    });
-    if let Some(i) = den.iter().position(|d| d.is_zero()) {
-        return Err(i);
-    }
-    batch_invert(&mut den);
-    parallel::chunks_mut_zip(&mut den, &num, 1 << 12, |b, den, num| {
-        for (k, (d, &m)) in den.iter_mut().zip(num).enumerate() {
-            if active((b << 12) + k) {
-                *d *= m;
-            }
-        }
-    });
-    Ok(den)
-}
-
-/// The memory's leaves: `D_init / D_fin` of every cell.
-pub fn memory_leaves(trace: &Trace, bus: &Bus) -> Vec<F192> {
-    let n = 1usize << trace.log_memory;
-    let address = g_powers(n);
-    let m = &trace.memory;
-    let limbs = |i: usize| [m[0][i], m[1][i], m[2][i]];
-    let mut den: Vec<F192> = parallel::map_collect(n, |i| bus.memory(address[i], m[3][i], limbs(i)));
-    batch_invert(&mut den);
-    parallel::for_each_mut(&mut den, |i, slot| *slot *= bus.memory(address[i], F64::ONE, limbs(i)));
-    den
-}
-
-/// The bytecode's 16 tuple slots at instruction `i`, its count `count`.
-pub fn bytecode_slot(trace: &Trace, pc: &[F64], i: usize, s: usize, count: F64) -> F64 {
-    let n = 1usize << trace.log_bytecode;
-    match s {
-        0 => F64(SEP_BYTECODE.c0),
-        1 => pc[i],
-        2 => count,
-        _ => trace.bytecode[s * n + i],
-    }
-}
-
-/// The bytecode's leaves: `D_init / D_fin` of every instruction.
-pub fn bytecode_leaves(trace: &Trace, bus: &Bus) -> Vec<F192> {
-    let n = 1usize << trace.log_bytecode;
-    let pc = g_powers(n);
-    let fp = |i: usize, count: F64| bus.bytecode(|s| bytecode_slot(trace, &pc, i, s, count));
-    let mut den: Vec<F192> = parallel::map_collect(n, |i| fp(i, trace.bytecode_final[i]));
-    batch_invert(&mut den);
-    parallel::for_each_mut(&mut den, |i, slot| *slot *= fp(i, F64::ONE));
-    den
 }
 
 /// The heap: position `i` holds node `i`, the leaves at `[2^(H-1), 2^H)` in `layout`'s blocks, unused blocks 1,
@@ -181,12 +97,12 @@ pub fn heap(layout: &HeapLayout, leaves: &[(Leaves, Vec<F192>)]) -> Vec<F192> {
 
 /// The root the state boundary requires: `fp(final) / fp(initial)`.
 pub fn expected_root(bus: &Bus, log_bytecode: usize) -> F192 {
-    let last = from_v(gpow((1u64 << log_bytecode) - 1));
+    let last = F192::from(gpow((1u64 << log_bytecode) - 1));
     bus.state(last) * bus.state(F192::ONE).inv()
 }
 
-/// All leaves, by block kind ([`table_leaves`], [`memory_leaves`], [`bytecode_leaves`]: the same values, from
-/// [`leaf_chunks`]).
+/// All leaves, by block kind ([`leaf_chunks`]): a table's `Π_j D'_j / Π_j D_j` on its active rows, 1 on its padding
+/// rows; the memory's and the bytecode's `D_init / D_fin` of every cell and instruction.
 pub fn all_leaves(trace: &Trace, bus: &Bus) -> Result<Vec<(Leaves, Vec<F192>)>, String> {
     let mut kinds = vec![Leaves::Memory, Leaves::Bytecode];
     kinds.extend((0..N_TABLES).map(Leaves::Table));
@@ -216,9 +132,9 @@ fn block_rows(trace: &Trace, kinds: &[Leaves]) -> Vec<usize> {
 const LEAF_ROWS: usize = 1 << 10;
 
 /// The leaves of the blocks `kinds`, in chunks of `rows` rows (a power of two, at most a block's), block `k`'s chunks
-/// `firsts[k]..firsts[k + 1]`, all in one dispatch: a chunk's fingerprints (a table's eight rows at a time, its
-/// padding rows' skipped), their inverses by Montgomery's trick, the ratios. The values of [`table_leaves`],
-/// [`memory_leaves`] and [`bytecode_leaves`]. Fails if a table's pulled fingerprint vanishes (its first such row).
+/// `firsts[k]..firsts[k + 1]`, all in one dispatch: a chunk's fingerprints (a table's eight rows at a time, its padding
+/// rows' skipped), their inverses by Montgomery's trick, the ratios. Fails if a table's pulled fingerprint vanishes
+/// (its first such row).
 fn leaf_chunks(trace: &Trace, bus: &Bus, kinds: &[Leaves], rows: usize) -> Result<(Vec<Vec<F192>>, Vec<usize>), String> {
     assert!(trace.placed, "the rows at the verifier's positions");
     let heights = block_rows(trace, kinds);

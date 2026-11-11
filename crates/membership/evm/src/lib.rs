@@ -1,7 +1,7 @@
 // Adapted from leanVM (https://github.com/leanEthereum/leanVM), branch PCS-openings-aggregation, commit 651453c6,
 // file crates/membership/evm/src/lib.rs. MIT OR Apache-2.0; see AGENTS.md.
-//! The membership verifier as an EVM contract, and the EVM it runs on: revm with one more instruction,
-//! `FIELD_MUL`, a product in `GF(2^192)`.
+//! The membership verifier as an EVM contract, run in tests on `evm_link::machine` (revm with `FIELD_MUL`, a product
+//! in `GF(2^192)`, and EIP-8141's frames).
 //!
 //! The contract is not written by hand. [`quotient::contract`] runs the Rust verifier
 //! (`quotient::protocol::reduce`) on a scalar type that records every operation, and compiles the recorded
@@ -14,6 +14,5 @@ mod codegen;
 mod contract;
 #[cfg(test)]
 mod lean;
-pub mod machine;
 pub mod quotient;
 mod record;

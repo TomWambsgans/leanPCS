@@ -9,11 +9,12 @@
 //! A node's value is computed where it is first needed, from its operands' values on the stack: a value read once is
 //! left there for its reader, one read more than once is also kept in a memory slot ([`Item::Store`]) and read from it
 //! after ([`Item::Load`]). The program checks the values it must (zero, or nonzero), then writes its outputs, then ends:
-//! it returns them, or checks that the transaction declares the claims runs of them encode and returns the word 1.
+//! it returns them, or checks that the transaction declares the PCS claims whose fields they are and returns the word
+//! 1.
 
 use crate::{Ending, Item, Program, Tag};
 
-/// A piece of a node's code: instructions, or a push of a calldata offset.
+/// A piece of a node's code: instructions, a push of a calldata offset, or a write of an output.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Piece {
     Code(Vec<u8>),
@@ -23,6 +24,9 @@ pub enum Piece {
         offset: usize,
         len: usize,
     },
+    /// Pop the word on top into output word `k` ([`Word::Written`]): a word the node's code reads on its way (a
+    /// commitment loaded from storage for the seed, and a claim's field).
+    Output(usize),
 }
 
 /// Code of instructions only.
@@ -67,32 +71,26 @@ pub enum Word {
     Const([u8; 32]),
     /// Code that pushes the word (from calldata, or storage), and what it computes.
     Code(Vec<Piece>, Tag),
+    /// A word a node's code writes itself ([`Piece::Output`]): nothing is written for it here.
+    Written,
 }
 
 /// What a program is compiled from.
 pub struct Source<'a, D> {
     pub dag: &'a D,
-    /// Code leaving one word, nonzero unless the call is one of the verifier: it reverts then.
+    /// Code leaving one word, nonzero unless the call is one of the verifier: it reverts then, or with `entry_other`
+    /// jumps to the other entry ([`crate::Options::other`]).
     pub entry: Vec<u8>,
+    pub entry_other: bool,
     pub entry_tag: Tag,
     pub checks: Vec<(u32, Check)>,
     pub outputs: Vec<Word>,
-    /// Checks that the transaction declares the claims these runs of the outputs encode, back to back, as payloads
-    /// `0, 1, ...` of the frame of PCS claims the caller names in the last byte of calldata ([`crate::declared`]),
-    /// then the word 1 returned; or (`None`) the
-    /// outputs returned.
-    pub calls: Option<Vec<usize>>,
     /// Checks that the transaction declares these PCS claims (the EIP draft's encoding, [`crate::declared_claims`]),
-    /// their fields any of the outputs, as payloads `claims[j].index` of the frame of PCS claims the caller names, then
-    /// the word 1 returned. Not with `calls`.
+    /// their fields any of the outputs, as payloads `claims[j].index` of the frame of PCS claims the caller names in
+    /// the last byte of calldata, then the word 1 returned; or (none) the outputs returned.
     pub claims: Vec<crate::ClaimWords>,
-    /// With calls: each call's input at the region's start, written just before the call and only where the region
-    /// does not hold that word already (a word of the call before at the same place, or a zero of fresh memory),
-    /// instead of every run at its own place, all written first. Calls of one point (π1's three at the batch's
-    /// point) then write it once.
-    pub reuse: bool,
-    /// The tag of the outputs written and of the calls.
-    pub calls_tag: Tag,
+    /// The tag of the outputs written and of the claims' checks.
+    pub outputs_tag: Tag,
     /// Bytes of memory the nodes' code uses as scratch, from 0.
     pub scratch: usize,
     pub calldata_len: usize,
@@ -132,6 +130,7 @@ impl<D: Dag> Compiler<'_, D> {
             match piece {
                 Piece::Code(bytes) => self.code(bytes),
                 Piece::Calldata { offset, len } => self.item(Item::Calldata { offset, len }),
+                Piece::Output(k) => self.item(Item::Output(k)),
             }
         }
     }
@@ -170,49 +169,28 @@ impl<D: Dag> Compiler<'_, D> {
         }
         self.tag = outer;
     }
+
+    /// Leave an output word on the stack.
+    fn word(&mut self, word: &Word, outputs_tag: Tag) {
+        match word {
+            &Word::Node(id) => self.eval(id),
+            Word::Const(bytes) => self.code(crate::op::push(bytes)),
+            Word::Code(pieces, tag) => {
+                self.tag = tag;
+                self.pieces(pieces.clone());
+            }
+            Word::Written => unreachable!("a word a node writes"),
+        }
+        self.tag = outputs_tag;
+    }
 }
 
 /// The program `source` describes.
-/// The writes of each call when the calls reuse the region ([`Source::reuse`]): the region's positions and the
-/// outputs' indices written there before the call, each call's input at the region's start.
-fn reuse_plan(outputs: &[Word], runs: &[usize]) -> Vec<Vec<(usize, usize)>> {
-    let mut held: Vec<Option<usize>> = Vec::new();
-    let mut first = 0;
-    let mut plan = Vec::with_capacity(runs.len());
-    for &words in runs {
-        if held.len() < words {
-            held.resize(words, None);
-        }
-        let mut writes = Vec::new();
-        for (i, slot) in held.iter_mut().enumerate().take(words) {
-            let k = first + i;
-            let same = slot.is_some_and(|h| outputs[h] == outputs[k]);
-            let fresh_zero = slot.is_none() && outputs[k] == Word::Const([0; 32]);
-            if !same && !fresh_zero {
-                writes.push((i, k));
-            }
-            *slot = Some(k);
-        }
-        plan.push(writes);
-        first += words;
-    }
-    plan
-}
-
 pub fn compile<D: Dag>(source: &Source<D>) -> Compiled {
     let dag = source.dag;
     let n = dag.len();
     let mut uses = vec![0u32; n];
-    let plan = match (&source.calls, source.reuse) {
-        (Some(runs), true) => Some(reuse_plan(&source.outputs, runs)),
-        _ => None,
-    };
-    // The outputs written: all of them, or with reuse the plan's.
-    let written: Vec<usize> = match &plan {
-        Some(plan) => plan.iter().flatten().map(|&(_, k)| k).collect(),
-        None => (0..source.outputs.len()).collect(),
-    };
-    let output_nodes = written.iter().filter_map(|&k| match source.outputs[k] {
+    let output_nodes = source.outputs.iter().filter_map(|word| match *word {
         Word::Node(id) => Some(id),
         _ => None,
     });
@@ -263,7 +241,7 @@ pub fn compile<D: Dag>(source: &Source<D>) -> Compiled {
         tag: source.entry_tag,
     };
     compiler.code(source.entry.clone());
-    compiler.item(Item::FailIf);
+    compiler.item(if source.entry_other { Item::OtherIf } else { Item::FailIf });
     for &(id, check) in &source.checks {
         compiler.eval(id);
         compiler.tag = dag.tag(id).unwrap_or(source.entry_tag);
@@ -272,45 +250,7 @@ pub fn compile<D: Dag>(source: &Source<D>) -> Compiled {
         }
         compiler.item(Item::FailIf);
     }
-    compiler.tag = source.calls_tag;
-    if let Some(plan) = plan {
-        // Each call's writes, then the call, its input at the region's start.
-        let runs = source.calls.as_ref().expect("calls");
-        let mut region = 0;
-        for (index, (writes, &words)) in plan.iter().zip(runs).enumerate() {
-            for &(at, k) in writes {
-                match &source.outputs[k] {
-                    &Word::Node(id) => {
-                        compiler.eval(id);
-                        compiler.tag = source.calls_tag;
-                    }
-                    Word::Const(bytes) => compiler.code(crate::op::push(bytes)),
-                    Word::Code(pieces, tag) => {
-                        compiler.tag = tag;
-                        compiler.pieces(pieces.clone());
-                        compiler.tag = source.calls_tag;
-                    }
-                }
-                compiler.item(Item::Output(at));
-            }
-            if index == 0 {
-                crate::pcs_frame_check(source.calldata_len).into_iter().for_each(|item| compiler.item(item));
-            }
-            crate::declare(source.calldata_len, 0, words, index).into_iter().for_each(|item| compiler.item(item));
-            region = region.max(words);
-        }
-        return Compiled {
-            program: Program {
-                items: compiler.items,
-                data: Vec::new(),
-                scratch: source.scratch,
-                outputs: region,
-                ending: Ending::Attest,
-                calldata_len: source.calldata_len,
-            },
-            uses,
-        };
-    }
+    compiler.tag = source.outputs_tag;
     // The region is fresh memory: a zero word is left as it is, and a run of constants is copied from the code
     // (`CODECOPY` and its three operands, 12 gas and 3 a word) when that is cheaper than a `PUSH` of each nonzero
     // word and of its address, and an `MSTORE` (9 gas).
@@ -339,32 +279,18 @@ pub fn compile<D: Dag>(source: &Source<D>) -> Compiled {
             k += run;
             continue;
         }
-        match &outputs[k] {
-            &Word::Node(id) => {
-                compiler.eval(id);
-                compiler.tag = source.calls_tag;
-            }
-            Word::Const(bytes) if *bytes == [0; 32] => {
-                k += 1;
-                continue;
-            }
-            Word::Const(bytes) => compiler.code(crate::op::push(bytes)),
-            Word::Code(pieces, tag) => {
-                compiler.tag = tag;
-                compiler.pieces(pieces.clone());
-                compiler.tag = source.calls_tag;
-            }
+        if outputs[k] != Word::Written && outputs[k] != Word::Const([0; 32]) {
+            compiler.word(&outputs[k], source.outputs_tag);
+            compiler.item(Item::Output(k));
         }
-        compiler.item(Item::Output(k));
         k += 1;
     }
-    if let Some(runs) = &source.calls {
-        assert_eq!(runs.iter().sum::<usize>(), outputs.len(), "the calls cover the region");
-        crate::declared(source.calldata_len, runs).into_iter().for_each(|item| compiler.item(item));
+    for (k, _) in outputs.iter().enumerate().filter(|(_, word)| **word == Word::Written) {
+        let written = compiler.items.iter().any(|(item, _)| *item == Item::Output(k));
+        assert!(written, "output {k} is written by a node's code");
     }
     if !source.claims.is_empty() {
-        assert!(source.calls.is_none(), "claims or calls, not both");
-        let fields = |c: &crate::ClaimWords| [c.root, c.ood, c.value].into_iter().chain(c.point.iter().copied()).max();
+        let fields = |c: &crate::ClaimWords| c.words().into_iter().max();
         assert!(
             source.claims.iter().filter_map(fields).all(|k| k < outputs.len()),
             "a claim's fields are outputs"
@@ -377,11 +303,7 @@ pub fn compile<D: Dag>(source: &Source<D>) -> Compiled {
             data,
             scratch: source.scratch,
             outputs: outputs.len(),
-            ending: if source.calls.is_some() || !source.claims.is_empty() {
-                Ending::Attest
-            } else {
-                Ending::Return
-            },
+            ending: if source.claims.is_empty() { Ending::Return } else { Ending::Attest },
             calldata_len: source.calldata_len,
         },
         uses,
