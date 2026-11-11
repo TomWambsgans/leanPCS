@@ -42,7 +42,8 @@ edges component of a state `Edges × A`, coins forwarded; the extra component `A
   span `E` over `K`, which fails with probability about `2^-127` over the point (`PROTOCOL.md`, "Zero knowledge").
   `formal/EndToEnd/ZK` proves the group-2 half (`revealedUniform_of_group1`): `RevealedUniform` with `δr = 0`
   follows from group 1's exact uniformity, `εr` its failure plus the span's failure (`spanFail`, the probability
-  over a uniform `T` point; about `2^-127` by the argument above, not bounded numerically in Lean).
+  over a uniform `T` point), which it bounds by `εslack ≤ 2^-126` (`spanFail_le`, `εslack_le`;
+  `zeroKnowledge_pcs_slack`: zero knowledge within `εpcs Q + ε1 + εslack + εfs₀` from `Group1Uniform ε1`).
 * **The simulator** (`zkSimulator sim`): it reads no witness. Its challenge phase (`challengePhase`, with
   `uniformReveal`) commits to the circuit (real, public), draws each root uniformly and computes its out-of-domain
   point with the model's permutation, draws each revealed scalar uniformly (`coinE`) where the prover computes it,
