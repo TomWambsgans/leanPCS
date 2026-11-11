@@ -361,10 +361,18 @@ fn nonzero_blocks<'m>(message: &'m [F64], log_rows: usize, zero: &[bool]) -> Opt
 /// rows of the whole one (`n_lanes` words, lane `n_lanes - 1 - b` block `b`'s), the zero blocks' lanes zero.
 fn spread_rows(compact: &[F64], blocks: &[(usize, &[F64])], n_lanes: usize, out: &mut [F64]) {
     let k = blocks.len();
+    // Runs of consecutive blocks `c..e`: compact lanes `k - e..k - c` are whole lanes `n_lanes - b_(e-1) - 1..`.
+    let mut runs: Vec<(usize, usize, usize)> = Vec::new();
+    let mut c = 0;
+    while c < k {
+        let e = (c + 1..k).find(|&e| blocks[e].0 != blocks[e - 1].0 + 1).unwrap_or(k);
+        runs.push((k - e, n_lanes - 1 - blocks[e - 1].0, e - c));
+        c = e;
+    }
     out.fill(F64::ZERO);
     for (row, full) in compact.chunks_exact(k).zip(out.chunks_exact_mut(n_lanes)) {
-        for (c, &(b, _)) in blocks.iter().enumerate() {
-            full[n_lanes - 1 - b] = row[k - 1 - c];
+        for &(from, to, len) in &runs {
+            full[to..to + len].copy_from_slice(&row[from..from + len]);
         }
     }
 }
