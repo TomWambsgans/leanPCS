@@ -1,15 +1,44 @@
 <!-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. -->
 
-# The provers at 8 threads (branch `perf2/provers`)
+# The provers at 8 threads (branches `perf2/provers`, `perf2/provers-main`)
 
 Both benchmarks of the EIP draft, timed as its figures are: `LEANVM_NUM_THREADS=8 taskset -c 0-7` on h3 (AMD EPYC
 9355P, Zen 5, AVX-512; cores 0-7 are two of its eight CCDs), `RUSTFLAGS="-C target-cpu=x86-64-v4 -C
-target-feature=+gfni,+vpclmulqdq,+vaes,+pclmulqdq,+avx512vbmi,+aes,+bmi2"`. `main` is `866ba889`. Every change is a
-prover change: the proofs are `main`'s byte for byte (the membership bench's digest `64e58899266e…`; the pipeline's
-π1 stream, π1 openings, π2 stream and π2 openings fingerprints `37a7cf1d…`, `b147a1f6…`, `f6dd0e79…`, `46293543…`), so
-the calldata, the claims, the gas and the Lean are untouched; they are the same at 1, 3, 8 and 64 threads.
+target-feature=+gfni,+vpclmulqdq,+vaes,+pclmulqdq,+avx512vbmi,+aes,+bmi2"`. Every change is a prover change: the
+proofs are `main`'s byte for byte, so the calldata, the claims, the gas and the Lean are untouched.
 
-## Numbers
+## On `main` `eb75bce9` (`perf2/provers-main`)
+
+`perf2/provers` merged into `main` at `eb75bce9` (π1-rec4, π2 at 577 B and 66,376 gas; membership with three claims,
+one on each of `W`, the wiring and `T`, 273 B and 31,680 gas). Each table of the membership proof now has one claim,
+so changes 1 and 2 below no longer apply to it (`protocol::open` is `main`'s); π2's `Q` still has three. Change 5 is
+now limited to a batch's openings made in turn (`Q`'s): a lone opening keeps 1 GiB, since the membership proof's `T`,
+opened once in its cold process, mapped 0.94 GiB more (peak 6.01 → 6.95 GiB) for 3 ms. The proofs are `eb75bce9`'s:
+the membership digest `134f62090dae…`, the pipeline's fingerprints `f34a2902…`, `645710f9…`, `df47df82…`,
+`baac38e6…`. `main` built at `eb75bce9` (`/root/pcs-perf/r2-provers/main2`) and the branch alternately, five rounds,
+medians, as below:
+
+| 8 threads (cores 0-7) | `main` `eb75bce9` | `perf2/provers-main` | |
+|---|---|---|---|
+| membership: reduction | 0.668 s | 0.648 s | |
+| membership: openings | 0.344 s | 0.331 s | |
+| **membership: prover total** | **1.026 s** | **0.994 s** | **−3.1%** |
+| membership: peak memory | 6.01 GiB | 6.01 GiB | |
+| leanVM: π1-rec4, proof | 0.863 s | 0.858 s | |
+| leanVM: π1-rec4's openings | 0.177 s | 0.177 s | |
+| leanVM: π2, proof | 0.789 s | 0.738 s | |
+| leanVM: π2's openings | 0.787 s | 0.726 s | |
+| **leanVM: total a proof** | **2.625 s** | **2.497 s** | **−4.9%** |
+| leanVM: peak RSS | 15.04 GB | 15.58 GB | |
+
+Tests on h3: `cargo test --release -p quotient -p evm -p pcs_claim -p pcs -p leanvm_univariate -p leanvm_rec -p
+leanvm_statement`, `pi2_real` `real_end_to_end` (577 B, 66,376 gas with the frame) and the membership `gas_report`
+(273 B, 31,680 gas).
+
+## On `main` `866ba889` (`perf2/provers`)
+
+The proofs there: the membership bench's digest `64e58899266e…`; the pipeline's π1 stream, π1 openings, π2 stream and
+π2 openings fingerprints `37a7cf1d…`, `b147a1f6…`, `f6dd0e79…`, `46293543…`; the same at 1, 3, 8 and 64 threads.
 
 `main` (h3's build `/root/pcs-perf/final/all`, identical to `866ba889`) and this branch run alternately, each run
 under the shared bench lock after `waitidle.sh`, five rounds, medians; the membership figures are
@@ -79,8 +108,10 @@ Two kernels near their bounds dominate:
    an opening reads them. π2's proof −30 ms, peak −1 GB.
 4. **Zero lanes left out of the lane rounds** (`lane_inner_products`, `collapse_lanes`, the out-of-domain answer's
    `dense_lane_inner_products_skipping`): the flagged lanes' products are zero; their words are not read.
-5. **A lone opening keeps its level-1 codeword up to 2 GiB** (`LEAN_LIGERO_BYTES_ALONE`; a batch sharing its level-0
-   encode keeps 1 GiB, as before, since its openings' level-1 commitments are all held at once). `Q`'s level-1
+5. **A batch's openings made in turn keep their level-1 codewords up to 2 GiB** (`LEAN_LIGERO_BYTES_IN_TURN`; on
+   `866ba889` every opening alone did, `LEAN_LIGERO_BYTES_ALONE`; a batch sharing its level-0 encode keeps 1 GiB, as
+   before, since its openings' level-1 commitments are all held at once, and on `eb75bce9` so does a lone opening,
+   above). `Q`'s level-1
    codewords are 1.5 GB: kept, their queried rows are read rather than encoded again (9.5 ms an opening), and the
    commit skips the lean path's batches. π2's openings −48 ms, peak +1.6 GB (net of 3: +0.5 GB over `main`).
 6. **The quotient crate's transforms** (`quotient::ntt`, shared by both lines: the membership prover's, π1's and
