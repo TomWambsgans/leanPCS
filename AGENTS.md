@@ -125,16 +125,21 @@ transaction gas without the 21,000 base (EIP-7623) and without the frame's per-f
 
 ## What is proved and tested
 
-- **Proved in Lean** (sorry-free, on `propext`, `Classical.choice` and `Quot.sound` only; of `f96a7938`'s protocols;
-  [`formal/README.md`](formal/README.md) has the theorems and their hypotheses): membership's knowledge soundness
-  (about 2^-61.4 at 2^64 queries) and completeness with no hypotheses, its zero knowledge under `PcsZeroKnowledge` and
-  `RevealedUniform`, its contract = its verifier; the Keccak VM's statement, the Keccak-f block, π1's knowledge
-  soundness (≤ 2^-64 at 2^64 queries) and completeness (< 2^-169, given a program IV of 32 to 2^16 bytes), π1-rec3's
-  recorded graph = its verifier, the recursion's knowledge soundness as an explicit reduction and its completeness under
-  two premises at Keccak-f[1600]. The compiled π2 circuit's checks are evaluated in Lean, not proved. Of π1-rec4
-  (branch `lean/pi1-rec4`): its verifier transcribed (`UniKeccak.reduceWithK4`, differential-tested on the real
-  π1-rec4 proofs), its recorded graph = its verifier (`RecGraphKeccak.Sim.pi1GraphIsVerifierK4`, no hypothesis); its
-  knowledge soundness and completeness are stated, not proved.
+- **Proved in Lean** (sorry-free, on `propext`, `Classical.choice` and `Quot.sound` only;
+  [`formal/README.md`](formal/README.md) has the theorems and their hypotheses). Membership, of `f96a7938`'s protocol:
+  knowledge soundness (about 2^-61.4 at 2^64 queries) and completeness with no hypotheses, zero knowledge under
+  `PcsZeroKnowledge` and `RevealedUniform`, its contract = its verifier. The leanVM line, of the deployed protocols:
+  the Keccak VM's statement, the Keccak-f block, π1's knowledge soundness (≤ 2^-64 at 2^64 queries) and completeness
+  (< 2^-169, given a program IV of 32 to 2^16 bytes), π1-rec4's verifier (differential-tested on the real proofs),
+  recorded graph = verifier at every setup commitment, and knowledge soundness (`uniKnowledgeSoundnessKeccakRec4_closed`);
+  π2v4's PIOP, circuit compiler (identical to the Rust's on π1-rec4's graph) and contract model; **the recursion's
+  knowledge soundness at the real deployment as an explicit reduction** (`RecCompose.recKnowledgeSoundness_reduction_real`:
+  `pi2Bound ≤ 2^-64` at 2^64 queries, 128.93 bits, plus π1-rec4's break at Keccak-f[1600], the merge hazard and a
+  Keccak-256 collision for three explicit adversaries), its hypotheses the evaluated checks (`GraphsAgreeK4`,
+  `DigestChecked`, `SetupRootChecked`, `IvChecked`, evaluated at the reference setup commitment, not proved). The
+  recursion's completeness at π2v4: π2's Lean prover agrees with the Rust's (3/3 vectors) and the contract accepts its
+  proof off three bad events (`pi2_accepts`); its error δ2 and π1-rec4's completeness are not yet proved
+  ([`docs/LEAN_PORT.md`](docs/LEAN_PORT.md)).
 - **Argued and tested (current code)**: the current membership protocol's soundness and zero knowledge
   ([`PROTOCOL.md`](docs/membership/PROTOCOL.md); `protocol::tests`, the rank tests in `hiding`); each contract equals
   its Rust verifier; the real π1 proofs at 32, 128 and 400 signatures (committed vectors) are accepted with their frame
