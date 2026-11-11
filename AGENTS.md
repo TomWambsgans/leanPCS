@@ -20,9 +20,10 @@ licensing, and the conventions.
   out-of-domain answer gives it.
 - **ZK assumes a zero-knowledge PCS** (ZK-WHIR), as the EIP does; the reference openings are leanVM's WHIR, not yet
   ZK-WHIR. With the EIP's plain point claims the earlier hidden layouts (claims on a layout, a gadget) cannot be
-  expressed, so the membership protocol now makes only its own public scalars simulatable: random rows, the masks and a
-  blinding of `h` make the out-of-domain answers and the part values uniform (`docs/membership/HIDING.md`: rank tests
-  for the affine groups; the group `G` enters is not affine and is measured over `GF(2)`, not argued).
+  expressed, so the membership protocol now makes only its own public scalars simulatable: on this branch, random rows
+  of free cells and a blinding of `h` make the out-of-domain answers and the `a_j` uniform, both groups affine
+  (`docs/membership/HIDING.md`: rank tests). Main's masks, and its gate quotient's group that was measured over
+  `GF(2)` rather than argued, are gone.
 
 ## Implementation (`crates/`)
 
@@ -33,22 +34,26 @@ dependency verification frame of scheme `PCS_SCHEME`), which the contract reads 
 claims; the contracts' `PCS_OPEN` precompile is gone.
 
 **Zero-knowledge Merkle membership** with Keccak-256 (depth 32: `y = H(x | 0x11..)`, path from `H(x | 0x22..)` to
-`root`), reduced to four PCS claims by five field elements, as in leanVM's `flock::quotient` but on a circuit of
-one χ gate on bits (3,878,612 of 2^22 rows), its claims opened by leanVM's WHIR unchanged.
+`root`), reduced to four PCS claims on two commitments by seven field elements, as in leanVM's `flock::quotient` but
+on a circuit of one χ gate on bits (3,878,615 of 2^22 rows, the public values packed into eight pinned `K`-words),
+its claims opened by leanVM's WHIR unchanged. **On the branch `perf/membership-gas`** the protocol is that of
+[`docs/membership/PERF_GAS.md`](docs/membership/PERF_GAS.md) (one quotient in one table with the sum's polynomial,
+36,520 gas), and `formal/` still proves main's (six claims on four commitments): the membership statements below
+marked "main" are about that one.
 
 - `crates/membership/quotient`: circuit, prover, Rust verifier (`protocol::reduce`), and the openings (`opening`): the
-  EIP's PCS claims (`pcs_claim`), four commitments with out-of-domain answers (the witness `W`, the quotient table's
-  parts `H`, `Q`, `G`; `docs/membership/EIP_CLAIMS.md`) and six one-point claims; zero knowledge assuming a ZK PCS
-  ([`HIDING.md`](docs/membership/HIDING.md)). The
-  prover's transforms are `ntt`'s (AVX-512, AVX2 or NEON lanes), split around one block-wise pass over the quotients'
-  values; the `Index` keeps σ's values on the quotients' coset (512 MiB at 2^22 rows), which every proof reads.
+  EIP's PCS claims (`pcs_claim`), two commitments with out-of-domain answers (the witness `W`; the quotient table `T`,
+  the quotient `q` and the sum's polynomial `h`; `docs/membership/PERF_GAS.md`) and four one-point claims; zero
+  knowledge assuming a ZK PCS ([`HIDING.md`](docs/membership/HIDING.md)). The
+  prover's transforms are `ntt`'s (AVX-512, AVX2 or NEON lanes), split around one block-wise pass over the quotient's
+  values; the `Index` keeps σ's values on the quotient's coset (256 MiB at 2^22 rows), which every proof reads.
 - `crates/membership/evm`: the same verifier compiled to EVM bytecode, run on revm with `FIELD_MUL` (10 gas), EIP-8141's
-  `FRAMEPARAM` and `FRAMEDATALOAD`, and a mock frame of PCS claims (`PcsFrame`): the six claims in the EIP's encoding
-  (`evm_link::declared_claims`). The contract's ABI (`verify(bytes32,bytes32,bytes)`, selector `0xde12c640`, 460 bytes
-  of packed arguments, then the frame's index: 461 bytes) and its deployment are in `quotient.rs`: the circuit's
+  `FRAMEPARAM` and `FRAMEDATALOAD`, and a mock frame of PCS claims (`PcsFrame`): the four claims in the EIP's encoding
+  (`evm_link::declared_claims`). The contract's ABI (`verify(bytes32,bytes32,bytes)`, selector `0xde12c640`, 300 bytes
+  of packed arguments, then the frame's index: 301 bytes) and its deployment are in `quotient.rs`: the circuit's
   commitment (root and out-of-domain answer) is a constructor argument kept in two storage slots (two cold `SLOAD`s),
   which a fixed owner may change (`setIndexCommitment`). It fails closed: the named frame must be a dependency
-  verification frame whose first byte is `PCS_SCHEME`, and its payloads `0 .. 5` the claims' hashes, in order; calls
+  verification frame whose first byte is `PCS_SCHEME`, and its payloads `0 .. 3` the claims' hashes, in order; calls
   with value, other calldata lengths and degenerate proofs revert.
 - `formal/`: the Lean 4 proofs ([below](#membership-what-is-proved)).
 
@@ -87,7 +92,7 @@ one χ gate on bits (3,878,612 of 2^22 rows), its claims opened by leanVM's WHIR
 **Shared.**
 
 - `crates/evm_link`: the compilation and assembly into one contract that the code generators share. The membership
-  contract (6,314 B) and π2's (13.2 KB) fit EIP-170; π1's own contract (about 86 KB) does not, and is built only to
+  contract (5,304 B) and π2's (13.2 KB) fit EIP-170; π1's own contract (about 86 KB) does not, and is built only to
   test it against its Rust verifier and to record the vectors' claims (the recursion verifies π1 inside π2).
 - `crates/vendor/leanvm-c445e3d5`: leanVM `c445e3d5`'s `primitives`, `fiat_shamir`, `pcs`, `parallel`, `verifier`,
   `bench`.
@@ -116,12 +121,12 @@ its PCS gas on both sides as the EIP draft has it.
 
 | | ZK Merkle membership | leanVM by recursion (128 signatures) |
 |---|---|---|
-| Prover | 2.8 s (reduction 1.71 s, openings 1.08 s), 8.6 GiB (`bench.sh`, 2026-11-11, high power mode), with the EIP's claims (four commitments up to `2^28` words, six openings; `docs/membership/EIP_CLAIMS.md`); before them, with the hidden layouts, 2.2 s (reduction 1.46 s, openings 0.76 s) | trace → π1-rec3 → π2 and openings, on the PCS claims (`tests/pipeline.rs`): **3.7 s per proof** (median of 5, `bench.sh`, 2026-11-11, high power mode: π1-rec3 with its openings 1.41 s, π2 0.95 s, π2's five openings 1.25 s), 14.3 GB. Before the PCS claims (π2's three stacks opened once each, opening version 3): 2.06 s on this Mac, 0.59 s on an AMD EPYC 9355P (64 threads) |
-| Calldata | 461 B | 1,101 B (61 zero) |
-| Gas | 18,899 execution; **52,856** transaction under EIP-8141 with `pcs_gas` in the floor (floor-bound: 64 · (461 + 193) + 11,000; standard 40,315) | 32,794 execution; frame transaction (EIP-8141, EIP-7976's floor, no base or per-frame cost): standard 49,678, floor **70,464** |
-| Claims | 6 declared | 8 (π1's 3, π2's 5), each the EIP draft's PCS claim |
-| With the frame (1 + 32 B a claim) and the PCS gas | included above (193 B, 11,000) | **99,912** (257 B, `pcs_gas` 13,000 on both sides; the floor binds) |
-| Deployment | 6,667-byte code, 1,536,984 gas | one contract |
+| Prover | Branch: 0.63 s (reduction 0.38 s, openings 0.24 s), 6.6 GiB on an AMD EPYC 9355P (64 threads), two commitments, four openings (`docs/membership/PERF_GAS.md`); main there 0.91 s, 8.7 GiB. Main on the M4 Max: 2.8 s (reduction 1.71 s, openings 1.08 s), 8.6 GiB (`bench.sh`, 2026-11-11, high power mode; four commitments up to `2^28` words, six openings; `docs/membership/EIP_CLAIMS.md`) | trace → π1-rec3 → π2 and openings, on the PCS claims (`tests/pipeline.rs`): **3.7 s per proof** (median of 5, `bench.sh`, 2026-11-11, high power mode: π1-rec3 with its openings 1.41 s, π2 0.95 s, π2's five openings 1.25 s), 14.3 GB. Before the PCS claims (π2's three stacks opened once each, opening version 3): 2.06 s on this Mac, 0.59 s on an AMD EPYC 9355P (64 threads) |
+| Calldata | 301 B (main 461 B) | 1,101 B (61 zero) |
+| Gas | 16,414 execution; **36,520** transaction under EIP-8141 with `pcs_gas` in the floor (floor-bound: 64 · (301 + 129) + 9,000; standard 32,270). Main: 52,856 | 32,794 execution; frame transaction (EIP-8141, EIP-7976's floor, no base or per-frame cost): standard 49,678, floor **70,464** |
+| Claims | 4 declared (main 6) | 8 (π1's 3, π2's 5), each the EIP draft's PCS claim |
+| With the frame (1 + 32 B a claim) and the PCS gas | included above (129 B, 9,000) | **99,912** (257 B, `pcs_gas` 13,000 on both sides; the floor binds) |
+| Deployment | 5,304-byte code, 1,242,838 gas (main 6,667 B, 1,536,984 gas) | one contract |
 
 - Membership: checking the claims declared costs 61 gas once (the frame's mode and scheme) and 43 a claim beyond its
   `KECCAK256`. Its verifier: reduction < 1 ms, openings 5 ms (248 / 278 / 333 KiB).
@@ -134,6 +139,9 @@ its PCS gas on both sides as the EIP draft has it.
   reaches WHIR's `2^28` words at about 470 signatures (1,000 do not fit, `tests/keccak_vm.rs`).
 
 ## Membership: what is proved
+
+**Of main's protocol** (six claims on four commitments, the masks, the public bits as a weighted sum), not of this
+branch's: the port is listed in [`docs/membership/PERF_GAS.md`](docs/membership/PERF_GAS.md), "What the Lean needs".
 
 `formal/Statement` (`PcsQuotient`) states the relation (Keccak-256 Merkle membership over the deployed Keccak-256), the
 protocol on the EIP's PCS claims (`docs/membership/EIP_CLAIMS.md`: four commitments with out-of-domain answers, six

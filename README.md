@@ -69,13 +69,13 @@ to `root` (details: [`AGENTS.md`](AGENTS.md#membership-what-is-proved)).
 
 | | |
 |---|---|
-| Circuit | 34 Keccak-256 (χ gate on bits): 3,878,612 of 2^22 rows |
-| Prover | 2.8 s, 8.6 GiB on an M4 Max (16 cores), high power mode (`bench.sh`, 2026-11-11; four commitments, six openings; `docs/membership/EIP_CLAIMS.md`) |
-| Calldata to the contract | 461 bytes (statement, 4 roots, 11 field elements, and the frame's index) |
-| PCS claims | 6, in the EIP's encoding (193 bytes of frame) |
-| Gas | 18,899 execution; 52,856 transaction under EIP-8141 (floor-bound, `pcs_gas` in the floor; without the base and per-frame costs) |
-| Contract deployment | 1.54 M gas |
-| Formal verification (Lean 4) | knowledge soundness (≈ 2^-61.4 at 2^64 queries) and completeness (failure < 2^-163) proved end to end, in the random-permutation model; zero knowledge proved assuming a zero-knowledge PCS opening and the revealed scalars' uniformity (tested, not proved); the contract proved to be the verifier (its bytecode by tests) |
+| Circuit | 34 Keccak-256 (χ gate on bits), the public words packed and pinned: 3,878,615 of 2^22 rows |
+| Prover | 0.63 s, 6.6 GiB on an AMD EPYC 9355P (64 threads; main 0.91 s, 8.7 GiB there); two commitments, four openings (`docs/membership/PERF_GAS.md`). Not re-measured on the M4 Max (main: 2.8 s) |
+| Calldata to the contract | 301 bytes (statement, 2 roots, 7 field elements, and the frame's index) |
+| PCS claims | 4, in the EIP's encoding (129 bytes of frame) |
+| Gas | 16,414 execution; **36,520** transaction under EIP-8141 (floor-bound, `pcs_gas` in the floor; without the base and per-frame costs). Main: 52,856 |
+| Contract deployment | 1.24 M gas |
+| Formal verification (Lean 4) | **of main's protocol (six claims), not yet of this branch's** (`docs/membership/PERF_GAS.md`, "What the Lean needs"): knowledge soundness (≈ 2^-61.4 at 2^64 queries) and completeness (failure < 2^-163) proved end to end, in the random-permutation model; zero knowledge proved assuming a zero-knowledge PCS opening and the revealed scalars' uniformity (tested, not proved); the contract proved to be the verifier (its bytecode by tests) |
 
 ### Key figures: one leanVM proof by recursion
 
