@@ -24,48 +24,34 @@
 mod vectors;
 
 use leanvm_statement::evm::machine::{PCS_FRAME, PcsFrame, call};
-use leanvm_univariate::Claims;
 use leanvm_univariate::contract::{compile_verifier, expected_claims, record_verifier_with, rust_verifier_with};
 use vectors::{PROGRAM_IV, Vector, read, setup_roots, variant_of};
-
-/// Run `f` on a thread with a deep stack: the code generator recurses along the graph.
-fn deep<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> R {
-    std::thread::Builder::new()
-        .stack_size(1 << 30)
-        .spawn(f)
-        .expect("a thread")
-        .join()
-        .expect("no panic")
-}
 
 fn attesting(claims: &[Vec<u8>]) -> PcsFrame {
     PcsFrame::of(claims.iter().cloned())
 }
-
-/// A vector's calldata after its selector (4 bytes, [`vectors::SELECTOR`]) and the public input (32): the stream.
-const STREAM_AT: usize = 4 + 32;
 
 /// Replay `v`: the gas it measures.
 fn replay(v: Vector) -> u64 {
     let variant = variant_of(&v.config);
     // The contract binds the proof's setup commitment `F` (the third claim's: its program's and shape's own).
     let roots = setup_roots(&v);
-    let recorded = record_verifier_with(&v.shape, variant, Claims::Point, &roots);
-    assert_eq!(STREAM_AT + recorded.stream_len, v.calldata.len(), "{}: the calldata is the shape's", v.config);
+    let recorded = record_verifier_with(&v.shape, variant, &roots);
+    assert_eq!(vectors::PI1_STREAM_AT + recorded.stream_len, v.calldata.len(), "{}: the calldata is the shape's", v.config);
     if variant.fs.wide() {
         // π1-rec4: the Rust verifier, its checks held to account, gives the recorded claims; a flipped stream byte or
         // public input byte fails a check or changes a claim.
         let claims_of = |data: &[u8]| -> Option<Vec<Vec<u8>>> {
             let public: [u8; 32] = data[4..36].try_into().unwrap();
-            let stream = &data[STREAM_AT..];
+            let stream = &data[vectors::PI1_STREAM_AT..];
             let (reduced, zero, nonzero) =
-                rust_verifier_with(&v.shape, &PROGRAM_IV, &roots, &public, stream, variant, Claims::Point).ok()?;
+                rust_verifier_with(&v.shape, &PROGRAM_IV, &roots, &public, stream, variant).ok()?;
             let holds = zero.iter().all(|x| *x == Default::default()) && nonzero.iter().all(|x| *x != Default::default());
             holds.then(|| expected_claims(&recorded, &reduced, stream).iter().map(|c| c.encode()).collect())
         };
         assert_eq!(claims_of(&v.calldata), Some(v.claims.clone()), "{}: the Rust verifier's claims", v.config);
         let len = recorded.stream_len;
-        let ats = [3, 24 + 5, 24 + 32 + 3, len / 3, len / 2, len - 200, len - 80, len - 1].map(|at| STREAM_AT + at);
+        let ats = [3, 24 + 5, 24 + 32 + 3, len / 3, len / 2, len - 200, len - 80, len - 1].map(|at| vectors::PI1_STREAM_AT + at);
         for at in ats.into_iter().chain([4 + 7]) {
             let mut data = v.calldata.clone();
             data[at] ^= 1;
@@ -98,7 +84,7 @@ fn replay(v: Vector) -> u64 {
     for (k, claim) in v.claims.iter().enumerate() {
         let decoded = pcs_claim::PcsClaim::decode(claim).expect("a well-formed claim");
         if k < 2 {
-            let at = STREAM_AT + recorded.roots_at[k];
+            let at = vectors::PI1_STREAM_AT + recorded.roots_at[k];
             assert_eq!(&v.calldata[at..at + 32], &decoded.root, "{}: claim {k}'s root is the stream's", v.config);
             assert_eq!(
                 &v.calldata[at + 32..at + 56],
@@ -120,13 +106,13 @@ fn replay(v: Vector) -> u64 {
         data
     };
     for (what, at) in [
-        ("a row count", STREAM_AT + 3),
-        ("C1's root", STREAM_AT + 24 + 5),
-        ("C1's out-of-domain answer", STREAM_AT + 24 + 32 + 3),
-        ("a scalar a third in", STREAM_AT + stream_len / 3),
-        ("a scalar half way", STREAM_AT + stream_len / 2),
-        ("a batching round", STREAM_AT + stream_len - 200),
-        ("the last byte", STREAM_AT + stream_len - 1),
+        ("a row count", vectors::PI1_STREAM_AT + 3),
+        ("C1's root", vectors::PI1_STREAM_AT + 24 + 5),
+        ("C1's out-of-domain answer", vectors::PI1_STREAM_AT + 24 + 32 + 3),
+        ("a scalar a third in", vectors::PI1_STREAM_AT + stream_len / 3),
+        ("a scalar half way", vectors::PI1_STREAM_AT + stream_len / 2),
+        ("a batching round", vectors::PI1_STREAM_AT + stream_len - 200),
+        ("the last byte", vectors::PI1_STREAM_AT + stream_len - 1),
         ("the public input", 4 + 7),
     ] {
         mutants.push((format!("{what} flipped"), flip(at), attesting(&v.claims)));
@@ -165,7 +151,7 @@ fn vectors_replay() {
         let text = std::fs::read_to_string(&path).expect("a vector");
         let v = read(&text);
         println!("{}: {} calldata bytes", path.display(), v.calldata.len());
-        let straight = deep(move || replay(v));
+        let straight = vectors::deep(move || replay(v));
         if std::env::var_os("UPDATE_VECTOR_GAS").is_some() {
             // The gas line only: the proof, its claims and its roots are the prover's.
             let text: String = text

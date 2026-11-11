@@ -1,6 +1,6 @@
 // Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
-//! Synthetic circuits built with the interface ([`Circuit`]), and their witnesses: the PIOP's tests before the real
-//! circuit exists, and the target shapes the verifier's gas is measured at (SPEC-REC.md §2.4.5–§2.4.6, §2.6).
+//! Synthetic circuits built with the interface ([`Circuit`]), and their witnesses: the PIOP's and the contract's
+//! tests on circuits other than the real one (SPEC-REC.md §2.4.5–§2.4.6, §2.6).
 //!
 //! A [`Design`] lists row types (a role kind for each of a row's `2^r` positions) and regions (a row type on aligned
 //! blocks of rows). [`build`] places the blocks (largest first, so each is aligned), makes the pairs, and wires the
@@ -576,54 +576,3 @@ pub fn small_d16v(log_n: usize) -> Design {
         regions,
     }
 }
-
-/// A synthetic D16v circuit of `N = 2^24` positions, 86% used, with about 200 (block, role) pairs and 69 public terms
-/// (PI2.md §5): more pairs than the Keccak VM's π1-rec3 circuit (133 at 93.4%, SPEC-REC.md §10.3). Its rows by type:
-/// 107 Keccak-f permutations (K1 657,408 rows, K0 164,352, KD 41,088, Kprep 11,449), then the later blocks' XORs, the
-/// packings and free bits, the `E` units, the constants, each region on two or three aligned blocks.
-pub fn target_d16v() -> Design {
-    let types = d16v_types();
-    let region = |name: &str, blocks: Vec<usize>| Region {
-        row_type: index(&types, name),
-        blocks,
-    };
-    let mut regions = vec![
-        region("Free", vec![13]),
-        region("K1", vec![19, 17, 11]),
-        region("K0a", vec![17, 14]),
-        region("K0b", vec![13, 12]),
-        region("KD", vec![15, 13]),
-        region("Kprep", vec![13, 12]),
-        region("XOR", vec![12]),
-        region("Pack0", vec![10, 7]),
-        region("Pack15", vec![10, 7]),
-        region("Pack30", vec![10, 7]),
-        region("Pack45", vec![10, 7]),
-        region("Pack60", vec![10, 7]),
-        region("Emul", vec![11, 10]),
-        region("Eadd", vec![11, 9]),
-        region("Const", vec![5]),
-    ];
-    regions.extend(pi1_sinks(&types));
-    Design {
-        log_n: 24,
-        log_row: 4,
-        types,
-        regions,
-    }
-}
-
-/// A target design on `2^log_n` positions: every region's blocks `delta` times smaller (at least one row), the sinks
-/// as they are. The same pairs, formulas and public side: for timings below the target size.
-pub fn scaled(design: &Design, log_n: usize) -> Design {
-    let delta = design.log_n - log_n;
-    let mut out = design.clone();
-    out.log_n = log_n;
-    for region in &mut out.regions {
-        if !design.types[region.row_type].name.starts_with("Sink") {
-            region.blocks.iter_mut().for_each(|s| *s = s.saturating_sub(delta));
-        }
-    }
-    out
-}
-

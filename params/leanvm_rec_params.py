@@ -6,7 +6,7 @@ rounds of k variables (docs/leanvm/univariate/SPEC.md §14.3).
 
     python3 -I params/leanvm_rec_params.py
 
-MEASURED (crates/leanvm/rec: tests/counts.rs, tests/keccak_vm_rec.rs, tests/circuit.rs; SPEC-REC.md §1.2, §2.4.5,
+MEASURED (crates/leanvm/rec: tests/counts.rs, tests/pi2_real.rs, tests/circuit.rs; SPEC-REC.md §1.2, §2.4.5,
 §10.3): pi1-rec3's and pi1-rec4's verifier graphs and pi2's positions at 128 and 400 signatures. MODELLED (here):
 every soundness figure, the other arithmetizations' sizes, the k-variable rounds' permutations.
 
@@ -34,7 +34,8 @@ bits, err = uni.bits, uni.err
 
 # ---------------------------------------------------------------------------------------------------------------------
 # The committed real proofs (crates/leanvm/univariate/tests/vectors/): a proof's stream is its calldata past the
-# selector and the public word (`STREAM_AT`, crates/leanvm/rec/tests/counts.rs), read here rather than copied.
+# selector and the public word (`PI1_STREAM_AT`, crates/leanvm/univariate/tests/vectors/mod.rs), read here rather
+# than copied.
 VECTORS = os.path.join(HERE, "..", "crates", "leanvm", "univariate", "tests", "vectors")
 STREAM_AT = 4 + 32
 
@@ -49,7 +50,7 @@ def vector_stream(name):
     raise ValueError(f"{name}: no calldata")
 
 
-# MEASURED: pi1-rec3's verifier (Claims::Point; SPEC-REC.md §1.2) and pi2's D16v circuit of it (§2.4.5, §10.3); the
+# MEASURED: pi1-rec3's verifier (point claims; SPEC-REC.md §1.2) and pi2's D16v circuit of it (§2.4.5, §10.3); the
 # streams the vectors' (128 signatures: keccak128_rec3, the reference trace; 400: keccak_rec3).
 PI1_REC3 = {
     128: dict(stream=vector_stream("keccak128_rec3"), calls=70, perms=116, products=8476, linear=6633, challenges=14,
@@ -200,7 +201,7 @@ def grouped_rounds(k, vars_=BATCH_VARS, degree=2):
 
 
 def main():
-    print("== pi1-rec3's verifier (MEASURED, Claims::Point)")
+    print("== pi1-rec3's verifier (MEASURED, point claims)")
     for xmss, p in PI1_REC3.items():
         used = (p["perms"] + CLAIM_HASH_PERMS) * KECCAK_D16V + REST[xmss]
         print(f"  {xmss} signatures: stream {p['stream']:,} B, Keccak-256 {p['calls']}, Keccak-f {p['perms']}, E products"

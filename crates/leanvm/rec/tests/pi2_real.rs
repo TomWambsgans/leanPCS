@@ -23,49 +23,27 @@ static ALLOC: bench::Jemalloc = bench::Jemalloc;
 mod vectors;
 
 use leanvm_statement::shapes::PROGRAM_IV;
-use leanvm_rec::circuit::compile::{Compiled, Inputs, Layout, pi2};
+use leanvm_rec::circuit::compile::{Compiled, Inputs, pi2};
 use leanvm_rec::pi2::adapt;
 use pcs_claim::PcsClaim;
 use leanvm_rec::pi2::contract::{self, Instance, calldata, record_verifier, sample_stream};
 use leanvm_rec::pi2::prover::{self, Setup, claims_hold, open, prove, public_scalars, verify_openings};
 use leanvm_rec::pi2::verifier::Spec;
-use leanvm_univariate::Claims;
 use primitives::field::F192;
-
-const STREAM_AT: usize = 4 + 32;
-
-fn deep<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> R {
-    std::thread::Builder::new()
-        .stack_size(1 << 30)
-        .spawn(f)
-        .expect("a thread")
-        .join()
-        .expect("no panic")
-}
-
-fn vector(name: &str) -> vectors::Vector {
-    let path = format!(
-        "{}/../univariate/tests/vectors/{name}.txt",
-        env!("CARGO_MANIFEST_DIR")
-    );
-    vectors::read(&std::fs::read_to_string(&path).expect("a committed vector"))
-}
 
 /// The real circuit and witness, and π1's contract IV. π1's contract binds the vector's setup commitment `F` (its
 /// third claim's, its program's and shape's own), as the proof's does.
-fn real(name: &str, layout: Layout) -> (vectors::Vector, Compiled, [u8; 32]) {
-    let v = vector(name);
+fn real(name: &str) -> (vectors::Vector, Compiled, [u8; 32]) {
+    let v = vectors::committed(name);
     let roots = vectors::setup_roots(&v);
     let recorded = leanvm_univariate::contract::record_verifier_with(
         &v.shape,
         vectors::variant_of(&v.config),
-        Claims::Point,
         &roots,
     );
-    let stream = v.calldata[STREAM_AT..].to_vec();
+    let stream = v.calldata[vectors::PI1_STREAM_AT..].to_vec();
     let c = pi2(
         &recorded,
-        layout,
         &Inputs {
             program_iv: PROGRAM_IV,
             public: v.public,
@@ -80,8 +58,8 @@ fn peak_memory() -> String {
     format!("peak RSS {:.2} GB", bench::peak_rss_bytes() as f64 / 1e9)
 }
 
-fn gas(name: &str, layout: Layout) {
-    let (_, c, pi1_iv) = real(name, layout);
+fn gas(name: &str) {
+    let (_, c, pi1_iv) = real(name);
     let circuit = adapt::adapt(&c.finished.circuit);
     let spec = Spec::of(&circuit);
     let terms: usize = spec
@@ -91,7 +69,7 @@ fn gas(name: &str, layout: Layout) {
         .sum();
     let products: usize = spec.groups.iter().map(|g| g.formula.products.len()).sum();
     println!(
-        "{name} × {layout:?}: 2^{} positions, {} pairs ({} pull-less, the holes), {} groups ({} formula terms, {} products), blocks up to 2^{} rows, {} public terms, {} reads; π1: {} calls",
+        "{name} × D16v: 2^{} positions, {} pairs ({} pull-less, the holes), {} groups ({} formula terms, {} products), blocks up to 2^{} rows, {} public terms, {} reads; π1: {} calls",
         circuit.log_n,
         circuit.pairs.len(),
         spec.pull_less.len(),
@@ -107,7 +85,7 @@ fn gas(name: &str, layout: Layout) {
     let inst = Instance::new(&circuit, &spec, [0x44; 32], F192::new(5, 6, 7), &pi1_iv, &c.finished.circuit.calls);
     let recorded = record_verifier(&spec);
     let report = contract::measure(&inst, &recorded);
-    print!("{}", report.table(&format!("{name} × {layout:?} (real circuit)")));
+    print!("{}", report.table(&format!("{name} × D16v (real circuit)")));
     let stream = sample_stream(recorded.stream_len, 13);
     contract::parity(&inst, &recorded, &[0x5a; 32], &contract::sample_hashed(&inst), &stream);
     println!("parity\n");
@@ -116,9 +94,9 @@ fn gas(name: &str, layout: Layout) {
 #[test]
 #[ignore]
 fn real_gas() {
-    deep(|| {
-        gas("keccak128_rec4", Layout::D16v);
-        gas("keccak_rec4", Layout::D16v);
+    vectors::deep(|| {
+        gas("keccak128_rec4");
+        gas("keccak_rec4");
     });
 }
 
@@ -199,11 +177,10 @@ fn frame_and_calldata_attacks(inst: &Instance, recorded: &contract::Recorded, da
 #[ignore]
 fn real_end_to_end() {
     bench::init_tracing_from_env();
-    deep(|| {
-        let layout = Layout::D16v;
+    vectors::deep(|| {
         let name = std::env::var("PI2_VECTOR").unwrap_or_else(|_| leanvm_rec::PI1_VECTOR_128.into());
         let start = std::time::Instant::now();
-        let (v, c, pi1_iv) = real(&name, layout);
+        let (v, c, pi1_iv) = real(&name);
         let compiled = start.elapsed().as_secs_f64();
         assert_eq!(c.finished.circuit.check(&c.finished.witness, &c.public), Ok(()));
         // π1's claims as the block proves them: the vector's, on the commitments π1's prover made (written from its
@@ -220,7 +197,7 @@ fn real_end_to_end() {
             .expect("the adapted circuit holds");
         let spec = Spec::of(&circuit);
         println!(
-            "{name} × {layout:?}: compiled, adapted, checked in {:.1} s (the compile, which a proof's witness needs, {compiled:.2} s); {}",
+            "{name} × D16v: compiled, adapted, checked in {:.1} s (the compile, which a proof's witness needs, {compiled:.2} s); {}",
             start.elapsed().as_secs_f64(),
             peak_memory()
         );

@@ -88,20 +88,9 @@ impl Quotient {
         Self { novel, count, degree }
     }
 
-    /// Whether its degree is below the verifier's count.
-    pub fn fits(&self) -> bool {
-        self.degree < self.count as i64
-    }
-
-    /// Limb `limb` of chunk `chunk` of `Q = Q_0 + w_(e_0) (Q_1 + w_(e_1) Q_2)` in basis `B`, into `out` (`2^(e_chunk)`
-    /// words): the novel coefficients' slice (`X_(2^e + k) = w_e X_k` for `k < 2^e`), then its subset sums.
-    pub fn chunk_b(&self, sizes: &[usize], chunk: usize, limb: usize, out: &mut [F64]) {
-        assert_eq!(out.len(), 1 << sizes[chunk]);
-        ntt::subset_sums_from(self.chunk_novel(sizes, chunk, limb), out);
-    }
-
-    /// Limb `limb`'s novel coefficients of chunk `chunk` (its slice, the zeros past the quotient's end cut), whose
-    /// subset sums are [`Quotient::chunk_b`].
+    /// Limb `limb`'s novel coefficients of chunk `chunk` of `Q = Q_0 + w_(e_0) (Q_1 + w_(e_1) Q_2)` (its slice,
+    /// `X_(2^e + k) = w_e X_k` for `k < 2^e`, the zeros past the quotient's end cut), whose subset sums are the chunk's
+    /// basis-`B` words.
     pub fn chunk_novel(&self, sizes: &[usize], chunk: usize, limb: usize) -> &[F64] {
         let novel = &self.novel[limb];
         let at: usize = sizes[..chunk].iter().map(|&e| 1usize << e).sum();
@@ -159,7 +148,7 @@ fn slot(k: usize) -> Slot {
 }
 
 /// Whether `quotient::ntt`'s lanes are other than AVX-512's eight carry-less products: aarch64's NEON lanes (eight
-/// PMULLs, four registers), or portable code. There [`table_leaf`] evaluates its numerator one point at a time in `E` ([`PullPush`]: a mixed
+/// PMULLs, four registers), or portable code. There [`table_leaf_numerator`] evaluates its numerator one point at a time in `E` ([`PullPush`]: a mixed
 /// product three unreduced base products, a push from its pull's sum) rather than eight at a time ([`product`]: a
 /// mixed product three reduced ones). With the NEON lanes (M4 Max), [`PullPush`] and [`product`] cost the same.
 const PORTABLE_LANES: bool = !cfg!(all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "vpclmulqdq"));
@@ -247,8 +236,6 @@ fn prefix_quotient<D: Send + Sync>(
     piece: impl Fn(usize, usize) -> D + Sync,
     value: impl Fn(&D, &Points, usize) -> Ex8 + Sync,
 ) -> Quotient {
-    let prof = std::env::var_os("PI1_PROFILE").is_some();
-    let started = std::time::Instant::now();
     let sizes = ntt::prefix_sizes(count, r.saturating_sub(2));
     let base = 1usize << r.max(sizes[0] + 1);
     let total: usize = sizes.iter().map(|&e| 1usize << e).sum();
@@ -308,7 +295,6 @@ fn prefix_quotient<D: Send + Sync>(
             );
         }
     }
-    let evaluated = started.elapsed().as_secs_f64();
     {
         let [a, b, c] = &mut limbs;
         ntt::interpolate_prefix_cols(&mut [&mut a[..], &mut b[..], &mut c[..]], &sizes, base);
@@ -320,13 +306,6 @@ fn prefix_quotient<D: Send + Sync>(
     let [a, b, c] = &mut check;
     evaluate(first, g, [a, b, c]);
     let holds = ntt::on_coset_prefix_each(&limbs.each_ref().map(|l| (&l[..], first, g))) == check;
-    if prof {
-        eprintln!(
-            "      prefix_quotient 2^{r}, {} columns: evaluated {evaluated:.4} s, interpolated and checked {:.4} s",
-            columns.len(),
-            started.elapsed().as_secs_f64() - evaluated
-        );
-    }
     Quotient::new(limbs, count, holds)
 }
 
@@ -465,8 +444,6 @@ impl Drop for AbortOnPanic<'_> {
 /// quotient at a time, on 64 threads, the tables' leaves and `Q_W`'s parts left most workers idle between short
 /// dispatches. The same quotients.
 pub fn prefix_quotients(jobs: &[&dyn Numerator]) -> Vec<Quotient> {
-    let prof = std::env::var_os("PI1_PROFILE").is_some();
-    let started = std::time::Instant::now();
     struct Plan {
         count: u64,
         sizes: Vec<usize>,
@@ -532,7 +509,6 @@ pub fn prefix_quotients(jobs: &[&dyn Numerator]) -> Vec<Quotient> {
     for (&(q, _), batch) in packing.iter().zip(packed.drain(..)) {
         batches[q].push(batch);
     }
-    let t_pack = started.elapsed().as_secs_f64();
     // The limbs, every word written by the fills (the pieces tile them), each zeroed by a worker.
     let lengths: Vec<usize> = plans.iter().flat_map(|p| [p.total; 3]).collect();
     let mut flat: Vec<Vec<F64>> = parallel::map_collect(lengths.len(), |k| vec![F64::ZERO; lengths[k]]);
@@ -548,7 +524,6 @@ pub fn prefix_quotients(jobs: &[&dyn Numerator]) -> Vec<Quotient> {
         .map(|p| std::array::from_fn(|_| vec![F64::ZERO; 1 << p.check.1]))
         .collect();
     let unit_bytes = |&(q, _, p, _): &(usize, usize, usize, bool)| plans[q].width << p << if plans[q].alone { 3 } else { 6 };
-    let clock = std::time::Instant::now();
     {
         // The fills, piece by piece (`fill_first[u]..fill_first[u + 1]`): the piece, its runs, and its outputs, the
         // limbs (or the checks) split in the order of the pieces.
@@ -726,9 +701,7 @@ pub fn prefix_quotients(jobs: &[&dyn Numerator]) -> Vec<Quotient> {
             }
         });
     }
-    let t_rounds = clock.elapsed().as_secs_f64();
     drop(batches);
-    let clock = std::time::Instant::now();
     {
         let mut parts: Vec<ntt::PrefixCols> = limbs
             .iter_mut()
@@ -741,7 +714,6 @@ pub fn prefix_quotients(jobs: &[&dyn Numerator]) -> Vec<Quotient> {
             .collect();
         ntt::interpolate_prefix_many(&mut parts);
     }
-    let t_interpolate = clock.elapsed().as_secs_f64();
     // One more block of points each: the numerator's quotient there against the interpolant's values.
     let at: Vec<(&[F64], usize, usize)> = limbs
         .iter()
@@ -749,21 +721,12 @@ pub fn prefix_quotients(jobs: &[&dyn Numerator]) -> Vec<Quotient> {
         .flat_map(|(l, p)| l.iter().map(move |v| (&v[..], p.check.0, p.check.1)))
         .collect();
     let values = ntt::on_coset_prefix_each(&at);
-    let out: Vec<Quotient> = limbs
+    limbs
         .into_iter()
         .zip(plans.iter().zip(checks))
         .zip(values.chunks(3))
         .map(|((l, (plan, check)), values)| Quotient::new(l, plan.count, values == check))
-        .collect();
-    if prof {
-        eprintln!(
-            "      prefix_quotients ({} quotients, {} pieces): packed {t_pack:.4} s, pieces {t_rounds:.4} s, interpolated {t_interpolate:.4} s, all {:.4} s",
-            jobs.len(),
-            units.len(),
-            started.elapsed().as_secs_f64()
-        );
-    }
-    out
+        .collect()
 }
 
 /// Batch `src` (novel coefficients, `2^r` rows) on the piece `ω_first + V_p` (`3 ≤ p ≤ r`), into `dst` (`2^p` rows), by
@@ -823,19 +786,13 @@ fn piece_of(first: usize, r: usize) -> Piece {
     }
 }
 
-/// The most columns (the heap's three included) [`table_leaf`]'s point-by-point numerator gathers.
+/// The most columns (the heap's three included) [`table_leaf_numerator`]'s point-by-point numerator gathers.
 const SCALAR_COLUMNS: usize = 128;
 
-/// Table `t`'s leaf quotient: `((R P + P') Z_pad + (R + 1) Z_act) / w_r`, `R` the heap's block (its novel
-/// coefficients `r_novel`, limb by limb), `P`, `P'` the row's pull and push products, `Z_act`, `Z_pad` the vanishing
-/// polynomials of the active and the padding rows' fixed cosets (SPEC.md §13, F1b; the verifier checks it times
-/// `Z_act`).
-pub fn table_leaf(trace: &Trace, t: usize, c1: &C1Polys, bus: &Bus, r_novel: &[Vec<F64>; 3], count: u64) -> Quotient {
-    let job = table_leaf_numerator(trace, t, c1, bus, r_novel, count);
-    prefix_quotients(&[&*job]).pop().expect("the leaf")
-}
-
-/// [`table_leaf`]'s numerator, for [`prefix_quotients`].
+/// Table `t`'s leaf quotient's numerator, for [`prefix_quotients`]: the quotient is `((R P + P') Z_pad + (R + 1) Z_act)
+/// / w_r`, `R` the heap's block (its novel coefficients `r_novel`, limb by limb), `P`, `P'` the row's pull and push
+/// products, `Z_act`, `Z_pad` the vanishing polynomials of the active and the padding rows' fixed cosets (SPEC.md §13,
+/// F1b; the verifier checks it times `Z_act`).
 pub fn table_leaf_numerator<'a>(
     trace: &Trace,
     t: usize,
@@ -1049,32 +1006,6 @@ pub fn tree(heap_novel: &[Vec<F64>; 3]) -> Quotient {
     Quotient::new(limbs, (1u64 << h) + 1, holds)
 }
 
-/// The constraint quotient `Σ_i γ^i M_i W_i / w_(r_W)`, in the verifier's order of powers: per table, JUMP's two
-/// constraints, the counters, the `SHA3` table's fifty lane copies (`in_16`'s
-/// with `END_BIT`: `copy + port + END_BIT`); then the public input's three limbs. As
-/// `M_i = w_(r_W) / w_r`, it is the sum of each table's `Σ γ^i W_i / w_r` and the public input's part, each a
-/// quotient of its own on its own points.
-pub fn constraints(trace: &Trace, c1: &C1Polys, gamma: F192, count: u64, public_lines: [(F64, F64); 3]) -> Quotient {
-    constraints_with(trace, &trace.qflock, c1, gamma, count, public_lines)
-}
-
-/// [`constraints`] with `q_flock`'s words `qflock` (the Keccak VM's: the Flock witness's, as `C1` holds them; the
-/// trace keeps none).
-pub fn constraints_with(
-    trace: &Trace,
-    qflock: &[F64],
-    c1: &C1Polys,
-    gamma: F192,
-    count: u64,
-    public_lines: [(F64, F64); 3],
-) -> Quotient {
-    let parts = constraint_parts(trace, qflock, c1, gamma);
-    let jobs: Vec<Box<dyn Numerator + '_>> = parts.tables.iter().map(|p| p.numerator(c1)).collect();
-    let mut quotients = prefix_quotients(&jobs.iter().map(|j| &**j).collect::<Vec<_>>());
-    quotients.push(public_part(trace, c1, parts.publics, public_lines));
-    sum_parts(quotients, count)
-}
-
 /// One table's part of `Q_W`, `Σ γ^i W_i / w_r` over its constraints, before its [`Numerator`]: its powers of `γ`
 /// and, for `SHA3`, its lane copies combined by their powers.
 pub struct ConstraintPart {
@@ -1096,7 +1027,11 @@ pub struct ConstraintParts {
     pub publics: [F192; 3],
 }
 
-/// The tables' parts of `Q_W` and the public input's powers of `γ`, in the verifier's order.
+/// The tables' parts of `Q_W` and the public input's powers of `γ`, in the verifier's order. `Q_W` is
+/// `Σ_i γ^i M_i W_i / w_(r_W)`, in the verifier's order of powers: per table, JUMP's two constraints, the counters,
+/// the `SHA3` table's fifty lane copies (`in_16`'s with `END_BIT`: `copy + port + END_BIT`); then the public input's
+/// three limbs. As `M_i = w_(r_W) / w_r`, it is the sum of each table's `Σ γ^i W_i / w_r` and the public input's part,
+/// each a quotient of its own on its own points (`prefix_quotients`, `public_part`, `sum_parts`).
 pub fn constraint_parts(trace: &Trace, qflock: &[F64], c1: &C1Polys, gamma: F192) -> ConstraintParts {
     let mut power = F192::ONE;
     let mut next = || {

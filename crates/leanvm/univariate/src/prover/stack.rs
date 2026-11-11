@@ -1,68 +1,14 @@
 // Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! The three stacks, filled: every column's words at the block `crate::stacks::StackLayout` gives it (the
-//! verifier's `layouts`, rebuilt here from the same column lists), the rest zero. Nothing the verifier checks
+//! verifier's `layouts`, from its column lists), the rest zero. Nothing the verifier checks
 //! depends on the words outside the blocks: every weight is zero there, and every claim is on the whole stack's
 //! multilinear, whatever the stack holds there.
 
-use leanvm_statement::layout::{OP_SHA3, tables};
-use primitives::field::{F64, F192};
+use primitives::field::F64;
 use quotient::ntt::Fill;
 
 use crate::claims::Column;
 use crate::stacks::StackLayout;
-use crate::verifier::Shape;
-
-/// `C1`'s columns as the verifier lists them (`verifier::stack_layouts`).
-pub fn c1_columns(shape: &Shape) -> Vec<(Column, usize, bool)> {
-    let heights = shape.heights();
-    let mut c1: Vec<(Column, usize, bool)> =
-        vec![(Column::Qflock, heights[OP_SHA3] + crate::verifier::QFLOCK_ROW_BITS, false)];
-    for table in tables() {
-        let h = heights[table.opcode];
-        c1.extend((0..table.width()).map(|column| {
-            (
-                Column::Table {
-                    table: table.opcode,
-                    column,
-                },
-                h,
-                false,
-            )
-        }));
-        c1.push((Column::Inverse(table.opcode), h, false));
-    }
-    c1.extend((0..4).map(|k| (Column::Memory(k), shape.log_memory, false)));
-    c1.push((Column::BytecodeFinal, shape.log_bytecode, false));
-    c1
-}
-
-/// The setup's columns.
-pub fn setup_columns(shape: &Shape) -> Vec<(Column, usize, bool)> {
-    vec![
-        (Column::BytecodeTuple, shape.log_bytecode + 4, false),
-        (Column::Address, shape.log_memory, false),
-    ]
-}
-
-/// `C2`'s columns as the verifier lists them: the heap, the tree quotient's two chunks, the constraint quotient's
-/// chunks, then each heap block's leaf quotient chunks.
-pub fn c2_columns(h: usize, constraint_chunks: &[usize], leaf_chunks: &[(usize, Vec<usize>)]) -> Vec<(Column, usize, bool)> {
-    let mut c2 = vec![
-        (Column::Heap, h, true),
-        (Column::TreeQuotient(0), h, true),
-        (Column::TreeQuotient(1), 0, true),
-    ];
-    c2.extend(constraint_chunks.iter().enumerate().map(|(c, &e)| (Column::ConstraintQuotient(c), e, true)));
-    for (block, sizes) in leaf_chunks {
-        c2.extend(
-            sizes
-                .iter()
-                .enumerate()
-                .map(|(chunk, &e)| (Column::LeafQuotient { block: *block, chunk }, e, true)),
-        );
-    }
-    c2
-}
 
 /// What a stack commits: whole lanes of `2^(vars - 6)` words, the stack's words past them zero.
 pub struct Stack {
@@ -121,15 +67,6 @@ impl Stack {
         }
     }
 
-    /// Write a K-column's words into its block.
-    pub fn put_k(&mut self, column: Column, data: &[F64]) {
-        let limbs = self.layout.limbs(column);
-        assert_eq!(limbs.len(), 1, "{column:?} is a K-column");
-        let (_, vars, offset) = limbs[0];
-        assert_eq!(data.len(), 1 << vars, "{column:?}'s size");
-        super::poly::copy(&mut self.words[offset as usize..offset as usize + data.len()], data);
-    }
-
     /// A K-column's words as placed: its `B` coefficients.
     pub fn k(&self, column: Column) -> &[F64] {
         let limbs = self.layout.limbs(column);
@@ -147,19 +84,5 @@ impl Stack {
             out[limb] = &self.words[offset as usize..offset as usize + (1 << vars)];
         }
         out
-    }
-
-    /// Write an E-column's three limbs.
-    pub fn put_e(&mut self, column: Column, data: &[F192]) {
-        let limbs = self.layout.limbs(column);
-        assert_eq!(limbs.len(), 3, "{column:?} is an E-column");
-        for (limb, vars, offset) in limbs {
-            assert_eq!(data.len(), 1 << vars, "{column:?}'s size");
-            let block = &mut self.words[offset as usize..offset as usize + data.len()];
-            parallel::fill(block, |i| {
-                let x = data[i];
-                F64([x.c0, x.c1, x.c2][limb])
-            });
-        }
     }
 }

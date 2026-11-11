@@ -55,11 +55,37 @@ pub fn name_of(variant: Variant) -> &'static str {
     }
 }
 
-fn hex(bytes: &[u8]) -> String {
+/// Where π1's calldata holds the stream: after the selector and the public input.
+pub const PI1_STREAM_AT: usize = 4 + 32;
+
+/// The committed vector `name` (`tests/vectors/<name>.txt`), from either crate that includes this module.
+pub fn committed(name: &str) -> Vector {
+    let path = format!("{}/../univariate/tests/vectors/{name}.txt", env!("CARGO_MANIFEST_DIR"));
+    read(&std::fs::read_to_string(&path).expect("a committed vector"))
+}
+
+impl Vector {
+    /// π1's stream: the calldata after the selector and the public input.
+    pub fn stream(&self) -> &[u8] {
+        &self.calldata[PI1_STREAM_AT..]
+    }
+}
+
+/// Run `f` on a thread with a deep stack (the recorder's and the compiler's recursion).
+pub fn deep<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> R {
+    std::thread::Builder::new()
+        .stack_size(1 << 30)
+        .spawn(f)
+        .expect("a thread")
+        .join()
+        .expect("no panic")
+}
+
+pub fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-fn unhex(text: &str) -> Vec<u8> {
+pub fn unhex(text: &str) -> Vec<u8> {
     assert!(text.len().is_multiple_of(2), "whole bytes");
     (0..text.len() / 2)
         .map(|i| u8::from_str_radix(&text[2 * i..2 * i + 2], 16).expect("hex"))
@@ -131,6 +157,6 @@ pub fn setup_roots(v: &Vector) -> leanvm_univariate::contract::SetupRoots {
     let claim = pcs_claim::PcsClaim::decode(&v.claims[2]).expect("a well-formed setup claim");
     leanvm_univariate::contract::SetupRoots {
         f: claim.root,
-        f_ood: leanvm_statement::field::E::new(claim.ood.c0, claim.ood.c1, claim.ood.c2),
+        f_ood: claim.ood.into(),
     }
 }

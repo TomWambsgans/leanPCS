@@ -8,7 +8,7 @@
 //! 1. **The sequential words** (one thread): every value outside the Keccak-f permutations' rows (free bits and
 //!    limbs given by the inputs, XORs, nonzero constants, packings, `E` units; a copy is its operand's word, a zero
 //!    constant the zero word), in value order, and each permutation's 1600 output bits, computed natively
-//!    ([`super::keccak::keccak_f`]) where its first output was made. The Keccak-256 chain is so computed first, at
+//!    (`primitives::hash::keccak_f`) where its first output was made. The Keccak-256 chain is so computed first, at
 //!    the cost of its native permutations (116 at the reference shape).
 //! 2. **The permutations' words** (in parallel): every permutation's rows are one *template*'s (checked when the
 //!    plan is made: the same local program on its inputs, its *leaves*: D16v has one template), a program on bits
@@ -24,9 +24,10 @@ use std::collections::{BTreeMap, HashMap};
 
 use leanvm_statement::field::{E, K};
 use leanvm_univariate::contract::Recorded;
+use primitives::hash::keccak_f;
 
-use super::compile::{Compiled, Given, Inputs, Layout, compile_keeping};
-use super::keccak::{Bit, UNMADE, keccak_f};
+use super::compile::{Compiled, Given, Inputs, pi2_traced};
+use super::keccak::{Bit, UNMADE};
 use super::spec::{Formula, PublicInputs, Witness};
 
 const NONE: u32 = u32::MAX;
@@ -263,14 +264,11 @@ pub struct WitnessPlan {
 }
 
 impl WitnessPlan {
-    /// Compile `recorded` in `layout` on `inputs` ([`super::compile::pi2`]), and the plan of its circuit (for any
+    /// Compile `recorded` on `inputs` ([`super::compile::pi2`]), and the plan of its circuit (for any
     /// stream of `recorded` with `inputs.program_iv`), checked to replay this compilation. Needs the compiler's deep
     /// stack, as `pi2` does; not from inside a `parallel` task (the replay dispatches), as [`WitnessPlan::witness`].
-    pub fn compile(recorded: &Recorded, layout: Layout, inputs: &Inputs) -> (Compiled, WitnessPlan) {
-        let (compiled, trace) = match layout {
-            Layout::D16v => compile_keeping(recorded, 4, super::keccak16::D16::new, inputs, true),
-        };
-        let trace = trace.expect("kept");
+    pub fn compile(recorded: &Recorded, inputs: &Inputs) -> (Compiled, WitnessPlan) {
+        let (compiled, trace) = pi2_traced(recorded, inputs);
         let plan = Self::of(&compiled, trace, recorded, inputs.program_iv);
         // The plan replays the compilation it was made from (its native permutations are the circuit's).
         let (witness, public) = plan.witness(inputs);
@@ -281,12 +279,11 @@ impl WitnessPlan {
         (compiled, plan)
     }
 
-    /// The plan of `recorded`'s circuit in `layout`, for π1's program IV `program_iv` (compiled on a zero stream).
-    pub fn new(recorded: &Recorded, layout: Layout, program_iv: [u8; 32]) -> WitnessPlan {
+    /// The plan of `recorded`'s circuit, for π1's program IV `program_iv` (compiled on a zero stream).
+    pub fn new(recorded: &Recorded, program_iv: [u8; 32]) -> WitnessPlan {
         let stream = vec![0u8; recorded.stream_len];
         Self::compile(
             recorded,
-            layout,
             &Inputs {
                 program_iv,
                 public: [0; 32],

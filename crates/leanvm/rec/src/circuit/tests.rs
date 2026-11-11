@@ -4,8 +4,8 @@
 use leanvm_statement::field::K;
 use leanvm_statement::transcript::keccak256;
 
-use super::keccak::{Bit, Permutation, Sponge, keccak_f};
-use super::keccak16::D16;
+use super::compile::LOG_WIDTH;
+use super::keccak::{Bit, Sponge};
 use super::layout::{Builder, Finished, Value};
 use super::spec::PublicInputs;
 use super::units::{Bools, Packer};
@@ -26,15 +26,10 @@ fn no_public() -> PublicInputs {
     }
 }
 
-/// Hash `messages` with free bits on a permutation template; returns the finished layout and each digest's values.
-fn hash_all<P: Permutation>(
-    log_width: u8,
-    make: impl FnOnce(&mut Builder) -> P,
-    messages: &[Vec<u8>],
-) -> (Finished, Vec<Vec<Value>>) {
-    let mut b = Builder::new(log_width);
-    let p = make(&mut b);
-    let mut sponge = Sponge::new(&mut b, p);
+/// Hash `messages` with free bits on D16v; returns the finished layout and each digest's values.
+fn hash_all(messages: &[Vec<u8>]) -> (Finished, Vec<Vec<Value>>) {
+    let mut b = Builder::new(LOG_WIDTH);
+    let mut sponge = Sponge::new(&mut b);
     let mut bools = Bools::new(&mut b);
     let mut digests = Vec::new();
     for m in messages {
@@ -58,13 +53,13 @@ fn digest_bytes(f: &Finished, digest: &[Value]) -> [u8; 32] {
     out
 }
 
-pub(super) fn check_keccak<P: Permutation>(log_width: u8, make: impl FnOnce(&mut Builder) -> P) {
+fn check_keccak() {
     let mut seed = 0x9e37_79b9_7f4a_7c15u64;
     let messages: Vec<Vec<u8>> = [0usize, 1, 32, 80, 135, 136, 137, 271, 300]
         .iter()
         .map(|&len| (0..len).map(|_| xorshift(&mut seed) as u8).collect())
         .collect();
-    let (f, digests) = hash_all(log_width, make, &messages);
+    let (f, digests) = hash_all(&messages);
     assert_eq!(
         f.circuit.check(&f.witness, &no_public()),
         Ok(()),
@@ -84,17 +79,6 @@ pub(super) fn check_keccak<P: Permutation>(log_width: u8, make: impl FnOnce(&mut
         w[i] = w[i] + K(1 + k);
         assert!(f.circuit.check(&w, &no_public()).is_err(), "a change at {i} is caught");
     }
-}
-
-#[test]
-fn the_reference_permutation_is_keccak() {
-    // keccak256 of the empty message: one block, 0x01 at byte 0 and 0x80 at byte 135.
-    let mut a = [0u64; 25];
-    a[0] = 1;
-    a[16] = 0x80 << 56;
-    keccak_f(&mut a);
-    let bytes: Vec<u8> = a[..4].iter().flat_map(|l| l.to_le_bytes()).collect();
-    assert_eq!(bytes, keccak256(&[]));
 }
 
 #[test]
@@ -128,7 +112,7 @@ fn packings_are_the_words() {
 
 #[test]
 fn d16_keccak256_on_random_inputs() {
-    check_keccak(4, D16::new);
+    check_keccak();
 }
 
 /// D16v's rows a permutation (SPEC-REC.md §2.4.1): 1,536 `k0`, 6,144 `k1`, 160 `kprep`, and 344 `kd` for the D units
@@ -138,7 +122,7 @@ fn d16_keccak256_on_random_inputs() {
 fn d16_rows_a_permutation() {
     let perms = 4;
     let messages: Vec<Vec<u8>> = (0..perms).map(|k| vec![k as u8; 100]).collect();
-    let (f, _) = hash_all(4, D16::new, &messages);
+    let (f, _) = hash_all(&messages);
     let rows = |name: &str| f.stats.rows.get(name).copied().unwrap_or(0);
     assert_eq!(rows("keccak16/k0"), 1536 * perms);
     assert_eq!(rows("keccak16/k1"), (6144 - 256) * perms);
@@ -162,9 +146,8 @@ fn d16_rate_lanes_on_random_inputs() {
         .iter()
         .map(|&(len, lanes)| ((0..len).map(|_| xorshift(&mut seed) as u8).collect(), lanes))
         .collect();
-    let mut b = Builder::new(4);
-    let p = D16::new(&mut b);
-    let mut sponge = Sponge::new(&mut b, p);
+    let mut b = Builder::new(LOG_WIDTH);
+    let mut sponge = Sponge::new(&mut b);
     let mut bools = Bools::new(&mut b);
     let mut outs = Vec::new();
     for (m, lanes) in &cases {

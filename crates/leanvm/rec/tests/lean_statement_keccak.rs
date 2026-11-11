@@ -27,7 +27,7 @@ static ALLOC: bench::Jemalloc = bench::Jemalloc;
 use std::fmt::Write;
 
 use leanvm_statement::shapes::PROGRAM_IV;
-use leanvm_rec::circuit::compile::{Inputs, Layout, pi2};
+use leanvm_rec::circuit::compile::{Inputs, pi2};
 use leanvm_rec::circuit::spec::CallWord;
 use leanvm_rec::pi2::adapt;
 use leanvm_rec::pi2::circuit::{Circuit, Coeff, Formula, Lin, Read};
@@ -35,7 +35,7 @@ use leanvm_rec::pi2::prover::Setup;
 use leanvm_rec::pi2::verifier::Spec;
 use leanvm_rec::REFERENCE;
 use leanvm_univariate::contract::{Recorded, SetupRoots, contract_iv, record_verifier};
-use leanvm_univariate::{Claims, KECCAK_REC3, Shape};
+use leanvm_univariate::{KECCAK_REC3, Shape};
 
 /// The reference workload: leanVM 9d50c92a3's Keccak VM at 128 signatures (`leanvm_rec::REFERENCE`,
 /// `leanvm_statement::shapes::reference()`; Lean's `RecGraphKeccak.Pi1.keccak128`).
@@ -307,7 +307,6 @@ fn make(recorded: &Recorded, seed: usize, public: [u8; 32]) -> Made {
     let stream: Vec<u8> = (0..recorded.stream_len).map(|i| (i * (37 + 2 * seed) + 11 + seed) as u8).collect();
     let c = pi2(
         recorded,
-        Layout::D16v,
         &Inputs {
             program_iv: PROGRAM_IV,
             public,
@@ -350,7 +349,7 @@ fn summary(circuit: &Circuit, calls: &[Vec<CallWord>], c: &Constants) -> String 
 #[ignore = "compiles π2's circuit for the Keccak VM's π1-rec3 twice (2^24 positions) and commits its setup"]
 fn keccak_statement_data_is_current() {
     let rendered = deep(|| {
-        let recorded = record_verifier(&KECCAK_128, KECCAK_REC3, Claims::Point);
+        let recorded = record_verifier(&KECCAK_128, KECCAK_REC3);
         // π1's contract IV binds the code's reference root.
         assert_eq!(KECCAK_128.log_memory, 20);
         assert_eq!(KECCAK_128.log_bytecode, 18);

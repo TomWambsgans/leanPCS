@@ -229,7 +229,8 @@ identity exempts them (§5.2).
 
 **Interface.** Flock runs after `C1` and before `C2`, reading only `C1`'s `q_flock`. It draws its own challenges in
 the transcript between `γ` and the `C2` root. The verifier runs it as
-`flock_min::verify_walked_with::<_, keccak_flock::Keccak>` at `log_n = 17 + h_SHA3` variables (32 at 128 signatures).
+`flock_min::verify_walked::<_, keccak_flock::Keccak>`, then its ring switch (`flock_min::ring_end`; π1-rec4: later,
+`ring_end_at`), at `log_n = 17 + h_SHA3` variables (32 at 128 signatures).
 
 - **The block** is `flock::keccak`'s ([`FLOCK.md`](FLOCK.md), "The block"): one Keccak-f[1600] per `2^17` slots,
   every round's state materialised, `C = I`. Block `i` sits at row `i` of the placed `SHA3` table.
@@ -241,8 +242,8 @@ the transcript between `γ` and the `C2` root. The verifier runs it as
   and none is opened.
 - **The ring switch**: six map challenges, the target `Σ_i x^i Φ(s_i)` computed with the map's stages in tower order
   (§13, entries 2 and 3), and one claim `⟨Φ(eq(p, ·)), q_flock⟩ = target` on `C1`. On the main line its weight is one
-  term (`RING_TWIST`), evaluated at the batch's point (§13, entries 2 and 11); in weighted mode it is 64
-  Frobenius-twisted eq terms.
+  term (`RING_TWIST`), evaluated at the batch's point (§13, entries 2 and 11); written out (`verifier::expand_ring`, the prover's
+  weights, extension W) it is 64 Frobenius-twisted eq terms.
 - **Scalars**: `2^k + 2 (log_n - k) + 2 + 22 + 64 = 2 log_n + 90` at `k = 3`: 154 at 128 signatures.
 
 ## 8. The final check: values, relations, claims
@@ -283,11 +284,11 @@ mode, the batching sumcheck's terminal; each is affine in the last scalar read b
 mocked, a stream solved for those scalars is accepted at any challenges (`tests/lean_keccak_vectors.rs` builds such
 streams); that is expected, not a bug. The verdict means something only together with the openings.
 
-**Extension W: weighted claims** (`Claims::Weighted`). A claim is `root, layout, k`, then per claim its points (each a
+**Extension W: weighted claims** (`reduce_combined` with `expand_ring`). A claim is `root, layout, k`, then per claim its points (each a
 column's low coordinates), its terms (`column | point << 32 | twist << 48`, then the coefficient) and its value. The
 block's opening evaluates the weight, as leanVM's own WHIR verifier does. No batching sumcheck. Price `c` a claim; the
-opening's work grows with the terms. It is kept because the Lean vectors cover it (`tests/lean_keccak_vectors.rs`)
-and the parity tests run it; the prover has no opening for it.
+opening's work grows with the terms. No contract checks it: the verifier states it (`reduce_combined`, the claims before the batch), the Lean vectors
+cover it (`tests/lean_keccak_vectors.rs`), and the prover writes its weights from it; it has no opening.
 
 ## 9. Soundness
 
@@ -498,7 +499,7 @@ The design's refinements, by the labels the code cites. Each entry states the ru
     - `flock_min`'s `log_n ≥ 17 + 7` is `Shape::validate`'s `SHA3` height of at least 7 (entry 7);
     - §8: what the contract checks itself, and why solved streams pass with mocked openings.
 
-14. **Lever 1c: narrow batch challenges** (`FsShape::Rec2`'s, kept by `Rec3` and `Rec4`; `Channel::sample_narrow`,
+14. **Lever 1c: narrow batch challenges** (π1-rec2's, kept by `FsShape::Rec3` and `Rec4`; `Channel::sample_narrow`,
     `transcript::NARROW_BITS`). The batching sumcheck's challenges are the hash's low 160 bits instead of 192 (limb 2
     below `2^32`). π1's verifier draws them with `sumcheck_pairs_drawn(.., narrow)`, its prover likewise, the recorder
     as `record::Node::Narrow` (an `AND` with 20 bytes of ones), π2's circuit packs limb 2 from 32 digest bits. A plain
@@ -672,13 +673,14 @@ chain, which π1's main line, its contract and the Lean's model share). Narrow r
 would save no permutation over drawing `f_4, f_5` with `ρ`, and would weaken the ring switch.
 
 **Code.** `leanvm_statement`: `FsShape::Rec4` (its code 4 in π1's contract IV, which binds the variant), the channels'
-`sample_wide` (`KeccakChannel`, `KeccakWriter`, the prover's `Replay`, the recorder: `record::Node::Wide(hash, k)`,
-challenge 0 a `Node::Low`), `flock_min::verify_walked_deferred` (Flock without its map, the zerocheck's first
-coordinate given) and `ring_end_at`. `leanvm_univariate`: `verifier::reduce` and the prover draw as the table says
-(`KECCAK_REC4`); `batch` takes `λ` drawn. The EVM's `KECCAK256` gives the digest alone, so π1-rec4 has no contract of
-its own (`codegen` refuses a `Wide` node): its vectors are checked against the Rust verifier (`tests/evm_vectors.rs`,
-`tests/prove_real.rs`), and π2's circuit runs it. `leanvm_rec::PI1 = KECCAK_REC4`; π1-rec3 stays (the Lean's, its
-vectors, its contract).
+`sample_wide` (`KeccakChannel`, `KeccakWriter`, the recorder: `record::Node::Wide(hash, k)`, challenge 0 a `Node::Low`),
+`flock_min::verify_walked` (Flock without its map; the zerocheck's first coordinate given) and `ring_end_at`.
+`leanvm_univariate`: `verifier::{bus_challenges, point_challenge, late_challenges}` draw as the table says
+(`KECCAK_REC4`), for the verifier and the prover alike (`transcript::Draws`: a channel or the writer); a draw is a wide
+one per call, not a channel mode, since π1-rec4 also moves the ring map (`f_0 … f_3` after `C2`); `batch` takes `λ`
+drawn. The EVM's `KECCAK256` gives the digest alone, so π1-rec4 has no contract of its own (`codegen` refuses a `Wide`
+node): its vectors are checked against the Rust verifier (`tests/evm_vectors.rs`, `tests/prove_real.rs`), and π2's
+circuit runs it. `leanvm_rec::PI1 = KECCAK_REC4`; π1-rec3 stays (the Lean's, its vectors, its contract).
 
 **Vectors.** `tests/vectors/keccak128_rec4.txt` (the reference trace) and `keccak_rec4.txt` (400 signatures), written
 by `tests/prove_real.rs` (`WRITE_VECTORS`, `VECTOR_FILE`), not by hand ([`KECCAK.md`](KECCAK.md), "Vectors").

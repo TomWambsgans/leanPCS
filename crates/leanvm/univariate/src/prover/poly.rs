@@ -29,11 +29,6 @@ pub fn b_from_values<M: Module + Default>(mut data: Vec<M>) -> Vec<M> {
     data
 }
 
-/// `dst = src`, in parallel blocks (a fresh allocation's pages are first touched by many workers).
-pub fn copy<T: Copy + Send + Sync>(dst: &mut [T], src: &[T]) {
-    parallel::chunks_mut_zip(dst, src, 1 << 15, |_, d, s| d.copy_from_slice(s));
-}
-
 /// The novel coefficients, limb by limb, of the E-polynomial whose values on `V_r` are `values`.
 pub fn novel_limbs(values: &[F192]) -> [Vec<F64>; 3] {
     let mut limbs =
@@ -84,12 +79,6 @@ pub fn on_extension<M: Module>(novel: &[M], m: usize, j: usize) -> Vec<M> {
     on_coset(novel, (1 << m) + j * novel.len())
 }
 
-/// The novel coefficients of the polynomial of degree `< 2^m` whose values on `D_m` are `data`, in place.
-pub fn novel_from_extension<M: Module>(data: &mut [M], m: usize) {
-    assert_eq!(data.len(), 1 << m);
-    coefficients(data, point(1 << m));
-}
-
 /// `Σ_k b_k B_k(t)` for `B` coefficients `b` of a K-column: the multilinear extension at the digits `w[..r]`.
 pub fn eval_k(b: &[F64], w: &[F192]) -> F192 {
     let r = b.len().trailing_zeros() as usize;
@@ -130,33 +119,6 @@ pub fn eval_limbs(b: [&[F64]; 3], w: &[F192]) -> F192 {
 /// `Π_{l<r}` of the digits' factors for a `B` basis element at a K point: `B_k(x)` from `x`'s digits, for tests.
 pub fn digits_k(x: F64, count: usize) -> Vec<F64> {
     std::iter::successors(Some(x), |&w| Some(w.square() + w)).take(count).collect()
-}
-
-/// Batch inversion in parallel chunks (Montgomery's trick per chunk); every entry must be nonzero.
-pub fn batch_invert(data: &mut [F192]) {
-    parallel::chunks_mut(data, 1 << 12, |_, chunk| {
-        let mut prefix = Vec::with_capacity(chunk.len());
-        let mut acc = F192::ONE;
-        for &x in chunk.iter() {
-            prefix.push(acc);
-            acc *= x;
-        }
-        let mut inv = acc.inv();
-        for i in (0..chunk.len()).rev() {
-            let x = chunk[i];
-            chunk[i] = inv * prefix[i];
-            inv *= x;
-        }
-    });
-}
-
-/// `E` of the verifier (`leanvm_statement`) from the prover's, and back: the same limbs.
-pub fn to_v(x: F192) -> leanvm_statement::field::E {
-    leanvm_statement::field::E::new(x.c0, x.c1, x.c2)
-}
-
-pub fn from_v(x: leanvm_statement::field::E) -> F192 {
-    F192::new(x.c0, x.c1, x.c2)
 }
 
 #[cfg(test)]

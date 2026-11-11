@@ -30,12 +30,12 @@ use leanvm_statement::evm::machine::{
 };
 use leanvm_statement::evm::record::{Graph, Recorder, Sym, record};
 use leanvm_statement::field::E;
-use leanvm_statement::transcript::{Checks, KeccakChannel};
+use leanvm_statement::transcript::Checks;
 use pcs_claim::PcsClaim;
 use primitives::field::F192;
 
 use super::circuit::{Circuit, Read};
-use super::verifier::{NAME, Reduced, Spec, reduce, statement_words};
+use super::verifier::{NAME, Pi2Stack, Reduced, Spec, reduce, verify};
 use crate::circuit::spec::CallWord;
 
 /// What the contract is built for: the circuit's verifier, its IV, the setup's commitment, and π1's calls. Built by
@@ -49,7 +49,7 @@ pub struct Instance<'a> {
 }
 
 impl<'a> Instance<'a> {
-    /// The instance of `circuit` (validated here), its verifier `spec` (`Spec::of(circuit)`), the setup's commitment
+    /// The instance of `circuit`, its verifier `spec` (`Spec::of(circuit)`, which validated it), the setup's commitment
     /// (of `circuit`'s `σ`, `κ`: `prover::Setup::new(circuit)`'s `root()` and `ood()`), π1's contract IV (the circuit
     /// compiler's, `Compiled::pi1_iv`, derived from π1's recorded verifier) and π1's calls (the circuit's,
     /// `spec::Circuit::calls`). The IV is `prover::iv` of them.
@@ -61,7 +61,6 @@ impl<'a> Instance<'a> {
         pi1_iv: &[u8; 32],
         pi1: &'a [Vec<CallWord>],
     ) -> Self {
-        circuit.validate().unwrap_or_else(|e| panic!("the circuit is not valid: {e}"));
         assert!(
             spec.log_n == circuit.log_n
                 && spec.log_row == circuit.log_row
@@ -154,13 +153,6 @@ pub fn payloads(inst: &Instance) -> Vec<usize> {
     (0..pi1).filter(|p| !hashed.contains(p)).chain(pi1..pi1 + 5).collect()
 }
 
-/// The number `n` as a word.
-pub fn number(n: u64) -> [u8; 32] {
-    let mut bytes = [0; 32];
-    bytes[24..].copy_from_slice(&n.to_be_bytes());
-    bytes
-}
-
 /// The claims' fields, in order (π1's the circuit does not hash, then π2's five), each the payload of its index in
 /// [`payloads`], for any word type.
 fn claim_words<T: Copy, W: Clone>(
@@ -189,21 +181,17 @@ fn claim_words<T: Copy, W: Clone>(
             Fields { root: word(&c[0]), ood: word(&c[1]), point, value: word(&c[c.len() - 1]), index: 0 }
         })
         .collect();
-    let field = |root: W, ood: W, (point, value): &(Vec<T>, T)| -> Fields<W> {
-        Fields { root, ood, point: point.iter().map(|&x| scalar(x)).collect(), value: scalar(*value), index: 0 }
-    };
     let [w_ood, q_ood] = reduced.oods;
-    let (w_root, q_root) = (|| stream(roots_at[roots]), || stream(roots_at[roots + 1]));
     // W, the setup (its point's `w_4 … w_{m-1}` W's: written once), then Q's three.
-    out.push(field(w_root(), scalar(w_ood), &reduced.witness));
-    out.push(field(
-        constant(inst.setup_root),
-        constant(element_word(E::new(inst.setup_ood.c0, inst.setup_ood.c1, inst.setup_ood.c2))),
-        &reduced.setup,
-    ));
-    out.push(field(q_root(), scalar(q_ood), &reduced.quotient));
-    out.push(field(q_root(), scalar(q_ood), &reduced.pushes));
-    out.push(field(q_root(), scalar(q_ood), &reduced.sum));
+    for (stack, (point, value)) in reduced.claims() {
+        let (root, ood) = match stack {
+            Pi2Stack::Witness => (stream(roots_at[roots]), scalar(w_ood)),
+            Pi2Stack::Setup => (constant(inst.setup_root), constant(element_word(inst.setup_ood.into()))),
+            Pi2Stack::Quotient => (stream(roots_at[roots + 1]), scalar(q_ood)),
+        };
+        let point = point.iter().map(|&x| scalar(x)).collect();
+        out.push(Fields { root, ood, point, value: scalar(*value), index: 0 });
+    }
     assert_eq!(out.len(), payloads.len(), "a payload a claim");
     out.iter_mut().zip(payloads).for_each(|(claim, index)| claim.index = index);
     out
@@ -282,35 +270,8 @@ pub fn calldata(public_input: &[u8; 32], stream: &[u8]) -> Vec<u8> {
 /// Where π2's calldata holds the stream.
 pub const STREAM_AT: usize = 32;
 
-/// The Rust verifier's reduction, and the values it required to be zero, then nonzero.
-pub type Checked = (Reduced<E>, Vec<E>, Vec<E>);
-
-/// The Rust verifier on the same calldata, every check collected; `frame` the words its frame payloads hold
-/// ([`frame_payloads`], in order).
-pub fn rust_verifier(
-    inst: &Instance,
-    public_input: &[u8; 32],
-    frame: &[[u8; 32]],
-    stream: &[u8],
-) -> Result<Checked, leanvm_statement::VerifierError> {
-    let seed = super::verifier::seed(&inst.iv, public_input, frame);
-    let mut channel = KeccakChannel::new(
-        seed,
-        stream,
-        Checks::Collect {
-            zero: vec![],
-            nonzero: vec![],
-        },
-    );
-    channel.frame = frame.to_vec();
-    let reduced = reduce(inst.spec, statement_words(public_input), &mut channel)?;
-    channel.finish()?;
-    let Checks::Collect { zero, nonzero } = channel.checks else {
-        unreachable!()
-    };
-    Ok((reduced, zero, nonzero))
-}
-
+/// The words the parity build returns ([`parity`]): the Rust verifier's claims on the same calldata, then every value
+/// it required to be zero, then nonzero; `frame` the words its frame payloads hold ([`frame_payloads`], in order).
 fn expected_return(
     inst: &Instance,
     recorded: &Recorded,
@@ -318,7 +279,9 @@ fn expected_return(
     frame: &[[u8; 32]],
     stream: &[u8],
 ) -> Vec<[u8; 32]> {
-    let (reduced, zero, nonzero) = rust_verifier(inst, public_input, frame, stream).expect("the stream's length");
+    let (reduced, checks) =
+        verify(inst.spec, &inst.iv, public_input, frame, stream, Checks::collect()).expect("the stream's length");
+    let Checks::Collect { zero, nonzero } = checks else { unreachable!("collected") };
     let mut out: Vec<[u8; 32]> = expected_calls(inst, recorded, &reduced, stream).iter().flat_map(Fields::words).collect();
     out.extend(zero.iter().chain(&nonzero).map(|&x| element_word(x)));
     out

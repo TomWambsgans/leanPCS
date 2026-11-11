@@ -2,8 +2,8 @@
 //! The Keccak VM's π1-rec3 graph as Lean data (`formal/RecGraphKeccak`).
 //!
 //! - `keccak_graph_lean_is_current`: the checked-in `formal/RecGraphKeccak/RecGraphKeccak/Emitted.lean` is what
-//!   [`render`] writes for the Keccak VM's π1-rec3 recorded verifier now (`record_verifier(&REFERENCE, KECCAK_REC3,
-//!   Claims::Point)`: π1-rec3's Fiat–Shamir shape at the 128-signature reference workload); `UPDATE_LEAN=1` rewrites
+//!   [`render`] writes for the Keccak VM's π1-rec3 recorded verifier now (`record_verifier(&REFERENCE, KECCAK_REC3)`:
+//!   π1-rec3's Fiat–Shamir shape at the 128-signature reference workload); `UPDATE_LEAN=1` rewrites
 //!   it.
 //! - `keccak_128_shape`: `leanvm_rec::REFERENCE` is the 128-signature workload's shape
 //!   (`leanvm_statement::shapes::reference()`: `⌈log₂ cells⌉`, `2^18`), which the Lean side's `Pi1.keccak128` pins.
@@ -21,7 +21,7 @@ use leanvm_statement::evm::codegen::Word;
 use leanvm_statement::evm::record::Node;
 use leanvm_statement::shapes::{PROGRAM_IV, reference};
 use leanvm_univariate::contract::{Recorded, calls, record_verifier};
-use leanvm_univariate::{Claims, KECCAK_REC3};
+use leanvm_univariate::KECCAK_REC3;
 
 /// The memory cells of the 128-signature run, whose `⌈log₂⌉` is `REFERENCE.log_memory` (`Pi1.keccak128` on the Lean
 /// side is `UniKeccak.keccakShapeOf 721598 [..]`).
@@ -45,7 +45,7 @@ fn graph_path() -> std::path::PathBuf {
 
 /// The Keccak VM's π1-rec3, recorded.
 fn recorded() -> Recorded {
-    record_verifier(&REFERENCE, KECCAK_REC3, Claims::Point)
+    record_verifier(&REFERENCE, KECCAK_REC3)
 }
 
 fn word_nat(bytes: &[u8; 32]) -> String {

@@ -109,7 +109,7 @@ cargo test --release -p evm -- --ignored --nocapture gas_report          # the c
 cargo test --release -p leanvm_univariate -p leanvm_rec
 cargo test --release -p leanvm_univariate --test keccak_vm -- --ignored --nocapture keccak_gas_report  # π1's gas
 cargo test --release -p leanvm_univariate --test evm_vectors              # the committed real proofs replayed
-cargo test --release -p leanvm_rec --test keccak_vm_rec -- --ignored --nocapture                       # π2's circuit, gas
+cargo test --release -p leanvm_rec --test pi2_real -- --ignored --nocapture real_gas                 # π2's circuit, gas
 PI2_VECTOR=keccak128_rec4 cargo test --release -p leanvm_rec --test pi2_real -- --ignored --nocapture real_end_to_end
 LEANVM_TRACE=<trace> PI1_VARIANT=rec4 cargo test --release -p leanvm_univariate --test prove_real -- --ignored \
   --nocapture keccak_prover_benchmark                                    # π1's prover on a real trace

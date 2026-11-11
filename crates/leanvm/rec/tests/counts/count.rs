@@ -9,9 +9,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use leanvm_statement::evm::codegen::Word;
 use leanvm_statement::evm::record::{Graph, Node, Sym, record};
-use leanvm_statement::field::E;
 use leanvm_statement::ring_tower;
-use leanvm_univariate::Opening;
+use leanvm_rec::circuit::compile::live;
 use leanvm_univariate::contract::{Recorded, calls};
 
 /// The operations of a graph, by kind.
@@ -46,12 +45,11 @@ impl Ops {
     }
 }
 
-/// One claim the inner verifier checks declared: its commitment, its point's nodes and its value's node.
+/// One claim the inner verifier checks declared: its commitment and its point's nodes.
 #[derive(Clone, Debug)]
 pub struct ClaimShape {
     pub name: String,
     pub point: Vec<u32>,
-    pub value: u32,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -116,33 +114,10 @@ impl Counts {
     pub fn hashes_by_permutations(&self) -> BTreeMap<usize, usize> {
         let mut out = BTreeMap::new();
         for &len in &self.hash_lengths {
-            *out.entry(crate::permutations(len)).or_insert(0) += 1;
+            *out.entry(leanvm_rec::permutations(len)).or_insert(0) += 1;
         }
         out
     }
-}
-
-fn operands(graph: &Graph, node: Node) -> Vec<u32> {
-    match node {
-        Node::Add(a, b) | Node::Mul(a, b) => vec![a, b],
-        Node::Hash(s, _, _) => vec![s],
-        Node::Low(h) | Node::Narrow(h) | Node::Wide(h, _) | Node::Bits(h, _, _) => vec![h],
-        Node::RingWeight(k, _) => graph.kernels[k as usize].clone(),
-        Node::Const(_) | Node::Statement(_) | Node::Frame(..) | Node::Input { .. } | Node::Seed => vec![],
-    }
-}
-
-/// The nodes `outputs` read, through their operands.
-pub fn live(graph: &Graph, outputs: impl IntoIterator<Item = u32>) -> Vec<bool> {
-    let mut live = vec![false; graph.nodes.len()];
-    let mut stack: Vec<u32> = outputs.into_iter().collect();
-    while let Some(id) = stack.pop() {
-        if std::mem::replace(&mut live[id as usize], true) {
-            continue;
-        }
-        stack.extend(operands(graph, graph.nodes[id as usize]));
-    }
-    live
 }
 
 /// The graph's outputs: every node a claim writes, and every checked value.
@@ -240,7 +215,7 @@ pub fn count(recorded: &Recorded) -> Counts {
     }
     c.hashed_stream_bytes = hashed_to as usize;
     c.unhashed_live_reads = reads.iter().filter(|&&offset| offset >= hashed_to).count();
-    c.permutations = c.hash_lengths.iter().map(|&len| crate::permutations(len)).sum();
+    c.permutations = c.hash_lengths.iter().map(|&len| leanvm_rec::permutations(len)).sum();
     c.ops = ops_of(graph, &live);
     c.total_ops = c.ops.clone();
     let kernel = c.kernel_ops.clone();
@@ -248,13 +223,10 @@ pub fn count(recorded: &Recorded) -> Counts {
     c.zero_checks = graph.zero.len();
     c.nonzero_checks = graph.nonzero.len();
     for (commitment, opening) in &recorded.reduced.openings {
-        if let Opening::Point { point, value, .. } = opening {
-            c.claims.push(ClaimShape {
-                name: format!("{commitment:?}"),
-                point: point.iter().map(|s| s.0).collect(),
-                value: value.0,
-            });
-        }
+        c.claims.push(ClaimShape {
+            name: format!("{commitment:?}"),
+            point: opening.point.iter().map(|s| s.0).collect(),
+        });
     }
     c
 }
@@ -264,12 +236,4 @@ pub fn shared(a: &[u32], b: &[u32]) -> (usize, usize) {
     let same = a.iter().zip(b).take_while(|(x, y)| x == y).count();
     let anywhere = b.iter().filter(|y| a.contains(y)).count();
     (same, anywhere)
-}
-
-/// A constant node's value, if it is one.
-pub fn constant(graph: &Graph, id: u32) -> Option<E> {
-    match graph.nodes[id as usize] {
-        Node::Const([c0, c1, c2]) => Some(E::new(c0, c1, c2)),
-        _ => None,
-    }
 }

@@ -22,7 +22,7 @@ Design: [`SPEC-REC.md`](../../../docs/leanvm/rec/SPEC-REC.md) (the recursion), [
 
 ```sh
 cargo test --release -p leanvm_rec                                                          # circuit, PIOP, contract
-cargo test --release -p leanvm_rec --test keccak_vm_rec -- --ignored --nocapture            # π2's circuit and gas, 128 and 400
+cargo test --release -p leanvm_rec --test pi2_real -- --ignored --nocapture real_gas        # π2's circuit and gas, 128 and 400
 PI2_VECTOR=keccak128_rec4 cargo test --release -p leanvm_rec --test pi2_real -- --ignored --nocapture real_end_to_end
 LEANVM_TRACE=<trace dir> cargo test --release -p leanvm_rec --test pipeline -- --ignored --nocapture   # trace → π1 → π2, timed
 ```

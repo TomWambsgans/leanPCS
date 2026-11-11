@@ -10,7 +10,7 @@ use leanvm_statement::shapes::{PROGRAM_IV, WORKLOADS, by_xmss};
 use leanvm_univariate::claims::Commitment;
 use leanvm_univariate::contract::{GasReport, measure, parity, record_verifier, sample_stream};
 use leanvm_univariate::verifier::layouts;
-use leanvm_univariate::{Claims, KECCAK_MAIN, Shape};
+use leanvm_univariate::{KECCAK_MAIN, Shape};
 
 /// The largest proof stack (`C1`, `C2`) of `shape`, in variables: WHIR takes at most 28.
 fn largest_stack(shape: &Shape) -> usize {
@@ -38,12 +38,10 @@ fn deep<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> R {
 fn keccak_contract_is_the_rust_verifier() {
     deep(|| {
         let shape = Shape::of(&by_xmss(32).shape);
-        for mode in [Claims::Point] {
-            let recorded = record_verifier(&shape, KECCAK_MAIN, mode);
-            for seed in [1u64, 2] {
-                let stream = sample_stream(recorded.stream_len, seed);
-                parity(&shape, &PROGRAM_IV, &[0x5a; 32], &stream, KECCAK_MAIN, mode);
-            }
+        let recorded = record_verifier(&shape, KECCAK_MAIN);
+        for seed in [1u64, 2] {
+            let stream = sample_stream(recorded.stream_len, seed);
+            parity(&shape, &PROGRAM_IV, &[0x5a; 32], &stream, KECCAK_MAIN);
         }
     });
 }
@@ -101,7 +99,7 @@ fn keccak_gas_report() {
         // could serve).
         for workload in &WORKLOADS {
             let shape = Shape::of(&workload.shape);
-            let report = measure(&shape, &PROGRAM_IV, KECCAK_MAIN, Claims::Point);
+            let report = measure(&shape, &PROGRAM_IV, KECCAK_MAIN);
             let stack = largest_stack(&shape);
             let label = if stack <= 28 {
                 "Keccak VM, Flock Keccak-f"
