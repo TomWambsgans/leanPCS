@@ -595,19 +595,21 @@ fn lean_ligero_bytes() -> usize {
     LEAN_LIGERO_BYTES
 }
 
-/// Level-1 codewords of at least this many bytes are not kept by an opening that holds its own alone (one opening at
-/// a time, rather than a batch's openings each holding theirs while their level-0 rows are encoded at once): kept, a
-/// codeword's queried rows are read rather than encoded again (π2's `Q`: 1.5 GB a level-1 codeword, 16 ms an opening
-/// at 8 threads). [Added here.]
-const LEAN_LIGERO_BYTES_ALONE: usize = 2 << 30;
+/// Level-1 codewords of at least this many bytes are not kept by the openings of a batch made one after another (its
+/// level-0 rows read from a kept codeword: π2's `Q`, three openings): kept, a codeword's queried rows are read rather
+/// than encoded again (`Q`: 1.5 GB a level-1 codeword, 16 ms an opening at 8 threads), and each opening's codeword
+/// reuses the memory of the one before. A lone opening keeps [`LEAN_LIGERO_BYTES`]: the membership proof's `T`, opened
+/// once in a cold process, would map 0.94 GiB more for 3 ms; a batch whose level-0 rows are encoded at once holds all
+/// its level-1 commitments together, and keeps [`LEAN_LIGERO_BYTES`] too. [Added here.]
+const LEAN_LIGERO_BYTES_IN_TURN: usize = 2 << 30;
 
-/// [`LEAN_LIGERO_BYTES_ALONE`], or (in tests) the knob's value on this thread.
-fn lean_ligero_bytes_alone() -> usize {
+/// [`LEAN_LIGERO_BYTES_IN_TURN`], or (in tests) the knob's value on this thread.
+fn lean_ligero_bytes_in_turn() -> usize {
     #[cfg(test)]
     if let Some(bytes) = LEAN_LIGERO_BYTES_OVERRIDE.get() {
         return bytes;
     }
-    LEAN_LIGERO_BYTES_ALONE
+    LEAN_LIGERO_BYTES_IN_TURN
 }
 
 /// Where a level's opened rows come from.
@@ -2862,7 +2864,7 @@ fn recursive_prover_rows(
         }
     };
     drop(sumcheck_span);
-    after_lane_rounds(config, log_n, witness, sc_prover, r_lane_fold, l0_rows, l0_tree, ps);
+    after_lane_rounds(config, log_n, witness, sc_prover, r_lane_fold, l0_rows, l0_tree, lean_ligero_bytes(), ps);
 }
 
 /// [`recursive_prover_with_lane_tensors`] of each of `jobs` (`known` as in
@@ -2892,8 +2894,10 @@ pub fn recursive_prover_with_lane_tensors_batch(
         tensor_lane_rounds(witness, lane_block, config.initial_k, weight, known, jobs, zero_lanes)
     };
     if jobs.len() < 2 || l0_rows.kept() {
+        // One opening after another: a batch's keep their level-1 codewords up to `LEAN_LIGERO_BYTES_IN_TURN`.
+        let lean_bytes = if jobs.len() > 1 { lean_ligero_bytes_in_turn() } else { lean_ligero_bytes() };
         for (job, (sc_prover, r_lane_fold)) in jobs.iter_mut().zip(started) {
-            after_lane_rounds(config, log_n, witness, sc_prover, r_lane_fold, l0_rows, l0_tree, job.ps);
+            after_lane_rounds(config, log_n, witness, sc_prover, r_lane_fold, l0_rows, l0_tree, lean_bytes, job.ps);
         }
         return;
     }
@@ -2973,11 +2977,11 @@ fn after_lane_rounds(
     r_lane_fold: Vec<F192>,
     l0_rows: L0Rows<'_>,
     l0_tree: impl AsRef<[Hash]>,
+    lean_bytes: usize,
     ps: &mut ProverState,
 ) {
     let (n_lanes, _) = l0_shape(config, log_n, witness.as_ref().len(), l0_rows, l0_tree.as_ref().len());
-    // This opening holds its level-1 codeword alone.
-    let level = level_1(config, log_n, n_lanes, sc_prover, r_lane_fold, lean_ligero_bytes_alone(), ps);
+    let level = level_1(config, log_n, n_lanes, sc_prover, r_lane_fold, lean_bytes, ps);
     let span = tracing::info_span!("Open", level = 0).entered();
     let images_0 = l0_images(config, log_n, witness.as_ref(), l0_rows, &level.queries_0);
     // The committed message is not read again.
