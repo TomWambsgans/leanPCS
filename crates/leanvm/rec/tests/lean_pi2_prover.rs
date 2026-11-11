@@ -3,7 +3,11 @@
 //! circuit compiler's example (`circuit::spec::example`), padded to `2^log_n` positions as `tests/pi2.rs` pads it,
 //! through `pi2::adapt`; its witness, public input and values, π2's IV; and the Rust prover's stream and roots
 //! (`pi2::prover::prove`). The Lean runner reads the interface's circuit as `RecCircuit.Circuit`, runs its prover on
-//! the same inputs and compares the stream byte for byte, `W`'s, `Q`'s and the setup's roots.
+//! the same inputs and compares the stream byte for byte, `W`'s, `Q`'s and the setup's roots. Besides the example as it
+//! is (its one public element a scalar read), a variant reads that element narrow (`Read::Narrow`, 20 bytes) and
+//! declares one hashed claim (`Read::Frame(0)`: its Keccak-256 a frame word, hashed by the seed after the public input,
+//! four public scalars before the element's; no port reads it), so that the runner checks the seed over the frame
+//! words and the narrow element's bytes.
 //!
 //! `PI2_PROVER_OUT=$PWD/pi2_prover.txt cargo test --release -p leanvm_rec --test lean_pi2_prover -- --ignored --nocapture`
 
@@ -40,8 +44,13 @@ fn hex(b: &[u8]) -> String {
     b.iter().map(|x| format!("{x:02x}")).collect()
 }
 
-fn vector(log_n: u8, out: &mut String) {
-    let (c, w, public) = padded_example(log_n);
+fn vector(log_n: u8, variant: bool, out: &mut String) {
+    let (mut c, w, mut public) = padded_example(log_n);
+    if variant {
+        c.narrow = vec![0];
+        c.hashed = vec![0];
+        public.claim_hashes = vec![[0x5a; 32]];
+    }
     assert_eq!(c.check(&w, &public), Ok(()));
     let circuit = adapt::adapt(&c);
     let (public_input, values) = adapt::public_values(&public);
@@ -51,7 +60,7 @@ fn vector(log_n: u8, out: &mut String) {
     let witness = adapt::witness(&w);
     let proved = prove(&circuit, &spec, &setup, &iv, &public_input, &values, &witness);
     assert_eq!(claims_hold(&proved, &setup), [true; 4]);
-    writeln!(out, "VECTOR example {log_n}").unwrap();
+    writeln!(out, "VECTOR example {log_n}{}", if variant { " narrow-frame" } else { "" }).unwrap();
     writeln!(out, "SHAPE {} {}", c.log_n, c.log_width).unwrap();
     for region in &c.regions {
         let roles: Vec<String> = region
@@ -131,8 +140,9 @@ fn lean_pi2_prover_vectors() {
     let path = std::env::var("PI2_PROVER_OUT").unwrap_or_else(|_| "pi2_prover.txt".into());
     let mut out = String::new();
     for log_n in [9u8, 10] {
-        vector(log_n, &mut out);
+        vector(log_n, false, &mut out);
     }
+    vector(9, true, &mut out);
     std::fs::write(&path, out).expect("the vectors are written");
     eprintln!("wrote {path}");
 }
