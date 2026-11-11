@@ -119,7 +119,8 @@ pub fn adapt(c: &spec::Circuit) -> Circuit {
         }
     }
     let (roots, elements) = public_counts(c);
-    let reads = [vec![Read::Root; roots], vec![Read::Scalar; elements]].concat();
+    let element_read = |e: usize| if c.narrow.contains(&(e as u32)) { Read::Narrow } else { Read::Scalar };
+    let reads = [vec![Read::Root; roots], (0..elements).map(element_read).collect()].concat();
     let element_at = |i: u32| (4 + 2 * roots + i as usize) as u16;
     let y = Coeff::e(F192::Y);
     let public = c

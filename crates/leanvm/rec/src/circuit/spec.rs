@@ -248,6 +248,9 @@ pub struct Circuit {
     pub ports: Vec<Port>,
     /// `π1`'s claims, in call order.
     pub calls: Vec<Vec<CallWord>>,
+    /// The elements that are narrow challenges (`c2 < 2^32`, `transcript::narrow`), increasing: π2 reads them as 20
+    /// bytes (`pi2::circuit::Read::Narrow`).
+    pub narrow: Vec<u32>,
 }
 
 /// Why a witness is not accepted (the first failure found).
@@ -653,6 +656,7 @@ pub fn example() -> (Circuit, Witness, PublicInputs) {
             source: Source::Element(0),
         }],
         calls: vec![vec![CallWord::Const([7; 32]), CallWord::Element(0)]],
+        narrow: vec![],
     };
     let v = K(6) * K(6) + K(4);
     let mut w = vec![K(0); 32];

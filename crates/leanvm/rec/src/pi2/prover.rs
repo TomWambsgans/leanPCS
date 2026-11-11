@@ -1040,6 +1040,7 @@ pub fn prove_with(
             (Read::Integer(bytes), PublicValue::Integer(x)) => writer.send_integer(x, bytes as usize),
             (Read::Root, PublicValue::Root(bytes)) => writer.send_root(halves(&bytes).map(to_e)),
             (Read::Scalar, PublicValue::Scalar(x)) => writer.send(to_e(x)),
+            (Read::Narrow, PublicValue::Scalar(x)) => writer.send_narrow(to_e(x)),
             other => panic!("a public value of another kind than its read: {other:?}"),
         }
     }

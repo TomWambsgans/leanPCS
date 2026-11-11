@@ -98,6 +98,7 @@ fn vector(log_n: u8, out: &mut String) {
             Read::Integer(b) => format!("I{b}"),
             Read::Root => "R".to_string(),
             Read::Scalar => "S".to_string(),
+            Read::Narrow => "N".to_string(),
         })
         .collect();
     writeln!(out, "READS {}", reads.join(" ")).unwrap();

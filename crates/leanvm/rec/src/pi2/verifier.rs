@@ -370,6 +370,7 @@ pub fn reduce_traced<S: Limbs, C: Channel<S>>(
             Read::Integer(bytes) => public.push(channel.next_integer(bytes as usize)?),
             Read::Root => public.extend(channel.next_root()?),
             Read::Scalar => public.push(channel.next_scalar()?),
+            Read::Narrow => public.push(channel.next_narrow()?),
         }
     }
     // Each commitment: its root, then its out-of-domain answer, which binds the root to one polynomial before the

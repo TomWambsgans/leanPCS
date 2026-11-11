@@ -590,6 +590,11 @@ pub fn compile_keeping<P: Permutation>(
         ports.port(&mut b, &limbs[&id], Source::Element(e as u32));
     }
     b.calls = circuit_calls;
+    // The narrow challenges among the elements: π2 reads them as 20 bytes (their limb 2 is packed from 32 bits).
+    b.narrow = (element_nodes.iter().enumerate())
+        .filter(|&(_, &id)| matches!(g.nodes[id as usize], Node::Narrow(_)))
+        .map(|(e, _)| e as u32)
+        .collect();
     let keccak_permutations = sponge.permutations;
     let (finished, internals) = b.finish_keeping(keep);
     let elements: Vec<E> = element_nodes

@@ -112,7 +112,7 @@ fn read_indices(spec: &Spec) -> (Vec<usize>, Vec<usize>) {
     for r in &spec.reads {
         match r {
             Read::Root => roots.push(at),
-            Read::Scalar => elements.push(at),
+            Read::Scalar | Read::Narrow => elements.push(at),
             Read::Integer(_) => {}
         }
         at += r.scalars();

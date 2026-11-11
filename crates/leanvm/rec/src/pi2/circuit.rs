@@ -249,6 +249,8 @@ pub enum Read {
     Root,
     /// A 24-byte element of `E`: one scalar.
     Scalar,
+    /// A narrow element (`c2 < 2^32`: π1's batch challenges) as its low 20 bytes (`Channel::next_narrow`): one scalar.
+    Narrow,
 }
 
 impl Read {
@@ -264,6 +266,7 @@ impl Read {
             Read::Integer(b) => b as usize,
             Read::Root => 32,
             Read::Scalar => 24,
+            Read::Narrow => 20,
         }
     }
 }
@@ -550,6 +553,7 @@ impl Circuit {
                 Read::Integer(b) => (0, *b as u64),
                 Read::Root => (1, 32),
                 Read::Scalar => (2, 24),
+                Read::Narrow => (3, 20),
             };
             put(&mut bytes, kind);
             put(&mut bytes, len);

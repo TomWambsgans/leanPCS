@@ -52,6 +52,13 @@ pub trait Channel<S: Scalar> {
     fn next_integer(&mut self, _bytes: usize) -> Result<S, VerifierError> {
         unimplemented!("this channel reads no packed integers")
     }
+
+    /// A narrow element ([`NARROW_BITS`] bits, `c2 < 2^32`) as its low 20 bytes, big-endian (`c2`'s low four bytes,
+    /// `c1`, `c0`): another proof's [`Channel::sample_narrow`] challenge carried as public data without its four zero
+    /// bytes (`docs/leanvm/rec/PERF_GAS.md`). Absorbed like every byte of the stream.
+    fn next_narrow(&mut self) -> Result<S, VerifierError> {
+        unimplemented!("this channel reads no narrow elements")
+    }
 }
 
 /// The verifier's Fiat–Shamir shape: which runs of challenges are drawn one by one, and which derived
@@ -372,6 +379,12 @@ impl Channel<E> for KeccakChannel<'_> {
         self.cursor += bytes;
         Ok(E::new(data.iter().fold(0u64, |acc, &b| acc << 8 | b as u64), 0, 0))
     }
+
+    fn next_narrow(&mut self) -> Result<E, VerifierError> {
+        let bytes = self.take::<20>()?;
+        let word = |r: &[u8]| r.iter().fold(0u64, |acc, &b| acc << 8 | b as u64);
+        Ok(E::new(word(&bytes[12..20]), word(&bytes[4..12]), word(&bytes[0..4])))
+    }
 }
 
 /// The contract's chain, prover side: writes the calldata stream and draws the same challenges.
@@ -392,6 +405,12 @@ impl KeccakWriter {
 
     pub fn send(&mut self, x: E) {
         self.stream.extend(scalar_bytes(x));
+    }
+
+    /// A narrow element as its low 20 bytes ([`Channel::next_narrow`]).
+    pub fn send_narrow(&mut self, x: E) {
+        assert_eq!(x.c2 >> 32, 0, "a narrow element");
+        self.stream.extend(&scalar_bytes(x)[4..]);
     }
 
     pub fn send_root(&mut self, halves: [E; 2]) {

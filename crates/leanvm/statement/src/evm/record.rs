@@ -253,4 +253,9 @@ impl Channel<Sym> for Recorder {
         assert!((1..=8).contains(&bytes));
         Ok(self.input(bytes as u8))
     }
+
+    /// A 20-byte read: the contract's `CALLDATALOAD` shifted right by 96, the element with `c2 < 2^32`.
+    fn next_narrow(&mut self) -> Result<Sym, VerifierError> {
+        Ok(self.input(20))
+    }
 }

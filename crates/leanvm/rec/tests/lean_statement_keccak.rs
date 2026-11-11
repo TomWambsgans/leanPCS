@@ -102,6 +102,7 @@ fn read_text(r: &Read) -> String {
         Read::Integer(b) => format!(".integer {b}"),
         Read::Root => ".root".to_string(),
         Read::Scalar => ".scalar".to_string(),
+        Read::Narrow => ".narrow".to_string(),
     }
 }
 
