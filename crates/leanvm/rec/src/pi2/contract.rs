@@ -49,7 +49,7 @@ pub struct Instance<'a> {
 }
 
 impl<'a> Instance<'a> {
-    /// The instance of `circuit` (validated here), its verifier `spec` (`Spec::of(circuit)`), the setup's commitment
+    /// The instance of `circuit`, its verifier `spec` (`Spec::of(circuit)`, which validated it), the setup's commitment
     /// (of `circuit`'s `σ`, `κ`: `prover::Setup::new(circuit)`'s `root()` and `ood()`), π1's contract IV (the circuit
     /// compiler's, `Compiled::pi1_iv`, derived from π1's recorded verifier) and π1's calls (the circuit's,
     /// `spec::Circuit::calls`). The IV is `prover::iv` of them.
@@ -61,7 +61,6 @@ impl<'a> Instance<'a> {
         pi1_iv: &[u8; 32],
         pi1: &'a [Vec<CallWord>],
     ) -> Self {
-        circuit.validate().unwrap_or_else(|e| panic!("the circuit is not valid: {e}"));
         assert!(
             spec.log_n == circuit.log_n
                 && spec.log_row == circuit.log_row

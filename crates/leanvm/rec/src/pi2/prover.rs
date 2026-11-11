@@ -70,9 +70,8 @@ pub struct Setup {
 }
 
 impl Setup {
-    /// The setup of `circuit`, which must be valid ([`Circuit::validate`]).
+    /// The setup of `circuit`, which must be valid ([`Circuit::validate`]: `Spec::of` checks it, once a circuit).
     pub fn new(circuit: &Circuit) -> Self {
-        circuit.validate().unwrap_or_else(|e| panic!("the circuit is not valid: {e}"));
         let (m, n) = (circuit.log_n, circuit.n());
         let sigma_on_v: Vec<F64> = parallel::map_collect(n, |i| point(circuit.sigma[i] as usize));
         let sigma = ntt::coefficients_cols_of(&[&sigma_on_v], F64::ZERO).pop().expect("one column");

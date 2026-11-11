@@ -159,7 +159,7 @@ fn slot(k: usize) -> Slot {
 }
 
 /// Whether `quotient::ntt`'s lanes are other than AVX-512's eight carry-less products: aarch64's NEON lanes (eight
-/// PMULLs, four registers), or portable code. There [`table_leaf`] evaluates its numerator one point at a time in `E` ([`PullPush`]: a mixed
+/// PMULLs, four registers), or portable code. There [`table_leaf_numerator`] evaluates its numerator one point at a time in `E` ([`PullPush`]: a mixed
 /// product three unreduced base products, a push from its pull's sum) rather than eight at a time ([`product`]: a
 /// mixed product three reduced ones). With the NEON lanes (M4 Max), [`PullPush`] and [`product`] cost the same.
 const PORTABLE_LANES: bool = !cfg!(all(target_arch = "x86_64", target_feature = "avx512f", target_feature = "vpclmulqdq"));
@@ -797,19 +797,13 @@ fn piece_of(first: usize, r: usize) -> Piece {
     }
 }
 
-/// The most columns (the heap's three included) [`table_leaf`]'s point-by-point numerator gathers.
+/// The most columns (the heap's three included) [`table_leaf_numerator`]'s point-by-point numerator gathers.
 const SCALAR_COLUMNS: usize = 128;
 
-/// Table `t`'s leaf quotient: `((R P + P') Z_pad + (R + 1) Z_act) / w_r`, `R` the heap's block (its novel
-/// coefficients `r_novel`, limb by limb), `P`, `P'` the row's pull and push products, `Z_act`, `Z_pad` the vanishing
-/// polynomials of the active and the padding rows' fixed cosets (SPEC.md §13, F1b; the verifier checks it times
-/// `Z_act`).
-pub fn table_leaf(trace: &Trace, t: usize, c1: &C1Polys, bus: &Bus, r_novel: &[Vec<F64>; 3], count: u64) -> Quotient {
-    let job = table_leaf_numerator(trace, t, c1, bus, r_novel, count);
-    prefix_quotients(&[&*job]).pop().expect("the leaf")
-}
-
-/// [`table_leaf`]'s numerator, for [`prefix_quotients`].
+/// Table `t`'s leaf quotient's numerator, for [`prefix_quotients`]: the quotient is `((R P + P') Z_pad + (R + 1) Z_act)
+/// / w_r`, `R` the heap's block (its novel coefficients `r_novel`, limb by limb), `P`, `P'` the row's pull and push
+/// products, `Z_act`, `Z_pad` the vanishing polynomials of the active and the padding rows' fixed cosets (SPEC.md §13,
+/// F1b; the verifier checks it times `Z_act`).
 pub fn table_leaf_numerator<'a>(
     trace: &Trace,
     t: usize,
@@ -1023,32 +1017,6 @@ pub fn tree(heap_novel: &[Vec<F64>; 3]) -> Quotient {
     Quotient::new(limbs, (1u64 << h) + 1, holds)
 }
 
-/// The constraint quotient `Σ_i γ^i M_i W_i / w_(r_W)`, in the verifier's order of powers: per table, JUMP's two
-/// constraints, the counters, the `SHA3` table's fifty lane copies (`in_16`'s
-/// with `END_BIT`: `copy + port + END_BIT`); then the public input's three limbs. As
-/// `M_i = w_(r_W) / w_r`, it is the sum of each table's `Σ γ^i W_i / w_r` and the public input's part, each a
-/// quotient of its own on its own points.
-pub fn constraints(trace: &Trace, c1: &C1Polys, gamma: F192, count: u64, public_lines: [(F64, F64); 3]) -> Quotient {
-    constraints_with(trace, &trace.qflock, c1, gamma, count, public_lines)
-}
-
-/// [`constraints`] with `q_flock`'s words `qflock` (the Keccak VM's: the Flock witness's, as `C1` holds them; the
-/// trace keeps none).
-pub fn constraints_with(
-    trace: &Trace,
-    qflock: &[F64],
-    c1: &C1Polys,
-    gamma: F192,
-    count: u64,
-    public_lines: [(F64, F64); 3],
-) -> Quotient {
-    let parts = constraint_parts(trace, qflock, c1, gamma);
-    let jobs: Vec<Box<dyn Numerator + '_>> = parts.tables.iter().map(|p| p.numerator(c1)).collect();
-    let mut quotients = prefix_quotients(&jobs.iter().map(|j| &**j).collect::<Vec<_>>());
-    quotients.push(public_part(trace, c1, parts.publics, public_lines));
-    sum_parts(quotients, count)
-}
-
 /// One table's part of `Q_W`, `Σ γ^i W_i / w_r` over its constraints, before its [`Numerator`]: its powers of `γ`
 /// and, for `SHA3`, its lane copies combined by their powers.
 pub struct ConstraintPart {
@@ -1070,7 +1038,11 @@ pub struct ConstraintParts {
     pub publics: [F192; 3],
 }
 
-/// The tables' parts of `Q_W` and the public input's powers of `γ`, in the verifier's order.
+/// The tables' parts of `Q_W` and the public input's powers of `γ`, in the verifier's order. `Q_W` is
+/// `Σ_i γ^i M_i W_i / w_(r_W)`, in the verifier's order of powers: per table, JUMP's two constraints, the counters,
+/// the `SHA3` table's fifty lane copies (`in_16`'s with `END_BIT`: `copy + port + END_BIT`); then the public input's
+/// three limbs. As `M_i = w_(r_W) / w_r`, it is the sum of each table's `Σ γ^i W_i / w_r` and the public input's part,
+/// each a quotient of its own on its own points (`prefix_quotients`, `public_part`, `sum_parts`).
 pub fn constraint_parts(trace: &Trace, qflock: &[F64], c1: &C1Polys, gamma: F192) -> ConstraintParts {
     let mut power = F192::ONE;
     let mut next = || {
