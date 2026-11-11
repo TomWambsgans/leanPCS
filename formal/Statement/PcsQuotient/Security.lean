@@ -27,22 +27,24 @@ deployed Keccak-f[1600], independent of `π`.
   commitment's Merkle tree, as its Keccak-256 evaluations), outputs no witness, with probability at
   most `ε Q`.
 * **Completeness** (`Completeness δ`): for every statement and witness of the relation, the honest
-  prover's (`prover`) proof, with uniform coins (masks, random rows, blinding), is rejected with probability at
+  prover's (`prover`) proof, with uniform coins (random rows, blinding), is rejected with probability at
   most `δ`.
 * **Zero knowledge** (`ZeroKnowledgeWith s₀ sim simOracle ζ`, statistical, the permutation programmable): for
   every statement and witness of the relation and every distinguisher of at most `Q` calls of `π` and
   `π⁻¹`, its verdict on the honest proof in the model and on the simulator `sim`'s proof, the simulator's
   oracle `simOracle` answering its queries, differ in probability by at most `ζ Q`. One proof, from an empty
   `π`, the distinguisher's queries after it: no query before the proof, no second proof under the same `π`.
-  The protocol is zero-knowledge **assuming a zero-knowledge PCS** (`docs/membership/HIDING.md`): the end
+  The protocol is zero-knowledge **assuming a zero-knowledge PCS** (`docs/membership/PROTOCOL.md`, "Zero
+  knowledge"): the end
   theorem (`formal/EndToEnd/ZK`) states its hypothesis on the PCS explicitly.
 
 **The bounds are parameters** (`ε`, `δ`, `ζ`). A bound is part of what is proved: `KnowledgeSoundness ε`
 for `ε = 1` says nothing. The end theorems (`formal/EndToEnd`) fix them (`README.md`, "What is proved").
 
-**Zero knowledge rests on a zero-knowledge PCS and the prover's randomness** (`docs/membership/HIDING.md`): the
-openings are assumed to reveal nothing beyond their claims; the random rows, the masks and the blinding of
-`h` make the revealed scalars (the out-of-domain answers, the four `a_j`, `Q`'s and `G`'s values) uniform.
+**Zero knowledge rests on a zero-knowledge PCS and the prover's randomness** (`docs/membership/PROTOCOL.md`,
+"Zero knowledge"): the openings are assumed to reveal nothing beyond their claims; the random rows and the
+blinding of `h` make the revealed scalars (the two out-of-domain answers and the three values `X`, `C`, `V + Y`
+at `t`) uniform.
 The statement's prover takes its randomness uniform; the deployed one derives it from a 32-byte seed by a
 Keccak-256 KDF (outside this model).
 
@@ -101,19 +103,18 @@ def coinWord : OracleComp RandomPermutationOracles UInt64 := do
   let n ← liftM (RandomPermutationOracles.query (.inl (2 ^ 64 - 1)))
   return UInt64.ofNat (n : Fin (2 ^ 64 - 1 + 1)).val
 
-/-- **Uniform randomness** from the model's coins (`Randomness`): the twelve mask words, the sixteen random
-rows' values and the twenty-four blinding words, each a uniform word of `K`, in the order the Rust's KDF
-derives them (`Randomness::derive`). -/
+/-- **Uniform randomness** from the model's coins (`Randomness`): the thirty-two random rows' words and the six
+blinding words, each a uniform word of `K`, in the order the Rust's KDF derives them (`Randomness::derive`:
+`blind[e][i]` is word `32 + 2 e + i`). -/
 def sampleCoins : OracleComp RandomPermutationOracles Coins := do
-  let w ← (List.range (12 + randomRows + 3 * hBlind)).mapM fun _ ↦ coinWord
+  let w ← (List.range (randomWords + 3 * freeBlind)).mapM fun _ ↦ coinWord
   let word (k : ℕ) : K := K.ofLane (w.getD k 0)
-  return ⟨fun j i ↦ word (3 * j.val + i.val), fun r ↦ word (12 + r.val),
-    fun e i ↦ word (12 + randomRows + hBlind * e.val + i.val)⟩
+  return ⟨fun r ↦ word r.val, fun e i ↦ word (randomWords + freeBlind * e.val + i.val)⟩
 
 /-! ### The honest prover and the extractor -/
 
 /-- **The honest prover** over `F`: `proverWith` (`Prover.lean`), the Rust's `prove` then `open`, on the
-membership circuit's cells of the secret, with the coins given (the masks, the random rows, the blinding),
+membership circuit's cells of the secret, with the coins given (the random rows, the blinding),
 `2^25` nonces per proof of work. -/
 def prover {m : Type → Type} [Monad m] (F : KeccakState → m KeccakState) (stmt : Statement)
     (w : Secret) (coins : Coins) : m (Option Proof) :=
