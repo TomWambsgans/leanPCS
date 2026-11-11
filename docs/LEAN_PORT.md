@@ -101,8 +101,9 @@ The bounds' arithmetic carries over but for one port.
 
 ## Lean-facing files
 
-The Rust at main writes the deployed protocols. Until the port, do not rerun these with `UPDATE_LEAN=1` or feed their
-output to the Lean: it would overwrite `f96a7938`'s data. The tests that compare them are ignored.
+The Rust at main writes the deployed protocols. The recursion's writers are current (the Lean states π2v4 over
+π1-rec4); until the membership's port, do not rerun the membership's with `UPDATE_LEAN=1` or feed their output to the
+Lean: it would overwrite `f96a7938`'s data.
 
 | writer | Lean file | state |
 |---|---|---|
@@ -110,11 +111,11 @@ output to the Lean: it would overwrite `f96a7938`'s data. The tests that compare
 | `crates/membership/quotient/examples/statement_vectors.rs` | `formal/Statement`'s `differential` | writes 11-scalar streams and three claims; the Lean expects `f96a7938`'s nineteen-scalar streams and six claims (generate from a checkout of `f96a7938`) |
 | `crates/membership/quotient/tests/whir_bridge_vector.rs` | `formal/WhirBridge/Test/Check.lean` | see below |
 | `crates/membership/quotient/tests/whir_large_params.rs` (`large_public_openings`) | `formal/WhirBridge/Test/CheckLarge.lean` | see below |
-| `crates/leanvm/rec/tests/lean_statement_keccak.rs` (`keccak_statement_data_is_current`, ignored) | `formal/RecStatement/RecStatement/Data.lean` | `f96a7938`'s circuit |
-| `crates/leanvm/rec/tests/lean_graph_keccak.rs` | `RecGraphKeccak/Emitted.lean` | **π1-rec4's** (regenerated on `lean/pi1-rec4`; `GraphsAgreeK4` holds) |
+| `crates/leanvm/rec/tests/lean_statement_keccak.rs` (`keccak_statement_data_is_current`, ignored: slow) | `formal/RecStatement/RecStatement/Data.lean` | **π1-rec4's** circuit (regenerated; the test passes) |
+| `crates/leanvm/rec/tests/lean_graph_keccak.rs` | `RecGraphKeccak/Emitted.lean` | **π1-rec4's** (`GraphsAgreeK4` holds) |
 | `crates/leanvm/univariate/tests/lean_keccak_vectors.rs` | `UniKeccakTest/Runner.lean`'s input | writes π1-rec4's vectors too (`keccak_rec4`, the real `keccak{128,}_rec4.txt`) |
-| `crates/leanvm/rec/tests/lean_circuit_keccak.rs` (`keccak_pi1_rec4`) | `RecCircuit`'s `rec-circuit-diff`, `rec-circuit-keccak` | **π1-rec4's** (`lean/pi2-circuit`) |
-| `crates/leanvm/rec/tests/lean_pi2_prover.rs` | `RecCompose`'s `RecComposeTest` | `f96a7938`'s |
+| `crates/leanvm/rec/tests/lean_circuit_keccak.rs` (`keccak_pi1_rec4`) | `RecCircuit`'s `rec-circuit-diff`, `rec-circuit-keccak` | **π1-rec4's** (identical to the Rust's) |
+| `crates/leanvm/rec/tests/lean_pi2_prover.rs` | `RecCompose`'s `RecComposeTest/Pi2Prover.lean` | **π2v4's** (3/3 vectors agree) |
 
 **WhirBridge's vector checks disagree with their writers.** `whir_bridge_vector.rs` (`--ignored`) writes four vectors
 of the EIP's PCS claims (`public`, a `2^15`-word table; `witness`, `wiring`, `copy`, the three openings of a
