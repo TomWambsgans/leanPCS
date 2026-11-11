@@ -70,7 +70,7 @@ to `root` (details: [`AGENTS.md`](AGENTS.md#membership-what-is-proved)).
 | | |
 |---|---|
 | Circuit | 34 Keccak-256 (one gate `V = Y + C + X·C` on bits), the public words packed and pinned: 3,878,615 of 2^22 rows |
-| Prover | **1.02 s**, 6.0 GiB on 8 threads of an AMD EPYC 9355P (median of 5, 2026-11-11); two commitments, three openings (`docs/membership/PERF_GAS2.md`). The previous protocol (`f96a7938`, six openings): 2.29 s there, 2.8 s on an M4 Max |
+| Prover | **1.01 s**, 6.0 GiB on 8 threads of an AMD EPYC 9355P (median of 5, 2026-11-11); two commitments, three openings (`docs/membership/PERF_GAS2.md`). The previous protocol (`f96a7938`, six openings): 2.29 s there, 2.8 s on an M4 Max |
 | Calldata to the contract | 273 bytes (statement, 2 roots, 6 field elements, and the frame's index; no selector) |
 | PCS claims | 3, in the EIP's encoding (97 bytes of frame) |
 | Gas | 15,753 execution; **31,680** transaction under EIP-8141 (floor-bound, `pcs_gas` in the floor; without the base and per-frame costs). Previously 36,520, and 52,856 before that |
@@ -90,7 +90,7 @@ cores, load average 9–14) unless they say otherwise; the gas row as its first 
 | VM execution | 154,148 cycles; tables of `2^14`–`2^16` rows, memory `2^20` | 473,348 cycles; `2^16`–`2^17` rows, memory `2^22` |
 | π1 prover (π1-rec4) | in the pipeline below; before the PCS claims (π1-rec3, version 3, layout words): 2.7 s cold, 3.65 s warm median of 3, 6.9 GB; EPYC 9355P 0.40 s warm | 4.7 s (main line), 14.4 GB, before the PCS claims |
 | π2 prover | in the pipeline below; before the PCS claims: 4.4 s + 1.7 s openings (and 3.8 s witness), 9.8 GB; EPYC 9355P (π2v2) 0.196 s + 0.049 s openings at version 3 | 3.0 s + 0.9 s openings, before the PCS claims |
-| trace → π1 → π2, per proof (`tests/pipeline.rs`) | on the PCS claims (one opening a claim, every opening on leanVM's ladder): **2.62 s** on 8 threads of an AMD EPYC 9355P (2026-11-11, median of 5 runs of 5; π1-rec4 0.86 s and its openings 0.18 s, π2 0.79 s, π2's five openings 0.79 s), 15.1 GB; 3.7 s on an M4 Max at `f96a7938`. Before (π2's three stacks opened once each, every opening at version 3): 2.06 s on the M4 Max, **0.59 s** on an AMD EPYC 9355P (64 threads) | |
+| trace → π1 → π2, per proof (`tests/pipeline.rs`) | on the PCS claims (one opening a claim, every opening on leanVM's ladder): **2.52 s** on 8 threads of an AMD EPYC 9355P (2026-11-11, median of 5 runs of 5; π1-rec4 0.86 s and its openings 0.18 s, π2 0.75 s, π2's five openings 0.73 s), 15.6 GB; 3.7 s on an M4 Max at `f96a7938`. Before (π2's three stacks opened once each, every opening at version 3): 2.06 s on the M4 Max, **0.59 s** on an AMD EPYC 9355P (64 threads) | |
 | Calldata to the contract | 577 B (4 zero): π1's three claims hashed in π2's circuit (π1-rec4, `docs/leanvm/rec/PERF_GAS2.md`), no selector | 577 B |
 | Gas (real proof, EIP-8141 frame transaction, EIP-7976 floor, no base or per-frame cost) | 31,524 execution; standard 40,708, floor 36,928; with the frame of PCS claims (257 B) and `pcs_gas` 13,000 on both sides: **66,376** (the floor binds; previously 89,672, and 99,912 before that) | 35,761 execution; 66,376 with the frame and the PCS gas |
 | PCS claims | 8: π1's 3, π2's 5 (`W`, the setup, `Q`'s identity, pushes and sum), each the EIP draft's | 8 |
