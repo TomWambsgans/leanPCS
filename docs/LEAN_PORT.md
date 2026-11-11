@@ -1,8 +1,7 @@
 # The Lean port
 
-`formal/` states and proves the protocols of commit `f96a7938`: membership with six claims on four commitments
-([`HISTORY.md`](HISTORY.md), "Membership at f96a7938"), and π2v3 over π1-rec3 with π1's three claims encoded by the
-contract. The deployed ones are [`membership/PROTOCOL.md`](membership/PROTOCOL.md) (three claims on two commitments
+`formal/` states and proves membership at commit `f96a7938` (six claims on four commitments,
+[`HISTORY.md`](HISTORY.md), "Membership at f96a7938") and, for the recursion, the deployed π2v4 over π1-rec4. The deployed ones are [`membership/PROTOCOL.md`](membership/PROTOCOL.md) (three claims on two commitments
 and the circuit's) and [`leanvm/rec/SPEC-REC.md`](leanvm/rec/SPEC-REC.md) (π2v4 over π1-rec4, π1's three claims hashed
 in π2's circuit, the copy sum forced by `Q`'s layout). This is what the port needs; the intermediate protocols of `866ba889` were never ported.
 
@@ -45,59 +44,27 @@ in π2's circuit, the copy sum forced by `Q`'s layout). This is what the port ne
 
 ## leanVM
 
-The bounds' arithmetic carries over but for one port.
+Ported (branch `lean/pi2`, with `lean/pi1-rec4` merged): π1-rec4's verifier, graph = verifier at every setup
+commitment and knowledge soundness (`uniKnowledgeSoundnessKeccakRec4_closed`); π2v4's statement and verifier
+(`RecStatement`, `Data.lean` regenerated), PIOP (`RecPiop`: the identity's claim `I(t) = 0`, the layout lemma, the
+pushes' claim; `err` at `t` `(5N − 1)/|E|`), the compiler (`RecCircuit`, identical to the Rust's on π1-rec4's graph),
+the contract model (seven claims, three declared, seed over the frame words), π2's Fiat–Shamir layer and tables, and
+**`RecCompose.recKnowledgeSoundness_reduction_real`** at the real deployment (`pi2Bound ≤ 2^-64` at `Q ≤ 2^64`, 128.93
+bits; a Keccak-256 collision term for π1's hashed claims). π2's Lean prover agrees with the Rust's on 3/3 vectors;
+`pi2_accepts`: the contract accepts its proof off `BadCopy`, `BadT`, `BadRho`.
 
-- **π1-rec4's soundness and completeness** (`UniKeccakSound`, `UniKeccakComplete`). Done on `lean/pi1-rec4`: the
-  transcript (`UniStatement`'s `FsShape.rec4`, `sampleWide`, `challengeAt`; `UniKeccak.reduceWithK4`, `runWithK4`,
-  `verifyWithK4`, tested by `UniKeccakTest/Runner.lean` on `keccak128_rec4.txt` and `keccak_rec4.txt`), the statements
-  `UniKnowledgeSoundnessKeccakRec4`, `UniCompletenessKeccakRec4`, the ring map's two queries
-  (`UniKeccakSound.Rec4.ringBad_split_first`, `ringBad_split_second`: `≤ 4/|E|` at `t`, then `≤ 2/|E|` at `ρ`, from
-  `FlockSound.card_ringBad_le`), and the rate-extended transfer (`UniKeccakSound.Rec4.keccak256RateTransfer`:
-  leanerVM's generic two-oracle transfer with the 136-byte rate as `H`'s output, `q²/2^508`), and **soundness**:
-  `UniKeccakSound.uniKnowledgeSoundnessKeccakRec4_closed` (no hypothesis, `uniBound128 (2^35/|E|)`, 128.49 bits;
-  [`../formal/UniKeccakSound/README.md`](../formal/UniKeccakSound/README.md), "π1-rec4"). Left:
-  - Completeness: the honest prover with wide draws and π1-rec4's staged chain (three wide calls for π1-rec3's
-    thirteen), hypotheses `32 ≤ D.programIv.length ≤ 2^16` as before.
-- **The graph's compiler part** (`RecGraphKeccak`'s graph = verifier for π1-rec4 is done: `Sim.pi1GraphIsVerifierK4`,
-  `GraphsAgreeK4` evaluated, `Emitted.lean` regenerated): `RecGraphKeccak/Circuit.lean` states `pi1rec4K_end` and
-  `pi1rec4K_claimHashes` (branch `lean/pi2-circuit`; the module `RecGraphKeccak.Circuit`, outside `RecGraphKeccak`'s
-  root, which does not import `RecCircuit`).
-- **The compiler** (`RecCircuit`, `rec-circuit-keccak`): ported (branch `lean/pi2-circuit`). The transcription
-  (`Wide` packings, D16v's trimmed last rounds, the copy units, the hashed claims' sections, the encoded calls and
-  named roots, the narrow elements, `FIT_LOG_N`) reproduces the Rust's π1-rec4 circuit byte for byte
-  (`rec-circuit-diff`, `rec-circuit-keccak` on `keccak_pi1_rec4`), and `compile_sound_end` states the new circuit
-  with no new hypothesis: the hashed claims' `ClaimHash` ports carry the Keccak-256s of the EIP encodings of the graph's
-  claims (`claimHash_port`, `claimEncoding`; given the zero ports zero), the encoded calls (`encodedCalls`) word for word;
-  completeness with the free bits of a computed value (`Given.bit`, `claim_zero_port_witness`). What remains of this
-  bullet: `DigestChecked`, `SetupRootChecked`, `IvChecked` re-evaluated on the π1-rec4 circuit (`RecCompose`'s
-  evaluated checks), and a claim still encoded reading its narrow elements as 20 bytes (no claim is encoded at
-  π1-rec4; `Circuit.narrow` is transcribed, its reading is π2's verifier's, `RecStatement`).
-- **The statement data** (`RecStatement/Data.lean`, `f96a7938`'s circuit: π1-rec3, 22 blocks, 134 pairs, 38 public
-  terms): the reads (`Read.narrow`, 20 bytes; `Read.frame p`, four scalars from the frame), the `ClaimHash` ports and
-  their terms, π1's calls (none encoded at 128 and 400 signatures), the digest and setup root, the seed over the frame
-  words.
-- **The contract model** (`RecCompose`): no selector; the seed over three frame words (payloads 0 … 2); π2's four
-  claims at payloads 3 … 6 (`Ending::Claims`, each claim with its payload; seven openings charged once by
-  `pcs_union_sound_oracle`, `qOodBinding` over `Q`'s two claims); no π1 element or root in calldata. `pi1rec3K_end` extended to "a
-  satisfied π2 circuit carries the Keccak-256s of the graph's three claims"; the extractor of
-  `recKnowledgeSoundness_reduction_real` then names π1's claims by their hashes, with a Keccak-256 collision term (or
-  the frame's binding as an assumption, as for every declared claim). The copy argument's round in `pi2Bound`:
-  `(4N + 4)/|E|` (the statement and three hashes) against `(4N + 3)/|E|`; 128.93 bits unchanged.
+Left:
 
-- **π2v4, the copy sum from `Q`'s layout** ([`leanvm/rec/PI2.md`](leanvm/rec/PI2.md) §2, §7):
-  - `RecStatement` (the statement and verifier): the transcript name `leanvm-rec-pi2v4`; `Q`'s slots (`H = x h` at
-    `(0, 0)`, `q`'s digits at `(1, 0)`, `(0, 1)`, `G` at `(1, 1)`; at limb code 3 `P`, `q_P`'s digits, `S`); the digits
-    to `w_m`; the inversion of `R_d Y_1 Y_2 B w_m Y_3 · c_h D_n`; the identity's claim at `(u_0 … u_{m-1}, t w_m / Y_1,
-    t w_m² / Y_2, y_0, y_1)` and its value, the pushes' at `(u_0 … u_{m-1}, ρ, ρ w_m / Y_3, 1, 1)` and its value; no sum
-    claim; `Calls.lean`: seven claims.
-  - `RecPiop` (soundness): the pushes' claim as a polynomial of degree 2 in `ρ` binding `P(t) = s`, the definition and
-    `S(t) = 0`; the identity's claim as `I(t) = 0`, `I = D² H + x Z D A + x² Z³ G + x D R` (below `5N`), and the lemma
-    "`I = 0` and `D(0) ≠ 0` give `H(0) = 0`, `h = H / x` of degree below `N − 1`, `Σ_V h = 0`, `h D + R = 0` on `V_m`",
-    replacing the sum claim and the empty slots' argument; `Rounds.lean`'s `err` at `t` `(5N − 1)/|E|`, at `ρ` `2/|E|`
-    for `Q` (`pi2Bound` stays 128.93 bits).
-  - `RecCompose` completeness: the honest `Q` (`H` by `mul_x`, the slots, `G = S = 0`: `Pi2Prover*`, `Pi2Honest*`) and
-    the nonvanishing of `Y_1`, `Y_2`, `Y_3` (`Pi2Complete*`).
-  - Vectors: `tests/lean_pi2_prover.rs`, `tests/lean_statement_keccak.rs` regenerated with the port.
+- **π2's completeness error** `δ2` (`RecCompleteness2` for π2's Lean prover): the probability layer (`Pi2Prob*`,
+  `Pi2Alpha*`, `Pi2Sim*`, `Pi2TFresh*`, `Pi2Chain`, `Pi2RunCost`, `Pi2RunDuplex`, `Pi2Closed`) at π2v4's hash inputs
+  (α's and `t`'s inputs 88 bytes; `ρ`'s `1/|E|`; branch `lean/pi2-prob`), and `pi2_accepts`' witness and π1-openings
+  hypotheses as theorems (`Pi2Witness`, `Pi2CallsOpen`; branch `lean/pi2-witness`).
+- **π1-rec4's honest prover and completeness** (`UniKeccakComplete`, in progress on `lean/pi1-rec4`), then the end
+  theorem of completeness at the real deployment (`Pi1ProverFacts`, `Pi2P1.lean`, is its interface).
+- **Retire π2v3 and π1-rec3 files** no end theorem uses (`Bridge`, `Meanings`, `Pi2ProverRun`, `Pi1Keccak*`,
+  `CompleteKeccakEnd`) and update `RecCompose.lean`'s imports and `#guard_msgs` (the library root still names π2v3's
+  end theorems; build the end modules by name: `RecCompose.RealEnd`, `RecCompose.Final`).
+- **The evaluated checks** at other setup commitments and IVs (`IvChecked` over `(roots, iv)`; `PatchChecked`).
 
 ## Lean-facing files
 
