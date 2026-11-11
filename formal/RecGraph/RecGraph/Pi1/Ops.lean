@@ -166,14 +166,20 @@ def drawRun (fs : FsShape) (count : Nat) : Prog (List Sym) :=
       let c ← sample
       squares c count
 
+/-- The wide draw's challenges `k, k + 1, …` (`m` of them) of the hash just made (`Wide(h, k)`). -/
+def wideFrom : Nat → Nat → Prog (List Sym)
+  | _, 0 => pure []
+  | k, m + 1 => do
+    let x ← op (.wide k)
+    let xs ← wideFrom (k + 1) m
+    return x :: xs
+
 /-- **`Channel::sample_wide(count)`** (the recorder's, π1-rec4): the hash and its challenge `0` (`sample`: `Hash`,
 `Low`), then challenge `k` of the same hash for `k = 1 … count − 1` (`Wide(h, k)`). -/
 def sampleWide (count : Nat) : Prog (List Sym) := do
   let x ← sample
-  let mut out : Array Sym := #[x]
-  for k in [1:count] do
-    out := out.push (← op (.wide k))
-  return out.toList
+  let xs ← wideFrom 1 (count - 1)
+  return x :: xs
 
 /-! ### Sumchecks (`transcript.rs`) -/
 
