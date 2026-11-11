@@ -184,4 +184,106 @@ theorem hHat_top {stmt : Statement} (h : Relation stmt w) :
 
 end Deployed
 
+/-! ## The honest claims, for any parameters matching the deployed circuit -/
+
+section Claims
+
+variable (w : Secret) (coins : Coins)
+
+/-- The honest first message. -/
+noncomputable abbrev gH : Fin 4 → E[X] := witnessOfTable (k := 22) (cW w coins)
+
+/-- **The challenges where no denominator vanishes**: the cells' copy denominators at `α, β`, `γ = (E /ₘ Z)(0)`,
+and `claimsAt`'s at `t, ρ` for the honest values. -/
+structure GoodAt (P : _root_.Kc3.Params E) (α β t ρ : E) : Prop where
+  cells : ∀ i : P.T × Fin 4, α + P.cells (gH w coins) i + β * P.pt i ≠ 0 ∧
+    α + P.cells (gH w coins) i + β * P.pt (P.σ i) ≠ 0
+  gamma : (Epoly P α β (cW w coins) /ₘ P.vCells).eval 0 ≠ 0
+  nondeg : NonDeg α β t ρ (P.rowValues (_root_.Kc3.Params.opened (gH w coins) t) t) (P.sigmaPoly.eval t)
+
+theorem hn_m : 2 ^ cellVars (membership logRows).logRows = 2 ^ 24 := by rw [hl_m]; rfl
+
+theorem hHat_size (α β : E) : (hHatOf (membership logRows) (cellsOf w) coins α β).size = 2 ^ 24 := by
+  unfold hHatOf
+  rw [Bridge.Ntt.coefficients_size, hArr_size _ _ _ _ _ hl_m]
+
+theorem slotOf_ff (n : ℕ) (hHat qHat : Array E) (b2 : E) (i : ℕ) :
+    slotOf n hHat qHat b2 coins false false i = qHat.getD i 0 := rfl
+theorem slotOf_tf (n : ℕ) (hHat qHat : Array E) (b2 : E) (i : ℕ) :
+    slotOf n hHat qHat b2 coins true false i = (divX (qhOf n qHat)).getD i 0 := rfl
+theorem slotOf_ft (n : ℕ) (hHat qHat : Array E) (b2 : E) (i : ℕ) :
+    slotOf n hHat qHat b2 coins false true i = (mulX hHat).getD i 0 := rfl
+theorem slotOf_tt (n : ℕ) (hHat qHat : Array E) (b2 : E) (i : ℕ) :
+    slotOf n hHat qHat b2 coins true true i = b1Of coins b2 i := rfl
+
+theorem nCells_of (P : _root_.Kc3.Params E) (hM : PcsBridge.Kc3.Matches P s₀) : P.nCells = 2 ^ 24 := by
+  rw [_root_.Kc3.Params.nCells_eq, hM.card]; norm_num
+
+theorem hS_of (P : _root_.Kc3.Params E) (hM : PcsBridge.Kc3.Matches P s₀) (t : E) : (Sp (membership logRows)).eval t = P.sigmaPoly.eval t := by
+  rw [Sp, ← tablePoly_idx 24]
+  exact (hM.sigma t).symm
+
+theorem natDegree_Epoly_gen (P : _root_.Kc3.Params E) (hM : PcsBridge.Kc3.Matches P s₀) (α β : E)
+    (c : (Fin 24 → Bool) → E) : (Epoly P α β c).natDegree ≤ 2 ^ 25 := by
+  rw [Epoly_eq]
+  obtain ⟨gm, hgm⟩ : ∃ gm : P.Msg₁, gm.1 = witnessOfTable (k := 22) c :=
+    ⟨⟨witnessOfTable (k := 22) c, fun j => by rw [hM.card]; exact PcsBridge.Kc3.natDegree_witnessOfTable_lt _ j⟩, rfl⟩
+  rw [← hgm]
+  have := Kc3.Honest.natDegree_Epoly_le P gm α β
+  rw [nCells_of P hM] at this
+  exact this.trans (by norm_num)
+
+theorem natDegree_numer_gen (P : _root_.Kc3.Params E) (hM : PcsBridge.Kc3.Matches P s₀) (S : _root_.Kc3.Params.Stmt E)
+    (α β μ : E) (c : (Fin 24 → Bool) → E) (h ε : E[X]) (hh : h.natDegree < P.nCells) (hε : ε.natDegree ≤ 1) :
+    (Kc3.Honest.numer P S (witnessOfTable (k := 22) c) α β μ h ε).natDegree < 3 * 2 ^ 24 := by
+  obtain ⟨gm, hgm⟩ : ∃ gm : P.Msg₁, gm.1 = witnessOfTable (k := 22) c :=
+    ⟨⟨witnessOfTable (k := 22) c, fun j => by rw [hM.card]; exact PcsBridge.Kc3.natDegree_witnessOfTable_lt _ j⟩, rfl⟩
+  rw [← hgm]
+  have := Kc3.Honest.natDegree_numer_lt P S gm α β μ h ε hh hε
+  rw [nCells_of P hM] at this
+  exact this
+
+section Gen
+
+variable (P : _root_.Kc3.Params E) (hM : PcsBridge.Kc3.Matches P s₀) (hZ : P.vCells = digitPoly 24)
+  {stmt : Statement} (hsat : P.Sat (Kc3Deployed.stmtOf stmt) (P.cells (gH w coins)))
+  (α β μ t ρ : E)
+  (hh : ∀ i, (Hp (membership logRows) (cellsOf w) coins α β).eval (P.pt i) =
+    (α + P.cells (gH w coins) i + β * P.pt i)⁻¹ + (α + P.cells (gH w coins) i + β * P.pt (P.σ i))⁻¹)
+  (htop : (hHatOf (membership logRows) (cellsOf w) coins α β).getD (2 ^ 24 - 1) 0 = 0)
+  (hG : GoodAt w coins P α β t ρ)
+include hM hZ hsat hh htop hG
+
+/-- **The honest second message is consistent**, its `q` the prover's. -/
+theorem consistent_gen : P.Consistent (Kc3Deployed.stmtOf stmt) (gH w coins)
+    (Kc3.Honest.honestMsg P (Qp (membership logRows) (cellsOf w) coins stmt α β μ)
+      (Hp (membership logRows) (cellsOf w) coins α β)
+      (blindPoly coins + C (b2Of (membership logRows) stmt (cellsOf w) coins α β μ) * (X ^ 2 + X))) α β μ := by
+  have hθ : P.θ = ofK (betaAt 1) := hM.theta
+  have hn := nCells_of P hM
+  have hdvd : P.vCells ∣ N0 P (membership logRows) (cellsOf w) coins stmt α β μ (cW w coins) := by
+    rw [N0_eq]
+    exact Kc3.Honest.vCells_dvd_numer P _ _ hsat α β μ _ _ (fun i => (hG.cells i).1) (fun i => (hG.cells i).2) hh
+  have gM : P.Msg₁ := ⟨gH w coins, fun j => by rw [hM.card]; exact PcsBridge.Kc3.natDegree_witnessOfTable_lt _ j⟩
+  have hdegN : (N0 P (membership logRows) (cellsOf w) coins stmt α β μ (cW w coins)).natDegree < 3 * 2 ^ 24 := by
+    rw [N0_eq]
+    have hHd : (Hp (membership logRows) (cellsOf w) coins α β).natDegree < P.nCells := by
+      rw [hn]; exact Novel.natDegree_nov_lt 24 _
+    have hbd : (blindPoly coins).natDegree ≤ 1 := by
+      unfold blindPoly
+      exact natDegree_add_le_of_degree_le ((natDegree_C _).le.trans (by norm_num))
+        ((natDegree_C_mul_le _ _).trans natDegree_X_le)
+    exact natDegree_numer_gen P hM _ α β μ _ _ _ hHd hbd
+  have hdegE : (Epoly P α β (cW w coins)).natDegree ≤ 2 ^ 25 := natDegree_Epoly_gen P hM α β _
+  have hZQ := Z_mul_Qp P (membership logRows) (cellsOf w) coins stmt α β μ (cW w coins) hθ hl_m (hw_m w coins) hs_m
+    (hWc_m w coins) (hS_of P hM) hZ hM.vRows hM.pins hdvd hdegN hdegE
+  have hQ0 := Qp_div_eval_zero P (membership logRows) (cellsOf w) coins stmt α β μ (cW w coins) hθ hl_m (hw_m w coins)
+    hs_m (hWc_m w coins) (hS_of P hM) hZ hM.vRows hM.pins hdvd hdegN hdegE
+    hG.gamma
+  exact Kc3.Honest.consistent_honest P (Kc3Deployed.stmtOf stmt) (gH w coins) α β μ _ _ _ hZQ hQ0
+
+end Gen
+
+end Claims
+
 end E2ECompleteness.Pcs.H
