@@ -69,13 +69,13 @@ to `root` (details: [`AGENTS.md`](AGENTS.md#membership-what-is-proved)).
 
 | | |
 |---|---|
-| Circuit | 34 Keccak-256 (χ gate on bits), the public words packed and pinned: 3,878,615 of 2^22 rows |
-| Prover | **1.23 s**, 6.0 GiB on 8 threads of an AMD EPYC 9355P (median of 5, 2026-11-11); two commitments, four openings (`docs/membership/PERF_GAS.md`). The previous protocol (`f96a7938`, six openings): 2.29 s there, 2.8 s on an M4 Max |
-| Calldata to the contract | 301 bytes (statement, 2 roots, 7 field elements, and the frame's index) |
-| PCS claims | 4, in the EIP's encoding (129 bytes of frame) |
-| Gas | 16,414 execution; **36,520** transaction under EIP-8141 (floor-bound, `pcs_gas` in the floor; without the base and per-frame costs). Previously 52,856 |
-| Contract deployment | 1.24 M gas |
-| Formal verification (Lean 4) | **of the previous protocol (commit `f96a7938`, six claims), not yet of the current one** (`docs/membership/PERF_GAS.md`, "What the Lean needs"): knowledge soundness (≈ 2^-61.4 at 2^64 queries) and completeness (failure < 2^-163) proved end to end, in the random-permutation model; zero knowledge proved assuming a zero-knowledge PCS opening and the revealed scalars' uniformity (tested, not proved); the contract proved to be the verifier (its bytecode by tests) |
+| Circuit | 34 Keccak-256 (one gate `V = Y + C + X·C` on bits), the public words packed and pinned: 3,878,615 of 2^22 rows |
+| Prover | **1.02 s**, 6.0 GiB on 8 threads of an AMD EPYC 9355P (median of 5, 2026-11-11); two commitments, three openings (`docs/membership/PERF_GAS2.md`). The previous protocol (`f96a7938`, six openings): 2.29 s there, 2.8 s on an M4 Max |
+| Calldata to the contract | 273 bytes (statement, 2 roots, 6 field elements, and the frame's index; no selector) |
+| PCS claims | 3, in the EIP's encoding (97 bytes of frame) |
+| Gas | 15,753 execution; **31,680** transaction under EIP-8141 (floor-bound, `pcs_gas` in the floor; without the base and per-frame costs). Previously 36,520, and 52,856 before that |
+| Contract deployment | 1.15 M gas |
+| Formal verification (Lean 4) | **of the previous protocol (commit `f96a7938`, six claims), not yet of the current one** (`docs/membership/PERF_GAS.md` and `PERF_GAS2.md`, "What the Lean needs"): knowledge soundness (≈ 2^-61.4 at 2^64 queries) and completeness (failure < 2^-163) proved end to end, in the random-permutation model; zero knowledge proved assuming a zero-knowledge PCS opening and the revealed scalars' uniformity (tested, not proved); the contract proved to be the verifier (its bytecode by tests) |
 
 ### Key figures: one leanVM proof by recursion
 
