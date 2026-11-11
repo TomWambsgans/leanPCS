@@ -11,16 +11,17 @@ import UniSound.FsWalkProof
 
 The verifier bridge's walk (`FsDefs.lean`) for π2's run at the real circuit `cc`, proved with no hypothesis:
 
-* **`pi2Walk : Pi2Walk`**: on a stream of `1064` bytes, in every lawful monad and over every permutation, `runWith`'s
-  verdict and result are the chain's challenges (`pi2Spec.chain` over `keccak256With F`) read by `p2Reduced`: the seed
-  is the label's hash (`name ‖ iv ‖ input`); the public data's reads (`2` roots, `19` elements, `520` bytes) hash
-  nothing and collect `pi2Pubs` (`forIn_bind_run`); then `W`'s root and `α, β, γ` (the first sample absorbs the public
-  data and the root, `pre s ++ enc m`), `Q`'s root and `t`, the `16` fold values, `ξ` and `ρ` (`reduceWith_bind_run`);
-  `finish` finds the stream read to its end.
+* **`pi2Walk : Pi2Walk`**: on a stream of `544` bytes, in every lawful monad and over every permutation, `runWith`'s
+  verdict and result (on the frame words of the declared claims, `frameOf`) are the chain's challenges
+  (`pi2Spec.chain` over `keccak256With F`) read by `p2Reduced`: the seed is the label's hash
+  (`name ‖ iv ‖ input ‖ frame words`, `frameList`); the reads (the three frame words) read no stream byte, hash nothing
+  and collect `pi2Pubs` (`forIn_bind_run`); then `W`'s commitment and `α, β, γ` (the first sample absorbs `W`'s root and
+  answer), `Q`'s and `t`, the `16` fold values, `ξ`, `s` and `ρ` (`reduceWith_bind_run`); `finish` finds the stream read
+  to its end.
 * **`pi2WalkReject : Pi2WalkReject`**: on a stream of another length the run fails (`runWith_post`: a success reads
-  `pi2Bytes = 944` bytes), so it rejects.
+  `pi2Bytes = 544` bytes), so it rejects.
 * **`pi2Scalars_real`**: the contract's public scalars (`pi2Scalars`, the run over Keccak-f[1600] at any IV) are
-  `pi2Pubs` on a stream of `1064` bytes; **`pi2Pubs_pubBytes`**: they read the public data's `520` bytes only.
+  `pi2Pubs` on a stream of `544` bytes; **`pi2Pubs_cc`**: they are the input's four words and the three frame words'.
 
 Decisions: the walk is computed in continuation form, one read or sample at a time, against the chain's steps peeled
 one at a time (`steps_cons_bind`); the reads loop by an equation-form `ROk` (`rok_forIn`; `Pi2Run.lean`'s `Reads` gives
@@ -94,6 +95,13 @@ theorem nextInteger_okN (n : ℕ) (c : Chan) (h : c.cursor + n ≤ c.data.size) 
     ExceptT.run_pure, StateT.run_pure]
   rfl
 
+theorem nextNarrow_ok (c : Chan) (h : c.cursor + 20 ≤ c.data.size) :
+    (RecStatement.nextNarrow (m := m)).run.run c =
+      pure (.ok (narrowAt c.data c.cursor), { c with cursor := c.cursor + 20 }) := by
+  simp only [RecStatement.nextNarrow, ExceptT.run_bind, StateT.run_bind, UniSound.takeBytes_ok 20 c h, pure_bind,
+    ExceptT.run_pure, StateT.run_pure]
+  rfl
+
 end ROk
 
 theorem halfAt_eq (d : Array UInt8) (cur : ℕ) (h : cur + 16 ≤ d.size) :
@@ -126,9 +134,9 @@ theorem extract_congr (d d' : Array UInt8) (a c : ℕ) (hd : c ≤ d.size) (hd' 
       Array.getElem?_eq_getElem (by omega : a + i < d'.size), Option.getD_some] at this
     exact this
 
-theorem readValue_congr (d d' : Array UInt8) (cur : ℕ) (rd : Read) (N : ℕ) (hN : cur + rd.bytes ≤ N)
-    (hd : N ≤ d.size) (hd' : N ≤ d'.size) (h : ∀ i, i < N → d.getD i 0 = d'.getD i 0) :
-    readValue d cur rd = readValue d' cur rd := by
+theorem readValue_congr (fa : ℕ → List UInt8) (d d' : Array UInt8) (cur : ℕ) (rd : Read) (N : ℕ)
+    (hN : cur + rd.bytes ≤ N) (hd : N ≤ d.size) (hd' : N ≤ d'.size) (h : ∀ i, i < N → d.getD i 0 = d'.getD i 0) :
+    readValue fa d cur rd = readValue fa d' cur rd := by
   have hc : ∀ a n, a + n ≤ N → d.extract a (a + n) = d'.extract a (a + n) := fun a n hn ↦
     extract_congr d d' a (a + n) (by omega) (by omega) fun i _ hi ↦ h i (by omega)
   cases rd with
@@ -141,44 +149,42 @@ theorem readValue_congr (d d' : Array UInt8) (cur : ℕ) (rd : Read) (N : ℕ) (
   | scalar =>
     simp only [Read.bytes] at hN
     simp only [readValue, RecCompose.scalarAt, hc cur 24 hN]
+  | narrow =>
+    simp only [Read.bytes] at hN
+    simp only [readValue, narrowAt, hc cur 20 hN]
+  | frame p => rfl
 
-theorem foldReads_congr (d d' : Array UInt8) (N : ℕ) (hd : N ≤ d.size) (hd' : N ≤ d'.size)
-    (h : ∀ i, i < N → d.getD i 0 = d'.getD i 0) :
-    ∀ (l : List Read) (cur : ℕ) (pubs : List E), cur + (l.map Read.bytes).sum ≤ N →
-      foldReads Read.bytes pubsStep d cur l pubs = foldReads Read.bytes pubsStep d' cur l pubs
-  | [], _, _, _ => rfl
-  | rd :: l, cur, pubs, hl => by
-    simp only [List.map_cons, List.sum_cons] at hl
-    simp only [foldReads, pubsStep]
-    rw [readValue_congr d d' cur rd N (by omega) hd hd' h]
-    exact foldReads_congr d d' N hd hd' h l _ _ (by omega)
-
-theorem pubBytes_getD (b : Array UInt8) (i : ℕ) (hi : i < pLen) : (pubBytes b).toArray.getD i 0 = b.getD i 0 := by
-  simp [pubBytes, hi]
-
-/-- **The public scalars read the public data's `520` bytes only.** -/
-theorem pi2Pubs_pubBytes (input : List UInt8) (b : Array UInt8) (h : pLen ≤ b.size) :
-    pi2Pubs (Spec.of cc) input (pubBytes b).toArray = pi2Pubs (Spec.of cc) input b := by
+/-- **The real circuit's public scalars**: the input's four words, then the three frame words' (no stream byte). -/
+theorem pi2Pubs_cc (input : List UInt8) (fa : ℕ → List UInt8) (d : Array UInt8) :
+    pi2Pubs (Spec.of cc) input fa d =
+      publicWordsOf input ++ publicWordsOf (fa 0) ++ publicWordsOf (fa 1) ++ publicWordsOf (fa 2) := by
   unfold pi2Pubs
   rw [spec_reads]
-  exact foldReads_congr _ _ pLen (by simp) h (fun i hi ↦ pubBytes_getD b i hi) Data.reads 0 _
-    (by rw [reads_bytes]; omega)
+  rfl
+
+/-- The real circuit's public scalars read the frame's payloads `0, 1, 2` only. -/
+theorem pi2Pubs_cc_congr (input : List UInt8) (fa fa' : ℕ → List UInt8) (d d' : Array UInt8)
+    (h : ∀ p < 3, fa p = fa' p) : pi2Pubs (Spec.of cc) input fa d = pi2Pubs (Spec.of cc) input fa' d' := by
+  rw [pi2Pubs_cc, pi2Pubs_cc, h 0 (by decide), h 1 (by decide), h 2 (by decide)]
 
 /-! ## The contract's public scalars -/
 
-/-- **The contract's public scalars are `pi2Pubs`** on a stream of `1064` bytes (the run over Keccak-f[1600] at any
-IV, at the real circuit). -/
-theorem pi2Scalars_real (D : RecDeployment) (hD : ∀ iv, (D.pi2 iv).circuit = cc) (roots : RecSetupRoots)
-    (input : Vector UInt8 32) (stream : Array UInt8) (h : stream.size = sLen) :
-    pi2Scalars D roots input stream = pi2Pubs (Spec.of cc) input.toList stream := by
+/-- **The contract's public scalars are `pi2Pubs`** on a stream of `544` bytes (the run over Keccak-f[1600] at any
+IV, at the real circuit, on the frame words of the declared claims). -/
+theorem pi2Scalars_real (D : RecDeployment) (hD : ∀ roots, (D.pi2 roots).circuit = cc) (roots : RecSetupRoots)
+    (input : Vector UInt8 32) (proof : RecProof) (h : proof.stream.size = sLen) :
+    pi2Scalars D roots input proof =
+      pi2Pubs (Spec.of cc) input.toList (frameOf proof.pi1Claims) proof.stream := by
   have hc : (D.circuitAt roots.pi1).circuit = cc := hD _
   unfold pi2Scalars
   rw [hc]
-  have hh := holds_id (runWith_post (m := Id) (fun x ↦ pure (keccakF1600 x)) (Spec.of cc) [] input.toList stream)
+  have hh := holds_id (runWith_post (m := Id) (fun x ↦ pure (keccakF1600 x)) (Spec.of cc) [] input.toList
+    (frameOf proof.pi1Claims) proof.stream)
   obtain ⟨r, hr⟩ := hh.2 (by rw [pi2Bytes_cc]; exact h)
   obtain ⟨-, hsc, -⟩ := hh.1 r hr
-  have hrun : RecStatement.run (Spec.of cc) [] input.toList stream =
-      Id.run (runWith (m := Id) (fun x ↦ pure (keccakF1600 x)) (Spec.of cc) [] input.toList stream) := rfl
+  have hrun : RecStatement.run (Spec.of cc) [] input.toList (frameOf proof.pi1Claims) proof.stream =
+      Id.run (runWith (m := Id) (fun x ↦ pure (keccakF1600 x)) (Spec.of cc) [] input.toList
+        (frameOf proof.pi1Claims) proof.stream) := rfl
   rw [hrun, hr]
   exact hsc
 
@@ -196,11 +202,11 @@ theorem holds_support_oc {ι : Type} {spec : OracleSpec ι} {α : Type} {X : Ora
   simp only at this
   exact this ▸ trivial
 
-/-- **WALK REJECTS**: on a stream of another length than `1064`, the run fails, so it rejects. -/
+/-- **WALK REJECTS**: on a stream of another length than `544`, the run fails, so it rejects. -/
 theorem pi2WalkReject : Pi2WalkReject := by
   intro π hlen o ho
   have hh := holds_support_oc (runWith_post Common.queryPermutation (Spec.of cc) π.iv.toList π.input.toList
-    π.proof.stream) o ho
+    (frameOf π.proof.pi1Claims) π.proof.stream) o ho
   unfold RecStatement.Outcome.accepts
   rcases hres : o.result with e | r
   · rfl
@@ -208,19 +214,19 @@ theorem pi2WalkReject : Pi2WalkReject := by
 
 /-! ## The walk -/
 
-/-- The bytes each of the chain's steps absorbs, on a stream of `1064` bytes: the public data and `W`'s root, nothing
-twice, `Q`'s root, the `17` values. -/
+/-- The bytes each of the chain's steps absorbs, on a stream of `544` bytes: `W`'s commitment, nothing twice, `Q`'s
+commitment, the `18` values. -/
 def p2Es (b : Array UInt8) : List (List UInt8) :=
-  [UniSound.bytesAt b 0 576, [], [], UniSound.bytesAt b 576 56, UniSound.bytesAt b 632 432]
+  [UniSound.bytesAt b 0 56, [], [], UniSound.bytesAt b 56 56, UniSound.bytesAt b 112 432]
 
-/-- **The run's result** from the stream and the chain's answers. -/
-def red0 (stmt : List E) (b : Array UInt8) (sts : List Bytes32) : RecStatement.Reduced :=
-  let pubs := foldReads Read.bytes pubsStep b 0 Data.reads stmt
+/-- **The run's result** from the frame, the stream and the chain's answers. -/
+def red0 (stmt : List E) (fa : ℕ → List UInt8) (b : Array UInt8) (sts : List Bytes32) : RecStatement.Reduced :=
+  let pubs := foldReads Read.bytes (pubsStep fa) b 0 Data.reads stmt
   let x := sts.map (chalL UniSound.uLimbs)
-  let inp : Inputs E := ⟨pubs, x.getD 0 0, x.getD 1 0, x.getD 2 0, x.getD 3 0, UniSound.scalarsAt b 632 16,
-    UniSound.scalarAt b 1016, UniSound.scalarAt b 1040, x.getD 4 0⟩
-  ⟨pubs, pubs.map pairPoint, (UniSound.halvesAt b 520, UniSound.halvesAt b 576),
-    (UniSound.scalarAt b 552, UniSound.scalarAt b 608), inp, (Spec.of cc).core.run inp⟩
+  let inp : Inputs E := ⟨pubs, x.getD 0 0, x.getD 1 0, x.getD 2 0, x.getD 3 0, UniSound.scalarsAt b 112 16,
+    UniSound.scalarAt b 496, UniSound.scalarAt b 520, x.getD 4 0⟩
+  ⟨pubs, pubs.map pairPoint, (UniSound.halvesAt b 0, UniSound.halvesAt b 56),
+    (UniSound.scalarAt b 32, UniSound.scalarAt b 88), inp, (Spec.of cc).core.run inp⟩
 
 /-- **The channel at the run's end** from the stream and the chain's answers. -/
 def cw (b : Array UInt8) (sts : List Bytes32) : Chan :=
@@ -258,18 +264,18 @@ theorem nextScalars_bind {β : Type} (n : ℕ) (K : List E → ChanM m β) (c : 
   UniSound.run_bind_ok (UniSound.nextScalars_ok n c h)
 
 set_option maxHeartbeats 1600000 in
-/-- **π2's reduction on a stream of `1064` bytes**, in continuation form: the chain's steps on `p2Es` from the seed,
+/-- **π2's reduction on a stream of `544` bytes**, in continuation form: the chain's steps on `p2Es` from the seed,
 the result `red0` and the channel `cw`. -/
 theorem reduceWith_bind_run {δ : Type} (F : KeccakState → m KeccakState) (b : Array UInt8) (hb : b.size = sLen)
-    (stmt : List E) (seed : Digest) (K : RecStatement.Reduced → ChanM m δ) :
-    (RecStatement.reduceWith F (Spec.of cc) stmt >>= K).run.run (Chan.start seed b) =
+    (stmt : List E) (fa : ℕ → List UInt8) (seed : Digest) (K : RecStatement.Reduced → ChanM m δ) :
+    (RecStatement.reduceWith F (Spec.of cc) stmt fa >>= K).run.run (Chan.start seed b) =
       UniSound.steps (UniSound.kB F) (toB seed) (p2Es b) >>= fun sts =>
-        (K (red0 stmt b sts)).run.run (cw b sts) := by
-  have hb' : b.size = 1064 := hb
+        (K (red0 stmt fa b sts)).run.run (cw b sts) := by
+  have hb' : b.size = 544 := hb
   unfold RecStatement.reduceWith
   rw [spec_logRow, spec_reads]
   simp only [bind_assoc, pure_bind]
-  rw [forIn_bind_run Read.bytes pubsStep ?hf _ _ _ _ (by simp only [Chan.start, reads_bytes, pLen]; omega)]
+  rw [forIn_bind_run Read.bytes (pubsStep fa) ?hf _ _ _ _ (by simp only [Chan.start, reads_bytes, pLen]; omega)]
   case hf =>
     intro x pubs c hc
     cases x with
@@ -291,6 +297,13 @@ theorem reduceWith_bind_run {δ : Type} (F : KeccakState → m KeccakState) (b :
       rw [UniSound.run_bind_ok (UniSound.nextScalar_ok c hc)]
       simp only [pubsStep, readValue, scalarAt_eq c.data c.cursor hc]
       rfl
+    | narrow =>
+      simp only [Read.bytes] at hc
+      simp only
+      rw [UniSound.run_bind_ok (nextNarrow_ok c hc)]
+      rfl
+    | frame p =>
+      rfl
   -- `W`'s root and out-of-domain answer
   rw [nextRoot_bind _ _ ?_]
   swap
@@ -300,7 +313,7 @@ theorem reduceWith_bind_run {δ : Type} (F : KeccakState → m KeccakState) (b :
   swap
   · simp only [Chan.start, reads_bytes, pLen]
     omega
-  -- `α`: the public data and `W`'s commitment absorbed
+  -- `α`: `W`'s commitment absorbed
   rw [UniSound.sample_bind, p2Es, steps_cons_bind]
   refine bind_eq_of ?_ fun s1 => ?_
   · simp only [UniSound.preOf, Chan.start, UniSound.toList_extract_eq, reads_bytes, pLen]
@@ -358,43 +371,34 @@ end Walk
 theorem roundsBytes_pi2 : UniSound.roundsBytes (RecPiop.pi2Rounds 4) = 544 := by
   simp [UniSound.roundsBytes, UniSound.roundBytes, RecPiop.pi2Rounds]
 
-/-- **The rounds' messages** the stream carries: `W`'s commitment at byte `520` (its root, its out-of-domain answer),
-`Q`'s at `576`, the `18` values from `632`. -/
+/-- **The rounds' messages** the stream carries: `W`'s commitment at byte `0` (its root, its out-of-domain answer),
+`Q`'s at `56`, the `18` values from `112`. -/
 theorem p2Msgs_eq (π : P2Pf) :
-    p2Msgs π = [(some (UniSound.halvesAt π.proof.stream 520), [UniSound.scalarAt π.proof.stream 552]),
-      (some (UniSound.halvesAt π.proof.stream 576), [UniSound.scalarAt π.proof.stream 608]),
-      (none, (List.range 18).map fun k => UniSound.scalarAt π.proof.stream (632 + 24 * k))] := by
+    p2Msgs π = [(some (UniSound.halvesAt π.proof.stream 0), [UniSound.scalarAt π.proof.stream 32]),
+      (some (UniSound.halvesAt π.proof.stream 56), [UniSound.scalarAt π.proof.stream 88]),
+      (none, (List.range 18).map fun k => UniSound.scalarAt π.proof.stream (112 + 24 * k))] := by
   unfold p2Msgs
   simp only [RecPiop.pi2Rounds, UniSound.msgsAt, UniSound.roundBytes, ↓reduceIte, Bool.false_eq_true,
-    Nat.reducePow, Nat.reduceMul, Nat.reduceAdd, Nat.add_zero, pLen, List.range_one, List.map_cons, List.map_nil]
+    Nat.reducePow, Nat.reduceMul, Nat.reduceAdd, Nat.add_zero, Nat.zero_add, pLen, List.range_one, List.map_cons,
+    List.map_nil]
 
-theorem pubBytes_toList (b : Array UInt8) (h : pLen ≤ b.size) : (pubBytes b).toList = UniSound.bytesAt b 0 pLen := by
-  rw [UniSound.bytesAt_eq_map b 0 pLen (by omega)]
-  apply List.ext_getElem
-  · simp
-  · intro i h1 h2
-    simp [pubBytes]
-
-/-- **The bytes the chain absorbs** are `p2Es`: the public data and `W`'s root, then `Q`'s root, then the values. -/
+/-- **The bytes the chain absorbs** are `p2Es`: `W`'s commitment, then `Q`'s, then the values. -/
 theorem absorbsS_p2 (π : P2Pf) (h : π.proof.stream.size = sLen) :
     pi2Spec.absorbsS (p2View π).1 pi2Spec.K.rounds (p2View π).2 = p2Es π.proof.stream := by
-  have hb : π.proof.stream.size = 1064 := h
-  have h1 : pi2Spec.pre = fun s => s.2.2.toList := rfl
+  have hb : π.proof.stream.size = 544 := h
   have h2 : pi2Spec.enc = UniSound.uniEnc := rfl
-  have hf : pi2Spec.encAt (p2View π).1 = fun j m => if j = 0 then (pubBytes π.proof.stream).toList ++
+  have hf : pi2Spec.encAt (p2View π).1 = fun j m => if j = 0 then ([] : List UInt8) ++
       UniSound.uniEnc m else UniSound.uniEnc m := by
     funext j m
-    have h3 : (p2View π).1 = (π.iv, π.input, pubBytes π.proof.stream) := rfl
-    rw [ChainSpecU.encAt, h1, h2, h3]
+    rw [ChainSpecU.encAt, h2]
+    rfl
   have hv : (p2View π).2 = (UniSound.msgsAt π.proof.stream pLen (RecPiop.pi2Rounds 4)).map UniSound.toRMsg := rfl
   have hr : UniSound.roundsBytes (RecPiop.pi2Rounds 4) = 544 := roundsBytes_pi2
   rw [ChainSpecU.absorbsS, hf, hv, pi2Spec_rounds,
-    UniSound.absorbsI_wAbs _ _ 0 pLen _ (hr ▸ hb ▸ (by decide : pLen + 544 ≤ 1064)),
-    pubBytes_toList _ (hb ▸ (by decide : pLen ≤ 1064))]
+    UniSound.absorbsI_wAbs _ _ 0 pLen _ (hr ▸ hb ▸ (by decide : pLen + 544 ≤ 544))]
   simp only [↓reduceIte, p2Es, RecPiop.pi2Rounds, UniSound.wAbs, UniSound.roundBytes]
   simp only [↓reduceIte, Bool.false_eq_true, Nat.reducePow, Nat.reduceMul, Nat.reduceAdd, List.replicate,
-    List.nil_append, List.cons_append, List.cons.injEq, and_true]
-  rw [← UniSound.bytesAt_add_of _ (show 0 + pLen = pLen from rfl)]
+    List.nil_append, List.cons_append, pLen, Nat.zero_add]
 
 theorem getD_take_map {α : Type} (l : List α) (n i : ℕ) (d : α) (h : i < n) : (l.take n).getD i d = l.getD i d := by
   simp only [List.getD_eq_getElem?_getD, List.getElem?_take, h, ite_true]
@@ -402,19 +406,24 @@ theorem getD_take_map {α : Type} (l : List α) (n i : ℕ) (d : α) (h : i < n)
 theorem getD_drop {α : Type} (l : List α) (n i : ℕ) (d : α) : (l.drop n).getD i d = l.getD (n + i) d := by
   simp only [List.getD_eq_getElem?_getD, List.getElem?_drop]
 
+/-- **The frame words of the composed view are the declared claims'** (payloads `0, 1, 2`). -/
+theorem stOf_p2View_eq (π : P2Pf) (d : Array UInt8) :
+    (stOf (p2View π).1).2 = pi2Pubs (Spec.of cc) π.input.toList (frameOf π.proof.pi1Claims) d :=
+  pi2Pubs_cc_congr _ _ _ _ _ fun p hp ↦ frameAtB_frameBytes π.proof p hp
+
 /-- **The transcript's inputs** at the chain's challenges. -/
-theorem p2Inputs_eq (π : P2Pf) (h : π.proof.stream.size = sLen) (sts : List Bytes32) :
+theorem p2Inputs_eq (π : P2Pf) (_h : π.proof.stream.size = sLen) (sts : List Bytes32) :
     p2Inputs π (groupK (RecPiop.pi2Rounds 4) (sts.map (chalL UniSound.uLimbs))) =
-      ⟨foldReads Read.bytes pubsStep π.proof.stream 0 Data.reads (publicWordsOf π.input.toList),
+      ⟨foldReads Read.bytes (pubsStep (frameOf π.proof.pi1Claims)) π.proof.stream 0 Data.reads
+          (publicWordsOf π.input.toList),
         (sts.map (chalL UniSound.uLimbs)).getD 0 0, (sts.map (chalL UniSound.uLimbs)).getD 1 0,
         (sts.map (chalL UniSound.uLimbs)).getD 2 0, (sts.map (chalL UniSound.uLimbs)).getD 3 0,
-        UniSound.scalarsAt π.proof.stream 632 16, UniSound.scalarAt π.proof.stream 1016,
-        UniSound.scalarAt π.proof.stream 1040, (sts.map (chalL UniSound.uLimbs)).getD 4 0⟩ := by
-  have hb : π.proof.stream.size = 1064 := h
+        UniSound.scalarsAt π.proof.stream 112 16, UniSound.scalarAt π.proof.stream 496,
+        UniSound.scalarAt π.proof.stream 520, (sts.map (chalL UniSound.uLimbs)).getD 4 0⟩ := by
   have hs : (stOf (p2View π).1).2 =
-      foldReads Read.bytes pubsStep π.proof.stream 0 Data.reads (publicWordsOf π.input.toList) := by
-    show pi2Pubs (Spec.of cc) π.input.toList (pubBytes π.proof.stream).toArray = _
-    rw [pi2Pubs_pubBytes _ _ (by rw [hb]; decide)]
+      foldReads Read.bytes (pubsStep (frameOf π.proof.pi1Claims)) π.proof.stream 0 Data.reads
+        (publicWordsOf π.input.toList) := by
+    rw [stOf_p2View_eq π π.proof.stream]
     unfold pi2Pubs
     rw [spec_reads]
   unfold p2Inputs
@@ -423,23 +432,23 @@ theorem p2Inputs_eq (π : P2Pf) (h : π.proof.stream.size = sLen) (sts : List By
   simp only [getD_take_map _ _ _ _ (by norm_num : (0 : ℕ) < 3), getD_take_map _ _ _ _ (by norm_num : (1 : ℕ) < 3),
     getD_take_map _ _ _ _ (by norm_num : (2 : ℕ) < 3), getD_take_map _ _ _ _ (by norm_num : (0 : ℕ) < 1),
     getD_drop, Nat.reduceAdd]
-  have ha : List.take 16 (List.map (fun k => UniSound.scalarAt π.proof.stream (632 + 24 * k)) (List.range 18)) =
-      UniSound.scalarsAt π.proof.stream 632 16 := by
+  have ha : List.take 16 (List.map (fun k => UniSound.scalarAt π.proof.stream (112 + 24 * k)) (List.range 18)) =
+      UniSound.scalarsAt π.proof.stream 112 16 := by
     rw [← List.map_take, List.take_range]
     rfl
-  have hξ : (List.map (fun k => UniSound.scalarAt π.proof.stream (632 + 24 * k)) (List.range 18)).getD 16 0 =
-      UniSound.scalarAt π.proof.stream 1016 := by
+  have hξ : (List.map (fun k => UniSound.scalarAt π.proof.stream (112 + 24 * k)) (List.range 18)).getD 16 0 =
+      UniSound.scalarAt π.proof.stream 496 := by
     rw [List.getD_eq_getElem?_getD, List.getElem?_map, List.getElem?_range (by norm_num)]
     rfl
-  have hs' : (List.map (fun k => UniSound.scalarAt π.proof.stream (632 + 24 * k)) (List.range 18)).getD 17 0 =
-      UniSound.scalarAt π.proof.stream 1040 := by
+  have hs' : (List.map (fun k => UniSound.scalarAt π.proof.stream (112 + 24 * k)) (List.range 18)).getD 17 0 =
+      UniSound.scalarAt π.proof.stream 520 := by
     rw [List.getD_eq_getElem?_getD, List.getElem?_map, List.getElem?_range (by norm_num)]
     rfl
   rw [ha, hξ, hs']
 
 /-- **The run's result is `p2Reduced`** at the chain's challenges. -/
 theorem red0_eq (π : P2Pf) (h : π.proof.stream.size = sLen) (sts : List Bytes32) :
-    red0 (publicWordsOf π.input.toList) π.proof.stream sts =
+    red0 (publicWordsOf π.input.toList) (frameOf π.proof.pi1Claims) π.proof.stream sts =
       p2Reduced π (groupK (RecPiop.pi2Rounds 4) (sts.map (chalL UniSound.uLimbs))) := by
   unfold red0 p2Reduced p2Out
   rw [p2Inputs_eq π h sts, p2Msgs_eq]
@@ -447,17 +456,26 @@ theorem red0_eq (π : P2Pf) (h : π.proof.stream.size = sLen) (sts : List Bytes3
 
 /-! ## WALK -/
 
-/-- **WALK**: on a stream of `1064` bytes, π2's run is the chain over `keccak256With F`, its verdict and result read
+/-- **The seed's input is the label**: `name ‖ iv ‖ input ‖ frame words`. -/
+theorem seed_label (π : P2Pf) :
+    RecStatement.name ++ π.iv.toList ++ π.input.toList ++
+        (frameReads (Spec.of cc).reads).flatMap (frameOf π.proof.pi1Claims) = pi2Spec.label (p2View π).1 := by
+  show _ = p2Label (π.iv, π.input, frameBytes π.proof)
+  unfold p2Label
+  rw [frameBytes_toList, spec_reads]
+  rfl
+
+/-- **WALK**: on a stream of `544` bytes, π2's run is the chain over `keccak256With F`, its verdict and result read
 off `p2Reduced` at the chain's challenges. -/
 theorem pi2Walk : Pi2Walk := by
   intro m _ _ F π hlen
   unfold RecStatement.runWith
   dsimp only
-  rw [UniSound.keccak_eq, bind_map_left]
+  rw [seed_label, UniSound.keccak_eq, bind_map_left]
   change _ = _ <$> pi2Spec.chain (UniSound.kB F) _ _
   rw [UniSound.chainU_eq, absorbsS_p2 π hlen, map_bind, map_bind]
   refine bind_eq_of rfl fun st0 => ?_
-  rw [reduceWith_bind_run F π.proof.stream hlen _ (ofB st0), UniSound.toB_ofB]
+  rw [reduceWith_bind_run F π.proof.stream hlen _ _ (ofB st0), UniSound.toB_ofB]
   simp only [finish_cw π.proof.stream hlen, ExceptT.run_pure, StateT.run_pure, bind_assoc, pure_bind, map_bind,
     map_pure, Functor.map_map]
   rw [map_eq_bind_pure_comp]

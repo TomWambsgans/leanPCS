@@ -6,26 +6,27 @@
 import RecCompose.FsOps
 
 /-!
-# `Q`'s three claims, one stack: the out-of-domain answer's binding
+# `Q`'s two claims, one stack: the out-of-domain answer's binding
 
-π2's contract opens `Q`'s three claims (the identity's, the pushes', the sum) separately, each the EIP's PCS claim on
-`Q`'s commitment `(root, ood)` (`qIdOp`, `qPushOp`, `qSumOp`), each reading `Q`'s out-of-domain point off Keccak-256
+π2's contract opens `Q`'s two claims (the identity's, the pushes') separately, each the EIP's PCS claim on `Q`'s
+commitment `(root, ood)` (`qIdOp`, `qPushOp`), each reading `Q`'s out-of-domain point off Keccak-256
 (`RecStatement.pcsOpenKO`, `pcsOpenCO`: `28` queries `oodInput 28 root j`). The chain's composition needs one candidate
-of `Q`'s root satisfying all three (`p2Good 1`): it opens them as one (`qOp`, whose claims are the three on one stack).
-Its doom is the eight single openings' (charged once, `prEvent_doomH_le`: each opening's PCS claim's two claims, the
-point read off the final cache), or **`Q`'s root's list is not separated at its out-of-domain point**
-(`WhirBridge.Pcs.BindBadC 28`): three single openings that accept and are not doomed have candidates with the same answer
-`ood` at `z`, the point read off the final cache (all of whose coordinates the accepting openings asked:
-`PcsOp.present`), one candidate when the list is separated there.
+of `Q`'s root satisfying both (`p2Good 1`): it opens them as one (`qOp`, whose claims are the two on one stack). Its
+doom is π2's four single openings' (charged once, `prEvent_doomH_le`, after π1's three declared claims, whose queries
+count: each opening's PCS claim's two claims, the point read off the final cache), or **`Q`'s root's list is not
+separated at its out-of-domain point** (`WhirBridge.Pcs.BindBadC 28`): two single openings that accept and are not
+doomed have candidates with the same answer `ood` at `z`, the point read off the final cache (all of whose coordinates
+the accepting openings asked: `PcsOp.present`), one candidate when the list is separated there. π1's three declared
+claims are opened with `W`'s as one (`wOpM`, whose claim is `W`'s): its doom is `W`'s.
 
-* `expLG_p2Ops`: the run with `qOp` is the run with the eight single openings, `Q`'s three verdicts and-ed (`mergeB`);
-* `doomFG_p2Ops_cases`: its doom is the eight's (`DoomH`) or `BindBadC 28` at the final cache;
+* `expLG_p2Ops`: the run with `wOpM`, `qOp` is the run with the seven single openings (`p2Ops7`), verdicts and-ed
+  (`mergeB`);
+* `doomFG_p2Ops_cases`: its doom is π2's four's (`DoomH 3 p2Pcs`) or `BindBadC 28` at the final cache;
 * **`qOodBinding`**: `BindBadC 28` at the end of a computation of `QA` queries has probability at most
   `δBind QA = QA · δc 28 + QA (QA + 1) / 2^256` (`WhirBridge.Pcs.ood_binding_coords`; `δc 28 = C(L_Q, 2) / 2^192 ≤
-  2^-160`, `L_Q = 3564`): the premise `QOodBinding` of the earlier form, proved, the point being read off the
-  permutation the model idealizes;
-* **`prEvent_doomFG_p2Ops_le`**: at most `bndU (QX + 81200) + δBind (QX + 81200)` for a run before the openings of
-  `QX` queries.
+  2^-160`, `L_Q = 3564`), the point being read off the permutation the model idealizes;
+* **`prEvent_doomFG_p2Ops_le`**: at most `bndU (QX + 71050) + δBind (QX + 71050)` for a run before the openings of
+  `QX` queries (seven openings of `10150` queries).
 -/
 
 set_option linter.unusedSectionVars false
@@ -63,13 +64,13 @@ theorem δc_28_le : Pcs.δc 28 ≤ (2 : ℝ≥0∞)⁻¹ ^ 160 := Pcs.δc_le (by
 def remapO (z : OutK P2Pf E (List Bool) × Transcript) : OutK P2Pf E (List Bool) × Transcript :=
   (((z.1.1.1, (z.1.1.2.1, mergeB z.1.1.2.2)), z.1.2), z.2)
 
-/-- **The run with `qOp` is the run with the eight single openings**, `Q`'s three verdicts and-ed. -/
-theorem expLG_p2Ops (D : RecDeployment) (X : OracleComp KeccakCalls (PreK P2Pf E)) :
-    expLG p2View X (p2Ops D) = remapO <$> expLG p2View X (p2Ops8 D) := by
+/-- **The run with `wOpM`, `qOp` is the run with the seven single openings**, verdicts and-ed. -/
+theorem expLG_p2Ops (X : OracleComp KeccakCalls (PreK P2Pf E)) :
+    expLG p2View X p2Ops = remapO <$> expLG p2View X p2Ops7 := by
   unfold expLG
-  have e : (X >>= fun x => opsOut x <$> gopsRun p2View (p2Ops D) x.1 x.2.1) =
+  have e : (X >>= fun x => opsOut x <$> gopsRun p2View p2Ops x.1 x.2.1) =
       (fun o : OutK P2Pf E (List Bool) => ((o.1.1, (o.1.2.1, mergeB o.1.2.2)), o.2)) <$>
-        (X >>= fun x => opsOut x <$> gopsRun p2View (p2Ops8 D) x.1 x.2.1) := by
+        (X >>= fun x => opsOut x <$> gopsRun p2View p2Ops7 x.1 x.2.1) := by
     simp only [gopsRun_p2Ops, map_bind, Functor.map_map]
     rfl
   rw [e, simulateQ_map, StateT.run_map]
@@ -126,52 +127,50 @@ theorem cand_of_not_doomedH (o : PcsOp) (π : P2Pf) (ch : List (List E)) (H : By
   push Not at h
   exact h
 
-/-- **`qOp`'s doom is the eight's, or `Q`'s binding fails**, at the end of the run with the eight single openings
-(the outcome `p.1`, the final cache `p.2`). -/
-theorem doomFG_p2Ops_cases (D : RecDeployment) (X : OracleComp KeccakCalls (PreK P2Pf E))
+/-- **`wOpM`'s and `qOp`'s doom is π2's four's, or `Q`'s binding fails**, at the end of the run with the seven single
+openings (the outcome `p.1`, the final cache `p.2`). -/
+theorem doomFG_p2Ops_cases (X : OracleComp KeccakCalls (PreK P2Pf E))
     (p : (OutK P2Pf E (List Bool) × Transcript) × KeccakCalls.QueryCache)
-    (hp : p ∈ support ((simulateQ randomOracle (expLG p2View X (p2Ops8 D))).run ∅))
-    (hd : DoomFG p2View (p2Ops D) (remapO p.1)) :
-    DoomH (p2Pcs D) p.1 (fun x ↦ p.2 (.inl x)) ∨ Pcs.BindBadC 28 p.2 := by
+    (hp : p ∈ support ((simulateQ randomOracle (expLG p2View X p2Ops7)).run ∅))
+    (hd : DoomFG p2View p2Ops (remapO p.1)) :
+    DoomH 3 p2Pcs p.1 (fun x ↦ p.2 (.inl x)) ∨ Pcs.BindBadC 28 p.2 := by
   classical
-  obtain ⟨hcons, hrep⟩ := expLG_replayF p2View X (p2Ops8 D) p hp
+  obtain ⟨hcons, hrep⟩ := expLG_replayF p2View X p2Ops7 p hp
   have hc : (fun x ↦ p.2 (.inl x)) = fun x ↦ cacheOfTr p.1.2 (.inl x) :=
     funext fun x ↦ (hcons x).trans (cacheOfTr_inl _ _).symm
   by_contra hn
   push Not at hn
   obtain ⟨h8, hsep⟩ := hn
   obtain ⟨k, hk, hacc, hdoom⟩ := hd
-  have hdoom' : GDoomed p2View (p2Ops D)[k] p.1.1.1.1 p.1.1.1.2.1 p.2 := by
-    have h' : GDoomed p2View (p2Ops D)[k] p.1.1.1.1 p.1.1.1.2.1 (cacheOfTr p.1.2) := hdoom
+  have hdoom' : GDoomed p2View p2Ops[k] p.1.1.1.1 p.1.1.1.2.1 p.2 := by
+    have h' : GDoomed p2View p2Ops[k] p.1.1.1.1 p.1.1.1.2.1 (cacheOfTr p.1.2) := hdoom
     unfold GDoomed at h' ⊢
     rw [hc]
     exact h'
-  have hk6 : k < 6 := by simpa [p2Ops, p2Pcs5] using hk
+  have hk3 : k < 3 := by simpa [p2Ops] using hk
   set bs := p.1.1.1.2.2 with hbs
   have hacc' : (mergeB bs).getD k false = true := hacc
-  have hm : ∀ j < 5, (mergeB bs).getD j false = bs.getD j false := by
-    intro j hj
-    interval_cases j <;> rfl
-  have h8' : ∀ j (hj : j < (p2Pcs D).length), bs.getD j false = true →
-      ¬ (p2Pcs D)[j].DoomedH p.1.1.1.1 p.1.1.1.2.1 (fun x ↦ p.2 (.inl x)) :=
+  have h8' : ∀ j (hj : j < p2Pcs.length), bs.getD (3 + j) false = true →
+      ¬ p2Pcs[j].DoomedH p.1.1.1.1 p.1.1.1.2.1 (fun x ↦ p.2 (.inl x)) :=
     fun j hj hb hdj => h8 ⟨j, hj, hb, hdj⟩
-  rcases Nat.lt_or_ge k 5 with h5 | h5
-  · -- one of the first five: the eight's
-    refine h8' k (by simp [p2Pcs, p2Pcs5]; omega) ((hm k h5).symm.trans hacc') ?_
-    interval_cases k <;> exact PcsOp.doomedH_of_gDoomed _ _ _ _ hdoom'
-  · -- `Q`'s: three accepting single openings, not doomed, one candidate
-    obtain rfl : k = 5 := by omega
-    have hacc5 : (bs.getD 5 false && (bs.getD 6 false && bs.getD 7 false)) = true := hacc'
-    rw [Bool.and_eq_true, Bool.and_eq_true] at hacc5
-    obtain ⟨a5, a6, a7⟩ := hacc5
+  rcases Nat.lt_or_ge k 2 with h2 | h2
+  · -- `W`'s (with π1's declared claims) or the setup's: π2's four's
+    interval_cases k
+    · have hacc0 : (bs.getD 0 false && (bs.getD 1 false && (bs.getD 2 false && bs.getD 3 false))) = true := hacc'
+      simp only [Bool.and_eq_true] at hacc0
+      exact h8' 0 (by simp [p2Pcs]) hacc0.2.2.2 (PcsOp.doomedH_of_gDoomed wPcs _ _ _ hdoom')
+    · exact h8' 1 (by simp [p2Pcs]) hacc' (PcsOp.doomedH_of_gDoomed sPcs _ _ _ hdoom')
+  · -- `Q`'s: two accepting single openings, not doomed, one candidate
+    obtain rfl : k = 2 := by omega
+    have hacc5 : (bs.getD 5 false && bs.getD 6 false) = true := hacc'
+    rw [Bool.and_eq_true] at hacc5
+    obtain ⟨a5, a6⟩ := hacc5
     have n5 : ¬ qIdOp.DoomedH p.1.1.1.1 p.1.1.1.2.1 (fun x ↦ p.2 (.inl x)) :=
-      h8' 5 (by simp [p2Pcs, p2Pcs5]) a5
+      h8' 2 (by simp [p2Pcs]) a5
     have n6 : ¬ qPushOp.DoomedH p.1.1.1.1 p.1.1.1.2.1 (fun x ↦ p.2 (.inl x)) :=
-      h8' 6 (by simp [p2Pcs, p2Pcs5]) a6
-    have n7 : ¬ qSumOp.DoomedH p.1.1.1.1 p.1.1.1.2.1 (fun x ↦ p.2 (.inl x)) :=
-      h8' 7 (by simp [p2Pcs, p2Pcs5]) a7
+      h8' 3 (by simp [p2Pcs]) a6
     -- the first `Q` opening accepted: its point's coordinates are in the cache
-    have hr5 := hrep 5 (by simp [p2Ops8, p2Pcs, p2Pcs5])
+    have hr5 := hrep 5 (by simp [p2Ops7, p2Pcs])
     have hr5' : (simulateQ randomOracle (GOp.run p2View qIdOp.gop p.1.1.1.1 p.1.1.1.2.1)).run p.2 =
         pure (true, p.2) := by
       rw [← a5]
@@ -186,37 +185,34 @@ theorem doomFG_p2Ops_cases (D : RecDeployment) (X : OracleComp KeccakCalls (PreK
       exact hsep ⟨_, _, hpt, hns⟩
     obtain ⟨q1, hq1, o1, p1, v1, c1, l1, z1, e1⟩ := cand_of_not_doomedH qIdOp _ _ _ n5
     obtain ⟨q2, hq2, o2, p2, v2, c2, l2, z2, e2⟩ := cand_of_not_doomedH qPushOp _ _ _ n6
-    obtain ⟨q3, hq3, o3, p3, v3, c3, l3, z3, e3⟩ := cand_of_not_doomedH qSumOp _ _ _ n7
-    simp only [ptAt] at z1 z2 z3
-    simp only [qIdOp, qPushOp, qSumOp, qIdCl, qPushCl, qSumCl, Option.some.injEq, Prod.mk.injEq] at c1 c2 c3
+    simp only [ptAt] at z1 z2
+    simp only [qIdOp, qPushOp, qIdCl, qPushCl, Option.some.injEq, Prod.mk.injEq] at c1 c2
     obtain ⟨rfl, rfl, rfl⟩ := c1
     obtain ⟨rfl, rfl, rfl⟩ := c2
-    obtain ⟨rfl, rfl, rfl⟩ := c3
     have e12 : q1 = q2 := hS q1 hq1 q2 hq2 (z1.trans z2.symm)
-    have e13 : q1 = q3 := hS q1 hq1 q3 hq3 (z1.trans z3.symm)
-    subst e12 e13
-    exact hdoom' q1 hq1 ⟨⟨_, _, _, rfl, l1, e1⟩, ⟨_, _, _, rfl, l2, e2⟩, ⟨_, _, _, rfl, l3, e3⟩⟩
+    subst e12
+    exact hdoom' q1 hq1 ⟨⟨_, _, _, rfl, l1, e1⟩, ⟨_, _, _, rfl, l2, e2⟩⟩
 
 /-! ## The doom, charged -/
 
-/-- The eight openings' query counts. -/
-theorem sumQO_p2Ops8 (D : RecDeployment) : ((p2Ops8 D).map fun o => o.QO).sum = 81200 := by
-  simp [p2Ops8, p2Pcs, p2Pcs5, PcsOp.gop]
+/-- The seven openings' query counts. -/
+theorem sumQO_p2Ops7 : (p2Ops7.map fun o => o.QO).sum = 71050 := by
+  simp [p2Ops7, p2Pcs, PcsOp.gop, declOp]
 
-/-- **The composition's openings' doom, charged**: the eight single openings once (`prEvent_doomH_le`), and `Q`'s
-binding (`qOodBinding`). -/
-theorem prEvent_doomFG_p2Ops_le (D : RecDeployment) (X : OracleComp KeccakCalls (PreK P2Pf E)) (QX : ℕ)
+/-- **The composition's openings' doom, charged**: π2's four single openings once, after π1's three
+(`prEvent_doomH_le`), and `Q`'s binding (`qOodBinding`). -/
+theorem prEvent_doomFG_p2Ops_le (X : OracleComp KeccakCalls (PreK P2Pf E)) (QX : ℕ)
     (hX : IsTotalQueryBound X QX) :
-    Pr{let z ← (simulateQ randomOracle (expLG p2View X (p2Ops D))).run' ∅}[DoomFG p2View (p2Ops D) z] ≤
-      bndU (QX + 81200) + δBind (QX + 81200) := by
+    Pr{let z ← (simulateQ randomOracle (expLG p2View X p2Ops)).run' ∅}[DoomFG p2View p2Ops z] ≤
+      bndU (QX + 71050) + δBind (QX + 71050) := by
   rw [expLG_p2Ops, run'_simulateQ_map, prEvent_map, StateT.run'_eq, prEvent_map]
-  refine (prEvent_mono_of_support _ _ _ fun p hp hd => doomFG_p2Ops_cases D X p hp hd).trans
+  refine (prEvent_mono_of_support _ _ _ fun p hp hd => doomFG_p2Ops_cases X p hp hd).trans
     ((prEvent_or_le _ _ _).trans (add_le_add ?_ ?_))
-  · have h := prEvent_doomH_le (p2Pcs D) X QX hX
-    change _ ≤ bndU (QX + ((p2Ops8 D).map fun o => o.QO).sum) at h
-    rwa [sumQO_p2Ops8] at h
-  · have hA := isTotalQueryBound_expLG p2View X (p2Ops8 D) QX hX
-    rw [sumQO_p2Ops8] at hA
+  · have h := prEvent_doomH_le [declOp 0, declOp 1, declOp 2] p2Pcs X QX hX
+    change _ ≤ bndU (QX + (p2Ops7.map fun o => o.QO).sum) at h
+    rwa [sumQO_p2Ops7] at h
+  · have hA := isTotalQueryBound_expLG p2View X p2Ops7 QX hX
+    rw [sumQO_p2Ops7] at hA
     exact qOodBinding _ _ hA
 
 end RecCompose

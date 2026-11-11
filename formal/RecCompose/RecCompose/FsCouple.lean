@@ -23,9 +23,9 @@ reading (`pi2ExtractBridge`):
 * there both first compute π2's IV, the same four Keccak-256 calls (`ivWith_eq_p2IvKC4`: the circuit's digest's three,
   then the IV's), then (`step2_le`) π2's event is impossible if π2's extractor's list holds a candidate with `P`, and
   otherwise follows from the contract's acceptance, which the verifier bridge bounds by the composed check with the
-  openings accepting, on whose outcomes `P2BreaksRel` holds: the check gives the stream's `1064` bytes, so every
+  openings accepting, on whose outcomes `P2BreaksRel` holds: the check gives the stream's `544` bytes, so every
   composed candidate is in π2's extractor's list (`pi2ExtractBridge`), at the setup's roots and the statement's
-  public scalars (`pi2Pubs_pubBytes`, `pi2Scalars_real`).
+  public scalars (the frame words of the declared claims: `stOf_p2View_eq`, `pi2Scalars_real`).
 -/
 
 set_option linter.unusedSectionVars false
@@ -51,7 +51,7 @@ def Pi2GameLeV (D : RecDeployment) (hs : UniKeccakSound.UniShapesK D.pi1) (P : R
     Pr{let z ← recSoundnessExperiment2 D A}[acc z = true ∧
         ¬ ∃ w ∈ outcomeCandidates D z, P (rts z) (pi2StmtOf D z) (stkOf w)] ≤
       Pr{let z ← Common.runWithRandomPermutation (rpmGameS (p2Setup D hs) p2Fix (p2Adv A) (p2Ver D))}[
-        P2BreaksRel D P (ivOut2 z.1, z.2.1 ++ evalTr (permutationQueries z.2.2))]
+        P2BreaksRel P (ivOut2 z.1, z.2.1 ++ evalTr (permutationQueries z.2.2))]
 
 /-! ## The common prefix -/
 
@@ -114,11 +114,11 @@ section Step
 
 variable (D : RecDeployment) (hD : RecDeployment.Real D) (P : RecSetupRoots → Pi2St → Stk → Prop)
 
-/-- **The statement's public scalars at the composed view**, on a stream of `1064` bytes. -/
+/-- **The statement's public scalars at the composed view**, on a stream of `544` bytes. -/
 theorem stOf_p2View (hD : RecDeployment.Real D) (π : P2Pf) (hsz : π.proof.stream.size = sLen) :
-    stOf (p2View π).1 = (π.input, pi2Scalars D (p2Roots π) π.input π.proof.stream) := by
-  show (π.input, pi2Pubs (Spec.of cc) π.input.toList (pubBytes π.proof.stream).toArray) = _
-  rw [pi2Pubs_pubBytes _ _ (by rw [hsz]; decide), pi2Scalars_real D hD.1 _ π.input π.proof.stream hsz]
+    stOf (p2View π).1 = (π.input, pi2Scalars D (p2Roots π) π.input π.proof) := by
+  rw [pi2Scalars_real D hD.1 _ π.input π.proof hsz, ← stOf_p2View_eq π π.proof.stream]
+  rfl
 
 include hD in
 /-- **One outcome of the setup and the adversary**: π2's event after π2's contract is at most as likely as the
@@ -135,7 +135,7 @@ theorem step2_le (hV : Pi2VerifierBridge D)
           (simulateQ keccakCallsOverQueryPermutation (p2Ver D (piOf2 a)))).run' s}[
         (fun z : (P2Pf × ((Bytes32 × Bytes32 × Bytes32 × Bytes32) × (List (List E) × List Bool))) ×
             Transcript × Common.OracleQueryLog =>
-          P2BreaksRel D P (ivOut2 z.1, z.2.1 ++ evalTr (permutationQueries z.2.2)))
+          P2BreaksRel P (ivOut2 z.1, z.2.1 ++ evalTr (permutationQueries z.2.2)))
           ((piOf2 a, v), setupTr2 a.1, a.2.2)] := by
   -- both first compute π2's IV
   have hL : D.contractWith Common.queryPermutation a.1.roots a.2.1.1 a.2.1.2 =
@@ -145,18 +145,18 @@ theorem step2_le (hV : Pi2VerifierBridge D)
   have hR : simulateQ keccakCallsOverQueryPermutation (p2Ver D (piOf2 a)) =
       simulateQ keccakCallsOverQueryPermutation (p2IvKC4 D (piOf2 a)) >>= fun x =>
         (fun v => (x, v)) <$> simulateQ keccakCallsOverQueryPermutation
-          (verU pi2Spec p2View (gopsRun p2View (p2Ops D)) (setIv2 x.2.2.2 (piOf2 a))) := by
+          (verU pi2Spec p2View (gopsRun p2View p2Ops) (setIv2 x.2.2.2 (piOf2 a))) := by
     rw [p2Ver, simulateQ_bind]
     simp only [simulateQ_map]
   rw [hL, hR]
   refine Soundness.mono_bind Common.lazyRandomPermutationOracles _ _ _ _ _ (fun x s' => ?_) s
   -- π2's extractor finds a candidate with `P`: no break
   by_cases hext : ∃ w ∈ wCandidates D a.1.roots (preimagesOf a.1.evaluations a.2.2) a.2.1.2,
-      P a.1.roots (a.2.1.1, pi2Scalars D a.1.roots a.2.1.1 a.2.1.2.stream) (stkOf w)
+      P a.1.roots (a.2.1.1, pi2Scalars D a.1.roots a.2.1.1 a.2.1.2) (stkOf w)
   · refine le_trans (le_of_eq (prEvent_eq_zero_of_forall_mem_support _ _ ?_)) zero_le
     intro v _ hb
     exact hb.2 hext
-  -- otherwise no candidate of the composed extractor has `P`, on a stream of `1064` bytes
+  -- otherwise no candidate of the composed extractor has `P`, on a stream of `544` bytes
   have hnone : ∀ v : List (List E) × List Bool, p2Check (setIv2 x.2.2.2 (piOf2 a)) v.1 →
       ∀ c ∈ extractorK (fun i => (p2Tc i).commit) p2View
         ((setIv2 x.2.2.2 (piOf2 a), v), setupTr2 a.1 ++ evalTr (permutationQueries a.2.2)),
@@ -199,7 +199,7 @@ theorem pi2GameLeV (D : RecDeployment) (hD : RecDeployment.Real D) (hs : UniKecc
     (fun a v => (((a.2.1, v.1), a.1.evaluations, a.2.2, a.1.roots, v.2) : RecOutcome2))
     (fun a v => ((piOf2 a, v), setupTr2 a.1, a.2.2))
     (fun z => acc z = true ∧ ¬ ∃ w ∈ outcomeCandidates D z, P (rts z) (pi2StmtOf D z) (stkOf w))
-    (fun z => P2BreaksRel D P (ivOut2 z.1, z.2.1 ++ evalTr (permutationQueries z.2.2)))
+    (fun z => P2BreaksRel P (ivOut2 z.1, z.2.1 ++ evalTr (permutationQueries z.2.2)))
     fun a s => step2_le D hD P hV a s
 
 end RecCompose

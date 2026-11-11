@@ -15,22 +15,24 @@ import RecCompose.FsOod
 # π2's Fiat–Shamir layer: the chain, the openings, the setup, the composed verifier
 
 The objects `Compose.knowledgeSoundness_listChainU_closed128SG` is applied to for π2's verifier at the real
-deployment's circuit (`cc = Data.circuit`: `2^24` positions, rows of `16`, the reads `C1`'s and `C2`'s roots then
-`19` elements, `520` bytes):
+deployment's circuit (`cc = Data.circuit`, π2v4 over π1-rec4: `2^24` positions, rows of `16`, the reads the three
+frame words, no stream byte):
 
-* **the chain** (`pi2Spec`, `Compose.ChainSpecU`): the statement `FSt2` (π2's IV, the public input, the public
-  data's `520` bytes), the label the seed's input `name ‖ iv ‖ input` (`RecStatement.name`, 16 bytes), the public
-  data the statement's bytes before round `0`'s message (`W`'s root), the messages as the stream carries them
-  (`UniSound.uniEnc`: a root's 32 bytes as they are, `24`-byte scalars), `RecPiop.pi2Rounds 4`;
+* **the chain** (`pi2Spec`, `Compose.ChainSpecU`): the statement `FSt2` (π2's IV, the public input, the frame words'
+  `96` bytes: the Keccak-256s of π1's three declared claims, `frameOf`), the label the seed's input
+  `name ‖ iv ‖ input ‖ frame words` (`RecStatement.name`, 16 bytes; `176` bytes), no public data in the stream (round
+  `0`'s message is `W`'s commitment at byte `0`), the messages as the stream carries them (`UniSound.uniEnc`: a root's
+  32 bytes as they are, `24`-byte scalars), `RecPiop.pi2Rounds 4`;
 * **the proof the chain reads** (`P2Pf`: the input, the recursive proof, the IV, the setup's commitments) and its view
-  (`p2View`: the stream's messages from byte `520`);
-* **the eight openings** (`p2Pcs`, each a `PcsOp`: the EIP's PCS claim `(root, ood, point, value)` on a stack of `n`
-  variables, opened by `UniKeccakSound.pcsOpenC`, a `Compose.GOp` on the plain shape `UniKeccakSound.plainShapeK n`),
-  in the contract's order: π1's `C1`, `C2`, `F` (`27`, `26`, `23` variables at the reference shape, their claims the
-  calls' words; nothing concluded of them), π2's `W` (round `0`, `24`), the setup (`25`, its stack read off the
-  proof's commitments: `p2Stk`), `Q`'s three claims (round `1`, `28`, one root). For the chain's composition the
-  first five and `Q`'s three as **one** opening (`p2Ops`, `qOp`: the three verifiers in turn, its claims all three on
-  one stack), which the out-of-domain answer makes possible (`FsOps.lean`);
+  (`p2View`: the frame words of the declared claims, the stream's messages from byte `0`);
+* **the seven openings**, in the contract's order: π1's three declared claims (`declOp k`: the contract's opening of
+  the declared words at their point's length, any of version 1's sizes, at the root they name; nothing concluded of
+  them), then π2's four as `PcsOp`s (`p2Pcs`: the EIP's PCS claim `(root, ood, point, value)` on a stack of `n`
+  variables, opened by `UniKeccakSound.pcsOpenC` or, at `W`'s and `Q`'s sizes, `pcsOpenCO`, a `Compose.GOp` on the plain
+  shape `UniKeccakSound.plainShapeK n`): `W` (round `0`, `24`), the setup (`25`, its stack read off the proof's
+  commitments: `p2Stk`), `Q`'s two claims (round `1`, `28`, one root). For the chain's composition, three openings
+  (`p2Ops`): π1's three and `W`'s as one (`wOpM`: the four verifiers in turn, its claim `W`'s), the setup's, `Q`'s two as
+  one (`qOp`: its claims both on one stack, which the out-of-domain answer makes possible, `FsBind.lean`);
 * **the setup** (`p2Setup`): π1's one tree (the Keccak setup stack's, `UniKeccakSound.setupK1`), then π2's tree of
   the circuit's setup table at π1's setup commitment; its output the setup's commitments (`RecSetupRoots`: each root
   with its out-of-domain answer, `UniKeccakSound.skOf`, `Pi2Circuit.setupOod`);
@@ -57,67 +59,110 @@ attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
 
 /-! ## The circuit's public data -/
 
-/-- The real deployment's circuit (`RecDeployment.Real`: at every IV). -/
+/-- The real deployment's circuit (`RecDeployment.Real`: at every setup commitment). -/
 abbrev cc : RecStatement.Circuit := Data.circuit
 
-/-- The public data's bytes (`2 · 32 + 19 · 24`). -/
-abbrev pLen : ℕ := 520
+/-- The public data's bytes in the stream: none (π1's three claims are read from the frame). -/
+abbrev pLen : ℕ := 0
 
-/-- The stream's bytes: the public data, `W`'s and `Q`'s commitments (roots and out-of-domain answers), the `2^4 + 2`
-values. -/
-abbrev sLen : ℕ := 1064
+/-- The frame words' bytes: three Keccak-256s. -/
+abbrev fLen : ℕ := 96
+
+/-- The stream's bytes: `W`'s and `Q`'s commitments (roots and out-of-domain answers), the `2^4 + 2` values. -/
+abbrev sLen : ℕ := 544
+
+/-! ## The frame words -/
+
+/-- The frame payloads the real circuit reads: π1's three claims' Keccak-256s. -/
+theorem frameReads_cc : frameReads cc.reads = [0, 1, 2] := rfl
+
+theorem length_claimHash (w : List (List UInt8)) : (claimHash w).length = 32 := by
+  unfold claimHash
+  exact length_digestBytes32 _
+
+/-- **The frame words the verifier reads** (`runWith`'s seed's tail) of the declared claims. -/
+def frameList (ds : List (List (List UInt8))) : List UInt8 := (frameReads cc.reads).flatMap (frameOf ds)
+
+theorem frameList_eq (ds : List (List (List UInt8))) :
+    frameList ds = frameOf ds 0 ++ (frameOf ds 1 ++ frameOf ds 2) := by
+  unfold frameList
+  rw [frameReads_cc]
+  simp
+
+theorem length_frameList (ds : List (List (List UInt8))) : (frameList ds).length = fLen := by
+  rw [frameList_eq]
+  simp [frameOf, length_claimHash]
+
+/-- The frame words' bytes as a vector. -/
+def frameBytes (p : RecProof) : Vector UInt8 fLen := Vector.ofFn fun i => (frameList p.pi1Claims).getD i.val 0
+
+theorem frameBytes_toList (p : RecProof) : (frameBytes p).toList = frameList p.pi1Claims := by
+  apply List.ext_getElem
+  · simp [length_frameList]
+  · intro i h1 h2
+    simp [frameBytes, List.getD_eq_getElem?_getD, List.getElem?_eq_getElem h2]
+
+/-- The frame payload `p`'s word of the frame words' bytes. -/
+def frameAtB (b : Vector UInt8 fLen) (p : ℕ) : List UInt8 := (b.toList.drop (32 * p)).take 32
+
+theorem frameAtB_frameBytes (pf : RecProof) (p : ℕ) (hp : p < 3) :
+    frameAtB (frameBytes pf) p = frameOf pf.pi1Claims p := by
+  unfold frameAtB
+  rw [frameBytes_toList, frameList_eq]
+  have h0 := length_claimHash (pf.pi1Claims.getD 0 [])
+  have h1 := length_claimHash (pf.pi1Claims.getD 1 [])
+  have h2 := length_claimHash (pf.pi1Claims.getD 2 [])
+  unfold frameOf
+  interval_cases p
+  · rw [Nat.mul_zero, List.drop_zero, List.take_left' h0]
+  · rw [Nat.mul_one, List.drop_left' h0, List.take_left' h1]
+  · rw [show 32 * 2 = 32 + 32 from rfl, ← List.drop_drop, List.drop_left' h0, List.drop_left' h1,
+      List.take_of_length_le (by rw [h2])]
 
 /-! ## The chain -/
 
-/-- **π2's chain statement**: π2's IV, the public input, the public data's `520` bytes. -/
-abbrev FSt2 : Type := Vector UInt8 32 × Vector UInt8 32 × Vector UInt8 pLen
+/-- **π2's chain statement**: π2's IV, the public input, the frame words' `96` bytes. -/
+abbrev FSt2 : Type := Vector UInt8 32 × Vector UInt8 32 × Vector UInt8 fLen
 
-/-- **The seed's input** (`runWith`): `name ‖ iv ‖ input`. -/
-def p2Label (s : FSt2) : List UInt8 := RecStatement.name ++ s.1.toList ++ s.2.1.toList
+/-- **The seed's input** (`runWith`): `name ‖ iv ‖ input ‖ frame words`. -/
+def p2Label (s : FSt2) : List UInt8 := RecStatement.name ++ s.1.toList ++ s.2.1.toList ++ s.2.2.toList
 
 theorem name_length : RecStatement.name.length = 16 := by decide +kernel
 
-theorem p2Label_length (s : FSt2) : (p2Label s).length = 80 := by
-  simp [p2Label, name_length]
+theorem p2Label_length (s : FSt2) : (p2Label s).length = 176 := by
+  simp [p2Label, name_length, fLen]
 
 theorem p2Label_take (s : FSt2) : (p2Label s).take RecStatement.name.length = RecStatement.name := by
   unfold p2Label
-  rw [List.append_assoc]
+  rw [List.append_assoc, List.append_assoc]
   exact List.take_left' rfl
 
-theorem p2Label_inj {s s' : FSt2} (h : p2Label s = p2Label s') : s.1 = s'.1 ∧ s.2.1 = s'.2.1 := by
+theorem p2Label_inj {s s' : FSt2} (h : p2Label s = p2Label s') : s = s' := by
   unfold p2Label at h
-  rw [List.append_assoc, List.append_assoc] at h
+  rw [List.append_assoc, List.append_assoc, List.append_assoc, List.append_assoc] at h
   have h1 := List.append_cancel_left h
   obtain ⟨h2, h3⟩ := List.append_inj h1 (by simp)
-  exact ⟨Vector.toList_inj.mp h2, Vector.toList_inj.mp h3⟩
-
-theorem p2Stmt_inj (s s' : FSt2) (hl : p2Label s = p2Label s') (hp : s.2.2.toList = s'.2.2.toList) :
-    s = s' := by
-  obtain ⟨h1, h2⟩ := p2Label_inj hl
+  obtain ⟨h4, h5⟩ := List.append_inj h3 (by simp)
   obtain ⟨a, b, c⟩ := s
   obtain ⟨a', b', c'⟩ := s'
-  simp only at h1 h2 hp
-  rw [h1, h2, Vector.toList_inj.mp hp]
+  simp only at h2 h4 h5
+  rw [Vector.toList_inj.mp h2, Vector.toList_inj.mp h4, Vector.toList_inj.mp h5]
 
-/-- The `ChainSpec` of π2's rounds (its label the seed's input and the public data: only its limbs and rounds are
-read). -/
+theorem p2Stmt_inj (s s' : FSt2) (hl : p2Label s = p2Label s') (_hp : ([] : List UInt8) = []) : s = s' :=
+  p2Label_inj hl
+
+/-- The `ChainSpec` of π2's rounds (its label the seed's input: only its limbs and rounds are read). -/
 def p2K : ChainSpec E FSt2 where
   lim := UniSound.uLimbs
-  label s := p2Label s ++ s.2.2.toList
-  label_injective s s' h := by
-    have hl : (p2Label s).length = (p2Label s').length := by rw [p2Label_length, p2Label_length]
-    obtain ⟨h1, h2⟩ := List.append_inj h hl
-    exact p2Stmt_inj s s' h1 h2
+  label := p2Label
+  label_injective _ _ h := p2Label_inj h
   label_len s := by
-    have : (p2Label s ++ s.2.2.toList).length = 600 := by
-      simp [p2Label_length, pLen]
-    rw [this]
+    rw [p2Label_length]
     decide
   rounds := RecPiop.pi2Rounds 4
 
 /-- **An input refers to a digest**: `Compose.Refers`, or the digest is the root the input absorbs after a state
-(bytes `32 … 64`, `Q`'s) or after a state and the public data (bytes `552 … 584`, `W`'s). -/
+(bytes `32 … 64`: `W`'s and `Q`'s; the third disjunct, after the public data, is the same at `pLen = 0`). -/
 def p2Rf (y : List UInt8) (d : Bytes32) : Prop :=
   Refers y d ∨ UniSound.revRoot d = (y.drop 32).take 32 ∨ UniSound.revRoot d = (y.drop (32 + pLen)).take 32
 
@@ -165,16 +210,16 @@ theorem length_p2Refs (y : List UInt8) : (p2Refs y).length ≤ 5 := by
   have h5 := h1 ((y.drop (32 + pLen)).take 32)
   omega
 
-/-- **π2's transcript as a chain over an encoding** (`KeccakChannel` on `RecPiop.pi2Rounds 4`, the public data
-before `W`'s root). -/
+/-- **π2's transcript as a chain over an encoding** (`KeccakChannel` on `RecPiop.pi2Rounds 4`, no public data in the
+stream: round `0`'s message alone after the seed). -/
 noncomputable def pi2Spec : ChainSpecU E FSt2 where
   K := p2K
   label := p2Label
   tag := RecStatement.name
   tag_le := by rw [name_length]; decide
   label_tag := p2Label_take
-  pre s := s.2.2.toList
-  pre_len s s' := by simp
+  pre _ := []
+  pre_len _ _ := rfl
   stmt_inj := p2Stmt_inj
   enc := UniSound.uniEnc
   enc_inj := UniSound.uniEnc_inj
@@ -188,21 +233,18 @@ noncomputable def pi2Spec : ChainSpecU E FSt2 where
     refine Or.inr (Or.inl ?_)
     simp only [stepIn, UniSound.uniEnc]
     rw [List.drop_left' (by simp), List.take_left' (by simp)]
-  rf_pre s st r l := by
-    refine Or.inr (Or.inr ?_)
-    simp only [stepIn, UniSound.uniEnc]
-    rw [show (st.toList ++ (s.2.2.toList ++ (UniSound.revRoot r ++ UniSound.scalars24 l))).drop (32 + pLen) =
-        UniSound.revRoot r ++ UniSound.scalars24 l by
-      rw [← List.drop_drop, List.drop_left' (by simp), List.drop_left' (by simp)]]
-    rw [List.take_left' (by simp)]
+  rf_pre _ st r l := by
+    refine Or.inr (Or.inl ?_)
+    simp only [stepIn, UniSound.uniEnc, List.nil_append]
+    rw [List.drop_left' (by simp), List.take_left' (by simp)]
 
 @[simp] theorem pi2Spec_rounds : pi2Spec.K.rounds = RecPiop.pi2Rounds 4 := rfl
 
 /-! ## The protocol on the chain's statement -/
 
 /-- **π2's PIOP statement of a chain statement**: the public input, and the public scalars (`pi2Pubs`: the input's
-four words, then the reads' scalars of the public data). -/
-def stOf (s : FSt2) : Pi2St := (s.2.1, pi2Pubs (Spec.of cc) s.2.1.toList s.2.2.toArray)
+four words, then each frame word's four). -/
+def stOf (s : FSt2) : Pi2St := (s.2.1, pi2Pubs (Spec.of cc) s.2.1.toList (frameAtB s.2.2) #[])
 
 /-- **A protocol on `pi2K` on the chain's statement** (`stOf`; the same rounds). -/
 def liftPiop2 (R : Compose.Piop pi2K Stk) : Compose.Piop pi2Spec.K Stk where
@@ -237,15 +279,13 @@ def setIv2 (iv : Vector UInt8 32) (π : P2Pf) : P2Pf := { π with iv := iv }
 /-- The setup's commitments a proof carries. -/
 def p2Roots (π : P2Pf) : RecSetupRoots := π.roots
 
-/-- The public data's `520` bytes (missing bytes `0`). -/
-def pubBytes (b : Array UInt8) : Vector UInt8 pLen := Vector.ofFn fun i => b.getD i.val 0
-
-/-- **The rounds' messages the stream carries**, from byte `520`. -/
+/-- **The rounds' messages the stream carries**, from byte `0`. -/
 def p2Msgs (π : P2Pf) : List UniSound.UMsg := UniSound.msgsAt π.proof.stream pLen (RecPiop.pi2Rounds 4)
 
-/-- **What the chain reads of a proof**: the statement (the IV, the input, the public data) and the messages. -/
+/-- **What the chain reads of a proof**: the statement (the IV, the input, the frame words of the declared claims)
+and the messages. -/
 def p2View (π : P2Pf) : FSt2 × List (RMsg E) :=
-  ((π.iv, π.input, pubBytes π.proof.stream), (p2Msgs π).map UniSound.toRMsg)
+  ((π.iv, π.input, frameBytes π.proof), (p2Msgs π).map UniSound.toRMsg)
 
 /-- **The transcript's inputs to the arithmetic**: the public scalars, `α, β, γ`, `t`, the `16` fold values, `ξ`,
 `s`, `ρ`. -/
@@ -277,22 +317,13 @@ noncomputable def p2Tc (i : ℕ) : TableCode Stk :=
   if i = 0 then tableCode (UniSound.plainL 24) logInvRate (shK 24 (by norm_num) (by norm_num)).adm UniSound.rdTab
   else tableCode (UniSound.plainL 28) logInvRate (shK 28 (by norm_num) (by norm_num)).adm UniSound.rdTab
 
-/-- The Keccak π1's `k`-th claim's variables at the reference shape: `27`, `26`, `23` (`C1`, `C2`, the setup). -/
-def pi1Vars (k : ℕ) : ℕ := if k = 0 then 27 else if k = 1 then 26 else 23
-
 /-! ## The claims, the openings -/
 
-/-- π1's claims' words, from the stream and the run's result (`pcsCalls`' first three). -/
-def pi1Words (D : RecDeployment) (π : P2Pf) (ch : List (List E)) : List (List (List UInt8)) :=
-  (pi1CallsWith D.pi1Calls π.roots.pi1).map (·.map (callWord cc.reads π.proof.stream (p2Reduced π ch)))
+/-- **π1's `k`-th declared claim's words** (the frame's payload `k`). -/
+def declWords (π : P2Pf) (k : ℕ) : List (List UInt8) := π.proof.pi1Claims.getD k []
 
-/-- π1's `k`-th claim's root: its root word's (`rootOfWord`; the word is the stream's or the setup's, not the run's). -/
-def pi1Root (D : RecDeployment) (π : P2Pf) (k : ℕ) : Bytes32 :=
-  toB (rootOfWord (((pi1Words D π []).getD k []).headD []))
-
-/-- **π1's `k`-th claim** decoded from its words (`claimOfWords`): its out-of-domain answer, point and value. -/
-def pi1Cl (D : RecDeployment) (k : ℕ) (π : P2Pf) (ch : List (List E)) : Option (E × List E × E) :=
-  (claimOfWords ((pi1Words D π ch).getD k [])).map fun c => c.2
+/-- π1's `k`-th declared claim's root: its root word's (`rootOfWord`). -/
+def pi1Root (π : P2Pf) (k : ℕ) : Bytes32 := toB (rootOfWord ((declWords π k).headD []))
 
 /-- π1's `k`-th opening proof: `C1`'s, `C2`'s, the setup's. -/
 def pi1Prf (k : ℕ) (π : P2Pf) : Compile.Proof :=
@@ -314,9 +345,6 @@ def qIdCl (π : P2Pf) (ch : List (List E)) : Option (E × List E × E) :=
 def qPushCl (π : P2Pf) (ch : List (List E)) : Option (E × List E × E) :=
   some ((p2Reduced π ch).oods.2, (p2Out π ch).pushesPoint, (p2Out π ch).pushesValue)
 
-/-- `Q`'s claim at `h`'s top coefficient. -/
-def qSumCl (π : P2Pf) (ch : List (List E)) : Option (E × List E × E) :=
-  some ((p2Reduced π ch).oods.2, (p2Out π ch).sumPoint, (p2Out π ch).sumValue)
 
 /-- **A PCS claim's opening** of the contract: a stack of `n` variables (`2^23 ..= 2^28` words), the claim (its
 out-of-domain answer, point, value) read off the proof and the challenges (`none`: the contract rejects), its opening
@@ -379,49 +407,92 @@ def col0 (μ : ℕ) : Column μ := UniSound.colOf #[] μ
 /-- A round's candidate read back as a stack (`rdTab` of the plain layout's table). -/
 def rdP (n : ℕ) (q : Column n) : Stk := UniSound.rdTab (tabOf (UniSound.plainL n) q)
 
+/-- `W`'s claim's opening. -/
+def wPcs : PcsOp := ⟨24, by norm_num, by norm_num, wCl, fun π => π.proof.w, .round 0 (rdP 24)⟩
+
+/-- The setup's claim's opening (its root the proof's). -/
+def sPcs : PcsOp :=
+  ⟨25, by norm_num, by norm_num, sCl, fun π => π.proof.setup, .setup (fun π => toB π.roots.pi2) (col0 _)⟩
+
 /-- `Q`'s identity claim's opening. -/
 def qIdOp : PcsOp := ⟨28, by norm_num, by norm_num, qIdCl, fun π => π.proof.qId, .round 1 (rdP 28)⟩
 
 /-- `Q`'s pushes' claim's opening. -/
 def qPushOp : PcsOp := ⟨28, by norm_num, by norm_num, qPushCl, fun π => π.proof.qPush, .round 1 (rdP 28)⟩
 
-/-- `Q`'s sum claim's opening. -/
-def qSumOp : PcsOp := ⟨28, by norm_num, by norm_num, qSumCl, fun π => π.proof.qSum, .round 1 (rdP 28)⟩
+/-- **π2's four PCS claims' openings**, in the contract's order: `W` (round `0`), the setup, `Q`'s two (round `1`). -/
+def p2Pcs : List PcsOp := [wPcs, sPcs, qIdOp, qPushOp]
 
-/-- **The first five openings**, in the contract's order: π1's `C1`, `C2`, `F` (their roots the claims' root words),
-π2's `W` (round `0`) and the setup (its root the proof's). -/
-def p2Pcs5 (D : RecDeployment) : List PcsOp :=
-  [⟨27, by norm_num, by norm_num, pi1Cl D 0, pi1Prf 0, .setup (fun π => pi1Root D π 0) (col0 _)⟩,
-    ⟨26, by norm_num, by norm_num, pi1Cl D 1, pi1Prf 1, .setup (fun π => pi1Root D π 1) (col0 _)⟩,
-    ⟨23, by norm_num, by norm_num, pi1Cl D 2, pi1Prf 2, .setup (fun π => pi1Root D π 2) (col0 _)⟩,
-    ⟨24, by norm_num, by norm_num, wCl, fun π => π.proof.w, .round 0 (rdP 24)⟩,
-    ⟨25, by norm_num, by norm_num, sCl, fun π => π.proof.setup, .setup (fun π => toB π.roots.pi2) (col0 _)⟩]
+/-- **π1's `k`-th declared claim's opening** (the contract's `pcsOpenWords` on the declared words): decoded
+(`claimOfWords`), then opened at its point's length, the out-of-domain point read off Keccak-256 at `W`'s and `Q`'s
+sizes (`oodRead`, `pcsOpenCO`) and `oodPoint` at the others (`UniKeccakSound.pcsOpenC`); a word list that does not
+decode is rejected. -/
+def declVer (k : ℕ) (π : P2Pf) : OracleComp KeccakCalls Bool :=
+  match claimOfWords (declWords π k) with
+  | none => pure false
+  | some (_, ood, pt, v) =>
+    if RecStatement.oodRead pt.length then pcsOpenCO pt.length (ofB (pi1Root π k)) ood pt v (pi1Prf k π)
+    else UniKeccakSound.pcsOpenC pt.length (ofB (pi1Root π k)) ood pt v (pi1Prf k π)
 
-/-- **The eight openings**, in the contract's order: the first five, then `Q`'s three. -/
-def p2Pcs (D : RecDeployment) : List PcsOp := p2Pcs5 D ++ [qIdOp, qPushOp, qSumOp]
+theorem declVer_queries (k : ℕ) (π : P2Pf) : IsTotalQueryBound (declVer k π) 10150 := by
+  unfold declVer
+  split
+  · trivial
+  · split
+    · exact isTotalQueryBound_pcsOpenCO _ _ _ _ _ _
+    · exact (UniKeccakSound.isTotalQueryBound_pcsOpenC _ _ _ _ _ _).mono (by norm_num)
 
-/-- The eight openings as `GOp`s. -/
-noncomputable def p2Ops8 (D : RecDeployment) : List (GOp P2Pf E Stk) := (p2Pcs D).map PcsOp.gop
+theorem declVer_duplex (k : ℕ) (π : P2Pf) : LeanVM.Rpm.DuplexVm (declVer k π) [] := by
+  unfold declVer
+  split
+  · trivial
+  · split
+    · exact duplexVm_pcsOpenCO _ _ _ _ _ _
+    · exact UniKeccakSound.duplexVm_pcsOpenC _ _ _ _ _ _
 
-/-- **`Q`'s three claims as one opening**: the three verifiers in turn (their verdicts and-ed); its claims all three
-on one stack. -/
+/-- **π1's `k`-th declared claim's opening as a `GOp`**: a setup opening at the root the claim names, of no stack
+(nothing is concluded of it: its claim `True`; `wOpM` carries it). -/
+noncomputable def declOp (k : ℕ) : GOp P2Pf E Stk :=
+  ⟨23, logInvRate, (shK 23 (by norm_num) (by norm_num)).adm, fun _ _ _ => True, fun _ π _ => declVer k π, 10150,
+    fun _ π _ => declVer_queries k π, fun _ π _ => declVer_duplex k π, .setup (fun π => pi1Root π k) (col0 _)⟩
+
+/-- **The seven openings** as `GOp`s, in the contract's order: π1's three declared claims, then π2's four. -/
+noncomputable def p2Ops7 : List (GOp P2Pf E Stk) := [declOp 0, declOp 1, declOp 2] ++ p2Pcs.map PcsOp.gop
+
+/-- **π1's three declared claims and `W`'s as one opening**: the four verifiers in turn (their verdicts and-ed), its
+claim `W`'s (π1's claims conclude nothing), at `W`'s root. -/
+noncomputable def wOpM : GOp P2Pf E Stk :=
+  ⟨24, logInvRate, (shK 24 (by norm_num) (by norm_num)).adm, wPcs.holds,
+    fun r π ch => declVer 0 π >>= fun a => declVer 1 π >>= fun b => declVer 2 π >>= fun c =>
+      wPcs.ver r π ch >>= fun d => pure (a && (b && (c && d))),
+    4 * 10150,
+    fun r π ch => (isTotalQueryBound_bind (declVer_queries 0 π) fun a =>
+      isTotalQueryBound_bind (declVer_queries 1 π) fun b =>
+        isTotalQueryBound_bind (declVer_queries 2 π) fun c =>
+          isTotalQueryBound_bind (ob := fun d => (pure (a && (b && (c && d))) : OracleComp KeccakCalls Bool))
+            (n₂ := 0) (wPcs.queries r π ch) fun _ => trivial).mono (by norm_num),
+    fun r π ch => LeanVM.Rpm.DuplexVm.bind (declVer_duplex 0 π) fun _ =>
+      LeanVM.Rpm.DuplexVm.bind (declVer_duplex 1 π) fun _ =>
+        LeanVM.Rpm.DuplexVm.bind (declVer_duplex 2 π) fun _ =>
+          LeanVM.Rpm.DuplexVm.bind (wPcs.duplex r π ch) fun _ => trivial,
+    .round 0 (rdP 24)⟩
+
+/-- **`Q`'s two claims as one opening**: the two verifiers in turn (their verdicts and-ed); its claims both on one
+stack. -/
 noncomputable def qOp : GOp P2Pf E Stk :=
   ⟨28, logInvRate, (shK 28 (by norm_num) (by norm_num)).adm,
-    fun π ch q => qIdOp.holds π ch q ∧ qPushOp.holds π ch q ∧ qSumOp.holds π ch q,
-    fun r π ch => qIdOp.ver r π ch >>= fun a => qPushOp.ver r π ch >>= fun b =>
-      qSumOp.ver r π ch >>= fun c => pure (a && (b && c)),
-    3 * 10150,
+    fun π ch q => qIdOp.holds π ch q ∧ qPushOp.holds π ch q,
+    fun r π ch => qIdOp.ver r π ch >>= fun a => qPushOp.ver r π ch >>= fun b => pure (a && b),
+    2 * 10150,
     fun r π ch => (isTotalQueryBound_bind (qIdOp.queries r π ch) fun a =>
-      isTotalQueryBound_bind (qPushOp.queries r π ch) fun b =>
-        isTotalQueryBound_bind (ob := fun c => (pure (a && (b && c)) : OracleComp KeccakCalls Bool)) (n₂ := 0)
-          (qSumOp.queries r π ch) fun _ => trivial).mono (by norm_num),
+      isTotalQueryBound_bind (ob := fun b => (pure (a && b) : OracleComp KeccakCalls Bool)) (n₂ := 0)
+        (qPushOp.queries r π ch) fun _ => trivial).mono (by norm_num),
     fun r π ch => LeanVM.Rpm.DuplexVm.bind (qIdOp.duplex r π ch) fun _ =>
-      LeanVM.Rpm.DuplexVm.bind (qPushOp.duplex r π ch) fun _ =>
-        LeanVM.Rpm.DuplexVm.bind (qSumOp.duplex r π ch) fun _ => trivial,
+      LeanVM.Rpm.DuplexVm.bind (qPushOp.duplex r π ch) fun _ => trivial,
     .round 1 (rdP 28)⟩
 
-/-- **The openings of the chain's composition**: the first five, then `Q`'s as one. -/
-noncomputable def p2Ops (D : RecDeployment) : List (GOp P2Pf E Stk) := (p2Pcs5 D).map PcsOp.gop ++ [qOp]
+/-- **The openings of the chain's composition**: π1's three and `W`'s as one, the setup's, `Q`'s two as one. -/
+noncomputable def p2Ops : List (GOp P2Pf E Stk) := [wOpM, sPcs.gop, qOp]
 
 /-- The setup's table at π1's setup commitment (`Pi2Circuit.setupStack` of the circuit for π1's contract IV). -/
 def setupStackAt (D : RecDeployment) (roots : RecSetupRoots) : Array K := (D.circuitAt roots.pi1).setupStack
@@ -487,7 +558,7 @@ def ivLog (D : RecDeployment) (π : P2Pf) (x : Bytes32 × Bytes32 × Bytes32 × 
 noncomputable def p2Ver (D : RecDeployment) (π : P2Pf) :
     OracleComp KeccakCalls ((Bytes32 × Bytes32 × Bytes32 × Bytes32) × (List (List E) × List Bool)) :=
   p2IvKC4 D π >>= fun x => (fun v => (x, v)) <$>
-    verU pi2Spec p2View (gopsRun p2View (p2Ops D)) (setIv2 x.2.2.2 π)
+    verU pi2Spec p2View (gopsRun p2View p2Ops) (setIv2 x.2.2.2 π)
 
 /-- The outcome with the IV written in the proof. -/
 def ivOut2 (z : P2Pf × ((Bytes32 × Bytes32 × Bytes32 × Bytes32) × (List (List E) × List Bool))) :
@@ -505,19 +576,18 @@ def p2Adv (A : RecAdversary) (s : SOut) : OracleComp Common.RandomPermutationOra
 
 /-! ## The check, the links -/
 
-/-- **The verifier's check** (what an accepting run satisfies): the stream of `1064` bytes, the challenges of the
+/-- **The verifier's check** (what an accepting run satisfies): the stream of `544` bytes, the challenges of the
 rounds' lengths, and the value the contract requires nonzero. -/
 def p2Check (π : P2Pf) (ch : List (List E)) : Prop :=
   π.proof.stream.size = sLen ∧ ch.length = 3 ∧ (ch.getD 0 []).length = 3 ∧ (ch.getD 1 []).length = 1 ∧
     (ch.getD 2 []).length = 1 ∧ (p2Out π ch).all ≠ 0
 
-/-- **A candidate is good**: at `W`'s round, a stack satisfying `W`'s claim; at `Q`'s, one satisfying `Q`'s three. -/
+/-- **A candidate is good**: at `W`'s round, a stack satisfying `W`'s claim; at `Q`'s, one satisfying `Q`'s two. -/
 def p2Good (i : ℕ) (π : P2Pf) (ch : List (List E)) (c : Option Stk) : Prop :=
   if i = 0 then ∃ q, c = some q ∧ ClaimOn 24 q ((p2Out π ch).witnessPoint, (p2Out π ch).fold)
   else if i = 1 then ∃ q, c = some q ∧
       ClaimOn 28 q ((p2Out π ch).quotientPoint, (p2Out π ch).quotientValue) ∧
-      ClaimOn 28 q ((p2Out π ch).pushesPoint, (p2Out π ch).pushesValue) ∧
-      ClaimOn 28 q ((p2Out π ch).sumPoint, (p2Out π ch).sumValue)
+      ClaimOn 28 q ((p2Out π ch).pushesPoint, (p2Out π ch).pushesValue)
   else True
 
 /-- **The setup's table is good**: it satisfies the setup's claim. -/
@@ -528,8 +598,8 @@ def p2GoodS (D : RecDeployment) (π : P2Pf) (ch : List (List E)) : Prop :=
 
 /-- **π2's break on the composed game's outcome**: the check, the openings accept, and no candidate of `W`'s root read
 off the transcript has `P`. -/
-def P2BreaksRel (D : RecDeployment) (P : RecSetupRoots → Pi2St → Stk → Prop) (z : OutK P2Pf E (List Bool)) : Prop :=
-  p2Check z.1.1 z.1.2.1 ∧ (∀ k < (p2Ops D).length, z.1.2.2.getD k false = true) ∧
+def P2BreaksRel (P : RecSetupRoots → Pi2St → Stk → Prop) (z : OutK P2Pf E (List Bool)) : Prop :=
+  p2Check z.1.1 z.1.2.1 ∧ (∀ k < p2Ops.length, z.1.2.2.getD k false = true) ∧
     ∀ c ∈ extractorK (fun i => (p2Tc i).commit) p2View z, ∀ q, c = some q →
       ¬ P (p2Roots z.1.1) (stOf (p2View z.1.1).1) q
 
@@ -545,14 +615,14 @@ def Pi2SetupBridge (D : RecDeployment) (hs : UniKeccakSound.UniShapesK D.pi1) : 
   simulateQ keccakCallsOverQueryPermutation (loggedKC (p2Setup D hs)) =
     (fun t : RecSetupTrees => (rootsB2 t, setupTr2 t)) <$> D.setupTreesWith Common.queryPermutation
 
-/-- **WALK**: on a stream of `1064` bytes, in every lawful monad and over every permutation, π2's run's verdict and
-result are the chain's challenges read by the value the contract requires nonzero and the result `p2Reduced`, the
-chain over Keccak-256 the sponge over the permutation. -/
+/-- **WALK**: on a stream of `544` bytes, in every lawful monad and over every permutation, π2's run (on the frame
+words of the declared claims) has the verdict and result of the chain's challenges read by the value the contract
+requires nonzero and the result `p2Reduced`, the chain over Keccak-256 the sponge over the permutation. -/
 def Pi2Walk : Prop :=
   ∀ {m : Type → Type} [Monad m] [LawfulMonad m] (F : LeanVM.Semantics.KeccakState → m LeanVM.Semantics.KeccakState)
     (π : P2Pf), π.proof.stream.size = sLen →
       (fun o : RecStatement.Outcome => (o.accepts, o.result)) <$>
-          runWith F (Spec.of cc) π.iv.toList π.input.toList π.proof.stream =
+          runWith F (Spec.of cc) π.iv.toList π.input.toList (frameOf π.proof.pi1Claims) π.proof.stream =
         (fun ch => ((p2Reduced π ch).out.all != 0,
             (Except.ok (p2Reduced π ch) : Except UniStatement.UniError RecStatement.Reduced))) <$>
           pi2Spec.chain (fun x => toB <$> keccak256With F x) (p2View π).1 (p2View π).2
@@ -560,7 +630,8 @@ def Pi2Walk : Prop :=
 /-- **WALK REJECTS**: on a stream of another length, every outcome of π2's run over `π` rejects. -/
 def Pi2WalkReject : Prop :=
   ∀ π : P2Pf, π.proof.stream.size ≠ sLen →
-    ∀ o ∈ support (runWith Common.queryPermutation (Spec.of cc) π.iv.toList π.input.toList π.proof.stream),
+    ∀ o ∈ support (runWith Common.queryPermutation (Spec.of cc) π.iv.toList π.input.toList
+      (frameOf π.proof.pi1Claims) π.proof.stream),
       o.accepts = false
 
 /-- **EXTRACTOR READING**: on a stream holding `W`'s root, a candidate of `W`'s root that the composed extractor reads
