@@ -2,3 +2,4 @@
 import Kc3Circuit.Membership
 import Kc3Circuit.BridgeBuild
 import Kc3Circuit.Wiring
+import Kc3Circuit.Closed
