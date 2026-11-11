@@ -212,7 +212,7 @@ theorem syncs_drawW (fs : FsShape) (n : ℕ) (w : Wr) :
       ((drawW (m := Id) (Pure.pure ∘ H) fs n).run w).1 [] := by
   cases fs with
   | main => exact syncs_samples H n w
-  | rec1 | rec2 | rec3 =>
+  | rec1 | rec2 | rec3 | rec4 =>
     unfold drawRunH drawW
     by_cases hn : n = 0
     · simp only [if_pos hn]

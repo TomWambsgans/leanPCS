@@ -7,17 +7,18 @@ import RecGraphKeccak.Sim.Final
 import RecGraphKeccak.Hazard
 import RecGraphKeccak.Main4
 import RecGraphKeccak.Sim.Final4
+import RecGraphKeccak.Sim.AtSetup4
 
 /-!
-# RecGraphKeccak: the Keccak VM's π1-rec3 recorded graph, and graph = verifier
+# RecGraphKeccak: the Keccak VM's π1-rec4 recorded graph, and graph = verifier
 
-The Keccak VM's π1-rec3 recorded verifier graph (`Emitted.lean`, written by `crates/leanvm/rec/tests/
-lean_graph_keccak.rs`, data only), the verifier as a `RecGraph.Prog` program (`Pi1/`; its Lean recording `pi1GraphK`
-equals the emitted graph node for node: `RecGraphKeccakTest/Pi1Check.lean`), and graph = verifier against `UniKeccak`'s
-`runWithK` at `keccakRec3` (`Main.lean`: `Pi1GraphIsVerifierK`), from the simulation's parts (`Sim/`): Flock with the
-structured terminal is proved (`flockSpecK`), the composition is proved (`pi1GraphIsVerifierK_of_parts`), the tables' parts, `Q_W`'s identity and
-degree and the heap's relations are proved; the tail and the relations' shape off the hazard
-are proved (`keccakTailShape`): **`Sim.pi1GraphIsVerifierK : Pi1GraphIsVerifierK`**, with no hypothesis. See `README.md`.
+The Keccak VM's π1-rec4 recorded verifier graph (`Emitted.lean`, written by `crates/leanvm/rec/tests/
+lean_graph_keccak.rs`, data only), the verifier as a `RecGraph.Prog` program (`Pi1/Verifier4.lean`; its Lean recording
+`pi1GraphK4` equals the emitted graph node for node: `RecGraphKeccakTest/Pi1Check.lean`), and graph = verifier against
+`UniKeccak`'s `runWithK4` at `keccakRec4` (`Main4.lean`: `Pi1GraphIsVerifierK4`), proved from the simulation's parts
+(`Sim/`): **`Sim.pi1GraphIsVerifierK4 : Pi1GraphIsVerifierK4`**, with no hypothesis. π1-rec3's program and its theorem
+`Sim.pi1GraphIsVerifierK` are kept. `Circuit.lean` (`pi1rec3K_end`) is not imported: `formal/RecCircuit` does not yet
+compile π1-rec4's `wide` nodes. See `README.md`.
 
 The build fails if a definition or theorem below uses an axiom beyond Lean's three standard ones.
 -/
@@ -145,3 +146,15 @@ The build fails if a definition or theorem below uses an axiom beyond Lean's thr
 /-- info: 'RecGraphKeccak.Sim.pi1GraphIsVerifierK4' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms RecGraphKeccak.Sim.pi1GraphIsVerifierK4
+
+/-- info: 'RecGraphKeccak.graphAtSetup_recorded' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecGraphKeccak.graphAtSetup_recorded
+
+/-- info: 'RecGraphKeccak.Sim.pi1GraphIsVerifierK4At' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecGraphKeccak.Sim.pi1GraphIsVerifierK4At
+
+/-- info: 'RecGraphKeccak.Sim.emitted_isVerifierK4At' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecGraphKeccak.Sim.emitted_isVerifierK4At

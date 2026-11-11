@@ -47,16 +47,25 @@ in π2's circuit, the copy sum forced by `Q`'s layout). This is what the port ne
 
 The bounds' arithmetic carries over but for one port.
 
-- **π1-rec4** (`UniKeccak`, `UniKeccakSound`, `UniKeccakComplete`; only `keccakMain` and `keccakRec3` are transcribed,
-  `UniStatement`'s `FsShape` stops at `rec3`): the transcript's wide draws (the rate's output, challenge `k` at lanes
-  `1 + 3k …`; `β`, `γ` and the zerocheck's `c` with `α`), the ring map drawn in two parts (`f_0 … f_3` with `t`,
-  `f_4, f_5` with `ρ`: [`leanvm/univariate/SPEC.md`](leanvm/univariate/SPEC.md) §14.4), `λ` with `ρ`. A query's error
-  is the sum of its challenges'; the cap `2^35/|E|` holds, so `uniKnowledgeSoundnessKeccakRec3_closed`'s arithmetic
-  carries over (128.49 bits). Completeness keeps its hypotheses `32 ≤ D.programIv.length ≤ 2^16`. The transcription
-  tests (`UniKeccakTest/Runner.lean`) on `keccak128_rec4.txt`, `keccak_rec4.txt`. `UniStatement.weightAt` fixes a slot
-  term's bits at 8; `UniKeccak.weightAtK` is the Rust's.
-- **The graph** (`RecGraphKeccak`; `Emitted.lean` is `f96a7938`'s π1-rec3 graph, the hazard `MergeHazardK` π1-rec3's):
-  the `Wide` node; `pi1GraphIsVerifierK` and `GraphsAgree` for π1-rec4.
+- **π1-rec4's soundness and completeness** (`UniKeccakSound`, `UniKeccakComplete`). Done on `lean/pi1-rec4`: the
+  transcript (`UniStatement`'s `FsShape.rec4`, `sampleWide`, `challengeAt`; `UniKeccak.reduceWithK4`, `runWithK4`,
+  `verifyWithK4`, tested by `UniKeccakTest/Runner.lean` on `keccak128_rec4.txt` and `keccak_rec4.txt`), the statements
+  `UniKnowledgeSoundnessKeccakRec4`, `UniCompletenessKeccakRec4`, and the ring map's two-block Schwartz–Zippel bound
+  (`UniKeccakSound.Rec4.ring_split`: `≤ 4/|E|` at `t`, then `≤ 2/|E|` at `ρ`). Left: the proofs.
+  - Soundness: the Fiat–Shamir layer for wide draws (`Compose.ListChainK` with one call's rate giving a round's
+    challenges, and `C2`'s call absorbing the slices before the root; the random-permutation transfer to a table that
+    answers the sponge's rate, which leanerVM's `keccak256_transfer2` does not state), Flock without its ring map
+    (`KFlockSound`'s rounds re-cut: `c'` into round `0`, `f_0 … f_3` into `C2`'s, `f_4, f_5` into the values'), the
+    PIOP's states re-indexed, the code link for `reduceWithK4`. A query's error is the sum of its challenges'; the cap
+    `2^35/|E|` holds, so `uniKnowledgeSoundnessKeccakRec3_closed`'s arithmetic carries over (128.49 bits)
+    ([`../formal/UniKeccakSound/README.md`](../formal/UniKeccakSound/README.md), "π1-rec4").
+  - Completeness: the honest prover with wide draws and π1-rec4's staged chain (three wide calls for π1-rec3's
+    thirteen), hypotheses `32 ≤ D.programIv.length ≤ 2^16` as before.
+- **The graph's compiler part** (`RecGraphKeccak`'s graph = verifier for π1-rec4 is done: `Sim.pi1GraphIsVerifierK4`,
+  `GraphsAgreeK4` evaluated, `Emitted.lean` regenerated): `formal/RecCircuit` does not yet know `RecGraph.Node.wide`
+  (`Expand.lean`'s `ofRGNode`, the compiler's matches) nor `RecGraph.Value.sponge` (a hash's value is now Keccak-256's
+  last state), so `RecGraphKeccak/Circuit.lean` (`pi1rec3K_end`) is out of `RecGraphKeccak`'s root; its π1-rec4
+  analog comes with the compiler's `Wide` packings below.
 - **The compiler** (`RecCircuit`, `rec-circuit-keccak`): `Wide` packings; D16v's trimmed last round (a template per
   plane count, the unmade outputs, the free ends of `A_22`); the hashed claims' sections (message bits, copy units, the
   free bits of an element with their packing and zero check, the digest's `ClaimHash` port); the claims hashed by π1's
@@ -101,7 +110,9 @@ output to the Lean: it would overwrite `f96a7938`'s data. The tests that compare
 | `crates/membership/quotient/tests/whir_bridge_vector.rs` | `formal/WhirBridge/Test/Check.lean` | see below |
 | `crates/membership/quotient/tests/whir_large_params.rs` (`large_public_openings`) | `formal/WhirBridge/Test/CheckLarge.lean` | see below |
 | `crates/leanvm/rec/tests/lean_statement_keccak.rs` (`keccak_statement_data_is_current`, ignored) | `formal/RecStatement/RecStatement/Data.lean` | `f96a7938`'s circuit |
-| `crates/leanvm/rec/tests/lean_{graph_keccak,circuit_keccak,pi2_prover}.rs` | `RecGraphKeccak`, `RecCircuit`, `RecCompose`'s `RecComposeTest` | π1-rec3's and `f96a7938`'s |
+| `crates/leanvm/rec/tests/lean_graph_keccak.rs` | `RecGraphKeccak/Emitted.lean` | **π1-rec4's** (regenerated on `lean/pi1-rec4`; `GraphsAgreeK4` holds) |
+| `crates/leanvm/univariate/tests/lean_keccak_vectors.rs` | `UniKeccakTest/Runner.lean`'s input | writes π1-rec4's vectors too (`keccak_rec4`, the real `keccak{128,}_rec4.txt`) |
+| `crates/leanvm/rec/tests/lean_{circuit_keccak,pi2_prover}.rs` | `RecCircuit`, `RecCompose`'s `RecComposeTest` | π1-rec3's and `f96a7938`'s |
 
 **WhirBridge's vector checks disagree with their writers.** `whir_bridge_vector.rs` (`--ignored`) writes four vectors
 of the EIP's PCS claims (`public`, a `2^15`-word table; `witness`, `wiring`, `copy`, the three openings of a

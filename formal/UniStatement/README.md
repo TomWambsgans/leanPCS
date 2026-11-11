@@ -55,8 +55,12 @@ lake env lean ../UniStatement/UniStatementTest/KeccakTables.lean    # the Keccak
 13. [`Mapping.lean`](UniStatement/Mapping.lean): basis `B` ↔ values, the rows' order (`rowPosition`), the setup's tables.
 14. [`Security.lean`](UniStatement/Security.lean): the deployment, the
     setup and its IV, `c1RootOf`, the adversary's types (the end statements are `UniKeccak`'s).
-15. [`Rec.lean`](UniStatement/Rec.lean) (π1-rec3's Fiat–Shamir shape; not imported by `UniStatement.lean`):
-    **`FsShape`** (`main`, `rec1`, `rec2`, `rec3`: the Rust's `Main`, `Rec`, `Rec2`, `Rec3`), the draws it changes
+15. [`Rec.lean`](UniStatement/Rec.lean) (π1-rec3's and π1-rec4's Fiat–Shamir shapes; not imported by
+    `UniStatement.lean`): **`FsShape`** (`main`, `rec1`, `rec2`, `rec3`, `rec4`: the Rust's `Main`, `Rec`, `Rec2`,
+    `Rec3`, `Rec4`; `FsShape.wide`), **the wide draw** (`sampleWide`, `transcript::sample_wide`: one Keccak-256 of the
+    state and the bytes since the last challenge, the digest the new state, challenge `k` the rate's `challengeAt k`
+    after the last permutation, `keccak256StateWith`, `rateBytesOf`; `challengeAt_zero`: challenge `0` is `sample`'s;
+    `keccak256With_eq`), `Flock.zerocheckFirst` (the zerocheck's coordinates from a given first one), the draws it changes
     (`drawRun`, `Flock.zerocheckFs`; `batchFs` with the narrow challenges `sampleNarrow` and the paired rounds
     `sumcheckPairsDrawn`, `pairPoint`, `cantorBeta1`), `main` the default, at which each is the original
     (`zerocheckFs_main`, `batchFs_main`). `UniKeccak` uses them at `.rec3` for the Keccak VM's π1-rec3 (`keccakRec3`).
