@@ -1,26 +1,31 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
-import UniKeccakComplete.K.Reference
-import RecCompose.Bridge
+import RecStatement
 
 /-!
-# π1's claims' shape at the real deployment
+# π1's claims at the real deployment: none encoded
 
-On the EIP draft's PCS claims there are no layout words (this file held their check against `Data.pi1Calls`): a claim
-is its root, its out-of-domain answer, its point and its value, and the contract opens it at its point's length. What
-the composition needs of π1's claims as the circuit names them is their shape, **`Pi1CallsShape`**
-(`OpeningsAgree.lean`): three claims of `stackVarsK + 3` words at the reference shape (`30`, `29`, `26`: `C1`'s `27`,
-`C2`'s `26`, the setup's `23` variables, `UniKeccakComplete.reference_stackVars_*`), the setup's starting with its root
-and answer as constants. **`pi1CallsShape_of_real`**: it holds at the real deployment (`Data.pi1Calls`, by the kernel).
+On the EIP draft's PCS claims there are no layout words, and at π2v4 over π1-rec4 the contract encodes no π1 claim:
+π1's three claims are declared in the transaction's frame of PCS claims and hashed in π2's circuit (`Data.hashed =
+[0, 1, 2]`, `Data.pi1Calls = []`). What this file held at π2v3 (the shape of the claims the contract encoded,
+`Pi1CallsShape`) has no object; **`pi1Calls_real`**: the real deployment encodes none, and reads the three frame
+payloads (`frameReads_real`).
 -/
 
 namespace RecCompose
 
-/-- **π1's claims' shape at the real deployment** (`Data.pi1Calls`). -/
-theorem pi1CallsShape_of_real {D : RecStatement.RecDeployment} (hD : D.Real) : Pi1CallsShape D :=
-  pi1CallsShape_data D hD.2.1
+open RecStatement
+
+/-- **The real deployment encodes no π1 claim.** -/
+theorem pi1Calls_real {D : RecDeployment} (hD : D.Real) : D.pi1Calls = [] := hD.2.1
+
+/-- **The real circuit reads the frame's payloads `0, 1, 2`** (π1's three claims' Keccak-256s). -/
+theorem frameReads_real {D : RecDeployment} (hD : D.Real) (roots : UniKeccak.SetupRootsK) :
+    frameReads (D.circuitAt roots).circuit.reads = [0, 1, 2] := by
+  rw [RecDeployment.circuitAt, hD.1]
+  rfl
 
 end RecCompose
 
-/-- info: 'RecCompose.pi1CallsShape_of_real' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'RecCompose.pi1Calls_real' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms RecCompose.pi1CallsShape_of_real
+#print axioms RecCompose.pi1Calls_real

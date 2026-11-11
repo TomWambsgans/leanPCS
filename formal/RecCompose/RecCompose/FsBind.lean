@@ -1,4 +1,4 @@
--- Part of this repository. MIT OR Apache-2.0; see AGENTS.md; conventions: see AGENTS.md. `Q`'s three claims on one
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md; conventions: see AGENTS.md. `Q`'s two claims on one
 -- root: `formal/WhirBridge/WhirBridge/PcsBindingCoords.lean`'s `ood_binding_coords` (the out-of-domain answer binds a
 -- root whose list is separated at its point, the point read off Keccak-256) in the composed game, after
 -- `formal/Compose/Compose/GOps.lean`'s `prEvent_doomFG_le_union` (the event at the run's end read off the cache,
