@@ -926,6 +926,62 @@ fn layer_steps(n: usize, down: bool, from_src: bool) -> Vec<(usize, bool)> {
     steps
 }
 
+/// Layers `a..a + g` (position layers `a + shift..`) of `kind` on one tile, its `2^g` lines `line(u)` each a run of
+/// `width` rows of `data`, two at a time where they pair ([`quads`]): [`pairs`] layer by layer, in fewer passes over
+/// the tile. The same butterflies, so the same values. With `from_src`, the first layer (the highest going down, else
+/// the lowest) is the caller's, run already from a source.
+///
+/// # Safety
+/// The tile's rows are the caller's own.
+#[inline(always)]
+#[allow(clippy::too_many_arguments)]
+unsafe fn tile_layers<T: Kind>(
+    kind: &T,
+    data: SendPtr<u64>,
+    line: &impl Fn(usize) -> usize,
+    a: usize,
+    g: usize,
+    width: usize,
+    shift: usize,
+    from_src: bool,
+) {
+    let lines = 1usize << g;
+    // SAFETY: the tile's rows, the caller's.
+    unsafe {
+        let layer = |j: usize| {
+            let k = a + j;
+            let hs = 1usize << j;
+            for ub in (0..lines).step_by(2 * hs) {
+                let t = splat(kind.twiddle(k + shift, line(ub) >> (k + 1)).0);
+                for u in ub..ub + hs {
+                    pairs::<T>(data.add(8 * line(u)), data.add(8 * line(u + hs)), width, t);
+                }
+            }
+        };
+        // Layers `j` and `j - 1` at once: each block of `2 hs` lines of layer `j`, its two halves layer `j - 1`'s.
+        let fused = |j: usize| {
+            let k = a + j;
+            let (hs, q) = (1usize << j, 1usize << (j - 1));
+            for ub in (0..lines).step_by(2 * hs) {
+                let t1 = splat(kind.twiddle(k + shift, line(ub) >> (k + 1)).0);
+                let t2a = splat(kind.twiddle(k - 1 + shift, line(ub) >> k).0);
+                let t2b = splat(kind.twiddle(k - 1 + shift, line(ub + hs) >> k).0);
+                for u in ub..ub + q {
+                    let p = [u, u + q, u + hs, u + hs + q].map(|v| data.add(8 * line(v)));
+                    quads::<T>(p, width, t1, t2a, t2b);
+                }
+            }
+        };
+        // The steps but the source's layer, which is the first.
+        for (j, two) in layer_steps(g, T::DOWN, from_src).into_iter().skip(usize::from(from_src)) {
+            match two {
+                true => fused(j),
+                false => layer(j),
+            }
+        }
+    }
+}
+
 /// [`pairs`] read from `src_lo` and `src_hi` (another buffer's rows), written to `lo` and `hi`: a first layer's
 /// butterflies that also copy.
 ///
@@ -1159,40 +1215,18 @@ fn wide<T: Kind>(
         // SAFETY: a task touches rows `line(u) + [0, width)`, `u < lines`: its own.
         unsafe {
             // The first layer reads the source itself: each line is in one of its pairs.
-            let layer = |j: usize, from: Option<SendPtr<u64>>| {
-                let k = a + j;
-                let hs = 1usize << j;
+            if let Some(s) = src {
+                let j = if T::DOWN { g - 1 } else { 0 };
+                let (k, hs) = (a + j, 1usize << j);
                 for ub in (0..lines).step_by(2 * hs) {
                     let t = splat(kind.twiddle(k + shift, line(ub) >> (k + 1)).0);
                     for u in ub..ub + hs {
                         let (lo, hi) = (data.add(8 * line(u)), data.add(8 * line(u + hs)));
-                        match from {
-                            Some(s) => pairs_from::<T>(s.add(8 * line(u)), s.add(8 * line(u + hs)), lo, hi, width, t),
-                            None => pairs::<T>(lo, hi, width, t),
-                        }
+                        pairs_from::<T>(s.add(8 * line(u)), s.add(8 * line(u + hs)), lo, hi, width, t);
                     }
-                }
-            };
-            // Layers `j` and `j - 1` at once: each block of `2 hs` lines of layer `j`, its two halves layer `j - 1`'s.
-            let fused = |j: usize| {
-                let k = a + j;
-                let (hs, q) = (1usize << j, 1usize << (j - 1));
-                for ub in (0..lines).step_by(2 * hs) {
-                    let t1 = splat(kind.twiddle(k + shift, line(ub) >> (k + 1)).0);
-                    let t2a = splat(kind.twiddle(k - 1 + shift, line(ub) >> k).0);
-                    let t2b = splat(kind.twiddle(k - 1 + shift, line(ub + hs) >> k).0);
-                    for u in ub..ub + q {
-                        let p = [u, u + q, u + hs, u + hs + q].map(|v| data.add(8 * line(v)));
-                        quads::<T>(p, width, t1, t2a, t2b);
-                    }
-                }
-            };
-            for (j, two) in layer_steps(g, T::DOWN, src.is_some()) {
-                match two {
-                    true => fused(j),
-                    false => layer(j, if j + 1 == g && T::DOWN || j == 0 && !T::DOWN { src } else { None }),
                 }
             }
+            tile_layers(kind, data, &line, a, g, width, shift, src.is_some());
         }
     });
 }
@@ -2765,21 +2799,7 @@ fn upper<T: Kind>(data: SendPtr<u64>, src: Option<SendPtr<u64>>, rows: usize, a:
                     std::ptr::copy_nonoverlapping(s.add(8 * line(u)), data.add(8 * line(u)), 8 * width);
                 }
             }
-            let layer = |j: usize| {
-                let k = a + j;
-                let hs = 1usize << j;
-                for ub in (0..lines).step_by(2 * hs) {
-                    let t = splat(kind.twiddle(k + 3, line(ub) >> (k + 1)).0);
-                    for u in ub..ub + hs {
-                        pairs::<T>(data.add(8 * line(u)), data.add(8 * line(u + hs)), width, t);
-                    }
-                }
-            };
-            if T::DOWN {
-                (0..g).rev().for_each(layer);
-            } else {
-                (0..g).for_each(layer);
-            }
+            tile_layers(kind, data, &line, a, g, width, 3, false);
         }
     });
 }
@@ -2866,21 +2886,7 @@ fn upper_from_many<T: Kind>(
                         *data.add(i) ^= h.0;
                     }
                 }
-                let layer = |j: usize| {
-                    let k = a + j;
-                    let hs = 1usize << j;
-                    for ub in (0..lines).step_by(2 * hs) {
-                        let t = splat(kind.twiddle(k + 3, line(ub) >> (k + 1)).0);
-                        for u in ub..ub + hs {
-                            pairs::<T>(data.add(8 * line(u)), data.add(8 * line(u + hs)), width, t);
-                        }
-                    }
-                };
-                if T::DOWN {
-                    (0..g).rev().for_each(layer);
-                } else {
-                    (0..g).for_each(layer);
-                }
+                tile_layers(kind, data, &line, a, g, width, 3, false);
             }
         }
     });
@@ -3236,8 +3242,32 @@ mod tests {
     /// The transforms are `quotient::domain`'s, on one column and on a batch, at every size up to two wide passes.
     #[test]
     fn transforms_are_the_domains() {
+        transforms_are_the_domains_at(&[0, 1, 2, 3, 4, 5, 9, 12, 13, 17, 19]);
+    }
+
+    /// Small shapes for Miri (`cargo +nightly miri test --target x86_64-unknown-linux-gnu -p quotient --lib
+    /// miri_`, its portable lanes): the fused layers' pointer arithmetic ([`quads`]) on leaves, and
+    /// [`leaf`]'s, against the domain's transforms.
+    #[test]
+    fn miri_fused_layers_are_the_domains() {
+        transforms_are_the_domains_at(&[3, 6, 7, 8]);
+        let mut next = rng(5);
+        for m in [6usize, 7] {
+            let offset = point(1 << 21) + point(3 << m);
+            let column: Vec<F64> = (0..1usize << m).map(|_| F64(next())).collect();
+            let mut want = column.clone();
+            crate::domain::values(&mut want, offset);
+            let mut got = column.clone();
+            values_leaf(&mut got, 0, column.len(), offset);
+            assert_eq!(got, want, "leaf values, 2^{m}");
+            coefficients_leaf(&mut got, 0, column.len(), offset);
+            assert_eq!(got, column, "leaf coefficients, 2^{m}");
+        }
+    }
+
+    fn transforms_are_the_domains_at(sizes: &[usize]) {
         let mut next = rng(3);
-        for m in [0usize, 1, 2, 3, 4, 5, 9, 12, 13, 17, 19] {
+        for &m in sizes {
             let offset = point(1 << 21) + point(5 << m);
             let column: Vec<F64> = (0..1usize << m).map(|_| F64(next())).collect();
             let mut want = column.clone();

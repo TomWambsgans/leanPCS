@@ -2870,7 +2870,9 @@ fn recursive_prover_rows(
 /// byte for byte, but the lane rounds of all of them read the message twice in all (the tensors' inner products in
 /// one pass, the lanes' collapse in another) rather than twice each. Without `l0_codeword`, the rows the L0 queries
 /// open are encoded again, skipping the all-zero lanes `zero_lanes` flags (as
-/// [`recursive_prover_with_lane_tensors_skipping`]). [Added here.]
+/// [`recursive_prover_with_lane_tensors_skipping`]), once for every job (after each job's level-1 commitment has
+/// fixed its queries). With `l0_codeword` and some lanes flagged, the codeword is that of the unflagged lanes alone
+/// ([`commit_skipping`]). The flagged lanes, all zero, are left out of the lane rounds' passes. [Added here.]
 #[allow(clippy::too_many_arguments)]
 pub fn recursive_prover_with_lane_tensors_batch(
     config: &ProverConfig,
@@ -3626,6 +3628,98 @@ mod tests {
             drop(jobs);
             let actual: Vec<_> = states.into_iter().map(|ps| ps.into_proof()).collect();
             assert_eq!(actual, expected, "log_n={log_n}, lanes={n_lanes}");
+        }
+    }
+
+    /// A batch's openings prove what each proves alone from the whole kept codeword, whatever their level-0 rows'
+    /// source: encoded again for all of them at once (the lanes flagged all zero left out, or none flagged), or read
+    /// from a kept codeword of the unflagged lanes alone ([`commit_skipping`]); the flagged lanes are left out of the
+    /// lane passes too. [Added here.]
+    #[test]
+    fn batched_openings_share_their_rows_and_skip_zero_lanes() {
+        batched_openings_at(&[(8, 3), (13, 5), (18, 37)]);
+    }
+
+    /// [`batched_openings_share_their_rows_and_skip_zero_lanes`] at a shape for Miri (`miri_`, as `adversarial.rs`'s):
+    /// the batch's shared level-0 rows and the lane passes' skipped lanes.
+    #[test]
+    fn miri_batched_openings() {
+        batched_openings_at(&[(8, 3)]);
+    }
+
+    fn batched_openings_at(shapes: &[(usize, usize)]) {
+        for &(log_n, n_lanes) in shapes {
+            let pc = test_config_for(log_n);
+            let lane_block = 1usize << (log_n - pc.initial_k);
+            let log_lane = lane_block.trailing_zeros() as usize;
+            let mut rng = Rng::new(0xE7 + n_lanes as u64);
+            let mut witness: Vec<F64> = (0..n_lanes * lane_block).map(|_| F64(rng.next_u64())).collect();
+            // Lane 1 all zero, and lane 3 where there is one past it.
+            for l in [1, 3].into_iter().filter(|&l| l + 1 < n_lanes) {
+                witness[l * lane_block..(l + 1) * lane_block].fill(F64::ZERO);
+            }
+            let zero: Vec<bool> = (0..n_lanes).map(|l| witness[l * lane_block..(l + 1) * lane_block].iter().all(|w| w.is_zero())).collect();
+            let (_, pd) = commit(&witness, log_n, pc.initial_k, pc.log_inv_rates[0]);
+            let tensors: Vec<LaneTensor> = (0..3)
+                .map(|_| LaneTensor {
+                    scales: rng.ext_vec(1 << pc.initial_k),
+                    low: Low::Eq(rng.ext_vec(log_lane)),
+                })
+                .collect();
+            let targets = [rng.ext(), rng.ext()];
+            let labels: [&[u8]; 2] = [b"job 0", b"job 1"];
+            let expected: Vec<fiat_shamir::transcript::Proof> = (0..2)
+                .map(|k| {
+                    let mut ps = ProverState::from_label(labels[k]);
+                    recursive_prover_with_lane_tensors(
+                        &pc,
+                        log_n,
+                        &witness,
+                        &[tensors[0].clone(), tensors[k + 1].clone()],
+                        targets[k],
+                        Some(&pd.codeword),
+                        &pd.merkle_tree,
+                        &mut ps,
+                    );
+                    ps.into_proof()
+                })
+                .collect();
+            let compact = commit_skipping(&witness, log_n, pc.initial_k, pc.log_inv_rates[0], &zero);
+            if let Some((c, data)) = &compact {
+                assert_eq!(data.merkle_tree, pd.merkle_tree);
+                assert_eq!(c.root, *pd.merkle_tree.last().expect("a root"));
+            }
+            let sources: Vec<(Option<&[F64]>, Option<&[bool]>)> = [(None, None), (None, Some(&zero[..]))]
+                .into_iter()
+                .chain(compact.as_ref().map(|(_, data)| (Some(&data.codeword[..]), Some(&zero[..]))))
+                .collect();
+            for (codeword, flags) in sources {
+                let mut states: Vec<ProverState> = labels.iter().map(|l| ProverState::from_label(l)).collect();
+                let mut jobs: Vec<LaneJob<'_>> = states
+                    .iter_mut()
+                    .enumerate()
+                    .map(|(k, ps)| LaneJob {
+                        tensors: vec![0, k + 1],
+                        target: targets[k],
+                        ps,
+                    })
+                    .collect();
+                recursive_prover_with_lane_tensors_batch(
+                    &pc,
+                    log_n,
+                    &witness,
+                    &tensors,
+                    &[None, None, None],
+                    &mut jobs,
+                    codeword,
+                    flags,
+                    &pd.merkle_tree,
+                );
+                drop(jobs);
+                let actual: Vec<_> = states.into_iter().map(|ps| ps.into_proof()).collect();
+                let kept = codeword.is_some();
+                assert_eq!(actual, expected, "log_n={log_n}, lanes={n_lanes}, kept={kept}, flags={}", flags.is_some());
+            }
         }
     }
 
