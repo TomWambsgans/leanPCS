@@ -58,6 +58,33 @@ noncomputable def claimsMatchK (hM : Matches P (colFn wcol)) : ClaimsMatch (pcsW
 
 end PcsKS
 
+namespace Soundness
+
+open QuotientRpm QuotientSecurity Compose ComposePcs LeanVM LeanVM.Parameters WhirBridge WhirBridge.Pcs SoundPcs
+open LeanVM.Protocol LeanVM.Protocol.Compile LeanVM.Protocol.EndToEnd PcsKS PcsBridge.Kc3
+open scoped ENNReal NNReal
+
+theorem roundError_le (P : _root_.Kc3.Params E) (hn : P.nCells = 2 ^ 24) :
+    P.roundError ≤ ((1 / 2 ^ 164 : ℝ≥0) : ℝ≥0∞) := by
+  rw [_root_.Kc3.Params.roundError_deployed hn LeanVM.Protocol.card_E]
+  rw [one_div, ENNReal.coe_inv (by positivity), ENNReal.coe_pow, ENNReal.coe_ofNat, ← ENNReal.inv_pow]
+  exact ENNReal.inv_le_inv.mpr (pow_le_pow_right₀ (by norm_num) (by norm_num))
+
+/-- **Knowledge soundness of the deployed membership proof** for F1's parameters `P` that satisfy the pole
+condition, match the statement's constants with the Statement's wiring table as `σ`'s polynomial, and whose
+satisfied witness tables spell secrets (`StackRel`), σ having `2^24` entries. -/
+theorem knowledgeSoundness_of_matches (P : _root_.Kc3.Params E) (hpole : P.PoleCondition)
+    (hM : Matches P (colFn wcol)) (hrel : StackRel P (readWK P hM.card)) (hσ : SigmaSize) :
+    PcsQuotient.KnowledgeSoundness ksBound :=
+  knowledgeSoundness_of P (roundsSound_of hpole) (roundError_le P (nCells_of_card P hM.card))
+    (claimsMatchK P hM) hrel hσ
+
+end Soundness
+
+/-- info: 'Soundness.knowledgeSoundness_of_matches' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms Soundness.knowledgeSoundness_of_matches
+
 /-- info: 'PcsKS.claimsMatchK' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms PcsKS.claimsMatchK
