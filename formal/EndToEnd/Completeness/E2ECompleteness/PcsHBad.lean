@@ -152,4 +152,75 @@ theorem conic_card_le (t : E) :
       ≤ 1 :=
   conic_card_gen (t + QuotientSecurity.sq t * ofK (betaAt 1)) (ofK (betaAt 1))
 
+/-! ## `γ` is affine in `α` -/
+
+section Gen
+
+variable (P : _root_.Kc3.Params E) (c : (Fin 24 → Bool) → E)
+
+/-- `s = ((X² + X)(X + σ) /ₘ Z)(0)`, the coefficient of `α β` in `γ`. -/
+noncomputable def sCoef : E := (((X ^ 2 + X) * (X + P.sigmaPoly)) /ₘ P.vCells).eval 0
+
+/-- `r(β)`, the part of `γ` without `α`. -/
+noncomputable def rCoef (β : E) : E :=
+  (((X ^ 2 + X) * (P.cellPoly (witnessOfTable (k := 22) c) 0 + C β * X) *
+    (P.cellPoly (witnessOfTable (k := 22) c) 0 + C β * P.sigmaPoly)) /ₘ P.vCells).eval 0
+
+theorem Epoly_split (α β : E) :
+    Epoly P α β c = C α * C α * (X ^ 2 + X) + C α * C β * ((X ^ 2 + X) * (X + P.sigmaPoly)) +
+      (X ^ 2 + X) * (P.cellPoly (witnessOfTable (k := 22) c) 0 + C β * X) *
+        (P.cellPoly (witnessOfTable (k := 22) c) 0 + C β * P.sigmaPoly) := by
+  rw [Epoly_eq]
+  unfold _root_.Kc3.Params.dPoly _root_.Kc3.Params.dNextPoly
+  have h2 : (2 : E[X]) = 0 := CharTwo.two_eq_zero
+  linear_combination ((X ^ 2 + X) * C α * P.cellPoly (witnessOfTable (k := 22) c) 0) * h2
+
+/-- **`γ = α β s + r(β)`.** -/
+theorem gamma_split (hZ : P.vCells = digitPoly 24) (α β : E) :
+    (Epoly P α β c /ₘ P.vCells).eval 0 = α * β * sCoef P + rCoef P c β := by
+  have hmon : P.vCells.Monic := by rw [hZ]; exact Novel.digit_monic 24
+  have hw : ((X ^ 2 + X : E[X]) /ₘ P.vCells) = 0 := by
+    refine Novel.divByMonic_of_lt hmon ?_
+    rw [hZ, Novel.digit_natDegree]
+    exact lt_of_le_of_lt (natDegree_add_le_of_degree_le (natDegree_X_pow_le 2) (natDegree_X_le.trans (by norm_num)))
+      (by norm_num)
+  rw [Epoly_split, phi_add _ hmon, phi_add _ hmon, mul_assoc (C α) (C α), phi_C_mul _ hmon, phi_C_mul _ hmon,
+    hw, mul_assoc (C α) (C β), phi_C_mul _ hmon, phi_C_mul _ hmon, sCoef, rCoef, eval_zero]
+  ring
+
+/-- **At most one `α` makes `γ` vanish** for `β ≠ 0` when `s ≠ 0`. -/
+theorem gamma_root_unique (hZ : P.vCells = digitPoly 24) (hs : sCoef P ≠ 0) {β : E} (hβ : β ≠ 0) {α α' : E}
+    (h : (Epoly P α β c /ₘ P.vCells).eval 0 = 0) (h' : (Epoly P α' β c /ₘ P.vCells).eval 0 = 0) : α = α' := by
+  rw [gamma_split P c hZ] at h h'
+  have : (α - α') * (β * sCoef P) = 0 := by linear_combination h - h'
+  rcases mul_eq_zero.mp this with h0 | h0
+  · exact sub_eq_zero.mp h0
+  · exact absurd h0 (mul_ne_zero hβ hs)
+
+/-- **`s` is the wiring table's entry `2^24 − 2`** when its entry `2^24 − 1` is zero. -/
+theorem sCoef_eq (hZ : P.vCells = digitPoly 24) (wt : Array K) (hS : P.sigmaPoly = Novel.nov 0 24 fun j => ofK (wt.getD j 0))
+    (htop : wt.getD (2 ^ 24 - 1) 0 = 0) : sCoef P = ofK (wt.getD (2 ^ 24 - 2) 0) := by
+  have hmon : P.vCells.Monic := by rw [hZ]; exact Novel.digit_monic 24
+  have hR : (P.vCells - X ^ (2 ^ 24)).natDegree ≤ 2 ^ 24 - 2 := by
+    rw [hZ]; exact (Novel.digitPoly_sub_le 24).trans (by norm_num)
+  have hSd : P.sigmaPoly.natDegree ≤ 2 ^ 24 - 1 := by
+    rw [hS]; have := Novel.natDegree_nov_lt 24 (fun j => ofK (wt.getD j 0)); omega
+  have hf : ((X ^ 2 + X) * (X + P.sigmaPoly)).natDegree ≤ 2 ^ 24 + 1 := by
+    refine natDegree_mul_le_of_le (m := 2) (n := 2 ^ 24 - 1)
+      (natDegree_add_le_of_degree_le (natDegree_X_pow_le 2) (natDegree_X_le.trans (by norm_num)))
+      (natDegree_add_le_of_degree_le (natDegree_X_le.trans (by norm_num)) hSd) |>.trans (by norm_num)
+  rw [sCoef, Novel.divByMonic_eval_zero (2 ^ 24) (by norm_num) _ hmon hR _ hf]
+  have e : (X ^ 2 + X) * (X + P.sigmaPoly) = X ^ 3 + X ^ 2 + X ^ 2 * P.sigmaPoly + X * P.sigmaPoly := by ring
+  have hc1 : P.sigmaPoly.coeff (2 ^ 24 - 1) = 0 := by
+    rw [hS, nov_coeff 24 _ (by norm_num) (fun i h1 h2 => by omega), htop, Compose.Reduce.ofK_zero]
+  have hc2 : P.sigmaPoly.coeff (2 ^ 24 - 2) = ofK (wt.getD (2 ^ 24 - 2) 0) := by
+    rw [hS, nov_coeff 24 _ (by norm_num) (fun i h1 h2 => by
+      rw [show i = 2 ^ 24 - 1 by omega, htop, Compose.Reduce.ofK_zero])]
+  rw [e, coeff_add, coeff_add, coeff_add, coeff_X_pow, coeff_X_pow, if_neg (by norm_num), if_neg (by norm_num),
+    coeff_X_pow_mul', if_pos (by norm_num), show 2 ^ 24 = (2 ^ 24 - 1) + 1 from by norm_num, coeff_X_mul,
+    show 2 ^ 24 - 1 + 1 - 2 = 2 ^ 24 - 2 from by norm_num, hc1, hc2]
+  ring
+
+end Gen
+
 end E2ECompleteness.Pcs.H
