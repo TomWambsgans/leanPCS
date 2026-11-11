@@ -6,8 +6,8 @@ import Evm.Contract
 /-!
 # Every calldata the contract can accept is a proof's
 
-The contract reverts on calldata of another length or selector (`accepts_of_not_wellFormed`), and every
-other calldata is the calldata of a statement, a reduction proof and a frame's index
+The contract reverts on calldata of another length (`accepts_of_not_wellFormed`; there is no selector), and
+every calldata of `273` bytes is the calldata of a statement, a reduction proof and a frame's index
 (`calldata_surjective`: the statement's `64` bytes, each root's bytes read as a digest and sent as its
 halves, each other scalar's `24` bytes read as an element: the inverse of `quotient.rs`'s `calldata`, the
 tests' `parse`). So over **all** calldata:
@@ -26,7 +26,7 @@ open LeanVM.Parameters LeanVM.Protocol LeanVM.Protocol.KeccakHash PcsQuotient Pc
 
 local notation "W" => word limbsEquiv
 
-/-- The contract reverts on calldata of another length or selector. -/
+/-- The contract reverts on calldata of another length. -/
 theorem accepts_of_not_wellFormed (attest : ℕ → List UInt8 → Bool) (index : Commitment) {cd : List UInt8}
     (h : ¬ WellFormed cd) : accepts attest (deployed index cd) = false := by
   have hr : run (deployed index cd) = none := if_neg h
@@ -73,50 +73,46 @@ theorem elementBytes_elementOf (b : List UInt8) (hb : b.length = 24) : elementBy
 /-- **Every well-formed calldata is a proof's** (the tests' `parse` inverts `quotient.rs`'s `calldata`). -/
 theorem calldata_surjective {cd : List UInt8} (h : WellFormed cd) :
     ∃ stmt p frame, calldata stmt p frame = some cd := by
-  obtain ⟨hlen, hsel⟩ := h
-  have hl : cd.length = 461 := by rw [hlen]; rfl
-  let y : Vector UInt8 32 := ⟨((cd.drop 4).take 32).toArray, by simp; omega⟩
-  let rt : Vector UInt8 32 := ⟨((cd.drop 36).take 32).toArray, by simp; omega⟩
-  let R : ℕ → Digest := fun j => digestOf ((cd.drop (68 + 32 * j)).take 32)
-  let X : ℕ → E := fun i => elementOf ((cd.drop (196 + 24 * i)).take 24)
-  let p : ReductionProof := ⟨⟨rootHalves (R 0), X 0⟩, ⟨rootHalves (R 1), X 1⟩, ⟨rootHalves (R 2), X 2⟩,
-    ⟨rootHalves (R 3), X 3⟩, #v[X 4, X 5, X 6, X 7], X 8, X 9, X 10⟩
-  refine ⟨⟨y, rt⟩, p, cd.getD 460 0, ?_⟩
-  have hR : ∀ j, j < 4 → digestBytes (R j) = (cd.drop (68 + 32 * j)).take 32 := fun j hj =>
+  have hl : cd.length = 273 := by rw [h]; rfl
+  let y : Vector UInt8 32 := ⟨(cd.take 32).toArray, by simp; omega⟩
+  let rt : Vector UInt8 32 := ⟨((cd.drop 32).take 32).toArray, by simp; omega⟩
+  let R : ℕ → Digest := fun j => digestOf ((cd.drop (64 + 32 * j)).take 32)
+  let X : ℕ → E := fun i => elementOf ((cd.drop (128 + 24 * i)).take 24)
+  let p : ReductionProof := ⟨⟨rootHalves (R 0), X 0⟩, ⟨rootHalves (R 1), X 1⟩, #v[X 2, X 3, X 4], X 5⟩
+  refine ⟨⟨y, rt⟩, p, cd.getD 272 0, ?_⟩
+  have hR : ∀ j, j < 2 → digestBytes (R j) = (cd.drop (64 + 32 * j)).take 32 := fun j hj =>
     digestBytes_lanes _ (by simp; omega)
-  have hX : ∀ i, i < 11 → elementBytes (X i) = (cd.drop (196 + 24 * i)).take 24 := fun i hi =>
+  have hX : ∀ i, i < 6 → elementBytes (X i) = (cd.drop (128 + 24 * i)).take 24 := fun i hi =>
     elementBytes_elementOf _ (by simp; omega)
-  have hroots : [R 0, R 1, R 2, R 3].flatMap digestBytes = (cd.drop 68).take 128 := by
-    have hc := chunks 32 4 ((cd.drop 68).take 128) (by simp; omega)
+  have hroots : [R 0, R 1].flatMap digestBytes = (cd.drop 64).take 64 := by
+    have hc := chunks 32 2 ((cd.drop 64).take 64) (by simp; omega)
     rw [← hc]
     simp only [List.range_succ, List.range_zero, List.nil_append, List.flatMap_cons, List.flatMap_nil,
       List.flatMap_append, List.append_nil]
     rw [slice_sub _ _ _ _ _ (by norm_num), slice_sub _ _ _ _ _ (by norm_num),
-      slice_sub _ _ _ _ _ (by norm_num), slice_sub _ _ _ _ _ (by norm_num),
-      hR 0 (by norm_num), hR 1 (by norm_num), hR 2 (by norm_num), hR 3 (by norm_num)]
-    simp only [List.append_assoc]
-  have hsc : scalarsOf p = (List.range 11).map X := by
+      hR 0 (by norm_num), hR 1 (by norm_num)]
+  have hsc : scalarsOf p = (List.range 6).map X := by
     simp [scalarsOf, p, List.range_succ]
-  have hscalars : (scalarsOf p).flatMap elementBytes = (cd.drop 196).take 264 := by
-    have hc := chunks 24 11 ((cd.drop 196).take 264) (by simp; omega)
+  have hscalars : (scalarsOf p).flatMap elementBytes = (cd.drop 128).take 144 := by
+    have hc := chunks 24 6 ((cd.drop 128).take 144) (by simp; omega)
     rw [← hc, hsc, List.flatMap_map]
     refine List.flatMap_congr fun i hi => ?_
     have hi' := List.mem_range.mp hi
     rw [hX i hi', slice_sub _ _ _ _ _ (by omega)]
-  have hframe : cd.drop 460 = [cd.getD 460 0] := by
+  have hframe : cd.drop 272 = [cd.getD 272 0] := by
     apply List.ext_getElem (by simp; omega)
     intro k h1 h2
     have : k = 0 := by simp at h2; omega
     subst this
-    simp [List.getD_eq_getElem?_getD, List.getElem?_eq_getElem (show 460 < cd.length by omega)]
+    simp [List.getD_eq_getElem?_getD, List.getElem?_eq_getElem (show 272 < cd.length by omega)]
   simp only [calldata, p, rootOfHalves_rootHalves, Option.bind_eq_bind]
   show some _ = some cd
   congr 1
-  rw [hroots, hscalars, ← hframe, ← hsel]
-  show cd.take 4 ++ (cd.drop 4).take 32 ++ (cd.drop 36).take 32 ++
-    ((cd.drop 68).take 128 ++ ((cd.drop 196).take 264 ++ cd.drop 460)) = cd
-  rw [← take_drop_append' cd 196 264, ← take_drop_append' cd 68 128, List.append_assoc, List.append_assoc,
-    ← take_drop_append' cd 36 32, ← take_drop_append' cd 4 32, List.take_append_drop]
+  rw [hroots, hscalars, ← hframe]
+  show cd.take 32 ++ (cd.drop 32).take 32 ++
+    ((cd.drop 64).take 64 ++ ((cd.drop 128).take 144 ++ cd.drop 272)) = cd
+  rw [← take_drop_append' cd 128 144, ← take_drop_append' cd 64 64, List.append_assoc,
+    ← take_drop_append' cd 32 32, List.take_append_drop]
 
 /-- **On any calldata, the contract accepts exactly the proofs the Statement's verifier accepts**: with
 what the block proves of declared claim `k` the opening check `pcsOpen` with the openings `o`, the deployed
