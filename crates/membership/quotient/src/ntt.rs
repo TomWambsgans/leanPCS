@@ -999,17 +999,6 @@ unsafe fn pairs_from<T: Kind>(src_lo: *const u64, src_hi: *const u64, lo: *mut u
     }
 }
 
-/// `kind`'s layers on the `rows` rows of eight words at `data`, read first from `src` if given: position layer `k` is
-/// row layer `k - shift`, and the layers below `shift` (0 or 3) are inside the rows. With `runs`, every eight rows
-/// are transposed last ([`values_batch`]).
-///
-/// # Safety
-/// `data` holds `8 rows` words, and `src` (if given) as many, disjoint from `data`.
-unsafe fn run<T: Kind>(data: *mut u64, src: Option<*const u64>, rows: usize, shift: usize, kind: &T, runs: bool) {
-    // SAFETY: the caller's.
-    unsafe { run_on(data, src, rows, shift, kind, runs, false) }
-}
-
 /// `f(i)` for every `i < n`: by the pool, or by the calling worker alone (`serial`), in the same order of results.
 /// Many tasks go by [`affine`] ranges.
 #[inline(always)]
@@ -1034,11 +1023,13 @@ fn affine(n: usize, f: impl Fn(usize) + Sync) {
     parallel::for_each_affine(n, |lo, hi| (lo..hi).for_each(&f));
 }
 
-/// [`run`], by the pool or by the calling worker alone (`serial`, for a caller that runs many transforms at once,
-/// one a worker): the same layers in the same order, so the same values.
+/// `kind`'s layers on the `rows` rows of eight words at `data`, read first from `src` if given: position layer `k` is
+/// row layer `k - shift`, and the layers below `shift` (0 or 3) are inside the rows. With `runs`, every eight rows
+/// are transposed last ([`values_batch`]). By the pool, or by the calling worker alone (`serial`, for a caller that
+/// runs many transforms at once, one a worker): the same layers in the same order, so the same values.
 ///
 /// # Safety
-/// As [`run`]'s.
+/// `data` holds `8 rows` words, and `src` (if given) as many, disjoint from `data`.
 unsafe fn run_on<T: Kind>(
     data: *mut u64,
     src: Option<*const u64>,
@@ -1081,16 +1072,8 @@ unsafe fn run_cols<T: Kind>(cols: &[Col], rows: usize, shift: usize, kind: &T, r
 unsafe fn run_cols_each<T: Kind>(cols: &[Col], kinds: &[T], rows: usize, shift: usize, runs: bool, serial: bool) {
     assert!(kinds.len() == 1 || kinds.len() == cols.len());
     assert!(rows.is_power_of_two());
-    let mr = rows.trailing_zeros() as usize;
-    let leaf = mr.min(LEAF_ROWS.trailing_zeros() as usize);
-    // The wider layers in groups, the highest first.
-    let mut groups = Vec::new();
-    let mut top = mr;
-    while top > leaf {
-        let a = top.saturating_sub(GROUP).max(leaf);
-        groups.push((a, top - a));
-        top = a;
-    }
+    let leaf = (rows.trailing_zeros() as usize).min(LEAF_ROWS.trailing_zeros() as usize);
+    let groups = upper_groups(rows);
     if T::DOWN {
         let mut from = true;
         for &(a, g) in &groups {
@@ -1238,19 +1221,24 @@ fn words(data: &mut [K8]) -> *mut u64 {
 /// `crate::domain::values` on a batch: row `i` becomes the eight columns at `offset + ω_i`; with `runs` (and eight
 /// rows or more), each eight rows transposed: row `8 j + l` is column `l` at the points `8 j..8 j + 8` ([`Kx8::row`]).
 pub fn values_batch(data: &mut [K8], offset: F64, runs: bool) {
-    assert!(!runs || data.len() >= 8);
-    let kind = Forward(Twiddles::new(offset, data.len().trailing_zeros() as usize));
-    // SAFETY: `data`'s own rows.
-    unsafe { run(words(data), None, data.len(), 0, &kind, runs) }
+    batch(None, data, offset, runs, false)
 }
 
 /// [`values_batch`] of `src`, written to `dst`.
 pub fn values_batch_from(src: &[K8], dst: &mut [K8], offset: F64, runs: bool) {
-    assert_eq!(src.len(), dst.len());
+    batch(Some(src), dst, offset, runs, false)
+}
+
+/// [`values_batch`] of `src` (if given, else of `dst` in place) into `dst`, by the pool or by the calling worker alone
+/// (`serial`: no dispatch, for a caller that transforms many batches at once, one a worker): the same values.
+fn batch(src: Option<&[K8]>, dst: &mut [K8], offset: F64, runs: bool, serial: bool) {
+    if let Some(src) = src {
+        assert_eq!(src.len(), dst.len());
+    }
     assert!(!runs || dst.len() >= 8);
     let kind = Forward(Twiddles::new(offset, dst.len().trailing_zeros() as usize));
-    // SAFETY: `dst`'s own rows, read first from `src`'s.
-    unsafe { run(words(dst), Some(src.as_ptr().cast()), dst.len(), 0, &kind, runs) }
+    // SAFETY: `dst`'s own rows, read first from `src`'s if given.
+    unsafe { run_on(words(dst), src.map(|s| s.as_ptr().cast()), dst.len(), 0, &kind, runs, serial) }
 }
 
 /// A batch of novel coefficients on the coset `ω_first + V_e` (`8 ≤ 2^e ≤ src.len()`), into a new batch, each eight
@@ -1271,62 +1259,19 @@ pub fn on_coset_batch(src: &[K8], first: usize, e: usize, runs: bool) -> Vec<K8>
     out
 }
 
-/// [`values_batch_from`] by the calling worker alone (no dispatch to the pool): for a caller that transforms many
-/// batches at once, one a worker. The same values.
+/// [`values_batch_from`] by the calling worker alone.
 pub fn values_batch_from_serial(src: &[K8], dst: &mut [K8], offset: F64, runs: bool) {
-    assert_eq!(src.len(), dst.len());
-    assert!(!runs || dst.len() >= 8);
-    let kind = Forward(Twiddles::new(offset, dst.len().trailing_zeros() as usize));
-    // SAFETY: `dst`'s own rows, read first from `src`'s.
-    unsafe { run_on(words(dst), Some(src.as_ptr().cast()), dst.len(), 0, &kind, runs, true) }
+    batch(Some(src), dst, offset, runs, true)
 }
 
 /// [`values_batch`] by the calling worker alone.
 pub fn values_batch_serial(data: &mut [K8], offset: F64, runs: bool) {
-    assert!(!runs || data.len() >= 8);
-    let kind = Forward(Twiddles::new(offset, data.len().trailing_zeros() as usize));
-    // SAFETY: `data`'s own rows.
-    unsafe { run_on(words(data), None, data.len(), 0, &kind, runs, true) }
+    batch(None, data, offset, runs, true)
 }
 
 /// [`fold_batch`] by the calling worker alone.
 pub fn fold_batch_serial(src: &[K8], first: usize, dst: &mut [K8]) {
-    let rows = dst.len();
-    assert!(rows.is_power_of_two(), "a coset of a power of two rows");
-    assert_eq!(src.len() % rows, 0);
-    let len = src.len() / rows;
-    let e = rows.trailing_zeros() as usize;
-    // The weights `Π w_(e + b)(ω_first)` over the bits `b` of the block (`novel_weights`), built as `tensor` builds
-    // them: the same products in the same order.
-    let mut weights = vec![F64::ONE];
-    let mut b = 0;
-    while weights.len() < len {
-        let one = point(first >> (e + b));
-        let half = weights.len();
-        for h in 0..half {
-            let w = weights[h] * one;
-            weights.push(w);
-        }
-        b += 1;
-    }
-    // `len` blocks, which need not be a power of two (`tensor` truncates them so too).
-    weights.truncate(len);
-    // `fold_rows`' sum, row by row, in its order of terms.
-    let src: *const u64 = src.as_ptr().cast();
-    let dst = words(dst);
-    for i in 0..rows {
-        // SAFETY: rows `i + h rows` of `src` (`len` blocks of `rows`), and row `i` of `dst`.
-        unsafe {
-            let mut acc = load(src.add(8 * i));
-            if weights[0] != F64::ONE {
-                acc = mul(acc, splat(weights[0].0));
-            }
-            for (h, &w) in weights.iter().enumerate().skip(1) {
-                acc = xor(acc, mul(load(src.add(8 * (i + h * rows))), splat(w.0)));
-            }
-            store(dst.add(8 * i), acc);
-        }
-    }
+    fold_batch_on(src, first, dst, true)
 }
 
 /// Each eight rows transposed, as [`values_batch`]'s `runs` leaves them (`data.len()` a multiple of 8).
@@ -1339,77 +1284,66 @@ pub fn transpose_runs(data: &mut [K8]) {
     }
 }
 
-/// `crate::domain::coefficients` on a batch.
-pub fn coefficients_batch(data: &mut [K8], offset: F64) {
-    let kind = Inverse(Twiddles::new(offset, data.len().trailing_zeros() as usize));
-    // SAFETY: `data`'s own rows.
-    unsafe { run(words(data), None, data.len(), 0, &kind, false) }
-}
-
 /// `crate::domain::values` on one column.
 pub fn values(data: &mut [F64], offset: F64) {
-    assert!(data.len().is_power_of_two(), "a column of a power of two words");
-    if data.len() < 8 {
-        return crate::domain::values(data, offset);
-    }
-    let kind = Forward(Twiddles::new(offset, data.len().trailing_zeros() as usize));
-    // SAFETY: `data`'s own words, eight a row.
-    unsafe { run(data.as_mut_ptr().cast(), None, data.len() / 8, 3, &kind, false) }
+    column(None, data, offset, Forward, crate::domain::values, false)
 }
 
 /// [`values`] of `src`, written to `dst`.
 pub fn values_from(src: &[F64], dst: &mut [F64], offset: F64) {
-    assert_eq!(src.len(), dst.len());
-    assert!(dst.len().is_power_of_two(), "a column of a power of two words");
-    if dst.len() < 8 {
-        dst.copy_from_slice(src);
-        return crate::domain::values(dst, offset);
-    }
-    let kind = Forward(Twiddles::new(offset, dst.len().trailing_zeros() as usize));
-    // SAFETY: `dst`'s own words, eight a row, read first from `src`'s.
-    unsafe {
-        run(
-            dst.as_mut_ptr().cast(),
-            Some(src.as_ptr().cast()),
-            dst.len() / 8,
-            3,
-            &kind,
-            false,
-        )
-    }
+    column(Some(src), dst, offset, Forward, crate::domain::values, false)
 }
 
-/// [`coefficients`] of `src`, written to `dst`.
-pub fn coefficients_from(src: &[F64], dst: &mut [F64], offset: F64) {
-    assert_eq!(src.len(), dst.len());
-    assert!(dst.len().is_power_of_two(), "a column of a power of two words");
-    if dst.len() < 8 {
-        dst.copy_from_slice(src);
-        return crate::domain::coefficients(dst, offset);
-    }
-    let kind = Inverse(Twiddles::new(offset, dst.len().trailing_zeros() as usize));
-    // SAFETY: `dst`'s own words, eight a row, read first from `src`'s.
-    unsafe {
-        run(
-            dst.as_mut_ptr().cast(),
-            Some(src.as_ptr().cast()),
-            dst.len() / 8,
-            3,
-            &kind,
-            false,
-        )
-    }
+/// [`values_from`] by the calling worker alone: no dispatch at any size, below eight words neither (not
+/// `crate::domain::values`, which dispatches to the pool: from a pool task, a nested dispatch).
+pub fn values_from_serial(src: &[F64], dst: &mut [F64], offset: F64) {
+    column(Some(src), dst, offset, Forward, crate::domain::values_small, true)
 }
 
 /// `crate::domain::coefficients` on one column.
 pub fn coefficients(data: &mut [F64], offset: F64) {
-    assert!(data.len().is_power_of_two(), "a column of a power of two words");
-    if data.len() < 8 {
-        return crate::domain::coefficients(data, offset);
+    column(None, data, offset, Inverse, crate::domain::coefficients, false)
+}
+
+/// [`coefficients`] of `src`, written to `dst`.
+pub fn coefficients_from(src: &[F64], dst: &mut [F64], offset: F64) {
+    column(Some(src), dst, offset, Inverse, crate::domain::coefficients, false)
+}
+
+/// The transform `kind` (`Forward` or `Inverse`) of the column `src` into `dst` (of `dst` in place without one), eight
+/// words a row, by the pool or by the calling worker alone (`serial`); below eight words, `small` (the domain's
+/// transform, which takes no row).
+fn column<T: Kind>(
+    src: Option<&[F64]>,
+    dst: &mut [F64],
+    offset: F64,
+    kind: fn(Twiddles) -> T,
+    small: fn(&mut [F64], F64),
+    serial: bool,
+) {
+    if let Some(src) = src {
+        assert_eq!(src.len(), dst.len());
     }
-    let kind = Inverse(Twiddles::new(offset, data.len().trailing_zeros() as usize));
-    // SAFETY: `data`'s own words, eight a row.
-    unsafe { run(data.as_mut_ptr().cast(), None, data.len() / 8, 3, &kind, false) }
+    assert!(dst.len().is_power_of_two(), "a column of a power of two words");
+    if dst.len() < 8 {
+        if let Some(src) = src {
+            dst.copy_from_slice(src);
+        }
+        return small(dst, offset);
+    }
+    let kind = kind(Twiddles::new(offset, dst.len().trailing_zeros() as usize));
+    // SAFETY: `dst`'s own words, eight a row, read first from `src`'s if given.
+    unsafe {
+        run_on(
+            dst.as_mut_ptr().cast(),
+            src.map(|s| s.as_ptr().cast()),
+            dst.len() / 8,
+            3,
+            &kind,
+            false,
+            serial,
+        )
+    }
 }
 
 /// Eight K elements in a register: a column at eight consecutive points.
@@ -1730,23 +1664,28 @@ pub fn pack(columns: &[&[F64]]) -> Vec<K8> {
 }
 
 /// `Π_(bits b of h) c[b]` for every `h < len` (the weights of a fold): `c[b]` for the bits of `h`, ...
-fn tensor(len: usize, factor: impl Fn(usize, bool) -> F64) -> Vec<F64> {
-    // The products over the low bits and over the high bits, each by doubling, then (long ones) every entry the
-    // product of one of each in one dispatch: the same products (the field's are exact).
+/// By the calling worker alone (`serial`), or (long ones) by the pool.
+fn tensor(len: usize, factor: impl Fn(usize, bool) -> F64, serial: bool) -> Vec<F64> {
+    // The products over the low bits and over the high bits, each by doubling, then (long ones, on the pool) every
+    // entry the product of one of each in one dispatch: the same products (the field's are exact).
     let doubled = |from: usize, bits: usize| {
-        let mut out = vec![F64::ONE];
+        let mut out = Vec::with_capacity(1 << bits);
+        out.push(F64::ONE);
         for b in from..from + bits {
             let (zero, one) = (factor(b, false), factor(b, true));
-            let high: Vec<F64> = out.iter().map(|&l| l * one).collect();
-            if zero != F64::ONE {
-                out.iter_mut().for_each(|x| *x *= zero);
+            let half = out.len();
+            for h in 0..half {
+                let w = out[h] * one;
+                out.push(w);
             }
-            out.extend(high);
+            if zero != F64::ONE {
+                out[..half].iter_mut().for_each(|x| *x *= zero);
+            }
         }
         out
     };
     let bits = len.max(1).next_power_of_two().trailing_zeros() as usize;
-    let low_bits = bits.min(12);
+    let low_bits = if serial { bits } else { bits.min(12) };
     let mut low = doubled(0, low_bits);
     if bits == low_bits {
         low.truncate(len);
@@ -1777,17 +1716,40 @@ unsafe fn unwritten(len: usize) -> Vec<F64> {
 
 /// The weights folding a polynomial's novel coefficients (`len` blocks of `2^e`) onto the coset `ω_first + V_e`:
 /// `Π w_(e + b)(ω_first)` over the bits `b` of the block, since `w_l` is constant there for `l ≥ e`.
-fn novel_weights(len: usize, first: usize, e: usize) -> Vec<F64> {
-    tensor(len, |b, bit| if bit { point(first >> (e + b)) } else { F64::ONE })
+fn novel_weights(len: usize, first: usize, e: usize, serial: bool) -> Vec<F64> {
+    tensor(len, |b, bit| if bit { point(first >> (e + b)) } else { F64::ONE }, serial)
 }
 
 /// `dst` row `i` is `Σ_h weights[h] src[i + h dst_rows]`.
 ///
 /// # Safety
+/// `src` holds `weights.len() dst_rows` rows, and `dst` row `i`, disjoint from them.
+#[inline(always)]
+unsafe fn fold_row(src: *const u64, dst: *mut u64, i: usize, dst_rows: usize, weights: &[F64]) {
+    // SAFETY: the caller's rows.
+    unsafe {
+        let mut acc = load(src.add(8 * i));
+        if weights[0] != F64::ONE {
+            acc = mul(acc, splat(weights[0].0));
+        }
+        for (h, &w) in weights.iter().enumerate().skip(1) {
+            acc = xor(acc, mul(load(src.add(8 * (i + h * dst_rows))), splat(w.0)));
+        }
+        store(dst.add(8 * i), acc);
+    }
+}
+
+/// [`fold_row`] for every row of `dst`: by the pool, or by the calling worker alone (`serial`).
+///
+/// # Safety
 /// `src` holds `weights.len() dst_rows` rows, `dst` `dst_rows`, disjoint.
-unsafe fn fold_rows(src: *const u64, dst: *mut u64, dst_rows: usize, weights: &[F64]) {
+unsafe fn fold_rows(src: *const u64, dst: *mut u64, dst_rows: usize, weights: &[F64], serial: bool) {
     // The tasks below cover `dst` whole only for a power of two rows.
     assert!(dst_rows.is_power_of_two(), "a coset of a power of two rows");
+    if serial {
+        // SAFETY: the caller's rows, each row of `dst` written once.
+        return (0..dst_rows).for_each(|i| unsafe { fold_row(src, dst, i, dst_rows, weights) });
+    }
     let (src, dst) = (SendPtr(src.cast_mut()), SendPtr(dst));
     if dst_rows < 64 {
         // Few rows: the blocks `h` split among the workers, their partial sums added.
@@ -1820,134 +1782,106 @@ unsafe fn fold_rows(src: *const u64, dst: *mut u64, dst_rows: usize, weights: &[
     }
     let chunk = (dst_rows / 128).clamp(1, 64);
     parallel::for_each(dst_rows / chunk, |task| {
-        // SAFETY: a task writes its own `chunk` rows of `dst` and reads `src`.
-        unsafe {
-            for i in task * chunk..(task + 1) * chunk {
-                let mut acc = load(src.add(8 * i));
-                if weights[0] != F64::ONE {
-                    acc = mul(acc, splat(weights[0].0));
-                }
-                for (h, &w) in weights.iter().enumerate().skip(1) {
-                    acc = xor(acc, mul(load(src.add(8 * (i + h * dst_rows))), splat(w.0)));
-                }
-                store(dst.add(8 * i), acc);
-            }
+        for i in task * chunk..(task + 1) * chunk {
+            // SAFETY: a task writes its own `chunk` rows of `dst` and reads `src`.
+            unsafe { fold_row(src.add(0), dst.add(0), i, dst_rows, weights) }
         }
     });
 }
 
 /// A batch of novel coefficients folded onto the coset `ω_first + V_e` (`2^e ≤ src.len()`), into `dst`.
 pub fn fold_batch(src: &[K8], first: usize, dst: &mut [K8]) {
+    fold_batch_on(src, first, dst, false)
+}
+
+/// [`fold_batch`], by the pool or by the calling worker alone (`serial`).
+fn fold_batch_on(src: &[K8], first: usize, dst: &mut [K8], serial: bool) {
     let rows = dst.len();
     assert!(rows.is_power_of_two(), "a coset of a power of two rows");
     assert_eq!(src.len() % rows, 0);
-    let weights = novel_weights(src.len() / rows, first, rows.trailing_zeros() as usize);
+    let weights = novel_weights(src.len() / rows, first, rows.trailing_zeros() as usize, serial);
     // SAFETY: `src` is `weights.len()` blocks of `dst`'s rows.
-    unsafe { fold_rows(src.as_ptr().cast(), words(dst), rows, &weights) }
+    unsafe { fold_rows(src.as_ptr().cast(), words(dst), rows, &weights, serial) }
 }
 
-/// The column with `weights`' fold onto `2^e` entries: `out[i] = Σ_h weights[h] data[i + h 2^e]`.
-fn fold_column(data: &[F64], e: usize, weights: &[F64]) -> Vec<F64> {
-    let size = 1usize << e;
+/// `out` (`2^e` words) the column `data` folded by `weights`: `out[i] = Σ_h weights[h] data[i + h 2^e]`, by the pool
+/// or by the calling worker alone (`serial`).
+fn fold_column(data: &[F64], out: &mut [F64], weights: &[F64], serial: bool) {
+    let size = out.len();
     assert_eq!(data.len(), weights.len() * size);
-    if size < 8 {
-        let per = weights.len().div_ceil(64).max(1);
-        return parallel::map_reduce(
-            weights.len().div_ceil(per),
-            || vec![F64::ZERO; size],
-            |task| {
-                let mut acc = vec![F64::ZERO; size];
-                for h in task * per..((task + 1) * per).min(weights.len()) {
-                    acc.iter_mut()
-                        .zip(&data[h * size..])
-                        .for_each(|(a, &x)| *a += weights[h] * x);
-                }
-                acc
-            },
-            |mut a, b| {
-                a.iter_mut().zip(&b).for_each(|(x, &y)| *x += y);
-                a
-            },
-        );
+    if size >= 8 {
+        // SAFETY: `fold_rows` writes every row of `out`; `data` is `weights.len()` blocks of its rows.
+        return unsafe { fold_rows(data.as_ptr().cast(), out.as_mut_ptr().cast(), size / 8, weights, serial) };
     }
-    // SAFETY (x2): `fold_rows` writes every row of `out`; `data` is `weights.len()` blocks of its rows.
-    let mut out = unsafe { unwritten(size) };
-    unsafe { fold_rows(data.as_ptr().cast(), out.as_mut_ptr().cast(), size / 8, weights) }
-    out
+    if serial {
+        for (i, o) in out.iter_mut().enumerate() {
+            *o = weights.iter().enumerate().fold(F64::ZERO, |acc, (h, &w)| acc + w * data[i + h * size]);
+        }
+        return;
+    }
+    let per = weights.len().div_ceil(64).max(1);
+    let sum = parallel::map_reduce(
+        weights.len().div_ceil(per),
+        || vec![F64::ZERO; size],
+        |task| {
+            let mut acc = vec![F64::ZERO; size];
+            for h in task * per..((task + 1) * per).min(weights.len()) {
+                acc.iter_mut()
+                    .zip(&data[h * size..])
+                    .for_each(|(a, &x)| *a += weights[h] * x);
+            }
+            acc
+        },
+        |mut a, b| {
+            a.iter_mut().zip(&b).for_each(|(x, &y)| *x += y);
+            a
+        },
+    );
+    out.copy_from_slice(&sum);
 }
 
 /// The values on the coset `ω_first + V_e` of the column of novel coefficients `novel` (any multiple of `2^e` of
 /// them, `2^e | first`).
 pub fn on_coset_prefix(novel: &[F64], first: usize, e: usize) -> Vec<F64> {
-    let size = 1usize << e;
-    if novel.len() == size {
-        // SAFETY: `values_from` writes every word first.
-        let mut out = unsafe { unwritten(size) };
-        values_from(novel, &mut out, point(first));
-        return out;
-    }
-    let mut out = fold_column(novel, e, &novel_weights(novel.len() / size, first, e));
-    values(&mut out, point(first));
+    // SAFETY: `on_coset_prefix_on` writes every word first.
+    let mut out = unsafe { unwritten(1 << e) };
+    on_coset_prefix_on(novel, first, &mut out, false);
     out
+}
+
+/// [`on_coset_prefix`] of `novel` into `out` (`2^e` words), by the calling worker alone.
+pub fn on_coset_prefix_serial(novel: &[F64], first: usize, out: &mut [F64]) {
+    on_coset_prefix_on(novel, first, out, true)
+}
+
+/// [`on_coset_prefix`] into `out`, by the pool or by the calling worker alone (`serial`, which dispatches nothing at
+/// any size: [`values_from_serial`]).
+fn on_coset_prefix_on(novel: &[F64], first: usize, out: &mut [F64], serial: bool) {
+    let size = out.len();
+    assert!(size.is_power_of_two() && novel.len().is_multiple_of(size));
+    let e = size.trailing_zeros() as usize;
+    let small = if serial { crate::domain::values_small } else { crate::domain::values };
+    if novel.len() == size {
+        return column(Some(novel), out, point(first), Forward, small, serial);
+    }
+    fold_column(novel, out, &novel_weights(novel.len() / size, first, e, serial), serial);
+    column(None, out, point(first), Forward, small, serial);
 }
 
 /// `ṽ(bits(i) + δ)` for every `i < 2^e`, `ṽ` the multilinear of `values` (`2^r` of them, `e ≤ r`): the top `r - e`
-/// variables at `δ` (a fold), then the shifted cube of the rest.
-pub fn shifted_cube(values: &[F64], delta: &[F64], e: usize) -> Vec<F64> {
-    assert!(values.len().is_power_of_two(), "a column of a power of two words");
-    let r = values.len().trailing_zeros() as usize;
-    assert!(e <= r && delta.len() >= r);
-    let mut out = if e == r {
-        values.to_vec()
-    } else {
-        let weights = tensor(
-            1 << (r - e),
-            |b, bit| if bit { delta[e + b] } else { F64::ONE + delta[e + b] },
-        );
-        fold_column(values, e, &weights)
-    };
-    if out.len() < 8 {
-        for (l, &d) in delta[..e].iter().enumerate() {
-            let half = 1usize << l;
-            for pair in out.chunks_exact_mut(2 * half) {
-                let (lo, hi) = pair.split_at_mut(half);
-                for (a, b) in lo.iter_mut().zip(hi.iter_mut()) {
-                    let t = d * (*a + *b);
-                    *a += t;
-                    *b += t;
-                }
-            }
-        }
-        return out;
-    }
-    let kind = Cube {
-        delta: delta[..e].to_vec(),
-    };
-    // SAFETY: `out`'s own words, eight a row.
-    unsafe { run(out.as_mut_ptr().cast(), None, out.len() / 8, 3, &kind, false) }
-    out
-}
-
-/// [`shifted_cube`] by the calling worker alone: the same values.
+/// variables at `δ` (a fold), then the shifted cube of the rest. By the calling worker alone.
 pub fn shifted_cube_serial(values: &[F64], delta: &[F64], e: usize) -> Vec<F64> {
     assert!(values.len().is_power_of_two(), "a column of a power of two words");
     let r = values.len().trailing_zeros() as usize;
     assert!(e <= r && delta.len() >= r);
-    let size = 1usize << e;
     let mut out = if e == r {
         values.to_vec()
     } else {
-        // `tensor`'s weights (the same products), then `fold_column`'s sums.
-        let mut weights = vec![F64::ONE];
-        for b in 0..r - e {
-            let (zero, one) = (F64::ONE + delta[e + b], delta[e + b]);
-            let high: Vec<F64> = weights.iter().map(|&w| w * one).collect();
-            weights.iter_mut().for_each(|w| *w *= zero);
-            weights.extend(high);
-        }
-        (0..size)
-            .map(|i| weights.iter().enumerate().fold(F64::ZERO, |acc, (h, &w)| acc + w * values[i + h * size]))
-            .collect()
+        let weights = tensor(1 << (r - e), |b, bit| if bit { delta[e + b] } else { F64::ONE + delta[e + b] }, true);
+        // SAFETY: the fold writes every word.
+        let mut out = unsafe { unwritten(1 << e) };
+        fold_column(values, &mut out, &weights, true);
+        out
     };
     if out.len() < 8 {
         for (l, &d) in delta[..e].iter().enumerate() {
@@ -2055,62 +1989,6 @@ pub fn subset_sums_of_cols(srcs: &[&[F64]]) -> Vec<Vec<F64>> {
     out
 }
 
-/// [`values_from`] by the calling worker alone.
-pub fn values_from_serial(src: &[F64], dst: &mut [F64], offset: F64) {
-    assert_eq!(src.len(), dst.len());
-    assert!(dst.len().is_power_of_two(), "a column of a power of two words");
-    if dst.len() < 8 {
-        dst.copy_from_slice(src);
-        // Not `crate::domain::values`, which dispatches to the pool (from a pool task, a nested dispatch).
-        return crate::domain::values_small(dst, offset);
-    }
-    let kind = Forward(Twiddles::new(offset, dst.len().trailing_zeros() as usize));
-    // SAFETY: `dst`'s own words, eight a row, read first from `src`'s.
-    unsafe {
-        run_on(
-            dst.as_mut_ptr().cast(),
-            Some(src.as_ptr().cast()),
-            dst.len() / 8,
-            3,
-            &kind,
-            false,
-            true,
-        )
-    }
-}
-
-/// [`on_coset_prefix`] of `novel` into `out` (`2^e` words), by the calling worker alone.
-pub fn on_coset_prefix_serial(novel: &[F64], first: usize, out: &mut [F64]) {
-    let size = out.len();
-    assert!(size.is_power_of_two() && novel.len().is_multiple_of(size));
-    let e = size.trailing_zeros() as usize;
-    if novel.len() == size {
-        return values_from_serial(novel, out, point(first));
-    }
-    // `novel_weights`' products in `tensor`'s order, then `fold_rows`' (or `fold_column`'s) sums: the same values.
-    let blocks = novel.len() / size;
-    let mut weights = vec![F64::ONE];
-    let mut b = 0;
-    while weights.len() < blocks {
-        let one = point(first >> (e + b));
-        let half = weights.len();
-        for h in 0..half {
-            let w = weights[h] * one;
-            weights.push(w);
-        }
-        b += 1;
-    }
-    for (i, o) in out.iter_mut().enumerate() {
-        *o = (0..blocks).fold(F64::ZERO, |acc, h| acc + weights[h] * novel[i + h * size]);
-    }
-    if size < 8 {
-        return crate::domain::values_small(out, point(first));
-    }
-    let kind = Forward(Twiddles::new(point(first), e));
-    // SAFETY: `out`'s own words, eight a row.
-    unsafe { run_on(out.as_mut_ptr().cast(), None, size / 8, 3, &kind, false, true) }
-}
-
 /// [`on_coset_prefix`] of several columns of one length at once.
 pub fn on_coset_prefix_cols(novels: &[&[F64]], first: usize, e: usize) -> Vec<Vec<F64>> {
     let size = 1usize << e;
@@ -2128,7 +2006,7 @@ pub fn on_coset_prefix_cols(novels: &[&[F64]], first: usize, e: usize) -> Vec<Ve
         // Few rows: as one column at a time.
         return novels.iter().map(|n| on_coset_prefix(n, first, e)).collect();
     }
-    let weights = novel_weights(len / size, first, e);
+    let weights = novel_weights(len / size, first, e, false);
     let rows = size / 8;
     let chunk = (rows / 128).clamp(1, 64);
     let per = rows / chunk;
@@ -2136,19 +2014,9 @@ pub fn on_coset_prefix_cols(novels: &[&[F64]], first: usize, e: usize) -> Vec<Ve
     // `fold_rows`' sums, its tasks for every column in one dispatch.
     parallel::for_each(per * novels.len(), |t| {
         let (c, task) = (t / per, t % per);
-        let src: *const u64 = novels[c].as_ptr().cast();
-        // SAFETY: a task writes its own `chunk` rows of column `c`'s output and reads its source.
-        unsafe {
-            for i in task * chunk..(task + 1) * chunk {
-                let mut acc = load(src.add(8 * i));
-                if weights[0] != F64::ONE {
-                    acc = mul(acc, splat(weights[0].0));
-                }
-                for (h, &w) in weights.iter().enumerate().skip(1) {
-                    acc = xor(acc, mul(load(src.add(8 * (i + h * rows))), splat(w.0)));
-                }
-                store(dsts[c].add(8 * i), acc);
-            }
+        for i in task * chunk..(task + 1) * chunk {
+            // SAFETY: a task writes its own `chunk` rows of column `c`'s output and reads its source.
+            unsafe { fold_row(novels[c].as_ptr().cast(), dsts[c].0, i, rows, &weights) }
         }
     });
     let mut dsts: Vec<&mut [F64]> = out.iter_mut().map(|o| &mut o[..]).collect();
@@ -2197,7 +2065,7 @@ pub fn interpolate_prefix_cols(data: &mut [&mut [F64]], sizes: &[usize], base: u
 fn earlier_folds(starts: &[usize], sizes: &[usize], base: usize, j: usize) -> Vec<(usize, Vec<F64>)> {
     let e = sizes[j];
     (0..j)
-        .map(|i| (starts[i] - base, novel_weights(1 << (sizes[i] - e), starts[j], e)))
+        .map(|i| (starts[i] - base, novel_weights(1 << (sizes[i] - e), starts[j], e, false)))
         .collect()
 }
 
@@ -2770,39 +2638,32 @@ fn subset_upper_of<M: Copy + Send + Sync + Add<Output = M> + Default>(bases: &[S
 // Split column transforms (`crate::protocol`'s reduction): the layers above a leaf on a whole column, and one
 // leaf's own layers on one block, so that a caller can fuse its own pointwise work between a forward transform's
 // last layers and an inverse transform's first, a block in cache, rather than make a pass over memory for each.
-// [`values`] is [`values_upper`] then [`values_leaf`] on each block of [`LEAF_WORDS`]; [`coefficients`] is
-// [`coefficients_leaf`] on each block then [`coefficients_upper`].
+// [`values_from`] is [`values_upper_many`] (one column) then [`values_leaf`] on each block of [`LEAF_WORDS`];
+// [`coefficients`] is [`coefficients_leaf`] on each block then [`coefficients_upper`].
 // ---------------------------------------------------------------------------------------------------------------
 
-/// The rows of a leaf of the split transforms.
-const SPLIT_LEAF_ROWS: usize = LEAF_ROWS;
-
 /// The words of a leaf: the block [`values_leaf`] and [`coefficients_leaf`] take.
-pub const LEAF_WORDS: usize = 8 * SPLIT_LEAF_ROWS;
+pub const LEAF_WORDS: usize = 8 * LEAF_ROWS;
 
-/// The most of the layers above a leaf that one pass over memory takes in [`values_upper`] and
-/// [`coefficients_upper`], and the rows of one of its tiles.
-const UPPER_GROUP: usize = GROUP;
-const UPPER_TILE_ROWS: usize = TILE_ROWS;
-
-/// The groups of row layers above a leaf, the highest first: `(lowest layer, layers)`.
+/// The groups of row layers above a leaf, the highest first: `(lowest layer, layers)`, at most [`GROUP`] a pass over
+/// memory.
 fn upper_groups(rows: usize) -> Vec<(usize, usize)> {
     let mr = rows.trailing_zeros() as usize;
-    let leaf = mr.min(SPLIT_LEAF_ROWS.trailing_zeros() as usize);
+    let leaf = mr.min(LEAF_ROWS.trailing_zeros() as usize);
     let mut groups = Vec::new();
     let mut top = mr;
     while top > leaf {
-        let a = top.saturating_sub(UPPER_GROUP).max(leaf);
+        let a = top.saturating_sub(GROUP).max(leaf);
         groups.push((a, top - a));
         top = a;
     }
     groups
 }
 
-/// [`wide`] with [`UPPER_TILE_ROWS`].
+/// [`wide`] with [`TILE_ROWS`].
 fn upper<T: Kind>(data: SendPtr<u64>, src: Option<SendPtr<u64>>, rows: usize, a: usize, g: usize, kind: &T) {
     let lines = 1usize << g;
-    let width = (UPPER_TILE_ROWS >> g).clamp(1, 1 << a);
+    let width = (TILE_ROWS >> g).clamp(1, 1 << a);
     let per_group = (1usize << a) / width;
     tasks((rows >> (a + g)) * per_group, false, |task| {
         let row0 = ((task / per_group) << (a + g)) + (task % per_group) * width;
@@ -2819,32 +2680,10 @@ fn upper<T: Kind>(data: SendPtr<u64>, src: Option<SendPtr<u64>>, rows: usize, a:
     });
 }
 
-/// The forward transform's layers above a leaf, on the column `dst` (a power of two, at least eight words), read
-/// first from `src` if given (of `dst`'s length): with [`values_leaf`] on every block, [`values`] (`values_from`).
-pub fn values_upper(src: Option<&[F64]>, dst: &mut [F64], offset: F64) {
-    assert!(dst.len().is_power_of_two() && dst.len() >= 8);
-    if let Some(s) = src {
-        assert_eq!(s.len(), dst.len());
-    }
-    let rows = dst.len() / 8;
-    let kind = Forward(Twiddles::new(offset, dst.len().trailing_zeros() as usize));
-    let data = SendPtr(dst.as_mut_ptr().cast::<u64>());
-    let mut from = src.map(|s| SendPtr(s.as_ptr().cast::<u64>().cast_mut()));
-    let groups = upper_groups(rows);
-    if groups.is_empty() {
-        if let Some(s) = src {
-            dst.copy_from_slice(s);
-        }
-        return;
-    }
-    for (a, g) in groups {
-        upper(data, from.take(), rows, a, g, &kind);
-    }
-}
-
-/// [`values_upper`] into each of `dsts` (all of `src`'s length) at its offset (`offsets[i]` for `dsts[i]`) of `src`
-/// with `heads[i]` added to its leading words: the first pass reads each run of `src` once for all of them (from
-/// cache for all but the first), the rest are each column's. The same values as one [`values_upper`] a column.
+/// The forward transform's layers above a leaf (with [`values_leaf`] on every block, [`values_from`]) into each of
+/// `dsts` (all of `src`'s length, a power of two, at least eight words) at its offset (`offsets[i]` for `dsts[i]`)
+/// of `src` with `heads[i]` added to its leading words: the first pass reads each run of `src` once for all of them
+/// (from cache for all but the first), the rest are each column's. The same values as one column at a time.
 pub fn values_upper_many(src: &[F64], heads: &[&[F64]], dsts: &mut [&mut [F64]], offsets: &[F64]) {
     assert!(dsts.len() == offsets.len() && dsts.len() == heads.len());
     assert!(src.len().is_power_of_two() && src.len() >= 8);
@@ -2883,7 +2722,7 @@ fn upper_from_many<T: Kind>(
     kinds: &[T],
 ) {
     let lines = 1usize << g;
-    let width = (UPPER_TILE_ROWS >> g).clamp(1, 1 << a);
+    let width = (TILE_ROWS >> g).clamp(1, 1 << a);
     let per_group = (1usize << a) / width;
     assert!(heads.iter().all(|h| h.len() <= 8 * width), "a head inside the first task's first line");
     tasks((rows >> (a + g)) * per_group, false, |task| {
@@ -3254,6 +3093,13 @@ mod tests {
         }
     }
 
+    /// `crate::domain::coefficients` on a batch.
+    fn coefficients_batch(data: &mut [K8], offset: F64) {
+        let kind = Inverse(Twiddles::new(offset, data.len().trailing_zeros() as usize));
+        // SAFETY: `data`'s own rows.
+        unsafe { run_on(words(data), None, data.len(), 0, &kind, false, false) }
+    }
+
     /// The transforms are `quotient::domain`'s, on one column and on a batch, at every size up to two wide passes.
     #[test]
     fn transforms_are_the_domains() {
@@ -3358,7 +3204,7 @@ mod tests {
             }
         }
         for e in [0usize, 2, 3, 7, 12] {
-            assert_eq!(shifted_cube(&table, &delta, e), full[..1 << e].to_vec(), "cube, 2^{e}");
+            assert_eq!(shifted_cube_serial(&table, &delta, e), full[..1 << e].to_vec(), "cube, 2^{e}");
         }
         for m in [0usize, 3, 15, 16, 23] {
             let data: Vec<F64> = (0..1usize << m).map(|_| F64(next())).collect();
@@ -3624,20 +3470,7 @@ mod tests {
         }
     }
 
-    /// The one-worker shifted cube is the pool's.
-    #[test]
-    fn serial_cube_is_the_pools() {
-        let mut next = rng(31);
-        for r in [0usize, 2, 3, 9, 13, 15] {
-            let values: Vec<F64> = (0..1usize << r).map(|_| F64(next())).collect();
-            let delta: Vec<F64> = (0..r).map(|_| F64(next())).collect();
-            for e in 0..=r {
-                assert_eq!(shifted_cube_serial(&values, &delta, e), shifted_cube(&values, &delta, e), "2^{r} onto 2^{e}");
-            }
-        }
-    }
-
-    /// The fold weights in one dispatch are the doubling's.
+    /// The fold weights, in one dispatch or by one worker, are the doubling's.
     #[test]
     fn tensor_is_doubling() {
         for len in [1usize, 2, 3, 100, 4096, 4097, 1 << 15, (1 << 17) + 5] {
@@ -3655,7 +3488,8 @@ mod tests {
                 b += 1;
             }
             want.truncate(len);
-            assert_eq!(tensor(len, factor), want, "{len}");
+            assert_eq!(tensor(len, factor, false), want, "{len}");
+            assert_eq!(tensor(len, factor, true), want, "{len}, serial");
         }
         let mut next = rng(19);
         let srcs: Vec<Vec<F64>> = (0..3).map(|_| (0..1 << 13).map(|_| F64(next())).collect()).collect();
@@ -3796,8 +3630,7 @@ mod tests {
     }
 
     /// The split transforms are the whole ones: the upper layers, then each leaf block's (forward); each leaf
-    /// block's, then the upper layers (inverse); at sizes of no, one and two upper passes, in place and from a
-    /// source.
+    /// block's, then the upper layers (inverse); at sizes of no, one and two upper passes.
     #[test]
     fn split_transforms_are_the_whole() {
         let mut next = rng(5);
@@ -3809,17 +3642,11 @@ mod tests {
             values(&mut want, offset);
             let block = LEAF_WORDS.min(len);
             let mut got = vec![F64::ZERO; len];
-            values_upper(Some(&column), &mut got, offset);
+            values_upper_many(&column, &[&[]], &mut [&mut got[..]], &[offset]);
             for (b, chunk) in got.chunks_exact_mut(block).enumerate() {
                 values_leaf(chunk, b * block, len, offset);
             }
             assert_eq!(got, want, "values, 2^{m}");
-            let mut again = column.clone();
-            values_upper(None, &mut again, offset);
-            for (b, chunk) in again.chunks_exact_mut(block).enumerate() {
-                values_leaf(chunk, b * block, len, offset);
-            }
-            assert_eq!(again, want, "values in place, 2^{m}");
             for (b, chunk) in got.chunks_exact_mut(block).enumerate() {
                 coefficients_leaf(chunk, b * block, len, offset);
             }
@@ -3836,7 +3663,7 @@ mod tests {
         for (rows, blocks) in [(8usize, 3usize), (8, 5), (64, 3), (128, 7), (1, 3)] {
             let src: Vec<K8> = (0..rows * blocks).map(|_| K8(std::array::from_fn(|_| F64(next())))).collect();
             let first = 7 << 20;
-            let weights = novel_weights(blocks, first, rows.trailing_zeros() as usize);
+            let weights = novel_weights(blocks, first, rows.trailing_zeros() as usize, false);
             let want: Vec<K8> = (0..rows)
                 .map(|i| {
                     K8(std::array::from_fn(|l| {
@@ -3872,7 +3699,7 @@ mod tests {
             assert!(refuses(&|| coefficients_from(&src, &mut src.clone(), F64::ONE)), "coefficients_from, {len}");
             assert!(refuses(&|| values_from_serial(&src, &mut src.clone(), F64::ONE)), "values_from_serial, {len}");
             assert!(refuses(&|| values_cols(&mut [&mut src.clone()[..]], F64::ONE)), "values_cols, {len}");
-            assert!(refuses(&|| std::mem::drop(shifted_cube(&src, &[F64::ONE; 8], 0))), "shifted_cube, {len}");
+            assert!(refuses(&|| std::mem::drop(shifted_cube_serial(&src, &[F64::ONE; 8], 0))), "shifted_cube, {len}");
         }
     }
 
