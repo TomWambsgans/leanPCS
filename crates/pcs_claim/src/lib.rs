@@ -266,7 +266,8 @@ pub fn commit_words(words: &[F64], n: usize, keep_codeword: bool) -> Commitment 
 fn zero_lanes(words: &[F64], lane: usize) -> Vec<bool> {
     const RUN: usize = 1 << 16;
     let run = RUN.min(lane);
-    let zero_runs = parallel::map_collect(words.len() / run, |r| words[r * run..(r + 1) * run].iter().all(|w| w.is_zero()));
+    let zero_runs =
+        parallel::map_collect(words.len() / run, |r| words[r * run..(r + 1) * run].iter().all(|w| w.is_zero()));
     zero_runs.chunks(lane / run).map(|runs| runs.iter().all(|&z| z)).collect()
 }
 

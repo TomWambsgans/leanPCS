@@ -803,7 +803,7 @@ impl<'m> Source<'m> {
     }
 
     /// The message from first-sweep task `task`'s first gathered row on, as far as the task reads.
-    fn from_task(&self, plan: &TwoSweep, task: usize) -> &'m [F64] {
+    fn at_task(&self, plan: &TwoSweep, task: usize) -> &'m [F64] {
         match self {
             Source::Whole(msg) => &msg[plan.row_offset(task, 0)..],
             Source::Blocks(blocks) => {
@@ -997,7 +997,7 @@ impl AdditiveNttF64 {
         let Some(msg) = source.whole().or((plan.g > 0).then_some(&[][..])) else {
             return false;
         };
-        let msg_at = |task: usize| source.from_task(&plan, task);
+        let msg_at = |task: usize| source.at_task(&plan, task);
         let len = plan.len();
         assert!(work.len() >= len, "the work buffer holds a replica");
         let replicas: Vec<AdditiveNttF64> = (0..1usize << log_inv_rate)
@@ -1011,7 +1011,7 @@ impl AdditiveNttF64 {
                 let stream = len >= STREAM_MIN_WORDS;
                 let group: Vec<&AdditiveNttF64> = group.iter().collect();
                 let stride = plan.row_stride();
-                self.two_sweep_gathered(&plan, &group, None, &msg_at, |task, r, rows, stream_out| {
+                self.two_sweep_gathered(&plan, &group, None, msg_at, |task, r, rows, stream_out| {
                     let first = r * len + plan.row_offset(task, 0);
                     for (i, src) in rows.chunks_exact(plan.width).enumerate() {
                         // SAFETY: each (task, replica) alone writes these words of the replica's work buffer.
@@ -1076,7 +1076,8 @@ impl AdditiveNttF64 {
         if g > 0 {
             let data_ptr = parallel::SendPtr(data.as_mut_ptr());
             let refs: Vec<&AdditiveNttF64> = replicas.iter().collect();
-            self.two_sweep_gathered(&plan, &refs, None, |task| &msg[plan.row_offset(task, 0)..], |task, r, rows, stream_out| {
+            let msg_at = |task: usize| &msg[plan.row_offset(task, 0)..];
+            self.two_sweep_gathered(&plan, &refs, None, msg_at, |task, r, rows, stream_out| {
                 let first = r * len + plan.in_tile(task);
                 for (i, src) in rows.chunks_exact(plan.width).enumerate() {
                     // SAFETY: each (task, replica) alone writes these words of tile `i` of the replica's region.
@@ -1212,7 +1213,7 @@ impl AdditiveNttF64 {
         let plan = TwoSweep::new(layout, n, log_rows, false)?;
         // Without a first sweep, the second reads the message whole.
         let msg = source.whole().or((plan.g > 0).then_some(&[][..]))?;
-        let msg_at = |task: usize| source.from_task(&plan, task);
+        let msg_at = |task: usize| source.at_task(&plan, task);
         let (g, t) = (plan.g, plan.t);
         let rows = 1usize << log_rows;
         // The wanted tiles, (replica, tile) ascending.
@@ -1248,7 +1249,7 @@ impl AdditiveNttF64 {
                     tiles[used[u].1..end].iter().map(|&(_, tile)| tile).collect()
                 })
                 .collect();
-            self.two_sweep_gathered(&plan, &refs, Some(&rows), &msg_at, |task, u, buf, _| {
+            self.two_sweep_gathered(&plan, &refs, Some(&rows), msg_at, |task, u, buf, _| {
                 let first = used[u].1;
                 let end = used.get(u + 1).map_or(tiles.len(), |&(_, k)| k);
                 for (k, &(_, tile)) in tiles.iter().enumerate().take(end).skip(first) {

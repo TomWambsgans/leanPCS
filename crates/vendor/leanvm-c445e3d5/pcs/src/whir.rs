@@ -445,7 +445,8 @@ pub fn encoded_rows_skipping(
         return encoded_rows(message, log_n, log_batch_size, log_inv_rate, positions);
     };
     let k_code = log_rows + log_inv_rate;
-    let _span = tracing::info_span!("NTT", kind = "base re-encode", log_domain = k_code, lanes = blocks.len()).entered();
+    let _span =
+        tracing::info_span!("NTT", kind = "base re-encode", log_domain = k_code, lanes = blocks.len()).entered();
     let mut wanted = positions.to_vec();
     wanted.sort_unstable();
     wanted.dedup();
