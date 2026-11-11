@@ -1,8 +1,8 @@
 // Part of this repository. The zerocheck, lincheck and slices are leanVM 42422001's Flock prover
 // (crates/vendor/flock-42422001, its `prove_reduction_skip`, this repository's, on the Keccak-f block of
-// `flock::keccak`, docs/leanvm/flock/KECCAK.md), on the witness the trace's `SHA3` rows give. With π1-rec3
+// `flock::keccak`, docs/leanvm/univariate/FLOCK.md), on the witness the trace's `SHA3` rows give. With π1-rec3
 // (`FsShape::Rec3`) the zerocheck's eq point is the skip module's, as squares. MIT OR Apache-2.0; see AGENTS.md.
-//! Flock's prover (SPEC-FLOCK.md), behind one call ([`prove`]): the zerocheck (a skip of 3 to 6), the lincheck and
+//! Flock's prover (FLOCK.md), behind one call ([`prove`]): the zerocheck (a skip of 3 to 6), the lincheck and
 //! the 64 slices, written to the contract's Keccak-256 chain through [`Chain`], then the ring map's challenges, as
 //! `flock_min::verify_walked_with::<_, keccak_flock::Keccak>` reads them.
 

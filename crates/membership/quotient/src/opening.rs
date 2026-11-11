@@ -5,7 +5,7 @@
 //! evaluation of that multilinear at a point, one point a claim, each opened by one WHIR opening.
 //!
 //! The openings are leanVM's WHIR, which is not zero-knowledge: the protocol's zero knowledge assumes a
-//! zero-knowledge PCS opening (ZK-WHIR), as the EIP does (`HIDING.md`).
+//! zero-knowledge PCS opening (ZK-WHIR), as the EIP does (`docs/membership/PROTOCOL.md`, "Zero knowledge").
 
 use fiat_shamir::merkle::Hash;
 pub use pcs_claim::{Committed, MAX_VARIABLES, MIN_VARIABLES, PcsClaim, wire_proof};

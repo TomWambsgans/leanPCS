@@ -4,9 +4,9 @@
 
 The univariate PIOP's verifier (`crates/leanvm/univariate`, `docs/leanvm/univariate/SPEC.md`) as computable Lean: the
 transcript, the domain, the tables, the heap, the claims, Flock's verifier, the stacks, the batch, the shape class,
-the run on calldata, the claims' opening and the contract's IV, the commitments' encodings and the deployment. It
-was written for leanVM 42422001 (iteration 2, `leanvm-univariate` `ad49e74`) and is now the shared part of the Keccak
-VM's verifier: [`formal/UniKeccak`](../UniKeccak/README.md) instantiates it (the `Variant`, the `SHA3` table of
+the run on calldata, the claims' opening and the contract's IV, the commitments' encodings and the deployment. It is
+the shared part of the Keccak VM's verifier (first written for leanVM 42422001 at `leanvm-univariate` `ad49e74`):
+[`formal/UniKeccak`](../UniKeccak/README.md) instantiates it (the `Variant`, the `SHA3` table of
 `KeccakTables.lean`) and states the end theorems against `KeccakVm.KvHolds`. No `sorry`, no
 `native_decide`; the root's guards (`UniStatement.lean`) check the verifier's axioms.
 
@@ -50,8 +50,7 @@ lake env lean ../UniStatement/UniStatementTest/KeccakTables.lean    # the Keccak
     reference setup roots, a claim's opening as the Statement's and the claims word for word (`pcsCalls`), and
     **`verifyWith`**, the whole verifier (the main line: the run, then five calls). **A root from the stream**
     (`rootOf`): the digest whose bytes are the stream's 32 bytes, as they are (`rootWord`), since the EIP's PCS
-    claims (the prover sends a root's bytes, `rootHalves`); before them, the root's two scalars of WHIR's
-    transcript. `Reduced` (`Verifier.lean`) carries the out-of-domain answers the Keccak run reads after its roots
+    claims (the prover sends a root's bytes, `rootHalves`). `Reduced` (`Verifier.lean`) carries the out-of-domain answers the Keccak run reads after its roots
     (`oods`; `(0, 0)` for this library's own runs).
 13. [`Mapping.lean`](UniStatement/Mapping.lean): basis `B` ↔ values, the rows' order (`rowPosition`), the setup's tables.
 14. [`Security.lean`](UniStatement/Security.lean): the deployment, the
@@ -65,7 +64,7 @@ lake env lean ../UniStatement/UniStatementTest/KeccakTables.lean    # the Keccak
     imported by `UniStatement.lean`): `tablesKeccak` (the `SHA3` table at opcode `5`: `sha3Columns`,
     `flushesSha3`, on `formal/KeccakVm`'s cell layout `KeccakVm.sha3CellLanes`), `keccakSlot`, `keccakSlotOffset`,
     `keccakR1csLogSize`. `UniStatementTest/KeccakTables.lean` checks every table, column, slot, offset and flush form
-    against the Rust's `tables_keccak()` (`crates/leanvm/statement/tests/lean_keccak_tables.rs`). the `Variant`'s
+    against the Rust's `tables_keccak()` (`crates/leanvm/statement/tests/lean_keccak_tables.rs`). The `Variant`'s
     verifier is `formal/UniKeccak`'s.
 
 ## Rust → Lean
@@ -99,22 +98,12 @@ reads, is not computed; a row count is an `ℕ` (the Rust holds it in a scalar's
 contract's class** (iteration 2, F1): `Shape` holds the memory, the bytecode and the heights (the Rust's `Shape`
 holds row counts, of which only `⌈log₂ rows⌉` is read: `shapeWith`); the row counts are the stream's.
 
+## The layout words
 
-## The setup constants as data
-
-* The measured shapes (`measured`, `workloads`: 32 to 2,000 signatures; the Keccak VM's reference shape is
-  `UniKeccakSound.keccakRefShape`), the program's IV
-  (`programIv`), the transcript's name (`name`), the bytecode's `2^19` instructions.
-* The layouts (`layoutsOf shape`: `C1`, `C2`, setup; `C2`'s columns `Shape.c2Columns`) and the heap
-  (`Shape.heap`) are functions of the shape, as in the Rust; the test compares the run's with them, their
-  variables with the Rust's, their words through the layout words, and their offsets through every claim.
-* The contract's constants (F2): the reference setup roots (`referenceRoots`, `SetupRoots::REFERENCE`'s bytes
-  read as digests: `digestBytes` gives the Rust's bytes back), the five layout words (`layoutWords`) and the
-  contract's IV (`contractIv`), each compared with the Rust's.
-* The setup's tables (`Mapping.lean`): `setupStack` (the bytecode's 16 tuple slots in basis `B`, slot `s` of
-  coefficient `k` at word `s + 16 k`, and the addresses `g^i`) and `matrixStack` (Flock's `A0`, `B0`,
-  `2^28` words); their roots are the WHIR commitments over `π` (`setupTreesWith`), the IV their binding with
-  leanVM's program IV, the shape and the layout words (`Deployment.ivWith`).
+`Opening.lean` keeps the main line's earlier encoding: five calls (`C1`, `C2`, setup, `A0`, `B0`) on layout words
+(`layoutWord`, `pcsCalls`, `verifyWith`, `pcsOpenWith` on `plainLayout`), and `Mapping.lean` the setup's tables
+(`setupStack`, `matrixStack`). The Keccak VM's statements do not use them: `UniKeccak` states the EIP's PCS claims
+(`pcsClaimsK`, `verifyWithK`; the setup one commitment `(F, f(z))` in the IV).
 
 ## What is tested
 
@@ -125,24 +114,8 @@ claims word for word) and `UniStatementTest/KeccakTables.lean` (the Keccak VM's 
 
 ## Open points
 
-1. **The claims' WHIR instance is a choice**: the Rust mocks the frame of claims; the statements take the
-   Statement's opening (label, version, layout identifier, rate `1/2`) on the plain layout of each stack, its
-   size the call's layout word's `vars` (byte 24). The word's `placed` (the words the blocks fill) and code are
-   bound by the contract's IV, not read by this opening (the Rust's opening reads `placed` to know the
-   committed lanes). The root word's reading (here: the two halves as `digestOfScalars` for the stream's roots,
-   the bytes as `digestOfBytes32` for the reference setup roots) is the Rust's: its prover sends a root as its two
-   WHIR scalars (`prove::halves`, `hash_to_scalars`; a prover sending the
-   hash's bytes would name another root under this reading), and the setup roots are the commitments' hashes
-   (`prover::setup::roots`). The extensions
-   (weighted claims, the bit-slice claim) have no opening here; `verifyWith` is the main line's.
-2. **The row counts and the shape class** (F1): the verifier accepts any count `c ≤ 2^h`, `0` included; the
-   quotients are sized for `leastRows h = 2^(h−1) + 1`, so an honest prover needs `c ≥ leastRows h`
-   (`Shape.RowsFit`, completeness's hypothesis), and soundness must hold at every `c ≤ 2^h` (a table's
-   `τ` may then be below `h`).
-3. **The public input's byte order**: it is read as big-endian words (the contract's, documented at `ad49e74`);
-   leanVM's digest is little-endian. One function (`publicWordsOf`, which `publicInputOf` shares) changes when the
-   contract does.
-4. **Weighted mode with Flock's bit-slice end or no Flock argument** makes no check in the contract (every
-   stream of the right length with counts in range is accepted; the openings check all), the point-claim ABI with
-   the bit-slice end (extension B) leaves its batch terminal to the bit-slice claim (lever 5a), and every check of
-   the main line is affine in the scalar read just before it: sound only with the openings.
+1. **The row counts and the shape class**: the verifier accepts any count `c ≤ 2^h`, `0` included; the quotients are
+   sized for `leastRows h = 2^(h−1) + 1`, so an honest prover needs `c ≥ leastRows h` (`Shape.RowsFit`,
+   completeness's hypothesis), and soundness must hold at every `c ≤ 2^h` (a table's `τ` may then be below `h`).
+2. **The public input's byte order**: read as big-endian words (the contract's); leanVM's digest is little-endian.
+   One function (`publicWordsOf`, shared by `publicInputOf`) changes when the contract does.

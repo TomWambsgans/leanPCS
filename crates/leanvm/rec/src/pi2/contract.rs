@@ -9,7 +9,7 @@
 //! stream: `W`'s commitment (root, out-of-domain answer), `Q`'s, the values at `t`; then a byte, the index of the
 //! transaction's frame of PCS claims. **Claims**, each the EIP draft's PCS claim (`crates/pcs_claim`,
 //! `docs/PCS_CLAIM.md`), declared in that frame in order: π1's three, whose Keccak-256s (payloads 0 … 2) the contract
-//! reads into the seed and π2's circuit computes from π1's run (`docs/leanvm/rec/PERF_GAS2.md`); then π2's five,
+//! reads into the seed and π2's circuit computes from π1's run (`docs/leanvm/rec/SPEC-REC.md` §2.4.6); then π2's five,
 //! checked declared at payloads 3 … 7 (`evm_link::declared_claims`): `W`, the setup (its commitment a constant of the
 //! code), `Q`'s identity, pushes and sum (`verifier::Reduced::claims`). A claim's fields are written once each (the
 //! setup's point `W`'s digits, `Q`'s claims their `u`), packed and hashed where it is checked.
@@ -305,7 +305,7 @@ fn ends(inst: &Instance, recorded: &Recorded, verify: bool) -> (Vec<Word>, Endin
 }
 
 /// Calldata verifying a proof: π1's public input, the stream, then the index of the transaction's frame of PCS claims
-/// ([`PCS_FRAME`]). No selector: the verifier is the contract's only entry (`docs/leanvm/rec/PERF_GAS.md`).
+/// ([`PCS_FRAME`]). No selector: the verifier is the contract's only entry (`docs/leanvm/rec/SPEC-REC.md` §12).
 pub fn calldata(public_input: &[u8; 32], stream: &[u8]) -> Vec<u8> {
     [public_input, stream, &[PCS_FRAME]].concat()
 }
