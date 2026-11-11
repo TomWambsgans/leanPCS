@@ -1,8 +1,8 @@
 # The membership line under the EIP's PCS claims
 
-**Superseded on the branch `perf/membership-gas`** by one quotient in one table (four claims on two commitments,
-36,520 gas): [`PERF_GAS.md`](PERF_GAS.md). This note records main's layout, the first fit of the protocol to the
-EIP's claims.
+**Superseded** (2026-11-11) by one quotient in one table (four claims on two commitments, 36,520 gas):
+[`PERF_GAS.md`](PERF_GAS.md). This note records the layout of commit `f96a7938`, the first fit of the protocol to the
+EIP's claims, which the Lean in `formal/` still proves.
 
 The membership proof's claims are the EIP draft's: `version || n || commitment(root, ood) || point || value`, one
 point a claim, each a plain point evaluation of the whole committed multilinear (`crates/pcs_claim`,

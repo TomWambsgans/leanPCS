@@ -2,6 +2,9 @@
 
 # The recursion's gas: what was tried (branch `perf/leanvm-gas`)
 
+> Merged into `main` on 2026-11-11. Below, `main` means `main` before the merge (commit `f96a7938`), and "this
+> branch" the branch this note describes; the figures are those measured on it.
+
 Benchmark 2 of the EIP draft: π2's contract verifying π1-rec3 of 128 leanXMSS signatures, as an EIP-8141 frame
 transaction under EIP-7976's floor. The floor binds by far (standard 49,678 against floor 70,464 on `main`), so the gas
 is `64 · calldata bytes`, plus the frame of PCS claims (`1 + 32` bytes a claim, 64 a byte) and the PCS gas (`5,000 +

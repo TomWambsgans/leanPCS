@@ -1,5 +1,8 @@
 # The membership prover's speed (branch `perf/membership-prover`)
 
+> Merged into `main` on 2026-11-11. Below, `main` means `main` before the merge (commit `f96a7938`), and "this
+> branch" the branch this note describes; the figures are those measured on it.
+
 Pure prover changes: every proof is the same, byte for byte (the bench's proof digest `95df593d…` and the toy
 circuit's pin `proofs_are_pinned` are unchanged; leanVM's π2 openings, which share `pcs` and `pcs_claim`, keep their
 digest `52ccb57a…`). The protocol, the PCS claims (version 1), WHIR's parameters, the calldata (461 B), the claims

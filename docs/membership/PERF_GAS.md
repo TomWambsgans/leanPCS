@@ -1,5 +1,8 @@
 # Cutting the membership proof's gas: one quotient, one table
 
+> Merged into `main` on 2026-11-11. Below, `main` means `main` before the merge (commit `f96a7938`), and "this
+> branch" the branch this note describes; the figures are those measured on it.
+
 Branch `perf/membership-gas`. The ZK Keccak-256 Merkle membership proof (benchmark 1 of the EIP draft) goes from
 **52,856 to 36,520 gas** (−30.9%), with a prover that is 32% faster and uses 25% less memory. The PCS claim format
 (`docs/PCS_CLAIM.md`) and the EIP draft are unchanged. The Lean in `formal/` is **not** updated on this branch:

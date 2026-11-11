@@ -2,6 +2,9 @@
 
 # The recursion prover's time: what was tried
 
+> Merged into `main` on 2026-11-11. Below, `main` means `main` before the merge (commit `f96a7938`), and "this
+> branch" the branch this note describes; the figures are those measured on it.
+
 The EIP draft's second benchmark: from leanVM's trace of 128 leanXMSS signatures to π1-rec3's proof and three openings,
 π2's proof and its five openings (`crates/leanvm/rec/tests/pipeline.rs`). Every change below is a pure prover change:
 the proofs are byte for byte main's (π1's stream is the committed vector `keccak128_rec3.txt`; the pipeline prints the

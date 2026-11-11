@@ -10,9 +10,9 @@ that everything public besides the openings can be simulated from the statement:
 - the claims' values.
 
 This note says how (`crates/membership/quotient`, `protocol.rs`), and what the test checks (`src/hiding.rs`).
-On the branch `perf/membership-gas` the protocol is the one of [`PERF_GAS.md`](PERF_GAS.md): one quotient, in one
-table `T` with the sum's polynomial. The previous protocol's argument (the masks, three groups, the measured group)
-is in this file's history.
+The protocol is the one of [`PERF_GAS.md`](PERF_GAS.md): one quotient, in one table `T` with the sum's polynomial.
+The previous protocol's argument (commit `f96a7938`: the masks, three groups, the measured group) is in this file's
+history.
 
 ## What is public
 
