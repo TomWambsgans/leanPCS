@@ -352,13 +352,6 @@ fn zero_par(dst: &mut [F64]) {
     parallel::chunks_mut(dst, COPY_RUN, |_, d| d.fill(F64::ZERO));
 }
 
-/// `words[i] += scale · add[i]` for the leading `add.len()` words: twice is the identity.
-fn add_scaled(words: &mut [F64], add: &[F64], scale: F64) {
-    for (v, &c) in words.iter_mut().zip(add) {
-        *v += scale * c;
-    }
-}
-
 /// `low(j)`, the lowest power of two in `j > 0`.
 fn low(j: usize) -> usize {
     j & j.wrapping_neg()
@@ -844,28 +837,21 @@ fn prove_inner(
     let offset = coset(m);
     // SAFETY: each half is written whole by its transform in `two_halves`.
     let mut values = unsafe { words(big) };
-    // The transforms in two parts where the cells are many: the layers above a leaf a pass over memory each, and
-    // each leaf's own layers in the block-wise loop below, around the quotient's values, a block in cache.
-    let fused = n >= ntt::LEAF_WORDS;
+    // The transforms in two parts (the supported sizes have at least a leaf's cells): the layers above a leaf a
+    // pass over memory each, and each leaf's own layers in the block-wise loop below, around the quotient's values,
+    // a block in cache.
+    assert!(n >= ntt::LEAF_WORDS);
     // The values on the two halves of `coeffs + X_n extra` (`extra`'s coefficients from `n` on): `coeffs` with
-    // `extra` times `X_n`'s value on each half's coset added to its leading words ([`top_layer`]). Fused, one pass
-    // reads `coeffs` for both halves' first layers; else `coeffs` holds each half's input in turn.
+    // `extra` times `X_n`'s value on each half's coset added to its leading words ([`top_layer`]), one pass reading
+    // `coeffs` for both halves' first layers.
     let half_offsets: [F64; 2] = std::array::from_fn(|k| half_offset(offset, n, k));
-    let two_halves = |coeffs: &mut [F64], extra: &[F64], out: &mut [F64]| {
+    let two_halves = |coeffs: &[F64], extra: &[F64], out: &mut [F64]| {
         let heads: [Vec<F64>; 2] = std::array::from_fn(|k| extra.iter().map(|&c| top_layer(offset, m, k) * c).collect());
+        let heads: Vec<&[F64]> = heads.iter().map(|h| &h[..]).collect();
         let mut halves: Vec<&mut [F64]> = out.chunks_exact_mut(n).collect();
-        if fused {
-            let heads: Vec<&[F64]> = heads.iter().map(|h| &h[..]).collect();
-            ntt::values_upper_many(coeffs, &heads, &mut halves, &half_offsets);
-        } else {
-            for ((half, head), &at) in halves.into_iter().zip(&heads).zip(&half_offsets) {
-                add_scaled(coeffs, head, F64::ONE);
-                ntt::values_from(coeffs, half, at);
-                add_scaled(coeffs, head, F64::ONE);
-            }
-        }
+        ntt::values_upper_many(coeffs, &heads, &mut halves, &half_offsets);
     };
-    tracing::info_span!("witness values").in_scope(|| two_halves(&mut w_hat, &[], &mut values));
+    tracing::info_span!("witness values").in_scope(|| two_halves(&w_hat, &[], &mut values));
     // `w`'s top coefficient, which `q`'s coefficient `2 n` reads.
     let w_top = w_hat[n - 1];
     let witness = tracing::info_span!("Commit").in_scope(|| opening::commit(w_hat));
@@ -965,7 +951,7 @@ fn prove_inner(
     let extra: [[F64; H_BLIND]; 3] = std::array::from_fn(|e| [blind[e][0], blind[e][1], F64::ZERO]);
     tracing::info_span!("sum values").in_scope(|| {
         for ((h, column), extra) in h_slots(rest, n).into_iter().zip(quotients.chunks_exact_mut(big)).zip(&extra) {
-            two_halves(h, extra, column);
+            two_halves(&*h, extra, column);
         }
     });
 
@@ -1046,7 +1032,7 @@ fn prove_inner(
     // The products' columns: the two limb-3 slots, empty in the table, `2 n` words each.
     let (q_cols, u1_col) = quotients.split_at_mut(3 * big);
     let (rest, u2_col) = rest.split_at_mut(3 * big);
-    let block = if fused { ntt::LEAF_WORDS } else { n.min(1 << 11) };
+    let block = ntt::LEAF_WORDS;
     let w_ptr = parallel::SendPtr(values.as_mut_ptr());
     let q_ptr = parallel::SendPtr(q_cols.as_mut_ptr());
     let u_ptrs = [parallel::SendPtr(u1_col.as_mut_ptr()), parallel::SendPtr(u2_col.as_mut_ptr())];
@@ -1060,29 +1046,19 @@ fn prove_inner(
                 u_ptrs.each_ref().map(|p| p.slice(start, block)),
             )
         };
-        if fused {
-            let k = start / n;
-            let at = half_offset(offset, n, k);
-            ntt::values_leaf(w, start - k * n, n, at);
-            q.iter_mut().for_each(|q| ntt::values_leaf(q, start - k * n, n, at));
-        }
+        let k = start / n;
+        let at = half_offset(offset, n, k);
+        ntt::values_leaf(w, start - k * n, n, at);
+        q.iter_mut().for_each(|q| ntt::values_leaf(q, start - k * n, n, at));
         {
             let [q0, q1, q2] = &mut q;
             let [u1, u2] = &mut u;
             quotient_block(start, w, [&mut q0[..], &mut q1[..], &mut q2[..]], [&mut u1[..], &mut u2[..]]);
         }
-        if fused {
-            q.iter_mut().chain(u.iter_mut()).for_each(|q| ntt::coefficients_leaf(q, start, big, offset));
-        }
+        q.iter_mut().chain(u.iter_mut()).for_each(|q| ntt::coefficients_leaf(q, start, big, offset));
     });
     drop(inner);
-    let backward = |column: &mut [F64]| {
-        if fused {
-            ntt::coefficients_upper(column, offset)
-        } else {
-            ntt::coefficients(column, offset)
-        }
-    };
+    let backward = |column: &mut [F64]| ntt::coefficients_upper(column, offset);
     tracing::info_span!("quotient coefficients").in_scope(|| {
         q_cols.chunks_exact_mut(big).for_each(backward);
         backward(&mut u1_col[..big]);
