@@ -5,6 +5,8 @@ import RecGraphKeccak.Main
 import RecGraphKeccak.Sim.End
 import RecGraphKeccak.Sim.Final
 import RecGraphKeccak.Hazard
+import RecGraphKeccak.Main4
+import RecGraphKeccak.Sim.Final4
 
 /-!
 # RecGraphKeccak: the Keccak VM's π1-rec3 recorded graph, and graph = verifier
@@ -107,3 +109,39 @@ The build fails if a definition or theorem below uses an axiom beyond Lean's thr
 /-- info: 'RecGraphKeccak.hazard_probK' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms RecGraphKeccak.hazard_probK
+
+/-- info: 'RecGraphKeccak.Pi1.pi1Rec4K' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecGraphKeccak.Pi1.pi1Rec4K
+
+/-- info: 'RecGraphKeccak.Pi1GraphIsVerifierK4' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecGraphKeccak.Pi1GraphIsVerifierK4
+
+/-- info: 'RecGraphKeccak.GraphsAgreeK4' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecGraphKeccak.GraphsAgreeK4
+
+/-- info: 'RecGraphKeccak.emitted_isVerifierK4' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecGraphKeccak.emitted_isVerifierK4
+
+/-- info: 'RecGraph.Sim.sim_sampleWide' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecGraph.Sim.sim_sampleWide
+
+/-- info: 'RecGraphKeccak.Sim.verifyWalkedK4_sim' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecGraphKeccak.Sim.verifyWalkedK4_sim
+
+/-- info: 'RecGraphKeccak.Sim.tailSpecK4' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecGraphKeccak.Sim.tailSpecK4
+
+/-- info: 'RecGraphKeccak.Sim.reduce_simQK4' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecGraphKeccak.Sim.reduce_simQK4
+
+/-- info: 'RecGraphKeccak.Sim.pi1GraphIsVerifierK4' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecGraphKeccak.Sim.pi1GraphIsVerifierK4
