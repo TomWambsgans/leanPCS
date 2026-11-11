@@ -17,7 +17,7 @@ half, limbs `0`, `1` and `3` (`SlackPos`). The table is the table without them p
 uniform as soon as the other four (`W`'s answer, `C`, `V + Y`, `X`: `group1`) are (`rMass_eq`).
 
 **`revealedUniform_of_group1`**: `Group1Uniform ε1 → RevealedUniform (ε1 + εspan) 0`, `εspan` the probability that
-the slack's weights at a uniform out-of-domain point do not span `E` (`spanFail`).
+the slack's weights at a uniform out-of-domain point do not span `E` (`spanFail`; at most `2^-126`, `PcsSpan.lean`).
 -/
 
 open OracleComp OracleSpec Common

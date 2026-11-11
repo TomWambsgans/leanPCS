@@ -21,6 +21,7 @@ import ZK.PcsBadOod
 import ZK.PcsBadPhase
 import ZK.PcsFSClosed
 import ZK.PcsSlack
+import ZK.PcsSpan
 import ZK.PcsAxioms
 
 /-!
@@ -63,8 +64,14 @@ scalars' mass is uniform as soon as group 1's is (`rMass_eq`, `uniformWithin_zer
 **`revealedUniform_of_group1`**: `Group1Uniform ε1 → RevealedUniform (ε1 + spanFail) 0`, and
 **`zeroKnowledge_pcs_group1`**: zero knowledge from `PcsZeroKnowledge` and `Group1Uniform` alone, within
 `εpcs Q + ε1 + spanFail + εfs₀`. `Group1Uniform` (`W`'s answer, `C`, `V + Y`, `X` exactly uniform at all but `ε1` of
-the challenges: a rank-`12` condition on the 32 random-row words) is the remaining hypothesis; `spanFail` is an
-explicit probability over `T`'s point, about `2^-127`, not bounded numerically here.
+the challenges: a rank-`12` condition on the 32 random-row words) is the remaining hypothesis.
+
+**The span failure, bounded** (`ZK/PcsSpan.lean`): the slack's weights are `C(z) · {1, u₀, u₁, u₂}` times
+`(1+z₀)(1+z₁)(1+z₂)`, `u_j = z_j/(1+z_j)` (`weight_closed`), so they span `E` once `C(z) ≠ 0`, `u₀ ∉ K` and `u₁` or
+`u₂` lies outside `K + K·u₀` (`span3`, `slackSpan_of`); over `T`'s 28 independent uniform coordinates
+**`spanFail_le`**: `spanFail ≤ εslack = 27 · 2^-192 + 2^64 · 2^-192 + (2^128 · 2^-192)² ≤ 2^-126` (`εslack_le`).
+**`zeroKnowledge_pcs_slack`**: zero knowledge from `PcsZeroKnowledge` and `Group1Uniform ε1` alone, within
+`εpcs Q + ε1 + εslack + εfs₀`.
 
 `ZK/ProverBridge{Eager,Hom,Param}.lean` (random-permutation lemmas kept from the hidden-layout protocol's proof,
 which was removed) are not imported here; `RecCompose` imports `ZK/ProverBridgeEager.lean` and
