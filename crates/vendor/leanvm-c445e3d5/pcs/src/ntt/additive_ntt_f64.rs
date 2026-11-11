@@ -20,7 +20,7 @@
 // butterfly is one pass (`transposed_butterfly_lanes`).
 // Added here, every codeword unchanged: the two-sweep encodes of a lane-major message given block by block
 // (`encode_two_sweep_blocks_with`, `encoded_rows_two_sweep_blocks`; the message's `Source`), for a commitment that
-// skips its all-zero lanes.
+// skips its all-zero lanes, and into a kept codeword of those lanes alone (`encode_two_sweep_blocks_into`).
 // Changed here, every codeword unchanged: `transpose_tile` asserts its tile's length (it checked it only with a
 // `debug_assert`, and `transpose_8x8`'s unchecked stores rely on it), once a tile.
 //! Additive NTT over GF(2^64) in the Lin-Chung-Han novel polynomial basis.
@@ -1059,15 +1059,54 @@ impl AdditiveNttF64 {
         log_inv_rate: usize,
         on_rows: &RowSink<'_>,
     ) -> bool {
-        assert!(n > 0 && msg.len().is_multiple_of(n));
-        let log_rows = log2_strict_usize(msg.len() / n);
+        self.encode_two_sweep_into_of(data, Source::Whole(msg), layout, n, log_inv_rate, on_rows)
+    }
+
+    /// [`Self::encode_two_sweep_into`] of the lane-major message whose block `b` is `blocks[b]` (`2^d` words each),
+    /// the blocks lying anywhere: the codeword of their concatenation, its lane `blocks.len() - 1 - b` block `b`'s.
+    /// Returns false, having done nothing, for a shape two sweeps do not cover, or one with no first sweep. [Added
+    /// here.]
+    pub fn encode_two_sweep_blocks_into(
+        &self,
+        data: &mut [F64],
+        blocks: &[&[F64]],
+        log_inv_rate: usize,
+        on_rows: &RowSink<'_>,
+    ) -> bool {
+        let n = blocks.len();
+        self.encode_two_sweep_into_of(
+            data,
+            Source::Blocks(blocks),
+            MsgLayout::LaneMajor,
+            n,
+            log_inv_rate,
+            on_rows,
+        )
+    }
+
+    fn encode_two_sweep_into_of(
+        &self,
+        data: &mut [F64],
+        source: Source<'_>,
+        layout: MsgLayout,
+        n: usize,
+        log_inv_rate: usize,
+        on_rows: &RowSink<'_>,
+    ) -> bool {
+        let msg_len = source.len();
+        assert!(n > 0 && msg_len.is_multiple_of(n));
+        let log_rows = log2_strict_usize(msg_len / n);
         assert_eq!(
             log_rows + log_inv_rate,
             self.log_domain_size(),
             "the codeword's own transform"
         );
-        assert_eq!(data.len(), msg.len() << log_inv_rate, "the whole codeword");
+        assert_eq!(data.len(), msg_len << log_inv_rate, "the whole codeword");
         let Some(plan) = TwoSweep::new(layout, n, log_rows, true) else {
+            return false;
+        };
+        // Without a first sweep, the second reads the message whole.
+        let Some(msg) = source.whole().or((plan.g > 0).then_some(&[][..])) else {
             return false;
         };
         let (len, g, t, tile_words) = (plan.len(), plan.g, plan.t, plan.tile_words());
@@ -1078,7 +1117,7 @@ impl AdditiveNttF64 {
         if g > 0 {
             let data_ptr = parallel::SendPtr(data.as_mut_ptr());
             let refs: Vec<&AdditiveNttF64> = replicas.iter().collect();
-            let msg_at = |task: usize| &msg[plan.row_offset(task, 0)..];
+            let msg_at = |task: usize| source.at_task(&plan, task);
             self.two_sweep_gathered(&plan, &refs, None, msg_at, |task, r, rows, stream_out| {
                 let first = r * len + plan.in_tile(task);
                 for (i, src) in rows.chunks_exact(plan.width).enumerate() {

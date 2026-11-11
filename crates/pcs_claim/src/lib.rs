@@ -164,12 +164,12 @@ pub fn evaluate(words: &[F64], point: &[F192]) -> F192 {
 /// `Σ_l eq(point_high, l) · Σ_y lane_l[y] eq(point_low, y)` over the lanes `words` holds.
 pub fn evaluate_lanes(words: &[F64], point: &[F192]) -> F192 {
     let log_lane = point.len() - LANE_FOLD;
-    combine_lanes(&lane_products(words, point), &point[log_lane..])
+    combine_lanes(&lane_products(words, point, None), &point[log_lane..])
 }
 
 /// `Σ_y lane_l[y] eq(point_low, y)` for each lane `l` of `words` (its leading whole lanes of the `2^n` words, `n =
 /// point.len()`), in one pass over them: what an opening's lane rounds start from, at a tensor of `eq(point, ·)`.
-fn lane_products(words: &[F64], point: &[F192]) -> Vec<F192> {
+fn lane_products(words: &[F64], point: &[F192], zero: Option<&[bool]>) -> Vec<F192> {
     let n = point.len();
     let log_lane = n - LANE_FOLD;
     let lane = 1usize << log_lane;
@@ -177,7 +177,7 @@ fn lane_products(words: &[F64], point: &[F192]) -> Vec<F192> {
         !words.is_empty() && words.len().is_multiple_of(lane) && words.len() <= 1 << n,
         "whole lanes of the 2^n words"
     );
-    pcs::whir::dense_lane_inner_products(words, lane, &[&Low::Eq(point[..log_lane].to_vec())])
+    pcs::whir::dense_lane_inner_products_skipping(words, lane, &[&Low::Eq(point[..log_lane].to_vec())], zero)
         .pop()
         .expect("one low weight")
 }
@@ -203,8 +203,8 @@ pub struct Commitment {
     codeword: Mutex<Option<Vec<F64>>>,
     /// `Σ_y lane_l[y] eq(z_low, y)` for each committed lane `l`, `z = ood_point(n, root)`.
     ood_lanes: Vec<F192>,
-    /// Which committed lanes are all zero: not encoded, at the commitment nor at an opening's queried rows (found
-    /// for a commitment without its kept codeword; none flagged otherwise).
+    /// Which committed lanes are all zero: not encoded, at the commitment nor at an opening's queried rows. A kept
+    /// codeword is then the other lanes' alone (`pcs::whir::commit_skipping`), which the openings spread back.
     zero_lanes: Vec<bool>,
 }
 
@@ -238,11 +238,19 @@ pub fn commit_words(words: &[F64], n: usize, keep_codeword: bool) -> Commitment 
         !words.is_empty() && words.len().is_multiple_of(lane) && words.len() <= 1 << n,
         "whole leading lanes of the 2^n words"
     );
-    // Only an encoding without the kept codeword skips them (at the commitment and at an opening's rows).
-    let zero_lanes = if keep_codeword { vec![false; words.len() / lane] } else { zero_lanes(words, lane) };
+    // The all-zero lanes are encoded neither at the commitment nor at an opening's rows; a kept codeword is the other
+    // lanes' alone.
+    let mut zero_lanes = zero_lanes(words, lane);
     let (root, tree, codeword) = if keep_codeword {
-        let (commitment, data) = pcs::whir::commit(words, n, LANE_FOLD, LOG_INV_RATE);
-        (commitment.root, data.merkle_tree, Some(data.codeword))
+        match pcs::whir::commit_skipping(words, n, LANE_FOLD, LOG_INV_RATE, &zero_lanes) {
+            Some((commitment, data)) => (commitment.root, data.merkle_tree, Some(data.codeword)),
+            None => {
+                // No lane skipped: the whole codeword, and no lane flagged (a flag would say it is left out).
+                zero_lanes.fill(false);
+                let (commitment, data) = pcs::whir::commit(words, n, LANE_FOLD, LOG_INV_RATE);
+                (commitment.root, data.merkle_tree, Some(data.codeword))
+            }
+        }
     } else {
         // The encoding buffer, one replica of the codeword, mapped by the workers: as many words as `words`, though
         // the zero lanes take none of them, so that an opening's buffers find this memory again once it is freed.
@@ -253,7 +261,7 @@ pub fn commit_words(words: &[F64], n: usize, keep_codeword: bool) -> Commitment 
     };
     // The answer from the committed lanes' products with the point's low weight, which the openings reuse.
     let z = ood_point(n, &root);
-    let ood_lanes = lane_products(words, &z);
+    let ood_lanes = lane_products(words, &z, Some(&zero_lanes));
     let ood = combine_lanes(&ood_lanes, &z[n - LANE_FOLD..]);
     Commitment {
         n,
