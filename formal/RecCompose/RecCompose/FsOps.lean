@@ -15,9 +15,12 @@ import Bridge.Verifier
 * **the openings' `OKP`** (`okp_W`, `okp_Q`: the decoders list the candidates' stacks, a stack satisfying the
   opening's claims is good; π1's three: no stack, `okp_pi1`); `hcov`, `hfit`, and **`hS`** (the setup's claim on its
   table, from its opening);
-* **the eight openings once** (`hU_pcs`): each opening's statement is one of `WhirBridge.Pcs.pcs_union_sound`'s
-  union over version 1's sizes `2^23 ..= 2^28` at `εExact` (`UniKeccakSound.pcsKShapes`), for any list of
-  `PcsOp`s: `Compose.GUnionSound` at `(QA + 10122) (εExact + 5 (QA + 10122) / 2^256)`;
+* **the eight openings once** (`prEvent_doomH_le`): each opening's statement is one of
+  `WhirBridge.Pcs.UnionO.pcs_union_sound_oracle`'s union over version 1's sizes `2^23 ..= 2^28` at `εExact`
+  (`UniKeccakSound.pcsKShapes`), the out-of-domain point read off Keccak-256 at π2's sizes (`24`, `25`, `28`) and
+  `oodPoint` at π1's; an opening's doom (`PcsOp.DoomedH`) its PCS claim's two claims, the point read off the final
+  cache (`ptAt`); for any list of `PcsOp`s, at most `bndU (QX + Σ QO) = (N + 10122) (εExact + 5 (N + 10122) / 2^256)`
+  for a run before the openings of `QX` queries (`N = QX + Σ QO`);
 * the decoders' lists (`L_W = 9952`, `L_Q = 3564`) and `maxErrK` (`maxErrK_p2`).
 -/
 
@@ -128,7 +131,7 @@ theorem okp_W : GOp.OKP p2Tc p2Good (p2Setup D hs) p2Fix (p2Stk D) wOp := by
   refine gop_okp_tableCode (UniSound.plainL 24) logInvRate (shK 24 (by norm_num) (by norm_num)).adm _ _ _
     (fun r π ch => PcsOp.queries _ r π ch) (fun r π ch => PcsOp.duplex _ r π ch) 0 UniSound.rdTab p2Tc p2Tc_zero
     p2Good (fun π ch q h => ?_) _ _ _
-  obtain ⟨ood, pt, v, hcl, hl, -, hv⟩ := h
+  obtain ⟨ood, pt, v, hcl, hl, hv⟩ := h
   simp only [wCl, Option.some.injEq, Prod.mk.injEq] at hcl
   obtain ⟨-, rfl, rfl⟩ := hcl
   rw [p2Good, ite_eq_left rfl]
@@ -140,7 +143,7 @@ theorem claim_of_holdsQ (o : PcsOp) (ho : o.n = 28) (pt : List E) (v : E) {π : 
   obtain ⟨n, lo, hi, cl, prf, tgt⟩ := o
   simp only at ho
   subst ho
-  obtain ⟨ood, pt', v', hc, hl, -, hv⟩ := h
+  obtain ⟨ood, pt', v', hc, hl, hv⟩ := h
   obtain ⟨rfl, rfl⟩ := hcl _ _ _ hc
   exact (colEval_iff_claimOn q _ (rdP_getD 28 (by norm_num) (by norm_num) q) _ _ hl).1 hv
 
@@ -197,7 +200,7 @@ theorem hS_p2 (π : P2Pf) (ch : List (List E))
     simp [p2Ops, p2Pcs5]
   have h5 := h _ hm
   unfold GOp.SetupHoldsP at h5
-  obtain ⟨ood, pt, v, hcl, hl, -, hv⟩ := h5 (fun π => setupCol D π.roots.pi1) rfl
+  obtain ⟨ood, pt, v, hcl, hl, hv⟩ := h5 (fun π => setupCol D π.roots.pi1) rfl
   simp only [sCl, Option.some.injEq, Prod.mk.injEq] at hcl
   obtain ⟨-, rfl, rfl⟩ := hcl
   exact (colEval_iff_claimOn _ _ (fun i hi => colOf_getD _ 25 i hi) _ _ hl).1 hv
@@ -239,9 +242,46 @@ theorem maxErrK_p2 (R : Compose.Piop pi2Spec.K Stk) (e : ℝ≥0∞)
 
 end Facts
 
-/-! ## The openings once: the PCS union -/
+/-! ## The openings once: the PCS union, the point read off Keccak-256 at π2's sizes -/
 
 section Union
+
+/-- **The out-of-domain point read off Keccak-256's answers `H`** (`WhirBridge.Pcs.zOfCache`'s: the default answer at a
+coordinate not asked). -/
+def zOfH (H : Bytes → Option Digest) (n : ℕ) (r : Digest) : Vector E n :=
+  Vector.ofFn fun j ↦ Pcs.elemOf ((digestBytes ((H (Pcs.oodInput n r j)).getD default)).drop 8)
+
+theorem zOfCache_eq (c : KeccakCalls.QueryCache) (n : ℕ) (r : Digest) :
+    Pcs.zOfCache c n r = zOfH (fun x ↦ c (.inl x)) n r := rfl
+
+/-- **An opening's out-of-domain point**: read off `H` at π2's sizes (`RecStatement.pi2Size`), `oodPoint` at π1's. -/
+def ptAt (n : ℕ) (H : Bytes → Option Digest) (r : Digest) : Vector E n :=
+  if RecStatement.pi2Size n then zOfH H n r else Pcs.oodPoint n r
+
+/-- **An opening is doomed**, against Keccak-256's answers `H`: every candidate of the word under its root violates its
+PCS claim's out-of-domain claim (at `ptAt`) or its point claim. -/
+def PcsOp.DoomedH (o : PcsOp) (π : P2Pf) (ch : List (List E)) (H : Bytes → Option Digest) : Prop :=
+  ∀ q ∈ Candidates o.n logInvRate (code₀ o.n logInvRate).thr
+      (Rom.extract H (ofB (o.rootB π)) (rootHeight o.n logInvRate) (2 ^ laneFold)),
+    ∀ ood pt v, o.cl π ch = some (ood, pt, v) → pt.length = o.n →
+      Pcs.colEval q (ptAt o.n H (ofB (o.rootB π))).toList ≠ ood ∨ Pcs.colEval q pt ≠ v
+
+/-- The root a `PcsOp`'s `GOp` reads is its `rootB`. -/
+theorem PcsOp.root_gop (o : PcsOp) (π : P2Pf) : GOp.root p2View o.gop π = o.rootB π := by
+  obtain ⟨n, lo, hi, cl, prf, tgt⟩ := o
+  cases tgt <;> rfl
+
+/-- **A single opening doomed** (`GDoomed`: its point claim fails on every candidate) **is doomed with its point.** -/
+theorem PcsOp.doomedH_of_gDoomed (o : PcsOp) (π : P2Pf) (ch : List (List E)) (c : KeccakCalls.QueryCache)
+    (hd : GDoomed p2View o.gop π ch c) : o.DoomedH π ch (fun x ↦ c (.inl x)) := by
+  intro q hq ood pt v hc hl
+  right
+  intro hv
+  refine hd q ?_ ⟨ood, pt, v, hc, hl, hv⟩
+  show q ∈ Candidates o.n logInvRate (code₀ o.n logInvRate).thr
+    (Rom.extract (fun x ↦ c (.inl x)) (ofB (GOp.root p2View o.gop π)) (rootHeight o.n logInvRate) (2 ^ laneFold))
+  rw [PcsOp.root_gop]
+  exact hq
 
 /-- **An opening's statement in the PCS union**: its size's index, its PCS claim (the root it reads, the
 out-of-domain answer, the point and value), its opening proof; a dummy claim where it has no claim or its point has not
@@ -259,25 +299,57 @@ noncomputable def PcsOp.stmt (o : PcsOp) (π : P2Pf) (ch : List (List E)) : Pcs.
 def PcsOp.Ok (o : PcsOp) (π : P2Pf) (ch : List (List E)) : Prop :=
   ∃ ood pt v, o.cl π ch = some (ood, pt, v) ∧ pt.length = o.n
 
-/-- The root a `PcsOp`'s `GOp` reads is its `rootB`. -/
-theorem PcsOp.root_gop (o : PcsOp) (π : P2Pf) : GOp.root p2View o.gop π = o.rootB π := by
-  obtain ⟨n, lo, hi, cl, prf, tgt⟩ := o
-  cases tgt <;> rfl
+theorem pcsVerifierO_congrK {n n' : ℕ} (h : n' = n) (r : Digest) (ood : E) (pt : List E) (v : E)
+    (h1 : pt.length = n) (h2 : pt.length = n') (p : Proof) :
+    Pcs.pcsVerifierO ((⟨r, ood, pt, v, h2⟩ : Pcs.Claim1 n'), p) = Pcs.pcsVerifierO ((⟨r, ood, pt, v, h1⟩ : Pcs.Claim1 n), p) := by
+  subst h
+  rfl
 
-/-- **An opening's run is the union's verifier on its statement**, where it has a claim of its stack's variables. -/
+theorem pcsDoomedO_congrK {n n' : ℕ} (h : n' = n) (r : Digest) (ood : E) (pt : List E) (v : E)
+    (h1 : pt.length = n) (h2 : pt.length = n') (p : Proof) (c : KeccakCalls.QueryCache) :
+    Pcs.PcsDoomedO ((⟨r, ood, pt, v, h2⟩ : Pcs.Claim1 n'), p) c ↔
+      Pcs.PcsDoomedO ((⟨r, ood, pt, v, h1⟩ : Pcs.Claim1 n), p) c := by
+  subst h
+  rfl
+
+theorem PcsOp.stmt_ok (o : PcsOp) (π : P2Pf) (ch : List (List E)) {ood : E} {pt : List E} {v : E}
+    (hc : o.cl π ch = some (ood, pt, v)) (hl : pt.length = o.n) :
+    o.stmt π ch = (⟨UniKeccakSound.pcsIdxK o.n, ⟨ofB (o.rootB π), ood, pt, v,
+      hl.trans (UniKeccakSound.pcsIdxK_n _ o.lo o.hi).symm⟩⟩, o.prf π) := by
+  unfold PcsOp.stmt
+  rw [hc]
+  dsimp only
+  rw [dite_eq_left hl]
+
+theorem pi2Size_idx (o : PcsOp) :
+    RecStatement.pi2Size (UniKeccakSound.pcsKShapes.shs.get (UniKeccakSound.pcsIdxK o.n)).n =
+      RecStatement.pi2Size o.n := by
+  rw [UniKeccakSound.pcsIdxK_n _ o.lo o.hi]
+
+/-- **An opening's run is the union's verifier on its statement**, where it has a claim of its stack's variables: the
+point read off Keccak-256 at π2's sizes, `oodPoint` at π1's. -/
 theorem PcsOp.run_ok (o : PcsOp) (π : P2Pf) (ch : List (List E)) (hok : o.Ok π ch) :
-    GOp.run p2View o.gop π ch = Pcs.pUVer UniKeccakSound.pcsKShapes Pcs.oodPoint (o.stmt π ch) := by
+    GOp.run p2View o.gop π ch =
+      Pcs.UnionO.pUVerO UniKeccakSound.pcsKShapes RecStatement.pi2Size Pcs.oodPoint (o.stmt π ch) := by
   obtain ⟨ood, pt, v, hc, hl⟩ := hok
   unfold GOp.run
   rw [PcsOp.root_gop]
   show o.ver _ π ch = _
-  unfold PcsOp.ver PcsOp.stmt
+  rw [PcsOp.stmt_ok o π ch hc hl]
+  unfold PcsOp.ver
   rw [hc]
+  unfold Pcs.UnionO.pUVerO
   dsimp only
-  rw [dite_eq_left hl]
-  unfold UniKeccakSound.pcsOpenC Pcs.pUVer
-  rw [dite_eq_left hl]
-  exact (UniKeccakSound.pcsVerifier_congrK (UniKeccakSound.pcsIdxK_n _ o.lo o.hi) _ _ _ _ hl _ _).symm
+  have hS := pi2Size_idx o
+  by_cases hs : RecStatement.pi2Size o.n = true
+  · rw [ite_eq_left hs, ite_eq_left (hS.trans hs)]
+    unfold pcsOpenCO
+    rw [dite_eq_left hl]
+    exact (pcsVerifierO_congrK (UniKeccakSound.pcsIdxK_n _ o.lo o.hi) _ _ _ _ hl _ _).symm
+  · rw [ite_eq_right hs, ite_eq_right (fun h => hs (hS.symm.trans h))]
+    unfold UniKeccakSound.pcsOpenC
+    rw [dite_eq_left hl]
+    exact (UniKeccakSound.pcsVerifier_congrK (UniKeccakSound.pcsIdxK_n _ o.lo o.hi) _ _ _ _ hl _ _).symm
 
 /-- **An opening without a claim of its stack's variables rejects.** -/
 theorem PcsOp.run_nok (o : PcsOp) (π : P2Pf) (ch : List (List E)) (hok : ¬ o.Ok π ch) :
@@ -288,55 +360,135 @@ theorem PcsOp.run_nok (o : PcsOp) (π : P2Pf) (ch : List (List E)) (hok : ¬ o.O
   rcases hc : o.cl π ch with _ | ⟨ood, pt, v⟩
   · rfl
   · dsimp only
-    unfold UniKeccakSound.pcsOpenC
     have hl : ¬ pt.length = o.n := fun hl => hok ⟨ood, pt, v, hc, hl⟩
-    rw [dite_eq_right hl]
+    split
+    · unfold pcsOpenCO
+      rw [dite_eq_right hl]
+    · unfold UniKeccakSound.pcsOpenC
+      rw [dite_eq_right hl]
 
 /-- **An opening's doom is the union's on its statement**, where it has a claim of its stack's variables. -/
-theorem PcsOp.doomed_imp (o : PcsOp) (π : P2Pf) (ch : List (List E)) (c : KeccakCalls.QueryCache)
-    (hok : o.Ok π ch) (hd : GDoomed p2View o.gop π ch c) :
-    Pcs.PUDoomed UniKeccakSound.pcsKShapes Pcs.oodPoint (o.stmt π ch) c := by
+theorem PcsOp.doomedH_imp (o : PcsOp) (π : P2Pf) (ch : List (List E)) (c : KeccakCalls.QueryCache)
+    (hok : o.Ok π ch) (hd : o.DoomedH π ch (fun x ↦ c (.inl x))) :
+    Pcs.UnionO.PUDoomedO UniKeccakSound.pcsKShapes RecStatement.pi2Size Pcs.oodPoint (o.stmt π ch) c := by
   obtain ⟨ood, pt, v, hc, hl⟩ := hok
-  unfold Pcs.PUDoomed PcsOp.stmt
-  rw [hc]
+  rw [PcsOp.stmt_ok o π ch hc hl]
+  unfold Pcs.UnionO.PUDoomedO
   dsimp only
-  rw [dite_eq_left hl]
-  refine (UniKeccakSound.pcsDoomed_congrK (UniKeccakSound.pcsIdxK_n _ o.lo o.hi) _ _ _ _ hl _ _ c).2
-    fun q hq => ?_
-  by_contra hn
-  simp only [not_or, not_not] at hn
-  refine hd q ?_ ⟨ood, pt, v, hc, hl, hn.1, hn.2⟩
-  rw [PcsOp.root_gop]
-  exact hq
+  have hS := pi2Size_idx o
+  by_cases hs : RecStatement.pi2Size o.n = true
+  · rw [ite_eq_left (hS.trans hs)]
+    refine (pcsDoomedO_congrK (UniKeccakSound.pcsIdxK_n _ o.lo o.hi) _ _ _ _ hl _ _ c).2 fun q hq => ?_
+    have h := hd q hq ood pt v hc hl
+    unfold ptAt at h
+    rw [ite_eq_left hs] at h
+    exact h
+  · rw [ite_eq_right (fun h => hs (hS.symm.trans h))]
+    refine (UniKeccakSound.pcsDoomed_congrK (UniKeccakSound.pcsIdxK_n _ o.lo o.hi) _ _ _ _ hl _ _ c).2
+      fun q hq => ?_
+    have h := hd q hq ood pt v hc hl
+    unfold ptAt at h
+    rw [ite_eq_right hs] at h
+    exact h
 
 /-- The union's bound at `QA` queries: `(QA + 10122) (εExact + 5 (QA + 10122) / 2^256)`. -/
 noncomputable def bndU (QA : ℕ) : ℝ≥0∞ :=
   ((QA + 10122 : ℕ) : ℝ≥0∞) * (εExact + ((5 * (QA + 10122) : ℕ) : ℝ≥0∞) / 2 ^ 256)
 
-/-- **Any list of PCS claims' openings, charged once**: their union is sound at `bndU`
-(`WhirBridge.Pcs.pcs_union_sound` over `UniKeccakSound.pcsKShapes`). -/
-theorem hU_pcs (L : List PcsOp) : GUnionSound p2View (L.map PcsOp.gop) bndU := by
+/-- Some opening accepts while doomed, against Keccak-256's answers `H`. -/
+def DoomH (L : List PcsOp) (z : OutK P2Pf E (List Bool) × Transcript) (H : Bytes → Option Digest) : Prop :=
+  ∃ k, ∃ hk : k < L.length, z.1.1.2.2.getD k false = true ∧ L[k].DoomedH z.1.1.1 z.1.1.2.1 H
+
+open Classical in
+/-- **The first opening doomed**, `0` if none. -/
+noncomputable def firstH (L : List PcsOp) (z : OutK P2Pf E (List Bool) × Transcript) : ℕ :=
+  if h : DoomH L z (fun x ↦ cacheOfTr z.2 (.inl x)) then
+    Nat.find (p := fun k => ∃ hk : k < L.length, z.1.1.2.2.getD k false = true ∧
+      L[k].DoomedH z.1.1.1 z.1.1.2.1 (fun x ↦ cacheOfTr z.2 (.inl x))) h
+  else 0
+
+theorem firstH_spec (L : List PcsOp) (z : OutK P2Pf E (List Bool) × Transcript)
+    (h : DoomH L z (fun x ↦ cacheOfTr z.2 (.inl x))) :
+    ∃ hk : firstH L z < L.length, z.1.1.2.2.getD (firstH L z) false = true ∧
+      L[firstH L z].DoomedH z.1.1.1 z.1.1.2.1 (fun x ↦ cacheOfTr z.2 (.inl x)) := by
   classical
-  intro A QA hA
-  set f : GUIn (L.map PcsOp.gop) → PcsOp := fun w => L[w.1.val]'(by simpa using w.1.isLt) with hf
-  have hget : ∀ w : GUIn (L.map PcsOp.gop), (L.map PcsOp.gop).get w.1 = (f w).gop := by
-    intro w
-    simp [hf]
-  refine (UniKeccakSound.romExperiment_le_map A _ (Pcs.pUVer UniKeccakSound.pcsKShapes Pcs.oodPoint)
-    (fun w => (f w).stmt w.2.1 w.2.2) (fun w => (f w).Ok w.2.1 w.2.2) (fun w => ?_) _
-    (Pcs.PUDoomed UniKeccakSound.pcsKShapes Pcs.oodPoint) (fun w c hok hd => ?_)).trans
-    (Pcs.pcs_union_sound UniKeccakSound.pcsKShapes Pcs.oodPoint _ QA ((isQueryBound_map_iff _ _ _ _ _).mpr hA)
-      10122 UniKeccakSound.pcsKShapes_QO)
-  · show GOp.run p2View ((L.map PcsOp.gop).get w.1) w.2.1 w.2.2 = _
-    rw [hget]
-    by_cases hok : (f w).Ok w.2.1 w.2.2
-    · rw [ite_eq_left hok]
-      exact PcsOp.run_ok _ _ _ hok
-    · rw [ite_eq_right hok]
-      exact PcsOp.run_nok _ _ _ hok
-  · refine PcsOp.doomed_imp _ _ _ c hok ?_
-    have : GDoomed p2View ((L.map PcsOp.gop).get w.1) w.2.1 w.2.2 c := hd
-    rwa [hget] at this
+  unfold firstH
+  rw [dite_eq_left h]
+  exact Nat.find_spec h
+
+theorem firstH_lt (L : List PcsOp) (hne : L ≠ []) (z : OutK P2Pf E (List Bool) × Transcript) :
+    firstH L z < L.length := by
+  classical
+  by_cases h : DoomH L z (fun x ↦ cacheOfTr z.2 (.inl x))
+  · exact (firstH_spec L z h).1
+  · unfold firstH
+    rw [dite_eq_right h]
+    exact List.length_pos_iff.mpr hne
+
+/-- The union adversary's output: the first doomed opening's statement. -/
+noncomputable def pickH (L : List PcsOp) (hne : L ≠ []) (z : OutK P2Pf E (List Bool) × Transcript) :
+    Pcs.PSt UniKeccakSound.pcsKShapes × Proof :=
+  (L[firstH L z]'(firstH_lt L hne z)).stmt z.1.1.1 z.1.1.2.1
+
+/-- **Any list of PCS claims' openings, charged once** (`WhirBridge.Pcs.UnionO.pcs_union_sound_oracle` over
+`UniKeccakSound.pcsKShapes`, the point read off Keccak-256 at π2's sizes): for a run before the openings of `QX`
+queries, some opening accepts while doomed at the run's end (its point read off the final cache) with probability at
+most `bndU (QX + Σ QO)`. -/
+theorem prEvent_doomH_le (L : List PcsOp) (X : OracleComp KeccakCalls (PreK P2Pf E)) (QX : ℕ)
+    (hX : IsTotalQueryBound X QX) :
+    Pr{let p ← (simulateQ randomOracle (expLG p2View X (L.map PcsOp.gop))).run ∅}[
+        DoomH L p.1 (fun x ↦ p.2 (.inl x))] ≤
+      bndU (QX + ((L.map PcsOp.gop).map fun o => o.QO).sum) := by
+  classical
+  rcases eq_or_ne L [] with rfl | hne
+  · refine le_of_eq_of_le (prEvent_eq_zero_of_forall_not _ _ fun p hp ↦ ?_) bot_le
+    obtain ⟨k, hk, -⟩ := hp
+    exact absurd hk (Nat.not_lt_zero _)
+  have hU := Pcs.UnionO.pcs_union_sound_oracle UniKeccakSound.pcsKShapes RecStatement.pi2Size Pcs.oodPoint
+    (pickH L hne <$> expLG p2View X (L.map PcsOp.gop)) _
+    ((isQueryBound_map_iff _ _ _ _ _).mpr (isTotalQueryBound_expLG p2View X _ QX hX)) 10122
+    UniKeccakSound.pcsKShapes_QO
+  refine le_trans ?_ hU
+  rw [romExperiment_map, prEvent_map, romExperiment_eq]
+  conv_lhs => rw [← bind_pure ((simulateQ randomOracle (expLG p2View X (L.map PcsOp.gop))).run ∅)]
+  refine prEvent_bind_mono_of_forall_le_of_support _ _ _ _ _ fun p hp ↦ ?_
+  obtain ⟨hcons, hrep⟩ := expLG_replayF p2View X (L.map PcsOp.gop) p hp
+  have hc : (fun x ↦ p.2 (.inl x)) = fun x ↦ cacheOfTr p.1.2 (.inl x) :=
+    funext fun x ↦ (hcons x).trans (cacheOfTr_inl _ _).symm
+  by_cases hd : DoomH L p.1 (fun x ↦ p.2 (.inl x))
+  · rw [hc] at hd
+    obtain ⟨hk, hacc, hdoom⟩ := firstH_spec L p.1 hd
+    set k := firstH L p.1 with hkdef
+    have hk' : k < (L.map PcsOp.gop).length := by simpa using hk
+    have hrk := hrep k hk'
+    have hget : (L.map PcsOp.gop)[k] = (L[k]).gop := by simp
+    rw [hget] at hrk
+    have hok : (L[k]).Ok p.1.1.1.1 p.1.1.1.2.1 := by
+      by_contra hn
+      rw [PcsOp.run_nok _ _ _ hn] at hrk
+      have hmem : ((false, p.2) : Bool × KeccakCalls.QueryCache) ∈
+          support (pure (p.1.1.1.2.2.getD k false, p.2) : ProbComp (Bool × KeccakCalls.QueryCache)) := by
+        rw [← hrk]
+        simp
+      rw [mem_support_pure_iff] at hmem
+      simp only [Prod.mk.injEq] at hmem
+      rw [← hmem.1] at hacc
+      exact Bool.false_ne_true hacc
+    have hv : (simulateQ randomOracle (Pcs.UnionO.pUVerO UniKeccakSound.pcsKShapes RecStatement.pi2Size Pcs.oodPoint
+        (pickH L hne p.1))).run p.2 = pure (true, p.2) := by
+      show (simulateQ randomOracle (Pcs.UnionO.pUVerO UniKeccakSound.pcsKShapes RecStatement.pi2Size Pcs.oodPoint
+        ((L[k]).stmt p.1.1.1.1 p.1.1.1.2.1))).run p.2 = _
+      rw [← PcsOp.run_ok _ _ _ hok, hrk, hacc]
+    refine (prEvent_le_one _).trans (le_of_eq ?_)
+    rw [hv, map_pure, prEvent_pure, ite_eq_left]
+    refine ⟨rfl, ?_⟩
+    refine PcsOp.doomedH_imp _ _ _ p.2 hok ?_
+    rw [hc]
+    exact hdoom
+  · refine le_of_eq_of_le (prEvent_eq_zero_of_forall_mem_support _ _ fun r hr hev ↦ ?_) bot_le
+    rw [mem_support_pure_iff] at hr
+    subst hr
+    exact hd hev
 
 end Union
 
@@ -378,6 +530,6 @@ end RecCompose
 #guard_msgs in
 #print axioms RecCompose.maxErrK_p2
 
-/-- info: 'RecCompose.hU_pcs' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'RecCompose.prEvent_doomH_le' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms RecCompose.hU_pcs
+#print axioms RecCompose.prEvent_doomH_le

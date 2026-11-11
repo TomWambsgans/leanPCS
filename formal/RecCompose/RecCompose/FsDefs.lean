@@ -9,6 +9,7 @@ import UniSound.FsGame
 import UniSound.FsExtract
 import UniKeccakSound.Fs.ProofK
 import Compose.ListChainUDoom128SG
+import RecCompose.FsOod
 
 /-!
 # π2's Fiat–Shamir layer: the chain, the openings, the setup, the composed verifier
@@ -335,35 +336,42 @@ def PcsOp.rootB (o : PcsOp) (π : P2Pf) : Bytes32 :=
   | .setup r _ => r π
 
 /-- **What an opening's claim says of a stack**: the point has the stack's variables, and the stack's polynomial
-(`WhirBridge.Pcs.colEval`) has the out-of-domain answer at the root's out-of-domain point and the value at the point
-(the PCS claim's two claims). -/
+(`WhirBridge.Pcs.colEval`) has the value at the point (the PCS claim's point claim; its out-of-domain claim, at a point
+π2's openings read off Keccak-256, is the openings' doom's: `FsOps.lean`'s `PcsOp.DoomedH`). -/
 def PcsOp.holds (o : PcsOp) (π : P2Pf) (ch : List (List E)) (q : Column o.n) : Prop :=
-  ∃ ood pt v, o.cl π ch = some (ood, pt, v) ∧ pt.length = o.n ∧
-    Pcs.colEval q (Pcs.oodPoint o.n (ofB (o.rootB π))).toList = ood ∧ Pcs.colEval q pt = v
+  ∃ ood pt v, o.cl π ch = some (ood, pt, v) ∧ pt.length = o.n ∧ Pcs.colEval q pt = v
 
-/-- **An opening's verifier** at the root it reads: the claim's PCS opening (`pcsOpenC`), or a rejection. -/
+/-- **An opening's verifier** at the root it reads: the claim's PCS opening, or a rejection; at π2's sizes
+(`RecStatement.pi2Size`: `24`, `25`, `28`) the out-of-domain point read off Keccak-256 (`pcsOpenCO`, the contract's
+`pcsOpenKO`), at π1's at `oodPoint` (`UniKeccakSound.pcsOpenC`, the contract's `UniKeccak.pcsOpenK`). -/
 def PcsOp.ver (o : PcsOp) (r : Digest) (π : P2Pf) (ch : List (List E)) : OracleComp KeccakCalls Bool :=
   match o.cl π ch with
   | none => pure false
-  | some (ood, pt, v) => UniKeccakSound.pcsOpenC o.n r ood pt v (o.prf π)
+  | some (ood, pt, v) =>
+    if RecStatement.pi2Size o.n then pcsOpenCO o.n r ood pt v (o.prf π)
+    else UniKeccakSound.pcsOpenC o.n r ood pt v (o.prf π)
 
 theorem PcsOp.queries (o : PcsOp) (r : Digest) (π : P2Pf) (ch : List (List E)) :
-    IsTotalQueryBound (o.ver r π ch) 10122 := by
+    IsTotalQueryBound (o.ver r π ch) 10150 := by
   unfold PcsOp.ver
   split
   · trivial
-  · exact UniKeccakSound.isTotalQueryBound_pcsOpenC _ _ _ _ _ _
+  · split
+    · exact isTotalQueryBound_pcsOpenCO _ _ _ _ _ _
+    · exact (UniKeccakSound.isTotalQueryBound_pcsOpenC _ _ _ _ _ _).mono (by norm_num)
 
 theorem PcsOp.duplex (o : PcsOp) (r : Digest) (π : P2Pf) (ch : List (List E)) :
     LeanVM.Rpm.DuplexVm (o.ver r π ch) [] := by
   unfold PcsOp.ver
   split
   · trivial
-  · exact UniKeccakSound.duplexVm_pcsOpenC _ _ _ _ _ _
+  · split
+    · exact duplexVm_pcsOpenCO _ _ _ _ _ _
+    · exact UniKeccakSound.duplexVm_pcsOpenC _ _ _ _ _ _
 
 /-- **An opening as a `Compose.GOp`** on its plain shape. -/
 noncomputable def PcsOp.gop (o : PcsOp) : GOp P2Pf E Stk :=
-  ⟨o.n, logInvRate, (shK o.n o.lo o.hi).adm, o.holds, o.ver, 10122, o.queries, o.duplex, o.tgt⟩
+  ⟨o.n, logInvRate, (shK o.n o.lo o.hi).adm, o.holds, o.ver, 10150, o.queries, o.duplex, o.tgt⟩
 
 /-- A dummy column (a setup target's fixed stack, not read: `p2Stk` gives the stacks). -/
 def col0 (μ : ℕ) : Column μ := UniSound.colOf #[] μ
@@ -402,7 +410,7 @@ noncomputable def qOp : GOp P2Pf E Stk :=
     fun π ch q => qIdOp.holds π ch q ∧ qPushOp.holds π ch q ∧ qSumOp.holds π ch q,
     fun r π ch => qIdOp.ver r π ch >>= fun a => qPushOp.ver r π ch >>= fun b =>
       qSumOp.ver r π ch >>= fun c => pure (a && (b && c)),
-    3 * 10122,
+    3 * 10150,
     fun r π ch => (isTotalQueryBound_bind (qIdOp.queries r π ch) fun a =>
       isTotalQueryBound_bind (qPushOp.queries r π ch) fun b =>
         isTotalQueryBound_bind (ob := fun c => (pure (a && (b && c)) : OracleComp KeccakCalls Bool)) (n₂ := 0)

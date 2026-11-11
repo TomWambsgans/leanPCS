@@ -5,8 +5,10 @@
 -- recorded graph and its merge hazard are `formal/RecGraphKeccak`'s. Transcribed from
 -- `crates/leanvm/rec/src/pi2/circuit.rs` (`Circuit::digest`), `prover.rs` (`Setup::new`, `iv`) and `contract.rs`
 -- (`claim_words`, `claim_of_words`: the eight PCS claims); a claim's opening is `formal/WhirBridge`'s transcription of
--- `crates/pcs_claim`'s `verify_claim` (`WhirBridge.Pcs.pcsVerifyWithHash`, through `UniKeccak.pcsOpenK`).
+-- `crates/pcs_claim`'s `verify_claim` (`WhirBridge.Pcs.pcsVerifyWithHash`, through `UniKeccak.pcsOpenK`, and
+-- `WhirBridge.Pcs.pcsVerifyWithHashO`, the out-of-domain point computed over `F`, through `pcsOpenKO`).
 import RecStatement.Calls
+import WhirBridge.PcsUnionOracle
 import RecStatement.Data
 import UniKeccak.Security
 import RecGraphKeccak.Main
@@ -70,10 +72,18 @@ random-permutation model and do not formally compose with the EVM one, which hol
 calldata (`runWith`: the public input, then the stream with π1's roots and claims' elements, `W`'s and `Q`'s roots and
 out-of-domain answers and the 18 values), then **eight declared claims**, each the EIP draft's PCS claim (`crates/pcs_claim`:
 a root, its out-of-domain answer, one point, a value), decoded from its words (`claimOfWords`: every element's top 64
-bits zero) and opened by `WhirBridge.Pcs.pcsVerifyWithHash` (`pcsOpenWords`, `UniKeccak.pcsOpenK`, on the point's
-length): **π1's three** (`C1`, `C2`, π1's setup `F`; their points the coordinates the contract derives from π1-rec3's
-pair challenges, `F`'s commitment the setup's) and **π2's five** (`W`, the setup, `Q`'s identity, pushes' and sum
-claims). π1's verifier itself never runs: π2 proves its graph accepted. The deployed EVM bytecode is linked to this
+bits zero) and opened by `crates/pcs_claim`'s `verify_claim` on the point's length (`pcsOpenWords`): **π1's three**
+(`C1`, `C2`, π1's setup `F`; their points the coordinates the contract derives from π1-rec3's pair challenges, `F`'s
+commitment the setup's; `2^27`, `2^26`, `2^23` words) and **π2's five** (`W`, the setup, `Q`'s identity, pushes' and
+sum claims; `2^24`, `2^25`, `2^28` words). **The out-of-domain point.** `verify_claim` derives each claim's point from
+its root with Keccak-256 (`ood_point`). π2's five claims are opened by `pcsOpenKO` (`WhirBridge.Pcs.pcsVerifyWithHashO`):
+the verifier computes the point over `F` (`keccak256With F`, `n` calls at `oodInput n root j`), so in the
+random-permutation model it is read off the permutation, which `Q`'s three claims on one commitment need (the
+out-of-domain answer binds the root: `WhirBridge.Pcs.ood_binding_coords`). π1's three keep `UniKeccak.pcsOpenK`
+(`WhirBridge.Pcs.pcsVerifyWithHash` at the fixed `WhirBridge.Pcs.oodPoint`, Keccak-256 itself), as π1's own verifier
+and theorems take it (one claim per commitment: no binding needed). The two are told apart by the claim's size
+(`pi2Size`: `24`, `25`, `28`; π1's are `27`, `26`, `23`). **At the real Keccak-f[1600] both points are the deployed
+`ood_point`** (`pcsOpenKO_keccakF1600`: `pcsOpenKO` over Keccak-f[1600] is `UniKeccak.pcsOpenK`). π1's verifier itself never runs: π2 proves its graph accepted. The deployed EVM bytecode is linked to this
 model **by transcription and test**, not by a Lean proof (unlike the membership verifier's
 `Evm.evm_accepts_iff_verifyWith`): `contract.rs`'s parity tests (`parity`, `parity_deployable`). The deployed contract
 hard-codes π2's IV (`inst.iv`, the Rust's from its digest and setup commitment); `RecDeployment.Real` pins those
@@ -291,14 +301,41 @@ def claimOfWords (words : List (List UInt8)) : Option (Digest × E × List E × 
   let value ← elementOfWord valueW
   pure (rootOfWord root, ood, point, value)
 
+/-- **π2's claims' sizes**: `W`'s `2^24` words, the setup's `2^25`, `Q`'s `2^28` (π1's are `2^27`, `2^26`, `2^23`). -/
+def pi2Size (n : ℕ) : Bool := n == 24 || n == 25 || n == 28
+
+/-- **A claim's opening with the out-of-domain point computed over `F`** (`pcs_claim::verify_claim`, `ood_point` over
+`keccak256With F`; `WhirBridge.Pcs.pcsVerifyWithHashO`): the point claim `(pt, v)` on the commitment `(root, ood)` of a
+stack of `n` variables, its point required to have `n` coordinates. -/
+def pcsOpenKO {m : Type → Type} [Monad m] (F : KeccakState → m KeccakState) (n : ℕ) (root : Digest) (ood : E)
+    (pt : List E) (v : E) (p : Compile.Proof) : m Bool :=
+  if h : pt.length = n then
+    WhirBridge.Pcs.pcsVerifyWithHashO (keccak256With F) F ⟨root, ood, pt, v, h⟩ p
+  else pure false
+
 /-- **A declared claim's opening** over `F` on its words (`pcs_claim::verify_claim`): decoded (`claimOfWords`), then
-`UniKeccak.pcsOpenK` on `n` the point's length (`WhirBridge.Pcs.pcsVerifyWithHash`, which rejects `n` outside
-version 1's sizes). -/
+opened on `n` the point's length (`WhirBridge.Pcs.pcsVerifyWithHash`, which rejects `n` outside version 1's sizes):
+π2's sizes by `pcsOpenKO` (the out-of-domain point computed over `F`), the others by `UniKeccak.pcsOpenK` (at
+`WhirBridge.Pcs.oodPoint`, as π1's verifier). -/
 def pcsOpenWords {m : Type → Type} [Monad m] (F : KeccakState → m KeccakState) (words : List (List UInt8))
     (proof : Compile.Proof) : m Bool :=
   match claimOfWords words with
   | none => pure false
-  | some (root, ood, point, value) => UniKeccak.pcsOpenK F point.length root ood point value proof
+  | some (root, ood, point, value) =>
+    if pi2Size point.length then pcsOpenKO F point.length root ood point value proof
+    else UniKeccak.pcsOpenK F point.length root ood point value proof
+
+open LeanVM.Semantics LeanVM.Protocol.KeccakHash in
+/-- **At the real Keccak-f[1600] the two openings agree**: the out-of-domain point computed over Keccak-f[1600] is the
+deployed `WhirBridge.Pcs.oodPoint` (`keccak256With keccakF1600 = keccak256`). -/
+theorem pcsOpenKO_keccakF1600 (n : ℕ) (root : Digest) (ood : E) (pt : List E) (v : E) (p : Compile.Proof) :
+    pcsOpenKO (m := Id) keccakF1600 n root ood pt v p =
+      UniKeccak.pcsOpenK (m := Id) keccakF1600 n root ood pt v p := by
+  unfold pcsOpenKO UniKeccak.pcsOpenK
+  split
+  · rw [LeanVM.Protocol.keccak256With_keccakF1600, WhirBridge.Pcs.UnionO.pcsVerifyWithHashO_id]
+    rfl
+  · rfl
 
 /-- π1's calls with the setup's commitment the deployment's: the constant root and answer words of the call that has
 them (the setup's), replaced by `F`'s root's 32 bytes and its answer's word. -/
