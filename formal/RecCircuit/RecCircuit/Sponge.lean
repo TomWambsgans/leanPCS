@@ -64,7 +64,7 @@ theorem sponge_out (G : X.Good w) {keccaks : Array KeccakT} (hk : ∀ t ∈ kecc
     ∀ k < 64 * s.lanes, X.val w (s.out.getD k NONE) =
       ofBool (spongeState mb s.message.size (s.message.size / 1088) (k / 64) (k % 64)) := by
   simp only [spongeOk, Bool.and_eq_true, beq_iff_eq, List.all_eq_true, Array.all_eq_true] at h
-  obtain ⟨⟨⟨⟨⟨⟨⟨⟨hsize, hperms⟩, h0⟩, hlater⟩, hdsize⟩, hdig⟩, hwhole⟩, ⟨⟨hl4, hl17⟩, hlp⟩⟩, hosize, hout⟩ := h
+  obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨hsize, hperms⟩, h0⟩, hlater⟩, hdsize⟩, hdig⟩, hwhole⟩, ⟨⟨hl4, hl17⟩, hlp⟩⟩, hosize⟩, hout⟩ := h
   simp only [decide_eq_true_eq] at hl4 hl17 hlp
   set n := s.message.size
   let inst := fun (b : ℕ) => keccaks.getD (s.perms.getD b 0) default
@@ -153,8 +153,9 @@ theorem sponge_out (G : X.Good w) {keccaks : Array KeccakT} (hk : ∀ t ∈ kecc
     simp only [beq_iff_eq] at this
     rw [this]
     have e : k = 64 * (k / 64) + k % 64 := by omega
-    have hst := hstate (n / 1088) (by omega) (k / 64) (by omega) (by simp only [Nat.add_sub_cancel] at hlp; omega)
-      (k % 64) (Nat.mod_lt _ (by norm_num))
+    have hlp' : s.lanes ≤ 5 * (inst (n / 1088)).lastPlanes := by
+      simp only [Nat.add_sub_cancel] at hlp; exact hlp
+    have hst := hstate (n / 1088) (by omega) (k / 64) (by omega) (by omega) (k % 64) (Nat.mod_lt _ (by norm_num))
     rw [KeccakT.A, ← e] at hst
     simp only [Nat.add_sub_cancel]
     exact hst

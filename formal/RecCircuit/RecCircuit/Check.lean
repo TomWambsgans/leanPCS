@@ -391,7 +391,8 @@ def nodeOk (X : Ctx) (iv : List UInt8) (packOf : Array (Option ℕ)) (id : ℕ) 
   | .mul x y => arithOk X (if x == y then .square else .mul) l (c.limbsOf x) (c.limbsOf y)
   | .seed =>
     match c.digests.getD id none with
-    | some d => d.size == 256 && (c.limbs.getD id none).isNone && c.spongeIs d (c.seedMessage iv)
+    | some d => d.size == 256 && (c.limbs.getD id none).isNone && c.spongeIs d (c.seedMessage iv) &&
+      (c.rates.getD id none).isNone
     | none => false
   | .hash s f t =>
     match c.digests.getD id none with
