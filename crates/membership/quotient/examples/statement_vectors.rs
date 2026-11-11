@@ -4,7 +4,7 @@
 //!
 //! `cargo run --release -p quotient --example statement_vectors -- OUT [--full]`
 //!
-//! - `R` lines: the reduction alone ([`protocol::verify`]) on random 11-scalar streams (and a few of other
+//! - `R` lines: the reduction alone ([`protocol::verify`]) on random 10-scalar streams (and a few of other
 //!   lengths, or with a root that is not two halves) at `2^12` to `2^23` rows (the commitments take `2^13` to
 //!   `2^22`, [`protocol::supported`]), and on the honest proofs below: the two commitments (root, out-of-domain
 //!   answer) and the three claims, or the rejection.
@@ -363,7 +363,7 @@ fn main() {
                 y: random_hash(&mut rng),
                 root: random_hash(&mut rng),
             };
-            let mut stream: Vec<F192> = (0..11).map(|_| random_e(&mut rng)).collect();
+            let mut stream: Vec<F192> = (0..stream::LEN).map(|_| random_e(&mut rng)).collect();
             for root in [0, 3] {
                 stream[root].c2 = 0;
                 stream[root + 1].c2 = 0;

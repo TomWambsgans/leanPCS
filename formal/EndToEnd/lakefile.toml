@@ -30,6 +30,12 @@ path = "../leanervm/lean_vm"
 name = "QuotientSecurity"
 srcDir = ".."
 
+# The deployed membership reduction (`pcs-quotient-kc3`, `docs/membership/PROTOCOL.md`) as polynomials (F1), its
+# rounds' soundness and the circuit's conditions, `formal/Kc3`.
+[[lean_lib]]
+name = "Kc3"
+srcDir = ".."
+
 # The reduction's Keccak-256 chain (F4a), `formal/QuotientRpm`.
 [[lean_lib]]
 name = "QuotientRpm"
@@ -128,6 +134,13 @@ name = "Heap"
 srcDir = "../Heap"
 globs = ["Heap", "Heap.+"]
 leanOptions = { warningAsError = true }
+
+# The Statement's differential test against the Rust (`formal/Statement/PcsQuotientTest/Differential.lean`), on the
+# vectors `crates/membership/quotient/examples/statement_vectors.rs` writes.
+[[lean_exe]]
+name = "membership-differential"
+srcDir = "../Statement"
+root = "PcsQuotientTest.Differential"
 
 # ---- The end-to-end libraries ----
 
