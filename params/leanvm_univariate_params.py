@@ -1,8 +1,8 @@
 # Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 """Soundness of pi1, the univariate PIOP of docs/leanvm/univariate/SPEC.md on the Keccak VM, round by round after
 the union bounds over the level-0 Johnson lists of its two proof commitments, and the sizes of its commitments: the
-main line (`KECCAK_MAIN`), pi1-rec3 (`KECCAK_REC3`) and pi1-rec4 (`KECCAK_REC4`, the recursion's since
-docs/leanvm/rec/PERF_GAS2.md), at the workloads of crates/leanvm/statement/src/shapes.rs (the reference: 128
+main line (`KECCAK_MAIN`), pi1-rec3 (`KECCAK_REC3`) and pi1-rec4 (`KECCAK_REC4`, the recursion's inner
+proof), at the workloads of crates/leanvm/statement/src/shapes.rs (the reference: 128
 signatures).
 
     python3 -I params/leanvm_univariate_params.py
@@ -22,7 +22,7 @@ crates/leanvm/statement/src/layout.rs):
 - the heap's blocks are `heap.rs`'s, the unused blocks included, each an identity of degree < 2^r;
 - the bus's polynomial has degree 4 a tuple (one Schwartz-Zippel over E^5; 16 at pi1-rec3, alpha = (c, c^2, c^4,
   c^8)), with every table full (the counts are the prover's);
-- Flock on the Keccak-f block (crates/vendor/flock-42422001/src/keccak.rs, docs/leanvm/flock/KECCAK.md):
+- Flock on the Keccak-f block (crates/vendor/flock-42422001/src/keccak.rs, docs/leanvm/univariate/FLOCK.md):
   log_n = 17 + h_SHA3, a univariate skip of 3, seven fixed zerocheck coordinates then the drawn ones (at pi1-rec3 the
   squares of one), the lincheck's 11 rounds, the slices sent and the terminal computed from the block's structure (no
   matrix committed, no claim), the ring map in tower order (6/|E|, crates/leanvm/statement/src/ring_tower.rs);
@@ -84,8 +84,7 @@ LEAN_LIST = 9952
 # WhirBridge.εExact: the exact certified per-group bound of an opening (the weakest group at 2^24 ..= 2^28 has
 # 128.95 bits; the setup's 2^23 is certified in formal/UniKeccakSound/UniKeccakSound/Fs/Whir23.lean), charged once for
 # all of a proof's openings in the query-bounded random-permutation model. Every opening is the EIP draft's PCS
-# version 1 (crates/pcs_claim): leanVM's deployed ladder, whose figure this is (the recursion's openings took another
-# ladder until then, `whir_params.py --recursion`).
+# version 1 (crates/pcs_claim): leanVM's deployed ladder, whose figure this is.
 EPS_WHIR = Fraction(269, 2 ** 137)
 # The Lean's cap on every round's error before the lists (formal/UniKeccakSound/README.md): 2^32/|E| on the main line,
 # 2^35/|E| at pi1-rec3 (its narrow pairs: 8/2^160).

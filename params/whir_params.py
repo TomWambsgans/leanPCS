@@ -1,30 +1,15 @@
 # Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
-"""Replicates leanVM's WHIR eta search (crates/pcs/src/whir_config.rs) at this repository's three stack sizes,
-and prints, per level, the Johnson list bound L the search assumes and every soundness term.
+"""Replicates leanVM's WHIR eta search (crates/pcs/src/whir_config.rs) at the stack sizes 2^24 ..= 2^28, rate 1/2,
+the sizes of every commitment of both lines (the membership proof's 2^24, 2^24, 2^28; leanVM's up to 2^28), and
+checks them against leanerVM's certified codes (formal/WhirBridge/WhirBridge/Large*.lean).
 
-    python3 params/whir_params.py
-    python3 params/whir_params.py --large     # the stack sizes 2^24 ..= 2^28 of a leanVM PIOP (below)
+    python3 params/whir_params.py            # (`--large` is accepted and gives the same report)
 
-    python3 params/whir_params.py --recursion # a second ladder, a design alternative (below)
-
-`--recursion`: a second ladder, once the leanVM recursion's openings (opening version 3, removed from the code: every
-opening is now the EIP draft's PCS version 1, leanVM's ladder): the same level 0 (rate 1/2, a 6-variable fold), then
-4-variable folds whose
-rates fall one bit a level (1/4, 1/8, 1/16, ...; every block at least 2^8 positions) instead of three. Per stack size
-2^15 ..= 2^28: the code's eta search on that ladder (the counts the prover and the verifier's table use), every term
-of the code's accounting, and leanerVM's certificate groups (`Params/Check.lean`'s FoldOK, OodOK, QueryOK, FinalOK,
-the row-union factor 2^(l-1) included) at slacks chosen here as `gen.py` chooses them: the largest level-0 slack
-whose groups clear 128 bits, at deeper levels the slack that balances the fold group against the query group. These
-ladders are not in leanerVM's `certTable` (its 56 ladders are the deployed schedule's), so the certificate figures
-are this script's computation of the checks `shapeOK` would make, not a kernel-checked table. Then the trade-off
-against the deployed ladder and two other schedules: queries, the deeper levels' committed words, and an estimate of
-the proof's bytes.
-
-`--large` (added for formal/WhirBridge/WhirBridge/Large*.lean): at every stack size 2^24 ..= 2^28, rate 1/2, the
-code's eta search as above, then leanerVM's certified codes (`Params/Deployed.lean`, certTable, rate 1/2 rows
-copied below) with every group's bound computed exactly as the certificate's `Nat` check does (`Params/Check.lean`:
-listHi, thrHi, excHi, FoldOK, OodOK, QueryOK, FinalOK), read as bits; the opening's query count QO
-(`largeQueries`) and `openingBoundAt QO (2^64)`; and the list factors after one, two, three roots.
+Per stack size: the code's eta search, level by level (the counts the prover and the verifier's table use), then
+leanerVM's certified codes (`Params/Deployed.lean`, certTable, rate 1/2 rows copied below) with every group's bound
+computed exactly as the certificate's `Nat` check does (`Params/Check.lean`: listHi, thrHi, excHi, FoldOK, OodOK,
+QueryOK, FinalOK), read as bits; the opening's query count QO (`largeQueries`) and `openingBoundAt QO (2^64)`; and the
+list factors after one, two, three roots.
 """
 import math
 import struct
@@ -127,78 +112,8 @@ def ladder(log_n, r0=1):
     return rates, cols, ks, n
 
 
-def configs():
-    out = {}
-    for name, log_n in [("wiring", 24), ("witness", 25), ("quotient", 28)]:
-        rates, cols, ks, yr = ladder(log_n)
-        levels, prev = [], 0
-        for i, (r, c, k) in enumerate(zip(rates, cols, ks)):
-            o = optimize(i, r, c, k, prev=prev)
-            o.update(rate=r, cols=c, k=k)
-            levels.append(o)
-            prev = o["queries"]
-        out[name] = (log_n, yr, levels)
-    return out
-
-
 # ---------------------------------------------------------------------------------------------------------
-# The reduction's rounds after the union over the level-0 Johnson lists (WHIR takes no OOD sample at level
-# 0, so a root binds only to a list until the claims are opened).
-# ---------------------------------------------------------------------------------------------------------
-
-# leanerVM `mumbai`, LeanVM/Protocol/Whir/Params/Deployed.lean, certTable: level 0 of (mu, R = 1), eta = e / 2^22.
-FORMAL_ETA_E = {24: 298, 25: 375, 28: 832}
-
-
-def list_max(log_n, eta, r=1):
-    c = log_n - 6
-    return math.floor(1 / (2 * eta * math.sqrt(reduced_rate(r, c))))
-
-
-def reduction_rounds(l_witness, l_quotient, n_cells=2**24, identity_degree=2**28 + 2**22 + 9230):
-    """Bits of each round of the reduction, the round's error unioned over the lists it precedes."""
-    q = 2.0**192
-    copy_paper = (2 * n_cells**2 + 4 * n_cells + 8) / q  # main.tex / formal: 2N^2 + 4N + 8
-    copy_tight = (6 * n_cells + 8) / q  # one uncancelled pole: 2N bad beta, 2N bad alpha, 2N for DD' on H
-    ident = identity_degree / q
-    lb = lambda e: -math.log2(e)
-    return {
-        "copy (alpha,beta,gamma), paper bound": (lb(copy_paper), lb(copy_paper * l_witness)),
-        "copy (alpha,beta,gamma), tight bound": (lb(copy_tight), lb(copy_tight * l_witness)),
-        "identities (t)": (lb(ident), lb(ident * l_witness * l_quotient)),
-        "rho": (lb(3 / q), lb((3 * l_witness + l_quotient) / q)),
-        "WHIR batching lambda on R2 (J = 2)": (None, lb(l_quotient / q)),
-    }
-
-
-def report_unions():
-    code = configs()
-    lists = {
-        "whir_config.rs eta search (the code's accounting)": {
-            name: math.floor(2 ** code[name][2][0]["logL"] + 1e-9) for name in code
-        },
-        "leanerVM certified eta (what F2 would import)": {
-            name: list_max(log_n, FORMAL_ETA_E[log_n] / 2**22)
-            for name, log_n in [("wiring", 24), ("witness", 25), ("quotient", 28)]
-        },
-    }
-    for title, ls in lists.items():
-        print(f"\n== level-0 lists, {title}: " + ", ".join(f"{k} L={v} (2^{math.log2(v):.2f})" for k, v in ls.items()))
-        for name, (ideal, union) in reduction_rounds(ls["witness"], ls["quotient"]).items():
-            ideal_s = "     -" if ideal is None else f"{ideal:6.1f}"
-            print(f"   {name:40s} ideal commitments {ideal_s} bits, after the union {union:6.1f} bits")
-    cap = (2 * 2**48 + 4 * 2**24 + 8) * 2**18 / 2**192
-    print(f"\n   with leanerVM's generic cap L <= 2^18 instead, the copy round (paper bound): {-math.log2(cap):.1f} bits")
-
-
-def split_opening_attack(queries=225, grinding=17, d=0.25):
-    """Two separate openings of one root, each against a different list member half a code distance apart."""
-    per_attempt = queries * -math.log2(1 - d)
-    return per_attempt, per_attempt + grinding + 1
-
-
-# ---------------------------------------------------------------------------------------------------------
-# --large: the stack sizes 2^24 ..= 2^28 (formal/WhirBridge/WhirBridge/Large*.lean)
+# The stack sizes 2^24 ..= 2^28 (formal/WhirBridge/WhirBridge/Large*.lean)
 # ---------------------------------------------------------------------------------------------------------
 
 LARGE = range(24, 29)
@@ -339,173 +254,5 @@ def report_large():
               f"{192 - math.log2(worst**2) - k:.2f} bits; the formal bound union_two_roots_le: {165 - k} bits")
 
 
-# ---------------------------------------------------------------------------------------------------------
-# --recursion: the second ladder (once opening version 3, `RECURSION_SCHEDULE`; no longer in the code)
-# ---------------------------------------------------------------------------------------------------------
-
-DEPLOYED = (3, 1, 0)  # whir_config.rs: DEPLOYED_SCHEDULE (initial, subsequent, min_log_block)
-RECURSION = (5, 3, 8)  # whir_config.rs: RECURSION_SCHEDULE
-OTHERS = {"(5, 2, 8): 1/2, 1/4, 1/16, 1/64, ...": (5, 2, 8), "(6, 3, 8): 1/2, 1/2, 1/4, 1/8, ...": (6, 3, 8)}
-
-
-def schedule_ladder(log_n, schedule, r0=1):
-    """`derive_ladder_shape` on a `DomainSchedule`: (rates, cols, folds, residual)."""
-    initial, subsequent, min_log_block = schedule
-    rates, cols, ks = [r0], [log_n - 6], [6]
-    n, fold, rate, red = log_n - 6, 6, r0, initial
-    while n > 5:
-        k = min(4, n)
-        rate = max(rate + fold - red, min_log_block - (n - k))
-        red = subsequent
-        rates.append(rate)
-        cols.append(n - k)
-        ks.append(k)
-        n -= k
-        fold = k
-    return rates, cols, ks, n
-
-
-def schedule_config(log_n, schedule):
-    """The code's eta search on the schedule's ladder, level by level (`derive_config_with_schedule`)."""
-    rates, cols, ks, yr = schedule_ladder(log_n, schedule)
-    levels, prev = [], 0
-    for i, (r, c, k) in enumerate(zip(rates, cols, ks)):
-        o = optimize(i, r, c, k, prev=prev)
-        assert o is not None, f"2^{log_n}: level {i} infeasible"
-        o.update(rate=r, cols=c, k=k)
-        levels.append(o)
-        prev = o["queries"]
-    return levels, yr
-
-
-def make_cert(kappa, r, e):
-    """A certificate of the level code (kappa, r) at slack e / 2^22, with the tightest bracket of sqrt(rho_-)."""
-    d = 2**kappa - 1
-    return Cert(kappa, r, e, math.isqrt(d << (80 - kappa - r)))
-
-
-def cert_groups(level, e, nxt):
-    """(fold, ood, query) bits of a level at slack e, the next level's certificate `nxt` (None: the final level)."""
-    c = make_cert(level["cols"], level["rate"], e)
-    if c.thr_lo <= c.d:
-        return None
-    if nxt is None:
-        return c.fold_bits(level["k"]), None, c.final_bits(level["queries"])
-    return c.fold_bits(level["k"]), c.ood_bits(nxt), c.query_bits(nxt, level["queries"])
-
-
-def worst(groups):
-    return -1e9 if groups is None else min(g for g in groups if g is not None)
-
-
-def choose_slack(level, nxt, largest):
-    """gen.py's choice: the largest slack whose groups clear 128 bits (level 0), else the balancing one."""
-    rho = (2 ** level["cols"] - 1) / 2 ** (level["cols"] + level["rate"])
-    emax = int((1 - math.sqrt(rho)) * 2**22) - 2
-    grid = sorted({max(1, int(1.05**j)) for j in range(int(math.log(emax) / math.log(1.05)) + 1)})
-    scored = [(worst(cert_groups(level, e, nxt)), e) for e in grid]
-    if largest and any(v >= 128 for v, _ in scored):
-        lo = max(e for v, e in scored if v >= 128)
-        hi = min([e for e in grid if e > lo] + [emax])
-        while hi - lo > 1:
-            mid = (lo + hi) // 2
-            lo, hi = (mid, hi) if worst(cert_groups(level, mid, nxt)) >= 128 else (lo, mid)
-        return lo
-    _, e = max(scored)
-    lo, hi = max(1, int(e / 1.06)), int(e * 1.06) + 1
-    while hi - lo > 2:
-        m1, m2 = lo + (hi - lo) // 3, hi - (hi - lo) // 3
-        if worst(cert_groups(level, m1, nxt)) < worst(cert_groups(level, m2, nxt)):
-            lo = m1
-        else:
-            hi = m2
-    return max(range(lo, hi + 1), key=lambda e: worst(cert_groups(level, e, nxt)))
-
-
-def certify(levels):
-    """Slacks from the last level up, and every level's (e, fold, ood, query) bits."""
-    out, nxt = [None] * len(levels), None
-    for i in reversed(range(len(levels))):
-        e = choose_slack(levels[i], nxt, largest=(i == 0))
-        out[i] = (e,) + cert_groups(levels[i], e, nxt)
-        nxt = make_cert(levels[i]["cols"], levels[i]["rate"], e)
-    return out
-
-
-def deeper_words(levels):
-    """The words the deeper levels commit (E elements): each level's block times its lanes."""
-    return sum(2 ** (l["cols"] + l["rate"] + l["k"]) for l in levels[1:])
-
-
-def proof_bytes(levels, lanes0=64):
-    """An estimate of the opening's Merkle part: each level's rows (8 B a lane at level 0, 24 B a lane past it) and
-    their pruned paths (about q (depth - log2 q + 1) hashes of 32 bytes)."""
-    total = 0
-    for i, l in enumerate(levels):
-        depth, q = l["cols"] + l["rate"], l["queries"]
-        row = lanes0 * 8 if i == 0 else 24 * 2 ** l["k"]
-        total += q * row + q * max(depth - math.log2(q) + 1, 1) * 32
-    return total
-
-
-def report_recursion():
-    print("== the second ladder (once opening version 3: 5 bits, then 3, blocks >= 2^8; no longer in the code)")
-    print("   per level: rate, fold, queries | the code's accounting (whir_config.rs): pg / query+17 / ood / alg bits"
-          " | leanerVM's groups at the chosen slack e/2^22: fold / ood / query+17 bits")
-    for log_n in range(15, 29):
-        levels, yr = schedule_config(log_n, RECURSION)
-        certs = certify(levels)
-        print(f"-- 2^{log_n} (residual 2^{yr}): queries {[l['queries'] for l in levels]}")
-        for i, (l, (e, fb, ob, qb)) in enumerate(zip(levels, certs)):
-            ood = "    -" if ob is None else f"{ob:5.1f}"
-            code_ood = "    -" if i == 0 else f"{l['ood_bits']:5.1f}"
-            print(f"   L{i}: 1/2^{l['rate']:<2d} fold {l['k']} q {l['queries']:3d} | code {l['pg']:6.2f} /"
-                  f" {l['queries'] * l['perq'] + 17:6.2f} / {code_ood} / {l['alg']:5.1f} (L {2 ** l['logL']:.0f}) |"
-                  f" cert e {e:6d}: {fb:6.2f} / {ood} / {qb:6.2f} (listHi {make_cert(l['cols'], l['rate'], e).list_hi})")
-        weakest_code = min(min(l["pg"], l["queries"] * l["perq"] + 17, l["alg"], 1e9 if i == 0 else l["ood_bits"])
-                           for i, l in enumerate(levels))
-        weakest_cert = min(min(g for g in c[1:] if g is not None) for c in certs)
-        print(f"   weakest term: code {weakest_code:.2f} bits, certificate groups {weakest_cert:.2f} bits")
-    print("\n== the trade-off (rate 1/2 at level 0; the queries, the deeper levels' committed words, an estimate of the"
-          " Merkle part of a proof at 64 lanes)")
-    schedules = {"deployed (3, 1, 0): 1/2, 1/16, 1/128, ...": DEPLOYED,
-                 "recursion (5, 3, 8): 1/2, 1/4, 1/8, ...": RECURSION, **OTHERS}
-    for log_n in (23, 24, 25, 26, 27, 28):
-        print(f"-- 2^{log_n}")
-        base = None
-        for name, schedule in schedules.items():
-            levels, _ = schedule_config(log_n, schedule)
-            words, size = deeper_words(levels), proof_bytes(levels)
-            base = base or (words, size)
-            weakest = min(min(g for g in c[1:] if g is not None) for c in certify(levels))
-            print(f"   {name:42s} rates {str([l['rate'] for l in levels]):20s} queries"
-                  f" {str([l['queries'] for l in levels]):28s} (sum {sum(l['queries'] for l in levels)}):"
-                  f" deeper words 2^{math.log2(words):.2f} ({words / base[0]:.3f}x), proof ~{size / 1024:.0f} KiB"
-                  f" ({size / base[1]:.2f}x), certificate groups >= {weakest:.2f} bits")
-
-
 if __name__ == "__main__":
-    import sys
-
-    if "--large" in sys.argv:
-        report_large()
-        sys.exit(0)
-    if "--recursion" in sys.argv:
-        report_recursion()
-        sys.exit(0)
-    for name, (log_n, yr, levels) in configs().items():
-        print(f"== {name}: stack 2^{log_n}, residual 2^{yr}")
-        for i, o in enumerate(levels):
-            print(
-                f" L{i}: rate 1/2^{o['rate']} msg 2^{o['cols']} fold {o['k']} m={o['m']} eta={o['eta']:.6f}"
-                f" queries={o['queries']} ood={o['ood']} log2L={o['logL']:.3f} (L={2**o['logL']:.1f})"
-                f" pg={o['pg']:.2f} q-bits={o['queries'] * o['perq']:.2f}+17 ood-bits={o['ood_bits']:.2f}"
-                f" alg={o['alg']:.2f}"
-            )
-    report_unions()
-    bits, work = split_opening_attack()
-    print("\n== split opening of the quotient table's two claims (f halfway between two list members):")
-    print(f"   one opening passes its 225 level-0 queries with (3/4)^225 = 2^-{bits:.1f};"
-          f" both, with 17-bit grinding: about 2^{work:.1f} Keccak-f calls")
-    print(f"   the count was sized for words farther than the Johnson radius: (1 - 0.2896)^225 = "
-          f"2^-{225 * -math.log2(1 - 0.2896):.1f}")
+    report_large()
