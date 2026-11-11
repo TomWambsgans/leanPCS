@@ -13,6 +13,9 @@ rows, the rows used, the number of inputs; each row's `X, Y, C` sources, `0` zer
 `4 + r` row `r`; the input rows; σ), and prints the anchors' `C` cells that `Circuit.cells` computes for the Rust
 example's secret next to the statement's words. The two files must have the same SHA-256, and the words must agree
 with each other and with the Rust's. Not part of the proofs.
+
+Measured 2026-11-11 (h3): both files `7b73dc3b5414446a5cc723096bd6c34be5ab73e8395a530879abc3802ed7775f` (4,194,304
+rows, 3,878,615 used, 8,480 inputs, σ on 16,777,216 cells); the eight words agree on both sides.
 -/
 
 open PcsQuotient
