@@ -11,7 +11,11 @@ Everything in `formal/` states and proves the protocols of commit **`f96a7938`**
   ([`docs/HISTORY.md`](../docs/HISTORY.md), "Membership at f96a7938"); deployed: three claims on two commitments and
   the circuit's ([`docs/membership/PROTOCOL.md`](../docs/membership/PROTOCOL.md));
 - **recursion**: π2 (π2v3) over π1-rec3, π1's three claims encoded by the contract; deployed: π2 over π1-rec4, π1's
-  three claims hashed in π2's circuit ([`docs/leanvm/rec/SPEC-REC.md`](../docs/leanvm/rec/SPEC-REC.md)).
+  three claims hashed in π2's circuit ([`docs/leanvm/rec/SPEC-REC.md`](../docs/leanvm/rec/SPEC-REC.md)). **π1-rec4 is
+  ported in part** (branch `lean/pi1-rec4`): its verifier (`UniKeccak.reduceWithK4`, tested against the Rust on the
+  real π1-rec4 proofs), its recorded graph (`RecGraphKeccak/Emitted.lean` is now π1-rec4's) and graph = verifier
+  (`RecGraphKeccak.Sim.pi1GraphIsVerifierK4`, no hypothesis); its knowledge soundness and completeness are stated
+  (`UniKnowledgeSoundnessKeccakRec4`, `UniCompletenessKeccakRec4`), not proved.
 
 What the port needs is [`docs/LEAN_PORT.md`](../docs/LEAN_PORT.md). **Do not regenerate the Lean-facing files until
 the port**: the Rust now writes the deployed protocols, so `UPDATE_LEAN=1` runs (`crates/membership/evm/src/lean.rs`,
@@ -95,10 +99,15 @@ setup `F`; π2's `W`, setup, and `Q`'s identity, pushes' and sum claims), each t
 - **π1, completeness**: `UniKeccakComplete.uniCompletenessKeccak_closed` and `uniCompletenessKeccakRec3_closed`, for an
   explicit Lean honest prover, error `Prob.deltaK < 2^-169` (`deltaK_lt`), under `D.shape = keccakRefShape`,
   `D.programIv.length ≤ 2^16` and **`32 ≤ D.programIv.length`** (the deployed IV has 32 bytes).
-- **π1-rec3's graph.** `RecGraphKeccak/Emitted.lean` is the graph the Rust recorded (10,850 nodes, 69 Keccak-256 calls,
-  3 claims); `RecGraphKeccak.Sim.pi1GraphIsVerifierK`, no hypothesis: for every permutation, the graph computes
-  π1-rec3's verifier off the merge hazard; `hazard_probK`: at most `2^16` hazardous `t` per `p_0` (`2^-176`);
-  `pi1rec3K_end`: a witness satisfying π2's circuit carries the graph's outputs.
+- **`RecCompose`, `RecCircuit` still state π2v3 over π1-rec3** (the π2 port's): their `GraphsAgree`
+  (`pi1GraphK = Emitted.graph`) no longer holds, `Emitted.lean` being π1-rec4's, and `RecCircuit` does not yet
+  compile `wide` nodes.
+- **π1-rec4's graph.** `RecGraphKeccak/Emitted.lean` is the π1-rec4 graph the Rust recorded (10,840 nodes, 59
+  Keccak-256 calls, 10 `wide` nodes, 3 claims); `RecGraphKeccak.Sim.pi1GraphIsVerifierK4`, no hypothesis: for every
+  permutation, the Lean recording `pi1GraphK4` computes π1-rec4's verifier (`UniKeccak.runWithK4`) off the merge
+  hazard (`MergeHazardK4`: challenges 45 and 46); `GraphsAgreeK4` (`pi1GraphK4 = Emitted.graph`) evaluated;
+  `hazard_probK`: at most `2^16` hazardous `t` per `p_0` (`2^-176`). π1-rec3's program and
+  `pi1GraphIsVerifierK` are kept; `pi1rec3K_end` (`Circuit.lean`) awaits `formal/RecCircuit`'s `wide` nodes.
 
 ### The recursion's end theorems
 
@@ -161,7 +170,7 @@ theorem RecCompose.recKnowledgeSoundness_reduction_real (prog : KeccakVm.Program
 | `FlockSound` (`FlockSoundUni`), `Heap` | Flock's verifier soundness; the product heap |
 | [`UniKeccak`](UniKeccak/README.md) | π1's verifier at the Keccak VM, and its statements |
 | [`UniKeccakSound`](UniKeccakSound/README.md), [`UniKeccakComplete`](UniKeccakComplete/README.md) | π1's knowledge soundness; its honest prover and completeness |
-| [`RecGraph`](RecGraph/README.md), [`RecGraphKeccak`](RecGraphKeccak/README.md) | recorded graphs; π1-rec3's graph = its verifier, the hazard |
+| [`RecGraph`](RecGraph/README.md), [`RecGraphKeccak`](RecGraphKeccak/README.md) | recorded graphs (π1-rec4's `wide` nodes); π1-rec4's and π1-rec3's graph = verifier, the hazard |
 | [`RecCircuit`](RecCircuit/README.md), `RecPiop` | π2's circuit compiler; π2's PIOP (π2v3) |
 | [`RecStatement`](RecStatement/README.md) | π2's verifier, the eight claims, the recursion's end statements |
 | [`RecCompose`](RecCompose/README.md) | their proofs |

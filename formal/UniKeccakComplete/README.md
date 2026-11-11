@@ -56,6 +56,11 @@ answer), fresh by its length only if the IV's preimage (`91 + |IV|` bytes) has a
 | `2^-304` | an opening's proof of work fails for every nonce below `nonceFuel` | `K/ProbGrind.lean`, `K/Rec3ProbGrind.lean` |
 | `rpmError (2^48)` | the permutation as two random oracles: setup, prover (`≤ 2^47`), verifier on streams of `≤ 2^14` bytes | `K/FlockCost.lean` (`totalCostK_le`), `K/Rec3ProverCost.lean` (`totalCostK3_le`) |
 
+**π1-rec4** (`UniKeccak.UniCompletenessKeccakRec4`, the recursion's inner proof since π1-rec4) is stated, **not
+proved**: its honest prover would draw π1-rec4's wide challenges (`UniStatement.sampleWide`), and its staged
+probability layer (π1-rec3's `Rec3.KStaged3`, `K/Rec3*.lean`, about 8,200 lines) would need π1-rec4's chain (three
+wide calls in place of π1-rec3's thirteen: `c, β, γ, c'`; `f_0 … f_5`, `t`; `ρ, λ`).
+
 ## The layers
 
 - **The staged premise** (`Staged.lean`, `Chain.lean`, `End.lean`): `UniComplete`'s probability layer at the Keccak

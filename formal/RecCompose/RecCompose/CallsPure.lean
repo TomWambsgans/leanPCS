@@ -97,11 +97,11 @@ theorem contractWith_post (F : KeccakState → m KeccakState) (D : RecDeployment
   split
   · exact holds_pure fun h ↦ absurd h (by simp)
   · rename_i r hr
-    split_ifs with hacc hdec
-    · exact holds_pure fun h ↦ absurd h (by simp)
+    split_ifs with hacc
     · exact holds_pure fun h ↦ absurd h (by simp)
     dsimp only
-    split_ifs with hlen
+    split_ifs with hdec hlen
+    · exact holds_pure fun h ↦ absurd h (by simp)
     · exact holds_pure fun h ↦ absurd h (by simp)
     · refine holds_bind (holds_forIn_and (fun x ↦ (claimOfWords x.1).isSome) _ (fun x b ↦ ?_) _ true)
         fun ok hok ↦ holds_pure fun h ↦ ?_
@@ -159,8 +159,7 @@ theorem declaredGood (D : RecDeployment) : DeclaredGood D :=
 /-- **`DeclaredClaims`**: on every accepted outcome, the proof declares three π1 claims, π1-rec4's graph's count. -/
 theorem declaredClaims (D : RecDeployment) : DeclaredClaims D := by
   intro A z hz ha
-  rw [(outcomes_post D A z hz ha).1]
-  rfl
+  exact (outcomes_post D A z hz ha).1
 
 end RecCompose
 

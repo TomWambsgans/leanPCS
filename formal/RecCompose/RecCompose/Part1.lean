@@ -34,10 +34,10 @@ open OracleComp OracleSpec Common
 open scoped ENNReal
 
 /-- **The contract declares π1's claims**: on every outcome of π2's knowledge-soundness experiment whose contract
-accepts, the proof declares as many π1 claims as π1-rec4's graph (at any setup commitment) makes. -/
+accepts, the proof declares three π1 claims (π1-rec4's graph's count). -/
 def DeclaredClaims (D : RecDeployment) : Prop :=
   ∀ (A : RecAdversary), ∀ z ∈ support (recSoundnessExperiment2 D A), (acc z) = true →
-    (prf z).pi1Claims.length = RecGraphKeccak.Pi1.pi1GraphK4.calls.length
+    (prf z).pi1Claims.length = 3
 
 /-- **π2's extraction for a relation `Rel` of `W`'s candidates**: in π2's experiment, the contract accepts while no
 candidate of `W`'s committed word (read off the setup's evaluations and the transcript, decoded as π2's extractor
@@ -74,7 +74,7 @@ structure Pi2Layers (D : RecDeployment) (ε2 : ℕ → ℝ≥0∞) where
   extraction : Pi2Extraction D (fun roots input proof w ↦
     ((compiled roots.pi1).circuit.toPiop).Satisfies (pub roots input proof) (RecCircuit.emb w)) ε2
   circuit : ∀ (roots : RecSetupRoots) (input : Vector UInt8 32) (proof : RecProof) (w : ℕ → K),
-    proof.pi1Claims.length = RecGraphKeccak.Pi1.pi1GraphK4.calls.length →
+    proof.pi1Claims.length = 3 →
     ((compiled roots.pi1).circuit.toPiop).Satisfies (pub roots input proof) (RecCircuit.emb w) →
       Pi1GraphAccepts (pi1GraphAt roots.pi1) (D.pi1IvAt roots.pi1) input (D.pi1Stream w) proof.pi1Claims
 

@@ -14,6 +14,7 @@ import UniKeccak.Security
 import RecGraphKeccak.Main
 import RecGraphKeccak.Pi1.Verifier4
 import RecGraphKeccak.Main4
+import RecGraphKeccak.Sim.AtSetup4
 import UniKeccak.Verifier4
 import RecGraphKeccak.Emitted
 import RecCircuit.Check
@@ -200,18 +201,12 @@ hashes with π1's other claims). -/
 def RecDeployment.circuitAt (D : RecDeployment) (roots : UniKeccak.SetupRootsK) : Pi2Circuit :=
   D.pi2 roots
 
-/-- **A recorded graph at π1's setup commitment**: the setup claim's constant root and answer words (the call whose
-first two words are constants; the graph records the code's reference, `SetupRoots::REFERENCE`) replaced by `roots`'
-root and answer (in the real deployment they are the reference: `RecGraphKeccak.Pi1.referenceRootsK`). -/
-def graphAtSetup (g : RecGraph.Graph) (roots : UniKeccak.SetupRootsK) : RecGraph.Graph :=
-  { g with calls := g.calls.map fun call ↦ match call with
-      | .const _ :: .const _ :: rest =>
-        .const (RecCircuit.beNat (digestBytes roots.f)) :: .const (RecCircuit.beNat (UniStatement.elementWord roots.fOod)) ::
-          rest
-      | other => other }
-
-/-- **π1-rec4's recorded graph at π1's setup commitment** (`RecGraphKeccak.Pi1.pi1GraphK4`, `graphAtSetup`). -/
-def pi1GraphAt (roots : UniKeccak.SetupRootsK) : RecGraph.Graph := graphAtSetup RecGraphKeccak.Pi1.pi1GraphK4 roots
+/-- **π1-rec4's recorded graph at π1's setup commitment** (`RecGraphKeccak.graphAtSetup`: the setup claim's constant
+root and answer words, which the graph records at the code's reference `SetupRoots::REFERENCE`, replaced by `roots`';
+at the reference they are the same, and the graph is π1-rec4's verifier at every setup commitment,
+`RecGraphKeccak.Sim.pi1GraphIsVerifierK4At`). -/
+def pi1GraphAt (roots : UniKeccak.SetupRootsK) : RecGraph.Graph :=
+  RecGraphKeccak.graphAtSetup RecGraphKeccak.Pi1.pi1GraphK4 roots
 
 /-- **The real deployment's setup columns are the circuit compiler's** (how the deployment builds them: `Setup::new`
 of `adapt` of `compile`, at π1's contract IV): at every 32-byte π1 IV (π1's contract IV is a Keccak-256 digest) at
@@ -525,12 +520,12 @@ def pi1GraphChecks (g : RecGraph.Graph) (iv1 : List UInt8) (input : Vector UInt8
 /-- **The graph's checks do not read its calls**: at π1's setup commitment they are the recorded graph's. -/
 theorem pi1GraphChecks_graphAtSetup (g : RecGraph.Graph) (roots : UniKeccak.SetupRootsK) (iv1 : List UInt8)
     (input : Vector UInt8 32) (s : Array UInt8) :
-    pi1GraphChecks (graphAtSetup g roots) iv1 input s = pi1GraphChecks g iv1 input s := by
+    pi1GraphChecks (RecGraphKeccak.graphAtSetup g roots) iv1 input s = pi1GraphChecks g iv1 input s := by
   unfold pi1GraphChecks RecGraph.evalGraphDeployed RecGraph.evalGraph
   by_cases h : s.size = g.streamLen
-  · simp only [graphAtSetup, h, ite_true, RecGraph.evalNodes, RecGraph.outputsOf]
+  · simp only [RecGraphKeccak.graphAtSetup, h, ite_true, RecGraph.evalNodes, RecGraph.outputsOf]
     rfl
-  · simp only [graphAtSetup, h, ite_false]
+  · simp only [RecGraphKeccak.graphAtSetup, h, ite_false]
 
 /-- **`Pi1GraphAccepts`, decided.** -/
 def pi1GraphAcceptsB (g : RecGraph.Graph) (iv1 : List UInt8) (input : Vector UInt8 32) (s : Array UInt8)
