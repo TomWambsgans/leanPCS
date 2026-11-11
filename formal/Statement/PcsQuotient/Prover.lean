@@ -163,9 +163,11 @@ def quotientParts (circuit : Circuit) (stmt : Statement) (cells₀ : Array K) (c
   let tau := rowVanishing mv
   let rowPoly (x : K) : K := ((chain x (mv - 1)).zip tau).foldl (fun acc (w, t) ↦ acc + t * w) 0
   let pubWords := stmt.words
-  let pinTerm (x : K) : E := (List.range publicRows).foldl
-    (fun acc k ↦ acc + ofK (pinWeights.getD k 0 * anchorValues pubWords k) * (ofK (x + pinPoints.getD k 0))⁻¹) 0
+  -- `Z_P(x)` and the pins' interpolant `v(x) = Σ_k v_k λ_k Π_(j ≠ k) (x + p_j)`, over `K`.
   let zPins (x : K) : K := pinPoints.foldl (fun acc p ↦ acc * (x + p)) 1
+  let pinPoly (x : K) : K := (List.range publicRows).foldl
+    (fun acc k ↦ acc + pinWeights.getD k 0 * anchorValues pubWords k *
+      (List.range publicRows).foldl (fun pr j ↦ if j = k then pr else pr * (x + pinPoints.getD j 0)) 1) 0
   let at_ (i : ℕ) : K := wValues.getD i 0
   let parts : Array (E × E) := Array.ofFn (n := big) fun i ↦
     let x := offset + point i.val
@@ -174,7 +176,7 @@ def quotientParts (circuit : Circuit) (stmt : Statement) (cells₀ : Array K) (c
     let dNext := α + ofK w + β * ofK (sigmaValues.getD i.val 0)
     let z := (chain x (mv + 1)).getD mv 0
     let gate := at_ (i.val ^^^ 3) + at_ (i.val ^^^ 1) + at_ (i.val ^^^ 2) + w * at_ (i.val ^^^ 2)
-    let g := ofK (gate * (rowPoly x)⁻¹ + w * (zPins x)⁻¹) + pinTerm x
+    let g := ofK (gate * (rowPoly x)⁻¹ + (w + pinPoly x) * (zPins x)⁻¹)
     ((hValues.getD i.val 0 * d * dNext + d + dNext) * ofK z⁻¹ + μ * g, ofK (x * x + x) * d * dNext)
   let q0Hat := coefficients (mv + 2) offset (parts.map (·.1))
   let eHat := coefficients (mv + 2) offset (parts.map (·.2))
