@@ -87,6 +87,9 @@ inductive Source where
   | root (i : ℕ)
   /-- Element `i`: its limbs `c0, c1, c2`. -/
   | element (i : ℕ)
+  /-- The Keccak-256 of π1's claim `hashed[i]` (the EIP draft's encoding): its four big-endian words, bytes
+  `8l .. 8l + 8` limb `l`. -/
+  | claimHash (i : ℕ)
   /-- A check of π1's verifier: three zero limbs. -/
   | zero
   /-- Padding of the zero checks to a power of two: three zero limbs of constants. -/
@@ -94,7 +97,7 @@ inductive Source where
   deriving DecidableEq, Inhabited, Repr
 
 def Source.limbs : Source → ℕ
-  | .statement | .root _ => 4
+  | .statement | .root _ | .claimHash _ => 4
   | .element _ | .zero | .pad => 3
 
 /-- A port: a hole whose push leaves the domain, to the outside tag `N + J`. -/
@@ -125,8 +128,13 @@ structure Circuit where
   kappa : Array (ℕ × K)
   /-- Port `J`'s outside tag is `N + J`, in block order. -/
   ports : Array Port
-  /-- π1's claims, in call order. -/
+  /-- π1's claims the contract encodes (those not `hashed`), in call order. -/
   calls : List (List CallWord)
+  /-- π1's claims (their indices among all, increasing) whose Keccak-256 the circuit computes, each the public word of
+  a `claimHash` port. -/
+  hashed : List ℕ
+  /-- The elements that are narrow challenges, increasing (π2 reads them as 20 bytes). -/
+  narrow : List ℕ
   deriving Inhabited
 
 namespace Circuit

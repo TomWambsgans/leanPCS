@@ -133,6 +133,15 @@ def copyOk (v c : ℕ) : Bool := 1 ≤ X.role c && X.gate c (copyPoly (X.role c)
 
 def xorOk (x a b : ℕ) : Bool := X.gate x (xorPolyL (X.role x)) 0 [(X.role x, a), (X.role x + 1, b)]
 
+/-- A `copy` unit's slot at role `r`: `c_(r+1)`. -/
+def copyFwdPoly (r : ℕ) : Poly := ⟨[(r + 1, one)], []⟩
+
+/-- A copy `c` of a value `v` placed at the forward beside it (`units::Copies`). -/
+def copyFwdOk (v c : ℕ) : Bool := X.gate c (copyFwdPoly (X.role c)) 0 [(X.role c + 1, v)]
+
+/-- `x` carries `v`'s word: `v` itself, or a copy of it (a free bit's, a `copy` unit's). -/
+def sameBit (v x : ℕ) : Bool := x == v || X.copyOk v x || X.copyFwdOk v x
+
 /-! ## D16v's Keccak-f -/
 
 /-- The χ row of plane `y`, slice `z`: cells `x'`, `5 + x'` hold θ's inputs at the lane ρ and π bring there. -/
@@ -142,13 +151,17 @@ def chiCells (a d : Array Val) (y z : ℕ) : List (ℕ × ℕ) :=
     let z0 := (z + 64 - rho l) % 64
     [(x, a.getD (64 * l + z0) NONE), (5 + x, d.getD (64 * (l % 5) + z0) NONE)]
 
-/-- **A Keccak-f instance's gates, round by round.** -/
+/-- The χ rows' planes of round `j`: five, but the last round's `lastPlanes`. -/
+def planesAt (t : KeccakT) (j : ℕ) : ℕ := if j == 23 then t.lastPlanes else 5
+
+/-- **A Keccak-f instance's gates, round by round** (the last round's planes made only). -/
 def keccakOk (t : KeccakT) : Bool :=
   let A := fun j i => (t.a.getD j #[]).getD i NONE
   let Cv := fun j i => (t.c.getD j #[]).getD i NONE
   let D := fun j i => (t.d.getD j #[]).getD i NONE
   let P := fun j y i => ((t.p.getD j #[]).getD y #[]).getD i NONE
   -- C_0: kprep's column sums.
+  (1 ≤ t.lastPlanes && t.lastPlanes ≤ 5) &&
   allBelow 320 (fun u =>
     let (x, z) := (u / 64, u % 64)
     let v := Cv 0 u
@@ -160,14 +173,19 @@ def keccakOk (t : KeccakT) : Bool :=
     let v := D j u
     X.gate v (xorPolyL (X.role v)) 0
       [(X.role v, Cv j (64 * ((x + 4) % 5) + z)), (X.role v + 1, Cv j (64 * ((x + 1) % 5) + (z + 63) % 64))])) &&
-  -- The χ rows: A_(j+1) and the partial sums P_(j, y).
-  allBelow 24 (fun j => allBelow 5 (fun y => allBelow 320 (fun u =>
+  -- The χ rows: A_(j+1), on the planes made.
+  allBelow 24 (fun j => allBelow (planesAt t j) (fun y => allBelow 320 (fun u =>
     let (x, z) := (u / 64, u % 64)
     let cells := chiCells (t.a.getD j #[]) (t.d.getD j #[]) y z
     let k := if x == 0 then (if y == 0 then rcBit j z else 0) else 0
-    X.gate (A (j + 1) (64 * (x + 5 * y) + z)) (Builder.chiB x).build k cells &&
-      (if y == 0 then X.gate (P j 0 u) (Builder.chiB x).build k cells
-       else X.gate (P j y u) ((Builder.chiB x).addLinear (10 + x) 1).build 0 (cells ++ [(10 + x, P j (y - 1) u)]))))) &&
+    X.gate (A (j + 1) (64 * (x + 5 * y) + z)) (Builder.chiB x).build k cells))) &&
+  -- The partial sums P_(j, y) of the rounds but the last (the next round's C).
+  allBelow 23 (fun j => allBelow 5 (fun y => allBelow 320 (fun u =>
+    let (x, z) := (u / 64, u % 64)
+    let cells := chiCells (t.a.getD j #[]) (t.d.getD j #[]) y z
+    let k := if x == 0 then (if y == 0 then rcBit j z else 0) else 0
+    (if y == 0 then X.gate (P j 0 u) (Builder.chiB x).build k cells
+     else X.gate (P j y u) ((Builder.chiB x).addLinear (10 + x) 1).build 0 (cells ++ [(10 + x, P j (y - 1) u)]))))) &&
   -- C_(j+1) = P_(j, 4).
   allBelow 23 (fun j => allBelow 320 (fun u => Cv (j + 1) u == P j 4 u))
 
@@ -186,7 +204,9 @@ def padBitOf (msg : Array Bit) (i : ℕ) : Bit :=
   if i < msg.size then msg.getD i .zero else if i == msg.size || i == paddedLen - 1 then .one else .zero
 
 /-- **A sponge's blocks**: block 0's input is the padded message's bits and zeros, a later block's the state before XOR
-its bits (passed through for a zero bit, through a fresh one for a one); the digest is the last state's 256 bits. -/
+its bits (passed through for a zero bit, through a fresh one for a one); every block but the last a whole permutation,
+the last making the planes of the lanes read; the output the last state's first `64 · lanes` bits, the digest its
+first 256. -/
 def spongeOk (keccaks : Array KeccakT) (s : SpongeT) : Bool :=
   let blocks := s.message.size / 1088 + 1
   let inst := fun (b : ℕ) => keccaks.getD (s.perms.getD b 0) default
@@ -204,7 +224,10 @@ def spongeOk (keccaks : Array KeccakT) (s : SpongeT) : Bool :=
       | .one =>
         let o := X.cellAt (X.rowStart (X.prod x) + X.role x + 1)
         X.xorOk x prev o && X.constOk o 1)) &&
-  s.digest.size == 256 && allBelow 256 (fun k => s.digest.getD k NONE == out (blocks - 1) k)
+  s.digest.size == 256 && allBelow 256 (fun k => s.digest.getD k NONE == out (blocks - 1) k) &&
+  allBelow blocks (fun b => b + 1 == blocks || (inst b).lastPlanes == 5) &&
+  (4 ≤ s.lanes && s.lanes ≤ 17 && s.lanes ≤ 5 * (inst (blocks - 1)).lastPlanes) &&
+  s.out.size == 64 * s.lanes && allBelow (64 * s.lanes) (fun k => s.out.getD k NONE == out (blocks - 1) k)
 
 /-! ## Packings -/
 
@@ -283,6 +306,12 @@ def seedMessage (iv : List UInt8) : Array Bit :=
 /-- A digest is a sponge's of this message. -/
 def spongeIs (d : Array ℕ) (m : Array Bit) : Bool := c.st.sponges.any fun s => s.digest == d && s.message == m
 
+/-- A digest, and (a hash a wide challenge reads) its sponge's output, are a sponge's of this message. -/
+def spongeRateIs (d : Array ℕ) (m : Array Bit) (rt : Option (Array ℕ)) : Bool :=
+  c.st.sponges.any fun s => s.digest == d && s.message == m && (match rt with
+    | some o => s.out == o
+    | none => true)
+
 /-- An `E` unit computes `out = op(lx, ly)`: its slots are `unitPolyL`'s at a base (ended: slots at the base,
 forwarded: at base + 6), its cells `a`, `b` the operands (either order). -/
 def arithOk (X : Ctx) (op : Op) (out lx ly : Array ℕ) : Bool :=
@@ -340,6 +369,13 @@ def nodeOk (X : Ctx) (iv : List UInt8) (packOf : Array (Option ℕ)) (id : ℕ) 
     isStateNode (c.nodes.getD h default) &&
     let db := fun i => d.getD i NONE
     d.size == 256 && l.size == 3 && pk (L 0) (beBits db 24 8) && pk (L 1) (beBits db 16 8) && pk (L 2) (beBits db 12 4)
+  | .wide h k =>
+    match c.rates.getD h none with
+    | some rt =>
+      let rb := fun i => rt.getD i NONE
+      Node.isHash (c.nodes.getD h default) && 8 * (24 * k + 32) ≤ rt.size && l.size == 3 &&
+        pk (L 0) (beBits rb (24 * k + 24) 8) && pk (L 1) (beBits rb (24 * k + 16) 8) && pk (L 2) (beBits rb (24 * k + 8) 8)
+    | none => false
   | .bits v shift width =>
     match c.nodes.getD v default with
     | .input off len =>
@@ -355,14 +391,15 @@ def nodeOk (X : Ctx) (iv : List UInt8) (packOf : Array (Option ℕ)) (id : ℕ) 
   | .mul x y => arithOk X (if x == y then .square else .mul) l (c.limbsOf x) (c.limbsOf y)
   | .seed =>
     match c.digests.getD id none with
-    | some d => d.size == 256 && (c.limbs.getD id none).isNone && c.spongeIs d (c.seedMessage iv)
+    | some d => d.size == 256 && (c.limbs.getD id none).isNone && c.spongeIs d (c.seedMessage iv) &&
+      (c.rates.getD id none).isNone
     | none => false
   | .hash s f t =>
     match c.digests.getD id none with
     | some d => d.size == 256 && (c.limbs.getD id none).isNone && (c.digests.getD s none).isSome && f ≤ t &&
       isStateNode (c.nodes.getD s default) &&
       (List.range (8 * (t - f))).all (fun k => (c.bitSelf.getD (8 * f + k) none).isSome) &&
-      c.spongeIs d (c.hashMessage s f t)
+      c.spongeRateIs d (c.hashMessage s f t) (c.rates.getD id none)
     | none => false
   | .ringWeight .. => false
 
@@ -377,14 +414,24 @@ def zeroNodes : List ℕ := c.zero.filter fun id => notConst (c.nodes.getD id de
 /-- The number of zero ports before port `J`: the zero check port `J` carries. -/
 def zeroIndex (J : ℕ) : ℕ := ((c.circuit.ports.toList.take J).filter fun p => p.source == .zero).length
 
-/-- A port's limb values, by its source (the `m`-th zero port the `m`-th non-constant zero check's). -/
+/-- The hashed claims' zero checks, in order: each free element's sum `packed + limbs`. -/
+def claimSums : List (Array ℕ) := c.claims.toList.flatMap fun cl => cl.frees.toList.map (·.2.2.2)
+
+/-- How many zero ports the hashed claims' sections make (they come first). -/
+def claimZeros : ℕ := c.claimSums.length
+
+/-- A port's limb values, by its source (the first `claimZeros` zero ports the hashed claims' sums, the `m`-th zero
+port after them the `m`-th non-constant zero check's). -/
 def portValues (X : Ctx) (J : ℕ) : Array ℕ :=
   let p := c.circuit.ports.getD J default
   match p.source with
   | .statement => c.statementLimb
   | .root i => c.rootLimbs.getD i #[]
   | .element e => c.limbsOf (c.elementNodes.getD e 0)
-  | .zero => c.limbsOf (c.zeroNodes.getD (c.zeroIndex J) 0)
+  | .claimHash j => (c.claims.getD j default).limbs4
+  | .zero =>
+    if c.zeroIndex J < c.claimZeros then c.claimSums.getD (c.zeroIndex J) #[]
+    else c.limbsOf (c.zeroNodes.getD (c.zeroIndex J - c.claimZeros) 0)
   | .pad =>
     (List.range 3).toArray.map fun l => X.cellAt (X.rowStart p.position + l)
 
@@ -392,12 +439,13 @@ def portValues (X : Ctx) (J : ℕ) : Array ℕ :=
 def sourcesOk : Bool := allBelow c.circuit.ports.size fun J =>
   match (c.circuit.ports.getD J default).source with
   | .element e => e < c.elementNodes.size
-  | .zero => c.zeroIndex J < c.zeroNodes.length
+  | .zero => c.zeroIndex J < c.claimZeros + c.zeroNodes.length
+  | .claimHash j => j < c.claims.size
   | _ => true
 
 /-- **Every port's limbs**: its row's cells `0..L` hold its source's values. -/
 def portsOk (X : Ctx) : Bool :=
-  (c.circuit.ports.toList.filter fun p => p.source == .zero).length == c.zeroNodes.length &&
+  (c.circuit.ports.toList.filter fun p => p.source == .zero).length == c.claimZeros + c.zeroNodes.length &&
   allBelow c.circuit.ports.size fun J =>
     let p := c.circuit.ports.getD J default
     let vs := c.portValues X J
@@ -409,6 +457,8 @@ def portsOk (X : Ctx) : Bool :=
 /-- The roots' packings: limb `l` the big-endian word of the stream's bytes `at + [24, 16, 8, 0][l]` (the root word is
 the stream's 32 bytes). -/
 def rootsOk (rootsAt : List ℕ) (packOf : Array (Option ℕ)) : Bool :=
+  c.rootsAt.all rootsAt.contains &&
+  let rootsAt := c.rootsAt
   c.rootLimbs.size == rootsAt.length &&
   allBelow rootsAt.length fun i =>
     let at_ := rootsAt.getD i 0
@@ -451,7 +501,7 @@ def _root_.RecCircuit.Circuit.portOf (C : Circuit) (s : Source) : Option ℕ := 
 def _root_.RecCircuit.Node.ops : Node → List ℕ
   | .add a b | .mul a b => [a, b]
   | .hash s _ _ => [s]
-  | .low h | .narrow h | .bits h _ _ => [h]
+  | .low h | .narrow h | .wide h _ | .bits h _ _ => [h]
   | _ => []
 
 /-- The expanded graph: every live node reads earlier live nodes; the zero checks are the graph's, mapped; the zero
@@ -471,7 +521,7 @@ def wordOk (r : Recorded) (k : ℕ) : CallWord → Word → Bool
   | .const x, .const v =>
     wordBytes32 x == RecGraph.beBytes32 v
   | .root i, .stream at_ =>
-    k == 0 && i < r.rootsAt.length && r.rootsAt.getD i 0 == at_ && (c.circuit.portOf (.root i)).isSome
+    k == 0 && i < c.rootsAt.length && c.rootsAt.getD i 0 == at_ && (c.circuit.portOf (.root i)).isSome
   | .const x, .node id =>
     k != 0 && c.live.getD (c.map.getD id 0) false &&
       match c.nodes.getD (c.map.getD id 0) default with
@@ -492,13 +542,118 @@ def zeroConstOk (r : Recorded) : Bool :=
     | .const c0 c1 c2 => decide (UniStatement.eNew c0 c1 c2 = 0) && decide (c.map.getD id 0 < c.nodes.size)
     | _ => true
 
-/-- **π2's calls are π1's**, word by word (`wordOk`). -/
+/-- The claims π2's circuit hashes (`compile.rs`'s `hashed_claims`, those past the calls dropped). -/
+def hashedOf (r : Recorded) : List ℕ := r.hashed.filter (· < r.graph.calls.length)
+
+/-- π1's claims the contract encodes, in call order: those not hashed. -/
+def encodedOf (r : Recorded) : List (List Word) :=
+  ((List.range r.graph.calls.length).filter fun ci => !(hashedOf r).contains ci).map (r.graph.calls.getD · [])
+
+/-- **π2's calls are π1's encoded ones**, word by word (`wordOk`). -/
 def callsOk (r : Recorded) : Bool :=
-  c.circuit.calls.length == r.graph.calls.length &&
-  allBelow r.graph.calls.length fun ci =>
-    (c.circuit.calls.getD ci []).length == (r.graph.calls.getD ci []).length &&
-    allBelow (r.graph.calls.getD ci []).length fun k =>
-      c.wordOk r k ((c.circuit.calls.getD ci []).getD k default) ((r.graph.calls.getD ci []).getD k default)
+  let E := encodedOf r
+  c.circuit.calls.length == E.length &&
+  allBelow E.length fun ci =>
+    (c.circuit.calls.getD ci []).length == (E.getD ci []).length &&
+    allBelow (E.getD ci []).length fun k =>
+      c.wordOk r k ((c.circuit.calls.getD ci []).getD k default) ((E.getD ci []).getD k default)
+
+/-! ## The hashed claims -/
+
+/-- What a bit of a hashed claim's message is: a constant, the stream's bit `i`, bit `k` of free element `f`'s 24 bytes
+(byte `k / 8`, bit `k % 8`). -/
+inductive MBit where
+  | const (b : Bool)
+  | stream (i : ℕ)
+  | free (f k : ℕ)
+  deriving DecidableEq, Inhabited
+
+/-- A byte string's bits as constants, byte order, low bit first. -/
+def constMBits (bytes : List UInt8) : List MBit :=
+  (List.range (8 * bytes.length)).map fun i => .const ((bytes.getD (i / 8) 0).toNat.testBit (i % 8))
+
+/-- A read of 24 hashed bytes (its bits are the stream's free bits). -/
+def hashedRead (off len : ℕ) : Bool :=
+  len == 24 && (List.range 192).all fun i => (c.bitSelf.getD (8 * off + i) none).isSome
+
+/-- **Word `k` of a hashed claim, as message bits** (`compile.rs`): a root's (word 0 of the stream) the stream's 256
+bits, a constant root's its 32 bytes, an element word's bytes `8 .. 32` (a constant's constants, a hashed read's the
+stream's bits, any other element's free bits, the next free element `f`); with the node of a free element. -/
+def wordSpec (k : ℕ) (w : Word) (f : ℕ) : List MBit × List ℕ :=
+  let free := ((List.range 192).map fun i => MBit.free f i)
+  match k, w with
+  | 0, .stream at_ => ((List.range 256).map fun i => .stream (8 * at_ + i), [])
+  | 0, .const x => (constMBits (wordBytes32 x), [])
+  | _ + 1, .const x => (constMBits ((wordBytes32 x).drop 8), [])
+  | _ + 1, .node id =>
+    match c.nodes.getD id default with
+    | .const c0 c1 c2 => (constMBits ((wordBytes32 (elementWord (F192.new c0 c1 c2))).drop 8), [])
+    | .input off len =>
+      if c.hashedRead off len then ((List.range 192).map fun i => .stream (8 * off + i), []) else (free, [id])
+    | _ => (free, [id])
+  | _, _ => ([], [])
+
+/-- The words from position `k` on, with `f` free elements before. -/
+def claimSpecAux : ℕ → ℕ → List Word → List MBit × List ℕ
+  | _, _, [] => ([], [])
+  | k, f, w :: ws =>
+    let a := c.wordSpec k w f
+    let b := claimSpecAux (k + 1) (f + a.2.length) ws
+    (a.1 ++ b.1, a.2 ++ b.2)
+
+/-- **A hashed claim's message, bit by bit, and its free elements' nodes**: `VERSION = 1`, `n`, then the words. -/
+def claimSpec (ws : List Word) : List MBit × List ℕ :=
+  let b := c.claimSpecAux 0 0 ws
+  (constMBits [1, (ws.length - 3).toUInt8] ++ b.1, b.2)
+
+/-- A free element's bits as `pack` takes them for limb `li` (the element's big-endian bytes `8 (2 − li) ..`). -/
+def freeLimbBits (bits : Array ℕ) (li : ℕ) : List (ℕ × ℕ) :=
+  (List.range 24).flatMap fun byte =>
+    if 2 - byte / 8 == li then (List.range 8).map fun bit => (8 * (7 - byte % 8) + bit, bits.getD (8 * byte + bit) NONE)
+    else []
+
+/-- A message bit is what the spec says, given the free elements. -/
+def mbitOk (X : Ctx) (frees : Array (ℕ × Array Val × Array Val × Array Val)) (b : Bit) : MBit → Bool
+  | .const v => b == (if v then .one else .zero)
+  | .stream i =>
+    match b with
+    | .v x => (c.bitSelf.getD i none).isSome && X.sameBit (c.streamBit i) x
+    | _ => false
+  | .free f k =>
+    match b with
+    | .v x => X.sameBit (((frees.getD f default).2.1).getD k NONE) x
+    | _ => false
+
+/-- **A free element** of a hashed claim: its node `id` (live, its limbs), 192 free bits, their packings into three
+limbs, and the sum `packed + limbs` (an `E` unit). -/
+def freeOk (X : Ctx) (packOf : Array (Option ℕ)) (fr : ℕ × Array Val × Array Val × Array Val) (id : ℕ) : Bool :=
+  fr.1 == id && c.live.getD id false && !isStateNode (c.nodes.getD id default) && fr.2.1.size == 192 &&
+    allBelow 192 (fun k => X.bitOk ((fr.2.1).getD k NONE)) && fr.2.2.1.size == 3 &&
+    allBelow 3 (fun li => c.packIs packOf ((fr.2.2.1).getD li NONE) (freeLimbBits fr.2.1 li)) &&
+    arithOk X .add fr.2.2.2 fr.2.2.1 (c.limbsOf id)
+
+/-- **Hashed claim `j`**: its message is its words' (`claimSpec`), its free elements checked, its digest a sponge's of
+the message, its four limbs the digest's big-endian words. -/
+def claimOk (X : Ctx) (r : Recorded) (packOf : Array (Option ℕ)) (j : ℕ) : Bool :=
+  let cl := c.claims.getD j default
+  let ws := (r.graph.calls.getD cl.ci []).map fun w => match w with
+    | .node id => Word.node (c.map.getD id 0)
+    | other => other
+  let sp := c.claimSpec ws
+  3 ≤ ws.length && ws.length - 3 < 256 &&
+    cl.message.size == sp.1.length &&
+    allBelow sp.1.length (fun p => c.mbitOk X cl.frees (cl.message.getD p .zero) (sp.1.getD p (.const false))) &&
+    cl.frees.size == sp.2.length &&
+    allBelow cl.frees.size (fun f => c.freeOk X packOf (cl.frees.getD f default) (sp.2.getD f 0)) &&
+    cl.digest.size == 256 && c.spongeIs cl.digest cl.message &&
+    cl.limbs4.size == 4 &&
+    allBelow 4 (fun l => c.packIs packOf (cl.limbs4.getD l NONE) (beBits (fun i => cl.digest.getD i NONE) (8 * l) 8))
+
+/-- **The hashed claims**: the circuit's `hashed` is `hashedOf r`, each its claim, checked (`claimOk`). -/
+def claimsOk (X : Ctx) (r : Recorded) (packOf : Array (Option ℕ)) : Bool :=
+  c.circuit.hashed == hashedOf r && c.claims.size == c.circuit.hashed.length &&
+    allBelow c.claims.size fun j =>
+      (c.claims.getD j default).ci == c.circuit.hashed.getD j 0 && c.claimOk X r packOf j
 
 /-! ## The completeness checks (`Complete.lean`: the honest witness)
 
@@ -509,12 +664,19 @@ value) is a self-loop reading nothing pulled, every gate reads values computed b
 a free bit: `givenArr`), a free bit's slot is its self-loop `b = b²`, and every byte of the stream is hashed or in a
 never-hashed read. -/
 
-/-- Where a given value's word comes from: a public-input bit, a stream bit, a never-hashed read's limb. -/
+/-- Where a given value's word comes from: a public-input bit, a stream bit, a never-hashed read's limb, bit `e` of the
+word of an earlier value `u` (a hashed claim's free element's bits, `compile.rs`'s `Given::Bit`). -/
 inductive Given where
   | pub (k : ℕ)
   | stream (i : ℕ)
   | free (e l : ℕ)
+  | bit (u e : ℕ)
   deriving DecidableEq, Inhabited
+
+/-- The source of a hashed claim's free element's bit `k` (byte `k / 8` of its big-endian bytes `c2 ‖ c1 ‖ c0`, bit
+`k % 8`): bit `8 (7 − k/8 mod 8) + k mod 8` of limb `2 − k/64`. -/
+def freeBitGiven (l : Array ℕ) (k : ℕ) : Given :=
+  .bit (l.getD (2 - k / 64) NONE) (8 * (7 - k / 8 % 8) + k % 8)
 
 /-- Each position's pulled value: its chain's placements (a produced value's past its producer). -/
 def pullArr : Array ℕ := Id.run do
@@ -546,6 +708,10 @@ def givenArr : Array (Option Given) := Id.run do
   for e in [0:c.freeReads.size] do
     for l in [0:3] do
       a := a.set! ((c.freeReads.getD e default).2.getD l NONE) (some (.free e l))
+  for cl in c.claims do
+    for fr in cl.frees do
+      for k in [0:192] do
+        a := a.set! ((fr.2.1).getD k NONE) (some (freeBitGiven (c.limbsOf fr.1) k))
   return a
 
 end Compiled
@@ -569,8 +735,12 @@ def slotOk (P Q : Array ℕ) (G : Array (Option Compiled.Given)) (i : ℕ) : Boo
       X.prod v == i && X.C.sigmaAt i < X.n && pl (X.C.sigmaAt i) == v &&
       match G.getD v none with
       | some (.free _ _) => false
+      | some (.bit u _) => u < v && p == sqPoly (i % X.W) && X.kap i == 0 && pl i == v
       | some _ => p == sqPoly (i % X.W) && X.kap i == 0 && pl i == v
-      | none => p.reads.all (fun c => let u := pl (X.rowStart i + c); u != NONE && (u < v || (G.getD u none).isSome))
+      | none => p.reads.all (fun c => let u := pl (X.rowStart i + c); u != NONE && (u < v || (match G.getD u none with
+          | some (.bit ..) => false
+          | some _ => true
+          | none => false)))
 
 /-- **A value's word is its producer's push or its first placement's pull.** -/
 def valueOk (P Q : Array ℕ) (G : Array (Option Compiled.Given)) (v : ℕ) : Bool :=
@@ -605,7 +775,11 @@ def completeGiven : Bool :=
     | some v => c.givenArr.getD v none == some (.stream i)
     | none => true) &&
   allBelow c.freeReads.size (fun e => allBelow 3 fun l =>
-    c.givenArr.getD ((c.freeReads.getD e default).2.getD l NONE) none == some (.free e l))
+    c.givenArr.getD ((c.freeReads.getD e default).2.getD l NONE) none == some (.free e l)) &&
+  allBelow c.claims.size (fun j => let cl := c.claims.getD j default
+    allBelow cl.frees.size fun f => let fr := cl.frees.getD f default
+      (c.limbsOf fr.1).size == 3 && allBelow 192 fun k =>
+        c.givenArr.getD ((fr.2.1).getD k NONE) none == some (freeBitGiven (c.limbsOf fr.1) k))
 
 /-- **Completeness: every byte of the stream is hashed or in a never-hashed read.** -/
 def completeCover (streamLen : ℕ) : Bool :=
@@ -630,6 +804,7 @@ def checks (r : Recorded) : List (String × Bool) :=
    ("ports", c.portsOk X),
    ("sources", c.sourcesOk),
    ("calls", c.callsOk r),
+   ("claims", c.claimsOk X r packOf),
    ("zero constants", c.zeroConstOk r),
    ("complete slots", c.completeSlots),
    ("complete values", c.completeValues),

@@ -5,6 +5,7 @@
 -- π1-rec3's), so that its `evalGraph` can replace this one.
 import Field.F192
 import Statement.Keccak
+import UniStatement.Rec
 
 /-!
 # π1's recorded graph and its semantics
@@ -33,6 +34,7 @@ inductive Node where
   | hash (state frm upto : ℕ)
   | low (h : ℕ)
   | narrow (h : ℕ)
+  | wide (h k : ℕ)
   | bits (v shift width : ℕ)
   | ringWeight (kernel n : ℕ)
   deriving DecidableEq, Repr, Inhabited, Hashable
@@ -56,19 +58,28 @@ structure Graph where
 
 /-! ## Values -/
 
-/-- A node's value: an element of `E`, or a Keccak state's 32 bytes. -/
+/-- A node's value: an element of `E`; the seed's 32 bytes; a hash's sponge, Keccak-256's last Keccak state (its first
+32 bytes the digest, its first 136 the rate a wide draw reads), as `RecGraph.Value`. -/
 inductive Value where
   | e (x : F192)
   | state (s : List UInt8)
+  | sponge (st : LeanVM.Semantics.KeccakState)
   deriving Inhabited
 
 def Value.toE : Value → F192
   | .e x => x
-  | .state _ => 0
+  | _ => 0
 
+/-- The transcript's state: the seed's bytes, a hash's digest. -/
 def Value.toState : Value → List UInt8
   | .state s => s
+  | .sponge st => digestBytes (UniStatement.digestOfState st)
   | .e _ => []
+
+/-- A hash's rate (`keccak256_rate`'s 136 bytes). -/
+def Value.toRate : Value → List UInt8
+  | .sponge st => UniStatement.rateBytesOf st
+  | _ => []
 
 /-- A big-endian number of bytes (`eval::be`, on `ℕ`: exact for at most 8 bytes). -/
 def beNat (bytes : List UInt8) : ℕ := bytes.foldl (fun acc b => acc * 256 + b.toNat) 0
@@ -89,6 +100,14 @@ def inputValue (stream : List UInt8) (offset len : ℕ) : F192 :=
 /-- `challenge_of`: limb `i` the big-endian word of the state's bytes `24 − 8i .. 32 − 8i`. -/
 def challengeOf (state : List UInt8) : F192 :=
   elemOfNats (beNat (slice state 24 8)) (beNat (slice state 16 8)) (beNat (slice state 8 8))
+
+/-- `challenge_at(rate, k)`: limb `i` the big-endian word of the rate's bytes `24k + 24 − 8i .. 24k + 32 − 8i`. -/
+def challengeAtL (rate : List UInt8) (k : ℕ) : F192 :=
+  elemOfNats (beNat (slice rate (24 * k + 24) 8)) (beNat (slice rate (24 * k + 16) 8)) (beNat (slice rate (24 * k + 8) 8))
+
+/-- Keccak-256's last Keccak state over Keccak-f[1600] (`UniStatement.keccak256StateWith`). -/
+def keccakState (data : List UInt8) : LeanVM.Semantics.KeccakState :=
+  Id.run (UniStatement.keccak256StateWith (m := Id) (fun s => pure (LeanVM.Semantics.keccakF1600 s)) data)
 
 /-- `narrow`: limb 2 cut to its low 32 bits. -/
 def narrowOf (state : List UInt8) : F192 :=
@@ -164,9 +183,10 @@ def Graph.step (g : Graph) (iv pub stream : List UInt8) (values : Array Value) (
   | .add a b => .e (e a + e b)
   | .mul a b => .e (e a * e b)
   | .seed => .state (keccakSeed iv pub)
-  | .hash s f t => .state (digestBytes (keccak256 ((values.getD s default).toState ++ slice stream f (t - f))))
+  | .hash s f t => .sponge (keccakState ((values.getD s default).toState ++ slice stream f (t - f)))
   | .low h => .e (challengeOf (values.getD h default).toState)
   | .narrow h => .e (narrowOf (values.getD h default).toState)
+  | .wide h k => .e (challengeAtL (values.getD h default).toRate k)
   | .bits v shift width => .e (bitsOf (e v) shift width)
   | .ringWeight k n =>
     let ops := (g.kernels.getD k []).map e

@@ -44,12 +44,14 @@ def chiOut (b : ℕ → F64) (x : ℕ) : F64 := b x + b ((x + 2) % 5) + b ((x + 
 /-- θ's column parity of a state of words. -/
 def colSum (A : ℕ → ℕ → F64) (x z : ℕ) : F64 := A x z + A (x + 5) z + A (x + 10) z + A (x + 15) z + A (x + 20) z
 
-/-- **The relations of a D16v Keccak-f instance**, round `j < 24` taking `A j` to `A (j + 1)`. -/
-structure D16Rel (A C D : ℕ → ℕ → ℕ → F64) : Prop where
+/-- **The relations of a D16v Keccak-f instance**, round `j < 24` taking `A j` to `A (j + 1)`; the last round's χ rows
+of planes `y < L` only (`keccak16.rs`: a permutation whose caller reads lanes `0 .. lanes` makes round 23's planes
+`0 .. ⌈lanes/5⌉` alone). -/
+structure D16Rel (L : ℕ) (A C D : ℕ → ℕ → ℕ → F64) : Prop where
   c0 : ∀ x < 5, ∀ z < 64, C 0 x z = colSum (A 0) x z
   cNext : ∀ j < 23, ∀ x < 5, ∀ z < 64, C (j + 1) x z = colSum (A (j + 1)) x z
   d : ∀ j < 24, ∀ x < 5, ∀ z < 64, D j x z = C j ((x + 4) % 5) z + C j ((x + 1) % 5) ((z + 63) % 64)
-  chi : ∀ j < 24, ∀ x < 5, ∀ y < 5, ∀ z < 64,
+  chi : ∀ j < 24, ∀ x < 5, ∀ y < 5, (j < 23 ∨ y < L) → ∀ z < 64,
     A (j + 1) (x + 5 * y) z = chiOut (fun x' => chiIn (A j) (D j) x' y z) x + (if x = 0 ∧ y = 0 then rcBit j z else 0)
 
 /-! ### Bits as words: the algebra in characteristic 2 -/
@@ -101,16 +103,17 @@ theorem round_apply (t : Bits) (rc : UInt64) (x y z : ℕ) (hx : x < 5) :
   have e2 : (x + 5 * y) / 5 = y := by omega
   simp only [KeccakBits.round, KeccakBits.iota, KeccakBits.chi, e1, e2]
 
-/-- The relations, round by round: `A j` is the state after `j` rounds. -/
-theorem d16_state {A C D : ℕ → ℕ → ℕ → F64} (h : D16Rel A C D) (s : Bits)
+/-- The relations, round by round: `A j` is the state after `j` rounds (after the last, on the planes made). -/
+theorem d16_state {L : ℕ} {A C D : ℕ → ℕ → ℕ → F64} (h : D16Rel L A C D) (s : Bits)
     (hs : ∀ l < 25, ∀ z < 64, A 0 l z = ofBool (s l z)) :
-    ∀ j ≤ 24, ∀ l < 25, ∀ z < 64, A j l z = ofBool (stAfter s j l z) := by
+    ∀ j ≤ 24, ∀ l < 25, (j < 24 ∨ l / 5 < L) → ∀ z < 64, A j l z = ofBool (stAfter s j l z) := by
   intro j
   induction j with
-  | zero => intro _ l hl z hz; exact hs l hl z hz
+  | zero => intro _ l hl _ z hz; exact hs l hl z hz
   | succ j ih =>
-    intro hj l hl z hz
-    have hA := ih (by omega)
+    intro hj l hl hL z hz
+    have hA : ∀ l < 25, ∀ z < 64, A j l z = ofBool (stAfter s j l z) :=
+      fun l hl z hz => ih (by omega) l hl (Or.inl (by omega)) z hz
     have hCcol : ∀ x < 5, ∀ z < 64, C j x z = colSum (A j) x z := by
       intro x hx z hz
       rcases j with _ | j'
@@ -136,7 +139,14 @@ theorem d16_state {A C D : ℕ → ℕ → ℕ → F64} (h : D16Rel A C D) (s : 
           (Nat.mod_lt _ (by decide))]
     obtain ⟨x, y, hx, hy, rfl⟩ : ∃ x y, x < 5 ∧ y < 5 ∧ l = x + 5 * y :=
       ⟨l % 5, l / 5, Nat.mod_lt _ (by decide), by omega, by omega⟩
-    rw [h.chi j (by omega) x hx y hy z hz, stAfter_succ s j (by omega), round_apply _ _ x y z hx]
+    have hy' : j < 23 ∨ y < L := by
+      rcases hL with hL | hL
+      · left; omega
+      · by_cases hj23 : j < 23
+        · exact Or.inl hj23
+        · right; have : (x + 5 * y) / 5 = y := by omega
+          omega
+    rw [h.chi j (by omega) x hx y hy hy' z hz, stAfter_succ s j (by omega), round_apply _ _ x y z hx]
     simp only [chiOut]
     rw [hT x hx y hy z hz, hT ((x + 2) % 5) (Nat.mod_lt _ (by decide)) y hy z hz,
       hT ((x + 1) % 5) (Nat.mod_lt _ (by decide)) y hy z hz, ofBool_xor, ofBool_chi]
@@ -148,12 +158,13 @@ theorem d16_state {A C D : ℕ → ℕ → ℕ → F64} (h : D16Rel A C D) (s : 
       rw [ite_eq_right hxy, decide_eq_false e, Bool.false_and]
       rfl
 
-/-- **D16v's Keccak-f is Keccak-f[1600]**: on bits, the relations take the input to `keccakF` of it. -/
-theorem d16_keccakF {A C D : ℕ → ℕ → ℕ → F64} (h : D16Rel A C D) (s : Bits)
+/-- **D16v's Keccak-f is Keccak-f[1600]**: on bits, the relations take the input to `keccakF` of it, on the lanes of
+the last round's planes made (every lane of a whole permutation, `L = 5`). -/
+theorem d16_keccakF {L : ℕ} {A C D : ℕ → ℕ → ℕ → F64} (h : D16Rel L A C D) (s : Bits)
     (hs : ∀ l < 25, ∀ z < 64, A 0 l z = ofBool (s l z)) :
-    ∀ l < 25, ∀ z < 64, A 24 l z = ofBool (KeccakBits.keccakF s l z) := by
-  intro l hl z hz
-  have := d16_state h s hs 24 le_rfl l hl z hz
+    ∀ l < 25, l / 5 < L → ∀ z < 64, A 24 l z = ofBool (KeccakBits.keccakF s l z) := by
+  intro l hl hL z hz
+  have := d16_state h s hs 24 le_rfl l hl (Or.inr hL) z hz
   rwa [stAfter_24] at this
 
 /-! ## Keccak-256, any number of blocks -/

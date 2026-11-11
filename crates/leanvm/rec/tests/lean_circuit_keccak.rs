@@ -1,9 +1,10 @@
 // Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
-//! The Keccak VM's π1-rec3 at the reference shape (128 signatures, `leanvm_rec::REFERENCE`) as a vector of
-//! `formal/RecCircuit`'s differential runner (`RecCircuitTest/Main.lean`): its recorded graph as text and the circuit
-//! the Rust compiler makes of it (D16v), in the format of the runner's vectors. The circuit exercises
-//! `layout::pad_counts`'s look-ahead (26 blocks; 22 in f96a7938's circuit, `formal/RecStatement/RecStatement/Data.lean`;
-//! at 400 signatures the one-digit greedy made 70).
+//! The Keccak VM's π1-rec4 (`leanvm_rec::PI1`) at the reference shape (128 signatures, `leanvm_rec::REFERENCE`) as a
+//! vector of `formal/RecCircuit`'s differential runner (`RecCircuitTest/Main.lean`): its recorded graph as text (with
+//! the claims π2's circuit hashes, `compile::hashed_claims` of π1's Fiat–Shamir shape) and the circuit the Rust
+//! compiler makes of it (D16v), in the format of the runner's vectors: its ports (the claims' hashes `H j` among them),
+//! the encoded calls, the hashed claims and the narrow elements. The circuit exercises `layout::pad_counts`'s
+//! look-ahead (at 400 signatures the one-digit greedy made 70).
 //!
 //! `LEAN_CIRCUIT_OUT=dir cargo test --release -p leanvm_rec --test lean_circuit_keccak -- --ignored --nocapture`
 
@@ -13,11 +14,11 @@ use leanvm_statement::VerifierError;
 use leanvm_statement::evm::codegen::Word;
 use leanvm_statement::evm::record::Node;
 use leanvm_statement::shapes::PROGRAM_IV;
-use leanvm_rec::circuit::compile::{Inputs, pi2};
+use leanvm_rec::circuit::compile::{Inputs, hashed_claims, pi2};
 use leanvm_rec::circuit::spec::{CallWord, Circuit, Formula, Source};
 use leanvm_univariate::contract::{Recorded, calls, record_verifier};
 use leanvm_rec::REFERENCE;
-use leanvm_univariate::KECCAK_REC3;
+use leanvm_rec::PI1;
 
 
 fn deep<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> R {
@@ -51,7 +52,6 @@ fn node_line(node: &Node) -> String {
         Node::Hash(s, f, t) => format!("H {s} {f} {t}"),
         Node::Low(h) => format!("L {h}"),
         Node::Narrow(h) => format!("N {h}"),
-        // π1-rec4's; the Lean states π1-rec3, which has none.
         Node::Wide(h, k) => format!("V {h} {k}"),
         Node::Bits(v, s, w) => format!("B {v} {s} {w}"),
         Node::RingWeight(k, n) => format!("W {k} {n}"),
@@ -67,6 +67,8 @@ fn graph_text(recorded: &Recorded) -> String {
     writeln!(o, "iv {}", hex(&recorded.iv(&PROGRAM_IV))).unwrap();
     writeln!(o, "stream_len {}", recorded.stream_len).unwrap();
     writeln!(o, "roots_at {} {}", recorded.roots_at[0], recorded.roots_at[1]).unwrap();
+    let hashed = hashed_claims(recorded.variant.fs);
+    writeln!(o, "hashed {}{}", hashed.len(), hashed.iter().map(|i| format!(" {i}")).collect::<String>()).unwrap();
     writeln!(o, "nodes {}", g.nodes.len()).unwrap();
     for n in &g.nodes {
         writeln!(o, "{}", node_line(n)).unwrap();
@@ -162,6 +164,9 @@ fn circuit_text(c: &Circuit) -> String {
             .collect();
         writeln!(o, "call {}{words}", call.len()).unwrap();
     }
+    let list = |l: &[u32]| l.iter().map(|i| format!(" {i}")).collect::<String>();
+    writeln!(o, "hashed {}{}", c.hashed.len(), list(&c.hashed)).unwrap();
+    writeln!(o, "narrow {}{}", c.narrow.len(), list(&c.narrow)).unwrap();
     writeln!(o, "kappa {}", c.kappa.len()).unwrap();
     for &(i, k) in &c.kappa {
         writeln!(o, "k {i} {:x}", k.0).unwrap();
@@ -188,14 +193,19 @@ fn emit(name: &str, recorded: &Recorded) {
     let graph = graph_text(recorded);
     let circuit = circuit_text(&c.finished.circuit);
     println!(
-        "{name}: {} nodes ({} expanded), N = 2^{}, {} regions, {} blocks, {} ports, {} κ",
+        "{name}: {} nodes ({} expanded), N = 2^{}, {} regions, {} blocks, {} ports, {} κ, {} permutations ({} planes \
+         unmade), hashed claims {:?}, roots ported at {:?}",
         recorded.graph.nodes.len(),
         c.expanded.nodes.len(),
         c.finished.circuit.log_n,
         c.finished.circuit.regions.len(),
         c.finished.circuit.blocks.len(),
         c.finished.circuit.ports.len(),
-        c.finished.circuit.kappa.len()
+        c.finished.circuit.kappa.len(),
+        c.permutations,
+        c.planes_unmade,
+        c.finished.circuit.hashed,
+        c.roots_at
     );
     if let Ok(dir) = std::env::var("LEAN_CIRCUIT_OUT") {
         std::fs::create_dir_all(&dir).expect("the output directory");
@@ -205,10 +215,10 @@ fn emit(name: &str, recorded: &Recorded) {
 }
 
 #[test]
-#[ignore = "the Keccak VM's π1-rec3 graph and circuit (2^24 positions): about a minute"]
-fn keccak_pi1_rec3() {
+#[ignore = "the Keccak VM's π1-rec4 graph and circuit (2^24 positions): about a minute"]
+fn keccak_pi1_rec4() {
     deep(|| {
-        let recorded = record_verifier(&REFERENCE, KECCAK_REC3);
-        emit("keccak_pi1_rec3", &recorded)
+        let recorded = record_verifier(&REFERENCE, PI1);
+        emit("keccak_pi1_rec4", &recorded)
     });
 }

@@ -7,8 +7,8 @@ import RecGraphKeccak.Emitted
 # The compiler on `RecGraphKeccak.Emitted.graph`, the very term `pi1rec3K_end` is about
 
 `rec-circuit-keccak GRAPH`: reads the Keccak π1-rec3 graph as `crates/leanvm/rec/tests/lean_circuit_keccak.rs`
-writes it (for its IV), checks that it is `RecGraphKeccak.Emitted.graph` with `RecGraphKeccak.Emitted.rootsAt` field
-by field, then runs `RecCircuit.compile (ofRG RecGraphKeccak.Emitted.graph RecGraphKeccak.Emitted.rootsAt iv)`
+writes it (for its IV and the claims π2's circuit hashes, `hashed`), checks that it is `RecGraphKeccak.Emitted.graph` with `RecGraphKeccak.Emitted.rootsAt` field
+by field, then runs `RecCircuit.compile (ofRG RecGraphKeccak.Emitted.graph RecGraphKeccak.Emitted.rootsAt iv hashed)`
 (compiled code) and prints the circuit's summary, to `diff` against the Rust's `.circuit` file.
 -/
 
@@ -21,7 +21,7 @@ def main (args : List String) : IO UInt32 := do
     match parseGraph text with
     | .error e => IO.eprintln s!"parse: {e}"; return 2
     | .ok r =>
-      let e := ofRG RecGraphKeccak.Emitted.graph RecGraphKeccak.Emitted.rootsAt r.iv
+      let e := ofRG RecGraphKeccak.Emitted.graph RecGraphKeccak.Emitted.rootsAt r.iv r.hashed
       let same := r.graph.nodes == e.graph.nodes && r.graph.zero == e.graph.zero &&
         r.graph.nonzero == e.graph.nonzero && r.graph.kernels == e.graph.kernels && r.graph.calls == e.graph.calls &&
         r.graph.streamLen == e.graph.streamLen && r.rootsAt == e.rootsAt

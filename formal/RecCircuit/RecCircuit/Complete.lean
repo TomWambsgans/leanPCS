@@ -413,14 +413,14 @@ theorem streamW_witness {r : Recorded} (hc : c.Checked r) (hs : s.length = r.gra
 
 /-- **A zero port carries `RecGraph`'s value of one of π1's zero checks**, on any witness satisfying the circuit
 (`compile_sound_zero_rg`'s, from `Satisfied`). -/
-theorem zero_port_sat {g : RecGraph.Graph} {rootsAt : List ℕ} {iv : List UInt8}
-    (hc : compile (ofRG g rootsAt iv) = .ok c) {w : ℕ → K} (hw : c.circuit.Satisfied w) {J : ℕ}
+theorem zero_port_sat {g : RecGraph.Graph} {rootsAt : List ℕ} {iv : List UInt8} {hashed : List ℕ}
+    (hc : compile (ofRG g rootsAt iv hashed) = .ok c) {w : ℕ → K} (hw : c.circuit.Satisfied w) {J : ℕ}
     (hJ : J < c.circuit.ports.size) (hsrc : (c.circuit.ports.getD J default).source = .zero) :
-    zeroOrig c (ofRG g rootsAt iv) (c.zeroIndex J) ∈ g.zero ∧
+    zeroOrig c (ofRG g rootsAt iv hashed) (c.zeroIndex J) ∈ g.zero ∧
       c.circuit.portLimbs w J = limbsL (RecGraph.valE
-        (rgVals g iv (c.pubW w) (c.streamW (ofRG g rootsAt iv) w)) (zeroOrig c (ofRG g rootsAt iv) (c.zeroIndex J))) := by
+        (rgVals g iv (c.pubW w) (c.streamW (ofRG g rootsAt iv hashed) w)) (zeroOrig c (ofRG g rootsAt iv hashed) (c.zeroIndex J))) := by
   have hchk := checked_of_compile hc
-  set r := ofRG g rootsAt iv
+  set r := ofRG g rootsAt iv hashed
   have hzero : c.zero = r.graph.zero.map (fun id => c.map.getD id 0) := (graphOk_parts hchk.graph).2.1
   have hso := allBelow_spec hchk.sources J hJ
   simp only [hsrc, decide_eq_true_eq] at hso

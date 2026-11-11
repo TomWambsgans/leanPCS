@@ -331,10 +331,10 @@ theorem root_in (hc : c.Checked r) {i : ℕ} (hi : i < r.rootsAt.length) :
   rw [Array.getD_eq_getD_getElem?, Array.getElem?_eq_none this] at h255
   simp at h255
 
-variable {g : RecGraph.Graph} {rootsAt : List ℕ} {iv : List UInt8}
+variable {g : RecGraph.Graph} {rootsAt : List ℕ} {iv : List UInt8} {hashed : List ℕ}
 
 theorem calls_getD (g : RecGraph.Graph) (rootsAt : List ℕ) (iv : List UInt8) {ci : ℕ} (hci : ci < g.calls.length) :
-    (ofRG g rootsAt iv).graph.calls.getD ci [] = (g.calls.getD ci []).map ofRGWord := by
+    (ofRG g rootsAt iv hashed).graph.calls.getD ci [] = (g.calls.getD ci []).map ofRGWord := by
   show (g.calls.map (·.map ofRGWord)).getD ci [] = _
   simp [List.getD_eq_getElem?_getD, hci]
 
@@ -343,12 +343,12 @@ theorem word_getD {ws : List RecGraph.Word} {k : ℕ} (hk : k < ws.length) :
   simp [List.getD_eq_getElem?_getD, hk]
 
 /-- A call's node word names a node of the original graph (`Graph.outputsIn`). -/
-theorem call_node_lt (hc : compile (ofRG g rootsAt iv) = .ok c) {ci k id : ℕ} (hci : ci < g.calls.length)
+theorem call_node_lt (hc : compile (ofRG g rootsAt iv hashed) = .ok c) {ci k id : ℕ} (hci : ci < g.calls.length)
     (hk : k < (g.calls.getD ci []).length) (hw : (g.calls.getD ci []).getD k default = .node id) :
     id < g.nodes.size := by
   obtain ⟨ht, -⟩ := compileRaw_ok (compileRaw_of_compile hc)
   simp only [Graph.typed, Graph.outputsIn, Bool.and_eq_true, List.all_eq_true] at ht
-  have hm1 : (g.calls.getD ci []).map ofRGWord ∈ (ofRG g rootsAt iv).graph.calls := by
+  have hm1 : (g.calls.getD ci []).map ofRGWord ∈ (ofRG g rootsAt iv hashed).graph.calls := by
     rw [← calls_getD g rootsAt iv hci, List.getD_eq_getElem _ _ (by simpa [ofRG] using hci)]
     exact List.getElem_mem _
   have hmem : (g.calls.getD ci []).getD k default ∈ g.calls.getD ci [] := by
@@ -361,19 +361,19 @@ theorem call_node_lt (hc : compile (ofRG g rootsAt iv) = .ok c) {ci k id : ℕ} 
 /-- **π2's rebuilt claims of π1, from its ports, are π1's graph's call words**, in `RecGraph`'s semantics over
 Keccak-f[1600], on the public input and the stream the witness encodes: word by word, word 0 (each claim's root) as
 a claim holds it (`pcsWord`: as it is), pairs' coordinates included. -/
-theorem compile_sound_calls (hc : compile (ofRG g rootsAt iv) = .ok c) {pub : ℕ → List F192} {w : ℕ → K}
+theorem compile_sound_calls (hc : compile (ofRG g rootsAt iv hashed) = .ok c) {pub : ℕ → List F192} {w : ℕ → K}
     (hw : c.circuit.toPiop.Satisfies pub (emb w)) :
     c.circuit.calls.length = g.calls.length ∧
     ∀ ci < g.calls.length, (c.circuit.calls.getD ci []).length = (g.calls.getD ci []).length ∧
       ∀ k < (g.calls.getD ci []).length,
         c.circuit.callWordBytes w ((c.circuit.calls.getD ci []).getD k default) =
-          pcsWord k ((g.calls.getD ci []).getD k default) (RecGraph.wordBytes (c.streamW (ofRG g rootsAt iv) w).toArray
-            (rgVals g iv (c.pubW w) (c.streamW (ofRG g rootsAt iv) w)) ((g.calls.getD ci []).getD k default)) := by
+          pcsWord k ((g.calls.getD ci []).getD k default) (RecGraph.wordBytes (c.streamW (ofRG g rootsAt iv hashed) w).toArray
+            (rgVals g iv (c.pubW w) (c.streamW (ofRG g rootsAt iv hashed) w)) ((g.calls.getD ci []).getD k default)) := by
   have hchk := checked_of_compile hc
   have hcalls := hchk.calls
   unfold callsOk at hcalls
   simp only [Bool.and_eq_true, beq_iff_eq] at hcalls
-  have hlen : (ofRG g rootsAt iv).graph.calls.length = g.calls.length := by simp [ofRG]
+  have hlen : (ofRG g rootsAt iv hashed).graph.calls.length = g.calls.length := by simp [ofRG]
   refine ⟨hcalls.1.trans hlen, fun ci hci => ?_⟩
   have hcall := allBelow_spec hcalls.2 ci (by rw [hlen]; exact hci)
   simp only [Bool.and_eq_true, beq_iff_eq] at hcall
@@ -381,7 +381,7 @@ theorem compile_sound_calls (hc : compile (ofRG g rootsAt iv) = .ok c) {pub : �
   refine ⟨hcall.1, fun k hk => ?_⟩
   have hword := allBelow_spec hcall.2 k hk
   rw [word_getD hk] at hword
-  set S := c.streamW (ofRG g rootsAt iv) w
+  set S := c.streamW (ofRG g rootsAt iv hashed) w
   set P := c.pubW w
   have hE := expandSound hc iv P S
   rcases hgw : (g.calls.getD ci []).getD k default with id | v | at_ <;>
@@ -418,7 +418,7 @@ theorem compile_sound_calls (hc : compile (ofRG g rootsAt iv) = .ok c) {pub : �
       apply List.mem_append_right
       simp [Array.getD_eq_getD_getElem?, hesz])
     obtain ⟨b, hb, hcorr⟩ := agree hchk P S (decodePublic_length _) streamW_length _ hzmem.1 hzmem.2
-    have hz : ((c.valsW (ofRG g rootsAt iv) w).getD (c.elementNodes.getD e 0) default).toE =
+    have hz : ((c.valsW (ofRG g rootsAt iv hashed) w).getD (c.elementNodes.getD e 0) default).toE =
         RecGraph.valE (c.rgX iv P S) (c.elementNodes.getD e 0) := Corr.toE hcorr hb
     have hport : c.circuit.portLimbs w J = limbsL (RecGraph.valE (c.rgX iv P S) (c.elementNodes.getD e 0)) := by
       rw [compile_sound hc hw J hJ, portMeaning, hs]
@@ -438,7 +438,7 @@ theorem compile_sound_calls (hc : compile (ofRG g rootsAt iv) = .ok c) {pub : �
     obtain ⟨hJ, hs⟩ := portOf_spec hJs
     have hin := root_in hchk hi
     have hraw : ((S.toArray.extract at_ (at_ + 32)).toList).length = 32 := by
-      have : S.length = (ofRG g rootsAt iv).graph.streamLen := streamW_length
+      have : S.length = (ofRG g rootsAt iv hashed).graph.streamLen := streamW_length
       simp only [Array.length_toList, Array.size_extract, List.size_toArray]
       rw [hat] at hin
       omega
@@ -459,11 +459,11 @@ theorem flatMap_range {α β : Type} (l : List α) (d : α) (f : α → List β)
 
 /-- **π2's rebuilt claims of π1, from its ports, claim by claim**: each claim's bytes are π1's graph's as a claim
 holds them (`pcsWord`: as they are). -/
-theorem compile_sound_callInputs (hc : compile (ofRG g rootsAt iv) = .ok c) {pub : ℕ → List F192} {w : ℕ → K}
+theorem compile_sound_callInputs (hc : compile (ofRG g rootsAt iv hashed) = .ok c) {pub : ℕ → List F192} {w : ℕ → K}
     (hw : c.circuit.toPiop.Satisfies pub (emb w)) :
     c.circuit.callInputs w = g.calls.map fun ws => (List.range ws.length).flatMap fun k =>
-      pcsWord k (ws.getD k default) (RecGraph.wordBytes (c.streamW (ofRG g rootsAt iv) w).toArray
-        (rgVals g iv (c.pubW w) (c.streamW (ofRG g rootsAt iv) w)) (ws.getD k default)) := by
+      pcsWord k (ws.getD k default) (RecGraph.wordBytes (c.streamW (ofRG g rootsAt iv hashed) w).toArray
+        (rgVals g iv (c.pubW w) (c.streamW (ofRG g rootsAt iv hashed) w)) (ws.getD k default)) := by
   obtain ⟨hlen, hcall⟩ := compile_sound_calls hc hw
   unfold Circuit.callInputs
   apply List.ext_getElem

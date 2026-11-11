@@ -32,6 +32,7 @@ structure Checked (c : Compiled) (r : Recorded) : Prop where
   ports : c.portsOk c.ctx = true
   sources : c.sourcesOk = true
   calls : c.callsOk r = true
+  claims : c.claimsOk c.ctx r c.packOf = true
   zeroConst : c.zeroConstOk r = true
   sizes : c.live.size = c.nodes.size ∧ c.limbs.size = c.nodes.size ∧ c.digests.size = c.nodes.size ∧
     c.bitSelf.size = 8 * r.graph.streamLen ∧ c.circuit.logWidth = 4 ∧ c.circuit.logWidth ≤ c.circuit.logN
@@ -60,9 +61,9 @@ theorem checked_of_compile {r : Recorded} {c : Compiled} (h : compile r = .ok c)
         rw [hfind] at this; simp at this
       have g := fun (name : String) (b : Bool) (hm : (name, b) ∈ c.checks r) => hall _ hm
       simp only [checks, List.mem_cons, List.mem_nil_iff, or_false, forall_eq_or_imp, forall_eq] at hall
-      obtain ⟨h1, h2, h3, h4, h5, h6, h7, h8, h9, h10, h11, h11', h11'', h13, hc1, hc2, hc3, hc4, h12⟩ := hall
+      obtain ⟨h1, h2, h3, h4, h5, h6, h7, h8, h9, h10, h11, h11', h11'', hcl, h13, hc1, hc2, hc3, hc4, h12⟩ := hall
       simp only [Array.all_eq_true, Bool.and_eq_true, beq_iff_eq, decide_eq_true_eq] at h2 h3 h4 h12
-      refine ⟨h1, ?_, ?_, ?_, h5, h6, h7, h8, h9, ?_, h11, h11', h11'', h13, ?_, hc1, hc2, hc3, hc4⟩
+      refine ⟨h1, ?_, ?_, ?_, h5, h6, h7, h8, h9, ?_, h11, h11', h11'', hcl, h13, ?_, hc1, hc2, hc3, hc4⟩
       · intro t ht; obtain ⟨i, hi, rfl⟩ := Array.mem_iff_getElem.mp ht; exact h2 i hi
       · intro t ht; obtain ⟨i, hi, rfl⟩ := Array.mem_iff_getElem.mp ht; exact h3 i hi
       · intro t ht; obtain ⟨i, hi, rfl⟩ := Array.mem_iff_getElem.mp ht; exact h4 i hi
@@ -124,6 +125,7 @@ theorem step_congr {v v' : Array Value} {node : Node} (hrw : ∀ k n, node ≠ .
   | hash s f t => simp only [Node.ops, List.mem_cons, List.mem_nil_iff, or_false, forall_eq] at h; simp [Graph.step, h]
   | low a => simp only [Node.ops, List.mem_cons, List.mem_nil_iff, or_false, forall_eq] at h; simp [Graph.step, h]
   | narrow a => simp only [Node.ops, List.mem_cons, List.mem_nil_iff, or_false, forall_eq] at h; simp [Graph.step, h]
+  | wide a k => simp only [Node.ops, List.mem_cons, List.mem_nil_iff, or_false, forall_eq] at h; simp [Graph.step, h]
   | bits a s w => simp only [Node.ops, List.mem_cons, List.mem_nil_iff, or_false, forall_eq] at h; simp [Graph.step, h]
   | ringWeight k n => exact absurd rfl (hrw k n)
   | _ => rfl

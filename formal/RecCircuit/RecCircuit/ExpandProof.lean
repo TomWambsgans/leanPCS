@@ -553,12 +553,12 @@ theorem compileRaw_ok {r : Recorded} {c : Compiled} (h : compileRaw r = .ok c) :
     cases h
 
 /-- **The expansion keeps `RecGraph`'s meaning**, on every graph the compiler accepts: `ExpandSound`, proved. -/
-theorem expandSound {g : RecGraph.Graph} {rootsAt : List ℕ} {iv : List UInt8} {c : Compiled}
-    (hc : compile (ofRG g rootsAt iv) = .ok c) : ExpandSound g c := by
+theorem expandSound {g : RecGraph.Graph} {rootsAt : List ℕ} {iv : List UInt8} {hashed : List ℕ} {c : Compiled}
+    (hc : compile (ofRG g rootsAt iv hashed) = .ok c) : ExpandSound g c := by
   intro iv' pub stream k hk
   obtain ⟨ht, he⟩ := compileRaw_ok (compileRaw_of_compile hc)
   obtain ⟨st, hn, hI⟩ := expand_einv (π := keccakF1600) (iv := iv') (pub := pub) (stream := stream.toArray)
-    (g := g) (G := (ofRG g rootsAt iv).graph) rfl rfl ht he
+    (g := g) (G := (ofRG g rootsAt iv hashed).graph) rfl rfl ht he
   have hX : c.rgX iv' pub stream = evalAll keccakF1600 iv' pub stream.toArray st := by
     unfold Compiled.rgX RecGraph.evalAll
     have hid : (toRGNode ∘ ofRGNode) = id := funext toRG_ofRG

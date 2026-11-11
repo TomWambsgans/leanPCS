@@ -132,6 +132,7 @@ def KeccakT.Cf (X : Ctx) (w : ℕ → K) (t : KeccakT) (j x z : ℕ) : K := X.va
 def KeccakT.Df (X : Ctx) (w : ℕ → K) (t : KeccakT) (j x z : ℕ) : K := X.val w ((t.d.getD j #[]).getD (64 * x + z) NONE)
 
 theorem keccakOk_parts {t : KeccakT} (h : X.keccakOk t = true) :
+    (1 ≤ t.lastPlanes ∧ t.lastPlanes ≤ 5) ∧
     (∀ u < 320, 5 ≤ X.role ((t.c.getD 0 #[]).getD u NONE) ∧
       X.gate ((t.c.getD 0 #[]).getD u NONE) (sumPolyL (X.role ((t.c.getD 0 #[]).getD u NONE) - 5)) 0
       ((List.range 5).map fun y => (X.role ((t.c.getD 0 #[]).getD u NONE) - 5 + y,
@@ -140,10 +141,11 @@ theorem keccakOk_parts {t : KeccakT} (h : X.keccakOk t = true) :
       [(X.role ((t.d.getD j #[]).getD u NONE), (t.c.getD j #[]).getD (64 * ((u / 64 + 4) % 5) + u % 64) NONE),
        (X.role ((t.d.getD j #[]).getD u NONE) + 1,
         (t.c.getD j #[]).getD (64 * ((u / 64 + 1) % 5) + (u % 64 + 63) % 64) NONE)] = true) ∧
-    (∀ j < 24, ∀ y < 5, ∀ u < 320,
+    (∀ j < 24, ∀ y < planesAt t j, ∀ u < 320,
       X.gate ((t.a.getD (j + 1) #[]).getD (64 * (u / 64 + 5 * y) + u % 64) NONE) (Builder.chiB (u / 64)).build
         (if u / 64 == 0 then (if y == 0 then rcBit j (u % 64) else 0) else 0)
-        (chiCells (t.a.getD j #[]) (t.d.getD j #[]) y (u % 64)) = true ∧
+        (chiCells (t.a.getD j #[]) (t.d.getD j #[]) y (u % 64)) = true) ∧
+    (∀ j < 23, ∀ y < 5, ∀ u < 320,
       (if y == 0 then X.gate (((t.p.getD j #[]).getD 0 #[]).getD u NONE) (Builder.chiB (u / 64)).build
           (if u / 64 == 0 then (if y == 0 then rcBit j (u % 64) else 0) else 0)
           (chiCells (t.a.getD j #[]) (t.d.getD j #[]) y (u % 64))
@@ -153,28 +155,40 @@ theorem keccakOk_parts {t : KeccakT} (h : X.keccakOk t = true) :
     (∀ j < 23, ∀ u < 320, (t.c.getD (j + 1) #[]).getD u NONE = ((t.p.getD j #[]).getD 4 #[]).getD u NONE) := by
   unfold keccakOk at h
   beta_reduce at h
-  obtain ⟨⟨⟨h0, h1⟩, h2⟩, h3⟩ := (Bool.and_eq_true _ _ ▸ h : _ ∧ _) |>.imp_left
-    (fun h => (Bool.and_eq_true _ _ ▸ h : _ ∧ _) |>.imp_left (fun h => (Bool.and_eq_true _ _ ▸ h : _ ∧ _)))
-  refine ⟨fun u hu => ?_, fun j hj u hu => ?_, fun j hj y hy u hu => ?_, fun j hj u hu => ?_⟩
+  simp only [Bool.and_eq_true] at h
+  obtain ⟨⟨⟨⟨⟨hL, h0⟩, h1⟩, h2⟩, h2p⟩, h3⟩ := h
+  refine ⟨⟨of_decide_eq_true hL.1, of_decide_eq_true hL.2⟩, fun u hu => ?_, fun j hj u hu => ?_,
+    fun j hj y hy u hu => ?_, fun j hj y hy u hu => ?_, fun j hj u hu => ?_⟩
   · have := allBelow_spec h0 u hu
-    exact (Bool.and_eq_true _ _ ▸ this : _ ∧ _).imp_left (fun h => of_decide_eq_true h)
+    simp only [Bool.and_eq_true] at this
+    exact this.imp_left (fun h => of_decide_eq_true h)
   · exact allBelow_spec (allBelow_spec h1 j hj) u hu
-  · have := allBelow_spec (allBelow_spec (allBelow_spec h2 j hj) y hy) u hu
-    exact (Bool.and_eq_true _ _ ▸ this : _ ∧ _)
+  · exact allBelow_spec (allBelow_spec (allBelow_spec h2 j hj) y hy) u hu
+  · exact allBelow_spec (allBelow_spec (allBelow_spec h2p j hj) y hy) u hu
   · have := allBelow_spec (allBelow_spec h3 j hj) u hu
     exact of_decide_eq_true (by simpa using this)
 
 /-- **A checked Keccak-f instance satisfies D16v's relations.** -/
 theorem keccak_rel (G : X.Good w) {t : KeccakT} (h : X.keccakOk t = true) :
-    D16Rel (KeccakT.A X w t) (KeccakT.Cf X w t) (KeccakT.Df X w t) := by
-  obtain ⟨h0, hd, hchi, hc⟩ := keccakOk_parts h
+    D16Rel t.lastPlanes (KeccakT.A X w t) (KeccakT.Cf X w t) (KeccakT.Df X w t) := by
+  obtain ⟨-, h0, hd, hchiA, hchiP, hc⟩ := keccakOk_parts h
+  have hpa : ∀ j < 23, planesAt t j = 5 := fun j hj => by
+    unfold planesAt
+    have : (j == 23) = false := by simp; omega
+    simp only [this, Bool.false_eq_true, ite_false]
   -- The χ rows' values.
-  have chiA : ∀ j < 24, ∀ x < 5, ∀ y < 5, ∀ z < 64, KeccakT.A X w t (j + 1) (x + 5 * y) z =
+  have chiA : ∀ j < 24, ∀ x < 5, ∀ y < 5, (j < 23 ∨ y < t.lastPlanes) → ∀ z < 64, KeccakT.A X w t (j + 1) (x + 5 * y) z =
       chiOut (fun x' => chiIn (KeccakT.A X w t j) (KeccakT.Df X w t j) x' y z) x +
         (if x = 0 ∧ y = 0 then rcBit j z else 0) := by
-    intro j hj x hx y hy z hz
+    intro j hj x hx y hy hjy z hz
     have hu : 64 * x + z < 320 := by omega
-    have := (hchi j hj y hy (64 * x + z) hu).1
+    have hyp : y < planesAt t j := by
+      unfold planesAt
+      by_cases h23 : j = 23
+      · subst h23; simp only [beq_self_eq_true, ite_true]; omega
+      · have : (j == 23) = false := by simpa using h23
+        simp only [this, Bool.false_eq_true, ite_false]; exact hy
+    have := hchiA j hj y hyp (64 * x + z) hu
     have e1 : (64 * x + z) / 64 = x := by omega
     have e2 : (64 * x + z) % 64 = z := by omega
     rw [e1, e2] at this
@@ -184,7 +198,7 @@ theorem keccak_rel (G : X.Good w) {t : KeccakT} (h : X.keccakOk t = true) :
       by_cases h0 : x = 0 <;> by_cases h1 : y = 0 <;> simp [h0, h1]
     rw [hk]; rfl
   -- The partial sums: `P_0 = A_(j+1)[x]`, `P_y = A_(j+1)[x + 5y] + P_(y−1)`.
-  have hP : ∀ j < 24, ∀ x < 5, ∀ z < 64, ∀ y < 5,
+  have hP : ∀ j < 23, ∀ x < 5, ∀ z < 64, ∀ y < 5,
       X.val w (((t.p.getD j #[]).getD y #[]).getD (64 * x + z) NONE) =
         (List.range (y + 1)).foldl (fun acc y' => acc + KeccakT.A X w t (j + 1) (x + 5 * y') z) 0 := by
     intro j hj x hx z hz y
@@ -192,23 +206,25 @@ theorem keccak_rel (G : X.Good w) {t : KeccakT} (h : X.keccakOk t = true) :
     | zero =>
       intro _
       have hu : 64 * x + z < 320 := by omega
-      have h2 := (hchi j hj 0 (by norm_num) (64 * x + z) hu)
+      have h2p := hchiP j hj 0 (by norm_num) (64 * x + z) hu
+      have h2a := hchiA j (by omega) 0 (by rw [hpa j hj]; norm_num) (64 * x + z) hu
       have e1 : (64 * x + z) / 64 = x := by omega
       have e2 : (64 * x + z) % 64 = z := by omega
-      rw [e1, e2] at h2
-      simp only [beq_self_eq_true, ite_true] at h2
-      rw [G.gate h2.2, List.range_one, List.foldl_cons, List.foldl_nil, zero_add, KeccakT.A, G.gate h2.1]
+      rw [e1, e2] at h2p h2a
+      simp only [beq_self_eq_true, ite_true] at h2p h2a
+      rw [G.gate h2p, List.range_one, List.foldl_cons, List.foldl_nil, zero_add, KeccakT.A, G.gate h2a]
     | succ y ih =>
       intro hy
       have hu : 64 * x + z < 320 := by omega
-      have h2 := (hchi j hj (y + 1) hy (64 * x + z) hu)
+      have h2p := hchiP j hj (y + 1) hy (64 * x + z) hu
+      have h2a := hchiA j (by omega) (y + 1) (by rw [hpa j hj]; exact hy) (64 * x + z) hu
       have e1 : (64 * x + z) / 64 = x := by omega
       have e2 : (64 * x + z) % 64 = z := by omega
-      rw [e1, e2] at h2
+      rw [e1, e2] at h2p h2a
       have hne : (y + 1 == 0) = false := by simp
-      simp only [hne, Bool.false_eq_true, ite_false, ite_self, Nat.add_sub_cancel] at h2
-      rw [G.gate h2.2, chiB_addLinear_eval, add_zero, List.range_succ, List.foldl_append, List.foldl_cons,
-        List.foldl_nil, ← ih (by omega), KeccakT.A, G.gate h2.1, add_zero]
+      simp only [hne, Bool.false_eq_true, ite_false, ite_self, Nat.add_sub_cancel] at h2p h2a
+      rw [G.gate h2p, chiB_addLinear_eval, add_zero, List.range_succ, List.foldl_append, List.foldl_cons,
+        List.foldl_nil, ← ih (by omega), KeccakT.A, G.gate h2a, add_zero]
       have hl := chiCells_lookup_10 (t.a.getD j #[]) (t.d.getD j #[]) (y + 1) z x
       rw [cellVal_append_right hl, cellVal_cons_self]
       have hev : (Builder.chiB x).build.eval
@@ -249,7 +265,7 @@ theorem keccak_rel (G : X.Good w) {t : KeccakT} (h : X.keccakOk t = true) :
   · -- C_(j+1) = P_(j, 4), the column parity of A_(j+1).
     intro j hj x hx z hz
     have hu : 64 * x + z < 320 := by omega
-    rw [KeccakT.Cf, hc j hj (64 * x + z) hu, hP j (by omega) x hx z hz 4 (by norm_num)]
+    rw [KeccakT.Cf, hc j hj (64 * x + z) hu, hP j hj x hx z hz 4 (by norm_num)]
     simp [List.range_succ, colSum]
   · -- D units.
     intro j hj x hx z hz
@@ -263,11 +279,14 @@ theorem keccak_rel (G : X.Good w) {t : KeccakT} (h : X.keccakOk t = true) :
     rfl
   · exact chiA
 
-/-- **A checked Keccak-f instance computes Keccak-f[1600] on bits.** -/
+/-- **A checked Keccak-f instance computes Keccak-f[1600] on bits**, on the lanes of its last round's planes made
+(every lane when `lastPlanes = 5`). -/
 theorem keccak_out (G : X.Good w) {t : KeccakT} (h : X.keccakOk t = true) (s : PcsCircuit.Bits)
     (hs : ∀ l < 25, ∀ z < 64, KeccakT.A X w t 0 l z = ofBool (s l z)) :
-    ∀ l < 25, ∀ z < 64, KeccakT.A X w t 24 l z = ofBool (PcsCircuit.KeccakBits.keccakF s l z) :=
+    ∀ l < 25, l / 5 < t.lastPlanes → ∀ z < 64, KeccakT.A X w t 24 l z = ofBool (PcsCircuit.KeccakBits.keccakF s l z) :=
   d16_keccakF (keccak_rel G h) s hs
+
+theorem lastPlanes_pos {t : KeccakT} (h : X.keccakOk t = true) : 1 ≤ t.lastPlanes := (keccakOk_parts h).1.1
 
 end Ctx
 

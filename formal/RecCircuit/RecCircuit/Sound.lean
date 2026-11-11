@@ -37,20 +37,12 @@ theorem compile_sound_flow {r : Recorded} {c : Compiled} (hc : compile r = .ok c
 
 /-! ## `RecGraph`'s graphs and semantics -/
 
-def ofRGWord : RecGraph.Word → Word
-  | .node id => .node id
-  | .const w => .const w
-  | .stream a => .stream a
-
-/-- **The compiler's input for a `RecGraph` graph**, its roots' offsets and π1's contract IV. -/
-def ofRG (g : RecGraph.Graph) (rootsAt : List ℕ) (iv : List UInt8) : Recorded :=
-  ⟨⟨g.nodes.map ofRGNode, g.zero, g.nonzero, g.kernels, g.calls.map (·.map ofRGWord), g.streamLen⟩, rootsAt, iv⟩
-
 /-- A value of this library's semantics and `RecGraph`'s agree: the same element, or a state and its digest's
 bytes. -/
 def Corr : Value → RecGraph.Value → Prop
   | .e x, .elem y => x = y
   | .state s, .state d => s = digestBytes d
+  | .sponge a, .sponge b => a = b
   | _, _ => False
 
 /-- `RecGraph`'s node values over Keccak-f[1600] (the deployed contract's). -/
@@ -75,18 +67,18 @@ def zeroOrig (c : Compiled) (r : Recorded) (m : ℕ) : ℕ :=
 
 /-- **The zero ports carry `RecGraph`'s values of π1's zero checks** (over Keccak-f[1600]), given the named
 obligation `ExpandFaithful`. -/
-theorem compile_sound_zero {g : RecGraph.Graph} {rootsAt : List ℕ} {iv : List UInt8} {c : Compiled}
-    (hc : compile (ofRG g rootsAt iv) = .ok c) {pub : ℕ → List F192} {w : ℕ → K}
+theorem compile_sound_zero {g : RecGraph.Graph} {rootsAt : List ℕ} {iv : List UInt8} {hashed : List ℕ} {c : Compiled}
+    (hc : compile (ofRG g rootsAt iv hashed) = .ok c) {pub : ℕ → List F192} {w : ℕ → K}
     (hw : c.circuit.toPiop.Satisfies pub (emb w)) (hz : ∀ id ∈ g.zero, id < g.nodes.size)
-    (hE : ExpandFaithful g c (ofRG g rootsAt iv)) :
+    (hE : ExpandFaithful g c (ofRG g rootsAt iv hashed)) :
     ∀ J < c.circuit.ports.size, (c.circuit.ports.getD J default).source = .zero →
       c.circuit.portLimbs w J = Compiled.limbsL (RecGraph.valE
-        (rgVals g iv (c.pubW w) (c.streamW (ofRG g rootsAt iv) w)) (zeroOrig c (ofRG g rootsAt iv) (c.zeroIndex J))) := by
+        (rgVals g iv (c.pubW w) (c.streamW (ofRG g rootsAt iv hashed) w)) (zeroOrig c (ofRG g rootsAt iv hashed) (c.zeroIndex J))) := by
   intro J hJ hsrc
   have hchk := Compiled.checked_of_compile hc
   rw [compile_sound hc hw J hJ, Compiled.portMeaning, hsrc]
   simp only
-  set r := ofRG g rootsAt iv
+  set r := ofRG g rootsAt iv hashed
   have hzero : c.zero = r.graph.zero.map (fun id => c.map.getD id 0) := (Compiled.graphOk_parts hchk.graph).2.1
   have hso := allBelow_spec hchk.sources J hJ
   simp only [hsrc, decide_eq_true_eq] at hso
