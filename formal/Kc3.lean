@@ -4,3 +4,4 @@ import Kc3.Pole
 import Kc3.Cells
 import Kc3.RoundOne
 import Kc3.RoundTwo
+import Kc3.Conic
