@@ -72,6 +72,40 @@ def ClaimsMatch.K (M : ClaimsMatch W q₀) : Commits4 B (Column 27) (Column 28) 
   ⟨M.cW.commit, (colCode 27 adm27 id).commit, (colCode 28 adm28 id).commit, (colCode 25 adm25 id).commit,
     M.asm⟩
 
+/-! ## The candidates pinned by the out-of-domain answers -/
+
+/-- A column has the answer `o` at the out-of-domain point of the root `r` on `n` variables, the point read off the
+table (Keccak-256 at `oodInput n r j`, `46` bytes). -/
+def okCol (n : ℕ) (T : QuotientRpm.Table) (r : Bytes32) (o : E) (q : Column n) : Prop :=
+  colEval q (oodPointWith (fun x => ofB (T x)) n (ofB r)).toList = o
+
+/-- **A committed table's pin**: its root's candidate columns (`colCode n hw id`), pinned by the answer at the point,
+which reads the table at the `46`-byte inputs only. -/
+def pinCol (n : ℕ) (hw : Whir.Admissible n logInvRate) : Pin (fun x => x.length = 46) E (Column n) where
+  C := (colCode n hw id).commit
+  ok := okCol n
+  ok_congr T T' r o q h hq := by
+    unfold okCol at hq ⊢
+    have e : oodPointWith (fun x => ofB (T' x)) n (ofB r) = oodPointWith (fun x => ofB (T x)) n (ofB r) := by
+      unfold oodPointWith
+      exact congrArg Vector.ofFn (funext fun j => by beta_reduce; rw [h _ (oodInput_length _ _)])
+    rw [e]
+    exact hq
+
+/-- **The four commitments' pins**: `W` and `G` on `25` variables, `H` on `27`, `Q` on `28`; `W`'s column read as F1's
+first message by `readW`, the parts assembled by `asm`. -/
+def ClaimsMatch.KP (M : ClaimsMatch W q₀) : Pins4 B (Column 25) (Column 27) (Column 28) (Column 25) where
+  zin x := x.length = 46
+  zin_len x hx := by
+    have h : x.length = 46 := hx
+    omega
+  pW := pinCol 25 adm25
+  pH := pinCol 27 adm27
+  pQ := pinCol 28 adm28
+  pG := pinCol 25 adm25
+  rdW := M.readW
+  asm := M.asm
+
 variable (W)
 
 /-- **Knowledge soundness is broken**: the deployed verifier accepts while no message the extractor reads off the
@@ -271,6 +305,37 @@ theorem stage_undoomed (O : OpenSpec) {α : Type} (n : ℕ) (pre : OracleComp Ke
     rw [← hz]
     exact ho
 
+/-! ## Pinned candidates, read off a run -/
+
+theorem ofB_viewT (T : KTable) : (fun x => ofB (viewT T x)) = fun x => T (.inl x) :=
+  funext fun x => LeanVM.Rpm.digestOfRpm_toRpm _
+
+/-- A candidate column with the answer at the point is pinned. -/
+theorem pin_mem {n : ℕ} (hw : Whir.Admissible n logInvRate) {L : List (List UInt8)} {T : KTable}
+    (hinj : Set.InjOn (viewT T) ↑L.toFinset) (r : Bytes32) (o : E) (q : Column n)
+    (hq : q ∈ Candidates n logInvRate (code₀ n logInvRate).thr
+      (Rom.extract (ansOf L.toFinset (viewT T)) (ofB r) (rootHeight n logInvRate) (2 ^ laneFold)))
+    (ho : colEval q (oodPointWith (fun x => T (.inl x)) n (ofB r)).toList = o) :
+    (pinCol n hw).Mem L.toFinset (viewT T) r o q := by
+  refine ⟨(mem_cands_colCode hw id hinj r q).mpr ⟨q, hq, rfl⟩, ?_⟩
+  show colEval q (oodPointWith (fun x => ofB (viewT T x)) n (ofB r)).toList = o
+  rw [ofB_viewT]
+  exact ho
+
+/-- **A root's list separated at its point has one pinned candidate.** -/
+theorem pin_one {n : ℕ} (hw : Whir.Admissible n logInvRate) {L : List (List UInt8)} {T : KTable}
+    (hinj : Set.InjOn (viewT T) ↑L.toFinset) (r : Bytes32) (o : E)
+    (hsep : SepAt (rootList (n := n) (ansOf L.toFinset (viewT T)) (ofB r))
+      (oodPointWith (fun x => T (.inl x)) n (ofB r))) :
+    (pinCol n hw).One L.toFinset (viewT T) r o := by
+  intro a b ha hb
+  obtain ⟨qa, hqa, rfl⟩ := (mem_cands_colCode hw id hinj r a).mp ha.1
+  obtain ⟨qb, hqb, rfl⟩ := (mem_cands_colCode hw id hinj r b).mp hb.1
+  have ea : colEval qa (oodPointWith (fun x => ofB (viewT T x)) n (ofB r)).toList = o := ha.2
+  have eb : colEval qb (oodPointWith (fun x => ofB (viewT T x)) n (ofB r)).toList = o := hb.2
+  rw [ofB_viewT] at ea eb
+  exact hsep qa hqa qb hqb (ea.trans eb.symm)
+
 /-! ## Small facts -/
 
 /-- A stage's run, in four parts. -/
@@ -438,8 +503,10 @@ theorem trace_dExpA (O : OpenSpec) (M : ClaimsMatch W q₀) (A : OracleComp Kecc
       ¬ EQ O (evalWithAnswerFn (QueryImpl.ofFn T) (dExp W O A)) ∧
       ¬ EG O (evalWithAnswerFn (QueryImpl.ofFn T) (dExp W O A)) ∧
       ¬ ES O (evalWithAnswerFn (QueryImpl.ofFn T) (dExp W O A)) ∧
-      ¬ EB (evalWithAnswerFn (QueryImpl.ofFn T) (dExp W O A))) :
-    FreshBad (advBad4 W M.K A) T ∅ ((tableQueryLog (dExp W O A) T).map Sigma.fst) := by
+      ¬ EB (evalWithAnswerFn (QueryImpl.ofFn T) (dExp W O A)) ∧
+      ¬ EBn 25 (evalWithAnswerFn (QueryImpl.ofFn T) (dExp W O A)) ∧
+      ¬ EBn 28 (evalWithAnswerFn (QueryImpl.ofFn T) (dExp W O A))) :
+    FreshBad (advBad4P W M.KP A) T ∅ ((tableQueryLog (dExp W O A) T).map Sigma.fst) := by
   obtain ⟨lws, hsl⟩ := hsl
   -- The runs, every evaluation named.
   obtain ⟨h0l, h0e⟩ := DA4_run' W A T
@@ -457,7 +524,7 @@ theorem trace_dExpA (O : OpenSpec) (M : ClaimsMatch W q₀) (A : OracleComp Kecc
   obtain ⟨f41, f42, f43, f44⟩ := stage_facts' (e4 W O A) (e3 W O A) (fun x => optV (O.V 28) (gate x.ok (inQ x.s))) (e4_eq W O A) T x4 x3 hx4 hx3
   obtain ⟨f51, f52, f53, f54⟩ := stage_facts' (e5 W O A) (e4 W O A) (fun x => optV (O.V 25) (gate x.ok (inG x.s))) (e5_eq W O A) T x5 x4 hx5 hx4
   obtain ⟨f61, f62, f63, f64⟩ := stage_facts' (dExp W O A) (e5 W O A) (fun x => optV (O.V 27) (gate x.ok (inS x.s))) (dExp_eq W O A) T z x5 hz hx5
-  obtain ⟨hB, hEW, hEσ, hEH, hEQ, hEG, hES, hEB⟩ := hev
+  obtain ⟨hB, hEW, hEσ, hEH, hEQ, hEG, hES, hEB, hEB25, hEB28⟩ := hev
   -- The protocol up to the openings, in every stage.
   have hs1 : x1.s = a := f12
   have hs2 : x2.s = a := by show X1.s x2.1.1 = a; rw [f22]; exact hs1
@@ -508,11 +575,11 @@ theorem trace_dExpA (O : OpenSpec) (M : ClaimsMatch W q₀) (A : OracleComp Kecc
   obtain rfl : cl4 = cl3 := Option.some.inj (hcl4.symm.trans hcl)
   obtain rfl : cl5 = cl4 := Option.some.inj (hcl5.symm.trans hcl)
   obtain rfl : cl6 = cl5 := Option.some.inj (hcl6.symm.trans hcl)
-  obtain ⟨l1, r1, -, p1, v1⟩ := mkIn_some hm1
+  obtain ⟨l1, r1, o1, p1, v1⟩ := mkIn_some hm1
   obtain ⟨l2, r2, -, p2, v2⟩ := mkIn_some hm2
   obtain ⟨l3, r3, o3, p3, v3⟩ := mkIn_some hm3
-  obtain ⟨l4, r4, -, p4, v4⟩ := mkIn_some hm4
-  obtain ⟨l5, r5, -, p5, v5⟩ := mkIn_some hm5
+  obtain ⟨l4, r4, o4, p4, v4⟩ := mkIn_some hm4
+  obtain ⟨l5, r5, o5, p5, v5⟩ := mkIn_some hm5
   obtain ⟨l6, r6, o6, p6, v6⟩ := mkIn_some hm6
   -- No opening is doomed: each has a candidate.
   have hnd1 : ¬ StageDoom O 25 inW x1 := by
@@ -525,15 +592,15 @@ theorem trace_dExpA (O : OpenSpec) (M : ClaimsMatch W q₀) (A : OracleComp Kecc
     unfold EQ at hEQ; rwa [f62, f52] at hEQ
   have hnd5 : ¬ StageDoom O 25 (fun x : X4 => gate x.ok (inG x.s)) x5 := by
     unfold EG at hEG; rwa [f62] at hEG
-  obtain ⟨⟨q1, hq1, hv1, -⟩, -⟩ := stage_undoomed' O 25 (DA4 W A) inW T w1 (e1 W O A) (e1_eq W O A) x1 a hx1 ha
+  obtain ⟨⟨q1, hq1, hv1, ho1⟩, hask1⟩ := stage_undoomed' O 25 (DA4 W A) inW T w1 (e1 W O A) (e1_eq W O A) x1 a hx1 ha
     hin1 hb1 hnd1
   obtain ⟨⟨q2, hq2, hv2, -⟩, -⟩ := stage_undoomed' O 24 (e1 W O A) (fun x : X1 => gate x.ok (inσ x.s)) T w2
     (e2 W O A) (e2_eq W O A) x2 x1 hx2 hx1 hg2 hb2 hnd2
   obtain ⟨⟨q3, hq3, hv3, ho3⟩, hask3⟩ := stage_undoomed' O 27 (e2 W O A)
     (fun x : X2 => gate x.ok (inH x.s)) T w3 (e3 W O A) (e3_eq W O A) x3 x2 hx3 hx2 hg3 hb3 hnd3
-  obtain ⟨⟨q4, hq4, hv4, -⟩, -⟩ := stage_undoomed' O 28 (e3 W O A) (fun x : X3 => gate x.ok (inQ x.s)) T w4
+  obtain ⟨⟨q4, hq4, hv4, ho4⟩, hask4⟩ := stage_undoomed' O 28 (e3 W O A) (fun x : X3 => gate x.ok (inQ x.s)) T w4
     (e4 W O A) (e4_eq W O A) x4 x3 hx4 hx3 hg4 hb4 hnd4
-  obtain ⟨⟨q5, hq5, hv5, -⟩, -⟩ := stage_undoomed' O 25 (e4 W O A) (fun x : X4 => gate x.ok (inG x.s)) T w5
+  obtain ⟨⟨q5, hq5, hv5, ho5⟩, hask5⟩ := stage_undoomed' O 25 (e4 W O A) (fun x : X4 => gate x.ok (inG x.s)) T w5
     (e5 W O A) (e5_eq W O A) x5 x4 hx5 hx4 hg5 hb5 hnd5
   obtain ⟨⟨q6, hq6, hv6, ho6⟩, -⟩ := stage_undoomed' O 27 (e5 W O A) (fun x : X5 => gate x.ok (inS x.s)) T w6
     (dExp W O A) (dExp_eq W O A) z x5 hz hx5 hg6 hb6 hES
@@ -590,14 +657,15 @@ theorem trace_dExpA (O : OpenSpec) (M : ClaimsMatch W q₀) (A : OracleComp Kecc
     rw [hLk, List.filterMap_append]
   -- No bad fresh query, from here on.
   by_contra hnb
-  have hk : ¬ FreshBad (kcBad4 W M.K) T ∅ ((tableQueryLog (dExp W O A) T).map Sigma.fst) := fun h =>
+  have hk : ¬ FreshBad (kcBad4P W M.KP) T ∅ ((tableQueryLog (dExp W O A) T).map Sigma.fst) := fun h =>
     hnb (freshBad_mono (fun _ _ _ h' => Or.inl h') T ∅ _ h)
   have hr : ¬ FreshBad (rootBad4 A) T ∅ ((tableQueryLog (dExp W O A) T).map Sigma.fst) := fun h =>
     hnb (freshBad_mono (fun _ _ _ h' => Or.inr h') T ∅ _ h)
-  have hl : ¬ FreshBad (listBad4 W M.K) (viewT T) ∅ L := fun h =>
-    hk (freshBad_kc4 W M.K T ∅ _ (by rw [viewH_empty]; rw [← hL] at h; exact h))
-  have hord := refers4_before W M.K hl
-  have hinj := injOn_of_not_freshBad4 W M.K hl
+  have hl : ¬ FreshBad (listBad4P W M.KP) (viewT T) ∅ L := fun h =>
+    hk (freshBad_kc4P W M.KP T ∅ _ (by rw [viewH_empty]; rw [← hL] at h; exact h))
+  have hord := refers4_beforeP W M.KP hl
+  have hinj : Set.InjOn (viewT T) ↑L.toFinset := fun y hy z hz h =>
+    injOn_of_not_freshBad4P W M.KP hl y (List.mem_toFinset.mp hy) z (List.mem_toFinset.mp hz) h
   have hAL : ∀ y ∈ LA, y ∈ L := mA6
   have hinjA : Set.InjOn (viewT T) ↑LA.toFinset :=
     hinj.mono fun y hy => List.mem_toFinset.mpr (hAL y (List.mem_toFinset.mp hy))
@@ -709,17 +777,48 @@ theorem trace_dExpA (O : OpenSpec) (M : ClaimsMatch W q₀) (A : OracleComp Kecc
     exact (mem_cands_colCode adm25 M.readW (H := LA.toFinset) hinjA p.1.rW _).mpr
       ⟨q1, by rw [← toA 25 _ rW]; exact hq1, rfl⟩
   have hsat := hB2 _ hgA
-  -- The candidates, as the four list commitments read them off the run.
-  have hgL : M.readW q1 ∈ M.K.CW.cands L.toFinset (viewT T) p.1.rW := by
-    exact (mem_cands_colCode adm25 M.readW (H := L.toFinset) hinj p.1.rW _).mpr ⟨q1, hq1, rfl⟩
-  have hhL : q3 ∈ M.K.CH.cands L.toFinset (viewT T) p.1.rH := by
-    exact (mem_cands_colCode adm27 id (H := L.toFinset) hinj p.1.rH _).mpr ⟨q3, hq3, rfl⟩
-  have hqL : q4 ∈ M.K.CQ.cands L.toFinset (viewT T) p.1.rQ := by
-    exact (mem_cands_colCode adm28 id (H := L.toFinset) hinj p.1.rQ _).mpr ⟨q4, hq4, rfl⟩
-  have hggL : q5 ∈ M.K.CG.cands L.toFinset (viewT T) p.1.rG := by
-    exact (mem_cands_colCode adm25 id (H := L.toFinset) hinj p.1.rG _).mpr ⟨q5, hq5, rfl⟩
+  -- The other three roots' lists are separated at their points: the binding.
+  have hzW : ∀ j : Fin 25, oodInput 25 (ofB p.1.rW) j ∈ L.toFinset := fun j =>
+    List.mem_toFinset.mpr (mL1 _ (by have := hask1 j; rwa [r1, haπ] at this))
+  have hzQ : ∀ j : Fin 28, oodInput 28 (ofB p.1.rQ) j ∈ L.toFinset := fun j =>
+    List.mem_toFinset.mpr (mL4 _ (by have := hask4 j; rwa [r4, haπ] at this))
+  have hzG : ∀ j : Fin 25, oodInput 25 (ofB p.1.rG) j ∈ L.toFinset := fun j =>
+    List.mem_toFinset.mpr (mL5 _ (by have := hask5 j; rwa [r5, haπ] at this))
+  have hsepW : SepAt (rootList (n := 25) (ansOf L.toFinset (viewT T)) (ofB p.1.rW))
+      (oodPointWith (fun x => T (.inl x)) 25 (ofB p.1.rW)) := by
+    by_contra hns
+    apply hEB25
+    unfold EBn BindBadC
+    rw [f64, hcache]
+    exact ⟨_, _, oodPointOf_ansOf hzW, hns⟩
+  have hsepQ : SepAt (rootList (n := 28) (ansOf L.toFinset (viewT T)) (ofB p.1.rQ))
+      (oodPointWith (fun x => T (.inl x)) 28 (ofB p.1.rQ)) := by
+    by_contra hns
+    apply hEB28
+    unfold EBn BindBadC
+    rw [f64, hcache]
+    exact ⟨_, _, oodPointOf_ansOf hzQ, hns⟩
+  have hsepG : SepAt (rootList (n := 25) (ansOf L.toFinset (viewT T)) (ofB p.1.rG))
+      (oodPointWith (fun x => T (.inl x)) 25 (ofB p.1.rG)) := by
+    by_contra hns
+    apply hEB25
+    unfold EBn BindBadC
+    rw [f64, hcache]
+    exact ⟨_, _, oodPointOf_ansOf hzG, hns⟩
+  -- The candidates, pinned by the answers the chain absorbed, each its root's only one.
+  rw [r1, o1, haπ] at ho1
+  rw [r4, o4, haπ] at ho4
+  rw [r5, o5, haπ] at ho5
+  have hWm : M.KP.pW.Mem L.toFinset (viewT T) p.1.rW p.1.oW q1 := pin_mem adm25 hinj _ _ q1 hq1 ho1
+  have hHm : M.KP.pH.Mem L.toFinset (viewT T) p.1.rH p.1.oH q3 := pin_mem adm27 hinj _ _ q3 hq3 ho3
+  have hQm : M.KP.pQ.Mem L.toFinset (viewT T) p.1.rQ p.1.oQ q4 := pin_mem adm28 hinj _ _ q4 hq4 ho4
+  have hGm : M.KP.pG.Mem L.toFinset (viewT T) p.1.rG p.1.oG q5 := pin_mem adm25 hinj _ _ q5 hq5 ho5
+  have hW1 : M.KP.pW.One L.toFinset (viewT T) p.1.rW p.1.oW := pin_one adm25 hinj _ _ hsepW
+  have hH1 : M.KP.pH.One L.toFinset (viewT T) p.1.rH p.1.oH := pin_one adm27 hinj _ _ hsep
+  have hQ1 : M.KP.pQ.One L.toFinset (viewT T) p.1.rQ p.1.oQ := pin_one adm28 hinj _ _ hsepQ
+  have hG1 : M.KP.pG.One L.toFinset (viewT T) p.1.rG p.1.oG := pin_one adm25 hinj _ _ hsepG
   have hmem : ∀ y ∈ chainIns W (viewT T) p.1, y ∈ L := fun y hy => mL1 y (m10 y (hC0 y hy))
-  exact hl (trace_core4 W M.K L (viewT T) p.1 (M.readW q1) q3 q4 q5 hmem hgL hhL hqL hggL hacc hsat)
+  exact hl (trace_core4P W M.KP L (viewT T) p.1 q1 q3 q4 q5 hmem hWm hW1 hHm hH1 hQm hQ1 hGm hG1 hacc hsat)
 
 /-- **The trace of the deployed run**: on every table of both oracles, a run that breaks knowledge soundness
 while none of the six openings is doomed at its end and `H`'s list is separated at its out-of-domain point asks a
@@ -733,8 +832,10 @@ theorem trace_dExp (O : OpenSpec) (M : ClaimsMatch W q₀)
       ¬ EQ O (evalWithAnswerFn (QueryImpl.ofFn T) (dExp W O (withSetup4 (setupPcs q₀) A₀))) ∧
       ¬ EG O (evalWithAnswerFn (QueryImpl.ofFn T) (dExp W O (withSetup4 (setupPcs q₀) A₀))) ∧
       ¬ ES O (evalWithAnswerFn (QueryImpl.ofFn T) (dExp W O (withSetup4 (setupPcs q₀) A₀))) ∧
-      ¬ EB (evalWithAnswerFn (QueryImpl.ofFn T) (dExp W O (withSetup4 (setupPcs q₀) A₀)))) :
-    FreshBad (advBad4 W M.K (withSetup4 (setupPcs q₀) A₀)) T ∅
+      ¬ EB (evalWithAnswerFn (QueryImpl.ofFn T) (dExp W O (withSetup4 (setupPcs q₀) A₀))) ∧
+      ¬ EBn 25 (evalWithAnswerFn (QueryImpl.ofFn T) (dExp W O (withSetup4 (setupPcs q₀) A₀))) ∧
+      ¬ EBn 28 (evalWithAnswerFn (QueryImpl.ofFn T) (dExp W O (withSetup4 (setupPcs q₀) A₀)))) :
+    FreshBad (advBad4P W M.KP (withSetup4 (setupPcs q₀) A₀)) T ∅
       ((tableQueryLog (dExp W O (withSetup4 (setupPcs q₀) A₀)) T).map Sigma.fst) := by
   obtain ⟨hsl, hsir⟩ := withSetup4_run (setupPcs q₀) A₀ T
   obtain ⟨⟨lws, hws⟩, hws_eval⟩ := setupPcs_run q₀ T

@@ -7,9 +7,17 @@ import SoundPcs.Final
 #guard_msgs in
 #print axioms SoundPcs.knowledgeSoundness_deployed_pcs
 
-/-- info: 'SoundPcs.knowledgeSoundness_deployed_pcs_168' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'SoundPcs.knowledgeSoundness_deployed_pcs_of' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms SoundPcs.knowledgeSoundness_deployed_pcs_168
+#print axioms SoundPcs.knowledgeSoundness_deployed_pcs_of
+
+/-- info: 'SoundPcs.knowledgeSoundness_deployed_pcs_bits' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms SoundPcs.knowledgeSoundness_deployed_pcs_bits
+
+/-- info: 'SoundPcs.prEvent_EBn_le' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms SoundPcs.prEvent_EBn_le
 
 /-- info: 'SoundPcs.trace_dExp' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in

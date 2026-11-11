@@ -20,12 +20,14 @@ four row polynomials) is a witness of the statement is at most `deployedBound Q`
 
 * six opening terms, `openingBound (N₀ + k · 10150)`, `k = 0 … 5`, `N₀ = 2^20 + 24 + Q + 6` (F2's
   `pcs_sound_oracle` for each opening, the run before it as its adversary);
-* the binding of `H`'s two openings, `N · δc 27 + N (N + 1) / 2^256`, `N = N₀ + 6 · 10150`
-  (`ood_binding_coords` at `27` variables, `δc 27 ≤ 2^-168`);
-* the chain, `N (2^-114 + 8 N / 2^256)` (the four certified lists `7908 · 4473 · 3564 · 7908 < 2^50` times F1's
-  round error `2^-164`, and the collisions).
+* the binding of the four roots' lists at their out-of-domain points, `N · δc n + N (N + 1) / 2^256` for each
+  `n = 27` (`H`), `25` (`W`, `G`), `28` (`Q`), `N = N₀ + 6 · 10150` (`ood_binding_coords`; `δc 27 ≤ 2^-168`,
+  `δc 25 ≤ 2^-167`, `δc 28 ≤ 2^-169`);
+* the chain, `N (2^-164 + 8 N / 2^256)`: each challenge bounded for the one candidate tuple the four out-of-domain
+  answers pin (`ComposePcs.Pinned4`), F1's round error `2^-164`, and the collisions.
 
-At `Q = 2^64` the bound is about `2^-50` (the chain term `2^64 · 2^-114`; each opening term about `2^-64`).
+So the chain and the binding cost about `2^-163.7` a query; the six opening terms, `2^-128` a query each, dominate:
+about `2^-105` at `Q = 0`, `2^-85` at `Q = 2^40`, `2^-61` at `Q = 2^64`.
 -/
 
 set_option linter.unusedSectionVars false
@@ -49,27 +51,54 @@ abbrev N₀ (Q : ℕ) : ℕ := 2 ^ 20 + 24 + Q + 6
 /-- All the queries: and the six openings', `10150` each. -/
 abbrev Nall (Q : ℕ) : ℕ := N₀ Q + 10150 + 10150 + 10150 + 10150 + 10150 + 10150
 
+/-- The binding term at `n` variables, over the whole run. -/
+noncomputable def bindTerm (n Q : ℕ) : ℝ≥0∞ :=
+  ((Nall Q : ℕ) : ℝ≥0∞) * δc n + ((Nall Q * (Nall Q + 1) : ℕ) : ℝ≥0∞) / (2 : ℝ≥0∞) ^ 256
+
 /-- **The deployed bound.** -/
 noncomputable def deployedBound (Q : ℕ) : ℝ≥0∞ :=
   openingBound (N₀ Q) + openingBound (N₀ Q + 10150) + openingBound (N₀ Q + 10150 + 10150) +
     openingBound (N₀ Q + 10150 + 10150 + 10150) + openingBound (N₀ Q + 10150 + 10150 + 10150 + 10150) +
     openingBound (N₀ Q + 10150 + 10150 + 10150 + 10150 + 10150) +
-    (((Nall Q : ℕ) : ℝ≥0∞) * δc 27 + ((Nall Q * (Nall Q + 1) : ℕ) : ℝ≥0∞) / (2 : ℝ≥0∞) ^ 256) +
-    ((Nall Q : ℕ) : ℝ≥0∞) * (((1 / 2 ^ 114 : ℝ≥0) : ℝ≥0∞) + 8 * ((Nall Q : ℕ) : ℝ≥0∞) / 2 ^ 256)
+    bindTerm 27 Q + bindTerm 25 Q + bindTerm 28 Q +
+    ((Nall Q : ℕ) : ℝ≥0∞) * (((1 / 2 ^ 164 : ℝ≥0) : ℝ≥0∞) + 8 * ((Nall Q : ℕ) : ℝ≥0∞) / 2 ^ 256)
+
+/-- **At `n = 25`**: `C(7908, 2) / 2^192 ≤ 2^-167`. -/
+theorem δc_25 : δc 25 ≤ (2 : ℝ≥0∞)⁻¹ ^ 167 := by
+  have hw := admissible_v1 25 (by decide) (by decide)
+  refine δc_le_of (k := 25) (by norm_num) ?_
+  refine le_trans (Nat.choose_le_choose 2 (listMax_le_listHi hw)) ?_
+  rw [Nat.choose_two_right, listHi_parts.1]
+  norm_num
+
+/-- **At `n = 28`**: `C(3564, 2) / 2^192 ≤ 2^-169`. -/
+theorem δc_28 : δc 28 ≤ (2 : ℝ≥0∞)⁻¹ ^ 169 := by
+  have hw := admissible_v1 28 (by decide) (by decide)
+  refine δc_le_of (k := 23) (by norm_num) ?_
+  refine le_trans (Nat.choose_le_choose 2 (listMax_le_listHi hw)) ?_
+  rw [Nat.choose_two_right, listHi_parts.2.2]
+  norm_num
+
+/-- The inputs the bad events may read: the `32`-byte states and the out-of-domain inputs (`46` bytes). -/
+def S₀ : Set (List UInt8 ⊕ KeccakState) :=
+  Set.range (fun v : QuotientRpm.Bytes32 => (Sum.inl v.toList : List UInt8 ⊕ KeccakState)) ∪
+    Sum.inl '' {x : List UInt8 | x.length = 46}
+
+theorem S₀_finite : S₀.Finite :=
+  (Set.finite_range _).union ((List.finite_length_eq UInt8 46).image _)
 
 variable (hc : IsCantor statementConsts.beta) (σ : Equiv.Perm (Fin (22 + 2) → Bool))
   (W : Wire (rustInstance statementConsts hc σ).params (rustInstance statementConsts hc σ).bounds)
-  (hdec : ∀ sb, W.decode sb = stmtWords sb) (hτ : RowVanishing statementConsts 22)
 
-/-- **Knowledge soundness of the deployed verifier of the EIP's PCS claims**, in mumbai's two-oracle model, at
-`2^22` rows, on F1's instance of `beta()` (`rustInstance`) and the statement's constants. -/
-theorem knowledgeSoundness_deployed_pcs
+/-- **Knowledge soundness of the deployed verifier of the EIP's PCS claims**, for any committed wiring table `q₀` and
+any match `M` of the claims, in mumbai's two-oracle model, at `2^22` rows, on F1's instance of `beta()`
+(`rustInstance`). -/
+theorem knowledgeSoundness_deployed_pcs_of (q₀ : Column 24) (M : ClaimsMatch W q₀)
     (A₀ : QuotientRpm.Bytes32 × E → OracleComp KeccakCalls (RootProof4 E × Rest)) (Q : ℕ)
     (hQ : ∀ c, IsTotalQueryBound (A₀ c) Q) :
-    Pr{let z ← (simulateQ randomOracle
-        (dExp W pcsOpen (withSetup4 (setupPcs (wiringCol hc σ)) A₀))).run' ∅}[
-        BreaksD W (claimsMatch hc σ W hdec hτ).cW z] ≤ deployedBound Q := by
-  have hA : IsTotalQueryBound (withSetup4 (setupPcs (wiringCol hc σ)) A₀) (2 ^ 20 + 24 + Q) :=
+    Pr{let z ← (simulateQ randomOracle (dExp W pcsOpen (withSetup4 (setupPcs q₀) A₀))).run' ∅}[
+        BreaksD W M.cW z] ≤ deployedBound Q := by
+  have hA : IsTotalQueryBound (withSetup4 (setupPcs q₀) A₀) (2 ^ 20 + 24 + Q) :=
     isTotalQueryBound_withSetup4 _ A₀ _ Q (setupPcs_queryBound _) hQ
   have hpub := membershipPub_hPub (rustInstance statementConsts hc σ).basis
     (invSeq (rustInstance statementConsts hc σ).basis.β) (rustInstance statementConsts hc σ).c le24
@@ -83,53 +112,36 @@ theorem knowledgeSoundness_deployed_pcs
       (rustInstance statementConsts hc σ).wiring _ _ hpub
       (natDegree_membershipPub_le (invSeq (rustInstance statementConsts hc σ).basis.β)
         (rustInstance statementConsts hc σ).c)
-  have hLW : (claimsMatch hc σ W hdec hτ).K.CW.bound ≤ 7908 := by
-    show (colCode 25 adm25 (readW hc σ)).commit.bound ≤ 7908
-    rw [colCode_bound]
-    exact listHi_parts.1.le
-  have hLH : (claimsMatch hc σ W hdec hτ).K.CH.bound ≤ 4473 := by
-    show (colCode 27 adm27 id).commit.bound ≤ 4473
-    rw [colCode_bound]
-    exact listHi_parts.2.1.le
-  have hLQ : (claimsMatch hc σ W hdec hτ).K.CQ.bound ≤ 3564 := by
-    show (colCode 28 adm28 id).commit.bound ≤ 3564
-    rw [colCode_bound]
-    exact listHi_parts.2.2.le
-  have hLG : (claimsMatch hc σ W hdec hτ).K.CG.bound ≤ 7908 := by
-    show (colCode 25 adm25 id).commit.bound ≤ 7908
-    rw [colCode_bound]
-    exact listHi_parts.1.le
+  have hre : ((roundError (rustInstance statementConsts hc σ).params
+      (rustInstance statementConsts hc σ).bounds : ℝ≥0) : ℝ≥0∞) ≤ ((1 / 2 ^ 164 : ℝ≥0) : ℝ≥0∞) := by
+    exact_mod_cast roundError_le_164 card_E hN rfl hd
   -- The rest: a bad fresh query.
-  have hrest : Pr{let z ← (simulateQ randomOracle
-      (dExp W pcsOpen (withSetup4 (setupPcs (wiringCol hc σ)) A₀))).run' ∅}[
-      BreaksD W (claimsMatch hc σ W hdec hτ).cW z ∧ ¬ EW pcsOpen z ∧ ¬ Eσ pcsOpen z ∧ ¬ EH pcsOpen z ∧
-        ¬ EQ pcsOpen z ∧ ¬ EG pcsOpen z ∧ ¬ ES pcsOpen z ∧ ¬ EB z] ≤
-      ((Nall Q : ℕ) : ℝ≥0∞) * (((1 / 2 ^ 114 : ℝ≥0) : ℝ≥0∞) + 8 * ((Nall Q : ℕ) : ℝ≥0∞) / 2 ^ 256) := by
+  have hrest : Pr{let z ← (simulateQ randomOracle (dExp W pcsOpen (withSetup4 (setupPcs q₀) A₀))).run' ∅}[
+      BreaksD W M.cW z ∧ ¬ EW pcsOpen z ∧ ¬ Eσ pcsOpen z ∧ ¬ EH pcsOpen z ∧
+        ¬ EQ pcsOpen z ∧ ¬ EG pcsOpen z ∧ ¬ ES pcsOpen z ∧ ¬ EB z ∧ ¬ EBn 25 z ∧ ¬ EBn 28 z] ≤
+      ((Nall Q : ℕ) : ℝ≥0∞) * (((1 / 2 ^ 164 : ℝ≥0) : ℝ≥0∞) + 8 * ((Nall Q : ℕ) : ℝ≥0∞) / 2 ^ 256) := by
     refine prEvent_randomOracle_le_of_freshBad_dep (R := KeccakCalls)
-      (dExp W pcsOpen (withSetup4 (setupPcs (wiringCol hc σ)) A₀)) (Nall Q)
-      (qb_dExp W pcsOpen _ _ hA)
-      (Set.range fun v : QuotientRpm.Bytes32 => (Sum.inl v.toList : List UInt8 ⊕ KeccakState))
-      (Set.finite_range _) _ (advBad4 W (claimsMatch hc σ W hdec hτ).K
-        (withSetup4 (setupPcs (wiringCol hc σ)) A₀)) _ (fun S hS c t ht hcard => ?_)
-      (fun T h => trace_dExp W pcsOpen (claimsMatch hc σ W hdec hτ) A₀ T h)
+      (dExp W pcsOpen (withSetup4 (setupPcs q₀) A₀)) (Nall Q) (qb_dExp W pcsOpen _ _ hA) S₀ S₀_finite _
+      (advBad4P W M.KP (withSetup4 (setupPcs q₀) A₀)) _ (fun S hS c t ht hcard => ?_)
+      (fun T h => trace_dExp W pcsOpen M A₀ T h)
     have hS' : ∀ v : QuotientRpm.Bytes32, (Sum.inl v.toList : List UInt8 ⊕ KeccakState) ∈ S :=
-      fun v => hS _ ⟨v, rfl⟩
-    refine (prob_advBad4 W (claimsMatch hc σ W hdec hτ).K _ S hS' c t ht).trans ?_
+      fun v => hS _ (Or.inl ⟨v, rfl⟩)
+    have hSz : ∀ x, M.KP.zin x → (Sum.inl x : List UInt8 ⊕ KeccakState) ∈ S :=
+      fun x hx => hS _ (Or.inr ⟨x, hx, rfl⟩)
+    refine (prob_advBad4P W M.KP _ S hS' hSz c t ht).trans ?_
     rw [add_comm]
     gcongr
-    · exact listError4_le_certified card_E hN rfl hd hLW hLH hLQ hLG
     · have h10 : 10 ≤ Nall Q := by simp only [Nall, N₀]; omega
       have : 7 * (cacheDom c).card + 10 ≤ 8 * Nall Q := by omega
       calc ((7 * (cacheDom c).card + 10 : ℕ) : ℝ≥0∞) ≤ ((8 * Nall Q : ℕ) : ℝ≥0∞) := by
             exact_mod_cast this
         _ = 8 * ((Nall Q : ℕ) : ℝ≥0∞) := by push_cast; ring
   -- The split.
-  set mx := (simulateQ randomOracle
-    (dExp W pcsOpen (withSetup4 (setupPcs (wiringCol hc σ)) A₀))).run' ∅ with hmx
-  have hsplit : ∀ z, BreaksD W (claimsMatch hc σ W hdec hτ).cW z → EW pcsOpen z ∨ Eσ pcsOpen z ∨
-      EH pcsOpen z ∨ EQ pcsOpen z ∨ EG pcsOpen z ∨ ES pcsOpen z ∨ EB z ∨
-      (BreaksD W (claimsMatch hc σ W hdec hτ).cW z ∧ ¬ EW pcsOpen z ∧ ¬ Eσ pcsOpen z ∧ ¬ EH pcsOpen z ∧
-        ¬ EQ pcsOpen z ∧ ¬ EG pcsOpen z ∧ ¬ ES pcsOpen z ∧ ¬ EB z) := by
+  set mx := (simulateQ randomOracle (dExp W pcsOpen (withSetup4 (setupPcs q₀) A₀))).run' ∅ with hmx
+  have hsplit : ∀ z, BreaksD W M.cW z → EW pcsOpen z ∨ Eσ pcsOpen z ∨
+      EH pcsOpen z ∨ EQ pcsOpen z ∨ EG pcsOpen z ∨ ES pcsOpen z ∨ EB z ∨ EBn 25 z ∨ EBn 28 z ∨
+      (BreaksD W M.cW z ∧ ¬ EW pcsOpen z ∧ ¬ Eσ pcsOpen z ∧ ¬ EH pcsOpen z ∧
+        ¬ EQ pcsOpen z ∧ ¬ EG pcsOpen z ∧ ¬ ES pcsOpen z ∧ ¬ EB z ∧ ¬ EBn 25 z ∧ ¬ EBn 28 z) := by
     intro z hb
     by_cases h1 : EW pcsOpen z
     · exact Or.inl h1
@@ -145,7 +157,12 @@ theorem knowledgeSoundness_deployed_pcs
     · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl h6)))))
     by_cases h7 : EB z
     · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl h7))))))
-    exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr ⟨hb, h1, h2, h3, h4, h5, h6, h7⟩))))))
+    by_cases h8 : EBn 25 z
+    · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl h8)))))))
+    by_cases h9 : EBn 28 z
+    · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl h9))))))))
+    exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr
+      ⟨hb, h1, h2, h3, h4, h5, h6, h7, h8, h9⟩))))))))
   refine (prEvent_mono mx _ _ hsplit).trans ?_
   refine (prEvent_or_le _ _ _).trans ?_
   refine (add_le_add (prEvent_EW_le W pcsOpen _ _ hA) ((prEvent_or_le _ _ _).trans
@@ -154,13 +171,28 @@ theorem knowledgeSoundness_deployed_pcs
     (add_le_add (prEvent_EQ_le W pcsOpen _ _ hA) ((prEvent_or_le _ _ _).trans
     (add_le_add (prEvent_EG_le W pcsOpen _ _ hA) ((prEvent_or_le _ _ _).trans
     (add_le_add (prEvent_ES_le W pcsOpen _ _ hA) ((prEvent_or_le _ _ _).trans
-    (add_le_add (prEvent_EB_le W pcsOpen _ _ hA) hrest))))))))))))).trans (le_of_eq ?_)
-  simp only [deployedBound, add_assoc]
+    (add_le_add (prEvent_EB_le W pcsOpen _ _ hA) ((prEvent_or_le _ _ _).trans
+    (add_le_add (prEvent_EBn_le W pcsOpen _ _ hA 25 adm25) ((prEvent_or_le _ _ _).trans
+    (add_le_add (prEvent_EBn_le W pcsOpen _ _ hA 28 adm28) hrest))))))))))))))))).trans (le_of_eq ?_)
+  simp only [deployedBound, bindTerm, add_assoc]
   rfl
 
-/-- **The same, the binding's coordinate error at `27` variables bounded** (`δc_27`: `C(4473, 2) / 2^192 ≤
-2^-168`). -/
-theorem knowledgeSoundness_deployed_pcs_168
+variable (hdec : ∀ sb, W.decode sb = stmtWords sb) (hτ : RowVanishing statementConsts 22)
+
+/-- **Knowledge soundness of the deployed verifier of the EIP's PCS claims**, in mumbai's two-oracle model, at
+`2^22` rows, on F1's instance of `beta()` (`rustInstance`) and the statement's constants, the honest wiring table
+committed. -/
+theorem knowledgeSoundness_deployed_pcs
+    (A₀ : QuotientRpm.Bytes32 × E → OracleComp KeccakCalls (RootProof4 E × Rest)) (Q : ℕ)
+    (hQ : ∀ c, IsTotalQueryBound (A₀ c) Q) :
+    Pr{let z ← (simulateQ randomOracle
+        (dExp W pcsOpen (withSetup4 (setupPcs (wiringCol hc σ)) A₀))).run' ∅}[
+        BreaksD W (claimsMatch hc σ W hdec hτ).cW z] ≤ deployedBound Q :=
+  knowledgeSoundness_deployed_pcs_of hc σ W _ (claimsMatch hc σ W hdec hτ) A₀ Q hQ
+
+/-- **The same, the binding's coordinate errors bounded** (`δc_27`, `δc_25`, `δc_28`: `2^-168`, `2^-167`,
+`2^-169`). -/
+theorem knowledgeSoundness_deployed_pcs_bits
     (A₀ : QuotientRpm.Bytes32 × E → OracleComp KeccakCalls (RootProof4 E × Rest)) (Q : ℕ)
     (hQ : ∀ c, IsTotalQueryBound (A₀ c) Q) :
     Pr{let z ← (simulateQ randomOracle
@@ -170,12 +202,23 @@ theorem knowledgeSoundness_deployed_pcs_168
         openingBound (N₀ Q + 10150 + 10150 + 10150) +
         openingBound (N₀ Q + 10150 + 10150 + 10150 + 10150) +
         openingBound (N₀ Q + 10150 + 10150 + 10150 + 10150 + 10150) +
-        (((Nall Q : ℕ) : ℝ≥0∞) * (2 : ℝ≥0∞)⁻¹ ^ 168 +
-          ((Nall Q * (Nall Q + 1) : ℕ) : ℝ≥0∞) / (2 : ℝ≥0∞) ^ 256) +
-        ((Nall Q : ℕ) : ℝ≥0∞) * (((1 / 2 ^ 114 : ℝ≥0) : ℝ≥0∞) + 8 * ((Nall Q : ℕ) : ℝ≥0∞) / 2 ^ 256) := by
-  refine (knowledgeSoundness_deployed_pcs hc σ W hdec hτ A₀ Q hQ).trans ?_
-  unfold deployedBound
-  gcongr
-  exact δc_27
+        ((Nall Q : ℕ) : ℝ≥0∞) * ((2 : ℝ≥0∞)⁻¹ ^ 168 + (2 : ℝ≥0∞)⁻¹ ^ 167 + (2 : ℝ≥0∞)⁻¹ ^ 169) +
+        3 * (((Nall Q * (Nall Q + 1) : ℕ) : ℝ≥0∞) / (2 : ℝ≥0∞) ^ 256) +
+        ((Nall Q : ℕ) : ℝ≥0∞) * (((1 / 2 ^ 164 : ℝ≥0) : ℝ≥0∞) + 8 * ((Nall Q : ℕ) : ℝ≥0∞) / 2 ^ 256) := by
+  calc _ ≤ deployedBound Q := knowledgeSoundness_deployed_pcs hc σ W hdec hτ A₀ Q hQ
+    _ = openingBound (N₀ Q) + openingBound (N₀ Q + 10150) + openingBound (N₀ Q + 10150 + 10150) +
+        openingBound (N₀ Q + 10150 + 10150 + 10150) +
+        openingBound (N₀ Q + 10150 + 10150 + 10150 + 10150) +
+        openingBound (N₀ Q + 10150 + 10150 + 10150 + 10150 + 10150) +
+        ((Nall Q : ℕ) : ℝ≥0∞) * (δc 27 + δc 25 + δc 28) +
+        3 * (((Nall Q * (Nall Q + 1) : ℕ) : ℝ≥0∞) / (2 : ℝ≥0∞) ^ 256) +
+        ((Nall Q : ℕ) : ℝ≥0∞) * (((1 / 2 ^ 164 : ℝ≥0) : ℝ≥0∞) + 8 * ((Nall Q : ℕ) : ℝ≥0∞) / 2 ^ 256) := by
+      unfold deployedBound bindTerm
+      ring
+    _ ≤ _ := by
+      gcongr
+      · exact δc_27
+      · exact δc_25
+      · exact δc_28
 
 end SoundPcs

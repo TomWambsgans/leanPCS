@@ -390,6 +390,10 @@ def ES (z : X6) : Prop := StageDoom O 27 (fun x : X5 => gate x.ok (inS x.s)) z
 asked has a list not separated at its point. -/
 def EB (z : X6) : Prop := BindBadC 27 (cacheOfTr z.2)
 
+/-- **The binding event at `n` variables**: at the end of the run, some root on `n` variables whose out-of-domain
+inputs were all asked has a list not separated at its point (`EB` is `EBn 27`). -/
+def EBn (n : ℕ) (z : X6) : Prop := BindBadC n (cacheOfTr z.2)
+
 /-- **The deployed verifier accepts**: all six openings accept. -/
 def AccD (z : X6) : Prop := z.ok = true
 
@@ -484,6 +488,31 @@ theorem prEvent_ES_le :
       openingBound (Q + 6 + O.QO + O.QO + O.QO + O.QO + O.QO) := by
   unfold ES dExp
   exact prEvent_stageDoom_le O _ _ (qb_e5 W O A Q hQ) 27 (by decide) (by decide) (fun x : X5 => gate x.ok (inS x.s))
+
+/-- **The binding term at `n` variables**: `ood_binding_coords` on the whole run. -/
+theorem prEvent_EBn_le (n : ℕ) (hw : Whir.Admissible n logInvRate) :
+    Pr{let z ← (simulateQ randomOracle (dExp W O A)).run' ∅}[EBn n z] ≤
+      ((Q + 6 + O.QO + O.QO + O.QO + O.QO + O.QO + O.QO : ℕ) : ℝ≥0∞) * δc n +
+        (((Q + 6 + O.QO + O.QO + O.QO + O.QO + O.QO + O.QO) *
+          (Q + 6 + O.QO + O.QO + O.QO + O.QO + O.QO + O.QO + 1) : ℕ) : ℝ≥0∞) / (2 : ℝ≥0∞) ^ 256 := by
+  set v := e5 W O A >>= fun x => (x, ·) <$> optV (O.V 27) (gate x.ok (inS x.s)) with hvdef
+  have hV : ∀ x : X5, IsTotalQueryBound ((x, ·) <$> optV (O.V 27) (gate x.ok (inS x.s))) O.QO :=
+    fun x => by
+      generalize gate x.ok (inS x.s) = o
+      exact (isQueryBound_map_iff _ (fun b => (x, b)) _ _ _).mpr
+        (isTotalQueryBound_optV (O.V 27) O.QO (O.queryBound 27) o)
+  have hv : IsTotalQueryBound v (Q + 6 + O.QO + O.QO + O.QO + O.QO + O.QO + O.QO) :=
+    isTotalQueryBound_bind (qb_e5 W O A Q hQ) hV
+  have hE : ∀ c c' : KeccakCalls.QueryCache, (∀ x, c (.inl x) = c' (.inl x)) →
+      (BindBadC n c ↔ BindBadC n c') := fun c c' h => by
+    unfold BindBadC
+    have hc : (fun x => c (.inl x)) = fun x => c' (.inl x) := funext h
+    rw [hc]
+  have h1 := prEvent_logged_cache v (BindBadC n) hE
+  have h2 := ood_binding_coords hw v _ hv
+  unfold EBn dExp stage
+  refine h1.trans_le ?_
+  exact h2
 
 /-- **The binding term**: `ood_binding_coords` at `27` variables on the whole run. -/
 theorem prEvent_EB_le :
