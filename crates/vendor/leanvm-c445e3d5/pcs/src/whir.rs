@@ -39,6 +39,11 @@
 // encode the others alone, the zero lanes' words of each row zero when it is hashed or opened
 // (`commit_tree_skipping_in`, `encoded_rows_skipping`, `recursive_prover_with_lane_tensors_skipping`; the L0 rows'
 // source `L0Rows`; with the batched openings, `recursive_prover_with_lane_tensors_batch`'s `zero_lanes`).
+// Changed here, every proof unchanged: `commit_tree_skipping_in`'s spread rows are lent from a list the commitment
+// owns (and frees), not from a thread-local buffer that kept a tile's whole rows on every worker after it. A test,
+// `vectored_ext_rounds_match_one_product_at_a_time`, calls the round kernels at powers of two alone (their
+// `debug_assert`s), its other lengths testing the folds' and the terms' tails. `collapse_avx512::stage` asserts its
+// bounds (it checked them only with a `debug_assert`; once a call, `STAGE` words of every lane).
 
 //! WHIR with `K = GF(2)[x]/(x^64+x^4+x^3+x+1)` and
 //! `E = K[y]/(y^3+y+1)`.
@@ -385,11 +390,6 @@ fn spread_rows(compact: &[F64], blocks: &[(usize, &[F64])], n_lanes: usize, out:
     }
 }
 
-thread_local! {
-    /// [`spread_rows`]' output, per thread.
-    static SPREAD: std::cell::RefCell<Vec<F64>> = const { std::cell::RefCell::new(Vec::new()) };
-}
-
 /// [`commit_tree_in`], told which committed lanes are all zero (`zero[b]`, one flag a lane block of `message`):
 /// their codeword is zero, so they are not encoded, and their words of each row are zero when it is hashed. The
 /// root and the tree are [`commit_tree_in`]'s.
@@ -422,12 +422,16 @@ pub fn commit_tree_skipping_in(
         unsafe { work.set_len(blocks.len() << log_rows) };
         let ntt = AdditiveNttF64::standard(k_code);
         let slices: Vec<&[F64]> = blocks.iter().map(|&(_, block)| block).collect();
+        // [`spread_rows`]' outputs, one a worker at a time, reused tile after tile and freed with the commitment (a
+        // thread-local buffer would keep a tile's whole rows on every worker for good).
+        let spare: std::sync::Mutex<Vec<Vec<F64>>> = std::sync::Mutex::new(Vec::new());
         let on_rows = |row: usize, rows: &[F64]| {
-            SPREAD.with_borrow_mut(|full| {
-                full.resize(rows.len() / blocks.len() * n_lanes, F64::ZERO);
-                spread_rows(rows, &blocks, n_lanes, full);
-                tree.absorb(row, full);
-            })
+            let take = || spare.lock().unwrap_or_else(std::sync::PoisonError::into_inner).pop();
+            let mut full = take().unwrap_or_default();
+            full.resize(rows.len() / blocks.len() * n_lanes, F64::ZERO);
+            spread_rows(rows, &blocks, n_lanes, &mut full);
+            tree.absorb(row, &full);
+            spare.lock().unwrap_or_else(std::sync::PoisonError::into_inner).push(full);
         };
         ntt.encode_two_sweep_blocks_with(&mut work, &slices, log_inv_rate, &on_rows)
     });
@@ -2033,7 +2037,8 @@ mod collapse_avx512 {
     /// words `s .. s + out.len()` of `f`.
     #[target_feature(enable = "vpclmulqdq", enable = "avx512f")]
     pub(super) unsafe fn stage(f: &[F64], block: usize, s: usize, packed: &[Packed], out: &mut [F192]) {
-        debug_assert!(packed.len() * block <= f.len() && s + out.len() <= block);
+        // Once a stage (`STAGE` words of every lane): the loads below read lane `l`'s words `s .. s + out.len()`.
+        assert!(packed.len().checked_mul(block).is_some_and(|w| w <= f.len()) && s + out.len() <= block);
         let xor = |a, b| _mm512_xor_si512(a, b);
         for (g, out) in out.as_chunks_mut::<8>().0.iter_mut().enumerate() {
             let mut acc = [_mm512_setzero_si512(); 6];
@@ -3432,7 +3437,8 @@ mod tests {
     }
 
     /// The `E` round kernels four products at a time are the one-product-at-a-time forms, at lengths on both sides
-    /// of the vectors and the chunks, on the calling thread or the pool.
+    /// of the vectors and the chunks, on the calling thread or the pool (the round messages at powers of two alone,
+    /// the lengths they take).
     #[test]
     fn vectored_ext_rounds_match_one_product_at_a_time() {
         let mut rng = Rng::new(0xe4e4);
@@ -3459,6 +3465,11 @@ mod tests {
             };
             let (u_0, u_2) = fold_msg_terms(&f, &b);
             assert_eq!((u_0.reduce(), u_2.reduce()), msg(&fp, &bp), "message terms, {n}");
+            // The round kernels take a power of two words (their `debug_assert`s): the other lengths test the
+            // folds' and the terms' tails alone.
+            if !n.is_power_of_two() {
+                continue;
+            }
             let got = round_msg_lsb(&f, &b);
             assert_eq!((got.u_0, got.u_2), msg(&fp, &bp), "round message, {n}");
 

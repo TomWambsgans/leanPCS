@@ -230,6 +230,30 @@ fn leading_lanes_commit_and_open_as_the_whole_stack() {
     }
 }
 
+/// A panic while the kept codeword's lock is held (an opening that panicked) poisons it, and the openings after it
+/// still prove their claims, from the codeword kept or without it.
+#[test]
+fn openings_survive_a_poisoned_codeword_lock() {
+    let n = 15;
+    let mut rng = Rng::new(8);
+    for take in [false, true] {
+        let committed = commit_lanes_keeping_codeword(words(n, 9), n);
+        let poison = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let mut kept = committed.commitment.codeword.lock().expect("not yet poisoned");
+            if take {
+                kept.take();
+            }
+            panic!("an opening that panics");
+        }));
+        assert!(poison.is_err() && committed.commitment.codeword.is_poisoned());
+        let claim = committed.claim_at(rng.ext_vec(n));
+        let proof = open_words_keeping(&committed.words, &committed.commitment, &claim);
+        assert!(verify(&claim.encode(), &wire_proof(&proof)), "kept (codeword taken: {take})");
+        assert!(opens(&committed, &claim), "freed (codeword taken: {take})");
+        assert!(opens(&committed, &committed.claim_at(rng.ext_vec(n))), "after (codeword taken: {take})");
+    }
+}
+
 /// The prover's time at a large stack (`PCS_CLAIM_BENCH_N`, default 26): the commitment, then a claim opened twice
 /// (both reading the kept codeword), and the weights' construction alone.
 #[test]
