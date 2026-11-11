@@ -2,6 +2,7 @@
 import RecCompose.Complete
 import RecCompose.RpmC
 import RecCompose.Pi1Decode
+import RecCompose.Pi1Words
 
 /-!
 # The completeness couplings, proved
@@ -63,18 +64,6 @@ theorem completenessAgree (D : RecDeployment) (P1 : Pi1Prover D) (P2 : Pi2Prover
 
 /-! ## π1-rec3's graph and its verifier, on one proof -/
 
-/-- **The Keccak π1-rec3's run's shape** (a fact of `UniKeccak.reduceWithK`'s code, named here, proved in
-`RunShape.lean`: `pi1RunShape`): on every stream, a run of the Keccak π1-rec3's verifier (the reference shape
-`keccak128`, its Fiat–Shamir over Keccak-f[1600], `UniKeccak.runK … keccakRec3 .point`) that returns a result has no
-matrices' claim (`reduceWithK` makes none: the Keccak-f block's Flock has no matrices) and roots whose halves have zero
-top limbs (`nextRoot` reads each half as two limbs, `eNew _ _ 0`). The verifier's matrices' check then never fires
-(the roots' limbs are no longer needed since roots are read as their bytes, `UniStatement.rootOf`). -/
-def Pi1RunShape : Prop :=
-  ∀ (iv publicInput : List UInt8) (stream : Array UInt8) (r : UniStatement.Reduced),
-    (UniKeccak.runK4 RecGraphKeccak.Pi1.keccak128 iv publicInput stream UniKeccak.keccakRec4 .point).result = .ok r →
-      r.matrices = none ∧ r.roots.1.1.limb 2 = 0 ∧ r.roots.1.2.limb 2 = 0 ∧ r.roots.2.1.limb 2 = 0 ∧
-        r.roots.2.2.limb 2 = 0
-
 /-- **A loop of verdicts that a `false` keeps `false`** (every step yields; from `false` every step yields `false`)
 returns `false` if it starts at `false` or passes a step that always yields `false`. -/
 theorem support_forIn_false {ι : Type} {spec : OracleSpec ι} {β : Type}
@@ -104,22 +93,6 @@ theorem support_forIn_false {ι : Type} {spec : OracleSpec ι} {β : Type}
         simp only [ForInStep.yield.injEq] at this
         exact Or.inl this
       · exact Or.inr ⟨x, hx, hxf⟩
-
-/-- **The graph's claims at a run of three point claims, decoded**: the verifier's commitments (`C1`'s and `C2`'s
-roots `rootOf` of the stream's bytes and their answers; the setup's the reference's) with its points and values. -/
-theorem decode_pcsClaimWordsK (roots : UniKeccak.SetupRootsK) (r : UniStatement.Reduced) (pt1 pt2 pt3 : List E)
-    (v1 v2 v3 : E) (hro : r.openings = [(.c1, .point pt1 v1 none), (.c2, .point pt2 v2 none),
-      (.setup, .point pt3 v3 none)]) :
-    (UniKeccak.pcsClaimWordsK roots r).mapM decodePi1Call =
-      some [(UniStatement.rootOf r.roots.1, r.oods.1, pt1, v1), (UniStatement.rootOf r.roots.2, r.oods.2, pt2, v2),
-        (roots.f, roots.fOod, pt3, v3)] := by
-  unfold UniKeccak.pcsClaimWordsK
-  rw [hro]
-  simp only [List.map_cons, List.map_nil, List.mapM_cons, List.mapM_nil, UniKeccak.rootBytesK, UniKeccak.commitOfK,
-    Pi1Decode.decodePi1Call_claim _ _ _ _ (UniKeccakComplete.length_rootWord _),
-    Pi1Decode.decodePi1Call_claim _ _ _ _ (Pi1Decode.length_digestBytes _), digestOfBytes32_rootWord,
-    digestOfBytes32_digestBytes]
-  rfl
 
 /-- **Off the merge hazard, π1-rec3's graph with its openings rejects at most as often as π1-rec3's verifier** at
 Keccak-f[1600] with the same openings, for every permutation. -/
