@@ -42,7 +42,7 @@ theorem valE_bit {src : Src} (h : src = .zero ∨ src = .one ∨ ∃ r', src = .
   · simp only [valE, srcTr, Kc3Circuit.read, vOf]
     exact bE_bit _ hb
 
-theorem srcs_not_free {src : Src} (h : src = .zero ∨ src = .one ∨ ∃ r', src = .row r' ∧ 11 ≤ r' ∧ r' < r) :
+theorem srcs_not_free {r : ℕ} {src : Src} (h : src = .zero ∨ src = .one ∨ ∃ r', src = .row r' ∧ 11 ≤ r' ∧ r' < r) :
     src ≠ .free := by
   rcases h with rfl | rfl | ⟨r', rfl, -⟩ <;> simp
 
