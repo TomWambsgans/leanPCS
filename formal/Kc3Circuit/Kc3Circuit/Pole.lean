@@ -23,7 +23,7 @@ namespace Kc3Closed
 
 open PcsQuotient Kc3Bridge Kc3Wiring
 
-attribute [local irreducible] PcsQuotient.membershipBuilder Kc3Circuit.membershipBuild
+attribute [local irreducible] PcsQuotient.membershipBuilder Kc3Circuit.membershipBuild PcsQuotient.membership
 
 /-- A source reads no row at or above `B`. -/
 def RowBelow (B : ℕ) (s : Src) : Prop := ∀ r', s = .row r' → r' < B
@@ -176,15 +176,14 @@ theorem cell_slots_lt : ∀ c < 4 * (membership 22).rows.size, ∀ a,
   rw [if_neg h2] at h
   cases h; omega
 
-/-- The circuit's σ as a function. -/
-def sigC (c : ℕ) : ℕ := (membership 22).sigma.getD c 0
+/-- The circuit's σ as a function (irreducible: unfolding it would evaluate the circuit). -/
+irreducible_def sigC (c : ℕ) : ℕ := (membership 22).sigma.getD c 0
 
 /-- **The circuit's σ is the joins'.** -/
 theorem sigC_eq : sigC = sig ((joins (membership 22).rows (membership 22).rows.size).foldl
     (fun st p => PcsCircuit.join st p.1 p.2) (joins₀ (membership 22).rows.size)) := by
   funext c
-  unfold sigC
-  rw [sigma_eq, wiring_eq_joins 22 _ rows_size slots_lt, sig]
+  rw [sigC_def, sigma_eq, wiring_eq_joins 22 _ rows_size slots_lt, sig]
 
 /-- A cell an error can sit on: a row's first cell, a pinned cell, a cell of a random row. -/
 def ErrIdx (d : ℕ) : Prop := d % 4 = 0 ∨ (d % 4 = 2 ∧ d / 4 < 11) ∨ 2 ^ 22 - 16 ≤ d / 4
