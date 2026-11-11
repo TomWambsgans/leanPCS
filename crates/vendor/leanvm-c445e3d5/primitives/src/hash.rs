@@ -1,9 +1,7 @@
 // Vendored from leanVM (https://github.com/leanEthereum/leanVM), commit c445e3d51a5a85031df47240595698f3b24897bf, file crates/primitives/src/hash.rs.
 // MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and AGENTS.md at the repository root).
-// Changed here: test-only trace hooks under `#[cfg(feature = "trace")]` (off in every production build; see
-// `crates/primitives/src/trace.rs`), for the Lean skeleton's differential test. On aarch64 only: the batched
-// backend is NEON's two inputs with a third scalar one interleaved (`arm::Pair`, `LANES` = 3; remainders on NEON),
-// over a straight-line round (`arm::permute`, reached through the `Lanes64::permute` hook, whose default is the
+// Changed here: on aarch64 only, the batched backend is NEON's two inputs with a third scalar one interleaved
+// (`arm::Pair`, `LANES` = 3; remainders on NEON), over a straight-line round (`arm::permute`, reached through the `Lanes64::permute` hook, whose default is the
 // unchanged `permute` the x86 backends use); more tests (`batched_matches_single_for_every_count`) and an
 // ignored timing test (`bench_backends`, which times the x86 backends too). On every target, the batched hash
 // reads its inputs and writes its digests through the `Lanes64::absorb_words` and `Lanes64::squeeze` hooks, whose
@@ -375,10 +373,7 @@ impl Hasher {
     pub fn finalize(&self) -> [u8; OUT_LEN] {
         let mut state = self.state;
         absorb(&mut state, &final_block(&self.buf[..self.buf_len]));
-        let out = digest_of(&state);
-        #[cfg(feature = "trace")]
-        crate::trace::stream(&out);
-        out
+        digest_of(&state)
     }
 }
 
@@ -391,10 +386,7 @@ impl Default for Hasher {
 /// Keccak-256 of `data`, Ethereum's `keccak256`: FIPS 202's sponge over Keccak-f\[1600\] with
 /// rate [`RATE`] and Keccak's original padding.
 pub fn hash(data: &[u8]) -> [u8; OUT_LEN] {
-    let out = hash_from_state(data, &[0; STATE_LANES]);
-    #[cfg(feature = "trace")]
-    crate::trace::hash(data, &out);
-    out
+    hash_from_state(data, &[0; STATE_LANES])
 }
 
 /// The state after absorbing `n_blocks` all-zero blocks.
@@ -879,8 +871,6 @@ pub fn hash_many_from_state(data: &[u8], len: usize, state: &[u64; STATE_LANES],
             hash_many_with::<Narrow>(rest, len, state, out_rest);
         }
     }
-    #[cfg(feature = "trace")]
-    crate::trace::many(data, len, state, out);
 }
 
 /// Keccak-f\[1600\] of every state in place, [`LANES`] at a time.
