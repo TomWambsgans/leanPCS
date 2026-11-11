@@ -57,11 +57,16 @@ The bounds' arithmetic carries over but for one port.
   term's bits at 8; `UniKeccak.weightAtK` is the Rust's.
 - **The graph** (`RecGraphKeccak`; `Emitted.lean` is `f96a7938`'s π1-rec3 graph, the hazard `MergeHazardK` π1-rec3's):
   the `Wide` node; `pi1GraphIsVerifierK` and `GraphsAgree` for π1-rec4.
-- **The compiler** (`RecCircuit`, `rec-circuit-keccak`): `Wide` packings; D16v's trimmed last round (a template per
-  plane count, the unmade outputs, the free ends of `A_22`); the hashed claims' sections (message bits, copy units, the
-  free bits of an element with their packing and zero check, the digest's `ClaimHash` port); the claims hashed by π1's
-  shape (`compile::hashed_claims`: none, `[0]`, `[0, 1, 2]`), a circuit past `2^24` refused; a claim still encoded reads
-  its narrow elements as 20 bytes; `DigestChecked`, `SetupRootChecked`, `IvChecked` re-evaluated.
+- **The compiler** (`RecCircuit`, `rec-circuit-keccak`): ported (branch `lean/pi2-circuit`). The transcription
+  (`Wide` packings, D16v's trimmed last rounds, the copy units, the hashed claims' sections, the encoded calls and
+  named roots, the narrow elements, `FIT_LOG_N`) reproduces the Rust's π1-rec4 circuit byte for byte
+  (`rec-circuit-diff`, `rec-circuit-keccak` on `keccak_pi1_rec4`), and `compile_sound_end` states the new circuit
+  with no new hypothesis: the hashed claims' `ClaimHash` ports carry the Keccak-256s of the EIP encodings of the graph's
+  claims (`claimHash_port`, `claimEncoding`; given the zero ports zero), the encoded calls (`encodedCalls`) word for word;
+  completeness with the free bits of a computed value (`Given.bit`, `claim_zero_port_witness`). What remains of this
+  bullet: `DigestChecked`, `SetupRootChecked`, `IvChecked` re-evaluated on the π1-rec4 circuit (`RecCompose`'s
+  evaluated checks), and a claim still encoded reading its narrow elements as 20 bytes (no claim is encoded at
+  π1-rec4; `Circuit.narrow` is transcribed, its reading is π2's verifier's, `RecStatement`).
 - **The statement data** (`RecStatement/Data.lean`, `f96a7938`'s circuit: π1-rec3, 22 blocks, 134 pairs, 38 public
   terms): the reads (`Read.narrow`, 20 bytes; `Read.frame p`, four scalars from the frame), the `ClaimHash` ports and
   their terms, π1's calls (none encoded at 128 and 400 signatures), the digest and setup root, the seed over the frame
@@ -101,7 +106,8 @@ output to the Lean: it would overwrite `f96a7938`'s data. The tests that compare
 | `crates/membership/quotient/tests/whir_bridge_vector.rs` | `formal/WhirBridge/Test/Check.lean` | see below |
 | `crates/membership/quotient/tests/whir_large_params.rs` (`large_public_openings`) | `formal/WhirBridge/Test/CheckLarge.lean` | see below |
 | `crates/leanvm/rec/tests/lean_statement_keccak.rs` (`keccak_statement_data_is_current`, ignored) | `formal/RecStatement/RecStatement/Data.lean` | `f96a7938`'s circuit |
-| `crates/leanvm/rec/tests/lean_{graph_keccak,circuit_keccak,pi2_prover}.rs` | `RecGraphKeccak`, `RecCircuit`, `RecCompose`'s `RecComposeTest` | π1-rec3's and `f96a7938`'s |
+| `crates/leanvm/rec/tests/lean_circuit_keccak.rs` (`keccak_pi1_rec4`) | `RecCircuit`'s `rec-circuit-diff`, `rec-circuit-keccak` | π1-rec4's (`lean/pi2-circuit`) |
+| `crates/leanvm/rec/tests/lean_{graph_keccak,pi2_prover}.rs` | `RecGraphKeccak`, `RecCompose`'s `RecComposeTest` | π1-rec3's and `f96a7938`'s |
 
 **WhirBridge's vector checks disagree with their writers.** `whir_bridge_vector.rs` (`--ignored`) writes four vectors
 of the EIP's PCS claims (`public`, a `2^15`-word table; `witness`, `wiring`, `copy`, the three openings of a
