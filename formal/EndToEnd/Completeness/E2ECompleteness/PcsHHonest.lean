@@ -243,6 +243,18 @@ theorem natDegree_numer_gen (P : _root_.Kc3.Params E) (hM : PcsBridge.Kc3.Matche
   rw [nCells_of P hM] at this
   exact this
 
+theorem opened_eq (t : E) (j : Fin 4) :
+    _root_.Kc3.Params.opened (gH w coins) t j =
+      (Novel.nov 0 22 (fun i => ofK ((witnessParts (membership logRows) (cellsOf w) coins).2.getD (j + 4 * i) 0))).eval
+        (sq^[2] t) := by
+  have e : (witnessParts (membership logRows) (cellsOf w) coins).2 = coefficients 24 0 (cellsR w coins) := by
+    rw [show (witnessParts (membership logRows) (cellsOf w) coins).2 = witnessTable (membership logRows) (cellsOf w) coins
+      from rfl, witnessTable_eq]
+  rw [e]
+  show (((gH w coins) j).comp rowPoly).eval t = _
+  rw [Polynomial.eval_comp, rowPoly_eval]
+  exact congrArg (fun p : E[X] => p.eval (sq^[2] t)) (witnessOfTable_nov (k := 22) (coefficients 24 0 (cellsR w coins)) j)
+
 section Gen
 
 variable (P : _root_.Kc3.Params E) (hM : PcsBridge.Kc3.Matches P s₀) (hZ : P.vCells = digitPoly 24)
@@ -291,7 +303,7 @@ theorem consistent_gen : P.Consistent (Kc3Deployed.stmtOf stmt) (gH w coins)
     (Kc3.Honest.honestMsg P (Qp (membership logRows) (cellsOf w) coins stmt α β μ)
       (Hp (membership logRows) (cellsOf w) coins α β)
       (blindPoly coins + C (b2Of (membership logRows) stmt (cellsOf w) coins α β μ) * (X ^ 2 + X))) α β μ := by
-  obtain ⟨hZQ, hQ0, -⟩ := quot_gen w coins P hM hZ hsat α β μ t ρ hh htop hG
+  obtain ⟨hZQ, hQ0, -⟩ := quot_gen w coins (P := P) (hM := hM) (hZ := hZ) (hsat := hsat) (hh := hh) (htop := htop) (hG := hG) (t := t) (ρ := ρ) (μ := μ)
   exact Kc3.Honest.consistent_honest P (Kc3Deployed.stmtOf stmt) (gH w coins) α β μ _ _ _ hZQ hQ0
 
 /-- The quotient table in `E`, by bits. -/
@@ -303,7 +315,7 @@ theorem readTM_gen : PcsBridge.Kc3.readTM (cTq w coins stmt α β μ) =
     Kc3.Honest.honestMsg P (Qp (membership logRows) (cellsOf w) coins stmt α β μ)
       (Hp (membership logRows) (cellsOf w) coins α β)
       (blindPoly coins + C (b2Of (membership logRows) stmt (cellsOf w) coins α β μ) * (X ^ 2 + X)) := by
-  obtain ⟨-, hQ0, hq⟩ := quot_gen w coins P hM hZ hsat α β μ t ρ hh htop hG
+  obtain ⟨-, hQ0, hq⟩ := quot_gen w coins (P := P) (hM := hM) (hZ := hZ) (hsat := hsat) (hh := hh) (htop := htop) (hG := hG) (t := t) (ρ := ρ) (μ := μ)
   have hcT : ∀ b, cTq w coins stmt α β μ b = ofK ((tableOf (2 ^ cellVars (membership logRows).logRows)
       (hHatOf (membership logRows) (cellsOf w) coins α β) (qHatOf (membership logRows) stmt (cellsOf w) coins α β μ)
       (b2Of (membership logRows) stmt (cellsOf w) coins α β μ) coins).getD (Completeness.idx b) 0) := fun b => by
@@ -330,8 +342,99 @@ theorem readTM_gen : PcsBridge.Kc3.readTM (cTq w coins stmt α β μ) =
   rw [h1, h2, h3, h4]
 
 
+theorem valuesAt_fst_gen :
+    (valuesAt (membership logRows) (cellsOf w) coins t).1 =
+      Vector.ofFn (P.rowValues (_root_.Kc3.Params.opened (gH w coins) t) t) := by
+  have hfun : (fun j : Fin 4 => (Novel.nov 0 22 (fun i => ofK ((witnessParts (membership logRows) (cellsOf w)
+      coins).2.getD (j + 4 * i) 0))).eval (sq^[2] t)) = _root_.Kc3.Params.opened (gH w coins) t :=
+    (funext fun j => (opened_eq w coins t j).symm)
+  rw [valuesAt_fst _ _ _ hl_m, P.rowValues_eq, hM.theta, hfun]
+
+theorem valuesAt_snd_gen : (valuesAt (membership logRows) (cellsOf w) coins t).2 = P.sigmaPoly.eval t := by
+  rw [valuesAt_snd _ _ _ hl_m, hS_of P hM]
+
+/-- **F1's verifier accepts the honest tables.** -/
+theorem accepts_gen : P.Accepts (Kc3Deployed.stmtOf stmt) (gH w coins) (PcsBridge.Kc3.readTM (cTq w coins stmt α β μ))
+    α β μ t (P.rowValues (_root_.Kc3.Params.opened (gH w coins) t) t) (P.sigmaPoly.eval t) ρ := by
+  have hCons := consistent_gen w coins (P := P) (hM := hM) (hZ := hZ) (hsat := hsat) (hh := hh) (htop := htop) (hG := hG) (t := t) (ρ := ρ) (μ := μ)
+  rw [← readTM_gen w coins (P := P) (hM := hM) (hZ := hZ) (hsat := hsat) (hh := hh) (htop := htop) (hG := hG) (t := t) (ρ := ρ) (μ := μ)] at hCons
+  have hN := hG.nondeg
+  have hconic : _root_.Kc3.Params.conic P.θ t ρ = witnessConic t (QuotientSecurity.sq t) ρ := by
+    rw [hM.theta]
+    simp only [witnessConic, _root_.Kc3.Params.conic, QuotientSecurity.sq]
+  have hD : _root_.Kc3.conicDen P.θ t ρ ≠ 0 := by
+    unfold _root_.Kc3.conicDen
+    rw [hconic]
+    exact hN.conic
+  have hv0 : P.rowValues (_root_.Kc3.Params.opened (gH w coins) t) t 0 = (P.cellPoly (gH w coins) 0).eval t := by
+    show P.cellAt (_root_.Kc3.Params.opened (gH w coins) t) t 0 = _
+    exact P.cellAt_opened _ t 0
+  have hC := hN.copy
+  rw [hv0] at hC
+  have hC' : P.vCells.eval t * t + (α + (P.cellPoly (gH w coins) 0).eval t + β * t) *
+      (α + (P.cellPoly (gH w coins) 0).eval t + β * P.sigmaPoly.eval t) ≠ 0 := by
+    rw [hM.vCells]; exact hC
+  have hR : P.vRows.eval t ≠ 0 := by rw [hM.vRows]; exact hN.rows
+  have hP : P.vPins.eval t ≠ 0 := by
+    unfold _root_.Kc3.Params.vPins
+    rw [Polynomial.eval_prod]
+    refine Finset.prod_ne_zero_iff.mpr fun k _ => ?_
+    rw [Polynomial.eval_sub, Polynomial.eval_X, Polynomial.eval_C, hM.pins, CharTwo.sub_eq_add]
+    exact hN.pins k k.2
+  exact Kc3.Honest.accepts_of_consistent P _ _ _ α β μ t ρ hCons hD hC' hR hP
+
+/-- **The honest tables satisfy the claims**, for parameters matching the deployed circuit. -/
+theorem claims_gen :
+    ∃ cl : Claims,
+      claimsAt 22 stmt α β μ t ρ (valuesAt (membership logRows) (cellsOf w) coins t).1
+        (valuesAt (membership logRows) (cellsOf w) coins t).2 = some cl ∧
+      tableEval (witnessTable (membership logRows) (cellsOf w) coins) cl.witness.point = cl.witness.value ∧
+      tableEval (membership logRows).wiringTable cl.wiring.point = cl.wiring.value ∧
+      tableEval (quotientTable (membership logRows) stmt (cellsOf w) coins α β μ) cl.copy.point = cl.copy.value := by
+  obtain ⟨cl, hcl⟩ := claimsAt_isSome stmt (μ := μ) hG.nondeg
+  have hA := accepts_gen w coins (P := P) (hM := hM) (hZ := hZ) (hsat := hsat) (hh := hh) (htop := htop) (hG := hG) (t := t) (ρ := ρ) (μ := μ)
+  obtain ⟨hW, hS, hT⟩ := claims_of_accepts P hM hcl (cW w coins) (cTq w coins stmt α β μ) hA
+  obtain ⟨l1, l2, l3⟩ := claimsAt_lengths hcl (by decide)
+  refine ⟨cl, ?_, ?_, ?_, ?_⟩
+  · rw [valuesAt_fst_gen w coins (P := P) (hM := hM) (hZ := hZ) (hsat := hsat) (hh := hh) (htop := htop) (hG := hG) (t := t) (ρ := ρ),
+      valuesAt_snd_gen w coins (P := P) (hM := hM) (hZ := hZ) (hsat := hsat) (hh := hh) (htop := htop) (hG := hG) (t := t) (ρ := ρ)]
+    exact hcl
+  · rw [witnessTable_eq, tableEval_eq_mle_arr (V := 24) _ (by rw [Bridge.Ntt.coefficients_size, cellsR_size]) _ l1]
+    exact hW
+  · rw [tableEval_eq_mle_arr (V := 24) _ hs_m _ l2]
+    exact hS
+  · rw [tableEval_eq_mle_arr (V := 28) _ (by rw [E2ECompleteness.Pcs.quotientTable_size, hl_m]; rfl) _ l3]
+    exact hT
+
 end Gen
 
 end Claims
+
+/-! ## The deployed parameters -/
+
+/-- **The honest tables satisfy the claims** at every challenge where no denominator vanishes. -/
+theorem honest_claims (w : Secret) (coins : Coins) {stmt : Statement} (hrel : Relation stmt w) (α β μ t ρ : E)
+    (hG : GoodAt w coins P0 α β t ρ) :
+    ∃ cl : Claims,
+      claimsAt 22 stmt α β μ t ρ (valuesAt (membership logRows) (cellsOf w) coins t).1
+        (valuesAt (membership logRows) (cellsOf w) coins t).2 = some cl ∧
+      tableEval (witnessTable (membership logRows) (cellsOf w) coins) cl.witness.point = cl.witness.value ∧
+      tableEval (membership logRows).wiringTable cl.wiring.point = cl.wiring.value ∧
+      tableEval (quotientTable (membership logRows) stmt (cellsOf w) coins α β μ) cl.copy.point = cl.copy.value :=
+  claims_gen w coins (P := P0) (hM := P0_matches) (hZ := vCells_eq) (hsat := sat_P0 w coins hrel)
+    (hh := hh_P0 w coins α β) (htop := hHat_top w coins α β hrel) (hG := hG) (μ := μ)
+
+open Classical in
+/-- **The degenerate challenges**: those where a denominator vanishes. -/
+noncomputable def badSet (w : Secret) (coins : Coins) : Finset (E × E × E × E) :=
+  Finset.univ.filter fun x => ¬ GoodAt w coins P0 x.1 x.2.1 x.2.2.1 x.2.2.2
+
+/-- **The honest claims** (`PcsAccept.lean`'s `HonestClaims`) off `badSet`. -/
+theorem honestClaims_badSet : HonestClaims badSet := by
+  intro stmt w hrel coins α β μ t ρ hx
+  have hG : GoodAt w coins P0 α β t ρ := by
+    unfold badSet at hx
+    simpa only [Finset.mem_filter, Finset.mem_univ, true_and, not_not] using hx
+  exact honest_claims w coins hrel α β μ t ρ hG
 
 end E2ECompleteness.Pcs.H
