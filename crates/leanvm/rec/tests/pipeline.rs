@@ -2,7 +2,8 @@
 //! The recursion end to end, from a Keccak VM trace (leanVM 9d50c92a3, `crates/leanvm/univariate/src/prover/
 //! dump_keccak`) to π2's proof and openings, timed: π1-rec3's proof (with its three openings), π2's witness (replayed
 //! on π1's stream from the circuit's witness plan, `circuit::plan`), π2's proof and its five openings. π2 runs on its own
-//! thread from π1's stream on, while π1's openings run (`PIPELINE_SERIAL=1`: π2's proof waits for them).
+//! thread from π1's stream on: its witness is replayed while π1's openings run, then its proof waits for them (with
+//! `PIPELINE_OVERLAP=1` it does not: no faster, the machine being busy, `docs/leanvm/rec/PERF_PROVER.md`).
 //!
 //! What depends on the program and the shape only is computed once, before the timed passes, and reported apart (the
 //! per-circuit setup): π1's setup root (its `F`), π1's recorded verifier, π2's circuit (adapted) and its witness plan,
@@ -111,8 +112,8 @@ fn trace_to_recursion() {
 
         let mut phases: Vec<(&str, Vec<f64>)> = Vec::new();
         let mut first: Option<(Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>)> = None;
-        // `PIPELINE_SERIAL=1`: π2's proof waits for π1's openings, as before they overlapped.
-        let serial = std::env::var_os("PIPELINE_SERIAL").is_some_and(|v| v != "0");
+        // π2's proof waits for π1's openings unless `PIPELINE_OVERLAP=1`.
+        let serial = !std::env::var_os("PIPELINE_OVERLAP").is_some_and(|v| v != "0");
         for pass in 0..=repeat {
             std::thread::sleep(std::time::Duration::from_secs(cooldown));
             // With `PIPELINE_TRACING`, the last pass's trace tree alone.
@@ -172,7 +173,7 @@ fn trace_to_recursion() {
             let (witness, public2, stream, reduced, roots2, openings, [replayed, proving, opening]) = out2;
             let laps: Vec<(&str, f64)> = vec![
                 ("π1-rec3: proof, to its stream", streamed),
-                ("π1-rec3: its openings (π2 meanwhile)", pi1_done - streamed),
+                ("π1-rec3: its openings (π2's witness replayed meanwhile)", pi1_done - streamed),
                 ("π2: its witness, replayed", replayed),
                 ("π2: proof", proving),
                 ("π2: openings", opening),
