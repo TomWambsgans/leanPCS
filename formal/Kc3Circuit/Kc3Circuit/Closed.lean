@@ -2,6 +2,7 @@
 import Kc3Circuit.BridgeBuild
 import Kc3Circuit.Secret
 import Kc3Circuit.Wiring
+import Mathlib.Tactic.IrreducibleDef
 
 /-!
 # The closed circuit `PcsQuotient.membership 22`
@@ -30,8 +31,9 @@ attribute [local irreducible] PcsQuotient.membershipBuilder Kc3Circuit.membershi
 
 /-! ## The builder's run -/
 
-/-- The Statement's builder run of the membership rows from the anchor rows. -/
-abbrev qr : (List Src × List Src) × Builder := qrun membershipBuilder Builder.new
+/-- The Statement's builder run of the membership rows from the anchor rows; irreducible, so that neither the
+elaborator nor the kernel ever unfolds the run of millions of rows to compare two terms. -/
+irreducible_def qr : (List Src × List Src) × Builder := qrun membershipBuilder Builder.new
 
 theorem getD_toArray_map' (l : List Src) (k : ℕ) :
     (l.map srcTr).toArray.getD k .zero = srcTr (l.getD k .zero) := getD_toArray_map l k
@@ -72,7 +74,7 @@ theorem builder_facts : Kc3Circuit.WF (bTr qr.2) ∧ (bTr qr.2).rows.size ≤ Kc
             Kc3Circuit.read v (srcTr (qr.1.2.getD k .zero)) = PcsCircuit.bitOf s.root k := by
   obtain ⟨y, root, bf, he, hwf, hsize, hin, hval, hsem⟩ := Kc3Circuit.spec_membershipBuild
   have hs := sim_membershipBuilder Builder.new
-  rw [bTr_new] at hs
+  rw [bTr_new, ← qr_def] at hs
   have he' : Kc3Circuit.runBuild Kc3Circuit.membershipBuild Kc3Circuit.Builder.new = ((y, root), bf) := he
   rw [he'] at hs
   have h2 : bTr qr.2 = bf := hs.2.symm
