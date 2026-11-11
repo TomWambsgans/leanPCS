@@ -33,7 +33,7 @@ use fiat_shamir::transcript::{Proof, ProverState};
 use std::sync::Mutex;
 
 use pcs::whir::{LaneTensor, commit_tree_in, config_for_rate, inner_product_base_ext, recursive_prover_with_lane_tensors};
-use primitives::field::{F64, F192};
+use primitives::field::{F64, F192, Weights8, dot_base};
 use primitives::hash::hash as keccak256;
 use primitives::multilinear::{eq_table, mle_eval_par};
 
@@ -168,11 +168,29 @@ pub fn evaluate_lanes(words: &[F64], point: &[F192]) -> F192 {
         words.len().is_multiple_of(lane) && words.len() <= 1 << n,
         "whole lanes of the 2^n words"
     );
-    let low = eq_table(&point[..log_lane]);
-    (0..words.len() / lane).fold(F192::ZERO, |acc, l| {
-        acc + eq_bits(&point[log_lane..], l) * inner_product_base_ext(&words[l * lane..(l + 1) * lane], &low)
-    })
+    // Rows of `2^low` words, `low` at most a lane's variables: a row's weights `eq(point_low, ·)` stay in L1 and its
+    // sum is accumulated unreduced (`dot_base`), then multiplied by the row's weight `eq(point_high, row)`: one pass
+    // over the words. The same value as the sum lane by lane (the field's sums are exact, in any order).
+    let low = log_lane.min(ROW_VARS);
+    if low < 3 {
+        let low_table = eq_table(&point[..log_lane]);
+        return (0..words.len() / lane).fold(F192::ZERO, |acc, l| {
+            acc + eq_bits(&point[log_lane..], l) * inner_product_base_ext(&words[l * lane..(l + 1) * lane], &low_table)
+        });
+    }
+    let weights: Vec<Weights8> = eq_table(&point[..low]).as_chunks::<8>().0.iter().map(Weights8::new).collect();
+    let high = eq_table(&point[low..]);
+    let row = 1usize << low;
+    parallel::map_reduce(
+        words.len() / row,
+        || F192::ZERO,
+        |r| high[r] * dot_base(&weights, &words[r * row..(r + 1) * row]).reduce(),
+        |a, b| a + b,
+    )
 }
+
+/// The variables of a row of [`evaluate_lanes`]: `2^10` words, whose weights stay in L1.
+const ROW_VARS: usize = 10;
 
 /// A commitment, and what its openings need but the words: the Merkle tree of the committed lanes' codeword, and the
 /// codeword itself if it was kept (which the first opening reads its queried rows from, and frees). The words are the

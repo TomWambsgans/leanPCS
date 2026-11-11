@@ -50,8 +50,19 @@ impl Commitment {
 
 /// Commit to a table of `2^n` words.
 pub fn commit(words: Vec<F64>) -> Committed {
+    assert!(words.len().is_power_of_two(), "2^n words");
+    let n = words.len().trailing_zeros() as usize;
+    commit_lanes(words, n)
+}
+
+/// Commit to the table of `2^n` words whose leading words are `words` (whole lanes of `2^(n - 6)` words) and the
+/// rest zero. Its trailing zero lanes are left out of the encoding (`pcs_claim::commit_lanes`: the root, the
+/// out-of-domain answer and every opening are the whole table's); [`Committed::words`] are the lanes kept.
+pub fn commit_lanes(mut words: Vec<F64>, n: usize) -> Committed {
+    let lane = 1usize << (n - pcs_claim::LANE_FOLD);
+    words.truncate(lane * nonzero_lanes(&words, lane).max(1));
     #[allow(unused_mut)]
-    let mut committed = pcs_claim::commit(words);
+    let mut committed = pcs_claim::commit_lanes(words, n);
     #[cfg(test)]
     if let Some(z) = fixed_ood_point(committed.n) {
         committed.ood = pcs_claim::evaluate_lanes(committed.words(), &z);
@@ -78,9 +89,27 @@ fn fixed_ood_point(n: usize) -> Option<Vec<F192>> {
     })
 }
 
-/// The table's multilinear at `point`.
+/// The count of `words`' lanes (of `lane` words) up to its last nonzero one, the words read in parallel from the end.
+fn nonzero_lanes(words: &[F64], lane: usize) -> usize {
+    const RUN: usize = 1 << 16;
+    let run = RUN.min(lane);
+    let runs = words.len().div_ceil(run);
+    // The last run with a nonzero word: the first of the runs counted from the end.
+    let last = parallel::find_first(runs, |r| {
+        let start = (runs - 1 - r) * run;
+        words[start..words.len().min(start + run)].iter().any(|w| !w.is_zero())
+    });
+    last.map_or(0, |r| ((runs - 1 - r) * run) / lane + 1)
+}
+
+/// The table's multilinear at `point`: of the `2^n` words (`n = point.len()`) whose leading whole lanes are `words`
+/// and the rest zero, as [`Committed::words`] holds them.
 pub fn evaluate(words: &[F64], point: &[F192]) -> F192 {
-    pcs_claim::evaluate(words, point)
+    if words.len() == 1 << point.len() {
+        pcs_claim::evaluate(words, point)
+    } else {
+        pcs_claim::evaluate_lanes(words, point)
+    }
 }
 
 /// Open `claim` on `committed`.
