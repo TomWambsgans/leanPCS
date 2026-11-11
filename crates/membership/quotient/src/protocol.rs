@@ -248,9 +248,10 @@ impl Index {
         }
     }
 
-    /// The circuit's commitment: its wiring table's.
+    /// The circuit's commitment: its wiring table's, which keeps its codeword (`2^(m + 1)` words) for the opening
+    /// every proof makes of it ([`open`]).
     pub fn commit(&self) -> Committed {
-        opening::commit(self.table.clone())
+        opening::commit_lanes_keeping_codeword(self.table.clone(), self.table.len().trailing_zeros() as usize)
     }
 
     fn sigma(&self) -> &[F64] {
@@ -262,10 +263,24 @@ impl Index {
     }
 }
 
-/// `len` words, every one of which the caller writes before it reads it.
+/// `len` words, every one of which the caller writes before it reads it, their pages mapped by the workers
+/// (`pcs_claim::mapped_words`: the passes that first write them would fault each page from every thread at once).
 fn words(len: usize) -> Vec<F64> {
-    // SAFETY: plain words; the callers write each before reading it.
-    unsafe { primitives::uninit_vec(len) }
+    pcs_claim::mapped_words(len)
+}
+
+/// [`words`] of length `len` in an allocation of `capacity`, for a table written after them.
+fn words_in(len: usize, capacity: usize) -> Vec<F64> {
+    let mut v = words(capacity);
+    v.truncate(len);
+    v
+}
+
+/// The sum's polynomial's three limbs in the table `H` of `6 n` words: limb `e` at `2 e n` (each followed by its
+/// blinding's `n` words, `H`'s digit bit 0).
+fn h_limbs(h: &mut [F64], n: usize) -> [&mut [F64]; 3] {
+    let mut parts = h.chunks_exact_mut(n).step_by(2);
+    std::array::from_fn(|_| parts.next().expect("three limbs"))
 }
 
 /// The words of a run the workers copy or clear at once.
@@ -587,7 +602,10 @@ pub(crate) fn prove_with_randomness(
 
     // The witness: four polynomials in the row, each with a multiple of the rows' vanishing polynomial.
     let span = tracing::info_span!("Witness").entered();
-    let mut w_hat = words(n);
+    // The witness table: the coefficients, then the masks, `2^(m + 1)` words, of which the lanes up to the masks'
+    // are written and committed (the rest are zero: `opening::commit_lanes`). The coefficients are written in its
+    // allocation, and the rest once the witness's values below have read them.
+    let mut w_hat = words_in(n, n + lane(m + 1));
     tracing::info_span!("cells to coefficients").in_scope(|| ntt::coefficients_from(cells, &mut w_hat, F64::ZERO));
     let mut mask = [F64::ZERO; 16];
     for (j, coeffs) in masks.iter().enumerate() {
@@ -595,11 +613,37 @@ pub(crate) fn prove_with_randomness(
             mask[4 * i + j] = coeff;
         }
     }
-    // The witness table: the coefficients, then the masks, `2^(m + 1)` words, of which the lanes up to the masks'
-    // are written and committed (the rest are zero: `opening::commit_lanes`).
-    let mut table = words(n + lane(m + 1));
-    copy_par(&mut table[..n], &w_hat);
-    zero_par(&mut table[n..]);
+
+    // The witness's values on the quotients' coset, four times the cells: four cosets of the cells' size, offset by
+    // `B(k n)`. They do not depend on the challenges: made here, while the coefficients are at hand.
+    let big = 4 * n;
+    let offset = coset(m);
+    let offsets = chain(offset, m + 1);
+    let mut values = words(big);
+    // The transforms in two parts where the cells are many: the layers above a leaf a pass over memory each, and
+    // each leaf's own layers in the block-wise loop below, around the quotients' values, a block in cache.
+    let fused = n >= ntt::LEAF_WORDS;
+    let forward = |src: &[F64], quarter: &mut [F64], k: usize| {
+        let at = quarter_offset(offset, n, k);
+        if fused {
+            ntt::values_upper(Some(src), quarter, at)
+        } else {
+            ntt::values_from(src, quarter, at)
+        }
+    };
+    tracing::info_span!("witness values").in_scope(|| {
+        for (k, quarter) in values.chunks_exact_mut(n).enumerate() {
+            // The mask's coefficients, from `n` on, times the cells' vanishing polynomial's value on this coset:
+            // added to the witness's coefficients for this quarter's transform, which reads them as its first layer
+            // writes the quarter, and taken off again.
+            let scale = top_layers(offset, m, k);
+            add_scaled(&mut w_hat, &mask, scale);
+            forward(&w_hat, quarter, k);
+            add_scaled(&mut w_hat, &mask, scale);
+        }
+    });
+    let mut table = w_hat;
+    table.resize(n + lane(m + 1), F64::ZERO);
     table[n..n + 16].copy_from_slice(&mask);
     let witness = tracing::info_span!("Commit").in_scope(|| opening::commit_lanes(table, m + 1));
     ps.send_root(&witness.root);
@@ -607,12 +651,12 @@ pub(crate) fn prove_with_randomness(
     drop(span);
     let [alpha, beta_, gamma] = [(); 3].map(|_| ps.sample());
 
-    // The sum's polynomial on the cells, its coefficients a limb at a time.
+    // The sum's polynomial on the cells, its coefficients a limb at a time, written in the table `H` ([`h_limbs`]).
     let span = tracing::info_span!("Sum").entered();
     let inner = tracing::info_span!("inverses").entered();
-    let mut h_hat: [Vec<F64>; 3] = std::array::from_fn(|_| words(n));
+    let mut h_table = words(6 * n);
     {
-        let [h0, h1, h2] = &mut h_hat;
+        let [h0, h1, h2] = h_limbs(&mut h_table, n);
         let (alpha8, beta8) = (Ex8::splat(alpha), Ex8::splat(beta_));
         let beta_points = Ex8::from_limbs(limbs8(&std::array::from_fn(|l| beta_.mul_base(point(l)))));
         parallel::chunks_mut3(h0, h1, h2, 1 << 12, |chunk_index, h0, h1, h2| {
@@ -657,53 +701,27 @@ pub(crate) fn prove_with_randomness(
         });
     }
     drop(inner);
-    tracing::info_span!("coefficients").in_scope(|| h_hat.iter_mut().for_each(|h| ntt::coefficients(h, F64::ZERO)));
+    tracing::info_span!("coefficients")
+        .in_scope(|| h_limbs(&mut h_table, n).into_iter().for_each(|h| ntt::coefficients(h, F64::ZERO)));
     drop(span);
 
-    // Both quotients, on a coset four times the cells: four cosets of the cells' size, offset by `B(k n)`.
+    // Both quotients, on the coset of the witness's values.
     let span = tracing::info_span!("Quotients").entered();
-    let big = 4 * n;
-    let offset = coset(m);
-    let offsets = chain(offset, m + 1);
-    // `values`, the witness's values on the coset; `scratch`, the quotients' limbs then the gate's quotient, which
-    // becomes the table `Q` once `G` is taken out of it.
-    let mut values = words(big);
-    let mut scratch = words(4 * big);
-
-    // The transforms in two parts where the cells are many: the layers above a leaf a pass over memory each, and
-    // each leaf's own layers in the block-wise loop below, around the quotients' values, a block in cache.
-    let fused = n >= ntt::LEAF_WORDS;
-    let forward = |src: Option<&[F64]>, quarter: &mut [F64], k: usize| {
-        let at = quarter_offset(offset, n, k);
-        match (fused, src) {
-            (true, _) => ntt::values_upper(src, quarter, at),
-            (false, Some(src)) => ntt::values_from(src, quarter, at),
-            (false, None) => ntt::values(quarter, at),
-        }
-    };
-    let inner = tracing::info_span!("witness values").entered();
-    for (k, quarter) in values[..big].chunks_exact_mut(n).enumerate() {
-        // The mask's coefficients, from `n` on, times the cells' vanishing polynomial's value on this coset: added
-        // to the witness's coefficients for this quarter's transform, which reads them as its first layer writes
-        // the quarter, and taken off again.
-        let scale = top_layers(offset, m, k);
-        add_scaled(&mut w_hat, &mask, scale);
-        forward(Some(&w_hat), quarter, k);
-        add_scaled(&mut w_hat, &mask, scale);
-    }
-    drop(w_hat);
-    drop(inner);
+    // `q_limbs`, the quotients' limbs, which become the table `Q`; `q_gate`, the gate's quotient, whose first half
+    // becomes the table `G`.
+    let mut q_limbs = words(3 * big);
+    let mut q_gate = words(big);
     let sigma_values = index.sigma_values();
-    let (q_limbs, q_gate) = scratch[..4 * big].split_at_mut(3 * big);
     tracing::info_span!("sum values").in_scope(|| {
+        let h_limbs = h_limbs(&mut h_table, n);
         for (limb, column) in q_limbs.chunks_exact_mut(big).enumerate() {
-            let h = &mut h_hat[limb];
+            let h = &mut *h_limbs[limb];
             for (k, quarter) in column.chunks_exact_mut(n).enumerate() {
                 // `h + X_n b`: the blinding's coefficients, from `n` on, times `X_n`'s value on this coset, added to
                 // `h`'s for this quarter's transform (which reads its input as it writes the quarter) and taken off.
                 let scale = top_layers(offset, m, k);
                 add_scaled(h, &blind[limb], scale);
-                forward(Some(h), quarter, k);
+                forward(h, quarter, k);
                 add_scaled(h, &blind[limb], scale);
             }
         }
@@ -811,41 +829,41 @@ pub(crate) fn prove_with_randomness(
         }
     };
     tracing::info_span!("quotient coefficients").in_scope(|| q_limbs.chunks_exact_mut(big).for_each(backward));
-    tracing::info_span!("gate coefficients").in_scope(|| backward(q_gate));
+    tracing::info_span!("gate coefficients").in_scope(|| backward(&mut q_gate));
 
     drop(values);
 
-    // The quotient table's three parts ([`quotient_parts`]). `G`, the gate's quotient's first `2^(m + 1)`
-    // coefficients: for a witness it has no others; for anything else what `G` leaves out is dropped, and the claims
-    // are then false. `Q`, the copy quotient's limbs, `4·2^m` coefficients each, is `scratch` itself once the gate's
-    // quotient is cleared from it. `H`, the sum's polynomial's limbs with their blinding.
-    // Each table is written up to its last lane that can be nonzero and committed as such (`opening::commit_lanes`:
-    // the commitment of the whole table, its other words zero): `Q` without the gate's quotient's slots, `H` without
-    // its last quarter (limb 3).
+    // The quotient table's three parts ([`quotient_parts`]), each written up to its last lane that can be nonzero
+    // and committed as such (`opening::commit_lanes`: the commitment of the whole table, its other words zero).
+    // `G`, the gate's quotient's first `2^(m + 1)` coefficients: for a witness it has no others; for anything else
+    // what `G` leaves out is dropped, and the claims are then false. `Q`, the copy quotient's limbs, `4·2^m`
+    // coefficients each. `H`, the sum's polynomial's limbs with their blinding ([`h_limbs`]), without its last
+    // quarter (limb 3, zero).
     let inner = tracing::info_span!("tables").entered();
-    let q_gate = &scratch[3 * big..4 * big];
     let fits = all_zero(&q_gate[2 * n..]);
-    let mut g_table = words(2 * n);
-    copy_par(&mut g_table, &q_gate[..2 * n]);
-    let mut q_table = scratch;
-    q_table.truncate(3 * big);
-    let mut h_table = words(6 * n);
-    for (limb, h) in h_hat.iter().enumerate() {
-        copy_par(&mut h_table[2 * limb * n..(2 * limb + 1) * n], h);
-        let blinding = &mut h_table[(2 * limb + 1) * n..(2 * limb + 2) * n];
+    let mut g_table = q_gate;
+    g_table.truncate(2 * n);
+    g_table.shrink_to_fit();
+    let q_table = q_limbs;
+    for (limb, blinding) in h_table.chunks_exact_mut(n).skip(1).step_by(2).enumerate() {
         zero_par(blinding);
         blinding[..H_BLIND].copy_from_slice(&blind[limb]);
     }
-    drop(h_hat);
     drop(inner);
-    let mut commit = |table: Vec<F64>, vars: usize| {
-        let committed = tracing::info_span!("Commit").in_scope(|| opening::commit_lanes(table, vars));
+    // Committed largest first, the memory of each commitment's encoding buffer, freed, then serving the next's;
+    // their roots and answers sent in the transcript's order, `H`, `Q`, `G`. (`H`, opened twice, could keep its
+    // codeword for its openings, which would not encode its queried rows again: 1.3 GiB held through the openings,
+    // whose own buffers then map fresh memory, for no gain: `docs/membership/PERF_PROVER.md`.)
+    let [_, _, h_vars, q_vars, g_vars] = table_vars(circuit.log_rows);
+    let commit =
+        |table: Vec<F64>, vars: usize| tracing::info_span!("Commit").in_scope(|| opening::commit_lanes(table, vars));
+    let q = commit(q_table, q_vars);
+    let h = commit(h_table, h_vars);
+    let g = commit(g_table, g_vars);
+    for committed in [&h, &q, &g] {
         ps.send_root(&committed.root);
         ps.send(committed.ood);
-        committed
-    };
-    let [_, _, h_vars, q_vars, g_vars] = table_vars(circuit.log_rows);
-    let (h, q, g) = (commit(h_table, h_vars), commit(q_table, q_vars), commit(g_table, g_vars));
+    }
     drop(span);
     let t = ps.sample();
     let digits: Vec<F192> = std::iter::successors(Some(t), |&w| Some(w * w + w))
@@ -1144,11 +1162,16 @@ pub fn verify_reduction(
 pub struct Openings(pub [opening::Proof; 6]);
 
 /// Open a proof's `claims` on the tables it committed. The wiring's opening is about public data: anyone can make
-/// it.
+/// it; the index's kept codeword ([`Index::commit`]) serves it and is kept for the next proof's.
 pub fn open(tables: &Tables, claims: &Claims, index: &Committed) -> Openings {
     Openings(claims.all().map(|(k, claim)| {
-        let table = if k == 1 { index } else { tables.table(k) };
-        tracing::info_span!("Open").in_scope(|| opening::open(table, claim))
+        tracing::info_span!("Open").in_scope(|| {
+            if k == 1 {
+                opening::open_keeping(index, claim)
+            } else {
+                opening::open(tables.table(k), claim)
+            }
+        })
     }))
 }
 

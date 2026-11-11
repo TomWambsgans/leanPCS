@@ -58,11 +58,27 @@ pub fn commit(words: Vec<F64>) -> Committed {
 /// Commit to the table of `2^n` words whose leading words are `words` (whole lanes of `2^(n - 6)` words) and the
 /// rest zero. Its trailing zero lanes are left out of the encoding (`pcs_claim::commit_lanes`: the root, the
 /// out-of-domain answer and every opening are the whole table's); [`Committed::words`] are the lanes kept.
-pub fn commit_lanes(mut words: Vec<F64>, n: usize) -> Committed {
+pub fn commit_lanes(words: Vec<F64>, n: usize) -> Committed {
+    commit_lanes_with(words, n, false)
+}
+
+/// [`commit_lanes`], keeping the codeword for the openings (`pcs_claim::commit_lanes_keeping_codeword`): for a table
+/// opened more than once, which [`open_keeping`] then opens without encoding its rows again.
+pub fn commit_lanes_keeping_codeword(words: Vec<F64>, n: usize) -> Committed {
+    commit_lanes_with(words, n, true)
+}
+
+fn commit_lanes_with(mut words: Vec<F64>, n: usize, keep_codeword: bool) -> Committed {
     let lane = 1usize << (n - pcs_claim::LANE_FOLD);
     words.truncate(lane * nonzero_lanes(&words, lane).max(1));
+    // The allocation past them returned (the allocator shrinks a large one in place), for the memory to come.
+    words.shrink_to_fit();
     #[allow(unused_mut)]
-    let mut committed = pcs_claim::commit_lanes(words, n);
+    let mut committed = if keep_codeword {
+        pcs_claim::commit_lanes_keeping_codeword(words, n)
+    } else {
+        pcs_claim::commit_lanes(words, n)
+    };
     #[cfg(test)]
     if let Some(z) = fixed_ood_point(committed.n) {
         committed.ood = pcs_claim::evaluate_lanes(committed.words(), &z);
@@ -112,9 +128,15 @@ pub fn evaluate(words: &[F64], point: &[F192]) -> F192 {
     }
 }
 
-/// Open `claim` on `committed`.
+/// Open `claim` on `committed`. A kept codeword serves this opening and is freed.
 pub fn open(committed: &Committed, claim: &Claim) -> Proof {
     pcs_claim::open(committed, &Commitment::of(committed).pcs_claim(claim))
+}
+
+/// [`open`], keeping a kept codeword for another opening. The same proof.
+pub fn open_keeping(committed: &Committed, claim: &Claim) -> Proof {
+    let claim = Commitment::of(committed).pcs_claim(claim);
+    pcs_claim::open_words_keeping(committed.words(), committed.commitment(), &claim)
 }
 
 /// Check an opening of `claim` against `commitment`.

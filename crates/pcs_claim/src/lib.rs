@@ -238,7 +238,9 @@ pub fn commit_words(words: &[F64], n: usize, keep_codeword: bool) -> Commitment 
         let (commitment, data) = pcs::whir::commit(words, n, LANE_FOLD, LOG_INV_RATE);
         (commitment.root, data.merkle_tree, Some(data.codeword))
     } else {
-        let (commitment, tree) = commit_tree_in(words, n, LANE_FOLD, LOG_INV_RATE, Vec::new());
+        // The encoding buffer, one replica of the codeword (as many words as `words`), mapped by the workers.
+        let scratch = mapped_words(words.len());
+        let (commitment, tree) = commit_tree_in(words, n, LANE_FOLD, LOG_INV_RATE, scratch);
         (commitment.root, tree, None)
     };
     let ood = evaluate_lanes(words, &ood_point(n, &root));
@@ -249,6 +251,28 @@ pub fn commit_words(words: &[F64], n: usize, keep_codeword: bool) -> Commitment 
         tree,
         codeword: Mutex::new(codeword),
     }
+}
+
+/// `len` words, unwritten, their memory mapped by the workers: each touches its own run of pages once, so that the
+/// kernel maps (and clears) them in parallel, before a pass whose first touches are strided and would fault the same
+/// pages from every thread at once. The caller writes each word before it reads it.
+pub fn mapped_words(len: usize) -> Vec<F64> {
+    /// A run of pages one task touches: a transparent huge page.
+    const RUN: usize = (2 << 20) / size_of::<F64>();
+    /// The words of the smallest page, one touched in each.
+    const PAGE: usize = 4096 / size_of::<F64>();
+    let mut v: Vec<F64> = Vec::with_capacity(len);
+    let base = parallel::SendPtr(v.as_mut_ptr());
+    parallel::for_each(len.div_ceil(RUN), |r| {
+        for i in (r * RUN..len.min((r + 1) * RUN)).step_by(PAGE) {
+            // SAFETY: inside the allocation; a word the caller writes before reading, written here only to map its
+            // page (volatile, so that the store is not elided).
+            unsafe { base.add(i).write_volatile(F64::ZERO) };
+        }
+    });
+    // SAFETY: the capacity holds `len` plain words, which the caller writes before reading.
+    unsafe { v.set_len(len) };
+    v
 }
 
 /// A commitment with its words: what [`open`] takes.
