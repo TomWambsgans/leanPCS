@@ -41,8 +41,9 @@ open RecCircuit (NONE)
 def onesIv : List UInt8 := List.replicate 32 0xff
 def zeroIv : List UInt8 := List.replicate 32 0
 
-/-- The compiled circuit at the all-ones IV: the base of the patch (every seed IV constant has `κ = 1` there). -/
-def onesCompiled : RecCircuit.Compiled := compiledAt onesIv
+/-- The compiled circuit at the setup commitment `roots` and the all-ones IV: the base of the patch (every seed IV
+constant has `κ = 1` there). -/
+def onesCompiled (roots : UniKeccak.SetupRootsK) : RecCircuit.Compiled := compiledAt roots onesIv
 
 /-- **The seed's 256 IV constants' final positions** in `B`: the producers of block 0's input bits `128 + j` of the
 sponge whose message is `B`'s seed message at the all-ones IV (`[]` if there is none). -/
@@ -68,7 +69,8 @@ def patchCircuit (C : RecCircuit.Circuit) (Z : List ℕ) : RecCircuit.Circuit :=
 def circuitEqB (C D : RecCircuit.Circuit) : Bool :=
   decide (C.logN = D.logN) && decide (C.logWidth = D.logWidth) && decide (C.regions = D.regions) &&
     decide (C.blocks = D.blocks) && decide (C.sigma = D.sigma) && decide (C.kappa = D.kappa) &&
-    decide (C.ports = D.ports) && decide (C.calls = D.calls)
+    decide (C.ports = D.ports) && decide (C.calls = D.calls) && decide (C.hashed = D.hashed) &&
+    decide (C.narrow = D.narrow)
 
 /-- Two views are equal, field by field. -/
 def viewEqB (V W : RecCircuit.View) : Bool :=
@@ -78,8 +80,8 @@ def viewEqB (V W : RecCircuit.View) : Bool :=
 theorem circuit_eq_of_circuitEqB {C D : RecCircuit.Circuit} (h : circuitEqB C D = true) : C = D := by
   cases C; cases D
   simp only [circuitEqB, Bool.and_eq_true, decide_eq_true_eq] at h
-  obtain ⟨⟨⟨⟨⟨⟨⟨h1, h2⟩, h3⟩, h4⟩, h5⟩, h6⟩, h7⟩, h8⟩ := h
-  subst h1 h2 h3 h4 h5 h6 h7 h8
+  obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨h1, h2⟩, h3⟩, h4⟩, h5⟩, h6⟩, h7⟩, h8⟩, h9⟩, h10⟩ := h
+  subst h1 h2 h3 h4 h5 h6 h7 h8 h9 h10
   rfl
 
 theorem view_eq_of_viewEqB {V W : RecCircuit.View} (h : viewEqB V W = true) : V = W := by
@@ -101,14 +103,17 @@ def patchOk (B : RecCircuit.Compiled) (Z : List ℕ) (e : Except String RecCircu
       decide (c.bitSelf = B.bitSelf) && decide (c.freeReads = B.freeReads)
   | .error _ => false
 
-/-- **The per-IV factorization check**: the compiler accepts π1-rec3's emitted graph at `iv`, and its circuit is the
-all-ones IV's with the `κ` entries at `iv`'s zero bits' seed positions removed (view, free bits, free reads equal). -/
-def patchCheck (iv : List UInt8) : Bool :=
-  patchOk onesCompiled (zeroPos (seedPositions onesCompiled) iv)
-    (RecCircuit.compile (RecCircuit.ofRG RecGraphKeccak.Emitted.graph RecGraphKeccak.Emitted.rootsAt iv))
+/-- **The per-IV factorization check**: the compiler accepts π1-rec4's emitted graph at the setup commitment `roots`
+and `iv`, and its circuit is the all-ones IV's there with the `κ` entries at `iv`'s zero bits' seed positions removed
+(view, free bits, free reads equal). -/
+def patchCheck (roots : UniKeccak.SetupRootsK) (iv : List UInt8) : Bool :=
+  patchOk (onesCompiled roots) (zeroPos (seedPositions (onesCompiled roots)) iv)
+    (RecCircuit.compile (RecCircuit.ofRG (emittedAt roots) RecGraphKeccak.Emitted.rootsAt iv Data.hashed))
 
-/-- **The compiler's IV factorization at every 32-byte IV** (not proved; see the module docstring). -/
-def PatchChecked : Prop := ∀ iv : List UInt8, iv.length = 32 → patchCheck iv = true
+/-- **The compiler's IV factorization at every setup commitment and 32-byte IV** (not proved; see the module
+docstring). -/
+def PatchChecked : Prop :=
+  ∀ (roots : UniKeccak.SetupRootsK) (iv : List UInt8), iv.length = 32 → patchCheck roots iv = true
 
 theorem patchOk_spec {B : RecCircuit.Compiled} {Z : List ℕ} {e : Except String RecCircuit.Compiled}
     (h : patchOk B Z e = true) : e = .ok (okOr e) ∧ IvPatched B Z (okOr e) := by
@@ -121,9 +126,10 @@ theorem patchOk_spec {B : RecCircuit.Compiled} {Z : List ℕ} {e : Except String
     obtain ⟨⟨⟨h1, h2⟩, h3⟩, h4⟩ := h
     exact ⟨rfl, circuit_eq_of_circuitEqB h1, view_eq_of_viewEqB h2, h3, h4⟩
 
-theorem patchCheck_spec {iv : List UInt8} (h : patchCheck iv = true) :
-    RecCircuit.compile (RecCircuit.ofRG RecGraphKeccak.Emitted.graph RecGraphKeccak.Emitted.rootsAt iv) = .ok (compiledAt iv) ∧
-      IvPatched onesCompiled (zeroPos (seedPositions onesCompiled) iv) (compiledAt iv) :=
+theorem patchCheck_spec {roots : UniKeccak.SetupRootsK} {iv : List UInt8} (h : patchCheck roots iv = true) :
+    RecCircuit.compile (RecCircuit.ofRG (emittedAt roots) RecGraphKeccak.Emitted.rootsAt iv Data.hashed) =
+      .ok (compiledAt roots iv) ∧
+      IvPatched (onesCompiled roots) (zeroPos (seedPositions (onesCompiled roots)) iv) (compiledAt roots iv) :=
   patchOk_spec h
 
 /-! ## `κ` of a patched circuit -/
@@ -196,7 +202,7 @@ theorem viewCheck_patch {c B : RecCircuit.Compiled} {Z : List ℕ} (hc : c.circu
   unfold viewCheck at h ⊢
   rw [hc, viewOf_patch, callsOf_patch]
   simp only [Bool.and_eq_true] at h ⊢
-  exact ⟨h.1, validB_patch _ Z h.2⟩
+  exact ⟨⟨h.1.1, validB_patch _ Z h.1.2⟩, h.2⟩
 
 /-! ## `streamAgree` transfers -/
 
@@ -288,20 +294,20 @@ theorem streamAgree_patch {c c0 B R : RecCircuit.Compiled} {Z Z0 : List ℕ}
 
 theorem zeroIv_length : zeroIv.length = 32 := List.length_replicate
 
-/-- **`IvChecked` from the compiler's IV factorization and two evaluated IVs**: `PatchChecked` (the compile at every
-32-byte IV is the all-ones IV's with `κ` removed at its zero bits' seed positions), `ivCheck` at the all-ones IV and
-at the zero IV (both evaluated: `rec-real-check`). -/
-theorem ivChecked_of_patchChecked (hp : PatchChecked) (h1 : ivCheck onesIv = true) (h0 : ivCheck zeroIv = true) :
-    IvChecked := by
-  intro iv hiv
-  obtain ⟨hc, hP⟩ := patchCheck_spec (hp iv hiv)
-  obtain ⟨-, hP0⟩ := patchCheck_spec (hp zeroIv zeroIv_length)
-  obtain ⟨-, hv1, hs1⟩ := ivCheck_spec h1
-  obtain ⟨-, -, hs0⟩ := ivCheck_spec h0
-  change checkOk refCompiled (RecCircuit.compile (RecCircuit.ofRG RecGraphKeccak.Emitted.graph RecGraphKeccak.Emitted.rootsAt iv))
-    = true
+/-- **`IvChecked` from the compiler's IV factorization and two IVs at each setup commitment**: `PatchChecked` (the
+compile at every 32-byte IV is the all-ones IV's with `κ` removed at its zero bits' seed positions), `ivCheck` at the
+all-ones IV and at the zero IV (evaluated at the reference setup commitment: `rec-real-check`). -/
+theorem ivChecked_of_patchChecked (hp : PatchChecked) (h1 : ∀ roots, ivCheck roots onesIv = true)
+    (h0 : ∀ roots, ivCheck roots zeroIv = true) : IvChecked := by
+  intro roots iv hiv
+  obtain ⟨hc, hP⟩ := patchCheck_spec (hp roots iv hiv)
+  obtain ⟨-, hP0⟩ := patchCheck_spec (hp roots zeroIv zeroIv_length)
+  obtain ⟨-, hv1, hs1⟩ := ivCheck_spec (h1 roots)
+  obtain ⟨-, -, hs0⟩ := ivCheck_spec (h0 roots)
+  change checkOk refCompiled (RecCircuit.compile (RecCircuit.ofRG (emittedAt roots) RecGraphKeccak.Emitted.rootsAt iv
+    Data.hashed)) = true
   rw [hc]
-  change (viewCheck (compiledAt iv) && streamAgree (compiledAt iv) refCompiled) = true
+  change (viewCheck (compiledAt roots iv) && streamAgree (compiledAt roots iv) refCompiled) = true
   rw [Bool.and_eq_true]
   exact ⟨viewCheck_patch hP.1 hv1,
     streamAgree_patch (zeroPos_sub _ iv) hP hP0 hs1 hs0⟩

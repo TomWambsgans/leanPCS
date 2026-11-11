@@ -44,6 +44,7 @@ import RecCompose.IvUniform
 import RecCompose.Pi2AlphaEnd
 import RecCompose.Pi2Closed
 import RecCompose.CompleteKeccakEnd
+import RecCompose.RealCircuit
 import RecCompose.RealEnd
 
 /-!
