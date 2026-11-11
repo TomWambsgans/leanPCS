@@ -62,7 +62,9 @@ cargo test --release -p leanvm_rec --test lean_graph_keccak                 # fa
   run: on the graph `crates/leanvm/rec/tests/lean_circuit_keccak.rs` writes (h1, 2026-11-08) it checks the file is
   `Emitted.graph` (the reference's setup roots `Pi1.referenceRootsK`), compiles it in Lean (16,133 expanded nodes,
   1,219 s under load, 2.9 GB) and prints a circuit **identical** to the Rust's (`diff`: 20,930 lines; `N = 2^24`, 14
-  regions, 21 blocks, 36 ports, 20,623 `κ`).
+  regions, 21 blocks, 36 ports, 20,623 `κ`). These counts are the layout-word graph's; on the PCS claims' graph
+  (each claim's root and out-of-domain answer its first two words, 38 public terms) the compiled circuit is again
+  identical to the Rust's (`lean-pi2v3`).
 
 ```sh
 LEAN_CIRCUIT_OUT=out cargo test --release -p leanvm_rec --test lean_circuit_keccak -- --ignored --nocapture

@@ -331,9 +331,11 @@ once its `NewOK` is decided); `Layout::new` = `Layout.new` is checked by executi
 
 ## The PCS claim, version 1 (`crates/pcs_claim`)
 
-`WhirBridge/PcsClaim.lean`, `PcsBinding.lean`, `PcsBindingRom.lean`, `PcsBindingCoords.lean` (axioms checked in `WhirBridge/Pcs.lean`,
-imported by `WhirBridge.lean`; namespace `WhirBridge.Pcs`). Nothing above changes: the openings of version 2 and
-their theorems stay as they are; the new files only add.
+`WhirBridge/PcsClaim.lean`, `PcsBinding.lean`, `PcsBindingRom.lean`, `PcsBindingCoords.lean` (axioms checked in
+`WhirBridge/Pcs.lean`, imported by `WhirBridge.lean`; namespace `WhirBridge.Pcs`), `PcsOracle.lean` (imported by
+`WhirBridge.lean`) and `PcsUnionOracle.lean` (namespace `WhirBridge.Pcs.UnionO`, imported by `formal/RecStatement`;
+its axioms checked in the file). Nothing above changes: the openings of version 2 and their theorems stay as they are;
+the new files only add.
 
 **The transcription** (`lib.rs:72-330`): `claimBytes` is `PCS_claim = 1 ‖ n ‖ root (32) ‖ ood (24) ‖ point (24 n) ‖
 value (24)`, each element its limbs `c2, c1, c0` big-endian (`elemBytes`, `element_bytes`); `oodPoint n root` is
@@ -364,6 +366,10 @@ a claim holds of a stack iff `colEval q p = v`, `colEval q p = Σ_i q_i · eq(p,
 | `δood_le`, `listHi_v1`, `binding_bound_le` | `PcsBindingRom.lean`, `PcsBinding.lean` | `C(L, 2) · n / 2^192 ≤ 2^-156` at every `15 ≤ n ≤ 28` with the certified lists (`decide +kernel`); `≤ 2^-152` for `L ≤ 2^18`, `n ≤ 32` |
 | **`ood_binding_coords`**, `ood_binding_coords_v1` | `PcsBindingCoords.lean` | **the deployed point**, no out-of-domain oracle: the adversary holds Keccak-256 and Keccak-f[1600] only (`KeccakCalls`), a root's point is read off the Keccak-256 answers at `oodInput n root j`, coordinate `j` the element of the answer's low 24 bytes (`oodPointOf`; on total answers `oodPointWith`, `oodPointOf_total`), the lists off the final answers: `Pr[BindBadC] ≤ Q · δc n + Q (Q + 1) / 2^256`, `δc n = C(L, 2) / 2^192`; at version 1's shapes `≤ Q · 2^-160 + Q (Q + 1) / 2^256` |
 | `aff_colEval`, `pairBad_unique`, `card_badVal`, `card_coordOf_mem` | `PcsBindingCoords.lean` | the step: `f(p)` is affine in each coordinate; for two distinct members whose difference does not vanish on the points consistent with the coordinates asked so far, one more coordinate makes it vanish there for at most one value; at most `C(L, 2)` such values; `2^64` answers give each value |
+| **`pcs_sound_oracle`**, `pcs_sound_any_oracle` | `PcsOracle.lean` | **the deployed verifier**, the out-of-domain point read off Keccak-256 by the verifier itself (`pcsVerifyWithHashO`, `oodPointM`: `n` queries at `oodInput n root j` after the root check, `pcsVerifierO`), its event read off the final cache (`PcsDoomedO`, `zOfCache`): `pcs_sound`'s bound `openingBound QA`, for claims of any `n` `14 · openingBound QA`. The random oracle split on the out-of-domain inputs (`split_eq`: the average over the tables `g` of their answers, `avg_update`), each split world `pcs_sound`'s experiment at the point `zOfG g` (`couple`, `sim_verifierO`, `isTotalQueryBound_implG`), the events agreeing (`verifierO_present`, `doomed_transfer`); the `46`-byte inputs are no Merkle input (`run_congr`, `extract_congr`) |
+| **`pcs_union_sound_oracle`** | `PcsUnionOracle.lean` | `pcs_union_sound` with the point read off Keccak-256 at a set `S` of sizes and the fixed `zOf n` at the others (`pUVerO`, `PUDoomedO`), the bound unchanged, `(QA + QV) · (ε + 5 (QA + QV) / 2^256)`: the random oracle split on the out-of-domain inputs of every size at once (`OodAll`, `zMix`; the fixed-point verifier asks no `46`-byte input, `sim_pcsVerifier`). What `formal/RecCompose` charges π2's eight openings with (`S` the sizes `24`, `28`, `W`'s and `Q`'s) |
+| `verifierO_present_of`, `grows_randomOracle` | `PcsUnionOracle.lean` | an accepting `pcsVerifierO` asked its root's out-of-domain inputs, under any implementation that records its answers (`Grows`) |
+| `pcsVerifyWithHashO_pure`, `pcsVerifyWithHashO_id`, `oodPointWith_keccak256` | `PcsUnionOracle.lean` | over a hash function `h` the oracle verifier is `pcsVerifyWithHash` at `oodPointWith h n` (what an honest out-of-domain answer is computed at); at the deployed Keccak-256 that point is `oodPoint` |
 | `δc_le`, `δc_27` | `PcsBindingCoords.lean` | `C(L, 2) / 2^192 ≤ 2^-160` at every `15 ≤ n ≤ 28`, `≤ 2^-168` at `n = 27` (certified lists, `decide +kernel`) |
 
 ```lean
@@ -429,12 +435,13 @@ claims, so claims on one commitment may be declared and proven separately. The t
 
 **What is not formal** (beyond the bridge's [assumptions](#assumptions)):
 
-1. **The two experiments.** `pcs_sound` is in mumbai's two-oracle model with the out-of-domain point a fixed
-   function `zOf` of the root (every function: the deployed `oodPoint` computed with mumbai's Keccak-256, as the
-   layout id of version 2 is); `ood_binding_coords` is in the same two-oracle model but reads the point off the
-   oracle's Keccak-256 answers (`ood_binding_rom` adds an independent out-of-domain oracle). The union bound above
-   adds probabilities from the two theorems; a single experiment would need `pcs_sound` with `zOf` the point read
-   off the oracle's answers (the verifier's `n` extra Keccak-256 queries) rather than a fixed function.
+1. **The two experiments**: no longer a gap. `pcs_sound` takes the out-of-domain point as a fixed function `zOf` of
+   the root (every function: the deployed `oodPoint` computed with mumbai's Keccak-256, as the layout id of version 2
+   is); `pcs_sound_oracle` (one size) and `pcs_union_sound_oracle` (several, charged once) are the same bound with the
+   verifier reading the point off the oracle's Keccak-256 answers, as `ood_binding_coords` does, so the two terms
+   above are events of one experiment (`ood_binding_rom` adds an independent out-of-domain oracle). `formal/RecCompose`
+   composes them so (`FsBind.prEvent_doomFG_p2Ops_le`: the eight openings once, then `Q`'s binding read off the run's
+   final cache).
 2. **The out-of-domain point as one oracle answer**: no longer a gap. `ood_binding_coords` reads the deployed
    point, `n` Keccak-256 answers at the inputs `oodInput n root j`, each in its low 24 bytes.
 3. **The transcription is the Rust** by execution (below), not by proof; `MIN_VARIABLES`, `MAX_VARIABLES`,
@@ -452,8 +459,10 @@ out-of-domain point and compares them with the Rust's, accepts the honest proof,
 out-of-domain answer, a wrong root, a changed stream scalar, a changed leaf word, and the honest proof against
 another out-of-domain point (so the weight reads `z`): `3 PCS openings; all checks: true`, 39 s on h1.
 
-**What downstream must change to use version 1** (nothing breaks now: `formal/Statement`, `EndToEnd`, `UniKeccak`,
-`RecCompose` build unchanged against this package):
+**What downstream changes to use version 1**: done in `UniKeccak`/`UniKeccakSound` (π1's three claims, `pcs_union_sound`
+at the fixed `oodPoint`) and `RecStatement`/`RecCompose` (π2's eight claims: `pcs_union_sound_oracle`, the point read
+off Keccak-256 at `W`'s and `Q`'s sizes; `Q`'s three claims on one commitment bound by `ood_binding_coords`,
+`RecCompose.qOodBinding`). What a user changes:
 
 * the openings: each commitment's claims become PCS claims on its stack (`f` the stack's polynomial, `colEval`),
   their event `PcsDoomed` in place of `OpeningDoomed` / `ours_sound_public`'s (table terms via `Layout` and the
@@ -463,8 +472,8 @@ another out-of-domain point (so the weight reads `z`): `3 PCS openings; all chec
   layout words);
 * the composition: a commitment now carries `ood`; with `two_openings_one_polynomial` and `ood_binding_coords`
   (or `ood_binding_rom`), claims on one root may be split over openings, and the union over the list (`Gaps` 4,
-  `LargeMargins`) can be replaced by the binding term; the point must be the oracle's in the composed experiment
-  (point 1 above).
+  `LargeMargins`) can be replaced by the binding term; the point is the oracle's in the composed experiment
+  (`pcs_sound_oracle`, `pcs_union_sound_oracle`: point 1 above).
 
 ## Assumptions
 
@@ -513,7 +522,9 @@ it now also runs every opening against the weight without the gadget's term).
 
 The `Pcs*` files (version 1) build in the end-to-end workspace (`cd formal/EndToEnd && lake build WhirBridge`,
 about 15 s for the four modules on h1, `/root/pcs-quotient-fv/leanPCS-main`, branch `lean-whir-v1`); `WhirBridge`,
-`Soundness`, `E2ECompleteness`, `Evm`, `ZK` rebuild unchanged over them.
+`Soundness`, `E2ECompleteness`, `Evm`, `ZK` rebuild unchanged over them. `PcsOracle.lean`, `PcsBindingCoords.lean`
+(from the membership branch, byte for byte) and `PcsUnionOracle.lean` build with `lake build WhirBridge RecStatement`
+(branch `lean-pi2v3`).
 
 The `Large*` files were built at `/root/pcs-quotient-fv/whir-large` (a copy of `whir-bridge-gadget`, the same
 `../leanervm`): the five modules build in about 20 s (their kernel decisions, `shapeOK` at `128` and `129` for

@@ -20,16 +20,18 @@ theorem Compiled.compile_sound_end (hc : compile (ofRG g rootsAt iv) = .ok c) {p
 - **`EndStatement`.** On the public input `pubW w` and the stream `streamW r w` that the witness's free bits encode,
   with `V = rgVals g iv (pubW w) (streamW r w)` (`RecGraph.evalNodes` of `g` over Keccak-f[1600]):
   - the statement port carries the public input's four words as RecGraph reads them (`beWordAt`);
-  - root `i`'s port carries the big-endian words of the stream's bytes `at + 24, at + 16, at + 8, at`, which are
-    a claim's root word's limbs: π1's stream carries a root as its root word, its two WHIR scalars;
+  - root `i`'s port carries the big-endian words of the stream's bytes `at + 24, at + 16, at + 8, at`: the four limbs
+    of the root's 32 bytes as the stream carries them, a PCS claim's root field;
   - the `m`-th zero port carries `V`'s value of the `m`-th zero check whose image is not a constant, and every other
     zero check is 0 (`compile_sound_zero_end`, `compile_sound_zero_const`);
   - **the claims π2's verifier rebuilds from the ports** (`Circuit.callInputs`, `spec.rs`'s
     `Circuit::call_inputs`) are `g`'s call words in RecGraph's semantics, call by call and word by word, as
-    a claim holds them (`pcsWord`): a setup root (a constant word 0, the hash as π1's contract holds it) as its root
-    word (`machine::root_word`: each 16-byte half reversed). Every other word is byte for byte the same, a stream root
-    (already its root word) and pairs' coordinates included (`compile_sound_callInputs`, `compile_sound_calls`).
-    Before R1 a stream root's word was reversed too, which named a root other than the one π1's prover commits.
+    a claim holds them (`pcsWord`, the identity on the EIP's PCS claims): every word byte for byte, a setup root (a
+    constant word 0), a stream root and pairs' coordinates included (`compile_sound_callInputs`,
+    `compile_sound_calls`). On the earlier layout-word claims a setup root was held as its root word
+    (`machine::root_word`, each 16-byte half reversed, `rootWordBytes`), and before R1 a stream root's word was
+    reversed too, which named a root other than the one π1's prover commits. The compiler keeps constant call words
+    as they are, as the Rust's since `2775f816`.
 - **Element ports.** `compile_sound_element_end`: element `e`'s port carries `V`'s value of any original node the
   expansion maps to the calls' `e`-th element node.
 - **The Keccak VM's π1-rec3.** `RecGraphKeccak.pi1rec3K_end` (`formal/RecGraphKeccak/RecGraphKeccak/Circuit.lean`) is
@@ -59,7 +61,7 @@ theorem Compiled.compile_sound_end (hc : compile (ofRG g rootsAt iv) = .ok c) {p
   - The calls check (`callsOk`) ties π2's call words to π1's.
   - `pair_val`: a pair's coordinate is `pair_point`'s, on the expanded graph's values (`y_1 = z·z + z`,
     `y_0 = z + β_1 y_1`, `β_1 = UniStatement.cantorBeta1`).
-  - The byte lemmas cover the rest: a root port's limbs rebuild the root word (`root_bytes`), and an element port's
+  - The byte lemmas cover the rest: a root port's limbs rebuild the root's 32 bytes (`root_bytes`), and an element port's
     limbs rebuild the element (`limbsE_limbsL`).
 
 ### The checks the expansion and the calls need (`Expand.lean`, `Check.lean`)
@@ -74,7 +76,7 @@ theorem Compiled.compile_sound_end (hc : compile (ofRG g rootsAt iv) = .ok c) {p
 
   Without the state typing, a dropped `x + 0` could hand a hash a state where the graph has an element.
 - **`callsOk`:** π2's call words against π1's, word by word:
-  - a constant's bytes, with word 0 the root word of the graph's constant (a setup root's hash);
+  - a constant's bytes, word 0 (a setup root's hash) included, as they are;
   - a stream word (word 0 only) is a root port at its offset;
   - a node word (never word 0) is a live constant, an element port's node, or a pair's coordinate of an element
     port's challenge.
