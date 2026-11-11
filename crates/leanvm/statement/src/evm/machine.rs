@@ -238,7 +238,9 @@ fn frame_data_load<W: InterpreterTypes, H: ?Sized>(context: InstructionContext<'
             let n = 32.min(data.len() - offset);
             word[..n].copy_from_slice(&data[offset..offset + n]);
         }
-        if offset >= 1 {
+        // A payload read after a hash of a well-formed claim is a claim's check; another (a frame word a verifier
+        // reads as public data, after its seed or a transcript's hash) checks nothing.
+        if offset >= 1 && well_formed(&running.last) {
             let last = running.last.clone();
             if running.declare_all.as_ref().is_some_and(|declares| declares(&last)) {
                 word = keccak256(&last).0;

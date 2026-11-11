@@ -170,6 +170,8 @@ pub struct Recorder {
     pub roots: Vec<u32>,
     /// The stream's bytes, by the phase that reads them.
     pub reads: Vec<(&'static str, u32)>,
+    /// Frame words read (`Channel::next_frame`).
+    pub frames: usize,
 }
 
 impl Recorder {
@@ -181,6 +183,7 @@ impl Recorder {
             absorbed: 0,
             roots: Vec::new(),
             reads: Vec::new(),
+            frames: 0,
         }
     }
 
@@ -252,5 +255,18 @@ impl Channel<Sym> for Recorder {
     fn next_integer(&mut self, bytes: usize) -> Result<Sym, VerifierError> {
         assert!((1..=8).contains(&bytes));
         Ok(self.input(bytes as u8))
+    }
+
+    /// A 20-byte read: the contract's `CALLDATALOAD` shifted right by 96, the element with `c2 < 2^32`.
+    fn next_narrow(&mut self) -> Result<Sym, VerifierError> {
+        Ok(self.input(20))
+    }
+
+    /// The `j`-th frame word read: the statement's words `4 + 4j .. 8 + 4j` (`codegen::Entry::frame`'s payload `j`).
+    fn next_frame(&mut self) -> Result<[Sym; 4], VerifierError> {
+        let _phase = crate::scalar::enter(CALLDATA);
+        let first = 4 + 4 * self.frames;
+        self.frames += 1;
+        Ok(std::array::from_fn(|l| Sym::new(Node::Statement((first + l) as u8))))
     }
 }

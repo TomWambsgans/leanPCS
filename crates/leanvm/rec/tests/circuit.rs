@@ -151,9 +151,11 @@ fn run(name: &str, layout: Layout, log_n: u8, fill: (f64, f64)) {
         c.permutations * keccak_positions(layout),
         "{name}: Keccak-f's positions"
     );
+    // At most two blocks a region on average; three where the rows fill `2^L` but for a few (π1-rec3 at 400
+    // signatures with `C1`'s claim hashed in the circuit: 99.9%, little room to pad a region to fewer blocks).
     assert!(
-        s.blocks <= 2 * s.rows.len(),
-        "{name}: at most two blocks a region on average"
+        s.blocks <= 3 * s.rows.len(),
+        "{name}: at most three blocks a region on average"
     );
     let circuit = &c.finished.circuit;
     let w = &c.finished.witness;
@@ -166,13 +168,21 @@ fn run(name: &str, layout: Layout, log_n: u8, fill: (f64, f64)) {
     );
     // The calls on the public inputs are the vector's claims, word by word (root, out-of-domain answer, point,
     // value: the claims the contract packs and hashes).
-    let words: Vec<Vec<u8>> = v.claims.iter().map(|claim| claim_words(claim)).collect();
+    // The claims hashed in the circuit are the vector's by their Keccak-256s; the others by their words.
+    let hashed: Vec<usize> = circuit.hashed.iter().map(|&i| i as usize).collect();
+    let words: Vec<Vec<u8>> = (v.claims.iter().enumerate())
+        .filter(|(i, _)| !hashed.contains(i))
+        .map(|(_, claim)| claim_words(claim))
+        .collect();
     assert_eq!(circuit.call_inputs(&c.public), words, "{name}: the calls are the vector's");
-    assert_eq!(
-        circuit.public_from_calls(v.public, &words).as_ref(),
-        Some(&c.public),
-        "{name}: the public inputs are read back from the calls"
-    );
+    let hashes: Vec<[u8; 32]> =
+        hashed.iter().map(|&i| leanvm_statement::transcript::keccak256(&v.claims[i])).collect();
+    assert_eq!(c.public.claim_hashes, hashes, "{name}: the claim hashes are the vector's claims'");
+    let back = circuit.public_from_calls(v.public, &words).map(|p| leanvm_rec::circuit::spec::PublicInputs {
+        claim_hashes: hashes.clone(),
+        ..p
+    });
+    assert_eq!(back.as_ref(), Some(&c.public), "{name}: the public inputs are read back from the calls");
     // The digests and the elements are the evaluator's.
     let seed = keccak_seed(&NAME, &iv, &v.public);
     let values = evaluate(&c.expanded, seed, &v.public, &stream);
@@ -209,7 +219,7 @@ fn run(name: &str, layout: Layout, log_n: u8, fill: (f64, f64)) {
         "{name}: an element"
     );
     let mut other = c.public.clone();
-    other.roots[1][9] ^= 1;
+    other.roots[0][9] ^= 1;
     assert!(
         matches!(circuit.check(w, &other), Err(Failure::Public { .. })),
         "{name}: a root"
@@ -262,7 +272,7 @@ fn keccak_rec3_128_d16v() {
 /// π1-rec3 at 400 signatures, D16v: `2^24` positions at 95.0%, the quotient `15N = 2^27.91` words, under `2^28`.
 #[test]
 fn keccak_rec3_400_d16v() {
-    deep(|| run("keccak_rec3", Layout::D16v, 24, (0.90, 0.99)));
+    deep(|| run("keccak_rec3", Layout::D16v, 24, (0.90, 1.0)));
 }
 
 /// The main line (every challenge hashed, the batch one variable a round) at 32 signatures, D16v: it does not fit

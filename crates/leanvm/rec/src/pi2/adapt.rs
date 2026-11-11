@@ -63,6 +63,7 @@ pub fn public_counts(c: &spec::Circuit) -> (usize, usize) {
     for p in &c.ports {
         match p.source {
             spec::Source::Root(i) => see(Some(i), None),
+            spec::Source::ClaimHash(i) => assert!((i as usize) < c.hashed.len(), "a claim hash of a hashed claim"),
             spec::Source::Element(i) => see(None, Some(i)),
             _ => {}
         }
@@ -119,8 +120,15 @@ pub fn adapt(c: &spec::Circuit) -> Circuit {
         }
     }
     let (roots, elements) = public_counts(c);
-    let reads = [vec![Read::Root; roots], vec![Read::Scalar; elements]].concat();
-    let element_at = |i: u32| (4 + 2 * roots + i as usize) as u16;
+    let element_read = |e: usize| if c.narrow.contains(&(e as u32)) { Read::Narrow } else { Read::Scalar };
+    // The hashed claims' Keccak-256s from the frame (π1's claims are its payloads 0, 1, …, in order), then the
+    // stream's roots and elements.
+    let hashes = c.hashed.len();
+    let frames: Vec<Read> = c.hashed.iter().map(|&ci| Read::Frame(ci as u8)).collect();
+    let reads = [frames, vec![Read::Root; roots], (0..elements).map(element_read).collect()].concat();
+    let root_at = |i: u32| (4 + 4 * hashes + 2 * i as usize) as u16;
+    let element_at = |i: u32| (4 + 4 * hashes + 2 * roots + i as usize) as u16;
+    let hash_at = |i: u32| (4 + 4 * i as usize) as u16;
     let y = Coeff::e(F192::Y);
     let public = c
         .ports
@@ -136,7 +144,14 @@ pub fn adapt(c: &spec::Circuit) -> Circuit {
                     (Coeff { gamma: 1, ..y }, 3),
                 ],
                 // A root's halves are bytes 0..16 (L_3, L_2) and 16..32 (L_1, L_0): half 1 + γ half 0.
-                spec::Source::Root(i) => vec![(Coeff::ONE, 4 + 2 * i as u16 + 1), (Coeff::gamma(1), 4 + 2 * i as u16)],
+                spec::Source::Root(i) => vec![(Coeff::ONE, root_at(i) + 1), (Coeff::gamma(1), root_at(i))],
+                // As the statement: (H_0 + Y H_1) + γ (H_2 + Y H_3), the frame word's scalars.
+                spec::Source::ClaimHash(i) => vec![
+                    (Coeff::ONE, hash_at(i)),
+                    (y, hash_at(i) + 1),
+                    (Coeff::gamma(1), hash_at(i) + 2),
+                    (Coeff { gamma: 1, ..y }, hash_at(i) + 3),
+                ],
                 spec::Source::Element(i) => vec![(Coeff::ONE, element_at(i))],
                 spec::Source::Zero | spec::Source::Pad => vec![],
             };
@@ -173,12 +188,12 @@ pub fn replay(plan: &WitnessPlan, inputs: &Inputs) -> (Vec<F64>, spec::PublicInp
     plan.witness_with(inputs, |k| F64(k.0))
 }
 
-/// The public input and the stream's public values (the roots as root words, then the elements).
+/// The public input and the public values: the hashed claims' Keccak-256s (frame words), the roots as root words,
+/// then the elements.
 pub fn public_values(public: &spec::PublicInputs) -> ([u8; 32], Vec<PublicValue>) {
-    let values = public
-        .roots
-        .iter()
-        .map(|&r| PublicValue::Root(r))
+    let values = (public.claim_hashes.iter())
+        .map(|&h| PublicValue::Word(h))
+        .chain(public.roots.iter().map(|&r| PublicValue::Root(r)))
         .chain(
             public
                 .elements

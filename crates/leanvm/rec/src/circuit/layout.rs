@@ -156,6 +156,8 @@ pub struct Builder {
     /// Words given for free values and self-referential slots.
     given: BTreeMap<Value, K>,
     pub calls: Vec<Vec<CallWord>>,
+    pub narrow: Vec<u32>,
+    pub hashed: Vec<u32>,
 }
 
 /// The finished layout: the circuit, its honest witness, and its counts.
@@ -184,6 +186,8 @@ impl Builder {
             producer: Vec::new(),
             given: BTreeMap::new(),
             calls: Vec::new(),
+            narrow: Vec::new(),
+            hashed: Vec::new(),
         }
     }
 
@@ -651,6 +655,8 @@ impl Builder {
             kappa,
             ports,
             calls: std::mem::take(&mut self.calls),
+            narrow: std::mem::take(&mut self.narrow),
+            hashed: std::mem::take(&mut self.hashed),
         };
         stats.pairs = circuit.pairs().len();
         stats.rows_in_blocks = padded.iter().sum();

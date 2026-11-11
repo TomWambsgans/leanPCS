@@ -22,6 +22,7 @@ fn no_public() -> PublicInputs {
         statement: [0; 32],
         roots: vec![],
         elements: vec![],
+        claim_hashes: vec![],
     }
 }
 

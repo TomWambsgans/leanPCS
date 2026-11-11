@@ -27,7 +27,7 @@ use std::time::Instant;
 
 use fiat_shamir::merkle::Hash;
 use leanvm_statement::field::E;
-use leanvm_statement::transcript::{KeccakWriter, keccak_seed};
+use leanvm_statement::transcript::KeccakWriter;
 use primitives::field::{F64, F192};
 use quotient::domain::{beta, chain, point};
 use quotient::ntt::{self, ESplat, Ex8, Kx8, Kx8U, MixedSum};
@@ -38,7 +38,7 @@ pub use super::verifier::{
     CERTIFIED_FROM, EMPTY_SLOTS, MIN_CERTIFIED_STACK, MIN_LOG_STACK, P_SLOT, QP_SLOT, QUOTIENT_SLOTS, h_slot, q_slot,
     stack_vars,
 };
-use super::verifier::{self, NAME, Reduced, Spec, claim, to_e, to_f192};
+use super::verifier::{self, Reduced, Spec, claim, to_e, to_f192};
 
 /// Words copied by the workers in runs of this many (`parallel::map_collect` writes each run whole).
 const COPY_RUN: usize = 64;
@@ -141,6 +141,19 @@ pub enum PublicValue {
     Integer(u64),
     Root([u8; 32]),
     Scalar(F192),
+    /// A frame word (`Read::Frame`): not in the stream, hashed by the seed.
+    Word([u8; 32]),
+}
+
+/// The frame words among `values`, in order: what the seed hashes after the public input.
+pub fn frame_words(values: &[PublicValue]) -> Vec<[u8; 32]> {
+    values
+        .iter()
+        .filter_map(|v| match v {
+            PublicValue::Word(w) => Some(*w),
+            _ => None,
+        })
+        .collect()
 }
 
 /// The two scalars `Channel::next_root` reads from 32 bytes: each 16-byte half big-endian, `c1` then `c0`.
@@ -157,6 +170,7 @@ pub fn public_scalars(public_input: &[u8; 32], values: &[PublicValue]) -> Vec<F1
             PublicValue::Integer(x) => out.push(F192::new(x, 0, 0)),
             PublicValue::Root(bytes) => out.extend(halves(&bytes)),
             PublicValue::Scalar(x) => out.push(x),
+            PublicValue::Word(w) => out.extend(verifier::statement_words(&w).map(to_f192)),
         }
     }
     out
@@ -1034,12 +1048,14 @@ pub fn prove_with(
         clock = Instant::now();
     };
     let [wv, qv, _] = stack_vars(m);
-    let mut writer = KeccakWriter::new(keccak_seed(&NAME, iv, public_input));
+    let mut writer = KeccakWriter::new(verifier::seed(iv, public_input, &frame_words(values)));
     for (read, value) in circuit.reads.iter().zip(values) {
         match (*read, *value) {
             (Read::Integer(bytes), PublicValue::Integer(x)) => writer.send_integer(x, bytes as usize),
             (Read::Root, PublicValue::Root(bytes)) => writer.send_root(halves(&bytes).map(to_e)),
             (Read::Scalar, PublicValue::Scalar(x)) => writer.send(to_e(x)),
+            (Read::Narrow, PublicValue::Scalar(x)) => writer.send_narrow(to_e(x)),
+            (Read::Frame(_), PublicValue::Word(_)) => {}
             other => panic!("a public value of another kind than its read: {other:?}"),
         }
     }
@@ -1180,7 +1196,8 @@ pub fn prove_with(
     lap("t: the values", &mut timings);
 
     let stream = writer.stream;
-    let reduced = verifier::verify(spec, iv, public_input, &stream).expect("the verifier accepts its own stream");
+    let reduced = verifier::verify(spec, iv, public_input, &frame_words(values), &stream)
+        .expect("the verifier accepts its own stream");
     Proved {
         stream,
         roots: [witness_committed.root, quotient_committed.root],

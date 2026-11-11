@@ -87,7 +87,7 @@ one χ gate on bits (3,878,612 of 2^22 rows), its claims opened by leanVM's WHIR
 **Shared.**
 
 - `crates/evm_link`: the compilation and assembly into one contract that the code generators share. The membership
-  contract (6,314 B) and π2's (13.2 KB) fit EIP-170; π1's own contract (about 86 KB) does not, and is built only to
+  contract (6,314 B) and π2's (17.2 KB) fit EIP-170; π1's own contract (about 86 KB) does not, and is built only to
   test it against its Rust verifier and to record the vectors' claims (the recursion verifies π1 inside π2).
 - `crates/vendor/leanvm-c445e3d5`: leanVM `c445e3d5`'s `primitives`, `fiat_shamir`, `pcs`, `parallel`, `verifier`,
   `bench`.
@@ -117,16 +117,17 @@ its PCS gas on both sides as the EIP draft has it.
 | | ZK Merkle membership | leanVM by recursion (128 signatures) |
 |---|---|---|
 | Prover | 2.8 s (reduction 1.71 s, openings 1.08 s), 8.6 GiB (`bench.sh`, 2026-11-11, high power mode), with the EIP's claims (four commitments up to `2^28` words, six openings; `docs/membership/EIP_CLAIMS.md`); before them, with the hidden layouts, 2.2 s (reduction 1.46 s, openings 0.76 s) | trace → π1-rec3 → π2 and openings, on the PCS claims (`tests/pipeline.rs`): **3.7 s per proof** (median of 5, `bench.sh`, 2026-11-11, high power mode: π1-rec3 with its openings 1.41 s, π2 0.95 s, π2's five openings 1.25 s), 14.3 GB. Before the PCS claims (π2's three stacks opened once each, opening version 3): 2.06 s on this Mac, 0.59 s on an AMD EPYC 9355P (64 threads) |
-| Calldata | 461 B | 1,101 B (61 zero) |
-| Gas | 18,899 execution; **52,856** transaction under EIP-8141 with `pcs_gas` in the floor (floor-bound: 64 · (461 + 193) + 11,000; standard 40,315) | 32,794 execution; frame transaction (EIP-8141, EIP-7976's floor, no base or per-frame cost): standard 49,678, floor **70,464** |
+| Calldata | 461 B | 941 B (8 zero): π1's claim on `C1` hashed in π2's circuit, narrow challenges as 20 bytes, no selector ([`PERF_GAS.md`](docs/leanvm/rec/PERF_GAS.md); `main`: 1,101 B) |
+| Gas | 18,899 execution; **52,856** transaction under EIP-8141 with `pcs_gas` in the floor (floor-bound: 64 · (461 + 193) + 11,000; standard 40,315) | 37,406 execution; frame transaction (EIP-8141, EIP-7976's floor, no base or per-frame cost): standard 52,366, floor **60,224** (`main`: 32,794, 49,678, 70,464) |
 | Claims | 6 declared | 8 (π1's 3, π2's 5), each the EIP draft's PCS claim |
-| With the frame (1 + 32 B a claim) and the PCS gas | included above (193 B, 11,000) | **99,912** (257 B, `pcs_gas` 13,000 on both sides; the floor binds) |
+| With the frame (1 + 32 B a claim) and the PCS gas | included above (193 B, 11,000) | **89,672** (257 B, `pcs_gas` 13,000 on both sides; the floor binds; `main`: 99,912) |
 | Deployment | 6,667-byte code, 1,536,984 gas | one contract |
 
 - Membership: checking the claims declared costs 61 gas once (the frame's mode and scheme) and 43 a claim beyond its
   `KECCAK256`. Its verifier: reduction < 1 ms, openings 5 ms (248 / 278 / 333 KiB).
-- leanVM: at 400 signatures (the real proof), 33,740 execution; standard 50,648, floor 70,464; 99,912 with the frame
-  and the PCS gas (`tests/pi2_real.rs`, `real_end_to_end`). π1 alone as a contract (the main line, 128 signatures):
+- leanVM: at 400 signatures (the real proof), 961 B, 42,308 execution; standard 57,612, floor 61,504; 90,952 with the
+  frame and the PCS gas (π2's circuit at 99.9% of `2^24`; past it, `C1`'s claim is encoded by the contract as on
+  `main`) (`tests/pi2_real.rs`, `real_end_to_end`). π1 alone as a contract (the main line, 128 signatures):
   8,069 B calldata, 231,511 execution, 3 claims; standard 360,255, floor 516,416 (`keccak_gas_report`). The prover
   on the PCS claims (one opening a claim, every opening on leanVM's ladder): 3.7 s a proof (`bench.sh`, median of
   5, 2026-11-11: π1-rec3 with its openings 1.41 s, π2 0.95 s, π2's five openings 1.25 s), against 2.06 s before (three openings of
@@ -234,6 +235,9 @@ one-point claims each opened by a version-1 PCS opening, the quotient table in t
 
 ## Remaining
 
+- leanVM in Lean (branch `perf/leanvm-gas`): the Lean states `main`'s π2 (π1's three claims encoded by the contract,
+  24-byte challenges, a selector); this branch's (`C1`'s claim hashed in π2's circuit, read from the frame) needs the
+  changes [`PERF_GAS.md`](docs/leanvm/rec/PERF_GAS.md) lists ("What the Lean would need").
 - Membership: zero knowledge with a pre-proof phase (the distinguisher's queries before the proof); simulation-
   extractability.
 - leanVM in Lean: (1) the model gap: π2's circuit computes π1-rec3's Fiat–Shamir at the real Keccak-f[1600] while
