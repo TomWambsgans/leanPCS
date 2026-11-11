@@ -85,3 +85,26 @@ its three openings 0.07 s, π2's proof 0.23 s (`Q`'s commitment 95 ms, its quoti
 three 0.22 s: per opening the level-1 commitment 30 ms, level 2 12 ms).
 
 `PIPELINE_TRACING=1` prints the last pass's trace tree (the WHIR spans, π1, π2's proof and openings).
+
+## Combined with `perf/membership-prover` (branch `perf/provers-combined`)
+
+The membership line's speedups (`docs/membership/PERF_PROVER.md`) merged in. Where both changed the same code: the
+out-of-domain answer is this branch's lane products (one vectored pass, kept for the openings) rather than the
+row-wise sum (as fast, and it serves the openings); the commitment keeps its lane products and its zero-lane flags
+(scanned only when the codeword is not kept, the one case they are used); the batched openings take the level-0 rows'
+source (`L0Rows`: the kept codeword, encoded again, or encoded skipping the zero lanes). Both lines' proofs are main's
+(the membership bench's digest `95df593d…`, `proofs_are_pinned`; the four leanVM fingerprints).
+
+h3, both benchmarks alternately, three rounds, medians (`cargo bench -p quotient --bench membership`'s prover total;
+the pipeline's total, `PIPELINE_REPEAT=5`); a round another agent's job perturbed left out:
+
+| | main | `perf/membership-prover` | `perf/leanvm-prover` | combined |
+|---|---|---|---|---|
+| membership, 64 threads | 0.915 s | 0.515 s | 0.851 s | **0.516 s** |
+| leanVM, 64 threads | 0.922 s | 0.865 s | 0.839 s | **0.835 s** |
+| membership, 16 threads | 1.362 s | 0.841 s | 1.215 s | **0.829 s** |
+| leanVM, 16 threads | 1.547 s | 1.451 s | 1.407 s | **1.409 s** |
+| peak: membership; leanVM (64 threads) | 8.71 GiB; 15.9 GB | 6.83 GiB; 16.1 GB | 8.70 GiB; 16.1 GB | 6.82 GiB; 16.2 GB |
+
+The combination is as fast as each branch on its own line (within noise), not faster on leanVM: the membership
+branch's gains there (its one-pass answer) are the ones this branch makes too.
