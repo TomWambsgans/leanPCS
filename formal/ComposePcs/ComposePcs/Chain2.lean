@@ -6,7 +6,7 @@
 -- commitments, `W` and `T`, and the reduction of `formal/Kc3`. The generic lemmas of those files (pins,
 -- `prEvent_pinned_le`, collisions, `stab4`, the fresh-query engine) are reused as they are.
 import ComposePcs.Pinned4
-import Kc3.Protocol
+import Kc3.States
 
 /-!
 # The two-root chain of the deployed protocol, each root's candidates pinned by its out-of-domain answer
@@ -403,6 +403,18 @@ structure RoundsSound (P : Kc3.Params F) : Prop where
   third : ∀ (stmt : Stmt F) (g : P.Msg₁) (c : F × F × F) (R : P.Msg₂) (t : F) (v : (Fin 3 → F) × F),
     ¬ State₄ stmt g c R t →
       (Finset.univ.filter fun ρ : F => State₆ stmt g c R t v ρ).card ≤ P.E1 * Fintype.card F ^ 0
+
+/-- **F1's rounds give the counts** (`Kc3/States.lean`), given the circuit's pole condition. -/
+theorem roundsSound_of (hpole : P.PoleCondition) : RoundsSound P where
+  first stmt g h := by
+    convert P.card_state₂_le hpole stmt g h using 2
+  second stmt g c R h := by
+    rw [pow_zero, mul_one]
+    exact le_trans (by convert P.card_state₄_le stmt g c R h using 2) P.D2_le_E1
+  third stmt g c R t v h := by
+    rw [pow_zero, mul_one]
+    exact le_trans (by convert P.card_state₆_le stmt g c R t h v using 2)
+      (P.three_le_D2.trans P.D2_le_E1)
 
 theorem roundError_eq_coe : P.roundError =
     (((P.E1 : ℝ≥0) / (Fintype.card F : ℝ≥0) : ℝ≥0) : ℝ≥0∞) := by
