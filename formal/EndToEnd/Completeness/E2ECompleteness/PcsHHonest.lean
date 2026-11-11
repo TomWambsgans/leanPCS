@@ -254,11 +254,14 @@ variable (P : _root_.Kc3.Params E) (hM : PcsBridge.Kc3.Matches P s₀) (hZ : P.v
   (hG : GoodAt w coins P α β t ρ)
 include hM hZ hsat hh htop hG
 
-/-- **The honest second message is consistent**, its `q` the prover's. -/
-theorem consistent_gen : P.Consistent (Kc3Deployed.stmtOf stmt) (gH w coins)
-    (Kc3.Honest.honestMsg P (Qp (membership logRows) (cellsOf w) coins stmt α β μ)
-      (Hp (membership logRows) (cellsOf w) coins α β)
-      (blindPoly coins + C (b2Of (membership logRows) stmt (cellsOf w) coins α β μ) * (X ^ 2 + X))) α β μ := by
+/-- **The prover's `q`**: `Z q` is the numerator with the whole blinding, `(q /ₘ Z)(0) = 0`, and `q`'s entries vanish
+past `2^25`. -/
+theorem quot_gen :
+    P.vCells * Qp (membership logRows) (cellsOf w) coins stmt α β μ =
+      Kc3.Honest.numer P (Kc3Deployed.stmtOf stmt) (gH w coins) α β μ (Hp (membership logRows) (cellsOf w) coins α β)
+        (blindPoly coins + C (b2Of (membership logRows) stmt (cellsOf w) coins α β μ) * (X ^ 2 + X)) ∧
+    (Qp (membership logRows) (cellsOf w) coins stmt α β μ /ₘ P.vCells).eval 0 = 0 ∧
+    ∀ j, 2 ^ 25 < j → j < 2 ^ 26 → (qHatOf (membership logRows) stmt (cellsOf w) coins α β μ).getD j 0 = 0 := by
   have hθ : P.θ = ofK (betaAt 1) := hM.theta
   have hn := nCells_of P hM
   have hdvd : P.vCells ∣ N0 P (membership logRows) (cellsOf w) coins stmt α β μ (cW w coins) := by
@@ -280,7 +283,52 @@ theorem consistent_gen : P.Consistent (Kc3Deployed.stmtOf stmt) (gH w coins)
   have hQ0 := Qp_div_eval_zero P (membership logRows) (cellsOf w) coins stmt α β μ (cW w coins) hθ hl_m (hw_m w coins)
     hs_m (hWc_m w coins) (hS_of P hM) hZ hM.vRows hM.pins hdvd hdegN hdegE
     hG.gamma
+  exact ⟨hZQ, hQ0, fun j h1 h2 => Qp_entries P (membership logRows) (cellsOf w) coins stmt α β μ (cW w coins) hθ hl_m
+    (hw_m w coins) hs_m (hWc_m w coins) (hS_of P hM) hZ hM.vRows hM.pins hdvd hdegN hdegE h1 h2⟩
+
+/-- **The honest second message is consistent**, its `q` the prover's. -/
+theorem consistent_gen : P.Consistent (Kc3Deployed.stmtOf stmt) (gH w coins)
+    (Kc3.Honest.honestMsg P (Qp (membership logRows) (cellsOf w) coins stmt α β μ)
+      (Hp (membership logRows) (cellsOf w) coins α β)
+      (blindPoly coins + C (b2Of (membership logRows) stmt (cellsOf w) coins α β μ) * (X ^ 2 + X))) α β μ := by
+  obtain ⟨hZQ, hQ0, -⟩ := quot_gen w coins P hM hZ hsat α β μ t ρ hh htop hG
   exact Kc3.Honest.consistent_honest P (Kc3Deployed.stmtOf stmt) (gH w coins) α β μ _ _ _ hZQ hQ0
+
+/-- The quotient table in `E`, by bits. -/
+noncomputable def cTq (stmt : Statement) (α β μ : E) : (Fin 28 → Bool) → E :=
+  fun b => ofK ((quotientTable (membership logRows) stmt (cellsOf w) coins α β μ).getD (Completeness.idx b) 0)
+
+/-- **The quotient table holds the honest second message.** -/
+theorem readTM_gen : PcsBridge.Kc3.readTM (cTq w coins stmt α β μ) =
+    Kc3.Honest.honestMsg P (Qp (membership logRows) (cellsOf w) coins stmt α β μ)
+      (Hp (membership logRows) (cellsOf w) coins α β)
+      (blindPoly coins + C (b2Of (membership logRows) stmt (cellsOf w) coins α β μ) * (X ^ 2 + X)) := by
+  obtain ⟨-, hQ0, hq⟩ := quot_gen w coins P hM hZ hsat α β μ t ρ hh htop hG
+  have hcT : ∀ b, cTq w coins stmt α β μ b = ofK ((tableOf (2 ^ cellVars (membership logRows).logRows)
+      (hHatOf (membership logRows) (cellsOf w) coins α β) (qHatOf (membership logRows) stmt (cellsOf w) coins α β μ)
+      (b2Of (membership logRows) stmt (cellsOf w) coins α β μ) coins).getD (Completeness.idx b) 0) := fun b => by
+    rw [cTq, quotientTable_eq]
+  have hq' : ∀ j, 2 ^ (24 + 1) < j → j < 2 ^ (24 + 2) →
+      (qHatOf (membership logRows) stmt (cellsOf w) coins α β μ).getD j 0 = 0 := hq
+  have hQ : Qp (membership logRows) (cellsOf w) coins stmt α β μ =
+      Novel.nov 0 (24 + 2) fun j => (qHatOf (membership logRows) stmt (cellsOf w) coins α β μ).getD j 0 := Qp_eq_nov _ _ _ _ _ _ _
+  have h1 : PcsBridge.Kc3.limbPoly (k := 24) ey (cTq w coins stmt α β μ) false false =
+      Qp (membership logRows) (cellsOf w) coins stmt α β μ %ₘ P.vCells := by
+    rw [limbPoly_ff _ hn_m _ _ _ coins _ hcT, slot_q 24 _ hq', hQ, hZ]
+  have h2 : PcsBridge.Kc3.limbPoly (k := 24) ey (cTq w coins stmt α β μ) true false =
+      (Qp (membership logRows) (cellsOf w) coins stmt α β μ /ₘ P.vCells) /ₘ X := by
+    rw [limbPoly_tf _ hn_m _ _ _ coins _ hcT]
+    rw [hQ, hZ] at hQ0
+    rw [slot_a1 24 (by norm_num) _ hq' hQ0, hQ, hZ]
+  have h3 : PcsBridge.Kc3.limbPoly (k := 24) ey (cTq w coins stmt α β μ) false true =
+      X * Hp (membership logRows) (cellsOf w) coins α β := by
+    rw [limbPoly_ft _ hn_m _ _ _ coins _ hcT, slot_b0 24 (by norm_num) _ (hHat_size w coins α β) htop, Hp]
+  have h4 : PcsBridge.Kc3.limbPoly (k := 24) ey (cTq w coins stmt α β μ) true true =
+      blindPoly coins + C (b2Of (membership logRows) stmt (cellsOf w) coins α β μ) * (X ^ 2 + X) := by
+    rw [limbPoly_tt _ hn_m _ _ _ coins _ hcT, slot_b1 24 (by norm_num)]
+  unfold PcsBridge.Kc3.readTM Kc3.Honest.honestMsg
+  rw [h1, h2, h3, h4]
+
 
 end Gen
 

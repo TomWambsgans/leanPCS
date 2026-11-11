@@ -160,4 +160,44 @@ theorem limbPoly_tableOf (n : ℕ) (hn : n = 2 ^ 24) (hHat qHat : Array E) (b2 :
     rw [hT]; funext b; rw [if_neg (by decide)]; exact Compose.Reduce.ofK_zero
   exact limbPoly_eq _ _ d κ h0 h1 h2 h3
 
+theorem slotOf_ff' (n : ℕ) (hHat qHat : Array E) (b2 : E) (coins : Coins) (i : ℕ) :
+    slotOf n hHat qHat b2 coins false false i = qHat.getD i 0 := by simp only [slotOf, ite_true]
+theorem slotOf_tf' (n : ℕ) (hHat qHat : Array E) (b2 : E) (coins : Coins) (i : ℕ) :
+    slotOf n hHat qHat b2 coins true false i = (divX (qhOf n qHat)).getD i 0 := by
+  simp only [slotOf, ite_true, Bool.true_eq_false, ite_false]
+theorem slotOf_ft' (n : ℕ) (hHat qHat : Array E) (b2 : E) (coins : Coins) (i : ℕ) :
+    slotOf n hHat qHat b2 coins false true i = (mulX hHat).getD i 0 := by
+  simp only [slotOf, ite_true, Bool.true_eq_false, ite_false]
+theorem slotOf_tt' (n : ℕ) (hHat qHat : Array E) (b2 : E) (coins : Coins) (i : ℕ) :
+    slotOf n hHat qHat b2 coins true true i = b1Of coins b2 i := by
+  simp only [slotOf, Bool.true_eq_false, ite_false]
+
+section Slots
+
+variable (n : ℕ) (hn : n = 2 ^ 24) (hHat qHat : Array E) (b2 : E) (coins : Coins) (cT : (Fin 28 → Bool) → E)
+  (hcT : ∀ b, cT b = ofK ((tableOf n hHat qHat b2 coins).getD (Completeness.idx b) 0))
+include hn hcT
+
+theorem limbPoly_ff : PcsBridge.Kc3.limbPoly (k := 24) ey cT false false =
+    tablePoly (fun b : Fin 24 → Bool => qHat.getD (Completeness.idx b) 0) := by
+  rw [limbPoly_tableOf n hn hHat qHat b2 coins cT hcT false false]
+  exact congrArg tablePoly (funext fun b => slotOf_ff' n hHat qHat b2 coins _)
+
+theorem limbPoly_tf : PcsBridge.Kc3.limbPoly (k := 24) ey cT true false =
+    tablePoly (fun b : Fin 24 → Bool => (divX (qhOf (2 ^ 24) qHat)).getD (Completeness.idx b) 0) := by
+  rw [limbPoly_tableOf n hn hHat qHat b2 coins cT hcT true false, ← hn]
+  exact congrArg tablePoly (funext fun b => slotOf_tf' n hHat qHat b2 coins _)
+
+theorem limbPoly_ft : PcsBridge.Kc3.limbPoly (k := 24) ey cT false true =
+    tablePoly (fun b : Fin 24 → Bool => (mulX hHat).getD (Completeness.idx b) 0) := by
+  rw [limbPoly_tableOf n hn hHat qHat b2 coins cT hcT false true]
+  exact congrArg tablePoly (funext fun b => slotOf_ft' n hHat qHat b2 coins _)
+
+theorem limbPoly_tt : PcsBridge.Kc3.limbPoly (k := 24) ey cT true true =
+    tablePoly (fun b : Fin 24 → Bool => b1Of coins b2 (Completeness.idx b)) := by
+  rw [limbPoly_tableOf n hn hHat qHat b2 coins cT hcT true true]
+  exact congrArg tablePoly (funext fun b => slotOf_tt' n hHat qHat b2 coins _)
+
+end Slots
+
 end E2ECompleteness.Pcs.H
