@@ -296,4 +296,49 @@ theorem tPoly_natDegree_le (hcard : P.T.card = 2 ^ 22) (gm : P.Msg₁) (hg : gm.
 
 end TPoly
 
+/-! ## The good challenges -/
+
+section Good
+
+variable (P : _root_.Kc3.Params E) (hM : PcsBridge.Kc3.Matches P s₀) (w : Secret) (coins : Coins)
+
+/-- `(α, β)` is degenerate. -/
+def ABad (α β : E) : Prop :=
+  β = 0 ∨ ¬ (∀ i : P.T × Fin 4, α + P.cells (gH w coins) i + β * P.pt i ≠ 0 ∧
+    α + P.cells (gH w coins) i + β * P.pt (P.σ i) ≠ 0) ∨
+    (Epoly P α β (cW w coins) /ₘ P.vCells).eval 0 = 0
+
+/-- The conic's denominator vanishes. -/
+def RBad (t ρ : E) : Prop :=
+  (witnessConic t (QuotientSecurity.sq t) ρ).1 + (witnessConic t (QuotientSecurity.sq t) ρ).2 = 0
+
+include hM
+
+/-- **Off the degenerate challenges, no denominator vanishes.** -/
+theorem goodAt_of (α β t ρ : E) (hab : ¬ ABad P w coins α β) (ht : (tPoly P (gH w coins) α β).eval t ≠ 0)
+    (hρ : ¬ RBad t ρ) : GoodAt w coins P α β t ρ := by
+  simp only [ABad, not_or, not_not] at hab
+  obtain ⟨-, hcells, hγ⟩ := hab
+  unfold tPoly at ht
+  simp only [Polynomial.eval_mul, Polynomial.eval_prod] at ht
+  obtain ⟨h1234, h5⟩ := mul_ne_zero_iff.mp ht
+  obtain ⟨h123, h4⟩ := mul_ne_zero_iff.mp h1234
+  obtain ⟨h12, h3⟩ := mul_ne_zero_iff.mp h123
+  obtain ⟨h1, h2⟩ := mul_ne_zero_iff.mp h12
+  have hv0 : P.rowValues (_root_.Kc3.Params.opened (gH w coins) t) t 0 = (P.cellPoly (gH w coins) 0).eval t := by
+    show P.cellAt (_root_.Kc3.Params.opened (gH w coins) t) t 0 = _
+    exact P.cellAt_opened _ t 0
+  refine ⟨hcells, hγ, ⟨fun k hk => ?_, ?_, ?_, ?_, fun k hk => ?_, hρ⟩⟩
+  · have := Finset.prod_ne_zero_iff.mp h1 k (Finset.mem_range.mpr hk)
+    simpa only [Polynomial.eval_add, eval_one, digitPoly_eval] using this
+  · simpa only [Polynomial.eval_add, Polynomial.eval_mul, eval_one, digitPoly_eval, eval_X] using h2
+  · rw [hv0]
+    simpa only [Polynomial.eval_add, Polynomial.eval_mul, digitPoly_eval, eval_X, _root_.Kc3.Params.dPoly,
+      _root_.Kc3.Params.dNextPoly, eval_C] using h3
+  · rw [← hM.vRows t]; exact h4
+  · have := Finset.prod_ne_zero_iff.mp h5 k (Finset.mem_range.mpr hk)
+    simpa only [Polynomial.eval_add, eval_X, eval_C] using this
+
+end Good
+
 end E2ECompleteness.Pcs.H
