@@ -5,3 +5,4 @@ import ComposePcs.Openings4
 import ComposePcs.AdversaryLog4
 import ComposePcs.Bits4
 import ComposePcs.Axioms
+import ComposePcs.Pinned4

@@ -1,5 +1,6 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 import ComposePcs.Bits4
+import ComposePcs.Pinned4
 
 /-! The axioms of `ComposePcs`'s theorems: `propext`, `Classical.choice` and `Quot.sound` only, checked
 when the module is built. -/
@@ -107,3 +108,19 @@ when the module is built. -/
 /-- info: 'ComposePcs.knowledgeSoundness_merkle_adv4_bits' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms ComposePcs.knowledgeSoundness_merkle_adv4_bits
+
+/-- info: 'ComposePcs.prEvent_pinned_le' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms ComposePcs.prEvent_pinned_le
+
+/-- info: 'ComposePcs.prob_round4P' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms ComposePcs.prob_round4P
+
+/-- info: 'ComposePcs.trace_core4P' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms ComposePcs.trace_core4P
+
+/-- info: 'ComposePcs.prob_advBad4P' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms ComposePcs.prob_advBad4P
