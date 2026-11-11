@@ -261,7 +261,7 @@ A push fingerprint the sent values give is derived (`D'_j = D_j + eq(α, 2)(g + 
 
 Each commitment's relations are combined by the powers of `ρ` (`Relations::combine`).
 
-**Claims, main line: the claims' encoding** (`crates/membership/evm/src/machine.rs`: point claims, `c` each). A batching
+**Claims, main line: the claims' encoding** (`crates/evm_link/src/machine.rs`: point claims, `c` each). A batching
 sumcheck takes `Σ_k λ^k Σ_u W_k(u) C_k(u) = Σ_k λ^k v_k` over the longest stack (27 variables at 128 signatures), the
 others zero-extended. With `KECCAK_MAIN` it has two scalars a round; with `KECCAK_REC3` it runs two variables a
 round (`transcript::sumcheck_pairs_drawn`). Then come the three stacks' values at its point `r`. The verifier

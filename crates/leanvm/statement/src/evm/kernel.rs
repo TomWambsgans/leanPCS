@@ -13,15 +13,12 @@
 //! the code leaves the weight. It uses the words `[0, words(n))` of memory as its own: the program's scratch, which
 //! the hashing uses only within a node, is at least that big ([`scratch_words`]).
 
-use evm_link::op::{FIELD_MUL, MLOAD, MSTORE, POP, XOR, push_usize};
+use evm_link::op::{DUP1, FIELD_MUL, MLOAD, MSTORE, POP, SWAP1, XOR, push_usize};
 
 const TWISTS: usize = 64;
 const STAGES: usize = 6;
 /// Twists a block: their products, `a_n` and the chain value and a factor must be within `DUP16`.
 const BLOCK: usize = 13;
-
-const DUP1: u8 = 0x80;
-const SWAP1: u8 = 0x90;
 
 fn dup(k: usize) -> u8 {
     assert!((1..=16).contains(&k));

@@ -136,7 +136,7 @@ two cells with the same `w_1` (`{X, Y}` or `{C, V}`), and a gate on two cells co
 ### 3. No selector (−256)
 
 As π2's contract: the verifier's entry is calldata of exactly 273 bytes and no value; `setIndexCommitment` keeps its
-selector and its 68 bytes. The frame's index byte stays (the convention π2 shares, `evm_link::declared`).
+selector and its 68 bytes. The frame's index byte stays (the convention π2 shares, `evm_link::declared_claims`).
 
 ## Soundness
 

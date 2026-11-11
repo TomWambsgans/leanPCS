@@ -304,7 +304,7 @@ pub enum Opening<S> {
 /// How the relations reach the claims (SPEC.md §8).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Claims {
-    /// `crates/membership/evm/src/machine.rs`'s ABI: point claims. One batching sumcheck over the stacks (the longest, the
+    /// `crates/evm_link/src/machine.rs`'s ABI: point claims. One batching sumcheck over the stacks (the longest, the
     /// others zero-extended) turns every commitment's relations into one point claim at its end point.
     Point,
     /// Extension W: one weighted claim per commitment, its terms evaluated by the precompile.

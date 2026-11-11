@@ -11,15 +11,19 @@
 //!
 //! A code generator turns its graph into items: for each node, its operands' evaluation, its code (calldata offsets
 //! as [`Item::Calldata`]) and a [`Item::Store`] if it is read again; checks with [`Item::FailIf`]; the outputs with
-//! [`Item::Output`] and [`Item::CopyConst`] and the checks of the claims declared with [`declared`] (or, in the EIP
-//! draft's encoding of a PCS claim, packed from their fields' words, with [`declared_claims`]). [`front`] is such
-//! a generator for any graph of nodes whose code works on their operands on the stack ([`front::Dag`]):
-//! `crates/leanvm/statement` (`src/evm/codegen.rs`) gives it its nodes' code, entry and outputs. `crates/membership/evm`
-//! keeps a generator of its own and calls [`assemble`] the same way. [`creation_code`] deploys a contract.
+//! [`Item::Output`] and [`Item::CopyConst`] and the checks of the PCS claims declared (the EIP draft's encoding,
+//! packed from their fields' words, [`wire`]) with [`declared_claims`]. [`front`] is such a generator for any graph of
+//! nodes whose code works on their operands on the stack ([`front::Dag`]): `crates/leanvm/statement`
+//! (`src/evm/codegen.rs`) and `crates/membership/evm` (`src/codegen.rs`) give it their nodes' code, entry and
+//! outputs. [`creation_code`] deploys a contract. With the feature `machine`, [`machine`] is the EVM the contracts
+//! run on in tests: revm with `FIELD_MUL` and EIP-8141's frames.
 
 mod assemble;
 pub mod front;
+#[cfg(feature = "machine")]
+pub mod machine;
 pub mod op;
+pub mod wire;
 
 use assemble::assemble_program;
 
@@ -39,10 +43,6 @@ pub enum Item {
     Output(usize),
     /// Copy `words` constant words, from `data` on in [`Program::data`], to output words `first` on.
     CopyConst { first: usize, words: usize, data: usize },
-    /// With a frame's index on top of the stack: hash `words` output words from `first` on (`KECCAK256`), and revert
-    /// unless the hash is payload `index` of that frame, the word at `1 + 32 index` of its `data` (`FRAMEDATALOAD`):
-    /// unless the transaction declares the claim these words encode. Pops the index.
-    Declared { first: usize, words: usize, index: usize },
     /// With a frame's index on top of the stack: revert unless payload `index` of that frame is `keccak256` of the
     /// PCS claim (the EIP draft's encoding, `crates/pcs_claim`) whose fields are these output words: the root (one
     /// word, its 32 bytes as the claim has them), the out-of-domain answer, the point's `n` coordinates and the value
@@ -58,30 +58,71 @@ pub enum Item {
     OtherIf,
 }
 
-/// Where a PCS claim's fields are among the outputs, and its payload's index in the frame ([`Item::DeclaredClaim`]).
+/// A PCS claim's fields, as words of any kind (a code generator's, or the outputs' indices, [`ClaimWords`]): its
+/// commitment's root and out-of-domain answer, its point's coordinates and its value; and the index of its payload in
+/// the frame of PCS claims.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ClaimWords {
-    pub root: usize,
-    pub ood: usize,
-    pub point: Vec<usize>,
-    pub value: usize,
+pub struct Claim<W> {
+    pub root: W,
+    pub ood: W,
+    pub point: Vec<W>,
+    pub value: W,
     pub index: usize,
 }
 
-impl ClaimWords {
+/// Where a PCS claim's fields are among the outputs, and its payload's index in the frame ([`Item::DeclaredClaim`]).
+pub type ClaimWords = Claim<usize>;
+
+impl<W> Claim<W> {
+    /// Its fields in the claim's order: the root, the out-of-domain answer, the point, the value.
+    pub fn words(&self) -> Vec<W>
+    where
+        W: Clone,
+    {
+        [&self.root, &self.ood].into_iter().chain(&self.point).chain([&self.value]).cloned().collect()
+    }
+
+    /// The same claim, each field mapped.
+    pub fn map<V>(&self, mut f: impl FnMut(&W) -> V) -> Claim<V> {
+        Claim {
+            root: f(&self.root),
+            ood: f(&self.ood),
+            point: self.point.iter().map(&mut f).collect(),
+            value: f(&self.value),
+            index: self.index,
+        }
+    }
+
     /// The claim's bytes: `82 + 24 n`.
     pub fn claim_len(&self) -> usize {
-        82 + 24 * self.point.len()
+        wire::claim_len(self.point.len())
     }
 
     /// Bytes of memory the packing takes past the outputs: the header's word, the root's, the elements'.
     pub fn buffer(&self) -> usize {
-        64 + 24 * (self.point.len() + 2)
+        64 + wire::ELEMENT_BYTES * (self.point.len() + 2)
     }
 }
 
-/// The PCS version a claim's first byte names (the EIP draft's version `1`, `pcs_claim::VERSION`).
-pub const PCS_VERSION: u8 = 1;
+/// The distinct words of `claims`' fields, in the order they first appear, and each claim's fields as indices of
+/// them: the outputs a program writes once each however many claims read them (claims sharing a point's
+/// coordinates, or a commitment), and the [`ClaimWords`] its checks read.
+pub fn claim_outputs<W: Clone + PartialEq>(claims: &[Claim<W>]) -> (Vec<W>, Vec<ClaimWords>) {
+    let mut words: Vec<W> = Vec::new();
+    let fields = claims
+        .iter()
+        .map(|claim| {
+            claim.map(|w| match words.iter().position(|x| x == w) {
+                Some(k) => k,
+                None => {
+                    words.push(w.clone());
+                    words.len() - 1
+                }
+            })
+        })
+        .collect();
+    (words, fields)
+}
 
 /// How the program ends, once its outputs are written.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -117,7 +158,7 @@ impl Program {
 
     /// The program's checks, each one `JUMPDEST` in a measuring build.
     pub fn checks(&self) -> usize {
-        let checks = |item: &Item| matches!(item, Item::FailIf | Item::Declared { .. } | Item::DeclaredClaim(_));
+        let checks = |item: &Item| matches!(item, Item::FailIf | Item::DeclaredClaim(_));
         self.items.iter().filter(|(item, _)| checks(item)).count()
     }
 }
@@ -153,25 +194,6 @@ pub fn pcs_frame_check(calldata_len: usize) -> Vec<Item> {
     ];
     items.push(Item::Code(check.concat()));
     items.push(Item::FailIf);
-    items
-}
-
-/// Items that revert unless the claim `words` output words from `first` on encode is payload `index` of the frame the
-/// caller names. A payload past the frame's `data` reads as zero, which no hash is but with probability `2^-256`.
-pub fn declare(calldata_len: usize, first: usize, words: usize, index: usize) -> Vec<Item> {
-    let mut items = frame_index(calldata_len);
-    items.push(Item::Declared { first, words, index });
-    items
-}
-
-/// [`pcs_frame_check`], then [`declare`] of these runs of the outputs, back to back, as payloads `0, 1, ...`.
-pub fn declared(calldata_len: usize, runs: &[usize]) -> Vec<Item> {
-    let mut items = pcs_frame_check(calldata_len);
-    let mut first = 0;
-    for (index, &words) in runs.iter().enumerate() {
-        items.extend(declare(calldata_len, first, words, index));
-        first += words;
-    }
     items
 }
 
@@ -260,10 +282,12 @@ pub fn assemble(program: &Program, options: &Options) -> Assembled {
 }
 
 /// The creation code of `runtime`, which the constructor's arguments follow in the init code: one word for each of
-/// `slots`, which it stores there. It reverts on value or on arguments of another length, else returns `runtime`.
-pub fn creation_code(runtime: &[u8], slots: &[u8]) -> Vec<u8> {
+/// `slots`, which it stores there, then, with `owner_at`, an owner word, which it writes into the code at `owner_at`
+/// (the word of a `PUSH32` there, [`Options::other`]'s). It reverts on value or on arguments of another length, else
+/// returns `runtime`.
+pub fn creation_code(runtime: &[u8], slots: &[u8], owner_at: Option<usize>) -> Vec<u8> {
     use crate::op::*;
-    let arguments = 32 * slots.len();
+    let arguments = 32 * (slots.len() + usize::from(owner_at.is_some()));
     // The revert is the last 4 bytes of the `prefix` bytes before the code.
     let build = |prefix: usize| {
         let length = [
@@ -287,6 +311,15 @@ pub fn creation_code(runtime: &[u8], slots: &[u8]) -> Vec<u8> {
                 &[SSTORE],
             ];
             code.extend(store.concat());
+        }
+        if let Some(at) = owner_at {
+            let owner = [
+                &push_fixed(runtime.len() + 32 * slots.len(), 2)[..],
+                &[MLOAD],
+                &push_fixed(at, 2),
+                &[MSTORE],
+            ];
+            code.extend(owner.concat());
         }
         code.extend(
             [

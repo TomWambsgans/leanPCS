@@ -42,7 +42,7 @@ determinism) before it was merged.
 Two lines, both with Keccak-256 Fiat–Shamir, and both contracts checking that their transaction declares their claims,
 as the EIP draft has it: a claim's Keccak-256 is a payload of the transaction's frame of PCS claims (an EIP-8288
 dependency verification frame of scheme `PCS_SCHEME`), which the contract reads with EIP-8141's `FRAMEPARAM` and
-`FRAMEDATALOAD`, the frame's index being the last byte of calldata (`evm_link::declared`). The block proves the declared
+`FRAMEDATALOAD`, the frame's index being the last byte of calldata (`evm_link::declared_claims`). The block proves the declared
 claims; the contracts' `PCS_OPEN` precompile is gone.
 
 **Zero-knowledge Merkle membership** with Keccak-256 (depth 32: `y = H(x | 0x11..)`, path from `H(x | 0x22..)` to
@@ -109,7 +109,7 @@ by the table's layout; the row of `t` as three values; on [`PERF_GAS.md`](docs/m
 
 **Shared.**
 
-- `crates/evm_link`: the compilation and assembly into one contract that the code generators share. The membership
+- `crates/evm_link`: the compilation and assembly into one contract that the code generators share, the PCS claim's wire format (`wire`) and, with the feature `machine`, the EVM the contracts run on in tests (`machine`). The membership
   contract (4,866 B) and π2's (14.5 KB) fit EIP-170; π1's own contract (about 86 KB) does not, and is built only to
   test it against its Rust verifier and to record the vectors' claims (the recursion verifies π1 inside π2).
 - `crates/vendor/leanvm-c445e3d5`: leanVM `c445e3d5`'s `primitives`, `fiat_shamir`, `pcs`, `parallel`, `verifier`,
@@ -350,7 +350,7 @@ leanEthereum) and is licensed, like leanVM, under the MIT license ([`LICENSE-MIT
   `src/transcript.rs` (new) states the transcript methods as a trait.
 - **Adapted from leanVM `651453c6`** (branch `PCS-openings-aggregation`): `crates/membership/quotient` (the protocol of
   `flock::quotient`, its Cantor-basis domain, wiring, transcript; new here: the χ gate, the Keccak-256 statement, the
-  layouts and hiding), `crates/membership/evm` (bytecode generator, recording scalar, revm machine), and the Lean
+  layouts and hiding), `crates/membership/evm` (bytecode generator, recording scalar; its revm machine is now `crates/evm_link`'s, `src/machine.rs`), and the Lean
   proofs of `formal/quotient`, ported to this circuit (`formal/QuotientSecurity`).
 - **Adapted from leanVM `42422001`'s `crates/verifier`**: `crates/leanvm/statement` (the same protocol, generic over the
   scalar; new here: the Keccak-256 chain, the tower-order ring map, the Keccak-f terminal, the workloads, the EVM

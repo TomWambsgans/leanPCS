@@ -62,7 +62,7 @@ the frame (it is the claim's payload) instead of encoding the claim.
 - **The verifier** reads the word as `Read::Frame(0)` (four scalars, not in the stream); the seed is
   `keccak(NAME ‖ IV ‖ public input ‖ frame words)` (`verifier::seed`), so the word is bound before every challenge. The
   contract's seed reads payload 0 with `FRAMEDATALOAD` (`codegen::Entry::frame`; the statement's words `4 ..` are the
-  frame word's, `Node::Statement(k ≥ 4)`), and checks the other seven claims at payloads 1 … 7 (`Ending::ClaimsAt`).
+  frame word's, `Node::Statement(k ≥ 4)`), and checks the other seven claims at payloads 1 … 7 (`Ending::Claims`, each claim at its payload).
 - **What leaves calldata**: `C1`'s root (32 B), its out-of-domain answer (24), its value (24) and the batch's last
   challenge (the plain round's, which only `C1`'s 27th coordinate takes: 20). −100 B.
 - **Capacity.** The claim is 730 bytes at 27 variables: six permutations, about 0.81M positions with the bits, packings

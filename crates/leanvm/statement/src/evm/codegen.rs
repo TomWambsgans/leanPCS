@@ -89,61 +89,17 @@ pub enum Word {
 
 /// A PCS claim (the EIP draft's, `crates/pcs_claim`) as the contract has its fields: the commitment's root (its 32
 /// bytes as the claim has them), its out-of-domain answer, the point's coordinates and the value (elements, words with
-/// their top 64 bits zero).
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Claim {
-    pub root: Word,
-    pub ood: Word,
-    pub point: Vec<Word>,
-    pub value: Word,
-}
-
-impl Claim {
-    /// Its fields in the claim's order: the root, the out-of-domain answer, the point, the value.
-    pub fn words(&self) -> Vec<Word> {
-        [self.root, self.ood].into_iter().chain(self.point.iter().copied()).chain([self.value]).collect()
-    }
-}
+/// their top 64 bits zero), and its payload's index in the frame of PCS claims.
+pub type Claim = evm_link::Claim<Word>;
 
 /// What the contract does once its checks pass.
 pub enum Ending {
     /// Write the outputs and return them.
     Return,
-    /// Revert unless the transaction declares these claims, in order, as payloads `0, 1, ...` of the frame of PCS
+    /// Revert unless the transaction declares these claims, each as the payload of its index in the frame of PCS
     /// claims calldata names (`evm_link::declared_claims`); return the word 1. Their fields are written once each
     /// (claims sharing a point's coordinates write them once).
     Claims(Vec<Claim>),
-    /// [`Ending::Claims`], each claim the payload of the index beside it.
-    ClaimsAt(Vec<(usize, Claim)>),
-}
-
-/// The distinct words of `claims`, in first appearance, and each claim's fields as indices of them (payloads `0, 1, …`).
-pub fn claim_outputs(claims: &[Claim]) -> (Vec<Word>, Vec<evm_link::ClaimWords>) {
-    let indexed: Vec<(usize, Claim)> = claims.iter().cloned().enumerate().collect();
-    claim_outputs_at(&indexed)
-}
-
-/// [`claim_outputs`], each claim the payload of the index beside it.
-pub fn claim_outputs_at(claims: &[(usize, Claim)]) -> (Vec<Word>, Vec<evm_link::ClaimWords>) {
-    let mut words: Vec<Word> = Vec::new();
-    let mut at = |w: Word| match words.iter().position(|&x| x == w) {
-        Some(k) => k,
-        None => {
-            words.push(w);
-            words.len() - 1
-        }
-    };
-    let fields = claims
-        .iter()
-        .map(|&(index, ref c)| evm_link::ClaimWords {
-            root: at(c.root),
-            ood: at(c.ood),
-            point: c.point.iter().map(|&w| at(w)).collect(),
-            value: at(c.value),
-            index,
-        })
-        .collect();
-    (words, fields)
 }
 
 /// The graph, with how the contract is seeded: the code of each node.
@@ -302,11 +258,7 @@ fn program(graph: &Graph, outputs: &[Word], ending: &Ending, entry: &Entry) -> (
         Ending::Return => (outputs.to_vec(), Vec::new()),
         Ending::Claims(claims) => {
             assert!(outputs.is_empty(), "a contract checking claims writes their fields alone");
-            claim_outputs(claims)
-        }
-        Ending::ClaimsAt(claims) => {
-            assert!(outputs.is_empty(), "a contract checking claims writes their fields alone");
-            claim_outputs_at(claims)
+            evm_link::claim_outputs(claims)
         }
     };
     let words = outputs
@@ -345,15 +297,14 @@ fn program(graph: &Graph, outputs: &[Word], ending: &Ending, entry: &Entry) -> (
     let source = Source {
         dag: &Nodes { graph, entry },
         entry: selector,
+        entry_other: false,
         entry_tag: ENTRY,
         checks: checks
             .chain(graph.nonzero.iter().map(|&(id, _)| (id, Check::Nonzero)))
             .collect(),
         outputs: words,
-        calls: None,
         claims,
-        reuse: false,
-        calls_tag: CALLS,
+        outputs_tag: CALLS,
         scratch,
         calldata_len,
     };
