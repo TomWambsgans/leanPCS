@@ -170,12 +170,16 @@ end Bound
 theorem card_univ_digest : (Finset.univ : Finset Digest).card = 2 ^ 256 := by
   rw [Finset.card_univ, LeanVM.Protocol.Compile.Rom.card_digest]
 
+theorem two_pow_mul_div (c : ℝ≥0∞) : 2 ^ 256 * c / 2 ^ 256 = c := by
+  rw [mul_comm]
+  exact ENNReal.mul_div_cancel_right two_pow_256_ne_zero two_pow_256_ne_top
+
 /-- The average of `f` plus a constant. -/
 theorem avg_add_const (f : Digest → ℝ≥0∞) (c : ℝ≥0∞) :
     (∑ u, (f u + c)) / 2 ^ 256 = (∑ u, f u) / 2 ^ 256 + c := by
   rw [Finset.sum_add_distrib, Finset.sum_const, card_univ_digest, nsmul_eq_mul, ENNReal.add_div]
   congr 1
-  rw [Nat.cast_pow, Nat.cast_ofNat, ENNReal.mul_div_cancel_left two_pow_256_ne_zero two_pow_256_ne_top]
+  rw [Nat.cast_pow, Nat.cast_ofNat, two_pow_mul_div]
 
 /-- The average of `f` with one point weighed `1` more. -/
 theorem avg_ite_add (a : Digest) (f : Digest → ℝ≥0∞) :
@@ -271,7 +275,7 @@ theorem prEvent_staged4_le (chal : Digest → E) (hreg : Regular chal) (Bad : Fi
     exact sum_slice4_le chal hreg Bad
   have htot : (∑ s₁ : Digest, ((∑ s₂ : Digest, Bs s₁ s₂) / 2 ^ 256 + 2 / 2 ^ 256)) / 2 ^ 256 ≤
       (Bad.card : ℝ≥0∞) / 2 ^ 768 + 2 / 2 ^ 256 := by
-    rw [avg_add_const, ENNReal.sum_div]
+    rw [avg_add_const]
     refine add_le_add ?_ le_rfl
     rw [← ENNReal.sum_div]
     exact hfin
@@ -303,8 +307,10 @@ theorem prEvent_staged4_le (chal : Digest → E) (hreg : Regular chal) (Bad : Fi
   -- The `β` query: a repeated `μ` input (`s₂ = s₁`) charged `1`.
   have hβ : (∑ s₂ : Digest, Bs s₁ s₂) / 2 ^ 256 + 2 / 2 ^ 256 =
       (∑ s₂ : Digest, ((if s₂ = s₁ then 1 else 0) + (Bs s₁ s₂ + 1 / 2 ^ 256))) / 2 ^ 256 := by
-    rw [avg_ite_add, avg_add_const, ENNReal.div_add_div_same]
-    rw [show (2 : ℝ≥0∞) = 1 + 1 by norm_num, ENNReal.add_div]
+    rw [avg_ite_add, avg_add_const]
+    have h2 : (2 : ℝ≥0∞) / 2 ^ 256 = 1 / 2 ^ 256 + 1 / 2 ^ 256 := by
+      rw [← ENNReal.add_div]; norm_num
+    rw [h2]
     ring
   rw [hβ]
   refine bound_fresh Bad _ c₂ f₂ _ _ fun s₂ ↦ ?_
@@ -334,7 +340,7 @@ theorem prEvent_staged4_le (chal : Digest → E) (hreg : Regular chal) (Bad : Fi
   have hμ : Bs s₁ s₂ + 1 / 2 ^ 256 =
       (∑ s₃ : Digest, ((if s₃ = p.1.2.1 then 1 else 0) + Bs s₁ s₂)) / 2 ^ 256 := by
     rw [avg_ite_add, Finset.sum_const, card_univ_digest, nsmul_eq_mul, Nat.cast_pow, Nat.cast_ofNat,
-      ENNReal.mul_div_cancel_left two_pow_256_ne_zero two_pow_256_ne_top, add_comm]
+      two_pow_mul_div, add_comm]
   rw [hμ]
   refine bound_fresh Bad _ c₃ f₃ _ _ fun s₃ ↦ ?_
   by_cases hs₃ : s₃ = p.1.2.1
@@ -362,7 +368,8 @@ theorem prEvent_staged4_le (chal : Digest → E) (hreg : Regular chal) (Bad : Fi
     · exact hs₃ (in3_state h')
     · rw [length_in3] at h'; omega
   -- The `t` query.
-  rw [hBs, ENNReal.sum_div]
+  simp only [hBs]
+  rw [ENNReal.sum_div]
   refine bound_fresh Bad _ y.2 f₅ _ _ fun s₄ ↦ ?_
   set c₆ := y.2.cacheQuery (.inl (in3 s₃ y.1.2)) s₄ with hc₆
   have hc₆' : ∀ m, c₆ (.inl m) ≠ none → m.length ≠ 160 := by

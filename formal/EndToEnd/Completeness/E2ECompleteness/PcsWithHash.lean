@@ -144,6 +144,17 @@ def realPcsH (fuel : ℕ) : PcsOps m (Tree × Array K) where
     return ((tree, table), c)
   openClaim h c claim := proveClaimWithH H F fuel h.1 h.2 c claim
 
+/-- The prover's last stretch, from the reduction's result: the three openings. -/
+def openTailH {Hd : Type} (pcs : PcsOps m Hd) (fuel : ℕ) (indexTree : Tree) (sigmaHat : Array K)
+    (index : Commitment) (wTree tTree : Hd) (proof : ReductionProof) :
+    Option Reduced → m (Option PcsQuotient.Proof)
+  | none => return none
+  | some r => do
+    let some oW ← pcs.openClaim wTree r.commitments.witness r.claims.witness | return none
+    let some oσ ← proveClaimWithH H F fuel indexTree sigmaHat index r.claims.wiring | return none
+    let some oT ← pcs.openClaim tTree r.commitments.table r.claims.copy | return none
+    return some ⟨proof, ⟨oW, oσ, oT⟩⟩
+
 /-- `proveWithPcs` with Keccak-256 `H`. -/
 def proveWithPcsH {Hd : Type} (pcs : PcsOps m Hd) (fuel : ℕ) (circuit : Circuit) (stmt : Statement)
     (cells₀ : Array K) (coins : Coins) : m (Option PcsQuotient.Proof) := do
@@ -163,11 +174,8 @@ def proveWithPcsH {Hd : Type} (pcs : PcsOps m Hd) (fuel : ℕ) (circuit : Circui
   let (t, _) ← squeezeWithH H c
   let (vals, next) := valuesAt circuit cells₀ coins t
   let proof : ReductionProof := ⟨wS, tS, vals, next⟩
-  let some r ← reduceWithH H circuit.logRows index stmt proof | return none
-  let some oW ← pcs.openClaim wTree r.commitments.witness r.claims.witness | return none
-  let some oσ ← proveClaimWithH H F fuel indexTree sigmaHat index r.claims.wiring | return none
-  let some oT ← pcs.openClaim tTree r.commitments.table r.claims.copy | return none
-  return some ⟨proof, ⟨oW, oσ, oT⟩⟩
+  let r ← reduceWithH H circuit.logRows index stmt proof
+  openTailH H F pcs fuel indexTree sigmaHat index wTree tTree proof r
 
 /-- `proveWith` with Keccak-256 `H`. -/
 def proveWithH (fuel : ℕ) (circuit : Circuit) (stmt : Statement) (cells₀ : Array K) (coins : Coins) :
@@ -243,8 +251,11 @@ theorem proveWith_eqH (fuel : ℕ) (circuit : Circuit) (stmt : Statement) (cells
     proveWith F fuel circuit stmt cells₀ coins =
       proveWithH (keccak256With F) F fuel circuit stmt cells₀ coins := by
   simp only [proveWith, proveWithPcs, realPcs, proveWithH, proveWithPcsH, realPcsH,
-    commitmentWith_eqH, proveClaimWith_eqH]
-  rfl
+    commitmentWith_eqH, proveClaimWith_eqH, startWith_eqH, squeezeWith_eqH, reduceWith_eqH]
+  congr 1; funext x₀; congr 1; funext x₁; congr 1; funext c
+  congr 1; funext a₁; congr 1; funext a₂; congr 1; funext a₃
+  congr 1; funext h₁; congr 1; funext h₂; congr 1; funext r
+  cases r <;> rfl
 
 theorem proverWith_eqH (fuel : ℕ) (stmt : Statement) (w : Secret) (coins : Coins) :
     proverWith F fuel stmt w coins = proverWithH (keccak256With F) F fuel stmt w coins :=
@@ -436,19 +447,15 @@ theorem simulateQ_proveClaimWithH (fuel : ℕ) (tree : Tree) (table : Array K) (
   simp only [proveClaimWithH, simulateQ_bind, simulateQ_pcsSpongeWithH, simulateQ_absorb,
     simulateQ_oodPointWithH, simulateQ_runFromWithHash, simulateQ_pure]
 
-theorem simulateQ_proveWithH (fuel : ℕ) (circuit : Circuit) (stmt : Statement) (cells₀ : Array K)
-    (coins : Coins) :
-    simulateQ impl (proveWithH callKeccak256 callKeccakF1600 fuel circuit stmt cells₀ coins) =
-      proveWithH (implH impl) (implF impl) fuel circuit stmt cells₀ coins := by
-  unfold proveWithH proveWithPcsH realPcsH
-  simp only [simulateQ_bind, simulateQ_commitmentWithH, simulateQ_startWithH,
-    simulateQ_squeezeWithH, simulateQ_reduceWithH, simulateQ_pure]
-  congr 1; funext x₀; congr 1; funext x₁; congr 1; funext c
-  congr 1; funext a₁; congr 1; funext a₂; congr 1; funext a₃
-  congr 1; funext h₁; congr 1; funext h₂; congr 1; funext r
+theorem simulateQ_openTailH {Hd : Type} (fuel : ℕ) (indexTree : Tree) (sigmaHat : Array K)
+    (index : Commitment) (wTree tTree : Tree × Array K) (proof : ReductionProof) (r : Option Reduced) :
+    simulateQ impl (openTailH callKeccak256 callKeccakF1600 (realPcsH callKeccak256 callKeccakF1600 fuel) fuel
+        indexTree sigmaHat index wTree tTree proof r) =
+      openTailH (implH impl) (implF impl) (realPcsH (implH impl) (implF impl) fuel) fuel indexTree sigmaHat
+        index wTree tTree proof r := by
   rcases r with _ | r
-  · simp
-  simp only [simulateQ_bind, simulateQ_proveClaimWithH]
+  · simp [openTailH]
+  simp only [openTailH, realPcsH, simulateQ_bind, simulateQ_proveClaimWithH]
   congr 1; funext o₁
   rcases o₁ with _ | o₁
   · simp
@@ -459,6 +466,18 @@ theorem simulateQ_proveWithH (fuel : ℕ) (circuit : Circuit) (stmt : Statement)
   simp only [simulateQ_bind, simulateQ_proveClaimWithH]
   congr 1; funext o₃
   rcases o₃ with _ | o₃ <;> simp
+
+theorem simulateQ_proveWithH (fuel : ℕ) (circuit : Circuit) (stmt : Statement) (cells₀ : Array K)
+    (coins : Coins) :
+    simulateQ impl (proveWithH callKeccak256 callKeccakF1600 fuel circuit stmt cells₀ coins) =
+      proveWithH (implH impl) (implF impl) fuel circuit stmt cells₀ coins := by
+  unfold proveWithH proveWithPcsH
+  simp only [simulateQ_bind, simulateQ_commitmentWithH, simulateQ_startWithH,
+    simulateQ_squeezeWithH, simulateQ_reduceWithH, simulateQ_pure, realPcsH]
+  congr 1; funext x₀; congr 1; funext x₁; congr 1; funext c
+  congr 1; funext a₁; congr 1; funext a₂; congr 1; funext a₃
+  congr 1; funext h₁; congr 1; funext h₂; congr 1; funext r
+  exact simulateQ_openTailH impl (Hd := Unit) fuel _ _ _ _ _ _ r
 
 theorem simulateQ_proverWithH (fuel : ℕ) (stmt : Statement) (w : Secret) (coins : Coins) :
     simulateQ impl (proverWithH callKeccak256 callKeccakF1600 fuel stmt w coins) =

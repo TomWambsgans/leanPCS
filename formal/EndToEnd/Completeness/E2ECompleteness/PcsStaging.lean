@@ -9,7 +9,7 @@ import E2ECompleteness.PcsChain
 import E2ECompleteness.Regular
 
 /-!
-# The two-call experiment in the chain's shape (the PCS claims)
+# The two-call experiment in the chain's shape
 
 `expH stmt w coins` (`PcsExperiment.lean`: the setup, the honest prover, the verifier, with Keccak-256
 and Keccak-f[1600] the calls) is the chain's shape `staged4 challengeOf A B C D` (`PcsChain.lean`), its
@@ -17,12 +17,12 @@ verdict the first component (`expH_eq_staged`):
 
 * `stageA`: the setup, the prover's index and witness commitments, the label's hash `s₀`; it returns
   the witness commitment's three scalars;
-* `stageB`: from `α, β, γ` (the low bits of `s₁, s₂, s₃`) the three parts and their commitments; it
-  returns their nine scalars;
+* `stageB`: from `α, β, μ` (the low bits of `s₁, s₂, s₃`) the quotient table and its commitment; it
+  returns its three scalars;
 * `stageC`: from `t` (the low bits of `s₄`) the values, then the prover's reduction up to `ρ`'s query:
-  the label, `α`'s, `β`'s, `γ`'s and `t`'s queries again (a function answers them as before); it
-  returns `t`'s state and the five values;
-* `stageD`: from `ρ`, the prover's claims, its second reduction, the six openings, and the verifier.
+  the label, `α`'s, `β`'s, `μ`'s and `t`'s queries again (a function answers them as before); it
+  returns `t`'s state and the three values and `next`;
+* `stageD`: from `ρ`, the prover's claims, the three openings, and the verifier.
 
 The prover's reduction is the chain on commitments it computed (`reduceWithH_eq_chain`: a root's
 halves always name the root, `rootOfHalves_rootHalves`). Everything is stated for **any setup, circuit
@@ -97,24 +97,24 @@ theorem readCommitment_of (c : Chain) (com : Commitment) :
     readCommitment c (CommitmentScalars.of com) = some (com, c.absorbCommitment (.of com)) := by
   simp [readCommitment, CommitmentScalars.of, rootOfHalves_rootHalves, Chain.absorbCommitment]
 
-/-- **The reduction on commitments it names** is the chain: the label's hash, then `α`'s, `β`'s, `γ`'s,
+/-- **The reduction on commitments it names** is the chain: the label's hash, then `α`'s, `β`'s, `μ`'s,
 `t`'s and `ρ`'s queries, then the claims. -/
 theorem reduceWithH_eq_chain {m : Type → Type} [Monad m] [LawfulMonad m] (H : Bytes → m Digest)
-    {lr : ℕ} (hS : Supported lr) (index : Commitment) (stmt : Statement) (cw ch cq cg : Commitment)
-    (a : Vector E 4) (next qv gv : E) :
-    reduceWithH H lr index stmt ⟨.of cw, .of ch, .of cq, .of cg, a, next, qv, gv⟩ = do
+    {lr : ℕ} (hS : Supported lr) (index : Commitment) (stmt : Statement) (cw ct : Commitment)
+    (v : Vector E 3) (next : E) :
+    reduceWithH H lr index stmt ⟨.of cw, .of ct, v, next⟩ = do
       let s₀ ← H (label index stmt)
       let s₁ ← H (in3 s₀ (.of cw))
       let s₂ ← H (digestBytes s₁)
       let s₃ ← H (digestBytes s₂)
-      let s₄ ← H (in9 s₃ (.of ch, .of cq, .of cg))
-      let s₅ ← H (in5 s₄ (a, next))
+      let s₄ ← H (in3 s₃ (.of ct))
+      let s₅ ← H (in4 s₄ (v, next))
       return (claimsAt lr stmt (challengeOf s₁) (challengeOf s₂) (challengeOf s₃) (challengeOf s₄)
-        (challengeOf s₅) a next qv gv).map fun claims ↦ ⟨⟨cw, ch, cq, cg⟩, claims⟩ := by
+        (challengeOf s₅) v next).map fun claims ↦ ⟨⟨cw, ct⟩, claims⟩ := by
   simp only [reduceWithH, hS, not_true_eq_false, ite_false, startWithH, squeezeWithH,
     readCommitment_of, bind_assoc, pure_bind, foldl_absorb]
   simp only [Chain.absorbCommitment, Chain.absorb, List.nil_append, List.cons_append,
-    List.append_nil, in3, in9, in5, CommitmentScalars.stream, CommitmentScalars.of,
+    List.append_nil, in3, in4, CommitmentScalars.stream, CommitmentScalars.of,
     List.flatMap_nil, List.flatMap_cons, List.flatMap_append]
 
 /-! ## The stages -/
@@ -123,8 +123,8 @@ theorem reduceWithH_eq_chain {m : Type → Type} [Monad m] [LawfulMonad m] (H : 
 tree and commitment. -/
 abbrev AuxA : Type := Commitment × Tree × Commitment × Tree × Commitment
 
-/-- What the second stage hands on: the three parts' trees and commitments. -/
-abbrev AuxB : Type := Tree × Commitment × Tree × Commitment × Tree × Commitment
+/-- What the second stage hands on: the quotient table's tree and commitment. -/
+abbrev AuxB : Type := Tree × Commitment
 
 /-- What the third stage hands on: the prover's own chain states `s₁ … s₄`. -/
 abbrev AuxC : Type := Digest × Digest × Digest × Digest
@@ -139,68 +139,50 @@ def stageAG : OracleComp KeccakCalls (AuxA × Digest × CommitmentScalars) := do
   let idx ← Prod.snd <$> setup
   let (indexTree, index) ← commitmentWithH callKeccak256 (cellVars circuit.logRows)
     circuit.wiringTable
-  let (wTree, wCom) ← commitmentWithH callKeccak256 (cellVars circuit.logRows + 1)
+  let (wTree, wCom) ← commitmentWithH callKeccak256 (cellVars circuit.logRows)
     (witnessTable circuit cells₀ coins)
   let s₀ ← callKeccak256 (label index stmt)
   return ((idx, indexTree, index, wTree, wCom), s₀, .of wCom)
 
-/-- The quotient table's parts at the challenges of `s₁, s₂, s₃`. -/
-def tablesAt (s₁ s₂ s₃ : Digest) : Array K × Array K × Array K :=
-  quotientTables circuit cells₀ coins (challengeOf s₁) (challengeOf s₂) (challengeOf s₃)
+/-- The quotient table at the challenges of `s₁, s₂, s₃`. -/
+def tableAt (s₁ s₂ s₃ : Digest) : Array K :=
+  quotientTable circuit stmt cells₀ coins (challengeOf s₁) (challengeOf s₂) (challengeOf s₃)
 
-/-- **Stage B**: from `s₁, s₂, s₃` the parts and their commitments. -/
-def stageBG (_a : AuxA) (s₁ s₂ s₃ : Digest) : OracleComp KeccakCalls (AuxB × Scalars9) := do
-  let T := tablesAt circuit cells₀ coins s₁ s₂ s₃
-  let (hTree, hCom) ← commitmentWithH callKeccak256 (cellVars circuit.logRows + 3) T.1
-  let (qTree, qCom) ← commitmentWithH callKeccak256 (cellVars circuit.logRows + 4) T.2.1
-  let (gTree, gCom) ← commitmentWithH callKeccak256 (cellVars circuit.logRows + 1) T.2.2
-  return ((hTree, hCom, qTree, qCom, gTree, gCom), (.of hCom, .of qCom, .of gCom))
+/-- **Stage B**: from `s₁, s₂, s₃` the quotient table and its commitment. -/
+def stageBG (_a : AuxA) (s₁ s₂ s₃ : Digest) : OracleComp KeccakCalls (AuxB × CommitmentScalars) := do
+  let (tTree, tCom) ← commitmentWithH callKeccak256 (cellVars circuit.logRows + 4)
+    (tableAt circuit cells₀ coins stmt s₁ s₂ s₃)
+  return ((tTree, tCom), .of tCom)
 
 /-- **Stage C**: from `s₄` the values, then the prover's reduction up to `ρ`'s query. -/
 def stageCG (a : AuxA) (b : AuxB) (_s₁ _s₂ _s₃ s₄ : Digest) :
-    OracleComp KeccakCalls (AuxC × Digest × (Vector E 4 × E)) := do
+    OracleComp KeccakCalls (AuxC × Digest × (Vector E 3 × E)) := do
   let s₀' ← callKeccak256 (label a.2.2.1 stmt)
   let s₁' ← callKeccak256 (in3 s₀' (.of a.2.2.2.2))
   let s₂' ← callKeccak256 (digestBytes s₁')
   let s₃' ← callKeccak256 (digestBytes s₂')
-  let s₄' ← callKeccak256 (in9 s₃' (.of b.2.1, .of b.2.2.2.1, .of b.2.2.2.2.2))
-  return ((s₁', s₂', s₃', s₄'), s₄', rowValues circuit cells₀ coins (challengeOf s₄))
+  let s₄' ← callKeccak256 (in3 s₃' (.of b.2))
+  return ((s₁', s₂', s₃', s₄'), s₄', valuesAt circuit cells₀ coins (challengeOf s₄))
 
-/-- The prover's reduction proof before `Q`'s and `G`'s values. -/
-def proof₀Of (a : AuxA) (b : AuxB) (s₄ : Digest) : ReductionProof :=
-  ⟨.of a.2.2.2.2, .of b.2.1, .of b.2.2.2.1, .of b.2.2.2.2.2,
-    (rowValues circuit cells₀ coins (challengeOf s₄)).1,
-    (rowValues circuit cells₀ coins (challengeOf s₄)).2, 0, 0⟩
+/-- The prover's reduction proof. -/
+def proofOf (a : AuxA) (b : AuxB) (s₄ : Digest) : ReductionProof :=
+  ⟨.of a.2.2.2.2, .of b.2, (valuesAt circuit cells₀ coins (challengeOf s₄)).1,
+    (valuesAt circuit cells₀ coins (challengeOf s₄)).2⟩
 
-/-- The prover's first claims, from its chain and `ρ`'s state `s₅`. -/
-def claims₀Of (a : AuxA) (b : AuxB) (c : AuxC) (s₄ s₅ : Digest) : Option Reduced :=
+/-- The prover's claims, from its chain and `ρ`'s state `s₅`. -/
+def claimsOf (a : AuxA) (b : AuxB) (c : AuxC) (s₄ s₅ : Digest) : Option Reduced :=
   (claimsAt circuit.logRows stmt (challengeOf c.1) (challengeOf c.2.1) (challengeOf c.2.2.1)
-      (challengeOf c.2.2.2) (challengeOf s₅) (rowValues circuit cells₀ coins (challengeOf s₄)).1
-      (rowValues circuit cells₀ coins (challengeOf s₄)).2 0 0).map
-    fun claims ↦ ⟨⟨a.2.2.2.2, b.2.1, b.2.2.2.1, b.2.2.2.2.2⟩, claims⟩
+      (challengeOf c.2.2.2) (challengeOf s₅) (valuesAt circuit cells₀ coins (challengeOf s₄)).1
+      (valuesAt circuit cells₀ coins (challengeOf s₄)).2).map
+    fun claims ↦ ⟨⟨a.2.2.2.2, b.2⟩, claims⟩
 
-/-- The prover's last stretch from `ρ`: its claims, its second reduction, the six openings. -/
+/-- The prover's last stretch from `ρ`: its claims and the three openings. -/
 def proverTailG (a : AuxA) (b : AuxB) (c : AuxC) (s₁ s₂ s₃ s₄ s₅ : Digest) :
-    OracleComp KeccakCalls (Option PcsQuotient.Proof) := do
-  let T := tablesAt circuit cells₀ coins s₁ s₂ s₃
-  let some r₀ := claims₀Of circuit cells₀ coins stmt a b c s₄ s₅ | return none
-  let proof : ReductionProof :=
-    { proof₀Of circuit cells₀ coins a b s₄ with qValue := tableEval T.2.1 r₀.claims.q.point,
-                                                  gValue := tableEval T.2.2 r₀.claims.g.point }
-  let some r ← reduceWithH callKeccak256 circuit.logRows a.2.2.1 stmt proof | return none
-  let some oW ← proveClaimWithH callKeccak256 callKeccakF1600 fuel a.2.2.2.1
-    (witnessTable circuit cells₀ coins) r.commitments.witness r.claims.witness | return none
-  let some oσ ← proveClaimWithH callKeccak256 callKeccakF1600 fuel a.2.1 circuit.wiringTable a.2.2.1
-    r.claims.wiring | return none
-  let some oH ← proveClaimWithH callKeccak256 callKeccakF1600 fuel b.1 T.1 r.commitments.h
-    r.claims.h | return none
-  let some oQ ← proveClaimWithH callKeccak256 callKeccakF1600 fuel b.2.2.1 T.2.1 r.commitments.q
-    r.claims.q | return none
-  let some oG ← proveClaimWithH callKeccak256 callKeccakF1600 fuel b.2.2.2.2.1 T.2.2
-    r.commitments.g r.claims.g | return none
-  let some oS ← proveClaimWithH callKeccak256 callKeccakF1600 fuel b.1 T.1 r.commitments.h
-    r.claims.sum | return none
-  return some ⟨proof, ⟨oW, oσ, oH, oQ, oG, oS⟩⟩
+    OracleComp KeccakCalls (Option PcsQuotient.Proof) :=
+  openTailH callKeccak256 callKeccakF1600 (realPcsH callKeccak256 callKeccakF1600 fuel) fuel a.2.1
+    circuit.wiringTable a.2.2.1 (a.2.2.2.1, witnessTable circuit cells₀ coins)
+    (b.1, tableAt circuit cells₀ coins stmt s₁ s₂ s₃) (proofOf circuit cells₀ coins a b s₄)
+    (claimsOf circuit cells₀ coins stmt a b c s₄ s₅)
 
 /-- **Stage D**: the prover's tail, then the verifier. -/
 def stageDG (a : AuxA) (b : AuxB) (c : AuxC) (s₁ s₂ s₃ s₄ s₅ : Digest) :
@@ -218,7 +200,7 @@ def expHG : OracleComp KeccakCalls Bool := do
 
 /-- The staged run for any setup, circuit and cells. -/
 def stagedRunG : OracleComp KeccakCalls (Bool × (E × E × E × E)) :=
-  staged4 challengeOf (stageAG setup circuit cells₀ coins stmt) (stageBG circuit cells₀ coins)
+  staged4 challengeOf (stageAG setup circuit cells₀ coins stmt) (stageBG circuit cells₀ coins stmt)
     (stageCG circuit cells₀ coins stmt) (stageDG circuit cells₀ coins fuel vLogRows stmt)
 
 /-- **For any setup, circuit and cells of a supported size, the two-call experiment is the staged
@@ -228,15 +210,14 @@ theorem expHG_eq_staged (hS : Supported circuit.logRows) :
       (·.1) <$> stagedRunG setup circuit cells₀ coins fuel vLogRows stmt := by
   simp only [expHG, proveWithH, proveWithPcsH, realPcsH, stagedRunG, staged4, stageAG, stageBG,
     stageCG, stageDG, proverTailG, startWithH, squeezeWithH, bind_assoc, pure_bind, map_bind,
-    map_pure, proof₀Of, claims₀Of, tablesAt, reduceWithH_eq_chain _ hS]
-  simp only [in3, in9, in5, Chain.absorbCommitment, Chain.absorb, CommitmentScalars.stream,
+    map_pure, proofOf, claimsOf, tableAt, reduceWithH_eq_chain _ hS]
+  simp only [in3, in4, Chain.absorbCommitment, Chain.absorb, CommitmentScalars.stream,
     List.nil_append, List.cons_append, List.append_nil, List.flatMap_nil, List.flatMap_cons,
     List.flatMap_append]
   refine bind_congr fun _ ↦ bind_congr fun _ ↦ bind_congr fun _ ↦ bind_congr fun _ ↦
     bind_congr fun _ ↦ bind_congr fun _ ↦ bind_congr fun _ ↦ bind_congr fun _ ↦
     bind_congr fun _ ↦ bind_congr fun _ ↦ bind_congr fun _ ↦ bind_congr fun _ ↦
-    bind_congr fun _ ↦ bind_congr fun _ ↦ bind_congr fun _ ↦ bind_congr fun _ ↦
-    bind_congr fun _ ↦ bind_congr fun o ↦ ?_
+    bind_congr fun _ ↦ bind_congr fun _ ↦ bind_congr fun _ ↦ bind_congr fun o ↦ ?_
   rcases o with _ | proof <;> simp
 
 end Stages
