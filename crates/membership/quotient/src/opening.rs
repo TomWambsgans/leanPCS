@@ -50,8 +50,35 @@ impl Commitment {
 
 /// Commit to a table of `2^n` words.
 pub fn commit(words: Vec<F64>) -> Committed {
+    assert!(words.len().is_power_of_two(), "2^n words");
+    let n = words.len().trailing_zeros() as usize;
+    commit_lanes(words, n)
+}
+
+/// Commit to the table of `2^n` words whose leading words are `words` (whole lanes of `2^(n - 6)` words) and the
+/// rest zero. Its trailing zero lanes are left out of the encoding (`pcs_claim::commit_lanes`: the root, the
+/// out-of-domain answer and every opening are the whole table's); [`Committed::words`] are the lanes kept.
+pub fn commit_lanes(words: Vec<F64>, n: usize) -> Committed {
+    commit_lanes_with(words, n, false)
+}
+
+/// [`commit_lanes`], keeping the codeword for the openings (`pcs_claim::commit_lanes_keeping_codeword`): for a table
+/// opened more than once, which [`open_keeping`] then opens without encoding its rows again.
+pub fn commit_lanes_keeping_codeword(words: Vec<F64>, n: usize) -> Committed {
+    commit_lanes_with(words, n, true)
+}
+
+fn commit_lanes_with(mut words: Vec<F64>, n: usize, keep_codeword: bool) -> Committed {
+    let lane = 1usize << (n - pcs_claim::LANE_FOLD);
+    words.truncate(lane * nonzero_lanes(&words, lane).max(1));
+    // The allocation past them returned (the allocator shrinks a large one in place), for the memory to come.
+    words.shrink_to_fit();
     #[allow(unused_mut)]
-    let mut committed = pcs_claim::commit(words);
+    let mut committed = if keep_codeword {
+        pcs_claim::commit_lanes_keeping_codeword(words, n)
+    } else {
+        pcs_claim::commit_lanes(words, n)
+    };
     #[cfg(test)]
     if let Some(z) = fixed_ood_point(committed.n) {
         committed.ood = pcs_claim::evaluate_lanes(committed.words(), &z);
@@ -78,14 +105,38 @@ fn fixed_ood_point(n: usize) -> Option<Vec<F192>> {
     })
 }
 
-/// The table's multilinear at `point`.
-pub fn evaluate(words: &[F64], point: &[F192]) -> F192 {
-    pcs_claim::evaluate(words, point)
+/// The count of `words`' lanes (of `lane` words) up to its last nonzero one, the words read in parallel from the end.
+fn nonzero_lanes(words: &[F64], lane: usize) -> usize {
+    const RUN: usize = 1 << 16;
+    let run = RUN.min(lane);
+    let runs = words.len().div_ceil(run);
+    // The last run with a nonzero word: the first of the runs counted from the end.
+    let last = parallel::find_first(runs, |r| {
+        let start = (runs - 1 - r) * run;
+        words[start..words.len().min(start + run)].iter().any(|w| !w.is_zero())
+    });
+    last.map_or(0, |r| ((runs - 1 - r) * run) / lane + 1)
 }
 
-/// Open `claim` on `committed`.
+/// The table's multilinear at `point`: of the `2^n` words (`n = point.len()`) whose leading whole lanes are `words`
+/// and the rest zero, as [`Committed::words`] holds them.
+pub fn evaluate(words: &[F64], point: &[F192]) -> F192 {
+    if words.len() == 1 << point.len() {
+        pcs_claim::evaluate(words, point)
+    } else {
+        pcs_claim::evaluate_lanes(words, point)
+    }
+}
+
+/// Open `claim` on `committed`. A kept codeword serves this opening and is freed.
 pub fn open(committed: &Committed, claim: &Claim) -> Proof {
     pcs_claim::open(committed, &Commitment::of(committed).pcs_claim(claim))
+}
+
+/// [`open`], keeping a kept codeword for another opening. The same proof.
+pub fn open_keeping(committed: &Committed, claim: &Claim) -> Proof {
+    let claim = Commitment::of(committed).pcs_claim(claim);
+    pcs_claim::open_words_keeping(committed.words(), committed.commitment(), &claim)
 }
 
 /// Check an opening of `claim` against `commitment`.

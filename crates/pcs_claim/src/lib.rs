@@ -32,7 +32,9 @@ use fiat_shamir::merkle::Hash;
 use fiat_shamir::transcript::{Proof, ProverState};
 use std::sync::Mutex;
 
-use pcs::whir::{LaneJob, LaneTensor, Low, commit_tree_in, config_for_rate, recursive_prover_with_lane_tensors_batch};
+use pcs::whir::{
+    LaneJob, LaneTensor, Low, commit_tree_skipping_in, config_for_rate, recursive_prover_with_lane_tensors_batch,
+};
 use primitives::field::{F64, F192};
 use primitives::hash::hash as keccak256;
 use primitives::multilinear::mle_eval_par;
@@ -201,6 +203,9 @@ pub struct Commitment {
     codeword: Mutex<Option<Vec<F64>>>,
     /// `Σ_y lane_l[y] eq(z_low, y)` for each committed lane `l`, `z = ood_point(n, root)`.
     ood_lanes: Vec<F192>,
+    /// Which committed lanes are all zero: not encoded, at the commitment nor at an opening's queried rows (found
+    /// for a commitment without its kept codeword; none flagged otherwise).
+    zero_lanes: Vec<bool>,
 }
 
 impl Commitment {
@@ -233,11 +238,16 @@ pub fn commit_words(words: &[F64], n: usize, keep_codeword: bool) -> Commitment 
         !words.is_empty() && words.len().is_multiple_of(lane) && words.len() <= 1 << n,
         "whole leading lanes of the 2^n words"
     );
+    // Only an encoding without the kept codeword skips them (at the commitment and at an opening's rows).
+    let zero_lanes = if keep_codeword { vec![false; words.len() / lane] } else { zero_lanes(words, lane) };
     let (root, tree, codeword) = if keep_codeword {
         let (commitment, data) = pcs::whir::commit(words, n, LANE_FOLD, LOG_INV_RATE);
         (commitment.root, data.merkle_tree, Some(data.codeword))
     } else {
-        let (commitment, tree) = commit_tree_in(words, n, LANE_FOLD, LOG_INV_RATE, Vec::new());
+        // The encoding buffer, one replica of the codeword, mapped by the workers: as many words as `words`, though
+        // the zero lanes take none of them, so that an opening's buffers find this memory again once it is freed.
+        let scratch = mapped_words(words.len());
+        let (commitment, tree) = commit_tree_skipping_in(words, n, LANE_FOLD, LOG_INV_RATE, &zero_lanes, scratch);
         (commitment.root, tree, None)
     };
     // The answer from the committed lanes' products with the point's low weight, which the openings reuse.
@@ -251,7 +261,40 @@ pub fn commit_words(words: &[F64], n: usize, keep_codeword: bool) -> Commitment 
         tree,
         codeword: Mutex::new(codeword),
         ood_lanes,
+        zero_lanes,
     }
+}
+
+/// Which lanes (of `lane` words) of `words` are all zero, read in parallel: a run of a lane is read up to its first
+/// nonzero word, so that the scan reads the zero lanes and little else.
+fn zero_lanes(words: &[F64], lane: usize) -> Vec<bool> {
+    const RUN: usize = 1 << 16;
+    let run = RUN.min(lane);
+    let zero_runs =
+        parallel::map_collect(words.len() / run, |r| words[r * run..(r + 1) * run].iter().all(|w| w.is_zero()));
+    zero_runs.chunks(lane / run).map(|runs| runs.iter().all(|&z| z)).collect()
+}
+
+/// `len` words, unwritten, their memory mapped by the workers: each touches its own run of pages once, so that the
+/// kernel maps (and clears) them in parallel, before a pass whose first touches are strided and would fault the same
+/// pages from every thread at once. The caller writes each word before it reads it.
+pub fn mapped_words(len: usize) -> Vec<F64> {
+    /// A run of pages one task touches: a transparent huge page.
+    const RUN: usize = (2 << 20) / size_of::<F64>();
+    /// The words of the smallest page, one touched in each.
+    const PAGE: usize = 4096 / size_of::<F64>();
+    let mut v: Vec<F64> = Vec::with_capacity(len);
+    let base = parallel::SendPtr(v.as_mut_ptr());
+    parallel::for_each(len.div_ceil(RUN), |r| {
+        for i in (r * RUN..len.min((r + 1) * RUN)).step_by(PAGE) {
+            // SAFETY: inside the allocation; a word the caller writes before reading, written here only to map its
+            // page (volatile, so that the store is not elided).
+            unsafe { base.add(i).write_volatile(F64::ZERO) };
+        }
+    });
+    // SAFETY: the capacity holds `len` plain words, which the caller writes before reading.
+    unsafe { v.set_len(len) };
+    v
 }
 
 /// A commitment with its words: what [`open`] takes.
@@ -426,6 +469,7 @@ fn open_words_batch_with(words: &[F64], commitment: &Commitment, claims: &[PcsCl
         &known,
         &mut jobs,
         codeword,
+        Some(&commitment.zero_lanes),
         &commitment.tree[..],
     );
     drop(jobs);
