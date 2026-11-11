@@ -265,7 +265,7 @@ def batchK (fs : FsShape) (combined : List (Commitment × Combined)) (layouts : 
   let (target, _) := combined.foldl (fun (acc : E × E) (_, claim) ↦
     (acc.1 + acc.2 * claim.value, acc.2 * lambda)) (0, 1)
   let (r, last) ← match fs with
-    | .rec3 => do
+    | .rec3 | .rec4 => do
       let (r, _, last) ← sumcheckPairsDrawn F target 2 vars true
       pure (r, last)
     | .main | .rec1 | .rec2 => sumcheckDrawn F target 3 (List.replicate vars none) fs.narrow

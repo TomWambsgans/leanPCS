@@ -9,12 +9,12 @@
 (`crates/leanvm/univariate`'s `reduce`, generic over its scalar) on a symbol: every read of the stream, every
 challenge, every addition and product of `E`, every bit field of a row count and every ring-switch weight is a node,
 its operands the indices of earlier nodes (hash-consed: one node per distinct operation). `Emitted.lean` (written by
-the Rust, `crates/leanvm/rec/src/lean.rs`) is π1-rec3's; `Semantics.lean` gives a graph its meaning.
+the Rust, `crates/leanvm/rec/tests/lean_graph_keccak.rs`) is π1-rec4's; `Semantics.lean` gives a graph its meaning.
 
 Generalises `formal/Implementation`'s nodes: a stream read is at a byte offset with a length (a scalar's 24 bytes, a
 root half's 16, a packed integer's at most 8), a hash absorbs a run of the stream's bytes, and there are bit fields
-(`bits`), the ring switch's weight (`ringWeight`, one node for `ring_tower::weight_at`) and narrow challenges
-(`narrow`). π1-rec3's other novelties are no new kinds: a pair's coordinates (`pair_point`) are additions and products
+(`bits`), the ring switch's weight (`ringWeight`, one node for `ring_tower::weight_at`), narrow challenges
+(`narrow`) and a wide draw's challenges past the first (`wide`, π1-rec4). π1-rec3's other novelties are no new kinds: a pair's coordinates (`pair_point`) are additions and products
 (one by the constant `β_1`), and the Keccak-f block's walk (`walked_terminal_with`) is additions and products.
 -/
 
@@ -39,6 +39,9 @@ inductive Node where
   | low (h : Nat)
   /-- A state's low 160 bits: a narrow challenge (`Channel::sample_narrow`, π1-rec2 and π1-rec3's batch). -/
   | narrow (h : Nat)
+  /-- Challenge `k` (`1 ≤ k < WIDE_MAX`) of the wide draw whose hash is the node `h` (`Channel::sample_wide`, π1-rec4:
+  the sponge's rate bytes `8 + 24k .. 32 + 24k` after the hash's last permutation; challenge `0` is `low h`). -/
+  | wide (h k : Nat)
   /-- `(v >> shift) mod 2^width` of an integer `v` held in a scalar's low limb (`Scalar::bits`). -/
   | bits (v shift width : Nat)
   /-- The ring switch's weight at a point (`ring_tower::weight_at`): kernel `kernel` of the graph's `kernels`
@@ -72,7 +75,7 @@ structure Graph where
 def Node.operands : Node → List Nat
   | .add a b | .mul a b => [a, b]
   | .hash s _ _ => [s]
-  | .low h | .narrow h => [h]
+  | .low h | .narrow h | .wide h _ => [h]
   | .bits v _ _ => [v]
   | _ => []
 

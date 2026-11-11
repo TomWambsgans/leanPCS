@@ -115,6 +115,25 @@ def verifyWithK (shape : UniStatement.Shape) (v : KeccakVariant) (iv : List UInt
     if r.matrices.isSome then ok := false
     return ok
 
+/-- **The Keccak verifier at π1-rec4** over `F`: `verifyWithK` with π1-rec4's run (`runWithK4`); the claims and their
+openings are the same. -/
+def verifyWithK4 (shape : UniStatement.Shape) (v : KeccakVariant) (iv : List UInt8) (roots : SetupRootsK)
+    (publicInput : Vector UInt8 32) (proof : KeccakProof) : m Bool := do
+  let o ← runWithK4 F shape iv publicInput.toList proof.stream v .point
+  if !o.accepts then return false
+  match o.result with
+  | .error _ => return false
+  | .ok r =>
+    let mut ok := r.openings.map (·.1) == commitments
+    for (c, opening) in r.openings do
+      match opening with
+      | .point pt value none =>
+        ok := ok && (← pcsOpenK F (stackVarsK shape c) (commitOfK roots r c).1 (commitOfK roots r c).2 pt value
+          (proof.openingOf c))
+      | _ => ok := false
+    if r.matrices.isSome then ok := false
+    return ok
+
 end With
 
 end UniKeccak

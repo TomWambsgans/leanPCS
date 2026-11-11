@@ -4,7 +4,6 @@ import RecGraphKeccak.Pi1.Verifier
 import RecGraphKeccak.Main
 import RecGraphKeccak.Sim.End
 import RecGraphKeccak.Sim.Final
-import RecGraphKeccak.Circuit
 import RecGraphKeccak.Hazard
 
 /-!
@@ -80,10 +79,6 @@ The build fails if a definition or theorem below uses an axiom beyond Lean's thr
 /-- info: 'RecGraphKeccak.Sim.keccakSimParts_of_tailShape' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms RecGraphKeccak.Sim.keccakSimParts_of_tailShape
-
-/-- info: 'RecGraphKeccak.pi1rec3K_end' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms RecGraphKeccak.pi1rec3K_end
 
 /-- info: 'RecGraphKeccak.Sim.tailSpecK' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
