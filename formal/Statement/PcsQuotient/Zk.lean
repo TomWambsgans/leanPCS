@@ -34,11 +34,14 @@ edges component of a state `Edges × A`, coins forwarded; the extra component `A
   the challenges `c`: the two out-of-domain answers and the three values at `t`.
 * **`RevealedUniform εr δr`**, the protocol's own randomness: for every witness, outside a set of challenge tuples
   of probability at most `εr` (the out-of-domain points and `α, β, μ, t, ρ` uniform), the revealed scalars with
-  uniform prover's randomness are within statistical distance `δr` of uniform (`UniformWithin`). Exact uniformity
-  is not what the protocol gives: `X`, `C`, `V + Y` and `W`'s answer are `K`-affine in the random rows' words with a
-  linear part the challenges fix (full rank off a determinant's zero set), but `T`'s answer is affine in the
-  blinding with a linear part that depends on the random rows too (through `d d'` and `b₂`), so it falls short of
-  rank `3` on a set of rows of small but nonzero probability (`PROTOCOL.md`, "Zero knowledge").
+  uniform prover's randomness are within statistical distance `δr` of uniform (`UniformWithin`). With the
+  quotient table's four slack words the protocol makes them exactly uniform (`δr = 0`) outside a set of challenges:
+  `X`, `C`, `V + Y` and `W`'s answer are `K`-affine in the 32 random rows' words with a linear part the challenges
+  fix (exact at rank `12`; group 1), and `T`'s answer is affine in the four slack words with weights of `T`'s
+  out-of-domain point alone, `c · {1, u₀, u₁, u₂}` (group 2), so it is uniform given the rest when those weights
+  span `E` over `K`, which fails with probability about `2^-127` over the point (`PROTOCOL.md`, "Zero knowledge").
+  `formal/EndToEnd/ZK` proves the group-2 half (`revealedUniform_of_group1`): `RevealedUniform` with `δr = 0`
+  follows from group 1's exact uniformity, `εr` its failure plus the span's.
 * **The simulator** (`zkSimulator sim`): it reads no witness. Its challenge phase (`challengePhase`, with
   `uniformReveal`) commits to the circuit (real, public), draws each root uniformly and computes its out-of-domain
   point with the model's permutation, draws each revealed scalar uniformly (`coinE`) where the prover computes it,
@@ -242,7 +245,9 @@ def UniformWithin (stmt : Statement) (cells₀ : Array K) (c : Challenges) (δ :
 
 /-- **The protocol's randomness hides the revealed scalars** (`PROTOCOL.md`'s rank conditions): for every
 statement and witness of the relation, outside a set of challenges of probability at most `εr`, the revealed
-scalars are within statistical distance `δr` of uniform. -/
+scalars are within statistical distance `δr` of uniform. With the slack words the deployed protocol is expected to
+meet it at `δr = 0` and `εr` group 1's rank failure (morally about `|K|^-20`) plus about `2^-127` for the slack's
+span (`formal/EndToEnd/ZK`, `revealedUniform_of_group1`, proves the second part). -/
 def RevealedUniform (εr δr : ℝ≥0∞) : Prop :=
   ∀ (stmt : Statement) (w : Secret), Relation stmt w →
     Pr{let c ← sampleChallenges}[¬ UniformWithin stmt ((membership logRows).cells (membershipInputs w)) c δr] ≤ εr
