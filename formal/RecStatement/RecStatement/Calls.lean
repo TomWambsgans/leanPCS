@@ -5,6 +5,7 @@
 -- limbs big-endian in the low 24 bytes of a 32-byte word).
 import RecStatement.Verifier
 import UniKeccak.Opening
+import UniKeccak.Verifier4
 
 /-!
 # The claims, word for word
@@ -92,7 +93,7 @@ def streamLen (c : Circuit) : ℕ := (c.reads.map (·.bytes)).sum + 64 + 48 + 24
 /-! ## π1's contract IV -/
 
 /-- **π1's variant under the recursion** (`leanvm_rec::PI1`). -/
-def pi1Variant : UniKeccak.KeccakVariant := UniKeccak.keccakRec3
+def pi1Variant : UniKeccak.KeccakVariant := UniKeccak.keccakRec4
 
 /-- **`variant_bytes(PI1)`**: `"keccak-vm"`, the skip, the Fiat–Shamir shape's code (`UniKeccak.variantBytesK`). -/
 def pi1VariantBytes : List UInt8 := UniKeccak.variantBytesK pi1Variant

@@ -63,6 +63,16 @@ def pi1Adversary (D : RecDeployment) (A : RecAdversary) : Pi1Adversary :=
     let (z, T) ← (simulateQ loggedOracles (A roots)).run []
     return (z.1, z.2.pi1Proof ((recExtractor2 D roots z.1 evals T z.2).getD #[]))
 
+/-- **The collision adversary built from `A`**: it runs `A` (its queries logged), then π2's extractor, and outputs the
+encodings of the first of π1's claims (π1-rec4's graph's, on the extracted stream at Keccak-f[1600]) that differ from
+the declared one's (`claimCollision`): where π2's circuit binds the graph's claim to the declared one by their
+Keccak-256s only (`ClaimHash`), a mismatch is a Keccak-256 collision. -/
+def collisionAdversary (D : RecDeployment) (A : RecAdversary) : CollisionAdversary :=
+  fun roots evals ↦ do
+    let (z, T) ← (simulateQ loggedOracles (A roots)).run []
+    return claimCollision (pi1GraphAt roots.pi1) (D.pi1IvAt roots.pi1) z.1
+      ((recExtractor2 D roots z.1 evals T z.2).getD #[]) z.2.pi1Claims
+
 /-! ## The reduction -/
 
 /-- **Knowledge soundness of the recursive verifier against the Keccak VM's relation (`KvHolds D.flock`), end to end,
@@ -84,10 +94,12 @@ def RecKnowledgeSoundnessReduction (D : RecDeployment) (ε2 : ℕ → ℝ≥0∞
   ∀ (A : RecAdversary) (Q : ℕ), (∀ roots, QueryCostAtMost (A roots) permutationCallCost Q) →
     (∀ roots evals, QueryCostAtMost (pi1Adversary D A roots evals) permutationCallCost Q) ∧
     (∀ roots evals, QueryCostAtMost (hazardAdversary D A roots evals) permutationCallCost Q) ∧
+    (∀ roots evals, QueryCostAtMost (collisionAdversary D A roots evals) permutationCallCost Q) ∧
     Pr{let z ← recSoundnessExperiment D A}[RecBreaksKnowledgeSoundness D (recExtractor D) z] ≤
       ε2 Q +
         Pr{let z ← pi1KeccakSoundnessExperiment D (pi1Adversary D A)}[
           UniKeccak.KBreaksKnowledgeSoundness D.flock D.pi1 (UniKeccak.uniExtractorK D.flock D.pi1) z] +
-        Pr{let z ← pi1HazardExperiment D (hazardAdversary D A)}[Pi1HazardAccepted z.1 z.2.1 z.2.2]
+        Pr{let z ← pi1HazardExperiment D (hazardAdversary D A)}[Pi1HazardAccepted z.1 z.2.1 z.2.2] +
+        Pr{let z ← collisionExperiment D (collisionAdversary D A)}[Keccak256Collision z.1 z.2]
 
 end RecStatement
