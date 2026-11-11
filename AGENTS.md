@@ -21,7 +21,8 @@ licensing, and the conventions.
 - **ZK assumes a zero-knowledge PCS** (ZK-WHIR), as the EIP does; the reference openings are leanVM's WHIR, not yet
   ZK-WHIR. With the EIP's plain point claims the earlier hidden layouts (claims on a layout, a gadget) cannot be
   expressed, so the membership protocol now makes only its own public scalars simulatable: random rows, the masks and a
-  blinding of `h` make the out-of-domain answers and the part values uniform (`docs/membership/HIDING.md`, a rank test).
+  blinding of `h` make the out-of-domain answers and the part values uniform (`docs/membership/HIDING.md`: rank tests
+  for the affine groups; the group `G` enters is not affine and is measured over `GF(2)`, not argued).
 
 ## Implementation (`crates/`)
 
@@ -135,28 +136,33 @@ its PCS gas on both sides as the EIP draft has it.
 ## Membership: what is proved
 
 `formal/Statement` (`PcsQuotient`) states the relation (Keccak-256 Merkle membership over the deployed Keccak-256), the
-proof format, the verifier, the honest prover, the extractor, the simulator and the experiments, in one random
-permutation; `formal/EndToEnd` proves them ([`formal/README.md`](formal/README.md)). All sorry-free, on `propext`,
+protocol on the EIP's PCS claims (`docs/membership/EIP_CLAIMS.md`: four commitments with out-of-domain answers, six
+one-point claims each opened by a version-1 PCS opening, the quotient table in three parts, random rows, the blinding of
+`h`), the verifier, the honest prover, the extractor, the simulator and the experiments, in one random permutation;
+`formal/EndToEnd` proves them ([`formal/README.md`](formal/README.md)). All sorry-free, on `propext`,
 `Classical.choice` and `Quot.sound` only (`#guard_msgs` in each library).
 
-- **Knowledge soundness, no hypotheses**: `Soundness.knowledgeSoundness`, about 2^-105 at Q = 0, 2^-86 at 2^40 and
-  2^-62 at 2^64 queries. The extractor (`PcsQuotient.extractor`) is explicit, computable and straight-line: it reads
-  the proof, the adversary's transcript and the public setup tree, then decodes (interpolation, Gao, Guruswami–Sudan).
-  Stand-alone, not simulation-extractability.
-- **Completeness, no hypotheses**: `E2ECompleteness.completeness_end`, δ ≈ 2^-163.9.
-- **Zero knowledge, no hypotheses**: `PcsQuotient.EndToEnd.zeroKnowledge_closed`, about 2^-113 for Q ≤ 2^126, for an
-  explicit simulator named in the statement (`zkSimulator`, `rpmSimOracle`; compiled in
-  `zeroKnowledge_closed_computable`). Single-proof: no distinguisher query before the proof, no second proof under the
-  same permutation.
+- **Knowledge soundness, no hypotheses**: `Soundness.knowledgeSoundness : KnowledgeSoundness ksBound`, about 2^-93 at
+  Q = 0, 2^-74 at 2^40 and 2^-50 at 2^64 queries: the chain union-bounds each challenge over the four roots' candidate
+  tuples (< 2^50) rather than using their out-of-domain answers (the tightening is under way). The openings are sound
+  with the verifier computing the out-of-domain point from Keccak-256 (`WhirBridge.Pcs.pcs_sound_oracle`), and H's
+  two claims are tied to one table by its answer (`WhirBridge.Pcs.ood_binding_coords`). The extractor
+  (`PcsQuotient.extractor`) is explicit, computable and straight-line. Stand-alone, not simulation-extractability.
+- **Completeness, no hypotheses**: `E2ECompleteness.completeness_end : Completeness deltaPcs`, `deltaPcs` < 2^-163.
+- **Zero knowledge, under two hypotheses**: `PcsQuotient.EndToEnd.zeroKnowledge_pcs_closed`: `PcsZeroKnowledge`
+  (the PCS opening is zero knowledge, as the EIP assumes ZK-WHIR) and `RevealedUniform` (the revealed scalars are
+  uniform at all but `εr` of the challenges) give zero knowledge within `εpcs Q + εr + εfs₀` for the explicit simulator
+  `zkSimulator`, `εfs₀ ≤ 2^-162` proved (`fiatShamirUniform_closed`). `RevealedUniform` is tested, not proved: two of
+  its three groups are affine and of full rank (`hiding::revealed_scalars_are_uniform`); the third is not affine and
+  is measured over `GF(2)` (`hiding::group_a_*`, `docs/membership/HIDING.md`, "Group 2, measured"). Single-proof.
 - **The EVM contract is the Statement's verifier**: `Evm.evm_accepts_iff_verifyWith`, `Evm.evm_accepts_iff_exists`,
-  at the real Keccak-f[1600]: the recorded graph the contract is compiled from accepts exactly when `verifyWith` does.
+  at the real Keccak-f[1600], against the regenerated `Graph.lean` (the six declared claims, the index commitment's
+  two storage words).
 - **Models and trust.** Keccak-f[1600] is one random permutation; the prover's randomness is uniform (deployed:
   ChaCha12 and a Keccak-256 KDF, so computational ZK). Tested, not proved: the bytecode computes the graph;
-  `FIELD_MUL` and `KECCAK256` are the Lean operations; a claim declared in the frame is one `opening::verify`
-  accepts and that is the Statement's opening (`formal/` still says `PCS_OPEN` for the declared claims: the same
-  words); the Statement is the Rust (differential tests at 2^16..2^23 rows). The deployed Rust prover is
-  trusted for completeness (compared with the Statement's on the reduction's nine scalars at 2^17 rows only). The
-  random-permutation theorems and the EVM one do not formally compose.
+  `FIELD_MUL` and `KECCAK256` are the Lean operations; the Statement is the Rust (differential tests: the reduction,
+  index and proof vectors agree; the prover vectors are too slow for interpreted Lean). The deployed Rust prover is
+  trusted for completeness. The random-permutation theorems and the EVM one do not formally compose.
 
 ## leanVM: what is proved and tested
 
@@ -225,7 +231,7 @@ permutation; `formal/EndToEnd` proves them ([`formal/README.md`](formal/README.m
 ## Remaining
 
 - Membership: zero knowledge with a pre-proof phase (the distinguisher's queries before the proof); simulation-
-  extractability; ζ could reach about 2^-157 with a tighter grinding fuel and a challenge-dependent mask bound.
+  extractability.
 - leanVM in Lean: (1) the model gap: π2's circuit computes π1-rec3's Fiat–Shamir at the real Keccak-f[1600] while
   π1-rec3's theorems are in the random-permutation model, so the soundness reduction's two π1 terms and the two
   completeness premises are left to the Fiat–Shamir heuristic for Keccak-f[1600]; (2) the compiler's IV uniformity
@@ -233,12 +239,9 @@ permutation; `formal/EndToEnd` proves them ([`formal/README.md`](formal/README.m
   of about 1,200 lines of the builder); (3) closed bounds at other shapes than the reference; (4) declarations in the
   shared libraries that no end theorem uses ([`formal/README.md`](formal/README.md)).
 - leanVM: capacity beyond about 470 signatures.
-- Membership in Lean: the protocol of `docs/membership/EIP_CLAIMS.md` (the EIP's claims, four commitments with
-  out-of-domain answers, random rows, the blinding of `h`, big-endian root scalars) is ahead of `formal/` (Statement,
-  EndToEnd, QuotientZk, Implementation), which states the hidden layouts; `Graph.lean` is regenerated
-  (`formal/Implementation` must read its new `claims` and `Word.storedOod`), and the ZK theorem must move to
-  `HIDING.md`'s argument. The Rust-side Lean-facing outputs changed: `Graph.lean`, the circuit (random rows:
-  `dump_circuit`), the `statement_vectors` and `whir_bridge_vector` formats.
+- Membership in Lean: soundness through the out-of-domain answers (the bound above unions over the four roots'
+  lists); `RevealedUniform` proved rather than tested, which needs a protocol whose revealed scalars are affine in
+  its randomness (e.g. `G` blinded as `h` is: `HIDING.md`).
 - The leanVM line's PCS claims in Lean (π1 done: `UniKeccak`, `UniKeccakSound`, `UniKeccakComplete`,
   `RecGraphKeccak`): `RecStatement`, `RecPiop` and
   `RecCompose` (π2v2, `Q`'s slots and its three claims, the extra inversion factor `B`, one opening a claim on
