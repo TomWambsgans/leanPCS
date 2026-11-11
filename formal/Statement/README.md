@@ -3,7 +3,7 @@
 # Statement
 
 What `crates/membership/quotient` is proved to be, in the files a reviewer reads: **definitions and end
-statements only**, no proof, one Lake package (`pcs-quotient-statement`, library `PcsQuotient`) of thirteen
+statements only**, no proof, one Lake package (`pcs-quotient-statement`, library `PcsQuotient`) of fifteen
 files, `PcsQuotient/<Name>.lean` (Lean modules `PcsQuotient.<Name>`). It depends on leanerVM's
 `Statement/` package (`statement`, branch `mumbai`, commit `6175f1a0`), whose definitions it reuses
 rather than restates: `K = GF(2^64)` and `E = GF(2^192)`, Keccak-f[1600] and Keccak-256 over any
@@ -14,13 +14,11 @@ revisions (the toolchain is `leanprover/lean4:v4.34.1`).
 The extractor is an **explicit, computable definition** referenced by the statements, so that a reviewer
 can check what it reads and that it is efficient (Lean has no running-time theorem; the convention is
 mumbai's: a fixed straight-line extractor reading only the adversary's transcript, its cost read off its
-loops). The simulator the zero-knowledge theorem covers (`zkSimulator`, `formal/EndToEnd/ZK`, named in
-`zeroKnowledge_closed`'s statement) is an **explicit simulator**, compiled in `zeroKnowledge_closed_computable` (no axiom, no `noncomputable` constant in its closure); this
-package's own `simulator` is computable but is a heuristic no theorem covers ("The simulator", below).
-Neither is F1's (`formal/QuotientSecurity`), whose extractor reads the proof's polynomials in the ideal
-model and whose extractor and simulator are `noncomputable`. The proofs are in
-`formal/EndToEnd` (`formal/README.md`, "End-to-end theorems"): knowledge soundness, completeness and zero
-knowledge are proved with no hypotheses ("What is proved", below). `PcsQuotientTest/` is the differential test, not the
+loops). The simulator the zero-knowledge theorem covers, `zkSimulator` (`Zk.lean`), is named in the theorem's
+statement; it is built on a PCS simulator given as a parameter ("The simulator", below). The extractor is not
+F1's (`formal/QuotientSecurity`), which reads the proof's polynomials in the ideal model and is `noncomputable`. The proofs are in `formal/EndToEnd` (`formal/README.md`, "End-to-end
+theorems"): knowledge soundness and completeness are proved with no hypotheses, zero knowledge under two named
+hypotheses, a zero-knowledge PCS and the uniformity of the revealed scalars ("What is proved", below). `PcsQuotientTest/` is the differential test, not the
 statement.
 
 **The model.** Every end statement with an adversary is in mumbai's random-permutation model: one
@@ -32,17 +30,17 @@ one `π` (there is no private oracle), the circuit's commitment computed over `�
 adversary runs (deployed, the verifier holds it as a constant computed over Keccak-f[1600]); the
 **relation** is over the deployed Keccak-256, which the circuit computes on bits, independent of `π` in the
 model (mumbai's convention for leanVM's `KECCAK` instruction), with a **collision clause** where a statement
-reads more than the relation (`StatementBinds`, as mumbai's `DigestBinds`). The three layouts' identifiers
-(`Layout.id`, the Keccak-256 of each layout's encoding in the openings' prefix) are **constants of the
-verifier**, fixed 32-byte values computed with the deployed Keccak-256, the same for every proof (the Rust
-recomputes the same bytes; `formal/WhirBridge` proves the openings sound for any fixed prefix). That the deployed Keccak-f[1600]
+reads more than the relation (`StatementBinds`, as mumbai's `DigestBinds`). Each PCS opening seeds its
+transcript with the Keccak-256 of the claim's bytes alone (`pcsClaimBytes`: the commitment's root and
+out-of-domain answer, the point, the value), and the verifier derives each commitment's out-of-domain point from
+its root with Keccak-256 over `π` (`oodPointWith`); `formal/WhirBridge` proves the opening sound with that
+seeding and that point (`pcs_sound_oracle`). That the deployed Keccak-f[1600]
 behaves as a random permutation is the assumption. The adversary is classical, its code fixed before `π`
 is sampled.
 
 **The sources.** Each definition cites the Rust it transcribes (`protocol.rs`, `opening.rs`,
-`circuit.rs:N`, …) of `crates/membership/quotient` at `main` `abe22812` (the EIP's PCS claims, `docs/membership/EIP_CLAIMS.md`; formerly the hidden layouts of
-`docs/membership/HIDING.md`, the sizes `2^17` to `2^22` rows, the opening transcript of version `2`), and each
-file names what it takes from leanerVM in its first lines.
+`circuit.rs:N`, …) of `crates/membership/quotient` at `main` `abe22812` (the EIP's PCS claims,
+`docs/membership/EIP_CLAIMS.md`), and each file names what it takes from leanerVM in its first lines.
 
 ## Reading order
 
@@ -101,9 +99,10 @@ file names what it takes from leanerVM in its first lines.
 
 The deployed circuit is `PcsQuotient.membership logRows` (`Circuit.lean`, `logRows = 22`), a definition
 transcribed from `quotient::circuit::membership`; its commitment is **a definition**, not a hypothesis:
-`setupWith F = (membership logRows).indexRootWith F` (the WHIR root of its wiring table, over `F`), and the
-deployed verifier's constant is `deployedIndexRoot () = setupWith keccakF1600`, which the differential test
-finds equal to the Rust's (`8fd9a050…3ca9`, `--index`). Layer F0 (a χ-circuit end theorem with the zero
+`setupWith F = commitmentWith F (cellVars logRows) (membership logRows).wiringTable` (the wiring table's PCS
+commitment over `F`, its root and out-of-domain answer, with its Merkle tree), and the deployed verifier's
+constant is `deployedIndex ()`, `setupWith`'s commitment over Keccak-f[1600], which the differential test finds
+equal to the Rust's (its `I` line for the membership circuit, `--index`). Layer F0 (a χ-circuit end theorem with the zero
 and one pinned and the statement embedding `statementWords`; `formal/Circuit`'s `membership` proved to
 compute Keccak-256 membership) plugs in here: `formal/EndToEnd/Bridge/Circuit.lean` proves this `membership`
 equal to F0b's (`membership_eq`). Nothing in the statements quantifies over the circuit, the wiring or the
@@ -121,20 +120,18 @@ proves each definition here equal to the proof layers' own):
   (`membership_eq`, builder step by builder step), so F0b's theorem speaks about `setupWith`'s circuit.
 * **The extractor**: `transcriptExtractorFor` is mumbai's replay, `committedLeaves` and decoders on the
   witness table (with hash maps, and the unique decoder between the fast path and the list decoder), then
-  the hidden layout's read-back and the cells. `formal/EndToEnd/Soundness` proves `KnowledgeSoundness` for
-  it (`Soundness.knowledgeSoundness`): its hash maps compute mumbai's lists where it reads them (`Soundness/Replay.lean`), and its last
-  stage, the list decoder, lists every Johnson candidate, so a witness in `formal/Compose`'s extractor's
-  list is one it returns (`Soundness/Extract.lean`); nothing is needed of the first two stages.
+  the cells of the candidate table. `formal/EndToEnd/Soundness` proves `KnowledgeSoundness` for it
+  (`Soundness.knowledgeSoundness`): its hash maps compute mumbai's lists where it reads them
+  (`Soundness/Replay.lean`), and its last stage, the list decoder, lists every Johnson candidate, so a witness in
+  the composition's extractor's list is one it returns (`Soundness/Extract.lean`, `Soundness/PcsExtract.lean`:
+  `extractor_of_extracts`); nothing is needed of the first two stages.
 * **The simulator**: zero knowledge is stated for any simulator, `ZeroKnowledgeWith s₀ sim simOracle ζ`
   (a simulator `Statement → StateT S ProbComp (Option Proof)`, its oracle
   `QueryImpl RandomPermutationOracles (StateT S ProbComp)`, its initial state `s₀`). The end theorem
-  (`formal/EndToEnd/ZK/CoreMain.lean`, `zeroKnowledge_closed`, no hypothesis) proves it for
-  `formal/QuotientZk`'s simulator put in this shape (`zkSimulator`, `rpmSimOracle`; described in
-  `formal/README.md`, "Zero knowledge end to end"), so the simulator the theorem covers is named in the
-  theorem's statement. This package's own `simulator`
-  (`ZeroKnowledge ζ` is `ZeroKnowledgeWith` at it) is a tested heuristic (the self-test runs it): it is
-  **not** covered by the theorem (it programs the roots where `QuotientZk`'s simulator programs the
-  challenges; the two are not equal in distribution).
+  (`PcsQuotient.EndToEnd.zeroKnowledge_pcs_closed`, `formal/EndToEnd/ZK/PcsFSClosed.lean`) proves it for
+  `zkSimulator sim` (`Zk.lean`) with the oracle `sim.oracle` and the state `sim.s₀`, `sim` any PCS simulator
+  (`PcsSimulator`), under the hypotheses `PcsZeroKnowledge sim εpcs` and `RevealedUniform εr`, both defined in
+  `Zk.lean`; so the simulator the theorem covers is named in the theorem's statement.
 
 ## The end statements
 
@@ -143,9 +140,9 @@ As written in [`Security.lean`](PcsQuotient/Security.lean) (`PcsQuotient` namesp
 ```lean
 noncomputable def soundnessExperiment (A : Adversary) : ProbComp Outcome :=
   runWithRandomPermutation do
-    let tree ← setupTreeWith queryPermutation
-    let (z, transcript) ← (simulateQ loggedOracles (A tree.root)).run []
-    let accepted ← verifier queryPermutation tree.root z.1 z.2
+    let (tree, index) ← setupWith queryPermutation
+    let (z, transcript) ← (simulateQ loggedOracles (A index)).run []
+    let accepted ← verifier queryPermutation index z.1 z.2
     return ((z, accepted), Tree.evaluations tree, transcript)
 
 def BreaksKnowledgeSoundness (z : Outcome) : Prop :=
@@ -153,16 +150,16 @@ def BreaksKnowledgeSoundness (z : Outcome) : Prop :=
     Relation z.statement w
 
 def KnowledgeSoundness (ε : ℕ → ℝ≥0∞) : Prop :=
-  ∀ (A : Adversary) (Q : ℕ), (∀ root, QueryCostAtMost (A root) permutationCallCost Q) →
+  ∀ (A : Adversary) (Q : ℕ), (∀ index, QueryCostAtMost (A index) permutationCallCost Q) →
     Pr{let z ← soundnessExperiment A}[BreaksKnowledgeSoundness z] ≤ ε Q
 
 noncomputable def completenessExperiment (stmt : Statement) (w : Secret) : ProbComp Bool :=
   runWithRandomPermutation do
-    let indexRoot ← setupWith queryPermutation
+    let (_, index) ← setupWith queryPermutation
     let coins ← sampleCoins
     match ← prover queryPermutation stmt w coins with
     | none => return false
-    | some proof => verifier queryPermutation indexRoot stmt proof
+    | some proof => verifier queryPermutation index stmt proof
 
 def Completeness (δ : ℝ≥0∞) : Prop :=
   ∀ (stmt : Statement) (w : Secret), Relation stmt w →
@@ -190,25 +187,21 @@ def ZeroKnowledgeWith {S : Type} (s₀ : S) (sim : Statement → StateT S ProbCo
       Pr{let b ← idealExperimentWith s₀ sim simOracle stmt D}[b = true] ≤
         Pr{let b ← realExperiment stmt w D}[b = true] + ζ Q
 
--- this package's own simulator (a tested heuristic, not covered by the end theorem)
-def ZeroKnowledge (ζ : ℕ → ℝ≥0∞) : Prop :=
-  ZeroKnowledgeWith (S := Simulator.SimState) {} simulator Simulator.simOracle ζ
-
 def StatementBinds : Prop :=
   ∀ w w' : Secret, w.statement = w'.statement →
     w.x = w'.x ∨ PairCollision (w.x, Vector.replicate 32 yPad) (w'.x, Vector.replicate 32 yPad)
 ```
 
-`Adversary` is `Digest → OracleComp RandomPermutationOracles (Statement × Proof)`: given the setup's
-commitment (the circuit's index root, the tree's root; it could recompute it with `π`), with coins, `π` and
+`Adversary` is `Commitment → OracleComp RandomPermutationOracles (Statement × Proof)`: given the setup's
+commitment (the circuit's root and out-of-domain answer; it could recompute it with `π`), with coins, `π` and
 `π⁻¹`;
 `Distinguisher` is `Option Proof → OracleComp RandomPermutationOracles Bool`, quantified after the
 statement and the witness (non-adaptive zero knowledge). **Zero knowledge is for one proof**:
 `realExperiment` starts from an empty, lazily sampled `π`, the prover goes first, and the distinguisher
 queries `π` and `π⁻¹` only after it has the proof. Not covered: oracle queries before the proof (a
 distinguisher's precomputation or auxiliary input that depends on `π`), and several proofs under one `π`.
-`sampleCoins` is the prover's coins: twelve uniform mask words and a uniform word at every padding position
-of the two hidden tables.
+`sampleCoins` is the prover's coins (`Coins`): twelve mask words, the sixteen random rows' values and the
+twenty-four blinding words of `h`, each uniform in `K`, in the order the Rust's KDF derives them.
 `QueryCostAtMost`, `permutationCallCost`, `runWithRandomPermutation`, `loggedOracles`, `queryPermutation`
 are mumbai's (`RandomPermutation.lean`). `PairCollision a b` is `a ≠ b ∧ pair a.1 a.2 = pair b.1 b.2`.
 
@@ -227,14 +220,13 @@ them:
   three `N (N + 1) / 2^256`), and the chain `N (2^-164 + 8 N / 2^256)`, `N` the run's Keccak-256 queries; the
   constants count the setup's and the verifier's own calls. About `2^-104.4` at `Q = 0`, `2^-85.4` at `2^40`,
   `2^-61.4` at `2^64`.
-* `δ = E2ECompleteness.deltaDeployed = (17 · 2^24 + 8)/2^192 + 2/2^256 + 3 · 2^-277 + (2^48)²/2^508`, about
-  `2^-163.91`: degenerate challenges (`2^-163.91`), a chain query that is not fresh (`2^-255`), the proofs of work
-  (`2^-275.4`; no nonce among `2^25`, the whole run's failure below `2^-304`), the permutation as two random
-  oracles (`2^-412`).
-* `ζ = zkBoundEnd ((2^24 + 2^70) · 12) fmtBudget (· ↦ deltaNone)` (`formal/EndToEnd/ZK/Main.lean`): about
-  `2^-113` for `Q ≤ 2^126`, its largest term the Fiat–Shamir freshness of the honest prover's queries;
-  `HIDING.md`'s conditions (S) and (R) are proven for the deployed layouts outside a small set of challenges,
-  which the bound counts.
+* `δ = E2ECompleteness.Pcs.deltaPcs = (19 · 2^24 + 31)/2^192 + 2^-304 + (2^48)²/2^508`, about `2^-163.75`
+  (`deltaPcs_lt`: `< 2^-163`; `formal/EndToEnd/Completeness/E2ECompleteness/PcsEnd.lean`): degenerate challenges
+  `(α, β, t, ρ)` (`2^-163.75`), the six openings' proofs of work (`2^-304`), the permutation as two random oracles
+  (`2^-412`).
+* `ζ Q = εpcs Q + εr + εfs₀` (`formal/EndToEnd/ZK/PcsFSClosed.lean`): `εpcs` and `εr` the two hypotheses'
+  errors (`PcsZeroKnowledge sim εpcs`, `RevealedUniform εr`), `εfs₀ ≤ 2^-162` (`εfs₀_le`) the distance of the
+  simulator's `113` Fiat–Shamir challenges from uniform, proved.
 
 ## The extractor
 
@@ -264,9 +256,9 @@ leaves of `64` words, each of its `64` lanes a Reed–Solomon word of `n = 2^20`
    least the Johnson threshold (`741549` columns), CompPoly's Guruswami–Sudan list decoder over `K` lane by
    lane with prefix pruning (at most `2^18` candidates).
 
-It reads each candidate's table back through the hidden layout (`Layout.readEntry`), takes the cells'
-polynomial to the cells' values (`Domain.values`), reads the input rows' `V` cells as bits, and returns the
-first candidate's secret that satisfies the relation.
+A candidate stack **is** the witness table (a PCS commitment commits the table as it is): the extractor takes
+its first `2^m` entries, the cells' polynomial, to the cells' values (`Domain.values`), reads the input rows'
+`V` cells as bits, and returns the first candidate's secret that satisfies the relation.
 
 **Its cost** (`Extractor.lean`'s table; read off its loops, not proved), in operations of `K`, `Q` the
 transcript's queries, `N` the evaluations read (the setup's `2^20 − 1` and the transcript's):
@@ -278,7 +270,7 @@ transcript's queries, `N` the evaluations read (the setup's `2^20 − 1` and the
 | fast path | `64` inverse transforms of `2^19` and forward of `2^20`: about `2^31.4` |
 | unique decoder, if the fast path gives no witness | about `2^28.3` per lane plus about `2^21.5` per wrong column of the lane (Gao's Euclid stops after `deg v ≤ e` divisions): about `2^34.3` for a word with few wrong columns, at most `2^45.7` |
 | list decoder, if neither gives a witness | multiplicity `1149`, `Y`-degree `1625`, `2^39.3` interpolation conditions per lane; Mulders–Storjohann's reduction `(ℓ+1)³(m'n)² ≈ 2^92.3` per lane (`2^98.3` for the `64`), then Roth–Ruckenstein: infeasible |
-| per candidate | the read-back of `2^24` entries, one transform of `2^24`, `33` Keccak-256 |
+| per candidate | one transform of `2^24`, `33` Keccak-256 |
 
 **The list decoder is the worst case only**: it runs only on a word whose every witness stack's encoding
 agrees with it on fewer than `786432` of its `2^20` columns (beyond the unique-decoding radius, within the
@@ -288,40 +280,43 @@ decoder. That the unique decoder recovers every word within its radius is Gao's 
 
 ## The simulator
 
-**Which simulator the end theorem covers.** `ZeroKnowledgeWith` takes the simulator as a parameter; the end
-theorem (`formal/EndToEnd/ZK/CoreMain.lean`, `zeroKnowledge_closed`, from `Main.lean`'s `zeroKnowledge_end`)
-proves it for `formal/QuotientZk`'s simulator in
-this shape (`zkSimulator`, `rpmSimOracle`, `formal/EndToEnd/ZK/With.lean` and `Simulator.lean`), whose
-definition and cost `formal/README.md` describes ("Zero knowledge end to end"). It draws every Fiat–Shamir
-challenge first and programs the oracle with them, takes the messages and opened rows from the joint
-honest-verifier simulator, and answers the unopened leaves with fresh private digests. The rest of this
-section describes **this package's own `simulator`**, a tested heuristic that `ZeroKnowledge ζ` (that is,
-`ZeroKnowledgeWith` at it) is about and that **no theorem covers**: it programs the trees' roots instead of
-the challenges.
+**Zero knowledge assumes a zero-knowledge PCS** (`Zk.lean`, `docs/membership/HIDING.md`): a commitment's root and
+an opening reveal nothing beyond the commitment's out-of-domain answer and the claim, and the protocol makes
+everything else it reveals uniform with its randomness (the masks, the random rows, the blinding of `h`). The
+deployed openings, leanVM's WHIR, are not zero-knowledge: this is a statement about the protocol over an ideal
+PCS.
 
-`simulator stmt` (`Security.lean`) is `Simulator.simulateFor (membership logRows) (2^25)`; together with
-`Simulator.simOracle`, which answers every query of the distinguisher from the simulator's tables of
-`π` (hash maps; fresh queries by uniform states: a random function, which differs from a permutation on a
-collision only). **It reads** the statement and its own coins, never the witness. It is the **honest
-prover on fake tables, with oracle programming**:
+* **A PCS simulator** (`PcsSimulator`): its own state (`Aux`, from `aux₀`) and an opening simulator `simOpen`,
+  which sees only the commitment and the claim and may read and program the permutation's edges. Its oracle
+  (`PcsSimulator.oracle`) is mumbai's lazily sampled permutation on the state's edges (`edgeOracle`), programmed
+  only where `simOpen` writes.
+* **The ideal PCS** (`PcsSimulator.idealPcs`): a commitment's root uniform and independent of the table, its
+  out-of-domain answer the table's polynomial at the root's point (`oodPointWith` over the simulator's
+  permutation), an opening the opening simulator's. **The hybrid experiment** (`hybridExperiment`): the honest
+  prover with the witness, its four secret tables committed and opened by the ideal PCS (`proveWithPcs`), the
+  circuit's commitment and the wiring opening real.
+* **`PcsZeroKnowledge sim εpcs`**: the real experiment and the hybrid differ by at most `εpcs Q` for a
+  distinguisher of `Q` calls.
+* **`RevealedUniform εr`**: for every witness, outside a set of challenge tuples (`Challenges`: the four
+  out-of-domain points and `α, β, γ, t, ρ`) of probability at most `εr`, the ten revealed scalars (`revealed`: the
+  four out-of-domain answers, the four `a_j`, `Q`'s and `G`'s values) are uniform when the prover's randomness is
+  (`HIDING.md`'s rank conditions). Not proved: the Rust tests the rank conditions (`hiding.rs`).
+* **The simulator** (`zkSimulator sim`) reads the statement, never the witness. Its challenge phase
+  (`challengePhase` with `uniformReveal`) commits to the circuit (real, public), draws each secret root uniformly
+  and computes its out-of-domain point with the model's permutation, draws each revealed scalar uniformly where the
+  prover computes it, and runs the reduction's chain on them, `next` the public wiring value (`wiringValue`); then
+  `finishOpenings` opens the wiring claim with the real WHIR prover (public table) and the five secret claims with
+  `simOpen`. Its cost is the circuit's commitment, four uniform roots and their out-of-domain points, ten
+  uniform elements, the chain, one WHIR opening of the public wiring table, and the PCS simulator's five openings.
+* **`FiatShamirUniform εfs`**: in the simulator's challenge phase the challenges are within `εfs` of uniform
+  (`sampleChallenges`) on every event; a property of the model and the transcript's encoding, **proved** at
+  `εfs₀ ≤ 2^-162` (`fiatShamirUniform_closed`, `formal/EndToEnd/ZK/PcsFSClosed.lean`).
 
-1. the circuit's commitment honestly (public);
-2. the two roots as uniform digests, fixed first; the Keccak-256 chain run honestly over its `π`
-   (`α, β, γ`, `t`, `ρ`);
-3. the four values **uniform** (in `K` when the row of `t` is in `K`, else in `E`: `simValues` of
-   `formal/`'s reduction simulator), `next` honestly; the verifier's four claims;
-4. each hidden stack **uniform on its layout conditioned on its claims** (`fakeStack`: `3·#claims`
-   entries solved for, the claims being linear over `K` limb by limb), that is a uniform table with those
-   claims, uniformly padded;
-5. each fake table's tree built honestly up to the root's children, and `π` **programmed** at the root
-   node's input so that the tree's root is the one drawn in step 2 (`programmedTree`);
-6. the honest WHIR prover on the fake tables, and on the public wiring table.
-
-Step 4 is the right distribution by `HIDING.md`'s theorem: for fixed challenges, a translation of the padding
-maps the opening's view of a table onto that of any other table with the same claims. Its cost is the
-honest prover's openings and commitments on tables of the same sizes, plus one uniform word per stack word
-and a Gauss–Jordan elimination of six unknowns. Its proof of any statement, true or not, is accepted by the
-verifier querying the simulator's `π` (the self-test checks it on a small circuit, for a false statement).
+The end theorems: `PcsQuotient.EndToEnd.zeroKnowledge_pcs` (`formal/EndToEnd/ZK/PcsEnd.lean`) under the three
+propositions, `ζ Q = εpcs Q + εr + εfs`; **`zeroKnowledge_pcs_closed`** under `PcsZeroKnowledge` and
+`RevealedUniform` only, `ζ Q = εpcs Q + εr + εfs₀`. A PCS simulator with an oracle of its own (an
+indifferentiability simulator answering fresh queries specially, say) is not covered: the simulator's oracle is
+the model's permutation, which `simOpen` may only program.
 
 ## What is assumed, and what remains
 
@@ -330,21 +325,24 @@ model, `verifyStackedOpening` as leanVM's WHIR verifier, its prover's pieces, it
 mumbai tests its verifier against leanVM's on mutated proofs); that the deployed Keccak-f[1600] behaves
 as a random permutation. **Tested, not proved**, that these definitions are the Rust: the differential
 test (below). The test checks the constants' properties by compiled evaluation (`native_decide`); the proofs
-check the ones they use by kernel evaluation (`formal/EndToEnd/Bridge/Claims/Constants.lean`:
-`isCantor_statementConsts`, `rowVanishing_statementConsts`).
+check the ones they use by kernel evaluation (`isCantor_statementConsts`,
+`formal/EndToEnd/Bridge/Claims/Constants.lean`; `rowVanishing_24_lanes`, `Bridge/Claims/Tau.lean`;
+`rowVanishingProperty`, `formal/EndToEnd/Completeness/E2ECompleteness/PcsConstants.lean`).
 
 **Deviations from the Rust**, each documented where it is:
 
 * The WHIR proofs are in mumbai's format, one full Merkle path per query (the raw form of
   `verifier::MerkleOpenings`); the Rust prover ships pruned paths, which the Rust verifier expands. The
   expansion is not formalized (as in mumbai).
-* The reduction's proof is a structure of nine scalars rather than a stream; a stream of another length
-  (rejected by the Rust) is no proof.
+* The reduction's proof is a structure of nineteen scalars rather than a stream (`ReductionProof.ofStream`
+  reads one); a stream of another length, or a root that is not two halves (rejected by the Rust), is no proof.
 * The verifier inverts its denominators one by one after checking that none is zero; the Rust inverts
   their product by the norm to `K` (same values). The target `Σ_J γ^J word_J` is a fold over
   `statementWords`; the Rust writes it out (same value).
-* The statement's prover takes its padding uniform; the deployed prover expands a 32-byte seed by
-  ChaCha12 keyed by Keccak-256 (`Table::hidden`), which the test reproduces (`PcsQuotientTest/ChaCha.lean`).
+* The statement's prover takes its randomness uniform (`sampleCoins`); the deployed prover derives the same
+  words from a fresh 32-byte seed by a Keccak-256 key derivation only (`Randomness::derive`, `protocol.rs`: a key
+  binding the seed, the label and a digest of the cells, then the words of Keccak-256(tag ‖ key ‖ k)), so deployed
+  zero knowledge is computational in that derivation; the test hands the Lean prover the Rust's derived words (`Q`).
 * The EVM contract (`crates/membership/evm`) computes the reduction and checks its claims declared; F5 and
   `formal/EndToEnd/Evm` prove that its recorded graph accepts exactly when `verifyWith` does
   (`evm_accepts_iff_verifyWith`), with what the block proves of a claim an explicit definition (`pcsOpen`).
@@ -354,32 +352,31 @@ check the ones they use by kernel evaluation (`formal/EndToEnd/Bridge/Claims/Con
 
 * `KnowledgeSoundness Soundness.ksBound`: **proved, no hypotheses** (`Soundness.knowledgeSoundness`,
   `formal/EndToEnd/Soundness/PcsFinal.lean`), from the circuit (F0: `membership`'s satisfying assignments are its
-  computation of Keccak-256 membership, the embedding `statementWords`), the reduction's round-by-round
-  soundness (F1), WHIR's soundness for this weight on the hidden layouts (F2, `formal/WhirBridge`), the
-  composition in the model with extraction from the transcript (F4, `formal/Compose`), and the bridge from
-  these definitions to the layers' (`formal/EndToEnd/Bridge`). Stand-alone knowledge soundness, not
+  computation of Keccak-256 membership, with its random rows; the embedding `statementWords`), the reduction's
+  round-by-round soundness (F1), the PCS opening's soundness and the binding of each root's list at its
+  out-of-domain point (F2, `formal/WhirBridge`: `pcs_sound_oracle`, `ood_binding_coords`), the composition in the
+  model with extraction from the transcript (F4, `formal/Compose`, `formal/ComposePcs`, `formal/SoundPcs`:
+  `knowledgeSoundness_deployed_pcs`), and the bridges from these definitions to the layers'
+  (`formal/EndToEnd/Bridge`, `formal/EndToEnd/PcsBridge`). Stand-alone knowledge soundness, not
   simulation-extractability.
-* `Completeness E2ECompleteness.deltaDeployed`: **proved, no hypotheses** (`E2ECompleteness.completeness_end`,
-  `formal/EndToEnd/Completeness/E2ECompleteness/Done.lean`): the honest prover's claims hold (F1's
-  completeness) and its WHIR openings are accepted (mumbai's completeness of its WHIR prover), with the proofs
-  of work, the chain's challenges in the random-oracle model, and the transfer from the permutation. It is about
-  this package's `prover`, which the differential test compares with the Rust prover only on the reduction's
-  nine scalars at `2^17` rows (`Q`, below): the deployed Rust prover is trusted for completeness.
-* `ZeroKnowledgeWith` for `QuotientZk`'s simulator: **proved, no hypotheses**
-  (`PcsQuotient.EndToEnd.zeroKnowledge_closed`, `formal/EndToEnd/ZK/CoreMain.lean`), with WHIR's honest prover
-  as the renderer. Two statement changes were needed: the deterministic core is stated off degenerate `α, β`
-  (`CoreWhirG`; `CoreWhir` is false there), those charged to `deltaNone`; `fmt`'s `fillRun` ends at `fail` as at
-  `ret`. An explicit simulator, compiled in `zeroKnowledge_closed_computable`. Single-proof zero knowledge: from an
-  empty `π`, the distinguisher's queries after the proof; no query before the proof and no second proof
-  under the same `π` (a pre-proof phase is planned). `ZeroKnowledge ζ`, for this
-  package's heuristic `simulator`, is not proved, so neither is the structure `Theorems` (`Security.lean`),
-  whose `zeroKnowledge` field it is.
+* `Completeness E2ECompleteness.Pcs.deltaPcs`: **proved, no hypotheses** (`E2ECompleteness.completeness_end`,
+  `formal/EndToEnd/Completeness/E2ECompleteness/PcsDone.lean`): the honest parts are F1's blinded honest second
+  message and the six claims hold, its PCS openings are accepted (mumbai's completeness of its WHIR prover), with
+  the proofs of work, the four challenges in the random-oracle model, and the transfer from the permutation. It is
+  about this package's `prover`, which the differential test compares with the Rust prover only on the
+  reduction's stream at `2^17` rows (`Q`, below): the deployed Rust prover is trusted for completeness.
+* `ZeroKnowledgeWith sim.s₀ (zkSimulator sim) sim.oracle (fun Q ↦ εpcs Q + εr + εfs₀)`: **proved under two
+  hypotheses**, `PcsZeroKnowledge sim εpcs` and `RevealedUniform εr` (`PcsQuotient.EndToEnd.zeroKnowledge_pcs_closed`,
+  `formal/EndToEnd/ZK/PcsFSClosed.lean`; "The simulator", above). Single-proof zero knowledge: from an empty `π`,
+  the distinguisher's queries after the proof; no query before the proof and no second proof under the same `π`.
+  The structure `Theorems` (`Security.lean`) holds the other two and `StatementBinds`.
 * Scope: the three are about `verifyWith` in the random-permutation model; the EVM theorem below holds at the
   real Keccak-f[1600]. They do not formally compose: a probability over a random permutation does not transfer
   to a fixed hash.
 * `StatementBinds`: a pigeonhole, immediate; not proved in Lean.
 * The EVM contract: `formal/EndToEnd/Evm` (`evm_accepts_iff_verifyWith`, `evm_accepts_iff_exists`); the
-  bytecode equal to the recorded graph and the claims' opening (`opening::verify`) equal to `openingWith` by tests.
+  bytecode equal to the recorded graph, and what the block proves of a declared claim (`pcs_claim::verify`) equal
+  to `pcsOpening`, by tests.
 
 ## Building and testing
 
@@ -391,24 +388,23 @@ lake build PcsQuotientTest differential      # the constants' properties, the un
                                              # and the hash-map inversion's tests, the test
 
 # vectors from the Rust (from the repository root): reductions, whole proofs (honest and tampered),
-# circuit commitments, the honest prover's streams; --index adds the membership circuit's commitment
+# circuit commitments, the honest prover's streams; --index adds the membership circuit's commitment,
+# --full also its whole proofs
 cargo run --release -p quotient --example statement_vectors -- vectors.txt --index
 .lake/build/bin/differential vectors.txt     # Lean's verdicts, claims, commitments and streams vs Rust's
-.lake/build/bin/differential --self-test     # the extractor's inversion and decoding, the simulator
-.lake/build/bin/differential --weights       # the prover's weight vs the verifier's; fakeStack's claims
+.lake/build/bin/differential --self-test     # the extractor's inversion and decoding
 ```
 
-The test (`PcsQuotientTest/Differential.lean`) checks, line by line: on random nine-scalar streams at
-`2^16` to `2^23` rows (some malformed, some at sizes the layouts do not take) and on honest streams, that
-`reduceWith` gives the Rust's two roots and four claims or rejects as it does (`R`); on whole proofs of a
-small circuit (`2^17` rows, hidden layouts), honest and tampered fourteen ways (values, roots, statement,
-circuit commitment, WHIR scalars, leaves, siblings, missing, extra and short paths), that `verifyWith` gives
-the Rust's verdict (`P`); that the Lean builder and commitment give the Rust circuits' sizes and
-commitments, the membership circuit's at `2^22` rows included (`I`, about five minutes); and that the Lean
-prover, given the Rust prover's masks and seed (its padding expanded by ChaCha12 as the Rust's), sends the
-Rust prover's stream and its proof is accepted (`Q`; the stream is the reduction's nine scalars, at `2^17` rows
-on a small circuit: the openings are not compared, and the check was not run at `2^22`). `--self-test` runs the extractor's Merkle inversion
-through a transcript (a small tree: mumbai's replay is quadratic), its decoding of an honest hidden witness
-table back to the input bits, and the simulator's proof of a false statement (about two hours at `2^17`
-rows); `--weights` that the prover's and the simulator's weight on a hidden stack (`Layout.weightAt`) is the
-verifier's (`stackWeight`) and that `fakeStack` meets the quotient table's two claim shapes.
+The test (`PcsQuotientTest/Differential.lean`) checks, line by line: on random nineteen-scalar streams at
+`2^12` to `2^23` rows (some of other lengths, some with a root that is not two halves, some at sizes the
+commitments do not take) and on honest streams, that `reduce` gives the Rust's four commitments and six claims
+or rejects as it does (`R`); on whole proofs of a small circuit (`2^17` rows), honest and tampered seventeen ways
+(values, roots and out-of-domain answers, the statement, the circuit commitment, WHIR scalars, a truncated or
+extended stream, leaves, siblings, missing, extra and short paths), that `verify` gives the Rust's verdict on the
+six openings in their raw form (`P`); that the Lean builder and commitment give the Rust circuits' sizes, inputs
+and commitments (root, out-of-domain answer), the membership circuit's at `2^22` rows included with `--index`
+(`I`); and that the Lean prover, given the Rust prover's input bits and derived randomness (masks, random rows,
+blinding), sends the Rust prover's reduction stream and its whole proof is accepted by the Lean verifier (`Q`, at
+`2^17` rows on small circuits: the openings are not compared with the Rust's, and the check was not run at
+`2^22`). `--self-test` runs the extractor's Merkle inversion through a transcript (a small tree: mumbai's replay
+is quadratic) and its fast-path decoding of an honest witness table back to the input bits.
