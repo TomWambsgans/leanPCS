@@ -220,12 +220,13 @@ proved in Lean.
 **The bounds are parameters**, `ε`, `δ`, `ζ` (a statement at `ε = 1` says nothing). The end theorems fix
 them:
 
-* `ε = Soundness.ksBound` (`formal/EndToEnd/Soundness/RpmV.lean`):
-  `ksBound Q = Σ_{i<3} openingBound (2^21 + Q + 6 + i · 10122) + N (2^-128 + 5 N / 2^256) +
-  (2^52 + Q + (6 + 3 · 10122) · 2^32)² / 2^508`, `N = 2^21 + Q + 6 + 3 · 10122`, with
-  `openingBound x = (x + 10122)(2^-128 + 5 (x + 10122) / 2^256)` (F2's term for one opening); the constants
-  count the setup's and the verifier's own calls. About `2^-105` at `Q = 0`, `2^-86` at `2^40`, `2^-62` at
-  `2^64`.
+* `ε = Soundness.ksBound` (`formal/EndToEnd/Soundness/PcsFinal.lean`, the EIP's PCS claims):
+  `ksBound Q = SoundPcs.deployedBound (2^20 + 24 + Q) + (5 · 2^19 + 24 + Q + 728890)² / 2^508`, `deployedBound`
+  the six openings' terms `openingBound x = (x + 10122)(2^-128 + 5 (x + 10122) / 2^256)` (F2's term for one
+  opening), the binding of the four roots' lists at their out-of-domain points (`N · (δc 25 + δc 27 + δc 28)` and
+  three `N (N + 1) / 2^256`), and the chain `N (2^-164 + 8 N / 2^256)`, `N` the run's Keccak-256 queries; the
+  constants count the setup's and the verifier's own calls. About `2^-104.4` at `Q = 0`, `2^-85.4` at `2^40`,
+  `2^-61.4` at `2^64`.
 * `δ = E2ECompleteness.deltaDeployed = (17 · 2^24 + 8)/2^192 + 2/2^256 + 3 · 2^-277 + (2^48)²/2^508`, about
   `2^-163.91`: degenerate challenges (`2^-163.91`), a chain query that is not fresh (`2^-255`), the proofs of work
   (`2^-275.4`; no nonce among `2^25`, the whole run's failure below `2^-304`), the permutation as two random
@@ -352,7 +353,7 @@ check the ones they use by kernel evaluation (`formal/EndToEnd/Bridge/Claims/Con
 `Quot.sound`):
 
 * `KnowledgeSoundness Soundness.ksBound`: **proved, no hypotheses** (`Soundness.knowledgeSoundness`,
-  `formal/EndToEnd/Soundness/Final.lean`), from the circuit (F0: `membership`'s satisfying assignments are its
+  `formal/EndToEnd/Soundness/PcsFinal.lean`), from the circuit (F0: `membership`'s satisfying assignments are its
   computation of Keccak-256 membership, the embedding `statementWords`), the reduction's round-by-round
   soundness (F1), WHIR's soundness for this weight on the hidden layouts (F2, `formal/WhirBridge`), the
   composition in the model with extraction from the transcript (F4, `formal/Compose`), and the bridge from

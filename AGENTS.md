@@ -142,11 +142,13 @@ one-point claims each opened by a version-1 PCS opening, the quotient table in t
 `formal/EndToEnd` proves them ([`formal/README.md`](formal/README.md)). All sorry-free, on `propext`,
 `Classical.choice` and `Quot.sound` only (`#guard_msgs` in each library).
 
-- **Knowledge soundness, no hypotheses**: `Soundness.knowledgeSoundness : KnowledgeSoundness ksBound`, about 2^-93 at
-  Q = 0, 2^-74 at 2^40 and 2^-50 at 2^64 queries: the chain union-bounds each challenge over the four roots' candidate
-  tuples (< 2^50) rather than using their out-of-domain answers (the tightening is under way). The openings are sound
-  with the verifier computing the out-of-domain point from Keccak-256 (`WhirBridge.Pcs.pcs_sound_oracle`), and H's
-  two claims are tied to one table by its answer (`WhirBridge.Pcs.ood_binding_coords`). The extractor
+- **Knowledge soundness, no hypotheses**: `Soundness.knowledgeSoundness : KnowledgeSoundness ksBound`, about
+  2^-104.4 at Q = 0, 2^-85.4 at 2^40 and 2^-61.4 at 2^64 queries (125.4 bits as Q/ε), the six openings' 2^-128 a
+  query dominating. Each challenge is bounded for the one candidate tuple the four roots' out-of-domain answers pin
+  (`ComposePcs.prEvent_pinned_le`, `trace_core4P`: 2^-164 a query, not the union over < 2^50 tuples), the four lists
+  separated at their points (`WhirBridge.Pcs.ood_binding_coords` at 25, 27, 28 variables: about 2^-166.5 a query
+  together). The openings are sound with the verifier computing the out-of-domain point from Keccak-256
+  (`WhirBridge.Pcs.pcs_sound_oracle`). The extractor
   (`PcsQuotient.extractor`) is explicit, computable and straight-line. Stand-alone, not simulation-extractability.
 - **Completeness, no hypotheses**: `E2ECompleteness.completeness_end : Completeness deltaPcs`, `deltaPcs` < 2^-163.
 - **Zero knowledge, under two hypotheses**: `PcsQuotient.EndToEnd.zeroKnowledge_pcs_closed`: `PcsZeroKnowledge`
@@ -239,8 +241,7 @@ one-point claims each opened by a version-1 PCS opening, the quotient table in t
   of about 1,200 lines of the builder); (3) closed bounds at other shapes than the reference; (4) declarations in the
   shared libraries that no end theorem uses ([`formal/README.md`](formal/README.md)).
 - leanVM: capacity beyond about 470 signatures.
-- Membership in Lean: soundness through the out-of-domain answers (the bound above unions over the four roots'
-  lists); `RevealedUniform` proved rather than tested, which needs a protocol whose revealed scalars are affine in
+- Membership in Lean: `RevealedUniform` proved rather than tested, which needs a protocol whose revealed scalars are affine in
   its randomness (e.g. `G` blinded as `h` is: `HIDING.md`).
 - The leanVM line's PCS claims in Lean (π1 done: `UniKeccak`, `UniKeccakSound`, `UniKeccakComplete`,
   `RecGraphKeccak`): `RecStatement`, `RecPiop` and

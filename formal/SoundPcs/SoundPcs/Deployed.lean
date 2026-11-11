@@ -38,8 +38,9 @@ table of `24` variables as itself), then its out-of-domain point, coordinate `j`
 
 **The verifier accepts** (`AccD`) when all six openings accept. **Each opening's doom** at its end (`EW`, `Eσ`,
 `EH`, `EQ`, `EG`, `ES`) is bounded by `OpenSpec.sound` for the run up to it as its adversary
-(`prEvent_EW_le`, …); **the binding event** (`EB`: `H`'s list not separated at its out-of-domain point at the
-end) by `WhirBridge.Pcs.ood_binding_coords` on the whole run (`prEvent_EB_le`).
+(`prEvent_EW_le`, …); **the binding events** (`EB`, `EBn n`: some root's list on `27`, resp. `n`, variables not
+separated at its out-of-domain point at the end; `n = 25` for `W` and `G`, `28` for `Q`, `27` for `H`) by
+`WhirBridge.Pcs.ood_binding_coords` on the whole run (`prEvent_EB_le`, `prEvent_EBn_le`).
 -/
 
 set_option linter.unusedSectionVars false

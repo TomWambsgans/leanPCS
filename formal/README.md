@@ -41,15 +41,20 @@ Statement's own definitions. Every theorem below is sorry-free and depends only 
   adversary is given it, makes at most `Q` calls of π and π⁻¹ (its coins free), and outputs a statement and a
   proof. The probability that the verifier accepts while `PcsQuotient.extractor` returns no secret satisfying
   `PcsQuotient.Relation` is at most `ksBound Q = SoundPcs.deployedBound (2^20 + 24 + Q) + (5·2^19 + 24 + Q +
-  728890)^2/2^508`: about `2^-93` at `Q = 0`, `2^-74` at `2^40`, `2^-50` at `2^64`. `deployedBound` (`formal/SoundPcs`,
-  `knowledgeSoundness_deployed_pcs`, mumbai's two-oracle model) is six opening terms (`WhirBridge.Pcs.pcs_sound_oracle`:
-  each opening sound with the out-of-domain point read off Keccak-256 by the verifier), the binding of `H`'s two
-  claims to one table (`ood_binding_coords` at `27` variables, `δc 27 ≤ 2^-168`; the other commitments carry one claim
-  each), and the chain's union over the four roots' certified lists (`formal/ComposePcs`, `listFactor4 · roundError ≤
-  2^-114` per query: `7908 · 4473 · 3564 · 7908 < 2^50` candidate tuples for `t` and `ρ`), which dominates. That
-  union is why the bound is weaker than the previous protocol's (`2^-138` per query with two roots): binding every
-  root to one table before the next challenge would need its out-of-domain point asked before the challenge, which
-  the transcript does not force. The extractor is unchanged in kind (hash-map replay, Merkle inversion, interpolation,
+  728890)^2/2^508`: about `2^-104.4` at `Q = 0`, `2^-85.4` at `2^40`, `2^-61.4` at `2^64` (`125.4` bits as `Q/ε`).
+  `deployedBound` (`formal/SoundPcs`, `knowledgeSoundness_deployed_pcs`, mumbai's two-oracle model) is six opening
+  terms (`WhirBridge.Pcs.pcs_sound_oracle`: each opening sound with the out-of-domain point read off Keccak-256 by the
+  verifier; `2^-128` a query each, which dominate), the binding of the four roots' lists at their out-of-domain points
+  (`ood_binding_coords` at `25` (`W`, `G`), `27` (`H`) and `28` (`Q`) variables: `δc 25 ≤ 2^-167`, `δc 27 ≤ 2^-168`,
+  `δc 28 ≤ 2^-169` a query, plus `N (N + 1)/2^256` each), and the chain (`ComposePcs/ComposePcs/Pinned4.lean`): each root is
+  absorbed with its out-of-domain answer, so each challenge after it is bounded for **the one candidate tuple the
+  answers pin** (`prEvent_pinned_le`: the answers at the `46`-byte out-of-domain inputs fix it, asked or not, and the
+  round's answers are uniform and independent of them), F1's round error `2^-164` a query instead of the union over
+  `7908 · 4473 · 3564 · 7908 < 2^50` tuples (`2^-114`, `ListChain4.lean`, kept). Chain and binding together:
+  `2^-163.8` a query. No challenge is drawn between a root and its answer (both are in one chain input,
+  `commitWords`), so the binding applies at every round; the out-of-domain points may be asked late (after the
+  challenges, by the verifier), which the bad events allow: the fresh-query engine lets them read the whole table.
+  The extractor is unchanged in kind (hash-map replay, Merkle inversion, interpolation,
   Gao's decoder, Guruswami–Sudan last), on the witness table, which a PCS commitment holds as it is. The proof: the
   Statement's experiment to the two-oracle model (`rpm_le_romG`), the Statement's verifier to `SoundPcs`'s run
   (`le_dExp`: `reduceWithH_eq_chain4`, `pcsOpeningWithH_eq_O`), the claims through `PcsBridge.claimsAt_eq` and the

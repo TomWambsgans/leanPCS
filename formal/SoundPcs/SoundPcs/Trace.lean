@@ -9,13 +9,15 @@ import SoundPcs.Deployed
 # The trace of the deployed run
 
 **`trace_dExp`**: on every table of both oracles, a run of the deployed verifier that accepts while the
-adversary-log extractor finds no witness, with none of the six openings doomed at its end and `H`'s list
-separated at its out-of-domain point (`¬ EB`), asks a bad fresh query of `ComposePcs.advBad4`. Each undoomed
-opening has a candidate of its root's extracted word satisfying its claims (`stage_undoomed`), read back as a
-candidate of the word the adversary's log commits to (no collision, no root answered after the adversary's last
-query: `merkleWord_stable`); the wiring opening's candidate is the setup's table (`extract_wiringSetup`,
-`candidates_honest`); `H`'s two candidates agree at the out-of-domain point, so they are one (the binding); the
-claims then hold of F1's messages read off the candidates (`ClaimsMatch`) and `ComposePcs.trace_core4` applies.
+adversary-log extractor finds no witness, with none of the six openings doomed at its end and the four roots' lists
+separated at their out-of-domain points (`¬ EB`, `¬ EBn 25`, `¬ EBn 28`), asks a bad fresh query of
+`ComposePcs.advBad4P`. Each undoomed opening has a candidate of its root's extracted word satisfying its claim and the
+commitment's out-of-domain answer (`stage_undoomed`), read back as a candidate of the word the adversary's log
+commits to (no collision, no root answered after the adversary's last query: `merkleWord_stable`); the wiring
+opening's candidate is the setup's table (`extract_wiringSetup`, `candidates_honest`); `H`'s two candidates agree at
+the out-of-domain point, so they are one; each root's list separated at its point, its candidate is its only pinned
+one (`pin_mem`, `pin_one`, the pins `ClaimsMatch.KP`); the claims then hold of F1's messages read off the candidates
+(`ClaimsMatch`) and `ComposePcs.trace_core4P` applies.
 -/
 
 set_option linter.unusedSectionVars false

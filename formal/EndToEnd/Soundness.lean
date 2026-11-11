@@ -12,9 +12,11 @@ computable extractor (`PcsQuotient.extractor`), proved with no hypothesis, on `p
 
 `ksBound Q = deployedBound (2^20 + 24 + Q) + (setupPermCalls + Q + verifierPermCalls)² / 2^508`,
 
-`deployedBound` `SoundPcs`'s (six opening terms, the binding of `H`'s two openings, the four-root chain at
-`2^-114` a query), `setupPermCalls = 5 · 2^19 + 24`, `verifierPermCalls = 10 + 6 · 121480`: about `2^-93` at `Q = 0`,
-`2^-74` at `Q = 2^40`, `2^-50` at `Q = 2^64` (the chain term `N · 2^-114`, `N` the run's queries).
+`deployedBound` `SoundPcs`'s (six opening terms; the binding of the four roots' lists at their out-of-domain points,
+`δc 25 + δc 27 + δc 28 ≤ 2^-166.5` a query; the four-root chain at `2^-164` a query, each challenge bounded for the one
+candidate tuple the out-of-domain answers pin, `ComposePcs.Pinned4`), `setupPermCalls = 5 · 2^19 + 24`,
+`verifierPermCalls = 10 + 6 · 121480`: about `2^-104.4` at `Q = 0`, `2^-85.4` at `Q = 2^40`, `2^-61.4` at
+`Q = 2^64`, `125.4` bits as `Q/ε` (the six opening terms, `2^-128` a query each, dominate).
 
 | File | What |
 |---|---|

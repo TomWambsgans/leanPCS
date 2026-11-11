@@ -65,7 +65,8 @@ srcDir = "../Compose"
 
 # The composition for the EIP's PCS claims (four commitments, each a root and its out-of-domain answer),
 # `formal/ComposePcs`: the reduction's chain with four real roots, union-bounded over their lists, composed
-# with abstract openings (`Compose`'s generic layers reused).
+# with abstract openings (`Compose`'s generic layers reused), and (`Pinned4.lean`) each challenge bounded for the
+# one candidate tuple the roots' out-of-domain answers pin.
 [[lean_lib]]
 name = "ComposePcs"
 srcDir = "../ComposePcs"
@@ -333,8 +334,8 @@ leanOptions = { warningAsError = true }
 
 # The deployed composition of the EIP's PCS claims (`formal/SoundPcs`): the setup computing the circuit's
 # commitment (its tree and out-of-domain answer) with the oracle, the four-root chain, the claims of
-# `reduceWith`, the six PCS openings with the out-of-domain point read off Keccak-256, the binding of `H`'s
-# two openings, and knowledge soundness in mumbai's two-oracle model.
+# `reduceWith`, the six PCS openings with the out-of-domain point read off Keccak-256, the binding of the four
+# roots' lists at their out-of-domain points, and knowledge soundness in mumbai's two-oracle model.
 [[lean_lib]]
 name = "SoundPcs"
 srcDir = "../SoundPcs"

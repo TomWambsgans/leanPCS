@@ -19,10 +19,13 @@ and its out-of-domain answer; six one-point PCS openings), in leanerVM `mumbai`'
 * `Tables.lean`: a committed column as F1 reads it, its table code, the quotient table from its three parts;
 * `Deployed.lean`: the opening interface (`OpenSpec`), the setup (`setupPcs`: the wiring table's tree and
   out-of-domain answer), the deployed run (`dExp`: setup and adversary, `chainWith4`, `claimsAt`, six gated
-  openings), each opening's doom and the binding event bounded;
-* `Trace.lean`: an accepted run whose extracted list holds no witness, no opening doomed and `H`'s list separated,
-  asks a bad fresh query (`trace_dExp`);
+  openings), each opening's doom and the binding events (`EB`, `EBn 25`, `EBn 28`) bounded;
+* `Trace.lean`: the four commitments' pins (`ClaimsMatch.KP`: candidate columns with the out-of-domain answer, read
+  off the `46`-byte inputs); an accepted run whose extracted list holds no witness, no opening doomed and the four
+  roots' lists separated at their points, asks a bad fresh query of `ComposePcs.advBad4P` (`trace_dExp`): the
+  openings' candidates are the roots' only pinned ones;
 * `Opening.lean`: the deployed opening `pcsVerifierO` (`WhirBridge.PcsOracle`) as an `OpenSpec` (`pcsOpen`);
 * `Claims.lean`: the claims, through `PcsBridge.claimsAt_eq` and `Compose.Reduce`, are F1's (`claimsMatch`);
-* `Final.lean`: the theorem and its bound (`deployedBound`); `Axioms.lean`: the axiom guards.
+* `Final.lean`: the theorem and its bound (`deployedBound`: six opening terms, three binding terms, the chain at
+  `2^-164` a query), for any wiring table (`knowledgeSoundness_deployed_pcs_of`); `Axioms.lean`: the axiom guards.
 -/
