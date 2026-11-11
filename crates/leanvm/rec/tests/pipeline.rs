@@ -111,7 +111,9 @@ fn trace_to_recursion() {
         );
 
         let mut phases: Vec<(&str, Vec<f64>)> = Vec::new();
-        let mut first: Option<(Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>)> = None;
+        // The first pass's π1 stream and openings, π2 stream and openings.
+        type Proofs = (Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>);
+        let mut first: Option<Proofs> = None;
         // π2's proof waits for π1's openings unless `PIPELINE_OVERLAP=1`.
         let serial = !std::env::var_os("PIPELINE_OVERLAP").is_some_and(|v| v != "0");
         for pass in 0..=repeat {
