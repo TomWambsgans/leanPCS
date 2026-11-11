@@ -30,6 +30,9 @@ pub struct FlockWitness {
 pub struct Chain<'a> {
     pub writer: &'a mut KeccakWriter,
     pub samples: Vec<E>,
+    /// π1-rec4: the zerocheck's first eq coordinate, drawn before Flock (with the bus's challenges): the first
+    /// challenge Flock's prover asks for.
+    pub drawn: Option<E>,
 }
 
 impl flock::transcript::Transcript for Chain<'_> {
@@ -38,7 +41,10 @@ impl flock::transcript::Transcript for Chain<'_> {
     }
 
     fn sample(&mut self) -> primitives::field::F192 {
-        let e = self.writer.sample();
+        let e = match self.drawn.take() {
+            Some(e) => e,
+            None => self.writer.sample(),
+        };
         self.samples.push(e);
         primitives::field::F192::new(e.c0, e.c1, e.c2)
     }
@@ -58,7 +64,7 @@ pub struct FlockOut {
 fn eq_point(variant: Variant) -> EqPoint {
     match variant.fs {
         FsShape::Main => EqPoint::Sampled,
-        FsShape::Rec | FsShape::Rec2 | FsShape::Rec3 => EqPoint::Squares,
+        FsShape::Rec | FsShape::Rec2 | FsShape::Rec3 | FsShape::Rec4 => EqPoint::Squares,
     }
 }
 
@@ -77,6 +83,7 @@ fn reduction(
     variant: Variant,
     log_n: usize,
     lincheck_rounds: usize,
+    drawn: Option<E>,
     reduce: impl FnOnce(&mut Chain) -> flock::slice::SliceClaim,
 ) -> Result<Reduction, String> {
     let k = variant.skip;
@@ -84,9 +91,13 @@ fn reduction(
     let mut chain = Chain {
         writer: &mut *writer,
         samples: Vec::new(),
+        drawn,
     };
     let started = std::time::Instant::now();
     let claim = reduce(&mut chain);
+    if chain.drawn.is_some() {
+        return Err("Flock's prover did not take the eq coordinate drawn before it".into());
+    }
     let samples = chain.samples;
     // The challenges, as the verifier draws them: the zerocheck's sampled eq coordinates (with π1-rec only the first,
     // the others its squares), the skip's point, its rounds', the lincheck's batching and rounds'.
@@ -120,13 +131,15 @@ fn reduction(
 
 /// Flock on the Keccak-f block (`flock::keccak`, `k_log = 17`: 11 lincheck rounds) at `log_n = 17 +
 /// log(blocks)` variables, written to `writer` as `flock_min::verify_walked_with::<_, keccak_flock::Keccak>` reads it:
-/// after the slices only the ring map's challenges. `witness` is
+/// after the slices only the ring map's challenges (π1-rec4: none, the map is drawn after `C2`'s commitment, and the
+/// zerocheck's first eq coordinate is `drawn`, drawn before). `witness` is
 /// `flock::keccak::generate_witness_with_ab_packed_and_lincheck`'s.
 pub fn prove(
     writer: &mut KeccakWriter,
     witness: &FlockWitness,
     variant: Variant,
     log_n: usize,
+    drawn: Option<E>,
 ) -> Result<FlockOut, String> {
     use flock::keccak::{K_LOG, KeccakSetup};
     let k = variant.skip;
@@ -139,11 +152,13 @@ pub fn prove(
         return Err(format!("Flock's witness has {} variables, the verifier's shape {log_n}", setup.m()));
     }
     let eq = eq_point(variant);
-    let out = reduction(writer, variant, log_n, K_LOG - PACKING, |chain| {
+    let out = reduction(writer, variant, log_n, K_LOG - PACKING, drawn, |chain| {
         setup.prove_reduction_skip(k, eq, &witness.z, &witness.a, &witness.b, &witness.z_lincheck, chain)
     })?;
-    for _ in 0..RING_MAP_CHALLENGES {
-        writer.sample();
+    if !variant.fs.wide() {
+        for _ in 0..RING_MAP_CHALLENGES {
+            writer.sample();
+        }
     }
     Ok(FlockOut {
         point: out.point,

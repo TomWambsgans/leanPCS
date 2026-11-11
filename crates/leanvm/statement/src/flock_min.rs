@@ -15,7 +15,7 @@ use crate::flock::{N_FIXED_CHALLENGES, fixed_challenges, lagrange_interpolate, l
 use crate::layout::K_BITS;
 use crate::multilinear::{dot, eq_eval, eq_kernel};
 use crate::scalar::{Scalar, enter};
-use crate::transcript::{Channel, FsShape, sumcheck};
+use crate::transcript::{Channel, FsShape, squares, sumcheck};
 
 /// The packing bits of `q_flock`: 64 bits a word.
 pub const PACKING: usize = 6;
@@ -85,11 +85,18 @@ fn zerocheck<S: Scalar>(
     log_n: usize,
     k: usize,
     fs: FsShape,
+    eq_first: Option<S>,
     transcript: &mut impl Channel<S>,
 ) -> Result<Zerocheck<S>, VerifierError> {
     let _phase = enter("flock zerocheck: skip round");
     let mut r: Vec<Option<S>> = fixed_challenges().map(|c| Some(S::constant(c))).into();
-    r.extend(fs.draw(transcript, log_n - k - N_FIXED_CHALLENGES).into_iter().map(Some));
+    let sampled = log_n - k - N_FIXED_CHALLENGES;
+    let drawn = match eq_first {
+        // π1-rec4: the first sampled coordinate drawn before Flock (with the bus's challenges), the others its squares.
+        Some(c) => squares(c, sampled),
+        None => fs.draw(transcript, sampled),
+    };
+    r.extend(drawn.into_iter().map(Some));
     let (z_skip, claim) = if k > 0 {
         let coset = transcript.next_scalars(1 << k)?;
         let z = transcript.sample();
@@ -125,7 +132,22 @@ pub fn verify_walked_with<S: Scalar, C: WalkedCircuit>(
     variant: Variant,
     transcript: &mut impl Channel<S>,
 ) -> Result<(Vec<S>, End<S>), VerifierError> {
-    let front = front_with(log_n, variant, C::LOG_SIZE, transcript)?;
+    let (point, slices) = verify_walked_deferred::<S, C>(log_n, variant, transcript, None)?;
+    let end = ring_end(&slices, transcript);
+    Ok((point, end))
+}
+
+/// [`verify_walked_with`] without the ring switch's map: the zerocheck, the lincheck, the slices and the terminal
+/// check; returns the slices' point and the slices, the map drawn by the caller ([`ring_end_at`]). With `eq_first`
+/// the zerocheck's first sampled coordinate is the caller's (π1-rec4, `FsShape::Rec4`: drawn with the bus's
+/// challenges, then the map after `C2`'s commitment, `docs/leanvm/rec/PERF_GAS2.md`).
+pub fn verify_walked_deferred<S: Scalar, C: WalkedCircuit>(
+    log_n: usize,
+    variant: Variant,
+    transcript: &mut impl Channel<S>,
+    eq_first: Option<S>,
+) -> Result<(Vec<S>, Vec<S>), VerifierError> {
+    let front = front_with(log_n, variant, C::LOG_SIZE, transcript, eq_first)?;
     let slices = &front.slices;
     let terminal = {
         let _phase = enter(C::TERMINAL_PHASE);
@@ -139,8 +161,7 @@ pub fn verify_walked_with<S: Scalar, C: WalkedCircuit>(
         )
     };
     transcript.require_zero(terminal + front.r_lc, VerifierError::FlockMatrixTerminal)?;
-    let end = ring_end(slices, transcript);
-    Ok((front.point, end))
+    Ok((front.point, front.slices))
 }
 
 /// The lincheck's terminal as leanVM's verifier computes it, on the block circuit `C`, at the skip's `k` row bits (`PACKING - row_low.len()`):
@@ -198,11 +219,12 @@ fn front_with<S: Scalar>(
     variant: Variant,
     log_size: usize,
     transcript: &mut impl Channel<S>,
+    eq_first: Option<S>,
 ) -> Result<Front<S>, VerifierError> {
     let k = variant.skip;
     let lincheck_rounds = log_size - PACKING;
     assert!(k <= PACKING && log_n >= log_size + N_FIXED_CHALLENGES);
-    let (z_skip, chi, [v_a, v_b, v_c]) = zerocheck(log_n, k, variant.fs, transcript)?;
+    let (z_skip, chi, [v_a, v_b, v_c]) = zerocheck(log_n, k, variant.fs, eq_first, transcript)?;
     // The row point: the skip, the packing bits left to rounds, the 8 slot bits, the instance bits.
     let (row_low, rest) = chi.split_at(PACKING - k);
     let (chi_in, chi_rest) = rest.split_at(lincheck_rounds);
@@ -228,8 +250,20 @@ fn front_with<S: Scalar>(
 
 /// The ring switch on the sent slices: its map drawn, its target with the map's stages in tower order.
 fn ring_end<S: Scalar>(s: &[S], transcript: &mut impl Channel<S>) -> End<S> {
+    let map = {
+        let _phase = enter("ring switch: map, coefficients, target");
+        transcript.samples(RING_MAP_LEN)
+    };
+    ring_end_at(s, map)
+}
+
+/// The ring switch's map: leanVM's `RING_MAP_SHIFTS`, six challenges.
+pub const RING_MAP_LEN: usize = crate::flock::RING_MAP_SHIFTS.len();
+
+/// The ring switch's end on the slices `s` at the map `map` (drawn after the slices).
+pub fn ring_end_at<S: Scalar>(s: &[S], map: Vec<S>) -> End<S> {
     let _phase = enter("ring switch: map, coefficients, target");
-    let map = transcript.samples(crate::flock::RING_MAP_SHIFTS.len());
+    assert_eq!(map.len(), RING_MAP_LEN);
     let target = crate::ring_tower::target(s, &map);
     End { map, target }
 }

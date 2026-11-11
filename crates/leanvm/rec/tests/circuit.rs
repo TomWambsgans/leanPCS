@@ -146,9 +146,10 @@ fn run(name: &str, layout: Layout, log_n: u8, fill: (f64, f64)) {
         .filter(|(r, _)| r.starts_with("keccak"))
         .map(|(_, &n)| n)
         .sum();
+    // Every permutation's rows, but the last rounds' planes no lane read needs (D16v: 64 `k1` rows a plane).
     assert_eq!(
         keccak << s.log_width,
-        c.permutations * keccak_positions(layout),
+        c.permutations * keccak_positions(layout) - c.planes_unmade * 64 * 16,
         "{name}: Keccak-f's positions"
     );
     // At most two blocks a region on average; three where the rows fill `2^L` but for a few (π1-rec3 at 400
@@ -212,18 +213,32 @@ fn run(name: &str, layout: Layout, log_n: u8, fill: (f64, f64)) {
         matches!(circuit.check(w, &other), Err(Failure::Public { .. })),
         "{name}: the statement"
     );
-    let mut other = c.public.clone();
-    other.elements[3].c1 ^= 1 << 7;
-    assert!(
-        matches!(circuit.check(w, &other), Err(Failure::Public { .. })),
-        "{name}: an element"
-    );
-    let mut other = c.public.clone();
-    other.roots[0][9] ^= 1;
-    assert!(
-        matches!(circuit.check(w, &other), Err(Failure::Public { .. })),
-        "{name}: a root"
-    );
+    // An element and a root, where the contract encodes a claim (none with π1's three claims hashed), and a claim's
+    // hash.
+    if c.public.elements.len() > 3 {
+        let mut other = c.public.clone();
+        other.elements[3].c1 ^= 1 << 7;
+        assert!(
+            matches!(circuit.check(w, &other), Err(Failure::Public { .. })),
+            "{name}: an element"
+        );
+    }
+    if !c.public.roots.is_empty() {
+        let mut other = c.public.clone();
+        other.roots[0][9] ^= 1;
+        assert!(
+            matches!(circuit.check(w, &other), Err(Failure::Public { .. })),
+            "{name}: a root"
+        );
+    }
+    for k in 0..c.public.claim_hashes.len() {
+        let mut other = c.public.clone();
+        other.claim_hashes[k][9] ^= 1;
+        assert!(
+            matches!(circuit.check(w, &other), Err(Failure::Public { .. })),
+            "{name}: claim hash {k}"
+        );
+    }
     // A changed witness word at wired positions is caught.
     let mut seed = 0x2545_f491_4f6c_dd1du64;
     let wired: Vec<usize> = (0..circuit.n()).filter(|&i| circuit.sigma[i] as usize != i).collect();
@@ -263,16 +278,23 @@ fn run(name: &str, layout: Layout, log_n: u8, fill: (f64, f64)) {
     println!("  mutations caught; {zero_checks} zero checks, {nodes} products in the expanded graph");
 }
 
-/// π1-rec3 at the reference shape (128 signatures), D16v: `2^24` positions at 93.4%.
+/// π1-rec4 at the reference shape (128 signatures), D16v: `2^24` positions at 97.8% with π1's three claims hashed.
+#[test]
+fn keccak_rec4_128_d16v() {
+    deep(|| run("keccak128_rec4", Layout::D16v, 24, (0.95, 0.99)));
+}
+
+/// π1-rec4 at 400 signatures, D16v: `2^24` positions at 99.5% with π1's three claims hashed.
+#[test]
+fn keccak_rec4_400_d16v() {
+    deep(|| run("keccak_rec4", Layout::D16v, 24, (0.95, 1.0)));
+}
+
+/// π1-rec3 (the Lean's) at the reference shape: its three claims do not fit `2^24`, so `C1`'s alone is hashed
+/// (96.5%).
 #[test]
 fn keccak_rec3_128_d16v() {
     deep(|| run("keccak128_rec3", Layout::D16v, 24, (0.90, 0.99)));
-}
-
-/// π1-rec3 at 400 signatures, D16v: `2^24` positions at 95.0%, the quotient `15N = 2^27.91` words, under `2^28`.
-#[test]
-fn keccak_rec3_400_d16v() {
-    deep(|| run("keccak_rec3", Layout::D16v, 24, (0.90, 1.0)));
 }
 
 /// The main line (every challenge hashed, the batch one variable a round) at 32 signatures, D16v: it does not fit

@@ -253,6 +253,7 @@ fn zerocheck_at_six_is_leanvms() {
             let mut chain = Chain {
                 writer: &mut w1,
                 samples: Vec::new(),
+                drawn: None,
             };
             prove_packed_padded(&a, &b, &c, m, &padding, &mut chain)
         };
@@ -260,6 +261,7 @@ fn zerocheck_at_six_is_leanvms() {
             let mut chain = Chain {
                 writer: &mut w2,
                 samples: Vec::new(),
+                drawn: None,
             };
             prove_skip(&a, &b, &c, m, 6, EqPoint::Sampled, &padding, &mut chain)
         };
@@ -288,6 +290,7 @@ fn zerocheck_skips_verify_and_are_faithful() {
                 let mut chain = Chain {
                     writer: &mut writer,
                     samples: Vec::new(),
+                    drawn: None,
                 };
                 prove_skip(&a, &b, &c, m, k, eq, &padding, &mut chain)
             };

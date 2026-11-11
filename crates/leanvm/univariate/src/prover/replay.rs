@@ -13,7 +13,7 @@
 
 use leanvm_statement::VerifierError;
 use leanvm_statement::field::E;
-use leanvm_statement::transcript::{Channel, Checks, challenge_of, keccak256};
+use leanvm_statement::transcript::{Channel, Checks, challenge_of, keccak256, wide_draw};
 
 pub struct Replay<'a> {
     data: &'a [u8],
@@ -97,6 +97,14 @@ impl Channel<E> for Replay<'_> {
         self.absorbed = self.cursor;
         self.state = keccak256(&input);
         challenge_of(&self.state)
+    }
+
+    fn sample_wide(&mut self, count: usize) -> Vec<E> {
+        let input = [&self.state[..], &self.data[self.absorbed..self.cursor]].concat();
+        self.absorbed = self.cursor;
+        let (state, challenges) = wide_draw(&input, count);
+        self.state = state;
+        challenges
     }
 
     fn require_zero(&mut self, value: E, error: VerifierError) -> Result<(), VerifierError> {

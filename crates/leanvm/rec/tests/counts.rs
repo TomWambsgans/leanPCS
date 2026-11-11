@@ -18,7 +18,7 @@ use leanvm_rec::count::{Counts, count, shared};
 use leanvm_rec::eval::{call_inputs, checks, evaluate};
 use leanvm_rec::{REFERENCE, permutations};
 use leanvm_univariate::contract::{NAME, Recorded, record_verifier};
-use leanvm_univariate::{Claims, KECCAK_MAIN, KECCAK_REC3, Variant};
+use leanvm_univariate::{Claims, KECCAK_MAIN, KECCAK_REC3, KECCAK_REC4, Variant};
 
 fn deep<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> R {
     std::thread::Builder::new()
@@ -42,7 +42,7 @@ fn vector(name: &str) -> vectors::Vector {
 #[test]
 fn the_graph_is_the_verifier_on_real_proofs() {
     deep(|| {
-        for name in ["keccak", "keccak128_rec3", "keccak_rec3"] {
+        for name in ["keccak", "keccak128_rec3", "keccak_rec3", "keccak128_rec4", "keccak_rec4"] {
             let v = vector(name);
             let variant = vectors::variant_of(&v.config);
             let roots = vectors::setup_roots(&v);
@@ -102,6 +102,10 @@ fn configs() -> Vec<Config> {
         Config {
             name: "Keccak VM π1-rec3 (KECCAK_REC3)".into(),
             variant: KECCAK_REC3,
+        },
+        Config {
+            name: "Keccak VM π1-rec4 (KECCAK_REC4)".into(),
+            variant: KECCAK_REC4,
         },
     ]
 }

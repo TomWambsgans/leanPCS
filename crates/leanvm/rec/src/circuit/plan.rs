@@ -26,7 +26,7 @@ use leanvm_statement::field::{E, K};
 use leanvm_univariate::contract::Recorded;
 
 use super::compile::{Compiled, Given, Inputs, Layout, compile_keeping};
-use super::keccak::{Bit, keccak_f};
+use super::keccak::{Bit, UNMADE, keccak_f};
 use super::spec::{Formula, PublicInputs, Witness};
 
 const NONE: u32 = u32::MAX;
@@ -491,8 +491,12 @@ impl WitnessPlan {
                     .collect();
                 assert_eq!(run.output.len(), 1600);
                 ops.push(Op::Permute { perm: i, out: slots });
+                // The native permutation writes all 1600 bits; the unmade lanes' (`keccak::UNMADE`: a last round
+                // that makes the lanes read alone) are no value's.
                 for &u in &run.output {
-                    slot_of[u as usize] = slots;
+                    if u != UNMADE {
+                        slot_of[u as usize] = slots;
+                    }
                     slots += 1;
                 }
                 continue;

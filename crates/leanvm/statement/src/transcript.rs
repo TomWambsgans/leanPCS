@@ -65,6 +65,51 @@ pub trait Channel<S: Scalar> {
     fn next_frame(&mut self) -> Result<[S; 4], VerifierError> {
         unimplemented!("this channel reads no frame words")
     }
+
+    /// `count` challenges (at most [`WIDE_MAX`]) from one Keccak-256 of the state and the bytes since the last
+    /// challenge, as [`Channel::sample`] hashes them: the sponge's whole rate after its last permutation
+    /// ([`keccak256_rate`]), challenge `k` its bytes `8 + 24k .. 32 + 24k` ([`challenge_at`]). Challenge 0 is
+    /// [`Channel::sample`]'s and the state becomes the digest, as there (π1-rec4, `FsShape::Rec4`:
+    /// `docs/leanvm/rec/PERF_GAS2.md`).
+    fn sample_wide(&mut self, _count: usize) -> Vec<S> {
+        unimplemented!("this channel draws no wide challenges")
+    }
+}
+
+/// Keccak-256's rate in bytes.
+pub const RATE_BYTES: usize = 136;
+
+/// The most challenges one wide draw gives ([`Channel::sample_wide`]): five of 24 bytes in the rate's bytes `8 .. 128`.
+pub const WIDE_MAX: usize = 5;
+
+/// Keccak-256's sponge on `data` (pad10*1 with Keccak's `0x01`, capacity 512), and its whole rate after the last
+/// permutation: 136 bytes, lanes 0 … 16 little-endian, whose first 32 are `keccak256(data)`.
+pub fn keccak256_rate(data: &[u8]) -> [u8; RATE_BYTES] {
+    let mut padded = data.to_vec();
+    padded.push(0x01);
+    padded.resize(padded.len().div_ceil(RATE_BYTES) * RATE_BYTES, 0);
+    *padded.last_mut().expect("a block") |= 0x80;
+    let mut state = [0u64; 25];
+    for block in padded.chunks(RATE_BYTES) {
+        for (lane, bytes) in state.iter_mut().zip(block.chunks(8)) {
+            *lane ^= u64::from_le_bytes(bytes.try_into().expect("8 bytes"));
+        }
+        primitives::hash::keccak_f(&mut state);
+    }
+    let mut out = [0u8; RATE_BYTES];
+    for (bytes, lane) in out.chunks_mut(8).zip(&state) {
+        bytes.copy_from_slice(&lane.to_le_bytes());
+    }
+    out
+}
+
+/// Challenge `k` of a wide draw's rate `out`: its bytes `8 + 24k .. 32 + 24k` read as [`challenge_of`] reads a state's
+/// `8 .. 32` (limb 0 the last eight, big-endian), so challenge 0 is the digest's.
+pub fn challenge_at(out: &[u8; RATE_BYTES], k: usize) -> E {
+    assert!(k < WIDE_MAX, "five challenges a wide draw");
+    let at = 24 * k;
+    let limb = |i: usize| u64::from_be_bytes(out[at + 24 - 8 * i..at + 32 - 8 * i].try_into().unwrap());
+    E::new(limb(0), limb(1), limb(2))
 }
 
 /// The verifier's Fiat–Shamir shape: which runs of challenges are drawn one by one, and which derived
@@ -89,6 +134,12 @@ pub enum FsShape {
     /// round ([`sumcheck_pairs_drawn`]): one narrow challenge `z_j` a pair, the point's two coordinates
     /// [`pair_point`]`(z_j)`, so 14 challenges for 27 coordinates.
     Rec3,
+    /// `π1-rec4`'s (`docs/leanvm/rec/PERF_GAS2.md`): [`FsShape::Rec3`] with the challenges no message separates drawn
+    /// from one Keccak-f ([`Channel::sample_wide`]), and the ring switch's map drawn after `C2`'s commitment: `α`'s `c`,
+    /// `β`, `γ` and the zerocheck's `c` from the call that absorbs `C1`'s commitment; the slices absorbed with `C2`'s
+    /// commitment, then `t` and the map's `f_0 … f_3`; after the values at `t`, `ρ`, the batch's `λ` and `f_4`, `f_5`.
+    /// 106 Keccak-f in π1's transcript at the reference shape instead of 116.
+    Rec4,
 }
 
 /// The bits of a narrow challenge: its top limb's low 32 (`c2 < 2^32`). Soundness: a sumcheck round of degree 2 errs
@@ -106,9 +157,24 @@ impl FsShape {
     pub fn draw<S: Scalar, C: Channel<S> + ?Sized>(self, channel: &mut C, count: usize) -> Vec<S> {
         match self {
             FsShape::Main => channel.samples(count),
-            FsShape::Rec | FsShape::Rec2 | FsShape::Rec3 if count == 0 => Vec::new(),
-            FsShape::Rec | FsShape::Rec2 | FsShape::Rec3 => squares(channel.sample(), count),
+            FsShape::Rec | FsShape::Rec2 | FsShape::Rec3 | FsShape::Rec4 if count == 0 => Vec::new(),
+            FsShape::Rec | FsShape::Rec2 | FsShape::Rec3 | FsShape::Rec4 => squares(channel.sample(), count),
         }
+    }
+
+    /// The batching sumcheck's challenges are narrow ([`NARROW_BITS`]).
+    pub fn narrow_batch(self) -> bool {
+        matches!(self, FsShape::Rec2 | FsShape::Rec3 | FsShape::Rec4)
+    }
+
+    /// The batching sumcheck takes two variables a round ([`sumcheck_pairs_drawn`]).
+    pub fn paired_batch(self) -> bool {
+        matches!(self, FsShape::Rec3 | FsShape::Rec4)
+    }
+
+    /// The challenges no message separates come from one wide draw ([`Channel::sample_wide`]; π1-rec4).
+    pub fn wide(self) -> bool {
+        self == FsShape::Rec4
     }
 }
 
@@ -294,6 +360,14 @@ pub enum Checks {
     Collect { zero: Vec<E>, nonzero: Vec<E> },
 }
 
+/// A wide draw on the message `input` (the state, then the bytes since the last challenge): the next state (the
+/// digest) and `count` challenges ([`Channel::sample_wide`]).
+pub fn wide_draw(input: &[u8], count: usize) -> ([u8; 32], Vec<E>) {
+    assert!((1..=WIDE_MAX).contains(&count), "one to five challenges a wide draw");
+    let out = keccak256_rate(input);
+    (out[..32].try_into().expect("32 bytes"), (0..count).map(|k| challenge_at(&out, k)).collect())
+}
+
 /// The contract's chain, verifier side: the stream as calldata bytes.
 pub struct KeccakChannel<'a> {
     data: &'a [u8],
@@ -357,6 +431,14 @@ impl Channel<E> for KeccakChannel<'_> {
 
     fn sample_narrow(&mut self) -> E {
         narrow(self.sample())
+    }
+
+    fn sample_wide(&mut self, count: usize) -> Vec<E> {
+        let input = [&self.state[..], &self.data[self.absorbed..self.cursor]].concat();
+        self.absorbed = self.cursor;
+        let (state, challenges) = wide_draw(&input, count);
+        self.state = state;
+        challenges
     }
 
     fn require_zero(&mut self, value: E, error: VerifierError) -> Result<(), VerifierError> {
@@ -451,6 +533,15 @@ impl KeccakWriter {
     pub fn sample_narrow(&mut self) -> E {
         narrow(self.sample())
     }
+
+    /// [`Channel::sample_wide`]'s challenges.
+    pub fn sample_wide(&mut self, count: usize) -> Vec<E> {
+        let input = [&self.state[..], &self.stream[self.absorbed..]].concat();
+        self.absorbed = self.stream.len();
+        let (state, challenges) = wide_draw(&input, count);
+        self.state = state;
+        challenges
+    }
 }
 
 #[cfg(test)]
@@ -475,6 +566,41 @@ mod tests {
         assert_eq!(channel.sample(), c);
         assert_eq!(channel.finish(), Ok(()));
         assert_eq!(writer.stream.len(), 24 + 32 + 24);
+    }
+
+    /// The wide draw's rate starts with Keccak-256's digest at every padding case (a block's last byte holding both
+    /// padding bits, an exact block, several blocks), its challenge 0 is `sample`'s, and the writer and the channel
+    /// agree on wide draws.
+    #[test]
+    fn wide_draws_extend_keccak256() {
+        for len in [0usize, 1, 31, 32, 103, 104, 135, 136, 137, 271, 272, 1000] {
+            let data: Vec<u8> = (0..len).map(|i| (i * 7 + 3) as u8).collect();
+            let out = keccak256_rate(&data);
+            assert_eq!(out[..32], keccak256(&data), "length {len}");
+            let state: [u8; 32] = out[..32].try_into().unwrap();
+            assert_eq!(challenge_at(&out, 0), challenge_of(&state));
+            let all: Vec<E> = (0..WIDE_MAX).map(|k| challenge_at(&out, k)).collect();
+            assert!((0..WIDE_MAX).all(|j| (0..j).all(|i| all[i] != all[j])));
+        }
+        let seed = keccak_seed(b"leanVM-flock-gas", &[7; 32], &[9; 32]);
+        let mut writer = KeccakWriter::new(seed);
+        writer.send(E::new(8, 0, 0));
+        let a = writer.sample_wide(4);
+        writer.send(E::new(5, 6, 7));
+        let b = writer.sample();
+        let c = writer.sample_wide(5);
+        let mut channel = KeccakChannel::new(seed, &writer.stream, Checks::Enforce);
+        assert_eq!(channel.next_scalar(), Ok(E::new(8, 0, 0)));
+        assert_eq!(channel.sample_wide(4), a);
+        assert_eq!(channel.next_scalar(), Ok(E::new(5, 6, 7)));
+        assert_eq!(channel.sample(), b);
+        assert_eq!(channel.sample_wide(5), c);
+        // Challenge 0 of a wide draw is the plain draw's, and the chain continues from the same state.
+        let mut plain = KeccakWriter::new(seed);
+        plain.send(E::new(8, 0, 0));
+        assert_eq!(plain.sample(), a[0]);
+        plain.send(E::new(5, 6, 7));
+        assert_eq!(plain.sample(), b);
     }
 
     use crate::field::ONE;

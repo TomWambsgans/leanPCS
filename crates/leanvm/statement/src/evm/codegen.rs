@@ -160,7 +160,11 @@ impl Dag for Nodes<'_> {
     fn operands(&self, id: u32) -> Vec<u32> {
         match self.graph.nodes[id as usize] {
             Node::Add(a, b) | Node::Mul(a, b) => vec![a, b],
-            Node::Hash(state, _, _) | Node::Low(state) | Node::Narrow(state) | Node::Bits(state, _, _) => vec![state],
+            Node::Hash(state, _, _)
+            | Node::Low(state)
+            | Node::Narrow(state)
+            | Node::Wide(state, _)
+            | Node::Bits(state, _, _) => vec![state],
             Node::RingWeight(kernel, _) => self.graph.kernels[kernel as usize].clone(),
             _ => vec![],
         }
@@ -237,6 +241,8 @@ impl Dag for Nodes<'_> {
             }
             Node::Low(_) => front::code([&push(&[0xff; 24])[..], &[AND]].concat()),
             Node::Narrow(_) => front::code([&push(&[0xff; 20])[..], &[AND]].concat()),
+            // KECCAK256 gives the digest alone, not the sponge's rate: π1-rec4 has no contract (it runs in π2's circuit).
+            Node::Wide(..) => panic!("a wide challenge has no EVM code (π1-rec4 has no contract of its own)"),
             Node::RingWeight(_, n) => front::code(crate::evm::kernel::ring_weight_code(n as usize)),
             Node::Bits(_, shift, width) => {
                 let mut code = Vec::new();

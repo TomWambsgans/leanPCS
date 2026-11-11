@@ -10,7 +10,7 @@ use leanvm_statement::evm::record::{Graph, Node};
 use leanvm_statement::field::E;
 use leanvm_statement::ring_tower;
 use leanvm_statement::scalar::Scalar;
-use leanvm_statement::transcript::{challenge_of, keccak256};
+use leanvm_statement::transcript::{challenge_at, challenge_of, keccak256, keccak256_rate};
 use leanvm_univariate::contract::{Recorded, calls};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -65,6 +65,14 @@ pub fn evaluate(graph: &Graph, seed: [u8; 32], public: &[u8; 32], stream: &[u8])
             }
             Node::Low(h) => Value::E(challenge_of(&values[h as usize].state())),
             Node::Narrow(h) => Value::E(leanvm_statement::transcript::narrow(challenge_of(&values[h as usize].state()))),
+            // A wide draw's challenge `k`: the hash `h`'s sponge rate, recomputed from its input.
+            Node::Wide(h, k) => {
+                let Node::Hash(s, from, to) = graph.nodes[h as usize] else {
+                    panic!("a wide challenge of a hash")
+                };
+                let input = [&values[s as usize].state()[..], &stream[from as usize..to as usize]].concat();
+                Value::E(challenge_at(&keccak256_rate(&input), k as usize))
+            }
             Node::Bits(v, shift, width) => Value::E(<E as Scalar>::bits(e(v), shift as usize, width as usize)),
             Node::RingWeight(k, n) => {
                 let ops: Vec<E> = graph.kernels[k as usize].iter().map(|&id| e(id)).collect();

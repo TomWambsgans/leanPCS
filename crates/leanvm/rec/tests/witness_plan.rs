@@ -70,10 +70,11 @@ fn check(plan: &WitnessPlan, recorded: &Recorded, layout: Layout, inputs: &Input
 #[test]
 fn replay_is_the_compilers_d16v() {
     deep(|| {
-        for name in ["keccak128_rec3", "keccak_rec3"] {
+        for name in [leanvm_rec::PI1_VECTOR_128, leanvm_rec::PI1_VECTOR_400] {
             let (recorded, public, stream) = real(name);
             let plan = WitnessPlan::new(&recorded, Layout::D16v, PROGRAM_IV);
-            assert_eq!(plan.templates(), 1, "one Keccak-f template");
+            // Keccak-f whole, and with the last round's planes of the lanes read: a digest's (1), a wide draw's (3, 4).
+            assert_eq!(plan.templates(), 4, "four Keccak-f templates");
             let sample = sample_stream(stream.len(), 7);
             for (public, stream) in [(public, &stream), ([3; 32], &sample)] {
                 let inputs = Inputs {
@@ -93,7 +94,7 @@ fn replay_is_the_compilers_d16v() {
 fn replay_timing() {
     deep(|| {
         parallel::init();
-        let (recorded, public, stream) = real("keccak128_rec3");
+        let (recorded, public, stream) = real(leanvm_rec::PI1_VECTOR_128);
         let inputs = Inputs {
             program_iv: PROGRAM_IV,
             public,

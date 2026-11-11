@@ -35,6 +35,10 @@ pub enum Node {
     Low(u32),
     /// A hash's low 160 bits: a narrow challenge (`transcript::Channel::sample_narrow`).
     Narrow(u32),
+    /// Challenge `k` (`1 ≤ k < transcript::WIDE_MAX`) of the wide draw whose hash is the state `.0`
+    /// (`transcript::Channel::sample_wide`: the sponge's rate bytes `8 + 24k .. 32 + 24k`; challenge 0 is
+    /// [`Node::Low`]). π1-rec4's; no EVM code computes it (π1-rec4 runs in π2's circuit).
+    Wide(u32, u8),
     /// `(v >> shift) mod 2^width` of an integer `v` (an [`Node::Input`] of at most 8 bytes, or bits of one).
     Bits(u32, u8, u8),
     /// The ring switch's weight at a point (`crate::evm::kernel`): kernel `.0` of [`Graph::kernels`], `.1`
@@ -240,6 +244,16 @@ impl Channel<Sym> for Recorder {
         self.state = Sym::new(Node::Hash(self.state.0, self.absorbed, self.cursor));
         self.absorbed = self.cursor;
         Sym::new(Node::Narrow(self.state.0))
+    }
+
+    fn sample_wide(&mut self, count: usize) -> Vec<Sym> {
+        assert!((1..=crate::transcript::WIDE_MAX).contains(&count));
+        let _phase = crate::scalar::enter(TRANSCRIPT);
+        self.state = Sym::new(Node::Hash(self.state.0, self.absorbed, self.cursor));
+        self.absorbed = self.cursor;
+        std::iter::once(Sym::new(Node::Low(self.state.0)))
+            .chain((1..count).map(|k| Sym::new(Node::Wide(self.state.0, k as u8))))
+            .collect()
     }
 
     fn require_zero(&mut self, value: Sym, error: VerifierError) -> Result<(), VerifierError> {

@@ -16,4 +16,4 @@ pub mod verifier;
 
 pub use leanvm_statement::transcript::FsShape;
 pub use leanvm_statement::flock_min::Variant;
-pub use verifier::{Claims, KECCAK_MAIN, KECCAK_REC3, Opening, Reduced, Shape, reduce};
+pub use verifier::{Claims, KECCAK_MAIN, KECCAK_REC3, KECCAK_REC4, Opening, Reduced, Shape, reduce};

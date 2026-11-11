@@ -294,17 +294,25 @@ pub fn prove_streaming(
 
     // 2. The bus's and the constraints' challenges; with π1-rec (`FsShape::Rec`, SPEC-REC.md §1.4) α is (c, c², c⁴,
     // c⁸) of one challenge c, squared in E as the verifier squares it.
-    let alphas: Vec<F192> = match config.variant.fs {
-        FsShape::Main => (0..4).map(|_| from_v(writer.sample())).collect(),
-        FsShape::Rec | FsShape::Rec2 | FsShape::Rec3 => squares(writer.sample(), 4).into_iter().map(from_v).collect(),
+    // π1-rec4 (`FsShape::Rec4`): α's c, β, γ and Flock's zerocheck's first eq coordinate from one wide draw.
+    let fs = config.variant.fs;
+    let (alphas, beta, gamma, eq_first): (Vec<F192>, F192, F192, Option<E>) = if fs.wide() {
+        let drawn = writer.sample_wide(4);
+        let alphas = squares(drawn[0], 4).into_iter().map(from_v).collect();
+        (alphas, from_v(drawn[1]), from_v(drawn[2]), Some(drawn[3]))
+    } else {
+        let alphas = match fs {
+            FsShape::Main => (0..4).map(|_| from_v(writer.sample())).collect(),
+            _ => squares(writer.sample(), 4).into_iter().map(from_v).collect(),
+        };
+        let beta = from_v(writer.sample());
+        (alphas, beta, from_v(writer.sample()), None)
     };
-    let beta = from_v(writer.sample());
-    let gamma = from_v(writer.sample());
 
     // 3. Flock on the Keccak-f block, one block a SHA3 row (`flock.rs`), the walked (structured) terminal.
     {
         let log_n = leanvm_statement::layout::KECCAK_R1CS_LOG_SIZE + trace.heights[OP_SHA3];
-        let out = super::flock::prove(&mut writer, &flock, config.variant, log_n)?;
+        let out = super::flock::prove(&mut writer, &flock, config.variant, log_n, eq_first)?;
         drop(flock);
         report.notes.push(format!("Flock's zerocheck and lincheck: {:.3} s", out.reduction_secs));
         for (stage, secs) in std::mem::take(&mut *flock::zerocheck::skip::STAGES.lock().expect("the stages")) {
@@ -447,8 +455,9 @@ pub fn prove_streaming(
     writer.send_root(halves(&committed2.root));
     writer.send(to_v(committed2.ood));
 
-    // 7. The point and the values at it, in the verifier's order.
-    let t = from_v(writer.sample());
+    // 7. The point and the values at it, in the verifier's order. π1-rec4: t with the ring switch's map's f_0 … f_3
+    // (the verifier's; the prover's batch weights take the map from the verifier's replay below).
+    let t = from_v(if fs.wide() { writer.sample_wide(5)[0] } else { writer.sample() });
     let digit_count = layout.h.max(r_w + 4) + 2;
     let w: Vec<F192> = std::iter::successors(Some(t), |&x| Some(x * x + x)).take(digit_count).collect();
     let mut sent_values: Vec<F192> = Vec::new();
@@ -519,7 +528,13 @@ pub fn prove_streaming(
 
     // 8. ρ, and the combined claims: the verifier's own, on the stream so far, in weighted mode (which reads nothing
     // after ρ).
-    let rho = writer.sample();
+    // π1-rec4: ρ with the batch's λ and the map's f_4, f_5.
+    let (rho, drawn_lambda) = if fs.wide() {
+        let drawn = writer.sample_wide(4);
+        (drawn[0], Some(drawn[1]))
+    } else {
+        (writer.sample(), None)
+    };
     let combined: Vec<(Commitment, Combined<E>)> = {
         let mut channel = Replay::new(seed, &writer.stream);
         let words: [E; 4] = std::array::from_fn(|k| E::new(u64::from_be_bytes(public[8 * k..8 * k + 8].try_into().unwrap()), 0, 0));
@@ -574,7 +589,7 @@ pub fn prove_streaming(
     let mut openings = Vec::new();
     match config.claims {
         Claims::Point => {
-            let lambda = from_v(writer.sample());
+            let lambda = from_v(drawn_lambda.unwrap_or_else(|| writer.sample()));
             let stacks: Vec<(&[F64], usize)> = combined
                 .iter()
                 .map(|(c, _)| {
@@ -582,9 +597,8 @@ pub fn prove_streaming(
                     (&s.words[..], s.layout.vars)
                 })
                 .collect();
-            let fs = config.variant.fs;
-            let narrow = matches!(fs, FsShape::Rec2 | FsShape::Rec3);
-            let (point, values) = if fs == FsShape::Rec3 {
+            let narrow = fs.narrow_batch();
+            let (point, values) = if fs.paired_batch() {
                 // π1-rec3: the batch two variables a round (SPEC-POINTS.md), its claim the combined claims' values.
                 let target: F192 = combined
                     .iter()

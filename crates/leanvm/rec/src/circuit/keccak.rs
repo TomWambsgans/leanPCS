@@ -64,9 +64,14 @@ pub const RATE_BITS: usize = 64 * RATE_LANES;
 /// Keccak-f\[1600\] in rows.
 pub trait Permutation {
     /// The permutation of `input` (index `64·lane + z`), whose constant bits it makes from `constants` (after
-    /// offering its rows' spare slots to it). Returns the output's 1600 values.
-    fn permute(&mut self, b: &mut Builder, constants: &mut Constants, input: &[Bit]) -> Vec<Value>;
+    /// offering its rows' spare slots to it). Returns the output's 1600 values, of which the caller reads lanes
+    /// `0 .. lanes` only: a template may leave the others unmade ([`UNMADE`]; D16v's last round makes the planes of
+    /// those lanes alone).
+    fn permute(&mut self, b: &mut Builder, constants: &mut Constants, input: &[Bit], lanes: usize) -> Vec<Value>;
 }
+
+/// An output bit a permutation did not make (its lane is not read).
+pub const UNMADE: Value = u32::MAX;
 
 /// Fresh constants: one expression slot each, pushing `κ` (its pull is a free end). The slots are other regions'
 /// spare roles (formula 0) when offered, else rows of their own.
@@ -170,6 +175,9 @@ pub struct Sponge<P: Permutation> {
     pub xors: Xors,
     /// Permutations run.
     pub permutations: usize,
+    /// The last rounds' planes not made, over the permutations (a last block whose caller reads fewer lanes than 25:
+    /// D16v's 64 `k1` rows a plane).
+    pub planes_unmade: usize,
     /// Each permutation run: its rows, input and output (for the witness plan, `super::plan`).
     pub runs: Vec<Run>,
 }
@@ -189,12 +197,20 @@ impl<P: Permutation> Sponge<P> {
             constants: Constants::new(),
             xors: Xors::new(b),
             permutations: 0,
+            planes_unmade: 0,
             runs: Vec::new(),
         }
     }
 
     /// Keccak-256 of `message` (bits in byte order, low bit first): the digest's 256 bits, likewise.
     pub fn keccak256(&mut self, b: &mut Builder, message: &[Bit]) -> Vec<Value> {
+        self.keccak256_lanes(b, message, 4)
+    }
+
+    /// Keccak-256's sponge on `message`: its first `lanes` lanes after the last permutation (`4 ≤ lanes ≤ 17`: the
+    /// digest, then the rest of the rate, `transcript::keccak256_rate`), `64 · lanes` bits in byte order.
+    pub fn keccak256_lanes(&mut self, b: &mut Builder, message: &[Bit], lanes: usize) -> Vec<Value> {
+        assert!((4..=RATE_LANES).contains(&lanes), "the digest's lanes and the rate's");
         assert!(message.len().is_multiple_of(8), "whole bytes");
         let blocks = message.len() / RATE_BITS + 1;
         let padded_len = blocks * RATE_BITS;
@@ -232,15 +248,20 @@ impl<P: Permutation> Sponge<P> {
                 }
             }
             let first_row = b.rows() as u32;
-            state = self.permutation.permute(b, &mut self.constants, &input);
+            // A later block reads the whole state; the last, the lanes asked for.
+            let read = if block + 1 == blocks { lanes } else { 25 };
+            state = self.permutation.permute(b, &mut self.constants, &input, read);
             self.runs.push(Run {
                 rows: first_row..b.rows() as u32,
                 input,
                 output: state.clone(),
             });
             self.permutations += 1;
+            self.planes_unmade += 5 - read.div_ceil(5);
         }
-        state[..256].to_vec()
+        let out = state[..64 * lanes].to_vec();
+        assert!(!out.contains(&UNMADE), "the lanes asked for are made");
+        out
     }
 }
 

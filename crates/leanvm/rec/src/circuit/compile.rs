@@ -41,10 +41,11 @@ use super::units::{Arith, Bools, Copies, Limbs, Op, Packer, Ports};
 /// (the EIP draft's, `pcs_claim`) hashed in the circuit, its digest a public word ([`Source::ClaimHash`]) that the
 /// contract reads from the transaction's frame of PCS claims, so that the claim's own words (its root, its
 /// out-of-domain answer, its value, the coordinates no other claim has) leave calldata (`docs/leanvm/rec/PERF_GAS.md`).
-/// `C1`'s claim (27 variables at 128 signatures, 28 at 400: six permutations) fits `2^24` positions at 128 and 400
-/// signatures (98.2% and 99.9%); with `C2`'s too it does not. A circuit that would not fit [`FIT_LOG_N`] with them
-/// hashes none ([`compile_keeping`]).
-pub const HASHED_CLAIMS: &[usize] = &[0];
+/// The three claims (`C1`'s at 27 variables at 128 signatures, 28 at 400: six permutations; `C2`'s six; `F`'s five)
+/// fit `2^24` positions with π1-rec4's transcript and D16v's trimmed last rounds (`docs/leanvm/rec/PERF_GAS2.md`). A
+/// circuit that would not fit [`FIT_LOG_N`] with them hashes fewer, the last dropped first, down to none
+/// ([`compile_keeping`]).
+pub const HASHED_CLAIMS: &[usize] = &[0, 1, 2];
 
 /// The positions `π2`'s circuit must fit for [`HASHED_CLAIMS`] to be hashed: `2^24`, whose quotient table (`16N`
 /// words) is WHIR's largest certified stack.
@@ -70,6 +71,13 @@ fn assert_typed(graph: &Graph) {
             Node::Bits(v, ..) => assert!(!is_state(earlier(v)), "a bit field reads an element"),
             Node::Hash(s, ..) | Node::Low(s) | Node::Narrow(s) => {
                 assert!(is_state(earlier(s)), "a hash or a challenge reads a state")
+            }
+            Node::Wide(s, k) => {
+                assert!(
+                    matches!(graph.nodes[earlier(s) as usize], Node::Hash(..)),
+                    "a wide challenge reads a hash"
+                );
+                assert!((1..leanvm_statement::transcript::WIDE_MAX as u8).contains(&k), "a wide challenge's index");
             }
             Node::RingWeight(k, n) => {
                 let ops = &graph.kernels[k as usize];
@@ -101,6 +109,7 @@ pub fn expand(graph: &Graph) -> (Graph, Vec<u32>) {
                 Node::Hash(s, from, to) => Sym::new(Node::Hash(m(s).0, from, to)),
                 Node::Low(h) => Sym::new(Node::Low(m(h).0)),
                 Node::Narrow(h) => Sym::new(Node::Narrow(m(h).0)),
+                Node::Wide(h, k) => Sym::new(Node::Wide(m(h).0, k)),
                 Node::Bits(v, shift, width) => m(v).bits(shift as usize, width as usize),
                 Node::RingWeight(k, n) => {
                     let ops: Vec<Sym> = graph.kernels[k as usize].iter().map(|&id| m(id)).collect();
@@ -138,6 +147,8 @@ pub struct Compiled {
     pub digests: BTreeMap<u32, Vec<Value>>,
     pub keccak_calls: usize,
     pub permutations: usize,
+    /// The permutations' last-round planes not made (`keccak::Sponge::planes_unmade`).
+    pub planes_unmade: usize,
     /// `E` units: by op (mul, add, square), slot operand ended / both forwarded.
     pub arith: [[usize; 2]; 3],
     pub packings: usize,
@@ -157,7 +168,7 @@ fn be_bits(bit: &dyn Fn(usize) -> Value, first: usize, nbytes: usize) -> Vec<(us
 /// `y_0(z) = z + β_1 · y_1(z)` of a challenge `z`: `(z, the coordinate)`. Then `z` is the port, not the coordinate.
 fn pair_coordinate(g: &Graph, id: u32) -> Option<(u32, u8)> {
     let node = |id: u32| g.nodes[id as usize];
-    let is_challenge = |z: u32| matches!(node(z), Node::Narrow(_) | Node::Low(_));
+    let is_challenge = |z: u32| matches!(node(z), Node::Narrow(_) | Node::Low(_) | Node::Wide(..));
     let y1_of = |id: u32| -> Option<u32> {
         let Node::Add(a, b) = node(id) else { return None };
         [(a, b), (b, a)].into_iter().find_map(|(square, z)| match node(square) {
@@ -261,12 +272,14 @@ pub fn compile_keeping<P: Permutation>(
     keep: bool,
 ) -> (Compiled, Option<Trace>) {
     let claims = calls(recorded).len();
-    let hashed: Vec<usize> = HASHED_CLAIMS.iter().copied().filter(|&ci| ci < claims).collect();
-    let out = compile_hashing(recorded, log_width, &make, inputs, keep, &hashed);
-    if hashed.is_empty() || out.0.finished.circuit.log_n <= FIT_LOG_N {
-        return out;
+    let mut hashed: Vec<usize> = HASHED_CLAIMS.iter().copied().filter(|&ci| ci < claims).collect();
+    loop {
+        let out = compile_hashing(recorded, log_width, &make, inputs, keep, &hashed);
+        if hashed.is_empty() || out.0.finished.circuit.log_n <= FIT_LOG_N {
+            return out;
+        }
+        hashed.pop();
     }
-    compile_hashing(recorded, log_width, &make, inputs, keep, &[])
 }
 
 /// [`compile_keeping`] with π1's claims `hashed` (indices among `calls(recorded)`) hashed in the circuit.
@@ -362,8 +375,19 @@ pub fn compile_hashing<P: Permutation>(
     }
     let stream_bit = |i: usize| bit_self[i].expect("a hashed bit");
 
-    // Keccak-256 calls, in the chain's order.
+    // Keccak-256 calls, in the chain's order. A hash a live wide challenge reads gives its rate's lanes up to that
+    // challenge's (challenge `k`: bytes `8 + 24k .. 32 + 24k`, lanes `1 + 3k ..= 3 + 3k`); another, its digest's 4.
+    let mut lanes_of: BTreeMap<u32, usize> = BTreeMap::new();
+    for (id, node) in g.nodes.iter().enumerate() {
+        if let Node::Wide(h, k) = *node
+            && live[id]
+        {
+            let lanes = lanes_of.entry(h).or_insert(4);
+            *lanes = (*lanes).max(4 + 3 * k as usize);
+        }
+    }
     let mut digests: BTreeMap<u32, Vec<Value>> = BTreeMap::new();
+    let mut rates: BTreeMap<u32, Vec<Value>> = BTreeMap::new();
     let constant_bits = |bytes: &[u8]| -> Vec<Bit> {
         bytes
             .iter()
@@ -390,7 +414,12 @@ pub fn compile_hashing<P: Permutation>(
                         }));
                     }
                 }
-                digests.insert(id as u32, sponge.keccak256(&mut b, &message));
+                let lanes = lanes_of.get(&(id as u32)).copied().unwrap_or(4);
+                let out = sponge.keccak256_lanes(&mut b, &message, lanes);
+                digests.insert(id as u32, out[..256].to_vec());
+                if lanes > 4 {
+                    rates.insert(id as u32, out);
+                }
             }
             _ => {}
         }
@@ -487,6 +516,17 @@ pub fn compile_hashing<P: Permutation>(
                 let l1 = limb(1, &mut b, &mut sponge.constants);
                 let l2 = limb(2, &mut b, &mut sponge.constants);
                 ([l0, l1, l2], true)
+            }
+            // A wide draw's challenge k: the rate's bytes 8 + 24k .. 32 + 24k, as `Low` packs the digest's 8 .. 32.
+            Node::Wide(h, k) => {
+                packings += 1;
+                let r = &rates[&h];
+                let rate_bit = |i: usize| r[i];
+                let at = 24 * k as usize;
+                let l: Limbs = std::array::from_fn(|i| {
+                    packer.pack(&mut b, &mut sponge.constants, &be_bits(&rate_bit, at + 24 - 8 * i, 8))
+                });
+                (l, true)
             }
             // A narrow challenge: limb 2 is the low 32 bits of the digest's bytes 8..16, its bytes 12..16.
             Node::Narrow(h) => {
@@ -784,6 +824,7 @@ pub fn compile_hashing<P: Permutation>(
         digests,
         keccak_calls,
         permutations: keccak_permutations,
+        planes_unmade: sponge.planes_unmade,
         arith: arith.counts,
         packings,
         free_bits,

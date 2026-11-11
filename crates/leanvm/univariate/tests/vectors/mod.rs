@@ -12,7 +12,7 @@
 
 #![allow(dead_code)]
 
-use leanvm_univariate::{KECCAK_MAIN, KECCAK_REC3, Shape, Variant};
+use leanvm_univariate::{KECCAK_MAIN, KECCAK_REC3, KECCAK_REC4, Shape, Variant};
 
 /// The program's IV the vectors' contracts are built with (`leanvm_statement::shapes::PROGRAM_IV`).
 #[allow(unused_imports)]
@@ -32,11 +32,12 @@ pub struct Vector {
 }
 
 /// The configurations by name: `keccak` the Keccak VM's main line (`KECCAK_MAIN`), `keccak_rec3` its π1-rec3
-/// (`KECCAK_REC3`).
+/// (`KECCAK_REC3`), `keccak_rec4` its π1-rec4 (`KECCAK_REC4`, the recursion's since `docs/leanvm/rec/PERF_GAS2.md`).
 pub fn variant_of(config: &str) -> Variant {
     match config {
         "keccak" => KECCAK_MAIN,
         "keccak_rec3" => KECCAK_REC3,
+        "keccak_rec4" => KECCAK_REC4,
         other => panic!("no configuration {other}"),
     }
 }
@@ -45,6 +46,7 @@ pub fn name_of(variant: Variant) -> &'static str {
     match variant {
         v if v == KECCAK_MAIN => "keccak",
         v if v == KECCAK_REC3 => "keccak_rec3",
+        v if v == KECCAK_REC4 => "keccak_rec4",
         _ => "keccak_other",
     }
 }
