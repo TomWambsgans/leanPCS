@@ -7,35 +7,38 @@ Both benchmarks of the EIP draft, timed as its figures are: `LEANVM_NUM_THREADS=
 target-feature=+gfni,+vpclmulqdq,+vaes,+pclmulqdq,+avx512vbmi,+aes,+bmi2"`. Every change is a prover change: the
 proofs are `main`'s byte for byte, so the calldata, the claims, the gas and the Lean are untouched.
 
-## On `main` `eb75bce9` (`perf2/provers-main`)
+## On `main` `fd525b68` (`perf2/provers-main`)
 
 `perf2/provers` merged into `main` at `eb75bce9` (π1-rec4, π2 at 577 B and 66,376 gas; membership with three claims,
-one on each of `W`, the wiring and `T`, 273 B and 31,680 gas). Each table of the membership proof now has one claim,
-so changes 1 and 2 below no longer apply to it (`protocol::open` is `main`'s); π2's `Q` still has three, its level-0
-rows read from its kept codeword, so change 2 has no user left and is dropped (after review: a batch's openings again
-encode their level-0 rows each, as on `866ba889`'s `main`). Change 5 is
-now limited to a batch's openings made in turn (`Q`'s): a lone opening keeps 1 GiB, since the membership proof's `T`,
-opened once in its cold process, mapped 0.94 GiB more (peak 6.01 → 6.95 GiB) for 3 ms. The proofs are `eb75bce9`'s:
-the membership digest `134f62090dae…`, the pipeline's fingerprints `f34a2902…`, `645710f9…`, `df47df82…`,
-`baac38e6…`. `main` built at `eb75bce9` (`/root/pcs-perf/r2-provers/main2`) and the branch alternately, five rounds,
-medians, as below:
+one on each of `W`, the wiring and `T`, 273 B and 31,680 gas), then `main` at `fd525b68` (`fix/code`'s fixes: the
+spread rows lent from an owned list, which `commit_skipping` now uses too, and `collapse_avx512::stage`'s bound assert,
+here over the lanes it names). Each table of the membership proof now has one claim, so changes 1 and 2 below no longer
+apply to it (`protocol::open` is `main`'s); π2's `Q` still has three, its level-0 rows read from its kept codeword, so
+change 2 had no user left and is dropped (after review: a batch's openings again encode their level-0 rows each, as on
+`866ba889`'s `main`). Change 5 is now limited to a batch's openings made in turn (`Q`'s): a lone opening keeps 1 GiB,
+since the membership proof's `T`, opened once in its cold process, mapped 0.94 GiB more (peak 6.01 → 6.95 GiB) for
+3 ms. The proofs are `main`'s: the membership digest `134f62090dae52cc…a563`, the pipeline's pinned fingerprints
+`f34a2902…`, `645710f9…`, `df47df82…`, `baac38e6…` (which it asserts). `main` built at `fd525b68`
+(`/root/pcs-perf/r2-provers/main3`) and the branch alternately, five rounds, medians, as below:
 
-| 8 threads (cores 0-7) | `main` `eb75bce9` | `perf2/provers-main` | |
+| 8 threads (cores 0-7) | `main` `fd525b68` | `perf2/provers-main` | |
 |---|---|---|---|
-| membership: reduction | 0.668 s | 0.648 s | |
-| membership: openings | 0.344 s | 0.331 s | |
-| **membership: prover total** | **1.026 s** | **0.994 s** | **−3.1%** |
+| membership: reduction | 0.680 s | 0.658 s | |
+| membership: openings | 0.339 s | 0.334 s | |
+| **membership: prover total** | **1.033 s** | **1.006 s** | **−2.6%** |
 | membership: peak memory | 6.01 GiB | 6.01 GiB | |
-| leanVM: π1-rec4, proof | 0.863 s | 0.858 s | |
-| leanVM: π1-rec4's openings | 0.177 s | 0.177 s | |
-| leanVM: π2, proof | 0.789 s | 0.738 s | |
-| leanVM: π2's openings | 0.787 s | 0.726 s | |
-| **leanVM: total a proof** | **2.625 s** | **2.497 s** | **−4.9%** |
-| leanVM: peak RSS | 15.04 GB | 15.58 GB | |
+| leanVM: π1-rec4, proof | 0.859 s | 0.861 s | |
+| leanVM: π1-rec4's openings | 0.178 s | 0.177 s | |
+| leanVM: π2, proof | 0.792 s | 0.739 s | |
+| leanVM: π2's openings | 0.787 s | 0.724 s | |
+| **leanVM: total a proof** | **2.617 s** | **2.501 s** | **−4.4%** |
+| leanVM: peak RSS | 15.05 GB | 15.58 GB | |
 
-Tests on h3: `cargo test --release -p quotient -p evm -p pcs_claim -p pcs -p leanvm_univariate -p leanvm_rec -p
-leanvm_statement`, `pi2_real` `real_end_to_end` (577 B, 66,376 gas with the frame) and the membership `gas_report`
-(273 B, 31,680 gas).
+At `eb75bce9`, before the fixes: membership 1.026 → 0.994 s, leanVM 2.625 → 2.497 s.
+
+Tests on h3: `cargo test --release --workspace`, and again with `CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS=true
+CARGO_PROFILE_RELEASE_OVERFLOW_CHECKS=true`; `pi2_real` `real_end_to_end` (577 B, 66,376 gas with the frame) and the
+membership `gas_report` (273 B, 31,680 gas); Miri on the `miri_` tests (below).
 
 ## On `main` `866ba889` (`perf2/provers`)
 
