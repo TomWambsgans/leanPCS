@@ -53,10 +53,12 @@ computes on bits), independent of `π`. Each PCS opening seeds its transcript wi
    (`Circuit.indexCommitmentWith`, its tree `Circuit.indexTreeWith`, `Tree.evaluations`).
 9. [`LayoutsProver.lean`](PcsQuotient/LayoutsProver.lean): the layout opening's prover, kept for the leanVM line.
 10. [`Prover.lean`](PcsQuotient/Prover.lean): **the honest prover** (`proveWith`, `proverWith`; `proveWithPcs` over
-    abstract PCS operations, `realPcs`): `Coins` (the random rows' words, the blinding `b₀, b₁` of `h`), the random
+    abstract PCS operations, `realPcs`): `Coins` (the random rows' words, the blinding `b₀, b₁` of `h`, the quotient
+    table's four slack words), the random
     rows filled (`randomizeCells`), the witness table, the quotient table (`quotientParts`: `h`, the quotient on a
     coset of `4 n` points with `b₂` solved; `quotientTable`: `A₀`, `A₁ = Q_h / x` by `divX`, `B₀ = x h_low` by `mulX`,
-    `B₁ = (b₀, b₁, b₂)`), the values at `t` (`valuesAt`), its openings by mumbai's WHIR prover pieces.
+    `B₁ = (b₀, b₁, b₂)`, the slack words `(s, s, 0, s)` in limbs 0 to 3 of four of `A₀`'s coefficients, which read
+    zero), the values at `t` (`valuesAt`), its openings by mumbai's WHIR prover pieces.
 11. [`Replay.lean`](PcsQuotient/Replay.lean), 12. [`Decoder.lean`](PcsQuotient/Decoder.lean),
     13. [`Extractor.lean`](PcsQuotient/Extractor.lean): the transcript's evaluations and Merkle inversion; Gao's unique
     decoder; **the extractor** (`transcriptExtractorFor`).
@@ -80,8 +82,8 @@ permutation calls, given the setup's commitment, Pr[the verifier accepts ∧ `ex
 experiments within `ζ Q` both ways, for a distinguisher of `Q` calls quantified after the statement and witness),
 `StatementBinds` (two secrets of one statement have one `x` or a pair collision). **Zero knowledge is for one proof**:
 from an empty, lazily sampled `π`, the prover goes first and the distinguisher queries only after it has the proof.
-`sampleCoins` is the thirty-two random rows' words and the six blinding words of `h` (`b₀, b₁` of each limb), each
-uniform in `K`, in the order the Rust's KDF derives them. The bounds are parameters; the end theorems fix them
+`sampleCoins` is the thirty-two random rows' words, the six blinding words of `h` (`b₀, b₁` of each limb) and the
+four slack words, each uniform in `K`, in the order the Rust's KDF derives them. The bounds are parameters; the end theorems fix them
 ([`../README.md`](../README.md)).
 
 Knowledge soundness needs no collision clause (an extracted secret satisfies the relation exactly). `StatementBinds`
