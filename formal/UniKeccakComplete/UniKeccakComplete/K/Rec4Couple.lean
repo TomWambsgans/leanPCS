@@ -108,7 +108,7 @@ def Short (m : Bytes) : Prop := m.length < lenB
 instance : DecidablePred Short := fun m ↦ inferInstanceAs (Decidable (m.length < lenB))
 
 /-- **Tail input `i`** of `m` (`i = 1 … 4`): `m` and `i · 2^60` zero bytes. -/
-def extIn (i : ℕ) (m : Bytes) : Bytes := m ++ List.replicate (i * lenB) 0
+@[irreducible] def extIn (i : ℕ) (m : Bytes) : Bytes := m ++ List.replicate (i * lenB) 0
 
 theorem length_extIn (i : ℕ) (m : Bytes) : (extIn i m).length = m.length + i * lenB := by
   simp [extIn]
@@ -141,6 +141,7 @@ theorem extIn_inj {i j : ℕ} {m m' : Bytes} (hm : Short m) (hm' : Short m') (h 
       omega
   subst hij
   refine ⟨rfl, ?_⟩
+  unfold extIn at h
   exact (List.append_inj h (by omega)).1
 
 /-- A tail is none of the short input's other tails. -/

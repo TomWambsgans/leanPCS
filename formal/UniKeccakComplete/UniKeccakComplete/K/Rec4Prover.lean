@@ -213,6 +213,20 @@ theorem wr_flockProve4 (logN : ℕ) (v : KeccakVariant) (c : E) (q : Array K) :
   simp only [flockProve4, frontW4, Morph.wr_bind, wr_zerocheckW4, Morph.wr_sampleW, FlockP.wr_lcRounds,
     Morph.wr_sendScalars, Morph.wr_pure]
 
+theorem wr_midB4 (commit : Commitment → ℕ → Array K → m Committed)
+    (commit' : Commitment → ℕ → Array K → n Committed) (hcommit : ∀ c v s, φ.app (commit c v s) = commit' c v s)
+    (tr : Trace) (bus : List E) :
+    φ.wr (midB4 H commit tr bus) = midB4 (fun x ↦ φ.app (H x)) commit' tr bus := by
+  simp only [midB4, Morph.wr_bind, Morph.wr_pure, Morph.wr_lift, hcommit, Morph.wr_sendRoot, Morph.wr_sendScalar,
+    wr_flockProve4]
+
+theorem wr_tailT4 (tr : Trace) (committed1 : Committed) (bus : List E) (fl : List E × List E)
+    (committed2 : Committed) (pointDraw : List E) :
+    φ.wr (tailT4 H W tr committed1 bus fl committed2 pointDraw) =
+      tailT4 (fun x ↦ φ.app (H x)) (fun x ↦ φ.app (W x)) tr committed1 bus fl committed2 pointDraw := by
+  simp only [tailT4, Morph.wr_bind, Morph.wr_pure, Morph.wr_sendScalars, wr_sampleWideW, wr_batchRounds3,
+    Morph.wr_get]
+
 /-- **π1-rec4's stream commutes with a morphism** that commutes with the commitment. -/
 theorem wr_proveStreamRec4With (commit : Commitment → ℕ → Array K → m Committed)
     (commit' : Commitment → ℕ → Array K → n Committed) (hcommit : ∀ c v s, φ.app (commit c v s) = commit' c v s)
