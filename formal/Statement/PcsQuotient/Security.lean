@@ -103,13 +103,14 @@ def coinWord : OracleComp RandomPermutationOracles UInt64 := do
   let n ← liftM (RandomPermutationOracles.query (.inl (2 ^ 64 - 1)))
   return UInt64.ofNat (n : Fin (2 ^ 64 - 1 + 1)).val
 
-/-- **Uniform randomness** from the model's coins (`Randomness`): the thirty-two random rows' words and the six
-blinding words, each a uniform word of `K`, in the order the Rust's KDF derives them (`Randomness::derive`:
-`blind[e][i]` is word `32 + 2 e + i`). -/
+/-- **Uniform randomness** from the model's coins (`Randomness`): the thirty-two random rows' words, the six
+blinding words and the four slack words, each a uniform word of `K`, in the order the Rust's KDF derives them
+(`Randomness::derive`: `blind[e][i]` is word `32 + 2 e + i`, slack word `k` is word `38 + k`). -/
 def sampleCoins : OracleComp RandomPermutationOracles Coins := do
-  let w ← (List.range (randomWords + 3 * freeBlind)).mapM fun _ ↦ coinWord
+  let w ← (List.range (randomWords + 3 * freeBlind + slackWords)).mapM fun _ ↦ coinWord
   let word (k : ℕ) : K := K.ofLane (w.getD k 0)
-  return ⟨fun r ↦ word r.val, fun e i ↦ word (randomWords + freeBlind * e.val + i.val)⟩
+  return ⟨fun r ↦ word r.val, fun e i ↦ word (randomWords + freeBlind * e.val + i.val),
+    fun k ↦ word (randomWords + 3 * freeBlind + k.val)⟩
 
 /-! ### The honest prover and the extractor -/
 

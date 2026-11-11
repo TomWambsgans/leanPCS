@@ -30,7 +30,8 @@ monad, Keccak-256 the sponge over `F`: `proveWith F fuel circuit stmt cells coin
    large enough for `E` itself.
 5. **The quotient table** `T` (`m + 4` variables, `table_slot`): kind `0`, limb `e < 3`, the first `n`
    coefficients `A_0` of `q` (low half) and `A_1 = Q_h / x` (`divX`, high half); kind `1`, `B_0 = x h_low`
-   (`mulX`, low half) and `B_1 = (b_0, b_1, b_2)` (high half); limb `3` zero. Committed and sent; `t` drawn.
+   (`mulX`, low half) and `B_1 = (b_0, b_1, b_2)` (high half); limb `3` zero but for the four slack words, each
+   `(s, s, 0, s)` across limbs 0 to 3 of a coefficient of `A_0`, which reads zero. Committed and sent; `t` drawn.
 6. **The values**: the three values the gate reads at `t` (`rowValues` of the row polynomials at `t`) and the
    wiring polynomial at `t`; `ρ` drawn.
 7. **The openings** (`proveClaimWith`): leanVM's WHIR prover (`pcsOpeningScript`) on each claim's table, run
@@ -59,13 +60,23 @@ def hBlind : ℕ := 3
 /-- `FREE_BLIND` (`protocol.rs`): the blinding coefficients a proof draws per limb, `b_0, b_1`. -/
 def freeBlind : ℕ := hBlind - 1
 
+/-- `SLACK_WORDS` (`protocol.rs`): the quotient table's slack words, one for each coefficient `slackAt k` of `q`'s
+low half, written in that coefficient's limb 3 and added to its limbs 0 and 1: `(s, s, 0, s)` reads
+`s (1 + Y + Y³) = 0`, so no polynomial of the table and no claim moves, while the table's out-of-domain answer moves by
+`s` times a weight of the out-of-domain point alone (`PROTOCOL.md`, "Zero knowledge"). -/
+def slackWords : ℕ := 4
+
+/-- `SLACK_AT` (`protocol.rs`): the coefficients of `q`'s low half that hold a slack word, `0, 1, 2, 4`. -/
+def slackAt (k : ℕ) : ℕ := if k < 3 then k else 4
+
 /-- **The prover's randomness** (`Randomness`, `protocol.rs`): the random rows' words, two a row in the order of
-`Circuit.randomRows`; and the blinding of the sum's polynomial, `blind e i` coefficient `2^m + i` of limb `e`,
-`i < 2`. The deployed prover derives them from a fresh 32-byte seed by a Keccak-256 KDF (`Randomness::derive`);
-the statement's prover takes them uniform (`Security.lean`'s `sampleCoins`). -/
+`Circuit.randomRows`; the blinding of the sum's polynomial, `blind e i` coefficient `2^m + i` of limb `e`, `i < 2`;
+and the quotient table's slack words. The deployed prover derives them from a fresh 32-byte seed by a Keccak-256 KDF
+(`Randomness::derive`); the statement's prover takes them uniform (`Security.lean`'s `sampleCoins`). -/
 structure Coins where
   rows : Fin randomWords → K
   blind : Fin 3 → Fin freeBlind → K
+  slack : Fin slackWords → K
 
 /-- **The random rows filled** (`Circuit::randomize`, `circuit.rs`): the `k`-th random row
 (`Circuit.randomRows`) takes the cells of its shape (`RandomShape.of k`) for the words `2k`, `2k + 1`. -/
@@ -209,7 +220,11 @@ def quotientTable (circuit : Circuit) (stmt : Statement) (cells₀ : Array K) (c
     let x : E :=
       if kind = 0 then (if half = 0 then qHat.getD i 0 else a1.getD i 0)
       else (if half = 0 then b0.getD i 0 else b1 i)
-    if limb < 3 then limbOf x limb else 0
+    -- The slack word of coefficient `i` of `q`'s low half, if it holds one: `(s, s, 0, s)` in limbs 0 to 3.
+    let slack : K := (List.range slackWords).foldl
+      (fun acc k ↦ if kind = 0 ∧ half = 0 ∧ i = slackAt k then
+          (if h : k < slackWords then coins.slack ⟨k, h⟩ else 0) else acc) 0
+    if limb < 3 then limbOf x limb + (if limb < 2 then slack else 0) else slack
 
 /-- **The values the prover sends at `t`**: the three values the gate reads (`row_values` of the row polynomials
 at `t`) and `next`, the wiring polynomial at `t`. -/

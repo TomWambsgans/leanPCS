@@ -181,7 +181,8 @@ def checkLine (line : String) : Except String (String × Bool) := do
         let bits := (List.range count).map fun i ↦ (bytes.getD (i / 8) 0).testBit (i % 8)
         let words ← many kWord
         let word (k : ℕ) : K := words.getD k 0
-        let coins : Coins := ⟨fun r ↦ word r.val, fun e i ↦ word (randomWords + freeBlind * e.val + i.val)⟩
+        let coins : Coins := ⟨fun r ↦ word r.val, fun e i ↦ word (randomWords + freeBlind * e.val + i.val),
+          fun k ↦ word (randomWords + 3 * freeBlind + k.val)⟩
         let stream ← many eElem
         pure (name, bits, coins, stream) : Parse _).run rest
     match circuitNamed name with
@@ -260,7 +261,8 @@ def main (args : List String) : IO UInt32 := do
     IO.println s!"extractor (Merkle inversion through a transcript): {inverted}"
     let bits := bitsFrom 7 256
     let coins : Coins := ⟨fun r ↦ K.ofLane (UInt64.ofNat (1000003 * r.val + 17)),
-      fun e i ↦ K.ofLane (UInt64.ofNat (1000033 * (2 * e.val + i.val) + 5))⟩
+      fun e i ↦ K.ofLane (UInt64.ofNat (1000033 * (2 * e.val + i.val) + 5)),
+      fun k ↦ K.ofLane (UInt64.ofNat (1000037 * k.val + 3))⟩
     let extracted := extractionTest bits coins
     IO.println s!"extractor (fast path on an honest commitment): {extracted}"
     return if inverted && extracted then 0 else 1

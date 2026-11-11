@@ -10,9 +10,12 @@
 //! - **W**: the three row values and the witness table's out-of-domain answer, over the random rows' words (12
 //!   coordinates over [`RANDOM_WORDS`]): every cell of a random row is affine in its two words, and `W` is linear in
 //!   the cells;
-//! - **T**: the quotient table's out-of-domain answer, over the blinding of `h` (3 over `3 FREE_BLIND`), the random
-//!   rows fixed: the free blinding `b_0, b_1` is `h`'s coefficients `n, n + 1` and moves `q` by `b d d'`; `b_2`,
-//!   solved for so that `q`'s coefficient `n` is zero, is affine in them.
+//! - **T**: the quotient table's out-of-domain answer, over the slack words ([`SLACK_WORDS`]: 3 over 4), the random
+//!   rows and the blinding of `h` fixed. A slack word moves the answer by itself times a weight of the out-of-domain
+//!   point alone, so this map is **the same whatever the random rows and the blinding** (checked: its columns at a
+//!   second randomness are the first's). Over the blinding of `h` instead (the free `b_0, b_1`, which move `q` by
+//!   `b d d'`, and `b_2`, solved affinely), the map depends on the random rows through `d d'` and `b_2`, so its rank
+//!   could fall short on a set of random rows; the slack words make the answer uniform regardless.
 //!
 //! Both maps are affine: [`revealed_scalars_are_uniform`] checks that two words changed together move the scalars
 //! by the sum of their own changes, and a word scaled by an element of `K` by that multiple.
@@ -26,7 +29,7 @@ use crate::circuit::{Circuit, RANDOM_WORDS};
 use crate::statement::Statement;
 use crate::opening::{Commitment, FIXED_OOD};
 use crate::protocol::tests::{toy, toy_cells, toy_statement};
-use crate::protocol::{FREE_BLIND, Index, Randomness, prove_with_randomness, stream};
+use crate::protocol::{Index, Randomness, SLACK_WORDS, prove_with_randomness, stream};
 use crate::transcript::FIXED;
 
 /// The rank over `K` of `columns`, each a vector of `K`-coordinates, by Gaussian elimination.
@@ -61,13 +64,13 @@ fn coordinates(xs: &[F192]) -> Vec<F64> {
 #[derive(Clone, Copy)]
 enum Word {
     Row(usize),
-    Blind(usize, usize),
+    Slack(usize),
 }
 
 fn word(r: &mut Randomness, w: Word) -> &mut F64 {
     match w {
         Word::Row(k) => &mut r.rows[k],
-        Word::Blind(e, i) => &mut r.blind[e][i],
+        Word::Slack(k) => &mut r.slack[k],
     }
 }
 
@@ -128,13 +131,16 @@ fn check_uniform(circuit: &Circuit, statement: &Statement, cells: &[F64], rng: &
             .stream
     };
     let w: Vec<Word> = (0..RANDOM_WORDS).map(Word::Row).collect();
-    let t: Vec<Word> = (0..3).flat_map(|e| (0..FREE_BLIND).map(move |i| Word::Blind(e, i))).collect();
+    let t: Vec<Word> = (0..SLACK_WORDS).map(Word::Slack).collect();
     let rows = stream::ROW_VALUES..stream::ROW_VALUES + 3;
     let groups = [
         ("W", rows.chain([stream::WITNESS_OOD]).collect::<Vec<_>>(), w),
         ("T", vec![stream::TABLE_OOD], t),
     ];
     let before = reveal(&base);
+    // A second randomness: other random rows, other blinding, other slack.
+    let other = Randomness::derive(&std::array::from_fn(|_| rng.next_u8()), &commitment, statement, cells);
+    let other_before = reveal(&other);
     let base = (&base, &before[..]);
     for (name, revealed, words) in &groups {
         let columns: Vec<Vec<F64>> = words
@@ -154,6 +160,13 @@ fn check_uniform(circuit: &Circuit, statement: &Statement, cells: &[F64], rng: &
         let c = F64(rng.next_u64());
         let scaled = delta(&reveal, base, revealed, &|r| *word(r, a) += c);
         assert_eq!(scaled, columns[0].iter().map(|&x| x * c).collect::<Vec<_>>(), "group {name} is not K-linear");
+        // The map is the same at another randomness (the slack words' weights depend on no randomness; the random
+        // rows' on none either).
+        let at_other: Vec<Vec<F64>> = words
+            .iter()
+            .map(|&w| delta(&reveal, (&other, &other_before[..]), revealed, &|r| *word(r, w) += F64::ONE))
+            .collect();
+        assert_eq!(at_other, columns, "group {name}'s map depends on the randomness");
     }
     FIXED.with(|fixed| *fixed.borrow_mut() = None);
 }

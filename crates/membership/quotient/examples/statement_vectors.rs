@@ -296,7 +296,7 @@ fn prover_line(name: &str, inputs: &[bool], randomness: &Randomness, stream: &[F
             .fold(0u8, |acc, (i, &bit)| acc | (bit as u8) << i);
         write!(out, " {value:02x}").unwrap();
     }
-    let words = [&randomness.rows[..], randomness.blind.as_flattened()].concat();
+    let words = [&randomness.rows[..], randomness.blind.as_flattened(), &randomness.slack[..]].concat();
     write!(out, " {}", words.len()).unwrap();
     for word in words {
         write!(out, " {:016x}", word.0).unwrap();
