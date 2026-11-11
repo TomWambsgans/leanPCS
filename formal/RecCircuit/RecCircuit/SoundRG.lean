@@ -32,23 +32,23 @@ def ExpandSound (g : RecGraph.Graph) (c : Compiled) : Prop :=
 
 namespace Compiled
 
-variable {c : Compiled} {g : RecGraph.Graph} {rootsAt : List ℕ} {iv : List UInt8}
+variable {c : Compiled} {g : RecGraph.Graph} {rootsAt : List ℕ} {iv : List UInt8} {hashed : List ℕ}
 
 /-- A live expanded node's element, in `RecGraph`'s semantics of the original graph. -/
-theorem elem_rg (hc : c.Checked (ofRG g rootsAt iv)) (hE : ExpandSound g c) (w : ℕ → K) {k id : ℕ}
+theorem elem_rg (hc : c.Checked (ofRG g rootsAt iv hashed)) (hE : ExpandSound g c) (w : ℕ → K) {k id : ℕ}
     (hk : k < c.nodes.size) (hlk : c.live.getD k false = true) (hid : id < g.nodes.size) (hmap : c.map.getD id 0 = k) :
-    ((c.valsW (ofRG g rootsAt iv) w).getD k default).toE =
-      RecGraph.valE (rgVals g iv (c.pubW w) (c.streamW (ofRG g rootsAt iv) w)) id := by
-  obtain ⟨b, hb, hcorr⟩ := agree hc (c.pubW w) (c.streamW (ofRG g rootsAt iv) w) (decodePublic_length _)
+    ((c.valsW (ofRG g rootsAt iv hashed) w).getD k default).toE =
+      RecGraph.valE (rgVals g iv (c.pubW w) (c.streamW (ofRG g rootsAt iv hashed) w)) id := by
+  obtain ⟨b, hb, hcorr⟩ := agree hc (c.pubW w) (c.streamW (ofRG g rootsAt iv hashed) w) (decodePublic_length _)
     streamW_length k hk hlk
-  have hiv : (ofRG g rootsAt iv).iv = iv := rfl
+  have hiv : (ofRG g rootsAt iv hashed).iv = iv := rfl
   rw [hiv] at hb hcorr
-  have hs := hE iv (c.pubW w) (c.streamW (ofRG g rootsAt iv) w) id hid
+  have hs := hE iv (c.pubW w) (c.streamW (ofRG g rootsAt iv hashed) w) id hid
   rw [hmap] at hs
   exact (Corr.toE hcorr hb).trans hs
 
 /-- **The statement port carries the public input's words as `RecGraph` reads them.** -/
-theorem compile_sound_statement (hc : compile (ofRG g rootsAt iv) = .ok c) {pub : ℕ → List F192} {w : ℕ → K}
+theorem compile_sound_statement (hc : compile (ofRG g rootsAt iv hashed) = .ok c) {pub : ℕ → List F192} {w : ℕ → K}
     (hw : c.circuit.toPiop.Satisfies pub (emb w)) {J : ℕ} (hJ : J < c.circuit.ports.size)
     (hs : (c.circuit.ports.getD J default).source = .statement) :
     c.circuit.portLimbs w J = (List.range 4).map fun k => K.ofLane (beWordAt (c.pubW w).toArray (8 * k)) := by
@@ -59,11 +59,11 @@ theorem compile_sound_statement (hc : compile (ofRG g rootsAt iv) = .ok c) {pub 
   rw [beWordAt_eq _ _ (by simp [pubW, decodePublic_length]; omega)]
 
 /-- **Root `i`'s port carries the root word's limbs of `RecGraph`'s stream word** at `rootsAt[i]`. -/
-theorem compile_sound_root (hc : compile (ofRG g rootsAt iv) = .ok c) {pub : ℕ → List F192} {w : ℕ → K}
+theorem compile_sound_root (hc : compile (ofRG g rootsAt iv hashed) = .ok c) {pub : ℕ → List F192} {w : ℕ → K}
     (hw : c.circuit.toPiop.Satisfies pub (emb w)) {J i : ℕ} (hJ : J < c.circuit.ports.size)
     (hs : (c.circuit.ports.getD J default).source = .root i) :
     c.circuit.portLimbs w J = (List.range 4).map fun l =>
-      F64.ofNat (beNat (slice ((c.streamW (ofRG g rootsAt iv) w).toArray.extract (rootsAt.getD i 0)
+      F64.ofNat (beNat (slice ((c.streamW (ofRG g rootsAt iv hashed) w).toArray.extract (rootsAt.getD i 0)
         (rootsAt.getD i 0 + 32)).toList ([24, 16, 8, 0].getD l 0) 8)) := by
   rw [compile_sound hc hw J hJ, portMeaning, hs]
   apply List.map_congr_left
@@ -75,12 +75,12 @@ theorem compile_sound_root (hc : compile (ofRG g rootsAt iv) = .ok c) {pub : ℕ
 
 /-- **Element `e`'s port carries `RecGraph`'s value of the call's node**, for any original node the expansion maps to
 the calls' `e`-th element node. -/
-theorem compile_sound_element (hc : compile (ofRG g rootsAt iv) = .ok c) {pub : ℕ → List F192} {w : ℕ → K}
+theorem compile_sound_element (hc : compile (ofRG g rootsAt iv hashed) = .ok c) {pub : ℕ → List F192} {w : ℕ → K}
     (hw : c.circuit.toPiop.Satisfies pub (emb w)) (hE : ExpandSound g c) {J e : ℕ} (hJ : J < c.circuit.ports.size)
     (hs : (c.circuit.ports.getD J default).source = .element e) {id : ℕ} (hid : id < g.nodes.size)
     (hmap : c.map.getD id 0 = c.elementNodes.getD e 0) :
     c.circuit.portLimbs w J =
-      limbsL (RecGraph.valE (rgVals g iv (c.pubW w) (c.streamW (ofRG g rootsAt iv) w)) id) := by
+      limbsL (RecGraph.valE (rgVals g iv (c.pubW w) (c.streamW (ofRG g rootsAt iv hashed) w)) id) := by
   have hchk := checked_of_compile hc
   rw [compile_sound hc hw J hJ, portMeaning, hs]
   simp only
@@ -92,16 +92,16 @@ theorem compile_sound_element (hc : compile (ofRG g rootsAt iv) = .ok c) {pub : 
   rw [elem_rg hchk hE w hmem.1 hmem.2 hid hmap]
 
 /-- **The zero ports carry `RecGraph`'s values of π1's zero checks**, given `ExpandSound`. -/
-theorem compile_sound_zero_rg (hc : compile (ofRG g rootsAt iv) = .ok c) {pub : ℕ → List F192} {w : ℕ → K}
+theorem compile_sound_zero_rg (hc : compile (ofRG g rootsAt iv hashed) = .ok c) {pub : ℕ → List F192} {w : ℕ → K}
     (hw : c.circuit.toPiop.Satisfies pub (emb w)) (hz : ∀ id ∈ g.zero, id < g.nodes.size) (hE : ExpandSound g c) :
     ∀ J < c.circuit.ports.size, (c.circuit.ports.getD J default).source = .zero →
       c.circuit.portLimbs w J = limbsL (RecGraph.valE
-        (rgVals g iv (c.pubW w) (c.streamW (ofRG g rootsAt iv) w)) (zeroOrig c (ofRG g rootsAt iv) (c.zeroIndex J))) := by
+        (rgVals g iv (c.pubW w) (c.streamW (ofRG g rootsAt iv hashed) w)) (zeroOrig c (ofRG g rootsAt iv hashed) (c.zeroIndex J))) := by
   intro J hJ hsrc
   have hchk := checked_of_compile hc
   rw [compile_sound hc hw J hJ, portMeaning, hsrc]
   simp only
-  set r := ofRG g rootsAt iv
+  set r := ofRG g rootsAt iv hashed
   have hzero : c.zero = r.graph.zero.map (fun id => c.map.getD id 0) := (graphOk_parts hchk.graph).2.1
   have hso := allBelow_spec hchk.sources J hJ
   simp only [hsrc, decide_eq_true_eq] at hso

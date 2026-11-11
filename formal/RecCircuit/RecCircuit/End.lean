@@ -4,7 +4,7 @@ import RecCircuit.Calls
 /-!
 # The end theorems: π2's ports and π1's claims are π1's graph's
 
-For every recorded graph `g` (`RecGraph.Graph`) the compiler accepts (`compile (ofRG g rootsAt iv) = .ok c`: the
+For every recorded graph `g` (`RecGraph.Graph`) the compiler accepts (`compile (ofRG g rootsAt iv hashed) = .ok c`: the
 transcription of `compile.rs` ran, and every check of `Check.lean` passed), on every witness satisfying π2's PIOP
 (`RecPiop`'s `Satisfies`): the ports and the claims π2's verifier rebuilds from them are what `g` outputs
 in `RecGraph`'s semantics (`RecGraph.evalNodes` over Keccak-f[1600]) on the public input and the stream the witness
@@ -25,10 +25,10 @@ open Primitives LeanVM.Parameters LeanVM.Semantics LeanVM.Protocol LeanVM.Protoc
 
 namespace Compiled
 
-variable {c : Compiled} {g : RecGraph.Graph} {rootsAt : List ℕ} {iv : List UInt8}
+variable {c : Compiled} {g : RecGraph.Graph} {rootsAt : List ℕ} {iv : List UInt8} {hashed : List ℕ}
 
 /-- π1's zero checks name nodes of its graph (`Graph.outputsIn`). -/
-theorem zero_lt (hc : compile (ofRG g rootsAt iv) = .ok c) : ∀ id ∈ g.zero, id < g.nodes.size := by
+theorem zero_lt (hc : compile (ofRG g rootsAt iv hashed) = .ok c) : ∀ id ∈ g.zero, id < g.nodes.size := by
   obtain ⟨ht, -⟩ := compileRaw_ok (compileRaw_of_compile hc)
   simp only [Graph.typed, Graph.outputsIn, Bool.and_eq_true, List.all_eq_true, decide_eq_true_eq] at ht
   intro id hid
@@ -36,26 +36,26 @@ theorem zero_lt (hc : compile (ofRG g rootsAt iv) = .ok c) : ∀ id ∈ g.zero, 
   simpa [ofRG] using this
 
 /-- **Element `e`'s port carries `RecGraph`'s value of any original node mapped to the `e`-th element node.** -/
-theorem compile_sound_element_end (hc : compile (ofRG g rootsAt iv) = .ok c) {pub : ℕ → List F192} {w : ℕ → K}
+theorem compile_sound_element_end (hc : compile (ofRG g rootsAt iv hashed) = .ok c) {pub : ℕ → List F192} {w : ℕ → K}
     (hw : c.circuit.toPiop.Satisfies pub (emb w)) {J e : ℕ} (hJ : J < c.circuit.ports.size)
     (hs : (c.circuit.ports.getD J default).source = .element e) {id : ℕ} (hid : id < g.nodes.size)
     (hmap : c.map.getD id 0 = c.elementNodes.getD e 0) :
     c.circuit.portLimbs w J =
-      limbsL (RecGraph.valE (rgVals g iv (c.pubW w) (c.streamW (ofRG g rootsAt iv) w)) id) :=
+      limbsL (RecGraph.valE (rgVals g iv (c.pubW w) (c.streamW (ofRG g rootsAt iv hashed) w)) id) :=
   compile_sound_element hc hw (expandSound hc) hJ hs hid hmap
 
 /-- **The zero ports carry `RecGraph`'s values of π1's zero checks**: the `m`-th zero port the `m`-th whose image is
 not a constant. -/
-theorem compile_sound_zero_end (hc : compile (ofRG g rootsAt iv) = .ok c) {pub : ℕ → List F192} {w : ℕ → K}
+theorem compile_sound_zero_end (hc : compile (ofRG g rootsAt iv hashed) = .ok c) {pub : ℕ → List F192} {w : ℕ → K}
     (hw : c.circuit.toPiop.Satisfies pub (emb w)) :
     ∀ J < c.circuit.ports.size, (c.circuit.ports.getD J default).source = .zero →
       c.circuit.portLimbs w J = limbsL (RecGraph.valE
-        (rgVals g iv (c.pubW w) (c.streamW (ofRG g rootsAt iv) w)) (zeroOrig c (ofRG g rootsAt iv) (c.zeroIndex J))) :=
+        (rgVals g iv (c.pubW w) (c.streamW (ofRG g rootsAt iv hashed) w)) (zeroOrig c (ofRG g rootsAt iv hashed) (c.zeroIndex J))) :=
   compile_sound_zero_rg hc hw (zero_lt hc) (expandSound hc)
 
 /-- **The other zero checks are zero**: a zero check whose image is a constant is `0`, on every IV, public input and
 stream. -/
-theorem compile_sound_zero_const (hc : compile (ofRG g rootsAt iv) = .ok c) (iv' pub stream : List UInt8) :
+theorem compile_sound_zero_const (hc : compile (ofRG g rootsAt iv hashed) = .ok c) (iv' pub stream : List UInt8) :
     ∀ id ∈ g.zero, notConst (c.nodes.getD (c.map.getD id 0) default) = false →
       RecGraph.valE (rgVals g iv' pub stream) id = 0 := by
   intro id hid hnc
@@ -82,19 +82,19 @@ def EndStatement (g : RecGraph.Graph) (rootsAt : List ℕ) (iv : List UInt8) (c 
       c.circuit.portLimbs w J = (List.range 4).map fun k => K.ofLane (beWordAt (c.pubW w).toArray (8 * k))) ∧
     (∀ J < c.circuit.ports.size, ∀ i, (c.circuit.ports.getD J default).source = .root i →
       c.circuit.portLimbs w J = (List.range 4).map fun l =>
-        F64.ofNat (beNat (slice ((c.streamW (ofRG g rootsAt iv) w).toArray.extract (rootsAt.getD i 0)
+        F64.ofNat (beNat (slice ((c.streamW (ofRG g rootsAt iv hashed) w).toArray.extract (rootsAt.getD i 0)
           (rootsAt.getD i 0 + 32)).toList ([24, 16, 8, 0].getD l 0) 8))) ∧
     (∀ J < c.circuit.ports.size, (c.circuit.ports.getD J default).source = .zero →
       c.circuit.portLimbs w J = limbsL (RecGraph.valE
-        (rgVals g iv (c.pubW w) (c.streamW (ofRG g rootsAt iv) w)) (zeroOrig c (ofRG g rootsAt iv) (c.zeroIndex J)))) ∧
+        (rgVals g iv (c.pubW w) (c.streamW (ofRG g rootsAt iv hashed) w)) (zeroOrig c (ofRG g rootsAt iv hashed) (c.zeroIndex J)))) ∧
     (∀ id ∈ g.zero, notConst (c.nodes.getD (c.map.getD id 0) default) = false →
-      RecGraph.valE (rgVals g iv (c.pubW w) (c.streamW (ofRG g rootsAt iv) w)) id = 0) ∧
+      RecGraph.valE (rgVals g iv (c.pubW w) (c.streamW (ofRG g rootsAt iv hashed) w)) id = 0) ∧
     c.circuit.callInputs w = g.calls.map fun ws => (List.range ws.length).flatMap fun k =>
-      pcsWord k (ws.getD k default) (RecGraph.wordBytes (c.streamW (ofRG g rootsAt iv) w).toArray
-        (rgVals g iv (c.pubW w) (c.streamW (ofRG g rootsAt iv) w)) (ws.getD k default))
+      pcsWord k (ws.getD k default) (RecGraph.wordBytes (c.streamW (ofRG g rootsAt iv hashed) w).toArray
+        (rgVals g iv (c.pubW w) (c.streamW (ofRG g rootsAt iv hashed) w)) (ws.getD k default))
 
 /-- **The end theorem**: on a satisfied circuit the compiler accepted, `EndStatement`. -/
-theorem compile_sound_end (hc : compile (ofRG g rootsAt iv) = .ok c) {pub : ℕ → List F192} {w : ℕ → K}
+theorem compile_sound_end (hc : compile (ofRG g rootsAt iv hashed) = .ok c) {pub : ℕ → List F192} {w : ℕ → K}
     (hw : c.circuit.toPiop.Satisfies pub (emb w)) : EndStatement g rootsAt iv c w :=
   ⟨fun _ hJ hs => compile_sound_statement hc hw hJ hs, fun _ hJ _ hs => compile_sound_root hc hw hJ hs,
     compile_sound_zero_end hc hw, compile_sound_zero_const hc _ _ _, compile_sound_callInputs hc hw⟩

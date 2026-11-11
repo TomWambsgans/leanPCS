@@ -36,6 +36,19 @@ structure Recorded where
   hashed : List ℕ := []
   deriving Inhabited
 
+/-! ## `RecGraph`'s graphs as the compiler's input -/
+
+def ofRGWord : RecGraph.Word → Word
+  | .node id => .node id
+  | .const w => .const w
+  | .stream a => .stream a
+
+/-- **The compiler's input for a `RecGraph` graph**, its roots' offsets, π1's contract IV and the claims π2's circuit
+hashes (`compile::hashed_claims` of π1's Fiat–Shamir shape; none by default, π1-rec3 at `f96a7938`). -/
+def ofRG (g : RecGraph.Graph) (rootsAt : List ℕ) (iv : List UInt8) (hashed : List ℕ := []) : Recorded :=
+  ⟨⟨g.nodes.map ofRGNode, g.zero, g.nonzero, g.kernels, g.calls.map (·.map ofRGWord), g.streamLen⟩, rootsAt, iv,
+    hashed⟩
+
 /-- The bits of a big-endian integer of `nbytes` bytes from byte `first`, as `(exponent, bit)` (`be_bits`). -/
 def beBits {α : Type} (bit : ℕ → α) (first nbytes : ℕ) : List (ℕ × α) :=
   (List.range (8 * nbytes)).map fun e => (e, bit (8 * (first + nbytes - 1 - e / 8) + e % 8))
