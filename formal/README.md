@@ -4,25 +4,23 @@
 
 ## Status
 
-Everything in `formal/` states and proves the protocols of commit **`f96a7938`**, not the deployed Rust
-(`git log f96a7938..main -- formal` is empty):
+The membership line states and proves the protocol of commit **`f96a7938`**; the leanVM recursion the deployed one:
 
 - **membership**: six one-point claims on four commitments (`W`, `H`, `Q`, `G`), the masks, the gate `V = X + C + Y·C`
   ([`docs/HISTORY.md`](../docs/HISTORY.md), "Membership at f96a7938"); deployed: three claims on two commitments and
   the circuit's ([`docs/membership/PROTOCOL.md`](../docs/membership/PROTOCOL.md));
-- **recursion**: π2 (π2v3) over π1-rec3, π1's three claims encoded by the contract; deployed: π2 over π1-rec4, π1's
-  three claims hashed in π2's circuit ([`docs/leanvm/rec/SPEC-REC.md`](../docs/leanvm/rec/SPEC-REC.md)). **π1-rec4 is
-  ported in part** (branch `lean/pi1-rec4`): its verifier (`UniKeccak.reduceWithK4`, tested against the Rust on the
-  real π1-rec4 proofs), its recorded graph (`RecGraphKeccak/Emitted.lean` is now π1-rec4's) and graph = verifier
-  (`RecGraphKeccak.Sim.pi1GraphIsVerifierK4`, no hypothesis) and its knowledge soundness
-  (`UniKeccakSound.uniKnowledgeSoundnessKeccakRec4_closed`, no hypothesis, at most `2^-64` for `Q ≤ 2^64`); its
-  completeness is stated (`UniCompletenessKeccakRec4`).
+- **recursion**: **the deployed π2v4 over π1-rec4** (main `7e6d353c`; π1's three claims declared in the frame of PCS
+  claims and hashed in π2's circuit, [`docs/leanvm/rec/SPEC-REC.md`](../docs/leanvm/rec/SPEC-REC.md)): π1-rec4's
+  verifier (`UniKeccak.reduceWithK4`, tested against the Rust on the real π1-rec4 proofs), its recorded graph and graph
+  = verifier at every setup commitment, its knowledge soundness (`UniKeccakSound.uniKnowledgeSoundnessKeccakRec4_closed`),
+  π2v4's statement, PIOP, circuit compiler and contract model, and the recursion's knowledge soundness at the real
+  deployment (`RecCompose.recKnowledgeSoundness_reduction_real`). Completeness: see "The recursion's end theorems".
 
-What the port needs is [`docs/LEAN_PORT.md`](../docs/LEAN_PORT.md). **Do not regenerate the Lean-facing files until
-the port**: the Rust now writes the deployed protocols, so `UPDATE_LEAN=1` runs (`crates/membership/evm/src/lean.rs`,
-`crates/leanvm/rec/tests/lean_statement_keccak.rs`, the other writers AGENTS.md lists under "Lean-facing outputs")
-would overwrite `f96a7938`'s `Implementation/Graph.lean` and `RecStatement/RecStatement/Data.lean` with files the Lean
-does not state; their `*_is_current` tests are ignored and stale. Lean comments still cite the design notes by their
+What the port still needs is [`docs/LEAN_PORT.md`](../docs/LEAN_PORT.md). **Do not regenerate the membership's
+Lean-facing files until its port**: the Rust now writes the deployed protocol, so `UPDATE_LEAN=1` runs of
+`crates/membership/evm/src/lean.rs` and the membership's other writers (AGENTS.md, "Lean-facing outputs") would
+overwrite `f96a7938`'s `Implementation/Graph.lean` with files the Lean does not state. The recursion's writers
+(`lean_statement_keccak.rs`, `lean_circuit_keccak.rs`, `lean_graph_keccak.rs`, `lean_pi2_prover.rs`) are current. Lean comments still cite the design notes by their
 names at `f96a7938` (`docs/HISTORY.md` maps them).
 
 Every end theorem below is sorry-free, without `native_decide`, on `propext`, `Classical.choice` and `Quot.sound` only
@@ -80,11 +78,12 @@ Statement's definitions.
 ## leanVM by recursion: the end theorems
 
 The Keccak VM is leanVM `42422001` with leanVM `9d50c92a3`'s `SHA3` (one Keccak-f[1600] step a row). π1 is the
-univariate PIOP for its statement, π1-rec3 its variant for the recursion at `f96a7938`; π2 proves that π1-rec3's
-recorded verifier graph accepts; the contract runs π2's verifier and checks eight claims declared (π1's `C1`, `C2`,
-setup `F`; π2's `W`, setup, and `Q`'s identity, pushes' and sum claims), each the EIP draft's PCS claim, opened alone by
-`WhirBridge.Pcs`'s transcription of `verify_claim`. The reference is 128 signatures: `UniKeccakSound.keccakRefShape` =
-`RecGraphKeccak.Pi1.keccak128` (`RecCompose.Pi1K.keccak128_eq_refShape`): heights `15 16 15 16 14 15`, memory
+univariate PIOP for its statement, π1-rec4 its variant for the recursion (wide Fiat–Shamir draws); π2 (π2v4) proves that
+π1-rec4's recorded verifier graph at π1's setup commitment accepts and that its three claims hash to the words the
+transaction's frame of PCS claims declares; the contract runs π2's verifier (its seed over the three frame words) and
+checks seven claims (π1's `C1`, `C2`, setup `F` as declared; π2's `W`, setup, and `Q`'s identity and pushes' claims),
+each the EIP draft's PCS claim, opened alone by `WhirBridge.Pcs`'s transcription of `verify_claim`. The reference is
+128 signatures: `UniKeccakSound.keccakRefShape` = `RecGraphKeccak.Pi1.keccak128`: heights `15 16 15 16 14 15`, memory
 `2^20`, bytecode `2^18`; `C1` `2^27` words, `C2` `2^26`, the setup `2^23`; π2's `W` `2^24`, its setup `2^25`, `Q`
 `2^28`.
 
@@ -95,60 +94,71 @@ setup `F`; π2's `W`, setup, and `Q`'s identity, pushes' and sum claims), each t
   (`Core.structuredTerminal_eq_bilinear`).
 - **π1, knowledge soundness**, in one random permutation, for the explicit extractor `uniExtractorK`:
   `UniKeccakSound.uniKnowledgeSoundnessKeccak_closed` (at `keccakRefShape` and the deployed program IV; `≤ 2^-64` for
-  `Q ≤ 2^64`, `2^-64.87` at `2^64`, 128.87 bits as `Q/ε`) and `uniKnowledgeSoundnessKeccakRec3_closed` (π1-rec3,
-  128.49 bits). The three openings are charged once at `269 · 2^-137` (`WhirBridge.Pcs.pcs_union_sound`).
+  `Q ≤ 2^64`, `2^-64.87` at `2^64`, 128.87 bits as `Q/ε`), `uniKnowledgeSoundnessKeccakRec3_closed` (π1-rec3,
+  128.49 bits) and `uniKnowledgeSoundnessKeccakRec4_closed` (π1-rec4, the recursion's: `uniBound128 (2^35/|E|)`, at most
+  `2^-64` at `Q ≤ 2^64`). The three openings are charged once at `269 · 2^-137` (`WhirBridge.Pcs.pcs_union_sound`).
 - **π1, completeness**: `UniKeccakComplete.uniCompletenessKeccak_closed` and `uniCompletenessKeccakRec3_closed`, for an
   explicit Lean honest prover, error `Prob.deltaK < 2^-169` (`deltaK_lt`), under `D.shape = keccakRefShape`,
   `D.programIv.length ≤ 2^16` and **`32 ≤ D.programIv.length`** (the deployed IV has 32 bytes).
-- **`RecCompose`, `RecCircuit` still state π2v3 over π1-rec3** (the π2 port's): their `GraphsAgree`
-  (`pi1GraphK = Emitted.graph`) no longer holds, `Emitted.lean` being π1-rec4's, and `RecCircuit` does not yet
-  compile `wide` nodes.
 - **π1-rec4's graph.** `RecGraphKeccak/Emitted.lean` is the π1-rec4 graph the Rust recorded (10,840 nodes, 59
   Keccak-256 calls, 10 `wide` nodes, 3 claims); `RecGraphKeccak.Sim.pi1GraphIsVerifierK4`, no hypothesis: for every
   permutation, the Lean recording `pi1GraphK4` computes π1-rec4's verifier (`UniKeccak.runWithK4`) off the merge
   hazard (`MergeHazardK4`: challenges 45 and 46); `GraphsAgreeK4` (`pi1GraphK4 = Emitted.graph`) evaluated;
-  `hazard_probK`: at most `2^16` hazardous `t` per `p_0` (`2^-176`). π1-rec3's program and
-  `pi1GraphIsVerifierK` are kept; `pi1rec3K_end` (`Circuit.lean`) awaits `formal/RecCircuit`'s `wide` nodes.
+  `hazard_probK`: at most `2^16` hazardous `t` per `p_0` (`2^-176`); `graphAtSetup` and
+  `pi1GraphIsVerifierK4At`: the graph at every π1 setup commitment. π1-rec3's program and `pi1GraphIsVerifierK` are
+  kept.
+- **π2's circuit.** `RecCircuit.Compiled.compile_sound_end` (`EndStatement`: the statement port, the zero ports, and
+  each `ClaimHash` port carrying the Keccak-256 of its claim's encoding); `RecGraphKeccak.pi1rec4K_end`,
+  `pi1rec4K_claimHashes` at the emitted graph, π1's three claims hashed; the Lean compiler's circuit is the Rust's byte
+  for byte (`rec-circuit-diff`, `rec-circuit-keccak`).
+- **π2's PIOP** (`RecPiop`, π2v4): the copy argument, the identity's claim `I(t) = 0` with `I = D²H + xZDq + x²Z³G +
+  xDR` and the layout lemma (`I = 0`, `D(0) ≠ 0` give `H = x h`, `Σ_V h = 0`, `h D + R = 0` on `V_m`), the pushes'
+  claim, round-by-round sound (`Rounds.lean`).
 
 ### The recursion's end theorems
 
 Statements in `RecStatement/Security.lean` and `Reduction.lean`, proofs in [`RecCompose/`](RecCompose/README.md).
-π2's circuit computes π1-rec3's Fiat–Shamir with the real Keccak-f[1600], while π1-rec3's theorems are in the
+π2's circuit computes π1-rec4's Fiat–Shamir with the real Keccak-f[1600], while π1-rec4's theorems are in the
 random-permutation model, so the end theorems meet at Keccak-f[1600].
 
 ```lean
 theorem RecCompose.recKnowledgeSoundness_reduction_real (prog : KeccakVm.Program)
-    (hprog : RecGraphKeccak.Pi1.keccak128.logBytecode = prog.logSize) (hg : GraphsAgree) (hd : DigestChecked)
-    (hs : SetupRootChecked) (hiv : IvChecked) :
+    (hprog : RecGraphKeccak.Pi1.keccak128.logBytecode = prog.logSize) (hg : RecGraphKeccak.GraphsAgreeK4)
+    (hd : DigestChecked) (hs : SetupRootChecked) (hiv : IvChecked) :
     RecKnowledgeSoundnessReduction (realDeployment prog hprog) pi2Bound ∧
       ∀ Q ≤ 2 ^ 64, pi2Bound Q ≤ (2 : ℝ≥0∞)⁻¹ ^ 64
 ```
 
-- **Knowledge soundness as an explicit reduction, no Fiat–Shamir premise**: Pr[the contract accepts ∧
-  `recExtractor` finds no `KvHolds` witness] ≤ `pi2Bound Q` + Pr[`pi1Adversary` breaks π1-rec3 at Keccak-f[1600]] +
-  Pr[`hazardAdversary` hits the merge hazard], the two adversaries explicit (the adversary, then π2's extractor; same
-  query count). `pi2Bound`: π2's Fiat–Shamir and the eight openings, charged once
-  (`WhirBridge.Pcs.UnionO.pcs_union_sound_oracle`), `Q`'s three claims bound to one table by its out-of-domain answer
-  (`RecCompose.qOodBinding`, `2^-156` a query): `2^-64.93` at `2^64`, 128.93 bits as `Q/ε`. `recExtractor` decodes `W`,
-  reads π1's stream off the first candidate π1-rec3's graph accepts, then runs `uniExtractorK`.
-- **Completeness**: `RecCompose.Pi1K.recCompleteness_real_K_fs_bits`, error `δ1 + δh + 2^-164` for the Lean provers
-  (π2's part `recCompleteness2_pi2_rec3_K`, `δ2 ≤ 2^-164`), under `Pi1CompletenessKeccak D … δ1` (its
-  random-permutation reading is proved, `pi1CompletenessFs_rpm`, `deltaK < 2^-169`) and `Pi1HazardKeccakHonest D … δh`
-  (motivated by `hazard_probK`, not proved), both about the honest π1-rec3 run at Keccak-f[1600].
-- Also `recKnowledgeSoundness2_closed` (π2's part alone) and the Prop-premise corollaries `recKnowledgeSoundness_closed`,
-  `recKnowledgeSoundness_closed_fs`, whose premises `Pi1FsKeccak`, `Pi1HazardKeccak` are **false as stated** for
-  unbounded adversaries (they grind Keccak-f[1600] offline): read them as the Fiat–Shamir heuristic.
-- **Evaluated, not proved** (the hypotheses of `recKnowledgeSoundness_reduction_real`): `GraphsAgree`
-  (`RecGraphKeccakTest/Pi1Check.lean`), `DigestChecked`, `SetupRootChecked`, `IvChecked` at the reference, zero and
-  all-ones IVs (`rec-real-check`), `viewCheck` at two IVs (`rec-view-check`).
+- **Knowledge soundness as an explicit reduction, no Fiat–Shamir or collision-resistance premise**: Pr[the contract
+  accepts ∧ `recExtractor` finds no `KvHolds` witness] ≤ `pi2Bound Q` + Pr[`pi1Adversary` breaks π1-rec4 at
+  Keccak-f[1600]] + Pr[`hazardAdversary` hits the merge hazard] + Pr[`collisionAdversary` outputs a Keccak-256
+  collision], the three adversaries explicit (the adversary, then π2's extractor; same query count). `pi2Bound`:
+  π2's Fiat–Shamir and the seven openings, charged once (`WhirBridge.Pcs.UnionO.pcs_union_sound_oracle`), `Q`'s two
+  claims bound to one table by its out-of-domain answer (`RecCompose.qOodBinding`, `2^-156` a query): `2^-64.93` at
+  `2^64`, 128.93 bits as `Q/ε`. `recExtractor` decodes `W`, reads π1's stream off the first candidate on which
+  π1-rec4's graph at the setup commitment accepts with claims hashing to the declared ones, then runs `uniExtractorK`;
+  π1's claims being named by their hashes, a candidate whose claims differ from the declared ones is a Keccak-256
+  collision (`collisionCoupling`).
+- **Completeness**: `RecCompose.recCompleteness_end` (`CompleteCouplings`): `RecCompletenessWith D (composeProver D P1
+  P2) (δ1 + δh + δ2)` from π2's part `RecCompleteness2 D P1 P2 δ2`, `Pi1CompletenessKeccak δ1`,
+  `Pi1HazardKeccakHonest δh`. π2's part for π2's Lean prover is in progress (see [`docs/LEAN_PORT.md`](../docs/LEAN_PORT.md)):
+  the honest prover agrees with the Rust's on 3/3 vectors and the contract accepts its proof off `BadCopy`, `BadT`,
+  `BadRho` (`RecCompose.pi2_accepts`).
+- Also `recKnowledgeSoundness2_final` (π2's part alone) and the Prop-premise corollary `recKnowledgeSoundness_final`,
+  whose premises `Pi1FsKeccak`, `Pi1HazardKeccak`, `Keccak256CR` are **false as stated** for unbounded adversaries
+  (they grind Keccak-f[1600] offline): read them as the Fiat–Shamir heuristic and collision resistance.
+- **Evaluated, not proved** (the hypotheses of `recKnowledgeSoundness_reduction_real`): `GraphsAgreeK4`
+  (`RecGraphKeccakTest/Pi1Check.lean`), `DigestChecked`, `SetupRootChecked` (`rec-real-check`), `IvChecked` over
+  `(roots, iv)` at the reference setup commitment and the reference, zero and all-ones IVs (`rec-real-check`,
+  `rec-view-check`), assumed elsewhere.
 
 ## Trusted, tested, not covered
 
 | | Membership | Recursion |
 |---|---|---|
 | Trusted | the Lean kernel and three axioms; Keccak-f[1600] a random permutation, Keccak-256 its sponge; mumbai's definitions (Keccak, the model, `verifyStackedOpening`, the decoders); the prover's randomness uniform (deployed: a Keccak-256 KDF, `Randomness::derive`, so computational ZK) | the same; the deployed Rust provers for completeness |
-| Tested against the Rust (at `f96a7938`) | the Statement (`PcsQuotientTest/Differential.lean`: reductions, honest and tampered proofs at `2^17` rows, circuit commitments); the Statement's prover (the reduction's stream at `2^17` rows); bytecode = graph (`contract_is_the_verifier`, `random_calldata_agrees`); `FIELD_MUL` = `mulE` by vectors; `pcs_claim::verify` = `pcsOpening` | π1's verifier (`UniKeccakTest/Runner.lean`: 90/90 verifier and 14/14 terminal vectors, the real proofs among them); the verifier's tables, the block's rows and terminal, `sha3Step`; the circuit compiler (`rec-circuit-keccak`, `padCounts` on 202 cases); π2's Lean prover on two small circuits; `RecStatement/Data.lean` is what the Rust emitted at `f96a7938`; the bytecode is π2's Rust verifier by the Rust's tests (`parity`) |
-| Not covered | simulation-extractability; ZK without its two hypotheses, with queries before the proof, or for several proofs; the RPM theorems and the EVM one do not formally compose; `StatementBinds` (immediate, not proved); pruned Merkle paths | the model gap (π1-rec3 in the RPM, π2's circuit at Keccak-f[1600]); `PatchChecked`; other shapes than the reference; no Lean differential run of π2's verifier |
+| Tested against the Rust (membership at `f96a7938`; recursion at main `7e6d353c`) | the Statement (`PcsQuotientTest/Differential.lean`: reductions, honest and tampered proofs at `2^17` rows, circuit commitments); the Statement's prover (the reduction's stream at `2^17` rows); bytecode = graph (`contract_is_the_verifier`, `random_calldata_agrees`); `FIELD_MUL` = `mulE` by vectors; `pcs_claim::verify` = `pcsOpening` | π1's verifier (`UniKeccakTest/Runner.lean`: 90/90 verifier and 14/14 terminal vectors, the real proofs among them); the verifier's tables, the block's rows and terminal, `sha3Step`; the circuit compiler on π1-rec4's graph (`rec-circuit-diff`, `rec-circuit-keccak`: the Rust's circuit byte for byte; `padCounts` on 202 cases); π2's Lean prover on 3/3 vectors (roots, IV, stream); `RecStatement/Data.lean` is what the Rust emits (`keccak_statement_data_is_current`); the bytecode is π2's Rust verifier by the Rust's tests (`parity`) |
+| Not covered | simulation-extractability; ZK without its two hypotheses, with queries before the proof, or for several proofs; the RPM theorems and the EVM one do not formally compose; `StatementBinds` (immediate, not proved); pruned Merkle paths | the model gap (π1-rec4 in the RPM, π2's circuit at Keccak-f[1600]); `PatchChecked` and `IvChecked` at other setup commitments; π2's completeness error for its Lean prover (in progress); other shapes than the reference; no Lean differential run of π2's verifier |
 
 ## Libraries
 
@@ -172,8 +182,8 @@ theorem RecCompose.recKnowledgeSoundness_reduction_real (prog : KeccakVm.Program
 | [`UniKeccak`](UniKeccak/README.md) | π1's verifier at the Keccak VM, and its statements |
 | [`UniKeccakSound`](UniKeccakSound/README.md), [`UniKeccakComplete`](UniKeccakComplete/README.md) | π1's knowledge soundness; its honest prover and completeness |
 | [`RecGraph`](RecGraph/README.md), [`RecGraphKeccak`](RecGraphKeccak/README.md) | recorded graphs (π1-rec4's `wide` nodes); π1-rec4's and π1-rec3's graph = verifier, the hazard |
-| [`RecCircuit`](RecCircuit/README.md), `RecPiop` | π2's circuit compiler; π2's PIOP (π2v3) |
-| [`RecStatement`](RecStatement/README.md) | π2's verifier, the eight claims, the recursion's end statements |
+| [`RecCircuit`](RecCircuit/README.md), `RecPiop` | π2's circuit compiler (π1-rec4's `wide` nodes, hashed claims); π2's PIOP (π2v4) |
+| [`RecStatement`](RecStatement/README.md) | π2's verifier (π2v4), the contract's seven claims, the recursion's end statements |
 | [`RecCompose`](RecCompose/README.md) | their proofs |
 
 ## Building
@@ -188,25 +198,26 @@ systemd-run --scope -p MemoryMax=12G lake build WhirBridge ComposePcs SoundPcs P
   QuotientSecurity Implementation PcsQuotient                                          # their layers
 systemd-run --scope -p MemoryMax=12G lake build KeccakVm KeccakArith KeccakFlushes KeccakFlock UniKeccak UniKeccak.Fits \
   UniStatement.KeccakTables UniKeccakSound UniKeccakComplete RecGraphKeccak RecCircuit rec-circuit-keccak RecStatement \
-  RecCompose                                                                           # the leanVM line
-systemd-run --scope -p MemoryMax=12G lake env lean ../RecGraphKeccak/RecGraphKeccakTest/Pi1Check.lean   # GraphsAgree
+  RecPiop RecCompose.RealEnd RecCompose                                                # the leanVM line
+systemd-run --scope -p MemoryMax=12G lake env lean ../RecGraphKeccak/RecGraphKeccakTest/Pi1Check.lean   # GraphsAgreeK4
 systemd-run --scope -p MemoryMax=16G lake exe rec-real-check               # DigestChecked, ivCheck at three IVs
 systemd-run --scope -p MemoryMax=16G lake exe rec-real-check --setup-only  # SetupRootChecked
-systemd-run --scope -p MemoryMax=12G lake exe rec-view-check               # viewCheck at two IVs
+systemd-run --scope -p MemoryMax=12G lake exe rec-view-check               # viewCheck
 ```
 
-`#guard_msgs` in each library checks the axioms. The differential tests' commands are in the package READMEs; their
-vectors are `f96a7938`'s (see Status).
+`#guard_msgs` in each library checks the axioms. The differential tests' commands are in the package READMEs; the
+membership's vectors are `f96a7938`'s, the recursion's the deployed Rust's.
 
 ## Remaining
 
 1. **The port** to the deployed protocols ([`docs/LEAN_PORT.md`](../docs/LEAN_PORT.md)).
-2. **The model gap.** π2's circuit computes π1-rec3's Fiat–Shamir with the real Keccak-f[1600]; π1-rec3's theorems are
-   in the random-permutation model, so the soundness reduction's last two terms and the two completeness premises are
-   left to the Fiat–Shamir heuristic for Keccak-f[1600].
-3. **The evaluated checks** are Props checked by running Lean, not kernel proofs; `IvChecked` is evaluated at three IVs
-   and assumed at the others: `IvUniform.ivChecked_of_patchChecked` reduces it to `PatchChecked`, not proved (a
-   relational simulation of about 1,200 lines of the builder).
+2. **The model gap.** π2's circuit computes π1-rec4's Fiat–Shamir with the real Keccak-f[1600]; π1-rec4's theorems are
+   in the random-permutation model, so the soundness reduction's π1 and hazard terms and the two completeness premises
+   are left to the Fiat–Shamir heuristic for Keccak-f[1600], its collision term to Keccak-256's collision resistance.
+3. **The evaluated checks** are Props checked by running Lean, not kernel proofs; `IvChecked` (over π1's setup commitment
+   and IV) is evaluated at the reference commitment's three IVs and assumed at the others:
+   `IvUniform.ivChecked_of_patchChecked` reduces it, at each commitment, to `PatchChecked`, not proved (a relational
+   simulation of about 1,200 lines of the builder).
 4. **Other shapes**: π1's closed bounds are at the reference shape.
 5. **Membership**: `RevealedUniform` proved rather than tested; zero knowledge with a pre-proof phase;
    simulation-extractability.
