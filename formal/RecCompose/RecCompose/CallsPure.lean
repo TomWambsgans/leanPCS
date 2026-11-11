@@ -3,18 +3,19 @@
 -- `recSoundnessExperiment2`; `RecStatement/Calls.lean`: `pcsCalls`, `callWord`).
 import RecCompose.Pi2Run
 import RecCompose.Part1
+import RecCompose.Part2
 
 /-!
-# The contract's π1 openings are the calldata's: `CallsPure`
+# The contract's π1 openings are the declared claims: `DeclaredGood`, `DeclaredClaims`
 
-**`callsPure`**: on every outcome of π2's knowledge-soundness experiment whose contract accepts, the contract's first
-three claims decode (`claimOfWords`), to the openings `pi1OpsOf` reads off the calldata.
+**`declaredGood`**: on every outcome of π2's knowledge-soundness experiment whose contract accepts, the declared π1
+claims (`RecProof.pi1Claims`) decode (`claimOfWords`), to the contract's π1 openings (its first three claims);
+**`declaredClaims`**: they are three, π1-rec4's graph's claims' count.
 
-* π2's run over the permutation succeeds only on a stream of `pi2Bytes` bytes, and then its public scalars and pair
-  points are the stream's (`runWith_post`), as are those of the run over Keccak-f[1600] at the IV `[]` that `pi1OpsOf`
-  runs (`run_ok_of_runWith`); π1's three calls read nothing else of the run (`callWord_congr`, `pcsCalls_take`);
-* the contract accepts only if each of its eight claims decoded (`pcsOpenWords` answers `false` to a claim that does
-  not: `holds_pcsOpenWords`, `holds_forIn_and`), so the first three do (`contractPi1Openings_some`);
+* the contract's claims are the declared π1 claims followed by π2's four (`pcsCalls`, its encoded π1 claims dropped:
+  `pcsCalls_length`), seven of them, so the declared ones are three;
+* the contract accepts only if each of its claims decoded (`pcsOpenWords` answers `false` to a claim that does not:
+  `holds_pcsOpenWords`, `holds_forIn_and`), so the first three do;
 * the experiment's every outcome is one of these (`contractWith_post`, through the experiment's binds, `simulateQ` and
   the run: `Holds`, `holds_support`).
 -/
@@ -27,24 +28,11 @@ open RecStatement LeanVM.Parameters LeanVM.Protocol LeanVM.Protocol.KeccakHash
 open LeanVM.Semantics (KeccakState)
 open OracleComp OracleSpec Common
 
-/-! ## π1's calls read only the public data -/
-
-theorem callWord_congr (reads : List Read) (stream : Array UInt8) {r r' : Reduced} (hs : r.scalars = r'.scalars)
-    (hp : r.pairPoints = r'.pairPoints) : callWord reads stream r = callWord reads stream r' := by
-  funext w
-  cases w <;> simp [callWord, hs, hp]
+/-! ## The contract's claims -/
 
 theorem pcsCalls_length (c : Circuit) (pi1 : List (List CallWord)) (sr : List UInt8) (so : E)
-    (stream : Array UInt8) (r : Reduced) : (pcsCalls c pi1 sr so stream r).length = pi1.length + 5 := by
+    (stream : Array UInt8) (r : Reduced) : (pcsCalls c pi1 sr so stream r).length = pi1.length + 4 := by
   simp [pcsCalls]
-
-theorem pcsCalls_take (c : Circuit) (pi1 : List (List CallWord)) (sr : List UInt8) (so : E)
-    (stream : Array UInt8) (r : Reduced) (h : pi1.length = 3) :
-    (pcsCalls c pi1 sr so stream r).take 3 = pi1.map (·.map (callWord c.reads stream r)) := by
-  unfold pcsCalls
-  simp only
-  rw [List.take_append_of_le_length (by simp [h])]
-  exact List.take_of_length_le (by simp [h])
 
 /-- **`mapM` in `Option` succeeds when each step does.** -/
 theorem mapM_option_some {α β : Type} (f : α → Option β) :
@@ -98,66 +86,63 @@ theorem holds_forIn_and {γ : Type} (G : γ → Prop) (f : γ → Bool → m (Fo
     · exact hc hbc.2
     · exact hl y hy
 
-/-- **The contract accepts only on calldata whose π1 openings are its first three calls'**, decoded. -/
+/-- **The contract accepts only with three declared π1 claims, its first three claims, which decode.** -/
 theorem contractWith_post (F : KeccakState → m KeccakState) (D : RecDeployment) (roots : RecSetupRoots)
     (input : Vector UInt8 32) (proof : RecProof) :
     Holds (D.contractWith F roots input proof) fun x ↦ x.1 = true →
-      ∃ ops, pi1OpsOf D roots input proof.stream = some ops ∧ contractPi1Openings x.2 = some ops := by
+      proof.pi1Claims.length = 3 ∧ ∃ ops, proof.pi1Claims.mapM claimOfWords = some ops ∧
+        contractPi1Openings x.2 = some ops := by
   unfold RecDeployment.contractWith
-  refine holds_bind (holds_true _) fun iv _ ↦
-    holds_bind (runWith_post F (Spec.of (D.circuitAt roots.pi1).circuit) iv input.toList proof.stream) fun o ho ↦ ?_
+  refine holds_bind (holds_true _) fun iv _ ↦ holds_bind (holds_true _) fun o _ ↦ ?_
   split
   · exact holds_pure fun h ↦ absurd h (by simp)
   · rename_i r hr
     split_ifs with hacc
     · exact holds_pure fun h ↦ absurd h (by simp)
     dsimp only
-    split_ifs with hlen
+    split_ifs with hdec hlen
     · exact holds_pure fun h ↦ absurd h (by simp)
-    · refine holds_bind (holds_forIn_and (fun x ↦ (claimOfWords x.1).isSome) _ (fun x b ↦ ?_) _ true) fun ok hok ↦ holds_pure fun h ↦ ?_
+    · exact holds_pure fun h ↦ absurd h (by simp)
+    · refine holds_bind (holds_forIn_and (fun x ↦ (claimOfWords x.1).isSome) _ (fun x b ↦ ?_) _ true)
+        fun ok hok ↦ holds_pure fun h ↦ ?_
       · obtain ⟨words, p⟩ := x
         simp only
         exact holds_bind (holds_pcsOpenWords F words p) fun c hc ↦ holds_pure ⟨c, rfl, hc⟩
       · simp only at h
-        obtain ⟨-, hdec⟩ := hok h
-        set calls := pcsCalls (D.circuitAt roots.pi1).circuit (pi1CallsWith D.pi1Calls roots.pi1)
-          (digestBytes roots.pi2) roots.pi2Ood proof.stream r with hcalls
-        have hlen' : calls.length = 8 := by simpa using hlen
-        have hpi1 : (pi1CallsWith D.pi1Calls roots.pi1).length = 3 := by
-          have := pcsCalls_length (D.circuitAt roots.pi1).circuit (pi1CallsWith D.pi1Calls roots.pi1)
-            (digestBytes roots.pi2) roots.pi2Ood proof.stream r
-          rw [← hcalls] at this
+        obtain ⟨-, hdec'⟩ := hok h
+        set enc := pcsCalls (D.circuitAt roots.pi1).circuit (pi1CallsWith D.pi1Calls roots.pi1)
+          (digestBytes roots.pi2) roots.pi2Ood proof.stream r with henc
+        have hlenE : enc.length = D.pi1Calls.length + 4 := by
+          rw [henc, pcsCalls_length]
+          simp [pi1CallsWith]
+        have hlen' : (proof.pi1Claims ++ enc.drop D.pi1Calls.length).length = 7 := by simpa using hlen
+        have h3 : proof.pi1Claims.length = 3 := by
+          rw [List.length_append, List.length_drop, hlenE] at hlen'
           omega
-        have hopen : proof.openings.length = 8 := rfl
-        obtain ⟨ops, hops⟩ := contractPi1Openings_some calls fun words hw ↦ by
-          have hwc : words ∈ calls := List.mem_of_mem_take hw
-          have hfst : (calls.zip proof.openings).map Prod.fst = calls :=
-            List.map_fst_zip (by rw [hlen', hopen])
-          rw [← hfst] at hwc
-          obtain ⟨x, hx, rfl⟩ := List.mem_map.mp hwc
-          exact hdec x hx
-        refine ⟨ops, ?_, hops⟩
-        obtain ⟨hsz, hsc, hpp⟩ := ho.1 r hr
-        obtain ⟨r', hr', hsc', hpp'⟩ := run_ok_of_runWith (m := m) (Spec.of (D.circuitAt roots.pi1).circuit)
-          input.toList proof.stream [] r hsz hsc hpp
-        unfold pi1OpsOf
-        simp only
-        rw [hr']
-        simp only
+        have hopen : proof.openings.length = 7 := rfl
+        obtain ⟨ops, hops⟩ := contractPi1Openings_some (proof.pi1Claims ++ enc.drop D.pi1Calls.length)
+          fun words hw ↦ by
+            have hwc : words ∈ proof.pi1Claims ++ enc.drop D.pi1Calls.length := List.mem_of_mem_take hw
+            have hfst : ((proof.pi1Claims ++ enc.drop D.pi1Calls.length).zip proof.openings).map Prod.fst =
+                proof.pi1Claims ++ enc.drop D.pi1Calls.length :=
+              List.map_fst_zip (by rw [hlen', hopen])
+            rw [← hfst] at hwc
+            obtain ⟨x, hx, rfl⟩ := List.mem_map.mp hwc
+            exact hdec' x hx
+        refine ⟨h3, ops, ?_, hops⟩
         rw [← hops]
         unfold contractPi1Openings
-        rw [pcsCalls_take _ _ _ _ _ _ hpi1, pcsCalls_take _ _ _ _ _ _ hpi1,
-
-          callWord_congr _ _ hsc' hpp']
+        rw [List.take_append_of_le_length (by omega), List.take_of_length_le (by omega)]
 
 end Generic
 
 /-! ## On the experiment's outcomes -/
 
-/-- **`CallsPure`**: on every outcome of π2's knowledge-soundness experiment whose contract accepts, the contract's
-first three claims decode (`claimOfWords`), to the openings `pi1OpsOf` reads off the calldata. -/
-theorem callsPure (D : RecDeployment) : CallsPure D := by
-  intro A
+/-- The outcomes' fact. -/
+theorem outcomes_post (D : RecDeployment) (A : RecAdversary) :
+    ∀ z ∈ support (recSoundnessExperiment2 D A), acc z = true →
+      (prf z).pi1Claims.length = 3 ∧ ∃ ops, (prf z).pi1Claims.mapM claimOfWords = some ops ∧
+        contractPi1Openings (cls z) = some ops := by
   refine holds_support ?_
   unfold recSoundnessExperiment2 runWithRandomPermutation
   refine holds_run' (holds_simulateQ _ ?_) []
@@ -167,8 +152,21 @@ theorem callsPure (D : RecDeployment) : CallsPure D := by
   obtain ⟨accepted, calls⟩ := ac
   exact holds_pure hac
 
+/-- **`DeclaredGood`**: on every accepted outcome, the declared π1 claims decode to the contract's π1 openings. -/
+theorem declaredGood (D : RecDeployment) : DeclaredGood D :=
+  fun A z hz ha ↦ (outcomes_post D A z hz ha).2
+
+/-- **`DeclaredClaims`**: on every accepted outcome, the proof declares three π1 claims, π1-rec4's graph's count. -/
+theorem declaredClaims (D : RecDeployment) : DeclaredClaims D := by
+  intro A z hz ha
+  exact (outcomes_post D A z hz ha).1
+
 end RecCompose
 
-/-- info: 'RecCompose.callsPure' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'RecCompose.declaredGood' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms RecCompose.callsPure
+#print axioms RecCompose.declaredGood
+
+/-- info: 'RecCompose.declaredClaims' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecCompose.declaredClaims

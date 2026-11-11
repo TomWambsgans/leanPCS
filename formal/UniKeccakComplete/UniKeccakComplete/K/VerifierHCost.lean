@@ -380,7 +380,7 @@ theorem cc_sampleDrawnH (narrow : Bool) : CC (sampleDrawnH callKeccak256 narrow)
 first and its squares (the others). -/
 def drawCost : FsShape → ℕ → ℕ
   | .main, count => 2 * count
-  | .rec1, _ | .rec2, _ | .rec3, _ => 2
+  | .rec1, _ | .rec2, _ | .rec3, _ | .rec4, _ => 2
 
 theorem cc_drawRunH (fs : FsShape) (count : ℕ) :
     CC (drawRunH callKeccak256 fs count) (drawCost fs count) 0 fun _ ↦ True := by
@@ -592,6 +592,7 @@ theorem cc_batchKH (fs : FsShape) (combined : List (Commitment × Combined))
   · exact cc_batchKH_main combined layouts ringMap
   · exact cc_batchKH_rec1 combined layouts ringMap
   · exact cc_batchKH_rec2 combined layouts ringMap
+  · exact cc_batchKH_rec3 combined layouts ringMap
   · exact cc_batchKH_rec3 combined layouts ringMap
 
 /-- The walk's challenges, but the sumchecks' rounds: the two runs (`α ∈ E^4`, Flock's sampled coordinates), then

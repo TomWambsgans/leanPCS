@@ -146,13 +146,17 @@ The build fails if a headline definition or theorem uses an axiom beyond Lean's 
 #guard_msgs in
 #print axioms RecStatement.phiPoly_eval_port
 
-/-- info: 'RecStatement.run_quotientValue' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'RecStatement.run_invs' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms RecStatement.run_quotientValue
+#print axioms RecStatement.run_invs
 
-/-- info: 'RecStatement.run_pushesValue' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'RecStatement.run_zs' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms RecStatement.run_pushesValue
+#print axioms RecStatement.run_zs
+
+/-- info: 'RecStatement.collisionAdversary' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecStatement.collisionAdversary
 
 /-- info: 'RecStatement.all_ne_zero_iff' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in

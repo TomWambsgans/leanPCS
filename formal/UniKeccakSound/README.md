@@ -89,6 +89,38 @@ cd formal/EndToEnd   # on h1, under /root/pcs-quotient-fv/ only, with formal/lea
 systemd-run --scope -p MemoryMax=12G lake build UniKeccakSound   # every file; the root's #guard_msgs check the axioms
 ```
 
+## π1-rec4: not proved
+
+`UniKeccak.UniKnowledgeSoundnessKeccakRec4` (π1-rec4's verifier, `UniKeccak.verifyWithK4`) is stated, **not
+proved**. What is here: [`Rec4/RingSplit.lean`](UniKeccakSound/Rec4/RingSplit.lean), **`Rec4.ring_split`**: for a
+nonzero polynomial of degree at most `1` in each of six variables, split as four drawn with `t` and two drawn with `ρ`
+(`SPEC.md` §14.5 (2)), some coefficient in the first four vanishes with probability at most `4/|E|`, and where it does
+not, the polynomial vanishes in the last two with probability at most `2/|E|` (Mathlib's Schwartz–Zippel, in two
+blocks). That the ring switch's relation is such a polynomial is not stated here.
+
+What a proof needs, against π1-rec3's (`FinalK3.lean`'s `uniKnowledgeSoundnessK3` from `KFlockSound`, `UniIdsK3`,
+`PairBatch`, `UniCodeK3`, `UniFinalK3`, `FsLayer128K3`):
+
+1. **The Fiat–Shamir layer for wide draws** (`fsLayer128K3_holds`' analog). `Compose.ListChainK` models a round as a
+   root, then values, then `ns + 1` challenges from `ns + 1` successive Keccak-256 calls (`absorbs`, `chalsT`), over a
+   table of 32-byte answers. A wide draw takes its `ns + 1` challenges from **one** call's sponge rate, past the digest,
+   and π1-rec4's `C2` call absorbs the slices **before** the root (`encM` puts the root first). So the chain needs (a)
+   rounds whose challenges are one step's rate, with a table answering the rate (or the digest and an independent
+   tail), and a message with the root after values; and (b) **the random-permutation transfer to that table**:
+   leanerVM's `Common.keccak256_transfer2` (`Rpm.lean`, `ListChainKRpm.lean`) answers Keccak-256's digest; the rate's
+   other lanes (`rateTailOf`) are uniform for a fresh last permutation in the random-permutation model, but no transfer
+   here states it. Neither is in this repository.
+2. **Flock without its ring map** (`KFlockSound` with the map's six challenges moved out of Flock's rounds:
+   `f_0 … f_3` into `C2`'s round, `f_4, f_5` into the values' round, the zerocheck's first coordinate into round `0`),
+   the ring switch's bad events assigned to those rounds (`ring_split` is their bound in two blocks), and the PIOP
+   (`uniPiopK3`'s states) re-indexed: round `0` draws `c, β, γ, c'`; `C2`'s round `t, f_0 … f_3`; the values' round
+   `ρ, λ, f_4, f_5`.
+3. **The code link** (`UniCodeK3`'s analog for `reduceWithK4` on those rounds) and the last link.
+
+The arithmetic carries over: a query's error is the sum of its challenges' (π1-rec4's per-query sums are at most
+`2^35/|E|`, `params/leanvm_univariate_params.py`, `rounds(.., "rec4")`), so `uniBound128 (2^35/|E|)` and
+`uniBound128_le_bits35` (128.49 bits) would apply unchanged; this is modelled, not proved.
+
 ## What remains
 
 - **Completeness** (`UniCompletenessKeccak{,Rec3}`) is not in this library: it is proved in [`formal/UniKeccakComplete`](../UniKeccakComplete/README.md)

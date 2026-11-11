@@ -180,7 +180,7 @@ drawn and each next the square of the one before (the verifier's `drawRun`). -/
 def drawW (fs : FsShape) (count : ℕ) : WrM m (List E) :=
   match fs with
   | .main => samplesW H count
-  | .rec1 | .rec2 | .rec3 =>
+  | .rec1 | .rec2 | .rec3 | .rec4 =>
     if count = 0 then pure [] else do
       let c ← sampleW H
       pure (squares c count)
