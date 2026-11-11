@@ -22,9 +22,9 @@ reads them, `WhirBridge.Pcs.oodPointM H`); it compares **the setup's root, π2's
 byte for byte** with the Rust prover's (`pi2::prover::prove`). It throws (so `lean` exits with an error) on any
 disagreement.
 
-**Result**: see `README.md` (π2v4: the stacks plain, `2^15` words at these sizes, `Q` sixteen slots, `H = x h` at
+**Result** (2026-11-11, the vectors of main `7e6d353c`'s Rust): 3/3 vectors agree (setup, `W` and `Q` roots, IV and stream; about 10, 23 and 10 minutes interpreted). π2v4: the stacks plain, `2^15` words at these sizes, `Q` sixteen slots, `H = x h` at
 slots `0, 4, 8`, `q`'s digits at `1, 2` (and `5, 6`, `9, 10`), `P` at `12`, `q_P` at `13, 14`, `3, 7, 11, 15` zero,
-each commitment its root's bytes and its out-of-domain answer in the stream).
+each commitment its root's bytes and its out-of-domain answer in the stream.
 -/
 
 open LeanVM.Parameters LeanVM.Semantics LeanVM.Protocol LeanVM.Protocol.KeccakHash RecCompose RecStatement
