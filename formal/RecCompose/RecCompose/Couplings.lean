@@ -98,7 +98,7 @@ theorem collisionCoupling (D : RecDeployment) : CollisionCoupling D := by
   simp only
   refine Rpm.prEvent_pure_le _ _ _ _ fun h1 ↦ ?_
   obtain ⟨s, hs, hz⟩ := h1
-  simp only at hs ⊢
+  try simp only at hs ⊢
   rw [hs]
   exact hz
 
