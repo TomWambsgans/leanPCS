@@ -20,6 +20,7 @@ import ZK.PcsBadQ
 import ZK.PcsBadOod
 import ZK.PcsBadPhase
 import ZK.PcsFSClosed
+import ZK.PcsSlack
 import ZK.PcsAxioms
 
 /-!
