@@ -284,10 +284,10 @@ mod tests {
     }
 
     /// The checked-in Lean graph is the deployed contract's: `UPDATE_LEAN=1` rewrites it. The contract is that of
-    /// `docs/membership/PERF_GAS2.md` (three claims, no selector) and `formal/` still the six claims': the graph is
+    /// `docs/membership/PROTOCOL.md` (three claims, no selector) and `formal/` still the six claims': the graph is
     /// stale until the Lean is ported, so the check is ignored here.
     #[test]
-    #[ignore = "formal/Implementation/Graph.lean is the six-claim contract's until the Lean is ported (PERF_GAS.md)"]
+    #[ignore = "formal/Implementation/Graph.lean is the six-claim contract's until the Lean is ported (docs/LEAN_PORT.md)"]
     fn graph_lean_is_current() {
         let rendered = render();
         let path = graph_path();

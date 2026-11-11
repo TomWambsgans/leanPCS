@@ -9,13 +9,13 @@ one point, Flock on the Keccak-f block, one PCS claim per commitment (a point of
 
 - `verifier`: the verifier (`reduce`), generic over the scalar; `contract`: it compiled to EVM code, its calldata,
   its gas; `prover`: the prover, on traces leanVM writes (`prover/dump_keccak`).
-- Variants: `KECCAK_MAIN`; `KECCAK_REC4` (π1-rec4, the inner proof of `crates/leanvm/rec` since
-  `docs/leanvm/rec/PERF_GAS2.md`, no contract of its own); `KECCAK_REC3` (π1-rec3, the inner proof before it, kept
+- Variants: `KECCAK_MAIN`; `KECCAK_REC4` (π1-rec4, the inner proof of `crates/leanvm/rec`
+  (`docs/leanvm/univariate/SPEC.md` §14.4), no contract of its own); `KECCAK_REC3` (π1-rec3, the inner proof before it, kept
   because the Lean proves it).
 - Design: [`SPEC.md`](../../../docs/leanvm/univariate/SPEC.md) (the PIOP),
-  [`SPEC-FLOCK.md`](../../../docs/leanvm/univariate/SPEC-FLOCK.md),
+  [`FLOCK.md`](../../../docs/leanvm/univariate/FLOCK.md) (Flock and the Keccak-f block),
   [`PROVER.md`](../../../docs/leanvm/univariate/PROVER.md),
-  [`KECCAK.md`](../../../docs/leanvm/univariate/KECCAK.md) (the VM, workloads, gas, measurements).
+  [`KECCAK.md`](../../../docs/leanvm/univariate/KECCAK.md) (the VM, workloads, capacity, vectors).
 
 At the reference workload (128 signatures) the contract alone takes 8,069 B of calldata and 231,511 gas of execution;
 as an EIP-8141 frame transaction (EIP-7976's floor) standard 360,255, floor 516,416, without its frame of claims.

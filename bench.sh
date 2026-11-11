@@ -17,7 +17,7 @@
 # 5 warm passes. BENCH_PIN prefixes the timed commands only (the builds run first, unpinned).
 #
 # The EIP draft's figures are medians of five interleaved runs on 8 physical cores of an idle AMD EPYC 9355P, with
-# RUSTFLAGS as AGENTS.md gives them for Zen 5:
+# RUSTFLAGS as README.md gives them for Zen 5:
 #   LEANVM_NUM_THREADS=8 BENCH_PIN="taskset -c 0-7" REPEAT=5 sh bench.sh
 set -eu
 

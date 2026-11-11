@@ -20,7 +20,7 @@
 //!    of nonzero value (`y_J` the hole's row), and `R_n / R_d = Σ_g (N_g / D_g)(E_g + Δ + Φ_{k_g})` over the port
 //!    groups, `Δ = d_pull + d_push`, `d_pull = α + v_0 + β t`, `d_push = α + s + ξ`: the identity's right side is
 //!    `(1 + 1_S) Δ + T = Δ + w_m R_n / R_d`;
-//! 6. the claims on `Q` (`PI2.md` §2, `PERF_GAS3.md`): `Q`'s sixteen slots of `2^m` are `slot = b_0 + 2 b_1 + 4 limb`
+//! 6. the claims on `Q` (`PI2.md` §2, §7): `Q`'s sixteen slots of `2^m` are `slot = b_0 + 2 b_1 + 4 limb`
 //!    ([`QUOTIENT_SLOTS`]): `H = x h` at `(0, 0)`, `q`'s two digits at `(1, 0)` and `(0, 1)`, a zero slot `G` at
 //!    `(1, 1)`, for limbs 0..2; at limb code 3 `P`, `q_P`'s two digits and a zero slot `S`, likewise. The identity
 //!    `c_h h(t) + w_m q(t) = Δ + w_m R_n / R_d` (`c_h = d_pull d_push`), times `t`, is the claim at `(u, z_0, z_1, y_0,
@@ -71,7 +71,7 @@ pub fn stack_vars(log_n: usize) -> [usize; 3] {
     [log_n.max(least), (log_n + 4).max(least), (log_n + 1).max(least)]
 }
 
-/// `Q`'s sixteen slots of `2^m` words: slot `b_0 + 2 b_1 + 4 limb` (`PERF_GAS3.md`). For limbs 0, 1, 2: `H = x h` (one
+/// `Q`'s sixteen slots of `2^m` words: slot `b_0 + 2 b_1 + 4 limb` (`PI2.md` §2). For limbs 0, 1, 2: `H = x h` (one
 /// digit) at `(0, 0)`, `q`'s two digits at `(1, 0)` and `(0, 1)` (slots `4 l + 1`, `4 l + 2`: contiguous), a zero slot
 /// `G` at `(1, 1)`; at limb code 3, `P` at `(0, 0)`, `q_P`'s two digits at `(1, 0)` and `(0, 1)`, a zero slot `S` at
 /// `(1, 1)`.
@@ -242,7 +242,7 @@ pub struct Reduced<S> {
     /// `W`'s and `Q`'s out-of-domain answers (`crates/pcs_claim`), read after their roots.
     pub oods: [S; 2],
     pub witness: (Vec<S>, S),
-    /// `Q`'s identity (with `P`, `q_P` and `S` weighed by `y_0 y_1`), which also gives `Σ_V h = 0` (`PERF_GAS3.md`).
+    /// `Q`'s identity (with `P`, `q_P` and `S` weighed by `y_0 y_1`), which also gives `Σ_V h = 0` (`PI2.md` §7).
     pub quotient: (Vec<S>, S),
     /// `Q`'s `P`, `q_P` and `S`, combined by `ρ`.
     pub pushes: (Vec<S>, S),
@@ -522,7 +522,7 @@ pub fn reduce_traced<S: Limbs, C: Channel<S>>(
     // The copy identity at `t`, `c_h h + w_m q = Δ + w_m R_n / R_d = num1 / R_d`; the definition `w_m q_P = s + v_0 +
     // w_m A / B = num3 / B`. A slot's weighted value at the position coordinates `u` is `(t / w_m)` times its
     // polynomial's value at `t` (`Π_{l < m} (1 + w_l)^{-1}` telescopes); the limbs' `(y_0, y_1)` weigh limb `l` by
-    // `scale Y^l` (`Y³` at limb code 3). `Q`'s claims (`PERF_GAS3.md`):
+    // `scale Y^l` (`Y³` at limb code 3). `Q`'s claims (`PI2.md` §2):
     // - the identity's, at `(u, z_0, z_1, y_0, y_1)`, slot ratios `a = t w_m / c_h`, `b = a w_m` (`z_0 = t w_m / Y_1`,
     //   `z_1 = t w_m² / Y_2`, `Y_1 = c_h + t w_m`, `Y_2 = c_h + t w_m²`, so `1 + z_0 = c_h / Y_1`, `1 + z_1 = c_h /
     //   Y_2`): `H + a q_0 + b q_1 = t h + a q = (t / c_h) num1 / R_d`, and at limb code 3 `P + a q_P = s + t num3 /

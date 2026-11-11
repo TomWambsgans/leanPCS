@@ -599,7 +599,7 @@ pub fn prove_streaming(
                 .collect();
             let narrow = fs.narrow_batch();
             let (point, values) = if fs.paired_batch() {
-                // π1-rec3: the batch two variables a round (SPEC-POINTS.md), its claim the combined claims' values.
+                // π1-rec3: the batch two variables a round (SPEC.md §14.1), its claim the combined claims' values.
                 let target: F192 = combined
                     .iter()
                     .rev()

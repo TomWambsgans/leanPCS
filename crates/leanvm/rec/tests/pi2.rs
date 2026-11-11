@@ -4,7 +4,7 @@
 //! - `small_*`: the honest proof's four claims hold and their openings verify (`pcs_claim::verify_claim`, what the
 //!   block proves); a witness that breaks one copy, one formula or one public element leaves a false claim; a
 //!   flipped byte of the stream gives claims the openings do not prove;
-//! - `the_copy_sum_from_the_layout`: no claim reads the copy argument's sum (`PERF_GAS3.md`): a dishonest port, the
+//! - `the_copy_sum_from_the_layout`: no claim reads the copy argument's sum (`PI2.md` §7): a dishonest port, the
 //!   identity kept at its hole, leaves the identity's claim false whatever the prover does with `x h`'s coefficient `N`;
 //!   the negative control: the same cheat meets the relation of a layout reading `G` through `Z_V`; `G` or `S` filled
 //!   in an honest `Q`: a false claim;
@@ -197,7 +197,7 @@ fn honest_and_mutated(f: &Fixture, mutations: usize) {
     );
     // The prover keeps the identity a polynomial one (`h = T / (d_pull d_push)` at the dishonest hole): the copy
     // argument's sum is not zero (PI2.md §7), so `x h` does not fit `H`'s slot, and the identity's claim is the false
-    // one (`PERF_GAS3.md`).
+    // one (`PI2.md` §7).
     assert_eq!(
         claims_hold(&proved, &f.setup),
         [true, true, false, true],
@@ -271,7 +271,7 @@ fn the_interface_example() {
         verify_openings(f.circuit.log_n, &reduced, &roots, &f.setup.root(), f.setup.ood(), &openings),
         Ok(())
     );
-    // The value the port binds, changed: the copy sum is not zero, and the identity's claim is false (PERF_GAS3.md).
+    // The value the port binds, changed: the copy sum is not zero, and the identity's claim is false (PI2.md §7).
     let mut other = public.clone();
     other.elements[0] = leanvm_statement::field::E::new(1, 0, 0);
     let (_, values) = adapt::public_values(&other);
@@ -322,7 +322,7 @@ fn identity_relations(proved: &Proved) -> (bool, bool) {
     (this == target, other == target)
 }
 
-/// No claim reads the copy argument's sum (`PERF_GAS3.md`, lever 1): `H = x h` in one slot of `N` words, the identity's
+/// No claim reads the copy argument's sum (`PI2.md` §7): `H = x h` in one slot of `N` words, the identity's
 /// claim reading `G` through `t² Z_V³ / c_h` (as the polynomial `x² Z_V³` after its product by `d_pull d_push`), force
 /// `H(0) = 0`, so `h = H / x` has degree below `N - 1` and sums to zero on `V_m`.
 ///

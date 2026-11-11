@@ -34,8 +34,8 @@ its root, the roots carried as their bytes, the setup's commitment `(root, ood)`
 per commitment opened by `WhirBridge.Pcs.pcsVerifyWithHash`). The prover sends each root's bytes (`rootHalves`) and
 its out-of-domain answer (`pcsOod`: the stack's multilinear extension at `WhirBridge.Pcs.oodPoint n root`), and opens
 each claim by `pcsProveH` (`K/PcsProver.lean`). `hpiv` (the program's IV at least a digest's `32` bytes; the deployed
-one has `32`) is new: the first bus-challenge input is now `112` bytes (the seed, the counts, `C1`'s root and its
-out-of-domain answer), and it is fresh by its length only if the IV's preimage (`91 + |IV|` bytes) has another.
+one has `32`): the first bus-challenge input is `112` bytes (the seed, the counts, `C1`'s root and its out-of-domain
+answer), fresh by its length only if the IV's preimage (`91 + |IV|` bytes) has another length.
 
 - **The provers.** `Prob.uniProverRP flockProveH D` is `uniProverWith` (`K/Witness.lean`) over the random
   permutation's two calls (Keccak-256 the sponge over `π`, `π` itself for WHIR's proofs of work), with Flock's honest
@@ -63,8 +63,8 @@ out-of-domain answer), and it is fresh by its length only if the IV's preimage (
   **two** chained answers (`c` with `α = (c, c², c⁴, c⁸)`, then `β`; then `γ`, Flock's first coordinate, then Flock's
   coset values are absorbed), so `KStagedK` cannot describe its experiment (the fifth answer would be a query the
   experiment never makes): π1-rec3 has its own staged form `Rec3.KStaged3` (`K/Rec3ProbChain.lean`,
-  `K/Rec3ProbStaged.lean`, `uniCompletenessKeccakRec3_of_staged3`). `End.lean`'s `uniCompletenessKeccakRec3_end` is
-  kept but not used.
+  `K/Rec3ProbStaged.lean`, `uniCompletenessKeccakRec3_of_staged3`); `End.lean`'s `uniCompletenessKeccakRec3_end` is
+  unused.
 - **The honest prover** (`K/Trace`, `Bus`, `Quotients`, `Batch`, `Claims`, `Prover`, `Witness`, `FlockProver`,
   `Rec3Prover`): `UniComplete`'s prover on the Keccak VM: the placed trace read off the Keccak VM's stack
   (`honestTrace`; the `SHA3` table's padding rows' lanes set to `q_flock`'s port words, `+ END_BIT` on `in_16`, as the
@@ -109,14 +109,11 @@ out-of-domain answer), and it is fresh by its length only if the IV's preimage (
 
 ## Imports
 
-The generic `UniComplete` modules are imported: `UniComplete.Basic`, `Div`, `Domain` (with `DomainBasis`,
-`DomainDigits`, `DomainPoly`, `DomainCount`, `DomainPositions`, `DomainActive`, `DomainCoord`, `DomainCoord18`),
-`Whir`, `Rec3Pairs`. Other imports from the shared libraries: `UniSound` through `UniKeccakSound` (as listed in its
-README) and `UniComplete.Rec3Pairs`' `UniSound.Rec3.Pairs`; `Lv42`'s shared modules `Protocol.LeanIsaBase` and
-`Arithmetization.Completeness.BasicsBase`.
+`UniComplete`'s generic modules (`Basic`, `Div`, `Domain*`, `Whir`, `Rec3Pairs`), `UniSound` through `UniKeccakSound`,
+and `Lv42`'s shared `Protocol.LeanIsaBase` and `Arithmetization.Completeness.BasicsBase`.
 
 ## What is not done
 
-Nothing of the completeness statements: both are closed at the reference shape. Other shapes would need the
+Both statements are closed at the reference shape. Other shapes would need the
 reference-shape numbers (stack sizes, the bad sets' counts, the costs, the coordinate functionals at `h_SHA3`)
 recomputed; most layers are shape-generic.

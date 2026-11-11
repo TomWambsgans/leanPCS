@@ -1042,7 +1042,7 @@ pub fn prove_with(
     prove_cheating(circuit, spec, setup, iv, public_input, values, w, check, Cheat::None)
 }
 
-/// What a test's prover does to `Q` besides the honest steps ([`prove_cheating`]; `PERF_GAS3.md`, "Adversarial tests").
+/// What a test's prover does to `Q` besides the honest steps ([`prove_cheating`]; `PI2.md` §6).
 /// For a `w` whose copy sum `σ = Σ_V h` is not zero (a dishonest port, the identity kept by `h = T / (d_pull d_push)`
 /// at its hole), `x h` has a coefficient `N`, which `H`'s slot cannot hold.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1383,7 +1383,7 @@ mod tests {
 
     /// `Q`'s slots: `H`, `q` (two digits) of three limbs, `P`, `q_P` (two digits) and four zero slots, sixteen in all,
     /// each where its bits say (`b_0 + 2 b_1 + 4 limb`): `H` and `P` at `(0, 0)`, the two digits at `(1, 0)` and
-    /// `(0, 1)` (contiguous slots), the zero slots at `(1, 1)` (`PERF_GAS3.md`).
+    /// `(0, 1)` (contiguous slots), the zero slots at `(1, 1)` (`PI2.md` §2).
     #[test]
     fn quotient_slots_are_their_bits() {
         let mut used = vec![false; QUOTIENT_SLOTS];

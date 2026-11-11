@@ -46,11 +46,11 @@ pub struct Entry {
     /// code: the gas of a valid proof plus one (a `JUMPDEST`) per check.
     pub measure: bool,
     /// Calldata starts with the selector [`VERIFY`] (π1's contracts); without it (π2's, whose only entry is the
-    /// verifier: `docs/leanvm/rec/PERF_GAS.md`) the public input is at byte 0, and the length and the value alone are
+    /// verifier: `docs/leanvm/rec/SPEC-REC.md` §12) the public input is at byte 0, and the length and the value alone are
     /// checked.
     pub selector: bool,
     /// The frame words the seed hashes after the public input, and the statement's words `4 + 4j ..` read: payload
-    /// `frame[j]` of the transaction's frame of PCS claims (π2's hashed claims' Keccak-256s; `PERF_GAS.md`).
+    /// `frame[j]` of the transaction's frame of PCS claims (π2's hashed claims' Keccak-256s; `SPEC-REC.md` §2.4.6).
     pub frame: Vec<u8>,
 }
 

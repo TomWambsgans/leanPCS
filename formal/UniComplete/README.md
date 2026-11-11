@@ -2,8 +2,8 @@
 
 # UniComplete
 
-The generic layers of the univariate verifier's honest prover (`crates/leanvm/univariate`; milestone 4's completeness
-half), which [`UniKeccakComplete`](../UniKeccakComplete/README.md) and [`RecCompose`](../RecCompose/README.md) import:
+The generic layers of the univariate verifier's honest prover (`crates/leanvm/univariate`),
+which [`UniKeccakComplete`](../UniKeccakComplete/README.md) and [`RecCompose`](../RecCompose/README.md) import:
 the prover's channel and polynomials, exact division, the domain facts, honest WHIR openings at the plain layouts, and
 the completeness of π1-rec3's paired batch rounds. Nothing here is VM-specific; the Keccak VM's honest prover and its
 completeness theorems are UniKeccakComplete's (`K/`). There is no end theorem and no differential runner here.
