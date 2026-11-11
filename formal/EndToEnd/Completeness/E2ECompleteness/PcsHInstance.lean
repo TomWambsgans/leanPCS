@@ -53,7 +53,7 @@ theorem tablePoly_idx {F : Type} [Field F] [CharP F 2] (m : ℕ) (f : ℕ → F)
 /-! ## The deployed instance (F0's `Kc3Deployed.deployedParams`) on the Statement's basis -/
 
 /-- **F1's parameters for the deployed circuit**, on `BE`. -/
-noncomputable abbrev P0 : _root_.Kc3.Params E := Kc3Deployed.deployedParams BE hm28
+noncomputable def P0 : _root_.Kc3.Params E := Kc3Deployed.deployedParams BE hm28
 
 theorem bitsNum_eq_idx {m : ℕ} (x : Fin m → Bool) : (Kc3Deployed.bitsNum x : ℕ) = Completeness.idx x := by
   rw [Kc3Deployed.bitsNum_val, Completeness.idx]
