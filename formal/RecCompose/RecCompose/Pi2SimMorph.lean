@@ -4,7 +4,7 @@
 -- leanerVM's two calls (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`, commit 6175f1a0, MIT OR
 -- Apache-2.0: `implH`, `implF`, `simulateQ_queryH`) and `formal/UniKeccakComplete`'s `simulateQ_pcsVerify`,
 -- `Morph.app_pcsOpenKH`; `FsOod`'s `simulateQ_pcsVerifierO`, `Pi2PcsZ`'s `simulateQ_pcsProveZH`.
-import RecCompose.Pi2P1
+import RecCompose.Pi2ProbStaged
 import RecCompose.FsOod
 
 /-!
@@ -14,10 +14,11 @@ Every function of π2's completeness experiment is written over any monad, Kecca
 explicit. Read through a monad morphism `φ` (`UniKeccakComplete.Morph`) that commutes with the PCS claim's checks (at the
 fixed point, `hopen`; at the point read off `H`, `hopenO`) and its prover (`hprove`), each is the same function over
 `φ ∘ H`, `φ ∘ F` (`app_…`, `chan_…`, `wr_…`; the out-of-domain point `app_oodPointM`): the setup
-(`app_setupTreesWithH2`), the IV (`app_ivOfH`), π1-rec3's graph with its openings (`app_pi1GraphVerifierWithH`), π2's
+(`app_setupTreesWithH2`), the IV (`app_ivOfH`), π1-rec4's graph with its openings (`app_pi1GraphVerifierWithH`), π2's
 run and contract (`chan_reduceWithH2`, `app_runWithH2`, `app_contractWithH`, `app_verifierWithH2`), π2's honest prover
 (`wr_pi2ProveStreamWith`, `app_pi2ProveWith`, `app_pi2ProverWith`), the experiment `expW2` and its stages
-(`app_expW2`, `wr_pre2`, `wr_mid2`, `wr_post2`, `app_stageA`, `app_stageB`, `app_stageC`).
+(`app_expW2`, `wr_pre2`, `wr_mid2`, `wr_post2`, `app_stageA`, `app_stageB`, `app_restC`, `app_stageC`), at π2v4 (the
+frame words in the seed, four openings).
 
 **`sim_…`**: over the two calls, with `φ = Morph.sim impl` (`simulateQ impl`), the two hypotheses WithHash's.
 -/
@@ -67,7 +68,7 @@ variable (hopen : ∀ (n : ℕ) (root : Digest) (ood : E) (pt : List E) (v : E) 
       UniKeccakComplete.pcsOpenKH (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) n root ood pt v proof)
 
 include hopen in
-/-- **π1-rec3's graph with its three openings.** -/
+/-- **π1-rec4's graph with its three openings.** -/
 theorem app_pi1GraphVerifierWithH (D : RecDeployment) (roots : UniKeccak.SetupRootsK) (input : Vector UInt8 32)
     (proof : UniKeccak.KeccakProof) :
     φ.app (Pi2H.pi1GraphVerifierWithH H F D roots input proof) =
@@ -118,19 +119,23 @@ theorem app_oodPointM (n : ℕ) (r : Digest) :
 
 /-! ## π2's run and the contract -/
 
-theorem chan_reduceWithH2 (s : Spec) (statement : List E) :
-    φ.chan (Pi2H.reduceWithH H s statement) = Pi2H.reduceWithH (fun x ↦ φ.app (H x)) s statement := by
+theorem chan_nextNarrow : φ.chan (nextNarrow (m := m)) = nextNarrow := by
+  simp only [nextNarrow, Morph.chan_bind, Morph.chan_takeBytes, Morph.chan_pure]
+
+theorem chan_reduceWithH2 (s : Spec) (statement : List E) (frameAt : ℕ → List UInt8) :
+    φ.chan (Pi2H.reduceWithH H s statement frameAt) =
+      Pi2H.reduceWithH (fun x ↦ φ.app (H x)) s statement frameAt := by
   simp only [Pi2H.reduceWithH, Morph.chan_bind, Morph.chan_forIn_list, Morph.chan_pure, Morph.chan_nextRoot,
     Morph.chan_sampleH, Morph.chan_nextScalars, Morph.chan_nextScalar]
   congr 1
   congr 1
   funext rd pubs
   split <;> simp only [Morph.chan_bind, Morph.chan_pure, Morph.chan_nextInteger, Morph.chan_nextRoot,
-    Morph.chan_nextScalar]
+    Morph.chan_nextScalar, chan_nextNarrow]
 
-theorem app_runWithH2 (s : Spec) (iv publicInput : List UInt8) (stream : Array UInt8) :
-    φ.app (Pi2H.runWithH H s iv publicInput stream) =
-      Pi2H.runWithH (fun x ↦ φ.app (H x)) s iv publicInput stream := by
+theorem app_runWithH2 (s : Spec) (iv publicInput : List UInt8) (frameAt : ℕ → List UInt8) (stream : Array UInt8) :
+    φ.app (Pi2H.runWithH H s iv publicInput frameAt stream) =
+      Pi2H.runWithH (fun x ↦ φ.app (H x)) s iv publicInput frameAt stream := by
   simp only [Pi2H.runWithH, φ.app_bind, φ.app_pure, ← Morph.chan_run φ, Morph.chan_bind, chan_reduceWithH2,
     Morph.chan_finish, Morph.chan_pure]
 
@@ -147,7 +152,9 @@ theorem app_contractWithH (D : RecDeployment) (roots : RecSetupRoots) (input : V
     · exact φ.app_pure _
     · split
       · exact φ.app_pure _
-      · simp only [φ.app_bind, Morph.app_forIn_list, φ.app_pure, app_pcsOpenWordsH φ H F hopen hopenO]
+      · split
+        · exact φ.app_pure _
+        · simp only [φ.app_bind, Morph.app_forIn_list, φ.app_pure, app_pcsOpenWordsH φ H F hopen hopenO]
 
 include hopen hopenO in
 theorem app_verifierWithH2 (D : RecDeployment) (roots : RecSetupRoots) (input : Vector UInt8 32) (proof : RecProof) :
@@ -157,20 +164,8 @@ theorem app_verifierWithH2 (D : RecDeployment) (roots : RecSetupRoots) (input : 
 
 /-! ## π2's honest prover -/
 
-theorem wr_sendPublic : ∀ l : List (Read × PublicValue), φ.wr (sendPublic (m := m) l) = sendPublic l
-  | [] => φ.wr_pure _
-  | (.integer b, .integer x) :: rest => by
-    simp only [sendPublic, Morph.wr_bind, Morph.wr_sendInteger, wr_sendPublic rest]
-  | (.root, .root bytes) :: rest => by
-    simp only [sendPublic, Morph.wr_bind, Morph.wr_sendRoot, wr_sendPublic rest]
-  | (.scalar, .scalar x) :: rest => by
-    simp only [sendPublic, Morph.wr_bind, Morph.wr_sendScalar, wr_sendPublic rest]
-  | (.integer _, .root _) :: rest => wr_sendPublic rest
-  | (.integer _, .scalar _) :: rest => wr_sendPublic rest
-  | (.root, .integer _) :: rest => wr_sendPublic rest
-  | (.root, .scalar _) :: rest => wr_sendPublic rest
-  | (.scalar, .integer _) :: rest => wr_sendPublic rest
-  | (.scalar, .root _) :: rest => wr_sendPublic rest
+theorem wr_sendPublic (l : List (Read × PublicValue)) : φ.wr (sendPublic (m := m) l) = sendPublic l := by
+  simp only [sendPublic, Morph.wr_sendBytes]
 
 theorem wr_pi2ProveStreamWith (G : RecPiop.Circuit E) (S : CoreSpec E) (oodPt : ℕ → Digest → m (List E))
     (reads : List Read) (setupStack : Array K)
@@ -194,10 +189,10 @@ theorem app_pi2ProveWith (fuel : ℕ) (G : RecPiop.Circuit E) (oodPt : ℕ → D
   simp only [pi2ProveWith, φ.app_bind, φ.app_pure, ← Morph.wr_run φ, wr_pi2ProveStreamWith, hprove]
 
 include hprove in
-theorem app_pi2ProverWith (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C) (fuel : ℕ)
-    (input : Vector UInt8 32) (p1 : UniKeccak.KeccakProof) :
-    φ.app (pi2ProverWith H F D C Fa fuel input p1) =
-      pi2ProverWith (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) D C Fa fuel input p1 := by
+theorem app_pi2ProverWith (D : RecDeployment) (G : RecSetupRoots → RecPiop.Circuit E)
+    (pubOf : RecSetupRoots → List E → ℕ → List E) (fuel : ℕ) (input : Vector UInt8 32) (p1 : UniKeccak.KeccakProof) :
+    φ.app (pi2ProverWith H F D G pubOf fuel input p1) =
+      pi2ProverWith (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) D G pubOf fuel input p1 := by
   simp only [pi2ProverWith, φ.app_bind, φ.app_pure, app_setupTreesWithH2, app_ivOfH,
     app_pi2ProveWith φ H F hprove, app_oodPointM]
 
@@ -256,18 +251,26 @@ theorem app_stageB (D : RecDeployment) (C : Pi2Circuits D) (input : Vector UInt8
   simp only [stageB, φ.app_bind, φ.app_pure, ← Morph.wr_run φ, wr_mid2, app_oodPointM]
 
 include hopen hopenO hprove in
+theorem app_restC (D : RecDeployment) (C : Pi2Circuits D) (input : Vector UInt8 32) (b : StB)
+    (p1 : UniKeccak.KeccakProof) (out : Pi2Out) :
+    φ.app (restC H F D C input b p1 out) = restC (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) D C input b p1 out := by
+  simp only [restC, φ.app_bind, hprove]
+  refine bind_congr fun pW ↦ bind_congr fun pS ↦ bind_congr fun pQ1 ↦ bind_congr fun pQ2 ↦ ?_
+  split
+  · simp only [φ.app_bind, φ.app_pure, app_verifierWithH2 φ H F hopen hopenO]
+  · exact φ.app_pure _
+
+include hopen hopenO hprove in
 theorem app_stageC (D : RecDeployment) (C : Pi2Circuits D) (input : Vector UInt8 32) (b : StB) (st : Digest) :
     φ.app (stageC H F D C input b st) =
       stageC (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) D C input b st := by
   unfold stageC
   split
   · exact φ.app_pure _
-  · simp only [φ.app_bind, ← Morph.wr_run φ, wr_post2, hprove]
-    refine bind_congr fun x ↦ bind_congr fun pW ↦ bind_congr fun pS ↦ bind_congr fun pQ1 ↦ bind_congr fun pQ2 ↦
-      bind_congr fun pQ3 ↦ ?_
-    split
-    · simp only [φ.app_bind, φ.app_pure, app_verifierWithH2 φ H F hopen hopenO]
-    · exact φ.app_pure _
+  · simp only [φ.app_bind, ← Morph.wr_run φ, wr_post2]
+    refine bind_congr fun x ↦ ?_
+    rcases x with ⟨out, w⟩
+    simp only [φ.app_pure, app_restC φ H F hopen hopenO hprove]
 
 end Morph
 

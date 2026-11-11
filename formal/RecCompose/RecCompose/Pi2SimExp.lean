@@ -16,20 +16,12 @@ import ZK.ProverBridgeParam
 * **`experiment_eq_kc`**: π2's completeness experiment with a π1 prover `P1` that is the two-call program `P1k`
   answered over `π` (at the statement; `Pi1OverPerm`, named) and π2's honest prover (`pi2Prover`) is `expW2` over the
   two calls, answered over `π` (`sim_expW2`, the Statement's code at `keccak256With π`: `Pi2CompleteH`'s `_eqH`).
-* **`expW2_event_staged`**: at every pure `(Ht, Ft)`, if the experiment's event holds (π1-rec3's graph accepting, the
-  contract rejecting), the staged run's does: the graph accepting, the witness is honest (`Pi2WitnessComplete`), so
-  the staged run is the experiment (`stagedAt_good`).
+* **`expW2_event_staged`**: at every pure `(Ht, Ft)`, if the experiment's event holds (π1-rec4's graph accepting, the
+  contract rejecting), the staged run's does: the graph accepting, the witness is honest (`Pi2WitnessExists`), so
+  the staged run is the experiment (`stagedAt_good`). (Off an honest witness the staged run hashes `fixLen 88` of
+  `α`'s input where the prover hashes the input itself, so the two need not agree there; only the event matters.)
 * **`pi2ExperimentLe_of`**: `Pi2ExperimentLe D C Fa P1 P1k` from `Pi1OverPerm D P1 P1k` and the witness's
-  completeness: the two sides are averages over the permutations of these pure runs.
-* **`pi2RunAt_good`**: the staged run at pure functions (`Pi2RunAt`'s content where it is true: its verdict and
-  priors on an honest witness, the verdict `(false, false)` when π1's prover returns none, the first component the
-  graph's otherwise).
-
-**Finding (the named fact `Pi2RunAt` as stated is not provable).** Its first conjunct claims the staged verdict is
-`expW2`'s at every pure `(Ht, Ft)`; on a π1 proof with no honest witness (the graph rejecting, or before
-`Pi2WitnessComplete`) the staged run hashes `fixLen 608` of the writer's input, `608` zero bytes, where the prover hashes
-its `64`-byte input: the second components may differ. Only the event matters (the graph accepting), where the witness
-is honest; `rejects_at_good` (`Pi2CallsOpenR`) uses `pi2RunAt_good` instead.
+  existence: the two sides are averages over the permutations of these pure runs.
 -/
 
 set_option linter.unusedSectionVars false
@@ -98,7 +90,7 @@ answered over `π` at the statement. -/
 theorem experiment_eq_kc (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C) (P1 : Pi1Prover D)
     (P1k : Pi1ProverK D) (input : Vector UInt8 32) (rows : List ℕ) (q : D.pi1.Stack rows)
     (hP : P1 input rows q = simulateQ keccakCallsOverQueryPermutation (P1k input rows q)) :
-    recCompletenessExperiment2 D P1 (pi2Prover D C Fa PcsQuotient.nonceFuel) input rows q =
+    recCompletenessExperiment2 D P1 (pi2Prover D C.G Fa.pubOf PcsQuotient.nonceFuel) input rows q =
       runWithRandomPermutation (simulateQ keccakCallsOverQueryPermutation
         (expW2 callKeccak256 callKeccakF1600 D C Fa (P1k input rows q) input)) := by
   rw [sim_expW2, implH_kc, implF_kc, ← hP]
@@ -129,7 +121,7 @@ theorem staged_eq_kc {α : Type} (X : OracleComp KeccakCalls α) :
 /-- **The experiment's event at pure `(Ht, Ft)` gives the staged run's** (π1's prover any two-call program `P1k`):
 the graph accepting, the witness is honest, and the staged run is the experiment. -/
 theorem expW2_event_staged {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
-    (hwc : Pi2WitnessComplete D C Fa) (input : Vector UInt8 32)
+    (hwc : Pi2WitnessExists D C Fa) (input : Vector UInt8 32)
     (P1k : OracleComp KeccakCalls (Option UniKeccak.KeccakProof)) (Ht : List UInt8 → Digest)
     (Ft : KeccakState → KeccakState)
     (hev : (runAt Ht Ft (expW2 callKeccak256 callKeccakF1600 D C Fa P1k input)).1 = true ∧
@@ -152,7 +144,8 @@ theorem expW2_event_staged {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D)
       have h := hev.1
       rw [expW2_some] at h
       revert h
-      cases Id.run (pi2ProverWith (m := Id) (Pure.pure ∘ Ht) Ft D C Fa PcsQuotient.nonceFuel input p1) <;> exact id
+      cases Id.run (pi2ProverWith (m := Id) (Pure.pure ∘ Ht) Ft D C.G Fa.pubOf PcsQuotient.nonceFuel input p1) <;>
+        exact id
     have hgood := pi2Choice_good (hwc _ _ _ (graphChecks_of_verifierH ha1))
     obtain ⟨h1, -⟩ := stagedAt_good Ht Ft D C Fa input p1 hD hgood
     rw [h1]
@@ -161,9 +154,9 @@ theorem expW2_event_staged {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D)
 /-! ## `Pi2ExperimentLe` -/
 
 /-- **`Pi2ExperimentLe` at a π1 prover that is its two-call program answered over `π`** (`Pi1OverPerm`, named), from
-the witness's completeness. -/
+the witness's existence. -/
 theorem pi2ExperimentLe_of {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
-    (hwc : Pi2WitnessComplete D C Fa) {P1 : Pi1Prover D} {P1k : Pi1ProverK D} (hP : Pi1OverPerm D P1 P1k) :
+    (hwc : Pi2WitnessExists D C Fa) {P1 : Pi1Prover D} {P1k : Pi1ProverK D} (hP : Pi1OverPerm D P1 P1k) :
     Pi2ExperimentLe D C Fa P1 P1k := by
   intro input rows q hfit hrel
   rw [experiment_eq_kc D C Fa P1 P1k input rows q (hP input rows q hfit hrel), staged_eq_kc,

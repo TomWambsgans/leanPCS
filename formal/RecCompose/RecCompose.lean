@@ -8,12 +8,13 @@ import RecCompose.Pi2AcceptsReal
 import RecCompose.Pi1Rec4Rpm
 import RecCompose.Pi1Rec4Census
 import RecCompose.CompleteCouplings
+import RecCompose.CompleteReal
 
 /-!
 # RecCompose: the recursive verifier's end theorems
 
 π2v4 over π1-rec4 at the real deployment (`RealDeployment.lean`): knowledge soundness as an explicit reduction
-(`RealEnd.lean`), π1-rec4's prover in the recursion and its facts (`Pi1Rec4*.lean`; the completeness end theorem `CompleteReal.lean` waits for π2's probability layer). See `formal/RecCompose/README.md`.
+(`RealEnd.lean`), completeness for the composed Lean prover (`CompleteReal.lean`). See `formal/RecCompose/README.md`.
 The build fails if a headline theorem's axioms grow beyond Lean's three standard ones.
 -/
 
@@ -76,3 +77,19 @@ The build fails if a headline theorem's axioms grow beyond Lean's three standard
 /-- info: 'RecCompose.Pi1K.pi1ProverFactsK4' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms RecCompose.Pi1K.pi1ProverFactsK4
+
+/-- info: 'RecCompose.Pi2Sim.recCompleteness2_pi2_closed' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecCompose.Pi2Sim.recCompleteness2_pi2_closed
+
+/-- info: 'RecCompose.Pi2Sim.delta2Closed_le' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecCompose.Pi2Sim.delta2Closed_le
+
+/-- info: 'RecCompose.Pi1K.recCompleteness2_real' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecCompose.Pi1K.recCompleteness2_real
+
+/-- info: 'RecCompose.Pi1K.recCompleteness_real' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecCompose.Pi1K.recCompleteness_real

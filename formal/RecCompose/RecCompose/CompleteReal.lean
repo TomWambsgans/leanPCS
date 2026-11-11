@@ -61,6 +61,7 @@ noncomputable abbrev realPi2Prover : Pi2Prover :=
   Pi2E.pi2Prover (realDeployment prog hprog) (pi2Circuits_real prog hprog hg hiv).G
     (pi2Facts_real prog hprog hg hd hs hiv).pubOf PcsQuotient.nonceFuel
 
+include hg hd hs in
 /-- **π1's openings in the contract at the real deployment** (`Pi2Pi1Openings`), from π1-rec4's graph verifier. -/
 theorem pi2Pi1Openings_real : Pi2Pi1Openings (realDeployment prog hprog) := fun Ht Ft input p1 h ↦
   Pi2W.pi1Openings_of_verifierH (realDeployment_real prog hprog hg hd hs).2.2.1 Ht Ft _ input p1 h
