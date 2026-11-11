@@ -90,35 +90,42 @@ section With
 
 variable {m : Type → Type} [Monad m] (H : List UInt8 → m Digest) (W : List UInt8 → m RateB)
 
-/-- **π1-rec4's stream** on the Keccak VM (`prove`, steps 0–9 at `KECCAK_REC4`), from the seed. -/
-def proveStreamRec4With (commit : Commitment → ℕ → Array K → m Committed) (tr : Trace) : WrM m CoreOut := do
-  let shape := tr.shape
-  -- 0. The six row counts.
-  for rows in tr.rows do
-    sendInteger rows 4
-  -- 1. C1, then one wide draw: c (α = squares c 4), β, γ, Flock's first coordinate.
-  let stack1 := c1Stack tr
-  let committed1 ← (StateT.lift (commit .c1 (c1LayoutK shape).vars stack1) : WrM m Committed)
-  sendRoot committed1.halves
-  sendScalar (pcsOod (c1LayoutK shape).vars stack1 (rootOf committed1.halves))
-  let bus ← sampleWideW W 4
+/-- The bus draw's challenges at a rate. -/
+def busOf (r : RateB) : List E := (List.range 4).map (challengeAt r.toList)
+
+/-- The point draw's challenges at a rate. -/
+def pointOf (r : RateB) : List E := (List.range 5).map (challengeAt r.toList)
+
+/-- **The stream from Flock to `C2`'s root** (steps 2–3): Flock's prover from the bus draw (`c = bus[0]`,
+`α = squares c 4`, `β = bus[1]`, `γ = bus[2]`, Flock's first coordinate `bus[3]`), `C2`'s commitment, its root and
+out-of-domain answer. -/
+def midB4 (commit : Commitment → ℕ → Array K → m Committed) (tr : Trace) (bus : List E) :
+    WrM m ((List E × List E) × Committed) := do
   let alphas := squares (bus.getD 0 0) 4
   let beta := bus.getD 1 0
   let gamma := bus.getD 2 0
-  -- 2. Flock on the Keccak-f block, its zerocheck's coordinates from the draw.
-  let logN := keccakR1csLogSize + shape.heights.getD opSha3 0
+  let logN := keccakR1csLogSize + tr.shape.heights.getD opSha3 0
   let fl ← flockProve4 H logN keccakRec4 (bus.getD 3 0) tr.qflock
-  -- 3. The heap, the quotients, C2; one wide draw: t and the map's f_0 … f_3.
   let c2 := c2DataOf tr (eqKernel alphas) beta gamma
-  let committed2 ← (StateT.lift (commit .c2 (((layoutsOfK shape).lookup .c2).getD default).vars c2.stack) :
+  let committed2 ← (StateT.lift (commit .c2 (((layoutsOfK tr.shape).lookup .c2).getD default).vars c2.stack) :
     WrM m Committed)
   sendRoot committed2.halves
-  sendScalar (pcsOod (((layoutsOfK shape).lookup .c2).getD default).vars c2.stack (rootOf committed2.halves))
-  let pointDraw ← sampleWideW W 5
+  sendScalar (pcsOod (((layoutsOfK tr.shape).lookup .c2).getD default).vars c2.stack (rootOf committed2.halves))
+  return (fl, committed2)
+
+/-- **The stream from the point draw on** (steps 4–9): the values at `t = pointDraw[0]`; the late draw (`ρ`, `λ`,
+`f_4`, `f_5`); Flock's end at the map `pointDraw[1 …] ++ [f_4, f_5]`; the combined claims; the paired batch with `λ`;
+the stacks' values. -/
+def tailT4 (tr : Trace) (committed1 : Committed) (bus : List E) (fl : List E × List E) (committed2 : Committed)
+    (pointDraw : List E) : WrM m CoreOut := do
+  let shape := tr.shape
+  let stack1 := c1Stack tr
+  let alphas := squares (bus.getD 0 0) 4
+  let beta := bus.getD 1 0
+  let gamma := bus.getD 2 0
+  let c2 := c2DataOf tr (eqKernel alphas) beta gamma
   let t := pointDraw.getD 0 0
-  -- 4.–7. The values at t.
   sendScalars (atTOf tr c2 alphas beta gamma t none).values
-  -- 8. One wide draw: ρ, λ, f_4, f_5; Flock's end; the combined claims.
   let late ← sampleWideW W 4
   let rho := late.getD 0 0
   let lambda := late.getD 1 0
@@ -132,7 +139,6 @@ def proveStreamRec4With (commit : Commitment → ℕ → Array K → m Committed
     | .c1 => stack1
     | .c2 => c2.stack
     | .setup => stack3
-  -- 9. The batching sumcheck, two variables a round, with λ.
   let vars := (stackLayouts.map (·.2.vars)).foldl max 0
   let st : BatchState := ⟨combined.map (fun (c, claim) ↦ denseWeight claim (layoutIn stackLayouts c) a.ringMap),
     combined.map (fun (c, _) ↦ (stackOf c).map ofK), none, 0, []⟩
@@ -143,6 +149,19 @@ def proveStreamRec4With (commit : Commitment → ℕ → Array K → m Committed
   sendScalars (claims.map (·.2.2))
   let c ← get
   return ⟨c.stream, (stack1, committed1), (c2.stack, committed2), stack3, claims, combined, c2.heapVals⟩
+
+/-- **π1-rec4's stream** on the Keccak VM (`prove`, steps 0–9 at `KECCAK_REC4`), from the seed: the row counts,
+`C1`, the bus draw, `midB4`, the point draw, `tailT4`. -/
+def proveStreamRec4With (commit : Commitment → ℕ → Array K → m Committed) (tr : Trace) : WrM m CoreOut := do
+  for rows in tr.rows do
+    sendInteger rows 4
+  let committed1 ← (StateT.lift (commit .c1 (c1LayoutK tr.shape).vars (c1Stack tr)) : WrM m Committed)
+  sendRoot committed1.halves
+  sendScalar (pcsOod (c1LayoutK tr.shape).vars (c1Stack tr) (rootOf committed1.halves))
+  let bus ← sampleWideW W 4
+  let x ← midB4 H commit tr bus
+  let pointDraw ← sampleWideW W 5
+  tailT4 H W tr committed1 bus x.1 x.2 pointDraw
 
 end With
 
@@ -200,8 +219,8 @@ theorem wr_proveStreamRec4With (commit : Commitment → ℕ → Array K → m Co
     (tr : Trace) :
     φ.wr (proveStreamRec4With H W commit tr) =
       proveStreamRec4With (fun x ↦ φ.app (H x)) (fun x ↦ φ.app (W x)) commit' tr := by
-  simp only [proveStreamRec4With, Morph.wr_bind, Morph.wr_forIn_list, Morph.wr_sendInteger, Morph.wr_pure,
-    Morph.wr_lift, hcommit, Morph.wr_sendRoot, Morph.wr_sendScalar, wr_sampleWideW, wr_flockProve4,
+  simp only [proveStreamRec4With, midB4, tailT4, Morph.wr_bind, Morph.wr_forIn_list, Morph.wr_sendInteger,
+    Morph.wr_pure, Morph.wr_lift, hcommit, Morph.wr_sendRoot, Morph.wr_sendScalar, wr_sampleWideW, wr_flockProve4,
     Morph.wr_sendScalars, wr_batchRounds3, Morph.wr_get]
 
 end Morph
