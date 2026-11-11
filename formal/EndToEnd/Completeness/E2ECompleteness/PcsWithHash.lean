@@ -58,15 +58,13 @@ def reduceWithH (logRows : ℕ) (index : Commitment) (stmt : Statement) (p : Red
   let some (witness, c) := readCommitment c p.witness | return none
   let (α, c) ← squeezeWithH H c
   let (β, c) ← squeezeWithH H c
-  let (γ, c) ← squeezeWithH H c
-  let some (h, c) := readCommitment c p.h | return none
-  let some (q, c) := readCommitment c p.q | return none
-  let some (g, c) := readCommitment c p.g | return none
+  let (μ, c) ← squeezeWithH H c
+  let some (table, c) := readCommitment c p.table | return none
   let (t, c) ← squeezeWithH H c
   let c := (p.values.toList.foldl Chain.absorb c).absorb p.next
   let (ρ, _) ← squeezeWithH H c
-  return (claimsAt logRows stmt α β γ t ρ p.values p.next p.qValue p.gValue).map
-    fun claims ↦ ⟨⟨witness, h, q, g⟩, claims⟩
+  return (claimsAt logRows stmt α β μ t ρ p.values p.next).map
+    fun claims ↦ ⟨⟨witness, table⟩, claims⟩
 
 /-- `oodPointWith` with Keccak-256 `H`. -/
 def oodPointWithH (n : ℕ) (root : Digest) : m (List E) :=
@@ -152,35 +150,24 @@ def proveWithPcsH {Hd : Type} (pcs : PcsOps m Hd) (fuel : ℕ) (circuit : Circui
   let mv := cellVars circuit.logRows
   let sigmaHat := circuit.wiringTable
   let (indexTree, index) ← commitmentWithH H mv sigmaHat
-  let wTable := witnessTable circuit cells₀ coins
-  let (wTree, wCom) ← pcs.commit (mv + 1) wTable
+  let (wTree, wCom) ← pcs.commit mv (witnessTable circuit cells₀ coins)
   let c ← startWithH H (label index stmt)
   let wS := CommitmentScalars.of wCom
   let c := c.absorbCommitment wS
   let (α, c) ← squeezeWithH H c
   let (β, c) ← squeezeWithH H c
-  let (γ, c) ← squeezeWithH H c
-  let (hTable, qTable, gTable) := quotientTables circuit cells₀ coins α β γ
-  let (hTree, hCom) ← pcs.commit (mv + 3) hTable
-  let (qTree, qCom) ← pcs.commit (mv + 4) qTable
-  let (gTree, gCom) ← pcs.commit (mv + 1) gTable
-  let (hS, qS, gS) := (CommitmentScalars.of hCom, CommitmentScalars.of qCom, CommitmentScalars.of gCom)
-  let c := ((c.absorbCommitment hS).absorbCommitment qS).absorbCommitment gS
+  let (μ, c) ← squeezeWithH H c
+  let (tTree, tCom) ← pcs.commit (mv + 4) (quotientTable circuit stmt cells₀ coins α β μ)
+  let tS := CommitmentScalars.of tCom
+  let c := c.absorbCommitment tS
   let (t, _) ← squeezeWithH H c
-  let (a, next) := rowValues circuit cells₀ coins t
-  let proof₀ : ReductionProof := ⟨wS, hS, qS, gS, a, next, 0, 0⟩
-  let some r₀ ← reduceWithH H circuit.logRows index stmt proof₀ | return none
-  let proof : ReductionProof :=
-    { proof₀ with qValue := tableEval qTable r₀.claims.q.point,
-                  gValue := tableEval gTable r₀.claims.g.point }
+  let (vals, next) := valuesAt circuit cells₀ coins t
+  let proof : ReductionProof := ⟨wS, tS, vals, next⟩
   let some r ← reduceWithH H circuit.logRows index stmt proof | return none
   let some oW ← pcs.openClaim wTree r.commitments.witness r.claims.witness | return none
   let some oσ ← proveClaimWithH H F fuel indexTree sigmaHat index r.claims.wiring | return none
-  let some oH ← pcs.openClaim hTree r.commitments.h r.claims.h | return none
-  let some oQ ← pcs.openClaim qTree r.commitments.q r.claims.q | return none
-  let some oG ← pcs.openClaim gTree r.commitments.g r.claims.g | return none
-  let some oS ← pcs.openClaim hTree r.commitments.h r.claims.sum | return none
-  return some ⟨proof, ⟨oW, oσ, oH, oQ, oG, oS⟩⟩
+  let some oT ← pcs.openClaim tTree r.commitments.table r.claims.copy | return none
+  return some ⟨proof, ⟨oW, oσ, oT⟩⟩
 
 /-- `proveWith` with Keccak-256 `H`. -/
 def proveWithH (fuel : ℕ) (circuit : Circuit) (stmt : Statement) (cells₀ : Array K) (coins : Coins) :
@@ -291,13 +278,9 @@ theorem simulateQ_reduceWithH (logRows : ℕ) (index : Commitment) (stmt : State
     · simp
     simp only [simulateQ_bind, simulateQ_squeezeWithH]
     congr 1; funext x₁; congr 1; funext x₂; congr 1; funext x₃
-    rcases hh : readCommitment x₃.2 p.h with _ | ⟨h, c₂⟩
+    rcases hh : readCommitment x₃.2 p.table with _ | ⟨h, c₂⟩
     · simp
-    rcases hq : readCommitment c₂ p.q with _ | ⟨q, c₃⟩
-    · simp [hq]
-    rcases hg : readCommitment c₃ p.g with _ | ⟨g, c₄⟩
-    · simp [hq, hg]
-    simp only [hq, hg, simulateQ_bind, simulateQ_squeezeWithH, simulateQ_pure]
+    simp only [simulateQ_bind, simulateQ_squeezeWithH, simulateQ_pure]
   · simp [hs]
 
 theorem simulateQ_oodPointWithH (n : ℕ) (root : Digest) :
@@ -462,12 +445,7 @@ theorem simulateQ_proveWithH (fuel : ℕ) (circuit : Circuit) (stmt : Statement)
     simulateQ_squeezeWithH, simulateQ_reduceWithH, simulateQ_pure]
   congr 1; funext x₀; congr 1; funext x₁; congr 1; funext c
   congr 1; funext a₁; congr 1; funext a₂; congr 1; funext a₃
-  congr 1; funext h₁; congr 1; funext h₂; congr 1; funext h₃
-  congr 1; funext h₄; congr 1; funext r₀
-  rcases r₀ with _ | r₀
-  · simp
-  simp only [simulateQ_bind, simulateQ_reduceWithH]
-  congr 1; funext r
+  congr 1; funext h₁; congr 1; funext h₂; congr 1; funext r
   rcases r with _ | r
   · simp
   simp only [simulateQ_bind, simulateQ_proveClaimWithH]
@@ -480,19 +458,7 @@ theorem simulateQ_proveWithH (fuel : ℕ) (circuit : Circuit) (stmt : Statement)
   · simp
   simp only [simulateQ_bind, simulateQ_proveClaimWithH]
   congr 1; funext o₃
-  rcases o₃ with _ | o₃
-  · simp
-  simp only [simulateQ_bind, simulateQ_proveClaimWithH]
-  congr 1; funext o₄
-  rcases o₄ with _ | o₄
-  · simp
-  simp only [simulateQ_bind, simulateQ_proveClaimWithH]
-  congr 1; funext o₅
-  rcases o₅ with _ | o₅
-  · simp
-  simp only [simulateQ_bind, simulateQ_proveClaimWithH]
-  congr 1; funext o₆
-  rcases o₆ with _ | o₆ <;> simp
+  rcases o₃ with _ | o₃ <;> simp
 
 theorem simulateQ_proverWithH (fuel : ℕ) (stmt : Statement) (w : Secret) (coins : Coins) :
     simulateQ impl (proverWithH callKeccak256 callKeccakF1600 fuel stmt w coins) =
