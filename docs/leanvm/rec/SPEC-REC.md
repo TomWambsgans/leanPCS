@@ -392,9 +392,11 @@ probability about `Q (ε_WHIR + ε_round)`, the openings charged once at `269 ·
 | `ρ`: `W`'s fold (degree 15), over both lists | `15/2^192` | 188.1 | 163.0 |
 | `ρ`: `Q`'s pushes' claim (degree 2), over both lists | `2/2^192` | 191.0 | 165.9 |
 
-With its openings once, π2 keeps **128.93 bits** as `Q/ε` at `Q = 2^64`. The Lean (`formal/RecPiop`'s `err`) states
-coarser rounds, `(4N − 1 + Σ_j d_j)/|E|`, `(4N − 1)/|E|`, `2^r/|E|`, for `f96a7938`'s π2 (π2v3: `t` at `4N`), and proves the same bound
-(`RecCompose.pi2Bound`, `pi2Bound_le_bits`).
+With its openings once, π2v4 keeps **128.93 bits** as `Q/ε` at `Q = 2^64` (modelled, the table above). The Lean's
+128.93 bits (`RecCompose.pi2Bound`, `pi2Bound_le_bits`) are of π2v3 at `f96a7938`, from its coarser rounds
+(`formal/RecPiop`'s `err`: `(4N − 1 + Σ_j d_j)/|E|`, `t` at `(4N − 1)/|E|`, `2^r/|E|`), not of π2v4 (`t` at `5N`): the
+two figures are equal because the openings' `2^-128.93` a query dominates every round's, not because the Lean covers
+π2v4 (`docs/LEAN_PORT.md`).
 
 **π1-rec4's rounds** are the main line's (`docs/leanvm/univariate/SPEC.md` §9; `C1`'s list 4,473, `C2`'s 6,296 at 128
 signatures) but for these (bits after the lists, `python3 -I params/leanvm_univariate_params.py`):

@@ -187,8 +187,8 @@ the hash a payload of the frame): `W`'s, the setup's (its commitment a constant)
 4. `H = x h` by `quotient::protocol::mul_x` (the novel basis' product by `x`, no multiplication; `h`'s top coefficient,
    zero, dropped) into `H`'s slots, `G`'s zeroed: no fix-up, no completeness condition (`q` and `q_P` are read through
    `Z_V` itself). `Q`, committed (its stack built in place, the setup's from one proof to the next; `Q` and `W` keep
-   their codewords until their openings, which read the queried rows from them; `Q`'s four zero slots left out of its
-   kept codeword); `t`; the fold values, `ξ` and `s = P(t)`; `ρ`; the verifier's four claims, each opened by its own
+   their codewords until their openings, which read the queried rows from them; the all-zero lanes, which `pcs_claim::commit_words`
+   finds in the stack itself (here `G`'s and `S`'s slots), left out of the encodes and the kept codeword); `t`; the fold values, `ξ` and `s = P(t)`; `ρ`; the verifier's four claims, each opened by its own
    PCS opening (`pcs_claim`: leanVM's WHIR unchanged, rate 1/2; `Q`'s two by `open_words_batch`, one pass of their lane
    rounds for two proofs, each the one it would be alone). `PI2_PROFILE=1` prints the phases.
 
@@ -254,7 +254,10 @@ pairs, `target_d16v`). They remain the PIOP's tests and `gas_report`'s shapes. T
     (`AbsorbInG`): `[true, true, false, true]`; **the negative control** (`identity_relations`, `Q` read slot by slot
     at `t`): `AbsorbInG` meets the relation of the layout that would read `G` through `Z_V` (§7) and not this one's;
     `G` filled: `[true, true, false, true]`; `S` filled: `[true, true, false, false]`; `s` sent off `P(t)`: the
-    pushes' claim false;
+    pushes' claim false; a constant added to `H` (`ConstH`): `[true, true, false, true]`; `S = c` with `G = Y³ c`,
+    which cancel in the identity's claim (`SinG`): `[true, true, true, false]`, the pushes' claim alone catching it;
+    `P`'s constant moved after `q_P` (`ConstP`): `[true, true, false, false]`. The cheats are the `test-support`
+    feature's (`prover::{Cheat, prove_cheating}`), which `tests/pi2.rs` turns on; the production API has none;
   - flipped stream bytes: claims the openings do not prove;
   - the contract equals the Rust verifier word for word, on the honest stream and a random one; it accepts the honest
     proof with its frame declaring exactly its claims, and rejects flipped bytes.

@@ -1039,34 +1039,69 @@ pub fn prove_with(
     w: &[F64],
     check: bool,
 ) -> Proved {
-    prove_cheating(circuit, spec, setup, iv, public_input, values, w, check, Cheat::None)
+    prove_inner(circuit, spec, setup, iv, public_input, values, w, check, Cheat::None)
 }
 
-/// What a test's prover does to `Q` besides the honest steps ([`prove_cheating`]; `PI2.md` §6).
-/// For a `w` whose copy sum `σ = Σ_V h` is not zero (a dishonest port, the identity kept by `h = T / (d_pull d_push)`
-/// at its hole), `x h` has a coefficient `N`, which `H`'s slot cannot hold.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Cheat {
-    /// The honest steps: `H = x h` without its coefficient `N` (which is `x h` reduced mod `Z_V`: `h` moved at `0` by
-    /// `σ`, so that its sum is zero).
-    None,
-    /// As `None`, and `G` the constant `σ` (`(Z_V / x)(0) = 1`): with `q` the unmoved `h`'s, what keeps the identity
-    /// a polynomial one when `G` weighs `Z_V` against `H` (a layout with `q`'s two digits in one kind: the negative
-    /// control), not `x² Z_V³ / (d_pull d_push)`.
-    AbsorbInG,
-    /// `x h`'s coefficient `N` kept in `q`'s second digit's constant coefficient (`q + c Z_V`).
-    OverflowInQ,
-    /// An honest `Q` with this constant in every limb of `G`.
-    FillG(F192),
-    /// An honest `Q` with this constant in `S`.
-    FillS(F64),
-    /// An honest `Q`, `s` sent off `P(t)` by this.
-    ShiftS(F192),
+/// The tests' cheats: public with the `test-support` feature alone, so that the production API has no cheating
+/// prover.
+mod cheat {
+    use primitives::field::{F64, F192};
+
+    /// What a test's prover does to `Q` besides the honest steps (`prove_cheating`; `PI2.md` §6).
+    /// For a `w` whose copy sum `σ = Σ_V h` is not zero (a dishonest port, the identity kept by `h = T / (d_pull d_push)`
+    /// at its hole), `x h` has a coefficient `N`, which `H`'s slot cannot hold.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    #[cfg_attr(not(feature = "test-support"), allow(dead_code))]
+    pub enum Cheat {
+        /// The honest steps: `H = x h` without its coefficient `N` (which is `x h` reduced mod `Z_V`: `h` moved at `0` by
+        /// `σ`, so that its sum is zero).
+        None,
+        /// As `None`, and `G` the constant `σ` (`(Z_V / x)(0) = 1`): with `q` the unmoved `h`'s, what keeps the identity
+        /// a polynomial one when `G` weighs `Z_V` against `H` (a layout with `q`'s two digits in one kind: the negative
+        /// control), not `x² Z_V³ / (d_pull d_push)`.
+        AbsorbInG,
+        /// `x h`'s coefficient `N` kept in `q`'s second digit's constant coefficient (`q + c Z_V`).
+        OverflowInQ,
+        /// An honest `Q` with this constant in every limb of `G`.
+        FillG(F192),
+        /// An honest `Q` with this constant in `S`.
+        FillS(F64),
+        /// An honest `Q`, `s` sent off `P(t)` by this.
+        ShiftS(F192),
+        /// `H`'s constant coefficient moved by this (`H(0) ≠ 0`).
+        ConstH(F192),
+        /// `S` this constant and `G` `Y³` times it, which cancel in the identity's claim (both at `(1, 1)`, `G`'s limbs
+        /// weighing `Y^l`, `S` `Y³`): only the pushes' claim, which reads `S` alone, sees it.
+        SinG(F64),
+        /// `P`'s constant coefficient moved by this after `q_P` is made (`P` off `P_v` on `V_m`).
+        ConstP(F64),
+    }
 }
 
-/// [`prove_with`], with `Q` changed as `cheat` says.
+#[cfg(not(feature = "test-support"))]
+use cheat::Cheat;
+#[cfg(feature = "test-support")]
+pub use cheat::Cheat;
+
+/// [`prove_with`], with `Q` changed as `cheat` says (the `test-support` feature: the tests' cheating prover).
+#[cfg(feature = "test-support")]
 #[allow(clippy::too_many_arguments)]
 pub fn prove_cheating(
+    circuit: &Circuit,
+    spec: &Spec,
+    setup: &Setup,
+    iv: &[u8; 32],
+    public_input: &[u8; 32],
+    values: &[PublicValue],
+    w: &[F64],
+    check: bool,
+    cheat: Cheat,
+) -> Proved {
+    prove_inner(circuit, spec, setup, iv, public_input, values, w, check, cheat)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn prove_inner(
     circuit: &Circuit,
     spec: &Spec,
     setup: &Setup,
@@ -1210,6 +1245,17 @@ pub fn prove_cheating(
             Cheat::FillG(x) => (h0[0], h1[0], h2[0]) = (F64(x.c0), F64(x.c1), F64(x.c2)),
             Cheat::FillS(x) => s_words[0] = x,
             Cheat::ShiftS(_) => {}
+            Cheat::ConstH(c) => {
+                for (hh, x) in [(&mut *hh0, c.c0), (&mut *hh1, c.c1), (&mut *hh2, c.c2)] {
+                    hh[0] += F64(x);
+                }
+            }
+            Cheat::SinG(x) => {
+                let g = (F192::Y * F192::Y * F192::Y).mul_base(x);
+                s_words[0] = x;
+                (h0[0], h1[0], h2[0]) = (F64(g.c0), F64(g.c1), F64(g.c2));
+            }
+            Cheat::ConstP(c) => p[0] += c,
         }
     }
     lap("q, q_P on the extension coset, their coefficients", &mut timings);

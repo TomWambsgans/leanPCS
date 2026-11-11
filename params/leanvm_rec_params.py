@@ -103,7 +103,7 @@ def pi2_rounds(log_n=LOG_N, row=ROW):
 
 
 def pi2_bound():
-    """pi2's weakest round after its lists, and its bits at Q = 2^64 with its three openings once (`pi2Bound`)."""
+    """pi2's weakest round after its lists, and its bits at Q = 2^64 with its openings charged once (the per-query WHIR term, whatever their number; `pi2Bound`)."""
     _, _, rs = pi2_rounds()
     worst = max(err(num, LOGQ) * union for _, num, union in rs)
     return worst, uni.per_query(worst)

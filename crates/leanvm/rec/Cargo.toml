@@ -11,6 +11,11 @@ description = "Recursion for the univariate Keccak VM verifier: pi2, a SNARK of 
 [lints]
 workspace = true
 
+[features]
+# The tests' cheating prover (`pi2::prover::{Cheat, prove_cheating}`): off in the production API; `tests/pi2.rs` turns
+# it on through the dev-dependency on this crate below.
+test-support = []
+
 [dependencies]
 leanvm_statement.workspace = true
 leanvm_univariate.workspace = true
@@ -26,6 +31,8 @@ verifier.workspace = true
 parallel.workspace = true
 
 [dev-dependencies]
+# This crate with its tests' cheating prover (`test-support`), for the integration tests.
+leanvm_rec = { path = ".", features = ["test-support"] }
 # The allocator of the proving runs: jemalloc, freed pages kept (crates/vendor/leanvm-c445e3d5/bench), as crates/leanvm/univariate's.
 bench.workspace = true
 # The trace tree of the pipeline's last pass (`PIPELINE_TRACING`).
