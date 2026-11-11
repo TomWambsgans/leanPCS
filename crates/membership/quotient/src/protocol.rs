@@ -109,12 +109,12 @@ fn cell_vars(log_rows: usize) -> usize {
 }
 
 /// The coefficients past `2^m` that blind the sum's polynomial `h`, per limb: `h + X_{2^m}·(b_0 + b_1 X_1 + b_2 X_2)`,
-/// which `h` keeps on the cells (`X_{2^m}` vanishes there). `b_1, b_2` ([`FREE_BLIND`]) make the quotient table's
-/// out-of-domain answer uniform (`HIDING.md`); `b_0` is solved for, so that `q`'s coefficient `n` is zero, which the
+/// which `h` keeps on the cells (`X_{2^m}` vanishes there). `b_0, b_1` ([`FREE_BLIND`]) make the quotient table's
+/// out-of-domain answer uniform (`HIDING.md`); `b_2` is solved for, so that `q`'s coefficient `n` is zero, which the
 /// table's layout needs (`PERF_GAS2.md`). Three, so that `h d d'` stays at degree `3 n` and `q` at `2 n`.
 pub const H_BLIND: usize = 3;
 
-/// The blinding coefficients a proof draws per limb: `b_1, b_2` of [`H_BLIND`].
+/// The blinding coefficients a proof draws per limb: `b_0, b_1` of [`H_BLIND`].
 pub const FREE_BLIND: usize = H_BLIND - 1;
 
 /// The fewest rows: below `2^13` the witness and wiring tables (`m` variables) are smaller than the `2^15` words
@@ -169,8 +169,8 @@ pub fn table_slot(kind: usize, limb: usize, n: usize) -> usize {
 pub struct Randomness {
     /// The random rows' words, two a row, in the order of [`Circuit::random_rows`].
     pub rows: [F64; RANDOM_WORDS],
-    /// `blind[e][i]`: coefficient `2^m + 1 + i` of limb `e` of the sum's polynomial (coefficient `2^m` is solved
-    /// for: [`H_BLIND`]).
+    /// `blind[e][i]`: coefficient `2^m + i` of limb `e` of the sum's polynomial (coefficient `2^m + 2` is solved for:
+    /// [`H_BLIND`]).
     pub blind: [[F64; FREE_BLIND]; 3],
 }
 
@@ -265,7 +265,12 @@ impl Index {
             circuit.errors_have_their_own_poles(),
             "a cycle of the wiring holds only rows' first cells and pins: the sum would not catch their errors"
         );
-        Self::new_unchecked(circuit)
+        let index = Self::new_unchecked(circuit);
+        // The prover's `b_2` needs `σ`'s coefficient `n − 2` (`PERF_GAS2.md`): a property of the circuit, for
+        // completeness (`Σ_cells σ(x) · x`, nonzero for wirings but rare ones).
+        let n = index.table.len();
+        assert!(!index.table[n - 2].is_zero(), "the wiring's coefficient n − 2 is zero: the prover's b_2 is not defined");
+        index
     }
 
     /// [`Index::new`] without the check: for the test that shows what the check prevents.
@@ -283,6 +288,8 @@ impl Index {
         let mut sigma = parallel::map_collect(circuit.sigma.len(), |i| point(circuit.sigma[i] as usize));
         ntt::coefficients(&mut sigma, F64::ZERO);
         let n = sigma.len();
+        // A permutation's: `Σ_cells σ(x) = Σ_cells x = 0`, so its top coefficient is zero (and `x σ` has `n`).
+        assert!(sigma[n - 1].is_zero());
         let m = n.trailing_zeros() as usize;
         // SAFETY: each half is written whole by its transform below.
         let mut sigma_values = unsafe { words(2 * n) };
@@ -375,34 +382,65 @@ pub fn mul_x(f: &[F64], out: &mut [F64]) -> F64 {
     f[len - 1]
 }
 
+/// `w_1 F` in the novel basis (`w_1 = X_2 = x^2 + x`), `F` of `f.len() = 2^k ≥ 2` coefficients: the product's first
+/// `2^k` coefficients into `out`, and its coefficients `2^k`, `2^k + 1` returned (`F`'s top two). `w_1 F = w_1
+/// F_e(w_1) + x w_1 F_o(w_1)`: [`mul_x`] one level up on the even and the odd coefficients, coefficient `j ≥ 2`
+/// `f[j − 2] + f[j + 2 low(j / 2) − 2]`.
+pub fn mul_w1(f: &[F64], out: &mut [F64]) -> [F64; 2] {
+    let len = f.len();
+    assert!(len.is_power_of_two() && len >= 2 && out.len() == len);
+    parallel::chunks_mut(out, COPY_RUN, |chunk, out| {
+        let base = chunk * COPY_RUN;
+        for (i, o) in out.iter_mut().enumerate() {
+            let j = base + i;
+            *o = if j < 2 { F64::ZERO } else { f[j - 2] + f[j + 2 * low(j / 2) - 2] };
+        }
+    });
+    [f[len - 2], f[len - 1]]
+}
+
 /// `F` and `r` with `G = x F + r`, `G` of `g.len() = 2^k` coefficients in the novel basis: `F`'s coefficients into
 /// `out` (its top one zero) and `r = G(0) = g[0]` returned. The inverse of [`mul_x`]: `f[i] = g[i + 1] + f[i +
 /// low(i + 1)]`, a sum along `j ↦ j + low(j)` from `j = i + 1`, made level by level from the largest `low(j)` down,
-/// the words of a level independent.
+/// the words of a level independent: the levels of `low(j)` at least a block's length over the whole table, then
+/// each block's own, in cache, from the word its block's end holds.
 pub fn div_x(g: &[F64], out: &mut [F64]) -> F64 {
     let len = g.len();
     assert!(len.is_power_of_two() && out.len() == len);
+    const BLOCK: usize = 1 << 12;
+    let block = len.min(BLOCK);
     out[len - 1] = F64::ZERO;
     let ptr = parallel::SendPtr(out.as_mut_ptr());
+    // `j = step (2 i + 1)`: `out[j − 1] = g[j] + out[j + step − 1]`, the latter of a level made before (its `low` is
+    // at least `2 step`) or zero past the end.
+    let level = |step: usize, i: usize| {
+        let j = step * (2 * i + 1);
+        // SAFETY: a level writes the words `j − 1`, `low(j) = step`, each once, and reads only words of larger
+        // `low`, written by the levels before.
+        unsafe {
+            let above = if j + step < len { *ptr.add(j + step - 1) } else { F64::ZERO };
+            *ptr.add(j - 1) = g[j] + above;
+        }
+    };
     let mut step = len / 2;
-    while step >= 1 {
-        // `j = step (2 i + 1)`: `out[j − 1] = g[j] + out[j + step − 1]`, the latter of a level made before (its
-        // `low` is at least `2 step`) or zero past the end.
+    while step >= block {
         let count = len / (2 * step);
-        const TASK: usize = 1 << 14;
+        const TASK: usize = 1 << 12;
         parallel::for_each(count.div_ceil(TASK), |task| {
-            for i in task * TASK..((task + 1) * TASK).min(count) {
-                let j = step * (2 * i + 1);
-                // SAFETY: a level writes the words `j − 1`, `low(j) = step`, each once, and reads only words of
-                // larger `low`, written by the levels before.
-                unsafe {
-                    let above = if j + step < len { *ptr.add(j + step - 1) } else { F64::ZERO };
-                    *ptr.add(j - 1) = g[j] + above;
-                }
-            }
+            (task * TASK..((task + 1) * TASK).min(count)).for_each(|i| level(step, i));
         });
         step /= 2;
     }
+    // Each block's levels below its length: its words `j − 1`, `j` inside it, read words inside it or its last,
+    // `(k + 1) block − 1`, of a level above.
+    parallel::for_each(len / block, |k| {
+        let mut step = block / 2;
+        while step >= 1 {
+            let per = block / (2 * step);
+            (k * per..(k + 1) * per).for_each(|i| level(step, i));
+            step /= 2;
+        }
+    });
     g[0]
 }
 
@@ -737,6 +775,8 @@ pub(crate) enum Cheat {
     Absorb,
     /// The errors absorbed, `x h`'s coefficient `n` added to digit 1's first word (read through `ζ`, not `Z`).
     AbsorbSpill,
+    /// The errors absorbed, then the sum over the cells made zero at one cell, whose value the identity then misses.
+    AbsorbBalance,
 }
 
 /// `q_e[j] += limb e of Σ_k c_k f_k[j]` for each limb `e` and word `j`, the `f_k` columns over `K`, eight words a step
@@ -905,18 +945,24 @@ fn prove_inner(
             }
         }
     }
+    if cheat == Cheat::AbsorbBalance {
+        for h in h_slots(rest, n) {
+            let sum = h.iter().fold(F64::ZERO, |acc, &v| acc + v);
+            h[n / 2] += sum;
+        }
+    }
     drop(randomized);
     tracing::info_span!("coefficients")
         .in_scope(|| h_slots(rest, n).into_iter().for_each(|h| ntt::coefficients(h, F64::ZERO)));
     drop(span);
 
     // The quotient, on the coset of the witness's values, written into the quotient table's slots for `q`'s limbs
-    // ([`table_slot`]), which hold `h`'s values first. The blinding `X_n (b_0 + b_1 X_1 + b_2 X_2)`, `b_0` zero for
-    // now: it is solved for once `q` is known, and added then as `b_0 d d'` ([`H_BLIND`]).
+    // ([`table_slot`]), which hold `h`'s values first. The blinding `X_n (b_0 + b_1 X_1 + b_2 X_2)`, `b_2` zero for
+    // now: it is solved for once `q` is known, and added then as `b_2 w_1 d d'` ([`H_BLIND`]).
     let span = tracing::info_span!("Quotients").entered();
     let sigma_values = index.sigma_values();
     let sigma = index.sigma();
-    let extra: [[F64; H_BLIND]; 3] = std::array::from_fn(|e| [F64::ZERO, blind[e][0], blind[e][1]]);
+    let extra: [[F64; H_BLIND]; 3] = std::array::from_fn(|e| [blind[e][0], blind[e][1], F64::ZERO]);
     tracing::info_span!("sum values").in_scope(|| {
         for ((h, column), extra) in h_slots(rest, n).into_iter().zip(quotients.chunks_exact_mut(big)).zip(&extra) {
             two_halves(h, extra, column);
@@ -924,11 +970,9 @@ fn prove_inner(
     });
 
     let inner = tracing::info_span!("quotient values").entered();
-    // `q` has degree `2 n`, its coefficient `2 n` (monic basis) that of `d d' · b_2 X_2 · X_n / Z`: `b_2` times the
-    // leading coefficients of `d` and `d'`, `w`'s top one and `w`'s plus `β σ`'s. On the coset `X_{2n} = 1` (its
-    // offset is `β_{m+1}`), so the values less it are those of `q`'s first `2 n` coefficients.
-    let b2 = limbs_element(|e| blind[e][1]);
-    let lc = b2 * F192::from(w_top) * (F192::from(w_top) + beta_.mul_base(sigma[n - 1]));
+    // `w_1 w^2` has degree `2 n`, its coefficient `2 n` (monic basis) `w`'s top one squared. On the coset
+    // `X_{2n} = 1` (its offset is `β_{m+1}`), so its values less that are those of its first `2 n` coefficients.
+    let w_top2 = w_top * w_top;
     debug_assert_eq!(domain::chain(offset, m + 2)[m + 1], F64::ONE);
     let tau = row_vanishing(m);
     let row_poly = |x: F64| {
@@ -942,13 +986,14 @@ fn prove_inner(
     let (alpha8, beta8) = (Ex8::splat(alpha), Ex8::splat(beta_));
     let beta_points = Ex8::from_limbs(limbs8(&std::array::from_fn(|l| beta_.mul_base(point(l)))));
     let lane_points = Kx8::new(std::array::from_fn(point));
-    let (mu8, lc8) = (Ex8::splat(mu), Ex8::splat(lc));
+    let (mu8, w_top8) = (Ex8::splat(mu), Kx8::splat(w_top2));
     // The pins: their points, and the public values' interpolant on them.
     let (pin_points, _) = pins();
     let interpolant = pin_interpolant(&anchor_values(&statement.words()));
     // The quotient's values on the `len` points from `base`: `w` the witness's values there, `q` the sum's limbs
-    // (overwritten with `q`'s): `(h d d' + d + d') / Z + μ g`, `g` the gates' and pins' quotient, less `lc`. And the
-    // products `w^2` and `w (x + σ)`, from which `d d'`'s coefficients are made for `b_0`.
+    // (overwritten with `q`'s): `(h d d' + d + d') / Z + μ g`, `g` the gates' and pins' quotient. And the products
+    // `w_1 w^2` (less its coefficient `2 n`) and `w_1 w (x + σ)`, from which `w_1 d d'`'s coefficients are made for
+    // `b_2`.
     let quotient_block = |base: usize, w_values: &[F64], q: [&mut [F64]; 3], u: [&mut [F64]; 2]| {
         let len = w_values.len();
         let cell_vanishing = (offsets[m] + point(base >> m)).inv();
@@ -970,8 +1015,9 @@ fn prove_inner(
             let x = Kx8::splat(offset + point(i)) + lane_points;
             let w = limb(&w_values[low..]);
             let sigma = limb(&sigma_values[i..]);
-            (w * w).store_to(&mut u1[low..]);
-            (w * (x + sigma)).store_to(&mut u2[low..]);
+            let w1 = x * x + x;
+            (w1 * w * w + w_top8).store_to(&mut u1[low..]);
+            (w1 * w * (x + sigma)).store_to(&mut u2[low..]);
             let common = alpha8 + Ex8::from_k(w);
             let d = common + Ex8::splat(beta_.mul_base(offset + point(i))) + beta_points;
             let d_next = common + beta8.mul_k(sigma);
@@ -991,7 +1037,7 @@ fn prove_inner(
         for (s, ((&gate, &num), &inv)) in gates.iter().zip(&pinned).zip(&z_pins).enumerate() {
             let at = 8 * s;
             let copy = Ex8::from_limbs([limb(&q0[at..]), limb(&q1[at..]), limb(&q2[at..])]);
-            let [c0, c1, c2] = (copy + mu8.mul_k(gate + num * inv) + lc8).limbs();
+            let [c0, c1, c2] = (copy + mu8.mul_k(gate + num * inv)).limbs();
             for (out, c) in [&mut q0[..], &mut q1[..], &mut q2[..]].into_iter().zip([c0, c1, c2]) {
                 out[at..at + 8].copy_from_slice(&c.to_row().0);
             }
@@ -1047,6 +1093,7 @@ fn prove_inner(
     // `x h`'s low part, `B_0 = x h_low`, into digit 0 of kind 1 (digit 1 its scratch). Its coefficient `n` is `h`'s
     // coefficient `n − 1`, zero when the sum over the cells is ([`mul_x`]).
     let inner = tracing::info_span!("tables").entered();
+    let part = tracing::info_span!("x h").entered();
     let mut spill = [F64::ZERO; 3];
     for (e, slot) in rest.chunks_exact_mut(big).enumerate() {
         let (low, high) = slot.split_at_mut(n);
@@ -1058,44 +1105,65 @@ fn prove_inner(
         }
     }
 
-    // `b_0`: `q = A_0 + Z x A_1` needs `q`'s high part `Q_h` (`q = q_low + Z Q_h`) to vanish at 0, its coefficient 0.
-    // `b_0` adds `b_0 d d'` to `q`, `d d' = α^2 + α β (x + σ) + w^2 + β w (x + σ) + β^2 x σ`, whose coefficient `n` is
-    // `γ = (w^2)_n + β (w (x + σ))_n + β^2 σ_top` (`x σ`'s coefficient `n` is `σ`'s top one). `q`'s coefficient `2 n`
-    // adds `lc (X_0 + X_n)` to `Q_h`.
-    let (u1, u2) = (&u1_col[..big], &u2_col[..big]);
-    let x_sigma = &mut rest[n..2 * n];
-    let sigma_top = mul_x(sigma, x_sigma);
-    let x_sigma = &*x_sigma;
-    let gamma = F192::from(u1[n]) + beta_.mul_base(u2[n]) + (beta_ * beta_).mul_base(sigma_top);
-    let target = limbs_element(|e| q_cols[e * big + n]) + lc;
-    assert!(!gamma.is_zero(), "a challenge to reject: d d' has no coefficient n");
-    let b0 = target * gamma.inv();
+    // `b_2`: `q = A_0 + Z x A_1` needs `q`'s high part `Q_h` (`q = q_low + Z Q_h`) to vanish at 0, its coefficient 0,
+    // `q`'s coefficient `n`. `b_2` adds `b_2 E` to `q`, `E = w_1 d d'`, `d d' = α^2 + α β (x + σ) + w^2 + β w (x + σ) +
+    // β^2 x σ`; `E`'s coefficient `2 n` is `w_top^2`, and `X_{2n} = Z (Z + 1)`, so `E`'s high part at 0 is
+    // `γ = E_n + w_top^2 = (d d')_{n−2} ∋ α β σ_{n−2}`: not zero but for one `α` ([`Index::new`] checks `σ_{n−2}`).
+    drop(part);
+    let part = tracing::info_span!("b_2").entered();
+    let (v1, v2) = (&u1_col[..big], &u2_col[..big]);
+    let (s1, others) = rest[n..].split_at_mut(n);
+    let (s2, s3) = others[n..4 * n].split_at_mut(n);
+    let s3 = &mut s3[n..];
+    // `w_1 (x + σ)` into `s2`, `w_1 x σ` into `s3`, their coefficients `n` and `n + 1` apart.
+    copy_par(s1, sigma);
+    s1[1] += F64::ONE;
+    let w1_sigma_high = mul_w1(s1, s2);
+    assert!(mul_x(sigma, s1).is_zero());
+    let w1_x_sigma_high = mul_w1(s1, s3);
+    let (s2, s3) = (&*s2, &*s3);
+    let ab = alpha * beta_;
+    let b2_ = beta_ * beta_;
+    let e_high = |k: usize| {
+        ab.mul_base(w1_sigma_high[k]) + b2_.mul_base(w1_x_sigma_high[k])
+            + F192::from(v1[n + k])
+            + beta_.mul_base(v2[n + k])
+    };
+    let gamma = e_high(0) + F192::from(w_top2);
+    let target = limbs_element(|e| q_cols[e * big + n]);
+    assert!(!gamma.is_zero(), "a challenge to reject: w_1 d d' has no coefficient n");
+    let b2 = target * gamma.inv();
+    let lc = b2.mul_base(w_top2);
     {
         let mut limbs = q_cols.chunks_exact_mut(big).map(|c| c.split_at_mut(n));
         let [(l0, h0), (l1, h1), (l2, h2)] = std::array::from_fn(|_| limbs.next().expect("three limbs"));
         add_mixed(
             [&mut *l0, &mut *l1, &mut *l2],
-            &[(b0 * alpha * beta_, sigma), (b0, &u1[..n]), (b0 * beta_, &u2[..n]), (b0 * beta_ * beta_, x_sigma)],
+            &[(b2 * ab, s2), (b2, &v1[..n]), (b2 * beta_, &v2[..n]), (b2 * b2_, s3)],
         );
-        add_mixed([&mut *h0, &mut *h1, &mut *h2], &[(b0, &u1[n..]), (b0 * beta_, &u2[n..])]);
-        // `α^2` at coefficient 0, `α β x` at coefficient 1, and `β^2 σ_top X_n`, in `Q_h`'s coefficient 0.
+        add_mixed([&mut *h0, &mut *h1, &mut *h2], &[(b2, &v1[n..]), (b2 * beta_, &v2[n..])]);
+        // `α^2 w_1` at coefficient 2; `E`'s small parts' coefficients `n`, `n + 1` in `Q_h`'s 0 and 1, and `E`'s
+        // coefficient `2 n`, `w_top^2 X_{2n} = w_top^2 Z (Z + 1)`, in `Q_h`'s 0 (and its `n`, `lc`, below).
         let columns = [l0, l1, l2, h0, h1, h2];
-        let fix = [(0, b0 * alpha * alpha), (1, b0 * alpha * beta_), (n, b0 * (beta_ * beta_).mul_base(sigma_top))];
+        let small = |k: usize| ab.mul_base(w1_sigma_high[k]) + b2_.mul_base(w1_x_sigma_high[k]);
+        let fix = [(2, b2 * alpha * alpha), (n, b2 * small(0) + lc), (n + 1, b2 * small(1))];
         for (j, add) in fix {
             for (e, c) in [add.c0, add.c1, add.c2].into_iter().enumerate() {
                 columns[e + 3 * (j / n)][j % n] += F64(c);
             }
         }
+        debug_assert!(columns[3][0].is_zero() && columns[4][0].is_zero() && columns[5][0].is_zero());
     }
+    drop(part);
+    let part = tracing::info_span!("A_1").entered();
     let lc_limbs = [F64(lc.c0), F64(lc.c1), F64(lc.c2)];
-    // `A_1 = Q_h / x`: `(q[n..2 n] + lc X_0) / x`, exact now, and `lc X_n / x = lc Σ_(j < n) X_j`.
+    // `A_1 = Q_h / x`: `q[n..2 n] / x`, exact now, and `lc X_n / x = lc Σ_(j < n) X_j`.
     {
         let scratch = &mut u1_col[..n];
         for (column, &lc) in q_cols.chunks_exact_mut(big).zip(&lc_limbs) {
             let high = &mut column[n..];
-            high[0] += lc;
             let remainder = div_x(high, scratch);
-            assert!(remainder.is_zero(), "b_0 zeroes q's coefficient n");
+            assert!(remainder.is_zero(), "b_2 zeroes q's coefficient n");
             parallel::chunks_mut_zip(high, scratch, COPY_RUN, |_, a, s| {
                 for (a, &s) in a.iter_mut().zip(s) {
                     *a = s + lc;
@@ -1107,13 +1175,16 @@ fn prove_inner(
     // The empty limbs; the blinding, `b_0, b_1, b_2`, in digit 1 of `x h`'s limbs, `B_1` (`P = B_0 + Z x B_1`).
     // The commitment leaves the zero lanes out of the encoding (`opening::commit`), and the trailing ones out of the
     // table.
+    drop(part);
+    let part = tracing::info_span!("clear").entered();
     zero_par(u1_col);
     zero_par(u2_col);
-    let b0_limbs = [F64(b0.c0), F64(b0.c1), F64(b0.c2)];
+    let b2_limbs = [F64(b2.c0), F64(b2.c1), F64(b2.c2)];
     for (e, digit) in rest.chunks_exact_mut(n).skip(1).step_by(2).enumerate() {
         zero_par(digit);
-        digit[..H_BLIND].copy_from_slice(&[b0_limbs[e] + spill[e], blind[e][0], blind[e][1]]);
+        digit[..H_BLIND].copy_from_slice(&[blind[e][0] + spill[e], blind[e][1], b2_limbs[e]]);
     }
+    drop(part);
     drop(inner);
     let table = tracing::info_span!("Commit").in_scope(|| opening::commit(table));
     ps.send_root(&table.root);
@@ -1485,7 +1556,7 @@ pub(crate) mod tests {
             .iter()
             .map(|b| format!("{b:02x}"))
             .collect();
-        assert_eq!(hex, "6ef82f75f82901638a6c1e85a21be41cd5e0459601956c597e4d155ea6105106");
+        assert_eq!(hex, "5b7e5aeb6aa63efa7e23b5ebce6c36d668e90d319f2d184286ecf6201a18a865");
     }
 
     /// The polynomials of `table`'s kind `kind`, limb `limb`, its two digits.
@@ -1516,6 +1587,9 @@ pub(crate) mod tests {
         let cells = toy_cells(&circuit, &x);
         let proved = prove(&circuit, &index, &commitment, &statement, &cells);
         let n = 1 << cell_vars(circuit.log_rows);
+        // The wiring's top coefficient is a permutation's, zero; its coefficient `n − 2` is not, which makes `γ` a
+        // nonzero polynomial in `α`, so that the prover can solve for `b_2` but at one value of `α`.
+        assert!(index.wiring()[n - 1].is_zero() && !index.wiring()[n - 2].is_zero());
         // The committed words are the table's up to its last nonzero lane: the rest zero.
         let mut words = proved.tables.table.words().to_vec();
         assert!(words.len() <= 16 * n);
@@ -1700,7 +1774,8 @@ pub(crate) mod tests {
     /// A cheating prover that absorbs a bad witness's errors into the sum's polynomial after `μ` ([`Cheat`]): the
     /// witness's and the wiring's claims hold, and the copy claim rejects, since the sum over the cells is then not
     /// zero and `x h` has a coefficient `n` that the table's digit 0 cannot hold, dropped ([`Cheat::Absorb`]) or put in
-    /// digit 1 ([`Cheat::AbsorbSpill`]): for a gate's error, a pin's and a copy's, and for two equal gate errors that
+    /// digit 1 ([`Cheat::AbsorbSpill`]), or the sum is made zero at one cell, which the identity then misses
+    /// ([`Cheat::AbsorbBalance`]): for a gate's error, a pin's and a copy's, and for two equal gate errors that
     /// would cancel on a 2-cycle. As a negative control, on the toy circuit with two rows' `X` cells made a cycle of
     /// their own (which `errors_have_their_own_poles` rejects, and so [`Index::new`]), the same two errors cancel and
     /// every claim holds: the check has teeth.
@@ -1718,7 +1793,8 @@ pub(crate) mod tests {
             truth(index, &prove_inner(circuit, index, &commitment, &statement, cells, &randomness, how))
         };
         let index = Index::new(&circuit);
-        for how in [Cheat::Absorb, Cheat::AbsorbSpill] {
+        const CHEATS: [Cheat; 3] = [Cheat::Absorb, Cheat::AbsorbSpill, Cheat::AbsorbBalance];
+        for how in CHEATS {
             assert_eq!(cheat(&circuit, &index, &cells, how), [true; 3], "a witness has no errors to absorb");
         }
 
@@ -1749,7 +1825,7 @@ pub(crate) mod tests {
         for (name, tamper) in cases {
             let mut bad = cells.clone();
             tamper(&mut bad);
-            for how in [Cheat::Absorb, Cheat::AbsorbSpill] {
+            for how in CHEATS {
                 assert_eq!(cheat(&circuit, &index, &bad, how), [true, true, false], "{name}, {how:?}");
             }
         }

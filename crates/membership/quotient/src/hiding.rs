@@ -11,7 +11,7 @@
 //!   coordinates over [`RANDOM_WORDS`]): every cell of a random row is affine in its two words, and `W` is linear in
 //!   the cells;
 //! - **T**: the quotient table's out-of-domain answer, over the blinding of `h` (3 over `3 FREE_BLIND`), the random
-//!   rows fixed: the free blinding `b_1, b_2` is `h`'s coefficients `n + 1, n + 2` and moves `q` by `b d d'`; `b_0`,
+//!   rows fixed: the free blinding `b_0, b_1` is `h`'s coefficients `n, n + 1` and moves `q` by `b d d'`; `b_2`,
 //!   solved for so that `q`'s coefficient `n` is zero, is affine in them.
 //!
 //! Both maps are affine: [`revealed_scalars_are_uniform`] checks that two words changed together move the scalars
@@ -119,6 +119,8 @@ fn revealed_scalars_are_uniform_on_membership() {
 
 fn check_uniform(circuit: &Circuit, statement: &Statement, cells: &[F64], rng: &mut Rng) {
     let index = Index::new(circuit);
+    // The wiring's coefficient `n − 2` is not zero: the prover's `b_2` exists but at one value of `α`.
+    assert!(!index.wiring()[index.wiring().len() - 2].is_zero());
     let commitment = Commitment::of(&index.commit());
     let seed: [u8; 32] = std::array::from_fn(|_| rng.next_u8());
     let base = Randomness::derive(&seed, &commitment, statement, cells);
