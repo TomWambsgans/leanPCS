@@ -124,7 +124,7 @@ theorem ports_carry (hc : c.Checked r) (hw : c.circuit.Satisfied w) :
     have hro := hc.roots
     unfold rootsOk at hro
     simp only [Bool.and_eq_true, beq_iff_eq] at hro
-    obtain ⟨⟨_, hrsz⟩, hro2⟩ := hro
+    obtain ⟨_, hrsz, hro2⟩ := hro
     have hi : i < c.rootsAt.length := by
       by_contra hcon
       have : c.rootLimbs.getD i #[] = #[] := by

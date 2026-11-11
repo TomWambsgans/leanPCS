@@ -106,12 +106,48 @@ def RangeOk (pubLen streamLen : ℕ) : Node → Prop
 abbrev rgStep (iv pub stream : List UInt8) (vals : Array RecGraph.Value) (n : Node) : RecGraph.Value :=
   RecGraph.stepP keccakF1600 iv pub stream.toArray #[] vals (toRGNode n)
 
-theorem corr_toState {a : Value} {b : RecGraph.Value} {s : List UInt8} (ha : a = .state s) (h : Corr a b)
+/-- A transcript state's value: the seed's or a hash's. -/
+def Value.IsSt : Value → Prop
+  | .e _ => False
+  | _ => True
+
+theorem corr_toState {a : Value} {b : RecGraph.Value} (ha : a.IsSt) (h : Corr a b)
     {vals : Array RecGraph.Value} {i : ℕ} (hb : vals[i]? = some b) : a.toState = digestBytes (RecGraph.valState vals i) := by
-  subst ha
-  cases b with
-  | elem y => cases h
-  | state d => simp only [Corr] at h; simp [Value.toState, RecGraph.valState, hb, h]
+  cases a with
+  | e x => exact absurd ha id
+  | state s =>
+    cases b with
+    | state d => simp only [Corr] at h; simp [Value.toState, RecGraph.valState, hb, h]
+    | _ => cases h
+  | sponge st =>
+    cases b with
+    | sponge st' => simp only [Corr] at h; subst h; simp [Value.toState, RecGraph.valState, hb]
+    | _ => cases h
+
+theorem corr_toRate {a : Value} {b : RecGraph.Value} (h : Corr a b)
+    {vals : Array RecGraph.Value} {i : ℕ} (hb : vals[i]? = some b) : a.toRate = RecGraph.valRate vals i := by
+  cases a with
+  | e x =>
+    cases b with
+    | elem y => simp [Value.toRate, RecGraph.valRate, hb]
+    | _ => cases h
+  | state s =>
+    cases b with
+    | state d => simp [Value.toRate, RecGraph.valRate, hb]
+    | _ => cases h
+  | sponge st =>
+    cases b with
+    | sponge st' => simp only [Corr] at h; subst h; simp [Value.toRate, RecGraph.valRate, hb]
+    | _ => cases h
+
+/-- `challenge_at` on a sponge's rate, in both semantics. -/
+theorem challengeAt_corr (st : KeccakState) (k : ℕ) (hk : k < 5) :
+    challengeAtL (UniStatement.rateBytesOf st) k = UniStatement.challengeAt (UniStatement.rateBytesOf st) k := by
+  have h136 := Compiled.rateBytesOf_length st
+  unfold challengeAtL UniStatement.challengeAt
+  simp only [elemOfNats]
+  rw [beWord_eq _ _ (by omega), beWord_eq _ _ (by omega), beWord_eq _ _ (by omega)]
+  rfl
 
 theorem challenge_corr (d : Digest) :
     challengeOf (digestBytes d) = PcsQuotient.Transcript.challengeOf d := by
@@ -174,7 +210,8 @@ theorem step_corr (g : Graph) (iv pub stream : List UInt8) (mine : Array Value) 
     (n : Node) (hrw : ∀ k m, n ≠ .ringWeight k m)
     (hops : ∀ o ∈ n.ops, ∃ b, theirs[o]? = some b ∧ Corr (mine.getD o default) b)
     (hst : ∀ o ∈ n.ops, (∀ a b, n ≠ .add a b) → (∀ a b, n ≠ .mul a b) → (∀ v s w, n ≠ .bits v s w) →
-      ∃ s, mine.getD o default = .state s)
+      (mine.getD o default).IsSt)
+    (hwide : ∀ h k, n = .wide h k → k < 5 ∧ ∃ st, mine.getD h default = .sponge st)
     (hrange : RangeOk pub.length stream.length n) :
     Corr (g.step iv pub stream mine n) (rgStep iv pub stream theirs n) := by
   have hE : ∀ o ∈ n.ops, (mine.getD o default).toE = RecGraph.valE theirs o := fun o ho => by
@@ -182,8 +219,7 @@ theorem step_corr (g : Graph) (iv pub stream : List UInt8) (mine : Array Value) 
   have hS : ∀ o ∈ n.ops, (∀ a b, n ≠ .add a b) → (∀ a b, n ≠ .mul a b) → (∀ v s w, n ≠ .bits v s w) →
       (mine.getD o default).toState = digestBytes (RecGraph.valState theirs o) := fun o ho h1 h2 h3 => by
     obtain ⟨b, hb, hc⟩ := hops o ho
-    obtain ⟨s, hs⟩ := hst o ho h1 h2 h3
-    exact corr_toState hs hc hb
+    exact corr_toState (hst o ho h1 h2 h3) hc hb
   cases n with
   | const a b d => rfl
   | statement k =>
@@ -203,9 +239,15 @@ theorem step_corr (g : Graph) (iv pub stream : List UInt8) (mine : Array Value) 
     simp only [hE a (by simp [Node.ops]), hE b (by simp [Node.ops])]
   | seed => rfl
   | hash s f t =>
-    show digestBytes (keccak256 (_ ++ _)) = digestBytes (Id.run (keccak256With _ (_ ++ _)))
+    show keccakState (_ ++ _) = Id.run (keccak256StateWith _ (_ ++ _))
     rw [hS s (by simp [Node.ops]) (by intros; simp) (by intros; simp) (by intros; simp), extract_toList]
     rfl
+  | wide h k =>
+    obtain ⟨hk, st, hst'⟩ := hwide h k rfl
+    obtain ⟨b, hb, hc⟩ := hops h (by simp [Node.ops])
+    have hR := corr_toRate hc hb
+    show challengeAtL _ _ = UniStatement.challengeAt _ _
+    rw [← hR, hst', Value.toRate, challengeAt_corr st k hk]
   | low h =>
     show challengeOf _ = _
     rw [hS h (by simp [Node.ops]) (by intros; simp) (by intros; simp) (by intros; simp), challenge_corr]
@@ -278,11 +320,20 @@ theorem range_ok (hc : c.Checked r) {id : ℕ} (hid : id < c.nodes.size) (hl : c
 /-- A live seed's or hash's value, in this library's semantics, is a state. -/
 theorem state_val (hc : c.Checked r) (iv pub stream : List UInt8) {o : ℕ} (ho : o < c.nodes.size)
     (hl : c.live.getD o false = true) (hk : isStateNode (c.nodes.getD o default) = true) :
-    ∃ s, ((c.egraph r).eval iv pub stream).getD o default = .state s := by
+    (((c.egraph r).eval iv pub stream).getD o default).IsSt := by
   rw [Graph.eval_step (c.egraph r) _ _ _ o ho (not_ringWeight hc ho hl)
     (fun a ha => ((graphOk_parts hc.graph).1 o ho hl a ha).1)]
-  show ∃ s, (c.egraph r).step iv pub stream _ (c.nodes.getD o default) = _
-  cases hn : c.nodes.getD o default <;> simp [hn, isStateNode] at hk <;> exact ⟨_, rfl⟩
+  show ((c.egraph r).step iv pub stream _ (c.nodes.getD o default)).IsSt
+  cases hn : c.nodes.getD o default <;> simp [hn, isStateNode] at hk <;> trivial
+
+/-- A live hash's value, in this library's semantics, is a sponge. -/
+theorem sponge_val (hc : c.Checked r) (iv pub stream : List UInt8) {o : ℕ} (ho : o < c.nodes.size)
+    (hl : c.live.getD o false = true) (hk : Node.isHash (c.nodes.getD o default) = true) :
+    ∃ st, ((c.egraph r).eval iv pub stream).getD o default = .sponge st := by
+  rw [Graph.eval_step (c.egraph r) _ _ _ o ho (not_ringWeight hc ho hl)
+    (fun a ha => ((graphOk_parts hc.graph).1 o ho hl a ha).1)]
+  show ∃ st, (c.egraph r).step iv pub stream _ (c.nodes.getD o default) = _
+  cases hn : c.nodes.getD o default <;> simp [hn, Node.isHash] at hk <;> exact ⟨_, rfl⟩
 
 /-- **On an accepted circuit, every live node of the expanded graph has the same value in this library's semantics
 and in `RecGraph`'s** (over Keccak-f[1600]), on a 32-byte public input and a stream of the graph's length. -/
@@ -323,10 +374,26 @@ theorem agree (hc : c.Checked r) (pub stream : List UInt8) (hpub : pub.length = 
         split at hok
         · simp only [Bool.and_eq_true] at hok; exact hok.1.1.2
         · cases hok
+      | wide h k =>
+        rw [hn] at ho; simp [Node.ops] at ho; subst ho
+        simp only [nodeOk, hn] at hok
+        split at hok
+        · simp only [Bool.and_eq_true] at hok
+          exact isStateNode_of_isHash _ hok.1.1.1.1.1.1
+        · cases hok
       | add a b => exact absurd hn (h1 a b)
       | mul a b => exact absurd hn (h2 a b)
       | bits v s w => exact absurd hn (h3 v s w)
       | _ => rw [hn] at ho; simp [Node.ops] at ho
+    · intro h k hn
+      change c.nodes.getD id default = Node.wide h k at hn
+      have hok := hc.nodes id hid hl
+      simp only [nodeOk, hn] at hok
+      split at hok
+      · simp only [Bool.and_eq_true, decide_eq_true_eq] at hok
+        have hh : h ∈ (c.nodes.getD id default).ops := by rw [hn]; simp [Node.ops]
+        exact ⟨hok.1.1.1.1.1.2, sponge_val hc _ _ _ (lt_trans (hops h hh).1 hid) (hops h hh).2 hok.1.1.1.1.1.1⟩
+      · cases hok
     · rw [hpub, hstr]; exact range_ok hc hid hl
 
 end Compiled

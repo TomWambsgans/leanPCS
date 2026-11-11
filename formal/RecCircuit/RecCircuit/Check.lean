@@ -373,7 +373,7 @@ def nodeOk (X : Ctx) (iv : List UInt8) (packOf : Array (Option ℕ)) (id : ℕ) 
     match c.rates.getD h none with
     | some rt =>
       let rb := fun i => rt.getD i NONE
-      Node.isHash (c.nodes.getD h default) && 8 * (24 * k + 32) ≤ rt.size && l.size == 3 &&
+      Node.isHash (c.nodes.getD h default) && k < 5 && 8 * (24 * k + 32) ≤ rt.size && l.size == 3 &&
         pk (L 0) (beBits rb (24 * k + 24) 8) && pk (L 1) (beBits rb (24 * k + 16) 8) && pk (L 2) (beBits rb (24 * k + 8) 8)
     | none => false
   | .bits v shift width =>
@@ -583,11 +583,11 @@ def wordSpec (k : ℕ) (w : Word) (f : ℕ) : List MBit × List ℕ :=
   let free := ((List.range 192).map fun i => MBit.free f i)
   match k, w with
   | 0, .stream at_ => ((List.range 256).map fun i => .stream (8 * at_ + i), [])
-  | 0, .const x => (constMBits (wordBytes32 x), [])
-  | _ + 1, .const x => (constMBits ((wordBytes32 x).drop 8), [])
+  | 0, .const x => (constMBits (RecGraph.beBytes32 x), [])
+  | _ + 1, .const x => (constMBits ((RecGraph.beBytes32 x).drop 8), [])
   | _ + 1, .node id =>
     match c.nodes.getD id default with
-    | .const c0 c1 c2 => (constMBits ((wordBytes32 (elementWord (F192.new c0 c1 c2))).drop 8), [])
+    | .const c0 c1 c2 => (constMBits ((UniStatement.elementWord (UniStatement.eNew c0 c1 c2)).drop 8), [])
     | .input off len =>
       if c.hashedRead off len then ((List.range 192).map fun i => .stream (8 * off + i), []) else (free, [id])
     | _ => (free, [id])
@@ -606,6 +606,15 @@ def claimSpec (ws : List Word) : List MBit × List ℕ :=
   let b := c.claimSpecAux 0 0 ws
   (constMBits [1, (ws.length - 3).toUInt8] ++ b.1, b.2)
 
+/-- A hashed claim's words: its root first (a stream word or a constant), then element words (nodes or constants). -/
+def claimWordsOk : List Word → Bool
+  | w :: ws => (match w with
+      | .stream _ | .const _ => true
+      | _ => false) && ws.all fun w => match w with
+      | .node _ | .const _ => true
+      | _ => false
+  | [] => false
+
 /-- A free element's bits as `pack` takes them for limb `li` (the element's big-endian bytes `8 (2 − li) ..`). -/
 def freeLimbBits (bits : Array ℕ) (li : ℕ) : List (ℕ × ℕ) :=
   (List.range 24).flatMap fun byte =>
@@ -617,7 +626,8 @@ def mbitOk (X : Ctx) (frees : Array (ℕ × Array Val × Array Val × Array Val)
   | .const v => b == (if v then .one else .zero)
   | .stream i =>
     match b with
-    | .v x => (c.bitSelf.getD i none).isSome && X.sameBit (c.streamBit i) x
+    | .v x => (List.range 8).all (fun j => (c.bitSelf.getD (8 * (i / 8) + j) none).isSome) &&
+      X.sameBit (c.streamBit i) x
     | _ => false
   | .free f k =>
     match b with
@@ -640,7 +650,10 @@ def claimOk (X : Ctx) (r : Recorded) (packOf : Array (Option ℕ)) (j : ℕ) : B
     | .node id => Word.node (c.map.getD id 0)
     | other => other
   let sp := c.claimSpec ws
-  3 ≤ ws.length && ws.length - 3 < 256 &&
+  3 ≤ ws.length && ws.length - 3 < 256 && claimWordsOk ws &&
+    ws.all (fun w => match w with
+      | .node id => c.live.getD id false
+      | _ => true) &&
     cl.message.size == sp.1.length &&
     allBelow sp.1.length (fun p => c.mbitOk X cl.frees (cl.message.getD p .zero) (sp.1.getD p (.const false))) &&
     cl.frees.size == sp.2.length &&
