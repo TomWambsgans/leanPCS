@@ -247,8 +247,6 @@ fn prefix_quotient<D: Send + Sync>(
     piece: impl Fn(usize, usize) -> D + Sync,
     value: impl Fn(&D, &Points, usize) -> Ex8 + Sync,
 ) -> Quotient {
-    let prof = std::env::var_os("PI1_PROFILE").is_some();
-    let started = std::time::Instant::now();
     let sizes = ntt::prefix_sizes(count, r.saturating_sub(2));
     let base = 1usize << r.max(sizes[0] + 1);
     let total: usize = sizes.iter().map(|&e| 1usize << e).sum();
@@ -308,7 +306,6 @@ fn prefix_quotient<D: Send + Sync>(
             );
         }
     }
-    let evaluated = started.elapsed().as_secs_f64();
     {
         let [a, b, c] = &mut limbs;
         ntt::interpolate_prefix_cols(&mut [&mut a[..], &mut b[..], &mut c[..]], &sizes, base);
@@ -320,13 +317,6 @@ fn prefix_quotient<D: Send + Sync>(
     let [a, b, c] = &mut check;
     evaluate(first, g, [a, b, c]);
     let holds = ntt::on_coset_prefix_each(&limbs.each_ref().map(|l| (&l[..], first, g))) == check;
-    if prof {
-        eprintln!(
-            "      prefix_quotient 2^{r}, {} columns: evaluated {evaluated:.4} s, interpolated and checked {:.4} s",
-            columns.len(),
-            started.elapsed().as_secs_f64() - evaluated
-        );
-    }
     Quotient::new(limbs, count, holds)
 }
 
@@ -465,8 +455,6 @@ impl Drop for AbortOnPanic<'_> {
 /// quotient at a time, on 64 threads, the tables' leaves and `Q_W`'s parts left most workers idle between short
 /// dispatches. The same quotients.
 pub fn prefix_quotients(jobs: &[&dyn Numerator]) -> Vec<Quotient> {
-    let prof = std::env::var_os("PI1_PROFILE").is_some();
-    let started = std::time::Instant::now();
     struct Plan {
         count: u64,
         sizes: Vec<usize>,
@@ -532,7 +520,6 @@ pub fn prefix_quotients(jobs: &[&dyn Numerator]) -> Vec<Quotient> {
     for (&(q, _), batch) in packing.iter().zip(packed.drain(..)) {
         batches[q].push(batch);
     }
-    let t_pack = started.elapsed().as_secs_f64();
     // The limbs, every word written by the fills (the pieces tile them), each zeroed by a worker.
     let lengths: Vec<usize> = plans.iter().flat_map(|p| [p.total; 3]).collect();
     let mut flat: Vec<Vec<F64>> = parallel::map_collect(lengths.len(), |k| vec![F64::ZERO; lengths[k]]);
@@ -548,7 +535,6 @@ pub fn prefix_quotients(jobs: &[&dyn Numerator]) -> Vec<Quotient> {
         .map(|p| std::array::from_fn(|_| vec![F64::ZERO; 1 << p.check.1]))
         .collect();
     let unit_bytes = |&(q, _, p, _): &(usize, usize, usize, bool)| plans[q].width << p << if plans[q].alone { 3 } else { 6 };
-    let clock = std::time::Instant::now();
     {
         // The fills, piece by piece (`fill_first[u]..fill_first[u + 1]`): the piece, its runs, and its outputs, the
         // limbs (or the checks) split in the order of the pieces.
@@ -726,9 +712,7 @@ pub fn prefix_quotients(jobs: &[&dyn Numerator]) -> Vec<Quotient> {
             }
         });
     }
-    let t_rounds = clock.elapsed().as_secs_f64();
     drop(batches);
-    let clock = std::time::Instant::now();
     {
         let mut parts: Vec<ntt::PrefixCols> = limbs
             .iter_mut()
@@ -741,7 +725,6 @@ pub fn prefix_quotients(jobs: &[&dyn Numerator]) -> Vec<Quotient> {
             .collect();
         ntt::interpolate_prefix_many(&mut parts);
     }
-    let t_interpolate = clock.elapsed().as_secs_f64();
     // One more block of points each: the numerator's quotient there against the interpolant's values.
     let at: Vec<(&[F64], usize, usize)> = limbs
         .iter()
@@ -749,21 +732,12 @@ pub fn prefix_quotients(jobs: &[&dyn Numerator]) -> Vec<Quotient> {
         .flat_map(|(l, p)| l.iter().map(move |v| (&v[..], p.check.0, p.check.1)))
         .collect();
     let values = ntt::on_coset_prefix_each(&at);
-    let out: Vec<Quotient> = limbs
+    limbs
         .into_iter()
         .zip(plans.iter().zip(checks))
         .zip(values.chunks(3))
         .map(|((l, (plan, check)), values)| Quotient::new(l, plan.count, values == check))
-        .collect();
-    if prof {
-        eprintln!(
-            "      prefix_quotients ({} quotients, {} pieces): packed {t_pack:.4} s, pieces {t_rounds:.4} s, interpolated {t_interpolate:.4} s, all {:.4} s",
-            jobs.len(),
-            units.len(),
-            started.elapsed().as_secs_f64()
-        );
-    }
-    out
+        .collect()
 }
 
 /// Batch `src` (novel coefficients, `2^r` rows) on the piece `ω_first + V_p` (`3 ≤ p ≤ r`), into `dst` (`2^p` rows), by

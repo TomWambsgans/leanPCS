@@ -10,7 +10,7 @@ use quotient::ntt::Kx8;
 
 use super::fingerprint::Fingerprint;
 use super::prints::{Print, product};
-use super::poly::{batch_invert, from_v};
+use super::poly::batch_invert;
 use super::trace::Trace;
 use crate::domain::is_active;
 use crate::heap::{HeapLayout, Leaves};
@@ -49,7 +49,7 @@ impl Bus {
     /// The memory cell's pulled fingerprint (`count` its final count) or pushed one (`count = 1`).
     pub fn memory(&self, address: F64, count: F64, limbs: [F64; 3]) -> F192 {
         let w = &self.weights;
-        let mut acc = self.beta + w[0] * from_v(SEP_MEM) + w[1].mul_base(address) + w[2].mul_base(count);
+        let mut acc = self.beta + w[0] * F192::from(SEP_MEM) + w[1].mul_base(address) + w[2].mul_base(count);
         for (k, &limb) in limbs.iter().enumerate() {
             acc += w[3 + k].mul_base(limb);
         }
@@ -64,7 +64,7 @@ impl Bus {
     /// `β + fp(SEP_STATE, pc, 1)`.
     pub fn state(&self, pc: F192) -> F192 {
         let w = &self.weights;
-        self.beta + w[0] * from_v(SEP_STATE) + w[1] * pc + w[2]
+        self.beta + w[0] * F192::from(SEP_STATE) + w[1] * pc + w[2]
     }
 }
 
@@ -181,7 +181,7 @@ pub fn heap(layout: &HeapLayout, leaves: &[(Leaves, Vec<F192>)]) -> Vec<F192> {
 
 /// The root the state boundary requires: `fp(final) / fp(initial)`.
 pub fn expected_root(bus: &Bus, log_bytecode: usize) -> F192 {
-    let last = from_v(gpow((1u64 << log_bytecode) - 1));
+    let last = F192::from(gpow((1u64 << log_bytecode) - 1));
     bus.state(last) * bus.state(F192::ONE).inv()
 }
 

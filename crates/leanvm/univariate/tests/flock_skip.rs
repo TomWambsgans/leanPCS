@@ -4,7 +4,7 @@
 //! - at a skip of 6, the skip module's round 1 and whole zerocheck write what leanVM's own do, byte for byte;
 //! - at skips of 3, 4 and 5, on honest witnesses, the zerocheck's stream is accepted (its rounds re-checked with the
 //!   verifier's sumcheck), and its three claims are the witness's evaluations at the point;
-//! - the zerocheck also with π1-rec's eq point (`EqPoint::Squares`, `FsShape::Rec`: the sampled coordinates
+//! - the zerocheck also with π1-rec3's eq point (`EqPoint::Squares`, `FsShape::Rec3`: the sampled coordinates
 //!   successive squares of one).
 //!
 //! Flock end to end on the Keccak-f block: `tests/flock_keccak.rs`.
@@ -276,7 +276,7 @@ fn zerocheck_at_six_is_leanvms() {
 #[test]
 fn zerocheck_skips_verify_and_are_faithful() {
     let mut rng = Rng(0x5eed_0003);
-    let shapes = [(EqPoint::Sampled, FsShape::Main), (EqPoint::Squares, FsShape::Rec)];
+    let shapes = [(EqPoint::Sampled, FsShape::Main), (EqPoint::Squares, FsShape::Rec3)];
     for (k, (eq, fs)) in (3..=6).flat_map(|k| shapes.map(|shape| (k, shape))) {
         for m in [k + 8, 14, 17] {
             let padding = PaddingSpec {

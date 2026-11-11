@@ -318,7 +318,7 @@ pub fn compile_hashing<P: Permutation>(
             _ => None,
         })
         .chain(zero.iter().copied());
-    let live = crate::count::live(&g, outputs);
+    let live = live(&g, outputs);
 
     let mut b = Builder::new(log_width);
     let permutation = make(&mut b);
@@ -834,3 +834,29 @@ pub fn compile_hashing<P: Permutation>(
     };
     (compiled, trace)
 }
+
+/// A node's operands: what it reads (a hash the state before it, a challenge its hash, the ring switch's kernel its
+/// operands).
+fn operands(graph: &Graph, node: Node) -> Vec<u32> {
+    match node {
+        Node::Add(a, b) | Node::Mul(a, b) => vec![a, b],
+        Node::Hash(s, _, _) => vec![s],
+        Node::Low(h) | Node::Narrow(h) | Node::Wide(h, _) | Node::Bits(h, _, _) => vec![h],
+        Node::RingWeight(k, _) => graph.kernels[k as usize].clone(),
+        Node::Const(_) | Node::Statement(_) | Node::Input { .. } | Node::Seed => vec![],
+    }
+}
+
+/// The nodes `outputs` read, through their operands.
+pub fn live(graph: &Graph, outputs: impl IntoIterator<Item = u32>) -> Vec<bool> {
+    let mut live = vec![false; graph.nodes.len()];
+    let mut stack: Vec<u32> = outputs.into_iter().collect();
+    while let Some(id) = stack.pop() {
+        if std::mem::replace(&mut live[id as usize], true) {
+            continue;
+        }
+        stack.extend(operands(graph, graph.nodes[id as usize]));
+    }
+    live
+}
+

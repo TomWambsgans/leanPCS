@@ -35,7 +35,7 @@ use leanvm_rec::pi2::prover::Setup;
 use leanvm_rec::pi2::verifier::Spec;
 use leanvm_rec::REFERENCE;
 use leanvm_univariate::contract::{Recorded, SetupRoots, contract_iv, record_verifier};
-use leanvm_univariate::{Claims, KECCAK_REC3, Shape};
+use leanvm_univariate::{KECCAK_REC3, Shape};
 
 /// The reference workload: leanVM 9d50c92a3's Keccak VM at 128 signatures (`leanvm_rec::REFERENCE`,
 /// `leanvm_statement::shapes::reference()`; Lean's `RecGraphKeccak.Pi1.keccak128`).
@@ -350,7 +350,7 @@ fn summary(circuit: &Circuit, calls: &[Vec<CallWord>], c: &Constants) -> String 
 #[ignore = "compiles π2's circuit for the Keccak VM's π1-rec3 twice (2^24 positions) and commits its setup"]
 fn keccak_statement_data_is_current() {
     let rendered = deep(|| {
-        let recorded = record_verifier(&KECCAK_128, KECCAK_REC3, Claims::Point);
+        let recorded = record_verifier(&KECCAK_128, KECCAK_REC3);
         // π1's contract IV binds the code's reference root.
         assert_eq!(KECCAK_128.log_memory, 20);
         assert_eq!(KECCAK_128.log_bytecode, 18);

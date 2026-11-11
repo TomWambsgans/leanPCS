@@ -22,7 +22,6 @@ use leanvm_statement::transcript::keccak_seed;
 use leanvm_rec::circuit::compile::{Compiled, Inputs, Layout, pi2};
 use leanvm_rec::circuit::spec::Failure;
 use leanvm_rec::eval::{Value, evaluate};
-use leanvm_univariate::Claims;
 use leanvm_univariate::contract::{NAME, Recorded, record_verifier_with};
 
 const STREAM_AT: usize = 4 + 32;
@@ -129,7 +128,7 @@ fn run(name: &str, layout: Layout, log_n: u8, fill: (f64, f64)) {
     let variant = vectors::variant_of(&v.config);
     // The contract binds the proof's setup commitment `F` (the third claim's).
     let roots = vectors::setup_roots(&v);
-    let recorded = record_verifier_with(&v.shape, variant, Claims::Point, &roots);
+    let recorded = record_verifier_with(&v.shape, variant, &roots);
     let stream = v.calldata[STREAM_AT..].to_vec();
     let iv = recorded.iv(&PROGRAM_IV);
     let c = compiled(&recorded, layout, iv, v.public, &stream);
@@ -308,7 +307,7 @@ fn keccak_rec4_128_any_stream() {
     deep(|| {
         let v = vector("keccak128_rec4");
         let variant = vectors::variant_of(&v.config);
-        let recorded = record_verifier_with(&v.shape, variant, Claims::Point, &vectors::setup_roots(&v));
+        let recorded = record_verifier_with(&v.shape, variant, &vectors::setup_roots(&v));
         let stream = v.calldata[STREAM_AT..].to_vec();
         let iv = recorded.iv(&PROGRAM_IV);
         let mut flipped = stream.clone();

@@ -16,7 +16,7 @@ use leanvm_rec::circuit::compile::{Inputs, Layout, pi2};
 use leanvm_rec::circuit::spec::{CallWord, Circuit, Formula, Source};
 use leanvm_univariate::contract::{Recorded, calls, record_verifier};
 use leanvm_rec::REFERENCE;
-use leanvm_univariate::{Claims, KECCAK_REC3};
+use leanvm_univariate::KECCAK_REC3;
 
 
 fn deep<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> R {
@@ -207,7 +207,7 @@ fn emit(name: &str, recorded: &Recorded) {
 #[ignore = "the Keccak VM's π1-rec3 graph and circuit (2^24 positions): about a minute"]
 fn keccak_pi1_rec3() {
     deep(|| {
-        let recorded = record_verifier(&REFERENCE, KECCAK_REC3, Claims::Point);
+        let recorded = record_verifier(&REFERENCE, KECCAK_REC3);
         emit("keccak_pi1_rec3", &recorded)
     });
 }

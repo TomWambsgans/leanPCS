@@ -30,7 +30,6 @@ use leanvm_rec::pi2::verifier::Spec;
 use leanvm_statement::shapes::PROGRAM_IV;
 use leanvm_univariate::prover::prove::{Config, prove as prove_pi1, prove_streaming};
 use leanvm_univariate::prover::trace::Trace;
-use leanvm_univariate::Claims;
 
 /// At the reference trace (the 128-signature trace whose π1-rec4 proof is `keccak128_rec4.txt`), the leading bytes of
 /// the Keccak-256s of π1's stream, π1's openings, π2's stream and π2's openings (the openings as their `Debug` text).
@@ -80,12 +79,12 @@ fn trace_to_recursion() {
         );
         let config = Config {
             variant: leanvm_rec::PI1,
-            claims: Claims::Point,
+            low_memory: false,
             check: false,
             garbage: false,
             roots,
         };
-        let recorded = leanvm_univariate::contract::record_verifier_with(&shape, leanvm_rec::PI1, Claims::Point, &roots);
+        let recorded = leanvm_univariate::contract::record_verifier_with(&shape, leanvm_rec::PI1, &roots);
         let pi1_setup = started.elapsed().as_secs_f64();
         let public = trace.public_input();
         // π2's circuit and its witness plan depend on π1's verifier only; a stream gives the compiler its values (any

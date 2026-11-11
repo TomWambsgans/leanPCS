@@ -8,10 +8,10 @@
 //! ([`Weight`]: eq tensors, one table per several-point column, the ring switch's one map), nothing of the stacks'
 //! size written; then the folded stacks and weights are written out and folded on.
 
+use leanvm_statement::field::E;
 use leanvm_statement::transcript::KeccakWriter;
 use primitives::field::{F64, F192, F192Unreduced};
 
-use super::poly::{from_v, to_v};
 use super::weight::{Weight, fold_stack, zeros};
 
 /// The rounds that read the stacks' words, as [`Weight`] pieces; then every stack and its weight are written out
@@ -162,7 +162,6 @@ pub fn prove(
     stacks: &[(&[F64], usize)],
     weights: Vec<Weight>,
     lambda: F192,
-    narrow: bool,
 ) -> Result<(Vec<F192>, Vec<F192>), String> {
     let vars = stacks.iter().map(|&(_, v)| v).max().expect("stacks");
     let shortest = stacks.iter().map(|&(_, v)| v).min().expect("stacks");
@@ -197,10 +196,9 @@ pub fn prove(
             q0 += scales[k] * a;
             q2 += scales[k] * b;
         }
-        writer.send(to_v(q0));
-        writer.send(to_v(q2));
-        // π1-rec2's narrow challenges (`FsShape::Rec2`), as the verifier draws them.
-        let r = from_v(if narrow { writer.sample_narrow() } else { writer.sample() });
+        writer.send(E::from(q0));
+        writer.send(E::from(q2));
+        let r = F192::from(writer.sample());
         point.push(r);
         if round < base_rounds {
             for weight in &mut weights {
@@ -221,7 +219,7 @@ pub fn prove(
         }
     }
     for &v in &values {
-        writer.send(to_v(v));
+        writer.send(E::from(v));
     }
     Ok((point, values))
 }
@@ -269,7 +267,7 @@ pub fn prove_pairs(
         return Err("a stack shorter than the batch ends inside a pair the words' rounds read".into());
     }
     let scales: Vec<F192> = primitives::field::powers(lambda, stacks.len());
-    let beta1 = from_v(cantor_beta1());
+    let beta1 = F192::from(cantor_beta1());
     let mut weights = weights;
     let mut folded: Vec<Folded> = Vec::new();
     let mut e = vec![F192::ONE];
@@ -296,17 +294,6 @@ pub fn prove_pairs(
         (q0, q2)
     };
     let mut round = 0;
-    let prof = std::env::var("PI1_PROFILE").is_ok();
-    if prof {
-        eprintln!("    batch: stacks {:?}, base rounds {base_rounds}", stacks.iter().map(|s| (s.0.len(), s.1)).collect::<Vec<_>>());
-    }
-    let mut clock = std::time::Instant::now();
-    let mut lap = |what: &str, round: usize| {
-        if prof {
-            eprintln!("    batch r{round}: {what} {:.4} s", clock.elapsed().as_secs_f64());
-        }
-        clock = std::time::Instant::now();
-    };
     while round + 2 <= vars {
         if round == base_rounds {
             // In the folds' affine ranges ([`Folded::fold`]).
@@ -321,11 +308,10 @@ pub fn prove_pairs(
                     .collect()
             });
             weights = Vec::new();
-            lap("written out", round);
         }
         // While the rounds read the words: the plain round's sums and the three clones' in one read
         // (`Weight::round_pair`), when every weight's blocks allow it.
-        let paired: Option<[(F192, F192); 4]> = if folded.is_empty() && std::env::var("PI1_NO_PAIR_ROUND").is_err() {
+        let paired: Option<[(F192, F192); 4]> = if folded.is_empty() {
             stacks
                 .iter()
                 .zip(&weights)
@@ -341,15 +327,11 @@ pub fn prove_pairs(
         } else {
             None
         };
-        if prof {
-            eprintln!("    batch r{round}: paired {}", paired.is_some());
-        }
         // h(u_0) = Σ G̃(u_0, ·): c_0 and c_2 from the round, c_1 from the claim (h(0) + h(1) = claim).
         let (a0, a2) = match paired {
             Some(p) => p[0],
             None => sums(&weights, &folded, &e, None),
         };
-        lap("sums", round);
         let a1 = claim + a2;
         let h = |x: F192| a0 + a1 * x + a2 * x * x;
         // G̃(a, u_1) for a = 0, 1, β_1: (c_0, c_1, c_2) in u_1.
@@ -365,7 +347,6 @@ pub fn prove_pairs(
                 [b0, h(a) + b2, b2]
             })
             .collect();
-        lap("three clones' sums", round);
         // G̃'s coefficient of u_1^j as a polynomial in u_0 of degree 2 through (0, v_0), (1, v_1), (β_1, v_b):
         // g_0 = v_0, g_2 = (v_0 + v_b) + β_1 (v_0 + v_1) (as β_1² + β_1 = 1), g_1 = v_0 + v_1 + g_2.
         let mut g = [[F192::ZERO; 3]; 3]; // g[i][j]: u_0^i u_1^j
@@ -394,12 +375,12 @@ pub fn prove_pairs(
         }
         for (d, &x) in c.iter().enumerate() {
             if d != 3 {
-                writer.send(to_v(x));
+                writer.send(E::from(x));
             }
         }
         let z = writer.sample_narrow();
-        let [u0, u1] = pair_point(z).map(from_v);
-        let zf = from_v(z);
+        let [u0, u1] = pair_point(z).map(F192::from);
+        let zf = F192::from(z);
         claim = c.iter().rev().fold(F192::ZERO, |acc, &x| acc * zf + x);
         for (offset, r) in [(1, u0), (2, u1)] {
             point.push(r);
@@ -417,16 +398,15 @@ pub fn prove_pairs(
                 }
             }
         }
-        lap("fold", round);
         round += 2;
     }
     if round < vars {
         // The last variable, a plain round (`transcript::sumcheck_drawn`'s, narrow).
         assert!(!folded.is_empty(), "past the rounds that read the words");
         let (q0, q2) = sums(&weights, &folded, &e, None);
-        writer.send(to_v(q0));
-        writer.send(to_v(q2));
-        let r = from_v(writer.sample_narrow());
+        writer.send(E::from(q0));
+        writer.send(E::from(q2));
+        let r = F192::from(writer.sample_narrow());
         point.push(r);
         for (k, f) in folded.iter_mut().enumerate() {
             f.fold(r);
@@ -436,7 +416,7 @@ pub fn prove_pairs(
         }
     }
     for &v in &values {
-        writer.send(to_v(v));
+        writer.send(E::from(v));
     }
     Ok((point, values))
 }

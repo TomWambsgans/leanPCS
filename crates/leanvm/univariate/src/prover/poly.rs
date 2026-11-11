@@ -150,15 +150,6 @@ pub fn batch_invert(data: &mut [F192]) {
     });
 }
 
-/// `E` of the verifier (`leanvm_statement`) from the prover's, and back: the same limbs.
-pub fn to_v(x: F192) -> leanvm_statement::field::E {
-    leanvm_statement::field::E::new(x.c0, x.c1, x.c2)
-}
-
-pub fn from_v(x: leanvm_statement::field::E) -> F192 {
-    F192::new(x.c0, x.c1, x.c2)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

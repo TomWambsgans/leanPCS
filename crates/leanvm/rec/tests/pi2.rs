@@ -8,10 +8,8 @@
 //!   adapter;
 //! - `contract_*`: the verifier compiled to EVM is the Rust verifier word for word, and
 //!   accepts the honest proof with its frame of PCS claims declaring them, and rejects a flipped byte;
-//! - `gas_report` (ignored): the contract at the D16v target shape (`N = 2^24`);
-//! - `prove_target` (ignored): the prover at the target shape.
 //!
-//! `cargo test --release -p leanvm_rec --test pi2 -- --nocapture` (and `--ignored gas_report`).
+//! `cargo test --release -p leanvm_rec --test pi2 -- --nocapture`.
 
 #[global_allocator]
 static ALLOC: bench::Jemalloc = bench::Jemalloc;
@@ -27,7 +25,7 @@ use leanvm_rec::pi2::prover::{
     self, PublicValue, Setup, claims_hold, open, prove, prove_with, public_scalars, verify_openings,
 };
 use leanvm_rec::pi2::synth::{self, Built, Design};
-use leanvm_rec::pi2::verifier::{Spec, to_f192};
+use leanvm_rec::pi2::verifier::Spec;
 use primitives::field::{F64, F192};
 
 fn deep<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> R {
@@ -136,7 +134,7 @@ fn honest_and_mutated(f: &Fixture, mutations: usize) {
     for at in [0, stream.len() / 2, stream.len() - 1] {
         let mut bad = stream.clone();
         bad[at] ^= 0x20;
-        let other = leanvm_rec::pi2::verifier::verify(&f.spec, &f.iv, &f.public_input, &[], &bad).expect("the length");
+        let (other, _) = leanvm_rec::pi2::verifier::verify(&f.spec, &f.iv, &f.public_input, &[], &bad, leanvm_statement::transcript::Checks::Enforce).expect("the length");
         assert!(
             verify_openings(f.circuit.log_n, &other, &roots, &f.setup.root(), f.setup.ood(), &openings).is_err(),
             "byte {at} flipped"
@@ -334,7 +332,7 @@ fn contract_checks(design: Design) {
         // π2's claims are those `pcs_claim::verify_claim` accepted.
         let pi2 = prover::claims(f.circuit.log_n, &reduced, &roots, &f.setup.root(), f.setup.ood());
         assert_eq!(block[pi1.len()..], pi2[..]);
-        assert_eq!(pi2[0].value, to_f192(reduced.witness.1));
+        assert_eq!(pi2[0].value, F192::from(reduced.witness.1));
         for at in [contract::STREAM_AT, data.len() / 2, data.len() - 2, data.len() - 1] {
             let mut bad = data.clone();
             bad[at] ^= 1;
@@ -349,100 +347,4 @@ fn contract_checks(design: Design) {
 #[test]
 fn contract_d16v() {
     contract_checks(synth::small_d16v(11));
-}
-
-/// The contract at a target shape: built from the synthetic circuit's verifier (its gas depends on the shape alone:
-/// the pairs, the formulas, the public side), π1-rec's real calls appended.
-fn target_report(name: &str, design: Design) {
-    let name = name.to_string();
-    deep(move || {
-        let built = synth::build(&design, 0x7a);
-        let circuit = &built.circuit;
-        let spec = Spec::of(circuit);
-        let pi1 = leanvm_rec::pi2::pi1::pi1_calls();
-        println!(
-            "{name}: 2^{} positions ({:.1}% of the rows used), rows of {}: {} pairs ({} pull-less), {} groups, {} formulas, blocks up to 2^{} rows, {} public terms, {} reads; π1: {} calls, {} roots, {} elements",
-            circuit.log_n,
-            100.0 * built.used_rows as f64 / circuit.rows() as f64,
-            circuit.width(),
-            circuit.pairs.len(),
-            spec.pull_less.len(),
-            spec.groups.len(),
-            circuit.formulas.len(),
-            spec.max_log_rows(),
-            circuit.public.len(),
-            circuit.reads.len(),
-            pi1.calls.len(),
-            pi1.roots,
-            pi1.elements
-        );
-        assert!(
-            pi1.roots <= 2 && pi1.elements <= 51,
-            "the synthetic circuit's public data hold π1's"
-        );
-        let inst = Instance::new(circuit, &spec, [0x44; 32], F192::new(5, 6, 7), &[0x33; 32], &pi1.calls);
-        let recorded = record_verifier(&spec);
-        let report = contract::measure(&inst, &recorded);
-        print!("{}", report.table(&name));
-        let stream = sample_stream(recorded.stream_len, 11);
-        contract::parity(&inst, &recorded, &[0x5a; 32], &[], &stream);
-        println!("{name}: parity");
-    });
-}
-
-#[test]
-#[ignore]
-fn gas_report() {
-    target_report("D16v, N = 2^24 (pi1-rec)", synth::target_d16v());
-}
-
-fn peak_memory() -> String {
-    std::fs::read_to_string("/proc/self/status")
-        .ok()
-        .and_then(|s| s.lines().find(|l| l.starts_with("VmHWM")).map(|l| l.to_string()))
-        .unwrap_or_default()
-}
-
-/// The prover at the D16v target shape, scaled to `2^PI2_LOG_N` positions if set (the same pairs, formulas and public
-/// side, smaller blocks).
-#[test]
-#[ignore]
-fn prove_target() {
-    let target = synth::target_d16v();
-    let design = match std::env::var("PI2_LOG_N").ok().and_then(|v| v.parse().ok()) {
-        Some(log_n) => synth::scaled(&target, log_n),
-        None => target,
-    };
-    let start = std::time::Instant::now();
-    let f = built(&design);
-    println!(
-        "2^{} positions, {} pairs, {} groups: built, checked, setup committed in {:.1} s; {}",
-        f.circuit.log_n,
-        f.circuit.pairs.len(),
-        f.spec.groups.len(),
-        start.elapsed().as_secs_f64(),
-        peak_memory()
-    );
-    let start = std::time::Instant::now();
-    let proved = prove(
-        &f.circuit,
-        &f.spec,
-        &f.setup,
-        &f.iv,
-        &f.public_input,
-        &f.values,
-        &f.witness,
-    );
-    let proving = start.elapsed().as_secs_f64();
-    for (step, s) in &proved.timings {
-        println!("   {s:>7.2} s  {step}");
-    }
-    let start = std::time::Instant::now();
-    let (reduced, roots, openings) = open(proved, &f.setup);
-    let opening = start.elapsed().as_secs_f64();
-    println!("prove {proving:.1} s, open {opening:.1} s; {}", peak_memory());
-    assert_eq!(
-        verify_openings(f.circuit.log_n, &reduced, &roots, &f.setup.root(), f.setup.ood(), &openings),
-        Ok(())
-    );
 }

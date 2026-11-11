@@ -25,7 +25,6 @@ mod vectors;
 
 use leanvm_statement::evm::codegen::word;
 use leanvm_statement::evm::machine::{PCS_FRAME, PcsFrame, call};
-use leanvm_univariate::Claims;
 use leanvm_univariate::contract::{compile_verifier, expected_claims, record_verifier_with, rust_verifier_with};
 use vectors::{PROGRAM_IV, Vector, read, setup_roots, variant_of};
 
@@ -51,7 +50,7 @@ fn replay(v: Vector) -> u64 {
     let variant = variant_of(&v.config);
     // The contract binds the proof's setup commitment `F` (the third claim's: its program's and shape's own).
     let roots = setup_roots(&v);
-    let recorded = record_verifier_with(&v.shape, variant, Claims::Point, &roots);
+    let recorded = record_verifier_with(&v.shape, variant, &roots);
     assert_eq!(STREAM_AT + recorded.stream_len, v.calldata.len(), "{}: the calldata is the shape's", v.config);
     if variant.fs.wide() {
         // π1-rec4: the Rust verifier, its checks held to account, gives the recorded claims; a flipped stream byte or
@@ -60,7 +59,7 @@ fn replay(v: Vector) -> u64 {
             let public: [u8; 32] = data[4..36].try_into().unwrap();
             let stream = &data[STREAM_AT..];
             let (reduced, zero, nonzero) =
-                rust_verifier_with(&v.shape, &PROGRAM_IV, &roots, &public, stream, variant, Claims::Point).ok()?;
+                rust_verifier_with(&v.shape, &PROGRAM_IV, &roots, &public, stream, variant).ok()?;
             let holds = zero.iter().all(|x| *x == Default::default()) && nonzero.iter().all(|x| *x != Default::default());
             holds.then(|| expected_claims(&recorded, &reduced, stream).iter().map(|c| c.encode()).collect())
         };

@@ -18,7 +18,7 @@ use leanvm_univariate::contract::{SetupRoots, calldata, compile_verifier, proof_
 use leanvm_univariate::prover::check::on_domain;
 use leanvm_univariate::prover::prove::{Config, OpeningProof, Proof, prove, verify};
 use leanvm_univariate::prover::trace::Trace;
-use leanvm_univariate::{Claims, KECCAK_MAIN, KECCAK_REC3, KECCAK_REC4, Variant};
+use leanvm_univariate::{KECCAK_MAIN, KECCAK_REC3, KECCAK_REC4, Variant};
 use primitives::field::F192;
 
 fn dir() -> Option<std::path::PathBuf> {
@@ -124,7 +124,7 @@ fn end_to_end(variant: Variant) {
     let roots = contract_roots(&trace);
     let config = Config {
         variant,
-        claims: Claims::Point,
+        low_memory: false,
         check: true,
         garbage: false,
         roots,
@@ -211,11 +211,10 @@ fn end_to_end(variant: Variant) {
             &public,
             &stream,
             variant,
-            Claims::Point,
         )
         .expect("the Rust verifier accepts");
         assert!(zero.iter().all(|x| *x == Default::default()) && nonzero.iter().all(|x| *x != Default::default()));
-        let recorded = deep(move || record_verifier_with(&shape, variant, Claims::Point, &roots));
+        let recorded = deep(move || record_verifier_with(&shape, variant, &roots));
         let claims: Vec<Vec<u8>> = leanvm_univariate::contract::expected_claims(&recorded, &reduced, &proof.stream)
             .iter()
             .map(|c| c.encode())
@@ -227,10 +226,10 @@ fn end_to_end(variant: Variant) {
         (Some(word([1, 0, 0]).to_vec()), 0, 0, inputs.clone())
     } else {
         deep(move || {
-        let recorded = record_verifier_with(&shape, variant, Claims::Point, &roots);
+        let recorded = record_verifier_with(&shape, variant, &roots);
         assert_eq!(recorded.stream_len, stream.len(), "the contract's stream is the proof's");
         // The measuring build, word for word against the Rust verifier, on this accepting stream.
-        leanvm_univariate::contract::parity_with(&shape, &PROGRAM_IV, &roots, &public, &stream, variant, Claims::Point);
+        leanvm_univariate::contract::parity_with(&shape, &PROGRAM_IV, &roots, &public, &stream, variant);
         let contract = compile_verifier(&recorded, &PROGRAM_IV, false);
         // The claims the contract checks are those the openings prove.
         let calls = call(&contract.code, &[], &data, &PcsFrame::declaring_all()).claims;
@@ -378,7 +377,7 @@ fn keccak_prover_benchmark() {
     let cooldown: u64 = std::env::var("PI1_COOLDOWN").ok().map_or(2, |x| x.parse().expect("seconds"));
     let config = Config {
         variant,
-        claims: Claims::Point,
+        low_memory: false,
         check: false,
         garbage: false,
         roots: contract_roots(&trace),
@@ -439,7 +438,7 @@ fn unused_words_are_not_relied_on() {
     };
     let config = Config {
         variant: KECCAK_MAIN,
-        claims: Claims::Point,
+        low_memory: false,
         check: true,
         garbage: true,
         roots: contract_roots(&trace),

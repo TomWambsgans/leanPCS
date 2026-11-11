@@ -14,18 +14,17 @@
 //! stack in its `n` variables, committed as `(root, ood)`, at the batch's point, which the contract checks its
 //! transaction declares (a payload of its frame of PCS claims is the claim's Keccak-256,
 //! `evm_link::declared_claims`). `C1`'s and `C2`'s roots are the stream's 32 bytes as they are (the prover sends a
-//! root's bytes, `prover::prove::halves`), their out-of-domain answers the stream's elements after them; the setup
-//! commitment `F` is a constant of the code ([`SetupRoots`]: no `SLOAD`). Weighted claims (extension W, SPEC.md §8)
-//! are no PCS claim: the contract is built for point claims.
+//! root's bytes, `KeccakWriter::send_root`), their out-of-domain answers the stream's elements after them; the setup
+//! commitment `F` is a constant of the code ([`SetupRoots`]: no `SLOAD`).
 
 use leanvm_statement::evm::codegen::{CALLS, Claim, Contract, ENTRY, Ending, Entry, MEASURE, VERIFY, Word, compile, word};
 use leanvm_statement::evm::machine::{FrameTxGas, Outcome, PCS_FRAME, PcsFrame, call, element_word, frame_tx_gas};
 use leanvm_statement::evm::record::{Graph, Recorder, Sym, record};
 use leanvm_statement::field::E;
-use leanvm_statement::transcript::{Checks, KeccakChannel, keccak_seed};
+use leanvm_statement::transcript::{Checks, KeccakChannel, keccak_seed, statement_words};
 
 use crate::claims::Commitment;
-use crate::verifier::{Claims, Opening, Reduced, Shape, Variant, reduce};
+use crate::verifier::{Reduced, Shape, Variant, reduce};
 
 /// The transcript's 16-byte name.
 pub const NAME: [u8; 16] = *b"leanVM-univar-v1";
@@ -122,17 +121,17 @@ impl Recorded {
     }
 }
 
-pub fn record_verifier(shape: &Shape, variant: Variant, mode: Claims) -> Recorded {
-    record_verifier_with(shape, variant, mode, &SetupRoots::REFERENCE)
+pub fn record_verifier(shape: &Shape, variant: Variant) -> Recorded {
+    record_verifier_with(shape, variant, &SetupRoots::REFERENCE)
 }
 
 /// [`record_verifier`] for a contract that binds `setup` (another shape's `F`, say): the graph is the same, the
 /// roots are the code's constants.
-pub fn record_verifier_with(shape: &Shape, variant: Variant, mode: Claims, setup: &SetupRoots) -> Recorded {
+pub fn record_verifier_with(shape: &Shape, variant: Variant, setup: &SetupRoots) -> Recorded {
     let ((reduced, stream_len, roots, reads), graph) = record(|| {
         let mut recorder = Recorder::new();
         let words = Recorder::statement();
-        let reduced = reduce(shape, words, &mut recorder, variant, mode).expect("a recorder rejects nothing");
+        let reduced = reduce(shape, words, &mut recorder, variant).expect("a recorder rejects nothing");
         (reduced, recorder.cursor as usize, recorder.roots.clone(), recorder.reads)
     });
     assert_eq!(roots.len(), 2, "two commitments in the stream");
@@ -165,15 +164,12 @@ fn claims_with<T: Copy, W: Clone>(
         .openings
         .iter()
         .map(|(commitment, opening)| {
-            let Opening::Point { point, value } = opening else {
-                panic!("weighted claims are no PCS claims: the contract is built for point claims")
-            };
             let (root, ood) = match commitment {
                 Commitment::C1 => (stream(recorded.roots_at[0]), scalar(reduced.oods[0])),
                 Commitment::C2 => (stream(recorded.roots_at[1]), scalar(reduced.oods[1])),
                 Commitment::Setup => (constant(recorded.roots.f), constant(element_word(recorded.roots.f_ood))),
             };
-            (root, ood, point.iter().map(|&x| scalar(x)).collect(), scalar(*value))
+            (root, ood, opening.point.iter().map(|&x| scalar(x)).collect(), scalar(opening.value))
         })
         .collect()
 }
@@ -232,9 +228,8 @@ pub fn rust_verifier(
     public_words: &[u8; 32],
     stream: &[u8],
     variant: Variant,
-    mode: Claims,
 ) -> Result<(Reduced<E>, Vec<E>, Vec<E>), leanvm_statement::VerifierError> {
-    rust_verifier_with(shape, iv, &SetupRoots::REFERENCE, public_words, stream, variant, mode)
+    rust_verifier_with(shape, iv, &SetupRoots::REFERENCE, public_words, stream, variant)
 }
 
 /// [`rust_verifier`] for a contract that binds `setup` in its IV.
@@ -245,25 +240,10 @@ pub fn rust_verifier_with(
     public_words: &[u8; 32],
     stream: &[u8],
     variant: Variant,
-    mode: Claims,
 ) -> Result<(Reduced<E>, Vec<E>, Vec<E>), leanvm_statement::VerifierError> {
     let seed = keccak_seed(&NAME, &contract_iv(shape, variant, iv, setup), public_words);
-    let mut channel = KeccakChannel::new(
-        seed,
-        stream,
-        Checks::Collect {
-            zero: vec![],
-            nonzero: vec![],
-        },
-    );
-    let words: [E; 4] = std::array::from_fn(|k| {
-        E::new(
-            u64::from_be_bytes(public_words[8 * k..8 * k + 8].try_into().unwrap()),
-            0,
-            0,
-        )
-    });
-    let reduced = reduce(shape, words, &mut channel, variant, mode)?;
+    let mut channel = KeccakChannel::new(seed, stream, Checks::collect());
+    let reduced = reduce(shape, statement_words(public_words), &mut channel, variant)?;
     channel.finish()?;
     let Checks::Collect { zero, nonzero } = channel.checks else {
         unreachable!()
@@ -326,8 +306,8 @@ impl GasReport {
 
 /// Measure the verifier for `shape`: build it, run it on sample calldata with every claim declared, and check the
 /// phases against the total.
-pub fn measure(shape: &Shape, iv: &[u8; 32], variant: Variant, mode: Claims) -> GasReport {
-    let recorded = record_verifier(shape, variant, mode);
+pub fn measure(shape: &Shape, iv: &[u8; 32], variant: Variant) -> GasReport {
+    let recorded = record_verifier(shape, variant);
     let contract = compile_verifier(&recorded, iv, true);
     let stream = sample_stream(recorded.stream_len, 0x6A5);
     let data = calldata(&[0x5a; 32], &stream);
@@ -397,14 +377,10 @@ fn expected_words(reduced: &Reduced<E>, recorded: &Recorded, stream: &[u8]) -> V
 /// The PCS claims a proof's stream gives (the Rust verifier's reduction of it), in the contract's order: what its
 /// transaction must declare, and what the block's openings must prove.
 pub fn expected_claims(recorded: &Recorded, reduced: &Reduced<E>, stream: &[u8]) -> Vec<pcs_claim::PcsClaim> {
-    let f192 = |x: E| primitives::field::F192::new(x.c0, x.c1, x.c2);
     reduced
         .openings
         .iter()
         .map(|(commitment, opening)| {
-            let Opening::Point { point, value } = opening else {
-                panic!("weighted claims are no PCS claims")
-            };
             let at = |k: usize| -> [u8; 32] { stream[recorded.roots_at[k]..recorded.roots_at[k] + 32].try_into().unwrap() };
             let (root, ood) = match commitment {
                 Commitment::C1 => (at(0), reduced.oods[0]),
@@ -412,11 +388,11 @@ pub fn expected_claims(recorded: &Recorded, reduced: &Reduced<E>, stream: &[u8])
                 Commitment::Setup => (recorded.roots.f, recorded.roots.f_ood),
             };
             pcs_claim::PcsClaim {
-                n: point.len() as u8,
+                n: opening.point.len() as u8,
                 root,
-                ood: f192(ood),
-                point: point.iter().map(|&x| f192(x)).collect(),
-                value: f192(*value),
+                ood: ood.into(),
+                point: opening.point.iter().map(|&x| x.into()).collect(),
+                value: opening.value.into(),
             }
         })
         .collect()
@@ -424,8 +400,8 @@ pub fn expected_claims(recorded: &Recorded, reduced: &Reduced<E>, stream: &[u8])
 
 /// The contract, built to return the claims it would check declared and every value it checks, against the Rust verifier
 /// on the same calldata: word for word.
-pub fn parity(shape: &Shape, iv: &[u8; 32], public_words: &[u8; 32], stream: &[u8], variant: Variant, mode: Claims) {
-    parity_with(shape, iv, &SetupRoots::REFERENCE, public_words, stream, variant, mode);
+pub fn parity(shape: &Shape, iv: &[u8; 32], public_words: &[u8; 32], stream: &[u8], variant: Variant) {
+    parity_with(shape, iv, &SetupRoots::REFERENCE, public_words, stream, variant);
 }
 
 /// [`parity`] for a contract that binds `setup`.
@@ -436,9 +412,8 @@ pub fn parity_with(
     public_words: &[u8; 32],
     stream: &[u8],
     variant: Variant,
-    mode: Claims,
 ) {
-    let recorded = record_verifier_with(shape, variant, mode, setup);
+    let recorded = record_verifier_with(shape, variant, setup);
     let entry = Entry {
         name: NAME,
         iv: recorded.iv(iv),
@@ -455,7 +430,7 @@ pub fn parity_with(
         .collect();
     let contract = compile(&recorded.graph, &outputs, &Ending::Return, &entry);
     let (reduced, zero, nonzero) =
-        rust_verifier_with(shape, iv, setup, public_words, stream, variant, mode).expect("the stream's length");
+        rust_verifier_with(shape, iv, setup, public_words, stream, variant).expect("the stream's length");
     let mut expected = expected_words(&reduced, &recorded, stream);
     expected.extend(zero.iter().chain(&nonzero).map(|&x| element_word(x)));
     let outcome = call(&contract.code, &[], &calldata(public_words, stream), &PcsFrame::default());

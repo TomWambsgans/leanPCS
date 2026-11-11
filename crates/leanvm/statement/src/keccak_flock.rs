@@ -4,7 +4,7 @@
 //! The Keccak-f block's lincheck terminal, two ways:
 //!
 //! - [`row_values`]: the rows' values `(A0 w, B0 w)` by one forward walk, for the walked terminal
-//!   ([`crate::flock_min::verify_walked_with`] with [`KeccakWalked`]). The block's layout and rows are
+//!   ([`crate::flock_min::verify_walked`] with [`KeccakWalked`]). The block's layout and rows are
 //!   `flock::keccak`'s (its module documentation); this walk restates them on a [`Scalar`] (a test of
 //!   `crates/leanvm/univariate`, `flock_keccak.rs`, checks the two walks agree), at about 24 · 25 · 64 · 12
 //!   additions: the reference, not a terminal for a recursion.

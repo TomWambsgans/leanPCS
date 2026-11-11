@@ -41,7 +41,7 @@ fn deep<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> R {
 }
 
 fn point(point: Vec<Sym>, value: Sym) -> Opening<Sym> {
-    Opening::Point { point, value }
+    Opening { point, value }
 }
 
 fn recorded(graph: Graph, reduced: Reduced<Sym>, stream_len: usize, roots_at: [usize; 2]) -> Recorded {
@@ -58,13 +58,7 @@ fn recorded(graph: Graph, reduced: Reduced<Sym>, stream_len: usize, roots_at: [u
 }
 
 fn reduced(roots: [[Sym; 2]; 2], openings: Vec<(Commitment, Opening<Sym>)>) -> Reduced<Sym> {
-    let ood = openings
-        .iter()
-        .find_map(|(_, o)| match o {
-            Opening::Point { value, .. } => Some(*value),
-            Opening::Weighted(_) => None,
-        })
-        .unwrap_or(Sym(0));
+    let ood = openings.first().map_or(Sym(0), |(_, o)| o.value);
     Reduced {
         roots,
         oods: [ood, ood],

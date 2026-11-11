@@ -156,6 +156,12 @@ fn structured_terminal_ops() {
     }
 }
 
+/// Flock's verifier with its ring switch right after the slices, recorded.
+fn walked(log_n: usize, variant: Variant, recorder: &mut Recorder) -> (Vec<Sym>, End<Sym>) {
+    let (point, slices) = flock_min::verify_walked::<Sym, Keccak>(log_n, variant, recorder, None).expect("recorded");
+    (point, flock_min::ring_end(&slices, recorder))
+}
+
 fn deep<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> R {
     std::thread::Builder::new()
         .stack_size(1 << 30)
@@ -185,13 +191,13 @@ fn walked_terminal_ops() {
 #[ignore]
 fn flock_keccak_verifier_fragment() {
     deep(|| {
-        for (skip, fs) in [(3, FsShape::Rec3), (3, FsShape::Rec), (6, FsShape::Rec3)] {
+        for (skip, fs) in [(3, FsShape::Rec3), (6, FsShape::Rec3)] {
             let log_n = 29;
             let variant = Variant { skip, fs };
             let mut keccak_f = 0;
             let mut ops = (0, 0);
             let fragment = measure_fragment(|recorder| {
-                let (point, end) = flock_min::verify_walked_with::<Sym, Keccak>(log_n, variant, recorder).expect("recorded");
+                let (point, end) = walked(log_n, variant, recorder);
                 let mut outputs = point;
                 let End { map, target } = end;
                 outputs.extend(map.into_iter().chain([target]));
@@ -201,7 +207,7 @@ fn flock_keccak_verifier_fragment() {
             // graph).
             let (_, graph) = record(|| {
                 let mut recorder = Recorder::new();
-                flock_min::verify_walked_with::<Sym, Keccak>(log_n, variant, &mut recorder).expect("recorded")
+                walked(log_n, variant, &mut recorder)
             });
             for node in &graph.nodes {
                 match *node {

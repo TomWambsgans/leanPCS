@@ -10,15 +10,17 @@
 
 #[path = "../../univariate/tests/vectors/mod.rs"]
 mod vectors;
+#[path = "counts/count.rs"]
+mod count;
 
 use leanvm_statement::evm::record::Node;
 use leanvm_statement::shapes::PROGRAM_IV;
 use leanvm_statement::transcript::keccak_seed;
-use leanvm_rec::count::{Counts, count, shared};
+use count::{Counts, count, shared};
 use leanvm_rec::eval::{call_inputs, checks, evaluate};
 use leanvm_rec::{REFERENCE, permutations};
 use leanvm_univariate::contract::{NAME, Recorded, record_verifier};
-use leanvm_univariate::{Claims, KECCAK_MAIN, KECCAK_REC3, KECCAK_REC4, Variant};
+use leanvm_univariate::{KECCAK_MAIN, KECCAK_REC3, KECCAK_REC4, Variant};
 
 fn deep<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> R {
     std::thread::Builder::new()
@@ -46,7 +48,7 @@ fn the_graph_is_the_verifier_on_real_proofs() {
             let v = vector(name);
             let variant = vectors::variant_of(&v.config);
             let roots = vectors::setup_roots(&v);
-            let recorded = leanvm_univariate::contract::record_verifier_with(&v.shape, variant, Claims::Point, &roots);
+            let recorded = leanvm_univariate::contract::record_verifier_with(&v.shape, variant, &roots);
             let stream = &v.calldata[STREAM_AT..];
             assert_eq!(stream.len(), recorded.stream_len);
             let seed = keccak_seed(
@@ -225,7 +227,7 @@ fn count_report() {
         println!("## pi1's verifier graph at the reference shape (128 signatures), Claims::Point");
         println!("Keccak-256 of the seed: {} perm (80 B)", permutations(80));
         for config in configs() {
-            let recorded = record_verifier(&REFERENCE, config.variant, Claims::Point);
+            let recorded = record_verifier(&REFERENCE, config.variant);
             let counts = count(&recorded);
             print_counts(&config.name, &recorded, &counts);
         }
@@ -239,7 +241,7 @@ fn count_report() {
 fn transcript_shape() {
     deep(|| {
         for config in configs() {
-            let recorded = record_verifier(&REFERENCE, config.variant, Claims::Point);
+            let recorded = record_verifier(&REFERENCE, config.variant);
             let graph = &recorded.graph;
             println!("\n### {}: the challenges in order", config.name);
             let mut runs: Vec<(u32, usize)> = Vec::new();

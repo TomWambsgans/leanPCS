@@ -29,7 +29,6 @@ use pcs_claim::PcsClaim;
 use leanvm_rec::pi2::contract::{self, Instance, calldata, record_verifier, sample_stream};
 use leanvm_rec::pi2::prover::{self, Setup, claims_hold, open, prove, public_scalars, verify_openings};
 use leanvm_rec::pi2::verifier::Spec;
-use leanvm_univariate::Claims;
 use primitives::field::F192;
 
 const STREAM_AT: usize = 4 + 32;
@@ -59,7 +58,6 @@ fn real(name: &str, layout: Layout) -> (vectors::Vector, Compiled, [u8; 32]) {
     let recorded = leanvm_univariate::contract::record_verifier_with(
         &v.shape,
         vectors::variant_of(&v.config),
-        Claims::Point,
         &roots,
     );
     let stream = v.calldata[STREAM_AT..].to_vec();

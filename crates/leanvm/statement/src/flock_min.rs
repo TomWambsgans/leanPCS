@@ -1,7 +1,7 @@
 // Part of this repository. Builds on `crate::flock`, adapted from leanVM (https://github.com/leanEthereum/leanVM),
 // commit 42422001, file crates/verifier/src/flock.rs, whose zerocheck, lincheck and ring switch this module re-states
 // with the univariate skip's size as a parameter. New here: the skip of any size `k ≤ 6`, π1-rec's zerocheck point
-// (`FsShape::Rec`: its sampled coordinates successive squares of one), the ring map in tower order
+// (`FsShape::Rec3`: its sampled coordinates successive squares of one), the ring map in tower order
 // (`crate::ring_tower`), and the lincheck's terminal checked on the sent slices for any block circuit
 // ([`WalkedCircuit`]: `crate::keccak_flock`'s Keccak-f block, docs/leanvm/flock/KECCAK.md). MIT OR Apache-2.0; see
 // AGENTS.md.
@@ -25,7 +25,7 @@ pub const PACKING: usize = 6;
 pub struct Variant {
     /// The univariate skip's variables, `0..=6` (leanVM: 6). `0` is no skip: every round multilinear.
     pub skip: usize,
-    /// The verifier's Fiat–Shamir shape: with [`FsShape::Rec`] (π1-rec, docs/leanvm/rec/SPEC-REC.md §1.4) the
+    /// The verifier's Fiat–Shamir shape: with [`FsShape::Rec3`] (π1-rec3, docs/leanvm/rec/SPEC-REC.md §1.4) the
     /// zerocheck's eq point after its seven fixed coordinates is `c, c², c⁴, …` of one challenge `c`. It is also the
     /// shape of the verifier Flock is part of (`leanvm_univariate`'s `reduce`: the bus's `α`).
     pub fs: FsShape,
@@ -42,7 +42,7 @@ pub trait WalkedCircuit {
     const TERMINAL_PHASE: &'static str = "flock lincheck: the terminal by the circuit's walk";
     /// `(A0 w, B0 w)`, `w` of `2^LOG_SIZE` weights.
     fn row_values<S: Scalar>(w: &[S]) -> (Vec<S>, Vec<S>);
-    /// The lincheck's terminal [`verify_walked_with`] checks: by default [`walked_terminal_with`] (the walk of
+    /// The lincheck's terminal [`verify_walked`] checks: by default [`walked_terminal_with`] (the walk of
     /// [`Self::row_values`]); a block may compute the same value from its structure (`crate::keccak_flock::Keccak`).
     fn terminal<S: Scalar>(z_skip: Option<S>, row_low: &[S], chi_in: &[S], chi_in_prime: &[S], s: &[S], alpha: S) -> S
     where
@@ -50,15 +50,11 @@ pub trait WalkedCircuit {
     {
         walked_terminal_with::<S, Self>(z_skip, row_low, chi_in, chi_in_prime, s, alpha)
     }
-    /// The lincheck's rounds: the block's slot bits after the 6 packing bits.
-    fn lincheck_rounds() -> usize {
-        Self::LOG_SIZE - PACKING
-    }
 }
 
 impl Variant {
-    /// The scalars Flock reads at `log_n` variables for a block whose lincheck runs `lincheck_rounds` rounds
-    /// ([`WalkedCircuit::lincheck_rounds`]): the skip's `2^k` values, the zerocheck's rounds and its two values, the
+    /// The scalars Flock reads at `log_n` variables for a block whose lincheck runs `lincheck_rounds` rounds (its slot
+    /// bits after the 6 packing bits): the skip's `2^k` values, the zerocheck's rounds and its two values, the
     /// lincheck's rounds and the 64 slices.
     pub fn scalars_with(&self, log_n: usize, lincheck_rounds: usize) -> usize {
         let skip = if self.skip > 0 { 1 << self.skip } else { 0 };
@@ -80,7 +76,7 @@ type Zerocheck<S> = (Option<S>, Vec<S>, [S; 3]);
 
 /// The zerocheck with a skip over `k` variables: `2^k` values on the skip's coset (none for `k = 0`), then
 /// `log_n - k` rounds; seven fixed coordinates first, as leanVM's, then the others drawn as `fs` has it (one by one,
-/// or with [`FsShape::Rec`] the first drawn and each next the square of the one before).
+/// or with [`FsShape::Rec3`] the first drawn and each next the square of the one before).
 fn zerocheck<S: Scalar>(
     log_n: usize,
     k: usize,
@@ -124,24 +120,12 @@ fn row_low_weights<S: Scalar>(z_skip: Option<S>, low: &[S]) -> (Vec<S>, Vec<S>) 
     (skip, weights)
 }
 
-/// Flock on the block circuit `C`: the zerocheck, the lincheck, the slices, the terminal `r_lc` against
-/// [`WalkedCircuit::terminal`], then the ring switch's map and target. What it leaves: the slices' point (`q_flock`'s
-/// word coordinates) and the ring switch's end.
-pub fn verify_walked_with<S: Scalar, C: WalkedCircuit>(
-    log_n: usize,
-    variant: Variant,
-    transcript: &mut impl Channel<S>,
-) -> Result<(Vec<S>, End<S>), VerifierError> {
-    let (point, slices) = verify_walked_deferred::<S, C>(log_n, variant, transcript, None)?;
-    let end = ring_end(&slices, transcript);
-    Ok((point, end))
-}
-
-/// [`verify_walked_with`] without the ring switch's map: the zerocheck, the lincheck, the slices and the terminal
-/// check; returns the slices' point and the slices, the map drawn by the caller ([`ring_end_at`]). With `eq_first`
-/// the zerocheck's first sampled coordinate is the caller's (π1-rec4, `FsShape::Rec4`: drawn with the bus's
-/// challenges, then the map after `C2`'s commitment, `docs/leanvm/rec/PERF_GAS2.md`).
-pub fn verify_walked_deferred<S: Scalar, C: WalkedCircuit>(
+/// Flock on the block circuit `C`: the zerocheck, the lincheck, the slices and the terminal `r_lc` against
+/// [`WalkedCircuit::terminal`]. What it leaves: the slices' point (`q_flock`'s word coordinates) and the slices, whose
+/// ring switch the caller draws: right after them ([`ring_end`]), or later ([`ring_end_at`]). With `eq_first` the
+/// zerocheck's first sampled coordinate is the caller's (π1-rec4, `FsShape::Rec4`: drawn with the bus's challenges,
+/// the map after `C2`'s commitment, `docs/leanvm/rec/PERF_GAS2.md`).
+pub fn verify_walked<S: Scalar, C: WalkedCircuit>(
     log_n: usize,
     variant: Variant,
     transcript: &mut impl Channel<S>,
@@ -249,7 +233,7 @@ fn front_with<S: Scalar>(
 }
 
 /// The ring switch on the sent slices: its map drawn, its target with the map's stages in tower order.
-fn ring_end<S: Scalar>(s: &[S], transcript: &mut impl Channel<S>) -> End<S> {
+pub fn ring_end<S: Scalar>(s: &[S], transcript: &mut impl Channel<S>) -> End<S> {
     let map = {
         let _phase = enter("ring switch: map, coefficients, target");
         transcript.samples(RING_MAP_LEN)

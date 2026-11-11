@@ -19,7 +19,6 @@ use leanvm_rec::circuit::plan::WitnessPlan;
 use leanvm_rec::pi2::adapt;
 use leanvm_rec::pi2::contract::sample_stream;
 use leanvm_statement::shapes::PROGRAM_IV;
-use leanvm_univariate::Claims;
 use leanvm_univariate::contract::Recorded;
 
 const STREAM_AT: usize = 4 + 32;
@@ -41,7 +40,6 @@ fn real(name: &str) -> (Recorded, [u8; 32], Vec<u8>) {
     let recorded = leanvm_univariate::contract::record_verifier_with(
         &v.shape,
         vectors::variant_of(&v.config),
-        Claims::Point,
         &roots,
     );
     (recorded, v.public, v.calldata[STREAM_AT..].to_vec())
