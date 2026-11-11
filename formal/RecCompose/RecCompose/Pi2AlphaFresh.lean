@@ -56,10 +56,13 @@ theorem inv_run {α : Type} {X : OracleComp KeccakCalls α} {n : ℕ} (hX : Hash
 /-! ## `pre2`'s writer on every outcome -/
 
 theorem runAt_pre2 (Ht : List UInt8 → Digest) (Ft : KeccakState → KeccakState) (G : RecPiop.Circuit E)
-    (ood : ℕ → Digest → Array K → E) (reads : List Read) (values : List PublicValue) (w : ℕ → K) (w0 : Wr) :
-    runAt Ht Ft ((pre2 callKeccak256 G ood reads values w).run w0) =
-      Id.run ((pre2 (m := Id) (Pure.pure ∘ Ht) G ood reads values w).run w0) := by
-  have h := wr_pre2 (Morph.sim (LeanVM.Protocol.Compile.totalImpl Ht Ft)) callKeccak256 G ood reads values w
+    (reads : List Read) (values : List PublicValue) (w : ℕ → K) (w0 : Wr) :
+    runAt Ht Ft ((pre2 callKeccak256 G (WhirBridge.Pcs.oodPointM callKeccak256) reads values w).run w0) =
+      Id.run ((pre2 (m := Id) (Pure.pure ∘ Ht) G (WhirBridge.Pcs.oodPointM (Pure.pure ∘ Ht)) reads values w).run
+        w0) := by
+  have h := wr_pre2 (Morph.sim (LeanVM.Protocol.Compile.totalImpl Ht Ft)) callKeccak256 G
+    (WhirBridge.Pcs.oodPointM callKeccak256) reads values w
+  simp only [app_oodPointM] at h
   rw [Morph.sim_H] at h
   have h2 := congrArg (fun x ↦ StateT.run x w0) h
   simp only [Morph.wr_run] at h2
@@ -193,7 +196,11 @@ theorem prA_le {D : RecDeployment} (hD : D.Real) (hg : GraphsAgree) (C : Pi2Circ
         unfold pre2
         simp only [StateT.run_bind, h, pure_bind, StateT.run_lift, bind_assoc, run_sendRoot2, run_sendScalar2,
           StateT.run_pure]
-        exact E2ECompleteness.HashOK.bind (hashOK_commitWithH560 _ _) fun _ ↦ E2ECompleteness.HashOK.pure _ _
+        exact E2ECompleteness.HashOK.bind (hashOK_commitWithH560 _ _) fun _ ↦
+          E2ECompleteness.HashOK.bind (Pi2A.hashOK_oodPointM _ _ fun j ↦ by
+            show (WhirBridge.Pcs.oodInput _ _ j).length ≠ 608
+            rw [Pi2A.oodInput_length]
+            decide) fun _ ↦ E2ECompleteness.HashOK.pure _ _
       · obtain ⟨_, _⟩ := x
         exact E2ECompleteness.HashOK.pure _ _
     · -- the input begins with the seed.
@@ -205,17 +212,20 @@ theorem prA_le {D : RecDeployment} (hD : D.Real) (hg : GraphsAgree) (C : Pi2Circ
       unfold runAt
       rw [simulateQ_bind]
       generalize hy : simulateQ (LeanVM.Protocol.Compile.totalImpl Ht Ft)
-        ((pre2 callKeccak256 (C.G tr.roots) pi2Ood (D.circuitAt tr.roots.pi1).circuit.reads
+        ((pre2 callKeccak256 (C.G tr.roots) (WhirBridge.Pcs.oodPointM callKeccak256)
+          (D.circuitAt tr.roots.pi1).circuit.reads
           (pi2Choice D C Fa tr.roots input p1.stream).1 (pi2Choice D C Fa tr.roots input p1.stream).2).run
             (Wr.start seed)) = y
       obtain ⟨ws, wr⟩ := y
-      have hwr : wr = (Id.run ((pre2 (m := Id) (Pure.pure ∘ Ht) (C.G tr.roots) pi2Ood (D.circuitAt tr.roots.pi1).circuit.reads
+      have hwr : wr = (Id.run ((pre2 (m := Id) (Pure.pure ∘ Ht) (C.G tr.roots) (WhirBridge.Pcs.oodPointM (Pure.pure ∘ Ht))
+          (D.circuitAt tr.roots.pi1).circuit.reads
           (pi2Choice D C Fa tr.roots input p1.stream).1 (pi2Choice D C Fa tr.roots input p1.stream).2).run
             (Wr.start seed))).2 := by
         rw [← runAt_pre2 Ht Ft]
         unfold runAt
         rw [hy]
-      obtain ⟨hh, ho, hw⟩ := pre2_writer (C.G tr.roots) pi2Ood (D.circuitAt tr.roots.pi1).circuit.reads
+      obtain ⟨hh, ho, hw⟩ := pre2_writer (C.G tr.roots) (WhirBridge.Pcs.oodPointM (Pure.pure ∘ Ht))
+        (D.circuitAt tr.roots.pi1).circuit.reads
         (pi2Choice D C Fa tr.roots input p1.stream).1 (pi2Choice D C Fa tr.roots input p1.stream).2 Ht (Wr.start seed)
       show (UniKeccakComplete.Prob.tInput wr).take 32 = digestBytes seed
       rw [hwr, hw, tInput_start_append]

@@ -3,15 +3,17 @@
 -- setup and graph verifier with Keccak-256 explicit, `Pi2Prover`'s honest prover, `Pi2ProbStaged`'s stages), over
 -- leanerVM's two calls (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`, commit 6175f1a0, MIT OR
 -- Apache-2.0: `implH`, `implF`, `simulateQ_queryH`) and `formal/UniKeccakComplete`'s `simulateQ_pcsVerify`,
--- `simulateQ_pcsProveH`, `Morph.app_pcsOpenKH`.
+-- `Morph.app_pcsOpenKH`; `FsOod`'s `simulateQ_pcsVerifierO`, `Pi2PcsZ`'s `simulateQ_pcsProveZH`.
 import RecCompose.Pi2P1
+import RecCompose.FsOod
 
 /-!
 # π2's code commutes with simulation
 
 Every function of π2's completeness experiment is written over any monad, Keccak-256 `H` and the permutation `F`
-explicit. Read through a monad morphism `φ` (`UniKeccakComplete.Morph`) that commutes with the PCS claim's check and its prover
-(`hopen`, `hprove`), each is the same function over `φ ∘ H`, `φ ∘ F` (`app_…`, `chan_…`, `wr_…`): the setup
+explicit. Read through a monad morphism `φ` (`UniKeccakComplete.Morph`) that commutes with the PCS claim's checks (at the
+fixed point, `hopen`; at the point read off `H`, `hopenO`) and its prover (`hprove`), each is the same function over
+`φ ∘ H`, `φ ∘ F` (`app_…`, `chan_…`, `wr_…`; the out-of-domain point `app_oodPointM`): the setup
 (`app_setupTreesWithH2`), the IV (`app_ivOfH`), π1-rec3's graph with its openings (`app_pi1GraphVerifierWithH`), π2's
 run and contract (`chan_reduceWithH2`, `app_runWithH2`, `app_contractWithH`, `app_verifierWithH2`), π2's honest prover
 (`wr_pi2ProveStreamWith`, `app_pi2ProveWith`, `app_pi2ProverWith`), the experiment `expW2` and its stages
@@ -81,19 +83,38 @@ theorem app_pi1GraphVerifierWithH (D : RecDeployment) (roots : UniKeccak.SetupRo
         · exact φ.app_pure _
         · simp only [φ.app_bind, Morph.app_forIn_list, φ.app_pure, hopen]
 
-include hopen in
+variable (hopenO : ∀ (n : ℕ) (root : Digest) (ood : E) (pt : List E) (v : E)
+    (proof : LeanVM.Protocol.Compile.Proof),
+    φ.app (Pi2H.pcsOpenKOH H F n root ood pt v proof) =
+      Pi2H.pcsOpenKOH (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) n root ood pt v proof)
+
+include hopen hopenO in
 theorem app_pcsOpenWordsH (words : List (List UInt8)) (proof : LeanVM.Protocol.Compile.Proof) :
     φ.app (Pi2H.pcsOpenWordsH H F words proof) =
       Pi2H.pcsOpenWordsH (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) words proof := by
   unfold Pi2H.pcsOpenWordsH
   split
   · exact φ.app_pure _
+  · split
+    · exact hopenO _ _ _ _ _ _
+    · exact hopen _ _ _ _ _ _
+
+include hopen hopenO in
+theorem app_openAtH (o : Pi1Opening) (proof : LeanVM.Protocol.Compile.Proof) :
+    φ.app (Pi2H.openAtH H F o proof) = Pi2H.openAtH (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) o proof := by
+  unfold Pi2H.openAtH
+  split
+  · exact hopenO _ _ _ _ _ _
   · exact hopen _ _ _ _ _ _
 
-include hopen in
-theorem app_openAtH (o : Pi1Opening) (proof : LeanVM.Protocol.Compile.Proof) :
-    φ.app (Pi2H.openAtH H F o proof) = Pi2H.openAtH (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) o proof :=
-  hopen _ _ _ _ _ _
+/-- **The out-of-domain point** (`n` calls of `H`). -/
+theorem app_oodPointM (n : ℕ) (r : Digest) :
+    φ.app (WhirBridge.Pcs.oodPointM H n r) = WhirBridge.Pcs.oodPointM (fun x ↦ φ.app (H x)) n r := by
+  unfold WhirBridge.Pcs.oodPointM
+  generalize List.range n = l
+  induction l with
+  | nil => simp only [List.mapM_nil, φ.app_pure]
+  | cons j l ih => simp only [List.mapM_cons, φ.app_bind, φ.app_pure, ih, bind_assoc, pure_bind]
 
 /-! ## π2's run and the contract -/
 
@@ -113,7 +134,7 @@ theorem app_runWithH2 (s : Spec) (iv publicInput : List UInt8) (stream : Array U
   simp only [Pi2H.runWithH, φ.app_bind, φ.app_pure, ← Morph.chan_run φ, Morph.chan_bind, chan_reduceWithH2,
     Morph.chan_finish, Morph.chan_pure]
 
-include hopen in
+include hopen hopenO in
 /-- **The contract.** -/
 theorem app_contractWithH (D : RecDeployment) (roots : RecSetupRoots) (input : Vector UInt8 32) (proof : RecProof) :
     φ.app (Pi2H.contractWithH H F D roots input proof) =
@@ -126,13 +147,13 @@ theorem app_contractWithH (D : RecDeployment) (roots : RecSetupRoots) (input : V
     · exact φ.app_pure _
     · split
       · exact φ.app_pure _
-      · simp only [φ.app_bind, Morph.app_forIn_list, φ.app_pure, app_pcsOpenWordsH φ H F hopen]
+      · simp only [φ.app_bind, Morph.app_forIn_list, φ.app_pure, app_pcsOpenWordsH φ H F hopen hopenO]
 
-include hopen in
+include hopen hopenO in
 theorem app_verifierWithH2 (D : RecDeployment) (roots : RecSetupRoots) (input : Vector UInt8 32) (proof : RecProof) :
     φ.app (Pi2H.verifierWithH H F D roots input proof) =
       Pi2H.verifierWithH (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) D roots input proof := by
-  simp only [Pi2H.verifierWithH, φ.app_bind, φ.app_pure, app_contractWithH φ H F hopen]
+  simp only [Pi2H.verifierWithH, φ.app_bind, φ.app_pure, app_contractWithH φ H F hopen hopenO]
 
 /-! ## π2's honest prover -/
 
@@ -151,25 +172,25 @@ theorem wr_sendPublic : ∀ l : List (Read × PublicValue), φ.wr (sendPublic (m
   | (.scalar, .integer _) :: rest => wr_sendPublic rest
   | (.scalar, .root _) :: rest => wr_sendPublic rest
 
-theorem wr_pi2ProveStreamWith (G : RecPiop.Circuit E) (S : CoreSpec E) (ood : ℕ → Digest → Array K → E)
+theorem wr_pi2ProveStreamWith (G : RecPiop.Circuit E) (S : CoreSpec E) (oodPt : ℕ → Digest → m (List E))
     (reads : List Read) (setupStack : Array K)
     (input : List UInt8) (values : List PublicValue) (w : ℕ → K) :
-    φ.wr (pi2ProveStreamWith H G S ood reads setupStack input values w) =
-      pi2ProveStreamWith (fun x ↦ φ.app (H x)) G S ood reads setupStack input values w := by
+    φ.wr (pi2ProveStreamWith H G S oodPt reads setupStack input values w) =
+      pi2ProveStreamWith (fun x ↦ φ.app (H x)) G S (fun n r ↦ φ.app (oodPt n r)) reads setupStack input values w := by
   simp only [pi2ProveStreamWith, Morph.wr_bind, wr_sendPublic, Morph.wr_lift, Morph.app_commitWithH,
     Morph.wr_sendRoot, Morph.wr_sendScalar, Morph.wr_sampleW, Morph.wr_sendScalars, Morph.wr_get, Morph.wr_pure]
 
-variable (hprove : ∀ (fuel n : ℕ) (tree : LeanVM.Prover.Tree) (stack : Array K) (pt : List E) (v : E),
-    φ.app (UniKeccakComplete.pcsProveH H F fuel n tree stack pt v) =
-      UniKeccakComplete.pcsProveH (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) fuel n tree stack pt v)
+variable (hprove : ∀ (fuel n : ℕ) (z : List E) (tree : LeanVM.Prover.Tree) (stack : Array K) (pt : List E) (v : E),
+    φ.app (PcsZ.pcsProveZH H F fuel n z tree stack pt v) =
+      PcsZ.pcsProveZH (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) fuel n z tree stack pt v)
 
 include hprove in
-theorem app_pi2ProveWith (fuel : ℕ) (G : RecPiop.Circuit E) (ood : ℕ → Digest → Array K → E) (view : Circuit)
+theorem app_pi2ProveWith (fuel : ℕ) (G : RecPiop.Circuit E) (oodPt : ℕ → Digest → m (List E)) (view : Circuit)
     (setupStack : Array K) (setupTree : LeanVM.Prover.Tree) (iv input : List UInt8) (values : List PublicValue)
     (w : ℕ → K) :
-    φ.app (pi2ProveWith H F fuel G ood view setupStack setupTree iv input values w) =
-      pi2ProveWith (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) fuel G ood view setupStack setupTree iv input values
-        w := by
+    φ.app (pi2ProveWith H F fuel G oodPt view setupStack setupTree iv input values w) =
+      pi2ProveWith (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) fuel G (fun n r ↦ φ.app (oodPt n r)) view setupStack
+        setupTree iv input values w := by
   simp only [pi2ProveWith, φ.app_bind, φ.app_pure, ← Morph.wr_run φ, wr_pi2ProveStreamWith, hprove]
 
 include hprove in
@@ -178,11 +199,11 @@ theorem app_pi2ProverWith (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts
     φ.app (pi2ProverWith H F D C Fa fuel input p1) =
       pi2ProverWith (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) D C Fa fuel input p1 := by
   simp only [pi2ProverWith, φ.app_bind, φ.app_pure, app_setupTreesWithH2, app_ivOfH,
-    app_pi2ProveWith φ H F hprove]
+    app_pi2ProveWith φ H F hprove, app_oodPointM]
 
 /-! ## The experiment and its stages -/
 
-include hopen hprove in
+include hopen hopenO hprove in
 theorem app_expW2 (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
     (p1o : m (Option UniKeccak.KeccakProof)) (input : Vector UInt8 32) :
     φ.app (expW2 H F D C Fa p1o input) =
@@ -196,24 +217,25 @@ theorem app_expW2 (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
     refine bind_congr fun a1 ↦ bind_congr fun r ↦ ?_
     cases r with
     | none => exact φ.app_pure _
-    | some p2 => simp only [φ.app_bind, φ.app_pure, app_verifierWithH2 φ H F hopen]
+    | some p2 => simp only [φ.app_bind, φ.app_pure, app_verifierWithH2 φ H F hopen hopenO]
 
-theorem wr_pre2 (G : RecPiop.Circuit E) (ood : ℕ → Digest → Array K → E) (reads : List Read)
+theorem wr_pre2 (G : RecPiop.Circuit E) (oodPt : ℕ → Digest → m (List E)) (reads : List Read)
     (values : List PublicValue) (w : ℕ → K) :
-    φ.wr (pre2 H G ood reads values w) = pre2 (fun x ↦ φ.app (H x)) G ood reads values w := by
+    φ.wr (pre2 H G oodPt reads values w) = pre2 (fun x ↦ φ.app (H x)) G (fun n r ↦ φ.app (oodPt n r)) reads values w := by
   simp only [pre2, Morph.wr_bind, wr_sendPublic, Morph.wr_lift, Morph.app_commitWithH, Morph.wr_sendRoot,
     Morph.wr_sendScalar, Morph.wr_pure]
 
-theorem wr_mid2 (G : RecPiop.Circuit E) (S : CoreSpec E) (ood : ℕ → Digest → Array K → E) (pubs : List E)
+theorem wr_mid2 (G : RecPiop.Circuit E) (S : CoreSpec E) (oodPt : ℕ → Digest → m (List E)) (pubs : List E)
     (w : ℕ → K) (α β γ : E) :
-    φ.wr (mid2 H G S ood pubs w α β γ) = mid2 (fun x ↦ φ.app (H x)) G S ood pubs w α β γ := by
+    φ.wr (mid2 H G S oodPt pubs w α β γ) = mid2 (fun x ↦ φ.app (H x)) G S (fun n r ↦ φ.app (oodPt n r)) pubs w α β γ := by
   simp only [mid2, Morph.wr_bind, Morph.wr_lift, Morph.app_commitWithH, Morph.wr_sendRoot, Morph.wr_sendScalar,
     Morph.wr_pure]
 
 theorem wr_post2 (G : RecPiop.Circuit E) (setupStack : Array K) (input : List UInt8) (values : List PublicValue)
-    (w : ℕ → K) (wS : Array K) (wT : LeanVM.Prover.Tree) (qS : Array K) (qT : LeanVM.Prover.Tree) (α β γ t : E) :
-    φ.wr (post2 H G setupStack input values w wS wT qS qT α β γ t) =
-      post2 (fun x ↦ φ.app (H x)) G setupStack input values w wS wT qS qT α β γ t := by
+    (w : ℕ → K) (wS : Array K) (wT : LeanVM.Prover.Tree) (qS : Array K) (qT : LeanVM.Prover.Tree) (α β γ t : E)
+    (wP qP : List E) :
+    φ.wr (post2 H G setupStack input values w wS wT qS qT α β γ t wP qP) =
+      post2 (fun x ↦ φ.app (H x)) G setupStack input values w wS wT qS qT α β γ t wP qP := by
   simp only [post2, Morph.wr_bind, Morph.wr_sendScalars, Morph.wr_sampleW, Morph.wr_get, Morph.wr_pure]
 
 include hopen in
@@ -227,13 +249,13 @@ theorem app_stageA (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
   | none => exact φ.app_pure _
   | some p1 =>
     simp only [φ.app_bind, φ.app_pure, app_pi1GraphVerifierWithH φ H F hopen, app_setupTreesWithH2, app_ivOfH,
-      ← Morph.wr_run φ, wr_pre2]
+      ← Morph.wr_run φ, wr_pre2, app_oodPointM]
 
 theorem app_stageB (D : RecDeployment) (C : Pi2Circuits D) (input : Vector UInt8 32) (a : StA) (s₁ s₂ s₃ : Digest) :
     φ.app (stageB H D C input a s₁ s₂ s₃) = stageB (fun x ↦ φ.app (H x)) D C input a s₁ s₂ s₃ := by
-  simp only [stageB, φ.app_bind, φ.app_pure, ← Morph.wr_run φ, wr_mid2]
+  simp only [stageB, φ.app_bind, φ.app_pure, ← Morph.wr_run φ, wr_mid2, app_oodPointM]
 
-include hopen hprove in
+include hopen hopenO hprove in
 theorem app_stageC (D : RecDeployment) (C : Pi2Circuits D) (input : Vector UInt8 32) (b : StB) (st : Digest) :
     φ.app (stageC H F D C input b st) =
       stageC (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) D C input b st := by
@@ -244,7 +266,7 @@ theorem app_stageC (D : RecDeployment) (C : Pi2Circuits D) (input : Vector UInt8
     refine bind_congr fun x ↦ bind_congr fun pW ↦ bind_congr fun pS ↦ bind_congr fun pQ1 ↦ bind_congr fun pQ2 ↦
       bind_congr fun pQ3 ↦ ?_
     split
-    · simp only [φ.app_bind, φ.app_pure, app_verifierWithH2 φ H F hopen]
+    · simp only [φ.app_bind, φ.app_pure, app_verifierWithH2 φ H F hopen hopenO]
     · exact φ.app_pure _
 
 end Morph
@@ -266,21 +288,33 @@ theorem hopen_sim : ∀ (n : ℕ) (root : Digest) (ood : E) (pt : List E) (v : E
   rw [Morph.sim_H, Morph.sim_F]
   exact UniKeccakComplete.simulateQ_pcsVerify impl zOf x p
 
-theorem hprove_sim : ∀ (fuel n : ℕ) (tree : LeanVM.Prover.Tree) (stack : Array K) (pt : List E) (v : E),
-    (Morph.sim impl).app (UniKeccakComplete.pcsProveH callKeccak256 callKeccakF1600 fuel n tree stack pt v) =
-      UniKeccakComplete.pcsProveH (fun x ↦ (Morph.sim impl).app (callKeccak256 x))
-        (fun s ↦ (Morph.sim impl).app (callKeccakF1600 s)) fuel n tree stack pt v := by
-  intro fuel n tree stack pt v
+theorem hopenO_sim : ∀ (n : ℕ) (root : Digest) (ood : E) (pt : List E) (v : E)
+    (proof : LeanVM.Protocol.Compile.Proof),
+    (Morph.sim impl).app (Pi2H.pcsOpenKOH callKeccak256 callKeccakF1600 n root ood pt v proof) =
+      Pi2H.pcsOpenKOH (fun x ↦ (Morph.sim impl).app (callKeccak256 x))
+        (fun s ↦ (Morph.sim impl).app (callKeccakF1600 s)) n root ood pt v proof := by
+  intro n root ood pt v proof
   rw [Morph.sim_H, Morph.sim_F]
-  exact UniKeccakComplete.simulateQ_pcsProveH impl fuel n tree stack pt v
+  unfold Pi2H.pcsOpenKOH
+  split
+  · exact simulateQ_pcsVerifierO impl _ proof
+  · exact (Morph.sim impl).app_pure _
+
+theorem hprove_sim : ∀ (fuel n : ℕ) (z : List E) (tree : LeanVM.Prover.Tree) (stack : Array K) (pt : List E) (v : E),
+    (Morph.sim impl).app (PcsZ.pcsProveZH callKeccak256 callKeccakF1600 fuel n z tree stack pt v) =
+      PcsZ.pcsProveZH (fun x ↦ (Morph.sim impl).app (callKeccak256 x))
+        (fun s ↦ (Morph.sim impl).app (callKeccakF1600 s)) fuel n z tree stack pt v := by
+  intro fuel n z tree stack pt v
+  rw [Morph.sim_H, Morph.sim_F]
+  exact PcsZ.simulateQ_pcsProveZH impl fuel n z tree stack pt v
 
 /-- **The experiment over the two calls commutes with any simulation.** -/
 theorem sim_expW2 (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
     (p1o : OracleComp KeccakCalls (Option UniKeccak.KeccakProof)) (input : Vector UInt8 32) :
     simulateQ impl (expW2 callKeccak256 callKeccakF1600 D C Fa p1o input) =
       expW2 (implH impl) (implF impl) D C Fa (simulateQ impl p1o) input := by
-  have h := app_expW2 (Morph.sim impl) callKeccak256 callKeccakF1600 (hopen_sim impl) (hprove_sim impl) D C Fa p1o
-    input
+  have h := app_expW2 (Morph.sim impl) callKeccak256 callKeccakF1600 (hopen_sim impl) (hopenO_sim impl)
+    (hprove_sim impl) D C Fa p1o input
   rw [Morph.sim_H, Morph.sim_F] at h
   exact h
 
@@ -301,8 +335,8 @@ theorem sim_stageB (D : RecDeployment) (C : Pi2Circuits D) (input : Vector UInt8
 theorem sim_stageC (D : RecDeployment) (C : Pi2Circuits D) (input : Vector UInt8 32) (b : StB) (st : Digest) :
     simulateQ impl (stageC callKeccak256 callKeccakF1600 D C input b st) =
       stageC (implH impl) (implF impl) D C input b st := by
-  have h := app_stageC (Morph.sim impl) callKeccak256 callKeccakF1600 (hopen_sim impl) (hprove_sim impl) D C input
-    b st
+  have h := app_stageC (Morph.sim impl) callKeccak256 callKeccakF1600 (hopen_sim impl) (hopenO_sim impl)
+    (hprove_sim impl) D C input b st
   rw [Morph.sim_H, Morph.sim_F] at h
   exact h
 

@@ -2,6 +2,7 @@
 -- (`RecCompose.Pi2ProbStaged`'s `pi2Staged`: `stageB`, `mid2`, `crates/leanvm/rec/src/pi2/prover.rs`'s `Q` and `t`);
 -- uses leanerVM (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`, commit 6175f1a0, MIT OR Apache-2.0).
 import RecCompose.Pi2TFresh
+import RecCompose.Pi2AlphaLen
 
 /-!
 # `Pi2TFresh`, proved from `α`'s freshness
@@ -9,9 +10,10 @@ import RecCompose.Pi2TFresh
 * **`Pi2AlphaFresh D C Fa P1k εα`** (named, replacing `Pi2HashBeforeAlpha`, which a π1 prover hashing `32`-byte inputs breaks, `Pi2Chain`): in
   the two-call random-oracle model, `α`'s input (`inp`, the state after the seed and π1's public data and `W`'s root,
   `608` bytes) is already hashed after stage A with probability at most `εα`.
-* **`stageB_eq`**: stage B is `Q`'s tree (`commitWithH`) then a pure writer, whose `t` input is `s₃`'s bytes and `Q`'s
-  root word (**`tin_stageB`**, `64` bytes).
-* **`pi2TFresh_of`**: `Pi2TFresh D C Fa P1k (tFreshBound2 N εα)`, `tFreshBound2 N εα = εα + (4N + 6 + treeCost μQ) /
+* **`stageB_eq`**: stage B is `Q`'s tree (`commitWithH`) and out-of-domain point (`oodPointM`: `28` hashes of `46`
+  bytes, neither `32` nor `88`, `apq_oodPointM`) then a pure writer, whose `t` input is `s₃`'s bytes, `Q`'s root word
+  and its answer (**`tin_stageB`**, `88` bytes).
+* **`pi2TFresh_of`**: `Pi2TFresh D C Fa P1k (tFreshBound2 N εα)`, `tFreshBound2 N εα = εα + (4N + 6 + treeCost μQ + μQ) /
   2^256`, for every `P1k`, from `Pi2RunCost D C Fa P1k N` and `Pi2AlphaFresh D C Fa P1k εα`;
   **`tFreshBound2_le`**: below `2^-200` at `N ≤ 2^50`, `εα ≤ 2^-201`.
 * **`recCompleteness2_pi2_staged2`**: π2's completeness from `Pi2ProbStaged`'s named facts with `Pi2HashBeforeAlpha` and
@@ -47,39 +49,40 @@ noncomputable def qStackOf {D : RecDeployment} (C : Pi2Circuits D) (input : Vect
       (phiOn (Spec.of (D.circuitAt a.roots.pi1).circuit).core (publicScalarsOf input.toList a.vw.1) (chalP s₃)))
     (pNovel (C.G a.roots) a.vw.2) (qpNovel (C.G a.roots) a.vw.2 (chalP s₃)))
 
-/-- **Stage B's tree**: `Q`'s commitment. -/
+/-- **Stage B's hashes**: `Q`'s commitment, then its out-of-domain point (`oodPointM`, `ood_point`). -/
 noncomputable def treeB {D : RecDeployment} (C : Pi2Circuits D) (input : Vector UInt8 32) (a : StA)
-    (s₁ s₂ s₃ : Digest) : OracleComp KeccakCalls LeanVM.Prover.Tree :=
-  E2ECompleteness.commitWithH callKeccak256 (stackVars (C.G a.roots).logN).2.1 (qStackOf C input a s₁ s₂ s₃)
+    (s₁ s₂ s₃ : Digest) : OracleComp KeccakCalls (LeanVM.Prover.Tree × List E) := do
+  let qT ← E2ECompleteness.commitWithH callKeccak256 (stackVars (C.G a.roots).logN).2.1 (qStackOf C input a s₁ s₂ s₃)
+  let z ← WhirBridge.Pcs.oodPointM callKeccak256 (stackVars (C.G a.roots).logN).2.1 qT.root
+  return (qT, z)
 
-/-- **Stage B's writer** after the tree: `Q`'s root word, its out-of-domain answer. -/
+/-- **Stage B's writer** after the hashes: `Q`'s root word, its out-of-domain answer. -/
 noncomputable def outB {D : RecDeployment} (C : Pi2Circuits D) (input : Vector UInt8 32) (a : StA)
-    (s₁ s₂ s₃ : Digest) (qT : LeanVM.Prover.Tree) : StB :=
-  ⟨a, chalP s₁, chalP s₂, chalP s₃, qStackOf C input a s₁ s₂ s₃, qT,
+    (s₁ s₂ s₃ : Digest) (d : LeanVM.Prover.Tree × List E) : StB :=
+  ⟨a, chalP s₁, chalP s₂, chalP s₃, qStackOf C input a s₁ s₂ s₃, d.1,
     { absorbW (absorbW (absorbW a.wr s₁) s₂) s₃ with
       stream := (absorbW (absorbW (absorbW a.wr s₁) s₂) s₃).stream ++
-        (UniStatement.rootWord (UniStatement.rootHalves qT.root)).toArray ++
-        (UniComplete.scalarWire (pi2Ood (stackVars (C.G a.roots).logN).2.1 qT.root
-          (qStackOf C input a s₁ s₂ s₃))).toArray }⟩
+        (UniStatement.rootWord (UniStatement.rootHalves d.1.root)).toArray ++
+        (UniComplete.scalarWire (pi2OodAt (qStackOf C input a s₁ s₂ s₃) d.2)).toArray }, d.2⟩
 
-/-- **Stage B is `Q`'s tree, then a pure writer.** -/
+/-- **Stage B is `Q`'s tree and point, then a pure writer.** -/
 theorem stageB_eq (D : RecDeployment) (C : Pi2Circuits D) (input : Vector UInt8 32) (a : StA) (s₁ s₂ s₃ : Digest) :
     stageB callKeccak256 D C input a s₁ s₂ s₃ =
-      treeB C input a s₁ s₂ s₃ >>= fun qT ↦ pure (outB C input a s₁ s₂ s₃ qT) := by
+      treeB C input a s₁ s₂ s₃ >>= fun d ↦ pure (outB C input a s₁ s₂ s₃ d) := by
   unfold stageB mid2 treeB outB qStackOf
   simp only [StateT.run_bind, StateT.run_lift, UniKeccakComplete.Prob.run_sendRoot, bind_assoc, pure_bind,
     StateT.run_pure, UniComplete.sendScalar, UniComplete.sendBytes, StateT.run_modify]
 
 /-- **`t`'s input after stage B**: `s₃`'s bytes, then `Q`'s root word and its out-of-domain answer. -/
 theorem tin_stageB {D : RecDeployment} (C : Pi2Circuits D) (input : Vector UInt8 32) (a : StA) (s₁ s₂ s₃ : Digest)
-    (qT : LeanVM.Prover.Tree) :
-    UniKeccakComplete.Prob.tInput (outB C input a s₁ s₂ s₃ qT).wr = digestBytes s₃ ++
-      UniStatement.rootWord (UniStatement.rootHalves qT.root) ++
-      UniComplete.scalarWire (pi2Ood (stackVars (C.G a.roots).logN).2.1 qT.root (qStackOf C input a s₁ s₂ s₃)) := by
+    (d : LeanVM.Prover.Tree × List E) :
+    UniKeccakComplete.Prob.tInput (outB C input a s₁ s₂ s₃ d).wr = digestBytes s₃ ++
+      UniStatement.rootWord (UniStatement.rootHalves d.1.root) ++
+      UniComplete.scalarWire (pi2OodAt (qStackOf C input a s₁ s₂ s₃) d.2) := by
   simp [UniKeccakComplete.Prob.tInput, outB, absorbW]
 
 theorem tin_stageB_length {D : RecDeployment} (C : Pi2Circuits D) (input : Vector UInt8 32) (a : StA)
-    (s₁ s₂ s₃ : Digest) (qT : LeanVM.Prover.Tree) :
+    (s₁ s₂ s₃ : Digest) (qT : LeanVM.Prover.Tree × List E) :
     (UniKeccakComplete.Prob.tInput (outB C input a s₁ s₂ s₃ qT).wr).length = TF.tLen ∧
       (UniKeccakComplete.Prob.tInput (outB C input a s₁ s₂ s₃ qT).wr).take 32 = digestBytes s₃ := by
   rw [tin_stageB, List.append_assoc]
@@ -104,9 +107,46 @@ def Pi2AlphaFresh (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
 /-- `Q`'s tree's height parameter. -/
 abbrev muQ : ℕ := (stackVars 24).2.1
 
-/-- **`t`'s cache-hit bound**: `εα` and `(4N + 6 + |Q's tree|) / 2^256`. -/
+/-- **The out-of-domain point's queries** (`46` bytes, never `t`'s `88`) begin with nothing in particular: no
+`tLen`-byte query. -/
+theorem apq_oodPointM (n : ℕ) (r : Digest) (R : List Digest) :
+    TF.APq (fun _ _ ↦ True) R (WhirBridge.Pcs.oodPointM callKeccak256 n r) := by
+  unfold WhirBridge.Pcs.oodPointM
+  generalize List.range n = l
+  induction l generalizing R with
+  | nil => exact .ret _ trivial
+  | cons j l ih =>
+    rw [List.mapM_cons]
+    refine TF.APq.bind (Q₁ := fun _ _ ↦ True) (fun b R' _ ↦ (ih R').bind fun bs R'' _ ↦ .ret _ trivial) ?_
+    exact .query _ _ (fun hl ↦ absurd hl (by rw [Pi2A.oodInput_length]; decide)) fun u ↦ .ret _ trivial
+
+/-- **Stage B's hashes' `tLen`-byte queries begin with received digests** (the tree's nodes; the point asks none). -/
+theorem apq_treeB {D : RecDeployment} (C : Pi2Circuits D) (input : Vector UInt8 32) (a : StA) (s₁ s₂ s₃ : Digest) :
+    TF.APq (fun _ _ ↦ True) [default] (treeB C input a s₁ s₂ s₃) :=
+  (TF.apq_commitWithH _ _ _ (List.mem_singleton_self _)).bind fun _ R _ ↦
+    (apq_oodPointM _ _ R).bind fun _ _ _ ↦ .ret _ trivial
+
+/-- **Stage B hashes nothing of `32` bytes.** -/
+theorem hashOK32_treeB {D : RecDeployment} (C : Pi2Circuits D) (input : Vector UInt8 32) (a : StA)
+    (s₁ s₂ s₃ : Digest) : HashOK (fun m ↦ m.length ≠ 32) (treeB C input a s₁ s₂ s₃) :=
+  E2ECompleteness.HashOK.bind
+    (UniKeccakComplete.Prob.HashOK.mono (fun m h ↦ h.1) (E2ECompleteness.hashOK_commitWithH _ _)) fun _ ↦
+    E2ECompleteness.HashOK.bind (Pi2A.hashOK_oodPointM _ _ fun j ↦ by
+      show (WhirBridge.Pcs.oodInput _ _ j).length ≠ 32
+      rw [Pi2A.oodInput_length]
+      decide) fun _ ↦ E2ECompleteness.HashOK.pure _ _
+
+/-- **Stage B's hash count**: `Q`'s tree and its point's `μQ` hashes. -/
+theorem hc_treeB {D : RecDeployment} (C : Pi2Circuits D) (Fa : Pi2Facts D C) (input : Vector UInt8 32) (a : StA)
+    (s₁ s₂ s₃ : Digest) : HC (treeB C input a s₁ s₂ s₃) (E2ECompleteness.Cost.treeCost muQ + muQ) := by
+  unfold treeB E2ECompleteness.Cost.treeCost
+  rw [logN_G Fa]
+  exact hc_of_qc ((E2ECompleteness.Cost.qc_commitWithH _ _).bind_le (fun _ ↦
+    (Cost2.qc_oodPointM _ _).bind_le (fun _ ↦ E2ECompleteness.Cost.qc_pure _ 0) le_rfl) le_rfl)
+
+/-- **`t`'s cache-hit bound**: `εα` and `(4N + 6 + |Q's tree| + |Q's point|) / 2^256`. -/
 noncomputable def tFreshBound2 (N : ℕ) (εα : ℝ≥0∞) : ℝ≥0∞ :=
-  εα + ((4 * N + 6 + E2ECompleteness.Cost.treeCost muQ : ℕ) : ℝ≥0∞) / 2 ^ 256
+  εα + ((4 * N + 6 + (E2ECompleteness.Cost.treeCost muQ + muQ) : ℕ) : ℝ≥0∞) / 2 ^ 256
 
 /-- **`Pi2TFresh`, from the run's cost and `α`'s freshness**, for every `P1k`. -/
 theorem pi2TFresh_of {D : RecDeployment} (C : Pi2Circuits D) (Fa : Pi2Facts D C)
@@ -116,13 +156,8 @@ theorem pi2TFresh_of {D : RecDeployment} (C : Pi2Circuits D) (Fa : Pi2Facts D C)
   intro input rows q hfit hrel
   refine TF.tFresh_of (pi2Staged D C Fa (P1k input rows q) input) (fun a s₁ s₂ s₃ ↦ treeB C input a s₁ s₂ s₃)
     (fun a s₁ s₂ s₃ qT ↦ outB C input a s₁ s₂ s₃ qT) (fun a s₁ s₂ s₃ ↦ stageB_eq D C input a s₁ s₂ s₃)
-    (fun a s₁ s₂ s₃ ↦ TF.apq_commitWithH _ _ _ (List.mem_singleton_self _))
-    (fun a s₁ s₂ s₃ ↦ UniKeccakComplete.Prob.HashOK.mono (fun m h ↦ h.1) (E2ECompleteness.hashOK_commitWithH _ _))
-    (NT := E2ECompleteness.Cost.treeCost muQ)
-    (fun a s₁ s₂ s₃ ↦ by
-      unfold treeB E2ECompleteness.Cost.treeCost
-      rw [logN_G Fa]
-      exact hc_of_qc (E2ECompleteness.Cost.qc_commitWithH _ _))
+    (fun a s₁ s₂ s₃ ↦ apq_treeB C input a s₁ s₂ s₃) (fun a s₁ s₂ s₃ ↦ hashOK32_treeB C input a s₁ s₂ s₃)
+    (NT := E2ECompleteness.Cost.treeCost muQ + muQ) (fun a s₁ s₂ s₃ ↦ hc_treeB C Fa input a s₁ s₂ s₃)
     (fun a s₁ s₂ s₃ qT ↦ tin_stageB_length C input a s₁ s₂ s₃ qT) (by norm_num : (608 : ℕ) ≠ 32)
     (fun a ↦ fixLen_length 608 _) ((pi2Staged D C Fa (P1k input rows q) input).hc_A (hcost input rows q hfit hrel))
     (hα input rows q hfit hrel) |>.trans (le_of_eq ?_)
@@ -141,12 +176,14 @@ theorem tFreshBound2_le {N : ℕ} {εα : ℝ≥0∞} (hN : N ≤ 2 ^ 50) (ha : 
           · norm_num
           · have := muQ_le; omega
       _ = 2 ^ 38 := by norm_num
-  have hb : ((4 * N + 6 + E2ECompleteness.Cost.treeCost muQ : ℕ) : ℝ≥0∞) / 2 ^ 256 ≤ (2 : ℝ≥0∞)⁻¹ ^ 201 := by
-    calc ((4 * N + 6 + E2ECompleteness.Cost.treeCost muQ : ℕ) : ℝ≥0∞) / 2 ^ 256
+  have hm := muQ_le
+  have hb : ((4 * N + 6 + (E2ECompleteness.Cost.treeCost muQ + muQ) : ℕ) : ℝ≥0∞) / 2 ^ 256 ≤
+      (2 : ℝ≥0∞)⁻¹ ^ 201 := by
+    calc ((4 * N + 6 + (E2ECompleteness.Cost.treeCost muQ + muQ) : ℕ) : ℝ≥0∞) / 2 ^ 256
         ≤ ((2 ^ 55 : ℕ) : ℝ≥0∞) * (2 : ℝ≥0∞)⁻¹ ^ (201 + 55) := by
           rw [ENNReal.div_eq_inv_mul, ← ENNReal.inv_pow, mul_comm]
           gcongr
-          exact_mod_cast (show 4 * N + 6 + E2ECompleteness.Cost.treeCost muQ ≤ 2 ^ 55 by omega)
+          exact_mod_cast (show 4 * N + 6 + (E2ECompleteness.Cost.treeCost muQ + muQ) ≤ 2 ^ 55 by omega)
       _ = (2 : ℝ≥0∞)⁻¹ ^ 201 := by
           rw [Nat.cast_pow, Nat.cast_ofNat]
           exact E2ECompleteness.two_pow_mul_inv_pow 55 201

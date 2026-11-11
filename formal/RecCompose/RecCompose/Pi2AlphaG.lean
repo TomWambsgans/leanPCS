@@ -432,13 +432,8 @@ theorem pi2TFresh_ofG {D : RecDeployment} (C : Pi2Circuits D) (Fa : Pi2Facts D C
       p.2 (.inl ((pi2Staged D C Fa P1k input).tin p.1.1)) ≠ none ∧ G p.1.1.a] ≤ tFreshBound2 N εα := by
   refine TF.tFresh_ofG (pi2Staged D C Fa P1k input) (fun a s₁ s₂ s₃ ↦ treeB C input a s₁ s₂ s₃)
     (fun a s₁ s₂ s₃ qT ↦ outB C input a s₁ s₂ s₃ qT) (fun a s₁ s₂ s₃ ↦ stageB_eq D C input a s₁ s₂ s₃)
-    (fun a s₁ s₂ s₃ ↦ TF.apq_commitWithH _ _ _ (List.mem_singleton_self _))
-    (fun a s₁ s₂ s₃ ↦ UniKeccakComplete.Prob.HashOK.mono (fun m h ↦ h.1) (E2ECompleteness.hashOK_commitWithH _ _))
-    (NT := E2ECompleteness.Cost.treeCost muQ)
-    (fun a s₁ s₂ s₃ ↦ by
-      unfold treeB E2ECompleteness.Cost.treeCost
-      rw [logN_G Fa]
-      exact hc_of_qc (E2ECompleteness.Cost.qc_commitWithH _ _))
+    (fun a s₁ s₂ s₃ ↦ apq_treeB C input a s₁ s₂ s₃) (fun a s₁ s₂ s₃ ↦ hashOK32_treeB C input a s₁ s₂ s₃)
+    (NT := E2ECompleteness.Cost.treeCost muQ + muQ) (fun a s₁ s₂ s₃ ↦ hc_treeB C Fa input a s₁ s₂ s₃)
     (fun a s₁ s₂ s₃ qT ↦ tin_stageB_length C input a s₁ s₂ s₃ qT) (by norm_num : (608 : ℕ) ≠ 32)
     (fun a ↦ fixLen_length 608 _) ((pi2Staged D C Fa P1k input).hc_A hcost) G (fun b : StB ↦ G b.a)
     (fun _ _ _ _ _ h ↦ h) hα |>.trans (le_of_eq ?_)

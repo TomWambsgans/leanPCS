@@ -23,7 +23,9 @@ The steps: π2's verifier reads the prover's stream back (`runWith_honest`), so 
 check passes; the claims are eight; `W`'s, the setup's and `Q`'s three decode (`claimOfWords_claim`) to the roots the
 prover committed (the stream's root bytes, `rootOfWord_rootWord_rootHalves`; the setup's the deployment's), their
 out-of-domain answers (the stream's, `runWith_honest`; the setup's the deployment's) and the prover's claims, and the
-PCS check accepts the honest openings of true claims (`pi2PcsOpen_honest`); π1's three are `openSeq`'s
+PCS check accepts the honest openings of true claims (`W`'s and `Q`'s by the oracle-point check `pcsOpenKOH`, at
+`Hk`'s point `pi2Z Hk` where the prover answered and opened, `proverOut_points`, `pi2PcsOpenO_honest`; the setup's at
+the deployed point, `pi2PcsOpen_honest`); π1's three are `openSeq`'s
 (`pcsOpenWordsH_eq`, the calls read only the public data: `pcsCalls_take`, `callWord_congr`).
 -/
 

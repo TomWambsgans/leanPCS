@@ -66,21 +66,21 @@ theorem rejects_at_good {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D) (F
       rw [hz2] at hB
       have hbad : ¬ BadCopy (C.G (rootsH D Ht Ft)) (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).2
           (Fa.pubOf (rootsH D Ht Ft) (publicScalarsOf input.toList (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1))
-          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) pi2Ood input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
+          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) (pi2Z Ht) input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
             (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).2).inputs.α
-          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) pi2Ood input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
+          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) (pi2Z Ht) input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
             (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).2).inputs.β
-          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) pi2Ood input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
+          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) (pi2Z Ht) input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
             (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).2).inputs.γ :=
         fun hb ↦ hB (Finset.mem_filter.mpr ⟨Finset.mem_univ _, hb⟩)
       have ht : ¬ BadT (C.G (rootsH D Ht Ft)) (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).2
-          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) pi2Ood input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
+          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) (pi2Z Ht) input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
             (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).2).inputs.α
-          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) pi2Ood input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
+          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) (pi2Z Ht) input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
             (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).2).inputs.β
-          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) pi2Ood input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
+          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) (pi2Z Ht) input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
             (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).2).inputs.γ
-          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) pi2Ood input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
+          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) (pi2Z Ht) input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
             (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).2).inputs.t :=
         fun hb ↦ hT ⟨hgood.2.1, hbad, hb⟩
       have hacc := pi2_accepts D hD C Fa Ft Ht PcsQuotient.nonceFuel input p1 hgood (logN_G Fa _)

@@ -17,18 +17,20 @@ below `2^48.0`): at the real deployment (`hD`) and the graphs' agreement (`hg`, 
 staged run at a π1 prover of at most `2^47` block calls (`Pi1Cost D P1k`, named) makes at most `pi2RunN` block calls
 (`hashBlocks`: a Keccak-256 of `n` bytes `⌊n / 136⌋ + 1`, a Keccak-f[1600] one).
 
-`pi2RunN = 2 · setup2 + 2^47 + 3 · gOpen + 2 · ivC + treeW + 1 + 6 + treeQ + 1 + 4 + openW + openS + openQ +
-  (1 + 10 + 3 · 1216 + 6 · cOpen)`:
+`pi2RunN = 2 · setup2 + 2^47 + 3 · gOpen + 2 · ivC + treeW + 24 + 1 + 6 + treeQ + 28 + 1 + 4 + openW + openS +
+  openQ + (1 + 10 + 3 · 1216 + 8 · cOpen)`:
 
 * the setup twice (`setup2`: π1's one tree, `treeCost 23` at the reference shape, `UniKeccakSound.setupVars_ref`;
   π2's setup tree `treeCost 25`), π1-rec3's prover (`2^47`, `Pi1Cost`);
 * the graph's three openings (`gOpen`: a PCS claim's check, `UniKeccakComplete.Cost.openCost`), π2's IV twice (`ivC`:
   `σ`'s `4 · 2^24` bytes, `κ`'s `8 · 2^24`, the encoding's `24464 + 64`, the IV's `137`), the
-  seed (`80` bytes), `W`'s tree (`treeCost 24`);
-* the chain (`584`, `32`, `32` bytes), `Q`'s tree (`treeCost 28`), `t` (`64` bytes), `ρ` (`440` bytes);
-* π2's prover's five PCS openings (UniKeccakComplete's `cost_pcsProveH`);
+  seed (`80` bytes), `W`'s tree (`treeCost 24`) and out-of-domain point (`24` hashes of `46` bytes, `qc_oodPointM`);
+* the chain (`584`, `32`, `32` bytes), `Q`'s tree (`treeCost 28`) and point (`28` hashes), `t` (`64` bytes), `ρ`
+  (`440` bytes);
+* π2's prover's five PCS openings (`PcsZ.cost_pcsProveZH`);
 * the contract on π2's honest stream (at most `1216` bytes): its seed, its walk (`10` blocks beyond the channel's
-  potential `3 · 1216`, UniComplete's `CC` calculus), its eight PCS claims' checks (`cOpen`).
+  potential `3 · 1216`, UniComplete's `CC` calculus), its eight PCS claims' checks (`cOpen`: a check's
+  `openCost`, and at `W`'s and `Q`'s sizes the point's `28` hashes, `cost_pcsVerifyO`).
 
 The calculus: `CP X c P` (at most `c` block calls, every outcome satisfying `P`, any budget beyond left over), on
 UniComplete's `CostP`.
@@ -289,29 +291,60 @@ theorem length_publicWire_data (values : List PublicValue) : (Pi2S.publicWire (D
   have : min 21 values.length ≤ 21 := min_le_left _ _
   omega
 
-/-- **Before `α`**: `W`'s tree; the public values and the root written. -/
-theorem cp_pre2 (G : RecPiop.Circuit E) (hG : G.logN = 24) (ood : ℕ → Digest → Array K → E) (reads : List Read)
+/-- A list of computations of one block each, then a continuation on lists of their length. -/
+theorem qc_mapM_bind {α : Type} (g : ℕ → OracleComp KeccakCalls E) (hg : ∀ j, QC (g j) 1) :
+    ∀ (l : List ℕ) (f : List E → OracleComp KeccakCalls α) (c : ℕ),
+      (∀ zs : List E, zs.length = l.length → QC (f zs) c) → QC (l.mapM g >>= f) (l.length + c)
+  | [], f, c, hf => by
+    rw [List.mapM_nil, pure_bind]
+    simpa using hf [] rfl
+  | j :: l, f, c, hf => by
+    rw [List.mapM_cons, bind_assoc]
+    refine (hg j).bind_le (b := l.length + c) (fun e ↦ ?_) (by simp only [List.length_cons]; omega)
+    rw [bind_assoc]
+    simp only [pure_bind]
+    exact qc_mapM_bind g hg l (fun zs ↦ f (e :: zs)) c (fun zs hz ↦ hf _ (by simp [hz]))
+
+/-- A coordinate of the out-of-domain point: one Keccak-256 of `46` bytes. -/
+theorem qc_coord (n : ℕ) (r : Digest) (j : ℕ) :
+    QC (do return WhirBridge.Pcs.elemOf ((digestBytes (← callKeccak256 (WhirBridge.Pcs.oodInput n r j))).drop 8) :
+      OracleComp KeccakCalls E) 1 := by
+  refine (qc_H_le (k := 1) ?_).bind_le (fun _ ↦ qc_pure _ 0) le_rfl
+  have : (WhirBridge.Pcs.oodInput n r j).length = 46 := by
+    simp [WhirBridge.Pcs.oodInput, WhirBridge.Pcs.oodTag, WhirBridge.Pcs.digestBytes_length']
+  omega
+
+/-- **The out-of-domain point**: `n` blocks (`n` hashes of `46` bytes). -/
+theorem qc_oodPointM (n : ℕ) (r : Digest) : QC (WhirBridge.Pcs.oodPointM callKeccak256 n r) n := by
+  have h := qc_mapM_bind _ (qc_coord n r) (List.range n) pure 0 fun _ _ ↦ qc_pure _ 0
+  rwa [bind_pure, List.length_range, Nat.add_zero] at h
+
+/-- **Before `α`**: `W`'s tree and out-of-domain point; the public values and the root written. -/
+theorem cp_pre2 (G : RecPiop.Circuit E) (hG : G.logN = 24) (reads : List Read)
     (values : List PublicValue) (w : ℕ → K) (s : UniComplete.Wr) :
-    CP ((pre2 callKeccak256 G ood reads values w).run s) (treeCost 24) fun z ↦
-      z.2.absorbed = s.absorbed ∧ z.2.stream.size = s.stream.size + (Pi2S.publicWire (reads.zip values)).length + 56 := by
+    CP ((pre2 callKeccak256 G (WhirBridge.Pcs.oodPointM callKeccak256) reads values w).run s) (treeCost 24 + 24)
+      fun z ↦ z.2.absorbed = s.absorbed ∧
+        z.2.stream.size = s.stream.size + (Pi2S.publicWire (reads.zip values)).length + 56 := by
   obtain ⟨s', h, ha, hs⟩ := run_sendPublic (reads.zip values) s
   unfold pre2
   simp only [StateT.run_bind, h, pure_bind, StateT.run_lift, bind_assoc, run_sendRoot2, run_sendScalar2,
     StateT.run_pure]
-  refine CP.bind_le (cp_of_qc (qc_commitWithH _ _)) (fun t _ ↦ cp_pure _ ⟨ha, ?_⟩) ?_
+  refine CP.bind_le (cp_of_qc (qc_commitWithH _ _)) (fun t _ ↦ CP.bind_le (cp_of_qc (qc_oodPointM _ _))
+    (fun z _ ↦ cp_pure _ ⟨ha, ?_⟩) le_rfl) ?_
   · simp [hs]
   · rw [hG]
     decide
 
-/-- **From `γ` to `t`**: `Q`'s tree; its root written. -/
-theorem cp_mid2 (G : RecPiop.Circuit E) (hG : G.logN = 24) (S : CoreSpec E) (ood : ℕ → Digest → Array K → E)
+/-- **From `γ` to `t`**: `Q`'s tree and out-of-domain point; its root written. -/
+theorem cp_mid2 (G : RecPiop.Circuit E) (hG : G.logN = 24) (S : CoreSpec E)
     (pubs : List E) (w : ℕ → K) (α β γ : E) (s : UniComplete.Wr) :
-    CP ((mid2 callKeccak256 G S ood pubs w α β γ).run s) (treeCost 28) fun z ↦
-      z.2.absorbed = s.absorbed ∧ z.2.stream.size = s.stream.size + 56 := by
+    CP ((mid2 callKeccak256 G S (WhirBridge.Pcs.oodPointM callKeccak256) pubs w α β γ).run s) (treeCost 28 + 28)
+      fun z ↦ z.2.absorbed = s.absorbed ∧ z.2.stream.size = s.stream.size + 56 := by
   unfold mid2
   simp only [StateT.run_bind, pure_bind, StateT.run_lift, bind_assoc, run_sendRoot2, run_sendScalar2,
     StateT.run_pure]
-  refine CP.bind_le (cp_of_qc (qc_commitWithH _ _)) (fun t _ ↦ cp_pure _ ⟨rfl, ?_⟩) ?_
+  refine CP.bind_le (cp_of_qc (qc_commitWithH _ _)) (fun t _ ↦ CP.bind_le (cp_of_qc (qc_oodPointM _ _))
+    (fun z _ ↦ cp_pure _ ⟨rfl, ?_⟩) le_rfl) ?_
   · simp
   · rw [hG]
     decide
@@ -322,8 +355,8 @@ theorem length_foldValues (m r : ℕ) (T : Array K) (t : E) : (foldValues m r T 
 /-- **After `t`**: the values at `t` written, `ρ` (`464` bytes, `4` blocks). -/
 theorem cp_post2 (G : RecPiop.Circuit E) (hW : G.logW = 4) (setupStack : Array K) (input : List UInt8)
     (values : List PublicValue) (w : ℕ → K) (wS : Array K) (wT : LeanVM.Prover.Tree) (qS : Array K)
-    (qT : LeanVM.Prover.Tree) (α β γ t : E) (s : UniComplete.Wr) (hs : s.absorbed = s.stream.size) :
-    CP ((post2 callKeccak256 G setupStack input values w wS wT qS qT α β γ t).run s) 4 fun z ↦
+    (qT : LeanVM.Prover.Tree) (α β γ t : E) (wP qP : List E) (s : UniComplete.Wr) (hs : s.absorbed = s.stream.size) :
+    CP ((post2 callKeccak256 G setupStack input values w wS wT qS qT α β γ t wP qP).run s) 4 fun z ↦
       z.1.stream.size = s.stream.size + 432 := by
   unfold post2
   simp only [StateT.run_bind, pure_bind, bind_assoc, run_sendScalars2, UniComplete.sampleW, StateT.run_get,
@@ -444,8 +477,55 @@ theorem qc_pi1GraphVerifierWithH (D : RecDeployment) (roots : UniKeccak.SetupRoo
 
 /-! ## The contract -/
 
-/-- The contract's opening: one PCS claim's check. -/
-noncomputable def cOpen : ℕ := UniKeccakComplete.Cost.openCost
+section VerifyO
+
+open E2ECompleteness.Cost
+
+/-- **The PCS check with the out-of-domain point read off Keccak-256**: its IV (`6` blocks), the seed's permutation,
+the point (`n ≤ 28` blocks), then the compiled run of the claim's program. -/
+theorem cost_pcsVerifyO {n : ℕ} (x : WhirBridge.Pcs.Claim1 n) (π : Compile.Proof) :
+    QC (WhirBridge.Pcs.pcsVerifyWithHashO callKeccak256 callKeccakF1600 x π)
+      (6 + 1 + (28 + 3 * (2 + ((4 + (2 + whirBound)) + 0)))) := by
+  unfold WhirBridge.Pcs.pcsVerifyWithHashO LeanVM.Protocol.Compile.runProofWithHash
+  split
+  · rename_i hn
+    have hw : Whir.Admissible n WhirBridge.logInvRate := WhirBridge.Pcs.admissible_v1 n hn.1 hn.2
+    have hn28 : n ≤ 28 := hn.2
+    refine (qc_H_le (k := 6) ?_).bind_le (b := 1 + (28 + 3 * (2 + ((4 + (2 + whirBound)) + 0))))
+      (fun iv ↦ (qc_F _).bind_le (b := 28 + 3 * (2 + ((4 + (2 + whirBound)) + 0))) (fun seed ↦ ?_) le_rfl)
+      (by omega)
+    · rw [WhirBridge.Pcs.claimBytes_length]; omega
+    · split
+      · unfold WhirBridge.Pcs.oodPointM
+        refine (qc_mapM_bind _ (qc_coord n x.root) (List.range n) _ (3 * (2 + ((4 + (2 + whirBound)) + 0)))
+          fun z hz ↦ ?_).mono (by rw [List.length_range]; omega)
+        rw [List.length_range] at hz
+        rw [UniKeccakComplete.prog_eq_openingProgram z hz x, E2ECompleteness.openingProgram_eq hw]
+        refine (cost_runWithHash costHeight _ _ (2 + ((4 + (2 + whirBound)) + 0)) (fun _ ↦ True) ?_ ?_ ?_).bind_le
+          (b := 0) (fun z ↦ by split <;> exact qc_pure _ 0) (by omega)
+        · refine ⟨by unfold costHeight WhirBridge.logInvRate; omega, by omega, ?_⟩
+          rw [Nat.add_sub_cancel_left]
+          exact LeanVM.Protocol.Compile.Prog.Costs.bind (costs_vso _ _ _) fun _ _ ↦
+            LeanVM.Protocol.Compile.Prog.Costs.ret' trivial
+        · exact ⟨by unfold LeanVM.Rpm.maxWidth; omega,
+            LeanVM.Rpm.WidthsLE.bind (widthsLE_vso _ _ _) fun _ ↦ trivial⟩
+        · intro r hr
+          simp at hr
+      · exact qc_pure _ _
+  · exact qc_pure _ _
+
+end VerifyO
+
+/-- The contract's opening: one PCS claim's check, with the out-of-domain point's `28` hashes at `W`'s and `Q`'s
+sizes. -/
+noncomputable def cOpen : ℕ := UniKeccakComplete.Cost.openCost + 28
+
+theorem qc_pcsOpenKOH (n : ℕ) (root : Digest) (ood : E) (pt : List E) (v : E) (p : Compile.Proof) :
+    QC (Pi2H.pcsOpenKOH callKeccak256 callKeccakF1600 n root ood pt v p) cOpen := by
+  unfold Pi2H.pcsOpenKOH
+  split
+  · exact (cost_pcsVerifyO _ _).mono (by unfold cOpen UniKeccakComplete.Cost.openCost E2ECompleteness.Cost.vOpen; omega)
+  · exact qc_pure _ _
 
 /-- **The check of a claim's words**: at most `cOpen` blocks. -/
 theorem qc_pcsOpenWordsH (words : List (List UInt8)) (p : Compile.Proof) :
@@ -453,7 +533,9 @@ theorem qc_pcsOpenWordsH (words : List (List UInt8)) (p : Compile.Proof) :
   unfold Pi2H.pcsOpenWordsH
   split
   · exact qc_pure _ _
-  · exact UniKeccakComplete.Cost.qc_pcsOpenKH _ _ _ _ _ _
+  · split
+    · exact qc_pcsOpenKOH _ _ _ _ _ _
+    · exact (UniKeccakComplete.Cost.qc_pcsOpenKH _ _ _ _ _ _).mono (by unfold cOpen; omega)
 
 /-- **π2's walk on the calldata**: `10` blocks beyond the channel's potential (five challenges). -/
 theorem cc_reduceWithH2 (s : Spec) (stmt : List E) : CC (Pi2H.reduceWithH callKeccak256 s stmt) 10 0 fun _ ↦ True := by
@@ -562,7 +644,7 @@ theorem qc_stageC {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D) (Fa : Pi
   · refine CP.toQC (P := fun _ ↦ True) (CP.bind_le
       (c₂ := (5 + openP2) + ((6 + openP2) + ((6 + openP2) + ((6 + openP2) + ((6 + openP2) + (contractC 1216 + 0))))))
       (cp_post2 (C.G b.a.roots) (Fa.logW b.a.roots) _ _ _ _ _ _ _ _
-      _ _ _ _ _ rfl) (fun z hz ↦ cp_of_qc ?_) (by unfold costC; omega))
+      _ _ _ _ _ _ _ rfl) (fun z hz ↦ cp_of_qc ?_) (by unfold costC; omega))
     obtain ⟨out, _⟩ := z
     dsimp only at hz ⊢
     have hc : (D.circuitAt b.a.roots.pi1).circuit = Data.circuit := by rw [RecDeployment.circuitAt, hD.1]
@@ -570,19 +652,19 @@ theorem qc_stageC {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D) (Fa : Pi
       (by rw [hc]; rfl) (by rw [hc]; rfl) out.inputs
     refine E2ECompleteness.Cost.QC.bind_le
       (b := (6 + openP2) + ((6 + openP2) + ((6 + openP2) + ((6 + openP2) + (contractC 1216 + 0)))))
-      (UniKeccakComplete.cost_pcsProveH _ _ _ _ _ _ (w := 24) (by simp [lW])) (fun pW ↦ ?_)
+      (PcsZ.cost_pcsProveZH _ _ _ _ _ _ _ (w := 24) (by simp [lW])) (fun pW ↦ ?_)
       (by unfold openP2; omega)
     refine E2ECompleteness.Cost.QC.bind_le (b := (6 + openP2) + ((6 + openP2) + ((6 + openP2) + (contractC 1216 + 0))))
-      (UniKeccakComplete.cost_pcsProveH _ _ _ _ _ _ (w := 25) (by simp [lS])) (fun pS ↦ ?_)
+      (PcsZ.cost_pcsProveZH _ _ _ _ _ _ _ (w := 25) (by simp [lS])) (fun pS ↦ ?_)
       (by unfold openP2; omega)
     refine E2ECompleteness.Cost.QC.bind_le (b := (6 + openP2) + ((6 + openP2) + (contractC 1216 + 0)))
-      (UniKeccakComplete.cost_pcsProveH _ _ _ _ _ _ (w := 28) (by simp [lQ])) (fun pQ1 ↦ ?_)
+      (PcsZ.cost_pcsProveZH _ _ _ _ _ _ _ (w := 28) (by simp [lQ])) (fun pQ1 ↦ ?_)
       (by unfold openP2; omega)
     refine E2ECompleteness.Cost.QC.bind_le (b := (6 + openP2) + (contractC 1216 + 0))
-      (UniKeccakComplete.cost_pcsProveH _ _ _ _ _ _ (w := 28) (by simp [lP])) (fun pQ2 ↦ ?_)
+      (PcsZ.cost_pcsProveZH _ _ _ _ _ _ _ (w := 28) (by simp [lP])) (fun pQ2 ↦ ?_)
       (by unfold openP2; omega)
     refine E2ECompleteness.Cost.QC.bind_le (b := contractC 1216 + 0)
-      (UniKeccakComplete.cost_pcsProveH _ _ _ _ _ _ (w := 28) (by simp [lSum])) (fun pQ3 ↦ ?_)
+      (PcsZ.cost_pcsProveZH _ _ _ _ _ _ _ (w := 28) (by simp [lSum])) (fun pQ3 ↦ ?_)
       (by unfold openP2; omega)
     split
     · refine (qc_verifierWithH hD _ input _ (S := 1216) ?_).bind_le (fun _ ↦ qc_pure _ 0) (by omega)
@@ -594,11 +676,11 @@ theorem qc_stageC {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D) (Fa : Pi
 
 theorem cp_stageB {D : RecDeployment} (C : Pi2Circuits D) (Fa : Pi2Facts D C) (input : Vector UInt8 32) (a : StA)
     (s₁ s₂ s₃ : Digest) (ha : a.wr.stream.size ≤ 728) :
-    CP (stageB callKeccak256 D C input a s₁ s₂ s₃) (treeCost 28) fun b ↦
+    CP (stageB callKeccak256 D C input a s₁ s₂ s₃) (treeCost 28 + 28) fun b ↦
       b.wr.absorbed + 56 = b.wr.stream.size ∧ b.wr.stream.size ≤ 784 := by
   unfold stageB
   dsimp only
-  refine CP.bind_le (c₂ := 0) (cp_mid2 _ (Fa.logN a.roots) _ _ _ _ _ _ _ _) (fun z hz ↦ ?_) (by simp)
+  refine CP.bind_le (c₂ := 0) (cp_mid2 _ (Fa.logN a.roots) _ _ _ _ _ _ _) (fun z hz ↦ ?_) (by simp)
   obtain ⟨qs, wr⟩ := z
   refine cp_pure _ ⟨?_, ?_⟩
   · show wr.absorbed + 56 = wr.stream.size
@@ -609,8 +691,8 @@ theorem cp_stageB {D : RecDeployment} (C : Pi2Circuits D) (Fa : Pi2Facts D C) (i
     show a.wr.stream.size + 56 ≤ 784
     omega
 
-/-- Stage A: the setup twice, π1-rec3's prover, the graph, π2's IV, the seed, `W`'s tree. -/
-noncomputable def costA (S : ℕ) : ℕ := S + (2 ^ 47 + (3 * gOpen + (S + (ivC + (1 + (treeCost 24 + 0))))))
+/-- Stage A: the setup twice, π1-rec3's prover, the graph, π2's IV, the seed, `W`'s tree and point. -/
+noncomputable def costA (S : ℕ) : ℕ := S + (2 ^ 47 + (3 * gOpen + (S + (ivC + (1 + ((treeCost 24 + 24) + 0))))))
 
 theorem cp_stageA {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
     (P1k : OracleComp KeccakCalls (Option UniKeccak.KeccakProof)) (hP : QC P1k (2 ^ 47)) (input : Vector UInt8 32) :
@@ -629,7 +711,7 @@ theorem cp_stageA {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D) (Fa : Pi
     · have hr : (D.circuitAt tr.roots.pi1).circuit.reads = Data.reads := by
         rw [RecDeployment.circuitAt, hD.1]
         rfl
-      refine CP.bind (cp_pre2 _ (Fa.logN tr.roots) _ _ _ _ _) fun z hz ↦ ?_
+      refine CP.bind (cp_pre2 _ (Fa.logN tr.roots) _ _ _ _) fun z hz ↦ ?_
       obtain ⟨ws, wr⟩ := z
       refine cp_pure _ ?_
       show wr.stream.size ≤ 728
@@ -651,13 +733,13 @@ theorem setup2_le {D : RecDeployment} (hD : D.Real) : setup2 D ≤ setupR := by
   norm_num
 
 /-- **The staged run's block count.** -/
-noncomputable def pi2RunN : ℕ := costA setupR + (5 + (1 + (1 + ((treeCost 28 + (1 + (costC + 0))) + 0))))
+noncomputable def pi2RunN : ℕ := costA setupR + (5 + (1 + (1 + (((treeCost 28 + 28) + (1 + (costC + 0))) + 0))))
 
 theorem qc_pi2Staged {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
     (P1k : OracleComp KeccakCalls (Option UniKeccak.KeccakProof)) (hP : QC P1k (2 ^ 47)) (input : Vector UInt8 32) :
     QC (pi2Staged D C Fa P1k input).run pi2RunN := by
   have h : CP (pi2Staged D C Fa P1k input).run
-      (costA (setup2 D) + (5 + (1 + (1 + ((treeCost 28 + (1 + (costC + 0))) + 0))))) fun _ ↦ True := by
+      (costA (setup2 D) + (5 + (1 + (1 + (((treeCost 28 + 28) + (1 + (costC + 0))) + 0))))) fun _ ↦ True := by
     unfold Pi2P.Pi2Staged.run Pi2P.staged3 Pi2P.Pi2Staged.tail
     refine CP.bind (cp_stageA hD C Fa P1k hP input) fun a ha ↦ CP.bind (cp_H_le (k := 5) ?_) fun s₁ _ ↦
       CP.bind (cp_H_le (k := 1) ?_) fun s₂ _ ↦ CP.bind (cp_H_le (k := 1) ?_) fun s₃ _ ↦

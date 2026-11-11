@@ -14,7 +14,8 @@ lean_pi2_prover -- --ignored --nocapture`): the circuit compiler's example padde
 computes the setup's stack, tree and out-of-domain answer (`Pi2Circuit.setupStack`, `setupTreeWith`, `setupOod`), the
 circuit's digest and π2's IV v3 (`RecStatement.iv` at π1's IV `0x11…11`), and runs the Lean prover
 (`pi2ProveStreamWith` from the seed `keccak(NAME ‖ IV ‖ input)`, Keccak-256 over Keccak-f[1600], interpreted, the
-ports' `Φ` the view's `Spec.of`); it compares **the setup's root, π2's IV, `W`'s and `Q`'s roots** and **the stream
+ports' `Φ` the view's `Spec.of`, `W`'s and `Q`'s out-of-domain points read off that Keccak-256 as `pi2ProverWith`
+reads them, `WhirBridge.Pcs.oodPointM H`); it compares **the setup's root, π2's IV, `W`'s and `Q`'s roots** and **the stream
 byte for byte** with the Rust prover's (`pi2::prover::prove`). It throws (so `lean` exits with an error) on any
 disagreement.
 
@@ -152,7 +153,8 @@ def run1 (v : Vec) : IO Unit := do
   IO.println s!"  IV {hexOf ivL}"
   if ivL != iv then throw (IO.userError s!"{v.name}: π2's IV differs")
   let seed := Id.run (H (RecStatement.name ++ iv ++ input))
-  let (out, _) := Id.run ((pi2ProveStreamWith H G (Spec.of view).core pi2Ood reads setupStack input values w).run
+  let (out, _) := Id.run ((pi2ProveStreamWith H G (Spec.of view).core (WhirBridge.Pcs.oodPointM H) reads setupStack
+    input values w).run
     (UniComplete.Wr.start seed))
   IO.println s!"{v.name}: proved ({(← IO.monoMsNow) - start} ms)"
   let wr := digestBytes out.wTree.root

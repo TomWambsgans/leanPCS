@@ -175,21 +175,25 @@ theorem graphH_eq (H : List UInt8 → Id Digest) (F : KeccakState → Id KeccakS
   simp only [hchk, hdec, Bool.not_true, Bool.false_eq_true, ↓reduceIte]
   rfl
 
-/-- **The contract's three π1 openings**: each a PCS check at its point's length. -/
+/-- **The contract's three π1 openings**: each a PCS check at its point's length (none at `W`'s or `Q`'s sizes, so
+each at the fixed point). -/
 theorem openSeqH_eq (H : List UInt8 → Id Digest) (F : KeccakState → Id KeccakState) (o0 o1 o2 : Pi1Opening)
-    (proof : RecProof) :
+    (proof : RecProof) (h0 : oodRead o0.2.2.1.length = false) (h1 : oodRead o1.2.2.1.length = false)
+    (h2 : oodRead o2.2.2.1.length = false) :
     Id.run (Pi2H.openSeqH (m := Id) H F [o0, o1, o2] proof) =
       ((Id.run (UniKeccakComplete.pcsOpenKH H F o0.2.2.1.length o0.1 o0.2.1 o0.2.2.1 o0.2.2.2 proof.c1) &&
         Id.run (UniKeccakComplete.pcsOpenKH H F o1.2.2.1.length o1.1 o1.2.1 o1.2.2.1 o1.2.2.2 proof.c2)) &&
         Id.run (UniKeccakComplete.pcsOpenKH H F o2.2.2.1.length o2.1 o2.2.1 o2.2.2.1 o2.2.2.2 proof.f)) := by
-  unfold Pi2H.openSeqH Pi2H.openAtH
+  unfold Pi2H.openSeqH
+  simp only [List.getD_cons_zero, List.getD_cons_succ]
+  rw [Pi2H.openAtH_of_not H F o0 _ h0, Pi2H.openAtH_of_not H F o1 _ h1, Pi2H.openAtH_of_not H F o2 _ h2]
   rfl
 
 /-- **π2's honest proof**: its stream the honest prover's, π1's opening proofs π1's. -/
 theorem pi2Prover_some {D : RecDeployment} {C : Pi2Circuits D} (Fa : Pi2Facts D C) (Hk : List UInt8 → Digest)
     (F : KeccakState → Id KeccakState) (fuel : ℕ) (input : Vector UInt8 32) (p1 : UniKeccak.KeccakProof)
     (proof : RecProof) (hp : Id.run (pi2ProverWith (m := Id) (Pure.pure ∘ Hk) F D C Fa fuel input p1) = some proof) :
-    proof.stream = (outOf D Hk (rootsH D Hk F) (C.G (rootsH D Hk F)) pi2Ood input
+    proof.stream = (outOf D Hk (rootsH D Hk F) (C.G (rootsH D Hk F)) (pi2Z Hk) input
         (pi2Choice D C Fa (rootsH D Hk F) input p1.stream).1 (pi2Choice D C Fa (rootsH D Hk F) input p1.stream).2).stream ∧
       proof.c1 = p1.c1 ∧ proof.c2 = p1.c2 ∧ proof.f = p1.setup := by
   rw [pi2ProverWith_run] at hp
@@ -197,13 +201,14 @@ theorem pi2Prover_some {D : RecDeployment} {C : Pi2Circuits D} (Fa : Pi2Facts D 
   rw [pi2ProveWith_run] at hp
   simp only at hp
   revert hp
-  generalize UniKeccakComplete.pcsProveH (m := Id) (Pure.pure ∘ Hk) F fuel _ _ _ _ ((Spec.of _).core.run _).fold = rW
-  generalize UniKeccakComplete.pcsProveH (m := Id) (Pure.pure ∘ Hk) F fuel _ _ _ _ (proverOut _ _ _ _ _ _ _ _ _).inputs.ξ = rS
-  generalize UniKeccakComplete.pcsProveH (m := Id) (Pure.pure ∘ Hk) F fuel _ _ _ _
+  generalize PcsZ.pcsProveZH (m := Id) (Pure.pure ∘ Hk) F fuel _ _ _ _ _ ((Spec.of _).core.run _).fold = rW
+  generalize PcsZ.pcsProveZH (m := Id) (Pure.pure ∘ Hk) F fuel _ _ _ _ _
+    (proverOut _ _ _ _ _ _ _ _ _).inputs.ξ = rS
+  generalize PcsZ.pcsProveZH (m := Id) (Pure.pure ∘ Hk) F fuel _ _ _ _ _
     ((Spec.of _).core.run _).quotientValue = rQ1
-  generalize UniKeccakComplete.pcsProveH (m := Id) (Pure.pure ∘ Hk) F fuel _ _ _ _
+  generalize PcsZ.pcsProveZH (m := Id) (Pure.pure ∘ Hk) F fuel _ _ _ _ _
     ((Spec.of _).core.run _).pushesValue = rQ2
-  generalize UniKeccakComplete.pcsProveH (m := Id) (Pure.pure ∘ Hk) F fuel _ _ _ _
+  generalize PcsZ.pcsProveZH (m := Id) (Pure.pure ∘ Hk) F fuel _ _ _ _ _
     ((Spec.of _).core.run _).sumValue = rQ3
   intro hp
   rcases rW with _ | a
@@ -232,20 +237,20 @@ theorem pi2Pi1Openings {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D) (hc
   have hview : (D.circuitAt (rootsH D Ht Ft).pi1).circuit = Data.circuit := hD.1 _
   obtain ⟨hps, hc1, hc2, hcf⟩ := pi2Prover_some (pi2Facts hD C hchk) Ht Ft _ input p1 proof hpr
   -- π2's run on the honest stream, over `Ht` and over Keccak-f[1600]
-  obtain ⟨r, hr, -, hsc, -, -, -, -, -, hi, -, -⟩ := runWith_honest Ht (C.G (rootsH D Ht Ft)) pi2Ood
+  obtain ⟨r, hr, -, hsc, -, -, -, -, -, hi, -, -⟩ := runWith_honest Ht (C.G (rootsH D Ht Ft)) (pi2Z Ht)
     (D.circuitAt (rootsH D Ht Ft).pi1).circuit (D.circuitAt (rootsH D Ht Ft).pi1).setupStack
     (ivOf D Ht (rootsH D Ht Ft)) input.toList (pi2Choice D C (pi2Facts hD C hchk) (rootsH D Ht Ft) input p1.stream).1
     (pi2Choice D C (pi2Facts hD C hchk) (rootsH D Ht Ft) input p1.stream).2 hmatch
     (by rw [hview, (pi2Facts hD C hchk).logW]; rfl)
   obtain ⟨hpost, -⟩ := holds_id (Pi2H.runWithH_post (m := Id) (Pure.pure ∘ Ht)
     (Spec.of (D.circuitAt (rootsH D Ht Ft).pi1).circuit) (ivOf D Ht (rootsH D Ht Ft)) input.toList
-    (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) pi2Ood input
+    (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) (pi2Z Ht) input
       (pi2Choice D C (pi2Facts hD C hchk) (rootsH D Ht Ft) input p1.stream).1
       (pi2Choice D C (pi2Facts hD C hchk) (rootsH D Ht Ft) input p1.stream).2).stream)
   obtain ⟨hsz, hsc', hpp⟩ := hpost r hr
   obtain ⟨r', hr', hsc'', -⟩ := run_ok_of_runWith (m := Id) _ input.toList _ [] r hsz hsc' hpp
   have hscal : pi2Scalars D (rootsH D Ht Ft) input
-      (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) pi2Ood input
+      (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) (pi2Z Ht) input
         (pi2Choice D C (pi2Facts hD C hchk) (rootsH D Ht Ft) input p1.stream).1
         (pi2Choice D C (pi2Facts hD C hchk) (rootsH D Ht Ft) input p1.stream).2).stream =
       publicScalarsOf input.toList (pi2Choice D C (pi2Facts hD C hchk) (rootsH D Ht Ft) input p1.stream).1 := by
@@ -280,7 +285,19 @@ theorem pi2Pi1Openings {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D) (hc
     Prod.mk.injEq] at htake
   obtain ⟨⟨r0, d0⟩, r1, d1⟩ := htake
   refine ⟨[o0, o1, o2], by rw [hps]; exact hops, ?_⟩
-  rw [openSeqH_eq, hc1, hc2, hcf]
+  have hs1 : oodRead o0.2.2.1.length = false := by
+    rw [l0, show RecGraphKeccak.Pi1.keccak128 = UniKeccakSound.keccakRefShape from rfl,
+      UniKeccakComplete.reference_stackVars_c1]
+    rfl
+  have hs2 : oodRead o1.2.2.1.length = false := by
+    rw [l1, show RecGraphKeccak.Pi1.keccak128 = UniKeccakSound.keccakRefShape from rfl,
+      UniKeccakComplete.reference_stackVars_c2]
+    rfl
+  have hs3 : oodRead o2.2.2.1.length = false := by
+    rw [l2, show RecGraphKeccak.Pi1.keccak128 = UniKeccakSound.keccakRefShape from rfl,
+      UniKeccakComplete.reference_stackVars_setup]
+    rfl
+  rw [openSeqH_eq _ _ _ _ _ _ hs1 hs2 hs3, hc1, hc2, hcf]
   have hsh : D.pi1.shape = RecGraphKeccak.Pi1.keccak128 := hD.2.2.1
   rw [hsh] at ha1
   rw [l0, l1, l2, ← r0, ← d0, ← r1, ← d1, hf, hfo, ← e0, ← e1, ← e2]

@@ -17,9 +17,10 @@ the random permutation is `P1` (part of `Pi2ExperimentLe`).
 **`pi2Staged D C Fa P1k input rows q : Pi2Staged`**, π2's experiment's stages over the two calls:
 
 * `A` (`stageA`): the setup, `P1k`, π1-rec3's graph on its proof (`a1`), then π2's prover up to `α`: its setup, IV, the
-  witness it takes, the seed, the public values, `W`'s commitment and root (`pre2`); `inp` `α`'s input, `608` bytes
+  witness it takes, the seed, the public values, `W`'s commitment, out-of-domain point (`oodPointM`) and root
+  (`pre2`); `inp` `α`'s input, `608` bytes
   (`fixLen`: `tInput` of the writer, `608` bytes when the values match the reads);
-* the three chained answers `α, β, γ`; `B` (`stageB`) `Q`'s stack, commitment and root (`mid2`); `t`'s query on the
+* the three chained answers `α, β, γ`; `B` (`stageB`) `Q`'s stack, commitment, out-of-domain point and root (`mid2`); `t`'s query on the
   writer's input; `C` (`stageC`) the values at `t`, `ρ` (`post2`), the three openings and the contract
   (`Pi2H.verifierWithH`); a proof of `P1k`'s none is the pair `(false, false)`;
 * the priors: `(roots, w, pub)` for the triple (`Bad`: the copy argument's `BadCopy`), with the triple for `t`

@@ -333,6 +333,22 @@ theorem hashOK_pcsProveH (fuel n : ℕ) (tree : Tree) (stack : Array K) (pt : Li
         E2ECompleteness.HashOK.pure _ _
   · exact E2ECompleteness.HashOK.pure _ _
 
+/-- **The out-of-domain point hashes its `n` inputs `oodInput n r j`** (`46` bytes each). -/
+theorem hashOK_oodPointM {P : List UInt8 → Prop} (n : ℕ) (r : Digest)
+    (hP : ∀ j, P (WhirBridge.Pcs.oodInput n r j)) : HashOK P (WhirBridge.Pcs.oodPointM callKeccak256 n r) := by
+  unfold WhirBridge.Pcs.oodPointM
+  generalize List.range n = l
+  induction l with
+  | nil => exact E2ECompleteness.HashOK.pure _ _
+  | cons j l ih =>
+    rw [List.mapM_cons]
+    exact E2ECompleteness.HashOK.bind (E2ECompleteness.HashOK.bind (E2ECompleteness.hashOK_callKeccak256 (hP j))
+      fun _ ↦ E2ECompleteness.HashOK.pure _ _) fun _ ↦ E2ECompleteness.HashOK.bind ih fun _ ↦
+        E2ECompleteness.HashOK.pure _ _
+
+theorem oodInput_length (n : ℕ) (r : Digest) (j : ℕ) : (WhirBridge.Pcs.oodInput n r j).length = 46 := by
+  simp [WhirBridge.Pcs.oodInput, WhirBridge.Pcs.oodTag, WhirBridge.Pcs.digestBytes_length']
+
 end RecCompose.Pi2A
 
 /-- info: 'RecCompose.Pi2A.hashOK_setupTreesWithH2' depends on axioms: [propext, Classical.choice, Quot.sound] -/

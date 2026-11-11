@@ -44,16 +44,17 @@ theorem run_sampleW' (w : Wr) :
   UniKeccakComplete.Prob.run_sampleW H w
 
 /-- **The prover's stream, cut at its challenges.** -/
-theorem stream_split (G : RecPiop.Circuit E) (S : CoreSpec E) (ood : ℕ → Digest → Array K → E) (reads : List Read)
-    (setupStack : Array K) (input : List UInt8) (values : List PublicValue) (w : ℕ → K) (w0 : Wr) :
-    (pi2ProveStreamWith H G S ood reads setupStack input values w).run w0 =
-      (pre2 H G ood reads values w).run w0 >>= fun p ↦
+theorem stream_split (G : RecPiop.Circuit E) (S : CoreSpec E) (oodPt : ℕ → Digest → m (List E))
+    (reads : List Read) (setupStack : Array K) (input : List UInt8) (values : List PublicValue) (w : ℕ → K)
+    (w0 : Wr) :
+    (pi2ProveStreamWith H G S oodPt reads setupStack input values w).run w0 =
+      (pre2 H G oodPt reads values w).run w0 >>= fun p ↦
       H (UniKeccakComplete.Prob.tInput p.2) >>= fun s₁ ↦ H (digestBytes s₁) >>= fun s₂ ↦ H (digestBytes s₂) >>= fun s₃ ↦
-      (mid2 H G S ood (publicScalarsOf input values) w (chalP s₁) (chalP s₂) (chalP s₃)).run
+      (mid2 H G S oodPt (publicScalarsOf input values) w (chalP s₁) (chalP s₂) (chalP s₃)).run
         (absorbW (absorbW (absorbW p.2 s₁) s₂) s₃) >>= fun q ↦
       H (UniKeccakComplete.Prob.tInput q.2) >>= fun st ↦
-      (post2 H G setupStack input values w p.1.1 p.1.2 q.1.1 q.1.2 (chalP s₁) (chalP s₂) (chalP s₃)
-        (chalP st)).run (absorbW q.2 st) := by
+      (post2 H G setupStack input values w p.1.1 p.1.2.1 q.1.1 q.1.2.1 (chalP s₁) (chalP s₂) (chalP s₃)
+        (chalP st) p.1.2.2 q.1.2.2).run (absorbW q.2 st) := by
   simp only [pi2ProveStreamWith, pre2, mid2, post2, StateT.run_bind, StateT.run_pure, StateT.run_lift,
     run_sampleW', bind_assoc, pure_bind, tInput_absorbW]
 
@@ -66,30 +67,31 @@ theorem tInput_start_append (seed : Digest) (B : List UInt8) :
   simp [UniKeccakComplete.Prob.tInput, Wr.start, UniComplete.Wr.append]
 
 /-- **`pre2`'s writer**: the start's, the public data, `W`'s root word and its out-of-domain answer appended. -/
-theorem pre2_writer (G : RecPiop.Circuit E) (ood : ℕ → Digest → Array K → E) (reads : List Read)
+theorem pre2_writer (G : RecPiop.Circuit E) (oodPt : ℕ → Digest → Id (List E)) (reads : List Read)
     (values : List PublicValue) (w : ℕ → K)
     (Hk : List UInt8 → Digest) (w0 : Wr) : ∃ (h : E × E) (o : E),
-    (Id.run ((pre2 (m := Id) (Pure.pure ∘ Hk) G ood reads values w).run w0)).2 =
+    (Id.run ((pre2 (m := Id) (Pure.pure ∘ Hk) G oodPt reads values w).run w0)).2 =
       w0.append (publicWire (reads.zip values) ++ UniStatement.rootWord h ++ UniComplete.scalarWire o) := by
   have hw := sendPublic_writes (reads.zip values) w0
   unfold UniKeccakComplete.Writes at hw
   refine ⟨UniStatement.rootHalves (Id.run (E2ECompleteness.commitWithH (m := Id) (Pure.pure ∘ Hk) (stackVars G.logN).1
     (padStack (stackVars G.logN).1 fun i ↦ (wTableB G w).getD i 0))).root,
-    ood (stackVars G.logN).1 (Id.run (E2ECompleteness.commitWithH (m := Id) (Pure.pure ∘ Hk)
-      (stackVars G.logN).1 (padStack (stackVars G.logN).1 fun i ↦ (wTableB G w).getD i 0))).root
-      (padStack (stackVars G.logN).1 fun i ↦ (wTableB G w).getD i 0), ?_⟩
+    pi2OodAt (padStack (stackVars G.logN).1 fun i ↦ (wTableB G w).getD i 0)
+      (oodPt (stackVars G.logN).1 (Id.run (E2ECompleteness.commitWithH (m := Id) (Pure.pure ∘ Hk)
+        (stackVars G.logN).1 (padStack (stackVars G.logN).1 fun i ↦ (wTableB G w).getD i 0))).root), ?_⟩
   unfold pre2
-  rw [UniKeccakComplete.wr_run_bind, hw, UniKeccakComplete.wr_run_bind, UniKeccakComplete.wr_run_bind]
+  rw [UniKeccakComplete.wr_run_bind, hw, UniKeccakComplete.wr_run_bind, UniKeccakComplete.wr_run_bind,
+    UniKeccakComplete.wr_run_bind]
   rw [List.append_assoc, ← UniComplete.Wr.append_append w0 (publicWire (reads.zip values)),
     ← UniComplete.Wr.append_append (w0.append (publicWire (reads.zip values)))]
   rfl
 
-theorem tInput_pre2_length (G : RecPiop.Circuit E) (ood : ℕ → Digest → Array K → E) (reads : List Read)
+theorem tInput_pre2_length (G : RecPiop.Circuit E) (oodPt : ℕ → Digest → Id (List E)) (reads : List Read)
     (values : List PublicValue) (w : ℕ → K)
     (Hk : List UInt8 → Digest) (seed : Digest) (hm : List.Forall₂ ReadMatch reads values) :
-    (UniKeccakComplete.Prob.tInput (Id.run ((pre2 (m := Id) (Pure.pure ∘ Hk) G ood reads values w).run
+    (UniKeccakComplete.Prob.tInput (Id.run ((pre2 (m := Id) (Pure.pure ∘ Hk) G oodPt reads values w).run
       (Wr.start seed))).2).length = 32 + (reads.map Read.bytes).sum + 32 + 24 := by
-  obtain ⟨h, o, hw⟩ := pre2_writer G ood reads values w Hk (Wr.start seed)
+  obtain ⟨h, o, hw⟩ := pre2_writer G oodPt reads values w Hk (Wr.start seed)
   rw [hw, tInput_start_append]
   simp only [List.length_append, publicWire_length reads values hm, UniKeccakComplete.Prob.rootWord_length,
     E2ECompleteness.length_digestBytes, UniKeccakComplete.length_scalarWire]
@@ -158,9 +160,10 @@ abbrev seedAt : Digest := Ht (RecStatement.name ++ ivOf D Ht (rootsH D Ht Ft) ++
 noncomputable abbrev vwAt : List PublicValue × (ℕ → K) := pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream
 
 /-- `pre2`'s run at `Id`. -/
-noncomputable abbrev preAt : (Array K × LeanVM.Prover.Tree) × Wr :=
-  Id.run ((pre2 (m := Id) (Pure.pure ∘ Ht) (C.G (rootsH D Ht Ft)) pi2Ood (D.circuitAt (rootsH D Ht Ft).pi1).circuit.reads
-    (vwAt Ht Ft D C Fa input p1).1 (vwAt Ht Ft D C Fa input p1).2).run (Wr.start (seedAt Ht Ft D input)))
+noncomputable abbrev preAt : (Array K × LeanVM.Prover.Tree × List E) × Wr :=
+  Id.run ((pre2 (m := Id) (Pure.pure ∘ Ht) (C.G (rootsH D Ht Ft)) (WhirBridge.Pcs.oodPointM (Pure.pure ∘ Ht))
+    (D.circuitAt (rootsH D Ht Ft).pi1).circuit.reads (vwAt Ht Ft D C Fa input p1).1 (vwAt Ht Ft D C Fa input p1).2).run
+    (Wr.start (seedAt Ht Ft D input)))
 
 theorem aAt_p1 : (aAt Ht Ft D C Fa input (some p1)).p1 = some p1 := rfl
 theorem aAt_a1 : (aAt Ht Ft D C Fa input (some p1)).a1 =
@@ -171,7 +174,8 @@ theorem aAt_setupTree : (aAt Ht Ft D C Fa input (some p1)).setupTree =
     (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Ht) Ft D)).pi2 := rfl
 theorem aAt_vw : (aAt Ht Ft D C Fa input (some p1)).vw = vwAt Ht Ft D C Fa input p1 := rfl
 theorem aAt_wS : (aAt Ht Ft D C Fa input (some p1)).wS = (preAt Ht Ft D C Fa input p1).1.1 := rfl
-theorem aAt_wT : (aAt Ht Ft D C Fa input (some p1)).wT = (preAt Ht Ft D C Fa input p1).1.2 := rfl
+theorem aAt_wT : (aAt Ht Ft D C Fa input (some p1)).wT = (preAt Ht Ft D C Fa input p1).1.2.1 := rfl
+theorem aAt_wP : (aAt Ht Ft D C Fa input (some p1)).wP = (preAt Ht Ft D C Fa input p1).1.2.2 := rfl
 theorem aAt_wr : (aAt Ht Ft D C Fa input (some p1)).wr = (preAt Ht Ft D C Fa input p1).2 := rfl
 
 theorem bAt_a (a : StA) (s₁ s₂ s₃ : Digest) : (bAt Ht D C input a s₁ s₂ s₃).a = a := rfl
@@ -179,12 +183,14 @@ theorem bAt_α (a : StA) (s₁ s₂ s₃ : Digest) : (bAt Ht D C input a s₁ s�
 theorem bAt_β (a : StA) (s₁ s₂ s₃ : Digest) : (bAt Ht D C input a s₁ s₂ s₃).β = chalP s₂ := rfl
 theorem bAt_γ (a : StA) (s₁ s₂ s₃ : Digest) : (bAt Ht D C input a s₁ s₂ s₃).γ = chalP s₃ := rfl
 theorem bAt_q (a : StA) (s₁ s₂ s₃ : Digest) :
-    ((bAt Ht D C input a s₁ s₂ s₃).qS, (bAt Ht D C input a s₁ s₂ s₃).qT) =
-      (Id.run ((mid2 (m := Id) (Pure.pure ∘ Ht) (C.G a.roots) (Spec.of (D.circuitAt a.roots.pi1).circuit).core pi2Ood
+    ((bAt Ht D C input a s₁ s₂ s₃).qS, (bAt Ht D C input a s₁ s₂ s₃).qT, (bAt Ht D C input a s₁ s₂ s₃).qP) =
+      (Id.run ((mid2 (m := Id) (Pure.pure ∘ Ht) (C.G a.roots) (Spec.of (D.circuitAt a.roots.pi1).circuit).core
+        (WhirBridge.Pcs.oodPointM (Pure.pure ∘ Ht))
         (publicScalarsOf input.toList a.vw.1) a.vw.2 (chalP s₁) (chalP s₂) (chalP s₃)).run
         (absorbW (absorbW (absorbW a.wr s₁) s₂) s₃))).1 := rfl
 theorem bAt_wr (a : StA) (s₁ s₂ s₃ : Digest) : (bAt Ht D C input a s₁ s₂ s₃).wr =
-    (Id.run ((mid2 (m := Id) (Pure.pure ∘ Ht) (C.G a.roots) (Spec.of (D.circuitAt a.roots.pi1).circuit).core pi2Ood
+    (Id.run ((mid2 (m := Id) (Pure.pure ∘ Ht) (C.G a.roots) (Spec.of (D.circuitAt a.roots.pi1).circuit).core
+      (WhirBridge.Pcs.oodPointM (Pure.pure ∘ Ht))
       (publicScalarsOf input.toList a.vw.1) a.vw.2 (chalP s₁) (chalP s₂) (chalP s₃)).run
       (absorbW (absorbW (absorbW a.wr s₁) s₂) s₃))).2 := rfl
 
@@ -205,7 +211,8 @@ theorem fixLen_aAt (hD : D.Real)
 
 /-- The honest prover's output at the setup's roots (`outOf`). -/
 noncomputable abbrev outAt : Pi2Out :=
-  outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) pi2Ood input (vwAt Ht Ft D C Fa input p1).1 (vwAt Ht Ft D C Fa input p1).2
+  outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) (pi2Z Ht) input (vwAt Ht Ft D C Fa input p1).1
+    (vwAt Ht Ft D C Fa input p1).2
 
 /-- The staged run's chained answers and stage B, on π1's proof `p1` (`fixLen` dropped). -/
 noncomputable abbrev s1At : Digest := Ht (UniKeccakComplete.Prob.tInput (aAt Ht Ft D C Fa input (some p1)).wr)
@@ -222,18 +229,18 @@ theorem post2_eq_outAt :
       (bAtP Ht Ft D C Fa input p1).a.vw.1 (bAtP Ht Ft D C Fa input p1).a.vw.2 (bAtP Ht Ft D C Fa input p1).a.wS
       (bAtP Ht Ft D C Fa input p1).a.wT (bAtP Ht Ft D C Fa input p1).qS (bAtP Ht Ft D C Fa input p1).qT
       (bAtP Ht Ft D C Fa input p1).α (bAtP Ht Ft D C Fa input p1).β (bAtP Ht Ft D C Fa input p1).γ
-      (chalP (stAt Ht Ft D C Fa input p1))).run (absorbW (bAtP Ht Ft D C Fa input p1).wr (stAt Ht Ft D C Fa input p1)) :
-      Id _) =
+      (chalP (stAt Ht Ft D C Fa input p1)) (bAtP Ht Ft D C Fa input p1).a.wP (bAtP Ht Ft D C Fa input p1).qP).run
+      (absorbW (bAtP Ht Ft D C Fa input p1).wr (stAt Ht Ft D C Fa input p1)) : Id _) =
     (outAt Ht Ft D C Fa input p1, (Id.run ((post2 (m := Id) (Pure.pure ∘ Ht) (C.G (bAtP Ht Ft D C Fa input p1).a.roots)
       (D.circuitAt (bAtP Ht Ft D C Fa input p1).a.roots.pi1).setupStack input.toList
       (bAtP Ht Ft D C Fa input p1).a.vw.1 (bAtP Ht Ft D C Fa input p1).a.vw.2 (bAtP Ht Ft D C Fa input p1).a.wS
       (bAtP Ht Ft D C Fa input p1).a.wT (bAtP Ht Ft D C Fa input p1).qS (bAtP Ht Ft D C Fa input p1).qT
       (bAtP Ht Ft D C Fa input p1).α (bAtP Ht Ft D C Fa input p1).β (bAtP Ht Ft D C Fa input p1).γ
-      (chalP (stAt Ht Ft D C Fa input p1))).run (absorbW (bAtP Ht Ft D C Fa input p1).wr
-        (stAt Ht Ft D C Fa input p1)))).2) := by
+      (chalP (stAt Ht Ft D C Fa input p1)) (bAtP Ht Ft D C Fa input p1).a.wP (bAtP Ht Ft D C Fa input p1).qP).run
+      (absorbW (bAtP Ht Ft D C Fa input p1).wr (stAt Ht Ft D C Fa input p1)))).2) := by
   refine Prod.ext ?_ rfl
   unfold outAt outOf proverOut
-  rw [stream_split]
+  rw [← oodPointM_id_eq, stream_split]
   rfl
 
 theorem idRun_pair {α β : Type} (a : α) (b : β) : Id.run ((a, b) : Id (α × β)) = (a, b) := rfl
@@ -257,15 +264,15 @@ theorem cAt_good :
   simp only [bAtP_p1]
   rw [post2_eq_outAt]
   simp only [Id.run_bind, bAtP_roots, bAtP_setupTree, bAtP_trees, idRun_pair]
-  generalize UniKeccakComplete.pcsProveH (m := Id) (Pure.pure ∘ Ht) Ft PcsQuotient.nonceFuel _ _ _ _
+  generalize PcsZ.pcsProveZH (m := Id) (Pure.pure ∘ Ht) Ft PcsQuotient.nonceFuel _ _ _ _ _
     ((Spec.of _).core.run _).fold = rW
-  generalize UniKeccakComplete.pcsProveH (m := Id) (Pure.pure ∘ Ht) Ft PcsQuotient.nonceFuel _ _ _ _
+  generalize PcsZ.pcsProveZH (m := Id) (Pure.pure ∘ Ht) Ft PcsQuotient.nonceFuel _ _ _ _ _
     (outAt Ht Ft D C Fa input p1).inputs.ξ = rS
-  generalize UniKeccakComplete.pcsProveH (m := Id) (Pure.pure ∘ Ht) Ft PcsQuotient.nonceFuel _ _ _ _
+  generalize PcsZ.pcsProveZH (m := Id) (Pure.pure ∘ Ht) Ft PcsQuotient.nonceFuel _ _ _ _ _
     ((Spec.of _).core.run _).quotientValue = rQ1
-  generalize UniKeccakComplete.pcsProveH (m := Id) (Pure.pure ∘ Ht) Ft PcsQuotient.nonceFuel _ _ _ _
+  generalize PcsZ.pcsProveZH (m := Id) (Pure.pure ∘ Ht) Ft PcsQuotient.nonceFuel _ _ _ _ _
     ((Spec.of _).core.run _).pushesValue = rQ2
-  generalize UniKeccakComplete.pcsProveH (m := Id) (Pure.pure ∘ Ht) Ft PcsQuotient.nonceFuel _ _ _ _
+  generalize PcsZ.pcsProveZH (m := Id) (Pure.pure ∘ Ht) Ft PcsQuotient.nonceFuel _ _ _ _ _
     ((Spec.of _).core.run _).sumValue = rQ3
   rcases rW with _ | x <;> rcases rS with _ | y <;> rcases rQ1 with _ | z1 <;> rcases rQ2 with _ | z2 <;>
     rcases rQ3 with _ | z3 <;> rfl
