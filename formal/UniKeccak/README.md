@@ -63,8 +63,8 @@ KECCAK_VECTORS=<path>/keccak_vectors.txt lake env lean ../UniKeccak/UniKeccakTes
    multilinear extension at the root's out-of-domain point), the extractor (`uniExtractorK`), the experiments, **`UniKnowledgeSoundnessKeccak`**,
    **`UniKnowledgeSoundnessKeccakRec3`**, **`UniCompletenessKeccak`**, **`UniCompletenessKeccakRec3`**, and π1-rec4's
    (`KDeployment.verifierWith4`: `verifyWithK4` of `Pcs.lean`; `keccakSoundnessExperiment4`,
-   **`UniKnowledgeSoundnessKeccakRec4`**, `keccakCompletenessExperiment4`, **`UniCompletenessKeccakRec4`**: statements
-   only, not proved).
+   **`UniKnowledgeSoundnessKeccakRec4`**, `keccakCompletenessExperiment4`, **`UniCompletenessKeccakRec4`**; proved in
+   `UniKeccakSound` and `UniKeccakComplete`).
 
 ## Rust → Lean
 
@@ -211,7 +211,9 @@ clause states.
 - **Completeness**: `formal/UniKeccakComplete`, at the reference shape, for its explicit Lean honest prover
   (`uniCompletenessKeccak_closed`, `uniCompletenessKeccakRec3_closed`, `Prob.deltaK < 2^-169`, given
   `32 ≤ D.programIv.length ≤ 2^16`).
-- **π1-rec4** (`UniKnowledgeSoundnessKeccakRec4`, `UniCompletenessKeccakRec4`): stated, **not proved**; see
-  [`formal/UniKeccakSound`](../UniKeccakSound/README.md), "π1-rec4", for what their proofs need.
+- **π1-rec4** (`UniKnowledgeSoundnessKeccakRec4`, `UniCompletenessKeccakRec4`): proved, closed at the reference shape:
+  `UniKeccakSound.uniKnowledgeSoundnessKeccakRec4_closed` (`uniBound128 (2^35/|E|)`, 128.49 bits; see
+  [`formal/UniKeccakSound`](../UniKeccakSound/README.md), "π1-rec4") and
+  `UniKeccakComplete.uniCompletenessKeccakRec4_closed` (`Prob.deltaK < 2^-169`, prover `Rec4.uniProverRec4RP`).
   `UniStatement.weightAt` fixes a slot term's bits at 8 where the Rust reads `q_flock`'s variables minus the point's;
   `weightAtK` is the Rust's.

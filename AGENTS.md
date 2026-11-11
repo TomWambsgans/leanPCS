@@ -133,8 +133,11 @@ transaction gas without the 21,000 base (EIP-7623) and without the frame's per-f
   recorded graph = its verifier, the recursion's knowledge soundness as an explicit reduction and its completeness under
   two premises at Keccak-f[1600]. The compiled π2 circuit's checks are evaluated in Lean, not proved. Of π1-rec4
   (branch `lean/pi1-rec4`): its verifier transcribed (`UniKeccak.reduceWithK4`, differential-tested on the real
-  π1-rec4 proofs), its recorded graph = its verifier (`RecGraphKeccak.Sim.pi1GraphIsVerifierK4`, no hypothesis); its
-  knowledge soundness and completeness are stated, not proved.
+  π1-rec4 proofs), its recorded graph = its verifier (`RecGraphKeccak.Sim.pi1GraphIsVerifierK4`, at every setup
+  commitment `pi1GraphIsVerifierK4At`, no hypothesis), its knowledge soundness
+  (`UniKeccakSound.uniKnowledgeSoundnessKeccakRec4_closed`, ≤ 2^-64 at 2^64 queries, 128.49 bits, no hypothesis, on the
+  rate-extended transfer `keccak256RateTransfer`) and completeness (`UniKeccakComplete.uniCompletenessKeccakRec4_closed`,
+  < 2^-169, given a program IV of 32 to 2^16 bytes).
 - **Argued and tested (current code)**: the current membership protocol's soundness and zero knowledge
   ([`PROTOCOL.md`](docs/membership/PROTOCOL.md); `protocol::tests`, the rank tests in `hiding`); each contract equals
   its Rust verifier; the real π1 proofs at 32, 128 and 400 signatures (committed vectors) are accepted with their frame
