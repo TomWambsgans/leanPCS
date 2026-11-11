@@ -32,10 +32,10 @@ use fiat_shamir::merkle::Hash;
 use fiat_shamir::transcript::{Proof, ProverState};
 use std::sync::Mutex;
 
-use pcs::whir::{LaneJob, LaneTensor, commit_tree_in, config_for_rate, recursive_prover_with_lane_tensors_batch};
+use pcs::whir::{LaneJob, LaneTensor, Low, commit_tree_in, config_for_rate, recursive_prover_with_lane_tensors_batch};
 use primitives::field::{F64, F192};
 use primitives::hash::hash as keccak256;
-use primitives::multilinear::{eq_table, mle_eval_par};
+use primitives::multilinear::mle_eval_par;
 
 /// The PCS version this crate implements: leanVM's WHIR (commit `c445e3d5`) at rate `1/2`, its deployed ladder
 /// (`pcs::whir::DEPLOYED_SCHEDULE`, `verifier::whir::Ladder::Deployed`), `64` lanes at its first fold.
@@ -175,8 +175,7 @@ fn lane_products(words: &[F64], point: &[F192]) -> Vec<F192> {
         !words.is_empty() && words.len().is_multiple_of(lane) && words.len() <= 1 << n,
         "whole lanes of the 2^n words"
     );
-    let low = eq_table(&point[..log_lane]);
-    pcs::whir::dense_lane_inner_products(words, lane, &[&low])
+    pcs::whir::dense_lane_inner_products(words, lane, &[&Low::Eq(point[..log_lane].to_vec())])
         .pop()
         .expect("one low weight")
 }
@@ -340,7 +339,7 @@ fn eq_tensor(point: &[F192], scale: F192) -> LaneTensor {
         scales: (0..1usize << LANE_FOLD)
             .map(|l| scale * eq_bits(&point[log_lane..], l))
             .collect(),
-        low: eq_table(&point[..log_lane]),
+        low: Low::Eq(point[..log_lane].to_vec()),
     }
 }
 

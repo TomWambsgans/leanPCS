@@ -1381,7 +1381,83 @@ pub struct LaneTensor {
     /// the whole cube). [Added here.]
     pub scales: Vec<F192>,
     /// One per word of a lane, `2^(log_n - initial_k)` of them.
-    pub low: Vec<F192>,
+    pub low: Low,
+}
+
+/// A lane tensor's low weight: written out, or `eq(point, ·)` over a lane's words, which the lane rounds read a
+/// chunk at a time as the product of two small tables ([`EqSplit`]) rather than from a table of a lane's length.
+/// [Added here: the `eq` form, for speed; the proofs are the same.]
+#[derive(Clone, Debug)]
+pub enum Low {
+    Table(Vec<F192>),
+    /// `eq(point, x)`, `x`'s bit `j` against `point[j]`: [`build_eq_table_ext`]'s order.
+    Eq(Vec<F192>),
+}
+
+impl Low {
+    /// The words of a lane it weighs.
+    pub fn len(&self) -> usize {
+        match self {
+            Low::Table(t) => t.len(),
+            Low::Eq(point) => 1 << point.len(),
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Its weight of word `x`.
+    pub fn at(&self, x: usize) -> F192 {
+        match self {
+            Low::Table(t) => t[x],
+            Low::Eq(point) => point.iter().enumerate().fold(F192::ONE, |w, (j, &p)| {
+                w * if (x >> j) & 1 == 1 { p } else { F192::ONE + p }
+            }),
+        }
+    }
+}
+
+/// `eq(point, ·)` split at chunks of `2^log_chunk` words: `eq(point, x) = lo[x mod 2^log_chunk] · hi[x >> log_chunk]`
+/// (the products are exact, so the values are the written-out table's).
+struct EqSplit {
+    lo: Vec<F192>,
+    hi: Vec<F192>,
+}
+
+impl EqSplit {
+    fn new(point: &[F192], chunk: usize) -> Self {
+        let log_chunk = chunk.trailing_zeros() as usize;
+        assert!(chunk.is_power_of_two() && log_chunk <= point.len());
+        Self {
+            lo: build_eq_table_ext(&point[..log_chunk]),
+            hi: build_eq_table_ext(&point[log_chunk..]),
+        }
+    }
+}
+
+/// A dense low weight as the chunk-wise passes read it: chunk `t`'s weights are `weights(t)` times `factor(t)`.
+enum Chunked<'a> {
+    Table(&'a [F192], usize),
+    Eq(EqSplit),
+}
+
+impl<'a> Chunked<'a> {
+    fn new(low: &'a Low, chunk: usize) -> Self {
+        match low {
+            Low::Table(t) => Chunked::Table(t, chunk),
+            Low::Eq(point) => Chunked::Eq(EqSplit::new(point, chunk)),
+        }
+    }
+
+    /// Chunk `t`'s weights, and the factor they take (`None`: one).
+    #[inline]
+    fn chunk(&self, t: usize) -> (&[F192], Option<F192>) {
+        match self {
+            Chunked::Table(table, chunk) => (&table[t * chunk..(t + 1) * chunk], None),
+            Chunked::Eq(split) => (&split.lo[..], Some(split.hi[t])),
+        }
+    }
 }
 
 /// Fold adjacent pairs at `r`, as a lane round folds lanes `2i` and `2i+1`.
@@ -1421,7 +1497,30 @@ fn sparse_lows(weight: &[&LaneTensor]) -> Vec<SparseLow> {
     weight
         .iter()
         .map(|tensor| {
-            let low = &tensor.low;
+            let low = match &tensor.low {
+                Low::Table(t) => t,
+                // `eq(point, ·)` is nonzero exactly where `x` agrees with the point's boolean coordinates: its
+                // entries are those of the free ones (the rest weigh one).
+                Low::Eq(point) => {
+                    let free: Vec<usize> = (0..point.len())
+                        .filter(|&j| point[j] != F192::ZERO && point[j] != F192::ONE)
+                        .collect();
+                    if 1usize << free.len() > SPARSE_LOW_MAX {
+                        return SparseLow::Dense;
+                    }
+                    let base = (0..point.len())
+                        .filter(|&j| point[j] == F192::ONE)
+                        .fold(0usize, |x, j| x | 1 << j);
+                    let mut entries: Vec<(usize, F192)> = (0..1usize << free.len())
+                        .map(|k| {
+                            let x = free.iter().enumerate().fold(base, |x, (b, &j)| x | ((k >> b) & 1) << j);
+                            (x, tensor.low.at(x))
+                        })
+                        .collect();
+                    entries.sort_unstable_by_key(|&(x, _)| x);
+                    return SparseLow::Sparse(entries);
+                }
+            };
             let chunk = ROUND_CHUNK.min(low.len()).max(1);
             let nonzero = |t: usize| -> Vec<(usize, F192)> {
                 let first = t * chunk;
@@ -1470,7 +1569,7 @@ fn lane_inner_products(
     let dense: Vec<usize> = (0..weight.len())
         .filter(|&c| matches!(sparse[c], SparseLow::Dense) && known[c].is_none())
         .collect();
-    let lows: Vec<&[F192]> = dense.iter().map(|&c| &weight[c].low[..]).collect();
+    let lows: Vec<&Low> = dense.iter().map(|&c| &weight[c].low).collect();
     let dense_sums = dense_lane_sums(f, block, &lows);
     let mut sums = vec![F192Unreduced::ZERO; weight.len() * n_lanes];
     for (k, &c) in dense.iter().enumerate() {
@@ -1500,7 +1599,7 @@ fn lane_inner_products(
 /// `p_c[l] = Σ_x f(l, x) · lows[c][x]` for every low weight `c` (`block` words each) and every lane `l` of `f`
 /// (whole lanes of `block` words), claim-major, in one pass over `f`: [`lane_inner_products`]' dense ones. [Added
 /// here: a commitment's out-of-domain answer from its lanes' products, which its openings' lane rounds reuse.]
-pub fn dense_lane_inner_products(f: &[F64], block: usize, lows: &[&[F192]]) -> Vec<Vec<F192>> {
+pub fn dense_lane_inner_products(f: &[F64], block: usize, lows: &[&Low]) -> Vec<Vec<F192>> {
     let n_lanes = f.len() / block;
     assert!(n_lanes >= 1 && f.len() == n_lanes * block, "whole lanes");
     for low in lows {
@@ -1512,35 +1611,66 @@ pub fn dense_lane_inner_products(f: &[F64], block: usize, lows: &[&[F192]]) -> V
         .collect()
 }
 
-/// The unreduced sums of [`dense_lane_inner_products`], `lows.len() · n_lanes` of them, claim-major.
-fn dense_lane_sums(f: &[F64], block: usize, lows: &[&[F192]]) -> Vec<F192Unreduced> {
+/// The unreduced sums of [`dense_lane_inner_products`], `lows.len() · n_lanes` of them, claim-major. A chunk of an
+/// `eq` weight is its small table times one factor ([`Chunked`]): the chunk's sums against the table, reduced, then
+/// times the factor.
+fn dense_lane_sums(f: &[F64], block: usize, lows: &[&Low]) -> Vec<F192Unreduced> {
     let n_lanes = f.len() / block;
     if lows.is_empty() {
         return Vec::new();
     }
     let chunk = ROUND_CHUNK.min(block);
+    let chunked: Vec<Chunked<'_>> = lows.iter().map(|low| Chunked::new(low, chunk)).collect();
     // On a vector carry-less multiplier: the chunk's dense low weights packed once for `dot_base`, which takes
-    // eight terms at a time, then the lanes in turn against them.
+    // eight terms at a time (an `eq` weight's small table once for all chunks), then the lanes in turn against them.
     #[cfg(all(target_arch = "x86_64", target_feature = "vpclmulqdq", target_feature = "avx2"))]
-    let fold = |acc: &mut Vec<F192Unreduced>, t: usize| {
+    let fold = {
         use primitives::field::{Weights8, dot_base};
-        let x0 = t * chunk;
-        if !chunk.is_multiple_of(8) {
-            return lane_inner_products_chunk(f, block, lows, acc, x0, chunk);
-        }
-        let packed: Vec<Vec<Weights8>> = lows
+        let pack = |w: &[F192]| -> Vec<Weights8> { w.as_chunks::<8>().0.iter().map(Weights8::new).collect() };
+        let vectored = chunk.is_multiple_of(8);
+        let packed_eq: Vec<Option<Vec<Weights8>>> = chunked
             .iter()
-            .map(|low| low[x0..x0 + chunk].as_chunks::<8>().0.iter().map(Weights8::new).collect())
+            .map(|c| match c {
+                Chunked::Eq(split) if vectored => Some(pack(&split.lo)),
+                _ => None,
+            })
             .collect();
-        for l in 0..n_lanes {
-            let lane = &f[l * block + x0..l * block + x0 + chunk];
-            for (c, w) in packed.iter().enumerate() {
-                acc[c * n_lanes + l] ^= dot_base(w, lane);
+        move |acc: &mut Vec<F192Unreduced>, t: usize| {
+            let x0 = t * chunk;
+            if !vectored {
+                return lane_inner_products_chunk(f, block, &chunked, acc, t, chunk);
+            }
+            let packed_tables: Vec<Option<Vec<Weights8>>> = chunked
+                .iter()
+                .map(|c| match c {
+                    Chunked::Table(..) => Some(pack(c.chunk(t).0)),
+                    Chunked::Eq(_) => None,
+                })
+                .collect();
+            let weights: Vec<(&[Weights8], Option<F192>)> = chunked
+                .iter()
+                .enumerate()
+                .map(|(c, low)| match (&packed_tables[c], &packed_eq[c]) {
+                    (Some(w), _) => (&w[..], None),
+                    (None, Some(w)) => (&w[..], low.chunk(t).1),
+                    (None, None) => unreachable!("every weight packed"),
+                })
+                .collect();
+            for l in 0..n_lanes {
+                let lane = &f[l * block + x0..l * block + x0 + chunk];
+                for (c, &(w, factor)) in weights.iter().enumerate() {
+                    let dot = dot_base(w, lane);
+                    acc[c * n_lanes + l] ^= match factor {
+                        None => dot,
+                        Some(h) => h.mul_unreduced(dot.reduce()),
+                    };
+                }
             }
         }
     };
     #[cfg(not(all(target_arch = "x86_64", target_feature = "vpclmulqdq", target_feature = "avx2")))]
-    let fold = |acc: &mut Vec<F192Unreduced>, t: usize| lane_inner_products_chunk(f, block, lows, acc, t * chunk, chunk);
+    let fold =
+        |acc: &mut Vec<F192Unreduced>, t: usize| lane_inner_products_chunk(f, block, &chunked, acc, t, chunk);
     parallel::fold_reduce(
         block / chunk,
         || vec![F192Unreduced::ZERO; lows.len() * n_lanes],
@@ -1552,26 +1682,31 @@ fn dense_lane_sums(f: &[F64], block: usize, lows: &[&[F192]]) -> Vec<F192Unreduc
     )
 }
 
-/// The dense low weights' terms of [`lane_inner_products`] over the words `x0 .. x0 + chunk` of every lane, one
+/// The dense low weights' terms of [`lane_inner_products`] over chunk `t` (of `chunk` words) of every lane, one
 /// product at a time.
 #[allow(clippy::ptr_arg)]
 fn lane_inner_products_chunk(
     f: &[F64],
     block: usize,
-    lows: &[&[F192]],
+    lows: &[Chunked<'_>],
     acc: &mut Vec<F192Unreduced>,
-    x0: usize,
+    t: usize,
     chunk: usize,
 ) {
     let n_lanes = f.len() / block;
+    let x0 = t * chunk;
+    let weights: Vec<(&[F192], Option<F192>)> = lows.iter().map(|low| low.chunk(t)).collect();
     for l in 0..n_lanes {
         let lane = &f[l * block + x0..l * block + x0 + chunk];
-        for (c, low) in lows.iter().enumerate() {
+        for (c, &(low, factor)) in weights.iter().enumerate() {
             let mut sum = F192Unreduced::ZERO;
-            for (&w, &e) in lane.iter().zip(&low[x0..x0 + chunk]) {
+            for (&w, &e) in lane.iter().zip(low) {
                 sum ^= e.mul_base_unreduced(w);
             }
-            acc[c * n_lanes + l] ^= sum;
+            acc[c * n_lanes + l] ^= match factor {
+                None => sum,
+                Some(h) => h.mul_unreduced(sum.reduce()),
+            };
         }
     }
 }
@@ -1605,6 +1740,17 @@ fn collapse_lanes(f: &[F64], block: usize, jobs: &[Collapse<'_>]) -> Vec<(Vec<F1
         .map(|(nf, nb)| (parallel::SendPtr(nf.as_mut_ptr()), parallel::SendPtr(nb.as_mut_ptr())))
         .collect();
     let chunk = ROUND_CHUNK.min(block);
+    // Each job's dense low weights as the chunks read them, with their scales.
+    let dense: Vec<Vec<(Chunked<'_>, F192)>> = jobs
+        .iter()
+        .map(|job| {
+            job.tensors
+                .iter()
+                .filter(|(_, low, _)| matches!(low, SparseLow::Dense))
+                .map(|&(tensor, _, scale)| (Chunked::new(&tensor.low, chunk), scale))
+                .collect()
+        })
+        .collect();
     let zero = (F192Unreduced::ZERO, F192Unreduced::ZERO);
     let task = |t: usize| -> Vec<(F192Unreduced, F192Unreduced)> {
         let x0 = t * chunk;
@@ -1641,8 +1787,10 @@ fn collapse_lanes(f: &[F64], block: usize, jobs: &[Collapse<'_>]) -> Vec<(Vec<F1
                 // The dense low weights at every word, four products at a time ([`mul4`]), the sparse ones at
                 // their entries in the stage.
                 lo_b[..n].fill(F192::ZERO);
-                for &(tensor, _, scale) in job.tensors.iter().filter(|(_, low, _)| matches!(low, SparseLow::Dense)) {
-                    let low = &tensor.low[s..s + n];
+                for (low, scale) in &dense[j] {
+                    let (weights, factor) = low.chunk(t);
+                    let low = &weights[s - x0..s - x0 + n];
+                    let scale = factor.map_or(*scale, |h| *scale * h);
                     let (d4, d_rest) = lo_b[..n].as_chunks_mut::<4>();
                     for (d, e) in d4.iter_mut().zip(low.as_chunks::<4>().0) {
                         let p = mul4([scale; 4], *e);
@@ -2860,7 +3008,7 @@ mod tests {
                             .collect(),
                         // The third a sparse low weight, as a hidden layout's gadget: a few entries, in different
                         // chunks.
-                        low: match c {
+                        low: Low::Table(match c {
                             2 => (0..lane_block)
                                 .map(|x| match x == 1 || x == lane_block / 2 + 3 || x == lane_block - 1 {
                                     true => rng.ext(),
@@ -2868,13 +3016,13 @@ mod tests {
                                 })
                                 .collect(),
                             _ => rng.ext_vec(lane_block),
-                        },
+                        }),
                     })
                     .collect();
                 let dense: Vec<F192> = (0..witness.len())
                     .map(|i| {
                         weight.iter().fold(F192::ZERO, |acc, t| {
-                            acc + t.scales[i / lane_block] * t.low[i % lane_block]
+                            acc + t.scales[i / lane_block] * t.low.at(i % lane_block)
                         })
                     })
                     .collect();
@@ -2919,6 +3067,83 @@ mod tests {
                 }
                 let _ = cm;
             }
+        }
+    }
+
+    /// `eq` low weights (dense, and with all but three coordinates boolean: sparse), known inner products, and
+    /// several openings on one commitment at once prove what written-out tables prove alone, byte for byte.
+    #[test]
+    fn eq_lows_known_products_and_batches_prove_what_tables_prove() {
+        for (log_n, n_lanes) in [(13usize, 5usize), (13, 64), (18, 37)] {
+            let pc = test_config_for(log_n);
+            let lane_block = 1usize << (log_n - pc.initial_k);
+            let log_lane = lane_block.trailing_zeros() as usize;
+            let mut rng = Rng::new(0xE0 + n_lanes as u64);
+            let witness: Vec<F64> = (0..n_lanes * lane_block).map(|_| F64(rng.next_u64())).collect();
+            let (_, pd) = commit(&witness, log_n, pc.initial_k, pc.log_inv_rates[0]);
+            let boolean: Vec<F192> = (0..log_lane)
+                .map(|j| match j {
+                    0..3 => rng.ext(),
+                    _ if j % 2 == 0 => F192::ONE,
+                    _ => F192::ZERO,
+                })
+                .collect();
+            let points = [rng.ext_vec(log_lane), rng.ext_vec(log_lane), boolean];
+            let scales: Vec<Vec<F192>> = (0..3).map(|_| rng.ext_vec(1 << pc.initial_k)).collect();
+            let tensors = |eq: bool| -> Vec<LaneTensor> {
+                points
+                    .iter()
+                    .zip(&scales)
+                    .map(|(p, s)| LaneTensor {
+                        scales: s.clone(),
+                        low: if eq { Low::Eq(p.clone()) } else { Low::Table(build_eq_table_ext(p)) },
+                    })
+                    .collect()
+            };
+            let (tables, eqs) = (tensors(false), tensors(true));
+            let targets = [rng.ext(), rng.ext()];
+            let labels: [&[u8]; 2] = [b"job 0", b"job 1"];
+            // Job `k` is the tensors `0` and `k + 1`, alone and on tables.
+            let expected: Vec<fiat_shamir::transcript::Proof> = (0..2)
+                .map(|k| {
+                    let mut ps = ProverState::from_label(labels[k]);
+                    recursive_prover_with_lane_tensors(
+                        &pc,
+                        log_n,
+                        &witness,
+                        &[tables[0].clone(), tables[k + 1].clone()],
+                        targets[k],
+                        Some(&pd.codeword),
+                        &pd.merkle_tree,
+                        &mut ps,
+                    );
+                    ps.into_proof()
+                })
+                .collect();
+            let known = dense_lane_inner_products(&witness, lane_block, &[&eqs[0].low]);
+            let mut states: Vec<ProverState> = labels.iter().map(|l| ProverState::from_label(l)).collect();
+            let mut jobs: Vec<LaneJob<'_>> = states
+                .iter_mut()
+                .enumerate()
+                .map(|(k, ps)| LaneJob {
+                    tensors: vec![0, k + 1],
+                    target: targets[k],
+                    ps,
+                })
+                .collect();
+            recursive_prover_with_lane_tensors_batch(
+                &pc,
+                log_n,
+                &witness,
+                &eqs,
+                &[Some(&known[0]), None, None],
+                &mut jobs,
+                Some(&pd.codeword),
+                &pd.merkle_tree,
+            );
+            drop(jobs);
+            let actual: Vec<_> = states.into_iter().map(|ps| ps.into_proof()).collect();
+            assert_eq!(actual, expected, "log_n={log_n}, lanes={n_lanes}");
         }
     }
 

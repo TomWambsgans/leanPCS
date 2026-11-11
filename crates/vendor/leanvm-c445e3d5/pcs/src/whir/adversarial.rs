@@ -174,7 +174,7 @@ fn dense_of(weight: &[LaneTensor], n_lanes: usize, block: usize) -> Vec<F192> {
         .map(|i| {
             weight
                 .iter()
-                .fold(F192::ZERO, |acc, t| acc + t.scales[i / block] * t.low[i % block])
+                .fold(F192::ZERO, |acc, t| acc + t.scales[i / block] * t.low.at(i % block))
         })
         .collect()
 }
@@ -210,7 +210,10 @@ fn tensors(rng: &mut Rng, claims: usize, n_lanes: usize, block: usize, how: Scal
                     Scales::AllZero => F192::ZERO,
                 })
                 .collect();
-            LaneTensor { scales, low }
+            LaneTensor {
+                scales,
+                low: Low::Table(low),
+            }
         })
         .collect()
 }
