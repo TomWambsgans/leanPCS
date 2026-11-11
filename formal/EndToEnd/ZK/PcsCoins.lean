@@ -149,9 +149,9 @@ theorem prEvent_mapM_const {δ α : Type} (X : ProbComp α) :
     rw [tsum_congr hterm, tsum_ite_eq]
 
 
-theorem prEvent_coinEs (rs : List E) (h : rs.length = 10) :
-    Pr{let y ← runWithRandomPermutation (coinEs 10)}[y = rs] = (rs.map fun r ↦ Pr{let y ← eDist}[y = r]).prod := by
-  rw [runWithRandomPermutation_coinEs, prEvent_mapM_const eDist (List.range 10) rs (by simpa using h)]
+theorem prEvent_coinEs (rs : List E) (h : rs.length = 5) :
+    Pr{let y ← runWithRandomPermutation (coinEs 5)}[y = rs] = (rs.map fun r ↦ Pr{let y ← eDist}[y = r]).prod := by
+  rw [runWithRandomPermutation_coinEs, prEvent_mapM_const eDist (List.range 5) rs (by simpa using h)]
 
 /-- **Every element of `E` is a possible uniform draw.** -/
 theorem prEvent_eDist_ne_zero (r : E) : Pr{let y ← eDist}[y = r] ≠ 0 := by

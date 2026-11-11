@@ -1,6 +1,6 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- New here: zero knowledge of the membership proof with the EIP's PCS claims, assuming a zero-knowledge PCS
--- (`docs/membership/HIDING.md`), in leanerVM's programmable random-permutation model (branch `mumbai`, commit
+-- (`docs/membership/PROTOCOL.md`, "Zero knowledge"), in leanerVM's programmable random-permutation model (branch `mumbai`, commit
 -- 6175f1a0, MIT OR Apache-2.0: `Statement/RandomPermutation.lean`).
 import ZK.PcsHybrid
 import ZK.PcsCoins
@@ -14,7 +14,7 @@ ZeroKnowledgeWith sim.s₀ (zkSimulator sim) sim.oracle (fun Q ↦ εpcs Q + εr
 
 1. Real ≈ hybrid: `PcsZeroKnowledge` (the PCS idealized in the prover's use of it), within `εpcs Q`.
 2. The hybrid is the mixture over the prover's coins of the full program (`fullProg`: the challenge phase, its
-   ten reveals answered by `revealAnswer` of the coins, then the openings and the distinguisher;
+   five reveals answered by `revealAnswer` of the coins, then the openings and the distinguisher;
    `hybrid_eq`, from `hybrid_run_eq`); the ideal experiment of `zkSimulator` is the full program with uniform
    answers (`ideal_eq`).
 3. Hybrid ≈ ideal (`RProg.trace_le`): within the probability, in the ideal run, that the log of reveals is not
@@ -106,7 +106,7 @@ theorem good_of_uniformAt (stmt : Statement) (cells₀ : Array K) (c : Challenge
     (hL : L.map Prod.fst = revealQueries c) (hU : UniformAt stmt cells₀ c) :
     Good (fun _ ↦ eDist) coinsDist (fun x q ↦ revealAnswer (membership logRows) stmt cells₀ x q) L := by
   classical
-  have hlen : (L.map Prod.snd).length = 10 := by
+  have hlen : (L.map Prod.snd).length = 5 := by
     rw [List.length_map, ← List.length_map (f := Prod.fst), hL]
     rfl
   have hw : weight (fun _ ↦ eDist) L 0 = ((L.map Prod.snd).map fun r ↦ Pr{let y ← eDist}[y = r]).prod := by
