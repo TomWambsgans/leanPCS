@@ -58,7 +58,7 @@ pub trait Channel<S: Scalar> {
 
     /// A narrow element ([`NARROW_BITS`] bits, `c2 < 2^32`) as its low 20 bytes, big-endian (`c2`'s low four bytes,
     /// `c1`, `c0`): another proof's [`Channel::sample_narrow`] challenge carried as public data without its four zero
-    /// bytes (`docs/leanvm/rec/PERF_GAS.md`). Absorbed like every byte of the stream.
+    /// bytes (`docs/leanvm/rec/SPEC-REC.md` §2.4.6). Absorbed like every byte of the stream.
     fn next_narrow(&mut self) -> Result<S, VerifierError> {
         unimplemented!("this channel reads no narrow elements")
     }
@@ -73,7 +73,7 @@ pub trait Channel<S: Scalar> {
     /// challenge, as [`Channel::sample`] hashes them: the sponge's whole rate after its last permutation
     /// ([`keccak256_rate`]), challenge `k` its bytes `8 + 24k .. 32 + 24k` ([`challenge_at`]). Challenge 0 is
     /// [`Channel::sample`]'s and the state becomes the digest, as there (π1-rec4, `FsShape::Rec4`:
-    /// `docs/leanvm/rec/PERF_GAS2.md`).
+    /// `docs/leanvm/univariate/SPEC.md` §14.4).
     fn sample_wide(&mut self, _count: usize) -> Vec<S> {
         unimplemented!("this channel draws no wide challenges")
     }
@@ -157,22 +157,23 @@ pub enum FsShape {
     /// Every challenge drawn, one Keccak-256 each: leanVM's shape, the main line's.
     #[default]
     Main = 0,
-    /// `π1-rec3`'s (SPEC-REC.md §1.4, §12, `SPEC-POINTS.md`): in each of the two runs, the first challenge `c` is drawn
-    /// and the others are `c², c⁴, …`, each the square of the one before (no hash); the batching sumcheck's challenges
-    /// are of [`NARROW_BITS`] bits ([`Channel::sample_narrow`]: the claims' point, which the recursion carries, has
-    /// four zero bytes a coordinate) and take two variables a round ([`sumcheck_pairs_drawn`]): one narrow challenge
-    /// `z_j` a pair, the point's two coordinates [`pair_point`]`(z_j)`, so 14 challenges for 27 coordinates.
+    /// `π1-rec3`'s (SPEC-REC.md §1.4, §12, univariate `SPEC.md` §14.1): in each of the two runs, the first challenge
+    /// `c` is drawn and the others are `c², c⁴, …`, each the square of the one before (no hash); the batching
+    /// sumcheck's challenges are of [`NARROW_BITS`] bits ([`Channel::sample_narrow`]: the claims' point, which the
+    /// recursion carries, has four zero bytes a coordinate) and take two variables a round ([`sumcheck_pairs_drawn`]):
+    /// one narrow challenge `z_j` a pair, the point's two coordinates [`pair_point`]`(z_j)`, so 14 challenges for 27
+    /// coordinates.
     Rec3 = 3,
-    /// `π1-rec4`'s (`docs/leanvm/rec/PERF_GAS2.md`): [`FsShape::Rec3`] with the challenges no message separates drawn
-    /// from one Keccak-f ([`Channel::sample_wide`]), and the ring switch's map drawn after `C2`'s commitment: `α`'s `c`,
-    /// `β`, `γ` and the zerocheck's `c` from the call that absorbs `C1`'s commitment; the slices absorbed with `C2`'s
-    /// commitment, then `t` and the map's `f_0 … f_3`; after the values at `t`, `ρ`, the batch's `λ` and `f_4`, `f_5`.
-    /// 106 Keccak-f in π1's transcript at the reference shape instead of 116.
+    /// `π1-rec4`'s (`docs/leanvm/univariate/SPEC.md` §14.4): [`FsShape::Rec3`] with the challenges no message separates
+    /// drawn from one Keccak-f ([`Channel::sample_wide`]), and the ring switch's map drawn after `C2`'s commitment:
+    /// `α`'s `c`, `β`, `γ` and the zerocheck's `c` from the call that absorbs `C1`'s commitment; the slices absorbed
+    /// with `C2`'s commitment, then `t` and the map's `f_0 … f_3`; after the values at `t`, `ρ`, the batch's `λ` and
+    /// `f_4`, `f_5`. 106 Keccak-f in π1's transcript at the reference shape instead of 116.
     Rec4 = 4,
 }
 
 /// The bits of a narrow challenge: its top limb's low 32 (`c2 < 2^32`). Soundness: a sumcheck round of degree 2 errs
-/// with probability `2/2^160`; π1-rec2's batch, 27 rounds over `C1`'s and `C2`'s lists (`2^24.3`), at `2^-130`.
+/// with probability `2/2^160`; the paired batch, 27 rounds over `C1`'s and `C2`'s lists (`2^24.3`), at `2^-130`.
 pub const NARROW_BITS: usize = 160;
 
 /// The narrow challenge of a hash's challenge: its limb 2 cut to 32 bits.
@@ -298,7 +299,7 @@ fn pair_round_poly<S: Scalar>(transcript: &mut impl Channel<S>, degree: usize, c
     Ok([low, vec![c3], high].concat())
 }
 
-/// π1-pairs' batching sumcheck (`docs/leanvm/rec/SPEC-POINTS.md`): `vars` variables of a summand of degree `degree`
+/// π1-pairs' batching sumcheck (`docs/leanvm/univariate/SPEC.md` §14.1): `vars` variables of a summand of degree `degree`
 /// in each, two at a time, low variables first. Pair `j`'s round polynomial is
 /// `G_j(X) = Σ_rest f(r_(<2j), y_0(X), y_1(X), rest)`, so that `Σ_(x ∈ V_2) G_j(x)` is the sum over the pair's four
 /// corners; one challenge `z_j` a pair, the point's coordinates `(y_0(z_j), y_1(z_j))` ([`pair_point`]). With `vars`
@@ -791,7 +792,7 @@ mod tests {
         }
     }
 
-    /// What the batching sumcheck costs π2 (`docs/leanvm/rec/SPEC-POINTS.md` §6), recorded: over the batch's 27
+    /// What the batching sumcheck costs π2 (`docs/leanvm/rec/SPEC-REC.md` §12 item 8), recorded: over the batch's 27
     /// variables at degree 2, the paired rounds take as many Keccak-f permutations as the plain ones (a pair's 8 scalars
     /// and the state are 224 bytes, two blocks; a plain round's 2 and the state 80, one), 14 challenges instead of 27,
     /// and these operations.

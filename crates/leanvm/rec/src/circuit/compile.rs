@@ -21,7 +21,7 @@
 //! - `Add`, `Mul` → `E` units on limbs (a product, a square, a sum), constants → `κ` slots;
 //! - the calls' elements, `π1`'s roots, the statement, and the zero checks → **ports** (`spec::Source`);
 //! - π1's claims [`hashed_claims`] → their encoding's Keccak-256 in the circuit, a port (`Source::ClaimHash`): the
-//!   contract reads it from the frame of PCS claims and encodes the other claims only (`docs/leanvm/rec/PERF_GAS.md`).
+//!   contract reads it from the frame of PCS claims and encodes the other claims only (`docs/leanvm/rec/SPEC-REC.md` §2.4.6).
 //!
 //! The witness is the framework's: the free bits and limbs given, everything else computed by the formulas.
 
@@ -44,9 +44,9 @@ use super::units::{Arith, Bools, Copies, Limbs, Op, Packer, Ports};
 /// shape: the claim's encoding (the EIP draft's, `pcs_claim`) hashed in the circuit, its digest a public word
 /// ([`Source::ClaimHash`]) that the contract reads from the transaction's frame of PCS claims, so that the claim's own
 /// words (its root, its out-of-domain answer, its value, the coordinates no other claim has) leave calldata
-/// (`docs/leanvm/rec/PERF_GAS.md`). As many as fit [`FIT_LOG_N`]: π1-rec4's three (`C1`'s at 27 variables at 128
+/// (`docs/leanvm/rec/SPEC-REC.md` §2.4.6). As many as fit [`FIT_LOG_N`]: π1-rec4's three (`C1`'s at 27 variables at 128
 /// signatures, 28 at 400: six permutations; `C2`'s six; `F`'s five), with its transcript and D16v's trimmed last
-/// rounds (`docs/leanvm/rec/PERF_GAS2.md`); π1-rec3's longer transcript leaves room for `C1`'s alone; the main line's
+/// rounds (`docs/leanvm/rec/SPEC-REC.md` §2.4.5); π1-rec3's longer transcript leaves room for `C1`'s alone; the main line's
 /// circuit fits with none.
 pub fn hashed_claims(fs: FsShape) -> &'static [usize] {
     match fs {
@@ -115,7 +115,7 @@ pub fn expand(graph: &Graph) -> (Graph, Vec<u32>) {
             let m = |id: u32| map[id as usize];
             let s = match *node {
                 Node::Const([a, b, c]) => Sym::constant(E::new(a, b, c)),
-                Node::Statement(_) | Node::Input { .. } | Node::Seed => Sym::new(*node),
+                Node::Statement(_) | Node::Frame(..) | Node::Input { .. } | Node::Seed => Sym::new(*node),
                 Node::Add(a, b) => m(a) + m(b),
                 Node::Mul(a, b) => m(a) * m(b),
                 Node::Hash(s, from, to) => Sym::new(Node::Hash(m(s).0, from, to)),
@@ -425,6 +425,7 @@ fn compile(recorded: &Recorded, inputs: &Inputs, keep: bool) -> (Compiled, Optio
         let zero_pair = |b: &mut Builder, consts: &mut Constants| [consts.fresh(b, K(0)), consts.fresh(b, K(0))];
         let (l, can_end): (Limbs, bool) = match *node {
             Node::Const([c0, c1, c2]) => ([c0, c1, c2].map(|c| sponge.constants.fresh(&mut b, K(c))), true),
+            Node::Frame(..) => unreachable!("π1's graph reads no frame"),
             Node::Statement(k) => {
                 let [z1, z2] = zero_pair(&mut b, &mut sponge.constants);
                 ([statement_limb[k as usize], z1, z2], true)
@@ -699,7 +700,7 @@ fn compile(recorded: &Recorded, inputs: &Inputs, keep: bool) -> (Compiled, Optio
         .collect();
     let mut roots_at: Vec<usize> = Vec::new();
     // A root is public as a claim encodes it, the stream's 32 bytes as they are: π1's prover sends a root's bytes
-    // (`leanvm_univariate::prover::prove::halves`), and π1's own contract passes them so. Its limbs `L_l` are the
+    // (`KeccakWriter::send_root`), and π1's own contract passes them so. Its limbs `L_l` are the
     // big-endian words of the stream's bytes `24 − 8l .. 32 − 8l` (`spec::word_limbs`).
     for &at in recorded.roots_at.iter().filter(|at| named.contains(at)) {
         roots_at.push(at);
@@ -724,7 +725,7 @@ fn compile(recorded: &Recorded, inputs: &Inputs, keep: bool) -> (Compiled, Optio
                 Word::Stream(at) => CallWord::Root(root_of[&at]),
                 Word::Node(id) => match (g.nodes[id as usize], pair_coordinate(&g, id)) {
                     (Node::Const([c0, c1, c2]), _) => CallWord::Const(super::spec::element_word(E::new(c0, c1, c2))),
-                    // π1-rec3: a pair's coordinate, its challenge the port (SPEC-POINTS.md).
+                    // π1-rec3: a pair's coordinate, its challenge the port (univariate SPEC.md §14.1).
                     (_, Some((z, coordinate))) => {
                         let next = element_nodes.len() as u32;
                         let element = *element_of.entry(z).or_insert_with(|| {
@@ -815,7 +816,7 @@ fn operands(graph: &Graph, node: Node) -> Vec<u32> {
         Node::Hash(s, _, _) => vec![s],
         Node::Low(h) | Node::Narrow(h) | Node::Wide(h, _) | Node::Bits(h, _, _) => vec![h],
         Node::RingWeight(k, _) => graph.kernels[k as usize].clone(),
-        Node::Const(_) | Node::Statement(_) | Node::Input { .. } | Node::Seed => vec![],
+        Node::Const(_) | Node::Statement(_) | Node::Frame(..) | Node::Input { .. } | Node::Seed => vec![],
     }
 }
 

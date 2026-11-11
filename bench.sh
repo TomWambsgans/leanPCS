@@ -17,7 +17,7 @@
 # 5 warm passes. BENCH_PIN prefixes the timed commands only (the builds run first, unpinned).
 #
 # The EIP draft's figures are medians of five interleaved runs on 8 physical cores of an idle AMD EPYC 9355P, with
-# RUSTFLAGS as AGENTS.md gives them for Zen 5:
+# RUSTFLAGS as README.md gives them for Zen 5:
 #   LEANVM_NUM_THREADS=8 BENCH_PIN="taskset -c 0-7" REPEAT=5 sh bench.sh
 set -eu
 
@@ -73,17 +73,23 @@ median() { sort -g | awk '{ v[NR] = $1 } END { if (NR % 2) print v[(NR + 1) / 2]
 
 m_prover=$(cat "$logs"/membership.* | awk -F: '/^prover total/ { print $2 + 0 }' | median)
 l_prover=$(cat "$logs"/pipeline.* | awk '$2 == "s" && $3 == "total" { print $1 }' | median)
-m_claims=$(awk '/^claims / { print $3 }' "$logs/membership-gas")
-m_calldata=$(awk '/^EIP table/ { print $4 }' "$logs/membership-gas")
-m_piop=$(awk '/^EIP table/ { print $7 }' "$logs/membership-gas")
-m_total=$(awk '/^gas / { print $2 }' "$logs/membership-gas")
-# π2's lines: "the real calldata: <B> B ...: <max(standard, floor)>", "with its frame ... (<B> B, <n> claims) ...: <total>".
-l_alone=$(grep '^the real calldata:' "$logs/leanvm-gas" | head -n 1)
-l_with=$(grep '^with its frame of PCS claims' "$logs/leanvm-gas" | head -n 1)
-l_calldata=$(echo "$l_alone" | awk '{ print $4 }')
-l_piop=$(echo "$l_alone" | awk '{ print $NF }')
-l_claims=$(echo "$l_with" | sed 's/.* B, \([0-9]*\) claims.*/\1/')
-l_total=$(echo "$l_with" | awk '{ print $NF }')
+# A value of the gas tests' `BENCH <name> key=value ...` lines (`bench <log> <name> <key>`), or a loud failure.
+bench() {
+    v=$(awk -v name="$2" -v key="$3" '$1 == "BENCH" && $2 == name {
+        for (i = 3; i <= NF; i++) if (index($i, key "=") == 1) print substr($i, length(key) + 2) }' "$1" | head -n 1)
+    [ -n "$v" ] || { echo "bench.sh: no BENCH $2 $3= in $1" >&2; exit 1; }
+    echo "$v"
+}
+# A number with a comma every three digits.
+grouped() { awk -v n="$1" 'BEGIN { s = ""; while (length(n) > 3) { s = "," substr(n, length(n) - 2) s; n = substr(n, 1, length(n) - 3) } print n s }'; }
+m_claims=$(bench "$logs/membership-gas" membership claims)
+m_calldata=$(bench "$logs/membership-gas" membership calldata)
+m_piop=$(grouped "$(bench "$logs/membership-gas" membership piop)")
+m_total=$(grouped "$(bench "$logs/membership-gas" membership total)")
+l_claims=$(bench "$logs/leanvm-gas" leanvm claims)
+l_calldata=$(bench "$logs/leanvm-gas" leanvm calldata)
+l_piop=$(bench "$logs/leanvm-gas" leanvm piop)
+l_total=$(bench "$logs/leanvm-gas" leanvm total)
 
 echo
 echo "== The EIP draft's table ($repeat run(s); prover = median + 0.1 s a claim)"

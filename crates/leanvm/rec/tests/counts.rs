@@ -205,7 +205,7 @@ fn print_counts(name: &str, recorded: &Recorded, c: &Counts) {
 #[ignore]
 fn count_report() {
     vectors::deep(|| {
-        println!("## pi1's verifier graph at the reference shape (128 signatures), Claims::Point");
+        println!("## pi1's verifier graph at the reference shape (128 signatures), point claims");
         println!("Keccak-256 of the seed: {} perm (80 B)", permutations(80));
         for config in configs() {
             let recorded = record_verifier(&REFERENCE, config.variant);

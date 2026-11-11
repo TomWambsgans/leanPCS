@@ -4,7 +4,15 @@ name = "evm_link"
 version.workspace = true
 edition.workspace = true
 publish = false
-description = "Straight-line EVM programs (a verifier's recorded graph compiled) assembled into one contract, or linked into deployable contracts of at most 24,576 bytes"
+description = "Straight-line EVM programs (a verifier's recorded graph compiled) assembled into one contract, the PCS claim's wire format, and (feature `machine`) the EVM they run on in tests"
 
 [lints]
 workspace = true
+
+[features]
+# The EVM the contracts run on in tests (`machine`): revm with `FIELD_MUL` and EIP-8141's frames.
+machine = ["dep:primitives", "dep:revm"]
+
+[dependencies]
+primitives = { workspace = true, optional = true }
+revm = { workspace = true, optional = true }

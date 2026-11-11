@@ -83,11 +83,3 @@ the hash with `FRAMEDATALOAD(1 + 32 j, i)` after the frame check (`FRAMEPARAM(i,
 byte of `FRAMEDATALOAD(0, i)` `PCS_SCHEME`; the EIP draft's notation, the first argument on top of the stack). Gas of one claim's check (`tests/evm_packing.rs`, `gas_per_claim`): 381 at `n = 15`, 465 at 20,
 501 at 22, 531 at 24, 597 at 28. A contract whose transcript holds a root as its two scalars (`s_0 · 2^128 + s_1`, the
 halves' little-endian numbers) turns it into the root's bytes with `op::reverse_halves` (132 gas).
-
-## What the EIP text says
-
-- The claim, its byte encoding, well-formedness and the payload as above; the out-of-domain point's derivation.
-- Version `1`: leanVM's WHIR at rate `1/2` with its deployed ladder, the transcript seeded by `keccak256(PCS_claim)`,
-  the root as the proof's first scalars, the opening of `f(z) = ood` and `f(point) = value` at one random combination.
-- Security: the out-of-domain answer binds the commitment to one polynomial except with probability
-  `Q · C(L, 2) · n / 2^192`.

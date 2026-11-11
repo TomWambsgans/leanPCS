@@ -363,11 +363,11 @@ pub fn expand_ring<S: Scalar>(claim: &Combined<S>, map: &[S]) -> Combined<S> {
 /// structured terminal, the point claims.
 pub const KECCAK_MAIN: Variant = Variant { skip: 3, fs: FsShape::Main };
 
-/// The Keccak VM's π1 under the recursion (`crates/leanvm/rec/tests/keccak_vm_rec.rs`): [`KECCAK_MAIN`] with π1-rec3's
+/// The Keccak VM's π1 under the recursion as `formal/` states it: [`KECCAK_MAIN`] with π1-rec3's
 /// Fiat–Shamir shape (`FsShape::Rec3`).
 pub const KECCAK_REC3: Variant = Variant { skip: 3, fs: FsShape::Rec3 };
 
-/// The Keccak VM's π1 under the recursion since π1-rec4 (`docs/leanvm/rec/PERF_GAS2.md`): [`KECCAK_REC3`] with the
+/// The Keccak VM's π1 under the recursion since π1-rec4 (`docs/leanvm/univariate/SPEC.md` §14.4): [`KECCAK_REC3`] with the
 /// challenges no message separates drawn from one Keccak-f each (`FsShape::Rec4`), 106 Keccak-f in its transcript at
 /// the reference shape instead of 116. It has no EVM contract of its own (`KECCAK256` gives no sponge rate): π2's
 /// circuit runs it.
@@ -464,7 +464,7 @@ pub fn reduce_combined<S: Scalar + PartialEq, C: Channel<S>>(
     };
 
     // 2. Flock, on C1's q_flock: the zerocheck and the lincheck on the Keccak-f block (one permutation a `SHA3`
-    // row), its terminal by the block's structure, the slices sent; its ring switch's map and target (SPEC-FLOCK.md).
+    // row), its terminal by the block's structure, the slices sent; its ring switch's map and target (FLOCK.md).
     // π1-rec4: the ring switch's map is drawn later (with t, then with ρ).
     let log_flock = KECCAK_R1CS_LOG_SIZE + heights[OP_SHA3];
     let (flock_point, flock_slices) = flock_min::verify_walked::<S, Keccak>(log_flock, variant, channel, eq_first)?;
@@ -887,7 +887,7 @@ fn weight_at<S: Scalar>(
 /// The batching sumcheck (SPEC.md §8): `Σ_k λ^k Σ_u W_k(u) C_k(u)` over the longest stack, the others zero-extended;
 /// at its end point `r`, the prover sends each `C_k(r)` and the verifier checks the sum with `W_k(r)`. `λ` is drawn
 /// here unless π1-rec4 drew it with `ρ`; the rounds take one variable each (the main line) or, with narrow challenges,
-/// two (π1-rec3, π1-rec4: `SPEC-POINTS.md`).
+/// two (π1-rec3, π1-rec4: `SPEC.md` §14.1).
 pub fn batch<S: Scalar + PartialEq, C: Channel<S>>(
     channel: &mut C,
     fs: FsShape,

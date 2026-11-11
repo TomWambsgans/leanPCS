@@ -2,10 +2,12 @@
 
 # RecCircuit: π2's circuit computes π1's recorded verifier
 
-π2 (`crates/leanvm/rec`, SPEC-REC §2.3, §2.4, §10, §12) proves that π1's recorded verifier graph accepts. Its
-circuit is compiled from that graph (`crates/leanvm/rec/src/circuit/compile.rs`). This library transcribes the
-compiler into Lean, checks the compiled circuit, and proves that a satisfied circuit's ports carry the graph's outputs
-on the stream its witness's free bits encode.
+π2 (`crates/leanvm/rec`; `docs/leanvm/rec/SPEC-REC.md` §2.3, §2.4, §10, §12) proves that π1's recorded verifier
+graph accepts. Its circuit is compiled from that graph (`crates/leanvm/rec/src/circuit/compile.rs`). This library
+transcribes the compiler into Lean, checks the compiled circuit, and proves that a satisfied circuit's ports carry the
+graph's outputs on the stream its witness's free bits encode. The compiler is generic; its instance is π1-rec3's graph
+as of `f96a7938` (the deployed π1-rec4's graph, with π1's claims hashed in the circuit, is not yet ported:
+[`docs/LEAN_PORT.md`](../../docs/LEAN_PORT.md)).
 
 ## The end theorem (`RecCircuit/End.lean`), no hypotheses left
 
@@ -28,10 +30,7 @@ theorem Compiled.compile_sound_end (hc : compile (ofRG g rootsAt iv) = .ok c) {p
     `Circuit::call_inputs`) are `g`'s call words in RecGraph's semantics, call by call and word by word, as
     a claim holds them (`pcsWord`, the identity on the EIP's PCS claims): every word byte for byte, a setup root (a
     constant word 0), a stream root and pairs' coordinates included (`compile_sound_callInputs`,
-    `compile_sound_calls`). On the earlier layout-word claims a setup root was held as its root word
-    (`machine::root_word`, each 16-byte half reversed, `rootWordBytes`), and before R1 a stream root's word was
-    reversed too, which named a root other than the one π1's prover commits. The compiler keeps constant call words
-    as they are, as the Rust's since `2775f816`.
+    `compile_sound_calls`). Constant call words are kept as they are, as in the Rust.
 - **Element ports.** `compile_sound_element_end`: element `e`'s port carries `V`'s value of any original node the
   expansion maps to the calls' `e`-th element node.
 - **The Keccak VM's π1-rec3.** `RecGraphKeccak.pi1rec3K_end` (`formal/RecGraphKeccak/RecGraphKeccak/Circuit.lean`) is
@@ -83,7 +82,6 @@ theorem Compiled.compile_sound_end (hc : compile (ofRG g rootsAt iv) = .ok c) {p
 - **`zeroConstOk`:** a zero check folded to a constant is 0.
 
 The Rust compiler asserts the same typing (`assert_typed` in `compile.rs`, with tests in `tests/compile_rejects.rs`).
-π1-rec3's circuit and the small graphs' circuits are unchanged.
 
 ## The layers
 
@@ -125,8 +123,8 @@ Soundness reads the layout one way (a placed position is on its value's chain); 
   limb is given (`givenArr`);
 - every byte of the stream is hashed (its eight free bits) or in a never-hashed 24-byte read.
 
-The real run accepts them at both IVs `rec-view-check` uses (the compiler with the checker now about 10 minutes and
-3.2 GB per IV, from about 2).
+The real run accepts them at both IVs `rec-view-check` uses (the compiler with the checker about 10 minutes and 3.2 GB
+per IV).
 
 ### What is generic and what is instantiated
 
@@ -147,14 +145,13 @@ The real run accepts them at both IVs `rec-view-check` uses (the compiler with t
 - **Transcription.** The compiler is transcribed step by step, in the Rust's order, and compared with the Rust
   (`RecCircuitTest/Main.lean`, `crates/leanvm/rec/tests/lean_circuit_keccak.rs`). The comparison covers the shape, the region
   list, the formula tables, the blocks, the ports, the calls, `κ`, and an FNV-1a hash of `σ` over all 2^24 positions.
-  It runs on the Keccak VM's π1-rec3 graph (the 128-signature reference, 21 blocks, which the checker accepts); it ran
-  on three small recorded graphs before, every comparison identical.
-- **The block padding** (`padCounts`, `layout.rs::pad_counts`) looks ahead. A region's next step is the digit count
+  It runs on the Keccak VM's π1-rec3 graph at the 128-signature reference (on `f96a7938`'s PCS-claim graph: 22 blocks,
+  the blocks `RecStatement/Data.lean`'s 134 pairs name), every comparison identical.
+- **The block padding** (`padCounts`, `layout.rs::pad_counts`) looks ahead: a region's next step is the digit count
   `j > k` with the most rows saved per added digit and role, so it passes over counts that save nothing (a carry:
-  724,992 rows pad to 786,432 at both 2 and 3 digits). The one-digit greedy it replaced gave the Keccak π1 70 blocks.
-  π1-rec3's circuit is unchanged (25 blocks), and `RecCompose` builds unchanged. `RecCircuitTest/PadCounts.lean`
-  compares `padCounts` with the Rust on 202 cases (`crates/leanvm/rec/tests/lean_pad_counts.rs`). In 33 of them the
-  look-ahead pads differently from the greedy.
+  724,992 rows pad to 786,432 at both 2 and 3 digits). `RecCircuitTest/PadCounts.lean` compares `padCounts` with the
+  Rust on 202 cases (`crates/leanvm/rec/tests/lean_pad_counts.rs`), 33 of them where the look-ahead differs from a
+  one-digit greedy.
 - **Checker.** The checker adds no constraint and changes no circuit: a failing check makes `compile` reject the
   graph.
 - **What is proved.** The theorems are about the Lean compiler's circuits. That the Rust builds the same circuit is
@@ -174,9 +171,8 @@ lake env lean ../RecCircuit/RecCircuitTest/PadCounts.lean    # padCounts against
 
 ## Findings about `compile.rs`
 
-Neither finding occurs in π1-rec3's graph, and the Lean compiler rejects both. The Rust compiled each of them into an
-unsound circuit. It now rejects them too (`compile.rs`, `tests/compile_rejects.rs`), as well as empty hashed reads.
-π1-rec3's circuit and `real_gas` are unchanged.
+Neither occurs in π1-rec3's graph. The Lean compiler rejects both; the Rust compiled each into an unsound circuit and
+now rejects them too (`compile.rs`, `tests/compile_rejects.rs`), as well as empty hashed reads.
 
 1. **A never-hashed read shorter than 24 bytes.** `compile.rs` makes all three of its limbs free values. The graph
    gives a 16-byte read's `c2`, and an integer's `c1` and `c2`, the value 0; in the circuit they are unconstrained. A

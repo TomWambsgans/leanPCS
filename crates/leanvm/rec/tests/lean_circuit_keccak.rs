@@ -2,7 +2,8 @@
 //! The Keccak VM's π1-rec3 at the reference shape (128 signatures, `leanvm_rec::REFERENCE`) as a vector of
 //! `formal/RecCircuit`'s differential runner (`RecCircuitTest/Main.lean`): its recorded graph as text and the circuit
 //! the Rust compiler makes of it (D16v), in the format of the runner's vectors. The circuit exercises
-//! `layout::pad_counts`'s look-ahead (21 blocks; at 400 signatures 22, where the one-digit greedy made 70).
+//! `layout::pad_counts`'s look-ahead (26 blocks; 22 in f96a7938's circuit, `formal/RecStatement/RecStatement/Data.lean`;
+//! at 400 signatures the one-digit greedy made 70).
 //!
 //! `LEAN_CIRCUIT_OUT=dir cargo test --release -p leanvm_rec --test lean_circuit_keccak -- --ignored --nocapture`
 
@@ -42,6 +43,7 @@ fn node_line(node: &Node) -> String {
     match *node {
         Node::Const([a, b, c]) => format!("C {a} {b} {c}"),
         Node::Statement(k) => format!("S {k}"),
+        Node::Frame(..) => unreachable!("π1's graph reads no frame"),
         Node::Input { offset, len } => format!("I {offset} {len}"),
         Node::Add(a, b) => format!("A {a} {b}"),
         Node::Mul(a, b) => format!("M {a} {b}"),

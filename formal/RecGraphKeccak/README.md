@@ -4,8 +4,7 @@
 
 The recursion's π2 proves a circuit compiled from the **recorded operation graph** of π1's verifier. This library is
 the Keccak VM's instance of `formal/RecGraph` (the graphs, the recorder, the shared verifier pieces and the simulation
-framework) for the Keccak VM
-(`docs/leanvm/univariate/KECCAK.md`): its π1 verifier (the `Variant`,
+framework; the VM: `docs/leanvm/univariate/KECCAK.md`): its π1 verifier (the `Variant`,
 `KECCAK_REC3`: skip 3, `FsShape::Rec3`, `Slices::TowerWalk`, point claims) at the reference workload, the Keccak VM
 at **128 signatures** (leanVM 9d50c92a3; rows XOR, MUL, SET, DEREF, JUMP, SHA3 `[24260, 36229, 24626, 35812, 15509,
 17712]`, 721,598 memory cells: memory `2^20`, bytecode `2^18`; `Pi1.keccak128 = UniKeccak.keccakShapeOf 721598 [..]`,
@@ -17,10 +16,10 @@ It is a library of `formal/EndToEnd` (`RecGraphKeccak`, `srcDir = "../RecGraphKe
 cd formal/EndToEnd   # on h1
 systemd-run --scope -q -p MemoryMax=12G lake build RecGraphKeccak      # the library and its axiom guards
 systemd-run --scope -q -p MemoryMax=12G lake env lean ../RecGraphKeccak/RecGraphKeccakTest/Pi1Check.lean
-# the emitted graph (from the repository root):
-UPDATE_LEAN=1 cargo test --release -p leanvm_rec --test lean_graph_keccak   # rewrites Emitted.lean
-cargo test --release -p leanvm_rec --test lean_graph_keccak                 # fails while it is stale
 ```
+
+`Emitted.lean` is `f96a7938`'s π1-rec3 graph. `crates/leanvm/rec/tests/lean_graph_keccak.rs` renders it from the Rust;
+do not regenerate it (`UPDATE_LEAN=1`) until the port ([`docs/LEAN_PORT.md`](../../docs/LEAN_PORT.md)).
 
 ## Files
 
@@ -59,12 +58,10 @@ cargo test --release -p leanvm_rec --test lean_graph_keccak                 # fa
 - [`Circuit.lean`](RecGraphKeccak/Circuit.lean): **`pi1rec3K_end`**, `RecCircuit.Compiled.compile_sound_end` at the
   Keccak graph: if the compiler accepts `RecGraphKeccak.Emitted.graph`, π2's satisfying witnesses carry its outputs.
   [`RecGraphKeccakTest/Circuit.lean`](RecGraphKeccakTest/Circuit.lean) (`lake exe rec-circuit-keccak GRAPH`) is the
-  run: on the graph `crates/leanvm/rec/tests/lean_circuit_keccak.rs` writes (h1, 2026-11-08) it checks the file is
-  `Emitted.graph` (the reference's setup roots `Pi1.referenceRootsK`), compiles it in Lean (16,133 expanded nodes,
-  1,219 s under load, 2.9 GB) and prints a circuit **identical** to the Rust's (`diff`: 20,930 lines; `N = 2^24`, 14
-  regions, 21 blocks, 36 ports, 20,623 `κ`). These counts are the layout-word graph's; on the PCS claims' graph
-  (each claim's root and out-of-domain answer its first two words, 38 public terms) the compiled circuit is again
-  identical to the Rust's (`lean-pi2v3`).
+  run: on the graph `crates/leanvm/rec/tests/lean_circuit_keccak.rs` writes, it checks the file is `Emitted.graph`
+  (the reference's setup roots `Pi1.referenceRootsK`), compiles it in Lean (about 20 minutes, 2.9 GB) and prints a
+  circuit identical to the Rust's (`N = 2^24`, each claim's root and out-of-domain answer its first two words, 38
+  public terms).
 
 ```sh
 LEAN_CIRCUIT_OUT=out cargo test --release -p leanvm_rec --test lean_circuit_keccak -- --ignored --nocapture

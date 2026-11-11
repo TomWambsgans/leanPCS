@@ -14,6 +14,10 @@
 
 use leanvm_univariate::{KECCAK_MAIN, KECCAK_REC3, KECCAK_REC4, Shape, Variant};
 
+/// The four bytes the vectors' calldata starts with: the selector of `verify(bytes32,bytes)`, which π1's contracts took
+/// when the vectors were written. A contract's calldata is what follows, then the frame's index.
+pub const SELECTOR: [u8; 4] = [0x8e, 0x76, 0x0a, 0xfe];
+
 /// The program's IV the vectors' contracts are built with (`leanvm_statement::shapes::PROGRAM_IV`).
 #[allow(unused_imports)]
 pub use leanvm_statement::shapes::PROGRAM_IV;
@@ -32,7 +36,7 @@ pub struct Vector {
 }
 
 /// The configurations by name: `keccak` the Keccak VM's main line (`KECCAK_MAIN`), `keccak_rec3` its π1-rec3
-/// (`KECCAK_REC3`), `keccak_rec4` its π1-rec4 (`KECCAK_REC4`, the recursion's since `docs/leanvm/rec/PERF_GAS2.md`).
+/// (`KECCAK_REC3`), `keccak_rec4` its π1-rec4 (`KECCAK_REC4`, the recursion's (`docs/leanvm/univariate/SPEC.md` §14.4)).
 pub fn variant_of(config: &str) -> Variant {
     match config {
         "keccak" => KECCAK_MAIN,

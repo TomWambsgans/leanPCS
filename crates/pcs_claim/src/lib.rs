@@ -39,12 +39,11 @@ use primitives::field::{F64, F192};
 use primitives::hash::hash as keccak256;
 use primitives::multilinear::mle_eval_par;
 
-/// The PCS version this crate implements: leanVM's WHIR (commit `c445e3d5`) at rate `1/2`, its deployed ladder
-/// (`pcs::whir::DEPLOYED_SCHEDULE`, `verifier::whir::Ladder::Deployed`), `64` lanes at its first fold.
-pub const VERSION: u8 = 1;
-
-/// The EIP's bound on `n` (`MAX_PCS_VARIABLES`): a claim with more variables is not well-formed.
-pub const MAX_PCS_VARIABLES: usize = 32;
+// The claim's wire format (`evm_link::wire`, which the contracts pack): `VERSION` is the PCS version this crate
+// implements, leanVM's WHIR (commit `c445e3d5`) at rate `1/2`, its deployed ladder (`pcs::whir::DEPLOYED_SCHEDULE`,
+// `verifier::whir::Ladder::Deployed`), `64` lanes at its first fold; `MAX_PCS_VARIABLES` the EIP's bound on `n` (a
+// claim with more variables is not well-formed); `claim_len(n)` its `82 + 24 n` bytes.
+pub use evm_link::wire::{ELEMENT_BYTES, MAX_PCS_VARIABLES, VERSION, claim_len};
 
 /// The variables [`VERSION`] commits and opens: WHIR's stacks of `2^15` to `2^28` words. A well-formed claim with
 /// `n` outside this range is not supported: [`verify`] rejects it, the prover panics.
@@ -57,19 +56,11 @@ pub const LOG_INV_RATE: usize = 1;
 /// WHIR's first fold: `2^6` lanes.
 pub const LANE_FOLD: usize = 6;
 
-/// The bytes of an element of `E`.
-pub const ELEMENT_BYTES: usize = 24;
-
 /// The domain tag of the out-of-domain point's derivation ([`ood_point`]).
 pub const OOD_TAG: &[u8] = b"leanPCS-ood";
 
 /// The public digest the opening's transcript starts from: zero.
 pub const PUBLIC_DIGEST: [u8; 32] = [0; 32];
-
-/// The bytes of a claim on `n` variables: `82 + 24 n`.
-pub const fn claim_len(n: usize) -> usize {
-    2 + 32 + ELEMENT_BYTES + ELEMENT_BYTES * n + ELEMENT_BYTES
-}
 
 /// An element of `E` as a claim encodes it: the 192-bit integer `c0 | c1 << 64 | c2 << 128` (`c_k` the coefficient
 /// of `X^k`), big-endian, 24 bytes: the low 24 bytes of the EVM word `MULFIELD` takes.
@@ -126,12 +117,11 @@ impl PcsClaim {
     /// The claim `bytes` encode, if they are well-formed: version [`VERSION`], `1 <= n <= MAX_PCS_VARIABLES`, and
     /// exactly [`claim_len`]`(n)` bytes.
     pub fn decode(bytes: &[u8]) -> Option<Self> {
-        let (&version, rest) = bytes.split_first()?;
-        let (&n, rest) = rest.split_first()?;
-        let vars = n as usize;
-        if version != VERSION || !(1..=MAX_PCS_VARIABLES).contains(&vars) || bytes.len() != claim_len(vars) {
+        if !evm_link::wire::well_formed(bytes) {
             return None;
         }
+        let (n, rest) = (bytes[1], &bytes[2..]);
+        let vars = n as usize;
         let root: [u8; 32] = rest[..32].try_into().ok()?;
         let elements: Vec<F192> = rest[32..]
             .as_chunks::<ELEMENT_BYTES>()
@@ -146,6 +136,22 @@ impl PcsClaim {
             point: elements[1..=vars].to_vec(),
             value: elements[vars + 1],
         })
+    }
+
+    /// The claim whose fields a contract holds as these words (`evm_link::Claim`): the root's 32 bytes, each element's
+    /// word (its top 64 bits zero, its low 24 bytes [`element_bytes`]).
+    pub fn of_words(words: &evm_link::Claim<[u8; 32]>) -> Self {
+        let element = |w: &[u8; 32]| {
+            assert!(w[..8].iter().all(|&b| b == 0), "an element's top 64 bits are zero");
+            element_of(w[8..].try_into().expect("24 bytes"))
+        };
+        Self {
+            n: words.point.len() as u8,
+            root: words.root,
+            ood: element(&words.ood),
+            point: words.point.iter().map(element).collect(),
+            value: element(&words.value),
+        }
     }
 
     /// `keccak256(PCS_claim)`: the payload of the claim's dependency, and the opening's transcript IV ([`iv`]).

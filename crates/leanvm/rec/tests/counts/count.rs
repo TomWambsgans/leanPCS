@@ -193,7 +193,7 @@ pub fn count(recorded: &Recorded) -> Counts {
         }
         match *node {
             Node::Const(_) => c.consts += 1,
-            Node::Statement(_) => c.statement += 1,
+            Node::Statement(_) | Node::Frame(..) => c.statement += 1,
             Node::Input { offset, len } => {
                 match len {
                     24 => c.scalars += 1,

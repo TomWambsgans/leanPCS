@@ -1,7 +1,7 @@
 // Vendored from leanVM (https://github.com/leanEthereum/leanVM), commit 42422001, file crates/flock/src/lib.rs.
 // Changed: its one circuit, the BLAKE2s block (`hash`, with the `gf2` adder gadgets), is not vendored, and `slice`
 // keeps that module's circuit-agnostic `SliceClaim`; the module `keccak` is new in this repository (the Keccak-f[1600]
-// block, docs/leanvm/flock/KECCAK.md). Ported onto leanVM c445e3d5's `primitives`, `parallel` and `pcs`
+// block, docs/leanvm/univariate/FLOCK.md). Ported onto leanVM c445e3d5's `primitives`, `parallel` and `pcs`
 // (crates/vendor/leanvm-c445e3d5) in place of 42422001's own copies: the parts of those that c445e3d5 lacks are
 // modules here, `field` (GF(2^8) and φ₈), `lagrange` (the φ₈ barycentric weights) and `ntt` (the GF(2^8) additive NTT),
 // and the transcript is the trait of `transcript` (formerly the crate `lv42_fiat_shamir`).

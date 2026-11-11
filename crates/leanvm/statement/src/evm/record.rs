@@ -20,6 +20,9 @@ pub enum Node {
     Const([u64; 3]),
     /// Word `k` of the public input, a 64-bit number.
     Statement(u8),
+    /// Word `l` (bytes `8l .. 8l + 8`, a 64-bit number) of the `j`-th frame payload read (`codegen::Entry::frame`'s
+    /// `j`-th: π2's, a hashed claim's Keccak-256).
+    Frame(u8, u8),
     /// The scalar at byte `offset` of the stream, `len` bytes big-endian (24, or 16 for a root's half).
     Input {
         offset: u32,
@@ -276,11 +279,11 @@ impl Channel<Sym> for Recorder {
         Ok(self.input(20))
     }
 
-    /// The `j`-th frame word read: the statement's words `4 + 4j .. 8 + 4j` (`codegen::Entry::frame`'s payload `j`).
+    /// The `j`-th frame word read, as four 64-bit words (`codegen::Entry::frame`'s payload `j`).
     fn next_frame(&mut self) -> Result<[Sym; 4], VerifierError> {
         let _phase = crate::scalar::enter(CALLDATA);
-        let first = 4 + 4 * self.frames;
+        let j = self.frames as u8;
         self.frames += 1;
-        Ok(std::array::from_fn(|l| Sym::new(Node::Statement((first + l) as u8))))
+        Ok(std::array::from_fn(|l| Sym::new(Node::Frame(j, l as u8))))
     }
 }

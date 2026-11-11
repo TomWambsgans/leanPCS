@@ -1,9 +1,9 @@
 // Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
-//! Flock on the Keccak-f\[1600\] block (`flock::keccak`, docs/leanvm/flock/KECCAK.md §4.2, M1), end to end:
+//! Flock on the Keccak-f\[1600\] block (`flock::keccak`, docs/leanvm/univariate/FLOCK.md, "The block"), end to end:
 //!
 //! - the verifier's walk (`leanvm_statement::keccak_flock`, on `E`) is the prover's (`flock::keccak`, on `F192`);
 //! - `prover::flock::prove`'s stream is accepted by `flock_min::verify_walked::<_, Keccak>` and its ring switch (the structured terminal,
-//!   docs/leanvm/flock/KECCAK.md §4.2, M3) and by `verify_walked::<_, KeccakWalked>` (M1's walked terminal) at skips of 3 and 6,
+//!   docs/leanvm/univariate/FLOCK.md, "The structured terminal") and by `verify_walked::<_, KeccakWalked>` (M1's walked terminal) at skips of 3 and 6,
 //!   both eq points; the slices are the witness's at the verifier's point;
 //! - a witness with one state bit flipped (its rows' own values kept, so the zerocheck still holds) and a stream with
 //!   one slice changed are rejected, by both terminals;

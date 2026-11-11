@@ -27,7 +27,7 @@
 //! round 0's χ and is forwarded through `kprep`. Per permutation (steady state) `1,536 + 6,144 + 344 + 160 = 8,184`
 //! rows, 130,944 positions.
 //!
-//! **The last round makes the lanes read alone** (`docs/leanvm/rec/PERF_GAS2.md`): a permutation whose caller reads
+//! **The last round makes the lanes read alone** (`docs/leanvm/rec/SPEC-REC.md` §2.4.1): a permutation whose caller reads
 //! its output's lanes `0 .. lanes` (a Keccak-256 digest: 4; a wide draw's rate: up to 17) makes round 23's χ rows of
 //! planes `0 .. ⌈lanes/5⌉` only, so a digest's permutation drops 256 `k1` rows (126,848 positions). The other planes'
 //! outputs are not made ([`super::keccak::UNMADE`]); their inputs `A_22` end at free ends (nothing reads them), and

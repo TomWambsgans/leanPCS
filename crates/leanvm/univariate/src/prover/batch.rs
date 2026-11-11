@@ -240,7 +240,7 @@ fn poly_mul(a: &[F192], b: &[F192]) -> Vec<F192> {
     out
 }
 
-/// π1-rec3's batching sumcheck (`docs/leanvm/rec/SPEC-POINTS.md`, the verifier's `transcript::sumcheck_pairs_drawn`
+/// π1-rec3's batching sumcheck (`docs/leanvm/univariate/SPEC.md` §14.1, the verifier's `transcript::sumcheck_pairs_drawn`
 /// at degree 2, narrow challenges): as [`prove`], two variables a round. Pair `j`'s
 /// polynomial is `G(X) = G̃(y_0(X), y_1(X))`, `G̃(u_0, u_1)` the sum with its two variables free (degree 2 in each),
 /// `(y_0, y_1)` `V_2`'s coordinate functionals (`pair_point`): its stream holds `c_0, c_1, c_2, c_4 … c_8` (the claim

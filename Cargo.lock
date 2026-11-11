@@ -1252,6 +1252,10 @@ dependencies = [
 [[package]]
 name = "evm_link"
 version = "0.1.0"
+dependencies = [
+ "primitives",
+ "revm",
+]
 
 [[package]]
 name = "fastrlp"
@@ -1779,6 +1783,7 @@ name = "leanvm_univariate"
 version = "0.1.0"
 dependencies = [
  "bench",
+ "evm_link",
  "fiat_shamir",
  "flock",
  "gf2_linear",
@@ -1788,7 +1793,6 @@ dependencies = [
  "pcs_claim",
  "primitives",
  "quotient",
- "revm",
  "verifier",
 ]
 

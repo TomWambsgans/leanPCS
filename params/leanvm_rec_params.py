@@ -1,22 +1,20 @@
 # Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 """The recursion of docs/leanvm/rec/SPEC-REC.md on the Keccak VM: pi2's sizes (D16v, N = 2^24) and its soundness round
 by round after the union bounds over WHIR's level-0 Johnson lists, pi1-rec4's (from
-params/leanvm_univariate_params.py; pi1-rec3's before docs/leanvm/rec/PERF_GAS2.md), their composition, the
-arithmetizations SPEC-REC.md §3 compares, and the batch's rounds of k variables (SPEC-POINTS.md §2.4).
+params/leanvm_univariate_params.py), their composition, the arithmetizations SPEC-REC.md §3 compares, and the batch's
+rounds of k variables (docs/leanvm/univariate/SPEC.md §14.3).
 
     python3 -I params/leanvm_rec_params.py
 
-MEASURED (crates/leanvm/rec: tests/counts.rs, tests/keccak_vm_rec.rs, tests/circuit.rs; SPEC-REC.md §1.2, §10.3,
-docs/leanvm/rec/PERF_GAS2.md): pi1-rec3's and pi1-rec4's verifier graphs and pi2's positions at 128 and 400
-signatures. MODELLED (here): every soundness figure, the
-other arithmetizations' sizes, the k-variable rounds' permutations.
+MEASURED (crates/leanvm/rec: tests/counts.rs, tests/pi2_real.rs, tests/circuit.rs; SPEC-REC.md §1.2, §2.4.5,
+§10.3): pi1-rec3's and pi1-rec4's verifier graphs and pi2's positions at 128 and 400 signatures. MODELLED (here):
+every soundness figure, the other arithmetizations' sizes, the k-variable rounds' permutations.
 
-pi2's rounds are π2v2's PIOP's, as π2v3 runs it on the PCS claims (docs/leanvm/rec/PI2.md §2, §7; the Lean,
+pi2's rounds are those of its PIOP on the PCS claims (docs/leanvm/rec/PI2.md §2, §7; the Lean,
 formal/RecPiop/RecPiop/Rounds.lean `err`, states coarser ones: (4N - 1 + sum d_j)/|E|, (4N - 1)/|E|, 2^r/|E|): the
 copy argument (alpha, beta, gamma) over W's list, the two identities at t, W's fold and Q's claim at rho over W's and
-Q's lists. The
-composition adds pi2's bound and pi1-rec4's (RecCompose's `RecKnowledgeSoundnessReduction`, stated for pi1-rec3),
-each with its openings charged once.
+Q's lists. The composition adds pi2's bound and pi1-rec4's (RecCompose's `RecKnowledgeSoundnessReduction`, stated
+for pi1-rec3), each with its openings charged once.
 """
 from fractions import Fraction
 import importlib.util
@@ -42,35 +40,34 @@ CERTIFIED_L0 = uni.CERTIFIED_L0
 bits, err = uni.bits, uni.err
 
 # ---------------------------------------------------------------------------------------------------------------------
-# MEASURED: pi1-rec3's verifier (Claims::Point; SPEC-REC.md §1.2) and pi2's D16v circuit of it (§2.4.5, §10.3).
+# MEASURED: pi1-rec3's verifier (point claims; SPEC-REC.md §1.2) and pi2's D16v circuit of it (§2.4.5, §10.3).
 PI1_REC3 = {
     128: dict(stream=9232, calls=70, perms=116, products=8476, linear=6633, challenges=14, values=3),
     400: dict(stream=9424, calls=71, perms=118, products=8673, linear=6887, challenges=14, values=3),
 }
-# pi1-rec4 (docs/leanvm/rec/PERF_GAS2.md): the challenges no message separates from one Keccak-f each, the ring map
-# after C2's commitment. The same stream, E operations and claims as pi1-rec3.
+# pi1-rec4 (docs/leanvm/univariate/SPEC.md §14.4): the challenges no message separates from one Keccak-f each, the
+# ring map after C2's commitment. The same stream, E operations and claims as pi1-rec3.
 PI1_REC4 = {
     128: dict(stream=9280, calls=60, perms=106),
     400: dict(stream=9472, calls=61, perms=108),
 }
 KECCAK_D16V = 130_944  # positions a Keccak-f[1600] (SPEC-REC.md §2.4.1; the design's 130,736)
-# A permutation whose caller reads its digest alone (lanes 0 .. 3): its last round's plane 0 (PERF_GAS2.md §2).
+# A permutation whose caller reads its digest alone (lanes 0 .. 3): its last round's plane 0 (SPEC-REC.md §2.4.1).
 KECCAK_D16V_DIGEST = 130_944 - 4 * 64 * 16
 # Measured (`tests/circuit.rs`, keccak_rec4_*_d16v): pi2 hashes pi1's three claims in its circuit (6 + 6 + 5 Keccak-f),
 # its permutations' last rounds trimmed to the lanes read.
 CLAIM_HASH_PERMS_REC4 = 17
 POSITIONS_REC4 = {128: 16_413_312, 400: 16_684_592}
-# Measured (`tests/circuit.rs`, keccak_rec3_*_d16v): pi2 hashes C1's claim in its circuit (docs/leanvm/rec/PERF_GAS.md),
-# 6 Keccak-f more than pi1's verifier: 16,482,912 and 16,756,288 positions of 2^24 used (main: 15,668,416 and 15,940,800).
+# pi2 over pi1-rec3 with C1's claim hashed in its circuit (`tests/circuit.rs`, keccak_rec3_*_d16v; docs/HISTORY.md):
+# 6 Keccak-f more than pi1's verifier, 16,482,912 and 16,756,288 positions of 2^24 used.
 CLAIM_HASH_PERMS = 6
-REST = {128: 507_744, 400: 519_232}  # free bits, packings, later blocks' XORs, E units, ports (main: 478,912, 489,408)
+REST = {128: 507_744, 400: 519_232}  # free bits, packings, later blocks' XORs, E units, ports
 LOG_N = 24
 ROW = 16  # D16v: 16 positions a row, 16 fold values and xi at t
 PORT_DEGREES = 4  # the four-limb ports' fingerprints, degree 1 in gamma: the statement, pi1's three claim hashes
 
-# pi2's commitments (PI2.md §2, π2v2): W the witness, 2^24 K-words; Q: h (3N), q < 2N (6N), the pushes P (N, in K)
-# and P's definition quotient q_P < 2N (2N, in K), 12N words (π2v1: h and q < 4N, 15N); the setup, kappa and
-# kappa + sigma (honest: L = 1).
+# pi2's commitments (PI2.md §2): W the witness, 2^24 K-words; Q: h (3N), q < 2N (6N), the pushes P (N, in K) and P's
+# definition quotient q_P < 2N (2N, in K), 12N words; the setup, kappa and kappa + sigma (honest: L = 1).
 def pi2_stacks(log_n=LOG_N):
     n = 1 << log_n
     return dict(W=n, Q=12 * n, setup=2 * n)
@@ -86,19 +83,19 @@ def pi2_rounds(log_n=LOG_N, row=ROW):
     s = pi2_stacks(log_n)
     lw, lq = CERTIFIED_L0[stack(s["W"])], CERTIFIED_L0[stack(s["Q"])]
     return lw, lq, [
-        # π2v2 (PI2.md §7): the ports out of the copy argument, as an error term T. A dishonest port's hole x gives
+        # PI2.md §7: the ports out of the copy argument, as an error term T. A dishonest port's hole x gives
         # h(x) a simple pole at α = w(x) + β x, which no other fraction has: Σ_V h is a nonzero rational function of
         # (α, β) with at most 2N linear factors, plus the vanishing denominators (4N), and the four-limb ports'
         # fingerprints, degree 1 in γ.
         ("copy argument (α, β, γ): 2N fractions, the ports' poles and fingerprints", 4 * n + PORT_DEGREES, lw),
-        # π2v2: two identities at t, each of degree below 3N, which must both vanish: the copy identity
+        # Two identities at t, each of degree below 3N, which must both vanish: the copy identity
         # h d_pull d_push + (1 + 1_S)(d_push + d_pull) + T = q Z_V (d_push of the committed P) and P's definition
-        # P = P_v + Z_V q_P. The bound is the larger's, not the sum (π2v1: one identity below 5N). Below 3N for the
-        # honest Q; with the slots the prover fills (h_1 in 1, 5, 9; S in 12: PI2.md §2, "The empty slots") the
-        # identities reach degree < 4N, so the round is charged 4N (as PI2.md's argument and RecPiop's `err`, 4N - 1).
+        # P = P_v + Z_V q_P. The bound is the larger's, not the sum. Below 3N for the honest Q; with the slots the
+        # prover fills (h_1 in 1, 5, 9; S in 12: PI2.md §2, "The empty slots") the identities reach degree < 4N, so
+        # the round is charged 4N (as PI2.md's argument and RecPiop's `err`, 4N - 1).
         ("t: the copy identity and P's definition, degree < 4N with the empty slots", 4 * n, lw * lq),
         (f"ρ: W's fold (degree {row - 1})", row - 1, lw * lq),
-        # π2v2: Q's one claim combines h(t), q(t), P(t) = s and q_P's definition by ρ: degree 3 in ρ.
+        # Q's one claim combines h(t), q(t), P(t) = s and q_P's definition by ρ: degree 3 in ρ.
         ("ρ: Q's claim (the identity, P(t) = s, P's definition), degree 3", 3, lw * lq),
     ]
 
@@ -146,7 +143,7 @@ DESIGNS = {
     "B4": dict(values=5, qwords=13.75, note="the χ gate on bits, cell outputs"),
     "C16": dict(values=18, qwords=9 + 3 / 16, note="cell outputs, χ5+θ rows"),
     "C64": dict(values=66, qwords=9 + 3 / 64, note="cell outputs, slice rows"),
-    # π2v2: Q 12N words; values at t: the row, ξ and s = P(t)
+    # Q 12N words; values at t: the row, ξ and s = P(t)
     "D16v": dict(values=18, qwords=12, note="virtual pushes, 16-position rows"),
     "D32v": dict(values=34, qwords=12, note="virtual pushes, slice rows"),
 }
@@ -171,7 +168,7 @@ def c16_split_t(log_n):
 
 
 # ---------------------------------------------------------------------------------------------------------------------
-# The batch in rounds of k variables (SPEC-POINTS.md §2.4).
+# The batch in rounds of k variables (docs/leanvm/univariate/SPEC.md §14.3).
 BATCH_VARS = 27
 
 
@@ -189,7 +186,7 @@ def grouped_rounds(k, vars_=BATCH_VARS, degree=2):
 
 
 def main():
-    print("== pi1-rec3's verifier (MEASURED, Claims::Point)")
+    print("== pi1-rec3's verifier (MEASURED, point claims)")
     for xmss, p in PI1_REC3.items():
         used = (p["perms"] + CLAIM_HASH_PERMS) * KECCAK_D16V + REST[xmss]
         print(f"  {xmss} signatures: stream {p['stream']:,} B, Keccak-256 {p['calls']}, Keccak-f {p['perms']}, E products"
@@ -234,7 +231,7 @@ def main():
     lw, lh, lq, e = c16_split_t(z["log_n"])
     print(f"  C16 with Q split in three (lists W {lw}, h {lh}, q {lq}): t {bits(e):.1f} bits after the lists")
 
-    print(f"\n== the batch over {BATCH_VARS} variables in rounds of k (SPEC-POINTS.md §2.4; pi2 at"
+    print(f"\n== the batch over {BATCH_VARS} variables in rounds of k (univariate SPEC.md §14.3; pi2 at"
           f" {KECCAK_D16V:,} positions a Keccak-f)")
     plain = grouped_rounds(1)
     for k in (1, 2, 3, 4):

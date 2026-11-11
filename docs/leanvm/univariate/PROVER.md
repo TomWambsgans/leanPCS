@@ -2,30 +2,29 @@
 
 # The prover of the univariate PIOP
 
-`src/prover/` proves `SPEC.md`'s statement on executions of the Keccak VM (leanVM `9d50c92a3`, `KECCAK.md`), from
-the trace `src/prover/dump_keccak/` makes leanVM write. It writes the stream `verifier::reduce` reads (through the
-contract's Keccak-256 chain) and one WHIR opening per commitment (`C1`, `C2`, the setup `F`). It proves every variant,
-`KECCAK_MAIN`, `KECCAK_REC3` and `KECCAK_REC4` (π1-rec4, the recursion's inner proof since
-`docs/leanvm/rec/PERF_GAS2.md`), with point claims; weighted claims (extension W) have no opening prover.
+`src/prover/` proves [`SPEC.md`](SPEC.md)'s statement on executions of the Keccak VM (leanVM `9d50c92a3`,
+[`KECCAK.md`](KECCAK.md)), from the trace `src/prover/dump_keccak/` makes leanVM write. It writes the stream
+`verifier::reduce` reads (through the Keccak-256 chain) and one PCS opening per claim, one claim per commitment (`C1`,
+`C2`, the setup `F`). It proves every variant, `KECCAK_MAIN`, `KECCAK_REC3` and `KECCAK_REC4` (π1-rec4, the
+recursion's inner proof), with point claims; weighted claims (extension W) have no opening prover. Its measurements
+are in [`docs/PERF_PROVER.md`](../../PERF_PROVER.md).
 
 ## Status
 
-On real executions (32, 128 and 400 signatures) and both variants: the Rust verifier accepts; the three WHIR
-openings verify; the contract accepts the real calldata, word for word with the Rust verifier, with the frame
-declaring exactly the claims the openings prove; it rejects a flipped byte and any claim left undeclared; five stream mutations are rejected by the
-Rust verifier. The real proofs' gas is in `KECCAK.md` ("The real proofs' gas").
+On real executions (32, 128 and 400 signatures) and every variant: the Rust verifier accepts; the three WHIR openings
+verify; the contract (`KECCAK_MAIN`, `KECCAK_REC3`) accepts the real calldata, word for word with the Rust verifier,
+with the frame declaring exactly the claims the openings prove, and rejects a flipped byte and a claim left
+undeclared; five stream mutations are rejected by the Rust verifier (`tests/prove_real.rs`).
 
-**Rust→EVM test vectors.** `tests/vectors/` holds five real proofs: `keccak.txt` (32 signatures, `KECCAK_MAIN`),
-`keccak128_rec3.txt` (128 signatures, `KECCAK_REC3`: the reference workload, the recursion's inner proof as the Lean
-states it) and `keccak_rec3.txt` (400 signatures, `KECCAK_REC3`), and `keccak128_rec4.txt`, `keccak_rec4.txt` (the
-same with `KECCAK_REC4`, the deployed recursion's, which has no contract: `tests/evm_vectors.rs` checks the Rust
-verifier's claims against the vector's). Each holds the calldata, the claims the contract checks
-declared, the committed roots, the verdict and the gas, straight and deployed. `tests/evm_vectors.rs` replays them with
-no prover and no trace, the contract binding the vector's own `F` (its third call's root): both builds accept at the
-recorded gas, check exactly the recorded claims declared, and revert on 13 mutations each (a row count, `C1`'s
-root, two scalars, a batching round, the last byte or the public input flipped; each claim left undeclared; each
-declared value flipped). `tests/lean_keccak_vectors.rs` turns the real proofs and solved sample streams into the Lean
-transcription's differential vectors.
+**Rust→EVM test vectors.** `tests/vectors/` holds five real proofs ([`KECCAK.md`](KECCAK.md), "Vectors"). Each holds
+the calldata, the claims the contract checks declared, the committed roots, the verdict and the gas, straight and
+deployed. `tests/evm_vectors.rs` replays them with no prover and no trace, the contract binding the vector's own `F`
+(its third claim's root): both builds accept at the recorded gas, check exactly the recorded claims declared, and
+revert on 17 mutations each (a row count, `C1`'s root, `C1`'s out-of-domain answer, two scalars, a batching round, the
+last byte or the public input flipped; each claim left undeclared; each declared value and each declared
+out-of-domain answer flipped). The π1-rec4 vectors, which have no contract, are replayed through the Rust verifier:
+it gives the recorded claims, and 9 flipped bytes change them. `tests/lean_keccak_vectors.rs` turns the real proofs and
+solved sample streams into the Lean transcription's differential vectors.
 
 ## How it runs
 
@@ -66,11 +65,12 @@ transcription's differential vectors.
    cargo test --release -p leanvm_univariate --test prove_real -- --ignored --nocapture --test-threads 1
    ```
 
-   - `proves_and_verifies_keccak` (`KECCAK_MAIN`) and `proves_and_verifies_keccak_rec3` (`KECCAK_REC3`): the proof,
-     the quotients' degrees, every combined claim against its stack, the Rust verifier, the WHIR openings, the
-     contract on the real calldata (word-for-word parity with the Rust verifier), each call's
-     input against the claim its opening proves, and the mutations. With `WRITE_VECTORS=<dir>` each writes its test
-     vector (`VECTOR_FILE` names it).
+   - `proves_and_verifies_keccak` (`KECCAK_MAIN`), `proves_and_verifies_keccak_rec3` (`KECCAK_REC3`) and
+     `proves_and_verifies_keccak_rec4` (`KECCAK_REC4`): the proof, the quotients' degrees, every combined claim against
+     its stack, the Rust verifier, the WHIR openings, the contract on the real calldata (word-for-word parity with the
+     Rust verifier; π1-rec4 has none, its Rust verifier's claims are the openings'), each claim against the one its
+     opening proves, and the mutations. With `WRITE_VECTORS=<dir>` each writes its test vector (`VECTOR_FILE` names
+     it).
    - `identities_hold_on_the_domain` (the bus balance, the copies on every row, the counters), `setup_roots` (the
      trace's `F` root), `unused_words_are_not_relied_on` (below).
    - `keccak_prover_benchmark`: warm passes with a cooldown between them, as leanVM's benchmark runs (`PI1_REPEAT`,
@@ -86,16 +86,18 @@ transcription's differential vectors.
    its novel coefficients (`crates/membership/quotient/src/ntt.rs`, vectorized), then by subset sums to basis `B`
    straight into the stack; the counter inverses `z_T = 1/Π c_j` on every row; `q_flock` as values, from the Flock
    witness. The setup `F`: the bytecode's 16 tuple slots interleaved and the memory's addresses. Then leanVM's WHIR
-   commits of both. The prover checks that the contract's `F` root is the one it commits (`setup::f_root`).
-   `PI1_LOW_MEMORY=1` commits `C1` without keeping its codeword (twice its stack), so that its opening re-encodes the
+   commits of both. The prover checks that the contract's `F` root is the one it commits (`setup::shape_roots`).
+   `Config::low_memory` commits `C1` without keeping its codeword (twice its stack), so that its opening re-encodes the
    rows its queries open: the same proof, a lower peak.
 2. **The seed** is `keccak(name ‖ contract_iv(shape, variant, program IV, roots) ‖ public input)` (`SPEC.md` §13,
-   F2). The stream starts with the six row counts, then `C1`'s root as its two WHIR scalars (`prove::halves`).
-3. **The challenges** `α, β, γ`; with π1-rec3 `α = (c, c², c⁴, c⁸)`, squared in `E` as the verifier squares it.
+   F2). The stream starts with the six row counts, then `C1`'s commitment: its root's 32 bytes as they are (`KeccakWriter::send_root`),
+   then its out-of-domain answer, which binds the root to one polynomial before any challenge.
+3. **The challenges** `α, β, γ`; with π1-rec3 and π1-rec4 `α = (c, c², c⁴, c⁸)`, squared in `E` as the verifier
+   squares it; with π1-rec4 drawn wide, as the verifier draws them (`SPEC.md` §14.4).
 4. **Flock** (`flock.rs`, behind one call): the zerocheck at a skip of 3 (`flock::zerocheck::skip`, below; with
-   π1-rec3 its sampled eq coordinates are successive squares, `EqPoint::Squares`), the lincheck at the row weights the
-   skip leaves, the 64 slices, then the ring map's six challenges. The slices' point is checked against the one the
-   verifier derives. Flock's witness is freed after it.
+   π1-rec3 and π1-rec4 its sampled eq coordinates are successive squares, `EqPoint::Squares`), the lincheck at the row
+   weights the skip leaves, the 64 slices, then the ring map's six challenges (with π1-rec4 after `C2`'s commitment).
+   The slices' point is checked against the one the verifier derives. Flock's witness is freed after it.
 5. **The heap** (`bus.rs`, `heap_of`): a leaf per row, the ratio on active rows (`domain::is_active`) and 1 on
    padding rows, the fingerprints eight rows at a time (`prints.rs`, padding runs skipped); every block's leaves in one
    dispatch, a task `2^10` rows of one block (its fingerprints, one inversion by Montgomery's trick, the ratios),
@@ -117,8 +119,8 @@ transcription's differential vectors.
      `Z_pad` as their cosets' factors' products there) as soon as its transforms are done; a piece's transforms are
      handed out while at most 256 MiB of them are held, and freed once its values are; then all the interpolations (`ntt::interpolate_prefix_many`:
      every block's inverse transform, the blocks of one size together, then the earlier blocks' folds, then the back
-     substitution) and all the checks (`ntt::on_coset_prefix_each`). One quotient at a time, its short dispatches left
-     most of 64 threads idle (the tables' leaves and `Q_W`'s parts 85–90 → 60 ms, 128 signatures). The memory's and
+     substitution) and all the checks (`ntt::on_coset_prefix_each`); one quotient at a time, its short dispatches would
+     leave most threads idle. The memory's and
      the bytecode's leaves and `Q_W`'s public part, whose columns are `2^18`–`2^20`, go one at a time by `ntt`'s
      whole transforms (`quotients::prefix_quotient`). Where `quotient::ntt`'s lanes are portable code (aarch64), each
      push fingerprint is derived from its pull's sum (`prints::PullPush`).
@@ -132,16 +134,17 @@ transcription's differential vectors.
    - `C1`'s polynomials are freed after the quotients, before `C2`'s commitment.
 7. **`C2`**: the heap and every quotient's chunks (`Q = Q_0 + w_{e_0}(Q_1 + w_{e_1} Q_2)`, slices of the novel
    coefficients since `X_{2^e + k} = w_e X_k`), put in basis `B` limb by limb in place in the stack; leanVM's WHIR
-   commit; then **`t`** and the values at `t`, in the verifier's order.
-8. **`ρ`, and the combined claims** (`replay.rs`): the verifier's own `reduce` in weighted mode on the stream so far
-   (weighted mode reads nothing after `ρ`; the claims are the point mode's, the ring switch's weight as its 64
-   twisted terms instead of one). The verifier's checks on the stream so far are required to hold. Then each claim's
+   commit, its root and out-of-domain answer sent; then **`t`** and the values at `t`, in the verifier's order.
+8. **`ρ`, and the combined claims**: the verifier's own `reduce_combined` on the stream so far (a `KeccakChannel`
+   collecting its checks; it reads nothing after `ρ`), the ring switch's weight written as its 64 twisted terms
+   (`verifier::expand_ring`). The verifier's checks on the stream so far are required to hold. Then each claim's
    weight on its stack (`weight.rs`, `Weight::with_slot_bits`: eq tensors, one table per several-point column,
    `q_flock`'s slot terms with 11 slot bits, the ring switch's map).
 9. **The batching sumcheck** (`batch.rs`): `Σ_k λ^k Σ_u W_k(u) C_k(u)` over the longest stack, the others
    zero-extended. `batch::prove` (`KECCAK_MAIN`) sends two scalars a round, low variable first: its first 6 rounds
    read the stacks' words and the weights' pieces, then the folded stacks and weights are written out and folded on.
-   `batch::prove_pairs` (`KECCAK_REC3`) runs two variables a round with narrow challenges; a stack shorter than the
+   `batch::prove_pairs` (`KECCAK_REC3`, `KECCAK_REC4`; `SPEC.md` §14.1) runs two variables a round with narrow
+   challenges; a stack shorter than the
    batch with an odd number of variables (the setup's `2^23` against `2^25`, say) zero-extends itself past its words'
    rounds. Then the stacks' values at the end point.
 10. **The openings** (`opening.rs`, over `crates/pcs_claim`): one PCS claim per commitment, the EIP draft's: the
@@ -149,8 +152,7 @@ transcription's differential vectors.
     out-of-domain answer (sent after the root, §4 of SPEC.md), the batch's point and the value; one opening of PCS
     version 1 (leanVM's WHIR, vendored from c445e3d5, at rate `1/2` on its ladder), its transcript seeded by
     `keccak256(PCS_claim)`, proving the out-of-domain answer and the claim at one random combination, its level-0
-    rows padded to the whole stack's (`pcs_claim::open_words`). Until the PCS claims the openings ran on another
-    ladder (version 3: deeper levels at rates `1/4, 1/8, …`), which took about half the time.
+    rows padded to the whole stack's (`pcs_claim::open_words`).
 
 ## The skip kernels (`crates/vendor/flock-42422001/src/zerocheck/skip.rs`)
 
@@ -161,8 +163,8 @@ rows of 8 bytes or more. The skip module proves the zerocheck for any `3 ≤ k �
   small/medium structure (`eq(r_small, K) = C_s φ_8(X^K)`, asserted), so the 8 groups of a small run combine in
   `F_8`. At `k = 3` a word's 8 groups extend in one `gf2p8affine` (`round1_bytes`, x86 with GFNI); without GFNI (the
   Mac's aarch64) a medium position's AB row `Σ_K X^K â b̂` is 8 lookups of 8 tables `T_K[a ‖ b]` of `2^16` words
-  (4 MB, built once: `round1_table`) and its C row an 8×8 bit transpose, instead of 128 byte products in software
-  (400 signatures, `2^33` bits: 2.14 → 0.16 s on the Mac). At 4 and 5 a group's bytes are one affine each
+  (4 MB, built once: `round1_table`) and its C row an 8×8 bit transpose, instead of 128 byte products in software.
+  At 4 and 5 a group's bytes are one affine each
   (`round1_words`); the 16 medium positions are one `BitFold` of 16-byte rows; the C part is computed on `S` and
   extended to `Λ`, as leanVM does;
 - **bit rounds**: leanVM's pair kernels at levels `0, 2, ..` on rows of `2^(k + t)` bits, extended to rows of 1, 2,
@@ -171,8 +173,7 @@ rows of 8 bytes or more. The skip module proves the zerocheck for any `3 ≤ k �
   products (`multilinear::bit_round_pair_bytes`); the pair passes at levels 2 and 4 multiply straight from the GFNI
   fold's limb-major registers (`fold_quads`, `pair_lanes`); on aarch64 (`bit_round_pair_bytes_scaled`) the quads' two lowest eq
   coordinates are in 4 such tables (6 MiB, `e_s[la] T[x] T[y]`), so a group of 4 quads sums its 8 slots by lookups and
-  pays 8 products by eq, a quarter of the products (128 signatures, 16 threads: level 0 0.168 → 0.107 s); the
-  storing pass at the level whose rows are 64 or 128 bytes;
+  pays 8 products by eq, a quarter of the products; the storing pass at the level whose rows are 64 or 128 bytes;
 - **table rounds**: leanVM's, copied.
 
 Tested (`tests/flock_skip.rs`):
@@ -186,67 +187,17 @@ Tested (`tests/flock_skip.rs`):
   against `bit_round_pair_bytes`; `BitFold` at every row width against its
   definition.
 
-Flock end to end on the Keccak-f block is `tests/flock_keccak.rs` (`SPEC-FLOCK.md`, "Tests").
+Flock end to end on the Keccak-f block is `tests/flock_keccak.rs` ([`FLOCK.md`](FLOCK.md), "Tests").
 
-## Measured
+## Parallel structure
 
-**The reference workload, 128 signatures, `KECCAK_REC3`**, on the Mac (Apple M4 Max, 16 cores, 48 GiB, aarch64),
-`RUSTFLAGS="-C target-cpu=native"`, 2026-11-08, with other agents' jobs on the machine (load average 9–14):
-- one cold run with the checks (`proves_and_verifies_keccak_rec3`): 2.72 s, peak RSS 6.75 GB;
-- warm, the median of 3 passes (`keccak_prover_benchmark`, `PI1_VARIANT=rec3`, 3 s cooldown): **3.65 s** (passes
-  3.60, 3.65, 3.66 s), peak RSS 6.86 GB.
-
-| phase (medians) | s |
-|---|---:|
-| the Keccak-f blocks: `q_flock` and Flock's witness | 0.03 |
-| `C1` and setup: inverse NTTs to basis `B` | 0.05 |
-| `C1` and setup: WHIR commits | 0.45 |
-| Flock: zerocheck, lincheck, slices | 1.15 |
-| heap: leaves, products, inverse NTT | 0.04 |
-| quotient: tree | 0.06 |
-| quotients: leaves | 0.44 |
-| quotient: constraints `Q_W` | 0.08 |
-| `C2`: chunks in basis `B` | 0.03 |
-| `C2`: WHIR commit | 0.22 |
-| values at `t`, claims, weights | 0.02 |
-| batching sumcheck | 0.38 |
-| openings: WHIR (3) | 0.66 |
-| **total** | **3.65** |
-
-**On an AMD EPYC 9355P** (Zen 5, 32 cores / 64 threads, AVX-512 with GFNI and VPCLMULQDQ; 2026-11-09, load 13–16,
-median of 5 warm passes; the same proof), after the speedups of that day, against the same benchmark before them:
-
-| phase (medians) | before | after |
-|---|---:|---:|
-| the Keccak-f blocks | 0.008 | 0.007 |
-| `C1` and setup: inverse NTTs to basis `B` | 0.036 | 0.008 |
-| `C1` and setup: WHIR commits | 0.074 | 0.038 |
-| Flock: zerocheck, lincheck, slices | 0.196 | 0.090 |
-| heap | 0.019 | 0.013 |
-| quotient: tree | 0.032 | 0.014 |
-| quotients: leaves | 0.269 | 0.069 |
-| quotient: constraints `Q_W` | 0.078 | 0.025 |
-| `C2`: chunks in basis `B` | 0.027 | 0.005 |
-| `C2`: WHIR commit | 0.021 | 0.016 |
-| values at `t`, claims, weights | 0.011 | 0.010 |
-| batching sumcheck | 0.087 | 0.040 |
-| openings: WHIR (3) | 0.085 | 0.065 |
-| **total** | **0.94** | **0.40** |
-
-On 64 threads most phases were bound by the pool's dispatches rather than by arithmetic: transforms of `2^14`–`2^16`
-points a dispatch each, `parallel::for_each_mut`'s 64 items a task, one-thread memsets, per-worker accumulators reduced
-on the dispatcher. Each piece's transform now runs on one worker, a round of them a dispatch, and columns share
-dispatches. Columns near `2^25` words (the 8 CCDs' L3 together) read rows another CCD wrote last under shared task
-claims; the thread-affine dispatches (`parallel::for_each_affine`, `affine`) give each worker the same range every
-call (a `2^25`-point inverse transform 9.8 → 4.4–5.5 ms).
-
-Then the tables' leaves and `Q_W`'s parts in shared dispatches and the heap's leaves in one (`prefix_quotients`,
-`heap_of`; same machine, load 12–24, interleaved with the binaries before): the leaves and `Q_W` 0.083–0.098 → 0.063
-s, the tree 0.015 → 0.013 s, π1 0.387–0.397 → 0.356–0.361 s; the pipeline (`tests/pipeline.rs`) 0.693 → 0.662 s a
-proof; π1's peak RSS 7.2 → 7.8 GB (the pipeline's 13.8 → 14.5 GB).
-
-The 400-signature phase table, the h1 figures and leanVM `9d50c92a3`'s own prover on the same machines are in
-`KECCAK.md` ("Measured").
+On many threads the phases are bound by the pool's dispatches more than by arithmetic, so the prover avoids short
+dispatches: each piece's transform runs on one worker, a round of them a dispatch, and columns share dispatches; the
+tables' leaves and `Q_W`'s parts share their dispatches (`quotients::prefix_quotients`), and every block's heap leaves
+are one dispatch (`heap_of`). Columns near `2^25` words span the L3 caches of several CCDs, so the thread-affine
+dispatches (`parallel::for_each_affine`, `affine`) give each worker the same range of a column every call. The
+per-phase times, on 8 threads of an AMD EPYC 9355P and against leanVM `9d50c92a3`'s own prover, are in
+[`docs/PERF_PROVER.md`](../../PERF_PROVER.md).
 
 ## The stacks' unused words
 
@@ -259,11 +210,9 @@ resulting `F` root (garbage in the setup's unused words makes another `F`).
 
 What the verifier's interface leaves to the prover, and how this one copes:
 
-- **The combined claims are not exposed in point mode.** The prover needs each commitment's combined claim (terms,
-  points, value) to write the batching sumcheck's weights; `reduce` returns them only in weighted mode. The prover
-  replays point mode's stream through weighted mode (`replay.rs`), which relies on the two modes stating the same
-  relations in the same order at the same challenges. A `reduce` that returned its combined claims in point mode too
-  (before `batch`) would remove the replay.
+- **The combined claims**: the prover needs each commitment's combined claim (terms, points, value) to write the
+  batching sumcheck's weights; `reduce_combined` returns them (`reduce` is it and `batch`), and the prover runs it on
+  its stream so far.
 - **The setup roots**: `record_verifier`, `parity` and `rust_verifier` bind `SetupRoots::REFERENCE` (the
   128-signature shape's `F`) whatever the shape; `record_verifier_with`, `parity_with` and `rust_verifier_with` take a
   shape's own roots. The prover's tests verify every shape against the contract that binds its own `F`.

@@ -189,7 +189,7 @@ pub enum CallWord {
     /// An element, as `machine::element_word`: `c2, c1, c0` big-endian in bytes `8..32`.
     Element(u32),
     /// Coordinate `coordinate` of `transcript::pair_point` of element `element` (π1-rec3's paired batch,
-    /// `SPEC-POINTS.md`: a pair's challenge `z` is the port, its two coordinates `y_0(z) = z + β_1 y_1(z)`,
+    /// univariate `SPEC.md` §14.1: a pair's challenge `z` is the port, its two coordinates `y_0(z) = z + β_1 y_1(z)`,
     /// `y_1(z) = z² + z` words of the calls), as an element's word.
     Pair { element: u32, coordinate: u8 },
 }
@@ -224,14 +224,8 @@ pub fn word_limbs(word: &[u8; 32]) -> [u64; 4] {
     std::array::from_fn(|l| u64::from_be_bytes(word[24 - 8 * l..32 - 8 * l].try_into().expect("8 bytes")))
 }
 
-/// The word of an element: `element_word`'s bytes.
-pub fn element_word(x: E) -> [u8; 32] {
-    let mut w = [0u8; 32];
-    w[8..16].copy_from_slice(&x.c2.to_be_bytes());
-    w[16..24].copy_from_slice(&x.c1.to_be_bytes());
-    w[24..32].copy_from_slice(&x.c0.to_be_bytes());
-    w
-}
+/// The word of an element, as a contract holds it.
+pub use leanvm_statement::evm::machine::element_word;
 
 /// `Σ_l γ^l · limbs[l]`.
 pub fn fingerprint(limbs: &[u64], gamma: E) -> E {
@@ -261,7 +255,7 @@ pub struct Circuit {
     pub calls: Vec<Vec<CallWord>>,
     /// `π1`'s claims (their indices among all of them, increasing) whose Keccak-256 the circuit computes, each the
     /// public word of a [`Source::ClaimHash`] port: the contract reads it from the frame of PCS claims instead of
-    /// encoding the claim (`docs/leanvm/rec/PERF_GAS.md`).
+    /// encoding the claim (`docs/leanvm/rec/SPEC-REC.md` §2.4.6).
     pub hashed: Vec<u32>,
     /// The elements that are narrow challenges (`c2 < 2^32`, `transcript::narrow`), increasing: π2 reads them as 20
     /// bytes (`pi2::circuit::Read::Narrow`).

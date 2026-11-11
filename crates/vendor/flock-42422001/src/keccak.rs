@@ -1,5 +1,5 @@
 // New in this repository (not from leanVM): the Keccak-f[1600] permutation as a Flock block R1CS, for
-// `docs/leanvm/flock/KECCAK.md` §4.2 and §4.5 (design C*, milestone M1). Its walks and its prover entry follow leanVM
+// `docs/leanvm/univariate/FLOCK.md` ("The block", "The ports") (design C*, milestone M1). Its walks and its prover entry follow leanVM
 // 42422001's Flock block (`hash.rs` there, not vendored: src/lib.rs): its row kinds, `C = I`, the `LincheckCircuit`
 // seam and the zerocheck-with-skip and lincheck calls. Crate `flock` runs on leanVM c445e3d5's `primitives` and `pcs`;
 // the φ₈ Lagrange weights and the transcript are this crate's modules (src/lib.rs). MIT OR Apache-2.0 (see
