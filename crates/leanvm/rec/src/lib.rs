@@ -24,7 +24,7 @@ pub mod pi2;
 
 use leanvm_univariate::{KECCAK_REC4, Shape, Variant};
 
-/// π1's variant under the recursion: π1-rec4 (`docs/leanvm/rec/PERF_GAS2.md`; π1-rec3 before it, which `formal/`
+/// π1's variant under the recursion: π1-rec4 (`docs/leanvm/univariate/SPEC.md` §14.4; π1-rec3 before it, which `formal/`
 /// states).
 pub const PI1: Variant = KECCAK_REC4;
 

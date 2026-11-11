@@ -39,8 +39,7 @@ theorem UniKeccakSound.uniKnowledgeSoundnessKeccakRec3_closed (D : KDeployment) 
 - **The three openings are the EIP draft's PCS claims** (`UniKeccak.verifyWithK`: each commitment's out-of-domain
   answer read after its root, `WhirBridge.Pcs.pcsVerifyWithHash`). They are charged once, as one union family over
   the PCS claims of every size `2^23 ..= 2^28` (`WhirBridge.Pcs.pcs_union_sound`, `Fs/PcsOpK.lean`, the generic
-  opening layer `Compose.GOps`), at `269 · 2^-137` a query, the bound of the earlier openings: the bounds are
-  unchanged. The argument keeps the lists (a claim is checked against the stack the extractor decodes, `GDoomed`
+  opening layer `Compose.GOps`), at `269 · 2^-137` a query. The argument keeps the lists (a claim is checked against the stack the extractor decodes, `GDoomed`
   read as `PcsDoomed`); the out-of-domain binding (`WhirBridge.Pcs.ood_binding_rom`) is not needed for it, so the
   three claims on three commitments are proved separately. The setup's `2^23` words are admissible
   (`Fs/Whir23.lean`, `admissible_k`).
@@ -58,7 +57,7 @@ The proof follows `UniSound`'s, layer by layer:
 | Fiat–Shamir | `Fs/` | `fsLayer128K_holds`, `fsLayer128K3_holds` and their reference instances. The setup is one tree; `A0` and `B0` are the deployment's constants. WHIR is certified at `2^23` |
 | identity model, last link | `Ids/`, `Ids3/` | `uniIdsK`, `uniIdsK3`, `uniFinalK_uniCodeKAt`, `uniFinalK3_uniCodeK3At`, from the bridges below; the bus `BusModelK.mainSound`, `mainSoundSq` |
 | bridges | `IdsEval/`, `IdsMain/`, `IdsReal/`, `IdsNum/`, `IdsW/` | `DiffsEvalK`, `MainOfPolysK`, `CvecOkK`, `KvConstraintsK`, `KvRealizesK` (with the SHA3 flushes' agreement `sha3_flushes_eq`), `LaneSlotsK`, `DegBoundK` (`19,339,139`), `RelCountK` (`187`), `HeapGood`, `FunctionalsCorrect 15`, `WeightMleK`, the reference numbers |
-| end | `EndK`, `EndRefK`, `EndClosedK` | the end statements from named links (earlier milestones), then closed |
+| end | `EndK`, `EndRefK`, `EndClosedK` | the end statements from named links, then closed |
 
 **What the Keccak port changes** against `UniSound`:
 - the tables (`tablesKeccak`) and 11 slot bits (`weightAtK`);
@@ -70,39 +69,18 @@ The proof follows `UniSound`'s, layer by layer:
   `(root, f(z))` is in the IV;
 - the Keccak VM's relation `KvHolds` through `kvStack`.
 
-**One statement was strengthened in the process**: the bridge `DiffsEvalK` (`Ids/Build.lean`) assumes round `0` has
+**One bridge is stronger than its `UniSound` counterpart**: the bridge `DiffsEvalK` (`Ids/Build.lean`) assumes round `0` has
 at least four challenges. The relations read `α` as the first four, the identities as `alphasOf`, and the two agree
 only from four on. Correspondingly, `UniIdsK.diffs_eval` assumes six, and the main line's states record round `0`'s
 six challenges after `C2`'s round. None of `UniKeccak`'s statements changed.
 
 ## Imports
 
-The library imports the shared libraries' modules for their generic content. These are listed below with what is used;
-the sub-libraries' docstrings name the lemmas.
-
-- **Shared, keep**: `Compose`, `WhirBridge`, `Heap`, `Soundness`, `Bridge`, `UniStatement`'s VM-independent steps,
-  `FlockSound` (`Flock.lean`, `FlockSq.lean`, `Kronecker.lean`, the generic Flock theorems), `UniKeccak`, `KeccakVm`,
-  `KeccakFlock`.
-- **Modules imported for their generic lemmas**, next to Lv42-instance content this library does not use:
-  - `UniSound` main line:
-    - `Prog`, `Prob`, `Sumcheck`, `Piop`, `PiopSound` (`RbrPiop`, `uniRounds`, `SumState`, `prEvent_*`);
-    - `Final` (`openedOf` lemmas), `Fs`, `Fs128` (`uniBound128` and its bits);
-    - `FsChain`, `FsOps`, `FsProof`, `FsCost`, `FsGame`, `FsWalkProof`, `FsVerifier`, `FsExtract` (the univariate
-      chain `uniSpec`/`UPf`/`uView`, `progRun`, the early-stop openings);
-    - `CodeBase`, `CodeTables`, `CodeBatch`, `CodeShape`, `CodeZeros`, `CodeLink` (chain-program and `ObsEq` lemmas);
-    - `FinalLink`, `Bus`.
-  - `UniSound.Ids`: `Model`, `Batch`, `Weights`, `Build`, `Main`, `MainOk`, `Leaves`, `Leaf`, `Cvec`, `CvecOk`,
-    `Deployed`, `LvLink`, `LvRealize` (the `LvR` normal form and the five shared opcode tables), `Eval`, `Align`,
-    `Degrees`, `Counts`, `Facts`, `FlockEnd`, `BcTuple`, `WeightMle`, `Cantor`, `Poly`. They hold the generic
-    identity algebra; only their Lv42-instance theorems are unused.
-  - `UniSound.Rec3`: `Piop3`, `PiopSound3`, `Fs3`, `Fs128_3`, `Final3`, `Batch3`, `Pairs`, `BusSq`, `CodeBatch3`,
-    `CodeLink3`, `FsOps3`, `FsProof3`, `FsWalkProof3`, `FinalLink3` (`rec3Rounds`, `PairBatch`, `pairBatchRec3`,
-    `expandCh`, `obsOf3`, the narrow pairs).
-  - `FlockSoundUni`: `Rec3Link` and through it `Link`, `Shape`, `Decode`, `Loops`; `RoundByRound`, `Prefix`, `Catch`,
-    `Transcription`, `Tower`, `TxBasic`, `WalkCode` (chain-program decoding, the tower ring claim, the counting lemma).
-  - `FlockSound.Main`, `FlockSound.Leanvm`: leanVM's constants (`skipNodes`, `packW`, `fixedPt`). `Flock/Setup.lean`
-    generalises them to `m` slot bits.
-- **Not imported**: `UniComplete`.
+Shared libraries: `Compose`, `WhirBridge`, `Heap`, `Soundness`, `Bridge`, `UniStatement`'s VM-independent steps,
+`FlockSound`, `UniKeccak`, `KeccakVm`, `KeccakFlock`. It also imports `UniSound` (main line, `Ids`, `Rec3`),
+`FlockSoundUni` and `FlockSound.{Main,Leanvm}` for their generic lemmas (chain programs, sumcheck rounds, the identity
+algebra, `uniBound128`, the narrow pairs, leanVM's Flock constants, which `Flock/Setup.lean` generalises to `m` slot
+bits); their Lv42-instance theorems are unused. `UniComplete` is not imported.
 
 ## Build
 

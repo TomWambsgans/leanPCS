@@ -31,152 +31,18 @@ depends on `propext`, `Classical.choice` and `Quot.sound` only (`Compose/Axioms.
 | `Compose/Reduce.lean` | **`quotient::protocol::reduce`'s claims, and what they say of F1's polynomials** (was `Concrete.lean`'s review comment, now a theorem): a line-by-line transcription of `reduce` after the channel (`reduce`: `w`, the row's cells, the gate, `public`'s two folds, `target`, `rows`, the denominators, the four claims, `extension()`, `sum_point`; `none` is `VerifyError::Degenerate`), with `beta()` and `row_vanishing(m)` as parameters (`Consts`). **`witness_iff`**: a table satisfies the witness claim iff its four row polynomials (`witnessOfTable`) satisfy F1's `witnessClaim`; **`wiring_iff`**: the wiring claim is the table's polynomial taking `next`; **`quotientClaims_of`**: a quotient table satisfying both claims holds a message (`quotientsOfTable`) satisfying F1's `quotientClaims`, for parameters matching `reduce` (`Matches`: `θ = beta()[1]`, `vCells = w_m`, the public weight and `rows` as `reduce` evaluates them); **`matches_params`**: F1's `Instance.params` matches when its basis is `beta()`'s words, its weights `coordinate_weight`'s and `tau` solves `row_vanishing`'s system (`RowVanishing`). |
 | `Compose/Claims.lean` | **The claim maps, concrete; `WitnessClaims`, `QuotientClaims`, `WiringClaims` discharged.** `deployD c r`: the three layouts, rate `1/2`, each opening handed `reduce`'s claims (two contradictory claims when `reduce` rejects; `deployD_clW`, `_clσ`, `_clQ`: otherwise exactly `reduce`'s). `tabEval_eq_mle`: `Table::eval` is F1's `mle` of the table's entries (`tabFn`). `read₁`, `read₂`: a table read as `witnessOfTable`, `quotientsOfTable` (any `Layout.table`, the gadget layout's included). **`witnessClaims_deployD`**, **`quotientClaims_deployD`**, **`wiringClaims_deployD`**; **`knowledgeSoundness_deployed_concrete`** (`knowledgeSoundness_wired_setup_bits` at `2^22` rows with the three discharged); **`knowledgeSoundness_deployed_rust`**: the same for the instance of `beta()` and `coordinate_weight` (`rustInstance`) and the honest wiring stack (`wiringStack`, its table carrying the wiring: `wiringStack_carries`). `ClaimsAxioms.lean`: the axiom guards. |
 
-## The statement
 
-```lean
-theorem knowledgeSoundness_merkle (hq : Fintype.card F = 2 ^ 192) (hN : P.nCells = 2 ^ 24)
-    (hw : P.words = 8) (hd : B.identity ≤ 2 ^ 28)
-    (c₁ : TableCode B.Msg₁) (c₂ : TableCode B.Msg₂) (h₁ : c₁.bound ≤ 2 ^ 18)
-    (h₂ : c₂.bound ≤ 2 ^ 18)
-    (A : OracleComp HashSpec (RootProof F × O))
-    (openings : RootProof F × O → Chals F → OracleComp HashSpec Verdicts) (Q QV : ℕ)
-    (hQ : IsTotalQueryBound A Q) (hV : ∀ p ch, IsTotalQueryBound (openings p ch) QV)
-    (εW εσ εQ : ℝ≥0∞)
-    (hW : Pr{let z ← (simulateQ randomOracle (rootExperiment W A openings)).run' ∅}[
-      WitnessDoomed c₁.commit z] ≤ εW)
-    (hσ : Pr{let z ← (simulateQ randomOracle (rootExperiment W A openings)).run' ∅}[
-      WiringDoomed (P := P) z] ≤ εσ)
-    (hQd : Pr{let z ← (simulateQ randomOracle (rootExperiment W A openings)).run' ∅}[
-      QuotientDoomed W c₂.commit z] ≤ εQ) :
-    Pr{let z ← (simulateQ randomOracle (rootExperiment W A openings)).run' ∅}[
-        Accepted (P := P) z ∧
-          ∀ g ∈ witnessExtractor c₁ z, ¬ P.Sat (W.decode z.1.proof.stmt) (P.cells g.1)] ≤
-      εW + εσ + εQ + ((Q + 6 + QV : ℕ) : ℝ≥0∞) * (((1 / 2 ^ 128 : ℝ≥0) : ℝ≥0∞) +
-        4 * ((Q + 6 + QV : ℕ) : ℝ≥0∞) / 2 ^ 256)
-```
+## The statements
 
-`rootExperiment W A openings` runs the adversary, the chain on its two roots and five values, then
-the openings' verifier, against one lazily sampled random oracle, and logs every query with its
-answer (the transcript). `witnessExtractor c₁ z` reads the transcript and the first root, climbs
-the witness table's Merkle tree (height `c₁.height`, leaves of `c₁.leafLen` bytes) and decodes the
-word with `c₁.dec` (lists of at most `c₁.bound`). `_certified`: `2^-138` in place of `2^-128` for
-`c₁.bound ≤ 7908`, `c₂.bound ≤ 3564`, identities of degree at most `2^29`.
-
-## The deployed statement
-
-```lean
-theorem knowledgeSoundness_wired_setup_bits (hq : Fintype.card F = 2 ^ 192)
-    (hN : P.nCells = 2 ^ 24) (hw : P.words = 8) (hd : B.identity ≤ 2 ^ 28)
-    (r : ℕ) (h1 : WhirBridge.minLogRows ≤ r) (h2 : r ≤ WhirBridge.maxLogRows)
-    (hLw : D.Lw = witnessLayout r) (hLσ : D.Lσ = wiringLayout r)
-    (hLQ : D.LQ = quotientLayout r) (hR : D.R = logInvRate)
-    (read₁ : Tab D.Lw → B.Msg₁) (read₂ : Tab D.LQ → B.Msg₂)
-    (hcl₁ : WitnessClaims D read₁) (hcl₂ : QuotientClaims W D read₂)
-    (q₀ : Column D.Lσ.logN) (hclσ : WiringClaims (P := P) D q₀)
-    (A : Bytes32 → OracleComp KeccakCalls (RootProof F × OpenProofs)) (Q : ℕ)
-    (hQ : ∀ ir, IsTotalQueryBound (A ir) Q) :
-    Pr{let z ← (simulateQ randomOracle (wiredExp W D (withSetup (stackSetup D q₀) A))).run' ∅}[
-        BreaksW W (tableCode D.Lw D.R
-          (admissible_of_eq hLw hR (layouts_ok r h1 h2).1) read₁) z] ≤
-      openingBound (setupQueries D + Q + 6) + openingBound (setupQueries D + Q + 6 + 10122) +
-        openingBound (setupQueries D + Q + 6 + 10122 + 10122) +
-        ((setupQueries D + Q + 6 + 10122 + 10122 + 10122 : ℕ) : ℝ≥0∞) *
-          (((1 / 2 ^ 128 : ℝ≥0) : ℝ≥0∞) +
-          5 * ((setupQueries D + Q + 6 + 10122 + 10122 + 10122 : ℕ) : ℝ≥0∞) / 2 ^ 256)
-```
-
-In mumbai's two-oracle random-oracle model (Keccak-256 and Keccak-f[1600]): the setup computes the
-Merkle tree of the wiring stack `q₀`'s word with the oracle (`stackSetup`, `setupQueries D =
-2^(ht+1)` queries, `2^20` at `2^22` rows); the adversary (at most `Q` queries) is given its root and
-outputs the proof (roots, values, three openings); the verifier runs the chain with the setup's root
-in its label, then `opening::verify` (F2's `ourVerifier`) on the witness, wiring (root: the
-setup's) and quotient tables. `BreaksW`: the verifier accepts (the reduction's check, the three
-openings) while no message the computable extractor reads off **the adversary's queries** and the
-proof (`adversaryExtractor`, with the decoder `tableCode`) is a witness of the statement. Each
-`openingBound x = (x + 10122)(2^-128 + 5 (x + 10122)/2^256)` is F2's `ours_sound` for one opening;
-for `Q ≤ 2^64` the whole is about `2^-62`. Without `_bits`: `max L₁ (L₁ L₂) · roundError` (the
-certified list sizes) in place of `2^-128`.
-
-With the claim maps `reduce`'s (`Claims.lean`), the three claim hypotheses discharged:
-
-```lean
-theorem knowledgeSoundness_deployed_rust (c : Consts) (h : IsCantor c.beta)
-    (hτ : RowVanishing c 22) (σ : Equiv.Perm (Fin (22 + 2) → Bool))
-    (W : Wire (rustInstance c h σ).params (rustInstance c h σ).bounds)
-    (hdec : ∀ sb, W.decode sb = stmtWords sb)
-    (A : Bytes32 → OracleComp KeccakCalls (RootProof E × OpenProofs)) (Q : ℕ)
-    (hQ : ∀ ir, IsTotalQueryBound (A ir) Q) :
-    Pr{let z ← (simulateQ randomOracle (wiredExp W (deployD c 22)
-        (withSetup (stackSetup (deployD c 22) (wiringStack c h σ)) A))).run' ∅}[
-        BreaksW W (witnessDecoder (rustInstance c h σ) c) z] ≤
-      openingBound (2 ^ 20 + Q + 6) + openingBound (2 ^ 20 + Q + 6 + 10122) +
-        openingBound (2 ^ 20 + Q + 6 + 10122 + 10122) +
-        ((2 ^ 20 + Q + 6 + 10122 + 10122 + 10122 : ℕ) : ℝ≥0∞) *
-          (((1 / 2 ^ 128 : ℝ≥0) : ℝ≥0∞) +
-          5 * ((2 ^ 20 + Q + 6 + 10122 + 10122 + 10122 : ℕ) : ℝ≥0∞) / 2 ^ 256)
-```
-
-`c` holds the words `beta()` and `row_vanishing(24)` compute; `deployD c 22` hands each opening the
-claims `reduce` computes from the proof and the chain's challenges; `rustInstance c h σ` is F1's
-instance on `beta()`'s cells with `coordinate_weight`'s weights and the wiring `σ`; `wiringStack c
-h σ` the honest wiring table (the setup commits to it); `witnessDecoder` the computable decoder,
-each table read as its four row polynomials. `knowledgeSoundness_deployed_concrete` is the same for
-any instance and stack meeting `hβ`, `hc`, `hq₀`.
-
-## The statement in mumbai's model
-
-`knowledgeSoundness_merkle_kc` is `knowledgeSoundness_merkle` with `OracleComp KeccakCalls` in
-place of `OracleComp HashSpec` and `kcExperiment` in place of `rootExperiment`: same bound,
-`εW + εσ + εQ + (Q + 6 + QV) (2^-128 + 4 (Q + 6 + QV) / 2^256)`, the extractor reading the
-transcript of every Keccak-256 query of the run.
-
-## What stays a hypothesis
-
-* **The openings' terms.** In the general statements (`knowledgeSoundness_merkle`, `_kc`, `_adv`)
-  `hW`, `hσ`, `hQd` are events in F2's oracle model, **not** literally F2's: the openings' verifier is
-  any computation, the candidates are `merkleWord` and a decoder (not `extract`, `Candidates`,
-  `Layout.tableEval`), the claims are F1's polynomial identities (not `reduce`'s multilinear claims),
-  and the word is read off the final transcript (not the cache at the end of the opening). In the
-  deployed composition (`Deployed.lean`) the witness and quotient terms **are** F2's `ours_sound`
-  (`prEvent_EW_le`, `prEvent_EQ_le`), what remains being:
-  1. **`WitnessMatch`, `QuotientMatch`**: the decoder lists every candidate of mumbai's extraction
-     (an exact enumeration of `Candidates`), read back as F1's message, and a candidate whose table
-     satisfies the opening's claims (`ourVerifier`'s, `Layout.tableEval`) reads back as a message
-     satisfying F1's claim (`Concrete.lean`'s `claims_iff_accepts_ofCantor` is the starting point);
-  2. **the wiring term**: discharged (`DeployedWired.lean`, `WiringSetup.lean`): the experiment
-     computes the circuit's commitment with the oracle before the adversary runs, the setup's
-     queries make the root's extracted word the wiring stack's word (`extract_wiringSetup`), its only
-     candidate is the stack itself (`candidates_honest`), and the wiring opening's term is
-     `ours_sound`'s. What remains is **`WiringClaims D q₀`**: the stack's table satisfies the wiring
-     opening's claims (`D.clσ`, `Layout.tableEval`) only if F1's wiring claim holds.
-  So the deployed statement's hypotheses are `WitnessClaims`, `QuotientClaims` and `WiringClaims`,
-  statements about the claim maps `D.clW`, `D.clσ`, `D.clQ` and F1's tables only. **All three are
-  discharged** for the concrete claim maps of `reduce` (`Claims.lean`, `Reduce.lean`):
-  `knowledgeSoundness_deployed_concrete` / `_rust`. What remains of them: that `beta()` is a Cantor
-  basis of `K` (`IsCantor`, by construction in the Rust) and that `row_vanishing(24)`'s `tau`
-  solves its system (`RowVanishing`): the two constants the Rust computes at run time; that the
-  wire reads the statement's 64 bytes as `Statement::halves` then `1, 0, 0, 0` (`hdec`); and the
-  model of `reduce`'s one inversion (each denominator's field inverse once their product is
-  nonzero: the norm-based `inverse` and the batch's prefix products are not transcribed).
-* **The decoder's list bound** `c.bound`: `WhirBridge.candidates_ours` (`7908`, `3564`) for
-  mumbai's `Candidates`; an exact decoder inherits it.
-* **The `Wire`** (F4a's): the circuit's commitment, the statement's decoding, the limbs, as in
-  `QuotientRpm`; and **the circuit** (F0): the relation is `Params.Sat` for the deployed wiring.
-* **The model**: the random-oracle model (one oracle for Keccak-256, and Keccak-f[1600] as a random
-  function in mumbai's two-oracle model); the random-permutation transfer is separate work
-  (`Rpm.lean`).
-* **The extractor's reads**: `witnessExtractor` and `extractor` (ROM, two-oracle) read every
-  Keccak-256 query of the run; `adversaryExtractor` (`AdversaryLog.lean`, `Deployed.lean`) reads the
-  adversary's queries (and the setup's, which are public) only.
-* **Computability**: `witnessExtractor` is computable given a computable decoder; the
-  one-witness extractor `extractorOne` is `noncomputable` (F1's cells are `Polynomial`
-  evaluations).
+`knowledgeSoundness_merkle` (`Final.lean`; `_kc` in mumbai's two-oracle model, `ComposedKC.lean`) bounds a break by
+the three openings' doomed events plus `(Q + 6 + QV)(2^-128 + 4 (Q + 6 + QV)/2^256)`, for lists up to `2^18`.
+`knowledgeSoundness_deployed_rust` (`Claims.lean`) is the previous protocol's deployed composition (three layout
+openings, each `ours_sound`'s `openingBound`, about `2^-62` for `Q ≤ 2^64`), its claim hypotheses discharged for
+`reduce`'s claim maps; what remains of it is that `beta()` is a Cantor basis and `row_vanishing(24)`'s `tau` solves its
+system (the Rust computes both at run time). The PCS-claim composition reuses these pieces (`ComposePcs/`, `SoundPcs/`;
+[`../README.md`](../README.md)), and the leanVM line composes through `GOps.lean` and `ListChainUDoom128SG.lean`.
 
 ## Building
 
-As `WhirBridge`: against a built leanerVM `6175f1a0` at `../leanervm`, sharing `lean_vm`'s
-packages; the libraries `QuotientSecurity`, `QuotientRpm`, `WhirBridge` compile from their sources
-in `formal/` (`srcDir`), which checks that `formal/` builds against `lean_vm`'s package set (it
-does: 10,012 jobs, ArkLib's `OracleReduction.Security.RoundByRound` and VCVio's `FreshQuery` added).
-On `h1`: `/root/pcs-quotient-fv/compose/formal/Compose`, `lake build`; `Compose` itself builds in
-about a minute.
+A library of `formal/EndToEnd`, built as in [`../README.md`](../README.md), "Building" (against a built leanerVM
+`6175f1a0` at `formal/leanervm`; on h1 under `/root/pcs-quotient-fv/` only). `Compose` itself builds in about a minute.

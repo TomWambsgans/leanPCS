@@ -4,7 +4,7 @@
 //! This repository's contracts are not written by hand: a verifier written on a scalar type is run on a scalar that
 //! records every operation, and the recorded graph is compiled (`crates/membership/evm`, `crates/leanvm/statement`).
 //! The code is straight-line, the cheapest code to run, so it grows with what the verifier computes: the membership
-//! verifier is 6,314 bytes, π2's 13.2 KB. This crate takes the compiled program, a list of [`Item`]s (code, and the
+//! verifier is 4,866 bytes, π2's 14.5 KB. This crate takes the compiled program, a list of [`Item`]s (code, and the
 //! values kept in memory slots), and assembles it into one contract ([`assemble`]).
 //!
 //! # Using it from a verifier's code generator

@@ -324,7 +324,7 @@ pub const KECCAK_MAIN: Variant = Variant { skip: 3, fs: FsShape::Main };
 /// Fiat–Shamir shape (`FsShape::Rec3`).
 pub const KECCAK_REC3: Variant = Variant { skip: 3, fs: FsShape::Rec3 };
 
-/// The Keccak VM's π1 under the recursion since π1-rec4 (`docs/leanvm/rec/PERF_GAS2.md`): [`KECCAK_REC3`] with the
+/// The Keccak VM's π1 under the recursion since π1-rec4 (`docs/leanvm/univariate/SPEC.md` §14.4): [`KECCAK_REC3`] with the
 /// challenges no message separates drawn from one Keccak-f each (`FsShape::Rec4`), 106 Keccak-f in its transcript at
 /// the reference shape instead of 116. It has no EVM contract of its own (`KECCAK256` gives no sponge rate): π2's
 /// circuit runs it.
@@ -383,7 +383,7 @@ pub fn reduce<S: Scalar + PartialEq, C: Channel<S>>(
     };
 
     // 2. Flock, on C1's q_flock: the zerocheck and the lincheck on the Keccak-f block (one permutation a `SHA3`
-    // row), its terminal by the block's structure, the slices sent; its ring switch's map and target (SPEC-FLOCK.md).
+    // row), its terminal by the block's structure, the slices sent; its ring switch's map and target (FLOCK.md).
     // π1-rec4: the ring switch's map is drawn later (with t, then with ρ).
     let log_flock = KECCAK_R1CS_LOG_SIZE + heights[OP_SHA3];
     let (flock_point, mut flock_end, flock_slices) = if variant.fs.wide() {
@@ -878,7 +878,7 @@ pub fn batch<S: Scalar + PartialEq, C: Channel<S>>(
         scale *= lambda;
     }
     // π1-rec2 (`FsShape::Rec2`): the rounds' challenges narrow, 160 bits; π1-rec3 (`FsShape::Rec3`): narrow and two
-    // variables a round (`SPEC-POINTS.md`).
+    // variables a round (`SPEC.md` §14.1).
     let (r, last) = if fs.paired_batch() {
         let (r, _, last) = sumcheck_pairs_drawn(channel, target, 2, vars, fs.narrow_batch())?;
         (r, last)

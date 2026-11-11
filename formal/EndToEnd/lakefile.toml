@@ -103,7 +103,7 @@ srcDir = "../KeccakVm"
 globs = ["KeccakVm", "KeccakVm.+"]
 leanOptions = { warningAsError = true }
 
-# The Keccak VM's Keccak-f block (`crates/vendor/flock-42422001/src/keccak.rs`, `docs/leanvm/flock/KECCAK.md`), `formal/KeccakFlock`:
+# The Keccak VM's Keccak-f block (`crates/vendor/flock-42422001/src/keccak.rs`, `docs/leanvm/univariate/FLOCK.md`), `formal/KeccakFlock`:
 # its R1CS, `KeccakVm.KeccakFlockSpec`'s inhabitant, the structured lincheck terminal.
 [[lean_lib]]
 name = "KeccakFlock"
@@ -191,7 +191,7 @@ srcDir = "../UniSound"
 globs = ["UniSound.+"]
 leanOptions = { warningAsError = true }
 
-# Flock's soundness (`crates/leanvm/statement/src/flock_min.rs`, `docs/leanvm/univariate/SPEC-FLOCK.md`),
+# Flock's soundness (`crates/leanvm/statement/src/flock_min.rs`, `docs/leanvm/univariate/FLOCK.md`),
 # `formal/FlockSound`: generic sumcheck, univariate-skip, lincheck and ring-switch soundness over the
 # Boolean cube, then Flock's checks and claims give `Lv42`'s `FlockRegion.Holds` but for explicit bad
 # challenges, each of a bounded number of values.

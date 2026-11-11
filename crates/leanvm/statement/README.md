@@ -9,7 +9,7 @@ The Keccak VM's statement and the verifier pieces built on it, generic over the 
   `SHA3`), their bus flushes and constraints;
 - `flock`, `flock_min`, `ring_tower`: Flock's verifier (zerocheck with a univariate skip, lincheck, ring switch with
   the map in tower order); `keccak_flock`: the Keccak-f block's walk and structured terminal
-  ([`docs/leanvm/flock/KECCAK.md`](../../../docs/leanvm/flock/KECCAK.md));
+  ([`docs/leanvm/univariate/FLOCK.md`](../../../docs/leanvm/univariate/FLOCK.md));
 - `transcript`: the Keccak-256 Fiat–Shamir chain (`KeccakChannel`, `KeccakWriter`, the shapes `FsShape`);
 - `evm`: the recorder that runs a verifier on a symbolic scalar, the nodes' code for `crates/evm_link`, a revm
   machine with `FIELD_MUL` and EIP-8141's frame introspection over a frame of PCS claims, deployment;

@@ -2,10 +2,11 @@
 
 # A univariate PIOP for the Keccak VM, for the EVM
 
-This is the protocol of `crates/leanvm/univariate` (`verifier::reduce`), as the code runs it. The VM, its workloads,
-the gas and the prover's measurements are in `KECCAK.md`; Flock's part is in `SPEC-FLOCK.md`; the prover is in
-`PROVER.md`. Figures marked *measured* come from revm runs of the contract compiled from the recorded Rust verifier
-(`tests/keccak_vm.rs`, `tests/prove_real.rs`); *modelled* ones are computed here.
+This is the protocol of `crates/leanvm/univariate` (`verifier::reduce`), as the code runs it. The VM, its workloads
+and its capacity are in [`KECCAK.md`](KECCAK.md); Flock's part is in [`FLOCK.md`](FLOCK.md); the prover is in
+[`PROVER.md`](PROVER.md), its measurements in [`docs/PERF_PROVER.md`](../../PERF_PROVER.md). Figures marked
+*measured* come from revm runs of the contract compiled from the recorded Rust verifier (`tests/keccak_vm.rs`,
+`tests/prove_real.rs`); *modelled* ones are computed here.
 
 ## 0. Summary
 
@@ -26,9 +27,13 @@ the sixth (§1). The proof of it is not leanVM's:
 - **Claims.** On the main line (`machine.rs`'s claim encoding, point claims), one batching sumcheck over the three
   stacks turns every commitment's relations into one point claim: 3 claims, declared as 3 (`C1`, `C2`, `F`). Extension
   W (weighted claims) drops that sumcheck.
-- **Result** at the reference workload (128 signatures), measured: 8,020 B of calldata, 230,985 gas of execution,
-  358,957 transaction gas (EIP-7623, claim price 0, without the 21,000 base). §10 and `KECCAK.md` have the other
-  workloads.
+- **Three Fiat–Shamir shapes** (§4): `KECCAK_MAIN` (π1's own contract), `KECCAK_REC3` (π1-rec3, the recursion's
+  inner proof as the Lean states it) and `KECCAK_REC4` (π1-rec4, the deployed recursion's inner proof). The last two
+  run the batch two variables a round and π1-rec4 draws several challenges from one Keccak-f (§14).
+- **Result** at the reference workload (128 signatures), measured, π1 alone as a contract (`KECCAK_MAIN`): 8,065 B of
+  calldata, 231,489 gas of execution; as an EIP-8141 frame transaction, standard 360,169, EIP-7976 floor 516,160,
+  without its frame of claims (§10). Under the recursion π1 is not on chain: π2 verifies it
+  (`docs/leanvm/rec/SPEC-REC.md`).
 
 ## 1. Statement and workload
 
@@ -86,16 +91,17 @@ Table rows XOR 24,260, MUL 36,229, SET 24,626, DEREF 35,812, JUMP 15,509, `SHA3`
 | `C1` | first | `q_flock` (values, `2^11` words a `SHA3` row: `2^26`); every table column (basis `B`), `SHA3`'s 50 lanes among them; one counter-inverse column `z_T` per table; memory (4 columns, `V_20`); bytecode final count (`V_18`) | `2^26.21` / `2^27` |
 | `C2` | after `α, β, γ` and Flock | the heap `T` (`2^22` E), `Q_tree`, one leaf quotient `Q_b` per heap block, the constraint quotient `Q_W`, each E-valued as three K-limb columns | `2^25.35` / `2^26` |
 
-The setup root is a constant in the code (no `SLOAD`). The `C1` and `C2` roots are in calldata. Each commitment's
-claims are **one** declared claim. WHIR takes no OOD sample at level 0, so a root binds only a list of tables and
-all claims on it must be checked together (AGENTS.md). `src/stacks.rs` gives each column an aligned block, largest
-first. A claim reads only its column's block. Nothing relies on the stack's unused words, nor on the zero padding of
+The setup commitment is a constant in the code (no `SLOAD`). The `C1` and `C2` commitments (root and out-of-domain
+answer) are in calldata. Each commitment's relations end as **one** declared claim (the batching sumcheck, §8). That
+is a choice of cost, not of binding: the out-of-domain answer binds each root to one table
+([`docs/PCS_CLAIM.md`](../../PCS_CLAIM.md)), so claims on one commitment could be declared and proven apart.
+`src/stacks.rs` gives each column an aligned block, largest first. A claim reads only its column's block. Nothing relies on the stack's unused words, nor on the zero padding of
 a column shorter than its lane, which leanVM's `Layout::new` does not force (`PROVER.md`, "The stacks' unused
 words").
 
 **Sizes over the workloads**: the largest proof stack is `2^25` at 32 signatures, `2^27` at 128, `2^28` at 400 and
-`2^30` at 1,000. `q_flock` alone is `2^(h_SHA3 + 11)` words, so `C1` reaches WHIR's `2^28` at `2^16` permutations,
-about 470 signatures (`tests/keccak_vm.rs`, `keccak_stacks_against_whir`; `KECCAK.md`, "Capacity").
+`2^30` at 1,000; `q_flock` alone is `2^(h_SHA3 + 11)` words, which bounds the workloads ([`KECCAK.md`](KECCAK.md),
+"Capacity").
 
 **Two additions to `C1`, both keeping the statement.** First, the `SHA3` table's 50 lane columns equal `q_flock`'s
 port words of the row's block on every row (a constraint of `Q_W`, §6); the bus reads the columns. Second,
@@ -129,14 +135,15 @@ shape class per contract. The order:
    end values.
 
 **The Fiat–Shamir shapes** (`flock_min::Variant::fs`). `KECCAK_MAIN` (`FsShape::Main`) draws every challenge by
-its own hash. `KECCAK_REC3` (`FsShape::Rec3`, π1-rec3, the recursion's inner proof as the Lean states it:
-`docs/leanvm/rec/SPEC-REC.md` §1.4, `SPEC-POINTS.md`) draws `α` as `(c, c², c⁴, c⁸)` of one challenge and Flock's zerocheck coordinates after the
-seven fixed ones as successive squares of one challenge, and runs the batching sumcheck two variables a round with
-narrow (160-bit) challenges. At 128 signatures π1-rec3's verifier makes 70 Keccak-256 calls over a 9,232-byte stream.
-`KECCAK_REC4` (`FsShape::Rec4`, π1-rec4, the deployed recursion's inner proof since `docs/leanvm/rec/PERF_GAS2.md`) is
-π1-rec3 with the challenges no message separates drawn from one Keccak-f each: 106 Keccak-f in its transcript at the
-reference shape instead of 116. It has no EVM contract of its own (`KECCAK256` gives no sponge rate); π2's circuit runs
-it, and the Lean does not state it.
+its own hash. `KECCAK_REC3` (`FsShape::Rec3`, π1-rec3, the recursion's inner proof as the Lean states it) draws `α`
+as `(c, c², c⁴, c⁸)` of one challenge and Flock's zerocheck coordinates after the seven fixed ones as successive
+squares of one challenge (`docs/leanvm/rec/SPEC-REC.md` §1.4), and runs the batching sumcheck two variables a round
+with narrow (160-bit) challenges (§14.1). At 128 signatures π1-rec3's verifier makes 70 Keccak-256 calls (116
+Keccak-f) over a 9,232-byte stream. `KECCAK_REC4` (`FsShape::Rec4`, π1-rec4, the deployed recursion's inner proof)
+is π1-rec3 with the challenges no message separates drawn from one Keccak-f each, and the ring map drawn after `C2`'s
+commitment (§14.4): 60 calls, 106 Keccak-f at the reference shape. It has no EVM contract of its own (`KECCAK256`
+gives no sponge rate); π2's circuit runs it, and the Lean does not state it. π1's contract IV binds the shape (§13,
+F2), so a proof of one shape is not a proof of another.
 
 ## 5. The bus as a product heap
 
@@ -218,13 +225,13 @@ signatures) by `w_{r_W} / w_r = Π (w_j + 1)`:
 `2^lm - 3`; `SHA3`'s 27 counters give about `27 n`. Padding rows have no constraint but the counters': the leaf
 identity exempts them (§5.2).
 
-## 7. Flock on the Keccak-f block (details in `SPEC-FLOCK.md`)
+## 7. Flock on the Keccak-f block (details in `FLOCK.md`)
 
 **Interface.** Flock runs after `C1` and before `C2`, reading only `C1`'s `q_flock`. It draws its own challenges in
 the transcript between `γ` and the `C2` root. The verifier runs it as
 `flock_min::verify_walked_with::<_, keccak_flock::Keccak>` at `log_n = 17 + h_SHA3` variables (32 at 128 signatures).
 
-- **The block** is `flock::keccak`'s (`docs/leanvm/flock/KECCAK.md`): one Keccak-f[1600] per `2^17` slots,
+- **The block** is `flock::keccak`'s ([`FLOCK.md`](FLOCK.md), "The block"): one Keccak-f[1600] per `2^17` slots,
   every round's state materialised, `C = I`. Block `i` sits at row `i` of the placed `SHA3` table.
 - **The zerocheck** has a univariate skip of `k = 3`: `2^3` coset values, then `log_n - 3` rounds of 2 scalars, then
   `v_a` and `v_b`. **The lincheck** has 11 rounds of 2 scalars (the block's slot bits after its 6 packing bits).
@@ -263,8 +270,8 @@ Each commitment's relations are combined by the powers of `ρ` (`Relations::comb
 
 **Claims, main line: the claims' encoding** (`crates/evm_link/src/machine.rs`: point claims, `c` each). A batching
 sumcheck takes `Σ_k λ^k Σ_u W_k(u) C_k(u) = Σ_k λ^k v_k` over the longest stack (27 variables at 128 signatures), the
-others zero-extended. With `KECCAK_MAIN` it has two scalars a round; with `KECCAK_REC3` it runs two variables a
-round (`transcript::sumcheck_pairs_drawn`). Then come the three stacks' values at its point `r`. The verifier
+others zero-extended. With `KECCAK_MAIN` it has two scalars a round; with `KECCAK_REC3` and `KECCAK_REC4` it runs
+two variables a round (`transcript::sumcheck_pairs_drawn`, §14.1). Then come the three stacks' values at its point `r`. The verifier
 evaluates every `W_k(r)` (`verifier::weight_at`): columns at one row point share their eq factor, selector factors
 share their high bits, Frobenius twists are cached (`stacks::EqCache`), `q_flock`'s slot terms share the eq of their
 instance coordinates, and the ring-switch term is evaluated by its map (§7). The result is one point claim per
@@ -294,27 +301,30 @@ honest codeword's list within the Johnson radius is itself, so `L = 1` there. St
 certified level-0 list. `|E| = 2^192`. The rounds at 128 signatures, as the code states them (§13, F8: committed
 capacities, the unused blocks, degree 4 a tuple, `ρ`, `λ` and each round of the batch apart), in bits after the lists:
 
-| round | error | main line | π1-rec3 |
-|---|---|---:|---:|
-| bus `(α, β)`: if the push and pull multisets differ, `Π(β + fp)` differs: one Schwartz–Zippel over `E^5`, degree 4 a factor (π1-rec3, `α = (c, c², c⁴, c⁸)`: 16 in `(β, c)`), every table full (the counts are the prover's), `N = 2^21.62` tuples a side | `4N/|E|` (`16N/|E|`) | 156.3 | 154.3 |
-| `γ`: the 61 `C1`-only constraints batched | `60/|E|` | 174.0 | 174.0 |
-| Flock's zerocheck point: its 22 drawn coordinates (π1-rec3: the successive squares of one) | `22/|E|` (`(2^22 − 1)/|E|`) | 175.4 | 157.9 |
-| Flock's other rounds: the skip (`(2^(k+1) − 1)/|E|`), 29 zerocheck rounds of degree 3, the lincheck's `α` (3) and 11 rounds of degree 2, the ring map in tower order (`6/|E|`) | at most `15/|E|` each | ≥ 176.0 | ≥ 176.0 |
-| `t`: every identity at its committed capacity: the tree (`2^23`), the leaves times `Z_act` (memory `2^21`, `SHA3` `1.9M`, …), `Q_W` (`2^21`), the unused blocks; `Σ deg = 17,653,749 ≈ 2^24.07` | `Σ deg/|E|` | **143.2** | 143.2 |
-| `ρ`: `C1`'s 116 relations combined (`C2` 14, `F` 2) | `115/|E|` | 160.4 | 160.4 |
-| `λ`: 3 claims | `2/|E|` | 166.3 | 166.3 |
-| the batch: 27 rounds of degree 2 (π1-rec3: 13 pairs of degree 8 and one plain round, narrow challenges) | `2/|E|` each (`8/2^160`, `2/2^160`) | 166.3 | **132.3** |
+| round | error | main line | π1-rec3 | π1-rec4 |
+|---|---|---:|---:|---:|
+| bus `(α, β)`: if the push and pull multisets differ, `Π(β + fp)` differs: one Schwartz–Zippel over `E^5`, degree 4 a factor (π1-rec3/4, `α = (c, c², c⁴, c⁸)`: 16 in `(β, c)`), every table full (the counts are the prover's), `N = 2^21.62` tuples a side | `4N/|E|` (`16N/|E|`) | 156.3 | 154.3 | 154.1 (one query with `γ` and the zerocheck's point, their errors summed) |
+| `γ`: the 61 `C1`-only constraints batched | `60/|E|` | 174.0 | 174.0 | in `α`'s query |
+| Flock's zerocheck point: its 22 drawn coordinates (π1-rec3/4: the successive squares of one) | `22/|E|` (`(2^22 − 1)/|E|`) | 175.4 | 157.9 | in `α`'s query |
+| Flock's other rounds: the skip (`(2^(k+1) − 1)/|E|`), 29 zerocheck rounds of degree 3, the lincheck's `α` (3) and 11 rounds of degree 2, the ring map in tower order (`6/|E|`) | at most `15/|E|` each | ≥ 176.0 | ≥ 176.0 | ≥ 176.0 (the map in `t`'s and `ρ`'s queries) |
+| `t`: every identity at its committed capacity: the tree (`2^23`), the leaves times `Z_act` (memory `2^21`, `SHA3` `1.9M`, …), `Q_W` (`2^21`), the unused blocks; `Σ deg = 17,653,749 ≈ 2^24.07` | `Σ deg/|E|` (π1-rec4: + the map's `6/|E|`) | **143.2** | 143.2 | 143.2 |
+| `ρ`: `C1`'s 116 relations combined (`C2` 14, `F` 2) | `115/|E|` (π1-rec4: + `λ`'s 2 + the map's 6) | 160.4 | 160.4 | 160.3 |
+| `λ`: 3 claims | `2/|E|` | 166.3 | 166.3 | in `ρ`'s query |
+| the batch: 27 rounds of degree 2 (π1-rec3/4: 13 pairs of degree 8 and one plain round, narrow challenges) | `2/|E|` each (`8/2^160`, `2/2^160`) | 166.3 | **132.3** | **132.3** |
 
-The weakest round is `t` on the main line and the narrow pairs at π1-rec3. At 32 and 400 signatures the main line's
-`t` keeps 143.3 and 142.5 bits; π1-rec3's pairs 131.1 and 133.4.
+The weakest round is `t` on the main line and the narrow pairs at π1-rec3 and π1-rec4 (§14.5 says why π1-rec4's
+merged queries are charged their summed errors). At 32 and 400 signatures the main line's `t` keeps 143.3 and 142.5
+bits; π1-rec3's and π1-rec4's pairs 131.1 and 133.4.
 
 **Fiat–Shamir and the PCS (§13, F3).** WHIR is leanVM's, unchanged. In the query-bounded random-permutation model of
 the end theorems an adversary of `Q` permutation queries breaks π1 with probability about `Q (ε_WHIR + ε_round)`,
 `ε_round` the weakest round after its lists: the openings' Fiat–Shamir transcripts are domain-separated (each seeded
 by its own PCS claim, `keccak256(PCS_claim)`) and share the adversary's queries, so the three openings (`C1`, `C2`, `F`) are
 charged once, at `WhirBridge`'s exact certified bound `269 · 2^-137 = 2^-128.93` a query (the setup's `2^23` stack is
-certified too). That is **128.93 bits** as `Q/ε` on the main line and **128.79** at π1-rec3 (`Q = 2^64`); 128.64 and
-128.86 at π1-rec3's 32 and 400 signatures. The setup's `F` cannot join a proof commitment without losing its `L = 1`.
+certified too). That is **128.93 bits** as `Q/ε` on the main line and **128.79** at π1-rec3 and π1-rec4
+(`Q = 2^64`); 128.64 and 128.86 at their 32 and 400 signatures. The setup's `F` cannot join a proof commitment
+without losing its `L = 1`. Under the recursion π1-rec4's bound enters the recursion's (127.86 bits,
+`docs/leanvm/rec/SPEC-REC.md` §5).
 
 **Lean.** `formal/UniKeccakSound` proves knowledge soundness of both variants at the reference shape, in one random
 permutation and with an explicit extractor: **128.87 bits** (main line) and **128.49** (π1-rec3) as `Q/ε` at
@@ -323,35 +333,34 @@ permutation and with an explicit extractor: **128.87 bits** (main line) and **12
 before the lists at one bound, `2^32/|E|` on the main line (the largest is `t`'s `2^24.07/|E|`) and `2^35/|E|` at
 π1-rec3 (its narrow pairs' `8/2^160`, exactly), and multiplies every round, those before `C2` included, by the largest
 certified list squared, `9,952² ≈ 2^26.6` (against `4,473 · 6,296 ≈ 2^24.7`). WHIR's `2^-128.93` a query is the same
-in both; the rounds cost the Lean 0.06 bits (main line) and 0.44 (π1-rec3), the calculator 0.00 and 0.14.
+in both; the rounds cost the Lean 0.06 bits (main line) and 0.44 (π1-rec3), the calculator 0.00 and 0.14. The Lean
+does not state π1-rec4; its uniform cap holds for π1-rec4's summed queries too (the largest is the batch's pairs,
+`2^35/|E|`; `α`'s query sums to below `2^26/|E|`), so the 128.49 bits carry over once it is stated
+([`docs/LEAN_PORT.md`](../../LEAN_PORT.md)).
 
 ## 10. Gas
 
-Measured on revm (`tests/keccak_vm.rs`, `keccak_gas_report`), `KECCAK_MAIN`, point claims; transaction gas is
-EIP-7623's `max(16 B + execution, 40 B)` (zero bytes 4 and 10) without the 21,000 base; `c` the price of a claim.
+Measured on revm (`tests/keccak_vm.rs`, `keccak_gas_report`, which prints every workload and the phases at 128
+and 400 signatures), `KECCAK_MAIN`, point claims, π1 alone as a contract at 128 signatures: **8,065 B** of calldata,
+**231,489** execution, 3 claims. As an EIP-8141 frame transaction (without the 21,000 base, `FRAME_TX_INTRINSIC_COST`
+and the per-frame costs, and without its frame of claims and the PCS gas): standard (`16` a nonzero byte, `4` a zero
+byte, plus execution) 360,169; EIP-7976's floor (`64` a byte) **516,160**, which binds.
 
-| signatures | largest stack | calldata | execution | claims / calls | tx, `c` = 0 | tx, `c` = 5,000 |
-|---:|---:|---:|---:|---:|---:|---:|
-| 32 | `2^25` | 7,828 B | 222,928 | 3 / 3 | 347,840 | 362,840 |
-| **128** | `2^27` | 8,020 B | 230,985 | 3 / 3 | **358,957** | 373,957 |
-| 400 | `2^28` | 8,116 B | 236,976 | 3 / 3 | 366,484 | 381,484 |
-
-The gas is a function of the shape: the real proofs run at these figures (`KECCAK.md`, "The real proofs' gas"),
-and the design is almost size-independent (the values at `t` are fixed; Flock's rounds and the batch grow only with
-the logarithms of the sizes).
-**Calldata at 128 signatures**: selector and public input 36 B, row counts 24 B, two roots 64 B, Flock's 154 scalars
-3,696 B, the 118 values at `t` 2,832 B, the batching sumcheck (27 rounds of 2 scalars, 3 values) 1,368 B. The
-contract is execution-bound (`16 B + execution` above `40 B`). The per-phase report and the recursion's contract are in
-`KECCAK.md`.
+**Calldata at 128 signatures** (no selector: the length and the value alone are checked): public input 32 B, row counts 24 B, `C1`'s and `C2`'s commitments
+(root and out-of-domain answer) 112 B, Flock's 154 scalars 3,696 B, the 118 values at `t` 2,832 B, the batching
+sumcheck (27 rounds of 2 scalars, 3 values) 1,368 B, the frame's index 1 B. The design is almost size-independent:
+the values at `t` are fixed, and Flock's rounds and the batch grow only with the logarithms of the sizes. The gas is a
+function of the shape: the real proofs run at the gas a sample stream of their shape gives (`tests/evm_vectors.rs`
+replays them at their recorded gas). The recursion's contract is π2's (`docs/leanvm/rec/SPEC-REC.md` §6).
 
 ## 11. Prover
 
-`PROVER.md` describes the prover (`src/prover/`) phase by phase; `KECCAK.md` has its measurements. At 128
-signatures, `KECCAK_REC3`, on an Apple M4 Max: 3.65 s warm (median of 3), 6.86 GB peak.
+[`PROVER.md`](PROVER.md) describes the prover (`src/prover/`) phase by phase;
+[`docs/PERF_PROVER.md`](../../PERF_PROVER.md) has its measurements.
 
 ## 12. Risks and open questions
 
-1. **Capacity.** `C1` exceeds WHIR's `2^28` words above about 470 signatures (`KECCAK.md`, "What remains").
+1. **Capacity.** `C1` exceeds WHIR's `2^28` words past the workloads [`KECCAK.md`](KECCAK.md) ("Capacity") gives.
 2. **The main line pays for faithfulness in execution.**
    - The point ABI forces a batching sumcheck, whose weight carries the ring switch's 64 Frobenius-twisted eq terms:
      the cost leanVM's verifier pays at WHIR's terminal point. Extension W moves it to the block's openings.
@@ -365,7 +374,7 @@ signatures, `KECCAK_REC3`, on an Apple M4 Max: 3.65 s warm (median of 3), 6.86 G
      committed, with the lanes read from `q_flock` (§13, F6);
    - the bus as a committed heap instead of a GKR;
    - the hash argument on a Keccak-f block of one permutation per `2^17` slots, not leanVM `9d50c92a3`'s block of
-     three (`KECCAK.md`, "The statement");
+     three ([`KECCAK.md`](KECCAK.md), "The statement");
    - one shape class per contract.
 
    `Balanced` (a `List.Perm`) follows from the heap's root as leanVM's GKR root gives it.
@@ -489,6 +498,23 @@ The design's refinements, by the labels the code cites. Each entry states the ru
     - `flock_min`'s `log_n ≥ 17 + 7` is `Shape::validate`'s `SHA3` height of at least 7 (entry 7);
     - §8: what the contract checks itself, and why solved streams pass with mocked openings.
 
+14. **Lever 1c: narrow batch challenges** (`FsShape::Rec2`'s, kept by `Rec3` and `Rec4`; `Channel::sample_narrow`,
+    `transcript::NARROW_BITS`). The batching sumcheck's challenges are the hash's low 160 bits instead of 192 (limb 2
+    below `2^32`). π1's verifier draws them with `sumcheck_pairs_drawn(.., narrow)`, its prover likewise, the recorder
+    as `record::Node::Narrow` (an `AND` with 20 bytes of ones), π2's circuit packs limb 2 from 32 digest bits. A plain
+    round of degree 2 errs with probability `2/2^160`, a pair `8/2^160`. They were made for a contract that carried
+    π1's point in calldata (four zero bytes a coordinate); π2's circuit now hashes π1's claims, and the shape stays.
+
+15. **Lever 1d: the paired batch** (π1-rec3, kept by π1-rec4; `FsShape::Rec3`): the batching sumcheck two variables a
+    round on `V_2`'s coordinate functionals, one narrow challenge a pair: §14.1–§14.3.
+
+16. **Lever 1a′: no claims on Flock's matrices.** The Keccak VM's π1 has none: its lincheck terminal is the structured
+    one (`keccak_flock::structured_terminal`), computed by π1's verifier, so its claims are three (`C1`, `C2`, `F`),
+    all at the batch's point.
+
+17. **π1-rec4: the wide draws** (`FsShape::Rec4`): the challenges no message separates drawn from one Keccak-f, the
+    ring map after `C2`'s commitment, 106 Keccak-f instead of 116: §14.4 and §14.5.
+
 ### The floor
 
 The main line is execution-bound. Its largest part is the ring switch's weight at the batch's point: it needs the 64
@@ -510,3 +536,193 @@ subtracted). Modelled: the public input's byte swap (about 110 gas, not built). 
 - The public input in leanVM's byte order: about 110 gas; documented instead (F7).
 - A looped ring-weight kernel: a loop costs about 30 gas an iteration.
 - 32-bit packing of `q_flock` (32 twists instead of 64): not leanVM's witness, and `C1` would double.
+
+## 14. The recursion's Fiat–Shamir shapes: the paired batch and the wide draws
+
+π2's circuit runs π1's verifier (`docs/leanvm/rec/SPEC-REC.md`), so π1's transcript is what π2 pays for: a Keccak-f
+is 130,944 of π2's `2^24` positions (SPEC-REC.md §2.4.1). π1-rec3 and π1-rec4 shape the transcript for π2 and keep
+π1's stream, statement, relations and claims. π1-rec3 is `FsShape::Rec3`: the derived runs of `Rec` (`α` and Flock's
+zerocheck point as successive squares, SPEC-REC.md §1.4), the narrow batch challenges of `Rec2` (§13, entry 14) and
+the paired batch (§14.1). π1-rec4 is `FsShape::Rec4`: π1-rec3 with the wide draws (§14.4).
+
+```sh
+cargo test --release -p leanvm_statement --lib transcript -- --nocapture
+cargo test --release -p leanvm_univariate --lib domain
+```
+
+### 14.1 The paired batch
+
+π1's three claims (`C1`, `C2`, `F`) are at the batching sumcheck's point `r`, whose coordinates are the largest stack's
+variables (27 at 128 signatures, 28 at 400). The batch runs two variables a round, so `r` is generated by 14
+challenges instead of 27 (`transcript::{sumcheck_pairs, sumcheck_pairs_drawn, pair_point, cantor_beta1}`; π1's
+verifier calls it in `verifier::batch`, its prover is `prover::batch::prove_pairs`).
+
+- **The rounds** (`transcript::sumcheck_pairs`). A pair is `(u_(2j), u_(2j+1))`, low variables first. Its polynomial
+  is `G_j(X) = Σ_rest Σ_k λ^k W_k(·) C_k(·)`, read at `(r_(<2j), y_0(X), y_1(X), rest)`. It has degree 8.
+  - `V_2 = {0, 1, β_1, 1 + β_1}` is `GF(4)` (`β_1² + β_1 = 1`). So `Σ_(x ∈ V_2) x^e` is 1 for `e ∈ {3, 6}` and 0 for
+    every other `e ≤ 8`.
+  - The stream holds `c_0, c_1, c_2, c_4, …, c_8`, and `c_3 = claim + c_6`.
+  - One challenge `z_j` gives `r_(2j) = y_0(z_j) = z_j + β_1 y_1` and `r_(2j+1) = y_1(z_j) = z_j² + z_j`.
+  - 27 variables are 13 pairs, then one plain round, with `r_26 = z_13`; 28 variables are 14 pairs.
+  - Every challenge is narrow, 160 bits (`Channel::sample_narrow`).
+- **What stays.** The weights `W_k(r)`, the three values, and the claims at `r`'s prefixes. Only the rounds and their
+  challenges change.
+- **π2.** A pair's two call words are `y_0`, `y_1` of a port, not ports themselves (`CallWord::Pair`,
+  `circuit::compile::pair_coordinate`); the map `z ↦ (y_0(z), y_1(z))` is injective (`y_0 + β_1 y_1 = z`), so
+  binding the `z_j` binds `r`. `public_from_calls` recovers `z` and checks both coordinates; π2's verifier computes
+  `pair_point` of its public scalars (`Reduced::pair_points`).
+- **The prover** (`prover::batch::prove_pairs`). A pair round takes nine sums `Σ W(a, b, ·) C(a, b, ·)`,
+  `a, b ∈ {0, 1, ∞}`, for each piece of the weights and each group of four words: the coefficients of `G̃`, and then
+  `G = G̃(y_0, y_1)`. As built it reuses `Weight::round` and `Weight::fold`: each pair binds its low variable at 0, 1
+  and `β_1` on clones of the weights (`Weight` and `Folded` are `Clone`), then takes one round on the high variable;
+  four passes a pair instead of two (a two-variable kernel in `weight.rs` would read the stacks once a pair). `G̃`'s
+  coefficients in `u_0` come by interpolation (`β_1² + β_1 = 1`: no inversion); each pair is checked against the
+  claim (`c_3 + c_6`). A stack shorter than the batch with an odd number of variables zero-extends itself past its
+  words' rounds. No extra memory, no new commitment.
+- **Tested** (`leanvm_statement` `transcript::tests`, `leanvm_univariate` `domain::tests`): the paired sumcheck is
+  complete on honest product sums of 1, 2 and 3 tables, at odd and even variable counts; a wrong claim, and each
+  flipped scalar, ends on a claim the tables do not give; `pair_point` is `V_2`'s coordinate functionals, and
+  `cantor_beta1` is `domain::beta()[1]`; recorded over 27 variables at degree 2: 27 Keccak-f either way, 14
+  challenges against 27, and 278 `E` operations against 135. End to end, the real π1-rec3 and π1-rec4 proofs are
+  accepted by π1's Rust verifier (and π1-rec3's by its contract) and by the recursion's contract through π2.
+
+The pairs were made when the recursion's contract carried π1's point in calldata (14 challenges and 3 values, 408 B
+against 720 B; [`docs/HISTORY.md`](../../HISTORY.md)). π2's circuit now hashes π1's claims, so the point is not in
+calldata; the paired batch stays as π1-rec3's and π1-rec4's batch, at no Keccak-f more than plain rounds (§14.3).
+
+### 14.2 Why the batch's point stays
+
+`C1` carries Flock's ring switch (§7), one of `C1`'s relations:
+`Σ_u Φ(eq(P, u)) q_flock(u) = target`, with `Φ(eq(P, ·)) = Σ_(k<64) c_k eq(P^(2^k), ·)` and `P` challenges of Flock's
+rounds. A declared claim holds point claims (`E`-linear evaluations), and the 64 values `q̂(P^(2^k))` are unknown
+(sending them would make 64 claims). So the claim is reduced by a sumcheck over `q_flock`'s variables, as Binius's ring
+switch ends, and a sumcheck's challenges must be drawn after its rounds' messages. That sumcheck is the batch, whose
+point every other relation shares at no extra coordinate. The alternatives give the coordinates back as claim values,
+at least as many:
+
+- **DEEP** could fold the univariate relations (columns at `t`, `t + 1`, `s(t)`; `Q_W`'s copies at `y(t)`; `F`'s point
+  `(α, w(t))`) into one quotient in a new commitment, one point claim a height group. It saves no coordinate (the batch
+  stays for `q_flock`); it needs every column's value at every point (about 90 more values, 2.1 KB of π1's stream,
+  about 16 Keccak-f in π2, modelled); it costs a commitment, whose list joins the union bound, and a claim a height
+  group. The heap's restrictions are multilinear claims at mixed points (§2), not univariate evaluations of `T`.
+- **Gemini** in characteristic 2 (`F_(j+1)(s(x)) = F_j(x) + (x + r_j)(F_j(x) + F_j(x + 1))`) commits `F_1, …` and
+  needs each `F_j` at `w_j(z)` and `w_j(z) + 1`: about two values on chain for each coordinate saved.
+- **Zeromorph** (`q(x) − v = Σ_l (w_l(x) + r_l) Q_l(w_(l+1)(x))` in basis `B`) merges the `Q_l` through KZG's
+  homomorphism, which WHIR's roots lack; one stack can hold every `Q_l`, but the weights `w_l(z) + r_l` carry `r`, so
+  each `Q_l(w_(l+1)(z))` is its own claim.
+- **The univariate sumcheck** over `q_flock`'s values needs an `E`-valued quotient of `2^n` points (a new commitment)
+  and `E_r(z)`, a sum of `2^n` terms, for π2 to evaluate.
+
+### 14.3 The challenges per round
+
+A round of `k` variables on `V_k`'s coordinate functionals (`y_l(ω_i) = i_l`, §2) sends the summand restricted to the
+curve `u = y(X)`: a polynomial `G` of degree `2 · k · 2^(k-1)` for a summand of degree 2 in each variable, whose sum
+over `V_k` is the sum over the round's `2^k` corners. One challenge `z` gives the `k` coordinates `y_l(z)`. No curve
+does better: a curve through the `2^k` corners on `2^k` points has coordinates of degree at least `2^(k-1)`.
+
+π2 hashes that data. Over 27 variables (modelled, `params/leanvm_rec_params.py`; Keccak-256's rate is 136 bytes):
+
+| rounds of | challenges | scalars | Keccak-f | in π2 |
+|---|---:|---:|---:|---|
+| 1 variable | 27 | 54 | 27 | |
+| **2 variables (π1-rec3, π1-rec4)** | **14** | 106 | **27** | **+0 Keccak-f** |
+| 3 variables | 9 | 216 | 45 | +18 (2.36M positions) |
+| 4 variables | 7 | 408 | 77 | +50 |
+| 3 triples, 9 pairs | 12 | 144 | 33 | +6 (0.79M positions) |
+
+- **Pairs cost no permutation.** A plain round's 2 scalars and the 32-byte state are 80 bytes, one block. A pair's 8
+  scalars and the state are 224 bytes: one hash of two blocks, where two plain rounds take two hashes of one block.
+- **Triples do not pay**: each costs 2 more permutations against pairs and saves half a challenge; π2 has about 0.36M
+  positions left at 128 signatures and 0.09M at 400 (SPEC-REC.md §2.4.5).
+- **In π2** the pairs send more stream scalars (8 where two plain rounds send 4), fewer challenge packings, one later
+  block a pair, and about twice the batch's `E` operations (278 against 135, recorded); π2's verifier has 13 fewer
+  ports.
+
+### 14.4 The wide draws (π1-rec4)
+
+π1-rec3's transcript (`tests/counts.rs`, `transcript_shape`; bytes each call absorbs besides the 32-byte state):
+`80 | 0 0 0 | 192 | 48 ×41 | 1536 | 0 ×5 | 56 | 2832 | 0 | 192 ×13 | 48`, plus the seed: 70 calls, 116 Keccak-f. Nine
+calls absorb nothing (`β`, `γ`, the zerocheck's `c`; the ring map's `f_1 … f_5`; the batch's `λ`): a whole
+permutation for 192 bits each, while a Keccak-f's rate holds 1,088.
+
+**The wide draw** (`Channel::sample_wide`, `transcript::keccak256_rate`): one Keccak-256 of the state and the bytes
+since the last challenge, as `sample` hashes them, but read past its digest: the sponge's whole rate after its last
+permutation (136 bytes; its first 32 are `keccak256` of the input, which stays the chain's next state). Challenge `k`
+is the rate's bytes `8 + 24k .. 32 + 24k` read as `challenge_of` reads the state's `8 .. 32`, so challenge 0 is
+`sample`'s and a draw gives up to five (`WIDE_MAX`). In π2's circuit a challenge `k` is three more lanes of the same
+permutation's output (lanes `1 + 3k … 3 + 3k`), packed as `Low`'s.
+
+**π1-rec4's transcript** (the stream is π1-rec3's byte for byte; only the challenges' derivation changes):
+
+| call | absorbs | Keccak-f | draws |
+|---|---:|---:|---|
+| the seed | name, IV, public input | 1 | — |
+| after `C1`'s commitment | row counts, `C1`'s root and answer (80 B) | 1 | `α`'s `c`, `β`, `γ`, the zerocheck's `c` (wide, 4) |
+| the skip, the zerocheck's and lincheck's rounds | as π1-rec3 (192 B, 41 × 48 B) | 2 + 41 | one each |
+| after `C2`'s commitment | the slices (1,536 B) and `C2`'s root and answer (56 B) | 12 | `t`, the ring map's `f_0 … f_3` (wide, 5) |
+| after the values at `t` | 2,832 B | 22 | `ρ`, the batch's `λ`, `f_4`, `f_5` (wide, 4) |
+| the batch | 13 pairs × 192 B, 48 B | 26 + 1 | one each (narrow) |
+| | | **106** (π1-rec3: 116) | 60 calls (70) |
+
+Moving the slices into `t`'s call costs nothing (`32 + 1,592 + 1 = 1,625` bytes fill 12 blocks, as `32 + 1,536`
+did alone) and saves the map's own call. At 400 signatures: 108 against 118. The minimum for any sponge on this
+stream, every message absorbed before the challenge that follows it, is 105 (the values at `t` are 9 bytes past 21
+blocks with the 32-byte state; a duplex sponge without it would save that one, at the cost of leaving Keccak-256's
+chain, which π1's main line, its contract and the Lean's model share). Narrow ring-map challenges, six in one rate,
+would save no permutation over drawing `f_4, f_5` with `ρ`, and would weaken the ring switch.
+
+**Code.** `leanvm_statement`: `FsShape::Rec4` (its code 4 in π1's contract IV, which binds the variant), the channels'
+`sample_wide` (`KeccakChannel`, `KeccakWriter`, the prover's `Replay`, the recorder: `record::Node::Wide(hash, k)`,
+challenge 0 a `Node::Low`), `flock_min::verify_walked_deferred` (Flock without its map, the zerocheck's first
+coordinate given) and `ring_end_at`. `leanvm_univariate`: `verifier::reduce` and the prover draw as the table says
+(`KECCAK_REC4`); `batch` takes `λ` drawn. The EVM's `KECCAK256` gives the digest alone, so π1-rec4 has no contract of
+its own (`codegen` refuses a `Wide` node): its vectors are checked against the Rust verifier (`tests/evm_vectors.rs`,
+`tests/prove_real.rs`), and π2's circuit runs it. `leanvm_rec::PI1 = KECCAK_REC4`; π1-rec3 stays (the Lean's, its
+vectors, its contract).
+
+**Vectors.** `tests/vectors/keccak128_rec4.txt` (the reference trace) and `keccak_rec4.txt` (400 signatures), written
+by `tests/prove_real.rs` (`WRITE_VECTORS`, `VECTOR_FILE`), not by hand ([`KECCAK.md`](KECCAK.md), "Vectors").
+
+### 14.5 Soundness of the two shapes
+
+**The pairs.** A pair's polynomial has degree 8, so its Schwartz–Zippel error with a narrow challenge is `8/2^160` (a
+plain round's `2/2^160`), drawn after `C2`, over `C1`'s and `C2`'s lists (4,473 and 6,296 at 128 signatures): 157.0
+bits alone and 132.3 after the lists, the weakest round of π1-rec3 and π1-rec4 (§9). Summed over the 14 rounds, as an
+interactive protocol would count them, about 128.5; with Fiat–Shamir over `Q` queries the per-round figure is the one
+that counts (§9). The Lean bound caps each round at `2^35/|E|`, a pair's `8/2^160` exactly. The point is not uniform
+(each pair of coordinates lies on a curve); neither argument needs it: the sumcheck makes one Schwartz–Zippel step a
+round, in `z_j`, and WHIR's openings are sound at every point. No new commitment, no new list.
+
+**π1-rec4 against π1-rec3.** The stream, the statement, the relations, the claims and every challenge's role are
+π1-rec3's; three things differ.
+
+1. *Several challenges from one query.* In the random-permutation model a fresh Keccak-f query's output is uniform
+   (up to `Q/2^1600`), so the five 192-bit challenges of a wide draw are uniform and independent, and independent of
+   the digest that becomes the next state (other lanes); the capacity stays Keccak-256's 512 bits. The bus needs `c`
+   and `β` independent and uniform (SPEC-REC.md §1.4), and they are. The Fiat–Shamir composition
+   (`formal/UniSound/UniSound/Fs128.lean`, `uniBound128`) charges every query the error of the round it may hit; a wide
+   query may hit any of its challenges, so its error is their sum (`params/leanvm_univariate_params.py`,
+   `rounds(.., "rec4")`).
+2. *The ring map after `C2`'s commitment, `f_0 … f_3` with `t` and `f_4, f_5` after the values at `t`.* The ring
+   switch's relation is `Σ_u W_f(u) q_flock(u) = target_f(s)`, a function of `q_flock` (bound by `C1`'s root and
+   answer before `α`), the slices `s` and the point `p` (in the stream before the map) and the map `f` alone, so
+   drawing `f` later, and in two parts, leaves it a function of values fixed before `f`. For a dishonest `s` it is a
+   nonzero polynomial `P(f_0, …, f_5)` of degree 1 in each `f_j`. Write `P = Σ_m c_m(f_0 … f_3) f_4^{m_4} f_5^{m_5}`:
+   some `c_m` is nonzero of degree ≤ 4, so a `t`-query makes it vanish with probability ≤ 4/|E|, and otherwise a
+   `ρ`-query makes `P` vanish with probability ≤ 2/|E|. The calculator charges the whole 6/|E| to both queries, over
+   `C1`'s and `C2`'s lists. `t`'s identities do not involve the map.
+3. *`λ` with `ρ`, `f_4`, `f_5`.* `ρ` combines relations that are all fixed when it is drawn but the ring relation's
+   target, which `f_4, f_5` fix; those are independent of `ρ` (other lanes), so conditioned on them the combination
+   errs with probability ≤ (relations − 1)/|E| as before. `λ` combines the three combined claims, fixed by `ρ`.
+
+At 128 signatures, bits after the lists (`python3 -I params/leanvm_univariate_params.py`):
+
+| query | error | π1-rec3 | π1-rec4 |
+|---|---|---:|---:|
+| `α`'s call | bus `16 · side`, `γ` 60, zerocheck `2^22 − 1` (summed in π1-rec4) | 154.3, 174.0, 157.9 | 154.1 |
+| `t`'s call | the identities' `Σ deg` (+ the map's 6 in π1-rec4) | 143.2 | 143.2 |
+| `ρ`'s call | `ρ` 115 (+ `λ` 2 + the map's 6) | 160.4 (`λ` 166.3, the map 177.3) | 160.3 |
+| the batch's pairs | `8/2^160` | **132.3** | **132.3** |
+
+With the three openings charged once (`269 · 2^-137` a query), **128.79 bits as `Q/ε` at `Q = 2^64`** for both (400
+signatures: 128.86).

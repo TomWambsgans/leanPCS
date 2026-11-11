@@ -44,7 +44,7 @@ pub struct Entry {
     /// code: the gas of a valid proof plus one (a `JUMPDEST`) per check.
     pub measure: bool,
     /// The frame words the seed hashes after the public input, and the graph's `Node::Frame(j, ..)` read: payload
-    /// `frame[j]` of the transaction's frame of PCS claims (π2's hashed claims' Keccak-256s; `PERF_GAS.md`).
+    /// `frame[j]` of the transaction's frame of PCS claims (π2's hashed claims' Keccak-256s; `docs/leanvm/rec/SPEC-REC.md` §2.4.6).
     pub frame: Vec<u8>,
 }
 
