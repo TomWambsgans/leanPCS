@@ -21,9 +21,9 @@ the stages' run there (`StagesAt`):
 
 * **`TailAcceptsG`** (Acc): when the prover's tail returns a proof and the challenges avoid `bad`, the verifier
   accepts it;
-* **`TailReducesG`** (Red): when the challenges avoid `bad`, the prover's two reductions return claims.
+* **`TailReducesG`** (Red): when the challenges avoid `bad`, the prover's reduction returns claims.
 
-So a rejected run at non-degenerate challenges had one of its six openings fail at a `17`-bit proof of work
+So a rejected run at non-degenerate challenges had one of its three openings fail at a `17`-bit proof of work
 (`proveClaimWithH_eq_some_none`), every nonce below `2^25` failing in the log: mumbai's potential `powPot` of the
 log is at least `1`, which happens with probability below `2^48 · (1 − 2^-17)^(2^25) ≤ 2^-304` (`grinding_le`).
 -/
@@ -139,16 +139,16 @@ variable (setup : OracleComp KeccakCalls (Tree × Commitment)) (circuit : Circui
 
 /-- **The stages at a hash function and a permutation.** -/
 structure StagesAt (H : Bytes → Digest) (F : KeccakState → KeccakState)
-    (x : AuxA × Digest × CommitmentScalars) (s₁ s₂ s₃ : Digest) (y : AuxB × Scalars9) (s₄ : Digest)
-    (z : AuxC × Digest × (Vector E 4 × E)) (s₅ : Digest) : Prop where
+    (x : AuxA × Digest × CommitmentScalars) (s₁ s₂ s₃ : Digest) (y : AuxB × CommitmentScalars) (s₄ : Digest)
+    (z : AuxC × Digest × (Vector E 3 × E)) (s₅ : Digest) : Prop where
   hA : runAt H F (stageAG setup circuit cells₀ coins stmt) = x
   h₁ : H (in3 x.2.1 x.2.2) = s₁
   h₂ : H (digestBytes s₁) = s₂
   h₃ : H (digestBytes s₂) = s₃
-  hB : runAt H F (stageBG circuit cells₀ coins x.1 s₁ s₂ s₃) = y
-  h₄ : H (in9 s₃ y.2) = s₄
+  hB : runAt H F (stageBG circuit cells₀ coins stmt x.1 s₁ s₂ s₃) = y
+  h₄ : H (in3 s₃ y.2) = s₄
   hC : runAt H F (stageCG circuit cells₀ coins stmt x.1 y.1 s₁ s₂ s₃ s₄) = z
-  h₅ : H (in5 z.2.1 z.2.2) = s₅
+  h₅ : H (in4 z.2.1 z.2.2) = s₅
 
 /-- **(Acc)**: at every hash function and permutation, when the prover's tail returns a proof and the
 challenges avoid `bad`, the verifier accepts it. -/
@@ -160,37 +160,27 @@ def TailAcceptsG (bad : Finset (E × E × E × E)) : Prop :=
       runAt H F (proverTailG circuit cells₀ coins fuel stmt x.1 y.1 z.1 s₁ s₂ s₃ s₄ s₅) = some π →
       runAt H F (verifyWithH callKeccak256 callKeccakF1600 vLogRows x.1.1 stmt π) = true
 
-/-- **(Red)**: at every hash function and permutation, when the challenges avoid `bad`, the prover's first
-claims exist and its second reduction returns claims. -/
+/-- **(Red)**: at every hash function and permutation, when the challenges avoid `bad`, the prover's
+claims exist. -/
 def TailReducesG (bad : Finset (E × E × E × E)) : Prop :=
   ∀ (H : Bytes → Digest) (F : KeccakState → KeccakState) x s₁ s₂ s₃ y s₄ z s₅,
     StagesAt setup circuit cells₀ coins stmt H F x s₁ s₂ s₃ y s₄ z s₅ →
     (challengeOf s₁, challengeOf s₂, challengeOf s₄, challengeOf s₅) ∉ bad →
-    ∃ r₀, claims₀Of circuit cells₀ coins stmt x.1 y.1 z.1 s₄ s₅ = some r₀ ∧
-      runAt H F (reduceWithH callKeccak256 circuit.logRows x.1.2.2.1 stmt
-        { proof₀Of circuit cells₀ coins x.1 y.1 s₄ with
-          qValue := tableEval (tablesAt circuit cells₀ coins s₁ s₂ s₃).2.1 r₀.claims.q.point,
-          gValue := tableEval (tablesAt circuit cells₀ coins s₁ s₂ s₃).2.2 r₀.claims.g.point }) ≠ none
+    ∃ r, claimsOf circuit cells₀ coins stmt x.1 y.1 z.1 s₄ s₅ = some r
 
-/-- **The prover's tail fails only at an opening**, when its claims and its second reduction exist. -/
+/-- **The prover's tail fails only at an opening**, when its claims exist. -/
 theorem opening_fails_of_proverTailG {ℓ : Log} (a : AuxA) (b : AuxB) (c : AuxC)
     (s₁ s₂ s₃ s₄ s₅ : Digest)
     (h : simulateQ (lookImpl ℓ) (proverTailG circuit cells₀ coins fuel stmt a b c s₁ s₂ s₃ s₄ s₅) =
       some none)
-    (r₀ : Reduced) (hr₀ : claims₀Of circuit cells₀ coins stmt a b c s₄ s₅ = some r₀)
-    (hred : simulateQ (lookImpl ℓ) (reduceWithH callKeccak256 circuit.logRows a.2.2.1 stmt
-        { proof₀Of circuit cells₀ coins a b s₄ with
-          qValue := tableEval (tablesAt circuit cells₀ coins s₁ s₂ s₃).2.1 r₀.claims.q.point,
-          gValue := tableEval (tablesAt circuit cells₀ coins s₁ s₂ s₃).2.2 r₀.claims.g.point }) ≠
-      some none) :
+    (r : Reduced) (hr : claimsOf circuit cells₀ coins stmt a b c s₄ s₅ = some r) :
     ∃ (tree : Tree) (table : Array K) (cm : Commitment) (claim : Claim),
       simulateQ (lookImpl ℓ) (proveClaimWithH callKeccak256 callKeccakF1600 fuel tree table cm
         claim) = some none := by
   unfold proverTailG at h
-  rw [hr₀] at h
-  obtain ⟨red, hr, h⟩ := look_bind h
-  rcases red with _ | r
-  · exact absurd hr hred
+  rw [hr] at h
+  unfold openTailH realPcsH at h
+  dsimp only at h
   obtain ⟨o₁, h₁, h⟩ := look_bind h
   rcases o₁ with _ | p₁
   · exact ⟨_, _, _, _, h₁⟩
@@ -200,15 +190,6 @@ theorem opening_fails_of_proverTailG {ℓ : Log} (a : AuxA) (b : AuxB) (c : AuxC
   obtain ⟨o₃, h₃, h⟩ := look_bind h
   rcases o₃ with _ | p₃
   · exact ⟨_, _, _, _, h₃⟩
-  obtain ⟨o₄, h₄, h⟩ := look_bind h
-  rcases o₄ with _ | p₄
-  · exact ⟨_, _, _, _, h₄⟩
-  obtain ⟨o₅, h₅, h⟩ := look_bind h
-  rcases o₅ with _ | p₅
-  · exact ⟨_, _, _, _, h₅⟩
-  obtain ⟨o₆, h₆, h⟩ := look_bind h
-  rcases o₆ with _ | p₆
-  · exact ⟨_, _, _, _, h₆⟩
   cases look_pure h
 
 /-- **A run rejected at non-degenerate challenges puts the potential at one.** -/
@@ -246,10 +227,9 @@ theorem one_le_powPot_of_rejected {bad : Finset (E × E × E × E)} (hfuel : fue
   unfold stageDG at hv
   obtain ⟨o, ho, hv⟩ := look_bind hv
   rcases o with _ | π
-  · obtain ⟨r₀, hr₀, hr⟩ := hred Ht Ft x s₁ s₂ s₃ y s₄ z s₅ hst hgood
+  · obtain ⟨r, hr⟩ := hred Ht Ft x s₁ s₂ s₃ y s₄ z s₅ hst hgood
     obtain ⟨tree, table, cm, claim, hfail⟩ :=
-      opening_fails_of_proverTailG circuit cells₀ coins fuel stmt x.1 y.1 z.1 _ _ _ _ _ ho r₀ hr₀
-        fun h ↦ hr (hid _ _ h)
+      opening_fails_of_proverTailG circuit cells₀ coins fuel stmt x.1 y.1 z.1 _ _ _ _ _ ho r hr
     exact one_le_powPot_of_proveClaim hfuel hfuel0 hfail
   · exfalso
     have hver := hid _ _ hv

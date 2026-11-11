@@ -73,16 +73,12 @@ theorem hOnly_reduceWithH (logRows : ℕ) (index : Commitment) (stmt : Statement
     split
     · refine (hOnly_squeezeWithH _).bind fun ⟨α, c₁⟩ ↦ ?_
       refine (hOnly_squeezeWithH _).bind fun ⟨β, c₂⟩ ↦ ?_
-      refine (hOnly_squeezeWithH _).bind fun ⟨γ, c₃⟩ ↦ ?_
+      refine (hOnly_squeezeWithH _).bind fun ⟨μ, c₃⟩ ↦ ?_
       dsimp only
       split
-      · split
-        · split
-          · refine (hOnly_squeezeWithH _).bind fun ⟨t, c₄⟩ ↦ ?_
-            dsimp only
-            exact (hOnly_squeezeWithH _).bind fun ⟨ρ, _⟩ ↦ hOnly_pure _
-          · exact hOnly_pure _
-        · exact hOnly_pure _
+      · refine (hOnly_squeezeWithH _).bind fun ⟨t, c₄⟩ ↦ ?_
+        dsimp only
+        exact (hOnly_squeezeWithH _).bind fun ⟨ρ, _⟩ ↦ hOnly_pure _
       · exact hOnly_pure _
     · exact hOnly_pure _
 
@@ -222,14 +218,10 @@ theorem hOnly_stageAG (setup : OracleComp KeccakCalls (Tree × Commitment)) (hs 
   exact (hOnly_queryH _).bind fun _ ↦ hOnly_pure _
 
 theorem hOnly_stageBG (a : AuxA) (s₁ s₂ s₃ : Digest) :
-    HOnly (stageBG circuit cells₀ coins a s₁ s₂ s₃) := by
+    HOnly (stageBG circuit cells₀ coins stmt a s₁ s₂ s₃) := by
   unfold stageBG
   refine (hOnly_commitmentWithH _ _).bind fun x ↦ ?_
   rcases x with ⟨_, _⟩
-  refine (hOnly_commitmentWithH _ _).bind fun y ↦ ?_
-  rcases y with ⟨_, _⟩
-  refine (hOnly_commitmentWithH _ _).bind fun z ↦ ?_
-  rcases z with ⟨_, _⟩
   exact hOnly_pure _
 
 theorem hOnly_stageCG (a : AuxA) (b : AuxB) (s₁ s₂ s₃ s₄ : Digest) :
@@ -241,27 +233,17 @@ theorem hOnly_stageCG (a : AuxA) (b : AuxB) (s₁ s₂ s₃ s₄ : Digest) :
 theorem disc_proverTailG (a : AuxA) (b : AuxB) (c : AuxC) (s₁ s₂ s₃ s₄ s₅ : Digest) :
     Disc (proverTailG circuit cells₀ coins fuel stmt a b c s₁ s₂ s₃ s₄ s₅) := by
   unfold proverTailG
+  generalize claimsOf circuit cells₀ coins stmt a b c s₄ s₅ = r
+  rcases r with _ | r
+  · exact disc_pure _
+  unfold openTailH realPcsH
   dsimp only
+  refine (disc_proveClaimWithH _ _ _ _ _).bind fun o₁ ↦ ?_
   split
-  · refine (disc_of_hOnly (hOnly_reduceWithH _ _ _ _)).bind fun o ↦ ?_
+  · refine (disc_proveClaimWithH _ _ _ _ _).bind fun o₂ ↦ ?_
     split
-    · refine (disc_proveClaimWithH _ _ _ _ _).bind fun o₁ ↦ ?_
-      split
-      · refine (disc_proveClaimWithH _ _ _ _ _).bind fun o₂ ↦ ?_
-        split
-        · refine (disc_proveClaimWithH _ _ _ _ _).bind fun o₃ ↦ ?_
-          split
-          · refine (disc_proveClaimWithH _ _ _ _ _).bind fun o₄ ↦ ?_
-            split
-            · refine (disc_proveClaimWithH _ _ _ _ _).bind fun o₅ ↦ ?_
-              split
-              · refine (disc_proveClaimWithH _ _ _ _ _).bind fun o₆ ↦ ?_
-                split <;> exact disc_pure _
-              · exact disc_pure _
-            · exact disc_pure _
-          · exact disc_pure _
-        · exact disc_pure _
-      · exact disc_pure _
+    · refine (disc_proveClaimWithH _ _ _ _ _).bind fun o₃ ↦ ?_
+      split <;> exact disc_pure _
     · exact disc_pure _
   · exact disc_pure _
 
@@ -278,9 +260,9 @@ end Stages
 /-- A computation of the chain's shape is disciplined when its stages are. -/
 theorem disc_staged4 {α β γ δ : Type} (chal : Digest → E)
     (A : OracleComp KeccakCalls (α × Digest × CommitmentScalars))
-    (B : α → Digest → Digest → Digest → OracleComp KeccakCalls (β × Scalars9))
+    (B : α → Digest → Digest → Digest → OracleComp KeccakCalls (β × CommitmentScalars))
     (C : α → β → Digest → Digest → Digest → Digest →
-      OracleComp KeccakCalls (γ × Digest × (Vector E 4 × E)))
+      OracleComp KeccakCalls (γ × Digest × (Vector E 3 × E)))
     (D : α → β → γ → Digest → Digest → Digest → Digest → Digest → OracleComp KeccakCalls δ)
     (hA : Disc A) (hB : ∀ a s₁ s₂ s₃, Disc (B a s₁ s₂ s₃))
     (hC : ∀ a b s₁ s₂ s₃ s₄, Disc (C a b s₁ s₂ s₃ s₄))
@@ -297,7 +279,7 @@ theorem disc_stagedRunG (setup : OracleComp KeccakCalls (Tree × Commitment)) (h
     (circuit : Circuit) (cells₀ : Array K) (coins : Coins) (fuel vLogRows : ℕ) (stmt : Statement) :
     Disc (stagedRunG setup circuit cells₀ coins fuel vLogRows stmt) :=
   disc_staged4 _ _ _ _ _ (disc_of_hOnly (hOnly_stageAG _ _ _ _ setup hs))
-    (fun _ _ _ _ ↦ disc_of_hOnly (hOnly_stageBG _ _ _ _ _ _ _))
+    (fun _ _ _ _ ↦ disc_of_hOnly (hOnly_stageBG _ _ _ _ _ _ _ _))
     (fun _ _ _ _ _ _ ↦ disc_of_hOnly (hOnly_stageCG _ _ _ _ _ _ _ _ _ _))
     (fun _ _ _ _ _ _ _ _ ↦ disc_stageDG _ _ _ _ _ _ _ _ _ _ _ _ _ _)
 

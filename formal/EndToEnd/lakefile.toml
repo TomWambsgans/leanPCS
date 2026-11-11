@@ -155,6 +155,13 @@ name = "membership-differential"
 srcDir = "../Statement"
 root = "PcsQuotientTest.Differential"
 
+# The runner of the completeness proof's evaluated check on the deployed wiring table
+# (`E2ECompleteness.Pcs.H.WiringCheck`).
+[[lean_exe]]
+name = "membership-wiring-check"
+srcDir = "../Statement"
+root = "PcsQuotientTest.WiringCheck"
+
 # ---- The end-to-end libraries ----
 
 # `PcsQuotient.KnowledgeSoundness` from the random-permutation transfer and `SoundPcs`'s composition of the EIP's
