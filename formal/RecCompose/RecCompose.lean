@@ -46,6 +46,7 @@ import RecCompose.Pi2Closed
 import RecCompose.CompleteKeccakEnd
 import RecCompose.RealCircuit
 import RecCompose.RealEnd
+import RecCompose.Pi2AcceptsReal
 
 /-!
 # RecCompose: the recursive verifier's end theorems
