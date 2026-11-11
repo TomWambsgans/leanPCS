@@ -4,7 +4,7 @@
 
 Both provers of the EIP draft's benchmarks: the membership proof (`crates/membership/quotient`) and the recursion's
 pipeline (`crates/leanvm/rec/tests/pipeline.rs`: leanVM's trace of 128 signatures → π1-rec4 and its three openings →
-π2 and its five openings). Every change below is a prover change: the proofs are the same byte for byte, so the
+π2 and its four openings). Every change below is a prover change: the proofs are the same byte for byte, so the
 calldata, the claims, the gas and the Lean are untouched. Superseded figures (64 threads, the M4 Max, earlier
 protocols) are in [`HISTORY.md`](HISTORY.md), "Provers".
 
@@ -21,8 +21,8 @@ It builds first (unpinned), then runs the two provers `REPEAT` times interleaved
 and reports their medians: the membership figure is `cargo bench -p quotient --bench membership`'s prover total (one
 cold proof a run), the leanVM figure the pipeline's total (`PIPELINE_REPEAT=5`, each run itself the median of five
 warm passes). Then the gas: the membership contract's `gas_report` and π2's `real_end_to_end`. It ends with the EIP
-draft's table: the prover column is the median plus 0.1 s a PCS claim (1.01 + 3 · 0.1 = 1.3 s; 2.52 + 8 · 0.1 =
-3.3 s), the PIOP column `max(standard, floor)` of the PIOP's frame alone (20,097 and 40,708 gas).
+draft's table: the prover column is the median plus 0.1 s a PCS claim (1.01 + 3 · 0.1 = 1.3 s; 2.29 + 7 · 0.1 =
+3.0 s), the PIOP column `max(standard, floor)` of the PIOP's frame alone (20,097 and 40,396 gas).
 
 The proofs are pinned: the membership bench prints a proof digest (and `protocol::tests::proofs_are_pinned` pins a
 toy circuit's), and the pipeline asserts the Keccak-256 fingerprints of π1's stream and openings and π2's stream and
@@ -39,9 +39,9 @@ openings (`REFERENCE_PRINTS`). A prover change must leave them as they are.
 | **membership: prover total** | **1.01 s** | 6.0 GiB |
 | leanVM: π1-rec4, trace to its stream | 0.86 s | |
 | leanVM: π1-rec4's three openings (π2's witness replayed meanwhile, about 0.01 s) | 0.18 s | |
-| leanVM: π2's proof | 0.75 s | |
-| leanVM: π2's five openings | 0.73 s | |
-| **leanVM: total a proof** | **2.52 s** | 15.6 GB |
+| leanVM: π2's proof | 0.74 s | |
+| leanVM: π2's four openings (π2v4; π2v3's five: 0.73 s) | 0.51 s | |
+| **leanVM: total a proof** (π2v3: 2.52 s) | **2.29 s** | 15.6 GB |
 
 From `perf` at 8 threads: membership, Keccak-f (the Merkle leaves and nodes) 28%, the WHIR encodes' radix-8 layers
 (`run_layers`) 20% and their sweeps 7%, the kernel clearing fresh pages 6%, the quotient's block-wise pass 5%,

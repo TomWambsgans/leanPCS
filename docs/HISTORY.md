@@ -81,7 +81,7 @@ claim on a conic binds three row values (−1,536), no selector (−256).
 | with the frame | | 99,912 | 89,672 (90,952 at 400) | 66,376 | 63,328 |
 | contract | 13,219 B | 13.2 KB | 17,185 B, 205 selector pairs | 14,513 B, 176 pairs | 14,328 B, 176 pairs |
 | π2's positions of `2^24` | 15,668,416 (93.4%) | | 16,482,912 (98.2%) | 16,413,312 (97.8%) | 16,413,312 (97.8%) |
-| prover | 2.06 s M4 Max; 0.59 s on 64 threads | 3.7 s M4 Max (π1-rec3 1.41, π2 0.95, openings 1.25), 14.3 GB; 2.82 s on 8 threads | 2.62 s on 8 threads | 2.52 s on 8 threads | PROVER_TBD |
+| prover | 2.06 s M4 Max; 0.59 s on 64 threads | 3.7 s M4 Max (π1-rec3 1.41, π2 0.95, openings 1.25), 14.3 GB; 2.82 s on 8 threads | 2.62 s on 8 threads | 2.52 s on 8 threads | 2.29 s on 8 threads (π2's openings 0.73 → 0.51 s) |
 
 The `866ba889` round, step by step from `f96a7938`: narrow challenges as 20 bytes (`Read::Narrow`, −56 B, 96,328),
 no selector (−4 B, 96,072), `C1`'s claim hashed (`HASHED_CLAIMS = [0]`, −100 B, 89,672). Then (`perf2/leanvm-gas`,

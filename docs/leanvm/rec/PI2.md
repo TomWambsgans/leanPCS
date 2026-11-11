@@ -30,7 +30,12 @@ At the reference shape (128 signatures; `real_end_to_end`, `SPEC-REC.md` §6):
   claims (225 B) and the PCS gas (12,000; the floor binds: `64 · (577 + 225) + 12,000`, 7,332 of execution to spare).
   At 400 signatures: 35,452 execution, 63,328 (3,104 to spare). π2v3: 31,524 and 66,376 (eight claims).
 - **The contract**: 14,328 B (16,287 at 400), 798 `FIELD_MUL`s; four claims encoded (π2's), at payloads 3 … 6.
-- **The prover** (`tests/pipeline.rs` via `bench.sh`, 8 threads of an AMD EPYC 9355P): PROVER_TBD
+- **The prover** (`tests/pipeline.rs` via `bench.sh`, 8 threads of an AMD EPYC 9355P): 2.29 s a proof (π2's proof 0.74 s, its four
+  openings 0.51 s; peak RSS 15.6 GB), against π2v3's 2.52 s (0.75 s, five openings 0.73 s): one opening of `Q`'s `2^28`
+  words fewer, and `H = x h` (`mul_x`) within the noise of π2's proof. Interleaved A/B on h3 (`bench.sh`'s protocol, 8
+  threads, cores 0-7, under the bench lock), four runs each, totals (each the median of five passes): π2v3 2.588,
+  2.780, 2.516, 2.515 s; π2v4 2.576, 2.584, 2.290, 2.292 s; the first two pairs ran on a busy host (the idle check
+  timed out: π1's unchanged proof 0.88–0.98 s there), the last two on an idle one (π1 0.86 s on both).
 
 ## 1. What π2 proves
 

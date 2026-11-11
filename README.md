@@ -78,7 +78,7 @@ verifier (π1 with Fiat–Shamir shaped for π2) minus its openings; the contrac
 | | **128 signatures (the reference)** | 400 signatures |
 |---|---:|---:|
 | VM execution | 154,148 cycles; tables of `2^14`–`2^16` rows, memory `2^20` | 473,348 cycles; `2^16`–`2^17` rows, memory `2^22` |
-| Prover, trace → π1 → π2 and openings | **2.52 s**, 15.6 GB, on 8 threads of an AMD EPYC 9355P (median of 5, 2026-11-11) | |
+| Prover, trace → π1 → π2 and openings | **2.29 s**, 15.6 GB, on 8 threads of an AMD EPYC 9355P (median of 5, 2026-11-11) | |
 | Calldata | 577 B (4 zero): π1's three claims hashed in π2's circuit, no selector | 577 B |
 | Gas (EIP-8141 frame transaction, EIP-7976 floor, no base or per-frame cost) | 31,212 execution; standard 40,396, floor 36,928; with the frame (225 B) and `pcs_gas` 12,000: **63,328** (the floor binds) | 35,452 execution; 63,328 |
 | PCS claims | 7: π1's 3, π2's 4 | 7 |

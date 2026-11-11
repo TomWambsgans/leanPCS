@@ -101,8 +101,8 @@ transaction gas without the 21,000 base (EIP-7623) and without the frame's per-f
 
 | | ZK Merkle membership | leanVM by recursion (128 signatures) |
 |---|---|---|
-| Prover | **1.01 s** (reduction 0.66 s, openings 0.34 s), 6.0 GiB | **2.52 s** trace → π1-rec4 → π2 and openings (π1-rec4 0.86 s, its openings 0.18 s, π2 0.75 s, π2's five openings 0.73 s), 15.6 GB |
-| The EIP's prover column (+ 0.1 s a claim) | 1.3 s | 3.3 s |
+| Prover | **1.01 s** (reduction 0.66 s, openings 0.34 s), 6.0 GiB | **2.29 s** trace → π1-rec4 → π2 and openings (π1-rec4 0.86 s, its openings 0.18 s, π2 0.74 s, π2's four openings 0.51 s), 15.6 GB |
+| The EIP's prover column (+ 0.1 s a claim) | 1.3 s | 3.0 s |
 | Calldata | 273 B | **577 B** (4 zero) |
 | Gas without the frame | 15,753 execution; the PIOP's frame alone 20,097 (its standard binding) | 31,212 execution; standard 40,396 (the EIP's PIOP column), floor 36,928 |
 | Claims | 3 | 7 (π1's 3, π2's 4) |
