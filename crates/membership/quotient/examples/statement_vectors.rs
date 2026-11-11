@@ -89,7 +89,7 @@ fn reduction_line(log_rows: usize, index: &Commitment, statement: &Statement, st
             for c in [commitments.witness, commitments.table] {
                 write!(out, " {} {}", hex_hash(&c.root), hex_e(c.ood)).unwrap();
             }
-            for (_, claim) in claims.all() {
+            for claim in [&claims.witness, &claims.wiring, &claims.copy] {
                 claim_tokens(&mut out, claim);
             }
         }

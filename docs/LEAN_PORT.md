@@ -67,7 +67,7 @@ The bounds' arithmetic carries over but for one port.
   their terms, π1's calls (none encoded at 128 and 400 signatures), the digest and setup root, the seed over the frame
   words.
 - **The contract model** (`RecCompose`): no selector; the seed over three frame words (payloads 0 … 2); π2's five
-  claims at payloads 3 … 7 (`Ending::ClaimsAt`); no π1 element or root in calldata. `pi1rec3K_end` extended to "a
+  claims at payloads 3 … 7 (`Ending::Claims`, each claim with its payload); no π1 element or root in calldata. `pi1rec3K_end` extended to "a
   satisfied π2 circuit carries the Keccak-256s of the graph's three claims"; the extractor of
   `recKnowledgeSoundness_reduction_real` then names π1's claims by their hashes, with a Keccak-256 collision term (or
   the frame's binding as an assumption, as for every declared claim). The copy argument's round in `pi2Bound`:

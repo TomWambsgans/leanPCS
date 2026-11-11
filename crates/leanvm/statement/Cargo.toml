@@ -11,6 +11,6 @@ description = "The Keccak VM's statement, Flock's verifier, the Keccak-256 chain
 workspace = true
 
 [dependencies]
-evm_link.workspace = true
+evm_link = { workspace = true, features = ["machine"] }
 primitives.workspace = true
 revm.workspace = true

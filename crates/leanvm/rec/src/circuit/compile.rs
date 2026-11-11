@@ -105,7 +105,7 @@ pub fn expand(graph: &Graph) -> (Graph, Vec<u32>) {
             let m = |id: u32| map[id as usize];
             let s = match *node {
                 Node::Const([a, b, c]) => Sym::constant(E::new(a, b, c)),
-                Node::Statement(_) | Node::Input { .. } | Node::Seed => Sym::new(*node),
+                Node::Statement(_) | Node::Frame(..) | Node::Input { .. } | Node::Seed => Sym::new(*node),
                 Node::Add(a, b) => m(a) + m(b),
                 Node::Mul(a, b) => m(a) * m(b),
                 Node::Hash(s, from, to) => Sym::new(Node::Hash(m(s).0, from, to)),
@@ -459,6 +459,7 @@ pub fn compile_hashing<P: Permutation>(
         let zero_pair = |b: &mut Builder, consts: &mut Constants| [consts.fresh(b, K(0)), consts.fresh(b, K(0))];
         let (l, can_end): (Limbs, bool) = match *node {
             Node::Const([c0, c1, c2]) => ([c0, c1, c2].map(|c| sponge.constants.fresh(&mut b, K(c))), true),
+            Node::Frame(..) => unreachable!("π1's graph reads no frame"),
             Node::Statement(k) => {
                 let [z1, z2] = zero_pair(&mut b, &mut sponge.constants);
                 ([statement_limb[k as usize], z1, z2], true)
@@ -685,7 +686,7 @@ pub fn compile_hashing<P: Permutation>(
                     other => panic!("a claim's word {other:?}"),
                 }
             }
-            assert_eq!(encoding.len(), 82 + 24 * n, "the claim's encoding");
+            assert_eq!(encoding.len(), pcs_claim::claim_len(n), "the claim's encoding");
             let digest = sponge.keccak256(&mut b, &message);
             let digest_bit = |i: usize| digest[i];
             let limbs4: [Value; 4] = std::array::from_fn(|l| {

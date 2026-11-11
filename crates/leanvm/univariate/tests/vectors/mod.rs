@@ -14,6 +14,10 @@
 
 use leanvm_univariate::{KECCAK_MAIN, KECCAK_REC3, KECCAK_REC4, Shape, Variant};
 
+/// The four bytes the vectors' calldata starts with: the selector of `verify(bytes32,bytes)`, which π1's contracts took
+/// when the vectors were written. A contract's calldata is what follows, then the frame's index.
+pub const SELECTOR: [u8; 4] = [0x8e, 0x76, 0x0a, 0xfe];
+
 /// The program's IV the vectors' contracts are built with (`leanvm_statement::shapes::PROGRAM_IV`).
 #[allow(unused_imports)]
 pub use leanvm_statement::shapes::PROGRAM_IV;

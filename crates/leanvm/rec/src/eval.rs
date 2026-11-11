@@ -48,6 +48,7 @@ pub fn evaluate(graph: &Graph, seed: [u8; 32], public: &[u8; 32], stream: &[u8])
         let value = match *node {
             Node::Const([c0, c1, c2]) => Value::E(E::new(c0, c1, c2)),
             Node::Statement(k) => Value::E(E::new(be(&public[8 * k as usize..8 * k as usize + 8]), 0, 0)),
+            Node::Frame(..) => unreachable!("π1's graph reads no frame"),
             Node::Input { offset, len } => {
                 let bytes = &stream[offset as usize..offset as usize + len as usize];
                 Value::E(match len {

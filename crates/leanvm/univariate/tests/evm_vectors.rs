@@ -23,7 +23,6 @@
 
 mod vectors;
 
-use leanvm_statement::evm::codegen::word;
 use leanvm_statement::evm::machine::{PCS_FRAME, PcsFrame, call};
 use leanvm_univariate::Claims;
 use leanvm_univariate::contract::{compile_verifier, expected_claims, record_verifier_with, rust_verifier_with};
@@ -43,7 +42,7 @@ fn attesting(claims: &[Vec<u8>]) -> PcsFrame {
     PcsFrame::of(claims.iter().cloned())
 }
 
-/// Calldata after the selector (4 bytes) and the public input (32): the stream.
+/// A vector's calldata after its selector (4 bytes, [`vectors::SELECTOR`]) and the public input (32): the stream.
 const STREAM_AT: usize = 4 + 32;
 
 /// Replay `v`: the gas it measures.
@@ -77,14 +76,17 @@ fn replay(v: Vector) -> u64 {
         return 0;
     }
     let straight = compile_verifier(&recorded, &PROGRAM_IV, false);
-    let one = word([1, 0, 0]);
     let block = attesting(&v.claims);
-    let framed = |data: &[u8]| [data, &[PCS_FRAME]].concat();
+    // The contract's calldata: the vector's after its selector, then the frame's index.
+    let framed = |data: &[u8]| {
+        assert_eq!(data[..4], vectors::SELECTOR);
+        [&data[4..], &[PCS_FRAME]].concat()
+    };
     let run_straight = |data: &[u8], block: &PcsFrame| call(&straight.code, &[], &framed(data), block);
 
     let update = std::env::var_os("UPDATE_VECTOR_GAS").is_some();
     let outcome = run_straight(&v.calldata, &block);
-    assert_eq!(outcome.output.as_deref() == Some(&one[..]), v.accepts, "{}: the verdict", v.config);
+    assert_eq!(outcome.attests(), v.accepts, "{}: the verdict", v.config);
     assert_eq!(outcome.claims, v.claims, "{}: the claims checked are the recorded ones", v.config);
     if !update {
         assert_eq!(outcome.execution, v.gas_straight, "{}: the gas of execution", v.config);

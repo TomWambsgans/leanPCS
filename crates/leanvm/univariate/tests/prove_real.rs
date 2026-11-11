@@ -14,7 +14,7 @@ use leanvm_statement::evm::codegen::word;
 use leanvm_statement::evm::machine::{PcsFrame, call};
 use leanvm_statement::shapes::PROGRAM_IV;
 use leanvm_univariate::claims::Commitment;
-use leanvm_univariate::contract::{SetupRoots, calldata, compile_verifier, proof_calldata, record_verifier_with};
+use leanvm_univariate::contract::{SetupRoots, calldata, compile_verifier, record_verifier_with};
 use leanvm_univariate::prover::check::on_domain;
 use leanvm_univariate::prover::prove::{Config, OpeningProof, Proof, prove, verify};
 use leanvm_univariate::prover::trace::Trace;
@@ -232,8 +232,8 @@ fn end_to_end(variant: Variant) {
         // The measuring build, word for word against the Rust verifier, on this accepting stream.
         leanvm_univariate::contract::parity_with(&shape, &PROGRAM_IV, &roots, &public, &stream, variant, Claims::Point);
         let contract = compile_verifier(&recorded, &PROGRAM_IV, false);
-        // The claims the contract checks are those the openings prove.
-        let calls = call(&contract.code, &[], &data, &PcsFrame::declaring_all()).claims;
+        // The claims the contract checks, its frame declaring those the openings prove, are those.
+        let calls = call(&contract.code, &[], &data, &PcsFrame::of(inputs.iter().cloned())).claims;
         assert_eq!(calls.len(), inputs.len(), "one claim per opening");
         for (k, (made, proven)) in calls.iter().zip(&inputs).enumerate() {
             assert_eq!(made, proven, "call {k}: the opening's claim");
@@ -248,8 +248,7 @@ fn end_to_end(variant: Variant) {
             pcs
         };
         let blocks: Vec<PcsFrame> = std::iter::once(attesting(None)).chain((0..calls.len()).map(|k| attesting(Some(k)))).collect();
-        let one = word([1, 0, 0]);
-        let accepts = |data: &[u8], block: &PcsFrame| call(&contract.code, &[], data, block).output.as_deref() == Some(&one[..]);
+        let accepts = |data: &[u8], block: &PcsFrame| call(&contract.code, &[], data, block).attests();
         let ok = call(&contract.code, &[], &data, &blocks[0]);
         let mut bad = data.clone();
         // The stream's last byte, before the frame's.
@@ -277,7 +276,7 @@ fn end_to_end(variant: Variant) {
             config: name.to_string(),
             shape,
             public,
-            calldata: proof_calldata(&public, &proof.stream),
+            calldata: [&vectors::SELECTOR[..], &public, &proof.stream].concat(),
             claims: calls.clone(),
             accepts: true,
             gas_straight: gas,

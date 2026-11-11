@@ -3,7 +3,7 @@
 //! The verifier as a contract (straight-line code compiled from the recorded verifier, `leanvm_statement::evm`), its
 //! calldata, and what a call costs.
 //!
-//! **Calldata**: selector, the public input (four 64-bit words, each big-endian: `(cell0.c0, cell0.c1, cell1.c0,
+//! **Calldata**, no selector: the public input (four 64-bit words, each big-endian: `(cell0.c0, cell0.c1, cell1.c0,
 //! cell1.c1)`; leanVM's 32-byte digest has its words little-endian, so a caller reverses each word's 8 bytes, SPEC.md
 //! §4), then the stream: the six row counts, `C1`'s commitment (its root, its out-of-domain answer), Flock's messages,
 //! `C2`'s commitment, the values at `t`, the batching sumcheck (SPEC.md §8, §13), then a byte, the index of the
@@ -18,8 +18,11 @@
 //! commitment `F` is a constant of the code ([`SetupRoots`]: no `SLOAD`). Weighted claims (extension W, SPEC.md §8)
 //! are no PCS claim: the contract is built for point claims.
 
-use leanvm_statement::evm::codegen::{CALLS, Claim, Contract, ENTRY, Ending, Entry, MEASURE, VERIFY, Word, compile, word};
-use leanvm_statement::evm::machine::{FrameTxGas, Outcome, PCS_FRAME, PcsFrame, call, element_word, frame_tx_gas};
+use evm_link::Claim as Fields;
+use leanvm_statement::evm::codegen::{CALLS, Claim, Contract, Ending, Entry, MEASURE, Word, compile};
+pub use leanvm_statement::evm::deploy::{PhaseGas, sample_stream};
+use leanvm_statement::evm::deploy::{phases, sample_calldata_gas, sample_tx_gas};
+use leanvm_statement::evm::machine::{FrameTxGas, PCS_FRAME, PcsFrame, call, element_word};
 use leanvm_statement::evm::record::{Graph, Recorder, Sym, record};
 use leanvm_statement::field::E;
 use leanvm_statement::transcript::{Checks, KeccakChannel, keccak_seed};
@@ -152,19 +155,21 @@ fn scalar(sym: Sym) -> Word {
     Word::Node(sym.0)
 }
 
-/// The claims the contract checks declared (point claims), in order: each commitment's root and out-of-domain answer
-/// (the stream's for `C1` and `C2`, the code's constants for `F`), the point and the value, in any word type.
-fn claims_with<T: Copy, W: Clone>(
+/// The claims the contract checks declared (point claims), in order, as payloads `0, 1, 2`: each commitment's root and
+/// out-of-domain answer (the stream's for `C1` and `C2`, the code's constants for `F`), the point and the value, in
+/// any word type.
+fn claims_with<T: Copy, W>(
     recorded: &Recorded,
     reduced: &Reduced<T>,
     stream: impl Fn(usize) -> W,
     constant: impl Fn([u8; 32]) -> W,
     scalar: impl Fn(T) -> W + Copy,
-) -> Vec<(W, W, Vec<W>, W)> {
+) -> Vec<Fields<W>> {
     reduced
         .openings
         .iter()
-        .map(|(commitment, opening)| {
+        .enumerate()
+        .map(|(index, (commitment, opening))| {
             let Opening::Point { point, value } = opening else {
                 panic!("weighted claims are no PCS claims: the contract is built for point claims")
             };
@@ -173,7 +178,8 @@ fn claims_with<T: Copy, W: Clone>(
                 Commitment::C2 => (stream(recorded.roots_at[1]), scalar(reduced.oods[1])),
                 Commitment::Setup => (constant(recorded.roots.f), constant(element_word(recorded.roots.f_ood))),
             };
-            (root, ood, point.iter().map(|&x| scalar(x)).collect(), scalar(*value))
+            let point = point.iter().map(|&x| scalar(x)).collect();
+            Fields { root, ood, point, value: scalar(*value), index }
         })
         .collect()
 }
@@ -181,9 +187,6 @@ fn claims_with<T: Copy, W: Clone>(
 /// The claims the contract checks declared, as words of the contract.
 pub fn calls(recorded: &Recorded) -> Vec<Claim> {
     claims_with(recorded, &recorded.reduced, Word::Stream, Word::Const, scalar)
-        .into_iter()
-        .map(|(root, ood, point, value)| Claim { root, ood, point, value })
-        .collect()
 }
 
 /// `program_iv` is the program's (leanVM's digest of the bytecode and the R1CS); the contract's IV is derived from it
@@ -194,35 +197,15 @@ pub fn compile_verifier(recorded: &Recorded, program_iv: &[u8; 32], measure: boo
         iv: recorded.iv(program_iv),
         stream_len: recorded.stream_len,
         measure,
-        selector: true,
         frame: Vec::new(),
     };
     compile(&recorded.graph, &[], &Ending::Claims(calls(recorded)), &entry)
 }
 
-/// The proof's calldata: the selector, the public input, the stream (what the committed vectors hold).
-pub fn proof_calldata(public_words: &[u8; 32], stream: &[u8]) -> Vec<u8> {
-    [&VERIFY[..], public_words, stream].concat()
-}
-
-/// Calldata verifying a proof: [`proof_calldata`], then the index of the transaction's frame of PCS claims
+/// Calldata verifying a proof: the public input, the stream, then the index of the transaction's frame of PCS claims
 /// ([`PCS_FRAME`]).
 pub fn calldata(public_words: &[u8; 32], stream: &[u8]) -> Vec<u8> {
-    [&proof_calldata(public_words, stream)[..], &[PCS_FRAME]].concat()
-}
-
-/// A stream of the shape's length, its bytes pseudo-random as a proof's are (the contract's gas does not depend on
-/// them; the transaction's does, on its zero bytes only).
-pub fn sample_stream(len: usize, seed: u64) -> Vec<u8> {
-    let mut state = seed | 1;
-    (0..len)
-        .map(|_| {
-            state ^= state << 13;
-            state ^= state >> 7;
-            state ^= state << 17;
-            (state >> 24) as u8
-        })
-        .collect()
+    [public_words, stream, &[PCS_FRAME]].concat()
 }
 
 /// The Rust verifier on the same calldata: the claims, and the values it requires to be zero, then nonzero.
@@ -271,13 +254,6 @@ pub fn rust_verifier_with(
     Ok((reduced, zero, nonzero))
 }
 
-/// One phase's share of a call.
-#[derive(Clone, Debug)]
-pub struct PhaseGas {
-    pub phase: &'static str,
-    pub gas: u64,
-}
-
 /// What a verifying call costs.
 #[derive(Clone, Debug)]
 pub struct GasReport {
@@ -306,21 +282,12 @@ impl GasReport {
     /// The frame transaction's gas (EIP-8141 with EIP-7976's floor, without `FRAME_TX_INTRINSIC_COST` and the
     /// per-frame costs): this calldata and execution, and a frame of PCS claims of `claims` claims, or none.
     pub fn transaction(&self, claims: bool) -> FrameTxGas {
-        let calldata = vec![1u8; self.calldata_bytes - self.calldata_zero_bytes]
-            .into_iter()
-            .chain(vec![0u8; self.calldata_zero_bytes])
-            .collect::<Vec<u8>>();
-        let (data, count) = if claims {
-            (vec![1u8; 1 + 32 * self.calls], self.calls)
-        } else {
-            (Vec::new(), 0)
-        };
-        frame_tx_gas(&calldata, self.execution, &data, count)
+        let claims = if claims { self.calls } else { 0 };
+        sample_tx_gas(self.calldata_bytes, self.calldata_zero_bytes, self.execution, claims)
     }
 
     pub fn calldata_gas(&self) -> u64 {
-        let nonzero = (self.calldata_bytes - self.calldata_zero_bytes) as u64;
-        16 * nonzero + 4 * self.calldata_zero_bytes as u64
+        sample_calldata_gas(self.calldata_bytes, self.calldata_zero_bytes)
     }
 }
 
@@ -335,20 +302,11 @@ pub fn measure(shape: &Shape, iv: &[u8; 32], variant: Variant, mode: Claims) -> 
     let all_calls = calls(&recorded);
     let claims = recorded.reduced.openings.len();
     let calls_count = all_calls.len();
-    let outcome: Outcome = call(&contract.code, &[], &data, &PcsFrame::declaring_all());
-    assert_eq!(outcome.output.as_deref(), Some(&word([1, 0, 0])[..]), "the measuring run returns 1");
+    // The measuring build never reverts: no frame declaring the claims is needed (its gas is the same).
+    let outcome = call(&contract.code, &[], &data, &PcsFrame::default());
+    assert!(outcome.attests(), "the measuring run returns 1");
     assert_eq!(outcome.claims.len(), calls_count, "one claim per commitment");
-    let mut phases: Vec<PhaseGas> = Vec::new();
-    for (pc, &gas) in outcome.gas_by_pc.iter().enumerate() {
-        if gas == 0 {
-            continue;
-        }
-        let phase = contract.phase_of.get(pc).copied().unwrap_or(CALLS);
-        match phases.iter_mut().find(|p| p.phase == phase) {
-            Some(p) => p.gas += gas,
-            None => phases.push(PhaseGas { phase, gas }),
-        }
-    }
+    let mut phases = phases(&outcome.gas_by_pc, &contract.phase_of, CALLS);
     let total: u64 = phases.iter().map(|p| p.gas).sum();
     assert_eq!(total, outcome.execution, "the instructions' gas is the execution's");
     let measured = phases.iter().find(|p| p.phase == MEASURE).map_or(0, |p| p.gas);
@@ -362,7 +320,6 @@ pub fn measure(shape: &Shape, iv: &[u8; 32], variant: Variant, mode: Claims) -> 
         .zip(&all_calls)
         .map(|((commitment, _), claim)| (format!("{commitment:?}"), 1, claim.words().len()))
         .collect();
-    let _ = ENTRY;
     GasReport {
         calldata_bytes: data.len(),
         calldata_zero_bytes: data.iter().filter(|&&b| b == 0).count(),
@@ -385,41 +342,17 @@ pub fn measure(shape: &Shape, iv: &[u8; 32], variant: Variant, mode: Claims) -> 
     }
 }
 
-/// The words `calls` writes, for the Rust verifier's claims on `stream`: what the contract must write.
-fn expected_words(reduced: &Reduced<E>, recorded: &Recorded, stream: &[u8]) -> Vec<[u8; 32]> {
+/// The claims the contract checks declared, as words, for the Rust verifier's reduction of `stream`: what the
+/// contract must write.
+fn expected_words(reduced: &Reduced<E>, recorded: &Recorded, stream: &[u8]) -> Vec<Fields<[u8; 32]>> {
     let root = |at: usize| -> [u8; 32] { stream[at..at + 32].try_into().unwrap() };
     claims_with(recorded, reduced, root, |b| b, element_word)
-        .into_iter()
-        .flat_map(|(root, ood, point, value)| [root, ood].into_iter().chain(point).chain([value]))
-        .collect()
 }
 
 /// The PCS claims a proof's stream gives (the Rust verifier's reduction of it), in the contract's order: what its
 /// transaction must declare, and what the block's openings must prove.
 pub fn expected_claims(recorded: &Recorded, reduced: &Reduced<E>, stream: &[u8]) -> Vec<pcs_claim::PcsClaim> {
-    let f192 = |x: E| primitives::field::F192::new(x.c0, x.c1, x.c2);
-    reduced
-        .openings
-        .iter()
-        .map(|(commitment, opening)| {
-            let Opening::Point { point, value } = opening else {
-                panic!("weighted claims are no PCS claims")
-            };
-            let at = |k: usize| -> [u8; 32] { stream[recorded.roots_at[k]..recorded.roots_at[k] + 32].try_into().unwrap() };
-            let (root, ood) = match commitment {
-                Commitment::C1 => (at(0), reduced.oods[0]),
-                Commitment::C2 => (at(1), reduced.oods[1]),
-                Commitment::Setup => (recorded.roots.f, recorded.roots.f_ood),
-            };
-            pcs_claim::PcsClaim {
-                n: point.len() as u8,
-                root,
-                ood: f192(ood),
-                point: point.iter().map(|&x| f192(x)).collect(),
-                value: f192(*value),
-            }
-        })
-        .collect()
+    expected_words(reduced, recorded, stream).iter().map(pcs_claim::PcsClaim::of_words).collect()
 }
 
 /// The contract, built to return the claims it would check declared and every value it checks, against the Rust verifier
@@ -444,7 +377,6 @@ pub fn parity_with(
         iv: recorded.iv(iv),
         stream_len: recorded.stream_len,
         measure: true,
-        selector: true,
         frame: Vec::new(),
     };
     let checks = recorded.graph.zero.iter().chain(&recorded.graph.nonzero);
@@ -456,7 +388,7 @@ pub fn parity_with(
     let contract = compile(&recorded.graph, &outputs, &Ending::Return, &entry);
     let (reduced, zero, nonzero) =
         rust_verifier_with(shape, iv, setup, public_words, stream, variant, mode).expect("the stream's length");
-    let mut expected = expected_words(&reduced, &recorded, stream);
+    let mut expected: Vec<[u8; 32]> = expected_words(&reduced, &recorded, stream).iter().flat_map(Fields::words).collect();
     expected.extend(zero.iter().chain(&nonzero).map(|&x| element_word(x)));
     let outcome = call(&contract.code, &[], &calldata(public_words, stream), &PcsFrame::default());
     let output = outcome.output.expect("the measuring build does not revert");

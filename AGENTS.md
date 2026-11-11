@@ -41,7 +41,7 @@ in [`docs/README.md`](docs/README.md); superseded protocols and figures, in [`do
 Both lines use Keccak-256 Fiat–Shamir, and both contracts check that their transaction declares their claims, as the
 EIP draft has it: a claim's Keccak-256 is a payload of the transaction's frame of PCS claims (an EIP-8288 dependency
 verification frame of scheme `PCS_SCHEME`), which the contract reads with EIP-8141's `FRAMEPARAM` and
-`FRAMEDATALOAD`, the frame's index being the last byte of calldata (`evm_link::declared`). Every commitment and
+`FRAMEDATALOAD`, the frame's index being the last byte of calldata (`evm_link::declared_claims`). Every commitment and
 opening is the EIP draft's PCS claim (`crates/pcs_claim`: a root and an out-of-domain answer, one point per claim, one
 opening per claim, PCS version 1).
 
@@ -87,7 +87,8 @@ into eight pinned `K`-words); design: [`docs/membership/PROTOCOL.md`](docs/membe
   `crates/leanvm/univariate/tests/vectors/keccak128_rec4.txt` (π1-rec3's: `keccak128_rec3.txt`).
 
 **Shared.** `crates/pcs_claim` (the EIP's claim, its opening and EVM check); `crates/evm_link` (the compilation and
-assembly into one contract: the membership contract, 4,866 B, and π2's, 14.5 KB, fit EIP-170; π1's own, about 86 KB,
+assembly into one contract, the claim's wire format, and with the feature `machine` the EVM the contracts run on in
+tests: the membership contract, 4,866 B, and π2's, 14.5 KB, fit EIP-170; π1's own, about 86 KB,
 does not and is built only to test it against its Rust verifier); `crates/vendor/leanvm-c445e3d5` (leanVM's
 `primitives`, `fiat_shamir`, `pcs`, `parallel`, `verifier`, `bench`); `params/` (WHIR's, π1's and π2's soundness bits);
 `formal/` (the Lean 4 proofs, [`formal/README.md`](formal/README.md)).
@@ -115,8 +116,8 @@ transaction gas without the 21,000 base (EIP-7623) and without the frame's per-f
   frame and the PCS gas (`tests/pi2_real.rs`, `real_end_to_end`). π2's circuit fills 97.8% of `2^24` at 128 signatures
   and 99.4% at 400; past it, fewer of π1's claims are hashed, the last dropped first, down to all encoded by the
   contract ([`SPEC-REC.md`](docs/leanvm/rec/SPEC-REC.md)).
-- π1 alone as a contract (the main line, 128 signatures): 8,069 B calldata, 231,511 execution, 3 claims; standard
-  360,255, floor 516,416 (`keccak_gas_report`).
+- π1 alone as a contract (the main line, 128 signatures): 8,065 B calldata, 231,489 execution, 3 claims; standard
+  360,169, floor 516,160 (`keccak_gas_report`).
 - Capacity: about 470 signatures ([`docs/leanvm/univariate/KECCAK.md`](docs/leanvm/univariate/KECCAK.md)).
 - Soundness at 128 signatures, as `Q/ε` with the openings charged at WhirBridge's `269 · 2^-137` a query
   (`params/`): membership about 126.4 bits; π1 128.93 (main line), π1-rec4 128.79, π2 128.93, the recursion 127.86
@@ -190,7 +191,7 @@ leanEthereum) and is licensed, like leanVM, under the MIT license ([`LICENSE-MIT
   `src/transcript.rs` (new) states the transcript methods as a trait.
 - **Adapted from leanVM `651453c6`** (branch `PCS-openings-aggregation`): `crates/membership/quotient` (the protocol of
   `flock::quotient`, its Cantor-basis domain, wiring, transcript; new here: the χ gate, the Keccak-256 statement, the
-  claims and zero knowledge), `crates/membership/evm` (bytecode generator, recording scalar, revm machine), and
+  claims and zero knowledge), `crates/membership/evm` (bytecode generator, recording scalar; its revm machine now `crates/evm_link/src/machine.rs`), and
   leanVM's Lean proofs `formal/quotient`, ported to this circuit (here `formal/QuotientSecurity`).
 - **Adapted from leanVM `42422001`'s `crates/verifier`**: `crates/leanvm/statement` (the same protocol, generic over the
   scalar; new here: the Keccak-256 chain, the tower-order ring map, the Keccak-f terminal, the workloads, the EVM

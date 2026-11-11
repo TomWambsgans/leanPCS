@@ -30,8 +30,8 @@ the sixth (§1). The proof of it is not leanVM's:
 - **Three Fiat–Shamir shapes** (§4): `KECCAK_MAIN` (π1's own contract), `KECCAK_REC3` (π1-rec3, the recursion's
   inner proof as the Lean states it) and `KECCAK_REC4` (π1-rec4, the deployed recursion's inner proof). The last two
   run the batch two variables a round and π1-rec4 draws several challenges from one Keccak-f (§14).
-- **Result** at the reference workload (128 signatures), measured, π1 alone as a contract (`KECCAK_MAIN`): 8,069 B of
-  calldata, 231,511 gas of execution; as an EIP-8141 frame transaction, standard 360,255, EIP-7976 floor 516,416,
+- **Result** at the reference workload (128 signatures), measured, π1 alone as a contract (`KECCAK_MAIN`): 8,065 B of
+  calldata, 231,489 gas of execution; as an EIP-8141 frame transaction, standard 360,169, EIP-7976 floor 516,160,
   without its frame of claims (§10). Under the recursion π1 is not on chain: π2 verifies it
   (`docs/leanvm/rec/SPEC-REC.md`).
 
@@ -268,7 +268,7 @@ A push fingerprint the sent values give is derived (`D'_j = D_j + eq(α, 2)(g + 
 
 Each commitment's relations are combined by the powers of `ρ` (`Relations::combine`).
 
-**Claims, main line: the claims' encoding** (`crates/membership/evm/src/machine.rs`: point claims, `c` each). A batching
+**Claims, main line: the claims' encoding** (`crates/evm_link/src/machine.rs`: point claims, `c` each). A batching
 sumcheck takes `Σ_k λ^k Σ_u W_k(u) C_k(u) = Σ_k λ^k v_k` over the longest stack (27 variables at 128 signatures), the
 others zero-extended. With `KECCAK_MAIN` it has two scalars a round; with `KECCAK_REC3` and `KECCAK_REC4` it runs
 two variables a round (`transcript::sumcheck_pairs_drawn`, §14.1). Then come the three stacks' values at its point `r`. The verifier
@@ -341,12 +341,12 @@ does not state π1-rec4; its uniform cap holds for π1-rec4's summed queries too
 ## 10. Gas
 
 Measured on revm (`tests/keccak_vm.rs`, `keccak_gas_report`, which prints every workload and the phases at 128
-and 400 signatures), `KECCAK_MAIN`, point claims, π1 alone as a contract at 128 signatures: **8,069 B** of calldata,
-**231,511** execution, 3 claims. As an EIP-8141 frame transaction (without the 21,000 base, `FRAME_TX_INTRINSIC_COST`
+and 400 signatures), `KECCAK_MAIN`, point claims, π1 alone as a contract at 128 signatures: **8,065 B** of calldata,
+**231,489** execution, 3 claims. As an EIP-8141 frame transaction (without the 21,000 base, `FRAME_TX_INTRINSIC_COST`
 and the per-frame costs, and without its frame of claims and the PCS gas): standard (`16` a nonzero byte, `4` a zero
-byte, plus execution) 360,255; EIP-7976's floor (`64` a byte) **516,416**, which binds.
+byte, plus execution) 360,169; EIP-7976's floor (`64` a byte) **516,160**, which binds.
 
-**Calldata at 128 signatures**: selector and public input 36 B, row counts 24 B, `C1`'s and `C2`'s commitments
+**Calldata at 128 signatures** (no selector: the length and the value alone are checked): public input 32 B, row counts 24 B, `C1`'s and `C2`'s commitments
 (root and out-of-domain answer) 112 B, Flock's 154 scalars 3,696 B, the 118 values at `t` 2,832 B, the batching
 sumcheck (27 rounds of 2 scalars, 3 values) 1,368 B, the frame's index 1 B. The design is almost size-independent:
 the values at `t` are fixed, and Flock's rounds and the batch grow only with the logarithms of the sizes. The gas is a

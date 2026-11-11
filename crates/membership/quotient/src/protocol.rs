@@ -541,12 +541,6 @@ pub struct Claims {
 }
 
 impl Claims {
-    /// The claims in the order of [`Openings`], each with the table it is on: `0` the witness, `1` the wiring, `2`
-    /// the quotient table ([`Claims::on`] names the commitments).
-    pub fn all(&self) -> [(usize, &Claim); 3] {
-        [(0, &self.witness), (1, &self.wiring), (2, &self.copy)]
-    }
-
     /// The claims in the order of [`Openings`], each with the commitment it is on: the witness table's, the
     /// circuit's (`index`, the wiring), the quotient table's.
     pub fn on<'a>(&'a self, index: &Commitment, commitments: &Commitments) -> [(Commitment, &'a Claim); 3] {
@@ -1330,7 +1324,7 @@ pub fn verify(
     ))
 }
 
-/// The openings of a proof's three claims, in the order of [`Claims::all`].
+/// The openings of a proof's three claims, in the order of [`Claims::on`].
 pub struct Openings(pub [opening::Proof; 3]);
 
 /// Open a proof's `claims` on the tables it committed. The wiring's opening is about public data: anyone can make
@@ -1532,8 +1526,9 @@ pub(crate) mod tests {
     }
 
     fn truth(index: &Index, proved: &Proved) -> [bool; 3] {
-        let words = [proved.tables.witness.words(), index.wiring(), proved.tables.table.words()];
-        proved.claims.all().map(|(k, claim)| opening::evaluate(words[k], &claim.point) == claim.value)
+        let c = &proved.claims;
+        [(proved.tables.witness.words(), &c.witness), (index.wiring(), &c.wiring), (proved.tables.table.words(), &c.copy)]
+            .map(|(words, claim)| opening::evaluate(words, &claim.point) == claim.value)
     }
 
     /// The prover's output, pinned: the proof and its three openings on the toy circuit, so a change to how the
