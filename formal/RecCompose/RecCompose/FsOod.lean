@@ -59,10 +59,10 @@ theorem length_of_mem_support_mapM {α : Type} (f : ℕ → OracleComp KeccakCal
     rw [List.mapM_cons, mem_support_bind_iff] at hz
     obtain ⟨a, -, hz⟩ := hz
     rw [mem_support_bind_iff] at hz
-    obtain ⟨as, has, hz⟩ := hz
+    obtain ⟨xs, has, hz⟩ := hz
     rw [mem_support_pure_iff] at hz
     subst hz
-    rw [List.length_cons, List.length_cons, length_of_mem_support_mapM f l as has]
+    rw [List.length_cons, List.length_cons, length_of_mem_support_mapM f l xs has]
 
 /-! ## The opening -/
 

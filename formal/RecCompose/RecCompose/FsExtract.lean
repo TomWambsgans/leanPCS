@@ -16,7 +16,7 @@ import UniSound.FsWalkProof
 decoder `p2Tc 0`, `tableCode` of the plain shape of `2^24` words) reads off the setup's evaluations and a permutation transcript is a stack of π2's
 extractor's list (`wCandidates`) on the same evaluations, for a stream that holds `W`'s root (`pLen + 32` bytes):
 
-* **round `0`'s message is `W`'s root** the stream names (`msgK_p2View_zero`: its bytes at byte `520`), and the
+* **round `0`'s message is `W`'s root** the stream names (`msgK_p2View_zero`: its bytes at byte `0`), and the
   Statement's root, the claim's root word of the stream's `32` bytes there (`streamRoot`, at `rootsAt cc.reads`'s
   `W` entry), is the same digest (`streamRoot_eq`, for a stream holding those bytes);
 * **the composed candidate is a stack of mumbai's decoder** (`UniSound.mem_tableCode_cands`: `decodeStacks` at
@@ -25,10 +25,10 @@ extractor's list (`wCandidates`) on the same evaluations, for a stream that hold
   composed Merkle word on every column (`wordOfMerkle_merkleWord_eq`), so the Statement's list decoder lists the same
   stack (`mem_decodeStacks_congr`), last of `candidates`.
 
-**`Pi2ExtractBridge` (`FsDefs.lean`) needs the stream's length**: on a stream shorter than `552` bytes the composed view
+**`Pi2ExtractBridge` (`FsDefs.lean`) needs the stream's length**: on a stream shorter than `32` bytes the composed view
 reads `W`'s root's missing bytes as zeros in place (`halvesAt`, big-endian words by `getD`), while the claim's root
 word of the shorter slice (`streamWord`) is shorter, so the two roots, and the two lists, can differ. The composed
-event's check (`p2Check`) has the stream's `1064` bytes.
+event's check (`p2Check`) has the stream's `544` bytes.
 -/
 
 set_option linter.unusedSectionVars false
@@ -45,17 +45,17 @@ attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
 
 /-! ## `W`'s root -/
 
-/-- **Round `0`'s message is `W`'s commitment** the stream names (its root at bytes `520 … 552`, its out-of-domain
+/-- **Round `0`'s message is `W`'s commitment** the stream names (its root at bytes `0 … 32`, its out-of-domain
 answer). -/
 theorem msgK_p2View_zero (π : P2Pf) :
     msgK p2View π 0 = (some (toB (UniStatement.rootOf (UniSound.halvesAt π.proof.stream pLen))),
       (List.range 1).map fun k => UniSound.scalarAt π.proof.stream (pLen + 32 + 24 * k)) :=
   rfl
 
-/-- The public data's reads: `C1`'s root at byte `0`, `C2`'s at `32`; `W`'s at `520`, `Q`'s at `576`. -/
-theorem rootsAt_cc : rootsAt cc.reads = [0, 32, 520, 576] := by decide
+/-- No root in the public data: `W`'s at byte `0`, `Q`'s at `56`. -/
+theorem rootsAt_cc : rootsAt cc.reads = [0, 56] := by decide
 
-theorem rootReads_cc : rootReads cc.reads = 2 := by decide
+theorem rootReads_cc : rootReads cc.reads = 0 := by decide
 
 /-- **The claim's root word of the stream's 32 bytes names the root the stream's halves name**, on a stream that holds
 them. -/
