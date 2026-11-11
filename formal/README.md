@@ -14,8 +14,9 @@ Everything in `formal/` states and proves the protocols of commit **`f96a7938`**
   three claims hashed in π2's circuit ([`docs/leanvm/rec/SPEC-REC.md`](../docs/leanvm/rec/SPEC-REC.md)). **π1-rec4 is
   ported in part** (branch `lean/pi1-rec4`): its verifier (`UniKeccak.reduceWithK4`, tested against the Rust on the
   real π1-rec4 proofs), its recorded graph (`RecGraphKeccak/Emitted.lean` is now π1-rec4's) and graph = verifier
-  (`RecGraphKeccak.Sim.pi1GraphIsVerifierK4`, no hypothesis); its knowledge soundness and completeness are stated
-  (`UniKnowledgeSoundnessKeccakRec4`, `UniCompletenessKeccakRec4`), not proved.
+  (`RecGraphKeccak.Sim.pi1GraphIsVerifierK4`, no hypothesis) and its knowledge soundness
+  (`UniKeccakSound.uniKnowledgeSoundnessKeccakRec4_closed`, no hypothesis, at most `2^-64` for `Q ≤ 2^64`); its
+  completeness is stated (`UniCompletenessKeccakRec4`).
 
 What the port needs is [`docs/LEAN_PORT.md`](../docs/LEAN_PORT.md). **Do not regenerate the Lean-facing files until
 the port**: the Rust now writes the deployed protocols, so `UPDATE_LEAN=1` runs (`crates/membership/evm/src/lean.rs`,
