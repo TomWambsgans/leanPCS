@@ -17,8 +17,8 @@ import Bridge.Verifier
   table, from its opening);
 * **the eight openings once** (`prEvent_doomH_le`): each opening's statement is one of
   `WhirBridge.Pcs.UnionO.pcs_union_sound_oracle`'s union over version 1's sizes `2^23 ..= 2^28` at `εExact`
-  (`UniKeccakSound.pcsKShapes`), the out-of-domain point read off Keccak-256 at π2's sizes (`24`, `25`, `28`) and
-  `oodPoint` at π1's; an opening's doom (`PcsOp.DoomedH`) its PCS claim's two claims, the point read off the final
+  (`UniKeccakSound.pcsKShapes`), the out-of-domain point read off Keccak-256 at `W`'s and `Q`'s sizes (`24`, `28`)
+  and `oodPoint` at the others (π1's, π2's setup); an opening's doom (`PcsOp.DoomedH`) its PCS claim's two claims, the point read off the final
   cache (`ptAt`); for any list of `PcsOp`s, at most `bndU (QX + Σ QO) = (N + 10122) (εExact + 5 (N + 10122) / 2^256)`
   for a run before the openings of `QX` queries (`N = QX + Σ QO`);
 * the decoders' lists (`L_W = 9952`, `L_Q = 3564`) and `maxErrK` (`maxErrK_p2`).
@@ -242,7 +242,7 @@ theorem maxErrK_p2 (R : Compose.Piop pi2Spec.K Stk) (e : ℝ≥0∞)
 
 end Facts
 
-/-! ## The openings once: the PCS union, the point read off Keccak-256 at π2's sizes -/
+/-! ## The openings once: the PCS union, the point read off Keccak-256 at `W`'s and `Q`'s sizes -/
 
 section Union
 
@@ -254,9 +254,9 @@ def zOfH (H : Bytes → Option Digest) (n : ℕ) (r : Digest) : Vector E n :=
 theorem zOfCache_eq (c : KeccakCalls.QueryCache) (n : ℕ) (r : Digest) :
     Pcs.zOfCache c n r = zOfH (fun x ↦ c (.inl x)) n r := rfl
 
-/-- **An opening's out-of-domain point**: read off `H` at π2's sizes (`RecStatement.pi2Size`), `oodPoint` at π1's. -/
+/-- **An opening's out-of-domain point**: read off `H` at `W`'s and `Q`'s sizes (`RecStatement.oodRead`), `oodPoint` at the others. -/
 def ptAt (n : ℕ) (H : Bytes → Option Digest) (r : Digest) : Vector E n :=
-  if RecStatement.pi2Size n then zOfH H n r else Pcs.oodPoint n r
+  if RecStatement.oodRead n then zOfH H n r else Pcs.oodPoint n r
 
 /-- **An opening is doomed**, against Keccak-256's answers `H`: every candidate of the word under its root violates its
 PCS claim's out-of-domain claim (at `ptAt`) or its point claim. -/
@@ -321,16 +321,16 @@ theorem PcsOp.stmt_ok (o : PcsOp) (π : P2Pf) (ch : List (List E)) {ood : E} {pt
   dsimp only
   rw [dite_eq_left hl]
 
-theorem pi2Size_idx (o : PcsOp) :
-    RecStatement.pi2Size (UniKeccakSound.pcsKShapes.shs.get (UniKeccakSound.pcsIdxK o.n)).n =
-      RecStatement.pi2Size o.n := by
+theorem oodRead_idx (o : PcsOp) :
+    RecStatement.oodRead (UniKeccakSound.pcsKShapes.shs.get (UniKeccakSound.pcsIdxK o.n)).n =
+      RecStatement.oodRead o.n := by
   rw [UniKeccakSound.pcsIdxK_n _ o.lo o.hi]
 
 /-- **An opening's run is the union's verifier on its statement**, where it has a claim of its stack's variables: the
-point read off Keccak-256 at π2's sizes, `oodPoint` at π1's. -/
+point read off Keccak-256 at `W`'s and `Q`'s sizes, `oodPoint` at the others. -/
 theorem PcsOp.run_ok (o : PcsOp) (π : P2Pf) (ch : List (List E)) (hok : o.Ok π ch) :
     GOp.run p2View o.gop π ch =
-      Pcs.UnionO.pUVerO UniKeccakSound.pcsKShapes RecStatement.pi2Size Pcs.oodPoint (o.stmt π ch) := by
+      Pcs.UnionO.pUVerO UniKeccakSound.pcsKShapes RecStatement.oodRead Pcs.oodPoint (o.stmt π ch) := by
   obtain ⟨ood, pt, v, hc, hl⟩ := hok
   unfold GOp.run
   rw [PcsOp.root_gop]
@@ -340,8 +340,8 @@ theorem PcsOp.run_ok (o : PcsOp) (π : P2Pf) (ch : List (List E)) (hok : o.Ok π
   rw [hc]
   unfold Pcs.UnionO.pUVerO
   dsimp only
-  have hS := pi2Size_idx o
-  by_cases hs : RecStatement.pi2Size o.n = true
+  have hS := oodRead_idx o
+  by_cases hs : RecStatement.oodRead o.n = true
   · rw [ite_eq_left hs, ite_eq_left (hS.trans hs)]
     unfold pcsOpenCO
     rw [dite_eq_left hl]
@@ -370,13 +370,13 @@ theorem PcsOp.run_nok (o : PcsOp) (π : P2Pf) (ch : List (List E)) (hok : ¬ o.O
 /-- **An opening's doom is the union's on its statement**, where it has a claim of its stack's variables. -/
 theorem PcsOp.doomedH_imp (o : PcsOp) (π : P2Pf) (ch : List (List E)) (c : KeccakCalls.QueryCache)
     (hok : o.Ok π ch) (hd : o.DoomedH π ch (fun x ↦ c (.inl x))) :
-    Pcs.UnionO.PUDoomedO UniKeccakSound.pcsKShapes RecStatement.pi2Size Pcs.oodPoint (o.stmt π ch) c := by
+    Pcs.UnionO.PUDoomedO UniKeccakSound.pcsKShapes RecStatement.oodRead Pcs.oodPoint (o.stmt π ch) c := by
   obtain ⟨ood, pt, v, hc, hl⟩ := hok
   rw [PcsOp.stmt_ok o π ch hc hl]
   unfold Pcs.UnionO.PUDoomedO
   dsimp only
-  have hS := pi2Size_idx o
-  by_cases hs : RecStatement.pi2Size o.n = true
+  have hS := oodRead_idx o
+  by_cases hs : RecStatement.oodRead o.n = true
   · rw [ite_eq_left (hS.trans hs)]
     refine (pcsDoomedO_congrK (UniKeccakSound.pcsIdxK_n _ o.lo o.hi) _ _ _ _ hl _ _ c).2 fun q hq => ?_
     have h := hd q hq ood pt v hc hl
@@ -431,7 +431,7 @@ noncomputable def pickH (L : List PcsOp) (hne : L ≠ []) (z : OutK P2Pf E (List
   (L[firstH L z]'(firstH_lt L hne z)).stmt z.1.1.1 z.1.1.2.1
 
 /-- **Any list of PCS claims' openings, charged once** (`WhirBridge.Pcs.UnionO.pcs_union_sound_oracle` over
-`UniKeccakSound.pcsKShapes`, the point read off Keccak-256 at π2's sizes): for a run before the openings of `QX`
+`UniKeccakSound.pcsKShapes`, the point read off Keccak-256 at `W`'s and `Q`'s sizes): for a run before the openings of `QX`
 queries, some opening accepts while doomed at the run's end (its point read off the final cache) with probability at
 most `bndU (QX + Σ QO)`. -/
 theorem prEvent_doomH_le (L : List PcsOp) (X : OracleComp KeccakCalls (PreK P2Pf E)) (QX : ℕ)
@@ -444,7 +444,7 @@ theorem prEvent_doomH_le (L : List PcsOp) (X : OracleComp KeccakCalls (PreK P2Pf
   · refine le_of_eq_of_le (prEvent_eq_zero_of_forall_not _ _ fun p hp ↦ ?_) bot_le
     obtain ⟨k, hk, -⟩ := hp
     exact absurd hk (Nat.not_lt_zero _)
-  have hU := Pcs.UnionO.pcs_union_sound_oracle UniKeccakSound.pcsKShapes RecStatement.pi2Size Pcs.oodPoint
+  have hU := Pcs.UnionO.pcs_union_sound_oracle UniKeccakSound.pcsKShapes RecStatement.oodRead Pcs.oodPoint
     (pickH L hne <$> expLG p2View X (L.map PcsOp.gop)) _
     ((isQueryBound_map_iff _ _ _ _ _).mpr (isTotalQueryBound_expLG p2View X _ QX hX)) 10122
     UniKeccakSound.pcsKShapes_QO
@@ -474,9 +474,9 @@ theorem prEvent_doomH_le (L : List PcsOp) (X : OracleComp KeccakCalls (PreK P2Pf
       simp only [Prod.mk.injEq] at hmem
       rw [← hmem.1] at hacc
       exact Bool.false_ne_true hacc
-    have hv : (simulateQ randomOracle (Pcs.UnionO.pUVerO UniKeccakSound.pcsKShapes RecStatement.pi2Size Pcs.oodPoint
+    have hv : (simulateQ randomOracle (Pcs.UnionO.pUVerO UniKeccakSound.pcsKShapes RecStatement.oodRead Pcs.oodPoint
         (pickH L hne p.1))).run p.2 = pure (true, p.2) := by
-      show (simulateQ randomOracle (Pcs.UnionO.pUVerO UniKeccakSound.pcsKShapes RecStatement.pi2Size Pcs.oodPoint
+      show (simulateQ randomOracle (Pcs.UnionO.pUVerO UniKeccakSound.pcsKShapes RecStatement.oodRead Pcs.oodPoint
         ((L[k]).stmt p.1.1.1.1 p.1.1.1.2.1))).run p.2 = _
       rw [← PcsOp.run_ok _ _ _ hok, hrk, hacc]
     refine (prEvent_le_one _).trans (le_of_eq ?_)

@@ -78,9 +78,9 @@ theorem expLG_p2Ops (D : RecDeployment) (X : OracleComp KeccakCalls (PreK P2Pf E
 /-- The root `Q`'s openings read. -/
 noncomputable def qRoot (π : P2Pf) : Digest := ofB (GOp.root p2View qOp π)
 
-/-- **An accepting opening at π2's sizes asked its root's out-of-domain point**: a run that returns `true` from the
+/-- **An accepting opening at `W`'s or `Q`'s size asked its root's out-of-domain point**: a run that returns `true` from the
 cache `c` without changing it finds every coordinate's input in `c`. -/
-theorem PcsOp.present (o : PcsOp) (hs : RecStatement.pi2Size o.n = true) (π : P2Pf) (ch : List (List E))
+theorem PcsOp.present (o : PcsOp) (hs : RecStatement.oodRead o.n = true) (π : P2Pf) (ch : List (List E))
     (c : KeccakCalls.QueryCache) (h : (simulateQ randomOracle (GOp.run p2View o.gop π ch)).run c = pure (true, c)) :
     ∀ j < o.n, c (.inl (Pcs.oodInput o.n (ofB (o.rootB π)) j)) ≠ none := by
   have hmem : ((true, c) : Bool × KeccakCalls.QueryCache) ∈

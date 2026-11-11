@@ -341,14 +341,14 @@ def PcsOp.rootB (o : PcsOp) (π : P2Pf) : Bytes32 :=
 def PcsOp.holds (o : PcsOp) (π : P2Pf) (ch : List (List E)) (q : Column o.n) : Prop :=
   ∃ ood pt v, o.cl π ch = some (ood, pt, v) ∧ pt.length = o.n ∧ Pcs.colEval q pt = v
 
-/-- **An opening's verifier** at the root it reads: the claim's PCS opening, or a rejection; at π2's sizes
-(`RecStatement.pi2Size`: `24`, `25`, `28`) the out-of-domain point read off Keccak-256 (`pcsOpenCO`, the contract's
-`pcsOpenKO`), at π1's at `oodPoint` (`UniKeccakSound.pcsOpenC`, the contract's `UniKeccak.pcsOpenK`). -/
+/-- **An opening's verifier** at the root it reads: the claim's PCS opening, or a rejection; at `W`'s and `Q`'s sizes
+(`RecStatement.oodRead`: `W`'s `24`, `Q`'s `28`) the out-of-domain point read off Keccak-256 (`pcsOpenCO`, the contract's
+`pcsOpenKO`), at the others (π1's, the setup's) at `oodPoint` (`UniKeccakSound.pcsOpenC`, the contract's `UniKeccak.pcsOpenK`). -/
 def PcsOp.ver (o : PcsOp) (r : Digest) (π : P2Pf) (ch : List (List E)) : OracleComp KeccakCalls Bool :=
   match o.cl π ch with
   | none => pure false
   | some (ood, pt, v) =>
-    if RecStatement.pi2Size o.n then pcsOpenCO o.n r ood pt v (o.prf π)
+    if RecStatement.oodRead o.n then pcsOpenCO o.n r ood pt v (o.prf π)
     else UniKeccakSound.pcsOpenC o.n r ood pt v (o.prf π)
 
 theorem PcsOp.queries (o : PcsOp) (r : Digest) (π : P2Pf) (ch : List (List E)) :

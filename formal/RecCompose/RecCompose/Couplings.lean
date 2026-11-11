@@ -72,11 +72,11 @@ theorem hazardCoupling (D : RecDeployment) : HazardCoupling D := by
 /-! ## π1-rec3's coupling -/
 
 /-- **A π1 opening as the block opens the contract's claim** (`pcsOpenWords` on the claim's words, decoded): on the
-point's length, `UniKeccak.pcsOpenK` (π1's sizes), or `pcsOpenKO` at π2's (`pi2Size`, which π1's claims never have:
+point's length, `UniKeccak.pcsOpenK` (π1's sizes), or `pcsOpenKO` at π2's (`oodRead`, which π1's claims never have:
 `OpeningsAgree.lean`). -/
 def openAt {m : Type → Type} [Monad m] (F : LeanVM.Semantics.KeccakState → m LeanVM.Semantics.KeccakState)
     (o : Pi1Opening) (p : Compile.Proof) : m Bool :=
-  if pi2Size o.2.2.1.length then pcsOpenKO F o.2.2.1.length o.1 o.2.1 o.2.2.1 o.2.2.2 p
+  if oodRead o.2.2.1.length then pcsOpenKO F o.2.2.1.length o.1 o.2.1 o.2.2.1 o.2.2.2 p
   else UniKeccak.pcsOpenK F o.2.2.1.length o.1 o.2.1 o.2.2.1 o.2.2.2 p
 
 /-- **The contract's three π1 openings** `ops`, with the recursive proof's three π1 opening proofs. -/
