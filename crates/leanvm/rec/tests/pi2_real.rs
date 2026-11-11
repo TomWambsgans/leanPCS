@@ -140,7 +140,7 @@ fn frame_and_calldata_attacks(inst: &Instance, recorded: &contract::Recorded, da
     let mut f = contract::block(block);
     f.scheme = 0x11;
     assert!(!ok(data, &f), "another scheme");
-    for (i, j) in [(0, 1), (1, 2), (0, 2), (3, 4), (5, 6), (6, 7), (2, 3)] {
+    for (i, j) in [(0, 1), (1, 2), (0, 2), (3, 4), (5, 6), (4, 6), (2, 3)] {
         let mut b = block.to_vec();
         b.swap(i, j);
         assert!(!ok(data, &contract::block(&b)), "payloads {i} and {j} swapped");

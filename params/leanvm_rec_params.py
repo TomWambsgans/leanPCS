@@ -11,10 +11,10 @@ docs/leanvm/rec/PERF_GAS2.md): pi1-rec3's and pi1-rec4's verifier graphs and pi2
 signatures. MODELLED (here): every soundness figure, the
 other arithmetizations' sizes, the k-variable rounds' permutations.
 
-pi2's rounds are π2v2's PIOP's, as π2v3 runs it on the PCS claims (docs/leanvm/rec/PI2.md §2, §7; the Lean,
-formal/RecPiop/RecPiop/Rounds.lean `err`, states coarser ones: (4N - 1 + sum d_j)/|E|, (4N - 1)/|E|, 2^r/|E|): the
-copy argument (alpha, beta, gamma) over W's list, the two identities at t, W's fold and Q's claim at rho over W's and
-Q's lists. The
+pi2's rounds are π2v2's PIOP's, as π2v4 runs it on the PCS claims (docs/leanvm/rec/PI2.md §2, §7;
+docs/leanvm/rec/PERF_GAS3.md: the copy sum from Q's layout, two claims on Q; the Lean, formal/RecPiop/RecPiop/Rounds.lean
+`err`, states π2v3's, coarser: (4N - 1 + sum d_j)/|E|, (4N - 1)/|E|, 2^r/|E|): the copy argument (alpha, beta, gamma)
+over W's list, the two identities at t, W's fold and Q's pushes' claim at rho over W's and Q's lists. The
 composition adds pi2's bound and pi1-rec4's (RecCompose's `RecKnowledgeSoundnessReduction`, stated for pi1-rec3),
 each with its openings charged once.
 """
@@ -91,15 +91,16 @@ def pi2_rounds(log_n=LOG_N, row=ROW):
         # (α, β) with at most 2N linear factors, plus the vanishing denominators (4N), and the four-limb ports'
         # fingerprints, degree 1 in γ.
         ("copy argument (α, β, γ): 2N fractions, the ports' poles and fingerprints", 4 * n + PORT_DEGREES, lw),
-        # π2v2: two identities at t, each of degree below 3N, which must both vanish: the copy identity
-        # h d_pull d_push + (1 + 1_S)(d_push + d_pull) + T = q Z_V (d_push of the committed P) and P's definition
-        # P = P_v + Z_V q_P. The bound is the larger's, not the sum (π2v1: one identity below 5N). Below 3N for the
-        # honest Q; with the slots the prover fills (h_1 in 1, 5, 9; S in 12: PI2.md §2, "The empty slots") the
-        # identities reach degree < 4N, so the round is charged 4N (as PI2.md's argument and RecPiop's `err`, 4N - 1).
-        ("t: the copy identity and P's definition, degree < 4N with the empty slots", 4 * n, lw * lq),
+        # π2v4 (docs/leanvm/rec/PERF_GAS3.md): two identities at t which must both vanish: the copy identity as the
+        # identity's claim reads it, times c_h = d_pull d_push, I = D² H + x Z_V D q + x² Z_V³ G + x D R (H = x h, G the
+        # zero slot the prover fills; degree < 5N), and P's definition P = P_v + Z_V q_P (< 3N). The bound is the
+        # larger's, not the sum (π2v3: < 4N with its prover-filled empty slots; π2v1: one identity below 5N).
+        ("t: the copy identity (as read with H = x h) and P's definition, degree < 5N", 5 * n, lw * lq),
         (f"ρ: W's fold (degree {row - 1})", row - 1, lw * lq),
-        # π2v2: Q's one claim combines h(t), q(t), P(t) = s and q_P's definition by ρ: degree 3 in ρ.
-        ("ρ: Q's claim (the identity, P(t) = s, P's definition), degree 3", 3, lw * lq),
+        # π2v4: Q's pushes' claim, times Y_3 = 1 + ρ + ρ Z_V, is (1 + ρ)² e_P + ρ (1 + ρ) e_def + ρ² Z_V S(t) in the
+        # errors of P(t) = s and q_P's definition at t: degree 2 in ρ, zero iff all three are (π2v3's one claim, the
+        # identity's ratio too: degree 3).
+        ("ρ: Q's pushes' claim (P(t) = s, P's definition, S(t) = 0), degree 2", 2, lw * lq),
     ]
 
 

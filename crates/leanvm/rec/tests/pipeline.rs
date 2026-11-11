@@ -34,7 +34,7 @@ use leanvm_univariate::Claims;
 
 /// At the reference trace (the 128-signature trace whose π1-rec4 proof is `keccak128_rec4.txt`), the leading bytes of
 /// the Keccak-256s of π1's stream, π1's openings, π2's stream and π2's openings (the openings as their `Debug` text).
-const REFERENCE_PRINTS: [&str; 4] = ["f34a2902", "645710f9", "df47df82", "baac38e6"];
+const REFERENCE_PRINTS: [&str; 4] = ["f34a2902", "645710f9", "25661e9e", "34d03681"];
 
 fn deep<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> R {
     std::thread::Builder::new()
