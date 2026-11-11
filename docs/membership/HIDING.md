@@ -39,9 +39,9 @@ Two sources, each used only where the PIOP's identities allow it:
 - **The blinding of `h`** (`protocol::H_BLIND = 3` coefficients per limb): `h + X_{2^m}·(b_0 + b_1 X_1 + b_2 X_2)`,
   coefficients `2^m .. 2^m + 2` of the sum's polynomial (`T`'s kind 1, digit 1, as `x h`'s `B_1`). `X_{2^m}`
   vanishes on the cells, so `h` is unchanged there and the identity holds; the quotient `q` absorbs the change,
-  `q ↦ q + b d d'`. `b_1, b_2` are drawn (`Randomness::blind`, 6 words); `b_0` is solved for so that `q`'s
-  coefficient `n` is zero, which `T`'s layout needs (`PERF_GAS2.md`): a linear condition, so `b_0` is affine in
-  `b_1, b_2` (and the witness, fixed here).
+  `q ↦ q + b d d'`. `b_0, b_1` are drawn (`Randomness::blind`, 6 words); `b_2` is solved for so that `q`'s
+  coefficient `n` is zero, which `T`'s layout needs (`PERF_GAS2.md`): a linear condition, so `b_2` is affine in
+  `b_0, b_1` (and the witness, fixed here).
 
 ## The argument
 
@@ -51,7 +51,7 @@ one does not touch it:
 1. **`X`, `C`, `V + Y` at `t` and `W`'s out-of-domain answer** are `K`-linear in the cells, hence affine in the 32
    random-row words, with rank 12 (all of their `K`-coordinates).
 2. **`T`'s out-of-domain answer** is affine in the 6 free blinding words, everything above fixed. The blinding
-   enters `x h`'s digit 1 directly and `q` through `b d d'` (`b_0` affine in `b_1, b_2`), and `μ g` does not depend
+   enters `x h`'s digit 1 directly and `q` through `b d d'` (`b_2` affine in `b_0, b_1`), and `μ g` does not depend
    on it. The rank is 3.
 
 So, whatever the witness, the revealed scalars are uniform at the challenges where both ranks are full. Both groups

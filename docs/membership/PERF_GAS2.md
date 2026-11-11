@@ -71,26 +71,33 @@ pole lemma and the circuit's condition `errors_have_their_own_poles`, still asse
 copies hold).
 
 The digit-1 slot is what main's attempt of `x h` (`PERF_GAS.md`, "Tried, and rejected") failed on: read through `Z`,
-the blinding digit moves `P(0)` freely (`P(0) = B_0(0) + Z(0) B_1(0)`... with `Z(0) = 0` it does not, but then
-`h = P / x` is not `B_0 / x + Z B_1` and its low part's sum is `B_1(0)`-dependent). Read through `Z x`, the digit-1
-part vanishes at 0 to second order and leaves the cells' values alone, whatever the prover puts there.
+the digit-1 part `Z B_1` is divided by `x` too: `h = B_0 / x + (Z / x) B_1`, and `Z / x` is not zero at the cell 0,
+so `h(0)`, hence the sum, moves with `B_1(0)`, freely. Read through `Z x`, the digit-1 part is `Z B_1` after the
+division, zero on every cell, whatever the prover puts there.
 
 **The honest prover's price: `q` must fit.** `{A_0 + Z x A_1}` is not every polynomial of degree `≤ 2n`: writing
 `q = q_low + Z Q_h`, it needs `Q_h(0) = 0`, `q`'s coefficient `n` zero (`X_j(0) = 0` for `j ≥ 1`). The prover
-spends one blinding coefficient: `b_0` adds `b_0 d d'` to `q` (and `Z b_0` to `h`, nothing on the cells), so
-`b_0 = Q_h^(0)(0) / γ`, `γ = (d d')`'s coefficient `n`. `d d' = α^2 + α β (x + σ) + w^2 + β w (x + σ) + β^2 x σ`, so the
-pass that computes `q` also writes `w^2` and `w (x + σ)` on the coset (two `K` columns, in `T`'s empty limb-3 slots),
-transforms them back with `q`, and `γ = (w^2)_n + β (w (x + σ))_n + β^2 σ_top`; the correction is
-`q += b_0 d d'` in coefficient form. `γ` is a nonzero polynomial in `β` when `σ`'s top coefficient is nonzero (true
-of the membership and toy circuits, checked by the tests), so `b_0` exists but with probability `2 / |E|`. To keep
-two free blinding coefficients (`b_1, b_2`: `T`'s out-of-domain answer of rank 3, and 192 bits of `T`'s min-entropy
-past it, as on main), the blinding has three coefficients, so `q` has degree `2n`: its coefficient `2n` is
-`b_2 lc(d) lc(d')` (monic basis), and `X_{2n} = Z^2 + Z` is `1` on the quotient's coset (offset `β_{m+1}`), so the
-pass subtracts it from `q`'s values and adds `lc (X_0 + X_n)` to `Q_h`. Then `A_1 = Q_h / x`.
+spends one of the three blinding coefficients (`ε = b_0 + b_1 X_1 + b_2 X_2`; `b_0, b_1` drawn, as main's two):
+`b_2` adds `b_2 E` to `q`, `E = w_1 d d'` (`w_1 = X_2`), and `Z w_1 b_2` to `h` (nothing on the cells). So the
+quotient's pass runs with `b_2 = 0` (`q` then of degree `< 2n`), and then `b_2 = q^(0)_n / γ`, `γ` the high part of
+`E` at 0. Why `X_2` and not `X_0`: `d d' = α^2 + α β (x + σ) + w^2 + β w (x + σ) + β^2 x σ`, and only the `α β σ` term
+carries `α`; `σ`'s top coefficient is zero for every permutation (`Σ_cells σ(x) = Σ_cells x = 0`), so the response of
+`q_n` to `b_0` or `b_1` is a polynomial in `β` and `w` alone, which a witness could make vanish, while the response to
+`b_2` is `γ = (d d')_{n−2} = α β σ_{n−2} + (terms without α)`: nonzero but for one `α` (drawn after `W`) when
+`σ_{n−2} ≠ 0` (`σ_{n−2}` is `Σ_cells x σ(x)` up to a constant, nonzero for the membership and toy wirings;
+`Index::new` asserts it, a completeness condition). Completeness error `≤ 2/|E|`.
+
+The correction needs `E`'s coefficients: the pass also writes `w_1 w^2` and `w_1 w (x + σ)` on the coset (two `K`
+columns, in `T`'s empty limb-3 slots; `w_1 w^2` has degree `2n`, its coefficient `w_top^2`, and `X_{2n} = Z^2 + Z` is
+1 on the quotient's coset, offset `β_{m+1}`, so the pass subtracts it), transforms them back with `q`, and the prover
+adds `b_2 (α^2 w_1 + α β w_1 (x + σ) + w_1 w^2 + β w_1 w (x + σ) + β^2 w_1 x σ)` to `q`'s coefficients, the
+circuit's parts `w_1 (x + σ)`, `w_1 x σ` made per proof by [`mul_x`] and [`mul_w1`]. `E`'s coefficient `2n` puts
+`b_2 w_top^2 (X_0 + X_n)` into `Q_h`. Then `A_1 = Q_h / x`.
 
 Products and quotients by `x` in the novel basis need no multiplication (`protocol::mul_x`, `div_x`): with
 `F = F_e(w_1) + x F_o(w_1)` and `x^2 = w_1 + x`, `x F`'s coefficient `j ≥ 1` is `f[j−1] + f[j + low(j) − 1]`, and the
-quotient runs the same relation back along `j ↦ j + low(j)` (a Fenwick tree's update path), level by level.
+quotient runs the same relation back along `j ↦ j + low(j)` (a Fenwick tree's update path), level by level (the
+levels below `2^12` block by block, in cache); `w_1 F` is `mul_x` one level up on the even and odd coefficients.
 
 ### 2. The gate's roles swapped: one witness claim binds three row values (−1,536)
 
@@ -141,7 +148,7 @@ selector and its 68 bytes. The frame's index byte stays (the convention π2 shar
   `3/|E|` (main's `ρ` batch was `3/|E|`). All far below the openings'.
 - **Structural conditions**: `errors_have_their_own_poles` (main's, asserted in `Index::new`) holds for the swapped
   roles, with no random row needed (`membership_is_a_wired_loop_free_circuit`). Nothing new is needed for
-  soundness; completeness needs `σ`'s top coefficient nonzero (above), which the tests check.
+  soundness; completeness needs `σ_{n−2} ≠ 0`, which `Index::new` asserts too (and that `σ_{n−1} = 0`, a theorem).
 - **Adversarial tests** (`protocol::tests::absorbed_errors_fail_the_copy_claim`): a prover absorbing a bad witness's
   errors into `h` after `μ` (its quotient then a polynomial, its sum over the cells not zero) passes the witness and
   wiring claims and fails the copy claim, whether it drops `x h`'s coefficient `n`, puts it in digit 1, or zeroes the
@@ -159,17 +166,30 @@ affine and of full rank:
 
 - **W**: the three row values and `W`'s answer, `K`-linear in the cells, affine in the 32 random-row words: rank 12
   of 12 (was 15 of 15);
-- **T**: `T`'s answer, affine in the free blinding `b_1, b_2` (6 words), `b_0` solved and affine in them (it makes
+- **T**: `T`'s answer, affine in the free blinding `b_0, b_1` (6 words), `b_2` solved and affine in them (it makes
   `q`'s coefficient `n` zero, a linear condition): rank 3 of 3.
 
 `hiding::revealed_scalars_are_uniform` (toy circuit) and `revealed_scalars_are_uniform_on_membership` (`2^22` rows,
-ignored by default; run on h3: RESULT) check both ranks and that both maps are additive and `K`-linear. Root hiding in
+ignored by default; passed on h3 in 46 s) check both ranks and that both maps are additive and `K`-linear. Root hiding in
 the random-oracle model keeps its margins: `W` 2,048 bits of random rows against 12 elements (768 bits) revealed;
 `T` 384 bits of free blinding against 192 revealed.
 
 ## Prover
 
-TIMING
+`/root/pcs-perf/r2-membership-gas/bench.sh` on h3 (`final/bench.sh`'s protocol: 8 threads, `LEANVM_NUM_THREADS=8
+taskset -c 0-7`, the shared lock, the idle check), main and this branch interleaved, five runs each, medians:
+
+| | main | this branch |
+|---|---|---|
+| reduction (two commitments) | 0.596 s | 0.667 s |
+| openings | 0.616 s (four) | **0.338 s** (three) |
+| prover total (witness .. openings) | 1.228 s | **1.021 s** (−17%) |
+| peak memory | 6.01 GiB | 6.01 GiB |
+
+The reduction pays 71 ms: the pass's two extra columns (`w_1 w^2`, `w_1 w (x + σ)`: products, leaf and upper
+transforms, about 25 ms), and the tables (`x h`, `b_2`'s correction, `A_1 = Q_h / x`, clearing the scratch, about
+45 ms). The sum's opening on `T` (`2^28` words) was 0.28 s. The rows are main's (3,878,615 of `2^22`). Under the EIP
+draft's metric (measured time plus 0.1 s a claim) the branch also saves 0.1 s for the claim it drops.
 
 ## Tried, and rejected
 
@@ -191,10 +211,13 @@ TIMING
     `T` caps it there (`q` and `h` take `9n` words, `T` has `8n` at `2^23` rows). Power-of-two blocks for the
     instances (34 → 64, 24 → 32) or for a round (4,800 → 8,192 rows), or copy layers that route rotations, need far
     more rows than the 7.5% left.
-- **Revealing `Q_h(0)` instead of fixing it with `b_0`** (no correction pass): 24 bytes, −1,512 gas net of the sum
+- **Revealing `Q_h(0)` instead of fixing it with `b_2`** (no correction): 24 bytes, −1,512 gas net of the sum
   claim's 3,048 where the correction saves all of it.
-- **Two blinding coefficients, `b_0` solved** (`q` of degree `2n − 1`, no `X_{2n}` term): `T`'s out-of-domain answer
-  keeps rank 3, but its root's min-entropy past the answer would be the 192 bits of `b_1` against 192 revealed.
+- **Solving with `b_0`** (`γ = (d d')_n`, no `X_{2n}` term): `σ`'s top coefficient is zero for every wiring, so
+  `γ = (w^2)_n + β (w (x + σ))_n` has no `α` and a witness's random rows decide whether it vanishes: a completeness
+  error near `2^-128` at best, unproven. `b_2`'s `γ` carries `α β σ_{n−2}`.
+- **Two blinding coefficients, one solved**: `T`'s out-of-domain answer keeps rank 3, but its root's min-entropy past
+  the answer would be 192 bits of blinding against 192 revealed.
 - **Two revealed row values**: no degree-2 gate on two cells (above).
 - **A claim fewer**: `W` and `T` are committed in different rounds (`α, β, μ` between them) and the index is fixed, so
   three commitments take three claims; two needs the succinct wiring.
@@ -209,12 +232,12 @@ either. Porting to this one means, beyond `PERF_GAS.md`'s list:
   roles, the random rows' shapes; `Verifier`, `Reduction`, `Transcript`, `Domain`: the stream (three row values),
   the witness claim's conic point and weights, the copy point's digit coordinate `ζ / (1 + ζ)`, `ζ = Z t`, its kind
   coordinate and value (`t R / (ζ + d d')`), the batched inversion's denominators (`1 + ζ`, `ζ + d d'`, `a + b`), no
-  sum claim; `Prover`: `B_0 = x h_low`, `b_0` solved, the `X_{2n}` term, `A_1 = Q_h / x`, and the novel basis's
-  `mul_x` / `div_x`; `Opening`, `PcsOpening`, `Extractor`: three claims.
+  sum claim; `Prover`: `B_0 = x h_low`, `b_2` solved, `w_1 d d'`, the `X_{2n}` term, `A_1 = Q_h / x`, and the
+  novel basis's `mul_x` / `mul_w1` / `div_x`; `Opening`, `PcsOpening`, `Extractor`: three claims.
 - **`formal/EndToEnd`**: `Soundness`: the sum from the layout (the argument above: `I(0) = d d'(0) B_0(0)`, then
   degree), and the conic binding of the witness claim (a non-degenerate conic spans its plane, so `λ(ρ) · Δ` is a
-  nonzero quadratic); `ksBound` with three openings; `E2ECompleteness`: `b_0`'s existence (`γ ≠ 0` but at two
-  values of `β`, given `σ_top ≠ 0`, which the membership circuit meets by computation); `ZK`: `RevealedUniform` over
+  nonzero quadratic); `ksBound` with three openings; `E2ECompleteness`: `b_2`'s existence (`γ ≠ 0` but at one
+  value of `α`, given `σ_{n−2} ≠ 0`, which the membership circuit meets by computation); `ZK`: `RevealedUniform` over
   the new revealed scalars (two rank conditions).
 - **`formal/Implementation`**: `Graph.lean` regenerated (`UPDATE_LEAN=1 cargo test -p evm graph_lean_is_current`,
   ignored until the port), `Calldata` (273 bytes, no selector, six scalars), `Evm.evm_accepts_iff_verifyWith`.
@@ -225,9 +248,9 @@ either. Porting to this one means, beyond `PERF_GAS.md`'s list:
 ## Files
 
 - `crates/membership/quotient/src/circuit.rs`: the gate `V + Y + C + X C`, the builder's roles, the random rows.
-- `crates/membership/quotient/src/protocol.rs`: `mul_x`, `div_x`, `row_values`, `witness_conic`, `witness_weights`,
-  the prover (`x h`, the products `w^2` and `w (x + σ)`, `b_0`, the `X_{2n}` term, `A_1`), `reduce`, three claims,
-  the tests.
+- `crates/membership/quotient/src/protocol.rs`: `mul_x`, `mul_w1`, `div_x`, `row_values`, `witness_conic`,
+  `witness_weights`, the prover (`x h`, the products `w_1 w^2` and `w_1 w (x + σ)`, `b_2`, `A_1`), `reduce`, three
+  claims, the tests; `Index::new` asserts `σ_{n−2} ≠ 0`.
 - `crates/membership/quotient/src/hiding.rs`: ranks 12 and 3.
 - `crates/membership/evm/src/{codegen,quotient,adversarial,lean}.rs`: no selector, 273 bytes, three claims; the
   pinned bytecode digests.
