@@ -11,8 +11,7 @@ use primitives::field::{F64, F192};
 /// Basis vectors of [`beta`]: enough for a quotient domain of `2^26` points.
 pub const BASIS: usize = 28;
 
-/// Basis vectors of [`beta_ext`], the same basis continued: enough for the reduction at `2^31` rows
-/// (`quotient::protocol::MAX_REDUCTION_LOG_ROWS`). [`beta`] is its first [`BASIS`].
+/// Basis vectors of [`beta_ext`], the same basis continued: enough for the reduction at `2^31` rows. [`beta`] is its first [`BASIS`].
 pub const EXT_BASIS: usize = 36;
 
 /// `S(x) = x^2 + x`.

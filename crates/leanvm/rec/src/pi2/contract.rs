@@ -341,21 +341,21 @@ pub fn parity(
 }
 
 /// A verifying contract compiled, and the IV of its instance.
-type CachedCode = ([u8; 32], Arc<Vec<u8>>);
+type CachedCode = ([u8; 32], Vec<Vec<CallWord>>, Arc<Vec<u8>>);
 
 /// The verifying contract's call on `calldata`, its frame of PCS claims declaring exactly `claims`, in order
 /// ([`block`]; the payloads [`frame_payloads`] public data). The contract is compiled once per instance (the last one
 /// asked for).
 fn verifying_call(inst: &Instance, recorded: &Recorded, calldata: &[u8], claims: &[PcsClaim]) -> Outcome {
-    // The contract is a function of the instance, which its IV binds (π1's IV, the circuit's digest, the setup).
+    // The contract is a function of the instance: its IV (π1's IV, the circuit's digest, the setup) and π1's calls.
     static CODE: OnceLock<Mutex<Option<CachedCode>>> = OnceLock::new();
     let code = {
         let mut cache = CODE.get_or_init(Default::default).lock().expect("the cached contract");
         match &*cache {
-            Some((iv, code)) if *iv == inst.iv => code.clone(),
+            Some((iv, pi1, code)) if *iv == inst.iv && pi1.as_slice() == inst.pi1 => code.clone(),
             _ => {
                 let code = Arc::new(compile_verifier(inst, recorded, false).code);
-                *cache = Some((inst.iv, code.clone()));
+                *cache = Some((inst.iv, inst.pi1.to_vec(), code.clone()));
                 code
             }
         }

@@ -224,7 +224,10 @@ fn degenerate_proofs_revert() {
             near[128 + 24 * 5 + 23] ^= 1;
             assert!(agree(&index, log_rows, &codes, &near, &other));
             let near_claims = block_for(&index, &near, log_rows);
-            assert_eq!(call(&codes.1, &data, &near_claims).output, None);
+            let outcome = call(&codes.1, &data, &near_claims);
+            assert_eq!(outcome.output, None);
+            // It fails at the nonzero check, before hashing any claim: the declared claims are not even read.
+            assert!(outcome.claims.is_empty());
             assert_eq!(call(&codes.1, &near, &near_claims).output, Some(VERIFIED.to_vec()));
         }
     }

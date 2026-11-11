@@ -112,7 +112,7 @@ fn render(recorded: &Recorded) -> String {
     writeln!(w, "`leanvm_univariate::contract::record_verifier` at the Keccak VM's 128-signature shape (`leanvm_rec::REFERENCE`), with").unwrap();
     writeln!(
         w,
-        "`KECCAK_REC3` (`FsShape::Rec3`, a skip of 3) and `Claims::Point`: {} nodes ({ops} additions",
+        "`KECCAK_REC3` (`FsShape::Rec3`, a skip of 3) (point claims): {} nodes ({ops} additions",
         graph.nodes.len()
     )
     .unwrap();

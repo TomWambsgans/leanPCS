@@ -404,7 +404,7 @@ impl Circuit {
     /// The structure the protocol assumes: sizes, aligned pairs on distinct positions, formulas of degree 2 reading
     /// their row (internal pushes in `K`), distinct push tags, an outside push for every pull-less position and a
     /// public term for every outside push, no formula reading a pull-less position's value, and `κ` zero off the
-    /// expression slots (pulling pairs). `Spec::of` and `Setup::new` assert it: a formula reading
+    /// expression slots (pulling pairs). `Spec::of` asserts it (`Setup::new` and `contract::Instance::new` take a circuit it validated): a formula reading
     /// a hole would be unconstrained.
     pub fn validate(&self) -> Result<(), String> {
         let (n, width) = (self.n(), self.width());

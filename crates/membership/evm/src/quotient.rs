@@ -425,9 +425,12 @@ mod tests {
         let mut elsewhere = all.clone();
         elsewhere[2].root = commitments.witness.root;
         assert!(!succeeds(&statement, &proof, &block_of(&elsewhere)));
-        let mut valued = all.clone();
-        valued[2].value += F192::ONE;
-        assert!(!succeeds(&statement, &proof, &block_of(&valued)));
+        // Each claim with another value, alone: every claim's check is reached.
+        for k in 0..all.len() {
+            let mut valued = all.clone();
+            valued[k].value += F192::ONE;
+            assert!(!succeeds(&statement, &proof, &block_of(&valued)), "{k}");
+        }
 
         let mut tampered = proof.clone();
         for at in 0..proof.stream.len() {
