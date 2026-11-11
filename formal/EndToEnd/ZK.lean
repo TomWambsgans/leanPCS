@@ -20,6 +20,7 @@ import ZK.PcsBadQ
 import ZK.PcsBadOod
 import ZK.PcsBadPhase
 import ZK.PcsFSClosed
+import ZK.PcsSlack
 import ZK.PcsAxioms
 
 /-!
@@ -54,6 +55,16 @@ scalars are within `δr` of uniform.
   ideal run's challenges and revealed scalars are independent and uniform: `ideal_joint`), `ZK/PcsBad*.lean`,
   `ZK/PcsAdds.lean`, `ZK/PcsNF.lean`, `ZK/PcsInj.lean` (each tracked input is injective in a value drawn just before
   it, among at most `5 · 2^19 + 90` edges: `phase_bound`).
+
+**The slack words** (`ZK/PcsSlack.lean`): `T`'s out-of-domain answer is the answer without the four slack words
+plus their contribution `slackMap z`, its weights functions of `T`'s out-of-domain point `z` alone (`oodT_eq`);
+where they span `E` over `K` (`SlackSpan`) that contribution is uniform (`slackMap_uniform`), so the revealed
+scalars' mass is uniform as soon as group 1's is (`rMass_eq`, `uniformWithin_zero`).
+**`revealedUniform_of_group1`**: `Group1Uniform ε1 → RevealedUniform (ε1 + spanFail) 0`, and
+**`zeroKnowledge_pcs_group1`**: zero knowledge from `PcsZeroKnowledge` and `Group1Uniform` alone, within
+`εpcs Q + ε1 + spanFail + εfs₀`. `Group1Uniform` (`W`'s answer, `C`, `V + Y`, `X` exactly uniform at all but `ε1` of
+the challenges: a rank-`12` condition on the 32 random-row words) is the remaining hypothesis; `spanFail` is an
+explicit probability over `T`'s point, about `2^-127`, not bounded numerically here.
 
 `ZK/ProverBridge{Eager,Hom,Param}.lean` (random-permutation lemmas kept from the hidden-layout protocol's proof,
 which was removed) are not imported here; `RecCompose` imports `ZK/ProverBridgeEager.lean` and
