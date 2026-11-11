@@ -39,6 +39,13 @@ def slotOf (n : ℕ) (hHat qHat : Array E) (b2 : E) (coins : Coins) (d κ : Bool
   if κ = false then (if d = false then qHat.getD i 0 else (divX (qhOf n qHat)).getD i 0)
   else (if d = false then (mulX hHat).getD i 0 else b1Of coins b2 i)
 
+/-- The slack word of coefficient `i` of half `half` of kind `kind` (`quotientTable`'s `slack`): coins' slack word `k`
+at kind `0`, half `0`, coefficient `slackAt k`, zero elsewhere. -/
+def slackOf (coins : Coins) (kind half i : ℕ) : K :=
+  (List.range slackWords).foldl
+    (fun acc k ↦ if kind = 0 ∧ half = 0 ∧ i = slackAt k then
+        (if h : k < slackWords then coins.slack ⟨k, h⟩ else 0) else acc) 0
+
 /-- `quotientTable`'s body for `n` cells. -/
 def tableOf (n : ℕ) (hHat qHat : Array E) (b2 : E) (coins : Coins) : Array K :=
   let qh : Array E := qhOf n qHat
@@ -52,7 +59,10 @@ def tableOf (n : ℕ) (hHat qHat : Array E) (b2 : E) (coins : Coins) : Array K :
     let x : E :=
       if kind = 0 then (if half = 0 then qHat.getD i 0 else a1.getD i 0)
       else (if half = 0 then b0.getD i 0 else b1Of coins b2 i)
-    if limb < 3 then limbOf x limb else 0
+    let slack : K := (List.range slackWords).foldl
+      (fun acc k ↦ if kind = 0 ∧ half = 0 ∧ i = slackAt k then
+          (if h : k < slackWords then coins.slack ⟨k, h⟩ else 0) else acc) 0
+    if limb < 3 then limbOf x limb + (if limb < 2 then slack else 0) else slack
 
 theorem quotientTable_eq (cir : Circuit) (stmt : Statement) (cells₀ : Array K) (coins : Coins) (α β μ : E) :
     quotientTable cir stmt cells₀ coins α β μ =
@@ -76,7 +86,9 @@ theorem tableOf_getD (n : ℕ) (hn : n = 2 ^ 24) (hHat qHat : Array E) (b2 : E) 
     (b : Fin 24 → Bool) (d l₀ l₁ κ : Bool) :
     (tableOf n hHat qHat b2 coins).getD
         (Completeness.idx (Fin.snoc (Fin.snoc (Fin.snoc (Fin.snoc b d) l₀) l₁) κ : Fin (24 + 1 + 1 + 1 + 1) → Bool)) 0 =
-      if limbN l₀ l₁ < 3 then limbOf (slotOf n hHat qHat b2 coins d κ (Completeness.idx b)) (limbN l₀ l₁) else 0 := by
+      if limbN l₀ l₁ < 3 then limbOf (slotOf n hHat qHat b2 coins d κ (Completeness.idx b)) (limbN l₀ l₁) +
+        (if limbN l₀ l₁ < 2 then slackOf coins (if κ then 1 else 0) (if d then 1 else 0) (Completeness.idx b) else 0)
+      else slackOf coins (if κ then 1 else 0) (if d then 1 else 0) (Completeness.idx b) := by
   subst hn
   have hb := Completeness.idx_lt b
   rw [idx_snoc4]
@@ -103,7 +115,7 @@ theorem tableOf_getD (n : ℕ) (hn : n = 2 ^ 24) (hHat qHat : Array E) (b2 : E) 
       if κ then 1 else 0 := by
     cases d <;> cases l₀ <;> cases l₁ <;> cases κ <;> simp <;> omega
   rw [e1, e2, e3, e4]
-  unfold slotOf
+  unfold slotOf slackOf
   cases d <;> cases κ <;> simp
 
 theorem limbOf_lt (x : E) (e : ℕ) (he : e < 3) : limbOf x e = x.limb ⟨e, he⟩ := by
@@ -125,16 +137,29 @@ theorem tablePoly_limbs {M : ℕ} (x : (Fin M → Bool) → E) :
   simp only [C_add, C_mul, C_pow]
   ring
 
-/-- A digit's polynomial from its limbs, for any number of variables. -/
-theorem limbPoly_eq {k : ℕ} (c : (Fin (k + 1 + 1 + 1 + 1) → Bool) → E) (x : (Fin k → Bool) → E) (d κ : Bool)
-    (h0 : PcsBridge.Kc3.subT c d false false κ = fun b => ofK ((x b).limb 0))
-    (h1 : PcsBridge.Kc3.subT c d true false κ = fun b => ofK ((x b).limb 1))
+theorem tablePoly_add' {M : ℕ} (f g : (Fin M → Bool) → E) :
+    tablePoly (fun b => f b + g b) = tablePoly f + tablePoly g := by
+  simp only [tablePoly, C_add, add_mul, Finset.sum_add_distrib]
+
+theorem ey_cube : ey ^ 3 = ey + 1 := by
+  rw [PcsBridge.Kc3.ey_eq_y]
+  exact BF64.ext3Gen_pow_three
+
+/-- A digit's polynomial from its limbs, for any number of variables: limbs `(l₀ + s, l₁ + s, l₂, s)` read the
+polynomial of `l₀ + y l₁ + y² l₂`, `1 + y + y³ = 0`. -/
+theorem limbPoly_eq {k : ℕ} (c : (Fin (k + 1 + 1 + 1 + 1) → Bool) → E) (x : (Fin k → Bool) → E)
+    (sl : (Fin k → Bool) → E) (d κ : Bool)
+    (h0 : PcsBridge.Kc3.subT c d false false κ = fun b => ofK ((x b).limb 0) + sl b)
+    (h1 : PcsBridge.Kc3.subT c d true false κ = fun b => ofK ((x b).limb 1) + sl b)
     (h2 : PcsBridge.Kc3.subT c d false true κ = fun b => ofK ((x b).limb 2))
-    (h3 : PcsBridge.Kc3.subT c d true true κ = fun _ => (0 : E)) :
+    (h3 : PcsBridge.Kc3.subT c d true true κ = sl) :
     PcsBridge.Kc3.limbPoly ey c d κ = tablePoly x := by
   unfold PcsBridge.Kc3.limbPoly
-  rw [h0, h1, h2, h3, tablePoly_zero', mul_zero, add_zero]
-  exact tablePoly_limbs x
+  rw [h0, h1, h2, h3, tablePoly_add', tablePoly_add', ← tablePoly_limbs x]
+  have h2' : (2 : E[X]) = 0 := CharTwo.two_eq_zero
+  have hc : C (ey ^ 3) = C ey + 1 := by rw [ey_cube, C_add, C_1]
+  rw [hc]
+  linear_combination (tablePoly sl * (1 + C ey)) * h2'
 
 /-- **The quotient table's digit `d` of kind `κ`**, its four limbs on `1, y, y², y³`, is the slot's polynomial. -/
 theorem limbPoly_tableOf (n : ℕ) (hn : n = 2 ^ 24) (hHat qHat : Array E) (b2 : E) (coins : Coins)
@@ -143,22 +168,35 @@ theorem limbPoly_tableOf (n : ℕ) (hn : n = 2 ^ 24) (hHat qHat : Array E) (b2 :
     PcsBridge.Kc3.limbPoly (k := 24) ey cT d κ =
       tablePoly (fun b : Fin 24 → Bool => slotOf n hHat qHat b2 coins d κ (Completeness.idx b)) := by
   have hT : ∀ l₀ l₁, PcsBridge.Kc3.subT (k := 24) cT d l₀ l₁ κ = fun b =>
-      ofK (if limbN l₀ l₁ < 3 then limbOf (slotOf n hHat qHat b2 coins d κ (Completeness.idx b)) (limbN l₀ l₁)
-        else 0) :=
+      ofK (if limbN l₀ l₁ < 3 then limbOf (slotOf n hHat qHat b2 coins d κ (Completeness.idx b)) (limbN l₀ l₁) +
+        (if limbN l₀ l₁ < 2 then slackOf coins (if κ then 1 else 0) (if d then 1 else 0) (Completeness.idx b) else 0)
+      else slackOf coins (if κ then 1 else 0) (if d then 1 else 0) (Completeness.idx b)) :=
     fun l₀ l₁ => funext fun b => by
       rw [PcsBridge.Kc3.subT, hcT, tableOf_getD n hn]
   have h0 : PcsBridge.Kc3.subT (k := 24) cT d false false κ =
-      fun b => ofK ((slotOf n hHat qHat b2 coins d κ (Completeness.idx b)).limb 0) := by
-    rw [hT]; funext b; rw [if_pos (by decide), show limbN false false = 0 from rfl, limbOf_lt _ 0 (by norm_num)]; rfl
+      fun b => ofK ((slotOf n hHat qHat b2 coins d κ (Completeness.idx b)).limb 0) +
+        ofK (slackOf coins (if κ then 1 else 0) (if d then 1 else 0) (Completeness.idx b)) := by
+    rw [hT]; funext b
+    rw [if_pos (by decide), show limbN false false = 0 from rfl, if_pos (by decide), limbOf_lt _ 0 (by norm_num),
+      Compose.Reduce.ofK_add]
+    rfl
   have h1 : PcsBridge.Kc3.subT (k := 24) cT d true false κ =
-      fun b => ofK ((slotOf n hHat qHat b2 coins d κ (Completeness.idx b)).limb 1) := by
-    rw [hT]; funext b; rw [if_pos (by decide), show limbN true false = 1 from rfl, limbOf_lt _ 1 (by norm_num)]; rfl
+      fun b => ofK ((slotOf n hHat qHat b2 coins d κ (Completeness.idx b)).limb 1) +
+        ofK (slackOf coins (if κ then 1 else 0) (if d then 1 else 0) (Completeness.idx b)) := by
+    rw [hT]; funext b
+    rw [if_pos (by decide), show limbN true false = 1 from rfl, if_pos (by decide), limbOf_lt _ 1 (by norm_num),
+      Compose.Reduce.ofK_add]
+    rfl
   have h2 : PcsBridge.Kc3.subT (k := 24) cT d false true κ =
       fun b => ofK ((slotOf n hHat qHat b2 coins d κ (Completeness.idx b)).limb 2) := by
-    rw [hT]; funext b; rw [if_pos (by decide), show limbN false true = 2 from rfl, limbOf_lt _ 2 (by norm_num)]; rfl
-  have h3 : PcsBridge.Kc3.subT (k := 24) cT d true true κ = fun _ => (0 : E) := by
-    rw [hT]; funext b; rw [if_neg (by decide)]; exact Compose.Reduce.ofK_zero
-  exact limbPoly_eq _ _ d κ h0 h1 h2 h3
+    rw [hT]; funext b
+    rw [if_pos (by decide), show limbN false true = 2 from rfl, if_neg (by decide), add_zero,
+      limbOf_lt _ 2 (by norm_num)]
+    rfl
+  have h3 : PcsBridge.Kc3.subT (k := 24) cT d true true κ =
+      fun b => ofK (slackOf coins (if κ then 1 else 0) (if d then 1 else 0) (Completeness.idx b)) := by
+    rw [hT]; funext b; rw [if_neg (by decide)]
+  exact limbPoly_eq _ _ _ d κ h0 h1 h2 h3
 
 theorem slotOf_ff' (n : ℕ) (hHat qHat : Array E) (b2 : E) (coins : Coins) (i : ℕ) :
     slotOf n hHat qHat b2 coins false false i = qHat.getD i 0 := by simp only [slotOf, ite_true]
