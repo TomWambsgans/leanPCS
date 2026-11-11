@@ -1,33 +1,33 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- Adapted from `formal/Compose/Compose/{Deployed,DeployedWired,Claims}.lean` of this repository
--- (`knowledgeSoundness_deployed`, `knowledgeSoundness_wired`, `knowledgeSoundness_deployed_rust`) to the six PCS
--- openings of the EIP's claims; the fresh-query engine is `Compose/TwoOracle.lean`'s.
-import SoundPcs.Claims
+-- (`knowledgeSoundness_deployed`, `knowledgeSoundness_wired`, `knowledgeSoundness_deployed_rust`) to the three PCS
+-- openings of the deployed protocol's claims; the fresh-query engine is `Compose/TwoOracle.lean`'s.
+import SoundPcs.Trace
 import SoundPcs.Opening
 
 /-!
 # Knowledge soundness of the deployed verifier of the EIP's PCS claims
 
-**`knowledgeSoundness_deployed_pcs`**: in leanerVM `mumbai`'s two-oracle model (`KeccakCalls`: Keccak-256 and
-Keccak-f[1600], independent lazily sampled random oracles), the setup commits to the honest wiring table
-(`setupPcs (wiringCol hc σ)`: its Merkle tree, `2^20` queries, and its out-of-domain answer, `24` more); the
-adversary, of at most `Q` queries, is given the circuit's commitment and outputs a statement, four commitments,
-the values and six opening proofs; the verifier (`dExp`) runs the four-root chain over Keccak-256, the claims of
-`PcsQuotient.claimsAt` at `2^22` rows, and the six openings (`pcsOpen`: `pcsVerifierO`, the out-of-domain point
-read off Keccak-256). The probability that it accepts while no message the extractor reads off the adversary's
-Keccak-256 log (the witness root's Merkle word decoded by the computable `colCode`, each candidate read as its
-four row polynomials) is a witness of the statement is at most `deployedBound Q`:
+**`knowledgeSoundness_deployed_pcs_of`**: in leanerVM `mumbai`'s two-oracle model (`KeccakCalls`: Keccak-256 and
+Keccak-f[1600], independent lazily sampled random oracles), the setup commits to a wiring table `q₀`
+(`setupPcs q₀`: its Merkle tree, `2^20` queries, and its out-of-domain answer, `24` more); the adversary, of at most
+`Q` queries, is given the circuit's commitment and outputs a statement, two commitments, the values and three opening
+proofs; the verifier (`dExp`) runs the two-root chain over Keccak-256, the claims of `PcsQuotient.claimsAt` at `2^22`
+rows, and the three openings (`pcsOpen`: `pcsVerifierO`, the out-of-domain point read off Keccak-256). For any read
+of the claims as F1's decision (`ClaimsMatch`) and F1's round counts (`ComposePcs.RoundsSound`) at a round error at
+most `2^-164`, the probability that it accepts while no message the extractor reads off the adversary's Keccak-256
+log (the witness root's Merkle word decoded by the computable `colCode`) is a witness of the statement is at most
+`deployedBound Q`:
 
-* six opening terms, `openingBound (N₀ + k · 10150)`, `k = 0 … 5`, `N₀ = 2^20 + 24 + Q + 6` (F2's
+* three opening terms, `openingBound (N₀ + k · 10150)`, `k = 0, 1, 2`, `N₀ = 2^20 + 24 + Q + 6` (F2's
   `pcs_sound_oracle` for each opening, the run before it as its adversary);
-* the binding of the four roots' lists at their out-of-domain points, `N · δc n + N (N + 1) / 2^256` for each
-  `n = 27` (`H`), `25` (`W`, `G`), `28` (`Q`), `N = N₀ + 6 · 10150` (`ood_binding_coords`; `δc 27 ≤ 2^-168`,
-  `δc 25 ≤ 2^-167`, `δc 28 ≤ 2^-169`);
-* the chain, `N (2^-164 + 8 N / 2^256)`: each challenge bounded for the one candidate tuple the four out-of-domain
-  answers pin (`ComposePcs.Pinned4`), F1's round error `2^-164`, and the collisions.
+* the binding of the two roots' lists at their out-of-domain points, `N · δc n + N (N + 1) / 2^256` for `n = 24`
+  (`W`) and `28` (`T`), `N = N₀ + 3 · 10150` (`ood_binding_coords`; `δc 24 ≤ 2^-165`, `δc 28 ≤ 2^-169`);
+* the chain, `N (2^-164 + 8 N / 2^256)`: each challenge bounded for the one candidate pair the two out-of-domain
+  answers pin (`ComposePcs.Chain2`), F1's round error at most `2^-164`, and the collisions.
 
-So the chain and the binding cost about `2^-163.7` a query; the six opening terms, `2^-128` a query each, dominate:
-about `2^-105` at `Q = 0`, `2^-85` at `Q = 2^40`, `2^-61` at `Q = 2^64`.
+So the chain and the binding cost about `2^-163.5` a query; the three opening terms, `2^-128` a query each,
+dominate.
 -/
 
 set_option linter.unusedSectionVars false
@@ -38,18 +38,18 @@ open scoped ENNReal
 
 namespace SoundPcs
 
-open Compose ComposePcs Compose.Reduce QuotientRpm QuotientSecurity QuotientSecurity.Params LeanVM LeanVM.Protocol
+open Compose ComposePcs QuotientRpm LeanVM LeanVM.Protocol
 open LeanVM.Semantics LeanVM.Parameters LeanVM.Protocol.Compile LeanVM.Protocol.EndToEnd WhirBridge
-open WhirBridge.Pcs PcsBridge
+open WhirBridge.Pcs
 
 -- The runs are kept folded: no unification evaluates them.
-attribute [local irreducible] stage DA4 e1 e2 e3 e4 e5 dExp withSetup4 setupPcs loggedKC
+attribute [local irreducible] stage DA2 e1 e2 dExp withSetup2 setupPcs loggedKC
 
 /-- The queries before the openings: the setup's `2^20 + 24`, the adversary's `Q`, the chain's `6`. -/
 abbrev N₀ (Q : ℕ) : ℕ := 2 ^ 20 + 24 + Q + 6
 
-/-- All the queries: and the six openings', `10150` each. -/
-abbrev Nall (Q : ℕ) : ℕ := N₀ Q + 10150 + 10150 + 10150 + 10150 + 10150 + 10150
+/-- All the queries: and the three openings', `10150` each. -/
+abbrev Nall (Q : ℕ) : ℕ := N₀ Q + 10150 + 10150 + 10150
 
 /-- The binding term at `n` variables, over the whole run. -/
 noncomputable def bindTerm (n Q : ℕ) : ℝ≥0∞ :=
@@ -58,25 +58,23 @@ noncomputable def bindTerm (n Q : ℕ) : ℝ≥0∞ :=
 /-- **The deployed bound.** -/
 noncomputable def deployedBound (Q : ℕ) : ℝ≥0∞ :=
   openingBound (N₀ Q) + openingBound (N₀ Q + 10150) + openingBound (N₀ Q + 10150 + 10150) +
-    openingBound (N₀ Q + 10150 + 10150 + 10150) + openingBound (N₀ Q + 10150 + 10150 + 10150 + 10150) +
-    openingBound (N₀ Q + 10150 + 10150 + 10150 + 10150 + 10150) +
-    bindTerm 27 Q + bindTerm 25 Q + bindTerm 28 Q +
+    bindTerm 24 Q + bindTerm 28 Q +
     ((Nall Q : ℕ) : ℝ≥0∞) * (((1 / 2 ^ 164 : ℝ≥0) : ℝ≥0∞) + 8 * ((Nall Q : ℕ) : ℝ≥0∞) / 2 ^ 256)
 
-/-- **At `n = 25`**: `C(7908, 2) / 2^192 ≤ 2^-167`. -/
-theorem δc_25 : δc 25 ≤ (2 : ℝ≥0∞)⁻¹ ^ 167 := by
-  have hw := admissible_v1 25 (by decide) (by decide)
-  refine δc_le_of (k := 25) (by norm_num) ?_
+/-- **At `n = 24`**: `C(L, 2) / 2^192 ≤ 2^-165`. -/
+theorem δc_24 : δc 24 ≤ (2 : ℝ≥0∞)⁻¹ ^ 165 := by
+  have hw := admissible_v1 24 (by decide) (by decide)
+  refine δc_le_of (k := 27) (by norm_num) ?_
   refine le_trans (Nat.choose_le_choose 2 (listMax_le_listHi hw)) ?_
-  rw [Nat.choose_two_right, listHi_parts.1]
-  norm_num
+  rw [Nat.choose_two_right]
+  exact listHi_choose_24
 
 /-- **At `n = 28`**: `C(3564, 2) / 2^192 ≤ 2^-169`. -/
 theorem δc_28 : δc 28 ≤ (2 : ℝ≥0∞)⁻¹ ^ 169 := by
   have hw := admissible_v1 28 (by decide) (by decide)
   refine δc_le_of (k := 23) (by norm_num) ?_
   refine le_trans (Nat.choose_le_choose 2 (listMax_le_listHi hw)) ?_
-  rw [Nat.choose_two_right, listHi_parts.2.2]
+  rw [Nat.choose_two_right, listHi_28]
   norm_num
 
 /-- The inputs the bad events may read: the `32`-byte states and the out-of-domain inputs (`46` bytes). -/
@@ -87,138 +85,63 @@ def S₀ : Set (List UInt8 ⊕ KeccakState) :=
 theorem S₀_finite : S₀.Finite :=
   (Set.finite_range _).union ((List.finite_length_eq UInt8 46).image _)
 
-variable (hc : IsCantor statementConsts.beta) (σ : Equiv.Perm (Fin (22 + 2) → Bool))
-  (W : Wire (rustInstance statementConsts hc σ).params (rustInstance statementConsts hc σ).bounds)
+variable {P : Kc3.Params E} (W : Wire2 P) (hR : RoundsSound P)
+  (hre : P.roundError ≤ ((1 / 2 ^ 164 : ℝ≥0) : ℝ≥0∞))
+include hR hre
 
-/-- **Knowledge soundness of the deployed verifier of the EIP's PCS claims**, for any committed wiring table `q₀` and
-any match `M` of the claims, in mumbai's two-oracle model, at `2^22` rows, on F1's instance of `beta()`
-(`rustInstance`). -/
+/-- **Knowledge soundness of the deployed verifier of the EIP's PCS claims**, for any committed wiring table `q₀`,
+any match `M` of the claims to F1's decision and F1's round counts, in mumbai's two-oracle model, at `2^22` rows. -/
 theorem knowledgeSoundness_deployed_pcs_of (q₀ : Column 24) (M : ClaimsMatch W q₀)
-    (A₀ : QuotientRpm.Bytes32 × E → OracleComp KeccakCalls (RootProof4 E × Rest)) (Q : ℕ)
+    (A₀ : QuotientRpm.Bytes32 × E → OracleComp KeccakCalls (RootProof2 E × Rest)) (Q : ℕ)
     (hQ : ∀ c, IsTotalQueryBound (A₀ c) Q) :
-    Pr{let z ← (simulateQ randomOracle (dExp W pcsOpen (withSetup4 (setupPcs q₀) A₀))).run' ∅}[
+    Pr{let z ← (simulateQ randomOracle (dExp W pcsOpen (withSetup2 (setupPcs q₀) A₀))).run' ∅}[
         BreaksD W M.cW z] ≤ deployedBound Q := by
-  have hA : IsTotalQueryBound (withSetup4 (setupPcs q₀) A₀) (2 ^ 20 + 24 + Q) :=
-    isTotalQueryBound_withSetup4 _ A₀ _ Q (setupPcs_queryBound _) hQ
-  have hpub := membershipPub_hPub (rustInstance statementConsts hc σ).basis
-    (invSeq (rustInstance statementConsts hc σ).basis.β) (rustInstance statementConsts hc σ).c le24
-    (invSeq_zero _) fun d hd _ => invSeq_sum (rustInstance statementConsts hc σ).basis.β
-      (rustInstance statementConsts hc σ).basis.zero d hd
-  have hN : (rustInstance statementConsts hc σ).params.nCells = 2 ^ 24 :=
-    Params.ofCantor_nCells (rustInstance statementConsts hc σ).basis le24
-      (rustInstance statementConsts hc σ).wiring 8 _ _ hpub
-  have hd : (rustInstance statementConsts hc σ).bounds.identity ≤ 2 ^ 28 :=
-    Params.ofCantor_identity_le_margin (rustInstance statementConsts hc σ).basis le24
-      (rustInstance statementConsts hc σ).wiring _ _ hpub
-      (natDegree_membershipPub_le (invSeq (rustInstance statementConsts hc σ).basis.β)
-        (rustInstance statementConsts hc σ).c)
-  have hre : ((roundError (rustInstance statementConsts hc σ).params
-      (rustInstance statementConsts hc σ).bounds : ℝ≥0) : ℝ≥0∞) ≤ ((1 / 2 ^ 164 : ℝ≥0) : ℝ≥0∞) := by
-    exact_mod_cast roundError_le_164 card_E hN rfl hd
+  have hA : IsTotalQueryBound (withSetup2 (setupPcs q₀) A₀) (2 ^ 20 + 24 + Q) :=
+    isTotalQueryBound_withSetup2 _ A₀ _ Q (setupPcs_queryBound _) hQ
   -- The rest: a bad fresh query.
-  have hrest : Pr{let z ← (simulateQ randomOracle (dExp W pcsOpen (withSetup4 (setupPcs q₀) A₀))).run' ∅}[
-      BreaksD W M.cW z ∧ ¬ EW pcsOpen z ∧ ¬ Eσ pcsOpen z ∧ ¬ EH pcsOpen z ∧
-        ¬ EQ pcsOpen z ∧ ¬ EG pcsOpen z ∧ ¬ ES pcsOpen z ∧ ¬ EB z ∧ ¬ EBn 25 z ∧ ¬ EBn 28 z] ≤
+  have hrest : Pr{let z ← (simulateQ randomOracle (dExp W pcsOpen (withSetup2 (setupPcs q₀) A₀))).run' ∅}[
+      BreaksD W M.cW z ∧ ¬ EW pcsOpen z ∧ ¬ Eσ pcsOpen z ∧ ¬ ET pcsOpen z ∧ ¬ EBn 24 z ∧ ¬ EBn 28 z] ≤
       ((Nall Q : ℕ) : ℝ≥0∞) * (((1 / 2 ^ 164 : ℝ≥0) : ℝ≥0∞) + 8 * ((Nall Q : ℕ) : ℝ≥0∞) / 2 ^ 256) := by
     refine prEvent_randomOracle_le_of_freshBad_dep (R := KeccakCalls)
-      (dExp W pcsOpen (withSetup4 (setupPcs q₀) A₀)) (Nall Q) (qb_dExp W pcsOpen _ _ hA) S₀ S₀_finite _
-      (advBad4P W M.KP (withSetup4 (setupPcs q₀) A₀)) _ (fun S hS c t ht hcard => ?_)
+      (dExp W pcsOpen (withSetup2 (setupPcs q₀) A₀)) (Nall Q) (qb_dExp W pcsOpen _ _ hA) S₀ S₀_finite _
+      (advBad2P W M.KP (withSetup2 (setupPcs q₀) A₀)) _ (fun S hS c t ht hcard => ?_)
       (fun T h => trace_dExp W pcsOpen M A₀ T h)
     have hS' : ∀ v : QuotientRpm.Bytes32, (Sum.inl v.toList : List UInt8 ⊕ KeccakState) ∈ S :=
       fun v => hS _ (Or.inl ⟨v, rfl⟩)
     have hSz : ∀ x, M.KP.zin x → (Sum.inl x : List UInt8 ⊕ KeccakState) ∈ S :=
       fun x hx => hS _ (Or.inr ⟨x, hx, rfl⟩)
-    refine (prob_advBad4P W M.KP _ S hS' hSz c t ht).trans ?_
+    refine (prob_advBad2P W M.KP hR _ S hS' hSz c t ht).trans ?_
     rw [add_comm]
     gcongr
     · have h10 : 10 ≤ Nall Q := by simp only [Nall, N₀]; omega
-      have : 7 * (cacheDom c).card + 10 ≤ 8 * Nall Q := by omega
-      calc ((7 * (cacheDom c).card + 10 : ℕ) : ℝ≥0∞) ≤ ((8 * Nall Q : ℕ) : ℝ≥0∞) := by
+      have : 7 * (cacheDom c).card + 8 ≤ 8 * Nall Q := by omega
+      calc ((7 * (cacheDom c).card + 8 : ℕ) : ℝ≥0∞) ≤ ((8 * Nall Q : ℕ) : ℝ≥0∞) := by
             exact_mod_cast this
         _ = 8 * ((Nall Q : ℕ) : ℝ≥0∞) := by push_cast; ring
   -- The split.
-  set mx := (simulateQ randomOracle (dExp W pcsOpen (withSetup4 (setupPcs q₀) A₀))).run' ∅ with hmx
-  have hsplit : ∀ z, BreaksD W M.cW z → EW pcsOpen z ∨ Eσ pcsOpen z ∨
-      EH pcsOpen z ∨ EQ pcsOpen z ∨ EG pcsOpen z ∨ ES pcsOpen z ∨ EB z ∨ EBn 25 z ∨ EBn 28 z ∨
-      (BreaksD W M.cW z ∧ ¬ EW pcsOpen z ∧ ¬ Eσ pcsOpen z ∧ ¬ EH pcsOpen z ∧
-        ¬ EQ pcsOpen z ∧ ¬ EG pcsOpen z ∧ ¬ ES pcsOpen z ∧ ¬ EB z ∧ ¬ EBn 25 z ∧ ¬ EBn 28 z) := by
+  set mx := (simulateQ randomOracle (dExp W pcsOpen (withSetup2 (setupPcs q₀) A₀))).run' ∅ with hmx
+  have hsplit : ∀ z, BreaksD W M.cW z → EW pcsOpen z ∨ Eσ pcsOpen z ∨ ET pcsOpen z ∨ EBn 24 z ∨ EBn 28 z ∨
+      (BreaksD W M.cW z ∧ ¬ EW pcsOpen z ∧ ¬ Eσ pcsOpen z ∧ ¬ ET pcsOpen z ∧ ¬ EBn 24 z ∧ ¬ EBn 28 z) := by
     intro z hb
     by_cases h1 : EW pcsOpen z
     · exact Or.inl h1
     by_cases h2 : Eσ pcsOpen z
     · exact Or.inr (Or.inl h2)
-    by_cases h3 : EH pcsOpen z
+    by_cases h3 : ET pcsOpen z
     · exact Or.inr (Or.inr (Or.inl h3))
-    by_cases h4 : EQ pcsOpen z
+    by_cases h4 : EBn 24 z
     · exact Or.inr (Or.inr (Or.inr (Or.inl h4)))
-    by_cases h5 : EG pcsOpen z
+    by_cases h5 : EBn 28 z
     · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inl h5))))
-    by_cases h6 : ES pcsOpen z
-    · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl h6)))))
-    by_cases h7 : EB z
-    · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl h7))))))
-    by_cases h8 : EBn 25 z
-    · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl h8)))))))
-    by_cases h9 : EBn 28 z
-    · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl h9))))))))
-    exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr
-      ⟨hb, h1, h2, h3, h4, h5, h6, h7, h8, h9⟩))))))))
+    exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr ⟨hb, h1, h2, h3, h4, h5⟩))))
   refine (prEvent_mono mx _ _ hsplit).trans ?_
   refine (prEvent_or_le _ _ _).trans ?_
   refine (add_le_add (prEvent_EW_le W pcsOpen _ _ hA) ((prEvent_or_le _ _ _).trans
     (add_le_add (prEvent_Eσ_le W pcsOpen _ _ hA) ((prEvent_or_le _ _ _).trans
-    (add_le_add (prEvent_EH_le W pcsOpen _ _ hA) ((prEvent_or_le _ _ _).trans
-    (add_le_add (prEvent_EQ_le W pcsOpen _ _ hA) ((prEvent_or_le _ _ _).trans
-    (add_le_add (prEvent_EG_le W pcsOpen _ _ hA) ((prEvent_or_le _ _ _).trans
-    (add_le_add (prEvent_ES_le W pcsOpen _ _ hA) ((prEvent_or_le _ _ _).trans
-    (add_le_add (prEvent_EB_le W pcsOpen _ _ hA) ((prEvent_or_le _ _ _).trans
-    (add_le_add (prEvent_EBn_le W pcsOpen _ _ hA 25 adm25) ((prEvent_or_le _ _ _).trans
-    (add_le_add (prEvent_EBn_le W pcsOpen _ _ hA 28 adm28) hrest))))))))))))))))).trans (le_of_eq ?_)
+    (add_le_add (prEvent_ET_le W pcsOpen _ _ hA) ((prEvent_or_le _ _ _).trans
+    (add_le_add (prEvent_EBn_le W pcsOpen _ _ hA 24 adm24) ((prEvent_or_le _ _ _).trans
+    (add_le_add (prEvent_EBn_le W pcsOpen _ _ hA 28 adm28) hrest))))))))).trans (le_of_eq ?_)
   simp only [deployedBound, bindTerm, add_assoc]
   rfl
-
-variable (hdec : ∀ sb, W.decode sb = stmtWords sb) (hτ : RowVanishing statementConsts 22)
-
-/-- **Knowledge soundness of the deployed verifier of the EIP's PCS claims**, in mumbai's two-oracle model, at
-`2^22` rows, on F1's instance of `beta()` (`rustInstance`) and the statement's constants, the honest wiring table
-committed. -/
-theorem knowledgeSoundness_deployed_pcs
-    (A₀ : QuotientRpm.Bytes32 × E → OracleComp KeccakCalls (RootProof4 E × Rest)) (Q : ℕ)
-    (hQ : ∀ c, IsTotalQueryBound (A₀ c) Q) :
-    Pr{let z ← (simulateQ randomOracle
-        (dExp W pcsOpen (withSetup4 (setupPcs (wiringCol hc σ)) A₀))).run' ∅}[
-        BreaksD W (claimsMatch hc σ W hdec hτ).cW z] ≤ deployedBound Q :=
-  knowledgeSoundness_deployed_pcs_of hc σ W _ (claimsMatch hc σ W hdec hτ) A₀ Q hQ
-
-/-- **The same, the binding's coordinate errors bounded** (`δc_27`, `δc_25`, `δc_28`: `2^-168`, `2^-167`,
-`2^-169`). -/
-theorem knowledgeSoundness_deployed_pcs_bits
-    (A₀ : QuotientRpm.Bytes32 × E → OracleComp KeccakCalls (RootProof4 E × Rest)) (Q : ℕ)
-    (hQ : ∀ c, IsTotalQueryBound (A₀ c) Q) :
-    Pr{let z ← (simulateQ randomOracle
-        (dExp W pcsOpen (withSetup4 (setupPcs (wiringCol hc σ)) A₀))).run' ∅}[
-        BreaksD W (claimsMatch hc σ W hdec hτ).cW z] ≤
-      openingBound (N₀ Q) + openingBound (N₀ Q + 10150) + openingBound (N₀ Q + 10150 + 10150) +
-        openingBound (N₀ Q + 10150 + 10150 + 10150) +
-        openingBound (N₀ Q + 10150 + 10150 + 10150 + 10150) +
-        openingBound (N₀ Q + 10150 + 10150 + 10150 + 10150 + 10150) +
-        ((Nall Q : ℕ) : ℝ≥0∞) * ((2 : ℝ≥0∞)⁻¹ ^ 168 + (2 : ℝ≥0∞)⁻¹ ^ 167 + (2 : ℝ≥0∞)⁻¹ ^ 169) +
-        3 * (((Nall Q * (Nall Q + 1) : ℕ) : ℝ≥0∞) / (2 : ℝ≥0∞) ^ 256) +
-        ((Nall Q : ℕ) : ℝ≥0∞) * (((1 / 2 ^ 164 : ℝ≥0) : ℝ≥0∞) + 8 * ((Nall Q : ℕ) : ℝ≥0∞) / 2 ^ 256) := by
-  calc _ ≤ deployedBound Q := knowledgeSoundness_deployed_pcs hc σ W hdec hτ A₀ Q hQ
-    _ = openingBound (N₀ Q) + openingBound (N₀ Q + 10150) + openingBound (N₀ Q + 10150 + 10150) +
-        openingBound (N₀ Q + 10150 + 10150 + 10150) +
-        openingBound (N₀ Q + 10150 + 10150 + 10150 + 10150) +
-        openingBound (N₀ Q + 10150 + 10150 + 10150 + 10150 + 10150) +
-        ((Nall Q : ℕ) : ℝ≥0∞) * (δc 27 + δc 25 + δc 28) +
-        3 * (((Nall Q * (Nall Q + 1) : ℕ) : ℝ≥0∞) / (2 : ℝ≥0∞) ^ 256) +
-        ((Nall Q : ℕ) : ℝ≥0∞) * (((1 / 2 ^ 164 : ℝ≥0) : ℝ≥0∞) + 8 * ((Nall Q : ℕ) : ℝ≥0∞) / 2 ^ 256) := by
-      unfold deployedBound bindTerm
-      ring
-    _ ≤ _ := by
-      gcongr
-      · exact δc_27
-      · exact δc_25
-      · exact δc_28
 
 end SoundPcs

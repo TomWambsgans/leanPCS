@@ -1,9 +1,10 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 -- Adapted from `formal/Compose/Compose/{Deployed,DeployedWired,WiringSetup}.lean` of this repository (the setup
 -- computing the circuit's commitment with the oracle, the deployed run with each opening's stage logged, each
--- opening's doom bounded by F2's soundness on the composed run viewed as its adversary) to the EIP's PCS claims:
--- four commitments with out-of-domain answers (`formal/ComposePcs`), the claims of `reduceWith`
--- (`formal/Statement/PcsQuotient/Reduction.lean`'s `claimsAt`), six one-point openings.
+-- opening's doom bounded by F2's soundness on the composed run viewed as its adversary) to the EIP's PCS claims of
+-- the deployed protocol: two commitments with out-of-domain answers (`formal/ComposePcs/ComposePcs/Chain2.lean`),
+-- the claims of `reduceWith` (`formal/Statement/PcsQuotient/Reduction.lean`'s `claimsAt`), three one-point
+-- openings.
 import SoundPcs.Tables
 
 /-!
@@ -18,29 +19,27 @@ were asked has a candidate satisfying both claims, and an accepting run asks the
 `Opening.lean` instantiates it with the deployed opening.
 
 **The setup** (`setupPcs q₀`) computes the circuit's commitment with the oracle: the Merkle tree of the wiring
-table's word (`Compose.wiringSetup` of `stackWord`, the old public wiring layout's word: version 1 commits the
-table of `24` variables as itself), then its out-of-domain point, coordinate `j` read off Keccak-256 at
-`oodInput 24 root j` (`oodPointO`), and the table's polynomial there.
+table's word (`Compose.wiringSetup` of `stackWord`: version 1 commits the table of `24` variables as itself), then
+its out-of-domain point, coordinate `j` read off Keccak-256 at `oodInput 24 root j` (`oodPointO`), and the table's
+polynomial there.
 
 **The deployed run** (`dExp`), each stage logged from the start (`Stages.lean`):
 
-1. the setup, then the adversary, given the circuit's commitment (`withSetup4`), outputs the reduction's proof
-   (statement, four commitments, five values; `ComposePcs.RootProof4`, its circuit commitment overwritten by the
-   setup's), the parts' two values and the six openings' proofs (`Rest`); its Keccak-256 queries are logged
-   (the extractor reads them);
-2. the chain over Keccak-256 (`ComposePcs.chainWith4`) gives the challenges (`DA4`);
+1. the setup, then the adversary, given the circuit's commitment (`withSetup2`), outputs the reduction's proof
+   (statement, two commitments, four values; `ComposePcs.RootProof2`, its circuit commitment overwritten by the
+   setup's) and the three openings' proofs (`Rest`); its Keccak-256 queries are logged (the extractor reads them);
+2. the chain over Keccak-256 (`ComposePcs.chainWith2`) gives the challenges (`DA2`);
 3. the claims: `PcsQuotient.claimsAt` at `2^22` rows (`claimsD`), the Statement's `reduceWith` after its
    transcript;
-4. the six openings, in the Rust's order (`Claims::all`): the witness claim on `W`, the wiring claim on the
-   circuit's commitment, `H`'s claim, `Q`'s, `G`'s, the sum claim on `H`; each run only if the claims exist,
-   its point has the commitment's number of variables and every earlier opening accepted
-   (`checkAllWith` stops at the first failure).
+4. the three openings, in the Rust's order (`Claims::on`): the witness claim on `W` (`24` variables), the wiring
+   claim on the circuit's commitment (`24`), the copy claim on `T` (`28`); each run only if the claims exist, its
+   point has the commitment's number of variables and every earlier opening accepted (`checkAllWith` stops at the
+   first failure).
 
-**The verifier accepts** (`AccD`) when all six openings accept. **Each opening's doom** at its end (`EW`, `Eσ`,
-`EH`, `EQ`, `EG`, `ES`) is bounded by `OpenSpec.sound` for the run up to it as its adversary
-(`prEvent_EW_le`, …); **the binding events** (`EB`, `EBn n`: some root's list on `27`, resp. `n`, variables not
-separated at its out-of-domain point at the end; `n = 25` for `W` and `G`, `28` for `Q`, `27` for `H`) by
-`WhirBridge.Pcs.ood_binding_coords` on the whole run (`prEvent_EB_le`, `prEvent_EBn_le`).
+**The verifier accepts** (`AccD`) when the three openings accept. **Each opening's doom** at its end (`EW`, `Eσ`,
+`ET`) is bounded by `OpenSpec.sound` for the run up to it as its adversary (`prEvent_EW_le`, …); **the binding
+events** (`EBn n`: some root's list on `n` variables not separated at its out-of-domain point at the end; `n = 24`
+for `W`, `28` for `T`) by `WhirBridge.Pcs.ood_binding_coords` on the whole run (`prEvent_EBn_le`).
 -/
 
 set_option linter.unusedSectionVars false
@@ -169,51 +168,46 @@ theorem setupPcs_queryBound (q₀ : Column 24) : IsTotalQueryBound (setupPcs q�
 
 /-! ## The adversary, the chain -/
 
-/-- What the adversary outputs besides the reduction's proof: the parts' two values (`Q`'s and `G`'s, never
-hashed) and the six openings' proofs, in the order of `Claims::all`. -/
+/-- What the adversary outputs besides the reduction's proof: the three openings' proofs, in the order of
+`Claims::on`. -/
 structure Rest where
-  qv : E
-  gv : E
   oW : Proof
   oσ : Proof
-  oH : Proof
-  oQ : Proof
-  oG : Proof
-  oS : Proof
+  oT : Proof
 
 /-- **The setup, then the adversary**: the adversary is given the circuit's commitment (root and out-of-domain
 answer), and the proof the verifier reads carries it, whatever the adversary put there. -/
-def withSetup4 (setup : OracleComp KeccakCalls (Bytes32 × E))
-    (A : Bytes32 × E → OracleComp KeccakCalls (RootProof4 E × Rest)) :
-    OracleComp KeccakCalls (RootProof4 E × Rest) :=
+def withSetup2 (setup : OracleComp KeccakCalls (Bytes32 × E))
+    (A : Bytes32 × E → OracleComp KeccakCalls (RootProof2 E × Rest)) :
+    OracleComp KeccakCalls (RootProof2 E × Rest) :=
   setup >>= fun c => (fun po => ({ po.1 with ir := c.1, io := c.2 }, po.2)) <$> A c
 
-theorem isTotalQueryBound_withSetup4 (setup : OracleComp KeccakCalls (Bytes32 × E))
-    (A : Bytes32 × E → OracleComp KeccakCalls (RootProof4 E × Rest)) (QS Q : ℕ)
+theorem isTotalQueryBound_withSetup2 (setup : OracleComp KeccakCalls (Bytes32 × E))
+    (A : Bytes32 × E → OracleComp KeccakCalls (RootProof2 E × Rest)) (QS Q : ℕ)
     (hS : IsTotalQueryBound setup QS) (hA : ∀ c, IsTotalQueryBound (A c) Q) :
-    IsTotalQueryBound (withSetup4 setup A) (QS + Q) :=
+    IsTotalQueryBound (withSetup2 setup A) (QS + Q) :=
   isTotalQueryBound_bind hS fun c => (isQueryBound_map_iff _ _ _ _ _).mpr (hA c)
 
 /-- The protocol up to the openings: the proof, the rest, the adversary's Keccak-256 transcript, the
 challenges. -/
 structure S0 where
-  π : RootProof4 E
+  π : RootProof2 E
   rest : Rest
   tA : Transcript
   ch : Chals E
 
-variable {P : Params E} {B : P.Bounds} (W : Wire P B)
+variable {P : Kc3.Params E} (W : Wire2 P)
 
 /-- **The adversary, its log, and the chain.** -/
-def DA4 (A : OracleComp KeccakCalls (RootProof4 E × Rest)) : OracleComp KeccakCalls S0 :=
-  loggedKC A >>= fun pt => chainWith4 W hash256 pt.1.1 >>= fun ch => pure ⟨pt.1.1, pt.1.2, pt.2, ch⟩
+def DA2 (A : OracleComp KeccakCalls (RootProof2 E × Rest)) : OracleComp KeccakCalls S0 :=
+  loggedKC A >>= fun pt => chainWith2 W hash256 pt.1.1 >>= fun ch => pure ⟨pt.1.1, pt.1.2, pt.2, ch⟩
 
-theorem isTotalQueryBound_DA4 (A : OracleComp KeccakCalls (RootProof4 E × Rest)) (Q : ℕ)
-    (hQ : IsTotalQueryBound A Q) : IsTotalQueryBound (DA4 W A) (Q + 6) := by
-  have h : ∀ pt : (RootProof4 E × Rest) × Transcript, IsTotalQueryBound
-      (chainWith4 W hash256 pt.1.1 >>= fun ch =>
+theorem isTotalQueryBound_DA2 (A : OracleComp KeccakCalls (RootProof2 E × Rest)) (Q : ℕ)
+    (hQ : IsTotalQueryBound A Q) : IsTotalQueryBound (DA2 W A) (Q + 6) := by
+  have h : ∀ pt : (RootProof2 E × Rest) × Transcript, IsTotalQueryBound
+      (chainWith2 W hash256 pt.1.1 >>= fun ch =>
         (pure ⟨pt.1.1, pt.1.2, pt.2, ch⟩ : OracleComp KeccakCalls S0)) (6 + 0) :=
-    fun pt => isTotalQueryBound_bind (chain4_queryBound_kc W pt.1.1) fun ch =>
+    fun pt => isTotalQueryBound_bind (chain2_queryBound_kc W pt.1.1) fun ch =>
       (trivial : IsTotalQueryBound (pure ⟨pt.1.1, pt.1.2, pt.2, ch⟩ : OracleComp KeccakCalls S0) 0)
   have := isTotalQueryBound_bind (isTotalQueryBound_loggedKC_run A Q [] hQ) h
   rwa [Nat.add_zero] at this
@@ -225,10 +219,9 @@ def stmtOf (sb : Vector UInt8 64) : PcsQuotient.Statement :=
   ⟨Vector.ofFn fun i : Fin 32 => sb.get ⟨i, by omega⟩, Vector.ofFn fun i : Fin 32 => sb.get ⟨32 + i, by omega⟩⟩
 
 /-- **The claims** (`reduce` after its transcript, `PcsQuotient.claimsAt` at `2^22` rows) at the chain's
-challenges, the proof's values and the parts' two values; `none` when a denominator vanishes. -/
+challenges and the proof's values; `none` when a denominator vanishes. -/
 def claimsD (a : S0) : Option PcsQuotient.Claims :=
   PcsQuotient.claimsAt 22 (stmtOf a.π.stmt) a.ch.α a.ch.β a.ch.γ a.ch.t a.ch.ρ (Vector.ofFn a.π.v.1) a.π.v.2
-    a.rest.qv a.rest.gv
 
 -- The claims are field arithmetic: kept folded, so that no unification evaluates them.
 attribute [irreducible] claimsD
@@ -239,29 +232,17 @@ def mkIn (n : ℕ) (root : Bytes32) (ood : E) (c : PcsQuotient.Claim) (pf : Proo
     Option (Claim1 n × Proof) :=
   if h : c.point.length = n then some (⟨ofB root, ood, c.point, c.value, h⟩, pf) else none
 
-/-- The witness opening's input: `W`'s commitment, the witness claim (`25` variables). -/
-def inW (a : S0) : Option (Claim1 25 × Proof) :=
-  (claimsD a).bind fun cl => mkIn 25 a.π.rW a.π.oW cl.witness a.rest.oW
+/-- The witness opening's input: `W`'s commitment, the witness claim (`24` variables). -/
+def inW (a : S0) : Option (Claim1 24 × Proof) :=
+  (claimsD a).bind fun cl => mkIn 24 a.π.rW a.π.oW cl.witness a.rest.oW
 
 /-- The wiring opening's input: the circuit's commitment (the setup's), the wiring claim (`24` variables). -/
 def inσ (a : S0) : Option (Claim1 24 × Proof) :=
   (claimsD a).bind fun cl => mkIn 24 a.π.ir a.π.io cl.wiring a.rest.oσ
 
-/-- `H`'s opening at the quotient point (`27` variables). -/
-def inH (a : S0) : Option (Claim1 27 × Proof) :=
-  (claimsD a).bind fun cl => mkIn 27 a.π.rH a.π.oH cl.h a.rest.oH
-
-/-- `Q`'s opening (`28` variables). -/
-def inQ (a : S0) : Option (Claim1 28 × Proof) :=
-  (claimsD a).bind fun cl => mkIn 28 a.π.rQ a.π.oQ cl.q a.rest.oQ
-
-/-- `G`'s opening (`25` variables). -/
-def inG (a : S0) : Option (Claim1 25 × Proof) :=
-  (claimsD a).bind fun cl => mkIn 25 a.π.rG a.π.oG cl.g a.rest.oG
-
-/-- `H`'s opening at the sum point (`27` variables). -/
-def inS (a : S0) : Option (Claim1 27 × Proof) :=
-  (claimsD a).bind fun cl => mkIn 27 a.π.rH a.π.oH cl.sum a.rest.oS
+/-- `T`'s opening, the copy claim (`28` variables). -/
+def inT (a : S0) : Option (Claim1 28 × Proof) :=
+  (claimsD a).bind fun cl => mkIn 28 a.π.rT a.π.oT cl.copy a.rest.oT
 
 /-! ## The stages -/
 
@@ -269,30 +250,18 @@ def inS (a : S0) : Option (Claim1 27 × Proof) :=
 abbrev X1 : Type := (S0 × Bool) × Transcript
 /-- Through the wiring opening. -/
 abbrev X2 : Type := (X1 × Bool) × Transcript
-/-- Through `H`'s first opening. -/
+/-- Through `T`'s: the whole run. -/
 abbrev X3 : Type := (X2 × Bool) × Transcript
-/-- Through `Q`'s. -/
-abbrev X4 : Type := (X3 × Bool) × Transcript
-/-- Through `G`'s. -/
-abbrev X5 : Type := (X4 × Bool) × Transcript
-/-- Through `H`'s second: the whole run. -/
-abbrev X6 : Type := (X5 × Bool) × Transcript
 
 /-- The protocol up to the openings, in each stage. -/
 def X1.s (x : X1) : S0 := x.1.1
 def X2.s (x : X2) : S0 := X1.s x.1.1
 def X3.s (x : X3) : S0 := X2.s x.1.1
-def X4.s (x : X4) : S0 := X3.s x.1.1
-def X5.s (x : X5) : S0 := X4.s x.1.1
-def X6.s (x : X6) : S0 := X5.s x.1.1
 
 /-- Every opening so far accepted. -/
 def X1.ok (x : X1) : Bool := x.1.2
 def X2.ok (x : X2) : Bool := X1.ok x.1.1 && x.1.2
 def X3.ok (x : X3) : Bool := X2.ok x.1.1 && x.1.2
-def X4.ok (x : X4) : Bool := X3.ok x.1.1 && x.1.2
-def X5.ok (x : X5) : Bool := X4.ok x.1.1 && x.1.2
-def X6.ok (x : X6) : Bool := X5.ok x.1.1 && x.1.2
 
 variable (O : OpenSpec)
 
@@ -300,29 +269,17 @@ variable (O : OpenSpec)
 def gate {β : Type} (ok : Bool) (o : Option β) : Option β := if ok then o else none
 
 /-- The run through the witness opening. -/
-def e1 (A : OracleComp KeccakCalls (RootProof4 E × Rest)) : OracleComp KeccakCalls X1 :=
-  stage (DA4 W A) fun a => optV (O.V 25) (inW a)
+def e1 (A : OracleComp KeccakCalls (RootProof2 E × Rest)) : OracleComp KeccakCalls X1 :=
+  stage (DA2 W A) fun a => optV (O.V 24) (inW a)
 
 /-- Through the wiring opening. -/
-def e2 (A : OracleComp KeccakCalls (RootProof4 E × Rest)) : OracleComp KeccakCalls X2 :=
+def e2 (A : OracleComp KeccakCalls (RootProof2 E × Rest)) : OracleComp KeccakCalls X2 :=
   stage (e1 W O A) fun x => optV (O.V 24) (gate x.ok (inσ x.s))
 
-/-- Through `H`'s first opening. -/
-def e3 (A : OracleComp KeccakCalls (RootProof4 E × Rest)) : OracleComp KeccakCalls X3 :=
-  stage (e2 W O A) fun x => optV (O.V 27) (gate x.ok (inH x.s))
-
-/-- Through `Q`'s. -/
-def e4 (A : OracleComp KeccakCalls (RootProof4 E × Rest)) : OracleComp KeccakCalls X4 :=
-  stage (e3 W O A) fun x => optV (O.V 28) (gate x.ok (inQ x.s))
-
-/-- Through `G`'s. -/
-def e5 (A : OracleComp KeccakCalls (RootProof4 E × Rest)) : OracleComp KeccakCalls X5 :=
-  stage (e4 W O A) fun x => optV (O.V 25) (gate x.ok (inG x.s))
-
-/-- **The deployed run**: the setup and the adversary, the chain, the claims, the six openings, each stage
+/-- **The deployed run**: the setup and the adversary, the chain, the claims, the three openings, each stage
 logged from the start. -/
-def dExp (A : OracleComp KeccakCalls (RootProof4 E × Rest)) : OracleComp KeccakCalls X6 :=
-  stage (e5 W O A) fun x => optV (O.V 27) (gate x.ok (inS x.s))
+def dExp (A : OracleComp KeccakCalls (RootProof2 E × Rest)) : OracleComp KeccakCalls X3 :=
+  stage (e2 W O A) fun x => optV (O.V 28) (gate x.ok (inT x.s))
 
 /-! ## Query bounds -/
 
@@ -332,41 +289,24 @@ theorem isTotalQueryBound_stage_optV {α β : Type} (pre : OracleComp KeccakCall
     IsTotalQueryBound (stage pre fun a => optV V (f a)) (Qp + QV) :=
   isTotalQueryBound_stage pre _ Qp QV hp fun a => isTotalQueryBound_optV V QV hV (f a)
 
-theorem qb_e1 (A : OracleComp KeccakCalls (RootProof4 E × Rest)) (Q : ℕ) (hQ : IsTotalQueryBound A Q) :
+theorem qb_e1 (A : OracleComp KeccakCalls (RootProof2 E × Rest)) (Q : ℕ) (hQ : IsTotalQueryBound A Q) :
     IsTotalQueryBound (e1 W O A) (Q + 6 + O.QO) := by
   unfold e1
-  exact isTotalQueryBound_stage_optV (DA4 W A) inW (O.V 25) (Q + 6) O.QO (isTotalQueryBound_DA4 W A Q hQ)
-    (O.queryBound 25)
+  exact isTotalQueryBound_stage_optV (DA2 W A) inW (O.V 24) (Q + 6) O.QO (isTotalQueryBound_DA2 W A Q hQ)
+    (O.queryBound 24)
 
-theorem qb_e2 (A : OracleComp KeccakCalls (RootProof4 E × Rest)) (Q : ℕ) (hQ : IsTotalQueryBound A Q) :
+theorem qb_e2 (A : OracleComp KeccakCalls (RootProof2 E × Rest)) (Q : ℕ) (hQ : IsTotalQueryBound A Q) :
     IsTotalQueryBound (e2 W O A) (Q + 6 + O.QO + O.QO) := by
   unfold e2
-  exact isTotalQueryBound_stage (e1 W O A) (fun x => optV (O.V 24) (gate x.ok (inσ x.s))) (Q + 6 + O.QO) O.QO (qb_e1 W O A Q hQ)
-    fun x => isTotalQueryBound_optV (O.V 24) O.QO (O.queryBound 24) (gate x.ok (inσ x.s))
+  exact isTotalQueryBound_stage (e1 W O A) (fun x => optV (O.V 24) (gate x.ok (inσ x.s))) (Q + 6 + O.QO) O.QO
+    (qb_e1 W O A Q hQ) fun x => isTotalQueryBound_optV (O.V 24) O.QO (O.queryBound 24) (gate x.ok (inσ x.s))
 
-theorem qb_e3 (A : OracleComp KeccakCalls (RootProof4 E × Rest)) (Q : ℕ) (hQ : IsTotalQueryBound A Q) :
-    IsTotalQueryBound (e3 W O A) (Q + 6 + O.QO + O.QO + O.QO) := by
-  unfold e3
-  exact isTotalQueryBound_stage (e2 W O A) (fun x => optV (O.V 27) (gate x.ok (inH x.s))) (Q + 6 + O.QO + O.QO) O.QO (qb_e2 W O A Q hQ)
-    fun x => isTotalQueryBound_optV (O.V 27) O.QO (O.queryBound 27) (gate x.ok (inH x.s))
-
-theorem qb_e4 (A : OracleComp KeccakCalls (RootProof4 E × Rest)) (Q : ℕ) (hQ : IsTotalQueryBound A Q) :
-    IsTotalQueryBound (e4 W O A) (Q + 6 + O.QO + O.QO + O.QO + O.QO) := by
-  unfold e4
-  exact isTotalQueryBound_stage (e3 W O A) (fun x => optV (O.V 28) (gate x.ok (inQ x.s))) (Q + 6 + O.QO + O.QO + O.QO) O.QO (qb_e3 W O A Q hQ)
-    fun x => isTotalQueryBound_optV (O.V 28) O.QO (O.queryBound 28) (gate x.ok (inQ x.s))
-
-theorem qb_e5 (A : OracleComp KeccakCalls (RootProof4 E × Rest)) (Q : ℕ) (hQ : IsTotalQueryBound A Q) :
-    IsTotalQueryBound (e5 W O A) (Q + 6 + O.QO + O.QO + O.QO + O.QO + O.QO) := by
-  unfold e5
-  exact isTotalQueryBound_stage (e4 W O A) (fun x => optV (O.V 25) (gate x.ok (inG x.s))) (Q + 6 + O.QO + O.QO + O.QO + O.QO) O.QO (qb_e4 W O A Q hQ)
-    fun x => isTotalQueryBound_optV (O.V 25) O.QO (O.queryBound 25) (gate x.ok (inG x.s))
-
-theorem qb_dExp (A : OracleComp KeccakCalls (RootProof4 E × Rest)) (Q : ℕ) (hQ : IsTotalQueryBound A Q) :
-    IsTotalQueryBound (dExp W O A) (Q + 6 + O.QO + O.QO + O.QO + O.QO + O.QO + O.QO) := by
+theorem qb_dExp (A : OracleComp KeccakCalls (RootProof2 E × Rest)) (Q : ℕ) (hQ : IsTotalQueryBound A Q) :
+    IsTotalQueryBound (dExp W O A) (Q + 6 + O.QO + O.QO + O.QO) := by
   unfold dExp
-  exact isTotalQueryBound_stage (e5 W O A) (fun x => optV (O.V 27) (gate x.ok (inS x.s))) (Q + 6 + O.QO + O.QO + O.QO + O.QO + O.QO) O.QO (qb_e5 W O A Q hQ)
-    fun x => isTotalQueryBound_optV (O.V 27) O.QO (O.queryBound 27) (gate x.ok (inS x.s))
+  exact isTotalQueryBound_stage (e2 W O A) (fun x => optV (O.V 28) (gate x.ok (inT x.s)))
+    (Q + 6 + O.QO + O.QO) O.QO (qb_e2 W O A Q hQ)
+    fun x => isTotalQueryBound_optV (O.V 28) O.QO (O.queryBound 28) (gate x.ok (inT x.s))
 
 /-! ## The events -/
 
@@ -375,28 +315,18 @@ def StageDoom {α : Type} (n : ℕ) (inp : α → Option (Claim1 n × Proof)) (x
   x.1.2 = true ∧ OptDoom (O.Doom n) (inp x.1.1) (cacheOfTr x.2)
 
 /-- The witness opening accepts while doomed. -/
-def EW (z : X6) : Prop := StageDoom O 25 inW z.1.1.1.1.1.1.1.1.1.1
+def EW (z : X3) : Prop := StageDoom O 24 inW z.1.1.1.1
 /-- The wiring opening. -/
-def Eσ (z : X6) : Prop := StageDoom O 24 (fun x : X1 => gate x.ok (inσ x.s)) z.1.1.1.1.1.1.1.1
-/-- `H`'s first opening. -/
-def EH (z : X6) : Prop := StageDoom O 27 (fun x : X2 => gate x.ok (inH x.s)) z.1.1.1.1.1.1
-/-- `Q`'s opening. -/
-def EQ (z : X6) : Prop := StageDoom O 28 (fun x : X3 => gate x.ok (inQ x.s)) z.1.1.1.1
-/-- `G`'s opening. -/
-def EG (z : X6) : Prop := StageDoom O 25 (fun x : X4 => gate x.ok (inG x.s)) z.1.1
-/-- `H`'s second opening. -/
-def ES (z : X6) : Prop := StageDoom O 27 (fun x : X5 => gate x.ok (inS x.s)) z
-
-/-- **The binding event**: at the end of the run, some root on `27` variables whose out-of-domain inputs were all
-asked has a list not separated at its point. -/
-def EB (z : X6) : Prop := BindBadC 27 (cacheOfTr z.2)
+def Eσ (z : X3) : Prop := StageDoom O 24 (fun x : X1 => gate x.ok (inσ x.s)) z.1.1
+/-- `T`'s opening. -/
+def ET (z : X3) : Prop := StageDoom O 28 (fun x : X2 => gate x.ok (inT x.s)) z
 
 /-- **The binding event at `n` variables**: at the end of the run, some root on `n` variables whose out-of-domain
-inputs were all asked has a list not separated at its point (`EB` is `EBn 27`). -/
-def EBn (n : ℕ) (z : X6) : Prop := BindBadC n (cacheOfTr z.2)
+inputs were all asked has a list not separated at its point. -/
+def EBn (n : ℕ) (z : X3) : Prop := BindBadC n (cacheOfTr z.2)
 
-/-- **The deployed verifier accepts**: all six openings accept. -/
-def AccD (z : X6) : Prop := z.ok = true
+/-- **The deployed verifier accepts**: all three openings accept. -/
+def AccD (z : X3) : Prop := z.ok = true
 
 /-! ## Each opening's term is F2's -/
 
@@ -428,82 +358,47 @@ theorem keep_le {α : Type} (pre : OracleComp KeccakCalls α) (V : α → Oracle
     Pr{let z ← (simulateQ randomOracle (stage pre V)).run' ∅}[E z.1.1] ≤ ε :=
   (prEvent_stage_keep pre V E).trans_le h
 
-variable (A : OracleComp KeccakCalls (RootProof4 E × Rest)) (Q : ℕ) (hQ : IsTotalQueryBound A Q)
+variable (A : OracleComp KeccakCalls (RootProof2 E × Rest)) (Q : ℕ) (hQ : IsTotalQueryBound A Q)
 include hQ
 
 theorem prEvent_EW_le :
     Pr{let z ← (simulateQ randomOracle (dExp W O A)).run' ∅}[EW O z] ≤ openingBound (Q + 6) := by
   unfold EW dExp
-  refine keep_le (e5 W O A) (fun x => optV (O.V 27) (gate x.ok (inS x.s))) (fun w : X5 => StageDoom O 25 inW w.1.1.1.1.1.1.1.1) ?_
-  unfold e5
-  refine keep_le (e4 W O A) (fun x => optV (O.V 25) (gate x.ok (inG x.s))) (fun w : X4 => StageDoom O 25 inW w.1.1.1.1.1.1) ?_
-  unfold e4
-  refine keep_le (e3 W O A) (fun x => optV (O.V 28) (gate x.ok (inQ x.s))) (fun w : X3 => StageDoom O 25 inW w.1.1.1.1) ?_
-  unfold e3
-  refine keep_le (e2 W O A) (fun x => optV (O.V 27) (gate x.ok (inH x.s))) (fun w : X2 => StageDoom O 25 inW w.1.1) ?_
+  refine keep_le (e2 W O A) (fun x => optV (O.V 28) (gate x.ok (inT x.s)))
+    (fun w : X2 => StageDoom O 24 inW w.1.1) ?_
   unfold e2
-  refine keep_le (e1 W O A) (fun x => optV (O.V 24) (gate x.ok (inσ x.s))) (fun w : X1 => StageDoom O 25 inW w) ?_
-  exact prEvent_stageDoom_le O _ _ (isTotalQueryBound_DA4 W A Q hQ) 25 (by decide) (by decide) inW
+  refine keep_le (e1 W O A) (fun x => optV (O.V 24) (gate x.ok (inσ x.s))) (fun w : X1 => StageDoom O 24 inW w) ?_
+  exact prEvent_stageDoom_le O _ _ (isTotalQueryBound_DA2 W A Q hQ) 24 (by decide) (by decide) inW
 
 theorem prEvent_Eσ_le :
     Pr{let z ← (simulateQ randomOracle (dExp W O A)).run' ∅}[Eσ O z] ≤ openingBound (Q + 6 + O.QO) := by
   unfold Eσ dExp
-  refine keep_le (e5 W O A) (fun x => optV (O.V 27) (gate x.ok (inS x.s))) (fun w : X5 => StageDoom O 24 (fun x : X1 => gate x.ok (inσ x.s)) w.1.1.1.1.1.1) ?_
-  unfold e5
-  refine keep_le (e4 W O A) (fun x => optV (O.V 25) (gate x.ok (inG x.s))) (fun w : X4 => StageDoom O 24 (fun x : X1 => gate x.ok (inσ x.s)) w.1.1.1.1) ?_
-  unfold e4
-  refine keep_le (e3 W O A) (fun x => optV (O.V 28) (gate x.ok (inQ x.s))) (fun w : X3 => StageDoom O 24 (fun x : X1 => gate x.ok (inσ x.s)) w.1.1) ?_
-  unfold e3
-  refine keep_le (e2 W O A) (fun x => optV (O.V 27) (gate x.ok (inH x.s))) (fun w : X2 => StageDoom O 24 (fun x : X1 => gate x.ok (inσ x.s)) w) ?_
-  exact prEvent_stageDoom_le O _ _ (qb_e1 W O A Q hQ) 24 (by decide) (by decide) (fun x : X1 => gate x.ok (inσ x.s))
+  refine keep_le (e2 W O A) (fun x => optV (O.V 28) (gate x.ok (inT x.s)))
+    (fun w : X2 => StageDoom O 24 (fun x : X1 => gate x.ok (inσ x.s)) w) ?_
+  exact prEvent_stageDoom_le O _ _ (qb_e1 W O A Q hQ) 24 (by decide) (by decide)
+    (fun x : X1 => gate x.ok (inσ x.s))
 
-theorem prEvent_EH_le :
-    Pr{let z ← (simulateQ randomOracle (dExp W O A)).run' ∅}[EH O z] ≤
+theorem prEvent_ET_le :
+    Pr{let z ← (simulateQ randomOracle (dExp W O A)).run' ∅}[ET O z] ≤
       openingBound (Q + 6 + O.QO + O.QO) := by
-  unfold EH dExp
-  refine keep_le (e5 W O A) (fun x => optV (O.V 27) (gate x.ok (inS x.s))) (fun w : X5 => StageDoom O 27 (fun x : X2 => gate x.ok (inH x.s)) w.1.1.1.1) ?_
-  unfold e5
-  refine keep_le (e4 W O A) (fun x => optV (O.V 25) (gate x.ok (inG x.s))) (fun w : X4 => StageDoom O 27 (fun x : X2 => gate x.ok (inH x.s)) w.1.1) ?_
-  unfold e4
-  refine keep_le (e3 W O A) (fun x => optV (O.V 28) (gate x.ok (inQ x.s))) (fun w : X3 => StageDoom O 27 (fun x : X2 => gate x.ok (inH x.s)) w) ?_
-  exact prEvent_stageDoom_le O _ _ (qb_e2 W O A Q hQ) 27 (by decide) (by decide) (fun x : X2 => gate x.ok (inH x.s))
-
-theorem prEvent_EQ_le :
-    Pr{let z ← (simulateQ randomOracle (dExp W O A)).run' ∅}[EQ O z] ≤
-      openingBound (Q + 6 + O.QO + O.QO + O.QO) := by
-  unfold EQ dExp
-  refine keep_le (e5 W O A) (fun x => optV (O.V 27) (gate x.ok (inS x.s))) (fun w : X5 => StageDoom O 28 (fun x : X3 => gate x.ok (inQ x.s)) w.1.1) ?_
-  unfold e5
-  refine keep_le (e4 W O A) (fun x => optV (O.V 25) (gate x.ok (inG x.s))) (fun w : X4 => StageDoom O 28 (fun x : X3 => gate x.ok (inQ x.s)) w) ?_
-  exact prEvent_stageDoom_le O _ _ (qb_e3 W O A Q hQ) 28 (by decide) (by decide) (fun x : X3 => gate x.ok (inQ x.s))
-
-theorem prEvent_EG_le :
-    Pr{let z ← (simulateQ randomOracle (dExp W O A)).run' ∅}[EG O z] ≤
-      openingBound (Q + 6 + O.QO + O.QO + O.QO + O.QO) := by
-  unfold EG dExp
-  refine keep_le (e5 W O A) (fun x => optV (O.V 27) (gate x.ok (inS x.s))) (fun w : X5 => StageDoom O 25 (fun x : X4 => gate x.ok (inG x.s)) w) ?_
-  exact prEvent_stageDoom_le O _ _ (qb_e4 W O A Q hQ) 25 (by decide) (by decide) (fun x : X4 => gate x.ok (inG x.s))
-
-theorem prEvent_ES_le :
-    Pr{let z ← (simulateQ randomOracle (dExp W O A)).run' ∅}[ES O z] ≤
-      openingBound (Q + 6 + O.QO + O.QO + O.QO + O.QO + O.QO) := by
-  unfold ES dExp
-  exact prEvent_stageDoom_le O _ _ (qb_e5 W O A Q hQ) 27 (by decide) (by decide) (fun x : X5 => gate x.ok (inS x.s))
+  unfold ET dExp
+  exact prEvent_stageDoom_le O _ _ (qb_e2 W O A Q hQ) 28 (by decide) (by decide)
+    (fun x : X2 => gate x.ok (inT x.s))
 
 /-- **The binding term at `n` variables**: `ood_binding_coords` on the whole run. -/
 theorem prEvent_EBn_le (n : ℕ) (hw : Whir.Admissible n logInvRate) :
     Pr{let z ← (simulateQ randomOracle (dExp W O A)).run' ∅}[EBn n z] ≤
-      ((Q + 6 + O.QO + O.QO + O.QO + O.QO + O.QO + O.QO : ℕ) : ℝ≥0∞) * δc n +
-        (((Q + 6 + O.QO + O.QO + O.QO + O.QO + O.QO + O.QO) *
-          (Q + 6 + O.QO + O.QO + O.QO + O.QO + O.QO + O.QO + 1) : ℕ) : ℝ≥0∞) / (2 : ℝ≥0∞) ^ 256 := by
-  set v := e5 W O A >>= fun x => (x, ·) <$> optV (O.V 27) (gate x.ok (inS x.s)) with hvdef
-  have hV : ∀ x : X5, IsTotalQueryBound ((x, ·) <$> optV (O.V 27) (gate x.ok (inS x.s))) O.QO :=
+      ((Q + 6 + O.QO + O.QO + O.QO : ℕ) : ℝ≥0∞) * δc n +
+        (((Q + 6 + O.QO + O.QO + O.QO) * (Q + 6 + O.QO + O.QO + O.QO + 1) : ℕ) : ℝ≥0∞) /
+          (2 : ℝ≥0∞) ^ 256 := by
+  set v := e2 W O A >>= fun x => (x, ·) <$> optV (O.V 28) (gate x.ok (inT x.s)) with hvdef
+  have hV : ∀ x : X2, IsTotalQueryBound ((x, ·) <$> optV (O.V 28) (gate x.ok (inT x.s))) O.QO :=
     fun x => by
-      generalize gate x.ok (inS x.s) = o
+      generalize gate x.ok (inT x.s) = o
       exact (isQueryBound_map_iff _ (fun b => (x, b)) _ _ _).mpr
-        (isTotalQueryBound_optV (O.V 27) O.QO (O.queryBound 27) o)
-  have hv : IsTotalQueryBound v (Q + 6 + O.QO + O.QO + O.QO + O.QO + O.QO + O.QO) :=
-    isTotalQueryBound_bind (qb_e5 W O A Q hQ) hV
+        (isTotalQueryBound_optV (O.V 28) O.QO (O.queryBound 28) o)
+  have hv : IsTotalQueryBound v (Q + 6 + O.QO + O.QO + O.QO) :=
+    isTotalQueryBound_bind (qb_e2 W O A Q hQ) hV
   have hE : ∀ c c' : KeccakCalls.QueryCache, (∀ x, c (.inl x) = c' (.inl x)) →
       (BindBadC n c ↔ BindBadC n c') := fun c c' h => by
     unfold BindBadC
@@ -512,31 +407,6 @@ theorem prEvent_EBn_le (n : ℕ) (hw : Whir.Admissible n logInvRate) :
   have h1 := prEvent_logged_cache v (BindBadC n) hE
   have h2 := ood_binding_coords hw v _ hv
   unfold EBn dExp stage
-  refine h1.trans_le ?_
-  exact h2
-
-/-- **The binding term**: `ood_binding_coords` at `27` variables on the whole run. -/
-theorem prEvent_EB_le :
-    Pr{let z ← (simulateQ randomOracle (dExp W O A)).run' ∅}[EB z] ≤
-      ((Q + 6 + O.QO + O.QO + O.QO + O.QO + O.QO + O.QO : ℕ) : ℝ≥0∞) * δc 27 +
-        (((Q + 6 + O.QO + O.QO + O.QO + O.QO + O.QO + O.QO) *
-          (Q + 6 + O.QO + O.QO + O.QO + O.QO + O.QO + O.QO + 1) : ℕ) : ℝ≥0∞) / (2 : ℝ≥0∞) ^ 256 := by
-  set v := e5 W O A >>= fun x => (x, ·) <$> optV (O.V 27) (gate x.ok (inS x.s)) with hvdef
-  have hV : ∀ x : X5, IsTotalQueryBound ((x, ·) <$> optV (O.V 27) (gate x.ok (inS x.s))) O.QO :=
-    fun x => by
-      generalize gate x.ok (inS x.s) = o
-      exact (isQueryBound_map_iff _ (fun b => (x, b)) _ _ _).mpr
-        (isTotalQueryBound_optV (O.V 27) O.QO (O.queryBound 27) o)
-  have hv : IsTotalQueryBound v (Q + 6 + O.QO + O.QO + O.QO + O.QO + O.QO + O.QO) :=
-    isTotalQueryBound_bind (qb_e5 W O A Q hQ) hV
-  have hE : ∀ c c' : KeccakCalls.QueryCache, (∀ x, c (.inl x) = c' (.inl x)) →
-      (BindBadC 27 c ↔ BindBadC 27 c') := fun c c' h => by
-    unfold BindBadC
-    have hc : (fun x => c (.inl x)) = fun x => c' (.inl x) := funext h
-    rw [hc]
-  have h1 := prEvent_logged_cache v (BindBadC 27) hE
-  have h2 := ood_binding_coords (admissible_v1 27 (by decide) (by decide)) v _ hv
-  unfold EB dExp stage
   refine h1.trans_le ?_
   exact h2
 

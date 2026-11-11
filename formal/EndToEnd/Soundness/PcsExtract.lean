@@ -17,9 +17,9 @@ accepts while **the witness root's word, read off the transcript, lists no stack
 
 * `ExtractsT` reads the transcript through its answers (`lookInv_EvK`), and only at the lengths the witness tree
   hashes (`merkleWord_filter`: a node's `64` bytes, a leaf's `512`);
-* **`extracts_of_mem`** (`SoundPcs`'s side): if `SoundPcs`'s extractor list on a transcript (`adversaryExtractor4`,
+* **`extracts_of_mem`** (`SoundPcs`'s side): if `SoundPcs`'s extractor list on a transcript (`adversaryExtractor2`,
   the deployed table code `colCode` of the witness table) holds a message satisfying F1's relation for the
-  statement, `ExtractsT` holds of that transcript (`relation_of_sat`);
+  statement, `ExtractsT` holds of that transcript (`StackRel`);
 * **`extractor_of_extracts`** (the Statement's side): if `ExtractsT` holds of the setup tree's log, any entries of
   other lengths (the out-of-domain point's) and the Keccak-256 evaluations of the adversary's transcript, the
   Statement's extractor returns a secret of the statement: its word is mumbai's `committedLeaves` on those
@@ -42,17 +42,17 @@ open LeanVM.Protocol LeanVM.Protocol.KeccakHash LeanVM.Protocol.Compile
 
 /-! ## The event -/
 
-/-- **The witness word a transcript commits to under a root**: the Merkle word of the witness table (`25`
-variables, rate `1/2`: height `20`, leaves of `512` bytes), read as words. -/
+/-- **The witness word a transcript commits to under a root**: the Merkle word of the witness table (`24`
+variables, rate `1/2`: height `19`, leaves of `512` bytes), read as words. -/
 def wordT (tr : Transcript) (r : Digest) : Word :=
-  wordOfMerkle (WhirBridge.rootHeight 25 WhirBridge.logInvRate) (2 ^ WhirBridge.laneFold)
-    (merkleWord (histOfTr tr) (tableOfTr tr) (WhirBridge.rootHeight 25 WhirBridge.logInvRate) leafBytes (toB r))
+  wordOfMerkle (WhirBridge.rootHeight 24 WhirBridge.logInvRate) (2 ^ WhirBridge.laneFold)
+    (merkleWord (histOfTr tr) (tableOfTr tr) (WhirBridge.rootHeight 24 WhirBridge.logInvRate) leafBytes (toB r))
 
 /-- **The extraction succeeds on a transcript**: the proof names a witness root, and mumbai's list decoder on its
 word lists a stack spelling a secret of the statement. -/
 def ExtractsT (a : PcsQuotient.Statement × PcsQuotient.Proof) (tr : Transcript) : Prop :=
   ∃ r, PcsQuotient.rootOfHalves a.2.reduction.witness.root = some r ∧
-    ∃ st ∈ LeanVM.Extraction.decodeStacks 25 WhirBridge.logInvRate (wordT tr r),
+    ∃ st ∈ LeanVM.Extraction.decodeStacks 24 WhirBridge.logInvRate (wordT tr r),
       PcsQuotient.Relation a.1 (PcsQuotient.secretOfStack (PcsQuotient.membership PcsQuotient.logRows) st)
 
 /-- **The event**: the verifier accepts while the extraction fails on the transcript. -/
@@ -86,29 +86,28 @@ theorem lookInv_EvK {σ₀ : Type} : PcsKS.LookInv (EvK (σ₀ := σ₀)) := by
 
 /-! ## `SoundPcs`'s side -/
 
-variable (hc : Compose.IsCantor PcsBridge.statementConsts.beta)
+variable {P : Kc3.Params E} (readW : Column 24 → P.Msg₁) (hrel : StackRel P readW)
 
-/-- The witness table's code of `SoundPcs` at the deployed instance. -/
-noncomputable abbrev cWK : TableCode (instR hc).bounds.Msg₁ :=
-  SoundPcs.colCode 25 SoundPcs.adm25 (SoundPcs.readW hc deployedSigma)
+/-- The witness table's code of `SoundPcs`: the extractor's decoder, each column read by `readW`. -/
+abbrev cWK : TableCode P.Msg₁ := SoundPcs.colCode 24 SoundPcs.adm24 readW
 
+include hrel in
 /-- **If `SoundPcs`'s extractor list holds a witness, the extraction succeeds** on the same transcript. -/
 theorem extracts_of_mem (a : PcsQuotient.Statement × PcsQuotient.Proof) (index : PcsQuotient.Commitment)
     (tA : Transcript) (rW : Digest) (hW : PcsQuotient.rootOfHalves a.2.reduction.witness.root = some rW)
-    (g : (instR hc).bounds.Msg₁)
-    (hg : g ∈ adversaryExtractor4 (cWK hc) tA (rootProofOf4 index a.1 a.2.reduction))
-    (hs : (instR hc).params.Sat ((pcsWire (instR hc)).decode (rootProofOf4 index a.1 a.2.reduction).stmt)
-      ((instR hc).params.cells g.1)) :
+    (g : P.Msg₁)
+    (hg : g ∈ adversaryExtractor2 (cWK readW) tA (rootProofOf2 index a.1 a.2.reduction))
+    (hs : P.Sat ((pcsWire2 P).decode (rootProofOf2 index a.1 a.2.reduction).stmt) (P.cells g.1)) :
     ExtractsT a tA := by
-  have hr : (rootProofOf4 index a.1 a.2.reduction).rW = toB rW := by
-    simp [rootProofOf4, hW]
-  unfold adversaryExtractor4 cWK at hg
+  have hr : (rootProofOf2 index a.1 a.2.reduction).rW = toB rW := by
+    simp [rootProofOf2, hW]
+  unfold adversaryExtractor2 cWK at hg
   rw [hr] at hg
   dsimp only [SoundPcs.colCode] at hg
   obtain ⟨q, hq, rfl⟩ := List.mem_map.mp hg
   unfold decodeColumns at hq
   obtain ⟨st, hst, rfl⟩ := List.mem_map.mp hq
-  exact ⟨rW, hW, st, hst, relation_of_sat hc a.1 st hs⟩
+  exact ⟨rW, hW, st, hst, hrel a.1 st hs⟩
 
 /-! ## The lengths the witness tree hashes -/
 
@@ -197,15 +196,15 @@ theorem extractFrom_spec (n : ℕ) (circuit : PcsQuotient.Circuit) (hlog : circu
     (stmt : PcsQuotient.Statement) (pre : Digest → ℕ → Option (List UInt8))
     (proof : PcsQuotient.Proof) (W : ℕ → List K)
     (hw : PcsQuotient.witnessWord n pre proof = some W)
-    (st : Vector K (2 ^ (PcsQuotient.cellVars n + 1)))
-    (hst : st ∈ LeanVM.Extraction.decodeStacks (PcsQuotient.cellVars n + 1)
+    (st : Vector K (2 ^ PcsQuotient.cellVars n))
+    (hst : st ∈ LeanVM.Extraction.decodeStacks (PcsQuotient.cellVars n)
       PcsQuotient.logInvRate W)
     (hrel : PcsQuotient.Relation stmt (PcsQuotient.secretOfStack circuit st)) :
     ∃ w, PcsQuotient.extractFrom circuit stmt pre proof = some w ∧
       PcsQuotient.Relation stmt w := by
   unfold PcsQuotient.extractFrom
   rw [hlog, hw, Option.bind_eq_bind, Option.bind_some]
-  have hf : ∀ (a : Vector K (2 ^ (PcsQuotient.cellVars n + 1))) b,
+  have hf : ∀ (a : Vector K (2 ^ PcsQuotient.cellVars n)) b,
       (let w := PcsQuotient.secretOfStack circuit a
         if PcsQuotient.Relation stmt w then some w else none) = some b →
         PcsQuotient.Relation stmt b := fun a b hab => by
@@ -233,16 +232,16 @@ theorem witnessWord_eq_committed (setupEvals : List (List UInt8 × Digest)) (T :
           (permutationQueries T)))) proof =
       some (LeanVM.Extraction.leafAt (LeanVM.Extraction.committedLeaves
         (lookupEvaluation (setupEvals ++ keccakEvaluationsOfTranscript (permutationQueries T)))
-        ((setupEvals ++ keccakEvaluationsOfTranscript (permutationQueries T)).map (·.1)) d 20
-          (2 ^ WhirBridge.laneFold)) 20 (2 ^ WhirBridge.laneFold)) := by
+        ((setupEvals ++ keccakEvaluationsOfTranscript (permutationQueries T)).map (·.1)) d 19
+          (2 ^ WhirBridge.laneFold)) 19 (2 ^ WhirBridge.laneFold)) := by
   unfold PcsQuotient.witnessWord PcsQuotient.witnessRootOf
   rw [hd, Option.map_some]
   congr 1
-  show LeanVM.Extraction.leafAt (PcsQuotient.Replay.leavesUnder _ 64 20 d) 20 64 =
-    LeanVM.Extraction.leafAt (LeanVM.Extraction.subtreeLeaves _ 64 20 d) 20 64
+  show LeanVM.Extraction.leafAt (PcsQuotient.Replay.leavesUnder _ 64 19 d) 19 64 =
+    LeanVM.Extraction.leafAt (LeanVM.Extraction.subtreeLeaves _ 64 19 d) 19 64
   rw [← Soundness.Replay.leavesUnder_preimage]
   congr 1
-  refine Soundness.Replay.leavesUnder_congr _ _ 64 (fun d' ↦ ?_) (fun d' ↦ ?_) 20 d
+  refine Soundness.Replay.leavesUnder_congr _ _ 64 (fun d' ↦ ?_) (fun d' ↦ ?_) 19 d
   · exact Soundness.Replay.preimage_merkle setupEvals _ d' 64 (by decide)
   · exact Soundness.Replay.preimage_merkle setupEvals _ d' (8 * 64) (by decide)
 
@@ -262,16 +261,16 @@ theorem extractor_of_extracts (t : LeanVM.Prover.Tree) (L : Transcript) (hL : �
   set paths := PcsQuotient.Tree.evaluations t ++ keccakEvaluationsOfTranscript (permutationQueries T)
     with hpaths
   rw [wordT_drop _ L _ hL, ← trOf_append_eval] at hst
-  have hadm : Whir.Admissible 25 WhirBridge.logInvRate := SoundPcs.adm25
-  have hst' : st ∈ LeanVM.Extraction.decodeStacks 25 1
+  have hadm : Whir.Admissible 24 WhirBridge.logInvRate := SoundPcs.adm24
+  have hst' : st ∈ LeanVM.Extraction.decodeStacks 24 1
       (LeanVM.Extraction.leafAt (LeanVM.Extraction.committedLeaves
-        (lookupEvaluation paths) (paths.map (·.1)) r 20 (2 ^ WhirBridge.laneFold)) 20
+        (lookupEvaluation paths) (paths.map (·.1)) r 19 (2 ^ WhirBridge.laneFold)) 19
           (2 ^ WhirBridge.laneFold)) := by
     refine Soundness.mem_decodeStacks_congr hadm (fun v hv => ?_) st hst
-    have hv' : v < 2 ^ 20 := lt_of_lt_of_eq hv rfl
-    exact Soundness.wordOfMerkle_merkleWord_eq paths r 20 (2 ^ WhirBridge.laneFold) hv'
+    have hv' : v < 2 ^ 19 := lt_of_lt_of_eq hv rfl
+    exact Soundness.wordOfMerkle_merkleWord_eq paths r 19 (2 ^ WhirBridge.laneFold) hv'
   unfold PcsQuotient.extractor PcsQuotient.transcriptExtractorFor
-  exact extractFrom_spec 22 _ (Bridge.Circuit.membership_logRows 22) a.1 _ a.2 _
+  exact extractFrom_spec 22 _ rfl a.1 _ a.2 _
     (witnessWord_eq_committed (PcsQuotient.Tree.evaluations t) T a.2 r hr) st hst' hrel
 
 end PcsKS
