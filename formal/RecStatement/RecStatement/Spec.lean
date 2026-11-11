@@ -1,7 +1,7 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Transcribed from `crates/leanvm/rec/src/pi2/verifier.rs`
 -- (`SpecPair`, `Group`, `PortTerm`, `Spec`, `Spec::of`, `is_zero`, `normalised_constants`) and
 -- `crates/leanvm/rec/src/pi2/circuit.rs` (`coset_constants`, `vanishing`, `pair_constants`, `Circuit::max_gamma`),
--- π2v2 (`leanvm-rec-pi2v2`). The Cantor basis is `formal/UniStatement`'s (`beta`, `point`).
+-- π2v2's PIOP, as π2v3 (`leanvm-rec-pi2v3`) keeps it. The Cantor basis is `formal/UniStatement`'s (`beta`, `point`).
 import RecStatement.Basic
 import RecStatement.Core
 

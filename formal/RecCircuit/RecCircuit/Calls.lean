@@ -360,7 +360,7 @@ theorem call_node_lt (hc : compile (ofRG g rootsAt iv) = .ok c) {ci k id : ℕ} 
 
 /-- **π2's rebuilt claims of π1, from its ports, are π1's graph's call words**, in `RecGraph`'s semantics over
 Keccak-f[1600], on the public input and the stream the witness encodes: word by word, word 0 (each claim's root) as
-a claim holds it (`pcsWord`: a setup root as its root word), pairs' coordinates included. -/
+a claim holds it (`pcsWord`: as it is), pairs' coordinates included. -/
 theorem compile_sound_calls (hc : compile (ofRG g rootsAt iv) = .ok c) {pub : ℕ → List F192} {w : ℕ → K}
     (hw : c.circuit.toPiop.Satisfies pub (emb w)) :
     c.circuit.calls.length = g.calls.length ∧
@@ -458,7 +458,7 @@ theorem flatMap_range {α β : Type} (l : List α) (d : α) (f : α → List β)
     rfl
 
 /-- **π2's rebuilt claims of π1, from its ports, claim by claim**: each claim's bytes are π1's graph's as a claim
-holds them (a setup root as its root word). -/
+holds them (`pcsWord`: as they are). -/
 theorem compile_sound_callInputs (hc : compile (ofRG g rootsAt iv) = .ok c) {pub : ℕ → List F192} {w : ℕ → K}
     (hw : c.circuit.toPiop.Satisfies pub (emb w)) :
     c.circuit.callInputs w = g.calls.map fun ws => (List.range ws.length).flatMap fun k =>

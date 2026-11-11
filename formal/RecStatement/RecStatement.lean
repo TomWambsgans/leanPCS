@@ -16,14 +16,14 @@ import RecStatement.Lemmas.SpecLink
 `crates/leanvm/rec`'s π2 verifier (`pi2/verifier.rs`, `contract.rs`; `PI2.md` §2, §8–§9) as computable Lean
 (`README.md` here: the reading order, the correspondence with the Rust, what is tested):
 
-* **the verifier** (`run`, `runWith`): the seed of π2's IV (`iv`: π1's contract IV, the setup root, the circuit's
-  digest, the layout words), the public data in the stream, `W`'s root then `α, β, γ`, `Q`'s root then `t`, the 17
-  values then `ρ`, and the arithmetic at `t` (`CoreSpec.run`, over any field), its constants `Spec.of` of the
-  circuit's tables (`Data`, emitted by the Rust); the six claims word for word (`pcsCalls`);
+* **the verifier** (`run`, `runWith`): the seed of π2's IV (`iv`: π1's contract IV, the setup's root and
+  out-of-domain answer, the circuit's digest, `log_n`), the public data in the stream, `W`'s commitment (root,
+  answer) then `α, β, γ`, `Q`'s then `t`, the 18 values then `ρ`, and the arithmetic at `t` (`CoreSpec.run`, over
+  any field), its constants `Spec.of` of the circuit's tables (`Data`, emitted by the Rust); the eight PCS claims
+  word for word (`pcsCalls`), each opened one at a time (`pcsOpenWords`);
 * **the verifier-arithmetic lemmas** (`Lemmas`), over any field of characteristic two, under `SpecOf` (the constants
-  are `RecPiop`'s circuit's on a Cantor basis): the indicators' closed form (`ind_eval_closed`), the zero coset's
-  (`coset_closed`), the siblings' fold (`cellsList_eq_cellsOf`), `W`'s fold (`foldW_eq_foldAt`), the push side
-  (`push_side`), the public side (`publicSide_eq`), the one inversion's two nonzero conditions (`all_ne_zero_iff`), and
+  are `RecPiop`'s circuit's on a Cantor basis): the indicators' closed form (`ind_eval_closed`), the siblings' fold (`cellsList_eq_cellsOf`), `W`'s fold (`foldW_eq_foldAt`), the push side
+  (`push_side`), the one inversion's two nonzero conditions (`all_ne_zero_iff`), and
   **`checks_claims_iff`**/**`checks_claims_iff_post2`**: the checks pass and the claims hold iff `t ∉ V_{m+2}`,
   `c_h + c_q ≠ 0` and `RecPiop.Post2`;
 * **the end statements** (`Security`, `Reduction`), for the recursion of the **Keccak VM** (π1 is `formal/UniKeccak`'s

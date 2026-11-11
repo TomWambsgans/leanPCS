@@ -76,7 +76,7 @@ theorem compile_sound_zero_const (hc : compile (ofRG g rootsAt iv) = .ok c) (iv'
 claims its verifier rebuilds from them are π1's graph's outputs in `RecGraph`'s semantics over
 Keccak-f[1600], on the public input and the stream the witness encodes: the statement's words, the roots' words (the
 stream's bytes), the zero checks' values (the constant ones `0`), the claims' bytes as a claim holds them (`pcsWord`:
-a setup root as its root word). -/
+as they are). -/
 def EndStatement (g : RecGraph.Graph) (rootsAt : List ℕ) (iv : List UInt8) (c : Compiled) (w : ℕ → K) : Prop :=
     (∀ J < c.circuit.ports.size, (c.circuit.ports.getD J default).source = .statement →
       c.circuit.portLimbs w J = (List.range 4).map fun k => K.ofLane (beWordAt (c.pubW w).toArray (8 * k))) ∧
