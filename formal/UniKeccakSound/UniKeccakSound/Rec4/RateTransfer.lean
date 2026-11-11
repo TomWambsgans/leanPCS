@@ -23,8 +23,9 @@ capacity's 64): `H` then answers 136 uniform bytes, whose first 32 are Keccak-25
   200 bytes split as rate, nothing, capacity) and in the two-oracle ROM with `H : List UInt8 → RateBytes` within
   `q² / 2^508`, as for the digest.
 
-What it does not do: π1-rec4's Fiat–Shamir chain (`Compose.ListChainK` generalised to rounds whose challenges are one
-call's rate) is not written, so nothing consumes this yet (`UniKeccakSound/README.md`, "π1-rec4").
+It is consumed by π1-rec4's knowledge soundness (`Rec4/RpmRate.lean`, `rpm_le_kcSR`: the game over the rate-split
+state read as the two-oracle ROM, on the way to `uniKnowledgeSoundnessKeccakRec4_closed`) and by its completeness
+(`formal/UniKeccakComplete/UniKeccakComplete/K/Rec4Rate.lean`, `rpm_le_romW`).
 -/
 
 open OracleComp OracleSpec

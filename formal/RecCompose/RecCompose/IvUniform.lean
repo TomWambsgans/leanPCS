@@ -19,15 +19,16 @@ ways (the all-ones IV and the zero IV), given the compiler's **IV factorization*
   all-ones IV's (`patchCheck iv`, a `Bool`). This is the factorization `compile iv = patchκ P iv (compile
   base)`, stated on what the checks read.
 
-**Proved** (`ivChecked_of_patchChecked`): `PatchChecked`, `ivCheck` at the all-ones IV and `ivCheck` at the zero IV
-give `IvChecked`. The view check transfers because `viewOf`, `callsOf` and every part of `validB` but `kappaExprB` do
+**Proved** (`ivChecked_of_patchChecked`): `PatchChecked`, and `ivCheck roots ones` and `ivCheck roots zero` at **every**
+setup commitment `roots`, give `IvChecked`. The two `ivCheck`s are evaluated at the reference commitment `realRoots`
+only (`rec-real-check`), so at other commitments they are assumed as well. The view check transfers because `viewOf`, `callsOf` and every part of `validB` but `kappaExprB` do
 not read `κ`, and `kappaExprB` holds of a sublist (`viewCheck_patch`). `streamAgree` transfers because a patched
 circuit's `κ` is, at every position, the all-ones IV's or the zero IV's (`kappaAt_patch`, `zeroPos_sub`), and
 `valAgree` reads `κ` at one position only (`valAgree_mix_kd`, `streamAgree_mix`).
 
 **Not proved**: `PatchChecked` itself (the simulation of `compileM` that the factorization needs; see
 `RealDeployment.lean`). It is a statement about the compiler alone (no checker, no view check), universally
-quantified over the IVs like `IvChecked`.
+quantified over the setup commitments and IVs like `IvChecked`.
 -/
 
 namespace RecCompose

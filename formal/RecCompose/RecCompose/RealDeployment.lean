@@ -5,26 +5,30 @@ import RecCompose.Circuit
 /-!
 # The real deployment, and the run-checked inputs that build its circuits
 
-This file exhibits a `D` with `D.Real`, and inhabits `Pi2Circuits D`, whose per-IV premises are stated for 32-byte
-IVs only (quantified over IVs of every length, it would be uninhabited). Here:
+This file exhibits a `D` with `D.Real`, and inhabits `Pi2Circuits D`, whose premises are stated per π1 setup commitment
+`roots` and 32-byte IV (quantified over IVs of every length, it would be uninhabited). Here:
 
 * **`realDeployment prog hprog`**: π1's deployment (the Keccak VM's `UniKeccak.KDeployment`) at the 128-signature
   reference shape `RecGraphKeccak.Pi1.keccak128` and leanVM's program IV, for the program `prog` (any Keccak VM program
-  of the reference shape's bytecode size; leanVM 9d50c92a3's is not transcribed in Lean), with the `A0`, `B0` roots of
-  `realRoots` (one constant, the reference roots); π2's circuit at each IV `pi2CircuitOf` of the Lean compiler's
-  (`compiledAt iv`: `RecCircuit.compile` on the Keccak π1-rec3's emitted graph `RecGraphKeccak.Emitted.graph` at that
-  IV), so `σ`, `κ` are the compiler's by construction; π1's calls `Data.pi1Calls`; π1's stream `streamW` of the
+  of the reference shape's bytecode size; leanVM 9d50c92a3's is not transcribed in Lean); π2's circuit at each setup
+  commitment `roots` `pi2CircuitOf` of the Lean compiler's (`compiledAt roots (realIv roots)`: `RecCircuit.compile` on
+  the Keccak π1-rec4's emitted graph at that commitment, `emittedAt roots = graphAtSetup Emitted.graph roots`, at π1's
+  contract IV there), so `σ`, `κ` are the compiler's by construction; π1's calls `Data.pi1Calls`; π1's stream `streamW` of the
   compiled circuit at π1's reference IV (`realStream`); the Keccak-f block `KeccakFlock.keccakFlockSpec`.
-* **`realDeployment_real`**: `(realDeployment prog hprog).Real`, from `GraphsAgree` (the existing run) and two
+* **`realDeployment_real`**: `(realDeployment prog hprog).Real`, from `GraphsAgreeK4` (the existing run) and two
   evaluated checks of single values: **`DigestChecked`** (the digest of the compiler's `σ`, `κ` at `Data.pi1Iv` is the
-  Rust's `Data.digest`) and **`SetupRootChecked`** (their setup tree's root is the Rust's `Data.setupRoot`).
-* **`IvChecked`**: one `Bool` per 32-byte IV, `ivCheck iv`: the compiler accepts π1-rec3's emitted graph at `iv`, the
-  circuit passes `viewCheck`, and its π1-stream decoding agrees with the reference IV's (`streamAgree`: the same free
-  bits and free reads, each of their values read off the witness the same way). **Stated for every 32-byte IV,
-  checked by evaluation at three** (π1's reference IV, the zero IV, the all-ones IV: `rec-real-check`,
-  `RecComposeTest/RealCheck.lean`), assumed at the others.
+  Rust's `Data.digest`) and **`SetupRootChecked`** (their setup tree's root is the Rust's `Data.setupRoot`). These two
+  pin the model's `σ`, `κ` to the deployed contract's constants; no proof uses them for anything else.
+* **`IvChecked`**: one `Bool` per π1 setup commitment `roots` and 32-byte IV, `ivCheck roots iv`: the compiler accepts
+  π1-rec4's emitted graph at `roots` and `iv`, the circuit passes `viewCheck`, and its π1-stream decoding agrees with
+  the reference's (`streamAgree`: the same free bits and free reads, each of their values read off the witness the same
+  way). **Stated for every `(roots, iv)`, checked by evaluation at three points only** (the reference commitment
+  `realRoots` at π1's reference IV, the zero IV and the all-ones IV: `rec-real-check`, `RecComposeTest/RealCheck.lean`),
+  assumed at the others. The end theorems use it at π1's setup commitment as the honest setup computes it over `π`,
+  almost never `realRoots`: there it is an assumption (uniformity in the IV and the commitment, plausible because the
+  commitment enters only through π1's IV and the hashed `F` claim's root and answer words).
 * **`pi2Circuits_real`**, **`pi2ViewChecked_real`**: `Pi2Circuits (realDeployment prog hprog)` and its
-  `Pi2ViewChecked`, from `GraphsAgree` and `IvChecked`. `stream_eq` at every IV follows from `streamAgree`
+  `Pi2ViewChecked`, from `GraphsAgreeK4` and `IvChecked`. `stream_eq` at every IV follows from `streamAgree`
   (`streamW_eq_of_streamAgree`), so it is no longer a functional equation no evaluation checks.
 
 **Why `IvChecked` is not proved (IV uniformity).** The IV enters the compiler at one place, the seed's message

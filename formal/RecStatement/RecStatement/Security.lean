@@ -868,7 +868,7 @@ noncomputable def pi1HonestHazardExperiment (D : RecDeployment) (P1 : Pi1Prover 
 /-- **Hypothesis: π1-rec4's honest proofs avoid the merge hazard at Keccak-f[1600]**, but with probability `δh`.
 Motivated only by `RecGraphKeccak.hazard_probK` (at most `2^16` hazardous `t` per `p_0`, `2^-176` for a uniform `t`),
 a count, not a game: its random-permutation reading is not proved. `RecGraphKeccak.MergeHazardK4` asks that the run
-draw `t` (challenge 52), so a proof whose run stops before `t` is not on it. -/
+draw `t` (challenge 46, `p_0` challenge 45), so a proof whose run stops before `t` is not on it. -/
 def Pi1HazardKeccakHonest (D : RecDeployment) (P1 : Pi1Prover D) (δh : ℝ≥0∞) : Prop :=
   ∀ (input : Vector UInt8 32) (rows : List ℕ) (q : D.pi1.Stack rows), D.pi1.shape.RowsFit rows →
     D.pi1.HonestRelation D.flock rows input q →

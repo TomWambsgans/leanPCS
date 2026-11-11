@@ -32,7 +32,7 @@ open Primitives
 
 namespace RecComposeTest
 
-/-! ## `adapt`'s parts (copied from `RecCompose/ViewDefs.lean`, which is not yet π2v4's) -/
+/-! ## `adapt`'s parts (copied from `RecCompose/ViewDefs.lean`, so that this runner reads no `RecCompose` module) -/
 
 /-- `Coeff::k(x)`: an element of `K`. -/
 def kCoeff (k : RecCircuit.K) : RecStatement.Coeff := ⟨K.lane k, 0, 0, 0⟩

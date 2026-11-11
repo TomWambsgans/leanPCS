@@ -174,6 +174,21 @@ theorem RecCompose.recKnowledgeSoundness_reduction_real (prog : KeccakVm.Program
   `(roots, iv)` at the reference setup commitment and the reference, zero and all-ones IVs (`rec-real-check`,
   `rec-view-check`), assumed elsewhere.
 
+**What the recursion's hypotheses and model amount to.** (a) `IvChecked` is in effect an **assumption** where the
+theorems use it: they apply it at π1's setup commitment as the honest setup computes it over `π`, which is almost never
+the reference commitment `realRoots`, and `ivCheck` is evaluated only at `realRoots` × three IVs (reference, zero,
+all-ones); its uniformity in the IV and in the setup commitment is assumed (plausible: the commitment enters the
+compiled circuit only through π1's contract IV and the hashed `F` claim's root and answer words; `PatchChecked`, not
+proved, would give the IV half). (b) **The frame of PCS claims is modelled as the declared claims themselves**: the
+contract model reads the claims, not Keccak-256 payloads it would match against them, so Keccak-256's collision
+resistance on the frame's payloads (π2's four claims included) is built into the model; the reduction's
+`collisionAdversary` covers only the in-circuit hash of π1's three claims. (c) `DigestChecked` and `SetupRootChecked`
+pin the model's `σ`, `κ` to the deployed contract's constants; they carry no proof weight. (d) There is no Lean
+differential run of π2's verifier against the Rust's (its outputs, the claims' points and values and `all`, on the real
+proof): π2's Lean prover is tested against the Rust's (3/3 vectors), and the contract's bytecode equals the Rust
+verifier by the Rust's tests, but the Lean verifier's agreement with the Rust verifier rests on the transcription and
+on `RecStatement/Data.lean` being the Rust's data.
+
 ## Trusted, tested, not covered
 
 | | Membership | Recursion |

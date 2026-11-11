@@ -136,7 +136,13 @@ transaction gas without the 21,000 base (EIP-7623) and without the frame's per-f
   knowledge soundness at the real deployment as an explicit reduction** (`RecCompose.recKnowledgeSoundness_reduction_real`:
   `pi2Bound ≤ 2^-64` at 2^64 queries, 128.93 bits, plus π1-rec4's break at Keccak-f[1600], the merge hazard and a
   Keccak-256 collision for three explicit adversaries), its hypotheses the evaluated checks (`GraphsAgreeK4`,
-  `DigestChecked`, `SetupRootChecked`, `IvChecked`, evaluated at the reference setup commitment, not proved). The
+  `DigestChecked`, `SetupRootChecked`, `IvChecked`). Read them plainly: `IvChecked` is in effect an assumption where
+  the theorems use it (at π1's honest setup commitment, almost never the reference one; `ivCheck` is evaluated at the
+  reference commitment and three IVs only, its uniformity in IV and commitment assumed); `DigestChecked` and
+  `SetupRootChecked` only pin the model to the deployed constants; the frame of PCS claims is modelled as the declared
+  claims themselves, so Keccak-256's collision resistance on the frame's payloads (π2's four claims included) is built
+  into the model, the reduction's collision adversary covering only the in-circuit hash of π1's claims; π2's Lean
+  verifier is not differential-tested against the Rust verifier ([`formal/README.md`](formal/README.md)). The
   recursion's completeness: π1-rec4's completeness (`uniCompletenessKeccakRec4_closed`, < 2^-169); π1-rec4's Lean
   prover in the recursion (`RecCompose.Pi1K.pi1Rec4ProverK`, its Fiat–Shamir over Keccak-f[1600]) with the four facts
   π2's completeness takes of it (`pi1ProverFactsK4`) and the random-permutation reading of the premise

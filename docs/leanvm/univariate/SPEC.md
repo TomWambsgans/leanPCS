@@ -715,8 +715,11 @@ round, in `z_j`, and WHIR's openings are sound at every point. No new commitment
    that hits no bad value leaves the relation false. A query's challenges are uniform and independent, so the
    `t`-query hits one of `f_0 … f_3`'s bad values with probability ≤ 4/|E|, and for every `f_0 … f_3` the `ρ`-query one
    of `f_4, f_5`'s with probability ≤ 2/|E| (`formal/UniKeccakSound/UniKeccakSound/Rec4/RingSplit.lean`:
-   `ringBad_split_first`, `ringBad_split_second`). The calculator charges the whole 6/|E| to both queries, over
-   `C1`'s and `C2`'s lists. `t`'s identities do not involve the map.
+   `ringBad_split_first`, `ringBad_split_second`, a side lemma no end theorem uses). The calculator charges the whole
+   6/|E| to both queries, over `C1`'s and `C2`'s lists. The Lean's closed bound (`uniKnowledgeSoundnessKeccakRec4_closed`,
+   `Rec4/PiopSound4.lean`'s `uniErrK4`) is coarser: it charges the ring map with Flock's bad family `kBad3` at up to 15
+   values a challenge, `60/|E|` in the `t`-query's round (after `C2`) and `30/|E|` in the `ρ`-query's (after the values
+   at `t`), both well under its uniform cap `2^35/|E|`. `t`'s identities do not involve the map.
 3. *`λ` with `ρ`, `f_4`, `f_5`.* `ρ` combines relations that are all fixed when it is drawn but the ring relation's
    target, which `f_4, f_5` fix; those are independent of `ρ` (other lanes), so conditioned on them the combination
    errs with probability ≤ (relations − 1)/|E| as before. `λ` combines the three combined claims, fixed by `ρ`.

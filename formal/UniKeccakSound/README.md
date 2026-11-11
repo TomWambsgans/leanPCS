@@ -125,13 +125,14 @@ route is π1-rec3's, with the wide draws (one Keccak-256 call's rate gives up to
   (round `0`: `16 · 3,227,649 + ncv + 2^22 + 90`; `C2`'s: `19,339,139 + deg Z_bad + 60`; the values': `187 + 31`).
 
 Also: [`Rec4/RingSplit.lean`](UniKeccakSound/Rec4/RingSplit.lean) (`ringBad_split_first`, `ringBad_split_second`:
-the ring map's two queries, `≤ 4/|E|` then `≤ 2/|E|`) and [`Rec4/RateTransfer.lean`](UniKeccakSound/Rec4/RateTransfer.lean)
-(`keccak256RateTransfer`).
+the ring map's two queries, `≤ 4/|E|` then `≤ 2/|E|`; a side lemma: the closed bound charges Flock's `kBad3`, `60/|E|`
+and `30/|E|` in those rounds, above) and [`Rec4/RateTransfer.lean`](UniKeccakSound/Rec4/RateTransfer.lean)
+(`keccak256RateTransfer`, consumed by `rpm_le_kcSR` and by UniKeccakComplete's `rpm_le_romW`).
 
 ## What remains
 
-- **Completeness** (`UniCompletenessKeccak{,Rec3}`) is not in this library: it is proved in [`formal/UniKeccakComplete`](../UniKeccakComplete/README.md)
-  (`uniCompletenessKeccak_closed`, `uniCompletenessKeccakRec3_closed`, `Prob.deltaK < 2^-169`).
+- **Completeness** (`UniCompletenessKeccak{,Rec3,Rec4}`) is not in this library: it is proved in [`formal/UniKeccakComplete`](../UniKeccakComplete/README.md)
+  (`uniCompletenessKeccak_closed`, `uniCompletenessKeccakRec3_closed`, `uniCompletenessKeccakRec4_closed`, `Prob.deltaK < 2^-169`).
 - **Closed bounds for every valid shape**: the theorems are at the reference shape. Most layers are shape-generic;
   the Fiat–Shamir layer's numbers (`UniShapesK`, `LayoutVarsSmallK`), the identity model's numbers (`DegBoundK`,
   `RelCountK`, `hB`), `FunctionalsCorrect h_SHA3`, `HeapGood` and π1-rec3's odd batch are decided at the reference.
