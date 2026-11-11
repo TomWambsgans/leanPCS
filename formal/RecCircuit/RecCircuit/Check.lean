@@ -792,7 +792,8 @@ def completeGiven : Bool :=
   allBelow c.claims.size (fun j => let cl := c.claims.getD j default
     allBelow cl.frees.size fun f => let fr := cl.frees.getD f default
       (c.limbsOf fr.1).size == 3 && allBelow 192 fun k =>
-        c.givenArr.getD ((fr.2.1).getD k NONE) none == some (freeBitGiven (c.limbsOf fr.1) k))
+        c.givenArr.getD ((fr.2.1).getD k NONE) none == some (freeBitGiven (c.limbsOf fr.1) k) &&
+          decide ((c.limbsOf fr.1).getD (2 - k / 64) NONE < (fr.2.1).getD k NONE))
 
 /-- **Completeness: every byte of the stream is hashed or in a never-hashed read.** -/
 def completeCover (streamLen : ℕ) : Bool :=

@@ -1,5 +1,5 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
-import RecCircuit.Calls
+import RecCircuit.ClaimHash
 
 /-!
 # The end theorems: π2's ports and π1's claims are π1's graph's
@@ -48,9 +48,10 @@ theorem compile_sound_element_end (hc : compile (ofRG g rootsAt iv hashed) = .ok
 not a constant. -/
 theorem compile_sound_zero_end (hc : compile (ofRG g rootsAt iv hashed) = .ok c) {pub : ℕ → List F192} {w : ℕ → K}
     (hw : c.circuit.toPiop.Satisfies pub (emb w)) :
-    ∀ J < c.circuit.ports.size, (c.circuit.ports.getD J default).source = .zero →
+    ∀ J < c.circuit.ports.size, (c.circuit.ports.getD J default).source = .zero → c.claimZeros ≤ c.zeroIndex J →
       c.circuit.portLimbs w J = limbsL (RecGraph.valE
-        (rgVals g iv (c.pubW w) (c.streamW (ofRG g rootsAt iv hashed) w)) (zeroOrig c (ofRG g rootsAt iv hashed) (c.zeroIndex J))) :=
+        (rgVals g iv (c.pubW w) (c.streamW (ofRG g rootsAt iv hashed) w))
+        (zeroOrig c (ofRG g rootsAt iv hashed) (c.zeroIndex J - c.claimZeros))) :=
   compile_sound_zero_rg hc hw (zero_lt hc) (expandSound hc)
 
 /-- **The other zero checks are zero**: a zero check whose image is a constant is `0`, on every IV, public input and
@@ -77,27 +78,39 @@ claims its verifier rebuilds from them are π1's graph's outputs in `RecGraph`'s
 Keccak-f[1600], on the public input and the stream the witness encodes: the statement's words, the roots' words (the
 stream's bytes), the zero checks' values (the constant ones `0`), the claims' bytes as a claim holds them (`pcsWord`:
 as they are). -/
-def EndStatement (g : RecGraph.Graph) (rootsAt : List ℕ) (iv : List UInt8) (c : Compiled) (w : ℕ → K) : Prop :=
+def EndStatement (g : RecGraph.Graph) (rootsAt : List ℕ) (iv : List UInt8) (hashed : List ℕ) (c : Compiled)
+    (w : ℕ → K) : Prop :=
     (∀ J < c.circuit.ports.size, (c.circuit.ports.getD J default).source = .statement →
       c.circuit.portLimbs w J = (List.range 4).map fun k => K.ofLane (beWordAt (c.pubW w).toArray (8 * k))) ∧
     (∀ J < c.circuit.ports.size, ∀ i, (c.circuit.ports.getD J default).source = .root i →
       c.circuit.portLimbs w J = (List.range 4).map fun l =>
         F64.ofNat (beNat (slice ((c.streamW (ofRG g rootsAt iv hashed) w).toArray.extract (c.rootsAt.getD i 0)
           (c.rootsAt.getD i 0 + 32)).toList ([24, 16, 8, 0].getD l 0) 8))) ∧
-    (∀ J < c.circuit.ports.size, (c.circuit.ports.getD J default).source = .zero →
+    (∀ J < c.circuit.ports.size, (c.circuit.ports.getD J default).source = .zero → c.claimZeros ≤ c.zeroIndex J →
       c.circuit.portLimbs w J = limbsL (RecGraph.valE
-        (rgVals g iv (c.pubW w) (c.streamW (ofRG g rootsAt iv hashed) w)) (zeroOrig c (ofRG g rootsAt iv hashed) (c.zeroIndex J)))) ∧
+        (rgVals g iv (c.pubW w) (c.streamW (ofRG g rootsAt iv hashed) w))
+        (zeroOrig c (ofRG g rootsAt iv hashed) (c.zeroIndex J - c.claimZeros)))) ∧
     (∀ id ∈ g.zero, notConst (c.nodes.getD (c.map.getD id 0) default) = false →
       RecGraph.valE (rgVals g iv (c.pubW w) (c.streamW (ofRG g rootsAt iv hashed) w)) id = 0) ∧
-    c.circuit.callInputs w = g.calls.map fun ws => (List.range ws.length).flatMap fun k =>
+    c.circuit.callInputs w = (encodedCalls g hashed).map (fun ws => (List.range ws.length).flatMap fun k =>
       pcsWord k (ws.getD k default) (RecGraph.wordBytes (c.streamW (ofRG g rootsAt iv hashed) w).toArray
-        (rgVals g iv (c.pubW w) (c.streamW (ofRG g rootsAt iv hashed) w)) (ws.getD k default))
+        (rgVals g iv (c.pubW w) (c.streamW (ofRG g rootsAt iv hashed) w)) (ws.getD k default))) ∧
+    c.circuit.hashed = hashed.filter (· < g.calls.length) ∧
+    ((∀ J < c.circuit.ports.size, (c.circuit.ports.getD J default).source = .zero →
+        c.circuit.portLimbs w J = [0, 0, 0]) →
+      ∀ J < c.circuit.ports.size, ∀ j, (c.circuit.ports.getD J default).source = .claimHash j →
+        j < c.circuit.hashed.length ∧ c.circuit.hashed.getD j 0 < g.calls.length ∧
+        c.circuit.portLimbs w J = (List.range 4).map fun l => K.ofLane (beWordAt (digestBytes (keccak256
+          (claimEncoding (c.streamW (ofRG g rootsAt iv hashed) w).toArray
+            (rgVals g iv (c.pubW w) (c.streamW (ofRG g rootsAt iv hashed) w))
+            (g.calls.getD (c.circuit.hashed.getD j 0) [])))).toArray (8 * l)))
 
 /-- **The end theorem**: on a satisfied circuit the compiler accepted, `EndStatement`. -/
 theorem compile_sound_end (hc : compile (ofRG g rootsAt iv hashed) = .ok c) {pub : ℕ → List F192} {w : ℕ → K}
-    (hw : c.circuit.toPiop.Satisfies pub (emb w)) : EndStatement g rootsAt iv c w :=
+    (hw : c.circuit.toPiop.Satisfies pub (emb w)) : EndStatement g rootsAt iv hashed c w :=
   ⟨fun _ hJ hs => compile_sound_statement hc hw hJ hs, fun _ hJ _ hs => compile_sound_root hc hw hJ hs,
-    compile_sound_zero_end hc hw, compile_sound_zero_const hc _ _ _, compile_sound_callInputs hc hw⟩
+    compile_sound_zero_end hc hw, compile_sound_zero_const hc _ _ _, compile_sound_callInputs hc hw,
+    compile_hashed hc, fun hz _ hJ _ hs => claimHash_port hc hw hz hJ hs⟩
 
 end Compiled
 

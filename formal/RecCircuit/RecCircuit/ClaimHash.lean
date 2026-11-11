@@ -87,7 +87,7 @@ theorem lookup_map_self (f : ℕ → ℕ) (e : ℕ) :
 
 /-! ## Bits of words -/
 
-theorem lane_eq (x : K) : x.lane = F64.toU64 x := rfl
+theorem lane_eq (x : K) : K.lane x = F64.toU64 x := rfl
 
 /-- **The bits of a packed word**: bits whose packing `Σ B_e x^e` is `y` are `y`'s bits. -/
 theorem bits_of_sum (B : ℕ → K) (hB : ∀ e < 64, B e = 0 ∨ B e = 1) (y : K)
@@ -107,7 +107,7 @@ theorem bits_of_sum (B : ℕ → K) (hB : ∀ e < 64, B e = 0 ∨ B e = 1) (y : 
       simp [hb1, h1, ofBool, he]
   have hy : y = F64.ofNat N := by rw [← h]; exact sum_bits_word B N hBN
   have hN : (F64.toU64 y).toNat = N := by
-    rw [hy, ← F64.ofU64_ofNat, F64.toU64_ofU64, UInt64.toNat_ofNat, Nat.mod_eq_of_lt hlt]
+    rw [hy, ← F64.ofU64_ofNat, F64.toU64_ofU64, UInt64.toNat_ofNat', Nat.mod_eq_of_lt hlt]
   intro e he
   rw [hN]; exact hBN e he
 
@@ -116,12 +116,11 @@ theorem be64_bit (w : UInt64) (j t : ℕ) (hj : j < 8) (ht : t < 8) :
     ((be64 w).getD j 0).toNat.testBit t = w.toNat.testBit (8 * (7 - j) + t) := by
   simp only [be64, List.getD_eq_getElem?_getD, List.getElem?_map, List.getElem?_range hj, Option.map_some,
     Option.getD_some]
-  rw [UInt64.toNat_toUInt8, UInt64.toNat_shiftRight, show (256 : ℕ) = 2 ^ 8 from rfl, Nat.testBit_mod_two_pow,
-    Nat.testBit_shiftRight]
+  rw [UInt64.toNat_toUInt8, UInt64.toNat_shiftRight]
   have h1 : (8 * (7 - j)).toUInt64.toNat % 64 = 8 * (7 - j) := by
-    rw [Nat.toUInt64, UInt64.toNat_ofNat]; omega
-  rw [h1]
-  simp [ht, Nat.add_comm]
+    rw [Nat.toUInt64, UInt64.toNat_ofNat']; omega
+  rw [h1, Nat.testBit_mod_two_pow, Nat.testBit_shiftRight]
+  simp [ht]
 
 theorem be64_length (w : UInt64) : (be64 w).length = 8 := by simp [be64]
 
@@ -132,7 +131,7 @@ def limbAt (x : E) (i : ℕ) : K := if i = 0 then x.limb 0 else if i = 1 then x.
 of limb `2 − k/64`. -/
 theorem elementWord_drop_bit (x : E) (k : ℕ) (hk : k < 192) :
     bitOf ((UniStatement.elementWord x).drop 8) k =
-      (limbAt x (2 - k / 64)).lane.toNat.testBit (8 * (7 - k / 8 % 8) + k % 8) := by
+      (K.lane (limbAt x (2 - k / 64))).toNat.testBit (8 * (7 - k / 8 % 8) + k % 8) := by
   have e8 : (UniStatement.elementWord x).drop 8 =
       be64 (x.limb 2).lane ++ (be64 (x.limb 1).lane ++ be64 (x.limb 0).lane) := by
     simp [UniStatement.elementWord, List.append_assoc]
@@ -217,7 +216,7 @@ theorem free_bit_val (hc : c.Checked r) (hw : c.circuit.Satisfied w) {fr : ℕ �
     · rw [e2]; rfl
   -- Each limb's bits.
   have hbits : ∀ li < 3, ∀ e < 64, c.ctx.val w ((fr.2.1).getD (freeIdx li e) NONE) =
-      ofBool ((limbAt x li).lane.toNat.testBit e) := by
+      ofBool ((K.lane (limbAt x li)).toNat.testBit e) := by
     intro li hli
     have hpk' := hpk li hli
     unfold packIs at hpk'
@@ -262,8 +261,8 @@ theorem sameBit_val (G : c.ctx.Good w) {v x : ℕ} (h : c.ctx.sameBit v x = true
 theorem constMBits_length (bytes : List UInt8) : (constMBits bytes).length = 8 * bytes.length := by
   simp [constMBits]
 
-theorem constMBits_getD (bytes : List UInt8) (p : ℕ) (hp : p < 8 * bytes.length) :
-    (constMBits bytes).getD p default = .const (bitOf bytes p) := by
+theorem constMBits_getD (bytes : List UInt8) (p : ℕ) (hp : p < 8 * bytes.length) (d : MBit := default) :
+    (constMBits bytes).getD p d = .const (bitOf bytes p) := by
   simp [constMBits, List.getD_eq_getElem?_getD, hp, bitOf]
 
 /-- **What a bit of a hashed claim's message means**: its bit `bit` of the encoding. A constant is it; the stream's
@@ -307,7 +306,8 @@ theorem mbit_val (hc : c.Checked r) (hw : c.circuit.Satisfied w)
       have e : i = 8 * (i / 8) + i % 8 := by omega
       rw [sameBit_val G hsb, e, stream_bit hc hw (by omega) (Nat.mod_lt _ (by norm_num)) hsome, ← hbit]
       simp only [bitOf, streamW]
-      rw [show (8 * (i / 8) + i % 8) / 8 = i / 8 by omega, show (8 * (i / 8) + i % 8) % 8 = i % 8 by omega]
+      all_goals try rw [show (8 * (i / 8) + i % 8) / 8 = i / 8 by omega]
+      all_goals try rw [show (8 * (i / 8) + i % 8) % 8 = i % 8 by omega]
     | zero => simp [mbitOk] at hok
     | one => simp [mbitOk] at hok
   | free f k =>
@@ -358,12 +358,15 @@ theorem input_bytes (S : List UInt8) (off : ℕ) (h : off + 24 ≤ S.length) :
     (UniStatement.elementWord (inputValue S off 24)).drop 8 = slice S off 24 := by
   have hb : (slice S off 24).length = 24 := slice_length _ _ _ h
   have h8 : ∀ a, a + 8 ≤ 24 → (slice (slice S off 24) a 8).length = 8 := fun a ha => slice_length _ _ _ (by omega)
-  unfold inputValue
-  simp only [if_pos rfl, elemOfNats, UniStatement.elementWord, F192.limb_ofLimbs_two, F192.limb_ofLimbs_one,
-    F192.limb_ofLimbs_zero]
+  have e : inputValue S off 24 = F192.ofLimbs (F64.ofNat (beNat (slice (slice S off 24) 16 8)))
+      (F64.ofNat (beNat (slice (slice S off 24) 8 8))) (F64.ofNat (beNat (slice (slice S off 24) 0 8))) := by
+    unfold inputValue; rw [if_pos rfl]; rfl
+  rw [e]
+  show (List.replicate 8 0 ++ be64 (K.lane (F64.ofNat (beNat (slice (slice S off 24) 0 8)))) ++
+    be64 (K.lane (F64.ofNat (beNat (slice (slice S off 24) 8 8)))) ++
+    be64 (K.lane (F64.ofNat (beNat (slice (slice S off 24) 16 8))))).drop 8 = _
   rw [lane_ofNat, lane_ofNat, lane_ofNat, be64_beNat _ (h8 0 (by norm_num)), be64_beNat _ (h8 8 (by norm_num)),
-    be64_beNat _ (h8 16 (by norm_num))]
-  simp only [List.append_assoc, List.drop_left' (List.length_replicate (n := 8) (a := (0 : UInt8)))]
+    be64_beNat _ (h8 16 (by norm_num)), List.append_assoc, List.append_assoc, List.drop_left' (by simp)]
   exact slice3 _ hb
 
 theorem stream_means (S : List UInt8) (a n p : ℕ) (h : a + n ≤ S.length) (hp : p < 8 * n) :
@@ -372,6 +375,16 @@ theorem stream_means (S : List UInt8) (a n p : ℕ) (h : a + n ≤ S.length) (hp
   rw [slice_getD _ _ _ _ (by omega), show (8 * a + p) / 8 = a + p / 8 by omega, show (8 * a + p) % 8 = p % 8 by omega]
 
 variable {g : RecGraph.Graph} {rootsAt : List ℕ} {iv : List UInt8} {hashed : List ℕ}
+
+theorem mapW_node (c : Compiled) (id : ℕ) : c.mapW (.node id) = .node (c.map.getD id 0) := rfl
+
+theorem wordSpec_succ_node (c : Compiled) (k f q : ℕ) : c.wordSpec (k + 1) (.node q) f =
+    match c.nodes.getD q default with
+    | .const c0 c1 c2 => (constMBits ((UniStatement.elementWord (UniStatement.eNew c0 c1 c2)).drop 8), [])
+    | .input off len =>
+      if c.hashedRead off len then ((List.range 192).map fun i => MBit.stream (8 * off + i), [])
+      else ((List.range 192).map fun i => MBit.free f i, [q])
+    | _ => ((List.range 192).map fun i => MBit.free f i, [q]) := rfl
 
 /-- **A word's message bits mean its bytes in the encoding** (`wordSpec` against `wBytes`). -/
 theorem word_means (hc : compile (ofRG g rootsAt iv hashed) = .ok c) (w : ℕ → K) (hE : ExpandSound g c)
@@ -410,14 +423,15 @@ theorem word_means (hc : compile (ofRG g rootsAt iv hashed) = .ok c) (w : ℕ �
       ∀ p < (c.wordSpec k (c.mapW wd) f).1.length, MBitMeans c r w nodeOf (f + (c.wordSpec k (c.mapW wd) f).2.length)
         ((c.wordSpec k (c.mapW wd) f).1.getD p default) (bitOf (wBytes S.toArray V k wd) p) := by
     intro a n hsp hn hb
-    have hlast := hS (8 * a + (8 * n - 1)) (by rw [hsp]; simp; exact ⟨8 * n - 1, by omega, rfl⟩)
+    have hlast := hS (8 * a + (8 * n - 1)) (by
+      rw [hsp]; exact List.mem_map.mpr ⟨8 * n - 1, List.mem_range.mpr (by omega), rfl⟩)
     have hlen : a + n ≤ S.length := by omega
     rw [hsp, hb, slice_length _ _ _ hlen]
     refine ⟨by simp, fun p hp => ?_⟩
     simp only [List.length_map, List.length_range] at hp
     simp only [List.getD_eq_getElem?_getD, List.getElem?_map, List.getElem?_range hp, Option.map_some,
       Option.getD_some]
-    exact ⟨by omega, stream_means S a n p hlen hp⟩
+    exact ⟨by show 8 * a + p < 8 * S.length; omega, stream_means S a n p hlen hp⟩
   -- A free element.
   have hfree : ∀ id, wd = .node id → (c.wordSpec k (c.mapW wd) f) = ((List.range 192).map (MBit.free f), [c.map.getD id 0]) →
       (c.wordSpec k (c.mapW wd) f).1.length = 8 * (wBytes S.toArray V k wd).length ∧
@@ -439,19 +453,20 @@ theorem word_means (hc : compile (ofRG g rootsAt iv hashed) = .ok c) (w : ℕ �
     simp only [List.length_map, List.length_range] at hp
     simp only [List.getD_eq_getElem?_getD, List.getElem?_map, List.getElem?_range hp, Option.map_some,
       Option.getD_some, List.length_cons, List.length_nil]
-    exact ⟨by omega, hp, by rw [hn0, hv]⟩
+    exact ⟨by simp, hp, by rw [hn0, hv]⟩
   cases k with
   | zero =>
     cases wd with
     | stream a =>
       apply hstream a 32 rfl (by norm_num)
       simp only [wBytes, if_pos rfl, RecGraph.wordBytes]
-      rw [extract_toList]; congr 1; omega
+      rw [extract_toList, show a + 32 - a = 32 by omega]
+      simp
     | const x => exact hconst (RecGraph.beBytes32 x) rfl (by simp [wBytes, RecGraph.wordBytes])
-    | node id => exact absurd hshape id
+    | node id => exact (show False from hshape).elim
   | succ k =>
     cases wd with
-    | stream a => exact absurd hshape id
+    | stream a => exact (show False from hshape).elim
     | const x => exact hconst ((RecGraph.beBytes32 x).drop 8) rfl (by simp [wBytes, RecGraph.wordBytes])
     | node id =>
       obtain ⟨hl, hidg⟩ := hlive id rfl
@@ -461,7 +476,8 @@ theorem word_means (hc : compile (ofRG g rootsAt iv hashed) = .ok c) (w : ℕ �
         simp [wBytes, RecGraph.wordBytes]
       cases hq : c.nodes.getD (c.map.getD id 0) default with
       | const c0 c1 c2 =>
-        apply hconst _ (by simp [wordSpec, mapW, hq])
+        apply hconst ((UniStatement.elementWord (UniStatement.eNew c0 c1 c2)).drop 8)
+          (by rw [mapW_node, wordSpec_succ_node, hq])
         rw [hb, ← hE iv (c.pubW w) S id hidg, rgX_const hck iv (c.pubW w) S hl hq]
       | input off len =>
         by_cases hr : c.hashedRead off len = true
@@ -470,12 +486,16 @@ theorem word_means (hc : compile (ofRG g rootsAt iv hashed) = .ok c) (w : ℕ �
           simp only [Bool.and_eq_true, beq_iff_eq, List.all_eq_true, List.mem_range] at hr'
           obtain ⟨h24, -⟩ := hr'
           subst h24
-          apply hstream off 24 (by simp [wordSpec, mapW, hq, hr]) (by norm_num)
+          have hsp : c.wordSpec (k + 1) (c.mapW (.node id)) f =
+              ((List.range (8 * 24)).map fun i => MBit.stream (8 * off + i), []) := by
+            rw [mapW_node, wordSpec_succ_node, hq]; simp only [hr, ite_true]
+          apply hstream off 24 hsp (by norm_num)
           rw [hb, ← hv, valsW_step hck (live_lt hck hl) hl, hq]
-          have hlast := hS (8 * off + 191) (by simp [wordSpec, mapW, hq, hr]; exact ⟨191, by norm_num, rfl⟩)
-          exact input_bytes _ _ (by omega)
-        · exact hfree id rfl (by simp [wordSpec, mapW, hq, hr])
-      | _ => exact hfree id rfl (by simp [wordSpec, mapW, hq])
+          have hlast := hS (8 * off + 191) (by
+            rw [hsp]; exact List.mem_map.mpr ⟨191, List.mem_range.mpr (by norm_num), rfl⟩)
+          exact input_bytes S off (by omega)
+        · exact hfree id rfl (by rw [mapW_node, wordSpec_succ_node, hq]; simp only [hr, Bool.false_eq_true, ite_false])
+      | _ => exact hfree id rfl (by rw [mapW_node, wordSpec_succ_node, hq])
 
 /-- **The words' message bits mean their bytes in the encoding** (`claimSpecAux` against `claimWordBytes`), the free
 elements numbered from `f`. -/
@@ -503,8 +523,6 @@ theorem aux_means (hc : compile (ofRG g rootsAt iv hashed) = .ok c) (w : ℕ →
     simp [claimSpecAux] at hp
   | cons wd rest ih =>
     intro k f hshape hlive hS hnodes
-    set S := c.streamW (ofRG g rootsAt iv hashed) w
-    set V := rgVals g iv (c.pubW w) S
     set a := c.wordSpec k (c.mapW wd) f with ha
     set b := c.claimSpecAux (k + 1) (f + a.2.length) (rest.map c.mapW) with hb
     have hspec : c.claimSpecAux k f ((wd :: rest).map c.mapW) = (a.1 ++ b.1, a.2 ++ b.2) := rfl
@@ -515,7 +533,9 @@ theorem aux_means (hc : compile (ofRG g rootsAt iv hashed) = .ok c) (w : ℕ →
       (fun id hid => hlive id (by rw [hid]; exact List.mem_cons_self))
       (fun i hi => hS i (List.mem_append_left _ hi)) nodeOf
       (fun i hi => by
-        rw [hnodes i (by simp; omega), List.getD_append _ _ _ _ hi])
+        rw [← ha] at hi
+        rw [hnodes i (by rw [List.length_append]; omega), List.getD_append _ _ _ _ hi])
+    rw [← ha] at hal ham
     obtain ⟨hbl, hbm⟩ := ih (k + 1) (f + a.2.length)
       (fun i hi => by
         have := hshape (i + 1) (by simp; omega)
@@ -523,9 +543,11 @@ theorem aux_means (hc : compile (ofRG g rootsAt iv hashed) = .ok c) (w : ℕ →
       (fun id hid => hlive id (List.mem_cons_of_mem _ hid))
       (fun i hi => hS i (List.mem_append_right _ hi))
       (fun i hi => by
-        rw [add_assoc, hnodes (a.2.length + i) (by simp; omega), List.getD_append_right _ _ _ _ (by omega),
+        rw [← hb] at hi
+        rw [add_assoc, hnodes (a.2.length + i) (by rw [List.length_append]; omega), List.getD_append_right _ _ _ _ (by omega),
           Nat.add_sub_cancel_left])
-    refine ⟨by simp only [List.length_append, hal, hbl]; ring, fun p hp => ?_⟩
+    rw [← hb] at hbl hbm
+    refine ⟨by rw [List.length_append, List.length_append, hal, hbl]; ring, fun p hp => ?_⟩
     simp only [List.length_append] at hp
     by_cases h1 : p < a.1.length
     · rw [List.getD_append _ _ _ _ h1, bitOf_append_left _ _ _ (by omega)]
@@ -568,6 +590,206 @@ theorem claimOk_parts {X : Ctx} {packOf : Array (Option ℕ)} {j : ℕ} (h : c.c
   simp only [Bool.and_eq_true, beq_iff_eq, decide_eq_true_eq] at h
   obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨h3, -⟩, hwk⟩, hlv⟩, hms⟩, hmb⟩, hfs⟩, hfr⟩, hds⟩, hsp⟩, hls⟩, hpk⟩ := h
   exact ⟨h3, hwk, hlv, hms, allBelow_spec hmb, hfs, allBelow_spec hfr, hds, hsp, hls, allBelow_spec hpk⟩
+
+/-! ## The end: a `claimHash` port carries the claim's Keccak-256 -/
+
+theorem mapW_eq (c : Compiled) (ws : List RecGraph.Word) :
+    (ws.map ofRGWord).map (fun w => match w with
+      | .node id => Word.node (c.map.getD id 0)
+      | other => other) = ws.map c.mapW := by
+  rw [List.map_map]
+  apply List.map_congr_left
+  intro x _
+  cases x <;> rfl
+
+theorem claimWordsOk_shape (c : Compiled) :
+    ∀ (ws : List RecGraph.Word), claimWordsOk (ws.map c.mapW) = true →
+      ∀ i < ws.length, wordShape i (ws.getD i default)
+  | [], _ => by intro i hi; simp at hi
+  | w :: ws, h => by
+    intro i hi
+    simp only [List.map_cons, claimWordsOk, Bool.and_eq_true, List.all_eq_true, List.mem_map] at h
+    obtain ⟨h0, hrest⟩ := h
+    cases i with
+    | zero =>
+      simp only [List.getD_cons_zero]
+      cases w <;> simp_all [mapW, wordShape]
+    | succ i =>
+      simp only [List.getD_cons_succ]
+      have hi' : i < ws.length := by simpa using hi
+      have hm : ws.getD i default ∈ ws := by rw [List.getD_eq_getElem _ _ hi']; exact List.getElem_mem hi'
+      have := hrest _ ⟨_, hm, rfl⟩
+      revert this
+      cases ws.getD i default <;> simp [mapW, wordShape]
+
+/-- **The claims π2's circuit hashes** are `hashed`'s below the calls' count, in order. -/
+theorem compile_hashed (hc : compile (ofRG g rootsAt iv hashed) = .ok c) :
+    c.circuit.hashed = hashed.filter (· < g.calls.length) := by
+  rw [(claimsOk_parts (checked_of_compile hc).claims).1]
+  simp [hashedOf, ofRG]
+
+/-- **A satisfied π2 circuit carries the Keccak-256s of π1's hashed claims.** On a satisfied accepted circuit whose zero
+ports carry zeros (as π2's verifier reads them), the `claimHash j` port's four limbs are the statement-order words
+(limb `l` the big-endian word of bytes `8l .. 8l + 8`) of the Keccak-256 (over Keccak-f[1600]) of the EIP draft's PCS-claim
+encoding (`claimEncoding`) of π1's claim `c.circuit.hashed[j]`, built from the graph's call words in `RecGraph`'s
+semantics on the stream and public input the witness encodes. -/
+theorem claimHash_port (hc : compile (ofRG g rootsAt iv hashed) = .ok c) {pub : ℕ → List F192} {w : ℕ → K}
+    (hw : c.circuit.toPiop.Satisfies pub (emb w))
+    (hz : ∀ J < c.circuit.ports.size, (c.circuit.ports.getD J default).source = .zero →
+      c.circuit.portLimbs w J = [0, 0, 0])
+    {J j : ℕ} (hJ : J < c.circuit.ports.size) (hs : (c.circuit.ports.getD J default).source = .claimHash j) :
+    j < c.circuit.hashed.length ∧ c.circuit.hashed.getD j 0 < g.calls.length ∧
+    c.circuit.portLimbs w J = (List.range 4).map fun l => K.ofLane (beWordAt (digestBytes (keccak256
+      (claimEncoding (c.streamW (ofRG g rootsAt iv hashed) w).toArray
+        (rgVals g iv (c.pubW w) (c.streamW (ofRG g rootsAt iv hashed) w))
+        (g.calls.getD (c.circuit.hashed.getD j 0) [])))).toArray (8 * l)) := by
+  have hck := checked_of_compile hc
+  have hsat := satisfied_of_piop _ hw
+  have G := hck.good hsat
+  have hE := expandSound hc
+  set r := ofRG g rootsAt iv hashed with hr
+  set S := c.streamW r w
+  set V := rgVals g iv (c.pubW w) S
+  obtain ⟨hhash, hcsz, hclaims⟩ := claimsOk_parts hck.claims
+  have hso := allBelow_spec hck.sources J hJ
+  simp only [hs, decide_eq_true_eq] at hso
+  obtain ⟨hci, hok⟩ := hclaims j hso
+  set cl := c.claims.getD j default with hcl
+  have hjh : j < c.circuit.hashed.length := by omega
+  have hcig : c.circuit.hashed.getD j 0 < g.calls.length := by
+    have hmem : c.circuit.hashed.getD j 0 ∈ c.circuit.hashed := by
+      rw [List.getD_eq_getElem _ _ hjh]; exact List.getElem_mem hjh
+    generalize c.circuit.hashed.getD j 0 = x at hmem ⊢
+    rw [compile_hashed hc] at hmem
+    simpa using (List.mem_filter.mp hmem).2
+  refine ⟨hjh, hcig, ?_⟩
+  set ci := c.circuit.hashed.getD j 0
+  set ws0 := g.calls.getD ci []
+  obtain ⟨h3, hwk, hlv, hms, hmb, hfs, hfr, hds, hsp, hls, hpk⟩ := claimOk_parts hok
+  have hws : (r.graph.calls.getD cl.ci []).map (fun w => match w with
+      | .node id => Word.node (c.map.getD id 0)
+      | other => other) = ws0.map c.mapW := by
+    rw [hci, calls_getD g rootsAt iv hcig, mapW_eq]
+  rw [hws] at h3 hwk hlv hms hmb hfs hfr
+  simp only [List.length_map] at h3
+  set sp := c.claimSpec (ws0.map c.mapW) with hspd
+  set nodeOf : ℕ → ℕ := fun f => sp.2.getD f 0
+  -- The hashed claims' zero ports: every sum is zero.
+  have hsums : ∀ s ∈ c.claimSums, ∀ l < 3, c.ctx.val w (s.getD l NONE) = 0 := by
+    intro s hs' l hl
+    obtain ⟨m, hm, hsm⟩ := List.getElem_of_mem hs'
+    have hcount : (c.circuit.ports.toList.filter fun p => p.source == .zero).length =
+        c.claimZeros + c.zeroNodes.length := by
+      have h := hck.ports
+      unfold portsOk at h
+      simp only [Bool.and_eq_true, beq_iff_eq] at h
+      exact h.1
+    have hmz : m < c.claimZeros := hm
+    obtain ⟨J', hJ', hpJ, hcJ⟩ := exists_nth_filter (fun p : Port => p.source == .zero) c.circuit.ports.toList m
+      (by rw [hcount]; omega)
+    have hJ'' : J' < c.circuit.ports.size := by simpa using hJ'
+    have hsrc : (c.circuit.ports.getD J' default).source = .zero := by
+      rw [← arr_toList_getD]; simpa using hpJ
+    have hzi : c.zeroIndex J' = m := hcJ
+    have e1 := ports_carry hck hsat J' hJ''
+    rw [hz J' hJ'' hsrc, portMeaning, hsrc] at e1
+    simp only [hzi, hmz, ite_true] at e1
+    have hgs : c.claimSums.getD m #[] = s := by rw [List.getD_eq_getElem _ _ hm, hsm]
+    rw [hgs] at e1
+    have := congrArg (fun L => L.getD l 0) e1
+    simp only [List.getD_eq_getElem?_getD, List.getElem?_map, List.getElem?_range hl, Option.map_some,
+      Option.getD_some] at this
+    interval_cases l <;> simpa using this.symm
+  -- The free elements' bits.
+  have hfree : ∀ f < cl.frees.size, ∀ k < 192, c.ctx.val w (((cl.frees.getD f default).2.1).getD k NONE) =
+      ofBool (bitOf ((UniStatement.elementWord ((c.valsW r w).getD (nodeOf f) default).toE).drop 8) k) := by
+    intro f hf k hk
+    have hfo := hfr f hf
+    have hl := (freeOk_parts hfo).2.1
+    have hclm : cl ∈ c.claims.toList := by
+      rw [hcl, ← arr_toList_getD, List.getD_eq_getElem _ _ (by simpa using hso)]
+      exact List.getElem_mem _
+    have hfrm : cl.frees.getD f default ∈ cl.frees.toList := by
+      rw [← arr_toList_getD, List.getD_eq_getElem _ _ (by simpa using hf)]
+      exact List.getElem_mem _
+    have hmem : (cl.frees.getD f default).2.2.2 ∈ c.claimSums := by
+      unfold claimSums
+      exact List.mem_flatMap.mpr ⟨cl, hclm, List.mem_map.mpr ⟨_, hfrm, rfl⟩⟩
+    exact free_bit_val hck hsat hfo (live_lt hck hl) (hsums _ hmem) k hk
+  -- The words' meaning.
+  have hhdr : (constMBits [1, (ws0.length - 3).toUInt8]).length = 16 := by rw [constMBits_length]; rfl
+  have hsp1 : sp.1 = constMBits [1, (ws0.length - 3).toUInt8] ++ (c.claimSpecAux 0 0 (ws0.map c.mapW)).1 := by
+    simp [hspd, claimSpec]
+  have hsp2 : sp.2 = (c.claimSpecAux 0 0 (ws0.map c.mapW)).2 := by simp [hspd, claimSpec]
+  obtain ⟨hal, ham⟩ := aux_means hc w hE nodeOf ws0 0 0
+    (by intro i hi; simpa using claimWordsOk_shape c ws0 hwk i hi)
+    (by
+      intro id hid
+      have hm : c.mapW (.node id) ∈ ws0.map c.mapW := List.mem_map_of_mem hid
+      have hl := List.all_eq_true.mp hlv _ hm
+      simp only [mapW] at hl
+      obtain ⟨k, hk, hkw⟩ := List.getElem_of_mem hid
+      exact ⟨hl, call_node_lt hc hcig hk (by rw [List.getD_eq_getElem _ _ hk]; exact hkw)⟩)
+    (by
+      intro i hi
+      obtain ⟨q, hq, hqi⟩ := List.getElem_of_mem hi
+      have hp : 16 + q < sp.1.length := by rw [hsp1, List.length_append, hhdr]; omega
+      have hget : sp.1.getD (16 + q) (.const false) = .stream i := by
+        rw [hsp1, List.getD_append_right _ _ _ _ (by rw [hhdr]; omega), hhdr, Nat.add_sub_cancel_left,
+          List.getD_eq_getElem _ _ hq, hqi]
+      have hm := hmb (16 + q) hp
+      rw [hget] at hm
+      cases hmsg : cl.message.getD (16 + q) .zero with
+      | v x =>
+        rw [hmsg] at hm
+        simp only [mbitOk, Bool.and_eq_true, List.all_eq_true, List.mem_range] at hm
+        have h0 := hm.1 0 (by norm_num)
+        have hsz := hck.sizes.2.2.2.1
+        have hlt : 8 * (i / 8) < c.bitSelf.size := by
+          by_contra hcon
+          rw [Nat.add_zero, Array.getD_eq_getD_getElem?, Array.getElem?_eq_none (Nat.le_of_not_lt hcon)] at h0
+          simp at h0
+        show i < 8 * (c.streamW r w).length
+        rw [streamW_length]; omega
+      | zero => rw [hmsg] at hm; simp [mbitOk] at hm
+      | one => rw [hmsg] at hm; simp [mbitOk] at hm)
+    (by intro i hi; simp [nodeOf, hsp2])
+  rw [← hsp2] at ham
+  set enc := claimEncoding S.toArray V ws0 with henc
+  have hencl : enc.length = 2 + (claimWordBytes S.toArray V 0 ws0).length := by simp [henc, claimEncoding]; omega
+  have hsize : cl.message.size = 8 * enc.length := by
+    rw [hms, hsp1, List.length_append, hhdr, hal, hencl]; ring
+  have hm : Ctx.MsgOk c.ctx w cl.message (bitOf enc) := by
+    intro p hp
+    have hp' : p < sp.1.length := by rw [← hms]; exact hp
+    apply mbit_val hck hsat (nf := cl.frees.size) (nodeOf := nodeOf) hfree (hmb p hp')
+    by_cases h16 : p < 16
+    · rw [hsp1, List.getD_append _ _ _ _ (by rw [hhdr]; exact h16), constMBits_getD _ _ (by simpa using h16) (.const false)]
+      show bitOf [1, (ws0.length - 3).toUInt8] p = bitOf enc p
+      rw [henc, claimEncoding, bitOf_append_left _ _ _ (by simp; omega)]
+    · have hq : p - 16 < (c.claimSpecAux 0 0 (ws0.map c.mapW)).1.length := by
+        rw [hsp1, List.length_append, hhdr] at hp'; omega
+      rw [hsp1, List.getD_append_right _ _ _ _ (by rw [hhdr]; omega), hhdr, List.getD_eq_getElem _ _ hq]
+      have := ham (p - 16) (by rw [hsp1, List.length_append, hhdr] at hp'; omega)
+      rw [List.getD_eq_getElem _ _ hq, Nat.zero_add, ← hfs] at this
+      rw [henc, claimEncoding, bitOf_append_right _ _ _ (by simp; omega)]
+      simp only [List.length_cons, List.length_nil, show 8 * (0 + 1 + 1) = 16 from rfl]
+      exact this
+  have hdig := digest_of_message hck G hsp hsize hm
+  set D := digestBytes (keccak256 enc)
+  have hD : D.length = 32 := PcsCircuit.digestBytes_length _
+  rw [ports_carry hck hsat J hJ, portMeaning, hs]
+  apply List.map_congr_left
+  intro l hl
+  rw [List.mem_range] at hl
+  have hw8 := packBE_word hck G (fun i => cl.digest.getD i NONE) D (8 * l) 8 (by omega)
+    (fun i hi j hj => by
+      rw [hdig _ (by omega)]
+      simp only [bitOf]
+      rw [show (8 * (8 * l + i) + j) / 8 = 8 * l + i by omega, show (8 * (8 * l + i) + j) % 8 = j by omega])
+    (hpk l hl)
+  rw [← hcl, hw8, beWordAt_eq _ _ (by simp; omega)]
+  all_goals simp
 
 end Compiled
 
