@@ -223,4 +223,77 @@ theorem sCoef_eq (hZ : P.vCells = digitPoly 24) (wt : Array K) (hS : P.sigmaPoly
 
 end Gen
 
+/-! ## `claimsAt`'s denominators at `t`, as one polynomial -/
+
+section TPoly
+
+variable (P : _root_.Kc3.Params E) (g : Fin 4 → E[X])
+
+/-- The product of `claimsAt`'s denominators at `t` (but the conic's). -/
+noncomputable def tPoly (α β : E) : E[X] :=
+  (∏ k ∈ range 24, (1 + digitPoly k)) * (1 + digitPoly 24 * X) *
+    (digitPoly 24 * X + P.dPoly g α β * P.dNextPoly g α β) * P.vRows *
+    ∏ k ∈ range 11, (X + C (PcsBridge.Kc3.pinE k))
+
+theorem one_add_digit_ne (k : ℕ) : (1 + digitPoly k : E[X]) ≠ 0 := by
+  intro h
+  have := congrArg (fun p : E[X] => p.eval 0) h
+  simp only [Polynomial.eval_add, eval_one, Novel.digitPoly_eval_zero, add_zero, eval_zero] at this
+  exact one_ne_zero this
+
+theorem X_add_C_ne (a : E) : (X + C a : E[X]) ≠ 0 := X_add_C_ne_zero a
+
+theorem tPoly_ne_zero (hZ : P.vCells = digitPoly 24) (α β : E) (i₀ : P.T × Fin 4)
+    (h₀ : α + P.cells g i₀ + β * P.pt i₀ ≠ 0 ∧ α + P.cells g i₀ + β * P.pt (P.σ i₀) ≠ 0) :
+    tPoly P g α β ≠ 0 := by
+  unfold tPoly
+  refine mul_ne_zero (mul_ne_zero (mul_ne_zero (mul_ne_zero ?_ ?_) ?_) ?_) ?_
+  · exact Finset.prod_ne_zero_iff.mpr fun k _ => one_add_digit_ne k
+  · intro h
+    have := congrArg (fun p : E[X] => p.eval 0) h
+    simp only [Polynomial.eval_add, Polynomial.eval_mul, eval_one, Novel.digitPoly_eval_zero, zero_mul, add_zero,
+      eval_zero] at this
+    exact one_ne_zero this
+  · intro h
+    have := congrArg (fun p : E[X] => p.eval (P.pt i₀)) h
+    simp only [Polynomial.eval_add, Polynomial.eval_mul, eval_zero] at this
+    rw [← hZ, P.vCells_eval_pt, zero_mul, zero_add, P.dPoly_eval_pt, P.dNextPoly_eval_pt] at this
+    exact mul_ne_zero h₀.1 h₀.2 this
+  · unfold _root_.Kc3.Params.vRows
+    exact (monic_prod_of_monic _ _ fun x _ => monic_X_sub_C _).ne_zero
+  · exact Finset.prod_ne_zero_iff.mpr fun k _ => X_add_C_ne _
+
+theorem tPoly_natDegree_le (hcard : P.T.card = 2 ^ 22) (gm : P.Msg₁) (hg : gm.1 = g) (α β : E) :
+    (tPoly P g α β).natDegree ≤ 5 * 2 ^ 24 := by
+  have hn : P.nCells = 2 ^ 24 := by rw [_root_.Kc3.Params.nCells_eq, hcard]; norm_num
+  have hd := Kc3.Honest.natDegree_d_le P gm α β
+  have hd' := Kc3.Honest.natDegree_d'_le P gm α β
+  rw [hg, hn] at hd hd'
+  have h1 : (∏ k ∈ range 24, (1 + digitPoly k : E[X])).natDegree ≤ 2 ^ 24 := by
+    refine (natDegree_prod_le _ _).trans ?_
+    have : ∀ k ∈ range 24, (1 + digitPoly k : E[X]).natDegree ≤ 2 ^ k := fun k _ =>
+      natDegree_add_le_of_degree_le (natDegree_one.le.trans (Nat.zero_le _)) (Novel.digit_natDegree k).le
+    refine (Finset.sum_le_sum this).trans ?_
+    simp only [Finset.sum_range_succ, Finset.sum_range_zero]
+    norm_num
+  have h2 : (1 + digitPoly 24 * X : E[X]).natDegree ≤ 2 ^ 24 + 1 :=
+    natDegree_add_le_of_degree_le (natDegree_one.le.trans (Nat.zero_le _))
+      (natDegree_mul_le_of_le (Novel.digit_natDegree 24).le natDegree_X_le)
+  have h3 : (digitPoly 24 * X + P.dPoly g α β * P.dNextPoly g α β : E[X]).natDegree ≤ 2 ^ 25 :=
+    natDegree_add_le_of_degree_le ((natDegree_mul_le_of_le (Novel.digit_natDegree 24).le natDegree_X_le).trans
+      (by norm_num)) ((natDegree_mul_le_of_le hd hd').trans (by norm_num))
+  have h4 : P.vRows.natDegree ≤ 2 ^ 22 := by
+    unfold _root_.Kc3.Params.vRows
+    refine (natDegree_prod_le _ _).trans ?_
+    simp only [natDegree_X_sub_C, Finset.sum_const, Finset.card_univ, smul_eq_mul, mul_one, Fintype.card_coe, hcard,
+      le_refl]
+  have h5 : (∏ k ∈ range 11, (X + C (PcsBridge.Kc3.pinE k))).natDegree ≤ 11 := by
+    refine (natDegree_prod_le _ _).trans ?_
+    simp only [natDegree_X_add_C, Finset.sum_const, Finset.card_range, smul_eq_mul, mul_one, le_refl]
+  unfold tPoly
+  refine (natDegree_mul_le_of_le (natDegree_mul_le_of_le (natDegree_mul_le_of_le (natDegree_mul_le_of_le h1 h2) h3)
+    h4) h5).trans (by norm_num)
+
+end TPoly
+
 end E2ECompleteness.Pcs.H
