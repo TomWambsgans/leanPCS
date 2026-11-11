@@ -42,6 +42,14 @@ theorem interpS_bind {P : FProg A α} {a : ℕ} (hP : CountQ P a) (f : α → FP
     refine congrArg _ (funext fun y ↦ ?_)
     rw [ih y (hk y)]
     simp
+  | r k ih =>
+    obtain ⟨n', rfl, hk⟩ := hP
+    simp only [FProg.bind, interpS]
+    rw [ih _ (hk _)]
+    cases es <;> simp
+
+theorem mem_r {k : E → FProg A α} {es : List E} {s : Edges × A} {o : α × (Edges × A)}
+    (ho : o ∈ support ((interpS (.r k) es).run s)) : o ∈ support ((interpS (k (es.headD 0)) es.tail).run s) := ho
 
 theorem mem_step {γ : Type} {m : StateT (Edges × A) ProbComp γ} {k : γ → FProg A α} {es : List E} {s : Edges × A}
     {o : α × (Edges × A)} (ho : o ∈ support ((interpS (.step m k) es).run s)) :
@@ -105,12 +113,12 @@ theorem digestBytes_len (d : Digest) : (digestBytes d).length = 32 := by
 theorem scalarBytes_len (x : E) : (scalarBytes x).length = 32 := by
   simp [scalarBytes, beBytes, LeanVM.Rpm.wordBytes_len]
 
-theorem loop_length (bs : ByteArray) : ∀ (k i : ℕ) (r : List UInt8), bs.size - i = k →
-    (ByteArray.toList.loop bs i r).length = r.length + (bs.size - i)
-  | 0, i, r, hk => by
+theorem loop_length (bs : ByteArray) : ∀ (k i : ℕ) (acc : List UInt8), bs.size - i = k →
+    (ByteArray.toList.loop bs i acc).length = acc.length + (bs.size - i)
+  | 0, i, acc, hk => by
     rw [ByteArray.toList.loop, ite_eq_right (by omega)]
     simp; omega
-  | k + 1, i, r, hk => by
+  | k + 1, i, acc, hk => by
     rw [ByteArray.toList.loop, ite_eq_left (by omega), loop_length bs k (i + 1) _ (by omega)]
     simp; omega
 
@@ -187,30 +195,38 @@ theorem out_squeezeF (c : Chain) (es : List E) (s : Edges × A) (o : (E × Chain
 
 /-! ### The phase -/
 
-/-- **The positions of the challenges in the stream**: `W`'s point, `α, β, μ`, `T`'s point, `t`, `ρ` (the last of
-its two calls). -/
+/-- **The positions of the challenges in the stream**: `W`'s point, `α, β, μ` (after `W`'s answer), `T`'s point,
+`t` (after `T`'s answer), `ρ` (the last of its two calls, after the three values). -/
 def Φ (mv : ℕ) (es : List E) : Challenges :=
-  ⟨(List.range mv).map fun j ↦ es.getD j 0, (List.range (mv + 4)).map fun j ↦ es.getD (mv + 3 + j) 0,
-    es.getD mv 0, es.getD (mv + 1) 0, es.getD (mv + 2) 0, es.getD (2 * mv + 7) 0, es.getD (2 * mv + 9) 0⟩
+  ⟨(List.range mv).map fun j ↦ es.getD j 0, (List.range (mv + 4)).map fun j ↦ es.getD (mv + 4 + j) 0,
+    es.getD (mv + 1) 0, es.getD (mv + 2) 0, es.getD (mv + 3) 0, es.getD (2 * mv + 9) 0, es.getD (2 * mv + 14) 0⟩
+
+/-- **The positions of the revealed scalars in the stream**, in the order of `revealQueries`: `W`'s answer, `T`'s,
+then `C`, `V + Y`, `X`. -/
+def Aof (mv : ℕ) (es : List E) : List E :=
+  [es.getD mv 0, es.getD (2 * mv + 8) 0, es.getD (2 * mv + 10) 0, es.getD (2 * mv + 11) 0, es.getD (2 * mv + 12) 0]
 
 theorem countQ_phaseF (circuit : Circuit) (stmt : Statement) :
-    CountQ (phaseF (A := A) circuit stmt) (2 * cellVars circuit.logRows + 10) := by
+    CountQ (phaseF (A := A) circuit stmt) (2 * cellVars circuit.logRows + 15) := by
   simp only [phaseF]
   intro p1 rW
-  refine CountQ.congr (CountQ.bind (b := cellVars circuit.logRows + 10) (countQ_oodF _ _) fun zW ↦ ?_) (by ring)
-  intro d oW
-  refine CountQ.congr (CountQ.bind (b := cellVars circuit.logRows + 9) ((countQ_squeezeF _).congr (b := 1)
+  refine CountQ.congr (CountQ.bind (b := cellVars circuit.logRows + 15) (countQ_oodF _ _) fun zW ↦ ?_) (by ring)
+  intro d
+  refine ⟨cellVars circuit.logRows + 14, by omega, fun oW ↦ ?_⟩
+  refine CountQ.congr (CountQ.bind (b := cellVars circuit.logRows + 13) ((countQ_squeezeF _).congr (b := 1)
     (by simp [Chain.absorbCommitment, Chain.absorb, rate])) fun pα ↦ ?_) (by ring)
-  refine CountQ.congr (CountQ.bind (b := cellVars circuit.logRows + 8) ((countQ_squeezeF _).congr (b := 1)
+  refine CountQ.congr (CountQ.bind (b := cellVars circuit.logRows + 12) ((countQ_squeezeF _).congr (b := 1)
     (by simp [rate])) fun pβ ↦ ?_) (by ring)
-  refine CountQ.congr (CountQ.bind (b := cellVars circuit.logRows + 7) ((countQ_squeezeF _).congr (b := 1)
+  refine CountQ.congr (CountQ.bind (b := cellVars circuit.logRows + 11) ((countQ_squeezeF _).congr (b := 1)
     (by simp [rate])) fun pμ ↦ ?_) (by ring)
   intro rT
-  refine CountQ.congr (CountQ.bind (b := 3) (countQ_oodF _ _) fun zT ↦ ?_) (by ring)
-  intro oT
-  refine CountQ.congr (CountQ.bind (b := 2) ((countQ_squeezeF _).congr (b := 1)
+  refine CountQ.congr (CountQ.bind (b := 7) (countQ_oodF _ _) fun zT ↦ ?_) (by ring)
+  refine ⟨6, rfl, fun oT ↦ ?_⟩
+  refine CountQ.congr (CountQ.bind (b := 5) ((countQ_squeezeF _).congr (b := 1)
     (by simp [Chain.absorbCommitment, Chain.absorb, rate])) fun pt ↦ ?_) rfl
-  intro v1 v2 v0
+  refine ⟨4, rfl, fun v1 ↦ ?_⟩
+  refine ⟨3, rfl, fun v2 ↦ ?_⟩
+  refine ⟨2, rfl, fun v0 ↦ ?_⟩
   refine CountQ.congr (CountQ.bind (b := 0) ((countQ_squeezeF _).congr (b := 2)
     (by simp [Chain.absorb, rate])) fun pρ ↦ ?_) rfl
   rfl
@@ -218,26 +234,35 @@ theorem countQ_phaseF (circuit : Circuit) (stmt : Statement) :
 theorem getD_drop (l : List E) (a k : ℕ) : (l.drop a).getD k 0 = l.getD (a + k) 0 := by
   simp [List.getD_eq_getElem?_getD, List.getElem?_drop]
 
-/-- **The ideal challenges are the stream's elements at `Φ`.** -/
-theorem phaseF_challenges (circuit : Circuit) (stmt : Statement) (es : List E) (s : Edges × A)
+theorem headD_drop (l : List E) (a : ℕ) : (l.drop a).headD 0 = l.getD a 0 := by
+  have h := getD_drop l a 0
+  rw [Nat.add_zero] at h
+  rw [← h]
+  cases l.drop a <;> rfl
+
+theorem tail_drop (l : List E) (a : ℕ) : (l.drop a).tail = l.drop (a + 1) := by
+  rw [← List.drop_one, List.drop_drop, Nat.add_comm]
+
+/-- **The ideal challenges and revealed scalars are the stream's elements at `Φ` and `Aof`.** -/
+theorem phaseF_outputs (circuit : Circuit) (stmt : Statement) (es : List E) (s : Edges × A)
     (o : (Challenges × PhaseOut) × (Edges × A)) (ho : o ∈ support ((interpS (phaseF circuit stmt) es).run s)) :
-    o.1.1 = Φ (cellVars circuit.logRows) es := by
+    o.1.1 = Φ (cellVars circuit.logRows) es ∧ answersOf o.1.2 = Aof (cellVars circuit.logRows) es := by
   simp only [phaseF] at ho
   obtain ⟨p1, -, ho⟩ := mem_step ho
   obtain ⟨p2, -, ho⟩ := mem_step ho
   obtain ⟨p3, h3, ho⟩ := mem_bind (countQ_oodF _ _) ho
   obtain ⟨p4, -, ho⟩ := mem_step ho
-  obtain ⟨p5, -, ho⟩ := mem_step ho
+  have ho := mem_r ho
   obtain ⟨p6, h6, ho⟩ := mem_bind (countQ_squeezeF _) ho
   obtain ⟨p7, h7, ho⟩ := mem_bind (countQ_squeezeF _) ho
   obtain ⟨p8, h8, ho⟩ := mem_bind (countQ_squeezeF _) ho
   obtain ⟨p9, -, ho⟩ := mem_step ho
   obtain ⟨p10, h10, ho⟩ := mem_bind (countQ_oodF _ _) ho
-  obtain ⟨p11, -, ho⟩ := mem_step ho
+  have ho := mem_r ho
   obtain ⟨p12, h12, ho⟩ := mem_bind (countQ_squeezeF _) ho
-  obtain ⟨p13, -, ho⟩ := mem_step ho
-  obtain ⟨p14, -, ho⟩ := mem_step ho
-  obtain ⟨p15, -, ho⟩ := mem_step ho
+  have ho := mem_r ho
+  have ho := mem_r ho
+  have ho := mem_r ho
   obtain ⟨p16, h16, ho⟩ := mem_bind (countQ_squeezeF _) ho
   simp only [interpS, StateT.run_pure, support_pure, Set.mem_singleton_iff] at ho
   subst ho
@@ -250,9 +275,15 @@ theorem phaseF_challenges (circuit : Circuit) (stmt : Statement) (es : List E) (
   have e16 := (out_squeezeF _ _ _ _ h16).1
   simp only [Chain.absorbCommitment, Chain.absorb, List.length_append, List.length_nil, List.length_cons,
     List.foldl_cons, List.foldl_nil, Vector.toList_mk, rate] at e6 e7 e8 e12 e16
-  simp only [e3, e6, e7, e8, e10, e12, e16, Φ, getD_drop, List.drop_drop, rate]
-  simp only [Chain.absorbCommitment, Chain.absorb, List.length_append, List.length_nil, List.length_cons,
-    Nat.reduceAdd, Nat.reduceMul, Nat.reduceDiv, Nat.mul_zero, Nat.add_zero, Nat.zero_add]
-  ring_nf
+  refine ⟨?_, ?_⟩
+  · simp only [e3, e6, e7, e8, e10, e12, e16, Φ, getD_drop, headD_drop, tail_drop, List.drop_drop, rate]
+    simp only [Chain.absorbCommitment, Chain.absorb, List.length_append, List.length_nil, List.length_cons,
+      Nat.reduceAdd, Nat.reduceMul, Nat.reduceDiv, Nat.mul_zero, Nat.add_zero, Nat.zero_add]
+    ring_nf
+  · simp only [answersOf, CommitmentScalars.of, Aof, headD_drop, tail_drop, List.drop_drop, rate,
+      Chain.absorbCommitment, Chain.absorb, List.length_append, List.length_nil, List.length_cons,
+      Nat.reduceAdd, Nat.reduceMul, Nat.reduceDiv, Nat.mul_zero, Nat.add_zero, Nat.zero_add]
+    simp only [List.cons.injEq, and_true]
+    refine ⟨trivial, ?_, ?_, ?_, ?_⟩ <;> (simp; ring_nf)
 
 end PcsQuotient.EndToEnd

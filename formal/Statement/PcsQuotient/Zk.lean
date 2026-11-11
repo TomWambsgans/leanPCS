@@ -32,9 +32,13 @@ edges component of a state `Edges × A`, coins forwarded; the extra component `A
   `realExperiment`) and the hybrid differ by at most `εpcs Q` for a distinguisher of `Q` calls.
 * **The revealed scalars** (`revealed`): the answers `revealAnswer` gives to the five queries `revealQueries c` of
   the challenges `c`: the two out-of-domain answers and the three values at `t`.
-* **`RevealedUniform εr`**, the protocol's own randomness: for every witness, outside a set of challenge tuples of
-  probability at most `εr` (the out-of-domain points and `α, β, μ, t, ρ` uniform), the revealed scalars are
-  uniform when the prover's randomness is (`PROTOCOL.md`'s two rank conditions).
+* **`RevealedUniform εr δr`**, the protocol's own randomness: for every witness, outside a set of challenge tuples
+  of probability at most `εr` (the out-of-domain points and `α, β, μ, t, ρ` uniform), the revealed scalars with
+  uniform prover's randomness are within statistical distance `δr` of uniform (`UniformWithin`). Exact uniformity
+  is not what the protocol gives: `X`, `C`, `V + Y` and `W`'s answer are `K`-affine in the random rows' words with a
+  linear part the challenges fix (full rank off a determinant's zero set), but `T`'s answer is affine in the
+  blinding with a linear part that depends on the random rows too (through `d d'` and `b₂`), so it falls short of
+  rank `3` on a set of rows of small but nonzero probability (`PROTOCOL.md`, "Zero knowledge").
 * **The simulator** (`zkSimulator sim`): it reads no witness. Its challenge phase (`challengePhase`, with
   `uniformReveal`) commits to the circuit (real, public), draws each root uniformly and computes its out-of-domain
   point with the model's permutation, draws each revealed scalar uniformly (`coinE`) where the prover computes it,
@@ -42,7 +46,8 @@ edges component of a state `Edges × A`, coins forwarded; the extra component `A
   opens the wiring claim with the real WHIR prover (public table) and the two secret claims with `simOpen`.
 * **`FiatShamirUniform εfs`**, the random-permutation model's Fiat–Shamir challenges: in the simulator's challenge
   phase (uniform roots and uniform revealed scalars, the lazily sampled permutation, after the circuit's
-  commitment), the challenges are within `εfs` of `sampleChallenges` on every event. This is a property of the
+  commitment), the challenges and the revealed scalars (`answersOf`) are jointly within `εfs` of independent
+  `sampleChallenges` and uniform scalars, on every observation with values in `[0, 1]`. This is a property of the
   model and of the transcript's encoding (each challenge is a Keccak-256 of an input holding a fresh uniform root,
   a fresh uniform scalar or a fresh permutation answer), not of the PCS nor of the witness; it is proved
   (`formal/EndToEnd/ZK`, `fiatShamirUniform_closed`).
@@ -58,17 +63,19 @@ edges component of a state `Edges × A`, coins forwarded; the extra component `A
    `FiatShamirUniform`), so that the end theorem's equations never unfold the `2^22`-row circuit.
 3. The simulator is in the statement (`zkSimulator`), with its challenge phase separate (`challengePhase`), and a
    third proposition, `FiatShamirUniform`, about that phase. The adaptivity argument (the revealed scalars are
-   uniform at every fixed good challenge tuple, while the challenges are hashes of inputs holding the revealed
-   scalars) bounds the distance of the hybrid and the simulator by the probability that the simulator's own
-   challenges are bad; `RevealedUniform` bounds it at uniform challenges, so the simulator's challenges must be
-   near-uniform: a random-permutation-model freshness bound on the transcript, **proved** in `formal/EndToEnd/ZK`.
+   near-uniform at every fixed good challenge tuple, while the challenges are hashes of inputs holding the revealed
+   scalars) bounds the distance of the hybrid and the simulator by the expectation, over the simulator's own
+   challenges and revealed scalars, of the shortfall of the scalars' mass under the prover's randomness against
+   their uniform mass; at independent uniform challenges and scalars that is the expected statistical distance,
+   at most `εr + δr` (`RevealedUniform`), so the simulator's challenges and scalars must be jointly near-uniform: a random-permutation-model freshness bound on the transcript, **proved** in `formal/EndToEnd/ZK`.
 4. The simulator draws each revealed scalar last before the Fiat–Shamir input it must make unpredictable (`W`'s
    answer after the chain's seed, `T`'s after `α, β, μ`, `X` after `C` and `V + Y`); `revealQueries` lists them in
    that order and `sampleChallenges` draws in the reduction's order (the same distributions).
 
 The end theorems (`formal/EndToEnd/ZK`): `PcsQuotient.EndToEnd.zeroKnowledge_pcs` states `ZeroKnowledgeWith` for
 `zkSimulator sim` under `PcsZeroKnowledge`, `RevealedUniform` and `FiatShamirUniform`, with
-`ζ Q = εpcs Q + εr + εfs`; `zeroKnowledge_pcs_closed` under the first two only, `ζ Q = εpcs Q + εr + εfs₀`.
+`ζ Q = εpcs Q + εr + δr + εfs`; `zeroKnowledge_pcs_closed` under the first two only,
+`ζ Q = εpcs Q + εr + δr + εfs₀`.
 -/
 
 @[expose] public section
@@ -226,18 +233,19 @@ noncomputable def sampleChallenges : ProbComp Challenges := runWithRandomPermuta
   let ρ ← coinE
   return ⟨zW, zT, α, β, μ, t, ρ⟩
 
-/-- **The revealed scalars are uniform at the challenges `c`**: with uniform randomness they are five uniform
-elements of `E`. -/
-def UniformAt (stmt : Statement) (cells₀ : Array K) (c : Challenges) : Prop :=
-  ∀ r : List E, Pr{let x ← runWithRandomPermutation (do return revealed stmt cells₀ (← sampleCoins) c)}[x = r] =
-    Pr{let x ← runWithRandomPermutation (coinEs 5)}[x = r]
+/-- **The revealed scalars are within `δ` of uniform at the challenges `c`**: with uniform randomness, their
+distribution is within statistical distance `δ` of five uniform elements of `E` (`Σ_r (u(r) − p(r))⁺ ≤ δ`, `u` the
+uniform mass, `p` the revealed scalars', the subtraction truncated: the total variation distance). -/
+def UniformWithin (stmt : Statement) (cells₀ : Array K) (c : Challenges) (δ : ℝ≥0∞) : Prop :=
+  ∑' r : List E, (Pr{let x ← runWithRandomPermutation (coinEs 5)}[x = r] -
+      Pr{let x ← runWithRandomPermutation (do return revealed stmt cells₀ (← sampleCoins) c)}[x = r]) ≤ δ
 
 /-- **The protocol's randomness hides the revealed scalars** (`PROTOCOL.md`'s rank conditions): for every
-statement and witness of the relation, the revealed scalars are uniform at all but a set of challenges of
-probability at most `εr`. -/
-def RevealedUniform (εr : ℝ≥0∞) : Prop :=
+statement and witness of the relation, outside a set of challenges of probability at most `εr`, the revealed
+scalars are within statistical distance `δr` of uniform. -/
+def RevealedUniform (εr δr : ℝ≥0∞) : Prop :=
   ∀ (stmt : Statement) (w : Secret), Relation stmt w →
-    Pr{let c ← sampleChallenges}[¬ UniformAt stmt ((membership logRows).cells (membershipInputs w)) c] ≤ εr
+    Pr{let c ← sampleChallenges}[¬ UniformWithin stmt ((membership logRows).cells (membershipInputs w)) c δr] ≤ εr
 
 /-! ### The simulator -/
 
@@ -248,6 +256,11 @@ structure PhaseOut where
   index : Commitment
   proof : ReductionProof
   reduced : Option Reduced
+
+/-- **The revealed scalars of a challenge phase's output**, in the order of `revealQueries`: `W`'s and `T`'s
+out-of-domain answers, the values `C`, `V + Y`, then `X`. -/
+def answersOf (out : PhaseOut) : List E :=
+  [out.proof.witness.ood, out.proof.table.ood, out.proof.values[1], out.proof.values[2], out.proof.values[0]]
 
 /-- **The challenge phase** of a prover whose revealed scalars come from `rv` (the honest prover's: `revealAnswer`;
 the simulator's: uniform), over the model's permutation: the circuit's commitment (public); each secret table's
@@ -311,13 +324,17 @@ noncomputable def zkSimulator (sim : PcsSimulator) (stmt : Statement) : StateT s
 
 /-! ### The hypothesis on the model's Fiat–Shamir challenges -/
 
-/-- **The simulator's challenges are near-uniform** (the random-permutation model's freshness bound on the
-transcript): from no edge, the challenges of the simulator's challenge phase satisfy every event with at most the
-probability of uniform challenges plus `εfs`. The extra state component `A` is never read by the phase. -/
+/-- **The simulator's challenges and revealed scalars are near-uniform** (the random-permutation model's freshness
+bound on the transcript): from no edge, on every observation `h` with values in `[0, 1]`, the simulator's challenge
+phase's challenges and revealed scalars (`answersOf`) have at most the expectation of independent uniform challenges
+(`sampleChallenges`) and five uniform elements of `E`, plus `εfs`. The extra state component `A` is never read by the
+phase. -/
 def FiatShamirUniform (εfs : ℝ≥0∞) : Prop :=
-  ∀ (A : Type) (a₀ : A) (stmt : Statement) (B : Challenges → Prop),
-    Pr{let x ← (challengePhase (A := A) (membership logRows) stmt uniformReveal).run' ([], a₀)}[B x.1] ≤
-      Pr{let c ← sampleChallenges}[B c] + εfs
+  ∀ (A : Type) (a₀ : A) (stmt : Statement) (h : Challenges → List E → ℝ≥0∞), (∀ c a, h c a ≤ 1) →
+    ∑' x, Pr{let y ← (challengePhase (A := A) (membership logRows) stmt uniformReveal).run' ([], a₀)}[y = x] *
+        h x.1 (answersOf x.2) ≤
+      ∑' c, ∑' a, Pr{let y ← sampleChallenges}[y = c] * Pr{let y ← runWithRandomPermutation (coinEs 5)}[y = a] *
+        h c a + εfs
 
 end PcsQuotient
 
