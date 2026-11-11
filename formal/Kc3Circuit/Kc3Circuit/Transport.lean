@@ -1,5 +1,5 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
-import Kc3Circuit.Sound
+import Kc3Circuit.Honest
 import Kc3.Cantor
 
 /-!
@@ -279,5 +279,49 @@ theorem pinsIdx_of_sat {s : Statement} {w : cantorT B 22 × Fin 4 → E}
 theorem relation_of_sat_deployed (s : Statement) (w : cantorT B 22 × Fin 4 → E)
     (h : (deployedParams B hm).Sat (stmtOf s) w) : Relation s (secretOfInputs (inputBits B hm w)) :=
   relation_of_sat (gatesIdx_of_sat B hm h) (copiesIdx_of_sat B hm h) (pinsIdx_of_sat B hm h)
+
+/-- The honest prover's cells on the instance: the Statement's prover's cells (`randomizeCells` of the circuit's
+cells for the secret's inputs) at each cell's number, in `E`. -/
+noncomputable def honestCells (w : Secret) (rows : Fin randomWords → K) : cantorT B 22 × Fin 4 → E :=
+  fun i => ofK ((randomizeCells (membership 22) ((membership 22).cells (membershipInputs w)) rows).getD (idxE B hm i) 0)
+
+theorem honestCells_eq (w : Secret) (rows : Fin randomWords → K) (i : cantorT B 22 × Fin 4) :
+    honestCells B hm w rows i = wH w rows (idxE B hm i) := rfl
+
+/-- **The honest cells satisfy the deployed instance**, for the statement the secret proves and every random
+words. -/
+theorem sat_honest (w : Secret) (rows : Fin randomWords → K) :
+    (deployedParams B hm).Sat (stmtOf w.statement) (honestCells B hm w rows) := by
+  have hg := gates_honest w rows
+  have hc := copies_honest w rows
+  have hp := pins_honest w rows
+  refine ⟨fun (x : cantorT B 22) => ?_, fun (i : cantorT B 22 × Fin 4) => ?_, fun k => ?_⟩
+  · have v1 : ((1 : Fin 4) : ℕ) = 1 := rfl
+    have v2 : ((2 : Fin 4) : ℕ) = 2 := rfl
+    have v3 : ((3 : Fin 4) : ℕ) = 3 := rfl
+    have e0 : (idxE B hm (x, 0) : ℕ) = 4 * rowIdx B hm x := by rw [idx_eq, Fin.val_zero]; ring
+    have e1 : (idxE B hm (x, 1) : ℕ) = 4 * rowIdx B hm x + 1 := by rw [idx_eq, v1]; ring
+    have e2 : (idxE B hm (x, 2) : ℕ) = 4 * rowIdx B hm x + 2 := by rw [idx_eq, v2]; ring
+    have e3 : (idxE B hm (x, 3) : ℕ) = 4 * rowIdx B hm x + 3 := by rw [idx_eq, v3]; ring
+    have h := hg _ (rowIdx_lt B hm x)
+    rw [← e1, ← e2, ← e3, ← e0] at h
+    exact h
+  · show wH w rows (idxE B hm (deployedSigma B hm i)) = wH w rows (idxE B hm i)
+    have h := hc _ (idx_lt B hm i)
+    rw [← idx_sigma] at h
+    exact h
+  · have hk : k.val < 2 ^ 22 := by have := k.isLt; unfold Kc3.pinCount at this; omega
+    have e : (idxE B hm (rowOf B hm k.val hk, 2) : ℕ) = 4 * k.val + 2 := by
+      rw [cell_of_row]; rfl
+    have h := hp k.val k.isLt
+    rw [← e] at h
+    exact h
+
+/-- **Completeness of the circuit**: for a secret of the statement `s`, the honest cells satisfy the deployed
+instance at `s`'s pinned values. -/
+theorem sat_honest_of_relation {s : Statement} {w : Secret} (h : Relation s w) (rows : Fin randomWords → K) :
+    (deployedParams B hm).Sat (stmtOf s) (honestCells B hm w rows) := by
+  rw [← show w.statement = s from h]
+  exact sat_honest B hm w rows
 
 end Kc3Deployed
