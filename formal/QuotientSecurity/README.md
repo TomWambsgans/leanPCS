@@ -2,11 +2,14 @@
 
 # QuotientSecurity: the reduction (F1) and the circuit (F0)
 
+> **The previous protocol's.** This library states and proves F1 and F0 for the membership protocol of commit
+> `f96a7938` (the gate `V = X + C + Y·C`). The deployed protocol's F1 is `formal/Kc3` and its F0 `formal/Kc3Circuit`;
+> this library stays built for its generic parts (`Counting`, `LogDerivative`, `Cantor`, `Encoding`, `Tables`,
+> `Concrete`, which `Kc3` reuses) and because the leanVM line imports it.
+
 Ported from leanVM's `formal/quotient` (branch `PCS-openings-aggregation`, commit `651453c6`) to the membership
-circuit of commit `f96a7938` (the gate `V = X + C + Y·C`; the deployed circuit has since swapped the roles,
-`V = Y + C + X·C`: [`docs/LEAN_PORT.md`](../../docs/LEAN_PORT.md)). A library of `formal/EndToEnd`; sorry-free, on
-`propext`, `Classical.choice` and `Quot.sound` only, no `native_decide`. The end theorems that use it are in
-[`../README.md`](../README.md).
+circuit of commit `f96a7938`. A library of `formal/EndToEnd`; sorry-free, on `propext`, `Classical.choice` and
+`Quot.sound` only, no `native_decide`.
 
 - **F1, the reduction** (five field elements → claims), with **ideal commitments**: round-by-round knowledge
   soundness, completeness, honest-verifier zero knowledge, Fiat–Shamir in the ROM: `Instance.soundness`,

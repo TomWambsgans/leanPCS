@@ -13,9 +13,9 @@ in [`docs/README.md`](docs/README.md); superseded protocols and figures, in [`do
   circuit, the copy sum forced by `Q`'s layout). Each change was reviewed adversarially (soundness, zero knowledge, the contract against the verifier, the
   prover's unsafe code and determinism) before it was merged. The provers' speedups
   ([`docs/PERF_PROVER.md`](docs/PERF_PROVER.md)) change no proof.
-- **The Lean lags the Rust.** `formal/` proves the protocols of commit `f96a7938` (membership: six claims on four
-  commitments; π2 over π1-rec3, its three claims encoded by the contract). What the port needs:
-  [`docs/LEAN_PORT.md`](docs/LEAN_PORT.md). Until then, do not regenerate the Lean-facing files (below).
+- **The Lean**: `formal/` proves the deployed membership protocol; the leanVM line still states the protocols of
+  commit `f96a7938` (π2 over π1-rec3, its three claims encoded by the contract). What its port needs:
+  [`docs/LEAN_PORT.md`](docs/LEAN_PORT.md). Until then, do not regenerate the leanVM line's Lean-facing files (below).
 
 ## What the implementation adds to the design note
 
@@ -125,15 +125,20 @@ transaction gas without the 21,000 base (EIP-7623) and without the frame's per-f
 
 ## What is proved and tested
 
-- **Proved in Lean** (sorry-free, on `propext`, `Classical.choice` and `Quot.sound` only; of `f96a7938`'s protocols;
-  [`formal/README.md`](formal/README.md) has the theorems and their hypotheses): membership's knowledge soundness
-  (about 2^-61.4 at 2^64 queries) and completeness with no hypotheses, its zero knowledge under `PcsZeroKnowledge` and
-  `RevealedUniform`, its contract = its verifier; the Keccak VM's statement, the Keccak-f block, π1's knowledge
+- **Proved in Lean** (sorry-free, on `propext`, `Classical.choice` and `Quot.sound` only;
+  [`formal/README.md`](formal/README.md) has the theorems and their hypotheses): of the deployed membership protocol,
+  knowledge soundness with no hypothesis (`Soundness.knowledgeSoundness`: about 2^-62.4 at 2^64 queries, 126.4 bits as
+  Q/ε, the three PCS openings' WHIR soundness proved under mumbai's, the pole condition proved of the circuit),
+  completeness under one evaluated check (`WiringCheck`, the wiring's coefficient `n − 2` nonzero; δ < 2^-163), zero
+  knowledge under `PcsZeroKnowledge` (the EIP's ZK-WHIR) and `RevealedUniform εr δr` (stated, not proved: the revealed
+  scalars are uniform up to `δr`, about 2^-59 with blinding words in `K`), its contract = its verifier; of
+  `f96a7938`'s leanVM line, the Keccak VM's statement, the Keccak-f block, π1's knowledge
   soundness (≤ 2^-64 at 2^64 queries) and completeness (< 2^-169, given a program IV of 32 to 2^16 bytes), π1-rec3's
   recorded graph = its verifier, the recursion's knowledge soundness as an explicit reduction and its completeness under
   two premises at Keccak-f[1600]. The compiled π2 circuit's checks are evaluated in Lean, not proved.
-- **Argued and tested (current code)**: the current membership protocol's soundness and zero knowledge
-  ([`PROTOCOL.md`](docs/membership/PROTOCOL.md); `protocol::tests`, the rank tests in `hiding`); each contract equals
+- **Argued and tested (current code)**: the membership protocol's zero knowledge
+  ([`PROTOCOL.md`](docs/membership/PROTOCOL.md); the rank tests in `hiding`); the Lean Statement against the Rust
+  (`membership-differential`: reductions, whole proofs, circuits' commitments, the prover's stream); each contract equals
   its Rust verifier; the real π1 proofs at 32, 128 and 400 signatures (committed vectors) are accepted with their frame
   declaring exactly the claims their openings prove; π2's proof of the real 128-signature π1-rec4 proof is accepted,
   its openings verify, and every calldata byte but the frame's index flipped at bits 0 and 7 and the frame's attacks
@@ -158,10 +163,10 @@ transaction gas without the 21,000 base (EIP-7623) and without the frame's per-f
 
 ## Remaining
 
-- The Lean port to the deployed protocols ([`docs/LEAN_PORT.md`](docs/LEAN_PORT.md)).
-- Membership: zero knowledge with a pre-proof phase (the distinguisher's queries before the proof);
-  simulation-extractability; `RevealedUniform` proved rather than tested (in the current protocol it reduces to two
-  rank conditions).
+- The leanVM line's Lean port to the deployed recursion ([`docs/LEAN_PORT.md`](docs/LEAN_PORT.md)).
+- Membership: `RevealedUniform εr δr` proved (group 1 from a determinant's degree; group 2's `δr` from the degree of
+  the blinding map's minors in the random rows); `WiringCheck` by a kernel proof; zero knowledge with a pre-proof phase
+  (the distinguisher's queries before the proof); simulation-extractability.
 - leanVM in Lean: the model gap (π2's circuit computes π1's Fiat–Shamir at the real Keccak-f[1600], π1's theorems are
   in the random-permutation model); the compiler's IV uniformity (`RecCompose.PatchChecked`); closed bounds at other
   shapes than the reference ([`formal/README.md`](formal/README.md), "Remaining").
@@ -227,8 +232,8 @@ leanEthereum) and is licensed, like leanVM, under the MIT license ([`LICENSE-MIT
   `examples/statement_vectors.rs`, `crates/leanvm/statement/tests/{lean_keccak_tables,lean_keccak_block}.rs`,
   `crates/leanvm/univariate/tests/lean_keccak_vectors.rs`, `crates/leanvm/rec/tests/{lean_circuit_keccak,
   lean_pad_counts,lean_pi2_prover,lean_graph_keccak,lean_statement_keccak}.rs`. A change of their output must go
-  with the Lean side; until the port ([`docs/LEAN_PORT.md`](docs/LEAN_PORT.md)), do not regenerate them: `formal/`
-  holds `f96a7938`'s.
+  with the Lean side. The membership line's are current; the leanVM line's, until its port
+  ([`docs/LEAN_PORT.md`](docs/LEAN_PORT.md)), must not be regenerated: `formal/` holds `f96a7938`'s.
 
 ## Lean builds
 

@@ -4,21 +4,15 @@
 
 ## Status
 
-Everything in `formal/` states and proves the protocols of commit **`f96a7938`**, not the deployed Rust
-(`git log f96a7938..main -- formal` is empty):
-
-- **membership**: six one-point claims on four commitments (`W`, `H`, `Q`, `G`), the masks, the gate `V = X + C + Y·C`
-  ([`docs/HISTORY.md`](../docs/HISTORY.md), "Membership at f96a7938"); deployed: three claims on two commitments and
-  the circuit's ([`docs/membership/PROTOCOL.md`](../docs/membership/PROTOCOL.md));
-- **recursion**: π2 (π2v3) over π1-rec3, π1's three claims encoded by the contract; deployed: π2 over π1-rec4, π1's
-  three claims hashed in π2's circuit ([`docs/leanvm/rec/SPEC-REC.md`](../docs/leanvm/rec/SPEC-REC.md)).
-
-What the port needs is [`docs/LEAN_PORT.md`](../docs/LEAN_PORT.md). **Do not regenerate the Lean-facing files until
-the port**: the Rust now writes the deployed protocols, so `UPDATE_LEAN=1` runs (`crates/membership/evm/src/lean.rs`,
-`crates/leanvm/rec/tests/lean_statement_keccak.rs`, the other writers AGENTS.md lists under "Lean-facing outputs")
-would overwrite `f96a7938`'s `Implementation/Graph.lean` and `RecStatement/RecStatement/Data.lean` with files the Lean
-does not state; their `*_is_current` tests are ignored and stale. Lean comments still cite the design notes by their
-names at `f96a7938` (`docs/HISTORY.md` maps them).
+- **membership**: the deployed protocol ([`docs/membership/PROTOCOL.md`](../docs/membership/PROTOCOL.md), transcript
+  `pcs-quotient-kc3`: three one-point claims on two commitments `W`, `T` and the circuit's, the gate `V = Y + C + X·C`,
+  the public words pinned, `x h` in the quotient table). The previous protocol's (`f96a7938`, six claims on four
+  commitments: [`docs/HISTORY.md`](../docs/HISTORY.md)) proof layers that the leanVM line still imports stay built
+  (`QuotientSecurity`'s old F1 and F0, `Compose`, `formal/Circuit`, `WhirBridge`'s layout openings).
+- **recursion**: π2 (π2v3) over π1-rec3, π1's three claims encoded by the contract, the protocols of `f96a7938`;
+  deployed: π2 over π1-rec4, π1's three claims hashed in π2's circuit
+  ([`docs/leanvm/rec/SPEC-REC.md`](../docs/leanvm/rec/SPEC-REC.md)); the port is [`docs/LEAN_PORT.md`](../docs/LEAN_PORT.md).
+  Until it lands, do not regenerate the leanVM line's Lean-facing files (`crates/leanvm/rec/tests/lean_*.rs`).
 
 Every end theorem below is sorry-free, without `native_decide`, on `propext`, `Classical.choice` and `Quot.sound` only
 (`#guard_msgs` in each library).
@@ -35,42 +29,62 @@ header.
 ## Membership: the end theorems
 
 [`Statement/`](Statement/README.md) states the relation (Keccak-256 Merkle membership over the deployed Keccak-256),
-the proof format, the verifier (computable, differential-tested against `f96a7938`'s Rust), the honest prover, the
-explicit straight-line extractor and the simulator, in one random permutation; `EndToEnd/` proves them.
+the proof format, the verifier (computable, differential-tested against the Rust), the honest prover, the explicit
+straight-line extractor and the simulator, in one random permutation; `EndToEnd/` proves them.
 
 - **Knowledge soundness, no hypotheses.** `Soundness.knowledgeSoundness : PcsQuotient.KnowledgeSoundness
-  Soundness.ksBound` (`EndToEnd/Soundness/PcsFinal.lean`). `ksBound Q = SoundPcs.deployedBound (2^20 + 24 + Q) +
-  (5·2^19 + 24 + Q + 728890)^2/2^508`: about `2^-104.4` at `Q = 0`, `2^-85.4` at `2^40`, `2^-61.4` at `2^64` (125.4
-  bits as `Q/ε`). `deployedBound` (`SoundPcs.knowledgeSoundness_deployed_pcs`) is the six openings
-  (`WhirBridge.Pcs.pcs_sound_oracle`, the out-of-domain point read off Keccak-256 by the verifier; `2^-128` a query
-  each, which dominate), the binding of the four roots' lists at their points (`ood_binding_coords` at `25`, `27`,
-  `28` variables) and the chain (`ComposePcs/Pinned4.lean`): each root absorbed with its out-of-domain answer, each
-  challenge is bounded for the one candidate tuple the answers pin (`prEvent_pinned_le`: `2^-164` a query, not the
-  union over `< 2^50` tuples). The extractor `PcsQuotient.extractor` is explicit and computable (hash-map replay,
-  Merkle inversion, fast path, Gao's unique decoder, Guruswami–Sudan last). Stand-alone, not
-  simulation-extractability.
-- **Completeness, no hypotheses.** `E2ECompleteness.completeness_end : PcsQuotient.Completeness Pcs.deltaPcs`
-  (`EndToEnd/Completeness/E2ECompleteness/PcsDone.lean`), `deltaPcs = (19·2^24 + 31)/2^192 + 2^-304 + (2^48)²/2^508 ≈
-  2^-163.75` (`deltaPcs_lt`: `< 2^-163`): degenerate challenges `(α, β, t, ρ)`, the openings' proofs of work, the
-  permutation as two random oracles. For the Statement's prover; the deployed Rust prover is trusted for completeness.
+  Soundness.ksBound` (`EndToEnd/Soundness/PcsDeployed.lean`). `ksBound Q = deployedBound (2^20 + 24 + Q) +
+  (5·2^19 + 24 + Q + 8 + 3·121480)^2/2^508`: about `2^-105.4` at `Q = 0`, `2^-86.4` at `2^40`, `2^-62.4` at `2^64`
+  (126.4 bits as `Q/ε`). `deployedBound` (`SoundPcs`) is the three openings (`WhirBridge.Pcs.pcs_sound_oracle`, the
+  out-of-domain point read off Keccak-256: the witness on `W`, 24 variables; the wiring on the circuit's commitment,
+  24; the copy claim on `T`, 28; `2^-128` a query each, which dominate), the binding of the two roots' lists at their
+  points (`ood_binding_coords` at 24 and 28 variables: `δc 24 ≤ 2^-165`, `δc 28 ≤ 2^-169`) and the two-root chain
+  (`ComposePcs/Chain2.lean`, each challenge bounded for the one candidate pair the out-of-domain answers pin:
+  `2^-164` a query, from F1's round error `2^-165`). The extractor `PcsQuotient.extractor` is explicit and computable.
+  Stand-alone, not simulation-extractability. The layers:
+  - **F1** (`formal/Kc3`, the reduction as polynomials, ideal commitments): `Kc3.Params.card_round1_le` (a first
+    message whose cells fail the relation admits a consistent second message for at most `8 n q²` triples
+    `(α, β, μ)`: the cells' denominators, `d d'(0) = 0`, the sum forced by the layout (`consistent_sum`: `I(0) = d
+    d'(0) B₀(0)`, then `h = P / x` of degree `≤ n − 2` sums to zero over the cells, `Params.hSum`), the pole lemma
+    (`Kc3.card_pole_le`: an error at a cell whose predecessor carries none has a pole of its own, by the circuit's
+    `PoleCondition`), then the logarithmic derivatives), `card_round2_le` (the identity's degree, `≤ 4n − 1`),
+    `card_round3_le` (`Conic.lean`: the witness claim's conic spans its plane, so a wrong value passes at most two `ρ`),
+    `roundError_deployed` (`2^-165`), and the instance `Params.ofCantor` (`hSum` proved from the Cantor basis).
+  - **F0** (`formal/Kc3Circuit`): the deployed circuit `PcsQuotient.membership 22` as `Kc3Deployed.deployedParams`;
+    `poleCondition_deployed` (proved from the rows and the wiring, not evaluated); `relation_of_sat_deployed` (cells
+    satisfying the gates, copies and pins spell a secret of the statement: Keccak's gadget on the swapped roles, the
+    Horner packing of the public words, the anchors).
+  - **The claims** (`EndToEnd/PcsBridge`: `Kc3Claims.claimsAt_spec`, `Kc3Accepts.accepts_of_claims`,
+    `Kc3Deployed.matches_ofCantor`): the three claims hold of tables only if F1's verifier accepts their polynomials.
+  - **The composition**: `ComposePcs/Chain2.lean` (two roots, `roundsSound_of`), `SoundPcs` (the deployed run, three
+    openings), `Soundness/Pcs*.lean` (the random-permutation transfer, the extraction, `knowledgeSoundness_of_matches`).
+- **Completeness, under one evaluated check.** `E2ECompleteness.completeness_end (hW : Pcs.H.WiringCheck) :
+  PcsQuotient.Completeness Pcs.deltaPcs` (`EndToEnd/Completeness/E2ECompleteness/PcsDone.lean`), `deltaPcs =
+  (7·2^24 + 3)/2^192 + 2/2^256 + 2^-304 + rpmError 2^48`, `deltaPcs_lt : deltaPcs < 2^-163` (about `2^-165`): the
+  degenerate challenges (`β = 0`, a cell's denominator, `γ = 0` for `b₂`, `t` a root of `claimsAt`'s denominators,
+  `ρ` the conic's), the openings' proofs of work, the permutation as two random oracles. `WiringCheck` is the wiring's
+  coefficient `n − 2` nonzero (`Index::new`'s assert; `γ = 0` then holds for at most one `α` a `β`), evaluated by
+  `lake exe membership-wiring-check` (it holds: coefficient `2^24 − 2` is `17280478925055366306`); the kernel cannot
+  run a transform of `2^24` points. The honest prover's tables are proved to hold F1's honest messages (the quotient
+  `q = q₀ + b₂ E` on the coset of `4 n` points, `mulX`/`divX` the products and quotients by `x` in the novel basis,
+  `Kc3Deployed.sat_honest` for the randomized cells). For the Statement's prover; the deployed Rust prover is trusted
+  for completeness.
 - **Zero knowledge, under two hypotheses.** `PcsQuotient.EndToEnd.zeroKnowledge_pcs_closed : PcsZeroKnowledge sim εpcs
-  → RevealedUniform εr → ZeroKnowledgeWith sim.s₀ (zkSimulator sim) sim.oracle (fun Q ↦ εpcs Q + εr + εfs₀)`
-  (`EndToEnd/ZK/PcsFSClosed.lean`; hypotheses and simulator in `Statement/PcsQuotient/Zk.lean`). `PcsZeroKnowledge`
-  is the EIP's ZK-WHIR assumption (the reference openings are not zero knowledge); `RevealedUniform` (the ten revealed
-  scalars uniform at all but `εr` of the challenges) is tested in the Rust (`hiding.rs`), not proved: at `f96a7938` a
-  random row's value enters the gate's quotient `GF(2)`-linearly. `εfs₀ = 113 · δq L ≤ 2^-162` is proved
-  (`fiatShamirUniform_closed`). Single proof, the distinguisher's queries after the proof.
+  → RevealedUniform εr δr → ZeroKnowledgeWith sim.s₀ (zkSimulator sim) sim.oracle (fun Q ↦ εpcs Q + εr + δr + εfs₀)`
+  (`EndToEnd/ZK/PcsFSClosed.lean`; hypotheses and simulator in `Statement/PcsQuotient/Zk.lean`), `εfs₀ = 58 · δq L ≤
+  2^-163` proved (`fiatShamirUniform_closed`). `PcsZeroKnowledge` is the EIP's ZK-WHIR assumption (the reference
+  openings are not zero knowledge). `RevealedUniform εr δr` (outside `εr` of the challenges, the five revealed scalars
+  are within statistical distance `δr` of uniform) is not proved: group 1 (`W`'s answer, `X`, `C`, `V + Y`) is
+  `K`-affine in the random rows with a linear part fixed by the challenges, exact at full rank; group 2 (`T`'s
+  answer) is `K`-affine in the six blinding words with a linear part that depends on the random rows (through
+  `d d'` and `b₂`), rank-deficient on a nonempty zero set of minors, so `δr ≈ 2^-59` (reasoned, not proved;
+  [`PROTOCOL.md`](../docs/membership/PROTOCOL.md), "Zero knowledge"). Single proof, the distinguisher's queries after it.
 - **The EVM contract is the verifier.** `Evm.evm_accepts_iff_verifyWith` (`EndToEnd/Evm/Contract.lean`): on a
-  statement's and proof's calldata, the contract's recorded graph (`Implementation/Graph.lean`, `f96a7938`'s: 665
-  nodes, six claims checked declared), with the stored index commitment and what the block proves of a declared claim
-  modelled by `pcsOpen` (`Evm/PcsOpen.lean`), accepts exactly when `PcsQuotient.verifyWith` accepts at
-  π = Keccak-f[1600]; `Evm.evm_accepts_iff_exists`: over all calldata, the contract accepts exactly the calldata of an
-  accepted proof. `Implementation/` proves the graph computes `reduce` (`run_calldata`).
-
-The chain of layers: F0 the circuit and F1 the reduction ([`QuotientSecurity/`](QuotientSecurity/README.md)), F2 the
-openings ([`WhirBridge/`](WhirBridge/README.md)), F4 the composition ([`Compose/`](Compose/README.md), `ComposePcs/`,
-`SoundPcs/`), F5 the implementation (`Implementation/`), then `EndToEnd/`'s bridges (`Bridge`, `PcsBridge`) to the
-Statement's definitions.
+  statement's and proof's calldata (273 bytes, no selector), the contract's recorded graph (`Implementation/Graph.lean`:
+  537 nodes, 39 output words, three claims checked declared), with the stored index commitment and what the block
+  proves of a declared claim modelled by `pcsOpen` (`Evm/PcsOpen.lean`), accepts exactly when `PcsQuotient.verifyWith`
+  accepts at π = Keccak-f[1600]; `Evm.evm_accepts_iff_exists`: over all calldata, the contract accepts exactly the
+  calldata of an accepted proof. `Implementation/` proves the graph computes `reduce` (`run_calldata`).
 
 ## leanVM by recursion: the end theorems
 
@@ -137,21 +151,24 @@ theorem RecCompose.recKnowledgeSoundness_reduction_real (prog : KeccakVm.Program
 | | Membership | Recursion |
 |---|---|---|
 | Trusted | the Lean kernel and three axioms; Keccak-f[1600] a random permutation, Keccak-256 its sponge; mumbai's definitions (Keccak, the model, `verifyStackedOpening`, the decoders); the prover's randomness uniform (deployed: a Keccak-256 KDF, `Randomness::derive`, so computational ZK) | the same; the deployed Rust provers for completeness |
-| Tested against the Rust (at `f96a7938`) | the Statement (`PcsQuotientTest/Differential.lean`: reductions, honest and tampered proofs at `2^17` rows, circuit commitments); the Statement's prover (the reduction's stream at `2^17` rows); bytecode = graph (`contract_is_the_verifier`, `random_calldata_agrees`); `FIELD_MUL` = `mulE` by vectors; `pcs_claim::verify` = `pcsOpening` | π1's verifier (`UniKeccakTest/Runner.lean`: 90/90 verifier and 14/14 terminal vectors, the real proofs among them); the verifier's tables, the block's rows and terminal, `sha3Step`; the circuit compiler (`rec-circuit-keccak`, `padCounts` on 202 cases); π2's Lean prover on two small circuits; `RecStatement/Data.lean` is what the Rust emitted at `f96a7938`; the bytecode is π2's Rust verifier by the Rust's tests (`parity`) |
-| Not covered | simulation-extractability; ZK without its two hypotheses, with queries before the proof, or for several proofs; the RPM theorems and the EVM one do not formally compose; `StatementBinds` (immediate, not proved); pruned Merkle paths | the model gap (π1-rec3 in the RPM, π2's circuit at Keccak-f[1600]); `PatchChecked`; other shapes than the reference; no Lean differential run of π2's verifier |
+| Tested against the Rust | the Statement (`membership-differential`: 121 reductions, 18 honest and tampered proofs at `2^17` rows, the small, toy and membership circuits' commitments, all agreeing); the Statement's prover (the reduction's stream at `2^17` rows, and its proof accepted); the circuit's rows and σ (`kc3-dump-circuit`, SHA-256 `7b73dc3b…`); bytecode = graph (`graph_lean_is_current`, `Implementation/Diff.lean` on 1000 calldata); `FIELD_MUL` = `mulE` by vectors; `pcs_claim::verify` = `pcsOpening` (`WhirBridge/Test/CheckPcs.lean`) | π1's verifier (`UniKeccakTest/Runner.lean`: 90/90 verifier and 14/14 terminal vectors, the real proofs among them); the verifier's tables, the block's rows and terminal, `sha3Step`; the circuit compiler (`rec-circuit-keccak`, `padCounts` on 202 cases); π2's Lean prover on two small circuits; `RecStatement/Data.lean` is what the Rust emitted at `f96a7938`; the bytecode is π2's Rust verifier by the Rust's tests (`parity`) |
+| Evaluated, not proved | `WiringCheck` (completeness's hypothesis: the wiring's coefficient `n − 2` nonzero, `membership-wiring-check`) | `GraphsAgree`, `DigestChecked`, `SetupRootChecked`, `IvChecked` |
+| Not covered | simulation-extractability; `RevealedUniform` (stated, reasoned at `δr ≈ 2^-59`, not proved); ZK with queries before the proof, or for several proofs; the RPM theorems and the EVM one do not formally compose; `StatementBinds` (immediate, not proved); pruned Merkle paths | the model gap (π1-rec3 in the RPM, π2's circuit at Keccak-f[1600]); `PatchChecked`; other shapes than the reference; no Lean differential run of π2's verifier |
 
 ## Libraries
 
 | Library | What |
 |---|---|
 | [`Statement`](Statement/README.md) (`PcsQuotient`) | membership: definitions and end statements only |
-| `EndToEnd` | the Lake workspace; libraries `Soundness`, `E2ECompleteness`, `ZK`, `Evm` (membership end theorems), `Bridge`, `PcsBridge`, `Shared` |
-| `Circuit`, `Field` | F0: the deployed circuit's wiring and `F192` |
-| [`QuotientSecurity`](QuotientSecurity/README.md) | F1 (the reduction with ideal commitments) and F0's theorems |
+| `EndToEnd` | the Lake workspace; libraries `Soundness`, `E2ECompleteness`, `ZK`, `Evm` (membership end theorems), `PcsBridge` (the claims as F1's verifier), `Bridge`, `Shared` (shared with the leanVM line) |
+| [`Kc3`](Kc3/) | F1 of the deployed protocol: the reduction as polynomials, its three rounds, the Cantor instance |
+| `Kc3Circuit` | F0 of the deployed circuit: its rows and wiring, the pole condition, the relation, the honest cells, the dump test |
+| `Circuit`, `Field` | the previous protocol's circuit (its Keccak definitions are the leanVM line's); `F192` |
+| [`QuotientSecurity`](QuotientSecurity/README.md) | the previous protocol's F1 and F0 (their generic parts serve `Kc3`; the leanVM line imports them) |
 | `QuotientRpm` | F4a: the reduction's Keccak-256 chain, ROM then RPM |
 | [`WhirBridge`](WhirBridge/README.md) | F2: the PCS claim (version 1) and the layout openings, under mumbai's WHIR soundness |
-| [`Compose`](Compose/README.md), `ComposePcs`, `SoundPcs` | F4b: the composition with real commitments; on the PCS claims, `knowledgeSoundness_deployed_pcs` |
-| `Completeness` | the membership completeness layers |
+| [`Compose`](Compose/README.md), `ComposePcs`, `SoundPcs` | F4b: the composition with real commitments; the deployed protocol's two-root chain (`ComposePcs/Chain2.lean`) and run (`SoundPcs`) |
+| `Completeness` | the previous protocol's completeness layers the leanVM line imports |
 | `Implementation` | F5: the contract's recorded graph and its interpreter |
 | `Lv42` | leanVM `42422001`'s instruction set, machine, tables and M3 instance (from leanerVM `f0393df4`) |
 | [`KeccakVm`](KeccakVm/README.md) | the Keccak VM's instruction set and relation `KvHolds` |
@@ -174,8 +191,11 @@ On h1, under `/root/pcs-quotient-fv/` only (AGENTS.md, "Lean builds"): copy the 
 ```sh
 cd formal/EndToEnd
 systemd-run --scope -p MemoryMax=12G lake build Soundness E2ECompleteness Evm ZK      # membership end theorems
-systemd-run --scope -p MemoryMax=12G lake build WhirBridge ComposePcs SoundPcs PcsBridge Bridge Completeness \
-  QuotientSecurity Implementation PcsQuotient                                          # their layers
+systemd-run --scope -p MemoryMax=12G lake build Kc3 Kc3Circuit PcsBridge SoundPcs ComposePcs Implementation \
+  PcsQuotient                                                                          # their layers
+systemd-run --scope -p MemoryMax=12G lake exe membership-wiring-check                 # WiringCheck
+systemd-run --scope -p MemoryMax=32G lake exe membership-differential vectors.txt     # against statement_vectors' vectors
+systemd-run --scope -p MemoryMax=12G lake exe kc3-dump-circuit OUT                    # against dump_circuit's
 systemd-run --scope -p MemoryMax=12G lake build KeccakVm KeccakArith KeccakFlushes KeccakFlock UniKeccak UniKeccak.Fits \
   UniStatement.KeccakTables UniKeccakSound UniKeccakComplete RecGraphKeccak RecCircuit rec-circuit-keccak RecStatement \
   RecCompose                                                                           # the leanVM line
@@ -185,21 +205,26 @@ systemd-run --scope -p MemoryMax=16G lake exe rec-real-check --setup-only  # Set
 systemd-run --scope -p MemoryMax=12G lake exe rec-view-check               # viewCheck at two IVs
 ```
 
-`#guard_msgs` in each library checks the axioms. The differential tests' commands are in the package READMEs; their
-vectors are `f96a7938`'s (see Status).
+A build of many libraries at once runs many `lean` processes; under a memory cap, restrict its CPUs (`taskset -c 0-3
+lake build …`).
+
+`#guard_msgs` in each library checks the axioms. The differential tests' commands are in the package READMEs; the
+leanVM line's vectors are `f96a7938`'s (see Status).
 
 ## Remaining
 
-1. **The port** to the deployed protocols ([`docs/LEAN_PORT.md`](../docs/LEAN_PORT.md)).
+1. **The leanVM port** to the deployed recursion ([`docs/LEAN_PORT.md`](../docs/LEAN_PORT.md)).
 2. **The model gap.** π2's circuit computes π1-rec3's Fiat–Shamir with the real Keccak-f[1600]; π1-rec3's theorems are
    in the random-permutation model, so the soundness reduction's last two terms and the two completeness premises are
    left to the Fiat–Shamir heuristic for Keccak-f[1600].
-3. **The evaluated checks** are Props checked by running Lean, not kernel proofs; `IvChecked` is evaluated at three IVs
-   and assumed at the others: `IvUniform.ivChecked_of_patchChecked` reduces it to `PatchChecked`, not proved (a
-   relational simulation of about 1,200 lines of the builder).
+3. **The evaluated checks** are Props checked by running Lean, not kernel proofs: membership's `WiringCheck`; the
+   recursion's `GraphsAgree`, `DigestChecked`, `SetupRootChecked`, `IvChecked` (evaluated at three IVs and assumed at the
+   others: `IvUniform.ivChecked_of_patchChecked` reduces it to `PatchChecked`, not proved).
 4. **Other shapes**: π1's closed bounds are at the reference shape.
-5. **Membership**: `RevealedUniform` proved rather than tested; zero knowledge with a pre-proof phase;
-   simulation-extractability.
-6. Declarations in the shared libraries that no end theorem uses (the previous protocol's layout openings,
-   `Compose`'s `knowledgeSoundness_deployed_rust`, `Completeness`'s `completeness_deployed_*`): still built, as the
-   end theorems import those libraries.
+5. **Membership**: `RevealedUniform εr δr` proved (group 1 from a determinant's degree; group 2's `δr`, about `2^-59`
+   with blinding words in `K`, from the minors' degree in the random rows); zero knowledge with a pre-proof phase;
+   simulation-extractability; a few lemmas duplicated between the soundness and completeness lines
+   (`Soundness/PcsVH*.lean`, `tableEval_eq_mle`, `tau_systemL`).
+6. Declarations in the shared libraries that no end theorem uses (the previous protocol's F1 and F0 in
+   `QuotientSecurity`, its layout openings in `WhirBridge`, `Compose`'s `knowledgeSoundness_deployed_rust`,
+   `ComposePcs`'s four-root chain, `formal/Circuit`): still built, as the leanVM line imports them.

@@ -11,7 +11,7 @@ Gas is without the 21,000 base; "frame transaction" is EIP-8141 under EIP-7976's
 
 ## Membership
 
-| | hidden layouts | `f96a7938` (six claims; `formal/` proves it) | `866ba889` (four claims) | now (three claims) |
+| | hidden layouts | `f96a7938` (six claims; `formal/` proved it before the port) | `866ba889` (four claims) | now (three claims; `formal/` proves it) |
 |---|---|---|---|---|
 | commitments | 2 (`2^25`, `2^28`) + index | 4 (`W` `2^25`, `H` `2^27`, `Q` `2^28`, `G` `2^25`) + index | 2 (`W` `2^24`, `T` `2^28`) + index | 2 (`W` `2^24`, `T` `2^28`) + index |
 | claims | 4, in 3 declared (claims on a layout) | 6 | 4 (W, wiring, copy and sum on `T`) | 3 (W, wiring, copy on `T`) |

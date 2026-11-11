@@ -67,7 +67,7 @@ Statement `(y, root)`, witness `x` and a depth-32 path: `y = H(x | 0x11..)`, pat
 | PCS claims | 3, in the EIP's encoding (97 B of frame) |
 | Gas | 15,753 execution; **31,680** transaction under EIP-8141 (floor-bound, `pcs_gas` in the floor; no base or per-frame cost) |
 | Deployment | 4,866 B of code, 1,149,640 gas |
-| Lean 4 | knowledge soundness (≈ 2^-61.4 at 2^64 queries), completeness (< 2^-163) and the contract = the verifier, proved; zero knowledge proved under two hypotheses; all of the protocol of `f96a7938` (six claims), not yet ported to the current one ([`docs/LEAN_PORT.md`](docs/LEAN_PORT.md)) |
+| Lean 4 | of this protocol: knowledge soundness (≈ 2^-62.4 at 2^64 queries, no hypothesis), completeness (< 2^-163, given one evaluated check of the wiring) and the contract = the verifier, proved; zero knowledge proved under two hypotheses (the ZK-PCS and the revealed scalars' near-uniformity) ([`formal/README.md`](formal/README.md)) |
 
 ### One leanVM proof by recursion (`crates/leanvm`)
 

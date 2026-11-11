@@ -7,9 +7,9 @@ claims are the EIP draft's ([`../PCS_CLAIM.md`](../PCS_CLAIM.md), version 1), ea
 WHIR. The verifier is `protocol::reduce`, generic in its scalar, so the same code is the EVM contract
 (`crates/membership/evm`).
 
-The Lean in `formal/` proves the protocol of commit `f96a7938` (six claims on four commitments,
-[`../HISTORY.md`](../HISTORY.md), "Membership at f96a7938"), not this one; the port is in
-[`../LEAN_PORT.md`](../LEAN_PORT.md), "Membership".
+The Lean in `formal/` states and proves this protocol ([`../../formal/README.md`](../../formal/README.md),
+"Membership: the end theorems"): knowledge soundness with no hypothesis, completeness under one evaluated check, zero
+knowledge under the ZK-PCS assumption and `RevealedUniform`, the contract = the verifier.
 
 Notation: `K = GF(2^64)`, `E = GF(2^192)`, `m = log_rows + 2` (`m = 24` at `2^22` rows), `n = 2^m` cells, the cells
 the additive subspace of the domain (`domain.rs`), `X_j` the subspace polynomials of the novel basis, `Z = X_n` the
