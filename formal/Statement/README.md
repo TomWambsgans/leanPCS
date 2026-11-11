@@ -2,6 +2,13 @@
 
 # Statement
 
+> **Of `f96a7938`'s protocol, not the deployed one.** This package states the membership protocol of commit
+> `f96a7938` (six one-point claims on four commitments, `docs/membership/EIP_CLAIMS.md`). The deployed Rust has
+> changed since: three claims on two commitments and the circuit's, the gate `V = Y + C + X·C`, `x h` in the quotient
+> table ([`docs/membership/PERF_GAS2.md`](../../docs/membership/PERF_GAS2.md), on
+> [`PERF_GAS.md`](../../docs/membership/PERF_GAS.md); "What the Lean needs" there lists the port). "The Rust" below
+> is `f96a7938`'s.
+
 What `crates/membership/quotient` is proved to be, in the files a reviewer reads: **definitions and end
 statements only**, no proof, one Lake package (`pcs-quotient-statement`, library `PcsQuotient`) of fifteen
 files, `PcsQuotient/<Name>.lean` (Lean modules `PcsQuotient.<Name>`). It depends on leanerVM's
@@ -40,7 +47,8 @@ is sampled.
 
 **The sources.** Each definition cites the Rust it transcribes (`protocol.rs`, `opening.rs`,
 `circuit.rs:N`, …) of `crates/membership/quotient` at `main` `abe22812` (the EIP's PCS claims,
-`docs/membership/EIP_CLAIMS.md`), and each file names what it takes from leanerVM in its first lines.
+`docs/membership/EIP_CLAIMS.md`: the protocol `f96a7938` has, superseded since by `PERF_GAS.md` and
+`PERF_GAS2.md`), and each file names what it takes from leanerVM in its first lines.
 
 ## Reading order
 

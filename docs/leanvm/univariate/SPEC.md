@@ -129,10 +129,14 @@ shape class per contract. The order:
    end values.
 
 **The Fiat–Shamir shapes** (`flock_min::Variant::fs`). `KECCAK_MAIN` (`FsShape::Main`) draws every challenge by
-its own hash. `KECCAK_REC3` (`FsShape::Rec3`, π1-rec3, the recursion's inner proof: `docs/leanvm/rec/SPEC-REC.md`
-§1.4, `SPEC-POINTS.md`) draws `α` as `(c, c², c⁴, c⁸)` of one challenge and Flock's zerocheck coordinates after the
+its own hash. `KECCAK_REC3` (`FsShape::Rec3`, π1-rec3, the recursion's inner proof as the Lean states it:
+`docs/leanvm/rec/SPEC-REC.md` §1.4, `SPEC-POINTS.md`) draws `α` as `(c, c², c⁴, c⁸)` of one challenge and Flock's zerocheck coordinates after the
 seven fixed ones as successive squares of one challenge, and runs the batching sumcheck two variables a round with
 narrow (160-bit) challenges. At 128 signatures π1-rec3's verifier makes 70 Keccak-256 calls over a 9,232-byte stream.
+`KECCAK_REC4` (`FsShape::Rec4`, π1-rec4, the deployed recursion's inner proof since `docs/leanvm/rec/PERF_GAS2.md`) is
+π1-rec3 with the challenges no message separates drawn from one Keccak-f each: 106 Keccak-f in its transcript at the
+reference shape instead of 116. It has no EVM contract of its own (`KECCAK256` gives no sponge rate); π2's circuit runs
+it, and the Lean does not state it.
 
 ## 5. The bus as a product heap
 

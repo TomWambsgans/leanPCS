@@ -1,15 +1,16 @@
 // Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! π2 on the real instance (PI2.md): the circuit compiled from π1's recorded verifier with the witness of a real
-//! Keccak VM π1-rec3 proof (`crates/leanvm/univariate/tests/vectors/keccak128_rec3.txt`, the reference shape, 128
-//! signatures; `keccak_rec3.txt`, 400), through the adapter (`pi2::adapt`):
+//! Keccak VM π1-rec4 proof (`leanvm_rec::PI1`; `crates/leanvm/univariate/tests/vectors/keccak128_rec4.txt`, the
+//! reference shape, 128 signatures, the default; `keccak_rec4.txt`, 400), through the adapter (`pi2::adapt`):
 //!
 //! - `real_gas`: the contract's gas on the real circuits, D16v (the verifier's gas depends on the circuit alone),
 //!   parity with the Rust verifier;
-//! - `real_end_to_end` (`PI2_VECTOR=keccak128_rec3|keccak_rec3`): π2's prover on the real witness, its five openings
-//!   verified (`pcs_claim::verify_claim`, the EIP draft's `pcs_verify`: what the block's openings prove), and the
-//!   contract accepting the proof with its frame of PCS claims declaring exactly its claims: π1's three (the vector's,
-//!   which π1's openings prove) and π2's five; a flipped calldata byte is rejected. Its gas is the frame transaction's
-//!   (EIP-8141, EIP-7976's floor; without `FRAME_TX_INTRINSIC_COST` and the per-frame costs).
+//! - `real_end_to_end` (`PI2_VECTOR=keccak128_rec4|keccak_rec4`, default `keccak128_rec4`): π2's prover on the real
+//!   witness, its five openings verified (`pcs_claim::verify_claim`, the EIP draft's `pcs_verify`: what the block's
+//!   openings prove), and the contract accepting the proof with its frame of PCS claims declaring exactly its claims:
+//!   π1's three (the vector's, which π1's openings prove) and π2's five; flipped calldata bytes and the frame's
+//!   attacks are rejected (`frame_and_calldata_attacks`). Its gas is the frame transaction's (EIP-8141, EIP-7976's
+//!   floor; without `FRAME_TX_INTRINSIC_COST` and the per-frame costs).
 //!
 //! `cargo test --release -p leanvm_rec --test pi2_real -- --ignored --nocapture --test-threads 1`
 
@@ -121,6 +122,80 @@ fn real_gas() {
     });
 }
 
+/// The contract against its frame and its calldata, on the real proof (`data`, its frame declaring `block`): it
+/// rejects a frame of another mode or scheme, swapped payloads, any claim's value, point or out-of-domain answer
+/// changed, a claim missing, a frame index naming a non-PCS frame, a PCS-scheme frame of another mode, calldata one
+/// byte longer or shorter, and every calldata byte flipped at bits 0 and 7; it accepts a ninth claim appended (the frame
+/// may declare more) and the right index past a frame before it.
+fn frame_and_calldata_attacks(inst: &Instance, recorded: &contract::Recorded, data: &[u8], block: &[PcsClaim]) {
+    use leanvm_statement::evm::codegen::word;
+    use leanvm_statement::evm::machine::{Frame, PcsFrame, call};
+    let code = contract::compile_verifier(inst, recorded, false).code;
+    let ok = |d: &[u8], f: &PcsFrame| call(&code, &[], d, f).output.as_deref() == Some(&word([1, 0, 0])[..]);
+    let honest = contract::block(block);
+    assert!(ok(data, &honest), "the honest frame");
+    let mut f = contract::block(block);
+    f.mode = 3;
+    assert!(!ok(data, &f), "another mode");
+    let mut f = contract::block(block);
+    f.scheme = 0x11;
+    assert!(!ok(data, &f), "another scheme");
+    for (i, j) in [(0, 1), (1, 2), (0, 2), (3, 4), (5, 6), (6, 7), (2, 3)] {
+        let mut b = block.to_vec();
+        b.swap(i, j);
+        assert!(!ok(data, &contract::block(&b)), "payloads {i} and {j} swapped");
+    }
+    for k in 0..block.len() {
+        let mut b = block.to_vec();
+        b[k].value += F192::ONE;
+        assert!(!ok(data, &contract::block(&b)), "claim {k}'s value changed");
+        let mut b = block.to_vec();
+        b[k].point[3] += F192::ONE;
+        assert!(!ok(data, &contract::block(&b)), "claim {k}'s point changed");
+        let mut b = block.to_vec();
+        b[k].ood += F192::ONE;
+        assert!(!ok(data, &contract::block(&b)), "claim {k}'s out-of-domain answer changed");
+    }
+    assert!(!ok(data, &contract::block(&block[..block.len() - 1])), "a claim missing");
+    let mut b = block.to_vec();
+    b.push(block[0].clone());
+    assert!(ok(data, &contract::block(&b)), "a ninth claim appended");
+    // A frame before the PCS frame: the index byte must name the PCS frame.
+    let mut f = contract::block(block);
+    f.before = vec![Frame {
+        mode: 4,
+        data: [&[0x13u8][..], &[7u8; 64]].concat(),
+    }];
+    assert!(!ok(data, &f), "index 0 names a non-PCS frame");
+    let mut moved = data.to_vec();
+    *moved.last_mut().expect("the index") = 1;
+    assert!(ok(&moved, &f), "index 1 names the PCS frame");
+    // A frame of the PCS scheme and the right payloads, but not a dependency verification frame.
+    let mut f = contract::block(block);
+    f.before = vec![Frame {
+        mode: 1,
+        data: contract::block(block).data(),
+    }];
+    let mut first = data.to_vec();
+    *first.last_mut().expect("the index") = 0;
+    assert!(!ok(&first, &f), "a mode-1 frame with the right payloads");
+    let longer = [data, &[0]].concat();
+    assert!(!ok(&longer, &honest), "one byte more");
+    assert!(!ok(&data[..data.len() - 1], &honest), "one byte less");
+    // Every calldata byte but the frame's index (above), at bits 0 and 7.
+    for at in 0..data.len() - 1 {
+        for bit in [0, 7] {
+            let mut bad = data.to_vec();
+            bad[at] ^= 1 << bit;
+            assert!(!ok(&bad, &honest), "calldata byte {at} flipped at bit {bit}");
+        }
+    }
+    println!(
+        "frame and calldata attacks rejected; every one of {} calldata bytes flipped at 2 bits rejected",
+        data.len() - 1
+    );
+}
+
 #[test]
 #[ignore]
 fn real_end_to_end() {
@@ -223,7 +298,7 @@ fn real_end_to_end() {
         let data = calldata(&public_input, &stream);
         println!("pi2 calldata keccak {}", hex(&primitives::hash::hash(&data)));
         let (accepted, made) = contract::run(&inst, &recorded, &data, &block);
-        assert!(accepted, "the contract accepts π2's proof of π1-rec3's real proof");
+        assert!(accepted, "the contract accepts π2's proof of π1's real proof");
         assert_eq!(
             made,
             payloads.iter().map(|&p| block[p].encode()).collect::<Vec<_>>(),
@@ -265,7 +340,8 @@ fn real_end_to_end() {
             );
         }
         contract::parity(&inst, &recorded, &public_input, &hashed, &stream);
-        // The transaction on the real calldata (its zero bytes are the proof's: π1-rec3's narrow challenges): a frame
+        frame_and_calldata_attacks(&inst, &recorded, &data, &block);
+        // The transaction on the real calldata (its zero bytes are the proof's): a frame
         // transaction (EIP-8141, EIP-7976's floor), without `FRAME_TX_INTRINSIC_COST` and the per-frame costs.
         let (ok, execution) = contract::verifying_execution(&inst, &recorded, &data, &block);
         assert!(ok);

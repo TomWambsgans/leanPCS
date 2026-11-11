@@ -5,18 +5,18 @@
 //! straight-line EVM code (`leanvm_statement::evm::codegen`, `crates/evm_link`), run on revm with `FIELD_MUL` and
 //! EIP-8141's frame introspection over a frame of PCS claims (`leanvm_statement::evm::machine`).
 //!
-//! **Calldata** (no selector: the verifier is the only entry): π1's public input (32 bytes, which the seed hashes), the stream: π1's roots and its
-//! claims' elements, `W`'s commitment (root, out-of-domain answer), `Q`'s, the `2^r + 2` values; then a byte, the
-//! index of the transaction's frame of PCS claims. **Claims**, each the EIP draft's PCS claim (`crates/pcs_claim`,
-//! `docs/PCS_CLAIM.md`), checked declared in that frame in order (`evm_link::declared_claims`): π1's three (their
-//! words from calldata and constants: `circuit::spec::Circuit::calls`, each `root, ood, point, value`), then π2's
-//! five: `W`, the setup (its commitment a constant of the code), `Q`'s identity, pushes and sum
-//! (`verifier::Reduced::claims`). A claim's fields are written once each (π1's three share the batch's point, the
+//! **Calldata** (no selector: the verifier is the only entry): π1's public input (32 bytes, which the seed hashes), the
+//! stream: `W`'s commitment (root, out-of-domain answer), `Q`'s, the values at `t`; then a byte, the index of the
+//! transaction's frame of PCS claims. **Claims**, each the EIP draft's PCS claim (`crates/pcs_claim`,
+//! `docs/PCS_CLAIM.md`), declared in that frame in order: π1's three, whose Keccak-256s (payloads 0 … 2) the contract
+//! reads into the seed and π2's circuit computes from π1's run (`docs/leanvm/rec/PERF_GAS2.md`); then π2's five,
+//! checked declared at payloads 3 … 7 (`evm_link::declared_claims`): `W`, the setup (its commitment a constant of the
+//! code), `Q`'s identity, pushes and sum (`verifier::Reduced::claims`). A claim's fields are written once each (the
 //! setup's point `W`'s digits, `Q`'s claims their `u`), packed and hashed where it is checked.
 //!
-//! Every root is a commitment's 32 bytes as they are: π1's in calldata as its stream carries them (its prover sends a
-//! root's bytes), π2's `W` and `Q` likewise, and the setup roots constants; the out-of-domain answers are calldata's
-//! elements (π1's among its claims' elements, π2's after its roots) or constants (the setups').
+//! Every root is a commitment's 32 bytes as they are: π2's `W` and `Q` in calldata as its stream carries them, the
+//! setup's a constant; the out-of-domain answers are calldata's elements (after their roots) or a constant (the
+//! setup's).
 
 use fiat_shamir::merkle::Hash;
 use leanvm_statement::evm::codegen::{CALLS, Claim, Contract, Ending, Entry, MEASURE, Word, compile, word};

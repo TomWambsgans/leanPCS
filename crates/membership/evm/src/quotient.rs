@@ -402,7 +402,7 @@ mod tests {
         assert!(chain.call(address, &long[..long.len() - 2], &none).output.is_none());
     }
 
-    /// The contract succeeds, returning the word 1, exactly when the frame declares the four claims the Rust verifier
+    /// The contract succeeds, returning the word 1, exactly when the frame declares the three claims the Rust verifier
     /// leaves, in order: on the honest proof, and on tampered ones, which leave other claims.
     #[test]
     fn contract_checks_the_declared_claims() {
@@ -629,6 +629,23 @@ mod tests {
         println!("standard  {}  (16/4 a byte of calldata and frame, execution, pcs_gas)", grouped(standard));
         println!("floor     {}  (64 a byte of calldata and frame, pcs_gas)", grouped(floor));
         println!("gas       {}", grouped(gas));
+        // The EIP draft's PIOP column: the frame verifying the PIOP alone (its calldata and execution, no PCS gas),
+        // `max(standard, floor)`.
+        let piop_standard = 16 * (data.len() - zeros) as u64 + 4 * zeros as u64 + outcome.execution;
+        let piop_floor = 64 * data.len() as u64;
+        println!(
+            "PIOP      {}  (the PIOP's frame alone: standard {}, floor {})",
+            grouped(piop_standard.max(piop_floor)),
+            grouped(piop_standard),
+            grouped(piop_floor)
+        );
+        println!(
+            "EIP table: calldata {} bytes, PIOP {} gas, {} claims, total {} gas",
+            data.len(),
+            grouped(piop_standard.max(piop_floor)),
+            block.claims().len(),
+            grouped(gas)
+        );
         println!();
         println!(
             "Deployment: init code {} bytes; {} gas ({} without the 21,000)",

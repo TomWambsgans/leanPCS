@@ -11,9 +11,10 @@ docs/leanvm/rec/PERF_GAS2.md): pi1-rec3's and pi1-rec4's verifier graphs and pi2
 signatures. MODELLED (here): every soundness figure, the
 other arithmetizations' sizes, the k-variable rounds' permutations.
 
-pi2's rounds are π2v2's (docs/leanvm/rec/PI2.md §2, §7; the Lean, formal/RecPiop/RecPiop/Rounds.lean `err`, states
-π2v1, whose t has degree < 5N): the copy argument (alpha, beta, gamma) over W's list, the two identities at t, W's fold
-and Q's claim at rho over W's and Q's lists. The
+pi2's rounds are π2v2's PIOP's, as π2v3 runs it on the PCS claims (docs/leanvm/rec/PI2.md §2, §7; the Lean,
+formal/RecPiop/RecPiop/Rounds.lean `err`, states coarser ones: (4N - 1 + sum d_j)/|E|, (4N - 1)/|E|, 2^r/|E|): the
+copy argument (alpha, beta, gamma) over W's list, the two identities at t, W's fold and Q's claim at rho over W's and
+Q's lists. The
 composition adds pi2's bound and pi1-rec4's (RecCompose's `RecKnowledgeSoundnessReduction`, stated for pi1-rec3),
 each with its openings charged once.
 """
@@ -92,8 +93,10 @@ def pi2_rounds(log_n=LOG_N, row=ROW):
         ("copy argument (α, β, γ): 2N fractions, the ports' poles and fingerprints", 4 * n + PORT_DEGREES, lw),
         # π2v2: two identities at t, each of degree below 3N, which must both vanish: the copy identity
         # h d_pull d_push + (1 + 1_S)(d_push + d_pull) + T = q Z_V (d_push of the committed P) and P's definition
-        # P = P_v + Z_V q_P. The bound is the larger's, not the sum (π2v1: one identity below 5N).
-        ("t: the copy identity and P's definition, each of degree < 3N", 3 * n - 1, lw * lq),
+        # P = P_v + Z_V q_P. The bound is the larger's, not the sum (π2v1: one identity below 5N). Below 3N for the
+        # honest Q; with the slots the prover fills (h_1 in 1, 5, 9; S in 12: PI2.md §2, "The empty slots") the
+        # identities reach degree < 4N, so the round is charged 4N (as PI2.md's argument and RecPiop's `err`, 4N - 1).
+        ("t: the copy identity and P's definition, degree < 4N with the empty slots", 4 * n, lw * lq),
         (f"ρ: W's fold (degree {row - 1})", row - 1, lw * lq),
         # π2v2: Q's one claim combines h(t), q(t), P(t) = s and q_P's definition by ρ: degree 3 in ρ.
         ("ρ: Q's claim (the identity, P(t) = s, P's definition), degree 3", 3, lw * lq),
@@ -215,10 +218,11 @@ def main():
     p = uni.pi1(uni.REFERENCE, "rec4")
     _, lean1 = uni.lean_pi1("rec4")
     print(f"   weakest round: {p['weakest'][0]}, {bits(p['weakest'][1]):.2f} bits after C1's and C2's lists;"
-          f" {p['total']:.2f} bits with the openings (Lean: {lean1:.2f})")
+          f" {p['total']:.2f} bits with the openings (with pi1-rec3's Lean round cap, not a Lean proof of pi1-rec4:"
+          f" {lean1:.2f})")
     calc, lean = recursion_bits()
     print(f"   the recursion, pi2 + pi1-rec4 + the merge hazard (2^16/|E| a query): {calc:.2f} bits as Q / ε at"
-          f" Q = 2^64 (with the Lean's cap on pi1-rec4's rounds: {lean:.2f})")
+          f" Q = 2^64 (with pi1-rec3's Lean round cap on pi1-rec4's rounds, not proved: {lean:.2f})")
 
     print("\n== the arithmetizations (SPEC-REC.md §3), pi1-rec3 at 128 signatures (MODELLED: the rest as D16v's)")
     for design, d in DESIGNS.items():

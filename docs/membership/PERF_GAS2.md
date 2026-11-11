@@ -27,7 +27,8 @@ a revealed element of `E` (24 B) 1,536.
 
 `cargo test --release -p evm -- --ignored --nocapture --exact quotient::tests::gas_report`. The standard price stays
 2,031 gas under the floor (execution may grow by that much before it binds). In the EIP draft's table the row would
-read 273 bytes, PIOP 17,472 gas (`64 · 273`), 3 claims, 31,680 gas.
+read 273 bytes, PIOP 20,097 gas (the PIOP frame's `max(standard, floor)`: standard `16 · 271 + 4 · 2 + 15,753 =
+20,097` binds, the floor `64 · 273 = 17,472`), 3 claims, 31,680 gas.
 
 ## What changed
 
