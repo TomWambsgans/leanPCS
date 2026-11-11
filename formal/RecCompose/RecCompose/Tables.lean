@@ -106,20 +106,6 @@ theorem eqBits_append (p q : List E) {k : ℕ} (hk : k < 2 ^ p.length) (j : ℕ)
     rw [testBit_add_two_pow_mul hk, ite_eq_right hnl, Nat.add_sub_cancel_left, List.getD_append_right _ _ _ _ hge,
       Nat.add_sub_cancel_left]
 
-/-! ## The points and the digits -/
-
-/-- π2's points are the verifier's: `ω_i = pointE i`. -/
-theorem pi2Omega_eq (i : ℕ) : pi2Omega i = UniStatement.pointE i := UniComplete.Domain.omega_basisE i
-
-/-- `s^l(ω_x) = ω_{x >> l}` (`x < 2^32`). -/
-theorem sq_iterate_pi2Omega (l : ℕ) {x : ℕ} (hx : x < 2 ^ 32) :
-    QuotientSecurity.sq^[l] (pi2Omega x) = pi2Omega (x >>> l) := by
-  rw [pi2Omega_eq, pi2Omega_eq]
-  exact UniComplete.Domain.sq_iterate_pointE l hx
-
-/-- `ω_0 = 0`. -/
-theorem pi2Omega_zero : pi2Omega 0 = 0 := by rw [pi2Omega_eq]; exact UniComplete.Domain.pointE_zero
-
 /-! ## `W`: the basis `B` -/
 
 /-- The weight polynomial of index `i` on `m` digits: `Π_l (s^l if i_l else 1 + s^l)`. -/
