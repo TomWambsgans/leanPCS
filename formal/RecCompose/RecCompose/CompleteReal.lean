@@ -52,13 +52,6 @@ open OracleComp OracleSpec
 open Pi2G
 open scoped ENNReal
 
-/-- **The four named facts about π1-rec4's prover, discharged** for the recursion's prover at a real deployment. -/
-theorem pi1ProverFactsK4 {D : RecDeployment} (hD : D.Real) : Pi1ProverFacts D (pi1Rec4ProverK D) (p1kK4 D) where
-  overPerm input rows q _ _ := pi1Rec4ProverK_eq D input rows q
-  disc input rows q _ _ := disc_p1kK4 D input rows q
-  cost input rows q hfit _ := qc_p1kK4 D (real_shape hD) (real_programIv hD) input rows q hfit
-  hashShort input rows q hfit _ := hashShort_p1kK4 hD input rows q hfit
-
 variable (prog : KeccakVm.Program) (hprog : RecGraphKeccak.Pi1.keccak128.logBytecode = prog.logSize)
   (hg : RecGraphKeccak.GraphsAgreeK4) (hd : DigestChecked) (hs : SetupRootChecked) (hiv : IvChecked)
 
@@ -100,10 +93,6 @@ theorem recCompleteness_real (δ1 δh : ℝ≥0∞)
     input rows q hfit hrel).trans (by gcongr; exact Pi2Sim.delta2Closed_le)
 
 end RecCompose.Pi1K
-
-/-- info: 'RecCompose.Pi1K.pi1ProverFactsK4' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms RecCompose.Pi1K.pi1ProverFactsK4
 
 /-- info: 'RecCompose.Pi1K.recCompleteness2_real' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in

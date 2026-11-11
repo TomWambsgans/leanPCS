@@ -5,7 +5,7 @@
 -- commit 6175f1a0, MIT OR Apache-2.0): the two calls `KeccakCalls`; and
 -- `formal/EndToEnd/Completeness/E2ECompleteness`'s `HashOK`.
 import RecCompose.Pi1Rec4Transfer
-import RecCompose.Pi2AlphaLen
+import RecCompose.HashShort
 
 /-!
 # π1-rec4's honest prover hashes nothing of `2^26` bytes
@@ -24,7 +24,9 @@ of π2's `σ` hash, which starts the chain that makes `α`'s input fresh). For t
 * **`hashOK_uniProverRec4_ref`**: at the reference shape (stream `6952 + 3696 ≤ 2^14` bytes, `27` batch variables) and
   a program IV of at most `2^16` bytes;
 * **`hashShort_p1kK4`**: hence the recursion's prover (`hashOK_p1kK4_of`: its Fiat–Shamir hashes are no queries), at
-  the real deployment.
+  the real deployment;
+* **`pi1ProverFactsK4`**: the four named facts `Pi2G.Pi1ProverFacts D (pi1Rec4ProverK D) (p1kK4 D)` π2's completeness
+  takes, at any `D.Real` (`pi1Rec4ProverK_eq`, `disc_p1kK4`, `qc_p1kK4`, `hashShort_p1kK4`).
 -/
 
 set_option autoImplicit false
@@ -39,15 +41,15 @@ open E2ECompleteness (HashOK hashOK_callKeccak256)
 open UniKeccakComplete.Cost (WC WInv StreamOK wc_seq wc_mono wc_pure wc_forIn_list wc_sendInteger wc_sendRoot
   wc_sendScalar)
 open UniKeccakComplete.Bounds (batchVarsBound)
-open Pi2A (Short WS ws_of_wc ws_seq ws_lift lenP_of_hashOK two26)
+open Pi2A (WS ws_of_wc ws_seq ws_lift lenP_of_hashOK two26)
 
 /-! ## π1-rec4's stream -/
 
 /-- **From Flock to `C2`'s root, only short inputs.** -/
 theorem ws_midB4 (tr : Trace) (bus : List E)
-    (hk : flockBlocks4 (keccakR1csLogSize + tr.shape.heights.getD opSha3 0) keccakRec4 ≤ 16384) :
+    (hk : flockBlocks4 (keccakR1csLogSize + tr.shape.heights.getD opSha3 0) UniKeccak.keccakRec4 ≤ 16384) :
     WS (midB4 callKeccak256 (commitReal callKeccak256) tr bus)
-      (flockBytes (keccakR1csLogSize + tr.shape.heights.getD opSha3 0) keccakRec4 + 56) fun _ _ ↦ True := by
+      (flockBytes (keccakR1csLogSize + tr.shape.heights.getD opSha3 0) UniKeccak.keccakRec4 + 56) fun _ _ ↦ True := by
   unfold midB4
   refine ws_seq (ws_of_wc (wc_flockProve4 _ _ _ _) hk) (fun _ _ _ ↦ ?_) (by omega)
   refine ws_seq (ws_lift (Pi2A.hashOK_commitReal _ _ _)) (fun _ _ _ ↦ ?_) (by omega)
@@ -58,7 +60,7 @@ theorem ws_midB4 (tr : Trace) (bus : List E)
 /-- **π1-rec4's stream hashes only short inputs** (`wc_proveStreamRec4With`'s walk), given Flock's blocks and the
 batch's variables at most `2^14`. -/
 theorem ws_proveStreamRec4K (tr : Trace)
-    (hk : flockBlocks4 (keccakR1csLogSize + tr.shape.heights.getD opSha3 0) keccakRec4 ≤ 16384)
+    (hk : flockBlocks4 (keccakR1csLogSize + tr.shape.heights.getD opSha3 0) UniKeccak.keccakRec4 ≤ 16384)
     (hV : 2 + batchVarsBound tr.shape ≤ 16384) :
     WS (proveStreamRec4With callKeccak256 rateSigma (commitReal callKeccak256) tr)
       (streamBytes4 tr.shape tr.rows.length) (StreamOK (batchVarsBound tr.shape)) := by
@@ -80,6 +82,7 @@ set_option hygiene false in
 /-- One step of the three openings' walk (`hc`, `h1` … `h3` the local facts on the claims). -/
 macro "p1k4_hop_step" : tactic => `(tactic| first
   | exact E2ECompleteness.HashOK.pure _ _
+  | refine E2ECompleteness.HashOK.bind (E2ECompleteness.HashOK.pure _ _) fun _ ↦ ?_
   | refine E2ECompleteness.HashOK.bind (Pi2A.hashOK_pcsProveH _ _ _ _ _ _ (le_trans (by first
       | exact hc _ _ _ (List.mem_of_find?_eq_some h1)
       | exact hc _ _ _ (List.mem_of_find?_eq_some h2)
@@ -87,10 +90,10 @@ macro "p1k4_hop_step" : tactic => `(tactic| first
 
 /-- **π1-rec4's honest prover at `W = rateSigma` hashes only short inputs** (`costP_proveRec4With`'s walk). -/
 theorem hashOK_proveRec4K (programIv : List UInt8) (tr : Trace) (hpub : tr.publicInput.length = 32)
-    (hk : flockBlocks4 (keccakR1csLogSize + tr.shape.heights.getD opSha3 0) keccakRec4 ≤ 16384)
+    (hk : flockBlocks4 (keccakR1csLogSize + tr.shape.heights.getD opSha3 0) UniKeccak.keccakRec4 ≤ 16384)
     (hV : 2 + batchVarsBound tr.shape ≤ 16384)
     (hS : streamBytes4 tr.shape tr.rows.length ≤ 16384) (hIv : programIv.length ≤ 2 ^ 16) :
-    HashOK Short (proveRec4With callKeccak256 rateSigma callKeccakF1600 PcsQuotient.nonceFuel programIv tr) := by
+    HashOK Pi2A.Short (proveRec4With callKeccak256 rateSigma callKeccakF1600 PcsQuotient.nonceFuel programIv tr) := by
   unfold proveRec4With setupTreeOf contractIvOf seedOf
   simp only [bind_assoc, pure_bind]
   refine E2ECompleteness.HashOK.bind (Pi2A.hashOK_commitWithH _ _) fun tree ↦ ?_
@@ -118,14 +121,14 @@ theorem hashOK_proveRec4K (programIv : List UInt8) (tr : Trace) (hpub : tr.publi
   generalize h2 : List.find? (fun x ↦ x.1 == Commitment.c2) out.claims = o2
   generalize h3 : List.find? (fun x ↦ x.1 == Commitment.setup) out.claims = o3
   rcases o1 with _ | ⟨_, pt1, v1⟩ <;> rcases o2 with _ | ⟨_, pt2, v2⟩ <;> rcases o3 with _ | ⟨_, pt3, v3⟩ <;>
-    dsimp only <;> repeat p1k4_hop_step
+    dsimp only <;> (try simp only [pure_bind]) <;> repeat p1k4_hop_step
 
 /-- **UniKeccakComplete's two-call π1-rec4 prover at `W = rateSigma` hashes only short inputs**, at the reference
 shape, a program IV of at most `2^16` bytes and row counts that fit. -/
 theorem hashOK_uniProverRec4_ref (D : UniKeccak.KDeployment) (hD : D.shape = UniKeccakSound.keccakRefShape)
     (hIv : D.programIv.length ≤ 2 ^ 16) (input : Vector UInt8 32) (rows : List ℕ) (q : D.Stack rows)
     (hfit : D.shape.RowsFit rows) :
-    HashOK Short (uniProverRec4With callKeccak256 rateSigma callKeccakF1600 D input rows q) := by
+    HashOK Pi2A.Short (uniProverRec4With callKeccak256 rateSigma callKeccakF1600 D input rows q) := by
   have hlen : rows.length = 6 := hfit.1
   obtain ⟨-, -, -, h4⟩ := Cost.reference_stackVars
   have esh : (honestTrace D input rows q).shape = D.shape := rfl
@@ -151,6 +154,13 @@ theorem hashShort_p1kK4 {D : RecDeployment} (hD : D.Real) (input : Vector UInt8 
   hashOK_p1kK4_of D input rows q _
     (hashOK_uniProverRec4_ref D.pi1 (real_shape hD) (real_programIv hD) input rows q hfit)
 
+/-- **The four named facts about π1-rec4's prover, discharged** for the recursion's prover at a real deployment. -/
+theorem pi1ProverFactsK4 {D : RecDeployment} (hD : D.Real) : Pi2G.Pi1ProverFacts D (pi1Rec4ProverK D) (p1kK4 D) where
+  overPerm input rows q _ _ := pi1Rec4ProverK_eq D input rows q
+  disc input rows q _ _ := disc_p1kK4 D input rows q
+  cost input rows q hfit _ := qc_p1kK4 D (real_shape hD) (real_programIv hD) input rows q hfit
+  hashShort input rows q hfit _ := hashShort_p1kK4 hD input rows q hfit
+
 end RecCompose.Pi1K
 
 /-- info: 'RecCompose.Pi1K.hashOK_uniProverRec4_ref' depends on axioms: [propext, Classical.choice, Quot.sound] -/
@@ -160,3 +170,7 @@ end RecCompose.Pi1K
 /-- info: 'RecCompose.Pi1K.hashShort_p1kK4' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms RecCompose.Pi1K.hashShort_p1kK4
+
+/-- info: 'RecCompose.Pi1K.pi1ProverFactsK4' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecCompose.Pi1K.pi1ProverFactsK4
