@@ -111,7 +111,8 @@ theorem phase_bound (stmt : Statement) (s : Edges × A) (hs : s.1.length = 0) :
   refine badB_step_le _ _ _ _ fun p3 hp3 ↦ ?_
   have h3 := addsS_keccak_le (A := A) (label p1.1.2 stmt) 2 (by rw [label_length]; rfl) s2 p3 hp3
   -- `α, β, μ`: `W`'s out-of-domain answer drawn last, then each challenge's answer.
-  refine (badB_ent phaseL _ eDist (uniformReveal_indep _) _
+  rw [badB_r]
+  refine (badB_ent phaseL _ eDist rDraw_indep _
     (fun z ↦ prEvent_inj_le _ _ (inj_alpha p3.1 rW) _ (fun e ↦ (prEvent_eDist e).le) z) _ p3.2
     (by unfold phaseL; omega) (33 * δq phaseL) fun oW ↦ ?_).trans (le_of_eq (by ring))
   refine (badB_chain phaseL _ (fun y ↦ blockIn zeroSt (padBlock (chainMsg ⟨digestOf y, []⟩)))
@@ -125,16 +126,20 @@ theorem phase_bound (stmt : Statement) (s : Edges × A) (hs : s.1.length = 0) :
   refine (badB_oodBlock phaseL (24 + 4) (by norm_num) _ _ (by simp; unfold phaseL; omega) (3 * δq phaseL)
     fun rT zT s5 hs5 ↦ ?_).trans (le_of_eq (by push_cast; ring))
   -- `t`: `T`'s out-of-domain answer drawn last, then its one block's answer.
-  refine (badB_ent phaseL _ eDist (uniformReveal_indep _) _
+  rw [badB_r]
+  refine (badB_ent phaseL _ eDist rDraw_indep _
     (fun z ↦ prEvent_inj_le _ _ (inj_alpha _ rT) _ (fun e ↦ (prEvent_eDist e).le) z) _ s5
     (by simp at hs5 ⊢; unfold phaseL; omega) (2 * δq phaseL) fun oT ↦ ?_).trans (le_of_eq (by ring))
   refine badB_last _ _ s5 _ fun yt ↦ ?_
+  rw [badB_r]
   refine badB_step_le _ _ _ _ fun p10 hp10 ↦ ?_
-  have h10 := addsS_indep (uniformReveal_indep _) _ p10 hp10
+  have h10 := addsS_indep rDraw_indep _ p10 hp10
+  rw [badB_r]
   refine badB_step_le _ _ _ _ fun p11 hp11 ↦ ?_
-  have h11 := addsS_indep (uniformReveal_indep _) _ p11 hp11
+  have h11 := addsS_indep rDraw_indep _ p11 hp11
   -- `ρ`: `X` drawn last, then the first block's answer.
-  refine (badB_ent phaseL _ eDist (uniformReveal_indep _) _ (prEvent_eDist_inj _ (inj_rho _ _ _ _)) _ p11.2
+  rw [badB_r]
+  refine (badB_ent phaseL _ eDist rDraw_indep _ (prEvent_eDist_inj _ (inj_rho _ _ _ _)) _ p11.2
     (by simp at hs5 h10 h11 ⊢; unfold phaseL; omega) (1 * δq phaseL) fun v0 ↦ ?_).trans
     (le_of_eq (by ring))
   refine (badB_chain phaseL _ _ (prEvent_state_inj _) _ p11.2

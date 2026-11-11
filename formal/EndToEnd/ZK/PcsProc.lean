@@ -59,16 +59,17 @@ theorem interp_phaseProg {A : Type} (circuit : Circuit) (stmt : Statement)
     interp rv (phaseProg circuit stmt) = challengePhase circuit stmt rv := by
   rfl
 
-/-- **The logged run's queries are the challenges' reveal queries.** -/
+/-- **The logged run's queries are the challenges' reveal queries, its answers the output's revealed scalars.** -/
 theorem log_phaseProg {A : Type} (circuit : Circuit) (stmt : Statement) (ν : Reveal → ProbComp E)
     (s : Edges × A) (o : (Challenges × PhaseOut) × (Edges × A) × List (Reveal × E))
-    (ho : o ∈ support (semL ν (phaseProg circuit stmt) s [])) : o.2.2.map Prod.fst = revealQueries o.1.1 := by
+    (ho : o ∈ support (semL ν (phaseProg circuit stmt) s [])) :
+    o.2.2.map Prod.fst = revealQueries o.1.1 ∧ o.2.2.map Prod.snd = answersOf o.1.2 := by
   simp only [phaseProg, semL, mem_support_bind_iff] at ho
   obtain ⟨⟨⟨indexTree, index⟩, s1⟩, -, ⟨rW, s2⟩, -, ⟨zW, s3⟩, -, ⟨c0, s4⟩, -, oW, -, ⟨⟨α, c1⟩, s5⟩, -,
     ⟨⟨β, c2⟩, s6⟩, -, ⟨⟨μ, c3⟩, s7⟩, -, ⟨rT, s8⟩, -, ⟨zT, s9⟩, -, oT, -, ⟨⟨t, c4⟩, s10⟩, -, v1, -, v2, -,
     v0, -, ⟨⟨ρ, c5⟩, s11⟩, -, ho⟩ := ho
   simp only [support_pure, Set.mem_singleton_iff] at ho
   subst ho
-  simp [revealQueries]
+  simp [revealQueries, answersOf, CommitmentScalars.of]
 
 end PcsQuotient.EndToEnd

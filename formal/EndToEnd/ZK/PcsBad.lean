@@ -57,23 +57,18 @@ theorem wavg_le {γ : Type} (X : ProbComp γ) (g : γ → ℝ≥0∞) (c : ℝ�
         · rw [prEvent_eq_zero_of_not_mem_support _ ho, zero_mul, zero_mul]
     _ = c := by rw [ENNReal.tsum_mul_right, tsum_prEvent_eq_one, one_mul]
 
-theorem tsum_map {γ δ : Type} (X : ProbComp γ) (f : γ → δ) (g : δ → ℝ≥0∞) :
-    ∑' o, Pr{let y ← f <$> X}[y = o] * g o = ∑' a, Pr{let y ← X}[y = a] * g (f a) := by
-  rw [map_eq_bind_pure_comp, tsum_prEvent_bind_mul]
-  refine tsum_congr fun a ↦ ?_
-  congr 1
-  rw [Function.comp_apply]
-  classical
-  simp only [RProg.prEvent_pure_eq]
-  rw [tsum_eq_single (f a) fun b hb ↦ by rw [ite_eq_right (Ne.symm hb), zero_mul]]
-  simp
-
 /-- **A tracked query, ideally**: its local cost, then a uniform answer. -/
 theorem badB_q (x : KeccakState) (k : KeccakState → FProg A α) (s : Edges × A) :
     badB (.q x k) s = εq s x + ∑' y, Pr{let z ← uState}[z = y] * badB (k y) ((x, y) :: s.1, s.2) := by
   rw [badB]
   congr 1
   exact tsum_map uState (fun y ↦ (y, ((x, y) :: s.1, s.2))) fun p ↦ badB (k p.1) p.2
+
+/-- A drawn element's cost is that of the step that draws it. -/
+theorem badB_r (k : E → FProg A α) (s : Edges × A) : badB (.r k) s = badB (.step rDraw k) s := by
+  simp only [badB]
+
+theorem rDraw_indep : StateIndep (rDraw (A := A)) eDist := fun _ ↦ rfl
 
 theorem badB_step_le {γ : Type} (m : StateT (Edges × A) ProbComp γ) (k : γ → FProg A α) (s : Edges × A) (c : ℝ≥0∞)
     (h : ∀ p ∈ support (m.run s), badB (k p.1) p.2 ≤ c) : badB (.step m k) s ≤ c := by
