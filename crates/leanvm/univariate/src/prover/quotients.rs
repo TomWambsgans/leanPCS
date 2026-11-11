@@ -88,20 +88,9 @@ impl Quotient {
         Self { novel, count, degree }
     }
 
-    /// Whether its degree is below the verifier's count.
-    pub fn fits(&self) -> bool {
-        self.degree < self.count as i64
-    }
-
-    /// Limb `limb` of chunk `chunk` of `Q = Q_0 + w_(e_0) (Q_1 + w_(e_1) Q_2)` in basis `B`, into `out` (`2^(e_chunk)`
-    /// words): the novel coefficients' slice (`X_(2^e + k) = w_e X_k` for `k < 2^e`), then its subset sums.
-    pub fn chunk_b(&self, sizes: &[usize], chunk: usize, limb: usize, out: &mut [F64]) {
-        assert_eq!(out.len(), 1 << sizes[chunk]);
-        ntt::subset_sums_from(self.chunk_novel(sizes, chunk, limb), out);
-    }
-
-    /// Limb `limb`'s novel coefficients of chunk `chunk` (its slice, the zeros past the quotient's end cut), whose
-    /// subset sums are [`Quotient::chunk_b`].
+    /// Limb `limb`'s novel coefficients of chunk `chunk` of `Q = Q_0 + w_(e_0) (Q_1 + w_(e_1) Q_2)` (its slice,
+    /// `X_(2^e + k) = w_e X_k` for `k < 2^e`, the zeros past the quotient's end cut), whose subset sums are the chunk's
+    /// basis-`B` words.
     pub fn chunk_novel(&self, sizes: &[usize], chunk: usize, limb: usize) -> &[F64] {
         let novel = &self.novel[limb];
         let at: usize = sizes[..chunk].iter().map(|&e| 1usize << e).sum();
