@@ -178,8 +178,16 @@ are no masks: `w` keeps degree `< n`, which the quotient's degree needs.
 2. `T`'s answer is affine in the 6 free blinding words: the blinding enters `x h`'s digit 1 directly and `q` through
    `b d d'`, and `μ g` does not depend on it. Rank 3.
 
-So the revealed scalars are uniform at the challenges where both ranks are full. A rank falls short only where a
-determinant of the challenges vanishes: probability at most its degree over `2^192` (not written out). The
+So the revealed scalars are uniform at the challenges where both ranks are full. Group 1's rank falls short only
+where a determinant of the challenges vanishes: probability at most its degree over `2^192` (not written out). Group
+2's does not depend on the challenges alone: the blinding reaches `q` through `(b_0 + b_1 X_1 + b_2 X_2) d d'` and
+`b_2 = q_n / γ`, both functions of `w`, hence of the random rows `R`, so its `K`-linear map `L_R` (6 words to `T`'s
+answer, 3 `K`-coordinates) is rank-deficient on the zero set of its `3 × 3` minors in `R`, which over `K` is
+nonempty in general. The revealed scalars are therefore uniform only up to a statistical distance `δr`, about
+`2 Pr_R[rank L_R < 3 or γ = 0] ≲ 28 / 2^64 ≈ 2^-59` per proof (the minors' degree in `R` over `|K|`; reasoned, not
+proved): the formal statement (`formal/Statement/PcsQuotient/Zk.lean`, `RevealedUniform εr δr`) carries it, and it
+dominates the zero-knowledge error. Blinding words drawn in `E` (or a rank-3 path of `b` independent of `R`) would
+bring it to about `deg / 2^192`. The
 **simulator** samples the out-of-domain answers and the row values uniformly, computes the claims' values, and
 simulates the openings with the ZK-PCS simulator.
 
