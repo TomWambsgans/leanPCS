@@ -324,7 +324,10 @@ leanEthereum) and is licensed, like leanVM, under the MIT license ([`LICENSE-MIT
   formalizes): `crates/vendor/leanvm-c445e3d5/*`, unchanged but for a header line, except: `verifier/src/lib.rs`
   makes the WHIR verifier public; `pcs`'s `src/whir.rs`, `src/whir_ntt_ext.rs` and `src/ntt/additive_ntt_f64.rs` add
   low-memory paths (the last also fixes an aliasing bug of the in-place encodes); `primitives/src/hash.rs` and
-  `fiat_shamir/src/lib.rs` carry test-only trace hooks behind a `trace` feature. A lane tensor may carry a scale for
+  `fiat_shamir/src/lib.rs` carry test-only trace hooks behind a `trace` feature. Robustness, no proof changed (each
+  file's header lists it): `primitives/src/hash.rs` checks `n·len` without overflow, `primitives/src/multilinear.rs`'s
+  `fold_high_k` asserts an even length, `pcs`'s `transpose_tile` and `collapse_avx512::stage` assert their bounds, and
+  `pcs`'s skipping commit lends its spread rows from a list it owns instead of a thread-local buffer. A lane tensor may carry a scale for
   every lane of the cube (`pcs`'s `src/whir.rs`, `LaneTensor`, `tensor_lane_rounds`), for a claim at a point of the
   whole stack opened against a commitment of its leading lanes (`crates/pcs_claim`). Prover speedups, the same commitments
   and proofs (each file's header lists them): `pcs`'s `src/whir.rs`, `src/whir_induce.rs`,

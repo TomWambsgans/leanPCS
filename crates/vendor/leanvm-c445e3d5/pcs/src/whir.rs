@@ -43,7 +43,7 @@
 // owns (and frees), not from a thread-local buffer that kept a tile's whole rows on every worker after it. A test,
 // `vectored_ext_rounds_match_one_product_at_a_time`, calls the round kernels at powers of two alone (their
 // `debug_assert`s), its other lengths testing the folds' and the terms' tails. `collapse_avx512::stage` asserts its
-// bounds (it checked them only with a `debug_assert`; once a call, `STAGE` words of every lane).
+// bounds (it checked them only with a `debug_assert`; once a call, a block of every lane `packed` names).
 // Added here, for speed, every proof unchanged (`docs/PERF_PROVER2.md`): a kept codeword of the lanes not flagged all
 // zero alone (`commit_skipping`, read through `L0Rows::Compact`); the lane rounds' passes leave the flagged lanes out
 // (`lane_inner_products`, `collapse_lanes`, `dense_lane_inner_products_skipping`); and a batch's openings, made in
