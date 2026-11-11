@@ -11,6 +11,13 @@
 //!   `t`, a round of the batching sumcheck, the last byte), a row count changed, the public input changed, one claim
 //!   left undeclared, a byte of a declared claim flipped.
 //!
+//! A π1-rec4 vector (`keccak*_rec4`, `FsShape::Rec4`: no EVM contract of its own, its wide draws are no `KECCAK256`;
+//! π2's circuit runs its verifier) is replayed by the Rust verifier instead: it gives exactly the recorded claims, and
+//! the stream's mutations change them or are rejected. A vector holds no opening proofs (nor does π1's contract check
+//! any: the frame declares the claims, the block proves them), so the claims' three WHIR openings are verified where
+//! the vector is written: `tests/prove_real.rs` (`prover::prove::verify`: the reduction and each opening's WHIR proof
+//! against its claim, the claims the openings' own), on the real trace; π2's by `leanvm_rec`'s `tests/pi2_real.rs`.
+//!
 //! `cargo test --release -p leanvm_univariate --test evm_vectors -- --nocapture`; with `UPDATE_VECTOR_GAS=1` it
 //! rewrites the vectors' `gas_straight` line to what it measures, and nothing else.
 
@@ -19,7 +26,7 @@ mod vectors;
 use leanvm_statement::evm::codegen::word;
 use leanvm_statement::evm::machine::{PCS_FRAME, PcsFrame, call};
 use leanvm_univariate::Claims;
-use leanvm_univariate::contract::{compile_verifier, record_verifier_with};
+use leanvm_univariate::contract::{compile_verifier, expected_claims, record_verifier_with, rust_verifier_with};
 use vectors::{PROGRAM_IV, Vector, read, setup_roots, variant_of};
 
 /// Run `f` on a thread with a deep stack: the code generator recurses along the graph.
@@ -46,6 +53,29 @@ fn replay(v: Vector) -> u64 {
     let roots = setup_roots(&v);
     let recorded = record_verifier_with(&v.shape, variant, Claims::Point, &roots);
     assert_eq!(STREAM_AT + recorded.stream_len, v.calldata.len(), "{}: the calldata is the shape's", v.config);
+    if variant.fs.wide() {
+        // π1-rec4: the Rust verifier, its checks held to account, gives the recorded claims; a flipped stream byte or
+        // public input byte fails a check or changes a claim.
+        let claims_of = |data: &[u8]| -> Option<Vec<Vec<u8>>> {
+            let public: [u8; 32] = data[4..36].try_into().unwrap();
+            let stream = &data[STREAM_AT..];
+            let (reduced, zero, nonzero) =
+                rust_verifier_with(&v.shape, &PROGRAM_IV, &roots, &public, stream, variant, Claims::Point).ok()?;
+            let holds = zero.iter().all(|x| *x == Default::default()) && nonzero.iter().all(|x| *x != Default::default());
+            holds.then(|| expected_claims(&recorded, &reduced, stream).iter().map(|c| c.encode()).collect())
+        };
+        assert_eq!(claims_of(&v.calldata), Some(v.claims.clone()), "{}: the Rust verifier's claims", v.config);
+        let len = recorded.stream_len;
+        let ats = [3, 24 + 5, 24 + 32 + 3, len / 3, len / 2, len - 200, len - 80, len - 1].map(|at| STREAM_AT + at);
+        for at in ats.into_iter().chain([4 + 7]) {
+            let mut data = v.calldata.clone();
+            data[at] ^= 1;
+            assert_ne!(claims_of(&data), Some(v.claims.clone()), "{}: calldata byte {at} flipped", v.config);
+        }
+        println!("{}: the Rust verifier gives its {} claims; 9 mutations change them", v.config, v.claims.len());
+        assert_eq!(v.gas_straight, 0, "{}: no contract, no gas", v.config);
+        return 0;
+    }
     let straight = compile_verifier(&recorded, &PROGRAM_IV, false);
     let one = word([1, 0, 0]);
     let block = attesting(&v.claims);

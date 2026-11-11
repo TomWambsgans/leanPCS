@@ -70,6 +70,8 @@ fn node_text(node: &Node) -> String {
         Node::Hash(state, from, to) => format!("hash {state} {from} {to}"),
         Node::Low(h) => format!("low {h}"),
         Node::Narrow(h) => format!("narrow {h}"),
+        // π1-rec4's; the Lean states π1-rec3, which has none.
+        Node::Wide(h, k) => format!("wide {h} {k}"),
         Node::Bits(v, shift, width) => format!("bits {v} {shift} {width}"),
         Node::RingWeight(kernel, n) => format!("ringWeight {kernel} {n}"),
     }

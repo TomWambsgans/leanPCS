@@ -6,10 +6,11 @@ licensing, and the conventions.
 
 **The Lean lags the Rust (2026-11-11).** The membership protocol (one quotient in one table: four claims on two
 commitments, [`docs/membership/PERF_GAS.md`](docs/membership/PERF_GAS.md)) and π2's calldata (π1's claim on `C1`
-hashed in π2's circuit, 20-byte narrow challenges, no selector: [`docs/leanvm/rec/PERF_GAS.md`](docs/leanvm/rec/PERF_GAS.md))
+hashed in π2's circuit, 20-byte narrow challenges, no selector: [`docs/leanvm/rec/PERF_GAS.md`](docs/leanvm/rec/PERF_GAS.md);
+then π1-rec4's transcript and π1's three claims hashed: [`docs/leanvm/rec/PERF_GAS2.md`](docs/leanvm/rec/PERF_GAS2.md))
 changed after the Lean was written. `formal/` proves the protocols of commit `f96a7938` (membership: six claims on
-four commitments; π2: π1's three claims encoded by the contract). What the port needs is in the two `PERF_GAS.md`,
-"What the Lean needs". The provers' speedups ([`docs/membership/PERF_PROVER.md`](docs/membership/PERF_PROVER.md),
+four commitments; π2: π1-rec3's three claims encoded by the contract). What the port needs is in the two `PERF_GAS.md`,
+"What the Lean needs", and in `PERF_GAS2.md`. The provers' speedups ([`docs/membership/PERF_PROVER.md`](docs/membership/PERF_PROVER.md),
 [`docs/leanvm/rec/PERF_PROVER.md`](docs/leanvm/rec/PERF_PROVER.md)) change no proof. Each change was reviewed
 adversarially (soundness, zero knowledge, the contract against the verifier, the prover's unsafe code and
 determinism) before it was merged.
@@ -73,15 +74,20 @@ its claims opened by leanVM's WHIR unchanged. The protocol is that of
   commitment, the bus as a grand product in a committed heap, every identity checked at one point, Flock on the
   Keccak-f block with its structured terminal, one point claim per commitment), its verifier (`verifier::reduce`,
   generic over the scalar: on `E` the Rust verifier, on the recorder's symbol the graph `contract` compiles), its
-  contract and its prover (`prover/`, on traces `prover/dump_keccak/` makes leanVM write). Two variants:
-  `KECCAK_MAIN` and `KECCAK_REC3`, π1-rec3, the recursion's inner proof. Design:
+  contract and its prover (`prover/`, on traces `prover/dump_keccak/` makes leanVM write). Three variants:
+  `KECCAK_MAIN`; `KECCAK_REC3`, π1-rec3, the Lean's recursion's inner proof; `KECCAK_REC4`, π1-rec4, the recursion's
+  inner proof since [`PERF_GAS2.md`](docs/leanvm/rec/PERF_GAS2.md) (π1-rec3 with the challenges no message separates
+  drawn from one Keccak-f, the ring map after `C2`: 106 Keccak-f in its transcript instead of 116; no contract of its
+  own, its vectors checked against the Rust verifier). Design:
   [`SPEC.md`](docs/leanvm/univariate/SPEC.md), [`KECCAK.md`](docs/leanvm/univariate/KECCAK.md),
   [`PROVER.md`](docs/leanvm/univariate/PROVER.md).
-- `crates/leanvm/rec` (π2): a univariate SNARK of π1-rec3's verifier minus its openings: the recorded verifier
-  compiled into π2's circuit (`circuit`, D16v, `2^24` positions; the witness replayed per proof from a plan made once
-  per circuit, `circuit::plan`), π2's PIOP (π2v2: the ports out of the copy argument, the pushes `P` committed in `Q`
-  with their definition, `q` below `2N`; `Q` in sixteen slots so that its three claims are points of its stack) and
-  its contract (`pi2`), which runs π2's verifier and checks π1's three and π2's five claims declared. Every commitment
+- `crates/leanvm/rec` (π2): a univariate SNARK of π1-rec4's verifier (`leanvm_rec::PI1`) minus its openings: the
+  recorded verifier compiled into π2's circuit (`circuit`, D16v, `2^24` positions, each Keccak-f's last round making
+  the lanes read alone; π1's three claims hashed in it, read from the frame; the witness replayed per proof from a plan
+  made once per circuit, `circuit::plan`), π2's PIOP (π2v2: the ports out of the copy argument, the pushes `P`
+  committed in `Q` with their definition, `q` below `2N`; `Q` in sixteen slots so that its three claims are points of
+  its stack) and its contract (`pi2`), which runs π2's verifier and checks π1's three (by the hashes its circuit
+  computes) and π2's five claims declared. Every commitment
   and opening of the line is the EIP draft's PCS claim (`crates/pcs_claim`: a root and an out-of-domain answer, one
   point per claim, one opening per claim, PCS version 1). Design: [`SPEC-REC.md`](docs/leanvm/rec/SPEC-REC.md),
   [`PI2.md`](docs/leanvm/rec/PI2.md), [`SPEC-POINTS.md`](docs/leanvm/rec/SPEC-POINTS.md).
@@ -93,15 +99,15 @@ its claims opened by leanVM's WHIR unchanged. The protocol is that of
   `parallel` and `pcs`, with the Keccak-f block (`src/keccak.rs`,
   [`docs/leanvm/flock/KECCAK.md`](docs/leanvm/flock/KECCAK.md)) and the univariate-skip zerocheck (`src/zerocheck/skip.rs`).
 - **The reference workload is 128 signatures**: `leanvm_rec::REFERENCE` = `leanvm_statement::shapes::reference()`
-  (memory `2^20`, bytecode `2^18`), `contract::SetupRoots::REFERENCE` (its `F`), and the real π1-rec3 proof
-  `crates/leanvm/univariate/tests/vectors/keccak128_rec3.txt`.
+  (memory `2^20`, bytecode `2^18`), `contract::SetupRoots::REFERENCE` (its `F`), and the real π1-rec4 proof
+  `crates/leanvm/univariate/tests/vectors/keccak128_rec4.txt` (π1-rec3's: `keccak128_rec3.txt`).
 - `formal/`: the Lean 4 proofs of this line ([below](#leanvm-what-is-proved-and-tested); [`formal/README.md`](formal/README.md),
   "leanVM by recursion: the Keccak VM").
 
 **Shared.**
 
 - `crates/evm_link`: the compilation and assembly into one contract that the code generators share. The membership
-  contract (5,304 B) and π2's (17.2 KB) fit EIP-170; π1's own contract (about 86 KB) does not, and is built only to
+  contract (5,304 B) and π2's (14.5 KB) fit EIP-170; π1's own contract (about 86 KB) does not, and is built only to
   test it against its Rust verifier and to record the vectors' claims (the recursion verifies π1 inside π2).
 - `crates/vendor/leanvm-c445e3d5`: leanVM `c445e3d5`'s `primitives`, `fiat_shamir`, `pcs`, `parallel`, `verifier`,
   `bench`.
@@ -133,20 +139,20 @@ its PCS gas on both sides as the EIP draft has it.
 
 | | ZK Merkle membership | leanVM by recursion (128 signatures) |
 |---|---|---|
-| Prover | **1.23 s** (reduction 0.60 s, openings 0.62 s), 6.0 GiB: four openings on two commitments (`docs/membership/PERF_GAS.md`) with the prover's speedups (`docs/membership/PERF_PROVER.md`). The protocol of `f96a7938` there: 2.29 s (1.49 s, 0.79 s), 8.6 GiB; 2.8 s on the M4 Max (high power mode) | trace → π1-rec3 → π2 and openings (`tests/pipeline.rs`): **2.63 s per proof** (π1-rec3 0.87 s, its openings 0.18 s, π2 0.79 s, π2's five openings 0.79 s), 15.1 GB. `f96a7938` there: 2.82 s (π1-rec3 with its openings 1.12 s, π2 0.86 s, its openings 0.85 s); 3.7 s on the M4 Max. Before the PCS claims (π2's three stacks opened once each, opening version 3): 2.06 s on the M4 Max, 0.59 s on an AMD EPYC 9355P (64 threads) |
-| Calldata | 301 B (`f96a7938`: 461 B; `docs/membership/PERF_GAS.md`) | 941 B (8 zero): π1's claim on `C1` hashed in π2's circuit, narrow challenges as 20 bytes, no selector ([`PERF_GAS.md`](docs/leanvm/rec/PERF_GAS.md); `f96a7938`: 1,101 B) |
-| Gas | 16,414 execution; **36,520** transaction under EIP-8141 with `pcs_gas` in the floor (floor-bound: 64 · (301 + 129) + 9,000; standard 32,258; the PIOP's frame alone 21,194, its standard binding). `f96a7938`: 52,856 | 37,406 execution; frame transaction (EIP-8141, EIP-7976's floor, no base or per-frame cost): standard 52,366, floor **60,224** (`f96a7938`: 32,794, 49,678, 70,464) |
+| Prover | **1.23 s** (reduction 0.60 s, openings 0.62 s), 6.0 GiB: four openings on two commitments (`docs/membership/PERF_GAS.md`) with the prover's speedups (`docs/membership/PERF_PROVER.md`). The protocol of `f96a7938` there: 2.29 s (1.49 s, 0.79 s), 8.6 GiB; 2.8 s on the M4 Max (high power mode) | trace → π1-rec4 → π2 and openings (`tests/pipeline.rs`): **2.62 s per proof** (π1-rec4 0.86 s, its openings 0.18 s, π2 0.79 s, π2's five openings 0.79 s), 15.1 GB; `866ba889` (π1-rec3, `C1`'s claim hashed): 2.62 s ([`PERF_GAS2.md`](docs/leanvm/rec/PERF_GAS2.md) §6). `f96a7938` there: 2.82 s (π1-rec3 with its openings 1.12 s, π2 0.86 s, its openings 0.85 s); 3.7 s on the M4 Max. Before the PCS claims (π2's three stacks opened once each, opening version 3): 2.06 s on the M4 Max, 0.59 s on an AMD EPYC 9355P (64 threads) |
+| Calldata | 301 B (`f96a7938`: 461 B; `docs/membership/PERF_GAS.md`) | **577 B** (4 zero): π1's three claims hashed in π2's circuit ([`PERF_GAS2.md`](docs/leanvm/rec/PERF_GAS2.md)); `866ba889`: 941 B (`C1`'s claim alone, [`PERF_GAS.md`](docs/leanvm/rec/PERF_GAS.md)); `f96a7938`: 1,101 B |
+| Gas | 16,414 execution; **36,520** transaction under EIP-8141 with `pcs_gas` in the floor (floor-bound: 64 · (301 + 129) + 9,000; standard 32,258; the PIOP's frame alone 21,194, its standard binding). `f96a7938`: 52,856 | 31,524 execution; frame transaction (EIP-8141, EIP-7976's floor, no base or per-frame cost): standard 40,708, floor **36,928** (`866ba889`: 37,406, 52,366, 60,224; `f96a7938`: 32,794, 49,678, 70,464) |
 | Claims | 4 declared (`f96a7938`: 6) | 8 (π1's 3, π2's 5), each the EIP draft's PCS claim |
-| With the frame (1 + 32 B a claim) and the PCS gas | included above (129 B, 9,000) | **89,672** (257 B, `pcs_gas` 13,000 on both sides; the floor binds; `f96a7938`: 99,912) |
+| With the frame (1 + 32 B a claim) and the PCS gas | included above (129 B, 9,000) | **66,376** (257 B, `pcs_gas` 13,000 on both sides; the floor binds, standard 57,820; `866ba889`: 89,672; `f96a7938`: 99,912) |
 | Deployment | 5,304-byte code, 1,242,838 gas (`f96a7938`: 6,667 B, 1,536,984 gas) | one contract |
 
 - Membership: checking the claims declared costs 61 gas once (the frame's mode and scheme) and 43 a claim beyond its
   `KECCAK256`. Its verifier: reduction < 1 ms, openings 5 ms (248 / 278 / 333 KiB).
-- leanVM: at 400 signatures (the real proof), 961 B, 42,308 execution; standard 57,612, floor 61,504; 90,952 with the
-  frame and the PCS gas (π2's circuit at 99.9% of `2^24`; past it, `C1`'s claim is encoded by the contract, as
-  before) (`tests/pi2_real.rs`, `real_end_to_end`). π1 alone as a contract (the main line, 128 signatures):
+- leanVM: at 400 signatures (the real proof), 577 B, 35,761 execution; standard 44,933, floor 36,928; 66,376 with the
+  frame and the PCS gas (π2's circuit at 99.4% of `2^24`; past it, the claims are hashed fewer, the last dropped
+  first, down to all encoded by the contract) (`tests/pi2_real.rs`, `real_end_to_end`). π1 alone as a contract (the main line, 128 signatures):
   8,069 B calldata, 231,511 execution, 3 claims; standard 360,255, floor 516,416 (`keccak_gas_report`). The prover
-  on the PCS claims (one opening a claim, every opening on leanVM's ladder): 2.63 s a proof (above), against 2.06 s on
+  on the PCS claims (one opening a claim, every opening on leanVM's ladder): 2.62 s a proof (above), against 2.06 s on
   the M4 Max before them (three openings of π2's three stacks at version 3). **Capacity**: `q_flock` is `2^11` words a permutation, so `C1`
   reaches WHIR's `2^28` words at about 470 signatures (1,000 do not fit, `tests/keccak_vm.rs`).
 
@@ -193,9 +199,10 @@ one-point claims each opened by a version-1 PCS opening, the quotient table in t
 
 ## leanVM: what is proved and tested
 
-The Lean below is of π2 as of commit `f96a7938` (π1's three claims encoded by the contract, 24-byte challenges, a
-selector); the current π2 hashes `C1`'s claim in its circuit ([`PERF_GAS.md`](docs/leanvm/rec/PERF_GAS.md)). The
-"Tested" items hold for the current code.
+The Lean below is of π2 as of commit `f96a7938` (π1-rec3's three claims encoded by the contract, 24-byte challenges, a
+selector); the current π2 proves π1-rec4 and hashes its three claims in its circuit
+([`PERF_GAS.md`](docs/leanvm/rec/PERF_GAS.md), [`PERF_GAS2.md`](docs/leanvm/rec/PERF_GAS2.md)). The "Tested" items
+hold for the current code, π1-rec4 checked against its Rust verifier (it has no contract).
 
 - **Tested.** π1's contract equals its Rust verifier word for word; the real
   proofs at 32, 128 and 400 signatures (committed vectors) are accepted with their frame of PCS claims declaring
@@ -265,9 +272,10 @@ selector); the current π2 hashes `C1`'s claim in its circuit ([`PERF_GAS.md`](d
 
 - Membership in Lean: the port to the current protocol ([`docs/membership/PERF_GAS.md`](docs/membership/PERF_GAS.md),
   "What the Lean needs"; `graph_lean_is_current` is ignored until then).
-- leanVM in Lean: the Lean states the previous π2 (`f96a7938`: π1's three claims encoded by the contract, 24-byte
-  challenges, a selector); the current one (`C1`'s claim hashed in π2's circuit, read from the frame) needs the
-  changes [`PERF_GAS.md`](docs/leanvm/rec/PERF_GAS.md) lists ("What the Lean would need").
+- leanVM in Lean: the Lean states the previous π2 (`f96a7938`: π1-rec3's three claims encoded by the contract,
+  24-byte challenges, a selector); the current one (π1-rec4, its three claims hashed in π2's circuit, read from the
+  frame, D16v's trimmed last rounds) needs the changes [`PERF_GAS.md`](docs/leanvm/rec/PERF_GAS.md) and
+  [`PERF_GAS2.md`](docs/leanvm/rec/PERF_GAS2.md) list ("What the Lean would need").
 - Membership: zero knowledge with a pre-proof phase (the distinguisher's queries before the proof); simulation-
   extractability.
 - leanVM in Lean: (1) the model gap: π2's circuit computes π1-rec3's Fiat–Shamir at the real Keccak-f[1600] while

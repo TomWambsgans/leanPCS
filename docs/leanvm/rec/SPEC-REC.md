@@ -27,6 +27,11 @@ cargo test --release -p leanvm_rec --test pi2_real -- --ignored --nocapture real
 
 ## 0. Summary
 
+> Since [`PERF_GAS2.md`](PERF_GAS2.md) the recursion proves **π1-rec4** (π1-rec3 with the challenges no message
+> separates drawn from one Keccak-f each and the ring map after `C2`'s commitment: 106 Keccak-f in its transcript, not
+> 116), π2's Keccak-f make their last round's lanes read alone, and π2's circuit hashes π1's three claims (577 B of
+> calldata, 66,376 gas with the frame). This note describes π1-rec3 and the π2 before them, which the Lean states.
+
 - **π1** is the univariate PIOP of `crates/leanvm/univariate` on the Keccak VM, with the Fiat–Shamir shape
   **π1-rec3** (`leanvm_univariate::KECCAK_REC3 = Variant { skip: 3, fs: FsShape::Rec3 }`):
   - the bus's `α` and Flock's zerocheck eq point are successive squares of one challenge each (§1.4);

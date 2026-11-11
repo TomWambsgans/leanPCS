@@ -1,8 +1,9 @@
 # Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 """Soundness of pi1, the univariate PIOP of docs/leanvm/univariate/SPEC.md on the Keccak VM, round by round after
 the union bounds over the level-0 Johnson lists of its two proof commitments, and the sizes of its commitments: the
-main line (`KECCAK_MAIN`) and pi1-rec3 (`KECCAK_REC3`), at the workloads of crates/leanvm/statement/src/shapes.rs
-(the reference: 128 signatures).
+main line (`KECCAK_MAIN`), pi1-rec3 (`KECCAK_REC3`) and pi1-rec4 (`KECCAK_REC4`, the recursion's since
+docs/leanvm/rec/PERF_GAS2.md), at the workloads of crates/leanvm/statement/src/shapes.rs (the reference: 128
+signatures).
 
     python3 -I params/leanvm_univariate_params.py
 
@@ -26,7 +27,11 @@ crates/leanvm/statement/src/layout.rs):
   squares of one), the lincheck's 11 rounds, the slices sent and the terminal computed from the block's structure (no
   matrix committed, no claim), the ring map in tower order (6/|E|, crates/leanvm/statement/src/ring_tower.rs);
 - rho, lambda and every round of the batching sumcheck are rounds of their own; pi1-rec3's batch runs two variables
-  a round (degree 8) with 160-bit challenges.
+  a round (degree 8) with 160-bit challenges;
+- pi1-rec4 draws several challenges from one Keccak-f (`Channel::sample_wide`): alpha's c, beta, gamma and the
+  zerocheck's c from one query; t and the ring map's f_0 .. f_3 (after C2's commitment) from one; rho, lambda and
+  f_4, f_5 from one. A query's error is then the sum of its challenges' errors, each over the lists of the latest
+  commitment before it (the ring map's whole 6/|E| charged to both of its queries).
 
 The Fiat-Shamir composition is the Lean's (formal/UniSound/UniSound/Fs128.lean, `uniBound128`): an adversary of Q
 permutation queries breaks pi1 with probability about Q (eps_WHIR + max over rounds of the round's error times its
@@ -84,7 +89,7 @@ LEAN_LIST = 9952
 EPS_WHIR = Fraction(269, 2 ** 137)
 # The Lean's cap on every round's error before the lists (formal/UniKeccakSound/README.md): 2^32/|E| on the main line,
 # 2^35/|E| at pi1-rec3 (its narrow pairs: 8/2^160).
-LEAN_ROUND = {"main": 32, "rec3": 35}
+LEAN_ROUND = {"main": 32, "rec3": 35, "rec4": 35}
 
 
 def log2_ceil(x):
@@ -224,9 +229,28 @@ def lists(a):
 def rounds(a, variant, l1, l2):
     """pi1's rounds: (label, error numerator, log2 of the field it is over, how many such rounds, the lists' union).
     Each round's error is numerator / 2^bits; a row of several rounds has that error each."""
-    rec3 = variant == "rec3"
+    rec3 = variant in ("rec3", "rec4")
     drawn = a["log_n"] - FLOCK_SKIP - FLOCK_FIXED
     k = FLOCK_SKIP
+    if variant == "rec4":
+        # One query a wide draw: its error is its challenges' summed (`Channel::sample_wide`).
+        out = [
+            ("α's c, β, γ, the zerocheck's c: one Keccak-f (bus, γ, the drawn coordinates)",
+             16 * a["side"] + a["constraints"] - 1 + (1 << drawn) - 1, LOGQ, 1, l1),
+            (f"Flock: the skip's z (k = {k})", (1 << (k + 1)) - 1, LOGQ, 1, l1),
+            (f"Flock: the zerocheck's {a['log_n'] - k} rounds, degree 3", 3, LOGQ, a["log_n"] - k, l1),
+            ("Flock: the lincheck's α (4 claims)", 3, LOGQ, 1, l1),
+            (f"Flock: the lincheck's {LINCHECK_ROUNDS} rounds, degree 2", 2, LOGQ, LINCHECK_ROUNDS, l1),
+            ("t and the ring map's f_0 … f_3, after C2: one Keccak-f", sum(a["ids"].values()) + RING_MAP, LOGQ, 1,
+             l1 * l2),
+            (f"ρ (C1's {a['rel']['C1']} relations), λ (3 claims), the ring map's f_4, f_5: one Keccak-f",
+             a["rel"]["C1"] - 1 + 2 + RING_MAP, LOGQ, 1, l1 * l2),
+        ]
+        v = a["batch_vars"]
+        out.append((f"batch: {v // 2} pairs, degree 8, narrow", 8, NARROW, v // 2, l1 * l2))
+        if v % 2:
+            out.append(("batch: the plain round, degree 2, narrow", 2, NARROW, 1, l1 * l2))
+        return out
     out = [
         ("bus (α, β): multisets, degree 16 a tuple in (c, β), every table full" if rec3 else
          "bus (α, β): multisets, degree 4 a tuple, every table full", (16 if rec3 else 4) * a["side"], LOGQ, 1, l1),
@@ -316,15 +340,16 @@ def main():
     print(f"   relations: C1 {a['rel']['C1']}, C2 {a['rel']['C2']}, F {a['rel']['setup']}; values at t"
           f" {a['values']}; batch over {a['batch_vars']} variables")
 
+    names = {"main": "main line", "rec3": "pi1-rec3", "rec4": "pi1-rec4"}
     for xmss in [32, 128, 400]:
-        for variant in ("main", "rec3"):
+        for variant in ("main", "rec3", "rec4"):
             p = pi1(xmss, variant)
             a = p["a"]
             l1, l2 = lists(a)
             if l1 is None or l2 is None:
                 print(f"\n== {xmss} signatures, {variant}: a stack outside 2^24 ..= 2^28, no certified list")
                 continue
-            print(f"\n== {xmss} signatures, {'pi1-rec3' if variant == 'rec3' else 'main line'}:"
+            print(f"\n== {xmss} signatures, {names[variant]}:"
                   f" L1 = {l1} (C1, 2^{a['s1']}), L2 = {l2} (C2, 2^{a['s2']}); bits a round, alone and after its lists")
             for label, num, b, count, union in p["rounds"]:
                 e = err(num, b)
@@ -335,11 +360,11 @@ def main():
             print(f"   with WHIR's openings once (2^{-bits(EPS_WHIR):.2f}): {p['total']:.2f} bits as Q / ε at Q = 2^64")
 
     print("\n== against the Lean bound (formal/UniKeccakSound, uniBound128 at the reference shape)")
-    for variant in ("main", "rec3"):
+    for variant in ("main", "rec3", "rec4"):
         p = pi1(REFERENCE, variant)
         e, lean = lean_pi1(variant)
         raw_max = max(err(num, b) for _, num, b, _, _ in p["rounds"])
-        print(f"   {'pi1-rec3' if variant == 'rec3' else 'main line'}: Lean {lean:.2f} bits (every round"
+        print(f"   {names[variant]}: Lean {lean:.2f} bits (every round"
               f" ≤ 2^{LEAN_ROUND[variant]}/|E|, lists 9952² for every round: 2^{-bits(e):.2f} a query);"
               f" the calculator {p['total']:.2f} (largest round before its lists 2^{192 - bits(raw_max):.2f}/|E|,"
               f" weakest after its lists 2^{-bits(p['weakest'][1]):.2f})")

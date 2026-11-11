@@ -26,12 +26,19 @@
 //! rows and ends in one `k0` row; `C[x][z]` ends in one D unit and is forwarded through another; the input ends at
 //! round 0's χ and is forwarded through `kprep`. Per permutation (steady state) `1,536 + 6,144 + 344 + 160 = 8,184`
 //! rows, 130,944 positions.
+//!
+//! **The last round makes the lanes read alone** (`docs/leanvm/rec/PERF_GAS2.md`): a permutation whose caller reads
+//! its output's lanes `0 .. lanes` (a Keccak-256 digest: 4; a wide draw's rate: up to 17) makes round 23's χ rows of
+//! planes `0 .. ⌈lanes/5⌉` only, so a digest's permutation drops 256 `k1` rows (126,848 positions). The other planes'
+//! outputs are not made ([`super::keccak::UNMADE`]); their inputs `A_22` end at free ends (nothing reads them), and
+//! `D_23[x][z]`, whose one plane-0 lane every last round makes, ends at its `k0` row as before. Rounds 0 … 22 are whole
+//! (`C_23` needs every lane of `A_22`), so the lanes made are Keccak-f's exactly as in a whole permutation.
 
 use std::collections::VecDeque;
 
 use leanvm_statement::field::K;
 
-use super::keccak::{Bit, Constants, PI, Permutation, RC, RHO, spare};
+use super::keccak::{Bit, Constants, PI, Permutation, RC, RHO, UNMADE, spare};
 use super::layout::{Builder, PolyBuilder, Value, forwards};
 use super::spec::Formula;
 
@@ -109,10 +116,11 @@ impl D16 {
         }
     }
 
-    /// A round's rows: 64 `k0` (their D units to the pool), 4 × 64 `k1` (their spare role to the constants).
-    fn round_rows(&mut self, b: &mut Builder, constants: &mut Constants) -> (Vec<u32>, Vec<Vec<u32>>) {
+    /// A round's rows: 64 `k0` (their D units to the pool), `(planes − 1)` × 64 `k1` (their spare role to the
+    /// constants): the χ rows of planes `0 .. planes`.
+    fn round_rows(&mut self, b: &mut Builder, constants: &mut Constants, planes: usize) -> (Vec<u32>, Vec<Vec<u32>>) {
         let k0: Vec<u32> = (0..64).map(|_| b.row(self.k0)).collect();
-        let k1: Vec<Vec<u32>> = (1..5).map(|_| (0..64).map(|_| b.row(self.k1)).collect()).collect();
+        let k1: Vec<Vec<u32>> = (1..planes).map(|_| (0..64).map(|_| b.row(self.k1)).collect()).collect();
         for &row in &k0 {
             self.pool.extend((0..3).map(|u| (row, 10 + 2 * u)));
         }
@@ -145,11 +153,17 @@ impl D16 {
 }
 
 impl Permutation for D16 {
-    fn permute(&mut self, b: &mut Builder, constants: &mut Constants, input: &[Bit]) -> Vec<Value> {
+    fn permute(&mut self, b: &mut Builder, constants: &mut Constants, input: &[Bit], lanes: usize) -> Vec<Value> {
         assert_eq!(input.len(), 1600);
+        assert!((1..=25).contains(&lanes));
+        // The last round's planes: those of the lanes read (lane `x + 5y` is plane `y`'s). The other planes' χ rows of
+        // round 23 are not made: their outputs are unread, and so are their inputs `A_22` (which end at free ends) and
+        // `D_23` (whose chain ends at plane 0's row).
+        let last_planes = lanes.div_ceil(5);
         // Every round's rows first: their k1 rows' spare role 15 holds the input's constants, their k0 rows' D units
         // are in the pool from the start.
-        let mut rounds: Vec<(Vec<u32>, Vec<Vec<u32>>)> = (0..24).map(|_| self.round_rows(b, constants)).collect();
+        let mut rounds: Vec<(Vec<u32>, Vec<Vec<u32>>)> =
+            (0..24).map(|j| self.round_rows(b, constants, if j == 23 { last_planes } else { 5 })).collect();
         rounds.reverse();
         let mut a: Vec<Value> = input
             .iter()
@@ -180,16 +194,20 @@ impl Permutation for D16 {
         // Where lane `l`'s bit `z` is read: plane `π(l) / 5`, cell `π(l) mod 5`, slice `z + ρ_l`.
         for (j, &rc) in RC.iter().enumerate() {
             let (k0, k1) = rounds.pop().expect("a round's rows");
+            let planes = 1 + k1.len();
             let row_of = |plane: usize, z: usize| if plane == 0 { k0[z] } else { k1[plane - 1][z] };
             for l in 0..25 {
                 let (xp, yp) = (PI[l] % 5, PI[l] / 5);
+                if yp >= planes {
+                    continue;
+                }
                 for z in 0..64 {
                     let row = row_of(yp, (z + RHO[l]) % 64);
                     b.place(row, xp, a[64 * l + z]);
                     b.place(row, 5 + xp, d[l % 5][z]);
                 }
             }
-            let mut out = vec![0; 1600];
+            let mut out = vec![UNMADE; 1600];
             let mut p = [[0; 64]; 5];
             for (z, &row) in k0.iter().enumerate() {
                 if rc >> z & 1 == 1 {
@@ -198,7 +216,10 @@ impl Permutation for D16 {
                 }
                 for x in 0..5 {
                     out[64 * x + z] = b.produce(row, x);
-                    p[x][z] = b.produce(row, 5 + x);
+                    // Without plane 1's rows, P_0 is read by none: its slot pushes junk.
+                    if planes > 1 {
+                        p[x][z] = b.produce(row, 5 + x);
+                    }
                 }
             }
             for (yp, rows) in k1.iter().enumerate().map(|(i, r)| (i + 1, r)) {

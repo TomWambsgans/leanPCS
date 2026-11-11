@@ -18,7 +18,7 @@ use leanvm_univariate::contract::{SetupRoots, calldata, compile_verifier, proof_
 use leanvm_univariate::prover::check::on_domain;
 use leanvm_univariate::prover::prove::{Config, OpeningProof, Proof, prove, verify};
 use leanvm_univariate::prover::trace::Trace;
-use leanvm_univariate::{Claims, KECCAK_MAIN, KECCAK_REC3, Variant};
+use leanvm_univariate::{Claims, KECCAK_MAIN, KECCAK_REC3, KECCAK_REC4, Variant};
 use primitives::field::F192;
 
 fn dir() -> Option<std::path::PathBuf> {
@@ -201,7 +201,32 @@ fn end_to_end(variant: Variant) {
     let inputs: Vec<Vec<u8>> = proof.openings.iter().map(|o| o.claim().encode()).collect();
     let data = calldata(&public, &proof.stream);
     let stream = proof.stream.clone();
-    let (accepted, rejected, gas, calls) = deep(move || {
+    // π1-rec4 has no contract (its wide draws are no `KECCAK256`): the Rust verifier's claims are the openings'.
+    let wide = variant.fs.wide();
+    if wide {
+        let (reduced, zero, nonzero) = leanvm_univariate::contract::rust_verifier_with(
+            &shape,
+            &PROGRAM_IV,
+            &roots,
+            &public,
+            &stream,
+            variant,
+            Claims::Point,
+        )
+        .expect("the Rust verifier accepts");
+        assert!(zero.iter().all(|x| *x == Default::default()) && nonzero.iter().all(|x| *x != Default::default()));
+        let recorded = deep(move || record_verifier_with(&shape, variant, Claims::Point, &roots));
+        let claims: Vec<Vec<u8>> = leanvm_univariate::contract::expected_claims(&recorded, &reduced, &proof.stream)
+            .iter()
+            .map(|c| c.encode())
+            .collect();
+        assert_eq!(claims, inputs, "the Rust verifier's claims are the openings'");
+        println!("  π1-rec4: no contract; the Rust verifier's claims are the openings'");
+    }
+    let (accepted, rejected, gas, calls) = if wide {
+        (Some(word([1, 0, 0]).to_vec()), 0, 0, inputs.clone())
+    } else {
+        deep(move || {
         let recorded = record_verifier_with(&shape, variant, Claims::Point, &roots);
         assert_eq!(recorded.stream_len, stream.len(), "the contract's stream is the proof's");
         // The measuring build, word for word against the Rust verifier, on this accepting stream.
@@ -234,12 +259,17 @@ fn end_to_end(variant: Variant) {
         // Every claim must be declared.
         rejected += blocks[1..].iter().filter(|b| accepts(&data, b)).count();
         (ok.output.clone(), rejected, ok.execution, calls)
-    });
-    println!(
-        "  the contract returns {:?} on the real proof, {gas} gas of execution; parity with the Rust verifier",
-        accepted.as_ref().map(|o| o[31]),
-    );
-    assert_eq!(accepted.as_deref(), Some(&word([1, 0, 0])[..]), "the contract accepts the real proof");
+    })
+    };
+    if wide {
+        println!("  π1-rec4 has no contract: checked against the Rust verifier (its claims, the openings' above)");
+    } else {
+        println!(
+            "  the contract returns {:?} on the real proof, {gas} gas of execution; parity with the Rust verifier",
+            accepted.as_ref().map(|o| o[31]),
+        );
+        assert_eq!(accepted.as_deref(), Some(&word([1, 0, 0])[..]), "the contract accepts the real proof");
+    }
     // The Rust→EVM test vector (tests/vectors/): the proof's calldata, the claims declared, the verdict and the gas.
     if let Ok(out) = std::env::var("WRITE_VECTORS") {
         let name = vector_name(variant);
@@ -257,8 +287,11 @@ fn end_to_end(variant: Variant) {
             ),
         });
         let file = std::env::var("VECTOR_FILE").unwrap_or_else(|_| name.to_string());
-        let path = std::path::Path::new(&out).join(format!("{file}.txt"));
-        std::fs::write(&path, text).expect("the vector file");
+        // `cargo test` runs in the crate's directory: a relative WRITE_VECTORS is relative to it.
+        let dir = std::path::Path::new(&out);
+        std::fs::create_dir_all(dir).unwrap_or_else(|e| panic!("WRITE_VECTORS={}: cannot create it: {e}", dir.display()));
+        let path = dir.join(format!("{file}.txt"));
+        std::fs::write(&path, text).unwrap_or_else(|e| panic!("the vector file {}: {e}", path.display()));
         println!("  test vector written to {}", path.display());
     }
     assert_eq!(rejected, 0, "the contract rejects a mutated proof, and a proof with one call not attested");
@@ -295,6 +328,15 @@ fn proves_and_verifies_keccak_rec3() {
     end_to_end(KECCAK_REC3);
 }
 
+/// The Keccak VM's π1-rec4, the recursion's inner proof since `docs/leanvm/rec/PERF_GAS2.md`: π1-rec3 with the
+/// challenges no message separates drawn from one Keccak-f each (`FsShape::Rec4`). It has no contract: the Rust
+/// verifier's claims are checked against the openings'.
+#[test]
+#[ignore]
+fn proves_and_verifies_keccak_rec4() {
+    end_to_end(KECCAK_REC4);
+}
+
 /// The setup commitment a contract for this trace's program and shape is generated with (SPEC.md §13, F2): `F`'s root
 /// and out-of-domain answer, from the program and the shape (at the reference trace, `SetupRoots::REFERENCE`).
 #[test]
@@ -329,6 +371,7 @@ fn keccak_prover_benchmark() {
     };
     let variant = match std::env::var("PI1_VARIANT").as_deref() {
         Ok("rec3") => KECCAK_REC3,
+        Ok("rec4") => KECCAK_REC4,
         _ => KECCAK_MAIN,
     };
     let repeat: usize = std::env::var("PI1_REPEAT").ok().map_or(3, |x| x.parse().expect("a count"));

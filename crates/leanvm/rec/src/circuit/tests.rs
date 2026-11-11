@@ -132,7 +132,8 @@ fn d16_keccak256_on_random_inputs() {
 }
 
 /// D16v's rows a permutation (SPEC-REC.md §2.4.1): 1,536 `k0`, 6,144 `k1`, 160 `kprep`, and 344 `kd` for the D units
-/// the `k0` and `kprep` rows lack. So 8,184 rows, 130,944 positions.
+/// the `k0` and `kprep` rows lack. So 8,184 rows, 130,944 positions; a digest's last round makes plane 0's rows alone
+/// (its lanes 0 … 3): 256 `k1` rows fewer, 7,928 rows, 126,848 positions.
 #[test]
 fn d16_rows_a_permutation() {
     let perms = 4;
@@ -140,12 +141,62 @@ fn d16_rows_a_permutation() {
     let (f, _) = hash_all(4, D16::new, &messages);
     let rows = |name: &str| f.stats.rows.get(name).copied().unwrap_or(0);
     assert_eq!(rows("keccak16/k0"), 1536 * perms);
-    assert_eq!(rows("keccak16/k1"), 6144 * perms);
+    assert_eq!(rows("keccak16/k1"), (6144 - 256) * perms);
     assert_eq!(rows("keccak16/kprep"), 160 * perms);
     assert_eq!(rows("keccak16/kd"), 344 * perms);
     let steady = 1536 + 6144 + 160 + 344;
     assert_eq!((steady, 16 * steady), (8184, 130_944));
+    assert_eq!(16 * (steady - 256), 126_848);
     // The constants (padding, the first block's capacity) are in `k1`'s spare role: no rows of their own.
     assert_eq!(rows("const"), 0);
     println!("{:?}", f.stats);
+}
+
+/// The sponge's rate lanes (π1-rec4's wide draws, `transcript::keccak256_rate`): a last round of 3 or 4 planes (13 or
+/// 16 lanes read) and a whole one (17: all planes), on one- and several-block messages, against the native sponge;
+/// the circuit holds, and every wired change is caught.
+#[test]
+fn d16_rate_lanes_on_random_inputs() {
+    let mut seed = 0x51ed_270b_27d1_a5a5u64;
+    let cases: Vec<(Vec<u8>, usize)> = [(80usize, 13usize), (100, 16), (200, 16), (300, 17), (32, 4)]
+        .iter()
+        .map(|&(len, lanes)| ((0..len).map(|_| xorshift(&mut seed) as u8).collect(), lanes))
+        .collect();
+    let mut b = Builder::new(4);
+    let p = D16::new(&mut b);
+    let mut sponge = Sponge::new(&mut b, p);
+    let mut bools = Bools::new(&mut b);
+    let mut outs = Vec::new();
+    for (m, lanes) in &cases {
+        let bits: Vec<Bit> = m
+            .iter()
+            .flat_map(|byte| (0..8).map(move |j| byte >> j & 1 == 1))
+            .map(|bit| Bit::V(bools.bit_and_copy(&mut b, bit).1))
+            .collect();
+        outs.push(sponge.keccak256_lanes(&mut b, &bits, *lanes));
+    }
+    let unmade = sponge.planes_unmade;
+    let f = b.finish();
+    assert_eq!(f.circuit.check(&f.witness, &no_public()), Ok(()), "every pull equals its push");
+    for ((m, lanes), out) in cases.iter().zip(&outs) {
+        let rate = leanvm_statement::transcript::keccak256_rate(m);
+        let mut bytes = vec![0u8; 8 * lanes];
+        for (i, &v) in out.iter().enumerate() {
+            let w = f.words[v as usize];
+            assert!(w == K(0) || w == K(1), "a rate bit is a bit");
+            bytes[i / 8] |= (w.0 as u8) << (i % 8);
+        }
+        assert_eq!(bytes[..], rate[..8 * lanes], "{} bytes, {lanes} lanes", m.len());
+    }
+    // Planes unmade in the last blocks: 13 lanes 2, 16 lanes 1 (twice), 17 lanes 1, 4 lanes 4; a later block's none.
+    assert_eq!(unmade, 2 + 1 + 1 + 1 + 4);
+    let wired: Vec<usize> = (0..f.stats.positions_used)
+        .filter(|&i| f.circuit.sigma[i] as usize != i)
+        .collect();
+    for k in 0..20 {
+        let mut w = f.witness.clone();
+        let i = wired[(xorshift(&mut seed) as usize) % wired.len()];
+        w[i] = w[i] + K(1 + k);
+        assert!(f.circuit.check(&w, &no_public()).is_err(), "a change at {i} is caught");
+    }
 }

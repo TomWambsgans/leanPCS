@@ -95,7 +95,7 @@ type Run = (Result<(), VerifierError>, Vec<E>, Vec<E>, Vec<u8>, f64);
 fn run(witness: &FlockWitness, variant: Variant, log_n: usize, seed: [u8; 32]) -> Run {
     let mut writer = KeccakWriter::new(seed);
     let started = std::time::Instant::now();
-    let out = prove(&mut writer, witness, variant, log_n).expect("a proof");
+    let out = prove(&mut writer, witness, variant, log_n, None).expect("a proof");
     let secs = started.elapsed().as_secs_f64();
     let verdict = verify(&writer.stream, variant, log_n, seed, &out.point);
     (verdict, out.point, out.slices, writer.stream, secs)
@@ -216,7 +216,7 @@ fn flock_keccak_4096() {
         for _ in 0..3 {
             let mut writer = KeccakWriter::new(seed);
             let started = std::time::Instant::now();
-            let out = prove(&mut writer, &w, v, log_n).expect("a proof");
+            let out = prove(&mut writer, &w, v, log_n, None).expect("a proof");
             times.push(started.elapsed().as_secs_f64());
             reductions.push(out.reduction_secs);
         }

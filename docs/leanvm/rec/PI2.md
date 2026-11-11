@@ -20,6 +20,10 @@ cargo test --release -p leanvm_rec --test pi2 -- --ignored --nocapture gas_repor
 
 ## 0. Results
 
+**With π1-rec4 and π1's three claims hashed in π2's circuit** ([`PERF_GAS2.md`](PERF_GAS2.md); `real_end_to_end` on
+h3): 577 B of calldata, 31,524 execution; floor 36,928, with the frame of PCS claims and the PCS gas 66,376 (89,672
+before, 99,912 on `f96a7938`). The figures below predate it.
+
 **With π1's claim on `C1` hashed in π2's circuit, narrow challenges as 20 bytes, no selector** ([`PERF_GAS.md`](PERF_GAS.md);
 `real_end_to_end` on h3): 941 B of calldata, 37,406 execution; floor 60,224, with the frame of PCS claims and the PCS
 gas 89,672 (99,912 before). The rest of this section predates it.
@@ -131,11 +135,13 @@ by its claims: §6).
 ## 2. The protocol
 
 **Transcript** (`KeccakChannel`): the seed `keccak(NAME ‖ IV ‖ public input ‖ frame words)`, `NAME =
-"leanvm-rec-pi2v3"`, the frame words the Keccak-256s of π1's claims hashed in the circuit (`C1`'s: payload 0 of the
-frame of PCS claims, `Read::Frame`; [`PERF_GAS.md`](PERF_GAS.md) §3), then the stream:
+"leanvm-rec-pi2v3"`, the frame words the Keccak-256s of π1's claims hashed in the circuit (all three at 128 and 400
+signatures: payloads 0, 1, 2 of the frame of PCS claims, `Read::Frame`; [`PERF_GAS.md`](PERF_GAS.md) §3,
+[`PERF_GAS2.md`](PERF_GAS2.md) §4), then the stream:
 
-1. the public data: π1's root `C2` (32 bytes, as it is, §8), the distinct elements of π1's claims the contract encodes
-   (`C2`'s out-of-domain answer, 13 narrow challenges as their low 20 bytes, `C2`'s and `F`'s values, 24 bytes each);
+1. the public data of the claims the contract encodes (none when the circuit hashes all three; else, as on `main`
+   with `C1`'s alone: π1's root `C2` (32 bytes, as it is, §8), the distinct elements of π1's claims the contract encodes
+   (`C2`'s out-of-domain answer, 13 narrow challenges as their low 20 bytes, `C2`'s and `F`'s values, 24 bytes each));
 2. `W`'s commitment: its root, then its out-of-domain answer; `α, β, γ`;
 3. `Q`'s commitment; `t`;
 4. the `2^r` fold values `a_k`, `ξ = κ(t) + β σ(t)` and `s = P(t)` (18 values for D16v); `ρ`.

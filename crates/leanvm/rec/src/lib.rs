@@ -22,7 +22,16 @@ pub mod count;
 pub mod eval;
 pub mod pi2;
 
-use leanvm_univariate::Shape;
+use leanvm_univariate::{KECCAK_REC4, Shape, Variant};
+
+/// π1's variant under the recursion: π1-rec4 (`docs/leanvm/rec/PERF_GAS2.md`; π1-rec3 before it, which `formal/`
+/// states).
+pub const PI1: Variant = KECCAK_REC4;
+
+/// The committed real π1 proofs the recursion's tests read (`crates/leanvm/univariate/tests/vectors/`): at the
+/// reference shape (128 signatures) and at 400.
+pub const PI1_VECTOR_128: &str = "keccak128_rec4";
+pub const PI1_VECTOR_400: &str = "keccak_rec4";
 
 /// The reference shape: the Keccak VM's 128-signature workload (`leanvm_statement::shapes::reference()`, leanVM
 /// 9d50c92a3, 154,148 cycles): memory `2^20`, bytecode `2^18`, rows XOR, MUL, SET, DEREF, JUMP, SHA3.

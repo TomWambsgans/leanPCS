@@ -13,9 +13,9 @@ use leanvm_statement::evm::codegen::Word;
 use leanvm_statement::evm::record::Node;
 use leanvm_statement::field::E;
 use leanvm_univariate::contract::{calls, record_verifier};
-use leanvm_univariate::{Claims, KECCAK_REC3};
+use leanvm_univariate::Claims;
 
-use crate::REFERENCE;
+use crate::{PI1, REFERENCE};
 use crate::circuit::spec::{CallWord, element_word};
 
 /// π1's calls, and how many roots and elements their words name.
@@ -26,9 +26,9 @@ pub struct Pi1Calls {
     pub elements: usize,
 }
 
-/// π1-rec3's calls at the reference shape. Records π1's verifier: run it on a thread with a deep stack.
+/// π1's calls at the reference shape ([`PI1`]). Records π1's verifier: run it on a thread with a deep stack.
 pub fn pi1_calls() -> Pi1Calls {
-    let recorded = record_verifier(&REFERENCE, KECCAK_REC3, Claims::Point);
+    let recorded = record_verifier(&REFERENCE, PI1, Claims::Point);
     let graph = &recorded.graph;
     let roots: BTreeMap<usize, u32> = recorded
         .roots_at

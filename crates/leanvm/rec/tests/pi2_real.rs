@@ -116,8 +116,8 @@ fn gas(name: &str, layout: Layout) {
 #[ignore]
 fn real_gas() {
     deep(|| {
-        gas("keccak128_rec3", Layout::D16v);
-        gas("keccak_rec3", Layout::D16v);
+        gas("keccak128_rec4", Layout::D16v);
+        gas("keccak_rec4", Layout::D16v);
     });
 }
 
@@ -127,7 +127,7 @@ fn real_end_to_end() {
     bench::init_tracing_from_env();
     deep(|| {
         let layout = Layout::D16v;
-        let name = std::env::var("PI2_VECTOR").unwrap_or_else(|_| "keccak128_rec3".into());
+        let name = std::env::var("PI2_VECTOR").unwrap_or_else(|_| leanvm_rec::PI1_VECTOR_128.into());
         let start = std::time::Instant::now();
         let (v, c, pi1_iv) = real(&name, layout);
         let compiled = start.elapsed().as_secs_f64();

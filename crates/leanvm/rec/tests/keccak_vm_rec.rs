@@ -1,5 +1,5 @@
 // Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
-//! The Keccak VM's π1 (docs/leanvm/univariate/KECCAK.md) under π2: its verifier recorded with π1-rec3's Fiat–Shamir
+//! The Keccak VM's π1 (docs/leanvm/univariate/KECCAK.md) under π2: its verifier recorded with π1-rec4's Fiat–Shamir
 //! shape, counted, and compiled into π2's circuit (D16v) on a sample stream, at the reference shape (128 signatures)
 //! and at 400: whether π2 holds it in `2^24` positions, and the recursion's contract's gas.
 //!
@@ -13,7 +13,8 @@ use leanvm_rec::pi2::adapt;
 use leanvm_rec::pi2::contract::{self as pi2_contract, Instance};
 use leanvm_rec::pi2::verifier::Spec;
 use leanvm_univariate::contract::{record_verifier, sample_stream};
-use leanvm_univariate::{Claims, KECCAK_REC3, Shape};
+use leanvm_rec::PI1;
+use leanvm_univariate::{Claims, Shape};
 
 /// leanVM 9d50c92a3 at 400 signatures (`crates/leanvm/univariate/tests/keccak_vm.rs`).
 const KECCAK_400: Shape = Shape {
@@ -32,7 +33,7 @@ fn deep<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> R {
 }
 
 fn report(name: &str, shape: &Shape) -> usize {
-    let recorded = record_verifier(shape, KECCAK_REC3, Claims::Point);
+    let recorded = record_verifier(shape, PI1, Claims::Point);
     let c = count(&recorded);
     let stream = sample_stream(recorded.stream_len, 7);
     let compiled = pi2(
@@ -89,7 +90,7 @@ fn report(name: &str, shape: &Shape) -> usize {
 #[ignore]
 fn keccak_vm_under_pi2() {
     deep(|| {
-        report("Keccak VM π1-rec3, 128 signatures (REFERENCE)", &REFERENCE);
-        report("Keccak VM π1-rec3, 400 signatures", &KECCAK_400);
+        report("Keccak VM π1-rec4, 128 signatures (REFERENCE)", &REFERENCE);
+        report("Keccak VM π1-rec4, 400 signatures", &KECCAK_400);
     });
 }

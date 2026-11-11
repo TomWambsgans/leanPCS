@@ -324,6 +324,12 @@ pub const KECCAK_MAIN: Variant = Variant { skip: 3, fs: FsShape::Main };
 /// Fiat–Shamir shape (`FsShape::Rec3`).
 pub const KECCAK_REC3: Variant = Variant { skip: 3, fs: FsShape::Rec3 };
 
+/// The Keccak VM's π1 under the recursion since π1-rec4 (`docs/leanvm/rec/PERF_GAS2.md`): [`KECCAK_REC3`] with the
+/// challenges no message separates drawn from one Keccak-f each (`FsShape::Rec4`), 106 Keccak-f in its transcript at
+/// the reference shape instead of 116. It has no EVM contract of its own (`KECCAK256` gives no sponge rate): π2's
+/// circuit runs it.
+pub const KECCAK_REC4: Variant = Variant { skip: 3, fs: FsShape::Rec4 };
+
 /// The verifier (SPEC.md §4–§8): `public_words` are the public input's four 64-bit words, low first.
 pub fn reduce<S: Scalar + PartialEq, C: Channel<S>>(
     shape: &Shape,
@@ -361,9 +367,16 @@ pub fn reduce<S: Scalar + PartialEq, C: Channel<S>>(
     // (docs/PCS_CLAIM.md) before the challenges.
     let root1 = channel.next_root()?;
     let ood1 = channel.next_scalar()?;
-    let alphas = variant.fs.draw(channel, 4);
-    let beta = channel.sample();
-    let gamma = channel.sample();
+    // π1-rec4: α's c, β, γ and Flock's zerocheck's first eq coordinate are one wide draw (no message separates them).
+    let (alphas, beta, gamma, eq_first) = if variant.fs.wide() {
+        let [c, beta, gamma, eq_first]: [S; 4] =
+            channel.sample_wide(4).try_into().unwrap_or_else(|_| panic!("four challenges"));
+        (leanvm_statement::transcript::squares(c, 4), beta, gamma, Some(eq_first))
+    } else {
+        let alphas = variant.fs.draw(channel, 4);
+        let beta = channel.sample();
+        (alphas, beta, channel.sample(), None)
+    };
     let weights = {
         let _phase = enter("bus: fingerprints and leaf products");
         eq_kernel(&alphas)
@@ -371,15 +384,28 @@ pub fn reduce<S: Scalar + PartialEq, C: Channel<S>>(
 
     // 2. Flock, on C1's q_flock: the zerocheck and the lincheck on the Keccak-f block (one permutation a `SHA3`
     // row), its terminal by the block's structure, the slices sent; its ring switch's map and target (SPEC-FLOCK.md).
-    let (flock_point, flock_end) = {
-        let log_n = KECCAK_R1CS_LOG_SIZE + heights[OP_SHA3];
-        flock_min::verify_walked_with::<S, Keccak>(log_n, variant, channel)?
+    // π1-rec4: the ring switch's map is drawn later (with t, then with ρ).
+    let log_flock = KECCAK_R1CS_LOG_SIZE + heights[OP_SHA3];
+    let (flock_point, mut flock_end, flock_slices) = if variant.fs.wide() {
+        let (point, slices) = flock_min::verify_walked_deferred::<S, Keccak>(log_flock, variant, channel, eq_first)?;
+        (point, None, slices)
+    } else {
+        let (point, end) = flock_min::verify_walked_with::<S, Keccak>(log_flock, variant, channel)?;
+        (point, Some(end), Vec::new())
     };
 
-    // 3. C2, then the point.
+    // 3. C2, then the point. π1-rec4: t and the ring switch's map's f_0 … f_3 are one wide draw, which absorbs the
+    // slices and C2's commitment.
     let root2 = channel.next_root()?;
     let ood2 = channel.next_scalar()?;
-    let t = channel.sample();
+    let mut ring_map_drawn: Vec<S> = Vec::new();
+    let t = if variant.fs.wide() {
+        let mut drawn = channel.sample_wide(5);
+        ring_map_drawn = drawn.split_off(1);
+        drawn[0]
+    } else {
+        channel.sample()
+    };
     let digit_count = h.max(r_w + 4) + 2;
     let w = {
         let _phase = enter("digits, vanishing polynomials, coordinates");
@@ -603,9 +629,21 @@ pub fn reduce<S: Scalar + PartialEq, C: Channel<S>>(
         relations.push(terms, constraint_value);
     }
 
+    // 8 (π1-rec4). ρ, the batch's λ and the map's f_4, f_5: one wide draw after the values at t. The ring switch's
+    // relation, whose target the map gives, is then pushed where 7 pushes it, before the combination.
+    let mut drawn_lambda: Option<S> = None;
+    let mut drawn_rho: Option<S> = None;
+    if variant.fs.wide() {
+        let [rho, lambda, f4, f5]: [S; 4] =
+            channel.sample_wide(4).try_into().unwrap_or_else(|_| panic!("four challenges"));
+        (drawn_rho, drawn_lambda) = (Some(rho), Some(lambda));
+        ring_map_drawn.extend([f4, f5]);
+        flock_end = Some(flock_min::ring_end_at(&flock_slices, ring_map_drawn));
+    }
+
     // 7. Flock's claim on q_flock: the ring switch's weight `Φ(eq(p, ·))`, as one term evaluated at the batch's point
     // (point claims, SPEC.md §13) or as its 64 twisted terms (weighted claims).
-    let End { map, target } = flock_end;
+    let End { map, target } = flock_end.expect("the ring switch's end");
     let mut ring_map: Option<Vec<S>> = None;
     match mode {
         Claims::Point => {
@@ -642,7 +680,10 @@ pub fn reduce<S: Scalar + PartialEq, C: Channel<S>>(
     }
 
     // 8. One claim per commitment.
-    let rho = channel.sample();
+    let rho = match drawn_rho {
+        Some(rho) => rho,
+        None => channel.sample(),
+    };
     let combined: Vec<(Commitment, Combined<S>)> = {
         let _phase = enter("claims: combination (powers of rho, merging)");
         COMMITMENTS
@@ -654,7 +695,7 @@ pub fn reduce<S: Scalar + PartialEq, C: Channel<S>>(
     let stack_vars = layouts.iter().map(|(c, l)| (*c, l.vars)).collect();
     let openings = match mode {
         Claims::Weighted => combined.into_iter().map(|(c, claim)| (c, Opening::Weighted(claim))).collect(),
-        Claims::Point => batch(channel, variant.fs, &combined, &layouts, ring_map.as_deref())?,
+        Claims::Point => batch(channel, variant.fs, &combined, &layouts, ring_map.as_deref(), drawn_lambda)?,
     };
     Ok(Reduced {
         roots: [root1, root2],
@@ -821,9 +862,14 @@ pub fn batch<S: Scalar + PartialEq, C: Channel<S>>(
     combined: &[(Commitment, Combined<S>)],
     layouts: &[(Commitment, StackLayout)],
     ring_map: Option<&[S]>,
+    drawn_lambda: Option<S>,
 ) -> Result<Vec<(Commitment, Opening<S>)>, VerifierError> {
     let _phase = enter("claims: batching sumcheck to point claims");
-    let lambda = channel.sample();
+    // π1-rec4 drew λ with ρ.
+    let lambda = match drawn_lambda {
+        Some(lambda) => lambda,
+        None => channel.sample(),
+    };
     let vars = layouts.iter().map(|(_, l)| l.vars).max().expect("stacks");
     let mut target = S::zero();
     let mut scale = S::one();
@@ -833,12 +879,11 @@ pub fn batch<S: Scalar + PartialEq, C: Channel<S>>(
     }
     // π1-rec2 (`FsShape::Rec2`): the rounds' challenges narrow, 160 bits; π1-rec3 (`FsShape::Rec3`): narrow and two
     // variables a round (`SPEC-POINTS.md`).
-    let (r, last) = match fs {
-        FsShape::Rec3 => {
-            let (r, _, last) = sumcheck_pairs_drawn(channel, target, 2, vars, true)?;
-            (r, last)
-        }
-        _ => sumcheck_drawn(channel, target, 3, &vec![None; vars], fs == FsShape::Rec2)?,
+    let (r, last) = if fs.paired_batch() {
+        let (r, _, last) = sumcheck_pairs_drawn(channel, target, 2, vars, fs.narrow_batch())?;
+        (r, last)
+    } else {
+        sumcheck_drawn(channel, target, 3, &vec![None; vars], fs.narrow_batch())?
     };
     let values = channel.next_scalars(combined.len())?;
     let _weights = enter("claims: the batch's weights at its point (eq, selectors, twists)");

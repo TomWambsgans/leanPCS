@@ -1,6 +1,6 @@
 // Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 //! The recursion end to end, from a Keccak VM trace (leanVM 9d50c92a3, `crates/leanvm/univariate/src/prover/
-//! dump_keccak`) to π2's proof and openings, timed: π1-rec3's proof (with its three openings), π2's witness (replayed
+//! dump_keccak`) to π2's proof and openings, timed: π1-rec4's proof (with its three openings), π2's witness (replayed
 //! on π1's stream from the circuit's witness plan, `circuit::plan`), π2's proof and its five openings. π2 runs on its own
 //! thread from π1's stream on: its witness is replayed while π1's openings run, then its proof waits for them (with
 //! `PIPELINE_OVERLAP=1` it does not: no faster, the machine being busy, `docs/leanvm/rec/PERF_PROVER.md`).
@@ -30,7 +30,7 @@ use leanvm_rec::pi2::verifier::Spec;
 use leanvm_statement::shapes::PROGRAM_IV;
 use leanvm_univariate::prover::prove::{Config, prove as prove_pi1, prove_streaming};
 use leanvm_univariate::prover::trace::Trace;
-use leanvm_univariate::{Claims, KECCAK_REC3};
+use leanvm_univariate::Claims;
 
 fn deep<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> R {
     std::thread::Builder::new()
@@ -75,13 +75,13 @@ fn trace_to_recursion() {
             &leanvm_univariate::prover::columns::setup_polys(&trace),
         );
         let config = Config {
-            variant: KECCAK_REC3,
+            variant: leanvm_rec::PI1,
             claims: Claims::Point,
             check: false,
             garbage: false,
             roots,
         };
-        let recorded = leanvm_univariate::contract::record_verifier_with(&shape, KECCAK_REC3, Claims::Point, &roots);
+        let recorded = leanvm_univariate::contract::record_verifier_with(&shape, leanvm_rec::PI1, Claims::Point, &roots);
         let pi1_setup = started.elapsed().as_secs_f64();
         let public = trace.public_input();
         // π2's circuit and its witness plan depend on π1's verifier only; a stream gives the compiler its values (any
@@ -163,7 +163,7 @@ fn trace_to_recursion() {
                     (witness, public2, stream2, reduced, roots2, openings, [replayed, proving, opening])
                 });
                 let mut streamed = 0.0;
-                let (proof, _) = tracing::info_span!("π1-rec3").in_scope(|| {
+                let (proof, _) = tracing::info_span!("π1-rec4").in_scope(|| {
                     prove_streaming(&trace, trace.keccak_flock(), &PROGRAM_IV, config, |stream| {
                         streamed = started.elapsed().as_secs_f64();
                         stream_tx.send(stream.to_vec()).expect("π2 waits")
@@ -178,8 +178,8 @@ fn trace_to_recursion() {
             let total = started.elapsed().as_secs_f64();
             let (witness, public2, stream, reduced, roots2, openings, [replayed, proving, opening]) = out2;
             let laps: Vec<(&str, f64)> = vec![
-                ("π1-rec3: proof, to its stream", streamed),
-                ("π1-rec3: its openings (π2's witness replayed meanwhile)", pi1_done - streamed),
+                ("π1-rec4: proof, to its stream", streamed),
+                ("π1-rec4: its openings (π2's witness replayed meanwhile)", pi1_done - streamed),
                 ("π2: its witness, replayed", replayed),
                 ("π2: proof", proving),
                 ("π2: openings", opening),
@@ -244,18 +244,18 @@ fn trace_to_recursion() {
             );
         }
         // The proofs' fingerprints: at the reference trace, π1's stream is the committed vector's
-        // (`keccak128_rec3.txt`) and π2's lines are `tests/pi2_real.rs`'s.
+        // (`keccak128_rec4.txt`) and π2's lines are `tests/pi2_real.rs`'s.
         let (s1, o1, s2, o2) = first.expect("a pass");
         let reference = vectors::read(
             &std::fs::read_to_string(format!(
-                "{}/../univariate/tests/vectors/keccak128_rec3.txt",
-                env!("CARGO_MANIFEST_DIR")
+                "{}/../univariate/tests/vectors/{}.txt",
+                env!("CARGO_MANIFEST_DIR"), leanvm_rec::PI1_VECTOR_128
             ))
             .expect("the committed vector"),
         );
         if reference.shape == shape && reference.public == public {
             assert_eq!(reference.calldata[4 + 32..], s1[..], "π1's stream is the committed vector's");
-            println!("π1's stream is the committed vector keccak128_rec3's");
+            println!("π1's stream is the committed vector {}'s", leanvm_rec::PI1_VECTOR_128);
         }
         let hex = |b: &[u8]| b.iter().map(|x| format!("{x:02x}")).collect::<String>();
         println!("pi1 stream keccak {}", hex(&primitives::hash::hash(&s1)));

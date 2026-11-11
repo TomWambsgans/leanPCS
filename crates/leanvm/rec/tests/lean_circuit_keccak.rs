@@ -49,6 +49,8 @@ fn node_line(node: &Node) -> String {
         Node::Hash(s, f, t) => format!("H {s} {f} {t}"),
         Node::Low(h) => format!("L {h}"),
         Node::Narrow(h) => format!("N {h}"),
+        // π1-rec4's; the Lean states π1-rec3, which has none.
+        Node::Wide(h, k) => format!("V {h} {k}"),
         Node::Bits(v, s, w) => format!("B {v} {s} {w}"),
         Node::RingWeight(k, n) => format!("W {k} {n}"),
     }
