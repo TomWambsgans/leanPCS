@@ -2,7 +2,9 @@
 -- (`Bridge.Ntt.values_getD_E`, `values_coefficients_E`) at `formal/UniComplete`'s Cantor basis (`AlgC.cantorUpTo`,
 -- `novX_ofK`, `Ppoint_eq`).
 import RecCompose.Pi2Prover
-import RecCompose.Tables
+import RecCompose.Points
+import Bridge.Ntt
+import UniKeccakComplete.K.AlgCBasis
 
 /-!
 # π2's honest prover: the transforms, the coset, the stacks

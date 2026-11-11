@@ -9,7 +9,7 @@ import UniSound.PendingLink
 /-!
 # Honest PCS openings at π2's stacks
 
-π2 opens its five claims (`W`'s, the setup's, `Q`'s three) as the EIP draft's PCS claims, each on its commitment's
+π2 opens its four claims (`W`'s, the setup's, `Q`'s two) as the EIP draft's PCS claims, each on its commitment's
 whole stack (`stackVars`: at `m = 24`, `W` on `2^24` words, `Q` on `2^28`, the setup on `2^25`), by UniKeccakComplete's
 honest PCS prover (`pcsProveH`). Here, at a pure Keccak-256 `H` and permutation `F`:
 
