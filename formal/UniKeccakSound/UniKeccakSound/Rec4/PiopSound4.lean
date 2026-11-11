@@ -400,8 +400,281 @@ theorem uniSoundK4_c2 (s : USt) (p : Op Stk) (hp : p.length = 28 + κ) (m : Opti
   calc _ ≤ _ := prEvent_mono _ _ _ hincl
     _ ≤ _ := prEvent_or_le _ _ _
     _ ≤ _ := add_le_add hA hH
+
+include hzb in
+/-- **The values' round, `ρ, λ, f_4, f_5`**: the ring map's last two bad sets, then the two combinations. -/
+theorem uniSoundK4_vals (s : USt) (p : Op Stk) (hp : p.length = 29 + κ) (m : Option Stk × List E) :
+    Pr{let c ← Compose.draws E (3 + 1)}[¬ uniPreK4 hT I BR s p m ∧ uniPostK4 hT I BR s p m c] ≤
+      ((I.nRel - 1 + (3 - 1) : ℕ) : ℝ≥0∞) / (Fintype.card E : ℝ≥0∞) +
+        ((30 : ℕ) : ℝ≥0∞) / (Fintype.card E : ℝ≥0∞) := by
+  have hpre : uniPreK4 hT I BR s p m = c2St hT I s p := by
+    rw [uniPreK4_ne hT I BR s p m (by omega) (by omega)]
+    unfold uniSK4
+    rw [ite_eq_left hp]
+  have hq30 : ∀ c : List E, 30 + κ ≤ (p ++ [(m, c)]).length := fun c => by simp; omega
+  have hpost : ∀ c : List E, uniPostK4 hT I BR s p m c ↔
+      uniSK3 (KF.kFlockSoundRec3 F hT κ) I BR s (opT κ (p ++ [(m, c)])) := fun c => by
+    unfold uniPostK4
+    rw [uniSK4_ne hT I BR s _ (by simp; omega)]
+  have eA : ∀ c : List E, rd (p ++ [(m, c)]) 0 = rd p 0 := fun c => rd_append_lt _ _ 0 (by omega)
+  have eC : ∀ c : List E, rd (p ++ [(m, c)]) (28 + κ) = rd p (28 + κ) := fun c =>
+    rd_append_lt _ _ _ (by omega)
+  have eV : ∀ c : List E, rd (p ++ [(m, c)]) (29 + κ) = (m, c) := fun c => by rw [← hp, rd_append_self]
+  have ev : ∀ c : List E, vFrontO κ (p ++ [(m, c)]) = vFrontO κ p := fun c => vFrontO_append p _ (by omega)
+  have hvf : (vFrontO κ p).length = 28 + κ := length_vFrontO p (by omega)
+  -- The post-state, read.
+  have hpost' : ∀ c : List E, uniPostK4 hT I BR s p m c ↔ ∃ c1, (rd p 0).1.1 = some c1 ∧
+      ∃ c2, (rd p (28 + κ)).1.1 = some c2 ∧
+      FlockDoneK3 (KF.kFlockSoundRec3 F hT κ)
+        (vFrontO κ p ++ [((none, (rd p (28 + κ)).1.2.take 64), (rd p (28 + κ)).2.drop 1 ++ c.drop 2)]) ∧
+      (KF.kFlockSoundRec3 F hT κ).prog.ZerosVanish
+        (vFrontO κ p ++ [((none, (rd p (28 + κ)).1.2.take 64), (rd p (28 + κ)).2.drop 1 ++ c.drop 2)]) [] ∧
+      ((I.zb (vFrontO κ p ++ [((none, (rd p (28 + κ)).1.2.take 64), (rd p (28 + κ)).2.drop 1 ++ c.drop 2)])).eval
+          (((rd p (28 + κ)).2.take 1).headD 0) = 0 ∨
+        BR.St (I.prod s c1 ((rd p 0).2.take 3)
+            (vFrontO κ p ++ [((none, (rd p (28 + κ)).1.2.take 64), (rd p (28 + κ)).2.drop 1 ++ c.drop 2)]) c2
+            (((rd p (28 + κ)).2.take 1).headD 0) m.2 ((c.take 2).headD 0) ((c.take 2).getD 1 0))
+          (I.target s c1 ((rd p 0).2.take 3)
+            (vFrontO κ p ++ [((none, (rd p (28 + κ)).1.2.take 64), (rd p (28 + κ)).2.drop 1 ++ c.drop 2)]) c2
+            (((rd p (28 + κ)).2.take 1).headD 0) m.2 ((c.take 2).headD 0) ((c.take 2).getD 1 0)) []) := by
+    intro c
+    rw [hpost c, uniSK3_ge hT I BR s _ (by rw [length_opT_ge _ (hq30 c)]; simp; omega), rd_opT_zero,
+      rd_opT_c2 _ (hq30 c), rd_opT_v _ (hq30 c), fdOf_opT_ge _ (hq30 c), brOf_opT _ (hq30 c),
+      brOf_of_length _ _ (by simp; omega)]
+    simp only [r0Op, lastOp, eA, eC, eV, ev]
+  rcases h0 : (rd p 0).1.1 with _ | c1
+  · refine prEvent_le_of_forall_not _ _ _ fun c ⟨_, hq⟩ => ?_
+    obtain ⟨c1, h1, -⟩ := (hpost' c).mp hq
+    rw [h0] at h1
+    cases h1
+  rcases h2 : (rd p (28 + κ)).1.1 with _ | c2
+  · refine prEvent_le_of_forall_not _ _ _ fun c ⟨_, hq⟩ => ?_
+    obtain ⟨c1, -, c2, h2', -⟩ := (hpost' c).mp hq
+    rw [h2] at h2'
+    cases h2'
+  have ht : ((rd p (28 + κ)).2.take 1).headD 0 = (rd p (28 + κ)).2.headD 0 := by
+    cases (rd p (28 + κ)).2 <;> rfl
+  rw [hpre]
+  simp only [ht] at hpost'
+  unfold c2St
+  rw [h0, h2]
+  generalize hvfd : vFrontO κ p = vf at hpost' hvf ⊢
+  generalize hsld : (rd p (28 + κ)).1.2.take 64 = sl at hpost' ⊢
+  generalize hfsd : (rd p (28 + κ)).2.drop 1 = fs at hpost' ⊢
+  generalize hchd : (rd p 0).2.take 3 = ch at hpost' ⊢
+  generalize htd : (rd p (28 + κ)).2.headD 0 = t at hpost' ⊢
+  have hincl : ∀ c : List E, ¬ (∃ c1', some c1 = some c1' ∧ ∃ c2', some c2 = some c2' ∧
+      DoneFits (KF.kRoundsPre κ KF.r0Rec3) vf ∧ sl.length = 64 ∧ KF.kTerm κ (KF.sampRec3 κ) vf sl = 0 ∧
+      ((I.zb (vf ++ [((none, sl), fs)])).eval t = 0 ∨
+        (stateOfK F (kBad3 F κ) (I.qf c1') (vf ++ [((none, sl), fs)]) ∧
+          ∃ vals g, ∀ d ∈ I.diffs s c1' ch (vf ++ [((none, sl), fs ++ g)]) c2' t vals, ∀ x ∈ d, x = 0))) ∧
+      uniPostK4 hT I BR s p m c →
+      (∃ i < (c.drop 2).length, (c.drop 2).getD i 0 ∈
+          kBad3 F κ (I.qf c1) vf (none, sl) (fs ++ (c.drop 2).take i)) ∨
+        ((∃ d ∈ I.diffs s c1 ch (vf ++ [((none, sl), fs ++ c.drop 2)]) c2 t m.2, ∃ x ∈ d, x ≠ 0) ∧
+          powComb ((I.diffs s c1 ch (vf ++ [((none, sl), fs ++ c.drop 2)]) c2 t m.2).map
+            fun d => powComb d ((c.take 2).headD 0)) ((c.take 2).getD 1 0) = 0) := by
+    intro c ⟨hn, hq⟩
+    obtain ⟨c1', h1, c2', h2', hFD, hZV, hrest⟩ := (hpost' c).mp hq
+    rw [h0] at h1
+    cases h1
+    rw [h2] at h2'
+    cases h2'
+    -- Flock's front done, the slices' length, the terminal: from the completed transcript.
+    have hFD' : DoneFits (KF.kRounds κ KF.r0Rec3) (vf ++ [((none, sl), fs ++ c.drop 2)]) := hFD
+    have hFront : DoneFits (KF.kRoundsPre κ KF.r0Rec3) vf := by
+      have h := doneFits_append_take _ _ _ hFD'
+      rwa [KF.length_kRoundsPre, ← hvf, List.take_left' rfl] at h
+    have hSL : sl.length = 64 := (doneFits_last _ _ _ _ hFD').1.2
+    have hFZ : KF.kTerm κ (KF.sampRec3 κ) vf sl = 0 := by
+      have hz := hZV.1 (28 + κ) (by simp; omega)
+      have htk : (vf ++ [((none, sl), fs ++ c.drop 2)]).take (28 + κ) = vf := List.take_left' hvf
+      rw [htk, show (KF.kFlockSoundRec3 F hT κ).prog = KF.kProgWith κ KF.r0Rec3 (KF.sampRec3 κ) from rfl,
+        KF.kProgWith_zeros _ _ _ _ hvf] at hz
+      have hz' := hz _ (List.mem_singleton_self _)
+      rw [List.getElem_append_right (by omega)] at hz'
+      simpa [hvf] using hz'
+    -- Not the merge polynomial: else the state before held.
+    rcases hrest with hz | hSt
+    · exfalso
+      refine hn ⟨c1, rfl, c2, rfl, hFront, hSL, hFZ, Or.inl ?_⟩
+      rw [hzb vf _ _ hvf]
+      exact hz
+    -- The batch's start: the combination vanishes.
+    rw [BR.St_nil] at hSt
+    have hb := I.batch_start s c1 ch _ c2 t m.2 ((c.take 2).headD 0) ((c.take 2).getD 1 0) hZV
+    have hcomb : powComb ((I.diffs s c1 ch (vf ++ [((none, sl), fs ++ c.drop 2)]) c2 t m.2).map
+        fun d => powComb d ((c.take 2).headD 0)) ((c.take 2).getD 1 0) = 0 := by
+      rw [← hb, ← hSt]
+      exact CharTwo.add_self_eq_zero _
+    by_cases hnz : ∃ d ∈ I.diffs s c1 ch (vf ++ [((none, sl), fs ++ c.drop 2)]) c2 t m.2, ∃ x ∈ d, x ≠ 0
+    · exact Or.inr ⟨hnz, hcomb⟩
+    · left
+      push Not at hnz
+      have hEnd := I.diffs_flock _ _ _ _ _ _ _ hnz
+      have hS := (KF.kFlockSoundRec3 F hT κ).finish _ _ hFD hZV hEnd
+      have hS0 : ¬ stateOfK F (kBad3 F κ) (I.qf c1) (vf ++ [((none, sl), fs)]) := fun hS0 =>
+        hn ⟨c1, rfl, c2, rfl, hFront, hSL, hFZ, Or.inr ⟨hS0, m.2, c.drop 2, hnz⟩⟩
+      exact state_extend (kBad3 F κ) (I.qf c1) hS0 hS
+  have hH : Pr{let c ← Compose.draws E (3 + 1)}[∃ i < (c.drop 2).length, (c.drop 2).getD i 0 ∈
+      kBad3 F κ (I.qf c1) vf (none, sl) (fs ++ (c.drop 2).take i)] ≤
+      ((30 : ℕ) : ℝ≥0∞) / (Fintype.card E : ℝ≥0∞) := by
+    rw [show (3 + 1 : ℕ) = 2 + 2 from rfl, prEvent_draws_drop 2 2 (fun y => ∃ i < y.length, y.getD i 0 ∈
+      kBad3 F κ (I.qf c1) vf (none, sl) (fs ++ y.take i))]
+    have h := FlockSound.Uni.prob_hit_le 1 (fun pre => kBad3 F κ (I.qf c1) vf (none, sl) (fs ++ pre))
+      (fun _ => 15) fun pre =>
+        (KF.card_kBad3 F κ _ _ _ _).trans (by rw [hvf]; exact dBound3K_le_15 _ _ (by omega))
+    have h30 : (∑ _i ∈ range (1 + 1), (15 : ℕ)) = 30 := by simp
+    rw [h30] at h
+    exact h
+  have hB : Pr{let c ← Compose.draws E (3 + 1)}[
+      (∃ d ∈ I.diffs s c1 ch (vf ++ [((none, sl), fs ++ c.drop 2)]) c2 t m.2, ∃ x ∈ d, x ≠ 0) ∧
+        powComb ((I.diffs s c1 ch (vf ++ [((none, sl), fs ++ c.drop 2)]) c2 t m.2).map
+          fun d => powComb d ((c.take 2).headD 0)) ((c.take 2).getD 1 0) = 0] ≤
+      ((I.nRel - 1 + (3 - 1) : ℕ) : ℝ≥0∞) / (Fintype.card E : ℝ≥0∞) := by
+    rw [show (3 + 1 : ℕ) = 2 + 2 from rfl]
+    refine prEvent_draws_fubini 2 2 (fun x y =>
+      (∃ d ∈ I.diffs s c1 ch (vf ++ [((none, sl), fs ++ y)]) c2 t m.2, ∃ z ∈ d, z ≠ 0) ∧
+        powComb ((I.diffs s c1 ch (vf ++ [((none, sl), fs ++ y)]) c2 t m.2).map
+          fun d => powComb d (x.headD 0)) (x.getD 1 0) = 0) _ fun y => ?_
+    by_cases hnz : ∃ d ∈ I.diffs s c1 ch (vf ++ [((none, sl), fs ++ y)]) c2 t m.2, ∃ z ∈ d, z ≠ 0
+    · refine (prEvent_mono _ _ _ fun x hx => hx.2).trans ?_
+      exact prEvent_twoLevel_le _ I.nRel 3 (I.diffs_len _ _ _ _ _ _ _) (I.diffs_count _ _ _ _ _ _ _) hnz
+    · exact prEvent_le_of_forall_not _ _ _ fun x hx => hnz hx.1
+  calc _ ≤ _ := prEvent_mono _ _ _ hincl
+    _ ≤ _ := prEvent_or_le _ _ _
+    _ ≤ _ := add_le_add hH hB
+    _ = _ := add_comm _ _
+
+theorem uniPreK4_pre_post (s : USt) (p : Op Stk) (m : Option Stk × List E) (c : List E)
+    (m' : Option Stk × List E) (h : uniPreK4 hT I BR s (p ++ [(m, c)]) m') : uniPostK4 hT I BR s p m c := by
+  unfold uniPostK4
+  by_cases hq : (p ++ [(m, c)]).length = 28 + κ
+  · unfold uniPreK4 at h
+    rw [ite_eq_right (by simp), ite_eq_left hq] at h
+    obtain ⟨c1, c2, h1, -, hP, hS, hFD, -, -⟩ := h
+    rw [uniSK4_ne hT I BR s _ (by omega),
+      uniSK3_le hT I BR s _ (by rw [length_opT_le _ (by simp) (by omega)]; omega)]
+    refine ⟨c1, by rw [rd_opT_zero]; exact h1, by rw [rd_opT_zero]; exact I.main_of_polys _ _ _ _ _ hP, ?_, ?_⟩
+    · rw [length_opT_le _ (by simp) (by omega), fdOf_opT_le _ (by simp) (by omega), hq,
+        show 28 + κ + 1 - 1 = 28 + κ by omega]
+      have ht : (KF.kFlockSoundRec3 F hT κ).prog.rounds.take (28 + κ) = KF.kRoundsPre κ KF.r0Rec3 :=
+        List.take_left' (KF.length_kRoundsPre κ _)
+      rw [ht]
+      exact hFD
+    · rw [fdOf_opT_le _ (by simp) (by omega)]
+      exact hS
+  · unfold uniPreK4 at h
+    rw [ite_eq_right (by simp), ite_eq_right hq] at h
+    exact h
+
+/-! ## The rounds -/
+
+theorem rec4_eq (nV : ℕ) : rec4Rounds κ nV np = ⟨true, 1, 3⟩ :: (kRoundsMid κ ++
+    (⟨true, 65, 4⟩ :: ⟨false, nV, 3⟩ :: (List.replicate np ⟨false, 8, 0⟩ ++ [⟨false, 2, 0⟩]))) := by
+  simp [rec4Rounds]
+
+theorem rec4_getD_mid (nV j : ℕ) (h1 : 1 ≤ j) (h2 : j ≤ 27 + κ) :
+    (rec4Rounds κ nV np).getD j ⟨false, 0, 0⟩ = (KF.kRounds κ KF.r0Rec3)[j]'(by rw [KF.length_kRounds]; omega) := by
+  obtain ⟨i, rfl⟩ : ∃ i, j = i + 1 := ⟨j - 1, by omega⟩
+  have hi : i < (kRoundsMid κ).length := by rw [length_kRoundsMid]; omega
+  rw [rec4_eq, List.getD_eq_getElem?_getD, List.getElem?_cons_succ, List.getElem?_append_left hi]
+  simp only [KF.kRounds, kRoundsPre_eq, List.cons_append, List.getElem_cons_succ,
+    List.getElem_append_left hi, List.getElem?_eq_getElem hi, Option.getD_some]
+
+theorem rec4_getD_c2 (nV : ℕ) : (rec4Rounds κ nV np).getD (28 + κ) ⟨false, 0, 0⟩ = ⟨true, 65, 4⟩ := by
+  rw [rec4_eq, show 28 + κ = (27 + κ) + 1 by omega, List.getD_eq_getElem?_getD, List.getElem?_cons_succ,
+    List.getElem?_append_right (by rw [length_kRoundsMid]), length_kRoundsMid, Nat.sub_self]
+  rfl
+
+theorem rec4_getD_v (nV : ℕ) : (rec4Rounds κ nV np).getD (29 + κ) ⟨false, 0, 0⟩ = ⟨false, nV, 3⟩ := by
+  rw [rec4_eq, show 29 + κ = (28 + κ) + 1 by omega, List.getD_eq_getElem?_getD, List.getElem?_cons_succ,
+    List.getElem?_append_right (by rw [length_kRoundsMid]; omega), length_kRoundsMid,
+    show 28 + κ - (27 + κ) = 1 by omega]
+  rfl
+
+theorem rec4_getD_batch (nV j : ℕ) (h1 : 30 + κ ≤ j) (h2 : j ≤ 30 + κ + np) :
+    ((rec4Rounds κ nV np).getD j ⟨false, 0, 0⟩).ns = 0 := by
+  rw [rec4_eq, List.getD_eq_getElem?_getD]
+  obtain ⟨i, rfl⟩ : ∃ i, j = (30 + κ + i) := ⟨j - (30 + κ), by omega⟩
+  rw [show 30 + κ + i = (29 + κ + i) + 1 by omega, List.getElem?_cons_succ,
+    List.getElem?_append_right (by rw [length_kRoundsMid]; omega), length_kRoundsMid,
+    show 29 + κ + i - (27 + κ) = i + 2 by omega, List.getElem?_cons_succ, List.getElem?_cons_succ]
+  by_cases hi : i < np
+  · rw [List.getElem?_append_left (by simp; omega), List.getElem?_replicate]
+    simp [hi]
+  · rw [List.getElem?_append_right (by simp; omega)]
+    simp only [List.length_replicate]
+    rw [show i - np = 0 by omega]
+    rfl
+
+/-! ## The protocol -/
+
+/-- **π1-rec4's PIOP, round by round**, for Flock on the Keccak-f block, the identity model `I` (its merge polynomial
+and identities read off Flock's front: `hzb`, `hpolys`) and the batch `BR`. -/
+noncomputable def uniPiopK4 : RbrPiop (rec4Rounds κ I.nV np) USt Stk where
+  pre := uniPreK4 hT I BR
+  post := uniPostK4 hT I BR
+  pre_post := uniPreK4_pre_post hT I BR
+  err := uniErrK4 hT I BR
+  sound j s p m hj hp := by
+    rw [length_rec4Rounds] at hj
+    unfold uniErrK4
+    by_cases h0 : j = 0
+    · subst h0
+      rw [ite_eq_left rfl]
+      obtain rfl : p = [] := List.length_eq_zero_iff.mp hp
+      exact uniSoundK4_zero hT I BR s m
+    rw [ite_eq_right h0]
+    by_cases h1 : j ≤ 27 + κ
+    · rw [ite_eq_left h1, rec4_getD_mid I.nV j (by omega) h1]
+      exact uniSoundK4_mid hT I BR j (by omega) h1 s p hp m
+    rw [ite_eq_right h1]
+    by_cases h2 : j = 28 + κ
+    · subst h2
+      rw [ite_eq_left rfl, rec4_getD_c2]
+      exact uniSoundK4_c2 hT I BR hzb hpolys s p hp m
+    rw [ite_eq_right h2]
+    by_cases h3 : j = 29 + κ
+    · subst h3
+      rw [ite_eq_left rfl, rec4_getD_v]
+      exact uniSoundK4_vals hT I BR hzb s p hp m
+    rw [ite_eq_right h3, rec4_getD_batch I.nV j (by omega) (by omega)]
+    exact uniSoundK4_batch hT I BR j (by omega) (by omega) s p hp m
+
+/-- **The first state is the Keccak VM's relation.** -/
+theorem hpre_uniPiopK4 (s : USt) (c : Stk) (m : List E)
+    (h : (uniPiopK4 hT I BR hzb hpolys).pre s [] (some c, m)) : RelK F D s c := by
+  change uniPreK4 hT I BR s [] (some c, m) at h
+  unfold uniPreK4 at h
+  rw [ite_eq_left (List.length_nil : ([] : Op Stk).length = 0)] at h
+  obtain ⟨c', hc', hr⟩ := h
+  cases hc'
+  exact hr
+
+/-- **Every round's error is at most `e`.** -/
+theorem uniErrK4_le (e : ℝ≥0∞) (hMain : I.errMain + (KF.kFlockSoundRec3 F hT κ).err 0 ≤ e)
+    (hFl : ∀ j, (KF.kFlockSoundRec3 F hT κ).err j ≤ e)
+    (hdeg : ((I.degSum + I.degBad : ℕ) : ℝ≥0∞) / (Fintype.card E : ℝ≥0∞) +
+      ((60 : ℕ) : ℝ≥0∞) / (Fintype.card E : ℝ≥0∞) ≤ e)
+    (hrel : ((I.nRel - 1 + (3 - 1) : ℕ) : ℝ≥0∞) / (Fintype.card E : ℝ≥0∞) +
+      ((30 : ℕ) : ℝ≥0∞) / (Fintype.card E : ℝ≥0∞) ≤ e)
+    (hP : BR.errPair ≤ e) (hL : BR.errLast ≤ e) (j : ℕ) : uniErrK4 hT I BR j ≤ e := by
+  unfold uniErrK4
+  split_ifs
+  · exact hMain
+  · exact hFl _
+  · exact hdeg
+  · exact hrel
+  · exact hP
+  · exact hL
+
 end Sound
 
 end States
 
 end UniKeccakSound.Rec4
+
+/-- info: 'UniKeccakSound.Rec4.uniPiopK4' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms UniKeccakSound.Rec4.uniPiopK4
