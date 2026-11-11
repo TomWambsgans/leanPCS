@@ -8,6 +8,7 @@ import RecGraphKeccak.Hazard
 import RecGraphKeccak.Main4
 import RecGraphKeccak.Sim.Final4
 import RecGraphKeccak.Sim.AtSetup4
+import RecGraphKeccak.Circuit
 
 /-!
 # RecGraphKeccak: the Keccak VM's π1-rec4 recorded graph, and graph = verifier
@@ -17,8 +18,8 @@ lean_graph_keccak.rs`, data only), the verifier as a `RecGraph.Prog` program (`P
 `pi1GraphK4` equals the emitted graph node for node: `RecGraphKeccakTest/Pi1Check.lean`), and graph = verifier against
 `UniKeccak`'s `runWithK4` at `keccakRec4` (`Main4.lean`: `Pi1GraphIsVerifierK4`), proved from the simulation's parts
 (`Sim/`): **`Sim.pi1GraphIsVerifierK4 : Pi1GraphIsVerifierK4`**, with no hypothesis. π1-rec3's program and its theorem
-`Sim.pi1GraphIsVerifierK` are kept. `Circuit.lean` (`pi1rec3K_end`) is not imported: `formal/RecCircuit` does not yet
-compile π1-rec4's `wide` nodes. See `README.md`.
+`Sim.pi1GraphIsVerifierK` are kept. `Circuit.lean`: π2's compiled circuit for the emitted graph carries its outputs
+(`pi1rec4K_end`) and the Keccak-256s of its three claims (`pi1rec4K_claimHashes`). See `README.md`.
 
 The build fails if a definition or theorem below uses an axiom beyond Lean's three standard ones.
 -/
@@ -158,3 +159,11 @@ The build fails if a definition or theorem below uses an axiom beyond Lean's thr
 /-- info: 'RecGraphKeccak.Sim.emitted_isVerifierK4At' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms RecGraphKeccak.Sim.emitted_isVerifierK4At
+
+/-- info: 'RecGraphKeccak.pi1rec4K_end' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecGraphKeccak.pi1rec4K_end
+
+/-- info: 'RecGraphKeccak.pi1rec4K_claimHashes' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecGraphKeccak.pi1rec4K_claimHashes
