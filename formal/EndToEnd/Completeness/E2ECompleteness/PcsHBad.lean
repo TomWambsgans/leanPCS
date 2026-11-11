@@ -339,6 +339,48 @@ theorem goodAt_of (α β t ρ : E) (hab : ¬ ABad P w coins α β) (ht : (tPoly 
   · have := Finset.prod_ne_zero_iff.mp h5 k (Finset.mem_range.mpr hk)
     simpa only [Polynomial.eval_add, eval_X, eval_C] using this
 
+omit hM in
+/-- **The degenerate pairs**: at most `(2 n + 2) q`, `n` the cells. -/
+theorem card_ABad_le [DecidablePred fun p : E × E => ABad P w coins p.1 p.2] [DecidableEq (E × E)]
+    (hZ : P.vCells = digitPoly 24) (hs : sCoef P ≠ 0) :
+    (univ.filter fun p : E × E => ABad P w coins p.1 p.2).card ≤ (2 * P.nCells + 2) * Fintype.card E := by
+  set q := Fintype.card E
+  classical
+  let γz : E → E := fun β => if h : ∃ α, (Epoly P α β (cW w coins) /ₘ P.vCells).eval 0 = 0 then h.choose else 0
+  have hsub : (univ.filter fun p : E × E => ABad P w coins p.1 p.2) ⊆
+      ((univ : Finset E).image fun a => (a, (0 : E))) ∪
+      ((univ : Finset (P.T × Fin 4)).biUnion fun i =>
+        ((univ : Finset E).image fun b => (P.cells (gH w coins) i + b * P.pt i, b)) ∪
+        ((univ : Finset E).image fun b => (P.cells (gH w coins) i + b * P.pt (P.σ i), b))) ∪
+      ((univ : Finset E).image fun b => (γz b, b)) := by
+    intro x hx
+    have hx' : ABad P w coins x.1 x.2 := by
+      rw [Finset.mem_filter] at hx
+      exact hx.2
+    unfold ABad at hx'
+    simp only [Finset.mem_union, Finset.mem_image, Finset.mem_univ, true_and, Finset.mem_biUnion]
+    rcases hx' with h | h | h
+    · exact Or.inl (Or.inl ⟨x.1, by rw [← h]⟩)
+    · push_neg at h
+      obtain ⟨i, hi⟩ := h
+      refine Or.inl (Or.inr ⟨i, ?_⟩)
+      by_cases h0 : x.1 + P.cells (gH w coins) i + x.2 * P.pt i = 0
+      · exact Or.inl ⟨x.2, Prod.ext (by linear_combination (norm := char2_norm) h0) rfl⟩
+      · exact Or.inr ⟨x.2, Prod.ext (by linear_combination (norm := char2_norm) hi h0) rfl⟩
+    · by_cases hβ : x.2 = 0
+      · exact Or.inl (Or.inl ⟨x.1, by rw [← hβ]⟩)
+      · refine Or.inr ⟨x.2, Prod.ext ?_ rfl⟩
+        have hex : ∃ α, (Epoly P α x.2 (cW w coins) /ₘ P.vCells).eval 0 = 0 := ⟨x.1, h⟩
+        simp only [γz, dif_pos hex]
+        exact gamma_root_unique P (cW w coins) hZ hs hβ hex.choose_spec h
+  refine (card_le_card hsub).trans ((card_union_le _ _).trans ?_)
+  refine (add_le_add ((card_union_le _ _).trans (add_le_add card_image_le
+    (card_biUnion_le.trans (Finset.sum_le_sum fun i _ => (card_union_le _ _).trans
+      (add_le_add card_image_le card_image_le))))) card_image_le).trans (le_of_eq ?_)
+  rw [Finset.sum_const, Finset.card_univ, Finset.card_univ, smul_eq_mul]
+  show q + Fintype.card (P.T × Fin 4) * (q + q) + q = (2 * P.nCells + 2) * q
+  ring
+
 end Good
 
 end E2ECompleteness.Pcs.H
