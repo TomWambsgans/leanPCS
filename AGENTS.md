@@ -141,9 +141,10 @@ transaction gas without the 21,000 base (EIP-7623) and without the frame's per-f
   prover in the recursion (`RecCompose.Pi1K.pi1Rec4ProverK`, its Fiat–Shamir over Keccak-f[1600]) with the four facts
   π2's completeness takes of it (`pi1ProverFactsK4`) and the random-permutation reading of the premise
   `Pi1CompletenessKeccak` (`pi1CompletenessFs4_rpm`); π2's Lean prover agrees with the Rust's (3/3 vectors) and the
-  contract accepts its proof at the real deployment off three bad events (`Pi2E.pi2_accepts_real`). π2's error δ2,
-  hence the completeness end theorem (`RecCompose/CompleteReal.lean`, written), is not yet proved
-  ([`docs/LEAN_PORT.md`](docs/LEAN_PORT.md)).
+  contract accepts its proof at the real deployment off three bad events (`Pi2E.pi2_accepts_real`); π2's error
+  (`delta2Closed ≤ 2^-164`); **the recursion's completeness at the real deployment** (`RecCompose.Pi1K.recCompleteness_real`:
+  the composed Lean prover rejected with probability at most δ1 + δh + 2^-164, under the evaluated checks and the two
+  premises `Pi1CompletenessKeccak δ1`, `Pi1HazardKeccakHonest δh` about the honest π1-rec4 run at Keccak-f[1600]).
 - **Argued and tested (current code)**: the current membership protocol's soundness and zero knowledge
   ([`PROTOCOL.md`](docs/membership/PROTOCOL.md); `protocol::tests`, the rank tests in `hiding`); each contract equals
   its Rust verifier; the real π1 proofs at 32, 128 and 400 signatures (committed vectors) are accepted with their frame

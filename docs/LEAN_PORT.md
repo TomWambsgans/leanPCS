@@ -55,19 +55,14 @@ accepts its proof off `BadCopy`, `BadT`, `BadRho`, its witness and π1-openings 
 `Pi2W.pi2WitnessExists_real`, `Pi2W.pi1Openings_of_verifierH`, `Pi2W.nonhole_real`), π1-rec4's prover in the
 recursion (`Pi1K.pi1Rec4ProverK`: its Fiat–Shamir over Keccak-f[1600], its trees and openings over `π`) with the four
 facts π2's completeness takes (`Pi1K.pi1ProverFactsK4`), and the random-permutation reading of
-`Pi1CompletenessKeccak` (`Pi1K.pi1CompletenessFs4_rpm`, `deltaK`). The π2v3 and π1-rec3 files of `RecCompose` are
-retired.
+`Pi1CompletenessKeccak` (`Pi1K.pi1CompletenessFs4_rpm`, `deltaK`), π2's completeness error (the probability layer
+`Pi2Prob*`, `Pi2Alpha*`, `Pi2Sim*`, `Pi2TFresh*`, `Pi2RhoFresh`, `Pi2Holds3`, `Pi2Chain`, `Pi2Run*`, `Pi2Closed`:
+`Pi2Sim.recCompleteness2_pi2_closed`, `delta2Closed ≤ 2^-164`) and **`RecCompose.Pi1K.recCompleteness_real`** at the
+real deployment (`δ1 + δh + 2^-164`, the premises `Pi1CompletenessKeccak δ1`, `Pi1HazardKeccakHonest δh` at
+Keccak-f[1600]). The π2v3 and π1-rec3 files of `RecCompose` are retired.
 
 Left:
 
-- **π2's completeness error** `δ2` (`RecCompleteness2` for π2's Lean prover): the probability layer (`Pi2Prob*`,
-  `Pi2Alpha*`, `Pi2Sim*`, `Pi2TFresh*`, `Pi2Chain`, `Pi2RunCost`, `Pi2RunDuplex`, `Pi2Closed`, at π2v3 on this
-  branch; branch `lean/pi2-prob`, not yet building). Its interface is fixed: `Pi2Sim.recCompleteness2_pi2_closed`,
-  `recCompleteness_pi2_closed_fs`, `delta2Closed_le`. Then **`RecCompose/CompleteReal.lean`** (written, waiting for
-  it) closes the end theorem `Pi1K.recCompleteness_real`: at `realDeployment prog hprog`, the composed Lean prover
-  (`pi1Rec4ProverK`, then `realPi2Prover`) rejected with probability at most `δ1 + δh + 2^-164`, from the evaluated
-  checks and the premises `Pi1CompletenessKeccak δ1`, `Pi1HazardKeccakHonest δh`; then `RecCompose.lean` imports it
-  and the library goes back to `globs`.
 - **The evaluated checks** at other setup commitments and IVs (`IvChecked` over `(roots, iv)`; `PatchChecked`).
 
 ## Lean-facing files

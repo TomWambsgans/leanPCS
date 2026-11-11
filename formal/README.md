@@ -15,8 +15,8 @@ The membership line states and proves the protocol of commit **`f96a7938`**; the
   = verifier at every setup commitment, its knowledge soundness (`UniKeccakSound.uniKnowledgeSoundnessKeccakRec4_closed`),
   its completeness (`UniKeccakComplete.uniCompletenessKeccakRec4_closed`), π2v4's statement, PIOP, circuit compiler and
   contract model, and the recursion's knowledge soundness at the real deployment
-  (`RecCompose.recKnowledgeSoundness_reduction_real`). Completeness: all but π2's error `δ2` (see "The recursion's end
-  theorems").
+  (`RecCompose.recKnowledgeSoundness_reduction_real`) and completeness (`RecCompose.Pi1K.recCompleteness_real`, under
+  two premises at Keccak-f[1600]).
 
 What the port still needs is [`docs/LEAN_PORT.md`](../docs/LEAN_PORT.md). **Do not regenerate the membership's
 Lean-facing files until its port**: the Rust now writes the deployed protocol, so `UPDATE_LEAN=1` runs of
@@ -149,10 +149,23 @@ theorem RecCompose.recKnowledgeSoundness_reduction_real (prog : KeccakVm.Program
   shorter than `2^26` bytes); `pi1CompletenessKeccak_iff4` and the random-permutation reading of `Pi1CompletenessKeccak`
   (`pi1CompletenessFs4_rpm`, `deltaK < 2^-169`, from `uniCompletenessKeccakRec4_closed`); π2's Lean prover agrees with
   the Rust's on 3/3 vectors and the contract accepts its proof off `BadCopy`, `BadT`, `BadRho` at the real deployment
-  (`RecCompose.Pi2E.pi2_accepts_real`, its witness and π1's openings from π1-rec4's graph verifier accepting). **Not
-  yet**: π2's error `δ2` (`RecCompleteness2` for π2's Lean prover, the probability layer), which
-  `RecCompose/CompleteReal.lean` (written, not built) turns into `Pi1K.recCompleteness_real`: error `δ1 + δh + 2^-164`
-  at the real deployment, the two premises at Keccak-f[1600] ([`docs/LEAN_PORT.md`](../docs/LEAN_PORT.md)).
+  (`RecCompose.Pi2E.pi2_accepts_real`, its witness and π1's openings from π1-rec4's graph verifier accepting); π2's
+  error (`Pi2Sim.recCompleteness2_pi2_closed`: `RecCompleteness2` for π2's Lean prover, `delta2Closed ≤ 2^-164`, about
+  `2^-164.4`; the copy argument's `2N|E|²` bad triples, `t`'s `10N + 1` bad points, `ρ`'s one, `α`'s and `t`'s inputs
+  fresh, the proofs of work, the permutation as random oracles). **The end theorem**:
+
+  ```lean
+  theorem RecCompose.Pi1K.recCompleteness_real (prog) (hprog) (hg : GraphsAgreeK4) (hd : DigestChecked)
+      (hs : SetupRootChecked) (hiv : IvChecked) (δ1 δh : ℝ≥0∞)
+      (h1 : Pi1CompletenessKeccak (realDeployment prog hprog) (pi1Rec4ProverK _) δ1)
+      (hh : Pi1HazardKeccakHonest (realDeployment prog hprog) (pi1Rec4ProverK _) δh) :
+      RecCompletenessWith (realDeployment prog hprog)
+        (composeProver _ (pi1Rec4ProverK _) (realPi2Prover prog hprog hg hd hs hiv)) (δ1 + δh + 2⁻¹ ^ 164)
+  ```
+
+  for the composed Lean provers (the deployed Rust provers are trusted for completeness); `h1` and `hh` are about the
+  honest π1-rec4 run at the real Keccak-f[1600] (the Fiat–Shamir heuristic for one fixed honest prover; `h1`'s
+  random-permutation reading is proved at `deltaK < 2^-169`).
 - Also `recKnowledgeSoundness2_final` (π2's part alone) and the Prop-premise corollary `recKnowledgeSoundness_final`,
   whose premises `Pi1FsKeccak`, `Pi1HazardKeccak`, `Keccak256CR` are **false as stated** for unbounded adversaries
   (they grind Keccak-f[1600] offline): read them as the Fiat–Shamir heuristic and collision resistance.
@@ -167,7 +180,7 @@ theorem RecCompose.recKnowledgeSoundness_reduction_real (prog : KeccakVm.Program
 |---|---|---|
 | Trusted | the Lean kernel and three axioms; Keccak-f[1600] a random permutation, Keccak-256 its sponge; mumbai's definitions (Keccak, the model, `verifyStackedOpening`, the decoders); the prover's randomness uniform (deployed: a Keccak-256 KDF, `Randomness::derive`, so computational ZK) | the same; the deployed Rust provers for completeness |
 | Tested against the Rust (membership at `f96a7938`; recursion at main `7e6d353c`) | the Statement (`PcsQuotientTest/Differential.lean`: reductions, honest and tampered proofs at `2^17` rows, circuit commitments); the Statement's prover (the reduction's stream at `2^17` rows); bytecode = graph (`contract_is_the_verifier`, `random_calldata_agrees`); `FIELD_MUL` = `mulE` by vectors; `pcs_claim::verify` = `pcsOpening` | π1's verifier (`UniKeccakTest/Runner.lean`: 134/134 verifier and 14/14 terminal vectors, the real π1-rec4 proofs among them); the verifier's tables, the block's rows and terminal, `sha3Step`; the circuit compiler on π1-rec4's graph (`rec-circuit-diff`, `rec-circuit-keccak`: the Rust's circuit byte for byte; `padCounts` on 202 cases); π2's Lean prover on 3/3 vectors (roots, IV, stream); `RecStatement/Data.lean` is what the Rust emits (`keccak_statement_data_is_current`); the bytecode is π2's Rust verifier by the Rust's tests (`parity`) |
-| Not covered | simulation-extractability; ZK without its two hypotheses, with queries before the proof, or for several proofs; the RPM theorems and the EVM one do not formally compose; `StatementBinds` (immediate, not proved); pruned Merkle paths | the model gap (π1-rec4 in the RPM, π2's circuit at Keccak-f[1600]); `PatchChecked` and `IvChecked` at other setup commitments; π2's completeness error `δ2` for its Lean prover (in progress, `lean/pi2-prob`); other shapes than the reference; no Lean differential run of π2's verifier |
+| Not covered | simulation-extractability; ZK without its two hypotheses, with queries before the proof, or for several proofs; the RPM theorems and the EVM one do not formally compose; `StatementBinds` (immediate, not proved); pruned Merkle paths | the model gap (π1-rec4 in the RPM, π2's circuit at Keccak-f[1600]); `PatchChecked` and `IvChecked` at other setup commitments; other shapes than the reference; no Lean differential run of π2's verifier |
 
 ## Libraries
 
@@ -219,8 +232,7 @@ membership's vectors are `f96a7938`'s, the recursion's the deployed Rust's.
 
 ## Remaining
 
-1. **The port** to the deployed protocols ([`docs/LEAN_PORT.md`](../docs/LEAN_PORT.md)): membership; for the
-   recursion, π2's completeness error `δ2` and with it the completeness end theorem.
+1. **The port** of membership to the deployed protocol ([`docs/LEAN_PORT.md`](../docs/LEAN_PORT.md)).
 2. **The model gap.** π2's circuit computes π1-rec4's Fiat–Shamir with the real Keccak-f[1600]; π1-rec4's theorems are
    in the random-permutation model, so the soundness reduction's π1 and hazard terms and the two completeness premises
    are left to the Fiat–Shamir heuristic for Keccak-f[1600], its collision term to Keccak-256's collision resistance.
