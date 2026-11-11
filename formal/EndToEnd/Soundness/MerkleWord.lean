@@ -2,19 +2,21 @@
 -- Uses leanerVM `mumbai`'s lemmas on its extractor (https://github.com/Verified-zkEVM/leanerVM,
 -- commit 6175f1a0, MIT OR Apache-2.0: `lean_vm/LeanVM/Protocol/Extraction/Merkle.lean`,
 -- `preimage_eq_some_iff`, `descend`, `subtreeLeaves_getD`, `digestBytes_bytesDigest`).
-import Soundness.Defs
+import Compose.Claims
+import Compose.Rpm
+import PcsQuotient.Security
+import QuotientSecurity.Deployed
+import Shared.SoundnessDefs
 
 /-!
-# The Statement's committed word is Compose's
+# A committed word read back from the log
 
-The Statement's extractor (`PcsQuotient.witnessWord`) reads the witness table's word with mumbai's
-`committedLeaves` and `leafAt` (`Statement/Extractor.lean`) on a list of Keccak-256 evaluations
-`paths` (inputs, digests): a node's children the halves of its unique answered 64-byte preimage, a
-leaf the words of its unique answered preimage of `8 w` bytes, zeros under an unanswered node.
-Compose's extractor (`adversaryExtractor`) reads it with `merkleWord` (`Compose/Merkle.lean`) on the
-transcript of the same evaluations, the digests as 32 bytes (`toB`), then `wordOfMerkle`.
+The transcript of a tree (`trOf`), its table and history (`tableOfTr_trOf`, `mem_histOfTr_trOf`,
+`mem_histOfTr_table_iff`), the unique lookups (`uniq_eq_some_iff`, `uniqList_eq_some_iff`), and the word read back
+from a Merkle tree's log is the committed one (`wordOfMerkle_merkleWord_eq`, `leafAt_map_eq_descend`).
 
-* **`wordOfMerkle_merkleWord_eq`**: at every position below `2^ht`, the two words are equal.
+Pruned to what the leanVM line uses (`formal/Uni*`, `formal/Rec*`); the previous membership protocol's declarations
+that were here are in the git history.
 -/
 
 set_option linter.unusedSectionVars false

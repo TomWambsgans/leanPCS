@@ -10,8 +10,10 @@ import Implementation.Interp
 `quotient::protocol::reduce` again, over node indices: every operation the Rust verifier does on
 its scalars is looked up in the emitted graph (`look`), after the folds `record.rs`'s `Sym` does on
 constants (`add`, `mul`, `frob`). The program is `reduceIds`; `reduceIds_eq` checks, by evaluation
-in the kernel, that it finds every node it asks for, that the words it gives are `outputs`, and
-that the value it requires nonzero is `nonzero`'s. So the graph holds the Rust verifier's
+in the kernel, that it finds every node it asks for and that the six PCS claims the contract checks
+declared (`claims`, resolved to their output words) are word for word the program's (`claimWords`: each
+claim's root, out-of-domain answer, point and value), and `checkId_eq` that the value it requires nonzero
+is `nonzero`'s. So the graph holds the Rust verifier's
 computation in the order of `reduce`, and `Semantics.lean` can read its values off this program.
 
 Nothing here is trusted: a node the program asks for and the graph lacks makes `reduceIds` `none`
@@ -69,11 +71,12 @@ def frob (a : Nat) : Option Nat :=
 
 /-! ## The transcript (`contract::Recorder`) -/
 
-/-- The leaves: the seed, the statement's halves, the roots' scalars, the challenges and the five
-values, as `reduce` reads them. -/
+/-- The leaves: the seed, the statement's halves, the challenges, the out-of-domain answers and the
+proof's other scalars, as `reduce` reads them. -/
 structure Leaves where
   one : Nat
   s : List Nat
+  oods : List Nat
   alpha : Nat
   beta : Nat
   gamma : Nat
@@ -81,36 +84,49 @@ structure Leaves where
   a : List Nat
   next : Nat
   rho : Nat
+  qv : Nat
+  gv : Nat
   deriving Repr, DecidableEq
 
-/-- The transcript as the recorder writes it: the witness root's two scalars, three challenges,
-the quotient root's, `t`, the five values, `ρ`. -/
+/-- The transcript as the recorder writes it: the witness table's commitment (its root's two
+scalars, its out-of-domain answer), three challenges, the commitments of `H`, `Q`, `G`, `t`, the four
+values and `next`, `ρ`; then `Q`'s and `G`'s values. -/
 def chain : Option Leaves := do
   let seed ← look .seed
   let one ← cnst 1
   let s ← [0, 1, 2, 3].mapM fun k => look (.statement k)
   let r0 ← look (.root 0)
   let r1 ← look (.root 1)
-  let st1 ← look (.hash seed [r0, r1])
+  let wo ← look (.input 0)
+  let st1 ← look (.hash seed [r0, r1, wo])
   let alpha ← look (.low st1)
   let st2 ← look (.hash st1 [])
   let beta ← look (.low st2)
   let st3 ← look (.hash st2 [])
   let gamma ← look (.low st3)
-  let q0 ← look (.root 2)
-  let q1 ← look (.root 3)
-  let st4 ← look (.hash st3 [q0, q1])
+  let h0 ← look (.root 2)
+  let h1 ← look (.root 3)
+  let ho ← look (.input 1)
+  let q0 ← look (.root 4)
+  let q1 ← look (.root 5)
+  let qo ← look (.input 2)
+  let g0 ← look (.root 6)
+  let g1 ← look (.root 7)
+  let go ← look (.input 3)
+  let st4 ← look (.hash st3 [h0, h1, ho, q0, q1, qo, g0, g1, go])
   let t ← look (.low st4)
-  let a ← [0, 1, 2, 3].mapM fun i => look (.input i)
-  let next ← look (.input 4)
+  let a ← [4, 5, 6, 7].mapM fun i => look (.input i)
+  let next ← look (.input 8)
   let st5 ← look (.hash st4 (a ++ [next]))
   let rho ← look (.low st5)
-  pure { one, s, alpha, beta, gamma, t, a, next, rho }
+  let qv ← look (.input 9)
+  let gv ← look (.input 10)
+  pure { one, s, oods := [wo, ho, qo, go], alpha, beta, gamma, t, a, next, rho, qv, gv }
 
 /-- The leaves of the graph. -/
 def leaves₀ : Leaves :=
-  { one := 1, s := [2, 3, 4, 5], alpha := 9, beta := 11, gamma := 13, t := 17,
-    a := [18, 19, 20, 21], next := 22, rho := 24 }
+  { one := 1, s := [2, 3, 4, 5], oods := [8, 17, 20, 23], alpha := 10, beta := 12, gamma := 14,
+    t := 25, a := [26, 27, 28, 29], next := 30, rho := 32, qv := 651, gv := 652 }
 
 set_option maxRecDepth 20000 in
 theorem chain_eq : chain = some leaves₀ := by decide +kernel
@@ -299,21 +315,47 @@ structure StageB where
   total : Nat
   deriving Repr, DecidableEq
 
-/-- `reduce`'s denominators and their prefix products: the value it requires nonzero. -/
+/-- `reduce`'s denominators (every `1 + w_k`, the copy identity's, the rows' polynomial, the product,
+`1 + ρ`) and their prefix products: the value it requires nonzero. -/
 def stageB (L : Leaves) (A : StageA) : Option StageB := do
   let ws ← mapO (fun k => add L.one (A.w.getD k 0)) (List.range (24 + 2))
   let cw ← add A.product (A.w.getD 24 0)
-  let dens := ws ++ [cw, A.rows]
+  let r1 ← add L.one L.rho
+  let dens := ws ++ [cw, A.rows, A.product, r1]
   let pre ← prefixes L.one dens
   pure { dens, pre, total := pre.getD dens.length 0 }
 
-/-- What `reduce` leaves, as indices: the claims' points then values, and the sum's value. -/
+/-- What `reduce` leaves, as indices: each claim's point and value. -/
 structure Out where
-  witness : List Nat
-  wiring : List Nat
-  quotient : List Nat
+  wPt : List Nat
+  wVal : Nat
+  fPt : List Nat
+  fVal : Nat
+  hPt : List Nat
+  hVal : Nat
+  qPt : List Nat
+  gPt : List Nat
   sum : Nat
   deriving Repr, DecidableEq
+
+/-- `quotient_parts`, on indices: the three parts' points, `Q`'s weight and `G`'s. -/
+def parts (L : Leaves) (point : List Nat) : Option (List Nat × List Nat × List Nat × Nat × Nat) := do
+  let m := 24
+  let low := point.take m
+  let at_ (k : Nat) : Nat := point.getD (m + k) 0
+  let (d0, d1, k0, k1, e0, e1) := (at_ 0, at_ 1, at_ 2, at_ 3, at_ 4, at_ 5)
+  let one := L.one
+  let ok1 ← add one k1
+  let qWeight ← mul k0 ok1
+  let od1 ← add one d1
+  let ok0 ← add one k0
+  let g1 ← mul od1 ok0
+  let g2 ← mul g1 k1
+  let oe0 ← add one e0
+  let g3 ← mul g2 oe0
+  let oe1 ← add one e1
+  let gWeight ← mul g3 oe1
+  pure (low ++ [d0, e0, e1], low ++ [d0, d1, e0, e1], low ++ [d0], qWeight, gWeight)
 
 /-- `reduce`'s one inversion, and the claims. -/
 def stageC (L : Leaves) (A : StageA) (B : StageB) : Option Out := do
@@ -327,6 +369,8 @@ def stageC (L : Leaves) (A : StageA) (B : StageB) : Option Out := do
   let u ← mapO (fun k => mul (w.getD k 0) (inverses.getD k 0)) (List.range (m + 2))
   let copyInverse := inverses.getD (m + 2) 0
   let rowsInverse := inverses.getD (m + 3) 0
+  let productInverse := inverses.getD (m + 4) 0
+  let rhoInverse := inverses.getD (m + 5) 0
   let middle ← foldO (fun acc k => mul acc (inverses.getD k 0)) (inverses.getD 2 0) (List.range' 3 (m - 3))
   let ws0 ← mul middle (inverses.getD 0 0)
   let wiringScale ← mul ws0 (inverses.getD 1 0)
@@ -353,9 +397,6 @@ def stageC (L : Leaves) (A : StageA) (B : StageB) : Option Out := do
   let i4 ← mul rho A.product
   let i5 ← mul i4 A.gate
   let identities ← add i3 i5
-  let wv0 ← mul opened middle
-  let witnessValue ← mul wv0 (inverses.getD m 0)
-  let wiringValue ← mul L.next wiringScale
   let wmc ← mul (w.getD m 0) copyInverse
   let cy0 ← cnst y0
   let cy1 ← cnst y1
@@ -363,12 +404,25 @@ def stageC (L : Leaves) (A : StageA) (B : StageB) : Option Out := do
   let qv1 ← mul qv0 copyInverse
   let qv2 ← mul qv1 rowsInverse
   let quotientValue ← mul qv2 identities
+  let (hPt, qPt, gPt, qWeight, gWeight) ← parts L (u ++ [wmc, rho, cy0, cy1])
+  let hi0 ← add one (w.getD (m + 1) 0)
+  let cw ← add A.product (w.getD m 0)
+  let hi1 ← mul hi0 cw
+  let hi2 ← mul hi1 productInverse
+  let hInverse ← mul hi2 rhoInverse
+  let hv0 ← mul qWeight L.qv
+  let hv1 ← add quotientValue hv0
+  let hv2 ← mul gWeight L.gv
+  let hv3 ← add hv1 hv2
+  let hVal ← mul hv3 hInverse
+  let wv0 ← mul opened middle
+  let wVal ← mul wv0 (inverses.getD m 0)
+  let fVal ← mul L.next wiringScale
   let sum ← mul sc A.target
   pure {
-    witness := [rho, rho2] ++ (u.drop 2).take (m - 1) ++ [witnessValue]
-    wiring := u.take m ++ [wiringValue]
-    quotient := u ++ [wmc, rho, cy0, cy1, quotientValue]
-    sum }
+    wPt := [rho, rho2] ++ (u.drop 2).take (m - 1), wVal
+    fPt := u.take m, fVal
+    hPt, hVal, qPt, gPt, sum }
 
 /-- **`reduce`, over the graph.** -/
 def reduceIds : Option Out := do
@@ -384,23 +438,33 @@ def checkId : Option Nat := do
   let B ← stageB L A
   pure B.total
 
-/-- The fixed point of the sum's claim (`protocol::sum_point`), as words: `[1; 24]`, `[0; 4]`, then
-`y0`, `y1`. -/
-def sumPointWords : List Nat := List.replicate 24 1 ++ List.replicate 4 0 ++ [y0, y1]
+/-- The fixed point of the sum's claim (`protocol::sum_point`), as words: `[1; 24]`, `0`, then `y0`,
+`y1`. -/
+def sumPointWords : List Nat := List.replicate 24 1 ++ [0, y0, y1]
 
-/-- The words the contract writes for its calls, from what `reduce` leaves (`quotient::build`):
-for each call, the root, the layout's id (`256 · table + log_rows`), the number of claims, then
-the claims. -/
-def wordsOf (o : Out) : List Word :=
-  [.calldata 64, .const (256 * 1 + 22), .const 1] ++ o.witness.map .node ++
-    [.storedRoot, .const (256 * 2 + 22), .const 1] ++ o.wiring.map .node ++
-    [.calldata 96, .const (256 * 3 + 22), .const 2] ++ o.quotient.map .node ++
-    sumPointWords.map .const ++ [.node o.sum]
+/-- **The words of the six claims** from what `reduce` leaves (`quotient::recorded`): each its root's
+word, its out-of-domain answer's, its point's and its value's; in the order of `Claims::all`, the roots
+of the witness table, `H`, `Q`, `G` the calldata's words at `64 + 32 k`, the circuit's commitment the
+stored one. -/
+def claimWords (L : Leaves) (o : Out) : List (Word × Word × List Word × Word) :=
+  [(.calldata 64, .node (L.oods.getD 0 0), o.wPt.map .node, .node o.wVal),
+   (.storedRoot, .storedOod, o.fPt.map .node, .node o.fVal),
+   (.calldata 96, .node (L.oods.getD 1 0), o.hPt.map .node, .node o.hVal),
+   (.calldata 128, .node (L.oods.getD 2 0), o.qPt.map .node, .node L.qv),
+   (.calldata 160, .node (L.oods.getD 3 0), o.gPt.map .node, .node L.gv),
+   (.calldata 96, .node (L.oods.getD 1 0), sumPointWords.map .const, .node o.sum)]
 
-/-- **The graph is `reduce`'s**: every node the program asks for is in the graph, the program
-gives the words the contract writes, and the value it requires nonzero is the product of the
-denominators. -/
-theorem reduceIds_eq : reduceIds.map wordsOf = some outputs := by
+/-- An output word by its index (`Word.const 0` past the end). -/
+def outAt (i : Nat) : Word := outputs.getD i (.const 0)
+
+/-- A claim of `Graph.lean`'s `claims`, its indices resolved to the output words. -/
+def resolve (c : Nat × Nat × List Nat × Nat) : Word × Word × List Word × Word :=
+  (outAt c.1, outAt c.2.1, c.2.2.1.map outAt, outAt c.2.2.2)
+
+/-- **The graph is `reduce`'s**: every node the program asks for is in the graph, and the claims the
+contract checks are, word for word, the program's. -/
+theorem reduceIds_eq : (do let L ← chain; let o ← reduceIds; pure (claimWords L o)) =
+    some (claims.map resolve) := by
   decide +kernel
 
 /-- The value it requires nonzero is the one the contract requires nonzero. -/

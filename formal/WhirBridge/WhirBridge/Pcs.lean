@@ -2,6 +2,7 @@
 import WhirBridge.PcsClaim
 import WhirBridge.PcsBinding
 import WhirBridge.PcsBindingRom
+import WhirBridge.PcsBindingCoords
 
 /-!
 # The EIP's PCS opening, version 1
@@ -21,7 +22,14 @@ random combination with leanVM's WHIR (deployed ladder, rate `1/2`).
   advance (`Q · C(L, 2) · n / 2^192`);
 * `PcsBindingRom.lean`: `ood_binding_rom`, the same with the lists extracted from the final
   Keccak-256 answers, the adversary holding Keccak-256, Keccak-f[1600] and the out-of-domain
-  oracle (`Q · C(L, 2) · n / 2^192 + Q (Q + 1) / 2^256`).
+  oracle (`Q · C(L, 2) · n / 2^192 + Q (Q + 1) / 2^256`);
+* `PcsBindingCoords.lean`: `ood_binding_coords`, the deployed point, coordinate `j` read off the
+  Keccak-256 answer at `oodInput n root j`, the adversary holding Keccak-256 and Keccak-f[1600] only
+  (`Q · C(L, 2) / 2^192 + Q (Q + 1) / 2^256`; `≤ Q · 2^-160 + Q (Q + 1) / 2^256` at version 1's
+  shapes, `ood_binding_coords_v1`).
+* `PcsOracle.lean` (imported by `WhirBridge.lean`): `pcs_sound_oracle`, `pcs_sound_any_oracle`, the
+  same bounds with the out-of-domain point computed by the verifier from Keccak-256, as deployed, the
+  random oracle split on the out-of-domain inputs.
 
 The headline theorems use only `propext`, `Classical.choice` and `Quot.sound`.
 -/
@@ -97,3 +105,31 @@ The headline theorems use only `propext`, `Classical.choice` and `Quot.sound`.
 /-- info: 'WhirBridge.Pcs.δood_le' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms WhirBridge.Pcs.δood_le
+
+/-- info: 'WhirBridge.Pcs.oodPointOf_total' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms WhirBridge.Pcs.oodPointOf_total
+
+/-- info: 'WhirBridge.Pcs.card_badVal' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms WhirBridge.Pcs.card_badVal
+
+/-- info: 'WhirBridge.Pcs.card_coordOf_mem' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms WhirBridge.Pcs.card_coordOf_mem
+
+/-- info: 'WhirBridge.Pcs.ood_binding_coords' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms WhirBridge.Pcs.ood_binding_coords
+
+/-- info: 'WhirBridge.Pcs.δc_le' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms WhirBridge.Pcs.δc_le
+
+/-- info: 'WhirBridge.Pcs.δc_27' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms WhirBridge.Pcs.δc_27
+
+/-- info: 'WhirBridge.Pcs.ood_binding_coords_v1' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms WhirBridge.Pcs.ood_binding_coords_v1

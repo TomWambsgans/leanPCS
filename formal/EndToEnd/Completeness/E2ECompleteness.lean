@@ -1,160 +1,101 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
-import E2ECompleteness.Chain
-import E2ECompleteness.Transfer
+-- Library root of the membership proof's completeness on the EIP's PCS claims (`E2ECompleteness.Pcs*`), built on
+-- the shared layers `Chain`, `Transfer`, `Regular`, `Grinding`, `End` (leanerVM `mumbai` 6175f1a0, MIT OR Apache-2.0).
 import E2ECompleteness.Regular
-import E2ECompleteness.End
-import E2ECompleteness.WithHash
-import E2ECompleteness.Experiment
-import E2ECompleteness.Staging
-import E2ECompleteness.HashLen
-import E2ECompleteness.Assemble
-import E2ECompleteness.Duplex
-import E2ECompleteness.Grinding
-import E2ECompleteness.Final
-import E2ECompleteness.Closed
-import E2ECompleteness.Cost
-import E2ECompleteness.Done
-import E2ECompleteness.NoneProb
+import E2ECompleteness.Transfer
+import E2ECompleteness.PcsDone
 
 /-!
-# `PcsQuotient.Completeness`, end to end
+# `PcsQuotient.Completeness`, end to end, on the PCS claims
 
-The completeness statement of `formal/Statement` (`PcsQuotient.Completeness δ`: the setup, uniform
-coins, the honest `prover` and the `verifier`, in one random permutation) proved from the proof
-layers, with an explicit `δ`:
+The completeness statement of `formal/Statement` (`PcsQuotient.Completeness δ`: the setup, uniform coins, the
+honest `prover` (four commitments with out-of-domain answers, `H`, `Q`, `G`, sixteen random rows, the blinding of
+`h`, six one-point claims, one opening a claim) and the `verifier`, in one random permutation) with an explicit `δ`:
 
-* `Chain.lean`: the reduction's challenges `(α, β, t)` in the two-call random-oracle model, fresh
-  by their lengths (`prEvent_staged_le`: in a set `Bad` with probability at most
-  `|Bad| / 2^576 + 2 / 2^256`);
-* `Transfer.lean`: the random permutation is two random oracles to an honest computation following
-  the duplex discipline, up to `N² / 2^508` (`rpm_le_rom`, from mumbai's indifferentiability);
-* `End.lean`: `completeness_of_staged`, `PcsQuotient.Completeness` at
-  `(17 · 2^24 + 8) / 2^192 + 2 / 2^256 + εpow + N² / 2^508`, the degenerate challenges those of
-  `formal/Completeness` (`completeness_deployed_concrete`), given the staged form of the
-  experiment (`Staged.Holds`); `completeness_deployed`, at `N = 2^48`, `εpow = 3 · 2^-277`,
-  `δ < 2^-162` (`deltaDeployed_lt`).
+* `PcsWithHash`, `PcsExperiment`, `PcsStaging`: the Statement's prover and verifier at functions `H`, `F`, and the
+  experiment staged by the four challenges `(α, β, t, ρ)` (`completenessExperiment_eq_expH`, `expH_eq_staged`);
+* `PcsChain`: the four challenges in the two-call random-oracle model, fresh by their lengths (`prEvent_staged4_le`);
+* `Transfer`, `PcsDuplex`, `PcsCost`, `PcsHashLen`: the random permutation is two random oracles up to
+  `N² / 2^508` (`rpm_le_rom`), the run following the duplex discipline (`duplexVm_stagedRun`) with at most `2^48`
+  blocks (`hcost_deployed`);
+* `PcsBad`, `PcsGrinding`, `PcsEnd`: the degenerate challenges (`badP4_fraction_le`, `(19 · 2^24 + 31) / 2^192`),
+  the six openings' grinding (`rejectGood_of_tail`, `2^-304`), `completeness_of_staged4`, `deltaPcs_lt`;
+* `PcsHonest`, `PcsTable`, `PcsTables`, `PcsCoset`, `PcsCells`, `PcsQuotient`, `PcsQuotientTable`, `PcsCircuit`,
+  `PcsValues`, `PcsStatement`, `PcsClaims`: the honest parts are F1's blinded honest second message
+  (`quotientsOfTable_honest`) and the six claims are true (`honestClaims`); `PcsAccept`, `PcsOpening`: accepted;
+* `PcsDone`: **`completeness_end`**, `PcsQuotient.Completeness deltaPcs` with no hypothesis, `deltaPcs < 2^-163`.
 
-* `Regular.lean`: the transcript's challenge (`challengeOf`, the digest's bytes `8 … 31` read
-  big-endian) has at most `2^64` digests per value (`challengeOf_regular`).
-* `Grinding.lean`: the grinding at non-degenerate challenges, `RejectGood (3 · 2^-277)`
-  (`rejectGood_deployed`), from the block count and the Prover bridge, by mumbai's proof-of-work
-  potential over the whole run's log;
-* `Final.lean`: **`completeness_deployed_final`**, `PcsQuotient.Completeness deltaDeployed` with
-  `deltaDeployed < 2^-162`.
-
-* The Prover bridge (`Prover*.lean`): the Statement's honest prover is accepted at non-degenerate
-  challenges. `ProverDefs`, `ProverRun`: the prover's computations named, the prover at functions
-  `H`, `F`; `ProverOpening`: its WHIR opening makes mumbai's honest opening's moves and is accepted
-  (`corr_openingScript`, `openingAccepts_layouts`); `ProverStack`: its hidden stacks make the stack
-  claims true; `ProverTables`, `ProverQuotient*`: its NTT and coset tables are `formal/Completeness`'s;
-  `ProverValues`, `ProverClaims`, `ProverStatement`: its values, claims and target are Completeness's;
-  `ProverAccept`: `accept_core`, `reduce_honest`; `ProverStaged`, `ProverBridge`: on the staged run,
-  `acc_staged`, `red_staged`; `ProverConstants`, `ProverFacts`, `ProverTablesMatch`: the constants,
-  the claims and the tables discharged.
-* `ProverCircuit.lean`: the membership circuit's cells and wiring are F0b's (`circuitMatch`).
-* `Closed.lean`: **`completeness_deployed_closed`**, `PcsQuotient.Completeness deltaDeployed` with
-  `deltaDeployed < 2^-162`, from the block count alone.
-
-* `NoneProb.lean`: **`hnone_deployed`**, the hypothesis `hnone` of the zero-knowledge end theorem
-  (`zeroKnowledge_deployed_whir`, `ZK/ProverBridge.lean`): for every coins, the Statement's honest
-  prover makes no proof with probability at most `deltaNone < 2^-162` (the prover alone, staged:
-  the degenerate challenges, the grinding, the transfer from the random permutation).
-
-* `Cost.lean`: **`hcost_deployed`**, the block count of the deployed staged run (`2^48`,
-  `Common.QueryCostAtMost … hashBlocks`; the count is `114 098 677 826 653 < 2^47`).
-* `Done.lean`: **`completeness_end`**, `PcsQuotient.Completeness deltaDeployed` with no hypothesis.
-
-Nothing stays a hypothesis. See the completeness section of `formal/README.md`.
+See the completeness section of `formal/README.md`.
 -/
 
 /-- info: 'E2ECompleteness.challengeOf_regular' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms E2ECompleteness.challengeOf_regular
 
-/-- info: 'E2ECompleteness.prEvent_staged_le' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms E2ECompleteness.prEvent_staged_le
-
 /-- info: 'E2ECompleteness.rpm_le_rom' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms E2ECompleteness.rpm_le_rom
 
-/-- info: 'E2ECompleteness.badSet_density' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'E2ECompleteness.Pcs.prEvent_staged4_le' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms E2ECompleteness.badSet_density
+#print axioms E2ECompleteness.Pcs.prEvent_staged4_le
 
-/-- info: 'E2ECompleteness.completeness_of_staged' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'E2ECompleteness.Pcs.completenessExperiment_eq_expH' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms E2ECompleteness.completeness_of_staged
+#print axioms E2ECompleteness.Pcs.completenessExperiment_eq_expH
 
-/-- info: 'E2ECompleteness.deltaDeployed_lt' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'E2ECompleteness.Pcs.expH_eq_staged' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms E2ECompleteness.deltaDeployed_lt
+#print axioms E2ECompleteness.Pcs.expH_eq_staged
 
-/-- info: 'E2ECompleteness.completeness_deployed' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'E2ECompleteness.Pcs.duplexVm_stagedRun' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms E2ECompleteness.completeness_deployed
+#print axioms E2ECompleteness.Pcs.duplexVm_stagedRun
 
-/-- info: 'E2ECompleteness.completenessExperiment_eq_expH' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'E2ECompleteness.Pcs.hcost_deployed' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms E2ECompleteness.completenessExperiment_eq_expH
+#print axioms E2ECompleteness.Pcs.hcost_deployed
 
-/-- info: 'E2ECompleteness.expH_eq_staged' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'E2ECompleteness.Pcs.badP4_fraction_le' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms E2ECompleteness.expH_eq_staged
+#print axioms E2ECompleteness.Pcs.badP4_fraction_le
 
-/-- info: 'E2ECompleteness.completeness_deployed_staged' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'E2ECompleteness.Pcs.badSet_density' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms E2ECompleteness.completeness_deployed_staged
+#print axioms E2ECompleteness.Pcs.badSet_density
 
-/-- info: 'E2ECompleteness.duplexVm_stagedRun' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'E2ECompleteness.Pcs.rejectGood_of_tail' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms E2ECompleteness.duplexVm_stagedRun
+#print axioms E2ECompleteness.Pcs.rejectGood_of_tail
 
-/-- info: 'E2ECompleteness.completeness_deployed_cost_rej' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'E2ECompleteness.Pcs.completeness_of_staged4' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms E2ECompleteness.completeness_deployed_cost_rej
+#print axioms E2ECompleteness.Pcs.completeness_of_staged4
 
-/-- info: 'E2ECompleteness.acc_staged' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'E2ECompleteness.Pcs.deltaPcs_lt' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms E2ECompleteness.acc_staged
+#print axioms E2ECompleteness.Pcs.deltaPcs_lt
 
-/-- info: 'E2ECompleteness.red_staged' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'E2ECompleteness.Pcs.tailReduces' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms E2ECompleteness.red_staged
+#print axioms E2ECompleteness.Pcs.tailReduces
 
-/-- info: 'E2ECompleteness.constants' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'E2ECompleteness.Pcs.tailAccepts' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms E2ECompleteness.constants
+#print axioms E2ECompleteness.Pcs.tailAccepts
 
-/-- info: 'E2ECompleteness.claimsMatch' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'E2ECompleteness.Pcs.quotientsOfTable_honest' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms E2ECompleteness.claimsMatch
+#print axioms E2ECompleteness.Pcs.quotientsOfTable_honest
 
-/-- info: 'E2ECompleteness.tablesMatch' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'E2ECompleteness.Pcs.honestClaims' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms E2ECompleteness.tablesMatch
+#print axioms E2ECompleteness.Pcs.honestClaims
 
-/-- info: 'E2ECompleteness.openingAccepts' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'E2ECompleteness.Pcs.completeness_of_honestClaims' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms E2ECompleteness.openingAccepts
-
-/-- info: 'E2ECompleteness.completeness_deployed_of_circuit' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms E2ECompleteness.completeness_deployed_of_circuit
-
-/-- info: 'E2ECompleteness.circuitMatch' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms E2ECompleteness.circuitMatch
-
-/-- info: 'E2ECompleteness.completeness_deployed_closed' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms E2ECompleteness.completeness_deployed_closed
+#print axioms E2ECompleteness.Pcs.completeness_of_honestClaims
 
 /-- info: 'E2ECompleteness.completeness_end' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms E2ECompleteness.completeness_end
-
-/-- info: 'E2ECompleteness.hnone_deployed' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms E2ECompleteness.hnone_deployed

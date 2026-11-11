@@ -1,7 +1,6 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 import Implementation.Program
 import Implementation.Field
-import QuotientSecurity.Cantor
 
 /-!
 # What each node computes
@@ -22,7 +21,7 @@ set_option linter.unusedSectionVars false
 
 namespace Implementation
 
-open Program Emitted QuotientSecurity
+open Program Emitted
 
 /-! ## The values, node by node -/
 
@@ -85,114 +84,115 @@ theorem getD_of_getElem? {k : Nat} {n : Node} (h : nodes[k]? = some n) : nodes.g
 
 section Values
 
-variable (H : List UInt8 → Vector UInt8 32) (idx cd : List UInt8)
+variable (e : Env)
 
-theorem values_eq : values H idx cd = go (step H idx cd) #[] nodes := rfl
+theorem values_eq : values e = go (step e) #[] nodes := rfl
 
 /-- A node's value is the interpreter's step on the values before it. -/
 theorem values_getD {k : Nat} {n : Node} (h : nodes[k]? = some n) :
-    (values H idx cd).getD k 0 = step H idx cd (go (step H idx cd) #[] (nodes.take k)) n := by
+    (values e).getD k 0 = step e (go (step e) #[] (nodes.take k)) n := by
   obtain ⟨hk, e⟩ := List.getElem?_eq_some_iff.mp h
   rw [values_eq, go_getD _ _ _ hk, e]
 
 theorem prefix_getD {k a : Nat} {n : Node} (h : nodes[k]? = some n) (ha : a ∈ operands n) :
-    (go (step H idx cd) #[] (nodes.take k)).getD a 0 = (values H idx cd).getD a 0 := by
+    (go (step e) #[] (nodes.take k)).getD a 0 = (values e).getD a 0 := by
   obtain ⟨hk, -⟩ := List.getElem?_eq_some_iff.mp h
   have hwf := nodes_wf k hk a (by rw [getD_of_getElem? h]; exact ha)
   exact go_getD_prefix _ _ _ _ hwf hk.le
 
 theorem values_add {k a b : Nat} (h : nodes[k]? = some (.add a b)) :
-    (values H idx cd).getD k 0 = (values H idx cd).getD a 0 ^^^ (values H idx cd).getD b 0 := by
-  rw [values_getD H idx cd h]
+    (values e).getD k 0 = (values e).getD a 0 ^^^ (values e).getD b 0 := by
+  rw [values_getD e h]
   simp only [step]
-  rw [prefix_getD H idx cd h (by simp [operands]), prefix_getD H idx cd h (by simp [operands])]
+  rw [prefix_getD e h (by simp [operands]), prefix_getD e h (by simp [operands])]
 
 theorem values_mul {k a b : Nat} (h : nodes[k]? = some (.mul a b)) :
-    (values H idx cd).getD k 0 = mulE ((values H idx cd).getD a 0) ((values H idx cd).getD b 0) := by
-  rw [values_getD H idx cd h]
+    (values e).getD k 0 = mulE ((values e).getD a 0) ((values e).getD b 0) := by
+  rw [values_getD e h]
   simp only [step]
-  rw [prefix_getD H idx cd h (by simp [operands]), prefix_getD H idx cd h (by simp [operands])]
+  rw [prefix_getD e h (by simp [operands]), prefix_getD e h (by simp [operands])]
 
 theorem values_frob {k a : Nat} (h : nodes[k]? = some (.frob a)) :
-    (values H idx cd).getD k 0 = frobE ((values H idx cd).getD a 0) := by
-  rw [values_getD H idx cd h]
+    (values e).getD k 0 = frobE ((values e).getD a 0) := by
+  rw [values_getD e h]
   simp only [step]
-  rw [prefix_getD H idx cd h (by simp [operands])]
+  rw [prefix_getD e h (by simp [operands])]
 
 theorem values_const {k c : Nat} (h : nodes[k]? = some (.const c)) :
-    (values H idx cd).getD k 0 = c := by
-  rw [values_getD H idx cd h]
+    (values e).getD k 0 = c := by
+  rw [values_getD e h]
   rfl
 
 theorem values_low {k a : Nat} (h : nodes[k]? = some (.low a)) :
-    (values H idx cd).getD k 0 = (values H idx cd).getD a 0 % B192 := by
-  rw [values_getD H idx cd h]
+    (values e).getD k 0 = (values e).getD a 0 % B192 := by
+  rw [values_getD e h]
   simp only [step]
-  rw [prefix_getD H idx cd h (by simp [operands])]
+  rw [prefix_getD e h (by simp [operands])]
 
 theorem values_hash {k st : Nat} {xs : List Nat} (h : nodes[k]? = some (.hash st xs)) :
-    (values H idx cd).getD k 0 = beNat (H (beBytes 32 ((values H idx cd).getD st 0) ++
-      xs.flatMap fun x => beBytes 32 ((values H idx cd).getD x 0))).toList := by
-  rw [values_getD H idx cd h]
+    (values e).getD k 0 = beNat (e.H (beBytes 32 ((values e).getD st 0) ++
+      xs.flatMap fun x => beBytes 32 ((values e).getD x 0))).toList := by
+  rw [values_getD e h]
   simp only [step]
-  have e : (xs.flatMap fun x => beBytes 32 ((go (step H idx cd) #[] (nodes.take k)).getD x 0)) =
-      xs.flatMap fun x => beBytes 32 ((values H idx cd).getD x 0) :=
-    List.flatMap_congr fun x hx => by rw [prefix_getD H idx cd h (by simp [operands, hx])]
-  rw [prefix_getD H idx cd h (by simp [operands]), e]
+  have he : (xs.flatMap fun x => beBytes 32 ((go (step e) #[] (nodes.take k)).getD x 0)) =
+      xs.flatMap fun x => beBytes 32 ((values e).getD x 0) :=
+    List.flatMap_congr fun x hx => by rw [prefix_getD e h (by simp [operands, hx])]
+  rw [prefix_getD e h (by simp [operands]), he]
 
 theorem values_seed {k : Nat} (h : nodes[k]? = some .seed) :
-    (values H idx cd).getD k 0 = beNat (H (bytesOf name ++ idx ++ (cd.drop 4).take 64)).toList := by
-  rw [values_getD H idx cd h]
+    (values e).getD k 0 =
+      beNat (e.H (bytesOf name ++ e.idx ++ (beBytes 32 e.ood).drop 8 ++ (e.cd.drop 4).take 64)).toList := by
+  rw [values_getD e h]
   rfl
 
 theorem values_statement {k j : Nat} (h : nodes[k]? = some (.statement j)) :
-    (values H idx cd).getD k 0 = half (cdWord cd (4 + 32 * (j / 2))) j := by
-  rw [values_getD H idx cd h]
+    (values e).getD k 0 = half (cdWord e.cd (4 + 32 * (j / 2))) j := by
+  rw [values_getD e h]
   rfl
 
 theorem values_root {k j : Nat} (h : nodes[k]? = some (.root j)) :
-    (values H idx cd).getD k 0 = half (cdWord cd (4 + 64 + 32 * (j / 2))) j := by
-  rw [values_getD H idx cd h]
+    (values e).getD k 0 = half (cdWord e.cd (4 + 64 + 32 * (j / 2))) j := by
+  rw [values_getD e h]
   rfl
 
 theorem values_input {k i : Nat} (h : nodes[k]? = some (.input i)) :
-    (values H idx cd).getD k 0 = cdWord cd (4 + 128 + 24 * i) >>> 64 := by
-  rw [values_getD H idx cd h]
+    (values e).getD k 0 = cdWord e.cd (4 + 192 + 24 * i) >>> 64 := by
+  rw [values_getD e h]
   rfl
 
 end Values
 
 /-! ## In the field -/
 
-variable {F : Type} [Field F] [CharP F 2] {limbs : F ≃ QuotientRpm.Limbs}
-variable (limbs) (H : List UInt8 → Vector UInt8 32) (idx cd : List UInt8)
+variable {F : Type} [Field F] [CharP F 2] {limbs : F ≃ Limbs}
+variable (limbs) (e : Env)
 
 /-- **The element node `k` stands for.** -/
-def val (k : Nat) : F := elem limbs ((values H idx cd).getD k 0)
+def val (k : Nat) : F := elem limbs ((values e).getD k 0)
 
-variable {limbs H idx cd}
+variable {limbs e}
 
 /-- The Frobenius is `x^(2^64)` on numbers (`elem_frobE`, `Field.lean`). -/
-def FrobOK (limbs : F ≃ QuotientRpm.Limbs) : Prop := ∀ x, elem limbs (frobE x) = elem limbs x ^ 2 ^ 64
+def FrobOK (limbs : F ≃ Limbs) : Prop := ∀ x, elem limbs (frobE x) = elem limbs x ^ 2 ^ 64
 
 variable (hF : IsF192 limbs)
 include hF
 
 theorem val_add {k a b : Nat} (h : nodes[k]? = some (.add a b)) :
-    val limbs H idx cd k = val limbs H idx cd a + val limbs H idx cd b := by
-  simp only [val, values_add H idx cd h, elem_xor hF]
+    val limbs e k = val limbs e a + val limbs e b := by
+  simp only [val, values_add e h, elem_xor hF]
 
 theorem val_mul {k a b : Nat} (h : nodes[k]? = some (.mul a b)) :
-    val limbs H idx cd k = val limbs H idx cd a * val limbs H idx cd b := by
-  simp only [val, values_mul H idx cd h, elem_mulE hF]
+    val limbs e k = val limbs e a * val limbs e b := by
+  simp only [val, values_mul e h, elem_mulE hF]
 
-theorem val_const {k c : Nat} (h : nodes[k]? = some (.const c)) : val limbs H idx cd k = elem limbs c := by
-  simp only [val, values_const H idx cd h]
+theorem val_const {k c : Nat} (h : nodes[k]? = some (.const c)) : val limbs e k = elem limbs c := by
+  simp only [val, values_const e h]
 
 omit hF in
 theorem val_frob (hfr : FrobOK limbs) {k a : Nat} (h : nodes[k]? = some (.frob a)) :
-    val limbs H idx cd k = val limbs H idx cd a ^ 2 ^ 64 := by
-  simp only [val, values_frob H idx cd h]
+    val limbs e k = val limbs e a ^ 2 ^ 64 := by
+  simp only [val, values_frob e h]
   exact hfr _
 
 /-! ## The operations of `Program.lean` -/
@@ -244,14 +244,14 @@ omit hF in
 theorem Spec.some {α : Type} {a : α} {Q : α → Prop} (h : Q a) : Spec (some a) Q := by
   intro b hb; cases hb; exact h
 
-theorem cnst_spec (c : Nat) : Spec (cnst c) fun k => val limbs H idx cd k = elem limbs c :=
+theorem cnst_spec (c : Nat) : Spec (cnst c) fun k => val limbs e k = elem limbs c :=
   fun _ h => val_const hF (look_spec h)
 
-theorem constAt_val {a c : Nat} (h : constAt a = some c) : val limbs H idx cd a = elem limbs c :=
+theorem constAt_val {a c : Nat} (h : constAt a = some c) : val limbs e a = elem limbs c :=
   val_const hF (constAt_spec h)
 
 theorem add_spec (a b : Nat) :
-    Spec (Program.add a b) fun k => val limbs H idx cd k = val limbs H idx cd a + val limbs H idx cd b := by
+    Spec (Program.add a b) fun k => val limbs e k = val limbs e a + val limbs e b := by
   intro k h
   unfold Program.add at h
   rcases hx : constAt a with _ | x <;> rcases hy : constAt b with _ | y <;>
@@ -279,11 +279,11 @@ theorem add_spec (a b : Nat) :
   · rw [cnst_spec hF _ k h, constAt_val hF hx, constAt_val hF hy, elem_xor hF]
 
 theorem mul_spec (a b : Nat) :
-    Spec (Program.mul a b) fun k => val limbs H idx cd k = val limbs H idx cd a * val limbs H idx cd b := by
+    Spec (Program.mul a b) fun k => val limbs e k = val limbs e a * val limbs e b := by
   intro k h
   unfold Program.mul at h
   have hlook : look (.mul (min a b) (max a b)) = some k →
-      val limbs H idx cd k = val limbs H idx cd a * val limbs H idx cd b := fun h => by
+      val limbs e k = val limbs e a * val limbs e b := fun h => by
     rw [val_mul hF (look_spec h)]
     rcases le_total a b with hle | hle
     · rw [min_eq_left hle, max_eq_right hle]
@@ -302,7 +302,7 @@ theorem mul_spec (a b : Nat) :
   · rw [cnst_spec hF _ k h, constAt_val hF hx, constAt_val hF hy, elem_mulE hF]
 
 theorem frob_spec (hfr : FrobOK limbs) (a : Nat) :
-    Spec (Program.frob a) fun k => val limbs H idx cd k = val limbs H idx cd a ^ 2 ^ 64 := by
+    Spec (Program.frob a) fun k => val limbs e k = val limbs e a ^ 2 ^ 64 := by
   intro k h
   unfold Program.frob at h
   split at h

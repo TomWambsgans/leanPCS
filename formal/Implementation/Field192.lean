@@ -1,18 +1,17 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
-import Implementation.Model
+import Implementation.Frobenius
 import Field.F192
 import Field.Sampleable
 
 /-!
 # `mulE` is `F192`'s product: F5 on the concrete field
 
-F5's end theorems (`graph_is_verifier`, `graph_words`, `graph_reaches_iff`) hold for any field `F`
+The graph's semantics (`Semantics.lean`, `Blocks.lean`) hold for any field `F`
 with limbs `IsF192`: `XOR` is `+`, `mulE` (`FIELD_MUL`, the Lean transcription of
 `crates/primitives`' `software::clmul` and `reduce`) is `*`, one is `(1, 0, 0)`. Here the field is
 F0c's `Primitives.F192` (CompPoly's `BF64.Ext3`, leanerVM mumbai's `E`) with its Rust limbs
-`(c0, c1, c2)` (`limbsEquiv`), and `isF192_primitives` proves those three facts, so the end
-theorems hold of it with no field hypothesis (`graph_is_verifier_F192`, `graph_words_F192`,
-`graph_reaches_iff_F192`).
+`(c0, c1, c2)` (`limbsEquiv`), and `isF192_primitives` proves those three facts, so they hold of
+it with no field hypothesis.
 
 The core is the 64-bit product. A number is read as the polynomial over `GF(2)` of its bits
 (`natPoly`; CompPoly's `toPoly` of a bit vector is `natPoly` of its value, `toPoly_eq_natPoly`).
@@ -39,9 +38,7 @@ set_option linter.unusedSectionVars false
 
 namespace Implementation
 
-open Polynomial BinaryField QuotientRpm QuotientSecurity Program Emitted
-
-local notation "SQ" => QuotientSecurity.sq
+open Polynomial BinaryField
 
 /-! ## Numbers as polynomials over `GF(2)` -/
 
@@ -389,70 +386,5 @@ theorem isF192_primitives : IsF192 limbsEquiv where
     show ((1 : Primitives.F192).c0, (1 : Primitives.F192).c1, (1 : Primitives.F192).c2) = (1, 0, 0)
     rw [Primitives.F192.one_eq_new, Primitives.F192.c0_new, Primitives.F192.c1_new,
       Primitives.F192.c2_new]
-
-/-! ## F5 on `Primitives.F192` -/
-
-variable (σ : Equiv.Perm (Fin (22 + 2) → Bool)) (H : List UInt8 → Vector UInt8 32) (idx : Bytes32)
-
-/-- **F5 on `Primitives.F192`**: `graph_is_verifier` with the field of `crates/primitives`
-(CompPoly's `BF64.Ext3`) and its Rust limbs, no field hypothesis left. On the calldata of a model
-proof `π`, with tables `cW`, `cQ` whose polynomials are `π`'s messages and a wiring table `cF` of
-`σ`: the contract reaches its checks of declared claims with claims that hold of `cW`, `cF`, `cQ` exactly
-when no `1 + w_k(t)` vanishes and the model's verifier with the deployed `Wire` accepts `π`. -/
-theorem graph_is_verifier_F192
-    (π : ChainProof (params isF192_primitives σ) (bounds isF192_primitives σ))
-    (cW : (Fin (22 + 1 + 1 + 1) → Bool) → Primitives.F192)
-    (cF : (Fin (22 + 2) → Bool) → Primitives.F192)
-    (hcF : ∀ x, (tablePoly cF).eval ((basis isF192_primitives).point x) =
-      (basis isF192_primitives).point (σ x))
-    (cQ : (Fin (22 + 2 + 1 + 1 + 1 + 1 + 1 + 1) → Bool) → Primitives.F192)
-    (hg : π.g.1 = witnessOfTable cW) (hR : π.R.1 = quotientsOfTable (yConst limbsEquiv) cQ) :
-    let I := proofVals isF192_primitives σ H idx π
-    ((run H idx (calldataOf limbsEquiv π.stmt (H (encW isF192_primitives σ π.g))
-        (H (encQ isF192_primitives σ π.R)) [π.v.1 0, π.v.1 1, π.v.1 2, π.v.1 3, π.v.2])).isSome ∧
-      (mle cW (Fin.cons I.ρ (Fin.cons (I.ρ ^ 2) (claimPoint 2 (22 + 1) I.t)))
-          = (∑ j, Params.opening I.ρ j * I.a j) / claimScale 2 (22 + 1) I.t ∧
-        mle cF (claimPoint 0 (22 + 2) I.t) = I.next / claimScale 0 (22 + 2) I.t ∧
-        mle cQ (Fin.snoc (Fin.snoc (Fin.snoc (Fin.snoc (claimPoint 0 (22 + 2 + 1 + 1) I.t)
-            ((params isF192_primitives σ).vCells.eval I.t /
-              (params isF192_primitives σ).claimDen I.α I.β I.t I.a I.next)) I.ρ)
-              (yConst limbsEquiv / (1 + yConst limbsEquiv)))
-              (yConst limbsEquiv ^ 2 / (1 + yConst limbsEquiv ^ 2)))
-          = (params isF192_primitives σ).claimValue I.α I.β I.γ I.t I.ρ I.a I.next /
-              ((1 + yConst limbsEquiv) * (1 + yConst limbsEquiv ^ 2)) /
-            claimScale 0 (22 + 2 + 1 + 1) I.t ∧
-        mle cQ (sumPoint (22 + 2) (yConst limbsEquiv)) =
-          (params isF192_primitives σ).target ![I.s 0, I.s 1, I.s 2, I.s 3, 1, 0, 0, 0] I.γ /
-            ((1 + yConst limbsEquiv) * (1 + yConst limbsEquiv ^ 2)))) ↔
-      ((∀ i : Fin (22 + 2 + 1 + 1), 1 + SQ^[(i : ℕ)] I.t ≠ 0) ∧
-        (wire isF192_primitives σ idx).verifyWith (m := Id) H π = true) :=
-  graph_is_verifier isF192_primitives σ H idx π cW cF hcF cQ hg hR
-
-/-- **F5 on `Primitives.F192`, the words**: when the contract reaches its checks, it checks
-the model's claims declared (`graph_words`, no field hypothesis left). -/
-theorem graph_words_F192 (sb : Vector UInt8 64) (r₁ r₂ : Bytes32)
-    (x0 x1 x2 x3 x4 : Primitives.F192) (ws : List Nat)
-    (h : run H idx (calldataOf limbsEquiv sb r₁ r₂ [x0, x1, x2, x3, x4]) = some ws) :
-    let I := modelVals H idx sb r₁ r₂ limbsEquiv x0 x1 x2 x3 x4
-    ∃ wW wF wQ s, ws = [rootWord r₁.toList, 256 * 1 + 22, 1] ++ wW ++
-        [rootWord idx.toList, 256 * 2 + 22, 1] ++ wF ++
-        [rootWord r₂.toList, 256 * 3 + 22, 2] ++ wQ ++ sumPointWords ++ [s] ∧
-      wW.map (elem limbsEquiv) = modelWitness I.t I.ρ I.a ∧
-      wF.map (elem limbsEquiv) = modelWiring I.t I.next ∧
-      wQ.map (elem limbsEquiv) = modelQuotient (params isF192_primitives σ) I.α I.β I.γ I.t I.ρ
-        I.next (yConst limbsEquiv) I.a ∧
-      sumPointWords.map (elem limbsEquiv) = List.ofFn (sumPoint (22 + 2) (yConst limbsEquiv)) ∧
-      elem limbsEquiv s =
-        (params isF192_primitives σ).target ![I.s 0, I.s 1, I.s 2, I.s 3, 1, 0, 0, 0] I.γ /
-          ((1 + yConst limbsEquiv) * (1 + yConst limbsEquiv ^ 2)) :=
-  graph_words isF192_primitives σ H idx sb r₁ r₂ x0 x1 x2 x3 x4 ws h
-
-/-- **F5 on `Primitives.F192`, reaching the calls**: exactly when the product of the denominators
-is not zero (`graph_reaches_iff`, no field hypothesis left). -/
-theorem graph_reaches_iff_F192 (sb : Vector UInt8 64) (r₁ r₂ : Bytes32)
-    (x0 x1 x2 x3 x4 : Primitives.F192) :
-    (run H idx (calldataOf limbsEquiv sb r₁ r₂ [x0, x1, x2, x3, x4])).isSome ↔
-      Formula.check limbsEquiv (modelVals H idx sb r₁ r₂ limbsEquiv x0 x1 x2 x3 x4) ≠ 0 :=
-  graph_reaches_iff isF192_primitives H idx sb r₁ r₂ x0 x1 x2 x3 x4
 
 end Implementation

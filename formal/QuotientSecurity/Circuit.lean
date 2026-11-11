@@ -1,5 +1,5 @@
 -- Adapted from leanVM (https://github.com/leanEthereum/leanVM), branch PCS-openings-aggregation, commit 651453c6,
--- file formal/quotient/QuotientSecurity/Circuit.lean. MIT OR Apache-2.0; see AGENTS.md.
+-- file formal/quotient/QuotientSecurity/Circuit.lean (random rows added here). MIT OR Apache-2.0; see AGENTS.md.
 import QuotientSecurity.Protocol
 
 /-!
@@ -12,6 +12,12 @@ and it holds a bit; every other row reads constants or rows of lower rank, and t
 to bits. So the rows' outputs are bits, determined by the input bits, whatever field the cells
 live in, and a satisfying assignment is the circuit's computation on some input bits, and nothing
 else.
+
+**Random rows.** The deployed circuit's last `16` rows are *random rows* (`quotient::circuit`'s
+`RANDOM_ROWS`): `X` reads the row's own output, `Y` one, `C` zero, so the gate `V = V + 0 + 0` holds
+for any value of `V`, which the honest prover draws at random. No other row reads them. A
+`ChiCircuit` names them (`isRandom`); the relation then pins every other row, and says nothing of
+the random rows' outputs.
 -/
 
 set_option linter.unusedSectionVars false
@@ -66,16 +72,29 @@ inductive Src (ρ : Type*)
   | row (r : ρ)
 
 /-- A circuit of χ gates with no loop: a row is an input, which reads its own output in its three
-input cells, or it reads constants and rows of lower rank (`quotient::circuit`'s `Builder`). -/
+input cells, or a random row, which reads its own output in `X`, the one in `Y` and the zero in `C`,
+or it reads constants and rows of lower rank that are not random rows (`quotient::circuit`'s
+`Builder` and `finish`). -/
 structure ChiCircuit (ρ : Type*) where
   x : ρ → Src ρ
   y : ρ → Src ρ
   c : ρ → Src ρ
   rank : ρ → ℕ
   isInput : ρ → Prop
+  isRandom : ρ → Prop
   hInput : ∀ r, isInput r → x r = .row r ∧ y r = .row r ∧ c r = .row r
-  hOrder : ∀ r, ¬ isInput r → ∀ r', (x r = .row r' ∨ y r = .row r' ∨ c r = .row r') →
-    rank r' < rank r
+  hRandom : ∀ r, isRandom r → x r = .row r ∧ y r = .one ∧ c r = .zero
+  hOrder : ∀ r, ¬ isInput r → ¬ isRandom r → ∀ r', (x r = .row r' ∨ y r = .row r' ∨ c r = .row r') →
+    rank r' < rank r ∧ ¬ isRandom r'
+
+/-- A row other than an input or a random row reads rows of lower rank that are not random. -/
+theorem ChiCircuit.reads {ρ : Type*} (C : ChiCircuit ρ) {r : ρ} (hi : ¬ C.isInput r)
+    (hr : ¬ C.isRandom r) (s : Src ρ)
+    (hs : s = C.x r ∨ s = C.y r ∨ s = C.c r) :
+    ∀ r', s = .row r' → C.rank r' < C.rank r ∧ ¬ C.isRandom r' := by
+  intro r' h
+  subst h
+  exact C.hOrder r hi hr r' (by rcases hs with h | h | h <;> simp [h])
 
 variable {ρ : Type*}
 
@@ -91,11 +110,11 @@ def ChiCircuit.Satisfies (C : ChiCircuit ρ) (v : ρ → F) : Prop :=
 
 /-- **A satisfying assignment is the circuit's computation.** Two assignments of the rows'
 outputs, in any field of characteristic 2, that satisfy every gate and agree on the inputs agree
-everywhere, and every output is a bit. -/
+at every row but the random rows, and every such output is a bit. -/
 theorem ChiCircuit.determined (C : ChiCircuit ρ) (v v' : ρ → F)
     (hv : C.Satisfies v) (hv' : C.Satisfies v') (hin : ∀ r, C.isInput r → v r = v' r) :
-    ∀ r, v r = v' r ∧ IsBit (v r) := by
-  intro r
+    ∀ r, ¬ C.isRandom r → v r = v' r ∧ IsBit (v r) := by
+  intro r hr
   induction hn : C.rank r using Nat.strong_induction_on generalizing r with
   | _ n ih =>
     by_cases hi : C.isInput r
@@ -103,16 +122,16 @@ theorem ChiCircuit.determined (C : ChiCircuit ρ) (v v' : ρ → F)
       have h := hv r
       rw [hx, hy, hc] at h
       exact ⟨hin r hi, input_is_bit (v := v r) h⟩
-    · have hsrc : ∀ s : Src ρ, (∀ r', s = .row r' → C.rank r' < C.rank r) →
+    · have hsrc : ∀ s : Src ρ, (∀ r', s = .row r' → C.rank r' < C.rank r ∧ ¬ C.isRandom r') →
           s.val v = s.val v' ∧ IsBit (s.val v) := by
         intro s hs
         cases s with
         | zero => exact ⟨rfl, Or.inl rfl⟩
         | one => exact ⟨rfl, Or.inr rfl⟩
-        | row r' => exact ih (C.rank r') (hn ▸ hs r' rfl) r' rfl
-      obtain ⟨ex, mx⟩ := hsrc (C.x r) fun r' h => C.hOrder r hi r' (Or.inl h)
-      obtain ⟨ey, my⟩ := hsrc (C.y r) fun r' h => C.hOrder r hi r' (Or.inr (Or.inl h))
-      obtain ⟨ec, mc⟩ := hsrc (C.c r) fun r' h => C.hOrder r hi r' (Or.inr (Or.inr h))
+        | row r' => exact ih (C.rank r') (hn ▸ (hs r' rfl).1) r' (hs r' rfl).2 rfl
+      obtain ⟨ex, mx⟩ := hsrc (C.x r) (C.reads hi hr _ (Or.inl rfl))
+      obtain ⟨ey, my⟩ := hsrc (C.y r) (C.reads hi hr _ (Or.inr (Or.inl rfl)))
+      obtain ⟨ec, mc⟩ := hsrc (C.c r) (C.reads hi hr _ (Or.inr (Or.inr rfl)))
       obtain ⟨e1, m1⟩ := gate_output mx my mc (hv r)
       have h' := hv' r
       rw [← ex, ← ey, ← ec] at h'
@@ -177,7 +196,7 @@ theorem satisfies_of_cells (C : ChiCircuit P.T) (zeroCell oneCell : P.T × Fin 4
 
 /-- **The relation pins the computation.** Two assignments of the cells that satisfy the gates
 and the copies of a wired loop-free circuit, with the zero and the one pinned, and that agree on
-the input rows, have the same output at every row, a bit. -/
+the input rows, have the same output at every row but the random rows, a bit. -/
 theorem cells_determined (C : ChiCircuit P.T) (zeroCell oneCell : P.T × Fin 4)
     (hwire : ∀ x : P.T, Wired P zeroCell oneCell (x, 0) (C.x x) ∧
       Wired P zeroCell oneCell (x, 1) (C.y x) ∧ Wired P zeroCell oneCell (x, 2) (C.c x))
@@ -187,11 +206,11 @@ theorem cells_determined (C : ChiCircuit P.T) (zeroCell oneCell : P.T × Fin 4)
     (hcopy : ∀ i, w (P.σ i) = w i) (hcopy' : ∀ i, w' (P.σ i) = w' i)
     (hzero : w zeroCell = 0) (hone : w oneCell = 1)
     (hzero' : w' zeroCell = 0) (hone' : w' oneCell = 1)
-    (hin : ∀ r, C.isInput r → w (r, 3) = w' (r, 3)) (x : P.T) :
+    (hin : ∀ r, C.isInput r → w (r, 3) = w' (r, 3)) (x : P.T) (hx : ¬ C.isRandom x) :
     w (x, 3) = w' (x, 3) ∧ IsBit (w (x, 3)) :=
   C.determined _ _
     (satisfies_of_cells P C zeroCell oneCell hwire w hgate hcopy hzero hone)
-    (satisfies_of_cells P C zeroCell oneCell hwire w' hgate' hcopy' hzero' hone') hin x
+    (satisfies_of_cells P C zeroCell oneCell hwire w' hgate' hcopy' hzero' hone') hin x hx
 
 end OnCells
 

@@ -16,7 +16,7 @@ the zero and `4 · 256` (bit 0 of word 4) for the one.
 
 namespace PcsCircuit
 
-attribute [local irreducible] runB IsRow Below Valid membership
+attribute [local irreducible] runB IsRow Below Valid membership IsRandom
 
 /-- The cell whose cycle carries what a cell reads. -/
 def anchorN : Src → Nat
@@ -49,8 +49,12 @@ theorem membership_hsrc : ∀ r < membership.rows.size,
   by_cases hin : r ∈ membership.inputs
   · obtain ⟨-, -, hrow⟩ := membership_input_row r hin
     rw [hrow]; show 2 + r < 2 ^ logRows + 2 ∧ 2 + r < 2 ^ logRows + 2 ∧ 2 + r < 2 ^ logRows + 2; omega
-  · obtain ⟨hx, hy, hc⟩ := membership_order r hr hin
-    exact ⟨ranked_slot hx, ranked_slot hy, ranked_slot hc⟩
+  · by_cases hrand : IsRandom r
+    · rw [membership_random_row r hrand]
+      show 2 + r < 2 ^ logRows + 2 ∧ 1 < 2 ^ logRows + 2 ∧ 0 < 2 ^ logRows + 2
+      omega
+    · obtain ⟨hx, hy, hc⟩ := membership_order r hr hin hrand
+      exact ⟨ranked_slot hx, ranked_slot hy, ranked_slot hc⟩
 
 theorem membership_sigma_perm :
     (∀ c < 4 * 2 ^ logRows, membership.sigma.getD c 0 < 4 * 2 ^ logRows) ∧

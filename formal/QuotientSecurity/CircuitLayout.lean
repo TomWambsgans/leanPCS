@@ -51,29 +51,40 @@ def chiBits (x y c : Bool) : Bool := xor x (c && !y)
 
 /-- **`v` is a computation of `C`**: every row's bit is the gate on the bits it reads. An input
 row reads its own output three times, and `chiBits v v v = v`: its bit is free, and
-`bits_determined` shows the input bits fix every other. -/
+`bits_determined` shows the input bits fix every other but the random rows' (a random row reads
+its own output, the one and the zero, and `chiBits v 1 0 = v`: its bit is free too, and no other
+row reads it). -/
 def ChiCircuit.SatisfiesBits (C : ChiCircuit ρ) (v : ρ → Bool) : Prop :=
   ∀ r, v r = chiBits ((C.x r).bval v) ((C.y r).bval v) ((C.c r).bval v)
 
-/-- **A loop-free circuit's computation is fixed by its input bits.** -/
+/-- **A loop-free circuit's computation is fixed by its input bits**, at every row but the random
+rows. -/
 theorem ChiCircuit.bits_determined (C : ChiCircuit ρ) (v v' : ρ → Bool)
     (hv : C.SatisfiesBits v) (hv' : C.SatisfiesBits v') (hin : ∀ r, C.isInput r → v r = v' r) :
-    v = v' := by
-  funext r
+    ∀ r, ¬ C.isRandom r → v r = v' r := by
+  intro r hr
   induction hn : C.rank r using Nat.strong_induction_on generalizing r with
   | _ n ih =>
     by_cases hi : C.isInput r
     · exact hin r hi
-    · have hsrc : ∀ s : Src ρ, (∀ r', s = .row r' → C.rank r' < C.rank r) →
+    · have hsrc : ∀ s : Src ρ, (∀ r', s = .row r' → C.rank r' < C.rank r ∧ ¬ C.isRandom r') →
           s.bval v = s.bval v' := by
         intro s hs
         cases s with
         | zero => rfl
         | one => rfl
-        | row r' => exact ih _ (hn ▸ hs r' rfl) r' rfl
-      rw [hv r, hv' r, hsrc (C.x r) fun r' h => C.hOrder r hi r' (Or.inl h),
-        hsrc (C.y r) fun r' h => C.hOrder r hi r' (Or.inr (Or.inl h)),
-        hsrc (C.c r) fun r' h => C.hOrder r hi r' (Or.inr (Or.inr h))]
+        | row r' => exact ih _ (hn ▸ (hs r' rfl).1) r' (hs r' rfl).2 rfl
+      rw [hv r, hv' r, hsrc (C.x r) (C.reads hi hr _ (Or.inl rfl)),
+        hsrc (C.y r) (C.reads hi hr _ (Or.inr (Or.inl rfl))),
+        hsrc (C.c r) (C.reads hi hr _ (Or.inr (Or.inr rfl)))]
+
+/-- A random row's gate holds for any bit: `chiBits v 1 0 = v`. -/
+theorem ChiCircuit.satisfiesBits_random (C : ChiCircuit ρ) (v : ρ → Bool) {r : ρ}
+    (hr : C.isRandom r) : v r = chiBits ((C.x r).bval v) ((C.y r).bval v) ((C.c r).bval v) := by
+  obtain ⟨hx, hy, hc⟩ := C.hRandom r hr
+  rw [hx, hy, hc]
+  show v r = chiBits (v r) true false
+  cases v r <;> rfl
 
 /-- A source with its row renamed. -/
 def Src.map (e : ρ → ρ') : Src ρ → Src ρ'
@@ -97,11 +108,15 @@ def ChiCircuit.map (e : ρ ≃ ρ') (C : ChiCircuit ρ) : ChiCircuit ρ' where
   c t := (C.c (e.symm t)).map e
   rank t := C.rank (e.symm t)
   isInput t := C.isInput (e.symm t)
+  isRandom t := C.isRandom (e.symm t)
   hInput t h := by
     obtain ⟨hx, hy, hc⟩ := C.hInput _ h
     simp [hx, hy, hc, Src.map]
-  hOrder t h t' hs := by
-    refine C.hOrder _ h _ ?_
+  hRandom t h := by
+    obtain ⟨hx, hy, hc⟩ := C.hRandom _ h
+    simp [hx, hy, hc, Src.map]
+  hOrder t h hr t' hs := by
+    refine C.hOrder _ h hr _ ?_
     rcases hs with hs | hs | hs
     · exact Or.inl (Src.map_eq_row e _ _ hs)
     · exact Or.inr (Or.inl (Src.map_eq_row e _ _ hs))
@@ -118,6 +133,9 @@ theorem ChiCircuit.map_c (e : ρ ≃ ρ') (C : ChiCircuit ρ) (r : ρ) :
 
 theorem ChiCircuit.map_isInput (e : ρ ≃ ρ') (C : ChiCircuit ρ) (r : ρ) :
     (C.map e).isInput (e r) ↔ C.isInput r := by simp [ChiCircuit.map]
+
+theorem ChiCircuit.map_isRandom (e : ρ ≃ ρ') (C : ChiCircuit ρ) (r : ρ) :
+    (C.map e).isRandom (e r) ↔ C.isRandom r := by simp [ChiCircuit.map]
 
 variable {F : Type*} [Field F] [CharP F 2]
 
@@ -649,7 +667,8 @@ lower rank), its rows are numbered as in `quotient::circuit`, and:
   reads, or the constant's anchor, `zeroCell` (bit 0 of word 5) or `oneCell` (bit 0 of word 4);
 * `word5`: the 128 bits of public word 5 read the zero, so they are all on the zero's cycle;
 * `word4_one`, `word4`: bit 0 of public word 4 reads the one (the one's anchor reads the one) and
-  its other 127 bits the zero.
+  its other 127 bits the zero;
+* `pubRows`: the public rows are not random rows (so their cells read rows the relation pins).
 
 What soundness does not need, and Rust also tests, is what makes an honest proof exist: the zero
 and one cycles distinct, no `V` cell on them, a cycle being exactly a source and its readers, the
@@ -660,6 +679,24 @@ structure Laid (σ : Equiv.Perm (Fin (22 + 2) → Bool)) (C : ChiCircuit (Fin (2
   word5 : ∀ j, C.pubSrc 5 j = .zero
   word4_one : C.pubSrc 4 0 = .one
   word4 : ∀ j, j ≠ 0 → C.pubSrc 4 j = .zero
+  pubRows : ∀ J j, ¬ C.isRandom (pubRow J j)
+
+/-- **A public row reads no random row**: it is an input (reading itself) or reads rows that are
+not random rows. -/
+theorem ChiCircuit.pubSrc_not_random (C : ChiCircuit (Fin (2 ^ 22))) (J : Fin 8) (j : Fin 128)
+    (hJ : ¬ C.isRandom (pubRow J j)) (r' : Fin (2 ^ 22)) (h : C.pubSrc J j = .row r') :
+    ¬ C.isRandom r' := by
+  have hs : C.pubSrc J j = C.x (pubRow J j) ∨ C.pubSrc J j = C.y (pubRow J j) ∨
+      C.pubSrc J j = C.c (pubRow J j) := by
+    unfold ChiCircuit.pubSrc; split_ifs
+    · exact Or.inl rfl
+    · exact Or.inr (Or.inl rfl)
+  by_cases hi : C.isInput (pubRow J j)
+  · obtain ⟨hx, hy, hc⟩ := C.hInput _ hi
+    rw [hx, hy, hc, h] at hs
+    have e : r' = pubRow J j := by rcases hs with hs | hs | hs <;> exact Src.row.inj hs
+    rw [e]; exact hJ
+  · exact (C.reads hi hJ _ hs r' h).2
 
 /-- The cell of bit `j` of public word `J` is on the cycle of what it reads. -/
 theorem Laid.reads_pub {σ : Equiv.Perm (Fin (22 + 2) → Bool)} {C : ChiCircuit (Fin (2 ^ 22))}
@@ -672,11 +709,12 @@ theorem Laid.reads_pub {σ : Equiv.Perm (Fin (22 + 2) → Bool)} {C : ChiCircuit
 variable {F : Type*} [Field F] [CharP F 2]
 
 /-- **The cells `w` hold `C`'s computation `v`**: `v` satisfies every gate of `C` on bits (so it is
-`C`'s computation on its input bits, `bits_determined`), each `X`, `Y`, `C` cell holds the bit
-it reads and each `V` cell its row's bit. -/
+`C`'s computation on its input bits off the random rows, `bits_determined`), and off the random
+rows each `X`, `Y`, `C` cell holds the bit it reads and each `V` cell its row's bit. (A random row's
+cells are unconstrained: the honest prover fills its `X` and `V` cells with a random value.) -/
 def ChiCircuit.Computes (C : ChiCircuit (Fin (2 ^ 22))) (w : (Fin (22 + 2) → Bool) → F)
     (v : Fin (2 ^ 22) → Bool) : Prop :=
-  C.SatisfiesBits v ∧ ∀ r, w (rowCell r 0) = bitF ((C.x r).bval v) ∧
+  C.SatisfiesBits v ∧ ∀ r, ¬ C.isRandom r → w (rowCell r 0) = bitF ((C.x r).bval v) ∧
     w (rowCell r 1) = bitF ((C.y r).bval v) ∧ w (rowCell r 2) = bitF ((C.c r).bval v) ∧
     w (rowCell r 3) = bitF (v r)
 

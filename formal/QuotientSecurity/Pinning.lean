@@ -147,7 +147,8 @@ theorem cells_determined (C : ChiCircuit (Fin (2 ^ 22)))
     (hcopy : ∀ z, w (I.wiring z) = w z) (hcopy' : ∀ z, w' (I.wiring z) = w' z)
     (hzero : w zeroCell = 0) (hone : w oneCell = 1)
     (hzero' : w' zeroCell = 0) (hone' : w' oneCell = 1)
-    (hin : ∀ r, C.isInput r → w (rowCell r 3) = w' (rowCell r 3)) (r : Fin (2 ^ 22)) :
+    (hin : ∀ r, C.isInput r → w (rowCell r 3) = w' (rowCell r 3)) (r : Fin (2 ^ 22))
+    (hr : ¬ C.isRandom r) :
     w (rowCell r 3) = w' (rowCell r 3) ∧ IsBit (w (rowCell r 3)) := by
   have hpull : ∀ (W : (Fin (22 + 2) → Bool) → F) (r : Fin (2 ^ 22)) (k : Fin 4),
       W (I.cellEquiv.symm (I.rowEquivT r, k)) = W (rowCell r k) := fun W r k => by
@@ -191,7 +192,7 @@ theorem cells_determined (C : ChiCircuit (Fin (2 ^ 22)))
     (I.cellEquiv zeroCell) (I.cellEquiv oneCell) hwire (fun i => w (I.cellEquiv.symm i))
     (fun i => w' (I.cellEquiv.symm i)) (hg w hgate) (hg w' hgate') (hc w hcopy) (hc w' hcopy')
     (by simpa using hzero) (by simpa using hone) (by simpa using hzero') (by simpa using hone')
-    hin' (I.rowEquivT r)
+    hin' (I.rowEquivT r) (fun h => hr ((C.map_isRandom _ r).mp h))
   beta_reduce at h
   rw [hpull w, hpull w'] at h
   exact h
@@ -200,8 +201,9 @@ theorem cells_determined (C : ChiCircuit (Fin (2 ^ 22)))
 
 /-- **Cells satisfying the relation hold `C`'s computation.** For an instance whose wiring lays
 `C` and whose weights are `coordinate_weight`'s (with `x ≠ 1`, `Y ≠ 1`), and a statement whose
-words 4 and 5 are 1 and 0: cells that satisfy the relation hold a computation of `C` on bits, and
-every public word of the statement is that computation's. -/
+words 4 and 5 are 1 and 0: cells that satisfy the relation hold a computation of `C` on bits (off
+the random rows, whose cells are unconstrained), and every public word of the statement is that
+computation's. -/
 theorem proves_of_relation (C : ChiCircuit (Fin (2 ^ 22))) {x Y : F} (hx : x ≠ 1) (hY : Y ≠ 1)
     (hc : I.c = coordWeight x Y) (hC : Laid I.wiring C) (stmt : Fin 8 → F)
     (h4 : stmt 4 = 1) (h5 : stmt 5 = 0) (w : (Fin (22 + 2) → Bool) → F)
@@ -211,25 +213,43 @@ theorem proves_of_relation (C : ChiCircuit (Fin (2 ^ 22))) {x Y : F} (hx : x ≠
   rw [hc] at hword
   have hzero := zero_pinned hC hx hY w hcopy ((hword 5).trans h5)
   have hone := one_pinned hC x Y w hcopy hzero ((hword 4).trans h4)
-  have hbit : ∀ r, IsBit (w (rowCell r 3)) := fun r =>
+  have hbit : ∀ r, ¬ C.isRandom r → IsBit (w (rowCell r 3)) := fun r hr =>
     (I.cells_determined C hC.reads w w hgate hgate hcopy hcopy hzero hone hzero hone
-      (fun _ _ => rfl) r).2
+      (fun _ _ => rfl) r hr).2
   let v : Fin (2 ^ 22) → Bool := fun r => decide (w (rowCell r 3) = 1)
-  have hv : ∀ r, w (rowCell r 3) = bitF (v r) := fun r => eq_bitF_of_isBit (hbit r)
-  have hval : ∀ s : Src (Fin (2 ^ 22)), (s.val fun r => w (rowCell r 3)) = bitF (s.bval v) := by
-    intro s
-    rw [show (fun r => w (rowCell r 3)) = fun r => bitF (v r) from funext hv]
-    exact Src.val_bitF v s
+  have hv : ∀ r, ¬ C.isRandom r → w (rowCell r 3) = bitF (v r) := fun r hr =>
+    eq_bitF_of_isBit (hbit r hr)
+  have hval : ∀ s : Src (Fin (2 ^ 22)), (∀ r', s = .row r' → ¬ C.isRandom r') →
+      (s.val fun r => w (rowCell r 3)) = bitF (s.bval v) := by
+    intro s hs
+    cases s with
+    | zero => rfl
+    | one => rfl
+    | row r' => exact hv r' (hs r' rfl)
   have hread : ∀ {cell : Fin (22 + 2) → Bool} {s : Src (Fin (2 ^ 22))},
-      Reads I.wiring cell s → w cell = bitF (s.bval v) := fun h =>
-    (reads_val hcopy hzero hone h).trans (hval _)
-  have hcells : ∀ r, w (rowCell r 0) = bitF ((C.x r).bval v) ∧
+      (∀ r', s = .row r' → ¬ C.isRandom r') →
+      Reads I.wiring cell s → w cell = bitF (s.bval v) := fun hs h =>
+    (reads_val hcopy hzero hone h).trans (hval _ hs)
+  have hcells : ∀ r, ¬ C.isRandom r → w (rowCell r 0) = bitF ((C.x r).bval v) ∧
       w (rowCell r 1) = bitF ((C.y r).bval v) ∧ w (rowCell r 2) = bitF ((C.c r).bval v) ∧
-      w (rowCell r 3) = bitF (v r) := fun r =>
-    ⟨hread (hC.reads r).1, hread (hC.reads r).2.1, hread (hC.reads r).2.2, hv r⟩
+      w (rowCell r 3) = bitF (v r) := by
+    intro r hr
+    have hs : ∀ s : Src (Fin (2 ^ 22)), (s = C.x r ∨ s = C.y r ∨ s = C.c r) →
+        ∀ r', s = .row r' → ¬ C.isRandom r' := by
+      intro s hs' r' h
+      by_cases hi : C.isInput r
+      · obtain ⟨hx, hy, hc⟩ := C.hInput r hi
+        rw [hx, hy, hc, h] at hs'
+        have e : r' = r := by rcases hs' with hs' | hs' | hs' <;> exact Src.row.inj hs'
+        rw [e]; exact hr
+      · exact (C.reads hi hr s hs' r' h).2
+    exact ⟨hread (hs _ (Or.inl rfl)) (hC.reads r).1, hread (hs _ (Or.inr (Or.inl rfl))) (hC.reads r).2.1,
+      hread (hs _ (Or.inr (Or.inr rfl))) (hC.reads r).2.2, hv r hr⟩
   refine ⟨v, ⟨fun r => ?_, hcells⟩, fun J => ?_⟩
-  · have h := hgate (rowBits r)
-    obtain ⟨h0, h1, h2, h3⟩ := hcells r
+  · by_cases hr : C.isRandom r
+    · exact C.satisfiesBits_random v hr
+    have h := hgate (rowBits r)
+    obtain ⟨h0, h1, h2, h3⟩ := hcells r hr
     change gate (w (rowCell r 0)) (w (rowCell r 1)) (w (rowCell r 2)) (w (rowCell r 3)) = 0 at h
     rw [h0, h1, h2, h3] at h
     exact (gate_bitF _ _ _ _).mp h
@@ -237,7 +257,8 @@ theorem proves_of_relation (C : ChiCircuit (Fin (2 ^ 22))) {x Y : F} (hx : x ≠
     rw [← hword J, sum_regionWeight _ (coordWeight_one x Y)]
     unfold ChiCircuit.pubWord
     refine sum_congr rfl fun j _ => ?_
-    rw [regionWeight_coordWeight, hread (hC.reads_pub J j)]
+    rw [regionWeight_coordWeight,
+      hread (C.pubSrc_not_random J j (hC.pubRows J j)) (hC.reads_pub J j)]
     rfl
 
 /-- **For the statement `(y, root)`**: cells satisfying the relation for its eight words prove it
@@ -376,9 +397,11 @@ theorem cellSrc_anchor (C : ChiCircuit (Fin (2 ^ 22))) (h5 : C.pubSrc 5 0 = .zer
   | one => exact (C.cellSrc_pubCell 4 0).trans h4
   | row r => exact C.cellSrc_rowCell r 3
 
-/-- **`wiringOf C` lays `C`**, when word 5 reads the zero and word 4 the one then zeros. -/
+/-- **`wiringOf C` lays `C`**, when word 5 reads the zero and word 4 the one then zeros, and the
+public rows are not random rows. -/
 theorem laid_wiringOf (C : ChiCircuit (Fin (2 ^ 22))) (h5 : ∀ j, C.pubSrc 5 j = .zero)
-    (h4one : C.pubSrc 4 0 = .one) (h4 : ∀ j, j ≠ 0 → C.pubSrc 4 j = .zero) :
+    (h4one : C.pubSrc 4 0 = .one) (h4 : ∀ j, j ≠ 0 → C.pubSrc 4 j = .zero)
+    (hpub : ∀ J j, ¬ C.isRandom (pubRow J j)) :
     Laid (wiringOf C) C where
   reads r := by
     have hr : ∀ k : Fin 4, Reads (wiringOf C) (rowCell r k) (C.srcOf r k) := fun k =>
@@ -387,6 +410,7 @@ theorem laid_wiringOf (C : ChiCircuit (Fin (2 ^ 22))) (h5 : ∀ j, C.pubSrc 5 j 
   word5 := h5
   word4_one := h4one
   word4 := h4
+  pubRows := hpub
 
 variable {F : Type} [Field F] [DecidableEq F] [CharP F 2]
 
@@ -397,7 +421,7 @@ noncomputable def ChiCircuit.cellsOfBits (C : ChiCircuit (Fin (2 ^ 22))) (v : Fi
 
 theorem ChiCircuit.cellsOfBits_computes (C : ChiCircuit (Fin (2 ^ 22))) (v : Fin (2 ^ 22) → Bool)
     (hv : C.SatisfiesBits v) : C.Computes (C.cellsOfBits v : (Fin (22 + 2) → Bool) → F) v :=
-  ⟨hv, fun r => by simp only [ChiCircuit.cellsOfBits, ChiCircuit.cellSrc_rowCell]; exact ⟨rfl, rfl, rfl, rfl⟩⟩
+  ⟨hv, fun r _ => by simp only [ChiCircuit.cellsOfBits, ChiCircuit.cellSrc_rowCell]; exact ⟨rfl, rfl, rfl, rfl⟩⟩
 
 /-- A word whose 128 bits read the zero is 0. -/
 theorem ChiCircuit.pubWord_zero (C : ChiCircuit (Fin (2 ^ 22))) (x Y : F) (v : Fin (2 ^ 22) → Bool)

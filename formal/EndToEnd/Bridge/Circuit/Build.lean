@@ -163,6 +163,8 @@ def finishRowsQ (logRows : ℕ) (public_ : List (List PcsQuotient.Src)) (b : Pcs
     if r.val < PcsQuotient.publicRows then
       let (word, pair_) := (r.val / (PcsQuotient.wordBits / 2), r.val % (PcsQuotient.wordBits / 2))
       ⟨bit word (2 * pair_), bit word (2 * pair_ + 1), .zero⟩
+    else if b.rows.size ≤ r.val ∧ 2 ^ logRows - PcsQuotient.randomRows ≤ r.val then
+      PcsQuotient.randomRow r.val
     else b.rows.getD r.val PcsQuotient.idle
 
 theorem finish_eq (logRows : ℕ) (public_ : List (List PcsQuotient.Src)) (b : PcsQuotient.Builder) :
@@ -197,7 +199,12 @@ theorem finish_rows (logRows : ℕ) (y root : List PcsQuotient.Src) (b : PcsQuot
     · simp only [h4, if_false]
       split_ifs <;> rfl
   · rw [if_neg (hpr ▸ hr), if_neg hr]
-    simp only [bTr_rows, Array.getD_eq_getD_getElem?, Array.getElem?_map]
-    cases b.rows[r]? <;> rfl
+    have hrr : PcsQuotient.randomRows = PcsCircuit.randomRows := rfl
+    have hsz : (bTr b).rows.size = b.rows.size := by simp
+    rw [hsz, hrr]
+    split_ifs
+    · rfl
+    · simp only [bTr_rows, Array.getD_eq_getD_getElem?, Array.getElem?_map]
+      cases b.rows[r]? <;> rfl
 
 end Bridge.Circuit

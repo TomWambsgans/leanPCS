@@ -24,6 +24,8 @@ end theorems are instantiated with it, with the deployed σ, `coordinate_weight`
   public bits are the statement's (`deployedAssign_publicBits`: F0b's `membership_public`, the
   bits of a computation holding a secret, applied to this one); words 4 to 7 are laid as
   `finish` lays them (`deployed_word4_one`, …);
+* **the random rows** (`deployed_isRandom_iff`: the last `16`), whose `X` and `V` cells may hold any
+  values (`honest_relation_deployed_random`);
 * **the wiring** (`deployedSigma_keeps`): the deployed σ (`membership.sigma`, the Rust's, the one
   soundness's `soundness_membership_deployed_concrete` takes) keeps what each cell carries
   (`deployedSigma_cellSrc`), so the honest cells satisfy the relation on it;
@@ -164,6 +166,7 @@ noncomputable def deployedMembership : MembershipCircuit where
   word5 := deployed_word5
   word6 := deployed_word6
   word7 := deployed_word7
+  pubRows J j := toChi_pubRows _ _ J j
 
 /-- **The deployed σ keeps what the deployed circuit's cells carry.** -/
 theorem deployedSigma_keeps : WiringKeeps deployedSigma deployedMembership.C :=
@@ -193,6 +196,34 @@ theorem honest_relation_deployed (s : Secret) :
     deployedInstanceE.Relation (statementWords F192.G F192.Y s.statement.y s.statement.root)
       (deployed.cellsOfBits (deployedAssign s.toPcs)) :=
   honest_relation deployedMembership deployedInstanceE rfl deployedSigma_keeps s
+
+/-- **The deployed circuit's random rows are its last `16`**: rows `2^22 − 16 … 2^22 − 1`, past
+the `3,878,612` rows built (`membership_usedRows_le`). -/
+theorem deployed_isRandom_iff (r : Fin (2 ^ 22)) :
+    deployed.isRandom r ↔ 2 ^ 22 - PcsCircuit.randomRows ≤ (r : ℕ) := by
+  have hu := PcsCircuit.membership_usedRows_le
+  have hr := r.isLt
+  show PcsCircuit.IsRandomRow PcsCircuit.logRows PcsCircuit.membership.usedRows r ↔ _
+  unfold PcsCircuit.IsRandomRow
+  simp only [PcsCircuit.logRows, PcsCircuit.randomRows, Nat.reducePow, Nat.reduceSub] at hu hr ⊢
+  omega
+
+/-- **The honest cells satisfy the relation on the deployed instance, the random rows' `X` and `V`
+cells holding any values** (`randomizeCells`: the honest prover's fresh values): the cells of the
+honest assignment of a secret, but the `X` and `V` cells of each random row `r` (the last `16`,
+`deployed_isRandom_iff`) set to `rnd r`, for every `rnd`. -/
+theorem honest_relation_deployed_random (s : Secret) (rnd : Fin (2 ^ 22) → E) :
+    deployedInstanceE.Relation (statementWords F192.G F192.Y s.statement.y s.statement.root)
+      (deployed.cellsRandomized (deployedAssign s.toPcs) rnd) :=
+  honest_relation_random deployedMembership deployedInstanceE rfl deployedSigma_keeps s rnd
+
+/-- **The same for any instance** with the deployed σ and `coordinate_weight`'s weights. -/
+theorem honest_relation_deployed_random' {F : Type} [Field F] [DecidableEq F] [CharP F 2]
+    (I : Instance F) {x Y : F} (hc : I.c = coordWeight x Y) (hw : I.wiring = deployedSigma)
+    (s : Secret) (rnd : Fin (2 ^ 22) → F) :
+    I.Relation (statementWords x Y s.statement.y s.statement.root)
+      (deployed.cellsRandomized (deployedAssign s.toPcs) rnd) :=
+  honest_relation_random deployedMembership I hc (hw ▸ deployedSigma_keeps) s rnd
 
 open Classical in
 /-- **End-to-end completeness for any Cantor basis of `K`**: `completeness_end_bad_set` on

@@ -190,7 +190,7 @@ theorem slot_lt_of_ranked {rk : ℕ} {s : PcsCircuit.Src} (h : PcsCircuit.Ranked
   | row r => simp only [PcsCircuit.Ranked] at h; simp only [PcsCircuit.slot]; omega
 
 /-- Every source of `membership` reads a slot below `2^22 + 2`: a constant or a row of the
-circuit (F0b's `membership_input_row`, `membership_order`). -/
+circuit (F0b's `membership_input_row`, `membership_random_row`, `membership_order`). -/
 theorem membership_slots (r : ℕ) (hr : r < 2 ^ PcsCircuit.logRows) :
     PcsCircuit.slot (PcsCircuit.membership.rows.getD r .idle).x < 2 ^ PcsCircuit.logRows + 2 ∧
       PcsCircuit.slot (PcsCircuit.membership.rows.getD r .idle).y < 2 ^ PcsCircuit.logRows + 2 ∧
@@ -201,8 +201,13 @@ theorem membership_slots (r : ℕ) (hr : r < 2 ^ PcsCircuit.logRows) :
     show 2 + r < 2 ^ PcsCircuit.logRows + 2 ∧ 2 + r < 2 ^ PcsCircuit.logRows + 2 ∧
       2 + r < 2 ^ PcsCircuit.logRows + 2
     omega
-  · obtain ⟨hx, hy, hc⟩ := PcsCircuit.membership_order r hr hin
-    exact ⟨slot_lt_of_ranked hx, slot_lt_of_ranked hy, slot_lt_of_ranked hc⟩
+  · by_cases hrand : PcsCircuit.IsRandom r
+    · rw [PcsCircuit.membership_random_row r hrand]
+      show 2 + r < 2 ^ PcsCircuit.logRows + 2 ∧ 1 < 2 ^ PcsCircuit.logRows + 2 ∧
+        0 < 2 ^ PcsCircuit.logRows + 2
+      omega
+    · obtain ⟨hx, hy, hc⟩ := PcsCircuit.membership_order r hr hin hrand
+      exact ⟨slot_lt_of_ranked hx, slot_lt_of_ranked hy, slot_lt_of_ranked hc⟩
 
 /-- **σ**: the statement's wiring of `membership 22` is F0b's. -/
 theorem membership_sigma : (PcsQuotient.membership 22).sigma = PcsCircuit.membership.sigma := by
@@ -218,5 +223,27 @@ theorem membership_eq : circuitTr (PcsQuotient.membership 22) = PcsCircuit.membe
   rw [e PcsCircuit.membership, ← membership_logRows', ← membership_usedRows, ← membership_rows,
     ← membership_inputs, ← membership_sigma]
   rfl
+
+/-- **The statement's random rows** (`Circuit.randomRows`, the rows `randomizeCells` fills) are the last
+`16` rows, from the last: the rows built stop below them (F0b's `membership_usedRows_le`), which are
+F0b's random rows (`PcsCircuit.IsRandom`, `membership_random_row`). -/
+theorem membership_randomRows : (PcsQuotient.membership 22).randomRows =
+    (List.range PcsQuotient.randomRows).map fun k => 2 ^ 22 - 1 - k := by
+  have hs : (PcsQuotient.membership 22).rows.size = 2 ^ 22 := by
+    have := congrArg Array.size membership_rows
+    rw [Array.size_map, PcsCircuit.membership_rows_size] at this
+    exact this
+  have hu : (PcsQuotient.membership 22).usedRows ≤ 4194288 := by
+    have := PcsCircuit.membership_usedRows_le
+    simp only [PcsCircuit.logRows, PcsCircuit.randomRows, Nat.reducePow, Nat.reduceSub] at this
+    rw [membership_usedRows]
+    exact this
+  unfold PcsQuotient.Circuit.randomRows
+  rw [hs, List.filter_eq_self.mpr]
+  intro a ha
+  simp only [List.mem_map, List.mem_range, PcsQuotient.randomRows] at ha
+  obtain ⟨k, hk, rfl⟩ := ha
+  simp only [decide_eq_true_eq, Nat.reducePow]
+  omega
 
 end Bridge.Circuit

@@ -11,7 +11,8 @@ compute. This file reads it as a `ChiCircuit` and plugs it into `soundness_circu
 
 * `deployed`: the circuit, row `r` reading what row `r` of `membership` reads, ranked as the Rust
   test ranks it (`PcsCircuit.rank`: the public rows last), its inputs `membership`'s
-  (`membership_input_row`, `membership_order`);
+  (`membership_input_row`, `membership_order`), its random rows the last `16`
+  (`membership_random_row`; no other row reads them, `membership_reads_used`);
 * `deployedSigma`: the deployed σ (`membership.sigma`, the Rust's: `cellOf n ↦ cellOf σ[n]`);
   `deployed_laid_sigma : Laid deployedSigma deployed` (every `X`, `Y`, `C` cell on the cycle of what
   it reads, `membership_sigma_reads`; the constants' anchors, words 4 and 5); also
@@ -84,31 +85,67 @@ variable (c : PcsCircuit.Circuit)
 def InputRows : Prop := ∀ r ∈ c.inputs, r < 2 ^ logRows ∧ publicRows ≤ r ∧
   c.rows.getD r .idle = ⟨.row r, .row r, .row r⟩
 
-/-- Every other row reads lower ranks (`membership_order`). -/
-def Ordered : Prop := ∀ r < 2 ^ logRows, r ∉ c.inputs →
-  PcsCircuit.Ranked (PcsCircuit.rank r) (c.rows.getD r .idle).x ∧
-  PcsCircuit.Ranked (PcsCircuit.rank r) (c.rows.getD r .idle).y ∧
-  PcsCircuit.Ranked (PcsCircuit.rank r) (c.rows.getD r .idle).c
+/-- Row `r` of `c` is a random row: one of the last `16`, not built (`finish`). -/
+def IsRandomC (c : PcsCircuit.Circuit) (r : ℕ) : Prop := PcsCircuit.IsRandomRow logRows c.usedRows r
+
+/-- A random row is past the public rows. -/
+theorem IsRandomC.public_le {c : PcsCircuit.Circuit} {r : ℕ} (h : IsRandomC c r) : publicRows ≤ r := by
+  have := h.2.1
+  simp only [logRows, PcsCircuit.randomRows, publicRows, Nat.reducePow, Nat.reduceSub] at this ⊢
+  omega
+
+/-- Every other row is a random row (`membership_random_row`) or reads lower ranks
+(`membership_order`) of rows built (`membership_reads_used`), so never a random row. -/
+structure Ordered (c : PcsCircuit.Circuit) : Prop where
+  random : ∀ r, IsRandomC c r → c.rows.getD r .idle = PcsCircuit.randomRow r
+  order : ∀ r < 2 ^ logRows, r ∉ c.inputs → ¬ IsRandomC c r →
+    PcsCircuit.Ranked (PcsCircuit.rank r) (c.rows.getD r .idle).x ∧
+    PcsCircuit.Ranked (PcsCircuit.rank r) (c.rows.getD r .idle).y ∧
+    PcsCircuit.Ranked (PcsCircuit.rank r) (c.rows.getD r .idle).c
+  used : ∀ r < 2 ^ logRows, r ∉ c.inputs → ¬ IsRandomC c r →
+    PcsCircuit.ReadsUsed c.usedRows (c.rows.getD r .idle).x ∧
+    PcsCircuit.ReadsUsed c.usedRows (c.rows.getD r .idle).y ∧
+    PcsCircuit.ReadsUsed c.usedRows (c.rows.getD r .idle).c
+
+theorem readsUsed_not_random {c : PcsCircuit.Circuit} {s : PcsCircuit.Src} (hs : PcsCircuit.ReadsUsed c.usedRows s)
+    (r' : Fin (2 ^ 22)) (h : ofSrc s = .row r') : ¬ IsRandomC c r' := by
+  rw [ofSrc_eq_row h] at hs
+  exact fun h' => absurd h'.1 (by have : (r' : ℕ) < c.usedRows := hs; omega)
 
 /-- **The circuit `c` as a loop-free χ circuit**: row `r` reads what row `r` of `c` reads, the
-inputs are `c`'s, ranked by `PcsCircuit.rank`. -/
+inputs are `c`'s, the random rows `c`'s last `16` unused rows, ranked by `PcsCircuit.rank`. -/
 def toChi (hI : InputRows c) (hO : Ordered c) : ChiCircuit (Fin (2 ^ 22)) where
   x r := ofSrc (c.rows.getD r .idle).x
   y r := ofSrc (c.rows.getD r .idle).y
   c r := ofSrc (c.rows.getD r .idle).c
   rank r := PcsCircuit.rank r
   isInput r := (r : ℕ) ∈ c.inputs
+  isRandom r := IsRandomC c r
   hInput r h := by
     obtain ⟨-, -, hrow⟩ := hI r h
     rw [hrow]
     have hr : (r : ℕ) < 2 ^ 22 := r.isLt
     simp [ofSrc, hr]
-  hOrder r h r' hs := by
-    obtain ⟨hx, hy, hc⟩ := hO r r.isLt h
+  hRandom r h := by
+    rw [hO.random r h]
+    have hr : (r : ℕ) < 2 ^ 22 := r.isLt
+    simp [ofSrc, hr, PcsCircuit.randomRow]
+  hOrder r h hr r' hs := by
+    obtain ⟨hx, hy, hc⟩ := hO.order r r.isLt h hr
+    obtain ⟨ux, uy, uc⟩ := hO.used r r.isLt h hr
     rcases hs with hs | hs | hs
-    · exact ranked_lt hx r' hs
-    · exact ranked_lt hy r' hs
-    · exact ranked_lt hc r' hs
+    · exact ⟨ranked_lt hx r' hs, readsUsed_not_random ux r' hs⟩
+    · exact ⟨ranked_lt hy r' hs, readsUsed_not_random uy r' hs⟩
+    · exact ⟨ranked_lt hc r' hs, readsUsed_not_random uc r' hs⟩
+
+/-- The public rows are not random rows. -/
+theorem toChi_pubRows {c : PcsCircuit.Circuit} (hI : InputRows c) (hO : Ordered c) (J : Fin 8) (j : Fin 128) :
+    ¬ (toChi c hI hO).isRandom (pubRow J j) := by
+  intro h
+  have h1 := IsRandomC.public_le h
+  have := J.isLt; have := j.isLt
+  simp only [pubRow, publicRows] at h1
+  omega
 
 variable {c}
 
@@ -244,7 +281,7 @@ theorem laid_sigmaPerm (hI : InputRows c) (hO : Ordered c) (hlt : SigmaLt c) (hi
     (h5 : ∀ j : Fin 128, (toChi c hI hO).pubSrc 5 j = .zero) (h4one : (toChi c hI hO).pubSrc 4 0 = .one)
     (h4 : ∀ j : Fin 128, j ≠ 0 → (toChi c hI hO).pubSrc 4 j = .zero) :
     Laid (sigmaPerm c hlt hinj) (toChi c hI hO) := by
-  refine ⟨fun r => ?_, h5, h4one, h4⟩
+  refine ⟨fun r => ?_, h5, h4one, h4, toChi_pubRows hI hO⟩
   have hr : (r : ℕ) < 2 ^ logRows := r.isLt
   have hs := hsrc r (by rw [hsize]; exact hr)
   rw [hsize] at hs
@@ -266,11 +303,15 @@ end Generic
 
 /-! ## The deployed circuit -/
 
+/-- `membership` is a circuit of inputs, random rows, and rows reading lower ranks of rows built. -/
+theorem membership_ordered : Ordered membership :=
+  ⟨PcsCircuit.membership_random_row, PcsCircuit.membership_order, PcsCircuit.membership_reads_used⟩
+
 /-- **The deployed circuit** (`quotient::circuit::membership`) as a loop-free χ circuit: row `r`
 reads what row `r` of `membership` reads, the inputs are `membership`'s, the ranks the Rust
 test's (`r`, the public rows `2^22 + r`). -/
 def deployed : ChiCircuit (Fin (2 ^ 22)) :=
-  toChi membership PcsCircuit.membership_input_row PcsCircuit.membership_order
+  toChi membership PcsCircuit.membership_input_row membership_ordered
 
 /-- The secret whose bits are the input bits of the computation `v` of `deployed`: `x`, then each
 level's sibling and direction (`membership_inputs` inverted). -/
@@ -313,7 +354,7 @@ theorem deployed_laid_sigma : Laid deployedSigma deployed :=
 
 /-- **`wiringOf deployed` lays the deployed circuit.** -/
 theorem deployed_laid : Laid (wiringOf deployed) deployed :=
-  laid_wiringOf deployed deployed_word5 deployed_word4_one deployed_word4
+  laid_wiringOf deployed deployed_word5 deployed_word4_one deployed_word4 (toChi_pubRows _ _)
 
 /-- **The deployed circuit computes the statement.** For every computation `v` of `deployed`,
 bit `j` of public word `J < 4` is bit `j` of the statement word (`statementBit`,
@@ -361,8 +402,9 @@ theorem bytes_eq_of_statementBit {y root y' root' : Fin 32 → UInt8}
     simp only [show ¬ hh + 2 < 2 by omega, if_false, e] at this
     exact this
 
-/-- The proof's cells hold a computation of the deployed circuit whose input bits are a secret
-hashing to `(y, root)`: `y = H(x ‖ 0x11^32)` and the path from `H(x ‖ 0x22^32)` ends at `root`. -/
+/-- The proof's cells hold a computation of the deployed circuit (off its `16` random rows, whose
+cells are unconstrained) whose input bits are a secret hashing to `(y, root)`: `y = H(x ‖ 0x11^32)`
+and the path from `H(x ‖ 0x22^32)` ends at `root`. -/
 def ProvesMembership {F : Type*} [Field F] (w : (Fin (22 + 2) → Bool) → F)
     (y root : Fin 32 → UInt8) : Prop :=
   ∃ v, deployed.Computes w v ∧ bytes32 (secretOf v).y = y ∧ bytes32 (secretOf v).root = root
@@ -385,7 +427,7 @@ for an instance laying the deployed circuit (`Laid I.wiring deployed`, e.g. `I.w
 wiringOf deployed`, `deployed_laid`), with `coordinate_weight`'s weights for bit weights
 independent over `GF(2)`: for every adversary making at most `Q` oracle queries, the probability
 that the verdict is true for the statement of some `(y, root)` while the proof's cells are not a
-computation of `deployed` whose input bits are a secret `s` with `H(s.x ‖ 0x11^32) = y` and the
+computation of `deployed` (off its random rows) whose input bits are a secret `s` with `H(s.x ‖ 0x11^32) = y` and the
 Merkle path of `s` from `H(s.x ‖ 0x22^32)` ending at `root` (`ProvesMembership`), is at most
 `(Q + 3) / 2^128`. -/
 theorem soundness_membership (hq : Fintype.card F = 2 ^ 192) {x Y : F}

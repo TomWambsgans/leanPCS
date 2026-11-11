@@ -6,25 +6,16 @@ import LeanVM.Protocol.Compile.Rom.Bridge
 import LeanVM.Protocol.ExperimentBridge
 
 /-!
-# The statement's openings are F2's
+# The layout opening is F2's
 
-The statement (`formal/Statement`, `PcsQuotient/Opening.lean`) and F2 (`formal/WhirBridge`) both
-transcribe `crates/membership/quotient/src/opening.rs`. Here the two transcriptions are proved equal:
+The statement's layout opening (`PcsQuotient.openingWith`, `Opening.lean`) is `formal/WhirBridge`'s verifier
+(`ourVerifier`): the layouts, lanes and claims converted (`layoutTr`, `laneTr`, `claimTr`), the stack weights
+(`stackWeight_eq`, `gadgetWeight_eq`, `eqBits_eq`, `stackClaims_eq`), the opening's prefix and seed
+(`encoding_eq`, `claimBytes_eq`, `openingPrefix_eq`), and **`openingWith_eq_ourVerifier`**: on a layout that
+fits (`LayoutOK`), the statement's opening over `π` is `ourVerifierEarly` over `π`.
 
-* **the layouts** (`layoutTr`: the same five fields): `layoutTr_witnessLayout`,
-  `layoutTr_wiringLayout`, `layoutTr_quotientLayout`, for every size (`Layout::hidden` and
-  `Layout::new` transcribed twice, `layoutTr_hidden`, `layoutTr_ofChunks_zero`);
-* **a claim's weight on the stack and the gadget's** (`stackWeight_eq`, `gadgetWeight_eq`), hence
-  **the opening's stack claims** (`stackClaims_eq`: the statement's `stackClaims` is F2's
-  `Layout.stacking.claims`);
-* **the transcript's seed bytes** (`encoding_eq`: the layout's encoding, `claimBytes_eq`, the label);
-* **the opening check** (`openingWith_eq`): for every monad and every permutation `F`, the statement's
-  `openingWith F` is `openingVerifyIdWithHash (keccak256With F) F`, which is F2's
-  `openingVerifyWithHash` but for the layout's id, hashed with the oracle (the statement) rather than
-  the deployed Keccak-256 (F2's `openingPrefix`), and for an early rejection of a stream of fewer
-  than two scalars before any query; `openingVerifyIdWithHash_eq_of_id`: when the oracle's hash of
-  the layout's encoding is the deployed one, it is F2's `openingVerifyWithHash` for a function
-  oracle (`Id`).
+Pruned to what the leanVM line uses (`formal/Uni*`, `formal/Rec*`); the previous membership protocol's declarations
+that were here are in the git history.
 -/
 
 namespace Bridge
@@ -60,48 +51,7 @@ def claimTr (c : PcsQuotient.Claim) : WhirBridge.Claim := ⟨c.point, c.value⟩
 @[simp] theorem claimTr_point (c : PcsQuotient.Claim) : (claimTr c).point = c.point := rfl
 @[simp] theorem claimTr_value (c : PcsQuotient.Claim) : (claimTr c).value = c.value := rfl
 
-theorem laneTr_injective : Function.Injective laneTr := by
-  intro a b h
-  cases a <;> cases b <;> simp_all [laneTr]
-
 /-! ## The layouts -/
-
-/-- The lanes of a hidden layout, as the statement lists them. -/
-theorem hiddenLanes_eq (blocks : List ℕ) (random : ℕ) :
-    WhirBridge.Layout.hiddenLanes blocks random =
-      ((blocks.take (min blocks.length 32)).map PcsQuotient.Lane.block ++
-        List.replicate (32 - min blocks.length 32) PcsQuotient.Lane.random ++
-        [PcsQuotient.Lane.overflow] ++ List.replicate random PcsQuotient.Lane.random ++
-        (blocks.drop (min blocks.length 32)).map PcsQuotient.Lane.block).map laneTr := by
-  simp [WhirBridge.Layout.hiddenLanes, WhirBridge.overflowLane, List.map_map, Function.comp_def,
-    laneTr]
-
-theorem layoutTr_hidden (vars logChunk logN : ℕ) (chunks : List (ℕ × ℕ)) (random s : ℕ) :
-    layoutTr (PcsQuotient.Layout.hidden vars logChunk logN chunks random s) =
-      WhirBridge.Layout.hidden vars logChunk logN chunks random s := by
-  simp only [PcsQuotient.Layout.hidden, WhirBridge.Layout.hidden, WhirBridge.Layout.hiddenBlocks,
-    WhirBridge.Layout.hiddenTails, PcsQuotient.overflowLaneIndex, PcsQuotient.laneFold,
-    WhirBridge.laneFold, Nat.shiftLeft_eq, Nat.shiftRight_eq_div_pow, hiddenLanes_eq, layoutTr]
-  congr 2
-  rw [List.filterMap_map]
-  congr 1
-  funext x
-  cases x <;> rfl
-
-/-- **The witness table's layout** (`witness_layout`) is F2's, at every size. -/
-theorem layoutTr_witnessLayout (logRows : ℕ) :
-    layoutTr (PcsQuotient.witnessLayout logRows) = WhirBridge.witnessLayout logRows := by
-  rw [PcsQuotient.witnessLayout, layoutTr_hidden]
-  rfl
-
-theorem quotientChunks_eq (m : ℕ) :
-    PcsQuotient.quotientChunks m = WhirBridge.quotientChunks m WhirBridge.qSpill 64 := rfl
-
-/-- **The quotient table's layout** (`quotient_layout`) is F2's, at every size. -/
-theorem layoutTr_quotientLayout (logRows : ℕ) :
-    layoutTr (PcsQuotient.quotientLayout logRows) = WhirBridge.quotientLayout logRows := by
-  rw [PcsQuotient.quotientLayout, layoutTr_hidden, quotientChunks_eq]
-  rfl
 
 /-- `Layout::new` of one chunk `0` (the wiring table's), transcribed twice. -/
 theorem layoutTr_ofChunks_zero (vars logChunk logN len : ℕ) :
@@ -109,12 +59,6 @@ theorem layoutTr_ofChunks_zero (vars logChunk logN len : ℕ) :
       WhirBridge.Layout.new vars logChunk logN [(0, len)] := by
   simp [PcsQuotient.Layout.ofChunks, WhirBridge.Layout.new, WhirBridge.Layout.newBlocks, layoutTr,
     List.map_map, Function.comp_def, laneTr, PcsQuotient.laneFold, WhirBridge.laneFold]
-
-/-- **The wiring table's layout** (`wiring_layout`) is F2's, at every size. -/
-theorem layoutTr_wiringLayout (logRows : ℕ) :
-    layoutTr (PcsQuotient.wiringLayout logRows) = WhirBridge.wiringLayout logRows := by
-  rw [PcsQuotient.wiringLayout, layoutTr_ofChunks_zero]
-  rfl
 
 /-! ## The weights -/
 
@@ -249,20 +193,6 @@ theorem stackClaims_eq (L : PcsQuotient.Layout) (hL : LayoutOK L) (claims : List
       simp only [WhirBridge.Layout.extra, layoutTr_logPiece, h, Option.isSome_some, ↓reduceIte]
       exact congrArg (fun f => [(f, (0 : E))]) (funext fun x => gadgetWeight_eq L h hn x)
 
-theorem layoutOK_of (L : PcsQuotient.Layout) {W : WhirBridge.Layout} (hW : layoutTr L = W)
-    (h : W.logPiece = none ∨ (W.overflow < W.lanes.length ∧ 33 ≤ W.lanes.length)) : LayoutOK L := by
-  subst hW
-  simpa [LayoutOK] using h
-
-/-- The three layouts meet `LayoutOK` at every supported size (F2's `layouts_shape`). -/
-theorem layoutOK_layouts (r : ℕ) (h1 : WhirBridge.minLogRows ≤ r) (h2 : r ≤ WhirBridge.maxLogRows) :
-    LayoutOK (PcsQuotient.witnessLayout r) ∧ LayoutOK (PcsQuotient.wiringLayout r) ∧
-      LayoutOK (PcsQuotient.quotientLayout r) := by
-  obtain ⟨hw, -, hq, hwo, hqo, -⟩ := WhirBridge.layouts_shape r h1 h2
-  refine ⟨layoutOK_of _ (layoutTr_witnessLayout r) (Or.inr ⟨by omega, by omega⟩),
-    layoutOK_of _ (layoutTr_wiringLayout r) (Or.inl rfl),
-    layoutOK_of _ (layoutTr_quotientLayout r) (Or.inr ⟨by omega, by omega⟩)⟩
-
 /-! ## The seed's bytes -/
 
 /-- The layout's encoding (`encode_layout`), transcribed twice. -/
@@ -300,8 +230,6 @@ theorem openingPrefix_eq (L : PcsQuotient.Layout) :
   rw [openingLabel_eq, WhirBridge.openingPrefix, WhirBridge.layoutId, PcsQuotient.Layout.id,
     encoding_eq]
   rfl
-
-/-! ## The opening check -/
 
 section Run
 
@@ -359,16 +287,6 @@ def openingVerifyEarly {m : Type → Type} [Monad m] (H : Bytes → m Digest)
   match π.stream with
   | _ :: _ :: _ => WhirBridge.openingVerifyWithHash H F L R root claims π
   | _ => pure false
-
-/-- On a function oracle, the early rejection changes nothing: `openingVerifyEarly` is F2's
-`openingVerifyWithHash`. -/
-theorem openingVerifyEarly_id (H : Bytes → Id Digest) (F : KeccakState → Id KeccakState)
-    (L : WhirBridge.Layout) (R : ℕ) (root : Digest) (claims : List WhirBridge.Claim) (π : Proof) :
-    openingVerifyEarly H F L R root claims π =
-      WhirBridge.openingVerifyWithHash H F L R root claims π := by
-  rcases π with ⟨_ | ⟨x0, _ | ⟨x1, rest⟩⟩, os⟩ <;>
-    simp [openingVerifyEarly, WhirBridge.openingVerifyWithHash, WhirBridge.rootOf] <;>
-    intros <;> rfl
 
 theorem zeroDigest_eq : PcsQuotient.zeroDigest = WhirBridge.publicDigest := rfl
 
@@ -434,30 +352,6 @@ theorem openingWith_eq {m : Type → Type} [Monad m] [LawfulMonad m]
     · have hr' : ¬ r.toList = root.toList := fun h => hr (Vector.toList_inj.mp h)
       simp [hr, hr']
 
-/-- **At the three layouts**, every supported size: the statement's opening check is F2's (with the
-early rejection). -/
-theorem openingWith_layouts {m : Type → Type} [Monad m] [LawfulMonad m]
-    (F : KeccakState → m KeccakState) (r : ℕ) (h1 : WhirBridge.minLogRows ≤ r)
-    (h2 : r ≤ WhirBridge.maxLogRows) (root : Digest) (claims : List PcsQuotient.Claim) (proof : Proof) :
-    PcsQuotient.openingWith F (PcsQuotient.witnessLayout r) root claims proof =
-        openingVerifyEarly (keccak256With F) F (WhirBridge.witnessLayout r) WhirBridge.logInvRate root
-          (claims.map claimTr) proof ∧
-      PcsQuotient.openingWith F (PcsQuotient.wiringLayout r) root claims proof =
-        openingVerifyEarly (keccak256With F) F (WhirBridge.wiringLayout r) WhirBridge.logInvRate root
-          (claims.map claimTr) proof ∧
-      PcsQuotient.openingWith F (PcsQuotient.quotientLayout r) root claims proof =
-        openingVerifyEarly (keccak256With F) F (WhirBridge.quotientLayout r) WhirBridge.logInvRate
-          root (claims.map claimTr) proof := by
-  obtain ⟨ow, oσ, oq⟩ := layoutOK_layouts r h1 h2
-  obtain ⟨aw, aσ, aq⟩ := WhirBridge.layouts_ok r h1 h2
-  refine ⟨?_, ?_, ?_⟩
-  · rw [openingWith_eq F _ ow (by rw [← layoutTr_logN, layoutTr_witnessLayout]; exact aw),
-      layoutTr_witnessLayout]
-  · rw [openingWith_eq F _ oσ (by rw [← layoutTr_logN, layoutTr_wiringLayout]; exact aσ),
-      layoutTr_wiringLayout]
-  · rw [openingWith_eq F _ oq (by rw [← layoutTr_logN, layoutTr_quotientLayout]; exact aq),
-      layoutTr_quotientLayout]
-
 /-! ## In the two-oracle model -/
 
 /-- **The two calls answered over a permutation `F`**: Keccak-256 the sponge over `F`, Keccak-f[1600]
@@ -519,81 +413,7 @@ theorem openingWith_eq_ourVerifier {m : Type → Type} [Monad m] [LawfulMonad m]
     rw [WhirBridge.ourVerifier, simulateQ_openingVerify]
     rfl
 
-/-! ## The table read back from a stack -/
-
-theorem findIdx?_nat_eq (l : List ℕ) (p : ℕ) :
-    l.findIdx? (fun x => decide (x = p)) = l.findIdx? (· == p) := by
-  congr 1
-
-theorem findIdx?_block_eq (ls : List PcsQuotient.Lane) (b : ℕ) :
-    ls.findIdx? (fun x => decide (x = PcsQuotient.Lane.block b)) =
-      (ls.map laneTr).findIdx? (· == WhirBridge.Lane.block b) := by
-  rw [List.findIdx?_map]
-  congr 1
-  funext x
-  cases x with
-  | block b' =>
-    by_cases h : b' = b
-    · subst h; simp [laneTr]
-    · have h' : (WhirBridge.Lane.block b' == WhirBridge.Lane.block b) = false := by
-        simpa using h
-      simp [laneTr, h, h']
-  | overflow => rfl
-  | random => rfl
-
-/-- **The statement's read-back of a hidden table is F2's** (`Layout.readEntry` = `Table::read` =
-F2's `Layout.table`), the stack given by its words, for a hidden layout with an overflow lane (the
-witness and quotient layouts, `layoutOK_layouts`). -/
-theorem readEntry_eq (L : PcsQuotient.Layout) {s : ℕ} (hs : L.logPiece = some s)
-    (hov : (layoutTr L).overflow < L.lanes.length) (q : Column L.logN) (i : ℕ) :
-    L.readEntry (fun j => q.values.getD j 0) i = (layoutTr L).table q i := by
-  have hov' : L.overflowLane = (layoutTr L).overflow := overflowLane_eq L.lanes hov
-  simp only [PcsQuotient.Layout.readEntry, WhirBridge.Layout.table, WhirBridge.Layout.readHidden,
-    layoutTr_logPiece, hs, layoutTr_pieces, layoutTr_lanes, layoutTr_logLane, Nat.shiftRight_eq_div_pow,
-    findIdx?_nat_eq, findIdx?_block_eq, WhirBridge.stackAt, Nat.and_two_pow_sub_one_eq_mod, hov']
-  rcases hk : L.pieces.findIdx? (· == i / 2 ^ s) with _ | k
-  · rcases hl : (L.lanes.map laneTr).findIdx?
-        (· == WhirBridge.Lane.block (i / 2 ^ s / 2 ^ (L.logLane - s))) with _ | l
-    · rfl
-    · simp only
-      congr 1
-      ring
-  · simp only
-    congr 1
-    ring
-
-/-! ## The layout's identifier: a constant, bytes-identical for the deployed Keccak -/
-
-/-- The opening's sponge as the statement wrote it before `Layout.id` (`formal/Statement` at
-`78ba276`): the layout's identifier hashed over `F`. -/
-def openingSpongeOracleId {m : Type → Type} [Monad m] (F : KeccakState → m KeccakState)
-    (L : PcsQuotient.Layout) (claims : List PcsQuotient.Claim) : m Sponge := do
-  let layoutId ← keccak256With F L.encoding
-  let pre := PcsQuotient.openingLabel ++ PcsQuotient.u64Bytes PcsQuotient.openingVersion ++
-    digestBytes layoutId ++ PcsQuotient.u64Bytes L.logN ++ PcsQuotient.u64Bytes PcsQuotient.logInvRate
-  let iv ← keccak256With F (pre ++ PcsQuotient.claimBytes claims)
-  return ⟨← F (seedInput iv PcsQuotient.zeroDigest), []⟩
-
-/-- **The change to a constant identifier is bytes-identical for the deployed Keccak-f[1600]**: over
-`keccakF1600` the two sponges are the same, so the deployed verifier, prover and the differential
-test are unchanged. -/
-theorem openingSponge_deployed (L : PcsQuotient.Layout) (claims : List PcsQuotient.Claim) :
-    openingSpongeOracleId (m := Id) (fun s => pure (keccakF1600 s)) L claims =
-      PcsQuotient.openingSpongeWith (m := Id) (fun s => pure (keccakF1600 s)) L claims := rfl
-
 end Bridge
-
-/-- info: 'Bridge.layoutTr_witnessLayout' depends on axioms: [propext, Quot.sound] -/
-#guard_msgs in
-#print axioms Bridge.layoutTr_witnessLayout
-
-/-- info: 'Bridge.layoutTr_wiringLayout' depends on axioms: [propext, Quot.sound] -/
-#guard_msgs in
-#print axioms Bridge.layoutTr_wiringLayout
-
-/-- info: 'Bridge.layoutTr_quotientLayout' depends on axioms: [propext, Quot.sound] -/
-#guard_msgs in
-#print axioms Bridge.layoutTr_quotientLayout
 
 /-- info: 'Bridge.eqBits_eq' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
@@ -610,10 +430,6 @@ end Bridge
 /-- info: 'Bridge.stackClaims_eq' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms Bridge.stackClaims_eq
-
-/-- info: 'Bridge.layoutOK_layouts' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms Bridge.layoutOK_layouts
 
 /-- info: 'Bridge.encoding_eq' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
@@ -635,17 +451,9 @@ end Bridge
 #guard_msgs in
 #print axioms Bridge.runWithHash_bind
 
-/-- info: 'Bridge.openingVerifyEarly_id' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms Bridge.openingVerifyEarly_id
-
 /-- info: 'Bridge.openingWith_eq' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms Bridge.openingWith_eq
-
-/-- info: 'Bridge.openingWith_layouts' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms Bridge.openingWith_layouts
 
 /-- info: 'Bridge.simulateQ_openingVerify' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
@@ -654,11 +462,3 @@ end Bridge
 /-- info: 'Bridge.openingWith_eq_ourVerifier' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms Bridge.openingWith_eq_ourVerifier
-
-/-- info: 'Bridge.readEntry_eq' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms Bridge.readEntry_eq
-
-/-- info: 'Bridge.openingSponge_deployed' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms Bridge.openingSponge_deployed

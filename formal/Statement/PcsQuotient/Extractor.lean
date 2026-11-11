@@ -25,7 +25,7 @@ list or array, a `for` over an explicit range, or a recursion on an explicit num
 polynomial in the committed size and the transcript's length, not in the proof's.
 
 1. **The witness table's root** (`witnessRootOf`): the first two scalars of the reduction's proof,
-   as the verifier reads them (no hash is needed: the root rides the stream as its halves).
+   as the verifier reads them (no hash is needed: the root rides the stream as its halves, `rootOfHalves`).
 2. **The evaluations** (`Replay.transcriptEvaluations`): the transcript replayed as mumbai's
    `keccakEvaluationsOfTranscript` replays it (the byte strings whose whole sponge path the adversary
    queried forward), with hash maps, keeping the inputs of the two lengths the witness tree hashes
@@ -49,9 +49,8 @@ polynomial in the committed size and the transcript's length, not in the proof's
      at least the Johnson threshold of columns (`741549` at this shape, `0.7072·n`), by CompPoly's
      Guruswami–Sudan list decoder over `K` lane by lane with prefix pruning (at most `2^18` candidates
      at every admissible shape, mumbai's `LeanVM.candidates_ncard_le`).
-5. **The secret** (`secretOfStack`): the table's first `2^m` entries, read back from a candidate stack
-   through the witness table's hidden layout (`Layout.readEntry`: the blocks' pieces, the held pieces from
-   the overflow lane), are the cells' polynomial in the Cantor novel basis; its
+5. **The secret** (`secretOfStack`): a candidate stack **is** the witness table (a PCS commitment commits
+   the table as it is); its first `2^m` entries are the cells' polynomial in the Cantor novel basis; its
    values on the cells (`Domain.values`, `m · 2^m` operations) give each input
    row's `V` cell, read as a bit (`1` is true), and the input bits spell `x`, the siblings and the
    directions (`secretOfInputs`). The extractor returns the first candidate's secret that satisfies the
@@ -69,7 +68,7 @@ nodes, and the transcript's), `n = 2^20` columns, `k = 2^19`:
 | fast path (`fastStacks`) | `64` inverse transforms of `2^19` and forward of `2^20`: about `2^31.4` |
 | unique decoder (`uniqueStacks`), when the fast path gives no witness | about `2^28.3` per lane plus `2^21.5` per wrong column of the lane: about `2^34.3` for a word with few errors, at most `2^45.7` |
 | list decoder (`decodeStacks`), when neither gives a witness | multiplicity `m' = 1149`, `Y`-degree `ℓ = 1625`, `n·m'(m'+1)/2 = 2^39.3` interpolation conditions per lane (Lee–O'Sullivan); Mulders–Storjohann's reduction of an `(ℓ+1)×(ℓ+1)` matrix of degree `m'·n`, `(ℓ+1)³(m'n)² ≈ 2^92.3` per lane (`2^98.3` for the `64`), then Roth–Ruckenstein's roots; infeasible, as mumbai says of its own |
-| per candidate | the read-back of `2^24` entries, one transform of `2^24`, `33` Keccak-256 |
+| per candidate | one transform of `2^24`, `33` Keccak-256 |
 
 **The list decoder is the worst case only.** It runs only when neither the fast path nor the unique
 decoder gives a witness, so (the unique decoder recovering every stack within its radius) only for a
@@ -90,16 +89,15 @@ open LeanVM.Protocol.Compile LeanVM.Extraction
 
 /-- The witness table's root a proof names: its first two scalars as a digest, if they are two halves.
 -/
-def witnessRootOf (proof : Proof) : Option Digest := digestOfScalars proof.reduction.witnessRoot
+def witnessRootOf (proof : Proof) : Option Digest := rootOfHalves proof.reduction.witness.root
 
-/-- **The input bits a stack spells** for `circuit`: the witness table's first `2^m` entries read back from
-the stack through its hidden layout (`Layout.readEntry`), taken from the novel basis to the cells' values;
-each input row's `V` cell read as a bit (`1` is true). -/
+/-- **The input bits a stack spells** for `circuit`: the witness table's first `2^m` entries (the stack is
+the table), taken from the novel basis to the cells' values; each input row's `V` cell read as a bit (`1` is
+true). -/
 def inputBitsOfStack (circuit : Circuit) {μ : ℕ} (stack : Vector K (2 ^ μ)) : List Bool :=
   let mv := cellVars circuit.logRows
   let entries := stack.toArray
-  let wHat := Array.ofFn (n := 2 ^ mv) fun i ↦
-    (witnessLayout circuit.logRows).readEntry (entries.getD · 0) i.val
+  let wHat := Array.ofFn (n := 2 ^ mv) fun i ↦ entries.getD i.val 0
   let cells := Domain.values mv 0 wHat
   circuit.inputs.toList.map fun r ↦ decide (cells.getD (4 * r + 3) 0 = 1)
 

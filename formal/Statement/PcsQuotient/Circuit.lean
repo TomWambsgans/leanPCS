@@ -8,8 +8,7 @@ module
 
 public import PcsQuotient.Relation
 public import PcsQuotient.Domain
-public import Statement.Prover.Run
-public import Statement.Prover.Ntt
+public import PcsQuotient.PcsOpening
 
 /-!
 # The circuit and its commitment
@@ -23,15 +22,17 @@ the order of the rows is the circuit: the `512` public rows first, each later ro
 or rows before it (or itself, for an input), constants folded as the Rust folds them (`not`, `xor`,
 `chi`), Keccak-f[1600] one row per χ bit and per XOR of θ (`keccakF`), the membership statement
 (`membership`). `finish` closes it on `2^logRows` rows: the public rows read the public words two
-bits a row, and the **wiring** `σ` sends each cell to the next cell of its cycle, a cycle being a
-source (a constant, or a row's `V` cell) and the cells that read it, in cell order.
+bits a row, the last `16` rows are **random rows** (`X` reads the row's own output, `Y` one, `C` zero, so
+`V = V + 0 + 0` holds for any value of `K`: the prover fills each with a fresh value, `HIDING.md`), and the
+**wiring** `σ` sends each cell to the next cell of its cycle, a cycle being a source (a constant, or a row's
+`V` cell) and the cells that read it, in cell order.
 
-**The circuit's commitment** (`indexRootWith`, `Index::new`, `protocol.rs`): the wiring
-polynomial, `σ` read as the points `B(σ(i))` and taken to the novel basis (`Domain.coefficients`), is
-the wiring table, its own stack (`wiringLayout`), committed by leanVM's WHIR commitment at rate `1/2`:
-the `64` lanes' codewords (mumbai's `stackWordFast`) under a Merkle tree of Keccak-256 over `F`
-(mumbai's `buildTreeM`). The deployed verifier holds its root, computed over Keccak-f[1600]; in the
-model the setup computes it over `π` (`Security.lean`).
+**The circuit's commitment** (`indexCommitmentWith`, `Index::new`, `Index::commit`, `protocol.rs`): the
+wiring polynomial, `σ` read as the points `B(σ(i))` and taken to the novel basis (`Domain.coefficients`), is
+the wiring table, committed as a PCS commitment (`Opening.lean`'s `commitmentWith`): the root of leanVM's
+WHIR commitment at rate `1/2` (the `64` lanes' codewords, mumbai's `stackWordFast`, under a Merkle tree of
+Keccak-256 over `F`, mumbai's `buildTreeM`) and the table's out-of-domain answer. The deployed verifier holds
+both, computed over Keccak-f[1600]; in the model the setup computes them over `π` (`Security.lean`).
 
 **Cells.** `cells` is every cell's value from the inputs, as the honest prover computes it
 (`Circuit::outputs`, `Circuit::cells`, `circuit.rs:273-300`).
@@ -66,6 +67,12 @@ structure Row where
 
 /-- `IDLE`: a row reading zeros. -/
 def idle : Row := ⟨.zero, .zero, .zero⟩
+
+/-- `RANDOM_ROWS` (`circuit.rs`): the random rows, the last rows of the circuit. -/
+def randomRows : ℕ := 16
+
+/-- A random row `r` (`finish`, `circuit.rs`): `X` reads the row's own output, `Y` one, `C` zero. -/
+def randomRow (r : ℕ) : Row := ⟨.row r, .one, .zero⟩
 
 /-- The gate on bits, `x ⊕ (c ∧ ¬y)` (`gate_bits`, `circuit.rs:47-49`). -/
 def gateBits (x y c : Bool) : Bool := x ^^ (c && !y)
@@ -222,9 +229,11 @@ def wiring (logRows : ℕ) (rows : Array Row) : Array ℕ := Id.run do
       sigma := sigma.set! cell first[at_]!
   return sigma
 
-/-- **Close the circuit** on `2^logRows` rows (`finish`, `circuit.rs:202-255`), `public[J][j]` being
+/-- **Close the circuit** on `2^logRows` rows (`finish`, `circuit.rs`), `public[J][j]` being
 bit `j` of public word `J < 4`; word `4` is a one then zeros, words `5 … 7` zeros. Public row `r` reads
-bits `2(r mod 64)` and `2(r mod 64) + 1` of word `⌊r / 64⌋`. -/
+bits `2(r mod 64)` and `2(r mod 64) + 1` of word `⌊r / 64⌋`. The rows from `2^logRows − 16` on that the
+builder did not use are random rows (`randomRow`; the Rust asserts there are `16`: the membership circuit
+uses `3 878 612` rows of `2^22`). -/
 def finish (logRows : ℕ) (public_ : List (List Src)) (b : Builder) : Circuit :=
   let bit (word j : ℕ) : Src :=
     if word < 4 then (public_.getD word []).getD j .zero
@@ -234,8 +243,14 @@ def finish (logRows : ℕ) (public_ : List (List Src)) (b : Builder) : Circuit :
     if r.val < publicRows then
       let (word, pair_) := (r.val / (wordBits / 2), r.val % (wordBits / 2))
       ⟨bit word (2 * pair_), bit word (2 * pair_ + 1), .zero⟩
+    else if b.rows.size ≤ r.val ∧ 2 ^ logRows - randomRows ≤ r.val then randomRow r.val
     else b.rows.getD r.val idle
   ⟨logRows, b.rows.size, rows, b.inputs, wiring logRows rows⟩
+
+/-- **The random rows** (`Circuit::random_rows`, `circuit.rs`), from the last: the rows the prover fills
+with its random values, in the order it takes them. -/
+def Circuit.randomRows (c : Circuit) : List ℕ :=
+  ((List.range PcsQuotient.randomRows).map fun k ↦ c.rows.size - 1 - k).filter (c.usedRows ≤ ·)
 
 /-- `public_words` (`circuit.rs:304-311`): the `256` wires of `y` and of `root` as the four public
 words, a word being sixteen bytes read big-endian. -/
@@ -332,7 +347,7 @@ def Circuit.cells (c : Circuit) (inputs : List Bool) : Array K :=
 /-! ### The circuit's commitment -/
 
 /-- **The wiring table** (`Index::new`, `protocol.rs`): `B(σ(i))` for every cell, in the novel
-basis; the wiring layout stacks it whole. -/
+basis; it is committed as it is (`m` variables). -/
 def Circuit.wiringTable (c : Circuit) : Array K :=
   Domain.coefficients (c.logRows + 2) 0 (c.sigma.map Domain.point)
 
@@ -340,19 +355,13 @@ section With
 
 variable {m : Type → Type} [Monad m] (F : KeccakState → m KeccakState)
 
-/-- **The WHIR commitment of a stack** of `2^μ` words of `K` over `F`, at rate `1/2` (`pcs::whir::commit`
-as `opening::commit` calls it): the Merkle tree of Keccak-256 over `F` of the `64` lanes' codewords,
-leaf `p` the lanes' entries at `x_p` in reverse lane order (mumbai's `stackWordFast`, `buildTreeM`),
-`2^(μ − 6 + 1)` leaves. -/
-def commitWith (μ : ℕ) (stack : Array K) : m LeanVM.Prover.Tree :=
-  LeanVM.Prover.buildTreeM F (μ - 6 + 1) (LeanVM.Prover.stackWordFast μ 1 stack)
-
-/-- **The circuit's commitment** over `F`: the root of the WHIR commitment of its wiring table. -/
-def Circuit.indexRootWith (c : Circuit) : m Digest := do
-  return (← commitWith F (c.logRows + 2) c.wiringTable).root
+/-- **The circuit's commitment** over `F` (`Index::commit`): the PCS commitment of its wiring table, `m`
+variables. -/
+def Circuit.indexCommitmentWith (c : Circuit) : m Commitment := do
+  return (← commitmentWith F (c.logRows + 2) c.wiringTable).2
 
 /-- **The circuit's commitment's tree** over `F`: the Merkle tree of the WHIR commitment of its wiring
-table, whose root is `indexRootWith` (the setup computes it, `Security.lean`; the extractor reads its
+table, whose root is `indexCommitmentWith`'s (the setup computes it, `Security.lean`; the extractor reads its
 Keccak-256 evaluations, `Tree.evaluations`). -/
 def Circuit.indexTreeWith (c : Circuit) : m LeanVM.Prover.Tree :=
   commitWith F (c.logRows + 2) c.wiringTable

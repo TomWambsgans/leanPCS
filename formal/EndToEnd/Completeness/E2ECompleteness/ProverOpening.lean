@@ -9,7 +9,7 @@
 -- (`Protocol/EndToEnd/Sound/Moves.lean`). The layout translation (`laneTr`, `layoutTr`,
 -- `stackWeight_eq`, `runWithHash_bind`) is copied from this repository's
 -- `formal/EndToEnd/Bridge/Opening.lean` (Bridge-Defs).
-import E2ECompleteness.ProverDefs
+import E2ECompleteness.WithHash
 import WhirBridge
 import LeanVM.Prover.Whir
 import LeanVM.Prover.Refine
@@ -17,32 +17,16 @@ import LeanVM.Protocol.Whir.Complete.Opening
 import LeanVM.Protocol.Compile.Rom.Prover
 
 /-!
-# The Statement's WHIR opening prover is accepted
+# The honest layout opening is accepted
 
-`proveOpeningWithH` (`WithHash.lean`, the Statement's `proveOpeningWith` with Keccak-256 explicit)
-runs `openingScript` (mumbai's `openingFast` with the protocol's weight table `weightTable`) against
-the verifier's program. Here:
+The statement's layout opening prover (`PcsQuotient.proveOpeningWith`, `LayoutsProver.lean`) against mumbai's
+WHIR prover: a stack as WHIR's column (`colOf`), the weights' shape (`WeightShape`, `stackWeight_cube`,
+`gadgetWeight_cube`, `weightTable_eq`), the script against the program (`openingProgram_eq`,
+`corr_openingScript`), and the opening run on the honest proof (`openingWithH_proveOpeningWithH`,
+`exists_failed_pow_opening`).
 
-* **`weightTable_eq`**: the weight table is the batched weight of the opening's stack claims on the
-  cube, in WHIR's variable order (mumbai's `basisTable`): at stack position `y + 2^ℓ·l`, a claim's
-  weight `stackWeight` is `Layout.weightAt`'s closed form (`stackWeight_cube`) and the gadget's
-  `gadgetWeight` is `Layout.gadgetAt` (`gadgetWeight_cube`), for a layout of the shape
-  `WeightShape` (true of the three layouts at `log_rows = 22`, `weightShape_layouts`).
-* **`corr_openingScript`**: `openingScript` makes the moves of mumbai's specification
-  `honestOpening` on the stack as a column (`colOf`).
-* **`proveOpeningWithH_eq_prove`**: at a pure hash and permutation, the Statement's opening prover
-  is mumbai's compiled honest prover `prove` of `openingProgram` (commit the stack, open, accept)
-  with the honest strategy `openingProver`, from the opening's sponge.
-* **`openingWithH_proveOpeningWithH`**: the Statement's opening check accepts every proof the
-  Statement's opening prover produces, for claims of the table's length that hold of the stack.
-  Through `openingWithH_eq_runProof` (the check is the compiled verifier of `openingProgram`) and
-  mumbai's `runProof_prove`, `runI_openingProgram`; the stack claims' multilinearity stays a
-  hypothesis. `openingAccepts_layouts`: the same at the three layouts of `log_rows = 22`. The only
-  fact about the opening's sponge used is that it starts with nothing pending
-  (`openingSpongeWithH_eta`), so the proofs do not depend on how the seed is computed.
-* **`exists_failed_pow_opening`**: the prover fails only at a `17`-bit proof of work at a sponge
-  where every nonce below `fuel` fails.
-* **`admissible_layouts`**: the three layouts at `log_rows = 22` are admissible at rate `1/2`.
+Pruned to what the leanVM line uses (`formal/Uni*`, `formal/Rec*`); the previous membership protocol's declarations
+that were here are in the git history.
 -/
 
 open LeanVM LeanVM.Parameters LeanVM.Semantics LeanVM.Protocol LeanVM.Protocol.KeccakHash
@@ -53,6 +37,10 @@ open LeanVM.Protocol.EndToEnd (boolPoint)
 set_option autoImplicit false
 
 namespace E2ECompleteness
+
+/-- **A stack as WHIR's column** of `2^μ` words: word `x` is the array's, zero past it (the
+commitment reads the stack with `getD`, `stackWordFast`). -/
+def colOf (μ : ℕ) (a : Array K) : Column μ := ⟨Vector.ofFn fun x ↦ a.getD x.val 0⟩
 
 /-! ## The Statement's layouts as F2's (copied from Bridge-Defs) -/
 
@@ -71,8 +59,6 @@ def layoutTr (L : PcsQuotient.Layout) : WhirBridge.Layout :=
 /-- A claim of the statement as F2's. -/
 def claimTr (c : PcsQuotient.Claim) : WhirBridge.Claim := ⟨c.point, c.value⟩
 
-@[simp] theorem layoutTr_vars (L : PcsQuotient.Layout) : (layoutTr L).vars = L.vars := rfl
-@[simp] theorem layoutTr_logN (L : PcsQuotient.Layout) : (layoutTr L).logN = L.logN := rfl
 @[simp] theorem layoutTr_lanes (L : PcsQuotient.Layout) :
     (layoutTr L).lanes = L.lanes.map laneTr := rfl
 @[simp] theorem layoutTr_logPiece (L : PcsQuotient.Layout) :
@@ -82,8 +68,6 @@ def claimTr (c : PcsQuotient.Claim) : WhirBridge.Claim := ⟨c.point, c.value⟩
     (layoutTr L).logLane = L.logLane := rfl
 
 @[simp] theorem claimTr_point (c : PcsQuotient.Claim) : (claimTr c).point = c.point := rfl
-@[simp] theorem claimTr_value (c : PcsQuotient.Claim) : (claimTr c).value = c.value := rfl
-
 theorem testBit_iff_shift (i k : ℕ) : i.testBit k = decide ((i >>> k) % 2 = 1) := by
   rw [Nat.testBit_eq_decide_div_mod_eq, Nat.shiftRight_eq_div_pow]
 
@@ -190,19 +174,6 @@ def WeightShape (L : PcsQuotient.Layout) : Prop :=
 
 instance (L : PcsQuotient.Layout) : Decidable (WeightShape L) :=
   inferInstanceAs (Decidable (_ ∧ _ ∧ _ ∧ _ ∧ _))
-
-/-- **The three layouts at `log_rows = 22` have the shape.** -/
-theorem weightShape_layouts :
-    WeightShape (witnessLayout 22) ∧ WeightShape (wiringLayout 22) ∧
-      WeightShape (quotientLayout 22) := by
-  decide +kernel
-
-/-- **The three layouts at `log_rows = 22` are admissible** at rate `1/2`. -/
-theorem admissible_layouts :
-    Whir.Admissible (witnessLayout 22).logN PcsQuotient.logInvRate ∧
-      Whir.Admissible (wiringLayout 22).logN PcsQuotient.logInvRate ∧
-      Whir.Admissible (quotientLayout 22).logN PcsQuotient.logInvRate := by
-  decide +kernel
 
 /-! ## The weights at a cube point -/
 
@@ -813,85 +784,5 @@ theorem exists_failed_pow_opening (H : Bytes → Digest) (F : KeccakState → Ke
   refine prove_ne_none H F _ _ _ fuel (fun hist bits k sp hg hn ↦ hne ?_) h
   obtain rfl := ((movesOK_openingProgram _ _ _).after hg).1
   exact ⟨hist, k, sp, hg, ((findNonce_eq_none_iff F _ sp fuel).1 hn).2⟩
-
-/-! ## The three layouts at `log_rows = 22` -/
-
-/-- **Acceptance at the three layouts of `log_rows = 22`** (`WeightShape` and admissibility
-discharged, `weightShape_layouts`, `admissible_layouts`): `openingWithH_proveOpeningWithH`. -/
-theorem openingAccepts_layouts (H : Bytes → Digest) (F : KeccakState → KeccakState) (fuel : ℕ)
-    (L : PcsQuotient.Layout)
-    (hL : L = witnessLayout 22 ∨ L = wiringLayout 22 ∨ L = quotientLayout 22) :
-    ∀ (stack : Array K) (claims : List PcsQuotient.Claim), claims ≠ [] →
-      (∀ c ∈ claims, c.point.length = L.vars) →
-      (∀ sc ∈ stackClaims L claims, EndToEnd.StackClaim.Holds L.logN sc (colOf L.logN stack)) →
-      (∀ sc ∈ stackClaims L claims, EndToEnd.IsMultilinearFn L.logN sc.1) →
-      ∀ π, proveOpeningWithH (m := Id) H F fuel L (commitWithH (m := Id) H L.logN stack) stack
-          claims = some π →
-        openingWithH (m := Id) H F L (commitWithH (m := Id) H L.logN stack).root claims π =
-          true := by
-  have hs : WeightShape L ∧ Whir.Admissible L.logN PcsQuotient.logInvRate := by
-    rcases hL with rfl | rfl | rfl
-    exacts [⟨weightShape_layouts.1, admissible_layouts.1⟩,
-      ⟨weightShape_layouts.2.1, admissible_layouts.2.1⟩,
-      ⟨weightShape_layouts.2.2, admissible_layouts.2.2⟩]
-  intro stack claims hne hlen hholds hml π hπ
-  exact openingWithH_proveOpeningWithH H F fuel L hs.1 hs.2 stack claims hne hlen hholds hml hπ
-
-/-! ## Axioms -/
-
-/--
-info: 'E2ECompleteness.weightShape_layouts' depends on axioms: [propext]
--/
-#guard_msgs in #print axioms weightShape_layouts
-
-/--
-info: 'E2ECompleteness.admissible_layouts' depends on axioms: [propext]
--/
-#guard_msgs in #print axioms admissible_layouts
-
-/--
-info: 'E2ECompleteness.stackWeight_cube' depends on axioms: [propext, Classical.choice, Quot.sound]
--/
-#guard_msgs in #print axioms stackWeight_cube
-
-/--
-info: 'E2ECompleteness.gadgetWeight_cube' depends on axioms: [propext, Classical.choice, Quot.sound]
--/
-#guard_msgs in #print axioms gadgetWeight_cube
-
-/--
-info: 'E2ECompleteness.weightTable_eq' depends on axioms: [propext, Classical.choice, Quot.sound]
--/
-#guard_msgs in #print axioms weightTable_eq
-
-/--
-info: 'E2ECompleteness.corr_openingScript' depends on axioms: [propext, Classical.choice, Quot.sound]
--/
-#guard_msgs in #print axioms corr_openingScript
-
-/--
-info: 'E2ECompleteness.proveOpeningWithH_eq_prove' depends on axioms: [propext, Classical.choice, Quot.sound]
--/
-#guard_msgs in #print axioms proveOpeningWithH_eq_prove
-
-/--
-info: 'E2ECompleteness.openingWithH_eq_runProof' depends on axioms: [propext, Classical.choice, Quot.sound]
--/
-#guard_msgs in #print axioms openingWithH_eq_runProof
-
-/--
-info: 'E2ECompleteness.openingWithH_proveOpeningWithH' depends on axioms: [propext, Classical.choice, Quot.sound]
--/
-#guard_msgs in #print axioms openingWithH_proveOpeningWithH
-
-/--
-info: 'E2ECompleteness.exists_failed_pow_opening' depends on axioms: [propext, Classical.choice, Quot.sound]
--/
-#guard_msgs in #print axioms exists_failed_pow_opening
-
-/--
-info: 'E2ECompleteness.openingAccepts_layouts' depends on axioms: [propext, Classical.choice, Quot.sound]
--/
-#guard_msgs in #print axioms openingAccepts_layouts
 
 end E2ECompleteness

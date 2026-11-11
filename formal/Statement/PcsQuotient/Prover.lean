@@ -1,42 +1,43 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
--- Transcribed from `crates/membership/quotient/src/protocol.rs` (`prove`, `open`, `public_weight`) and
--- `crates/membership/quotient/src/opening.rs` (`open`). The WHIR opening's prover is leanerVM's (branch `mumbai`,
--- commit 6175f1a0, MIT OR Apache-2.0: `Statement/Prover/Whir.lean`'s `levelsA`, `roundA`, `stackTableA`,
--- `eqKernelA`, run by `Statement/Prover/Run.lean`'s `runFrom`); `openingScript` is its `openingFast`
--- with this protocol's weight table.
+-- Transcribed from `crates/membership/quotient/src/protocol.rs` (`prove_with_randomness`, `open`,
+-- `public_weight`, `Randomness`) and `crates/pcs_claim/src/lib.rs` (`commit_words`, `open_words`). The WHIR
+-- opening's prover is leanerVM's (branch `mumbai`, commit 6175f1a0, MIT OR Apache-2.0:
+-- `Statement/Prover/Whir.lean`'s `levelsA`, `roundA`, `stackTableA`, `eqKernelA`, run by
+-- `Statement/Prover/Run.lean`'s `runFrom`); `pcsOpeningScript` is its `openingFast` with the PCS opening's weight
+-- table.
 module
 
-public import PcsQuotient.Verifier
-public import PcsQuotient.Circuit
-public import Statement.Prover.Whir
+public import PcsQuotient.LayoutsProver
 
 /-!
 # The honest prover
 
 The prover `Completeness` names (`Security.lean`), an executable program over a permutation `F` in any
-monad, Keccak-256 the sponge over `F`: `proveWith F fuel circuit stmt cells masks witnessPad quotientPad`, the Rust's `prove`
-then `open` (`protocol.rs`) step by step.
+monad, Keccak-256 the sponge over `F`: `proveWith F fuel circuit stmt cells coins`, the Rust's `prove` then
+`open` (`protocol.rs`) step by step, with its randomness (`Coins`: `Randomness`) given.
 
-1. **The witness table**: the cells' polynomial in the novel basis (`Domain.coefficients`), and its
-   masks, sixteen entries of the next chunk (entry `4i + j` the coefficient `i` of row polynomial
-   `j`); stacked in its hidden layout with its padding (`Layout.stackOf`), committed by WHIR
-   (`commitWith`), its root sent; `α, β, γ` drawn.
-2. **The sum's polynomial** `h`: at cell `i`, `1/(α + w_i + β B(i)) + 1/(α + w_i + β B(σ(i)))`, plus
-   the public weight times the cell on the public region; in the novel basis.
-3. **The quotients** on the coset `β_{m+2} + span(β₀ … β_{m+1})`, four times the cells: the copy
+1. **The random rows**: the `X` and `V` cells of each random row take its random value.
+2. **The witness table** `W` (`m + 1` variables): the cells' polynomial in the novel basis
+   (`Domain.coefficients`), then its masks, sixteen entries (entry `4i + j` the coefficient `i` of row
+   polynomial `j`); committed (root, out-of-domain answer), sent; `α, β, γ` drawn.
+3. **The sum's polynomial** `h`: at cell `i`, `1/(α + w_i + β B(i)) + 1/(α + w_i + β B(σ(i)))`, plus
+   the public weight times the cell on the public region; in the novel basis; its limbs blinded by
+   `X_{2^m}·b` (coefficients `2^m … 2^m + 7`).
+4. **The quotients** on the coset `β_{m+2} + span(β₀ … β_{m+1})`, four times the cells: the copy
    identity's quotient `q = ((h + public)·d·d' + d + d')/Z_cells` and the gate's
-   `(V + X + C + Y·C)/Z_rows`, back to the novel basis; the **quotient table** (`h`, `q` and the gate's
-   quotient by limbs, `quotientLayout`) committed, its root sent; `t` drawn.
-4. **The values**: the four row polynomials (with their masks) and the wiring polynomial at `t`;
-   the claims are the verifier's (`reduceWith`).
-5. **The openings** (`proveOpeningWith`): leanVM's WHIR prover (`openingScript`) on each table's
-   stack, run against the verifier's own program (mumbai's `runFrom`: the challenges squeezed from the
-   sponge, each proof of work the first passing nonce below `fuel`).
+   `(V + X + C + Y·C)/Z_rows`, back to the novel basis; the quotient table's three parts `H` (`h`'s limbs
+   with their blinding), `Q` (`q`'s limbs), `G` (the gate's quotient's first `2^(m+1)` coefficients),
+   each committed and sent; `t` drawn.
+5. **The values**: the four row polynomials (with their masks) and the wiring polynomial at `t`; `ρ`
+   drawn; then `Q`'s and `G`'s values at the points the verifier's reduction computes.
+6. **The openings** (`proveClaimWith`): leanVM's WHIR prover (`pcsOpeningScript`) on each claim's table,
+   run against the verifier's own program (mumbai's `runFrom`: the challenges squeezed from the sponge, each
+   proof of work the first passing nonce below `fuel`).
 
-The prover branches on no permutation answer other than through the challenges, and its only search
-is the nonce search (mumbai's `runFrom`). It does not check that the quotients fit their layout (the
-Rust's `fits`, true for a witness); the inverses are taken one by one (`x⁻¹`, `0⁻¹ = 0`) where the
-Rust batches them, which differs only at a challenge where a denominator vanishes.
+The prover branches on no permutation answer other than through the challenges, and its only search is the
+nonce search (mumbai's `runFrom`). It does not check that the gate's quotient fits `G` (the Rust's `fits`,
+true for a witness); the inverses are taken one by one (`x⁻¹`, `0⁻¹ = 0`) where the Rust batches them, which
+differs only at a challenge where a denominator vanishes.
 -/
 
 @[expose] public section
@@ -47,95 +48,22 @@ open LeanVM.Parameters LeanVM.Semantics LeanVM.Protocol LeanVM.Protocol.KeccakHa
 open LeanVM.Protocol.Compile LeanVM.Protocol.Verifier LeanVM.Prover
 open PcsQuotient.Domain PcsQuotient.Transcript
 
-/-! ### Tables as stacks -/
+/-! ### The prover's randomness (`Randomness`, `protocol.rs`) -/
 
-/-- **A table's padding**: for each lane `l`, the words of its randomness `pad l 0, pad l 1, …`, in the order a
-hidden stack takes them (`Table::hidden`: the Rust draws them from the lane's generator, ChaCha12 keyed by
-Keccak-256 of the table's seed and the lane; the honest prover of the statement takes them uniform). -/
-abbrev Padding : Type := ℕ → ℕ → K
+/-- `H_BLIND` (`protocol.rs`): the coefficients past `2^m` that blind each limb of the sum's polynomial. -/
+def hBlind : ℕ := 8
 
-
-/-- **The gadget's entries cancelled** (`Table::hidden`, `opening.rs`): at each of the nine entries, the second
-lane of a pair takes the first's value and the overflow lane's is zero, so the gadget weighs nothing on the
-stack (characteristic two). The entries are first-piece entries: no claim weighs them. -/
-def Layout.cancelGadget (L : Layout) (stack : Array K) : Array K :=
-  let lane := 2 ^ L.logLane
-  (List.range 3).foldl (fun st g ↦ (List.range 3).foldl (fun st i ↦
-    let y := L.gadgetEntry g i
-    match gadgetLanes g with
-    | [a, b] => st.setIfInBounds (b * lane + y) (st.getD (a * lane + y) 0)
-    | [a] => st.setIfInBounds (a * lane + y) 0
-    | _ => st) st) stack
-
-/-- **The stack of a table** whose entry `i` is `entry i` (`Table::new`, `Table::hidden`, `opening.rs`). Public
-layout: lane `l` holds block `b` whole. Hidden layout, pieces of `2^s`: every lane's first piece is padding; a
-block lane then holds its block's pieces `1, 2, …`; the overflow lane its held pieces, then padding (its stream
-continuing); a random lane padding; and the gadget's entries are cancelled (`cancelGadget`). -/
-def Layout.stackOf (L : Layout) (entry : ℕ → K) (pad : Padding) : Array K :=
-  let lane := 2 ^ L.logLane
-  let kinds := L.lanes.toArray
-  match L.logPiece with
-  | none => Array.ofFn (n := kinds.size * lane) fun p ↦
-    match kinds.getD (p.val / lane) .random with
-    | .block b => entry (b * lane + p.val % lane)
-    | _ => 0
-  | some s =>
-    let piece := 2 ^ s
-    let pieces := L.pieces.toArray
-    let held := pieces.size
-    L.cancelGadget <| Array.ofFn (n := kinds.size * lane) fun p ↦
-      let (l, i) := (p.val / lane, p.val % lane)
-      if i < piece then pad l i
-      else
-        match kinds.getD l .random with
-        | .block b => entry (b * lane + i)
-        | .overflow =>
-          if i < (held + 1) * piece then entry (pieces.getD (i / piece - 1) 0 * piece + i % piece)
-          else pad l (i - held * piece)
-        | .random => pad l i
-
-/-- A claim's weight on a stack, tabulated once (`Layout::tensors`, `opening.rs`): the layout's lanes and
-piece (as arrays: one lookup a position), the claim's lane and piece scales (`Layout.scales`), and the `eq`
-tables of its lane coordinates and of its coordinates below a piece. -/
-structure ClaimWeights where
-  kinds : Array Lane
-  logPiece : Option ℕ
-  lanes : Array E
-  pieces : Array E
-  low : Array E
-  pieceLow : Array E
-
-/-- The tables of a claim's weight on `L`. -/
-def Layout.claimWeights (L : Layout) (c : Claim) : ClaimWeights :=
-  ⟨L.lanes.toArray, L.logPiece, (L.scales c.point).1.toArray, (L.scales c.point).2.toArray,
-    eqKernelA (c.point.take L.logLane), eqKernelA (c.point.take (L.logPiece.getD 0))⟩
-
-/-- **A claim's weight at entry `y` of lane `l`** (`Layout::weight_at`, `opening.rs`), from its tables
-(`Layout.claimWeights L c`): public layout, its lane scale times its `eq` at `y`; hidden layout, zero on a
-first piece; on a block lane, its lane scale times its `eq` at `y`; on the overflow lane, the held piece's scale
-times its `eq` below the piece; zero on a random lane. -/
-def Layout.weightAt (_L : Layout) (w : ClaimWeights) (l y : ℕ) : E :=
-  match w.logPiece with
-  | none => w.lanes.getD l 0 * w.low.getD y 0
-  | some s =>
-    let piece := y >>> s
-    if piece = 0 then 0
-    else
-      match w.kinds.getD l .random with
-      | .block _ => w.lanes.getD l 0 * w.low.getD y 0
-      | .overflow => w.pieces.getD (piece - 1) 0 * w.pieceLow.getD (y % 2 ^ s) 0
-      | .random => 0
-
-/-- **The gadget's weight at entry `y` of lane `l`** (`Layout::gadget_at`, `opening.rs`): `β_i` at entry `i`
-of pattern `g` on its lanes, zero elsewhere and in a public layout. -/
-def Layout.gadgetAt (L : Layout) (l y : ℕ) : E :=
-  match L.logPiece with
-  | none => 0
-  | some s =>
-    if 2 ^ s - gadgetSize ≤ y ∧ y < 2 ^ s ∧ (gadgetLanes ((y + gadgetSize - 2 ^ s) / 3)).contains l
-    then gadgetBeta ((y + gadgetSize - 2 ^ s) % 3) else 0
 /-- The witness table's masks: three coefficients of `K` for each of the four row polynomials. -/
 abbrev Masks : Type := Fin 4 → Fin 3 → K
+
+/-- **The prover's randomness** (`Randomness`, `protocol.rs`): the masks; the random rows' values, in the
+order of `Circuit.randomRows`; and the blinding of the sum's polynomial, `blind e i` coefficient `2^m + i`
+of limb `e`. The deployed prover derives them from a fresh 32-byte seed by a Keccak-256 KDF
+(`Randomness::derive`); the statement's prover takes them uniform (`Security.lean`'s `sampleCoins`). -/
+structure Coins where
+  masks : Masks
+  rows : Fin randomRows → K
+  blind : Fin 3 → Fin hBlind → K
 
 /-- The sixteen mask entries (`prove`, `protocol.rs`): entry `4i + j` is coefficient `i` of row
 polynomial `j`, `i < 3`; the last four are zero. -/
@@ -143,127 +71,91 @@ def maskEntries (masks : Masks) : Array K :=
   Array.ofFn (n := 16) fun e ↦
     if e.val / 4 < 3 then masks (Fin.ofNat 4 (e.val % 4)) (Fin.ofNat 3 (e.val / 4)) else 0
 
+/-- **The random rows filled** (`prove`, `protocol.rs`): the `X` and `V` cells of the `k`-th random row
+(`Circuit.randomRows`) take `rows k`. -/
+def randomizeCells (circuit : Circuit) (cells : Array K) (rows : Fin randomRows → K) : Array K :=
+  (circuit.randomRows.zipIdx).foldl (fun cs (r, k) ↦
+    let v := if h : k < randomRows then rows ⟨k, h⟩ else 0
+    (cs.setIfInBounds (4 * r) v).setIfInBounds (4 * r + 3) v) cells
+
 /-- `public_weight` (`protocol.rs`): the weight of cell `i` of the public region, `γ^J` times its
 bit's weight, `J = ⌊i / 2^8⌋` the word, or zero off the `X` and `Y` cells. -/
 def publicCellWeight (i : ℕ) (γ : E) : E :=
   if i &&& 2 ≠ 0 then 0
   else bitWeight ((i &&& 1) ||| (((i >>> 2) &&& 63) <<< 1)) * γ ^ (i >>> 8)
 
-/-- Limb `l` of an element of `E`. -/
-def limbOf (x : E) (l : ℕ) : K := LeanVM.Prover.limbAt x l
+/-! ### The PCS opening -/
 
-/-! ### The WHIR opening -/
+/-- **The weight table of an opening** in WHIR's variable order (`open_words`, `pcs_claim`): entry `i` is the
+table position `⌊i / 64⌋ + 2^(n−6)·(i mod 64)`, where the weight is `eq(z, ·) + λ·eq(point, ·)` (the two
+equality kernels, `eqKernelA`, coordinate `0` the lowest bit). -/
+def pcsWeightTable (n : ℕ) (z point : List E) (lam : E) : Array E :=
+  let ez := eqKernelA z
+  let ep := eqKernelA point
+  Array.ofFn (n := 2 ^ n) fun i ↦
+    let pos := i.val / 2 ^ laneFold + 2 ^ (n - laneFold) * (i.val % 2 ^ laneFold)
+    ez.getD pos 0 + lam * ep.getD pos 0
 
-
-/-- **The weight table of the batched claims** in WHIR's variable order: entry `i` is the stack position
-`⌊i / 64⌋ + 2^(logN−6)·(i mod 64)`, entry `⌊i / 64⌋` of lane `i mod 64`, where each claim weighs
-`Layout.weightAt`, and in a hidden layout the gadget `Layout.gadgetAt` with the scale after the claims'
-(`open`, `Layout::weight`, `opening.rs`). -/
-def weightTable (L : Layout) (scales : List E) (claims : List Claim) : Array E :=
-  let parts := (claims.zip scales).map fun (c, s) ↦ (L.claimWeights c, s)
-  let gadgetScale := scales.getD claims.length 0
-  Array.ofFn (n := 2 ^ L.logN) fun i ↦
-    parts.foldl (fun acc (w, s) ↦ acc + s * L.weightAt w (i.val % 64) (i.val / 64))
-      (gadgetScale * L.gadgetAt (i.val % 64) (i.val / 64))
-
-/-- **The honest WHIR opening** of `claims` on the stack `stack`, as a script of the prover's moves
-(mumbai's `openingFast` with this weight table): receive the batching challenge, then run the levels
-from the batched claim (the claims, and the gadget of value zero in a hidden layout: `stackClaims`) with the
-stack table and the weight table. -/
-def openingScript (L : Layout) (stack : Array K) (claims : List Claim) : Script Unit := do
-  let c ← Script.sampleE
-  let scales := powers c (stackClaims L claims).length
-  match Whir.ladder L.logN logInvRate with
+/-- **The honest WHIR opening** of a claim on the table `table` (`n` variables), its out-of-domain point
+`z`, as a script of the prover's moves (mumbai's `openingFast` with the PCS weight table): receive `λ`, then
+run the levels from the batched claim `ood + λ·value` with the table and the weight table. -/
+def pcsOpeningScript (n : ℕ) (table : Array K) (z : List E) (c : Commitment) (claim : Claim) :
+    Script Unit := do
+  let lam ← Script.sampleE
+  match Whir.ladder n logInvRate with
   | none => return ()
   | some config =>
-    let f₀ := stackTableA L.logN stack
-    let W₀ := weightTable L scales claims
-    let target := dot scales ((stackClaims L claims).map (·.2))
+    let f₀ := stackTableA n table
+    let W₀ := pcsWeightTable n z claim.point lam
+    let target := dot (powers lam 2) [c.ood, claim.value]
     let quad ← roundA target W₀ f₀
-    levelsA L.logN 0 config ⟨quad, [], []⟩ W₀ f₀
-
-section With
-
-variable {m : Type → Type} [Monad m] (F : KeccakState → m KeccakState)
-
-/-- **An opening proof** of `claims` on the table committed by `tree` (its stack `stack`): the root's two
-halves sent first (`ProverState::add_root`), then the script run against the verifier's program from the
-opening's sponge, with the table's tree as commitment `0`; `none` if a proof of work finds no nonce below
-`fuel`. -/
-def proveOpeningWith (fuel : ℕ) (L : Layout) (tree : Tree) (stack : Array K) (claims : List Claim) :
-    m (Option Compile.Proof) := do
-  let (r0, r1) := digestScalars tree.root
-  let sp ← openingSpongeWith F L claims
-  let sp ← absorb F sp r0 dsObserve
-  let sp ← absorb F sp r1 dsObserve
-  let program := verifyStackedOpening L.logN logInvRate
-    (stackClaims L claims)
-  let r ← runFrom F fuel program (some (openingScript L stack claims)) sp [tree]
-  return r.map fun t ↦ ⟨r0 :: r1 :: t.1, t.2⟩
-
-/-! ### The reduction's prover -/
-
-/-- The witness table's stack: the cells' coefficients `wHat`, then the masks, hidden with `pad`. -/
-def witnessStack (logRows : ℕ) (wHat mask : Array K) (pad : Padding) : Array K :=
-  let n := 2 ^ cellVars logRows
-  (witnessLayout logRows).stackOf (fun i ↦ if i < n then wHat.getD i 0 else mask.getD (i - n) 0) pad
-
-/-- **The quotient table's stack** (`prove`, `protocol.rs`), hidden with `pad`: chunk `c` of `2^m` entries
-holds limb `⌊c / 16⌋` of `h` (`c mod 16 = 0`) or of `q` (`c mod 16 ∈ 4 … 7`, its digit `c mod 4`), or the
-gate's quotient (`c ∈ {8, 9}`, its digit `c mod 4`). -/
-def quotientStack (logRows : ℕ) (hHat qHat : Array E) (qGateHat : Array K) (pad : Padding) :
-    Array K :=
-  let n := 2 ^ cellVars logRows
-  (quotientLayout logRows).stackOf (pad := pad) fun i ↦
-    let c := i / n
-    let src := c % 4 * n + i % n
-    if c &&& 12 = 0 then limbOf (hHat.getD src 0) (c / 16)
-    else if c &&& 12 = 4 then limbOf (qHat.getD src 0) (c / 16)
-    else qGateHat.getD src 0
+    levelsA n 0 config ⟨quad, [], []⟩ W₀ f₀
 
 /-- `w_k(t)` for `k ≤ count`. -/
 def digitsOf (t : E) (count : ℕ) : List E :=
   (List.range count).foldl (fun ws _ ↦ ws ++ [ws.getLastD t * ws.getLastD t + ws.getLastD t]) [t]
 
-/-- **The honest prover** over `F` (`prove` then `open`, `protocol.rs`): the proof of
-`stmt` from the cells of a witness of `circuit`, with the masks `masks` and the tables' padding `witnessPad`, `quotientPad` (uniform, for zero knowledge),
-trying `fuel` nonces per proof of work; `none` if a proof of work fails or the reduction rejects its own
-challenges (the Rust panics). -/
-def proveWith (fuel : ℕ) (circuit : Circuit) (stmt : Statement) (cells : Array K) (masks : Masks)
-    (witnessPad quotientPad : Padding) :
-    m (Option Proof) := do
+/-! ### The prover's tables, as functions of the witness, the randomness and the challenges -/
+
+/-- **The cells with the random rows filled**, the witness table's coefficients and its masks. -/
+def witnessParts (circuit : Circuit) (cells₀ : Array K) (coins : Coins) : Array K × Array K × Array K :=
+  let mv := cellVars circuit.logRows
+  let cells := randomizeCells circuit cells₀ coins.rows
+  (cells, coefficients mv 0 cells, maskEntries coins.masks)
+
+/-- **The witness table** `W` (`m + 1` variables): the cells' coefficients, then the masks. -/
+def witnessTable (circuit : Circuit) (cells₀ : Array K) (coins : Coins) : Array K :=
+  let n := 2 ^ cellVars circuit.logRows
+  let (_, wHat, mask) := witnessParts circuit cells₀ coins
+  Array.ofFn (n := 2 * n) fun i ↦ if i.val < n then wHat.getD i.val 0 else mask.getD (i.val - n) 0
+
+/-- **The quotient table's three parts** `H`, `Q`, `G` at the challenges `α, β, γ`. -/
+def quotientTables (circuit : Circuit) (cells₀ : Array K) (coins : Coins) (α β γ : E) :
+    Array K × Array K × Array K :=
   let mv := cellVars circuit.logRows
   let n := 2 ^ mv
   let big := 4 * n
   let block := 2 ^ region
-  -- The circuit's commitment, public.
   let sigmaHat := circuit.wiringTable
-  let indexTree ← commitWith F mv sigmaHat
-  -- 1. The witness table.
-  let wHat := coefficients mv 0 cells
-  let mask := maskEntries masks
-  let wStack := witnessStack circuit.logRows wHat mask witnessPad
-  let witnessTree ← commitWith F (mv + 1) wStack
-  let c ← Chain.startWith F (label indexTree.root stmt)
-  let witnessRoot := digestScalars witnessTree.root
-  let c := (c.absorb witnessRoot.1).absorb witnessRoot.2
-  let (α, c) ← c.squeezeWith F
-  let (β, c) ← c.squeezeWith F
-  let (γ, c) ← c.squeezeWith F
-  -- 2. The sum's polynomial on the cells.
+  let (cells, wHat, mask) := witnessParts circuit cells₀ coins
+  -- 3. The sum's polynomial on the cells, then its coefficients and their blinding.
   let h : Array E := Array.ofFn (n := n) fun i ↦
     let common := α + ofK (cells.getD i.val 0)
     (common + β * ofK (point i.val))⁻¹ + (common + β * ofK (point (circuit.sigma.getD i.val 0)))⁻¹ +
       if i.val < block then publicCellWeight i.val γ * ofK (cells.getD i.val 0) else 0
   let hHat := coefficients mv 0 h
-  -- 3. Both quotients, on a coset four times the cells.
+  let blindAt (i : ℕ) : E :=
+    if hi : i < hBlind then E.ofLimbs (coins.blind 0 ⟨i, hi⟩) (coins.blind 1 ⟨i, hi⟩) (coins.blind 2 ⟨i, hi⟩)
+    else 0
+  -- 4. Both quotients, on a coset four times the cells.
   let offset := betaAt (mv + 2)
   let offsets := chain offset (mv + 1)
   let wValues : Array K := values (mv + 2) offset (Array.ofFn (n := big) fun i ↦
     if i.val < n then wHat.getD i.val 0 else mask.getD (i.val - n) 0)
   let sigmaValues : Array K := values (mv + 2) offset (Array.ofFn (n := big) fun i ↦
     sigmaHat.getD i.val 0)
-  let q₀ : Array E := values (mv + 2) offset (Array.ofFn (n := big) fun i ↦ hHat.getD i.val 0)
+  let q₀ : Array E := values (mv + 2) offset (Array.ofFn (n := big) fun i ↦
+    if i.val < n then hHat.getD i.val 0 else blindAt (i.val - n))
   let b := coordinates region
   let tau := rowVanishing mv
   let rowPoly (x : K) : K := ((chain x (mv - 1)).zip tau).foldl (fun acc (w, t) ↦ acc + t * w) 0
@@ -300,37 +192,131 @@ def proveWith (fuel : ℕ) (circuit : Circuit) (stmt : Statement) (cells : Array
     (v + x + cc + y * cc) * rowInv.getD (i.val % 4) 0
   let qHat := coefficients (mv + 2) offset qValues
   let qGateHat := coefficients (mv + 2) offset qGateValues
-  let qStack := quotientStack circuit.logRows hHat qHat qGateHat quotientPad
-  let quotientTree ← commitWith F (mv + 4) qStack
-  let quotientRoot := digestScalars quotientTree.root
-  let c := (c.absorb quotientRoot.1).absorb quotientRoot.2
-  let (t, _) ← c.squeezeWith F
-  -- 4. The values at `t`.
+  -- The quotient table's three parts: `H` (`h`'s limbs, each `2^m` coefficients then its blinding), `Q` (`q`'s
+  -- limbs, `4·2^m` coefficients each), `G` (the gate's quotient's first `2^(m+1)` coefficients).
+  let hTable : Array K := Array.ofFn (n := 8 * n) fun i ↦
+    let (e, j) := (i.val / (2 * n), i.val % (2 * n))
+    if 3 ≤ e then 0
+    else if j < n then limbOf (hHat.getD j 0) e
+    else if hj : j - n < hBlind ∧ e < 3 then coins.blind ⟨e, hj.2⟩ ⟨j - n, hj.1⟩
+    else 0
+  let qTable : Array K := Array.ofFn (n := 16 * n) fun i ↦
+    let (e, j) := (i.val / big, i.val % big)
+    if e < 3 then limbOf (qHat.getD j 0) e else 0
+  let gTable : Array K := Array.ofFn (n := 2 * n) fun i ↦ qGateHat.getD i.val 0
+  (hTable, qTable, gTable)
+
+/-- **The row values** `a_j` (the four row polynomials with their masks) and `next` (the wiring polynomial) at
+`t`. -/
+def rowValues (circuit : Circuit) (cells₀ : Array K) (coins : Coins) (t : E) : Vector E 4 × E :=
+  let mv := cellVars circuit.logRows
+  let (_, wHat, mask) := witnessParts circuit cells₀ coins
   let digits := digitsOf t mv
   let a : Vector E 4 := Vector.ofFn fun j ↦
     novelEval wHat j.val 4 ((digits.drop 2).take (mv - 2)) +
       digits.getD mv 0 * novelEval mask j.val 4 ((digits.drop 2).take 2)
-  let next := novelEval sigmaHat 0 1 (digits.take mv)
-  let proof : ReductionProof := ⟨witnessRoot, quotientRoot, a, next⟩
-  -- 5. The claims, and their openings.
-  match ← reduceWith F circuit.logRows indexTree.root stmt proof with
-  | none => return none
-  | some r =>
-    let some witness ← proveOpeningWith F fuel (witnessLayout circuit.logRows) witnessTree wStack
-      [r.claims.witness] | return none
-    let some wiring ← proveOpeningWith F fuel (wiringLayout circuit.logRows) indexTree sigmaHat
-      [r.claims.wiring] | return none
-    let some quotient ← proveOpeningWith F fuel (quotientLayout circuit.logRows) quotientTree qStack
-      [r.claims.quotient, r.claims.sum] | return none
-    return some ⟨proof, witness, wiring, quotient⟩
+  let next := novelEval circuit.wiringTable 0 1 (digits.take mv)
+  (a, next)
+
+section With
+
+variable {m : Type → Type} [Monad m] (F : KeccakState → m KeccakState)
+
+/-- **An opening proof** of `claim` on the commitment `c` of the table `table` (its tree `tree`): the root's
+two halves sent first (`ProverState::add_root`), then the script run against the verifier's program from the
+opening's sponge, with the table's tree as commitment `0`; `none` if a proof of work finds no nonce below
+`fuel`. -/
+def proveClaimWith (fuel : ℕ) (tree : Tree) (table : Array K) (c : Commitment) (claim : Claim) :
+    m (Option Compile.Proof) := do
+  let n := claim.point.length
+  let (r0, r1) := digestScalars tree.root
+  let sp ← pcsSpongeWith F c claim
+  let sp ← absorb F sp r0 dsObserve
+  let sp ← absorb F sp r1 dsObserve
+  let z ← oodPointWith F n c.root
+  let program := verifyStackedOpening n logInvRate (pcsStackClaims z c claim)
+  let r ← runFrom F fuel program (some (pcsOpeningScript n table z c claim)) sp [tree]
+  return r.map fun t ↦ ⟨r0 :: r1 :: t.1, t.2⟩
+
+/-! ### The reduction's prover -/
+
+/-- A commitment as the stream carries it: its root's halves, then its out-of-domain answer. -/
+def CommitmentScalars.of (c : Commitment) : CommitmentScalars := ⟨rootHalves c.root, c.ood⟩
+
+/-- Absorb a commitment's three scalars. -/
+def Transcript.Chain.absorbCommitment (c : Chain) (s : CommitmentScalars) : Chain :=
+  ((c.absorb s.root.1).absorb s.root.2).absorb s.ood
+
+/-- **The PCS operations the prover uses for its secret tables**: commit to a table of `2^μ` words (a handle
+for opening it later, and the commitment: root and out-of-domain answer), and open a claim on a committed
+table. The honest prover's are `realPcs` (WHIR, `commitmentWith`, `proveClaimWith`); the zero-knowledge
+theorem replaces them by an ideal PCS (`Security.lean`, `formal/EndToEnd/ZK`). -/
+structure PcsOps (m : Type → Type) (Hd : Type) where
+  commit : ℕ → Array K → m (Hd × Commitment)
+  openClaim : Hd → Commitment → Claim → m (Option Compile.Proof)
+
+/-- **The real PCS** over `F`: WHIR's commitment (`commitmentWith`) and opening (`proveClaimWith`, `fuel` nonces
+per proof of work), the handle the table's tree and words. -/
+def realPcs (fuel : ℕ) : PcsOps m (Tree × Array K) where
+  commit μ table := do
+    let (tree, c) ← commitmentWith F μ table
+    return ((tree, table), c)
+  openClaim h c claim := proveClaimWith F fuel h.1 h.2 c claim
+
+/-- **The honest prover with PCS operations `pcs`** for its four secret tables (`W`, `H`, `Q`, `G`) over `F`
+(`prove_with_randomness` then `open`, `protocol.rs`): the proof of `stmt` from the cells of a witness of
+`circuit`, with the randomness `coins`; the circuit's commitment and the wiring claim's opening (public) are the
+real WHIR ones, `fuel` nonces per proof of work; `none` if a proof of work or an opening fails or the reduction
+rejects its own challenges (the Rust panics). -/
+def proveWithPcs {Hd : Type} (pcs : PcsOps m Hd) (fuel : ℕ) (circuit : Circuit) (stmt : Statement)
+    (cells₀ : Array K) (coins : Coins) : m (Option Proof) := do
+  let mv := cellVars circuit.logRows
+  -- The circuit's commitment, public.
+  let sigmaHat := circuit.wiringTable
+  let (indexTree, index) ← commitmentWith F mv sigmaHat
+  let wTable := witnessTable circuit cells₀ coins
+  let (wTree, wCom) ← pcs.commit (mv + 1) wTable
+  let c ← Chain.startWith F (label index stmt)
+  let wS := CommitmentScalars.of wCom
+  let c := c.absorbCommitment wS
+  let (α, c) ← c.squeezeWith F
+  let (β, c) ← c.squeezeWith F
+  let (γ, c) ← c.squeezeWith F
+  let (hTable, qTable, gTable) := quotientTables circuit cells₀ coins α β γ
+  let (hTree, hCom) ← pcs.commit (mv + 3) hTable
+  let (qTree, qCom) ← pcs.commit (mv + 4) qTable
+  let (gTree, gCom) ← pcs.commit (mv + 1) gTable
+  let (hS, qS, gS) := (CommitmentScalars.of hCom, CommitmentScalars.of qCom, CommitmentScalars.of gCom)
+  let c := ((c.absorbCommitment hS).absorbCommitment qS).absorbCommitment gS
+  let (t, _) ← c.squeezeWith F
+  -- The values at `t`, then `Q`'s and `G`'s values at their points (the verifier's, after `ρ`).
+  let (a, next) := rowValues circuit cells₀ coins t
+  let proof₀ : ReductionProof := ⟨wS, hS, qS, gS, a, next, 0, 0⟩
+  let some r₀ ← reduceWith F circuit.logRows index stmt proof₀ | return none
+  let proof : ReductionProof :=
+    { proof₀ with qValue := tableEval qTable r₀.claims.q.point,
+                  gValue := tableEval gTable r₀.claims.g.point }
+  -- 6. The claims, and their openings.
+  let some r ← reduceWith F circuit.logRows index stmt proof | return none
+  let some oW ← pcs.openClaim wTree r.commitments.witness r.claims.witness | return none
+  let some oσ ← proveClaimWith F fuel indexTree sigmaHat index r.claims.wiring | return none
+  let some oH ← pcs.openClaim hTree r.commitments.h r.claims.h | return none
+  let some oQ ← pcs.openClaim qTree r.commitments.q r.claims.q | return none
+  let some oG ← pcs.openClaim gTree r.commitments.g r.claims.g | return none
+  let some oS ← pcs.openClaim hTree r.commitments.h r.claims.sum | return none
+  return some ⟨proof, ⟨oW, oσ, oH, oQ, oG, oS⟩⟩
+
+/-- **The honest prover** over `F` (`prove_with_randomness` then `open`, `protocol.rs`): `proveWithPcs` with the
+real PCS. -/
+def proveWith (fuel : ℕ) (circuit : Circuit) (stmt : Statement) (cells₀ : Array K) (coins : Coins) :
+    m (Option Proof) :=
+  proveWithPcs F (realPcs F fuel) fuel circuit stmt cells₀ coins
 
 /-- **The honest prover of the membership statement** over `F`: `proveWith` on the membership circuit's
-cells for the secret `w` (`membershipInputs`, `Circuit.cells`). -/
-def proverWith (fuel : ℕ) (stmt : Statement) (w : Secret) (masks : Masks)
-    (witnessPad quotientPad : Padding) : m (Option Proof) :=
+cells for the secret `w` (`membershipInputs`, `Circuit.cells`; the random rows zero, filled by the prover). -/
+def proverWith (fuel : ℕ) (stmt : Statement) (w : Secret) (coins : Coins) : m (Option Proof) :=
   let circuit := membership logRows
-  proveWith F fuel circuit stmt (circuit.cells (membershipInputs w)) masks witnessPad
-    quotientPad
+  proveWith F fuel circuit stmt (circuit.cells (membershipInputs w)) coins
 
 end With
 

@@ -24,7 +24,6 @@ import QuotientSecurity.Deployed
 import QuotientSecurity.DeployedConcrete
 import QuotientSecurity.DeployedHonest
 import QuotientSecurity.DeployedBasis
-import QuotientSecurity.Hiding
 
 /-- info: 'QuotientSecurity.verifier_rbrKnowledgeSoundness' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
@@ -429,6 +428,34 @@ import QuotientSecurity.Hiding
 /-- info: 'QuotientSecurity.Instance.soundness_deployedInstance' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms QuotientSecurity.Instance.soundness_deployedInstance
+
+/-- info: 'QuotientSecurity.deployed_laid_sigma' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms QuotientSecurity.deployed_laid_sigma
+
+/-- info: 'QuotientSecurity.membership_ordered' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms QuotientSecurity.membership_ordered
+
+/-- info: 'QuotientSecurity.ChiCircuit.pubSrc_not_random' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms QuotientSecurity.ChiCircuit.pubSrc_not_random
+
+/-- info: 'PcsCircuit.membership_random_row' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms PcsCircuit.membership_random_row
+
+/-- info: 'PcsCircuit.membership_reads_used' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms PcsCircuit.membership_reads_used
+
+/-- info: 'PcsCircuit.membership_usedRows_le' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms PcsCircuit.membership_usedRows_le
+
+/-- info: 'PcsCircuit.membership_sigma_reads' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms PcsCircuit.membership_sigma_reads
 
 /-- info: 'QuotientSecurity.bitWeightsIndependent_G_Y' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in

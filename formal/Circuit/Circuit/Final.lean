@@ -10,8 +10,11 @@ What the soundness argument needs of `membership` (`quotient::circuit::membershi
 
 * `membership_rows_size`: `2^22` rows (the rows used fit: `buildRows = 4,002,624`);
 * `membership_input_row`: an input row reads its own output in `X`, `Y`, `C`;
+* `membership_random_row`: the last `16` rows (`IsRandom`, past the `3,878,612` rows built:
+  `membership_usedRows_le`) are random rows, `X` reading the row's own output, `Y` one, `C` zero;
 * `membership_order`: every other row reads constants or rows of lower `rank` (`rank r = r` from
-  row `512` on, `2^22 + r` for the public rows `r < 512`, ranked last);
+  row `512` on, `2^22 + r` for the public rows `r < 512`, ranked last), and
+  `membership_reads_used`: built rows (`ReadsUsed`), so never a random row;
 * `membership_word5`, `membership_word4_one`, `membership_word4`: the anchors of the constants;
 * `membership_public`: for every valuation satisfying every row's gate whose input bits are a
   well-formed secret's, bit `j` of public word `J < 4` is bit `j % 8` of byte `15 - j / 8` of the
@@ -53,11 +56,21 @@ theorem finish_rows_size (b : Builder) (pub : Nat → Nat → Src) :
 
 theorem finish_rows_getD (b : Builder) (pub : Nat → Nat → Src) (r : Nat) (hr : r < 2 ^ logRows) :
     (b.finish logRows pub).rows.getD r .idle =
-      if r < publicRows then publicRow pub r else b.rows.getD r .idle := by
+      if r < publicRows then publicRow pub r
+      else if b.rows.size ≤ r ∧ 2 ^ logRows - randomRows ≤ r then randomRow r
+      else b.rows.getD r .idle := by
   simp only [Builder.finish, Builder.finishRows]
   rw [map_range_getD _ _ _ _ hr]
 
 theorem finish_inputs (b : Builder) (pub : Nat → Nat → Src) : (b.finish logRows pub).inputs = b.inputs := rfl
+
+theorem finish_usedRows (b : Builder) (pub : Nat → Nat → Src) :
+    (b.finish logRows pub).usedRows = b.rows.size := rfl
+
+/-- A row of `b` below its size is not a random row of `finish`. -/
+theorem finish_rows_getD_built (b : Builder) (pub : Nat → Nat → Src) (r : Nat) (hr : r < 2 ^ logRows)
+    (hp : publicRows ≤ r) (hb : r < b.rows.size) : (b.finish logRows pub).rows.getD r .idle = b.rows.getD r .idle := by
+  rw [finish_rows_getD _ _ _ hr, if_neg (by omega), if_neg (by omega)]
 
 /-- `membership` is `finish` of the membership rows. -/
 theorem membership_spec :
@@ -118,17 +131,48 @@ theorem membership_input_row : ∀ r ∈ membership.inputs, r < 2 ^ logRows ∧ 
   have h1 := hwf.input_range r hr
   have hlt : r < 2 ^ logRows := by have := buildRows_lt; omega
   refine ⟨hlt, h1.1, ?_⟩
-  rw [he, finish_rows_getD _ _ _ hlt, if_neg (by omega)]
+  rw [he, finish_rows_getD_built _ _ _ hlt h1.1 h1.2]
   exact hwf.input_row r hr
 
+/-- Row `r` of `membership` is a random row (`finish`): one of the last `16`, not built. -/
+def IsRandom (r : Nat) : Prop := IsRandomRow logRows membership.usedRows r
+
+/-- **The rows built leave room for the random rows**: `3,878,612 ≤ buildRows = 4,002,624 ≤ 2^22 − 16`. -/
+theorem membership_usedRows_le : membership.usedRows ≤ 2 ^ logRows - randomRows := by
+  obtain ⟨y, root, bf, he, -, hsize, -⟩ := membership_spec
+  rw [he, finish_usedRows]
+  have := buildRows_eq
+  simp only [logRows, randomRows, Nat.reducePow, Nat.reduceSub] at this ⊢
+  omega
+
+/-- **A random row reads its own output in `X`, the one in `Y`, the zero in `C`.** -/
+theorem membership_random_row (r : Nat) (h : IsRandom r) :
+    membership.rows.getD r .idle = randomRow r := by
+  obtain ⟨y, root, bf, he, -⟩ := membership_spec
+  obtain ⟨h1, h2, h3⟩ := h
+  rw [he, finish_usedRows] at h1
+  have hp : ¬ r < publicRows := by
+    simp only [publicRows, logRows, randomRows, Nat.reducePow, Nat.reduceSub] at h2 ⊢
+    omega
+  rw [he, finish_rows_getD _ _ _ h3, if_neg hp, if_pos ⟨h1, h2⟩]
+
+/-- **The random rows are not inputs.** -/
+theorem membership_random_not_input (r : Nat) (h : IsRandom r) : r ∉ membership.inputs := by
+  intro hin
+  have h1 := (membership_input_row r hin).2.2
+  rw [membership_random_row r h] at h1
+  cases h1
+
 /-- **Every other row reads constants or rows of lower rank**, the public rows ranked last. -/
-theorem membership_order : ∀ r < 2 ^ logRows, r ∉ membership.inputs →
+theorem membership_order : ∀ r < 2 ^ logRows, r ∉ membership.inputs → ¬ IsRandom r →
     Ranked (rank r) (membership.rows.getD r .idle).x ∧ Ranked (rank r) (membership.rows.getD r .idle).y ∧
     Ranked (rank r) (membership.rows.getD r .idle).c := by
   obtain ⟨y, root, bf, he, hwf, hsize, -, hval, -⟩ := membership_spec
   have hb : bf.rows.size ≤ 2 ^ logRows := le_trans hsize buildRows_lt
-  intro r hr hin
+  intro r hr hin hrand
   rw [he, finish_inputs] at hin
+  unfold IsRandom IsRandomRow at hrand
+  rw [he, finish_usedRows] at hrand
   rw [he, finish_rows_getD _ _ _ hr]
   by_cases hp : r < publicRows
   · rw [if_pos hp]
@@ -141,10 +185,58 @@ theorem membership_order : ∀ r < 2 ^ logRows, r ∉ membership.inputs →
       · split <;> trivial
     unfold publicRow
     exact ⟨pb _ _ (by omega), pb _ _ (by omega), trivial⟩
-  · rw [if_neg hp]
+  · rw [if_neg hp, if_neg (fun h => hrand ⟨h.1, h.2, hr⟩)]
     by_cases hu : r < bf.rows.size
     · obtain ⟨h1, h2, h3⟩ := hwf.order r (by omega) hu hin
       exact ⟨below_ranked h1 hr (by omega), below_ranked h2 hr (by omega), below_ranked h3 hr (by omega)⟩
+    · have : bf.rows.getD r .idle = Row.idle := by
+        rw [Array.getD_eq_getD_getElem?, Array.getElem?_eq_none (by omega)]; rfl
+      rw [this]
+      exact ⟨trivial, trivial, trivial⟩
+
+/-- A source reading a row built, of the first `u`. -/
+def ReadsUsed (u : Nat) : Src → Prop
+  | .row r' => r' < u
+  | _ => True
+
+theorem valid_readsUsed {bf : Builder} {s : Src} (hs : Valid bf s) : ReadsUsed bf.rows.size s := by
+  unfold Valid at hs
+  cases s with
+  | zero => trivial
+  | one => trivial
+  | row r' => unfold Below at hs; exact hs.2
+
+theorem below_readsUsed {u r : Nat} {s : Src} (hs : Below r s) (hr : r < u) : ReadsUsed u s := by
+  cases s with
+  | zero => trivial
+  | one => trivial
+  | row r' => unfold Below at hs; show r' < u; omega
+
+/-- **The rows other than inputs and random rows read built rows**, so never a random row. -/
+theorem membership_reads_used : ∀ r < 2 ^ logRows, r ∉ membership.inputs → ¬ IsRandom r →
+    ReadsUsed membership.usedRows (membership.rows.getD r .idle).x ∧
+    ReadsUsed membership.usedRows (membership.rows.getD r .idle).y ∧
+    ReadsUsed membership.usedRows (membership.rows.getD r .idle).c := by
+  obtain ⟨y, root, bf, he, hwf, hsize, -, hval, -⟩ := membership_spec
+  intro r hr hin hrand
+  rw [he, finish_inputs] at hin
+  unfold IsRandom IsRandomRow at hrand
+  rw [he, finish_usedRows] at hrand ⊢
+  rw [finish_rows_getD _ _ _ hr]
+  by_cases hp : r < publicRows
+  · rw [if_pos hp]
+    have pb : ∀ J j, j < 128 → ReadsUsed bf.rows.size (publicBit (publicWords y root) J j) := by
+      intro J j hj
+      unfold publicBit
+      split
+      · exact valid_readsUsed (publicWords_valid hval J j hj)
+      · split <;> trivial
+    unfold publicRow
+    exact ⟨pb _ _ (by omega), pb _ _ (by omega), trivial⟩
+  · rw [if_neg hp, if_neg (fun h => hrand ⟨h.1, h.2, hr⟩)]
+    by_cases hu : r < bf.rows.size
+    · obtain ⟨h1, h2, h3⟩ := hwf.order r (by omega) hu hin
+      exact ⟨below_readsUsed h1 hu, below_readsUsed h2 hu, below_readsUsed h3 hu⟩
     · have : bf.rows.getD r .idle = Row.idle := by
         rw [Array.getD_eq_getD_getElem?, Array.getElem?_eq_none (by omega)]; rfl
       rw [this]
@@ -199,7 +291,7 @@ theorem membership_public (v : Nat → Bool) (hv : CircuitSat membership v) (s :
   have hsat : Sat v bf := by
     intro r h1 h2
     have := hv r (by rw [he, finish_rows_size]; omega)
-    rw [he, finish_rows_getD _ _ _ (by omega), if_neg (by omega)] at this
+    rw [he, finish_rows_getD_built _ _ _ (by omega) h1 h2] at this
     exact this
   rw [he, finish_inputs] at hin
   have hk : 8 * (16 * (J % 2) + 15 - j / 8) + j % 8 < 256 := by

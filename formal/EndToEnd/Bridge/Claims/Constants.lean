@@ -1,30 +1,44 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
-import Bridge.Claims.Reduce
-import Bridge.Claims.Tau
+import PcsQuotient.Reduction
+import Compose.Reduce
 import Compose.Claims
+import Bridge.Opening
+import Field.F192
 import QuotientSecurity.DeployedBasis
 
 /-!
-# The statement's constants meet `reduce`'s hypotheses
+# The statement's constants and its Cantor basis
 
-`Compose.Reduce.reduce`'s constants are parameters, constrained only where needed: `beta()` a
-Cantor basis (`Compose.IsCantor`) and `tau` solving `row_vanishing`'s system
-(`Compose.Reduce.RowVanishing`). The statement computes both (`PcsQuotient.Domain.beta`, the pivots
-of `S` and a solve per vector; `rowVanishing 24`, a Gauss–Jordan elimination); here they are checked
-by kernel evaluation (`decide +kernel`, no `native_decide`):
+`Compose.Reduce.reduce`'s constants as the statement computes them (`statementConsts`: the Cantor basis
+`Domain.betaAt` and the rows' polynomial `statementTau`, the coefficients of `rowVanishing 24`), and the basis
+checked by kernel evaluation (`decide +kernel`, no `native_decide`):
 
 * `beta_lanes`: the statement's `28` basis words, the first `24` F0c's `betaWords` (about 4 s);
   so `betaAt_eq_deployedBasis`: `β_k` is `QuotientSecurity.deployedBasis`'s, `k < 24`, and
-  **`isCantor_statementConsts`** follows from `deployedBasis`'s kernel-checked `S(β_{k+1}) = β_k`;
-* `rowVanishing_24_words` (`Tau.lean`, `22` elimination steps): `τ`'s words (`tauWords`, the
-  Rust's `row_vanishing(24)` that F5's graph carries); and **`rowVanishing_statementConsts`**: the
-  `22` equations `Σ_{k ≤ 22} [k ≤ j] β_{j−k} τ_k = 0` and `τ_22 = 1`, evaluated in `K` (about
-  `500` products).
+  **`isCantor_statementConsts`** follows from `deployedBasis`'s kernel-checked `S(β_{k+1}) = β_k`.
+
+The constants were in `Reduce.lean` and the rows' polynomial's check (`rowVanishing_statementConsts`) here; they
+are swapped so that the leanVM line (`Heap`, `UniSound`), which imports this module, does not import the
+previous protocol's reduction (`Reduce.lean`).
 -/
 
 namespace Bridge
 
 open LeanVM.Parameters PcsQuotient PcsQuotient.Domain QuotientSecurity
+
+/-! ## The constants -/
+
+/-- The statement's rows' polynomial at `2^22` rows, its `k`-th coefficient. -/
+def statementTau (k : ℕ) : K := (rowVanishing 24).getD k 0
+
+/-- **`reduce`'s constants as the statement computes them**: its Cantor basis and its rows'
+polynomial at `2^22` rows (`m = 24` cell variables). -/
+def statementConsts : Compose.Reduce.Consts :=
+  ⟨betaAt, statementTau⟩
+
+@[simp] theorem statementConsts_beta : statementConsts.beta = betaAt := rfl
+
+@[simp] theorem statementConsts_tau : statementConsts.tau = statementTau := rfl
 
 /-! ## Words -/
 
@@ -66,60 +80,8 @@ theorem isCantor_statementConsts : Compose.IsCantor statementConsts.beta := by
       betaAt_eq_deployedBasis k (by omega)]
     exact deployedBasis.succ k hk
 
-/-! ## The rows' polynomial -/
-
-/-- `row_vanishing(24)`'s words (the Rust's, which F5's graph carries as `tau`). -/
-def tauWords : List UInt64 :=
-  [5246327309480240592, 462416703093199623, 5836061695391999385, 17933131952861334950,
-    18372946041939442404, 12828942987611060278, 13588355210333287157, 1205146552516504875,
-    981042065287506825, 5923339044450209179, 951408172292342183, 12676167449202766892,
-    13719231351162120800, 12661900118541078806, 12449589984762772511, 11682037014426230835,
-    1012368888076811759, 18272804218237563919, 5328687504910262779, 18383142605220007825,
-    802269026382174146, 1506959928840120550, 1]
-
-/-- **`rowVanishing 24`, as words** (`Tau.lean`: `22` kernel-checked elimination steps). -/
-theorem rowVanishing_24_words : (rowVanishing 24).map K.lane = tauWords :=
-  Claims.rowVanishing_24_lanes
-
-/-- **`τ_k`** is the word `k` of `tauWords`. -/
-theorem statementTau_eq (k : ℕ) : statementTau k = K.ofLane (tauWords.getD k 0) :=
-  getD_of_words rowVanishing_24_words k
-
-theorem sum_range_eq_list (f : ℕ → K) :
-    ∀ n, ∑ k ∈ Finset.range n, f k = ((List.range n).map f).sum
-  | 0 => by simp
-  | n + 1 => by
-    rw [Finset.sum_range_succ, sum_range_eq_list f n, List.range_succ, List.map_append,
-      List.sum_append]
-    simp
-
-/-- `row_vanishing(24)`'s system, in `K`, by kernel evaluation (`22` equations of `23` products). -/
-theorem tau_system : ∀ j < 22 + 2, 2 ≤ j →
-    ((List.range (22 + 1)).map fun k ↦
-      (if k ≤ j then betaF64 (j - k) else 0) * K.ofLane (tauWords.getD k 0)).sum = 0 := by
-  decide +kernel
-
-/-- **The statement's `τ` solves `row_vanishing`'s system** (`Compose.Reduce.RowVanishing`, what
-`Compose`'s claims theorems ask of `tau`): `τ_22 = 1` and, for each `β_j`, `2 ≤ j < 24`,
-`Σ_{k ≤ 22} [k ≤ j] β_{j−k} τ_k = 0`. -/
-theorem rowVanishing_statementConsts : Compose.Reduce.RowVanishing statementConsts 22 := by
-  refine ⟨?_, fun j hj2 hj ↦ ?_⟩
-  · rw [statementConsts_tau, statementTau_eq]
-    rfl
-  · rw [sum_range_eq_list]
-    refine Eq.trans (congrArg List.sum (List.map_congr_left fun k _ ↦ ?_)) (tau_system j hj hj2)
-    rw [statementConsts_tau, statementTau_eq, statementConsts_beta]
-    by_cases hkj : k ≤ j
-    · rw [if_pos hkj, if_pos hkj, betaAt_eq_deployedBasis (j - k) (by omega)]
-      rfl
-    · rw [if_neg hkj, if_neg hkj]
-
 end Bridge
 
 /-- info: 'Bridge.isCantor_statementConsts' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms Bridge.isCantor_statementConsts
-
-/-- info: 'Bridge.rowVanishing_statementConsts' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms Bridge.rowVanishing_statementConsts

@@ -178,8 +178,8 @@ namespace Instance
 `rustCoordinateWeight_eq`) and the deployed wiring (`membership.sigma`, the Rust's): for every
 adversary making at most `Q` oracle queries, the probability that the verdict is true for the
 verifier's public words of some `(y, root)` (`rustStatementWords`: `Statement::halves`, then
-`1, 0, 0, 0`) while the proof's cells are not a computation of the deployed circuit whose input
-bits are a secret `s` with `H(s.x ‖ 0x11^32) = y` and the Merkle path of `s` from
+`1, 0, 0, 0`) while the proof's cells are not a computation of the deployed circuit (off its `16`
+random rows, whose cells are unconstrained) whose input bits are a secret `s` with `H(s.x ‖ 0x11^32) = y` and the Merkle path of `s` from
 `H(s.x ‖ 0x22^32)` ending at `root` (`ProvesMembership`, `H` leanerVM's Keccak-256), is at most
 `(Q + 3) / 2^128`. -/
 theorem soundness_membership_deployed_concrete (I : Instance F192)

@@ -4,6 +4,7 @@
 -- (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`, commit 6175f1a0, MIT OR Apache-2.0):
 -- `Column`, the runners with a hash.
 import E2ECompleteness.WithHash
+import E2ECompleteness.ProverOpening
 
 /-!
 # The honest prover's computations, named
@@ -31,10 +32,6 @@ open PcsQuotient PcsQuotient.Domain PcsQuotient.Transcript
 set_option autoImplicit false
 
 namespace E2ECompleteness
-
-/-- **A stack as WHIR's column** of `2^μ` words: word `x` is the array's, zero past it (the
-commitment reads the stack with `getD`, `stackWordFast`). -/
-def colOf (μ : ℕ) (a : Array K) : Column μ := ⟨Vector.ofFn fun x ↦ a.getD x.val 0⟩
 
 /-- **The Statement's computed constants have their defining properties** (`Domain.lean`):
 `beta()` is a Cantor basis (`IsCantorBasis`, its `28` vectors), `coordinates(11)` reads the

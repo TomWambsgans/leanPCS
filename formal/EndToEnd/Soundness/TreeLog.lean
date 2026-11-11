@@ -1,24 +1,18 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
-import Soundness.Defs
+import Compose.Claims
+import Compose.Rpm
+import PcsQuotient.Security
+import QuotientSecurity.Deployed
+import Shared.SoundnessDefs
 
 /-!
-# The setup's log is its tree's evaluations
+# A Merkle tree's log
 
-Compose's random-permutation experiment logs the setup's Keccak-256 queries (`loggedKC`); the
-Statement's extractor reads the setup's tree's evaluations (`PcsQuotient.Tree.evaluations`). They
-are the same list: building a Merkle tree (mumbai's `buildTreeWithHash`) asks the hash of each
-leaf's bytes, then of each pair of children, level by level, and the tree records every answer.
+Building a tree with the logging hash (`logH`) logs its Keccak-256 evaluations, level by level: `run_buildTree`,
+`run_levels`, `run_parents`, `run_leafDigests`, `loggedKC_buildTree`, `loggedKC_map`.
 
-* **`loggedKC_buildTree`**: the logged build is the build, its log the tree's evaluations
-  (`treeTr`), an equality of computations of the two oracles;
-* **`loggedKC_stackSetup`**: the same for Compose's setup (`stackSetup`, the tree's root as 32
-  bytes).
-
-The route: `simulateQ_buildTreeM` (mumbai) makes the logged build the build with the logging hash
-`logH`; hashing a range of inputs with it (`run_arrayMapM_range`) is hashing them plainly and
-appending each input with its answer; so the leaves (`run_leafDigests`), each level's parents
-(`run_parents`), the levels (`run_levels`, their log `levLog`) and the tree (`run_buildTree`) log
-what `Tree.evaluations` reads off the tree, in its order.
+Pruned to what the leanVM line uses (`formal/Uni*`, `formal/Rec*`); the previous membership protocol's declarations
+that were here are in the git history.
 -/
 
 set_option linter.unusedSectionVars false
@@ -152,15 +146,4 @@ theorem loggedKC_buildTree (ht : ℕ) (word : Word) :
   rw [loggedKC, LeanVM.Protocol.Compile.simulateQ_buildTreeM]
   exact run_buildTree ht word
 
-/-- **The setup's log is its tree's evaluations.** -/
-theorem loggedKC_stackSetup {F : Type} (D : Deploy F) (q₀ : Column D.Lσ.logN) :
-    loggedKC (stackSetup D q₀) =
-      (fun t => (toB t.root, treeTr t)) <$> LeanVM.Prover.buildTreeWithHash callKeccak256
-        (rootHeight D.Lσ.logN D.R) (LeanVM.Protocol.Whir.Complete.stackWord D.Lσ.logN q₀) := by
-  rw [stackSetup, wiringSetup, loggedKC_map, loggedKC_buildTree, Functor.map_map]
-
 end Soundness
-
-/-- info: 'Soundness.loggedKC_stackSetup' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms Soundness.loggedKC_stackSetup

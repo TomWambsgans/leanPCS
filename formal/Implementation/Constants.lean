@@ -1,150 +1,155 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
-import Implementation.Claims
+import Implementation.Bytes
+import Implementation.Program
+import Implementation.Tau
+import Implementation.Formula
 
 /-!
-# The graph's constants are the model's
+# The graph's constants are the Statement's
 
-The constants `Graph.lean` carries from the Rust (`quotient::domain::beta`, `row_vanishing`,
-`coordinates`, `protocol::extension`) are checked here by computation on numbers (`decide +kernel`)
-and read in `F` through `IsF192`: `beta` is a Cantor basis (`basis`), `coords` inverts it on the
-public region (`basis_hb`), `tau` gives the rows' vanishing polynomial, and `y0`, `y1`, `scale` are
-`Y / (1 + Y)`, `Y^2 / (1 + Y^2)`, `1 / ((1 + Y) (1 + Y^2))` for `Y = y` (`consts`). Nothing about
-the Rust's computation of them is trusted.
+The constants the graph carries (`Graph.lean`, written by the Rust: `beta`, `coords`, `tau`, `y0`,
+`y1`, `scale`, and the slopes `1 + coordinate_weight(k)` that `Program.slopeConst` names) are the
+elements the Statement computes (`PcsQuotient.Domain.betaAt`, `coordinates 11`, `rowVanishing 24`,
+`extension`, `coordinateWeight`): the words by kernel evaluation (`beta_lanes`, `coords_lanes`,
+`tau_lanes`, the last through `Tau.lean`'s elimination steps), the extension's three elements by their
+defining products (`mulE` evaluated), the slopes by evaluation in `E`.
 -/
 
 set_option linter.unusedSectionVars false
 
 namespace Implementation
 
-open Program Emitted QuotientSecurity
+open LeanVM.Parameters LeanVM.Protocol PcsQuotient PcsQuotient.Domain Program Emitted
 
-local notation "SQ" => QuotientSecurity.sq
+local notation "W" => word limbsEquiv
+local notation "EL" => elem limbsEquiv
 
-/-! ## On numbers -/
+/-! ## Words of `K` -/
 
-theorem beta_succ : ∀ k < 23,
-    mulE (beta.getD (k + 1) 0) (beta.getD (k + 1) 0) ^^^ beta.getD (k + 1) 0 = beta.getD k 0 := by
+/-- An entry of a list of `K` given by its words. -/
+theorem getD_of_words {l : List K} {ws : List UInt64} (h : l.map K.lane = ws) (i : ℕ) :
+    l.getD i 0 = K.ofLane (ws.getD i 0) := by
+  subst h
+  by_cases hi : i < l.length
+  · simp [List.getD_eq_getElem?_getD, hi]
+    rfl
+  · rw [List.getD_eq_getElem?_getD, List.getElem?_eq_none (by omega), Option.getD_none,
+      List.getD_eq_getElem?_getD, List.getElem?_eq_none (by simp; omega), Option.getD_none]
+    rfl
+
+theorem word_ofK (a : K) : W (ofK a) = a.lane.toNat := by
+  have e : ofK a = E.ofLimbs (K.ofLane a.lane) (K.ofLane 0) (K.ofLane 0) := rfl
+  rw [e, word_ofLimbs]
+  simp
+
+theorem elem_lane {n : ℕ} (hn : n < 2 ^ 64) : EL n = ofK (K.ofLane n.toUInt64) := by
+  apply elem_eq_of_word
+  rw [word_ofK, show (K.ofLane n.toUInt64).lane = n.toUInt64 from rfl, Nat.toUInt64_eq, UInt64.toNat_ofNat', Nat.mod_eq_of_lt hn,
+    Nat.mod_eq_of_lt (lt_trans hn (by decide))]
+
+theorem elem_list {l : List K} {ns : List ℕ} (h : l.map K.lane = ns.map Nat.toUInt64)
+    (hs : ∀ x ∈ ns, x < 2 ^ 64) (i : ℕ) : EL (ns.getD i 0) = ofK (l.getD i 0) := by
+  have hlt : ns.getD i 0 < 2 ^ 64 := by
+    rw [List.getD_eq_getElem?_getD]
+    cases hk : ns[i]? with
+    | none => simp
+    | some x => exact hs x (List.mem_of_getElem? hk)
+  rw [getD_of_words h, elem_lane hlt]
+  congr 2
+  rw [List.getD_eq_getElem?_getD, List.getD_eq_getElem?_getD, List.getElem?_map]
+  cases ns[i]? <;> rfl
+
+theorem ofK_zero : ofK (0 : K) = 0 := map_zero (algebraMap K E)
+theorem ofK_one : ofK (1 : K) = 1 := map_one (algebraMap K E)
+theorem ofK_add (a b : K) : ofK (a + b) = ofK a + ofK b := map_add (algebraMap K E) a b
+
+/-! ## The Cantor basis, the coordinates, the rows' polynomial -/
+
+/-- **The basis's words** are the graph's (kernel evaluation of the Statement's pivots and solves). -/
+theorem beta_lanes : PcsQuotient.Domain.beta.toList.map K.lane = Emitted.beta.map Nat.toUInt64 := by
   decide +kernel
 
-theorem coords_inverse : ∀ d < 11, 1 ≤ d →
-    ((List.range (d + 1)).map fun e => mulE (coords.getD e 0) (beta.getD (d - e) 0)).foldl
-      (· ^^^ ·) 0 = 0 := by
+theorem beta_small : ∀ x ∈ Emitted.beta, x < 2 ^ 64 := by decide +kernel
+
+theorem betaAt_eq_getD (k : ℕ) : betaAt k = PcsQuotient.Domain.beta.toList.getD k 0 := by
+  simp [betaAt, List.getD_eq_getElem?_getD]
+
+theorem elem_theta : EL (Emitted.beta.getD 1 0) = ofK (betaAt 1) := by
+  rw [elem_list beta_lanes beta_small, betaAt_eq_getD]
+
+theorem elem_theta1 : EL (Emitted.beta.getD 1 0 ^^^ 1) = ofK (betaAt 1 + 1) := by
+  rw [elem_xor isF192_primitives, elem_theta, elem_one isF192_primitives, ofK_add, ofK_one]
+
+/-- **The coordinates' constants** are the graph's. -/
+theorem coords_lanes : (coordinates region).map K.lane = Emitted.coords.map Nat.toUInt64 := by
   decide +kernel
 
-theorem tau_vanishes : ∀ j < 24, 2 ≤ j →
-    ((List.range 23).map fun k => if k ≤ j then mulE (tau.getD k 0) (beta.getD (j - k) 0) else 0).foldl
-      (· ^^^ ·) 0 = 0 := by
+theorem coords_small : ∀ x ∈ Emitted.coords, x < 2 ^ 64 := by decide +kernel
+
+theorem elem_coords (d : ℕ) : EL (Emitted.coords.getD d 0) = ofK ((coordinates region).getD d 0) :=
+  elem_list coords_lanes coords_small d
+
+/-- **`rowVanishing 24`'s words** are the graph's `tau` (`Tau.lean`: the elimination, step by step). -/
+theorem tau_lanes : (rowVanishing 24).map K.lane = Emitted.tau.map Nat.toUInt64 := by
+  rw [Tau.rowVanishing_24_lanes]
+  decide
+
+theorem tau_small : ∀ x ∈ Emitted.tau, x < 2 ^ 64 := by decide +kernel
+
+theorem elem_tau (k : ℕ) : EL (Emitted.tau.getD k 0) = ofK ((rowVanishing 24).getD k 0) :=
+  elem_list tau_lanes tau_small k
+
+/-! ## The slopes -/
+
+/-- **`1 + coordinate_weight(k)`**, `k < 8`, is the graph's constant `slopeConst k`. -/
+theorem slopes : ∀ k < 8, (coordinateWeight k).map (1 + ·) = some (EL (slopeConst k)) := by
   decide +kernel
 
-theorem consts_values : beta.getD 0 0 = 1 ∧ coords.getD 0 0 = 1 ∧ tau.getD 22 0 = 1 ∧
-    mulE y0 (1 ^^^ B64) = B64 ∧ mulE y1 (1 ^^^ mulE B64 B64) = mulE B64 B64 ∧
-    mulE scale (mulE (1 ^^^ B64) (1 ^^^ mulE B64 B64)) = 1 ∧
-    (1 ^^^ B64) % B192 ≠ 0 ∧ (1 ^^^ mulE B64 B64) % B192 ≠ 0 := by
+theorem coordinateWeight_none {k : ℕ} (hk : ¬ k < 8) : coordinateWeight k = none := by
+  unfold coordinateWeight
+  simp only [show k ≠ 0 by omega, show k ≠ 1 by omega, hk, if_false]
+
+/-! ## The extension -/
+
+theorem elem_B64 : EL B64 = ey := by decide +kernel
+
+theorem one_add_ey_ne : (1 : E) + ey ≠ 0 := by decide +kernel
+
+theorem one_add_ey2_ne : (1 : E) + ey * ey ≠ 0 := by decide +kernel
+
+theorem elem_1B64 : EL (1 ^^^ B64) = 1 + ey := by
+  rw [elem_xor isF192_primitives, elem_one isF192_primitives, elem_B64]
+
+theorem elem_B64sq : EL (mulE B64 B64) = ey * ey := by
+  rw [elem_mulE isF192_primitives, elem_B64]
+
+theorem elem_1B64sq : EL (1 ^^^ mulE B64 B64) = 1 + ey * ey := by
+  rw [elem_xor isF192_primitives, elem_one isF192_primitives, elem_B64sq]
+
+theorem mulE_y0 : mulE Emitted.y0 (1 ^^^ B64) = B64 := by decide +kernel
+
+theorem mulE_y1 : mulE Emitted.y1 (1 ^^^ mulE B64 B64) = mulE B64 B64 := by decide +kernel
+
+theorem mulE_scale : mulE Emitted.scale (mulE (1 ^^^ B64) (1 ^^^ mulE B64 B64)) = 1 := by
   decide +kernel
 
-/-! ## In the field -/
+/-- `extension()`: `Y / (1 + Y)`. -/
+theorem elem_y0 : EL Emitted.y0 = extension.1.1 := by
+  show _ = ey * (1 + ey)⁻¹
+  refine (eq_mul_inv_iff_mul_eq₀ one_add_ey_ne).mpr ?_
+  rw [← elem_1B64, ← elem_mulE isF192_primitives, mulE_y0, elem_B64]
 
-variable {F : Type} [Field F] [DecidableEq F] [CharP F 2] {limbs : F ≃ QuotientRpm.Limbs}
-variable (hF : IsF192 limbs)
-include hF
+/-- `extension()`: `Y^2 / (1 + Y^2)`. -/
+theorem elem_y1 : EL Emitted.y1 = extension.1.2 := by
+  show _ = ey * ey * (1 + ey * ey)⁻¹
+  refine (eq_mul_inv_iff_mul_eq₀ one_add_ey2_ne).mpr ?_
+  rw [← elem_1B64sq, ← elem_mulE isF192_primitives, mulE_y1, elem_B64sq]
 
-theorem elem_xorFold : ∀ (l : List Nat) (acc : Nat),
-    elem limbs (l.foldl (· ^^^ ·) acc) = elem limbs acc + (l.map (elem limbs)).sum
-  | [], acc => by simp
-  | x :: l, acc => by
-    rw [List.foldl_cons, elem_xorFold l, elem_xor hF, List.map_cons, List.sum_cons, add_assoc]
-
-theorem elem_ne_zero {x : Nat} (h : x % B192 ≠ 0) : elem limbs x ≠ 0 := by
-  intro h0
-  have hw := word_elem (limbs := limbs) x
-  rw [h0] at hw
-  have hz : word limbs (0 : F) = 0 := by
-    have := word_elem (limbs := limbs) 0
-    rwa [elem_zero hF] at this
-  rw [hz] at hw
-  exact h hw.symm
-
-theorem elem_sq (x : Nat) : SQ (elem limbs x) = elem limbs (mulE x x ^^^ x) := by
-  rw [elem_xor hF, elem_mulE hF]; rfl
-
-/-- **`beta` is a Cantor basis** of 24 vectors. -/
-noncomputable def basis : CantorBasis F (22 + 2) where
-  β k := elem limbs (beta.getD k 0)
-  zero := by rw [consts_values.1, elem_one hF]
-  succ k hk := by rw [elem_sq hF, beta_succ k (by omega)]
-
-variable (limbs) in
-/-- The region's constants `b` (`coordinates(11)`). -/
-noncomputable def bConst (k : ℕ) : F := elem limbs (coords.getD k 0)
-
-variable (limbs) in
-/-- The weights `c` of the region's coordinates (`coordinate_weight`). -/
-noncomputable def cConst (k : ℕ) : F := elem limbs (slopeConst k ^^^ 1)
-
-variable (limbs) in
-/-- `Y = y`. -/
-noncomputable def yConst : F := elem limbs B64
-
-theorem basis_hb0 : bConst limbs 0 = 1 := by
-  rw [bConst, consts_values.2.1, elem_one hF]
-
-theorem sum_elem_mul (f g : ℕ → Nat) (n : ℕ) :
-    ∑ e ∈ Finset.range n, elem limbs (f e) * elem limbs (g e) =
-      elem limbs (((List.range n).map fun e => mulE (f e) (g e)).foldl (· ^^^ ·) 0) := by
-  rw [elem_xorFold hF, elem_zero hF, zero_add, List.map_map, listSum_range]
-  refine Finset.sum_congr rfl fun e _ => ?_
-  simp [elem_mulE hF]
-
-theorem basis_hb : ∀ d, 1 ≤ d → d < 11 →
-    ∑ e ∈ Finset.range (d + 1), bConst limbs e * (basis hF).β (d - e) = 0 := by
-  intro d hd1 hd
-  have := sum_elem_mul hF (fun e => coords.getD e 0) (fun e => beta.getD (d - e) 0) (d + 1)
-  rw [show (∑ e ∈ Finset.range (d + 1), bConst limbs e * (basis hF).β (d - e)) =
-    ∑ e ∈ Finset.range (d + 1), elem limbs (coords.getD e 0) * elem limbs (beta.getD (d - e) 0)
-    from rfl, this, coords_inverse d hd hd1, elem_zero hF]
-
-theorem yConst_sq : yConst limbs ^ 2 = elem limbs (mulE B64 B64) := by
-  rw [pow_two, yConst, elem_mulE hF]
-
-/-- **The constants are the model's.** -/
-theorem consts : Consts limbs (basis hF) (bConst limbs) (cConst limbs) (yConst limbs) := by
-  obtain ⟨-, -, htau, hy0, hy1, hsc, hY, hY2⟩ := consts_values
-  have e1 : (1 : F) + yConst limbs = elem limbs (1 ^^^ B64) := by rw [elem_xor hF, elem_one hF]; rfl
-  have e2 : (1 : F) + yConst limbs ^ 2 = elem limbs (1 ^^^ mulE B64 B64) := by
-    rw [elem_xor hF, elem_one hF, yConst_sq hF]
-  have hY' : (1 : F) + yConst limbs ≠ 0 := by rw [e1]; exact elem_ne_zero hF hY
-  have hY2' : (1 : F) + yConst limbs ^ 2 ≠ 0 := by rw [e2]; exact elem_ne_zero hF hY2
-  refine
-    { zero := elem_zero hF
-      one := elem_one hF
-      theta := rfl
-      theta1 := by rw [elem_xor hF, elem_one hF]; rfl
-      coords := fun e _ => rfl
-      slopes := fun k _ => by
-        rw [cConst, ← elem_one hF, ← elem_xor hF, ← Nat.xor_assoc, Nat.xor_comm 1, Nat.xor_assoc,
-          Nat.xor_self, Nat.xor_zero]
-      tauLast := by rw [htau, elem_one hF]
-      tauSys := fun j hj => ?_
-      y0 := by
-        rw [eq_div_iff hY', e1, ← elem_mulE hF, hy0]; rfl
-      y1 := by
-        rw [eq_div_iff hY2', e2, ← elem_mulE hF, hy1, yConst_sq hF]
-      scale := by
-        apply eq_inv_of_mul_eq_one_left
-        rw [e1, e2, ← elem_mulE hF, ← elem_mulE hF, hsc, elem_one hF]
-      hY := hY'
-      hY2 := hY2' }
-  have hj24 : (j : ℕ) < 22 + 2 := j.2
-  have hit : ∀ k : Fin (22 + 1), SQ^[(k : ℕ)] ((basis hF).β j) =
-      if (k : ℕ) ≤ j then elem limbs (beta.getD (j - k) 0) else 0 := fun k =>
-    (basis hF).iterate k j hj24
-  simp only [hit, mul_ite, mul_zero]
-  rw [Fin.sum_univ_eq_sum_range (fun k => if k ≤ (j : ℕ) then elem limbs (tau.getD k 0) *
-    elem limbs (beta.getD (j - k) 0) else 0) 23]
-  have h2 := congrArg (elem limbs) (tau_vanishes j hj24 hj)
-  rw [elem_xorFold hF, elem_zero hF, zero_add, List.map_map, listSum_range] at h2
-  refine (Finset.sum_congr rfl fun k _ => ?_).trans h2
-  simp only [Function.comp]
-  split_ifs <;> simp [elem_mulE hF, elem_zero hF]
+/-- `extension()`: `1 / ((1 + Y) (1 + Y^2))`. -/
+theorem elem_scale : EL Emitted.scale = extension.2 := by
+  show _ = ((1 + ey) * (1 + ey * ey))⁻¹
+  refine eq_inv_of_mul_eq_one_left ?_
+  rw [← elem_1B64, ← elem_1B64sq, ← elem_mulE isF192_primitives, ← elem_mulE isF192_primitives,
+    mulE_scale, elem_one isF192_primitives]
 
 end Implementation

@@ -11,36 +11,15 @@ import LeanVM.Protocol.Rpm.Cost
 import LeanVM.Protocol.Verifier.Cost
 
 /-!
-# The block count of the deployed staged run
+# Query costs of the layout opening
 
-**`hcost_deployed`**: the deployed staged run (`stagedRun`, `Staging.lean`) makes at most `2^48`
-block calls (`hashBlocks`: a Keccak-256 of `n` bytes costs `⌊n / 136⌋ + 1`, a Keccak-f[1600] one),
-the third field of `Staged.Holds`, the hypothesis `hcost` of `completeness_deployed_cost_rej` and
-`completeness_deployed_final`.
+The query-cost calculus (`QC`, `WordsLE`, `OWordsLE`) and the costs of the opening's pieces: the sponge
+(`qc_duplex`, `qc_absorb`, `qc_squeeze`), the proofs of work (`qc_findNonceM`), the trees (`qc_buildTree`,
+`qc_commitWithH`), the script (`wordsLE_openingScript`, `cost_runFromWithHash`, `cost_proveOpeningWithH`) and
+the verifier (`cost_runWithHash`, `cost_openingWithH`).
 
-mumbai's route for leanVM (a count of queries times `2^32` blocks per query) is too coarse here: the
-WHIR prover's count is `40481` quarter-queries times the prover's factor `2^27 + 2 · fuel + 2`
-(`isTotalQueryBound_proveFromM`), about `2^43` per opening. The cost is weighted instead:
-
-* **Every hash is short.** The tables' Merkle leaves are `64` words (`512` bytes, `4` blocks),
-  WHIR's at most `192` words (`1536` bytes, `12` blocks: `WordsLE` for the honest script
-  `openingScript`, from `ladder_folds`; `WidthsLE` for the verifier's program), the nodes `64`
-  bytes, the chain's inputs at most `192` bytes, the openings' IVs at most `1564` bytes (points of
-  at most `cellVars logRows + 6` coordinates, `claimsAt_len`).
-* **The prover's runner** (`cost_runFromWithHash`): a program of cost `n` quarters
-  (`Prog.Costs`) at height `h` costs at most `n · (13 · 2^h + 2 · fuel + 2)` blocks
-  (`blockFactor`): a commitment, two quarters, builds a tree of at most `13 · 2^h` blocks; a proof
-  of work, five quarters, at most `2 · fuel + 2` permutations.
-* **The verifier's run** (`cost_runWithHash`): at most `3 · n` blocks, an opening of `k` positions
-  costing `k · (12 + height)` blocks of the `3 · 4 · k · (1 + 26)` its quarters allow.
-* **The stages** (`cost_stagedRunG`, generic in the setup, circuit and cells): the setup's, index,
-  witness and quotient trees (`5 · 2^(μ - 5)` blocks each, `treeCost`), the label and the chain's
-  four hashes, the reduction's six hashes (seven blocks) for the prover and for the verifier, the
-  three openings proved (`proverCost`) and verified (`verifierCost`). Instantiated at the deployed
-  sizes (`cellVars 22 = 24`, `fuel = 2^25`); nothing of the deployed circuit is evaluated.
-
-The total is `114 098 677 826 653 < 2^47` blocks, nearly all of it the three WHIR provers'
-`3 · 40481 · (14 · 2^26 + 2)`.
+Pruned to what the leanVM line uses (`formal/Uni*`, `formal/Rec*`); the previous membership protocol's declarations
+that were here are in the git history.
 -/
 
 open OracleComp OracleSpec
@@ -634,99 +613,6 @@ theorem cost_openingWithH (L : PcsQuotient.Layout) (root : Digest)
     · exact qc_pure _ _
   · exact qc_pure _ _
 
-/-! ## The reduction -/
-
-/-- The claims' points have at most `m + 6` coordinates. -/
-def ClaimsLen (m : ℕ) (cl : Claims) : Prop :=
-  cl.witness.point.length ≤ m + 6 ∧ cl.wiring.point.length ≤ m + 6 ∧
-    cl.quotient.point.length ≤ m + 6 ∧ cl.sum.point.length ≤ m + 6
-
-/-- What the reduction may return: claims whose points have at most `m + 6` coordinates. -/
-def RedOK (logRows : ℕ) (o : Option Reduced) : Prop :=
-  ∀ r, o = some r → ClaimsLen (cellVars logRows) r.claims
-
-/-- **The claims' points**: the witness claim's `m + 1` coordinates, the wiring's `m`, the
-quotient's and the sum's `m + 6`. -/
-theorem claimsAt_len {logRows : ℕ} {stmt : Statement} {α β γ t ρ : E} {a : Vector E 4} {next : E}
-    {cl : Claims} (h : claimsAt logRows stmt α β γ t ρ a next = some cl) :
-    ClaimsLen (cellVars logRows) cl := by
-  unfold claimsAt at h
-  extract_lets m w wAt theta cell x y c v gate b gamma2 gammas outside publicWeight target tau
-    rows d dNext product copies denominators at h
-  by_cases hd : (denominators.any fun x ↦ decide (x = 0)) = true
-  · simp [hd] at h
-  simp only [hd] at h
-  rename_i inv u copyInverse rowsInverse middle wiringScale quotientScale rho2 opened identities
-  obtain rfl := (Option.some.inj h).symm
-  have hu : u.length = m + 2 := by simp [u]
-  refine ⟨?_, ?_, ?_, ?_⟩ <;> simp [sumPoint, hu, m]
-  omega
-
-theorem redOK_none (logRows : ℕ) : RedOK logRows none := fun _ h ↦ by cases h
-
-theorem redOK_map {logRows : ℕ} {stmt : Statement} {α β γ t ρ : E} {a : Vector E 4} {next : E}
-    (wr qr : Digest) :
-    RedOK logRows ((claimsAt logRows stmt α β γ t ρ a next).map
-      fun claims ↦ (⟨wr, qr, claims⟩ : Reduced)) := by
-  intro r hr
-  rcases hc : claimsAt logRows stmt α β γ t ρ a next with _ | cl
-  · rw [hc] at hr
-    cases hr
-  · rw [hc] at hr
-    cases hr
-    exact claimsAt_len hc
-
-theorem length_flatMap_scalarBytes (l : List E) :
-    (l.flatMap scalarBytes).length = 32 * l.length := by
-  induction l with
-  | nil => rfl
-  | cons a l ih =>
-    rw [List.flatMap_cons, List.length_append, ih, length_scalarBytes, List.length_cons]
-    ring
-
-theorem foldl_absorb (l : List E) (c : Chain) :
-    l.foldl Chain.absorb c = ⟨c.state, c.pending ++ l⟩ := by
-  induction l generalizing c with
-  | nil => simp
-  | cons a l ih => simp [ih, Chain.absorb]
-
-/-- **The reduction's transcript**, then a continuation charged only at what the reduction may
-return: the label (`112` bytes), the four challenges after at most two scalars, and `ρ` after
-the five values (`192` bytes, two blocks). -/
-theorem qc_reduceWithH_bind {β : Type} (logRows : ℕ) (ir : Digest) (stmt : Statement)
-    (p : ReductionProof) (f : Option Reduced → OracleComp KeccakCalls β) (b : ℕ)
-    (hf : ∀ o, RedOK logRows o → QC (f o) b) :
-    QC (reduceWithH callKeccak256 logRows ir stmt p >>= f) (7 + b) := by
-  by_cases hs : Supported logRows
-  · simp only [reduceWithH, hs, not_true_eq_false, ↓reduceIte, startWithH, squeezeWithH,
-      bind_assoc, pure_bind]
-    refine (qc_H_le (k := 1) ?_).bind_le (b := 6 + b) (fun s₀ ↦ ?_) (by omega)
-    · rw [length_label]; omega
-    split
-    · rw [pure_bind]
-      exact (hf none (redOK_none _)).mono (by omega)
-    simp only [bind_assoc]
-    refine (qc_H_le (k := 1) ?_).bind_le (b := 5 + b) (fun s₁ ↦ ?_) (by omega)
-    · simp [Chain.absorb, length_digestBytes, length_scalarBytes]
-    refine (qc_H_le (k := 1) ?_).bind_le (b := 4 + b) (fun s₂ ↦ ?_) (by omega)
-    · simp [length_digestBytes]
-    refine (qc_H_le (k := 1) ?_).bind_le (b := 3 + b) (fun s₃ ↦ ?_) (by omega)
-    · simp [length_digestBytes]
-    split
-    · rw [pure_bind]
-      exact (hf none (redOK_none _)).mono (by omega)
-    simp only [bind_assoc, pure_bind]
-    refine (qc_H_le (k := 1) ?_).bind_le (b := 2 + b) (fun s₄ ↦ ?_) (by omega)
-    · simp [Chain.absorb, length_digestBytes, length_scalarBytes]
-    refine (qc_H_le (k := 2) ?_).bind_le (b := b) (fun s₅ ↦ ?_) (by omega)
-    · simp only [foldl_absorb, Chain.absorb, List.nil_append, List.length_append,
-        length_digestBytes, length_flatMap_scalarBytes, Vector.length_toList, List.length_cons,
-        List.length_nil]
-      omega
-    exact hf _ (redOK_map _ _)
-  · simp only [reduceWithH, hs, not_false_eq_true, ↓reduceIte, pure_bind]
-    exact (hf none (redOK_none _)).mono (by omega)
-
 /-! ## The openings -/
 
 /-- **The prover's opening**: its IV (at most `B` blocks), its seed's permutation, the root's two
@@ -743,185 +629,11 @@ theorem cost_proveOpeningWithH (fuel : ℕ) (L : PcsQuotient.Layout) (tree : Tre
       [tree] _ _ (costs_vso _ _ _) (wordsLE_openingScript L stack claims)).bind_le
         (fun _ ↦ qc_pure _ 0) le_rfl) le_rfl) le_rfl) (by omega)
 
-/-- The prover's cost of the reduction and the three openings. -/
-def proverCost (fuel : ℕ) : ℕ :=
-  7 + 3 * (12 + 3 + (4 + (2 + whirBound)) * blockFactor costHeight fuel)
-
-/-- **The prover's last stretch**: the reduction, then the three openings, their IVs at most
-`12` blocks (points of at most `cellVars logRows + 6 ≤ 30` coordinates). -/
-theorem cost_proverTail (circuit : Circuit) (hr : cellVars circuit.logRows ≤ 24) (fuel : ℕ)
-    (stmt : Statement) (a : AuxA) (bq : Tree × Array K) (t : E) :
-    QC (proverTail circuit fuel stmt a bq t) (proverCost fuel) := by
-  unfold proverTail proverCost
-  refine qc_reduceWithH_bind _ _ _ _ _ _ fun o ho ↦ ?_
-  split
-  · exact qc_pure _ _
-  · rename_i r
-    obtain ⟨h1, -, h3, h4⟩ := ho r rfl
-    have hB (cs : List PcsQuotient.Claim) (hj : cs.length ≤ 2) :
-        76 + 24 * (cs.length * (cellVars circuit.logRows + 6 + 1)) < 136 * 12 := by
-      have : cs.length * (cellVars circuit.logRows + 6 + 1) ≤ 2 * 31 :=
-        Nat.mul_le_mul hj (by omega)
-      omega
-    refine (cost_proveOpeningWithH _ _ _ _ _ (cellVars circuit.logRows + 6) 12 ?_ ?_).bind_le
-      (b := 2 * (12 + 3 + (4 + (2 + whirBound)) * blockFactor costHeight fuel)) (fun o₁ ↦ ?_)
-      (by omega)
-    · intro c hc
-      simp only [List.mem_singleton] at hc
-      subst hc
-      exact h1
-    · exact hB _ (by simp)
-    split
-    · refine (cost_proveOpeningWithH _ _ _ _ _ (cellVars circuit.logRows + 6) 12 ?_ ?_).bind_le
-          (b := 12 + 3 + (4 + (2 + whirBound)) * blockFactor costHeight fuel) (fun o₂ ↦ ?_)
-          (by omega)
-      · intro c hc
-        simp only [List.mem_singleton] at hc
-        subst hc
-        exact (ho r rfl).2.1
-      · exact hB _ (by simp)
-      split
-      · refine (cost_proveOpeningWithH _ _ _ _ _ (cellVars circuit.logRows + 6) 12 ?_ ?_).bind_le
-          (b := 0) (fun o₃ ↦ ?_) (by omega)
-        · intro c hc
-          simp only [List.mem_cons, List.not_mem_nil, or_false] at hc
-          rcases hc with rfl | rfl
-          · exact h3
-          · exact h4
-        · exact hB _ (by simp)
-        split <;> exact qc_pure _ _
-      · exact qc_pure _ _
-    · exact qc_pure _ _
-
-theorem witnessLayout_vars (r : ℕ) : (witnessLayout r).vars = cellVars r + 1 := rfl
-theorem witnessLayout_logN (r : ℕ) : (witnessLayout r).logN = cellVars r + 1 := rfl
-theorem wiringLayout_vars (r : ℕ) : (wiringLayout r).vars = cellVars r := rfl
-theorem wiringLayout_logN (r : ℕ) : (wiringLayout r).logN = cellVars r := rfl
-theorem quotientLayout_vars (r : ℕ) : (quotientLayout r).vars = cellVars r + 6 := rfl
-theorem quotientLayout_logN (r : ℕ) : (quotientLayout r).logN = cellVars r + 4 := rfl
-
-/-- The verifier's cost of the reduction and the three openings. -/
-def verifierCost : ℕ := 7 + 3 * (12 + vOpen)
-
-/-- **The verifier**: the reduction, then the three openings, their IVs at most `12` blocks and
-their roots of height at most `cellVars logRows - 1 ≤ 23`. -/
-theorem cost_verifyWithH (logRows : ℕ) (hr : cellVars logRows ≤ 24) (ir : Digest)
-    (stmt : Statement) (proof : PcsQuotient.Proof) :
-    QC (verifyWithH callKeccak256 callKeccakF1600 logRows ir stmt proof) verifierCost := by
-  unfold verifyWithH verifierCost
-  have hh : costHeight = 26 := rfl
-  refine qc_reduceWithH_bind _ _ _ _ _ _ fun o _ ↦ ?_
-  split
-  · exact qc_pure _ _
-  · refine (cost_openingWithH _ _ _ _ ?_ 12 ?_).bind_le (b := 2 * (12 + vOpen)) (fun b₁ ↦ ?_)
-      (by omega)
-    · rw [witnessLayout_logN, hh, laneFold, logInvRate]; omega
-    · rw [witnessLayout_vars, List.length_singleton]; omega
-    split
-    · exact qc_pure _ _
-    · refine (cost_openingWithH _ _ _ _ ?_ 12 ?_).bind_le (b := 12 + vOpen) (fun b₂ ↦ ?_)
-        (by omega)
-      · rw [wiringLayout_logN, hh, laneFold, logInvRate]; omega
-      · rw [wiringLayout_vars, List.length_singleton]; omega
-      split
-      · exact qc_pure _ _
-      · refine cost_openingWithH _ _ _ _ ?_ 12 ?_
-        · rw [quotientLayout_logN, hh, laneFold, logInvRate]; omega
-        · rw [quotientLayout_vars]; simp only [List.length_cons, List.length_nil]; omega
-
 /-! ## The stages -/
 
 /-- The block cost of a table's tree on `2^μ` words. -/
 def treeCost (μ : ℕ) : ℕ := 5 * 2 ^ (μ - 6 + 1)
 
-/-- **Stage A**: the setup, the index and witness trees, the label's hash. -/
-theorem cost_stageAG (setup : OracleComp KeccakCalls Digest) (Cs : ℕ) (hs : QC setup Cs)
-    (circuit : Circuit) (cells : Array K) (masks : Masks) (witnessPad : Padding)
-    (stmt : Statement) :
-    QC (stageAG setup circuit cells masks witnessPad stmt)
-      (Cs + (treeCost (cellVars circuit.logRows) + (treeCost (cellVars circuit.logRows + 1) +
-        (1 + 0)))) := by
-  unfold stageAG
-  exact hs.bind fun _ ↦ (qc_commitWithH _ _).bind fun _ ↦ (qc_commitWithH _ _).bind fun _ ↦
-    (qc_H_le (k := 1) (by rw [length_label]; omega)).bind fun _ ↦ qc_pure _ 0
-
-/-- **Stage B**: the quotient table's tree. -/
-theorem cost_stageBG (circuit : Circuit) (cells : Array K) (quotientPad : Padding) (a : AuxA)
-    (s₁ s₂ s₃ : Digest) :
-    QC (stageBG circuit cells quotientPad a s₁ s₂ s₃)
-      (treeCost (cellVars circuit.logRows + 4) + 0) := by
-  unfold stageBG
-  exact (qc_commitWithH _ _).bind fun _ ↦ qc_pure _ 0
-
-/-- **Stage C**: the prover's last stretch, then the verifier. -/
-theorem cost_stageCG (circuit : Circuit) (hr : cellVars circuit.logRows ≤ 24) (fuel vLogRows : ℕ)
-    (hv : cellVars vLogRows ≤ 24) (stmt : Statement) (a : AuxA) (bq : Tree × Array K)
-    (s₁ s₂ s₃ s₄ : Digest) :
-    QC (stageCG circuit fuel vLogRows stmt a bq s₁ s₂ s₃ s₄) (proverCost fuel + verifierCost) := by
-  unfold stageCG
-  refine (cost_proverTail circuit hr fuel stmt a bq _).bind fun o ↦ ?_
-  split
-  · exact qc_pure _ _
-  · exact cost_verifyWithH _ hv _ _ _
-
-/-- **The chain's shape**: the stages, and the chain's four hashes (`96` and `32` bytes). -/
-theorem cost_staged {α β γ : Type} (chal : Digest → E)
-    (A : OracleComp KeccakCalls (α × Digest × (E × E)))
-    (B : α → Digest → Digest → Digest → OracleComp KeccakCalls (β × (E × E)))
-    (C : α → β → Digest → Digest → Digest → Digest → OracleComp KeccakCalls γ) (a b c : ℕ)
-    (hA : QC A a) (hB : ∀ x s₁ s₂ s₃, QC (B x s₁ s₂ s₃) b)
-    (hC : ∀ x y s₁ s₂ s₃ s₄, QC (C x y s₁ s₂ s₃ s₄) c) :
-    QC (staged chal A B C) (a + (1 + (1 + (1 + (b + (1 + (c + 0))))))) := by
-  unfold staged
-  have h96 (s : Digest) (r : E × E) : QC (callKeccak256 (chainIn s r)) 1 :=
-    qc_H_le (by rw [length_chainIn]; omega)
-  have h32 (s : Digest) : QC (callKeccak256 (digestBytes s)) 1 :=
-    qc_H_le (by rw [length_digestBytes]; omega)
-  exact hA.bind fun x ↦ (h96 _ _).bind fun s₁ ↦ (h32 _).bind fun s₂ ↦ (h32 _).bind fun s₃ ↦
-    (hB _ _ _ _).bind fun y ↦ (h96 _ _).bind fun s₄ ↦ (hC _ _ _ _ _ _).bind fun _ ↦ qc_pure _ 0
-
-/-- **The staged run, for any setup, circuit and cells**: the setup's cost, the index, witness
-and quotient trees, the chain's six hashes, the prover's reduction and openings, and the
-verifier. -/
-theorem cost_stagedRunG (setup : OracleComp KeccakCalls Digest) (Cs : ℕ) (hs : QC setup Cs)
-    (circuit : Circuit) (hr : cellVars circuit.logRows ≤ 24) (cells : Array K) (masks : Masks)
-    (witnessPad quotientPad : Padding) (fuel vLogRows : ℕ) (hv : cellVars vLogRows ≤ 24)
-    (stmt : Statement) :
-    QC (stagedRunG setup circuit cells masks witnessPad quotientPad fuel vLogRows stmt)
-      (Cs + treeCost (cellVars circuit.logRows) + treeCost (cellVars circuit.logRows + 1) +
-        treeCost (cellVars circuit.logRows + 4) + 6 + proverCost fuel + verifierCost) := by
-  unfold stagedRunG
-  refine (cost_staged _ _ _ _ _ _ _ (cost_stageAG setup Cs hs circuit cells masks witnessPad stmt)
-    (fun a s₁ s₂ s₃ ↦ cost_stageBG circuit cells quotientPad a s₁ s₂ s₃)
-    (fun a bq s₁ s₂ s₃ s₄ ↦ cost_stageCG circuit hr fuel vLogRows hv stmt a bq s₁ s₂ s₃ s₄)).mono ?_
-  omega
-
-/-! ## The deployed staged run -/
-
-/-- The setup: the index tree on `2^24` words. -/
-theorem cost_setupWithH : QC (setupWithH callKeccak256) (treeCost 24) := by
-  unfold setupWithH
-  exact (qc_commitWithH _ _).bind_le (fun _ ↦ qc_pure _ 0) (by rfl)
-
 end Cost
 
-open Cost in
-/-- **The deployed staged run makes at most `2^48` block calls** (fewer than `2^47`): the third
-field of `Staged.Holds`, the hypothesis `hcost` of `completeness_deployed_cost_rej` and
-`completeness_deployed_final`. The circuit's size is read off its record (`rfl`); nothing of the
-deployed circuit is evaluated. -/
-theorem hcost_deployed :
-    ∀ stmt w coins, Common.QueryCostAtMost (stagedRun stmt w coins) hashBlocks (2 ^ 48) := by
-  intro stmt w coins
-  have hm : (membership logRows).logRows = 22 := rfl
-  refine (cost_stagedRunG _ _ cost_setupWithH (membership logRows) (by rw [hm]; decide)
-    (cellsOf w) coins.1 coins.2.1 coins.2.2 nonceFuel logRows (by decide) stmt).mono ?_
-  rw [hm]
-  norm_num [treeCost, proverCost, verifierCost, vOpen, blockFactor, whirBound, costHeight,
-    nonceFuel, cellVars]
-
 end E2ECompleteness
-
-/-- info: 'E2ECompleteness.hcost_deployed' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms E2ECompleteness.hcost_deployed

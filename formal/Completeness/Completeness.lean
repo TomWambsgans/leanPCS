@@ -221,3 +221,31 @@ decision of the layouts' shape on `propext` and `Quot.sound`).
 /-- info: 'Completeness.ours_romComplete' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms Completeness.ours_romComplete
+
+/-- info: 'Completeness.honest_relation_random' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms Completeness.honest_relation_random
+
+/-- info: 'Completeness.relation_vals' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms Completeness.relation_vals
+
+/-- info: 'Completeness.cellsRandomized_eq' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms Completeness.cellsRandomized_eq
+
+/-- info: 'Completeness.honest_relation_deployed_random' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms Completeness.honest_relation_deployed_random
+
+/-- info: 'Completeness.honest_relation_deployed_random'' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms Completeness.honest_relation_deployed_random'
+
+/-- info: 'Completeness.deployed_isRandom_iff' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms Completeness.deployed_isRandom_iff
+
+/-- info: 'QuotientSecurity.ChiCircuit.eval_random' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms QuotientSecurity.ChiCircuit.eval_random

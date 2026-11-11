@@ -1,208 +1,113 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 import Implementation.Blocks
+import Implementation.Constants
 
 /-!
-# What the graph's outputs are
+# The graph's nodes hold the Statement's formulas
 
-`reduceIds_spec`: the program of `Program.lean`, which `reduceIds_eq` checks against the graph,
-leaves nodes whose elements are `quotient::protocol::reduce`'s formulas over the field (`Formula`),
-in terms of the leaves (the statement's halves, the challenges, the five values): the product of
-the denominators that the contract requires nonzero, and, when it is nonzero, the three claims'
-points and values and the sum's value.
+`reduceIds_spec`: the program of `Program.lean`, which `reduceIds_eq` checks against the graph, leaves
+nodes whose elements (in `E`, with its Rust limbs) are the Statement's claims (`Formula.claims`, which
+is `PcsQuotient.claimsAt` by `Formula.claimsAt_eq`), given leaves that hold the leaves' values
+(`LeafOK`), when the denominators do not vanish; and `checkId_spec`: the node the contract requires
+nonzero is the product of the Statement's denominators.
 -/
 
 set_option linter.unusedSectionVars false
-set_option maxHeartbeats 1000000
+set_option maxHeartbeats 2000000
 
 namespace Implementation
 
-open Program Emitted QuotientSecurity
+open LeanVM.Parameters PcsQuotient PcsQuotient.Domain Program Emitted
 
-/-- The leaves' elements: the statement's four halves, the challenges `α, β, γ, t, ρ`, and the
-five values `a_0 .. a_3`, `next`. -/
-structure Vals (F : Type) where
-  s : Fin 4 → F
-  α : F
-  β : F
-  γ : F
-  t : F
-  a : Fin 4 → F
-  next : F
-  ρ : F
+variable {e : Env}
 
-namespace Formula
+local notation "V" => val limbsEquiv e
+local notation "EL" => elem limbsEquiv
+local notation "hF" => isF192_primitives
+local notation "MUL" => mul_spec (e := e) isF192_primitives
+local notation "ADD" => add_spec (e := e) isF192_primitives
+local notation "CNST" => cnst_spec (e := e) isF192_primitives
 
-variable {F : Type} [Field F] (limbs : F ≃ QuotientRpm.Limbs) (I : Vals F)
+/-- **The leaves hold `I`**: the statement's halves, the challenges, the four values, `next`, and `Q`'s and
+`G`'s values. -/
+structure LeafOK (e : Env) (I : Formula.Vals) : Prop where
+  s0 : val limbsEquiv e 2 = (halves I.stmt.y).1
+  s1 : val limbsEquiv e 3 = (halves I.stmt.y).2
+  s2 : val limbsEquiv e 4 = (halves I.stmt.root).1
+  s3 : val limbsEquiv e 5 = (halves I.stmt.root).2
+  α : val limbsEquiv e 10 = I.α
+  β : val limbsEquiv e 12 = I.β
+  γ : val limbsEquiv e 14 = I.γ
+  t : val limbsEquiv e 25 = I.t
+  a0 : val limbsEquiv e 26 = I.a[0]
+  a1 : val limbsEquiv e 27 = I.a[1]
+  a2 : val limbsEquiv e 28 = I.a[2]
+  a3 : val limbsEquiv e 29 = I.a[3]
+  next : val limbsEquiv e 30 = I.next
+  ρ : val limbsEquiv e 32 = I.ρ
+  qv : val limbsEquiv e 651 = I.qValue
+  gv : val limbsEquiv e 652 = I.gValue
 
-/-- `w_k(t)`. -/
-noncomputable def w (k : ℕ) : F := sq^[k] I.t
+/-! ## The `w` chain -/
 
-/-- A cell of the row of `t` (`reduce`'s `cell`). -/
-noncomputable def cellF (shift : Nat) (second : Bool) : F :=
-  I.a 0 + (I.t + elem limbs shift) * I.a 1 +
-    (if second then w I 1 + 1 else w I 1) * (I.a 2 + (I.t + elem limbs shift) * I.a 3)
+theorem wfold_spec (t : E) : ∀ n,
+    (((List.range n).foldl (fun ws _ ↦ ws ++ [ws.getLastD t * ws.getLastD t + ws.getLastD t]) [t]).length
+      = n + 1) ∧
+    ∀ k ≤ n, ((List.range n).foldl (fun ws _ ↦ ws ++ [ws.getLastD t * ws.getLastD t + ws.getLastD t])
+      [t]).getD k 0 = sq^[k] t
+  | 0 => ⟨rfl, fun k hk => by obtain rfl : k = 0 := Nat.le_zero.mp hk; rfl⟩
+  | n + 1 => by
+    obtain ⟨hlen, hw⟩ := wfold_spec t n
+    rw [List.range_succ, List.foldl_append, List.foldl_cons, List.foldl_nil]
+    set ws := (List.range n).foldl (fun ws _ ↦ ws ++ [ws.getLastD t * ws.getLastD t + ws.getLastD t]) [t]
+    have hlast : ws.getLastD t = sq^[n] t := by
+      rw [List.getLastD_eq_getLast?, List.getLast?_eq_getElem?, hlen]
+      have := hw n le_rfl
+      rw [List.getD_eq_getElem?_getD] at this
+      simp only [Nat.add_sub_cancel]
+      rw [List.getElem?_eq_getElem (by omega)] at this ⊢
+      simpa using this
+    refine ⟨by simp [hlen], fun k hk => ?_⟩
+    by_cases hkn : k ≤ n
+    · rw [List.getD_append _ _ _ _ (by omega)]
+      exact hw k hkn
+    · obtain rfl : k = n + 1 := by omega
+      rw [List.getD_append_right _ _ _ _ (by omega), hlen, Nat.sub_self]
+      simp only [List.getD_cons_zero]
+      rw [hlast, Function.iterate_succ_apply']
+      rfl
 
-noncomputable def x : F := cellF limbs I 0 false
-noncomputable def c1 : F := cellF limbs I 1 false
-noncomputable def c2 : F := cellF limbs I (beta.getD 1 0) true
-noncomputable def c3 : F := cellF limbs I (beta.getD 1 0 ^^^ 1) true
+theorem length_w (I : Formula.Vals) : (Formula.w I).length = 26 := (wfold_spec I.t 25).1
 
-/-- The gate, `v + x + c + y c`. -/
-noncomputable def gate : F := c3 limbs I + x limbs I + c2 limbs I + c1 limbs I * c2 limbs I
+theorem wAt_eq (I : Formula.Vals) (k : ℕ) (hk : k < 26) : Formula.wAt I k = sq^[k] I.t :=
+  (wfold_spec I.t 25).2 k (by omega)
 
-/-- Coordinate `k` of the public region. -/
-noncomputable def coord (k : ℕ) : F :=
-  (List.range' (k + 1) (11 - (k + 1))).foldl
-    (fun acc j => acc + elem limbs (coords.getD (j - k) 0) * w I j) (w I k)
+theorem w_eq (I : Formula.Vals) : Formula.w I = (List.range 26).map (Formula.wAt I) := by
+  apply List.ext_getElem (by simp [length_w])
+  intro k h1 h2
+  simp only [List.getElem_map, List.getElem_range, Formula.wAt]
+  rw [List.getD_eq_getElem?_getD, List.getElem?_eq_getElem h1, Option.getD_some]
 
-noncomputable def gammas : List F := [I.γ, I.γ * I.γ, I.γ * I.γ * (I.γ * I.γ)]
+/-! ## The stages -/
 
-/-- The slope of coordinate `k`. -/
-noncomputable def slope (k : ℕ) : F :=
-  if k < 8 then elem limbs (slopeConst k) else 1 + (gammas I).getD (k - 8) 0
+variable (e) in
+/-- What the first stage leaves (`stageA`). -/
+structure AOK (I : Formula.Vals) (A : StageA) : Prop where
+  w : ∀ k < 26, val limbsEquiv e (A.w.getD k 0) = Formula.wAt I k
+  x : val limbsEquiv e A.x = Formula.x I
+  gate : val limbsEquiv e A.gate = Formula.gate I
+  target : val limbsEquiv e A.target = Formula.target I
+  rows : val limbsEquiv e A.rows = Formula.rows I
+  product : val limbsEquiv e A.product = Formula.product I
+  copies : val limbsEquiv e A.copies = Formula.copies I
 
-/-- The public weight at `t`. -/
-noncomputable def pub : F :=
-  (List.range 11).foldl (fun acc k => acc * (1 + coord limbs I k * slope limbs I k))
-    ((List.range' 11 13).foldl (fun acc k => acc * (1 + w I k)) 1)
-
-/-- What the weighted public bits must sum to. -/
-noncomputable def target : F :=
-  I.s 0 + I.γ * I.s 1 + I.γ * I.γ * (I.s 2 + I.γ * I.s 3) + I.γ * I.γ * (I.γ * I.γ)
-
-/-- The rows' polynomial at `t`. -/
-noncomputable def rows : F :=
-  (List.range 23).foldl (fun acc k => acc + elem limbs (tau.getD k 0) * w I k) 0
-
-noncomputable def d : F := I.α + x limbs I + I.β * I.t
-noncomputable def dNext : F := I.α + x limbs I + I.β * I.next
-noncomputable def product : F := d limbs I * dNext limbs I
-noncomputable def copies : F :=
-  d limbs I + dNext limbs I + pub limbs I * x limbs I * product limbs I
-
-/-- The denominators: every `1 + w_k`, the copy identity's, the rows'. -/
-noncomputable def dens : List F :=
-  (List.range 26).map (fun k => 1 + w I k) ++ [product limbs I + w I 24, rows limbs I]
-
-/-- **The product the contract requires nonzero.** -/
-noncomputable def check : F := (dens limbs I).prod
-
-noncomputable def opened : F :=
-  (1 + I.ρ * I.ρ) * (I.a 0 + I.ρ * (I.a 0 + I.a 1)) + I.ρ * I.ρ * (I.a 2 + I.ρ * (I.a 2 + I.a 3))
-
-noncomputable def identities : F :=
-  (1 + I.ρ) * copies limbs I * rows limbs I + I.ρ * product limbs I * gate limbs I
-
-/-- `∏ (1 + w_k)⁻¹` over some `k`. -/
-noncomputable def invProd (l : List ℕ) : F := (l.map fun k => (1 + w I k)⁻¹).prod
-
-/-- `u_k = w_k / (1 + w_k)`. -/
-noncomputable def u (k : ℕ) : F := w I k * (1 + w I k)⁻¹
-
-/-- **The witness table's claim**: its point, then its value. -/
-noncomputable def witness : List F :=
-  [I.ρ, I.ρ * I.ρ] ++ (List.range 23).map (fun k => u I (k + 2)) ++
-    [opened I * invProd I (List.range' 2 23)]
-
-/-- **The wiring table's claim.** -/
-noncomputable def wiring : List F :=
-  (List.range 24).map (u I) ++ [I.next * invProd I (List.range 24)]
-
-/-- **The quotient table's first claim.** -/
-noncomputable def quotient : List F :=
-  (List.range 26).map (u I) ++
-    [w I 24 * (product limbs I + w I 24)⁻¹, I.ρ, elem limbs y0, elem limbs y1,
-      elem limbs scale * invProd I (List.range 26) * (product limbs I + w I 24)⁻¹ *
-        (rows limbs I)⁻¹ * identities limbs I]
-
-/-- **The value of the claim at the fixed point.** -/
-noncomputable def sum : F := elem limbs scale * target I
-
-end Formula
-
-variable {F : Type} [Field F] [CharP F 2] {limbs : F ≃ QuotientRpm.Limbs}
-variable {H : List UInt8 → Vector UInt8 32} {idx cd : List UInt8}
-
-variable (limbs H idx cd) in
-/-- The leaves' elements. -/
-noncomputable def leafVals : Vals F where
-  s k := val limbs H idx cd (2 + k)
-  α := val limbs H idx cd 9
-  β := val limbs H idx cd 11
-  γ := val limbs H idx cd 13
-  t := val limbs H idx cd 17
-  a k := val limbs H idx cd (18 + k)
-  next := val limbs H idx cd 22
-  ρ := val limbs H idx cd 24
-
-theorem foldl_mul_eq {α : Type} (f : α → F) : ∀ (l : List α) (a : F),
-    l.foldl (fun acc k => acc * f k) a = a * (l.map f).prod
-  | [], a => by simp
-  | k :: l, a => by rw [List.foldl_cons, foldl_mul_eq f l, List.map_cons, List.prod_cons, mul_assoc]
-
-theorem prod_take_eq (l : List Nat) (i : Nat) (hi : i ≤ l.length) :
-    ((l.take i).map (val limbs H idx cd)).prod =
-      ((List.range i).map fun j => val limbs H idx cd (l.getD j 0)).prod := by
-  have e : (l.take i).map (val limbs H idx cd) =
-      (List.range i).map fun j => val limbs H idx cd (l.getD j 0) := by
-    apply List.ext_getElem (by simp; omega)
-    intro j h1 h2
-    simp only [List.length_map, List.length_take, List.length_range] at h1 h2
-    simp [List.getD_eq_getElem?_getD, List.getElem?_eq_getElem (show j < l.length by omega)]
-  rw [e]
-
-theorem dens_getD_lt (I : Vals F) (i : Nat) (hi : i < 26) :
-    (Formula.dens limbs I).getD i 0 = 1 + Formula.w I i := by
-  unfold Formula.dens
-  rw [List.getD_append _ _ _ _ (by simpa using hi)]
-  simp [List.getD_eq_getElem?_getD, hi]
-
-theorem dens_getD_26 (I : Vals F) :
-    (Formula.dens limbs I).getD 26 0 = Formula.product limbs I + Formula.w I 24 := by
-  unfold Formula.dens
-  rw [List.getD_append_right _ _ _ _ (by simp)]
-  simp
-
-theorem dens_getD_27 (I : Vals F) : (Formula.dens limbs I).getD 27 0 = Formula.rows limbs I := by
-  unfold Formula.dens
-  rw [List.getD_append_right _ _ _ _ (by simp)]
-  simp
-
-theorem getD_of_map_eq {l : List Nat} {g : Nat → F} {n : Nat}
-    (h : l.map (val limbs H idx cd) = (List.range n).map g) (i : Nat) (hi : i < n) :
-    val limbs H idx cd (l.getD i 0) = g i := by
-  have hl : l.length = n := by simpa using congrArg List.length h
-  have := congrArg (fun l => l[i]?) h
-  simp only [List.getElem?_map, List.getElem?_range hi, Option.map_some,
-    List.getElem?_eq_getElem (show i < l.length by omega), Option.some.injEq] at this
-  rw [List.getD_eq_getElem?_getD, List.getElem?_eq_getElem (show i < l.length by omega)]
-  exact this
-
-variable (limbs H idx cd) in
-/-- What the first stage leaves (`stageA`): the `w` chain and the formulas. -/
-structure AOK (A : StageA) : Prop where
-  w : ∀ k < 26, val limbs H idx cd (A.w.getD k 0) = Formula.w (leafVals limbs H idx cd) k
-  x : val limbs H idx cd A.x = Formula.x limbs (leafVals limbs H idx cd)
-  gate : val limbs H idx cd A.gate = Formula.gate limbs (leafVals limbs H idx cd)
-  target : val limbs H idx cd A.target = Formula.target (leafVals limbs H idx cd)
-  rows : val limbs H idx cd A.rows = Formula.rows limbs (leafVals limbs H idx cd)
-  product : val limbs H idx cd A.product = Formula.product limbs (leafVals limbs H idx cd)
-  copies : val limbs H idx cd A.copies = Formula.copies limbs (leafVals limbs H idx cd)
-
-variable (limbs H idx cd) in
+variable (e) in
 /-- What the second stage leaves (`stageB`): the denominators and their prefix products. -/
-structure BOK (B : StageB) : Prop where
-  dens : B.dens.map (val limbs H idx cd) = Formula.dens limbs (leafVals limbs H idx cd)
-  pre : ∀ i ≤ B.dens.length, val limbs H idx cd (B.pre.getD i 0) = ((B.dens.take i).map (val limbs H idx cd)).prod
+structure BOK (I : Formula.Vals) (B : StageB) : Prop where
+  dens : B.dens.map (val limbsEquiv e) = Formula.denominators I
+  pre : ∀ i ≤ B.dens.length, val limbsEquiv e (B.pre.getD i 0) =
+    ((B.dens.take i).map (val limbsEquiv e)).prod
   total : B.total = B.pre.getD B.dens.length 0
-
-variable (hF : IsF192 limbs)
-include hF
-
-local notation "V" => val limbs H idx cd
-local notation "MUL" => mul_spec (H := H) (idx := idx) (cd := cd) hF
-local notation "ADD" => add_spec (H := H) (idx := idx) (cd := cd) hF
-local notation "CNST" => cnst_spec (H := H) (idx := idx) (cd := cd) hF
 
 /-- A step of a program: bind, with the spec of its first operation. -/
 macro "stp " h:term:max " => " x:ident hx:ident : tactic =>
@@ -212,74 +117,89 @@ theorem one_val : V leaves₀.one = 1 := by
   show V 1 = 1
   rw [val_const hF (k := 1) (c := 1) (by decide +kernel), elem_one hF]
 
-theorem stageA_spec : Spec (stageA leaves₀) (AOK limbs H idx cd) := by
-  set I := leafVals limbs H idx cd with hI
+theorem stageA_spec (I : Formula.Vals) (hI : LeafOK e I) : Spec (stageA leaves₀) (AOK e I) := by
   unfold stageA
-  have hone := one_val (H := H) (idx := idx) (cd := cd) hF
+  have hone := one_val (e := e)
   -- the `w` chain
-  stp (wChain_spec (H := H) (idx := idx) (cd := cd) hF 17 25) => w hw
+  stp (wChain_spec (e := e) hF 25 25) => w hw
   obtain ⟨hwlen, hwv⟩ := hw
-  have hW : ∀ k < 26, V (w.getD k 0) = Formula.w I k := fun k hk => hwv k hk
+  have hW : ∀ k < 26, V (w.getD k 0) = Formula.wAt I k := fun k hk => by
+    rw [hwv k hk, wAt_eq I k hk]
+    show sq^[k] (V 25) = _
+    rw [hI.t]
   -- the cells and the gate
-  stp (cell_spec (H := H) (idx := idx) (cd := cd) hF leaves₀ hone _ _ _) => c0 hc0
-  stp (cell_spec (H := H) (idx := idx) (cd := cd) hF leaves₀ hone _ _ _) => c1 hc1
-  stp (cell_spec (H := H) (idx := idx) (cd := cd) hF leaves₀ hone _ _ _) => c2 hc2
-  stp (cell_spec (H := H) (idx := idx) (cd := cd) hF leaves₀ hone _ _ _) => c3 hc3
-  have hcell : ∀ (sh : Nat) (second : Bool) (c : Nat),
-      V c = V (leaves₀.a.getD 0 0) + (V leaves₀.t + elem limbs sh) * V (leaves₀.a.getD 1 0) +
+  have ha : V (leaves₀.a.getD 0 0) = I.a[0] ∧ V (leaves₀.a.getD 1 0) = I.a[1] ∧
+      V (leaves₀.a.getD 2 0) = I.a[2] ∧ V (leaves₀.a.getD 3 0) = I.a[3] :=
+    ⟨hI.a0, hI.a1, hI.a2, hI.a3⟩
+  have hcell : ∀ (sh : Nat) (s : K) (hs : EL sh = ofK s) (second : Bool) (c : Nat),
+      V c = V (leaves₀.a.getD 0 0) + (V leaves₀.t + EL sh) * V (leaves₀.a.getD 1 0) +
         (if second then V (w.getD 1 0) + 1 else V (w.getD 1 0)) *
-          (V (leaves₀.a.getD 2 0) + (V leaves₀.t + elem limbs sh) * V (leaves₀.a.getD 3 0)) →
-      V c = Formula.cellF limbs I sh second := by
-    intro sh second c h
-    rw [h, hW 1 (by norm_num)]
-    rfl
-  have hx := hcell _ _ _ hc0
-  have hy := hcell _ _ _ hc1
-  have hc := hcell _ _ _ hc2
-  have hv := hcell _ _ _ hc3
+          (V (leaves₀.a.getD 2 0) + (V leaves₀.t + EL sh) * V (leaves₀.a.getD 3 0)) →
+      V c = Formula.cell I s second := by
+    intro sh s hs second c h
+    rw [h, hW 1 (by norm_num), hs, ha.1, ha.2.1, ha.2.2.1, ha.2.2.2]
+    show _ = I.a[0] + (I.t + ofK s) * I.a[1] + _ * (I.a[2] + (I.t + ofK s) * I.a[3])
+    rw [show V leaves₀.t = I.t from hI.t]
+  stp (cell_spec (e := e) hF leaves₀ hone _ _ _) => c0 hc0
+  stp (cell_spec (e := e) hF leaves₀ hone _ _ _) => c1 hc1
+  stp (cell_spec (e := e) hF leaves₀ hone _ _ _) => c2 hc2
+  stp (cell_spec (e := e) hF leaves₀ hone _ _ _) => c3 hc3
+  have hx : V c0 = Formula.x I := hcell 0 0 (by rw [elem_zero hF, ofK_zero]) _ _ hc0
+  have hy : V c1 = Formula.y I := hcell 1 1 (by rw [elem_one hF, ofK_one]) _ _ hc1
+  have hc : V c2 = Formula.c I := hcell _ _ elem_theta _ _ hc2
+  have hv : V c3 = Formula.v I := hcell _ _ elem_theta1 _ _ hc3
   stp (ADD _ _) => g1 hg1
   stp (ADD _ _) => g2 hg2
   stp (MUL _ _) => g3 hg3
   stp (ADD _ _) => gate hgate
-  have hG : V gate = Formula.gate limbs I := by
+  have hG : V gate = Formula.gate I := by
     rw [hgate, hg2, hg1, hg3, hx, hy, hc, hv]; rfl
   -- the public weight
   stp (MUL _ _) => gamma2 hgamma2
   stp (MUL _ _) => gamma4 hgamma4
-  stp (foldO_spec (H := H) (idx := idx) (cd := cd) hF (fun acc k => acc * (1 + Formula.w I k))
+  have hγ : V leaves₀.gamma = I.γ := hI.γ
+  stp (foldO_spec (e := e) hF (fun acc k => acc * (1 + Formula.wAt I k))
     (List.range' 11 (24 - 11)) (fun acc k hk => by
       stp (ADD _ _) => o ho
       refine (MUL _ _).weaken fun r hr => ?_
       rw [hr, ho, hone, hW k (by simp at hk; omega)]) leaves₀.one) => pub0 hpub0
-  stp (foldO_spec (H := H) (idx := idx) (cd := cd) hF
-    (fun acc k => acc * (1 + Formula.coord limbs I k * Formula.slope limbs I k))
+  stp (foldO_spec (e := e) hF
+    (fun acc k => acc * (1 + Formula.coordinate I k * Formula.slope I k))
     (List.range 11) (fun acc k hk => by
       have hk11 : k < 11 := by simpa using hk
-      stp (foldO_spec (H := H) (idx := idx) (cd := cd) hF
-        (fun acc j => acc + elem limbs (coords.getD (j - k) 0) * Formula.w I j)
+      stp (foldO_spec (e := e) hF
+        (fun s j => s + ofK ((coordinates region).getD (j - k) 0) * Formula.wAt I j)
         (List.range' (k + 1) (11 - (k + 1))) (fun acc' j hj => by
           have hj11 : j < 11 := by simp at hj; omega
           stp (CNST _) => bc hbc
           stp (MUL _ _) => p hp
           refine (ADD _ _).weaken fun r hr => ?_
-          rw [hr, hp, hbc, hW j (by omega)]) (w.getD k 0)) => coordinate hcoord
-      stp (Spec.weaken (P := fun r => V r = Formula.slope limbs I k) (by
-          unfold slopeOf Formula.slope
+          rw [hr, hp, hbc, hW j (by omega), elem_coords]) (w.getD k 0)) => coordinate hcoord
+      stp (Spec.weaken (P := fun r => V r = Formula.slope I k) (by
+          unfold slopeOf
           split_ifs with h8
-          · exact CNST _
+          · refine (CNST _).weaken fun r hr => ?_
+            rw [hr]
+            have hs := slopes k h8
+            unfold Formula.slope
+            cases hcw : coordinateWeight k with
+            | none => rw [hcw] at hs; cases hs
+            | some wt => rw [hcw] at hs; exact (Option.some.inj hs).symm
           · refine (ADD _ _).weaken fun r hr => ?_
             rw [hr, hone]
+            unfold Formula.slope
+            rw [coordinateWeight_none h8]
             have : k - 8 < 3 := by omega
             interval_cases hk' : k - 8
-            · rfl
-            · simp [Formula.gammas, hgamma2]; rfl
-            · simp [Formula.gammas, hgamma4, hgamma2]; rfl) fun r hr => hr) => slope hslope
+            · simp [Formula.gammas, hγ]
+            · simp [Formula.gammas, hgamma2, hγ]
+            · simp [Formula.gammas, hgamma4, hgamma2, hγ]) fun r hr => hr) => slope hslope
       stp (MUL _ _) => cs hcs
       stp (ADD _ _) => o ho
       refine (MUL _ _).weaken fun r hr => ?_
       rw [hr, ho, hcs, hslope, hcoord, hone, hW k (by omega)]
       rfl) pub0) => pubW hpubW
-  have hP : V pubW = Formula.pub limbs I := by
+  have hP : V pubW = Formula.publicWeight I := by
     rw [hpubW, hpub0, hone]; rfl
   -- the target
   stp (MUL _ _) => tg1 htg1
@@ -290,17 +210,22 @@ theorem stageA_spec : Spec (stageA leaves₀) (AOK limbs H idx cd) := by
   stp (ADD _ _) => tg6 htg6
   stp (ADD _ _) => target htarget
   have hT : V target = Formula.target I := by
-    rw [htarget, htg6, htg5, htg4, htg3, htg2, htg1, hgamma4, hgamma2]; rfl
+    rw [htarget, htg6, htg5, htg4, htg3, htg2, htg1, hgamma4, hgamma2]
+    simp only [Formula.target, statementWords, Statement.halves, List.cons_append, List.nil_append,
+      List.foldr_cons, List.foldr_nil]
+    rw [show V (leaves₀.s.getD 0 0) = _ from hI.s0, show V (leaves₀.s.getD 1 0) = _ from hI.s1,
+      show V (leaves₀.s.getD 2 0) = _ from hI.s2, show V (leaves₀.s.getD 3 0) = _ from hI.s3, hγ]
+    ring
   -- the rows' polynomial
   stp (CNST _) => zr hzr
-  stp (foldO_spec (H := H) (idx := idx) (cd := cd) hF
-    (fun acc k => acc + elem limbs (tau.getD k 0) * Formula.w I k) (List.range (24 - 1))
+  stp (foldO_spec (e := e) hF
+    (fun acc k => acc + ofK ((rowVanishing 24).getD k 0) * Formula.wAt I k) (List.range (24 - 1))
     (fun acc k hk => by
       stp (CNST _) => tk htk
       stp (MUL _ _) => p hp
       refine (ADD _ _).weaken fun r hr => ?_
-      rw [hr, hp, htk, hW k (by simp at hk; omega)]) zr) => rows hrows
-  have hR : V rows = Formula.rows limbs I := by
+      rw [hr, hp, htk, hW k (by simp at hk; omega), elem_tau]) zr) => rows hrows
+  have hR : V rows = Formula.rows I := by
     rw [hrows, hzr, elem_zero hF]; rfl
   -- the copy identity
   stp (ADD _ _) => ax hax
@@ -313,99 +238,174 @@ theorem stageA_spec : Spec (stageA leaves₀) (AOK limbs H idx cd) := by
   stp (MUL _ _) => px hpx
   stp (MUL _ _) => pxp hpxp
   stp (ADD _ _) => copies hcopies
-  have hD : V dd0 = Formula.d limbs I := by rw [hd, hax, hbt, hx]; rfl
-  have hDN : V dNext = Formula.dNext limbs I := by rw [hdNext, hax, hbn, hx]; rfl
-  have hPr : V product = Formula.product limbs I := by rw [hproduct, hD, hDN]; rfl
-  have hC : V copies = Formula.copies limbs I := by
+  have hα : V leaves₀.alpha = I.α := hI.α
+  have hβ : V leaves₀.beta = I.β := hI.β
+  have ht : V leaves₀.t = I.t := hI.t
+  have hn : V leaves₀.next = I.next := hI.next
+  have hD : V dd0 = Formula.d I := by rw [hd, hax, hbt, hx, hα, hβ, ht]; rfl
+  have hDN : V dNext = Formula.dNext I := by rw [hdNext, hax, hbn, hx, hα, hβ, hn]; rfl
+  have hPr : V product = Formula.product I := by rw [hproduct, hD, hDN]; rfl
+  have hC : V copies = Formula.copies I := by
     rw [hcopies, hdd, hpxp, hpx, hD, hDN, hPr, hP, hx]; rfl
   apply Spec.pure
   exact ⟨hW, hx, hG, hT, hR, hPr, hC⟩
 
-theorem stageB_spec (A : StageA) (hA : AOK limbs H idx cd A) : Spec (stageB leaves₀ A) (BOK limbs H idx cd) := by
-  set I := leafVals limbs H idx cd with hI
-  have hone := one_val (H := H) (idx := idx) (cd := cd) hF
+theorem stageB_spec (I : Formula.Vals) (hI : LeafOK e I) (A : StageA) (hA : AOK e I A) :
+    Spec (stageB leaves₀ A) (BOK e I) := by
+  have hone := one_val (e := e)
   unfold stageB
-  stp (mapO_spec (H := H) (idx := idx) (cd := cd) hF (fun k => 1 + Formula.w I k) (List.range (24 + 2))
+  stp (mapO_spec (e := e) hF (fun k => 1 + Formula.wAt I k) (List.range (24 + 2))
     (fun k hk => (ADD _ _).weaken fun r hr => by rw [hr, hone, hA.w k (by simpa using hk)])) => ws hws
   stp (ADD _ _) => cw hcw
-  stp (prefixes_spec (H := H) (idx := idx) (cd := cd) hF (ws ++ [cw, A.rows]) leaves₀.one) => pre hpre
+  stp (ADD _ _) => r1 hr1
+  stp (prefixes_spec (e := e) hF (ws ++ [cw, A.rows, A.product, r1]) leaves₀.one) => pre hpre
   obtain ⟨-, hprev⟩ := hpre
   apply Spec.pure
   refine ⟨?_, fun i hi => by rw [hprev i hi, hone, one_mul], rfl⟩
   rw [List.map_append, hws]
-  simp only [List.map_cons, List.map_nil, Formula.dens, hcw, hA.product, hA.w 24 (by norm_num), hA.rows]
+  simp only [List.map_cons, List.map_nil, Formula.denominators, hcw, hA.product, hA.w 24 (by norm_num),
+    hA.rows, hr1, hone, show V leaves₀.rho = I.ρ from hI.ρ, w_eq, List.map_map]
   rfl
 
-theorem dens_length (B : StageB) (hB : BOK limbs H idx cd B) : B.dens.length = 28 := by
-  simpa [Formula.dens] using congrArg List.length hB.dens
+theorem dens_length (I : Formula.Vals) (B : StageB) (hB : BOK e I B) : B.dens.length = 30 := by
+  have := congrArg List.length hB.dens
+  simp only [List.length_map, Formula.denominators, List.length_append, length_w] at this
+  simpa using this
 
-theorem total_val (B : StageB) (hB : BOK limbs H idx cd B) :
-    V B.total = Formula.check limbs (leafVals limbs H idx cd) := by
-  rw [hB.total, hB.pre _ le_rfl, List.take_length, hB.dens]; rfl
+theorem total_val (I : Formula.Vals) (B : StageB) (hB : BOK e I B) :
+    V B.total = (Formula.denominators I).prod := by
+  rw [hB.total, hB.pre _ le_rfl, List.take_length, hB.dens]
 
-/-- **What the graph requires nonzero** is the product of the denominators. -/
-theorem checkId_spec : Spec checkId fun c => V c = Formula.check limbs (leafVals limbs H idx cd) := by
+/-- **What the graph requires nonzero** is the product of the Statement's denominators. -/
+theorem checkId_spec (I : Formula.Vals) (hI : LeafOK e I) :
+    Spec checkId fun c => V c = (Formula.denominators I).prod := by
   unfold checkId
   rw [chain_eq]
   apply Spec.bind
   apply Spec.some
-  stp (stageA_spec (H := H) (idx := idx) (cd := cd) hF) => A hA
-  stp (stageB_spec (H := H) (idx := idx) (cd := cd) hF A hA) => B hB
-  exact Spec.pure (total_val hF B hB)
+  stp (stageA_spec (e := e) I hI) => A hA
+  stp (stageB_spec (e := e) I hI A hA) => B hB
+  exact Spec.pure (total_val I B hB)
 
-variable [Fintype F]
+theorem getD_of_map_eq {l : List Nat} {g : List E} (h : l.map V = g) (i : Nat) (hi : i < g.length) :
+    V (l.getD i 0) = g.getD i 0 := by
+  have hl : l.length = g.length := by simpa using congrArg List.length h
+  have := congrArg (fun l => l[i]?) h
+  simp only [List.getElem?_map, List.getElem?_eq_getElem (show i < l.length by omega),
+    List.getElem?_eq_getElem hi, Option.map_some, Option.some.injEq] at this
+  rw [List.getD_eq_getElem?_getD, List.getElem?_eq_getElem (show i < l.length by omega),
+    List.getD_eq_getElem?_getD, List.getElem?_eq_getElem hi]
+  exact this
 
-theorem stageC_spec (hfr : FrobOK limbs) (A : StageA) (hA : AOK limbs H idx cd A) (B : StageB) (hB : BOK limbs H idx cd B)
-    (hnz : Formula.check limbs (leafVals limbs H idx cd) ≠ 0) :
+/-- `quotient_parts` on the graph: its three points and two weights. -/
+theorem parts_spec (I : Formula.Vals) (point : List Nat) (hp : point.map V = Formula.quotientPoint I) :
+    Spec (parts leaves₀ point) fun r =>
+      r.1.map V = (Formula.parts I).1.1 ∧ r.2.1.map V = (Formula.parts I).2.1.1 ∧
+        r.2.2.1.map V = (Formula.parts I).2.2.1 ∧ V r.2.2.2.1 = (Formula.parts I).2.1.2 ∧
+        V r.2.2.2.2 = (Formula.parts I).2.2.2 := by
+  have hone := one_val (e := e)
+  have hlen : (Formula.quotientPoint I).length = 30 := by
+    simp [Formula.quotientPoint, Formula.u, Formula.m, cellVars, PcsQuotient.logRows]
+  have hat : ∀ k < 6, V (point.getD (24 + k) 0) = (Formula.quotientPoint I).getD (24 + k) 0 :=
+    fun k hk => getD_of_map_eq hp _ (by omega)
+  have hlow : (point.take 24).map V = (Formula.quotientPoint I).take 24 := by rw [List.map_take, hp]
+  unfold parts
+  dsimp only
+  stp (ADD _ _) => ok1 hok1
+  stp (MUL _ _) => qW hqW
+  stp (ADD _ _) => od1 hod1
+  stp (ADD _ _) => ok0 hok0
+  stp (MUL _ _) => g1 hg1
+  stp (MUL _ _) => g2 hg2
+  stp (ADD _ _) => oe0 hoe0
+  stp (MUL _ _) => g3 hg3
+  stp (ADD _ _) => oe1 hoe1
+  stp (MUL _ _) => gW hgW
+  apply Spec.pure
+  have h0 := hat 0 (by norm_num)
+  have h1 := hat 1 (by norm_num)
+  have h2 := hat 2 (by norm_num)
+  have h3 := hat 3 (by norm_num)
+  have h4 := hat 4 (by norm_num)
+  have h5 := hat 5 (by norm_num)
+  simp only [Formula.parts, quotientParts, List.map_append, List.map_cons, List.map_nil, hlow]
+  refine ⟨?_, ?_, ?_, ?_, ?_⟩
+  · rw [h0, h4, h5]; rfl
+  · rw [h0, h1, h4, h5]; rfl
+  · rw [h0]; rfl
+  · rw [hqW, hok1, hone, h2, h3]; rfl
+  · rw [hgW, hoe1, hg3, hoe0, hg2, hg1, hod1, hok0, hone, h1, h2, h3, h4, h5]; rfl
+
+theorem prod_take_eq (l : List Nat) (i : Nat) (hi : i ≤ l.length) :
+    ((l.take i).map V).prod = ((List.range i).map fun j => V (l.getD j 0)).prod := by
+  have e : (l.take i).map V = (List.range i).map fun j => V (l.getD j 0) := by
+    apply List.ext_getElem (by simp; omega)
+    intro j h1 h2
+    simp only [List.length_map, List.length_take, List.length_range] at h1 h2
+    simp [List.getD_eq_getElem?_getD, List.getElem?_eq_getElem (show j < l.length by omega)]
+  rw [e]
+
+theorem foldl_mul_eq {α : Type} (f : α → E) : ∀ (l : List α) (a : E),
+    l.foldl (fun acc k => acc * f k) a = a * (l.map f).prod
+  | [], a => by simp
+  | k :: l, a => by rw [List.foldl_cons, foldl_mul_eq f l, List.map_cons, List.prod_cons, mul_assoc]
+
+/-- **The claims' nodes** (`stageC`): when the denominators do not vanish, the nodes it leaves hold the
+Statement's claims. -/
+theorem stageC_spec (I : Formula.Vals) (hI : LeafOK e I) (A : StageA) (hA : AOK e I A) (B : StageB)
+    (hB : BOK e I B) (hnz : (Formula.denominators I).prod ≠ 0) :
     Spec (stageC leaves₀ A B) fun o =>
-      o.witness.map V = Formula.witness (leafVals limbs H idx cd) ∧
-      o.wiring.map V = Formula.wiring (leafVals limbs H idx cd) ∧
-      o.quotient.map V = Formula.quotient limbs (leafVals limbs H idx cd) ∧
-      V o.sum = Formula.sum limbs (leafVals limbs H idx cd) := by
-  set I := leafVals limbs H idx cd with hI
-  have hone := one_val (H := H) (idx := idx) (cd := cd) hF
+      o.wPt.map V = (Formula.claims I).witness.point ∧ V o.wVal = (Formula.claims I).witness.value ∧
+      o.fPt.map V = (Formula.claims I).wiring.point ∧ V o.fVal = (Formula.claims I).wiring.value ∧
+      o.hPt.map V = (Formula.claims I).h.point ∧ V o.hVal = (Formula.claims I).h.value ∧
+      o.qPt.map V = (Formula.claims I).q.point ∧ o.gPt.map V = (Formula.claims I).g.point ∧
+      V o.sum = (Formula.claims I).sum.value := by
+  have hone := one_val (e := e)
   have hW := hA.w
-  have hdlen := dens_length hF B hB
-  have hcheck := total_val hF B hB
+  have hdlen := dens_length I B hB
+  have hcheck := total_val I B hB
+  have hρ : V leaves₀.rho = I.ρ := hI.ρ
   unfold stageC
   -- the inverses
-  stp (inverse_spec (H := H) (idx := idx) (cd := cd) hF hfr _) => running hrunning
-  set P : Nat → F := fun i => ((List.range i).map fun j => V (B.dens.getD j 0)).prod with hPdef
+  stp (inverse_spec (e := e) hF (frobOK hF) _) => running hrunning
+  set P : Nat → E := fun i => ((List.range i).map fun j => V (B.dens.getD j 0)).prod with hPdef
   have hPs : ∀ i, P (i + 1) = P i * V (B.dens.getD i 0) := fun i => by
     simp [hPdef, List.range_succ]
-  have hP28 : P B.dens.length = Formula.check limbs I := by
+  have hP30 : P B.dens.length = (Formula.denominators I).prod := by
     rw [hPdef]; dsimp only
-    rw [← prod_take_eq _ _ le_rfl, List.take_length, hB.dens]; rfl
-  stp (backInv_spec (H := H) (idx := idx) (cd := cd) hF (fun i => B.pre.getD i 0)
+    rw [← prod_take_eq _ _ le_rfl, List.take_length, hB.dens]
+  stp (backInv_spec (e := e) hF (fun i => B.pre.getD i 0)
     (fun i => B.dens.getD i 0) P hPs _ running
     (fun i hi => by rw [hB.pre i hi.le, prod_take_eq _ _ hi.le])
-    (by rw [hrunning, hcheck, hP28]) (by rw [hP28]; exact hnz)) => invsRev hinvs
+    (by rw [hrunning, hcheck, hP30]) (by rw [hP30]; exact hnz)) => invsRev hinvs
   obtain ⟨-, hinvs⟩ := hinvs
   rw [hdlen] at hinvs
-  have hDen : ∀ i < 28, V (B.dens.getD i 0) = (Formula.dens limbs I).getD i 0 := fun i hi => by
-    rw [← hB.dens, List.getD_eq_getElem?_getD, List.getD_eq_getElem?_getD, List.getElem?_map]
-    rw [List.getElem?_eq_getElem (show i < B.dens.length by omega)]
+  have hInv : ∀ i < 30, V (invsRev.reverse.getD i 0) = Formula.inv I i := fun i hi => by
+    rw [hinvs i hi, getD_of_map_eq hB.dens i (by rw [← hB.dens]; simp [hdlen, hi]), Formula.inv,
+      List.getD_eq_getElem?_getD, List.getD_eq_getElem?_getD,
+      List.getElem?_eq_getElem (show i < (Formula.denominators I).length by rw [← hB.dens]; simp [hdlen, hi])]
     rfl
-  have hInv : ∀ i < 26, V (invsRev.reverse.getD i 0) = (1 + Formula.w I i)⁻¹ := fun i hi => by
-    rw [hinvs i (by omega), hDen i (by omega), dens_getD_lt I i hi]
-  have hCopyInv : V (invsRev.reverse.getD 26 0) = (Formula.product limbs I + Formula.w I 24)⁻¹ := by
-    rw [hinvs 26 (by omega), hDen 26 (by omega), dens_getD_26]
-  have hRowsInv : V (invsRev.reverse.getD 27 0) = (Formula.rows limbs I)⁻¹ := by
-    rw [hinvs 27 (by omega), hDen 27 (by omega), dens_getD_27]
-  stp (mapO_spec (H := H) (idx := idx) (cd := cd) hF (fun k => Formula.u I k) (List.range (24 + 2))
+  stp (mapO_spec (e := e) hF (fun k => Formula.wAt I k * Formula.inv I k) (List.range (24 + 2))
     (fun k hk => (MUL _ _).weaken fun r hr => by
       have hk' : k < 26 := by simpa using hk
-      rw [hr, hW k hk', hInv k hk']; rfl)) => u hu
-  stp (foldO_spec (H := H) (idx := idx) (cd := cd) hF (fun acc k => acc * (1 + Formula.w I k)⁻¹)
+      rw [hr, hW k hk', hInv k (by omega)])) => u hu
+  have hU : u.map V = Formula.u I := hu
+  stp (foldO_spec (e := e) hF (fun acc k => acc * Formula.inv I k)
     (List.range' 3 (24 - 3)) (fun acc k hk => (MUL _ _).weaken fun r hr => by
       have hk' : k < 26 := by simp at hk; omega
-      rw [hr, hInv k hk']) (invsRev.reverse.getD 2 0)) => middle hmiddle
+      rw [hr, hInv k (by omega)]) (invsRev.reverse.getD 2 0)) => middle hmiddle
+  have hMid : V middle = Formula.middle I := by rw [hmiddle, hInv 2 (by norm_num)]; rfl
   stp (MUL _ _) => ws0 hws0
   stp (MUL _ _) => wiringScale hwiringScale
+  have hWS : V wiringScale = Formula.wiringScale I := by
+    rw [hwiringScale, hws0, hMid, hInv 0 (by norm_num), hInv 1 (by norm_num)]; rfl
   stp (MUL _ _) => qs0 hqs0
   stp (MUL _ _) => quotientScale hquotientScale
+  have hQS : V quotientScale = Formula.quotientScale I := by
+    rw [hquotientScale, hqs0, hWS, hInv 24 (by norm_num), hInv 25 (by norm_num)]; rfl
   -- the claims
   stp (MUL _ _) => rho2 hrho2
+  have hR2 : V rho2 = Formula.rho2 I := by rw [hrho2, hρ]; rfl
   stp (ADD _ _) => o1 ho1
   stp (ADD _ _) => o2 ho2
   stp (MUL _ _) => o3 ho3
@@ -416,16 +416,21 @@ theorem stageC_spec (hfr : FrobOK limbs) (A : StageA) (hA : AOK limbs H idx cd A
   stp (ADD _ _) => o8 ho8
   stp (MUL _ _) => o9 ho9
   stp (ADD _ _) => opened hopened
+  have hOp : V opened = Formula.opened I := by
+    rw [hopened, ho5, ho9, ho1, ho4, ho8, ho3, ho7, ho2, ho6, hR2, hone, hρ,
+      show V (leaves₀.a.getD 0 0) = _ from hI.a0, show V (leaves₀.a.getD 1 0) = _ from hI.a1,
+      show V (leaves₀.a.getD 2 0) = _ from hI.a2, show V (leaves₀.a.getD 3 0) = _ from hI.a3]
+    rfl
   stp (CNST _) => sc hsc
+  have hSc : V sc = extension.2 := by rw [hsc, elem_scale]
   stp (ADD _ _) => i1 hi1
   stp (MUL _ _) => i2 hi2
   stp (MUL _ _) => i3 hi3
   stp (MUL _ _) => i4 hi4
   stp (MUL _ _) => i5 hi5
   stp (ADD _ _) => identities hidentities
-  stp (MUL _ _) => wv0 hwv0
-  stp (MUL _ _) => witnessValue hwitnessValue
-  stp (MUL _ _) => wiringValue hwiringValue
+  have hId : V identities = Formula.identities I := by
+    rw [hidentities, hi3, hi2, hi1, hi5, hi4, hone, hρ, hA.copies, hA.rows, hA.product, hA.gate]; rfl
   stp (MUL _ _) => wmc hwmc
   stp (CNST _) => cy0 hcy0
   stp (CNST _) => cy1 hcy1
@@ -433,78 +438,63 @@ theorem stageC_spec (hfr : FrobOK limbs) (A : StageA) (hA : AOK limbs H idx cd A
   stp (MUL _ _) => qv1 hqv1
   stp (MUL _ _) => qv2 hqv2
   stp (MUL _ _) => quotientValue hquotientValue
+  have hQV : V quotientValue = Formula.quotientValue I := by
+    rw [hquotientValue, hqv2, hqv1, hqv0, hSc, hQS, hInv 26 (by norm_num), hInv 27 (by norm_num), hId]
+    rfl
+  have hQP : (u ++ [wmc, leaves₀.rho, cy0, cy1]).map V = Formula.quotientPoint I := by
+    rw [List.map_append, hU]
+    simp only [List.map_cons, List.map_nil, Formula.quotientPoint]
+    rw [hwmc, hW 24 (by norm_num), hInv 26 (by norm_num), hρ, hcy0, hcy1, elem_y0, elem_y1]
+    rfl
+  stp (parts_spec (e := e) I _ hQP) => pr hpr
+  obtain ⟨hPt, qPt, gPt, qW, gW⟩ := pr
+  obtain ⟨hhPt, hqPt, hgPt, hqW, hgW⟩ := hpr
+  dsimp only at hhPt hqPt hgPt hqW hgW ⊢
+  stp (ADD _ _) => hi0 hhi0
+  stp (ADD _ _) => cw hcw
+  stp (MUL _ _) => hi1 hhi1
+  stp (MUL _ _) => hi2 hhi2
+  stp (MUL _ _) => hInverse hhInverse
+  have hHI : V hInverse = Formula.hInverse I := by
+    rw [hhInverse, hhi2, hhi1, hhi0, hcw, hone, hW 25 (by norm_num), hW 24 (by norm_num), hA.product,
+      hInv 28 (by norm_num), hInv 29 (by norm_num)]
+    rfl
+  stp (MUL _ _) => hv0 hhv0
+  stp (ADD _ _) => hv1 hhv1
+  stp (MUL _ _) => hv2 hhv2
+  stp (ADD _ _) => hv3 hhv3
+  stp (MUL _ _) => hVal hhVal
+  stp (MUL _ _) => wv0 hwv0
+  stp (MUL _ _) => wVal hwVal
+  stp (MUL _ _) => fVal hfVal
   stp (MUL _ _) => sum hsum
   apply Spec.pure
-  refine ⟨?_, ?_, ?_, ?_⟩
-  · -- the witness claim
-    have hOp : V opened = Formula.opened I := by
-      rw [hopened, ho5, ho9, ho1, ho4, ho8, ho3, ho7, ho2, ho6, hrho2, hone]; rfl
-    have hMid : V middle * (1 + Formula.w I 24)⁻¹ = Formula.invProd I (List.range' 2 23) := by
-      rw [hmiddle, hInv 2 (by norm_num), foldl_mul_eq, Formula.invProd,
-        show List.range' 2 23 = [2] ++ List.range' 3 21 ++ [24] by decide]
-      simp only [List.map_append, List.prod_append, List.map_cons, List.map_nil, List.prod_cons,
-        List.prod_nil, mul_one]
-      try ring
-    have e1 : List.map V (List.take (24 - 1) (List.drop 2 u)) =
-        (List.range 23).map fun k => Formula.u I (k + 2) := by
-      rw [List.map_take, List.map_drop, hu]
-      apply List.ext_getElem (by simp)
-      intro j h1 h2
-      simp [Nat.add_comm]
-    have e2 : V witnessValue = Formula.opened I * Formula.invProd I (List.range' 2 23) := by
-      rw [hwitnessValue, hwv0, hOp, mul_assoc, hInv 24 (by norm_num), hMid]
-    simp only [List.map_append, List.map_cons, List.map_nil, Formula.witness]
-    rw [e1, e2, hrho2]
+  refine ⟨?_, ?_, ?_, ?_, hhPt, ?_, hqPt, hgPt, ?_⟩
+  · simp only [List.map_append, List.map_cons, List.map_nil, List.map_take, List.map_drop, hU, hR2, hρ]
     rfl
-  · -- the wiring claim
-    have hScale : V wiringScale = Formula.invProd I (List.range 24) := by
-      rw [hwiringScale, hws0, hmiddle, hInv 0 (by norm_num), hInv 1 (by norm_num),
-        hInv 2 (by norm_num), foldl_mul_eq, Formula.invProd,
-        show List.range 24 = [0, 1, 2] ++ List.range' 3 21 by decide]
-      simp only [List.map_append, List.prod_append, List.map_cons, List.map_nil, List.prod_cons,
-        List.prod_nil, mul_one]
-      try ring
-    have e1 : List.map V (List.take 24 u) = (List.range 24).map (Formula.u I) := by
-      rw [List.map_take, hu]
-      apply List.ext_getElem (by simp)
-      intro j h1 h2
-      simp
-    simp only [List.map_append, List.map_cons, List.map_nil, Formula.wiring]
-    rw [e1, hwiringValue, hScale]
+  · rw [hwVal, hwv0, hOp, hMid, hInv 24 (by norm_num)]; rfl
+  · rw [List.map_take, hU]; rfl
+  · rw [hfVal, hWS, show V leaves₀.next = I.next from hI.next]; rfl
+  · rw [hhVal, hhv3, hhv1, hhv0, hhv2, hQV, hqW, hgW, hHI, show V leaves₀.qv = I.qValue from hI.qv,
+      show V leaves₀.gv = I.gValue from hI.gv]
     rfl
-  · -- the quotient table's first claim
-    have hScale : V quotientScale = Formula.invProd I (List.range 26) := by
-      rw [hquotientScale, hqs0, hwiringScale, hws0, hmiddle, hInv 0 (by norm_num),
-        hInv 1 (by norm_num), hInv 2 (by norm_num), hInv 24 (by norm_num), hInv 25 (by norm_num),
-        foldl_mul_eq, Formula.invProd,
-        show List.range 26 = [0, 1, 2] ++ List.range' 3 21 ++ [24, 25] by decide]
-      simp only [List.map_append, List.prod_append, List.map_cons, List.map_nil, List.prod_cons,
-        List.prod_nil, mul_one]
-      try ring
-    have hId : V identities = Formula.identities limbs I := by
-      rw [hidentities, hi3, hi2, hi1, hi5, hi4, hone, hA.copies, hA.rows, hA.product, hA.gate]; rfl
-    simp only [List.map_append, List.map_cons, List.map_nil, Formula.quotient, hu]
-    rw [hwmc, hW 24 (by norm_num), hCopyInv, hcy0, hcy1, hquotientValue, hqv2, hqv1, hqv0, hsc,
-      hScale, hCopyInv, hRowsInv, hId]
-    rfl
-  · -- the sum
-    rw [hsum, hsc, hA.target]; rfl
+  · rw [hsum, hSc, hA.target]; rfl
 
-/-- **What the graph's outputs are.** The nodes `reduceIds` leaves (the graph's outputs,
-`reduceIds_eq`) hold `Formula`'s claims at the leaves' elements, when the product of the
-denominators (`checkId_spec`) is not zero. -/
-theorem reduceIds_spec (hfr : FrobOK limbs)
-    (hnz : Formula.check limbs (leafVals limbs H idx cd) ≠ 0) : Spec reduceIds fun o =>
-      o.witness.map V = Formula.witness (leafVals limbs H idx cd) ∧
-      o.wiring.map V = Formula.wiring (leafVals limbs H idx cd) ∧
-      o.quotient.map V = Formula.quotient limbs (leafVals limbs H idx cd) ∧
-      V o.sum = Formula.sum limbs (leafVals limbs H idx cd) := by
+/-- **What the graph's claim nodes hold.** The nodes `reduceIds` leaves (the graph's, `reduceIds_eq`)
+hold the Statement's claims at the leaves' values, when the denominators do not vanish. -/
+theorem reduceIds_spec (I : Formula.Vals) (hI : LeafOK e I) (hnz : (Formula.denominators I).prod ≠ 0) :
+    Spec reduceIds fun o =>
+      o.wPt.map V = (Formula.claims I).witness.point ∧ V o.wVal = (Formula.claims I).witness.value ∧
+      o.fPt.map V = (Formula.claims I).wiring.point ∧ V o.fVal = (Formula.claims I).wiring.value ∧
+      o.hPt.map V = (Formula.claims I).h.point ∧ V o.hVal = (Formula.claims I).h.value ∧
+      o.qPt.map V = (Formula.claims I).q.point ∧ o.gPt.map V = (Formula.claims I).g.point ∧
+      V o.sum = (Formula.claims I).sum.value := by
   unfold reduceIds
   rw [chain_eq]
   apply Spec.bind
   apply Spec.some
-  stp (stageA_spec (H := H) (idx := idx) (cd := cd) hF) => A hA
-  stp (stageB_spec (H := H) (idx := idx) (cd := cd) hF A hA) => B hB
-  exact stageC_spec hF hfr A hA B hB hnz
+  stp (stageA_spec (e := e) I hI) => A hA
+  stp (stageB_spec (e := e) I hI A hA) => B hB
+  exact stageC_spec I hI A hA B hB hnz
 
 end Implementation

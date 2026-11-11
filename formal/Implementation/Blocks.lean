@@ -1,6 +1,7 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 import Implementation.Semantics
 import Mathlib.FieldTheory.Finite.Basic
+import Mathlib.Data.List.GetD
 
 /-!
 # What the blocks of `reduce` compute
@@ -16,17 +17,20 @@ set_option linter.unusedSectionVars false
 
 namespace Implementation
 
-open Program Emitted QuotientSecurity
+/-- `S(x) = x² + x`: the chain `w_{k+1} = S(w_k)`. -/
+def sq {F : Type} [Field F] (x : F) : F := x * x + x
 
-variable {F : Type} [Field F] [CharP F 2] {limbs : F ≃ QuotientRpm.Limbs}
-variable {H : List UInt8 → Vector UInt8 32} {idx cd : List UInt8}
+open Program Emitted
+
+variable {F : Type} [Field F] [CharP F 2] {limbs : F ≃ Limbs}
+variable {e : Env}
 variable (hF : IsF192 limbs)
 include hF
 
-local notation "V" => val limbs H idx cd
-local notation "MUL" => mul_spec (H := H) (idx := idx) (cd := cd) hF
-local notation "ADD" => add_spec (H := H) (idx := idx) (cd := cd) hF
-local notation "CNST" => cnst_spec (H := H) (idx := idx) (cd := cd) hF
+local notation "V" => val limbs e
+local notation "MUL" => mul_spec (e := e) hF
+local notation "ADD" => add_spec (e := e) hF
+local notation "CNST" => cnst_spec (e := e) hF
 
 theorem wChain_spec (t : Nat) : ∀ n, Spec (wChain t n) fun ws =>
     ws.length = n + 1 ∧ ∀ k < n + 1, V (ws.getD k 0) = sq^[k] (V t)
@@ -107,7 +111,7 @@ theorem invRound_spec (norm : Nat) (p : Nat × Nat) (hp : V p.1 = V norm ^ (2 ^ 
     Spec (invRound norm p) fun q => q.2 = 2 * p.2 + 1 ∧ V q.1 = V norm ^ (2 ^ q.2 - 1) := by
   unfold invRound
   apply Spec.bind
-  refine (squareN_spec (H := H) (idx := idx) (cd := cd) hF _ _).weaken fun sh hsh => ?_
+  refine (squareN_spec (e := e) hF _ _).weaken fun sh hsh => ?_
   apply Spec.bind
   refine (MUL _ _).weaken fun o ho => ?_
   apply Spec.bind
@@ -128,7 +132,7 @@ theorem invRounds_spec (norm : Nat) (n : Nat) : ∀ (p : Nat × Nat), V p.1 = V 
     intro p hp
     unfold invRounds
     apply Spec.bind
-    refine (invRound_spec (H := H) (idx := idx) (cd := cd) hF norm p hp).weaken fun q hq => ?_
+    refine (invRound_spec (e := e) hF norm p hp).weaken fun q hq => ?_
     refine (ih q hq.2).weaken fun r hr => ⟨?_, hr.2⟩
     rw [hr.1, hq.1, Function.iterate_succ_apply]
 
@@ -227,15 +231,15 @@ field of `2^192` elements where `frobE` is `x^(2^64)`. -/
 theorem inverse_spec (hfr : FrobOK limbs) (x : Nat) : Spec (inverse x) fun r => V r = (V x)⁻¹ := by
   unfold inverse
   apply Spec.bind
-  refine (frob_spec (H := H) (idx := idx) (cd := cd) hF hfr _).weaken fun f1 hf1 => ?_
+  refine (frob_spec (e := e) hF hfr _).weaken fun f1 hf1 => ?_
   apply Spec.bind
-  refine (frob_spec (H := H) (idx := idx) (cd := cd) hF hfr _).weaken fun f2 hf2 => ?_
+  refine (frob_spec (e := e) hF hfr _).weaken fun f2 hf2 => ?_
   apply Spec.bind
   refine (MUL _ _).weaken fun m hm => ?_
   apply Spec.bind
   refine (MUL _ _).weaken fun norm hnorm => ?_
   apply Spec.bind
-  refine (invRounds_spec (H := H) (idx := idx) (cd := cd) hF norm 5 (norm, 1) (by simp)).weaken fun p hp => ?_
+  refine (invRounds_spec (e := e) hF norm 5 (norm, 1) (by simp)).weaken fun p hp => ?_
   apply Spec.bind
   refine (MUL _ _).weaken fun s hs => ?_
   refine (MUL _ _).weaken fun r hr => ?_

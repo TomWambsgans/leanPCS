@@ -10,27 +10,30 @@ public import PcsQuotient.Domain
 public import PcsQuotient.Transcript
 
 /-!
-# The reduction: five field elements to four claims
+# The reduction: four commitments and seven field elements to six claims
 
 The verifier of the reduction (`reduce` and `verify`, `protocol.rs`): from the statement and
-the reduction's proof (two commitments and five elements of `E`), the two commitments it names and
-**four claims**, each a multilinear evaluation claim on a committed table: one on the witness table,
-one on the circuit's wiring table, two on the quotient table (`Claims`). It rejects only a size the layouts do
-not take (`Supported`: `2^17` to `2^22` rows), a malformed
-commitment (a root's halves with a top limb) or a challenge at which a denominator vanishes; the
-claims carry the rest, and the openings (`Opening.lean`) check them.
+the reduction's proof (four commitments, each a root and its out-of-domain answer, and seven elements of
+`E`), the four commitments it names and **six claims**, each a PCS claim (a plain multilinear evaluation
+at one point) on a committed table: one on the witness table `W`, one on the circuit's wiring table, two on
+`H` (the quotient point and the sum point), one on `Q`, one on `G` (`Claims`). `H`, `Q`, `G` are the three
+parts of the quotient table `T` (`quotientParts`). It rejects only a size the commitments do not take
+(`Supported`: `2^13` to `2^22` rows), a malformed root (halves with a top limb) or a challenge at which a
+denominator vanishes; the claims carry the rest, and the openings (`Opening.lean`) check them.
 
 **The protocol** (`doc/quotient/main.tex` of leanVM's branch). The circuit has `2^m` cells,
 `m = logRows + 2`, cell `i` at the point `B(i)` of the Cantor basis (`Domain.lean`), four a row
 (`X, Y, C, V`), its gate `V = X + C + Y·C`. The prover commits the witness table (the cells'
-polynomial in the novel basis, and masks), receives `α, β, γ`, commits the quotient table (the sum's
-polynomial `h` and the two quotients), receives `t`, and sends the four values `a_j` of the row
-polynomials at `t` and `next`, the wiring polynomial at `t`; `ρ` batches. Since a multilinear claim at
-the point `(w_k(t))_k` is a univariate evaluation, each identity is one claim.
+polynomial in the novel basis, and masks), receives `α, β, γ`, commits the quotient table's three parts
+(`H`: the sum's polynomial `h` with its blinding; `Q`: the copy quotient; `G`: the gate's quotient), each
+commitment a root and its out-of-domain answer, receives `t`, and sends the four values `a_j` of the row
+polynomials at `t` and `next`, the wiring polynomial at `t`; `ρ` batches; then `Q`'s and `G`'s values at
+their points. Since a multilinear claim at the point `(w_k(t))_k` is a univariate evaluation, each identity
+is one claim on `T`, which the verifier reads through its parts: `H`'s value follows from `Q`'s and `G`'s.
 
 **Transcription.** The Rust is generic in its scalar (so that the same code is the EVM contract);
 here the scalar is `E`. Two forms differ without changing a value: the proof is a structure
-(`ReductionProof`, nine scalars in the stream's order) rather than a stream (a stream of another
+(`ReductionProof`, nineteen scalars in the stream's order) rather than a stream (a stream of another
 length, which the Rust rejects as exhausted or trailing, is no `ReductionProof`); and the inverses are
 taken one by one (`x⁻¹`) where the Rust inverts one product (by the norm to `K`, `protocol.rs`)
 and unwinds it, after the same check that no denominator is zero.
@@ -56,14 +59,15 @@ def cellVars (logRows : ℕ) : ℕ := logRows + 2
 /-- `LOG_ROWS` (`circuit.rs:22`): the membership circuit has `2^22` rows, so `2^24` cells. -/
 def logRows : ℕ := 22
 
-/-- `MIN_LOG_ROWS` (`protocol.rs`): below `2^17` rows the witness table's hidden layout does not fit. -/
-def minLogRows : ℕ := 17
+/-- `MIN_LOG_ROWS` (`protocol.rs`): below `2^13` rows the wiring table (`m` variables) is smaller than the
+`2^15` words WHIR commits. -/
+def minLogRows : ℕ := 13
 
-/-- `MAX_LOG_ROWS` (`protocol.rs`): above `2^22` rows the quotient table's stack exceeds WHIR's `2^28` words.
--/
+/-- `MAX_LOG_ROWS` (`protocol.rs`): above `2^22` rows the table `Q` (`m + 4` variables) exceeds WHIR's
+`2^28` words. -/
 def maxLogRows : ℕ := 22
 
-/-- `supported` (`protocol.rs`): the sizes the layouts take; the verifier rejects any other
+/-- `supported` (`protocol.rs`): the sizes the commitments take; the verifier rejects any other
 (`VerifyError::Shape`). -/
 def Supported (logRows : ℕ) : Prop := minLogRows ≤ logRows ∧ logRows ≤ maxLogRows
 
@@ -93,15 +97,29 @@ def extension : (E × E) × E :=
   let d1 := 1 + ey * ey
   ((ey * d0⁻¹, ey * ey * d1⁻¹), (d0 * d1)⁻¹)
 
-/-- `sum_point` (`protocol.rs`): the fixed point of the second claim on the quotient table,
-the top coefficient of its first chunk: `m` ones, four zeros, the extension's coordinates. -/
+/-- `sum_point` (`protocol.rs`): the point of the claim on `H` at the top coefficient of the sum's polynomial:
+coefficient `2^m − 1` of digit `0` (`m` ones, then a zero), its limbs weighed by the extension's coordinates. -/
 def sumPoint (logRows : ℕ) : List E :=
-  List.replicate (cellVars logRows) 1 ++ List.replicate 4 0 ++ [extension.1.1, extension.1.2]
+  List.replicate (cellVars logRows) 1 ++ [0, extension.1.1, extension.1.2]
 
-/-- `label` (`protocol.rs`): the transcript's seed, `"pcs-quotient-kc1"`, the circuit's
-commitment and the statement (`112` bytes). -/
-def label (indexRoot : Digest) (stmt : Statement) : List UInt8 :=
-  "pcs-quotient-kc1".toUTF8.toList ++ digestBytes indexRoot ++ stmt.y.toList ++ stmt.root.toList
+/-- **A commitment** as the claims name it (`opening::Commitment`): the Merkle root of the table's WHIR
+commitment and its out-of-domain answer, the table's multilinear at the point derived from the root
+(`Opening.lean`'s `oodPointWith`). -/
+structure Commitment where
+  root : Digest
+  ood : E
+  deriving DecidableEq
+
+/-- **`element_bytes`** (`pcs_claim`): an element of `E` as `24` bytes, its limbs `c2, c1, c0`, each
+big-endian. -/
+def elementBytes (x : E) : List UInt8 :=
+  beBytes (x.limb 2).lane ++ beBytes (x.limb 1).lane ++ beBytes (x.limb 0).lane
+
+/-- `label` (`protocol.rs`): the transcript's seed, `"pcs-quotient-kc1"`, the circuit's commitment (its
+root, then its out-of-domain answer as `element_bytes`) and the statement (`136` bytes). -/
+def label (index : Commitment) (stmt : Statement) : List UInt8 :=
+  "pcs-quotient-kc1".toUTF8.toList ++ digestBytes index.root ++ elementBytes index.ood ++
+    stmt.y.toList ++ stmt.root.toList
 
 /-- `halves` (`statement.rs:62-67`): a 32-byte value as two elements of `E`, sixteen bytes each read
 as a big-endian number in limbs `0` (low) and `1` (high). -/
@@ -121,28 +139,59 @@ halves, big-endian (`halves`), then word `4`, the constant one (bit `0` set: the
 words `5 … 7`, zero (the rows that pin `0`). The public bits must sum to `Σ_J γ^J · word_J`. -/
 def statementWords (stmt : Statement) : List E := stmt.halves ++ [1, 0, 0, 0]
 
+/-! ### Roots as scalars -/
+
+/-- `root_halves` (`transcript.rs`): a root as the two scalars the membership stream carries it as, its
+128-bit halves, each a big-endian number (`c1` its first eight bytes, `c0` the next eight): the root's bytes
+read as `halves` reads a statement's 32 bytes. -/
+def rootHalves (root : Digest) : E × E := halves (Digest.toBytes root)
+
+/-- `halves_root` (`transcript.rs`): the root two scalars stand for, if neither has a top limb
+(`TranscriptError::NotARoot` otherwise): half `h`'s bytes are its limb `1`'s eight big-endian bytes, then its
+limb `0`'s, and the digest's four words are the 32 bytes read little-endian. -/
+def rootOfHalves (s : E × E) : Option Digest :=
+  if s.1.limb 2 = 0 ∧ s.2.limb 2 = 0 then
+    let b := beBytes (s.1.limb 1).lane ++ beBytes (s.1.limb 0).lane ++ beBytes (s.2.limb 1).lane ++
+      beBytes (s.2.limb 0).lane
+    some #v[leLane b 0, leLane b 1, leLane b 2, leLane b 3]
+  else none
+
 /-! ### The proof and the claims -/
 
-/-- **The reduction's proof**: two commitments, each as the two scalars it rides the stream as
-(`root_scalars`, `transcript.rs:16-18`: its 128-bit halves, two little-endian words each), and five
-elements of `E`: the four row values `a_j` at `t` and `next`, the wiring polynomial at `t`. The Rust
-stream is `witnessRoot, quotientRoot, values, next`, in this order (`prove`, `protocol.rs`).
--/
+/-- **A commitment as the reduction's proof carries it**: the root's two halves (`rootHalves`), then the
+out-of-domain answer, the three scalars the prover sends (`send_root`, then `send(ood)`, `protocol.rs`). -/
+structure CommitmentScalars where
+  root : E × E
+  ood : E
+
+/-- The three scalars, in the order sent. -/
+def CommitmentScalars.stream (c : CommitmentScalars) : List E := [c.root.1, c.root.2, c.ood]
+
+/-- **The reduction's proof**: the witness table's commitment, the three parts' (`H`, `Q`, `G`), each as its
+three scalars; the four row values `a_j` at `t` and `next`, the wiring polynomial at `t`; then `Q`'s and
+`G`'s values at their points. The Rust stream is `witness, h, q, g, values, next, qValue, gValue`, in this
+order (`prove`, `protocol.rs`). -/
 structure ReductionProof where
-  witnessRoot : E × E
-  quotientRoot : E × E
+  witness : CommitmentScalars
+  h : CommitmentScalars
+  q : CommitmentScalars
+  g : CommitmentScalars
   values : Vector E 4
   next : E
+  qValue : E
+  gValue : E
 
-/-- The stream of nine scalars, in the order sent. -/
+/-- The stream of nineteen scalars, in the order sent. -/
 def ReductionProof.stream (p : ReductionProof) : List E :=
-  [p.witnessRoot.1, p.witnessRoot.2, p.quotientRoot.1, p.quotientRoot.2] ++ p.values.toList ++
-    [p.next]
+  p.witness.stream ++ p.h.stream ++ p.q.stream ++ p.g.stream ++ p.values.toList ++
+    [p.next, p.qValue, p.gValue]
 
-/-- The proof a stream of exactly nine scalars is; `none` for any other length (which the Rust
+/-- The proof a stream of exactly nineteen scalars is; `none` for any other length (which the Rust
 rejects: `Exhausted`, `Trailing`). -/
 def ReductionProof.ofStream : List E → Option ReductionProof
-  | [w0, w1, q0, q1, a0, a1, a2, a3, n] => some ⟨(w0, w1), (q0, q1), #v[a0, a1, a2, a3], n⟩
+  | [w0, w1, wo, h0, h1, ho, q0, q1, qo, g0, g1, go, a0, a1, a2, a3, n, vq, vg] =>
+    some ⟨⟨(w0, w1), wo⟩, ⟨(h0, h1), ho⟩, ⟨(q0, q1), qo⟩, ⟨(g0, g1), go⟩, #v[a0, a1, a2, a3], n, vq,
+      vg⟩
   | _ => none
 
 /-- **A claim** (`opening::Claim`): the table's multilinear extension at `point` is `value`. -/
@@ -151,26 +200,49 @@ structure Claim where
   value : E
   deriving DecidableEq
 
-/-- **The four claims** (`Claims`, `protocol.rs`): on the witness table, on the circuit's
-wiring table, on the quotient table, and on the quotient table at the fixed point `sumPoint`. -/
+/-- **The six claims** (`Claims`, `protocol.rs`): on the witness table `W`, on the circuit's wiring table,
+on the quotient table's parts `H`, `Q`, `G` at their points, and on `H` at the fixed point `sumPoint`. -/
 structure Claims where
   witness : Claim
   wiring : Claim
-  quotient : Claim
+  h : Claim
+  q : Claim
+  g : Claim
   sum : Claim
   deriving DecidableEq
 
-/-- What the reduction leaves: the two commitments it names and the four claims. -/
+/-- **The four commitments a proof names** (`Commitments`, `protocol.rs`). -/
+structure Commitments where
+  witness : Commitment
+  h : Commitment
+  q : Commitment
+  g : Commitment
+  deriving DecidableEq
+
+/-- What the reduction leaves: the four commitments it names and the six claims. -/
 structure Reduced where
-  witnessRoot : Digest
-  quotientRoot : Digest
+  commitments : Commitments
   claims : Claims
 
 /-! ### The claims at given challenges (`protocol.rs`) -/
 
-/-- **The claims of a proof at the challenges** `α, β, γ, t, ρ`, or `none` if a denominator
-vanishes (`VerifyError::Degenerate`). Line by line `reduce` after its transcript reads. -/
-def claimsAt (logRows : ℕ) (stmt : Statement) (α β γ t ρ : E) (a : Vector E 4) (next : E) :
+/-- **`quotient_parts`** (`protocol.rs`): the quotient table `T` has `m + 6` variables (a coefficient, then
+a chunk's digit, kind and limb, two bits each) and is committed as three subcubes; for a point `P` of `T`,
+each part's point (the free coordinates of `P`) and weight (the `eq` of the fixed ones), so that
+`T(P) = w_H H(P_H) + w_Q Q(P_Q) + w_G G(P_G)`: `H` the kind `0` and digit bit `1` zero, `Q` the kind `1`, `G`
+the kind `2`, digit bit `1` zero and limb `0`. -/
+def quotientParts (point : List E) (m : ℕ) : (List E × E) × (List E × E) × (List E × E) :=
+  let low := point.take m
+  let at_ (k : ℕ) : E := point.getD (m + k) 0
+  let (d0, d1, k0, k1, e0, e1) := (at_ 0, at_ 1, at_ 2, at_ 3, at_ 4, at_ 5)
+  ((low ++ [d0, e0, e1], (1 + d1) * (1 + k0) * (1 + k1)),
+    (low ++ [d0, d1, e0, e1], k0 * (1 + k1)),
+    (low ++ [d0], (1 + d1) * (1 + k0) * k1 * (1 + e0) * (1 + e1)))
+
+/-- **The claims of a proof at the challenges** `α, β, γ, t, ρ`, the values `a`, `next` and the parts'
+values `qValue`, `gValue`, or `none` if a denominator vanishes (`VerifyError::Degenerate`). Line by line
+`reduce` after its transcript reads. -/
+def claimsAt (logRows : ℕ) (stmt : Statement) (α β γ t ρ : E) (a : Vector E 4) (next qValue gValue : E) :
     Option Claims :=
   let m := cellVars logRows
   -- `w_k(t)`, `k ≤ m + 1`: up to the two digits past the cells.
@@ -211,25 +283,35 @@ def claimsAt (logRows : ℕ) (stmt : Statement) (α β γ t ρ : E) (a : Vector 
   let dNext := α + x + β * next
   let product := d * dNext
   let copies := d + dNext + publicWeight * x * product
-  -- Every `1 + w_k`, the copy identity's denominator and the rows' polynomial, inverted.
-  let denominators := w.map (1 + ·) ++ [product + wAt m, rows]
+  -- Every `1 + w_k`, the copy identity's denominator, the rows' polynomial, the product and `1 + ρ`, inverted.
+  let denominators := w.map (1 + ·) ++ [product + wAt m, rows, product, 1 + ρ]
   if denominators.any (· = 0) then none
   else
     let inv (k : ℕ) : E := (denominators.getD k 1)⁻¹
     let u : List E := (List.range (m + 2)).map fun k ↦ wAt k * inv k
     let copyInverse := inv (m + 2)
     let rowsInverse := inv (m + 3)
+    let productInverse := inv (m + 4)
+    let rhoInverse := inv (m + 5)
     let middle := (List.range' 3 (m - 3)).foldl (fun acc k ↦ acc * inv k) (inv 2)
     let wiringScale := middle * inv 0 * inv 1
     let quotientScale := wiringScale * inv m * inv (m + 1)
     let rho2 := ρ * ρ
     let opened := (1 + rho2) * (a[0] + ρ * (a[0] + a[1])) + rho2 * (a[2] + ρ * (a[2] + a[3]))
     let identities := (1 + ρ) * copies * rows + ρ * product * gate
+    -- The quotient table's claim, through its parts: `H`'s value from `T(P) = w_H H + w_Q Q + w_G G`, with
+    -- `w_H⁻¹ = (1 + w_(m+1)) (product + w_m) / (product (1 + ρ))`.
+    let quotientPoint := u ++ [wAt m * copyInverse, ρ, extension.1.1, extension.1.2]
+    let quotientValue := extension.2 * quotientScale * copyInverse * rowsInverse * identities
+    let ((hPoint, _), (qPoint, qWeight), (gPoint, gWeight)) := quotientParts quotientPoint m
+    let hInverse := (1 + wAt (m + 1)) * (product + wAt m) * productInverse * rhoInverse
+    let hValue := (quotientValue + qWeight * qValue + gWeight * gValue) * hInverse
     some
       { witness := ⟨[ρ, rho2] ++ (u.drop 2).take (m - 1), opened * middle * inv m⟩
         wiring := ⟨u.take m, next * wiringScale⟩
-        quotient := ⟨u ++ [wAt m * copyInverse, ρ, extension.1.1, extension.1.2],
-          extension.2 * quotientScale * copyInverse * rowsInverse * identities⟩
+        h := ⟨hPoint, hValue⟩
+        q := ⟨qPoint, qValue⟩
+        g := ⟨gPoint, gValue⟩
         sum := ⟨sumPoint logRows, extension.2 * target⟩ }
 
 /-! ### The reduction's verifier, over a permutation -/
@@ -238,31 +320,33 @@ section With
 
 variable {m : Type → Type} [Monad m] (F : KeccakState → m KeccakState)
 
-/-- **The reduction's verifier** over the permutation `F` (`verify` and `reduce`,
-`protocol.rs`): read the witness table's root, draw `α, β, γ`; read the quotient table's
-root, draw `t`; read the four values and `next`, draw `ρ`; then the claims. `none` on a size the layouts do
-not take (`Shape`), a root whose
-halves have a top limb (`NotARoot`) or a vanishing denominator (`Degenerate`). -/
-def reduceWith (logRows : ℕ) (indexRoot : Digest) (stmt : Statement) (p : ReductionProof) :
+/-- Read a commitment: its three scalars absorbed (`next_root`, then `next`); the commitment, or `none` if
+the root's halves have a top limb (`TranscriptError::NotARoot`). -/
+def readCommitment (c : Chain) (s : CommitmentScalars) : Option (Commitment × Chain) :=
+  (rootOfHalves s.root).map fun r ↦ (⟨r, s.ood⟩, ((c.absorb s.root.1).absorb s.root.2).absorb s.ood)
+
+/-- **The reduction's verifier** over the permutation `F` (`verify` and `reduce`, `protocol.rs`), on the
+circuit committed as `index`: read the witness table's commitment (root, out-of-domain answer), draw
+`α, β, γ`; read `H`'s, `Q`'s and `G`'s commitments, draw `t`; read the four values and `next`, draw `ρ`; read
+`Q`'s and `G`'s values (absorbed, no challenge follows them); then the claims. `none` on a size the
+commitments do not take (`Shape`), a root whose halves have a top limb (`NotARoot`, at once, as the Rust
+reads it) or a vanishing denominator (`Degenerate`). -/
+def reduceWith (logRows : ℕ) (index : Commitment) (stmt : Statement) (p : ReductionProof) :
     m (Option Reduced) := do
   if ¬ Supported logRows then return none
-  let c ← Chain.startWith F (label indexRoot stmt)
-  let c := (c.absorb p.witnessRoot.1).absorb p.witnessRoot.2
-  match digestOfScalars p.witnessRoot with
-  | none => return none
-  | some witnessRoot =>
-    let (α, c) ← c.squeezeWith F
-    let (β, c) ← c.squeezeWith F
-    let (γ, c) ← c.squeezeWith F
-    let c := (c.absorb p.quotientRoot.1).absorb p.quotientRoot.2
-    match digestOfScalars p.quotientRoot with
-    | none => return none
-    | some quotientRoot =>
-      let (t, c) ← c.squeezeWith F
-      let c := (p.values.toList.foldl Chain.absorb c).absorb p.next
-      let (ρ, _) ← c.squeezeWith F
-      return (claimsAt logRows stmt α β γ t ρ p.values p.next).map
-        fun claims ↦ ⟨witnessRoot, quotientRoot, claims⟩
+  let c ← Chain.startWith F (label index stmt)
+  let some (witness, c) := readCommitment c p.witness | return none
+  let (α, c) ← c.squeezeWith F
+  let (β, c) ← c.squeezeWith F
+  let (γ, c) ← c.squeezeWith F
+  let some (h, c) := readCommitment c p.h | return none
+  let some (q, c) := readCommitment c p.q | return none
+  let some (g, c) := readCommitment c p.g | return none
+  let (t, c) ← c.squeezeWith F
+  let c := (p.values.toList.foldl Chain.absorb c).absorb p.next
+  let (ρ, _) ← c.squeezeWith F
+  return (claimsAt logRows stmt α β γ t ρ p.values p.next p.qValue p.gValue).map
+    fun claims ↦ ⟨⟨witness, h, q, g⟩, claims⟩
 
 end With
 

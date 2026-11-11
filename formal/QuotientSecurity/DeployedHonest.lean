@@ -9,10 +9,11 @@ of the secret its input bits hold. This file is completeness's side: for every s
 one, the circuit evaluated on the secret's input bits, and the deployed σ copies it.
 
 * `ChiCircuit.eval`: a loop-free χ circuit evaluated on input bits, row by row in rank order
-  (`evalN`, `n` rounds; a row of rank `k` is final from round `k + 1`, `evalN_stable`). It
-  satisfies every gate (`eval_satisfies`) and holds the given bits at the inputs (`eval_input`):
-  an input row's gate is `chiBits v v v = v`, any other row's the gate on lower ranks. By
-  `bits_determined` it is the only such assignment.
+  (`evalN`, `n` rounds; a row of rank `k` is final from round `k + 1`, `evalN_stable`), the random
+  rows `0` (as a witness leaves them: the prover fills them later). It satisfies every gate
+  (`eval_satisfies`) and holds the given bits at the inputs (`eval_input`): an input row's gate is
+  `chiBits v v v = v`, a random row's `chiBits v 1 0 = v`, any other row's the gate on lower ranks.
+  By `bits_determined` it is the only such assignment off the random rows.
 * `deployedAssign s`: `deployed` evaluated on `membership_inputs(s)` (`Secret.inputs`, the
   Rust's order: `x`'s bits, then each level's sibling and direction), input `k` (row
   `membership.inputs[k]`) holding bit `k` (`inputsOf`). Its input bits are the secret's
@@ -165,10 +166,10 @@ open Classical
 variable {ρ : Type*}
 
 /-- **`n` rounds of evaluation** of `C` on the input bits `inp`: round `n + 1` sets every row that
-is not an input to the gate on the bits of round `n`. -/
+is not an input or a random row to the gate on the bits of round `n`, a random row to `0`. -/
 noncomputable def ChiCircuit.evalN (C : ChiCircuit ρ) (inp : ρ → Bool) : ℕ → ρ → Bool
   | 0 => inp
-  | n + 1 => fun r => if C.isInput r then inp r else
+  | n + 1 => fun r => if C.isInput r then inp r else if C.isRandom r then false else
       chiBits ((C.x r).bval (C.evalN inp n)) ((C.y r).bval (C.evalN inp n))
         ((C.c r).bval (C.evalN inp n))
 
@@ -177,7 +178,7 @@ noncomputable def ChiCircuit.eval (C : ChiCircuit ρ) (inp : ρ → Bool) (r : �
   C.evalN inp (C.rank r + 1) r
 
 theorem ChiCircuit.evalN_succ (C : ChiCircuit ρ) (inp : ρ → Bool) (n : ℕ) (r : ρ) :
-    C.evalN inp (n + 1) r = if C.isInput r then inp r else
+    C.evalN inp (n + 1) r = if C.isInput r then inp r else if C.isRandom r then false else
       chiBits ((C.x r).bval (C.evalN inp n)) ((C.y r).bval (C.evalN inp n))
         ((C.c r).bval (C.evalN inp n)) := rfl
 
@@ -194,25 +195,39 @@ theorem ChiCircuit.evalN_stable (C : ChiCircuit ρ) (inp : ρ → Bool) :
     by_cases hi : C.isInput r
     · rw [if_pos hi, if_pos hi]
     · rw [if_neg hi, if_neg hi]
-      have hsrc : ∀ s : Src ρ, (∀ r', s = .row r' → C.rank r' < C.rank r) →
+      by_cases hr : C.isRandom r
+      · rw [if_pos hr, if_pos hr]
+      rw [if_neg hr, if_neg hr]
+      have hsrc : ∀ s : Src ρ, (∀ r', s = .row r' → C.rank r' < C.rank r ∧ ¬ C.isRandom r') →
           s.bval (C.evalN inp n) = s.bval (C.evalN inp k) := by
         intro s hs
         cases s with
         | zero => rfl
         | one => rfl
         | row r' =>
-          have h' : C.rank r' < k := by have := hs r' rfl; omega
+          have h' : C.rank r' < k := by have := (hs r' rfl).1; omega
           show C.evalN inp n r' = C.evalN inp k r'
           rw [ih _ h' r' rfl n (by omega), ih _ h' r' rfl k h']
-      rw [hsrc (C.x r) fun r' h => C.hOrder r hi r' (Or.inl h),
-        hsrc (C.y r) fun r' h => C.hOrder r hi r' (Or.inr (Or.inl h)),
-        hsrc (C.c r) fun r' h => C.hOrder r hi r' (Or.inr (Or.inr h))]
+      rw [hsrc (C.x r) (C.reads hi hr _ (Or.inl rfl)),
+        hsrc (C.y r) (C.reads hi hr _ (Or.inr (Or.inl rfl))),
+        hsrc (C.c r) (C.reads hi hr _ (Or.inr (Or.inr rfl)))]
 
 /-- **The evaluation holds the input bits at the inputs.** -/
 theorem ChiCircuit.eval_input (C : ChiCircuit ρ) (inp : ρ → Bool) (r : ρ) (h : C.isInput r) :
     C.eval inp r = inp r := by
   unfold ChiCircuit.eval
   rw [C.evalN_succ, if_pos h]
+
+/-- **The evaluation leaves the random rows `0`** (an input is not a random row: it reads itself in
+`Y`, a random row the one). -/
+theorem ChiCircuit.eval_random (C : ChiCircuit ρ) (inp : ρ → Bool) (r : ρ) (h : C.isRandom r) :
+    C.eval inp r = false := by
+  have hi : ¬ C.isInput r := fun hi => by
+    have h1 := (C.hInput r hi).2.1
+    rw [(C.hRandom r h).2.1] at h1
+    cases h1
+  unfold ChiCircuit.eval
+  rw [C.evalN_succ, if_neg hi, if_pos h]
 
 /-- **The evaluation satisfies every gate**: an input row's gate is `chiBits v v v = v`, any other
 row's is how it was computed, from rows of lower rank, final by then. -/
@@ -224,21 +239,25 @@ theorem ChiCircuit.eval_satisfies (C : ChiCircuit ρ) (inp : ρ → Bool) :
     rw [hx, hy, hc]
     show C.eval inp r = chiBits (C.eval inp r) (C.eval inp r) (C.eval inp r)
     cases C.eval inp r <;> rfl
-  · have hsrc : ∀ s : Src ρ, (∀ r', s = .row r' → C.rank r' < C.rank r) →
+  · by_cases hr : C.isRandom r
+    · exact C.satisfiesBits_random _ hr
+    have hsrc : ∀ s : Src ρ, (∀ r', s = .row r' → C.rank r' < C.rank r ∧ ¬ C.isRandom r') →
         s.bval (C.evalN inp (C.rank r)) = s.bval (C.eval inp) := by
       intro s hs
       cases s with
       | zero => rfl
       | one => rfl
-      | row r' => exact C.evalN_stable inp r' _ (hs r' rfl)
+      | row r' => exact C.evalN_stable inp r' _ (hs r' rfl).1
     show C.evalN inp (C.rank r + 1) r = _
-    rw [C.evalN_succ, if_neg hi, hsrc (C.x r) fun r' h => C.hOrder r hi r' (Or.inl h),
-      hsrc (C.y r) fun r' h => C.hOrder r hi r' (Or.inr (Or.inl h)),
-      hsrc (C.c r) fun r' h => C.hOrder r hi r' (Or.inr (Or.inr h))]
+    rw [C.evalN_succ, if_neg hi, if_neg hr, hsrc (C.x r) (C.reads hi hr _ (Or.inl rfl)),
+      hsrc (C.y r) (C.reads hi hr _ (Or.inr (Or.inl rfl))),
+      hsrc (C.c r) (C.reads hi hr _ (Or.inr (Or.inr rfl)))]
 
-/-- **It is the computation with those input bits**: any computation of `C` holding them is it. -/
+/-- **It is the computation with those input bits**: any computation of `C` holding them is it,
+off the random rows. -/
 theorem ChiCircuit.eq_eval (C : ChiCircuit ρ) (inp : ρ → Bool) (v : ρ → Bool)
-    (hv : C.SatisfiesBits v) (hin : ∀ r, C.isInput r → v r = inp r) : v = C.eval inp :=
+    (hv : C.SatisfiesBits v) (hin : ∀ r, C.isInput r → v r = inp r) :
+    ∀ r, ¬ C.isRandom r → v r = C.eval inp r :=
   C.bits_determined v _ hv (C.eval_satisfies inp) fun r h => (hin r h).trans (C.eval_input inp r h).symm
 
 end Eval
@@ -484,6 +503,37 @@ theorem inputsArray_spec (hnd : c.inputs.toList.Nodup) (hlt : ∀ r ∈ c.inputs
           exact ((List.Nodup.getElem_inj_iff hnd).mp e).symm
   exact key c.inputs.size le_rfl
 
+theorem rowReads_random (hO : Ordered c) {r r' : ℕ} (hrand : IsRandomC c r) (h : RowReads c r r') :
+    r' = r := by
+  unfold RowReads at h
+  rw [hO.random r hrand] at h
+  rcases h with h | h | h
+  · exact (PcsCircuit.Src.row.inj h).symm
+  · cases h
+  · cases h
+
+/-- **The first loop leaves a row that is not an input at `false`.** -/
+theorem inputsArray_off (bits : Array Bool) (x : ℕ) (hx : x ∉ c.inputs) :
+    (inputsArray c bits).getD x false = false := by
+  have key : ∀ j, ((List.range j).foldl (fun v k => v.set! (c.inputs.getD k 0) (bits.getD k false))
+      (Array.replicate c.rows.size false)).getD x false = false ∨ c.inputs.size < j := by
+    intro j
+    induction j with
+    | zero =>
+      left
+      by_cases h : x < c.rows.size <;> simp [Array.getD_eq_getD_getElem?, h]
+    | succ j ih =>
+      by_cases hj : j < c.inputs.size
+      · left
+        have hmem : c.inputs.getD j 0 ∈ c.inputs := by
+          rw [inputs_getD_toList _ _ hj]; exact Array.mem_def.mpr (List.getElem_mem _)
+        rw [List.range_succ, List.foldl_append, List.foldl_cons, List.foldl_nil, PcsCircuit.getD_set!,
+          if_neg]
+        · exact ih.resolve_right (by omega)
+        · exact fun h => hx (h.1 ▸ hmem)
+      · right; omega
+  exact (key c.inputs.size).resolve_right (Nat.lt_irrefl _)
+
 theorem rowReads_input (hI : InputRows c) {r r' : ℕ} (hin : r ∈ c.inputs) (h : RowReads c r r') :
     r' = r := by
   obtain ⟨-, -, hrow⟩ := hI r hin
@@ -492,8 +542,9 @@ theorem rowReads_input (hI : InputRows c) {r r' : ℕ} (hin : r ∈ c.inputs) (h
   rcases h with h | h | h <;> exact (PcsCircuit.Src.row.inj h).symm
 
 theorem rowReads_ranked (hO : Ordered c) {r r' : ℕ} (hr : r < 2 ^ logRows) (hin : r ∉ c.inputs)
-    (h : RowReads c r r') : r' < 2 ^ logRows ∧ PcsCircuit.rank r' < PcsCircuit.rank r := by
-  obtain ⟨hx, hy, hc⟩ := hO r hr hin
+    (hrand : ¬ IsRandomC c r) (h : RowReads c r r') :
+    r' < 2 ^ logRows ∧ PcsCircuit.rank r' < PcsCircuit.rank r := by
+  obtain ⟨hx, hy, hc⟩ := hO.order r hr hin hrand
   rcases h with h | h | h
   · rw [h] at hx; exact hx
   · rw [h] at hy; exact hy
@@ -511,14 +562,23 @@ theorem toChi_eval_eq_outputs (hI : InputRows c) (hO : Ordered c)
   have hev := circuitSat_toChi hI hO hsize _
     (ChiCircuit.eval_satisfies _ (inputsOf c fun k => bits.getD k false))
   obtain ⟨ha1, ha2⟩ := inputsArray_spec hnd (fun r hr => hsize ▸ (hI r hr).1) bits
-  have hT : ∀ x, x ∈ c.inputs → (inputsArray c bits).getD x false =
+  have hT : ∀ x, (x ∈ c.inputs ∨ IsRandomC c x) → (inputsArray c bits).getD x false =
       natVal ((toChi c hI hO).eval (inputsOf c fun k => bits.getD k false)) x := by
     intro x hx
-    obtain ⟨k, hk, hkx⟩ := Array.mem_iff_getElem.mp hx
-    have e : c.inputs.getD k 0 = x := by
-      rw [Array.getD_eq_getD_getElem?, Array.getElem?_eq_getElem hk, Option.getD_some, hkx]
-    rw [← e, ha2 k hk, toChi_eval_input hI hO hnd _ k hk]
-  have hrd : ReadsDone c (· ∈ c.inputs)
+    rcases hx with hx | hx
+    · obtain ⟨k, hk, hkx⟩ := Array.mem_iff_getElem.mp hx
+      have e : c.inputs.getD k 0 = x := by
+        rw [Array.getD_eq_getD_getElem?, Array.getElem?_eq_getElem hk, Option.getD_some, hkx]
+      rw [← e, ha2 k hk, toChi_eval_input hI hO hnd _ k hk]
+    · have hnin : x ∉ c.inputs := fun h => by
+        have h1 := (hI x h).2.2
+        rw [hO.random x hx] at h1
+        cases h1
+      have hx' : x < 2 ^ 22 := hx.2.2
+      rw [inputsArray_off bits x hnin]
+      unfold natVal
+      rw [dif_pos hx', ChiCircuit.eval_random _ _ _ (show IsRandomC c (⟨x, hx'⟩ : Fin (2 ^ 22)) from hx)]
+  have hrd : ReadsDone c (fun x => x ∈ c.inputs ∨ IsRandomC c x)
       (List.range' publicRows (c.rows.size - publicRows) ++ List.range publicRows) := by
     refine readsDone_append _ _ _ (readsDone_range' _ _ _ fun r h1 h2 => ?_) ?_
     · rw [hN] at h2
@@ -526,8 +586,10 @@ theorem toChi_eval_eq_outputs (hI : InputRows c) (hO : Ordered c)
       have hr : r < 2 ^ logRows := by simp only [logRows, Nat.reducePow]; omega
       refine ⟨by rw [hN]; omega, fun r' h' => ?_⟩
       by_cases hin : r ∈ c.inputs
-      · exact Or.inl (rowReads_input hI hin h' ▸ hin)
-      · obtain ⟨-, hrk⟩ := rowReads_ranked hO hr hin h'
+      · exact Or.inl (Or.inl (rowReads_input hI hin h' ▸ hin))
+      by_cases hrand : IsRandomC c r
+      · exact Or.inl (Or.inr (rowReads_random hO hrand h' ▸ hrand))
+      · obtain ⟨-, hrk⟩ := rowReads_ranked hO hr hin hrand h'
         refine Or.inr ?_
         unfold PcsCircuit.rank at hrk
         rw [if_neg (show ¬ r < publicRows by unfold publicRows; omega)] at hrk
@@ -542,8 +604,10 @@ theorem toChi_eval_eq_outputs (hI : InputRows c) (hO : Ordered c)
       have hr : r < 2 ^ logRows := by simp only [logRows, Nat.reducePow]; omega
       have hin : r ∉ c.inputs := fun h => by
         have := (hI r h).2.1; simp only [publicRows] at this; omega
+      have hrand : ¬ IsRandomC c r := fun h => by
+        have := IsRandomC.public_le h; simp only [publicRows] at this; omega
       refine ⟨by rw [hN]; omega, fun r' h' => ?_⟩
-      obtain ⟨hr', hrk⟩ := rowReads_ranked hO hr hin h'
+      obtain ⟨hr', hrk⟩ := rowReads_ranked hO hr hin hrand h'
       simp only [logRows, Nat.reducePow] at hr'
       unfold PcsCircuit.rank at hrk
       by_cases h5 : 512 ≤ r'

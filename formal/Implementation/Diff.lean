@@ -9,10 +9,11 @@ import Common.Sponge
 
 `lake env lean --run Implementation/Diff.lean VECTORS`: each line of `VECTORS` (written by
 `LEAN_VECTORS=VECTORS cargo test -p evm write_lean_vectors -- --ignored`, `crates/membership/evm/src/lean.rs`)
-is an index root, calldata of the verifier and what the Rust verifier
-(`quotient::protocol::verify`) leaves to the declared claims, the three claims back to back (or
-`reject`), in hex. The interpreter (`run`, with leanerVM's Keccak-256) must give the same bytes on
-every line.
+is the circuit's commitment (its root, its out-of-domain answer's 24 bytes), calldata of the verifier
+without its last byte (the frame's index), and the six PCS claims the Rust verifier
+(`quotient::protocol::verify`) has the contract check declared, back to back (or `reject`), in hex. The
+interpreter (`run` and `calls`, with leanerVM's Keccak-256, the commitment in storage, a frame index `0`
+appended) must give the same bytes on every line.
 -/
 
 namespace Implementation.Diff
@@ -39,18 +40,19 @@ def toHex (l : List UInt8) : String :=
 /-- One line: whether the interpreter agrees, or why not. -/
 def check (line : String) : Except String Unit := do
   let parts := line.splitOn " "
-  let [idxHex, cdHex, expected] := parts | throw s!"malformed line: {parts.length} fields"
+  let [idxHex, oodHex, cdHex, expected] := parts | throw s!"malformed line: {parts.length} fields"
   let some idx := ofHex idxHex.toList | throw "bad index root"
+  let some ood := ofHex oodHex.toList | throw "bad out-of-domain answer"
   let some cd := ofHex cdHex.toList | throw "bad calldata"
-  if h : idx.length = 32 then
-    let root : Vector UInt8 32 := ⟨idx.toArray, by simpa using h⟩
-    let got := (run Common.keccak256 root cd).map fun ws => (calls ws).flatten
+  if idx.length = 32 ∧ ood.length = 24 then
+    let e : Env := ⟨fun l => Common.keccak256 l, idx, beNat ood, cd ++ [0]⟩
+    let got := (run e).map fun ws => (calls ws).flatten
     match got, expected with
     | none, "reject" => pure ()
     | some bytes, e =>
       if toHex bytes = e then pure () else throw s!"mismatch on {cdHex}"
     | none, _ => throw s!"the interpreter rejects {cdHex}, the Rust does not"
-  else throw "an index root of 32 bytes"
+  else throw "an index root of 32 bytes and an answer of 24"
 
 def main (args : List String) : IO UInt32 := do
   let [path] := args | do IO.eprintln "usage: Diff VECTORS"; return 2

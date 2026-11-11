@@ -10,6 +10,8 @@ import WhirBridge.Verifier
 import WhirBridge.Gaps
 import WhirBridge.Large
 import WhirBridge.Pcs
+import WhirBridge.PcsBindingCoords
+import WhirBridge.PcsOracle
 
 /-!
 # The WHIR bridge
@@ -20,7 +22,10 @@ the protocol's witness, wiring and quotient layouts at every supported size (`ou
 table terms (`Layout.holds_iff`, `Table::read` for the hidden layouts; the hidden layouts' gadget,
 one more stack claim of value zero, `gadget_holds_iff`); and the EIP's PCS opening, version 1
 (`crates/pcs_claim`; `WhirBridge/Pcs.lean`: `pcs_sound`, `pcs_sound_any`, the binding of the
-out-of-domain answer `two_openings_one_polynomial`, `ood_binding`, `ood_binding_rom`). The headline
+out-of-domain answer `two_openings_one_polynomial`, `ood_binding`, `ood_binding_rom`, and
+`ood_binding_coords` with the point read off Keccak-256 coordinate by coordinate), and its
+soundness with the out-of-domain point read off Keccak-256 by the verifier, as deployed
+(`WhirBridge/PcsOracle.lean`: `pcs_sound_oracle`, `pcs_sound_any_oracle`). The headline
 theorems use only `propext`, `Classical.choice` and `Quot.sound`.
 -/
 
@@ -83,3 +88,27 @@ theorems use only `propext`, `Classical.choice` and `Quot.sound`.
 /-- info: 'WhirBridge.ours_sound' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms WhirBridge.ours_sound
+
+/-- info: 'WhirBridge.Pcs.split_eq' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms WhirBridge.Pcs.split_eq
+
+/-- info: 'WhirBridge.Pcs.couple' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms WhirBridge.Pcs.couple
+
+/-- info: 'WhirBridge.Pcs.sim_verifierO' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms WhirBridge.Pcs.sim_verifierO
+
+/-- info: 'WhirBridge.Pcs.pcs_sound_oracle' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms WhirBridge.Pcs.pcs_sound_oracle
+
+/-- info: 'WhirBridge.Pcs.pcs_sound_any_oracle' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms WhirBridge.Pcs.pcs_sound_any_oracle
+
+/-- info: 'WhirBridge.Pcs.pcs_oracle_bound_le' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms WhirBridge.Pcs.pcs_oracle_bound_le

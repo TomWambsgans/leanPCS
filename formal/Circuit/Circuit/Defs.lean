@@ -10,13 +10,13 @@ import Statement.Keccak
 
 Read first. A transcription of `quotient::circuit`: the rows of one gate `V = X + C + Y·C`
 (`X ⊕ (C ∧ ¬Y)` on bits, Keccak's χ), the `Builder` with its constant folding, Keccak-f[1600] and
-Keccak-256 of a 64-byte block as rows, the membership statement, and `finish` (the public rows and
-the wiring permutation σ). Every function makes the same rows in the same order as its Rust
-namesake, with the same constant folding; the loops of the Rust are `mapM` over `List.range` in the
-same order. The one rewrite: ρ and π, which are wiring only, are computed by the inverse lane map
-(`piInv`, `rho`) instead of the Rust's forward assignment `b[PI[i]][(z + r) % 64] = a[i][z]`; the
-sources are the same (`piInv_keccakPi`), and the differential test compares the rows and σ with
-the Rust's.
+Keccak-256 of a 64-byte block as rows, the membership statement, and `finish` (the public rows, the
+last `16` rows random rows, and the wiring permutation σ). Every function makes the same rows in
+the same order as its Rust namesake, with the same constant folding; the loops of the Rust are
+`mapM` over `List.range` in the same order. The one rewrite: ρ and π, which are wiring only, are
+computed by the inverse lane map (`piInv`, `rho`) instead of the Rust's forward assignment
+`b[PI[i]][(z + r) % 64] = a[i][z]`; the sources are the same (`piInv_keccakPi`), and the
+differential test compares the rows and σ with the Rust's.
 
 The statement the circuit computes (`statement.rs`): `y = H(x ‖ 0x11^32)`, `h_0 = H(x ‖ 0x22^32)`,
 `h_{i+1} = H(sibling_i ‖ h_i)` if bit `i` of the directions is set and `H(h_i ‖ sibling_i)` if not,
@@ -292,13 +292,33 @@ def wiring (rows : Array Row) : Array Nat :=
     join (join (join st (slot row.x) (4 * r)) (slot row.y) (4 * r + 1)) (slot row.c) (4 * r + 2)) st
   st.sigma
 
-/-- `finish`'s rows: the public rows written, the rows padded with idle ones to `2^logRows`. -/
+/-- The random rows (`RANDOM_ROWS`): the last `16` rows of the circuit, which the builder leaves
+unused (the membership circuit uses `3 878 612` rows of `2^22`). -/
+def randomRows : Nat := 16
+
+/-- A random row `r` (`finish`): `X` reads the row's own output, `Y` one, `C` zero, so its gate
+`V = V + 0 + 0` holds for any value of `V`; the prover fills each with a fresh random value. -/
+def randomRow (r : Nat) : Row := ⟨.row r, .one, .zero⟩
+
+/-- Row `r` of a circuit of `2^logRows` rows, `usedRows` of them built, is a random row: one of the
+last `16`, and not built (`finish`: `(used_rows..n).rev().take(RANDOM_ROWS)`, there being no port
+region). -/
+def IsRandomRow (logRows usedRows r : Nat) : Prop :=
+  usedRows ≤ r ∧ 2 ^ logRows - randomRows ≤ r ∧ r < 2 ^ logRows
+
+instance (logRows usedRows r : Nat) : Decidable (IsRandomRow logRows usedRows r) := by
+  unfold IsRandomRow; infer_instance
+
+/-- `finish`'s rows: the public rows written, the rows padded with idle ones to `2^logRows`, the last
+`16` unused rows random rows (`randomRow`; the Rust asserts that there are `16`). -/
 def Builder.finishRows (b : Builder) (logRows : Nat) (pub : Nat → Nat → Src) : Array Row :=
   ((List.range (2 ^ logRows)).map fun r =>
-    if r < publicRows then publicRow pub r else b.rows.getD r .idle).toArray
+    if r < publicRows then publicRow pub r
+    else if b.rows.size ≤ r ∧ 2 ^ logRows - randomRows ≤ r then randomRow r
+    else b.rows.getD r .idle).toArray
 
-/-- `Builder::finish`: the rows (`finishRows`) and σ. (The Rust asserts that the rows fit;
-`buildRows_lt` proves it for `membership`.) -/
+/-- `Builder::finish`: the rows (`finishRows`) and σ. (The Rust asserts that the rows fit, with room
+for the random rows; `buildRows_lt` proves it for `membership`.) -/
 def Builder.finish (b : Builder) (logRows : Nat) (pub : Nat → Nat → Src) : Circuit :=
   let rows := b.finishRows logRows pub
   { logRows, usedRows := b.rows.size, rows, inputs := b.inputs, sigma := wiring rows }

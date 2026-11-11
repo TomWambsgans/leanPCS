@@ -3,6 +3,7 @@ import Compose.Claims
 import Compose.Rpm
 import QuotientSecurity.Deployed
 import PcsQuotient.Security
+import Shared.SoundnessDefs
 
 /-!
 # The deployed objects the end theorem is about
@@ -26,6 +27,8 @@ instantiated at the second:
 * **the verifier with the Statement's early stops** (`verifyES`): the chain, then the three
   openings, each run only if the reduction (`reduce`) and the openings before it accept, an opening
   whose proof holds no root rejected before any query (`ourVerifierEarly`).
+
+`eLimbs`, `ourVerifierEarly` and `treeTr` are in `Shared/SoundnessDefs.lean` (the leanVM line uses them).
 -/
 
 set_option linter.unusedSectionVars false
@@ -37,22 +40,6 @@ namespace Soundness
 
 open QuotientRpm QuotientSecurity Compose Compose.Reduce LeanVM LeanVM.Parameters
 open LeanVM.Protocol LeanVM.Protocol.KeccakHash LeanVM.Protocol.Compile WhirBridge
-
-/-! ## The limbs -/
-
-/-- A field element as its three limbs, low first, each a 64-bit lane (`F192`'s `(c0, c1, c2)`). -/
-def eLimbs : E ≃ Limbs where
-  toFun x := ((x.limb 0).lane, (x.limb 1).lane, (x.limb 2).lane)
-  invFun l := E.ofLimbs (K.ofLane l.1) (K.ofLane l.2.1) (K.ofLane l.2.2)
-  left_inv x := by
-    simp only
-    have h : ∀ a : K, K.ofLane a.lane = a := fun _ => rfl
-    rw [h, h, h, ofLimbs_limb]
-  right_inv l := by
-    obtain ⟨a, b, c⟩ := l
-    have h : ∀ w : UInt64, (K.ofLane w).lane = w := fun _ => rfl
-    simp only [limb_ofLimbs, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val_two,
-      Matrix.head_cons, Matrix.tail_cons, h]
 
 /-! ## The wire -/
 
@@ -148,15 +135,6 @@ def convAdv (A : PcsQuotient.Adversary) :
 
 variable {P : Params E} {B : P.Bounds}
 
-/-- **An opening with the Statement's first stop**: a proof whose scalar stream holds fewer than two
-scalars (no root) is rejected before any query (`PcsQuotient.openingWith` reads the root first);
-otherwise `opening::verify` (`ourVerifier`), which rejects it too, after its seed. -/
-def ourVerifierEarly (L : Layout) (R : ℕ) (w : (Digest × Stmt L.stacking) × Proof) :
-    OracleComp KeccakCalls Bool :=
-  match w.2.stream with
-  | _ :: _ :: _ => ourVerifier L R w
-  | _ => pure false
-
 /-- **The deployed verifier with the Statement's early stops**: the chain; `false` if `reduce`
 rejects (a vanishing denominator); then the witness, wiring and quotient openings of `deployD c 22`
 (`ourVerifierEarly`), each run only if the one before accepted (`protocol::verify` then
@@ -176,12 +154,5 @@ def verifyES (W : Wire P B) (c : Consts) (po : RootProof E × OpenProofs) :
             else pure false
         else pure false
     else pure false
-
-/-! ## The setup's log -/
-
-/-- The setup tree's Keccak-256 evaluations as a transcript of Compose's (inputs, 32-byte
-answers). -/
-def treeTr (t : LeanVM.Prover.Tree) : Transcript :=
-  (PcsQuotient.Tree.evaluations t).map fun e => (e.1, toB e.2)
 
 end Soundness

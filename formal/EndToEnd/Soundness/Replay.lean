@@ -5,28 +5,24 @@
 -- and the index's specification follow leanerVM's `mumbai-no-more-extractors-in-statements`
 -- (`lean_vm/LeanVM/Protocol/Extraction/Fast/Transcript.lean`, `preimage_filter`,
 -- `filter_answerPairs`, `hitsOf`), re-proved here on `Std.HashMap`.
-import Soundness.Defs
+import Compose.Claims
+import Compose.Rpm
+import PcsQuotient.Security
+import QuotientSecurity.Deployed
+import Shared.SoundnessDefs
 import LeanVM.Protocol.Rpm.Paths
 
 /-!
-# The extractor's hash maps compute mumbai's lists
+# The replay of a Keccak-256 log
 
-The Statement's extractor (`PcsQuotient.transcriptExtractorFor`) replays the transcript and inverts
-the Merkle tree with hash maps (`PcsQuotient/Replay.lean`); the proof (`Extract.lean`) reasons about
-mumbai's list versions (`keccakEvaluationsOfTranscript`, `lookupEvaluation`, `answerPairs`, `preimage`,
-`committedLeaves`). Here the two are equal where the extractor reads them:
+`PcsQuotient.Replay`'s hash maps against the log they are built from: the forward and inverse lookups, the
+first answers (`firstAnswers_foldl`, `firstAnswers_get`), the unique hit of a key (`uniqueHit`,
+`preimage_eq_uniqueHit`), the preimage indices (`preimageIn_indexOf`, `preimageIn_preimageIndex`), the
+transcript's evaluations (`transcriptEvaluations_eq`), and the leaves under a Merkle root (`preimage_merkle`,
+`leavesUnder_preimage`, `leavesUnder_congr`), with the replay relation `Rel` and its steps.
 
-* **`transcriptEvaluations_eq`**: the replay with hash maps gives mumbai's evaluations of the lengths
-  `lens` (each of padding at most `maxAbsorbed`): the two replays' states correspond step by step
-  (`Rel`, `rel_step`), and a chain's message of a length in `lens` is mumbai's unpadding of its bytes
-  (`evaluationOf_capPath`);
-* **`preimageIn_preimageIndex`**: the index's unique preimage is mumbai's `preimage` of the answered
-  pairs (`firstAnswers_get`: the first answers are `lookupEvaluation`'s; `preimageIn_indexOf`);
-* **`preimage_merkle`**: at the lengths the tree hashes, the preimages through the setup's
-  evaluations and the transcript's of those lengths are the preimages through all of them
-  (`preimage_filter`, `filter_answerPairs`);
-* **`witnessWord_eq_committed`**: the Statement's witness word is mumbai's `committedLeaves` on the
-  setup's and the transcript's evaluations.
+Pruned to what the leanVM line uses (`formal/Uni*`, `formal/Rec*`); the previous membership protocol's declarations
+that were here are in the git history.
 -/
 
 set_option linter.unusedSectionVars false
@@ -476,32 +472,6 @@ theorem leavesUnder_congr (pre₁ pre₂ : Digest → ℕ → Option Bytes) (w :
     ∀ (h : ℕ) (d : Digest), leavesUnder pre₁ w h d = leavesUnder pre₂ w h d
   | 0, d => by simp only [leavesUnder, hw d]
   | h + 1, d => by simp only [leavesUnder, h64 d, leavesUnder_congr pre₁ pre₂ w h64 hw h]
-
-/-- **The Statement's witness word is mumbai's `committedLeaves`** on the setup's evaluations and the
-transcript's, at a proof naming the witness root `d`. -/
-theorem witnessWord_eq_committed (setupEvals : List (Bytes × Digest)) (T : OracleQueryLog)
-    (proof : PcsQuotient.Proof) (d : Digest)
-    (hd : digestOfScalars proof.reduction.witnessRoot = some d) :
-    PcsQuotient.witnessWord 22 (preimageIn (preimageIndex
-        (setupEvals ++ transcriptEvaluations PcsQuotient.merkleLengths (permutationQueries T))))
-        proof =
-      some (leafAt (committedLeaves
-        (lookupEvaluation (setupEvals ++ keccakEvaluationsOfTranscript (permutationQueries T)))
-        ((setupEvals ++ keccakEvaluationsOfTranscript (permutationQueries T)).map (·.1)) d 20
-          (2 ^ WhirBridge.laneFold)) 20 (2 ^ WhirBridge.laneFold)) := by
-  unfold PcsQuotient.witnessWord PcsQuotient.witnessRootOf
-  rw [hd, Option.map_some]
-  congr 1
-  show leafAt (leavesUnder _ 64 20 d) 20 64 = leafAt (subtreeLeaves _ 64 20 d) 20 64
-  rw [← leavesUnder_preimage]
-  congr 1
-  refine leavesUnder_congr _ _ 64 (fun d' ↦ ?_) (fun d' ↦ ?_) 20 d
-  · exact preimage_merkle setupEvals _ d' 64 (by decide)
-  · exact preimage_merkle setupEvals _ d' (8 * 64) (by decide)
-
-/-- info: 'Soundness.Replay.witnessWord_eq_committed' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms Soundness.Replay.witnessWord_eq_committed
 
 /-- info: 'Soundness.Replay.transcriptEvaluations_eq' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in

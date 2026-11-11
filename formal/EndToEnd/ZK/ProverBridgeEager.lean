@@ -2,41 +2,41 @@
 -- The model (`lazyRandomPermutation`, `lazyRandomPermutationOracles`, `runWithRandomPermutation`,
 -- `uniformAvoiding`, `forwardLookup`, `inverseLookup`) is leanerVM's (branch `mumbai`, commit
 -- 6175f1a0, MIT OR Apache-2.0: `Statement/RandomPermutation.lean`).
-import ZK.Real
+import PcsQuotient.Security
+import Common.Fold
+import Common.Indiff.Main
+import Common.Keccak
+import Common.PiOnly
+import Common.Prob
+import Common.Rerun
+import Common.Transfer2
+import QuotientRpm.Bytes
+import VCVio.OracleComp.QueryTracking.QueryBound.Basic
+import VCVio.OracleComp.SimSemantics.QueryImpl.Compose
+import Mathlib.Order.CompletePartialOrder
 
 /-!
 # The lazily sampled permutation is a uniform permutation drawn first
 
-mumbai's random-permutation model answers `π` and `π⁻¹` lazily (`lazyRandomPermutation`): a fresh
-forward query draws its answer uniformly outside the range so far, a fresh inverse query its answer
-uniformly outside the domain so far. **`prEvent_runWithRandomPermutation`**: a game run so is, for
-every event, the average over all permutations `π` of the state of the game run with `π` and `π⁻¹`
-answered by `π` (`permImpl π`, the coins as the model draws them):
+mumbai's random-permutation model answers `π` and `π⁻¹` lazily (`lazyRandomPermutation`).
+**`prEvent_runWithRandomPermutation`**: a game run so is, for every event, the average over all permutations `π`
+of the game run with `π` and `π⁻¹` answered by `π` (`permImpl π`):
 
 `Pr[p | runWithRandomPermutation X] = (1 / |Perm|) · Σ_π Pr[p | simulateQ (permImpl π) X]`.
 
-The proof is one induction over the game, for every list of edges `E`, on any finite state type
-(`card_mul_prEvent`): `|C(E)| · Pr[p | X run lazily from E] = Σ_{π ∈ C(E)} Pr[p | X run by π]`,
-`C(E)` the permutations through every edge of `E` (`cons`). A fresh forward query at `x` splits
-`C(E)` by `π x`, which avoids the range of `E` (`mapsTo_fwd`); the parts are the `C((x, y) :: E)`,
-all of one size (`card_cons_fwd_eq`: composing with the transposition of `y` and `y'` maps one onto
-the other), so each value `y` outside the range has the lazy draw's weight `1 / |outside|`
-(`card_cons_fwd`). An inverse query is the same with `π⁻¹ y`, composing on the other side.
+The proof is one induction over the game, for every list of edges `E` (`card_mul_prEvent`):
+`|C(E)| · Pr[p | X run lazily from E] = Σ_{π ∈ C(E)} Pr[p | X run by π]`, `C(E)` the permutations through every
+edge of `E` (`cons`); a fresh query splits `C(E)` into parts of one size (`card_cons_fwd_eq`,
+`card_cons_inv_eq`). The lemmas are stated for any finite state type `S`, then read at the Keccak state.
 
-So two games that compute the same thing for every permutation but a set `Bad` of them are closer
-than the fraction of `Bad` (**`close_of_perm`**): repeated queries, the order of queries and the
-queries a game makes that the other does not cost nothing.
-
-The lemmas are stated for any finite state type `S` (the Keccak state's `2^1600` values are never to
-be enumerated by the elaborator), then read at the Keccak state.
+Pruned to what the leanVM line uses (`formal/Uni*`, `formal/Rec*`); the previous membership protocol's declarations
+that were here are in the git history.
 -/
 
 open OracleComp OracleSpec Common
 open scoped ENNReal
 
 namespace PcsQuotient.EndToEnd.Eager
-
-open QuotientZk (Close)
 
 set_option linter.unusedSectionVars false
 
@@ -429,46 +429,6 @@ theorem prEvent_lazy {α : Type} (p : α → Prop) (X : OracleComp (Spec S) α) 
   rw [cons_nil, Finset.card_univ] at h
   rw [← h, ← mul_assoc, ENNReal.inv_mul_cancel nPerm_ne_zero (ENNReal.natCast_ne_top _), one_mul]
 
-/-- The fraction of the permutations in a set `Bad`. -/
-noncomputable def frac (Bad : Equiv.Perm S → Prop) [DecidablePred Bad] : ℝ≥0∞ :=
-  (nPerm S : ℝ≥0∞)⁻¹ * (Finset.univ.filter Bad).card
-
-theorem card_filter_eq_sum (Bad : Equiv.Perm S → Prop) [DecidablePred Bad] :
-    ((Finset.univ.filter Bad).card : ℝ≥0∞) = ∑ π, if Bad π then (1 : ℝ≥0∞) else 0 := by
-  rw [Finset.sum_ite, Finset.sum_const_zero, add_zero, Finset.sum_const, nsmul_eq_mul, mul_one]
-
-/-- **Two games equal for every permutation but a set `Bad`** are closer than `Bad`'s fraction. -/
-theorem close_of_perm_gen (X₁ X₂ : OracleComp (Spec S) Bool)
-    (Bad : Equiv.Perm S → Prop) [DecidablePred Bad]
-    (h : ∀ π, ¬ Bad π → Pr{let b ← simulateQ (permImpl π) X₁}[b = true] =
-      Pr{let b ← simulateQ (permImpl π) X₂}[b = true]) :
-    Close ((simulateQ lazyImpl X₁).run' []) ((simulateQ lazyImpl X₂).run' []) (frac Bad) := by
-  have key : ∀ (A B : OracleComp (Spec S) Bool),
-      (∀ π, ¬ Bad π → Pr{let b ← simulateQ (permImpl π) A}[b = true] =
-        Pr{let b ← simulateQ (permImpl π) B}[b = true]) →
-      Pr{let b ← (simulateQ lazyImpl A).run' []}[b = true] ≤
-        Pr{let b ← (simulateQ lazyImpl B).run' []}[b = true] + frac Bad := by
-    intro A B hAB
-    rw [prEvent_lazy, prEvent_lazy, frac, ← mul_add]
-    refine mul_le_mul' le_rfl ?_
-    rw [card_filter_eq_sum, ← Finset.sum_add_distrib]
-    refine Finset.sum_le_sum fun π _ ↦ ?_
-    by_cases hb : Bad π
-    · simp only [hb, ↓reduceIte]
-      exact (prEvent_le_one _).trans le_add_self
-    · simp only [hb, ↓reduceIte, add_zero, hAB π hb, le_refl]
-  exact ⟨key X₁ X₂ h, key X₂ X₁ fun π hπ ↦ (h π hπ).symm⟩
-
-/-- **A deterministic event's fraction**: if a game's event holds with probability `1` exactly on
-`Bad` (and `0` elsewhere), its probability is `Bad`'s fraction. -/
-theorem prEvent_eq_frac_gen {α : Type} (X : OracleComp (Spec S) α) (p : α → Prop)
-    (Bad : Equiv.Perm S → Prop) [DecidablePred Bad]
-    (h : ∀ π, Pr{let a ← simulateQ (permImpl π) X}[p a] = if Bad π then 1 else 0) :
-    Pr{let a ← (simulateQ lazyImpl X).run' []}[p a] = frac Bad := by
-  rw [prEvent_lazy, frac, card_filter_eq_sum]
-  congr 1
-  exact Finset.sum_congr rfl fun π _ ↦ h π
-
 end Generic
 
 /-! ## At the Keccak state -/
@@ -490,25 +450,5 @@ theorem prEvent_runWithRandomPermutation {α : Type} (p : α → Prop)
   unfold runWithRandomPermutation
   rw [← lazyImpl_eq]
   exact prEvent_lazy p X
-
-/-- **Two games of the model equal for every permutation but a set `Bad`** are closer than `Bad`'s
-fraction. -/
-theorem close_of_perm (X₁ X₂ : OracleComp RandomPermutationOracles Bool)
-    (Bad : Equiv.Perm St → Prop) [DecidablePred Bad]
-    (h : ∀ π, ¬ Bad π → Pr{let b ← simulateQ (permImpl π) X₁}[b = true] =
-      Pr{let b ← simulateQ (permImpl π) X₂}[b = true]) :
-    Close (runWithRandomPermutation X₁) (runWithRandomPermutation X₂) (frac Bad) := by
-  unfold runWithRandomPermutation
-  rw [← lazyImpl_eq]
-  exact close_of_perm_gen X₁ X₂ Bad h
-
-/-- **A deterministic event's fraction** in the model. -/
-theorem prEvent_eq_frac {α : Type} (X : OracleComp RandomPermutationOracles α) (p : α → Prop)
-    (Bad : Equiv.Perm St → Prop) [DecidablePred Bad]
-    (h : ∀ π, Pr{let a ← simulateQ (permImpl π) X}[p a] = if Bad π then 1 else 0) :
-    Pr{let a ← runWithRandomPermutation X}[p a] = frac Bad := by
-  unfold runWithRandomPermutation
-  rw [← lazyImpl_eq]
-  exact prEvent_eq_frac_gen X p Bad h
 
 end PcsQuotient.EndToEnd.Eager

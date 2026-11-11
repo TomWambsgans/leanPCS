@@ -35,10 +35,6 @@ srcDir = ".."
 name = "QuotientRpm"
 srcDir = ".."
 
-# Zero knowledge (F3b), `formal/QuotientZk`.
-[[lean_lib]]
-name = "QuotientZk"
-srcDir = ".."
 
 # `F192` with the Rust's constructors and limbs, `formal/Field`.
 [[lean_lib]]
@@ -66,6 +62,14 @@ srcDir = "../WhirBridge"
 [[lean_lib]]
 name = "Compose"
 srcDir = "../Compose"
+
+# The composition for the EIP's PCS claims (four commitments, each a root and its out-of-domain answer),
+# `formal/ComposePcs`: the reduction's chain with four real roots, union-bounded over their lists, composed
+# with abstract openings (`Compose`'s generic layers reused).
+[[lean_lib]]
+name = "ComposePcs"
+srcDir = "../ComposePcs"
+globs = ["ComposePcs", "ComposePcs.+"]
 
 # Completeness's proof layer, `formal/Completeness`.
 [[lean_lib]]
@@ -126,8 +130,8 @@ leanOptions = { warningAsError = true }
 
 # ---- The end-to-end libraries ----
 
-# `PcsQuotient.KnowledgeSoundness` from `Compose`'s random-permutation theorem (`Soundness.lean`,
-# `Soundness/*.lean`).
+# `PcsQuotient.KnowledgeSoundness` from the random-permutation transfer and `SoundPcs`'s composition of the EIP's
+# PCS claims (`Soundness.lean`, `Soundness/Pcs*.lean`).
 [[lean_lib]]
 name = "Soundness"
 
@@ -135,20 +139,29 @@ name = "Soundness"
 [[lean_lib]]
 name = "ZK"
 
+# The membership layers' definitions and lemmas the leanVM line shares, moved out of the membership modules
+# (`Shared.lean`, `Shared/*.lean`; names unchanged).
+[[lean_lib]]
+name = "Shared"
+
 # The Statement's definitions are the proof layers' (`Bridge.lean`, `Bridge/*.lean`).
 [[lean_lib]]
 name = "Bridge"
 
-# `PcsQuotient.Completeness` (`Completeness/E2ECompleteness.lean`,
-# `Completeness/E2ECompleteness/*.lean`).
+# The new membership protocol's bridges (PCS claims): the quotient parts, the claims, the verifier.
+[[lean_lib]]
+name = "PcsBridge"
+
+# `PcsQuotient.Completeness` (`Completeness/E2ECompleteness.lean` and its imports in
+# `Completeness/E2ECompleteness/`: the `Pcs*` files and the shared layers).
 [[lean_lib]]
 name = "E2ECompleteness"
 srcDir = "Completeness"
-globs = ["E2ECompleteness", "E2ECompleteness.+"]
+globs = ["E2ECompleteness"]
 
 # The deployed EVM contract is the statement's verifier (`Evm.lean`, `Evm/*.lean`): F5's recorded
-# graph, run on the calldata of a statement's proof, calls `PCS_OPEN` exactly as `PcsQuotient.verifyWith`
-# opens its claims.
+# graph, run on the calldata of a statement's proof, checks declared exactly the EIP encodings of the six PCS
+# claims `PcsQuotient.verifyWith` opens.
 [[lean_lib]]
 name = "Evm"
 
@@ -317,3 +330,12 @@ name = "UniKeccakComplete"
 srcDir = "../UniKeccakComplete"
 globs = ["UniKeccakComplete", "UniKeccakComplete.+"]
 leanOptions = { warningAsError = true }
+
+# The deployed composition of the EIP's PCS claims (`formal/SoundPcs`): the setup computing the circuit's
+# commitment (its tree and out-of-domain answer) with the oracle, the four-root chain, the claims of
+# `reduceWith`, the six PCS openings with the out-of-domain point read off Keccak-256, the binding of `H`'s
+# two openings, and knowledge soundness in mumbai's two-oracle model.
+[[lean_lib]]
+name = "SoundPcs"
+srcDir = "../SoundPcs"
+globs = ["SoundPcs", "SoundPcs.+"]

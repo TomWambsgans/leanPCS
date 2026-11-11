@@ -112,7 +112,7 @@ theorem ofLimbs_xor {c0 c1 c2 : Nat} (h0 : c0 < B64) (h1 : c1 < B64) (h2 : c2 < 
 
 /-! ## In the field -/
 
-variable {F : Type} [Field F] [CharP F 2] [Fintype F] {limbs : F ≃ QuotientRpm.Limbs}
+variable {F : Type} [Field F] [CharP F 2] [Fintype F] {limbs : F ≃ Limbs}
 variable (hF : IsF192 limbs)
 include hF
 

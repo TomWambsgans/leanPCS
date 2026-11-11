@@ -1,14 +1,12 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 import Implementation.Arith
-import QuotientRpm.Bytes
 import Mathlib.Algebra.CharP.Two
 import Mathlib.FieldTheory.Finite.Basic
 
 /-!
 # A field held as limbs
 
-The model (`QuotientRpm.Wire`) holds an element of its field `F` as three 64-bit limbs
-(`Wire.limbs : F ≃ Limbs`); the graph holds it as the number `c0 + 2^64 c1 + 2^128 c2`. `IsF192`
+An element of a field `F` is held as three 64-bit limbs (`limbs : F ≃ Limbs`); the graph holds it as the number `c0 + 2^64 c1 + 2^128 c2`. `IsF192`
 says the limbs are `primitives::field::F192`'s: adding is `XOR` and multiplying is `mulE`
 (`FIELD_MUL`), and one is `(1, 0, 0)`. That is, `limbs` is a ring isomorphism from `F` onto
 `GF(2^192) = K[y] / (y^3 + y + 1)`, `K = GF(2)[x] / (x^64 + x^4 + x^3 + x + 1)`, in Rust's
@@ -26,7 +24,9 @@ set_option linter.unusedSectionVars false
 
 namespace Implementation
 
-open QuotientRpm
+/-- An `F192` scalar as its three 64-bit limbs `(c0, c1, c2)`, `c0` the lowest
+(`primitives::field::F192::new`). -/
+abbrev Limbs := UInt64 × UInt64 × UInt64
 
 /-- Limbs as a number: `c0 + 2^64 c1 + 2^128 c2`. -/
 def limbsNat (l : Limbs) : Nat := ofLimbs l.1.toNat l.2.1.toNat l.2.2.toNat
@@ -168,14 +168,13 @@ theorem elem_zero (hF : IsF192 limbs) : elem limbs 0 = (0 : F) := by
   rw [Nat.xor_self] at h
   exact left_eq_add.mp h
 
-/-- `F` has as many elements as `F192`. -/
-theorem card_uint64 : Fintype.card UInt64 = 2 ^ 64 := by
-  rw [Fintype.card_congr (⟨UInt64.toFin, UInt64.ofFin, fun w => by simp, fun i => by simp⟩ :
-    UInt64 ≃ Fin (2 ^ 64)), Fintype.card_fin]
+/-- A 64-bit word as an element of `Fin (2^64)`. -/
+def uint64Fin : UInt64 ≃ Fin (2 ^ 64) := ⟨UInt64.toFin, UInt64.ofFin, fun w => by simp, fun i => by simp⟩
 
+/-- `F` has as many elements as `F192`. -/
 theorem card_eq [Fintype F] (limbs : F ≃ Limbs) : Fintype.card F = 2 ^ 192 := by
-  rw [Fintype.card_congr limbs]
-  simp only [Limbs, Fintype.card_prod, card_uint64]
+  rw [Fintype.card_congr (limbs.trans (uint64Fin.prodCongr (uint64Fin.prodCongr uint64Fin)))]
+  simp only [Fintype.card_prod, Fintype.card_fin]
   norm_num
 
 end Implementation

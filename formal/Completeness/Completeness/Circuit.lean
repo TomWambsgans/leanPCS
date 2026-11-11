@@ -18,7 +18,8 @@ from leanVM's verifier and executed against it there).
 the circuit evaluated on the secret's input bits), and, **in the forward direction, Keccak
 correctness**: the assignment satisfies every gate (`satisfies`), and its public bits are the
 bits of the statement the secret proves (`publicBits`, as `circuit::public_words` reads `y` and
-`root`), with words 4 to 7 laid as `Builder::finish` lays them (`1, 0, 0, 0`). These are fields
+`root`), with words 4 to 7 laid as `Builder::finish` lays them (`1, 0, 0, 0`) and the public rows
+not random rows (`pubRows`). These are fields
 of a structure, so every theorem below that takes a `MembershipCircuit` holds of whatever F0b
 builds; nothing about Keccak is assumed beyond them.
 
@@ -30,6 +31,13 @@ statement's eight words (`statementWords`: the halves of `(y, root)`, then `1, 0
 `relation_statementWords` (for `wiringOf C`) is the step from words to the relation, here for any
 such wiring (`relation_statementWords_keeps`); the words are the bits' weighted sums
 (`halves_eq_sum`), so no independence of the weights is needed in this direction.
+
+**The random rows** (`honest_relation_random`): the honest prover fills the `X` and `V` cells of
+each of the circuit's `16` random rows with a fresh value (`randomizeCells`, `prove` in
+`protocol.rs`); with *any* values there (`cellsRandomized`), the cells still satisfy the relation:
+a random row's gate is `V = V + 0 + 0`, its `X` cell and its `V` cell are the only cells carrying it
+(`cellsRandomized_eq`: the cells are those of the row values, `cellsOfVals`), and no other row reads
+it.
 -/
 
 set_option linter.unusedSectionVars false
@@ -97,6 +105,8 @@ structure MembershipCircuit where
   word5 : ∀ j, C.pubSrc 5 j = .zero
   word6 : ∀ j, C.pubSrc 6 j = .zero
   word7 : ∀ j, C.pubSrc 7 j = .zero
+  /-- The public rows are not random rows. -/
+  pubRows : ∀ J j, ¬ C.isRandom (pubRow J j)
 
 /-- **The wiring `σ` keeps what each cell carries in `C`** (`ChiCircuit.cellSrc`: the source an
 `X`, `Y`, `C` cell reads, the row of a `V` cell): a cycle of `σ` never mixes two sources, so the
@@ -170,5 +180,155 @@ theorem honest_relation (M : MembershipCircuit) (I : Instance F) {x Y : F}
     I.Relation (statementWords x Y s.statement.y s.statement.root) (M.C.cellsOfBits (M.assign s)) :=
   relation_statementWords_keeps I M.C hc hw M.word4_one M.word4 M.word5 M.word6 M.word7 (M.assign s)
     (M.satisfies s) _ _ (pubWord_eq_halves M x Y s)
+
+/-! ## The random rows filled with arbitrary values -/
+
+/-- A row that is not a random row reads no random row: it is an input (reading itself) or reads
+rows that are not random. -/
+theorem srcs_not_random (C : ChiCircuit (Fin (2 ^ 22))) {r : Fin (2 ^ 22)} (hr : ¬ C.isRandom r)
+    (s : Src (Fin (2 ^ 22))) (hs : s = C.x r ∨ s = C.y r ∨ s = C.c r) :
+    ∀ r', s = .row r' → ¬ C.isRandom r' := by
+  intro r' h
+  by_cases hi : C.isInput r
+  · obtain ⟨hx, hy, hc⟩ := C.hInput r hi
+    rw [hx, hy, hc, h] at hs
+    have e : r' = r := by rcases hs with hs | hs | hs <;> exact Src.row.inj hs
+    rw [e]; exact hr
+  · exact (C.reads hi hr s hs r' h).2
+
+/-- What each cell carries, valued by the rows' values `u`. -/
+noncomputable def _root_.QuotientSecurity.ChiCircuit.cellsOfVals (C : ChiCircuit (Fin (2 ^ 22))) (u : Fin (2 ^ 22) → F) :
+    (Fin (22 + 2) → Bool) → F :=
+  fun z => (C.cellSrc z).val u
+
+/-- The rows' values: the computation's bits off the random rows, `rnd` on them. -/
+noncomputable def _root_.QuotientSecurity.ChiCircuit.rowVals (C : ChiCircuit (Fin (2 ^ 22))) (v : Fin (2 ^ 22) → Bool)
+    (rnd : Fin (2 ^ 22) → F) : Fin (2 ^ 22) → F :=
+  open Classical in fun r => if C.isRandom r then rnd r else bitF (v r)
+
+theorem val_rowVals (C : ChiCircuit (Fin (2 ^ 22))) (v : Fin (2 ^ 22) → Bool) (rnd : Fin (2 ^ 22) → F)
+    (s : Src (Fin (2 ^ 22))) (hs : ∀ r', s = .row r' → ¬ C.isRandom r') :
+    s.val (C.rowVals v rnd) = bitF (s.bval v) := by
+  classical
+  cases s with
+  | zero => rfl
+  | one => rfl
+  | row r' =>
+    show (if C.isRandom r' then rnd r' else bitF (v r')) = _
+    rw [if_neg (hs r' rfl)]
+    rfl
+
+open Classical in
+/-- **The honest cells with the random rows filled** (`randomizeCells`, `Prover.lean`): the cells of
+the computation `v` (`cellsOfBits`), but the `X` and `V` cells of each random row `r` hold `rnd r`. -/
+noncomputable def _root_.QuotientSecurity.ChiCircuit.cellsRandomized (C : ChiCircuit (Fin (2 ^ 22))) (v : Fin (2 ^ 22) → Bool)
+    (rnd : Fin (2 ^ 22) → F) : (Fin (22 + 2) → Bool) → F :=
+  fun z => if C.isRandom (cellRow z) ∧ (cellRole z = 0 ∨ cellRole z = 3) then rnd (cellRow z)
+    else C.cellsOfBits v z
+
+/-- **The randomized cells are the cells of the row values** `rowVals v rnd`: a random row's `X` and
+`V` cells carry its value, its `Y` and `C` cells the one and the zero; every other cell carries a
+row that is not random, or a constant. -/
+theorem cellsRandomized_eq (C : ChiCircuit (Fin (2 ^ 22))) (v : Fin (2 ^ 22) → Bool)
+    (rnd : Fin (2 ^ 22) → F) : C.cellsRandomized v rnd = C.cellsOfVals (C.rowVals v rnd) := by
+  classical
+  funext z
+  obtain ⟨r, k, rfl⟩ : ∃ r k, rowCell r k = z := ⟨_, _, rowCell_cellRow z⟩
+  obtain ⟨h1, h2⟩ := cellRow_rowCell r k
+  unfold ChiCircuit.cellsRandomized ChiCircuit.cellsOfVals ChiCircuit.cellsOfBits
+  rw [h1, h2, ChiCircuit.cellSrc_rowCell]
+  have hk : k = 0 ∨ k = 1 ∨ k = 2 ∨ k = 3 := by fin_cases k <;> simp
+  by_cases hr : C.isRandom r
+  · obtain ⟨hx, hy, hc⟩ := C.hRandom r hr
+    have hu : C.rowVals v rnd r = rnd r := if_pos hr
+    rcases hk with rfl | rfl | rfl | rfl
+    · rw [if_pos ⟨hr, Or.inl rfl⟩]
+      show rnd r = (C.x r).val _
+      rw [hx]; exact hu.symm
+    · rw [if_neg (fun h => by rcases h.2 with h | h <;> exact absurd h (by decide))]
+      show bitF ((C.y r).bval v) = (C.y r).val _
+      rw [hy]; rfl
+    · rw [if_neg (fun h => by rcases h.2 with h | h <;> exact absurd h (by decide))]
+      show bitF ((C.c r).bval v) = (C.c r).val _
+      rw [hc]; rfl
+    · rw [if_pos ⟨hr, Or.inr rfl⟩]
+      show rnd r = C.rowVals v rnd r
+      exact hu.symm
+  · rw [if_neg (fun h => hr h.1)]
+    have hrow : ∀ r', Src.row r = Src.row r' → ¬ C.isRandom r' := fun r' h => by
+      rw [← Src.row.inj h]; exact hr
+    rcases hk with rfl | rfl | rfl | rfl
+    · exact (val_rowVals C v rnd _ (srcs_not_random C hr _ (Or.inl rfl))).symm
+    · exact (val_rowVals C v rnd _ (srcs_not_random C hr _ (Or.inr (Or.inl rfl)))).symm
+    · exact (val_rowVals C v rnd _ (srcs_not_random C hr _ (Or.inr (Or.inr rfl)))).symm
+    · exact (val_rowVals C v rnd _ hrow).symm
+
+/-- **The relation holds of the row values `rowVals v rnd`**, any `rnd`, on a wiring keeping what
+the cells carry: a random row's gate is `V = V + 0 + 0`, every other row's the gate on bits, and the
+public rows read no random row. -/
+theorem relation_vals (I : Instance F) (C : ChiCircuit (Fin (2 ^ 22))) {x Y : F}
+    (hc : I.c = coordWeight x Y) (hw : WiringKeeps I.wiring C)
+    (hpub : ∀ J j, ¬ C.isRandom (pubRow J j)) (v : Fin (2 ^ 22) → Bool) (hv : C.SatisfiesBits v)
+    (rnd : Fin (2 ^ 22) → F) :
+    I.Relation (fun J => C.pubWord x Y v J) (C.cellsOfVals (C.rowVals v rnd)) := by
+  classical
+  refine ⟨fun y => ?_, fun z => ?_, fun J => ?_⟩
+  · obtain ⟨r, rfl⟩ := rowEquiv.surjective y
+    have hcell : ∀ k : Fin 4, (C.cellsOfVals (C.rowVals v rnd) (cellBits (rowEquiv r, k)) : F)
+        = (C.srcOf r k).val (C.rowVals v rnd) := fun k =>
+      congrArg (fun s => Src.val (C.rowVals v rnd) s) (C.cellSrc_rowCell r k)
+    rw [hcell, hcell, hcell, hcell]
+    by_cases hr : C.isRandom r
+    · obtain ⟨hx, hy, hc⟩ := C.hRandom r hr
+      show gate ((C.x r).val (C.rowVals v rnd)) ((C.y r).val (C.rowVals v rnd))
+        ((C.c r).val (C.rowVals v rnd)) ((Src.row r).val (C.rowVals v rnd)) = 0
+      rw [hx, hy, hc]
+      show gate (C.rowVals v rnd r) 1 0 (C.rowVals v rnd r) = 0
+      rw [gate_eq]
+      unfold chiOf
+      rw [mul_zero, add_zero, add_zero]
+      exact CharTwo.add_self_eq_zero _
+    · have h0 := val_rowVals C v rnd _ (srcs_not_random C hr _ (Or.inl rfl))
+      have h1 := val_rowVals C v rnd _ (srcs_not_random C hr _ (Or.inr (Or.inl rfl)))
+      have h2 := val_rowVals C v rnd _ (srcs_not_random C hr _ (Or.inr (Or.inr rfl)))
+      have h3 : (Src.row r).val (C.rowVals v rnd) = bitF (v r) := by
+        show (if C.isRandom r then rnd r else bitF (v r)) = _
+        rw [if_neg hr]
+      show gate ((C.x r).val (C.rowVals v rnd)) ((C.y r).val (C.rowVals v rnd))
+        ((C.c r).val (C.rowVals v rnd)) ((Src.row r).val (C.rowVals v rnd)) = 0
+      rw [h0, h1, h2, h3]
+      exact (gate_bitF _ _ _ _).mpr (hv r)
+  · simp only [ChiCircuit.cellsOfVals, hw z]
+  · rw [hc, sum_regionWeight _ (coordWeight_one x Y)]
+    unfold ChiCircuit.pubWord
+    refine sum_congr rfl fun j _ => ?_
+    rw [regionWeight_coordWeight]
+    simp only [ChiCircuit.cellsOfVals, ChiCircuit.cellSrc_pubCell, ChiCircuit.pubBit]
+    rw [val_rowVals C v rnd _ (C.pubSrc_not_random J j (hpub J j))]
+
+/-- **The honest cells satisfy the relation, the random rows' `X` and `V` cells holding any values.**
+On an instance whose wiring keeps what the circuit's cells carry and whose bit weights are
+`coordinate_weight`'s, the cells of the assignment of a secret, with the `X` and `V` cells of each
+random row `r` set to `rnd r` (`cellsRandomized`, the Statement's `randomizeCells`), satisfy the
+relation for the eight words of the statement it proves. -/
+theorem honest_relation_random (M : MembershipCircuit) (I : Instance F) {x Y : F}
+    (hc : I.c = coordWeight x Y) (hw : WiringKeeps I.wiring M.C) (s : Secret)
+    (rnd : Fin (2 ^ 22) → F) :
+    I.Relation (statementWords x Y s.statement.y s.statement.root)
+      (M.C.cellsRandomized (M.assign s) rnd) := by
+  have hs : (fun J => M.C.pubWord x Y (M.assign s) J) =
+      statementWords x Y s.statement.y s.statement.root := by
+    funext J
+    fin_cases J
+    · exact pubWord_eq_halves M x Y s 0
+    · exact pubWord_eq_halves M x Y s 1
+    · exact pubWord_eq_halves M x Y s 2
+    · exact pubWord_eq_halves M x Y s 3
+    · exact M.C.pubWord_four x Y _ M.word4_one M.word4
+    · exact M.C.pubWord_zero x Y _ 5 M.word5
+    · exact M.C.pubWord_zero x Y _ 6 M.word6
+    · exact M.C.pubWord_zero x Y _ 7 M.word7
+  rw [← hs, cellsRandomized_eq]
+  exact relation_vals I M.C hc hw M.pubRows (M.assign s) (M.satisfies s) rnd
 
 end Completeness

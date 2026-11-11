@@ -40,7 +40,7 @@ behaves as a random permutation is the assumption. The adversary is classical, i
 is sampled.
 
 **The sources.** Each definition cites the Rust it transcribes (`protocol.rs`, `opening.rs`,
-`circuit.rs:N`, …) of `crates/membership/quotient` at `main` `f4319d6` (the hidden layouts of
+`circuit.rs:N`, …) of `crates/membership/quotient` at `main` `abe22812` (the EIP's PCS claims, `docs/membership/EIP_CLAIMS.md`; formerly the hidden layouts of
 `docs/membership/HIDING.md`, the sizes `2^17` to `2^22` rows, the opening transcript of version `2`), and each
 file names what it takes from leanerVM in its first lines.
 
@@ -58,43 +58,44 @@ file names what it takes from leanerVM in its first lines.
    (`values`, `coefficients`) that the prover and the extractor use (`domain.rs`).
 3. [`Transcript.lean`](PcsQuotient/Transcript.lean): the reduction's Fiat–Shamir transcript, a
    Keccak-256 chain over a permutation `F` (`transcript.rs`).
-4. [`Reduction.lean`](PcsQuotient/Reduction.lean): **the reduction's proof** (`ReductionProof`: two
-   roots, each as its two halves, and five elements of `E`), the four **claims** (`Claims`), **the
-   statement embedding** (`statementWords`: `y` and `root` as their halves, big-endian in the low two
-   limbs, then `1, 0, 0, 0`), the sizes (`Supported`: `2^17` to `2^22` rows), and the reduction's verifier
-   (`reduceWith`, `claimsAt`: `reduce` of `protocol.rs` line by line, with its constants: the label, the
-   bit weights `bitWeight`, the coordinate weights, the extension's coordinates, the sum's point).
-5. [`Opening.lean`](PcsQuotient/Opening.lean): the tables' layouts (the public `wiringLayout`; the
-   **hidden** `witnessLayout`, `quotientLayout`: padded first pieces, an overflow lane, random lanes, and the
-   gadget weight `gadgetWeight`, a claim of value zero,
-   `Layout.hidden`), a claim's weight on a stack (`stackWeight`), the read-back of a table from its stack
-   (`Layout.readEntry`), and **the opening check** (`openingWith`): mumbai's WHIR verifier
-   `verifyStackedOpening`, which is generic in the weight, run with the root given as commitment `0` and
-   the sponge seeded as `opening.rs` seeds it.
-6. [`Verifier.lean`](PcsQuotient/Verifier.lean): **the proof** (`Proof`: the reduction's proof and three
-   WHIR opening proofs in mumbai's format) and **the verifier** (`verifyWith`): the reduction, then the
-   three openings, as `protocol::verify` then `verify_openings`.
-7. [`Circuit.lean`](PcsQuotient/Circuit.lean): **the circuit** (the gate `V = X + C + Y·C`, the builder,
-   Keccak-f[1600] on wires, the membership statement `membership`, the public rows, the wiring `σ`), its
-   cells from the inputs, and **its commitment** (`Circuit.indexRootWith`: the wiring table committed by
-   WHIR over `F`; its tree `Circuit.indexTreeWith`, and the tree's Keccak-256 evaluations
+4. [`Reduction.lean`](PcsQuotient/Reduction.lean): **the reduction's proof** (`ReductionProof`: four
+   commitments `W`, `H`, `Q`, `G`, each its root's big-endian halves (`rootHalves`) and its out-of-domain answer,
+   the four row values, `next`, then `Q`'s and `G`'s values: nineteen scalars), the **commitment** (`Commitment`:
+   root, out-of-domain answer), the **six claims** (`Claims`: witness, wiring, `H`, `Q`, `G`, sum), the quotient
+   table's parts (`quotientParts`), the statement embedding (`statementWords`), the sizes (`Supported`: `2^13` to
+   `2^22` rows), the label (`label`: the name, the index commitment, the statement) and the reduction's verifier
+   (`reduceWith`, `claimsAt`: `reduce` of `protocol.rs` line by line; `H`'s value derived from `Q`'s and `G`'s).
+5. [`Opening.lean`](PcsQuotient/Opening.lean): **the previous protocol's layout opening**, kept unchanged for the
+   leanVM line's PIOPs (`formal/UniStatement`, ...); the membership verifier does not use it. It also holds the
+   constants `laneFold`, `logInvRate`, `zeroDigest`.
+6. [`PcsOpening.lean`](PcsQuotient/PcsOpening.lean): **the EIP's PCS claim, version 1** (`crates/pcs_claim`,
+   `docs/PCS_CLAIM.md`): a table's polynomial (`tableEval`), its commitment (`commitWith`, `commitmentWith`: the
+   WHIR Merkle root and the out-of-domain answer at the point `oodPointWith` derives from the root with
+   Keccak-256), the claim's bytes (`pcsClaimBytes`) and **the opening check** (`pcsOpeningWith`: the IV
+   `keccak256(PCS_claim)`, the root as the proof's first scalars, mumbai's `verifyStackedOpening` of the two stack
+   claims `f(z) = ood`, `f(point) = value`, WHIR at rate `1/2`).
+7. [`Verifier.lean`](PcsQuotient/Verifier.lean): **the proof** (`Proof`: the reduction's proof and six openings)
+   and **the verifier** (`verifyWith`): the reduction, then the six PCS openings in the order of `Claims::all`.
+8. [`Circuit.lean`](PcsQuotient/Circuit.lean): **the circuit** (the gate `V = X + C + Y·C`, the builder,
+   Keccak-f[1600] on wires, the membership statement `membership`, the public rows, the 16 **random rows**, the
+   wiring `σ`), its cells from the inputs, and **its commitment** (`Circuit.indexCommitmentWith`: the wiring table's
+   PCS commitment over `F`; its tree `Circuit.indexTreeWith`, and the tree's Keccak-256 evaluations
    `Tree.evaluations`, which the extractor reads).
-8. [`Prover.lean`](PcsQuotient/Prover.lean): **the honest prover** (`proveWith`, `proverWith`):
-   `protocol::prove` then `open`, its tables stacked in their hidden layouts with the padding it is given
-   (`Layout.stackOf`), its WHIR openings by mumbai's WHIR prover pieces on this protocol's weight table
-   (`openingScript`), run against the verifier's program (mumbai's `runFrom`).
-9. [`Replay.lean`](PcsQuotient/Replay.lean): the transcript's Keccak-256 evaluations and the Merkle
-   inversion, as mumbai's `keccakEvaluationsOfTranscript`, `answerPairs`, `preimage` and `subtreeLeaves`
-   compute them, with hash maps (`transcriptEvaluations`, `preimageIndex`, `leavesUnder`).
-10. [`Decoder.lean`](PcsQuotient/Decoder.lean): **the unique decoder** (`UniqueDecoding.uniqueStacks`):
-    Gao's decoder on each lane, between mumbai's fast path and its list decoder.
-11. [`Extractor.lean`](PcsQuotient/Extractor.lean): **the extractor** (`transcriptExtractorFor`), with its
-    cost table.
-12. [`Simulator.lean`](PcsQuotient/Simulator.lean): **the simulator** (`Simulator.simulateFor`,
-    `Simulator.simOracle`).
-13. [`Security.lean`](PcsQuotient/Security.lean): the deployed system (`setupWith`, `verifier`,
-    `deployedIndexRoot`, `deployedVerifier`), the prover's coins, the experiments, and
-    **`KnowledgeSoundness`, `Completeness`, `ZeroKnowledge`**, `StatementBinds`, collected in `Theorems`.
+9. [`LayoutsProver.lean`](PcsQuotient/LayoutsProver.lean): the previous layout opening's prover, kept for the
+   leanVM line.
+10. [`Prover.lean`](PcsQuotient/Prover.lean): **the honest prover** (`proveWith`, `proverWith`; over abstract PCS
+    operations `proveWithPcs`, the real ones `realPcs`): its randomness (`Coins`: masks, random rows' values, the
+    blinding of `h`), its tables as functions (`witnessTable`, `quotientTables`, `rowValues`), its PCS openings by
+    mumbai's WHIR prover pieces (`pcsOpeningScript`, `proveClaimWith`), run against the verifier's program.
+11. [`Replay.lean`](PcsQuotient/Replay.lean): the transcript's Keccak-256 evaluations and the Merkle inversion.
+12. [`Decoder.lean`](PcsQuotient/Decoder.lean): **the unique decoder** (`UniqueDecoding.uniqueStacks`).
+13. [`Extractor.lean`](PcsQuotient/Extractor.lean): **the extractor** (`transcriptExtractorFor`): the witness
+    table's word under its root, decoded; a candidate stack is the table itself.
+14. [`Security.lean`](PcsQuotient/Security.lean): the deployed system (`setupWith`: the circuit's commitment and
+    tree; `verifier`, `deployedIndex`, `deployedVerifier`), the prover's coins (`sampleCoins`), the experiments, and
+    **`KnowledgeSoundness`, `Completeness`, `ZeroKnowledgeWith`**, `StatementBinds`, collected in `Theorems`.
+15. [`Zk.lean`](PcsQuotient/Zk.lean): **zero knowledge assuming a zero-knowledge PCS**: the ideal PCS, the hybrid
+    experiment, and the two hypotheses the zero-knowledge theorem takes (`PcsZeroKnowledge`, `RevealedUniform`).
 
 ## The circuit and its commitment are named data
 

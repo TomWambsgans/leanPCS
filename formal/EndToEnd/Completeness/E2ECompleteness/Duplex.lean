@@ -3,17 +3,30 @@
 -- MIT OR Apache-2.0): the duplex discipline (`LeanVM.Rpm.DuplexVm`, `DuplexP`, `HOnly`) and its
 -- rules for the sponge, the runners and the Merkle trees (`duplexP_absorb`, `duplexP_run`,
 -- `duplexP_findNonceM`, `duplexP_powStepM`, `hOnly_buildTreeM`, `admissibleVm_seedInput`).
-import E2ECompleteness.Assemble
+import E2ECompleteness.HashLen
+import E2ECompleteness.WithHash
+import E2ECompleteness.End
+import CompPoly.Fields.Binary.BF64.Ext3
+import CompPoly.Fields.Binary.BF64.Impl
+import CompPoly.Fields.Extension.Arithmetic
+import LeanVM.Protocol.Compile.Rom.Bridge
+import LeanVM.Protocol.Compile.Rom.Prover
+import LeanVM.Protocol.ExperimentBridge
+import LeanVM.Protocol.LeanVMRpm
 import LeanVM.Protocol.Rpm.Duplex
+import LeanVM.Protocol.WithHash
+import LeanVM.Protocol.WithHashBridge
+import PcsQuotient.Security
 
 /-!
-# The duplex discipline of the deployed staged run
+# The layout opening only calls the permutation through the sponge
 
-Every Keccak-f[1600] call of the honest run either continues a duplex (its capacity, lanes
-`16 … 24`, an earlier answer's) or starts one at a zero capacity (an opening's seed,
-`F(seedInput iv 0)`): mumbai's `DuplexVm`. Each opening, prover's and verifier's, starts its own
-duplex, so every piece is disciplined from any earlier answers (`Disc`), and so is their sequence.
-**`duplexVm_stagedRun`**.
+`Disc` (a computation's permutation calls are all sponge duplexes) through binds, the commitment
+(`hOnly_commitWithH`), the opening's sponge (`duplexP_openingSpongeWithH`), the verifier
+(`disc_openingWithH`) and the prover (`duplexP_runFromWithHash`, `disc_proveOpeningWithH`).
+
+Pruned to what the leanVM line uses (`formal/Uni*`, `formal/Rec*`); the previous membership protocol's declarations
+that were here are in the git history.
 -/
 
 open OracleComp OracleSpec
@@ -40,42 +53,10 @@ theorem disc_pure {α : Type} (a : α) : Disc (pure a : OracleComp KeccakCalls �
 theorem disc_of_hOnly {α : Type} {X : OracleComp KeccakCalls α} (hX : HOnly X) : Disc X :=
   fun h ↦ (hX.duplexP h).mono fun _ _ _ ↦ trivial
 
-theorem Disc.map {α β : Type} {X : OracleComp KeccakCalls α} (f : α → β) (hX : Disc X) :
-    Disc (f <$> X) := by
-  rw [map_eq_bind_pure_comp]
-  exact hX.bind fun _ ↦ disc_pure _
-
 /-! ## The hash-only pieces -/
-
-theorem hOnly_startWithH (label : List UInt8) : HOnly (startWithH callKeccak256 label) :=
-  (hOnly_queryH _).bind fun _ ↦ hOnly_pure _
-
-theorem hOnly_squeezeWithH (c : Chain) : HOnly (squeezeWithH callKeccak256 c) :=
-  (hOnly_queryH _).bind fun _ ↦ hOnly_pure _
-
-theorem hOnly_reduceWithH (logRows : ℕ) (indexRoot : Digest) (stmt : Statement)
-    (p : ReductionProof) : HOnly (reduceWithH callKeccak256 logRows indexRoot stmt p) := by
-  unfold reduceWithH
-  split
-  · exact hOnly_pure _
-  · refine (hOnly_startWithH _).bind fun c ↦ ?_
-    split
-    · exact hOnly_pure _
-    · refine (hOnly_squeezeWithH _).bind fun ⟨α, c₁⟩ ↦ ?_
-      refine (hOnly_squeezeWithH _).bind fun ⟨β, c₂⟩ ↦ ?_
-      refine (hOnly_squeezeWithH _).bind fun ⟨γ, c₃⟩ ↦ ?_
-      dsimp only
-      split
-      · exact hOnly_pure _
-      · refine (hOnly_squeezeWithH _).bind fun ⟨t, c₄⟩ ↦ ?_
-        dsimp only
-        exact (hOnly_squeezeWithH _).bind fun ⟨ρ, _⟩ ↦ hOnly_pure _
 
 theorem hOnly_commitWithH (μ : ℕ) (stack : Array K) : HOnly (commitWithH callKeccak256 μ stack) :=
   hOnly_buildTreeM _ _
-
-theorem hOnly_setupWithH : HOnly (setupWithH callKeccak256) :=
-  (hOnly_commitWithH _ _).bind fun _ ↦ hOnly_pure _
 
 /-! ## The openings -/
 
@@ -107,22 +88,6 @@ theorem disc_openingWithH (L : PcsQuotient.Layout) (root : Digest)
       · trivial
     · trivial
   · trivial
-
-/-- **The verifier is disciplined.** -/
-theorem disc_verifyWithH (logRows : ℕ) (indexRoot : Digest) (stmt : Statement)
-    (proof : PcsQuotient.Proof) :
-    Disc (verifyWithH callKeccak256 callKeccakF1600 logRows indexRoot stmt proof) := by
-  unfold verifyWithH
-  refine (disc_of_hOnly (hOnly_reduceWithH _ _ _ _)).bind fun o ↦ ?_
-  split
-  · exact disc_pure _
-  · refine (disc_openingWithH _ _ _ _).bind fun b₁ ↦ ?_
-    split
-    · exact disc_pure _
-    · refine (disc_openingWithH _ _ _ _).bind fun b₂ ↦ ?_
-      split
-      · exact disc_pure _
-      · exact disc_openingWithH _ _ _ _
 
 /-- **The prover's script runner keeps the discipline**, from a sponge whose state is an earlier
 answer (mumbai's `duplexP_proveFromM`, for `runFromWithHash`). -/
@@ -175,81 +140,5 @@ theorem disc_proveOpeningWithH (fuel : ℕ) (L : PcsQuotient.Layout) (tree : Tre
   refine (duplexP_absorb hs _ _).bind fun sp h₂ hs ↦ ?_
   refine (duplexP_absorb hs _ _).bind fun sp h₃ hs ↦ ?_
   exact (duplexP_runFromWithHash _ _ _ _ _ _ hs).bind fun _ _ _ ↦ trivial
-
-/-! ## The stages -/
-
-theorem disc_proverTail (circuit : Circuit) (fuel : ℕ) (stmt : Statement) (a : AuxA)
-    (bq : Tree × Array K) (t : E) : Disc (proverTail circuit fuel stmt a bq t) := by
-  unfold proverTail
-  refine (disc_of_hOnly (hOnly_reduceWithH _ _ _ _)).bind fun o ↦ ?_
-  split
-  · exact disc_pure _
-  · refine (disc_proveOpeningWithH _ _ _ _ _).bind fun o₁ ↦ ?_
-    split
-    · refine (disc_proveOpeningWithH _ _ _ _ _).bind fun o₂ ↦ ?_
-      split
-      · refine (disc_proveOpeningWithH _ _ _ _ _).bind fun o₃ ↦ ?_
-        split
-        · exact disc_pure _
-        · exact disc_pure _
-      · exact disc_pure _
-    · exact disc_pure _
-
-theorem hOnly_stageAG (setup : OracleComp KeccakCalls Digest) (hs : HOnly setup)
-    (circuit : Circuit) (cells : Array K) (masks : Masks) (witnessPad : Padding)
-    (stmt : Statement) : HOnly (stageAG setup circuit cells masks witnessPad stmt) := by
-  unfold stageAG
-  exact hs.bind fun _ ↦ (hOnly_commitWithH _ _).bind fun _ ↦ (hOnly_commitWithH _ _).bind fun _ ↦
-    (hOnly_queryH _).bind fun _ ↦ hOnly_pure _
-
-theorem hOnly_stageBG (circuit : Circuit) (cells : Array K) (quotientPad : Padding) (a : AuxA)
-    (s₁ s₂ s₃ : Digest) : HOnly (stageBG circuit cells quotientPad a s₁ s₂ s₃) := by
-  unfold stageBG
-  exact (hOnly_commitWithH _ _).bind fun _ ↦ hOnly_pure _
-
-theorem disc_stageCG (circuit : Circuit) (fuel vLogRows : ℕ) (stmt : Statement) (a : AuxA)
-    (bq : Tree × Array K) (s₁ s₂ s₃ s₄ : Digest) :
-    Disc (stageCG circuit fuel vLogRows stmt a bq s₁ s₂ s₃ s₄) := by
-  unfold stageCG
-  refine (disc_proverTail _ _ _ _ _ _).bind fun o ↦ ?_
-  split
-  · exact disc_pure _
-  · exact disc_verifyWithH _ _ _ _
-
-/-- A computation of the chain's shape is disciplined when its stages are. -/
-theorem disc_staged {α β γ : Type} (chal : Digest → E)
-    (A : OracleComp KeccakCalls (α × Digest × (E × E)))
-    (B : α → Digest → Digest → Digest → OracleComp KeccakCalls (β × (E × E)))
-    (C : α → β → Digest → Digest → Digest → Digest → OracleComp KeccakCalls γ)
-    (hA : Disc A) (hB : ∀ a s₁ s₂ s₃, Disc (B a s₁ s₂ s₃))
-    (hC : ∀ a b s₁ s₂ s₃ s₄, Disc (C a b s₁ s₂ s₃ s₄)) : Disc (staged chal A B C) := by
-  unfold staged
-  exact hA.bind fun x ↦ (disc_of_hOnly (hOnly_queryH _)).bind fun s₁ ↦
-    (disc_of_hOnly (hOnly_queryH _)).bind fun s₂ ↦ (disc_of_hOnly (hOnly_queryH _)).bind fun s₃ ↦
-      (hB _ _ _ _).bind fun y ↦ (disc_of_hOnly (hOnly_queryH _)).bind fun s₄ ↦
-        (hC _ _ _ _ _ _).bind fun _ ↦ disc_pure _
-
-theorem disc_stagedRunG (setup : OracleComp KeccakCalls Digest) (hs : HOnly setup)
-    (circuit : Circuit) (cells : Array K) (masks : Masks) (witnessPad quotientPad : Padding)
-    (fuel vLogRows : ℕ) (stmt : Statement) :
-    Disc (stagedRunG setup circuit cells masks witnessPad quotientPad fuel vLogRows stmt) :=
-  disc_staged _ _ _ _ (disc_of_hOnly (hOnly_stageAG setup hs _ _ _ _ _))
-    (fun _ _ _ _ ↦ disc_of_hOnly (hOnly_stageBG _ _ _ _ _ _ _))
-    (fun _ _ _ _ _ _ ↦ disc_stageCG _ _ _ _ _ _ _ _ _ _)
-
-/-- **The deployed staged run follows the duplex discipline.** -/
-theorem duplexVm_stagedRun (stmt : Statement) (w : Secret) (coins : Masks × Padding × Padding) :
-    DuplexVm (stagedRun stmt w coins) [] :=
-  (duplexVm_iff_duplexP _ _).mpr
-    (disc_stagedRunG _ hOnly_setupWithH _ _ _ _ _ _ _ _ [])
-
-/-- **`PcsQuotient.Completeness deltaDeployed`** from the block count `2^48` of the deployed staged
-run and the grinding bound `3 · 2^-277` at non-degenerate challenges (the duplex discipline
-proved, `duplexVm_stagedRun`). -/
-theorem completeness_deployed_cost_rej
-    (hcost : ∀ stmt w coins, Common.QueryCostAtMost (stagedRun stmt w coins) hashBlocks (2 ^ 48))
-    (hrej : RejectGood (3 * (2 : ℝ≥0∞)⁻¹ ^ 277)) :
-    PcsQuotient.Completeness deltaDeployed :=
-  completeness_deployed_staged duplexVm_stagedRun hcost hrej
 
 end E2ECompleteness

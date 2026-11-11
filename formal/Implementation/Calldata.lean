@@ -1,219 +1,215 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
-import Implementation.Interp
-import Implementation.Field
-import QuotientRpm.Chain
+-- The calldata's layout is `crates/membership/evm/src/quotient.rs`'s (`calldata`); the roots' bytes use
+-- leanerVM's lanes (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`, commit 6175f1a0,
+-- MIT OR Apache-2.0: `wordBytes_leLane`, `leLane_lanesBytes`, `common/Common/Lanes.lean`).
+import Implementation.Reduce
+import PcsQuotient.Verifier
+import Common.Lanes
 
 /-!
-# Calldata and the chain, byte for byte
+# The calldata of a proof, and the leaves the graph reads from it
 
-The graph reads big-endian words of calldata and hashes big-endian words (`Interp.lean`); the
-model (`QuotientRpm`) reads limbs of bytes and hashes `scalarWord`s and `rootWords`. This file
-proves they agree:
+`calldata` is `quotient.rs`'s: the selector, the statement's `64` bytes, the four roots' `32` bytes each
+(the witness table's, then `H`'s, `Q`'s, `G`'s: the digests their halves name, `rootOfHalves`; a proof whose
+roots' halves have a top limb has no calldata, as the Rust's `NotARoot`), the eleven other scalars of the
+reduction's proof, `24` bytes each (`elementBytes`: the four out-of-domain answers, the four values,
+`next`, `Q`'s and `G`'s values), and the index of the frame of PCS claims. `deployed` is what the contract
+reads: the deployed Keccak-256, and the circuit's commitment in storage (the root's bytes, the
+out-of-domain answer's word).
 
-* `beNat` / `beBytes` (`MSTORE` of a `CALLDATALOAD`) round-trip, and a state's low 192 bits as a
-  number are its `stateLimbs` (`natLimbs_state`);
-* `calldataOf`: the calldata of a statement's 64 bytes, two roots and five values, as
-  `crates/membership/evm/src/quotient.rs`'s `calldata` writes it (a root's halves reversed, a value's limbs
-  `c2, c1, c0` big-endian); and the words the graph reads from it (`cdWord_window`).
+`leafOK_calldata`: on such calldata, the graph's leaves hold the Statement's leaves (`chainVals`: the
+statement, the challenges of the reduction's Keccak-256 chain, the proof's values); `reduce_eq`: the
+Statement's `reduce` is `claimsAt` at those challenges.
 -/
 
 set_option linter.unusedSectionVars false
 
 namespace Implementation
 
-open QuotientRpm LeanVM.Protocol.KeccakHash LeanVM.Rpm
+open LeanVM.Parameters LeanVM.Protocol LeanVM.Protocol.KeccakHash LeanVM.Rpm PcsQuotient
+  PcsQuotient.Transcript Program Emitted
 
-/-! ## Big-endian numbers -/
+local notation "W" => word limbsEquiv
+local notation "EL" => elem limbsEquiv
 
-theorem foldl_beNat (l : List UInt8) (acc : Nat) :
-    l.foldl (fun acc b => acc * 256 + b.toNat) acc = acc * 256 ^ l.length + beNat l := by
-  induction l generalizing acc with
-  | nil => simp [beNat]
-  | cons x l ih =>
-    simp only [List.foldl_cons, beNat] at *
-    rw [ih, ih (0 * 256 + x.toNat), List.length_cons, pow_succ]
-    ring
+/-! ## Roots -/
 
-theorem beNat_append (a b : List UInt8) : beNat (a ++ b) = beNat a * 256 ^ b.length + beNat b := by
-  rw [beNat, List.foldl_append, foldl_beNat]
+theorem lane_ofLane (w : UInt64) : (K.ofLane w).lane = w := rfl
+
+theorem take_drop_append (l : List UInt8) (s n : ℕ) : (l.drop s).take n ++ l.drop (s + n) = l.drop s := by
+  rw [← List.drop_drop, List.take_append_drop]
+
+theorem split32 (b : List UInt8) (hb : b.length = 32) :
+    (b.drop 0).take 8 ++ (b.drop 8).take 8 ++ (b.drop 16).take 8 ++ (b.drop 24).take 8 = b := by
+  rw [List.take_of_length_le (l := b.drop 24) (by simp; omega), List.append_assoc, List.append_assoc,
+    take_drop_append b 16 8, take_drop_append b 8 8, take_drop_append b 0 8, List.drop_zero]
+
+theorem digestBytes_lanes (b : List UInt8) (hb : b.length = 32) :
+    digestBytes #v[leLane b 0, leLane b 1, leLane b 2, leLane b 3] = b := by
+  have hs : ∀ i, i < 4 → wordBytes (leLane b i) = (b.drop (8 * i)).take 8 := fun i hi => by
+    rw [wordBytes_leLane, map_getD_slice b _ 8 (by omega)]
+  have e : digestBytes #v[leLane b 0, leLane b 1, leLane b 2, leLane b 3] =
+      wordBytes (leLane b 0) ++ wordBytes (leLane b 1) ++ wordBytes (leLane b 2) ++
+        wordBytes (leLane b 3) := by
+    simp [digestBytes]
+  rw [e, hs 0 (by norm_num), hs 1 (by norm_num), hs 2 (by norm_num), hs 3 (by norm_num)]
+  exact split32 b hb
+
+theorem take16_4 (A B C D : List UInt8) (hA : A.length = 8) (hB : B.length = 8) :
+    (A ++ B ++ C ++ D).take 16 = A ++ B := by
+  rw [List.append_assoc, List.append_assoc, ← List.append_assoc A B]
+  exact List.take_left' (by simp [hA, hB])
+
+theorem drop16_4 (A B C D : List UInt8) (hA : A.length = 8) (hB : B.length = 8) :
+    (A ++ B ++ C ++ D).drop 16 = C ++ D := by
+  rw [List.append_assoc, List.append_assoc, ← List.append_assoc A B]
+  exact List.drop_left' (by simp [hA, hB])
+
+/-- **The root two scalars name** has bytes whose two 16-byte halves are those scalars' numbers. -/
+theorem rootOfHalves_bytes {s : E × E} {r : Digest} (h : rootOfHalves s = some r) :
+    W s.1 = beNat ((digestBytes r).take 16) ∧ W s.2 = beNat ((digestBytes r).drop 16) := by
+  unfold rootOfHalves at h
+  split_ifs at h with h0
+  obtain ⟨h1, h2⟩ := h0
+  cases h
+  rw [digestBytes_lanes _ (by simp [length_beBytes8]), take16_4 _ _ _ _ (length_beBytes8 _) (length_beBytes8 _),
+    drop16_4 _ _ _ _ (length_beBytes8 _) (length_beBytes8 _)]
+  have z1 : (s.1.limb 2).lane.toNat = 0 := by rw [h1]; rfl
+  have z2 : (s.2.limb 2).lane.toNat = 0 := by rw [h2]; rfl
+  rw [beNat_append, beNat_append, beNat_beBytes8, beNat_beBytes8, beNat_beBytes8,
+    beNat_beBytes8, length_beBytes8, length_beBytes8, word_eq, word_eq, z1, z2]
+  constructor <;> ring
+
+theorem rootOfHalves_ofLimbs (a b c d : UInt64) :
+    rootOfHalves (E.ofLimbs (K.ofLane a) (K.ofLane b) 0, E.ofLimbs (K.ofLane c) (K.ofLane d) 0) =
+      some #v[leLane (Transcript.beBytes b ++ Transcript.beBytes a ++ Transcript.beBytes d ++
+          Transcript.beBytes c) 0,
+        leLane (Transcript.beBytes b ++ Transcript.beBytes a ++ Transcript.beBytes d ++ Transcript.beBytes c) 1,
+        leLane (Transcript.beBytes b ++ Transcript.beBytes a ++ Transcript.beBytes d ++ Transcript.beBytes c) 2,
+        leLane (Transcript.beBytes b ++ Transcript.beBytes a ++ Transcript.beBytes d ++ Transcript.beBytes c) 3] := by
+  unfold rootOfHalves
+  rw [if_pos ⟨rfl, rfl⟩]
   rfl
 
-theorem beNat_cons (x : UInt8) (l : List UInt8) :
-    beNat (x :: l) = x.toNat * 256 ^ l.length + beNat l := by
-  rw [show x :: l = [x] ++ l from rfl, beNat_append]
-  simp [beNat]
-
-theorem beNat_lt (l : List UInt8) : beNat l < 256 ^ l.length := by
-  induction l with
-  | nil => simp [beNat]
-  | cons x l ih =>
-    rw [beNat_cons, List.length_cons, pow_succ]
-    have hx : x.toNat < 256 := x.toNat_lt
-    nlinarith
-
-theorem beNat_replicate_zero (k : Nat) : beNat (List.replicate k 0) = 0 := by
-  induction k with
-  | zero => rfl
-  | succ k ih => rw [List.replicate_succ, beNat_cons, ih]; simp
-
-theorem beNat_take_div (l : List UInt8) (j : Nat) (hj : j ≤ l.length) :
-    beNat l / 256 ^ (l.length - j) = beNat (l.take j) := by
-  have e := beNat_append (l.take j) (l.drop j)
-  rw [List.take_append_drop, List.length_drop] at e
-  have hlt := beNat_lt (l.drop j)
-  rw [List.length_drop] at hlt
-  rw [e, Nat.add_comm, Nat.add_mul_div_right _ _ (by positivity), Nat.div_eq_of_lt hlt, zero_add]
-
-theorem beNat_snoc_mod (l : List UInt8) (x : UInt8) : beNat (l ++ [x]) % 256 = x.toNat := by
-  rw [beNat_append]
-  simp [beNat, Nat.add_mod, x.toNat_lt]
-
-theorem beBytes_beNat (l : List UInt8) : beBytes l.length (beNat l) = l := by
-  apply List.ext_getElem (by simp [beBytes])
-  intro k h1 h2
-  have hk : k < l.length := by
-    simp only [beBytes, List.length_map, List.length_range] at h1; exact h1
-  simp only [beBytes, List.getElem_map, List.getElem_range]
-  have hpow : 2 ^ (8 * (l.length - 1 - k)) = 256 ^ (l.length - (k + 1)) := by
-    rw [pow_mul, show l.length - 1 - k = l.length - (k + 1) by omega]; norm_num
-  rw [Nat.shiftRight_eq_div_pow, hpow, beNat_take_div l (k + 1) hk,
-    List.take_add_one, List.getElem?_eq_getElem hk, Option.toList_some, beNat_snoc_mod]
-  exact UInt8.toNat.inj (by simp)
-
-theorem beBytes_pad (k : Nat) (l : List UInt8) :
-    beBytes (k + l.length) (beNat l) = List.replicate k 0 ++ l := by
-  have e : beNat l = beNat (List.replicate k 0 ++ l) := by
-    rw [beNat_append, beNat_replicate_zero, zero_mul, zero_add]
-  rw [e, show k + l.length = (List.replicate k 0 ++ l).length by simp, beBytes_beNat]
-
-/-! ## Limbs -/
-
-theorem toNat_bytesLane (l : List UInt8) (hl : l.length = 8) :
-    (bytesLane l).toNat = beNat l.reverse := by
-  match l, hl with
-  | [x0, x1, x2, x3, x4, x5, x6, x7], _ =>
-    have h0 := x0.toNat_lt; have h1 := x1.toNat_lt; have h2 := x2.toNat_lt; have h3 := x3.toNat_lt
-    have h4 := x4.toNat_lt; have h5 := x5.toNat_lt; have h6 := x6.toNat_lt; have h7 := x7.toNat_lt
-    simp only [bytesLane, List.range_succ, List.range_zero, List.nil_append, List.foldr_append,
-      List.foldr_cons, List.foldr_nil, List.getD_eq_getElem?_getD, List.getElem?_cons_zero,
-      List.getElem?_cons_succ, Option.getD_some, List.reverse_cons, List.reverse_nil,
-      List.nil_append, List.cons_append, beNat, List.foldl_cons, List.foldl_nil,
-      UInt64.toNat_ofNat']
-    rw [Nat.mod_eq_of_lt (by omega)]
-    ring
-
-theorem toNat_ofBe64 (l : List UInt8) (hl : 8 ≤ l.length) : (ofBe64 l).toNat = beNat (l.take 8) := by
-  rw [ofBe64, toNat_bytesLane _ (by simp; omega), List.reverse_reverse]
-
-theorem beNat_be64 (w : UInt64) : beNat (be64 w) = w.toNat := by
-  rw [be64, ← toNat_bytesLane _ (wordBytes_len w)]
-  have := bytesLane_wordBytes_append w []
-  rw [List.append_nil] at this
-  rw [this]
-
-theorem length_be64' (w : UInt64) : (be64 w).length = 8 := length_be64 w
-
-/-- A state's low 192 bits, as a number, are its `stateLimbs`. -/
-theorem limbsNat_stateLimbs (st : Bytes32) : limbsNat (stateLimbs st) = beNat st.toList % B192 := by
-  have hl : st.toList.length = 32 := st.length_toList
-  simp only [limbsNat, stateLimbs, wordLimbs, ofLimbs]
-  rw [toNat_ofBe64 _ (by simp only [List.length_drop]; omega),
-    toNat_ofBe64 _ (by simp only [List.length_drop]; omega),
-    toNat_ofBe64 _ (by simp only [List.length_drop]; omega)]
-  generalize st.toList = l at hl ⊢
-  have h24 : (l.drop 24).take 8 = l.drop 24 := List.take_of_length_le (by simp; omega)
-  have e : l = l.take 8 ++ (l.drop 8).take 8 ++ (l.drop 16).take 8 ++ l.drop 24 := by
-    have e1 := List.take_append_drop 8 l
-    have e2 := List.take_append_drop 8 (l.drop 8)
-    have e3 := List.take_append_drop 8 (l.drop 16)
-    rw [List.drop_drop] at e2 e3
-    rw [List.append_assoc, List.append_assoc, e3, e2, e1]
-  rw [h24]
-  conv_rhs => rw [e]
-  have b1 := beNat_lt ((l.drop 8).take 8)
-  have b2 := beNat_lt ((l.drop 16).take 8)
-  have b3 := beNat_lt (l.drop 24)
-  simp only [List.length_take, List.length_drop, hl] at b1 b2 b3
-  norm_num at b1 b2 b3
-  rw [beNat_append, beNat_append, beNat_append]
-  simp only [List.length_take, List.length_drop, hl]
-  norm_num
-  try unfold B192
-  try unfold B64
-  omega
-
-theorem natLimbs_state (st : Bytes32) : natLimbs (beNat st.toList % B192) = stateLimbs st := by
-  rw [← limbsNat_stateLimbs, natLimbs_limbsNat]
-
-/-- The bytes of `F192`'s limbs, `c2, c1, c0`, big-endian: a scalar in calldata. -/
-def scalarBytes (x : Limbs) : List UInt8 := be64 x.2.2 ++ be64 x.2.1 ++ be64 x.1
-
-@[simp] theorem length_scalarBytes (x : Limbs) : (scalarBytes x).length = 24 := by
-  simp [scalarBytes]
-
-theorem beNat_scalarBytes (x : Limbs) : beNat (scalarBytes x) = limbsNat x := by
-  simp only [scalarBytes, beNat_append, beNat_be64, length_be64, limbsNat, ofLimbs]
-  unfold B64
-  ring
-
-theorem scalarWord_eq (x : Limbs) : scalarWord x = List.replicate 8 0 ++ scalarBytes x := by
-  simp [scalarWord, scalarBytes]
-
-/-- A root's bytes in calldata: its halves reversed (`quotient.rs`'s `calldata`: each scalar's
-limbs `c1, c0` big-endian, the limbs the little-endian words of the half). -/
-def rootBytes (r : Bytes32) : List UInt8 := (r.toList.take 16).reverse ++ (r.toList.drop 16).reverse
-
-@[simp] theorem length_rootBytes (r : Bytes32) : (rootBytes r).length = 32 := by
-  have := r.length_toList
-  simp [rootBytes, this]
-
-/-! ## Words of calldata -/
-
-theorem cdWord_window (A B C : List UInt8) (hB : B.length = 32) :
-    cdWord (A ++ B ++ C) A.length = beNat B := by
-  unfold cdWord
+/-- The digest two scalars name, back to the scalars. -/
+theorem rootOfHalves_rootHalves (d : Digest) : rootOfHalves (rootHalves d) = some d := by
+  have hl := length_digestBytes d
+  have hb : (Digest.toBytes d).toList = digestBytes d := rfl
+  have hlb : digestBytes d = lanesBytes d.toList := rfl
+  generalize digestBytes d = b at hl hb hlb
+  have hw : ∀ s, s + 8 ≤ 32 → Transcript.beBytes (beWord b s) = (b.drop s).take 8 := fun s hs => by
+    rw [beBytes8_eq, beWord_slice b s (by omega)]
+    exact beBytes_eq_of_beNat (by simp; omega) rfl
+  have e : rootHalves d = (E.ofLimbs (K.ofLane (beWord b 8)) (K.ofLane (beWord b 0)) 0,
+      E.ofLimbs (K.ofLane (beWord b 24)) (K.ofLane (beWord b 16)) 0) := by
+    simp [rootHalves, halves, hb]
+  rw [e, rootOfHalves_ofLimbs, hw 0 (by norm_num), hw 8 (by norm_num), hw 16 (by norm_num), hw 24 (by norm_num)]
+  have hsplit := split32 b hl
+  rw [hsplit]
   congr 1
-  apply List.ext_getElem (by simp [hB])
-  intro j h1 h2
-  simp only [List.length_map, List.length_range] at h1
-  simp only [List.getElem_map, List.getElem_range, List.getD_eq_getElem?_getD, List.append_assoc]
-  rw [List.getElem?_append_right (by omega), Nat.add_sub_cancel_left,
-    List.getElem?_append_left (by omega), List.getElem?_eq_getElem (by omega)]
+  apply Vector.ext
+  intro i hi
+  rw [hlb]
+  interval_cases i <;> simp only [Vector.getElem_mk, List.getElem_toArray, List.getElem_cons_zero,
+    List.getElem_cons_succ] <;> rw [leLane_lanesBytes _ _ (by simp)] <;> simp
+
+/-! ## The calldata -/
+
+/-- The reduction's proof's scalars that are not roots' halves, in the order of the calldata. -/
+def scalarsOf (p : ReductionProof) : List E :=
+  [p.witness.ood, p.h.ood, p.q.ood, p.g.ood] ++ p.values.toList ++ [p.next, p.qValue, p.gValue]
+
+/-- **`quotient.rs`'s `calldata`**: the selector, the statement, the four roots' bytes, the other
+scalars, the frame's index; `none` for a proof whose roots' halves have a top limb. -/
+def calldata (stmt : Statement) (p : ReductionProof) (frame : UInt8) : Option (List UInt8) := do
+  let rw ← rootOfHalves p.witness.root
+  let rh ← rootOfHalves p.h.root
+  let rq ← rootOfHalves p.q.root
+  let rg ← rootOfHalves p.g.root
+  pure ((bytesOf selector ++ stmt.y.toList ++ stmt.root.toList) ++
+    ([rw, rh, rq, rg].flatMap digestBytes ++ ((scalarsOf p).flatMap elementBytes ++ [frame])))
+
+/-- Keccak-256 as the EVM's `KECCAK256` returns it. -/
+def keccakBytes (l : List UInt8) : Vector UInt8 32 := Digest.toBytes (keccak256 l)
+
+/-- **What the deployed contract reads** on calldata `cd`: the deployed Keccak-256, the circuit's
+commitment `index` in storage (slot 0 the root's bytes, slot 1 the out-of-domain answer's word). -/
+def deployed (index : Commitment) (cd : List UInt8) : Env :=
+  ⟨keccakBytes, digestBytes index.root, W index.ood, cd⟩
+
+/-! ## The chain -/
+
+/-- A transcript step: the Keccak-256 of the state's bytes and of the scalars' words. -/
+def stOf (prev : Digest) (xs : List E) : Digest := keccak256 (digestBytes prev ++ xs.flatMap scalarBytes)
+
+/-- The chain's states. -/
+def states (index : Commitment) (stmt : Statement) (p : ReductionProof) : List Digest :=
+  let s0 := keccak256 (label index stmt)
+  let s1 := stOf s0 [p.witness.root.1, p.witness.root.2, p.witness.ood]
+  let s2 := stOf s1 []
+  let s3 := stOf s2 []
+  let s4 := stOf s3 [p.h.root.1, p.h.root.2, p.h.ood, p.q.root.1, p.q.root.2, p.q.ood, p.g.root.1,
+    p.g.root.2, p.g.ood]
+  let s5 := stOf s4 (p.values.toList ++ [p.next])
+  [s0, s1, s2, s3, s4, s5]
+
+/-- **The Statement's leaves** for a proof: the statement, the challenges of its chain, its values. -/
+def chainVals (index : Commitment) (stmt : Statement) (p : ReductionProof) : Formula.Vals :=
+  let s := states index stmt p
+  ⟨stmt, challengeOf (s.getD 1 default), challengeOf (s.getD 2 default), challengeOf (s.getD 3 default),
+    challengeOf (s.getD 4 default), challengeOf (s.getD 5 default), p.values, p.next, p.qValue, p.gValue⟩
+
+theorem foldl_absorb (c : Chain) (l : List E) :
+    (l.foldl Chain.absorb c) = ⟨c.state, c.pending ++ l⟩ := by
+  induction l generalizing c with
+  | nil => simp
+  | cons x l ih => rw [List.foldl_cons, ih]; simp [Chain.absorb]
+
+/-- **The Statement's reduction** on a proof whose roots name digests: the commitments, and `claimsAt`
+at the chain's challenges. -/
+theorem reduce_eq (index : Commitment) (stmt : Statement) (p : ReductionProof) {rw rh rq rg : Digest}
+    (hw : rootOfHalves p.witness.root = some rw) (hh : rootOfHalves p.h.root = some rh)
+    (hq : rootOfHalves p.q.root = some rq) (hg : rootOfHalves p.g.root = some rg) :
+    reduce 22 index stmt p =
+      (claimsAt 22 stmt (chainVals index stmt p).α (chainVals index stmt p).β (chainVals index stmt p).γ
+        (chainVals index stmt p).t (chainVals index stmt p).ρ p.values p.next p.qValue p.gValue).map
+        fun claims ↦ ⟨⟨⟨rw, p.witness.ood⟩, ⟨rh, p.h.ood⟩, ⟨rq, p.q.ood⟩, ⟨rg, p.g.ood⟩⟩, claims⟩ := by
+  have hs : Supported 22 := by decide
+  simp only [reduce, reduceWith, readCommitment, Chain.startWith, Chain.squeezeWith, Chain.absorb,
+    hw, hh, hq, hg, Option.map_some, if_neg (not_not.mpr hs), foldl_absorb]
   rfl
 
-theorem cdWord_tail (A B : List UInt8) (hB : B.length = 24) :
-    cdWord (A ++ B) A.length = beNat B * 2 ^ 64 := by
-  unfold cdWord
-  have e : (List.range 32).map (fun k => (A ++ B).getD (A.length + k) 0) = B ++ List.replicate 8 0 := by
-    apply List.ext_getElem (by simp [hB])
-    intro j h1 h2
-    simp only [List.length_map, List.length_range] at h1
-    simp only [List.getElem_map, List.getElem_range, List.getD_eq_getElem?_getD]
-    rw [List.getElem?_append_right (by omega), Nat.add_sub_cancel_left]
-    by_cases hj : j < 24
-    · rw [List.getElem_append_left (by omega), List.getElem?_eq_getElem (by omega)]; rfl
-    · rw [List.getElem_append_right (by omega), List.getElem_replicate,
-        List.getElem?_eq_none (by omega)]
-      rfl
-  rw [e, beNat_append, beNat_replicate_zero]
-  simp
+/-! ## Reading the calldata -/
 
-theorem half_beNat (a b : List UInt8) (ha : a.length = 16) (hb : b.length = 16) (k : Nat) :
-    half (beNat (a ++ b)) k = if k % 2 = 0 then beNat a else beNat b := by
-  have hlt := beNat_lt b
-  rw [hb] at hlt
-  rw [half, beNat_append, hb]
-  split_ifs
-  · rw [Nat.shiftRight_eq_div_pow, show (2 : Nat) ^ 128 = 256 ^ 16 by norm_num,
-      Nat.add_comm, Nat.add_mul_div_right _ _ (by positivity), Nat.div_eq_of_lt hlt, zero_add]
-  · rw [show (2 : Nat) ^ 128 = 256 ^ 16 by norm_num, Nat.add_comm, Nat.add_mul_mod_self_right,
-      Nat.mod_eq_of_lt hlt]
+theorem flatMap_chunk {α : Type} (f : α → List UInt8) (k : ℕ) (hf : ∀ a, (f a).length = k) :
+    ∀ (L : List α) (i : ℕ) (hi : i < L.length) (rest : List UInt8),
+      ((L.flatMap f ++ rest).drop (k * i)).take k = f L[i]
+  | [], _, hi, _ => absurd hi (by simp)
+  | a :: L, 0, _, rest => by
+    simp only [List.flatMap_cons, Nat.mul_zero, List.drop_zero, List.getElem_cons_zero, List.append_assoc]
+    exact List.take_left' (hf a)
+  | a :: L, i + 1, hi, rest => by
+    have ih := flatMap_chunk f k hf L i (by simpa using hi) rest
+    rw [List.flatMap_cons, List.append_assoc, show k * (i + 1) = (f a).length + k * i by rw [hf]; ring,
+      List.drop_append, List.drop_eq_nil_of_le (by omega), List.nil_append, Nat.add_sub_cancel_left,
+      List.getElem_cons_succ]
+    exact ih
 
-/-- The calldata of a call of the verifier (`quotient.rs`'s `calldata`): the selector, the
-statement's 64 bytes, the two roots, the five values. -/
-def calldataOf {F : Type} (limbs : F ≃ Limbs) (sb : Vector UInt8 64) (r₁ r₂ : Bytes32) (vs : List F) :
-    List UInt8 :=
-  bytesOf Emitted.selector ++ sb.toList ++ rootBytes r₁ ++ rootBytes r₂ ++
-    vs.flatMap fun x => scalarBytes (limbs x)
+theorem calldata_some {stmt : Statement} {p : ReductionProof} {frame : UInt8} {cd : List UInt8}
+    (h : calldata stmt p frame = some cd) : ∃ rw rh rq rg,
+      rootOfHalves p.witness.root = some rw ∧ rootOfHalves p.h.root = some rh ∧
+      rootOfHalves p.q.root = some rq ∧ rootOfHalves p.g.root = some rg ∧
+      cd = (bytesOf selector ++ stmt.y.toList ++ stmt.root.toList) ++
+        ([rw, rh, rq, rg].flatMap digestBytes ++ ((scalarsOf p).flatMap elementBytes ++ [frame])) := by
+  unfold calldata at h
+  rcases hw : rootOfHalves p.witness.root with _ | rw <;> rw [hw] at h
+  · cases h
+  rcases hh : rootOfHalves p.h.root with _ | rh <;> rw [hh] at h
+  · cases h
+  rcases hq : rootOfHalves p.q.root with _ | rq <;> rw [hq] at h
+  · cases h
+  rcases hg : rootOfHalves p.g.root with _ | rg <;> rw [hg] at h
+  · cases h
+  exact ⟨rw, rh, rq, rg, rfl, rfl, rfl, rfl, (Option.some.inj h).symm⟩
 
 end Implementation

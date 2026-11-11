@@ -331,7 +331,7 @@ once its `NewOK` is decided); `Layout::new` = `Layout.new` is checked by executi
 
 ## The PCS claim, version 1 (`crates/pcs_claim`)
 
-`WhirBridge/PcsClaim.lean`, `PcsBinding.lean`, `PcsBindingRom.lean` (axioms checked in `WhirBridge/Pcs.lean`,
+`WhirBridge/PcsClaim.lean`, `PcsBinding.lean`, `PcsBindingRom.lean`, `PcsBindingCoords.lean` (axioms checked in `WhirBridge/Pcs.lean`,
 imported by `WhirBridge.lean`; namespace `WhirBridge.Pcs`). Nothing above changes: the openings of version 2 and
 their theorems stay as they are; the new files only add.
 
@@ -362,6 +362,9 @@ a claim holds of a stack iff `colEval q p = v`, `colEval q p = Σ_i q_i · eq(p,
 | **`ood_binding_rom`** | `PcsBindingRom.lean` | the lists read off the **final** Keccak-256 answers (the event `pcs_sound` reads), the adversary holding Keccak-256, Keccak-f[1600] and the out-of-domain oracle (`BindSpec`): `Pr[BindBad] ≤ Q · C(L, 2) · n / 2^192 + Q (Q + 1) / 2^256` (mumbai's budgeted potential) |
 | **`pcs_union_sound`** | `PcsUnion.lean` | PCS claims of several sizes (`PcsUnion`: each a shape `15 ≤ n ≤ 28` with its certified `ε`, query count `QO` and list bound) charged once as one family: an adversary of `QA` queries that outputs a size index, a claim of that size and a proof makes `verify_claim` accept while doomed (`PUDoomed`: every candidate of the root's extracted word violates `f(z) = ood` or `f(point) = value`) with probability at most `(QA + QV) · (ε + 5 (QA + QV) / 2^256)` (`roots_sound_map`: `roots_sound` with the seedings read through a map). What `formal/UniKeccakSound` charges its three openings with, at `2^23 ..= 2^28` |
 | `δood_le`, `listHi_v1`, `binding_bound_le` | `PcsBindingRom.lean`, `PcsBinding.lean` | `C(L, 2) · n / 2^192 ≤ 2^-156` at every `15 ≤ n ≤ 28` with the certified lists (`decide +kernel`); `≤ 2^-152` for `L ≤ 2^18`, `n ≤ 32` |
+| **`ood_binding_coords`**, `ood_binding_coords_v1` | `PcsBindingCoords.lean` | **the deployed point**, no out-of-domain oracle: the adversary holds Keccak-256 and Keccak-f[1600] only (`KeccakCalls`), a root's point is read off the Keccak-256 answers at `oodInput n root j`, coordinate `j` the element of the answer's low 24 bytes (`oodPointOf`; on total answers `oodPointWith`, `oodPointOf_total`), the lists off the final answers: `Pr[BindBadC] ≤ Q · δc n + Q (Q + 1) / 2^256`, `δc n = C(L, 2) / 2^192`; at version 1's shapes `≤ Q · 2^-160 + Q (Q + 1) / 2^256` |
+| `aff_colEval`, `pairBad_unique`, `card_badVal`, `card_coordOf_mem` | `PcsBindingCoords.lean` | the step: `f(p)` is affine in each coordinate; for two distinct members whose difference does not vanish on the points consistent with the coordinates asked so far, one more coordinate makes it vanish there for at most one value; at most `C(L, 2)` such values; `2^64` answers give each value |
+| `δc_le`, `δc_27` | `PcsBindingCoords.lean` | `C(L, 2) / 2^192 ≤ 2^-160` at every `15 ≤ n ≤ 28`, `≤ 2^-168` at `n = 27` (certified lists, `decide +kernel`) |
 
 ```lean
 theorem pcs_sound (h1 : minVars ≤ n) (h2 : n ≤ maxVars) (zOf : Digest → Vector E n)
@@ -380,6 +383,14 @@ theorem ood_binding_rom (hw : Whir.Admissible n logInvRate) (oa : OracleComp (Bi
       Q * δood n + ((Q * (Q + 1) : ℕ) : ℝ≥0∞) / 2 ^ 256        -- δood n = C(listMax, 2) · n / 2^192
 
 def BindBad (c) : Prop := ∃ r z, c (.inr r) = some z ∧ ¬ SepAt (rootList (hOf c) r) z
+
+theorem ood_binding_coords (hw : Whir.Admissible n logInvRate) (oa : OracleComp KeccakCalls α)
+    (Q : ℕ) (hQ : IsTotalQueryBound oa Q) :
+    Pr{let z ← (simulateQ KeccakCalls.randomOracle oa).run ∅}[BindBadC n z.2] ≤
+      Q * δc n + ((Q * (Q + 1) : ℕ) : ℝ≥0∞) / 2 ^ 256          -- δc n = C(listMax, 2) / 2^192
+
+def BindBadC (n) (c) : Prop :=
+  ∃ r z, oodPointOf (fun x ↦ c (.inl x)) n r = some z ∧ ¬ SepAt (rootList (fun x ↦ c (.inl x)) r) z
 ```
 
 **The numbers.** `openingBound QA = (QA + 10122)(2^-128 + 5 (QA + 10122)/2^256)` as for version 2 (`10122` bounds
@@ -397,24 +408,35 @@ which omit the fold group's row-union factor (above, "Errors at our sizes"); wit
 `2^-156.3` (`n = 15`) to `2^-164.6` (`n = 28`) per query (`156` bits or more as `Q/ε`; about `2^-92` at
 `Q = 2^64`).
 
+With the point read off Keccak-256 (`ood_binding_coords`) the error is charged per Keccak-256 query, not per
+point: `C(L, 2) / 2^192`, `log₂ n` bits better than `δood`'s per point (`160.2` bits at `n = 15`, `168.7` at
+`n = 27`, `169.4` at `n = 28`; `δc_le` proves `≥ 160` at every `n`, `δc_27` `≥ 168` at `n = 27`). The argument
+(a potential): a cache is good when, for every root and two distinct members of its list, their difference does
+not vanish on all the points consistent with the root's coordinates asked so far. A fresh answer `u` at `x` keeps
+it good unless `u` is a root with a coordinate asked (or `x`'s), or a child digest of an answered input or of `x`
+(then the list could change; else `extract_stable` freezes it: `2 k + 2` answers), or `x` is a coordinate input
+and `u`'s coordinate is one of the at most `C(L, 2)` values at which some pair's difference, affine in that
+coordinate, starts vanishing (`2^64` answers each). The coordinate inputs (46 bytes) are never Merkle inputs.
+
 **How they combine.** An adversary outputs two claims on one commitment `(root, ood)` and two proofs. By
 `pcs_sound` (each opening, `zOf = oodPoint n`), except with probability `openingBound QA` each, neither opening is
-doomed: each has a candidate of the root's list satisfying its two claims. By `ood_binding_rom`, except with
-probability `Q · δood n + Q (Q + 1)/2^256`, the list of every root whose point was asked for, extracted from the
-final answers, is separated at its point. Then `two_openings_one_polynomial`: one candidate satisfies all four
+doomed: each has a candidate of the root's list satisfying its two claims. By `ood_binding_coords`, except with
+probability `Q · δc n + Q (Q + 1)/2^256`, the list of every root whose `n` coordinates were asked, extracted from
+the final answers, is separated at the point they give (`ood_binding_rom`: the same with an out-of-domain oracle,
+`Q · δood n + Q (Q + 1)/2^256`). Then `two_openings_one_polynomial`: one candidate satisfies all four
 claims, so claims on one commitment may be declared and proven separately. The total:
-`2 · openingBound QA + Q · C(L, 2) · n / 2^192 + Q (Q + 1) / 2^256`.
+`2 · openingBound QA + Q · C(L, 2) / 2^192 + Q (Q + 1) / 2^256`.
 
 **What is not formal** (beyond the bridge's [assumptions](#assumptions)):
 
 1. **The two experiments.** `pcs_sound` is in mumbai's two-oracle model with the out-of-domain point a fixed
    function `zOf` of the root (every function: the deployed `oodPoint` computed with mumbai's Keccak-256, as the
-   layout id of version 2 is); `ood_binding_rom` adds an independent out-of-domain oracle. The union bound above
-   adds probabilities from the two models; a single experiment would need `pcs_sound` against an adversary holding
-   the out-of-domain oracle too (eager sampling of that oracle, VCVio's `EagerTable`, for a sum of specifications).
-2. **The out-of-domain point as one oracle answer.** The deployed point is `n` Keccak-256 answers at the inputs
-   `oodInput n root j` (46 bytes, distinct from every Merkle input: nodes are 64 bytes, leaves a multiple of 8),
-   each read in its low 24 bytes (uniform in `E`). The model draws the whole point uniformly in `E^n` per root.
+   layout id of version 2 is); `ood_binding_coords` is in the same two-oracle model but reads the point off the
+   oracle's Keccak-256 answers (`ood_binding_rom` adds an independent out-of-domain oracle). The union bound above
+   adds probabilities from the two theorems; a single experiment would need `pcs_sound` with `zOf` the point read
+   off the oracle's answers (the verifier's `n` extra Keccak-256 queries) rather than a fixed function.
+2. **The out-of-domain point as one oracle answer**: no longer a gap. `ood_binding_coords` reads the deployed
+   point, `n` Keccak-256 answers at the inputs `oodInput n root j`, each in its low 24 bytes.
 3. **The transcription is the Rust** by execution (below), not by proof; `MIN_VARIABLES`, `MAX_VARIABLES`,
    well-formedness (`decode`) are transcribed as the range check and `Claim1 n`'s fixed point length.
 
@@ -439,9 +461,10 @@ another out-of-domain point (so the weight reads `z`): `3 PCS openings; all chec
 * the transcripts: the IV is `keccak256(PCS_claim)` (`claimBytes`), no prefix with a layout id, the version byte
   `1` in place of the layout words' version (`formal/Statement`'s `openingPrefix`, `UniKeccak`'s and `RecStatement`'s
   layout words);
-* the composition: a commitment now carries `ood`; with `two_openings_one_polynomial` and `ood_binding_rom`,
-  claims on one root may be split over openings, and the union over the list (`Gaps` 4, `LargeMargins`) can be
-  replaced by the binding term; the out-of-domain oracle must enter the composed experiment (point 1 above).
+* the composition: a commitment now carries `ood`; with `two_openings_one_polynomial` and `ood_binding_coords`
+  (or `ood_binding_rom`), claims on one root may be split over openings, and the union over the list (`Gaps` 4,
+  `LargeMargins`) can be replaced by the binding term; the point must be the oracle's in the composed experiment
+  (point 1 above).
 
 ## Assumptions
 

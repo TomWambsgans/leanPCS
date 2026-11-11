@@ -1,14 +1,24 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
-import E2ECompleteness.Staging
+import E2ECompleteness.WithHash
+import E2ECompleteness.Chain
+import Common.Lanes
+import LeanVM.Protocol.Compile.Rom.Bridge
+import LeanVM.Protocol.Compile.Rom.Encoding
+import LeanVM.Protocol.Compile.Rom.Prover
+import LeanVM.Protocol.ExperimentBridge
+import LeanVM.Protocol.WithHash
+import LeanVM.Protocol.WithHashBridge
+import PcsQuotient.Security
 
 /-!
-# What the stages hash
+# Hash inputs of a commitment have the expected lengths
 
-Before `α` and between `γ` and `t` the honest run hashes Merkle leaves (a row of `64` words of `K`,
-`512` bytes), Merkle nodes (two digests, `64` bytes) and the label (`112` bytes): never `32` or `96`
-bytes, the lengths of the chain's challenge queries (`Good`). **`hashOK_stageAG`**,
-**`hashOK_stageBG`**: the first and second stages are `HashOK Good` (`Chain.lean`), for any circuit
-and cells, given a setup that is.
+`HashOK` through traversals (`HashOK.mapM`, `HashOK.arrayMapM`), the lengths of the leaves' bytes
+(`length_flatMap_kBytes`, `length_stackWordFast`), and a commitment's hashes are all good
+(`hashOK_buildTree`, `hashOK_commitWithH`).
+
+Pruned to what the leanVM line uses (`formal/Uni*`, `formal/Rec*`); the previous membership protocol's declarations
+that were here are in the git history.
 -/
 
 open OracleComp OracleSpec
@@ -76,30 +86,5 @@ theorem length_stackWordFast (μ R : ℕ) (stack : Array K) (p : ℕ) :
 theorem hashOK_commitWithH (μ : ℕ) (stack : Array K) :
     HashOK Good (commitWithH callKeccak256 μ stack) :=
   hashOK_buildTree _ _ (length_stackWordFast μ 1 stack)
-
-theorem hashOK_setupWithH : HashOK Good (setupWithH callKeccak256) :=
-  HashOK.bind (hashOK_commitWithH _ _) fun _ ↦ HashOK.pure _ _
-
-theorem length_label (ir : Digest) (stmt : Statement) : (label ir stmt).length = 112 := by
-  simp only [label, List.length_append, length_digestBytes, Vector.length_toList]
-  have h16 : "pcs-quotient-kc1".toUTF8.toList.length = 16 := by decide +kernel
-  omega
-
-/-- **The first stage hashes nothing of the chain's lengths.** -/
-theorem hashOK_stageAG (setup : OracleComp KeccakCalls Digest) (hs : HashOK Good setup)
-    (circuit : Circuit) (cells : Array K) (masks : Masks) (witnessPad : Padding)
-    (stmt : Statement) :
-    HashOK Good (stageAG setup circuit cells masks witnessPad stmt) := by
-  unfold stageAG
-  refine HashOK.bind hs fun _ ↦ HashOK.bind (hashOK_commitWithH _ _) fun indexTree ↦
-    HashOK.bind (hashOK_commitWithH _ _) fun _ ↦ HashOK.bind ?_ fun _ ↦ HashOK.pure _ _
-  exact hashOK_callKeccak256 (good_of_length (Or.inr (Or.inr (length_label _ _))))
-
-/-- **The second stage hashes nothing of the chain's lengths.** -/
-theorem hashOK_stageBG (circuit : Circuit) (cells : Array K) (quotientPad : Padding) (a : AuxA)
-    (s₁ s₂ s₃ : Digest) :
-    HashOK Good (stageBG circuit cells quotientPad a s₁ s₂ s₃) := by
-  unfold stageBG
-  exact HashOK.bind (hashOK_commitWithH _ _) fun _ ↦ HashOK.pure _ _
 
 end E2ECompleteness

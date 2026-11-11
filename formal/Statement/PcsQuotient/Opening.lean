@@ -1,4 +1,7 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
+-- The previous protocol's opening (version 2, layouts), kept for the leanVM line, whose PIOPs open their tables
+-- with it (`formal/UniStatement`, `formal/UniKeccak`, ...); the membership verifier opens PCS claims instead
+-- (`PcsOpening.lean`). It also holds the constants both use (`laneFold`, `logInvRate`, `zeroDigest`).
 -- Transcribed from `crates/membership/quotient/src/opening.rs` (`Layout`, `Layout::new`, `Layout::hidden`, `scales`,
 -- `seed`, `verify`) and `crates/membership/quotient/src/protocol.rs` (`witness_layout`, `wiring_layout`,
 -- `quotient_layout`, `quotient_chunks`); the hidden layout is `docs/membership/HIDING.md`'s. The WHIR verifier
@@ -10,7 +13,10 @@ public import PcsQuotient.Reduction
 public import Statement.LeanVmVerifier
 
 /-!
-# The openings: leanVM's WHIR, unchanged
+# Layouts: the previous opening (version 2), kept for the leanVM line
+
+**Not the membership verifier's opening** (that is `PcsOpening.lean`'s PCS claim, version 1): the layout-based
+opening of the protocol before the EIP's PCS claims, which the leanVM line's PIOPs still use.
 
 A claim is on a **table**, a multilinear in `vars` variables over `K` that vanishes outside some
 blocks of `2^ℓ` entries, `ℓ = logN − 6`; the table is committed as a **stack** of at most `64` lanes of
