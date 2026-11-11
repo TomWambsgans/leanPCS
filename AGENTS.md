@@ -105,9 +105,9 @@ transaction gas without the 21,000 base (EIP-7623) and without the frame's per-f
 | Prover | **1.01 s** (reduction 0.66 s, openings 0.34 s), 6.0 GiB | **2.29 s** trace → π1-rec4 → π2 and openings (π1-rec4 0.86 s, its openings 0.18 s, π2 0.74 s, π2's four openings 0.51 s), 15.6 GB |
 | The EIP's prover column (+ 0.1 s a claim) | 1.3 s | 3.0 s |
 | Calldata | 273 B | **577 B** (4 zero) |
-| Gas without the frame | 15,753 execution; the PIOP's frame alone 20,097 (its standard binding) | 31,212 execution; standard 40,396 (the EIP's PIOP column), floor 36,928 |
+| Gas without the frame | 15,753 execution; the PIOP's frame alone 20,085 (its standard binding) | 31,212 execution; standard 40,396 (the EIP's PIOP column), floor 36,928 |
 | Claims | 3 | 7 (π1's 3, π2's 4) |
-| With the frame (1 + 32 B a claim) and the PCS gas | **31,680** (97 B, 8,000; floor-bound: 64 · (273 + 97) + 8,000; standard 29,649) | **63,328** (225 B, `pcs_gas` 12,000 on both sides; the floor binds, standard 55,996) |
+| With the frame (1 + 32 B a claim) and the PCS gas | **31,680** (97 B, 8,000; floor-bound: 64 · (273 + 97) + 8,000; standard 29,625) | **63,328** (225 B, `pcs_gas` 12,000 on both sides; the floor binds, standard 55,996) |
 | Deployment | 4,866 B of code, 1,149,640 gas | one contract, 14.3 KB |
 
 - Membership verifier: reduction < 1 ms, openings 6 ms (278 / 276 / 336 KiB: the witness's, the circuit's and `T`'s;

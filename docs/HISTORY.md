@@ -18,7 +18,7 @@ Gas is without the 21,000 base; "frame transaction" is EIP-8141 under EIP-7976's
 | calldata | 253 B | 461 B (selector `0xde12c640`) | 301 B | 273 B (no selector) |
 | frame of PCS claims | | 193 B | 129 B | 97 B |
 | execution | 14,831 | 18,899 | 16,414 | 15,753 |
-| standard price | | 40,315 | 32,270 | 29,649 |
+| standard price | | 40,315 | 32,270 | 29,625 (29,649 before the slack words: the measured proof's zero bytes) |
 | transaction (EIP-8141, `pcs_gas` in the floor) | 30,400 (with `PCS_OPEN`) | 52,856 (`64 · (461 + 193) + 11,000`) | 36,520 | 31,680 |
 | code / deployment | | 6,667 B / 1,536,984 gas | 5,304 B / 1,242,838 gas | 4,866 B / 1,149,640 gas |
 | prover | 1.7–2.2 s (M4 Max) | 2.8 s M4 Max (reduction 1.71, openings 1.08), 8.6 GiB; 2.29 s on 8 threads (1.49, 0.79); 0.91 s on 64 | 1.23 s on 8 threads (0.60, 0.62), 6.0 GiB; 0.63 s on 64 | 1.01 s on 8 threads |

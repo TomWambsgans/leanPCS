@@ -167,43 +167,53 @@ public wiring's value). The claims' values add nothing: the witness claim's is a
 values, the wiring's is `next`, the copy claim's a function of the row values, `next`, the challenges and the
 statement.
 
-**The randomness**: the 16 random rows (32 words, `Randomness::rows`) and the blinding `b_0, b_1` (6 words,
-`Randomness::blind`); `b_2` is solved by a linear condition, hence affine in `b_0, b_1` (the witness fixed). There
-are no masks: `w` keeps degree `< n`, which the quotient's degree needs.
+**The randomness**: the 16 random rows (32 words, `Randomness::rows`), the blinding `b_0, b_1` of `h` (6 words,
+`Randomness::blind`; `b_2` is solved by a linear condition, hence affine in `b_0, b_1`, the witness fixed), and the
+quotient table's four **slack words** (`Randomness::slack`, `SLACK_WORDS`). There are no masks: `w` keeps degree
+`< n`, which the quotient's degree needs.
 
-**The argument.** Fix the challenges. Each group is affine in its randomness once the one before is fixed:
+**The slack words.** A coefficient of a table polynomial is held as four `K`-limbs read `l_0 + Y l_1 + Y^2 l_2 +
+Y^3 l_3`, and `Y^3 = Y + 1`, so the limbs `(s, s, 0, s)` read zero. The prover adds `(s_k, s_k, 0, s_k)` to `q`'s
+coefficients `0, 1, 2, 4` (digit 0, `SLACK_AT`): no polynomial of `T` moves, so no claim does, and the verifier sees
+nothing new; `T`'s out-of-domain answer moves by `Σ_k s_k c_k`, the weights `c_k = c · (1, u_0, u_1, u_2)` (`u_j =
+z_j / (1 + z_j)` for the point's coordinates `z_j`, `c` the weight of coefficient 0's limbs `0, 1, 3`) functions of
+the out-of-domain point **alone**. Limb 3 was zero before; the table's commitment encodes one more lane.
 
-1. `X`, `C`, `V + Y` and `W`'s answer are `K`-linear in the cells, hence affine in the 32 random-row words, rank 12
-   (all their `K`-coordinates);
-2. `T`'s answer is affine in the 6 free blinding words: the blinding enters `x h`'s digit 1 directly and `q` through
-   `b d d'`, and `μ g` does not depend on it. Rank 3.
+**The argument.** Fix the challenges (the out-of-domain points among them).
 
-So the revealed scalars are uniform at the challenges where both ranks are full. Group 1's rank falls short only
-where a determinant of the challenges vanishes: probability at most its degree over `2^192` (not written out). Group
-2's does not depend on the challenges alone: the blinding reaches `q` through `(b_0 + b_1 X_1 + b_2 X_2) d d'` and
-`b_2 = q_n / γ`, both functions of `w`, hence of the random rows `R`, so its `K`-linear map `L_R` (6 words to `T`'s
-answer, 3 `K`-coordinates) is rank-deficient on the zero set of its `3 × 3` minors in `R`, which over `K` is
-nonempty in general. The revealed scalars are therefore uniform only up to a statistical distance `δr`, about
-`2 Pr_R[rank L_R < 3 or γ = 0] ≲ 28 / 2^64 ≈ 2^-59` per proof (the minors' degree in `R` over `|K|`; reasoned, not
-proved): the formal statement (`formal/Statement/PcsQuotient/Zk.lean`, `RevealedUniform εr δr`) carries it, and it
-dominates the zero-knowledge error. Blinding words drawn in `E` (or a rank-3 path of `b` independent of `R`) would
-bring it to about `deg / 2^192`. The
-**simulator** samples the out-of-domain answers and the row values uniformly, computes the claims' values, and
+1. `X`, `C`, `V + Y` and `W`'s answer are `K`-linear in the cells, hence affine in the 32 random-row words with a
+   linear part fixed by the challenges: uniform when that map has rank 12 (all their `K`-coordinates).
+2. `T`'s answer, the random rows and the blinding fixed, is affine in the four slack words with weights that do not
+   depend on them: uniform, and independent of group 1, when the `c_k` span `E` over `K`. That fails only if `c = 0`
+   or `1, u_0, u_1, u_2` lie in a plane over `K`: for `u_0 ∉ K` both `u_1` and `u_2` in `K + K u_0`, probability
+   `(2^128 / 2^192)^2 = 2^-128`, and `u_0 ∈ K` with probability `2^-128`: at most about `2^-127` over the point.
+
+So at the challenges where both conditions hold the revealed scalars are exactly uniform (`δr = 0` in
+`formal/Statement/PcsQuotient/Zk.lean`'s `RevealedUniform εr δr`), and `εr` is the probability of the challenges where
+one fails: about `2^-127` for group 2, and for group 1 the probability that the 32 words' weights fail to reach rank
+12 (reasoned to be negligible, the map having 20 more columns than its rank; not written out). **Why the slack
+words**: without them group 2 rested on the blinding, whose map to `T`'s answer depends on the random rows (through
+`(b_0 + b_1 X_1 + b_2 X_2) d d'` and `b_2 = q_n / γ`), so its rank could fall short on a set of random rows, and a
+rank condition over `K` on three weights in `E` alone fails with probability about `1 / |K|` (three random elements of
+`E` are dependent over `K` with probability about `2^-64`); four weights with a common factor make it `2^-127`.
+
+The **simulator** samples the out-of-domain answers and the row values uniformly, computes the claims' values, and
 simulates the openings with the ZK-PCS simulator.
 
 **Tested**: `hiding::revealed_scalars_are_uniform` fixes the challenges and the out-of-domain points (test hooks in
 `transcript.rs`, `opening.rs`), changes one randomness word at a time on the toy circuit (`2^17` rows), and checks
-both ranks (12, 3) over `K` and that both maps are additive and `K`-linear. `revealed_scalars_are_uniform_on_membership`
-does the same at `2^22` rows (ignored by default, about 50 s on 64 threads:
+both ranks over `K` (12 over the random rows, 3 over the slack words), that both maps are additive and `K`-linear, and
+that both are the same at a second randomness (other random rows, blinding and slack).
+`revealed_scalars_are_uniform_on_membership` does the same at `2^22` rows (ignored by default:
 `cargo test --release -p quotient --lib hiding -- --ignored`).
 
 **The roots** hide in the random-oracle model while each table keeps min-entropy given what is revealed: `W` 2,048
-bits of random rows against 12 `K`-coordinates (768 bits), `T` 384 bits of blinding against 192. With salted leaves
-(a ZK-WHIR) the roots hide regardless.
+bits of random rows against 12 `K`-coordinates (768 bits), `T` 640 bits of blinding and slack against 192. With
+salted leaves (a ZK-WHIR) the roots hide regardless.
 
 **Not covered**: the openings (above); a pre-proof phase and several proofs (single-proof ZK). Deployed randomness
-is a Keccak-256 KDF (`Randomness::derive`: the random rows' words, then the blinding), so zero knowledge is
-computational.
+is a Keccak-256 KDF (`Randomness::derive`: the random rows' words, the blinding, then the slack words), so zero
+knowledge is computational.
 
 ## Where the gas goes
 
@@ -220,12 +230,14 @@ commitment in calldata (root and answer, 56 B) 3,584, a revealed element of `E` 
 | **transaction gas** | **31,680** |
 | calldata / frame of PCS claims | 273 B / 97 B |
 | execution (does not bind) | 15,753 (343 `FIELD_MUL`s; two cold `SLOAD`s) |
-| standard price (does not bind) | 29,649 |
+| standard price (does not bind) | 29,625 |
 | contract code / deployment | 4,866 B / 1,149,640 gas |
 
 `cargo test --release -p evm -- --ignored --nocapture --exact quotient::tests::gas_report`. The standard price stays
-2,031 gas under the floor. In the EIP draft's table: 273 bytes, PIOP 20,097 gas (the PIOP frame's
-`max(standard, floor)`: standard `16 · 271 + 4 · 2 + 15,753 = 20,097` binds, floor `64 · 273 = 17,472`), 3 claims.
+2,055 gas under the floor. In the EIP draft's table: 273 bytes, PIOP 20,085 gas (the PIOP frame's
+`max(standard, floor)`: standard `16 · 270 + 4 · 3 + 15,753 = 20,085` binds, floor `64 · 273 = 17,472`), 3 claims. The
+standard price moves with the zero bytes of the measured proof (its scalars are random): 20,097 before the slack
+words, with two zero bytes.
 
 **The ABI** (`evm/src/quotient.rs`): `(bytes32 y, bytes32 root, bytes proof)` packed, no selector, then the frame's
 index: exactly 273 bytes (`y`, `root`, the two roots, six 24-byte scalars, the index byte). The contract checks that
