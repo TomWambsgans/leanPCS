@@ -16,9 +16,10 @@
 //!
 //!   cargo test --release -p quotient --test whir_large_params -- --nocapture
 //!   cargo test --release -p quotient --test whir_large_params -- --ignored --nocapture large_public_openings
+//!   (cd formal/EndToEnd && lake env lean --run ../WhirBridge/Test/CheckPcs.lean ../../target/whir_large_vector.txt)
 
 use pcs::whir_config::WhirSecurityConfig;
-use pcs_claim::lean::bridge_vector;
+use pcs_claim::lean::pcs_vector;
 use pcs_claim::{Codeword, commit, open};
 use primitives::field::{F64, F192};
 use primitives::test_rng::Rng;
@@ -162,7 +163,7 @@ fn whir_large_params_match_lean() {
 
 /// Openings at `2^24 ..= 2^MAX` words (`WHIR_LARGE_MAX`, default 26; the prover's memory grows with the table): the
 /// prover's opening of one claim verifies and a changed value is rejected; each opening is written
-/// (`target/whir_large_vector.txt`, or `$WHIR_LARGE_VECTOR`) for `formal/WhirBridge/Test/CheckLarge.lean`.
+/// (`target/whir_large_vector.txt`, or `$WHIR_LARGE_VECTOR`) for `formal/WhirBridge/Test/CheckPcs.lean`.
 #[test]
 #[ignore = "heavy: commits and opens tables of 2^24 words and more"]
 fn large_public_openings() {
@@ -189,8 +190,8 @@ fn large_public_openings() {
         let mut bad = claim.clone();
         bad.value += F192::ONE;
         assert!(!pcs_claim::verify(&bad.encode(), &pcs_claim::wire_proof(&proof)), "n = {n}: a wrong value");
-        // `formal/WhirBridge/Test/CheckLarge.lean`'s vector.
-        out += &bridge_vector(&format!("public{n}"), &claim, &proof);
+        // `formal/WhirBridge/Test/CheckPcs.lean`'s vector.
+        out += &pcs_vector(&format!("public{n}"), &claim, &proof);
         println!(
             "n = {n}: committed and opened in {:.1} s, verified in {:.1} ms; a wrong value rejected",
             proved.as_secs_f64(),
