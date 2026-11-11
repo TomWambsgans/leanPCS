@@ -21,6 +21,8 @@
 // Added here, every codeword unchanged: the two-sweep encodes of a lane-major message given block by block
 // (`encode_two_sweep_blocks_with`, `encoded_rows_two_sweep_blocks`; the message's `Source`), for a commitment that
 // skips its all-zero lanes.
+// Changed here, every codeword unchanged: `transpose_tile` asserts its tile's length (it checked it only with a
+// `debug_assert`, and `transpose_8x8`'s unchecked stores rely on it), once a tile.
 //! Additive NTT over GF(2^64) in the Lin-Chung-Han novel polynomial basis.
 //!
 //! It is the Reed-Solomon encoder of every WHIR commitment over K = F_{2^64}.
@@ -1297,7 +1299,8 @@ impl AdditiveNttF64 {
 /// in L1.
 fn transpose_tile<'a>(buf: &mut [F64], n_lanes: usize, rows: usize, lane: impl Fn(usize) -> &'a [F64]) {
     const CHUNK: usize = 64;
-    debug_assert_eq!(buf.len(), n_lanes * rows);
+    // Once a tile: with the runs sliced to `rows` words, it bounds `transpose_8x8`'s loads and stores.
+    assert_eq!(buf.len(), n_lanes * rows);
     // On AVX-512, eight lanes by eight rows at a time, transposed in registers; the lanes past the last eight
     // below.
     #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
@@ -1334,7 +1337,9 @@ fn transpose_tile<'a>(buf: &mut [F64], n_lanes: usize, rows: usize, lane: impl F
 ///
 /// # Safety
 ///
-/// The cfg enables avx512f, every run holds the eight words, and `out` the eight rows.
+/// The cfg enables avx512f, every run holds the eight words, and `out` the eight rows. Its one caller,
+/// `transpose_tile`, has both from its asserted tile (`n_lanes · rows` words, `rows` a multiple of 8, `x0 + 8 ≤ rows`)
+/// and its runs of `rows` words: the bounds are checked there once a tile, in debug builds here too.
 #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
 #[inline(always)]
 unsafe fn transpose_8x8(runs: &[&[F64]; 8], x0: usize, out: &mut [F64], stride: usize) {

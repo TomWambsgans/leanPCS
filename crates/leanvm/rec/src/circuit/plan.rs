@@ -134,8 +134,14 @@ impl Template {
         for op in &self.ops {
             let poly = &polys[op.poly as usize];
             let cell = |c: u8| self.contents[op.row as usize * w + c as usize];
-            let mut header = op.kappa as u32 | (poly.linear.len() as u32) << 8;
             let factors = factor(&poly.quadratic);
+            // Each count in its byte of the header.
+            let counts = match &factors {
+                Some((s, t)) => [poly.linear.len(), s.len(), t.len()],
+                None => [poly.linear.len(), poly.quadratic.len(), 0],
+            };
+            assert!(counts.iter().all(|&c| c <= 0xff), "a row formula of at most 255 terms a part");
+            let mut header = op.kappa as u32 | (poly.linear.len() as u32) << 8;
             match &factors {
                 Some((s, t)) => header |= PRODUCT_OF_SUMS | (s.len() as u32) << 16 | (t.len() as u32) << 24,
                 None => header |= (poly.quadratic.len() as u32) << 16,
@@ -837,5 +843,39 @@ impl WitnessPlan {
     /// The witness and the public inputs on `inputs`, as [`super::compile::pi2`]'s.
     pub fn witness(&self, inputs: &Inputs) -> (Witness, PublicInputs) {
         self.witness_with(inputs, |k| k)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A compiled op's counts fit their bytes of its header: 255 linear terms compile and run, 256 are refused
+    /// (rather than spill into the next count).
+    #[test]
+    fn compile_refuses_counts_past_a_byte() {
+        let w = 256;
+        let template = Template {
+            rows: 1,
+            leaves: 256,
+            ops: vec![BitOp {
+                row: 0,
+                poly: 0,
+                kappa: 1,
+            }],
+            contents: (0..256).collect(),
+            code: Vec::new(),
+        };
+        let poly = |terms: usize| BitPoly {
+            linear: (0..terms).map(|c| c as u8).collect(),
+            quadratic: Vec::new(),
+        };
+        let mut fits = template.clone();
+        fits.compile(&[poly(255)], w);
+        let leaves: Vec<u64> = (0..256u64).map(|i| i.wrapping_mul(0x9E37_79B9_7F4A_7C15)).collect();
+        let want = !leaves[..255].iter().fold(0, |a, &x| a ^ x);
+        assert_eq!(fits.run(leaves)[256], want);
+        let wide = std::panic::catch_unwind(|| template.clone().compile(&[poly(256)], w));
+        assert!(wide.is_err());
     }
 }

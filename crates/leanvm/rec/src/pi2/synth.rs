@@ -427,11 +427,11 @@ pub fn d16v_types() -> Vec<RowType> {
         roles: free,
     });
     types.extend(e_units(16));
-    // Constants.
+    // Constants (the product wraps at `k = 15`, as it always did in release builds: the same values).
     types.push(RowType {
         name: "Const".into(),
         roles: (0..16)
-            .map(|k| Role::Const(0x1000_0000_0000_0001 * (k as u64 + 1)))
+            .map(|k| Role::Const(0x1000_0000_0000_0001u64.wrapping_mul(k as u64 + 1)))
             .collect(),
     });
     types.extend(sinks(16));

@@ -10,6 +10,9 @@
 // defaults are the unchanged buffered transposes; the AVX-512 backend transposes eight inputs' words in registers
 // instead (`x86::transpose_8x8`), so that no vector load waits on the scalar stores it reads (512-byte inputs:
 // 29.4 ns an input-permutation before, 25.7 after; 64-byte ones 28.6 and 23.4). The digests are unchanged.
+// Also changed here (a soundness fix of unsafe code, to report upstream): `hash_many_from_state` checked
+// `data.len() == n * len` with a product that wraps in release, so a huge `len` passed it and the scalar backend read
+// past `data`; the product is now checked (`checked_mul`). The digests are unchanged.
 //! Keccak-256, the repo's one hash function: Ethereum's, which is the 256-bit hash of FIPS
 //! 202 with Keccak's original padding.
 //!
@@ -859,7 +862,7 @@ pub fn hash_many(data: &[u8], len: usize, out: &mut [u8]) {
 pub fn hash_many_from_state(data: &[u8], len: usize, state: &[u64; STATE_LANES], out: &mut [u8]) {
     let n = out.len() / OUT_LEN;
     assert_eq!(out.len(), n * OUT_LEN);
-    assert_eq!(data.len(), n * len);
+    assert_eq!(n.checked_mul(len), Some(data.len()), "`len`-byte inputs, one a digest");
     // SAFETY: the asserts pin the buffer sizes, and the backend is gated on the features its intrinsics need.
     #[cfg(not(target_arch = "aarch64"))]
     unsafe {
@@ -934,6 +937,18 @@ mod tests {
 
     fn pattern(n: usize) -> Vec<u8> {
         (0..n).map(|i| ((i * 7 + 3) & 0xff) as u8).collect()
+    }
+
+    /// [Added here.] The batched hash refuses inputs whose total length wraps (`n · len` modulo `2^64` equal to
+    /// `data.len()`), rather than read past `data`.
+    #[test]
+    fn hash_many_refuses_a_wrapping_length() {
+        for (n, len) in [(4usize, 1usize << 62), (2, 1 << 63), (3, usize::MAX / 3 + 1)] {
+            let data = vec![7u8; n.wrapping_mul(len)];
+            let mut out = vec![0u8; n * OUT_LEN];
+            let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| hash_many(&data, len, &mut out)));
+            assert!(r.is_err(), "{n} inputs of {len} bytes from {} bytes", data.len());
+        }
     }
 
     /// A known answer from OpenSSL's `keccak-256`.

@@ -268,6 +268,15 @@ pub fn values<M: Module>(data: &mut [M], offset: F64) {
     transform(data, offset, true);
 }
 
+/// [`values`] on at most one worker's block (`LEAF` entries), by the calling thread alone (no dispatch to the pool,
+/// so callable from a pool task): its leaves' layers, as [`values`] runs them on one block, so the same values.
+pub fn values_small<M: Module>(data: &mut [M], offset: F64) {
+    let m = data.len().trailing_zeros() as usize;
+    assert!(data.len().is_power_of_two() && data.len() <= LEAF);
+    let order: Vec<usize> = (0..m).rev().collect();
+    layers(data, 0, &chain(offset, m), &order, true);
+}
+
 /// Values at `offset + B(i)` to coefficients.
 pub fn coefficients<M: Module>(data: &mut [M], offset: F64) {
     transform(data, offset, false);

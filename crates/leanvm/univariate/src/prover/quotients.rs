@@ -12,6 +12,7 @@
 use std::any::Any;
 use std::marker::PhantomData;
 use std::ops::Range;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use leanvm_statement::layout::{OP_JUMP, OP_SHA3, keccak_slot, keccak_slot_offset, tables};
@@ -446,6 +447,17 @@ enum Job {
     Done,
 }
 
+/// Sets its flag if dropped by a panic's unwinding: a [`prefix_quotients`] task that panics stops the others.
+struct AbortOnPanic<'a>(&'a AtomicBool);
+
+impl Drop for AbortOnPanic<'_> {
+    fn drop(&mut self) {
+        if std::thread::panicking() {
+            self.0.store(true, Ordering::Release);
+        }
+    }
+}
+
 /// Several quotients, as [`prefix_quotient`] makes each, every stage's tasks for all of them in one dispatch: the
 /// columns' batches packed; then in one dispatch, the pieces' transforms (each a batch, or a column, on a piece by one
 /// worker) and their values (a piece's as soon as its transforms are done, at most `LIVE_BYTES` of transforms held);
@@ -581,8 +593,14 @@ pub fn prefix_quotients(jobs: &[&dyn Numerator]) -> Vec<Quotient> {
             free: Vec::new(),
         });
         let total_fills = fills.len();
+        // Set when a task panics: its counters are never updated, so the others would wait for it forever; they stop
+        // instead, and the pool re-raises the panic.
+        let aborted = AtomicBool::new(false);
         // The next task: a ready fill first, else the next transform if its piece's buffers fit (or nothing is live).
         let next = |s: &mut Schedule| -> Job {
+            if aborted.load(Ordering::Acquire) {
+                return Job::Done;
+            }
             if let Some(f) = s.ready.pop_front() {
                 return Job::Fill(f);
             }
@@ -619,6 +637,7 @@ pub fn prefix_quotients(jobs: &[&dyn Numerator]) -> Vec<Quotient> {
         };
         let lock = || schedule.lock().expect("the schedule");
         parallel::for_each(parallel::num_threads(), |_| {
+            let _abort = AbortOnPanic(&aborted);
             let mut job = next(&mut lock());
             loop {
                 match job {
@@ -1327,6 +1346,39 @@ mod tests {
                 values_rows(&mut got, omega(first));
                 assert!(got == want, "2^{m} rows at {first}");
             }
+        }
+    }
+
+    /// A task of [`prefix_quotients`] that panics (in a piece's data, or in a fill) makes the call panic, rather than
+    /// leave the other workers waiting for it forever.
+    #[test]
+    fn a_panicking_task_panics_the_call() {
+        // 3,000 points from `2^12` on: blocks of `2^11` and `2^10` points, so pieces at 4096, 5120 and 6144 (the
+        // panicking one the second), each of 128 runs, and the check's block.
+        let r = 10;
+        let columns: Vec<Vec<F64>> = (0..2).map(|c| (0..1u64 << r).map(|i| F64(i ^ c)).collect()).collect();
+        for (bad_piece, bad_fill) in [(true, false), (false, true)] {
+            let columns = columns.clone();
+            let (tx, rx) = std::sync::mpsc::channel();
+            std::thread::spawn(move || {
+                let numerator = Prefix::new(
+                    r,
+                    3000,
+                    columns.iter().map(|c| &c[..]).collect(),
+                    move |first, _| assert!(!(bad_piece && first == 5 << 10), "an injected panic in a piece's data"),
+                    move |_: &(), _: &Points, j| {
+                        assert!(!(bad_fill && j == 5), "an injected panic in a fill");
+                        Ex8::splat(F192::ZERO)
+                    },
+                );
+                let jobs: [&dyn Numerator; 1] = [&numerator];
+                let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| prefix_quotients(&jobs)));
+                tx.send(outcome.is_err()).expect("the test waits");
+            });
+            // Under Miri (whose clock runs with the interpreted code, slowly) the test waits for good, else it fails.
+            let wait = std::time::Duration::from_secs(if cfg!(miri) { u32::MAX as u64 } else { 120 });
+            let panicked = rx.recv_timeout(wait).expect("prefix_quotients returned or panicked rather than hung");
+            assert!(panicked, "the injected panic (piece {bad_piece}, fill {bad_fill}) reached the caller");
         }
     }
 }
