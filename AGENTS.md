@@ -13,9 +13,9 @@ in [`docs/README.md`](docs/README.md); superseded protocols and figures, in [`do
   circuit, the copy sum forced by `Q`'s layout). Each change was reviewed adversarially (soundness, zero knowledge, the contract against the verifier, the
   prover's unsafe code and determinism) before it was merged. The provers' speedups
   ([`docs/PERF_PROVER.md`](docs/PERF_PROVER.md)) change no proof.
-- **The Lean lags the Rust.** `formal/` proves the protocols of commit `f96a7938` (membership: six claims on four
-  commitments; π2 over π1-rec3, its three claims encoded by the contract). What the port needs:
-  [`docs/LEAN_PORT.md`](docs/LEAN_PORT.md). Until then, do not regenerate the Lean-facing files (below).
+- **The Lean.** `formal/` states the deployed recursion (π2v4 over π1-rec4) and membership at commit `f96a7938` (six
+  claims on four commitments). What the port still needs: [`docs/LEAN_PORT.md`](docs/LEAN_PORT.md). Until the
+  membership's port, do not regenerate its Lean-facing files (below).
 
 ## What the implementation adds to the design note
 
@@ -137,8 +137,12 @@ transaction gas without the 21,000 base (EIP-7623) and without the frame's per-f
   `pi2Bound ≤ 2^-64` at 2^64 queries, 128.93 bits, plus π1-rec4's break at Keccak-f[1600], the merge hazard and a
   Keccak-256 collision for three explicit adversaries), its hypotheses the evaluated checks (`GraphsAgreeK4`,
   `DigestChecked`, `SetupRootChecked`, `IvChecked`, evaluated at the reference setup commitment, not proved). The
-  recursion's completeness at π2v4: π2's Lean prover agrees with the Rust's (3/3 vectors) and the contract accepts its
-  proof off three bad events (`pi2_accepts`); its error δ2 and π1-rec4's completeness are not yet proved
+  recursion's completeness: π1-rec4's completeness (`uniCompletenessKeccakRec4_closed`, < 2^-169); π1-rec4's Lean
+  prover in the recursion (`RecCompose.Pi1K.pi1Rec4ProverK`, its Fiat–Shamir over Keccak-f[1600]) with the four facts
+  π2's completeness takes of it (`pi1ProverFactsK4`) and the random-permutation reading of the premise
+  `Pi1CompletenessKeccak` (`pi1CompletenessFs4_rpm`); π2's Lean prover agrees with the Rust's (3/3 vectors) and the
+  contract accepts its proof at the real deployment off three bad events (`Pi2E.pi2_accepts_real`). π2's error δ2,
+  hence the completeness end theorem (`RecCompose/CompleteReal.lean`, written), is not yet proved
   ([`docs/LEAN_PORT.md`](docs/LEAN_PORT.md)).
 - **Argued and tested (current code)**: the current membership protocol's soundness and zero knowledge
   ([`PROTOCOL.md`](docs/membership/PROTOCOL.md); `protocol::tests`, the rank tests in `hiding`); each contract equals
@@ -235,8 +239,8 @@ leanEthereum) and is licensed, like leanVM, under the MIT license ([`LICENSE-MIT
   `examples/statement_vectors.rs`, `crates/leanvm/statement/tests/{lean_keccak_tables,lean_keccak_block}.rs`,
   `crates/leanvm/univariate/tests/lean_keccak_vectors.rs`, `crates/leanvm/rec/tests/{lean_circuit_keccak,
   lean_pad_counts,lean_pi2_prover,lean_graph_keccak,lean_statement_keccak}.rs`. A change of their output must go
-  with the Lean side; until the port ([`docs/LEAN_PORT.md`](docs/LEAN_PORT.md)), do not regenerate them: `formal/`
-  holds `f96a7938`'s.
+  with the Lean side. The recursion's are current; the membership's hold `f96a7938`'s: until its port
+  ([`docs/LEAN_PORT.md`](docs/LEAN_PORT.md)), do not regenerate them.
 
 ## Lean builds
 

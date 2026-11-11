@@ -44,26 +44,30 @@ in π2's circuit, the copy sum forced by `Q`'s layout). This is what the port ne
 
 ## leanVM
 
-Ported (branch `lean/pi2`, with `lean/pi1-rec4` merged): π1-rec4's verifier, graph = verifier at every setup
-commitment and knowledge soundness (`uniKnowledgeSoundnessKeccakRec4_closed`); π2v4's statement and verifier
-(`RecStatement`, `Data.lean` regenerated), PIOP (`RecPiop`: the identity's claim `I(t) = 0`, the layout lemma, the
-pushes' claim; `err` at `t` `(5N − 1)/|E|`), the compiler (`RecCircuit`, identical to the Rust's on π1-rec4's graph),
-the contract model (seven claims, three declared, seed over the frame words), π2's Fiat–Shamir layer and tables, and
+Ported (branch `lean/leanvm`: `lean/pi2`, `lean/pi1-rec4`, `lean/pi2-witness`, `lean/pi2-circuit` merged): π1-rec4's
+verifier, graph = verifier at every setup commitment, knowledge soundness (`uniKnowledgeSoundnessKeccakRec4_closed`) and
+completeness (`uniCompletenessKeccakRec4_closed`); π2v4's statement and verifier (`RecStatement`, `Data.lean`
+regenerated), PIOP (`RecPiop`), the compiler (`RecCircuit`, identical to the Rust's on π1-rec4's graph;
+`RecGraphKeccak.pi1rec4K_end`, `pi1rec4K_claimHashes`), the contract model, π2's Fiat–Shamir layer and tables, and
 **`RecCompose.recKnowledgeSoundness_reduction_real`** at the real deployment (`pi2Bound ≤ 2^-64` at `Q ≤ 2^64`, 128.93
-bits; a Keccak-256 collision term for π1's hashed claims). π2's Lean prover agrees with the Rust's on 3/3 vectors;
-`pi2_accepts`: the contract accepts its proof off `BadCopy`, `BadT`, `BadRho`.
+bits). For completeness: π2's Lean prover (3/3 vectors agree with the Rust's), `Pi2E.pi2_accepts_real` (the contract
+accepts its proof off `BadCopy`, `BadT`, `BadRho`, its witness and π1-openings hypotheses discharged:
+`Pi2W.pi2WitnessExists_real`, `Pi2W.pi1Openings_of_verifierH`, `Pi2W.nonhole_real`), π1-rec4's prover in the
+recursion (`Pi1K.pi1Rec4ProverK`: its Fiat–Shamir over Keccak-f[1600], its trees and openings over `π`) with the four
+facts π2's completeness takes (`Pi1K.pi1ProverFactsK4`), and the random-permutation reading of
+`Pi1CompletenessKeccak` (`Pi1K.pi1CompletenessFs4_rpm`, `deltaK`). The π2v3 and π1-rec3 files of `RecCompose` are
+retired.
 
 Left:
 
 - **π2's completeness error** `δ2` (`RecCompleteness2` for π2's Lean prover): the probability layer (`Pi2Prob*`,
-  `Pi2Alpha*`, `Pi2Sim*`, `Pi2TFresh*`, `Pi2Chain`, `Pi2RunCost`, `Pi2RunDuplex`, `Pi2Closed`) at π2v4's hash inputs
-  (α's and `t`'s inputs 88 bytes; `ρ`'s `1/|E|`; branch `lean/pi2-prob`), and `pi2_accepts`' witness and π1-openings
-  hypotheses as theorems (`Pi2Witness`, `Pi2CallsOpen`; branch `lean/pi2-witness`).
-- **π1-rec4's honest prover and completeness** (`UniKeccakComplete`, in progress on `lean/pi1-rec4`), then the end
-  theorem of completeness at the real deployment (`Pi1ProverFacts`, `Pi2P1.lean`, is its interface).
-- **Retire π2v3 and π1-rec3 files** no end theorem uses (`Bridge`, `Meanings`, `Pi2ProverRun`, `Pi1Keccak*`,
-  `CompleteKeccakEnd`) and update `RecCompose.lean`'s imports and `#guard_msgs` (the library root still names π2v3's
-  end theorems; build the end modules by name: `RecCompose.RealEnd`, `RecCompose.Final`).
+  `Pi2Alpha*`, `Pi2Sim*`, `Pi2TFresh*`, `Pi2Chain`, `Pi2RunCost`, `Pi2RunDuplex`, `Pi2Closed`, at π2v3 on this
+  branch; branch `lean/pi2-prob`, not yet building). Its interface is fixed: `Pi2Sim.recCompleteness2_pi2_closed`,
+  `recCompleteness_pi2_closed_fs`, `delta2Closed_le`. Then **`RecCompose/CompleteReal.lean`** (written, waiting for
+  it) closes the end theorem `Pi1K.recCompleteness_real`: at `realDeployment prog hprog`, the composed Lean prover
+  (`pi1Rec4ProverK`, then `realPi2Prover`) rejected with probability at most `δ1 + δh + 2^-164`, from the evaluated
+  checks and the premises `Pi1CompletenessKeccak δ1`, `Pi1HazardKeccakHonest δh`; then `RecCompose.lean` imports it
+  and the library goes back to `globs`.
 - **The evaluated checks** at other setup commitments and IVs (`IvChecked` over `(roots, iv)`; `PatchChecked`).
 
 ## Lean-facing files

@@ -48,6 +48,10 @@ out-of-domain answer (`FsBind.qOodBinding`). `W`'s and `Q`'s openings read their
 | `recKnowledgeSoundnessReduction_end D` (`End`) | the reduction from π2's layers | `D.pi1.shape = keccak128`, `GraphsAgreeK4`, `Pi2Layers D ε2` |
 | `recCompleteness_end`, `recCompleteness_end_fs` (`CompleteCouplings`) | `RecCompletenessWith D (composeProver D P1 P2) (δ1 + δh + δ2)` | `D.Real`, `RecCompleteness2 D P1 P2 δ2`, `Pi1CompletenessKeccak δ1`, `Pi1HazardKeccakHonest δh` |
 | `pi2_accepts` (`Pi2Accepts`) | the contract accepts π2's honest proof (pure permutation, `D.Real`) | an honest witness, three declared claims opening, off `BadCopy`, `BadT`, `BadRho` |
+| `Pi2E.pi2_accepts_real prog hprog` (`Pi2AcceptsReal`) | the same at the real deployment | the evaluated checks; π1-rec4's graph verifier accepting π1's proof; off `BadCopy`, `BadT`, `BadRho` (witness: `Pi2W.pi2WitnessExists_real`; π1's openings: `Pi2W.pi1Openings_of_verifierH`) |
+| `Pi1K.pi1ProverFactsK4` (`Pi1Rec4Census`) | `Pi1ProverFacts D (pi1Rec4ProverK D) (p1kK4 D)`: the recursion's π1-rec4 prover is its two-call program over `π`, disciplined, of at most `2^47` blocks, hashing inputs shorter than `2^26` bytes | `D.Real` |
+| `Pi1K.pi1CompletenessFs4_rpm`, `pi1CompletenessKeccak_iff4` (`Pi1Rec4Rpm`) | `Pi1CompletenessKeccak D (pi1Rec4ProverK D) δ ↔ Pi1CompletenessFs4 D (pure ∘ keccakF1600) δ`; at `π` (the random-permutation reading) it holds at `deltaK < 2^-169` | `D.Real` (the reading); none (the iff) |
+| `Pi1K.recCompleteness_real prog hprog` (`CompleteReal`, **not yet built**: waits for π2's probability layer) | `RecCompletenessWith (realDeployment prog hprog) (composeProver _ (pi1Rec4ProverK _) (realPi2Prover …)) (δ1 + δh + 2^-164)` | the evaluated checks; `Pi1CompletenessKeccak δ1`, `Pi1HazardKeccakHonest δh` (at Keccak-f[1600]) |
 
 `realDeployment_real`, `pi2Circuits_real` (`RealDeployment.lean`), `pi2Facts_real`, `pi2CircuitAccepts_real`
 (`RealCircuit.lean`) build `Final`'s premises from the evaluated checks; `pi2FsLayer_real` (`FsClosed.lean`, no
@@ -59,7 +63,7 @@ columns. Sorry-free, no `native_decide`; the `#guard_msgs` of each file checks i
 
 ```sh
 cd formal/EndToEnd
-systemd-run --scope -p MemoryMax=16G lake build RecCompose.RealEnd RecCompose.Final   # soundness; #guard_msgs
+systemd-run --scope -p MemoryMax=40G lake build RecCompose   # the root's closure and its #guard_msgs
 systemd-run --scope -p MemoryMax=16G lake exe rec-view-check   # viewCheck (one compile about 14 minutes)
 systemd-run --scope -p MemoryMax=16G lake exe rec-real-check   # DigestChecked, ivCheck (args ref, zero, ones; --no-digest)
 systemd-run --scope -p MemoryMax=16G lake exe rec-real-check --setup-only   # SetupRootChecked
@@ -86,7 +90,11 @@ narrow element and a hashed claim).
   `CallsPure`, `GenericSetupLog`.
 - **The deployment**: `IvLength`, `RealDeployment`, `Real`, `IvUniform` (`ivChecked_of_patchChecked`).
 - **Completeness**: `Points`, `Pi2Prover`, `Pi2ProverRec`, `Pi2Honest*`, `Pi2Whir`, `Pi2Complete*`, `Pi2Accepts`,
-  `Pi2P1` (`Pi1ProverFacts`).
+  `Pi2Witness`, `Pi2AcceptsReal`, `Pi2P1` (`Pi1ProverFacts`); π1-rec4's prover in the recursion: `Pi1Rec4Prover`
+  (`pi1Rec4ProverK`, `p1kK4`), `Pi1Rec4Transfer` (the discipline; the block count by a four-call transfer from
+  UniKeccakComplete's prover), `HashShort`, `Pi1Rec4Census` (`pi1ProverFactsK4`), `Pi1Rec4Rpm`; π2's probability layer
+  (`Pi2Prob*`, `Pi2Alpha*`, `Pi2Sim*`, `Pi2TFresh*`, `Pi2Chain`, `Pi2Run*`, `Pi2Closed`: still at π2v3 here, outside
+  the library's closure) and `CompleteReal` (the end theorem, waiting for it).
 
 Each file's module docstring says what it proves.
 
@@ -96,6 +104,8 @@ Each file's module docstring says what it proves.
    to the Fiat–Shamir heuristic; the collision term to Keccak-256's collision resistance.
 2. **The evaluated checks** are Props checked by running Lean, not kernel proofs; `IvChecked` is assumed at setup
    commitments and IVs other than those evaluated (`PatchChecked`, and uniformity over the commitment).
-3. **π2's completeness error** `δ2` for π2's Lean prover (the probability layer, `RecCompleteness2`) and the end
-   theorem of completeness at π1-rec4 with π1-rec4's honest prover: see [`docs/LEAN_PORT.md`](../../docs/LEAN_PORT.md).
+3. **π2's completeness error** `δ2` for π2's Lean prover (the probability layer, `RecCompleteness2`; branch
+   `lean/pi2-prob`), which `CompleteReal.lean` turns into the end theorem `Pi1K.recCompleteness_real`: see
+   [`docs/LEAN_PORT.md`](../../docs/LEAN_PORT.md). Until then the library is its root's closure (`roots` in the
+   lakefile).
 4. **The provers**: the deployed Rust provers are trusted for completeness.
