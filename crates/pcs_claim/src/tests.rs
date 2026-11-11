@@ -230,6 +230,86 @@ fn leading_lanes_commit_and_open_as_the_whole_stack() {
     }
 }
 
+/// Interior all-zero lanes (as π2's `Q` has four slots of them) are left out of the encodes, of a kept codeword and
+/// of the openings' lane passes: the root, the out-of-domain answer and every proof, alone and batched, from the kept
+/// codeword or encoded again, are those of a commitment that leaves out nothing.
+#[test]
+fn zero_lanes_left_out_change_no_proof() {
+    // A stack the two-sweep encode takes (which a kept codeword of skipped lanes needs).
+    let n = 20;
+    let lane = 1usize << (n - LANE_FOLD);
+    let mut rng = Rng::new(11);
+    let mut full = words(n, 5);
+    for slot in [1usize, 5, 9, 12] {
+        full[4 * slot * lane..4 * (slot + 1) * lane].fill(F64::ZERO);
+    }
+    // The reference: no lane flagged, the whole codeword kept.
+    let (commitment, data) = pcs::whir::commit(&full, n, LANE_FOLD, LOG_INV_RATE);
+    let z = ood_point(n, &commitment.root);
+    let ood_lanes = lane_products(&full, &z, None);
+    let reference = Commitment {
+        n,
+        root: commitment.root,
+        ood: combine_lanes(&ood_lanes, &z[n - LANE_FOLD..]),
+        tree: data.merkle_tree,
+        codeword: Mutex::new(Some(data.codeword)),
+        ood_lanes,
+        zero_lanes: vec![false; 1 << LANE_FOLD],
+    };
+    let claims: Vec<PcsClaim> = (0..3)
+        .map(|_| {
+            let point = rng.ext_vec(n);
+            let value = evaluate(&full, &point);
+            reference.claim(point, value)
+        })
+        .collect();
+    let want: Vec<Proof> = claims
+        .iter()
+        .map(|claim| open_words_keeping(&full, &reference, claim))
+        .collect();
+    for keep in [true, false] {
+        let committed = commit_words(&full, n, keep);
+        assert_eq!((committed.root, committed.ood), (reference.root, reference.ood));
+        assert_eq!(
+            committed.zero_lanes.iter().filter(|&&z| z).count(),
+            16,
+            "the empty slots' lanes flagged"
+        );
+        if keep {
+            let kept = committed.codeword.lock().expect("the codeword").as_ref().map(Vec::len);
+            assert_eq!(
+                kept,
+                Some(48 << (n - LANE_FOLD + LOG_INV_RATE)),
+                "the nonzero lanes' codeword alone"
+            );
+        }
+        for (claim, want) in claims.iter().zip(&want) {
+            assert_eq!(
+                &open_words_keeping(&full, &committed, claim),
+                want,
+                "alone (kept: {keep})"
+            );
+        }
+        // Batched: from the kept codeword, which the batch frees, then encoded again.
+        assert_eq!(
+            open_words_batch(&full, &committed, &claims),
+            want,
+            "batched (kept: {keep})"
+        );
+        assert_eq!(
+            open_words_batch(&full, &committed, &claims),
+            want,
+            "batched again (kept: {keep})"
+        );
+        assert!(
+            claims
+                .iter()
+                .zip(&want)
+                .all(|(claim, proof)| verify(&claim.encode(), &wire_proof(proof)))
+        );
+    }
+}
+
 /// The prover's time at a large stack (`PCS_CLAIM_BENCH_N`, default 26): the commitment, then a claim opened twice
 /// (both reading the kept codeword), and the weights' construction alone.
 #[test]

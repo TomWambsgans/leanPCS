@@ -1413,15 +1413,23 @@ pub struct Openings(pub [opening::Proof; 3]);
 /// Open a proof's `claims` on the tables it committed. The wiring's opening is about public data: anyone can make
 /// it; the index's kept codeword ([`Index::commit`]) serves it and is kept for the next proof's.
 pub fn open(tables: &Tables, claims: &Claims, index: &Committed) -> Openings {
-    Openings(claims.all().map(|(k, claim)| {
-        tracing::info_span!("Open").in_scope(|| {
-            if k == 1 {
-                opening::open_keeping(index, claim)
-            } else {
-                opening::open(tables.table(k), claim)
-            }
-        })
-    }))
+    let all = claims.all();
+    // The claims on one table are opened together (`opening::open_batch`): the same proofs, the table read once.
+    let mut proofs: Vec<Option<opening::Proof>> = vec![None; all.len()];
+    for k in [0, 1, 2] {
+        let on: Vec<usize> = (0..all.len()).filter(|&c| all[c].0 == k).collect();
+        let batch: Vec<&Claim> = on.iter().map(|&c| all[c].1).collect();
+        let opened = tracing::info_span!("Open").in_scope(|| match (k, &batch[..]) {
+            (1, [claim]) => vec![opening::open_keeping(index, claim)],
+            (_, [claim]) => vec![opening::open(tables.table(k), claim)],
+            _ => opening::open_batch(tables.table(k), &batch),
+        });
+        for (c, proof) in on.into_iter().zip(opened) {
+            proofs[c] = Some(proof);
+        }
+    }
+    let proofs: Vec<opening::Proof> = proofs.into_iter().map(|p| p.expect("every claim opened")).collect();
+    Openings(proofs.try_into().unwrap_or_else(|_| unreachable!("four proofs")))
 }
 
 /// A fingerprint of a proof and its openings: the Keccak-256 of every scalar, row word and digest they carry,

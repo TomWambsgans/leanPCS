@@ -1,5 +1,7 @@
 // Vendored from leanVM (https://github.com/leanEthereum/leanVM), commit c445e3d51a5a85031df47240595698f3b24897bf, file crates/primitives/src/stream.rs.
 // MIT OR Apache-2.0 (see LICENSE-MIT, LICENSE-APACHE and AGENTS.md at the repository root).
+// Changed here: under Miri, which does not run the non-temporal stores' inline assembly, the copies are ordinary ones
+// (as off x86), so that the x86 Miri tests reach the code past them.
 //! Streaming stores for x86 buffers written once and read in a later pass. Other targets use ordinary copies.
 
 use std::marker::PhantomData;
@@ -50,7 +52,7 @@ impl Stream {
 /// `dst` and `src` must be valid for `bytes` and must not overlap.
 #[inline]
 unsafe fn copy_raw(dst: *mut u8, src: *const u8, bytes: usize) {
-    #[cfg(target_arch = "x86_64")]
+    #[cfg(all(target_arch = "x86_64", not(miri)))]
     {
         const LINE: usize = 64;
         let head = dst.align_offset(LINE).min(bytes);
@@ -63,7 +65,7 @@ unsafe fn copy_raw(dst: *mut u8, src: *const u8, bytes: usize) {
             std::ptr::copy_nonoverlapping(src.add(head + body), dst.add(head + body), bytes - head - body);
         }
     }
-    #[cfg(not(target_arch = "x86_64"))]
+    #[cfg(not(all(target_arch = "x86_64", not(miri))))]
     // SAFETY: forwarded to the caller's obligation.
     unsafe {
         std::ptr::copy_nonoverlapping(src, dst, bytes)
@@ -73,7 +75,7 @@ unsafe fn copy_raw(dst: *mut u8, src: *const u8, bytes: usize) {
 impl Drop for Stream {
     #[inline]
     fn drop(&mut self) {
-        #[cfg(target_arch = "x86_64")]
+        #[cfg(all(target_arch = "x86_64", not(miri)))]
         // SAFETY: `sfence` is unconditionally available on x86-64.
         unsafe {
             core::arch::x86_64::_mm_sfence()
@@ -86,7 +88,7 @@ impl Drop for Stream {
 /// # Safety
 /// Both pointers must be valid for `bytes`, `dst` 64-byte aligned, and the
 /// ranges must not overlap.
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", not(miri)))]
 #[inline]
 unsafe fn stream_lines(dst: *mut u8, src: *const u8, bytes: usize) {
     use core::arch::x86_64::*;
