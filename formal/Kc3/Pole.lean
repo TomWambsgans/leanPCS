@@ -249,4 +249,111 @@ theorem card_pole_le (id : ι → F) (hid : Function.Injective id) (σ : Equiv.P
   calc A1.card + A2.card ≤ 4 * N * q * q + q ^ 2 := Nat.add_le_add hA1 hA2
     _ = (4 * N + 1) * q ^ 2 := by ring
 
+/-- **The first challenge's count, generically.** `A` the triples to count: outside those where a cell's
+denominator vanishes and a set `Z1` of at most `2 q²`, each has no vanishing denominator and makes the sum
+`L + μ B` zero (`L` the copy argument's); if no error sits anywhere a copy fails; an error sits on an error cell
+(`E`); and every cycle but a lone cell's holds a cell no error can sit on. Then `A` has at most `8 N q²` triples. -/
+theorem card_round1_core (id : ι → F) (hid : Function.Injective id) (σ : Equiv.Perm ι) (w e : ι → F)
+    (A Z1 : Finset (F × F × F)) (hZ1 : Z1.card ≤ 2 * Fintype.card F ^ 2)
+    (hgood : ∀ p ∈ A,
+      p ∉ (univ.filter fun p : F × F × F =>
+        ∃ i, p.1 + w i + p.2.1 * id i = 0 ∨ p.1 + w i + p.2.1 * id (σ i) = 0) → p ∉ Z1 →
+      (∀ i, p.1 + w i + p.2.1 * id i ≠ 0 ∧ p.1 + w i + p.2.1 * id (σ i) ≠ 0) ∧
+        logSum id σ w p.1 p.2.1 + p.2.2 * ∑ i, e i * ((p.1 + w i + p.2.1 * id i) *
+          (p.1 + w i + p.2.1 * id (σ i)))⁻¹ = 0)
+    (hcopy : (∀ i, e i = 0) → ¬ ∀ x, w (σ x) = w x)
+    {E : ι → Prop} (hE : ∀ i, e i ≠ 0 → E i) (hpole : ∀ i, σ i ≠ i → ∃ k : ℕ, ¬ E ((σ ^ k) i))
+    (hN2 : 2 ≤ Fintype.card ι) :
+    A.card ≤ 8 * Fintype.card ι * Fintype.card F ^ 2 := by
+  classical
+  set q := Fintype.card F
+  set N := Fintype.card ι
+  set Z0 := univ.filter fun p : F × F × F =>
+    ∃ i, p.1 + w i + p.2.1 * id i = 0 ∨ p.1 + w i + p.2.1 * id (σ i) = 0
+  have hZ0c : Z0.card ≤ 2 * N * q ^ 2 := card_zero_le id σ w
+  by_cases he : ∀ i, e i = 0
+  · have hc := hcopy he
+    have hN : 1 ≤ N := by omega
+    set S := univ.filter fun p : F × F × F =>
+      (∀ x, p.1 + w x + p.2.1 * id x = 0 ↔ p.1 + w x + p.2.1 * id (σ x) = 0) ∧
+        ((∀ x, p.1 + w x + p.2.1 * id x ≠ 0) → logSum id σ w p.1 p.2.1 = (fun _ => (0 : F)) p.2.2) with hS
+    have hSc : S.card ≤ (4 * N - 2) * q ^ 2 := by
+      convert card_copy_triple_le id hid σ w hc (fun _ => (0 : F))
+    have hsub : A ⊆ Z0 ∪ Z1 ∪ S := by
+      intro p hp
+      by_cases h0 : p ∈ Z0
+      · exact Finset.mem_union_left _ (Finset.mem_union_left _ h0)
+      by_cases h1 : p ∈ Z1
+      · exact Finset.mem_union_left _ (Finset.mem_union_right _ h1)
+      refine Finset.mem_union_right _ ?_
+      obtain ⟨hd, hs⟩ := hgood p hp h0 h1
+      rw [hS, Finset.mem_filter]
+      refine ⟨Finset.mem_univ _, fun x => ⟨fun h => absurd h (hd x).1, fun h => absurd h (hd x).2⟩,
+        fun _ => ?_⟩
+      simpa [he] using hs
+    calc A.card ≤ (Z0 ∪ Z1 ∪ S).card := Finset.card_le_card hsub
+      _ ≤ Z0.card + Z1.card + S.card := (Finset.card_union_le _ _).trans
+          (Nat.add_le_add_right (Finset.card_union_le _ _) _)
+      _ ≤ 2 * N * q ^ 2 + 2 * q ^ 2 + (4 * N - 2) * q ^ 2 := by gcongr
+      _ ≤ 8 * N * q ^ 2 := by
+          have : 2 * N * q ^ 2 + 2 * q ^ 2 + (4 * N - 2) * q ^ 2 = 6 * N * q ^ 2 := by
+            obtain ⟨k, hk⟩ := Nat.exists_eq_add_of_le' hN
+            rw [hk, show 4 * (k + 1) - 2 = 4 * k + 2 by omega]
+            ring
+          rw [this]
+          gcongr
+          omega
+  · push Not at he
+    obtain ⟨x₀, hx₀, hpred⟩ : ∃ x₀, e x₀ ≠ 0 ∧ (σ.symm x₀ = x₀ ∨ e (σ.symm x₀) = 0) := by
+      by_contra hno
+      push Not at hno
+      obtain ⟨i, hi⟩ := he
+      have hback : ∀ m : ℕ, e ((σ⁻¹ ^ m) i) ≠ 0 := by
+        intro m
+        induction m with
+        | zero => simpa using hi
+        | succ m ih =>
+          rw [pow_succ', Equiv.Perm.mul_apply]
+          exact (hno _ ih).2
+      have hfix : σ i ≠ i := by
+        intro h
+        apply (hno i hi).1
+        rw [Equiv.symm_apply_eq]
+        exact h.symm
+      obtain ⟨k, hk⟩ := hpole i hfix
+      apply hk
+      have hord : σ ^ orderOf σ = 1 := pow_orderOf_eq_one _
+      have hpos : 0 < orderOf σ := orderOf_pos _
+      have hpow : σ ^ k = σ⁻¹ ^ ((orderOf σ - 1) * k) := by
+        rw [inv_pow, eq_inv_iff_mul_eq_one, ← pow_add]
+        obtain ⟨o, ho⟩ := Nat.exists_eq_add_of_le' hpos
+        rw [show k + (orderOf σ - 1) * k = orderOf σ * k by rw [ho, show o + 1 - 1 = o by omega]; ring,
+          pow_mul, hord, one_pow]
+      rw [hpow]
+      exact hE _ (hback _)
+    have hN : 1 ≤ N := Fintype.card_pos_iff.mpr ⟨x₀⟩
+    set S := univ.filter fun p : F × F × F =>
+      (∀ x, p.1 + w x + p.2.1 * id x ≠ 0 ∧ p.1 + w x + p.2.1 * id (σ x) ≠ 0) ∧
+        logSum id σ w p.1 p.2.1 + p.2.2 * ∑ x, e x * ((p.1 + w x + p.2.1 * id x) *
+          (p.1 + w x + p.2.1 * id (σ x)))⁻¹ = 0 with hS
+    have hSc : S.card ≤ (4 * N + 1) * q ^ 2 := card_pole_le id hid σ w e x₀ hx₀ hpred (logSum id σ w)
+    have hsub : A ⊆ Z0 ∪ Z1 ∪ S := by
+      intro p hp
+      by_cases h0 : p ∈ Z0
+      · exact Finset.mem_union_left _ (Finset.mem_union_left _ h0)
+      by_cases h1 : p ∈ Z1
+      · exact Finset.mem_union_left _ (Finset.mem_union_right _ h1)
+      refine Finset.mem_union_right _ ?_
+      rw [hS, Finset.mem_filter]
+      exact ⟨Finset.mem_univ _, hgood p hp h0 h1⟩
+    calc A.card ≤ (Z0 ∪ Z1 ∪ S).card := Finset.card_le_card hsub
+      _ ≤ Z0.card + Z1.card + S.card := (Finset.card_union_le _ _).trans
+          (Nat.add_le_add_right (Finset.card_union_le _ _) _)
+      _ ≤ 2 * N * q ^ 2 + 2 * q ^ 2 + (4 * N + 1) * q ^ 2 := by gcongr
+      _ ≤ 8 * N * q ^ 2 := by
+          have : 2 * N * q ^ 2 + 2 * q ^ 2 + (4 * N + 1) * q ^ 2 = (6 * N + 3) * q ^ 2 := by ring
+          rw [this]
+          gcongr
+          omega
+
 end Kc3
