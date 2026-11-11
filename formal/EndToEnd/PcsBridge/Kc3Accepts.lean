@@ -35,6 +35,10 @@ theorem witness_mle' {F : Type*} [Field F] [CharP F 2] {k : ℕ} (c : (Fin (k + 
     Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val]
   ring
 
+theorem natDegree_witnessOfTable_lt {F : Type*} [Field F] [CharP F 2] {k : ℕ}
+    (c : (Fin (k + 1 + 1) → Bool) → F) (j : Fin 4) : (witnessOfTable c j).natDegree < 2 ^ k := by
+  fin_cases j <;> exact natDegree_tablePoly_lt _
+
 /-! ## The quotient table -/
 
 /-- One of the sixteen tables the last four coordinates (digit, limb bits, kind) choose from. -/
