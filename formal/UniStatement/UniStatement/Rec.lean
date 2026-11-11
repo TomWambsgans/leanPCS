@@ -121,7 +121,7 @@ end With
 /-- The rate's bytes past the digest: lanes `4 … 16`. -/
 def rateTailOf (st : KeccakState) : List UInt8 := (List.range' 4 13).flatMap fun i ↦ wordBytes (Keccak.lane st i)
 
-theorem length_digestBytes (d : Digest) : (digestBytes d).length = 32 := by
+theorem digestBytes_length_eq (d : Digest) : (digestBytes d).length = 32 := by
   obtain ⟨⟨l⟩, hl⟩ := d
   match l, hl with
   | [_, _, _, _], _ => simp [digestBytes, wordBytes]
@@ -138,7 +138,7 @@ theorem beWord_append (a b : List UInt8) (s : ℕ) (h : s + 8 ≤ a.length) :
 /-- **Challenge `0` of a wide draw is `sample`'s** (`challenge_of` of the digest). -/
 theorem challengeAt_zero (st : KeccakState) :
     challengeAt (rateBytesOf st) 0 = PcsQuotient.Transcript.challengeOf (digestOfState st) := by
-  have hl := length_digestBytes (digestOfState st)
+  have hl := digestBytes_length_eq (digestOfState st)
   simp only [challengeAt, PcsQuotient.Transcript.challengeOf, rateBytesOf_eq, Nat.mul_zero, Nat.zero_add]
   rw [beWord_append _ _ _ (by omega), beWord_append _ _ _ (by omega), beWord_append _ _ _ (by omega)]
 

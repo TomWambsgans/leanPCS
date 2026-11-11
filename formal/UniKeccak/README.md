@@ -6,7 +6,8 @@ The Keccak VM (`docs/leanvm/univariate/KECCAK.md`, `formal/KeccakVm`) is leanVM 
 (opcode `g^5`) replaced by leanVM `9d50c92a3`'s `SHA3`. This library holds:
 
 - **its verifier as computable Lean**, `reduce` of `crates/leanvm/univariate/src/verifier.rs` at a `Variant`, for
-  the main line (`KECCAK_MAIN`) and π1-rec3's shape (`KECCAK_REC3`), with the contract's IV and its
+  the main line (`KECCAK_MAIN`), π1-rec3's shape (`KECCAK_REC3`) and π1-rec4's (`KECCAK_REC4`, the recursion's: its
+  own function `reduceWithK4`, `Verifier4.lean`), with the contract's IV and its
   three claims (`contract.rs`): each commitment's out-of-domain answer is read after its root, the roots are carried as their bytes, the setup's commitment `(F, f(z))` is in the IV, and each claim is
   the EIP's PCS claim `version ‖ n ‖ root ‖ ood ‖ point ‖ value`, opened by `formal/WhirBridge`'s
   `WhirBridge.Pcs.pcsVerifyWithHash` (`crates/pcs_claim`'s `verify_claim`);
@@ -39,7 +40,12 @@ KECCAK_VECTORS=<path>/keccak_vectors.txt lake env lean ../UniKeccak/UniKeccakTes
    `shiftOffsets`, `grouped`, `constantColumn`).
 2. [`Walk.lean`](UniKeccak/Walk.lean): the block's forward walk (`keccak_flock::row_values`, `keccakRowValues`) and
    the walked terminal on it (`walkedTerminalK`), the structured terminal's reference. The verifier does not use them.
-3. [`Verifier.lean`](UniKeccak/Verifier.lean): the variant (`KeccakVariant`, `keccakMain`, `keccakRec3`), Flock on the
+3. [`Verifier4.lean`](UniKeccak/Verifier4.lean) (π1-rec4, `docs/leanvm/univariate/SPEC.md` §14.4): `keccakRec4`,
+   `frontK4`, `verifyWalkedK4` (the zerocheck's first coordinate from the bus's wide draw, no ring end), `ringEndAt`,
+   `batchK4` (`λ` given), **`reduceWithK4`** (three wide draws: `c, β, γ, c'` after `C1`; `t, f_0 … f_3` after `C2`;
+   `ρ, λ, f_4, f_5` after the values at `t`), `runWithK4`, `runK4`; `runWithKV` dispatches on the shape.
+   **`reduceWithK … keccakRec4` is not π1-rec4's verifier**: `reduceWithK` is the main line's and π1-rec3's.
+   [`Verifier.lean`](UniKeccak/Verifier.lean): the variant (`KeccakVariant`, `keccakMain`, `keccakRec3`), Flock on the
    Keccak-f block (`frontK`, `verifyWalkedK`), `Q_W` with the lanes' copies (`constraintRelationK`), the stacks
    (`layoutsK`, `Shape.c2ColumnsK`, `layoutsOfK`), a claim's weight (`weightAtK`), the batch (`batchK`), and
    **`reduceWithK`**, `runWithK`, `runK`.
@@ -55,7 +61,10 @@ KECCAK_VECTORS=<path>/keccak_vectors.txt lake env lean ../UniKeccak/UniKeccakTes
 6. [`Security.lean`](UniKeccak/Security.lean): the deployment (`KDeployment`), the setup (`setupTreeKWith`), the
    setup's commitment the verifier holds (`KDeployment.setupRoots`: the root and `setupOodK`, the setup stack's
    multilinear extension at the root's out-of-domain point), the extractor (`uniExtractorK`), the experiments, **`UniKnowledgeSoundnessKeccak`**,
-   **`UniKnowledgeSoundnessKeccakRec3`**, **`UniCompletenessKeccak`**, **`UniCompletenessKeccakRec3`**.
+   **`UniKnowledgeSoundnessKeccakRec3`**, **`UniCompletenessKeccak`**, **`UniCompletenessKeccakRec3`**, and π1-rec4's
+   (`KDeployment.verifierWith4`: `verifyWithK4` of `Pcs.lean`; `keccakSoundnessExperiment4`,
+   **`UniKnowledgeSoundnessKeccakRec4`**, `keccakCompletenessExperiment4`, **`UniCompletenessKeccakRec4`**: statements
+   only, not proved).
 
 ## Rust → Lean
 
@@ -118,7 +127,14 @@ reads the vectors of `crates/leanvm/univariate/tests/lean_keccak_vectors.rs`:
   table's 86 columns; `source` is a permutation of the lanes with `rho`'s rotations; there are 40 shift offsets;
   `C1` is `2^28` words at 400 signatures.
 
-**Results** (h1, 2026-11-10, on the PCS claims): 90/90 vectors agree on every value, 31 accepted and 59 rejected by
+**Results with π1-rec4** (h3, 2026-11-11, branch `lean/pi1-rec4`): the writer now also emits π1-rec4's sets (128
+signatures point claims, 32 signatures point and weighted claims) and the real `keccak128_rec4.txt`, `keccak_rec4.txt`
+(`runKV`: `runK4` at `keccak_rec4`): **134/134 vectors agree on every value**, 47 accepted and 87 rejected by both
+(accept 20/0, counts 18/0, badcount 0/9, random 0/20, mutate 4/25, truncate 0/9, extend 0/9, real 5/0, real-mutate 0/15;
+the accepted mutations are weighted-mode streams mutated after the last check), every PCS claim of the five real proofs
+byte for byte, 14/14 terminals, 6/6 self-tests, 693 s.
+
+**Results** (h1, 2026-11-10, on the PCS claims; π1-rec3 and the main line): 90/90 vectors agree on every value, 31 accepted and 59 rejected by
 both (accept 14/0, counts 12/0, badcount 0/6, random 0/14, mutate 2/18, truncate 0/6, extend 0/6, real 3/0,
 real-mutate 0/9; the two accepted mutations are weighted-mode streams mutated after the last check, which only the
 openings would reject); 14/14 terminals; 6/6 self-tests; 528 s for the vectors, about 30 minutes in all (mostly the
@@ -195,6 +211,7 @@ clause states.
 - **Completeness**: `formal/UniKeccakComplete`, at the reference shape, for its explicit Lean honest prover
   (`uniCompletenessKeccak_closed`, `uniCompletenessKeccakRec3_closed`, `Prob.deltaK < 2^-169`, given
   `32 ≤ D.programIv.length ≤ 2^16`).
-- Not ported: π1-rec4, the recursion's inner proof since π1's claims are hashed in π2's circuit
-  ([`docs/LEAN_PORT.md`](../../docs/LEAN_PORT.md)). `UniStatement.weightAt` fixes a slot term's bits at 8 where the
-  Rust reads `q_flock`'s variables minus the point's; `weightAtK` is the Rust's.
+- **π1-rec4** (`UniKnowledgeSoundnessKeccakRec4`, `UniCompletenessKeccakRec4`): stated, **not proved**; see
+  [`formal/UniKeccakSound`](../UniKeccakSound/README.md), "π1-rec4", for what their proofs need.
+  `UniStatement.weightAt` fixes a slot term's bits at 8 where the Rust reads `q_flock`'s variables minus the point's;
+  `weightAtK` is the Rust's.

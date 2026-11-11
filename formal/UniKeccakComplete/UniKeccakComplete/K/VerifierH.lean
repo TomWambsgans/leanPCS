@@ -88,7 +88,7 @@ def sampleDrawnH (narrow : Bool) : ChanM m E :=
 def drawRunH (fs : FsShape) (count : ℕ) : ChanM m (List E) :=
   match fs with
   | .main => samplesH H count
-  | .rec1 | .rec2 | .rec3 =>
+  | .rec1 | .rec2 | .rec3 | .rec4 =>
     if count = 0 then pure [] else do
       let c ← sampleH H
       pure (squares c count)
@@ -196,7 +196,7 @@ def batchKH (fs : FsShape) (combined : List (Commitment × Combined)) (layouts :
   let (target, _) := combined.foldl (fun (acc : E × E) (_, claim) ↦
     (acc.1 + acc.2 * claim.value, acc.2 * lambda)) (0, 1)
   let (r, last) ← match fs with
-    | .rec3 => do
+    | .rec3 | .rec4 => do
       let (r, _, last) ← sumcheckPairsDrawnH H target 2 vars true
       pure (r, last)
     | .main | .rec1 | .rec2 => sumcheckDrawnH H target 3 (List.replicate vars none) fs.narrow

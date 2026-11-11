@@ -578,7 +578,7 @@ theorem wch_drawW (fs : FsShape) (n : ℕ) :
     WCh (FlockP.drawW callKeccak256 fs n) n n (fun _ ↦ True) (fun xs _ ↦ xs.length = n) := by
   cases fs with
   | main => exact wch_samplesW n
-  | rec1 | rec2 | rec3 =>
+  | rec1 | rec2 | rec3 | rec4 =>
     unfold FlockP.drawW
     by_cases hn : n = 0
     · subst hn

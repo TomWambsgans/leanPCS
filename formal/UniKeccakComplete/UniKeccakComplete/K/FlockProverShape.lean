@@ -54,7 +54,7 @@ theorem samplesW_length : ∀ (n : ℕ) (w : Wr), ((samplesW H n).run w).1.lengt
 theorem drawW_length (fs : FsShape) (n : ℕ) (w : Wr) : ((drawW H fs n).run w).1.length = n := by
   cases fs with
   | main => exact samplesW_length H n w
-  | rec1 | rec2 | rec3 =>
+  | rec1 | rec2 | rec3 | rec4 =>
     unfold drawW
     by_cases hn : n = 0
     · subst hn; rfl
