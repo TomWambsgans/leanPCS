@@ -190,7 +190,9 @@ one-point claims each opened by a version-1 PCS opening, the quotient table in t
     (`hazard_probK`); a satisfied π2 circuit carries the graph's outputs (`pi1rec3K_end`);
   - **the recursion**, knowledge soundness as an explicit reduction, with no Fiat–Shamir premise:
     `RecCompose.recKnowledgeSoundness_reduction_real`: Pr[the contract accepts ∧ the extractor finds no `KvHolds`
-    witness] ≤ `pi2Bound Q` (≤ 2^-64 at Q ≤ 2^64; π2's Fiat–Shamir and six openings in the random-permutation model)
+    witness] ≤ `pi2Bound Q` (≤ 2^-64 at Q ≤ 2^64, 128.93 bits as Q/ε; π2's Fiat–Shamir and the eight PCS openings,
+    charged once by `WhirBridge.Pcs.pcs_union_sound_oracle`, in the random-permutation model, with `Q`'s three claims
+    bound to one table by its out-of-domain answer, `qOodBinding`, proved)
     \+ Pr[`pi1Adversary` breaks π1-rec3 at Keccak-f[1600]] + Pr[`hazardAdversary` hits the merge hazard], the two
     adversaries explicit (the adversary, then π2's extractor; same query count). Completeness
     `RecCompose.Pi1K.recCompleteness_real_K_fs_bits`, error δ1 + δh + 2^-164 for the Lean provers, under
@@ -210,13 +212,13 @@ one-point claims each opened by a version-1 PCS opening, the quotient table in t
   400 signatures. At 128, with the openings charged once at WhirBridge's `269 · 2^-137` a query: π1 128.93 bits as
   Q/ε (main line) and 128.79 (π1-rec3), π2 128.93, the recursion about 127.9; the Lean bounds, coarser, are 128.87,
   128.49 and 128.93 (`docs/leanvm/univariate/SPEC.md` §9).
-- **The Rust is ahead of the Lean on π2** (π1 and its graph are on the PCS claims): π2's PIOP is π2v2 (the ports out of the copy argument,
-  `P` committed in `Q`, `q` below `2N`; `t` 141.3 bits after the lists, π2 128.93 as `Q/ε` as before), and every
-  commitment and claim of the line is the EIP draft's PCS claim (`crates/pcs_claim`: the out-of-domain answer read
-  after each root and bound in the IVs for the setups, one point per claim, no layout word, `Q` in sixteen slots and
-  π2's five claims, one opening per claim on leanVM's ladder, PCS version 1). `formal/RecPiop`, `RecStatement` and
-  `RecCompose` state π2v1 and the layout-word claims: what changes is listed in [`PI2.md`](docs/leanvm/rec/PI2.md)
-  §10 and under Remaining.
+- **The Lean follows the Rust's protocol** (π2v3 on the EIP's PCS claims): π2's contract model checks the eight
+  claims (π1's three, π2's five), each `[root, ood, point, value]` opened by one PCS opening; π2's IV binds the setup's
+  answer; `Q` is the plain sixteen-slot stack, its four empty slots the prover's: `RecPiop` reads `h` below `2N` and
+  slot 12 inside `P`'s share, at round 1's error `(4N − 1)/|E|` (`docs/leanvm/rec/PI2.md`, "The empty slots").
+  W's and Q's openings read their out-of-domain point off the model's Keccak-256 (`pcsOpenKO`; equal to the fixed point
+  at Keccak-f[1600], `pcsOpenKO_keccakF1600`); π1's three claims and π2's setup claim, one claim per commitment, keep
+  the fixed point. π2's Lean prover agrees with the Rust on the `lean_pi2_prover` vectors (2/2: roots, IV, stream).
 
 ## Security notes
 
@@ -243,12 +245,6 @@ one-point claims each opened by a version-1 PCS opening, the quotient table in t
 - leanVM: capacity beyond about 470 signatures.
 - Membership in Lean: `RevealedUniform` proved rather than tested, which needs a protocol whose revealed scalars are affine in
   its randomness (e.g. `G` blinded as `h` is: `HIDING.md`).
-- The leanVM line's PCS claims in Lean (π1 done: `UniKeccak`, `UniKeccakSound`, `UniKeccakComplete`,
-  `RecGraphKeccak`): `RecStatement`, `RecPiop` and
-  `RecCompose` (π2v2, `Q`'s slots and its three claims, the extra inversion factor `B`, one opening a claim on
-  leanVM's ladder); `formal/WhirBridge` for the claim-only transcript (`keccak256(PCS_claim)`). The Lean-facing
-  outputs were regenerated with the Rust (`Emitted.lean`, `Data.lean` by `UPDATE_LEAN=1`; `lean_keccak_vectors`'s and
-  `lean_pi2_prover`'s files when their tests run), so the Lean runners read the new format.
 - The recursion prover: a lower-degree `SHA3` leaf by committing its seven address products `fp·o` in `C1` (54.5 →
   28.5 pieces; measured on the batched quotients, about 11 ms a proof, with the same stream length and Keccak-f
   count: a π1 format change not yet worth it).

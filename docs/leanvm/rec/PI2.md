@@ -200,7 +200,8 @@ two claims at the position `u` do:
 degree 1 in `ρ` (both errors are fixed before `ρ`), false but with probability `1/|E|`; with those two true, the
 identity's claim holds exactly when the identity does (`P`'s and `q_P`'s share in it is then the verifier's, from `s`
 and `num_3`). The third claim, `h`'s top coefficient `Σ_V h = 0`, is at `(1^m, 0, 0, y_0, y_1)`: digit 0 and kind 0
-weigh `h`'s three limbs alone (slot `12` at limb code 3 is zero). The identity's and the pushes' claims share their
+weigh `h`'s three limbs and, at limb code 3, slot `12`, which is zero for the honest prover and, for any
+prover, but with probability `4N/|E|` ("The empty slots" below). The identity's and the pushes' claims share their
 position coordinates (the contract writes them once).
 
 **The empty slots are not constrained, and need not be.** With plain PCS claims `Q`'s commitment is its sixteen-slot
@@ -461,45 +462,12 @@ y_1)` and `(1^m, 0, 0, 0, y_0, y_1)`, value the target. Its measured figures: 98
 at 128 signatures (44,041 at 400), 62,720 EIP-7976 (at the π1 contract IV without the BLAKE2s-era words; 43,309 and
 44,113 before it).
 
-`formal/RecPiop`, `formal/RecStatement` and `formal/RecCompose` state and prove π2v1; their move to π2v2 is to come.
-What it touches:
-
-- `RecPiop`: `Copy.lean` (`target`, `PointId`, `CopyOK`: the sum is zero, the copy argument over the internal positions,
-  the ports' poles: §7's lemma), `Identity.lean` (`pushPoly` without the ports and `κ`, `dPushP` of the committed `P`,
-  `idPoly` with `(1 + 1_S)(d_push + d_pull) + T`, `natDegree_idPoly_le` below `3N`, `P`'s definition), `Ports.lean`
-  (the ports by `T` and `Φ`), `Rounds.lean` (`pi2Rounds`: `2^r + 2` values; `Model`'s `q < 2N`, `P`, `q_P`; `QClaim`
-  at `(ρ', ρ, ρ² B)`; `err`), `Sum.lean` (unchanged: `Σ_V h` is `h`'s top coefficient), `Numbers.lean` (`bits_t` at
-  `3N`, a `ρ` term over `L_Q`).
-- `RecStatement`: `Verifier.lean` (`name`, `quotientChunks`, `layoutsOf`: `m + 6` variables, 12 chunks; `reduceWith`'s
-  `s`; the claims), `Core.lean` (`walkDens`, `cosetSum`, `publicSide` go; `Φ`'s fraction, the ports' and the internal
-  fractions, `D_n`, the inversion of `R_d Y w_{m+1} c_h D_n`, `m + 2` digits, the points and values), `Spec.lean`
-  (`zeroCosetOf`, `tagWalk` go; `phi`; `values = 2^r + 2`), `Calls.lean` (`streamLen`), `Lemmas/` (`Coset`, `Public`,
-  `Side`'s walk go; `Main`'s `all_ne_zero_iff`, `run_rhoQ`, `run_combination`, `run_target`, `checks_claims_iff`), the
-  test runner's trace (its step names: `public_terms`, `public_side`, `zero_coset` go, `phi` comes; `identity`,
-  `inverse`, `quotient` change; π2v2's `verifier::reduce_traced`).
-- `RecCompose`: `Tables.lean` (`qCoef`, `claim_quotient`, `claim_sum`: the 12 chunks, value 0), `Pi2Prover.lean` and the
-  `Pi2Honest*` files (`hValues` zero at the holes, `P` and `q_P`, the `2N` coset, `qNovel` from `2N` points, `BadT`),
-  `Pi2Whir.lean` (`newOK_q` with `m + 6` variables), `Numbers.lean` (`pi2RoundErr_eq` at `3 · 2^24`), the stream's
-  offsets (`FsDefs`' `sLen` 944 → 968, `p2Inputs`, `FsWalk`'s `p2Msgs_eq`: 18 scalars), `FsVerifier`'s layout words,
-  `FactsSpec`'s zero coset, and the prover vectors (`tests/lean_pi2_prover.rs`' `STREAM`, `QROOT`).
-
-Opening version 3 (§8) touches, beyond that, what the Lean side states of the openings and the layout words (no
-file of `formal/` is changed here):
-
-- `formal/WhirBridge` (`Large*`, `Verifier.lean`'s `version`): its theorems are about version 2 (leanVM's ladder, the
-  certified counts of `LargeParams.lean`), which the membership line keeps; the recursion's openings need the same for
-  the recursion's ladder (`verifier::whir::Ladder::Recursion`: the rates `1, 2, 3, …` with blocks of at least `2^8`
-  positions, `RECURSION_QUERIES`, the prefix's version 3), with leanerVM's `levelsSpec` (generic in the levels) and a
-  certificate table for that ladder in place of `Whir.ladder` / `certTable` (`params/whir_params.py --recursion`
-  computes its groups).
-- `RecCompose`: `Pi2Whir.lean` (π2's three openings: version 3's ladder and counts, and `Statement/PcsQuotient/
-  Opening.lean`'s `openingVersion` 3 in their prefix), `FsVerifier`'s layout words and π2's IV.
-- `RecStatement/Verifier.lean`'s `layoutWord` (byte 21 the version, 3), so π2's IV; `UniKeccak/Opening.lean`'s
-  `layoutWordsK` through `UniStatement`'s `layoutWord` (byte 21 the version), so π1's contract IV and the transcripts
-  of the committed vectors.
-- The differential vectors that change (run against the start commit): `crates/leanvm/univariate/tests/
-  lean_keccak_vectors.rs` (the `LAYOUTWORDS`, IV-dependent and `OPENING` lines, and the three real vectors'),
-  `crates/leanvm/rec/tests/lean_circuit_keccak.rs` (the graph's `iv` and π1's three calls' layout-word constants; the
-  circuit's constants and κ), `crates/leanvm/rec/tests/lean_pi2_prover.rs` (`IV`, `QROOT`, `STREAM`). Unchanged:
-  `lean_pad_counts.rs`, and the membership line's (`whir_bridge_vector.rs`, `whir_large_params.rs`,
-  `examples/statement_vectors.rs`, the contract graph `formal/Implementation/Graph.lean`).
+**The Lean side** (`formal/RecPiop`, `RecStatement`, `RecCompose`) states and proves the protocol of this note: π2v3
+on the EIP draft's PCS claims. The contract model checks the eight declared claims (π1's three, π2's five), each a
+root, its out-of-domain answer, a point and a value, opened by one PCS opening (`WhirBridge.Pcs`), the eight charged
+once (`pcs_union_sound_oracle`); `Q`'s three claims are bound to one table by its answer (`qOodBinding`); `Q`'s empty
+slots are the prover's, handled as §2 says ("The empty slots"), at round 1's error `(4N − 1)/|E|`. The end theorems
+(`RecCompose.recKnowledgeSoundness_reduction_real`, `Pi1K.recCompleteness_real_K_fs_bits`) keep their bounds:
+`pi2Bound Q ≤ 2^-64` at `Q ≤ 2^64` (128.93 bits as `Q/ε`), completeness `δ1 + δh + 2^-164`. π2's Lean prover agrees
+with the Rust on the `lean_pi2_prover` vectors; `rec-circuit-keccak`, `rec-view-check` and `rec-real-check` hold
+(`formal/RecCompose/README.md`).
