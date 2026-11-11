@@ -43,6 +43,12 @@ name = "Kc3Circuit"
 srcDir = "../Kc3Circuit"
 globs = ["Kc3Circuit", "Kc3Circuit.+"]
 
+# The differential test of the deployed circuit against `crates/membership/quotient/examples/dump_circuit.rs`.
+[[lean_exe]]
+name = "kc3-dump-circuit"
+srcDir = "../Kc3Circuit"
+root = "Kc3CircuitTest.Dump"
+
 # The reduction's Keccak-256 chain (F4a), `formal/QuotientRpm`.
 [[lean_lib]]
 name = "QuotientRpm"
