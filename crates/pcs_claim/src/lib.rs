@@ -32,7 +32,10 @@ use fiat_shamir::merkle::Hash;
 use fiat_shamir::transcript::{Proof, ProverState};
 use std::sync::Mutex;
 
-use pcs::whir::{LaneTensor, commit_tree_in, config_for_rate, inner_product_base_ext, recursive_prover_with_lane_tensors};
+use pcs::whir::{
+    LaneTensor, commit_tree_skipping_in, config_for_rate, inner_product_base_ext, recursive_prover_with_lane_tensors,
+    recursive_prover_with_lane_tensors_skipping,
+};
 use primitives::field::{F64, F192, Weights8, dot_base};
 use primitives::hash::hash as keccak256;
 use primitives::multilinear::{eq_table, mle_eval_par};
@@ -202,6 +205,8 @@ pub struct Commitment {
     pub ood: F192,
     tree: Vec<Hash>,
     codeword: Mutex<Option<Vec<F64>>>,
+    /// Which committed lanes are all zero: not encoded, at the commitment nor at an opening's queried rows.
+    zero_lanes: Vec<bool>,
 }
 
 impl Commitment {
@@ -234,13 +239,15 @@ pub fn commit_words(words: &[F64], n: usize, keep_codeword: bool) -> Commitment 
         !words.is_empty() && words.len().is_multiple_of(lane) && words.len() <= 1 << n,
         "whole leading lanes of the 2^n words"
     );
+    let zero_lanes = zero_lanes(words, lane);
     let (root, tree, codeword) = if keep_codeword {
         let (commitment, data) = pcs::whir::commit(words, n, LANE_FOLD, LOG_INV_RATE);
         (commitment.root, data.merkle_tree, Some(data.codeword))
     } else {
-        // The encoding buffer, one replica of the codeword (as many words as `words`), mapped by the workers.
+        // The encoding buffer, one replica of the codeword, mapped by the workers: as many words as `words`, though
+        // the zero lanes take none of them, so that an opening's buffers find this memory again once it is freed.
         let scratch = mapped_words(words.len());
-        let (commitment, tree) = commit_tree_in(words, n, LANE_FOLD, LOG_INV_RATE, scratch);
+        let (commitment, tree) = commit_tree_skipping_in(words, n, LANE_FOLD, LOG_INV_RATE, &zero_lanes, scratch);
         (commitment.root, tree, None)
     };
     let ood = evaluate_lanes(words, &ood_point(n, &root));
@@ -250,7 +257,17 @@ pub fn commit_words(words: &[F64], n: usize, keep_codeword: bool) -> Commitment 
         ood,
         tree,
         codeword: Mutex::new(codeword),
+        zero_lanes,
     }
+}
+
+/// Which lanes (of `lane` words) of `words` are all zero, read in parallel: a run of a lane is read up to its first
+/// nonzero word, so that the scan reads the zero lanes and little else.
+fn zero_lanes(words: &[F64], lane: usize) -> Vec<bool> {
+    const RUN: usize = 1 << 16;
+    let run = RUN.min(lane);
+    let zero_runs = parallel::map_collect(words.len() / run, |r| words[r * run..(r + 1) * run].iter().all(|w| w.is_zero()));
+    zero_runs.chunks(lane / run).map(|runs| runs.iter().all(|&z| z)).collect()
 }
 
 /// `len` words, unwritten, their memory mapped by the workers: each touches its own run of pages once, so that the
@@ -401,16 +418,28 @@ fn open_words_with(words: &[F64], commitment: &Commitment, claim: &PcsClaim, fre
     let mut kept = commitment.codeword.lock().expect("the codeword");
     let taken = if free { kept.take() } else { None };
     let codeword = if free { taken.as_deref() } else { kept.as_deref() };
-    recursive_prover_with_lane_tensors(
-        &config,
-        n,
-        words,
-        &weight,
-        target,
-        codeword,
-        &commitment.tree[..],
-        &mut ps,
-    );
+    match codeword {
+        None if commitment.zero_lanes.contains(&true) => recursive_prover_with_lane_tensors_skipping(
+            &config,
+            n,
+            words,
+            &weight,
+            target,
+            &commitment.zero_lanes,
+            &commitment.tree[..],
+            &mut ps,
+        ),
+        _ => recursive_prover_with_lane_tensors(
+            &config,
+            n,
+            words,
+            &weight,
+            target,
+            codeword,
+            &commitment.tree[..],
+            &mut ps,
+        ),
+    }
     drop((taken, kept));
     let mut proof = ps.into_proof();
     // Level 0's rows hold the committed lanes alone, the tail of a leaf's image: the whole stack's lead with the

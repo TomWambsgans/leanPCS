@@ -18,6 +18,9 @@
 // batches hand their rows over afterwards. The first sweep gathers rows of up to 64 words where its group fits a
 // core's L2 (`WIDE_GATHER_WORDS`), and copies them inline (`copy_words`, `stream_words`). On AVX-512 the transposed
 // butterfly is one pass (`transposed_butterfly_lanes`).
+// Added here, every codeword unchanged: the two-sweep encodes of a lane-major message given block by block
+// (`encode_two_sweep_blocks_with`, `encoded_rows_two_sweep_blocks`; the message's `Source`), for a commitment that
+// skips its all-zero lanes.
 //! Additive NTT over GF(2^64) in the Lin-Chung-Han novel polynomial basis.
 //!
 //! It is the Reed-Solomon encoder of every WHIR commitment over K = F_{2^64}.
@@ -771,6 +774,46 @@ const TWO_SWEEP_TILE_WORDS: usize = 1 << 17;
 #[cfg(all(target_arch = "aarch64", target_os = "macos"))]
 const TWO_SWEEP_TILE_WORDS: usize = L3_WORDS;
 
+/// The message of a two-sweep encode: whole, laid out as its plan says, or lane-major block by block.
+#[derive(Clone, Copy)]
+enum Source<'m> {
+    Whole(&'m [F64]),
+    /// Block `b` of a lane-major message, `2^d` words each.
+    Blocks(&'m [&'m [F64]]),
+}
+
+impl<'m> Source<'m> {
+    fn len(&self) -> usize {
+        match self {
+            Source::Whole(msg) => msg.len(),
+            Source::Blocks(blocks) => {
+                let block = blocks.first().map_or(0, |b| b.len());
+                assert!(blocks.iter().all(|b| b.len() == block), "blocks of one length");
+                block * blocks.len()
+            }
+        }
+    }
+
+    /// The whole message, if it is given whole.
+    fn whole(&self) -> Option<&'m [F64]> {
+        match self {
+            Source::Whole(msg) => Some(msg),
+            Source::Blocks(_) => None,
+        }
+    }
+
+    /// The message from first-sweep task `task`'s first gathered row on, as far as the task reads.
+    fn from_task(&self, plan: &TwoSweep, task: usize) -> &'m [F64] {
+        match self {
+            Source::Whole(msg) => &msg[plan.row_offset(task, 0)..],
+            Source::Blocks(blocks) => {
+                let (b, r0) = (task / plan.blocks(), (task % plan.blocks()) * plan.per);
+                &blocks[b][r0..]
+            }
+        }
+    }
+}
+
 /// The plan of a two-sweep encode of one replica: `2^log_rows` rows of `n` words, `g` layers in the first sweep,
 /// tiles of `2^t` rows, first-sweep tasks of `per` residues, whose gathered rows are `width` words.
 #[derive(Clone, Copy, Debug)]
@@ -913,8 +956,35 @@ impl AdditiveNttF64 {
         log_inv_rate: usize,
         on_rows: &RowSink<'_>,
     ) -> bool {
-        assert!(n > 0 && msg.len().is_multiple_of(n));
-        let log_rows = log2_strict_usize(msg.len() / n);
+        self.encode_two_sweep_of(work, Source::Whole(msg), layout, n, log_inv_rate, on_rows)
+    }
+
+    /// [`Self::encode_two_sweep_with`] of the lane-major message whose block `b` is `blocks[b]` (`2^d` words each),
+    /// the blocks lying anywhere: the codeword of their concatenation, its lane `blocks.len() - 1 - b` block `b`'s.
+    /// Returns false, having done nothing, for a shape two sweeps do not cover, or one with no first sweep.
+    pub fn encode_two_sweep_blocks_with(
+        &self,
+        work: &mut [F64],
+        blocks: &[&[F64]],
+        log_inv_rate: usize,
+        on_rows: &RowSink<'_>,
+    ) -> bool {
+        let n = blocks.len();
+        self.encode_two_sweep_of(work, Source::Blocks(blocks), MsgLayout::LaneMajor, n, log_inv_rate, on_rows)
+    }
+
+    fn encode_two_sweep_of(
+        &self,
+        work: &mut [F64],
+        source: Source<'_>,
+        layout: MsgLayout,
+        n: usize,
+        log_inv_rate: usize,
+        on_rows: &RowSink<'_>,
+    ) -> bool {
+        let msg_len = source.len();
+        assert!(n > 0 && msg_len.is_multiple_of(n));
+        let log_rows = log2_strict_usize(msg_len / n);
         assert_eq!(
             log_rows + log_inv_rate,
             self.log_domain_size(),
@@ -923,6 +993,11 @@ impl AdditiveNttF64 {
         let Some(plan) = TwoSweep::new(layout, n, log_rows, true) else {
             return false;
         };
+        // Without a first sweep, the second reads the message whole.
+        let Some(msg) = source.whole().or((plan.g > 0).then_some(&[][..])) else {
+            return false;
+        };
+        let msg_at = |task: usize| source.from_task(&plan, task);
         let len = plan.len();
         assert!(work.len() >= len, "the work buffer holds a replica");
         let replicas: Vec<AdditiveNttF64> = (0..1usize << log_inv_rate)
@@ -936,7 +1011,7 @@ impl AdditiveNttF64 {
                 let stream = len >= STREAM_MIN_WORDS;
                 let group: Vec<&AdditiveNttF64> = group.iter().collect();
                 let stride = plan.row_stride();
-                self.two_sweep_gathered(&plan, &group, None, msg, |task, r, rows, stream_out| {
+                self.two_sweep_gathered(&plan, &group, None, &msg_at, |task, r, rows, stream_out| {
                     let first = r * len + plan.row_offset(task, 0);
                     for (i, src) in rows.chunks_exact(plan.width).enumerate() {
                         // SAFETY: each (task, replica) alone writes these words of the replica's work buffer.
@@ -1001,7 +1076,7 @@ impl AdditiveNttF64 {
         if g > 0 {
             let data_ptr = parallel::SendPtr(data.as_mut_ptr());
             let refs: Vec<&AdditiveNttF64> = replicas.iter().collect();
-            self.two_sweep_gathered(&plan, &refs, None, msg, |task, r, rows, stream_out| {
+            self.two_sweep_gathered(&plan, &refs, None, |task| &msg[plan.row_offset(task, 0)..], |task, r, rows, stream_out| {
                 let first = r * len + plan.in_tile(task);
                 for (i, src) in rows.chunks_exact(plan.width).enumerate() {
                     // SAFETY: each (task, replica) alone writes these words of tile `i` of the replica's region.
@@ -1038,16 +1113,17 @@ impl AdditiveNttF64 {
         true
     }
 
-    /// The first sweep: every task gathers its `2^g` rows of `plan.width` words from the message into scratch,
+    /// The first sweep: every task gathers its `2^g` rows of `plan.width` words from the message (`msg(task)`, the
+    /// message from the task's first row on: [`TwoSweep::row_offset`] in a flat one) into scratch,
     /// and for each of `replicas` runs layers `0..g` on them and hands them to `out(task, replica, rows,
     /// stream)`, `stream` a streaming-store handle the task fences at its end. With `wanted`, replica `r`'s rows
     /// are final at the rows `wanted[r]` (sorted, distinct) alone ([`Self::run_layers_toward`]).
-    fn two_sweep_gathered(
+    fn two_sweep_gathered<'m>(
         &self,
         plan: &TwoSweep,
         replicas: &[&AdditiveNttF64],
         wanted: Option<&[Vec<usize>]>,
-        msg: &[F64],
+        msg: impl Fn(usize) -> &'m [F64] + Sync,
         out: impl Fn(usize, usize, &[F64], &Stream) + Sync,
     ) {
         let (g, width) = (plan.g, plan.width);
@@ -1059,8 +1135,7 @@ impl AdditiveNttF64 {
                 let stream = Stream::new();
                 let (n, stride) = (1usize << g, plan.row_stride());
                 for task in lo..hi {
-                    let first = plan.row_offset(task, 0);
-                    let rows = &msg[first..first + (n - 1) * stride + width];
+                    let rows = &msg(task)[..(n - 1) * stride + width];
                     for (i, dst) in gathered.chunks_exact_mut(width).enumerate() {
                         // No prefetcher follows rows this far apart.
                         if i + PREFETCH_ROWS < n {
@@ -1102,15 +1177,42 @@ impl AdditiveNttF64 {
         log_inv_rate: usize,
         wanted: &[usize],
     ) -> Option<Vec<F64>> {
+        self.encoded_rows_two_sweep_of(Source::Whole(msg), layout, n, log_inv_rate, wanted)
+    }
+
+    /// [`Self::encoded_rows_two_sweep`] of the lane-major message whose block `b` is `blocks[b]`
+    /// ([`Self::encode_two_sweep_blocks_with`]); `None` also for a shape with no first sweep.
+    pub fn encoded_rows_two_sweep_blocks(
+        &self,
+        blocks: &[&[F64]],
+        log_inv_rate: usize,
+        wanted: &[usize],
+    ) -> Option<Vec<F64>> {
+        let n = blocks.len();
+        self.encoded_rows_two_sweep_of(Source::Blocks(blocks), MsgLayout::LaneMajor, n, log_inv_rate, wanted)
+    }
+
+    fn encoded_rows_two_sweep_of(
+        &self,
+        source: Source<'_>,
+        layout: MsgLayout,
+        n: usize,
+        log_inv_rate: usize,
+        wanted: &[usize],
+    ) -> Option<Vec<F64>> {
         assert!(wanted.is_sorted_by(|a, b| a < b), "sorted, distinct rows");
-        assert!(n > 0 && msg.len().is_multiple_of(n));
-        let log_rows = log2_strict_usize(msg.len() / n);
+        let msg_len = source.len();
+        assert!(n > 0 && msg_len.is_multiple_of(n));
+        let log_rows = log2_strict_usize(msg_len / n);
         assert_eq!(
             log_rows + log_inv_rate,
             self.log_domain_size(),
             "the codeword's own transform"
         );
         let plan = TwoSweep::new(layout, n, log_rows, false)?;
+        // Without a first sweep, the second reads the message whole.
+        let msg = source.whole().or((plan.g > 0).then_some(&[][..]))?;
+        let msg_at = |task: usize| source.from_task(&plan, task);
         let (g, t) = (plan.g, plan.t);
         let rows = 1usize << log_rows;
         // The wanted tiles, (replica, tile) ascending.
@@ -1146,7 +1248,7 @@ impl AdditiveNttF64 {
                     tiles[used[u].1..end].iter().map(|&(_, tile)| tile).collect()
                 })
                 .collect();
-            self.two_sweep_gathered(&plan, &refs, Some(&rows), msg, |task, u, buf, _| {
+            self.two_sweep_gathered(&plan, &refs, Some(&rows), &msg_at, |task, u, buf, _| {
                 let first = used[u].1;
                 let end = used.get(u + 1).map_or(tiles.len(), |&(_, k)| k);
                 for (k, &(_, tile)) in tiles.iter().enumerate().take(end).skip(first) {
