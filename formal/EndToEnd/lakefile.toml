@@ -36,6 +36,13 @@ srcDir = ".."
 name = "Kc3"
 srcDir = ".."
 
+# The deployed membership circuit (F0, `formal/Kc3Circuit`): its builder's rows compute the statement, its wiring's
+# cycles, the pole condition, and the relation from the reduction's (`Kc3.Params.Sat`) and back.
+[[lean_lib]]
+name = "Kc3Circuit"
+srcDir = "../Kc3Circuit"
+globs = ["Kc3Circuit", "Kc3Circuit.+"]
+
 # The reduction's Keccak-256 chain (F4a), `formal/QuotientRpm`.
 [[lean_lib]]
 name = "QuotientRpm"
