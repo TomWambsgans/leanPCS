@@ -4,10 +4,10 @@
 
 A proof of a Keccak VM execution (leanVM `9d50c92a3`'s tables, `docs/leanvm/univariate/KECCAK.md`) verified on the EVM
 by recursion: π1 is the univariate proof, π2 a SNARK of π1's verifier, and the contract runs π2's verifier only. At the
-reference shape (128 signatures) the real proof verifies for **37,406 gas of execution** (941 B of calldata; as an
-EIP-8141 frame transaction, EIP-7976's floor, standard 52,366 and floor 60,224), its 8 claims declared (π1's 3, π2's
-5, each the EIP draft's PCS claim, `crates/pcs_claim`; π2v2, `PI2.md`; π1's claim on `C1` hashed in π2's circuit,
-`PERF_GAS.md`): 89,672 with the frame of claims (257 B) and their PCS gas (13,000, on both sides). The figures below that predate the PCS claims are marked so. Code: `crates/leanvm/rec`; π2's PIOP in
+reference shape (128 signatures) the real proof verifies for **31,524 gas of execution** (577 B of calldata; as an
+EIP-8141 frame transaction, EIP-7976's floor, standard 40,708 and floor 36,928), its 8 claims declared (π1's 3, π2's
+5, each the EIP draft's PCS claim, `crates/pcs_claim`; π2v2, `PI2.md`; π1's three claims hashed in π2's circuit, π1 as
+π1-rec4, `PERF_GAS2.md`): 66,376 with the frame of claims (257 B) and their PCS gas (13,000, on both sides). The figures below that predate the PCS claims are marked so. Code: `crates/leanvm/rec`; π2's PIOP in
 [`PI2.md`](PI2.md); the claims' points in [`SPEC-POINTS.md`](SPEC-POINTS.md).
 
 Every number is marked:
@@ -728,7 +728,8 @@ detailed in `PI2.md` §8–§9.
 13. **The EIP draft's PCS claims** (`crates/pcs_claim`): every commitment a root and an out-of-domain answer, every
     claim one point of a whole stack, one opening a claim; `Q` in sixteen slots and π2's five claims (`PI2.md` §2).
     1,101 B of calldata, 32,794 execution, 99,912 with the frame of claims and the PCS gas (EIP-8141, the floor);
-    then, with π1's claim on `C1` hashed in π2's circuit (`PERF_GAS.md`), 941 B, 37,406 execution, 89,672.
+    then, with π1's claim on `C1` hashed in π2's circuit (`PERF_GAS.md`), 941 B, 37,406 execution, 89,672; then, with
+    all three hashed and π1-rec4 (`PERF_GAS2.md`), 577 B, 31,524 execution, 66,376.
 
 **Dropped:**
 
