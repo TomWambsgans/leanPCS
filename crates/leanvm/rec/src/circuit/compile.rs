@@ -7,11 +7,13 @@
 //!   (`ring_tower::weight_at`), so every node is a read, a hash, a challenge, a bit field, a constant, a sum or a
 //!   product;
 //! - `Seed` and `Hash` → Keccak-256 calls ([`super::keccak::Sponge`]): the seed hashes the name, the contract's IV
-//!   (constants) and the public input's bits; a hash, the state's 256 digest bits and the stream's bits `from..to`;
+//!   (constants) and the public input's bits; a hash, the state's 256 digest bits and the stream's bits `from..to`; a
+//!   hash a `Wide` challenge reads (π1-rec4's wide draws) gives its rate's lanes up to that challenge's, another its
+//!   digest's four, its last round making those lanes' planes alone;
 //! - the stream's hashed bytes and the public input are **free bits**; a bit in a first block (it ends at the
 //!   permutation's input slot) has a copy;
-//! - `Input` (24-byte scalars, 4-byte integers), `Low`, `Statement`, `Bits` → **packings** of their bits into `K`
-//!   limbs; reads never hashed are free limbs;
+//! - `Input` (24-byte scalars, 4-byte integers), `Low`, `Wide`, `Statement`, `Bits` → **packings** of their bits into
+//!   `K` limbs; reads never hashed are free limbs;
 //! - rejected (a panic, as the Lean compiler `formal/RecCircuit` refuses them; π1's graphs have none): a graph not
 //!   well typed (`assert_typed`: node 0 not the seed, a hash or a challenge of an element, a sum, a product, a bit
 //!   field or a ring weight of a state, a ring weight's map not of 6 stages), a read never hashed that is not a

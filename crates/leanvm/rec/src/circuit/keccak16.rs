@@ -26,6 +26,13 @@
 //! rows and ends in one `k0` row; `C[x][z]` ends in one D unit and is forwarded through another; the input ends at
 //! round 0's χ and is forwarded through `kprep`. Per permutation (steady state) `1,536 + 6,144 + 344 + 160 = 8,184`
 //! rows, 130,944 positions.
+//!
+//! **The last round makes the lanes read alone** (`docs/leanvm/rec/PERF_GAS2.md`): a permutation whose caller reads
+//! its output's lanes `0 .. lanes` (a Keccak-256 digest: 4; a wide draw's rate: up to 17) makes round 23's χ rows of
+//! planes `0 .. ⌈lanes/5⌉` only, so a digest's permutation drops 256 `k1` rows (126,848 positions). The other planes'
+//! outputs are not made ([`super::keccak::UNMADE`]); their inputs `A_22` end at free ends (nothing reads them), and
+//! `D_23[x][z]`, whose one plane-0 lane every last round makes, ends at its `k0` row as before. Rounds 0 … 22 are whole
+//! (`C_23` needs every lane of `A_22`), so the lanes made are Keccak-f's exactly as in a whole permutation.
 
 use std::collections::VecDeque;
 

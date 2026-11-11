@@ -238,7 +238,7 @@ fn count_report() {
 #[ignore]
 fn transcript_shape() {
     deep(|| {
-        for config in configs().into_iter().take(2) {
+        for config in configs() {
             let recorded = record_verifier(&REFERENCE, config.variant, Claims::Point);
             let graph = &recorded.graph;
             println!("\n### {}: the challenges in order", config.name);

@@ -152,6 +152,9 @@ pub fn prove(
         return Err(format!("Flock's witness has {} variables, the verifier's shape {log_n}", setup.m()));
     }
     let eq = eq_point(variant);
+    // The drawn coordinate is the zerocheck's first sampled one; with none sampled (`log_n = k + 7`) the verifier
+    // reads none either.
+    let drawn = drawn.filter(|_| log_n > k + FIXED);
     let out = reduction(writer, variant, log_n, K_LOG - PACKING, drawn, |chain| {
         setup.prove_reduction_skip(k, eq, &witness.z, &witness.a, &witness.b, &witness.z_lincheck, chain)
     })?;

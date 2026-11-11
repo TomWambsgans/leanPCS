@@ -11,6 +11,9 @@
 //!   `KECCAK256` in the contract). A scalar is 24 bytes, big-endian (`c2`, `c1`, `c0`); a commitment's root is its two
 //!   16-byte halves (`c1`, `c0`), so it has one encoding. The seed is the Keccak-256 of a 16-byte name, the program's
 //!   32-byte IV and the public input's 32 bytes. The challenge is the low 192 bits of the state, limb 0 lowest.
+//!   A wide draw ([`Channel::sample_wide`], π1-rec4's) takes up to five challenges from one such hash: the sponge's
+//!   rate after its last permutation ([`keccak256_rate`]), whose first 32 bytes are the digest, the next state. The
+//!   EVM's `KECCAK256` gives the digest alone, so a verifier with wide draws runs in π2's circuit, not on chain.
 //! - [`KeccakWriter`] is the prover's side of the same chain.
 //! - The recorder ([`crate::evm::record`]) is a channel too: it records the graph the contract is compiled from.
 

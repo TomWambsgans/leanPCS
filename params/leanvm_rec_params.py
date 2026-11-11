@@ -1,20 +1,21 @@
 # Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 """The recursion of docs/leanvm/rec/SPEC-REC.md on the Keccak VM: pi2's sizes (D16v, N = 2^24) and its soundness round
-by round after the union bounds over WHIR's level-0 Johnson lists, pi1-rec3's (from
-params/leanvm_univariate_params.py), their composition, the arithmetizations SPEC-REC.md §3 compares, and the
-batch's rounds of k variables (SPEC-POINTS.md §2.4).
+by round after the union bounds over WHIR's level-0 Johnson lists, pi1-rec4's (from
+params/leanvm_univariate_params.py; pi1-rec3's before docs/leanvm/rec/PERF_GAS2.md), their composition, the
+arithmetizations SPEC-REC.md §3 compares, and the batch's rounds of k variables (SPEC-POINTS.md §2.4).
 
     python3 -I params/leanvm_rec_params.py
 
-MEASURED (crates/leanvm/rec: tests/counts.rs, tests/keccak_vm_rec.rs, tests/circuit.rs; SPEC-REC.md §1.2, §10.3):
-pi1-rec3's verifier graph and pi2's positions at 128 and 400 signatures. MODELLED (here): every soundness figure, the
+MEASURED (crates/leanvm/rec: tests/counts.rs, tests/keccak_vm_rec.rs, tests/circuit.rs; SPEC-REC.md §1.2, §10.3,
+docs/leanvm/rec/PERF_GAS2.md): pi1-rec3's and pi1-rec4's verifier graphs and pi2's positions at 128 and 400
+signatures. MODELLED (here): every soundness figure, the
 other arithmetizations' sizes, the k-variable rounds' permutations.
 
 pi2's rounds are π2v2's (docs/leanvm/rec/PI2.md §2, §7; the Lean, formal/RecPiop/RecPiop/Rounds.lean `err`, states
 π2v1, whose t has degree < 5N): the copy argument (alpha, beta, gamma) over W's list, the two identities at t, W's fold
 and Q's claim at rho over W's and Q's lists. The
-composition adds pi2's bound and pi1-rec3's (RecCompose's `RecKnowledgeSoundnessReduction`), each with its openings
-charged once.
+composition adds pi2's bound and pi1-rec4's (RecCompose's `RecKnowledgeSoundnessReduction`, stated for pi1-rec3),
+each with its openings charged once.
 """
 from fractions import Fraction
 import importlib.util
@@ -45,14 +46,26 @@ PI1_REC3 = {
     128: dict(stream=9232, calls=70, perms=116, products=8476, linear=6633, challenges=14, values=3),
     400: dict(stream=9424, calls=71, perms=118, products=8673, linear=6887, challenges=14, values=3),
 }
+# pi1-rec4 (docs/leanvm/rec/PERF_GAS2.md): the challenges no message separates from one Keccak-f each, the ring map
+# after C2's commitment. The same stream, E operations and claims as pi1-rec3.
+PI1_REC4 = {
+    128: dict(stream=9280, calls=60, perms=106),
+    400: dict(stream=9472, calls=61, perms=108),
+}
 KECCAK_D16V = 130_944  # positions a Keccak-f[1600] (SPEC-REC.md §2.4.1; the design's 130,736)
+# A permutation whose caller reads its digest alone (lanes 0 .. 3): its last round's plane 0 (PERF_GAS2.md §2).
+KECCAK_D16V_DIGEST = 130_944 - 4 * 64 * 16
+# Measured (`tests/circuit.rs`, keccak_rec4_*_d16v): pi2 hashes pi1's three claims in its circuit (6 + 6 + 5 Keccak-f),
+# its permutations' last rounds trimmed to the lanes read.
+CLAIM_HASH_PERMS_REC4 = 17
+POSITIONS_REC4 = {128: 16_413_312, 400: 16_684_592}
 # Measured (`tests/circuit.rs`, keccak_rec3_*_d16v): pi2 hashes C1's claim in its circuit (docs/leanvm/rec/PERF_GAS.md),
 # 6 Keccak-f more than pi1's verifier: 16,482,912 and 16,756,288 positions of 2^24 used (main: 15,668,416 and 15,940,800).
 CLAIM_HASH_PERMS = 6
 REST = {128: 507_744, 400: 519_232}  # free bits, packings, later blocks' XORs, E units, ports (main: 478,912, 489,408)
 LOG_N = 24
 ROW = 16  # D16v: 16 positions a row, 16 fold values and xi at t
-PORT_DEGREES = 3  # the four-limb ports' fingerprints, degree 1 in gamma: the statement, C2's root, C1's claim hash
+PORT_DEGREES = 4  # the four-limb ports' fingerprints, degree 1 in gamma: the statement, pi1's three claim hashes
 
 # pi2's commitments (PI2.md §2, π2v2): W the witness, 2^24 K-words; Q: h (3N), q < 2N (6N), the pushes P (N, in K)
 # and P's definition quotient q_P < 2N (2N, in K), 12N words (π2v1: h and q < 4N, 15N); the setup, kappa and
@@ -95,11 +108,11 @@ def pi2_bound():
 
 
 def recursion_bits(q=2 ** 64):
-    """The recursion's bound at Q: pi2's `pi2Bound` + pi1-rec3's (the calculator's rounds, and the Lean's) + pi1-rec3's
-    merge hazard (`hazard_probK`: 2^16 / |E| a query)."""
+    """The recursion's bound at Q: pi2's `pi2Bound` + pi1-rec4's (the calculator's rounds, and the Lean's cap) +
+    pi1's merge hazard (`hazard_probK`: 2^16 / |E| a query)."""
     pi2_worst, _ = pi2_bound()
-    p = uni.pi1(uni.REFERENCE, "rec3")
-    e_lean, _ = uni.lean_pi1("rec3")
+    p = uni.pi1(uni.REFERENCE, "rec4")
+    e_lean, _ = uni.lean_pi1("rec4")
     hazard = (2 ** 33 + q) * Fraction(2 ** 16, 2 ** LOGQ)
     pi2 = uni.uni_bound128(pi2_worst, q)
     calc = pi2 + uni.uni_bound128(p["weakest"][1], q) + hazard
@@ -191,14 +204,21 @@ def main():
     print(f"   weakest: t ({bits(worst):.2f} after W's and Q's lists, {lw} · {lq});"
           f" with the openings once: {pi2_bits:.2f} bits as Q / ε at Q = 2^64 (Lean `pi2Bound`)")
 
-    print("\n== pi1-rec3 at 128 signatures (params/leanvm_univariate_params.py)")
-    p = uni.pi1(uni.REFERENCE, "rec3")
-    _, lean1 = uni.lean_pi1("rec3")
+    print("\n== pi1-rec4 (MEASURED) and pi2 hashing its three claims")
+    for xmss, p in PI1_REC4.items():
+        used = POSITIONS_REC4[xmss]
+        print(f"  {xmss} signatures: stream {p['stream']:,} B, Keccak-256 {p['calls']}, Keccak-f {p['perms']} (pi1-rec3:"
+              f" {PI1_REC3[xmss]['perms']}); with the claims' {CLAIM_HASH_PERMS_REC4}: pi2 {used:,} positions of"
+              f" 2^{LOG_N} ({100 * used / 2 ** LOG_N:.1f}%)")
+
+    print("\n== pi1-rec4 at 128 signatures (params/leanvm_univariate_params.py)")
+    p = uni.pi1(uni.REFERENCE, "rec4")
+    _, lean1 = uni.lean_pi1("rec4")
     print(f"   weakest round: {p['weakest'][0]}, {bits(p['weakest'][1]):.2f} bits after C1's and C2's lists;"
           f" {p['total']:.2f} bits with the openings (Lean: {lean1:.2f})")
     calc, lean = recursion_bits()
-    print(f"   the recursion, pi2 + pi1-rec3 + the merge hazard (2^16/|E| a query): {calc:.2f} bits as Q / ε at"
-          f" Q = 2^64 (with the Lean's pi1-rec3 bound: {lean:.2f})")
+    print(f"   the recursion, pi2 + pi1-rec4 + the merge hazard (2^16/|E| a query): {calc:.2f} bits as Q / ε at"
+          f" Q = 2^64 (with the Lean's cap on pi1-rec4's rounds: {lean:.2f})")
 
     print("\n== the arithmetizations (SPEC-REC.md §3), pi1-rec3 at 128 signatures (MODELLED: the rest as D16v's)")
     for design, d in DESIGNS.items():

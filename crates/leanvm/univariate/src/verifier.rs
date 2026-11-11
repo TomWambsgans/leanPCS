@@ -369,7 +369,8 @@ pub fn reduce<S: Scalar + PartialEq, C: Channel<S>>(
     let ood1 = channel.next_scalar()?;
     // π1-rec4: α's c, β, γ and Flock's zerocheck's first eq coordinate are one wide draw (no message separates them).
     let (alphas, beta, gamma, eq_first) = if variant.fs.wide() {
-        let [c, beta, gamma, eq_first] = channel.sample_wide(4).try_into().ok().expect("four challenges");
+        let [c, beta, gamma, eq_first]: [S; 4] =
+            channel.sample_wide(4).try_into().unwrap_or_else(|_| panic!("four challenges"));
         (leanvm_statement::transcript::squares(c, 4), beta, gamma, Some(eq_first))
     } else {
         let alphas = variant.fs.draw(channel, 4);
@@ -633,7 +634,8 @@ pub fn reduce<S: Scalar + PartialEq, C: Channel<S>>(
     let mut drawn_lambda: Option<S> = None;
     let mut drawn_rho: Option<S> = None;
     if variant.fs.wide() {
-        let [rho, lambda, f4, f5] = channel.sample_wide(4).try_into().ok().expect("four challenges");
+        let [rho, lambda, f4, f5]: [S; 4] =
+            channel.sample_wide(4).try_into().unwrap_or_else(|_| panic!("four challenges"));
         (drawn_rho, drawn_lambda) = (Some(rho), Some(lambda));
         ring_map_drawn.extend([f4, f5]);
         flock_end = Some(flock_min::ring_end_at(&flock_slices, ring_map_drawn));
