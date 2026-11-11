@@ -5,14 +5,15 @@ import RecPiop.Rounds
 /-!
 # The errors in bits, at π2's shape
 
-At `N = 2^24` positions, rows of `16` (D16v), the three four-limb ports (the statement and π1's two
-roots; `d_j = 1`, the other ports `0`, `RecPiop.Ports`), `|F| = 2^192`, and the candidate lists of
-`W` and `Q` (`L_W = 9,952`, `L_Q = 3,564`), ListChainU's factors times `piop`'s errors are:
+At `N = 2^24` positions, rows of `16` (D16v), the four four-limb ports (the statement and the Keccak-256s of π1's
+three claims, π1-rec4's circuit; `d_j = 1`, the other ports `0`, `RecPiop.Ports`), `|F| = 2^192`, and the candidate
+lists of `W` and `Q` (`L_W = 9,952`, `L_Q = 3,564`), ListChainU's factors times `piop`'s errors (π2v4) are:
 
-* the copy argument and the ports `(α, β, γ)`, over `L_W`: `9952 (4·2^24 + 2)/2^192 ≤ 2^-152` (`bits_copy`; 152.72);
-* the identities at `t` (`h` below `2N`, `Q`'s empty slot `S`), over `L_W L_Q`: `9952·3564 (4·2^24 − 1)/2^192 ≤
-  2^-140` (`bits_t`; 140.92);
-* `W`'s fold and `Q`'s pushes' claim at `ρ`, over `L_W L_Q`: `9952·3564·16/2^192 ≤ 2^-162` (`bits_rho`; 162.92).
+* the copy argument, the ports and the vanishing denominators `(α, β, γ)`, over `L_W`: `9952 (4·2^24 + 3)/2^192 ≤
+  2^-152` (`bits_copy`; 152.72);
+* `I` and `P`'s definition at `t` (`I` below `5N`), over `L_W L_Q`: `9952·3564 (5·2^24 − 1)/2^192 ≤ 2^-140`
+  (`bits_t`; 140.60);
+* `W`'s fold and `Q`'s pushes' claim at `ρ`, over `L_W L_Q`: `9952·3564·17/2^192 ≤ 2^-162` (`bits_rho`; 162.83).
 -/
 
 set_option linter.unusedSectionVars false
@@ -40,15 +41,15 @@ theorem N_of_logN {G : Circuit F} (hN : G.logN = 24) : G.N = 2 ^ 24 := by
   unfold Circuit.N
   rw [hN]
 
-/-- **The copy argument and the ports, over `W`'s list: 152 bits.** -/
+/-- **The copy argument, the ports and the vanishing denominators, over `W`'s list: 152 bits.** -/
 theorem bits_copy (G : Circuit F) (hN : G.logN = 24) (d : ℕ → ℕ)
-    (hd : ∑ j ∈ range G.nP, d j = 3) (hF : Fintype.card F = 2 ^ 192) :
+    (hd : ∑ j ∈ range G.nP, d j = 4) (hF : Fintype.card F = 2 ^ 192) :
     ((9952 : ℕ) : ℝ≥0∞) * err G d 0 ≤ 1 / 2 ^ 152 := by
   unfold err
   rw [ite_eq_left rfl, hF, N_of_logN hN, hd]
   exact mul_div_le_inv_pow (by positivity) (by norm_num)
 
-/-- **The identities at `t`, over `W`'s and `Q`'s lists: 140 bits** (`(4N − 1)/|F|`, 140.92). -/
+/-- **`I` and `P`'s definition at `t`, over `W`'s and `Q`'s lists: 140 bits** (`(5N − 1)/|F|`, 140.60). -/
 theorem bits_t (G : Circuit F) (hN : G.logN = 24) (d : ℕ → ℕ) (hF : Fintype.card F = 2 ^ 192) :
     ((9952 * 3564 : ℕ) : ℝ≥0∞) * err G d 1 ≤ 1 / 2 ^ 140 := by
   unfold err

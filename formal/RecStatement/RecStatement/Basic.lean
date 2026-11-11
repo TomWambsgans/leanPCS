@@ -1,6 +1,6 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Transcribed from `crates/leanvm/rec/src/pi2/circuit.rs`
 -- (`Coeff`, `Lin`, `Formula`, `Pair`, `Read`, `PublicTerm`, `Circuit`) and `crates/leanvm/rec/src/circuit/spec.rs`
--- (`CallWord`), branch `leanvm-rec` @ 2b22581.
+-- (`CallWord`), main 7e6d353c (π2v4: the narrow and frame reads).
 import UniStatement.Rec
 
 /-!
@@ -16,8 +16,8 @@ public terms' holes, `σ`'s preimages of their tags):
   a linear form plus products `coefficient · lin_a · lin_b` (degree at most two in a row's cells);
 * a **pair** (`Pair`): role `role` of the rows `firstRow … firstRow + 2^logRows` (an aligned block), pushing
   formula `formula` of its row (`pulls = false`: a hole, pulling nothing);
-* the **reads** (`Read`): how the public data after the public input's four words comes from the stream (an
-  integer, a root's two halves, an element of `E`);
+* the **reads** (`Read`): how the public data after the public input's four words comes (an integer, a root's two
+  halves, an element of `E`, a narrow element's 20 bytes from the stream; a frame payload's four words);
 * the **public terms** (`PublicTerm`): port `j`'s value `F_J`, a linear form of the public scalars, which the hole
   pushing to its tag `ω_tag` must push; π2v2 checks it by the ports' term `T` (`Φ_k` by rows, `PI2.md` §1), for which
   the verifier reads each term's **hole** (`holes`: the position `σ` sends to the tag; its row and role);
@@ -72,18 +72,26 @@ inductive Read where
   | root
   /-- A 24-byte element of `E`: one scalar. -/
   | scalar
+  /-- A narrow element (`c2 < 2^32`: π1's batch challenges) as its low 20 bytes (`Channel::next_narrow`): one scalar. -/
+  | narrow
+  /-- Payload `p` of the transaction's frame of PCS claims (a hashed π1 claim's Keccak-256), not in the stream: the
+  seed hashes it after the public input (`Channel::next_frame`); its four big-endian words, four scalars. -/
+  | frame (p : ℕ)
   deriving DecidableEq, Repr, Inhabited
 
 /-- The scalars a read gives (`Read::scalars`). -/
 def Read.scalars : Read → ℕ
   | .root => 2
+  | .frame _ => 4
   | _ => 1
 
-/-- The bytes a read takes (`Read::bytes`). -/
+/-- The bytes of the stream a read takes (`Read::bytes`). -/
 def Read.bytes : Read → ℕ
   | .integer b => b
   | .root => 32
   | .scalar => 24
+  | .narrow => 20
+  | .frame _ => 0
 
 /-- **A public term** (`PublicTerm`). -/
 structure PublicTerm where

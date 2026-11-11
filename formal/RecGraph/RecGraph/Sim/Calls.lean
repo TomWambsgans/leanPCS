@@ -233,6 +233,7 @@ theorem inputsBelow_op (st : RecState) (o : Op) (h : InputsBelow st) : InputsBel
     rw [sample_eq]
     have h1 : InputsBelow (afterHash st) := nn (.hash st.state st.absorbed st.cursor) fun _ _ e ↦ by cases e
     exact inputsBelow_new (afterHash st) _ (fun _ _ e ↦ by split at e <;> cases e) h1
+  | wide k => exact nn _ fun _ _ e ↦ by cases e
   | add a b =>
     show InputsBelow (st.add a b).2
     unfold RecState.add RecState.constant

@@ -470,6 +470,141 @@ theorem card_copyOK_le (hV : G.Valid) (hω : ∀ a < 2 * G.N, ∀ b < 2 * G.N, �
   refine Nat.mul_le_mul_right _ ?_
   omega
 
+variable (G) in
+/-- **A denominator vanishes on `V_m`**: a pull's `α + w_i + β ω_i` or a push's `α + P_i + β ω_{σ_i}`. -/
+def DenZero (w : ℕ → F) (α β : F) : Prop := ∃ i < G.N, dPull ω w α β i = 0 ∨ G.dPushV ω w α β i = 0
+
+variable (G) in
+/-- **π2v4's state after `α, β, γ`** (`PI2.md` §7): `CopyOK`, or a denominator vanishes on `V_m` (`DenZero`): the
+layout's identity gives `CopyOK` where none does (`RecPiop.Layout`). -/
+def CopyOK4 (pub : ℕ → List F) (w : ℕ → F) (α β γ : F) : Prop := G.CopyOK ω pub w α β γ ∨ G.DenZero ω w α β
+
+open Classical in
+/-- **π2v4's copy argument, counting form.** If the witness `w` does not satisfy the circuit for the public limbs
+`pub`, at most `(4N − 1 + Σ_j d_j)·|F|²` triples `(α, β, γ)` reach `CopyOK4` (`CopyOK`, or a pull's or push's
+denominator vanishing on `V_m`): the vanishing pushes, `N` lines, take the place of the holes' `n_P ≤ N`. -/
+theorem card_copyOK4_le (hV : G.Valid) (hω : ∀ a < 2 * G.N, ∀ b < 2 * G.N, ω a = ω b → a = b)
+    (pub : ℕ → List F) (w : ℕ → F) (d : ℕ → ℕ)
+    (hbind : ∀ j < G.nP, G.limbVals w j ≠ pub j →
+      (univ.filter fun γ : F => G.push w γ (G.port j) = G.pubFp γ pub j).card ≤ d j)
+    (hns : ¬ G.Satisfies pub w) :
+    (univ.filter fun v : F × F × F => G.CopyOK4 ω pub w v.1 v.2.1 v.2.2).card ≤
+      (4 * G.N - 1 + ∑ j ∈ range G.nP, d j) * Fintype.card F ^ 2 := by
+  have hP := nP_le hV
+  set A1 := univ.filter fun v : F × F × F => ∃ i < G.N, den v.1 v.2.1 (w i, ω i) = 0
+  set A2 := univ.filter fun v : F × F × F => ∃ i < G.N, den v.1 v.2.1 (G.pushV w i, ω (G.sigma i)) = 0
+  set B := univ.filter fun v : F × F × F =>
+    (∀ x ∈ G.entries, den v.1 v.2.1 (G.entryVal ω w x) ≠ 0) ∧
+      (∀ j ∈ range G.nP, den v.1 v.2.1 (G.poleA ω w j) ≠ 0 ∧ den v.1 v.2.1 (G.poleB ω w j) ≠ 0) ∧
+      (¬ EvenAll G.entries (G.entryVal ω w) ∨ ∃ j ∈ range G.nP, G.portC pub w v.2.2 j ≠ 0) ∧
+      logSum G.entries (G.entryVal ω w) v.1 v.2.1 +
+        ∑ j ∈ range G.nP, G.portC pub w v.2.2 j * (den v.1 v.2.1 (G.poleA ω w j) * den v.1 v.2.1 (G.poleB ω w j))⁻¹ = 0
+  set Cj := fun j => univ.filter fun v : F × F × F =>
+    G.limbVals w j ≠ pub j ∧ G.push w v.2.2 (G.port j) = G.pubFp v.2.2 pub j
+  -- The bad triples are in `A1 ∪ A2 ∪ B ∪ ⋃ Cj`.
+  have hsub : (univ.filter fun v : F × F × F => G.CopyOK4 ω pub w v.1 v.2.1 v.2.2) ⊆
+      A1 ∪ (A2 ∪ (B ∪ (range G.nP).biUnion Cj)) := by
+    intro v hv
+    rw [Finset.mem_filter] at hv
+    by_cases hA : ∃ i < G.N, den v.1 v.2.1 (w i, ω i) = 0
+    · exact Finset.mem_union_left _ (Finset.mem_filter.mpr ⟨Finset.mem_univ _, hA⟩)
+    by_cases hA2 : ∃ i < G.N, den v.1 v.2.1 (G.pushV w i, ω (G.sigma i)) = 0
+    · exact Finset.mem_union_right _ (Finset.mem_union_left _ (Finset.mem_filter.mpr ⟨Finset.mem_univ _, hA2⟩))
+    have hcopy : G.CopyOK ω pub w v.1 v.2.1 v.2.2 := by
+      rcases hv.2 with h | ⟨i, hi, h⟩
+      · exact h
+      · rcases h with h | h
+        · exact absurd ⟨i, hi, h⟩ hA
+        · exact absurd ⟨i, hi, h⟩ hA2
+    have hA' : ∀ j < G.nP, den v.1 v.2.1 (G.poleB ω w j) ≠ 0 := fun j hj h0 => hA2
+      ⟨G.port j, (port_lt hV hj).1, by rw [← h0]; exact (dPushV_port ω hV w v.1 v.2.1 hj)⟩
+    push Not at hA
+    obtain ⟨hden, hlog⟩ := logSum_of_copyOK ω hV hcopy hA hA'
+    refine Finset.mem_union_right _ (Finset.mem_union_right _ ?_)
+    by_cases hE : EvenAll G.entries (G.entryVal ω w) ∧ ∀ j ∈ range G.nP, G.portC pub w v.2.2 j = 0
+    · refine Finset.mem_union_right _ ?_
+      have hcopy := copy_of_even ω hV hω w hE.1
+      by_contra hC
+      apply hns
+      refine ⟨fun i hi hh => hcopy i hi hh, fun j hj => ?_⟩
+      by_contra hne
+      have hc := hE.2 j (Finset.mem_range.mpr hj)
+      exact hC (Finset.mem_biUnion.mpr ⟨j, Finset.mem_range.mpr hj,
+        Finset.mem_filter.mpr ⟨Finset.mem_univ _, hne, CharTwo.add_eq_zero.mp hc⟩⟩)
+    · refine Finset.mem_union_left _ (Finset.mem_filter.mpr ⟨Finset.mem_univ _, hden,
+        fun j hj => ⟨hA _ (port_lt hV (Finset.mem_range.mp hj)).1, hA' j (Finset.mem_range.mp hj)⟩, ?_, hlog⟩)
+      rw [not_and_or] at hE
+      rcases hE with hE | hE
+      · exact Or.inl hE
+      · push Not at hE
+        exact Or.inr hE
+  -- The counts.
+  have hA1c : A1.card ≤ G.N * Fintype.card F ^ 2 := card_exists_den_eq_zero_le G.N fun i => (w i, ω i)
+  have hA2c : A2.card ≤ G.N * Fintype.card F ^ 2 :=
+    card_exists_den_eq_zero_le G.N fun i => (G.pushV w i, ω (G.sigma i))
+  have hBc : B.card ≤ (2 * G.N - 1) * Fintype.card F ^ 2 := by
+    refine (card_triple_le _ ((2 * G.N - 1) * Fintype.card F) fun γ => ?_).trans (le_of_eq (by ring))
+    by_cases hE : ¬ EvenAll G.entries (G.entryVal ω w) ∨ ∃ j ∈ range G.nP, G.portC pub w γ j ≠ 0
+    · refine (Finset.card_le_card fun ab hab => ?_).trans
+        ((card_poles_eq_zero_le G.entries (G.entryVal ω w) (range G.nP) (G.poleA ω w) (G.poleB ω w)
+          (G.portC pub w γ) ?_ ?_ ?_ ?_ hE).trans (Nat.mul_le_mul_right _ ?_))
+      · rw [Finset.mem_filter] at hab ⊢
+        exact ⟨hab.1, hab.2.1, hab.2.2.1, hab.2.2.2.2⟩
+      · intro x hx j hj h
+        have hpj := port_lt hV (Finset.mem_range.mp hj)
+        rcases (mem_entries G x).mp hx with ⟨i, hi, hh, rfl⟩ | ⟨i, hi, hh, rfl⟩
+        · have := hω _ (by omega) _ (by omega) (congrArg Prod.snd h)
+          exact hh (this ▸ hpj.2)
+        · have hs := hV.sigma_inside i hi hh
+          have := hω _ (by omega) _ (by omega) (congrArg Prod.snd h)
+          exact hs.2 (this ▸ hpj.2)
+      · intro x hx j hj h
+        have hj' := Finset.mem_range.mp hj
+        rcases (mem_entries G x).mp hx with ⟨i, hi, hh, rfl⟩ | ⟨i, hi, hh, rfl⟩
+        · have := hω _ (by omega) _ (by omega) (congrArg Prod.snd h)
+          omega
+        · have hs := (hV.sigma_inside i hi hh).1
+          have := hω _ (by omega) _ (by omega) (congrArg Prod.snd h)
+          omega
+      · intro j hj j' hj' h
+        have hpj := port_lt hV (Finset.mem_range.mp hj)
+        have hj'' := Finset.mem_range.mp hj'
+        have := hω _ (by omega) _ (by omega) (congrArg Prod.snd h)
+        omega
+      · intro j hj j' hj' h
+        have hpj := port_lt hV (Finset.mem_range.mp hj)
+        have hpj' := port_lt hV (Finset.mem_range.mp hj')
+        exact port_inj hV (Finset.mem_range.mp hj) (Finset.mem_range.mp hj')
+          (hω _ (by omega) _ (by omega) (congrArg Prod.snd h))
+      · have := card_entries_le hV
+        rw [Finset.card_range]
+        omega
+    · rw [Finset.filter_false_of_mem fun ab _ h => hE h.2.2.1, Finset.card_empty]
+      exact Nat.zero_le _
+  have hCc : ((range G.nP).biUnion Cj).card ≤ (∑ j ∈ range G.nP, d j) * Fintype.card F ^ 2 := by
+    refine Finset.card_biUnion_le.trans ?_
+    rw [Finset.sum_mul]
+    refine Finset.sum_le_sum fun j hj => ?_
+    by_cases hne : G.limbVals w j ≠ pub j
+    · have : Cj j = univ.filter fun v : F × F × F =>
+          G.push w v.2.2 (G.port j) = G.pubFp v.2.2 pub j := by
+        ext v
+        simp [Cj, hne]
+      rw [this]
+      refine le_of_eq_of_le
+        (card_filter_last (fun γ => G.push w γ (G.port j) = G.pubFp γ pub j)) ?_
+      exact Nat.mul_le_mul_right _ (hbind j (Finset.mem_range.mp hj) hne)
+    · have : Cj j = ∅ := Finset.filter_false_of_mem fun v _ h => hne h.1
+      rw [this, Finset.card_empty]
+      exact Nat.zero_le _
+  have hN := N_pos (G := G)
+  refine (Finset.card_le_card hsub).trans ((Finset.card_union_le _ _).trans ?_)
+  refine (Nat.add_le_add hA1c ((Finset.card_union_le _ _).trans (Nat.add_le_add hA2c
+    ((Finset.card_union_le _ _).trans (Nat.add_le_add hBc hCc))))).trans ?_
+  rw [← add_mul, ← add_mul, ← add_mul]
+  refine Nat.mul_le_mul_right _ ?_
+  omega
+
 open Classical OracleComp in
 /-- **The copy argument's soundness.** If the witness does not satisfy the circuit, a uniform
 `(α, β, γ)` reaches `CopyOK` with probability at most `(4N − 1 + Σ_j d_j)/|F|`. -/

@@ -162,9 +162,18 @@ def squares (first : Sym) (count : Nat) : Prog (List Sym) := do
 def drawRun (fs : FsShape) (count : Nat) : Prog (List Sym) :=
   match fs with
   | .main => samples count
-  | .rec1 | .rec2 | .rec3 => if count = 0 then pure [] else do
+  | .rec1 | .rec2 | .rec3 | .rec4 => if count = 0 then pure [] else do
       let c ← sample
       squares c count
+
+/-- **`Channel::sample_wide(count)`** (the recorder's, π1-rec4): the hash and its challenge `0` (`sample`: `Hash`,
+`Low`), then challenge `k` of the same hash for `k = 1 … count − 1` (`Wide(h, k)`). -/
+def sampleWide (count : Nat) : Prog (List Sym) := do
+  let x ← sample
+  let mut out : Array Sym := #[x]
+  for k in [1:count] do
+    out := out.push (← op (.wide k))
+  return out.toList
 
 /-! ### Sumchecks (`transcript.rs`) -/
 

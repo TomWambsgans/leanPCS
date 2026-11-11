@@ -186,6 +186,7 @@ theorem op_cursor_le (st : RecState) (o : Op) : st.cursor ≤ (st.op o).2.cursor
     rw [sample_eq, hn]
     unfold afterHash
     rw [hn]
+  | wide k => exact le_of_eq (hn st _).symm
   | add a b =>
     show st.cursor ≤ (st.add a b).2.cursor
     unfold RecState.add RecState.constant

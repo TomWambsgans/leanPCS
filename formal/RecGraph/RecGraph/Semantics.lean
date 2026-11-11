@@ -24,8 +24,10 @@ A node's value (`stepNode`), as `eval.rs` computes it and as `UniStatement` read
   (`nextRoot`), at most 8 a packed integer in limb 0 (`nextInteger`);
 * `add`, `mul` are `E`'s; `bits v shift width` is `Scalar::bits` of `v`'s limb 0 (`intBits`);
 * `seed` is `keccak(name ‖ IV ‖ public input)` over `F` (`seedWith`); `hash s from to` the Keccak-256 over `F` of the
-  state `s`'s 32 bytes and the stream's bytes `from .. to` (`sample`); `low h` the state's challenge (`challengeOf`),
-  `narrow h` that cut to 160 bits (`narrowE`, `sampleNarrow`);
+  state `s`'s 32 bytes and the stream's bytes `from .. to` (`sample`), kept as the sponge's last state (`.sponge`:
+  its digest the transcript's state, `valState`); `low h` the state's challenge (`challengeOf`), `narrow h` that cut
+  to 160 bits (`narrowE`, `sampleNarrow`), `wide h k` challenge `k` of the hash's rate (`challengeAt`, `sampleWide`;
+  the Rust's `eval.rs` recomputes the rate from the hash's input, the same bytes);
 * `ringWeight k n` is `ring_tower::weight_at` (`Flock.towerWeightAt`) of kernel `k`'s values: the point's `n`
   coordinates, `1 + r`'s `n`, the map.
 
@@ -40,7 +42,11 @@ open LeanVM.Parameters LeanVM.Semantics LeanVM.Protocol LeanVM.Protocol.KeccakHa
 /-- **A node's value** (`eval::Value`): an element of `E`, or (a seed or a hash) the transcript's state. -/
 inductive Value where
   | elem (x : E)
+  /-- The seed: a digest. -/
   | state (d : Digest)
+  /-- A hash: Keccak-256's last state, its digest the transcript's state (`valState`), its rate the wide draws'
+  (`valRate`). -/
+  | sponge (s : KeccakState)
   deriving Inhabited
 
 /-- The element at node `i` (`0` where there is none: never, in a well-formed graph). -/
@@ -53,7 +59,14 @@ def valE (vals : Array Value) (i : ℕ) : E :=
 def valState (vals : Array Value) (i : ℕ) : Digest :=
   match vals[i]? with
   | some (.state d) => d
+  | some (.sponge s) => digestOfState s
   | _ => Vector.replicate 4 0
+
+/-- The sponge's rate at node `i` (a hash's: `keccak256_rate`; empty where there is none). -/
+def valRate (vals : Array Value) (i : ℕ) : List UInt8 :=
+  match vals[i]? with
+  | some (.sponge s) => rateBytesOf s
+  | _ => []
 
 /-- The scalar a stream read of `len` bytes gives (`eval.rs`'s `Input`): 24 bytes an element, limbs `2, 1, 0`
 big-endian; 16 a root's half, limbs `1, 0`; at most 8 a big-endian integer in limb 0. -/
@@ -105,9 +118,10 @@ def stepNode (kernels : Array (List ℕ)) (iv publicInput : List UInt8) (stream 
   | .mul a b => pure (.elem (valE vals a * valE vals b))
   | .seed => Value.state <$> seedWith F iv publicInput
   | .hash s fr upto =>
-    Value.state <$> keccak256With F (digestBytes (valState vals s) ++ (stream.extract fr upto).toList)
+    Value.sponge <$> keccak256StateWith F (digestBytes (valState vals s) ++ (stream.extract fr upto).toList)
   | .low h => pure (.elem (PcsQuotient.Transcript.challengeOf (valState vals h)))
   | .narrow h => pure (.elem (narrowE (PcsQuotient.Transcript.challengeOf (valState vals h))))
+  | .wide h k => pure (.elem (challengeAt (valRate vals h) k))
   | .bits v shift width => pure (.elem (bitsValue (valE vals v) shift width))
   | .ringWeight k n => pure (.elem (ringWeightValue ((kernels.getD k []).map (valE vals)) n))
 

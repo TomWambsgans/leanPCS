@@ -161,7 +161,7 @@ fn render(circuit: &Circuit, calls: &[Vec<CallWord>], hashed: &[u32], c: &Consta
     .unwrap();
     writeln!(
         w,
-        "{} public terms ({} of them of value zero, in no `Φ`); π1's {} claims. Not `σ`, not `κ` (the setup's root and",
+        "{} public terms ({} of them of value zero, in no `Φ`); {} of π1's claims encoded by the contract. Not `σ`, not `κ` (the setup's root and",
         circuit.public.len(),
         spec.ports - spec.phi.iter().map(|(_, terms)| terms.len()).sum::<usize>(),
         calls.len()
