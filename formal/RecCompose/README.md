@@ -54,7 +54,8 @@ writes the Rust prover's setup, `W` and `Q` roots and its stream byte for byte o
 compiler's example at `2^9`, `2^10` positions, `2^15`-word stacks, `Q` sixteen slots with `1, 5, 9, 12` zero; each root
 its bytes and out-of-domain answer in the `568`-byte stream; the runner also recomputes π2's IV v3 from the setup's
 answer and the circuit's digest and matches the Rust's; `crates/leanvm/rec/tests/lean_pi2_prover.rs`; about 15 and
-34 minutes interpreted).
+34 minutes interpreted); again 2/2 with `W`'s and `Q`'s out-of-domain points read off the prover's Keccak-256
+(`oodPointM` over Keccak-f[1600], branch `lean-pi2v3-ood`; about 7 and 18 minutes).
 
 ## Status of the move to the PCS claims (branch `lean-pi2v3`)
 
