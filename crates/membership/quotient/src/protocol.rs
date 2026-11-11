@@ -637,25 +637,27 @@ pub(crate) fn prove_with_randomness(
     // The transforms in two parts where the cells are many: the layers above a leaf a pass over memory each, and
     // each leaf's own layers in the block-wise loop below, around the quotients' values, a block in cache.
     let fused = n >= ntt::LEAF_WORDS;
-    let forward = |src: &[F64], quarter: &mut [F64], k: usize| {
-        let at = quarter_offset(offset, n, k);
+    // The values on the four quarters of `coeffs + X_n extra` (`extra`'s coefficients from `n` on): `coeffs` with
+    // `extra` times `X_n`'s value on each quarter's coset added to its leading words ([`top_layers`]). Fused, one
+    // pass reads `coeffs` for the four quarters' first layers; else `coeffs` holds each quarter's input in turn.
+    let quarter_offsets: [F64; 4] = std::array::from_fn(|k| quarter_offset(offset, n, k));
+    let four_quarters = |coeffs: &mut [F64], extra: &[F64], out: &mut [F64]| {
+        let heads: [Vec<F64>; 4] =
+            std::array::from_fn(|k| extra.iter().map(|&c| top_layers(offset, m, k) * c).collect());
+        let mut quarters: Vec<&mut [F64]> = out.chunks_exact_mut(n).collect();
         if fused {
-            ntt::values_upper(Some(src), quarter, at)
+            let heads: Vec<&[F64]> = heads.iter().map(|h| &h[..]).collect();
+            ntt::values_upper_many(coeffs, &heads, &mut quarters, &quarter_offsets);
         } else {
-            ntt::values_from(src, quarter, at)
+            for ((quarter, head), &at) in quarters.into_iter().zip(&heads).zip(&quarter_offsets) {
+                add_scaled(coeffs, head, F64::ONE);
+                ntt::values_from(coeffs, quarter, at);
+                add_scaled(coeffs, head, F64::ONE);
+            }
         }
     };
-    tracing::info_span!("witness values").in_scope(|| {
-        for (k, quarter) in values.chunks_exact_mut(n).enumerate() {
-            // The mask's coefficients, from `n` on, times the cells' vanishing polynomial's value on this coset:
-            // added to the witness's coefficients for this quarter's transform, which reads them as its first layer
-            // writes the quarter, and taken off again.
-            let scale = top_layers(offset, m, k);
-            add_scaled(&mut w_hat, &mask, scale);
-            forward(&w_hat, quarter, k);
-            add_scaled(&mut w_hat, &mask, scale);
-        }
-    });
+    // The mask's coefficients, from `n` on, times the cells' vanishing polynomial `X_n`.
+    tracing::info_span!("witness values").in_scope(|| four_quarters(&mut w_hat, &mask, &mut values));
     let mut table = w_hat;
     table.resize(n + lane(m + 1), F64::ZERO);
     table[n..n + 16].copy_from_slice(&mask);
@@ -729,16 +731,9 @@ pub(crate) fn prove_with_randomness(
     let sigma_values = index.sigma_values();
     tracing::info_span!("sum values").in_scope(|| {
         let h_limbs = h_limbs(&mut h_table, n);
-        for (limb, column) in q_limbs.chunks_exact_mut(big).enumerate() {
-            let h = &mut *h_limbs[limb];
-            for (k, quarter) in column.chunks_exact_mut(n).enumerate() {
-                // `h + X_n b`: the blinding's coefficients, from `n` on, times `X_n`'s value on this coset, added to
-                // `h`'s for this quarter's transform (which reads its input as it writes the quarter) and taken off.
-                let scale = top_layers(offset, m, k);
-                add_scaled(h, &blind[limb], scale);
-                forward(h, quarter, k);
-                add_scaled(h, &blind[limb], scale);
-            }
+        // `h + X_n b`: the blinding's coefficients, from `n` on.
+        for ((h, column), blind) in h_limbs.into_iter().zip(q_limbs.chunks_exact_mut(big)).zip(blind) {
+            four_quarters(h, blind, column);
         }
     });
 
