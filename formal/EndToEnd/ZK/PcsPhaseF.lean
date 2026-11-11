@@ -8,7 +8,8 @@ import ZK.PcsFresh
 
 `phaseF circuit stmt`: the Statement's `challengePhase` (with the simulator's uniform scalars), each permutation
 call of the out-of-domain points and of the chain's challenges `α, β, μ, t, ρ` a tracked query (`FProg.q`),
-every other step (the circuit's commitment, the chain's seed, the coins) a black box. **`interpR_phaseF`**: run
+each revealed scalar a drawn element (`FProg.r`), every other step (the circuit's commitment, the chain's seed, the
+coins) a black box. **`interpR_phaseF`**: run
 for real, it is `challengePhase circuit stmt uniformReveal`.
 -/
 
@@ -83,7 +84,7 @@ noncomputable def phaseF (circuit : Circuit) (stmt : Statement) : FProg A (Chall
   (oodF mv rW).bind fun zW ↦
   .step (keccak256With edgePerm (label index stmt)) fun d ↦
   let c : Chain := ⟨d, []⟩
-  .step (uniformReveal (.oodW zW)) fun oW ↦
+  .r fun oW ↦
   let wCom : Commitment := ⟨rW, oW⟩
   let wS := CommitmentScalars.of wCom
   let c := c.absorbCommitment wS
@@ -98,16 +99,16 @@ noncomputable def phaseF (circuit : Circuit) (stmt : Statement) : FProg A (Chall
   let c : Chain := ⟨pμ.2.state, []⟩
   .step (simulateQ edgeOracle sampleDigest) fun rT ↦
   (oodF (mv + 4) rT).bind fun zT ↦
-  .step (uniformReveal (.oodT α β μ zT)) fun oT ↦
+  .r fun oT ↦
   let tCom : Commitment := ⟨rT, oT⟩
   let tS := CommitmentScalars.of tCom
   let c := c.absorbCommitment tS
   (squeezeF c).bind fun pt ↦
   let t := pt.1
   let c : Chain := ⟨pt.2.state, []⟩
-  .step (uniformReveal (.value 1 t)) fun v1 ↦
-  .step (uniformReveal (.value 2 t)) fun v2 ↦
-  .step (uniformReveal (.value 0 t)) fun v0 ↦
+  .r fun v1 ↦
+  .r fun v2 ↦
+  .r fun v0 ↦
   let vals : Vector E 3 := #v[v0, v1, v2]
   let next := wiringValue circuit t
   let c := (vals.toList.foldl Chain.absorb c).absorb next
@@ -117,10 +118,15 @@ noncomputable def phaseF (circuit : Circuit) (stmt : Statement) : FProg A (Chall
     ⟨indexTree, index, ⟨wS, tS, vals, next⟩,
       (claimsAt circuit.logRows stmt α β μ t ρ vals next).map fun cl ↦ ⟨⟨wCom, tCom⟩, cl⟩⟩)
 
+/-- The simulator's revealed scalar is a drawn uniform element of `E`. -/
+theorem uniformReveal_eq_rDraw (q : Reveal) : uniformReveal (A := A) q = rDraw := by
+  funext s
+  exact indep_coinE _ edge_coin s
+
 /-- **The program run for real is the challenge phase.** -/
 theorem interpR_phaseF (circuit : Circuit) (stmt : Statement) :
     interpR (phaseF (A := A) circuit stmt) = challengePhase circuit stmt uniformReveal := by
   simp only [phaseF, interpWith, interpWith_bind, interpR_oodF, interpR_squeezeF, challengePhase,
-    Chain.startWith, Chain.squeezeWith, bind_assoc, pure_bind]
+    Chain.startWith, Chain.squeezeWith, bind_assoc, pure_bind, uniformReveal_eq_rDraw]
 
 end PcsQuotient.EndToEnd

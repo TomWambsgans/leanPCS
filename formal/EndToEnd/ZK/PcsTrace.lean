@@ -300,6 +300,89 @@ theorem trace_le {C : Type} (ν : Q → ProbComp R) (μ : ProbComp C) (g : C →
     gcongr
     exact prEvent_mono X _ _ fun _ h ↦ h.1
 
+/-! ### Approximate mixtures -/
+
+/-- The mixture's mass of the answers a log holds: the probability, over `c ← μ`, that `g c` gives them. -/
+noncomputable def mixMass {C : Type} (μ : ProbComp C) (g : C → Q → R) (L : List (Q × R)) : ℝ≥0∞ :=
+  ∑' c, Pr{let x ← μ}[x = c] * agrees (g c) L 0
+
+/-- **The mixture's mass of an outcome**: the `ν`-run's, times the mixture's mass of its log's answers over their
+`ν`-masses. -/
+theorem mix_mul {C : Type} (ν : Q → ProbComp R) (μ : ProbComp C) (g : C → Q → R) (P : RProg σ Q R α)
+    (s : σ) (o : α × σ × List (Q × R)) :
+    Pr{let y ← (μ >>= fun c ↦ semL (fun q ↦ pure (g c q)) P s [])}[y = o] * weight ν o.2.2 0 =
+      Pr{let y ← semL ν P s []}[y = o] * mixMass μ g o.2.2 := by
+  rw [prEvent_bind_eq_tsum, ← ENNReal.tsum_mul_right, mixMass, ← ENNReal.tsum_mul_left]
+  refine tsum_congr fun c ↦ ?_
+  have := factor ν (g c) P s [] o
+  simp only [List.length_nil] at this
+  rw [mul_assoc, this]
+  ring
+
+/-- **The shortfall of the mixture** at an outcome: how much its log's answers' mixture mass falls short of their
+`ν`-mass, relative to it (truncated at zero). -/
+noncomputable def shortfall {C : Type} (ν : Q → ProbComp R) (μ : ProbComp C) (g : C → Q → R) (L : List (Q × R)) :
+    ℝ≥0∞ :=
+  1 - mixMass μ g L / weight ν L 0
+
+/-- The `ν`-run's mass is at most the mixture's plus its share of the shortfall. -/
+theorem le_mix_add {C : Type} (ν : Q → ProbComp R) (μ : ProbComp C) (g : C → Q → R) (P : RProg σ Q R α)
+    (s : σ) (hW : ∀ L, weight ν L 0 ≠ 0) (o : α × σ × List (Q × R)) :
+    Pr{let y ← semL ν P s []}[y = o] ≤
+      Pr{let y ← (μ >>= fun c ↦ semL (fun q ↦ pure (g c q)) P s [])}[y = o] +
+        Pr{let y ← semL ν P s []}[y = o] * shortfall ν μ g o.2.2 := by
+  set Y := Pr{let y ← semL ν P s []}[y = o]
+  set X := Pr{let y ← (μ >>= fun c ↦ semL (fun q ↦ pure (g c q)) P s [])}[y = o]
+  set W := weight ν o.2.2 0
+  set M := mixMass μ g o.2.2
+  have hW0 : W ≠ 0 := hW _
+  have hWt : W ≠ ⊤ := ne_top_of_le_ne_top ENNReal.one_ne_top (weight_le_one _ _ _)
+  have hX : X = Y * (M / W) := by
+    rw [← mul_div_assoc, ENNReal.eq_div_iff hW0 hWt, mul_comm]
+    exact mix_mul ν μ g P s o
+  rw [hX, ← mul_add]
+  calc Y = Y * 1 := (mul_one Y).symm
+    _ ≤ Y * (M / W + shortfall ν μ g o.2.2) := by gcongr; exact le_add_tsub
+
+/-- **The two runs differ by at most the `ν`-run's expected shortfall**, on every event (`trace_le` without the
+exactness of good logs). -/
+theorem trace_le_approx {C : Type} (ν : Q → ProbComp R) (μ : ProbComp C) (g : C → Q → R) (P : RProg σ Q R α)
+    (s : σ) (hW : ∀ L, weight ν L 0 ≠ 0) (A : α × σ × List (Q × R) → Prop) :
+    Pr{let y ← (μ >>= fun c ↦ semL (fun q ↦ pure (g c q)) P s [])}[A y] ≤
+        Pr{let y ← semL ν P s []}[A y] +
+          ∑' o, Pr{let y ← semL ν P s []}[y = o] * shortfall ν μ g o.2.2 ∧
+      Pr{let y ← semL ν P s []}[A y] ≤
+        Pr{let y ← (μ >>= fun c ↦ semL (fun q ↦ pure (g c q)) P s [])}[A y] +
+          ∑' o, Pr{let y ← semL ν P s []}[y = o] * shortfall ν μ g o.2.2 := by
+  classical
+  set X := (μ >>= fun c ↦ semL (fun q ↦ pure (g c q)) P s [])
+  set Y := semL ν P s []
+  set D := ∑' o, Pr{let y ← Y}[y = o] * shortfall ν μ g o.2.2
+  -- On every event, `Y` is at most `X` plus the shortfall.
+  have hYX : ∀ B : α × σ × List (Q × R) → Prop, Pr{let y ← Y}[B y] ≤ Pr{let y ← X}[B y] + D := by
+    intro B
+    rw [prEvent_eq_tsum_ite Y, prEvent_eq_tsum_ite X]
+    calc ∑' o, (if B o then Pr{let y ← Y}[y = o] else 0)
+        ≤ ∑' o, ((if B o then Pr{let y ← X}[y = o] else 0) + Pr{let y ← Y}[y = o] * shortfall ν μ g o.2.2) := by
+          refine ENNReal.tsum_le_tsum fun o ↦ ?_
+          split_ifs
+          · exact le_mix_add ν μ g P s hW o
+          · exact zero_le
+      _ = _ := ENNReal.tsum_add
+  refine ⟨?_, hYX A⟩
+  -- The other direction, through the complement.
+  have hc := hYX fun y ↦ ¬ A y
+  rw [prEvent_not_eq_one_sub, prEvent_not_eq_one_sub] at hc
+  have ha : Pr{let y ← X}[A y] ≤ 1 := prEvent_le_one _
+  have hb : Pr{let y ← Y}[A y] ≤ 1 := prEvent_le_one _
+  have hfin : (1 : ℝ≥0∞) - Pr{let y ← X}[A y] ≠ ⊤ := ne_top_of_le_ne_top ENNReal.one_ne_top tsub_le_self
+  refine (ENNReal.add_le_add_iff_left hfin).1 ?_
+  calc 1 - Pr{let y ← X}[A y] + Pr{let y ← X}[A y] = 1 := tsub_add_cancel_of_le ha
+    _ = 1 - Pr{let y ← Y}[A y] + Pr{let y ← Y}[A y] := (tsub_add_cancel_of_le hb).symm
+    _ ≤ 1 - Pr{let y ← X}[A y] + D + Pr{let y ← Y}[A y] := by gcongr
+    _ = 1 - Pr{let y ← X}[A y] + (Pr{let y ← Y}[A y] + D) := by ring
+
 end RProg
+
 
 end PcsQuotient.EndToEnd
