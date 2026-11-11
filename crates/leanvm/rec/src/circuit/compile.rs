@@ -17,7 +17,9 @@
 //!   field or a ring weight of a state, a ring weight's map not of 6 stages), a read never hashed that is not a
 //!   24-byte scalar, a bit field of a read of more than 8 bytes, an empty hashed read;
 //! - `Add`, `Mul` → `E` units on limbs (a product, a square, a sum), constants → `κ` slots;
-//! - the calls' elements, `π1`'s roots, the statement, and the zero checks → **ports** (`spec::Source`).
+//! - the calls' elements, `π1`'s roots, the statement, and the zero checks → **ports** (`spec::Source`);
+//! - π1's claims [`HASHED_CLAIMS`] → their encoding's Keccak-256 in the circuit, a port (`Source::ClaimHash`): the
+//!   contract reads it from the frame of PCS claims and encodes the other claims only (`docs/leanvm/rec/PERF_GAS.md`).
 //!
 //! The witness is the framework's: the free bits and limbs given, everything else computed by the formulas.
 

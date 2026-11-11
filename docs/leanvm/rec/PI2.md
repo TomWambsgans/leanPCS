@@ -20,6 +20,10 @@ cargo test --release -p leanvm_rec --test pi2 -- --ignored --nocapture gas_repor
 
 ## 0. Results
 
+**With π1's claim on `C1` hashed in π2's circuit, narrow challenges as 20 bytes, no selector** ([`PERF_GAS.md`](PERF_GAS.md);
+`real_end_to_end` on h3): 941 B of calldata, 37,406 execution; floor 60,224, with the frame of PCS claims and the PCS
+gas 89,672 (99,912 before). The rest of this section predates it.
+
 **With the EIP draft's PCS claims** (§2, §8; `real_end_to_end`, this Mac, 2026-11-10): 1,101 B of calldata (61 zero),
 32,794 execution at 128 signatures (33,740 at 400); as an EIP-8141 frame transaction (EIP-7976's floor, without the base
 and per-frame costs) standard 49,678, floor 70,464; with the frame of PCS claims (257 B, 8 claims) and the PCS gas
@@ -126,11 +130,12 @@ by its claims: §6).
 
 ## 2. The protocol
 
-**Transcript** (`KeccakChannel`): the seed `keccak(NAME ‖ IV ‖ public input)`, `NAME = "leanvm-rec-pi2v3"`, then the
-stream:
+**Transcript** (`KeccakChannel`): the seed `keccak(NAME ‖ IV ‖ public input ‖ frame words)`, `NAME =
+"leanvm-rec-pi2v3"`, the frame words the Keccak-256s of π1's claims hashed in the circuit (`C1`'s: payload 0 of the
+frame of PCS claims, `Read::Frame`; [`PERF_GAS.md`](PERF_GAS.md) §3), then the stream:
 
-1. the public data: π1's roots `C1`, `C2` (32 bytes each, as they are, §8), π1's claims' 19 distinct elements (its
-   two out-of-domain answers, 14 narrow challenges and 3 values, 24 bytes each);
+1. the public data: π1's root `C2` (32 bytes, as it is, §8), the distinct elements of π1's claims the contract encodes
+   (`C2`'s out-of-domain answer, 13 narrow challenges as their low 20 bytes, `C2`'s and `F`'s values, 24 bytes each);
 2. `W`'s commitment: its root, then its out-of-domain answer; `α, β, γ`;
 3. `Q`'s commitment; `t`;
 4. the `2^r` fold values `a_k`, `ξ = κ(t) + β σ(t)` and `s = P(t)` (18 values for D16v); `ρ`.
@@ -221,9 +226,10 @@ reference shape; `formal/RecPiop`'s soundness carries them (the honest `Q` the p
 - `Q` at `(u_0, …, u_m, ρ', y_0, y_1)`, `u_l = w_l/(1 + w_l) = 1 + 1/w_l + 1/w_{l+1}`, the identity's value; at
   `(u_0, …, u_m, ρ, 1, 1)`, the pushes'; at `(1^m, 0, 0, y_0, y_1)`, value `0`.
 
-**The contract** (`contract`): reads the stream, runs the verifier, then checks 8 claims declared, each the EIP draft's
+**The contract** (`contract`): reads the stream, runs the verifier, then checks 7 claims declared at payloads 1 … 7
+(the eighth, π1's on `C1`, is payload 0, which the seed hashed and the circuit computed), each the EIP draft's
 PCS claim (`evm_link::declared_claims`: its `82 + 24 n` bytes packed and hashed, the hash a payload of the frame):
-π1's three (their fields `circuit::spec::Circuit::calls`: constants, the stream's roots, the elements read, its
+π1's other two (their fields `circuit::spec::Circuit::calls`: constants, the stream's roots, the elements read, its
 out-of-domain answers among them, the pairs' coordinates derived from their challenges), then `W`'s, the setup's (its
 commitment a constant) and `Q`'s three.
 
