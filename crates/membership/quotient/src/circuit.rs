@@ -15,19 +15,6 @@
 //! rest is `V + Y`: the verifier needs the row's values at `t` only through `X`, `C` and `V + Y`, three linear forms
 //! of the row's four polynomials that one claim of the witness table binds ([`crate::protocol`]).
 //!
-//! **Lane circuits** (an SLH-DSA proof-of-concept since removed: `docs/leanvm/flock/KECCAK.md` §4.3 in the history). The gate is an identity of `K = GF(2^64)`, and the
-//! argument does not need the cells to be bits. A lane circuit has `K`-valued cells besides its bits:
-//! - a **free-`K` row** ([`Builder::free_k`]) reads its own output as `Y` and `0` as `X` and `C`, so the gate
-//!   reads `v = v`: any value;
-//! - a product is one row ([`Builder::mul`]: `(X, Y, C) = (a, b, b)`, `V = a·b`), and with `X` a bit `s`, `χ` is a
-//!   lane mux: `Y + C·(1 + s)`;
-//! - a **port** ([`Builder::port`]) is a row at a reserved index of the port region, `(X, Y, C, V) = (1, O, I, O)`:
-//!   `O` free (or read from a row), `I` read from its source. Another argument (Flock, for Keccak-f) is to prove
-//!   the region's cells; here they are only rows.
-//!
-//! Bits stay Boolean by the free-bit row's `v = v^2`, whose roots in `K` are `0` and `1`. The rows are evaluated
-//! over `K` by [`Circuit::outputs_k`], in the order they were built.
-//!
 //! **The public values** are eight `K`-words ([`crate::statement::Statement::words`]), each packed from its 64
 //! bits by 63 rows of Horner's rule (`(X, Y, C) = (3, b, acc)`: `V = b + 2 acc`, `2` the generator of `K`'s
 //! polynomial basis, so the word is the number its bits spell), built after every other row. The first
@@ -73,7 +60,7 @@ pub fn anchor_values(words: &[F64; PUBLIC_WORDS]) -> [F64; PUBLIC_ROWS] {
 pub const LOG_ROWS: usize = 22;
 
 /// The **random rows**: idle rows the builder turns into rows of two free cells ([`Src::Free`], each its own cycle),
-/// the last ones of the circuit outside a port region, of three shapes in turn ([`RandomShape`]): `(0, r, s, r +
+/// the last ones of the circuit, of three shapes in turn ([`RandomShape`]): `(0, r, s, r +
 /// s)`, `(s, r, 0, r)`, `(1, r, s, r)`. A witness leaves them zero; the prover fills each with two fresh random
 /// values ([`Circuit::randomize`], `HIDING.md`), which every cell of the row depends on affinely: they make the
 /// witness table's evaluations and out-of-domain answer uniform, and its root hide.
@@ -161,22 +148,13 @@ pub struct Circuit {
     pub inputs: Vec<u32>,
     /// Each cell's successor on its cycle. Cell `4 r + role`, the roles `X, Y, C, V`.
     pub sigma: Vec<u32>,
-    /// The port region's rows `[start, start + len)` ([`Builder::with_ports`]); `(0, 0)` without one.
-    pub port_region: (usize, usize),
     /// The packing rows `[start, start + len)`: `K`-valued, evaluated by [`Circuit::cells`] over `K`.
     pub packing: (usize, usize),
-    /// The placed ports in the order they were placed: `(row, rows built before it)`, which is where
-    /// [`Circuit::outputs_k`] evaluates them. Empty without a port region.
-    pub ports: Vec<(u32, u32)>,
 }
 
 pub struct Builder {
     rows: Vec<Row>,
     inputs: Vec<u32>,
-    /// The port region's first row, its rows, and when each placed one was placed.
-    port_start: usize,
-    port_rows: Vec<Option<Row>>,
-    placed: Vec<(u32, u32)>,
 }
 
 impl Default for Builder {
@@ -197,56 +175,7 @@ impl Builder {
         Self {
             rows: all,
             inputs: Vec::new(),
-            port_start: usize::MAX,
-            port_rows: Vec::new(),
-            placed: Vec::new(),
         }
-    }
-
-    /// A builder whose rows `[start, start + len)` are a port region: the built rows must stay below `start`,
-    /// and [`Builder::port`] places the region's rows by index.
-    pub fn with_ports(rows: usize, start: usize, len: usize) -> Self {
-        assert!(start >= PUBLIC_ROWS);
-        let mut b = Self::with_capacity(rows.min(start));
-        b.port_start = start;
-        b.port_rows = vec![None; len];
-        b
-    }
-
-    /// A free `K` value: a row reading its own output as `Y` and `0` as `X` and `C`, so `V = V + 0 + 0`.
-    pub fn free_k(&mut self) -> Src {
-        let at = Src::Row(self.rows.len() as u32);
-        self.row(Src::Zero, at, Src::Zero)
-    }
-
-    /// `a · b` in `K`, one row `(X, Y, C) = (a, b, b)`: `V = b + b + a·b`.
-    pub fn mul(&mut self, a: Src, b: Src) -> Src {
-        match (a, b) {
-            (Src::Zero, _) | (_, Src::Zero) => Src::Zero,
-            (Src::One, v) | (v, Src::One) => v,
-            _ => self.row(a, b, b),
-        }
-    }
-
-    /// Port `index` of the region: the row `(X, Y, C) = (1, out, input)`, `out` its own output where `None` (a
-    /// free value). The gate reads `V = Y + C + C = Y`, so the four cells are `(1, O, I, O)`. Returns `V`.
-    pub fn port(&mut self, index: usize, out: Option<Src>, input: Src) -> Src {
-        let row = self.port_start + index;
-        assert!(self.port_rows[index].is_none(), "port {index} placed twice");
-        let at = Src::Row(row as u32);
-        self.port_rows[index] = Some(Row {
-            x: Src::One,
-            y: out.unwrap_or(at),
-            c: input,
-        });
-        self.placed.push((row as u32, self.rows.len() as u32));
-        at
-    }
-
-    /// The row a port index is at.
-    pub fn port_row(&self, index: usize) -> u32 {
-        assert!(index < self.port_rows.len());
-        (self.port_start + index) as u32
     }
 
     /// Rows used so far, the public ones included.
@@ -259,7 +188,6 @@ impl Builder {
     }
 
     pub fn row(&mut self, x: Src, y: Src, c: Src) -> Src {
-        debug_assert!(self.rows.len() < self.port_start, "the rows reach the port region");
         self.rows.push(Row { x, y, c });
         Src::Row(self.rows.len() as u32 - 1)
     }
@@ -383,29 +311,15 @@ impl Builder {
         let packing = (packing_start, self.rows.len() - packing_start);
         let used_rows = self.rows.len();
         assert!(used_rows <= n, "{used_rows} rows");
-        let port_region = if self.port_rows.is_empty() {
-            (0, 0)
-        } else {
-            assert!(used_rows <= self.port_start, "{used_rows} rows reach the port region");
-            assert!(self.port_start + self.port_rows.len() <= n, "the port region past the rows");
-            (self.port_start, self.port_rows.len())
-        };
         let sources = [&words[..], &[Src::Zero, Src::One, Src::Three]].concat();
         for (row, &c) in self.rows[..PUBLIC_ROWS].iter_mut().zip(&sources) {
             // A constant's anchor reads it as `Y` too, a cell of its cycle that is neither an `X` cell nor pinned.
             let y = if matches!(c, Src::One | Src::Three) { c } else { Src::Zero };
             *row = Row { x: Src::Zero, y, c };
         }
+        assert!(used_rows + RANDOM_ROWS <= n, "room for the random rows");
         self.rows.resize(n, IDLE);
-        for (i, row) in self.port_rows.iter().enumerate() {
-            if let Some(row) = row {
-                self.rows[port_region.0 + i] = *row;
-            }
-        }
-        let in_ports = |r: usize| (port_region.0..port_region.0 + port_region.1).contains(&r);
-        let random: Vec<usize> = (used_rows..n).rev().filter(|&r| !in_ports(r)).take(RANDOM_ROWS).collect();
-        assert_eq!(random.len(), RANDOM_ROWS, "room for the random rows");
-        for (k, &r) in random.iter().enumerate() {
+        for (k, r) in (n - RANDOM_ROWS..n).rev().enumerate() {
             self.rows[r] = RandomShape::of(k).row();
         }
 
@@ -446,9 +360,7 @@ impl Builder {
             rows: self.rows,
             inputs: self.inputs,
             sigma,
-            port_region,
             packing,
-            ports: self.placed,
         }
     }
 }
@@ -466,12 +378,7 @@ pub fn read(v: &[u8], src: Src) -> u8 {
 impl Circuit {
     /// The [`RANDOM_ROWS`] rows, from the last: the `k`-th is of shape [`RandomShape::of`]`(k)`.
     pub fn random_rows(&self) -> Vec<usize> {
-        let (start, len) = self.port_region;
-        (self.used_rows..self.rows.len())
-            .rev()
-            .filter(|&r| !(start..start + len).contains(&r))
-            .take(RANDOM_ROWS)
-            .collect()
+        (self.rows.len() - RANDOM_ROWS..self.rows.len()).rev().collect()
     }
 
     /// Whether every cycle of the wiring but a lone cell's holds a cell that is neither a row's first (`X`) cell nor
@@ -520,7 +427,6 @@ impl Circuit {
     /// [`Circuit::cells`]).
     pub fn outputs(&self, inputs: &[bool]) -> Vec<u8> {
         assert_eq!(inputs.len(), self.inputs.len());
-        assert!(self.ports.is_empty(), "a lane circuit: use outputs_k");
         let mut v = vec![0u8; self.rows.len()];
         for (&row, &input) in self.inputs.iter().zip(inputs) {
             v[row as usize] = input as u8;
@@ -562,42 +468,6 @@ pub fn gate_k(x: F64, y: F64, c: F64) -> F64 {
 }
 
 impl Circuit {
-    /// Every row's output over `K`. The rows are evaluated in the order they were built (the ports where they
-    /// were placed, the public rows last); a free row (one whose `Y` reads itself: a free bit or a free `K`
-    /// value) takes `free(row, outputs so far)`, and every other row its gate.
-    pub fn outputs_k(&self, mut free: impl FnMut(u32, &[F64]) -> F64) -> Vec<F64> {
-        let mut v = vec![F64::ZERO; self.rows.len()];
-        let mut eval = |r: usize, v: &mut Vec<F64>| {
-            let row = self.rows[r];
-            v[r] = if row.y == Src::Row(r as u32) {
-                free(r as u32, v)
-            } else {
-                gate_k(read_k(v, row.x), read_k(v, row.y), read_k(v, row.c))
-            };
-        };
-        let mut ports = self.ports.iter().peekable();
-        for r in PUBLIC_ROWS..self.used_rows {
-            while let Some(&(port, _)) = ports.next_if(|&&(_, before)| before as usize <= r) {
-                eval(port as usize, &mut v);
-            }
-            eval(r, &mut v);
-        }
-        for &(port, _) in ports {
-            eval(port as usize, &mut v);
-        }
-        let (start, len) = self.port_region;
-        for r in self.used_rows..self.rows.len() {
-            let placed = (start..start + len).contains(&r) && self.rows[r] != IDLE;
-            if !placed {
-                eval(r, &mut v);
-            }
-        }
-        for r in 0..PUBLIC_ROWS {
-            eval(r, &mut v);
-        }
-        v
-    }
-
     /// Every cell's value over `K`, from every row's output.
     pub fn cells_k(&self, v: &[F64]) -> Vec<F64> {
         assert_eq!(v.len(), self.rows.len());
@@ -699,74 +569,6 @@ pub fn membership_inputs(secret: &Secret) -> Vec<bool> {
 mod tests {
     use super::*;
     use primitives::test_rng::Rng;
-
-    /// A lane circuit: free `K` values, a product, a lane mux, ports placed out of row order (one free, one read
-    /// from a row) and read back; its `K` evaluation follows the build order, its cells hold every gate and wire,
-    /// and a changed cell does not. On a bit circuit the `K` evaluation is the bit one.
-    #[test]
-    fn lane_cells_and_ports() {
-        let mut b = Builder::with_ports(2048, 1024, 8);
-        let (a, c) = (b.free_k(), b.free_k());
-        let s = b.input();
-        let product = b.mul(a, c);
-        let not_s = b.not(s);
-        let differ = b.xor(a, c);
-        let muxed = b.chi(a, not_s, differ);
-        let free_port = b.port(3, None, product);
-        let read_port = b.port(5, Some(muxed), a);
-        let after = b.xor(free_port, a);
-        assert_eq!(b.port_row(3), 1027);
-        let circuit = b.finish(11, &std::array::from_fn(|_| vec![Src::Zero; WORD_BITS]));
-        assert_eq!(circuit.port_region, (1024, 8));
-        assert_eq!(circuit.ports, vec![(1027, PUBLIC_ROWS as u32 + 7), (1029, PUBLIC_ROWS as u32 + 7)]);
-        assert_eq!(circuit.rows[1026], IDLE);
-        let mut rng = Rng::new(0x4C);
-        for bit in [0, 1, 0, 1] {
-            let (va, vc, vo) = (F64(rng.next_u64()), F64(rng.next_u64()), F64(rng.next_u64()));
-            let v = circuit.outputs_k(|r, _| match Src::Row(r) {
-                x if x == a => va,
-                x if x == c => vc,
-                x if x == s => F64(bit),
-                x if x == free_port => vo,
-                _ if circuit.random_rows().contains(&(r as usize)) => F64::ZERO,
-                _ => panic!("row {r} is not free"),
-            });
-            assert_eq!(read_k(&v, product), va * vc);
-            assert_eq!(read_k(&v, muxed), if bit == 1 { vc } else { va });
-            assert_eq!(read_k(&v, read_port), read_k(&v, muxed));
-            assert_eq!(read_k(&v, after), vo + va);
-            let cells = circuit.cells_k(&v);
-            assert_eq!(circuit.check_k(&cells), Ok(()));
-            let Src::Row(port) = free_port else { unreachable!() };
-            assert_eq!(&cells[4 * port as usize..4 * port as usize + 4], [F64::ONE, vo, va * vc, vo]);
-            let mut bad = cells.clone();
-            bad[4 * port as usize + 2] += F64::ONE;
-            assert!(circuit.check_k(&bad).is_err());
-        }
-        // A bit circuit evaluates over `K` as over bits.
-        let mut b = Builder::new();
-        let ins: Vec<Src> = (0..8).map(|_| b.input()).collect();
-        let mut out = ins[0];
-        for w in ins.windows(3) {
-            let t = b.chi(w[0], w[1], w[2]);
-            out = b.xor(out, t);
-        }
-        let circuit = b.finish(10, &std::array::from_fn(|j| vec![if j == 0 { out } else { Src::Zero }; WORD_BITS]));
-        assert!(circuit.ports.is_empty() && circuit.port_region == (0, 0));
-        for _ in 0..8 {
-            let inputs: Vec<bool> = (0..8).map(|_| rng.next_u64() & 1 == 1).collect();
-            let bits = circuit.outputs(&inputs);
-            let v = circuit.outputs_k(|r, _| {
-                F64(circuit.inputs.iter().position(|&i| i == r).is_some_and(|k| inputs[k]) as u64)
-            });
-            let (start, len) = circuit.packing;
-            for r in (PUBLIC_ROWS..circuit.rows.len()).filter(|r| !(start..start + len).contains(r)) {
-                assert_eq!(v[r], F64(bits[r] as u64), "row {r}");
-            }
-            assert_eq!(circuit.cells_k(&v), circuit.cells(&inputs));
-            assert_eq!(circuit.check_k(&circuit.cells_k(&v)), Ok(()));
-        }
-    }
 
     /// The circuit's Keccak-256 is Ethereum's, on random blocks.
     #[test]
