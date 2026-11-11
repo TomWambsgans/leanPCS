@@ -41,7 +41,8 @@ edges component of a state `Edges × A`, coins forwarded; the extra component `A
   out-of-domain point alone, `c · {1, u₀, u₁, u₂}` (group 2), so it is uniform given the rest when those weights
   span `E` over `K`, which fails with probability about `2^-127` over the point (`PROTOCOL.md`, "Zero knowledge").
   `formal/EndToEnd/ZK` proves the group-2 half (`revealedUniform_of_group1`): `RevealedUniform` with `δr = 0`
-  follows from group 1's exact uniformity, `εr` its failure plus the span's.
+  follows from group 1's exact uniformity, `εr` its failure plus the span's failure (`spanFail`, the probability
+  over a uniform `T` point; about `2^-127` by the argument above, not bounded numerically in Lean).
 * **The simulator** (`zkSimulator sim`): it reads no witness. Its challenge phase (`challengePhase`, with
   `uniformReveal`) commits to the circuit (real, public), draws each root uniformly and computes its out-of-domain
   point with the model's permutation, draws each revealed scalar uniformly (`coinE`) where the prover computes it,
@@ -247,7 +248,7 @@ def UniformWithin (stmt : Statement) (cells₀ : Array K) (c : Challenges) (δ :
 statement and witness of the relation, outside a set of challenges of probability at most `εr`, the revealed
 scalars are within statistical distance `δr` of uniform. With the slack words the deployed protocol is expected to
 meet it at `δr = 0` and `εr` group 1's rank failure (morally about `|K|^-20`) plus about `2^-127` for the slack's
-span (`formal/EndToEnd/ZK`, `revealedUniform_of_group1`, proves the second part). -/
+span (`formal/EndToEnd/ZK`, `revealedUniform_of_group1`, reduces it to group 1 and that span probability). -/
 def RevealedUniform (εr δr : ℝ≥0∞) : Prop :=
   ∀ (stmt : Statement) (w : Secret), Relation stmt w →
     Pr{let c ← sampleChallenges}[¬ UniformWithin stmt ((membership logRows).cells (membershipInputs w)) c δr] ≤ εr
