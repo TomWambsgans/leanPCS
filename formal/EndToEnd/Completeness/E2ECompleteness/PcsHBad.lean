@@ -20,8 +20,9 @@ import Completeness.Reduction
 **`card_badSet_le`**: at most `(7 · 2^24 + 3) q³` quadruples; **`badSet_density`**: a fraction at most
 `(7 · 2^24 + 3) / 2^192`.
 
-**`WiringCheck`** is the only hypothesis: the circuit's wiring table has entry `2^24 − 1` zero and entry `2^24 − 2`
-nonzero, an evaluated check on the deployed circuit's constant table.
+**`WiringCheck`** is the only hypothesis: the circuit's wiring table has entry `2^24 − 2` nonzero, an evaluated check
+on the deployed circuit's constant table (`lake exe membership-wiring-check`); its entry `2^24 − 1` is zero, proved
+(`wiring_top_zero`: the sum of the cells' σ-points).
 -/
 
 set_option autoImplicit false
@@ -454,20 +455,42 @@ theorem conic_card_le' (t : E) (T : Finset E) (hT : ∀ ρ ∈ T, RBad t ρ) : T
 
 /-! ## The deployed circuit -/
 
-/-- **The evaluated check on the circuit's wiring table** (`crates/membership/quotient`'s wiring is fixed by the
-circuit): its entry `2^24 − 1` (the top coefficient, the sum of the cells' σ-points) is zero, and its entry
-`2^24 − 2` (the coefficient `s` of `α β` in `γ`) is not. -/
-def WiringCheck : Prop :=
-  (membership logRows).wiringTable.getD (2 ^ 24 - 1) 0 = 0 ∧ (membership logRows).wiringTable.getD (2 ^ 24 - 2) 0 ≠ 0
+/-- **The evaluated check on the circuit's wiring table**: its entry `2^24 − 2` (the coefficient `s` of `α β` in
+`γ`) is not zero. `lake exe membership-wiring-check` computes it (`formal/Statement/PcsQuotientTest/WiringCheck.lean`:
+`17280478925055366306`). -/
+def WiringCheck : Prop := (membership logRows).wiringTable.getD (2 ^ 24 - 2) 0 ≠ 0
 
 theorem sigmaPoly_P0 : P0.sigmaPoly = Novel.nov 0 24 fun j => ofK ((membership logRows).wiringTable.getD j 0) := by
   rw [sigmaPoly_P0_table]
   exact tablePoly_idx 24 (fun j => ofK ((membership logRows).wiringTable.getD j 0))
 
+/-- **The wiring table's top entry is zero**: it is the sum of the cells' σ-points, the sum of the cells. -/
+theorem wiring_top_zero : (membership logRows).wiringTable.getD (2 ^ 24 - 1) 0 = 0 := by
+  have h1 : ∑ x : Fin 24 → Bool, (tablePoly s₀).eval (BE.point x) = s₀ (fun _ => true) := by
+    rw [sum_tablePoly BE (by norm_num), mle_ones]
+  have h2 : ∑ x : Fin 24 → Bool, (tablePoly s₀).eval (BE.point x) = ∑ i : P0.T × Fin 4, P0.pt (P0.σ i) :=
+    Fintype.sum_equiv (cantorCells BE hm28) (fun x => (tablePoly s₀).eval (BE.point x))
+      (fun i : P0.T × Fin 4 => P0.pt (P0.σ i)) fun x =>
+        (congrArg (fun y => (tablePoly s₀).eval y) (cantorCells_point BE hm28 x).symm).trans (sigma_carries _)
+  have h3 : ∑ i : P0.T × Fin 4, P0.pt (P0.σ i) = ∑ i : P0.T × Fin 4, P0.pt i := Equiv.sum_comp P0.σ P0.pt
+  have h4 : ∑ x : Fin 24 → Bool, BE.point x = ∑ i : P0.T × Fin 4, P0.pt i :=
+    Fintype.sum_equiv (cantorCells BE hm28) (fun x => BE.point x) (fun i : P0.T × Fin 4 => P0.pt i) fun x => by
+      show _ = ((cantorCells BE hm28 x).1 : E) + shift (BE.β 1) (cantorCells BE hm28 x).2
+      rw [cantorCells_point BE hm28 x]
+  have h5 : ∑ x : Fin 24 → Bool, BE.point x = 0 := by
+    have := _root_.Kc3.sum_cells_eq_zero BE (m := 24) (by norm_num) X (by rw [natDegree_X]; norm_num)
+    simpa only [eval_X] using this
+  have h6 : s₀ (fun _ => true) = 0 := by rw [← h1, h2, h3, ← h4, h5]
+  have h7 : s₀ (fun _ => true) = ofK ((membership logRows).wiringTable.getD (2 ^ 24 - 1) 0) := by
+    show ofK ((membership logRows).wiringTable.getD (Completeness.idx (fun _ : Fin 24 => true)) 0) = _
+    rw [idx_ones]
+  rw [h7] at h6
+  exact ofK_injective (h6.trans Compose.Reduce.ofK_zero.symm)
+
 theorem sCoef_P0 (hW : WiringCheck) : sCoef P0 ≠ 0 := by
-  rw [sCoef_eq P0 vCells_eq _ sigmaPoly_P0 hW.1]
+  rw [sCoef_eq P0 vCells_eq _ sigmaPoly_P0 wiring_top_zero]
   intro h
-  exact hW.2 (ofK_injective (h.trans Compose.Reduce.ofK_zero.symm))
+  exact hW (ofK_injective (h.trans Compose.Reduce.ofK_zero.symm))
 
 /-- **The degenerate challenges**: at most `(7 · 2^24 + 3) q³`. -/
 theorem card_badSet_le (hW : WiringCheck) (w : Secret) (coins : Coins) :

@@ -6,8 +6,8 @@ import PcsQuotient
 # The evaluated check on the deployed wiring table
 
 `E2ECompleteness.completeness_end` assumes `WiringCheck`: the deployed circuit's wiring table
-(`(membership logRows).wiringTable`, the coefficients of `σ`'s points in the novel basis) has entry `2^24 − 1` zero
-and entry `2^24 − 2` nonzero. This runner computes the table with the Statement's own definitions (compiled) and
+(`(membership logRows).wiringTable`, the coefficients of `σ`'s points in the novel basis) has entry `2^24 − 2`
+nonzero (its entry `2^24 − 1` is zero, proved: `wiring_top_zero`; printed here too). This runner computes the table with the Statement's own definitions (compiled) and
 prints the two entries' words and the verdict; it exits with code `1` if the check fails.
 
 ```sh
@@ -24,7 +24,7 @@ def main : IO UInt32 := do
   IO.println s!"wiring table: {wt.size} words"
   IO.println s!"entry 2^24 - 1: {top}"
   IO.println s!"entry 2^24 - 2: {sub}"
-  if top == 0 && sub != 0 then
+  if sub != 0 then
     IO.println "WiringCheck: holds"
     return 0
   else

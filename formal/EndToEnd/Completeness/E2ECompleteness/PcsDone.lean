@@ -127,7 +127,7 @@ namespace E2ECompleteness
 /-- **End-to-end completeness** of the membership proof on the EIP's PCS claims: `PcsQuotient.Completeness
 deltaPcs`, `deltaPcs = (7 · 2^24 + 3) / 2^192 + 2 / 2^256 + 2^-304 + (2^48)² / 2^508 < 2^-163`
 (`Pcs.deltaPcs_lt`), given `WiringCheck`, the evaluated check on the deployed circuit's wiring table (its entry
-`2^24 − 1` zero, its entry `2^24 − 2` nonzero). -/
+`2^24 − 2` nonzero; `lake exe membership-wiring-check`). -/
 theorem completeness_end (hW : Pcs.H.WiringCheck) : PcsQuotient.Completeness Pcs.deltaPcs :=
   Pcs.completeness_of_wiringCheck hW
 
