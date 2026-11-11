@@ -41,9 +41,8 @@
 // source `L0Rows`; with the batched openings, `recursive_prover_with_lane_tensors_batch`'s `zero_lanes`).
 // Added here, for speed, every proof unchanged (`docs/PERF_PROVER2.md`): a kept codeword of the lanes not flagged all
 // zero alone (`commit_skipping`, read through `L0Rows::Compact`); the lane rounds' passes leave the flagged lanes out
-// (`lane_inner_products`, `collapse_lanes`, `dense_lane_inner_products_skipping`); and the batched openings, when
-// their level-0 rows are encoded again, encode them in one encode for all of them, once each opening's level-1
-// commitment has fixed its queries (`after_lane_rounds` split into `level_1` and `after_level_1`, `l0_images`).
+// (`lane_inner_products`, `collapse_lanes`, `dense_lane_inner_products_skipping`); and a batch's openings, made in
+// turn, keep their level-1 codewords up to 2 GiB (`LEAN_LIGERO_BYTES_IN_TURN`; `after_lane_rounds`' `lean_bytes`).
 
 //! WHIR with `K = GF(2)[x]/(x^64+x^4+x^3+x+1)` and
 //! `E = K[y]/(y^3+y+1)`.
@@ -2728,11 +2727,6 @@ impl<'c> L0Rows<'c> {
         }
     }
 
-    /// Whether the rows are read from a kept codeword (whole or compact) rather than encoded again.
-    fn kept(self) -> bool {
-        matches!(self, L0Rows::Codeword(_) | L0Rows::Compact(..))
-    }
-
     /// The rows' source: the kept codeword (the flagged lanes left out of it when some are flagged), else encoded
     /// again, skipping the all-zero lanes when some are flagged.
     fn of(codeword: Option<&'c [F64]>, zero: Option<&'c [bool]>) -> Self {
@@ -2872,9 +2866,13 @@ fn recursive_prover_rows(
 /// byte for byte, but the lane rounds of all of them read the message twice in all (the tensors' inner products in
 /// one pass, the lanes' collapse in another) rather than twice each. Without `l0_codeword`, the rows the L0 queries
 /// open are encoded again, skipping the all-zero lanes `zero_lanes` flags (as
-/// [`recursive_prover_with_lane_tensors_skipping`]), once for every job (after each job's level-1 commitment has
-/// fixed its queries). With `l0_codeword` and some lanes flagged, the codeword is that of the unflagged lanes alone
-/// ([`commit_skipping`]). The flagged lanes, all zero, are left out of the lane rounds' passes. [Added here.]
+/// [`recursive_prover_with_lane_tensors_skipping`]). The lanes `zero_lanes` flags must be all zero; they are left out
+/// of the lane rounds' passes. [Added here.]
+///
+/// **`l0_codeword` with lanes flagged is compact**: when `zero_lanes` flags some lane (a `true`), `l0_codeword` must be
+/// the codeword of the unflagged lanes alone, as [`commit_skipping`] keeps it (rows of as many words as lanes not
+/// flagged), and the rows the queries open are spread back from it. A whole codeword with such flags is a misuse that
+/// [`l0_shape`]'s length check rejects (a panic); pass no flags, or all `false`, with a whole codeword.
 #[allow(clippy::too_many_arguments)]
 pub fn recursive_prover_with_lane_tensors_batch(
     config: &ProverConfig,
@@ -2888,50 +2886,16 @@ pub fn recursive_prover_with_lane_tensors_batch(
     l0_tree: &[Hash],
 ) {
     let l0_rows = L0Rows::of(l0_codeword, zero_lanes);
-    let (n_lanes, lane_block) = l0_shape(config, log_n, witness.len(), l0_rows, l0_tree.len());
+    let (_, lane_block) = l0_shape(config, log_n, witness.len(), l0_rows, l0_tree.len());
     let started = {
         let _span = tracing::info_span!("Sumcheck").entered();
         tensor_lane_rounds(witness, lane_block, config.initial_k, weight, known, jobs, zero_lanes)
     };
-    if jobs.len() < 2 || l0_rows.kept() {
-        // One opening after another: a batch's keep their level-1 codewords up to `LEAN_LIGERO_BYTES_IN_TURN`.
-        let lean_bytes = if jobs.len() > 1 { lean_ligero_bytes_in_turn() } else { lean_ligero_bytes() };
-        for (job, (sc_prover, r_lane_fold)) in jobs.iter_mut().zip(started) {
-            after_lane_rounds(config, log_n, witness, sc_prover, r_lane_fold, l0_rows, l0_tree, lean_bytes, job.ps);
-        }
-        return;
+    // One opening after another: a batch's keep their level-1 codewords up to `LEAN_LIGERO_BYTES_IN_TURN`.
+    let lean_bytes = if jobs.len() > 1 { lean_ligero_bytes_in_turn() } else { lean_ligero_bytes() };
+    for (job, (sc_prover, r_lane_fold)) in jobs.iter_mut().zip(started) {
+        after_lane_rounds(config, log_n, witness, sc_prover, r_lane_fold, l0_rows, l0_tree, lean_bytes, job.ps);
     }
-    // The rows the L0 queries open are encoded again: for every job at once, in one encode (one read of the
-    // message), once each job's level-1 commitment has fixed its queries. Each job's transcript is the one it has
-    // alone; only the encode is shared.
-    let levels: Vec<Level1> = jobs
-        .iter_mut()
-        .zip(started)
-        .map(|(job, (sc_prover, r_lane_fold))| {
-            level_1(config, log_n, n_lanes, sc_prover, r_lane_fold, lean_ligero_bytes(), job.ps)
-        })
-        .collect();
-    let positions: Vec<usize> = levels.iter().flat_map(|l| l.queries_0.iter().copied()).collect();
-    let images =
-        tracing::info_span!("Open", level = 0).in_scope(|| l0_images(config, log_n, witness, l0_rows, &positions));
-    let mut images = images.into_iter();
-    for (job, level) in jobs.iter_mut().zip(levels) {
-        let mine: Vec<Vec<F64>> = images.by_ref().take(level.queries_0.len()).collect();
-        after_level_1(config, log_n, level, mine, l0_tree, job.ps);
-    }
-}
-
-/// What [`after_lane_rounds`] has fixed before it reads the rows its L0 queries open: level 1's commitment, its
-/// OOD claims, the grinding, the L0 queries and their batching challenge. [Added here, to share the L0 rows'
-/// encode among a batch's openings.]
-struct Level1 {
-    sc_prover: SumcheckProver<'static>,
-    r_lane_fold: Vec<F192>,
-    wtns_1: LigeroWitness,
-    queries_0: Vec<usize>,
-    lambda_0: F192,
-    /// The committed lanes: an L0 row's words.
-    n_lanes: usize,
 }
 
 /// The rows of the L0 codeword at `positions` (in order, repeats allowed): read from the kept codeword, else encoded
@@ -2973,37 +2937,37 @@ fn after_lane_rounds(
     config: &ProverConfig,
     log_n: usize,
     witness: impl AsRef<[F64]>,
-    sc_prover: SumcheckProver<'static>,
+    mut sc_prover: SumcheckProver<'static>,
     r_lane_fold: Vec<F192>,
     l0_rows: L0Rows<'_>,
     l0_tree: impl AsRef<[Hash]>,
     lean_bytes: usize,
     ps: &mut ProverState,
 ) {
-    let (n_lanes, _) = l0_shape(config, log_n, witness.as_ref().len(), l0_rows, l0_tree.as_ref().len());
-    let level = level_1(config, log_n, n_lanes, sc_prover, r_lane_fold, lean_bytes, ps);
-    let span = tracing::info_span!("Open", level = 0).entered();
-    let images_0 = l0_images(config, log_n, witness.as_ref(), l0_rows, &level.queries_0);
-    // The committed message is not read again.
-    drop(witness);
-    drop(span);
-    after_level_1(config, log_n, level, images_0, l0_tree, ps);
-}
-
-/// [`after_lane_rounds`]' first part: level 1's commitment (its codeword not kept from `lean_bytes` on), up to the
-/// L0 queries.
-fn level_1(
-    config: &ProverConfig,
-    log_n: usize,
-    n_lanes: usize,
-    mut sc_prover: SumcheckProver<'static>,
-    r_lane_fold: Vec<F192>,
-    lean_bytes: usize,
-    ps: &mut ProverState,
-) -> Level1 {
+    let r = config.level_steps;
     let initial_k = config.initial_k;
+    let (n_lanes, _) = l0_shape(config, log_n, witness.as_ref().len(), l0_rows, l0_tree.as_ref().len());
     let log_inv_rate_0 = config.log_inv_rates[0];
     let block_len_0 = 1usize << (log_n - initial_k + log_inv_rate_0);
+    let num_interleaved_0 = 1usize << initial_k;
+
+    // L0 codeword + tree are borrowed (reused from `commit`); the root itself is never needed
+    // here, the caller having transmitted it.
+    // The codeword interleaves only the committed lanes, and its lane `t` is stack
+    // block `n_lanes-1-t`, so a row IS the tail of the leaf image: the absent lanes
+    // are the image's leading zeros (`MerkleBuilder` shares their hash prefix, and only
+    // this tail rides the proof). Without the codeword, the queried rows are encoded again.
+    // The same row for the induce, which folds a lane-ASCENDING row against the
+    // lane eq table: reversing the image puts block `b` at index `b` and the absent
+    // lanes' zeros at the end, where they contribute nothing.
+    let l0_fold_row = |image: &[F64]| -> Vec<F64> {
+        let mut row = vec![F64::ZERO; num_interleaved_0];
+        for (t, &word) in image.iter().enumerate() {
+            row[n_lanes - 1 - t] = word;
+        }
+        row
+    };
+
     let ood_count = |lvl: usize| -> usize { config.ood_samples.get(lvl).copied().unwrap_or(0) };
 
     // Commit f^1 = folded (now E-valued) witness as wtns_1.
@@ -3014,6 +2978,7 @@ fn level_1(
     let log_inv_rate_1 = config.log_inv_rates[1];
     let span = tracing::info_span!("Commit", level = 1).entered();
     let ntt_1 = AdditiveNttF64::standard(log_msg_cols_1 + log_inv_rate_1);
+    // Its codeword not kept from `lean_bytes` on.
     let wtns_1 = ligero_commit_ext_within(
         sc_prover.f_ext(),
         log_msg_cols_1,
@@ -3036,64 +3001,16 @@ fn level_1(
     ps.grind(config.grinding_bits[0] as u32);
 
     // Open L0; lane-fold weights = r_lane_fold.
-    let queries_0 = sample_queries_ordered(ps, block_len_0, config.queries[0]);
+    let num_queries_0 = config.queries[0];
+    let queries_0 = sample_queries_ordered(ps, block_len_0, num_queries_0);
     // One batching challenge for the whole level, drawn once every claim it
     // batches is fixed: the OOD claims above and these query positions.
     let lambda_0 = ps.sample();
-    Level1 {
-        sc_prover,
-        r_lane_fold,
-        wtns_1,
-        queries_0,
-        lambda_0,
-        n_lanes,
-    }
-}
-
-/// [`after_lane_rounds`]' second part, given the rows `images_0` its L0 queries open (in their order).
-fn after_level_1(
-    config: &ProverConfig,
-    log_n: usize,
-    level: Level1,
-    images_0: Vec<Vec<F64>>,
-    l0_tree: impl AsRef<[Hash]>,
-    ps: &mut ProverState,
-) {
-    let Level1 {
-        mut sc_prover,
-        r_lane_fold,
-        wtns_1,
-        queries_0,
-        lambda_0,
-        n_lanes,
-    } = level;
-    let r = config.level_steps;
-    let initial_k = config.initial_k;
-    let log_inv_rate_0 = config.log_inv_rates[0];
-    let block_len_0 = 1usize << (log_n - initial_k + log_inv_rate_0);
-    let num_interleaved_0 = 1usize << initial_k;
-    let n1 = log_n - initial_k;
-
-    // L0 codeword + tree are borrowed (reused from `commit`); the root itself is never needed
-    // here, the caller having transmitted it.
-    // The codeword interleaves only the committed lanes, and its lane `t` is stack
-    // block `n_lanes-1-t`, so a row IS the tail of the leaf image: the absent lanes
-    // are the image's leading zeros (`MerkleBuilder` shares their hash prefix, and only
-    // this tail rides the proof). Without the codeword, the queried rows are encoded again.
-    // The same row for the induce, which folds a lane-ASCENDING row against the
-    // lane eq table: reversing the image puts block `b` at index `b` and the absent
-    // lanes' zeros at the end, where they contribute nothing.
-    let l0_fold_row = |image: &[F64]| -> Vec<F64> {
-        let mut row = vec![F64::ZERO; num_interleaved_0];
-        for (t, &word) in image.iter().enumerate() {
-            row[n_lanes - 1 - t] = word;
-        }
-        row
-    };
-
-    let ood_count = |lvl: usize| -> usize { config.ood_samples.get(lvl).copied().unwrap_or(0) };
-    let weights_0 = powers(lambda_0, config.queries[0]);
+    let weights_0 = powers(lambda_0, num_queries_0);
     let span = tracing::info_span!("Open", level = 0).entered();
+    let images_0 = l0_images(config, log_n, witness.as_ref(), l0_rows, &queries_0);
+    // The committed message is not read again.
+    drop(witness);
     // Ordered (dup-possible) rows for the local induce math ...
     let opened_rows_0: Vec<Vec<F64>> = images_0.iter().map(|image| l0_fold_row(image)).collect();
     // ... but the stored proof carries the sorted-unique rows + one octopus over
@@ -3636,19 +3553,77 @@ mod tests {
     }
 
     /// A batch's openings prove what each proves alone from the whole kept codeword, whatever their level-0 rows'
-    /// source: encoded again for all of them at once (the lanes flagged all zero left out, or none flagged), or read
-    /// from a kept codeword of the unflagged lanes alone ([`commit_skipping`]); the flagged lanes are left out of the
-    /// lane passes too. [Added here.]
+    /// source: encoded again (the lanes flagged all zero left out, or none flagged), or read from a kept codeword of
+    /// the unflagged lanes alone ([`commit_skipping`]); the flagged lanes are left out of the lane passes too. [Added
+    /// here.]
     #[test]
-    fn batched_openings_share_their_rows_and_skip_zero_lanes() {
+    fn batched_openings_skip_zero_lanes() {
         batched_openings_at(&[(8, 3), (13, 5), (18, 37)]);
     }
 
-    /// [`batched_openings_share_their_rows_and_skip_zero_lanes`] at a shape for Miri (`miri_`, as `adversarial.rs`'s):
-    /// the batch's shared level-0 rows and the lane passes' skipped lanes.
+    /// [`batched_openings_skip_zero_lanes`] at a shape for Miri (`miri_`, as `adversarial.rs`'s): the lane passes'
+    /// skipped lanes, the rows encoded again.
     #[test]
     fn miri_batched_openings() {
         batched_openings_at(&[(8, 3)]);
+    }
+
+    /// The smallest shape [`commit_skipping`] encodes (two sweeps of the unflagged lanes into the compact codeword, whose
+    /// memory starts uninitialised; `2^12` rows, more than 32 lanes so that the first sweep has a layer), for Miri
+    /// (`MIRIFLAGS=-Zmiri-ignore-leaks`, the pool's threads outliving the test): every word of the compact codeword is
+    /// written and is the whole codeword's, the tree is the whole commitment's, and an opening read through it
+    /// ([`L0Rows::Compact`]) is the one read from the whole codeword. [Added here.]
+    #[test]
+    fn miri_compact_codeword() {
+        let (log_n, n_lanes) = (18usize, 36usize);
+        let pc = test_config_for(log_n);
+        let lane_block = 1usize << (log_n - pc.initial_k);
+        let mut rng = Rng::new(0xEC);
+        let mut witness: Vec<F64> = (0..n_lanes * lane_block).map(|_| F64(rng.next_u64())).collect();
+        for l in [2usize, 3, 20] {
+            witness[l * lane_block..(l + 1) * lane_block].fill(F64::ZERO);
+        }
+        let zero: Vec<bool> = (0..n_lanes).map(|l| [2, 3, 20].contains(&l)).collect();
+        let (whole, pd) = commit(&witness, log_n, pc.initial_k, pc.log_inv_rates[0]);
+        let (compact, data) =
+            commit_skipping(&witness, log_n, pc.initial_k, pc.log_inv_rates[0], &zero).expect("a two-sweep shape");
+        assert_eq!((compact.root, &data.merkle_tree), (whole.root, &pd.merkle_tree));
+        let kept: Vec<usize> = (0..n_lanes).filter(|&l| !zero[l]).collect();
+        let k = kept.len();
+        assert_eq!(data.codeword.len() * n_lanes, pd.codeword.len() * k);
+        for (row, full) in data.codeword.chunks_exact(k).zip(pd.codeword.chunks_exact(n_lanes)) {
+            // Codeword lane `t` is lane block `n_lanes - 1 - t`'s, in both.
+            let compact_row: Vec<F64> = kept.iter().rev().map(|&l| full[n_lanes - 1 - l]).collect();
+            assert_eq!(row, &compact_row[..]);
+        }
+        let tensors: Vec<LaneTensor> = (0..2)
+            .map(|_| LaneTensor {
+                scales: rng.ext_vec(1 << pc.initial_k),
+                low: Low::Eq(rng.ext_vec(lane_block.trailing_zeros() as usize)),
+            })
+            .collect();
+        let target = rng.ext();
+        let prove = |codeword: &[F64], flags: Option<&[bool]>| {
+            let mut ps = ProverState::from_label(b"compact");
+            let mut jobs = [LaneJob {
+                tensors: vec![0, 1],
+                target,
+                ps: &mut ps,
+            }];
+            recursive_prover_with_lane_tensors_batch(
+                &pc,
+                log_n,
+                &witness,
+                &tensors,
+                &[None, None],
+                &mut jobs,
+                Some(codeword),
+                flags,
+                &pd.merkle_tree,
+            );
+            ps.into_proof()
+        };
+        assert!(prove(&data.codeword, Some(&zero)) == prove(&pd.codeword, None));
     }
 
     fn batched_openings_at(shapes: &[(usize, usize)]) {

@@ -11,7 +11,9 @@ proofs are `main`'s byte for byte, so the calldata, the claims, the gas and the 
 
 `perf2/provers` merged into `main` at `eb75bce9` (π1-rec4, π2 at 577 B and 66,376 gas; membership with three claims,
 one on each of `W`, the wiring and `T`, 273 B and 31,680 gas). Each table of the membership proof now has one claim,
-so changes 1 and 2 below no longer apply to it (`protocol::open` is `main`'s); π2's `Q` still has three. Change 5 is
+so changes 1 and 2 below no longer apply to it (`protocol::open` is `main`'s); π2's `Q` still has three, its level-0
+rows read from its kept codeword, so change 2 has no user left and is dropped (after review: a batch's openings again
+encode their level-0 rows each, as on `866ba889`'s `main`). Change 5 is
 now limited to a batch's openings made in turn (`Q`'s): a lone opening keeps 1 GiB, since the membership proof's `T`,
 opened once in its cold process, mapped 0.94 GiB more (peak 6.01 → 6.95 GiB) for 3 ms. The proofs are `eb75bce9`'s:
 the membership digest `134f62090dae…`, the pipeline's fingerprints `f34a2902…`, `645710f9…`, `df47df82…`,
@@ -96,7 +98,8 @@ Two kernels near their bounds dominate:
 1. **The membership proof's two claims on `T` opened together** (`protocol::open`, `opening::open_batch`). `main`
    opened the copy and sum claims on the quotient table one at a time; `pcs_claim::open_words_batch` (π2's, for `Q`)
    gives the same two proofs with one pass of their lane rounds over `T` (1.3 GB) rather than two.
-2. **A batch's level-0 rows encoded once** (`pcs::whir`: `after_lane_rounds` split into `level_1` and
+2. **A batch's level-0 rows encoded once** (on `perf2/provers` only, dropped on `perf2/provers-main`, where no batch
+   encodes its rows again; it held every opening's level-1 commitment at once) (`pcs::whir`: `after_lane_rounds` split into `level_1` and
    `after_level_1`, `l0_images`). Without a kept codeword each opening encoded its queried level-0 rows again
    (`T`: a 48 ms sweep over the table each). A batch now commits every opening's level 1 and draws its queries, then
    encodes all their rows in one sweep. Each transcript is the one it has alone. With 1 and 2: membership openings
@@ -109,9 +112,8 @@ Two kernels near their bounds dominate:
 4. **Zero lanes left out of the lane rounds** (`lane_inner_products`, `collapse_lanes`, the out-of-domain answer's
    `dense_lane_inner_products_skipping`): the flagged lanes' products are zero; their words are not read.
 5. **A batch's openings made in turn keep their level-1 codewords up to 2 GiB** (`LEAN_LIGERO_BYTES_IN_TURN`; on
-   `866ba889` every opening alone did, `LEAN_LIGERO_BYTES_ALONE`; a batch sharing its level-0 encode keeps 1 GiB, as
-   before, since its openings' level-1 commitments are all held at once, and on `eb75bce9` so does a lone opening,
-   above). `Q`'s level-1
+   `866ba889` every opening alone did, `LEAN_LIGERO_BYTES_ALONE`, but a batch sharing its level-0 encode, which held
+   all its openings' level-1 commitments at once; on `eb75bce9` a lone opening keeps 1 GiB, above). `Q`'s level-1
    codewords are 1.5 GB: kept, their queried rows are read rather than encoded again (9.5 ms an opening), and the
    commit skips the lean path's batches. π2's openings −48 ms, peak +1.6 GB (net of 3: +0.5 GB over `main`).
 6. **The quotient crate's transforms** (`quotient::ntt`, shared by both lines: the membership prover's, π1's and
@@ -123,10 +125,15 @@ Two kernels near their bounds dominate:
    layers. One column, one thread, `2^20` words: forward 7.66 → 6.34 cycles a vector of butterflies, inverse 10.3 →
    5.9. Membership reduction −17 ms.
 
-New tests: `pcs::whir::tests::batched_openings_share_their_rows_and_skip_zero_lanes` (the batch, shared rows, flagged
-lanes and compact codeword against each opening alone from the whole codeword), `pcs_claim::tests::
+New tests: `pcs::whir::tests::batched_openings_skip_zero_lanes` (a batch, its rows encoded again or read from a
+compact codeword, flagged lanes, against each opening alone from the whole codeword), `pcs_claim::tests::
 zero_lanes_left_out_change_no_proof` (`Q`'s slot pattern: root, answer, every proof alone and batched, kept or
-encoded again), `quotient::ntt::tests::miri_fused_layers_are_the_domains`, `pcs::whir::tests::miri_batched_openings`;
+encoded again), `pcs_claim`'s `tests/self_consistency.rs` (randomized stacks, zero-lane patterns and points: every
+claim's proof the same alone or batched, kept, compact, freed or never kept, and verifying; `small` by default, `wide`
+ignored: 40 cases to `n = 22` in 3 s, 12 from 23 to 28 in 65 s on h3), `quotient::ntt::tests::
+miri_fused_layers_are_the_domains`, `pcs::whir::tests::miri_batched_openings` and `miri_compact_codeword` (the smallest
+shape `commit_skipping` encodes: every word of its compact codeword, uninitialised at first, written and the whole
+codeword's; `MIRIFLAGS=-Zmiri-ignore-leaks`);
 Miri (`cargo +nightly miri test --target x86_64-unknown-linux-gnu -p pcs --lib miri_`, and `-p quotient --lib
 miri_`) runs these and `pcs`'s earlier `miri_` tests clean, on the portable lanes (the AVX-512 paths, the transposition
 among them, are not Miri's). On x86 the earlier ones stopped at `primitives::stream`'s non-temporal stores (inline

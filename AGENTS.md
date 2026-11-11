@@ -311,7 +311,7 @@ leanEthereum) and is licensed, like leanVM, under the MIT license ([`LICENSE-MIT
   `src/ntt/additive_ntt_f64.rs` (the encode into the kept codeword in place, the gathers, the induces, the E rounds, a
   commit that keeps its codeword, the lanes' products in one pass, several openings on one commitment at once, `eq` low
   weights never written out, the zero lanes left out of the commitments' and the openings' encodes, the encode in two
-  block-wise sweeps, a kept codeword of the nonzero lanes alone, a batch's level-0 rows encoded once:
+  block-wise sweeps, a kept codeword of the nonzero lanes alone, the zero lanes left out of the lane rounds:
   [`docs/leanvm/rec/PERF_PROVER.md`](docs/leanvm/rec/PERF_PROVER.md),
   [`docs/membership/PERF_PROVER.md`](docs/membership/PERF_PROVER.md), [`docs/PERF_PROVER2.md`](docs/PERF_PROVER2.md)), `src/whir/adversarial.rs` (new: tests of those
   paths against the untouched ones) and `benches/lanes.rs` (new); `primitives/src/hash.rs` (the AVX-512 batched
