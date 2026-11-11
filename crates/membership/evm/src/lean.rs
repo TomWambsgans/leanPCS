@@ -3,11 +3,12 @@
 //! for the Lean interpreter of that graph (`formal/Implementation`, layer F5 of `formal/README.md`).
 //!
 //! The graph is what [`crate::quotient::contract`] compiles: `quotient::protocol::reduce` run on the recorder,
-//! with the outputs the fields of the six PCS claims it checks declared. [`render`] writes it, with the constants the reduction
+//! with the outputs the fields of the PCS claims it checks declared (three; the checked-in `Graph.lean` is still
+//! `f96a7938`'s six-claim contract's, which `formal/` proves). [`render`] writes it, with the constants the reduction
 //! reads (the Cantor basis, `tau`, `b`, the extension's coordinates), as Lean definitions; the test
 //! `graph_lean_is_current` fails when the checked-in file is not what [`render`] writes now (run it with
-//! `UPDATE_LEAN=1` to rewrite the file). [`vectors`] writes calldata and what the Rust verifier makes of it, the
-//! six claims' bytes, for the Lean executable to compare with its interpretation of the graph.
+//! `UPDATE_LEAN=1` to rewrite the file; ignored until the Lean is ported). [`vectors`] writes calldata and what the
+//! Rust verifier makes of it, the claims' bytes, for the Lean executable to compare with its interpretation of the graph.
 
 use std::fmt::Write;
 

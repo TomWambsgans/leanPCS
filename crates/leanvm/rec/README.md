@@ -13,8 +13,9 @@ one opening a claim).
 On the real 128-signature proof (the reference, `crates/leanvm/univariate/tests/vectors/keccak128_rec4.txt`):
 577 B of calldata, 31,524 gas of execution; as an EIP-8141 frame transaction (EIP-7976's floor, without the base and
 per-frame costs) standard 40,708, floor 36,928, and 66,376 with its frame of PCS claims and their PCS gas
-(`docs/leanvm/rec/PERF_GAS2.md`; 89,672 with `C1`'s claim alone hashed, `PERF_GAS.md`). π2 is π2v2
-(`PI2.md`: the ports out of the copy argument), `Q` sixteen slots of `N` words.
+(`docs/leanvm/rec/PERF_GAS2.md`; 89,672 with `C1`'s claim alone hashed, `PERF_GAS.md`). π2 is π2v3
+(transcript `leanvm-rec-pi2v3`, `PI2.md`: π2v2's PIOP, the ports out of the copy argument, on the EIP's PCS claims),
+`Q` sixteen slots of `N` words.
 
 Design: [`SPEC-REC.md`](../../../docs/leanvm/rec/SPEC-REC.md) (the recursion), [`PI2.md`](../../../docs/leanvm/rec/PI2.md)
 (π2's PIOP), [`SPEC-POINTS.md`](../../../docs/leanvm/rec/SPEC-POINTS.md) (the claims' points).
@@ -30,5 +31,6 @@ LEANVM_TRACE=<trace dir> cargo test --release -p leanvm_rec --test pipeline -- -
 calldata with its frame declaring exactly the openings' claims (and rejects flipped bytes). `pipeline` runs the
 recursion from a Keccak VM trace (`crates/leanvm/univariate/src/prover/dump_keccak`): the per-circuit setup once, then
 warm passes of π1-rec4's proof and openings (π2's witness compiled on π1's stream while π1's openings run,
-`prover::prove::prove_streaming`), π2's proof and openings, each phase's median; it checks the proofs against the
-committed vector and `pi2_real`'s fingerprints. Build with `RUSTFLAGS="-C target-cpu=native"` for timings.
+`prover::prove::prove_streaming`), π2's proof and openings, each phase's median; every pass's proofs equal the first's,
+and at the reference trace π1's stream equals the committed vector's and the four fingerprints (π1's stream and
+openings, π2's stream and openings) are pinned. Build with `RUSTFLAGS="-C target-cpu=native"` for timings.

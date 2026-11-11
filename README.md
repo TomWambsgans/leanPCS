@@ -56,8 +56,8 @@ EIP-8288 dependency verification frame (each claim's Keccak-256), which the bloc
 EIP-8141's `FRAMEPARAM` and `FRAMEDATALOAD` (mocked on revm). The field is `K = GF(2^64)`,
 `E = GF(2^192)`, the PCS leanVM's WHIR unchanged, Fiat–Shamir Keccak-256.
 
-1. **A zero-knowledge proof of Keccak-256 Merkle membership** (`crates/membership`), verified by an EVM contract and
-   proved correct in Lean 4 (`formal/`).
+1. **A zero-knowledge proof of Keccak-256 Merkle membership** (`crates/membership`), verified by an EVM contract; the
+   Lean 4 proofs (`formal/`) are of its previous protocol (commit `f96a7938`, six claims), not yet of the current one.
 2. **leanVM proofs on the EVM by recursion** (`crates/leanvm`): a leaf aggregate of leanXMSS signatures by leanVM's
    Keccak VM, proved by a univariate PIOP (π1), whose verifier a second SNARK (π2) proves; the contract runs π2's
    verifier and checks every claim declared.
@@ -80,7 +80,7 @@ to `root` (details: [`AGENTS.md`](AGENTS.md#membership-what-is-proved)).
 ### Key figures: one leanVM proof by recursion
 
 A leaf aggregate of leanXMSS signatures by leanVM's Keccak VM (commit `9d50c92a3`: leanVM `42422001` with a `SHA3`
-table, one Keccak-f step a row). π1 proves its execution, Flock proving the Keccak-f permutations; π2 proves π1-rec3's
+table, one Keccak-f step a row). π1 proves its execution, Flock proving the Keccak-f permutations; π2 proves π1-rec4's
 verifier (π1 with Fiat–Shamir shaped for π2) minus its openings; the contract runs π2's verifier only. The pipeline
 row is measured on 8 threads of an AMD EPYC 9355P; the rows marked "before the PCS claims" on an Apple M4 Max (16
 cores, load average 9–14) unless they say otherwise; the gas row as its first cell says.
@@ -88,15 +88,17 @@ cores, load average 9–14) unless they say otherwise; the gas row as its first 
 | | **128 signatures (the reference)** | 400 signatures |
 |---|---:|---:|
 | VM execution | 154,148 cycles; tables of `2^14`–`2^16` rows, memory `2^20` | 473,348 cycles; `2^16`–`2^17` rows, memory `2^22` |
-| π1 prover (π1-rec3) | in the pipeline below; before the PCS claims (version 3, layout words): 2.7 s cold, 3.65 s warm median of 3, 6.9 GB; EPYC 9355P 0.40 s warm | 4.7 s (main line), 14.4 GB, before the PCS claims |
+| π1 prover (π1-rec4) | in the pipeline below; before the PCS claims (π1-rec3, version 3, layout words): 2.7 s cold, 3.65 s warm median of 3, 6.9 GB; EPYC 9355P 0.40 s warm | 4.7 s (main line), 14.4 GB, before the PCS claims |
 | π2 prover | in the pipeline below; before the PCS claims: 4.4 s + 1.7 s openings (and 3.8 s witness), 9.8 GB; EPYC 9355P (π2v2) 0.196 s + 0.049 s openings at version 3 | 3.0 s + 0.9 s openings, before the PCS claims |
-| trace → π1 → π2, per proof (`tests/pipeline.rs`) | on the PCS claims (one opening a claim, every opening on leanVM's ladder): **2.63 s** on 8 threads of an AMD EPYC 9355P (2026-11-11, median of 5 runs of 5; π1-rec3 0.87 s and its openings 0.18 s, π2 0.79 s, π2's five openings 0.79 s), 15.1 GB; 3.7 s on an M4 Max at `f96a7938`. Before (π2's three stacks opened once each, every opening at version 3): 2.06 s on the M4 Max, **0.59 s** on an AMD EPYC 9355P (64 threads) | |
+| trace → π1 → π2, per proof (`tests/pipeline.rs`) | on the PCS claims (one opening a claim, every opening on leanVM's ladder): **2.62 s** on 8 threads of an AMD EPYC 9355P (2026-11-11, median of 5 runs of 5; π1-rec4 0.86 s and its openings 0.18 s, π2 0.79 s, π2's five openings 0.79 s), 15.1 GB; 3.7 s on an M4 Max at `f96a7938`. Before (π2's three stacks opened once each, every opening at version 3): 2.06 s on the M4 Max, **0.59 s** on an AMD EPYC 9355P (64 threads) | |
 | Calldata to the contract | 577 B (4 zero): π1's three claims hashed in π2's circuit (π1-rec4, `docs/leanvm/rec/PERF_GAS2.md`), no selector | 577 B |
 | Gas (real proof, EIP-8141 frame transaction, EIP-7976 floor, no base or per-frame cost) | 31,524 execution; standard 40,708, floor 36,928; with the frame of PCS claims (257 B) and `pcs_gas` 13,000 on both sides: **66,376** (the floor binds; previously 89,672, and 99,912 before that) | 35,761 execution; 66,376 with the frame and the PCS gas |
 | PCS claims | 8: π1's 3, π2's 5 (`W`, the setup, `Q`'s identity, pushes and sum), each the EIP draft's | 8 |
 | Formal verification (Lean 4) | the VM's statement and arithmetization, the Keccak-f block, π1's knowledge soundness (≤ 2^-64 at 2^64 queries) and completeness (failure < 2^-169), π1-rec3's recorded graph = its verifier; the recursion (π2 as of `f96a7938`, before `C1`'s claim was hashed in its circuit: not yet ported): knowledge soundness as an explicit reduction (π2's part ≤ 2^-64, plus π1-rec3 at Keccak-f[1600]), completeness (failure 2^-164 plus two premises at Keccak-f[1600]); the compiled circuit's checks evaluated, not proved | |
 
-π1 alone as a contract (no recursion) costs 358,957 transaction gas at 128 signatures (8,020 B of calldata, 3 claims).
+π1 alone as a contract (no recursion, the main line) at 128 signatures: 8,069 B of calldata, 231,511 execution, 3 claims;
+as an EIP-8141 frame transaction (EIP-7976's floor) standard 360,255, floor 516,416, without its frame of claims
+(`keccak_gas_report`).
 The Keccak VM fits WHIR's `2^28`-word commitments up to about 470 signatures. Details:
 [`docs/leanvm/univariate/KECCAK.md`](docs/leanvm/univariate/KECCAK.md), [`AGENTS.md`](AGENTS.md).
 
@@ -104,7 +106,7 @@ The Keccak VM fits WHIR's `2^28`-word commitments up to about 470 signatures. De
 
 ```
 crates/
-  membership/quotient      the membership proof: circuit, prover, Rust verifier, hiding openings
+  membership/quotient      the membership proof: circuit, prover, Rust verifier, its PCS claims and openings
   membership/evm           its verifier as EVM bytecode; revm with FIELD_MUL and EIP-8141 frames; gas
   evm_link                 compiles a recorded verifier graph and assembles it into one contract
   leanvm/statement         the Keccak VM's statement, Flock's verifier, the Keccak-256 chain, the EVM recorder
@@ -114,10 +116,12 @@ crates/
   vendor/leanvm-c445e3d5   leanVM's WHIR stack (primitives, fiat_shamir, pcs, parallel, verifier, bench)
   vendor/flock-42422001    leanVM's Flock prover on c445e3d5's primitives (package flock) and the Keccak-f block
 docs/
+  membership/PERF_GAS2.md  the membership protocol as deployed (three claims), on PERF_GAS.md's; what the Lean needs
   membership/HIDING.md     zero knowledge, assuming a ZK PCS
-  membership/EIP_CLAIMS.md the membership protocol under the EIP's claims, and its cost
+  membership/EIP_CLAIMS.md the protocol of f96a7938 (six claims, the one formal/ proves): a record
   leanvm/univariate/       π1: SPEC.md (the PIOP), SPEC-FLOCK.md, PROVER.md, KECCAK.md (the VM, gas, measurements)
-  leanvm/rec/              π2: SPEC-REC.md (the recursion), PI2.md (π2's PIOP), SPEC-POINTS.md (the claims' points)
+  leanvm/rec/              π2: SPEC-REC.md (the recursion), PI2.md (π2's PIOP), SPEC-POINTS.md (the claims' points),
+                           PERF_GAS2.md (π1-rec4, π1's claims hashed in π2's circuit: the deployed recursion)
   leanvm/flock/KECCAK.md   the Keccak-f[1600] Flock block
 formal/                    Lean 4 proofs (formal/README.md)
 params/                    soundness and parameter calculators (Python)
@@ -140,8 +144,8 @@ cargo test --release -p evm -- --ignored --nocapture gas_report          # the c
 cargo test --release -p leanvm_univariate --test keccak_vm -- --ignored --nocapture keccak_gas_report  # π1's gas
 cargo test --release -p leanvm_univariate --test evm_vectors              # the committed real proofs replayed
 cargo test --release -p leanvm_rec --test keccak_vm_rec -- --ignored --nocapture                       # π2's circuit, gas
-PI2_VECTOR=keccak128_rec3 cargo test --release -p leanvm_rec --test pi2_real -- --ignored --nocapture real_end_to_end
-LEANVM_TRACE=<trace> PI1_VARIANT=rec3 cargo test --release -p leanvm_univariate --test prove_real -- --ignored \
+PI2_VECTOR=keccak128_rec4 cargo test --release -p leanvm_rec --test pi2_real -- --ignored --nocapture real_end_to_end
+LEANVM_TRACE=<trace> PI1_VARIANT=rec4 cargo test --release -p leanvm_univariate --test prove_real -- --ignored \
   --nocapture keccak_prover_benchmark                                    # π1's prover on a real trace
 ```
 

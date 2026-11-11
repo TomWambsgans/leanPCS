@@ -32,6 +32,10 @@ use leanvm_univariate::prover::prove::{Config, prove as prove_pi1, prove_streami
 use leanvm_univariate::prover::trace::Trace;
 use leanvm_univariate::Claims;
 
+/// At the reference trace (the 128-signature trace whose π1-rec4 proof is `keccak128_rec4.txt`), the leading bytes of
+/// the Keccak-256s of π1's stream, π1's openings, π2's stream and π2's openings (the openings as their `Debug` text).
+const REFERENCE_PRINTS: [&str; 4] = ["f34a2902", "645710f9", "df47df82", "baac38e6"];
+
 fn deep<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> R {
     std::thread::Builder::new()
         .stack_size(1 << 30)
@@ -244,7 +248,7 @@ fn trace_to_recursion() {
             );
         }
         // The proofs' fingerprints: at the reference trace, π1's stream is the committed vector's
-        // (`keccak128_rec4.txt`) and π2's lines are `tests/pi2_real.rs`'s.
+        // (`keccak128_rec4.txt`), and the four Keccak-256s below are pinned (the provers are deterministic).
         let (s1, o1, s2, o2) = first.expect("a pass");
         let reference = vectors::read(
             &std::fs::read_to_string(format!(
@@ -253,15 +257,23 @@ fn trace_to_recursion() {
             ))
             .expect("the committed vector"),
         );
+        let hex = |b: &[u8]| b.iter().map(|x| format!("{x:02x}")).collect::<String>();
+        let prints = [
+            ("pi1 stream", hex(&primitives::hash::hash(&s1))),
+            ("pi1 openings", hex(&primitives::hash::hash(&o1))),
+            ("pi2 stream", hex(&primitives::hash::hash(&s2))),
+            ("pi2 openings", hex(&primitives::hash::hash(&o2))),
+        ];
+        for (name, print) in &prints {
+            println!("{name} keccak {print}");
+        }
         if reference.shape == shape && reference.public == public {
             assert_eq!(reference.calldata[4 + 32..], s1[..], "π1's stream is the committed vector's");
             println!("π1's stream is the committed vector {}'s", leanvm_rec::PI1_VECTOR_128);
+            for ((name, print), pinned) in prints.iter().zip(REFERENCE_PRINTS) {
+                assert!(print.starts_with(pinned), "{name}: {print}, pinned {pinned}…");
+            }
         }
-        let hex = |b: &[u8]| b.iter().map(|x| format!("{x:02x}")).collect::<String>();
-        println!("pi1 stream keccak {}", hex(&primitives::hash::hash(&s1)));
-        println!("pi1 openings keccak {}", hex(&primitives::hash::hash(&o1)));
-        println!("pi2 stream keccak {}", hex(&primitives::hash::hash(&s2)));
-        println!("pi2 openings keccak {}", hex(&primitives::hash::hash(&o2)));
         println!("peak RSS {:.2} GB", bench::peak_rss_bytes() as f64 / 1e9);
     });
 }

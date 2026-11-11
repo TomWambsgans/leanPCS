@@ -26,7 +26,7 @@ pub const PUBLIC_INPUT: usize = VERIFY.len();
 pub const STREAM: usize = PUBLIC_INPUT + 32;
 
 /// The phases of what is not the verifier's arithmetic.
-pub const ENTRY: &str = "entry: selector, length, no value";
+pub const ENTRY: &str = "entry: the selector if any, length, no value";
 pub const CALLS: &str = "claims: written, hashed, checked declared in the frame";
 pub const ROOTS: &str = "claims: fixed commitments read (cold SLOAD)";
 pub const MEASURE: &str = "measurement only (JUMPDEST after each check, subtracted)";

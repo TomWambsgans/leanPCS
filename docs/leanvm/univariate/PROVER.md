@@ -4,8 +4,9 @@
 
 `src/prover/` proves `SPEC.md`'s statement on executions of the Keccak VM (leanVM `9d50c92a3`, `KECCAK.md`), from
 the trace `src/prover/dump_keccak/` makes leanVM write. It writes the stream `verifier::reduce` reads (through the
-contract's Keccak-256 chain) and one WHIR opening per commitment (`C1`, `C2`, the setup `F`). It proves both variants,
-`KECCAK_MAIN` and `KECCAK_REC3`, with point claims; weighted claims (extension W) have no opening prover.
+contract's Keccak-256 chain) and one WHIR opening per commitment (`C1`, `C2`, the setup `F`). It proves every variant,
+`KECCAK_MAIN`, `KECCAK_REC3` and `KECCAK_REC4` (π1-rec4, the recursion's inner proof since
+`docs/leanvm/rec/PERF_GAS2.md`), with point claims; weighted claims (extension W) have no opening prover.
 
 ## Status
 
@@ -14,9 +15,11 @@ openings verify; the contract accepts the real calldata, word for word with the 
 declaring exactly the claims the openings prove; it rejects a flipped byte and any claim left undeclared; five stream mutations are rejected by the
 Rust verifier. The real proofs' gas is in `KECCAK.md` ("The real proofs' gas").
 
-**Rust→EVM test vectors.** `tests/vectors/` holds three real proofs: `keccak.txt` (32 signatures, `KECCAK_MAIN`),
-`keccak128_rec3.txt` (128 signatures, `KECCAK_REC3`: the reference workload, the recursion's inner proof) and
-`keccak_rec3.txt` (400 signatures, `KECCAK_REC3`). Each holds the calldata, the claims the contract checks
+**Rust→EVM test vectors.** `tests/vectors/` holds five real proofs: `keccak.txt` (32 signatures, `KECCAK_MAIN`),
+`keccak128_rec3.txt` (128 signatures, `KECCAK_REC3`: the reference workload, the recursion's inner proof as the Lean
+states it) and `keccak_rec3.txt` (400 signatures, `KECCAK_REC3`), and `keccak128_rec4.txt`, `keccak_rec4.txt` (the
+same with `KECCAK_REC4`, the deployed recursion's, which has no contract: `tests/evm_vectors.rs` checks the Rust
+verifier's claims against the vector's). Each holds the calldata, the claims the contract checks
 declared, the committed roots, the verdict and the gas, straight and deployed. `tests/evm_vectors.rs` replays them with
 no prover and no trace, the contract binding the vector's own `F` (its third call's root): both builds accept at the
 recorded gas, check exactly the recorded claims declared, and revert on 13 mutations each (a row count, `C1`'s
@@ -71,7 +74,7 @@ transcription's differential vectors.
    - `identities_hold_on_the_domain` (the bus balance, the copies on every row, the counters), `setup_roots` (the
      trace's `F` root), `unused_words_are_not_relied_on` (below).
    - `keccak_prover_benchmark`: warm passes with a cooldown between them, as leanVM's benchmark runs (`PI1_REPEAT`,
-     default 3; `PI1_COOLDOWN`, default 2 s; `PI1_VARIANT=rec3` for `KECCAK_REC3`), the median of each phase; each
+     default 3; `PI1_COOLDOWN`, default 2 s; `PI1_VARIANT=rec4` for `KECCAK_REC4`, `rec3` for `KECCAK_REC3`), the median of each phase; each
      pass's proof is checked to be the first's.
 
    Without a trace: `flock_skip` and `flock_keccak` (the skip kernels, Flock on the Keccak-f block), `evm_vectors`

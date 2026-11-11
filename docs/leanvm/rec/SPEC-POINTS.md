@@ -226,7 +226,8 @@ contracts, and by the recursion's contract through π2 (`SPEC-REC.md` §11).
 
 ## 8. Status
 
-Built: π1-rec3 is the recursion's π1.
+Built: π1-rec3 was the recursion's π1, and π1-rec4 (π1-rec3 with the challenges no message separates drawn from one
+Keccak-f each, `PERF_GAS2.md`) is since; the paired batch below is the same in both.
 
 1. **π1's verifier.** `verifier::batch` calls `sumcheck_pairs_drawn(channel, target, 2, vars, true)` under
    `FsShape::Rec3`; `contract_iv` binds the shape.

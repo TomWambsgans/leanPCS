@@ -9,7 +9,8 @@ use std::ops::{Add, Mul};
 use primitives::field::F192;
 use quotient::protocol::Scalar;
 
-/// The most scalars a transcript step absorbs (the reduction absorbs at most five: the four `a_j` and `next`).
+/// The most scalars a transcript step absorbs (the reduction absorbs at most four: the three row values `X`, `C`,
+/// `V + Y` at `t`, and `next`).
 /// Only the first `n` of a [`Node::Hash`]'s slots are its operands (the rest zero), so the bound changes no graph.
 pub const MAX_ABSORBED: usize = 9;
 
