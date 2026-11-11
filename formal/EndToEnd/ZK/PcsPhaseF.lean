@@ -7,7 +7,7 @@ import ZK.PcsFresh
 # The challenge phase with tracked queries
 
 `phaseF circuit stmt`: the Statement's `challengePhase` (with the simulator's uniform scalars), each permutation
-call of the out-of-domain points and of the chain's challenges `α, β, γ, t, ρ` a tracked query (`FProg.q`),
+call of the out-of-domain points and of the chain's challenges `α, β, μ, t, ρ` a tracked query (`FProg.q`),
 every other step (the circuit's commitment, the chain's seed, the coins) a black box. **`interpR_phaseF`**: run
 for real, it is `challengePhase circuit stmt uniformReveal`.
 -/
@@ -80,7 +80,7 @@ noncomputable def phaseF (circuit : Circuit) (stmt : Statement) : FProg A (Chall
   let mv := cellVars circuit.logRows
   .step (commitmentWith edgePerm mv circuit.wiringTable) fun (indexTree, index) ↦
   .step (simulateQ edgeOracle sampleDigest) fun rW ↦
-  (oodF (mv + 1) rW).bind fun zW ↦
+  (oodF mv rW).bind fun zW ↦
   .step (keccak256With edgePerm (label index stmt)) fun d ↦
   let c : Chain := ⟨d, []⟩
   .step (uniformReveal (.oodW zW)) fun oW ↦
@@ -93,42 +93,29 @@ noncomputable def phaseF (circuit : Circuit) (stmt : Statement) : FProg A (Chall
   (squeezeF c).bind fun pβ ↦
   let β := pβ.1
   let c : Chain := ⟨pβ.2.state, []⟩
-  (squeezeF c).bind fun pγ ↦
-  let γ := pγ.1
-  let c : Chain := ⟨pγ.2.state, []⟩
-  .step (simulateQ edgeOracle sampleDigest) fun rH ↦
-  (oodF (mv + 3) rH).bind fun zH ↦
-  .step (simulateQ edgeOracle sampleDigest) fun rQ ↦
-  (oodF (mv + 4) rQ).bind fun zQ ↦
-  .step (simulateQ edgeOracle sampleDigest) fun rG ↦
-  (oodF (mv + 1) rG).bind fun zG ↦
-  .step (uniformReveal (.oodQ α β γ zQ)) fun oQ ↦
-  .step (uniformReveal (.oodG α β γ zG)) fun oG ↦
-  .step (uniformReveal (.oodH α β γ zH)) fun oH ↦
-  let hCom : Commitment := ⟨rH, oH⟩
-  let qCom : Commitment := ⟨rQ, oQ⟩
-  let gCom : Commitment := ⟨rG, oG⟩
-  let hS := CommitmentScalars.of hCom
-  let qS := CommitmentScalars.of qCom
-  let gS := CommitmentScalars.of gCom
-  let c := ((c.absorbCommitment hS).absorbCommitment qS).absorbCommitment gS
+  (squeezeF c).bind fun pμ ↦
+  let μ := pμ.1
+  let c : Chain := ⟨pμ.2.state, []⟩
+  .step (simulateQ edgeOracle sampleDigest) fun rT ↦
+  (oodF (mv + 4) rT).bind fun zT ↦
+  .step (uniformReveal (.oodT α β μ zT)) fun oT ↦
+  let tCom : Commitment := ⟨rT, oT⟩
+  let tS := CommitmentScalars.of tCom
+  let c := c.absorbCommitment tS
   (squeezeF c).bind fun pt ↦
   let t := pt.1
   let c : Chain := ⟨pt.2.state, []⟩
-  .step (uniformReveal (.value 1 t)) fun a1 ↦
-  .step (uniformReveal (.value 2 t)) fun a2 ↦
-  .step (uniformReveal (.value 3 t)) fun a3 ↦
-  .step (uniformReveal (.value 0 t)) fun a0 ↦
-  let a : Vector E 4 := #v[a0, a1, a2, a3]
+  .step (uniformReveal (.value 1 t)) fun v1 ↦
+  .step (uniformReveal (.value 2 t)) fun v2 ↦
+  .step (uniformReveal (.value 0 t)) fun v0 ↦
+  let vals : Vector E 3 := #v[v0, v1, v2]
   let next := wiringValue circuit t
-  let c := (a.toList.foldl Chain.absorb c).absorb next
+  let c := (vals.toList.foldl Chain.absorb c).absorb next
   (squeezeF c).bind fun pρ ↦
   let ρ := pρ.1
-  .step (uniformReveal (.qValue α β γ t ρ)) fun vq ↦
-  .step (uniformReveal (.gValue α β γ t ρ)) fun vg ↦
-  .ret (⟨zW, zH, zQ, zG, α, β, γ, t, ρ⟩,
-    ⟨indexTree, index, ⟨wS, hS, qS, gS, a, next, vq, vg⟩,
-      (claimsAt circuit.logRows stmt α β γ t ρ a next vq vg).map fun cl ↦ ⟨⟨wCom, hCom, qCom, gCom⟩, cl⟩⟩)
+  .ret (⟨zW, zT, α, β, μ, t, ρ⟩,
+    ⟨indexTree, index, ⟨wS, tS, vals, next⟩,
+      (claimsAt circuit.logRows stmt α β μ t ρ vals next).map fun cl ↦ ⟨⟨wCom, tCom⟩, cl⟩⟩)
 
 /-- **The program run for real is the challenge phase.** -/
 theorem interpR_phaseF (circuit : Circuit) (stmt : Statement) :

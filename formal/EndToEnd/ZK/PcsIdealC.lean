@@ -45,9 +45,9 @@ theorem cellVars_logRows : cellVars logRows = 24 := rfl
 
 /-- The simulator's challenges as `ProbComp`: `sampleChallenges` with its coins run by `ProbComp`. -/
 theorem sampleChallenges_eq : sampleChallenges =
-    (do let zW ← iidE 25; let α ← eDist; let β ← eDist; let γ ← eDist; let zH ← iidE 27; let zQ ← iidE 28
-        let zG ← iidE 25; let t ← eDist; let ρ ← eDist
-        pure (⟨zW, zH, zQ, zG, α, β, γ, t, ρ⟩ : Challenges)) := by
+    (do let zW ← iidE 24; let α ← eDist; let β ← eDist; let μ ← eDist; let zT ← iidE 28
+        let t ← eDist; let ρ ← eDist
+        pure (⟨zW, zT, α, β, μ, t, ρ⟩ : Challenges)) := by
   have h : ∀ G : OracleComp RandomPermutationOracles Challenges,
       StateIndep (simulateQ lazyRandomPermutationOracles G) (simulateQ coinsOf G) →
       runWithRandomPermutation G = simulateQ coinsOf G := fun G hG ↦ runWithRandomPermutation_of_indep hG
@@ -59,7 +59,7 @@ theorem sampleChallenges_eq : sampleChallenges =
     have hE := indep_coinE _ lazy_coin
     have hEs := indep_coinEs _ lazy_coin
     exact (hEs _).bind' fun _ ↦ hE.bind' fun _ ↦ hE.bind' fun _ ↦ hE.bind' fun _ ↦ (hEs _).bind' fun _ ↦
-      (hEs _).bind' fun _ ↦ (hEs _).bind' fun _ ↦ hE.bind' fun _ ↦ hE.bind' fun _ ↦ StateIndep.pure' _
+      hE.bind' fun _ ↦ hE.bind' fun _ ↦ StateIndep.pure' _
 
 theorem getD_seg (pre l r : List E) (k : ℕ) (hk : k < l.length) :
     (pre ++ (l ++ r)).getD (pre.length + k) 0 = l[k] := by
@@ -71,68 +71,53 @@ theorem map_seg (pre l r : List E) :
   simp only [List.getElem_map, List.getElem_range]
   exact getD_seg pre l r i h2
 
-theorem phi_concat (l1 l2 l3 l4 l5 l6 : List E) (h1 : l1.length = 25) (h2 : l2.length = 3) (h3 : l3.length = 27)
-    (h4 : l4.length = 28) (h5 : l5.length = 25) (h6 : l6.length = 5) :
-    Φ 24 (l1 ++ (l2 ++ (l3 ++ (l4 ++ (l5 ++ l6))))) =
-      ⟨l1, l3, l4, l5, l2.getD 0 0, l2.getD 1 0, l2.getD 2 0, l6.getD 2 0, l6.getD 4 0⟩ := by
-  have hzW := map_seg [] l1 (l2 ++ (l3 ++ (l4 ++ (l5 ++ l6))))
-  have hzH := map_seg (l1 ++ l2) l3 (l4 ++ (l5 ++ l6))
-  have hzQ := map_seg (l1 ++ l2 ++ l3) l4 (l5 ++ l6)
-  have hzG := map_seg (l1 ++ l2 ++ l3 ++ l4) l5 l6
-  have hα := getD_seg l1 l2 (l3 ++ (l4 ++ (l5 ++ l6))) 0 (by omega)
-  have hβ := getD_seg l1 l2 (l3 ++ (l4 ++ (l5 ++ l6))) 1 (by omega)
-  have hγ := getD_seg l1 l2 (l3 ++ (l4 ++ (l5 ++ l6))) 2 (by omega)
-  have ht := getD_seg (l1 ++ l2 ++ l3 ++ l4 ++ l5) l6 [] 2 (by omega)
-  have hρ := getD_seg (l1 ++ l2 ++ l3 ++ l4 ++ l5) l6 [] 4 (by omega)
+theorem phi_concat (l1 l2 l3 l4 : List E) (h1 : l1.length = 24) (h2 : l2.length = 3) (h3 : l3.length = 28)
+    (h4 : l4.length = 3) :
+    Φ 24 (l1 ++ (l2 ++ (l3 ++ l4))) =
+      ⟨l1, l3, l2.getD 0 0, l2.getD 1 0, l2.getD 2 0, l4.getD 0 0, l4.getD 2 0⟩ := by
+  have hzW := map_seg [] l1 (l2 ++ (l3 ++ l4))
+  have hzT := map_seg (l1 ++ l2) l3 l4
+  have hα := getD_seg l1 l2 (l3 ++ l4) 0 (by omega)
+  have hβ := getD_seg l1 l2 (l3 ++ l4) 1 (by omega)
+  have hμ := getD_seg l1 l2 (l3 ++ l4) 2 (by omega)
+  have ht := getD_seg (l1 ++ l2 ++ l3) l4 [] 0 (by omega)
+  have hρ := getD_seg (l1 ++ l2 ++ l3) l4 [] 2 (by omega)
   simp only [List.append_assoc, List.length_append, List.nil_append, List.length_nil, Nat.zero_add,
-    List.append_nil, h1, h2, h3, h4, h5] at hzW hzH hzQ hzG hα hβ hγ ht hρ
+    List.append_nil, h1, h2, h3] at hzW hzT hα hβ hμ ht hρ
   simp only [Φ, Challenges.mk.injEq]
-  refine ⟨hzW, hzH, hzQ, hzG, ?_, ?_, ?_, ?_, ?_⟩ <;>
-    simp only [hα, hβ, hγ, ht, hρ, List.getD_eq_getElem?_getD, List.getElem?_eq_getElem (by omega : 0 < l2.length),
+  refine ⟨hzW, hzT, ?_, ?_, ?_, ?_, ?_⟩ <;>
+    simp only [hα, hβ, hμ, ht, hρ, List.getD_eq_getElem?_getD, List.getElem?_eq_getElem (by omega : 0 < l2.length),
       List.getElem?_eq_getElem (by omega : 1 < l2.length), List.getElem?_eq_getElem (by omega : 2 < l2.length),
-      List.getElem?_eq_getElem (by omega : 2 < l6.length), List.getElem?_eq_getElem (by omega : 4 < l6.length),
+      List.getElem?_eq_getElem (by omega : 0 < l4.length), List.getElem?_eq_getElem (by omega : 2 < l4.length),
       Option.getD_some]
 
 theorem iidE_three : iidE 3 = (do let a ← eDist; let b ← eDist; let c ← eDist; pure [a, b, c]) := by
   rw [show (3 : ℕ) = 2 + 1 from rfl, iidE_succ, show (2 : ℕ) = 1 + 1 from rfl, iidE_succ, iidE_one]
   simp
 
-theorem iidE_five : iidE 5 =
-    (do let a ← eDist; let b ← eDist; let c ← eDist; let d ← eDist; let x ← eDist; pure [a, b, c, d, x]) := by
-  rw [show (5 : ℕ) = 4 + 1 from rfl, iidE_succ, show (4 : ℕ) = 3 + 1 from rfl, iidE_succ, iidE_three]
-  simp
-
 /-- **The stream's challenge positions are uniform challenges.** -/
-theorem phi_iidE : Φ 24 <$> iidE 113 =ᵈ sampleChallenges := by
-  rw [show (113 : ℕ) = 25 + (3 + (27 + (28 + (25 + 5)))) from rfl]
+theorem phi_iidE : Φ 24 <$> iidE 58 =ᵈ sampleChallenges := by
+  rw [show (58 : ℕ) = 24 + (3 + (28 + 3)) from rfl]
   simp only [iidE_add, map_bind, map_pure, bind_assoc, pure_bind]
   rw [sampleChallenges_eq]
-  have hL : ∀ l1 ∈ support (iidE 25), (do
+  have hL : ∀ l1 ∈ support (iidE 24), (do
       let a ← iidE 3
-      let a_1 ← iidE 27
-      let a_2 ← iidE 28
-      let a_3 ← iidE 25
-      let a_4 ← iidE 5
-      pure (Φ 24 (l1 ++ (a ++ (a_1 ++ (a_2 ++ (a_3 ++ a_4))))))) = (do
+      let a_1 ← iidE 28
+      let a_2 ← iidE 3
+      pure (Φ 24 (l1 ++ (a ++ (a_1 ++ a_2))))) = (do
       let a ← iidE 3
-      let a_1 ← iidE 27
-      let a_2 ← iidE 28
-      let a_3 ← iidE 25
-      let a_4 ← iidE 5
-      pure (⟨l1, a_1, a_2, a_3, a.getD 0 0, a.getD 1 0, a.getD 2 0, a_4.getD 2 0, a_4.getD 4 0⟩ : Challenges)) := by
+      let a_1 ← iidE 28
+      let a_2 ← iidE 3
+      pure (⟨l1, a_1, a.getD 0 0, a.getD 1 0, a.getD 2 0, a_2.getD 0 0, a_2.getD 2 0⟩ : Challenges)) := by
     intro l1 h1
     refine bind_congr_of_forall_mem_support _ fun a h2 ↦ bind_congr_of_forall_mem_support _ fun a1 h3 ↦
-      bind_congr_of_forall_mem_support _ fun a2 h4 ↦ bind_congr_of_forall_mem_support _ fun a3 h5 ↦
-      bind_congr_of_forall_mem_support _ fun a4 h6 ↦ ?_
-    rw [phi_concat _ _ _ _ _ _ (length_of_mem_iidE _ _ h1) (length_of_mem_iidE _ _ h2) (length_of_mem_iidE _ _ h3)
-      (length_of_mem_iidE _ _ h4) (length_of_mem_iidE _ _ h5) (length_of_mem_iidE _ _ h6)]
-  rw [bind_congr_of_forall_mem_support _ hL, iidE_three, iidE_five]
+      bind_congr_of_forall_mem_support _ fun a2 h4 ↦ ?_
+    rw [phi_concat _ _ _ _ (length_of_mem_iidE _ _ h1) (length_of_mem_iidE _ _ h2) (length_of_mem_iidE _ _ h3)
+      (length_of_mem_iidE _ _ h4)]
+  rw [bind_congr_of_forall_mem_support _ hL, iidE_three]
   simp only [bind_assoc, pure_bind, List.getD_cons_zero, List.getD_cons_succ]
   refine EvalDistEq.bind_right _ fun l1 ↦ EvalDistEq.bind_right _ fun x ↦ EvalDistEq.bind_right _ fun y ↦
-    EvalDistEq.bind_right _ fun z ↦ EvalDistEq.bind_right _ fun l3 ↦ EvalDistEq.bind_right _ fun l4 ↦
-    EvalDistEq.bind_right _ fun l5 ↦ ?_
-  refine (evalDistEq_bind_drop _ _).trans ((evalDistEq_bind_drop _ _).trans ?_)
-  refine EvalDistEq.bind_right _ fun r ↦ ?_
+    EvalDistEq.bind_right _ fun z ↦ EvalDistEq.bind_right _ fun l3 ↦ EvalDistEq.bind_right _ fun t ↦ ?_
   exact evalDistEq_bind_drop _ _
 
 theorem membership_logRows : (membership logRows).logRows = logRows := rfl
