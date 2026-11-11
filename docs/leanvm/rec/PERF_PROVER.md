@@ -11,11 +11,26 @@ the eight claims and the gas (99,912 with the frame) are unchanged, and the veri
 ## Numbers
 
 AMD EPYC 9355P (h3, Zen 5, 32 cores, 64 threads), `RUSTFLAGS="-C target-cpu=x86-64-v4 -C
-target-feature=+gfni,+vpclmulqdq,+vaes,+pclmulqdq,+avx512vbmi,+aes,+bmi2"`, `PIPELINE_REPEAT=3`, medians; main and the
-branch run alternately (`PIPELINE_SERIAL=1`, π2's proof after π1's openings, as main), each run once the machine is
-quiet. 16 threads: `LEANVM_NUM_THREADS=16 taskset -c 0-15` (16 physical cores).
+target-feature=+gfni,+vpclmulqdq,+vaes,+pclmulqdq,+avx512vbmi,+aes,+bmi2"`, `PIPELINE_REPEAT=5`, medians; main and the
+branch run alternately (π2's proof after π1's openings, as main), each run once the machine is
+quiet. 16 threads: `LEANVM_NUM_THREADS=16 taskset -c 0-15` (16 physical cores). h3 is shared with other agents' builds:
+a run that one of them perturbed (a pass 10% or more above its round's others) is left out.
 
-RESULTS
+| | main | this branch | |
+|---|---|---|---|
+| h3, 64 threads: π1-rec3, proof and openings | 0.38 s | 0.31 + 0.07 s | |
+| π2: proof | 0.255 s | 0.227 s | |
+| π2: openings | 0.273 s | 0.243 s | |
+| **total** | **0.91 s** | **0.847 s** | −7% |
+| h3, 16 threads: π1-rec3 | 0.61 s | 0.48 + 0.10 s | |
+| π2: proof | 0.46 s | 0.39 s | |
+| π2: openings | 0.48 s | 0.43 s | |
+| **total** | **1.55 s** | **1.40 s** | −10% |
+| M4 Max (one run, `PIPELINE_REPEAT=5`, power mode not checked; the same fingerprints): π1-rec3 | 1.41 s | 1.06 + 0.27 s | |
+| π2: proof | 0.95 s | 0.85 s | |
+| π2: openings | 1.25 s | 1.12 s | |
+| **total** | **3.7 s** (bench.sh) | **3.29 s** | −11% |
+| peak RSS (h3, 64 threads; Mac) | 15.9 GB; 14.3 GB | 16.2 GB; 14.7 GB | `Q`'s batch holds three folded witnesses and weights |
 
 ## What worked
 
@@ -43,7 +58,7 @@ RESULTS
 
 ## What did not
 
-- **π1's openings concurrent with π2's proof** (`PIPELINE_SERIAL=0`: π2 on its own thread from π1's stream, while π1's
+- **π1's openings concurrent with π2's proof** (`PIPELINE_OVERLAP=1`: π2 on its own thread from π1's stream, while π1's
   openings run): no gain (0.845 s against 0.848 s at 64 threads). The pool runs one dispatch at a time and the machine
   is saturated: sampled, 55 to 64 of the 64 threads are busy through the whole proof; π1's openings stretch to 0.3 s and
   π2's proof by as much. Peak memory grows by 0.4 GB. The pipeline keeps the structure (π2 on its own thread, its
