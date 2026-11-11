@@ -13,22 +13,20 @@ import UniKeccakSound.Fs.VerifierK
 # π2's verifier bridge
 
 **`pi2VerifierBridge`**: from any state of the lazily sampled permutation, π2's contract past its IV
-(`contractRest`: π2's run on the stream, then its eight claims opened) accepts at most as often as the composed
-verifier (the chain `pi2Spec`, then the openings `p2Ops`) passes `p2Check` with every opening accepting, from the
-walk (`Pi2Walk`, `Pi2WalkReject`):
+(`contractRest`: π2's run on the stream and the frame words of the declared claims, then its seven claims opened)
+accepts at most as often as the composed verifier (the chain `pi2Spec`, then the openings `p2Ops`) passes `p2Check`
+with every opening accepting, from the walk (`Pi2Walk`, `Pi2WalkReject`):
 
 * a stream of another length is rejected (`Pi2WalkReject`);
-* on a stream of `1064` bytes the run is the chain (`Pi2Walk` at `F = π`), which both sides run first;
-* per challenges: the run's verdict `all ≠ 0`; the contract's loop is the eight claims one after the other, their
-  verdicts and-ed (`forIn_seqAndK`); **each claim's opening is the composed one** answered over `π` (`pi1Open`,
-  `wOpen`, `sOpen`, `qOpen`: the claim decoded by `claimOfWords`, its root the root word's, the stream's or the
-  setup's, its point of its stack's variables, `UniKeccakSound.pcsOpenK_eq`), so the loop is the eight openings
-  `p2Ops8` and-ed (`seqAndK_gops`), and the composed openings `p2Ops` are the eight with `Q`'s three and-ed
-  (`gopsRun_p2Ops`).
-
-π1's three claims' words are `Data.pi1Calls`' (`pi1Words`): each its root word (the stream's `C1`, `C2` root, or the
-setup's), then `3 + n` words in all at `n = 27, 26, 23` (`pi1Words_length_k`), so a π1 claim that decodes is a point
-claim of its stack's variables.
+* on a stream of `544` bytes the run is the chain (`Pi2Walk` at `F = π`), which both sides run first;
+* per challenges: the run's verdict `all ≠ 0`; at the real deployment the contract encodes no π1 claim
+  (`Data.pi1Calls = []`), so it requires three declared π1 claims (`encodedDeclared`) and opens the declared three,
+  then π2's four; its loop is the seven claims one after the other, their verdicts and-ed (`forIn_seqAndK`); **each
+  claim's opening is the composed one** answered over `π` (`declOpen`: π1's declared words decoded by `claimOfWords`,
+  opened at their point's length at the root they name, as `declVer`; `wOpen`, `sOpen`, `qOpen`: π2's, the root the
+  stream's word or the setup's, the point of its stack's variables, `UniKeccakSound.pcsOpenK_eq`, `pcsOpenKO_eq`), so
+  the loop is the seven openings `p2Ops7` and-ed (`seqAndK_gops`), and the composed openings `p2Ops` are the seven
+  with π1's three and `W`'s, and `Q`'s two, and-ed (`gopsRun_p2Ops`).
 -/
 
 set_option linter.unusedSectionVars false
@@ -47,18 +45,21 @@ section With
 
 variable {m : Type → Type} [Monad m] (F : LeanVM.Semantics.KeccakState → m LeanVM.Semantics.KeccakState)
 
-/-- **π2's contract past its IV** (`contractWith` after `ivWith`): π2's run at the IV, then the eight claims. -/
+/-- **π2's contract past its IV** (`contractWith` after `ivWith`): π2's run at the IV on the frame words of the
+declared claims, then the seven claims. -/
 def contractRest (D : RecDeployment) (roots : RecSetupRoots) (iv : List UInt8) (input : Vector UInt8 32)
     (proof : RecProof) : m (Bool × List (List (List UInt8))) := do
   let c := D.circuitAt roots.pi1
-  let o ← runWith F (Spec.of c.circuit) iv input.toList proof.stream
+  let o ← runWith F (Spec.of c.circuit) iv input.toList (frameOf proof.pi1Claims) proof.stream
   match o.result with
   | .error _ => return (false, [])
   | .ok r =>
     if !o.accepts then return (false, []) else
-    let calls := pcsCalls c.circuit (pi1CallsWith D.pi1Calls roots.pi1) (digestBytes roots.pi2) roots.pi2Ood
+    let enc := pcsCalls c.circuit (pi1CallsWith D.pi1Calls roots.pi1) (digestBytes roots.pi2) roots.pi2Ood
       proof.stream r
-    if calls.length ≠ 8 then return (false, calls) else
+    if !encodedDeclared c.circuit (enc.take D.pi1Calls.length) proof.pi1Claims then return (false, []) else
+    let calls := proof.pi1Claims ++ enc.drop D.pi1Calls.length
+    if calls.length ≠ 7 then return (false, calls) else
     let mut ok := true
     for (words, p) in calls.zip proof.openings do
       ok := ok && (← pcsOpenWords F words p)
@@ -67,10 +68,15 @@ def contractRest (D : RecDeployment) (roots : RecSetupRoots) (iv : List UInt8) (
 theorem contractWith_eq (D : RecDeployment) (roots : RecSetupRoots) (input : Vector UInt8 32) (proof : RecProof) :
     D.contractWith F roots input proof = D.ivWith F roots >>= fun iv => contractRest F D roots iv input proof := rfl
 
-/-- The eight claims' words at the real circuit. -/
-def callsC (D : RecDeployment) (roots : RecSetupRoots) (proof : RecProof) (r : RecStatement.Reduced) :
+/-- The claims the contract encodes, at the real circuit. -/
+def encC (D : RecDeployment) (roots : RecSetupRoots) (proof : RecProof) (r : RecStatement.Reduced) :
     List (List (List UInt8)) :=
   pcsCalls cc (pi1CallsWith D.pi1Calls roots.pi1) (digestBytes roots.pi2) roots.pi2Ood proof.stream r
+
+/-- The seven claims' words at the real circuit: π1's declared, then the encoded past π1's. -/
+def callsC (D : RecDeployment) (roots : RecSetupRoots) (proof : RecProof) (r : RecStatement.Reduced) :
+    List (List (List UInt8)) :=
+  proof.pi1Claims ++ (encC D roots proof r).drop D.pi1Calls.length
 
 /-- **The contract past its run**, on what it reads of the run's outcome (its verdict and result), at the real
 circuit. -/
@@ -80,7 +86,9 @@ def restC (D : RecDeployment) (roots : RecSetupRoots) (proof : RecProof)
   | .error _ => pure (false, [])
   | .ok r =>
     if !p.1 then pure (false, []) else
-    if (callsC D roots proof r).length ≠ 8 then pure (false, callsC D roots proof r)
+    if !encodedDeclared cc ((encC D roots proof r).take D.pi1Calls.length) proof.pi1Claims then pure (false, [])
+    else
+    if (callsC D roots proof r).length ≠ 7 then pure (false, callsC D roots proof r)
     else
       forIn ((callsC D roots proof r).zip proof.openings) true (fun x s => do
         let b ← pcsOpenWords F x.1 x.2
@@ -96,7 +104,7 @@ theorem contractRest_eq {m : Type → Type} [Monad m] [LawfulMonad m]
     (hc : (D.circuitAt roots.pi1).circuit = cc) :
     contractRest F D roots iv input proof =
       ((fun o : RecStatement.Outcome => (o.accepts, o.result)) <$>
-        runWith F (Spec.of cc) iv input.toList proof.stream) >>= restC F D roots proof := by
+        runWith F (Spec.of cc) iv input.toList (frameOf proof.pi1Claims) proof.stream) >>= restC F D roots proof := by
   rw [bind_map_left]
   simp only [contractRest, hc]
   rfl
@@ -109,8 +117,8 @@ def Pi2VerifierBridge (D : RecDeployment) : Prop :=
     Pr{let x ← (simulateQ Common.lazyRandomPermutationOracles
         (contractRest Common.queryPermutation D (p2Roots π) π.iv.toList π.input π.proof)).run' s}[x.1 = true] ≤
       Pr{let v ← (simulateQ Common.lazyRandomPermutationOracles (simulateQ keccakCallsOverQueryPermutation
-          (verU pi2Spec p2View (gopsRun p2View (p2Ops D)) π))).run' s}[
-        p2Check π v.1 ∧ ∀ k < (p2Ops D).length, v.2.getD k false = true]
+          (verU pi2Spec p2View (gopsRun p2View p2Ops) π))).run' s}[
+        p2Check π v.1 ∧ ∀ k < p2Ops.length, v.2.getD k false = true]
 
 /-! ## The run rejects: the contract rejects -/
 
@@ -129,6 +137,16 @@ theorem restC_reject (D : RecDeployment) (roots : RecSetupRoots) (proof : RecPro
   | ok r =>
     simp only [restC, Bool.not_false, ite_true, support_pure, Set.mem_singleton_iff] at hx
     rw [hx]
+
+/-- **The contract rejects when it does not find π1's claims declared as it encodes them.** -/
+theorem restC_reject_decl (D : RecDeployment) (roots : RecSetupRoots) (proof : RecProof) (r : RecStatement.Reduced)
+    (hd : encodedDeclared cc ((encC D roots proof r).take D.pi1Calls.length) proof.pi1Claims = false) :
+    ∀ x ∈ support (restC (m := OracleComp Common.RandomPermutationOracles) Common.queryPermutation D roots proof
+      (true, .ok r)), x.1 = false := by
+  intro x hx
+  simp only [restC, Bool.not_true, Bool.false_eq_true, ↓reduceIte, hd, Bool.not_false, support_pure,
+    Set.mem_singleton_iff] at hx
+  rw [hx]
 
 /-! ## The composed verifier: the chain, then the openings -/
 
@@ -253,96 +271,63 @@ theorem streamWord_length (b : Array UInt8) (o : ℕ) (h : o + 32 ≤ b.size) : 
   simp [streamWord]
   omega
 
-/-- **The eight claims' words at the real circuit**: π1's three, then `W`'s, the setup's and `Q`'s three, each its root
-word, its out-of-domain answer's word, its point's and value's. -/
+/-- **The claims the contract encodes at the real circuit**: `W`'s, the setup's and `Q`'s two (π1's encoded, none at
+the real deployment, first), each its root word, its out-of-domain answer's word, its point's and value's. -/
 theorem pcsCalls_cc (pi1 : List (List CallWord)) (sr : List UInt8) (so : E) (stream : Array UInt8)
     (r : RecStatement.Reduced) :
     pcsCalls cc pi1 sr so stream r = pi1.map (·.map (callWord cc.reads stream r)) ++
-      [[streamWord stream 520, UniStatement.elementWord r.oods.1] ++ claimWords r.witness,
+      [[streamWord stream 0, UniStatement.elementWord r.oods.1] ++ claimWords r.witness,
         [sr, UniStatement.elementWord so] ++ claimWords r.setup,
-        [streamWord stream 576, UniStatement.elementWord r.oods.2] ++ claimWords r.quotient,
-        [streamWord stream 576, UniStatement.elementWord r.oods.2] ++ claimWords r.pushes,
-        [streamWord stream 576, UniStatement.elementWord r.oods.2] ++ claimWords r.sum] := by
-  have h1 : rootsAt cc.reads = [0, 32, 520, 576] := by decide
-  have h2 : rootReads cc.reads = 2 := by decide
+        [streamWord stream 56, UniStatement.elementWord r.oods.2] ++ claimWords r.quotient,
+        [streamWord stream 56, UniStatement.elementWord r.oods.2] ++ claimWords r.pushes] := by
   unfold pcsCalls
-  rw [h1, h2]
+  rw [rootsAt_cc, rootReads_cc]
   rfl
 
-/-! ## π1's three claims -/
+/-! ## π1's three declared claims -/
 
-section Pi1
-
-variable (D : RecDeployment) (hc : D.pi1Calls = Data.pi1Calls)
-include hc
-
-theorem pi1Words_length (π : P2Pf) (ch : List (List E)) : (pi1Words D π ch).length = 3 := by
-  rw [pi1Words, hc]
-  rfl
-
-theorem pi1Words_head (π : P2Pf) (ch : List (List E)) (k : ℕ) (hk : k < 3) :
-    ((pi1Words D π ch).getD k []).headD [] = ((pi1Words D π []).getD k []).headD [] := by
-  rw [pi1Words, pi1Words, hc]
-  interval_cases k <;> rfl
-
-theorem pi1Words_length_k (π : P2Pf) (ch : List (List E)) (k : ℕ) (hk : k < 3) :
-    ((pi1Words D π ch).getD k []).length = pi1Vars k + 3 := by
-  rw [pi1Words, hc]
-  interval_cases k <;> rfl
-
-/-- **π1's claim `k`** is its composed opening answered over `π`: both reject where its words do not decode; where
-they do, its root is the root word's and its point has its stack's variables. -/
-theorem pi1Open (π : P2Pf) (ch : List (List E)) (k : ℕ) (hk : k < 3) (n : ℕ) (lo : 23 ≤ n) (hi : n ≤ 28)
-    (hn : n = pi1Vars k) (q₀ : Column n) :
-    pcsOpenWords Common.queryPermutation ((pi1Words D π ch).getD k []) (pi1Prf k π) =
-      simulateQ keccakCallsOverQueryPermutation (GOp.run p2View
-        (PcsOp.gop ⟨n, lo, hi, pi1Cl D k, pi1Prf k, .setup (fun π => pi1Root D π k) q₀⟩) π ch) := by
-  unfold GOp.run
-  show _ = simulateQ keccakCallsOverQueryPermutation (PcsOp.ver _ (ofB (pi1Root D π k)) π ch)
-  unfold PcsOp.ver pcsOpenWords
-  dsimp only
-  unfold pi1Cl
-  rcases hcl : claimOfWords ((pi1Words D π ch).getD k []) with _ | ⟨root, ood, pt, v⟩
+/-- **π1's declared claim `k`** is its composed opening answered over `π`: both reject where its words do not decode;
+where they do, both open it at its point's length at the root its words name. -/
+theorem declOpen (π : P2Pf) (k : ℕ) :
+    pcsOpenWords Common.queryPermutation (declWords π k) (pi1Prf k π) =
+      simulateQ keccakCallsOverQueryPermutation (declVer k π) := by
+  unfold declVer pcsOpenWords
+  rcases hcl : claimOfWords (declWords π k) with _ | ⟨root, ood, pt, v⟩
   · simp
-  · obtain ⟨hroot, hlen⟩ := claimOfWords_spec hcl
-    have hpt : pt.length = n := by
-      rw [pi1Words_length_k D hc π ch k hk, ← hn] at hlen
-      omega
-    have hr : ofB (pi1Root D π k) = root := by
+  · obtain ⟨hroot, -⟩ := claimOfWords_spec hcl
+    have hr : ofB (pi1Root π k) = root := by
       unfold pi1Root
-      rw [Soundness.ofB_toB_root, hroot, pi1Words_head D hc π ch k hk]
-    have hs : oodRead n = false := by
-      rw [hn]
-      interval_cases k <;> rfl
-    simp only [Option.map_some]
-    rw [hr, hpt, hs, ite_eq_right Bool.false_ne_true, ite_eq_right Bool.false_ne_true, UniKeccakSound.pcsOpenK_eq]
+      rw [Soundness.ofB_toB_root, hroot]
+    dsimp only
+    rw [hr]
+    split
+    · exact pcsOpenKO_eq _ _ _ _ _ _
+    · exact UniKeccakSound.pcsOpenK_eq _ _ _ _ _ _
 
-end Pi1
-
-/-! ## π2's five claims -/
+/-! ## π2's four claims -/
 
 theorem msgK_p2View_0 (π : P2Pf) :
-    msgK p2View π 0 = (some (toB (UniStatement.rootOf (UniSound.halvesAt π.proof.stream 520))),
-      (List.range 1).map fun k => UniSound.scalarAt π.proof.stream (552 + 24 * k)) := rfl
+    msgK p2View π 0 = (some (toB (UniStatement.rootOf (UniSound.halvesAt π.proof.stream 0))),
+      (List.range 1).map fun k => UniSound.scalarAt π.proof.stream (32 + 24 * k)) := rfl
 
 theorem msgK_p2View_1 (π : P2Pf) :
-    msgK p2View π 1 = (some (toB (UniStatement.rootOf (UniSound.halvesAt π.proof.stream 576))),
-      (List.range 1).map fun k => UniSound.scalarAt π.proof.stream (608 + 24 * k)) := rfl
+    msgK p2View π 1 = (some (toB (UniStatement.rootOf (UniSound.halvesAt π.proof.stream 56))),
+      (List.range 1).map fun k => UniSound.scalarAt π.proof.stream (88 + 24 * k)) := rfl
 
 /-- **`W`'s claim** is its composed opening answered over `π`. -/
 theorem wOpen (π : P2Pf) (ch : List (List E)) (hlen : π.proof.stream.size = sLen) :
     pcsOpenWords Common.queryPermutation
-        ([streamWord π.proof.stream 520, UniStatement.elementWord (p2Reduced π ch).oods.1] ++
+        ([streamWord π.proof.stream 0, UniStatement.elementWord (p2Reduced π ch).oods.1] ++
           claimWords (p2Reduced π ch).witness) π.proof.w =
-      simulateQ keccakCallsOverQueryPermutation (GOp.run p2View wOp π ch) := by
+      simulateQ keccakCallsOverQueryPermutation (GOp.run p2View wPcs.gop π ch) := by
   unfold pcsOpenWords
   rw [show (p2Reduced π ch).witness = ((p2Out π ch).witnessPoint, (p2Out π ch).fold) from rfl,
     claimOfWords_mk _ (streamWord_length _ _ (by rw [hlen]; decide))]
   dsimp only
   rw [p2Out_witnessPoint_length, ite_eq_left (show oodRead 24 = true from rfl), pcsOpenKO_eq,
-    show rootOfWord (streamWord π.proof.stream 520) = _ from streamRoot_eq _ _ (by rw [hlen]; decide)]
+    show rootOfWord (streamWord π.proof.stream 0) = _ from streamRoot_eq _ _ (by rw [hlen]; decide)]
   unfold GOp.run
-  rw [show GOp.root p2View wOp π = toB (UniStatement.rootOf (UniSound.halvesAt π.proof.stream 520)) from rfl,
+  rw [show GOp.root p2View wPcs.gop π = toB (UniStatement.rootOf (UniSound.halvesAt π.proof.stream 0)) from rfl,
     Soundness.ofB_toB_root]
   rfl
 
@@ -351,8 +336,7 @@ theorem sOpen (π : P2Pf) (ch : List (List E)) :
     pcsOpenWords Common.queryPermutation
         ([digestBytes π.roots.pi2, UniStatement.elementWord π.roots.pi2Ood] ++
           claimWords (p2Reduced π ch).setup) π.proof.setup =
-      simulateQ keccakCallsOverQueryPermutation (GOp.run p2View (PcsOp.gop ⟨25, by norm_num, by norm_num, sCl,
-        fun π => π.proof.setup, .setup (fun π => toB π.roots.pi2) (col0 _)⟩) π ch) := by
+      simulateQ keccakCallsOverQueryPermutation (GOp.run p2View sPcs.gop π ch) := by
   unfold pcsOpenWords
   rw [show (p2Reduced π ch).setup = ((p2Out π ch).setupPoint, (p2Inputs π ch).ξ) from rfl,
     claimOfWords_mk _ (FsBytes.length_digestBytes _)]
@@ -360,8 +344,7 @@ theorem sOpen (π : P2Pf) (ch : List (List E)) :
   rw [p2Out_setupPoint_length, ite_eq_right (show ¬ oodRead 25 = true by decide), UniKeccakSound.pcsOpenK_eq,
     FsBytes.rootOfWord_digestBytes]
   unfold GOp.run
-  rw [show GOp.root p2View (PcsOp.gop ⟨25, by norm_num, by norm_num, sCl, fun π => π.proof.setup,
-    .setup (fun π => toB π.roots.pi2) (col0 _)⟩) π = toB π.roots.pi2 from rfl, Soundness.ofB_toB_root]
+  rw [show GOp.root p2View sPcs.gop π = toB π.roots.pi2 from rfl, Soundness.ofB_toB_root]
   rfl
 
 /-- **`Q`'s claims** are their composed openings answered over `π`, on `Q`'s root word and out-of-domain answer. -/
@@ -369,17 +352,17 @@ theorem qOpen (π : P2Pf) (ch : List (List E)) (hlen : π.proof.stream.size = sL
     (cl : P2Pf → List (List E) → Option (E × List E × E)) (prf : P2Pf → Compile.Proof) (rd : Column 28 → Stk)
     (pt : List E) (v : E) (hpt : pt.length = 28) (hcl : cl π ch = some ((p2Reduced π ch).oods.2, pt, v)) :
     pcsOpenWords Common.queryPermutation
-        ([streamWord π.proof.stream 576, UniStatement.elementWord (p2Reduced π ch).oods.2] ++ claimWords (pt, v))
+        ([streamWord π.proof.stream 56, UniStatement.elementWord (p2Reduced π ch).oods.2] ++ claimWords (pt, v))
         (prf π) =
       simulateQ keccakCallsOverQueryPermutation (GOp.run p2View (PcsOp.gop ⟨28, lo, hi, cl, prf, .round 1 rd⟩) π ch) := by
   unfold pcsOpenWords
   rw [claimOfWords_mk _ (streamWord_length _ _ (by rw [hlen]; decide))]
   dsimp only
   rw [hpt, ite_eq_left (show oodRead 28 = true from rfl), pcsOpenKO_eq,
-    show rootOfWord (streamWord π.proof.stream 576) = _ from streamRoot_eq _ _ (by rw [hlen]; decide)]
+    show rootOfWord (streamWord π.proof.stream 56) = _ from streamRoot_eq _ _ (by rw [hlen]; decide)]
   unfold GOp.run
   rw [show GOp.root p2View (PcsOp.gop ⟨28, lo, hi, cl, prf, .round 1 rd⟩) π =
-    toB (UniStatement.rootOf (UniSound.halvesAt π.proof.stream 576)) from rfl, Soundness.ofB_toB_root]
+    toB (UniStatement.rootOf (UniSound.halvesAt π.proof.stream 56)) from rfl, Soundness.ofB_toB_root]
   show _ = simulateQ keccakCallsOverQueryPermutation (PcsOp.ver ⟨28, lo, hi, cl, prf, .round 1 rd⟩ _ π ch)
   unfold PcsOp.ver
   dsimp only
@@ -389,41 +372,56 @@ theorem qOpen (π : P2Pf) (ch : List (List E)) (hlen : π.proof.stream.size = sL
 /-! ## The bridge -/
 
 theorem restC_ok (D : RecDeployment) (roots : RecSetupRoots) (proof : RecProof) (r : RecStatement.Reduced)
-    (h8 : (callsC D roots proof r).length = 8) :
+    (hd : encodedDeclared cc ((encC D roots proof r).take D.pi1Calls.length) proof.pi1Claims = true)
+    (h7 : (callsC D roots proof r).length = 7) :
     restC Common.queryPermutation D roots proof (true, .ok r) =
       forIn ((callsC D roots proof r).zip proof.openings) true (fun x s => do
         let b ← pcsOpenWords Common.queryPermutation x.1 x.2
         pure (ForInStep.yield (s && b))) >>= fun ok => pure (ok, callsC D roots proof r) := by
-  simp only [restC, Bool.not_true, Bool.false_eq_true, ↓reduceIte, h8, ne_eq, not_true_eq_false]
+  simp only [restC, Bool.not_true, Bool.false_eq_true, ↓reduceIte, hd, h7, ne_eq, not_true_eq_false]
 
 theorem list3_eq {α : Type} (l : List α) (h : l.length = 3) (d : α) : l = [l.getD 0 d, l.getD 1 d, l.getD 2 d] := by
   match l, h with
   | [_, _, _], _ => rfl
 
-/-- **The contract's eight calls are the eight composed openings**, answered over `π`. -/
+/-- **At the real deployment the contract encodes no π1 claim**: it requires three declared. -/
+theorem encodedDeclared_real (D : RecDeployment) (hD : RecDeployment.Real D) (roots : RecSetupRoots)
+    (proof : RecProof) (r : RecStatement.Reduced) :
+    encodedDeclared cc ((encC D roots proof r).take D.pi1Calls.length) proof.pi1Claims =
+      (proof.pi1Claims.length == 3) := by
+  rw [hD.2.1]
+  simp [encodedDeclared, Data.pi1Calls, frameReads_cc]
+
+/-- **The contract's seven calls at the real deployment**: the declared three, then `W`'s, the setup's and `Q`'s two. -/
+theorem callsC_real (D : RecDeployment) (hD : RecDeployment.Real D) (roots : RecSetupRoots) (proof : RecProof)
+    (r : RecStatement.Reduced) :
+    callsC D roots proof r = proof.pi1Claims ++
+      [[streamWord proof.stream 0, UniStatement.elementWord r.oods.1] ++ claimWords r.witness,
+        [digestBytes roots.pi2, UniStatement.elementWord roots.pi2Ood] ++ claimWords r.setup,
+        [streamWord proof.stream 56, UniStatement.elementWord r.oods.2] ++ claimWords r.quotient,
+        [streamWord proof.stream 56, UniStatement.elementWord r.oods.2] ++ claimWords r.pushes] := by
+  unfold callsC encC
+  rw [pcsCalls_cc, hD.2.1]
+  rfl
+
+/-- **The contract's seven calls are the seven composed openings**, answered over `π`, on three declared claims. -/
 theorem calls_eq (D : RecDeployment) (hD : RecDeployment.Real D) (π : P2Pf) (hlen : π.proof.stream.size = sLen)
-    (ch : List (List E)) :
+    (h3 : π.proof.pi1Claims.length = 3) (ch : List (List E)) :
     ((callsC D (p2Roots π) π.proof (p2Reduced π ch)).zip π.proof.openings).map
         (fun x => pcsOpenWords Common.queryPermutation x.1 x.2) =
-      (p2Ops8 D).map fun o => simulateQ keccakCallsOverQueryPermutation (GOp.run p2View o π ch) := by
-  have hw : (pi1CallsWith D.pi1Calls π.roots.pi1).map (·.map (callWord cc.reads π.proof.stream (p2Reduced π ch))) =
-      pi1Words D π ch := rfl
-  unfold callsC
-  rw [pcsCalls_cc, show (p2Roots π).pi1 = π.roots.pi1 from rfl, hw,
-    list3_eq (pi1Words D π ch) (pi1Words_length D hD.2.1 π ch) []]
+      p2Ops7.map fun o => simulateQ keccakCallsOverQueryPermutation (GOp.run p2View o π ch) := by
+  rw [callsC_real D hD, list3_eq π.proof.pi1Claims h3 []]
   simp only [RecProof.openings, List.cons_append, List.nil_append, List.zip_cons_cons, List.zip_nil_right,
-    List.map_cons, List.map_nil, p2Ops8, p2Pcs, p2Pcs5]
-  refine List.cons_eq_cons.mpr ⟨pi1Open D hD.2.1 π ch 0 (by decide) _ _ _ rfl _, ?_⟩
-  refine List.cons_eq_cons.mpr ⟨pi1Open D hD.2.1 π ch 1 (by decide) _ _ _ rfl _, ?_⟩
-  refine List.cons_eq_cons.mpr ⟨pi1Open D hD.2.1 π ch 2 (by decide) _ _ _ rfl _, ?_⟩
+    List.map_cons, List.map_nil, p2Ops7, p2Pcs]
+  refine List.cons_eq_cons.mpr ⟨declOpen π 0, ?_⟩
+  refine List.cons_eq_cons.mpr ⟨declOpen π 1, ?_⟩
+  refine List.cons_eq_cons.mpr ⟨declOpen π 2, ?_⟩
   refine List.cons_eq_cons.mpr ⟨wOpen π ch hlen, ?_⟩
   refine List.cons_eq_cons.mpr ⟨sOpen π ch, ?_⟩
   refine List.cons_eq_cons.mpr ⟨qOpen π ch hlen (by norm_num) le_rfl qIdCl (fun π => π.proof.qId) (rdP 28) _ _
     (p2Out_quotientPoint_length π ch) rfl, ?_⟩
-  refine List.cons_eq_cons.mpr ⟨qOpen π ch hlen (by norm_num) le_rfl qPushCl (fun π => π.proof.qPush) (rdP 28) _ _
-    (p2Out_pushesPoint_length π ch) rfl, ?_⟩
-  refine List.cons_eq_cons.mpr ⟨qOpen π ch hlen (by norm_num) le_rfl qSumCl (fun π => π.proof.qSum) (rdP 28) _ _
-    (p2Out_sumPoint_length π ch) rfl, rfl⟩
+  exact List.cons_eq_cons.mpr ⟨qOpen π ch hlen (by norm_num) le_rfl qPushCl (fun π => π.proof.qPush) (rdP 28) _ _
+    (p2Out_pushesPoint_length π ch) rfl, rfl⟩
 
 /-- Verdicts and-ed true are each true. -/
 theorem foldl_and_true : ∀ (bs : List Bool) (ok : Bool), bs.foldl (· && ·) ok = true →
@@ -461,8 +459,8 @@ theorem step_ch (D : RecDeployment) (hD : RecDeployment.Real D) (π : P2Pf) (hle
         ((p2Reduced π ch).out.all != 0,
           (Except.ok (p2Reduced π ch) : Except UniStatement.UniError RecStatement.Reduced)))).run' s}[x.1 = true] ≤
       Pr{let v ← (simulateQ Common.lazyRandomPermutationOracles (simulateQ keccakCallsOverQueryPermutation
-          (gopsRun p2View (p2Ops D) π ch >>= fun b => pure (ch, b)))).run' s}[
-        p2Check π v.1 ∧ ∀ k < (p2Ops D).length, v.2.getD k false = true] := by
+          (gopsRun p2View p2Ops π ch >>= fun b => pure (ch, b)))).run' s}[
+        p2Check π v.1 ∧ ∀ k < p2Ops.length, v.2.getD k false = true] := by
   by_cases hall : (p2Reduced π ch).out.all = 0
   · have hf : ((p2Reduced π ch).out.all != 0) = false := by simp [hall]
     rw [hf]
@@ -471,36 +469,48 @@ theorem step_ch (D : RecDeployment) (hD : RecDeployment.Real D) (π : P2Pf) (hle
     exact Bool.false_ne_true hx1
   have ht : ((p2Reduced π ch).out.all != 0) = true := by simp [hall]
   have hcheck : p2Check π ch := ⟨hlen, hch.1, hch.2.1, hch.2.2.1, hch.2.2.2, hall⟩
-  have h8 : (callsC D (p2Roots π) π.proof (p2Reduced π ch)).length = 8 := by
-    unfold callsC
-    rw [pcsCalls_cc, List.length_append, List.length_map, show (pi1CallsWith D.pi1Calls (p2Roots π).pi1).length =
-      (pi1Words D π ch).length by simp [pi1Words, p2Roots], pi1Words_length D hD.2.1 π ch]
+  rw [ht]
+  -- the contract requires three declared π1 claims
+  by_cases h3 : π.proof.pi1Claims.length = 3
+  swap
+  · have hd : encodedDeclared cc ((encC D (p2Roots π) π.proof (p2Reduced π ch)).take D.pi1Calls.length)
+        π.proof.pi1Claims = false := by
+      rw [encodedDeclared_real D hD]
+      simpa using h3
+    refine (le_of_eq (Soundness.zero_of_support _ _ _ (fun x hx hx1 => ?_) s)).trans zero_le
+    rw [restC_reject_decl D (p2Roots π) π.proof _ hd x hx] at hx1
+    exact Bool.false_ne_true hx1
+  have hd : encodedDeclared cc ((encC D (p2Roots π) π.proof (p2Reduced π ch)).take D.pi1Calls.length)
+      π.proof.pi1Claims = true := by
+    rw [encodedDeclared_real D hD]
+    simpa using h3
+  have h7 : (callsC D (p2Roots π) π.proof (p2Reduced π ch)).length = 7 := by
+    rw [callsC_real D hD, List.length_append, h3]
     rfl
-  rw [ht, restC_ok D (p2Roots π) π.proof _ h8, forIn_seqAndK, calls_eq D hD π hlen ch, seqAndK_gops,
+  rw [restC_ok D (p2Roots π) π.proof _ hd h7, forIn_seqAndK, calls_eq D hD π hlen h3 ch, seqAndK_gops,
     gopsRun_p2Ops, bind_map_left, simulateQ_bind (impl := keccakCallsOverQueryPermutation)]
   refine UniSound.mono_bind_supp _ _ _ _ _ _ (fun bs hbs s => ?_) s
   rw [simulateQ_pure]
   refine Soundness.le_pure _ _ _ _ _ (fun hx => ?_) s
-  obtain ⟨-, hbs8⟩ := foldl_and_true bs true hx
-  have hl : bs.length = 8 := by
-    have := length_of_mem_sim_gopsRun π ch (p2Ops8 D) bs hbs
-    simpa [p2Ops8, p2Pcs, p2Pcs5] using this
-  obtain ⟨b0, b1, b2, b3, b4, b5, b6, b7, rfl⟩ : ∃ b0 b1 b2 b3 b4 b5 b6 b7 : Bool,
-      bs = [b0, b1, b2, b3, b4, b5, b6, b7] := by
+  obtain ⟨-, hbs7⟩ := foldl_and_true bs true hx
+  have hl : bs.length = 7 := by
+    have := length_of_mem_sim_gopsRun π ch p2Ops7 bs hbs
+    simpa [p2Ops7, p2Pcs] using this
+  obtain ⟨b0, b1, b2, b3, b4, b5, b6, rfl⟩ : ∃ b0 b1 b2 b3 b4 b5 b6 : Bool,
+      bs = [b0, b1, b2, b3, b4, b5, b6] := by
     match bs, hl with
-    | [b0, b1, b2, b3, b4, b5, b6, b7], _ => exact ⟨_, _, _, _, _, _, _, _, rfl⟩
-  have e0 := hbs8 0 (by simp)
-  have e1 := hbs8 1 (by simp)
-  have e2 := hbs8 2 (by simp)
-  have e3 := hbs8 3 (by simp)
-  have e4 := hbs8 4 (by simp)
-  have e5 := hbs8 5 (by simp)
-  have e6 := hbs8 6 (by simp)
-  have e7 := hbs8 7 (by simp)
-  simp only [List.getD_cons_zero, List.getD_cons_succ] at e0 e1 e2 e3 e4 e5 e6 e7
-  subst e0 e1 e2 e3 e4 e5 e6 e7
+    | [b0, b1, b2, b3, b4, b5, b6], _ => exact ⟨_, _, _, _, _, _, _, rfl⟩
+  have e0 := hbs7 0 (by simp)
+  have e1 := hbs7 1 (by simp)
+  have e2 := hbs7 2 (by simp)
+  have e3 := hbs7 3 (by simp)
+  have e4 := hbs7 4 (by simp)
+  have e5 := hbs7 5 (by simp)
+  have e6 := hbs7 6 (by simp)
+  simp only [List.getD_cons_zero, List.getD_cons_succ] at e0 e1 e2 e3 e4 e5 e6
+  subst e0 e1 e2 e3 e4 e5 e6
   refine ⟨hcheck, fun k hk => ?_⟩
-  have hk6 : k < 6 := by simpa [p2Ops, p2Pcs5] using hk
+  have hk3 : k < 3 := by simpa [p2Ops] using hk
   interval_cases k <;> rfl
 
 /-- **THE VERIFIER BRIDGE** at the real deployment, from the walk. -/

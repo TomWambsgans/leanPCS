@@ -50,6 +50,10 @@ set_option linter.unusedSectionVars false
 
 namespace RecCompose
 
+-- The `SampleableType E` instance of `Pi2FsLayer`'s protocols: `LeanVM.Protocol`'s (as `FsDefs.lean`'s), not
+-- `Completeness`'s, which the imports also bring.
+attribute [local instance high] LeanVM.Protocol.instSampleableTypeE
+
 open RecStatement LeanVM.Parameters LeanVM.Protocol LeanVM.Protocol.KeccakHash Finset
 open OracleComp OracleSpec Common
 open scoped ENNReal
@@ -537,10 +541,10 @@ theorem pi2Extraction_of_layers (C : Pi2Circuits D) (Fa : Pi2Facts D C) (T : Pi2
 
 /-- **The circuit's corollary** (`Pi2Layers.circuit`; RecCircuit's end theorem), for the public limbs of the
 statement's scalars: a witness satisfying the compiled circuit holds a π1 stream on which π1-rec4's graph at π1's setup
-commitment accepts, its claims hashing to the declared ones (when the proof declares as many as the graph makes). -/
+commitment accepts, its claims hashing to the declared ones (when the proof declares three, the graph's count). -/
 def Pi2CircuitAccepts (C : Pi2Circuits D) (Fa : Pi2Facts D C) : Prop :=
   ∀ (roots : RecSetupRoots) (input : Vector UInt8 32) (proof : RecProof) (w : ℕ → K),
-    proof.pi1Claims.length = RecGraphKeccak.Pi1.pi1GraphK4.calls.length →
+    proof.pi1Claims.length = 3 →
     (C.G roots).Satisfies (Fa.pubOf roots (pi2Scalars D roots input proof)) (RecCircuit.emb w) →
       Pi1GraphAccepts (pi1GraphAt roots.pi1) (D.pi1IvAt roots.pi1) input (D.pi1Stream w) proof.pi1Claims
 

@@ -2,7 +2,7 @@
 -- `formal/UniSound/UniSound/FsGame128.lean`
 -- (`fsLayer128_of_gameV`) and `Fs128.lean` (`le_uniBound128`) to π2's verifier on the EIP's PCS claims, through
 -- `Compose.knowledgeSoundness_listChainU_closed128SG` (openings of any verifier, the setup's stacks and the protocol
--- read off the setup), `FsBind.lean`'s `prEvent_doomFG_p2Ops_le` (the eight openings once, `Q`'s binding) and
+-- read off the setup), `FsBind.lean`'s `prEvent_doomFG_p2Ops_le` (the seven openings once, `Q`'s binding) and
 -- `Compose.prEvent_pairTr_expLG_le` (the seed's pair).
 import RecCompose.FsOps
 import RecCompose.FsSetup
@@ -23,10 +23,11 @@ by the IV's log, the seed's first 32 bytes, the event read through the transcrip
 * `rpm_le_kcS`: the random-permutation game to the two-oracle game (the permutation's term);
 * the IV moved into the adversary (`hexpU`), the event to the framework's `BreaksOK` at the protocol of the setup's
   commitments (`liftPiop2 (R s)`, `hpre`; the extractor's word read before the IV's log, `hext`);
-* `knowledgeSoundness_listChainU_closed128SG` on π2's chain, the openings (`hok_p2`: `W`'s and `Q`'s decoders, π1's
-  three without a stack, the setup's stack read off the proof), setup (`p2Setup_noLabel`), the last link from
+* `knowledgeSoundness_listChainU_closed128SG` on π2's chain, the openings (`hok_p2`: `W`'s (with π1's three declared
+  claims) and `Q`'s decoders, the setup's stack read off the proof), setup (`p2Setup_noLabel`), the last link from
   `Pi2FsLayer`'s (`hlink_p2`), `maxErrK ≤ e` (`maxErrK_p2`);
-* the openings' doom (`prEvent_doomFG_p2Ops_le`: the eight PCS claims once through `WhirBridge.Pcs.pcs_union_sound`,
+* the openings' doom (`prEvent_doomFG_p2Ops_le`: π2's four PCS claims once, after π1's three declared claims, through
+  `WhirBridge.Pcs.UnionO.pcs_union_sound_oracle`,
   and `Q`'s binding) and the seed's pair (`prEvent_pairTr_expLG_le`);
 * the numbers (`le_pi2BoundE`): the openings' `(N + 10122)(εExact + 5 (N + 10122)/2^256)` and the binding's
   `N δc 28 ≤ N 2^-160 ≤ N 2^-156` in `pi2Bound`'s openings term (`pi2OpenErr ≥ εExact + 2^-156`, `Pi2OpenErrOK`), its
@@ -66,17 +67,17 @@ chain's at `N`, the permutation's at `QS 2^32 + Q + 2^49` calls, `N` the two-ora
 trees, the adversary and the IV, the chain, the openings). -/
 theorem le_pi2BoundE (hOE : Pi2OpenErrOK) (e : ℝ≥0∞) (Q QS nQ nRf : ℕ) (hQS : QS ≤ 3 * 2 ^ 24 + 2 ^ 21)
     (hnQ : nQ ≤ 2 ^ 10) (hr : nRf ≤ 5) (d p m : ℝ≥0∞)
-    (hd : d ≤ bndU (QS + (QS + Q + 4) + nQ + 81200) + δBind (QS + (QS + Q + 4) + nQ + 81200))
-    (hp : p ≤ ((2 * (QS + (QS + Q + 4) + nQ + 81200) ^ 2 : ℕ) : ℝ≥0∞) / 2 ^ 256)
+    (hd : d ≤ bndU (QS + (QS + Q + 4) + nQ + 71050) + δBind (QS + (QS + Q + 4) + nQ + 71050))
+    (hp : p ≤ ((2 * (QS + (QS + Q + 4) + nQ + 71050) ^ 2 : ℕ) : ℝ≥0∞) / 2 ^ 256)
     (hm : m ≤ e) :
-    d + p + ((QS + (QS + Q + 4) + nQ + 81200 : ℕ) : ℝ≥0∞) *
-        (m + (((nRf + 2) * (QS + (QS + Q + 4) + nQ + 81200) : ℕ) : ℝ≥0∞) / 2 ^ 256) +
+    d + p + ((QS + (QS + Q + 4) + nQ + 71050 : ℕ) : ℝ≥0∞) *
+        (m + (((nRf + 2) * (QS + (QS + Q + 4) + nQ + 71050) : ℕ) : ℝ≥0∞) / 2 ^ 256) +
       ((QS * 2 ^ 32 + Q + 2 ^ 49 : ℕ) : ℝ≥0∞) ^ 2 / 2 ^ 508 ≤ pi2BoundE e Q := by
   have h33 : (2 : ℕ) ^ 33 = 8589934592 := by norm_num
   have h24 : (2 : ℕ) ^ 24 = 16777216 := by norm_num
   have h21 : (2 : ℕ) ^ 21 = 2097152 := by norm_num
   have h10 : (2 : ℕ) ^ 10 = 1024 := by norm_num
-  set N := QS + (QS + Q + 4) + nQ + 81200 with hNdef
+  set N := QS + (QS + Q + 4) + nQ + 71050 with hNdef
   set M := pi2N Q with hMdef
   have hNM : N + 10122 ≤ M := by rw [hNdef, hMdef]; unfold pi2N; omega
   have hN1 : N + 1 ≤ M := le_trans (Nat.add_le_add_left (by norm_num) N) hNM
@@ -152,14 +153,10 @@ include hD in
 theorem circuitAt_real (roots : UniKeccak.SetupRootsK) : (D.circuitAt roots).circuit = cc := hD.1 _
 
 /-- **The openings' `OKP`.** -/
-theorem hok_p2 : ∀ o ∈ p2Ops D, GOp.OKP p2Tc p2Good (p2Setup D hs) p2Fix (p2Stk D) o := by
+theorem hok_p2 : ∀ o ∈ p2Ops, GOp.OKP p2Tc p2Good (p2Setup D hs) p2Fix (p2Stk D) o := by
   intro o ho
-  simp only [p2Ops, p2Pcs5, List.map_cons, List.map_nil, List.cons_append, List.nil_append, List.mem_cons,
-    List.mem_nil_iff, or_false] at ho
-  rcases ho with rfl | rfl | rfl | rfl | rfl | rfl
-  · exact okp_pi1 D hs 27 _ _ (by decide) _ _ _ _
-  · exact okp_pi1 D hs 26 _ _ (by decide) _ _ _ _
-  · exact okp_pi1 D hs 23 _ _ (by decide) _ _ _ _
+  simp only [p2Ops, List.mem_cons, List.mem_nil_iff, or_false] at ho
+  rcases ho with rfl | rfl | rfl
   · exact okp_W D hs
   · exact okp_setupOp D hs
   · exact okp_Q D hs
@@ -210,7 +207,7 @@ theorem hlink_p2 (R : RecSetupRoots → Compose.Piop pi2K Stk)
   rw [ite_eq_left rfl] at g0
   rw [ite_eq_right (by decide), ite_eq_left rfl] at g1
   obtain ⟨cW, hcW, hW⟩ := g0
-  obtain ⟨cQ, hcQ, hQ1, hQ2, hQ3⟩ := g1
+  obtain ⟨cQ, hcQ, hQ1, hQ2⟩ := g1
   have hcs : cs = [some cW, some cQ, none] := by
     rw [list_three_eq cs hl3 none]
     simp only [List.getD_eq_getElem _ _ (show 0 < cs.length by omega),
@@ -223,7 +220,7 @@ theorem hlink_p2 (R : RecSetupRoots → Compose.Piop pi2K Stk)
     rfl
   have hcirc := circuitAt_real D hD π.roots.pi1
   have hpost' := hpost π.roots (stOf (p2View π).1) cW cQ
-    [UniSound.scalarAt π.proof.stream 552] [UniSound.scalarAt π.proof.stream 608] (p2Inputs π ch) rfl (by
+    [UniSound.scalarAt π.proof.stream 32] [UniSound.scalarAt π.proof.stream 88] (p2Inputs π ch) rfl (by
       rw [hcirc, spec_core_logRow]
       show (((p2Msgs π).getD 2 default).2.take 16).length = 2 ^ 4
       rw [p2Msgs_eq]
@@ -232,7 +229,7 @@ theorem hlink_p2 (R : RecSetupRoots → Compose.Piop pi2K Stk)
       simp only
       rw [hcirc]
       unfold p2GoodS at hgS
-      exact ⟨hW, hQ1, hQ2, hQ3, hgS⟩)
+      exact ⟨hW, hQ1, hQ2, hgS⟩)
   obtain ⟨a, b, c, rfl⟩ : ∃ a b c, ch = [a, b, c] := ⟨_, _, _, list_three_eq ch hch []⟩
   simp only [List.getD_cons_zero, List.getD_cons_succ] at hc0 hc1 hc2
   obtain ⟨a0, a1, a2, rfl⟩ : ∃ x y z, a = [x, y, z] := ⟨_, _, _, list_three_eq a hc0 0⟩
@@ -261,13 +258,13 @@ theorem pi2FsLayer_of (D : RecDeployment) (hD : RecDeployment.Real D) (hs : UniK
       Pr{let z ← recSoundnessExperiment2 D A}[acc z = true ∧
           ¬ ∃ w ∈ outcomeCandidates D z, P (rts z) (pi2StmtOf D z) (stkOf w)] ≤
         Pr{let z ← Common.runWithRandomPermutation (rpmGameS (p2Setup D hs) p2Fix (p2Adv A) (p2Ver D))}[
-          P2BreaksRel D P (ivOut2 z.1, z.2.1 ++ evalTr (permutationQueries z.2.2))])
+          P2BreaksRel P (ivOut2 z.1, z.2.1 ++ evalTr (permutationQueries z.2.2))])
     (hdup : ∀ π, LeanVM.Rpm.DuplexVm (p2Ver D π) [])
     (hcost : ∀ π, Common.QueryCostAtMost (p2Ver D π) LeanVM.Rpm.hashBlocks (2 ^ 49))
     (hIvAdv : ∀ (A₀ : SOut → OracleComp KeccakCalls P2Pf) (n : ℕ), (∀ s, IsTotalQueryBound (A₀ s) n) →
       ∀ s, IsTotalQueryBound (p2IvAdv D A₀ s) (n + 4))
     (hexpU : ∀ A₀ : SOut → OracleComp KeccakCalls P2Pf,
-      expU pi2Spec p2View (withSetupG (p2Setup D hs) p2Fix (p2IvAdv D A₀)) (gopsRun p2View (p2Ops D)) =
+      expU pi2Spec p2View (withSetupG (p2Setup D hs) p2Fix (p2IvAdv D A₀)) (gopsRun p2View p2Ops) =
         (fun w => (ivOut2 w.1, w.2 ++ ivLog D w.1.1 w.1.2.1)) <$> kcGameS (p2Setup D hs) p2Fix A₀ (p2Ver D))
     (hext : ∀ (z : P2Pf × (List (List E) × List Bool)) (tr : Transcript) (π : P2Pf)
       (x : Bytes32 × Bytes32 × Bytes32 × Bytes32),
@@ -279,27 +276,27 @@ theorem pi2FsLayer_of (D : RecDeployment) (hD : RecDeployment.Real D) (hs : UniK
           (withSetupG (p2Setup D hs) p2Fix (p2IvAdv D A₀)))).1).take 32 =
         RecStatement.name ++ (viewT T w).toList.take (32 - RecStatement.name.length))
     (hcongr : ∀ (P : RecSetupRoots → Pi2St → Stk → Prop) (z : P2Pf × (List (List E) × List Bool))
-      (tr tr' : Transcript), (∀ x, lookTr tr x = lookTr tr' x) → P2BreaksRel D P (z, tr) →
-        P2BreaksRel D P (z, tr'))
+      (tr tr' : Transcript), (∀ x, lookTr tr x = lookTr tr' x) → P2BreaksRel P (z, tr) →
+        P2BreaksRel P (z, tr'))
     (hnQ : pi2Spec.K.nQ ≤ 2 ^ 10) :
     Pi2FsLayer D := by
   intro R e herr P hpre hpost A Q hQ
   obtain ⟨A₀, hA₀, hle⟩ := rpm_le_kcS (p2Setup D hs) (hOnly_p2Setup D hs) (p2QS D) (p2QS D * 2 ^ 32)
     (isTotalQueryBound_p2Setup D hs) (cost_p2Setup D hs) p2Fix (p2Adv A) Q
     (fun s => Common.isWeightBound_map _ (hQ _)) (p2Ver D) hdup (2 ^ 49) hcost
-    (fun z tr => P2BreaksRel D P (ivOut2 z, tr)) (fun z tr tr' h hz => hcongr P _ tr tr' h hz)
+    (fun z tr => P2BreaksRel P (ivOut2 z, tr)) (fun z tr tr' h hz => hcongr P _ tr tr' h hz)
   have hmain := knowledgeSoundness_listChainU_closed128SG pi2Spec p2View
-    (fun s => liftPiop2 (R s)) (fun π => π.roots) (p2Ops D) p2Tc p2Check p2Good (p2GoodS D)
+    (fun s => liftPiop2 (R s)) (fun π => π.roots) p2Ops p2Tc p2Check p2Good (p2GoodS D)
     (p2Setup D hs) p2Fix (p2Stk D) (p2IvAdv D A₀) (p2QS D) (p2QS D + Q + 4) (isTotalQueryBound_p2Setup D hs)
-    (hIvAdv A₀ _ hA₀) (fun _ _ => rfl) (hok_p2 D hs) (hcov_p2 D) (hS_p2 D) (fun π _ _ => hfit_p2 π)
+    (hIvAdv A₀ _ hA₀) (fun _ _ => rfl) (hok_p2 D hs) hcov_p2 (hS_p2 D) (fun π _ _ => hfit_p2 π)
     (fun π ch cs hc hl hg hn hgS => hlink_p2 D hD R hpost π ch cs hc hl hg hn hgS) (p2Setup_noLabel D hs)
     RecStatement.name (hlab A₀) e (fun s => maxErrK_p2 _ e fun j hj => herr _ j hj)
   have hkc : Pr{let z ← (simulateQ randomOracle (kcGameS (p2Setup D hs) p2Fix A₀ (p2Ver D))).run' ∅}[
-        P2BreaksRel D P (ivOut2 z.1, z.2)] ≤
+        P2BreaksRel P (ivOut2 z.1, z.2)] ≤
       Pr{let z ← (simulateQ randomOracle (expU pi2Spec p2View (withSetupG (p2Setup D hs) p2Fix (p2IvAdv D A₀))
-          (gopsRun p2View (p2Ops D)))).run' ∅}[
+          (gopsRun p2View p2Ops))).run' ∅}[
         BreaksOK pi2Spec.K (fun i => (p2Tc i).commit) (liftPiop2 (R z.1.1.roots)) p2View p2Check
-          (fun bs => ∀ k < (p2Ops D).length, bs.getD k false = true) z] := by
+          (fun bs => ∀ k < p2Ops.length, bs.getD k false = true) z] := by
     rw [hexpU A₀, run'_simulateQ_map, prEvent_map]
     refine prEvent_mono _ _ _ fun w hw => ?_
     obtain ⟨h1, h2, h3⟩ := hw
@@ -315,10 +312,10 @@ theorem pi2FsLayer_of (D : RecDeployment) (hD : RecDeployment.Real D) (hs : UniK
     isTotalQueryBound_preU _ _ _ _ (isTotalQueryBound_withSetupG _ _ _ _ _ (isTotalQueryBound_p2Setup D hs)
       (hIvAdv A₀ _ hA₀))
   -- The openings once, and `Q`'s binding.
-  have hdoom := prEvent_doomFG_p2Ops_le D X _ hX
+  have hdoom := prEvent_doomFG_p2Ops_le X _ hX
   -- The seed's pair.
-  have hpair := prEvent_pairTr_expLG_le p2View X (p2Ops D) _ hX RecStatement.name name_length
-  have hsum : ((p2Ops D).map fun o => o.QO).sum = 81200 := by simp [p2Ops, p2Pcs5, PcsOp.gop, qOp]
+  have hpair := prEvent_pairTr_expLG_le p2View X p2Ops _ hX RecStatement.name name_length
+  have hsum : (p2Ops.map fun o => o.QO).sum = 71050 := by simp [p2Ops, PcsOp.gop, qOp, wOpM]
   refine (hG P A).trans (hle.trans (add_le_add (hkc.trans hmain) le_rfl) |>.trans ?_)
   rw [hsum] at hpair ⊢
   exact le_pi2BoundE pi2OpenErrOK e Q (p2QS D) pi2Spec.K.nQ pi2Spec.nRf (p2QS_le D hs) hnQ (show 5 ≤ 5 by decide)
