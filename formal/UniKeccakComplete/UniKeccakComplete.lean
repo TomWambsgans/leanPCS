@@ -4,6 +4,7 @@ import UniKeccakComplete.Staged
 import UniKeccakComplete.End
 import UniKeccakComplete.K.EndClosed
 import UniKeccakComplete.K.Rec4End
+import UniKeccakComplete.K.Rec4RunOpenings
 
 /-!
 # UniKeccakComplete: completeness of the Keccak VM's univariate verifier
@@ -25,6 +26,9 @@ Flock's prover on the Keccak-f block, three WHIR openings; π1-rec4's wide draws
 
 /-- info: 'UniKeccakComplete.Rec4.honest_openings4' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in #print axioms UniKeccakComplete.Rec4.honest_openings4
+
+/-- info: 'UniKeccakComplete.Rec4.runK4_openings' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in #print axioms UniKeccakComplete.Rec4.runK4_openings
 
 /-- info: 'UniKeccakComplete.Prob.deltaK_lt' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in #print axioms UniKeccakComplete.Prob.deltaK_lt
