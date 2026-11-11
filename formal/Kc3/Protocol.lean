@@ -63,6 +63,7 @@ structure Params (F : Type*) [Field F] [DecidableEq F] where
   σ : Equiv.Perm (T × Fin 4)
   sigmaPoly : F[X]
   hσ : ∀ i : T × Fin 4, sigmaPoly.eval (i.1.1 + shift θ i.2) = (σ i).1.1 + shift θ (σ i).2
+  hσdeg : sigmaPoly.natDegree < 4 * T.card
   /-- The anchor rows, whose `C` cells are pinned. -/
   pins : Fin pinCount ↪ T
   /-- The random rows. -/
@@ -241,5 +242,43 @@ def Params.Msg₁ : Type _ := { g : Witness F // ∀ j, (g j).natDegree < P.T.ca
 def Params.Msg₂ : Type _ :=
   { R : Params.TMsg F // R.A₀.natDegree < P.nCells ∧ R.A₁.natDegree < P.nCells ∧ R.B₀.natDegree < P.nCells ∧
       R.B₁.natDegree < P.nCells }
+
+/-! ### The states of the proof, and the rounds' errors -/
+
+namespace Params
+
+variable {P}
+
+/-- The states after the first message, the first challenge, the second message, `t`, and `ρ`: a state is true
+when the prover can still win (`QuotientSecurity/Spec.lean`'s, for this protocol). -/
+def State₁ (stmt : Stmt F) (g : P.Msg₁) : Prop := P.Sat stmt (P.cells g.1)
+
+def State₂ (stmt : Stmt F) (g : P.Msg₁) (c : F × F × F) : Prop :=
+  State₁ stmt g ∨ ∃ R : P.Msg₂, P.Consistent stmt g.1 R.1 c.1 c.2.1 c.2.2
+
+def State₃ (stmt : Stmt F) (g : P.Msg₁) (c : F × F × F) (R : P.Msg₂) : Prop :=
+  State₁ stmt g ∨ P.Consistent stmt g.1 R.1 c.1 c.2.1 c.2.2
+
+def State₄ (stmt : Stmt F) (g : P.Msg₁) (c : F × F × F) (R : P.Msg₂) (t : F) : Prop :=
+  State₃ stmt g c R ∨ P.ConsistentAt stmt g.1 R.1 c.1 c.2.1 c.2.2 t
+
+def State₆ (stmt : Stmt F) (g : P.Msg₁) (c : F × F × F) (R : P.Msg₂) (t : F) (v : (Fin 3 → F) × F)
+    (ρ : F) : Prop :=
+  State₄ stmt g c R t ∨ P.Accepts stmt g.1 R.1 c.1 c.2.1 c.2.2 t v.1 v.2 ρ
+
+variable (P)
+
+/-- The first challenge's count factor: at most `E1 · q²` of the `q³` triples `(α, β, μ)` admit a consistent
+second message when the first message's cells fail the relation (`Rounds.lean`). -/
+def E1 : ℕ := 8 * P.nCells
+
+/-- The second challenge's: the identity's degree, at most `4 n`. -/
+def D2 : ℕ := 4 * P.nCells
+
+/-- **The rounds' error**: each challenge turns a lost state into a won one with probability at most
+`E1 / q` (`E1 ≥ D2 ≥ 3`). -/
+noncomputable def roundError [Fintype F] : ENNReal := (P.E1 : ENNReal) / (Fintype.card F : ENNReal)
+
+end Params
 
 end Kc3
