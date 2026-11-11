@@ -1,7 +1,7 @@
 // Part of this repository. Adapted from leanVM (https://github.com/leanEthereum/leanVM), branch
 // PCS-openings-aggregation, commit 651453c6, crates/flock/src/quotient/circuit.rs: the wiring is the same; the
 // gate (one χ on bits instead of a full adder on GF(4)), the Keccak-256 statement, the anchors with the packing of
-// the public words and the random rows' shapes are new; the gate's roles swapped (`docs/membership/PERF_GAS2.md`, so
+// the public words and the random rows' shapes are new; the gate's roles swapped (`docs/membership/PROTOCOL.md`, so
 // that the verifier needs three of the row's values at `t`, not four). MIT OR Apache-2.0; see AGENTS.md.
 //! Rows of one gate and the permutation that wires them, and the circuit of the membership statement.
 //!
@@ -62,7 +62,7 @@ pub const LOG_ROWS: usize = 22;
 /// The **random rows**: idle rows the builder turns into rows of two free cells ([`Src::Free`], each its own cycle),
 /// the last ones of the circuit, of three shapes in turn ([`RandomShape`]): `(0, r, s, r +
 /// s)`, `(s, r, 0, r)`, `(1, r, s, r)`. A witness leaves them zero; the prover fills each with two fresh random
-/// values ([`Circuit::randomize`], `HIDING.md`), which every cell of the row depends on affinely: they make the
+/// values ([`Circuit::randomize`], `PROTOCOL.md`, "Zero knowledge"), which every cell of the row depends on affinely: they make the
 /// witness table's evaluations and out-of-domain answer uniform, and its root hide.
 pub const RANDOM_ROWS: usize = 16;
 /// The random words a proof draws for them.
@@ -387,7 +387,7 @@ impl Circuit {
     /// the `X` cells and the pinned ones, to the logarithmic derivative plus a multiple of the gate's or the pin's
     /// error over `d d'`; walking a cycle from a cell of neither kind, each error is then the only term with a pole on
     /// the line of its cell, so the sum vanishes identically in `α, β` only if every error is zero
-    /// (`crate::protocol`, `docs/membership/PERF_GAS.md`).
+    /// (`crate::protocol`, `docs/membership/PROTOCOL.md`).
     pub fn errors_have_their_own_poles(&self) -> bool {
         let pinned = |cell: usize| cell % 4 == 2 && cell / 4 < PUBLIC_ROWS;
         let mut random = vec![false; self.rows.len()];
@@ -411,7 +411,7 @@ impl Circuit {
         true
     }
 
-    /// Fill the random rows of `cells` with `words`, two a row (`HIDING.md`).
+    /// Fill the random rows of `cells` with `words`, two a row (`PROTOCOL.md`, "Zero knowledge").
     pub fn randomize(&self, cells: &mut [F64], words: &[F64; RANDOM_WORDS]) {
         for (k, r) in self.random_rows().into_iter().enumerate() {
             let row = RandomShape::of(k).cells(words[2 * k], words[2 * k + 1]);

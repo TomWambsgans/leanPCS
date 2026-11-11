@@ -1,5 +1,5 @@
 // Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
-//! The rank conditions of `HIDING.md`, checked exactly on the toy circuit at fixed random challenges.
+//! The rank conditions of `docs/membership/PROTOCOL.md` ("Zero knowledge"), checked exactly on the toy circuit at fixed random challenges.
 //!
 //! With the challenges fixed, the scalars a proof reveals besides the roots (the two out-of-domain answers and the
 //! three row values `X`, `C`, `V + Y` at `t`; `next` is the public wiring's, and the three claims' values follow from

@@ -5,7 +5,7 @@
 // the copy argument's) and the one quotient table, whose layout checks the sum (`x h`). MIT OR Apache-2.0; see
 // AGENTS.md.
 //! The membership statement reduced to three evaluation claims on two commitments and the circuit's, by six field
-//! elements and no sumcheck (`docs/membership/PERF_GAS2.md`).
+//! elements and no sumcheck (`docs/membership/PROTOCOL.md`).
 //!
 //! A multilinear claim at a point built from one field element `t` is a univariate evaluation ([`domain`]),
 //! so this is a gate-and-copy argument on an additive subspace: one gate on four cells a row ([`circuit`]),
@@ -26,9 +26,9 @@
 //! the identity sets `h` to the logarithmic derivative plus `μ` times the gate's or the pin's error over `d d'`; the
 //! sum then vanishes, at random `α, β, μ`, only if the copies, the gates and the pins all hold: no cycle of the
 //! wiring lies within the rows' first cells and the pins but a free cell's own (the poles of `1 / (d d')` at the
-//! first cell of each run of them on a cycle are the error's alone; `PERF_GAS.md`).
+//! first cell of each run of them on a cycle are the error's alone; `PROTOCOL.md`, "Soundness").
 //!
-//! **The sum, by the layout** (`PERF_GAS2.md`): `T` holds `P = B_0 + ζ B_1` for `x h` and `q = A_0 + ζ A_1`
+//! **The sum, by the layout** (`PROTOCOL.md`, "Tables and claims"): `T` holds `P = B_0 + ζ B_1` for `x h` and `q = A_0 + ζ A_1`
 //! (`B_j`, `A_j` of `n` coefficients). The claim checks `x Z q + d d' P = x (d + d' + μ Z g)` at `t`, so at `x = 0`
 //! `d d'(0) B_0(0) = 0`: `h = B_0 / x + Z B_1` is a polynomial whose part on the cells has degree `≤ n − 2`, whose
 //! sum over the cells is zero. The honest `q` has a coefficient `n` the layout cannot hold; the prover zeroes it with
@@ -110,8 +110,8 @@ fn cell_vars(log_rows: usize) -> usize {
 
 /// The coefficients past `2^m` that blind the sum's polynomial `h`, per limb: `h + X_{2^m}·(b_0 + b_1 X_1 + b_2 X_2)`,
 /// which `h` keeps on the cells (`X_{2^m}` vanishes there). `b_0, b_1` ([`FREE_BLIND`]) make the quotient table's
-/// out-of-domain answer uniform (`HIDING.md`); `b_2` is solved for, so that `q`'s coefficient `n` is zero, which the
-/// table's layout needs (`PERF_GAS2.md`). Three, so that `h d d'` stays at degree `3 n` and `q` at `2 n`.
+/// out-of-domain answer uniform (`PROTOCOL.md`, "Zero knowledge"); `b_2` is solved for, so that `q`'s coefficient `n` is zero, which the
+/// table's layout needs (`PROTOCOL.md`). Three, so that `h d d'` stays at degree `3 n` and `q` at `2 n`.
 pub const H_BLIND: usize = 3;
 
 /// The blinding coefficients a proof draws per limb: `b_0, b_1` of [`H_BLIND`].
@@ -152,7 +152,7 @@ pub fn table_slot(kind: usize, limb: usize, n: usize) -> usize {
     2 * n * (limb + 4 * kind)
 }
 
-/// The secret randomness of one proof (`HIDING.md`): the random rows' words ([`Circuit::randomize`]) and the
+/// The secret randomness of one proof (`PROTOCOL.md`, "Zero knowledge"): the random rows' words ([`Circuit::randomize`]) and the
 /// blinding of the sum's polynomial, [`H_BLIND`] coefficients per limb. It must be uniform, secret, and **fresh per
 /// proof, never reused**: two proofs that share it let a guessed witness be confirmed. [`prove`] draws its own seed,
 /// [`prove_with_seed`] takes one; both derive this from it ([`Randomness::derive`]).
@@ -258,7 +258,7 @@ impl Index {
             "a cycle of the wiring holds only rows' first cells and pins: the sum would not catch their errors"
         );
         let index = Self::new_unchecked(circuit);
-        // The prover's `b_2` needs `σ`'s coefficient `n − 2` (`PERF_GAS2.md`): a property of the circuit, for
+        // The prover's `b_2` needs `σ`'s coefficient `n − 2` (`PROTOCOL.md`): a property of the circuit, for
         // completeness (`Σ_cells σ(x) · x`, nonzero for wirings but rare ones).
         let wiring = index.wiring();
         let n = wiring.len();

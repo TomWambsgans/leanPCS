@@ -45,7 +45,7 @@
 // power of two words (upstream's `debug_assert`s), the folds and the terms any even length.
 // `collapse_avx512::stage` asserts its bounds (it checked them only with a `debug_assert`; once a call, a block of
 // every lane `packed` names).
-// Added here, for speed, every proof unchanged (`docs/PERF_PROVER2.md`): a kept codeword of the lanes not flagged all
+// Added here, for speed, every proof unchanged (`docs/PERF_PROVER.md`): a kept codeword of the lanes not flagged all
 // zero alone (`commit_skipping`, `KeptCodeword`, which carries which lanes it holds; `commit`'s whole codeword where
 // the shape takes no two sweeps); the lane rounds' passes leave the flagged lanes out
 // (`lane_inner_products`, `collapse_lanes`, `dense_lane_inner_products_skipping`); and a batch's openings, made in
