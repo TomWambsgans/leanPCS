@@ -44,6 +44,22 @@ pub struct Entry {
     /// A check that fails jumps to the instruction after it instead of the revert, so that any calldata runs the whole
     /// code: the gas of a valid proof plus one (a `JUMPDEST`) per check.
     pub measure: bool,
+    /// Calldata starts with the selector [`VERIFY`] (π1's contracts); without it (π2's, whose only entry is the
+    /// verifier: `docs/leanvm/rec/PERF_GAS.md`) the public input is at byte 0, and the length and the value alone are
+    /// checked.
+    pub selector: bool,
+}
+
+impl Entry {
+    /// Where calldata holds the public input.
+    pub fn public_input_at(&self) -> usize {
+        if self.selector { PUBLIC_INPUT } else { 0 }
+    }
+
+    /// Where calldata holds the stream.
+    pub fn stream_at(&self) -> usize {
+        self.public_input_at() + 32
+    }
 }
 
 /// A word the contract writes to its output region.
@@ -144,11 +160,11 @@ impl Dag for Nodes<'_> {
         match self.graph.nodes[id as usize] {
             Node::Const(limbs) => front::code(push(&word(limbs))),
             Node::Statement(k) => vec![
-                read(PUBLIC_INPUT + 8 * k as usize, 32),
+                read(self.entry.public_input_at() + 8 * k as usize, 32),
                 bytes(&[&[CALLDATALOAD], &push_usize(192), &[SHR]]),
             ],
             Node::Input { offset, len } => vec![
-                read(STREAM + offset as usize, 32),
+                read(self.entry.stream_at() + offset as usize, 32),
                 bytes(&[&[CALLDATALOAD], &push_usize(256 - 8 * len as usize), &[SHR]]),
             ],
             Node::Add(..) => front::code(vec![XOR]),
@@ -165,7 +181,7 @@ impl Dag for Nodes<'_> {
                         &[MSTORE],
                         &push_usize(32),
                     ]),
-                    read(PUBLIC_INPUT, 32),
+                    read(self.entry.public_input_at(), 32),
                     bytes(&[&push_usize(48), &[CALLDATACOPY], &push_usize(80), &[PUSH0, KECCAK256]]),
                 ]
             }
@@ -176,7 +192,7 @@ impl Dag for Nodes<'_> {
                 if len > 0 {
                     code.extend([
                         bytes(&[&push_usize(len)]),
-                        read(STREAM + from as usize, len),
+                        read(self.entry.stream_at() + from as usize, len),
                         bytes(&[&push_usize(32), &[CALLDATACOPY]]),
                     ]);
                 }
@@ -224,17 +240,22 @@ pub struct Contract {
 
 /// The program, and what it computes.
 fn program(graph: &Graph, outputs: &[Word], ending: &Ending, entry: &Entry) -> (Program, Stats) {
-    let calldata_len = STREAM + entry.stream_len + 1;
+    let calldata_len = entry.stream_at() + entry.stream_len + 1;
     // Not a call of the verifier: calldata of another length, or of another selector, or value.
-    let selector = [
-        &[CALLDATASIZE][..],
-        &push_usize(calldata_len),
-        &[XOR, PUSH0, CALLDATALOAD],
-        &push_usize(224),
-        &[SHR],
-        &push(&VERIFY),
-        &[XOR, OR, CALLVALUE, OR],
-    ];
+    let selector = if entry.selector {
+        [
+            &[CALLDATASIZE][..],
+            &push_usize(calldata_len),
+            &[XOR, PUSH0, CALLDATALOAD],
+            &push_usize(224),
+            &[SHR],
+            &push(&VERIFY),
+            &[XOR, OR, CALLVALUE, OR],
+        ]
+        .concat()
+    } else {
+        [&[CALLDATASIZE][..], &push_usize(calldata_len), &[XOR, CALLVALUE, OR]].concat()
+    };
     let (outputs, claims) = match ending {
         Ending::Return => (outputs.to_vec(), Vec::new()),
         Ending::Claims(claims) => {
@@ -250,7 +271,7 @@ fn program(graph: &Graph, outputs: &[Word], ending: &Ending, entry: &Entry) -> (
             Word::Stream(offset) => front::Word::Code(
                 vec![
                     Piece::Calldata {
-                        offset: STREAM + offset,
+                        offset: entry.stream_at() + offset,
                         len: 32,
                     },
                     Piece::Code(vec![CALLDATALOAD]),
@@ -277,7 +298,7 @@ fn program(graph: &Graph, outputs: &[Word], ending: &Ending, entry: &Entry) -> (
     let checks = graph.zero.iter().map(|&(id, _)| (id, Check::Zero));
     let source = Source {
         dag: &Nodes { graph, entry },
-        entry: selector.concat(),
+        entry: selector,
         entry_tag: ENTRY,
         checks: checks
             .chain(graph.nonzero.iter().map(|&(id, _)| (id, Check::Nonzero)))
@@ -336,7 +357,7 @@ fn options(measure: bool, jump_width: usize) -> Options<'static> {
     }
 }
 
-/// The contract. A call of it is calldata of the selector, the public input and `entry.stream_len` bytes of stream,
+/// The contract. A call of it is calldata of the selector (if `entry.selector`), the public input and `entry.stream_len` bytes of stream,
 /// with no value. It reverts unless every node of `graph.zero` is zero and every one of `graph.nonzero` nonzero, else
 /// writes `outputs` to a region of fresh memory, one word each, and returns them ([`Ending::Return`]), or checks the
 /// claims declared ([`Ending::Claims`], `outputs` empty).

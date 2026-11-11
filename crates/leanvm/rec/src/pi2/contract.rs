@@ -5,7 +5,7 @@
 //! straight-line EVM code (`leanvm_statement::evm::codegen`, `crates/evm_link`), run on revm with `FIELD_MUL` and
 //! EIP-8141's frame introspection over a frame of PCS claims (`leanvm_statement::evm::machine`).
 //!
-//! **Calldata**: the selector, π1's public input (32 bytes, which the seed hashes), the stream: π1's roots and its
+//! **Calldata** (no selector: the verifier is the only entry): π1's public input (32 bytes, which the seed hashes), the stream: π1's roots and its
 //! claims' elements, `W`'s commitment (root, out-of-domain answer), `Q`'s, the `2^r + 2` values; then a byte, the
 //! index of the transaction's frame of PCS claims. **Claims**, each the EIP draft's PCS claim (`crates/pcs_claim`,
 //! `docs/PCS_CLAIM.md`), checked declared in that frame in order (`evm_link::declared_claims`): π1's three (their
@@ -19,7 +19,7 @@
 //! elements (π1's among its claims' elements, π2's after its roots) or constants (the setups').
 
 use fiat_shamir::merkle::Hash;
-use leanvm_statement::evm::codegen::{CALLS, Claim, Contract, Ending, Entry, MEASURE, VERIFY, Word, compile, word};
+use leanvm_statement::evm::codegen::{CALLS, Claim, Contract, Ending, Entry, MEASURE, Word, compile, word};
 use leanvm_statement::evm::machine::{
     self, Chain, FrameTxGas, Outcome, PCS_FRAME, PcsFrame, call, element_word, frame_tx_gas,
 };
@@ -240,6 +240,7 @@ fn entry(inst: &Instance, recorded: &Recorded, measure: bool) -> Entry {
         iv: inst.iv,
         stream_len: recorded.stream_len,
         measure,
+        selector: false,
     }
 }
 
@@ -269,11 +270,14 @@ fn ends(inst: &Instance, recorded: &Recorded, verify: bool) -> (Vec<Word>, Endin
     }
 }
 
-/// Calldata verifying a proof: the selector, π1's public input, the stream, then the index of the transaction's frame
-/// of PCS claims ([`PCS_FRAME`]).
+/// Calldata verifying a proof: π1's public input, the stream, then the index of the transaction's frame of PCS claims
+/// ([`PCS_FRAME`]). No selector: the verifier is the contract's only entry (`docs/leanvm/rec/PERF_GAS.md`).
 pub fn calldata(public_input: &[u8; 32], stream: &[u8]) -> Vec<u8> {
-    [&VERIFY[..], public_input, stream, &[PCS_FRAME]].concat()
+    [public_input, stream, &[PCS_FRAME]].concat()
 }
+
+/// Where π2's calldata holds the stream.
+pub const STREAM_AT: usize = 32;
 
 /// The Rust verifier's reduction, and the values it required to be zero, then nonzero.
 pub type Checked = (Reduced<E>, Vec<E>, Vec<E>);

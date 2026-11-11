@@ -227,9 +227,10 @@ fn real_end_to_end() {
         // sent.
         let (w_at, q_at) = (recorded.roots_at[2], recorded.roots_at[3]);
         let values_at = q_at + 32 + 24;
-        let mut flips = vec![4, 4 + 31, 36 + 5, 36 + 40, 36 + 64, 36 + 64 + 24 * 25 + 11, 36 + w_at - 1];
-        flips.extend([36 + w_at, 36 + w_at + 31, 36 + w_at + 32 + 5, 36 + q_at + 7, 36 + q_at + 32 + 20]);
-        flips.extend((0..spec.values()).step_by(4).map(|k| 36 + values_at + 24 * k + k % 24));
+        let s = contract::STREAM_AT;
+        let mut flips = vec![0, 31, s + 5, s + 40, s + 64, s + 64 + 20 * 14 + 11, s + w_at - 1];
+        flips.extend([s + w_at, s + w_at + 31, s + w_at + 32 + 5, s + q_at + 7, s + q_at + 32 + 20]);
+        flips.extend((0..spec.values()).step_by(4).map(|k| s + values_at + 24 * k + k % 24));
         // The last values, and the frame's index.
         flips.extend([data.len() - 49, data.len() - 26, data.len() - 2, data.len() - 1]);
         assert!(flips.len() >= 13);

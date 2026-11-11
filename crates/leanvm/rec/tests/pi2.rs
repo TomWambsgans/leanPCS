@@ -335,7 +335,7 @@ fn contract_checks(design: Design) {
         let pi2 = prover::claims(f.circuit.log_n, &reduced, &roots, &f.setup.root(), f.setup.ood());
         assert_eq!(block[pi1.len()..], pi2[..]);
         assert_eq!(pi2[0].value, to_f192(reduced.witness.1));
-        for at in [36, data.len() / 2, data.len() - 2, data.len() - 1] {
+        for at in [contract::STREAM_AT, data.len() / 2, data.len() - 2, data.len() - 1] {
             let mut bad = data.clone();
             bad[at] ^= 1;
             assert!(
