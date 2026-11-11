@@ -6,16 +6,9 @@ import E2ECompleteness.PcsHInstance
 # The honest witness table, and the relation on F1's cells
 
 `cellsR w coins` are the circuit's cells with the random rows filled (`randomizeCells`), the witness table their
-coefficients (`witnessTable = coefficients 24 0 cellsR`), `cW` the table in `E` by bits. Then:
-
-* `cW_eval_point`: the table's polynomial takes the value of cell `c` at `B(c)`;
-* `cellPoly_eval`: F1's polynomial of role `r` of `witnessOfTable cW`, at `x`, is the table's polynomial at
-  `x + shift θ r`; so F1's cell `cellAt c` holds cell `c` (`cells_cellAt`);
-* **`sat_of_idx`**: cells satisfying the gates, the copies and the pins by index (`GatesIdx`, `CopiesIdx`,
-  `PinsIdx`: F0's, `formal/Kc3Circuit/Cells.lean`) satisfy F1's relation `Sat`.
-
-`HonestSat` is F0's `sat_honest`: for a secret of the statement and any random rows, the filled cells satisfy the
-three by index.
+coefficients (`witnessTable = coefficients 24 0 cellsR`), `cW` the table in `E` by bits. `cW_eval_point`: its
+polynomial takes the value of cell `c` at `B(c)`; `cells_cW`: F1's cells of `witnessOfTable cW` are F0's
+`honestCells`; **`sat_cW`**: they satisfy F1's relation (F0's `sat_honest_of_relation`).
 -/
 
 set_option autoImplicit false
@@ -29,28 +22,8 @@ attribute [local irreducible] PcsQuotient.membership PcsQuotient.membershipBuild
 
 namespace E2ECompleteness.Pcs.H
 
-/-! ## The relation by index (F0's) -/
-
-/-- The gates hold on every row (`Kc3.gate`: `V + Y + C + X·C = 0`). -/
-def GatesIdx (v : ℕ → E) : Prop :=
-  ∀ r < 2 ^ 22, _root_.Kc3.gate (v (4 * r)) (v (4 * r + 1)) (v (4 * r + 2)) (v (4 * r + 3)) = 0
-
-/-- σ keeps the values. -/
-def CopiesIdx (v : ℕ → E) : Prop := ∀ c < 4 * 2 ^ 22, v (sig c) = v c
-
-/-- The pinned cells hold the statement's words and the constants. -/
-def PinsIdx (s : Statement) (v : ℕ → E) : Prop :=
-  ∀ k < 11, v (4 * k + 2) = ofK (anchorValues s.words k)
-
 /-- The circuit's cells with the random rows filled. -/
 def cellsR (w : Secret) (coins : Coins) : Array K := randomizeCells (membership logRows) (cellsOf w) coins.rows
-
-/-- **F0's `sat_honest`**: for a secret of the statement and any random rows, the filled cells satisfy the gates,
-the copies and the pins. -/
-def HonestSat : Prop :=
-  ∀ (stmt : Statement) (w : Secret), Relation stmt w → ∀ coins : Coins,
-    GatesIdx (fun c => ofK ((cellsR w coins).getD c 0)) ∧ CopiesIdx (fun c => ofK ((cellsR w coins).getD c 0)) ∧
-      PinsIdx stmt (fun c => ofK ((cellsR w coins).getD c 0))
 
 theorem cellsR_size (w : Secret) (coins : Coins) : (cellsR w coins).size = 2 ^ 24 := by
   rw [cellsR, E2ECompleteness.Pcs.randomizeCells_size, E2ECompleteness.Pcs.cellsOf_size]
@@ -83,46 +56,21 @@ theorem cW_eval_point (w : Secret) (coins : Coins) {c : ℕ} (hc : c < 2 ^ 24) :
 
 /-! ## F1's cells -/
 
-variable (hσ : SigmaPerm)
+/-- **F1's cells of the witness table's first message** are the filled cells, by number. -/
+theorem cells_cW (w : Secret) (coins : Coins) (i : P0.T × Fin 4) :
+    P0.cells (witnessOfTable (k := 22) (cW w coins)) i = Kc3Deployed.honestCells BE hm28 w coins.rows i := by
+  have h1 := PcsBridge.Kc3.cells_witnessOfTable P0 (cW w coins) i
+  have h2 := pt_idx i
+  have hl : (Kc3Deployed.idxE BE hm28 i : ℕ) < 2 ^ 24 := by have := Kc3Deployed.idx_lt BE hm28 i; omega
+  have h3 := cW_eval_point w coins hl
+  exact h1.trans ((congrArg (fun x => (tablePoly (cW w coins)).eval x) h2).trans h3)
 
-/-- **F1's polynomial of a role** of a witness table's first message is the table's polynomial, shifted. -/
-theorem cellPoly_eval (c : (Fin 24 → Bool) → E) (r : Fin 4) (x : E) :
-    ((deployedP hσ).cellPoly (witnessOfTable (k := 22) c) r).eval x =
-      (tablePoly c).eval (x + shift (deployedP hσ).θ r) := by
-  rw [← Completeness.witnessPoly_witnessOfTable_eval c]
-  simp only [_root_.Kc3.Params.cellPoly, QuotientSecurity.Instance.witnessPoly, eval_finsetSum,
-    Polynomial.eval_mul, Polynomial.eval_comp, Polynomial.eval_add, Polynomial.eval_X, Polynomial.eval_C]
-  refine Finset.sum_congr rfl fun j _ => ?_
-  rw [(deployedP hσ).rowPoly_eval_shift]
-
-theorem cells_cellAt (c : (Fin 24 → Bool) → E) {i : ℕ} (hi : i < 2 ^ 24) :
-    (deployedP hσ).cells (witnessOfTable (k := 22) c) (cellAt i) = (tablePoly c).eval (ofK (point i)) := by
-  show ((deployedP hσ).cellPoly _ (cellAt i).2).eval ((cellAt i).1 : E) = _
-  rw [cellPoly_eval, ← deployedP_pt_cellAt hσ hi]
-  rfl
-
-/-- **The relation on F1's cells**, from the relation by index. -/
-theorem sat_of_idx (stmt : Statement) (g : Fin 4 → E[X]) (v : ℕ → E)
-    (hv : ∀ i < 2 ^ 24, (deployedP hσ).cells g (cellAt i) = v i)
-    (hg : GatesIdx v) (hc : CopiesIdx v) (hp : PinsIdx stmt v) :
-    (deployedP hσ).Sat (fun k => ofK (anchorValues stmt.words k)) ((deployedP hσ).cells g) := by
-  refine ⟨fun x => ?_, fun i => ?_, fun k => ?_⟩
-  · obtain ⟨r, hr, rfl⟩ := exists_rowOf x
-    have e : ∀ c : Fin 4, (deployedP hσ).cells g (rowOf r, c) = v (4 * r + c) := fun c => by
-      have := hv (4 * r + c) (by have := c.2; omega)
-      rw [cellAt_cell] at this
-      exact this
-    rw [e 0, e 1, e 2, e 3]
-    exact hg r hr
-  · obtain ⟨c, hc', hi⟩ := exists_cellAt i
-    have h1 : (deployedP hσ).σ (cellAt c) = cellAt (sig c) := sigmaP_cellAt hσ hc'
-    rw [← hi, h1, hv _ hc', hv _ (hσ.1 c hc')]
-    exact hc c (by omega)
-  · have hk := k.2
-    simp only [_root_.Kc3.pinCount] at hk
-    have e : cellAt (4 * k + 2) = (rowOf k, 2) := cellAt_cell k 2
-    have h1 : (deployedP hσ).pinCell k = cellAt (4 * k + 2) := e.symm
-    rw [h1, hv _ (by omega)]
-    exact hp k hk
+/-- **The honest first message satisfies F1's relation** (F0's `sat_honest`). -/
+theorem sat_cW {stmt : Statement} {w : Secret} (h : Relation stmt w) (coins : Coins) :
+    P0.Sat (Kc3Deployed.stmtOf stmt) (P0.cells (witnessOfTable (k := 22) (cW w coins))) := by
+  have e : P0.cells (witnessOfTable (k := 22) (cW w coins)) = Kc3Deployed.honestCells BE hm28 w coins.rows :=
+    funext (cells_cW w coins)
+  rw [e]
+  exact Kc3Deployed.sat_honest_of_relation BE hm28 h coins.rows
 
 end E2ECompleteness.Pcs.H
