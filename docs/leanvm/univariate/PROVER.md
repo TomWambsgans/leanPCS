@@ -86,11 +86,11 @@ solved sample streams into the Lean transcription's differential vectors.
    its novel coefficients (`crates/membership/quotient/src/ntt.rs`, vectorized), then by subset sums to basis `B`
    straight into the stack; the counter inverses `z_T = 1/Π c_j` on every row; `q_flock` as values, from the Flock
    witness. The setup `F`: the bytecode's 16 tuple slots interleaved and the memory's addresses. Then leanVM's WHIR
-   commits of both. The prover checks that the contract's `F` root is the one it commits (`setup::f_root`).
-   `PI1_LOW_MEMORY=1` commits `C1` without keeping its codeword (twice its stack), so that its opening re-encodes the
+   commits of both. The prover checks that the contract's `F` root is the one it commits (`setup::shape_roots`).
+   `Config::low_memory` commits `C1` without keeping its codeword (twice its stack), so that its opening re-encodes the
    rows its queries open: the same proof, a lower peak.
 2. **The seed** is `keccak(name ‖ contract_iv(shape, variant, program IV, roots) ‖ public input)` (`SPEC.md` §13,
-   F2). The stream starts with the six row counts, then `C1`'s commitment: its root as two scalars (`prove::halves`),
+   F2). The stream starts with the six row counts, then `C1`'s commitment: its root's 32 bytes as they are (`KeccakWriter::send_root`),
    then its out-of-domain answer, which binds the root to one polynomial before any challenge.
 3. **The challenges** `α, β, γ`; with π1-rec3 and π1-rec4 `α = (c, c², c⁴, c⁸)`, squared in `E` as the verifier
    squares it; with π1-rec4 drawn wide, as the verifier draws them (`SPEC.md` §14.4).
@@ -135,9 +135,9 @@ solved sample streams into the Lean transcription's differential vectors.
 7. **`C2`**: the heap and every quotient's chunks (`Q = Q_0 + w_{e_0}(Q_1 + w_{e_1} Q_2)`, slices of the novel
    coefficients since `X_{2^e + k} = w_e X_k`), put in basis `B` limb by limb in place in the stack; leanVM's WHIR
    commit, its root and out-of-domain answer sent; then **`t`** and the values at `t`, in the verifier's order.
-8. **`ρ`, and the combined claims** (`replay.rs`): the verifier's own `reduce` in weighted mode on the stream so far
-   (weighted mode reads nothing after `ρ`; the claims are the point mode's, the ring switch's weight as its 64
-   twisted terms instead of one). The verifier's checks on the stream so far are required to hold. Then each claim's
+8. **`ρ`, and the combined claims**: the verifier's own `reduce_combined` on the stream so far (a `KeccakChannel`
+   collecting its checks; it reads nothing after `ρ`), the ring switch's weight written as its 64 twisted terms
+   (`verifier::expand_ring`). The verifier's checks on the stream so far are required to hold. Then each claim's
    weight on its stack (`weight.rs`, `Weight::with_slot_bits`: eq tensors, one table per several-point column,
    `q_flock`'s slot terms with 11 slot bits, the ring switch's map).
 9. **The batching sumcheck** (`batch.rs`): `Σ_k λ^k Σ_u W_k(u) C_k(u)` over the longest stack, the others
@@ -210,11 +210,9 @@ resulting `F` root (garbage in the setup's unused words makes another `F`).
 
 What the verifier's interface leaves to the prover, and how this one copes:
 
-- **The combined claims are not exposed in point mode.** The prover needs each commitment's combined claim (terms,
-  points, value) to write the batching sumcheck's weights; `reduce` returns them only in weighted mode. The prover
-  replays point mode's stream through weighted mode (`replay.rs`), which relies on the two modes stating the same
-  relations in the same order at the same challenges. A `reduce` that returned its combined claims in point mode too
-  (before `batch`) would remove the replay.
+- **The combined claims**: the prover needs each commitment's combined claim (terms, points, value) to write the
+  batching sumcheck's weights; `reduce_combined` returns them (`reduce` is it and `batch`), and the prover runs it on
+  its stream so far.
 - **The setup roots**: `record_verifier`, `parity` and `rust_verifier` bind `SetupRoots::REFERENCE` (the
   128-signature shape's `F`) whatever the shape; `record_verifier_with`, `parity_with` and `rust_verifier_with` take a
   shape's own roots. The prover's tests verify every shape against the contract that binds its own `F`.

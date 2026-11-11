@@ -232,10 +232,10 @@ the hash a payload of the frame): `W`'s, the setup's (its commitment a constant)
 
 ## 5. The synthetic circuits (`synth`)
 
-Before the real circuit existed, `synth` built circuits with every row kind of SPEC-REC §2.4 (χ formulas, D
-units, XORs, packings, free bits, `E` products and sums, constants, ports of every source) and a witness satisfying them
-by construction (FIFO wiring), small (`2^11`, `2^12` positions) and at the design's target shape (`2^24`, about 200
-pairs, `target_d16v`). They remain the PIOP's tests and `gas_report`'s shapes. The real D16v circuit of the Keccak VM's
+Before the real circuit existed, `synth` built circuits with every row kind of SPEC-REC §2.4 (χ formulas, D units, XORs,
+packings, free bits, `E` products and sums, constants, ports of every source) and a witness satisfying them by
+construction (FIFO wiring), small (`2^11`, `2^12` positions; the design's `2^24` target shape, `target_d16v`, is gone
+with the real circuit). They remain the PIOP's and the contract's tests. The real D16v circuit of the Keccak VM's
 π1-rec4 has 176 pairs at the reference shape (its ports all at role 15).
 
 ## 6. Tests
@@ -267,8 +267,8 @@ pairs, `target_d16v`). They remain the PIOP's tests and `gas_report`'s shapes. T
   holding on the real tables are the degrees' check (§1): a `q` or `q_P` of a degree above `2N` would not be determined
   by `D`'s `2N` points, and its claim would fail.
 - `tests/pipeline.rs`: the prover timed from a trace, π2's proof and openings among its stages (§0).
-- `tests/keccak_vm_rec.rs`: π1-rec4 (`leanvm_rec::PI1`) at 128 and 400 signatures compiled into D16v on a sample
-  stream, the contract's gas and parity.
+- `tests/pi2_real.rs`, `real_gas`: π1-rec4 (`leanvm_rec::PI1`) at 128 and 400 signatures compiled into D16v on the
+  real proofs, the contract's gas and parity.
 - `tests/lean_pi2_prover.rs`: vectors for the Lean honest prover's differential test (`formal/RecCompose`, of π2v3 as
   of `f96a7938`: §10).
 
@@ -388,7 +388,7 @@ first ports, padded with constant-zero ports (`spec::Source::Pad`) to a power of
 are the aligned coset `ω_N + V_k`. A zero port is in no `Φ` (§1): it costs the verifier nothing, the padding included
 (kept from π2v1, whose verifier summed the coset in closed form).
 
-**Lever 3b: the claims' words written once** (`codegen::claim_outputs`, `Ending::Claims`, `Ending::ClaimsAt`). The
+**Lever 3b: the claims' words written once** (`evm_link::claim_outputs`, `Ending::Claims`). The
 claims' fields are written as the distinct words in first appearance, so claims sharing a point's coordinates write
 them once: π2's claims are ordered `W`, the setup, `Q`, so the setup's point reuses `W`'s digits `w_4 … w_{m-1}`, and
 `Q`'s identity and pushes claims share their position coordinates. A word written once is read once, so it is not

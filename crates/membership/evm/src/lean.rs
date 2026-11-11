@@ -17,10 +17,9 @@ use quotient::opening::Commitment;
 use quotient::domain::{beta, coordinates, row_vanishing};
 use quotient::protocol::{extension, label};
 use quotient::statement::Statement;
-use quotient::transcript::Proof;
 
 use crate::codegen::{Ending, Word};
-use crate::quotient::{CALLDATA_LEN, Recorded, deployed, pcs_claims};
+use crate::quotient::{CALLDATA_LEN, Recorded, deployed, parse, pcs_claims};
 use crate::record::Node;
 
 /// The rows of the deployed circuit.
@@ -37,12 +36,6 @@ fn nat(x: F192) -> String {
 
 fn base(x: F64) -> String {
     format!("0x{:x}", x.0)
-}
-
-fn word(bytes: &[u8; 32]) -> String {
-    let digits: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
-    let trimmed = digits.trim_start_matches('0');
-    format!("0x{}", if trimmed.is_empty() { "0" } else { trimmed })
 }
 
 fn list<T>(items: impl IntoIterator<Item = T>, show: impl Fn(T) -> String) -> String {
@@ -142,7 +135,6 @@ pub fn render() -> String {
     for (i, out) in outputs.iter().enumerate() {
         let text = match out {
             Word::Node(id) => format!("Word.node {id}"),
-            Word::Const(bytes) => format!("Word.const {}", word(bytes)),
             Word::Calldata(offset) => format!("Word.calldata {offset}"),
             Word::StoredRoot => "Word.storedRoot".to_string(),
             Word::StoredOod => "Word.storedOod".to_string(),
@@ -209,29 +201,6 @@ pub fn render() -> String {
     out
 }
 
-/// A proof and statement read back from calldata of the verifier ([`crate::quotient::calldata`]'s inverse, without
-/// its last byte, the frame's index).
-fn parse(calldata: &[u8]) -> (Statement, Proof) {
-    assert_eq!(calldata.len(), CALLDATA_LEN - 1);
-    let be = |at: usize| u64::from_be_bytes(calldata[at..at + 8].try_into().unwrap());
-    let statement = Statement {
-        y: calldata[..32].try_into().unwrap(),
-        root: calldata[32..64].try_into().unwrap(),
-    };
-    let scalar = |i: usize| {
-        let at = 128 + 24 * i;
-        F192::new(be(at + 16), be(at + 8), be(at))
-    };
-    let mut stream = Vec::new();
-    for k in 0..2 {
-        let root: [u8; 32] = calldata[64 + 32 * k..96 + 32 * k].try_into().unwrap();
-        stream.extend(quotient::transcript::root_halves(&root));
-        stream.push(scalar(k));
-    }
-    stream.extend((2..crate::quotient::INPUTS).map(scalar));
-    (statement, Proof { stream })
-}
-
 /// The claims the deployed contract checks declared for `calldata` (without its frame byte), by the Rust verifier:
 /// the three claims' bytes back to back, or `None` where the verifier rejects.
 pub fn expected(index: &Commitment, calldata: &[u8]) -> Option<Vec<u8>> {
@@ -275,7 +244,7 @@ pub fn vectors(seed: u64, count: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::machine::{Chain, PcsFrame};
+    use evm_link::machine::{Chain, PcsFrame};
     use crate::quotient::{PCS_FRAME, calldata, contract, init_code};
     use revm::primitives::Address;
 
@@ -321,13 +290,9 @@ mod tests {
             let words = expected(&index, &data).expect("random calldata reduces");
             let (commitments, claims) =
                 quotient::protocol::verify(&index, &statement, &proof, LOG_ROWS).expect("a reduction");
-            let mut block = PcsFrame::default();
-            let mut joined = Vec::new();
-            for claim in pcs_claims(&index, &commitments, &claims) {
-                block.declare(&claim);
-                joined.extend(claim.encode());
-            }
-            assert_eq!(words, joined);
+            let encoded: Vec<Vec<u8>> = pcs_claims(&index, &commitments, &claims).iter().map(|c| c.encode()).collect();
+            assert_eq!(words, encoded.concat());
+            let block = PcsFrame::of(encoded);
             let outcome = chain.call(address, &[&data[..], &[PCS_FRAME]].concat(), &block);
             assert!(outcome.output.is_some());
             assert_eq!(outcome.claims.concat(), words, "the contract checks the vector's words");

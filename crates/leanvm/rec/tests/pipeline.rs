@@ -2,8 +2,8 @@
 //! The recursion end to end, from a Keccak VM trace (leanVM 9d50c92a3, `crates/leanvm/univariate/src/prover/
 //! dump_keccak`) to π2's proof and openings, timed: π1-rec4's proof (with its three openings), π2's witness (replayed
 //! on π1's stream from the circuit's witness plan, `circuit::plan`), π2's proof and its four openings. π2 runs on its own
-//! thread from π1's stream on: its witness is replayed while π1's openings run, then its proof waits for them (with
-//! `PIPELINE_OVERLAP=1` it does not: no faster, the machine being busy, `docs/PERF_PROVER.md`, "Rejected").
+//! thread from π1's stream on: its witness is replayed while π1's openings run, then its proof waits for them (overlapping
+//! them was no faster, the machine being busy, `docs/PERF_PROVER.md`, "Rejected").
 //!
 //! What depends on the program and the shape only is computed once, before the timed passes, and reported apart (the
 //! per-circuit setup): π1's setup root (its `F`), π1's recorded verifier, π2's circuit (adapted) and its witness plan,
@@ -22,28 +22,18 @@ use std::time::Instant;
 #[path = "../../univariate/tests/vectors/mod.rs"]
 mod vectors;
 
-use leanvm_rec::circuit::compile::{Inputs, Layout, pi2};
+use leanvm_rec::circuit::compile::{Inputs, pi2};
 use leanvm_rec::circuit::plan::WitnessPlan;
 use leanvm_rec::pi2::adapt;
 use leanvm_rec::pi2::prover::{self, Setup, open, prove, verify_openings};
 use leanvm_rec::pi2::verifier::Spec;
 use leanvm_statement::shapes::PROGRAM_IV;
-use leanvm_univariate::prover::prove::{Config, prove as prove_pi1, prove_streaming};
+use leanvm_univariate::prover::prove::{Config, prove_streaming};
 use leanvm_univariate::prover::trace::Trace;
-use leanvm_univariate::Claims;
 
 /// At the reference trace (the 128-signature trace whose π1-rec4 proof is `keccak128_rec4.txt`), the leading bytes of
 /// the Keccak-256s of π1's stream, π1's openings, π2's stream and π2's openings (the openings as their `Debug` text).
 const REFERENCE_PRINTS: [&str; 4] = ["f34a2902", "645710f9", "25661e9e", "34d03681"];
-
-fn deep<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> R {
-    std::thread::Builder::new()
-        .stack_size(1 << 30)
-        .spawn(f)
-        .expect("a thread")
-        .join()
-        .expect("no panic")
-}
 
 fn median(x: &[f64]) -> f64 {
     let mut x = x.to_vec();
@@ -58,7 +48,7 @@ fn trace_to_recursion() {
         println!("LEANVM_TRACE is not set: nothing to prove");
         return;
     };
-    deep(move || {
+    vectors::deep(move || {
         let repeat: usize = std::env::var("PIPELINE_REPEAT").ok().map_or(3, |x| x.parse().expect("a count"));
         let cooldown: u64 = std::env::var("PIPELINE_COOLDOWN").ok().map_or(2, |x| x.parse().expect("seconds"));
         parallel::init();
@@ -80,25 +70,23 @@ fn trace_to_recursion() {
         );
         let config = Config {
             variant: leanvm_rec::PI1,
-            claims: Claims::Point,
+            low_memory: false,
             check: false,
             garbage: false,
             roots,
         };
-        let recorded = leanvm_univariate::contract::record_verifier_with(&shape, leanvm_rec::PI1, Claims::Point, &roots);
+        let recorded = leanvm_univariate::contract::record_verifier_with(&shape, leanvm_rec::PI1, &roots);
         let pi1_setup = started.elapsed().as_secs_f64();
         let public = trace.public_input();
-        // π2's circuit and its witness plan depend on π1's verifier only; a stream gives the compiler its values (any
-        // proof's: the first).
-        let (pi1_proof, _) = prove_pi1(&trace, trace.keccak_flock(), &PROGRAM_IV, config).expect("π1's proof");
+        // π2's circuit and its witness plan depend on π1's verifier only: compiled on a zero stream.
         let started = Instant::now();
+        let zeros = vec![0u8; recorded.stream_len];
         let (compiled, plan) = WitnessPlan::compile(
             &recorded,
-            Layout::D16v,
             &Inputs {
                 program_iv: PROGRAM_IV,
                 public,
-                stream: &pi1_proof.stream,
+                stream: &zeros,
             },
         );
         let planned = started.elapsed().as_secs_f64();
@@ -108,7 +96,7 @@ fn trace_to_recursion() {
         let digest = circuit.digest();
         let iv = prover::iv(&compiled.pi1_iv, &digest, &setup.root(), setup.ood(), circuit.log_n);
         let pi2_setup = started.elapsed().as_secs_f64();
-        drop((compiled, pi1_proof));
+        drop(compiled);
         println!(
             "{}: loaded and placed in {loaded:.2} s; per circuit: π1's setup root and recorded verifier {pi1_setup:.2} s, π2's circuit, witness plan, spec, setup commitment and IV {pi2_setup:.2} s (circuit and plan {planned:.2} s)",
             std::path::Path::new(&dir).display()
@@ -118,8 +106,6 @@ fn trace_to_recursion() {
         // The first pass's π1 stream and openings, π2 stream and openings.
         type Proofs = (Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>);
         let mut first: Option<Proofs> = None;
-        // π2's proof waits for π1's openings unless `PIPELINE_OVERLAP=1`.
-        let serial = !std::env::var_os("PIPELINE_OVERLAP").is_some_and(|v| v != "0");
         for pass in 0..=repeat {
             std::thread::sleep(std::time::Duration::from_secs(cooldown));
             // With `PIPELINE_TRACING`, the last pass's trace tree alone.
@@ -147,9 +133,8 @@ fn trace_to_recursion() {
                     );
                     let (public_input, values) = adapt::public_values(&public2);
                     let replayed = clock.elapsed().as_secs_f64();
-                    if serial {
-                        done_rx.recv().expect("π1's openings: π1's proof failed after its stream");
-                    }
+                    // π2's proof waits for π1's openings.
+                    done_rx.recv().expect("π1's openings: π1's proof failed after its stream");
                     let clock = Instant::now();
                     let proved = tracing::info_span!("π2: proof")
                         .in_scope(|| prove(circuit, spec, setup, iv, &public_input, &values, &witness));
@@ -175,7 +160,7 @@ fn trace_to_recursion() {
                     .expect("π1's proof")
                 });
                 let pi1_done = started.elapsed().as_secs_f64();
-                // π2 may have finished already (`PIPELINE_OVERLAP=1`: it never waits) or failed: its `join` says which.
+                // π2 may have failed: its `join` says so.
                 let _ = done_tx.send(());
                 (proof, streamed, pi1_done, prover2.join().expect("no panic"))
             });
@@ -195,7 +180,6 @@ fn trace_to_recursion() {
             if pass == 0 {
                 let compiled = pi2(
                     &recorded,
-                    Layout::D16v,
                     &Inputs {
                         program_iv: PROGRAM_IV,
                         public,
@@ -250,13 +234,7 @@ fn trace_to_recursion() {
         // The proofs' fingerprints: at the reference trace, π1's stream is the committed vector's
         // (`keccak128_rec4.txt`), and the four Keccak-256s below are pinned (the provers are deterministic).
         let (s1, o1, s2, o2) = first.expect("a pass");
-        let reference = vectors::read(
-            &std::fs::read_to_string(format!(
-                "{}/../univariate/tests/vectors/{}.txt",
-                env!("CARGO_MANIFEST_DIR"), leanvm_rec::PI1_VECTOR_128
-            ))
-            .expect("the committed vector"),
-        );
+        let reference = vectors::committed(leanvm_rec::PI1_VECTOR_128);
         let hex = |b: &[u8]| b.iter().map(|x| format!("{x:02x}")).collect::<String>();
         let prints = [
             ("pi1 stream", hex(&primitives::hash::hash(&s1))),
@@ -268,7 +246,7 @@ fn trace_to_recursion() {
             println!("{name} keccak {print}");
         }
         if reference.shape == shape && reference.public == public {
-            assert_eq!(reference.calldata[4 + 32..], s1[..], "π1's stream is the committed vector's");
+            assert_eq!(reference.stream(), &s1[..], "π1's stream is the committed vector's");
             println!("π1's stream is the committed vector {}'s", leanvm_rec::PI1_VECTOR_128);
             for ((name, print), pinned) in prints.iter().zip(REFERENCE_PRINTS) {
                 assert!(print.starts_with(pinned), "{name}: {print}, pinned {pinned}…");

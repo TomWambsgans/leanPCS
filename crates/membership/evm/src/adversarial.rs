@@ -8,17 +8,18 @@
 
 use std::collections::BTreeMap;
 
+use evm_link::machine::{Chain, FIELD_MUL_GAS, Frame, Outcome, PcsFrame};
+use evm_link::op::{DEP_VERIFY_FRAME_MODE, FIELD_MUL};
 use primitives::field::F192;
 use primitives::test_rng::Rng;
 use quotient::opening::Commitment;
 use quotient::protocol::{VerifyError, verify};
 use quotient::statement::Statement;
-use quotient::transcript::{Proof, ProverChain, TranscriptError, root_halves, halves_root};
+use quotient::transcript::{Proof, ProverChain, TranscriptError, halves_root, root_halves};
 use revm::primitives::Address;
 
-use crate::machine::{Chain, DEP_VERIFY_FRAME_MODE, FIELD_MUL, FIELD_MUL_GAS, Frame, Outcome, PcsFrame, root_word};
 use crate::quotient::{
-    CALLDATA_LEN, Contract, INPUTS, PCS_FRAME, VERIFIED, calldata, claims_contract, contract, decode, pcs_claims,
+    CALLDATA_LEN, Contract, PCS_FRAME, VERIFIED, calldata, claims_contract, contract, decode, pcs_claims,
 };
 
 /// The sizes of circuit the contract takes.
@@ -29,24 +30,7 @@ const ARGS_LEN: usize = CALLDATA_LEN - 1;
 /// Calldata as the statement and proof it stands for: the inverse of [`calldata`].
 fn parse(data: &[u8]) -> (Statement, Proof) {
     assert_eq!(data.len(), CALLDATA_LEN);
-    let data = &data[..ARGS_LEN];
-    let word = |at: usize| u64::from_be_bytes(data[at..at + 8].try_into().unwrap());
-    let scalar = |i: usize| {
-        let at = 128 + 24 * i;
-        F192::new(word(at + 16), word(at + 8), word(at))
-    };
-    let mut stream = vec![];
-    for k in 0..2 {
-        let root: [u8; 32] = data[64 + 32 * k..96 + 32 * k].try_into().unwrap();
-        stream.extend(root_halves(&root));
-        stream.push(scalar(k));
-    }
-    stream.extend((2..INPUTS).map(scalar));
-    let statement = Statement {
-        y: data[..32].try_into().unwrap(),
-        root: data[32..64].try_into().unwrap(),
-    };
-    (statement, Proof { stream })
+    crate::quotient::parse(&data[..ARGS_LEN])
 }
 
 fn random_index(rng: &mut Rng) -> Commitment {
@@ -100,7 +84,7 @@ fn block_for(index: &Commitment, data: &[u8], log_rows: usize) -> PcsFrame {
     let (statement, proof) = parse(data);
     let mut block = PcsFrame::default();
     if let Ok((commitments, claims)) = verify(index, &statement, &proof, log_rows) {
-        pcs_claims(index, &commitments, &claims).iter().for_each(|claim| block.declare(claim));
+        pcs_claims(index, &commitments, &claims).iter().for_each(|claim| block.declare(claim.encode()));
     }
     block
 }
@@ -208,7 +192,6 @@ fn bit_flips_agree() {
             data[bit / 8] ^= 1 << (bit % 8);
             if bit >= 8 * ARGS_LEN {
                 assert_eq!(call(&codes.1, &data, &honest).output, None, "bit {bit}");
-                assert_eq!(call(&codes.1, &data, &PcsFrame::declaring_all()).output, None, "bit {bit}");
             } else {
                 assert!(agree(&index, log_rows, &codes, &data, &honest), "bit {bit}");
             }
@@ -217,7 +200,8 @@ fn bit_flips_agree() {
 }
 
 /// The one rejection a prover can reach without grinding a hash: both contracts revert where the Rust verifier
-/// finds a zero denominator, the calling one even when its frame declares everything; one bit off, all accept.
+/// finds a zero denominator, the calling one even when its frame declares the claims of the calldata one bit off
+/// (which, its checks failing before any claim is hashed, it never reads); one bit off, all accept.
 /// No other test reaches the contract's nonzero check: with it compiled out (`ISZERO` and its jump replaced by a
 /// `POP`), every other test of the crate passes.
 #[test]
@@ -235,36 +219,37 @@ fn degenerate_proofs_revert() {
                 Some(VerifyError::Degenerate)
             );
             assert!(!agree(&index, log_rows, &codes, &data, &other));
-            assert_eq!(call(&codes.1, &data, &PcsFrame::declaring_all()).output, None);
             let mut near = data.clone();
             // `next`'s last byte: the scalar the prover chose to make the denominator vanish.
             near[128 + 24 * 5 + 23] ^= 1;
             assert!(agree(&index, log_rows, &codes, &near, &other));
-            assert_eq!(
-                call(&codes.1, &near, &PcsFrame::declaring_all()).output,
-                Some(VERIFIED.to_vec())
-            );
+            let near_claims = block_for(&index, &near, log_rows);
+            assert_eq!(call(&codes.1, &data, &near_claims).output, None);
+            assert_eq!(call(&codes.1, &near, &near_claims).output, Some(VERIFIED.to_vec()));
         }
     }
 }
 
-/// Calldata of any other length reverts, whatever it holds and whatever its frame declares.
+/// Calldata of any other length reverts, whatever it holds, its frame declaring the claims of the calldata of the
+/// right length.
 #[test]
 fn other_lengths_revert() {
     let mut rng = Rng::new(0x1E2);
     let index = random_index(&mut rng);
     let codes = codes(&index, 22);
     let full = random_calldata(&mut rng);
+    let declared = block_for(&index, &full, 22);
+    assert_eq!(call(&codes.1, &full, &declared).output, Some(VERIFIED.to_vec()));
     for len in (0..=CALLDATA_LEN + 64).filter(|&len| len != CALLDATA_LEN) {
         let mut data = full.clone();
         data.resize(len, 0);
         assert_eq!(call(&codes.0, &data, &PcsFrame::default()).output, None, "{len}");
-        assert_eq!(call(&codes.1, &data, &PcsFrame::declaring_all()).output, None, "{len}");
+        assert_eq!(call(&codes.1, &data, &declared).output, None, "{len}");
     }
     // Zero bytes past the end are not the same calldata: the size is checked, not the bytes read.
     let mut long = full.clone();
     long.extend([0; 8]);
-    assert_eq!(call(&codes.1, &long, &PcsFrame::declaring_all()).output, None);
+    assert_eq!(call(&codes.1, &long, &declared).output, None);
 }
 
 /// A commitment's word in calldata is the word a claim encodes for its root, and roots and words correspond one
@@ -278,7 +263,7 @@ fn root_words_are_the_calldata_words() {
         assert_eq!(calldata(&parse(&data).0, &proof), Ok(data.clone()));
         for (i, at) in [(0, 64), (3, 96)] {
             let root = halves_root(&[proof.stream[i], proof.stream[i + 1]]).unwrap();
-            assert_eq!(root_word(&root)[..], data[at..at + 32]);
+            assert_eq!(root[..], data[at..at + 32]);
             assert_eq!(root_halves(&root), [proof.stream[i], proof.stream[i + 1]]);
         }
     }
@@ -343,15 +328,9 @@ fn only_a_frame_of_pcs_claims_passes() {
         let mut other = honest.clone();
         (other.mode, other.scheme) = (mode, scheme);
         assert!(!passes(&data, &other), "mode {mode}, scheme {scheme:#04x}");
-        other.declare_all = true;
-        assert!(!passes(&data, &other), "mode {mode}, scheme {scheme:#04x}, declaring all");
     }
     // Other payloads.
-    let frame = |claims: &[Vec<u8>]| {
-        let mut block = PcsFrame::default();
-        claims.iter().for_each(|claim| block.declare_input(claim.clone()));
-        block
-    };
+    let frame = |claims: &[Vec<u8>]| PcsFrame::of(claims.iter().cloned());
     let reversed: Vec<Vec<u8>> = claims.iter().rev().cloned().collect();
     assert!(!passes(&data, &frame(&reversed)));
     assert!(!passes(&data, &frame(&claims[..2])));
@@ -373,7 +352,7 @@ fn claims_are_the_rust_openings() {
             let (commitments, claims) = verify(&index, &statement, &proof, log_rows).expect("a reduction");
             let expected: Vec<Vec<u8>> =
                 pcs_claims(&index, &commitments, &claims).iter().map(|claim| claim.encode()).collect();
-            let outcome = call(&deployed, &data, &PcsFrame::declaring_all());
+            let outcome = call(&deployed, &data, &PcsFrame::of(expected.iter().cloned()));
             assert_eq!(outcome.output, Some(VERIFIED.to_vec()));
             assert_eq!(outcome.claims, expected);
         }
@@ -616,7 +595,7 @@ fn gas_by_opcode() {
         // `m` variables, the quotient table's in `m + 4`.
         let sizes: Vec<u64> = walk(&calling.code).calls.iter().map(|&(_, size)| size).collect();
         let vars = quotient::protocol::table_vars(log_rows);
-        let expected: Vec<u64> = [0, 1, 2].iter().map(|&k| 82 + 24 * vars[k] as u64).collect();
+        let expected: Vec<u64> = [0, 1, 2].iter().map(|&k| evm_link::wire::claim_len(vars[k]) as u64).collect();
         assert_eq!(sizes, expected);
         if log_rows == 22 {
             println!("difference: {}", totals[1] - totals[0]);

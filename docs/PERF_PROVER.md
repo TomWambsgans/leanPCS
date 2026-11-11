@@ -98,7 +98,8 @@ Measured, no gain or a loss:
 - The openings concurrently on OS threads sharing the pool: slower, +1.5 to 2.7 GiB.
 - A batch's level-0 rows encoded once for all its openings, or `LEAN_BATCH` 16: holds every opening's level-1
   commitment at once (+1.5 GiB).
-- π1's openings overlapping π2's proof (`PIPELINE_OVERLAP=1`): the machine is saturated; no gain, +0.4 GB.
+- π1's openings overlapping π2's proof (a `PIPELINE_OVERLAP` knob, since removed): the machine is saturated; no gain,
+  +0.4 GB.
 - Reusing `Q`'s codeword buffer between proofs, caching π1's setup commitment `F`: each well under 1%.
 - Shrinking the commitments' encoding buffer to the encoded lanes: the openings then map fresh memory.
 

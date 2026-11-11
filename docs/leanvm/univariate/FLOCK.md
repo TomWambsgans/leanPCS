@@ -6,7 +6,7 @@ Flock proves that `C1`'s `q_flock` holds a valid witness of the Keccak-f[1600] b
 (`crates/vendor/flock-42422001/src/keccak.rs`) at every `SHA3` row: one permutation a block of `2^17` bits, every
 round's state materialised, `C = I`. `q_flock` packs 64 bits a `K`-word, so a block is `2^11` words and the zerocheck
 runs over `log_n = 17 + h_SHA3` variables (32 at 128 signatures). The verifier is
-`leanvm_statement::flock_min::verify_walked_with::<_, keccak_flock::Keccak>`, with the block's structured lincheck
+`leanvm_statement::flock_min::verify_walked::<_, keccak_flock::Keccak>` and `ring_end`, with the block's structured lincheck
 terminal (`crates/leanvm/statement/src/keccak_flock.rs`); the prover is `leanvm_univariate::prover::flock::prove` on
 leanVM `42422001`'s Flock prover (`crates/vendor/flock-42422001`) with the skip module `flock::zerocheck::skip`
 ([`PROVER.md`](PROVER.md), "The skip kernels"). [`SPEC.md`](SPEC.md) §7 places Flock in π1.
@@ -84,7 +84,7 @@ The parameters are `flock_min::Variant { skip, fs }`; every Keccak variant takes
    reference; and the structured terminal (`Keccak`, below), which π1 runs.
 4. **Ring switch.** Six map challenges `f_0..f_5`, the target `T = Σ_i x^i Φ(s_i)` with the map's stages in tower
    order (`ring_tower::target`; [`SPEC.md`](SPEC.md) §13, entries 2 and 3), and the claim `⟨Φ(eq(p, ·)), q_flock⟩ = T`
-   on `C1`. π1-rec4 draws the map after `C2`'s commitment (`flock_min::verify_walked_deferred`, SPEC.md §14.4).
+   on `C1`. π1-rec4 draws the map after `C2`'s commitment (`flock_min::ring_end_at`, SPEC.md §14.4).
    - Point claims (the main line): the weight is one term of `C1`'s relations (`RING_TWIST`), evaluated at the
      batching sumcheck's point by `ring_tower::weight_at` (in the contract, the hand-scheduled kernel of SPEC.md §13,
      entry 11): the 64 twisted eq products, then the map's stages from the inside.

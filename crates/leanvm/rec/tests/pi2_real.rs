@@ -23,49 +23,27 @@ static ALLOC: bench::Jemalloc = bench::Jemalloc;
 mod vectors;
 
 use leanvm_statement::shapes::PROGRAM_IV;
-use leanvm_rec::circuit::compile::{Compiled, Inputs, Layout, pi2};
+use leanvm_rec::circuit::compile::{Compiled, Inputs, pi2};
 use leanvm_rec::pi2::adapt;
 use pcs_claim::PcsClaim;
 use leanvm_rec::pi2::contract::{self, Instance, calldata, record_verifier, sample_stream};
 use leanvm_rec::pi2::prover::{self, Setup, claims_hold, open, prove, public_scalars, verify_openings};
 use leanvm_rec::pi2::verifier::Spec;
-use leanvm_univariate::Claims;
 use primitives::field::F192;
-
-const STREAM_AT: usize = 4 + 32;
-
-fn deep<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> R {
-    std::thread::Builder::new()
-        .stack_size(1 << 30)
-        .spawn(f)
-        .expect("a thread")
-        .join()
-        .expect("no panic")
-}
-
-fn vector(name: &str) -> vectors::Vector {
-    let path = format!(
-        "{}/../univariate/tests/vectors/{name}.txt",
-        env!("CARGO_MANIFEST_DIR")
-    );
-    vectors::read(&std::fs::read_to_string(&path).expect("a committed vector"))
-}
 
 /// The real circuit and witness, and π1's contract IV. π1's contract binds the vector's setup commitment `F` (its
 /// third claim's, its program's and shape's own), as the proof's does.
-fn real(name: &str, layout: Layout) -> (vectors::Vector, Compiled, [u8; 32]) {
-    let v = vector(name);
+fn real(name: &str) -> (vectors::Vector, Compiled, [u8; 32]) {
+    let v = vectors::committed(name);
     let roots = vectors::setup_roots(&v);
     let recorded = leanvm_univariate::contract::record_verifier_with(
         &v.shape,
         vectors::variant_of(&v.config),
-        Claims::Point,
         &roots,
     );
-    let stream = v.calldata[STREAM_AT..].to_vec();
+    let stream = v.calldata[vectors::PI1_STREAM_AT..].to_vec();
     let c = pi2(
         &recorded,
-        layout,
         &Inputs {
             program_iv: PROGRAM_IV,
             public: v.public,
@@ -80,8 +58,8 @@ fn peak_memory() -> String {
     format!("peak RSS {:.2} GB", bench::peak_rss_bytes() as f64 / 1e9)
 }
 
-fn gas(name: &str, layout: Layout) {
-    let (_, c, pi1_iv) = real(name, layout);
+fn gas(name: &str) {
+    let (_, c, pi1_iv) = real(name);
     let circuit = adapt::adapt(&c.finished.circuit);
     let spec = Spec::of(&circuit);
     let terms: usize = spec
@@ -91,7 +69,7 @@ fn gas(name: &str, layout: Layout) {
         .sum();
     let products: usize = spec.groups.iter().map(|g| g.formula.products.len()).sum();
     println!(
-        "{name} × {layout:?}: 2^{} positions, {} pairs ({} pull-less, the holes), {} groups ({} formula terms, {} products), blocks up to 2^{} rows, {} public terms, {} reads; π1: {} calls",
+        "{name} × D16v: 2^{} positions, {} pairs ({} pull-less, the holes), {} groups ({} formula terms, {} products), blocks up to 2^{} rows, {} public terms, {} reads; π1: {} calls",
         circuit.log_n,
         circuit.pairs.len(),
         spec.pull_less.len(),
@@ -107,7 +85,7 @@ fn gas(name: &str, layout: Layout) {
     let inst = Instance::new(&circuit, &spec, [0x44; 32], F192::new(5, 6, 7), &pi1_iv, &c.finished.circuit.calls);
     let recorded = record_verifier(&spec);
     let report = contract::measure(&inst, &recorded);
-    print!("{}", report.table(&format!("{name} × {layout:?} (real circuit)")));
+    print!("{}", report.table(&format!("{name} × D16v (real circuit)")));
     let stream = sample_stream(recorded.stream_len, 13);
     contract::parity(&inst, &recorded, &[0x5a; 32], &contract::sample_hashed(&inst), &stream);
     println!("parity\n");
@@ -116,9 +94,9 @@ fn gas(name: &str, layout: Layout) {
 #[test]
 #[ignore]
 fn real_gas() {
-    deep(|| {
-        gas("keccak128_rec4", Layout::D16v);
-        gas("keccak_rec4", Layout::D16v);
+    vectors::deep(|| {
+        gas("keccak128_rec4");
+        gas("keccak_rec4");
     });
 }
 
@@ -128,10 +106,9 @@ fn real_gas() {
 /// byte longer or shorter, and every calldata byte flipped at bits 0 and 7; it accepts an eighth claim appended (the frame
 /// may declare more) and the right index past a frame before it.
 fn frame_and_calldata_attacks(inst: &Instance, recorded: &contract::Recorded, data: &[u8], block: &[PcsClaim]) {
-    use leanvm_statement::evm::codegen::word;
     use leanvm_statement::evm::machine::{Frame, PcsFrame, call};
     let code = contract::compile_verifier(inst, recorded, false).code;
-    let ok = |d: &[u8], f: &PcsFrame| call(&code, &[], d, f).output.as_deref() == Some(&word([1, 0, 0])[..]);
+    let ok = |d: &[u8], f: &PcsFrame| call(&code, &[], d, f).attests();
     let honest = contract::block(block);
     assert!(ok(data, &honest), "the honest frame");
     let mut f = contract::block(block);
@@ -200,11 +177,10 @@ fn frame_and_calldata_attacks(inst: &Instance, recorded: &contract::Recorded, da
 #[ignore]
 fn real_end_to_end() {
     bench::init_tracing_from_env();
-    deep(|| {
-        let layout = Layout::D16v;
+    vectors::deep(|| {
         let name = std::env::var("PI2_VECTOR").unwrap_or_else(|_| leanvm_rec::PI1_VECTOR_128.into());
         let start = std::time::Instant::now();
-        let (v, c, pi1_iv) = real(&name, layout);
+        let (v, c, pi1_iv) = real(&name);
         let compiled = start.elapsed().as_secs_f64();
         assert_eq!(c.finished.circuit.check(&c.finished.witness, &c.public), Ok(()));
         // π1's claims as the block proves them: the vector's, on the commitments π1's prover made (written from its
@@ -221,7 +197,7 @@ fn real_end_to_end() {
             .expect("the adapted circuit holds");
         let spec = Spec::of(&circuit);
         println!(
-            "{name} × {layout:?}: compiled, adapted, checked in {:.1} s (the compile, which a proof's witness needs, {compiled:.2} s); {}",
+            "{name} × D16v: compiled, adapted, checked in {:.1} s (the compile, which a proof's witness needs, {compiled:.2} s); {}",
             start.elapsed().as_secs_f64(),
             peak_memory()
         );
@@ -319,26 +295,10 @@ fn real_end_to_end() {
             })
             .collect();
         assert!(!contract::run(&inst, &recorded, &data, &reversed).0, "π1's claims on other roots: rejected");
-        // A flipped byte anywhere: the public input, π1's roots, its elements, W's and Q's commitments, every value
-        // sent.
-        let n_roots = recorded.roots_at.len();
-        let (w_at, q_at) = (recorded.roots_at[n_roots - 2], recorded.roots_at[n_roots - 1]);
-        let values_at = q_at + 32 + 24;
-        let s = contract::STREAM_AT;
-        let mut flips = vec![0, 31, s + 5, s + 40, s + 64, s + 64 + 20 * 14 + 11, s + w_at - 1];
-        flips.extend([s + w_at, s + w_at + 31, s + w_at + 32 + 5, s + q_at + 7, s + q_at + 32 + 20]);
-        flips.extend((0..spec.values()).step_by(4).map(|k| s + values_at + 24 * k + k % 24));
-        // The last values, and the frame's index.
-        flips.extend([data.len() - 49, data.len() - 26, data.len() - 2, data.len() - 1]);
-        assert!(flips.len() >= 13);
-        for &at in &flips {
-            let mut bad = data.clone();
-            bad[at] ^= 1;
-            assert!(
-                !contract::run(&inst, &recorded, &bad, &block).0,
-                "calldata byte {at} flipped"
-            );
-        }
+        // The frame's index flipped (every other calldata byte: `frame_and_calldata_attacks`).
+        let mut bad = data.clone();
+        *bad.last_mut().expect("the index") ^= 1;
+        assert!(!contract::run(&inst, &recorded, &bad, &block).0, "the frame's index flipped");
         contract::parity(&inst, &recorded, &public_input, &hashed, &stream);
         frame_and_calldata_attacks(&inst, &recorded, &data, &block);
         // The transaction on the real calldata (its zero bytes are the proof's): a frame
@@ -366,10 +326,17 @@ fn real_end_to_end() {
             with.total
         );
         println!(
-            "end to end: π1's real proof → π2's proof ({} B of calldata) → the contract accepts, its frame declaring its {} claims; {} flipped bytes rejected",
+            "end to end: π1's real proof → π2's proof ({} B of calldata) → the contract accepts, its frame declaring its {} claims",
             data.len(),
             block.len(),
-            flips.len()
+        );
+        // The EIP draft's table (`bench.sh` reads this line): the PIOP's frame alone, `max(standard, floor)`.
+        println!(
+            "BENCH leanvm calldata={} piop={} claims={} total={}",
+            data.len(),
+            alone.total,
+            block.len(),
+            with.total
         );
     });
 }

@@ -4,12 +4,14 @@
 //! The Keccak-f block's lincheck terminal, two ways:
 //!
 //! - [`row_values`]: the rows' values `(A0 w, B0 w)` by one forward walk, for the walked terminal
-//!   ([`crate::flock_min::verify_walked_with`] with [`KeccakWalked`]). The block's layout and rows are
+//!   ([`crate::flock_min::verify_walked`] with [`KeccakWalked`]). The block's layout and rows are
 //!   `flock::keccak`'s (its module documentation); this walk restates them on a [`Scalar`] (a test of
 //!   `crates/leanvm/univariate`, `flock_keccak.rs`, checks the two walks agree), at about 24 · 25 · 64 · 12
 //!   additions: the reference, not a terminal for a recursion.
 //! - [`structured_terminal`]: the same value from the block's structure (eq factors, ρ and θ as cyclic shifts,
 //!   corrections), a few thousand `E` operations: [`Keccak`]'s terminal, the one π2 records.
+
+use primitives::hash::{RC, RHO};
 
 use crate::flock_min::WalkedCircuit;
 use crate::multilinear::eq_kernel;
@@ -30,39 +32,6 @@ pub const X_QUAD: usize = 25;
 /// The constant wire: quad 0's `Y` word, bit 0.
 pub const CONSTANT_COLUMN: usize = 64 * port_word(0, ROLE_Y);
 
-/// ι's round constants (FIPS 202).
-const RC: [u64; ROUNDS] = [
-    0x0000000000000001,
-    0x0000000000008082,
-    0x800000000000808A,
-    0x8000000080008000,
-    0x000000000000808B,
-    0x0000000080000001,
-    0x8000000080008081,
-    0x8000000000008009,
-    0x000000000000008A,
-    0x0000000000000088,
-    0x0000000080008009,
-    0x000000008000000A,
-    0x000000008000808B,
-    0x800000000000008B,
-    0x8000000000008089,
-    0x8000000000008003,
-    0x8000000000008002,
-    0x8000000000000080,
-    0x000000000000800A,
-    0x800000008000000A,
-    0x8000000080008081,
-    0x8000000000008080,
-    0x0000000080000001,
-    0x8000000080008008,
-];
-
-/// ρ's rotation of lane `x + 5 y`.
-const RHO: [usize; LANES] = [
-    0, 1, 62, 28, 27, 36, 44, 6, 55, 20, 3, 10, 43, 25, 39, 41, 45, 15, 21, 8, 18, 2, 61, 56, 14,
-];
-
 /// `SOURCE[x + 5 y] = (lane, rotation)`: `b[x, y] = rotl(θ(A)[lane], rotation)` (π: `(x', y') → (y', 2x' + 3y')`).
 const SOURCE: [(usize, usize); LANES] = {
     let mut s = [(0, 0); LANES];
@@ -70,7 +39,7 @@ const SOURCE: [(usize, usize); LANES] = {
     while x < 5 {
         let mut y = 0;
         while y < 5 {
-            s[y + 5 * ((2 * x + 3 * y) % 5)] = (x + 5 * y, RHO[x + 5 * y]);
+            s[y + 5 * ((2 * x + 3 * y) % 5)] = (x + 5 * y, RHO[x + 5 * y] as usize);
             y += 1;
         }
         x += 1;
@@ -131,7 +100,7 @@ impl WalkedCircuit for KeccakWalked {
 /// rotations and those plus one (θ's `C[x + 1][z - 1]`). 40 distinct offsets.
 fn shift_offsets() -> [bool; 64] {
     let mut needed = [false; 64];
-    for rot in RHO {
+    for rot in RHO.map(|r| r as usize) {
         needed[rot] = true;
         needed[(rot + 1) % 64] = true;
     }

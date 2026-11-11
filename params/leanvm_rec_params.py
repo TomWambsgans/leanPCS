@@ -6,7 +6,7 @@ rounds of k variables (docs/leanvm/univariate/SPEC.md §14.3).
 
     python3 -I params/leanvm_rec_params.py
 
-MEASURED (crates/leanvm/rec: tests/counts.rs, tests/keccak_vm_rec.rs, tests/circuit.rs; SPEC-REC.md §1.2, §2.4.5,
+MEASURED (crates/leanvm/rec: tests/counts.rs, tests/pi2_real.rs, tests/circuit.rs; SPEC-REC.md §1.2, §2.4.5,
 §10.3): pi1-rec3's and pi1-rec4's verifier graphs and pi2's positions at 128 and 400 signatures. MODELLED (here):
 every soundness figure, the other arithmetizations' sizes, the k-variable rounds' permutations.
 
@@ -41,7 +41,7 @@ CERTIFIED_L0 = uni.CERTIFIED_L0
 bits, err = uni.bits, uni.err
 
 # ---------------------------------------------------------------------------------------------------------------------
-# MEASURED: pi1-rec3's verifier (Claims::Point; SPEC-REC.md §1.2) and pi2's D16v circuit of it (§2.4.5, §10.3).
+# MEASURED: pi1-rec3's verifier (point claims; SPEC-REC.md §1.2) and pi2's D16v circuit of it (§2.4.5, §10.3).
 PI1_REC3 = {
     128: dict(stream=9232, calls=70, perms=116, products=8476, linear=6633, challenges=14, values=3),
     400: dict(stream=9424, calls=71, perms=118, products=8673, linear=6887, challenges=14, values=3),
@@ -188,7 +188,7 @@ def grouped_rounds(k, vars_=BATCH_VARS, degree=2):
 
 
 def main():
-    print("== pi1-rec3's verifier (MEASURED, Claims::Point)")
+    print("== pi1-rec3's verifier (MEASURED, point claims)")
     for xmss, p in PI1_REC3.items():
         used = (p["perms"] + CLAIM_HASH_PERMS) * KECCAK_D16V + REST[xmss]
         print(f"  {xmss} signatures: stream {p['stream']:,} B, Keccak-256 {p['calls']}, Keccak-f {p['perms']}, E products"

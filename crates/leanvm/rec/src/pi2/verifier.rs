@@ -42,11 +42,11 @@
 use leanvm_statement::VerifierError;
 use leanvm_statement::field::E;
 use leanvm_statement::scalar::{Scalar, enter};
-use leanvm_statement::transcript::{Channel, Checks, KeccakChannel, keccak_seed};
+use leanvm_statement::transcript::{Channel, Checks, KeccakChannel, keccak256, statement_words};
 use primitives::field::{F64, F192};
 use quotient::domain::point;
 
-use super::circuit::{Circuit, Coeff, Formula, Lin, NONE, Read, coset_constants, pair_constants};
+use super::circuit::{Circuit, Coeff, Formula, Lin, Read, coset_constants, pair_constants};
 
 /// The transcript's 16-byte name.
 pub const NAME: [u8; 16] = *b"leanvm-rec-pi2v4";
@@ -249,10 +249,26 @@ pub struct Reduced<S> {
     pub setup: (Vec<S>, S),
 }
 
-impl<S: Clone> Reduced<S> {
-    /// The four claims in the contract's order: `W`, the setup, then `Q`'s identity and pushes.
-    pub fn claims(&self) -> [&(Vec<S>, S); 4] {
-        [&self.witness, &self.setup, &self.quotient, &self.pushes]
+/// π2's three committed stacks, which its claims are on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Pi2Stack {
+    /// `W`, the witness.
+    Witness,
+    /// The setup (`κ`, `κ + σ`): its commitment is the contract's constant.
+    Setup,
+    /// `Q`, the quotients and the pushes.
+    Quotient,
+}
+
+impl<S> Reduced<S> {
+    /// The four claims in the contract's order, each with its stack: `W`, the setup, then `Q`'s identity and pushes.
+    pub fn claims(&self) -> [(Pi2Stack, &(Vec<S>, S)); 4] {
+        [
+            (Pi2Stack::Witness, &self.witness),
+            (Pi2Stack::Setup, &self.setup),
+            (Pi2Stack::Quotient, &self.quotient),
+            (Pi2Stack::Quotient, &self.pushes),
+        ]
     }
 }
 
@@ -261,7 +277,7 @@ fn base<S: Scalar>(x: F64) -> S {
 }
 
 fn ext<S: Scalar>(x: F192) -> S {
-    S::constant(E::new(x.c0, x.c1, x.c2))
+    S::constant(x.into())
 }
 
 fn coeff<S: Scalar>(c: &Coeff, gammas: &[S]) -> S {
@@ -351,21 +367,6 @@ pub fn reduce<S: Limbs, C: Channel<S>>(
     statement: [S; 4],
     channel: &mut C,
 ) -> Result<Reduced<S>, VerifierError> {
-    reduce_traced(spec, statement, channel, &mut |_, _| {})
-}
-
-/// What [`reduce_traced`] hands its trace: a step's name and its values (`formal/RecStatement`'s differential test
-/// compares every one with the Lean verifier's).
-pub type Trace<'a, S> = &'a mut dyn FnMut(&'static str, &[S]);
-
-/// [`reduce`], handing every intermediate value to `trace` after the step that computes it. The trace only reads
-/// values already computed: the arithmetic, its order and (on the recorder's symbol) the graph are [`reduce`]'s.
-pub fn reduce_traced<S: Limbs, C: Channel<S>>(
-    spec: &Spec,
-    statement: [S; 4],
-    channel: &mut C,
-    trace: Trace<'_, S>,
-) -> Result<Reduced<S>, VerifierError> {
     let (m, r) = (spec.log_n, spec.log_row);
     let one = S::one();
     let mut public = statement.to_vec();
@@ -390,7 +391,6 @@ pub fn reduce_traced<S: Limbs, C: Channel<S>>(
     let xi = channel.next_scalar()?;
     let s = channel.next_scalar()?;
     let rho = channel.sample();
-    trace("challenges", &[alpha, beta, gamma, t, rho]);
 
     let w = {
         let _phase = enter("pi2: digits");
@@ -401,7 +401,6 @@ pub fn reduce_traced<S: Limbs, C: Channel<S>>(
         }
         w
     };
-    trace("digits", &w);
 
     // The row's cells: fold the top variable first, each fold splitting by the next bit of `c`. Siblings `2k`, `2k + 1`
     // fold at `z` and `z + 1` (`ω_{2k+1} = ω_{2k} + β_0`, `β_0 = 1`): the odd one is the even one plus the difference
@@ -424,7 +423,6 @@ pub fn reduce_traced<S: Limbs, C: Channel<S>>(
         }
         layer.into_iter().map(|v| v[0]).collect::<Vec<S>>()
     };
-    trace("cells", &cells);
     let v0 = cells[0];
 
     // `Ẑ_s(t)` for every block size.
@@ -437,7 +435,6 @@ pub fn reduce_traced<S: Limbs, C: Channel<S>>(
         }
         zt
     };
-    trace("zt", &zt);
 
     // Each group's indicators, summed: `Σ_p 1/d_p = N_g / D_g`, by `N ← N d + D`, `D ← D d`. `Z_V(t) = w_m`
     // multiplies every indicator: it is factored out.
@@ -459,7 +456,6 @@ pub fn reduce_traced<S: Limbs, C: Channel<S>>(
             })
             .collect()
     };
-    trace("groups", &groups.iter().flat_map(|&(n, d)| [n, d]).collect::<Vec<S>>());
     let gammas = leanvm_statement::scalar::powers(gamma, spec.max_gamma + 1);
 
     // `Φ_k(t) / w_m = G_n / G_d = Σ_J F_J / (w_r + ω_{y_J})` for each port role: `N ← N d + D F`, `D ← D d`.
@@ -477,7 +473,6 @@ pub fn reduce_traced<S: Limbs, C: Channel<S>>(
             })
             .collect()
     };
-    trace("phi", &phis.iter().flat_map(|&(_, n, d)| [n, d]).collect::<Vec<S>>());
 
     let d_pull = alpha + v0 + beta * t;
     let d_push = alpha + s + xi;
@@ -516,7 +511,6 @@ pub fn reduce_traced<S: Limbs, C: Channel<S>>(
             ports.1.unwrap_or(one),
         )
     };
-    trace("push", &[num, den, r_num, r_den]);
 
     let _phase = enter("pi2: identity and claims");
     // The copy identity at `t`, `c_h h + w_m q = Δ + w_m R_n / R_d = num1 / R_d`; the definition `w_m q_P = s + v_0 +
@@ -549,7 +543,6 @@ pub fn reduce_traced<S: Limbs, C: Channel<S>>(
     let p5 = p4 * y3;
     let cd = c_h * d_n;
     let all = p5 * cd;
-    trace("identity", &[d_pull, d_push, d_n, num1, num3, y1, y2, y3, p1, p2, p3, p4, p5, all]);
     channel.require_nonzero(all, VerifierError::RecDegenerate)?;
     let inv_all = {
         let _phase = enter("pi2: the inversion");
@@ -582,8 +575,6 @@ pub fn reduce_traced<S: Limbs, C: Channel<S>>(
     // The pushes': `t (1 + ρ)((1 + ρ) w_m s B + ρ num3) / (w_m² B Y_3)`, `1 / (w_m B Y_3) = R_d Y_1 Y_2 / p_5`.
     let one_rho = one + rho;
     let pushes_value = t * one_rho * (one_rho * (z * (s * den)) + rho * num3) * (inv_p5 * p2) * inv_z;
-    trace("inverse", &[inv_all, inv_p5, inv_y3, inv_p4, inv_z, inv_p3, inv_p2, inv_y2, inv_p1, inv_y1]);
-    trace("digit inverses", &w_invs);
 
     // `1/(1 + w_l) = 1/w_l + 1/w_{l+1}`.
     let u: Vec<S> = (0..m).map(|l| one + w_invs[l] + w_invs[l + 1]).collect();
@@ -595,8 +586,6 @@ pub fn reduce_traced<S: Limbs, C: Channel<S>>(
     };
     let quotient_point = padded([&u[..], &[z0, z1, y0, y1c]].concat(), qv);
     let pushes_point = padded([&u[..], &[rho, zp1, one, one]].concat(), qv);
-    trace("u", &u);
-    trace("quotient", &[z0, z1, zp1, quotient_value, pushes_value]);
 
     let mut rhos = vec![rho];
     for l in 1..r {
@@ -610,8 +599,6 @@ pub fn reduce_traced<S: Limbs, C: Channel<S>>(
         }
         fold.truncate(half);
     }
-    trace("rhos", &rhos);
-    trace("fold", &fold);
     let witness_point = padded([&rhos[..], &w[r..m]].concat(), wv);
     let setup_point = padded([&w[..m], &[beta]].concat(), sv);
     let pair_points = public.iter().map(|&x| leanvm_statement::transcript::pair_point(x)).collect();
@@ -627,61 +614,34 @@ pub fn reduce_traced<S: Limbs, C: Channel<S>>(
     })
 }
 
-/// The public input's four words, as calldata carries them: big-endian each.
-pub fn statement_words(public_input: &[u8; 32]) -> [E; 4] {
-    std::array::from_fn(|k| {
-        E::new(
-            u64::from_be_bytes(public_input[8 * k..8 * k + 8].try_into().unwrap()),
-            0,
-            0,
-        )
-    })
-}
 
 /// The transcript's seed: the Keccak-256 of the name, the IV, the public input, then the frame words (`Read::Frame`,
 /// in order: the hashed claims' Keccak-256s), which the contract reads from the frame of PCS claims.
 pub fn seed(iv: &[u8; 32], public_input: &[u8; 32], frame: &[[u8; 32]]) -> [u8; 32] {
-    if frame.is_empty() {
-        return keccak_seed(&NAME, iv, public_input);
-    }
-    let words: Vec<u8> = frame.concat();
-    leanvm_statement::transcript::keccak256(&[&NAME[..], iv, public_input, &words].concat())
+    keccak256(&[&NAME[..], iv, public_input, &frame.concat()].concat())
 }
 
 /// The verifier on `E` with the Keccak-256 chain, the contract's in Rust: the stream must be read whole. `frame` are
-/// the frame words its `Read::Frame`s read, in order.
+/// the frame words its `Read::Frame`s read, in order; `checks` what it does with the identities it requires (enforced,
+/// or collected for a comparison with the contract), returned as they end.
 pub fn verify(
     spec: &Spec,
     iv: &[u8; 32],
     public_input: &[u8; 32],
     frame: &[[u8; 32]],
     stream: &[u8],
-) -> Result<Reduced<E>, VerifierError> {
-    let mut channel = KeccakChannel::new(seed(iv, public_input, frame), stream, Checks::Enforce);
+    checks: Checks,
+) -> Result<(Reduced<E>, Checks), VerifierError> {
+    let mut channel = KeccakChannel::new(seed(iv, public_input, frame), stream, checks);
     channel.frame = frame.to_vec();
     let reduced = reduce(spec, statement_words(public_input), &mut channel)?;
     channel.finish()?;
-    Ok(reduced)
-}
-
-/// `E` as the prover's field.
-pub fn to_f192(x: E) -> F192 {
-    F192::new(x.c0, x.c1, x.c2)
-}
-
-pub fn to_e(x: F192) -> E {
-    E::new(x.c0, x.c1, x.c2)
+    Ok((reduced, channel.checks))
 }
 
 /// A claim of [`Reduced`] in the prover's field: its point and value.
 pub fn claim((point, value): &(Vec<E>, E)) -> (Vec<F192>, F192) {
-    (point.iter().map(|&x| to_f192(x)).collect(), to_f192(*value))
-}
-
-/// Pairs per position and the pair constants, for tests of the indicators against the circuit.
-pub fn covered(circuit: &Circuit, i: usize) -> Option<usize> {
-    let p = circuit.pair_of()[i];
-    (p != NONE).then_some(p as usize)
+    (point.iter().map(|&x| x.into()).collect(), (*value).into())
 }
 
 #[cfg(test)]

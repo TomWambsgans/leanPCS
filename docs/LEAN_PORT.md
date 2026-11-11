@@ -58,17 +58,17 @@ The bounds' arithmetic carries over but for one port.
 - **The graph** (`RecGraphKeccak`; `Emitted.lean` is `f96a7938`'s π1-rec3 graph, the hazard `MergeHazardK` π1-rec3's):
   the `Wide` node; `pi1GraphIsVerifierK` and `GraphsAgree` for π1-rec4.
 - **The compiler** (`RecCircuit`, `rec-circuit-keccak`): `Wide` packings; D16v's trimmed last round (a template per
-  plane count, the unmade outputs, the free ends of `A_22`); the hashed claims' sections (message bits, copy units,
-  the free bits of an element with their packing and zero check, the digest's `ClaimHash` port); the fallback that
-  drops the last hashed claim (`compile_keeping`); a claim still encoded reads its narrow elements as 20 bytes;
-  `DigestChecked`, `SetupRootChecked`, `IvChecked` re-evaluated.
+  plane count, the unmade outputs, the free ends of `A_22`); the hashed claims' sections (message bits, copy units, the
+  free bits of an element with their packing and zero check, the digest's `ClaimHash` port); the claims hashed by π1's
+  shape (`compile::hashed_claims`: none, `[0]`, `[0, 1, 2]`), a circuit past `2^24` refused; a claim still encoded reads
+  its narrow elements as 20 bytes; `DigestChecked`, `SetupRootChecked`, `IvChecked` re-evaluated.
 - **The statement data** (`RecStatement/Data.lean`, `f96a7938`'s circuit: π1-rec3, 22 blocks, 134 pairs, 38 public
   terms): the reads (`Read.narrow`, 20 bytes; `Read.frame p`, four scalars from the frame), the `ClaimHash` ports and
   their terms, π1's calls (none encoded at 128 and 400 signatures), the digest and setup root, the seed over the frame
   words.
 - **The contract model** (`RecCompose`): no selector; the seed over three frame words (payloads 0 … 2); π2's four
-  claims at payloads 3 … 6 (`Ending::ClaimsAt`; seven openings charged once by `pcs_union_sound_oracle`, `qOodBinding`
-  over `Q`'s two claims); no π1 element or root in calldata. `pi1rec3K_end` extended to "a
+  claims at payloads 3 … 6 (`Ending::Claims`, each claim with its payload; seven openings charged once by
+  `pcs_union_sound_oracle`, `qOodBinding` over `Q`'s two claims); no π1 element or root in calldata. `pi1rec3K_end` extended to "a
   satisfied π2 circuit carries the Keccak-256s of the graph's three claims"; the extractor of
   `recKnowledgeSoundness_reduction_real` then names π1's claims by their hashes, with a Keccak-256 collision term (or
   the frame's binding as an assumption, as for every declared claim). The copy argument's round in `pi2Bound`:

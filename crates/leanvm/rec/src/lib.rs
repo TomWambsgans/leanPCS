@@ -7,8 +7,6 @@
 //! (`leanvm_statement::evm::record`): the stream's reads, the Keccak-256 chain, `E`'s additions and products, the
 //! checks, and the declared claims. That graph is the circuit `π2` proves, PCS openings excluded.
 //!
-//! - [`count`]: the graph's live nodes by kind, the Keccak-256 calls and their permutations, the packings between
-//!   bytes and `E`, the checks, and the claims' points.
 //! - [`eval`]: the graph evaluated on a real proof's calldata, every node's value: the witness `π2`'s prover starts
 //!   from, checked against the recorded claims of the committed test vectors.
 //! - [`circuit`]: `π2`'s circuit (D16v) and its witness, compiled from the graph; `circuit::spec` is the
@@ -18,7 +16,6 @@
 #![forbid(unsafe_code)]
 
 pub mod circuit;
-pub mod count;
 pub mod eval;
 pub mod pi2;
 

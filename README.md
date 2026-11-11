@@ -84,8 +84,8 @@ verifier (π1 with Fiat–Shamir shaped for π2) minus its openings; the contrac
 | PCS claims | 7: π1's 3, π2's 4 | 7 |
 | Lean 4 | the VM's statement, the Keccak-f block, π1's knowledge soundness (≤ 2^-64 at 2^64 queries) and completeness; the recursion's knowledge soundness as an explicit reduction and its completeness; all of π2 over π1-rec3 at `f96a7938`, not yet ported ([`docs/LEAN_PORT.md`](docs/LEAN_PORT.md)) | |
 
-π1 alone as a contract (no recursion) at 128 signatures: 8,069 B of calldata, 231,511 execution; standard 360,255,
-floor 516,416. The Keccak VM fits WHIR's `2^28`-word commitments up to about 470 signatures.
+π1 alone as a contract (no recursion) at 128 signatures: 8,065 B of calldata, 231,489 execution; standard 360,169,
+floor 516,160. The Keccak VM fits WHIR's `2^28`-word commitments up to about 470 signatures.
 
 Where things are, what is proved and what remains: [`AGENTS.md`](AGENTS.md). The design documents:
 [`docs/README.md`](docs/README.md). Code under `crates/` is MIT OR Apache-2.0, derived from leanVM.
@@ -109,7 +109,7 @@ cargo test --release -p evm -- --ignored --nocapture gas_report          # the c
 cargo test --release -p leanvm_univariate -p leanvm_rec
 cargo test --release -p leanvm_univariate --test keccak_vm -- --ignored --nocapture keccak_gas_report  # π1's gas
 cargo test --release -p leanvm_univariate --test evm_vectors              # the committed real proofs replayed
-cargo test --release -p leanvm_rec --test keccak_vm_rec -- --ignored --nocapture                       # π2's circuit, gas
+cargo test --release -p leanvm_rec --test pi2_real -- --ignored --nocapture real_gas                 # π2's circuit, gas
 PI2_VECTOR=keccak128_rec4 cargo test --release -p leanvm_rec --test pi2_real -- --ignored --nocapture real_end_to_end
 LEANVM_TRACE=<trace> PI1_VARIANT=rec4 cargo test --release -p leanvm_univariate --test prove_real -- --ignored \
   --nocapture keccak_prover_benchmark                                    # π1's prover on a real trace

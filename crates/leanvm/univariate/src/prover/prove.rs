@@ -3,33 +3,35 @@
 //! and the quotients, `C2`, the values at `t`, the batching sumcheck, and the openings.
 //!
 //! It writes the stream the verifier reads (`crate::verifier::reduce`, through the contract's Keccak-256 chain) and
-//! one WHIR opening per claim (`crates/pcs_claim`). Before the batching sumcheck it runs the verifier itself on the stream so far
-//! (weighted mode, which reads nothing after `ρ`) to learn the combined claims, as any prover may.
+//! one WHIR opening per claim (`crates/pcs_claim`). Before the batching sumcheck it runs the verifier itself on the
+//! stream so far (`reduce_combined`, which reads nothing after `ρ`) to learn the combined claims, as any prover may.
 
 use std::time::Instant;
 
 use fiat_shamir::merkle::Hash;
 use leanvm_statement::field::E;
-use leanvm_statement::layout::{Form, OP_JUMP, OP_SHA3, SEP_MEM, Table, tables};
-use leanvm_statement::transcript::{FsShape, KeccakWriter, keccak_seed, squares};
+use leanvm_statement::layout::{Form, SEP_MEM, tables};
+use leanvm_statement::transcript::{Checks, KeccakChannel, KeccakWriter, keccak_seed, root_halves, statement_words};
 use primitives::field::{F64, F192};
 use quotient::ntt::Fill;
 
 use super::bus::{Bus, expected_root, heap_of};
 use super::columns::{c1_polys, setup_polys};
 use super::flock::FlockWitness;
-use super::replay::Replay;
 use super::opening::{self, Committed};
-use super::poly::{eval_k, eval_limbs, from_v, novel_limbs, novel_limbs_many, to_v};
+use super::poly::{eval_k, eval_limbs, novel_limbs, novel_limbs_many};
 use super::quotients::{self, Quotient};
-use super::stack::{Stack, c1_columns, c2_columns};
+use super::stack::Stack;
 use super::trace::Trace;
 use super::weight::Weight;
 use crate::claims::{Column, Combined, Commitment};
 use crate::contract::{NAME, SetupRoots, contract_iv};
 use crate::heap::Leaves;
 use crate::stacks::StackLayout;
-use crate::verifier::{Claims, Opening, Shape, Variant, chunks, degree, reduce, sent_columns};
+use crate::verifier::{
+    Variant, bus_challenges, c1_columns, c2_columns, chunks, constraint_count, expand_ring, flush_difference,
+    late_challenges, point_challenge, reduce_combined, sent_columns, table_leaf_count,
+};
 
 /// What a proof is: the verifier's stream (calldata after the selector and the public input) and one WHIR opening
 /// per claim, with the PCS claim it proves.
@@ -89,7 +91,6 @@ pub static MEMORY_PROBE: std::sync::OnceLock<fn() -> u64> = std::sync::OnceLock:
 
 struct Clock {
     last: Instant,
-    faults: u64,
 }
 
 impl Clock {
@@ -99,37 +100,8 @@ impl Clock {
         if let Some(probe) = MEMORY_PROBE.get() {
             report.peaks.push((name, probe()));
         }
-        if std::env::var_os("PI1_PROFILE").is_some() {
-            let faults = minor_faults();
-            let hwm = std::fs::read_to_string("/proc/self/status")
-                .ok()
-                .and_then(|s| s.lines().find(|l| l.starts_with("VmHWM:")).map(|l| l.to_string()))
-                .unwrap_or_default();
-            eprintln!(
-                "    {name}: {:.4} s, {} minor faults, {hwm}",
-                (now - self.last).as_secs_f64(),
-                faults - self.faults
-            );
-            self.faults = faults;
-        }
         self.last = Instant::now();
     }
-}
-
-/// The process's minor page faults so far (`/proc/self/stat`, field 10), 0 where unreadable: for `PI1_PROFILE`.
-fn minor_faults() -> u64 {
-    std::fs::read_to_string("/proc/self/stat")
-        .ok()
-        .and_then(|s| s.rsplit_once(')').and_then(|(_, rest)| rest.split_whitespace().nth(7)?.parse().ok()))
-        .unwrap_or(0)
-}
-
-/// The root's two 128-bit halves as the stream carries them (`Channel::next_root`: each 16-byte half big-endian, `c1`
-/// then `c0`), so that the stream's 32 bytes are the root's bytes as they are: the root a PCS claim encodes, which the
-/// contract passes as it is.
-pub fn halves(root: &Hash) -> [E; 2] {
-    let word = |at: usize| u64::from_be_bytes(root[at..at + 8].try_into().expect("8 bytes"));
-    [E::new(word(8), word(0), 0), E::new(word(24), word(16), 0)]
 }
 
 /// `tuple`'s fingerprint needs a sent value: one of its monomials reads an unsent column (`verifier::linearise`).
@@ -140,54 +112,11 @@ fn reads_unsent(tuple: &[Form], sent: &[bool]) -> bool {
     })
 }
 
-/// The degree of a tuple's fingerprint in the columns (`verifier::tuple_degree`).
-fn tuple_degree(tuple: &[Form]) -> usize {
-    tuple
-        .iter()
-        .flat_map(|form| form.terms().filter(|(_, c)| **c != E::default()).map(|(m, _)| m.len()))
-        .max()
-        .unwrap_or(0)
-        .max(1)
-}
-
-/// The verifier's count of a table block's leaf quotient coefficients: sized for the height's fewest rows
-/// (`Shape::least_rows`, SPEC.md §13, F1).
-pub fn table_leaf_count(t: usize, r: usize) -> u64 {
-    table_leaf_count_for(&tables()[t], r)
-}
-
-/// [`table_leaf_count`] of a table of either VM (`verifier::vm_tables`).
-pub fn table_leaf_count_for(table: &Table, r: usize) -> u64 {
-    let n = 1u64 << r;
-    let pull = 1 + table.flushes.pull.iter().map(|tu| tuple_degree(tu)).sum::<usize>();
-    let push: usize = table.flushes.push.iter().map(|tu| tuple_degree(tu)).sum();
-    degree(pull.max(push) as u64 * (n - 1) + (n - Shape::least_rows(r)), n) + 1
-}
-
-/// The verifier's count of the constraint quotient's coefficients (`verifier::reduce`, step 5).
-pub fn constraint_count(trace: &Trace) -> u64 {
-    let mut most = 0u64;
-    for table in tables() {
-        let r = trace.heights[table.opcode];
-        let n = 1u64 << r;
-        if table.opcode == OP_JUMP {
-            most = most.max(degree(n, 2));
-        }
-        let counts = table.count_columns().count() as u64;
-        most = most.max(degree((n - 1) * (1 + counts), n));
-        if table.opcode == OP_SHA3 {
-            most = most.max(degree(r as u64 * (n / 2), n));
-        }
-    }
-    most.max(degree(1u64 << trace.log_memory, 3)) + 1
-}
-
 /// The prover's configuration.
 #[derive(Clone, Copy, Debug)]
 pub struct Config {
-    /// Flock's variant (with it, the Fiat–Shamir shape): `KECCAK_MAIN` or `KECCAK_REC3`.
+    /// Flock's variant (with it, the Fiat–Shamir shape): `KECCAK_MAIN`, `KECCAK_REC3` or `KECCAK_REC4`.
     pub variant: Variant,
-    pub claims: Claims,
     /// Check every combined claim against the committed stacks (slower).
     pub check: bool,
     /// Fill every stack's words past its blocks with pseudo-random words instead of zeros (a test that the verifier
@@ -196,6 +125,9 @@ pub struct Config {
     /// The setup commitment the contract's IV binds (SPEC.md §13, F2): `F`'s, which must be this program's and shape's
     /// (`setup::shape_roots`; at the reference shape `SetupRoots::REFERENCE`).
     pub roots: SetupRoots,
+    /// Commit `C1` without keeping its codeword (twice its stack) until its opening, which then encodes the rows its
+    /// queries open again: the prover's peak (`C2`'s commitment) falls by it. The proof is the same.
+    pub low_memory: bool,
 }
 
 /// Prove `trace`'s execution (its rows placed: [`Trace::place`]) for the contract of the program's IV `iv` (the
@@ -215,10 +147,7 @@ pub fn prove_streaming(
     on_stream: impl FnOnce(&[u8]),
 ) -> Result<(Proof, Report), String> {
     let mut report = Report::default();
-    let mut clock = Clock {
-        last: Instant::now(),
-        faults: minor_faults(),
-    };
+    let mut clock = Clock { last: Instant::now() };
     if !trace.placed {
         return Err("the trace's rows are leanVM's order: place them first (Trace::place)".into());
     }
@@ -253,10 +182,7 @@ pub fn prove_streaming(
         stack1.fill_unused(0xC1);
         stack_f.fill_unused(0xF0);
     }
-    // `PI1_LOW_MEMORY=1`: C1's codeword (twice its stack) is not kept until its opening, which encodes the rows its
-    // queries open again: the prover's peak (C2's commitment) falls by it. The proof is the same.
-    let low_memory = std::env::var_os("PI1_LOW_MEMORY").is_some_and(|v| v != "0");
-    let committed1 = if low_memory {
+    let committed1 = if config.low_memory {
         opening::commit(&stack1.words, stack1.layout.vars)
     } else {
         opening::commit_keeping_codeword(&stack1.words, stack1.layout.vars)
@@ -267,12 +193,12 @@ pub fn prove_streaming(
     let roots = if config.garbage {
         SetupRoots {
             f: committed_f.root,
-            f_ood: to_v(committed_f.ood),
+            f_ood: committed_f.ood.into(),
         }
     } else {
         config.roots
     };
-    if committed_f.root != roots.f || to_v(committed_f.ood) != roots.f_ood {
+    if committed_f.root != roots.f || E::from(committed_f.ood) != roots.f_ood {
         return Err("the contract's F commitment is not this program's and shape's (prover::setup::shape_roots)".into());
     }
     report.roots = Some(roots);
@@ -289,37 +215,24 @@ pub fn prove_streaming(
     }
     // C1's commitment: its root, then its out-of-domain answer, which binds the root to one polynomial before any
     // challenge (docs/PCS_CLAIM.md).
-    writer.send_root(halves(&committed1.root));
-    writer.send(to_v(committed1.ood));
+    writer.send_root(&committed1.root);
+    writer.send(committed1.ood.into());
 
-    // 2. The bus's and the constraints' challenges; with π1-rec (`FsShape::Rec`, SPEC-REC.md §1.4) α is (c, c², c⁴,
-    // c⁸) of one challenge c, squared in E as the verifier squares it.
-    // π1-rec4 (`FsShape::Rec4`): α's c, β, γ and Flock's zerocheck's first eq coordinate from one wide draw.
+    // 2. The bus's and the constraints' challenges, as the verifier draws them (`verifier::bus_challenges`, squared in
+    // E as the verifier squares them).
     let fs = config.variant.fs;
-    let (alphas, beta, gamma, eq_first): (Vec<F192>, F192, F192, Option<E>) = if fs.wide() {
-        let drawn = writer.sample_wide(4);
-        let alphas = squares(drawn[0], 4).into_iter().map(from_v).collect();
-        (alphas, from_v(drawn[1]), from_v(drawn[2]), Some(drawn[3]))
-    } else {
-        let alphas = match fs {
-            FsShape::Main => (0..4).map(|_| from_v(writer.sample())).collect(),
-            _ => squares(writer.sample(), 4).into_iter().map(from_v).collect(),
-        };
-        let beta = from_v(writer.sample());
-        (alphas, beta, from_v(writer.sample()), None)
-    };
+    let (alphas, beta, gamma, eq_first) = bus_challenges(fs, &mut writer);
+    let alphas: Vec<F192> = alphas.into_iter().map(F192::from).collect();
+    let (beta, gamma) = (F192::from(beta), F192::from(gamma));
 
     // 3. Flock on the Keccak-f block, one block a SHA3 row (`flock.rs`), the walked (structured) terminal.
     {
-        let log_n = leanvm_statement::layout::KECCAK_R1CS_LOG_SIZE + trace.heights[OP_SHA3];
+        let log_n = leanvm_statement::layout::KECCAK_R1CS_LOG_SIZE + trace.heights[leanvm_statement::layout::OP_SHA3];
         let out = super::flock::prove(&mut writer, &flock, config.variant, log_n, eq_first)?;
         drop(flock);
         report.notes.push(format!("Flock's zerocheck and lincheck: {:.3} s", out.reduction_secs));
         for (stage, secs) in std::mem::take(&mut *flock::zerocheck::skip::STAGES.lock().expect("the stages")) {
             report.notes.push(format!("  the skip's zerocheck, {stage}: {secs:.3} s"));
-        }
-        if std::env::var_os("PI1_PROFILE").is_some() {
-            report.notes.iter().for_each(|note| eprintln!("    {note}"));
         }
         clock.lap(&mut report, "Flock: zerocheck, lincheck, slices");
     }
@@ -364,7 +277,7 @@ pub fn prove_streaming(
     let mut jobs: Vec<Box<dyn quotients::Numerator + '_>> = Vec::new();
     for (&(_, kind, r), r_novel) in blocks.iter().zip(&r_novels) {
         if let Leaves::Table(t) = kind {
-            let count = table_leaf_count_for(&tables()[t], r);
+            let count = table_leaf_count(&tables()[t], r);
             jobs.push(quotients::table_leaf_numerator(trace, t, &c1, &bus, r_novel, count));
         }
     }
@@ -402,7 +315,7 @@ pub fn prove_streaming(
     };
     let mut constraint_parts: Vec<Quotient> = batched.collect();
     constraint_parts.push(quotients::public_part(trace, &c1, parts.publics, lines));
-    let constraint = quotients::sum_parts(constraint_parts, constraint_count(trace));
+    let constraint = quotients::sum_parts(constraint_parts, constraint_count(&shape));
     report
         .quotients
         .push(("constraints Q_W".into(), constraint.degree, constraint.count, quotients::extension_vars(constraint.count, r_w)));
@@ -452,12 +365,12 @@ pub fn prove_streaming(
     let committed2 = opening::commit_keeping_codeword(&stack2.words, stack2.layout.vars);
     report.stacks.push((Commitment::C2, stack2.placed(), stack2.layout.vars));
     clock.lap(&mut report, "C2: WHIR commit");
-    writer.send_root(halves(&committed2.root));
-    writer.send(to_v(committed2.ood));
+    writer.send_root(&committed2.root);
+    writer.send(committed2.ood.into());
 
     // 7. The point and the values at it, in the verifier's order. π1-rec4: t with the ring switch's map's f_0 … f_3
     // (the verifier's; the prover's batch weights take the map from the verifier's replay below).
-    let t = from_v(if fs.wide() { writer.sample_wide(5)[0] } else { writer.sample() });
+    let t = F192::from(point_challenge(fs, &mut writer).0);
     let digit_count = layout.h.max(r_w + 4) + 2;
     let w: Vec<F192> = std::iter::successors(Some(t), |&x| Some(x * x + x)).take(digit_count).collect();
     let mut sent_values: Vec<F192> = Vec::new();
@@ -476,16 +389,7 @@ pub fn prove_streaming(
             if reads_unsent(pulled, &sent) {
                 sent_values.push(fp(pulled));
             }
-            let difference: Vec<Form> = pushed
-                .iter()
-                .zip(pulled)
-                .map(|(a, b)| {
-                    let mut d = a.clone();
-                    d.add_scaled(b, E::new(1, 0, 0));
-                    d
-                })
-                .collect();
-            if reads_unsent(&difference, &sent) {
+            if reads_unsent(&flush_difference(pushed, pulled), &sent) {
                 sent_values.push(fp(pushed));
             }
         }
@@ -495,7 +399,7 @@ pub fn prove_streaming(
     let mem_at: Vec<F192> = (0..4).map(|k| eval_k(stack1.k(Column::Memory(k)), &w[..lm])).collect();
     let address_at = eval_k(&setup.address.b, &w[..lm]);
     let memory_pull = beta
-        + weights[0] * from_v(SEP_MEM)
+        + weights[0] * F192::from(SEP_MEM)
         + weights[1] * address_at
         + weights[2] * mem_at[3]
         + (0..3).fold(F192::ZERO, |acc, k| acc + weights[3 + k] * mem_at[k]);
@@ -518,7 +422,7 @@ pub fn prove_streaming(
     };
     sent_values.extend([heap_at, constraint_at]);
     for &v in &sent_values {
-        writer.send(to_v(v));
+        writer.send(v.into());
     }
     clock.lap(&mut report, "values at t");
 
@@ -526,41 +430,32 @@ pub fn prove_streaming(
     // in C2's stack since step 6).
     drop(setup);
 
-    // 8. ρ, and the combined claims: the verifier's own, on the stream so far, in weighted mode (which reads nothing
-    // after ρ).
-    // π1-rec4: ρ with the batch's λ and the map's f_4, f_5.
-    let (rho, drawn_lambda) = if fs.wide() {
-        let drawn = writer.sample_wide(4);
-        (drawn[0], Some(drawn[1]))
+    // 8. ρ (π1-rec4: with the batch's λ and the map's f_4, f_5), then the combined claims: the verifier's own, on the
+    // stream so far (`reduce_combined`, which reads nothing after ρ), the ring switch's weight as its 64 twisted terms.
+    let drawn_lambda = if fs.wide() {
+        Some(late_challenges(&mut writer).1)
     } else {
-        (writer.sample(), None)
+        writer.sample();
+        None
     };
     let combined: Vec<(Commitment, Combined<E>)> = {
-        let mut channel = Replay::new(seed, &writer.stream);
-        let words: [E; 4] = std::array::from_fn(|k| E::new(u64::from_be_bytes(public[8 * k..8 * k + 8].try_into().unwrap()), 0, 0));
-        let reduced = reduce(&shape, words, &mut channel, config.variant, Claims::Weighted).map_err(|e| format!("{e:?}"))?;
-        channel.finish().map_err(|e| format!("the verifier reads the stream so far: {e}"))?;
-        report.checks.push(("the verifier's checks on the stream so far (weighted mode)".into(), channel.checks_hold()));
-        for (commitment, vars) in &reduced.stack_vars {
+        let mut channel = KeccakChannel::new(seed, &writer.stream, Checks::collect());
+        let c = reduce_combined(&shape, statement_words(&public), &mut channel, config.variant)
+            .map_err(|e| format!("{e:?}"))?;
+        channel.finish().map_err(|e| format!("the verifier reads the stream so far: {e:?}"))?;
+        report.checks.push(("the verifier's checks on the stream so far".into(), channel.checks.hold()));
+        for (commitment, layout) in &c.layouts {
             let mine = match commitment {
                 Commitment::C1 => stack1.layout.vars,
                 Commitment::C2 => stack2.layout.vars,
                 Commitment::Setup => stack_f.layout.vars,
             };
-            if mine != *vars {
-                return Err(format!("{commitment:?}: the verifier's stack has {vars} variables, the prover's {mine}"));
+            if mine != layout.vars {
+                return Err(format!("{commitment:?}: the verifier's stack has {} variables, the prover's {mine}", layout.vars));
             }
         }
-        reduced
-            .openings
-            .into_iter()
-            .map(|(c, o)| match o {
-                Opening::Weighted(claim) => (c, claim),
-                Opening::Point { .. } => unreachable!("weighted mode"),
-            })
-            .collect()
+        c.combined.iter().map(|(commitment, claim)| (*commitment, expand_ring(claim, &c.ring_map))).collect()
     };
-    let _ = rho;
     clock.lap(&mut report, "claims: the verifier's combination");
 
     let stacks_of = |c: Commitment| -> (&Stack, &Committed) {
@@ -580,54 +475,48 @@ pub fn prove_streaming(
             let sum = weight.sum(&stacks_of(*c).0.words);
             report
                 .checks
-                .push((format!("{c:?}: its {} relations, combined by ρ, hold", claim.relations), sum == from_v(claim.value)));
+                .push((format!("{c:?}: its {} relations, combined by ρ, hold", claim.relations), sum == F192::from(claim.value)));
         }
         clock.lap(&mut report, "claims: the combined-claims check (test only)");
     }
 
     // 9. The point claims: the batching sumcheck.
+    let lambda = F192::from(drawn_lambda.unwrap_or_else(|| writer.sample()));
+    let stacks: Vec<(&[F64], usize)> = combined
+        .iter()
+        .map(|(c, _)| {
+            let (s, _) = stacks_of(*c);
+            (&s.words[..], s.layout.vars)
+        })
+        .collect();
+    let (point, values) = if fs.paired_batch() {
+        // π1-rec3, π1-rec4: the batch two variables a round (SPEC.md §14.1), its claim the combined claims' values.
+        let target: F192 = combined
+            .iter()
+            .rev()
+            .fold(F192::ZERO, |acc, (_, claim)| acc * lambda + F192::from(claim.value));
+        super::batch::prove_pairs(&mut writer, &stacks, weights, lambda, target)?
+    } else {
+        super::batch::prove(&mut writer, &stacks, weights, lambda)?
+    };
+    clock.lap(&mut report, "batching sumcheck");
+    on_stream(&writer.stream);
     let mut openings = Vec::new();
-    match config.claims {
-        Claims::Point => {
-            let lambda = from_v(drawn_lambda.unwrap_or_else(|| writer.sample()));
-            let stacks: Vec<(&[F64], usize)> = combined
-                .iter()
-                .map(|(c, _)| {
-                    let (s, _) = stacks_of(*c);
-                    (&s.words[..], s.layout.vars)
-                })
-                .collect();
-            let narrow = fs.narrow_batch();
-            let (point, values) = if fs.paired_batch() {
-                // π1-rec3: the batch two variables a round (SPEC.md §14.1), its claim the combined claims' values.
-                let target: F192 = combined
-                    .iter()
-                    .rev()
-                    .fold(F192::ZERO, |acc, (_, claim)| acc * lambda + from_v(claim.value));
-                super::batch::prove_pairs(&mut writer, &stacks, weights, lambda, target)?
-            } else {
-                super::batch::prove(&mut writer, &stacks, weights, lambda, narrow)?
-            };
-            clock.lap(&mut report, "batching sumcheck");
-            on_stream(&writer.stream);
-            for ((c, _), &value) in combined.iter().zip(&values) {
-                let (stack, committed) = stacks_of(*c);
-                let p = point[..stack.layout.vars].to_vec();
-                let proof = opening::open(&stack.words, committed, &p, value);
-                openings.push(OpeningProof {
-                    commitment: *c,
-                    root: committed.root,
-                    ood: committed.ood,
-                    vars: committed.n,
-                    point: p,
-                    value,
-                    proof,
-                });
-            }
-            clock.lap(&mut report, "openings: WHIR");
-        }
-        Claims::Weighted => return Err("weighted claims (extension W) have no opening here: use Claims::Point".into()),
+    for ((c, _), &value) in combined.iter().zip(&values) {
+        let (stack, committed) = stacks_of(*c);
+        let p = point[..stack.layout.vars].to_vec();
+        let proof = opening::open(&stack.words, committed, &p, value);
+        openings.push(OpeningProof {
+            commitment: *c,
+            root: committed.root,
+            ood: committed.ood,
+            vars: committed.n,
+            point: p,
+            value,
+            proof,
+        });
     }
+    clock.lap(&mut report, "openings: WHIR");
     report.stream_bytes = writer.stream.len();
     report.opening_bytes = openings
         .iter()
@@ -660,7 +549,7 @@ pub fn verify(
     variant: Variant,
 ) -> Result<(), String> {
     let (reduced, zero, nonzero) =
-        crate::contract::rust_verifier_with(trace_shape, iv, roots, public, &proof.stream, variant, Claims::Point)
+        crate::contract::rust_verifier_with(trace_shape, iv, roots, public, &proof.stream, variant)
             .map_err(|e| format!("reduce: {e:?}"))?;
     if let Some(i) = zero.iter().position(|x| *x != E::default()) {
         return Err(format!("check {i} of {} required zero is not", zero.len()));
@@ -672,18 +561,17 @@ pub fn verify(
         return Err("one opening per commitment".into());
     }
     for ((commitment, opening), mine) in reduced.openings.iter().zip(&proof.openings) {
-        let Opening::Point { point, value } = opening else {
-            return Err("point claims".into());
-        };
-        if *commitment != mine.commitment || from_v(*value) != mine.value || point.iter().map(|&x| from_v(x)).collect::<Vec<_>>() != mine.point {
+        let point: Vec<F192> = opening.point.iter().map(|&x| x.into()).collect();
+        if *commitment != mine.commitment || F192::from(opening.value) != mine.value || point != mine.point {
             return Err(format!("{commitment:?}: the opening is not of the verifier's claim"));
         }
         // The commitment: the stream's for C1 and C2 (its root and out-of-domain answer); the setup's is the
         // contract's constant.
+        let ood = E::from(mine.ood);
         let commitment_ok = match commitment {
-            Commitment::C1 => reduced.roots[0] == halves(&mine.root) && reduced.oods[0] == to_v(mine.ood),
-            Commitment::C2 => reduced.roots[1] == halves(&mine.root) && reduced.oods[1] == to_v(mine.ood),
-            Commitment::Setup => mine.root == roots.f && to_v(mine.ood) == roots.f_ood,
+            Commitment::C1 => reduced.roots[0] == root_halves(&mine.root) && reduced.oods[0] == ood,
+            Commitment::C2 => reduced.roots[1] == root_halves(&mine.root) && reduced.oods[1] == ood,
+            Commitment::Setup => mine.root == roots.f && ood == roots.f_ood,
         };
         if !commitment_ok {
             return Err(format!("{commitment:?}: the claim's commitment is not the stream's (or the contract's)"));

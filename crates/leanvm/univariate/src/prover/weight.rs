@@ -26,7 +26,6 @@ use primitives::field::{F64, F192, F192Unreduced, Weights8, dot_base, mul_unredu
 use primitives::multilinear::eq_table;
 use quotient::ntt::{ESplat, Ex8, Kx8, MixedSum};
 
-use super::poly::from_v;
 use crate::claims::{Column, Combined};
 use crate::stacks::StackLayout;
 
@@ -263,7 +262,7 @@ impl Weight {
         let points: Vec<Vec<F192>> = claim
             .points
             .iter()
-            .map(|p| p.iter().map(|&x| from_v(x)).collect())
+            .map(|p| p.iter().map(|&x| F192::from(x)).collect())
             .collect();
         // Per column: its terms by point, untwisted (point, coefficient), twisted (point, [(twist, coefficient)]), and
         // q_flock's slots (point, the slots' coefficients).
@@ -275,7 +274,7 @@ impl Weight {
         }
         let mut columns: Vec<(Column, Terms)> = Vec::new();
         for &(column, p, twist, coefficient) in &claim.terms {
-            let coefficient = from_v(coefficient);
+            let coefficient = F192::from(coefficient);
             let (target, slot) = match column {
                 Column::QflockSlot(j) => (Column::Qflock, Some(j)),
                 other => (other, None),
@@ -938,26 +937,6 @@ impl Weight {
             }
         };
         let p = parallel::map_reduce(tasks.len(), || [F192::ZERO; SUMS], body, add);
-        // `PI1_PROFILE=kinds`: each kind's tasks again, timed (the sums' time doubles).
-        if std::env::var("PI1_PROFILE").is_ok_and(|v| v == "kinds") {
-            let kind = |t: usize| match preps[self.pieces[tasks[t].0].shape] {
-                Prep2::Factored { .. } => 0,
-                Prep2::Dense => 1,
-                Prep2::Twisted { .. } => 2,
-                Prep2::Scalar(_) => 3,
-            };
-            for k in 0..4 {
-                let mine: Vec<usize> = (0..tasks.len()).filter(|&t| kind(t) == k).collect();
-                let units: usize = mine.iter().map(|&t| tasks[t].2 - tasks[t].1).sum();
-                let clock = std::time::Instant::now();
-                parallel::map_reduce(mine.len(), || [F192::ZERO; SUMS], |i| body(mine[i]), add);
-                eprintln!(
-                    "      round_pair j{j} kind {k}: {} tasks, {units} units, {:.4} s",
-                    mine.len(),
-                    clock.elapsed().as_secs_f64()
-                );
-            }
-        }
         // `Σ X_β0 Y_β0` from `Σ X_0 Y_0`, `Σ X_1 Y_1` and `Σ (X_0 + X_1)(Y_0 + Y_1)`, `X_βb = (1 + β) X_0 + β X_1`.
         let one_beta = F192::ONE + beta;
         let (aa, ab, bb) = (one_beta * one_beta, beta * one_beta, beta * beta);
@@ -1165,14 +1144,14 @@ mod tests {
         let basis = [F192::ONE, F192::new(0, 1, 0), F192::new(0, 0, 1)];
         let mut weight = vec![F192::ZERO; len];
         for &(column, p, twist, coefficient) in &claim.terms {
-            let coefficient = from_v(coefficient);
+            let coefficient = F192::from(coefficient);
             let (target, slot) = match column {
                 Column::QflockSlot(j) => (Column::Qflock, Some(j)),
                 other => (other, None),
             };
             for (limb, vars, offset) in layout.limbs(target) {
                 let n = if slot.is_some() { vars - SLOT_BITS } else { vars };
-                let point: Vec<F192> = claim.points[p][..n].iter().map(|&x| from_v(x)).collect();
+                let point: Vec<F192> = claim.points[p][..n].iter().map(|&x| F192::from(x)).collect();
                 for (u, mut e) in eq_table(&point).into_iter().enumerate() {
                     for _ in 0..twist {
                         e = e.square();
@@ -1227,11 +1206,11 @@ mod tests {
         let lane = 1usize << (layout.vars - super::super::opening::LANE_FOLD);
         let len = (layout.words() as usize).div_ceil(lane) * lane;
         let points: Vec<Vec<E>> = (0..5)
-            .map(|_| (0..13).map(|_| super::super::poly::to_v(rng.e())).collect())
+            .map(|_| (0..13).map(|_| E::from(rng.e())).collect())
             .collect();
         let mut terms = Vec::new();
         let mut term =
-            |column: Column, p: usize, twist: u8| terms.push((column, p, twist, super::super::poly::to_v(rng.e())));
+            |column: Column, p: usize, twist: u8| terms.push((column, p, twist, E::from(rng.e())));
         term(Column::Table { table: 0, column: 0 }, 0, 0);
         for p in 0..3 {
             term(Column::Heap, p, 0);
@@ -1283,11 +1262,11 @@ mod tests {
         let lane = 1usize << (layout.vars - super::super::opening::LANE_FOLD);
         let len = (layout.words() as usize).div_ceil(lane) * lane;
         let points: Vec<Vec<E>> = (0..5)
-            .map(|_| (0..12).map(|_| super::super::poly::to_v(rng.e())).collect())
+            .map(|_| (0..12).map(|_| E::from(rng.e())).collect())
             .collect();
         let mut terms = Vec::new();
         let mut term =
-            |column: Column, p: usize, twist: u8| terms.push((column, p, twist, super::super::poly::to_v(rng.e())));
+            |column: Column, p: usize, twist: u8| terms.push((column, p, twist, E::from(rng.e())));
         term(Column::Table { table: 0, column: 0 }, 0, 0);
         for p in 0..3 {
             term(Column::Heap, p, 0);

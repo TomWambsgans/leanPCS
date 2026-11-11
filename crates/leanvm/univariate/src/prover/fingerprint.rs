@@ -6,8 +6,6 @@
 use leanvm_statement::layout::Form;
 use primitives::field::{F64, F192};
 
-use super::poly::from_v;
-
 /// `constant + Σ c x_i + Σ c x_i x_j` over a row's column values.
 #[derive(Clone, Debug)]
 pub struct Fingerprint {
@@ -26,7 +24,7 @@ impl Fingerprint {
         };
         for (form, &weight) in tuple.iter().zip(weights) {
             for (monomial, &coefficient) in form.terms() {
-                let c = weight * from_v(coefficient);
+                let c = weight * F192::from(coefficient);
                 if c.is_zero() {
                     continue;
                 }

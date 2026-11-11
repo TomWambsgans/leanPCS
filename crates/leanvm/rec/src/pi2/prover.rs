@@ -28,7 +28,7 @@ use std::time::Instant;
 
 use fiat_shamir::merkle::Hash;
 use leanvm_statement::field::E;
-use leanvm_statement::transcript::KeccakWriter;
+use leanvm_statement::transcript::{Checks, KeccakWriter, root_halves, statement_words};
 use primitives::field::{F64, F192};
 use quotient::domain::{beta, chain, point};
 use quotient::ntt::{self, ESplat, Ex8, Kx8, Kx8U, MixedSum};
@@ -39,7 +39,7 @@ pub use super::verifier::{
     CERTIFIED_FROM, EMPTY_SLOTS, MIN_CERTIFIED_STACK, MIN_LOG_STACK, P_SLOT, QP_SLOT, QUOTIENT_SLOTS, h_slot, q_slot,
     stack_vars,
 };
-use super::verifier::{self, Reduced, Spec, claim, to_e, to_f192};
+use super::verifier::{Pi2Stack, Reduced, Spec, claim};
 
 /// Words copied by the workers in runs of this many (`parallel::map_collect` writes each run whole).
 const COPY_RUN: usize = 64;
@@ -71,9 +71,8 @@ pub struct Setup {
 }
 
 impl Setup {
-    /// The setup of `circuit`, which must be valid ([`Circuit::validate`]).
+    /// The setup of `circuit`, which must be valid ([`Circuit::validate`]: `Spec::of` checks it, once a circuit).
     pub fn new(circuit: &Circuit) -> Self {
-        circuit.validate().unwrap_or_else(|e| panic!("the circuit is not valid: {e}"));
         let (m, n) = (circuit.log_n, circuit.n());
         let sigma_on_v: Vec<F64> = parallel::map_collect(n, |i| point(circuit.sigma[i] as usize));
         let sigma = ntt::coefficients_cols_of(&[&sigma_on_v], F64::ZERO).pop().expect("one column");
@@ -157,21 +156,15 @@ pub fn frame_words(values: &[PublicValue]) -> Vec<[u8; 32]> {
         .collect()
 }
 
-/// The two scalars `Channel::next_root` reads from 32 bytes: each 16-byte half big-endian, `c1` then `c0`.
-pub fn halves(bytes: &[u8; 32]) -> [F192; 2] {
-    let word = |at: usize| u64::from_be_bytes(bytes[at..at + 8].try_into().unwrap());
-    [F192::new(word(8), word(0), 0), F192::new(word(24), word(16), 0)]
-}
-
 /// The public scalars: the public input's four words, then the values ([`Circuit::public_scalars`]).
 pub fn public_scalars(public_input: &[u8; 32], values: &[PublicValue]) -> Vec<F192> {
-    let mut out: Vec<F192> = verifier::statement_words(public_input).map(to_f192).to_vec();
+    let mut out: Vec<F192> = statement_words(public_input).map(F192::from).to_vec();
     for v in values {
         match *v {
             PublicValue::Integer(x) => out.push(F192::new(x, 0, 0)),
-            PublicValue::Root(bytes) => out.extend(halves(&bytes)),
+            PublicValue::Root(bytes) => out.extend(root_halves(&bytes).map(F192::from)),
             PublicValue::Scalar(x) => out.push(x),
-            PublicValue::Word(w) => out.extend(verifier::statement_words(&w).map(to_f192)),
+            PublicValue::Word(w) => out.extend(statement_words(&w).map(F192::from)),
         }
     }
     out
@@ -1122,13 +1115,13 @@ fn prove_inner(
         clock = Instant::now();
     };
     let [wv, qv, _] = stack_vars(m);
-    let mut writer = KeccakWriter::new(verifier::seed(iv, public_input, &frame_words(values)));
+    let mut writer = KeccakWriter::new(super::verifier::seed(iv, public_input, &frame_words(values)));
     for (read, value) in circuit.reads.iter().zip(values) {
         match (*read, *value) {
             (Read::Integer(bytes), PublicValue::Integer(x)) => writer.send_integer(x, bytes as usize),
-            (Read::Root, PublicValue::Root(bytes)) => writer.send_root(halves(&bytes).map(to_e)),
-            (Read::Scalar, PublicValue::Scalar(x)) => writer.send(to_e(x)),
-            (Read::Narrow, PublicValue::Scalar(x)) => writer.send_narrow(to_e(x)),
+            (Read::Root, PublicValue::Root(bytes)) => writer.send_root(&bytes),
+            (Read::Scalar, PublicValue::Scalar(x)) => writer.send(E::from(x)),
+            (Read::Narrow, PublicValue::Scalar(x)) => writer.send_narrow(E::from(x)),
             (Read::Frame(_), PublicValue::Word(_)) => {}
             other => panic!("a public value of another kind than its read: {other:?}"),
         }
@@ -1141,9 +1134,9 @@ fn prove_inner(
     // Kept with its codeword (twice the stack, 256 MB at `2^24` positions), as `Q`: its opening reads the rows its
     // first queries open from it. The stack is `w_b` itself, its leading lanes.
     let witness_committed = pcs_claim::commit_words(&w_b, wv, true);
-    writer.send_root(halves(&witness_committed.root).map(to_e));
-    writer.send(to_e(witness_committed.ood));
-    let [alpha, beta_, gamma] = [(); 3].map(|_| to_f192(writer.sample()));
+    writer.send_root(&witness_committed.root);
+    writer.send(E::from(witness_committed.ood));
+    let [alpha, beta_, gamma] = [(); 3].map(|_| F192::from(writer.sample()));
     lap("W: transform, commit", &mut timings);
 
     // h on V_m, limb by limb, and P_v ([`h_on_v`]).
@@ -1264,9 +1257,9 @@ fn prove_inner(
     // first queries open from it rather than encode them again.
     let quotient = stack;
     let quotient_committed = pcs_claim::commit_words(&quotient, qv, true);
-    writer.send_root(halves(&quotient_committed.root).map(to_e));
-    writer.send(to_e(quotient_committed.ood));
-    let t = to_f192(writer.sample());
+    writer.send_root(&quotient_committed.root);
+    writer.send(E::from(quotient_committed.ood));
+    let t = F192::from(writer.sample());
     lap("Q: table, commit", &mut timings);
 
     let digits: Vec<F192> = std::iter::successors(Some(t), |&x| Some(x * x + x))
@@ -1305,12 +1298,12 @@ fn prove_inner(
     if let Cheat::ShiftS(e) = cheat {
         s += e;
     }
-    folds.iter().chain([&xi, &s]).for_each(|&x| writer.send(to_e(x)));
+    folds.iter().chain([&xi, &s]).for_each(|&x| writer.send(E::from(x)));
     let _rho = writer.sample();
     lap("t: the values", &mut timings);
 
     let stream = writer.stream;
-    let reduced = verifier::verify(spec, iv, public_input, &frame_words(values), &stream)
+    let (reduced, _) = super::verifier::verify(spec, iv, public_input, &frame_words(values), &stream, Checks::Enforce)
         .expect("the verifier accepts its own stream");
     Proved {
         stream,
@@ -1342,13 +1335,12 @@ pub fn claims(log_n: usize, reduced: &Reduced<E>, roots: &[Hash; 2], setup_root:
             value,
         }
     };
-    let [w_ood, q_ood] = reduced.oods.map(to_f192);
-    [
-        pcs(wv, &roots[0], w_ood, &reduced.witness),
-        pcs(sv, setup_root, setup_ood, &reduced.setup),
-        pcs(qv, &roots[1], q_ood, &reduced.quotient),
-        pcs(qv, &roots[1], q_ood, &reduced.pushes),
-    ]
+    let [w_ood, q_ood] = reduced.oods.map(F192::from);
+    reduced.claims().map(|(stack, c)| match stack {
+        Pi2Stack::Witness => pcs(wv, &roots[0], w_ood, c),
+        Pi2Stack::Setup => pcs(sv, setup_root, setup_ood, c),
+        Pi2Stack::Quotient => pcs(qv, &roots[1], q_ood, c),
+    })
 }
 
 pub fn open(proved: Proved, setup: &Setup) -> (Reduced<E>, [Hash; 2], Openings) {
@@ -1414,13 +1406,11 @@ pub fn claims_hold(proved: &Proved, setup: &Setup) -> [bool; 4] {
         let (point, value) = claim(c);
         pcs_claim::evaluate_lanes(words, &point) == value
     };
-    let r = &proved.reduced;
-    [
-        holds(&proved.witness.0, &r.witness),
-        holds(&setup.words, &r.setup),
-        holds(&proved.quotient.0, &r.quotient),
-        holds(&proved.quotient.0, &r.pushes),
-    ]
+    proved.reduced.claims().map(|(stack, c)| match stack {
+        Pi2Stack::Witness => holds(&proved.witness.0, c),
+        Pi2Stack::Setup => holds(&setup.words, c),
+        Pi2Stack::Quotient => holds(&proved.quotient.0, c),
+    })
 }
 
 #[cfg(test)]

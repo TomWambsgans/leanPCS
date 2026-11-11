@@ -25,24 +25,58 @@
 
 use std::fmt::Write as _;
 
+#[path = "vectors/mod.rs"]
+mod vectors;
+
+use vectors::{deep, hex};
+
 use leanvm_statement::VerifierError;
 use leanvm_statement::field::{E, ONE, ZERO};
 use leanvm_statement::flock_min::walked_terminal_with;
 use leanvm_statement::keccak_flock::{KeccakWalked, structured_terminal};
 use leanvm_statement::shapes::PROGRAM_IV;
 use leanvm_statement::transcript::{Channel, Checks, KeccakChannel, keccak_seed, narrow, scalar_bytes};
-use leanvm_univariate::claims::Combined;
+use leanvm_statement::evm::record::{Recorder, record};
+use leanvm_univariate::claims::{Combined, Commitment};
 use leanvm_univariate::contract::{NAME, SetupRoots, contract_iv, record_verifier, sample_stream};
-use leanvm_univariate::{Claims, KECCAK_MAIN, KECCAK_REC3, Opening, Reduced, Shape, Variant, reduce};
+use leanvm_univariate::verifier::expand_ring;
+use leanvm_univariate::{KECCAK_MAIN, KECCAK_REC3, Opening, Shape, Variant, reduce, reduce_combined};
 
-/// Run `f` on a thread with a deep stack, as `tests/gas.rs` does.
-fn deep<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> R {
-    std::thread::Builder::new()
-        .stack_size(1 << 30)
-        .spawn(f)
-        .expect("a thread")
-        .join()
-        .expect("no panic")
+/// How the vectors' verifier leaves its claims: point claims (`reduce`), or the combined claims before the batching
+/// sumcheck (`reduce_combined`, the ring switch's weight as its 64 twisted terms: extension W's weighted claims).
+#[derive(Clone, Copy)]
+enum Claims {
+    Point,
+    Weighted,
+}
+
+/// A claim as the vectors print it.
+enum Claim {
+    Point(Opening<E>),
+    Weighted(Combined<E>),
+}
+
+/// What the verifier leaves, as the vectors print it.
+struct Reduced {
+    relations: usize,
+    oods: [E; 2],
+    stack_vars: Vec<(Commitment, usize)>,
+    openings: Vec<(Commitment, Claim)>,
+}
+
+/// The stream's length the verifier reads in `claims`' mode.
+fn stream_len(shape: &Shape, variant: Variant, claims: Claims) -> usize {
+    match claims {
+        Claims::Point => record_verifier(shape, variant).stream_len,
+        Claims::Weighted => {
+            let (cursor, _) = record(|| {
+                let mut recorder = Recorder::new();
+                reduce_combined(shape, Recorder::statement(), &mut recorder, variant).expect("a recorder rejects nothing");
+                recorder.cursor as usize
+            });
+            cursor
+        }
+    }
 }
 
 /// The contract's chain, logging what the verifier draws and checks (narrow challenges as drawn).
@@ -102,7 +136,7 @@ impl Channel<E> for Logging<'_> {
 
 /// What one run of the verifier gives.
 struct Run {
-    result: Result<Reduced<E>, VerifierError>,
+    result: Result<Reduced, VerifierError>,
     challenges: Vec<E>,
     zeros: Vec<E>,
     nonzeros: Vec<E>,
@@ -148,7 +182,22 @@ fn run(config: &Config, iv: &[u8; 32], public: &[u8; 32], stream: &[u8]) -> Run 
     };
     let words: [E; 4] =
         std::array::from_fn(|k| E::new(u64::from_be_bytes(public[8 * k..8 * k + 8].try_into().unwrap()), 0, 0));
-    let result = reduce(&config.shape, words, &mut channel, config.flock.1, config.claims.1).and_then(|reduced| {
+    let (shape, variant) = (&config.shape, config.flock.1);
+    let reduced = match config.claims.1 {
+        Claims::Point => reduce(shape, words, &mut channel, variant).map(|r| Reduced {
+            relations: r.relations,
+            oods: r.oods,
+            stack_vars: r.stack_vars,
+            openings: r.openings.into_iter().map(|(c, o)| (c, Claim::Point(o))).collect(),
+        }),
+        Claims::Weighted => reduce_combined(shape, words, &mut channel, variant).map(|r| Reduced {
+            relations: r.relations,
+            oods: r.oods,
+            stack_vars: r.layouts.iter().map(|(c, l)| (*c, l.vars)).collect(),
+            openings: r.combined.iter().map(|(c, claim)| (*c, Claim::Weighted(expand_ring(claim, &r.ring_map)))).collect(),
+        }),
+    };
+    let result = reduced.and_then(|reduced| {
         channel.inner.finish()?;
         Ok(reduced)
     });
@@ -210,16 +259,6 @@ fn accepting(config: &Config, iv: &[u8; 32], public: &[u8; 32], len: usize, seed
         "the solved stream is accepted"
     );
     stream
-}
-
-fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
-}
-
-fn unhex(t: &str) -> Vec<u8> {
-    (0..t.len() / 2)
-        .map(|i| u8::from_str_radix(&t[2 * i..2 * i + 2], 16).expect("hex"))
-        .collect()
 }
 
 fn element(x: E) -> String {
@@ -319,7 +358,7 @@ impl Writer {
             for (commitment, opening) in &reduced.openings {
                 match opening {
                     // `BITSLICE 0` and `MATRICES 0` below: fields of the format that the Keccak VM leaves empty.
-                    Opening::Point { point, value } => {
+                    Claim::Point(Opening { point, value }) => {
                         writeln!(
                             out,
                             "OPENING {commitment:?} POINT {} VALUE {} BITSLICE 0",
@@ -328,7 +367,7 @@ impl Writer {
                         )
                         .unwrap();
                     }
-                    Opening::Weighted(claim) => {
+                    Claim::Weighted(claim) => {
                         writeln!(out, "OPENING {commitment:?} WEIGHTED {}", combined(claim)).unwrap()
                     }
                 }
@@ -484,7 +523,7 @@ fn lean_keccak_vectors() {
         ];
         for (c, &(run_index, flock, claims)) in full.iter().enumerate() {
             let config = config(run_index, flock, claims);
-            let len = record_verifier(&config.shape, flock.1, claims.1).stream_len;
+            let len = stream_len(&config.shape, flock.1, claims.1);
             let iv = config.contract_iv();
             for s in 0..2u64 {
                 let public = rng.bytes32();
@@ -566,7 +605,7 @@ fn lean_keccak_vectors() {
         // The other runs, the main line (1,000 signatures: a shape whose C1 does not fit WHIR, still a verifier).
         for (k, run_index) in [1usize, 3].into_iter().enumerate() {
             let config = config(run_index, main, point);
-            let len = record_verifier(&config.shape, main.1, point.1).stream_len;
+            let len = record_verifier(&config.shape, main.1).stream_len;
             let iv = config.contract_iv();
             let salt = 0x300 + 16 * k as u64;
             let public = rng.bytes32();
@@ -587,24 +626,8 @@ fn lean_keccak_vectors() {
                 println!("no {dir}/{file}: no real vector");
                 continue;
             };
-            let mut config_name = String::new();
-            let mut shape_line: Vec<u64> = Vec::new();
-            let mut public = [0u8; 32];
-            let mut calldata = Vec::new();
-            let mut claims: Vec<Vec<u8>> = Vec::new();
-            let mut accepts = false;
-            for line in text.lines().filter(|l| !l.starts_with('#') && !l.is_empty()) {
-                let (key, value) = line.split_once(' ').expect("key value");
-                match key {
-                    "config" => config_name = value.to_string(),
-                    "shape" => shape_line = value.split(' ').map(|x| x.parse().expect("a number")).collect(),
-                    "public" => public.copy_from_slice(&unhex(value)),
-                    "calldata" => calldata = unhex(value),
-                    "claim" => claims.push(unhex(value)),
-                    "accepts" => accepts = value == "true",
-                    _ => {}
-                }
-            }
+            let v = vectors::read(&text);
+            let config_name = v.config.clone();
             let flock = match config_name.as_str() {
                 "keccak" => main,
                 "keccak_rec3" => rec3,
@@ -612,26 +635,17 @@ fn lean_keccak_vectors() {
             };
             let config = Config {
                 name: format!("real-{}", file.trim_end_matches(".txt")),
-                shape: Shape {
-                    log_memory: shape_line[0] as usize,
-                    log_bytecode: shape_line[1] as usize,
-                    table_rows: std::array::from_fn(|k| shape_line[2 + k]),
-                },
+                shape: v.shape,
                 flock,
                 claims: point,
                 program_iv: PROGRAM_IV,
                 // The contract binds the proof's own setup commitment `F` (the third claim's), as `tests/evm_vectors.rs`.
-                roots: {
-                    let setup = pcs_claim::PcsClaim::decode(&claims[2]).expect("a well-formed setup claim");
-                    SetupRoots {
-                        f: setup.root,
-                        f_ood: E::new(setup.ood.c0, setup.ood.c1, setup.ood.c2),
-                    }
-                },
+                roots: vectors::setup_roots(&v),
             };
             let iv = config.contract_iv();
-            assert_eq!(&calldata[4..36], &public, "the calldata's public input");
-            let stream = calldata[36..].to_vec();
+            let (public, claims, accepts) = (v.public, &v.claims, v.accepts);
+            assert_eq!(&v.calldata[4..36], &public, "the calldata's public input");
+            let stream = v.stream().to_vec();
             let extra: String = claims.iter().map(|c| format!("PCSCLAIM {}\n", hex(c))).collect();
             assert!(accepts, "{config_name}: the vector's verdict");
             assert!(
