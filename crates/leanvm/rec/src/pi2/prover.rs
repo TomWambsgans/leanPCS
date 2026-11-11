@@ -32,7 +32,7 @@ use leanvm_statement::transcript::{Checks, KeccakWriter, root_halves, statement_
 use primitives::field::{F64, F192};
 use quotient::domain::{beta, chain, point};
 use quotient::ntt::{self, ESplat, Ex8, Kx8, Kx8U, MixedSum};
-use pcs_claim::{Commitment, PcsClaim};
+use pcs_claim::{Codeword, Commitment, PcsClaim};
 
 use super::circuit::{Circuit, Formula, Lin, Read};
 pub use super::verifier::{
@@ -1364,11 +1364,11 @@ pub fn open(proved: Proved, setup: &Setup) -> (Reduced<E>, [Hash; 2], Openings) 
     let [cw, cs, cq, cp] = claims(m, &reduced, &roots, &setup.root(), setup.ood());
     let (w_words, w_commitment) = witness;
     let (q_words, q_commitment) = quotient;
-    let pw = timed("W", &mut || pcs_claim::open_words(&w_words, &w_commitment, &cw));
-    let ps = timed("setup", &mut || pcs_claim::open_words_keeping(&setup.words, &setup.commitment, &cs));
+    let pw = timed("W", &mut || pcs_claim::open(&w_words, &w_commitment, &cw, Codeword::Free));
+    let ps = timed("setup", &mut || pcs_claim::open(&setup.words, &setup.commitment, &cs, Codeword::Keep));
     // Q's two claims together: their lane rounds read the stack twice in all rather than twice each.
     let clock = Instant::now();
-    let [pq, pp]: [_; 2] = pcs_claim::open_words_batch(&q_words, &q_commitment, &[cq, cp])
+    let [pq, pp]: [_; 2] = pcs_claim::open_batch(&q_words, &q_commitment, &[cq, cp], Codeword::Free)
         .try_into()
         .unwrap_or_else(|_| unreachable!("two proofs"));
     if profile {

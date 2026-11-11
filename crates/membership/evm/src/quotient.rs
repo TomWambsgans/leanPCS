@@ -188,8 +188,7 @@ fn recorded(log_rows: usize, declared: bool) -> Recorded {
 /// The PCS claims [`contract`] checks declared, in order: those a proof leaves ([`quotient::protocol::verify`]) on
 /// their commitments, as [`quotient::protocol::verify_openings`] opens them.
 pub fn pcs_claims(index: &Commitment, commitments: &Commitments, claims: &Claims) -> Vec<PcsClaim> {
-    let on = [commitments.witness, *index, commitments.table];
-    claims.all().iter().map(|(k, claim)| on[*k].pcs_claim(claim)).collect()
+    claims.pcs_claims(index, commitments).to_vec()
 }
 
 /// The calldata of `setIndexCommitment(index)`.
@@ -319,7 +318,7 @@ mod tests {
     static CIRCUIT: LazyLock<(Circuit, Index, Commitment)> = LazyLock::new(|| {
         let circuit = membership();
         let index = Index::new(&circuit);
-        let commitment = Commitment::of(&index.commit());
+        let commitment = Commitment::of(index.commit());
         (circuit, index, commitment)
     });
 

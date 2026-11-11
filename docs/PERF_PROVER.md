@@ -55,15 +55,15 @@ Each in the file its header names; every one keeps the proofs.
 
 - **Out-of-domain answers in one pass** over every lane, unreduced `dot_base` products (`pcs::whir::dense_lane_inner_products`;
   `pcs_claim::evaluate_lanes`), and the lane products kept for the openings' first lane round
-  (`pcs_claim::Commitment::ood_lanes`, `recursive_prover_with_lane_tensors_known`).
-- **Several openings on one commitment at once** (π2's `Q`: `pcs_claim::open_words_batch`,
+  (`pcs_claim::Commitment::ood_lanes`, `recursive_prover_with_lane_tensors_batch`'s `known`).
+- **Several openings on one commitment at once** (π2's `Q`: `pcs_claim::open_batch`,
   `recursive_prover_with_lane_tensors_batch`): their lane rounds read the stack twice in all, not twice each.
 - **`eq` low weights never written out** (`pcs::whir::Low::Eq`): the product of two tables of `2^11`, exact.
-- **Tables committed up to their last nonzero lane** (`pcs_claim::commit_lanes`, `opening::commit_lanes`): the
+- **Tables committed up to their last nonzero lane** (`pcs_claim::commit`, `opening::commit`): the
   commitment and openings of the leading lanes are those of the whole stack.
 - **All-zero lanes skipped** in commitments, openings' re-encodes and lane rounds (`pcs::whir::commit_tree_skipping_in`,
-  `encoded_rows_skipping`, `recursive_prover_with_lane_tensors_skipping`, `lane_inner_products`, `collapse_lanes`,
-  `dense_lane_inner_products_skipping`), and left out of kept codewords (`commit_skipping`, `L0Rows::Compact`,
+  `encoded_rows_skipping`, `lane_inner_products`, `collapse_lanes`,
+  `dense_lane_inner_products_skipping`), and left out of kept codewords (`commit_skipping`, `KeptCodeword`,
   `AdditiveNttF64::encode_two_sweep_blocks_into`): π2's `Q` keeps 3 rather than 4 GiB.
 - **The encode in two block-wise sweeps** from the message as it lies (`AdditiveNttF64::encode_two_sweep_with`,
   `encode_two_sweep_blocks_with`), into the kept codeword in place.
@@ -72,8 +72,8 @@ Each in the file its header names; every one keeps the proofs.
 - **Memory mapped by the workers** (`pcs_claim::mapped_words`): each worker first-touches its own pages; the
   commitments run largest first so that each freed buffer serves the next.
 - **No copies on one thread** in the membership prover: the quarters' transforms read their source as their first
-  pass writes them (`ntt::values_upper`, `values_upper_many`); the witness's values made in `W`'s allocation.
-- **The membership index keeps its codeword** (`opening::commit_lanes_keeping_codeword`, `opening::open_keeping`): the wiring's opening, made
+  pass writes them (`ntt::values_upper_many`); the witness's values made in `W`'s allocation.
+- **The membership index keeps its codeword** (`Index::commit`, `opening::open` with `Codeword::Keep`): the wiring's opening, made
   by every proof, encodes no rows again.
 - **The cells' digest by the batched Keccak-256** (`protocol::cells_digest`, `hash_many`): the same digest.
 - **The public weight's tensor factored** in the quotient's block-wise pass (`protocol.rs`, `quotient_block`): one

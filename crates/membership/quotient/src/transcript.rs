@@ -35,12 +35,6 @@ pub fn halves_root(scalars: &[F192; 2]) -> Result<Hash, TranscriptError> {
     Ok(root)
 }
 
-/// A root as two scalars, its 128-bit halves each read as two little-endian words (leanVM's `hash_to_scalars`): the
-/// encoding π2's stream uses (`crates/leanvm/rec`).
-pub fn root_scalars(root: &Hash) -> [F192; 2] {
-    fiat_shamir::merkle::hash_to_scalars(root)
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TranscriptError {
     /// The stream ended before the verifier read all it needs.

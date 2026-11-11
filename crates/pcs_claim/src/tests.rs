@@ -24,8 +24,8 @@ fn naive(words: &[F64], point: &[F192]) -> F192 {
     })
 }
 
-fn opens(committed: &Committed, claim: &PcsClaim) -> bool {
-    verify(&claim.encode(), &wire_proof(&open(committed, claim)))
+fn opens(words: &[F64], commitment: &Commitment, claim: &PcsClaim) -> bool {
+    verify(&claim.encode(), &wire_proof(&open(words, commitment, claim, Codeword::Free)))
 }
 
 #[test]
@@ -116,10 +116,10 @@ fn the_ood_point_is_its_derivation() {
 #[test]
 fn the_ood_answer_changes_with_any_word() {
     let f = words(15, 4);
-    let a = commit(f.clone());
+    let a = commit(f.clone(), false);
     let mut g = f;
     g[12345] = F64(g[12345].0 ^ 1);
-    let b = commit(g);
+    let b = commit(g, false);
     assert_ne!(a.root, b.root);
     assert_ne!(a.ood, b.ood);
     assert_eq!(a.ood, naive(a.words(), &ood_point(15, &a.root)));
@@ -129,12 +129,12 @@ fn the_ood_answer_changes_with_any_word() {
 fn claims_open_at_15_16_and_20_variables() {
     let mut rng = Rng::new(5);
     for n in [15, 16, 20] {
-        let committed = commit(words(n, n as u64));
+        let committed = commit(words(n, n as u64), false);
         let claim = committed.claim_at(rng.ext_vec(n));
-        assert!(opens(&committed, &claim), "n = {n}");
+        assert!(opens(committed.words(), &committed, &claim), "n = {n}");
         // A second claim on the same commitment opens on its own.
         let other = committed.claim_at(rng.ext_vec(n));
-        assert!(opens(&committed, &other), "n = {n}");
+        assert!(opens(committed.words(), &committed, &other), "n = {n}");
     }
 }
 
@@ -142,18 +142,18 @@ fn claims_open_at_15_16_and_20_variables() {
 #[test]
 fn an_opening_proves_the_naive_value() {
     let mut rng = Rng::new(6);
-    let committed = commit(words(15, 6));
+    let committed = commit(words(15, 6), false);
     let point = rng.ext_vec(15);
     let claim = committed.claim(point.clone(), naive(committed.words(), &point));
-    assert!(opens(&committed, &claim));
+    assert!(opens(committed.words(), &committed, &claim));
 }
 
 #[test]
 fn false_claims_and_altered_proofs_are_rejected() {
     let mut rng = Rng::new(7);
-    let committed = commit(words(16, 7));
+    let committed = commit(words(16, 7), false);
     let claim = committed.claim_at(rng.ext_vec(16));
-    let proof = wire_proof(&open(&committed, &claim));
+    let proof = wire_proof(&open(committed.words(), &committed, &claim, Codeword::Free));
     assert!(verify(&claim.encode(), &proof));
     let rejects = |claim: &PcsClaim| !verify(&claim.encode(), &proof);
     // A wrong value, point, out-of-domain answer or root, against the honest proof.
@@ -172,12 +172,12 @@ fn false_claims_and_altered_proofs_are_rejected() {
     // A false claim cannot be opened by the honest prover: its proof does not verify.
     let mut false_claim = claim.clone();
     false_claim.value += F192::ONE;
-    let forged = std::panic::catch_unwind(|| wire_proof(&open(&committed, &false_claim)));
+    let forged = std::panic::catch_unwind(|| wire_proof(&open(committed.words(), &committed, &false_claim, Codeword::Free)));
     if let Ok(forged) = forged {
         assert!(!verify(&false_claim.encode(), &forged));
     }
     // Altered proofs: a scalar of the stream, a word of an opened row, a sibling hash.
-    let base = open(&committed, &claim);
+    let base = open(committed.words(), &committed, &claim, Codeword::Free);
     for k in [2, 7, base.stream.len() / 2, base.stream.len() - 1] {
         let mut altered = base.clone();
         altered.stream[k] += F192::ONE;
@@ -208,24 +208,20 @@ fn leading_lanes_commit_and_open_as_the_whole_stack() {
     for lanes in [1usize, 10, 33, 64] {
         let mut full = words(n, lanes as u64);
         full[lanes * lane..].iter_mut().for_each(|w| *w = F64::ZERO);
-        let whole = commit(full.clone());
+        let whole = commit(full.clone(), false);
         let point = rng.ext_vec(n);
         for keep in [false, true] {
-            let leading = full[..lanes * lane].to_vec();
-            let committed = if keep {
-                commit_lanes_keeping_codeword(leading, n)
-            } else {
-                commit_lanes(leading, n)
-            };
+            let leading = &full[..lanes * lane];
+            let committed = commit_words(leading, n, keep);
             assert_eq!(committed.root, whole.root, "the root at {lanes} lanes");
             assert_eq!(committed.ood, whole.ood, "the out-of-domain answer at {lanes} lanes");
-            let claim = committed.claim_at(point.clone());
+            let claim = committed.claim(point.clone(), evaluate_lanes(leading, &point));
             assert_eq!(claim.value, naive(&full, &point));
             assert_eq!(claim, whole.claim_at(point.clone()));
-            assert!(opens(&committed, &claim), "an opening at {lanes} lanes (codeword kept: {keep})");
+            assert!(opens(leading, &committed, &claim), "an opening at {lanes} lanes (codeword kept: {keep})");
             let mut wrong = claim.clone();
             wrong.value += F192::ONE;
-            assert!(!verify(&wrong.encode(), &wire_proof(&open(&committed, &claim))));
+            assert!(!verify(&wrong.encode(), &wire_proof(&open(leading, &committed, &claim, Codeword::Free))));
         }
     }
 }
@@ -252,7 +248,10 @@ fn zero_lanes_left_out_change_no_proof() {
         root: commitment.root,
         ood: combine_lanes(&ood_lanes, &z[n - LANE_FOLD..]),
         tree: data.merkle_tree,
-        codeword: Mutex::new(Some(data.codeword)),
+        codeword: Mutex::new(Some(KeptCodeword {
+            words: data.codeword,
+            skipped: None,
+        })),
         ood_lanes,
         zero_lanes: vec![false; 1 << LANE_FOLD],
     };
@@ -265,7 +264,7 @@ fn zero_lanes_left_out_change_no_proof() {
         .collect();
     let want: Vec<Proof> = claims
         .iter()
-        .map(|claim| open_words_keeping(&full, &reference, claim))
+        .map(|claim| open(&full, &reference, claim, Codeword::Keep))
         .collect();
     for keep in [true, false] {
         let committed = commit_words(&full, n, keep);
@@ -276,7 +275,7 @@ fn zero_lanes_left_out_change_no_proof() {
             "the empty slots' lanes flagged"
         );
         if keep {
-            let kept = committed.codeword.lock().expect("the codeword").as_ref().map(Vec::len);
+            let kept = committed.codeword.lock().expect("the codeword").as_ref().map(|kept| kept.words.len());
             assert_eq!(
                 kept,
                 Some(48 << (n - LANE_FOLD + LOG_INV_RATE)),
@@ -285,19 +284,19 @@ fn zero_lanes_left_out_change_no_proof() {
         }
         for (claim, want) in claims.iter().zip(&want) {
             assert_eq!(
-                &open_words_keeping(&full, &committed, claim),
+                &open(&full, &committed, claim, Codeword::Keep),
                 want,
                 "alone (kept: {keep})"
             );
         }
         // Batched: from the kept codeword, which the batch frees, then encoded again.
         assert_eq!(
-            open_words_batch(&full, &committed, &claims),
+            open_batch(&full, &committed, &claims, Codeword::Free),
             want,
             "batched (kept: {keep})"
         );
         assert_eq!(
-            open_words_batch(&full, &committed, &claims),
+            open_batch(&full, &committed, &claims, Codeword::Free),
             want,
             "batched again (kept: {keep})"
         );
@@ -317,7 +316,7 @@ fn openings_survive_a_poisoned_codeword_lock() {
     let n = 15;
     let mut rng = Rng::new(8);
     for take in [false, true] {
-        let committed = commit_lanes_keeping_codeword(words(n, 9), n);
+        let committed = commit(words(n, 9), true);
         let poison = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let mut kept = committed.commitment.codeword.lock().expect("not yet poisoned");
             if take {
@@ -327,40 +326,9 @@ fn openings_survive_a_poisoned_codeword_lock() {
         }));
         assert!(poison.is_err() && committed.commitment.codeword.is_poisoned());
         let claim = committed.claim_at(rng.ext_vec(n));
-        let proof = open_words_keeping(&committed.words, &committed.commitment, &claim);
+        let proof = open(&committed.words, &committed, &claim, Codeword::Keep);
         assert!(verify(&claim.encode(), &wire_proof(&proof)), "kept (codeword taken: {take})");
-        assert!(opens(&committed, &claim), "freed (codeword taken: {take})");
-        assert!(opens(&committed, &committed.claim_at(rng.ext_vec(n))), "after (codeword taken: {take})");
-    }
-}
-
-/// The prover's time at a large stack (`PCS_CLAIM_BENCH_N`, default 26): the commitment, then a claim opened twice
-/// (both reading the kept codeword), and the weights' construction alone.
-#[test]
-#[ignore]
-fn opening_time() {
-    let n: usize = std::env::var("PCS_CLAIM_BENCH_N").ok().map_or(26, |v| v.parse().expect("n"));
-    if std::env::var_os("PCS_CLAIM_TRACING").is_some() {
-        bench::init_tracing();
-    }
-    parallel::init();
-    let mut rng = Rng::new(3);
-    let words: Vec<F64> = (0..1usize << n).map(|i| F64(i as u64 ^ 0x5555)).collect();
-    let started = std::time::Instant::now();
-    let committed = commit_lanes_keeping_codeword(words, n);
-    println!("commitment 2^{n}: {:.3} s", started.elapsed().as_secs_f64());
-    let point = rng.ext_vec(n);
-    let started = std::time::Instant::now();
-    let claim = committed.claim_at(point.clone());
-    println!("evaluate: {:.3} s", started.elapsed().as_secs_f64());
-    let started = std::time::Instant::now();
-    let _w = [eq_tensor(&ood_point(n, &committed.root), F192::ONE), eq_tensor(&point, F192::ONE)];
-    println!("weights: {:.3} s", started.elapsed().as_secs_f64());
-    for pass in 0..3 {
-        let started = std::time::Instant::now();
-        let proof = tracing::info_span!("opening", pass)
-            .in_scope(|| open_words_keeping(committed.words(), committed.commitment(), &claim));
-        println!("open {pass}: {:.3} s", started.elapsed().as_secs_f64());
-        assert!(verify(&claim.encode(), &wire_proof(&proof)));
+        assert!(opens(committed.words(), &committed, &claim), "freed (codeword taken: {take})");
+        assert!(opens(committed.words(), &committed, &committed.claim_at(rng.ext_vec(n))), "after (codeword taken: {take})");
     }
 }

@@ -26,32 +26,46 @@ import sys
 sys.dont_write_bytecode = True  # loading the other script must not write a __pycache__ next to it
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-
-
-def _load(name):
-    spec = importlib.util.spec_from_file_location(name, os.path.join(HERE, name + ".py"))
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
-
-
-uni = _load("leanvm_univariate_params")
+_spec = importlib.util.spec_from_file_location("leanvm_univariate_params", os.path.join(HERE, "leanvm_univariate_params.py"))
+uni = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(uni)
 LOGQ = uni.LOGQ
 CERTIFIED_L0 = uni.CERTIFIED_L0
 bits, err = uni.bits, uni.err
 
 # ---------------------------------------------------------------------------------------------------------------------
-# MEASURED: pi1-rec3's verifier (point claims; SPEC-REC.md §1.2) and pi2's D16v circuit of it (§2.4.5, §10.3).
+# The committed real proofs (crates/leanvm/univariate/tests/vectors/): a proof's stream is its calldata past the
+# selector and the public word (`PI1_STREAM_AT`, crates/leanvm/univariate/tests/vectors/mod.rs), read here rather
+# than copied.
+VECTORS = os.path.join(HERE, "..", "crates", "leanvm", "univariate", "tests", "vectors")
+STREAM_AT = 4 + 32
+
+
+def vector_stream(name):
+    """The stream bytes of the committed vector `name`."""
+    with open(os.path.join(VECTORS, name + ".txt")) as f:
+        for line in f:
+            key, _, value = line.partition(" ")
+            if key == "calldata":
+                return len(value.strip()) // 2 - STREAM_AT
+    raise ValueError(f"{name}: no calldata")
+
+
+# MEASURED: pi1-rec3's verifier (point claims; SPEC-REC.md §1.2) and pi2's D16v circuit of it (§2.4.5, §10.3); the
+# streams the vectors' (128 signatures: keccak128_rec3, the reference trace; 400: keccak_rec3).
 PI1_REC3 = {
-    128: dict(stream=9232, calls=70, perms=116, products=8476, linear=6633, challenges=14, values=3),
-    400: dict(stream=9424, calls=71, perms=118, products=8673, linear=6887, challenges=14, values=3),
+    128: dict(stream=vector_stream("keccak128_rec3"), calls=70, perms=116, products=8476, linear=6633, challenges=14,
+              values=3),
+    400: dict(stream=vector_stream("keccak_rec3"), calls=71, perms=118, products=8673, linear=6887, challenges=14,
+              values=3),
 }
 # pi1-rec4 (docs/leanvm/univariate/SPEC.md §14.4): the challenges no message separates from one Keccak-f each, the
 # ring map after C2's commitment. The same stream, E operations and claims as pi1-rec3.
 PI1_REC4 = {
-    128: dict(stream=9280, calls=60, perms=106),
-    400: dict(stream=9472, calls=61, perms=108),
+    128: dict(stream=vector_stream("keccak128_rec4"), calls=60, perms=106),
+    400: dict(stream=vector_stream("keccak_rec4"), calls=61, perms=108),
 }
+assert all(PI1_REC4[x]["stream"] == PI1_REC3[x]["stream"] for x in PI1_REC3), "pi1-rec4's stream is pi1-rec3's"
 KECCAK_D16V = 130_944  # positions a Keccak-f[1600] (SPEC-REC.md §2.4.1; the design's 130,736)
 # A permutation whose caller reads its digest alone (lanes 0 .. 3): its last round's plane 0 (SPEC-REC.md §2.4.1).
 KECCAK_D16V_DIGEST = 130_944 - 4 * 64 * 16
@@ -75,7 +89,8 @@ def pi2_stacks(log_n=LOG_N):
 
 
 def stack(words):
-    return max(24, math.ceil(math.log2(words) - 1e-9))
+    """A stack's variables, at least 24: the certified lists start at 2^24."""
+    return uni.stack_vars(words, floor=24)
 
 
 def pi2_rounds(log_n=LOG_N, row=ROW):

@@ -189,7 +189,7 @@ the hash a payload of the frame): `W`'s, the setup's (its commitment a constant)
    `Z_V` itself). `Q`, committed (its stack built in place, the setup's from one proof to the next; `Q` and `W` keep
    their codewords until their openings, which read the queried rows from them; the all-zero lanes, which `pcs_claim::commit_words`
    finds in the stack itself (here `G`'s and `S`'s slots), left out of the encodes and the kept codeword); `t`; the fold values, `ξ` and `s = P(t)`; `ρ`; the verifier's four claims, each opened by its own
-   PCS opening (`pcs_claim`: leanVM's WHIR unchanged, rate 1/2; `Q`'s two by `open_words_batch`, one pass of their lane
+   PCS opening (`pcs_claim`: leanVM's WHIR unchanged, rate 1/2; `Q`'s two by `open_batch`, one pass of their lane
    rounds for two proofs, each the one it would be alone). `PI2_PROFILE=1` prints the phases.
 
 ## 4. Decisions and deviations from SPEC-REC's design
@@ -363,7 +363,7 @@ once (`269 · 2^-137` a query; seven openings), π2 keeps 128.93 bits as `Q/ε` 
     setups' constants;
   - every claim is a point of its commitment's whole stack (`n` its variables), its value the polynomial's there;
   - **one PCS version** (1): leanVM's WHIR at rate `1/2` on its ladder (`pcs::whir::DEPLOYED_SCHEDULE`), every opening
-    one claim's (`pcs_claim::open_words`, `verify_claim`); the stacks' leading lanes are committed alone (the
+    one claim's (`pcs_claim::open`, `verify_claim`); the stacks' leading lanes are committed alone (the
     commitment of the whole stack), the opening's rows padded back (`pcs_claim::commit_words`).
 - **The mock frame** (`leanvm_statement::evm::machine::PcsFrame`) declares encoded claims; a measuring run declares any
   well-formed one. The end-to-end tests declare π1's claims from the vector (written by π1's prover from its openings)

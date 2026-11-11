@@ -99,8 +99,8 @@ this PIOP: one claim for `Q`'s identity and pushes, fewer values at `t` (`PI2.md
 ### π1
 
 - **π1-rec3 → π1-rec4** (2026-11-11): π1-rec3 drew every challenge by its own Keccak-256 call (70 calls, 116
-  Keccak-f, 9,232 B of stream); π1-rec4 draws the challenges no message separates from one Keccak-f (60 calls, 106
-  Keccak-f, 9,280 B), at the same 128.79 bits. π1-rec3 stays in the code (the Lean states it; its vectors and
+  Keccak-f, 9,280 B of stream); π1-rec4 draws the challenges no message separates from one Keccak-f (60 calls, 106
+  Keccak-f, the same 9,280 B), at the same 128.79 bits. π1-rec3 stays in the code (the Lean states it; its vectors and
   contract remain). Earlier shapes: π1-rec (`FsShape::Rec`: `α` and the zerocheck's eq point as powers), π1-rec2
   (narrow batch challenges), π1-rec3 (the batch two variables a round: 14 challenges instead of 27; π1's claims 408 B
   of calldata instead of 720, 744 at 400 signatures).
@@ -146,8 +146,8 @@ prover's optimisations, 4.4 s + 1.7 s openings and 3.8 s of witness, 9.8 GB.
 ## Removed lines
 
 - **SLH-DSA proof of concept** (`crates/slh_dsa`, `SPEC-FAST.md` in git): the Keccak-f Flock block and its structured
-  terminal were designed for it (milestones M1, M3; `crates/membership/quotient/src/circuit.rs` cites its §4.3 for
-  lane circuits). Its §4.5 linked the block's ports to a membership-style witness by a quotient `Q_link`; the Keccak VM
+  terminal were designed for it (milestones M1, M3; the lane circuits of its §4.3, kept in
+  `crates/membership/quotient/src/circuit.rs` and used by nothing else, were removed later). Its §4.5 linked the block's ports to a membership-style witness by a quotient `Q_link`; the Keccak VM
   uses `Q_W`'s copy identities instead.
 - **The BLAKE2s VM** (leanVM `42422001`'s BLAKE2s block and π1 over it): removed from the Rust and from `formal/`
   (`Lv42`, `UniStatement` keep comments of that era). `formal/README.upstream.md` (deleted) was leanVM's

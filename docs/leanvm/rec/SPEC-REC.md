@@ -68,7 +68,7 @@ the checks; the claims' words. This graph is the circuit π2 proves.
 
 | | π1-rec4, 128 (`REFERENCE`) | π1-rec4, 400 | π1-rec3, 128 | π1-rec3, 400 |
 |---|---:|---:|---:|---:|
-| stream bytes | 9,280 | 9,472 | 9,232 | 9,424 |
+| stream bytes | 9,280 | 9,472 | 9,280 | 9,472 |
 | Keccak-256 calls (seed included) | 60 | 61 | 70 | 71 |
 | Keccak-f[1600] permutations | 106 | 108 | 116 | 118 |
 | `E` products / linear operations (kernels expanded) | | | 8,476 / 6,633 | 8,673 / 6,887 |

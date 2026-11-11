@@ -177,8 +177,7 @@ leanEthereum) and is licensed, like leanVM, under the MIT license ([`LICENSE-MIT
 - **Vendored, leanVM `c445e3d5`** (the commit [leanerVM](https://github.com/Verified-zkEVM/leanerVM)'s `mumbai`
   formalizes): `crates/vendor/leanvm-c445e3d5/*`, unchanged but for a header line, except: `verifier/src/lib.rs`
   makes the WHIR verifier public; `pcs`'s `src/whir.rs`, `src/whir_ntt_ext.rs` and `src/ntt/additive_ntt_f64.rs` add
-  low-memory paths (the last also fixes an aliasing bug of the in-place encodes); `primitives/src/hash.rs` and
-  `fiat_shamir/src/lib.rs` carry test-only trace hooks behind a `trace` feature; a lane tensor may carry a scale for
+  low-memory paths (the last also fixes an aliasing bug of the in-place encodes); a lane tensor may carry a scale for
   every lane of the cube (`pcs`'s `LaneTensor`, `tensor_lane_rounds`), for `crates/pcs_claim`; robustness asserts and
   bounds checks; prover speedups, the same commitments and proofs (`pcs`, `primitives/src/hash.rs`,
   `parallel/src/lib.rs`, `bench/src/allocator.rs`; tests in `pcs`'s `src/whir/adversarial.rs`). Each file's header
@@ -224,7 +223,7 @@ leanEthereum) and is licensed, like leanVM, under the MIT license ([`LICENSE-MIT
   `tests/evm_vectors.rs` replays them; `tests/prove_real.rs` writes them (`WRITE_VECTORS=<dir>`, `VECTOR_FILE`).
 - **Lean-facing outputs.** Some tests write the inputs of `formal/`'s differential runners or check files there:
   `crates/membership/evm/src/lean.rs` (`formal/Implementation/Graph.lean`, `UPDATE_LEAN=1`), `crates/membership/quotient`'s
-  `tests/{lean_beta_vector,lean_field_vectors,skel_trace,whir_bridge_vector,whir_large_params}.rs` and
+  `tests/{lean_beta_vector,lean_field_vectors,whir_bridge_vector,whir_large_params}.rs` and
   `examples/statement_vectors.rs`, `crates/leanvm/statement/tests/{lean_keccak_tables,lean_keccak_block}.rs`,
   `crates/leanvm/univariate/tests/lean_keccak_vectors.rs`, `crates/leanvm/rec/tests/{lean_circuit_keccak,
   lean_pad_counts,lean_pi2_prover,lean_graph_keccak,lean_statement_keccak}.rs`. A change of their output must go

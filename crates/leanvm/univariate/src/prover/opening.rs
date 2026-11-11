@@ -33,7 +33,7 @@ pub fn claim(committed: &Committed, point: &[F192], value: F192) -> PcsClaim {
 
 /// Prove `stack(point) = value` (one opening of the claim). A kept codeword serves this opening and is freed after it.
 pub fn open(words: &[F64], committed: &Committed, point: &[F192], value: F192) -> Proof {
-    pcs_claim::open_words(words, committed, &claim(committed, point, value))
+    pcs_claim::open(words, committed, &claim(committed, point, value), pcs_claim::Codeword::Free)
 }
 
 /// Check an opening of `claim`: the EIP draft's `pcs_verify` (`pcs_claim::verify_claim`).

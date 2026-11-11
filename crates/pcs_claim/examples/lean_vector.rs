@@ -2,45 +2,18 @@
 //! The vectors `formal/WhirBridge/Test/CheckPcs.lean` reads: PCS claims (version 1) on polynomials of `n = 15, 16,
 //! 18` variables (word `i` the low 64 bits of `keccak256("leanPCS-lean" || n || i)`, the point's coordinate `j` the
 //! element the low 24 bytes of `keccak256("leanPCS-lean-point" || n || j)` encode), each with the claim's bytes, its
-//! fields, the out-of-domain point, and its opening's stream and one full Merkle path per query (the replay of
-//! `verify_claim`'s transcript, nothing checked).
+//! fields, the out-of-domain point, and its opening's stream and one full Merkle path per query (the paths
+//! `verify_claim_paths` checks).
 //!
 //! `cargo run --release -p pcs_claim --example lean_vector > target/pcs_claim_vector.txt`
 
-use pcs_claim::{LOG_INV_RATE, PUBLIC_DIGEST, PcsClaim, commit, element_of, iv, ood_point, open, verify, wire_proof};
+use pcs_claim::lean::{limbs, line, opening, words};
+use pcs_claim::{Codeword, PcsClaim, commit, element_of, ood_point, open};
 use primitives::field::{F64, F192};
 use primitives::hash::hash as keccak256;
 
-fn words(bytes: &[u8; 32]) -> [u64; 4] {
-    std::array::from_fn(|i| u64::from_le_bytes(bytes[8 * i..8 * i + 8].try_into().expect("8 bytes")))
-}
-
-fn line(tag: &str, values: impl IntoIterator<Item = u64>) -> String {
-    let mut s = tag.to_string();
-    for v in values {
-        s.push(' ');
-        s.push_str(&v.to_string());
-    }
-    s.push('\n');
-    s
-}
-
-fn limbs(x: &F192) -> [u64; 3] {
-    [x.c0, x.c1, x.c2]
-}
-
 fn vector(name: &str, claim: &PcsClaim, proof: &fiat_shamir::transcript::Proof) -> String {
-    use verifier::{Digest, E, Transcript};
-    let wire = &wire_proof(proof);
     let n = claim.n as usize;
-    let mut transcript = Transcript::new(wire, Digest(iv(claim)), Digest(PUBLIC_DIGEST), false);
-    let halves = transcript.next_scalars(2).expect("the root's two scalars");
-    assert_eq!(Digest::from_halves(halves[0], halves[1]), Ok(Digest(claim.root)));
-    let _lambda = transcript.sample();
-    let zero = E::new(0, 0, 0);
-    verifier::whir::verify_whir(&mut transcript, n, 1u64 << n, LOG_INV_RATE, zero, Digest(claim.root), &|_| zero)
-        .expect("the replay walks the proof");
-    let paths = transcript.finish().expect("the replay reads the whole proof");
     let mut out = format!("vector {name}\n");
     out += &line("n", [n as u64]);
     out += &line("claimbytes", claim.encode().iter().map(|&b| b as u64));
@@ -50,17 +23,7 @@ fn vector(name: &str, claim: &PcsClaim, proof: &fiat_shamir::transcript::Proof) 
     out += &line("point", claim.point.iter().flat_map(limbs));
     out += &line("value", limbs(&claim.value));
     out += &line("oodpoint", ood_point(n, &claim.root).iter().flat_map(limbs));
-    out += &line("stream", proof.stream.iter().flat_map(limbs));
-    for path in &paths {
-        out += &line(
-            "open",
-            [path.leaf.len() as u64]
-                .into_iter()
-                .chain(path.leaf.iter().map(|k| k.0))
-                .chain(path.siblings.iter().flat_map(words)),
-        );
-    }
-    out + "end\n"
+    out + &opening(claim, proof) + "end\n"
 }
 
 fn main() {
@@ -72,7 +35,7 @@ fn main() {
                 F64(u64::from_be_bytes(digest[24..].try_into().expect("8 bytes")))
             })
             .collect();
-        let committed = commit(words);
+        let committed = commit(words, false);
         let point: Vec<F192> = (0..n as u8)
             .map(|j| {
                 let digest = keccak256(&[b"leanPCS-lean-point".as_slice(), &[n as u8], &[j]].concat());
@@ -80,8 +43,7 @@ fn main() {
             })
             .collect();
         let claim = committed.claim_at(point);
-        let proof = open(&committed, &claim);
-        assert!(verify(&claim.encode(), &wire_proof(&proof)), "the honest opening verifies");
+        let proof = open(committed.words(), &committed, &claim, Codeword::Free);
         out += &vector(&format!("n{n}"), &claim, &proof);
     }
     print!("{out}");

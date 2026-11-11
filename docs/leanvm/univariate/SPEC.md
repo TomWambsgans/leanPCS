@@ -139,7 +139,7 @@ its own hash. `KECCAK_REC3` (`FsShape::Rec3`, π1-rec3, the recursion's inner pr
 as `(c, c², c⁴, c⁸)` of one challenge and Flock's zerocheck coordinates after the seven fixed ones as successive
 squares of one challenge (`docs/leanvm/rec/SPEC-REC.md` §1.4), and runs the batching sumcheck two variables a round
 with narrow (160-bit) challenges (§14.1). At 128 signatures π1-rec3's verifier makes 70 Keccak-256 calls (116
-Keccak-f) over a 9,232-byte stream. `KECCAK_REC4` (`FsShape::Rec4`, π1-rec4, the deployed recursion's inner proof)
+Keccak-f) over a 9,280-byte stream. `KECCAK_REC4` (`FsShape::Rec4`, π1-rec4, the deployed recursion's inner proof)
 is π1-rec3 with the challenges no message separates drawn from one Keccak-f each, and the ring map drawn after `C2`'s
 commitment (§14.4): 60 calls, 106 Keccak-f at the reference shape. It has no EVM contract of its own (`KECCAK256`
 gives no sponge rate); π2's circuit runs it, and the Lean does not state it. π1's contract IV binds the shape (§13,

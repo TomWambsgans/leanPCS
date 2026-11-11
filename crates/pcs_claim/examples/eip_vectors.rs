@@ -7,7 +7,7 @@
 //!
 //! `cargo run --release -p pcs_claim --example eip_vectors`
 
-use pcs_claim::{PcsClaim, commit, element_bytes, element_of, ood_point, verify, wire_proof};
+use pcs_claim::{Codeword, PcsClaim, commit, element_bytes, element_of, ood_point, verify, wire_proof};
 use primitives::field::F64;
 use primitives::hash::hash as keccak256;
 
@@ -23,7 +23,7 @@ fn main() {
             F64(u64::from_be_bytes(digest[24..].try_into().unwrap()))
         })
         .collect();
-    let committed = commit(words);
+    let committed = commit(words, false);
     let point: Vec<_> = (0..n as u8)
         .map(|j| {
             let digest = keccak256(&[b"leanPCS-point".as_slice(), &[j]].concat());
@@ -45,7 +45,7 @@ fn main() {
     println!("value       0x{}", hex(&element_bytes(claim.value)));
     println!("PCS_claim   ({} bytes) 0x{}", bytes.len(), hex(&bytes));
     println!("keccak256   0x{}", hex(&claim.hash()));
-    let proof = wire_proof(&pcs_claim::open(&committed, &claim));
+    let proof = wire_proof(&pcs_claim::open(committed.words(), &committed, &claim, Codeword::Free));
     println!("verifies    {}", verify(&bytes, &proof));
     let mut wrong = claim.clone();
     wrong.value += primitives::field::F192::ONE;
