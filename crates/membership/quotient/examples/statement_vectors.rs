@@ -7,10 +7,10 @@
 //! - `R` lines: the reduction alone ([`protocol::verify`]) on random 11-scalar streams (and a few of other
 //!   lengths, or with a root that is not two halves) at `2^12` to `2^23` rows (the commitments take `2^13` to
 //!   `2^22`, [`protocol::supported`]), and on the honest proofs below: the two commitments (root, out-of-domain
-//!   answer) and the four claims, or the rejection.
+//!   answer) and the three claims, or the rejection.
 //! - `Q` lines: the honest prover's inputs (input bits, the random rows' words, the blinding) and the stream it
 //!   sends.
-//! - `P` lines: whole proofs (the reduction and the four openings) on a small circuit of `2^17` rows, honest and
+//! - `P` lines: whole proofs (the reduction and the three openings) on a small circuit of `2^17` rows, honest and
 //!   tampered, the openings in their raw form (one full Merkle path per query), with the Rust verifier's verdict on
 //!   that raw form. With `--full`, also the membership circuit (`2^22` rows).
 //! - `I` lines: a circuit's size, its number of inputs and its commitment (its wiring table's root and out-of-domain
@@ -161,14 +161,14 @@ fn raw(commitment: &Commitment, claim: &Claim, proof: &fiat_shamir::transcript::
     raw
 }
 
-/// A whole proof: the reduction's stream and the four openings in raw form.
+/// A whole proof: the reduction's stream and the three openings in raw form.
 #[derive(Clone)]
 struct Whole {
     log_rows: usize,
     index: Commitment,
     statement: Statement,
     stream: Vec<F192>,
-    openings: [RawOpening; 4],
+    openings: [RawOpening; 3],
 }
 
 /// The commitment each claim of [`Claims::all`] is on.
@@ -197,7 +197,7 @@ impl Whole {
         }
     }
 
-    /// The Rust verifier on the raw form: the reduction, then the four openings.
+    /// The Rust verifier on the raw form: the reduction, then the three openings.
     fn accepts(&self) -> bool {
         let proof = Proof {
             stream: self.stream.clone(),
@@ -233,7 +233,7 @@ fn tampered(honest: &Whole) -> Vec<(&'static str, Whole)> {
         cases.push((name, w));
     };
     add("value", &|w| w.stream[6] += F192::ONE);
-    add("next", &|w| w.stream[10] += F192::Y);
+    add("next", &|w| w.stream[9] += F192::Y);
     add("table ood", &|w| w.stream[5] += F192::ONE);
     add("witness root", &|w| w.stream[0].c0 ^= 1);
     add("witness ood", &|w| w.stream[2].c1 ^= 1);

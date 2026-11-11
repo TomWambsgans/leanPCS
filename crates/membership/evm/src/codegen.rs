@@ -1,7 +1,7 @@
 // Adapted from leanVM (https://github.com/leanEthereum/leanVM), branch PCS-openings-aggregation, commit 651453c6,
-// file crates/membership/evm/src/codegen.rs; new here: the checks of the declared claims, the selector, the index commitment in
-// storage (`Entry`), `setIndexCommitment` and the creation code; the assembly is now `crates/evm_link`'s. MIT OR Apache-2.0; see
-// AGENTS.md.
+// file crates/membership/evm/src/codegen.rs; new here: the checks of the declared claims, the entry by calldata's length
+// (no selector), the index commitment in storage (`Entry`), `setIndexCommitment` and the creation code; the assembly is now
+// `crates/evm_link`'s. MIT OR Apache-2.0; see AGENTS.md.
 //! A recorded graph as EVM bytecode: straight-line code, a value used once left on the stack and a shared one
 //! kept in a memory slot, which is reused after its last read.
 
@@ -17,23 +17,21 @@ use crate::record::{Graph, Node};
 /// Memory below the slots is scratch for hashing: the seed's 136 bytes (at 16), or a state and the scalars it absorbs.
 const SEED_SCRATCH: usize = 0xa0;
 
-/// The selector of `verify(bytes32,bytes32,bytes)`, the first 4 bytes of the `keccak256` of that signature: calldata
-/// starting with it is a proof to verify.
-pub const VERIFY: [u8; 4] = [0xde, 0x12, 0xc6, 0x40];
-/// The selector of `setIndexCommitment(bytes32,bytes32)`.
+/// The selector of `setIndexCommitment(bytes32,bytes32)`. A call of the verifier has none: it is calldata of the
+/// verifier's length.
 pub const SET_INDEX: [u8; 4] = [0xda, 0xb9, 0x9d, 0xbd];
 /// The storage slots holding the circuit's commitment: its root, and its out-of-domain answer (as a word, the top
 /// 64 bits zero).
 pub const INDEX_ROOT_SLOT: u8 = 0;
 pub const INDEX_OOD_SLOT: u8 = 1;
 
-/// Where the arguments (calldata after the selector, if any) hold the statement's two words, then the two
-/// commitments' roots; the proof's other scalars follow them.
+/// Where the arguments (calldata) hold the statement's two words, then the two commitments' roots; the proof's other
+/// scalars follow them.
 pub const COMMITMENT: usize = 64;
 pub const SCALARS: usize = COMMITMENT + 2 * 32;
 pub const SCALAR_BYTES: usize = 24;
 
-/// How calls enter the contract: calldata starts with [`VERIFY`], and a call of the verifier carries no value. The
+/// How calls enter the contract: a call of the verifier is calldata of its length, with no value. The
 /// circuit's commitment is in storage slots [`INDEX_ROOT_SLOT`] and [`INDEX_OOD_SLOT`], which the creation code
 /// writes and the owner may change ([`SET_INDEX`]).
 #[derive(Clone, Copy, Debug)]
@@ -58,6 +56,9 @@ fn word(limbs: [u64; 3]) -> [u8; 32] {
 pub enum Word {
     /// A recorded value.
     Node(u32),
+    /// A constant word (no claim of the deployed contract has one since the sum's claim left; kept for the
+    /// returning contracts' and the compiler's generality).
+    #[allow(dead_code)]
     Const([u8; 32]),
     /// The word of the arguments at this offset.
     Calldata(usize),
@@ -82,7 +83,7 @@ const UNTAGGED: &str = "";
 struct Compiler<'a> {
     graph: &'a Graph,
     entry: &'a Entry,
-    /// Where calldata holds the arguments: after the selector, if any.
+    /// Where calldata holds the arguments: at 0, there is no selector.
     base: usize,
     /// The output words of [`Word::StoredRoot`] and [`Word::StoredOod`], if the seed writes them.
     stored_root: Option<usize>,
@@ -246,7 +247,7 @@ struct Compiled {
 }
 
 fn program(graph: &Graph, outputs: &[Word], ending: &Ending, entry: &Entry, inputs: usize) -> Compiled {
-    let base = VERIFY.len();
+    let base = 0;
     // Then a byte, the index of the transaction's frame of PCS claims (a returning contract reads past it).
     let calldata_len = base + SCALARS + SCALAR_BYTES * inputs + 1;
     let stored_root = outputs.iter().position(|word| matches!(word, Word::StoredRoot));
@@ -309,16 +310,8 @@ fn program(graph: &Graph, outputs: &[Word], ending: &Ending, entry: &Entry, inpu
         depth,
         items: Vec::new(),
     };
-    // Not a call of the verifier: calldata of another length, or of another selector, or value.
-    compiler.code(&[&[CALLDATASIZE][..], &push_usize(calldata_len), &[XOR]].concat());
-    let selector = [
-        &[PUSH0, CALLDATALOAD][..],
-        &push_usize(224),
-        &[SHR],
-        &push(&VERIFY),
-        &[XOR],
-    ];
-    compiler.code(&[&selector.concat()[..], &[OR, CALLVALUE, OR]].concat());
+    // Not a call of the verifier: calldata of another length, or value.
+    compiler.code(&[&[CALLDATASIZE][..], &push_usize(calldata_len), &[XOR, CALLVALUE, OR]].concat());
     compiler.item(Item::OtherIf);
     for &id in &graph.nonzero {
         compiler.eval(id);
@@ -438,8 +431,8 @@ fn options() -> Options<'static> {
     }
 }
 
-/// The contract. A call of the verifier is calldata of the selector ([`VERIFY`]) and the arguments: the statement,
-/// the commitments and `inputs` scalars of the proof, of `SCALAR_BYTES` each. On such a call, with no value, it
+/// The contract. A call of the verifier is calldata of the arguments, no selector: the statement, the commitments and
+/// `inputs` scalars of the proof, of `SCALAR_BYTES` each, then a byte. On such a call, with no value, it
 /// reverts unless every node of `graph.nonzero` is nonzero (checked after the entry's checks), else writes `outputs`
 /// to a region of fresh memory, one word each, and ends as `ending` says. Any other call is one of
 /// `setIndexCommitment(bytes32 root, bytes32 ood)`, or reverts: from the owner, with no value, it stores them in
