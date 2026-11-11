@@ -30,6 +30,10 @@ structure Recorded where
   rootsAt : List ℕ
   /-- π1's contract IV, which the seed hashes (`recorded.iv(program_iv)`). -/
   iv : List UInt8
+  /-- π1's claims (indices among the calls) whose Keccak-256 π2's circuit computes (`compile::hashed_claims` of π1's
+  Fiat–Shamir shape: the main line none, π1-rec3 `[0]`, π1-rec4 `[0, 1, 2]`); those past the calls are dropped, as in
+  the Rust. -/
+  hashed : List ℕ := []
   deriving Inhabited
 
 /-- The bits of a big-endian integer of `nbytes` bytes from byte `first`, as `(exponent, bit)` (`be_bits`). -/
@@ -63,14 +67,14 @@ def live (nodes : Array Node) (outputs : List ℕ) : Array Bool := Id.run do
       match nodes.getD i default with
       | .add a b | .mul a b => live := (live.set! a true).set! b true
       | .hash s _ _ => live := live.set! s true
-      | .low h | .narrow h | .bits h _ _ => live := live.set! h true
+      | .low h | .narrow h | .wide h _ | .bits h _ _ => live := live.set! h true
       | _ => pure ()
   return live
 
 /-- A challenge node (`pair_coordinate`'s `is_challenge`). -/
 def pairChallenge (nodes : Array Node) (z : ℕ) : Bool :=
   match nodes.getD z default with
-  | .narrow _ | .low _ => true
+  | .narrow _ | .low _ | .wide .. => true
   | _ => false
 
 /-- `pair_coordinate`'s `y1_of`: node `i` is `y_1(z) = z·z + z` of a challenge `z`. -/
@@ -93,6 +97,19 @@ def pairCoordinate (nodes : Array Node) (id : ℕ) : Option (ℕ × ℕ) :=
         | _ => none
       | _ => none
     | _ => none
+
+/-- One of π1's claims hashed in the circuit (`compile.rs`'s hashed claims): its index among the calls, the message
+its sponge absorbs (the claim's encoding as bits, byte order, low bit first), the digest's 256 values and its four
+statement-order limbs (the `claimHash` port's), and each element of the claim whose bytes are free bits: its node,
+its 192 free bits (byte `b`'s bit `j` at `8b + j`, the element's big-endian bytes `c2 ‖ c1 ‖ c0`), their packings into
+three limbs and the sum `packed + limbs` (a zero port's). -/
+structure ClaimT where
+  ci : ℕ
+  message : Array Bit
+  digest : Array Val
+  limbs4 : Array Val
+  frees : Array (ℕ × Array Val × Array Val × Array Val)
+  deriving Inhabited
 
 /-- What the compiler returns: the circuit, the final view, the builder's final state (its traces), and per node of
 the expanded graph its limbs and digest. -/
@@ -121,13 +138,46 @@ structure Compiled where
   /-- The zero checks' nodes (mapped), the calls' element nodes (by element index). -/
   zero : List ℕ
   elementNodes : Array ℕ
+  /-- A hash's sponge rate values (`64 · lanes`, `lanes > 4`: a wide challenge reads it), by node. -/
+  rates : Array (Option (Array Val)) := #[]
+  /-- The claims hashed in the circuit, in order (`claimHash j` is `claims[j]`'s). -/
+  claims : Array ClaimT := #[]
+  /-- The stream offsets of the roots ported (those an encoded call names), in order. -/
+  rootsAt : List ℕ := []
   deriving Inhabited
+
+/-- The positions π2's circuit must fit: `2^24` (`compile::FIT_LOG_N`). -/
+def FIT_LOG_N : ℕ := 24
 
 namespace Builder
 
 def constantBits (bytes : List UInt8) : Array Bit :=
   ((List.range (8 * bytes.length)).map fun i =>
     if (bytes.getD (i / 8) 0).toNat.testBit (i % 8) then Bit.one else Bit.zero).toArray
+
+/-- An element of a hashed claim whose bytes are free bits (`compile.rs`'s hashed claims): the element's 24
+big-endian bytes (`c2 ‖ c1 ‖ c0`) as free bits appended to `message` (a copy in the first block), packed into three
+limbs, and their sum with the element's own limbs `l` (a zero port). Returns the message and the element's trace:
+its node, its bits (byte by byte, low bit first), the packed limbs, the sum. -/
+def freeElement (l : Array Val) (id : ℕ) (message : Array Bit) :
+    BM (Array Bit × (ℕ × Array Val × Array Val × Array Val)) := do
+  let mut message := message
+  let mut bits : Array Val := #[]
+  let mut limbBits : Array (List (ℕ × Val)) := #[[], [], []]
+  for byte in [0:24] do
+    let li := 2 - byte / 8
+    let e0 := 8 * (7 - byte % 8)
+    for bit in [0:8] do
+      let e := e0 + bit
+      let (v, c) ← bitAndCopy
+      message := message.push (.v (if message.size < 1088 then c else v))
+      bits := bits.push v
+      limbBits := limbBits.modify li (· ++ [(e, v)])
+  let mut packed : Array Val := #[]
+  for li in [0:3] do packed := packed.push (← pack (limbBits.getD li []))
+  let sum ← arith .add packed l true
+  portOf sum .zero
+  return (message, (id, bits, packed, sum))
 
 /-- **π2's circuit for `r` in D16v** (`compile(recorded, 4, D16::new, ·)`). -/
 def compileM (r : Recorded) (g : Array Node) (map : Array ℕ) : BM Compiled := do
@@ -140,12 +190,15 @@ def compileM (r : Recorded) (g : Array Node) (map : Array ℕ) : BM Compiled := 
   need r.graph.nonzero.isEmpty "π1's verifier checks nothing nonzero"
   let outputs := (callWords.flatten.filterMap fun w => match w with | .node id => some id | _ => none) ++ zero
   let live := RecCircuit.live g outputs
+  let hashedClaims := r.hashed.filter (· < callWords.length)
+  need (hashedClaims.Pairwise (· < ·)) "the hashed claims increase (Lean compiler's check)"
   initD16
   initXors
   initBools
   initPacker
   initArith
   initPorts
+  initCopies
   -- The stream's hashed bytes, and those in a call's first block.
   let mut hashed := Array.replicate streamLen false
   let mut firstBlock := Array.replicate streamLen false
@@ -172,8 +225,16 @@ def compileM (r : Recorded) (g : Array Node) (map : Array ℕ) : BM Compiled := 
     publicSelf := publicSelf.push v
     publicCopy := publicCopy.push c
   let streamBit := fun (i : ℕ) => (bitSelf.getD i none).getD NONE
-  -- Keccak-256 calls, in the chain's order.
+  -- Keccak-256 calls, in the chain's order. A hash a live wide challenge reads gives its rate's lanes up to that
+  -- challenge's (challenge `k`: bytes `8 + 24k .. 32 + 24k`, lanes `1 + 3k ..= 3 + 3k`); another, its digest's 4.
+  let mut lanesOf : Array ℕ := Array.replicate g.size 4
+  for id in [0:g.size] do
+    if live.getD id false then
+      match g.getD id default with
+      | .wide h k => lanesOf := lanesOf.modify h (max · (4 + 3 * k))
+      | _ => pure ()
   let mut digests : Array (Option (Array Val)) := Array.replicate g.size none
+  let mut rates : Array (Option (Array Val)) := Array.replicate g.size none
   for id in [0:g.size] do
     if live.getD id false then
       match g.getD id default with
@@ -191,7 +252,10 @@ def compileM (r : Recorded) (g : Array Node) (map : Array ℕ) : BM Compiled := 
             | none =>
               need ((bitSelf.getD k none).isSome) "a hashed bit"
               message := message.push (.v (streamBit k))
-        digests := digests.set! id (some (← keccak256 message))
+        let lanes := lanesOf.getD id 4
+        let out ← keccak256Lanes message lanes
+        digests := digests.set! id (some (out.extract 0 256))
+        if lanes > 4 then rates := rates.set! id (some out)
       | _ => pure ()
   -- The statement's limbs, packed once.
   let mut statementLimb : Array Val := #[]
@@ -264,6 +328,16 @@ def compileM (r : Recorded) (g : Array Node) (map : Array ℕ) : BM Compiled := 
           let l1 ← pack (beBits db 16 8)
           let l2 ← pack (beBits db 12 4)
           pure (some (#[l0, l1, l2], true))
+        | .wide h k => do
+          -- A wide draw's challenge `k`: the rate's bytes `8 + 24k .. 32 + 24k`, as `low` packs the digest's `8 .. 32`.
+          let rt ← match rates.getD h none with
+            | some rt => pure rt
+            | none => throw "a wide challenge of a hash without its rate"
+          let rb := fun i => rt.getD i 0
+          let l0 ← pack (beBits rb (24 * k + 24) 8)
+          let l1 ← pack (beBits rb (24 * k + 16) 8)
+          let l2 ← pack (beBits rb (24 * k + 8) 8)
+          pure (some (#[l0, l1, l2], true))
         | .bits v shift width => do
           let (offset, len) ← match g.getD v default with
             | .input offset len => pure (offset, len)
@@ -305,6 +379,63 @@ def compileM (r : Recorded) (g : Array Node) (map : Array ℕ) : BM Compiled := 
         limbs := limbs.set! id (some l)
         endable := endable.set! id canEnd
       | none => pure ()
+  -- π1's claims hashed here: each one's encoding as message bits (byte order, low bit first); its Keccak-256; the
+  -- digest's four big-endian words, a port. A root's bytes and a hashed read's are the stream's bits (forwarded, or a
+  -- copy where the first block ends them at the permutation's input); another element's 24 bytes are free bits,
+  -- packed into limbs checked equal to its own (a sum, a zero port).
+  let mut claims : Array ClaimT := #[]
+  for j in [0:hashedClaims.length] do
+    let ci := hashedClaims.getD j 0
+    let words := callWords.getD ci []
+    need (3 ≤ words.length && words.length - 3 < 256) "a claim's words (Lean compiler's check)"
+    let n := words.length - 3
+    let mut message : Array Bit := constantBits [1, n.toUInt8]
+    let mut frees : Array (ℕ × Array Val × Array Val × Array Val) := #[]
+    for k in [0:words.length] do
+      match k, words.getD k default with
+      | 0, .stream at_ =>
+        need ((List.range 32).all fun i => hashed.getD (at_ + i) false) "a root is hashed"
+        for i in [8 * at_:8 * (at_ + 32)] do
+          let v := streamBit i
+          message := message.push (.v (← if message.size < 1088 then copy v else pure v))
+      | 0, .const w => message := message ++ constantBits (wordBytes32 w)
+      | _, .const w =>
+        need ((wordBytes32 w).take 8 == List.replicate 8 0) "an element word"
+        message := message ++ constantBits ((wordBytes32 w).drop 8)
+      | _, .node id =>
+        let hashedRead := match g.getD id default with
+          | .input offset len => len == 24 && (List.range 24).all fun i => hashed.getD (offset + i) false
+          | _ => false
+        match g.getD id default with
+        | .const c0 c1 c2 =>
+          message := message ++ constantBits ((wordBytes32 (elementWord (F192.new c0 c1 c2))).drop 8)
+        | .input offset _ =>
+          if hashedRead then
+            for i in [8 * offset:8 * (offset + 24)] do
+              let v := streamBit i
+              message := message.push (.v (← if message.size < 1088 then copy v else pure v))
+          else
+            let l ← match limbs.getD id none with
+              | some l => pure l
+              | none => throw "a claim's element has limbs"
+            let (msg, fr) ← freeElement l id message
+            message := msg
+            frees := frees.push fr
+        | _ =>
+          let l ← match limbs.getD id none with
+            | some l => pure l
+            | none => throw "a claim's element has limbs"
+          let (msg, fr) ← freeElement l id message
+          message := msg
+          frees := frees.push fr
+      | _, _ => throw "a claim's word"
+    need (message.size == 8 * (82 + 24 * n)) "the claim's encoding"
+    let digest ← keccak256 message
+    let db := fun i => digest.getD i 0
+    let mut limbs4 : Array Val := #[]
+    for l in [0:4] do limbs4 := limbs4.push (← pack (beBits db (8 * l) 8))
+    portOf limbs4 (.claimHash j)
+    claims := claims.push ⟨ci, message, digest, limbs4, frees⟩
   -- Ports: the zero checks first, padded to a power of two; the statement, the roots, the calls' elements.
   let mut zeroPorts := 0
   for id in zero do
@@ -320,10 +451,16 @@ def compileM (r : Recorded) (g : Array Node) (map : Array ℕ) : BM Compiled := 
       let c ← fresh 0
       portOf #[a, b, c] .pad
   portOf statementLimb .statement
+  -- The roots a call the contract encodes names (a hashed claim's root is the circuit's alone).
+  let encoded := (List.range callWords.length).filter fun ci => !hashedClaims.contains ci
+  let named := encoded.flatMap fun ci => (callWords.getD ci []).filterMap fun w => match w with
+    | .stream at_ => some at_
+    | _ => none
+  let rootsAt := r.rootsAt.filter named.contains
   let mut rootOf : List (ℕ × ℕ) := []
   let mut nRoots := 0
   let mut rootLimbs : Array (Array Val) := #[]
-  for at_ in r.rootsAt do
+  for at_ in rootsAt do
     need ((List.range 32).all fun i => hashed.getD (at_ + i) false) "a root is hashed"
     -- The root word is the stream's 32 bytes: limb `l` the big-endian word of bytes `24 − 8l`.
     let mut rl : Array Val := #[]
@@ -335,7 +472,7 @@ def compileM (r : Recorded) (g : Array Node) (map : Array ℕ) : BM Compiled := 
     nRoots := nRoots + 1
   let mut elementNodes : Array ℕ := #[]
   let mut circuitCalls : List (List CallWord) := []
-  for call in callWords do
+  for call in encoded.map fun ci => callWords.getD ci [] do
     let mut words : List CallWord := []
     let mut k := 0
     for w in call do
@@ -366,10 +503,16 @@ def compileM (r : Recorded) (g : Array Node) (map : Array ℕ) : BM Compiled := 
     circuitCalls := circuitCalls ++ [words]
   for e in [0:elementNodes.size] do
     portOf ((limbs.getD (elementNodes.getD e 0) none).getD #[]) (.element e)
-  modify fun s => { s with calls := circuitCalls }
+  -- The narrow challenges among the elements (π2 reads them as 20 bytes).
+  let narrow := (List.range elementNodes.size).filter fun e => match g.getD (elementNodes.getD e 0) default with
+    | .narrow _ => true
+    | _ => false
+  modify fun s => { s with calls := circuitCalls, hashed := hashedClaims, narrow := narrow }
   let (circuit, view) ← finish
-  return ⟨circuit, view, ← get, g, map, live, limbs, digests, bitSelf, bitCopy, publicSelf, publicCopy, freeReads,
-    statementLimb, rootLimbs, zero, elementNodes⟩
+  need (circuit.logN ≤ FIT_LOG_N) s!"π2's circuit does not fit 2^{FIT_LOG_N} positions: 2^{circuit.logN}"
+  let st ← get
+  return (Compiled.mk circuit view st g map live limbs digests bitSelf bitCopy publicSelf publicCopy freeReads
+    statementLimb rootLimbs zero elementNodes rates claims rootsAt)
 
 end Builder
 

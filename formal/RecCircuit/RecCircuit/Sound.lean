@@ -42,15 +42,18 @@ def ofRGWord : RecGraph.Word → Word
   | .const w => .const w
   | .stream a => .stream a
 
-/-- **The compiler's input for a `RecGraph` graph**, its roots' offsets and π1's contract IV. -/
-def ofRG (g : RecGraph.Graph) (rootsAt : List ℕ) (iv : List UInt8) : Recorded :=
-  ⟨⟨g.nodes.map ofRGNode, g.zero, g.nonzero, g.kernels, g.calls.map (·.map ofRGWord), g.streamLen⟩, rootsAt, iv⟩
+/-- **The compiler's input for a `RecGraph` graph**, its roots' offsets, π1's contract IV and the claims π2's circuit
+hashes (`compile::hashed_claims` of π1's Fiat–Shamir shape; none by default, π1-rec3 at `f96a7938`). -/
+def ofRG (g : RecGraph.Graph) (rootsAt : List ℕ) (iv : List UInt8) (hashed : List ℕ := []) : Recorded :=
+  ⟨⟨g.nodes.map ofRGNode, g.zero, g.nonzero, g.kernels, g.calls.map (·.map ofRGWord), g.streamLen⟩, rootsAt, iv,
+    hashed⟩
 
 /-- A value of this library's semantics and `RecGraph`'s agree: the same element, or a state and its digest's
 bytes. -/
 def Corr : Value → RecGraph.Value → Prop
   | .e x, .elem y => x = y
   | .state s, .state d => s = digestBytes d
+  | .sponge a, .sponge b => a = b
   | _, _ => False
 
 /-- `RecGraph`'s node values over Keccak-f[1600] (the deployed contract's). -/

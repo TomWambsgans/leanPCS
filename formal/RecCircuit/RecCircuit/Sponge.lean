@@ -55,12 +55,17 @@ theorem inOk_val (G : X.Good w) {b : Bit} {x : ℕ} {bit : Bool} (h : X.inOk b x
   | one => simp only [inOk] at h; rw [const_val G h, hb]; rfl
   | zero => simp only [inOk] at h; rw [const_val G h, hb]; rfl
 
-/-- **A checked sponge computes Keccak-256 of its message, bit by bit.** -/
-theorem sponge_digest (G : X.Good w) {keccaks : Array KeccakT} (hk : ∀ t ∈ keccaks, X.keccakOk t = true)
+/-- **A checked sponge computes Keccak-256's sponge on its message, bit by bit**: its output's bit `k < 64 · lanes`
+is bit `k` of the last block's state (and so its digest's). -/
+theorem sponge_out (G : X.Good w) {keccaks : Array KeccakT} (hk : ∀ t ∈ keccaks, X.keccakOk t = true)
     {s : SpongeT} (h : X.spongeOk keccaks s = true) {mb : ℕ → Bool} (hm : MsgOk X w s.message mb) :
-    ∀ k < 256, X.val w (s.digest.getD k NONE) = ofBool (keccak256Bits mb s.message.size k) := by
+    (∀ k < 256, X.val w (s.digest.getD k NONE) = ofBool (keccak256Bits mb s.message.size k)) ∧
+    s.out.size = 64 * s.lanes ∧ s.lanes ≤ 17 ∧
+    ∀ k < 64 * s.lanes, X.val w (s.out.getD k NONE) =
+      ofBool (spongeState mb s.message.size (s.message.size / 1088) (k / 64) (k % 64)) := by
   simp only [spongeOk, Bool.and_eq_true, beq_iff_eq, List.all_eq_true, Array.all_eq_true] at h
-  obtain ⟨⟨⟨⟨⟨hsize, hperms⟩, h0⟩, hlater⟩, hdsize⟩, hdig⟩ := h
+  obtain ⟨⟨⟨⟨⟨⟨⟨⟨hsize, hperms⟩, h0⟩, hlater⟩, hdsize⟩, hdig⟩, hwhole⟩, ⟨⟨hl4, hl17⟩, hlp⟩⟩, hosize, hout⟩ := h
+  simp only [decide_eq_true_eq] at hl4 hl17 hlp
   set n := s.message.size
   let inst := fun (b : ℕ) => keccaks.getD (s.perms.getD b 0) default
   have hinst : ∀ b < n / 1088 + 1, X.keccakOk (inst b) = true := by
@@ -72,14 +77,22 @@ theorem sponge_digest (G : X.Good w) {keccaks : Array KeccakT} (hk : ∀ t ∈ k
     have : s.perms.getD b 0 = s.perms[b] := by simp [Array.getD_eq_getD_getElem?, hb']
     simp only [inst, this]
     exact getD_mem _ hlt
-  -- The state after each block.
-  have hstate : ∀ b < n / 1088 + 1, ∀ l < 25, ∀ z < 64,
+  -- Every block but the last is a whole permutation.
+  have hfull : ∀ b, b + 1 < n / 1088 + 1 → (inst b).lastPlanes = 5 := by
+    intro b hb
+    have := allBelow_spec hwhole b (by omega)
+    simp only [Bool.or_eq_true, beq_iff_eq] at this
+    rcases this with e | e
+    · omega
+    · exact e
+  -- The state after each block, on the lanes made.
+  have hstate : ∀ b < n / 1088 + 1, ∀ l < 25, l / 5 < (inst b).lastPlanes → ∀ z < 64,
       KeccakT.A X w (inst b) 24 l z = ofBool (spongeState mb n b l z) := by
     intro b
     induction b with
     | zero =>
-      intro hb
-      apply keccak_out G (hinst 0 hb)
+      intro hb l hl hL z hz
+      refine keccak_out G (hinst 0 hb) _ ?_ l hl hL z hz
       intro l hl z hz
       have hi : 64 * l + z < 1600 := by omega
       have := allBelow_spec h0 _ hi
@@ -93,11 +106,11 @@ theorem sponge_digest (G : X.Good w) {keccaks : Array KeccakT} (hk : ∀ t ∈ k
         simp only [hr, ite_false, hl17]
         rfl
     | succ b ih =>
-      intro hb
-      apply keccak_out G (hinst (b + 1) hb)
+      intro hb l' hl' hL' z' hz'
+      refine keccak_out G (hinst (b + 1) hb) _ ?_ l' hl' hL' z' hz'
       intro l hl z hz
       have hi : 64 * l + z < 1600 := by omega
-      have hprev := ih (by omega) l hl z hz
+      have hprev := ih (by omega) l hl (by rw [hfull b hb]; omega) z hz
       have := allBelow_spec (allBelow_spec hlater (b + 1) hb) (64 * l + z) hi
       simp only [Nat.add_one_ne_zero, beq_iff_eq, false_or, Nat.add_sub_cancel] at this
       rw [KeccakT.A]
@@ -126,15 +139,31 @@ theorem sponge_digest (G : X.Good w) {keccaks : Array KeccakT} (hk : ∀ t ∈ k
           intro this hrel
           simp only [Bool.and_eq_true] at this
           rw [xor_val G this.1, const_val G this.2, hrel, ofBool_xor, ← hprev]; rfl
-  intro k hk
-  have := allBelow_spec hdig k hk
-  simp only [beq_iff_eq] at this
-  rw [this]
-  have e : k = 64 * (k / 64) + k % 64 := by omega
-  have hst := hstate (n / 1088) (by omega) (k / 64) (by omega) (k % 64) (Nat.mod_lt _ (by norm_num))
-  rw [KeccakT.A, ← e] at hst
-  simp only [Nat.add_sub_cancel]
-  exact hst
+  have hpos : 1 ≤ (inst (n / 1088)).lastPlanes := lastPlanes_pos (hinst _ (by omega))
+  refine ⟨fun k hk => ?_, hosize, hl17, fun k hk => ?_⟩
+  · have := allBelow_spec hdig k hk
+    simp only [beq_iff_eq] at this
+    rw [this]
+    have e : k = 64 * (k / 64) + k % 64 := by omega
+    have hst := hstate (n / 1088) (by omega) (k / 64) (by omega) (by omega) (k % 64) (Nat.mod_lt _ (by norm_num))
+    rw [KeccakT.A, ← e] at hst
+    simp only [Nat.add_sub_cancel]
+    exact hst
+  · have := allBelow_spec hout k hk
+    simp only [beq_iff_eq] at this
+    rw [this]
+    have e : k = 64 * (k / 64) + k % 64 := by omega
+    have hst := hstate (n / 1088) (by omega) (k / 64) (by omega) (by simp only [Nat.add_sub_cancel] at hlp; omega)
+      (k % 64) (Nat.mod_lt _ (by norm_num))
+    rw [KeccakT.A, ← e] at hst
+    simp only [Nat.add_sub_cancel]
+    exact hst
+
+/-- **A checked sponge computes Keccak-256 of its message, bit by bit.** -/
+theorem sponge_digest (G : X.Good w) {keccaks : Array KeccakT} (hk : ∀ t ∈ keccaks, X.keccakOk t = true)
+    {s : SpongeT} (h : X.spongeOk keccaks s = true) {mb : ℕ → Bool} (hm : MsgOk X w s.message mb) :
+    ∀ k < 256, X.val w (s.digest.getD k NONE) = ofBool (keccak256Bits mb s.message.size k) :=
+  (sponge_out G hk h hm).1
 
 end Ctx
 
