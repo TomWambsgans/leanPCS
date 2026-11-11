@@ -3571,22 +3571,24 @@ mod tests {
     /// The smallest shape [`commit_skipping`] encodes (two sweeps of the unflagged lanes into the compact codeword, whose
     /// memory starts uninitialised; `2^12` rows, more than 32 lanes so that the first sweep has a layer), for Miri
     /// (`MIRIFLAGS=-Zmiri-ignore-leaks`, the pool's threads outliving the test): every word of the compact codeword is
-    /// written and is the whole codeword's, the tree is the whole commitment's, and an opening read through it
-    /// ([`L0Rows::Compact`]) is the one read from the whole codeword. [Added here.]
+    /// written and is the whole codeword's, the tree is the whole commitment's, and (but under Miri) an opening read
+    /// through it ([`L0Rows::Compact`]) is the one read from the whole codeword. [Added here.]
     #[test]
     fn miri_compact_codeword() {
         let (log_n, n_lanes) = (18usize, 36usize);
-        let pc = test_config_for(log_n);
-        let lane_block = 1usize << (log_n - pc.initial_k);
+        // The commitment's shape: 64 lanes at the first fold, rate 1/2 (the opening's configuration is not built
+        // under Miri, whose `sqrt` is not IEEE-exact, which `whir_config`'s debug assertions check).
+        let (initial_k, log_inv_rate) = (6usize, 1usize);
+        let lane_block = 1usize << (log_n - initial_k);
         let mut rng = Rng::new(0xEC);
         let mut witness: Vec<F64> = (0..n_lanes * lane_block).map(|_| F64(rng.next_u64())).collect();
         for l in [2usize, 3, 20] {
             witness[l * lane_block..(l + 1) * lane_block].fill(F64::ZERO);
         }
         let zero: Vec<bool> = (0..n_lanes).map(|l| [2, 3, 20].contains(&l)).collect();
-        let (whole, pd) = commit(&witness, log_n, pc.initial_k, pc.log_inv_rates[0]);
+        let (whole, pd) = commit(&witness, log_n, initial_k, log_inv_rate);
         let (compact, data) =
-            commit_skipping(&witness, log_n, pc.initial_k, pc.log_inv_rates[0], &zero).expect("a two-sweep shape");
+            commit_skipping(&witness, log_n, initial_k, log_inv_rate, &zero).expect("a two-sweep shape");
         assert_eq!((compact.root, &data.merkle_tree), (whole.root, &pd.merkle_tree));
         let kept: Vec<usize> = (0..n_lanes).filter(|&l| !zero[l]).collect();
         let k = kept.len();
@@ -3596,6 +3598,11 @@ mod tests {
             let compact_row: Vec<F64> = kept.iter().rev().map(|&l| full[n_lanes - 1 - l]).collect();
             assert_eq!(row, &compact_row[..]);
         }
+        if cfg!(miri) {
+            return;
+        }
+        let pc = test_config_for(log_n);
+        assert_eq!((pc.initial_k, pc.log_inv_rates[0]), (initial_k, log_inv_rate));
         let tensors: Vec<LaneTensor> = (0..2)
             .map(|_| LaneTensor {
                 scales: rng.ext_vec(1 << pc.initial_k),
