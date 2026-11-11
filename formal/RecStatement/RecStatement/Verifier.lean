@@ -194,18 +194,12 @@ def nextNarrow : UniStatement.ChanM m E := do
   return UniStatement.eNew (UniStatement.beWordAt b 12) (UniStatement.beWordAt b 4)
     ((List.range 4).foldl (fun acc k ↦ (acc <<< 8) ||| (b.getD k 0).toUInt64) 0)
 
-/-- **`next_frame`**: the next frame word (`frame`'s `k`-th, `k` the frame reads before it), as the statement's four
-big-endian words; none left is `StreamExhausted`. -/
-def frameWords (frame : List (List UInt8)) (k : ℕ) : UniStatement.ChanM m (List E) :=
-  match frame[k]? with
-  | some w => return UniStatement.publicWordsOf w
-  | none => throw .streamExhausted
-
-/-- **`reduce`**: the public data (the frame words `frame` its `Read.frame`s read, in order), `W`'s root and
-out-of-domain answer, `α, β, γ`, `Q`'s, `t`, the fold values, `ξ` and `s`, `ρ`; then the arithmetic. -/
-def reduceWith (s : Spec) (statement : List E) (frame : List (List UInt8)) : UniStatement.ChanM m Reduced := do
+/-- **`reduce`**: the public data (a frame read `Read.frame p` the payload `frameAt p`'s four big-endian words: the
+contract's frame of PCS claims), `W`'s root and out-of-domain answer, `α, β, γ`, `Q`'s, `t`, the fold values, `ξ` and
+`s`, `ρ`; then the arithmetic. (The Rust's `next_frame` pops the frame words in order, and errs on none left; the
+contract hands the verifier its frame reads' payloads in that order, so they are `frameAt` of each read's payload.) -/
+def reduceWith (s : Spec) (statement : List E) (frameAt : ℕ → List UInt8) : UniStatement.ChanM m Reduced := do
   let mut pubs := statement
-  let mut k := 0
   for rd in s.reads do
     match rd with
     | .integer b => pubs := pubs ++ [UniStatement.eK (UInt64.ofNat (← UniStatement.nextInteger (m := m) b))]
@@ -214,9 +208,7 @@ def reduceWith (s : Spec) (statement : List E) (frame : List (List UInt8)) : Uni
       pubs := pubs ++ [lo, hi]
     | .scalar => pubs := pubs ++ [← UniStatement.nextScalar (m := m)]
     | .narrow => pubs := pubs ++ [← nextNarrow (m := m)]
-    | .frame _ =>
-      pubs := pubs ++ (← frameWords (m := m) frame k)
-      k := k + 1
+    | .frame p => pubs := pubs ++ UniStatement.publicWordsOf (frameAt p)
   let wRoot ← UniStatement.nextRoot (m := m)
   let wOod ← UniStatement.nextScalar (m := m)
   let α ← UniStatement.sample F
@@ -243,13 +235,13 @@ def Outcome.accepts (o : Outcome) : Bool :=
   | .ok r => r.out.all != 0
   | .error _ => false
 
-/-- **π2's verifier on calldata** over `F` (`verify`): the seed of the IV, the public input and the frame words, the
-reduction, nothing of the stream left. -/
-def runWith (s : Spec) (iv publicInput : List UInt8) (frame : List (List UInt8)) (stream : Array UInt8) :
+/-- **π2's verifier on calldata** over `F` (`verify`): the seed of the IV, the public input and the frame words (the
+frame reads' payloads, in order), the reduction, nothing of the stream left. -/
+def runWith (s : Spec) (iv publicInput : List UInt8) (frameAt : ℕ → List UInt8) (stream : Array UInt8) :
     m Outcome := do
-  let seed ← keccak256With F (name ++ iv ++ publicInput ++ frame.flatten)
+  let seed ← keccak256With F (name ++ iv ++ publicInput ++ (frameReads s.reads).flatMap frameAt)
   let walk : UniStatement.ChanM m Reduced := do
-    let r ← reduceWith F s (UniStatement.publicWordsOf publicInput) frame
+    let r ← reduceWith F s (UniStatement.publicWordsOf publicInput) frameAt
     UniStatement.finish (m := m)
     return r
   let (result, chan) ← (walk.run).run (UniStatement.Chan.start seed stream)
@@ -258,7 +250,7 @@ def runWith (s : Spec) (iv publicInput : List UInt8) (frame : List (List UInt8))
 end With
 
 /-- The run over Keccak-f[1600]: the deployed contract's computation. -/
-def run (s : Spec) (iv publicInput : List UInt8) (frame : List (List UInt8)) (stream : Array UInt8) : Outcome :=
-  Id.run (runWith (m := Id) (fun x ↦ pure (keccakF1600 x)) s iv publicInput frame stream)
+def run (s : Spec) (iv publicInput : List UInt8) (frameAt : ℕ → List UInt8) (stream : Array UInt8) : Outcome :=
+  Id.run (runWith (m := Id) (fun x ↦ pure (keccakF1600 x)) s iv publicInput frameAt stream)
 
 end RecStatement

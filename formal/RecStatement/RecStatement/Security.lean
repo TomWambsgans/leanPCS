@@ -54,7 +54,7 @@ theorem, its ports carry `RecGraph.evalNodes` over Keccak-f[1600]). π1-rec4's k
 **The recursive verifier** (`RecDeployment.contractWith`) is the contract (`pi2::contract`), with the transaction's
 frame of PCS claims modelled by the claims the proof declares (`RecProof.pi1Claims`, π1's, payloads `0, 1, 2`): π2's
 verifier on the calldata (`runWith`: the public input and the frame words, the Keccak-256s of the declared claims its
-`Read.frame`s name, `frameWordsOf`, then the stream: `W`'s and `Q`'s roots and out-of-domain answers and the 18 values),
+`Read.frame`s name, `frameOf`, then the stream: `W`'s and `Q`'s roots and out-of-domain answers and the 18 values),
 then **seven claims**, each the EIP draft's PCS claim (a root, its out-of-domain answer, one point, a value), decoded
 (`claimOfWords`) and opened by `crates/pcs_claim`'s `verify_claim` (`pcsOpenWords`): **π1's three as declared** (`C1`,
 `C2`, π1's setup `F`; `2^27`, `2^26`, `2^23` words; the contract does not encode them, π2's circuit hashes them), and
@@ -368,10 +368,8 @@ structure RecProof where
 
 def RecProof.openings (p : RecProof) : List Compile.Proof := [p.c1, p.c2, p.f, p.w, p.setup, p.qId, p.qPush]
 
-/-- **The frame words the verifier reads** (`Read.frame p`, in order): the payloads `p`, the Keccak-256s of the declared
-π1 claims. -/
-def frameWordsOf (c : Circuit) (declared : List (List (List UInt8))) : List (List UInt8) :=
-  (frameReads c.reads).map fun p ↦ claimHash (declared.getD p [])
+/-- **The frame's payloads** the verifier reads (`Read.frame p`): payload `p` the Keccak-256 of the declared claim `p`. -/
+def frameOf (declared : List (List (List UInt8))) (p : ℕ) : List UInt8 := claimHash (declared.getD p [])
 
 /-- **π1's claims the contract encodes agree with the frame's**: each of π1's claims not read from the frame (in
 order: the circuit's `pi1Calls`) is the declared claim at its payload, word for word. -/
@@ -402,7 +400,7 @@ def RecDeployment.contractWith (D : RecDeployment) (roots : RecSetupRoots) (inpu
     (proof : RecProof) : m (Bool × List (List (List UInt8))) := do
   let c := D.circuitAt roots.pi1
   let iv ← D.ivWith F roots
-  let o ← runWith F (Spec.of c.circuit) iv input.toList (frameWordsOf c.circuit proof.pi1Claims) proof.stream
+  let o ← runWith F (Spec.of c.circuit) iv input.toList (frameOf proof.pi1Claims) proof.stream
   match o.result with
   | .error _ => return (false, [])
   | .ok r =>

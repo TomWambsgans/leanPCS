@@ -47,11 +47,6 @@ def elementIndices (reads : List Read) : List ℕ :=
   (reads.foldl (fun (acc : List ℕ × ℕ) rd ↦
     (if rd = .scalar ∨ rd = .narrow then acc.1 ++ [acc.2] else acc.1, acc.2 + rd.scalars)) ([], 4)).1
 
-/-- **`frame_payloads`**: the frame payloads the verifier reads as public words (`Read.frame p`), in order. -/
-def frameReads (reads : List Read) : List ℕ :=
-  reads.filterMap fun rd ↦ match rd with
-    | .frame p => some p
-    | _ => none
 
 /-- The number of π1's roots the stream carries. -/
 def rootReads (reads : List Read) : ℕ := (reads.filter (· = .root)).length

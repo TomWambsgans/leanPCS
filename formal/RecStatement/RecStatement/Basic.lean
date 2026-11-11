@@ -93,6 +93,12 @@ def Read.bytes : Read → ℕ
   | .narrow => 20
   | .frame _ => 0
 
+/-- **`frame_payloads`**: the frame payloads the verifier reads as public words (`Read.frame p`), in order. -/
+def frameReads (reads : List Read) : List ℕ :=
+  reads.filterMap fun rd ↦ match rd with
+    | .frame p => some p
+    | _ => none
+
 /-- **A public term** (`PublicTerm`). -/
 structure PublicTerm where
   tag : ℕ
