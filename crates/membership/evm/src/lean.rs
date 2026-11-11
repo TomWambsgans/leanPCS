@@ -3,19 +3,18 @@
 //! for the Lean interpreter of that graph (`formal/Implementation`, layer F5 of `formal/README.md`).
 //!
 //! The graph is what [`crate::quotient::contract`] compiles: `quotient::protocol::reduce` run on the recorder,
-//! with the outputs the fields of the PCS claims it checks declared (three; the checked-in `Graph.lean` is still
-//! `f96a7938`'s six-claim contract's, which `formal/` proves). [`render`] writes it, with the constants the reduction
-//! reads (the Cantor basis, `tau`, `b`, the extension's coordinates), as Lean definitions; the test
-//! `graph_lean_is_current` fails when the checked-in file is not what [`render`] writes now (run it with
-//! `UPDATE_LEAN=1` to rewrite the file; ignored until the Lean is ported). [`vectors`] writes calldata and what the
-//! Rust verifier makes of it, the claims' bytes, for the Lean executable to compare with its interpretation of the graph.
+//! with the outputs the fields of the three PCS claims it checks declared. [`render`] writes it, with the constants
+//! the reduction reads (the Cantor basis, `tau`, the pins' points and Lagrange weights, the extension's coordinates),
+//! as Lean definitions; the test `graph_lean_is_current` fails when the checked-in file is not what [`render`] writes
+//! now (run it with `UPDATE_LEAN=1` to rewrite the file). [`vectors`] writes calldata and what the Rust verifier makes
+//! of it, the claims' bytes, for the Lean executable to compare with its interpretation of the graph.
 
 use std::fmt::Write;
 
 use primitives::field::{F64, F192};
 use quotient::opening::Commitment;
-use quotient::domain::{beta, coordinates, row_vanishing};
-use quotient::protocol::{extension, label};
+use quotient::domain::{beta, row_vanishing};
+use quotient::protocol::{extension, label, pins};
 use quotient::statement::Statement;
 
 use crate::codegen::{Ending, Word};
@@ -184,8 +183,12 @@ pub fn render() -> String {
     writeln!(w, "/-- `quotient::domain::row_vanishing({m})`. -/").unwrap();
     writeln!(w, "def tau : List Nat := {}", list(row_vanishing(m), base)).unwrap();
     writeln!(w).unwrap();
-    writeln!(w, "/-- `quotient::domain::coordinates(11)`. -/").unwrap();
-    writeln!(w, "def coords : List Nat := {}", list(coordinates(11), base)).unwrap();
+    let (points, weights) = pins();
+    writeln!(w, "/-- `quotient::protocol::pins()`: the pinned cells' points `p_k`. -/").unwrap();
+    writeln!(w, "def pinPoints : List Nat := {}", list(points.iter(), |&x| base(x))).unwrap();
+    writeln!(w).unwrap();
+    writeln!(w, "/-- `quotient::protocol::pins()`: their Lagrange weights `1 / Π_(j ≠ k) (p_k + p_j)`. -/").unwrap();
+    writeln!(w, "def pinWeights : List Nat := {}", list(weights.iter(), |&x| base(x))).unwrap();
     writeln!(w).unwrap();
     let ([y0, y1], scale) = extension();
     writeln!(
@@ -252,11 +255,9 @@ mod tests {
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../formal/Implementation/Graph.lean")
     }
 
-    /// The checked-in Lean graph is the deployed contract's: `UPDATE_LEAN=1` rewrites it. The contract is that of
-    /// `docs/membership/PROTOCOL.md` (three claims, no selector) and `formal/` still the six claims': the graph is
-    /// stale until the Lean is ported, so the check is ignored here.
+    /// The checked-in Lean graph is the deployed contract's (`docs/membership/PROTOCOL.md`: three claims, no
+    /// selector): `UPDATE_LEAN=1` rewrites it.
     #[test]
-    #[ignore = "formal/Implementation/Graph.lean is the six-claim contract's until the Lean is ported (docs/LEAN_PORT.md)"]
     fn graph_lean_is_current() {
         let rendered = render();
         let path = graph_path();

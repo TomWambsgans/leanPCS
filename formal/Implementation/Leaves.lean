@@ -6,7 +6,7 @@ import Implementation.Calldata
 
 On the calldata of a statement and a proof (`calldata`), with the deployed Keccak-256 and the circuit's
 commitment in storage (`deployed`), the graph's leaves are the Statement's (`leafOK_calldata`, against
-`chainVals`): the statement's halves, the roots' halves, the out-of-domain answers and the other scalars,
+`chainVals`): the statement's eight words, the roots' halves, the out-of-domain answers and the other scalars,
 the transcript's states (`values_seed`, the hashes) and challenges (the `low` nodes), byte for byte.
 -/
 
@@ -72,85 +72,72 @@ theorem values_low_st {e : Env} {k a : ℕ} (hk : nodes[k]? = some (.low a)) {d 
     (values e).getD k 0 = word limbsEquiv (challengeOf d) := by
   rw [values_low e hk, ha, word_challengeOf]
 
+
 /-! ## The nodes the leaves are -/
 
 theorem node_facts :
-    nodes[0]? = some .seed ∧ nodes[2]? = some (.statement 0) ∧ nodes[3]? = some (.statement 1) ∧
-    nodes[4]? = some (.statement 2) ∧ nodes[5]? = some (.statement 3) ∧
-    nodes[6]? = some (.root 0) ∧ nodes[7]? = some (.root 1) ∧ nodes[8]? = some (.input 0) ∧
-    nodes[9]? = some (.hash 0 [6, 7, 8]) ∧ nodes[10]? = some (.low 9) ∧
-    nodes[11]? = some (.hash 9 []) ∧ nodes[12]? = some (.low 11) ∧
-    nodes[13]? = some (.hash 11 []) ∧ nodes[14]? = some (.low 13) ∧
-    nodes[15]? = some (.root 2) ∧ nodes[16]? = some (.root 3) ∧ nodes[17]? = some (.input 1) ∧
-    nodes[18]? = some (.root 4) ∧ nodes[19]? = some (.root 5) ∧ nodes[20]? = some (.input 2) ∧
-    nodes[21]? = some (.root 6) ∧ nodes[22]? = some (.root 7) ∧ nodes[23]? = some (.input 3) ∧
-    nodes[24]? = some (.hash 13 [15, 16, 17, 18, 19, 20, 21, 22, 23]) ∧ nodes[25]? = some (.low 24) ∧
-    nodes[26]? = some (.input 4) ∧ nodes[27]? = some (.input 5) ∧ nodes[28]? = some (.input 6) ∧
-    nodes[29]? = some (.input 7) ∧ nodes[30]? = some (.input 8) ∧
-    nodes[31]? = some (.hash 24 [26, 27, 28, 29, 30]) ∧ nodes[32]? = some (.low 31) ∧
-    nodes[651]? = some (.input 9) ∧ nodes[652]? = some (.input 10) := by
+    nodes[0]? = some .seed ∧
+    nodes[10]? = some (.root 0) ∧ nodes[11]? = some (.root 1) ∧ nodes[12]? = some (.input 0) ∧
+    nodes[13]? = some (.hash 0 [10, 11, 12]) ∧ nodes[14]? = some (.low 13) ∧
+    nodes[15]? = some (.hash 13 []) ∧ nodes[16]? = some (.low 15) ∧
+    nodes[17]? = some (.hash 15 []) ∧ nodes[18]? = some (.low 17) ∧
+    nodes[19]? = some (.root 2) ∧ nodes[20]? = some (.root 3) ∧ nodes[21]? = some (.input 1) ∧
+    nodes[22]? = some (.hash 17 [19, 20, 21]) ∧ nodes[23]? = some (.low 22) ∧
+    nodes[24]? = some (.input 2) ∧ nodes[25]? = some (.input 3) ∧ nodes[26]? = some (.input 4) ∧
+    nodes[27]? = some (.input 5) ∧
+    nodes[28]? = some (.hash 22 [24, 25, 26, 27]) ∧ nodes[29]? = some (.low 28) := by
   decide +kernel
+
+theorem node_statement : ∀ k < 8, nodes[k + 2]? = some (.statement k) := by decide +kernel
 
 /-! ## On calldata -/
 
 /-- The calldata of a statement, a proof with these roots, and a frame's index (`calldata_some`). -/
-def cdOf (stmt : Statement) (p : ReductionProof) (frame : UInt8) (rw rh rq rg : Digest) : List UInt8 :=
-  (bytesOf selector ++ stmt.y.toList ++ stmt.root.toList) ++
-    ([rw, rh, rq, rg].flatMap digestBytes ++ ((scalarsOf p).flatMap elementBytes ++ [frame]))
+def cdOf (stmt : Statement) (p : ReductionProof) (frame : UInt8) (rw rt : Digest) : List UInt8 :=
+  (stmt.y.toList ++ stmt.root.toList) ++
+    ([rw, rt].flatMap digestBytes ++ ((scalarsOf p).flatMap elementBytes ++ [frame]))
 
 section Calldata
 
 variable (index : Commitment) (stmt : Statement) (p : ReductionProof) (frame : UInt8) (cd : List UInt8)
-  (rw rh rq rg : Digest)
+  (rw rt : Digest)
 
-local notation "CD" => cdOf stmt p frame rw rh rq rg
+local notation "CD" => cdOf stmt p frame rw rt
 
 local notation "E0" => deployed index CD
 
-theorem length_selector : (bytesOf selector).length = 4 := rfl
+theorem length_head : (stmt.y.toList ++ stmt.root.toList).length = 64 := by simp
 
-theorem length_head : (bytesOf selector ++ stmt.y.toList ++ stmt.root.toList).length = 68 := by
-  simp [length_selector]
-
-theorem length_roots : ([rw, rh, rq, rg].flatMap digestBytes).length = 128 := by
+theorem length_roots : ([rw, rt].flatMap digestBytes).length = 64 := by
   simp [length_digestBytes]
 
-theorem length_scalars : ((scalarsOf p).flatMap elementBytes).length = 264 := by
+theorem length_scalars : ((scalarsOf p).flatMap elementBytes).length = 144 := by
   simp [scalarsOf, length_elementBytes]
 
-theorem length_CD : (CD).length = 461 := by
-  simp [cdOf, length_selector, length_digestBytes, scalarsOf, length_elementBytes]
+theorem length_CD : (CD).length = 273 := by
+  simp [cdOf, length_digestBytes, scalarsOf, length_elementBytes]
 
 theorem wellFormed_CD : WellFormed CD := by
-  refine ⟨by rw [length_CD]; rfl, ?_⟩
-  rw [cdOf, List.append_assoc, List.append_assoc]
-  exact List.take_left' length_selector
+  rw [WellFormed, length_CD]
+  rfl
 
-theorem stmt_slice : ((CD).drop 4).take 64 = stmt.y.toList ++ stmt.root.toList := by
+theorem stmt_slice : (CD).take 64 = stmt.y.toList ++ stmt.root.toList := by
   rw [cdOf]
-  simp only [List.append_assoc]
-  rw [List.drop_left' length_selector, ← List.append_assoc]
-  exact List.take_left' (by simp)
+  exact List.take_left' (length_head stmt)
 
-theorem y_slice : ((CD).drop 4).take 32 = stmt.y.toList := by
-  have := congrArg (List.take 32) (stmt_slice stmt p frame rw rh rq rg)
-  rw [List.take_take, List.take_left' (by simp)] at this
-  simpa using this
+theorem word_slice (k : ℕ) (hk : k < 8) : ((CD).drop (8 * k)).take 8 =
+    ((stmt.y.toList ++ stmt.root.toList).drop (8 * k)).take 8 := by
+  rw [← stmt_slice stmt p frame rw rt, List.drop_take, List.take_take, Nat.min_eq_left (by omega)]
 
-theorem root_slice : ((CD).drop 36).take 32 = stmt.root.toList := by
-  have := congrArg (List.drop 32) (stmt_slice stmt p frame rw rh rq rg)
-  rw [List.drop_take, List.drop_drop, List.drop_left' (by simp)] at this
-  simpa using this
-
-theorem roots_slice (j : ℕ) (hj : j < 4) :
-    ((CD).drop (68 + 32 * j)).take 32 = digestBytes ([rw, rh, rq, rg][j]'(by simpa using hj)) := by
+theorem roots_slice (j : ℕ) (hj : j < 2) :
+    ((CD).drop (64 + 32 * j)).take 32 = digestBytes ([rw, rt][j]'(by simpa using hj)) := by
   rw [cdOf, drop_append_add (length_head stmt) (32 * j)]
   exact flatMap_chunk digestBytes 32 length_digestBytes _ j (by simpa using hj) _
 
-theorem scalars_slice (i : ℕ) (hi : i < 11) :
-    ((CD).drop (196 + 24 * i)).take 24 = elementBytes ((scalarsOf p)[i]'(by simp [scalarsOf]; omega)) := by
-  rw [cdOf, show 196 + 24 * i = 68 + (128 + 24 * i) by ring, drop_append_add (length_head stmt),
-    drop_append_add (length_roots rw rh rq rg)]
+theorem scalars_slice (i : ℕ) (hi : i < 6) :
+    ((CD).drop (128 + 24 * i)).take 24 = elementBytes ((scalarsOf p)[i]'(by simp [scalarsOf]; omega)) := by
+  rw [cdOf, show 128 + 24 * i = 64 + (64 + 24 * i) by ring, drop_append_add (length_head stmt),
+    drop_append_add (length_roots rw rt)]
   exact flatMap_chunk elementBytes 24 length_elementBytes _ i (by simp [scalarsOf]; omega) _
 
 /-! ### Values of the leaves -/
@@ -159,137 +146,113 @@ local notation "VS" => values E0
 
 theorem vals_seed : (VS).getD 0 0 = beNat (digestBytes (keccak256 (label index stmt))) := by
   rw [values_seed E0 node_facts.1]
-  have hn : bytesOf name = "pcs-quotient-kc1".toUTF8.toList := by decide +kernel
+  have hn : bytesOf name = protocolName := by decide +kernel
   have ho : (beBytes 32 (W index.ood)).drop 8 = elementBytes index.ood := by
     rw [← scalarBytes_eq]
     simp [scalarBytes, elementBytes]
   show beNat (digestBytes (keccak256 (bytesOf name ++ digestBytes index.root ++
-    (beBytes 32 (W index.ood)).drop 8 ++ ((CD).drop 4).take 64))) = _
+    (beBytes 32 (W index.ood)).drop 8 ++ (CD).take 64))) = _
   rw [stmt_slice, hn, ho]
   simp only [label, List.append_assoc]
 
-theorem vals_stmt :
-    (VS).getD 2 0 = W (halves stmt.y).1 ∧ (VS).getD 3 0 = W (halves stmt.y).2 ∧
-    (VS).getD 4 0 = W (halves stmt.root).1 ∧ (VS).getD 5 0 = W (halves stmt.root).2 := by
-  have hl := length_CD stmt p frame rw rh rq rg
-  have hy : cdWord CD 4 = beNat stmt.y.toList := by
-    rw [cdWord_slice _ _ (by omega), y_slice]
-  have hr : cdWord CD 36 = beNat stmt.root.toList := by
-    rw [cdWord_slice _ _ (by omega), root_slice]
-  have top : ∀ b : Bytes32, beNat b.toList >>> 128 = beNat (b.toList.take 16) := fun b => by
-    rw [Nat.shiftRight_eq_div_pow, show (2 : ℕ) ^ 128 = 256 ^ (b.toList.length - 16) by simp,
-      beNat_take_div _ _ (by simp)]
-  have bot : ∀ b : Bytes32, beNat b.toList % 2 ^ 128 = beNat (b.toList.drop 16) := fun b => by
-    have hb : b.toList.length = 32 := by simp
-    rw [beNat_split _ 16 (by omega), hb]
-    have := beNat_lt (b.toList.drop 16)
-    rw [List.length_drop, hb] at this
-    norm_num at this ⊢
-    omega
-  refine ⟨?_, ?_, ?_, ?_⟩
-  · rw [values_statement E0 node_facts.2.1, word_halves_fst]
-    show half (cdWord CD 4) 0 = _
-    rw [hy, half, if_pos rfl, top]
-  · rw [values_statement E0 node_facts.2.2.1, word_halves_snd]
-    show half (cdWord CD 4) 1 = _
-    rw [hy, half, if_neg (by decide), bot]
-  · rw [values_statement E0 node_facts.2.2.2.1, word_halves_fst]
-    show half (cdWord CD 36) 2 = _
-    rw [hr, half, if_pos rfl, top]
-  · rw [values_statement E0 node_facts.2.2.2.2.1, word_halves_snd]
-    show half (cdWord CD 36) 3 = _
-    rw [hr, half, if_neg (by decide), bot]
+/-- A statement word is the big-endian number of its eight bytes of the statement. -/
+theorem word_words (k : ℕ) (hk : k < 8) :
+    W (ofK (stmt.words.getD k 0)) = beNat (((stmt.y.toList ++ stmt.root.toList).drop (8 * k)).take 8) := by
+  have hy : stmt.y.toList.length = 32 := by simp
+  rw [word_ofK]
+  by_cases h4 : k < 4
+  · have e : stmt.words.getD k 0 = K.ofLane (beWord stmt.y.toList (8 * k)) := by
+      rw [Statement.words, List.getD_append _ _ _ _ (by simp [bytesWords]; omega)]
+      simp [bytesWords, List.getD_eq_getElem?_getD, h4]
+    rw [e, lane_ofLane, beWord_slice _ _ (by omega), List.drop_append_of_le_length (by omega),
+      List.take_append_of_le_length (by simp; omega)]
+  · have e : stmt.words.getD k 0 = K.ofLane (beWord stmt.root.toList (8 * (k - 4))) := by
+      rw [Statement.words, List.getD_append_right _ _ _ _ (by simp [bytesWords]; omega)]
+      simp [bytesWords, List.getD_eq_getElem?_getD, show k - 4 < 4 by omega]
+    rw [e, lane_ofLane, beWord_slice _ _ (by simp; omega), List.drop_append, hy,
+      List.drop_eq_nil_of_le (as := stmt.y.toList) (by rw [hy]; omega), List.nil_append,
+      show 8 * k - 32 = 8 * (k - 4) by omega]
 
-theorem vals_input (i : ℕ) (hi : i < 11) (n : ℕ) (hn : nodes[n]? = some (.input i)) :
+theorem vals_stmt (k : ℕ) (hk : k < 8) : (VS).getD (k + 2) 0 = W (ofK (stmt.words.getD k 0)) := by
+  have hl := length_CD stmt p frame rw rt
+  rw [values_statement E0 (node_statement k hk), word_words stmt k hk, ← word_slice stmt p frame rw rt k hk]
+  show cdWord (CD) (8 * k) >>> 192 = _
+  rw [cdWord_slice _ _ (by omega), Nat.shiftRight_eq_div_pow]
+  have h32 : (((CD).drop (8 * k)).take 32).length = 32 := by simp; omega
+  rw [show (2 : ℕ) ^ 192 = 256 ^ ((((CD).drop (8 * k)).take 32).length - 8) by rw [h32]; norm_num,
+    beNat_take_div _ _ (by omega), List.take_take, Nat.min_eq_left (by omega)]
+
+theorem vals_input (i : ℕ) (hi : i < 6) (n : ℕ) (hn : nodes[n]? = some (.input i)) :
     (VS).getD n 0 = W ((scalarsOf p)[i]'(by simp [scalarsOf]; omega)) := by
-  have hl := length_CD stmt p frame rw rh rq rg
+  have hl := length_CD stmt p frame rw rt
   rw [values_input E0 hn]
-  show cdWord (CD) (4 + 192 + 24 * i) >>> 64 = _
-  rw [cdWord_shr _ _ (by omega), show 4 + 192 + 24 * i = 196 + 24 * i by ring,
-    scalars_slice stmt p frame rw rh rq rg i hi,
-    beNat_elementBytes]
+  show cdWord (CD) (128 + 24 * i) >>> 64 = _
+  rw [cdWord_shr _ _ (by omega), scalars_slice stmt p frame rw rt i hi, beNat_elementBytes]
 
-theorem vals_root (j : ℕ) (hj : j < 4) (n : ℕ) (hn : nodes[n]? = some (.root (2 * j))) (n' : ℕ)
+theorem vals_root (j : ℕ) (hj : j < 2) (n : ℕ) (hn : nodes[n]? = some (.root (2 * j))) (n' : ℕ)
     (hn' : nodes[n']? = some (.root (2 * j + 1))) :
-    (VS).getD n 0 = beNat ((digestBytes ([rw, rh, rq, rg][j]'(by simpa using hj))).take 16) ∧
-      (VS).getD n' 0 = beNat ((digestBytes ([rw, rh, rq, rg][j]'(by simpa using hj))).drop 16) := by
-  have hl := length_CD stmt p frame rw rh rq rg
-  have hw : cdWord (CD) (4 + 64 + 32 * j) = beNat (digestBytes ([rw, rh, rq, rg][j]'(by simpa using hj))) := by
-    rw [cdWord_slice _ _ (by omega), show 4 + 64 + 32 * j = 68 + 32 * j by ring,
-      roots_slice stmt p frame rw rh rq rg j hj]
+    (VS).getD n 0 = beNat ((digestBytes ([rw, rt][j]'(by simpa using hj))).take 16) ∧
+      (VS).getD n' 0 = beNat ((digestBytes ([rw, rt][j]'(by simpa using hj))).drop 16) := by
+  have hl := length_CD stmt p frame rw rt
+  have hw : cdWord (CD) (64 + 32 * j) = beNat (digestBytes ([rw, rt][j]'(by simpa using hj))) := by
+    rw [cdWord_slice _ _ (by omega), roots_slice stmt p frame rw rt j hj]
   constructor
   · rw [values_root E0 hn]
-    show half (cdWord (CD) (4 + 64 + 32 * (2 * j / 2))) (2 * j) = _
+    show half (cdWord (CD) (64 + 32 * (2 * j / 2))) (2 * j) = _
     rw [show 2 * j / 2 = j by omega, hw, half, if_pos (by omega), beNat_top _ (length_digestBytes _)]
   · rw [values_root E0 hn']
-    show half (cdWord (CD) (4 + 64 + 32 * ((2 * j + 1) / 2))) (2 * j + 1) = _
+    show half (cdWord (CD) (64 + 32 * ((2 * j + 1) / 2))) (2 * j + 1) = _
     rw [show (2 * j + 1) / 2 = j by omega, hw, half, if_neg (by omega), beNat_bot _ (length_digestBytes _)]
 
-variable {p rw rh rq rg} in
+variable {p rw rt} in
 /-- **The leaves' values on calldata**, as the Statement's elements: the roots' halves, the other
 scalars, the states and the challenges. -/
-theorem vals_leaves (hw : rootOfHalves p.witness.root = some rw) (hh : rootOfHalves p.h.root = some rh)
-    (hq : rootOfHalves p.q.root = some rq) (hg : rootOfHalves p.g.root = some rg) :
+theorem vals_leaves (hw : rootOfHalves p.witness.root = some rw) (ht : rootOfHalves p.table.root = some rt) :
     let s := states index stmt p
-    (VS).getD 6 0 = W p.witness.root.1 ∧ (VS).getD 7 0 = W p.witness.root.2 ∧
-    (VS).getD 8 0 = W p.witness.ood ∧
-    (VS).getD 15 0 = W p.h.root.1 ∧ (VS).getD 16 0 = W p.h.root.2 ∧ (VS).getD 17 0 = W p.h.ood ∧
-    (VS).getD 18 0 = W p.q.root.1 ∧ (VS).getD 19 0 = W p.q.root.2 ∧ (VS).getD 20 0 = W p.q.ood ∧
-    (VS).getD 21 0 = W p.g.root.1 ∧ (VS).getD 22 0 = W p.g.root.2 ∧ (VS).getD 23 0 = W p.g.ood ∧
-    (VS).getD 26 0 = W p.values[0] ∧ (VS).getD 27 0 = W p.values[1] ∧
-    (VS).getD 28 0 = W p.values[2] ∧ (VS).getD 29 0 = W p.values[3] ∧
-    (VS).getD 30 0 = W p.next ∧ (VS).getD 651 0 = W p.qValue ∧ (VS).getD 652 0 = W p.gValue ∧
-    (VS).getD 10 0 = W (challengeOf (s.getD 1 default)) ∧ (VS).getD 12 0 = W (challengeOf (s.getD 2 default)) ∧
-    (VS).getD 14 0 = W (challengeOf (s.getD 3 default)) ∧ (VS).getD 25 0 = W (challengeOf (s.getD 4 default)) ∧
-    (VS).getD 32 0 = W (challengeOf (s.getD 5 default)) := by
+    (VS).getD 10 0 = W p.witness.root.1 ∧ (VS).getD 11 0 = W p.witness.root.2 ∧
+    (VS).getD 12 0 = W p.witness.ood ∧
+    (VS).getD 19 0 = W p.table.root.1 ∧ (VS).getD 20 0 = W p.table.root.2 ∧ (VS).getD 21 0 = W p.table.ood ∧
+    (VS).getD 24 0 = W p.values[0] ∧ (VS).getD 25 0 = W p.values[1] ∧
+    (VS).getD 26 0 = W p.values[2] ∧ (VS).getD 27 0 = W p.next ∧
+    (VS).getD 14 0 = W (challengeOf (s.getD 1 default)) ∧ (VS).getD 16 0 = W (challengeOf (s.getD 2 default)) ∧
+    (VS).getD 18 0 = W (challengeOf (s.getD 3 default)) ∧ (VS).getD 23 0 = W (challengeOf (s.getD 4 default)) ∧
+    (VS).getD 29 0 = W (challengeOf (s.getD 5 default)) := by
   intro s
-  obtain ⟨n0, -, -, -, -, n6, n7, n8, n9, n10, n11, n12, n13, n14, n15, n16, n17, n18, n19, n20, n21, n22,
-    n23, n24, n25, n26, n27, n28, n29, n30, n31, n32, n651, n652⟩ := node_facts
-  have r0 := vals_root index stmt p frame rw rh rq rg 0 (by norm_num) 6 n6 7 n7
-  have r1 := vals_root index stmt p frame rw rh rq rg 1 (by norm_num) 15 n15 16 n16
-  have r2 := vals_root index stmt p frame rw rh rq rg 2 (by norm_num) 18 n18 19 n19
-  have r3 := vals_root index stmt p frame rw rh rq rg 3 (by norm_num) 21 n21 22 n22
-  simp only [List.getElem_cons_zero, List.getElem_cons_succ] at r0 r1 r2 r3
+  obtain ⟨n0, n10, n11, n12, n13, n14, n15, n16, n17, n18, n19, n20, n21, n22, n23, n24, n25, n26, n27, n28,
+    n29⟩ := node_facts
+  have r0 := vals_root index stmt p frame rw rt 0 (by norm_num) 10 n10 11 n11
+  have r1 := vals_root index stmt p frame rw rt 1 (by norm_num) 19 n19 20 n20
+  simp only [List.getElem_cons_zero, List.getElem_cons_succ] at r0 r1
   have b0 := rootOfHalves_bytes hw
-  have b1 := rootOfHalves_bytes hh
-  have b2 := rootOfHalves_bytes hq
-  have b3 := rootOfHalves_bytes hg
-  have i0 := vals_input index stmt p frame rw rh rq rg 0 (by norm_num) 8 n8
-  have i1 := vals_input index stmt p frame rw rh rq rg 1 (by norm_num) 17 n17
-  have i2 := vals_input index stmt p frame rw rh rq rg 2 (by norm_num) 20 n20
-  have i3 := vals_input index stmt p frame rw rh rq rg 3 (by norm_num) 23 n23
-  have i4 := vals_input index stmt p frame rw rh rq rg 4 (by norm_num) 26 n26
-  have i5 := vals_input index stmt p frame rw rh rq rg 5 (by norm_num) 27 n27
-  have i6 := vals_input index stmt p frame rw rh rq rg 6 (by norm_num) 28 n28
-  have i7 := vals_input index stmt p frame rw rh rq rg 7 (by norm_num) 29 n29
-  have i8 := vals_input index stmt p frame rw rh rq rg 8 (by norm_num) 30 n30
-  have i9 := vals_input index stmt p frame rw rh rq rg 9 (by norm_num) 651 n651
-  have i10 := vals_input index stmt p frame rw rh rq rg 10 (by norm_num) 652 n652
-  have hv : p.values.toList = [p.values[0], p.values[1], p.values[2], p.values[3]] := by
+  have b1 := rootOfHalves_bytes ht
+  have i0 := vals_input index stmt p frame rw rt 0 (by norm_num) 12 n12
+  have i1 := vals_input index stmt p frame rw rt 1 (by norm_num) 21 n21
+  have i2 := vals_input index stmt p frame rw rt 2 (by norm_num) 24 n24
+  have i3 := vals_input index stmt p frame rw rt 3 (by norm_num) 25 n25
+  have i4 := vals_input index stmt p frame rw rt 4 (by norm_num) 26 n26
+  have i5 := vals_input index stmt p frame rw rt 5 (by norm_num) 27 n27
+  have hv : p.values.toList = [p.values[0], p.values[1], p.values[2]] := by
     apply List.ext_getElem (by simp)
     intro k h1 h2
     simp only [Vector.length_toList] at h1
     interval_cases k <;> simp
   simp only [scalarsOf, hv, List.cons_append, List.nil_append, List.getElem_cons_zero, List.getElem_cons_succ,
-    List.getElem_append_left, List.getElem_append_right, Vector.getElem_toList] at i0 i1 i2 i3 i4 i5 i6 i7 i8 i9 i10
+    List.getElem_append_left, List.getElem_append_right, Vector.getElem_toList] at i0 i1 i2 i3 i4 i5
   have hH : (E0).H = keccakBytes := rfl
-  have v0 := vals_seed index stmt p frame rw rh rq rg
-  have v9 := values_hash_st hH n9 v0 (ys := [p.witness.root.1, p.witness.root.2, p.witness.ood])
+  have v0 := vals_seed index stmt p frame rw rt
+  have v13 := values_hash_st hH n13 v0 (ys := [p.witness.root.1, p.witness.root.2, p.witness.ood])
     (by simp only [List.map_cons, List.map_nil, r0.1, r0.2, i0, b0.1, b0.2])
-  have v11 := values_hash_st hH n11 v9 (ys := []) rfl
-  have v13 := values_hash_st hH n13 v11 (ys := []) rfl
-  have v24 := values_hash_st hH n24 v13 (ys := [p.h.root.1, p.h.root.2, p.h.ood, p.q.root.1, p.q.root.2,
-    p.q.ood, p.g.root.1, p.g.root.2, p.g.ood])
-    (by simp only [List.map_cons, List.map_nil, r1.1, r1.2, i1, b1.1, b1.2, r2.1, r2.2, i2, b2.1, b2.2,
-      r3.1, r3.2, i3, b3.1, b3.2])
-  have v31 := values_hash_st hH n31 v24 (ys := p.values.toList ++ [p.next])
+  have v15 := values_hash_st hH n15 v13 (ys := []) rfl
+  have v17 := values_hash_st hH n17 v15 (ys := []) rfl
+  have v22 := values_hash_st hH n22 v17 (ys := [p.table.root.1, p.table.root.2, p.table.ood])
+    (by simp only [List.map_cons, List.map_nil, r1.1, r1.2, i1, b1.1, b1.2])
+  have v28 := values_hash_st hH n28 v22 (ys := p.values.toList ++ [p.next])
     (by
       rw [hv]
-      simp only [List.map_cons, List.map_nil, List.cons_append, List.nil_append, i4, i5, i6, i7, i8])
+      simp only [List.map_cons, List.map_nil, List.cons_append, List.nil_append, i2, i3, i4, i5])
   refine ⟨r0.1.trans b0.1.symm, r0.2.trans b0.2.symm, i0, r1.1.trans b1.1.symm, r1.2.trans b1.2.symm, i1,
-    r2.1.trans b2.1.symm, r2.2.trans b2.2.symm, i2, r3.1.trans b3.1.symm, r3.2.trans b3.2.symm, i3,
-    i4, i5, i6, i7, i8, i9, i10, values_low_st n10 v9, values_low_st n12 v11, values_low_st n14 v13,
-    values_low_st n25 v24, values_low_st n32 v31⟩
+    i2, i3, i4, i5, values_low_st n14 v13, values_low_st n16 v15, values_low_st n18 v17,
+    values_low_st n23 v22, values_low_st n29 v28⟩
 
 end Calldata
 

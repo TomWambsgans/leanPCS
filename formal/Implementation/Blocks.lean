@@ -9,8 +9,7 @@ import Mathlib.Data.List.GetD
 The loops of `Program.lean`, read in the field: the chain `w_k = sq^[k] t` (`wChain_spec`), the
 folds and maps (`foldO_spec`, `mapO_spec`), `x^(2^n)` (`squareN_spec`), the inversion by the norm
 (`inverse_spec`: it is `x⁻¹`, `0` at `0`, as `F192::inv` and `protocol::inverse`), the prefix
-products and the batch inversion (`prefixes_spec`, `backInv_spec`), and a row's cells
-(`cell_spec`).
+products and the batch inversion (`prefixes_spec`, `backInv_spec`).
 -/
 
 set_option linter.unusedSectionVars false
@@ -192,37 +191,6 @@ theorem backInv_spec (pre den : Nat → Nat) (P : Nat → F)
         simp only [List.getD_cons_zero]
         rw [hinv, hr, hpre i (by omega), hP, mul_inv, mul_comm, ← mul_assoc, mul_inv_cancel₀ hpn,
           one_mul]
-
-/-- **A cell of the row of `t`**: `a_0 + (t + shift) a_1 + w_1' (a_2 + (t + shift) a_3)`, with
-`w_1' = w_1` or `w_1 + 1`. -/
-theorem cell_spec (L : Leaves) (hone : V L.one = 1) (w1 shift : Nat) (second : Bool) :
-    Spec (cell L w1 shift second) fun r => V r =
-      V (L.a.getD 0 0) + (V L.t + elem limbs shift) * V (L.a.getD 1 0) +
-        (if second then V w1 + 1 else V w1) *
-          (V (L.a.getD 2 0) + (V L.t + elem limbs shift) * V (L.a.getD 3 0)) := by
-  unfold cell
-  apply Spec.bind
-  refine (CNST _).weaken fun sh hsh => ?_
-  apply Spec.bind
-  refine (ADD _ _).weaken fun first hfirst => ?_
-  apply Spec.bind
-  refine Spec.weaken (P := fun snd => V snd = if second then V w1 + 1 else V w1) ?_ fun snd hsnd => ?_
-  · unfold secondOf
-    cases second
-    · exact Spec.some rfl
-    · exact (ADD _ _).weaken fun r hr => by rw [hr, hone]; rfl
-  apply Spec.bind
-  refine (MUL _ _).weaken fun m1 hm1 => ?_
-  apply Spec.bind
-  refine (ADD _ _).weaken fun s1 hs1 => ?_
-  apply Spec.bind
-  refine (MUL _ _).weaken fun m3 hm3 => ?_
-  apply Spec.bind
-  refine (ADD _ _).weaken fun s3 hs3 => ?_
-  apply Spec.bind
-  refine (MUL _ _).weaken fun m2 hm2 => ?_
-  refine (ADD _ _).weaken fun r hr => ?_
-  rw [hr, hs1, hm1, hm2, hsnd, hs3, hm3, hfirst, hsh]
 
 variable [Fintype F]
 

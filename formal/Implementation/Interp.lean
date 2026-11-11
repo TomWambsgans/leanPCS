@@ -11,10 +11,11 @@ What the contract computes, node by node, as `crates/membership/evm/src/codegen.
 value is an EVM word (a natural number below `2^256`), and
 
 * `const c` is `c`;
-* `statement k` and `root k` are the high (`k` even) or low (`k` odd) 128 bits of the word of the
-  arguments at `32 ⌊k/2⌋` (the statement) or `64 + 32 ⌊k/2⌋` (the four roots), the arguments being
-  calldata after the 4-byte selector (`CALLDATALOAD`, `SHR 128` or `AND 2^128 - 1`);
-* `input i` is the word at `192 + 24 i` shifted right by 64 bits: the scalar's 24 big-endian bytes;
+* `statement k` is the top 64 bits of the word of calldata at `8 k` (`CALLDATALOAD`, `SHR 192`): the statement's
+  `k`-th `K`-word, eight bytes big-endian (no selector: the arguments are calldata from byte `0`);
+* `root k` is the high (`k` even) or low (`k` odd) 128 bits of the word at `64 + 32 ⌊k/2⌋` (the two roots;
+  `CALLDATALOAD`, `SHR 128` or `AND 2^128 - 1`);
+* `input i` is the word at `128 + 24 i` shifted right by 64 bits: the scalar's 24 big-endian bytes;
 * `add` is `XOR`, `mul` is `FIELD_MUL` (`mulE`), `frob` the Frobenius (`frobE`);
 * `seed` is the hash of the label: the 16-byte name, the circuit's commitment (its root, slot 0, and
   the low 24 bytes of its out-of-domain answer's word, slot 1, both read from storage), the 64 bytes of
@@ -23,7 +24,7 @@ value is an EVM word (a natural number below `2^256`), and
 * `low a` is the low 192 bits of `a` (`AND 2^192 - 1`).
 
 The hash `H` is a parameter: Keccak-256 (`KECCAK256`) as deployed, any function in the model.
-`run` adds what the contract checks before its claims: the calldata's length and selector, and that
+`run` adds what the contract checks before its claims: the calldata's length (`273` bytes), and that
 every node of `nonzero` is not zero; it gives the words written to its output region (`outputs`: a
 node's value, a constant, a word of calldata, or a stored word). `calls` packs each PCS claim of
 `claims` from those words as `Item::DeclaredClaim` does: `1 ‖ n ‖` the root's word (32 bytes) `‖` the low
@@ -65,13 +66,13 @@ structure Env where
 /-- **One node's value**, from the values of the nodes before it. -/
 def step (e : Env) (vals : Array Nat) : Node → Nat
   | .const c => c
-  | .statement k => half (cdWord e.cd (4 + 32 * (k / 2))) k
-  | .root k => half (cdWord e.cd (4 + 64 + 32 * (k / 2))) k
-  | .input i => cdWord e.cd (4 + 192 + 24 * i) >>> 64
+  | .statement k => cdWord e.cd (8 * k) >>> 192
+  | .root k => half (cdWord e.cd (64 + 32 * (k / 2))) k
+  | .input i => cdWord e.cd (128 + 24 * i) >>> 64
   | .add a b => vals.getD a 0 ^^^ vals.getD b 0
   | .mul a b => mulE (vals.getD a 0) (vals.getD b 0)
   | .frob a => frobE (vals.getD a 0)
-  | .seed => beNat (e.H (bytesOf name ++ e.idx ++ (beBytes 32 e.ood).drop 8 ++ (e.cd.drop 4).take 64)).toList
+  | .seed => beNat (e.H (bytesOf name ++ e.idx ++ (beBytes 32 e.ood).drop 8 ++ e.cd.take 64)).toList
   | .hash st xs =>
     beNat (e.H (beBytes 32 (vals.getD st 0) ++ xs.flatMap fun x => beBytes 32 (vals.getD x 0))).toList
   | .low a => vals.getD a 0 % B192
@@ -87,19 +88,18 @@ def values (e : Env) : Array Nat := valuesOf e nodes
 def wordOf (e : Env) (vals : Array Nat) : Word → Nat
   | .node i => vals.getD i 0
   | .const w => w
-  | .calldata o => cdWord e.cd (4 + o)
+  | .calldata o => cdWord e.cd o
   | .storedRoot => beNat e.idx
   | .storedOod => e.ood
 
-/-- The calldata of a call of the verifier: `4 + 192 + 24 · inputs + 1` bytes (the last the frame's
-index), the selector first. -/
-def WellFormed (cd : List UInt8) : Prop :=
-  cd.length = 4 + 192 + 24 * inputs + 1 ∧ cd.take 4 = bytesOf selector
+/-- The calldata of a call of the verifier: `128 + 24 · inputs + 1` bytes (the last the frame's index), no
+selector. -/
+def WellFormed (cd : List UInt8) : Prop := cd.length = 128 + 24 * inputs + 1
 
 instance (cd : List UInt8) : Decidable (WellFormed cd) := by unfold WellFormed; infer_instance
 
 /-- **What the contract writes to its output region**, or `none` where it reverts before: on calldata
-of another length or selector, or when a node of `nonzero` is zero. -/
+of another length, or when a node of `nonzero` is zero. -/
 def run (e : Env) : Option (List Nat) :=
   if WellFormed e.cd then
     let vals := values e
