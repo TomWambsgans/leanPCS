@@ -92,11 +92,18 @@ systemd-run --scope -p MemoryMax=12G lake build UniKeccakSound   # every file; t
 ## π1-rec4: not proved
 
 `UniKeccak.UniKnowledgeSoundnessKeccakRec4` (π1-rec4's verifier, `UniKeccak.verifyWithK4`) is stated, **not
-proved**. What is here: [`Rec4/RingSplit.lean`](UniKeccakSound/Rec4/RingSplit.lean), **`Rec4.ring_split`**: for a
-nonzero polynomial of degree at most `1` in each of six variables, split as four drawn with `t` and two drawn with `ρ`
-(`SPEC.md` §14.5 (2)), some coefficient in the first four vanishes with probability at most `4/|E|`, and where it does
-not, the polynomial vanishes in the last two with probability at most `2/|E|` (Mathlib's Schwartz–Zippel, in two
-blocks). That the ring switch's relation is such a polynomial is not stated here.
+proved**. What is here, proved:
+
+- [`Rec4/RingSplit.lean`](UniKeccakSound/Rec4/RingSplit.lean): the ring map drawn in two queries.
+  `card_exists_bad_le`: `k` challenges drawn together, each with at most one bad value given the ones before it, hit
+  one with probability at most `k/|K|`; `ringBad_prefix` (`FlockSound.ringBad` depends only on the earlier
+  challenges); **`ringBad_split_first`** (the `t`-query's `f_0 … f_3`: `≤ 4/|E|`) and **`ringBad_split_second`** (for
+  every `f_0 … f_3`, the `ρ`-query's `f_4, f_5`: `≤ 2/|E|`), from `FlockSound.card_ringBad_le`. The ring relation is
+  not of degree `1` per `f_j` as a polynomial (the stages' Frobenius powers): the bound is stage by stage.
+- [`Rec4/RateTransfer.lean`](UniKeccakSound/Rec4/RateTransfer.lean): **`keccak256RateTransfer :
+  Keccak256RateTransfer`**, leanerVM's generic two-oracle transfer (`Common.transfer2`) at Keccak-256 with its whole
+  136-byte rate as the output (`keccakPaddingR`, `kBlockEquiv`, `keccakNFR`): the RPM game and the two-oracle ROM with
+  `H : List UInt8 → RateBytes` agree within `q²/2^508`, as for the digest. Nothing consumes it yet.
 
 What a proof needs, against π1-rec3's (`FinalK3.lean`'s `uniKnowledgeSoundnessK3` from `KFlockSound`, `UniIdsK3`,
 `PairBatch`, `UniCodeK3`, `UniFinalK3`, `FsLayer128K3`):
@@ -105,14 +112,13 @@ What a proof needs, against π1-rec3's (`FinalK3.lean`'s `uniKnowledgeSoundnessK
    root, then values, then `ns + 1` challenges from `ns + 1` successive Keccak-256 calls (`absorbs`, `chalsT`), over a
    table of 32-byte answers. A wide draw takes its `ns + 1` challenges from **one** call's sponge rate, past the digest,
    and π1-rec4's `C2` call absorbs the slices **before** the root (`encM` puts the root first). So the chain needs (a)
-   rounds whose challenges are one step's rate, with a table answering the rate (or the digest and an independent
-   tail), and a message with the root after values; and (b) **the random-permutation transfer to that table**:
-   leanerVM's `Common.keccak256_transfer2` (`Rpm.lean`, `ListChainKRpm.lean`) answers Keccak-256's digest; the rate's
-   other lanes (`rateTailOf`) are uniform for a fresh last permutation in the random-permutation model, but no transfer
-   here states it. Neither is in this repository.
+   rounds whose challenges are one step's rate, with a table answering the rate, and a message with the root after
+   values; and (b) the random-permutation transfer to that table, which `keccak256RateTransfer` gives in leanerVM's
+   generic sponge model; the bridge from it to the deployment's experiment (`Compose/Rpm.lean`,
+   `ListChainKRpm.lean`, written for the digest's table) is not redone. (a) is not written.
 2. **Flock without its ring map** (`KFlockSound` with the map's six challenges moved out of Flock's rounds:
    `f_0 … f_3` into `C2`'s round, `f_4, f_5` into the values' round, the zerocheck's first coordinate into round `0`),
-   the ring switch's bad events assigned to those rounds (`ring_split` is their bound in two blocks), and the PIOP
+   the ring switch's bad events assigned to those rounds (`ringBad_split_first`, `ringBad_split_second`), and the PIOP
    (`uniPiopK3`'s states) re-indexed: round `0` draws `c, β, γ, c'`; `C2`'s round `t, f_0 … f_3`; the values' round
    `ρ, λ, f_4, f_5`.
 3. **The code link** (`UniCodeK3`'s analog for `reduceWithK4` on those rounds) and the last link.
