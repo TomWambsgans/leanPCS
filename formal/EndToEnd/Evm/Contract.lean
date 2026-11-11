@@ -31,7 +31,7 @@ theorem checkAllWith_id (l : List (Commitment × Claim × Compile.Proof)) :
     show (if !(pcsOpening c claim pr) then false else Id.run (checkAllWith _ l)) = _
     cases pcsOpening c claim pr <;> rfl
 
-/-- **The Statement's verifier over Keccak-f[1600]**: the reduction, then the six openings. -/
+/-- **The Statement's verifier over Keccak-f[1600]**: the reduction, then the three openings. -/
 theorem verify_eq (index : Commitment) (stmt : Statement) (proof : Proof) :
     verify 22 index stmt proof =
       match reduce 22 index stmt proof.reduction with
@@ -46,23 +46,21 @@ theorem verify_eq (index : Commitment) (stmt : Statement) (proof : Proof) :
   · rfl
   · exact checkAllWith_id _
 
-/-- The six claims' points have `1` to `32` coordinates (`25`, `24`, `27`, `28`, `25`, `27`). -/
+/-- The three claims' points have `1` to `32` coordinates (`24`, `24`, `28`). -/
 theorem claims_lengths (I : Formula.Vals) :
-    (Formula.claims I).witness.point.length = 25 ∧ (Formula.claims I).wiring.point.length = 24 ∧
-      (Formula.claims I).h.point.length = 27 ∧ (Formula.claims I).q.point.length = 28 ∧
-      (Formula.claims I).g.point.length = 25 ∧ (Formula.claims I).sum.point.length = 27 := by
-  refine ⟨?_, ?_, ?_, ?_, ?_, ?_⟩ <;>
-    simp [Formula.claims, Formula.parts, quotientParts, Formula.quotientPoint, Formula.u, sumPoint, cellVars,
-      PcsQuotient.logRows, Formula.m]
+    (Formula.claims I).witness.point.length = 24 ∧ (Formula.claims I).wiring.point.length = 24 ∧
+      (Formula.claims I).copy.point.length = 28 := by
+  refine ⟨?_, ?_, ?_⟩ <;>
+    simp [Formula.claims, copyPoint, Formula.u, cellVars, PcsQuotient.logRows, Formula.m]
 
 theorem reduce_some {index : Commitment} {stmt : Statement} {p : ReductionProof} {frame : UInt8}
     {cd : List UInt8} (h : calldata stmt p frame = some cd) {r : Reduced} (hr : reduce 22 index stmt p = some r) :
     ∃ I : Formula.Vals, r.claims = Formula.claims I := by
-  obtain ⟨rw, rh, rq, rg, hw, hh, hq, hg, -⟩ := calldata_some h
-  rw [reduce_eq index stmt p hw hh hq hg] at hr
+  obtain ⟨rw, rt, hw, ht, -⟩ := calldata_some h
+  rw [reduce_eq index stmt p hw ht] at hr
   set I := chainVals index stmt p
-  rw [show claimsAt 22 stmt I.α I.β I.γ I.t I.ρ p.values p.next p.qValue p.gValue =
-      claimsAt PcsQuotient.logRows I.stmt I.α I.β I.γ I.t I.ρ I.a I.next I.qValue I.gValue from rfl,
+  rw [show claimsAt 22 stmt I.α I.β I.μ I.t I.ρ p.values p.next =
+      claimsAt PcsQuotient.logRows I.stmt I.α I.β I.μ I.t I.ρ I.v I.next from rfl,
     Formula.claimsAt_eq] at hr
   revert hr
   split_ifs <;> intro hr <;> simp at hr
@@ -79,15 +77,12 @@ theorem evm_accepts_eq_verify (index : Commitment) (stmt : Statement) (proof : P
   rcases hr : reduce 22 index stmt proof.reduction with _ | r
   · rfl
   · obtain ⟨I, hI⟩ := reduce_some h hr
-    obtain ⟨l0, l1, l2, l3, l4, l5⟩ := claims_lengths I
+    obtain ⟨l0, l1, l2⟩ := claims_lengths I
     simp only [checkPairs, Reduced.checks, List.map_cons, List.map_nil, allAttested, List.all_cons,
       List.all_nil]
     rw [pcsOpen_pcsClaimBytes _ _ _ _ (by rw [hI, l0]; norm_num) (by rw [hI, l0]; norm_num),
       pcsOpen_pcsClaimBytes _ _ _ _ (by rw [hI, l1]; norm_num) (by rw [hI, l1]; norm_num),
-      pcsOpen_pcsClaimBytes _ _ _ _ (by rw [hI, l2]; norm_num) (by rw [hI, l2]; norm_num),
-      pcsOpen_pcsClaimBytes _ _ _ _ (by rw [hI, l3]; norm_num) (by rw [hI, l3]; norm_num),
-      pcsOpen_pcsClaimBytes _ _ _ _ (by rw [hI, l4]; norm_num) (by rw [hI, l4]; norm_num),
-      pcsOpen_pcsClaimBytes _ _ _ _ (by rw [hI, l5]; norm_num) (by rw [hI, l5]; norm_num)]
+      pcsOpen_pcsClaimBytes _ _ _ _ (by rw [hI, l2]; norm_num) (by rw [hI, l2]; norm_num)]
     rfl
 
 /-- **`evm_accepts_eq_verify`, with the Statement's `verifyWith`** at `π = Keccak-f[1600]`. -/

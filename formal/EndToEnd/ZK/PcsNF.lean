@@ -26,6 +26,7 @@ theorem FProg.bind_assoc (P : FProg A α) (g : α → FProg A β) (f : β → FP
   | ret a => rfl
   | step m k ih => simp only [FProg.bind, ih]
   | q x k ih => simp only [FProg.bind, ih]
+  | r k ih => simp only [FProg.bind, ih]
 
 /-- The zero state. -/
 abbrev zeroSt : KeccakState := Vector.replicate 25 0

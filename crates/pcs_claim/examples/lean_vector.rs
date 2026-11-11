@@ -7,24 +7,10 @@
 //!
 //! `cargo run --release -p pcs_claim --example lean_vector > target/pcs_claim_vector.txt`
 
-use pcs_claim::lean::{limbs, line, opening, words};
-use pcs_claim::{Codeword, PcsClaim, commit, element_of, ood_point, open};
+use pcs_claim::lean::pcs_vector as vector;
+use pcs_claim::{Codeword, commit, element_of, open};
 use primitives::field::{F64, F192};
 use primitives::hash::hash as keccak256;
-
-fn vector(name: &str, claim: &PcsClaim, proof: &fiat_shamir::transcript::Proof) -> String {
-    let n = claim.n as usize;
-    let mut out = format!("vector {name}\n");
-    out += &line("n", [n as u64]);
-    out += &line("claimbytes", claim.encode().iter().map(|&b| b as u64));
-    out += &line("payload", claim.hash().iter().map(|&b| b as u64));
-    out += &line("root", words(&claim.root));
-    out += &line("ood", limbs(&claim.ood));
-    out += &line("point", claim.point.iter().flat_map(limbs));
-    out += &line("value", limbs(&claim.value));
-    out += &line("oodpoint", ood_point(n, &claim.root).iter().flat_map(limbs));
-    out + &opening(claim, proof) + "end\n"
-}
 
 fn main() {
     let mut out = String::new();

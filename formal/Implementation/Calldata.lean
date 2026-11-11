@@ -9,11 +9,11 @@ import Common.Lanes
 /-!
 # The calldata of a proof, and the leaves the graph reads from it
 
-`calldata` is `quotient.rs`'s: the selector, the statement's `64` bytes, the four roots' `32` bytes each
-(the witness table's, then `H`'s, `Q`'s, `G`'s: the digests their halves name, `rootOfHalves`; a proof whose
-roots' halves have a top limb has no calldata, as the Rust's `NotARoot`), the eleven other scalars of the
-reduction's proof, `24` bytes each (`elementBytes`: the four out-of-domain answers, the four values,
-`next`, `Q`'s and `G`'s values), and the index of the frame of PCS claims. `deployed` is what the contract
+`calldata` is `quotient.rs`'s (`273` bytes, no selector): the statement's `64` bytes, the two roots' `32` bytes
+each (the witness table's, then the quotient table's: the digests their halves name, `rootOfHalves`; a proof whose
+roots' halves have a top limb has no calldata, as the Rust's `NotARoot`), the six other scalars of the
+reduction's proof, `24` bytes each (`elementBytes`: the two out-of-domain answers, the three values `X`, `C`,
+`V + Y`, `next`), and the index of the frame of PCS claims. `deployed` is what the contract
 reads: the deployed Keccak-256, and the circuit's commitment in storage (the root's bytes, the
 out-of-domain answer's word).
 
@@ -115,19 +115,18 @@ theorem rootOfHalves_rootHalves (d : Digest) : rootOfHalves (rootHalves d) = som
 
 /-! ## The calldata -/
 
-/-- The reduction's proof's scalars that are not roots' halves, in the order of the calldata. -/
+/-- The reduction's proof's scalars that are not roots' halves, in the order of the calldata: the two
+out-of-domain answers, the three values, `next`. -/
 def scalarsOf (p : ReductionProof) : List E :=
-  [p.witness.ood, p.h.ood, p.q.ood, p.g.ood] ++ p.values.toList ++ [p.next, p.qValue, p.gValue]
+  [p.witness.ood, p.table.ood] ++ p.values.toList ++ [p.next]
 
-/-- **`quotient.rs`'s `calldata`**: the selector, the statement, the four roots' bytes, the other
-scalars, the frame's index; `none` for a proof whose roots' halves have a top limb. -/
+/-- **`quotient.rs`'s `calldata`**: the statement, the two roots' bytes, the other scalars, the frame's index (no
+selector); `none` for a proof whose roots' halves have a top limb. -/
 def calldata (stmt : Statement) (p : ReductionProof) (frame : UInt8) : Option (List UInt8) := do
   let rw ← rootOfHalves p.witness.root
-  let rh ← rootOfHalves p.h.root
-  let rq ← rootOfHalves p.q.root
-  let rg ← rootOfHalves p.g.root
-  pure ((bytesOf selector ++ stmt.y.toList ++ stmt.root.toList) ++
-    ([rw, rh, rq, rg].flatMap digestBytes ++ ((scalarsOf p).flatMap elementBytes ++ [frame])))
+  let rt ← rootOfHalves p.table.root
+  pure ((stmt.y.toList ++ stmt.root.toList) ++
+    ([rw, rt].flatMap digestBytes ++ ((scalarsOf p).flatMap elementBytes ++ [frame])))
 
 /-- Keccak-256 as the EVM's `KECCAK256` returns it. -/
 def keccakBytes (l : List UInt8) : Vector UInt8 32 := Digest.toBytes (keccak256 l)
@@ -148,8 +147,7 @@ def states (index : Commitment) (stmt : Statement) (p : ReductionProof) : List D
   let s1 := stOf s0 [p.witness.root.1, p.witness.root.2, p.witness.ood]
   let s2 := stOf s1 []
   let s3 := stOf s2 []
-  let s4 := stOf s3 [p.h.root.1, p.h.root.2, p.h.ood, p.q.root.1, p.q.root.2, p.q.ood, p.g.root.1,
-    p.g.root.2, p.g.ood]
+  let s4 := stOf s3 [p.table.root.1, p.table.root.2, p.table.ood]
   let s5 := stOf s4 (p.values.toList ++ [p.next])
   [s0, s1, s2, s3, s4, s5]
 
@@ -157,7 +155,7 @@ def states (index : Commitment) (stmt : Statement) (p : ReductionProof) : List D
 def chainVals (index : Commitment) (stmt : Statement) (p : ReductionProof) : Formula.Vals :=
   let s := states index stmt p
   ⟨stmt, challengeOf (s.getD 1 default), challengeOf (s.getD 2 default), challengeOf (s.getD 3 default),
-    challengeOf (s.getD 4 default), challengeOf (s.getD 5 default), p.values, p.next, p.qValue, p.gValue⟩
+    challengeOf (s.getD 4 default), challengeOf (s.getD 5 default), p.values, p.next⟩
 
 theorem foldl_absorb (c : Chain) (l : List E) :
     (l.foldl Chain.absorb c) = ⟨c.state, c.pending ++ l⟩ := by
@@ -167,16 +165,15 @@ theorem foldl_absorb (c : Chain) (l : List E) :
 
 /-- **The Statement's reduction** on a proof whose roots name digests: the commitments, and `claimsAt`
 at the chain's challenges. -/
-theorem reduce_eq (index : Commitment) (stmt : Statement) (p : ReductionProof) {rw rh rq rg : Digest}
-    (hw : rootOfHalves p.witness.root = some rw) (hh : rootOfHalves p.h.root = some rh)
-    (hq : rootOfHalves p.q.root = some rq) (hg : rootOfHalves p.g.root = some rg) :
+theorem reduce_eq (index : Commitment) (stmt : Statement) (p : ReductionProof) {rw rt : Digest}
+    (hw : rootOfHalves p.witness.root = some rw) (ht : rootOfHalves p.table.root = some rt) :
     reduce 22 index stmt p =
-      (claimsAt 22 stmt (chainVals index stmt p).α (chainVals index stmt p).β (chainVals index stmt p).γ
-        (chainVals index stmt p).t (chainVals index stmt p).ρ p.values p.next p.qValue p.gValue).map
-        fun claims ↦ ⟨⟨⟨rw, p.witness.ood⟩, ⟨rh, p.h.ood⟩, ⟨rq, p.q.ood⟩, ⟨rg, p.g.ood⟩⟩, claims⟩ := by
+      (claimsAt 22 stmt (chainVals index stmt p).α (chainVals index stmt p).β (chainVals index stmt p).μ
+        (chainVals index stmt p).t (chainVals index stmt p).ρ p.values p.next).map
+        fun claims ↦ ⟨⟨⟨rw, p.witness.ood⟩, ⟨rt, p.table.ood⟩⟩, claims⟩ := by
   have hs : Supported 22 := by decide
   simp only [reduce, reduceWith, readCommitment, Chain.startWith, Chain.squeezeWith, Chain.absorb,
-    hw, hh, hq, hg, Option.map_some, if_neg (not_not.mpr hs), foldl_absorb]
+    hw, ht, Option.map_some, if_neg (not_not.mpr hs), foldl_absorb]
   rfl
 
 /-! ## Reading the calldata -/
@@ -196,20 +193,15 @@ theorem flatMap_chunk {α : Type} (f : α → List UInt8) (k : ℕ) (hf : ∀ a,
     exact ih
 
 theorem calldata_some {stmt : Statement} {p : ReductionProof} {frame : UInt8} {cd : List UInt8}
-    (h : calldata stmt p frame = some cd) : ∃ rw rh rq rg,
-      rootOfHalves p.witness.root = some rw ∧ rootOfHalves p.h.root = some rh ∧
-      rootOfHalves p.q.root = some rq ∧ rootOfHalves p.g.root = some rg ∧
-      cd = (bytesOf selector ++ stmt.y.toList ++ stmt.root.toList) ++
-        ([rw, rh, rq, rg].flatMap digestBytes ++ ((scalarsOf p).flatMap elementBytes ++ [frame])) := by
+    (h : calldata stmt p frame = some cd) : ∃ rw rt,
+      rootOfHalves p.witness.root = some rw ∧ rootOfHalves p.table.root = some rt ∧
+      cd = (stmt.y.toList ++ stmt.root.toList) ++
+        ([rw, rt].flatMap digestBytes ++ ((scalarsOf p).flatMap elementBytes ++ [frame])) := by
   unfold calldata at h
   rcases hw : rootOfHalves p.witness.root with _ | rw <;> rw [hw] at h
   · cases h
-  rcases hh : rootOfHalves p.h.root with _ | rh <;> rw [hh] at h
+  rcases ht : rootOfHalves p.table.root with _ | rt <;> rw [ht] at h
   · cases h
-  rcases hq : rootOfHalves p.q.root with _ | rq <;> rw [hq] at h
-  · cases h
-  rcases hg : rootOfHalves p.g.root with _ | rg <;> rw [hg] at h
-  · cases h
-  exact ⟨rw, rh, rq, rg, rfl, rfl, rfl, rfl, (Option.some.inj h).symm⟩
+  exact ⟨rw, rt, rfl, rfl, (Option.some.inj h).symm⟩
 
 end Implementation
