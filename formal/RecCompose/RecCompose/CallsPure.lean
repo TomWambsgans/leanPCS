@@ -86,17 +86,20 @@ theorem holds_forIn_and {γ : Type} (G : γ → Prop) (f : γ → Bool → m (Fo
     · exact hc hbc.2
     · exact hl y hy
 
-/-- **The contract accepts only with three declared π1 claims, its first three claims, which decode.** -/
+/-- **The contract accepts only with three declared π1 claims, its first three claims, which decode, and a stream of
+the length π2's run reads** (`pi2Bytes`, `runWith_post`). -/
 theorem contractWith_post (F : KeccakState → m KeccakState) (D : RecDeployment) (roots : RecSetupRoots)
     (input : Vector UInt8 32) (proof : RecProof) :
     Holds (D.contractWith F roots input proof) fun x ↦ x.1 = true →
-      proof.pi1Claims.length = 3 ∧ ∃ ops, proof.pi1Claims.mapM claimOfWords = some ops ∧
-        contractPi1Openings x.2 = some ops := by
+      (proof.pi1Claims.length = 3 ∧ ∃ ops, proof.pi1Claims.mapM claimOfWords = some ops ∧
+        contractPi1Openings x.2 = some ops) ∧
+      proof.stream.size = pi2Bytes (Spec.of (D.circuitAt roots.pi1).circuit) := by
   unfold RecDeployment.contractWith
-  refine holds_bind (holds_true _) fun iv _ ↦ holds_bind (holds_true _) fun o _ ↦ ?_
+  refine holds_bind (holds_true _) fun iv _ ↦ holds_bind (runWith_post F _ _ _ _ _) fun o ho ↦ ?_
   split
   · exact holds_pure fun h ↦ absurd h (by simp)
   · rename_i r hr
+    have hsz := (ho.1 r hr).1
     split_ifs with hacc
     · exact holds_pure fun h ↦ absurd h (by simp)
     dsimp only
@@ -129,7 +132,7 @@ theorem contractWith_post (F : KeccakState → m KeccakState) (D : RecDeployment
             rw [← hfst] at hwc
             obtain ⟨x, hx, rfl⟩ := List.mem_map.mp hwc
             exact hdec' x hx
-        refine ⟨h3, ops, ?_, hops⟩
+        refine ⟨⟨h3, ops, ?_, hops⟩, hsz⟩
         rw [← hops]
         unfold contractPi1Openings
         rw [List.take_append_of_le_length (by omega), List.take_of_length_le (by omega)]
@@ -141,8 +144,9 @@ end Generic
 /-- The outcomes' fact. -/
 theorem outcomes_post (D : RecDeployment) (A : RecAdversary) :
     ∀ z ∈ support (recSoundnessExperiment2 D A), acc z = true →
-      (prf z).pi1Claims.length = 3 ∧ ∃ ops, (prf z).pi1Claims.mapM claimOfWords = some ops ∧
-        contractPi1Openings (cls z) = some ops := by
+      ((prf z).pi1Claims.length = 3 ∧ ∃ ops, (prf z).pi1Claims.mapM claimOfWords = some ops ∧
+        contractPi1Openings (cls z) = some ops) ∧
+      (prf z).stream.size = pi2Bytes (Spec.of (D.circuitAt (rts z).pi1).circuit) := by
   refine holds_support ?_
   unfold recSoundnessExperiment2 runWithRandomPermutation
   refine holds_run' (holds_simulateQ _ ?_) []
@@ -154,12 +158,12 @@ theorem outcomes_post (D : RecDeployment) (A : RecAdversary) :
 
 /-- **`DeclaredGood`**: on every accepted outcome, the declared π1 claims decode to the contract's π1 openings. -/
 theorem declaredGood (D : RecDeployment) : DeclaredGood D :=
-  fun A z hz ha ↦ (outcomes_post D A z hz ha).2
+  fun A z hz ha ↦ (outcomes_post D A z hz ha).1.2
 
 /-- **`DeclaredClaims`**: on every accepted outcome, the proof declares three π1 claims, π1-rec4's graph's count. -/
 theorem declaredClaims (D : RecDeployment) : DeclaredClaims D := by
   intro A z hz ha
-  exact (outcomes_post D A z hz ha).1
+  exact ⟨(outcomes_post D A z hz ha).1.1, (outcomes_post D A z hz ha).2⟩
 
 end RecCompose
 

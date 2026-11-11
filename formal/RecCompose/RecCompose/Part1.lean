@@ -1,6 +1,7 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md.
 import RecCompose.Basic
 import RecCompose.IvLength
+import RecCompose.Pi2Run
 import RecCircuit.Check
 import RecCircuit.Piop
 import RecCircuit.Decode
@@ -34,10 +35,12 @@ open OracleComp OracleSpec Common
 open scoped ENNReal
 
 /-- **The contract declares π1's claims**: on every outcome of π2's knowledge-soundness experiment whose contract
-accepts, the proof declares three π1 claims (π1-rec4's graph's count). -/
+accepts, the proof declares three π1 claims (π1-rec4's graph's count), and its stream has the length π2's run reads
+(`pi2Bytes`: π2's run succeeded). -/
 def DeclaredClaims (D : RecDeployment) : Prop :=
   ∀ (A : RecAdversary), ∀ z ∈ support (recSoundnessExperiment2 D A), (acc z) = true →
-    (prf z).pi1Claims.length = 3
+    (prf z).pi1Claims.length = 3 ∧
+      (prf z).stream.size = pi2Bytes (Spec.of (D.circuitAt (rts z).pi1).circuit)
 
 /-- **π2's extraction for a relation `Rel` of `W`'s candidates**: in π2's experiment, the contract accepts while no
 candidate of `W`'s committed word (read off the setup's evaluations and the transcript, decoded as π2's extractor
@@ -59,8 +62,9 @@ circuit's corollary.
 * `pub`: port `J`'s public limbs, for the setup's roots, the public input and the proof (the statement's four words,
   the frame words' limbs, π1's roots' limbs and claims' elements where the contract encodes claims, zeros);
 * `extraction`: π2's Fiat–Shamir layer, openings, PIOP and tables' layer;
-* `circuit`: a satisfying witness holds a π1 stream π1-rec4's graph accepts, its claims hashing to the declared ones
-  (`RecCircuit`'s end theorem). -/
+* `circuit`: on a proof declaring three claims whose stream π2's run reads whole (`pi2Bytes`: the public limbs are
+  then the run's), a satisfying witness holds a π1 stream π1-rec4's graph accepts, its claims hashing to the declared
+  ones (`RecCircuit`'s end theorem). -/
 structure Pi2Layers (D : RecDeployment) (ε2 : ℕ → ℝ≥0∞) where
   rootsAt : List ℕ
   compiled : UniKeccak.SetupRootsK → RecCircuit.Compiled
@@ -74,7 +78,7 @@ structure Pi2Layers (D : RecDeployment) (ε2 : ℕ → ℝ≥0∞) where
   extraction : Pi2Extraction D (fun roots input proof w ↦
     ((compiled roots.pi1).circuit.toPiop).Satisfies (pub roots input proof) (RecCircuit.emb w)) ε2
   circuit : ∀ (roots : RecSetupRoots) (input : Vector UInt8 32) (proof : RecProof) (w : ℕ → K),
-    proof.pi1Claims.length = 3 →
+    proof.pi1Claims.length = 3 → proof.stream.size = pi2Bytes (Spec.of (D.circuitAt roots.pi1).circuit) →
     ((compiled roots.pi1).circuit.toPiop).Satisfies (pub roots input proof) (RecCircuit.emb w) →
       Pi1GraphAccepts (pi1GraphAt roots.pi1) (D.pi1IvAt roots.pi1) input (D.pi1Stream w) proof.pi1Claims
 
@@ -86,7 +90,7 @@ theorem recKnowledgeSoundness2_of_layers {D : RecDeployment} {ε2 : ℕ → ℝ�
   rintro z hz ⟨hacc, hno⟩
   refine ⟨hacc, fun ⟨w, hw, hrel⟩ ↦ hno ?_⟩
   obtain ⟨s, hs, hsacc⟩ := recExtractFrom2_of_mem D (rts z) (inp z) _ (prf z) w hw
-    (L.circuit _ _ _ _ (hdecl A z hz hacc) hrel)
+    (L.circuit _ _ _ _ (hdecl A z hz hacc).1 (hdecl A z hz hacc).2 hrel)
   exact ⟨s, hs, hsacc⟩
 
 end RecCompose

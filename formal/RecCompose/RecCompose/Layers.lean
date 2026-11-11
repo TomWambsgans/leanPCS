@@ -539,7 +539,7 @@ statement's scalars: a witness satisfying the compiled circuit holds a π1 strea
 commitment accepts, its claims hashing to the declared ones (when the proof declares three, the graph's count). -/
 def Pi2CircuitAccepts (C : Pi2Circuits D) (Fa : Pi2Facts D C) : Prop :=
   ∀ (roots : RecSetupRoots) (input : Vector UInt8 32) (proof : RecProof) (w : ℕ → K),
-    proof.pi1Claims.length = 3 →
+    proof.pi1Claims.length = 3 → proof.stream.size = pi2Bytes (Spec.of (D.circuitAt roots.pi1).circuit) →
     (C.G roots).Satisfies (Fa.pubOf roots (pi2Scalars D roots input proof)) (RecCircuit.emb w) →
       Pi1GraphAccepts (pi1GraphAt roots.pi1) (D.pi1IvAt roots.pi1) input (D.pi1Stream w) proof.pi1Claims
 
