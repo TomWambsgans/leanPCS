@@ -72,7 +72,7 @@ fn main() {
     let peak_reduction = peak();
     let start = Instant::now();
     let openings = open(&proved.tables, &proved.claims, &index_committed);
-    let opening_secs = time("openings (five WHIR)", start);
+    let opening_secs = time("openings (four WHIR)", start);
     let peak_openings = peak();
     println!(
         "{:<34}: {:>8.3} s",
@@ -94,7 +94,7 @@ fn main() {
         64 + 2 * 32 + 24 * (proved.proof.stream.len() - 4),
         proved.proof.stream.len() - 4
     );
-    for (name, proof) in ["witness", "wiring", "copy (on T)", "gate (on T)", "sum (on T)"].into_iter().zip(&openings.0) {
+    for (name, proof) in ["witness", "wiring", "copy (on T)", "sum (on T)"].into_iter().zip(&openings.0) {
         println!("{:<34}: {:.1} KiB", format!("opening: {name}"), opening_bytes(proof) as f64 / 1024.0);
     }
     // Pinned by hand: `dfcbadec8510a4f447488cef75b7c0b12ac17d40bdb4114a181e0df1c27a63e2` with the hidden layouts,

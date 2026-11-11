@@ -235,7 +235,7 @@ fn parse(calldata: &[u8]) -> (Statement, Proof) {
 }
 
 /// The claims the deployed contract checks declared for `calldata` (without its frame byte), by the Rust verifier:
-/// the five claims' bytes back to back, or `None` where the verifier rejects.
+/// the four claims' bytes back to back, or `None` where the verifier rejects.
 pub fn expected(index: &Commitment, calldata: &[u8]) -> Option<Vec<u8>> {
     let (statement, proof) = parse(calldata);
     let (commitments, claims) = quotient::protocol::verify(index, &statement, &proof, LOG_ROWS).ok()?;

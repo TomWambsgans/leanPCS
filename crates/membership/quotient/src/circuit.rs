@@ -464,6 +464,32 @@ impl Circuit {
             .collect()
     }
 
+    /// Whether every cycle of the wiring but a lone cell's holds a cell that is neither a row's first (`X`) cell nor
+    /// a pinned one ([`anchor_cell`]): what the protocol's soundness asks of the circuit. The protocol's identity
+    /// sets the sum's polynomial, at those cells, to the logarithmic derivative plus a multiple of the gate's or the
+    /// pin's error over `d d'`; walking a cycle from such a cell, each error is then the only term with a pole on the
+    /// line of its cell, so the sum vanishes identically in `α, β` only if every error is zero (`crate::protocol`).
+    pub fn errors_have_their_own_poles(&self) -> bool {
+        let pinned = |cell: usize| (0..PUBLIC_ROWS).any(|k| anchor_cell(k) == cell);
+        let mut seen = vec![false; self.sigma.len()];
+        for start in 0..self.sigma.len() {
+            if seen[start] {
+                continue;
+            }
+            let (mut at, mut len, mut free) = (start, 0, false);
+            while !seen[at] {
+                seen[at] = true;
+                len += 1;
+                free |= at % 4 != 0 && !pinned(at);
+                at = self.sigma[at] as usize;
+            }
+            if len > 1 && !free {
+                return false;
+            }
+        }
+        true
+    }
+
     /// Fill the random rows of `cells` with `words`, two a row (`HIDING.md`).
     pub fn randomize(&self, cells: &mut [F64], words: &[F64; RANDOM_WORDS]) {
         for (k, r) in self.random_rows().into_iter().enumerate() {
@@ -773,6 +799,7 @@ mod tests {
         let statement = secret.statement();
         let cells = circuit.cells(&membership_inputs(&secret));
         assert_eq!(circuit.check_k(&cells), Ok(()));
+        assert!(circuit.errors_have_their_own_poles());
         let pinned = anchor_values(&statement.words());
         for (k, &value) in pinned.iter().enumerate() {
             assert_eq!(cells[anchor_cell(k)], value, "anchor {k}");

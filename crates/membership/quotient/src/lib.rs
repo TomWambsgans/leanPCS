@@ -2,9 +2,10 @@
 // PCS-openings-aggregation, commit 651453c6 (`flock::quotient`). MIT OR Apache-2.0; see AGENTS.md.
 //! Merkle membership with Keccak-256, its claims the EIP's PCS claims ([`opening`], `pcs_claim`), zero knowledge
 //! assuming a zero-knowledge PCS opening (`HIDING.md`: the rank conditions are checked at random challenges),
-//! reduced to five one-point evaluation claims on two commitments by a few field elements and no sumcheck: the
+//! reduced to four one-point evaluation claims on two commitments by a few field elements and no sumcheck: the
 //! protocol of leanVM's `flock::quotient` (`doc/quotient/main.tex` there), on a circuit of one χ gate on bits, its
-//! quotients in one table (`docs/membership/PERF_GAS.md`), its claims opened by leanVM's WHIR.
+//! one quotient in one table with the sum's polynomial (`docs/membership/PERF_GAS.md`), its claims opened by
+//! leanVM's WHIR.
 
 pub mod circuit;
 pub mod domain;

@@ -7,10 +7,10 @@
 //! - `R` lines: the reduction alone ([`protocol::verify`]) on random 11-scalar streams (and a few of other
 //!   lengths, or with a root that is not two halves) at `2^12` to `2^23` rows (the commitments take `2^13` to
 //!   `2^22`, [`protocol::supported`]), and on the honest proofs below: the two commitments (root, out-of-domain
-//!   answer) and the five claims, or the rejection.
+//!   answer) and the four claims, or the rejection.
 //! - `Q` lines: the honest prover's inputs (input bits, the random rows' words, the blinding) and the stream it
 //!   sends.
-//! - `P` lines: whole proofs (the reduction and the five openings) on a small circuit of `2^17` rows, honest and
+//! - `P` lines: whole proofs (the reduction and the four openings) on a small circuit of `2^17` rows, honest and
 //!   tampered, the openings in their raw form (one full Merkle path per query), with the Rust verifier's verdict on
 //!   that raw form. With `--full`, also the membership circuit (`2^22` rows).
 //! - `I` lines: a circuit's size, its number of inputs and its commitment (its wiring table's root and out-of-domain
@@ -161,14 +161,14 @@ fn raw(commitment: &Commitment, claim: &Claim, proof: &fiat_shamir::transcript::
     raw
 }
 
-/// A whole proof: the reduction's stream and the five openings in raw form.
+/// A whole proof: the reduction's stream and the four openings in raw form.
 #[derive(Clone)]
 struct Whole {
     log_rows: usize,
     index: Commitment,
     statement: Statement,
     stream: Vec<F192>,
-    openings: [RawOpening; 5],
+    openings: [RawOpening; 4],
 }
 
 /// The commitment each claim of [`Claims::all`] is on.
@@ -197,7 +197,7 @@ impl Whole {
         }
     }
 
-    /// The Rust verifier on the raw form: the reduction, then the five openings.
+    /// The Rust verifier on the raw form: the reduction, then the four openings.
     fn accepts(&self) -> bool {
         let proof = Proof {
             stream: self.stream.clone(),

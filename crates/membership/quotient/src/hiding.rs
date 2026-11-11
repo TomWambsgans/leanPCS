@@ -2,14 +2,14 @@
 //! The rank conditions of `HIDING.md`, checked exactly on the toy circuit at fixed random challenges.
 //!
 //! With the challenges fixed, the scalars a proof reveals besides the roots (the two out-of-domain answers and the
-//! four `a_j`; `next` is the public wiring's, and the five claims' values follow from them) are functions of the
+//! four `a_j`; `next` is the public wiring's, and the four claims' values follow from them) are functions of the
 //! prover's randomness, affine in each group below once the groups before it are fixed. A group's scalars are
 //! uniform, whatever the witness, if its map has full rank over `K` (each scalar three `K`-coordinates):
 //!
 //! - **W**: `a_0 .. a_3` and the witness table's out-of-domain answer, over the random rows' words (15 coordinates
 //!   over [`RANDOM_WORDS`]): every cell of a random row is affine in its two words, and `W` is linear in the cells;
 //! - **T**: the quotient table's out-of-domain answer, over the blinding of `h` (3 over `3 H_BLIND`), the random rows
-//!   fixed: the blinding is `h`'s coefficients past `n` and moves `q` by `b d d'`, `g` not at all.
+//!   fixed: the blinding is `h`'s coefficients past `n` and moves `q` by `b d d'`.
 //!
 //! Both maps are affine: [`revealed_scalars_are_uniform`] checks that two words changed together move the scalars
 //! by the sum of their own changes, and a word scaled by an element of `K` by that multiple.
@@ -97,7 +97,7 @@ fn revealed_scalars_are_uniform() {
     let cells = toy_cells(&circuit, &x);
     let seed: [u8; 32] = std::array::from_fn(|_| rng.next_u8());
     let base = Randomness::derive(&seed, &commitment, &statement, &cells);
-    let challenges: Vec<F192> = (0..4).map(|_| F192::new(rng.next_u64(), rng.next_u64(), rng.next_u64())).collect();
+    let challenges: Vec<F192> = (0..5).map(|_| F192::new(rng.next_u64(), rng.next_u64(), rng.next_u64())).collect();
     FIXED.with(|fixed| *fixed.borrow_mut() = Some(challenges));
     let reveal = |randomness: &Randomness| {
         FIXED_OOD.with(|fixed| *fixed.borrow_mut() = Some((0x00D, 0)));
