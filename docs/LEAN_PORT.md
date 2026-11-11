@@ -55,9 +55,10 @@ The bounds' arithmetic carries over but for one port.
   `FlockSound.card_ringBad_le`), and the rate-extended transfer (`UniKeccakSound.Rec4.keccak256RateTransfer`:
   leanerVM's generic two-oracle transfer with the 136-byte rate as `H`'s output, `q²/2^508`), and **soundness**:
   `UniKeccakSound.uniKnowledgeSoundnessKeccakRec4_closed` (no hypothesis, `uniBound128 (2^35/|E|)`, 128.49 bits;
-  [`../formal/UniKeccakSound/README.md`](../formal/UniKeccakSound/README.md), "π1-rec4"). Left:
-  - Completeness: the honest prover with wide draws and π1-rec4's staged chain (three wide calls for π1-rec3's
-    thirteen), hypotheses `32 ≤ D.programIv.length ≤ 2^16` as before.
+  [`../formal/UniKeccakSound/README.md`](../formal/UniKeccakSound/README.md), "π1-rec4"), and **completeness**:
+  `UniKeccakComplete.uniCompletenessKeccakRec4_closed` (no hypothesis beyond `32 ≤ D.programIv.length ≤ 2^16`, error
+  `deltaK < 2^-169`, for the Lean prover `Rec4.uniProverRec4RP`;
+  [`../formal/UniKeccakComplete/README.md`](../formal/UniKeccakComplete/README.md), "π1-rec4").
 - **The graph's compiler part** (`RecGraphKeccak`'s graph = verifier for π1-rec4 is done: `Sim.pi1GraphIsVerifierK4`,
   `GraphsAgreeK4` evaluated, `Emitted.lean` regenerated): `formal/RecCircuit` does not yet know `RecGraph.Node.wide`
   (`Expand.lean`'s `ofRGNode`, the compiler's matches) nor `RecGraph.Value.sponge` (a hash's value is now Keccak-256's

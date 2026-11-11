@@ -15,8 +15,8 @@ Everything in `formal/` states and proves the protocols of commit **`f96a7938`**
   ported in part** (branch `lean/pi1-rec4`): its verifier (`UniKeccak.reduceWithK4`, tested against the Rust on the
   real π1-rec4 proofs), its recorded graph (`RecGraphKeccak/Emitted.lean` is now π1-rec4's) and graph = verifier
   (`RecGraphKeccak.Sim.pi1GraphIsVerifierK4`, no hypothesis) and its knowledge soundness
-  (`UniKeccakSound.uniKnowledgeSoundnessKeccakRec4_closed`, no hypothesis, at most `2^-64` for `Q ≤ 2^64`); its
-  completeness is stated (`UniCompletenessKeccakRec4`).
+  (`UniKeccakSound.uniKnowledgeSoundnessKeccakRec4_closed`, no hypothesis, at most `2^-64` for `Q ≤ 2^64`) and
+  completeness (`UniKeccakComplete.uniCompletenessKeccakRec4_closed`, `deltaK < 2^-169`).
 
 What the port needs is [`docs/LEAN_PORT.md`](../docs/LEAN_PORT.md). **Do not regenerate the Lean-facing files until
 the port**: the Rust now writes the deployed protocols, so `UPDATE_LEAN=1` runs (`crates/membership/evm/src/lean.rs`,
@@ -97,9 +97,10 @@ setup `F`; π2's `W`, setup, and `Q`'s identity, pushes' and sum claims), each t
   `UniKeccakSound.uniKnowledgeSoundnessKeccak_closed` (at `keccakRefShape` and the deployed program IV; `≤ 2^-64` for
   `Q ≤ 2^64`, `2^-64.87` at `2^64`, 128.87 bits as `Q/ε`) and `uniKnowledgeSoundnessKeccakRec3_closed` (π1-rec3,
   128.49 bits). The three openings are charged once at `269 · 2^-137` (`WhirBridge.Pcs.pcs_union_sound`).
-- **π1, completeness**: `UniKeccakComplete.uniCompletenessKeccak_closed` and `uniCompletenessKeccakRec3_closed`, for an
-  explicit Lean honest prover, error `Prob.deltaK < 2^-169` (`deltaK_lt`), under `D.shape = keccakRefShape`,
-  `D.programIv.length ≤ 2^16` and **`32 ≤ D.programIv.length`** (the deployed IV has 32 bytes).
+- **π1, completeness**: `UniKeccakComplete.uniCompletenessKeccak_closed`, `uniCompletenessKeccakRec3_closed` and
+  `uniCompletenessKeccakRec4_closed` (π1-rec4, the prover `Rec4.uniProverRec4RP`), for an explicit Lean honest prover,
+  error `Prob.deltaK < 2^-169` (`deltaK_lt`), under `D.shape = keccakRefShape`, `D.programIv.length ≤ 2^16` and
+  **`32 ≤ D.programIv.length`** (the deployed IV has 32 bytes).
 - **`RecCompose`, `RecCircuit` still state π2v3 over π1-rec3** (the π2 port's): their `GraphsAgree`
   (`pi1GraphK = Emitted.graph`) no longer holds, `Emitted.lean` being π1-rec4's, and `RecCircuit` does not yet
   compile `wide` nodes.
