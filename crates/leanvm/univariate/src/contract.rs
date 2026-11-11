@@ -195,6 +195,7 @@ pub fn compile_verifier(recorded: &Recorded, program_iv: &[u8; 32], measure: boo
         stream_len: recorded.stream_len,
         measure,
         selector: true,
+        frame: Vec::new(),
     };
     compile(&recorded.graph, &[], &Ending::Claims(calls(recorded)), &entry)
 }
@@ -444,6 +445,7 @@ pub fn parity_with(
         stream_len: recorded.stream_len,
         measure: true,
         selector: true,
+        frame: Vec::new(),
     };
     let checks = recorded.graph.zero.iter().chain(&recorded.graph.nonzero);
     let outputs: Vec<Word> = calls(&recorded)

@@ -120,6 +120,7 @@ fn source_text(s: Source) -> String {
         Source::Element(i) => format!("E {i}"),
         Source::Zero => "Z".into(),
         Source::Pad => "P".into(),
+        Source::ClaimHash(i) => format!("H {i}"),
     }
 }
 

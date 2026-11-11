@@ -371,6 +371,7 @@ pub fn reduce_traced<S: Limbs, C: Channel<S>>(
             Read::Root => public.extend(channel.next_root()?),
             Read::Scalar => public.push(channel.next_scalar()?),
             Read::Narrow => public.push(channel.next_narrow()?),
+            Read::Frame(_) => public.extend(channel.next_frame()?),
         }
     }
     // Each commitment: its root, then its out-of-domain answer, which binds the root to one polynomial before the
@@ -620,10 +621,27 @@ pub fn statement_words(public_input: &[u8; 32]) -> [E; 4] {
     })
 }
 
-/// The verifier on `E` with the Keccak-256 chain, the contract's in Rust: the stream must be read whole.
-pub fn verify(spec: &Spec, iv: &[u8; 32], public_input: &[u8; 32], stream: &[u8]) -> Result<Reduced<E>, VerifierError> {
-    let seed = keccak_seed(&NAME, iv, public_input);
-    let mut channel = KeccakChannel::new(seed, stream, Checks::Enforce);
+/// The transcript's seed: the Keccak-256 of the name, the IV, the public input, then the frame words (`Read::Frame`,
+/// in order: the hashed claims' Keccak-256s), which the contract reads from the frame of PCS claims.
+pub fn seed(iv: &[u8; 32], public_input: &[u8; 32], frame: &[[u8; 32]]) -> [u8; 32] {
+    if frame.is_empty() {
+        return keccak_seed(&NAME, iv, public_input);
+    }
+    let words: Vec<u8> = frame.concat();
+    leanvm_statement::transcript::keccak256(&[&NAME[..], iv, public_input, &words].concat())
+}
+
+/// The verifier on `E` with the Keccak-256 chain, the contract's in Rust: the stream must be read whole. `frame` are
+/// the frame words its `Read::Frame`s read, in order.
+pub fn verify(
+    spec: &Spec,
+    iv: &[u8; 32],
+    public_input: &[u8; 32],
+    frame: &[[u8; 32]],
+    stream: &[u8],
+) -> Result<Reduced<E>, VerifierError> {
+    let mut channel = KeccakChannel::new(seed(iv, public_input, frame), stream, Checks::Enforce);
+    channel.frame = frame.to_vec();
     let reduced = reduce(spec, statement_words(public_input), &mut channel)?;
     channel.finish()?;
     Ok(reduced)

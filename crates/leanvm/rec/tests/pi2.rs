@@ -136,7 +136,7 @@ fn honest_and_mutated(f: &Fixture, mutations: usize) {
     for at in [0, stream.len() / 2, stream.len() - 1] {
         let mut bad = stream.clone();
         bad[at] ^= 0x20;
-        let other = leanvm_rec::pi2::verifier::verify(&f.spec, &f.iv, &f.public_input, &bad).expect("the length");
+        let other = leanvm_rec::pi2::verifier::verify(&f.spec, &f.iv, &f.public_input, &[], &bad).expect("the length");
         assert!(
             verify_openings(f.circuit.log_n, &other, &roots, &f.setup.root(), f.setup.ood(), &openings).is_err(),
             "byte {at} flipped"
@@ -316,8 +316,8 @@ fn contract_checks(design: Design) {
         let stream = proved.stream.clone();
         assert_eq!(stream.len(), recorded.stream_len);
         // Word for word, on the honest stream and on a random one.
-        let words = contract::parity(&inst, &recorded, &f.public_input, &stream);
-        contract::parity(&inst, &recorded, &[0x5a; 32], &sample_stream(stream.len(), 7));
+        let words = contract::parity(&inst, &recorded, &f.public_input, &[], &stream);
+        contract::parity(&inst, &recorded, &[0x5a; 32], &[], &sample_stream(stream.len(), 7));
         println!("parity: {words} words");
 
         // The honest proof: the contract checks π1's claims and those the openings prove, declared.
@@ -385,7 +385,7 @@ fn target_report(name: &str, design: Design) {
         let report = contract::measure(&inst, &recorded);
         print!("{}", report.table(&name));
         let stream = sample_stream(recorded.stream_len, 11);
-        contract::parity(&inst, &recorded, &[0x5a; 32], &stream);
+        contract::parity(&inst, &recorded, &[0x5a; 32], &[], &stream);
         println!("{name}: parity");
     });
 }

@@ -33,7 +33,20 @@ use leanvm_univariate::contract::{NAME, Recorded, calls};
 use super::keccak::{Bit, Constants, Permutation, Sponge};
 use super::layout::{Builder, Finished, Value};
 use super::spec::{CallWord, PublicInputs, Source};
-use super::units::{Arith, Bools, Limbs, Op, Packer, Ports};
+use super::units::{Arith, Bools, Copies, Limbs, Op, Packer, Ports};
+
+/// π1's claims (their indices among `calls(recorded)`) whose Keccak-256 π2's circuit computes: the claim's encoding
+/// (the EIP draft's, `pcs_claim`) hashed in the circuit, its digest a public word ([`Source::ClaimHash`]) that the
+/// contract reads from the transaction's frame of PCS claims, so that the claim's own words (its root, its
+/// out-of-domain answer, its value, the coordinates no other claim has) leave calldata (`docs/leanvm/rec/PERF_GAS.md`).
+/// `C1`'s claim (27 variables at 128 signatures, 28 at 400: six permutations) fits `2^24` positions at 128 and 400
+/// signatures (98.2% and 99.9%); with `C2`'s too it does not. A circuit that would not fit [`FIT_LOG_N`] with them
+/// hashes none ([`compile_keeping`]).
+pub const HASHED_CLAIMS: &[usize] = &[0];
+
+/// The positions `π2`'s circuit must fit for [`HASHED_CLAIMS`] to be hashed: `2^24`, whose quotient table (`16N`
+/// words) is WHIR's largest certified stack.
+pub const FIT_LOG_N: u8 = 24;
 
 /// What the Lean compiler checks before the expansion (`formal/RecCircuit/RecCircuit/Expand.lean`, `Graph.typed`):
 /// node 0 is the seed (π1's recorder makes it first, `Recorder::new`, and the expansion replays the graph from it);
@@ -127,6 +140,8 @@ pub struct Compiled {
     pub arith: [[usize; 2]; 3],
     pub packings: usize,
     pub free_bits: [usize; 2],
+    /// The stream offsets of the roots the circuit ports (those a call the contract encodes names), in order.
+    pub roots_at: Vec<usize>,
 }
 
 /// The values of a big-endian integer of `nbytes` bytes starting at byte `first`, as `(exponent, bit)`.
@@ -194,6 +209,8 @@ pub enum Given {
     PublicBit(u32),
     /// Limb `limb` of the 24-byte big-endian scalar at stream byte `offset`: its bytes `16 − 8·limb .. 24 − 8·limb`.
     Limb { offset: u32, limb: u8 },
+    /// Bit `bit` of the word of `value`, a value computed before (a hashed claim's element, unpacked into bits).
+    Bit { value: Value, bit: u8 },
 }
 
 impl Given {
@@ -206,6 +223,7 @@ impl Given {
                 let at = offset as usize + 16 - 8 * limb as usize;
                 K(stream[at..at + 8].iter().fold(0u64, |acc, &x| acc << 8 | x as u64))
             }
+            Given::Bit { .. } => panic!("a computed value's bit is not an input's"),
         }
     }
 }
@@ -217,25 +235,46 @@ pub struct Trace {
     pub given: Vec<(Value, Given)>,
     pub runs: Vec<super::keccak::Run>,
     pub elements: Vec<Limbs>,
+    /// Each hashed claim's digest, its four statement-order limbs.
+    pub claim_hashes: Vec<[Value; 4]>,
 }
 
 /// Compile `recorded` with the permutation template `make` (rows of `2^log_width`), on a real proof's inputs.
 pub fn compile<P: Permutation>(
     recorded: &Recorded,
     log_width: u8,
-    make: impl FnOnce(&mut Builder) -> P,
+    make: impl Fn(&mut Builder) -> P,
     inputs: &Inputs,
 ) -> Compiled {
     compile_keeping(recorded, log_width, make, inputs, false).0
 }
 
-/// [`compile`], and with `keep` its [`Trace`].
+/// [`compile`], and with `keep` its [`Trace`]. π1's claims [`HASHED_CLAIMS`] are hashed in the circuit if it then fits
+/// `2^`[`FIT_LOG_N`] positions; else none is (the circuit depends on `recorded` alone either way).
 pub fn compile_keeping<P: Permutation>(
     recorded: &Recorded,
     log_width: u8,
-    make: impl FnOnce(&mut Builder) -> P,
+    make: impl Fn(&mut Builder) -> P,
     inputs: &Inputs,
     keep: bool,
+) -> (Compiled, Option<Trace>) {
+    let claims = calls(recorded).len();
+    let hashed: Vec<usize> = HASHED_CLAIMS.iter().copied().filter(|&ci| ci < claims).collect();
+    let out = compile_hashing(recorded, log_width, &make, inputs, keep, &hashed);
+    if hashed.is_empty() || out.0.finished.circuit.log_n <= FIT_LOG_N {
+        return out;
+    }
+    compile_hashing(recorded, log_width, &make, inputs, keep, &[])
+}
+
+/// [`compile_keeping`] with π1's claims `hashed` (indices among `calls(recorded)`) hashed in the circuit.
+pub fn compile_hashing<P: Permutation>(
+    recorded: &Recorded,
+    log_width: u8,
+    make: &impl Fn(&mut Builder) -> P,
+    inputs: &Inputs,
+    keep: bool,
+    hashed_claims: &[usize],
 ) -> (Compiled, Option<Trace>) {
     let mut given: Vec<(Value, Given)> = Vec::new();
     let (g, map) = expand(&recorded.graph);
@@ -271,6 +310,7 @@ pub fn compile_keeping<P: Permutation>(
     let mut packer = Packer::new(&mut b);
     let mut arith = Arith::new(&mut b);
     let mut ports = Ports::new(&mut b);
+    let mut copies = Copies::new(&mut b);
 
     // The stream's hashed bytes, and those in a call's first block.
     let mut hashed = vec![false; stream.len()];
@@ -515,6 +555,105 @@ pub fn compile_keeping<P: Permutation>(
         endable.insert(id, can_end);
     }
 
+    // π1's claims hashed here (`hashed_claims`): each one's encoding as message bits, in byte order, low bit first;
+    // its Keccak-256; the digest's four big-endian words, a port. A root's bytes and a hashed read's are the stream's
+    // bits (forwarded, or a copy where the first block ends them at the permutation's input); another element's 24
+    // bytes are free bits, packed into limbs checked equal to its own (a sum, a zero port).
+    let mut claim_hash_limbs: Vec<[Value; 4]> = Vec::new();
+    let mut claim_hashes: Vec<[u8; 32]> = Vec::new();
+    if !hashed_claims.is_empty() {
+        let seed = leanvm_statement::transcript::keccak_seed(&NAME, &pi1_iv, &inputs.public);
+        let values = crate::eval::evaluate(&g, seed, &inputs.public, stream);
+        for (j, &ci) in hashed_claims.iter().enumerate() {
+            let words = &call_words[ci];
+            let n = words.len() - 3;
+            let mut encoding: Vec<u8> = vec![pcs_claim::VERSION, n as u8];
+            let mut message: Vec<Bit> = constant_bits(&encoding);
+            // A forwarded bit at the message's next position.
+            let mut forwarded = |message: &mut Vec<Bit>, b: &mut Builder, v: Value| {
+                let bit = if message.len() < crate::KECCAK_RATE * 8 { copies.copy(b, v) } else { v };
+                message.push(Bit::V(bit));
+            };
+            for (k, w) in words.iter().enumerate() {
+                match (k, *w) {
+                    (0, Word::Stream(at)) => {
+                        assert!(hashed[at..at + 32].iter().all(|&h| h), "a root is hashed");
+                        encoding.extend(&stream[at..at + 32]);
+                        for i in 8 * at..8 * (at + 32) {
+                            forwarded(&mut message, &mut b, stream_bit(i));
+                        }
+                    }
+                    (0, Word::Const(bytes)) => {
+                        encoding.extend(bytes);
+                        message.extend(constant_bits(&bytes));
+                    }
+                    (_, Word::Const(bytes)) => {
+                        assert!(bytes[..8].iter().all(|&x| x == 0), "an element word");
+                        encoding.extend(&bytes[8..]);
+                        message.extend(constant_bits(&bytes[8..]));
+                    }
+                    (_, Word::Node(id)) => {
+                        let x = values[id as usize].e();
+                        let bytes = super::spec::element_word(x);
+                        encoding.extend(&bytes[8..]);
+                        match g.nodes[id as usize] {
+                            Node::Const(_) => message.extend(constant_bits(&bytes[8..])),
+                            Node::Input { offset, len: 24 } if hashed[offset as usize..offset as usize + 24].iter().all(|&h| h) => {
+                                for i in 8 * offset as usize..8 * (offset as usize + 24) {
+                                    forwarded(&mut message, &mut b, stream_bit(i));
+                                }
+                            }
+                            _ => {
+                                // Free bits of the element's big-endian bytes (`c2`, `c1`, `c0`), packed into limbs
+                                // checked equal to the element's.
+                                let l = limbs[&id];
+                                let mut limb_bits: [Vec<(usize, Value)>; 3] = Default::default();
+                                for byte in 0..24 {
+                                    let (li, e0) = (2 - byte / 8, 8 * (7 - byte % 8));
+                                    let word = [x.c0, x.c1, x.c2][li];
+                                    for bit in 0..8 {
+                                        let e = e0 + bit;
+                                        let one = word >> e & 1 == 1;
+                                        let v = if message.len() < crate::KECCAK_RATE * 8 {
+                                            let (v, c) = bools.bit_and_copy(&mut b, one);
+                                            message.push(Bit::V(c));
+                                            free_bits[1] += 1;
+                                            v
+                                        } else {
+                                            let v = bools.bit(&mut b, one);
+                                            message.push(Bit::V(v));
+                                            free_bits[0] += 1;
+                                            v
+                                        };
+                                        given.push((v, Given::Bit { value: l[li], bit: e as u8 }));
+                                        limb_bits[li].push((e, v));
+                                    }
+                                }
+                                let packed: Limbs = std::array::from_fn(|li| {
+                                    packer.pack(&mut b, &mut sponge.constants, &limb_bits[li])
+                                });
+                                packings += 1;
+                                let sum = arith.op(&mut b, Op::Add, packed, l, true);
+                                ports.port(&mut b, &sum, Source::Zero);
+                            }
+                        }
+                    }
+                    other => panic!("a claim's word {other:?}"),
+                }
+            }
+            assert_eq!(encoding.len(), 82 + 24 * n, "the claim's encoding");
+            let digest = sponge.keccak256(&mut b, &message);
+            let digest_bit = |i: usize| digest[i];
+            let limbs4: [Value; 4] = std::array::from_fn(|l| {
+                packer.pack(&mut b, &mut sponge.constants, &be_bits(&digest_bit, 8 * l, 8))
+            });
+            packings += 1;
+            ports.port(&mut b, &limbs4, Source::ClaimHash(j as u32));
+            claim_hash_limbs.push(limbs4);
+            claim_hashes.push(leanvm_statement::transcript::keccak256(&encoding));
+        }
+    }
+
     // Ports: the zero checks first, padded with constant zeros to a power of two, so that their outside tags
     // `N … N + 2^k` are an aligned coset (PI2.md §9, lever 3c: π2v1's verifier summed them in closed form; π2v2's reads
     // no zero port, and the padding stays so that the circuit is the same); then the statement, the roots, the calls'
@@ -538,10 +677,22 @@ pub fn compile_keeping<P: Permutation>(
     ports.port(&mut b, &statement_limb, Source::Statement);
     let mut roots: Vec<[u8; 32]> = Vec::new();
     let mut root_of: BTreeMap<usize, u32> = BTreeMap::new();
+    // The roots a call the contract encodes names (a hashed claim's root is the circuit's alone).
+    let encoded = |ci: &usize| !hashed_claims.contains(ci);
+    let named: Vec<usize> = (0..call_words.len())
+        .filter(encoded)
+        .flat_map(|ci| call_words[ci].iter())
+        .filter_map(|w| match *w {
+            Word::Stream(at) => Some(at),
+            _ => None,
+        })
+        .collect();
+    let mut roots_at: Vec<usize> = Vec::new();
     // A root is public as a claim encodes it, the stream's 32 bytes as they are: π1's prover sends a root's bytes
     // (`leanvm_univariate::prover::prove::halves`), and π1's own contract passes them so. Its limbs `L_l` are the
     // big-endian words of the stream's bytes `24 − 8l .. 32 − 8l` (`spec::word_limbs`).
-    for &at in &recorded.roots_at {
+    for &at in recorded.roots_at.iter().filter(|at| named.contains(at)) {
+        roots_at.push(at);
         assert!(hashed[at..at + 32].iter().all(|&h| h), "a root is hashed");
         let root_limbs: Vec<Value> = (0..4)
             .map(|l| packer.pack(&mut b, &mut sponge.constants, &be_bits(&stream_bit, at + 24 - 8 * l, 8)))
@@ -554,7 +705,7 @@ pub fn compile_keeping<P: Permutation>(
     let mut element_of: BTreeMap<u32, u32> = BTreeMap::new();
     let mut element_nodes: Vec<u32> = Vec::new();
     let mut circuit_calls: Vec<Vec<CallWord>> = Vec::new();
-    for call in &call_words {
+    for (_, call) in call_words.iter().enumerate().filter(|(ci, _)| encoded(ci)) {
         let mut words = Vec::new();
         for w in call {
             words.push(match *w {
@@ -590,6 +741,7 @@ pub fn compile_keeping<P: Permutation>(
         ports.port(&mut b, &limbs[&id], Source::Element(e as u32));
     }
     b.calls = circuit_calls;
+    b.hashed = hashed_claims.iter().map(|&ci| ci as u32).collect();
     // The narrow challenges among the elements: π2 reads them as 20 bytes (their limb 2 is packed from 32 bits).
     b.narrow = (element_nodes.iter().enumerate())
         .filter(|&(_, &id)| matches!(g.nodes[id as usize], Node::Narrow(_)))
@@ -609,12 +761,18 @@ pub fn compile_keeping<P: Permutation>(
         given,
         runs: std::mem::take(&mut sponge.runs),
         elements: element_nodes.iter().map(|id| limbs[id]).collect(),
+        claim_hashes: claim_hash_limbs.clone(),
     });
+    for (limbs4, hash) in claim_hash_limbs.iter().zip(&claim_hashes) {
+        let words = limbs4.map(|v| finished.words[v as usize].0);
+        assert_eq!(words, super::spec::statement_limbs(hash), "the circuit's claim hash is the encoding's Keccak-256");
+    }
     let compiled = Compiled {
         public: PublicInputs {
             statement: inputs.public,
             roots,
             elements,
+            claim_hashes,
         },
         finished,
         pi1_iv,
@@ -627,6 +785,7 @@ pub fn compile_keeping<P: Permutation>(
         arith: arith.counts,
         packings,
         free_bits,
+        roots_at,
     };
     (compiled, trace)
 }

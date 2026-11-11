@@ -88,6 +88,7 @@ fn vector(log_n: u8, out: &mut String) {
             Source::Element(i) => format!("L{i}"),
             Source::Zero => "Z".to_string(),
             Source::Pad => "D".to_string(),
+            Source::ClaimHash(i) => format!("H{i}"),
         };
         writeln!(out, "PORT {} {source}", p.position).unwrap();
     }
@@ -99,6 +100,7 @@ fn vector(log_n: u8, out: &mut String) {
             Read::Root => "R".to_string(),
             Read::Scalar => "S".to_string(),
             Read::Narrow => "N".to_string(),
+            Read::Frame(p) => format!("F{p}"),
         })
         .collect();
     writeln!(out, "READS {}", reads.join(" ")).unwrap();
@@ -108,6 +110,7 @@ fn vector(log_n: u8, out: &mut String) {
             PublicValue::Integer(x) => format!("I{x:x}"),
             PublicValue::Root(b) => format!("R{}", hex(b)),
             PublicValue::Scalar(x) => format!("S{:x}:{:x}:{:x}", x.c0, x.c1, x.c2),
+            PublicValue::Word(b) => format!("W{}", hex(b)),
         })
         .collect();
     writeln!(out, "VALUES {}", vals.join(" ")).unwrap();

@@ -59,6 +59,12 @@ pub trait Channel<S: Scalar> {
     fn next_narrow(&mut self) -> Result<S, VerifierError> {
         unimplemented!("this channel reads no narrow elements")
     }
+
+    /// The next word of the transaction's frame of PCS claims that the verifier reads (not the stream's: the seed
+    /// hashes it after the public input), as the statement's four big-endian 64-bit words.
+    fn next_frame(&mut self) -> Result<[S; 4], VerifierError> {
+        unimplemented!("this channel reads no frame words")
+    }
 }
 
 /// The verifier's Fiat–Shamir shape: which runs of challenges are drawn one by one, and which derived
@@ -295,6 +301,8 @@ pub struct KeccakChannel<'a> {
     absorbed: usize,
     state: [u8; 32],
     pub checks: Checks,
+    /// The frame words [`Channel::next_frame`] reads, in order (the seed hashed them).
+    pub frame: Vec<[u8; 32]>,
 }
 
 impl<'a> KeccakChannel<'a> {
@@ -305,6 +313,7 @@ impl<'a> KeccakChannel<'a> {
             absorbed: 0,
             state: seed,
             checks,
+            frame: Vec::new(),
         }
     }
 
@@ -378,6 +387,14 @@ impl Channel<E> for KeccakChannel<'_> {
             .ok_or(VerifierError::StreamExhausted)?;
         self.cursor += bytes;
         Ok(E::new(data.iter().fold(0u64, |acc, &b| acc << 8 | b as u64), 0, 0))
+    }
+
+    fn next_frame(&mut self) -> Result<[E; 4], VerifierError> {
+        require(!self.frame.is_empty(), VerifierError::StreamExhausted)?;
+        let word = self.frame.remove(0);
+        Ok(std::array::from_fn(|k| {
+            E::new(u64::from_be_bytes(word[8 * k..8 * k + 8].try_into().unwrap()), 0, 0)
+        }))
     }
 
     fn next_narrow(&mut self) -> Result<E, VerifierError> {

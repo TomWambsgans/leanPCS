@@ -108,7 +108,7 @@ fn gas(name: &str, layout: Layout) {
     let report = contract::measure(&inst, &recorded);
     print!("{}", report.table(&format!("{name} × {layout:?} (real circuit)")));
     let stream = sample_stream(recorded.stream_len, 13);
-    contract::parity(&inst, &recorded, &[0x5a; 32], &stream);
+    contract::parity(&inst, &recorded, &[0x5a; 32], &contract::sample_hashed(&inst), &stream);
     println!("parity\n");
 }
 
@@ -198,16 +198,37 @@ fn real_end_to_end() {
         // The contract: π1's three claims (the vector's, which π1's openings prove) and π2's five (the proof's
         // commitments, its reduction's claims), declared exactly, in order, in its frame of PCS claims.
         let recorded = record_verifier(&spec);
-        let expected = contract::expected_claims(&inst, &recorded, &reduced, &stream);
-        assert_eq!(expected[..pi1_claims.len()], pi1_claims[..], "π1's claims, from π2's public data, are the vector's");
+        // The frame: π1's claims (payloads 0, 1, 2), then π2's five. The contract encodes those at `payloads` from π2's
+        // public data and its reduction; it reads the others (π1's claims hashed in the circuit) as public words.
         let pi2_claims = prover::claims(circuit.log_n, &reduced, &roots, &setup.root(), setup.ood());
-        assert_eq!(expected[pi1_claims.len()..], pi2_claims[..], "π2's claims are its openings'");
-        let block: Vec<PcsClaim> = expected.clone();
+        let block: Vec<PcsClaim> = pi1_claims.iter().chain(&pi2_claims).cloned().collect();
+        let expected = contract::expected_claims(&inst, &recorded, &reduced, &stream);
+        let payloads = contract::payloads(&inst);
+        assert_eq!(expected.len(), payloads.len());
+        for (&p, claim) in payloads.iter().zip(&expected) {
+            assert_eq!(block[p], *claim, "payload {p}: the claim from π2's public data and reduction is the frame's");
+        }
+        let hashed: Vec<Vec<u8>> =
+            contract::frame_payloads(&spec).iter().map(|&p| block[p as usize].encode()).collect();
+        let words = prover::frame_words(&values);
+        assert_eq!(
+            hashed.iter().map(|c| leanvm_statement::transcript::keccak256(c)).collect::<Vec<_>>(),
+            words,
+            "π2's public claim hashes are the Keccak-256s of the vector's claims"
+        );
+        println!(
+            "π1's claims hashed in π2's circuit: payloads {:?}; the contract encodes payloads {payloads:?}",
+            contract::frame_payloads(&spec)
+        );
         let data = calldata(&public_input, &stream);
         println!("pi2 calldata keccak {}", hex(&primitives::hash::hash(&data)));
         let (accepted, made) = contract::run(&inst, &recorded, &data, &block);
         assert!(accepted, "the contract accepts π2's proof of π1-rec3's real proof");
-        assert_eq!(made, block.iter().map(PcsClaim::encode).collect::<Vec<_>>(), "the claims the contract checks");
+        assert_eq!(
+            made,
+            payloads.iter().map(|&p| block[p].encode()).collect::<Vec<_>>(),
+            "the claims the contract checks"
+        );
         // The roots are the commitments' bytes as they are: π1's claims with each half of a root reversed (the former
         // root word) name other commitments, which the frame does not declare.
         let reversed: Vec<PcsClaim> = block
@@ -225,7 +246,8 @@ fn real_end_to_end() {
         assert!(!contract::run(&inst, &recorded, &data, &reversed).0, "π1's claims on other roots: rejected");
         // A flipped byte anywhere: the public input, π1's roots, its elements, W's and Q's commitments, every value
         // sent.
-        let (w_at, q_at) = (recorded.roots_at[2], recorded.roots_at[3]);
+        let n_roots = recorded.roots_at.len();
+        let (w_at, q_at) = (recorded.roots_at[n_roots - 2], recorded.roots_at[n_roots - 1]);
         let values_at = q_at + 32 + 24;
         let s = contract::STREAM_AT;
         let mut flips = vec![0, 31, s + 5, s + 40, s + 64, s + 64 + 20 * 14 + 11, s + w_at - 1];
@@ -242,7 +264,7 @@ fn real_end_to_end() {
                 "calldata byte {at} flipped"
             );
         }
-        contract::parity(&inst, &recorded, &public_input, &stream);
+        contract::parity(&inst, &recorded, &public_input, &hashed, &stream);
         // The transaction on the real calldata (its zero bytes are the proof's: π1-rec3's narrow challenges): a frame
         // transaction (EIP-8141, EIP-7976's floor), without `FRAME_TX_INTRINSIC_COST` and the per-frame costs.
         let (ok, execution) = contract::verifying_execution(&inst, &recorded, &data, &block);

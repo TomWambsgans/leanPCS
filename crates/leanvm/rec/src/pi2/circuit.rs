@@ -251,12 +251,17 @@ pub enum Read {
     Scalar,
     /// A narrow element (`c2 < 2^32`: π1's batch challenges) as its low 20 bytes (`Channel::next_narrow`): one scalar.
     Narrow,
+    /// A 32-byte word that is not in the stream: payload `p` of the transaction's frame of PCS claims (a π1 claim's
+    /// Keccak-256, `spec::Source::ClaimHash`), which the seed hashes after the public input (`Channel::next_frame`):
+    /// its four big-endian words, four scalars, as the statement's.
+    Frame(u8),
 }
 
 impl Read {
     pub fn scalars(self) -> usize {
         match self {
             Read::Root => 2,
+            Read::Frame(_) => 4,
             _ => 1,
         }
     }
@@ -267,6 +272,7 @@ impl Read {
             Read::Root => 32,
             Read::Scalar => 24,
             Read::Narrow => 20,
+            Read::Frame(_) => 0,
         }
     }
 }
@@ -554,6 +560,7 @@ impl Circuit {
                 Read::Root => (1, 32),
                 Read::Scalar => (2, 24),
                 Read::Narrow => (3, 20),
+                Read::Frame(p) => (4, *p as u64),
             };
             put(&mut bytes, kind);
             put(&mut bytes, len);

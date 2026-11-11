@@ -103,6 +103,7 @@ fn read_text(r: &Read) -> String {
         Read::Root => ".root".to_string(),
         Read::Scalar => ".scalar".to_string(),
         Read::Narrow => ".narrow".to_string(),
+        Read::Frame(p) => format!(".frame {p}"),
     }
 }
 

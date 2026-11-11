@@ -47,6 +47,7 @@ pub fn measure_fragment(f: impl FnOnce(&mut Recorder) -> Vec<Sym>) -> FragmentGa
         stream_len,
         measure: true,
         selector: true,
+        frame: Vec::new(),
     };
     let words: Vec<Word> = outputs.iter().map(|sym| Word::Node(sym.0)).collect();
     let contract = compile(&graph, &words, &Ending::Return, &entry);

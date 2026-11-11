@@ -153,6 +153,9 @@ pub enum Source {
     Root(u32),
     /// Element `i`: its limbs `c0, c1, c2`.
     Element(u32),
+    /// The Keccak-256 of `π1`'s claim [`Circuit::hashed`]`[i]` (the EIP draft's encoding, a payload of the
+    /// transaction's frame of PCS claims), as the statement: its four big-endian words, bytes `8l..8l+8` limb `l`.
+    ClaimHash(u32),
     /// A check of `π1`'s verifier: three zero limbs.
     Zero,
     /// Padding of the zero checks to a power of two: three zero limbs of constants, checking nothing. The zero ports and
@@ -165,7 +168,7 @@ pub enum Source {
 impl Source {
     pub fn limbs(self) -> usize {
         match self {
-            Source::Statement | Source::Root(_) => 4,
+            Source::Statement | Source::Root(_) | Source::ClaimHash(_) => 4,
             Source::Element(_) | Source::Zero | Source::Pad => 3,
         }
     }
@@ -205,6 +208,14 @@ pub struct PublicInputs {
     pub roots: Vec<[u8; 32]>,
     /// `π1`'s claims' distinct elements (coordinates, values), in first appearance in the calls.
     pub elements: Vec<E>,
+    /// The Keccak-256 of each of `π1`'s claims hashed in the circuit ([`Circuit::hashed`]): what the transaction's frame
+    /// of PCS claims declares for them.
+    pub claim_hashes: Vec<[u8; 32]>,
+}
+
+/// A 32-byte word's four limbs in the statement's order: limb `l` the big-endian `u64` of bytes `8l..8l+8`.
+pub fn statement_limbs(word: &[u8; 32]) -> [u64; 4] {
+    std::array::from_fn(|l| u64::from_be_bytes(word[8 * l..8 * l + 8].try_into().expect("8 bytes")))
 }
 
 /// A 32-byte word's four limbs, limb `l` the big-endian `u64` of bytes `24−8l..32−8l` (an element word's fourth limb
@@ -246,8 +257,12 @@ pub struct Circuit {
     pub kappa: Vec<(u32, K)>,
     /// Port `J`'s outside tag is `N + J`. In block order: block by block, row by row, role by role.
     pub ports: Vec<Port>,
-    /// `π1`'s claims, in call order.
+    /// `π1`'s claims the contract encodes, in call order (those not [`Circuit::hashed`]).
     pub calls: Vec<Vec<CallWord>>,
+    /// `π1`'s claims (their indices among all of them, increasing) whose Keccak-256 the circuit computes, each the
+    /// public word of a [`Source::ClaimHash`] port: the contract reads it from the frame of PCS claims instead of
+    /// encoding the claim (`docs/leanvm/rec/PERF_GAS.md`).
+    pub hashed: Vec<u32>,
     /// The elements that are narrow challenges (`c2 < 2^32`, `transcript::narrow`), increasing: π2 reads them as 20
     /// bytes (`pi2::circuit::Read::Narrow`).
     pub narrow: Vec<u32>,
@@ -345,9 +360,8 @@ impl Circuit {
         self.ports
             .iter()
             .map(|p| match p.source {
-                Source::Statement => (0..4)
-                    .map(|l| u64::from_be_bytes(public.statement[8 * l..8 * l + 8].try_into().expect("8 bytes")))
-                    .collect(),
+                Source::Statement => statement_limbs(&public.statement).to_vec(),
+                Source::ClaimHash(i) => statement_limbs(&public.claim_hashes[i as usize]).to_vec(),
                 Source::Root(i) => word_limbs(&public.roots[i as usize]).to_vec(),
                 Source::Element(i) => {
                     let x = public.elements[i as usize];
@@ -447,6 +461,7 @@ impl Circuit {
             statement,
             roots: roots.into_iter().collect::<Option<_>>()?,
             elements: elements.into_iter().collect::<Option<_>>()?,
+            claim_hashes: Vec::new(),
         })
     }
 
@@ -657,6 +672,7 @@ pub fn example() -> (Circuit, Witness, PublicInputs) {
         }],
         calls: vec![vec![CallWord::Const([7; 32]), CallWord::Element(0)]],
         narrow: vec![],
+        hashed: vec![],
     };
     let v = K(6) * K(6) + K(4);
     let mut w = vec![K(0); 32];
@@ -667,6 +683,7 @@ pub fn example() -> (Circuit, Witness, PublicInputs) {
         statement: [0; 32],
         roots: vec![],
         elements: vec![E::new(v.0, 0, 0)],
+        claim_hashes: vec![],
     };
     (circuit, w, public)
 }

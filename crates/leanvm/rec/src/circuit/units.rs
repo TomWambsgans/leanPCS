@@ -58,6 +58,38 @@ impl Bools {
     }
 }
 
+/// Copies: a slot pushing the forward beside it, so that a value placed at forwards only gets a copy that may end at
+/// a slot (a permutation's input). Its own pull is a free end.
+pub struct Copies {
+    units: Units,
+}
+
+impl Copies {
+    pub fn new(b: &mut Builder) -> Self {
+        let w = b.width();
+        let roles = (0..w)
+            .map(|c| {
+                if c % 2 == 0 {
+                    Formula::Expr(PolyBuilder::new().linear(c + 1, 1).build())
+                } else {
+                    Formula::Forward
+                }
+            })
+            .collect();
+        let r = b.region("copy", roles);
+        Self {
+            units: Units::new(r, 2, w / 2),
+        }
+    }
+
+    /// A copy of `v` (placed here at a forward), which may end at a slot.
+    pub fn copy(&mut self, b: &mut Builder, v: Value) -> Value {
+        let (row, base) = self.units.next(b);
+        b.place(row, base + 1, v);
+        b.produce(row, base)
+    }
+}
+
 /// Packings of bits into a `K` word.
 pub struct Packer {
     /// The top window of at most [`TOP`] bits: `Σ_(i<4) b_i x^i`.
