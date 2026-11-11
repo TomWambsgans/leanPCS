@@ -196,11 +196,24 @@ impl Randomness {
 /// `2^12` cells (each the Keccak-256 of its cells' words, 8 little-endian bytes each), the runs hashed in parallel.
 fn cells_digest(cells: &[F64]) -> Hash {
     const RUN: usize = 1 << 12;
-    let runs = parallel::map_collect(cells.len().div_ceil(RUN), |r| {
-        let run = &cells[r * RUN..cells.len().min((r + 1) * RUN)];
-        let bytes: Vec<u8> = run.iter().flat_map(|w| w.0.to_le_bytes()).collect();
-        primitives::hash::hash(&bytes)
+    /// Whole runs a task hashes together, as the batched Keccak-256 takes them (`hash_many`: the same digests).
+    const BATCH: usize = 16;
+    let bytes = |run: &[F64]| -> Vec<u8> { run.iter().flat_map(|w| w.0.to_le_bytes()).collect() };
+    let whole = cells.len() / RUN;
+    let mut runs = vec![[0u8; 32]; cells.len().div_ceil(RUN)];
+    parallel::chunks_mut(&mut runs[..whole], BATCH, |b, out| {
+        let words = &cells[b * BATCH * RUN..(b * BATCH + out.len()) * RUN];
+        // The words' little-endian bytes: on a little-endian target, their memory.
+        #[cfg(target_endian = "little")]
+        // SAFETY: `F64` is a transparent `u64`; the bytes of the words, read as they lie.
+        let data = unsafe { std::slice::from_raw_parts(words.as_ptr().cast::<u8>(), 8 * words.len()) };
+        #[cfg(not(target_endian = "little"))]
+        let data = &bytes(words)[..];
+        primitives::hash::hash_many(data, 8 * RUN, out.as_flattened_mut());
     });
+    if whole < runs.len() {
+        runs[whole] = primitives::hash::hash(&bytes(&cells[whole * RUN..]));
+    }
     let mut hasher = primitives::hash::Hasher::new();
     hasher.update(KDF_CELLS).update(&(cells.len() as u64).to_le_bytes());
     runs.iter().for_each(|digest| {
@@ -566,7 +579,8 @@ pub fn prove_with_seed(
     cells: &[F64],
     seed: &[u8; 32],
 ) -> Proved {
-    let randomness = Randomness::derive(seed, commitment, statement, cells);
+    let randomness =
+        tracing::info_span!("Randomness").in_scope(|| Randomness::derive(seed, commitment, statement, cells));
     prove_with_randomness(circuit, index, commitment, statement, cells, &randomness)
 }
 
@@ -701,6 +715,7 @@ pub(crate) fn prove_with_randomness(
         });
     }
     drop(inner);
+    drop(randomized);
     tracing::info_span!("coefficients")
         .in_scope(|| h_limbs(&mut h_table, n).into_iter().for_each(|h| ntt::coefficients(h, F64::ZERO)));
     drop(span);
@@ -869,6 +884,7 @@ pub(crate) fn prove_with_randomness(
     let digits: Vec<F192> = std::iter::successors(Some(t), |&w| Some(w * w + w))
         .take(m + 1)
         .collect();
+    let span = tracing::info_span!("Evaluations").entered();
     let at = evaluate_interleaved(&witness.words()[..n], 4, &digits[2..m]);
     let a: [F192; 4] = std::array::from_fn(|j| at[j] + digits[m] * domain::evaluate(&mask, j, 4, &digits[2..4]));
     a.iter().for_each(|&x| ps.send(x));
@@ -887,12 +903,13 @@ pub(crate) fn prove_with_randomness(
         tables: [q.words(), g.words()],
         values: None,
     };
-    reduce(&mut replay, circuit.log_rows).expect("a challenge to reject");
+    tracing::info_span!("Replay").in_scope(|| reduce(&mut replay, circuit.log_rows).expect("a challenge to reject"));
     let [v_q, v_g] = replay.values.expect("the part values");
     ps.send(v_q);
     ps.send(v_g);
 
     let proof = ps.into_proof();
+    drop(span);
     let (commitments, claims) = verify(commitment, statement, &proof, circuit.log_rows).expect("a challenge to reject");
     Proved {
         proof,
