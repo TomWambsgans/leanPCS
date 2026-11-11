@@ -1,6 +1,7 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. The parsing follows `formal/UniComplete`'s runner
 -- (`UniCompleteTest/Runner.lean`).
 import RecCompose.Pi2Prover
+import RecCompose.ViewDefs
 
 /-!
 # The differential test of π2's honest prover
@@ -9,15 +10,16 @@ import RecCompose.Pi2Prover
 vectors of `crates/leanvm/rec/tests/lean_pi2_prover.rs` (`PI2_PROVER_OUT=... cargo test --release -p leanvm_rec --test
 lean_pi2_prover -- --ignored --nocapture`): the circuit compiler's example padded to `2^9`, `2^10` positions, through
 `pi2::adapt`. For each vector the runner reads the interface's circuit as `RecCircuit.Circuit` (its PIOP form
-`toPiop`), the reads, the public values, the witness and π2's IV, computes the setup's stack and tree
-(`Pi2Circuit.setupStack`, `setupTreeWith`) and runs the Lean prover (`pi2ProveStreamWith` from the seed
-`keccak(NAME ‖ IV ‖ input)`, Keccak-256 over Keccak-f[1600], interpreted); it compares **the setup's, `W`'s and `Q`'s
-roots** and **the stream byte for byte** with the Rust prover's (`pi2::prover::prove`). It throws (so `lean` exits with
-an error) on any disagreement.
+`toPiop`; its view `viewOf`, `pi2::adapt` transcribed), the reads, the public values, the witness and π2's IV,
+computes the setup's stack, tree and out-of-domain answer (`Pi2Circuit.setupStack`, `setupTreeWith`, `setupOod`), the
+circuit's digest and π2's IV v3 (`RecStatement.iv` at π1's IV `0x11…11`), and runs the Lean prover
+(`pi2ProveStreamWith` from the seed `keccak(NAME ‖ IV ‖ input)`, Keccak-256 over Keccak-f[1600], interpreted, the
+ports' `Φ` the view's `Spec.of`); it compares **the setup's root, π2's IV, `W`'s and `Q`'s roots** and **the stream
+byte for byte** with the Rust prover's (`pi2::prover::prove`). It throws (so `lean` exits with an error) on any
+disagreement.
 
-**Result** (h1, `lean-pi2-alg`): 2/2 vectors (`2^9`, `2^10` positions; 3 pairs, one element port): the setup's, `W`'s and
-`Q`'s roots the Rust's, the stream the same byte for byte (496 bytes each); about 9 and 19 minutes interpreted (the
-field's inverse, about 125 ms interpreted, dominates: one per point per pair on the coset).
+**Result**: see `README.md` (the PCS claims: the stacks plain, `2^15` words at these sizes, `Q` sixteen slots with
+`1, 5, 9, 12` zero, each commitment its root's bytes and its out-of-domain answer in the stream).
 -/
 
 open LeanVM.Parameters LeanVM.Semantics LeanVM.Protocol LeanVM.Protocol.KeccakHash RecCompose RecStatement
@@ -134,7 +136,8 @@ def run1 (v : Vec) : IO Unit := do
   let input := hexBytes ((v.tagged "INPUT").getD 0 "")
   let wit : Array K := ((v.tagged "WITNESS").map kOf).toArray
   let w : ℕ → K := fun i ↦ wit.getD i 0
-  let pc : Pi2Circuit := ⟨{ (default : Circuit) with logN := logN }, c.sigmaAt, c.kappaAt⟩
+  let view := viewOf c
+  let pc : Pi2Circuit := ⟨view, c.sigmaAt, c.kappaAt⟩
   let setupStack := pc.setupStack
   let start ← IO.monoMsNow
   let setupTree : LeanVM.Prover.Tree := Id.run (pc.setupTreeWith (m := Id) fun s ↦ pure (keccakF1600 s))
@@ -142,8 +145,15 @@ def run1 (v : Vec) : IO Unit := do
   IO.println s!"{v.name}: setup root {hexOf setupRoot} ({(← IO.monoMsNow) - start} ms)"
   if setupRoot != hexBytes ((v.tagged "SETUPROOT").getD 0 "") then
     throw (IO.userError s!"{v.name}: the setup's root differs")
+  if view.reads.length != reads.length then
+    throw (IO.userError s!"{v.name}: the view's reads differ")
+  let digest := Id.run (pc.digestWith (m := Id) fun s ↦ pure (keccakF1600 s))
+  let ivL := RecStatement.iv (List.replicate 32 0x11) setupRoot (pc.setupOod setupTree.root) digest logN
+  IO.println s!"  IV {hexOf ivL}"
+  if ivL != iv then throw (IO.userError s!"{v.name}: π2's IV differs")
   let seed := Id.run (H (RecStatement.name ++ iv ++ input))
-  let (out, _) := Id.run ((pi2ProveStreamWith H G reads setupStack input values w).run (UniComplete.Wr.start seed))
+  let (out, _) := Id.run ((pi2ProveStreamWith H G (Spec.of view).core pi2Ood reads setupStack input values w).run
+    (UniComplete.Wr.start seed))
   IO.println s!"{v.name}: proved ({(← IO.monoMsNow) - start} ms)"
   let wr := digestBytes out.wTree.root
   let qr := digestBytes out.qTree.root

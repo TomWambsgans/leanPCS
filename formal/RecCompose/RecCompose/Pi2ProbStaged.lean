@@ -58,7 +58,7 @@ open LeanVM LeanVM.Rpm
 open LeanVM.Protocol.Compile LeanVM.Protocol.Compile.Rom
 open LeanVM.Protocol.Rom
 open E2ECompleteness (ro runAt HashOK)
-open UniKeccakComplete.Prob (GoodL winState one_le_powPot_of_opening_none)
+open UniKeccakComplete.Prob (GoodL winState one_le_powPot_of_pcs_none)
 open Pi2S Pi2K Pi2P Pi2E
 open scoped ENNReal
 
@@ -76,22 +76,22 @@ variable {m : Type → Type} [Monad m] (H : List UInt8 → m Digest) (F : Keccak
 def pre2 (G : RecPiop.Circuit E) (ood : ℕ → Digest → Array K → E) (reads : List Read) (values : List PublicValue)
     (w : ℕ → K) : UniComplete.WrM m (Array K × LeanVM.Prover.Tree) := do
   sendPublic (reads.zip values)
-  let wStack := placePublic (layoutsOf G.logN).1 fun i ↦ (wTableB G w).getD i 0
-  let wTree ← (StateT.lift (E2ECompleteness.commitWithH H (layoutsOf G.logN).1.logN wStack) :
+  let wStack := padStack (stackVars G.logN).1 fun i ↦ (wTableB G w).getD i 0
+  let wTree ← (StateT.lift (E2ECompleteness.commitWithH H (stackVars G.logN).1 wStack) :
     UniComplete.WrM m LeanVM.Prover.Tree)
-  UniComplete.sendRoot (digestScalars wTree.root)
-  UniComplete.sendScalar (ood (layoutsOf G.logN).1.logN wTree.root wStack)
+  UniComplete.sendRoot (UniStatement.rootHalves wTree.root)
+  UniComplete.sendScalar (ood (stackVars G.logN).1 wTree.root wStack)
   return (wStack, wTree)
 
 /-- **From `γ` to `t`**: `Q`'s stack, commitment, root and out-of-domain answer. -/
 def mid2 (G : RecPiop.Circuit E) (S : CoreSpec E) (ood : ℕ → Digest → Array K → E) (pubs : List E) (w : ℕ → K)
     (α β γ : E) : UniComplete.WrM m (Array K × LeanVM.Prover.Tree) := do
-  let qStack := placePublic (layoutsOf G.logN).2.1 (qEntry G.logN (hNovel G w α β) (qNovel G w α β γ (phiOn S pubs γ))
+  let qStack := padStack (stackVars G.logN).2.1 (qEntry G.logN (hNovel G w α β) (qNovel G w α β γ (phiOn S pubs γ))
     (pNovel G w) (qpNovel G w γ))
-  let qTree ← (StateT.lift (E2ECompleteness.commitWithH H (layoutsOf G.logN).2.1.logN qStack) :
+  let qTree ← (StateT.lift (E2ECompleteness.commitWithH H (stackVars G.logN).2.1 qStack) :
     UniComplete.WrM m LeanVM.Prover.Tree)
-  UniComplete.sendRoot (digestScalars qTree.root)
-  UniComplete.sendScalar (ood (layoutsOf G.logN).2.1.logN qTree.root qStack)
+  UniComplete.sendRoot (UniStatement.rootHalves qTree.root)
+  UniComplete.sendScalar (ood (stackVars G.logN).2.1 qTree.root qStack)
   return (qStack, qTree)
 
 /-- **After `t`**: the values at `t`, `ρ`, the output. -/
@@ -198,17 +198,22 @@ noncomputable def stageC (D : RecDeployment) (C : Pi2Circuits D) (input : Vector
     let (out, _) ← (post2 H G c.setupStack input.toList b.a.vw.1 b.a.vw.2 b.a.wS b.a.wT b.qS b.qT b.α b.β b.γ
       (chalP st)).run (absorbW b.wr st)
     let o := (Spec.of c.circuit).core.run out.inputs
-    let pW ← E2ECompleteness.proveOpeningWithH H F PcsQuotient.nonceFuel (layoutsOf G.logN).1 out.wTree out.wStack
-      [⟨o.witnessPoint, o.fold⟩]
-    let pS ← E2ECompleteness.proveOpeningWithH H F PcsQuotient.nonceFuel (layoutsOf G.logN).2.2 b.a.setupTree
-      c.setupStack [⟨o.setupPoint, out.inputs.ξ⟩]
-    let pQ ← E2ECompleteness.proveOpeningWithH H F PcsQuotient.nonceFuel (layoutsOf G.logN).2.1 out.qTree out.qStack
-      [⟨o.quotientPoint, o.quotientValue⟩, ⟨o.pushesPoint, o.pushesValue⟩, ⟨o.sumPoint, o.sumValue⟩]
-    match pW, pS, pQ with
-    | some x, some y, some z =>
-      let v ← Pi2H.verifierWithH H F D b.a.trees.roots input ⟨out.stream, p1.c1, p1.c2, p1.setup, x, y, z⟩
+    let pW ← UniKeccakComplete.pcsProveH H F PcsQuotient.nonceFuel (stackVars G.logN).1 out.wTree out.wStack
+      o.witnessPoint o.fold
+    let pS ← UniKeccakComplete.pcsProveH H F PcsQuotient.nonceFuel (stackVars G.logN).2.2 b.a.setupTree
+      (padStack (stackVars G.logN).2.2 fun i ↦ c.setupStack.getD i 0) o.setupPoint out.inputs.ξ
+    let pQ1 ← UniKeccakComplete.pcsProveH H F PcsQuotient.nonceFuel (stackVars G.logN).2.1 out.qTree out.qStack
+      o.quotientPoint o.quotientValue
+    let pQ2 ← UniKeccakComplete.pcsProveH H F PcsQuotient.nonceFuel (stackVars G.logN).2.1 out.qTree out.qStack
+      o.pushesPoint o.pushesValue
+    let pQ3 ← UniKeccakComplete.pcsProveH H F PcsQuotient.nonceFuel (stackVars G.logN).2.1 out.qTree out.qStack
+      o.sumPoint o.sumValue
+    match pW, pS, pQ1, pQ2, pQ3 with
+    | some x, some y, some z1, some z2, some z3 =>
+      let v ← Pi2H.verifierWithH H F D b.a.trees.roots input
+        ⟨out.stream, p1.c1, p1.c2, p1.setup, x, y, z1, z2, z3⟩
       return (b.a.a1, v)
-    | _, _, _ => return (b.a.a1, false)
+    | _, _, _, _, _ => return (b.a.a1, false)
 
 end With
 
@@ -329,13 +334,13 @@ def Pi2Pi1Openings (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C) :
     Id.run (Pi2H.pi1GraphVerifierWithH (m := Id) (Pure.pure ∘ Ht) Ft D (rootsH D Ht Ft).pi1 input p1) = true →
     Id.run (pi2ProverWith (m := Id) (Pure.pure ∘ Ht) Ft D C Fa PcsQuotient.nonceFuel input p1) = some proof →
       ∃ ops, pi1OpsOf D (rootsH D Ht Ft) input proof.stream = some ops ∧
-        Id.run (Pi2H.openSeqH (m := Id) (Pure.pure ∘ Ht) Ft (registryOf D.pi1.shape 24) ops proof) = true
+        Id.run (Pi2H.openSeqH (m := Id) (Pure.pure ∘ Ht) Ft ops proof) = true
 
 /-! ## The core at pure functions -/
 
 /-- **The graph's verdict includes its checks.** -/
 theorem graphChecks_of_verifierH {H : List UInt8 → Id Digest} {F : KeccakState → Id KeccakState} {D : RecDeployment}
-    {roots : UniStatement.SetupRoots} {input : Vector UInt8 32} {p1 : UniKeccak.KeccakProof}
+    {roots : UniKeccak.SetupRootsK} {input : Vector UInt8 32} {p1 : UniKeccak.KeccakProof}
     (h : Id.run (Pi2H.pi1GraphVerifierWithH (m := Id) H F D roots input p1) = true) :
     pi1GraphChecks (D.pi1IvAt roots) input p1.stream = true := by
   unfold Pi2H.pi1GraphVerifierWithH at h
@@ -350,27 +355,47 @@ theorem graphChecks_of_verifierH {H : List UInt8 → Id Digest} {F : KeccakState
     rw [hc] at h
     exact absurd h (by simp)
 
+/-- **A failed PCS opening** at pure `(H, F)`: the honest PCS prover returns none on a point of its variables. -/
+def PcsFails (Hk : List UInt8 → Digest) (F : KeccakState → Id KeccakState) (fuel : ℕ) : Prop :=
+  ∃ (n : ℕ) (tree : LeanVM.Prover.Tree) (stack : Array K) (pt : List E) (v : E), pt.length = n ∧
+    UniKeccakComplete.pcsProveH (m := Id) (Pure.pure ∘ Hk) F fuel n tree stack pt v = none
+
 /-- **π2's honest prover returns none only at a failed opening.** -/
 theorem pi2Prover_none {D : RecDeployment} {C : Pi2Circuits D} (Fa : Pi2Facts D C) (Hk : List UInt8 → Digest)
     (F : KeccakState → Id KeccakState) (fuel : ℕ) (input : Vector UInt8 32) (p1 : UniKeccak.KeccakProof)
     (hp : Id.run (pi2ProverWith (m := Id) (Pure.pure ∘ Hk) F D C Fa fuel input p1) = none) :
-    ∃ L tree stack claims, E2ECompleteness.proveOpeningWithH (m := Id) (Pure.pure ∘ Hk) F fuel L tree stack claims =
-      none := by
-  rw [pi2ProverWith_run, pi2ProveWith_run, logN_G Fa] at hp
+    PcsFails Hk F fuel := by
+  rw [pi2ProverWith_run] at hp
+  simp only at hp
+  rw [pi2ProveWith_run] at hp
+  simp only at hp
+  set roots := (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots
+  have hview := view_logN24 Fa roots
+  obtain ⟨lW, lS, lQ, lP, lSum⟩ := Pi2K.run_points_length (Spec.of (D.circuitAt roots.pi1).circuit).core
+    (by rw [spec_core_logN, hview]) (by rw [spec_core_logRow, view_logRow4 Fa roots]) _
+  rw [logN_G Fa roots, Pi2W.stackVars_24] at hp
+  simp only at hp
   revert hp
-  generalize hW : E2ECompleteness.proveOpeningWithH (m := Id) (Pure.pure ∘ Hk) F fuel (layoutsOf 24).1 _ _ _ = rW
-  generalize hS : E2ECompleteness.proveOpeningWithH (m := Id) (Pure.pure ∘ Hk) F fuel (layoutsOf 24).2.2 _ _ _ = rS
-  generalize hQ : E2ECompleteness.proveOpeningWithH (m := Id) (Pure.pure ∘ Hk) F fuel (layoutsOf 24).2.1 _ _ _ = rQ
+  generalize hW : UniKeccakComplete.pcsProveH (m := Id) (Pure.pure ∘ Hk) F fuel 24 _ _ _ _ = rW
+  generalize hS : UniKeccakComplete.pcsProveH (m := Id) (Pure.pure ∘ Hk) F fuel 25 _ _ _ _ = rS
+  generalize hQ1 : UniKeccakComplete.pcsProveH (m := Id) (Pure.pure ∘ Hk) F fuel 28 _ _ _
+    ((Spec.of _).core.run _).quotientValue = rQ1
+  generalize hQ2 : UniKeccakComplete.pcsProveH (m := Id) (Pure.pure ∘ Hk) F fuel 28 _ _ _
+    ((Spec.of _).core.run _).pushesValue = rQ2
+  generalize hQ3 : UniKeccakComplete.pcsProveH (m := Id) (Pure.pure ∘ Hk) F fuel 28 _ _ _
+    ((Spec.of _).core.run _).sumValue = rQ3
   intro hp
-  cases rW with
-  | none => exact ⟨_, _, _, _, hW⟩
-  | some a =>
-    cases rS with
-    | none => exact ⟨_, _, _, _, hS⟩
-    | some b =>
-      cases rQ with
-      | none => exact ⟨_, _, _, _, hQ⟩
-      | some c => simp at hp
+  rcases rW with _ | a
+  · exact ⟨_, _, _, _, _, lW, hW⟩
+  rcases rS with _ | b
+  · exact ⟨_, _, _, _, _, lS, hS⟩
+  rcases rQ1 with _ | c
+  · exact ⟨_, _, _, _, _, lQ, hQ1⟩
+  rcases rQ2 with _ | d
+  · exact ⟨_, _, _, _, _, lP, hQ2⟩
+  rcases rQ3 with _ | e
+  · exact ⟨_, _, _, _, _, lSum, hQ3⟩
+  simp at hp
 
 /-- **The experiment at `Id`, π1's prover giving none.** -/
 theorem expW2_none (Ht : List UInt8 → Digest) (Ft : KeccakState → KeccakState) (D : RecDeployment)
@@ -395,12 +420,12 @@ theorem expW2_some (Ht : List UInt8 → Digest) (Ft : KeccakState → KeccakStat
   | none => rfl
   | some p2 => rfl
 
-/-- **A non-hole position** in π2's circuit: `36` ports (the view check) of `2^24` positions. -/
+/-- **A non-hole position** in π2's circuit: `38` ports (the view check) of `2^24` positions. -/
 theorem nonHole_pi2 {D : RecDeployment} (C : Pi2Circuits D) (hchk : Pi2ViewChecked C) (Fa : Pi2Facts D C)
     (roots : RecSetupRoots) : ∃ i < (C.G roots).N, ¬ (C.G roots).IsHole i := by
   obtain ⟨hview, -, -⟩ := viewChecked_at C hchk roots
-  have hnP : (C.G roots).nP = 36 := by
-    show ((C.compiled (D.pi1IvAt roots.pi1)).circuit.ports.toList.map (·.position)).length = 36
+  have hnP : (C.G roots).nP = 38 := by
+    show ((C.compiled (D.pi1IvAt roots.pi1)).circuit.ports.toList.map (·.position)).length = 38
     rw [List.length_map, Array.length_toList, viewOf_ports hview]
   have hc := RecPiop.Circuit.card_holes (Fa.valid roots)
   by_contra hno
@@ -422,8 +447,7 @@ theorem rejects_at {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D) (Fa : P
     (z : ((Bool × Bool) × ((Pr2 × E × E × E) × E)) × (Pr2 × E × E × E))
     (hz : runAt Ht Ft (pi2Staged D C Fa (P1k input rows q) input).run = z)
     (hev : z.1.1.1 = true ∧ z.1.1.2 = false ∧ z.2.2 ∉ badSet2 C.G z.2.1 ∧ ¬ badT2 C.G z.1.2.1 z.1.2.2) :
-    ∃ L tree stack claims, E2ECompleteness.proveOpeningWithH (m := Id) (Pure.pure ∘ Ht) Ft PcsQuotient.nonceFuel L tree
-      stack claims = none := by
+    PcsFails Ht Ft PcsQuotient.nonceFuel := by
   obtain ⟨h1, h2⟩ := hrun input rows q Ht Ft
   rw [hz] at h1 h2
   obtain ⟨ha1, ha2, hB, hT⟩ := hev
@@ -501,8 +525,7 @@ answered by the zero state, which passes every proof of work) fails one opening,
 log, failing. -/
 theorem pot_of_rejects {β : Type} (X : OracleComp KeccakCalls β) (Ev : β → Prop)
     (hcore : ∀ (Ht : List UInt8 → Digest) (Ft : KeccakState → KeccakState), Ev (runAt Ht Ft X) →
-      ∃ L tree stack claims, E2ECompleteness.proveOpeningWithH (m := Id) (Pure.pure ∘ Ht) Ft PcsQuotient.nonceFuel L
-        tree stack claims = none)
+      PcsFails Ht Ft PcsQuotient.nonceFuel)
     (ℓ : Log) (z : β) (hz : simulateQ (lookImpl ℓ) X = some z) (hev : Ev z) :
     1 ≤ powPot Whir.queryGrindingBits PcsQuotient.nonceFuel ℓ := by
   let Ht : List UInt8 → Digest := fun x ↦ (lookH ℓ x).getD default
@@ -510,8 +533,8 @@ theorem pot_of_rejects {β : Type} (X : OracleComp KeccakCalls β) (Ev : β → 
   have hH : ∀ x u, lookH ℓ x = some u → Ht x = u := fun x u hx ↦ by simp [Ht, hx]
   have hF : ∀ s u, lookF ℓ s = some u → Ft s = u := fun s u hs ↦ by simp [Ft, hs]
   have hrun : runAt Ht Ft X = z := simulateQ_id_of_look ℓ Ht Ft hH hF _ z hz
-  obtain ⟨L, tree, stack, claims, hfail⟩ := hcore Ht Ft (by rw [hrun]; exact hev)
-  exact one_le_powPot_of_opening_none ℓ Ht hfail
+  obtain ⟨n, tree, stack, pt, v, hpt, hfail⟩ := hcore Ht Ft (by rw [hrun]; exact hev)
+  exact one_le_powPot_of_pcs_none ℓ Ht hpt hfail
 
 /-- **The numbers**: at most `2^50` block calls, each completing a `17`-bit proof of work whose `2^25` nonces all
 failed: below `2^-300` (`E2ECompleteness.grinding_le`'s `2^-304` at `2^48`). -/

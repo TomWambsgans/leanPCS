@@ -57,174 +57,132 @@ theorem callWord_of_isElt (reads : List Read) (stream : Array UInt8) (r : Reduce
   | element i => rfl
   | pair e c => rfl
 
-/-- **A call of a root, a registered π1 layout word, the count one and one claim's elements decodes.** -/
-theorem decode_call (reg : List (List UInt8 × Opener)) (reads : List Read) (stream : Array UInt8) (r : Reduced)
-    (call : List CallWord) (lw : List UInt8) (v : ℕ) (hlen3 : 3 ≤ call.length)
-    (hroot : (callWord reads stream r (call.getD 0 default)).length = 32)
-    (h1 : call.getD 1 default = .const lw) (h2 : call.getD 2 default = .const (UniStatement.numberWord 1))
-    (hlook : reg.lookup lw = some (.pi1 v)) (hl : (call.drop 3).length = v + 1)
-    (hall : (call.drop 3).all isElt = true) :
-    ∃ cl, decodeWith reg (call.map (callWord reads stream r)) =
-      some (rootOfWord (callWord reads stream r (call.getD 0 default)), .pi1 v, cl) ∧
-      (call.map (callWord reads stream r)).getD 1 [] = lw := by
-  match call, hlen3 with
-  | a :: b :: c :: rest, _ =>
-    simp only [List.getD_cons_zero, List.getD_cons_succ] at hroot h1 h2
-    subst h1 h2
-    simp only [List.drop_succ_cons, List.drop_zero] at hl hall
-    have hne : rest.map (cwE reads r) ≠ [] := by
-      intro h
-      rw [List.map_eq_nil_iff] at h
-      subst h
-      simp at hl
-    have hmap : rest.map (callWord reads stream r) = (rest.map (cwE reads r)).map UniStatement.elementWord := by
-      rw [List.map_map]
-      exact List.map_congr_left fun c hc ↦ callWord_of_isElt reads stream r c (List.all_eq_true.mp hall c hc)
-    have hw : (a :: .const lw :: .const (UniStatement.numberWord 1) :: rest).map (callWord reads stream r) =
-        [callWord reads stream r a, lw, UniStatement.numberWord 1] ++
-          ([((rest.map (cwE reads r)).dropLast, (rest.map (cwE reads r)).getLast hne)].map claimWords).flatten := by
-      rw [List.map_cons, List.map_cons, List.map_cons, hmap]
-      simp only [List.map_cons, List.map_nil, List.flatten_cons, List.flatten_nil, List.append_nil, claimWords,
-        List.dropLast_append_getLast]
-      rfl
-    have hdc := decodeWith_mk reg _ lw (.pi1 v)
-      [((rest.map (cwE reads r)).dropLast, (rest.map (cwE reads r)).getLast hne)] hroot hlook (by simp) Pi1Decode.countOfWord_numberWord_one
-      (fun c hc ↦ by
-        simp only [List.mem_singleton] at hc
-        subst hc
-        simp [Opener.vars, hl])
-    rw [List.length_singleton, ← hw] at hdc
-    exact ⟨_, hdc, rfl⟩
+/-- **A PCS claim's words of element words decode**: a root's `32` bytes, then at least two elements (the answer, the
+point's coordinates, the value). -/
+theorem claimOfWords_elems (r : List UInt8) (hr : r.length = 32) (es : List E) (hes : 2 ≤ es.length) :
+    ∃ x, claimOfWords (r :: es.map UniStatement.elementWord) = some x := by
+  match es, hes with
+  | e0 :: e1 :: rest, _ =>
+    have h : r :: (e0 :: e1 :: rest).map UniStatement.elementWord =
+        [r, UniStatement.elementWord e0] ++ claimWords ((e1 :: rest).dropLast, (e1 :: rest).getLast (by simp)) := by
+      simp only [claimWords, List.dropLast_append_getLast, List.map_cons, List.cons_append, List.nil_append]
+    rw [h]
+    exact ⟨_, Pi2C.claimOfWords_claim _ hr _ _⟩
+
+/-- A call of a root word and element words decodes. -/
+theorem decode_call (reads : List Read) (stream : Array UInt8) (r : Reduced) (c0 : CallWord) (rest : List CallWord)
+    (hroot : (callWord reads stream r c0).length = 32) (hall : rest.all isElt = true) (hl : 2 ≤ rest.length) :
+    ∃ x, claimOfWords ((c0 :: rest).map (callWord reads stream r)) = some x := by
+  have hmap : rest.map (callWord reads stream r) = (rest.map (cwE reads r)).map UniStatement.elementWord := by
+    rw [List.map_map]
+    exact List.map_congr_left fun c hc ↦ callWord_of_isElt reads stream r c (List.all_eq_true.mp hall c hc)
+  rw [List.map_cons, hmap]
+  exact claimOfWords_elems _ hroot _ (by simpa using hl)
 
 /-! ## `Data.pi1Calls` -/
 
-/-- A call's layout word, as `Data` writes it. -/
-def litWord (k : ℕ) : List UInt8 :=
-  match (Data.pi1Calls.getD k []).getD 1 default with
-  | .const w => w
-  | _ => []
-
-theorem litWord_eq (k : ℕ) (hk : k < 3) : litWord k = w1 k := by
-  unfold litWord
-  rw [data_pi1Calls_layouts k hk]
-
-/-- **`Data.pi1Calls`' shape** (kernel decisions on the recorded calls): three calls of a root (`C1`'s, `C2`'s, the
-setup's constant), the layout word, the count one, and one claim of the layout's variables. -/
+/-- **`Data.pi1Calls`' shape** (kernel decisions on the recorded calls): three calls, `C1`'s and `C2`'s a stream root
+then element words, the setup's two constants (its root and answer, which the contract replaces) then element words. -/
 theorem data_calls :
     Data.pi1Calls.length = 3 ∧
-    (∀ k < 3, 3 ≤ (Data.pi1Calls.getD k []).length ∧
-      (Data.pi1Calls.getD k []).getD 2 default = .const (UniStatement.numberWord 1) ∧
-      ((Data.pi1Calls.getD k []).drop 3).length = UniStatement.layoutWordVars (litWord k) + 1 ∧
-      ((Data.pi1Calls.getD k []).drop 3).all isElt = true) ∧
-    (Data.pi1Calls.getD 0 []).getD 0 default = .root 0 ∧ (Data.pi1Calls.getD 1 []).getD 0 default = .root 1 := by
+    (Data.pi1Calls.getD 0 []).head? = some (.root 0) ∧ ((Data.pi1Calls.getD 0 []).drop 1).all isElt = true ∧
+      2 ≤ ((Data.pi1Calls.getD 0 []).drop 1).length ∧
+    (Data.pi1Calls.getD 1 []).head? = some (.root 1) ∧ ((Data.pi1Calls.getD 1 []).drop 1).all isElt = true ∧
+      2 ≤ ((Data.pi1Calls.getD 1 []).drop 1).length ∧
+    ((Data.pi1Calls.getD 2 []).drop 2).all isElt = true ∧ 1 ≤ ((Data.pi1Calls.getD 2 []).drop 2).length := by
   decide +kernel
 
-/-- `pi1CallsWith` on `Data.pi1Calls`: the setup's constant root word replaced. -/
-theorem pi1CallsWith_data (f : Digest) :
-    pi1CallsWith Data.pi1Calls f = [Data.pi1Calls.getD 0 [], Data.pi1Calls.getD 1 [],
-      .const (rootWordOfBytes (digestBytes f)) :: (Data.pi1Calls.getD 2 []).tail] := rfl
-
-/-- **The contract's π1 calls decode on π2's stream**, its run over Keccak-f[1600] succeeding: their layout words are
-π1-rec3's, the third's root the setup's. -/
+/-- **The contract's π1 calls decode on π2's stream**, its run over Keccak-f[1600] succeeding. -/
 theorem pi1OpsOf_some (D : RecDeployment) (hD : D.Real) (roots : RecSetupRoots) (input : Vector UInt8 32)
     (stream : Array UInt8) (r : Reduced)
     (hr : (run (Spec.of (D.circuitAt roots.pi1).circuit) [] input.toList stream).result = .ok r)
     (hsz : stream.size = pi2Bytes (Spec.of Data.circuit)) :
-    ∃ o0 o1 o2 : Pi1Opening, pi1OpsOf D roots input stream = some [o0, o1, o2] ∧ o0.2.1 = w1 0 ∧ o1.2.1 = w1 1 ∧
-      o2.2.1 = w1 2 ∧ o2.1 = roots.pi1.bytecode := by
+    ∃ ops, pi1OpsOf D roots input stream = some ops := by
   have hview : (D.circuitAt roots.pi1).circuit = Data.circuit := hD.1 _
-  obtain ⟨hl3, hk, h0r, h1r⟩ := data_calls
-  have hsh : D.pi1.shape = RecGraphKeccak.Pi1.keccak128 := hD.2.2.1
-  have hlook : ∀ k < 3, (registryOf D.pi1.shape (D.circuitAt roots.pi1).circuit.logN).lookup (litWord k) = some (.pi1 (UniStatement.layoutWordVars (litWord k))) := by
-    intro k hk3
-    rw [litWord_eq k hk3]
-    exact registryAt_lookup D roots hsh k hk3
+  obtain ⟨hl3, h0, ha0, hn0, h1, ha1, hn1, ha2, hn2⟩ := data_calls
   have hrl : ∀ i < 2, (callWord (D.circuitAt roots.pi1).circuit.reads stream r (.root i)).length = 32 := by
     intro i hi
     show (streamWord stream ((rootsAt (D.circuitAt roots.pi1).circuit.reads).getD i 0)).length = 32
     refine streamWord_length _ _ ?_
     rw [hsz, hview]
     interval_cases i <;> decide +kernel
-  obtain ⟨hk0, hn0, hv0, ha0⟩ := hk 0 (by decide)
-  obtain ⟨hk1, hn1, hv1, ha1⟩ := hk 1 (by decide)
-  obtain ⟨hk2, hn2, hv2, ha2⟩ := hk 2 (by decide)
-  obtain ⟨cl0, hd0, hw0⟩ := decode_call (registryOf D.pi1.shape (D.circuitAt roots.pi1).circuit.logN)
-    (D.circuitAt roots.pi1).circuit.reads stream r (Data.pi1Calls.getD 0 []) (litWord 0) _ hk0
-    (by rw [h0r]; exact hrl 0 (by decide)) (by rw [litWord_eq 0 (by decide)]; exact data_pi1Calls_layouts 0 (by decide)) hn0 (hlook 0 (by decide)) hv0 ha0
-  obtain ⟨cl1, hd1, hw1⟩ := decode_call (registryOf D.pi1.shape (D.circuitAt roots.pi1).circuit.logN)
-    (D.circuitAt roots.pi1).circuit.reads stream r (Data.pi1Calls.getD 1 []) (litWord 1) _ hk1
-    (by rw [h1r]; exact hrl 1 (by decide))
-    (by rw [litWord_eq 1 (by decide)]; exact data_pi1Calls_layouts 1 (by decide)) hn1 (hlook 1 (by decide)) hv1 ha1
-  obtain ⟨cl2, hd2, hw2⟩ := decode_call (registryOf D.pi1.shape (D.circuitAt roots.pi1).circuit.logN)
-    (D.circuitAt roots.pi1).circuit.reads stream r
-    (.const (rootWordOfBytes (digestBytes roots.pi1.bytecode)) :: (Data.pi1Calls.getD 2 []).tail) (litWord 2) _
-    (by rw [show (CallWord.const (rootWordOfBytes (digestBytes roots.pi1.bytecode)) :: (Data.pi1Calls.getD 2 []).tail).length = (Data.pi1Calls.getD 2 []).length from rfl]; exact hk2)
-    (by
-      show (rootWordOfBytes (digestBytes roots.pi1.bytecode)).length = 32
-      simp [rootWordOfBytes, Pi1Decode.length_digestBytes])
-    (by
-      rw [show (CallWord.const (rootWordOfBytes (digestBytes roots.pi1.bytecode)) :: (Data.pi1Calls.getD 2 []).tail).getD 1 default = (Data.pi1Calls.getD 2 []).getD 1 default from rfl, litWord_eq 2 (by decide)]
-      exact data_pi1Calls_layouts 2 (by decide))
-    (by rw [show (CallWord.const (rootWordOfBytes (digestBytes roots.pi1.bytecode)) :: (Data.pi1Calls.getD 2 []).tail).getD 2 default = (Data.pi1Calls.getD 2 []).getD 2 default from rfl]; exact hn2)
-    (hlook 2 (by decide))
-    (by rw [show (CallWord.const (rootWordOfBytes (digestBytes roots.pi1.bytecode)) :: (Data.pi1Calls.getD 2 []).tail).drop 3 = (Data.pi1Calls.getD 2 []).drop 3 from rfl]; exact hv2)
-    (by rw [show (CallWord.const (rootWordOfBytes (digestBytes roots.pi1.bytecode)) :: (Data.pi1Calls.getD 2 []).tail).drop 3 = (Data.pi1Calls.getD 2 []).drop 3 from rfl]; exact ha2)
-  rw [h0r] at hd0
-  rw [h1r] at hd1
-  have hlist : (pi1CallsWith D.pi1Calls roots.pi1.bytecode).map
-      (·.map (callWord (D.circuitAt roots.pi1).circuit.reads stream r)) =
-      [(Data.pi1Calls.getD 0 []).map (callWord (D.circuitAt roots.pi1).circuit.reads stream r),
-        (Data.pi1Calls.getD 1 []).map (callWord (D.circuitAt roots.pi1).circuit.reads stream r),
-        (CallWord.const (rootWordOfBytes (digestBytes roots.pi1.bytecode)) :: (Data.pi1Calls.getD 2 []).tail).map (callWord (D.circuitAt roots.pi1).circuit.reads stream r)] := by
-    rw [hD.2.1, pi1CallsWith_data]
+  obtain ⟨a, b, c, hcl⟩ : ∃ a b c, Data.pi1Calls = [a, b, c] := by
+    match Data.pi1Calls, hl3 with
+    | [a, b, c], _ => exact ⟨a, b, c, rfl⟩
+  obtain ⟨-, w1, w2, rest, hw⟩ := pi1CallsShape_data D hD.2.1
+  rw [hD.2.1, hcl] at hw
+  simp only [List.getD_cons_succ, List.getD_cons_zero] at hw
+  subst hw
+  rw [hcl] at h0 ha0 hn0 h1 ha1 hn1 ha2 hn2
+  simp only [List.getD_cons_succ, List.getD_cons_zero] at h0 ha0 hn0 h1 ha1 hn1 ha2 hn2
+  obtain ⟨a0, as', rfl⟩ : ∃ a0 as', a = a0 :: as' := by
+    cases a with
+    | nil => simp at h0
+    | cons x xs => exact ⟨x, xs, rfl⟩
+  obtain ⟨b0, bs, rfl⟩ : ∃ b0 bs, b = b0 :: bs := by
+    cases b with
+    | nil => simp at h1
+    | cons x xs => exact ⟨x, xs, rfl⟩
+  simp only [List.head?_cons, Option.some.injEq, List.drop_succ_cons, List.drop_zero] at h0 h1 ha0 hn0 ha1 hn1 ha2 hn2
+  subst h0 h1
+  obtain ⟨x0, hx0⟩ := decode_call (D.circuitAt roots.pi1).circuit.reads stream r (.root 0) as' (hrl 0 (by decide)) ha0 hn0
+  obtain ⟨x1, hx1⟩ := decode_call (D.circuitAt roots.pi1).circuit.reads stream r (.root 1) bs (hrl 1 (by decide)) ha1 hn1
+  have hmap2 : rest.map (callWord (D.circuitAt roots.pi1).circuit.reads stream r) = (rest.map (cwE (D.circuitAt roots.pi1).circuit.reads r)).map UniStatement.elementWord := by
+    rw [List.map_map]
+    exact List.map_congr_left fun c hc ↦ callWord_of_isElt (D.circuitAt roots.pi1).circuit.reads stream r c (List.all_eq_true.mp ha2 c hc)
+  obtain ⟨x2, hx2⟩ := claimOfWords_elems (digestBytes roots.pi1.f) (Pi1Decode.length_digestBytes _)
+    (roots.pi1.fOod :: rest.map (cwE (D.circuitAt roots.pi1).circuit.reads r)) (by simpa using hn2)
+  refine ⟨[x0, x1, x2], ?_⟩
+  unfold pi1OpsOf
+  dsimp only
+  rw [hr]
+  dsimp only
+  unfold contractPi1Openings
+  rw [pcsCalls_take _ _ _ _ _ _ (by simp [pi1CallsWith, hD.2.1, hcl]), hD.2.1, hcl]
+  simp only [pi1CallsWith, List.map_cons, List.map_nil, List.mapM_cons, List.mapM_nil]
+  rw [List.map_cons] at hx0 hx1
+  rw [hx0, hx1]
+  have e2 : callWord (D.circuitAt roots.pi1).circuit.reads stream r (CallWord.const (digestBytes roots.pi1.f)) ::
+      callWord (D.circuitAt roots.pi1).circuit.reads stream r
+        (CallWord.const (UniStatement.elementWord roots.pi1.fOod)) ::
+      rest.map (callWord (D.circuitAt roots.pi1).circuit.reads stream r) =
+      digestBytes roots.pi1.f :: (roots.pi1.fOod :: rest.map (cwE (D.circuitAt roots.pi1).circuit.reads r)).map
+        UniStatement.elementWord := by
+    rw [hmap2]
     rfl
-  have hops : pi1OpsOf D roots input stream = some
-      [(rootOfWord (callWord (D.circuitAt roots.pi1).circuit.reads stream r (.root 0)), litWord 0, cl0),
-        (rootOfWord (callWord (D.circuitAt roots.pi1).circuit.reads stream r (.root 1)), litWord 1, cl1),
-        (rootOfWord (callWord (D.circuitAt roots.pi1).circuit.reads stream r ((CallWord.const (rootWordOfBytes (digestBytes roots.pi1.bytecode)) :: (Data.pi1Calls.getD 2 []).tail).getD 0 default)),
-          litWord 2, cl2)] := by
-    unfold pi1OpsOf
-    dsimp only
-    rw [hr]
-    dsimp only
-    unfold contractPi1Openings
-    rw [pcsCalls_take _ _ _ _ _ (by simp [pi1CallsWith, hD.2.1, hl3]), hlist]
-    simp only [List.mapM_cons, List.mapM_nil, hd0, hw0, hd1, hw1, hd2, hw2, Option.map_some, Option.bind_eq_bind,
-      Option.bind_some, Option.pure_def]
-  exact ⟨_, _, _, hops, litWord_eq 0 (by decide), litWord_eq 1 (by decide), litWord_eq 2 (by decide),
-    rootOfWord_rootWordOfBytes_digestBytes _⟩
+  rw [e2, hx2]
+  rfl
 
 /-! ## The graph's openings and the contract's -/
 
 /-- **π1-rec3's graph with its openings over `(H, F)`**, its checks holding and its calls decoding to three openings:
-the three openings, the setup's root the deployment's. -/
+the three PCS checks, the setup's commitment the deployment's. -/
 theorem graphH_eq (H : List UInt8 → Id Digest) (F : KeccakState → Id KeccakState) (D : RecDeployment)
-    (roots : UniStatement.SetupRoots) (input : Vector UInt8 32) (p1 : UniKeccak.KeccakProof)
+    (roots : UniKeccak.SetupRootsK) (input : Vector UInt8 32) (p1 : UniKeccak.KeccakProof)
     (gout : RecGraph.Outputs) (g0 g1 g2 : Pi1Opening)
     (hev : RecGraph.evalGraphDeployed RecGraphKeccak.Pi1.pi1GraphK (D.pi1IvAt roots) input.toList p1.stream = some gout)
     (hchk : (gout.zeros.all (· == 0) && gout.nonzeros.all (· != 0)) = true)
     (hdec : gout.calls.mapM decodePi1Call = some [g0, g1, g2]) :
     Id.run (Pi2H.pi1GraphVerifierWithH (m := Id) H F D roots input p1) =
-      (((true && Id.run (UniKeccakComplete.pcsOpenWithH H F (UniStatement.layoutWordVars g0.2.1) g0.1 g0.2.2 p1.c1)) &&
-        Id.run (UniKeccakComplete.pcsOpenWithH H F (UniStatement.layoutWordVars g1.2.1) g1.1 g1.2.2 p1.c2)) &&
-        Id.run (UniKeccakComplete.pcsOpenWithH H F (UniStatement.layoutWordVars g2.2.1) roots.bytecode g2.2.2
-          p1.setup)) := by
+      (((true && Id.run (UniKeccakComplete.pcsOpenKH H F (UniKeccak.stackVarsK D.pi1.shape .c1) g0.1 g0.2.1 g0.2.2.1
+          g0.2.2.2 p1.c1)) &&
+        Id.run (UniKeccakComplete.pcsOpenKH H F (UniKeccak.stackVarsK D.pi1.shape .c2) g1.1 g1.2.1 g1.2.2.1 g1.2.2.2
+          p1.c2)) &&
+        Id.run (UniKeccakComplete.pcsOpenKH H F (UniKeccak.stackVarsK D.pi1.shape .setup) roots.f roots.fOod g2.2.2.1
+          g2.2.2.2 p1.setup)) := by
   unfold Pi2H.pi1GraphVerifierWithH
   rw [hev]
   simp only [hchk, hdec, Bool.not_true, Bool.false_eq_true, ↓reduceIte]
   rfl
 
-/-- **The contract's three π1 openings**, their layout words registered with π1's opener. -/
-theorem openSeqH_eq (H : List UInt8 → Id Digest) (F : KeccakState → Id KeccakState)
-    (reg : List (List UInt8 × Opener)) (o0 o1 o2 : Pi1Opening) (proof : RecProof) (v0 v1 v2 : ℕ)
-    (h0 : reg.lookup o0.2.1 = some (.pi1 v0)) (h1 : reg.lookup o1.2.1 = some (.pi1 v1))
-    (h2 : reg.lookup o2.2.1 = some (.pi1 v2)) :
-    Id.run (Pi2H.openSeqH (m := Id) H F reg [o0, o1, o2] proof) =
-      ((Id.run (UniKeccakComplete.pcsOpenWithH H F v0 o0.1 o0.2.2 proof.c1) &&
-        Id.run (UniKeccakComplete.pcsOpenWithH H F v1 o1.1 o1.2.2 proof.c2)) &&
-        Id.run (UniKeccakComplete.pcsOpenWithH H F v2 o2.1 o2.2.2 proof.f)) := by
+/-- **The contract's three π1 openings**: each a PCS check at its point's length. -/
+theorem openSeqH_eq (H : List UInt8 → Id Digest) (F : KeccakState → Id KeccakState) (o0 o1 o2 : Pi1Opening)
+    (proof : RecProof) :
+    Id.run (Pi2H.openSeqH (m := Id) H F [o0, o1, o2] proof) =
+      ((Id.run (UniKeccakComplete.pcsOpenKH H F o0.2.2.1.length o0.1 o0.2.1 o0.2.2.1 o0.2.2.2 proof.c1) &&
+        Id.run (UniKeccakComplete.pcsOpenKH H F o1.2.2.1.length o1.1 o1.2.1 o1.2.2.1 o1.2.2.2 proof.c2)) &&
+        Id.run (UniKeccakComplete.pcsOpenKH H F o2.2.2.1.length o2.1 o2.2.1 o2.2.2.1 o2.2.2.2 proof.f)) := by
   unfold Pi2H.openSeqH Pi2H.openAtH
-  simp only [List.getD_cons_zero, List.getD_cons_succ, h0, h1, h2]
   rfl
 
 /-- **π2's honest proof**: its stream the honest prover's, π1's opening proofs π1's. -/
@@ -234,24 +192,33 @@ theorem pi2Prover_some {D : RecDeployment} {C : Pi2Circuits D} (Fa : Pi2Facts D 
     proof.stream = (outOf D Hk (rootsH D Hk F) (C.G (rootsH D Hk F)) pi2Ood input
         (pi2Choice D C Fa (rootsH D Hk F) input p1.stream).1 (pi2Choice D C Fa (rootsH D Hk F) input p1.stream).2).stream ∧
       proof.c1 = p1.c1 ∧ proof.c2 = p1.c2 ∧ proof.f = p1.setup := by
-  rw [pi2ProverWith_run, pi2ProveWith_run, logN_G Fa] at hp
+  rw [pi2ProverWith_run] at hp
+  simp only at hp
+  rw [pi2ProveWith_run] at hp
+  simp only at hp
   revert hp
-  generalize E2ECompleteness.proveOpeningWithH (m := Id) (Pure.pure ∘ Hk) F fuel (layoutsOf 24).1 _ _ _ = rW
-  generalize E2ECompleteness.proveOpeningWithH (m := Id) (Pure.pure ∘ Hk) F fuel (layoutsOf 24).2.2 _ _ _ = rS
-  generalize E2ECompleteness.proveOpeningWithH (m := Id) (Pure.pure ∘ Hk) F fuel (layoutsOf 24).2.1 _ _ _ = rQ
+  generalize UniKeccakComplete.pcsProveH (m := Id) (Pure.pure ∘ Hk) F fuel _ _ _ _ ((Spec.of _).core.run _).fold = rW
+  generalize UniKeccakComplete.pcsProveH (m := Id) (Pure.pure ∘ Hk) F fuel _ _ _ _ (proverOut _ _ _ _ _ _ _ _ _).inputs.ξ = rS
+  generalize UniKeccakComplete.pcsProveH (m := Id) (Pure.pure ∘ Hk) F fuel _ _ _ _
+    ((Spec.of _).core.run _).quotientValue = rQ1
+  generalize UniKeccakComplete.pcsProveH (m := Id) (Pure.pure ∘ Hk) F fuel _ _ _ _
+    ((Spec.of _).core.run _).pushesValue = rQ2
+  generalize UniKeccakComplete.pcsProveH (m := Id) (Pure.pure ∘ Hk) F fuel _ _ _ _
+    ((Spec.of _).core.run _).sumValue = rQ3
   intro hp
-  cases rW with
-  | none => simp at hp
-  | some a =>
-    cases rS with
-    | none => simp at hp
-    | some b =>
-      cases rQ with
-      | none => simp at hp
-      | some c =>
-        simp only [Option.bind_some, Option.map_some, Option.some.injEq] at hp
-        subst hp
-        exact ⟨rfl, rfl, rfl, rfl⟩
+  rcases rW with _ | a
+  · simp at hp
+  rcases rS with _ | b
+  · simp at hp
+  rcases rQ1 with _ | c
+  · simp at hp
+  rcases rQ2 with _ | d
+  · simp at hp
+  rcases rQ3 with _ | e
+  · simp at hp
+  simp only [Option.bind_some, Option.map_some, Option.some.injEq] at hp
+  subst hp
+  exact ⟨rfl, rfl, rfl, rfl⟩
 
 /-! ## π1's openings in the contract -/
 
@@ -265,7 +232,7 @@ theorem pi2Pi1Openings {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D) (hc
   have hview : (D.circuitAt (rootsH D Ht Ft).pi1).circuit = Data.circuit := hD.1 _
   obtain ⟨hps, hc1, hc2, hcf⟩ := pi2Prover_some (pi2Facts hD C hchk) Ht Ft _ input p1 proof hpr
   -- π2's run on the honest stream, over `Ht` and over Keccak-f[1600]
-  obtain ⟨r, hr, -, hsc, -, -, -, -, hi, -, -⟩ := runWith_honest Ht (C.G (rootsH D Ht Ft)) pi2Ood
+  obtain ⟨r, hr, -, hsc, -, -, -, -, -, hi, -, -⟩ := runWith_honest Ht (C.G (rootsH D Ht Ft)) pi2Ood
     (D.circuitAt (rootsH D Ht Ft).pi1).circuit (D.circuitAt (rootsH D Ht Ft).pi1).setupStack
     (ivOf D Ht (rootsH D Ht Ft)) input.toList (pi2Choice D C (pi2Facts hD C hchk) (rootsH D Ht Ft) input p1.stream).1
     (pi2Choice D C (pi2Facts hD C hchk) (rootsH D Ht Ft) input p1.stream).2 hmatch
@@ -287,12 +254,13 @@ theorem pi2Pi1Openings {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D) (hc
     dsimp only
     rw [hsc'', hsc, hi]
   -- the contract's π1 calls
-  obtain ⟨o0, o1, o2, hops, h0, h1, h2, hb⟩ := pi1OpsOf_some D hD (rootsH D Ht Ft) input _ r' hr'
-    (by rw [hsz, hview])
+  obtain ⟨ops, hops⟩ := pi1OpsOf_some D hD (rootsH D Ht Ft) input _ r' hr' (by rw [hsz, hview])
+  obtain ⟨o0, o1, o2, rfl, l0, l1, l2, hf, hfo⟩ :=
+    contract_ops D (pi1CallsShape_data D hD.2.1) (rootsH D Ht Ft) input _ _ hops
   -- the circuit's corollary
   have hca := pi2CircuitAccepts_of_bridge C (pi2Facts hD C hchk) hroots hg
     (circuitBridge D hD C (pi2Facts hD C hchk) hroots hg (statementPortMeaning hD C hchk)
-      (zeroPortsMeaning hD C hchk) (callWordsAgree hD C hchk) (pi1CallsLayouts_of_real hD))
+      (zeroPortsMeaning hD C hchk) (callWordsAgree hD C hchk))
   have hacc := hca (rootsH D Ht Ft) input _ _ _ (by rw [hscal]; exact hsat) hops
   rw [hstr] at hacc
   obtain ⟨gout, gops, hev, hz, hnz, hdec, hmap, htake⟩ := hacc
@@ -308,30 +276,14 @@ theorem pi2Pi1Openings {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D) (hc
   rw [graphH_eq _ _ D _ input p1 gout g0 g1 g2 hev hchk' hdec] at ha1
   simp only [List.map_cons, List.map_nil, List.cons.injEq, and_true] at hmap
   obtain ⟨e0, e1, e2⟩ := hmap
-  obtain ⟨r0, r1⟩ : g0.1 = o0.1 ∧ g1.1 = o1.1 := by simpa using htake
+  simp only [List.take_succ_cons, List.take_zero, List.map_cons, List.map_nil, List.cons.injEq, and_true,
+    Prod.mk.injEq] at htake
+  obtain ⟨⟨r0, d0⟩, r1, d1⟩ := htake
   refine ⟨[o0, o1, o2], by rw [hps]; exact hops, ?_⟩
-  have hreg : registryOf D.pi1.shape 24 = registryAt D (rootsH D Ht Ft) := by
-    unfold registryAt
-    rw [hview]
-    rfl
+  rw [openSeqH_eq, hc1, hc2, hcf]
   have hsh : D.pi1.shape = RecGraphKeccak.Pi1.keccak128 := hD.2.2.1
-  rw [openSeqH_eq _ _ _ o0 o1 o2 proof _ _ _
-    (by rw [hreg, h0]; exact registryAt_lookup D _ hsh 0 (by decide))
-    (by rw [hreg, h1]; exact registryAt_lookup D _ hsh 1 (by decide))
-    (by rw [hreg, h2]; exact registryAt_lookup D _ hsh 2 (by decide))]
-  rcases g0 with ⟨a0, w0, k0⟩
-  rcases g1 with ⟨a1, w1', k1⟩
-  rcases g2 with ⟨a2, w2, k2⟩
-  rcases o0 with ⟨b0, u0, l0⟩
-  rcases o1 with ⟨b1, u1, l1⟩
-  rcases o2 with ⟨b2, u2, l2⟩
-  simp only [Prod.mk.injEq] at e0 e1 e2 r0 r1 h0 h1 h2 hb ha1 ⊢
-  subst r0 r1 hb
-  obtain ⟨rfl, rfl⟩ := e0
-  obtain ⟨rfl, rfl⟩ := e1
-  obtain ⟨rfl, rfl⟩ := e2
-  subst h0 h1 h2
-  rw [hc1, hc2, hcf]
+  rw [hsh] at ha1
+  rw [l0, l1, l2, ← r0, ← d0, ← r1, ← d1, hf, hfo, ← e0, ← e1, ← e2]
   simpa using ha1
 
 /-! ## π2's completeness without `Pi2Pi1Openings` -/

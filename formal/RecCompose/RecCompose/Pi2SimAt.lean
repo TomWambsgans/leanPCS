@@ -73,11 +73,11 @@ theorem pre2_writer (G : RecPiop.Circuit E) (ood : ℕ → Digest → Array K �
       w0.append (publicWire (reads.zip values) ++ UniStatement.rootWord h ++ UniComplete.scalarWire o) := by
   have hw := sendPublic_writes (reads.zip values) w0
   unfold UniKeccakComplete.Writes at hw
-  refine ⟨digestScalars (Id.run (E2ECompleteness.commitWithH (m := Id) (Pure.pure ∘ Hk) (layoutsOf G.logN).1.logN
-    (placePublic (layoutsOf G.logN).1 fun i ↦ (wTableB G w).getD i 0))).root,
-    ood (layoutsOf G.logN).1.logN (Id.run (E2ECompleteness.commitWithH (m := Id) (Pure.pure ∘ Hk)
-      (layoutsOf G.logN).1.logN (placePublic (layoutsOf G.logN).1 fun i ↦ (wTableB G w).getD i 0))).root
-      (placePublic (layoutsOf G.logN).1 fun i ↦ (wTableB G w).getD i 0), ?_⟩
+  refine ⟨UniStatement.rootHalves (Id.run (E2ECompleteness.commitWithH (m := Id) (Pure.pure ∘ Hk) (stackVars G.logN).1
+    (padStack (stackVars G.logN).1 fun i ↦ (wTableB G w).getD i 0))).root,
+    ood (stackVars G.logN).1 (Id.run (E2ECompleteness.commitWithH (m := Id) (Pure.pure ∘ Hk)
+      (stackVars G.logN).1 (padStack (stackVars G.logN).1 fun i ↦ (wTableB G w).getD i 0))).root
+      (padStack (stackVars G.logN).1 fun i ↦ (wTableB G w).getD i 0), ?_⟩
   unfold pre2
   rw [UniKeccakComplete.wr_run_bind, hw, UniKeccakComplete.wr_run_bind, UniKeccakComplete.wr_run_bind]
   rw [List.append_assoc, ← UniComplete.Wr.append_append w0 (publicWire (reads.zip values)),
@@ -249,29 +249,26 @@ theorem bAtP_trees : (bAtP Ht Ft D C Fa input p1).a.trees = Id.run (Pi2H.setupTr
 theorem cAt_good :
     cAt Ht Ft D C input (bAtP Ht Ft D C Fa input p1) (stAt Ht Ft D C Fa input p1) =
       Id.run (expW2 (m := Id) (Pure.pure ∘ Ht) Ft D C Fa (pure (some p1)) input) := by
-  rw [expW2_some, pi2ProverWith_run, pi2ProveWith_run]
+  rw [expW2_some, pi2ProverWith_run]
+  simp only
+  rw [pi2ProveWith_run]
+  simp only
   unfold cAt stageC
   simp only [bAtP_p1]
   rw [post2_eq_outAt]
   simp only [Id.run_bind, bAtP_roots, bAtP_setupTree, bAtP_trees, idRun_pair]
-  generalize E2ECompleteness.proveOpeningWithH (m := Id) (Pure.pure ∘ Ht) Ft PcsQuotient.nonceFuel
-    (layoutsOf (C.G (rootsH D Ht Ft)).logN).1 (outAt Ht Ft D C Fa input p1).wTree (outAt Ht Ft D C Fa input p1).wStack
-    [⟨((Spec.of (D.circuitAt (rootsH D Ht Ft).pi1).circuit).core.run (outAt Ht Ft D C Fa input p1).inputs).witnessPoint,
-      ((Spec.of (D.circuitAt (rootsH D Ht Ft).pi1).circuit).core.run (outAt Ht Ft D C Fa input p1).inputs).fold⟩] = rW
-  generalize E2ECompleteness.proveOpeningWithH (m := Id) (Pure.pure ∘ Ht) Ft PcsQuotient.nonceFuel
-    (layoutsOf (C.G (rootsH D Ht Ft)).logN).2.2 (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Ht) Ft D)).pi2
-    (D.circuitAt (rootsH D Ht Ft).pi1).setupStack
-    [⟨((Spec.of (D.circuitAt (rootsH D Ht Ft).pi1).circuit).core.run (outAt Ht Ft D C Fa input p1).inputs).setupPoint,
-      (outAt Ht Ft D C Fa input p1).inputs.ξ⟩] = rS
-  generalize E2ECompleteness.proveOpeningWithH (m := Id) (Pure.pure ∘ Ht) Ft PcsQuotient.nonceFuel
-    (layoutsOf (C.G (rootsH D Ht Ft)).logN).2.1 (outAt Ht Ft D C Fa input p1).qTree (outAt Ht Ft D C Fa input p1).qStack
-    [⟨((Spec.of (D.circuitAt (rootsH D Ht Ft).pi1).circuit).core.run (outAt Ht Ft D C Fa input p1).inputs).quotientPoint,
-      ((Spec.of (D.circuitAt (rootsH D Ht Ft).pi1).circuit).core.run (outAt Ht Ft D C Fa input p1).inputs).quotientValue⟩,
-     ⟨((Spec.of (D.circuitAt (rootsH D Ht Ft).pi1).circuit).core.run (outAt Ht Ft D C Fa input p1).inputs).pushesPoint,
-      ((Spec.of (D.circuitAt (rootsH D Ht Ft).pi1).circuit).core.run (outAt Ht Ft D C Fa input p1).inputs).pushesValue⟩,
-     ⟨((Spec.of (D.circuitAt (rootsH D Ht Ft).pi1).circuit).core.run (outAt Ht Ft D C Fa input p1).inputs).sumPoint,
-      ((Spec.of (D.circuitAt (rootsH D Ht Ft).pi1).circuit).core.run (outAt Ht Ft D C Fa input p1).inputs).sumValue⟩] = rQ
-  rcases rW with _ | x <;> rcases rS with _ | y <;> rcases rQ with _ | z <;> rfl
+  generalize UniKeccakComplete.pcsProveH (m := Id) (Pure.pure ∘ Ht) Ft PcsQuotient.nonceFuel _ _ _ _
+    ((Spec.of _).core.run _).fold = rW
+  generalize UniKeccakComplete.pcsProveH (m := Id) (Pure.pure ∘ Ht) Ft PcsQuotient.nonceFuel _ _ _ _
+    (outAt Ht Ft D C Fa input p1).inputs.ξ = rS
+  generalize UniKeccakComplete.pcsProveH (m := Id) (Pure.pure ∘ Ht) Ft PcsQuotient.nonceFuel _ _ _ _
+    ((Spec.of _).core.run _).quotientValue = rQ1
+  generalize UniKeccakComplete.pcsProveH (m := Id) (Pure.pure ∘ Ht) Ft PcsQuotient.nonceFuel _ _ _ _
+    ((Spec.of _).core.run _).pushesValue = rQ2
+  generalize UniKeccakComplete.pcsProveH (m := Id) (Pure.pure ∘ Ht) Ft PcsQuotient.nonceFuel _ _ _ _
+    ((Spec.of _).core.run _).sumValue = rQ3
+  rcases rW with _ | x <;> rcases rS with _ | y <;> rcases rQ1 with _ | z1 <;> rcases rQ2 with _ | z2 <;>
+    rcases rQ3 with _ | z3 <;> rfl
 
 /-- **The staged run on π1's proof `p1` with an honest witness**: its verdict the experiment's, its priors and challenges
 the honest prover's. -/

@@ -12,8 +12,8 @@ import RecCompose.Pi2TFresh
 π2's IV begins with the hash of `σ`'s `4 · 2^24 = 2^26` bytes, longer than anything hashed before it (`Pi2AlphaLen`),
 so its answer is uniform; then each hash of π2's IV and seed holds the previous answer at a fixed offset:
 
-`σd = H(σ)`, `κd = H(κ)`, `d = H(enc ‖ σd ‖ κd)` (`σd` at `24464`, `24528` bytes), `iv = H(… ‖ d ‖ …)` (`d` at `80`,
-`208` bytes), `seed = H(name ‖ iv ‖ input)` (`iv` at `16`, `80` bytes), then `W`'s tree (no `608`-byte input) and
+`σd = H(σ)`, `κd = H(κ)`, `d = H(enc ‖ σd ‖ κd)` (`σd` at `24464`, `24528` bytes), `iv = H(… ‖ d ‖ …)` (`d` at `104`,
+`137` bytes), `seed = H(name ‖ iv ‖ input)` (`iv` at `16`, `80` bytes), then `W`'s tree (no `608`-byte input) and
 `α`'s input (`seed` at `0`, `608` bytes).
 
 A query holding a fresh answer `u` at offset `o` is cached only if an input cached before `u` (at most `K + 4`) holds
@@ -119,7 +119,7 @@ probability at most `4 · (K + 4) / 2^256`. -/
 theorem chain_le {β : Type} (xσ xκ : Bytes) (fd : Digest → Digest → Bytes) (fiv fs : Digest → Bytes)
     (hκ : xκ.length ≠ 24528) (hσ : xσ.length ≠ 24528)
     (hfd : ∀ σ κ, (fd σ κ).length = 24528 ∧ ((fd σ κ).drop 24464).take 32 = digestBytes σ)
-    (hfiv : ∀ d, (fiv d).length = 208 ∧ ((fiv d).drop 80).take 32 = digestBytes d)
+    (hfiv : ∀ d, (fiv d).length = 137 ∧ ((fiv d).drop 104).take 32 = digestBytes d)
     (hfs : ∀ iv, (fs iv).length = 80 ∧ ((fs iv).drop 16).take 32 = digestBytes iv)
     (T : Digest → OracleComp KeccakCalls β) (inpOf : β → Bytes) (hT : ∀ s, HashOK (fun m ↦ m.length ≠ 608) (T s))
     (hTinp : ∀ s (c : Cache) (z : β × Cache), z ∈ support ((simulateQ ro (T s)).run c) →
@@ -151,7 +151,7 @@ theorem chain_le {β : Type} (xσ xκ : Bytes) (fd : Digest → Digest → Bytes
   have hc₂b : CacheBound c₂ (K + 2) := (hc.cacheQuery_inl _ _).cacheQuery_inl _ _
   -- the digest: fresh unless a cached `24528`-byte input held `σd`.
   refine (prEvent_query_le (fd σd κd) c₂ (HitAt 24528 24464 c σd) (fun hn ↦ ?_) _ _
-    (fun d ↦ (if HitAt 208 80 c₂ d then 1 else 0) + 2 * B) fun d ↦ ?_).trans ?_
+    (fun d ↦ (if HitAt 137 104 c₂ d then 1 else 0) + 2 * B) fun d ↦ ?_).trans ?_
   · rcases hcd : c₂ (.inl (fd σd κd)) with _ | v
     · rfl
     · exfalso
@@ -172,8 +172,8 @@ theorem chain_le {β : Type} (xσ xκ : Bytes) (fd : Digest → Digest → Bytes
   rw [run_H_bind]
   set c₃ := c₂.cacheQuery (.inl (fd σd κd)) d with hc₃
   have hc₃b : CacheBound c₃ (K + 3) := hc₂b.cacheQuery_inl _ _
-  -- the IV: fresh unless a cached `208`-byte input held `d`.
-  refine (prEvent_query_le (fiv d) c₃ (HitAt 208 80 c₂ d) (fun hn ↦ ?_) _ _
+  -- the IV: fresh unless a cached `137`-byte input held `d`.
+  refine (prEvent_query_le (fiv d) c₃ (HitAt 137 104 c₂ d) (fun hn ↦ ?_) _ _
     (fun iv ↦ (if HitAt 80 16 c₃ iv then 1 else 0) + B) fun iv ↦ ?_).trans ?_
   · rcases hcd : c₃ (.inl (fiv d)) with _ | v
     · rfl

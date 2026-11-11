@@ -225,11 +225,11 @@ theorem hashOK_setupTreesWithH2 (D : RecDeployment) :
 /-! ## π1-rec3's graph -/
 
 /-- **π1-rec3's graph with its three claims' openings** (`3 · gOpen` blocks). -/
-theorem hashOK_graph (hg : GraphsAgree) (D : RecDeployment) (roots : UniStatement.SetupRoots)
+theorem hashOK_graph (_hg : GraphsAgree) (D : RecDeployment) (roots : UniKeccak.SetupRootsK)
     (input : Vector UInt8 32) (p : UniKeccak.KeccakProof) :
     HashOK Short (Pi2H.pi1GraphVerifierWithH callKeccak256 callKeccakF1600 D roots input p) :=
-  hashOK_of_qc (Pi2G.Cost2.qc_pi1GraphVerifierWithH hg D roots input p) (by
-    unfold Pi2G.Cost2.gOpen E2ECompleteness.Cost.vOpen
+  hashOK_of_qc (Pi2G.Cost2.qc_pi1GraphVerifierWithH D roots input p) (by
+    unfold Pi2G.Cost2.gOpen UniKeccakComplete.Cost.openCost E2ECompleteness.Cost.vOpen
     norm_num [LeanVM.Protocol.Verifier.whirBound])
 
 /-! ## The WHIR openings -/
@@ -316,6 +316,22 @@ theorem hashOK_proveOpening1 (fuel : ℕ) (L : PcsQuotient.Layout) (tree : Tree)
       subst hc
       exact hv)
     (by simp only [List.length_singleton, Nat.one_mul]; omega)
+
+/-- **A PCS claim's honest opening** of a point of at most `2^14` coordinates: its seed's input (the claim's
+`82 + 24 n` bytes), the root's absorption, the opening script's trees and sponge. -/
+theorem hashOK_pcsProveH (fuel n : ℕ) (tree : Tree) (stack : Array K) (pt : List E) (v : E)
+    (hv : pt.length ≤ 16384) :
+    HashOK Short (UniKeccakComplete.pcsProveH callKeccak256 callKeccakF1600 fuel n tree stack pt v) := by
+  unfold UniKeccakComplete.pcsProveH
+  split
+  · rename_i hpt
+    refine E2ECompleteness.HashOK.bind (hashOK_of_qc (UniKeccakComplete.qc_pcsSpongeH _ ((82 + 24 * 16384) / 136 + 1)
+      (by rw [WhirBridge.Pcs.claimBytes_length]; omega)) (by norm_num)) fun _ ↦
+      E2ECompleteness.HashOK.bind (hashOK_of_qc (qc_absorb _ _ _) (by norm_num)) fun _ ↦
+      E2ECompleteness.HashOK.bind (hashOK_of_qc (qc_absorb _ _ _) (by norm_num)) fun _ ↦
+      E2ECompleteness.HashOK.bind (hashOK_runFromWithHash _ _ _ _ _ (wordsLE_openingScript _ stack _)) fun _ ↦
+        E2ECompleteness.HashOK.pure _ _
+  · exact E2ECompleteness.HashOK.pure _ _
 
 end RecCompose.Pi2A
 

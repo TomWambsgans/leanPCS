@@ -2,7 +2,7 @@
 -- deployment (`RealDeployment.lean`'s `realDeployment`): `FsClosed.lean`'s soundness with its deployment, circuits and
 -- view check built from the evaluated checks (completeness there: `CompleteKeccakEnd.lean`).
 import RecCompose.FsClosed
-import RecCompose.RealDeployment
+import RecCompose.CompleteKeccakEnd
 
 /-!
 # The recursive verifier's end theorems at the real deployment

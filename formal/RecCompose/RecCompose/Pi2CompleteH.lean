@@ -1,6 +1,6 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Transcribed from `formal/RecStatement` (`Verifier.lean`:
 -- `ivWith`, `reduceWith`, `runWith`; `Security.lean`: `Pi2Circuit.digestWith`, `Pi2Circuit.setupTreeWith`,
--- `RecDeployment.ivWith`, `pcsOpenAt`, `RecDeployment.contractWith`, `RecDeployment.verifierWith`,
+-- `RecDeployment.ivWith`, `pcsOpenWords`, `RecDeployment.contractWith`, `RecDeployment.verifierWith`,
 -- `RecDeployment.setupTreesWith`, `pi1GraphVerifierWith`) and `RecCompose.Couplings` (`openAt`, `openSeq`), with
 -- Keccak-256 an explicit call, as `formal/UniComplete/UniComplete/VerifierH.lean` rewrites `formal/UniStatement`.
 import RecCompose.Pi2Run
@@ -12,8 +12,8 @@ import UniKeccakComplete.K.VerifierH
 
 `formal/RecStatement`'s contract and setup are written over a permutation `F`, every Keccak-256 the sponge over it
 (`keccak256With F`). Here each function that hashes is rewritten with Keccak-256 a separate function `H` (`…H`), the
-code text the Statement's, only the hash changed (UniComplete's `sampleH`, `pcsOpenWithH`;
-WithHash's `openingWithH`, `commitWithH`). **At `H = keccak256With F`** each is the Statement's (`…_eqH`). And
+code text the Statement's, only the hash changed (UniComplete's `sampleH`, UniKeccakComplete's `pcsOpenKH`;
+WithHash's `commitWithH`). **At `H = keccak256With F`** each is the Statement's (`…_eqH`). And
 `runWithH_post`: `Pi2Run.runWith_post` at any `H` (the run's success and public data do not depend on the hashes).
 -/
 
@@ -29,9 +29,8 @@ section With
 variable {m : Type → Type} [Monad m] (H : List UInt8 → m Digest) (F : KeccakState → m KeccakState)
 
 /-- `RecStatement.ivWith` with Keccak-256 `H`. -/
-def ivWithH (pi1Iv digest setupRoot : List UInt8) (logN : ℕ) : m (List UInt8) := do
-  let (w, q, s) := layoutWords logN
-  let d ← H (ivTag ++ pi1Iv ++ setupRoot ++ digest ++ w ++ q ++ s)
+def ivWithH (pi1Iv setupRoot : List UInt8) (setupOod : E) (digest : List UInt8) (logN : ℕ) : m (List UInt8) := do
+  let d ← H (ivTag ++ pi1Iv ++ setupRoot ++ UniKeccak.elementBytes24 setupOod ++ digest ++ [logN.toUInt8])
   return digestBytes d
 
 /-- `RecStatement.reduceWith` with Keccak-256 `H`. -/
@@ -80,14 +79,13 @@ def digestWithH (c : Pi2Circuit) : m (List UInt8) := do
 def ivOfH (D : RecDeployment) (roots : RecSetupRoots) : m (List UInt8) := do
   let c := D.circuitAt roots.pi1
   let digest ← digestWithH H c
-  ivWithH H (D.pi1IvAt roots.pi1) digest (digestBytes roots.pi2) c.circuit.logN
+  ivWithH H (D.pi1IvAt roots.pi1) (digestBytes roots.pi2) roots.pi2Ood digest c.circuit.logN
 
-/-- `pcsOpenAt` with Keccak-256 `H`. -/
-def pcsOpenAtH (registry : List (List UInt8 × Opener)) (words : List (List UInt8)) (proof : Compile.Proof) : m Bool :=
-  match decodeWith registry words with
+/-- `pcsOpenWords` with Keccak-256 `H`. -/
+def pcsOpenWordsH (words : List (List UInt8)) (proof : Compile.Proof) : m Bool :=
+  match claimOfWords words with
   | none => pure false
-  | some (root, .pi1 vars, claims) => UniKeccakComplete.pcsOpenWithH H F vars root claims proof
-  | some (root, .pi2 L, claims) => E2ECompleteness.openingWithH H F L root claims proof
+  | some (root, ood, point, value) => UniKeccakComplete.pcsOpenKH H F point.length root ood point value proof
 
 /-- `RecDeployment.contractWith` with Keccak-256 `H`. -/
 def contractWithH (D : RecDeployment) (roots : RecSetupRoots) (input : Vector UInt8 32)
@@ -99,13 +97,12 @@ def contractWithH (D : RecDeployment) (roots : RecSetupRoots) (input : Vector UI
   | .error _ => return (false, [])
   | .ok r =>
     if !o.accepts then return (false, []) else
-    let calls := pcsCalls c.circuit (pi1CallsWith D.pi1Calls roots.pi1.bytecode) (digestBytes roots.pi2)
+    let calls := pcsCalls c.circuit (pi1CallsWith D.pi1Calls roots.pi1) (digestBytes roots.pi2) roots.pi2Ood
       proof.stream r
-    if calls.length ≠ 6 then return (false, calls) else
-    let reg := registryOf D.pi1.shape c.circuit.logN
+    if calls.length ≠ 8 then return (false, calls) else
     let mut ok := true
     for (words, p) in calls.zip proof.openings do
-      ok := ok && (← pcsOpenAtH H F reg words p)
+      ok := ok && (← pcsOpenWordsH H F words p)
     return (ok, calls)
 
 /-- `RecDeployment.verifierWith` with Keccak-256 `H`. -/
@@ -114,7 +111,7 @@ def verifierWithH (D : RecDeployment) (roots : RecSetupRoots) (input : Vector UI
 
 /-- `Pi2Circuit.setupTreeWith` with Keccak-256 `H`. -/
 def setupTreeWithH (c : Pi2Circuit) : m LeanVM.Prover.Tree :=
-  E2ECompleteness.commitWithH H (layoutsOf c.circuit.logN).2.2.logN c.setupStack
+  E2ECompleteness.commitWithH H (stackVars c.circuit.logN).2.2 c.setupStack
 
 /-- `UniKeccak.setupTreeKWith` with Keccak-256 `H`: the commitment of the Keccak setup stack. -/
 def setupTreeKWithH (D : UniKeccak.KDeployment) : m LeanVM.Prover.Tree :=
@@ -123,11 +120,12 @@ def setupTreeKWithH (D : UniKeccak.KDeployment) : m LeanVM.Prover.Tree :=
 /-- `RecDeployment.setupTreesWith` with Keccak-256 `H` (`F` unused: the setup only hashes). -/
 def setupTreesWithH (_F : KeccakState → m KeccakState) (D : RecDeployment) : m RecSetupTrees := do
   let t1 ← setupTreeKWithH H D.pi1
-  let t2 ← setupTreeWithH H (D.circuitAt (D.pi1.setupRoots t1))
-  return ⟨t1, t2⟩
+  let r1 := D.pi1.setupRoots t1
+  let t2 ← setupTreeWithH H (D.circuitAt r1)
+  return ⟨t1, t2, r1.fOod, (D.circuitAt r1).setupOod t2.root⟩
 
 /-- `pi1GraphVerifierWith` with Keccak-256 `H`. -/
-def pi1GraphVerifierWithH (D : RecDeployment) (roots : UniStatement.SetupRoots) (input : Vector UInt8 32)
+def pi1GraphVerifierWithH (D : RecDeployment) (roots : UniKeccak.SetupRootsK) (input : Vector UInt8 32)
     (proof : UniKeccak.KeccakProof) : m Bool := do
   match RecGraph.evalGraphDeployed RecGraphKeccak.Pi1.pi1GraphK (D.pi1IvAt roots) input.toList proof.stream with
   | none => return false
@@ -137,24 +135,22 @@ def pi1GraphVerifierWithH (D : RecDeployment) (roots : UniStatement.SetupRoots) 
     | none => return false
     | some ops =>
       if ops.length ≠ 3 then return false
-      let ops := ops.modify 2 fun o ↦ (roots.bytecode, o.2)
+      let ops := ops.modify 2 fun o ↦ (roots.f, roots.fOod, o.2.2)
       let mut ok := true
-      for (o, p) in ops.zip [proof.c1, proof.c2, proof.setup] do
-        ok := ok && (← UniKeccakComplete.pcsOpenWithH H F (UniStatement.layoutWordVars o.2.1) o.1 o.2.2 p)
+      for ((o, c), p) in (ops.zip UniStatement.commitments).zip [proof.c1, proof.c2, proof.setup] do
+        ok := ok && (← UniKeccakComplete.pcsOpenKH H F (UniKeccak.stackVarsK D.pi1.shape c) o.1 o.2.1 o.2.2.1
+          o.2.2.2 p)
       return ok
 
 /-- `Couplings.openAt` with Keccak-256 `H`. -/
-def openAtH (reg : List (List UInt8 × Opener)) (o : Pi1Opening) (p : Compile.Proof) : m Bool :=
-  match reg.lookup o.2.1 with
-  | none => pure false
-  | some (.pi1 vars) => UniKeccakComplete.pcsOpenWithH H F vars o.1 o.2.2 p
-  | some (.pi2 L) => E2ECompleteness.openingWithH H F L o.1 o.2.2 p
+def openAtH (o : Pi1Opening) (p : Compile.Proof) : m Bool :=
+  UniKeccakComplete.pcsOpenKH H F o.2.2.1.length o.1 o.2.1 o.2.2.1 o.2.2.2 p
 
 /-- `Couplings.openSeq` with Keccak-256 `H`. -/
-def openSeqH (reg : List (List UInt8 × Opener)) (ops : List Pi1Opening) (proof : RecProof) : m Bool := do
-  let b1 ← openAtH H F reg (ops.getD 0 default) proof.c1
-  let b2 ← openAtH H F reg (ops.getD 1 default) proof.c2
-  let b3 ← openAtH H F reg (ops.getD 2 default) proof.f
+def openSeqH (ops : List Pi1Opening) (proof : RecProof) : m Bool := do
+  let b1 ← openAtH H F (ops.getD 0 default) proof.c1
+  let b2 ← openAtH H F (ops.getD 1 default) proof.c2
+  let b3 ← openAtH H F (ops.getD 2 default) proof.f
   return b1 && b2 && b3
 
 end With
@@ -165,8 +161,9 @@ section Eq
 
 variable {m : Type → Type} [Monad m] (F : KeccakState → m KeccakState)
 
-theorem ivWith_eqH (pi1Iv digest setupRoot : List UInt8) (logN : ℕ) :
-    RecStatement.ivWith F pi1Iv digest setupRoot logN = ivWithH (keccak256With F) pi1Iv digest setupRoot logN := rfl
+theorem ivWith_eqH (pi1Iv setupRoot : List UInt8) (setupOod : E) (digest : List UInt8) (logN : ℕ) :
+    RecStatement.ivWith F pi1Iv setupRoot setupOod digest logN =
+      ivWithH (keccak256With F) pi1Iv setupRoot setupOod digest logN := rfl
 
 theorem reduceWith_eqH (s : Spec) (statement : List E) :
     reduceWith F s statement = reduceWithH (keccak256With F) s statement := rfl
@@ -179,23 +176,11 @@ theorem digestWith_eqH (c : Pi2Circuit) : c.digestWith F = digestWithH (keccak25
 theorem ivWith_deploy_eqH (D : RecDeployment) (roots : RecSetupRoots) :
     D.ivWith F roots = ivOfH (keccak256With F) D roots := rfl
 
-theorem pcsOpenAt_eqH (registry : List (List UInt8 × Opener)) (words : List (List UInt8)) (proof : Compile.Proof) :
-    pcsOpenAt F registry words proof = pcsOpenAtH (keccak256With F) F registry words proof := by
-  unfold pcsOpenAt pcsOpenAtH
-  generalize decodeWith registry words = d
-  rcases d with _ | ⟨root, ⟨vars⟩ | ⟨L⟩, claims⟩
-  · rfl
-  · exact UniKeccakComplete.pcsOpenWith_eqH F _ _ _ _
-  · exact E2ECompleteness.openingWith_eqH F _ _ _ _
+theorem pcsOpenWords_eqH (words : List (List UInt8)) (proof : Compile.Proof) :
+    pcsOpenWords F words proof = pcsOpenWordsH (keccak256With F) F words proof := rfl
 
 theorem contractWith_eqH (D : RecDeployment) (roots : RecSetupRoots) (input : Vector UInt8 32) (proof : RecProof) :
-    D.contractWith F roots input proof = contractWithH (keccak256With F) F D roots input proof := by
-  have h : pcsOpenAt F = pcsOpenAtH (keccak256With F) F := by
-    funext reg words p
-    exact pcsOpenAt_eqH F reg words p
-  unfold RecDeployment.contractWith contractWithH
-  rw [h]
-  rfl
+    D.contractWith F roots input proof = contractWithH (keccak256With F) F D roots input proof := rfl
 
 theorem verifierWith_eqH (D : RecDeployment) (roots : RecSetupRoots) (input : Vector UInt8 32) (proof : RecProof) :
     D.verifierWith F roots input proof = verifierWithH (keccak256With F) F D roots input proof := by
@@ -216,43 +201,23 @@ theorem setupTreesWith_eqH (D : RecDeployment) :
   unfold RecDeployment.setupTreesWith setupTreesWithH
   simp only [setupTreeKWith_eqH, setupTreeWith_eqH]
 
-theorem pi1GraphVerifierWith_eqH (D : RecDeployment) (roots : UniStatement.SetupRoots) (input : Vector UInt8 32)
+theorem pi1GraphVerifierWith_eqH (D : RecDeployment) (roots : UniKeccak.SetupRootsK) (input : Vector UInt8 32)
     (proof : UniKeccak.KeccakProof) :
-    pi1GraphVerifierWith F D roots input proof = pi1GraphVerifierWithH (keccak256With F) F D roots input proof := by
-  have h : UniStatement.pcsOpenWith F = UniKeccakComplete.pcsOpenWithH (keccak256With F) F := by
-    funext v r c p
-    exact UniKeccakComplete.pcsOpenWith_eqH F v r c p
-  unfold pi1GraphVerifierWith pi1GraphVerifierWithH
-  rw [h]
-  rfl
+    pi1GraphVerifierWith F D roots input proof = pi1GraphVerifierWithH (keccak256With F) F D roots input proof := rfl
 
-theorem openAt_eqH (reg : List (List UInt8 × Opener)) (o : Pi1Opening) (p : Compile.Proof) :
-    openAt F reg o p = openAtH (keccak256With F) F reg o p := by
-  unfold openAt openAtH
-  generalize reg.lookup o.2.1 = d
-  rcases d with _ | ⟨vars⟩ | ⟨L⟩
-  · rfl
-  · exact UniKeccakComplete.pcsOpenWith_eqH F _ _ _ _
-  · exact E2ECompleteness.openingWith_eqH F _ _ _ _
+theorem openAt_eqH (o : Pi1Opening) (p : Compile.Proof) : openAt F o p = openAtH (keccak256With F) F o p := rfl
 
-theorem openSeq_eqH (reg : List (List UInt8 × Opener)) (ops : List Pi1Opening) (proof : RecProof) :
-    openSeq F reg ops proof = openSeqH (keccak256With F) F reg ops proof := by
-  unfold openSeq openSeqH
-  simp only [openAt_eqH]
+theorem openSeq_eqH (ops : List Pi1Opening) (proof : RecProof) :
+    openSeq F ops proof = openSeqH (keccak256With F) F ops proof := rfl
 
 end Eq
 
-/-- `Couplings.pcsOpenAt_eq` with Keccak-256 `H`. -/
-theorem pcsOpenAtH_eq {m : Type → Type} [Monad m] (H : List UInt8 → m Digest) (F : KeccakState → m KeccakState)
-    (reg : List (List UInt8 × Opener)) (w : List (List UInt8)) (p : Compile.Proof)
-    (x : Digest × Opener × List PcsQuotient.Claim) (h : decodeWith reg w = some x) :
-    pcsOpenAtH H F reg w p = openAtH H F reg (x.1, w.getD 1 [], x.2.2) p := by
-  have hl := lookup_of_decodeWith reg w x h
-  unfold pcsOpenAtH openAtH
+/-- `Couplings.pcsOpenWords` at decoded words, with Keccak-256 `H`: the claim's opening. -/
+theorem pcsOpenWordsH_eq {m : Type → Type} [Monad m] (H : List UInt8 → m Digest) (F : KeccakState → m KeccakState)
+    (w : List (List UInt8)) (p : Compile.Proof) (x : Digest × E × List E × E) (h : claimOfWords w = some x) :
+    pcsOpenWordsH H F w p = openAtH H F x p := by
+  unfold pcsOpenWordsH openAtH
   rw [h]
-  simp only [hl]
-  obtain ⟨root, op, claims⟩ := x
-  cases op <;> rfl
 
 /-! ## The run's public data, at any `H` -/
 

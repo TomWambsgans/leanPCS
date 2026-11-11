@@ -3,7 +3,7 @@
 -- Uses leanerVM (https://github.com/Verified-zkEVM/leanerVM, branch
 -- `mumbai`, commit 6175f1a0, MIT OR Apache-2.0): the two calls `KeccakCalls`, the duplex discipline `DuplexP`, the
 -- block cost `hashBlocks`, `QueryCostAtMost`; VCVio's `simulateQ`, `IsQueryBound`; and
--- `formal/EndToEnd/Completeness/E2ECompleteness`'s `Disc`, `HashOK`, `simulateQ_proveOpeningWithH`.
+-- `formal/EndToEnd/Completeness/E2ECompleteness`'s `Disc`, `HashOK`; `formal/UniKeccakComplete`'s `simulateQ_pcsProveH`.
 import RecCompose.Pi1KeccakProver
 import UniKeccakComplete.K.Rec3ProverDuplex
 import UniKeccakComplete.K.Rec3ProverCost
@@ -28,8 +28,8 @@ second, by induction on the three-call program (a `qFs` query of the first answe
   at the reference shape, from `cost_rec3_flockProveH`;
 * **`hashOK_new`** (every hash query satisfies `P`), hence **`hashOK_p1kK_of`**, for the census (`Pi1KeccakCensus`).
 
-The opening (`proveOpeningWithH`) is written over the two calls and lifted (`liftImpl`): over three calls it is the
-lift of the two-call one (`E2ECompleteness.simulateQ_proveOpeningWithH`), and either simulation undoes the lift
+The opening (`pcsProveH`) is written over the two calls and lifted (`liftImpl`): over three calls it is the
+lift of the two-call one (`UniKeccakComplete.simulateQ_pcsProveH`), and either simulation undoes the lift
 (`sim_old_lift`, `sim_new_lift`).
 -/
 
@@ -89,12 +89,10 @@ theorem implH_lift : implH liftImpl = qH := rfl
 theorem implF_lift : implF liftImpl = qF := rfl
 
 /-- The opening over three calls is the lifted two-call one. -/
-theorem open_lift (fuel : ℕ) (L : PcsQuotient.Layout) (tree : LeanVM.Prover.Tree) (stack : Array K)
-    (claims : List PcsQuotient.Claim) :
-    E2ECompleteness.proveOpeningWithH qH qF fuel L tree stack claims =
-      simulateQ liftImpl
-        (E2ECompleteness.proveOpeningWithH callKeccak256 callKeccakF1600 fuel L tree stack claims) := by
-  rw [E2ECompleteness.simulateQ_proveOpeningWithH liftImpl]
+theorem open_lift (fuel n : ℕ) (tree : LeanVM.Prover.Tree) (stack : Array K) (pt : List E) (v : E) :
+    pcsProveH qH qF fuel n tree stack pt v =
+      simulateQ liftImpl (pcsProveH callKeccak256 callKeccakF1600 fuel n tree stack pt v) := by
+  rw [simulateQ_pcsProveH liftImpl]
   rfl
 
 theorem sim_old_qFs : (fun x ↦ (Morph.sim implOld).app (qFs x)) = callKeccak256 := by
@@ -135,7 +133,7 @@ theorem sim_uprover_old (D : UniKeccak.KDeployment) (input : Vector UInt8 32) (r
     simulateQ implOld (uprover D input rows q) =
       Rec3.uniProverRec3With callKeccak256 callKeccakF1600 (flockProveH callKeccak256) D input rows q := by
   have h := app_proveRec3With2 (Morph.sim implOld) qFs qH qF
-    (fun fuel L tree stack claims ↦ by
+    (fun fuel n tree stack pt v ↦ by
       rw [sim_old_qH, sim_old_qF, open_lift]
       exact sim_old_lift _)
     (flockProveH qFs) (flockProveH callKeccak256)
@@ -151,7 +149,7 @@ theorem sim_uprover_new (h : List UInt8 → Digest) (D : UniKeccak.KDeployment) 
       uniProverRec3With2 (fun x ↦ (pure (h x) : OracleComp KeccakCalls Digest)) callKeccak256 callKeccakF1600
         (flockProveH fun x ↦ (pure (h x) : OracleComp KeccakCalls Digest)) D input rows q := by
   have e := app_proveRec3With2 (Morph.sim (implNew h)) qFs qH qF
-    (fun fuel L tree stack claims ↦ by
+    (fun fuel n tree stack pt v ↦ by
       rw [sim_new_qH, sim_new_qF, open_lift]
       exact sim_new_lift h _)
     (flockProveH qFs) (flockProveH fun x ↦ (pure (h x) : OracleComp KeccakCalls Digest))
@@ -243,6 +241,10 @@ theorem real_shape {D : RecDeployment} (hD : D.Real) : D.pi1.shape = UniKeccakSo
 theorem real_programIv {D : RecDeployment} (hD : D.Real) : D.pi1.programIv.length ≤ 2 ^ 16 := by
   rw [hD.2.2.2.1, programIv_length32]
   norm_num
+
+/-- **The real deployment's program IV has at least `32` bytes** (`32`: the first bus input is fresh by length). -/
+theorem real_programIv32 {D : RecDeployment} (hD : D.Real) : 32 ≤ D.pi1.programIv.length := by
+  rw [hD.2.2.2.1, programIv_length32]
 
 /-- **The real deployment's honest relation is UniKeccakComplete's** (the Keccak-f block `keccakFlockSpec`). -/
 theorem real_honest {D : RecDeployment} (hD : D.Real) {rows : List ℕ} {input : Vector UInt8 32}

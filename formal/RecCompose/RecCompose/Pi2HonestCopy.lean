@@ -247,6 +247,28 @@ theorem idPoly_qHonest (hV : G.Valid) (hn : G.logN ≤ 32) (S : RecPiop.SetupPol
   rw [mul_comm (n /ₘ G.zV pi2Omega)]
   exact CharTwo.add_self_eq_zero _
 
+/-- **The numerator's degree is below `3N`** when `h` is below `N` (the honest `h`; RecPiop's bound, `4N − 1`, allows
+`h` below `2N`). -/
+theorem natDegree_numPoly_le (hV : G.Valid) (S : RecPiop.SetupPolys G pi2Omega) {Φ : ℕ → E[X]}
+    (hΦ : ∀ k, (Φ k).natDegree < G.N) {wP hP pP : E[X]}
+    (hw : wP.natDegree < G.N) (hh : hP.natDegree < G.N) (hp : pP.natDegree < G.N) (α β γ : E) :
+    (numPoly S Φ wP hP pP α β γ).natDegree ≤ 3 * G.N - 1 := by
+  have h2 := RecPiop.Circuit.N_ge_two hV
+  have hpull := RecPiop.Circuit.natDegree_dPullP_le (D := G.N - 1) (by omega) (by omega) α β (wP := wP)
+  have hpush := RecPiop.Circuit.natDegree_dPushP_le S hp α β
+  have hhole := RecPiop.Circuit.natDegree_holePoly_le hV (ω := pi2Omega)
+  have ht := RecPiop.Circuit.natDegree_tPoly_le (ω := pi2Omega) hV hΦ hw γ
+  have h1 : (1 + G.holePoly pi2Omega).natDegree ≤ G.N - 1 :=
+    natDegree_add_le_of_degree_le (by rw [natDegree_one]; exact Nat.zero_le _) hhole
+  have hA := natDegree_mul_le_of_le (natDegree_mul_le_of_le (Nat.le_sub_one_of_lt hh) hpull) hpush
+  have hB := natDegree_mul_le_of_le h1 (natDegree_add_le_of_degree_le hpush hpull)
+  unfold numPoly RecPiop.Circuit.idPoly
+  rw [zero_mul, add_zero]
+  refine natDegree_add_le_of_degree_le
+    (natDegree_add_le_of_degree_le (hA.trans ?_) (hB.trans ?_)) (ht.trans ?_) <;>
+  · generalize G.N = N at *
+    omega
+
 /-- **The honest `q` has degree below `2N`.** -/
 theorem natDegree_qHonest_lt (hV : G.Valid) (S : RecPiop.SetupPolys G pi2Omega) {Φ : ℕ → E[X]}
     (hΦ : ∀ k, (Φ k).natDegree < G.N) {wP hP pP : E[X]}
@@ -254,8 +276,7 @@ theorem natDegree_qHonest_lt (hV : G.Valid) (S : RecPiop.SetupPolys G pi2Omega) 
     (numPoly S Φ wP hP pP α β γ /ₘ G.zV pi2Omega).natDegree < 2 * G.N := by
   rw [natDegree_divByMonic _ (zV_monic (G := G)), natDegree_zV]
   have h2 := RecPiop.Circuit.N_ge_two hV
-  have := RecPiop.Circuit.natDegree_idPoly_le hV S hΦ hw hh (qP := 0) (by rw [natDegree_zero]; omega) hp α β γ
-  unfold numPoly
+  have := natDegree_numPoly_le hV S hΦ hw hh hp α β γ
   omega
 
 end RecCompose

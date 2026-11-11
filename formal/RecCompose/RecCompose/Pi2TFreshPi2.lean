@@ -41,7 +41,7 @@ attribute [local irreducible] LeanVM.Protocol.Compile.instFintypeDigest
 /-- `Q`'s stack at stage A's output and the triple's hashes. -/
 noncomputable def qStackOf {D : RecDeployment} (C : Pi2Circuits D) (input : Vector UInt8 32) (a : StA)
     (s₁ s₂ s₃ : Digest) : Array K :=
-  placePublic (layoutsOf (C.G a.roots).logN).2.1 (qEntry (C.G a.roots).logN
+  padStack (stackVars (C.G a.roots).logN).2.1 (qEntry (C.G a.roots).logN
     (hNovel (C.G a.roots) a.vw.2 (chalP s₁) (chalP s₂))
     (qNovel (C.G a.roots) a.vw.2 (chalP s₁) (chalP s₂) (chalP s₃)
       (phiOn (Spec.of (D.circuitAt a.roots.pi1).circuit).core (publicScalarsOf input.toList a.vw.1) (chalP s₃)))
@@ -50,7 +50,7 @@ noncomputable def qStackOf {D : RecDeployment} (C : Pi2Circuits D) (input : Vect
 /-- **Stage B's tree**: `Q`'s commitment. -/
 noncomputable def treeB {D : RecDeployment} (C : Pi2Circuits D) (input : Vector UInt8 32) (a : StA)
     (s₁ s₂ s₃ : Digest) : OracleComp KeccakCalls LeanVM.Prover.Tree :=
-  E2ECompleteness.commitWithH callKeccak256 (layoutsOf (C.G a.roots).logN).2.1.logN (qStackOf C input a s₁ s₂ s₃)
+  E2ECompleteness.commitWithH callKeccak256 (stackVars (C.G a.roots).logN).2.1 (qStackOf C input a s₁ s₂ s₃)
 
 /-- **Stage B's writer** after the tree: `Q`'s root word, its out-of-domain answer. -/
 noncomputable def outB {D : RecDeployment} (C : Pi2Circuits D) (input : Vector UInt8 32) (a : StA)
@@ -58,8 +58,8 @@ noncomputable def outB {D : RecDeployment} (C : Pi2Circuits D) (input : Vector U
   ⟨a, chalP s₁, chalP s₂, chalP s₃, qStackOf C input a s₁ s₂ s₃, qT,
     { absorbW (absorbW (absorbW a.wr s₁) s₂) s₃ with
       stream := (absorbW (absorbW (absorbW a.wr s₁) s₂) s₃).stream ++
-        (UniStatement.rootWord (digestScalars qT.root)).toArray ++
-        (UniComplete.scalarWire (pi2Ood (layoutsOf (C.G a.roots).logN).2.1.logN qT.root
+        (UniStatement.rootWord (UniStatement.rootHalves qT.root)).toArray ++
+        (UniComplete.scalarWire (pi2Ood (stackVars (C.G a.roots).logN).2.1 qT.root
           (qStackOf C input a s₁ s₂ s₃))).toArray }⟩
 
 /-- **Stage B is `Q`'s tree, then a pure writer.** -/
@@ -74,8 +74,8 @@ theorem stageB_eq (D : RecDeployment) (C : Pi2Circuits D) (input : Vector UInt8 
 theorem tin_stageB {D : RecDeployment} (C : Pi2Circuits D) (input : Vector UInt8 32) (a : StA) (s₁ s₂ s₃ : Digest)
     (qT : LeanVM.Prover.Tree) :
     UniKeccakComplete.Prob.tInput (outB C input a s₁ s₂ s₃ qT).wr = digestBytes s₃ ++
-      UniStatement.rootWord (digestScalars qT.root) ++
-      UniComplete.scalarWire (pi2Ood (layoutsOf (C.G a.roots).logN).2.1.logN qT.root (qStackOf C input a s₁ s₂ s₃)) := by
+      UniStatement.rootWord (UniStatement.rootHalves qT.root) ++
+      UniComplete.scalarWire (pi2Ood (stackVars (C.G a.roots).logN).2.1 qT.root (qStackOf C input a s₁ s₂ s₃)) := by
   simp [UniKeccakComplete.Prob.tInput, outB, absorbW]
 
 theorem tin_stageB_length {D : RecDeployment} (C : Pi2Circuits D) (input : Vector UInt8 32) (a : StA)
@@ -102,7 +102,7 @@ def Pi2AlphaFresh (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
       p.2 (.inl ((pi2Staged D C Fa (P1k input rows q) input).inp p.1)) ≠ none] ≤ εα
 
 /-- `Q`'s tree's height parameter. -/
-abbrev muQ : ℕ := (layoutsOf 24).2.1.logN
+abbrev muQ : ℕ := (stackVars 24).2.1
 
 /-- **`t`'s cache-hit bound**: `εα` and `(4N + 6 + |Q's tree|) / 2^256`. -/
 noncomputable def tFreshBound2 (N : ℕ) (εα : ℝ≥0∞) : ℝ≥0∞ :=

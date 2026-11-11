@@ -18,8 +18,8 @@ of π2's `σ` hash, which starts the chain that makes `α`'s input fresh). For t
   (`wc_proveStreamRec3With`'s walk in `WS`: the draws hash the state and the stream, at most `2^14` bytes; the
   commitments' trees `512`-byte rows and `64`-byte nodes, `Pi2A.hashOK_commitReal`);
 * **`hashOK_proveRec3K`**: the prover: the setup's tree, the Keccak contract's IV (`163` bytes and the program IV), the
-  seed (`80` bytes), the stream, three WHIR openings of one claim of at most `2^14` coordinates
-  (`Pi2A.hashOK_proveOpening1`);
+  seed (`80` bytes), the stream, three PCS openings of a point of at most `2^14` coordinates
+  (`Pi2A.hashOK_pcsProveH`);
 * **`hashOK_uniProverRec3_ref`**: UniKeccakComplete's two-call π1-rec3 prover with Flock's honest prover, at the
   reference shape (stream `6904 + 3696 ≤ 2^14` bytes, `27` batch variables) and a program IV of at most `2^16` bytes;
 * **`hashShort_p1kK`**: hence the recursion's prover (`hashOK_p1kK_of`: its Fiat–Shamir hashes are no queries), at the
@@ -35,7 +35,7 @@ open OracleComp OracleSpec
 open UniKeccakComplete
 open RecStatement (RecDeployment)
 open E2ECompleteness (HashOK hashOK_callKeccak256)
-open UniKeccakComplete.Cost (WC WInv StreamOK wc_seq wc_mono wc_pure wc_forIn_list wc_sendInteger wc_sendRoot
+open UniKeccakComplete.Cost (WC WInv StreamOK wc_seq wc_mono wc_pure wc_forIn_list wc_sendInteger wc_sendRoot wc_sendScalar
   wc_sampleW wc_map wc_sendScalars wc_get_pure length_claims)
 open UniKeccakComplete.Bounds (batchVarsBound valuesBound)
 open Pi2A (Short WS ws_of_wc ws_seq ws_lift lenP_of_hashOK two26)
@@ -55,12 +55,14 @@ theorem ws_proveStreamRec3K (flock : FlockProver (OracleComp KeccakCalls)) (kF w
     (fun _ _ _ ↦ ?_) (by omega)
   refine ws_seq (ws_lift (Pi2A.hashOK_commitReal _ _ _)) (fun committed1 _ _ ↦ ?_) (by omega)
   refine ws_seq (ws_of_wc (wc_sendRoot _) (by norm_num)) (fun _ _ _ ↦ ?_) (by omega)
+  refine ws_seq (ws_of_wc (wc_sendScalar _) (by norm_num)) (fun _ _ _ ↦ ?_) (by omega)
   refine ws_seq (ws_of_wc (Rec3.wc_drawRunW 4) (by norm_num)) (fun alphas _ _ ↦ ?_) (by omega)
   refine ws_seq (ws_of_wc wc_sampleW (by norm_num)) (fun beta _ _ ↦ ?_) (by omega)
   refine ws_seq (ws_of_wc wc_sampleW (by norm_num)) (fun gamma _ _ ↦ ?_) (by omega)
   refine ws_seq (ws_of_wc (wc_map some hF) hkF) (fun flockOut _ _ ↦ ?_) (by omega)
   refine ws_seq (ws_lift (Pi2A.hashOK_commitReal _ _ _)) (fun committed2 _ _ ↦ ?_) (by omega)
   refine ws_seq (ws_of_wc (wc_sendRoot _) (by norm_num)) (fun _ _ _ ↦ ?_) (by omega)
+  refine ws_seq (ws_of_wc (wc_sendScalar _) (by norm_num)) (fun _ _ _ ↦ ?_) (by omega)
   refine ws_seq (ws_of_wc wc_sampleW (by norm_num)) (fun t _ _ ↦ ?_) (by omega)
   have ha := Bounds.atT_facts tr (c2DataOf tr (eqKernel alphas) beta gamma) alphas beta gamma t flockOut
   have hvars := Bounds.batchVars_atT tr (c2DataOf tr (eqKernel alphas) beta gamma) alphas beta gamma t flockOut
@@ -88,10 +90,10 @@ set_option hygiene false in
 /-- One step of the three openings' walk (`hc`, `h1` … `h3` the local facts on the claims). -/
 macro "p1k_hop_step" : tactic => `(tactic| first
   | exact E2ECompleteness.HashOK.pure _ _
-  | refine E2ECompleteness.HashOK.bind (Pi2A.hashOK_proveOpening1 _ _ _ _ _ _ (v := batchVarsBound tr.shape) (by first
+  | refine E2ECompleteness.HashOK.bind (Pi2A.hashOK_pcsProveH _ _ _ _ _ _ (le_trans (by first
       | exact hc _ _ _ (List.mem_of_find?_eq_some h1)
       | exact hc _ _ _ (List.mem_of_find?_eq_some h2)
-      | exact hc _ _ _ (List.mem_of_find?_eq_some h3)) hV) fun _ ↦ ?_)
+      | exact hc _ _ _ (List.mem_of_find?_eq_some h3)) hV)) fun _ ↦ ?_)
 
 /-- **π1-rec3's honest prover hashes only short inputs** (`costP_proveRec3With`'s walk). -/
 theorem hashOK_proveRec3K (flock : FlockProver (OracleComp KeccakCalls)) (kF wF : ℕ)
@@ -107,7 +109,7 @@ theorem hashOK_proveRec3K (flock : FlockProver (OracleComp KeccakCalls)) (kF wF 
   refine E2ECompleteness.HashOK.bind (hashOK_callKeccak256 ?_) fun d ↦ ?_
   · show _ < 2 ^ 26
     simp only [List.length_append, Cost.ivTag_length, Cost.len_digestBytes, Cost.shapeBytes_length,
-      Cost.layoutWordsK_length, Cost.variantBytesK_length]
+      Cost.elementBytes24_length, Cost.variantBytesK_length]
     rw [two26]
     have : (2 : ℕ) ^ 16 = 65536 := by norm_num
     omega

@@ -61,7 +61,7 @@ variable {m : Type → Type} [Monad m] (Φ F : KeccakState → m KeccakState)
 
 /-- **The Keccak π1-rec3's verifier with its Fiat–Shamir over `Φ`** and its three openings over `F`:
 `pi1KeccakVerifierWith` with `contractIvKWith Φ` and `runWithK Φ` for `pi1Iv` and `runK`. -/
-def pi1VerifierFsWith (D : UniKeccak.KDeployment) (roots : SetupRoots) (input : Vector UInt8 32)
+def pi1VerifierFsWith (D : UniKeccak.KDeployment) (roots : UniKeccak.SetupRootsK) (input : Vector UInt8 32)
     (proof : UniKeccak.KeccakProof) : m Bool := do
   let iv ← UniKeccak.contractIvKWith Φ D.shape UniKeccak.keccakRec3 D.programIv roots
   let o ← UniKeccak.runWithK Φ D.shape iv input.toList proof.stream UniKeccak.keccakRec3 .point
@@ -69,17 +69,12 @@ def pi1VerifierFsWith (D : UniKeccak.KDeployment) (roots : SetupRoots) (input : 
   match o.result with
   | .error _ => return false
   | .ok r =>
-    let words := UniKeccak.layoutWordsK D.shape
-    let callOf : UniStatement.Commitment → Digest × List UInt8 × Compile.Proof
-      | .c1 => (UniStatement.rootOf r.roots.1, words.getD 0 [], proof.c1)
-      | .c2 => (UniStatement.rootOf r.roots.2, words.getD 1 [], proof.c2)
-      | .setup => (roots.bytecode, words.getD 2 [], proof.setup)
     let mut ok := r.openings.map (·.1) == UniStatement.commitments
     for (c, opening) in r.openings do
       match opening with
       | .point pt value none =>
-        let (root, word, p) := callOf c
-        ok := ok && (← UniStatement.pcsOpenWith F (UniStatement.layoutWordVars word) root [⟨pt, value⟩] p)
+        ok := ok && (← UniKeccak.pcsOpenK F (UniKeccak.stackVarsK D.shape c) (UniKeccak.commitOfK roots r c).1
+          (UniKeccak.commitOfK roots r c).2 pt value (proof.openingOf c))
       | _ => ok := false
     if r.matrices.isSome then ok := false
     return ok
@@ -108,7 +103,7 @@ theorem keccak256With_kf_fun :
 
 /-- The Keccak contract's IV over the real Keccak-f[1600], in any lawful monad: the pure `contractIvK`. -/
 theorem contractIvKWith_kf (s : UniStatement.Shape) (v : UniKeccak.KeccakVariant) (programIv : List UInt8)
-    (roots : SetupRoots) :
+    (roots : UniKeccak.SetupRootsK) :
     UniKeccak.contractIvKWith (m := m) (fun x ↦ pure (keccakF1600 x)) s v programIv roots =
       pure (UniKeccak.contractIvK s v programIv roots) := by
   unfold UniKeccak.contractIvKWith
@@ -140,7 +135,7 @@ theorem pi1VerifierFsWith_kf (F : KeccakState → m KeccakState) :
 omit [LawfulMonad m] in
 /-- **At `Φ = F`, the verifier is the deployed Keccak verifier at `keccakRec3`** (`KDeployment.verifierWith`, the
 verifier of `UniCompletenessKeccakRec3`), as programs, in every monad. -/
-theorem verifierFs_eq (F : KeccakState → m KeccakState) (D : UniKeccak.KDeployment) (roots : SetupRoots)
+theorem verifierFs_eq (F : KeccakState → m KeccakState) (D : UniKeccak.KDeployment) (roots : UniKeccak.SetupRootsK)
     (input : Vector UInt8 32) (p : UniKeccak.KeccakProof) :
     pi1VerifierFsWith F F D roots input p = D.verifierWith F UniKeccak.keccakRec3 roots input p := by
   unfold pi1VerifierFsWith UniKeccak.KDeployment.verifierWith UniKeccak.verifyWithK UniKeccak.KDeployment.ivWith
@@ -148,7 +143,7 @@ theorem verifierFs_eq (F : KeccakState → m KeccakState) (D : UniKeccak.KDeploy
 
 /-- **At the real Keccak-f[1600], `pi1KeccakVerifierWith` with its openings over Keccak-f[1600] too is the deployed
 Keccak verifier at `keccakRec3`** (`UniKeccakSound.uniKnowledgeSoundnessKeccakRec3_closed`'s verifier). -/
-theorem pi1KeccakVerifierWith_kf_eq (D : UniKeccak.KDeployment) (roots : SetupRoots) (input : Vector UInt8 32)
+theorem pi1KeccakVerifierWith_kf_eq (D : UniKeccak.KDeployment) (roots : UniKeccak.SetupRootsK) (input : Vector UInt8 32)
     (p : UniKeccak.KeccakProof) :
     RecStatement.pi1KeccakVerifierWith (m := m) (fun s ↦ pure (keccakF1600 s)) D roots input p =
       D.verifierWith (fun s ↦ pure (keccakF1600 s)) UniKeccak.keccakRec3 roots input p := by
@@ -215,7 +210,7 @@ is not proved: it is the heuristic premise. -/
 theorem pi1CompletenessFs_rpm {D : RecDeployment} (hD : D.Real) :
     Pi1CompletenessFs D queryPermutation Prob.deltaK := by
   intro input rows q hfit hrel
-  refine le_trans ?_ (uniCompletenessKeccakRec3_closed D.pi1 (real_shape hD) (real_programIv hD) input rows q hfit
+  refine le_trans ?_ (uniCompletenessKeccakRec3_closed D.pi1 (real_shape hD) (real_programIv hD) (real_programIv32 hD) input rows q hfit
     (real_honest hD hrel))
   unfold pi1FsCompletenessExperiment UniKeccak.keccakCompletenessExperiment
   rw [pi1ProverFs_rpm]

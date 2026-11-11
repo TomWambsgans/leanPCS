@@ -1,354 +1,143 @@
--- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Follows `formal/UniComplete/UniComplete/Whir.lean` (the
--- plain layouts) and `formal/EndToEnd/Completeness/E2ECompleteness/ProverStack.lean` (`wiring_stackClaims_hold`) for π2's
--- public layouts of chunks (`crates/leanvm/rec/src/pi2/prover.rs`'s `layouts`, `quotient::opening::Layout::new`); uses
--- `formal/WhirBridge` (`Layout.new_valid`, `Layout.holds_iff`, `Blocks.table_eq_lane`, `admissible_large`) and leanerVM
--- (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`, commit 6175f1a0, MIT OR Apache-2.0) through
--- `E2ECompleteness.ProverOpening` (`openingWithH_proveOpeningWithH`, `exists_failed_pow_opening`).
-import RecCompose.Layers
-import UniComplete.Whir
-import WhirBridge.LargeLayout
+-- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Follows `crates/leanvm/rec/src/pi2/prover.rs` (`claims`,
+-- `open`: one PCS claim per claim, `pcs_claim::open_words` on the plain stacks of `stack_vars`) and uses
+-- `formal/UniKeccakComplete` (`K/PcsProver.lean`: `pcsProveH`, `pcsProveH_fails_only_at_pow`; `K/Core.lean`:
+-- `pcsOpenKH_of`) and `formal/EndToEnd/Completeness` (`stackWordFast_colOf`, `commitWith_eqH`).
+import RecCompose.Pi2Prover
+import UniKeccakComplete.K.Core
+import UniSound.PendingLink
 
 /-!
-# Honest WHIR openings at π2's layouts
+# Honest PCS openings at π2's stacks
 
-π2 opens its three commitments (`W`, `Q`, the setup) on the public layouts of chunks `layoutsOf m`
-(`PcsQuotient.Layout.ofChunks`, the Rust's `Layout::new`): at `m = 24`, `W` on `2^24` words (one chunk of `2^24`),
-`Q` on `2^28` (fifteen chunks of `2^24`, `quotient_chunks`), the setup on `2^25` (two chunks). Here, for **every** public
-layout of chunks that `Layout::new` accepts (`WhirBridge.NewOK`, distinct chunks), at a pure Keccak-256 `H` and
-permutation `F`:
+π2 opens its five claims (`W`'s, the setup's, `Q`'s three) as the EIP draft's PCS claims, each on its commitment's
+whole stack (`stackVars`: at `m = 24`, `W` on `2^24` words, `Q` on `2^28`, the setup on `2^25`), by UniKeccakComplete's
+honest PCS prover (`pcsProveH`). Here, at a pure Keccak-256 `H` and permutation `F`:
 
-* **`ofChunks_lanes`, `layoutTr_ofChunks`**: the Statement's `ofChunks` is F2's `Layout.new` (the block
-  `c · 2^(lc − ℓ) + j` is `c <<< (lc − ℓ) ||| j`, `j` below the chunk's lanes);
-* **`table_new_eq`**: the table F2's layout reads off WHIR's column of a stack (`colOf`) is the Statement's
-  `readEntry` of the stack (one lane per block, the blocks distinct, zero where no lane holds the entry);
-* **`ofChunks_stackClaims_hold`**: a claim that holds of the stack under the layout (`RecCompose.ClaimOn`: the table's
-  multilinear extension, the first coordinate the lowest bit) is every stack claim of its opening in WHIR's semantics
-  (`Layout.holds_iff` at `Layout.new_valid`), and every stack claim's weight is multilinear;
-* **`ofChunks_open_honest`**: every proof `proveOpeningWithH` makes of true claims on the stack's commitment is accepted
-  by `openingWithH` against the commitment's root (`openingWithH_proveOpeningWithH`), for `log_n ≤ 64` and a WHIR
-  shape admissible at rate `1/2`; **`ofChunks_fails_only_at_pow`**: if it makes none, a `17`-bit proof of work failed
-  for every nonce below `fuel`.
-* **At π2's layouts** (`pi2Layout`: `W`, `Q`, the setup at `m = 24`): `NewOK` by decision on the chunks' numbers,
-  admissibility by `WhirBridge.admissible_large` (`24`, `28`, `25` variables): **`pi2Open_honest`**,
-  **`pi2OpeningWith_honest`** (the Statement's `openingWith`, `commitWith`, `proveOpeningWith` over `F`, as the
-  block runs them for the contract's claims), **`pi2Open_fails_only_at_pow`**.
+* **`pi2PcsOpen_honest`**: every proof `pcsProveH` makes of `⟨point, stackEval stack point⟩` on a stack of `2^n` words
+  (`23 ≤ n ≤ 28`) is accepted by the claim check `pcsOpenKH` against the commitment's root and the stack's
+  out-of-domain answer (`UniKeccakComplete.Core.pcsOpenKH_of`); **`pi2PcsOpen_fails_only_at_pow`**: if it makes none, a
+  `17`-bit proof of work failed for every nonce below `fuel`;
+* **the stacks** (`padStack`): `padStack_size`, `getD_padStack`; **`commitWithH_padStack`**: the commitment of a table
+  padded with zeros is that of the table (the WHIR stack word reads past the end as zero, `stackWordFast_colOf`), so
+  that the setup's tree (`Pi2Circuit.setupTreeWith`, of `setupStack`'s `2^(m+1)` words) is that of its padded stack;
+  **`setupOod_eq`**: the setup's out-of-domain answer (`Pi2Circuit.setupOod`) is the PCS prover's `pcsOod` of the
+  padded stack;
+* `stackVars_24`: `(24, 28, 25)`.
 
-No stack is evaluated: the stacks are arbitrary; only the layouts' numbers are decided by the kernel.
+No stack is evaluated: the stacks are arbitrary.
 -/
 
 open LeanVM LeanVM.Parameters LeanVM.Semantics LeanVM.Protocol LeanVM.Protocol.KeccakHash
 open LeanVM.Protocol.Compile LeanVM.Prover
-open LeanVM.Protocol.EndToEnd (boolPoint)
-open LeanVM.Protocol.Verifier (eqEval)
-open Finset
 
 set_option autoImplicit false
 
 namespace RecCompose.Pi2W
 
-/-! ## `ofChunks` is F2's `Layout.new` -/
+/-- π2's stacks' variables at `m = 24`: `W` `24`, `Q` `28`, the setup `25`. -/
+theorem stackVars_24 : RecStatement.stackVars 24 = (24, 28, 25) := rfl
 
-theorem flatMap_congr' {α β : Type} : ∀ (l : List α) {f g : α → List β}, (∀ a ∈ l, f a = g a) →
-    l.flatMap f = l.flatMap g
-  | [], _, _, _ => rfl
-  | a :: l, u, v, h => by
-    rw [List.flatMap_cons, List.flatMap_cons, h a List.mem_cons_self,
-      flatMap_congr' l fun b hb ↦ h b (List.mem_cons_of_mem _ hb)]
+/-! ## The stacks -/
 
-section Chunks
+theorem padStack_size (vars : ℕ) (T : ℕ → K) : (padStack vars T).size = 2 ^ vars := by
+  simp [padStack]
 
-variable {vars lc logN : ℕ} {chunks : List (ℕ × ℕ)}
-
-/-- **The Statement's lanes are F2's blocks**, under `Layout::new`'s assertions. -/
-theorem ofChunks_lanes (h : WhirBridge.NewOK vars lc logN chunks) :
-    (PcsQuotient.Layout.ofChunks vars lc logN chunks).lanes =
-      (WhirBridge.Layout.newBlocks lc logN chunks).map PcsQuotient.Lane.block := by
-  simp only [PcsQuotient.Layout.ofChunks, WhirBridge.Layout.newBlocks, List.map_flatMap, List.map_map]
-  refine flatMap_congr' _ fun c hc ↦ ?_
-  have hle := WhirBridge.lanesOf_le h.lane_le (h.len_le c hc)
-  refine List.map_congr_left fun j hj ↦ ?_
-  have hj' : j < 2 ^ (lc - (logN - WhirBridge.laneFold)) :=
-    lt_of_lt_of_le (List.mem_range.1 hj) hle
-  simp only [Function.comp_apply]
-  rw [WhirBridge.shiftLeft_or_eq hj']
-  rfl
-
-/-- **`ofChunks` is F2's `Layout.new`**, under `Layout::new`'s assertions. -/
-theorem layoutTr_ofChunks (h : WhirBridge.NewOK vars lc logN chunks) :
-    Bridge.layoutTr (PcsQuotient.Layout.ofChunks vars lc logN chunks) =
-      WhirBridge.Layout.new vars lc logN chunks := by
-  unfold Bridge.layoutTr
-  rw [ofChunks_lanes h, List.map_map]
-  rfl
-
-/-- `ofChunks` is public. -/
-theorem ofChunks_logPiece : (PcsQuotient.Layout.ofChunks vars lc logN chunks).logPiece = none := rfl
-
-theorem ofChunks_logN : (PcsQuotient.Layout.ofChunks vars lc logN chunks).logN = logN := rfl
-
-theorem ofChunks_vars : (PcsQuotient.Layout.ofChunks vars lc logN chunks).vars = vars := rfl
-
-theorem ofChunks_logLane :
-    (PcsQuotient.Layout.ofChunks vars lc logN chunks).logLane = logN - WhirBridge.laneFold := rfl
-
-/-! ## The table read back -/
-
-theorem findIdx_block_some {bs : List ℕ} (hd : bs.Nodup) {l : ℕ} (hl : l < bs.length) :
-    (bs.map PcsQuotient.Lane.block).findIdx? (· = .block bs[l]) = some l := by
-  rw [List.findIdx?_eq_some_iff_getElem]
-  refine ⟨by simpa using hl, by simp, fun j hj ↦ ?_⟩
-  have hj' : j < bs.length := lt_trans hj hl
-  simp only [List.getElem_map, PcsQuotient.Lane.block.injEq, decide_eq_true_eq]
-  intro he
-  exact absurd ((hd.getElem_inj_iff).1 he) (Nat.ne_of_lt hj)
-
-theorem findIdx_block_none {bs : List ℕ} {b : ℕ} (hb : b ∉ bs) :
-    (bs.map PcsQuotient.Lane.block).findIdx? (· = .block b) = none := by
-  rw [List.findIdx?_eq_none_iff]
-  intro x hx
-  obtain ⟨a, ha, rfl⟩ := List.mem_map.1 hx
-  simp only [PcsQuotient.Lane.block.injEq, decide_eq_false_iff_not]
-  rintro rfl
-  exact hb ha
-
-/-- **The table F2's layout reads off a stack's column is the Statement's `readEntry`**, for distinct chunks. -/
-theorem table_new_eq (h : WhirBridge.NewOK vars lc logN chunks) (hd : (chunks.map Prod.fst).Nodup)
-    (stack : Array K) (t : ℕ) :
-    (WhirBridge.Layout.new vars lc logN chunks).table (E2ECompleteness.colOf logN stack) t =
-      (PcsQuotient.Layout.ofChunks vars lc logN chunks).readEntry (fun j ↦ stack.getD j 0) t := by
-  have hnd := WhirBridge.newBlocks_nodup h hd
-  have hB : (WhirBridge.Layout.new vars lc logN chunks).toBlocks.blocks =
-      WhirBridge.Layout.newBlocks lc logN chunks := by
-    rw [WhirBridge.Layout.new_toBlocks]
-  have hℓ : (WhirBridge.Layout.new vars lc logN chunks).toBlocks.logLane = logN - WhirBridge.laneFold := by
-    rw [WhirBridge.Layout.new_toBlocks]; rfl
-  have hlen : (WhirBridge.Layout.newBlocks lc logN chunks).length ≤ 2 ^ WhirBridge.laneFold := by
-    rw [WhirBridge.newBlocks_length]; exact h.lanes_le
-  have htab : (WhirBridge.Layout.new vars lc logN chunks).table (E2ECompleteness.colOf logN stack) t =
-      (WhirBridge.Layout.new vars lc logN chunks).toBlocks.table (E2ECompleteness.colOf logN stack) t := rfl
-  have hlt : ∀ l, l < (WhirBridge.Layout.newBlocks lc logN chunks).length →
-      t % 2 ^ (logN - WhirBridge.laneFold) + 2 ^ (logN - WhirBridge.laneFold) * l < 2 ^ logN := by
-    intro l hl
-    have hm := Nat.mod_lt t (Nat.two_pow_pos (logN - WhirBridge.laneFold))
-    have hl64 : l < 2 ^ WhirBridge.laneFold := lt_of_lt_of_le hl hlen
-    have hpow : 2 ^ (logN - WhirBridge.laneFold) * 2 ^ WhirBridge.laneFold = 2 ^ logN := by
-      rw [← pow_add, Nat.sub_add_cancel h.six_le]
-    calc t % 2 ^ (logN - WhirBridge.laneFold) + 2 ^ (logN - WhirBridge.laneFold) * l
-        < 2 ^ (logN - WhirBridge.laneFold) * (l + 1) := by rw [Nat.mul_succ]; omega
-      _ ≤ 2 ^ (logN - WhirBridge.laneFold) * 2 ^ WhirBridge.laneFold := Nat.mul_le_mul_left _ hl64
-      _ = 2 ^ logN := hpow
-  have hcol : ∀ x < 2 ^ logN, (E2ECompleteness.colOf logN stack).values.getD x 0 = stack.getD x 0 := by
-    intro x hx
-    simp [E2ECompleteness.colOf, Vector.getD, hx]
-  refine htab.trans ?_
-  unfold PcsQuotient.Layout.readEntry
-  simp only [ofChunks_logPiece]
+theorem getD_padStack (vars : ℕ) (T : ℕ → K) (i : ℕ) :
+    (padStack vars T).getD i 0 = if i < 2 ^ vars then T i else 0 := by
+  unfold padStack
   split
-  · rename_i l hfind
-    rw [List.findIdx?_eq_some_iff_getElem] at hfind
-    obtain ⟨hl0, hp, -⟩ := hfind
-    have hl : l < (WhirBridge.Layout.newBlocks lc logN chunks).length := by
-      have := hl0; rw [ofChunks_lanes h, List.length_map] at this; exact this
-    have hlb : (WhirBridge.Layout.newBlocks lc logN chunks)[l] = t / 2 ^ (logN - WhirBridge.laneFold) := by
-      have e : (PcsQuotient.Layout.ofChunks vars lc logN chunks).lanes[l] =
-          PcsQuotient.Lane.block (WhirBridge.Layout.newBlocks lc logN chunks)[l] := by
-        simp only [ofChunks_lanes h, List.getElem_map]
-      simp only [decide_eq_true_eq, e, PcsQuotient.Lane.block.injEq] at hp
-      exact hp
-    refine (WhirBridge.Blocks.table_eq_lane (WhirBridge.Layout.new vars lc logN chunks).toBlocks
-      (by rw [hB]; exact hnd) (E2ECompleteness.colOf logN stack) (l := l)
-      (by show l < (WhirBridge.Layout.new vars lc logN chunks).toBlocks.blocks.length; rw [hB]; exact hl)
-      (by rw [hB, hℓ, List.getD_eq_getElem _ _ hl, hlb])).trans ?_
-    rw [hℓ]
-    refine Eq.trans (hcol _ (hlt l hl)) ?_
-    show stack.getD _ 0 = stack.getD (l * 2 ^ (logN - WhirBridge.laneFold) + t % 2 ^ (logN - WhirBridge.laneFold)) 0
+  · rename_i h
+    simp [Array.getD, h]
+  · rename_i h
+    simp [Array.getD, h]
+
+/-- **A table padded with zeros has the table's commitment** (`6 ≤ vars`; both read the first `2^vars` words). -/
+theorem commitWithH_padStack {m : Type → Type} [Monad m] (H : Bytes → m Digest) {vars : ℕ} (h6 : 6 ≤ vars)
+    (a : Array K) :
+    E2ECompleteness.commitWithH H vars (padStack vars fun i ↦ a.getD i 0) =
+      E2ECompleteness.commitWithH H vars a := by
+  have hc : E2ECompleteness.colOf vars (padStack vars fun i ↦ a.getD i 0) = E2ECompleteness.colOf vars a := by
+    unfold E2ECompleteness.colOf
     congr 1
-    ring
-  · rename_i hfind
-    refine WhirBridge.Blocks.table_eq_zero _ _ ?_
-    rw [hB, hℓ]
-    intro hb
-    obtain ⟨l, hl, hlb⟩ := List.getElem_of_mem hb
-    rw [List.findIdx?_eq_none_iff] at hfind
-    have hmem : PcsQuotient.Lane.block (WhirBridge.Layout.newBlocks lc logN chunks)[l] ∈
-        (PcsQuotient.Layout.ofChunks vars lc logN chunks).lanes := by
-      rw [ofChunks_lanes h]
-      exact List.mem_map_of_mem (List.getElem_mem hl)
-    have := hfind _ hmem
-    simp only [decide_eq_false_iff_not, PcsQuotient.Lane.block.injEq] at this
-    exact this hlb
+    exact Vector.ext fun i hi ↦ by simp only [Vector.getElem_ofFn]; simp only [getD_padStack, hi, ↓reduceIte]
+  unfold E2ECompleteness.commitWithH
+  rw [E2ECompleteness.stackWordFast_colOf h6 1 a,
+    E2ECompleteness.stackWordFast_colOf h6 1 (padStack vars fun i ↦ a.getD i 0), hc]
 
-/-! ## The stack claims -/
+/-- `multilinearEval` reads a list padded with zeros as the list (a list of `2^vars` entries). -/
+theorem setupOod_eq (c : RecStatement.Pi2Circuit) (root : Digest)
+    (hsz : c.setupStack.size ≤ 2 ^ (RecStatement.stackVars c.circuit.logN).2.2) :
+    c.setupOod root = UniKeccakComplete.pcsOod (RecStatement.stackVars c.circuit.logN).2.2
+      (padStack (RecStatement.stackVars c.circuit.logN).2.2 fun i ↦ c.setupStack.getD i 0) root := by
+  unfold RecStatement.Pi2Circuit.setupOod UniKeccakComplete.pcsOod UniComplete.stackEval UniKeccakComplete.pcsZ
+  dsimp only
+  congr 1
+  refine List.ext_getElem ?_ fun i h1 h2 ↦ ?_
+  · simp only [List.length_append, List.length_map, Array.length_toList, List.length_replicate, padStack,
+      Array.size_ofFn]
+    omega
+  · rw [List.getElem_append]
+    split_ifs with hi
+    · simp only [List.length_map, Array.length_toList] at hi
+      simp [padStack, Array.getD, hi]
+    · simp only [List.length_map, Array.length_toList] at hi
+      simp [padStack, Array.getD, hi]
 
-/-- **The claims that hold of the stack are its opening's stack claims, in WHIR's semantics.** -/
-theorem ofChunks_stackClaims_hold (h : WhirBridge.NewOK vars lc logN chunks) (hd : (chunks.map Prod.fst).Nodup)
-    (stack : Array K) (claims : List PcsQuotient.Claim)
-    (hcl : ∀ c ∈ claims, c.point.length = vars ∧
-      ClaimOn (PcsQuotient.Layout.ofChunks vars lc logN chunks) (fun j ↦ stack.getD j 0) (c.point, c.value)) :
-    ∀ sc ∈ PcsQuotient.stackClaims (PcsQuotient.Layout.ofChunks vars lc logN chunks) claims,
-      EndToEnd.StackClaim.Holds logN sc (E2ECompleteness.colOf logN stack) := by
-  have hOK : Bridge.LayoutOK (PcsQuotient.Layout.ofChunks vars lc logN chunks) := Or.inl rfl
-  have hval := WhirBridge.Layout.new_valid h
-  intro sc hsc
-  rw [Bridge.stackClaims_eq _ hOK claims, layoutTr_ofChunks h] at hsc
-  rcases List.mem_append.1 hsc with hm | hm
-  · obtain ⟨c', hc', rfl⟩ := List.mem_map.1 hm
-    obtain ⟨c, hc, rfl⟩ := List.mem_map.1 hc'
-    refine ((WhirBridge.Layout.new vars lc logN chunks).holds_iff hval (Bridge.claimTr c) (hcl c hc).1 _).2 ?_
-    refine Eq.trans ?_ (hcl c hc).2
-    unfold WhirBridge.Layout.tableEval
-    refine Finset.sum_congr rfl fun t _ ↦ ?_
-    rw [table_new_eq h hd stack t, Bridge.eqBits_eq, WhirBridge.eqBits_eq_boolPoint, mul_comm]
-    rw [show (Bridge.claimTr c).point = c.point from rfl, (hcl c hc).1]
-    rfl
-  · change sc ∈ (WhirBridge.Layout.new vars lc logN chunks).extra at hm
-    rw [WhirBridge.Layout.extra_of_none rfl] at hm
-    exact absurd hm List.not_mem_nil
+/-- **`stackEval` is the PCS claim's multilinear value** (`UniSound.mleStk`), on a stack of `2^|pt|` words. -/
+theorem stackEval_eq_mleStk (stack : Array K) (pt : List E) (hs : stack.size = 2 ^ pt.length) :
+    UniComplete.stackEval stack pt = UniSound.mleStk (fun j ↦ stack.getD j 0) pt.length pt := by
+  unfold UniComplete.stackEval UniSound.mleStk
+  rw [UniSound.multilinearEval_eq_sum _ _ (Or.inl (by simp [hs])),
+    ← Finset.sum_range (fun x ↦ UniSound.cubeEq pt pt.length x * ofK (stack.getD x 0))]
+  refine Finset.sum_congr rfl fun x hx ↦ ?_
+  congr 1
+  have hx' : x < stack.size := hs ▸ Finset.mem_range.1 hx
+  simp [List.getD_eq_getElem?_getD, Array.getD, hx']
 
-/-- **Every stack claim of a public layout has a multilinear weight** (F2's multiaffine weights). -/
-theorem ofChunks_multilinear (claims : List PcsQuotient.Claim) :
-    ∀ sc ∈ PcsQuotient.stackClaims (PcsQuotient.Layout.ofChunks vars lc logN chunks) claims,
-      EndToEnd.IsMultilinearFn logN sc.1 := by
-  intro sc hsc
-  rw [Bridge.stackClaims_eq _ (Or.inl rfl) claims] at hsc
-  exact Completeness.isMultilinearFn_of_isMultiaffine
-    ((Bridge.layoutTr (PcsQuotient.Layout.ofChunks vars lc logN chunks)).stacking.isMultiaffine_claims
-      (claims.map Bridge.claimTr) sc hsc)
+/-- `mleStk` reads its stack below `2^n` only. -/
+theorem mleStk_congr {c c' : UniSound.Stk} {n : ℕ} (h : ∀ j < 2 ^ n, c j = c' j) (pt : List E) :
+    UniSound.mleStk c n pt = UniSound.mleStk c' n pt := by
+  unfold UniSound.mleStk
+  exact Finset.sum_congr rfl fun x _ ↦ by rw [h x x.isLt]
 
-/-- **A public layout of chunks has the weight table's shape**, for `log_n ≤ 64`. -/
-theorem weightShape_ofChunks (h : WhirBridge.NewOK vars lc logN chunks) (h64 : logN ≤ 64) :
-    E2ECompleteness.WeightShape (PcsQuotient.Layout.ofChunks vars lc logN chunks) := by
-  refine ⟨h.six_le, h64, ?_, ?_, fun s hs ↦ by simp [ofChunks_logPiece] at hs⟩
-  · rw [ofChunks_lanes h, List.length_map, WhirBridge.newBlocks_length]
-    exact h.lanes_le
-  · show logN - WhirBridge.laneFold ≤ vars
-    exact h.lane_le.trans h.chunk_le
+/-! ## The openings -/
 
-/-! ## The honest openings -/
-
-/-- **An honest opening at a public layout of chunks is accepted**: every proof `proveOpeningWithH` makes of true
-claims on the stack's commitment is accepted against the commitment's root. -/
-theorem ofChunks_open_honest (H : Bytes → Digest) (F : KeccakState → KeccakState) (fuel : ℕ)
-    (h : WhirBridge.NewOK vars lc logN chunks) (hd : (chunks.map Prod.fst).Nodup) (h64 : logN ≤ 64)
-    (hw : Whir.Admissible logN PcsQuotient.logInvRate) (stack : Array K) (claims : List PcsQuotient.Claim)
-    (hne : claims ≠ [])
-    (hcl : ∀ c ∈ claims, c.point.length = vars ∧
-      ClaimOn (PcsQuotient.Layout.ofChunks vars lc logN chunks) (fun j ↦ stack.getD j 0) (c.point, c.value))
+/-- **The honest PCS opening of a π2 claim is accepted** (pure `H`, `F`; `23 ≤ n ≤ 28`, a stack of `2^n` words). -/
+theorem pi2PcsOpen_honest (H : Bytes → Digest) (F : KeccakState → KeccakState) (fuel : ℕ) {n : ℕ}
+    (h1 : 23 ≤ n) (h2 : n ≤ 28) (stack : Array K) (hs : stack.size = 2 ^ n) (pt : List E) (hpt : pt.length = n)
     {π : Compile.Proof}
-    (hπ : E2ECompleteness.proveOpeningWithH (m := Id) H F fuel (PcsQuotient.Layout.ofChunks vars lc logN chunks)
-      (E2ECompleteness.commitWithH (m := Id) H logN stack) stack claims = some π) :
-    E2ECompleteness.openingWithH (m := Id) H F (PcsQuotient.Layout.ofChunks vars lc logN chunks)
-      (E2ECompleteness.commitWithH (m := Id) H logN stack).root claims π = true :=
-  E2ECompleteness.openingWithH_proveOpeningWithH H F fuel _ (weightShape_ofChunks h h64) hw stack claims hne
-    (fun c hc ↦ (hcl c hc).1) (ofChunks_stackClaims_hold h hd stack claims hcl) (ofChunks_multilinear claims) hπ
+    (hπ : UniKeccakComplete.pcsProveH (m := Id) H F fuel n (E2ECompleteness.commitWithH (m := Id) H n stack) stack pt
+      (UniComplete.stackEval stack pt) = some π) :
+    UniKeccakComplete.pcsOpenKH (m := Id) (fun b ↦ pure (H b)) (fun s ↦ pure (F s)) n
+      (E2ECompleteness.commitWithH (m := Id) H n stack).root
+      (UniKeccakComplete.pcsOod n stack (E2ECompleteness.commitWithH (m := Id) H n stack).root) pt
+      (UniComplete.stackEval stack pt) π = true :=
+  UniKeccakComplete.Core.pcsOpenKH_of H F fuel h1 h2 stack hs pt hpt hπ
 
-/-- **The prover fails only at a proof of work**, at a public layout of chunks. -/
-theorem ofChunks_fails_only_at_pow (H : Bytes → Digest) (F : KeccakState → KeccakState) (fuel : ℕ)
-    (h : WhirBridge.NewOK vars lc logN chunks) (h64 : logN ≤ 64) (hw : Whir.Admissible logN PcsQuotient.logInvRate)
-    (stack : Array K) (claims : List PcsQuotient.Claim) (hlen : ∀ c ∈ claims, c.point.length = vars)
-    (hn : E2ECompleteness.proveOpeningWithH (m := Id) H F fuel (PcsQuotient.Layout.ofChunks vars lc logN chunks)
-      (E2ECompleteness.commitWithH (m := Id) H logN stack) stack claims = none) :
-    ∃ hist k sp, (Whir.Complete.openingProgram logN PcsQuotient.logInvRate
-        (PcsQuotient.stackClaims (PcsQuotient.Layout.ofChunks vars lc logN chunks) claims)).after hist =
+/-- **π2's PCS opening prover fails only at a proof of work.** -/
+theorem pi2PcsOpen_fails_only_at_pow (H : Bytes → Digest) (F : KeccakState → KeccakState) (fuel : ℕ) {n : ℕ}
+    (h1 : 23 ≤ n) (h2 : n ≤ 28) (stack : Array K) (pt : List E) (hpt : pt.length = n) (v : E)
+    (hn : UniKeccakComplete.pcsProveH (m := Id) H F fuel n (E2ECompleteness.commitWithH (m := Id) H n stack) stack pt v =
+      none) :
+    ∃ (sc : List LeanVM.Protocol.Verifier.StackClaim) (hist : List Ev) (k : Prog Bool) (sp : Sponge),
+      (Whir.Complete.openingProgram n PcsQuotient.logInvRate sc).after hist =
           some (.grind Whir.queryGrindingBits k) ∧
-      ∀ n < fuel, powOk Whir.queryGrindingBits (Compile.nonceOf n)
-        (Compile.powStep F sp (Compile.nonceOf n)).1 = false :=
-  E2ECompleteness.exists_failed_pow_opening H F fuel _ (weightShape_ofChunks h h64) hw stack claims hlen hn
-
-end Chunks
-
-/-! ## π2's layouts -/
-
-/-- **π2's three layouts at `m = 24`** (`prover::layouts(24)`): `W`, `Q`, the setup. -/
-theorem layoutsOf_24 : RecStatement.layoutsOf 24 =
-    (PcsQuotient.Layout.ofChunks 24 24 24 [(0, 2 ^ 24)],
-      PcsQuotient.Layout.ofChunks 28 24 28 (RecStatement.quotientChunks 24),
-      PcsQuotient.Layout.ofChunks 25 24 25 [(0, 2 ^ 24), (1, 2 ^ 24)]) := rfl
-
-theorem newOK_w : WhirBridge.NewOK 24 24 24 [(0, 2 ^ 24)] := by decide +kernel
-
-theorem newOK_q : WhirBridge.NewOK 28 24 28 (RecStatement.quotientChunks 24) := by decide +kernel
-
-theorem newOK_s : WhirBridge.NewOK 25 24 25 [(0, 2 ^ 24), (1, 2 ^ 24)] := by decide +kernel
-
-theorem nodup_w : ([(0, 2 ^ 24)].map Prod.fst : List ℕ).Nodup := by decide +kernel
-
-theorem nodup_q : ((RecStatement.quotientChunks 24).map Prod.fst).Nodup := by decide +kernel
-
-theorem nodup_s : ([(0, 2 ^ 24), (1, 2 ^ 24)].map Prod.fst : List ℕ).Nodup := by decide +kernel
-
-/-- **A π2 layout**: `vars`, chunk size, stack size and chunks that `Layout::new` accepts, distinct chunks, a stack
-of `2^24 … 2^28` words. -/
-structure Pi2Layout (L : PcsQuotient.Layout) : Prop where
-  ex : ∃ vars lc logN chunks, L = PcsQuotient.Layout.ofChunks vars lc logN chunks ∧
-    WhirBridge.NewOK vars lc logN chunks ∧ (chunks.map Prod.fst).Nodup ∧ 24 ≤ logN ∧ logN ≤ 28
-
-theorem pi2Layout_w : Pi2Layout (RecStatement.layoutsOf 24).1 := by
-  rw [layoutsOf_24]
-  exact ⟨⟨24, 24, 24, _, rfl, newOK_w, nodup_w, le_rfl, by norm_num⟩⟩
-
-theorem pi2Layout_q : Pi2Layout (RecStatement.layoutsOf 24).2.1 := by
-  rw [layoutsOf_24]
-  exact ⟨⟨28, 24, 28, _, rfl, newOK_q, nodup_q, by norm_num, le_rfl⟩⟩
-
-theorem pi2Layout_s : Pi2Layout (RecStatement.layoutsOf 24).2.2 := by
-  rw [layoutsOf_24]
-  exact ⟨⟨25, 24, 25, _, rfl, newOK_s, nodup_s, by norm_num, by norm_num⟩⟩
-
-/-- **The honest opening at π2's layouts is accepted** (pure `H`, `F`). -/
-theorem pi2Open_honest (H : Bytes → Digest) (F : KeccakState → KeccakState) (fuel : ℕ) {L : PcsQuotient.Layout}
-    (hL : Pi2Layout L) (stack : Array K) (claims : List PcsQuotient.Claim) (hne : claims ≠ [])
-    (hcl : ∀ c ∈ claims, c.point.length = L.vars ∧ ClaimOn L (fun j ↦ stack.getD j 0) (c.point, c.value))
-    {π : Compile.Proof}
-    (hπ : E2ECompleteness.proveOpeningWithH (m := Id) H F fuel L
-      (E2ECompleteness.commitWithH (m := Id) H L.logN stack) stack claims = some π) :
-    E2ECompleteness.openingWithH (m := Id) H F L (E2ECompleteness.commitWithH (m := Id) H L.logN stack).root
-      claims π = true := by
-  obtain ⟨⟨vars, lc, logN, chunks, rfl, hok, hd, h24, h28⟩⟩ := hL
-  exact ofChunks_open_honest H F fuel hok hd (by omega) (WhirBridge.admissible_large h24 h28) stack claims hne hcl hπ
-
-/-- **The opening check accepts π2's honest openings**: the Statement's `openingWith` over `F` (Keccak-256 the sponge
-over `F`) accepts every proof the Statement's `proveOpeningWith` makes of true claims on the stack's `commitWith`. -/
-theorem pi2OpeningWith_honest (F : KeccakState → KeccakState) (fuel : ℕ) {L : PcsQuotient.Layout}
-    (hL : Pi2Layout L) (stack : Array K) (claims : List PcsQuotient.Claim) (hne : claims ≠ [])
-    (hcl : ∀ c ∈ claims, c.point.length = L.vars ∧ ClaimOn L (fun j ↦ stack.getD j 0) (c.point, c.value))
-    {π : Compile.Proof}
-    (hπ : PcsQuotient.proveOpeningWith (m := Id) (fun s ↦ pure (F s)) fuel L
-      (PcsQuotient.commitWith (m := Id) (fun s ↦ pure (F s)) L.logN stack) stack claims = some π) :
-    PcsQuotient.openingWith (m := Id) (fun s ↦ pure (F s)) L
-      (PcsQuotient.commitWith (m := Id) (fun s ↦ pure (F s)) L.logN stack).root claims π = true := by
-  rw [E2ECompleteness.proveOpeningWith_eqH, E2ECompleteness.commitWith_eqH] at hπ
-  rw [E2ECompleteness.commitWith_eqH, E2ECompleteness.openingWith_eqH]
-  exact pi2Open_honest _ F fuel hL stack claims hne hcl hπ
-
-/-- **π2's opening prover fails only at a proof of work.** -/
-theorem pi2Open_fails_only_at_pow (H : Bytes → Digest) (F : KeccakState → KeccakState) (fuel : ℕ)
-    {L : PcsQuotient.Layout} (hL : Pi2Layout L) (stack : Array K) (claims : List PcsQuotient.Claim)
-    (hlen : ∀ c ∈ claims, c.point.length = L.vars)
-    (hn : E2ECompleteness.proveOpeningWithH (m := Id) H F fuel L
-      (E2ECompleteness.commitWithH (m := Id) H L.logN stack) stack claims = none) :
-    ∃ hist k sp, (Whir.Complete.openingProgram L.logN PcsQuotient.logInvRate
-        (PcsQuotient.stackClaims L claims)).after hist = some (.grind Whir.queryGrindingBits k) ∧
-      ∀ n < fuel, powOk Whir.queryGrindingBits (Compile.nonceOf n)
-        (Compile.powStep F sp (Compile.nonceOf n)).1 = false := by
-  obtain ⟨⟨vars, lc, logN, chunks, rfl, hok, hd, h24, h28⟩⟩ := hL
-  exact ofChunks_fails_only_at_pow H F fuel hok (by omega) (WhirBridge.admissible_large h24 h28) stack claims hlen hn
+        ∀ i < fuel, powOk Whir.queryGrindingBits (Compile.nonceOf i)
+          (Compile.powStep F sp (Compile.nonceOf i)).1 = false :=
+  UniKeccakComplete.pcsProveH_fails_only_at_pow H F fuel h1 h2 stack pt hpt v hn
 
 end RecCompose.Pi2W
 
 /-! ## Axioms -/
 
-/-- info: 'RecCompose.Pi2W.table_new_eq' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in #print axioms RecCompose.Pi2W.table_new_eq
+/-- info: 'RecCompose.Pi2W.commitWithH_padStack' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in #print axioms RecCompose.Pi2W.commitWithH_padStack
 
-/-- info: 'RecCompose.Pi2W.ofChunks_stackClaims_hold' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in #print axioms RecCompose.Pi2W.ofChunks_stackClaims_hold
+/-- info: 'RecCompose.Pi2W.setupOod_eq' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in #print axioms RecCompose.Pi2W.setupOod_eq
 
-/-- info: 'RecCompose.Pi2W.pi2Open_honest' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in #print axioms RecCompose.Pi2W.pi2Open_honest
+/-- info: 'RecCompose.Pi2W.pi2PcsOpen_honest' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in #print axioms RecCompose.Pi2W.pi2PcsOpen_honest
 
-/-- info: 'RecCompose.Pi2W.pi2OpeningWith_honest' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in #print axioms RecCompose.Pi2W.pi2OpeningWith_honest
-
-/-- info: 'RecCompose.Pi2W.pi2Open_fails_only_at_pow' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in #print axioms RecCompose.Pi2W.pi2Open_fails_only_at_pow
+/-- info: 'RecCompose.Pi2W.pi2PcsOpen_fails_only_at_pow' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in #print axioms RecCompose.Pi2W.pi2PcsOpen_fails_only_at_pow

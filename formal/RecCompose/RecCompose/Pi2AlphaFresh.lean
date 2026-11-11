@@ -139,7 +139,7 @@ theorem prA_le {D : RecDeployment} (hD : D.Real) (hg : GraphsAgree) (C : Pi2Circ
     rw [simulateQ_bind, StateT.run_bind]
     refine prEvent_bind_le_of_forall_le_of_support _ _ _ fun p₂ hp₂ ↦ ?_
     obtain ⟨hs₂, hb₂⟩ := inv_run (Pi2A.hashOK_graph hg D _ input p1)
-      (hc_of_qc (qc_pi1GraphVerifierWithH hg D _ input p1)) hs₁ hb₁ hp₂
+      (hc_of_qc (qc_pi1GraphVerifierWithH D _ input p1)) hs₁ hb₁ hp₂
     rw [simulateQ_bind, StateT.run_bind]
     refine prEvent_bind_le_of_forall_le_of_support _ _ _ fun p₃ hp₃ ↦ ?_
     obtain ⟨hs₃, hb₃⟩ := inv_run hsS hsC hs₂ hb₂ hp₃
@@ -147,12 +147,7 @@ theorem prA_le {D : RecDeployment} (hD : D.Real) (hg : GraphsAgree) (C : Pi2Circ
     dsimp only at hs₃ hb₃ ⊢
     have hc : (D.circuitAt tr.roots.pi1).circuit = Data.circuit := by rw [RecDeployment.circuitAt, hD.1]
     have hn : (D.circuitAt tr.roots.pi1).n = 2 ^ 24 := by rw [Pi2Circuit.n, hc]; rfl
-    rcases hl : layoutWords (D.circuitAt tr.roots.pi1).circuit.logN with ⟨w, q, s⟩
-    have hwqs : w.length + q.length + s.length = 96 := by
-      have := congrArg (fun x : List UInt8 × List UInt8 × List UInt8 ↦ x.1.length + x.2.1.length + x.2.2.length) hl
-      simp only [layoutWords, length_layoutWord] at this
-      omega
-    simp only [Pi2H.ivOfH, Pi2H.digestWithH, Pi2H.ivWithH, hl, bind_assoc, pure_bind]
+    simp only [Pi2H.ivOfH, Pi2H.digestWithH, Pi2H.ivWithH, bind_assoc, pure_bind]
     have hσ : ((List.range (D.circuitAt tr.roots.pi1).n).flatMap fun i ↦
         (le64 ((D.circuitAt tr.roots.pi1).sigma i)).take 4).length = 2 ^ 26 := by
       rw [length_flatMap_const _ 4 (fun i ↦ by simp [length_le64]), List.length_range, hn]
@@ -169,20 +164,23 @@ theorem prA_le {D : RecDeployment} (hD : D.Real) (hg : GraphsAgree) (C : Pi2Circ
       omega
     refine (Pi2C.chain_le _ _
       (fun σ κ ↦ (D.circuitAt tr.roots.pi1).circuit.encoding ++ digestBytes σ ++ digestBytes κ)
-      (fun d ↦ ivTag ++ D.pi1IvAt tr.roots.pi1 ++ digestBytes tr.roots.pi2 ++ digestBytes d ++ w ++ q ++ s)
+      (fun d ↦ ivTag ++ D.pi1IvAt tr.roots.pi1 ++ digestBytes tr.roots.pi2 ++ UniKeccak.elementBytes24 tr.roots.pi2Ood ++
+        digestBytes d ++ [(D.circuitAt tr.roots.pi1).circuit.logN.toUInt8])
       (fun iv ↦ RecStatement.name ++ digestBytes iv ++ input.toList)
       (by rw [hκ]; norm_num) (by rw [hσ]; norm_num) (fun σ κ ↦ ⟨?_, ?_⟩) (fun d ↦ ⟨?_, ?_⟩) (fun iv ↦ ⟨?_, ?_⟩)
       _ rawInp ?_ ?_ c₃ hb₃ h0).trans ?_
     · simp only [List.length_append, hc, encoding_length, length_digestBytes]
     · rw [hc, List.append_assoc, List.drop_left' encoding_length]
       exact take_digestBytes _ _
-    · simp only [List.length_append, ivTag_length, RecDeployment.pi1IvAt, length_pi1Iv, length_digestBytes]
-      omega
-    · have e : ivTag ++ D.pi1IvAt tr.roots.pi1 ++ digestBytes tr.roots.pi2 ++ digestBytes d ++ w ++ q ++ s =
-          (ivTag ++ D.pi1IvAt tr.roots.pi1 ++ digestBytes tr.roots.pi2) ++ (digestBytes d ++ (w ++ q ++ s)) := by
+    · simp only [List.length_append, ivTag_length, RecDeployment.pi1IvAt, length_pi1Iv, length_digestBytes,
+        UniKeccakComplete.Cost.elementBytes24_length, List.length_singleton]
+    · have e : ivTag ++ D.pi1IvAt tr.roots.pi1 ++ digestBytes tr.roots.pi2 ++ UniKeccak.elementBytes24 tr.roots.pi2Ood ++
+          digestBytes d ++ [(D.circuitAt tr.roots.pi1).circuit.logN.toUInt8] =
+          (ivTag ++ D.pi1IvAt tr.roots.pi1 ++ digestBytes tr.roots.pi2 ++ UniKeccak.elementBytes24 tr.roots.pi2Ood) ++
+            (digestBytes d ++ [(D.circuitAt tr.roots.pi1).circuit.logN.toUInt8]) := by
         simp only [List.append_assoc]
       rw [e, List.drop_left' (by simp only [List.length_append, ivTag_length, RecDeployment.pi1IvAt, length_pi1Iv,
-        length_digestBytes])]
+        length_digestBytes, UniKeccakComplete.Cost.elementBytes24_length])]
       exact take_digestBytes _ _
     · simp only [List.length_append, name_length, length_digestBytes, Vector.length_toList]
     · rw [List.append_assoc, List.drop_left' name_length]
@@ -231,7 +229,7 @@ and four, over `2^256`. -/
 noncomputable def alphaBound : ℝ≥0∞ := 4 * (((0 + setupR + 2 ^ 47 + 3 * gOpen + setupR + 4 : ℕ) : ℝ≥0∞) / 2 ^ 256)
 
 theorem alphaK_le : 0 + setupR + 2 ^ 47 + 3 * gOpen + setupR + 4 ≤ 2 ^ 50 := by
-  unfold setupR gOpen
+  unfold setupR gOpen UniKeccakComplete.Cost.openCost
   norm_num [E2ECompleteness.Cost.treeCost, E2ECompleteness.Cost.vOpen, LeanVM.Protocol.Verifier.whirBound]
 
 /-- **`α`'s bound in bits**: at most `2^-204`. -/

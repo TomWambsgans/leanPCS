@@ -30,10 +30,9 @@ theorem pi2ProveStreamWith_holds (G : RecPiop.Circuit E) (S : CoreSpec E) (ood :
           r.1.inputs = honestInputs G setupStack w (publicScalarsOf input values) r.1.inputs.α r.1.inputs.β
             r.1.inputs.γ r.1.inputs.t r.1.inputs.ρ := by
   unfold pi2ProveStreamWith
-  rcases hl : layoutsOf G.logN with ⟨lw, lq, ls⟩
   simp only [StateT.run_bind]
   repeat' (first
-    | exact holds_pure ⟨by unfold honestW; rw [hl], by unfold honestQ; rw [hl], rfl⟩
+    | exact holds_pure ⟨rfl, rfl, rfl⟩
     | refine holds_bind (holds_true _) fun _ _ ↦ ?_)
 
 /-- **Every run of the honest prover, at a setup of the deployment, leaves true claims and a passing check** off the

@@ -1,10 +1,13 @@
 -- Part of this repository. MIT OR Apache-2.0; see AGENTS.md. Transcribed from `crates/leanvm/rec/src/pi2/prover.rs`
--- (`halves`, `public_scalars`, `prove_with`, `h_on_v`, `quotient_on_extension`, `open`; `PI2.md` §3), π2v3.
--- The writer and the commitments are `formal/UniComplete`'s (`Wr`, `sendRoot`, `sampleW`, `commitWithH`), the WHIR
--- openings `formal/EndToEnd/Completeness`'s (`proveOpeningWithH`), the transforms `formal/Statement`'s
--- (`PcsQuotient.Domain.values`, `coefficients`).
-import RecCompose.Tables
+-- (`halves`, `public_scalars`, `prove_with`, `h_on_v`, `quotient_on_extension`, `open`, `claims`; `PI2.md` §3), π2v3
+-- on the EIP draft's PCS claims. The writer and the commitments are `formal/UniComplete`'s (`Wr`, `sendRoot`,
+-- `sampleW`, `commitWithH`), the PCS claims' openings `formal/UniKeccakComplete`'s (`pcsProveH`, `pcsOod`), the
+-- transforms `formal/Statement`'s (`PcsQuotient.Domain.values`, `coefficients`).
+import RecStatement
+import RecPiop
+import RecCircuit
 import UniKeccakComplete.K.Prover
+import UniKeccakComplete.K.PcsProver
 import UniKeccakComplete.K.AlgHPoly
 import WhirBridge.PcsClaim
 
@@ -16,9 +19,9 @@ circuit as π2's PIOP reads it (`RecPiop.Circuit E`: positions, roles, blocks, `
 `toPiop` at the deployment):
 
 1. **the public values** (`PublicValue`), each as its read takes it (`sendInteger`, `sendRoot` of `halvesOf`, `sendScalar`);
-2. **`W`**: the witness's basis-`B` coefficients (`bCoefficients`), placed under `W`'s layout (`placePublic`),
-   committed (`commitWithH`), its root's halves and its out-of-domain answer (`ood`, a parameter: the EIP's
-   `f(ood_point(n, root))` deployed); `α, β, γ`;
+2. **`W`**: the witness's basis-`B` coefficients (`bCoefficients`), the leading words of `W`'s stack (`padStack`, zeros
+   to `2^vars` words, `vars` of `stackVars`), committed (`commitWithH`), its root's bytes (`rootHalves`) and its
+   out-of-domain answer (`ood`, a parameter: the EIP's `f(ood_point(n, root))` deployed, `pi2Ood`); `α, β, γ`;
 3. **`h` and `P` on `V_m`** (`hValues`, `pColumn`): `h = (1 + 1_S)(1/(α + w_i + β ω_i) + 1/(α + P_v + κ + β ω_{σ_i}))`,
    zero at a hole, and `P_v = pushV + κ` (a pair's formula of its row, the position's own value at a forward and a hole,
    limb `0`); their novel coefficients;
@@ -27,15 +30,16 @@ circuit as π2's PIOP reads it (`RecPiop.Circuit E`: positions, roles, blocks, `
    indicator, `P_v` (`pvAtCoset`), the ports' `T = Σ I_p (E_p + Φ_k)` (`tAtCoset`, `Φ` the verifier's `phiAt`),
    `d_pull`, `d_push = α + P + κ + βσ`, `q = (h d_pull d_push + (1 + 1_S)(d_push + d_pull) + T) / Z_V` and
    `q_P = (P + P_v) / Z_V`; their novel coefficients (`coefficients` at `D`'s offset);
-5. **`Q`**: sixteen slots of `N` (`qEntry`: slot `digit + 2 kind + 4 limb`: `h`, `q` three limbs each, `P` at digit `1`
-   and `q_P` at limb code `3`, four zero slots), placed under `Q`'s layout, committed, its root's halves and its answer;
-   `t`;
+5. **`Q`**: the plain stack of sixteen slots of `N` (`qEntry`: slot `digit + 2 kind + 4 limb`: `h`, `q` three limbs
+   each, `P` at digit `1` and `q_P` at limb code `3`; slots `1, 5, 9, 12` zero, `emptySlots`), zeros to `2^vars` words,
+   committed, its root's bytes and its answer; `t`;
 6. **the values at `t`**: the `2^r` fold values (`foldValues`), `ξ = κ(t) + β σ(t)` (`xiOf`, PI2.md §9) and
    `s = P(t)` (`sOf`); `ρ`.
 
-`pi2ProveWith` adds the seed `keccak(NAME ‖ IV ‖ public input)` and the WHIR openings (`W`'s claim, the setup's, `Q`'s
-three, in the contract's call order), the claims the verifier's arithmetic on the prover's own inputs
-(`CoreSpec.run`, which the verifier's run on the stream reproduces); `none` if a proof of work fails.
+`pi2ProveWith` adds the seed `keccak(NAME ‖ IV ‖ public input)` and the five PCS claims' openings (`pcsProveH`, one
+per claim: `W`'s, the setup's, `Q`'s identity, pushes' and sum claims, in the contract's order, each a point of its
+whole stack), the claims the verifier's arithmetic on the prover's own inputs (`CoreSpec.run`, which the verifier's run
+on the stream reproduces); `none` if a proof of work fails.
 
 Decisions: the prover is mathematical, not vectorised: one value per point, the indicators by their products (no
 batched inversion); the kinds of read and value that do not match are skipped (the Rust panics). Every function here is
@@ -95,12 +99,8 @@ end Send
 
 /-! ## The tables -/
 
-/-- **A public layout's stack** (`Table::new`): lane `l` holds block `b` of the table (`T (b · lane + k)`), whole lanes. -/
-def placePublic (L : PcsQuotient.Layout) (T : ℕ → K) : Array K :=
-  Array.ofFn (n := L.lanes.length * 2 ^ L.logLane) fun p ↦
-    match L.lanes.getD (p.val / 2 ^ L.logLane) .random with
-    | .block b => T (b * 2 ^ L.logLane + p.val % 2 ^ L.logLane)
-    | _ => 0
+/-- **A stack of `2^vars` words** (`pcs_claim::commit_words`' zero padding): the table's words, then zeros. -/
+def padStack (vars : ℕ) (T : ℕ → K) : Array K := Array.ofFn (n := 2 ^ vars) fun p ↦ T p.val
 
 section Honest
 
@@ -284,15 +284,16 @@ def pi2ProveStreamWith (G : RecPiop.Circuit E) (S : CoreSpec E) (ood : ℕ → D
     (reads : List Read) (setupStack : Array K) (input : List UInt8) (values : List PublicValue) (w : ℕ → K) :
     UniComplete.WrM m Pi2Out := do
   let n := G.logN
-  let (lw, lq, _) := layoutsOf n
+  let wv := (stackVars n).1
+  let qv := (stackVars n).2.1
   sendPublic (reads.zip values)
   let pubs := publicScalarsOf input values
   -- W
   let tb := wTableB G w
-  let wStack := placePublic lw fun i ↦ tb.getD i 0
-  let wTree ← (StateT.lift (E2ECompleteness.commitWithH H lw.logN wStack) : UniComplete.WrM m LeanVM.Prover.Tree)
-  UniComplete.sendRoot (digestScalars wTree.root)
-  UniComplete.sendScalar (ood lw.logN wTree.root wStack)
+  let wStack := padStack wv fun i ↦ tb.getD i 0
+  let wTree ← (StateT.lift (E2ECompleteness.commitWithH H wv wStack) : UniComplete.WrM m LeanVM.Prover.Tree)
+  UniComplete.sendRoot (UniStatement.rootHalves wTree.root)
+  UniComplete.sendScalar (ood wv wTree.root wStack)
   let α ← UniComplete.sampleW H
   let β ← UniComplete.sampleW H
   let γ ← UniComplete.sampleW H
@@ -301,10 +302,10 @@ def pi2ProveStreamWith (G : RecPiop.Circuit E) (S : CoreSpec E) (ood : ℕ → D
   let qN := qNovel G w α β γ (phiOn S pubs γ)
   let pN := pNovel G w
   let qpN := qpNovel G w γ
-  let qStack := placePublic lq (qEntry n hN qN pN qpN)
-  let qTree ← (StateT.lift (E2ECompleteness.commitWithH H lq.logN qStack) : UniComplete.WrM m LeanVM.Prover.Tree)
-  UniComplete.sendRoot (digestScalars qTree.root)
-  UniComplete.sendScalar (ood lq.logN qTree.root qStack)
+  let qStack := padStack qv (qEntry n hN qN pN qpN)
+  let qTree ← (StateT.lift (E2ECompleteness.commitWithH H qv qStack) : UniComplete.WrM m LeanVM.Prover.Tree)
+  UniComplete.sendRoot (UniStatement.rootHalves qTree.root)
+  UniComplete.sendScalar (ood qv qTree.root qStack)
   let t ← UniComplete.sampleW H
   -- the values at t
   let a := foldValues n G.logW tb t
@@ -315,33 +316,54 @@ def pi2ProveStreamWith (G : RecPiop.Circuit E) (S : CoreSpec E) (ood : ℕ → D
   let c ← get
   return ⟨c.stream, wStack, wTree, qStack, qTree, ⟨pubs, α, β, γ, t, a, ξ, s, ρ⟩⟩
 
+/-- **The five opening proofs** of π2's claims, in the contract's order (`claims`): `W`'s, the setup's, `Q`'s identity,
+pushes' and sum claims. -/
+structure Pi2Openings where
+  w : Compile.Proof
+  setup : Compile.Proof
+  qId : Compile.Proof
+  qPush : Compile.Proof
+  qSum : Compile.Proof
+
 /-- **π2's honest prover** over `H`, `F` (`prove_with`, then `open`): the seed `keccak(NAME ‖ IV ‖ public input)`, the
-stream, then the WHIR openings in the contract's order (`W`'s one claim, the setup's one, `Q`'s three), at the claims
-of the verifier's arithmetic (`CoreSpec.run` of the circuit's view) on the prover's inputs; the stream and the three
-proofs, or `none` if a proof of work fails. -/
+stream, then the five PCS claims' openings (`pcsProveH`, one per claim, in the contract's order: `W`'s, the setup's,
+`Q`'s identity, pushes' and sum claims), at the claims of the verifier's arithmetic (`CoreSpec.run` of the circuit's
+view) on the prover's inputs, each on its commitment's whole stack (`stackVars`; the setup's table `setupStack` and
+its tree given, the table padded with zeros to its stack, `padStack`); the stream and the five proofs, or `none` if a
+proof of work fails. -/
 def pi2ProveWith (fuel : ℕ) (G : RecPiop.Circuit E) (ood : ℕ → Digest → Array K → E) (view : Circuit)
     (setupStack : Array K) (setupTree : LeanVM.Prover.Tree) (iv input : List UInt8) (values : List PublicValue)
-    (w : ℕ → K) : m (Option (Array UInt8 × Compile.Proof × Compile.Proof × Compile.Proof)) := do
+    (w : ℕ → K) : m (Option (Array UInt8 × Pi2Openings)) := do
   let seed ← H (RecStatement.name ++ iv ++ input)
   let (out, _) ← (pi2ProveStreamWith H G (Spec.of view).core ood view.reads setupStack input values w).run
     (UniComplete.Wr.start seed)
   let o := (Spec.of view).core.run out.inputs
-  let (lw, lq, ls) := layoutsOf G.logN
-  let pW ← E2ECompleteness.proveOpeningWithH H F fuel lw out.wTree out.wStack [⟨o.witnessPoint, o.fold⟩]
-  let pS ← E2ECompleteness.proveOpeningWithH H F fuel ls setupTree setupStack [⟨o.setupPoint, out.inputs.ξ⟩]
-  let pQ ← E2ECompleteness.proveOpeningWithH H F fuel lq out.qTree out.qStack
-    [⟨o.quotientPoint, o.quotientValue⟩, ⟨o.pushesPoint, o.pushesValue⟩, ⟨o.sumPoint, o.sumValue⟩]
+  let wv := (stackVars G.logN).1
+  let qv := (stackVars G.logN).2.1
+  let sv := (stackVars G.logN).2.2
+  let pW ← UniKeccakComplete.pcsProveH H F fuel wv out.wTree out.wStack o.witnessPoint o.fold
+  let pS ← UniKeccakComplete.pcsProveH H F fuel sv setupTree (padStack sv fun i ↦ setupStack.getD i 0) o.setupPoint
+    out.inputs.ξ
+  let pQ1 ← UniKeccakComplete.pcsProveH H F fuel qv out.qTree out.qStack o.quotientPoint o.quotientValue
+  let pQ2 ← UniKeccakComplete.pcsProveH H F fuel qv out.qTree out.qStack o.pushesPoint o.pushesValue
+  let pQ3 ← UniKeccakComplete.pcsProveH H F fuel qv out.qTree out.qStack o.sumPoint o.sumValue
   return do
     let a ← pW
     let b ← pS
-    let c ← pQ
-    pure (out.stream, a, b, c)
+    let c ← pQ1
+    let d ← pQ2
+    let e ← pQ3
+    pure (out.stream, ⟨a, b, c, d, e⟩)
 
 end With
 
 /-- **The deployed out-of-domain answer** (`pcs_claim::commit_words`' `ood`): the stack's multilinear polynomial at the
-root's out-of-domain point (`WhirBridge.Pcs.oodPoint`, `ood_point`), bit `0` of an index the first coordinate. -/
+root's out-of-domain point (`WhirBridge.Pcs.oodPoint`, `ood_point`), bit `0` of an index the first coordinate: the PCS
+prover's `UniKeccakComplete.pcsOod n stack root` (`pi2Ood_eq`). -/
 def pi2Ood (n : ℕ) (root : Digest) (stack : Array K) : E :=
   UniStatement.multilinearEval (stack.toList.map ofK) (WhirBridge.Pcs.oodPoint n root).toList
+
+theorem pi2Ood_eq (n : ℕ) (root : Digest) (stack : Array K) :
+    pi2Ood n root stack = UniKeccakComplete.pcsOod n stack root := rfl
 
 end RecCompose

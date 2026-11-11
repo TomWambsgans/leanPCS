@@ -20,8 +20,8 @@ completeness; the Lean prover is a transcription of `prove.rs` and `batch.rs` at
 
 * **`proveRec3With2 Hfs Hm F`**: `UniKeccakComplete.Rec3.proveRec3With` with two hashes, `Hfs` for the Fiat–Shamir
   (the Keccak contract's IV `contractIvOf`, the seed `seedOf`, the stream's draws, Flock's prover) and `Hm` for the
-  Merkle trees (the setup's `setupTreeOf`, the commitments `commitReal`) and the WHIR openings
-  (`proveOpeningWithH Hm F`). At one hash it is UniKeccakComplete's prover, by `rfl` (**`proveRec3With2_self`**).
+  Merkle trees (the setup's `setupTreeOf`, the commitments `commitReal`) and the PCS claims' openings
+  (`pcsProveH Hm F`). At one hash it is UniKeccakComplete's prover, by `rfl` (**`proveRec3With2_self`**).
 * **`pi1ProverFs Hfs D`**: the prover over the random permutation with its Fiat–Shamir hash `Hfs`.
 * **`pi1Rec3ProverK D = pi1ProverFs hKF D`**, `hKF x = pure (keccak256 x)`: **its Fiat–Shamir over Keccak-f[1600]**, a
   pure function, no query; its trees and openings over `π`. This is the `Pi1Prover` of `RecStatement`'s docstring.
@@ -49,21 +49,21 @@ section With
 variable {m : Type → Type} [Monad m] (Hfs Hm : List UInt8 → m Digest) (F : KeccakState → m KeccakState)
 
 /-- **π1-rec3's honest prover with two hashes**: the setup's tree over `Hm`, the Keccak contract's IV and the seed over
-`Hfs`, the stream (its draws over `Hfs`, its commitments' trees over `Hm`), then the three WHIR openings over `Hm`, `F`;
-`UniKeccakComplete.Rec3.proveRec3With` with its hash split. -/
+`Hfs` (at the setup's commitment `setupRootsOf`), the stream (its draws over `Hfs`, its commitments' trees over `Hm`),
+then the three PCS claims' openings over `Hm`, `F` (`pcsProveH`); `UniKeccakComplete.Rec3.proveRec3With` with its hash
+split. -/
 def proveRec3With2 (fuel : ℕ) (flock : FlockProver m) (programIv : List UInt8) (tr : Trace) :
     m (Option UniKeccak.KeccakProof) := do
   let tree ← setupTreeOf Hm tr
-  let iv ← contractIvOf Hfs tr.shape UniKeccak.keccakRec3 programIv ⟨tree.root⟩
+  let iv ← contractIvOf Hfs tr.shape UniKeccak.keccakRec3 programIv (setupRootsOf tr tree)
   let seed ← seedOf Hfs iv tr.publicInput
   let (out, _) ← (Rec3.proveStreamRec3With Hfs (commitReal Hm) flock tr).run (UniComplete.Wr.start seed)
-  let words := UniKeccak.layoutWordsK tr.shape
   let openOne (c : Commitment) (pt : List E) (value : E) : m (Option Compile.Proof) :=
-    let (stack, tree, word) : Array K × LeanVM.Prover.Tree × List UInt8 := match c with
-      | .c1 => (out.c1.1, out.c1.2.tree, words.getD 0 [])
-      | .c2 => (out.c2.1, out.c2.2.tree, words.getD 1 [])
-      | .setup => (out.setup, tree, words.getD 2 [])
-    E2ECompleteness.proveOpeningWithH Hm F fuel (plainLayout (layoutWordVars word)) tree stack [⟨pt, value⟩]
+    let (stack, tree) : Array K × LeanVM.Prover.Tree := match c with
+      | .c1 => (out.c1.1, out.c1.2.tree)
+      | .c2 => (out.c2.1, out.c2.2.tree)
+      | .setup => (out.setup, tree)
+    pcsProveH Hm F fuel (UniKeccak.stackVarsK tr.shape c) tree stack pt value
   let p1 ← match out.claims.find? (·.1 == .c1) with
     | some (_, pt, v) => openOne .c1 pt v
     | none => pure none
@@ -107,7 +107,7 @@ def pi1ProverFs (Hfs : List UInt8 → OracleComp Common.RandomPermutationOracles
   uniProverRec3With2 Hfs (keccak256With Common.queryPermutation) Common.queryPermutation (flockProveH Hfs) D.pi1
 
 /-- **π1-rec3's honest prover in the recursion**: its Fiat–Shamir (IV, seed, stream, Flock's draws) Keccak-256 over the
-real Keccak-f[1600], a pure function; its trees and its three WHIR openings over the random permutation. -/
+real Keccak-f[1600], a pure function; its trees and its three PCS openings over the random permutation. -/
 def pi1Rec3ProverK (D : RecDeployment) : Pi1Prover D := pi1ProverFs hKF D
 
 /-- **Keccak-f[1600] read as the random permutation**: UniKeccakComplete's π1-rec3 prover over `π`, whose completeness
@@ -130,10 +130,9 @@ variable {m n : Type → Type} [Monad m] [LawfulMonad m] [Monad n] [LawfulMonad 
 
 /-- **The two-hash prover commutes with a monad morphism** that commutes with Flock's prover and with the opening. -/
 theorem app_proveRec3With2
-    (hopen : ∀ (fuel : ℕ) (L : PcsQuotient.Layout) (tree : LeanVM.Prover.Tree) (stack : Array K)
-      (claims : List PcsQuotient.Claim),
-      φ.app (E2ECompleteness.proveOpeningWithH Hm F fuel L tree stack claims) =
-        E2ECompleteness.proveOpeningWithH (fun x ↦ φ.app (Hm x)) (fun s ↦ φ.app (F s)) fuel L tree stack claims)
+    (hopen : ∀ (fuel n : ℕ) (tree : LeanVM.Prover.Tree) (stack : Array K) (pt : List E) (v : E),
+      φ.app (pcsProveH Hm F fuel n tree stack pt v) =
+        pcsProveH (fun x ↦ φ.app (Hm x)) (fun s ↦ φ.app (F s)) fuel n tree stack pt v)
     (flock : FlockProver m) (flock' : FlockProver n) (hflock : ∀ logN v q, φ.wr (flock logN v q) = flock' logN v q)
     (fuel : ℕ) (programIv : List UInt8) (tr : Trace) :
     φ.app (proveRec3With2 Hfs Hm F fuel flock programIv tr) =
@@ -170,9 +169,9 @@ theorem simulateQ_p1kK (D : RecDeployment) (input : Vector UInt8 32) (rows : Lis
     simulateQ impl (p1kK D input rows q) =
       uniProverRec3With2 hKF (implH impl) (implF impl) (flockProveH hKF) D.pi1 input rows q := by
   have h := app_proveRec3With2 (Morph.sim impl) hKF callKeccak256 callKeccakF1600
-    (fun fuel L tree stack claims ↦ by
+    (fun fuel n tree stack pt v ↦ by
       rw [Morph.sim_H, Morph.sim_F]
-      exact E2ECompleteness.simulateQ_proveOpeningWithH impl fuel L tree stack claims)
+      exact simulateQ_pcsProveH impl fuel n tree stack pt v)
     (flockProveH hKF) (flockProveH hKF)
     (fun logN v q ↦ by rw [flockCommutes_flockProveH, sim_hKF]) PcsQuotient.nonceFuel
     D.pi1.programIv (honestTrace D.pi1 input rows q)

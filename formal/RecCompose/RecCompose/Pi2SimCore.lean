@@ -36,8 +36,7 @@ theorem rejects_at_good {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D) (F
     (z : ((Bool × Bool) × ((Pr2 × E × E × E) × E)) × (Pr2 × E × E × E))
     (hz : runAt Ht Ft (pi2Staged D C Fa P1k input).run = z)
     (hev : z.1.1.1 = true ∧ z.1.1.2 = false ∧ z.2.2 ∉ badSet2 C.G z.2.1 ∧ ¬ badT2 C.G z.1.2.1 z.1.2.2) :
-    ∃ L tree stack claims, E2ECompleteness.proveOpeningWithH (m := Id) (Pure.pure ∘ Ht) Ft PcsQuotient.nonceFuel L tree
-      stack claims = none := by
+    PcsFails Ht Ft PcsQuotient.nonceFuel := by
   rw [runAt_staged] at hz
   obtain ⟨ha1, ha2, hB, hT⟩ := hev
   cases hp1 : runAt Ht Ft P1k with

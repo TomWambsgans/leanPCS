@@ -50,17 +50,20 @@ takes 13–21 minutes (`rec-real-check` compiles it once for the reference circu
 under about 12 more; peak memory 6.7 GB. Arguments `ref`, `zero`, `ones` choose the IVs, `--no-digest` skips the
 digest. These are long evaluations, not builds: run them outside the build lock. `GraphsAgree` is checked by
 `RecGraphKeccakTest/Pi1Check.lean` ([`../RecGraphKeccak/README.md`](../RecGraphKeccak/README.md)). π2's Lean prover
-writes the Rust prover's setup, `W` and `Q` roots and its stream byte for byte on 2/2 vectors (the compiler's example at
-`2^9`, `2^10` positions; `crates/leanvm/rec/tests/lean_pi2_prover.rs`).
+writes the Rust prover's setup, `W` and `Q` roots and its stream byte for byte on 2/2 vectors, on the PCS claims (the
+compiler's example at `2^9`, `2^10` positions, `2^15`-word stacks, `Q` sixteen slots with `1, 5, 9, 12` zero; each root
+its bytes and out-of-domain answer in the `568`-byte stream; the runner also recomputes π2's IV v3 from the setup's
+answer and the circuit's digest and matches the Rust's; `crates/leanvm/rec/tests/lean_pi2_prover.rs`; about 15 and
+34 minutes interpreted).
 
 ## Status of the move to the PCS claims (branch `lean-pi2v3`)
 
 π1 (`UniKeccak`, `UniKeccakSound`, `UniKeccakComplete`, `RecGraphKeccak`) and `RecStatement` state the EIP draft's PCS
 claims (`RecStatement` 954a238e: eight claims `[root, ood, point…, value]`, `pcsOpenWords`, IV v3). **The base of
-RecCompose builds on them**, and so does **the Fiat–Shamir layer** (`Fs*`, `GenericSetupLog`, `RealEnd`: branch
-`lean-pi2v3-fs`), every module of the file table but the completeness side `Pi2Prover*`, `Pi2Honest*`, `Pi2Whir`, `Pi2Complete*`, `Pi2Calls*`, `Pi2Prob*`,
-`Pi2Sim*`, `Pi2Alpha*`, `Pi2Run{Cost,Duplex}`, `Pi2TFresh*`, `Pi2Chain`, `Pi2P1`, `Pi2Witness`, `Pi2Closed`,
-`Pi1Keccak*`, `CompleteKeccakEnd`, which are being moved):
+RecCompose builds on them**, and so do **the Fiat–Shamir layer** (`Fs*`, `GenericSetupLog`, `RealEnd`: branch
+`lean-pi2v3-fs`) and **the completeness side** (`Pi2Prover*`, `Pi2Honest*`, `Pi2Whir`, `Pi2Complete*`, `Pi2Calls*`,
+`Pi2Prob*`, `Pi2Sim*`, `Pi2Alpha*`, `Pi2Run{Cost,Duplex}`, `Pi2TFresh*`, `Pi2Chain`, `Pi2P1`, `Pi2Witness`, `Pi2Closed`,
+`Pi1Keccak*`, `CompleteKeccakEnd`: branch `lean-pi2v3-cmp`): the whole library, its guards passing.
 
 * **`Q`'s empty slots** (`RecPiop`, merged from `lean-pi2v3-piop`): `Q` is the plain sixteen-slot stack, slots `1, 5, 9`
   (`h`'s second digit: `h` below `2N`) and `12` (`S`) the prover's; the claims read `P(t) + S(t)/Z_V(t)` and the sum
@@ -79,6 +82,14 @@ RecCompose builds on them**, and so does **the Fiat–Shamir layer** (`Fs*`, `Ge
   `pi2Bound Q ≤ 2^-64` at `Q ≤ 2^64` (`2^-64.93` at `2^64`, 128.93 bits as `Q/ε2`).
 * **The claims on the candidates** (`Layers.lean`: `ClaimOn vars stack (point, value)` is `UniSound.mleStk`, each claim a
   point of its whole stack); `W`'s witness values the stack's leading `N` words (`wVars`, `witnessOf`).
+* **The honest prover** (`Pi2Prover`): the plain stacks (`padStack` to `stackVars`), `Q` with its empty slots zero (so
+  the model's `h` on `m + 1` digits is the honest `h`, its high digit zero, and `S = 0`: `modelS_eq`,
+  `qClaim_of_eval_sP`, the sum `Σ_V (h + c_3 S) = Σ_V h = 0`), each root sent as its bytes (`rootHalves`) with its
+  out-of-domain answer (`pi2Ood`, UniKeccakComplete's `pcsOod`), five PCS openings (`pcsProveH`, accepted by
+  `pi2PcsOpen_honest` at `24`, `25`, `28` variables; the setup's table padded to its stack, its commitment and answer
+  unchanged: `commitWithH_padStack`, `setupOod_eq`). The contract's eight claims decode (`claimOfWords_claim`) and
+  accept (`contract_accepts`); the graph's and the contract's π1 claims are the same PCS claims
+  (`pi2Pi1Openings`). Counts: the contract's eight checks `openCost` each, the IV's `137` bytes, `δ2 ≤ 2^-164` as before.
 * **π1's claims**: the contract opens each at its point's length, π1's verifier at `stackVarsK`; `Pi1CallsShape`
   (three claims of `stackVarsK + 3` words, `30, 29, 26`, the setup's root and answer constants) gives the lengths
   (`contract_ops`); `decodePi1Call ∘ pcsClaimWordsK` round-trips (`Pi1Decode.decodePi1Call_claim`,
@@ -102,7 +113,7 @@ RecCompose builds on them**, and so does **the Fiat–Shamir layer** (`Fs*`, `Ge
 
 **Completeness** (`CompleteKeccakEnd.lean`, namespace `RecCompose.Pi1K`), at the recursion's concrete π1-rec3 prover
 `pi1Rec3ProverK D` (UniKeccakComplete's π1-rec3 prover with its Fiat–Shamir the pure `keccak256`, over the real
-Keccak-f[1600] as π1-rec3's graph hashes it, its trees and WHIR openings over `π`) and π2's Lean prover `pi2Prover`:
+Keccak-f[1600] as π1-rec3's graph hashes it, its trees and PCS openings over `π`) and π2's Lean prover `pi2Prover`:
 
 | Theorem | Statement | Premises |
 |---|---|---|
@@ -166,17 +177,17 @@ The library at the Keccak VM:
 | `FsVerifier.lean`, `FsCouple.lean`, `FsCost.lean` | **`pi2VerifierBridge`** (the contract's eight claims, decoded by `claimOfWords`, are the eight composed openings answered over `π`), **`pi2GameLeV`** (the coupling), the composed verifier's cost (`2^49` calls of `π`), the IV moved into the adversary (`expU_p2IvAdv`), `hlab_p2`. |
 | `FsGame.lean`, `FsClosed.lean` | **`pi2FsLayer_of`** (through `Compose.knowledgeSoundness_listChainU_closed128SG`, `prEvent_doomFG_p2Ops_le`, `prEvent_pairTr_expLG_le`, `le_pi2BoundE`); **`pi2FsLayer_real`** (under `QOodBinding δBind`); **`recKnowledgeSoundness_reduction`**, **`recKnowledgeSoundness2_closed`**, **`recKnowledgeSoundness_closed`**, **`recKnowledgeSoundness_closed_fs`**. |
 | `RealEnd.lean` | **`recKnowledgeSoundness_reduction_real`**: `recKnowledgeSoundness_reduction` at `realDeployment prog hprog`, from the four evaluated checks and `QOodBinding δBind`. |
-| `Pi2Prover.lean`, `Pi2ProverRun.lean` | **π2's honest prover** (`prover.rs` phase by phase: `pi2ProveStreamWith`, `pi2ProveWith`, over any Keccak-256 `H`); `pi2ProveStreamWith_holds`, `pi2ProveStreamWith_claims` (the stacks and inputs its run leaves). |
-| `Pi2HonestBase.lean`, `Pi2HonestCopy.lean`, `Pi2HonestQ.lean`, `Pi2Honest.lean`, `Pi2HonestMain.lean`, `Pi2HonestThm.lean`, `Pi2HonestCount.lean` | the honest prover's algebra: transforms and coset, the copy argument's sum, `q` on the extension coset; **`pi2_honest`** (off `BadCopy`, `BadT` the check passes and the four claims hold), `pi2_honest_post2`, `claims_of_model`; `card_badCopy_le`, `card_badT_le`. |
-| `Pi2Whir.lean`, `Pi2CompleteCalls.lean`, `Pi2CompleteH.lean`, `Pi2CompleteSync.lean`, `Pi2Complete.lean` | honest WHIR openings at π2's layouts (`pi2Open_honest`); π2's three calls decoded (`decodeWith_claims`); the verifier, contract and setup with Keccak-256 an explicit `H` (`…_eqH`); the verifier reads what the prover writes (`runWith_honest`); **`contract_accepts`** off the bad challenges, at one permutation. |
-| `Pi2CompleteEnd.lean`, `Pi2Witness.lean`, `Pi2CallsOpen.lean` | **`pi2Prover`**, `Pi2WitnessComplete`, `delta2`, `recCompleteness2_pi2`; **`pi2WitnessComplete`** (on a stream π1-rec3's graph accepts, RecCircuit's honest witness and `valuesOf` are an honest witness); **`pi2Pi1Openings`** (the contract's π1 calls on π2's honest proof decode and accept), `recCompleteness2_pi2_closed`. |
+| `Pi2Prover.lean`, `Pi2ProverRun.lean` | **π2's honest prover** (`prover.rs` phase by phase: `pi2ProveStreamWith`, `pi2ProveWith`, over any Keccak-256 `H`), on the PCS claims: the plain stacks (`padStack` to `stackVars`; `Q` sixteen slots, `1, 5, 9, 12` zero), each root sent as its bytes (`rootHalves`) with its out-of-domain answer (`pi2Ood`), five openings (`pcsProveH`, one a claim); `pi2ProveStreamWith_holds`, `pi2ProveStreamWith_claims` (the stacks and inputs its run leaves). |
+| `Pi2HonestBase.lean`, `Pi2HonestCopy.lean`, `Pi2HonestQ.lean`, `Pi2Honest.lean`, `Pi2HonestMain.lean`, `Pi2HonestThm.lean`, `Pi2HonestCount.lean` | the honest prover's algebra on the plain stacks (`honestW`, `honestQ`: `padStack`; `readW_honest`, `readQ_honest`, `sCoef_honest`): transforms and coset, the copy argument's sum, `q` on the extension coset (its degree below `2N`, `natDegree_numPoly_le`); `modelH_eq` (`h` on `m + 1` digits, the high one zero), `modelS_eq` (`S = 0`); **`pi2_honest`** (off `BadCopy`, `BadT` the check passes and the five claims hold, `Pi2ClaimsHold`), `pi2_honest_post2` (`qClaim_of_eval_sP`), `claims_of_model` (`mleStk`); `card_badCopy_le`, `card_badT_le`. |
+| `Pi2Whir.lean`, `Pi2CompleteCalls.lean`, `Pi2CompleteH.lean`, `Pi2CompleteSync.lean`, `Pi2Complete.lean` | honest PCS openings at π2's stacks (`pi2PcsOpen_honest`, `pi2PcsOpen_fails_only_at_pow`; `commitWithH_padStack`, `setupOod_eq`); a PCS claim's words decoded (`claimOfWords_claim`, `rootOfWord_rootWord_rootHalves`); the verifier, contract and setup with Keccak-256 an explicit `H` (`…_eqH`); the verifier reads what the prover writes (`runWith_honest`); **`contract_accepts`** off the bad challenges, at one permutation (eight claims; `StackClaimsHold`). |
+| `Pi2CompleteEnd.lean`, `Pi2Witness.lean`, `Pi2CallsOpen.lean` | **`pi2Prover`**, `Pi2WitnessComplete`, `delta2`, `recCompleteness2_pi2`; **`pi2WitnessComplete`** (on a stream π1-rec3's graph accepts, RecCircuit's honest witness and `valuesOf` are an honest witness); `pi2_accepts` (`stackClaims_of_pi2Claims`: `mleStk` to `stackEval`; the setup's padded table); **`pi2Pi1Openings`** (the contract's π1 claims on π2's honest proof decode, `claimOfWords_elems`, and are the graph's PCS claims), `recCompleteness2_pi2_closed`. |
 | `Pi2P1.lean` | **π1-rec3's prover as π2's completeness takes it**: `P1 : Pi1Prover D`, its two-call program `P1k : Pi1ProverK D`, and the four named facts `Pi1OverPerm`, `Pi1Disc`, `Pi1Cost`, `Pi1HashShort`, bundled as `Pi1ProverFacts D P1 P1k` (discharged for the concrete prover by `Pi1K.pi1ProverFactsK`). |
-| `Pi2Prob.lean`, `Pi2ProbStaged.lean` | π2's challenges in the random-oracle model, `recCompleteness2_of_staged`; the staged experiment `pi2Staged` (stages A, B, C), `Pi2ExperimentLe`, `Pi2RunDuplex`, `Pi2RunCost`, `Pi2TFresh`, `recCompleteness2_pi2_staged`. |
+| `Pi2Prob.lean`, `Pi2ProbStaged.lean` | π2's challenges in the random-oracle model, `recCompleteness2_of_staged`; the staged experiment `pi2Staged` (stages A, B, C; stage C the five PCS openings), `PcsFails` (a PCS opening failing at its proof of work, `one_le_powPot_of_pcs_none`), `Pi2ExperimentLe`, `Pi2RunDuplex`, `Pi2RunCost`, `Pi2TFresh`, `recCompleteness2_pi2_staged`. |
 | `Pi2SimMorph.lean`, `Pi2SimAt.lean`, `Pi2SimExp.lean`, `Pi2SimCore.lean` | π2's code commutes with monad morphisms (`sim_expW2`, `sim_stageA/B/C`); `stagedAt_good`; **`pi2ExperimentLe_of`** (from `Pi1OverPerm`); **`rejectGood_pi2_good`**. |
-| `Pi2Chain.lean`, `Pi2TFresh.lean`, `Pi2TFreshPi2.lean`, `Pi2RunDuplex.lean`, `Pi2RunCost.lean` | `Holds2`, `recCompleteness2_of_staged2`, `delta2'`; **`pi2TFresh_of`**; **`pi2RunDuplex_of`** (from `Pi1Disc`), **`pi2RunCost_of`** (from `Pi1Cost`; `pi2RunN ≤ 2^50`). |
+| `Pi2Chain.lean`, `Pi2TFresh.lean`, `Pi2TFreshPi2.lean`, `Pi2RunDuplex.lean`, `Pi2RunCost.lean` | `Holds2`, `recCompleteness2_of_staged2`, `delta2'`; **`pi2TFresh_of`**; **`pi2RunDuplex_of`** (from `Pi1Disc`), **`pi2RunCost_of`** (from `Pi1Cost`; `pi2RunN ≤ 2^50`: the contract's eight checks `openCost` each, the prover's five `cost_pcsProveH`, the IV's `137` bytes). |
 | `Pi2SimEnd.lean`, `Pi2Closed.lean` | the earlier forms with `hal : Pi2AlphaFresh εα` (`recCompleteness2_pi2_rec3_final`, `delta2_rec3_le`). |
-| `Pi2AlphaLen.lean`, `Pi2AlphaChain.lean`, `Pi2AlphaSupport.lean`, `Pi2AlphaG.lean`, `Pi2AlphaFresh.lean`, `Pi2AlphaEnd.lean` | **`α`'s freshness**: nothing of `2^26` bytes is hashed before π2's IV (the setup's trees, the graph; π1's prover by `Pi1HashShort`), the chain from `σ`'s hash, freshness conditioned on the graph's acceptance (`Holds3`), **`alphaFresh_of`** (`alphaBound ≤ 2^-204`); **`Pi2Alpha.recCompleteness2_pi2_rec3_closed`**, **`recCompleteness_pi2_rec3_closed_fs`**, **`delta2_alpha_le`** (`δ2 ≤ 2^-164`), for any `P1` with `Pi1ProverFacts`. |
-| `Pi1KeccakProver.lean`, `Pi1KeccakTransfer.lean`, `Pi1KeccakCensus.lean` | **the concrete π1-rec3 prover** `pi1Rec3ProverK D` (`pi1ProverFs hKF D`, `hKF x = pure (keccak256 x)`) and `p1kK`, `pi1Rec3ProverK_eq`; its facts transferred from UniKeccakComplete's two-call prover (`disc_p1kK`, `qc_p1kK`); its hash census (`hashShort_p1kK`). |
+| `Pi2AlphaLen.lean`, `Pi2AlphaChain.lean`, `Pi2AlphaSupport.lean`, `Pi2AlphaG.lean`, `Pi2AlphaFresh.lean`, `Pi2AlphaEnd.lean` | **`α`'s freshness**: nothing of `2^26` bytes is hashed before π2's IV (the setup's trees, the graph; π1's prover by `Pi1HashShort`), the chain from `σ`'s hash (the IV's `137` bytes, the digest at `104`), `hashOK_pcsProveH`, freshness conditioned on the graph's acceptance (`Holds3`), **`alphaFresh_of`** (`alphaBound ≤ 2^-204`); **`Pi2Alpha.recCompleteness2_pi2_rec3_closed`**, **`recCompleteness_pi2_rec3_closed_fs`**, **`delta2_alpha_le`** (`δ2 ≤ 2^-164`), for any `P1` with `Pi1ProverFacts`. |
+| `Pi1KeccakProver.lean`, `Pi1KeccakTransfer.lean`, `Pi1KeccakCensus.lean` | **the concrete π1-rec3 prover** `pi1Rec3ProverK D` (`pi1ProverFs hKF D`, `hKF x = pure (keccak256 x)`) and `p1kK`, `pi1Rec3ProverK_eq` (its setup commitment in the IV, its openings `pcsProveH`); its facts transferred from UniKeccakComplete's two-call prover (`disc_p1kK`, `qc_p1kK`); its hash census (`hashShort_p1kK`). |
 | `Pi1KeccakRpm.lean` | `pi1VerifierFsWith`, `verifierFs_eq`, `pi1KeccakVerifierWith_kf_eq`; `pi1FsCompletenessExperiment D Φ`, `Pi1CompletenessFs`; **`pi1CompletenessKeccak_iff`**, **`pi1CompletenessFs_rpm`**. |
 | `CompleteKeccakEnd.lean` | **`pi1ProverFactsK`**, **`recCompleteness2_pi2_rec3_K`**, `recCompleteness_pi2_rec3_K_fs`, `recCompleteness_real_K_fs`, **`recCompleteness_real_K_fs_bits`**. |
 

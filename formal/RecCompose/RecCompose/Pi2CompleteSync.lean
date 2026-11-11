@@ -165,18 +165,20 @@ theorem reduce_steps (Hk : List UInt8 → Digest) (G : RecPiop.Circuit E) (ood :
       0 (Wr.start seed)
       (fun r out pos w' _ ↦ pos = w'.stream.size ∧ out.stream = w'.stream ∧ r.inputs = out.inputs ∧
         r.scalars = out.inputs.scalars ∧ r.out = (Spec.of view).core.run r.inputs ∧
-        w'.stream.toList = publicWire (view.reads.zip values) ++ rootWord (digestScalars out.wTree.root) ++
-          scalarWire (ood (layoutsOf G.logN).1.logN out.wTree.root out.wStack) ++
-          rootWord (digestScalars out.qTree.root) ++
-          scalarWire (ood (layoutsOf G.logN).2.1.logN out.qTree.root out.qStack) ++
+        r.oods = (ood (stackVars G.logN).1 out.wTree.root out.wStack,
+          ood (stackVars G.logN).2.1 out.qTree.root out.qStack) ∧
+        w'.stream.toList = publicWire (view.reads.zip values) ++ rootWord (UniStatement.rootHalves out.wTree.root) ++
+          scalarWire (ood (stackVars G.logN).1 out.wTree.root out.wStack) ++
+          rootWord (UniStatement.rootHalves out.qTree.root) ++
+          scalarWire (ood (stackVars G.logN).2.1 out.qTree.root out.qStack) ++
           (out.inputs.a ++ [out.inputs.ξ, out.inputs.s]).flatMap scalarWire ∧
-        out.wTree = E2ECompleteness.commitWithH (m := Id) (Pure.pure ∘ Hk) (layoutsOf G.logN).1.logN out.wStack ∧
-        out.qTree = E2ECompleteness.commitWithH (m := Id) (Pure.pure ∘ Hk) (layoutsOf G.logN).2.1.logN out.qStack ∧
+        out.wTree = E2ECompleteness.commitWithH (m := Id) (Pure.pure ∘ Hk) (stackVars G.logN).1 out.wStack ∧
+        out.qTree = E2ECompleteness.commitWithH (m := Id) (Pure.pure ∘ Hk) (stackVars G.logN).2.1 out.qStack ∧
         out.inputs = ⟨publicScalarsOf input values, out.inputs.α, out.inputs.β, out.inputs.γ, out.inputs.t,
           foldValues G.logN G.logW (wTableB G w) out.inputs.t, xiOf G.logN setupStack out.inputs.β out.inputs.t,
           sOf G.logN (pNovel G w) out.inputs.t, out.inputs.ρ⟩ ∧
-        out.wStack = placePublic (layoutsOf G.logN).1 (fun i ↦ (wTableB G w).getD i 0) ∧
-        out.qStack = placePublic (layoutsOf G.logN).2.1 (qEntry G.logN (hNovel G w out.inputs.α out.inputs.β)
+        out.wStack = padStack (stackVars G.logN).1 (fun i ↦ (wTableB G w).getD i 0) ∧
+        out.qStack = padStack (stackVars G.logN).2.1 (qEntry G.logN (hNovel G w out.inputs.α out.inputs.β)
           (qNovel G w out.inputs.α out.inputs.β out.inputs.γ
             (phiOn (Spec.of view).core (publicScalarsOf input values) out.inputs.γ))
           (pNovel G w) (qpNovel G w out.inputs.γ))) := by
@@ -219,7 +221,7 @@ theorem reduce_steps (Hk : List UInt8 → Digest) (G : RecPiop.Circuit E) (ood :
   case e => simp; omega
   apply StepsE.pget
   apply StepsE.pure
-  refine ⟨rfl, rfl, ?_, ?_, rfl, ?_, rfl, rfl, rfl, rfl, rfl⟩
+  refine ⟨rfl, rfl, ?_, ?_, rfl, rfl, ?_, rfl, rfl, rfl, rfl, rfl⟩
   · simp [publicScalarsOf]
   · simp [publicScalarsOf]
   · simp [Wr.start]
@@ -240,31 +242,32 @@ theorem runWith_honest (Hk : List UInt8 → Digest) (G : RecPiop.Circuit E) (ood
     let o := proverOut Hk G ood view setupStack iv input values w
     ∃ r, (Pi2H.runWithH (m := Id) (Pure.pure ∘ Hk) (Spec.of view) iv input o.stream).result = .ok r ∧
       r.inputs = o.inputs ∧ r.scalars = o.inputs.scalars ∧ r.out = (Spec.of view).core.run r.inputs ∧
-      o.stream.toList = publicWire (view.reads.zip values) ++ rootWord (digestScalars o.wTree.root) ++
-          scalarWire (ood (layoutsOf G.logN).1.logN o.wTree.root o.wStack) ++
-          rootWord (digestScalars o.qTree.root) ++
-          scalarWire (ood (layoutsOf G.logN).2.1.logN o.qTree.root o.qStack) ++
+      r.oods = (ood (stackVars G.logN).1 o.wTree.root o.wStack, ood (stackVars G.logN).2.1 o.qTree.root o.qStack) ∧
+      o.stream.toList = publicWire (view.reads.zip values) ++ rootWord (UniStatement.rootHalves o.wTree.root) ++
+          scalarWire (ood (stackVars G.logN).1 o.wTree.root o.wStack) ++
+          rootWord (UniStatement.rootHalves o.qTree.root) ++
+          scalarWire (ood (stackVars G.logN).2.1 o.qTree.root o.qStack) ++
           (o.inputs.a ++ [o.inputs.ξ, o.inputs.s]).flatMap scalarWire ∧
-      o.wTree = E2ECompleteness.commitWithH (m := Id) (Pure.pure ∘ Hk) (layoutsOf G.logN).1.logN o.wStack ∧
-      o.qTree = E2ECompleteness.commitWithH (m := Id) (Pure.pure ∘ Hk) (layoutsOf G.logN).2.1.logN o.qStack ∧
+      o.wTree = E2ECompleteness.commitWithH (m := Id) (Pure.pure ∘ Hk) (stackVars G.logN).1 o.wStack ∧
+      o.qTree = E2ECompleteness.commitWithH (m := Id) (Pure.pure ∘ Hk) (stackVars G.logN).2.1 o.qStack ∧
       o.inputs = ⟨publicScalarsOf input values, o.inputs.α, o.inputs.β, o.inputs.γ, o.inputs.t,
           foldValues G.logN G.logW (wTableB G w) o.inputs.t, xiOf G.logN setupStack o.inputs.β o.inputs.t,
           sOf G.logN (pNovel G w) o.inputs.t, o.inputs.ρ⟩ ∧
-      o.wStack = placePublic (layoutsOf G.logN).1 (fun i ↦ (wTableB G w).getD i 0) ∧
-      o.qStack = placePublic (layoutsOf G.logN).2.1 (qEntry G.logN (hNovel G w o.inputs.α o.inputs.β)
+      o.wStack = padStack (stackVars G.logN).1 (fun i ↦ (wTableB G w).getD i 0) ∧
+      o.qStack = padStack (stackVars G.logN).2.1 (qEntry G.logN (hNovel G w o.inputs.α o.inputs.β)
           (qNovel G w o.inputs.α o.inputs.β o.inputs.γ
             (phiOn (Spec.of view).core (publicScalarsOf input values) o.inputs.γ))
           (pNovel G w) (qpNovel G w o.inputs.γ)) := by
   intro o
   set seed := Hk (RecStatement.name ++ iv ++ input) with hseed
-  obtain ⟨r, b, pos', w', zs, ⟨hp, -, hv⟩, hpos, hstream, hinp, hsc, hout, hws, hwt, hqt, hi, hwsk, hqsk⟩ :=
+  obtain ⟨r, b, pos', w', zs, ⟨hp, -, hv⟩, hpos, hstream, hinp, hsc, hout, hoods, hws, hwt, hqt, hi, hwsk, hqsk⟩ :=
     reduce_steps Hk G ood view setupStack input values w seed hmatch hrow
   have hb : o = b := by
     show proverOut Hk G ood view setupStack iv input values w = b
     unfold proverOut
     rw [← hseed, hp]
   rw [hb]
-  refine ⟨r, ?_, hinp, hsc, hout, by rw [hstream, hws], hwt, hqt, hi, hwsk, hqsk⟩
+  refine ⟨r, ?_, hinp, hsc, hout, hoods, by rw [hstream, hws], hwt, hqt, hi, hwsk, hqsk⟩
   have e := hv b.stream #[] (by rw [hstream])
   rw [← UniKeccakComplete.chan_start_eq] at e
   unfold Pi2H.runWithH

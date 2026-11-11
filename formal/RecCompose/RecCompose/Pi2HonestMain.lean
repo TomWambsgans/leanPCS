@@ -39,10 +39,7 @@ theorem modelW_eq (w : ℕ → K) :
   have h24 := logN_G Fa roots
   show wPoly (D.circuitAt roots.pi1).circuit.logN (wTab D roots (honestW (C.G roots) w)) = _
   have hT : ∀ i < 2 ^ (C.G roots).logN, wTab D roots (honestW (C.G roots) w) i = (wTableB (C.G roots) w).getD i 0 :=
-    fun i hi ↦ by
-      unfold wTab wLayout
-      rw [hm]
-      exact readW_honest (C.G roots) w (by omega) hi
+    fun i _ ↦ readW_honest (C.G roots) w i
   rw [hm, wPoly_congr hT]
   refine poly_eq_of_eval_eq (natDegree_wPoly_lt _ _) (UniKeccakComplete.AlgC.novP_natDegree_lt _ _) pi2Omega
     (omega_injOn_N (by omega)) fun i hi ↦ ?_
@@ -73,10 +70,29 @@ theorem modelH_eq (w : ℕ → K) (α β γ : E) :
       UniKeccakComplete.AlgC.novP (C.G roots).logN fun j ↦ (hNovel (C.G roots) w α β).getD j 0 := by
   have hm := view_logN Fa roots
   have h24 := logN_G Fa roots
-  show hPoly (qTable (D.circuitAt roots.pi1).circuit.logN _) (D.circuitAt roots.pi1).circuit.logN = _
+  show hPoly (honestQ (C.G roots) S pubs w α β γ) (D.circuitAt roots.pi1).circuit.logN = _
   rw [hm]
   unfold hPoly
-  exact UniKeccakComplete.AlgC.novP_congr _ fun k hk ↦ qCoef_honest_h _ S pubs w α β γ (by omega) hk
+  have hhi : (UniKeccakComplete.AlgC.novP (C.G roots).logN fun k ↦
+      qCoef (honestQ (C.G roots) S pubs w α β γ) (C.G roots).logN 0 (2 ^ (C.G roots).logN + k)) = 0 := by
+    rw [UniKeccakComplete.AlgC.novP_congr (C.G roots).logN (d' := fun _ ↦ 0)
+      (fun k hk ↦ by
+        rw [qCoef_honest_h _ S pubs w α β γ (by rw [pow_succ]; omega)]
+        simp),
+      UniKeccakComplete.AlgC.novP_zero_fun]
+  rw [UniKeccakComplete.AlgC.novP_succ, hhi, mul_zero, add_zero]
+  exact UniKeccakComplete.AlgC.novP_congr _ fun k hk ↦ by
+    rw [qCoef_honest_h _ S pubs w α β γ (by rw [pow_succ]; omega)]; simp [hk]
+
+/-- **`S`'s model polynomial of the honest stack is zero** (slot `12` empty). -/
+theorem modelS_eq (w : ℕ → K) (α β γ : E) :
+    (pi2Model Fa roots hcol).sP (honestQ (C.G roots) S pubs w α β γ) = 0 := by
+  have hm := view_logN Fa roots
+  show sPoly (honestQ (C.G roots) S pubs w α β γ) (D.circuitAt roots.pi1).circuit.logN = 0
+  rw [hm]
+  unfold sPoly
+  rw [UniKeccakComplete.AlgC.novP_congr (C.G roots).logN (d' := fun _ ↦ 0)
+    (fun k hk ↦ sCoef_honest _ S pubs w α β γ hk), UniKeccakComplete.AlgC.novP_zero_fun]
 
 /-- **`q`'s model polynomial of the honest stack is the prover's.** -/
 theorem modelQ_eq (w : ℕ → K) (α β γ : E) :
@@ -85,20 +101,20 @@ theorem modelQ_eq (w : ℕ → K) (α β γ : E) :
         (qNovel (C.G roots) w α β γ (phiOn S pubs γ)).getD j 0 := by
   have hm := view_logN Fa roots
   have h24 := logN_G Fa roots
-  show qPoly (qTable (D.circuitAt roots.pi1).circuit.logN _) (D.circuitAt roots.pi1).circuit.logN = _
+  show qPoly (honestQ (C.G roots) S pubs w α β γ) (D.circuitAt roots.pi1).circuit.logN = _
   rw [hm]
   unfold qPoly
-  exact UniKeccakComplete.AlgC.novP_congr _ fun k hk ↦ qCoef_honest_q _ S pubs w α β γ (by omega) hk
+  exact UniKeccakComplete.AlgC.novP_congr _ fun k hk ↦ qCoef_honest_q _ S pubs w α β γ hk
 
 /-- **`P`'s model polynomial of the honest stack is the prover's.** -/
 theorem modelP_eq (w : ℕ → K) (α β γ : E) :
     (pi2Model Fa roots hcol).pP (honestQ (C.G roots) S pubs w α β γ) = pushPolyH (C.G roots) w := by
   have hm := view_logN Fa roots
   have h24 := logN_G Fa roots
-  show pPoly (qTable (D.circuitAt roots.pi1).circuit.logN _) (D.circuitAt roots.pi1).circuit.logN = _
+  show pPoly (honestQ (C.G roots) S pubs w α β γ) (D.circuitAt roots.pi1).circuit.logN = _
   rw [hm]
   unfold pPoly pushPolyH
-  exact UniKeccakComplete.AlgC.novP_congr _ fun k hk ↦ pCoef_honest _ S pubs w α β γ (by omega) hk
+  exact UniKeccakComplete.AlgC.novP_congr _ fun k hk ↦ pCoef_honest _ S pubs w α β γ hk
 
 /-- **`q_P`'s model polynomial of the honest stack is the prover's.** -/
 theorem modelQP_eq (w : ℕ → K) (α β γ : E) :
@@ -106,10 +122,10 @@ theorem modelQP_eq (w : ℕ → K) (α β γ : E) :
       UniKeccakComplete.AlgC.novP ((C.G roots).logN + 1) fun j ↦ ofK ((qpNovel (C.G roots) w γ).getD j 0) := by
   have hm := view_logN Fa roots
   have h24 := logN_G Fa roots
-  show qpPoly (qTable (D.circuitAt roots.pi1).circuit.logN _) (D.circuitAt roots.pi1).circuit.logN = _
+  show qpPoly (honestQ (C.G roots) S pubs w α β γ) (D.circuitAt roots.pi1).circuit.logN = _
   rw [hm]
   unfold qpPoly
-  exact UniKeccakComplete.AlgC.novP_congr _ fun k hk ↦ qpCoef_honest _ S pubs w α β γ (by omega) hk
+  exact UniKeccakComplete.AlgC.novP_congr _ fun k hk ↦ qpCoef_honest _ S pubs w α β γ hk
 
 /-- **The prover's `s` is `P(t)`.** -/
 theorem sOf_eq (G : RecPiop.Circuit E) (w : ℕ → K) (t : E) :
@@ -202,8 +218,8 @@ theorem foldValues_eq (w : ℕ → K) (t : E) {k : ℕ} (hk : k < 2 ^ (C.G roots
     rw [← pow_add, Nat.add_sub_cancel' (by omega)] at this
     nlinarith
   congr 1
-  · unfold wTab wLayout
-    rw [hm, readW_honest (C.G roots) w (by omega) hidx]
+  · unfold wTab
+    rw [readW_honest (C.G roots) w]
   · refine Finset.prod_congr rfl fun l hl ↦ ?_
     rw [digitsList_getD t (by have := mem_range.mp hl; omega)]
 

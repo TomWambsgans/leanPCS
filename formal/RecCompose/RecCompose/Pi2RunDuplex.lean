@@ -19,7 +19,7 @@ calls do (`Pi1Disc D P1k`, named).
   `post2`: the public values, the commitments, the challenges) and the contract's run on the calldata
   (`cHOnly_runWithH`: the channel's calculus `CHOnly`, every challenge a Keccak-256 call).
 * **The permutation is called by the openings only**, each disciplined: π1-rec3's prover's (`Pi1Disc`), the graph's three claims' openings and the contract's six (`disc_pcsOpenWithH`,
-  `disc_openingWithH`), π2's prover's three (`disc_proveOpeningWithH`).
+  `disc_pcsOpenKH`), π2's prover's five (`disc_pcsProveH`).
 * **The staged run** (`disc_pi2Staged`): for any `P1k` that is disciplined (`Disc`).
 -/
 
@@ -209,7 +209,7 @@ theorem wHOnly_post2 (G : RecPiop.Circuit E) (setupStack : Array K) (input : Lis
 /-! ## The verifiers -/
 
 /-- **π1-rec3's graph with its three claims' openings is disciplined.** -/
-theorem disc_pi1GraphVerifierWithH (D : RecDeployment) (roots : UniStatement.SetupRoots) (input : Vector UInt8 32)
+theorem disc_pi1GraphVerifierWithH (D : RecDeployment) (roots : UniKeccak.SetupRootsK) (input : Vector UInt8 32)
     (p : UniKeccak.KeccakProof) : Disc (Pi2H.pi1GraphVerifierWithH callKeccak256 callKeccakF1600 D roots input p) := by
   unfold Pi2H.pi1GraphVerifierWithH
   split
@@ -221,16 +221,15 @@ theorem disc_pi1GraphVerifierWithH (D : RecDeployment) (roots : UniStatement.Set
       · split
         · exact disc_pure _
         · refine (disc_forIn_list _ _ _ fun x s ↦ ?_).bind fun _ ↦ disc_pure _
-          exact (UniKeccakComplete.disc_pcsOpenWithH _ _ _ _).bind fun _ ↦ disc_pure _
+          exact (UniKeccakComplete.disc_pcsOpenKH _ _ _ _ _ _).bind fun _ ↦ disc_pure _
 
 /-- **The opening check on a claim's words is disciplined.** -/
-theorem disc_pcsOpenAtH (reg : List (List UInt8 × Opener)) (words : List (List UInt8)) (p : Compile.Proof) :
-    Disc (Pi2H.pcsOpenAtH callKeccak256 callKeccakF1600 reg words p) := by
-  unfold Pi2H.pcsOpenAtH
+theorem disc_pcsOpenWordsH (words : List (List UInt8)) (p : Compile.Proof) :
+    Disc (Pi2H.pcsOpenWordsH callKeccak256 callKeccakF1600 words p) := by
+  unfold Pi2H.pcsOpenWordsH
   split
   · exact disc_pure _
-  · exact UniKeccakComplete.disc_pcsOpenWithH _ _ _ _
-  · exact E2ECompleteness.disc_openingWithH _ _ _ _
+  · exact UniKeccakComplete.disc_pcsOpenKH _ _ _ _ _ _
 
 /-- **The contract is disciplined.** -/
 theorem disc_contractWithH (D : RecDeployment) (roots : RecSetupRoots) (input : Vector UInt8 32) (proof : RecProof) :
@@ -245,7 +244,7 @@ theorem disc_contractWithH (D : RecDeployment) (roots : RecSetupRoots) (input : 
       split
       · exact disc_pure _
       · refine (disc_forIn_list _ _ _ fun x s ↦ ?_).bind fun _ ↦ disc_pure _
-        exact (disc_pcsOpenAtH _ _ _).bind fun _ ↦ disc_pure _
+        exact (disc_pcsOpenWordsH _ _).bind fun _ ↦ disc_pure _
 
 theorem disc_verifierWithH (D : RecDeployment) (roots : RecSetupRoots) (input : Vector UInt8 32) (proof : RecProof) :
     Disc (Pi2H.verifierWithH callKeccak256 callKeccakF1600 D roots input proof) := by
@@ -278,9 +277,11 @@ theorem disc_stageC (D : RecDeployment) (C : Pi2Circuits D) (input : Vector UInt
   split
   · exact disc_pure _
   · refine (disc_of_hOnly (wHOnly_post2 _ _ _ _ _ _ _ _ _ _ _ _ _ _)).bind fun x ↦ ?_
-    refine (E2ECompleteness.disc_proveOpeningWithH _ _ _ _ _).bind fun pW ↦
-      (E2ECompleteness.disc_proveOpeningWithH _ _ _ _ _).bind fun pS ↦
-      (E2ECompleteness.disc_proveOpeningWithH _ _ _ _ _).bind fun pQ ↦ ?_
+    refine (UniKeccakComplete.disc_pcsProveH _ _ _ _ _ _).bind fun pW ↦
+      (UniKeccakComplete.disc_pcsProveH _ _ _ _ _ _).bind fun pS ↦
+      (UniKeccakComplete.disc_pcsProveH _ _ _ _ _ _).bind fun pQ1 ↦
+      (UniKeccakComplete.disc_pcsProveH _ _ _ _ _ _).bind fun pQ2 ↦
+      (UniKeccakComplete.disc_pcsProveH _ _ _ _ _ _).bind fun pQ3 ↦ ?_
     split
     · exact (disc_verifierWithH _ _ _ _).bind fun _ ↦ disc_pure _
     · exact disc_pure _

@@ -2,15 +2,15 @@
 -- and `ProverSim.lean` (`UniKeccakComplete.Morph`, its channel and writer liftings) for π2's code (`Pi2CompleteH`'s contract,
 -- setup and graph verifier with Keccak-256 explicit, `Pi2Prover`'s honest prover, `Pi2ProbStaged`'s stages), over
 -- leanerVM's two calls (https://github.com/Verified-zkEVM/leanerVM, branch `mumbai`, commit 6175f1a0, MIT OR
--- Apache-2.0: `implH`, `implF`, `simulateQ_queryH`) and `formal/EndToEnd/Completeness/E2ECompleteness/WithHash.lean`'s
--- `simulateQ_openingWithH`, `simulateQ_proveOpeningWithH`.
+-- Apache-2.0: `implH`, `implF`, `simulateQ_queryH`) and `formal/UniKeccakComplete`'s `simulateQ_pcsVerify`,
+-- `simulateQ_pcsProveH`, `Morph.app_pcsOpenKH`.
 import RecCompose.Pi2P1
 
 /-!
 # π2's code commutes with simulation
 
 Every function of π2's completeness experiment is written over any monad, Keccak-256 `H` and the permutation `F`
-explicit. Read through a monad morphism `φ` (`UniKeccakComplete.Morph`) that commutes with WHIR's opening and its prover
+explicit. Read through a monad morphism `φ` (`UniKeccakComplete.Morph`) that commutes with the PCS claim's check and its prover
 (`hopen`, `hprove`), each is the same function over `φ ∘ H`, `φ ∘ F` (`app_…`, `chan_…`, `wr_…`): the setup
 (`app_setupTreesWithH2`), the IV (`app_ivOfH`), π1-rec3's graph with its openings (`app_pi1GraphVerifierWithH`), π2's
 run and contract (`chan_reduceWithH2`, `app_runWithH2`, `app_contractWithH`, `app_verifierWithH2`), π2's honest prover
@@ -49,9 +49,9 @@ theorem app_digestWithH (c : Pi2Circuit) :
     φ.app (Pi2H.digestWithH H c) = Pi2H.digestWithH (fun x ↦ φ.app (H x)) c := by
   simp only [Pi2H.digestWithH, φ.app_bind, φ.app_pure]
 
-theorem app_ivWithH2 (pi1Iv digest setupRoot : List UInt8) (logN : ℕ) :
-    φ.app (Pi2H.ivWithH H pi1Iv digest setupRoot logN) =
-      Pi2H.ivWithH (fun x ↦ φ.app (H x)) pi1Iv digest setupRoot logN := by
+theorem app_ivWithH2 (pi1Iv setupRoot : List UInt8) (setupOod : E) (digest : List UInt8) (logN : ℕ) :
+    φ.app (Pi2H.ivWithH H pi1Iv setupRoot setupOod digest logN) =
+      Pi2H.ivWithH (fun x ↦ φ.app (H x)) pi1Iv setupRoot setupOod digest logN := by
   simp only [Pi2H.ivWithH, φ.app_bind, φ.app_pure]
 
 theorem app_ivOfH (D : RecDeployment) (roots : RecSetupRoots) :
@@ -60,21 +60,13 @@ theorem app_ivOfH (D : RecDeployment) (roots : RecSetupRoots) :
 
 /-! ## The openings -/
 
-variable (hopen : ∀ (L : PcsQuotient.Layout) (root : Digest) (claims : List PcsQuotient.Claim)
-    (proof : LeanVM.Protocol.Compile.Proof),
-    φ.app (E2ECompleteness.openingWithH H F L root claims proof) =
-      E2ECompleteness.openingWithH (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) L root claims proof)
-
-include hopen in
-theorem app_pcsOpenWithH (vars : ℕ) (root : Digest) (claims : List PcsQuotient.Claim)
-    (proof : LeanVM.Protocol.Compile.Proof) :
-    φ.app (UniKeccakComplete.pcsOpenWithH H F vars root claims proof) =
-      UniKeccakComplete.pcsOpenWithH (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) vars root claims proof :=
-  hopen _ _ _ _
+variable (hopen : ∀ (n : ℕ) (root : Digest) (ood : E) (pt : List E) (v : E) (proof : LeanVM.Protocol.Compile.Proof),
+    φ.app (UniKeccakComplete.pcsOpenKH H F n root ood pt v proof) =
+      UniKeccakComplete.pcsOpenKH (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) n root ood pt v proof)
 
 include hopen in
 /-- **π1-rec3's graph with its three openings.** -/
-theorem app_pi1GraphVerifierWithH (D : RecDeployment) (roots : UniStatement.SetupRoots) (input : Vector UInt8 32)
+theorem app_pi1GraphVerifierWithH (D : RecDeployment) (roots : UniKeccak.SetupRootsK) (input : Vector UInt8 32)
     (proof : UniKeccak.KeccakProof) :
     φ.app (Pi2H.pi1GraphVerifierWithH H F D roots input proof) =
       Pi2H.pi1GraphVerifierWithH (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) D roots input proof := by
@@ -87,18 +79,21 @@ theorem app_pi1GraphVerifierWithH (D : RecDeployment) (roots : UniStatement.Setu
       · exact φ.app_pure _
       · split
         · exact φ.app_pure _
-        · simp only [φ.app_bind, Morph.app_forIn_list, φ.app_pure, app_pcsOpenWithH φ H F hopen]
+        · simp only [φ.app_bind, Morph.app_forIn_list, φ.app_pure, hopen]
 
 include hopen in
-theorem app_pcsOpenAtH (registry : List (List UInt8 × Opener)) (words : List (List UInt8))
-    (proof : LeanVM.Protocol.Compile.Proof) :
-    φ.app (Pi2H.pcsOpenAtH H F registry words proof) =
-      Pi2H.pcsOpenAtH (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) registry words proof := by
-  unfold Pi2H.pcsOpenAtH
+theorem app_pcsOpenWordsH (words : List (List UInt8)) (proof : LeanVM.Protocol.Compile.Proof) :
+    φ.app (Pi2H.pcsOpenWordsH H F words proof) =
+      Pi2H.pcsOpenWordsH (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) words proof := by
+  unfold Pi2H.pcsOpenWordsH
   split
   · exact φ.app_pure _
-  · exact app_pcsOpenWithH φ H F hopen _ _ _ _
-  · exact hopen _ _ _ _
+  · exact hopen _ _ _ _ _ _
+
+include hopen in
+theorem app_openAtH (o : Pi1Opening) (proof : LeanVM.Protocol.Compile.Proof) :
+    φ.app (Pi2H.openAtH H F o proof) = Pi2H.openAtH (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) o proof :=
+  hopen _ _ _ _ _ _
 
 /-! ## π2's run and the contract -/
 
@@ -131,7 +126,7 @@ theorem app_contractWithH (D : RecDeployment) (roots : RecSetupRoots) (input : V
     · exact φ.app_pure _
     · split
       · exact φ.app_pure _
-      · simp only [φ.app_bind, Morph.app_forIn_list, φ.app_pure, app_pcsOpenAtH φ H F hopen]
+      · simp only [φ.app_bind, Morph.app_forIn_list, φ.app_pure, app_pcsOpenWordsH φ H F hopen]
 
 include hopen in
 theorem app_verifierWithH2 (D : RecDeployment) (roots : RecSetupRoots) (input : Vector UInt8 32) (proof : RecProof) :
@@ -164,10 +159,9 @@ theorem wr_pi2ProveStreamWith (G : RecPiop.Circuit E) (S : CoreSpec E) (ood : �
   simp only [pi2ProveStreamWith, Morph.wr_bind, wr_sendPublic, Morph.wr_lift, Morph.app_commitWithH,
     Morph.wr_sendRoot, Morph.wr_sendScalar, Morph.wr_sampleW, Morph.wr_sendScalars, Morph.wr_get, Morph.wr_pure]
 
-variable (hprove : ∀ (fuel : ℕ) (L : PcsQuotient.Layout) (tree : LeanVM.Prover.Tree) (stack : Array K)
-    (claims : List PcsQuotient.Claim),
-    φ.app (E2ECompleteness.proveOpeningWithH H F fuel L tree stack claims) =
-      E2ECompleteness.proveOpeningWithH (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) fuel L tree stack claims)
+variable (hprove : ∀ (fuel n : ℕ) (tree : LeanVM.Prover.Tree) (stack : Array K) (pt : List E) (v : E),
+    φ.app (UniKeccakComplete.pcsProveH H F fuel n tree stack pt v) =
+      UniKeccakComplete.pcsProveH (fun x ↦ φ.app (H x)) (fun s ↦ φ.app (F s)) fuel n tree stack pt v)
 
 include hprove in
 theorem app_pi2ProveWith (fuel : ℕ) (G : RecPiop.Circuit E) (ood : ℕ → Digest → Array K → E) (view : Circuit)
@@ -247,7 +241,8 @@ theorem app_stageC (D : RecDeployment) (C : Pi2Circuits D) (input : Vector UInt8
   split
   · exact φ.app_pure _
   · simp only [φ.app_bind, ← Morph.wr_run φ, wr_post2, hprove]
-    refine bind_congr fun x ↦ bind_congr fun pW ↦ bind_congr fun pS ↦ bind_congr fun pQ ↦ ?_
+    refine bind_congr fun x ↦ bind_congr fun pW ↦ bind_congr fun pS ↦ bind_congr fun pQ1 ↦ bind_congr fun pQ2 ↦
+      bind_congr fun pQ3 ↦ ?_
     split
     · simp only [φ.app_bind, φ.app_pure, app_verifierWithH2 φ H F hopen]
     · exact φ.app_pure _
@@ -260,23 +255,24 @@ section Sim
 
 variable {r : Type → Type} [Monad r] [LawfulMonad r] (impl : QueryImpl KeccakCalls r)
 
-theorem hopen_sim : ∀ (L : PcsQuotient.Layout) (root : Digest) (claims : List PcsQuotient.Claim)
+theorem hopen_sim : ∀ (n : ℕ) (root : Digest) (ood : E) (pt : List E) (v : E)
     (proof : LeanVM.Protocol.Compile.Proof),
-    (Morph.sim impl).app (E2ECompleteness.openingWithH callKeccak256 callKeccakF1600 L root claims proof) =
-      E2ECompleteness.openingWithH (fun x ↦ (Morph.sim impl).app (callKeccak256 x))
-        (fun s ↦ (Morph.sim impl).app (callKeccakF1600 s)) L root claims proof := by
-  intro L root claims proof
+    (Morph.sim impl).app (UniKeccakComplete.pcsOpenKH callKeccak256 callKeccakF1600 n root ood pt v proof) =
+      UniKeccakComplete.pcsOpenKH (fun x ↦ (Morph.sim impl).app (callKeccak256 x))
+        (fun s ↦ (Morph.sim impl).app (callKeccakF1600 s)) n root ood pt v proof := by
+  intro n root ood pt v proof
+  refine UniKeccakComplete.Morph.app_pcsOpenKH (φ := Morph.sim impl) (H := callKeccak256) (F := callKeccakF1600)
+    (fun n zOf x p ↦ ?_) n root ood pt v proof
   rw [Morph.sim_H, Morph.sim_F]
-  exact E2ECompleteness.simulateQ_openingWithH impl L root claims proof
+  exact UniKeccakComplete.simulateQ_pcsVerify impl zOf x p
 
-theorem hprove_sim : ∀ (fuel : ℕ) (L : PcsQuotient.Layout) (tree : LeanVM.Prover.Tree) (stack : Array K)
-    (claims : List PcsQuotient.Claim),
-    (Morph.sim impl).app (E2ECompleteness.proveOpeningWithH callKeccak256 callKeccakF1600 fuel L tree stack claims) =
-      E2ECompleteness.proveOpeningWithH (fun x ↦ (Morph.sim impl).app (callKeccak256 x))
-        (fun s ↦ (Morph.sim impl).app (callKeccakF1600 s)) fuel L tree stack claims := by
-  intro fuel L tree stack claims
+theorem hprove_sim : ∀ (fuel n : ℕ) (tree : LeanVM.Prover.Tree) (stack : Array K) (pt : List E) (v : E),
+    (Morph.sim impl).app (UniKeccakComplete.pcsProveH callKeccak256 callKeccakF1600 fuel n tree stack pt v) =
+      UniKeccakComplete.pcsProveH (fun x ↦ (Morph.sim impl).app (callKeccak256 x))
+        (fun s ↦ (Morph.sim impl).app (callKeccakF1600 s)) fuel n tree stack pt v := by
+  intro fuel n tree stack pt v
   rw [Morph.sim_H, Morph.sim_F]
-  exact E2ECompleteness.simulateQ_proveOpeningWithH impl fuel L tree stack claims
+  exact UniKeccakComplete.simulateQ_pcsProveH impl fuel n tree stack pt v
 
 /-- **The experiment over the two calls commutes with any simulation.** -/
 theorem sim_expW2 (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C)

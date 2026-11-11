@@ -2,6 +2,7 @@
 -- (`Bridge.Ntt.values_getD_E`, `values_coefficients_E`) at `formal/UniComplete`'s Cantor basis (`AlgC.cantorUpTo`,
 -- `novX_ofK`, `Ppoint_eq`).
 import RecCompose.Pi2Prover
+import RecCompose.Tables
 
 /-!
 # π2's honest prover: the transforms, the coset, the stacks
@@ -14,8 +15,7 @@ The facts the honest prover's algebra (`Pi2Honest.lean`) reads its computations 
   there (`novP_coefficients_eval`);
 * **the coset** `β_{m+1} + V_{m+1}`: its point `p` is `ω_{2^(m+1) ⊕ p}` (`cosetPoint_eq`), a cell moves it by `ω_c`
   (`cosetPoint_xor`), and it is off `V_m` (`cosetPoint_ne`);
-* **the stacks**: a public layout reads back the table it placed (`readEntry_placePublic`), at `W`'s and `Q`'s layouts
-  (`wTab_place`, `qTable_place`).
+* **the stacks**: a padded stack reads back its table (`getD_padStack_lt`).
 -/
 
 set_option linter.unusedSectionVars false
@@ -131,67 +131,14 @@ theorem cosetPoint_ne {m p j : ℕ} (hm : m + 1 < 28) (hp : p < 2 ^ (m + 1)) (hj
 
 /-! ## The stacks -/
 
-/-- **A public layout reads back the table it placed**, at an entry whose block one of its lanes holds. -/
-theorem readEntry_placePublic (L : PcsQuotient.Layout) (hL : L.logPiece = none) (T : ℕ → K) (i : ℕ)
-    (h : PcsQuotient.Lane.block (i / 2 ^ L.logLane) ∈ L.lanes) :
-    L.readEntry (fun j ↦ (placePublic L T).getD j 0) i = T i := by
-  obtain ⟨l, hl⟩ : ∃ l, L.lanes.findIdx? (· = PcsQuotient.Lane.block (i / 2 ^ L.logLane)) = some l := by
-    rw [← Option.isSome_iff_exists, List.findIdx?_isSome]
-    exact List.any_eq_true.mpr ⟨_, h, by simp⟩
-  obtain ⟨hlen, hget, -⟩ := List.findIdx?_eq_some_iff_getElem.mp hl
-  have hpos : 0 < 2 ^ L.logLane := Nat.two_pow_pos _
-  have hmod := Nat.mod_lt i hpos
-  have hidx : l * 2 ^ L.logLane + i % 2 ^ L.logLane < L.lanes.length * 2 ^ L.logLane := by
-    have : (l + 1) * 2 ^ L.logLane ≤ L.lanes.length * 2 ^ L.logLane := Nat.mul_le_mul_right _ hlen
-    rw [Nat.add_mul, one_mul] at this
-    omega
-  have hdiv : (l * 2 ^ L.logLane + i % 2 ^ L.logLane) / 2 ^ L.logLane = l := by
-    rw [Nat.add_comm, Nat.add_mul_div_right _ _ hpos, Nat.div_eq_of_lt hmod, zero_add]
-  have hmod' : (l * 2 ^ L.logLane + i % 2 ^ L.logLane) % 2 ^ L.logLane = i % 2 ^ L.logLane := by
-    rw [Nat.add_comm, Nat.add_mul_mod_self_right, Nat.mod_mod]
-  have hlane : L.lanes.getD l PcsQuotient.Lane.random = PcsQuotient.Lane.block (i / 2 ^ L.logLane) := by
-    rw [List.getD_eq_getElem _ _ hlen]
-    simpa using hget
-  simp only [PcsQuotient.Layout.readEntry, hL, hl]
-  unfold placePublic
-  rw [Array.getD_eq_getD_getElem?, Array.getElem?_ofFn]
-  simp only [hidx, dite_true, Option.getD_some, hdiv, hmod', hlane]
-  rw [Nat.mul_comm, Nat.div_add_mod]
+/-- **A padded stack reads its table below `2^vars`, zero beyond.** -/
+theorem padStack_getD (vars : ℕ) (T : ℕ → K) (i : ℕ) :
+    (padStack vars T).getD i 0 = if i < 2 ^ vars then T i else 0 := by
+  split_ifs with h <;> simp [padStack, Array.getD, h]
 
-theorem placePublic_logPiece (vars lc logN : ℕ) (chunks : List (ℕ × ℕ)) :
-    (PcsQuotient.Layout.ofChunks vars lc logN chunks).logPiece = none := rfl
-
-/-- A chunk's lanes: a public layout of chunks of `2^lc` (its lanes at most a chunk) holds the block of every entry
-of a listed chunk. -/
-theorem block_mem_ofChunks {vars lc logN : ℕ} {chunks : List (ℕ × ℕ)} (hlane : logN - PcsQuotient.laneFold ≤ lc)
-    {c : ℕ} (hc : (c, 2 ^ lc) ∈ chunks) {i : ℕ} (hi : i / 2 ^ lc = c) :
-    PcsQuotient.Lane.block (i / 2 ^ (PcsQuotient.Layout.ofChunks vars lc logN chunks).logLane) ∈
-      (PcsQuotient.Layout.ofChunks vars lc logN chunks).lanes := by
-  obtain ⟨d, hd⟩ : ∃ d, lc = (logN - PcsQuotient.laneFold) + d := ⟨lc - (logN - PcsQuotient.laneFold), by omega⟩
-  set a := logN - PcsQuotient.laneFold with ha
-  have hpos : 0 < 2 ^ a := Nat.two_pow_pos a
-  have hll : (PcsQuotient.Layout.ofChunks vars lc logN chunks).logLane = a := rfl
-  rw [hll]
-  simp only [PcsQuotient.Layout.ofChunks, List.mem_flatMap, List.mem_map, List.mem_range]
-  refine ⟨(c, 2 ^ lc), hc, (i % 2 ^ lc) / 2 ^ a, ?_, ?_⟩
-  · have hcount : (2 ^ lc + 2 ^ a - 1) / 2 ^ a = 2 ^ d := by
-      rw [hd, pow_add]
-      have : 2 ^ a * 2 ^ d + 2 ^ a - 1 = 2 ^ d * 2 ^ a + (2 ^ a - 1) := by
-        have : 1 ≤ 2 ^ a := hpos; rw [mul_comm]; omega
-      rw [this, Nat.add_comm, Nat.add_mul_div_right _ _ hpos, Nat.div_eq_of_lt (by omega), zero_add]
-    rw [← ha, hcount]
-    rw [Nat.div_lt_iff_lt_mul hpos, ← pow_add, show d + a = lc by omega]
-    exact Nat.mod_lt _ (Nat.two_pow_pos _)
-  · congr 1
-    have hd' : lc - a = d := by omega
-    have hpow : 2 ^ lc = 2 ^ a * 2 ^ d := by rw [hd, pow_add]
-    have h0 := Nat.mod_add_div i (2 ^ lc)
-    rw [hi] at h0
-    rw [hd']
-    generalize i % 2 ^ lc = r at h0 ⊢
-    subst h0
-    rw [hpow, Nat.mul_assoc, Nat.add_mul_div_left _ _ hpos]
-    ring
+/-- **A padded stack reads back its table** below `2^vars`. -/
+theorem getD_padStack_lt (vars : ℕ) (T : ℕ → K) {i : ℕ} (hi : i < 2 ^ vars) : (padStack vars T).getD i 0 = T i := by
+  simp [padStack, Array.getD, hi]
 
 /-! ## `K` inside `E` -/
 
@@ -295,10 +242,6 @@ theorem kCircuit_toPiop (C : RecCircuit.Circuit) : KCircuit C.toPiop where
           (mul_mem (hc _) (hc _))
 
 end RecCompose
-
-/-- info: 'RecCompose.readEntry_placePublic' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in
-#print axioms RecCompose.readEntry_placePublic
 
 /-- info: 'RecCompose.cosetPoint_ne' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in

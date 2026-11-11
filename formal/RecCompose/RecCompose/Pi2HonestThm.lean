@@ -49,6 +49,7 @@ theorem pi2_honest_post2 (w : ℕ → K) (scalars : List E) (α β γ t ρ : E)
   have hQ := modelQ_eq Fa hcol roots (Spec.of (D.circuitAt roots.pi1).circuit).core scalars w α β γ
   have hP := modelP_eq Fa hcol roots (Spec.of (D.circuitAt roots.pi1).circuit).core scalars w α β γ
   have hQP := modelQP_eq Fa hcol roots (Spec.of (D.circuitAt roots.pi1).circuit).core scalars w α β γ
+  have hS0 := modelS_eq Fa hcol roots (Spec.of (D.circuitAt roots.pi1).circuit).core scalars w α β γ
   have hphi_eq : (pi2Model Fa roots hcol).phi (Fa.pubOf roots scalars) γ =
       RecStatement.phiPoly (C.G roots) UniComplete.Domain.basisE (Fa.pubOf roots scalars) γ := rfl
   set G := C.G roots with hG
@@ -144,12 +145,13 @@ theorem pi2_honest_post2 (w : ℕ → K) (scalars : List E) (α β γ t ρ : E)
   unfold RecPiop.Post2 RecPiop.SumOK RecPiop.abc
   simp only [List.getD_cons_zero, List.getD_cons_succ]
   refine ⟨?_, hxi, ?_, ?_⟩
-  · rw [Finset.sum_congr rfl fun i hi ↦ hhv i (mem_range.mp hi)]
+  · simp only [hS0, Polynomial.eval_zero, mul_zero, add_zero]
+    rw [Finset.sum_congr rfl fun i hi ↦ hhv i (mem_range.mp hi)]
     exact sum_hValues hV w hw α β
   · rw [hphi_eq]
-    exact RecPiop.Circuit.qClaim_of_eval hV hpts Mo.setup _ Mo.idC (Mo.wP cW) (Mo.hP cQ) (Mo.qP cQ) (Mo.pP cQ)
-      (Mo.qPP cQ) α β γ t _ _ ρ hcells hxi hsv (by rw [hid, Polynomial.eval_zero])
-      (by rw [hdef, Polynomial.eval_zero]) hcq hch hy
+    exact RecPiop.Circuit.qClaim_of_eval_sP hV hpts Mo.setup _ Mo.idC (Mo.wP cW) (Mo.hP cQ) (Mo.qP cQ) (Mo.pP cQ)
+      (Mo.qPP cQ) (Mo.sP cQ) α β γ t _ _ ρ hcells hxi hsv (by rw [hid, Polynomial.eval_zero])
+      (by rw [hdef, Polynomial.eval_zero]) hcq hch hy (by rw [hS0, Polynomial.eval_zero])
   · unfold RecPiop.foldAt
     exact Finset.sum_congr rfl fun k hk ↦ by rw [hfv k (mem_range.mp hk)]
 
@@ -160,12 +162,16 @@ theorem claims_of_model (inp : Inputs E) (cW cQ : Stk)
     (hid : idEq ((Spec.of (D.circuitAt roots.pi1).circuit).core.run inp)
       (c3Of (Spec.of (D.circuitAt roots.pi1).circuit).core)
       ((Spec.of (D.circuitAt roots.pi1).circuit).core.run inp).rhoQ (((pi2Model Fa roots hcol).hP cQ).eval inp.t)
-      (((pi2Model Fa roots hcol).qP cQ).eval inp.t) (((pi2Model Fa roots hcol).pP cQ).eval inp.t)
+      (((pi2Model Fa roots hcol).qP cQ).eval inp.t)
+      (((pi2Model Fa roots hcol).pP cQ).eval inp.t +
+        ((pi2Model Fa roots hcol).sP cQ).eval inp.t / ((C.G roots).zV pi2Omega).eval inp.t)
       (((pi2Model Fa roots hcol).qPP cQ).eval inp.t) (QuotientSecurity.sq^[(C.G roots).logN] inp.t) inp.s)
     (hpe : pushEq ((Spec.of (D.circuitAt roots.pi1).circuit).core.run inp) inp.ρ
-      (((pi2Model Fa roots hcol).pP cQ).eval inp.t) (((pi2Model Fa roots hcol).qPP cQ).eval inp.t)
-      (QuotientSecurity.sq^[(C.G roots).logN] inp.t) inp.s)
-    (hsum : ∑ i ∈ range (C.G roots).N, ((pi2Model Fa roots hcol).hP cQ).eval (pi2Omega i) = 0)
+      (((pi2Model Fa roots hcol).pP cQ).eval inp.t +
+        ((pi2Model Fa roots hcol).sP cQ).eval inp.t / ((C.G roots).zV pi2Omega).eval inp.t)
+      (((pi2Model Fa roots hcol).qPP cQ).eval inp.t) (QuotientSecurity.sq^[(C.G roots).logN] inp.t) inp.s)
+    (hsum : ∑ i ∈ range (C.G roots).N, (((pi2Model Fa roots hcol).hP cQ).eval (pi2Omega i) +
+      (pi2Model Fa roots hcol).idC * ((pi2Model Fa roots hcol).sP cQ).eval (pi2Omega i)) = 0)
     (hξ : inp.ξ = (pi2Model Fa roots hcol).setup.κP.eval inp.t + inp.β * (pi2Model Fa roots hcol).setup.σP.eval inp.t)
     (hf : ((Spec.of (D.circuitAt roots.pi1).circuit).core.run inp).fold =
       RecPiop.foldAt (C.G roots).logW ((pi2Model Fa roots hcol).fold cW inp.t) inp.ρ) :
@@ -186,6 +192,7 @@ theorem claims_of_model (inp : Inputs E) (cW cQ : Stk)
     exact right_ne_zero_of_mul (left_ne_zero_of_mul (left_ne_zero_of_mul h))
   rw [← hm] at hT
   have hw : ∀ l < m + 1, 1 + QuotientSecurity.sq^[l] inp.t ≠ 0 := fun l hl ↦ one_add_digit_ne_zero hT hl
+  have hwm : QuotientSecurity.sq^[m] inp.t ≠ 0 := digit_ne_zero_of_le (by omega) hT
   have huw : ∀ l < m + 1, (S.run inp).uList.getD l 0 =
       QuotientSecurity.sq^[l] inp.t / (1 + QuotientSecurity.sq^[l] inp.t) := fun l hl ↦
     run_u hS inp hall (by rw [← hm]; exact hl)
@@ -193,7 +200,8 @@ theorem claims_of_model (inp : Inputs E) (cW cQ : Stk)
   have hu' : ((Spec.of (D.circuitAt roots.pi1).circuit).core.run inp).uList.length = m + 1 := hu
   have hDne : ∏ l ∈ range (m + 1), (1 + QuotientSecurity.sq^[l] inp.t)⁻¹ ≠ 0 :=
     prod_inv_ne_zero_gen (F := E) (n := m + 1) (f := fun l ↦ 1 + QuotientSecurity.sq^[l] inp.t) hw
-  have hv : (layoutsOf m).2.1.vars = m + 4 := rfl
+  have hzv : ((C.G roots).zV pi2Omega).eval inp.t = QuotientSecurity.sq^[m] inp.t := by
+    rw [RecPiop.Circuit.zV_eval_eq (C.G roots) UniComplete.Domain.basisE hS.hn, ← hm]
   have hqval := run_quotientValue hS inp hall
   have hpval := run_pushesValue hS inp hall
   rw [← hm] at hqval hpval
@@ -201,81 +209,81 @@ theorem claims_of_model (inp : Inputs E) (cW cQ : Stk)
   have hc3 : c3Of S = extension.1.1 * extension.1.2 * extension.2⁻¹ := by
     unfold c3Of
     rw [spec_core_y0, spec_core_y1, extension_L0]
+  have hs := extension_scale_ne_zero
   refine ⟨?_, ?_, ?_, ?_, ?_⟩
   · -- `W`'s claim
     unfold ClaimOn
-    have hv1 : (layoutsOf m).1.vars = m := rfl
     have hwv : (stackVars m).1 = m := by simp only [stackVars, hm20, ite_true]; omega
-    rw [hv1, run_witnessPoint, hSm, hSr, hwv, padded_eq (by simp [digitsList]; omega),
-      claim_wFold (by omega) _ inp.t inp.ρ, hf]
+    rw [run_witnessPoint, hSm, hSr, hwv, padded_eq (by simp [digitsList]; omega),
+      mleStk_eq _ (by simp [digitsList]; omega), claim_wFold (by omega) _ inp.t inp.ρ, hf]
     have e : (C.G roots).logW = (D.circuitAt roots.pi1).circuit.logRow := (view_logRow Fa roots).symm
     exact congrArg (fun r ↦ RecPiop.foldAt r (wFold m (D.circuitAt roots.pi1).circuit.logRow
       (wTab D roots cW) inp.t) inp.ρ) e.symm
   · -- `Q`'s identity claim
     unfold ClaimOn
     dsimp only
-    rw [hv, run_quotientPoint, hSm, hqv, padded_eq (by simp [hu']), spec_core_y0, spec_core_y1]
-    have hc := claim_quotient (qZero hm20 cQ) hu hw huw (S.run inp).rhoQ
-    unfold qTable at hc
+    rw [run_quotientPoint, hSm, hqv, padded_eq (by simp [hu']), spec_core_y0, spec_core_y1,
+      mleStk_eq _ (by simp [hu'])]
+    have hc := claim_quotient (T := cQ) hu hw huw (S.run inp).rhoQ
     rw [hc, hqval, hscale]
     unfold idEq at hid
     have hid' := hid
-    change _ = (1 + (S.run inp).rhoQ) * (hPoly (qTable m cQ) m).eval inp.t +
-        (S.run inp).rhoQ * (qPoly (qTable m cQ) m).eval inp.t + c3Of S * ((1 + (S.run inp).rhoQ) *
-          QuotientSecurity.sq^[(C.G roots).logN] inp.t * (pPoly (qTable m cQ) m).eval inp.t +
-          (S.run inp).rhoQ * (qpPoly (qTable m cQ) m).eval inp.t) at hid'
-    unfold hPoly qPoly pPoly qpPoly qTable at hid'
-    rw [novP_eval_sq, novP_eval_sq, novP_eval_sq, novP_eval_sq, ← hm] at hid'
+    change _ = (1 + (S.run inp).rhoQ) * (hPoly cQ m).eval inp.t +
+        (S.run inp).rhoQ * (qPoly cQ m).eval inp.t + c3Of S * ((1 + (S.run inp).rhoQ) *
+          QuotientSecurity.sq^[(C.G roots).logN] inp.t * ((pPoly cQ m).eval inp.t +
+            (sPoly cQ m).eval inp.t / ((C.G roots).zV pi2Omega).eval inp.t) +
+          (S.run inp).rhoQ * (qpPoly cQ m).eval inp.t) at hid'
+    rw [hzv] at hid'
+    unfold hPoly qPoly pPoly qpPoly sPoly at hid'
+    rw [novP_eval_sq, novP_eval_sq, novP_eval_sq, novP_eval_sq, novP_eval_sq, ← hm] at hid'
     rw [hid', hc3]
-    have hs := extension_scale_ne_zero
     field_simp
+    ring
   · -- `Q`'s pushes' claim
     unfold ClaimOn
     dsimp only
-    rw [hv, run_pushesPoint, hSm, hqv, padded_eq (by simp [hu'])]
-    have hc := claim_pushes (qZero hm20 cQ) hu hw huw inp.ρ
-    unfold qTable at hc
+    rw [run_pushesPoint, hSm, hqv, padded_eq (by simp [hu']), mleStk_eq _ (by simp [hu'])]
+    have hc := claim_pushes (T := cQ) hu hw huw inp.ρ
     rw [hc, hpval, hscale, spec_core_y0, spec_core_y1, extension_L0, mul_inv_cancel₀ extension_scale_ne_zero,
       one_mul]
     unfold pushEq at hpe
     have hpe' := hpe
-    change _ = (1 + inp.ρ) * QuotientSecurity.sq^[(C.G roots).logN] inp.t * (pPoly (qTable m cQ) m).eval inp.t +
-        inp.ρ * (qpPoly (qTable m cQ) m).eval inp.t at hpe'
-    unfold pPoly qpPoly qTable at hpe'
-    rw [novP_eval_sq, novP_eval_sq, ← hm] at hpe'
+    change _ = (1 + inp.ρ) * QuotientSecurity.sq^[(C.G roots).logN] inp.t * ((pPoly cQ m).eval inp.t +
+          (sPoly cQ m).eval inp.t / ((C.G roots).zV pi2Omega).eval inp.t) +
+        inp.ρ * (qpPoly cQ m).eval inp.t at hpe'
+    rw [hzv] at hpe'
+    unfold pPoly qpPoly sPoly at hpe'
+    rw [novP_eval_sq, novP_eval_sq, novP_eval_sq, ← hm] at hpe'
     rw [hpe']
+    field_simp
     ring
   · -- `Q`'s sum claim
     unfold ClaimOn
     dsimp only
-    rw [hv, run_sumPoint, run_sumValue, spec_core_y0, spec_core_y1, hSm, hqv, padded_eq (by simp)]
-    have hc := claim_sum (qZero hm20 cQ)
-    unfold qTable at hc
-    rw [hc]
-    have h2 : qCoef ((layoutsOf m).2.1.readEntry cQ) m 0 (2 ^ m - 1) = 0 := by
-      have h := hsum
-      change ∑ i ∈ range (C.G roots).N, (hPoly (qTable m cQ) m).eval (pi2Omega i) = 0 at h
-      rw [← pow_view_N Fa roots] at h
-      unfold hPoly at h
-      rw [sum_novP_omega (by omega)] at h
-      exact h
-    rw [h2, mul_zero]
+    rw [run_sumPoint, run_sumValue, spec_core_y0, spec_core_y1, hSm, hqv, padded_eq (by simp),
+      mleStk_eq _ (by simp), claim_sum cQ m]
+    have h := hsum
+    change ∑ i ∈ range (C.G roots).N, ((hPoly cQ m).eval (pi2Omega i) +
+      c3Of S * (sPoly cQ m).eval (pi2Omega i)) = 0 at h
+    rw [← pow_view_N Fa roots] at h
+    have hm32 : m ≤ 32 := by omega
+    rw [Finset.sum_congr rfl fun i hi ↦ by
+      rw [hPoly, novP_succ_eval_omega hm32 _ (Finset.mem_range.mp hi)], Finset.sum_add_distrib,
+      ← Finset.mul_sum] at h
+    unfold sPoly at h
+    rw [sum_novP_omega hm32, sum_novP_omega hm32, hc3] at h
+    field_simp at h ⊢
+    linear_combination h
   · -- the setup's claim
     unfold ClaimOn
-    have hv2 : (layoutsOf m).2.2.vars = m + 1 := rfl
     have hsv : (stackVars m).2.2 = m + 1 := by simp only [stackVars, hm20, ite_true]; omega
-    rw [hv2, run_setupPoint, hSm, hsv, padded_eq (by simp [digitsList]; omega), claim_setup]
-    have hlane : max (m + 1) 24 - PcsQuotient.laneFold ≤ m := by
-      simp only [PcsQuotient.laneFold]; omega
-    have hT0 : ∀ k < 2 ^ m, (layoutsOf m).2.2.readEntry (fun j ↦ (D.circuitAt roots.pi1).setupStack.getD j 0) k =
-        (kappaB D roots).getD k 0 := fun k hk ↦ by
-      rw [setupLayout_eq hm20, readEntry_ofChunks_two hlane _ (by rw [pow_succ]; omega)]
-      exact (setupStack_getD _ hk).1
-    have hT1 : ∀ k < 2 ^ m, (layoutsOf m).2.2.readEntry (fun j ↦ (D.circuitAt roots.pi1).setupStack.getD j 0) k +
-        (layoutsOf m).2.2.readEntry (fun j ↦ (D.circuitAt roots.pi1).setupStack.getD j 0) (k + 2 ^ m) =
-        (sigmaB D roots).getD k 0 := fun k hk ↦ by
-      rw [hT0 k hk, setupLayout_eq hm20, readEntry_ofChunks_two hlane _ (by rw [pow_succ]; omega),
-        (setupStack_getD _ hk).2]
+    rw [run_setupPoint, hSm, hsv, padded_eq (by simp [digitsList]; omega),
+      mleStk_eq _ (by simp [digitsList]; omega), claim_setup]
+    have hT0 : ∀ k < 2 ^ m, (D.circuitAt roots.pi1).setupStack.getD k 0 = (kappaB D roots).getD k 0 :=
+      fun k hk ↦ (setupStack_getD _ hk).1
+    have hT1 : ∀ k < 2 ^ m, (D.circuitAt roots.pi1).setupStack.getD k 0 +
+        (D.circuitAt roots.pi1).setupStack.getD (k + 2 ^ m) 0 = (sigmaB D roots).getD k 0 := fun k hk ↦ by
+      rw [hT0 k hk, (setupStack_getD _ hk).2]
       show (kappaB D roots).getD k 0 + ((kappaB D roots).getD k 0 + (sigmaB D roots).getD k 0) = _
       rw [← add_assoc, CharTwo.add_self_eq_zero, zero_add]
     rw [wPoly_congr hT0, wPoly_congr hT1]
