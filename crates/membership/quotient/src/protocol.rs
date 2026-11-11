@@ -758,20 +758,28 @@ pub(crate) fn prove_with_randomness(
     // limbs (overwritten with `q`'s), `q_gate` the gate's quotient's.
     let quotient_block = |base: usize, w_values: &[F64], q: [&mut [F64]; 3], q_gate: &mut [F64]| {
         let w_at = |k: usize| offsets[k] + point(base >> k);
-        // The public weight on this block: its region coordinates are the low index's bits, shifted.
+        // The public weight on this block: its region coordinates are the low index's bits, shifted. The weight of
+        // cell `j` is `indicator · Π_k f_k(bit k of j)`, a tensor product over the region's coordinates, kept as the
+        // eight weights of its three lowest (`lo`, with the cell's word) times one of 256 of the others (`hi`, with
+        // its eight cells): the same products, a quarter of a multiplication a cell to make.
         let indicator = (REGION..m).fold(F64::ONE, |acc, k| acc * (F64::ONE + w_at(k)));
-        let mut weights = vec![F192::from(indicator)];
-        if !indicator.is_zero() {
-            for k in 0..REGION {
-                let shift = (k..REGION).fold(F64::ZERO, |acc, j| acc + b[j - k] * w_at(j));
-                let slope = F192::ONE + coordinate_weight(k).unwrap_or_else(|| gammas[k - 8]);
-                let low = F192::ONE + slope.mul_base(shift);
-                for i in 0..weights.len() {
-                    weights.push(weights[i] * (low + slope));
-                    weights[i] *= low;
+        let weights = (!indicator.is_zero()).then(|| {
+            let tensor = |init: F192, coordinates: std::ops::Range<usize>| {
+                let mut t = vec![init];
+                for k in coordinates {
+                    let shift = (k..REGION).fold(F64::ZERO, |acc, j| acc + b[j - k] * w_at(j));
+                    let slope = F192::ONE + coordinate_weight(k).unwrap_or_else(|| gammas[k - 8]);
+                    let low = F192::ONE + slope.mul_base(shift);
+                    for i in 0..t.len() {
+                        t.push(t[i] * (low + slope));
+                        t[i] *= low;
+                    }
                 }
-            }
-        }
+                t
+            };
+            let lo: [F192; 8] = tensor(F192::ONE, 0..3).try_into().expect("eight weights");
+            (Ex8::from_limbs(limbs8(&lo)), tensor(F192::from(indicator), 3..REGION))
+        });
         let cell_vanishing = w_at(m).inv();
         let row_base = row_poly(offset + point(base));
         let row_vanishing: [F64; 4] = std::array::from_fn(|c| (row_base + row_low[c]).inv());
@@ -789,9 +797,8 @@ pub(crate) fn prove_with_randomness(
             let d = common + Ex8::splat(beta_.mul_base(offset + point(i))) + beta_points;
             let d_next = common + beta8.mul_k(limb(&sigma_values[i..]));
             let mut q = Ex8::from_limbs([limb(&q0[low..]), limb(&q1[low..]), limb(&q2[low..])]);
-            if weights.len() > 1 {
-                let weight: [F192; 8] = std::array::from_fn(|l| weights[low + l]);
-                q = q + Ex8::from_limbs(limbs8(&weight)).mul_k(w);
+            if let Some((lo, hi)) = &weights {
+                q = q + lo.mul_k(w) * Ex8::splat(hi[low >> 3]);
             }
             let [c0, c1, c2] = ((q * d * d_next + d + d_next).mul_k(cell_vanishing)).limbs();
             for (out, c) in [&mut q0[..], &mut q1[..], &mut q2[..]].into_iter().zip([c0, c1, c2]) {
