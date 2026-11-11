@@ -79,7 +79,7 @@ theorem getD_map_point (s : Array ℕ) {i : ℕ} (hi : i < s.size) :
 
 /-- **The Statement's wiring table carries σ** on the instance's cells. -/
 theorem hcar_deployed (i : cantorT B 22 × Fin 4) :
-    (tablePoly (colFn wcol)).eval (P.pt i) = P.pt (P.σ i) := by
+    (tablePoly (colFn wcol)).eval (P.pt i) = P.pt (deployedSigma B hm i) := by
   have hσ := sigmaSize
   have hvsz : ((membership PcsQuotient.logRows).sigma.map PcsQuotient.Domain.point).size = 2 ^ 24 := by
     rw [Array.size_map, hσ]
@@ -92,16 +92,15 @@ theorem hcar_deployed (i : cantorT B 22 × Fin 4) :
   have hxlt : Completeness.idx x < (membership PcsQuotient.logRows).sigma.size := by
     rw [hσ]; exact Completeness.idx_lt x
   rw [getD_map_point _ hxlt] at hL
-  rw [pt_deployed', pt_deployed, deployedParams_σ, idx_sigma, sigC_def, idxE_val, ← hx, hfn, ← map_tablePoly,
+  rw [pt_deployed, pt_deployed, idx_sigma, sigC_def, idxE_val, ← hx, hfn, ← map_tablePoly,
     show (ofK (point (Completeness.idx x)) : E) = algebraMap K E (point (Completeness.idx x)) from rfl,
     Polynomial.eval_map, Polynomial.eval₂_at_apply,
     Bridge.Ntt.point_eq_cantor hB (by decide) (Completeness.idx_lt _), Completeness.bitsOf_idx, hL]
   rfl
 
 theorem hpins_deployed (k : Fin 11) : P.pinPt k = pinE k := by
-  unfold _root_.Kc3.Params.pinPt _root_.Kc3.Params.pinCell
-  rw [pt_deployed']
-  have h : (idxE B hm (P.pins k, 2) : ℕ) = 4 * k + 2 :=
+  refine (pt_deployed ((deployedPins B hm k : cantorT B 22), (2 : Fin 4))).trans ?_
+  have h : (idxE B hm (deployedPins B hm k, 2) : ℕ) = 4 * k + 2 :=
     cell_of_row B hm k (by have := k.2; omega) 2
   rw [h]
   rfl
