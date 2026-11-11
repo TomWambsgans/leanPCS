@@ -261,11 +261,15 @@ fn end_to_end(variant: Variant) {
         (ok.output.clone(), rejected, ok.execution, calls)
     })
     };
-    println!(
-        "  the contract returns {:?} on the real proof, {gas} gas of execution; parity with the Rust verifier",
-        accepted.as_ref().map(|o| o[31]),
-    );
-    assert_eq!(accepted.as_deref(), Some(&word([1, 0, 0])[..]), "the contract accepts the real proof");
+    if wide {
+        println!("  π1-rec4 has no contract: checked against the Rust verifier (its claims, the openings' above)");
+    } else {
+        println!(
+            "  the contract returns {:?} on the real proof, {gas} gas of execution; parity with the Rust verifier",
+            accepted.as_ref().map(|o| o[31]),
+        );
+        assert_eq!(accepted.as_deref(), Some(&word([1, 0, 0])[..]), "the contract accepts the real proof");
+    }
     // The Rust→EVM test vector (tests/vectors/): the proof's calldata, the claims declared, the verdict and the gas.
     if let Ok(out) = std::env::var("WRITE_VECTORS") {
         let name = vector_name(variant);
@@ -283,8 +287,11 @@ fn end_to_end(variant: Variant) {
             ),
         });
         let file = std::env::var("VECTOR_FILE").unwrap_or_else(|_| name.to_string());
-        let path = std::path::Path::new(&out).join(format!("{file}.txt"));
-        std::fs::write(&path, text).expect("the vector file");
+        // `cargo test` runs in the crate's directory: a relative WRITE_VECTORS is relative to it.
+        let dir = std::path::Path::new(&out);
+        std::fs::create_dir_all(dir).unwrap_or_else(|e| panic!("WRITE_VECTORS={}: cannot create it: {e}", dir.display()));
+        let path = dir.join(format!("{file}.txt"));
+        std::fs::write(&path, text).unwrap_or_else(|e| panic!("the vector file {}: {e}", path.display()));
         println!("  test vector written to {}", path.display());
     }
     assert_eq!(rejected, 0, "the contract rejects a mutated proof, and a proof with one call not attested");

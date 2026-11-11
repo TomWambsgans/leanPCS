@@ -13,7 +13,10 @@
 //!
 //! A π1-rec4 vector (`keccak*_rec4`, `FsShape::Rec4`: no EVM contract of its own, its wide draws are no `KECCAK256`;
 //! π2's circuit runs its verifier) is replayed by the Rust verifier instead: it gives exactly the recorded claims, and
-//! the stream's mutations change them or are rejected.
+//! the stream's mutations change them or are rejected. A vector holds no opening proofs (nor does π1's contract check
+//! any: the frame declares the claims, the block proves them), so the claims' three WHIR openings are verified where
+//! the vector is written: `tests/prove_real.rs` (`prover::prove::verify`: the reduction and each opening's WHIR proof
+//! against its claim, the claims the openings' own), on the real trace; π2's by `leanvm_rec`'s `tests/pi2_real.rs`.
 //!
 //! `cargo test --release -p leanvm_univariate --test evm_vectors -- --nocapture`; with `UPDATE_VECTOR_GAS=1` it
 //! rewrites the vectors' `gas_straight` line to what it measures, and nothing else.
