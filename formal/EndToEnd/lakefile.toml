@@ -256,8 +256,8 @@ srcDir = "../RecCircuit"
 root = "RecCircuitTest.Main"
 
 # π2's verifier (`crates/leanvm/rec`, `PI2.md` §2, §8–§9), `formal/RecStatement`, for the Keccak VM: the verifier as
-# computable Lean (its seed and IV, the public data in the stream, the arithmetic at `t` over any field, the six
-# `PCS_OPEN` calls word for word), π2's circuit for the Keccak π1-rec3 at the 128-signature reference as data the Rust
+# computable Lean (its seed and IV, the public data in the stream, the arithmetic at `t` over any field, the eight
+# PCS claims word for word), π2's circuit for the Keccak π1-rec3 at the 128-signature reference as data the Rust
 # emits (`crates/leanvm/rec/tests/lean_statement_keccak.rs`, with a staleness test), the verifier-arithmetic lemmas
 # `RecPiop`'s rounds consume, and the end statements of the recursive verifier against the Keccak VM's `KvHolds`.
 [[lean_lib]]

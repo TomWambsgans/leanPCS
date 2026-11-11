@@ -33,8 +33,8 @@ candidate tuple the out-of-domain answers pin, `ComposePcs.Pinned4`), `setupPerm
 | `PcsFinal.lean` | The comparison outcome by outcome (`hcmpK`), **`knowledgeSoundness`** and `ksBound`. |
 
 `Soundness/{EarlyStop,Cost,TreeLog,MerkleWord,Replay,Extract,Final}.lean` are the previous protocol's modules pruned
-to what the leanVM line imports (`TreeLog`, `MerkleWord`, `Replay`, `Extract` serve here too);
-`Soundness/{Defs,Hypotheses,F1Step,RpmV}.lean` are the previous protocol's and no longer build (git history).
+to what the leanVM line imports (`TreeLog`, `MerkleWord`, `Replay`, `Extract` serve here too); the previous
+protocol's own end-theorem files were removed (git history).
 -/
 
 /-- info: 'Soundness.knowledgeSoundness' depends on axioms: [propext, Classical.choice, Quot.sound] -/

@@ -52,7 +52,7 @@ from `zeroKnowledge_pcs` (`ZK/PcsEnd.lean`, with `FiatShamirUniform εfs` as a h
   `ideal_challenges`), `ZK/PcsBad*.lean`, `ZK/PcsAdds.lean`, `ZK/PcsNF.lean`, `ZK/PcsInj.lean` (each tracked input is
   injective in a value drawn just before it, among at most `5 · 2^19 + 140` edges: `phase_bound`).
 
-The library's earlier files (`ZK/Core*.lean`, `ZK/ProverBridge*.lean`, …: the hidden-layout protocol's
-`zeroKnowledge_closed`) are not imported here; `RecCompose` imports `ZK/ProverBridgeEager.lean` and
+`ZK/ProverBridge{Eager,Hom,Param}.lean` (random-permutation lemmas kept from the hidden-layout protocol's proof,
+which was removed) are not imported here; `RecCompose` imports `ZK/ProverBridgeEager.lean` and
 `ZK/ProverBridgeParam.lean` directly.
 -/
