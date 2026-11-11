@@ -121,4 +121,4 @@ With a ZK-WHIR whose leaves are salted, the roots hide without this.
   program with the prover's answers (its recomputed chain replayed in the lazy permutation, the roots read back from
   their halves), and the Fiat–Shamir freshness bound (`fiatShamirUniform_closed`: the simulator's `113` challenge
   calls against independent uniform answers, each input injective in a value drawn just before it).
-- Deployed randomness is ChaCha12 and a Keccak-256 KDF (`Randomness::derive`), so zero knowledge is computational.
+- Deployed randomness is a Keccak-256 KDF (`Randomness::derive`), so zero knowledge is computational.

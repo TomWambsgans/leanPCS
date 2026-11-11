@@ -161,7 +161,7 @@ one-point claims each opened by a version-1 PCS opening, the quotient table in t
   at the real Keccak-f[1600], against the regenerated `Graph.lean` (the six declared claims, the index commitment's
   two storage words).
 - **Models and trust.** Keccak-f[1600] is one random permutation; the prover's randomness is uniform (deployed:
-  ChaCha12 and a Keccak-256 KDF, so computational ZK). Tested, not proved: the bytecode computes the graph;
+  a Keccak-256 KDF, `Randomness::derive`, so computational ZK). Tested, not proved: the bytecode computes the graph;
   `FIELD_MUL` and `KECCAK256` are the Lean operations; the Statement is the Rust (differential tests: the reduction,
   index and proof vectors agree; the prover vectors are too slow for interpreted Lean). The deployed Rust prover is
   trusted for completeness. The random-permutation theorems and the EVM one do not formally compose.
