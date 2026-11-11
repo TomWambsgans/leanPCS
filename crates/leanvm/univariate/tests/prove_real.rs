@@ -328,7 +328,7 @@ fn proves_and_verifies_keccak_rec3() {
     end_to_end(KECCAK_REC3);
 }
 
-/// The Keccak VM's π1-rec4, the recursion's inner proof since `docs/leanvm/rec/PERF_GAS2.md`: π1-rec3 with the
+/// The Keccak VM's π1-rec4, the recursion's inner proof (`docs/leanvm/univariate/SPEC.md` §14.4): π1-rec3 with the
 /// challenges no message separates drawn from one Keccak-f each (`FsShape::Rec4`). It has no contract: the Rust
 /// verifier's claims are checked against the openings'.
 #[test]

@@ -3,9 +3,9 @@
 // with the univariate skip's size as a parameter. New here: the skip of any size `k ≤ 6`, π1-rec's zerocheck point
 // (`FsShape::Rec`: its sampled coordinates successive squares of one), the ring map in tower order
 // (`crate::ring_tower`), and the lincheck's terminal checked on the sent slices for any block circuit
-// ([`WalkedCircuit`]: `crate::keccak_flock`'s Keccak-f block, docs/leanvm/flock/KECCAK.md). MIT OR Apache-2.0; see
+// ([`WalkedCircuit`]: `crate::keccak_flock`'s Keccak-f block, docs/leanvm/univariate/FLOCK.md). MIT OR Apache-2.0; see
 // AGENTS.md.
-//! Flock's verifier as π1 runs it (docs/leanvm/univariate/SPEC-FLOCK.md): the zerocheck with a univariate skip, the
+//! Flock's verifier as π1 runs it (docs/leanvm/univariate/FLOCK.md): the zerocheck with a univariate skip, the
 //! lincheck, the 64 slices sent and the lincheck's terminal checked on them ([`WalkedCircuit::terminal`]), then the
 //! ring switch's map and target, whose weight `Φ(eq(p, ·))` is left to the verifier's batching sumcheck.
 
@@ -140,7 +140,7 @@ pub fn verify_walked_with<S: Scalar, C: WalkedCircuit>(
 /// [`verify_walked_with`] without the ring switch's map: the zerocheck, the lincheck, the slices and the terminal
 /// check; returns the slices' point and the slices, the map drawn by the caller ([`ring_end_at`]). With `eq_first`
 /// the zerocheck's first sampled coordinate is the caller's (π1-rec4, `FsShape::Rec4`: drawn with the bus's
-/// challenges, then the map after `C2`'s commitment, `docs/leanvm/rec/PERF_GAS2.md`).
+/// challenges, then the map after `C2`'s commitment, `docs/leanvm/univariate/SPEC.md` §14.4).
 pub fn verify_walked_deferred<S: Scalar, C: WalkedCircuit>(
     log_n: usize,
     variant: Variant,

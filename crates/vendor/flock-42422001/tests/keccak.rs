@@ -1,4 +1,4 @@
-// New in this repository: tests of `flock::keccak` (the Keccak-f[1600] block, docs/leanvm/flock/KECCAK.md
+// New in this repository: tests of `flock::keccak` (the Keccak-f[1600] block, docs/leanvm/univariate/FLOCK.md
 // §4.2, §4.5). MIT OR Apache-2.0; see AGENTS.md.
 //! The Keccak-f block R1CS:
 //!

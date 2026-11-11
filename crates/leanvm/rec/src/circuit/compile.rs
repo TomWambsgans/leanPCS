@@ -21,7 +21,7 @@
 //! - `Add`, `Mul` → `E` units on limbs (a product, a square, a sum), constants → `κ` slots;
 //! - the calls' elements, `π1`'s roots, the statement, and the zero checks → **ports** (`spec::Source`);
 //! - π1's claims [`HASHED_CLAIMS`] → their encoding's Keccak-256 in the circuit, a port (`Source::ClaimHash`): the
-//!   contract reads it from the frame of PCS claims and encodes the other claims only (`docs/leanvm/rec/PERF_GAS.md`).
+//!   contract reads it from the frame of PCS claims and encodes the other claims only (`docs/leanvm/rec/SPEC-REC.md` §2.4.6).
 //!
 //! The witness is the framework's: the free bits and limbs given, everything else computed by the formulas.
 
@@ -42,9 +42,9 @@ use super::units::{Arith, Bools, Copies, Limbs, Op, Packer, Ports};
 /// π1's claims (their indices among `calls(recorded)`) whose Keccak-256 π2's circuit computes: the claim's encoding
 /// (the EIP draft's, `pcs_claim`) hashed in the circuit, its digest a public word ([`Source::ClaimHash`]) that the
 /// contract reads from the transaction's frame of PCS claims, so that the claim's own words (its root, its
-/// out-of-domain answer, its value, the coordinates no other claim has) leave calldata (`docs/leanvm/rec/PERF_GAS.md`).
+/// out-of-domain answer, its value, the coordinates no other claim has) leave calldata (`docs/leanvm/rec/SPEC-REC.md` §2.4.6).
 /// The three claims (`C1`'s at 27 variables at 128 signatures, 28 at 400: six permutations; `C2`'s six; `F`'s five)
-/// fit `2^24` positions with π1-rec4's transcript and D16v's trimmed last rounds (`docs/leanvm/rec/PERF_GAS2.md`). A
+/// fit `2^24` positions with π1-rec4's transcript and D16v's trimmed last rounds (`docs/leanvm/rec/SPEC-REC.md` §2.4.5). A
 /// circuit that would not fit [`FIT_LOG_N`] with them hashes fewer, the last dropped first, down to none
 /// ([`compile_keeping`]).
 pub const HASHED_CLAIMS: &[usize] = &[0, 1, 2];
@@ -758,7 +758,7 @@ pub fn compile_hashing<P: Permutation>(
                 Word::Stream(at) => CallWord::Root(root_of[&at]),
                 Word::Node(id) => match (g.nodes[id as usize], pair_coordinate(&g, id)) {
                     (Node::Const([c0, c1, c2]), _) => CallWord::Const(super::spec::element_word(E::new(c0, c1, c2))),
-                    // π1-rec3: a pair's coordinate, its challenge the port (SPEC-POINTS.md).
+                    // π1-rec3: a pair's coordinate, its challenge the port (univariate SPEC.md §14.1).
                     (_, Some((z, coordinate))) => {
                         let next = element_nodes.len() as u32;
                         let element = *element_of.entry(z).or_insert_with(|| {

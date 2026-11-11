@@ -281,7 +281,7 @@ mod tests {
     }
 
     /// The paired batching sumcheck's coordinates (`leanvm_statement::transcript::pair_point`, `crates/leanvm/rec/
-    /// SPEC-POINTS.md`) are this basis's `β_1` and `V_2`'s coordinate functionals, at any point.
+    /// univariate SPEC.md` §14.1) are this basis's `β_1` and `V_2`'s coordinate functionals, at any point.
     #[test]
     fn pair_points_are_v2s_coordinate_functionals() {
         use leanvm_statement::transcript::{cantor_beta1, pair_point};

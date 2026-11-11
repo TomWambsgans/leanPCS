@@ -32,7 +32,7 @@ pub struct Vector {
 }
 
 /// The configurations by name: `keccak` the Keccak VM's main line (`KECCAK_MAIN`), `keccak_rec3` its π1-rec3
-/// (`KECCAK_REC3`), `keccak_rec4` its π1-rec4 (`KECCAK_REC4`, the recursion's since `docs/leanvm/rec/PERF_GAS2.md`).
+/// (`KECCAK_REC3`), `keccak_rec4` its π1-rec4 (`KECCAK_REC4`, the recursion's (`docs/leanvm/univariate/SPEC.md` §14.4)).
 pub fn variant_of(config: &str) -> Variant {
     match config {
         "keccak" => KECCAK_MAIN,
