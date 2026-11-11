@@ -43,6 +43,7 @@ def givenWord (input s : List UInt8) : Given → K
   | .pub k => ofBool ((input.getD (k / 8) 0).toNat.testBit (k % 8))
   | .stream k => ofBool ((s.getD (k / 8) 0).toNat.testBit (k % 8))
   | .free e l => F64.ofU64 (UInt64.ofNat (be8 s ((c.freeReads.getD e default).1 + 8 * (2 - l))))
+  | .bit _ _ => 0
 
 /-- A given value's word, `0` for any other. -/
 def wordOf (input s : List UInt8) (u : ℕ) : K :=
@@ -54,6 +55,7 @@ def wordOf (input s : List UInt8) (u : ℕ) : K :=
 on its row's pulls (earlier values' words, or given ones) plus its `κ`. -/
 def word (input s : List UInt8) (v : ℕ) : K :=
   match c.givenArr.getD v none with
+  | some (.bit u e) => if h : u < v then ofBool ((F64.toU64 (word input s u)).toNat.testBit e) else 0
   | some g => c.givenWord input s g
   | none =>
     match c.circuit.formulaAt (c.ctx.prod v) with
@@ -62,7 +64,7 @@ def word (input s : List UInt8) (v : ℕ) : K :=
         if h : u < v then word input s u else c.wordOf input s u) + c.ctx.kap (c.ctx.prod v)
     | _ => 0
 termination_by v
-decreasing_by exact h
+decreasing_by all_goals assumption
 
 /-- **The honest witness**: at each position the word of the value it pulls. -/
 def witness (input s : List UInt8) (q : ℕ) : K :=
@@ -70,9 +72,16 @@ def witness (input s : List UInt8) (q : ℕ) : K :=
 
 variable {c} {input s : List UInt8}
 
-theorem word_given {v : ℕ} {g : Given} (h : c.givenArr.getD v none = some g) :
+theorem word_given {v : ℕ} {g : Given} (h : c.givenArr.getD v none = some g) (hb : ∀ u e, g ≠ .bit u e) :
     c.word input s v = c.givenWord input s g := by
-  rw [word]; simp only [h]
+  rw [word]
+  cases g with
+  | bit u e => exact absurd rfl (hb u e)
+  | _ => simp only [h]
+
+theorem word_bit {v u e : ℕ} (h : c.givenArr.getD v none = some (.bit u e)) (hu : u < v) :
+    c.word input s v = ofBool ((F64.toU64 (c.word input s u)).toNat.testBit e) := by
+  rw [word]; simp only [h, dif_pos hu]
 
 theorem word_gate {v : ℕ} {p : Poly} (h : c.givenArr.getD v none = none)
     (hf : c.circuit.formulaAt (c.ctx.prod v) = .expr p) :
@@ -150,25 +159,35 @@ theorem push_witness {r : Recorded} (hc : c.Checked r) {i : ℕ} (hi : i < c.cir
         rw [hG] at hg
         cases g with
         | free e l => cases hg
-        | pub k =>
-          simp only [Bool.and_eq_true, beq_iff_eq] at hg
-          obtain ⟨⟨rfl, hk0⟩, hpi⟩ := hg
-          rw [hk0, add_zero, word_given hG]
+        | bit u e =>
+          simp only [Bool.and_eq_true, beq_iff_eq, decide_eq_true_eq] at hg
+          obtain ⟨⟨⟨hu, rfl⟩, hk0⟩, hpi⟩ := hg
+          rw [hk0, add_zero, word_bit hG hu]
           have hcell : c.circuit.cells (c.witness input s) i (i % c.ctx.W) = c.witness input s i := by
             unfold Circuit.cells
             rw [show c.circuit.width = c.ctx.W from rfl, Nat.div_add_mod]
           simp only [Poly.eval, Ctx.sqPoly, List.foldl_nil, List.foldl_cons, zero_add, hcell, witness_of hpi hv,
-            word_given hG, givenWord]
+            word_bit hG hu]
+          exact (ofBool_sq _).symm
+        | pub k =>
+          simp only [Bool.and_eq_true, beq_iff_eq] at hg
+          obtain ⟨⟨rfl, hk0⟩, hpi⟩ := hg
+          rw [hk0, add_zero, word_given hG (fun _ _ h => by cases h)]
+          have hcell : c.circuit.cells (c.witness input s) i (i % c.ctx.W) = c.witness input s i := by
+            unfold Circuit.cells
+            rw [show c.circuit.width = c.ctx.W from rfl, Nat.div_add_mod]
+          simp only [Poly.eval, Ctx.sqPoly, List.foldl_nil, List.foldl_cons, zero_add, hcell, witness_of hpi hv,
+            word_given hG (fun _ _ h => by cases h), givenWord]
           exact (ofBool_sq _).symm
         | stream k =>
           simp only [Bool.and_eq_true, beq_iff_eq] at hg
           obtain ⟨⟨rfl, hk0⟩, hpi⟩ := hg
-          rw [hk0, add_zero, word_given hG]
+          rw [hk0, add_zero, word_given hG (fun _ _ h => by cases h)]
           have hcell : c.circuit.cells (c.witness input s) i (i % c.ctx.W) = c.witness input s i := by
             unfold Circuit.cells
             rw [show c.circuit.width = c.ctx.W from rfl, Nat.div_add_mod]
           simp only [Poly.eval, Ctx.sqPoly, List.foldl_nil, List.foldl_cons, zero_add, hcell, witness_of hpi hv,
-            word_given hG, givenWord]
+            word_given hG (fun _ _ h => by cases h), givenWord]
           exact (ofBool_sq _).symm
       | none =>
         rw [hG] at hg
@@ -187,10 +206,15 @@ theorem push_witness {r : Recorded} (hc : c.Checked r) {i : ℕ} (hi : i < c.cir
         · rename_i hlt'
           rcases hor with h' | h'
           · exact absurd h' hlt'
-          · obtain ⟨g', hg'⟩ := Option.isSome_iff_exists.mp h'
-            rw [word_given hg']
+          · revert h'
             unfold wordOf
-            rw [hg']
+            cases hgu : c.givenArr.getD (c.pullArr.getD (c.ctx.rowStart i + cl) NONE) none with
+            | none => simp
+            | some g' =>
+              intro _
+              cases g' with
+              | bit a b => simp at *
+              | _ => rw [word_given hgu (fun _ _ h => by cases h)]
 
 /-- **The honest witness satisfies the circuit.** -/
 theorem witness_satisfied {r : Recorded} (hc : c.Checked r) : c.circuit.Satisfied (c.witness input s) :=
@@ -283,7 +307,7 @@ theorem pubW_witness {r : Recorded} (hc : c.Checked r) (hin : input.length = 32)
   have hg := hc.cGiven
   unfold completeGiven at hg
   simp only [Bool.and_eq_true] at hg
-  obtain ⟨⟨hg1, -⟩, -⟩ := hg
+  obtain ⟨⟨⟨hg1, -⟩, -⟩, -⟩ := hg
   show c.decodePublic (c.ctx.val (c.witness input s)) = input
   apply List.ext_getElem?
   intro i
@@ -301,7 +325,7 @@ theorem pubW_witness {r : Recorded} (hc : c.Checked r) (hin : input.length = 32)
   have hG : c.givenArr.getD (c.publicSelf.getD (8 * i + t) NONE) none = some (.pub (8 * i + t)) := by
     have := allBelow_spec hg1 _ hk
     simpa using this
-  rw [val_witness hc (lt_of_given hc hG), word_given hG, givenWord,
+  rw [val_witness hc (lt_of_given hc hG), word_given hG (fun _ _ h => by cases h), givenWord,
     show (8 * i + t) / 8 = i by omega, show (8 * i + t) % 8 = t by omega, List.getD_eq_getElem _ _ hi2]
 
 theorem be8_lt (s : List UInt8) (a : ℕ) : be8 s a < 2 ^ 64 := by
@@ -338,7 +362,7 @@ theorem streamW_witness {r : Recorded} (hc : c.Checked r) (hs : s.length = r.gra
   have hg := hc.cGiven
   unfold completeGiven at hg
   simp only [Bool.and_eq_true] at hg
-  obtain ⟨⟨-, hg2⟩, hg3⟩ := hg
+  obtain ⟨⟨⟨-, hg2⟩, hg3⟩, -⟩ := hg
   have hfree := hc.free
   unfold freeReadsOk at hfree
   simp only [Bool.and_eq_true, Array.all_eq_true, beq_iff_eq, decide_eq_true_eq] at hfree
@@ -375,8 +399,8 @@ theorem streamW_witness {r : Recorded} (hc : c.Checked r) (hs : s.length = r.gra
       have := allBelow_spec hg2 _ hk
       rw [hv] at this
       simpa using this
-    rw [show c.streamBit (8 * i + t) = v by simp [streamBit, hv], val_witness hc (lt_of_given hc hG), word_given hG,
-      givenWord, show (8 * i + t) / 8 = i by omega, show (8 * i + t) % 8 = t by omega, List.getD_eq_getElem _ _ hi2]
+    rw [show c.streamBit (8 * i + t) = v by simp [streamBit, hv], val_witness hc (lt_of_given hc hG),
+      word_given hG (fun _ _ h => by cases h), givenWord, show (8 * i + t) / 8 = i by omega, show (8 * i + t) % 8 = t by omega, List.getD_eq_getElem _ _ hi2]
   · rename_i h0
     have hex : ∃ e, ∃ he : e < c.freeReads.size,
         (c.freeReads[e]'he).1 ≤ i ∧ i < (c.freeReads[e]'he).1 + 24 := by
@@ -402,7 +426,8 @@ theorem streamW_witness {r : Recorded} (hc : c.Checked r) (hs : s.length = r.gra
       have := allBelow_spec (allBelow_spec hg3 e he) _ hl
       rw [hxe'] at this
       simpa using this
-    rw [val_witness hc (lt_of_given hc hG), word_given hG, givenWord, F64.toU64_ofU64, hxe']
+    rw [val_witness hc (lt_of_given hc hG), word_given hG (fun _ _ h => by cases h), givenWord, F64.toU64_ofU64,
+      hxe']
     simp only
     rw [show 2 - (2 - k / 8) = k / 8 by omega, UInt64.toNat_ofNat_of_lt' (be8_lt _ _),
       be8_byte _ _ _ (Nat.mod_lt _ (by norm_num)), show off + 8 * (k / 8) + k % 8 = i by omega,
@@ -415,10 +440,11 @@ theorem streamW_witness {r : Recorded} (hc : c.Checked r) (hs : s.length = r.gra
 (`compile_sound_zero_rg`'s, from `Satisfied`). -/
 theorem zero_port_sat {g : RecGraph.Graph} {rootsAt : List ℕ} {iv : List UInt8} {hashed : List ℕ}
     (hc : compile (ofRG g rootsAt iv hashed) = .ok c) {w : ℕ → K} (hw : c.circuit.Satisfied w) {J : ℕ}
-    (hJ : J < c.circuit.ports.size) (hsrc : (c.circuit.ports.getD J default).source = .zero) :
-    zeroOrig c (ofRG g rootsAt iv hashed) (c.zeroIndex J) ∈ g.zero ∧
+    (hJ : J < c.circuit.ports.size) (hsrc : (c.circuit.ports.getD J default).source = .zero)
+    (hcz : c.claimZeros ≤ c.zeroIndex J) :
+    zeroOrig c (ofRG g rootsAt iv hashed) (c.zeroIndex J - c.claimZeros) ∈ g.zero ∧
       c.circuit.portLimbs w J = limbsL (RecGraph.valE
-        (rgVals g iv (c.pubW w) (c.streamW (ofRG g rootsAt iv hashed) w)) (zeroOrig c (ofRG g rootsAt iv hashed) (c.zeroIndex J))) := by
+        (rgVals g iv (c.pubW w) (c.streamW (ofRG g rootsAt iv hashed) w)) (zeroOrig c (ofRG g rootsAt iv hashed) (c.zeroIndex J - c.claimZeros))) := by
   have hchk := checked_of_compile hc
   set r := ofRG g rootsAt iv hashed
   have hzero : c.zero = r.graph.zero.map (fun id => c.map.getD id 0) := (graphOk_parts hchk.graph).2.1
@@ -429,15 +455,15 @@ theorem zero_port_sat {g : RecGraph.Graph} {rootsAt : List ℕ} {iv : List UInt8
   have hzn : c.zeroNodes = (r.graph.zero.filter (P ∘ fun id => c.map.getD id 0)).map (fun id => c.map.getD id 0) := by
     unfold zeroNodes; rw [hzero, List.filter_map]
   rw [hP] at hzn
-  have hlen : c.zeroIndex J < (r.graph.zero.filter
+  have hlen : c.zeroIndex J - c.claimZeros < (r.graph.zero.filter
       (fun id => notConst (c.nodes.getD (c.map.getD id 0) default))).length := by
-    rw [hzn, List.length_map] at hso; exact hso
-  have hget : c.zeroNodes.getD (c.zeroIndex J) 0 = c.map.getD (zeroOrig c r (c.zeroIndex J)) 0 := by
+    rw [hzn, List.length_map] at hso; omega
+  have hget : c.zeroNodes.getD (c.zeroIndex J - c.claimZeros) 0 = c.map.getD (zeroOrig c r (c.zeroIndex J - c.claimZeros)) 0 := by
     rw [hzn]
     simp only [zeroOrig, List.getD_eq_getElem?_getD, List.getElem?_map, List.getElem?_eq_getElem hlen,
       Option.map_some, Option.getD_some]
-  have hmemz : zeroOrig c r (c.zeroIndex J) ∈ g.zero := by
-    have : zeroOrig c r (c.zeroIndex J) ∈ r.graph.zero.filter
+  have hmemz : zeroOrig c r (c.zeroIndex J - c.claimZeros) ∈ g.zero := by
+    have : zeroOrig c r (c.zeroIndex J - c.claimZeros) ∈ r.graph.zero.filter
         (fun id => notConst (c.nodes.getD (c.map.getD id 0) default)) := by
       simp only [zeroOrig, List.getD_eq_getElem?_getD, List.getElem?_eq_getElem hlen, Option.getD_some]
       exact List.getElem_mem hlen
@@ -445,11 +471,103 @@ theorem zero_port_sat {g : RecGraph.Graph} {rootsAt : List ℕ} {iv : List UInt8
   refine ⟨hmemz, ?_⟩
   rw [ports_carry hchk hw J hJ, portMeaning, hsrc]
   simp only
-  have hmem := (graphOk_parts hchk.graph).2.2.1 (c.zeroNodes.getD (c.zeroIndex J) 0) (by
+  rw [if_neg (by omega)]
+  have hmem := (graphOk_parts hchk.graph).2.2.1 (c.zeroNodes.getD (c.zeroIndex J - c.claimZeros) 0) (by
     apply List.mem_append_left
-    simp [List.getD_eq_getElem?_getD, hso])
+    simp [List.getD_eq_getElem?_getD, show c.zeroIndex J - c.claimZeros < c.zeroNodes.length by omega])
   rw [elem_rg hchk (expandSound hc) w hmem.1 hmem.2 (zero_lt hc _ hmemz) hget.symm]
 
+/-! ## The hashed claims' zero ports, on the honest witness -/
+
+/-- A word is the packing of its own bits. -/
+theorem sum_own_bits (x : K) :
+    ∑ e ∈ Finset.range 64, ofBool ((F64.toU64 x).toNat.testBit e) * F64.G ^ e = x := by
+  rw [sum_bits_word _ (F64.toU64 x).toNat (fun e _ => rfl), ← F64.ofU64_eq_ofNat, F64.ofU64_toU64]
+
+/-- **The hashed claims' zero ports carry zeros on the honest witness**: a free element's free bits are the bits of its
+limbs' words (`Given.bit`), so its packings are its limbs and `packed + limbs = 0`. -/
+theorem claim_zero_port_witness {r : Recorded} (hc : c.Checked r) {J : ℕ} (hJ : J < c.circuit.ports.size)
+    (hsrc : (c.circuit.ports.getD J default).source = .zero) (hcz : c.zeroIndex J < c.claimZeros) :
+    c.circuit.portLimbs (c.witness input s) J = [0, 0, 0] := by
+  have hsat := witness_satisfied (input := input) (s := s) hc
+  have G := hc.good hsat
+  rw [ports_carry hc hsat J hJ, portMeaning, hsrc]
+  simp only [if_pos hcz]
+  -- The sum's free element.
+  have hm : c.claimSums.getD (c.zeroIndex J) #[] ∈ c.claimSums := by
+    rw [List.getD_eq_getElem _ _ hcz]; exact List.getElem_mem hcz
+  unfold claimSums at hm
+  obtain ⟨cl, hcl, hfm⟩ := List.mem_flatMap.mp hm
+  obtain ⟨fr, hfr, hfs⟩ := List.mem_map.mp hfm
+  obtain ⟨j, hj, hjcl⟩ := List.getElem_of_mem hcl
+  obtain ⟨f, hf, hffr⟩ := List.getElem_of_mem hfr
+  have hj' : j < c.claims.size := by simpa using hj
+  have hf' : f < cl.frees.size := by simpa using hf
+  have ecl : c.claims.getD j default = cl := by rw [← hjcl]; simp [Array.getD_eq_getD_getElem?, hj']
+  have efr : cl.frees.getD f default = fr := by rw [← hffr]; simp [Array.getD_eq_getD_getElem?, hf']
+  obtain ⟨-, -, hclaims⟩ := claimsOk_parts hc.claims
+  obtain ⟨-, hok⟩ := hclaims j hj'
+  obtain ⟨-, -, -, -, -, -, hfok, -⟩ := claimOk_parts hok
+  have hfo := hfok f (by rw [ecl]; exact hf')
+  rw [ecl, efr] at hfo
+  obtain ⟨hid, -, -, -, -, -, hpk, har⟩ := freeOk_parts hfo
+  rw [← hid] at har
+  -- The given bits.
+  have hg := hc.cGiven
+  unfold completeGiven at hg
+  simp only [Bool.and_eq_true, beq_iff_eq, decide_eq_true_eq] at hg
+  have hgj := allBelow_spec (allBelow_spec hg.2 j hj') f (by rw [ecl]; exact hf')
+  rw [ecl, efr] at hgj
+  simp only [Bool.and_eq_true, beq_iff_eq, decide_eq_true_eq] at hgj
+  obtain ⟨-, hgk⟩ := hgj
+  have hbits : ∀ k < 192, c.ctx.val (c.witness input s) ((fr.2.1).getD k NONE) =
+      ofBool ((F64.toU64 (c.ctx.val (c.witness input s) ((c.limbsOf fr.1).getD (2 - k / 64) NONE))).toNat.testBit
+        (8 * (7 - k / 8 % 8) + k % 8)) := by
+    intro k hk
+    have hgk' := allBelow_spec hgk k hk
+    simp only [Bool.and_eq_true, beq_iff_eq, decide_eq_true_eq] at hgk'
+    obtain ⟨hgv, hlt⟩ := hgk'
+    have hv := lt_of_given hc hgv
+    rw [val_witness hc hv, word_bit hgv hlt, val_witness hc (lt_trans hlt hv)]
+  -- Each packing is its limb.
+  have hpack : ∀ li < 3, c.ctx.val (c.witness input s) ((fr.2.2.1).getD li NONE) =
+      c.ctx.val (c.witness input s) ((c.limbsOf fr.1).getD li NONE) := by
+    intro li hli
+    have hpk' := hpk li hli
+    unfold packIs at hpk'
+    split at hpk'
+    · rename_i t ht
+      simp only [Bool.and_eq_true, beq_iff_eq, decide_eq_true_eq] at hpk'
+      obtain ⟨⟨htl, hout⟩, hbs⟩ := hpk'
+      have hv := Ctx.pack_val G (hc.pack _ (Ctx.getD_mem default htl))
+      rw [hout, hbs, freeLimbBits_eq _ _ hli] at hv
+      rw [hv, ← sum_own_bits (c.ctx.val (c.witness input s) ((c.limbsOf fr.1).getD li NONE))]
+      apply Finset.sum_congr rfl
+      intro e he
+      rw [Finset.mem_range] at he
+      have hB : c.ctx.bitAt (c.witness input s) (freeExps.map fun e => (e, (fr.2.1).getD (freeIdx li e) NONE)) e =
+          c.ctx.val (c.witness input s) ((fr.2.1).getD (freeIdx li e) NONE) := by
+        rw [Ctx.bitAt, lookup_map_self, if_pos (mem_freeExps e he)]
+      rw [hB, hbits _ (show freeIdx li e < 192 by unfold freeIdx; omega),
+        show 2 - freeIdx li e / 64 = li by unfold freeIdx; omega,
+        show 8 * (7 - freeIdx li e / 8 % 8) + freeIdx li e % 8 = e by unfold freeIdx; omega]
+    · cases hpk'
+  obtain ⟨-, -, -, hop⟩ := arith_ok G har
+  rw [opE, limbsE_toList, limbsE_toList, limbsE_toList, hpack 0 (by norm_num), hpack 1 (by norm_num),
+    hpack 2 (by norm_num), F192.ofLimbs_add_ofLimbs, CharTwo.add_self_eq_zero, CharTwo.add_self_eq_zero,
+    CharTwo.add_self_eq_zero] at hop
+  have hz : ∀ l < 3, c.ctx.val (c.witness input s) ((fr.2.2.2).getD l NONE) = 0 := by
+    have := F192.ofLimbs_injective hop
+    intro l hl
+    interval_cases l
+    · exact this.1
+    · exact this.2.1
+    · exact this.2.2
+  unfold claimSums
+  rw [← hfs, show List.range 3 = [0, 1, 2] from rfl]
+  simp only [List.map_cons, List.map_nil, hz 0 (by norm_num), hz 1 (by norm_num), hz 2 (by norm_num)]
+
 end Compiled
+
 
 end RecCircuit
