@@ -71,40 +71,42 @@ section With
 
 variable {m : Type → Type} [Monad m] (H : List UInt8 → m Digest) (F : KeccakState → m KeccakState)
 
-/-- **Before `α`**: the public values, `W`'s stack, commitment, root and out-of-domain answer
+/-- **Before `α`**: the public values, `W`'s stack, commitment, out-of-domain point, root and answer
 (`pi2ProveStreamWith`'s first lines). -/
-def pre2 (G : RecPiop.Circuit E) (ood : ℕ → Digest → Array K → E) (reads : List Read) (values : List PublicValue)
-    (w : ℕ → K) : UniComplete.WrM m (Array K × LeanVM.Prover.Tree) := do
+def pre2 (G : RecPiop.Circuit E) (oodPt : ℕ → Digest → m (List E)) (reads : List Read) (values : List PublicValue)
+    (w : ℕ → K) : UniComplete.WrM m (Array K × LeanVM.Prover.Tree × List E) := do
   sendPublic (reads.zip values)
   let wStack := padStack (stackVars G.logN).1 fun i ↦ (wTableB G w).getD i 0
   let wTree ← (StateT.lift (E2ECompleteness.commitWithH H (stackVars G.logN).1 wStack) :
     UniComplete.WrM m LeanVM.Prover.Tree)
+  let wz ← (StateT.lift (oodPt (stackVars G.logN).1 wTree.root) : UniComplete.WrM m (List E))
   UniComplete.sendRoot (UniStatement.rootHalves wTree.root)
-  UniComplete.sendScalar (ood (stackVars G.logN).1 wTree.root wStack)
-  return (wStack, wTree)
+  UniComplete.sendScalar (pi2OodAt wStack wz)
+  return (wStack, wTree, wz)
 
-/-- **From `γ` to `t`**: `Q`'s stack, commitment, root and out-of-domain answer. -/
-def mid2 (G : RecPiop.Circuit E) (S : CoreSpec E) (ood : ℕ → Digest → Array K → E) (pubs : List E) (w : ℕ → K)
-    (α β γ : E) : UniComplete.WrM m (Array K × LeanVM.Prover.Tree) := do
+/-- **From `γ` to `t`**: `Q`'s stack, commitment, out-of-domain point, root and answer. -/
+def mid2 (G : RecPiop.Circuit E) (S : CoreSpec E) (oodPt : ℕ → Digest → m (List E)) (pubs : List E) (w : ℕ → K)
+    (α β γ : E) : UniComplete.WrM m (Array K × LeanVM.Prover.Tree × List E) := do
   let qStack := padStack (stackVars G.logN).2.1 (qEntry G.logN (hNovel G w α β) (qNovel G w α β γ (phiOn S pubs γ))
     (pNovel G w) (qpNovel G w γ))
   let qTree ← (StateT.lift (E2ECompleteness.commitWithH H (stackVars G.logN).2.1 qStack) :
     UniComplete.WrM m LeanVM.Prover.Tree)
+  let qz ← (StateT.lift (oodPt (stackVars G.logN).2.1 qTree.root) : UniComplete.WrM m (List E))
   UniComplete.sendRoot (UniStatement.rootHalves qTree.root)
-  UniComplete.sendScalar (ood (stackVars G.logN).2.1 qTree.root qStack)
-  return (qStack, qTree)
+  UniComplete.sendScalar (pi2OodAt qStack qz)
+  return (qStack, qTree, qz)
 
 /-- **After `t`**: the values at `t`, `ρ`, the output. -/
 def post2 (G : RecPiop.Circuit E) (setupStack : Array K) (input : List UInt8) (values : List PublicValue) (w : ℕ → K)
-    (wS : Array K) (wT : LeanVM.Prover.Tree) (qS : Array K) (qT : LeanVM.Prover.Tree) (α β γ t : E) :
-    UniComplete.WrM m Pi2Out := do
+    (wS : Array K) (wT : LeanVM.Prover.Tree) (qS : Array K) (qT : LeanVM.Prover.Tree) (α β γ t : E)
+    (wP qP : List E) : UniComplete.WrM m Pi2Out := do
   let a := foldValues G.logN G.logW (wTableB G w) t
   let ξ := xiOf G.logN setupStack β t
   let sv := sOf G.logN (pNovel G w) t
   UniComplete.sendScalars (a ++ [ξ, sv])
   let ρ ← UniComplete.sampleW H
   let c ← get
-  return ⟨c.stream, wS, wT, qS, qT, ⟨publicScalarsOf input values, α, β, γ, t, a, ξ, sv, ρ⟩⟩
+  return ⟨c.stream, wS, wT, qS, qT, ⟨publicScalarsOf input values, α, β, γ, t, a, ξ, sv, ρ⟩, wP, qP⟩
 
 end With
 
@@ -141,7 +143,7 @@ noncomputable def expW2 (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D
     | some p2 => return (a1, ← Pi2H.verifierWithH H F D trees.roots input p2)
 
 /-- What stage `A` carries: the setup, π1's proof and the graph's verdict, π2's prover's roots, setup tree, witness,
-`W`'s stack and tree, the writer before `α`. -/
+`W`'s stack and tree, the writer before `α`, `W`'s out-of-domain point. -/
 structure StA where
   trees : RecSetupTrees
   p1 : Option UniKeccak.KeccakProof
@@ -152,8 +154,10 @@ structure StA where
   wS : Array K
   wT : LeanVM.Prover.Tree
   wr : UniComplete.Wr
+  wP : List E
 
-/-- What stage `B` carries: `A`'s, the triple, `Q`'s stack and tree, the writer before `t`. -/
+/-- What stage `B` carries: `A`'s, the triple, `Q`'s stack and tree, the writer before `t`, `Q`'s out-of-domain
+point. -/
 structure StB where
   a : StA
   α : E
@@ -162,30 +166,32 @@ structure StB where
   qS : Array K
   qT : LeanVM.Prover.Tree
   wr : UniComplete.Wr
+  qP : List E
 
 /-- **Stage A**: the setup, π1's proof, the graph, π2's prover up to `α`. -/
 noncomputable def stageA (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
     (p1o : m (Option UniKeccak.KeccakProof)) (input : Vector UInt8 32) : m StA := do
   let trees ← Pi2H.setupTreesWithH H F D
   match ← p1o with
-  | none => return ⟨trees, none, false, trees.roots, trees.pi2, ([], fun _ ↦ 0), #[], trees.pi2, UniComplete.Wr.start default⟩
+  | none => return ⟨trees, none, false, trees.roots, trees.pi2, ([], fun _ ↦ 0), #[], trees.pi2, UniComplete.Wr.start default,
+      []⟩
   | some p1 =>
     let a1 ← Pi2H.pi1GraphVerifierWithH H F D trees.roots.pi1 input p1
     let tr ← Pi2H.setupTreesWithH H F D
     let iv ← Pi2H.ivOfH H D tr.roots
     let vw := pi2Choice D C Fa tr.roots input p1.stream
     let seed ← H (RecStatement.name ++ iv ++ input.toList)
-    let (ws, wr) ← (pre2 H (C.G tr.roots) pi2Ood (D.circuitAt tr.roots.pi1).circuit.reads vw.1 vw.2).run
-      (UniComplete.Wr.start seed)
-    return ⟨trees, some p1, a1, tr.roots, tr.pi2, vw, ws.1, ws.2, wr⟩
+    let (ws, wr) ← (pre2 H (C.G tr.roots) (WhirBridge.Pcs.oodPointM H) (D.circuitAt tr.roots.pi1).circuit.reads vw.1
+      vw.2).run (UniComplete.Wr.start seed)
+    return ⟨trees, some p1, a1, tr.roots, tr.pi2, vw, ws.1, ws.2.1, wr, ws.2.2⟩
 
 /-- **Stage B**: after `α, β, γ` (their hashes `s₁, s₂, s₃`), `Q`. -/
 def stageB (D : RecDeployment) (C : Pi2Circuits D) (input : Vector UInt8 32) (a : StA) (s₁ s₂ s₃ : Digest) :
     m StB := do
   let w3 := absorbW (absorbW (absorbW a.wr s₁) s₂) s₃
-  let (qs, wr) ← (mid2 H (C.G a.roots) (Spec.of (D.circuitAt a.roots.pi1).circuit).core pi2Ood
+  let (qs, wr) ← (mid2 H (C.G a.roots) (Spec.of (D.circuitAt a.roots.pi1).circuit).core (WhirBridge.Pcs.oodPointM H)
     (publicScalarsOf input.toList a.vw.1) a.vw.2 (chalP s₁) (chalP s₂) (chalP s₃)).run w3
-  return ⟨a, chalP s₁, chalP s₂, chalP s₃, qs.1, qs.2, wr⟩
+  return ⟨a, chalP s₁, chalP s₂, chalP s₃, qs.1, qs.2.1, wr, qs.2.2⟩
 
 /-- **Stage C**: after `t` (its hash `st`), the rest of the prover, its openings and the contract. -/
 noncomputable def stageC (D : RecDeployment) (C : Pi2Circuits D) (input : Vector UInt8 32) (b : StB) (st : Digest) :
@@ -196,17 +202,18 @@ noncomputable def stageC (D : RecDeployment) (C : Pi2Circuits D) (input : Vector
     let G := C.G b.a.roots
     let c := D.circuitAt b.a.roots.pi1
     let (out, _) ← (post2 H G c.setupStack input.toList b.a.vw.1 b.a.vw.2 b.a.wS b.a.wT b.qS b.qT b.α b.β b.γ
-      (chalP st)).run (absorbW b.wr st)
+      (chalP st) b.a.wP b.qP).run (absorbW b.wr st)
     let o := (Spec.of c.circuit).core.run out.inputs
-    let pW ← UniKeccakComplete.pcsProveH H F PcsQuotient.nonceFuel (stackVars G.logN).1 out.wTree out.wStack
+    let pW ← PcsZ.pcsProveZH H F PcsQuotient.nonceFuel (stackVars G.logN).1 out.wPoint out.wTree out.wStack
       o.witnessPoint o.fold
-    let pS ← UniKeccakComplete.pcsProveH H F PcsQuotient.nonceFuel (stackVars G.logN).2.2 b.a.setupTree
+    let pS ← PcsZ.pcsProveZH H F PcsQuotient.nonceFuel (stackVars G.logN).2.2
+      (UniKeccakComplete.pcsZ (stackVars G.logN).2.2 b.a.setupTree.root) b.a.setupTree
       (padStack (stackVars G.logN).2.2 fun i ↦ c.setupStack.getD i 0) o.setupPoint out.inputs.ξ
-    let pQ1 ← UniKeccakComplete.pcsProveH H F PcsQuotient.nonceFuel (stackVars G.logN).2.1 out.qTree out.qStack
+    let pQ1 ← PcsZ.pcsProveZH H F PcsQuotient.nonceFuel (stackVars G.logN).2.1 out.qPoint out.qTree out.qStack
       o.quotientPoint o.quotientValue
-    let pQ2 ← UniKeccakComplete.pcsProveH H F PcsQuotient.nonceFuel (stackVars G.logN).2.1 out.qTree out.qStack
+    let pQ2 ← PcsZ.pcsProveZH H F PcsQuotient.nonceFuel (stackVars G.logN).2.1 out.qPoint out.qTree out.qStack
       o.pushesPoint o.pushesValue
-    let pQ3 ← UniKeccakComplete.pcsProveH H F PcsQuotient.nonceFuel (stackVars G.logN).2.1 out.qTree out.qStack
+    let pQ3 ← PcsZ.pcsProveZH H F PcsQuotient.nonceFuel (stackVars G.logN).2.1 out.qPoint out.qTree out.qStack
       o.sumPoint o.sumValue
     match pW, pS, pQ1, pQ2, pQ3 with
     | some x, some y, some z1, some z2, some z3 =>
@@ -279,14 +286,14 @@ def Pi2RunAt (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C)
       (runAt Ht Ft (pi2Staged D C Fa (P1k input rows q) input).run).2 =
           (((rootsH D Ht Ft), (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).2,
             Fa.pubOf (rootsH D Ht Ft) (publicScalarsOf input.toList (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1)),
-          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) pi2Ood input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
+          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) (pi2Z Ht) input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
             (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).2).inputs.α,
-          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) pi2Ood input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
+          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) (pi2Z Ht) input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
             (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).2).inputs.β,
-          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) pi2Ood input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
+          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) (pi2Z Ht) input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
             (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).2).inputs.γ) ∧
       (runAt Ht Ft (pi2Staged D C Fa (P1k input rows q) input).run).1.2.2 =
-          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) pi2Ood input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
+          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) (pi2Z Ht) input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
             (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).2).inputs.t ∧
       (runAt Ht Ft (pi2Staged D C Fa (P1k input rows q) input).run).1.2.1 =
         (runAt Ht Ft (pi2Staged D C Fa (P1k input rows q) input).run).2
@@ -355,10 +362,11 @@ theorem graphChecks_of_verifierH {H : List UInt8 → Id Digest} {F : KeccakState
     rw [hc] at h
     exact absurd h (by simp)
 
-/-- **A failed PCS opening** at pure `(H, F)`: the honest PCS prover returns none on a point of its variables. -/
+/-- **A failed PCS opening** at pure `(H, F)`: the honest PCS prover (at some out-of-domain point `z`) returns none on
+a point of its variables. -/
 def PcsFails (Hk : List UInt8 → Digest) (F : KeccakState → Id KeccakState) (fuel : ℕ) : Prop :=
-  ∃ (n : ℕ) (tree : LeanVM.Prover.Tree) (stack : Array K) (pt : List E) (v : E), pt.length = n ∧
-    UniKeccakComplete.pcsProveH (m := Id) (Pure.pure ∘ Hk) F fuel n tree stack pt v = none
+  ∃ (n : ℕ) (z : List E) (tree : LeanVM.Prover.Tree) (stack : Array K) (pt : List E) (v : E), pt.length = n ∧
+    PcsZ.pcsProveZH (m := Id) (Pure.pure ∘ Hk) F fuel n z tree stack pt v = none
 
 /-- **π2's honest prover returns none only at a failed opening.** -/
 theorem pi2Prover_none {D : RecDeployment} {C : Pi2Circuits D} (Fa : Pi2Facts D C) (Hk : List UInt8 → Digest)
@@ -376,25 +384,25 @@ theorem pi2Prover_none {D : RecDeployment} {C : Pi2Circuits D} (Fa : Pi2Facts D 
   rw [logN_G Fa roots, Pi2W.stackVars_24] at hp
   simp only at hp
   revert hp
-  generalize hW : UniKeccakComplete.pcsProveH (m := Id) (Pure.pure ∘ Hk) F fuel 24 _ _ _ _ = rW
-  generalize hS : UniKeccakComplete.pcsProveH (m := Id) (Pure.pure ∘ Hk) F fuel 25 _ _ _ _ = rS
-  generalize hQ1 : UniKeccakComplete.pcsProveH (m := Id) (Pure.pure ∘ Hk) F fuel 28 _ _ _
+  generalize hW : PcsZ.pcsProveZH (m := Id) (Pure.pure ∘ Hk) F fuel 24 _ _ _ _ _ = rW
+  generalize hS : PcsZ.pcsProveZH (m := Id) (Pure.pure ∘ Hk) F fuel 25 _ _ _ _ _ = rS
+  generalize hQ1 : PcsZ.pcsProveZH (m := Id) (Pure.pure ∘ Hk) F fuel 28 _ _ _ _
     ((Spec.of _).core.run _).quotientValue = rQ1
-  generalize hQ2 : UniKeccakComplete.pcsProveH (m := Id) (Pure.pure ∘ Hk) F fuel 28 _ _ _
+  generalize hQ2 : PcsZ.pcsProveZH (m := Id) (Pure.pure ∘ Hk) F fuel 28 _ _ _ _
     ((Spec.of _).core.run _).pushesValue = rQ2
-  generalize hQ3 : UniKeccakComplete.pcsProveH (m := Id) (Pure.pure ∘ Hk) F fuel 28 _ _ _
+  generalize hQ3 : PcsZ.pcsProveZH (m := Id) (Pure.pure ∘ Hk) F fuel 28 _ _ _ _
     ((Spec.of _).core.run _).sumValue = rQ3
   intro hp
   rcases rW with _ | a
-  · exact ⟨_, _, _, _, _, lW, hW⟩
+  · exact ⟨_, _, _, _, _, _, lW, hW⟩
   rcases rS with _ | b
-  · exact ⟨_, _, _, _, _, lS, hS⟩
+  · exact ⟨_, _, _, _, _, _, lS, hS⟩
   rcases rQ1 with _ | c
-  · exact ⟨_, _, _, _, _, lQ, hQ1⟩
+  · exact ⟨_, _, _, _, _, _, lQ, hQ1⟩
   rcases rQ2 with _ | d
-  · exact ⟨_, _, _, _, _, lP, hQ2⟩
+  · exact ⟨_, _, _, _, _, _, lP, hQ2⟩
   rcases rQ3 with _ | e
-  · exact ⟨_, _, _, _, _, lSum, hQ3⟩
+  · exact ⟨_, _, _, _, _, _, lSum, hQ3⟩
   simp at hp
 
 /-- **The experiment at `Id`, π1's prover giving none.** -/
@@ -470,21 +478,21 @@ theorem rejects_at {D : RecDeployment} (hD : D.Real) (C : Pi2Circuits D) (Fa : P
       rw [hz2] at hB
       have hbad : ¬ BadCopy (C.G (rootsH D Ht Ft)) (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).2
           (Fa.pubOf (rootsH D Ht Ft) (publicScalarsOf input.toList (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1))
-          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) pi2Ood input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
+          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) (pi2Z Ht) input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
             (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).2).inputs.α
-          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) pi2Ood input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
+          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) (pi2Z Ht) input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
             (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).2).inputs.β
-          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) pi2Ood input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
+          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) (pi2Z Ht) input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
             (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).2).inputs.γ :=
         fun hb ↦ hB (Finset.mem_filter.mpr ⟨Finset.mem_univ _, hb⟩)
       have ht : ¬ BadT (C.G (rootsH D Ht Ft)) (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).2
-          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) pi2Ood input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
+          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) (pi2Z Ht) input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
             (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).2).inputs.α
-          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) pi2Ood input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
+          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) (pi2Z Ht) input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
             (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).2).inputs.β
-          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) pi2Ood input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
+          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) (pi2Z Ht) input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
             (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).2).inputs.γ
-          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) pi2Ood input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
+          (outOf D Ht (rootsH D Ht Ft) (C.G (rootsH D Ht Ft)) (pi2Z Ht) input (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).1
             (pi2Choice D C Fa (rootsH D Ht Ft) input p1.stream).2).inputs.t :=
         fun hb ↦ hT ⟨hgood.2.1, hbad, hb⟩
       have hacc := pi2_accepts D hD C Fa Ft Ht PcsQuotient.nonceFuel input p1 hgood (logN_G Fa _)
@@ -520,6 +528,27 @@ theorem rejectGood_of_pot {β : Type} (X : OracleComp KeccakCalls β) (Ev : β �
     exact hpot z.2 z.1 hlook hev
   · rw [powPot_nil, zero_add]
 
+/-- **A PCS opening at `z` that fails at a pure `(H, F)` fails at `Option`.** -/
+theorem pcsProveZH_some_none {H : Bytes → Digest} {F : KeccakState → KeccakState} {fuel n : ℕ} {z : List E}
+    {tree : LeanVM.Prover.Tree} {stack : Array K} {pt : List E} {v : E}
+    (h : PcsZ.pcsProveZH (m := Id) H F fuel n z tree stack pt v = none) :
+    PcsZ.pcsProveZH (m := Option) (fun x ↦ some (H x)) (fun s ↦ some (F s)) fuel n z tree stack pt v = some none := by
+  have e1 := PcsZ.simulateQ_pcsProveZH (UniKeccakComplete.Prob.someImpl H F) fuel n z tree stack pt v
+  have e2 := PcsZ.simulateQ_pcsProveZH (totalImpl H F) fuel n z tree stack pt v
+  rw [UniKeccakComplete.Prob.simulateQ_someImpl, e2] at e1
+  rw [← h]
+  exact e1.symm
+
+/-- **A failed opening at `z` puts the potential at one** (`one_le_powPot_of_pcs_none` at any point). -/
+theorem one_le_powPot_of_pcsZ_none (ℓ : Log) (Ht : Bytes → Digest) {n : ℕ} {z : List E} {tree : LeanVM.Prover.Tree}
+    {stack : Array K} {pt : List E} {v : E} (hpt : pt.length = n)
+    (h : PcsZ.pcsProveZH (m := Id) Ht (fun s ↦ (lookF ℓ s).getD winState) PcsQuotient.nonceFuel n z tree stack pt v =
+      none) :
+    1 ≤ powPot Whir.queryGrindingBits PcsQuotient.nonceFuel ℓ := by
+  obtain ⟨sp, hsp, hf⟩ := PcsZ.pcsProveZH_eq_some_none (pcsProveZH_some_none h) hpt
+  exact UniKeccakComplete.Prob.one_le_powPot_of_findNonce_ext (by decide) (by norm_num [PcsQuotient.nonceFuel])
+    (by norm_num [PcsQuotient.nonceFuel]) hsp hf
+
 /-- **The potential at a log**, from the core at every pure `(H, F)`: the log's extension (unseen permutation inputs
 answered by the zero state, which passes every proof of work) fails one opening, so its search's inputs are in the
 log, failing. -/
@@ -533,8 +562,8 @@ theorem pot_of_rejects {β : Type} (X : OracleComp KeccakCalls β) (Ev : β → 
   have hH : ∀ x u, lookH ℓ x = some u → Ht x = u := fun x u hx ↦ by simp [Ht, hx]
   have hF : ∀ s u, lookF ℓ s = some u → Ft s = u := fun s u hs ↦ by simp [Ft, hs]
   have hrun : runAt Ht Ft X = z := simulateQ_id_of_look ℓ Ht Ft hH hF _ z hz
-  obtain ⟨n, tree, stack, pt, v, hpt, hfail⟩ := hcore Ht Ft (by rw [hrun]; exact hev)
-  exact one_le_powPot_of_pcs_none ℓ Ht hpt hfail
+  obtain ⟨n, zp, tree, stack, pt, v, hpt, hfail⟩ := hcore Ht Ft (by rw [hrun]; exact hev)
+  exact one_le_powPot_of_pcsZ_none ℓ Ht hpt hfail
 
 /-- **The numbers**: at most `2^50` block calls, each completing a `17`-bit proof of work whose `2^25` nonces all
 failed: below `2^-300` (`E2ECompleteness.grinding_le`'s `2^-304` at `2^48`). -/

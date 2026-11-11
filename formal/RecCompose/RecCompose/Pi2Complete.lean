@@ -116,9 +116,9 @@ abbrev ivOf (D : RecDeployment) (Hk : List UInt8 → Digest) (roots : RecSetupRo
 
 /-- **π2's honest prover's output** at the setup's commitments, the contract's IV. -/
 abbrev outOf (D : RecDeployment) (Hk : List UInt8 → Digest) (roots : RecSetupRoots)
-    (G : RecPiop.Circuit E) (ood : ℕ → Digest → Array K → E) (input : Vector UInt8 32) (values : List PublicValue)
+    (G : RecPiop.Circuit E) (zf : ℕ → Digest → List E) (input : Vector UInt8 32) (values : List PublicValue)
     (w : ℕ → K) : Pi2Out :=
-  proverOut Hk G ood (D.circuitAt roots.pi1).circuit (D.circuitAt roots.pi1).setupStack (ivOf D Hk roots) input.toList
+  proverOut Hk G zf (D.circuitAt roots.pi1).circuit (D.circuitAt roots.pi1).setupStack (ivOf D Hk roots) input.toList
     values w
 
 /-- **π2's five claims hold on the stacks** (each claim's value the stack's multilinear extension at its point,
@@ -130,9 +130,25 @@ def StackClaimsHold (o : Out E) (ξ : E) (wStack qStack sStack : Array K) : Prop
     UniComplete.stackEval qStack o.sumPoint = o.sumValue ∧
     UniComplete.stackEval sStack o.setupPoint = ξ
 
+/-- **The honest PCS opening of a claim on `W` or `Q` is accepted** by the oracle-point check (`pcsOpenKOH`, the
+point read off `Hk`): the proof `pcsProveZH` makes at the point `pi2Z Hk n root` (pure `Hk`, `F`; `23 ≤ n ≤ 28`, a
+stack of `2^n` words). -/
+theorem pi2PcsOpenO_honest (Hk : List UInt8 → Digest) (F : KeccakState → KeccakState) (fuel : ℕ) {n : ℕ}
+    (h1 : 23 ≤ n) (h2 : n ≤ 28) (stack : Array K) (hs : stack.size = 2 ^ n) (pt : List E) (hpt : pt.length = n)
+    {π : Compile.Proof}
+    (hπ : PcsZ.pcsProveZH (m := Id) Hk F fuel n (pi2Z Hk n (E2ECompleteness.commitWithH (m := Id) Hk n stack).root)
+      (E2ECompleteness.commitWithH (m := Id) Hk n stack) stack pt (UniComplete.stackEval stack pt) = some π) :
+    Pi2H.pcsOpenKOH (m := Id) (Pure.pure ∘ Hk) (fun s ↦ pure (F s)) n
+      (E2ECompleteness.commitWithH (m := Id) Hk n stack).root
+      (pi2OodAt stack (pi2Z Hk n (E2ECompleteness.commitWithH (m := Id) Hk n stack).root)) pt
+      (UniComplete.stackEval stack pt) π = true := by
+  rw [Pi2H.pcsOpenKOH_id Hk _ n _ _ _ _ _ hpt]
+  exact PcsZ.pcsVerify_pcsProveZH Hk F fuel h1 h2 (WhirBridge.Pcs.oodPointWith Hk n) stack hs pt hpt hπ
+
 /-- **The contract accepts π2's honest proof**, at a pure permutation, off the bad challenges and proofs of work, π1's
 three openings accepted: the setup's commitment that of its stack `sStack` (`2^25` words), the five PCS openings the
-honest prover's (`pcsProveH`) of true claims. -/
+honest prover's (`pcsProveZH`: `W`'s and `Q`'s at the points `pi2Z Hk` the contract reads off `Hk`, the setup's at
+the deployed point) of true claims. -/
 theorem contract_accepts (D : RecDeployment) (F : KeccakState → Id KeccakState) (Hk : List UInt8 → Digest)
     (roots : RecSetupRoots) (G : RecPiop.Circuit E)
     (hview : (D.circuitAt roots.pi1).circuit = Data.circuit) (hGN : G.logN = 24) (hrow : Data.circuit.logRow = G.logW)
@@ -143,56 +159,63 @@ theorem contract_accepts (D : RecDeployment) (F : KeccakState → Id KeccakState
     (hmatch : List.Forall₂ ReadMatch Data.circuit.reads values) (fuel : ℕ)
     (c1 c2 cf pW pS pQ1 pQ2 pQ3 : Compile.Proof)
     (halg : ((Spec.of (D.circuitAt roots.pi1).circuit).core.run
-        (outOf D Hk roots G pi2Ood input values w).inputs).all ≠ 0 ∧
+        (outOf D Hk roots G (pi2Z Hk) input values w).inputs).all ≠ 0 ∧
       StackClaimsHold ((Spec.of (D.circuitAt roots.pi1).circuit).core.run
-          (outOf D Hk roots G pi2Ood input values w).inputs)
-        (outOf D Hk roots G pi2Ood input values w).inputs.ξ
-        (outOf D Hk roots G pi2Ood input values w).wStack
-        (outOf D Hk roots G pi2Ood input values w).qStack sStack)
-    (hW : let out := outOf D Hk roots G pi2Ood input values w
+          (outOf D Hk roots G (pi2Z Hk) input values w).inputs)
+        (outOf D Hk roots G (pi2Z Hk) input values w).inputs.ξ
+        (outOf D Hk roots G (pi2Z Hk) input values w).wStack
+        (outOf D Hk roots G (pi2Z Hk) input values w).qStack sStack)
+    (hW : let out := outOf D Hk roots G (pi2Z Hk) input values w
       let o := (Spec.of (D.circuitAt roots.pi1).circuit).core.run out.inputs
-      UniKeccakComplete.pcsProveH (m := Id) (Pure.pure ∘ Hk) F fuel 24 out.wTree out.wStack o.witnessPoint o.fold =
+      PcsZ.pcsProveZH (m := Id) (Pure.pure ∘ Hk) F fuel 24 out.wPoint out.wTree out.wStack o.witnessPoint o.fold =
         some pW)
-    (hS : let out := outOf D Hk roots G pi2Ood input values w
+    (hS : let out := outOf D Hk roots G (pi2Z Hk) input values w
       let o := (Spec.of (D.circuitAt roots.pi1).circuit).core.run out.inputs
-      UniKeccakComplete.pcsProveH (m := Id) (Pure.pure ∘ Hk) F fuel 25
+      PcsZ.pcsProveZH (m := Id) (Pure.pure ∘ Hk) F fuel 25
+        (UniKeccakComplete.pcsZ 25 (E2ECompleteness.commitWithH (m := Id) (Pure.pure ∘ Hk) 25 sStack).root)
         (E2ECompleteness.commitWithH (m := Id) (Pure.pure ∘ Hk) 25 sStack) sStack o.setupPoint out.inputs.ξ = some pS)
-    (hQ1 : let out := outOf D Hk roots G pi2Ood input values w
+    (hQ1 : let out := outOf D Hk roots G (pi2Z Hk) input values w
       let o := (Spec.of (D.circuitAt roots.pi1).circuit).core.run out.inputs
-      UniKeccakComplete.pcsProveH (m := Id) (Pure.pure ∘ Hk) F fuel 28 out.qTree out.qStack o.quotientPoint
+      PcsZ.pcsProveZH (m := Id) (Pure.pure ∘ Hk) F fuel 28 out.qPoint out.qTree out.qStack o.quotientPoint
         o.quotientValue = some pQ1)
-    (hQ2 : let out := outOf D Hk roots G pi2Ood input values w
+    (hQ2 : let out := outOf D Hk roots G (pi2Z Hk) input values w
       let o := (Spec.of (D.circuitAt roots.pi1).circuit).core.run out.inputs
-      UniKeccakComplete.pcsProveH (m := Id) (Pure.pure ∘ Hk) F fuel 28 out.qTree out.qStack o.pushesPoint
+      PcsZ.pcsProveZH (m := Id) (Pure.pure ∘ Hk) F fuel 28 out.qPoint out.qTree out.qStack o.pushesPoint
         o.pushesValue = some pQ2)
-    (hQ3 : let out := outOf D Hk roots G pi2Ood input values w
+    (hQ3 : let out := outOf D Hk roots G (pi2Z Hk) input values w
       let o := (Spec.of (D.circuitAt roots.pi1).circuit).core.run out.inputs
-      UniKeccakComplete.pcsProveH (m := Id) (Pure.pure ∘ Hk) F fuel 28 out.qTree out.qStack o.sumPoint
+      PcsZ.pcsProveZH (m := Id) (Pure.pure ∘ Hk) F fuel 28 out.qPoint out.qTree out.qStack o.sumPoint
         o.sumValue = some pQ3)
-    (hpi1 : ∃ ops, pi1OpsOf D roots input (outOf D Hk roots G pi2Ood input values w).stream = some ops ∧
+    (hpi1 : ∃ ops, pi1OpsOf D roots input (outOf D Hk roots G (pi2Z Hk) input values w).stream = some ops ∧
       Id.run (Pi2H.openSeqH (m := Id) (Pure.pure ∘ Hk) F ops
-        ⟨(outOf D Hk roots G pi2Ood input values w).stream, c1, c2, cf, pW, pS, pQ1, pQ2, pQ3⟩) = true) :
+        ⟨(outOf D Hk roots G (pi2Z Hk) input values w).stream, c1, c2, cf, pW, pS, pQ1, pQ2, pQ3⟩) = true) :
     (Id.run (Pi2H.contractWithH (m := Id) (Pure.pure ∘ Hk) F D roots input
-      ⟨(outOf D Hk roots G pi2Ood input values w).stream, c1, c2, cf, pW, pS, pQ1, pQ2, pQ3⟩)).1 =
+      ⟨(outOf D Hk roots G (pi2Z Hk) input values w).stream, c1, c2, cf, pW, pS, pQ1, pQ2, pQ3⟩)).1 =
       true := by
   have hlogN : (D.circuitAt roots.pi1).circuit.logN = 24 := by rw [hview]; rfl
-  obtain ⟨r, hr, hinp, -, hout, hoods, hstr, hwt, hqt, -, hwsk, hqsk⟩ := runWith_honest Hk G pi2Ood
+  obtain ⟨r, hr, hinp, -, hout, hoods, hstr, hwt, hqt, -, hwsk, hqsk⟩ := runWith_honest Hk G (pi2Z Hk)
+    (D.circuitAt roots.pi1).circuit (D.circuitAt roots.pi1).setupStack (ivOf D Hk roots) input.toList values w (by rw [hview]; exact hmatch)
+    (by rw [hview]; exact hrow)
+  obtain ⟨hwp, hqp⟩ := proverOut_points Hk G (pi2Z Hk)
     (D.circuitAt roots.pi1).circuit (D.circuitAt roots.pi1).setupStack (ivOf D Hk roots) input.toList values w (by rw [hview]; exact hmatch)
     (by rw [hview]; exact hrow)
   simp only at hW hS hQ1 hQ2 hQ3
-  generalize hout_def : outOf D Hk roots G pi2Ood input values w = out at halg hW hS hQ1 hQ2 hQ3 hpi1 ⊢
+  generalize hout_def : outOf D Hk roots G (pi2Z Hk) input values w = out at halg hW hS hQ1 hQ2 hQ3 hpi1 ⊢
   have hr' : (Pi2H.runWithH (m := Id) (Pure.pure ∘ Hk) (Spec.of (D.circuitAt roots.pi1).circuit) (ivOf D Hk roots)
       input.toList out.stream).result = .ok r := by rw [← hout_def]; exact hr
   have hinp' : r.inputs = out.inputs := by rw [← hout_def]; exact hinp
   have hv : stackVars G.logN = (24, 28, 25) := by rw [hGN]; rfl
-  rw [hv] at hoods hwt hqt hwsk hqsk hstr
-  have hoods' : r.oods = (pi2Ood 24 out.wTree.root out.wStack, pi2Ood 28 out.qTree.root out.qStack) := by
+  rw [hv] at hoods hwt hqt hwsk hqsk hstr hwp hqp
+  have hoods' : r.oods = (pi2OodAt out.wStack (pi2Z Hk 24 out.wTree.root),
+      pi2OodAt out.qStack (pi2Z Hk 28 out.qTree.root)) := by
     rw [← hout_def]; exact hoods
+  have hwp' : out.wPoint = pi2Z Hk 24 out.wTree.root := by rw [← hout_def]; exact hwp
+  have hqp' : out.qPoint = pi2Z Hk 28 out.qTree.root := by rw [← hout_def]; exact hqp
   have hstr' : out.stream.toList = publicWire ((D.circuitAt roots.pi1).circuit.reads.zip values) ++
       UniStatement.rootWord (UniStatement.rootHalves out.wTree.root) ++
-      UniComplete.scalarWire (pi2Ood 24 out.wTree.root out.wStack) ++
+      UniComplete.scalarWire (pi2OodAt out.wStack (pi2Z Hk 24 out.wTree.root)) ++
       UniStatement.rootWord (UniStatement.rootHalves out.qTree.root) ++
-      UniComplete.scalarWire (pi2Ood 28 out.qTree.root out.qStack) ++
+      UniComplete.scalarWire (pi2OodAt out.qStack (pi2Z Hk 28 out.qTree.root)) ++
       (out.inputs.a ++ [out.inputs.ξ, out.inputs.s]).flatMap UniComplete.scalarWire := by rw [← hout_def]; exact hstr
   have hwt' : out.wTree = E2ECompleteness.commitWithH (m := Id) (Pure.pure ∘ Hk) 24 out.wStack := by
     rw [← hout_def]; exact hwt
@@ -202,7 +225,7 @@ theorem contract_accepts (D : RecDeployment) (F : KeccakState → Id KeccakState
     rw [← hout_def, hwsk]; exact Pi2W.padStack_size _ _
   have hqsz : out.qStack.size = 2 ^ 28 := by
     rw [← hout_def, hqsk]; exact Pi2W.padStack_size _ _
-  clear hr hinp hstr hwt hqt hoods hwsk hqsk hout_def
+  clear hr hinp hstr hwt hqt hoods hwsk hqsk hwp hqp hout_def
   have hro : r.out = (Spec.of (D.circuitAt roots.pi1).circuit).core.run out.inputs := by rw [hout, hinp']
   -- the contract
   refine holds_id (P := fun x : Bool × List (List (List UInt8)) ↦ x.1 = true) ?_
@@ -275,9 +298,9 @@ theorem contract_accepts (D : RecDeployment) (F : KeccakState → Id KeccakState
       UniStatement.rootWord (UniStatement.rootHalves out.wTree.root) := by
     rw [hcr, hoffW, ← hpw]
     refine streamWord_of out.stream _ _
-      (UniComplete.scalarWire (pi2Ood 24 out.wTree.root out.wStack) ++
+      (UniComplete.scalarWire (pi2OodAt out.wStack (pi2Z Hk 24 out.wTree.root)) ++
       UniStatement.rootWord (UniStatement.rootHalves out.qTree.root) ++
-      UniComplete.scalarWire (pi2Ood 28 out.qTree.root out.qStack) ++
+      UniComplete.scalarWire (pi2OodAt out.qStack (pi2Z Hk 28 out.qTree.root)) ++
       (out.inputs.a ++ [out.inputs.ξ, out.inputs.s]).flatMap UniComplete.scalarWire) ?_ (length_rootWord _)
     rw [hstr', hcr]
     simp only [List.append_assoc]
@@ -287,14 +310,14 @@ theorem contract_accepts (D : RecDeployment) (F : KeccakState → Id KeccakState
     rw [hcr, hoffQ, ← hpw]
     have := streamWord_of out.stream (publicWire (Data.circuit.reads.zip values) ++
       UniStatement.rootWord (UniStatement.rootHalves out.wTree.root) ++
-      UniComplete.scalarWire (pi2Ood 24 out.wTree.root out.wStack))
+      UniComplete.scalarWire (pi2OodAt out.wStack (pi2Z Hk 24 out.wTree.root)))
       (UniStatement.rootWord (UniStatement.rootHalves out.qTree.root))
-      (UniComplete.scalarWire (pi2Ood 28 out.qTree.root out.qStack) ++
+      (UniComplete.scalarWire (pi2OodAt out.qStack (pi2Z Hk 28 out.qTree.root)) ++
         (out.inputs.a ++ [out.inputs.ξ, out.inputs.s]).flatMap UniComplete.scalarWire)
       (by rw [hstr', hcr]; simp only [List.append_assoc]) (length_rootWord _)
     have hl : (publicWire (Data.circuit.reads.zip values) ++
         UniStatement.rootWord (UniStatement.rootHalves out.wTree.root) ++
-        UniComplete.scalarWire (pi2Ood 24 out.wTree.root out.wStack)).length =
+        UniComplete.scalarWire (pi2OodAt out.wStack (pi2Z Hk 24 out.wTree.root))).length =
         (publicWire (Data.circuit.reads.zip values)).length + 56 := by
       simp only [List.length_append, length_rootWord, UniKeccakComplete.length_scalarWire]
     rwa [hl] at this
@@ -324,17 +347,19 @@ theorem contract_accepts (D : RecDeployment) (F : KeccakState → Id KeccakState
     simp only [List.cons_append, List.nil_append] at hdecW ⊢
     rw [Pi2H.pcsOpenWordsH_eq (Pure.pure ∘ Hk) F _ _ _ hdecW]
     unfold Pi2H.openAtH
-    simp only [rootOfWord_rootWord_rootHalves, hoods', Reduced.witness, hro, lW]
+    simp only [rootOfWord_rootWord_rootHalves, hoods', Reduced.witness, hro, lW, show oodRead 24 = true from rfl,
+      ↓reduceIte]
     rw [← hcW]
-    have h := Pi2W.pi2PcsOpen_honest Hk F fuel (n := 24) (by norm_num) (by norm_num) out.wStack hwsz
-      _ lW (π := pW) (by rw [hwt', ← hcW] at hW; exact hW)
+    have h := pi2PcsOpenO_honest Hk F fuel (n := 24) (by norm_num) (by norm_num) out.wStack hwsz
+      _ lW (π := pW) (by rw [hwp', hwt', ← hcW] at hW; exact hW)
     rw [hwt']
     exact h
   · -- the setup
     simp only [List.cons_append, List.nil_append] at hdecS ⊢
     rw [Pi2H.pcsOpenWordsH_eq (Pure.pure ∘ Hk) F _ _ _ hdecS]
     unfold Pi2H.openAtH
-    simp only [rootOfWord_digestBytes, Reduced.setup, hro, lS, hinp']
+    simp only [rootOfWord_digestBytes, Reduced.setup, hro, lS, hinp', show oodRead 25 = false from rfl,
+      Bool.false_eq_true, ↓reduceIte]
     rw [← hcS, hood2, hroot2]
     exact Pi2W.pi2PcsOpen_honest Hk F fuel (n := 25) (by norm_num) (by norm_num) sStack hsS _ lS
       (by rw [← hcS] at hS; exact hS)
@@ -342,34 +367,41 @@ theorem contract_accepts (D : RecDeployment) (F : KeccakState → Id KeccakState
     simp only [List.cons_append, List.nil_append] at hdecQ ⊢
     rw [Pi2H.pcsOpenWordsH_eq (Pure.pure ∘ Hk) F _ _ _ hdecQ]
     unfold Pi2H.openAtH
-    simp only [rootOfWord_rootWord_rootHalves, hoods', Reduced.quotient, hro, lQ]
+    simp only [rootOfWord_rootWord_rootHalves, hoods', Reduced.quotient, hro, lQ, show oodRead 28 = true from rfl,
+      ↓reduceIte]
     rw [← hcQ]
-    have h := Pi2W.pi2PcsOpen_honest Hk F fuel (n := 28) (by norm_num) (by norm_num) out.qStack hqsz
-      _ lQ (π := pQ1) (by rw [hqt', ← hcQ] at hQ1; exact hQ1)
+    have h := pi2PcsOpenO_honest Hk F fuel (n := 28) (by norm_num) (by norm_num) out.qStack hqsz
+      _ lQ (π := pQ1) (by rw [hqp', hqt', ← hcQ] at hQ1; exact hQ1)
     rw [hqt']
     exact h
   · -- `Q`'s pushes
     simp only [List.cons_append, List.nil_append] at hdecP ⊢
     rw [Pi2H.pcsOpenWordsH_eq (Pure.pure ∘ Hk) F _ _ _ hdecP]
     unfold Pi2H.openAtH
-    simp only [rootOfWord_rootWord_rootHalves, hoods', Reduced.pushes, hro, lP]
+    simp only [rootOfWord_rootWord_rootHalves, hoods', Reduced.pushes, hro, lP, show oodRead 28 = true from rfl,
+      ↓reduceIte]
     rw [← hcP]
-    have h := Pi2W.pi2PcsOpen_honest Hk F fuel (n := 28) (by norm_num) (by norm_num) out.qStack hqsz
-      _ lP (π := pQ2) (by rw [hqt', ← hcP] at hQ2; exact hQ2)
+    have h := pi2PcsOpenO_honest Hk F fuel (n := 28) (by norm_num) (by norm_num) out.qStack hqsz
+      _ lP (π := pQ2) (by rw [hqp', hqt', ← hcP] at hQ2; exact hQ2)
     rw [hqt']
     exact h
   · -- `Q`'s sum
     simp only [List.cons_append, List.nil_append] at hdecZ ⊢
     rw [Pi2H.pcsOpenWordsH_eq (Pure.pure ∘ Hk) F _ _ _ hdecZ]
     unfold Pi2H.openAtH
-    simp only [rootOfWord_rootWord_rootHalves, hoods', Reduced.sum, hro, lSum]
+    simp only [rootOfWord_rootWord_rootHalves, hoods', Reduced.sum, hro, lSum, show oodRead 28 = true from rfl,
+      ↓reduceIte]
     rw [← hcSum]
-    have h := Pi2W.pi2PcsOpen_honest Hk F fuel (n := 28) (by norm_num) (by norm_num) out.qStack hqsz
-      _ lSum (π := pQ3) (by rw [hqt', ← hcSum] at hQ3; exact hQ3)
+    have h := pi2PcsOpenO_honest Hk F fuel (n := 28) (by norm_num) (by norm_num) out.qStack hqsz
+      _ lSum (π := pQ3) (by rw [hqp', hqt', ← hcSum] at hQ3; exact hQ3)
     rw [hqt']
     exact h
 
 end RecCompose.Pi2K
+
+/-- info: 'RecCompose.Pi2K.pi2PcsOpenO_honest' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms RecCompose.Pi2K.pi2PcsOpenO_honest
 
 /-- info: 'RecCompose.Pi2K.contract_accepts' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in

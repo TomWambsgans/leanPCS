@@ -12,8 +12,8 @@ import UniKeccakComplete.K.VerifierH
 
 `formal/RecStatement`'s contract and setup are written over a permutation `F`, every Keccak-256 the sponge over it
 (`keccak256With F`). Here each function that hashes is rewritten with Keccak-256 a separate function `H` (`…H`), the
-code text the Statement's, only the hash changed (UniComplete's `sampleH`, UniKeccakComplete's `pcsOpenKH`;
-WithHash's `commitWithH`). **At `H = keccak256With F`** each is the Statement's (`…_eqH`). And
+code text the Statement's, only the hash changed (UniComplete's `sampleH`, UniKeccakComplete's `pcsOpenKH`,
+`pcsOpenKOH` for `RecStatement.pcsOpenKO`; WithHash's `commitWithH`). **At `H = keccak256With F`** each is the Statement's (`…_eqH`). And
 `runWithH_post`: `Pi2Run.runWith_post` at any `H` (the run's success and public data do not depend on the hashes).
 -/
 
@@ -81,11 +81,19 @@ def ivOfH (D : RecDeployment) (roots : RecSetupRoots) : m (List UInt8) := do
   let digest ← digestWithH H c
   ivWithH H (D.pi1IvAt roots.pi1) (digestBytes roots.pi2) roots.pi2Ood digest c.circuit.logN
 
-/-- `pcsOpenWords` with Keccak-256 `H`. -/
+/-- `RecStatement.pcsOpenKO` with Keccak-256 `H`: the out-of-domain point read off `H`
+(`WhirBridge.Pcs.pcsVerifyWithHashO`). -/
+def pcsOpenKOH (n : ℕ) (root : Digest) (ood : E) (pt : List E) (v : E) (p : Compile.Proof) : m Bool :=
+  if h : pt.length = n then WhirBridge.Pcs.pcsVerifyWithHashO H F ⟨root, ood, pt, v, h⟩ p else pure false
+
+/-- `pcsOpenWords` with Keccak-256 `H`: `W`'s and `Q`'s sizes (`oodRead`) by `pcsOpenKOH`, the others by
+`pcsOpenKH`. -/
 def pcsOpenWordsH (words : List (List UInt8)) (proof : Compile.Proof) : m Bool :=
   match claimOfWords words with
   | none => pure false
-  | some (root, ood, point, value) => UniKeccakComplete.pcsOpenKH H F point.length root ood point value proof
+  | some (root, ood, point, value) =>
+    if oodRead point.length then pcsOpenKOH H F point.length root ood point value proof
+    else UniKeccakComplete.pcsOpenKH H F point.length root ood point value proof
 
 /-- `RecDeployment.contractWith` with Keccak-256 `H`. -/
 def contractWithH (D : RecDeployment) (roots : RecSetupRoots) (input : Vector UInt8 32)
@@ -144,7 +152,8 @@ def pi1GraphVerifierWithH (D : RecDeployment) (roots : UniKeccak.SetupRootsK) (i
 
 /-- `Couplings.openAt` with Keccak-256 `H`. -/
 def openAtH (o : Pi1Opening) (p : Compile.Proof) : m Bool :=
-  UniKeccakComplete.pcsOpenKH H F o.2.2.1.length o.1 o.2.1 o.2.2.1 o.2.2.2 p
+  if oodRead o.2.2.1.length then pcsOpenKOH H F o.2.2.1.length o.1 o.2.1 o.2.2.1 o.2.2.2 p
+  else UniKeccakComplete.pcsOpenKH H F o.2.2.1.length o.1 o.2.1 o.2.2.1 o.2.2.2 p
 
 /-- `Couplings.openSeq` with Keccak-256 `H`. -/
 def openSeqH (ops : List Pi1Opening) (proof : RecProof) : m Bool := do
@@ -175,6 +184,9 @@ theorem digestWith_eqH (c : Pi2Circuit) : c.digestWith F = digestWithH (keccak25
 
 theorem ivWith_deploy_eqH (D : RecDeployment) (roots : RecSetupRoots) :
     D.ivWith F roots = ivOfH (keccak256With F) D roots := rfl
+
+theorem pcsOpenKO_eqH (n : ℕ) (root : Digest) (ood : E) (pt : List E) (v : E) (p : Compile.Proof) :
+    pcsOpenKO F n root ood pt v p = pcsOpenKOH (keccak256With F) F n root ood pt v p := rfl
 
 theorem pcsOpenWords_eqH (words : List (List UInt8)) (proof : Compile.Proof) :
     pcsOpenWords F words proof = pcsOpenWordsH (keccak256With F) F words proof := rfl
@@ -218,6 +230,32 @@ theorem pcsOpenWordsH_eq {m : Type → Type} [Monad m] (H : List UInt8 → m Dig
     pcsOpenWordsH H F w p = openAtH H F x p := by
   unfold pcsOpenWordsH openAtH
   rw [h]
+
+/-- **An opening not at `W`'s or `Q`'s sizes** is the fixed-point check `pcsOpenKH`. -/
+theorem openAtH_of_not {m : Type → Type} [Monad m] (H : List UInt8 → m Digest) (F : KeccakState → m KeccakState)
+    (o : Pi1Opening) (p : Compile.Proof) (h : oodRead o.2.2.1.length = false) :
+    openAtH H F o p = UniKeccakComplete.pcsOpenKH H F o.2.2.1.length o.1 o.2.1 o.2.2.1 o.2.2.2 p := by
+  unfold openAtH
+  rw [h]
+  rfl
+
+/-- **An opening at `W`'s or `Q`'s sizes** is the oracle-point check `pcsOpenKOH`. -/
+theorem openAtH_of {m : Type → Type} [Monad m] (H : List UInt8 → m Digest) (F : KeccakState → m KeccakState)
+    (o : Pi1Opening) (p : Compile.Proof) (h : oodRead o.2.2.1.length = true) :
+    openAtH H F o p = pcsOpenKOH H F o.2.2.1.length o.1 o.2.1 o.2.2.1 o.2.2.2 p := by
+  unfold openAtH
+  rw [h]
+  rfl
+
+/-- **The oracle-point check at a pure Keccak-256 `Hk`** is the check at the point `oodPointWith Hk n`. -/
+theorem pcsOpenKOH_id (Hk : List UInt8 → Digest) (F : KeccakState → Id KeccakState) (n : ℕ) (root : Digest)
+    (ood : E) (pt : List E) (v : E) (p : Compile.Proof) (hpt : pt.length = n) :
+    pcsOpenKOH (m := Id) (Pure.pure ∘ Hk) F n root ood pt v p =
+      WhirBridge.Pcs.pcsVerifyWithHash (m := Id) (Pure.pure ∘ Hk) F (WhirBridge.Pcs.oodPointWith Hk n)
+        ⟨root, ood, pt, v, hpt⟩ p := by
+  unfold pcsOpenKOH
+  simp only [hpt, ↓reduceDIte]
+  exact WhirBridge.Pcs.UnionO.pcsVerifyWithHashO_pure (m := Id) Hk F _ p
 
 /-! ## The run's public data, at any `H` -/
 

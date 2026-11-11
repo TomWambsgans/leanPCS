@@ -82,14 +82,16 @@ section With
 
 variable {m : Type → Type} [Monad m] (H : List UInt8 → m Digest) (F : KeccakState → m KeccakState)
 
-/-- **π2's honest prover** over `H`, `F`: the setup's trees, the IV, the witness, `pi2ProveWith`, π1's openings first. -/
+/-- **π2's honest prover** over `H`, `F`: the setup's trees, the IV, the witness, `pi2ProveWith` (`W`'s and `Q`'s
+out-of-domain points read off `H`, `WhirBridge.Pcs.oodPointM H`), π1's openings first. -/
 noncomputable def pi2ProverWith (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Facts D C) (fuel : ℕ)
     (input : Vector UInt8 32) (p1 : UniKeccak.KeccakProof) : m (Option RecProof) := do
   let trees ← Pi2H.setupTreesWithH H F D
   let iv ← Pi2H.ivOfH H D trees.roots
   let vw := pi2Choice D C Fa trees.roots input p1.stream
   let c := D.circuitAt trees.roots.pi1
-  let res ← pi2ProveWith H F fuel (C.G trees.roots) pi2Ood c.circuit c.setupStack trees.pi2 iv input.toList vw.1 vw.2
+  let res ← pi2ProveWith H F fuel (C.G trees.roots) (WhirBridge.Pcs.oodPointM H) c.circuit c.setupStack trees.pi2 iv
+    input.toList vw.1 vw.2
   return res.map fun x ↦ ⟨x.1, p1.c1, p1.c2, p1.setup, x.2.w, x.2.setup, x.2.qId, x.2.qPush, x.2.qSum⟩
 
 end With
@@ -109,20 +111,21 @@ noncomputable def pi2Prover (D : RecDeployment) (C : Pi2Circuits D) (Fa : Pi2Fac
 
 /-- **The prover's run at a pure permutation**: the stream, then the five openings at the arithmetic's claims. -/
 theorem pi2ProveWith_run (Hk : List UInt8 → Digest) (F : KeccakState → Id KeccakState) (fuel : ℕ)
-    (G : RecPiop.Circuit E) (ood : ℕ → Digest → Array K → E) (view : Circuit) (setupStack : Array K)
+    (G : RecPiop.Circuit E) (zf : ℕ → Digest → List E) (view : Circuit) (setupStack : Array K)
     (setupTree : LeanVM.Prover.Tree) (iv input : List UInt8) (values : List PublicValue) (w : ℕ → K) :
-    Id.run (pi2ProveWith (m := Id) (Pure.pure ∘ Hk) F fuel G ood view setupStack setupTree iv input values w) =
-      let out := proverOut Hk G ood view setupStack iv input values w
+    Id.run (pi2ProveWith (m := Id) (Pure.pure ∘ Hk) F fuel G (pureZ zf) view setupStack setupTree iv input values w) =
+      let out := proverOut Hk G zf view setupStack iv input values w
       let o := (Spec.of view).core.run out.inputs
-      (UniKeccakComplete.pcsProveH (m := Id) (Pure.pure ∘ Hk) F fuel (stackVars G.logN).1 out.wTree out.wStack
+      (PcsZ.pcsProveZH (m := Id) (Pure.pure ∘ Hk) F fuel (stackVars G.logN).1 out.wPoint out.wTree out.wStack
         o.witnessPoint o.fold).bind fun a ↦
-      (UniKeccakComplete.pcsProveH (m := Id) (Pure.pure ∘ Hk) F fuel (stackVars G.logN).2.2 setupTree
+      (PcsZ.pcsProveZH (m := Id) (Pure.pure ∘ Hk) F fuel (stackVars G.logN).2.2
+        (UniKeccakComplete.pcsZ (stackVars G.logN).2.2 setupTree.root) setupTree
         (padStack (stackVars G.logN).2.2 fun i ↦ setupStack.getD i 0) o.setupPoint out.inputs.ξ).bind fun b ↦
-      (UniKeccakComplete.pcsProveH (m := Id) (Pure.pure ∘ Hk) F fuel (stackVars G.logN).2.1 out.qTree out.qStack
+      (PcsZ.pcsProveZH (m := Id) (Pure.pure ∘ Hk) F fuel (stackVars G.logN).2.1 out.qPoint out.qTree out.qStack
         o.quotientPoint o.quotientValue).bind fun c ↦
-      (UniKeccakComplete.pcsProveH (m := Id) (Pure.pure ∘ Hk) F fuel (stackVars G.logN).2.1 out.qTree out.qStack
+      (PcsZ.pcsProveZH (m := Id) (Pure.pure ∘ Hk) F fuel (stackVars G.logN).2.1 out.qPoint out.qTree out.qStack
         o.pushesPoint o.pushesValue).bind fun d ↦
-      (UniKeccakComplete.pcsProveH (m := Id) (Pure.pure ∘ Hk) F fuel (stackVars G.logN).2.1 out.qTree out.qStack
+      (PcsZ.pcsProveZH (m := Id) (Pure.pure ∘ Hk) F fuel (stackVars G.logN).2.1 out.qPoint out.qTree out.qStack
         o.sumPoint o.sumValue).bind fun e ↦
       some (out.stream, ⟨a, b, c, d, e⟩) := rfl
 
@@ -132,11 +135,14 @@ theorem pi2ProverWith_run (Hk : List UInt8 → Digest) (F : KeccakState → Id K
     (C : Pi2Circuits D) (Fa : Pi2Facts D C) (fuel : ℕ) (input : Vector UInt8 32) (p1 : UniKeccak.KeccakProof) :
     Id.run (pi2ProverWith (m := Id) (Pure.pure ∘ Hk) F D C Fa fuel input p1) =
       let trees := Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)
-      (Id.run (pi2ProveWith (m := Id) (Pure.pure ∘ Hk) F fuel (C.G trees.roots) pi2Ood
+      (Id.run (pi2ProveWith (m := Id) (Pure.pure ∘ Hk) F fuel (C.G trees.roots) (pureZ (pi2Z Hk))
         (D.circuitAt trees.roots.pi1).circuit (D.circuitAt trees.roots.pi1).setupStack trees.pi2
         (ivOf D Hk trees.roots) input.toList (pi2Choice D C Fa trees.roots input p1.stream).1
         (pi2Choice D C Fa trees.roots input p1.stream).2)).map
-        fun x ↦ ⟨x.1, p1.c1, p1.c2, p1.setup, x.2.w, x.2.setup, x.2.qId, x.2.qPush, x.2.qSum⟩ := rfl
+        fun x ↦ ⟨x.1, p1.c1, p1.c2, p1.setup, x.2.w, x.2.setup, x.2.qId, x.2.qPush, x.2.qSum⟩ := by
+  unfold pi2ProverWith
+  rw [oodPointM_id_eq]
+  rfl
 
 /-- The setup's table has `2^(m+1)` words. -/
 theorem setupStack_size (c : Pi2Circuit) : c.setupStack.size = 2 ^ (c.circuit.logN + 1) := by
@@ -182,12 +188,12 @@ theorem pi2_accepts (D : RecDeployment) (hD : D.Real) (C : Pi2Circuits D) (Fa : 
     (hroots : C.rootsAt = RecGraphKeccak.Emitted.rootsAt)
     (hbad : let trees := Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)
       let vw := pi2Choice D C Fa trees.roots input p1.stream
-      let out := outOf D Hk trees.roots (C.G trees.roots) pi2Ood input vw.1 vw.2
+      let out := outOf D Hk trees.roots (C.G trees.roots) (pi2Z Hk) input vw.1 vw.2
       ¬ BadCopy (C.G trees.roots) vw.2 (Fa.pubOf trees.roots (publicScalarsOf input.toList vw.1))
         out.inputs.α out.inputs.β out.inputs.γ)
     (ht : let trees := Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)
       let vw := pi2Choice D C Fa trees.roots input p1.stream
-      let out := outOf D Hk trees.roots (C.G trees.roots) pi2Ood input vw.1 vw.2
+      let out := outOf D Hk trees.roots (C.G trees.roots) (pi2Z Hk) input vw.1 vw.2
       ¬ BadT (C.G trees.roots) vw.2 out.inputs.α out.inputs.β out.inputs.γ out.inputs.t)
     (hpi1 : ∃ ops, pi1OpsOf D (Id.run (Pi2H.setupTreesWithH (m := Id) (Pure.pure ∘ Hk) F D)).roots input
         proof.stream = some ops ∧
@@ -211,12 +217,12 @@ theorem pi2_accepts (D : RecDeployment) (hD : D.Real) (C : Pi2Circuits D) (Fa : 
   have hmatch' := hmatch
   rw [hview] at hmatch
   -- the algebra (`pi2_honest`), at the prover's inputs and stacks
-  obtain ⟨-, -, -, -, -, -, -, -, -, hi, hwsk, hqsk⟩ := runWith_honest Hk (C.G trees.roots) pi2Ood
+  obtain ⟨-, -, -, -, -, -, -, -, -, hi, hwsk, hqsk⟩ := runWith_honest Hk (C.G trees.roots) (pi2Z Hk)
     (D.circuitAt trees.roots.pi1).circuit (D.circuitAt trees.roots.pi1).setupStack (ivOf D Hk trees.roots)
     input.toList vw.1 vw.2 hmatch' (by rw [hview]; exact hrow)
   have halg := pi2_honest Fa (pi2SetupColumns_of_real hD C hroots) trees.roots vw.2
     (publicScalarsOf input.toList vw.1) _ _ _ _
-    (outOf D Hk trees.roots (C.G trees.roots) pi2Ood input vw.1 vw.2).inputs.ρ hwS hbad ht
+    (outOf D Hk trees.roots (C.G trees.roots) (pi2Z Hk) input vw.1 vw.2).inputs.ρ hwS hbad ht
   -- the setup's commitment, of its padded table
   set sS := padStack 25 fun i ↦ (D.circuitAt trees.roots.pi1).setupStack.getD i 0 with hsS
   have htree : trees.pi2 = E2ECompleteness.commitWithH (m := Id) (Pure.pure ∘ Hk) 25 sS := by
@@ -231,13 +237,13 @@ theorem pi2_accepts (D : RecDeployment) (hD : D.Real) (C : Pi2Circuits D) (Fa : 
     rw [Pi2W.setupOod_eq _ _ (by rw [setupStack_size, hlogN, Pi2W.stackVars_24])]
     simp only [hlogN, Pi2W.stackVars_24]
     rfl
-  generalize hW : UniKeccakComplete.pcsProveH (m := Id) (Pure.pure ∘ Hk) F fuel 24 _ _ _ _ = rW at hres
-  generalize hS : UniKeccakComplete.pcsProveH (m := Id) (Pure.pure ∘ Hk) F fuel 25 _ _ _ _ = rS at hres
-  generalize hQ1 : UniKeccakComplete.pcsProveH (m := Id) (Pure.pure ∘ Hk) F fuel 28 _ _ _
+  generalize hW : PcsZ.pcsProveZH (m := Id) (Pure.pure ∘ Hk) F fuel 24 _ _ _ _ _ = rW at hres
+  generalize hS : PcsZ.pcsProveZH (m := Id) (Pure.pure ∘ Hk) F fuel 25 _ _ _ _ _ = rS at hres
+  generalize hQ1 : PcsZ.pcsProveZH (m := Id) (Pure.pure ∘ Hk) F fuel 28 _ _ _ _
     ((Spec.of _).core.run _).quotientValue = rQ1 at hres
-  generalize hQ2 : UniKeccakComplete.pcsProveH (m := Id) (Pure.pure ∘ Hk) F fuel 28 _ _ _
+  generalize hQ2 : PcsZ.pcsProveZH (m := Id) (Pure.pure ∘ Hk) F fuel 28 _ _ _ _
     ((Spec.of _).core.run _).pushesValue = rQ2 at hres
-  generalize hQ3 : UniKeccakComplete.pcsProveH (m := Id) (Pure.pure ∘ Hk) F fuel 28 _ _ _
+  generalize hQ3 : PcsZ.pcsProveZH (m := Id) (Pure.pure ∘ Hk) F fuel 28 _ _ _ _
     ((Spec.of _).core.run _).sumValue = rQ3 at hres
   rcases rW with _ | pW
   · simp at hres
@@ -251,9 +257,9 @@ theorem pi2_accepts (D : RecDeployment) (hD : D.Real) (C : Pi2Circuits D) (Fa : 
   · simp at hres
   simp only [Option.bind_some, Option.map_some, Option.some.injEq] at hres
   subst hres
-  have hwsz : (outOf D Hk trees.roots (C.G trees.roots) pi2Ood input vw.1 vw.2).wStack.size = 2 ^ 24 := by
+  have hwsz : (outOf D Hk trees.roots (C.G trees.roots) (pi2Z Hk) input vw.1 vw.2).wStack.size = 2 ^ 24 := by
     rw [hwsk, hGN]; exact Pi2W.padStack_size _ _
-  have hqsz : (outOf D Hk trees.roots (C.G trees.roots) pi2Ood input vw.1 vw.2).qStack.size = 2 ^ 28 := by
+  have hqsz : (outOf D Hk trees.roots (C.G trees.roots) (pi2Z Hk) input vw.1 vw.2).qStack.size = 2 ^ 28 := by
     rw [hqsk, hGN]; exact Pi2W.padStack_size _ _
   refine contract_accepts D F Hk trees.roots (C.G trees.roots) hview hGN hrow (by rw [hD.2.1]; rfl) sS
     (Pi2W.padStack_size _ _) hroot2 hood2 input vw.1 vw.2 hmatch fuel p1.c1 p1.c2 p1.setup pW pS pQ1 pQ2 pQ3
