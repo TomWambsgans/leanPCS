@@ -3,7 +3,7 @@
 // storage, its deployment and `setIndexCommitment`. MIT OR Apache-2.0; see AGENTS.md.
 //! The membership verifier (`quotient::protocol::reduce`) as a contract, its ABI, and its deployment.
 //!
-//! The contract ([`contract`]) checks that its transaction declares the six PCS claims a proof leaves
+//! The contract ([`contract`]) checks that its transaction declares the five PCS claims a proof leaves
 //! ([`pcs_claims`]: the EIP's encoding, `crates/pcs_claim`) in its frame of PCS claims ([`crate::machine`]), and
 //! returns the word 1; without the checks ([`claims_contract`]), it returns the commitments and the claims. Its code
 //! depends on the circuit's size alone: the circuit's commitment (its index table's root and out-of-domain answer)
@@ -13,21 +13,21 @@
 //!
 //! **`verify(bytes32 y, bytes32 root, bytes proof)`**, selector [`VERIFY`] (`0xde12c640`), its arguments
 //! **packed**, not ABI-encoded, then the index of the transaction's frame of PCS claims: calldata is exactly
-//! [`CALLDATA_LEN`] (461) bytes,
+//! [`CALLDATA_LEN`] (301) bytes,
 //!
 //! | bytes      | what                                                                                          |
 //! |------------|-----------------------------------------------------------------------------------------------|
 //! | `0..4`     | `0xde12c640`                                                                                  |
 //! | `4..36`    | `y`                                                                                           |
 //! | `36..68`   | `root`                                                                                        |
-//! | `68..196`  | the roots of the witness table's commitment and of the quotient table's parts `H`, `Q`, `G` |
-//! | `196..460` | the proof's eleven other scalars, 24 bytes each, big-endian: the four out-of-domain answers, the four `a_j`, `next`, `Q`'s and `G`'s values |
-//! | `460`      | the index of the transaction's frame of PCS claims                                            |
+//! | `68..132`  | the roots of the witness table's commitment and of the quotient table's                       |
+//! | `132..300` | the proof's seven other scalars, 24 bytes each, big-endian: the two out-of-domain answers, the four `a_j`, `next` |
+//! | `300`      | the index of the transaction's frame of PCS claims                                            |
 //!
-//! `proof` is bytes `68..460`, as [`calldata`] writes them. The contract reverts on calldata of another length or
+//! `proof` is bytes `68..300`, as [`calldata`] writes them. The contract reverts on calldata of another length or
 //! selector, on value, and on a proof the verifier rejects or whose claims the transaction does not declare (the
-//! frame byte 460 names must be a dependency verification frame of PCS claims, and its payloads `0 .. 5` the hashes
-//! of the six claims, in order); otherwise it returns [`VERIFIED`], the word 1, as `abi.encode(true)`. It writes
+//! frame byte 300 names must be a dependency verification frame of PCS claims, and its payloads `0 .. 4` the hashes
+//! of the five claims, in order); otherwise it returns [`VERIFIED`], the word 1, as `abi.encode(true)`. It writes
 //! nothing, so a `STATICCALL` will do:
 //!
 //! ```solidity
@@ -69,16 +69,16 @@ pub const VERIFIED: [u8; 32] = {
 };
 
 /// The proof's scalars that are not roots' halves.
-pub const INPUTS: usize = 11;
+pub const INPUTS: usize = 7;
 
-/// The verifying calldata's length: the selector, the statement, four roots, the other scalars, the frame's index.
+/// The verifying calldata's length: the selector, the statement, two roots, the other scalars, the frame's index.
 pub const CALLDATA_LEN: usize = VERIFY.len() + SCALARS + SCALAR_BYTES * INPUTS + 1;
 
 /// Where the stream holds the roots' halves: each commitment's two scalars, then its out-of-domain answer.
-const ROOT_SCALARS: [usize; 8] = [0, 1, 3, 4, 6, 7, 9, 10];
+const ROOT_SCALARS: [usize; 4] = [0, 1, 3, 4];
 
 /// The contract verifying proofs against the circuit of `2^log_rows` rows whose commitment the deployment stores
-/// ([`init_code`]): it reverts unless its transaction declares the six claims a proof leaves ([`pcs_claims`]), and
+/// ([`init_code`]): it reverts unless its transaction declares the five claims a proof leaves ([`pcs_claims`]), and
 /// returns [`VERIFIED`].
 pub fn contract(log_rows: usize) -> Contract {
     build(log_rows, &entry(), true)
@@ -184,9 +184,8 @@ fn recorded(log_rows: usize, entry: &Entry, declared: bool) -> Recorded {
         oods,
         witness,
         wiring,
-        h,
-        q,
-        g,
+        copy,
+        gate,
         sum,
     } = reduced;
     assert_eq!(read as usize, INPUTS);
@@ -208,10 +207,9 @@ fn recorded(log_rows: usize, entry: &Entry, declared: bool) -> Recorded {
         let claims = vec![
             claim(&mut region, root(0), node(&oods[0]), nodes(&witness.0), node(&witness.1), 0),
             claim(&mut region, Word::StoredRoot, Word::StoredOod, nodes(&wiring.0), node(&wiring.1), 1),
-            claim(&mut region, root(1), node(&oods[1]), nodes(&h.0), node(&h.1), 2),
-            claim(&mut region, root(2), node(&oods[2]), nodes(&q.0), node(&q.1), 3),
-            claim(&mut region, root(3), node(&oods[3]), nodes(&g.0), node(&g.1), 4),
-            claim(&mut region, root(1), node(&oods[1]), sum_words, node(&sum), 5),
+            claim(&mut region, root(1), node(&oods[1]), nodes(&copy.0), node(&copy.1), 2),
+            claim(&mut region, root(1), node(&oods[1]), nodes(&gate.0), node(&gate.1), 3),
+            claim(&mut region, root(1), node(&oods[1]), sum_words, node(&sum), 4),
         ];
         (region.words, Ending::Declared(claims))
     } else {
@@ -220,7 +218,7 @@ fn recorded(log_rows: usize, entry: &Entry, declared: bool) -> Recorded {
             outputs.extend(root.iter().map(node));
             outputs.push(node(ood));
         }
-        for (point, value) in [&witness, &wiring, &h, &q, &g] {
+        for (point, value) in [&witness, &wiring, &copy, &gate] {
             outputs.extend(point.iter().chain([value]).map(node));
         }
         outputs.push(node(&sum));
@@ -237,7 +235,7 @@ fn recorded(log_rows: usize, entry: &Entry, declared: bool) -> Recorded {
 /// The PCS claims [`contract`] checks declared, in order: those a proof leaves ([`quotient::protocol::verify`]) on
 /// their commitments, as [`quotient::protocol::verify_openings`] opens them.
 pub fn pcs_claims(index: &Commitment, commitments: &Commitments, claims: &Claims) -> Vec<PcsClaim> {
-    let on = [commitments.witness, *index, commitments.h, commitments.q, commitments.g];
+    let on = [commitments.witness, *index, commitments.table];
     claims.all().iter().map(|(k, claim)| on[*k].pcs_claim(claim)).collect()
 }
 
@@ -249,7 +247,7 @@ pub fn set_index_calldata(index: &Commitment) -> Vec<u8> {
 /// The index of the transaction's frame of PCS claims that calldata names ([`calldata`]): the first frame.
 pub const PCS_FRAME: u8 = 0;
 
-/// A statement and its proof as calldata verifying them: the selector, the statement, the four roots (each the word
+/// A statement and its proof as calldata verifying them: the selector, the statement, the two roots (each the word
 /// of its bytes), the other scalars, then a byte, the index of the transaction's frame of PCS claims
 /// ([`PCS_FRAME`]). A root's scalars are 128-bit, and calldata has room for no more: a proof with a larger one, which
 /// the Rust verifier rejects, has no calldata (`NotARoot`). A proof of another length has calldata of another
@@ -273,7 +271,7 @@ pub fn calldata(statement: &Statement, proof: &Proof) -> Result<Vec<u8>, Transcr
     Ok(data)
 }
 
-/// What [`claims_contract`] returned: the four commitments and the six claims.
+/// What [`claims_contract`] returned: the two commitments and the five claims.
 pub fn decode(output: &[u8], log_rows: usize) -> Option<(Commitments, Claims)> {
     let words: Vec<F192> = output
         .as_chunks::<32>()
@@ -284,7 +282,7 @@ pub fn decode(output: &[u8], log_rows: usize) -> Option<(Commitments, Claims)> {
             (limb(3) == 0).then(|| F192::new(limb(0), limb(1), limb(2)))
         })
         .collect::<Option<_>>()?;
-    let [w, wiring, h, q, g] = quotient::protocol::table_vars(log_rows);
+    let [w, wiring, table] = quotient::protocol::table_vars(log_rows);
     let mut rest = &words[..];
     let mut take = |n: usize| {
         let (head, tail) = rest.split_at_checked(n)?;
@@ -298,13 +296,13 @@ pub fn decode(output: &[u8], log_rows: usize) -> Option<(Commitments, Claims)> {
             ood: c[2],
         })
     };
-    let (witness_c, h_c, q_c, g_c) = (commitment()?, commitment()?, commitment()?, commitment()?);
+    let (witness_c, table_c) = (commitment()?, commitment()?);
     let mut claim = |vars: usize| {
         let mut point = take(vars + 1)?;
         let value = point.pop()?;
         Some(Claim { point, value })
     };
-    let (witness, wiring, h_claim, q_claim, g_claim) = (claim(w)?, claim(wiring)?, claim(h)?, claim(q)?, claim(g)?);
+    let (witness, wiring, copy, gate) = (claim(w)?, claim(wiring)?, claim(table)?, claim(table)?);
     let sum = Claim {
         point: sum_point(log_rows),
         value: *take(1)?.first()?,
@@ -313,16 +311,13 @@ pub fn decode(output: &[u8], log_rows: usize) -> Option<(Commitments, Claims)> {
     Some((
         Commitments {
             witness: witness_c,
-            h: h_c,
-            q: q_c,
-            g: g_c,
+            table: table_c,
         },
         Claims {
             witness,
             wiring,
-            h: h_claim,
-            q: q_claim,
-            g: g_claim,
+            copy,
+            gate,
             sum,
         },
     ))
@@ -424,7 +419,7 @@ mod tests {
         assert!(chain.call(address, &long[..long.len() - 2], &none).output.is_none());
     }
 
-    /// The contract succeeds, returning the word 1, exactly when the frame declares the six claims the Rust verifier
+    /// The contract succeeds, returning the word 1, exactly when the frame declares the five claims the Rust verifier
     /// leaves, in order: on the honest proof, and on tampered ones, which leave other claims.
     #[test]
     fn contract_checks_the_declared_claims() {
@@ -448,10 +443,10 @@ mod tests {
         }
         // Two claims swapped; a claim on another commitment; a claim with another value.
         let mut swapped = all.clone();
-        swapped.swap(2, 5);
+        swapped.swap(2, 4);
         assert!(!succeeds(&statement, &proof, &block_of(&swapped)));
         let mut elsewhere = all.clone();
-        elsewhere[3].root = commitments.g.root;
+        elsewhere[3].root = commitments.witness.root;
         assert!(!succeeds(&statement, &proof, &block_of(&elsewhere)));
         let mut valued = all.clone();
         valued[4].value += F192::ONE;
@@ -586,7 +581,8 @@ mod tests {
     }
 
     /// The membership contracts' bytecode, pinned: the Keccak-256 of the deployed contract's code and of the claims
-    /// contract's, since the claims are the EIP's PCS claims (one point each, the commitments' out-of-domain answers).
+    /// contract's, since the quotients are one table (five claims on two commitments; before, six on four:
+    /// `0ad73463…`, `02a5e5ab…`).
     #[test]
     fn membership_bytecode_is_pinned() {
         let hex = |code: &[u8]| -> String { primitives::hash::hash(code).iter().map(|b| format!("{b:02x}")).collect() };
@@ -594,8 +590,8 @@ mod tests {
         assert_eq!(
             codes,
             [
-                "0ad734634290e48a9e628a746f17901cfb1def18db698c40267c767c5a242eb3",
-                "02a5e5abe62ca81259019b62998c99efdae6d357eb432f76939c8794ce332815",
+                "09fd1272e59f4809d20ba0710946b986fba434586df9dd01a221554be3cf0409",
+                "e6f629ba7ec7fbf0e872993bba526be0f70a5d4dc6bbf679e98c2ca16a53848b",
             ]
         );
     }
@@ -628,13 +624,13 @@ mod tests {
         assert_eq!(outcome.output, Some(VERIFIED.to_vec()));
         let zeros = data.iter().filter(|&&byte| byte == 0).count();
         println!(
-            "calldata   : {} bytes, {zeros} of them zero: selector 4, statement 64, roots 128, scalars {}, frame 1",
+            "calldata   : {} bytes, {zeros} of them zero: selector 4, statement 64, roots 64, scalars {}, frame 1",
             data.len(),
             SCALAR_BYTES * INPUTS
         );
         println!("FIELD_MUL  : {}", contract.field_muls);
         println!("KECCAK256  : {} (transcript), and one a claim", contract.hashes);
-        println!("claims     : {} declared (witness, wiring, H, Q, G, sum on H)", block.claims().len());
+        println!("claims     : {} declared (witness, wiring, copy, gate and sum on T)", block.claims().len());
         println!("SLOAD      : 2, cold (4,200 gas): the index commitment's root and out-of-domain answer");
         println!("code       : {} bytes (EIP-170 limit 24,576)", grouped(contract.code.len() as u64));
         println!("memory     : {} words", contract.memory_words);

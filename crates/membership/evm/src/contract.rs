@@ -3,6 +3,7 @@
 //! The proof as the recorder reads it: every read and every challenge is a node of the graph the contract is
 //! compiled from.
 
+use quotient::circuit::PUBLIC_WORDS;
 use quotient::protocol::Channel;
 use quotient::transcript::TranscriptError;
 
@@ -28,7 +29,7 @@ impl Recorder {
 }
 
 impl Channel<Sym> for Recorder {
-    fn statement(&mut self) -> [Sym; 4] {
+    fn statement(&mut self) -> [Sym; PUBLIC_WORDS] {
         std::array::from_fn(|k| Sym::new(Node::Statement(k as u8)))
     }
 

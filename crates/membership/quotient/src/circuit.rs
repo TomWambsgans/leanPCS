@@ -1,7 +1,7 @@
 // Part of this repository. Adapted from leanVM (https://github.com/leanEthereum/leanVM), branch
-// PCS-openings-aggregation, commit 651453c6, crates/flock/src/quotient/circuit.rs: the wiring and the public rows
-// are the same; the gate (one χ on bits instead of a full adder on GF(4)) and the Keccak-256
-// statement are new. MIT OR Apache-2.0; see AGENTS.md.
+// PCS-openings-aggregation, commit 651453c6, crates/flock/src/quotient/circuit.rs: the wiring is the same; the
+// gate (one χ on bits instead of a full adder on GF(4)), the Keccak-256 statement, the anchors with the packing of
+// the public words and the random rows' shapes are new. MIT OR Apache-2.0; see AGENTS.md.
 //! Rows of one gate and the permutation that wires them, and the circuit of the membership statement.
 //!
 //! **The gate.** A row has four cells, `X, Y, C, V`, and says `V = X + C + Y·C`. On bits that is
@@ -22,30 +22,99 @@
 //!
 //! Bits stay Boolean by the free-bit row's `v = v^2`, whose roots in `K` are `0` and `1`. The rows are evaluated
 //! over `K` by [`Circuit::outputs_k`], in the order they were built.
+//!
+//! **The public values** are eight `K`-words ([`crate::statement::Statement::words`]), each packed from its 64
+//! bits by 63 rows of Horner's rule (`(X, Y, C) = (b, 3, acc)`: `V = b + 2 acc`, `2` the generator of `K`'s
+//! polynomial basis, so the word is the number its bits spell), built after every other row. The first
+//! [`PUBLIC_ROWS`] rows are **anchors**: anchor `k` is `(0, 0, s_k)`, its `C` cell on the cycle of `s_k`, the
+//! packed word `k` for `k < 8`, then the constants `0`, `1` and `3`. The verifier pins the anchors' `C` cells to
+//! those values ([`anchor_cell`], `crate::protocol`), which pins every cell on their cycles.
 
 use primitives::field::F64;
 use primitives::hash::{PI, RC, RHO, ROUNDS, STATE_LANES};
 
 use crate::statement::{DEPTH, LEAF_PAD, Secret, Y_PAD};
 
-/// The rows holding the public bits: eight words of 128, two bits a row.
-pub const PUBLIC_ROWS: usize = 512;
-pub const WORD_BITS: usize = 128;
+/// The anchor rows, the first rows of the circuit: one a public word, then one a constant (`0`, `1`, `3`).
+pub const PUBLIC_ROWS: usize = PUBLIC_WORDS + 3;
+/// The public `K`-words, of [`WORD_BITS`] bits each.
+pub const PUBLIC_WORDS: usize = 8;
+pub const WORD_BITS: usize = 64;
+/// The constant the packing rows read as `Y`: `V = X + C + 3 C = X + 2 C`.
+pub const THREE: F64 = F64(3);
+
+/// The cell the verifier pins for anchor `k`: its `C` cell (`X` cells are the gate's rows, which the pins avoid).
+pub const fn anchor_cell(k: usize) -> usize {
+    4 * k + 2
+}
+
+/// The values of the anchors' cells: the public words, then the constants `0`, `1`, `3`.
+pub fn anchor_values(words: &[F64; PUBLIC_WORDS]) -> [F64; PUBLIC_ROWS] {
+    std::array::from_fn(|k| match k {
+        _ if k < PUBLIC_WORDS => words[k],
+        8 => F64::ZERO,
+        9 => F64::ONE,
+        _ => THREE,
+    })
+}
 /// The membership circuit's rows: `2^LOG_ROWS`.
 pub const LOG_ROWS: usize = 22;
 
-/// The **random rows**: idle rows the builder turns into free-`K` rows (`X` reads the row's own output, `Y` one,
-/// `C` zero, so `V = V + 0 + 0` holds for any value), the last ones of the circuit outside a port region. A witness
-/// leaves them zero; the prover fills each with a fresh random value ([`Circuit::random_rows`], `HIDING.md`): they
-/// make the witness table's out-of-domain answer and the gate quotient's evaluations uniform, and its root hide.
+/// The **random rows**: idle rows the builder turns into rows of two free cells ([`Src::Free`], each its own cycle),
+/// the last ones of the circuit outside a port region, of three shapes in turn ([`RandomShape`]): `(r, 0, s, r +
+/// s)`, `(r, s, 0, r)`, `(r, 1, s, r)`. A witness leaves them zero; the prover fills each with two fresh random
+/// values ([`Circuit::randomize`], `HIDING.md`), which every cell of the row depends on affinely: they make the
+/// witness table's evaluations and out-of-domain answer uniform, and its root hide.
 pub const RANDOM_ROWS: usize = 16;
+/// The random words a proof draws for them.
+pub const RANDOM_WORDS: usize = 2 * RANDOM_ROWS;
 
-/// What a cell reads: a constant, or row `r`'s `V` cell.
+/// The shapes of the random rows, `(X, Y, C, V)` for the words `(r, s)`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RandomShape {
+    /// `(r, 0, s, r + s)`.
+    Sum,
+    /// `(r, s, 0, r)`.
+    Select,
+    /// `(r, 1, s, r)`.
+    Pass,
+}
+
+impl RandomShape {
+    /// The shape of the `k`-th random row.
+    pub fn of(k: usize) -> Self {
+        [Self::Sum, Self::Select, Self::Pass][k % 3]
+    }
+
+    fn row(self) -> Row {
+        let (x, y, c) = match self {
+            Self::Sum => (Src::Free, Src::Zero, Src::Free),
+            Self::Select => (Src::Free, Src::Free, Src::Zero),
+            Self::Pass => (Src::Free, Src::One, Src::Free),
+        };
+        Row { x, y, c }
+    }
+
+    /// The row's four cells for its words.
+    pub fn cells(self, r: F64, s: F64) -> [F64; 4] {
+        match self {
+            Self::Sum => [r, F64::ZERO, s, r + s],
+            Self::Select => [r, s, F64::ZERO, r],
+            Self::Pass => [r, F64::ONE, s, r],
+        }
+    }
+}
+
+/// What a cell reads: a constant, row `r`'s `V` cell, or nothing (a free cell, its own cycle).
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Src {
     Zero,
     One,
+    /// The constant [`THREE`], which the packing rows read.
+    Three,
     Row(u32),
+    /// A cell on a cycle of its own: any value (the random rows').
+    Free,
 }
 
 /// One gate: `V = X + C + Y·C`.
@@ -82,6 +151,8 @@ pub struct Circuit {
     pub sigma: Vec<u32>,
     /// The port region's rows `[start, start + len)` ([`Builder::with_ports`]); `(0, 0)` without one.
     pub port_region: (usize, usize),
+    /// The packing rows `[start, start + len)`: `K`-valued, evaluated by [`Circuit::cells`] over `K`.
+    pub packing: (usize, usize),
     /// The placed ports in the order they were placed: `(row, rows built before it)`, which is where
     /// [`Circuit::outputs_k`] evaluates them. Empty without a port region.
     pub ports: Vec<(u32, u32)>,
@@ -283,17 +354,21 @@ impl Builder {
         (0..256).map(|b| out[b / 64][b % 64]).collect()
     }
 
-    /// Close the circuit on `2^log_rows` rows, `public[J][j]` being bit `j` of public word `J`.
-    pub fn finish(self, log_rows: usize, public: &[Vec<Src>; 4]) -> Circuit {
-        self.finish_with_zeros(log_rows, public, &[])
-    }
-
-    /// As [`Builder::finish`], with public words `6` and `7` reading `zeros[0]` and `zeros[1]` (128 wires each)
-    /// instead of constant zeros. The verifier takes every word past `4` to be zero, so an accepted proof has
-    /// these wires at `0`: an equality `a = b` of computed bits is `a ⊕ b` here. Word `5` stays the zero anchor.
-    pub fn finish_with_zeros(mut self, log_rows: usize, public: &[Vec<Src>; 4], zeros: &[Vec<Src>]) -> Circuit {
-        assert!(zeros.len() <= 2 && zeros.iter().all(|word| word.len() == WORD_BITS));
+    /// Close the circuit on `2^log_rows` rows, `public[J][j]` being bit `j` of public word `J`: the packing rows
+    /// after every row built, the anchors in the first [`PUBLIC_ROWS`] rows, the random rows last.
+    pub fn finish(mut self, log_rows: usize, public: &[Vec<Src>; PUBLIC_WORDS]) -> Circuit {
+        assert!(public.iter().all(|word| word.len() == WORD_BITS));
         let n = 1 << log_rows;
+        let packing_start = self.rows.len();
+        let mut words = [Src::Zero; PUBLIC_WORDS];
+        for (word, bits) in words.iter_mut().zip(public) {
+            let mut acc = bits[WORD_BITS - 1];
+            for &bit in bits[..WORD_BITS - 1].iter().rev() {
+                acc = self.row(bit, Src::Three, acc);
+            }
+            *word = acc;
+        }
+        let packing = (packing_start, self.rows.len() - packing_start);
         let used_rows = self.rows.len();
         assert!(used_rows <= n, "{used_rows} rows");
         let port_region = if self.port_rows.is_empty() {
@@ -303,18 +378,12 @@ impl Builder {
             assert!(self.port_start + self.port_rows.len() <= n, "the port region past the rows");
             (self.port_start, self.port_rows.len())
         };
-        let bit = |word: usize, j: usize| match word {
-            0..4 => public[word][j],
-            4 if j == 0 => Src::One,
-            6 | 7 if word - 6 < zeros.len() => zeros[word - 6][j],
-            _ => Src::Zero,
-        };
-        for (r, row) in self.rows[..PUBLIC_ROWS].iter_mut().enumerate() {
-            let (word, pair) = (r / (WORD_BITS / 2), r % (WORD_BITS / 2));
+        let sources = [&words[..], &[Src::Zero, Src::One, Src::Three]].concat();
+        for (row, &c) in self.rows[..PUBLIC_ROWS].iter_mut().zip(&sources) {
             *row = Row {
-                x: bit(word, 2 * pair),
-                y: bit(word, 2 * pair + 1),
-                c: Src::Zero,
+                x: Src::Zero,
+                y: Src::Zero,
+                c,
             };
         }
         self.rows.resize(n, IDLE);
@@ -326,23 +395,21 @@ impl Builder {
         let in_ports = |r: usize| (port_region.0..port_region.0 + port_region.1).contains(&r);
         let random: Vec<usize> = (used_rows..n).rev().filter(|&r| !in_ports(r)).take(RANDOM_ROWS).collect();
         assert_eq!(random.len(), RANDOM_ROWS, "room for the random rows");
-        for &r in &random {
-            self.rows[r] = Row {
-                x: Src::Row(r as u32),
-                y: Src::One,
-                c: Src::Zero,
-            };
+        for (k, &r) in random.iter().enumerate() {
+            self.rows[r] = RandomShape::of(k).row();
         }
 
         // A cycle is a source and the cells reading it, in cell order.
         const NONE: u32 = u32::MAX;
         let slot = |src: Src| match src {
-            Src::Zero => 0,
-            Src::One => 1,
-            Src::Row(r) => 2 + r as usize,
+            Src::Zero => Some(0),
+            Src::One => Some(1),
+            Src::Three => Some(2),
+            Src::Row(r) => Some(3 + r as usize),
+            Src::Free => None,
         };
-        let mut first = vec![NONE; n + 2];
-        let mut last = vec![NONE; n + 2];
+        let mut first = vec![NONE; n + 3];
+        let mut last = vec![NONE; n + 3];
         let mut sigma: Vec<u32> = (0..4 * n as u32).collect();
         let mut join = |at: usize, cell: u32, sigma: &mut Vec<u32>| {
             if first[at] == NONE {
@@ -354,11 +421,13 @@ impl Builder {
             sigma[cell as usize] = first[at];
         };
         for r in 0..n {
-            join(2 + r, 4 * r as u32 + 3, &mut sigma);
+            join(3 + r, 4 * r as u32 + 3, &mut sigma);
         }
         for (r, row) in self.rows.iter().enumerate() {
             for (role, src) in [row.x, row.y, row.c].into_iter().enumerate() {
-                join(slot(src), (4 * r + role) as u32, &mut sigma);
+                if let Some(at) = slot(src) {
+                    join(at, (4 * r + role) as u32, &mut sigma);
+                }
             }
         }
         Circuit {
@@ -368,22 +437,24 @@ impl Builder {
             inputs: self.inputs,
             sigma,
             port_region,
+            packing,
             ports: self.placed,
         }
     }
 }
 
-/// The bit a source holds, given every row's output.
+/// The bit a source holds, given every row's output (a free cell and the constant three read as `0`: the bits
+/// are not the packing rows' values, which [`Circuit::cells`] takes over `K`).
 pub fn read(v: &[u8], src: Src) -> u8 {
     match src {
-        Src::Zero => 0,
+        Src::Zero | Src::Three | Src::Free => 0,
         Src::One => 1,
         Src::Row(r) => v[r as usize],
     }
 }
 
 impl Circuit {
-    /// The [`RANDOM_ROWS`] rows, from the last.
+    /// The [`RANDOM_ROWS`] rows, from the last: the `k`-th is of shape [`RandomShape::of`]`(k)`.
     pub fn random_rows(&self) -> Vec<usize> {
         let (start, len) = self.port_region;
         (self.used_rows..self.rows.len())
@@ -393,11 +464,20 @@ impl Circuit {
             .collect()
     }
 
+    /// Fill the random rows of `cells` with `words`, two a row (`HIDING.md`).
+    pub fn randomize(&self, cells: &mut [F64], words: &[F64; RANDOM_WORDS]) {
+        for (k, r) in self.random_rows().into_iter().enumerate() {
+            let row = RandomShape::of(k).cells(words[2 * k], words[2 * k + 1]);
+            cells[4 * r..4 * r + 4].copy_from_slice(&row);
+        }
+    }
+
     pub fn n_inputs(&self) -> usize {
         self.inputs.len()
     }
 
-    /// Every row's output bit, from the free inputs.
+    /// Every row's output bit, from the free inputs (the packing rows' and the anchors' are not bits: see
+    /// [`Circuit::cells`]).
     pub fn outputs(&self, inputs: &[bool]) -> Vec<u8> {
         assert_eq!(inputs.len(), self.inputs.len());
         assert!(self.ports.is_empty(), "a lane circuit: use outputs_k");
@@ -413,27 +493,25 @@ impl Circuit {
         v
     }
 
-    /// Every cell's value, from the free inputs.
+    /// Every cell's value, from the free inputs: the rows' bits, then the packing rows and the anchors over `K`.
     pub fn cells(&self, inputs: &[bool]) -> Vec<F64> {
-        let v = self.outputs(inputs);
-        parallel::map_collect(4 * self.rows.len(), |cell| {
-            let (r, row) = (cell / 4, self.rows[cell / 4]);
-            let bit = match cell % 4 {
-                0 => read(&v, row.x),
-                1 => read(&v, row.y),
-                2 => read(&v, row.c),
-                _ => v[r],
-            };
-            F64(bit as u64)
-        })
+        let bits = self.outputs(inputs);
+        let mut v: Vec<F64> = parallel::map_collect(bits.len(), |r| F64(bits[r] as u64));
+        let (start, len) = self.packing;
+        for r in (start..start + len).chain(0..PUBLIC_ROWS) {
+            let row = self.rows[r];
+            v[r] = gate_k(read_k(&v, row.x), read_k(&v, row.y), read_k(&v, row.c));
+        }
+        self.cells_k(&v)
     }
 }
 
-/// The `K` value a source holds, given every row's output.
+/// The `K` value a source holds, given every row's output (a free cell's is the witness's `0`).
 pub fn read_k(v: &[F64], src: Src) -> F64 {
     match src {
-        Src::Zero => F64::ZERO,
+        Src::Zero | Src::Free => F64::ZERO,
         Src::One => F64::ONE,
+        Src::Three => THREE,
         Src::Row(r) => v[r as usize],
     }
 }
@@ -520,12 +598,13 @@ pub enum CheckError {
     Wiring(usize),
 }
 
-/// The 256 wires of 32 bytes to the four public words they are read as: a word is sixteen bytes, big-endian.
-pub fn public_words(y: &[Src], root: &[Src]) -> [Vec<Src>; 4] {
+/// The 256 wires of `y` and of `root` (32 bytes each, bit `i` bit `i % 8` of byte `i / 8`) to the eight public
+/// words they are read as ([`crate::statement::words`]): a word is eight bytes, big-endian.
+pub fn public_words(y: &[Src], root: &[Src]) -> [Vec<Src>; PUBLIC_WORDS] {
     std::array::from_fn(|word| {
-        let (bytes, half) = (if word < 2 { y } else { root }, word % 2);
+        let (bytes, chunk) = (if word < 4 { y } else { root }, word % 4);
         (0..WORD_BITS)
-            .map(|j| bytes[8 * (16 * half + 15 - j / 8) + j % 8])
+            .map(|j| bytes[8 * (8 * chunk + 7 - j / 8) + j % 8])
             .collect()
     })
 }
@@ -599,7 +678,7 @@ mod tests {
         assert_eq!(b.port_row(3), 1027);
         let circuit = b.finish(11, &std::array::from_fn(|_| vec![Src::Zero; WORD_BITS]));
         assert_eq!(circuit.port_region, (1024, 8));
-        assert_eq!(circuit.ports, vec![(1027, 519), (1029, 519)]);
+        assert_eq!(circuit.ports, vec![(1027, PUBLIC_ROWS as u32 + 7), (1029, PUBLIC_ROWS as u32 + 7)]);
         assert_eq!(circuit.rows[1026], IDLE);
         let mut rng = Rng::new(0x4C);
         for bit in [0, 1, 0, 1] {
@@ -640,7 +719,10 @@ mod tests {
             let v = circuit.outputs_k(|r, _| {
                 F64(circuit.inputs.iter().position(|&i| i == r).is_some_and(|k| inputs[k]) as u64)
             });
-            assert_eq!(v, bits.iter().map(|&x| F64(x as u64)).collect::<Vec<_>>());
+            let (start, len) = circuit.packing;
+            for r in (PUBLIC_ROWS..circuit.rows.len()).filter(|r| !(start..start + len).contains(r)) {
+                assert_eq!(v[r], F64(bits[r] as u64), "row {r}");
+            }
             assert_eq!(circuit.cells_k(&v), circuit.cells(&inputs));
             assert_eq!(circuit.check_k(&circuit.cells_k(&v)), Ok(()));
         }
@@ -674,8 +756,10 @@ mod tests {
 
     /// The membership circuit computes the statement, fits its rows, and is what the soundness argument
     /// assumes: an input row reads its own output three times, every other row reads constants or rows of lower
-    /// rank (the public rows ranked last, nothing reading them), every reading cell is on the cycle of the output
-    /// cell it reads, and the cells reading a constant are one cycle that holds its public anchor.
+    /// rank (the anchors ranked last, nothing reading them; the packing rows read only bits, `3` and the packing
+    /// rows before them), every reading cell is on the cycle of the output cell it reads, the cells reading a
+    /// constant are one cycle that holds its anchor, and the anchors' cells hold the statement's words and the
+    /// constants.
     #[test]
     fn membership_is_a_wired_loop_free_circuit() {
         let circuit = membership();
@@ -687,27 +771,17 @@ mod tests {
             directions: rng.next_u64() as u32,
         };
         let statement = secret.statement();
-        let v = circuit.outputs(&membership_inputs(&secret));
-        // The public rows hold the statement's halves, bit by bit.
-        let halves = statement.halves();
-        for (word, half) in halves.iter().enumerate() {
-            for j in 0..WORD_BITS {
-                let r = word * (WORD_BITS / 2) + j / 2;
-                let src = if j % 2 == 0 {
-                    circuit.rows[r].x
-                } else {
-                    circuit.rows[r].y
-                };
-                let expected = if j < 64 {
-                    (half.c0 >> j) & 1
-                } else {
-                    (half.c1 >> (j - 64)) & 1
-                };
-                assert_eq!(read(&v, src) as u64, expected, "word {word} bit {j}");
-            }
+        let cells = circuit.cells(&membership_inputs(&secret));
+        assert_eq!(circuit.check_k(&cells), Ok(()));
+        let pinned = anchor_values(&statement.words());
+        for (k, &value) in pinned.iter().enumerate() {
+            assert_eq!(cells[anchor_cell(k)], value, "anchor {k}");
         }
 
         let rank = |r: usize| if r < PUBLIC_ROWS { n + r } else { r };
+        let (start, len) = circuit.packing;
+        assert_eq!(len, PUBLIC_WORDS * (WORD_BITS - 1));
+        let packing = |r: usize| (start..start + len).contains(&r);
         let mut is_input = vec![false; n];
         circuit.inputs.iter().for_each(|&r| is_input[r as usize] = true);
         let random = circuit.random_rows();
@@ -718,14 +792,20 @@ mod tests {
                 assert_eq!(sources, [Src::Row(r as u32); 3]);
                 continue;
             }
-            if random.contains(&r) {
-                assert_eq!(sources, [Src::Row(r as u32), Src::One, Src::Zero]);
+            if let Some(k) = random.iter().position(|&q| q == r) {
+                assert_eq!(*row, RandomShape::of(k).row());
                 continue;
             }
+            assert!(!sources.contains(&Src::Free), "row {r} has a free cell");
+            assert!(packing(r) || r < PUBLIC_ROWS || !sources.contains(&Src::Three), "row {r} reads 3");
             for src in sources {
                 if let Src::Row(from) = src {
-                    assert!(from as usize >= PUBLIC_ROWS, "row {r} reads a public row");
+                    assert!(from as usize >= PUBLIC_ROWS, "row {r} reads an anchor");
                     assert!(rank(from as usize) < rank(r), "row {r} reads row {from}");
+                    assert!(
+                        packing(from as usize) <= (packing(r) || r < PUBLIC_ROWS),
+                        "row {r} reads the packing row {from}"
+                    );
                 }
             }
         }
@@ -742,29 +822,38 @@ mod tests {
             }
             assert_eq!(at, start, "the wiring is not a permutation");
         }
-        let (zero_anchor, one_anchor) = (4 * (5 * 64), 4 * (4 * 64));
-        assert_eq!(circuit.rows[5 * 64].x, Src::Zero);
-        assert_eq!(circuit.rows[4 * 64].x, Src::One);
+        let anchors = [anchor_cell(PUBLIC_WORDS), anchor_cell(PUBLIC_WORDS + 1), anchor_cell(PUBLIC_WORDS + 2)];
         for (r, row) in circuit.rows.iter().enumerate() {
             for (role, src) in [row.x, row.y, row.c].into_iter().enumerate() {
                 let source = match src {
-                    Src::Zero => zero_anchor,
-                    Src::One => one_anchor,
+                    Src::Zero => anchors[0],
+                    Src::One => anchors[1],
+                    Src::Three => anchors[2],
                     Src::Row(from) => 4 * from as usize + 3,
+                    Src::Free => {
+                        assert_eq!(circuit.sigma[4 * r + role] as usize, 4 * r + role, "a free cell's own cycle");
+                        continue;
+                    }
                 };
                 assert_eq!(cycle[4 * r + role], cycle[source], "cell {role} of row {r}");
             }
         }
-        assert_ne!(cycle[zero_anchor], cycle[one_anchor]);
-        assert!((0..n).all(|r| cycle[4 * r + 3] != cycle[zero_anchor] && cycle[4 * r + 3] != cycle[one_anchor]));
-        // Word 5 is all zeros, word 4 a one then zeros, and words 0 to 3 read computed rows.
-        for r in 0..PUBLIC_ROWS {
-            let (word, row) = (r / (WORD_BITS / 2), circuit.rows[r]);
-            assert_eq!(row.c, Src::Zero);
-            match word {
-                0..4 => assert!(matches!((row.x, row.y), (Src::Row(_), Src::Row(_)))),
-                4 if r == 4 * 64 => assert_eq!([row.x, row.y], [Src::One, Src::Zero]),
-                _ => assert_eq!([row.x, row.y], [Src::Zero, Src::Zero]),
+        for (i, &a) in anchors.iter().enumerate() {
+            for &b in &anchors[i + 1..] {
+                assert_ne!(cycle[a], cycle[b]);
+            }
+        }
+        assert!((0..n).all(|r| anchors.iter().all(|&a| cycle[4 * r + 3] != cycle[a])));
+        // The anchors: `(0, 0, word or constant)`, each word the last of its 63 packing rows.
+        for (k, row) in circuit.rows[..PUBLIC_ROWS].iter().enumerate() {
+            assert_eq!([row.x, row.y], [Src::Zero, Src::Zero]);
+            match k {
+                _ if k < PUBLIC_WORDS => {
+                    assert_eq!(row.c, Src::Row((start + (k + 1) * (WORD_BITS - 1) - 1) as u32))
+                }
+                8 => assert_eq!(row.c, Src::Zero),
+                9 => assert_eq!(row.c, Src::One),
+                _ => assert_eq!(row.c, Src::Three),
             }
         }
     }
