@@ -47,32 +47,53 @@ one does not touch it:
 1. **`a_1`, `a_2`** depend only on the masks of `Y` and `C` (6 `K`-words), linearly, with full rank: this is F1, as
    before.
 2. **`a_0`, `a_3`, `W`'s and `G`'s out-of-domain answers, and `G`'s value** depend on the masks of `X` and `V` and on
-   the random rows (`6 + 16` words). With the masks of `Y` and `C` fixed (they enter the gate quotient through `Y·C`),
-   the dependence on the masks is affine. The map's rank is 15 (five elements of `E`). **The dependence on the
-   random rows is not `K`-affine** (below, "The random rows and the gate quotient").
+   the random rows (`6 + 16` words). **This group is not affine** (below, "Group 2, measured"): the masks of `X` and
+   `V` meet in `G` (`Y` and `C` are shifts of the one interleaved witness polynomial, so `Y·C` multiplies them), and
+   a random row enters `G` through `v²`.
 3. **`H`'s and `Q`'s out-of-domain answers and `Q`'s value** depend on the blinding (24 words), with everything above
    fixed. The dependence is affine: `q` changes by the blinding times the copy argument's denominators. The rank is 9.
 
-So, whatever the witness, the revealed scalars are uniform. `H`'s value is then the one the public relation forces.
+So, whatever the witness, the revealed scalars of groups 1 and 3 are uniform, and those of group 2 are as far as the
+tests below measure. `H`'s value is then the one the public relation forces.
 The **simulator** samples the scalars of groups 1 to 3 uniformly, computes `H`'s value from the relation, and
 simulates the openings with the ZK-PCS simulator.
 
-**The condition, tested.** `hiding::revealed_scalars_are_uniform` fixes the challenges (a test hook in
-`transcript.rs`) and proves on the toy circuit (`2^17` rows). It changes one randomness word at a time and checks
-over `K` that each group's map has full rank (6, 15 and 9). It is a check at random challenges, not a proof for every
-challenge. A rank falls short only on a set of challenges where some determinant of the challenges vanishes:
-probability at most its degree over `|E| = 2^192`. That bound is not written out here.
+**The conditions, tested.** `hiding::revealed_scalars_are_uniform` fixes the challenges and the out-of-domain
+points (test hooks in `transcript.rs` and `opening.rs`) and proves on the toy circuit (`2^17` rows). It changes one
+randomness word at a time and checks over `K` that groups 1 and 3, which are affine, have full rank (6 and 9). It is a
+check at random challenges, not a proof for every challenge. A rank falls short only on a set of challenges where some
+determinant of the challenges vanishes: probability at most its degree over `|E| = 2^192`. That bound is not written
+out here.
+
+**Group 2, measured** (`hiding::group_a_over_the_random_rows`, `group_a_over_fresh_randomness`, ignored by default:
+`cargo test --release -p quotient --lib hiding -- --ignored`, about seven minutes on 16 cores). The out-of-domain
+points must be fixed with the challenges: each is derived from its table's root, so any change of the randomness moves
+it, and the answers are then not even `GF(2)`-affine in the randomness (the earlier test, which fixed only the
+challenges, measured a map that moves its own point).
+- With the masks fixed, the map is `GF(2)`-affine in the random rows' `1,024` bits (checked on two-flip differences),
+  and its rank is `960 − 193`. The rows never reach `a_3` (192 bits: only `V`'s mask does, `K`-linearly), and they
+  miss one functional `ψ` of `G`'s value. A row moves `G`'s value by `v α + v² β` with `β = γ α²` for one `γ` shared
+  by all rows, i.e. by `γ^-1 (u + u²)` at `u = γ α v`: an Artin–Schreier image, on which `Tr(γ ·)` vanishes. `ψ` is
+  `Tr(γ ·)`.
+- That bit and `a_3` are left to the masks, which reach them quadratically. Over fresh uniform masks and rows (1,408
+  draws, one witness), the affine hull of the revealed bits of groups 1 and 2 (1,344 bits) is the whole space: no
+  `GF(2)`-affine relation among them holds for a fixed witness. `ψ` (taken at the base masks) is balanced (within four
+  standard deviations).
+
+So group 2's uniformity is supported by measurement, not argued: the earlier grouping (the masks of `X` and `V`
+affine once those of `Y` and `C` are fixed) is false. A protocol in which it is argued would blind `G` the way `h` is
+blinded.
 
 **The random rows and the gate quotient.** A random row `k` holds its value `v` in its `X` and `V` cells, so the
 witness polynomial changes by `v·(L_{4k} + L_{4k+3})` (`L_i` the cells' Lagrange basis). The gate quotient reads the
 cells through the shifts of the row (`(V + X + C + Y·C)/Z_rows`, `Y` and `C` the witness shifted by one and two
 cells), and both shifts of `L_{4k} + L_{4k+3}` are `M = L_{4k+1} + L_{4k+2}`. So `Y·C` changes by
 `v·M·(Y + C) + v²·M²`, and `G` (hence `G`'s out-of-domain answer and value) by a term in `v²` that does not vanish
-off the rows. In characteristic two `v ↦ v²` is `GF(2)`-linear (the Frobenius), not `K`-linear: group 2's map is
-`GF(2)`-affine in the random rows' bits, not `K`-affine in their values, and its uniformity is a `GF(2)`-rank
-condition on `64 · 22` input bits. The test's finite differences (one unit per word) measure a `K`-rank, which does
-not establish it. (`a_0`, `a_3` and `W`'s answer are `K`-linear in `v`; only `G` sees `v²`.) Group 2's uniformity
-is therefore assumed, not argued, as is the whole of this section's conclusion in the Lean statement
+off the rows. In characteristic two `v ↦ v²` is `GF(2)`-linear (the Frobenius), not `K`-linear: with the masks fixed, group 2's
+map is `GF(2)`-affine in the random rows' bits, not `K`-affine in their values. A unit change of a word (`v ↦ v + 1`)
+measures a `K`-rank, which does not establish uniformity; "Group 2, measured" above gives the exact `GF(2)` rank (the
+rows miss `a_3` and the one bit `ψ`) and what the masks add. Group 2's uniformity is therefore measured, not argued, as
+is the whole of this section's conclusion in the Lean statement
 (`RevealedUniform`, below).
 
 **The roots** hide in the random-oracle model as long as each committed table has enough min-entropy given

@@ -50,7 +50,32 @@ impl Commitment {
 
 /// Commit to a table of `2^n` words.
 pub fn commit(words: Vec<F64>) -> Committed {
-    pcs_claim::commit(words)
+    #[allow(unused_mut)]
+    let mut committed = pcs_claim::commit(words);
+    #[cfg(test)]
+    if let Some(z) = fixed_ood_point(committed.n) {
+        committed.ood = pcs_claim::evaluate_lanes(committed.words(), &z);
+    }
+    committed
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Test-only: out-of-domain points in place of the root-derived ones (the hiding test fixes every challenge,
+    /// these included, to see the revealed scalars as a function of the prover's randomness): the seed, and the
+    /// count of commitments made since it was set, which picks the point.
+    pub(crate) static FIXED_OOD: std::cell::RefCell<Option<(u64, u64)>> = const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(test)]
+fn fixed_ood_point(n: usize) -> Option<Vec<F192>> {
+    FIXED_OOD.with(|fixed| {
+        let mut fixed = fixed.borrow_mut();
+        let (seed, count) = fixed.as_mut()?;
+        let mut rng = primitives::test_rng::Rng::new(*seed ^ (*count << 32) ^ n as u64);
+        *count += 1;
+        Some((0..n).map(|_| F192::new(rng.next_u64(), rng.next_u64(), rng.next_u64())).collect())
+    })
 }
 
 /// The table's multilinear at `point`.
