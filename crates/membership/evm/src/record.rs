@@ -9,8 +9,7 @@ use std::ops::{Add, Mul};
 use primitives::field::F192;
 use quotient::protocol::Scalar;
 
-/// The most scalars a transcript step absorbs: the quotient table's three commitments, each a root's two scalars and
-/// an out-of-domain answer.
+/// The most scalars a transcript step absorbs (the reduction absorbs at most five: the four `a_j` and `next`).
 /// Only the first `n` of a [`Node::Hash`]'s slots are its operands (the rest zero), so the bound changes no graph.
 pub const MAX_ABSORBED: usize = 9;
 
@@ -18,7 +17,7 @@ pub const MAX_ABSORBED: usize = 9;
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Node {
     Const([u64; 3]),
-    /// A half of `y` (0, 1) or of `root` (2, 3).
+    /// A `K`-word of the statement: of `y` (0 .. 4) or of `root` (4 .. 8), eight bytes big-endian each.
     Statement(u8),
     /// A scalar of a commitment: two a commitment, in the order they are sent.
     Root(u8),

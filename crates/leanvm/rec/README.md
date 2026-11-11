@@ -9,8 +9,9 @@ claims declared in its transaction's frame of PCS claims, each the EIP draft's P
 commitment's root and out-of-domain answer, one point, its value; one opening a claim).
 
 On the real 128-signature proof (the reference, `crates/leanvm/univariate/tests/vectors/keccak128_rec3.txt`):
-1,101 B of calldata, 32,794 gas of execution; as an EIP-8141 frame transaction (EIP-7976's floor, without the base and
-per-frame costs) standard 49,678, floor 70,464, and 99,912 with its frame of PCS claims and their PCS gas. π2 is π2v2
+941 B of calldata, 37,406 gas of execution; as an EIP-8141 frame transaction (EIP-7976's floor, without the base and
+per-frame costs) standard 52,366, floor 60,224, and 89,672 with its frame of PCS claims and their PCS gas (π1's claim
+on `C1` hashed in π2's circuit, `docs/leanvm/rec/PERF_GAS.md`). π2 is π2v2
 (`PI2.md`: the ports out of the copy argument), `Q` sixteen slots of `N` words.
 
 Design: [`SPEC-REC.md`](../../../docs/leanvm/rec/SPEC-REC.md) (the recursion), [`PI2.md`](../../../docs/leanvm/rec/PI2.md)

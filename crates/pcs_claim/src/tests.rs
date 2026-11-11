@@ -236,6 +236,10 @@ fn leading_lanes_commit_and_open_as_the_whole_stack() {
 #[ignore]
 fn opening_time() {
     let n: usize = std::env::var("PCS_CLAIM_BENCH_N").ok().map_or(26, |v| v.parse().expect("n"));
+    if std::env::var_os("PCS_CLAIM_TRACING").is_some() {
+        bench::init_tracing();
+    }
+    parallel::init();
     let mut rng = Rng::new(3);
     let words: Vec<F64> = (0..1usize << n).map(|i| F64(i as u64 ^ 0x5555)).collect();
     let started = std::time::Instant::now();
@@ -248,9 +252,10 @@ fn opening_time() {
     let started = std::time::Instant::now();
     let _w = [eq_tensor(&ood_point(n, &committed.root), F192::ONE), eq_tensor(&point, F192::ONE)];
     println!("weights: {:.3} s", started.elapsed().as_secs_f64());
-    for pass in 0..2 {
+    for pass in 0..3 {
         let started = std::time::Instant::now();
-        let proof = open_words_keeping(committed.words(), committed.commitment(), &claim);
+        let proof = tracing::info_span!("opening", pass)
+            .in_scope(|| open_words_keeping(committed.words(), committed.commitment(), &claim));
         println!("open {pass}: {:.3} s", started.elapsed().as_secs_f64());
         assert!(verify(&claim.encode(), &wire_proof(&proof)));
     }

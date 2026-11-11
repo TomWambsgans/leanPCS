@@ -9,6 +9,8 @@
 #
 # BENCH_DIR (default target/bench) keeps leanVM's tree and the trace; LEANVM_REPO is where leanVM is fetched from;
 # RUSTFLAGS defaults to -C target-cpu=native.
+# The EIP draft's prover figures: `LEANVM_NUM_THREADS=8 taskset -c 0-7 sh bench.sh` on an AMD EPYC 9355P (8 physical
+# cores), with RUSTFLAGS as AGENTS.md gives them for Zen 5.
 set -eu
 
 root=$(cd "$(dirname "$0")" && pwd)

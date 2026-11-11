@@ -69,32 +69,32 @@ to `root` (details: [`AGENTS.md`](AGENTS.md#membership-what-is-proved)).
 
 | | |
 |---|---|
-| Circuit | 34 Keccak-256 (χ gate on bits): 3,878,612 of 2^22 rows |
-| Prover | 2.8 s, 8.6 GiB on an M4 Max (16 cores), high power mode (`bench.sh`, 2026-11-11; four commitments, six openings; `docs/membership/EIP_CLAIMS.md`) |
-| Calldata to the contract | 461 bytes (statement, 4 roots, 11 field elements, and the frame's index) |
-| PCS claims | 6, in the EIP's encoding (193 bytes of frame) |
-| Gas | 18,899 execution; 52,856 transaction under EIP-8141 (floor-bound, `pcs_gas` in the floor; without the base and per-frame costs) |
-| Contract deployment | 1.54 M gas |
-| Formal verification (Lean 4) | knowledge soundness (≈ 2^-61.4 at 2^64 queries) and completeness (failure < 2^-163) proved end to end, in the random-permutation model; zero knowledge proved assuming a zero-knowledge PCS opening and the revealed scalars' uniformity (tested, not proved); the contract proved to be the verifier (its bytecode by tests) |
+| Circuit | 34 Keccak-256 (χ gate on bits), the public words packed and pinned: 3,878,615 of 2^22 rows |
+| Prover | **1.23 s**, 6.0 GiB on 8 threads of an AMD EPYC 9355P (median of 5, 2026-11-11); two commitments, four openings (`docs/membership/PERF_GAS.md`). The previous protocol (`f96a7938`, six openings): 2.29 s there, 2.8 s on an M4 Max |
+| Calldata to the contract | 301 bytes (statement, 2 roots, 7 field elements, and the frame's index) |
+| PCS claims | 4, in the EIP's encoding (129 bytes of frame) |
+| Gas | 16,414 execution; **36,520** transaction under EIP-8141 (floor-bound, `pcs_gas` in the floor; without the base and per-frame costs). Previously 52,856 |
+| Contract deployment | 1.24 M gas |
+| Formal verification (Lean 4) | **of the previous protocol (commit `f96a7938`, six claims), not yet of the current one** (`docs/membership/PERF_GAS.md`, "What the Lean needs"): knowledge soundness (≈ 2^-61.4 at 2^64 queries) and completeness (failure < 2^-163) proved end to end, in the random-permutation model; zero knowledge proved assuming a zero-knowledge PCS opening and the revealed scalars' uniformity (tested, not proved); the contract proved to be the verifier (its bytecode by tests) |
 
 ### Key figures: one leanVM proof by recursion
 
 A leaf aggregate of leanXMSS signatures by leanVM's Keccak VM (commit `9d50c92a3`: leanVM `42422001` with a `SHA3`
 table, one Keccak-f step a row). π1 proves its execution, Flock proving the Keccak-f permutations; π2 proves π1-rec3's
-verifier (π1 with Fiat–Shamir shaped for π2) minus its openings; the contract runs π2's verifier only. Measured on an
-Apple M4 Max (16 cores), `RUSTFLAGS="-C target-cpu=native"`, with other jobs on the machine (load average 9–14);
-the gas row as its first cell says.
+verifier (π1 with Fiat–Shamir shaped for π2) minus its openings; the contract runs π2's verifier only. The pipeline
+row is measured on 8 threads of an AMD EPYC 9355P; the rows marked "before the PCS claims" on an Apple M4 Max (16
+cores, load average 9–14) unless they say otherwise; the gas row as its first cell says.
 
 | | **128 signatures (the reference)** | 400 signatures |
 |---|---:|---:|
 | VM execution | 154,148 cycles; tables of `2^14`–`2^16` rows, memory `2^20` | 473,348 cycles; `2^16`–`2^17` rows, memory `2^22` |
 | π1 prover (π1-rec3) | in the pipeline below; before the PCS claims (version 3, layout words): 2.7 s cold, 3.65 s warm median of 3, 6.9 GB; EPYC 9355P 0.40 s warm | 4.7 s (main line), 14.4 GB, before the PCS claims |
 | π2 prover | in the pipeline below; before the PCS claims: 4.4 s + 1.7 s openings (and 3.8 s witness), 9.8 GB; EPYC 9355P (π2v2) 0.196 s + 0.049 s openings at version 3 | 3.0 s + 0.9 s openings, before the PCS claims |
-| trace → π1 → π2, per proof (`tests/pipeline.rs`) | on the PCS claims (one opening a claim, every opening on leanVM's ladder): **3.7 s** on this Mac (`bench.sh`, 2026-11-11, high power mode, median of 5; π1-rec3 with its openings 1.41 s, π2 0.95 s, π2's five openings 1.25 s), 1.4 s per circuit once, 14.3 GB. Before (π2's three stacks opened once each, every opening at version 3): 2.06 s on this Mac, **0.59 s** on an AMD EPYC 9355P (64 threads) | |
-| Calldata to the contract | 1,101 B (61 zero) | 1,101 B (59 zero) |
-| Gas (real proof, EIP-8141 frame transaction, EIP-7976 floor, no base or per-frame cost) | 32,794 execution; standard 49,678, floor **70,464**; with the frame of PCS claims (257 B) and `pcs_gas` 13,000 on both sides: **99,912** (the floor binds) | 33,740 execution; standard 50,648, floor 70,464; 99,912 with the frame and the PCS gas |
+| trace → π1 → π2, per proof (`tests/pipeline.rs`) | on the PCS claims (one opening a claim, every opening on leanVM's ladder): **2.63 s** on 8 threads of an AMD EPYC 9355P (2026-11-11, median of 5 runs of 5; π1-rec3 0.87 s and its openings 0.18 s, π2 0.79 s, π2's five openings 0.79 s), 15.1 GB; 3.7 s on an M4 Max at `f96a7938`. Before (π2's three stacks opened once each, every opening at version 3): 2.06 s on the M4 Max, **0.59 s** on an AMD EPYC 9355P (64 threads) | |
+| Calldata to the contract | 941 B (8 zero): π1's claim on `C1` hashed in π2's circuit, 20-byte narrow challenges, no selector | 961 B |
+| Gas (real proof, EIP-8141 frame transaction, EIP-7976 floor, no base or per-frame cost) | 37,406 execution; standard 52,366, floor **60,224**; with the frame of PCS claims (257 B) and `pcs_gas` 13,000 on both sides: **89,672** (the floor binds; previously 99,912) | 42,308 execution; standard 57,612, floor 61,504; 90,952 with the frame and the PCS gas |
 | PCS claims | 8: π1's 3, π2's 5 (`W`, the setup, `Q`'s identity, pushes and sum), each the EIP draft's | 8 |
-| Formal verification (Lean 4) | the VM's statement and arithmetization, the Keccak-f block, π1's knowledge soundness (≤ 2^-64 at 2^64 queries) and completeness (failure < 2^-169), π1-rec3's recorded graph = its verifier; the recursion: knowledge soundness as an explicit reduction (π2's part ≤ 2^-64, plus π1-rec3 at Keccak-f[1600]), completeness (failure 2^-164 plus two premises at Keccak-f[1600]); the compiled circuit's checks evaluated, not proved | |
+| Formal verification (Lean 4) | the VM's statement and arithmetization, the Keccak-f block, π1's knowledge soundness (≤ 2^-64 at 2^64 queries) and completeness (failure < 2^-169), π1-rec3's recorded graph = its verifier; the recursion (π2 as of `f96a7938`, before `C1`'s claim was hashed in its circuit: not yet ported): knowledge soundness as an explicit reduction (π2's part ≤ 2^-64, plus π1-rec3 at Keccak-f[1600]), completeness (failure 2^-164 plus two premises at Keccak-f[1600]); the compiled circuit's checks evaluated, not proved | |
 
 π1 alone as a contract (no recursion) costs 358,957 transaction gas at 128 signatures (8,020 B of calldata, 3 claims).
 The Keccak VM fits WHIR's `2^28`-word commitments up to about 470 signatures. Details:

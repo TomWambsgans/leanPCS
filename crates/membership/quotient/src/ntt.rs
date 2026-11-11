@@ -2690,6 +2690,85 @@ pub fn values_upper(src: Option<&[F64]>, dst: &mut [F64], offset: F64) {
     }
 }
 
+/// [`values_upper`] into each of `dsts` (all of `src`'s length) at its offset (`offsets[i]` for `dsts[i]`) of `src`
+/// with `heads[i]` added to its leading words: the first pass reads each run of `src` once for all of them (from
+/// cache for all but the first), the rest are each column's. The same values as one [`values_upper`] a column.
+pub fn values_upper_many(src: &[F64], heads: &[&[F64]], dsts: &mut [&mut [F64]], offsets: &[F64]) {
+    assert!(dsts.len() == offsets.len() && dsts.len() == heads.len());
+    assert!(src.len().is_power_of_two() && src.len() >= 8);
+    assert!(dsts.iter().all(|d| d.len() == src.len()));
+    let rows = src.len() / 8;
+    let groups = upper_groups(rows);
+    if groups.is_empty() {
+        for (d, head) in dsts.iter_mut().zip(heads) {
+            d.copy_from_slice(src);
+            d.iter_mut().zip(*head).for_each(|(w, &h)| *w += h);
+        }
+        return;
+    }
+    let log = src.len().trailing_zeros() as usize;
+    let kinds: Vec<Forward> = offsets.iter().map(|&o| Forward(Twiddles::new(o, log))).collect();
+    let datas: Vec<SendPtr<u64>> = dsts.iter_mut().map(|d| SendPtr(d.as_mut_ptr().cast::<u64>())).collect();
+    let from = SendPtr(src.as_ptr().cast::<u64>().cast_mut());
+    let (a, g) = groups[0];
+    upper_from_many(&datas, from, heads, rows, a, g, &kinds);
+    for &(a, g) in &groups[1..] {
+        for (data, kind) in datas.iter().zip(&kinds) {
+            upper(*data, None, rows, a, g, kind);
+        }
+    }
+}
+
+/// [`upper`] read from `src` into every column of `datas` (each with its kind, and its head added to its leading
+/// words), a task's lines of `src` read once for all of them.
+fn upper_from_many<T: Kind>(
+    datas: &[SendPtr<u64>],
+    src: SendPtr<u64>,
+    heads: &[&[F64]],
+    rows: usize,
+    a: usize,
+    g: usize,
+    kinds: &[T],
+) {
+    let lines = 1usize << g;
+    let width = (UPPER_TILE_ROWS >> g).clamp(1, 1 << a);
+    let per_group = (1usize << a) / width;
+    assert!(heads.iter().all(|h| h.len() <= 8 * width), "a head inside the first task's first line");
+    tasks((rows >> (a + g)) * per_group, false, |task| {
+        let row0 = ((task / per_group) << (a + g)) + (task % per_group) * width;
+        let line = |u: usize| row0 + (u << a);
+        for ((&data, kind), head) in datas.iter().zip(kinds).zip(heads) {
+            // SAFETY: a task touches rows `line(u) + [0, width)`, `u < lines`, of each column: its own; the head's
+            // words are the first of line 0 of task 0.
+            unsafe {
+                for u in 0..lines {
+                    std::ptr::copy_nonoverlapping(src.add(8 * line(u)), data.add(8 * line(u)), 8 * width);
+                }
+                if row0 == 0 {
+                    for (i, h) in head.iter().enumerate() {
+                        *data.add(i) ^= h.0;
+                    }
+                }
+                let layer = |j: usize| {
+                    let k = a + j;
+                    let hs = 1usize << j;
+                    for ub in (0..lines).step_by(2 * hs) {
+                        let t = splat(kind.twiddle(k + 3, line(ub) >> (k + 1)).0);
+                        for u in ub..ub + hs {
+                            pairs::<T>(data.add(8 * line(u)), data.add(8 * line(u + hs)), width, t);
+                        }
+                    }
+                };
+                if T::DOWN {
+                    (0..g).rev().for_each(layer);
+                } else {
+                    (0..g).for_each(layer);
+                }
+            }
+        }
+    });
+}
+
 /// The inverse transform's layers above a leaf, on the column `data`, after [`coefficients_leaf`] on every block.
 pub fn coefficients_upper(data: &mut [F64], offset: F64) {
     assert!(data.len().is_power_of_two() && data.len() >= 8);

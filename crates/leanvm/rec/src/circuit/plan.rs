@@ -63,6 +63,12 @@ enum Op {
         slot: u32,
         source: Given,
     },
+    /// Bit `bit` of the word at slot `from` (a hashed claim's element unpacked: `Given::Bit`).
+    Bit {
+        slot: u32,
+        from: u32,
+        bit: u8,
+    },
     /// A constant `κ`.
     Const {
         slot: u32,
@@ -246,6 +252,8 @@ pub struct WitnessPlan {
     outer: Vec<Src>,
     /// The public elements' limbs' slots.
     elements: Vec<[u32; 3]>,
+    /// The hashed claims' digests' limbs' slots.
+    claim_hashes: Vec<[u32; 4]>,
 }
 
 impl WitnessPlan {
@@ -491,7 +499,17 @@ impl WitnessPlan {
             }
             if let Some(&source) = given.get(&v) {
                 slot_of[v as usize] = slots;
-                ops.push(Op::Given { slot: slots, source });
+                ops.push(match source {
+                    Given::Bit { value, bit } => {
+                        assert_ne!(slot_of[value as usize], NONE, "a bit of a word computed before it");
+                        Op::Bit {
+                            slot: slots,
+                            from: slot_of[value as usize],
+                            bit,
+                        }
+                    }
+                    source => Op::Given { slot: slots, source },
+                });
                 slots += 1;
                 continue;
             }
@@ -611,12 +629,22 @@ impl WitnessPlan {
                 })
             })
             .collect();
+        let claim_hashes = trace
+            .claim_hashes
+            .iter()
+            .map(|l| {
+                l.map(|v| {
+                    assert_ne!(slot_of[v as usize], NONE, "a claim hash's limb is a sequential word");
+                    slot_of[v as usize]
+                })
+            })
+            .collect();
         WitnessPlan {
             log_n: compiled.finished.circuit.log_n,
             log_width,
             program_iv,
             stream_len: recorded.stream_len,
-            roots_at: recorded.roots_at.to_vec(),
+            roots_at: compiled.roots_at.clone(),
             slots: slots as usize,
             ops,
             kpolys,
@@ -627,6 +655,7 @@ impl WitnessPlan {
             rows: row_src,
             outer,
             elements,
+            claim_hashes,
         }
     }
 
@@ -656,6 +685,7 @@ impl WitnessPlan {
         for op in &self.ops {
             match *op {
                 Op::Given { slot, source } => words[slot as usize] = source.word(public, stream).0,
+                Op::Bit { slot, from, bit } => words[slot as usize] = words[from as usize] >> bit & 1,
                 Op::Const { slot, word } => words[slot as usize] = word.0,
                 Op::Sum { slot, reads, n } => {
                     let reads = &self.reads[reads as usize..(reads + n) as usize];
@@ -784,6 +814,17 @@ impl WitnessPlan {
                 .elements
                 .iter()
                 .map(|l| E::new(words[l[0] as usize], words[l[1] as usize], words[l[2] as usize]))
+                .collect(),
+            claim_hashes: self
+                .claim_hashes
+                .iter()
+                .map(|l| {
+                    let mut hash = [0u8; 32];
+                    for (k, &s) in l.iter().enumerate() {
+                        hash[8 * k..8 * k + 8].copy_from_slice(&words[s as usize].to_be_bytes());
+                    }
+                    hash
+                })
                 .collect(),
         };
         (witness, public)

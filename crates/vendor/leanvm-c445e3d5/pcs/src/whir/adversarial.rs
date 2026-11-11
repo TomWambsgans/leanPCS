@@ -1,3 +1,5 @@
+// Part of this repository (new here, beside the vendored leanVM `c445e3d5` `crates/pcs/src/whir.rs`). MIT OR
+// Apache-2.0; see AGENTS.md.
 //! Adversarial tests of the lean prover paths (commit 411866f): `commit_tree_in`, `encoded_rows`, the lean
 //! deeper levels and `recursive_prover_with_lane_tensors`, each against the untouched `commit` /
 //! `recursive_prover_with_basis` on randomized shapes.
@@ -174,7 +176,7 @@ fn dense_of(weight: &[LaneTensor], n_lanes: usize, block: usize) -> Vec<F192> {
         .map(|i| {
             weight
                 .iter()
-                .fold(F192::ZERO, |acc, t| acc + t.scales[i / block] * t.low[i % block])
+                .fold(F192::ZERO, |acc, t| acc + t.scales[i / block] * t.low.at(i % block))
         })
         .collect()
 }
@@ -210,7 +212,10 @@ fn tensors(rng: &mut Rng, claims: usize, n_lanes: usize, block: usize, how: Scal
                     Scales::AllZero => F192::ZERO,
                 })
                 .collect();
-            LaneTensor { scales, low }
+            LaneTensor {
+                scales,
+                low: Low::Table(low),
+            }
         })
         .collect()
 }

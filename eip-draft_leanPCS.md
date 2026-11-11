@@ -96,10 +96,10 @@ A valid block proves every dependency of its transactions. So a contract can rel
 
 Two applications of the reference implementation, with their PIOPs as straight-line EVM contracts and their PCS claims declared in a frame. Gas is priced as for an EIP-8141 frame transaction, whose calldata floor is [EIP-7976](./eip-7976.md)'s, and excludes `FRAME_TX_INTRINSIC_COST` and the per-frame costs. PIOP is the gas of the frame that verifies the PIOP: its execution and its calldata. Total is `max(standard, floor)` for that frame and the frame of PCS claims, with `pcs_gas` in both. Prover is the measured prover time plus 0.1 s per PCS claim, a heuristic for the client-side aggregation of its opening. The membership proof is zero-knowledge assuming a zero-knowledge PCS opening (ZK-WHIR); the reference implementation's openings are plain WHIR, which has the same claims and gas.
 
-| Application | Prover (M4 Max) | Calldata | PIOP | PCS claims | Total |
+| Application | Prover (8 threads of an AMD EPYC 9355P) | Calldata | PIOP | PCS claims | Total |
 |---|---|---|---|---|---|
-| Zero-knowledge membership in a Keccak-256 Merkle tree of depth 32 | 3.4 s | 461 bytes | 29,504 gas | 6 | 52,856 gas |
-| leanVM verification (here 128 leanXMSS signatures), i.e. any computation thanks to recursion | 4.5 s | 1,101 bytes | 70,464 gas | 8 | 99,912 gas |
+| Zero-knowledge membership in a Keccak-256 Merkle tree of depth 32 | 1.6 s | 301 bytes | 21,194 gas | 4 | 36,520 gas |
+| leanVM verification (here 128 leanXMSS signatures), i.e. any computation thanks to recursion | 3.4 s | 941 bytes | 60,224 gas | 8 | 89,672 gas |
 
 ### Why a 192-bit field
 

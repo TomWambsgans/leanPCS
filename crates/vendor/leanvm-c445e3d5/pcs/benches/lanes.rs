@@ -18,7 +18,7 @@ use std::hint::black_box;
 use std::time::Instant;
 
 use bench::{Plan, env_usize};
-use pcs::whir::{LaneTensor, commit, commit_tree_in, config_for_rate, recursive_prover_with_lane_tensors};
+use pcs::whir::{LaneTensor, Low, commit, commit_tree_in, config_for_rate, recursive_prover_with_lane_tensors};
 use primitives::field::{F64, F192};
 use primitives::test_rng::Rng;
 
@@ -39,7 +39,7 @@ fn main() {
     let weight: Vec<LaneTensor> = (0..claims)
         .map(|_| LaneTensor {
             scales: rng.ext_vec(lanes),
-            low: primitives::multilinear::eq_table(&rng.ext_vec(log_lane)),
+            low: Low::Table(primitives::multilinear::eq_table(&rng.ext_vec(log_lane)).to_vec()),
         })
         .collect();
     let target = F192::ZERO; // the proof need not verify: the work is the same
