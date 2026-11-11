@@ -224,14 +224,8 @@ pub fn word_limbs(word: &[u8; 32]) -> [u64; 4] {
     std::array::from_fn(|l| u64::from_be_bytes(word[24 - 8 * l..32 - 8 * l].try_into().expect("8 bytes")))
 }
 
-/// The word of an element: `element_word`'s bytes.
-pub fn element_word(x: E) -> [u8; 32] {
-    let mut w = [0u8; 32];
-    w[8..16].copy_from_slice(&x.c2.to_be_bytes());
-    w[16..24].copy_from_slice(&x.c1.to_be_bytes());
-    w[24..32].copy_from_slice(&x.c0.to_be_bytes());
-    w
-}
+/// The word of an element, as a contract holds it.
+pub use leanvm_statement::evm::machine::element_word;
 
 /// `Σ_l γ^l · limbs[l]`.
 pub fn fingerprint(limbs: &[u64], gamma: E) -> E {

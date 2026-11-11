@@ -3,7 +3,7 @@
 //! What a contract's call costs: its gas by phase ([`phases`]), on sample calldata ([`sample_stream`],
 //! [`sample_tx_gas`]), and the gas of a verifier fragment measured alone ([`measure_fragment`]).
 
-use crate::evm::codegen::{CALLS, ENTRY, Ending, Entry, MEASURE, VERIFY, Word, compile};
+use crate::evm::codegen::{CALLS, ENTRY, Ending, Entry, MEASURE, Word, compile};
 use crate::evm::machine::{FrameTxGas, PcsFrame, call, frame_tx_gas};
 use crate::evm::record::{Recorder, Sym, record};
 
@@ -59,11 +59,6 @@ pub fn sample_tx_gas(bytes: usize, zeros: usize, execution: u64, claims: usize) 
     frame_tx_gas(&calldata, execution, &frame, claims)
 }
 
-/// A fragment's calldata: the selector, a public input of four words, then the stream.
-fn calldata(public_input: &[u8; 32], stream: &[u8]) -> Vec<u8> {
-    [&VERIFY[..], public_input, stream].concat()
-}
-
 /// What a part of a verifier costs measured alone: the same compilation and run, of a graph `f` records on a fresh
 /// transcript (its outputs kept live by returning them), less the entry checks and the returned words.
 #[derive(Clone, Debug)]
@@ -89,18 +84,13 @@ pub fn measure_fragment(f: impl FnOnce(&mut Recorder) -> Vec<Sym>) -> FragmentGa
         iv: [0x77; 32],
         stream_len,
         measure: true,
-        selector: true,
         frame: Vec::new(),
     };
     let words: Vec<Word> = outputs.iter().map(|sym| Word::Node(sym.0)).collect();
     let contract = compile(&graph, &words, &Ending::Return, &entry);
     let stream = sample_stream(stream_len, 0x9E37_79B9);
-    let outcome = call(
-        &contract.code,
-        &[],
-        &calldata(&[0x5a; 32], &stream),
-        &PcsFrame::default(),
-    );
+    // A fragment's calldata: a public input of four words, then the stream (and no frame's index: it returns).
+    let outcome = call(&contract.code, &[], &[&[0x5a; 32][..], &stream].concat(), &PcsFrame::default());
     assert!(outcome.output.is_some(), "the measuring build returns");
     let mut phases = phases(&outcome.gas_by_pc, &contract.phase_of, CALLS);
     phases.retain(|p| ![MEASURE, CALLS, ENTRY].contains(&p.phase));

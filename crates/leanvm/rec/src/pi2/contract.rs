@@ -263,7 +263,6 @@ fn entry(inst: &Instance, recorded: &Recorded, measure: bool) -> Entry {
         iv: inst.iv,
         stream_len: recorded.stream_len,
         measure,
-        selector: false,
         frame: frame_payloads(inst.spec),
     }
 }

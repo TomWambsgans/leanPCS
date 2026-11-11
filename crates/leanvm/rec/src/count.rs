@@ -128,7 +128,7 @@ fn operands(graph: &Graph, node: Node) -> Vec<u32> {
         Node::Hash(s, _, _) => vec![s],
         Node::Low(h) | Node::Narrow(h) | Node::Wide(h, _) | Node::Bits(h, _, _) => vec![h],
         Node::RingWeight(k, _) => graph.kernels[k as usize].clone(),
-        Node::Const(_) | Node::Statement(_) | Node::Input { .. } | Node::Seed => vec![],
+        Node::Const(_) | Node::Statement(_) | Node::Frame(..) | Node::Input { .. } | Node::Seed => vec![],
     }
 }
 
@@ -218,7 +218,7 @@ pub fn count(recorded: &Recorded) -> Counts {
         }
         match *node {
             Node::Const(_) => c.consts += 1,
-            Node::Statement(_) => c.statement += 1,
+            Node::Statement(_) | Node::Frame(..) => c.statement += 1,
             Node::Input { offset, len } => {
                 match len {
                     24 => c.scalars += 1,

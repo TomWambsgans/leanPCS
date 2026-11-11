@@ -595,7 +595,7 @@ fn gas_by_opcode() {
         // `m` variables, the quotient table's in `m + 4`.
         let sizes: Vec<u64> = walk(&calling.code).calls.iter().map(|&(_, size)| size).collect();
         let vars = quotient::protocol::table_vars(log_rows);
-        let expected: Vec<u64> = [0, 1, 2].iter().map(|&k| 82 + 24 * vars[k] as u64).collect();
+        let expected: Vec<u64> = [0, 1, 2].iter().map(|&k| evm_link::wire::claim_len(vars[k]) as u64).collect();
         assert_eq!(sizes, expected);
         if log_rows == 22 {
             println!("difference: {}", totals[1] - totals[0]);

@@ -14,7 +14,7 @@ use leanvm_statement::evm::codegen::word;
 use leanvm_statement::evm::machine::{PcsFrame, call};
 use leanvm_statement::shapes::PROGRAM_IV;
 use leanvm_univariate::claims::Commitment;
-use leanvm_univariate::contract::{SetupRoots, calldata, compile_verifier, proof_calldata, record_verifier_with};
+use leanvm_univariate::contract::{SetupRoots, calldata, compile_verifier, record_verifier_with};
 use leanvm_univariate::prover::check::on_domain;
 use leanvm_univariate::prover::prove::{Config, OpeningProof, Proof, prove, verify};
 use leanvm_univariate::prover::trace::Trace;
@@ -276,7 +276,7 @@ fn end_to_end(variant: Variant) {
             config: name.to_string(),
             shape,
             public,
-            calldata: proof_calldata(&public, &proof.stream),
+            calldata: [&vectors::SELECTOR[..], &public, &proof.stream].concat(),
             claims: calls.clone(),
             accepts: true,
             gas_straight: gas,

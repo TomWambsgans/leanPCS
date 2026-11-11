@@ -3,7 +3,7 @@
 //! The verifier as a contract (straight-line code compiled from the recorded verifier, `leanvm_statement::evm`), its
 //! calldata, and what a call costs.
 //!
-//! **Calldata**: selector, the public input (four 64-bit words, each big-endian: `(cell0.c0, cell0.c1, cell1.c0,
+//! **Calldata**, no selector: the public input (four 64-bit words, each big-endian: `(cell0.c0, cell0.c1, cell1.c0,
 //! cell1.c1)`; leanVM's 32-byte digest has its words little-endian, so a caller reverses each word's 8 bytes, SPEC.md
 //! §4), then the stream: the six row counts, `C1`'s commitment (its root, its out-of-domain answer), Flock's messages,
 //! `C2`'s commitment, the values at `t`, the batching sumcheck (SPEC.md §8, §13), then a byte, the index of the
@@ -19,7 +19,7 @@
 //! are no PCS claim: the contract is built for point claims.
 
 use evm_link::Claim as Fields;
-use leanvm_statement::evm::codegen::{CALLS, Claim, Contract, Ending, Entry, MEASURE, VERIFY, Word, compile};
+use leanvm_statement::evm::codegen::{CALLS, Claim, Contract, Ending, Entry, MEASURE, Word, compile};
 pub use leanvm_statement::evm::deploy::{PhaseGas, sample_stream};
 use leanvm_statement::evm::deploy::{phases, sample_calldata_gas, sample_tx_gas};
 use leanvm_statement::evm::machine::{FrameTxGas, PCS_FRAME, PcsFrame, call, element_word};
@@ -197,21 +197,15 @@ pub fn compile_verifier(recorded: &Recorded, program_iv: &[u8; 32], measure: boo
         iv: recorded.iv(program_iv),
         stream_len: recorded.stream_len,
         measure,
-        selector: true,
         frame: Vec::new(),
     };
     compile(&recorded.graph, &[], &Ending::Claims(calls(recorded)), &entry)
 }
 
-/// The proof's calldata: the selector, the public input, the stream (what the committed vectors hold).
-pub fn proof_calldata(public_words: &[u8; 32], stream: &[u8]) -> Vec<u8> {
-    [&VERIFY[..], public_words, stream].concat()
-}
-
-/// Calldata verifying a proof: [`proof_calldata`], then the index of the transaction's frame of PCS claims
+/// Calldata verifying a proof: the public input, the stream, then the index of the transaction's frame of PCS claims
 /// ([`PCS_FRAME`]).
 pub fn calldata(public_words: &[u8; 32], stream: &[u8]) -> Vec<u8> {
-    [&proof_calldata(public_words, stream)[..], &[PCS_FRAME]].concat()
+    [public_words, stream, &[PCS_FRAME]].concat()
 }
 
 /// The Rust verifier on the same calldata: the claims, and the values it requires to be zero, then nonzero.
@@ -383,7 +377,6 @@ pub fn parity_with(
         iv: recorded.iv(iv),
         stream_len: recorded.stream_len,
         measure: true,
-        selector: true,
         frame: Vec::new(),
     };
     let checks = recorded.graph.zero.iter().chain(&recorded.graph.nonzero);

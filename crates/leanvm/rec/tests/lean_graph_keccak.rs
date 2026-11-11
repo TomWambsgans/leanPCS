@@ -63,6 +63,7 @@ fn node_text(node: &Node) -> String {
     match *node {
         Node::Const([c0, c1, c2]) => format!("const 0x{c0:x} 0x{c1:x} 0x{c2:x}"),
         Node::Statement(k) => format!("statement {k}"),
+        Node::Frame(..) => unreachable!("π1's graph reads no frame"),
         Node::Input { offset, len } => format!("input {offset} {len}"),
         Node::Add(a, b) => format!("add {a} {b}"),
         Node::Mul(a, b) => format!("mul {a} {b}"),
