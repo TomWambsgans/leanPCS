@@ -7,3 +7,4 @@ import Kc3Circuit.Rows
 import Kc3Circuit.Pole
 import Kc3Circuit.Cells
 import Kc3Circuit.Words
+import Kc3Circuit.Sound
