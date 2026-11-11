@@ -243,7 +243,7 @@ theorem inv_wide (hc : c.Checked r) (G : c.ctx.Good w) {id : ℕ} (hid : id < c.
   split at hok
   · rename_i rt hrt
     simp only [Bool.and_eq_true, beq_iff_eq, decide_eq_true_eq] at hok
-    obtain ⟨⟨⟨⟨⟨_, hsz⟩, hs⟩, h0⟩, h1⟩, h2⟩ := hok
+    obtain ⟨⟨⟨⟨⟨⟨_, -⟩, hsz⟩, hs⟩, h0⟩, h1⟩, h2⟩ := hok
     obtain ⟨hrs, hrlen, hrbits⟩ := ih.2 rt hrt
     set rate := ((c.valsW r w).getD h default).toRate
     have W := fun (first : ℕ) (hf : first + 8 ≤ 24 * k + 32) (u : ℕ)
@@ -772,6 +772,9 @@ theorem bitOf_append_right (A B : List UInt8) (i : ℕ) (h : A.length ≤ i / 8)
 
 theorem NAME_length : NAME.length = 16 := by decide +kernel
 
+theorem isStateNode_of_isHash (n : Node) (h : n.isHash = true) : isStateNode n = true := by
+  cases n <;> simp_all [Node.isHash, isStateNode]
+
 theorem spongeRateIs_spec {d : Array ℕ} {m : Array Bit} {rt : Option (Array ℕ)} (h : c.spongeRateIs d m rt = true) :
     ∃ sp ∈ c.st.sponges, sp.digest = d ∧ sp.message = m ∧ ∀ o, rt = some o → sp.out = o := by
   unfold spongeRateIs at h
@@ -1052,8 +1055,7 @@ theorem node_inv (hc : c.Checked r) (hw : c.circuit.Satisfied w) :
         simp only [nodeOk, hnode] at hokv
         split at hokv
         · simp only [Bool.and_eq_true] at hokv
-          have := hokv.1.1.1.1.1
-          revert this; cases c.nodes.getD h default <;> simp [Node.isHash, isStateNode]
+          exact isStateNode_of_isHash _ hokv.1.1.1.1.1.1
         · cases hokv
       have := IH h (by simp [hnode, Node.ops])
       unfold NodeInv at this; rw [if_pos hk] at this

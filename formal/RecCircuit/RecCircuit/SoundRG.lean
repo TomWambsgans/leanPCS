@@ -63,15 +63,14 @@ theorem compile_sound_root (hc : compile (ofRG g rootsAt iv hashed) = .ok c) {pu
     (hw : c.circuit.toPiop.Satisfies pub (emb w)) {J i : ℕ} (hJ : J < c.circuit.ports.size)
     (hs : (c.circuit.ports.getD J default).source = .root i) :
     c.circuit.portLimbs w J = (List.range 4).map fun l =>
-      F64.ofNat (beNat (slice ((c.streamW (ofRG g rootsAt iv hashed) w).toArray.extract (rootsAt.getD i 0)
-        (rootsAt.getD i 0 + 32)).toList ([24, 16, 8, 0].getD l 0) 8)) := by
+      F64.ofNat (beNat (slice ((c.streamW (ofRG g rootsAt iv hashed) w).toArray.extract (c.rootsAt.getD i 0)
+        (c.rootsAt.getD i 0 + 32)).toList ([24, 16, 8, 0].getD l 0) 8)) := by
   rw [compile_sound hc hw J hJ, portMeaning, hs]
   apply List.map_congr_left
   intro l hl
   rw [List.mem_range] at hl
-  rw [extract_toList, show rootsAt.getD i 0 + 32 - rootsAt.getD i 0 = 32 by omega,
+  rw [extract_toList, show c.rootsAt.getD i 0 + 32 - c.rootsAt.getD i 0 = 32 by omega,
     slice_slice _ _ _ _ _ (by interval_cases l <;> decide)]
-  rfl
 
 /-- **Element `e`'s port carries `RecGraph`'s value of the call's node**, for any original node the expansion maps to
 the calls' `e`-th element node. -/
@@ -94,13 +93,14 @@ theorem compile_sound_element (hc : compile (ofRG g rootsAt iv hashed) = .ok c) 
 /-- **The zero ports carry `RecGraph`'s values of π1's zero checks**, given `ExpandSound`. -/
 theorem compile_sound_zero_rg (hc : compile (ofRG g rootsAt iv hashed) = .ok c) {pub : ℕ → List F192} {w : ℕ → K}
     (hw : c.circuit.toPiop.Satisfies pub (emb w)) (hz : ∀ id ∈ g.zero, id < g.nodes.size) (hE : ExpandSound g c) :
-    ∀ J < c.circuit.ports.size, (c.circuit.ports.getD J default).source = .zero →
+    ∀ J < c.circuit.ports.size, (c.circuit.ports.getD J default).source = .zero → c.claimZeros ≤ c.zeroIndex J →
       c.circuit.portLimbs w J = limbsL (RecGraph.valE
-        (rgVals g iv (c.pubW w) (c.streamW (ofRG g rootsAt iv hashed) w)) (zeroOrig c (ofRG g rootsAt iv hashed) (c.zeroIndex J))) := by
-  intro J hJ hsrc
+        (rgVals g iv (c.pubW w) (c.streamW (ofRG g rootsAt iv hashed) w)) (zeroOrig c (ofRG g rootsAt iv hashed) (c.zeroIndex J - c.claimZeros))) := by
+  intro J hJ hsrc hcz
   have hchk := checked_of_compile hc
   rw [compile_sound hc hw J hJ, portMeaning, hsrc]
   simp only
+  rw [if_neg (by omega)]
   set r := ofRG g rootsAt iv hashed
   have hzero : c.zero = r.graph.zero.map (fun id => c.map.getD id 0) := (graphOk_parts hchk.graph).2.1
   have hso := allBelow_spec hchk.sources J hJ
@@ -110,22 +110,22 @@ theorem compile_sound_zero_rg (hc : compile (ofRG g rootsAt iv hashed) = .ok c) 
   have hzn : c.zeroNodes = (r.graph.zero.filter (P ∘ fun id => c.map.getD id 0)).map (fun id => c.map.getD id 0) := by
     unfold zeroNodes; rw [hzero, List.filter_map]
   rw [hP] at hzn
-  have hlen : c.zeroIndex J < (r.graph.zero.filter
+  have hlen : c.zeroIndex J - c.claimZeros < (r.graph.zero.filter
       (fun id => notConst (c.nodes.getD (c.map.getD id 0) default))).length := by
-    rw [hzn, List.length_map] at hso; exact hso
-  have hget : c.zeroNodes.getD (c.zeroIndex J) 0 = c.map.getD (zeroOrig c r (c.zeroIndex J)) 0 := by
+    rw [hzn, List.length_map] at hso; omega
+  have hget : c.zeroNodes.getD (c.zeroIndex J - c.claimZeros) 0 = c.map.getD (zeroOrig c r (c.zeroIndex J - c.claimZeros)) 0 := by
     rw [hzn]
     simp only [zeroOrig, List.getD_eq_getElem?_getD, List.getElem?_map, List.getElem?_eq_getElem hlen,
       Option.map_some, Option.getD_some]
-  have hmemz : zeroOrig c r (c.zeroIndex J) ∈ g.zero := by
-    have : zeroOrig c r (c.zeroIndex J) ∈ r.graph.zero.filter
+  have hmemz : zeroOrig c r (c.zeroIndex J - c.claimZeros) ∈ g.zero := by
+    have : zeroOrig c r (c.zeroIndex J - c.claimZeros) ∈ r.graph.zero.filter
         (fun id => notConst (c.nodes.getD (c.map.getD id 0) default)) := by
       simp only [zeroOrig, List.getD_eq_getElem?_getD, List.getElem?_eq_getElem hlen, Option.getD_some]
       exact List.getElem_mem hlen
     exact (List.mem_filter.mp this).1
-  have hmem := (graphOk_parts hchk.graph).2.2.1 (c.zeroNodes.getD (c.zeroIndex J) 0) (by
+  have hmem := (graphOk_parts hchk.graph).2.2.1 (c.zeroNodes.getD (c.zeroIndex J - c.claimZeros) 0) (by
     apply List.mem_append_left
-    simp [List.getD_eq_getElem?_getD, hso])
+    simp [List.getD_eq_getElem?_getD, show c.zeroIndex J - c.claimZeros < c.zeroNodes.length by omega])
   rw [elem_rg hchk hE w hmem.1 hmem.2 (hz _ hmemz) hget.symm]
 
 end Compiled

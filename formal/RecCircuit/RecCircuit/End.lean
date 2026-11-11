@@ -82,8 +82,8 @@ def EndStatement (g : RecGraph.Graph) (rootsAt : List ℕ) (iv : List UInt8) (c 
       c.circuit.portLimbs w J = (List.range 4).map fun k => K.ofLane (beWordAt (c.pubW w).toArray (8 * k))) ∧
     (∀ J < c.circuit.ports.size, ∀ i, (c.circuit.ports.getD J default).source = .root i →
       c.circuit.portLimbs w J = (List.range 4).map fun l =>
-        F64.ofNat (beNat (slice ((c.streamW (ofRG g rootsAt iv hashed) w).toArray.extract (rootsAt.getD i 0)
-          (rootsAt.getD i 0 + 32)).toList ([24, 16, 8, 0].getD l 0) 8))) ∧
+        F64.ofNat (beNat (slice ((c.streamW (ofRG g rootsAt iv hashed) w).toArray.extract (c.rootsAt.getD i 0)
+          (c.rootsAt.getD i 0 + 32)).toList ([24, 16, 8, 0].getD l 0) 8))) ∧
     (∀ J < c.circuit.ports.size, (c.circuit.ports.getD J default).source = .zero →
       c.circuit.portLimbs w J = limbsL (RecGraph.valE
         (rgVals g iv (c.pubW w) (c.streamW (ofRG g rootsAt iv hashed) w)) (zeroOrig c (ofRG g rootsAt iv hashed) (c.zeroIndex J)))) ∧
