@@ -22,7 +22,7 @@ public terms' holes, `σ`'s preimages of their tags):
   pushing to its tag `ω_tag` must push; π2v2 checks it by the ports' term `T` (`Φ_k` by rows, `PI2.md` §1), for which
   the verifier reads each term's **hole** (`holes`: the position `σ` sends to the tag; its row and role);
 * π1's claims are words (`CallWord`): constants, π1's roots as the stream carries them, π1's claims'
-  elements (public scalars), and the coordinates of π1-rec3's pair points of them.
+  elements (public scalars), and the coordinates of π1-rec4's pair points of them.
 
 A `List` stands for a `Vec`; an index out of range reads a default (`getD`), where the Rust would panic (the
 verifier reads in range on the circuits the runner checks).
@@ -126,7 +126,7 @@ inductive CallWord where
   | root (i : ℕ)
   /-- π1's claims' element `i`, as `element_word`. -/
   | element (i : ℕ)
-  /-- Coordinate `coordinate` of `pair_point` of element `element` (π1-rec3's paired batch). -/
+  /-- Coordinate `coordinate` of `pair_point` of element `element` (π1-rec4's paired batch). -/
   | pair (element coordinate : ℕ)
   deriving DecidableEq, Repr, Inhabited
 
