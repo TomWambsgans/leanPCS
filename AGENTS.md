@@ -137,11 +137,10 @@ transaction gas without the 21,000 base (EIP-7623) and without the frame's per-f
   the row values of rank 12 off a small set of challenges; `T`'s answer is proved uniform through the slack words), the
   PCS hypothesis shown satisfiable (the model's ideal PCS meets it with `εpcs = 0`, `pcsZeroKnowledge_idealOf`; that
   PCS is hiding but not binding, so this shows the hypothesis consistent and the theorem with content; that a sound
-  ZK-WHIR satisfies it is not proved); the
-  deployed openings (plain WHIR) are not zero knowledge and not an instance; its contract = its verifier. The leanVM
-  line, of the deployed protocols:
-  the Keccak VM's statement, the Keccak-f block, π1's knowledge soundness (≤ 2^-64 at 2^64 queries) and completeness
-  (< 2^-169, given a program IV of 32 to 2^16 bytes), π1-rec4's verifier (differential-tested on the real proofs),
+  ZK-WHIR satisfies it is not proved); the deployed openings (plain WHIR) are not zero knowledge and not an instance;
+  its contract = its verifier. The leanVM line, of the deployed protocols: the Keccak VM's statement, the Keccak-f
+  block, π1's knowledge soundness (≤ 2^-64 at 2^64 queries) and completeness (< 2^-169, given a program IV of 32 to
+  2^16 bytes), π1-rec4's verifier (differential-tested on the real proofs),
   recorded graph = verifier at every setup commitment, and knowledge soundness (`uniKnowledgeSoundnessKeccakRec4_closed`);
   π2v4's PIOP, circuit compiler (identical to the Rust's on π1-rec4's graph) and contract model; **the recursion's
   knowledge soundness at the real deployment as an explicit reduction** (`RecCompose.recKnowledgeSoundness_reduction_real`:
@@ -263,14 +262,22 @@ leanEthereum) and is licensed, like leanVM, under the MIT license ([`LICENSE-MIT
 
 ## Lean builds
 
-The Lean builds run on h1, under `/root/pcs-quotient-fv/` only (the rest of h1 is other work). Copy the
-repository there (rsync, without `.lake`), link `formal/leanervm` to `/root/pcs-quotient-fv/leanervm` (a built
-leanerVM `6175f1a0`, which `WhirBridge`, `Compose`, `Completeness` and `EndToEnd` build against), then:
+The Lean builds run on the build hosts (h1, h3) under `/root/pcs-quotient-fv/` only (the rest of each host is other
+work). Copy the repository there (rsync, without `.lake`), link `formal/leanervm` to `/root/pcs-quotient-fv/leanervm`
+(a built leanerVM `6175f1a0`, which `WhirBridge`, `Compose`, `Completeness` and `EndToEnd` build against; its
+`lean_vm/.lake/packages` holds Mathlib and the other dependencies, the libraries' `packagesDir`), then:
 
 ```sh
 cd formal/EndToEnd
-systemd-run --scope -p MemoryMax=12G lake build Soundness E2ECompleteness Evm ZK   # end theorems; #guard_msgs checks axioms
-systemd-run --scope -p MemoryMax=12G lake build KeccakVm KeccakArith KeccakFlushes KeccakFlock UniKeccak UniKeccak.Fits \
-  UniStatement.KeccakTables UniKeccakSound UniKeccakComplete RecGraphKeccak RecCircuit rec-circuit-keccak RecStatement \
-  RecCompose                                                                     # the leanVM line's end theorems
+export LEAN_NUM_THREADS=8
+systemd-run --scope -p MemoryMax=48G lake build \
+  Soundness E2ECompleteness Evm ZK Kc3 Kc3Circuit Implementation PcsQuotient \
+  membership-differential membership-wiring-check kc3-dump-circuit \
+  UniStatement UniKeccak KeccakVm KeccakArith KeccakFlushes KeccakFlock UniKeccakSound UniKeccakComplete \
+  RecGraph RecGraphKeccak RecCircuit RecStatement RecPiop RecCompose Compose UniKeccak.Fits UniStatement.KeccakTables \
+  rec-circuit-keccak rec-circuit-diff rec-real-check rec-view-check      # both lines; #guard_msgs checks axioms
 ```
+
+A clean build of both lines (every in-repo module from scratch, the dependencies replayed from leanerVM's
+`.lake/packages`): 21,415 jobs, 1,021 in-repo modules, 14 min on h3 (2026-11-12). The evaluated checks and
+differential runs: [`formal/README.md`](formal/README.md), "Building".
