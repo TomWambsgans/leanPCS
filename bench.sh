@@ -11,13 +11,15 @@
 # claim), the calldata, the PIOP column (the PIOP's frame alone: max(standard, floor) of its calldata and execution),
 # the claims and the total.
 #
+# It prints only the measured times and that table; every command's output goes to $BENCH_DIR/logs.
+#
 # BENCH_DIR (default target/bench) keeps leanVM's tree, the trace and the runs' logs; LEANVM_REPO is where leanVM is
 # fetched from; RUSTFLAGS defaults to -C target-cpu=native. REPEAT (default 1) runs the two provers that many times,
 # interleaved (membership, leanVM, membership, ...), and reports their medians; each leanVM run is itself the median of
 # 5 warm passes. BENCH_PIN prefixes the timed commands only (the builds run first, unpinned).
 #
 # The EIP draft's figures are medians of five interleaved runs on 8 physical cores of an idle AMD EPYC 9355P, with
-# RUSTFLAGS as README.md gives them for Zen 5:
+# RUSTFLAGS as AGENTS.md ("Build and test") gives them for Zen 5:
 #   LEANVM_NUM_THREADS=8 BENCH_PIN="taskset -c 0-7" REPEAT=5 sh bench.sh
 set -eu
 
@@ -31,6 +33,8 @@ export RUSTFLAGS="${RUSTFLAGS:--C target-cpu=native}"
 cd "$root"
 logs=$work/logs
 mkdir -p "$logs"
+# Runs a command with its output in a log file (`quiet <log> <command>`); on failure, says where to look.
+quiet() { log=$1; shift; "$@" > "$log" 2>&1 || { echo "bench.sh: failed; see $log" >&2; exit 1; }; }
 rm -f "$logs"/membership.* "$logs"/pipeline.*
 
 echo "== leanVM: execution trace of 128 signatures"
@@ -44,29 +48,28 @@ if [ ! -f "$trace/meta.txt" ]; then
         git -C "$work/leanvm.git" archive "$commit" | tar -x -C "$tree"
         sh "$root/crates/leanvm/univariate/src/prover/dump_keccak/apply.sh" "$tree"
     fi
-    (cd "$tree" && LEANVM_TRACE_DUMP="$trace" cargo leanvm aggregate --xmss 128 --log-inv-rate 1)
+    (cd "$tree" && quiet "$logs/trace" env LEANVM_TRACE_DUMP="$trace" cargo leanvm aggregate --xmss 128 --log-inv-rate 1)
 fi
 
 echo "== Building"
-cargo bench -p quotient --bench membership --no-run
-cargo test --release -p leanvm_rec --test pipeline --no-run
+quiet "$logs/build-membership" cargo bench -p quotient --bench membership --no-run
+quiet "$logs/build-leanvm" cargo test --release -p leanvm_rec --test pipeline --no-run
 
 run=1
 while [ "$run" -le "$repeat" ]; do
-    echo "== Membership: prover (run $run of $repeat)"
-    $pin cargo bench -p quotient --bench membership | tee "$logs/membership.$run"
-    echo "== leanVM: prover, median of 5 passes (run $run of $repeat)"
-    LEANVM_TRACE="$trace" PIPELINE_REPEAT=5 $pin cargo test --release -p leanvm_rec --test pipeline -- --ignored \
-        --nocapture | tee "$logs/pipeline.$run"
+    echo "== Provers (run $run of $repeat)"
+    quiet "$logs/membership.$run" $pin cargo bench -p quotient --bench membership
+    quiet "$logs/pipeline.$run" env LEANVM_TRACE="$trace" PIPELINE_REPEAT=5 $pin cargo test --release -p leanvm_rec \
+        --test pipeline -- --ignored --nocapture
+    awk -F: '/^prover total/ { printf "membership %.3f s\n", $2 }' "$logs/membership.$run"
+    awk '$2 == "s" && $3 == "total" { printf "leanVM     %.3f s\n", $1 }' "$logs/pipeline.$run"
     run=$((run + 1))
 done
 
-echo "== Membership: gas"
-cargo test --release -p evm -- --ignored --nocapture --exact quotient::tests::gas_report | tee "$logs/membership-gas"
-
-echo "== leanVM: gas, of the real 128-signature proof's calldata"
-cargo test --release -p leanvm_rec --test pi2_real -- --ignored --nocapture --test-threads 1 real_end_to_end \
-    | tee "$logs/leanvm-gas"
+echo "== Gas"
+quiet "$logs/membership-gas" cargo test --release -p evm -- --ignored --nocapture --exact quotient::tests::gas_report
+quiet "$logs/leanvm-gas" cargo test --release -p leanvm_rec --test pi2_real -- --ignored --nocapture --test-threads 1 \
+    real_end_to_end
 
 # The median of the numbers on standard input, one a line.
 median() { sort -g | awk '{ v[NR] = $1 } END { if (NR % 2) print v[(NR + 1) / 2]; else print (v[NR / 2] + v[NR / 2 + 1]) / 2 }'; }

@@ -2,7 +2,7 @@
 
 Notes for contributors (people and agents): what the implementation adds to the design note in
 [`README.md`](README.md), where things are, what is proved, tested and measured, what remains, provenance and
-licensing, and the conventions. The build and test commands are in [`README.md`](README.md); the design documents,
+licensing, and the conventions. The build and test commands are below ("Build and test"); the design documents,
 in [`docs/README.md`](docs/README.md); superseded protocols and figures, in [`docs/HISTORY.md`](docs/HISTORY.md).
 
 ## Status (2026-11-11)
@@ -259,6 +259,39 @@ leanEthereum) and is licensed, like leanVM, under the MIT license ([`LICENSE-MIT
   `crates/leanvm/univariate/tests/lean_keccak_vectors.rs`, `crates/leanvm/rec/tests/{lean_circuit_keccak,
   lean_pad_counts,lean_pi2_prover,lean_graph_keccak,lean_statement_keccak}.rs`. A change of their output must go
   with the Lean side. Both lines' are current ([`docs/LEAN_PORT.md`](docs/LEAN_PORT.md), "Lean-facing files").
+
+## Build and test
+
+Build with `RUSTFLAGS="-C target-cpu=native"`. On a Zen 5 host (AMD EPYC 9355P) rustc 1.99.1's LLVM crashes (SIGILL
+in `SelectionDAG::Combine`) on some test crates with `native` or `znver4`; there,
+`-C target-cpu=x86-64-v4 -C target-feature=+gfni,+vpclmulqdq,+vaes,+pclmulqdq,+avx512vbmi,+aes,+bmi2` covers every
+`target_feature` the code tests and measures the same.
+
+```sh
+cargo test --release --workspace                                         # every default test
+
+# the membership proof
+cargo test --release -p quotient -p evm                                  # incl. the contract == the Rust verifier
+cargo bench -p quotient --bench membership                               # prover / verifier timings and sizes
+cargo test --release -p evm -- --ignored --nocapture gas_report          # the contract's gas
+
+# the leanVM line
+cargo test --release -p leanvm_univariate -p leanvm_rec
+cargo test --release -p leanvm_univariate --test keccak_vm -- --ignored --nocapture keccak_gas_report  # π1's gas
+cargo test --release -p leanvm_univariate --test evm_vectors              # the committed real proofs replayed
+cargo test --release -p leanvm_rec --test pi2_real -- --ignored --nocapture real_gas                 # π2's circuit, gas
+PI2_VECTOR=keccak128_rec4 cargo test --release -p leanvm_rec --test pi2_real -- --ignored --nocapture real_end_to_end
+LEANVM_TRACE=<trace> PI1_VARIANT=rec4 cargo test --release -p leanvm_univariate --test prove_real -- --ignored \
+  --nocapture keccak_prover_benchmark                                    # π1's prover on a real trace
+LEANVM_TRACE=<trace> cargo test --release -p leanvm_rec --test pipeline -- --ignored --nocapture       # trace → π1 → π2, timed
+
+# the EIP draft's two benchmarks (writes the trace once, ends with the EIP's table; docs/PERF_PROVER.md)
+LEANVM_NUM_THREADS=8 BENCH_PIN="taskset -c 0-7" REPEAT=5 sh bench.sh
+```
+
+A trace is written by leanVM `9d50c92a3` itself, patched by `crates/leanvm/univariate/src/prover/dump_keccak/apply.sh`
+([`docs/leanvm/univariate/PROVER.md`](docs/leanvm/univariate/PROVER.md)). The Lean builds:
+[`formal/README.md`](formal/README.md).
 
 ## Lean builds
 
