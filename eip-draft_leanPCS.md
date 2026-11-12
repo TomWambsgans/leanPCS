@@ -12,7 +12,7 @@ requires: 8141, 8288
 
 ## Abstract
 
-This EIP lets a transaction declare PCS claims ("PCS" for "Polynomial Commitment Scheme"), each stating that a committed multilinear polynomial takes a given value at a given point, as [EIP-8288](./eip-8288.md) dependencies of [EIP-8141](./eip-8141.md) frame transactions. Contracts read the declared claims through frame introspection, and the block proves them. This EIP also introduces a new EVM instruction `MULFIELD` that multiplies two elements of the finite field $\mathrm{GF}(2^{192})$. Together, they let users cheaply verify STARKs (post-quantum, hash-based SNARKs) onchain. All the heavy PCS opening proofs of a block are aggregated into a single STARK.
+This EIP lets a transaction declare PCS claims ("PCS" for "Polynomial Commitment Scheme"), each stating that a committed multilinear polynomial takes a given value at a given point, as [EIP-8288](./eip-8288.md) dependencies of [EIP-8141](./eip-8141.md) frame transactions. Contracts read the declared claims through frame and signature introspection, and the block proves them. This EIP also introduces a new EVM instruction `MULFIELD` that multiplies two elements of the finite field $\mathrm{GF}(2^{192})$. Together, they let users cheaply verify STARKs (post-quantum, hash-based SNARKs) onchain. All the heavy PCS opening proofs of a block are aggregated into a single STARK.
 
 ## Motivation
 
@@ -36,12 +36,13 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 | Constant                     | Value  |
 |------------------------------|--------|
 | `PCS_SCHEME`                 | `0x12` |
+| `PCS_SIG_SCHEME`             | `0x13` |
 | `MAX_PCS_VARIABLES`          | `32`   |
 | `PCS_TX_GAS`                 | `5000` |
 | `PCS_CLAIM_GAS`              | `1000` |
 | `MAX_PCS_CLAIMS_PER_TX`      | `256`  |
 
-The other constants, dependency verification frames, the recursive STARK and mempool wrappers come from EIP-8288, and frame transactions, `FRAMEPARAM` and `FRAMEDATALOAD` from EIP-8141.
+The other constants, dependency verification frames, the recursive STARK and mempool wrappers come from EIP-8288, and frame transactions, their signature entries, `TXPARAM`, `FRAMEPARAM`, `FRAMEDATALOAD`, `SIGPARAM` and `SIGDATACOPY` from EIP-8141.
 
 ### Fields
 
@@ -78,7 +79,9 @@ This EIP replaces the dependency format of EIP-8288, its `(scheme, data_hash, ve
 
 EIP-8288 applies, with these changes:
 
-- **Frames.** A dependency verification frame is valid only if its `data` is `scheme || payload_0 || ... || payload_{k-1}`, with `scheme` one of the two above and `1 <= k <= MAX_DEPENDENCIES_PER_FRAME`. It declares the dependencies `scheme || payload_j`.
+- **Frames.** A dependency verification frame is valid only if its `data` has one of two forms, with `1 <= k <= MAX_DEPENDENCIES_PER_FRAME`:
+  - `scheme || payload_0 || ... || payload_{k-1}`, with `scheme` one of the two above. It declares the dependencies `scheme || payload_j`.
+  - `PCS_SIG_SCHEME || s` (2 bytes), where `s` is the index of an `ARBITRARY` entry of `tx.signatures` whose `signature` is `payload_0 || ... || payload_{k-1}`, 32 bytes each. It declares the dependencies `PCS_SCHEME || payload_j`, and is a frame of PCS dependencies.
 - **`dependencies(tx)`** is the list of the dependencies the transaction's frames declare, each `msg_hash` of 32 zero bytes replaced by `compute_sig_hash(tx)`, then deduplicated and sorted. Every list of dependencies (of a transaction, a block or a wrapper) is sorted byte by byte (lexicographic order).
 - **`get_deps_hash(deps)`** is `keccak256(concat(deps))`, in place of `DEPS_HASH`.
 - **The recursive STARK** proves a PCS dependency from a `PCS_claim` hashing to its payload and an `opening_proof` with `pcs_verify(PCS_claim, opening_proof)`. A false or ill-formed claim cannot be proven, so its transaction cannot be included.
@@ -93,7 +96,9 @@ A valid block proves every declared dependency, so a contract may rely on `PCS_c
 2. the first byte of `FRAMEDATALOAD(0, i)` is `PCS_SCHEME`;
 3. `FRAMEDATALOAD(1 + 32 * j, i)` is `keccak256(PCS_claim)`.
 
-Arguments are written from the top of the stack, as EIP-8141 defines them: `FRAMEPARAM(frameIndex, param)` and `FRAMEDATALOAD(offset, frameIndex)`.
+For a frame `PCS_SIG_SCHEME || s`, check 2 is that the first two bytes of `FRAMEDATALOAD(0, i)` are `PCS_SIG_SCHEME` and `s`, and check 3 is that bytes `32 * j` to `32 * j + 31` of the `signature` of entry `s`, read with `SIGDATACOPY`, are `keccak256(PCS_claim)`. `compute_sig_hash(tx)` does not cover these bytes when the entry's `msg` is empty. A contract therefore uses this form only if it also checks, in a `VERIFY` frame, that the `signature` of entry `s` is exactly the hashes of its proof's claims, in the order check 3 reads them (`SIGPARAM(s, 0x03)`, its length, is 32 times their number).
+
+Arguments are written from the top of the stack, as EIP-8141 defines them: `FRAMEPARAM(frameIndex, param)`, `FRAMEDATALOAD(offset, frameIndex)`, `SIGPARAM(signatureIndex, param)` and `SIGDATACOPY(memOffset, dataOffset, length, signatureIndex)`.
 
 In a transaction eligible for EIP-8141's public mempool, dependency verification frames come after the validation prefix, since no recognized validation prefix contains one. Validation code can still read them: `FRAMEPARAM` and `FRAMEDATALOAD` also read later frames.
 
@@ -115,6 +120,10 @@ EIP-8288's triples, a statement's hash and a verification key's hash, are made f
 ### Why PCS claims travel only in mode 1 wrappers
 
 The sender aggregates the openings of its transaction client side, into one STARK that it broadcasts in a mode 1 wrapper. The mempool then recursively aggregates only one STARK, whatever the number of PCS claims. `PCS_TX_GAS` pays for this per-transaction work: verifying and aggregating one more STARK. `PCS_CLAIM_GAS` pays for each claim's share: a dependency of the block.
+
+### Why PCS claims can be held in a signature entry
+
+A proof that authorizes its transaction should commit to `compute_sig_hash(tx)`, as a signature does. It cannot while that hash covers its claims, which depend on the proof. EIP-8141 leaves the `signature` bytes of an entry with an empty `msg` out of that hash, keeps their length, and tells custom schemes to put their witness in such an entry. A frame `PCS_SIG_SCHEME || s` gives claims the same place, with no new hash and no change to EIP-8141.
 
 ### Upgrades
 
@@ -161,6 +170,8 @@ TODO
 ## Security Considerations
 
 **A proof is not tied to its transaction.** A declared claim only says that the claim is true. Anyone who sees a pending transaction can copy its proof, its frame of PCS claims and the STARK that proves them into another transaction, with other frames. So when a proof authorizes something (a payment, a call), what it authorizes has to be part of the application's own transcript, from the start. With the claims in a frame's `data`, the proof cannot commit to `compute_sig_hash(tx)`, as a signature does: that hash covers the frame's `data`, and the claims depend on the transcript. The contract has to hash the relevant parts of the transaction itself, for example the chain id, the sender, the nonce, the fees and the frames it authorizes.
+
+**Claims held in a signature entry need one more check.** With a frame `PCS_SIG_SCHEME || s`, a proof can commit to `compute_sig_hash(tx)` (`TXPARAM(0x08)`), provided nothing else that hash covers depends on the proof: the proof also travels in an `ARBITRARY` entry with an empty `msg`, and both entries have a length fixed before proving, since the hash covers their lengths and not their bytes. Anyone can then reorder the hashes in entry `s`, or replace them with the hashes of other true claims, and the hash does not change. If the contract checks entry `s` in a `VERIFY` frame, as [Reading PCS claims](#reading-pcs-claims) says, the altered transaction is invalid. Otherwise it stays valid, the call that uses the claims fails, and the payer still pays. A contract with no `VERIFY` frame in the transaction, for example one that a `SENDER` frame calls after the sender's signature approves the transaction, uses claims held in a frame's `data`, which that signature covers.
 
 TODO 
 
