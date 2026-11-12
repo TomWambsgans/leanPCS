@@ -93,6 +93,10 @@ A valid block proves every declared dependency, so a contract may rely on `PCS_c
 2. the first byte of `FRAMEDATALOAD(0, i)` is `PCS_SCHEME`;
 3. `FRAMEDATALOAD(1 + 32 * j, i)` is `keccak256(PCS_claim)`.
 
+Arguments are written from the top of the stack, as EIP-8141 defines them: `FRAMEPARAM(frameIndex, param)` and `FRAMEDATALOAD(offset, frameIndex)`.
+
+In a transaction eligible for EIP-8141's public mempool, dependency verification frames come after the validation prefix, since no recognized validation prefix contains one. Validation code can still read them: `FRAMEPARAM` and `FRAMEDATALOAD` also read later frames.
+
 ## Rationale
 
 ### Benchmarks
