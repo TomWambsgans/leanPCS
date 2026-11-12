@@ -23,6 +23,15 @@ import ZK.PcsFSClosed
 import ZK.PcsSlack
 import ZK.PcsSpan
 import ZK.PcsIdeal
+import ZK.PcsGroup1Alg
+import ZK.PcsGroup1Weights
+import ZK.PcsGroup1W
+import ZK.PcsGroup1Map
+import ZK.PcsGroup1Unif
+import ZK.PcsGroup1Span
+import ZK.PcsGroup1Rows
+import ZK.PcsGroup1Onto
+import ZK.PcsGroup1Prob
 import ZK.PcsAxioms
 
 /-!
@@ -32,6 +41,11 @@ import ZK.PcsAxioms
 committed and opened by the PCS `pcs`, a program of the model) for the simulator `PcsQuotient.zkSimulator`
 (`Zk.lean`), for every zero-knowledge PCS `pcs` (`docs/membership/PROTOCOL.md`, "Zero knowledge"). The deployed PCS
 (`realPcs`, leanVM's WHIR) is not zero-knowledge and not an instance.
+
+**The end theorem, `PcsQuotient.EndToEnd.zeroKnowledge_of_pcs`** (`ZK/PcsGroup1Prob.lean`), for every `pcs` and `sim`:
+`PcsZeroKnowledge pcs sim εpcs → ZeroKnowledgeWith pcs sim.s₀ (zkSimulator sim) sim.oracle
+(fun Q ↦ εpcs Q + εgroup1 + εslack + εfs₀)`, `εgroup1 ≤ 2^-124`, `εslack ≤ 2^-126`, `εfs₀ ≤ 2^-163`: the PCS's zero
+knowledge its only hypothesis. It composes the pieces below.
 
 **`PcsQuotient.EndToEnd.zeroKnowledge_pcs_closed`** (`ZK/PcsFSClosed.lean`), for every `pcs` and `sim`:
 `PcsZeroKnowledge pcs sim εpcs → RevealedUniform εr δr →
@@ -67,7 +81,7 @@ scalars' mass is uniform as soon as group 1's is (`rMass_eq`, `uniformWithin_zer
 **`revealedUniform_of_group1`**: `Group1Uniform ε1 → RevealedUniform (ε1 + spanFail) 0`, and
 **`zeroKnowledge_pcs_group1`**: zero knowledge from `PcsZeroKnowledge` and `Group1Uniform` alone, within
 `εpcs Q + ε1 + spanFail + εfs₀`. `Group1Uniform` (`W`'s answer, `C`, `V + Y`, `X` exactly uniform at all but `ε1` of
-the challenges: a rank-`12` condition on the 32 random-row words) is the remaining hypothesis.
+the challenges: the 32 random-row words' map onto `E⁴`) is proved below.
 
 **The span failure, bounded** (`ZK/PcsSpan.lean`): the slack's weights are `C(z) · {1, u₀, u₁, u₂}` times
 `(1+z₀)(1+z₁)(1+z₂)`, `u_j = z_j/(1+z_j)` (`weight_closed`), so they span `E` once `C(z) ≠ 0`, `u₀ ∉ K` and `u₁` or
@@ -81,6 +95,22 @@ the tables' out-of-domain answers, openings any program `simO` of the commitment
 `εpcs = 0` for `PcsSimulator.ofOpen simO` (**`pcsZeroKnowledge_idealOf`**; the protocol's experiment over it is the
 hybrid, `pcsExperiment_idealOf`, through the prover read through a monad morphism, `proveWithPcs_hom`), so
 **`zeroKnowledge_idealOf`** is zero knowledge over it within `ε1 + εslack + εfs₀` under `Group1Uniform ε1`.
+
+**Group 1, proved** (`ZK/PcsGroup1*.lean`, namespace `PcsQuotient.EndToEnd.Group1`):
+* `PcsGroup1Alg.lean`: `E` over `K` (`finrank_KE = 3`; a root of a monic quadratic over `K` lies in `K`,
+  `mem_K_of_quad`; `indep3_inv`: `1/(s + γᵢ)` independent for `s ∉ K`, distinct `γᵢ ∈ K`; planes, `kernel4`).
+* `PcsGroup1Weights.lean`: the cells' weights, by an interpolation identity on the grid of digits (`sum_prod_gen`):
+  `W`'s answer `Σ_i vᵢ Π_b (1 + (1 + z_b) B(⌊i/2^b⌋))` (`tableEval_coefficients`), the cells' polynomial at `x ∈ E`
+  `Σ_i vᵢ Λᵢ(x)`, `Λᵢ(x) (x + B(i)) = w₂₄(x)` (`nov_coefficients_eval`, `lam_mul`); the values at `t` are it at `t`,
+  `t + θ`, `t + 1` plus `t + θ + 1` (`valuesAt_cells`).
+* `PcsGroup1Map.lean`: **`group1_eq`**, group 1 a constant plus `Lsum` of the random words (`sum_cells_decomp`).
+* `PcsGroup1Unif.lean`: **`group1At_of_surj`**, uniform where the words' map `Lmap` is onto `E⁴`.
+* `PcsGroup1W.lean`, `PcsGroup1Span.lean`, `PcsGroup1Rows.lean`, `PcsGroup1Onto.lean`: the words' weights in closed
+  form off `K`, `surj_of_steps`, `W`'s weights by quarter of rows (`RW_W`), and **`onto_of_good`**.
+* `PcsGroup1Prob.lean`: the good event fails with probability at most `εgroup1 = (9 · 2^64 + 42) · 2^-192 ≤ 2^-124`
+  (`prEvent_notGood`, `εgroup1_le`); **`group1Uniform : Group1Uniform εgroup1`**; `revealedUniform_closed`;
+  **`zeroKnowledge_of_pcs`**: zero knowledge over every `pcs` from `PcsZeroKnowledge pcs sim εpcs` alone, within
+  `εpcs Q + εgroup1 + εslack + εfs₀`; **`zeroKnowledge_ideal`**: over the model's ideal PCS, with no hypothesis.
 
 `ZK/ProverBridge{Eager,Hom,Param}.lean` (random-permutation lemmas kept from the hidden-layout protocol's proof,
 which was removed): `Hom` and `Param` are imported here only through `ZK/PcsIdeal.lean` (`MHom`, `keccak256With_hom`),

@@ -79,13 +79,14 @@ straight-line extractor and the simulator, in one random permutation; `EndToEnd/
   `q = q₀ + b₂ E` on the coset of `4 n` points, `mulX`/`divX` the products and quotients by `x` in the novel basis,
   `Kc3Deployed.sat_honest` for the randomized cells). For the Statement's prover; the deployed Rust prover is trusted
   for completeness.
-- **Zero knowledge of the protocol over any zero-knowledge PCS, under `Group1Uniform`.**
-  `PcsQuotient.EndToEnd.zeroKnowledge_pcs_slack (pcs : PcsOps (OracleComp RandomPermutationOracles) Hd)
-  (sim : PcsSimulator) : PcsZeroKnowledge pcs sim εpcs → Group1Uniform ε1 → ZeroKnowledgeWith pcs sim.s₀
-  (zkSimulator sim) sim.oracle (fun Q ↦ εpcs Q + ε1 + εslack + εfs₀)` (`EndToEnd/ZK/PcsSpan.lean`; the experiment
+- **Zero knowledge of the protocol over any zero-knowledge PCS, with `PcsZeroKnowledge` its only hypothesis.**
+  `PcsQuotient.EndToEnd.zeroKnowledge_of_pcs (pcs : PcsOps (OracleComp RandomPermutationOracles) Hd)
+  (sim : PcsSimulator) : PcsZeroKnowledge pcs sim εpcs → ZeroKnowledgeWith pcs sim.s₀ (zkSimulator sim) sim.oracle
+  (fun Q ↦ εpcs Q + εgroup1 + εslack + εfs₀)` (`EndToEnd/ZK/PcsGroup1Prob.lean`; the experiment
   `pcsExperiment pcs` and `ZeroKnowledgeWith pcs` in `Statement/PcsQuotient/Security.lean`, the simulator and
-  `PcsZeroKnowledge` in `Statement/PcsQuotient/Zk.lean`), `εslack = 2^-127 + 27·2^-192 ≤ 2^-126` and
-  `εfs₀ = 58 · δq L ≤ 2^-163` proved (`spanFail_le`, `εfs₀_le`, `fiatShamirUniform_closed`). The theorem is for the
+  `PcsZeroKnowledge` in `Statement/PcsQuotient/Zk.lean`), `εgroup1 = (9·2^64 + 42)·2^-192 ≤ 2^-124`,
+  `εslack = 2^-127 + 27·2^-192 ≤ 2^-126` and `εfs₀ = 58 · δq L ≤ 2^-163` proved (`Group1.εgroup1_le`, `spanFail_le`,
+  `εfs₀_le`, `fiatShamirUniform_closed`). The theorem is for the
   protocol whose two secret tables are committed and opened by the PCS `pcs`, any program of the model (coins and
   `π`, `π⁻¹`, no programming of `π`); `PcsZeroKnowledge pcs sim εpcs` says that protocol is within `εpcs Q` of its
   hybrid over the ideal PCS (roots uniform and independent of the tables, the tables' out-of-domain answers, the
@@ -93,20 +94,32 @@ straight-line extractor and the simulator, in one random permutation; `EndToEnd/
   assumption in the prover's use of the PCS, not a stand-alone PCS game. It is satisfiable:
   `PcsParam.pcsZeroKnowledge_idealOf` proves it with `εpcs = 0` for the model's ideal PCS `PcsOps.idealOf simO` (uniform
   roots, any opening program `simO` of the commitment and the claim) and `PcsSimulator.ofOpen simO`, the protocol's
-  experiment over it being its hybrid (`pcsExperiment_idealOf`), so `zeroKnowledge_idealOf` gives zero knowledge over
-  that PCS within `ε1 + εslack + εfs₀` (`EndToEnd/ZK/PcsIdeal.lean`). That ideal PCS is hiding but not binding: it
+  experiment over it being its hybrid (`pcsExperiment_idealOf`), so `zeroKnowledge_ideal simO` is zero knowledge over
+  that PCS within `εgroup1 + εslack + εfs₀`, with no hypothesis (`EndToEnd/ZK/PcsIdeal.lean`,
+  `EndToEnd/ZK/PcsGroup1Prob.lean`). That ideal PCS is hiding but not binding: it
   shows the hypothesis consistent, so the theorem has content; that a sound ZK-WHIR satisfies it is not proved
   ([`docs/LEAN_PORT.md`](../docs/LEAN_PORT.md)). **The deployed PCS is not an instance**:
   `realPcs` (leanVM's WHIR: Merkle roots of the tables' words, opened leaves in the clear) is not zero knowledge, and no
   theorem states zero knowledge for the deployed prover (`realExperiment = pcsExperiment (realPcs …)`); soundness,
-  completeness and the EVM theorem are about `realPcs`. `Group1Uniform ε1` (outside `ε1` of the challenges, `W`'s answer and `X`, `C`, `V + Y` are uniform
-  under uniform random rows: the 32 words' `K`-linear map, fixed by the challenges, of rank 12) is not proved: it
-  needs the map's `K`-linearity through the transforms and a non-vanishing certificate of a `12 × 12` minor on the
-  circuit's last rows (heuristically `ε1 ≈ |K|^-20`). `T`'s answer is proved uniform given everything else
-  (`revealedUniform_slack`: `RevealedUniform (ε1 + εslack) 0`) through the quotient table's four slack words, whose
-  weights depend on `T`'s out-of-domain point alone ([`PROTOCOL.md`](../docs/membership/PROTOCOL.md), "Zero
-  knowledge"); the general `zeroKnowledge_pcs_closed` takes `RevealedUniform εr δr` itself. Single proof, the
-  distinguisher's queries after it.
+  completeness and the EVM theorem are about `realPcs`. The revealed scalars are proved uniform off
+  `εgroup1 + εslack` of the challenges (`Group1.revealedUniform_closed : RevealedUniform (εgroup1 + εslack) 0`), in two
+  groups ([`PROTOCOL.md`](../docs/membership/PROTOCOL.md), "Zero knowledge"):
+  - **group 1** (`Group1.group1Uniform : Group1Uniform εgroup1`, `EndToEnd/ZK/PcsGroup1*.lean`): `W`'s answer and `X`,
+    `C`, `V + Y` are a constant plus a `K`-linear map of the 32 random words (`group1_eq`: each a sum over the cells,
+    `W`'s weights `Π_b (1 + (1 + z_b) B(⌊i/2^b⌋))` and the values' the Lagrange weights `w₂₄(t)/(t + δ + B(i))`, from the
+    novel basis by an interpolation identity on the grid of digits), uniform where that map is onto `E⁴`
+    (`group1At_of_surj`). It is onto (`onto_of_good`) when `w₂(t) ∉ K`, `t² + θt ∉ K` (then the select/pass rows'
+    `s`-words reach `X + C + (V + Y)`, the sum rows' `V + Y`, the `r`-words `C`, through `1/(s + γᵢ)`, `γᵢ ∈ K`
+    distinct, three of which span `E` over `K` as `[E : K] = 3`) and `W`'s point avoids one value of each of 42
+    coordinates' events and `|K|` values of three (each quarter's `C`-blind combination of `r`-words reaches `W`'s
+    answer through a nonzero product of affine factors in `z₀ … z₅`; the halves' planes, then the two halves, are
+    separated by `z₄`, `z₅`: a plane mapped into itself by `ρ ∉ K` would be an `E`-line). Each event fixes one
+    coordinate given the others (`prEvent_hit`, resampling it), or makes `t` a root of a degree-4 or degree-2
+    polynomial.
+  - **group 2**: `T`'s answer, uniform given everything else through the quotient table's four slack words, whose
+    weights depend on `T`'s out-of-domain point alone (`revealedUniform_slack`, `εslack`).
+  The general `zeroKnowledge_pcs_closed` takes `RevealedUniform εr δr` itself, `zeroKnowledge_pcs_slack`
+  `Group1Uniform ε1`. Single proof, the distinguisher's queries after it.
 - **The EVM contract is the verifier.** `Evm.evm_accepts_iff_verifyWith` (`EndToEnd/Evm/Contract.lean`): on a
   statement's and proof's calldata (273 bytes, no selector), the contract's recorded graph (`Implementation/Graph.lean`:
   537 nodes, 39 output words, three claims checked declared), with the stored index commitment and what the block
@@ -233,7 +246,7 @@ on `RecStatement/Data.lean` being the Rust's data.
 | Trusted | the Lean kernel and three axioms; Keccak-f[1600] a random permutation, Keccak-256 its sponge; mumbai's definitions (Keccak, the model, `verifyStackedOpening`, the decoders); the prover's randomness uniform (deployed: a Keccak-256 KDF, `Randomness::derive`, so computational ZK) | the same; the deployed Rust provers for completeness |
 | Tested against the Rust (main `7e6d353c`) | the Statement (`membership-differential`: 121 reductions, 18 honest and tampered proofs at `2^17` rows, the small, toy and membership circuits' commitments, all agreeing); the Statement's prover (the reduction's stream at `2^17` rows, and its proof accepted); the circuit's rows and σ (`kc3-dump-circuit`, SHA-256 `7b73dc3b…`); bytecode = graph (`graph_lean_is_current`, `Implementation/Diff.lean` on 1000 calldata); `FIELD_MUL` = `mulE` by vectors; `pcs_claim::verify` = `pcsOpening` (`WhirBridge/Test/CheckPcs.lean`) | π1's verifier (`UniKeccakTest/Runner.lean`: 134/134 verifier and 14/14 terminal vectors, the real π1-rec4 proofs among them); the verifier's tables, the block's rows and terminal, `sha3Step`; the circuit compiler on π1-rec4's graph (`rec-circuit-diff`, `rec-circuit-keccak`: the Rust's circuit byte for byte; `padCounts` on 202 cases); π2's Lean prover on 3/3 vectors (roots, IV, stream); `RecStatement/Data.lean` is what the Rust emits (`keccak_statement_data_is_current`); the bytecode is π2's Rust verifier by the Rust's tests (`parity`) |
 | Evaluated, not proved | `WiringCheck` (completeness's hypothesis: the wiring's coefficient `n − 2` nonzero, `membership-wiring-check`) | `GraphsAgreeK4`, `DigestChecked`, `SetupRootChecked`, `IvChecked` (at the reference setup commitment and three IVs) |
-| Not covered | simulation-extractability; `Group1Uniform` (stated, not proved); ZK with queries before the proof, or for several proofs; the RPM theorems and the EVM one do not formally compose; `StatementBinds` (immediate, not proved); pruned Merkle paths | the model gap (π1-rec4 in the RPM, π2's circuit at Keccak-f[1600]); `PatchChecked` and `IvChecked` at other setup commitments; other shapes than the reference; no Lean differential run of π2's verifier |
+| Not covered | simulation-extractability; ZK with queries before the proof, or for several proofs; the RPM theorems and the EVM one do not formally compose; `StatementBinds` (immediate, not proved); pruned Merkle paths | the model gap (π1-rec4 in the RPM, π2's circuit at Keccak-f[1600]); `PatchChecked` and `IvChecked` at other setup commitments; other shapes than the reference; no Lean differential run of π2's verifier |
 
 ## Libraries
 
@@ -302,8 +315,7 @@ lines' vectors are the deployed Rust's.
    `IvUniform.ivChecked_of_patchChecked` reduces it, at each commitment, to `PatchChecked`, not proved (a relational
    simulation of about 1,200 lines of the builder).
 3. **Other shapes**: π1's closed bounds are at the reference shape.
-4. **Membership**: `Group1Uniform` proved (the rank 12 of the random rows' map off a determinant's zero set);
-   `WiringCheck` by a kernel proof; zero knowledge with a pre-proof phase;
+4. **Membership**: `WiringCheck` by a kernel proof; zero knowledge with a pre-proof phase;
    simulation-extractability; a few lemmas duplicated between the soundness and completeness lines
    (`Soundness/PcsVH*.lean`, `tableEval_eq_mle`, `tau_systemL`).
 5. Declarations in the shared libraries that no end theorem uses (the previous protocol's F1 and F0 in

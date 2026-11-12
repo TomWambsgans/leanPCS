@@ -9,8 +9,8 @@ WHIR. The verifier is `protocol::reduce`, generic in its scalar, so the same cod
 
 The Lean in `formal/` states and proves this protocol ([`../../formal/README.md`](../../formal/README.md),
 "Membership: the end theorems"): knowledge soundness with no hypothesis, completeness under one evaluated check, zero
-knowledge under the ZK-PCS assumption and `Group1Uniform` (group 1 below; group 2 is proved), the contract = the
-verifier.
+knowledge under the ZK-PCS assumption alone (both groups of revealed scalars below are proved uniform), the contract
+= the verifier.
 
 Notation: `K = GF(2^64)`, `E = GF(2^192)`, `m = log_rows + 2` (`m = 24` at `2^22` rows), `n = 2^m` cells, the cells
 the additive subspace of the domain (`domain.rs`), `X_j` the subspace polynomials of the novel basis, `Z = X_n` the
@@ -167,8 +167,8 @@ everything public besides the PCS's roots and openings is simulatable from the s
 random-permutation model) that is zero knowledge in the prover's use of it (`PcsZeroKnowledge pcs sim εpcs`: the
 protocol over `pcs` within `εpcs` of the protocol over the ideal PCS, whose roots are uniform and independent of the
 tables and whose openings `sim` simulates from the commitment and the claim), the protocol over `pcs` is zero knowledge
-within `εpcs + ε1 + εslack + εfs₀` (`zeroKnowledge_pcs_slack`), under `Group1Uniform ε1` (below, not proved). The
-hypothesis is satisfiable (the model's ideal PCS meets it with `εpcs = 0`); the deployed plain WHIR does not meet it,
+within `εpcs + εgroup1 + εslack + εfs₀` (`zeroKnowledge_of_pcs`), `εgroup1 ≤ 2^-124`, `εslack ≤ 2^-126`,
+`εfs₀ ≤ 2^-163`, with no other hypothesis. The hypothesis is satisfiable (the model's ideal PCS meets it with `εpcs = 0`); the deployed plain WHIR does not meet it,
 so nothing is proved about the zero knowledge of the deployed openings.
 
 **What is public**: the two commitments (root, out-of-domain answer), `X`, `C`, `V + Y` at `t`, and `next` (the
@@ -199,13 +199,31 @@ the out-of-domain point **alone**. Limb 3 was zero before; the table's commitmen
 
 So at the challenges where both conditions hold the revealed scalars are exactly uniform (`δr = 0` in
 `formal/Statement/PcsQuotient/Zk.lean`'s `RevealedUniform εr δr`), and `εr` is the probability of the challenges where
-one fails: for group 2 at most `2^-127 + 27 · 2^-192` (proved in Lean, `spanFail_le`), and for group 1 the probability
-that the 32 words' weights fail to reach rank 12 (the hypothesis `Group1Uniform`; reasoned to be negligible, the map
-having 20 more columns than its rank; not written out). **Why the slack
+one fails: for group 2 at most `2^-127 + 27 · 2^-192` (proved in Lean, `spanFail_le`), and for group 1 at most
+`(9 · 2^64 + 42) · 2^-192 ≤ 2^-124` (proved in Lean, `Group1.group1Uniform`, below). **Why the slack
 words**: without them group 2 rested on the blinding, whose map to `T`'s answer depends on the random rows (through
 `(b_0 + b_1 X_1 + b_2 X_2) d d'` and `b_2 = q_n / γ`), so its rank could fall short on a set of random rows, and a
 rank condition over `K` on three weights in `E` alone fails with probability about `1 / |K|` (three random elements of
 `E` are dependent over `K` with probability about `2^-64`); four weights with a common factor make it `2^-127`.
+
+**Group 1's rank, proved.** With `v` the cells and `B(i)` cell `i`'s point, `W`'s answer at `z` is
+`Σ_i v_i Π_b (1 + (1 + z_b) B(⌊i / 2^b⌋))` and the cells' polynomial at `x ∈ E` is `Σ_i v_i w_24(x) / (x + B(i))`
+(`x ∉ K`; both from the novel basis by one interpolation identity on the digits `w_b(B(i)) = B(⌊i / 2^b⌋)`), and the
+values are it at `t`, `t + θ`, and `t + 1` plus `t + θ + 1`. A random row `R` (rows `2^22 − 1 − k`) fills `(X, Y, C, V)`
+with its shape's forms of `(r, s)`; with `s_R = t + B(4R)` and `φ_m = w_24(t) / (s_R + B(m))`, its `r`-word reaches `X`
+and `C` with `φ_1 + φ_3 = w_24(t) θ / (t² + θ t + δ_R)` (`δ_R ∈ K`, distinct across rows) and `V + Y` with `0`; a
+select or pass row's `s`-word reaches `P = X + C + (V + Y)` with `Σ φ = w_24(t) / (w_2(t) + B(R))`, a sum row's
+reaches `P` with `0` and `V + Y` with `Σ φ`. For `s ∉ K` and distinct `γ_i ∈ K` the `1/(s + γ_i)` are independent over
+`K` (a relation would make `s` a root of a polynomial of degree at most 2 over `K`, and `[E : K] = 3`), so when
+`w_2(t) ∉ K` and `t² + θ t ∉ K` three select/pass rows cover `P`, three sum rows `V + Y`, three `r`-words `C`. `W`
+remains: in each quarter of four rows (by the row's bits 2, 3) a nonzero `K`-combination of the `r`-words has `C`
+weight 0 (four elements of `E` are dependent over `K`), and reaches `W`'s answer with
+`F(z) (1 + u_5 d)(1 + u_4 c) H(u_0 … u_3)`, `u_b = 1 + z_b`, `H` a nonzero sum of products of affine factors; three of
+the four are independent unless one coordinate of `z` takes one value fixed by the others, or `z_4` or `z_5` one of
+`|K|` values (two quarters of a half: `y_1 = λ y_0` pins `u_4` for each `λ ∈ K`; the halves: a nonzero element mapping a
+`K`-plane of `E` into itself lies in `K`, so two `u_5` that map the second half's plane into the first's have their
+`(1 + u_5 d_1)/(1 + u_5 d_0)` in a ratio in `K`). Over the uniform `t` and `z`: `w_2(t) ∈ K` for at most `4 |K|`
+values of `t`, `t² + θ t ∈ K` for `2 |K|`, and `42 + 3 |K|` coordinate values: `εgroup1 = (9 · 2^64 + 42) · 2^-192`.
 
 The **simulator** samples the out-of-domain answers and the row values uniformly, computes the claims' values, and
 simulates the openings with the ZK-PCS simulator.

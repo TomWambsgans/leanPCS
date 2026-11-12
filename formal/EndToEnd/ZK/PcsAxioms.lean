@@ -3,6 +3,7 @@ import ZK.PcsFSClosed
 import ZK.PcsSlack
 import ZK.PcsSpan
 import ZK.PcsIdeal
+import ZK.PcsGroup1Prob
 
 /-! # The axioms of the zero-knowledge theorem (PCS claims) -/
 
@@ -77,3 +78,39 @@ import ZK.PcsIdeal
 /-- info: 'PcsQuotient.EndToEnd.PcsParam.zeroKnowledge_idealOf' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms PcsQuotient.EndToEnd.PcsParam.zeroKnowledge_idealOf
+
+/-- info: 'PcsQuotient.EndToEnd.zeroKnowledge_of_pcs' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms PcsQuotient.EndToEnd.zeroKnowledge_of_pcs
+
+/-- info: 'PcsQuotient.EndToEnd.zeroKnowledge_ideal' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms PcsQuotient.EndToEnd.zeroKnowledge_ideal
+
+/-- info: 'PcsQuotient.EndToEnd.Group1.group1Uniform' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms PcsQuotient.EndToEnd.Group1.group1Uniform
+
+/-- info: 'PcsQuotient.EndToEnd.Group1.εgroup1_le' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms PcsQuotient.EndToEnd.Group1.εgroup1_le
+
+/-- info: 'PcsQuotient.EndToEnd.Group1.onto_of_good' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms PcsQuotient.EndToEnd.Group1.onto_of_good
+
+/-- info: 'PcsQuotient.EndToEnd.Group1.group1At_of_surj' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms PcsQuotient.EndToEnd.Group1.group1At_of_surj
+
+/-- info: 'PcsQuotient.EndToEnd.Group1.group1_eq' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms PcsQuotient.EndToEnd.Group1.group1_eq
+
+/-- info: 'PcsQuotient.EndToEnd.Group1.mem_K_of_quad' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms PcsQuotient.EndToEnd.Group1.mem_K_of_quad
+
+/-- info: 'PcsQuotient.EndToEnd.Group1.revealedUniform_closed' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms PcsQuotient.EndToEnd.Group1.revealedUniform_closed
