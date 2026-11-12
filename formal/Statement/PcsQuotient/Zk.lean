@@ -41,7 +41,9 @@ edges component of a state `Edges × A`, coins forwarded; the extra component `A
 * **It is satisfiable**: the ideal PCS of the model (`PcsOps.idealOf simO`: the root uniform from the coins, the
   out-of-domain answer the table's, the opening any program `simO` of the commitment and the claim in the model)
   meets it with `εpcs = 0` for the simulator `PcsSimulator.ofOpen simO` (`formal/EndToEnd/ZK`,
-  `pcsZeroKnowledge_idealOf`), so the end theorem is not vacuous (`zeroKnowledge_idealOf`).
+  `pcsZeroKnowledge_idealOf`), so the end theorem is not vacuous (`zeroKnowledge_idealOf`). That ideal PCS is hiding
+  but not binding: it shows the hypothesis consistent, so the theorem has content; that a sound ZK-WHIR satisfies it
+  is not proved (`docs/LEAN_PORT.md`).
 * **The revealed scalars** (`revealed`): the answers `revealAnswer` gives to the five queries `revealQueries c` of
   the challenges `c`: the two out-of-domain answers and the three values at `t`.
 * **`RevealedUniform εr δr`**, the protocol's own randomness: for every witness, outside a set of challenge tuples

@@ -135,7 +135,9 @@ transaction gas without the 21,000 base (EIP-7623) and without the frame's per-f
   `PcsZeroKnowledge pcs sim εpcs`, the EIP's ZK-WHIR assumption; within `εpcs Q + ε1 + εslack + εfs₀`, `εslack ≤ 2^-126`
   and `εfs₀ ≤ 2^-163` proved) under `Group1Uniform ε1` (stated, not proved: the random rows' map to `W`'s answer and
   the row values of rank 12 off a small set of challenges; `T`'s answer is proved uniform through the slack words), the
-  PCS hypothesis shown satisfiable (the model's ideal PCS meets it with `εpcs = 0`, `pcsZeroKnowledge_idealOf`); the
+  PCS hypothesis shown satisfiable (the model's ideal PCS meets it with `εpcs = 0`, `pcsZeroKnowledge_idealOf`; that
+  PCS is hiding but not binding, so this shows the hypothesis consistent and the theorem with content; that a sound
+  ZK-WHIR satisfies it is not proved); the
   deployed openings (plain WHIR) are not zero knowledge and not an instance; its contract = its verifier. The leanVM
   line, of the deployed protocols:
   the Keccak VM's statement, the Keccak-f block, π1's knowledge soundness (≤ 2^-64 at 2^64 queries) and completeness

@@ -16,7 +16,8 @@ Ported (`lean/membership`). What remains:
   small set of challenges ([`membership/PROTOCOL.md`](membership/PROTOCOL.md), "Zero knowledge").
 - **The PCS's zero knowledge.** Zero knowledge is proved for the protocol over any PCS `pcs` with
   `PcsZeroKnowledge pcs sim εpcs` (stated in the protocol's experiment: the protocol over `pcs` against its hybrid over
-  the ideal PCS), satisfiable (the model's ideal PCS, `εpcs = 0`). Not done: a stand-alone PCS zero-knowledge game
+  the ideal PCS), satisfiable (the model's ideal PCS, `εpcs = 0`; hiding but not binding, so it shows the hypothesis
+  consistent, not that a sound PCS meets it). Not done: a stand-alone PCS zero-knowledge game
   implying it, and a ZK-WHIR PCS proved to meet it; the deployed openings (plain WHIR) do not.
 - **`WiringCheck`** (completeness's evaluated hypothesis: the wiring's coefficient `n − 2` nonzero) by a kernel proof.
 - Deduplication between the soundness and completeness lines (`Soundness/PcsVH*.lean` copy

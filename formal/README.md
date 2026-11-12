@@ -94,7 +94,9 @@ straight-line extractor and the simulator, in one random permutation; `EndToEnd/
   `PcsParam.pcsZeroKnowledge_idealOf` proves it with `εpcs = 0` for the model's ideal PCS `PcsOps.idealOf simO` (uniform
   roots, any opening program `simO` of the commitment and the claim) and `PcsSimulator.ofOpen simO`, the protocol's
   experiment over it being its hybrid (`pcsExperiment_idealOf`), so `zeroKnowledge_idealOf` gives zero knowledge over
-  that PCS within `ε1 + εslack + εfs₀` (`EndToEnd/ZK/PcsIdeal.lean`). **The deployed PCS is not an instance**:
+  that PCS within `ε1 + εslack + εfs₀` (`EndToEnd/ZK/PcsIdeal.lean`). That ideal PCS is hiding but not binding: it
+  shows the hypothesis consistent, so the theorem has content; that a sound ZK-WHIR satisfies it is not proved
+  ([`docs/LEAN_PORT.md`](../docs/LEAN_PORT.md)). **The deployed PCS is not an instance**:
   `realPcs` (leanVM's WHIR: Merkle roots of the tables' words, opened leaves in the clear) is not zero knowledge, and no
   theorem states zero knowledge for the deployed prover (`realExperiment = pcsExperiment (realPcs …)`); soundness,
   completeness and the EVM theorem are about `realPcs`. `Group1Uniform ε1` (outside `ε1` of the challenges, `W`'s answer and `X`, `C`, `V + Y` are uniform
