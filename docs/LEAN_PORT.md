@@ -14,6 +14,10 @@ Ported (`lean/membership`). What remains:
 - **`Group1Uniform ε1`** (zero knowledge's hypothesis besides the PCS's; `T`'s part is proved through the slack
   words, `εslack ≤ 2^-126`): the random rows' `K`-linear map to `W`'s answer and `X`, `C`, `V + Y` of rank 12 but on a
   small set of challenges ([`membership/PROTOCOL.md`](membership/PROTOCOL.md), "Zero knowledge").
+- **The PCS's zero knowledge.** Zero knowledge is proved for the protocol over any PCS `pcs` with
+  `PcsZeroKnowledge pcs sim εpcs` (stated in the protocol's experiment: the protocol over `pcs` against its hybrid over
+  the ideal PCS), satisfiable (the model's ideal PCS, `εpcs = 0`). Not done: a stand-alone PCS zero-knowledge game
+  implying it, and a ZK-WHIR PCS proved to meet it; the deployed openings (plain WHIR) do not.
 - **`WiringCheck`** (completeness's evaluated hypothesis: the wiring's coefficient `n − 2` nonzero) by a kernel proof.
 - Deduplication between the soundness and completeness lines (`Soundness/PcsVH*.lean` copy
   `E2ECompleteness.Pcs{WithHash,Duplex,Cost}`; `tableEval_eq_mle`, `tau_systemL`).

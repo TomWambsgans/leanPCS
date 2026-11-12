@@ -159,9 +159,17 @@ those two errors. `claims_hold_exactly_for_a_witness`, `the_witness_claim_is_on_
 
 ## Zero knowledge
 
-**Assuming a zero-knowledge PCS opening** (ZK-WHIR), as the EIP does. The reference openings are leanVM's WHIR,
-which reveals Merkle rows and sumcheck messages: **not** zero knowledge. What the protocol provides on its own is
-that everything public besides the openings is simulatable from the statement.
+**Assuming a zero-knowledge PCS** (ZK-WHIR), as the EIP does. The reference openings are leanVM's WHIR, which
+reveals Merkle rows and sumcheck messages: **not** zero knowledge. What the protocol provides on its own is that
+everything public besides the PCS's roots and openings is simulatable from the statement.
+
+**What Lean proves** (`formal/README.md`, "Zero knowledge"): for **every** PCS `pcs` (a program of the
+random-permutation model) that is zero knowledge in the prover's use of it (`PcsZeroKnowledge pcs sim εpcs`: the
+protocol over `pcs` within `εpcs` of the protocol over the ideal PCS, whose roots are uniform and independent of the
+tables and whose openings `sim` simulates from the commitment and the claim), the protocol over `pcs` is zero knowledge
+within `εpcs + ε1 + εslack + εfs₀` (`zeroKnowledge_pcs_slack`), under `Group1Uniform ε1` (below, not proved). The
+hypothesis is satisfiable (the model's ideal PCS meets it with `εpcs = 0`); the deployed plain WHIR does not meet it,
+so nothing is proved about the zero knowledge of the deployed openings.
 
 **What is public**: the two commitments (root, out-of-domain answer), `X`, `C`, `V + Y` at `t`, and `next` (the
 public wiring's value). The claims' values add nothing: the witness claim's is a combination of the three row

@@ -473,13 +473,15 @@ theorem spanFail_le : spanFail ≤ εslack := by
 theorem revealedUniform_slack (ε1 : ℝ≥0∞) (h : Group1Uniform ε1) : RevealedUniform (ε1 + εslack) 0 :=
   fun stmt w hrel ↦ (revealedUniform_of_group1 ε1 h stmt w hrel).trans (add_le_add le_rfl spanFail_le)
 
-/-- **Zero knowledge of the membership proof from a zero-knowledge PCS and group 1's uniformity**: the simulator
-`zkSimulator sim` is within `εpcs Q + ε1 + εslack + εfs₀` of the honest prover, `εslack ≤ 2^-126` (`εslack_le`),
-`εfs₀ ≤ 2^-163` (`εfs₀_le`). -/
-theorem zeroKnowledge_pcs_slack (sim : PcsSimulator) (εpcs : ℕ → ℝ≥0∞) (ε1 : ℝ≥0∞)
-    (hpcs : PcsZeroKnowledge sim εpcs) (h1 : Group1Uniform ε1) :
-    ZeroKnowledgeWith sim.s₀ (zkSimulator sim) sim.oracle (fun Q ↦ εpcs Q + ε1 + εslack + εfs₀) := by
-  have h := zeroKnowledge_pcs_closed sim εpcs (ε1 + εslack) 0 hpcs (revealedUniform_slack ε1 h1)
+/-- **Zero knowledge of the membership proof over any zero-knowledge PCS, from group 1's uniformity**: for every
+PCS `pcs` and PCS simulator `sim` with `PcsZeroKnowledge pcs sim εpcs`, the simulator `zkSimulator sim` is within
+`εpcs Q + ε1 + εslack + εfs₀` of the honest prover over `pcs`, `εslack ≤ 2^-126` (`εslack_le`), `εfs₀ ≤ 2^-163`
+(`εfs₀_le`). -/
+theorem zeroKnowledge_pcs_slack {Hd : Type} (pcs : PcsOps (OracleComp RandomPermutationOracles) Hd)
+    (sim : PcsSimulator) (εpcs : ℕ → ℝ≥0∞) (ε1 : ℝ≥0∞)
+    (hpcs : PcsZeroKnowledge pcs sim εpcs) (h1 : Group1Uniform ε1) :
+    ZeroKnowledgeWith pcs sim.s₀ (zkSimulator sim) sim.oracle (fun Q ↦ εpcs Q + ε1 + εslack + εfs₀) := by
+  have h := zeroKnowledge_pcs_closed pcs sim εpcs (ε1 + εslack) 0 hpcs (revealedUniform_slack ε1 h1)
   have he : (fun Q ↦ εpcs Q + (ε1 + εslack) + 0 + εfs₀) = fun Q ↦ εpcs Q + ε1 + εslack + εfs₀ :=
     funext fun Q ↦ by rw [add_zero, ← add_assoc]
   rwa [he] at h

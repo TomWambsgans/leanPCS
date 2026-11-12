@@ -266,7 +266,8 @@ def Transcript.Chain.absorbCommitment (c : Chain) (s : CommitmentScalars) : Chai
 /-- **The PCS operations the prover uses for its secret tables**: commit to a table of `2^μ` words (a handle
 for opening it later, and the commitment: root and out-of-domain answer), and open a claim on a committed
 table. The honest prover's are `realPcs` (WHIR, `commitmentWith`, `proveClaimWith`); the zero-knowledge
-theorem replaces them by an ideal PCS (`Zk.lean`, `formal/EndToEnd/ZK`). -/
+theorem is stated for the protocol over any PCS (`Security.lean`'s `pcsExperiment`) and compares it with the
+protocol over an ideal PCS (`Zk.lean`, `formal/EndToEnd/ZK`). -/
 structure PcsOps (m : Type → Type) (Hd : Type) where
   commit : ℕ → Array K → m (Hd × Commitment)
   openClaim : Hd → Commitment → Claim → m (Option Compile.Proof)

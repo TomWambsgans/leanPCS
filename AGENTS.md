@@ -31,8 +31,9 @@ in [`docs/README.md`](docs/README.md); superseded protocols and figures, in [`do
 - **The Fiat–Shamir states need not be in the header**, given the two points above.
 - **The forward-compatibility upgrade by one Schwartz–Zippel point** needs the new commitment to bind one table: the
   out-of-domain answer gives it.
-- **ZK assumes a zero-knowledge PCS** (ZK-WHIR), as the EIP does; the reference openings are leanVM's WHIR, not yet
-  ZK-WHIR. The membership protocol makes its own public scalars simulatable: random rows of free cells and a blinding
+- **ZK assumes a zero-knowledge PCS** (ZK-WHIR), as the EIP does; the reference openings are leanVM's WHIR, not
+  zero knowledge (Merkle roots and opened leaves in the clear), so the zero-knowledge theorem is about the protocol
+  over a zero-knowledge PCS, not about the deployed openings. The membership protocol makes its own public scalars simulatable: random rows of free cells and a blinding
   of `h` make the out-of-domain answers and the `a_j` uniform, both groups affine
   ([`docs/membership/PROTOCOL.md`](docs/membership/PROTOCOL.md), "Zero knowledge": rank tests).
 
@@ -130,9 +131,12 @@ transaction gas without the 21,000 base (EIP-7623) and without the frame's per-f
   knowledge soundness with no hypothesis (`Soundness.knowledgeSoundness`: about 2^-62.4 at 2^64 queries, 126.4 bits as
   Q/ε, the three PCS openings' WHIR soundness proved under mumbai's, the pole condition proved of the circuit),
   completeness under one evaluated check (`WiringCheck`, the wiring's coefficient `n − 2` nonzero; δ < 2^-163), zero
-  knowledge under `PcsZeroKnowledge` (the EIP's ZK-WHIR) and `Group1Uniform` (stated, not proved: the random rows' map
-  to `W`'s answer and the row values of rank 12 off a small set of challenges; `T`'s answer is proved uniform through
-  the slack words, 2^-126), its contract = its verifier; of
+  knowledge **of the protocol over any zero-knowledge PCS** (`zeroKnowledge_pcs_slack`, for every PCS `pcs` with
+  `PcsZeroKnowledge pcs sim εpcs`, the EIP's ZK-WHIR assumption; within `εpcs Q + ε1 + εslack + εfs₀`, `εslack ≤ 2^-126`
+  and `εfs₀ ≤ 2^-163` proved) under `Group1Uniform ε1` (stated, not proved: the random rows' map to `W`'s answer and
+  the row values of rank 12 off a small set of challenges; `T`'s answer is proved uniform through the slack words), the
+  PCS hypothesis shown satisfiable (the model's ideal PCS meets it with `εpcs = 0`, `pcsZeroKnowledge_idealOf`); the
+  deployed openings (plain WHIR) are not zero knowledge and not an instance; its contract = its verifier; of
   `f96a7938`'s leanVM line, the Keccak VM's statement, the Keccak-f block, π1's knowledge
   soundness (≤ 2^-64 at 2^64 queries) and completeness (< 2^-169, given a program IV of 32 to 2^16 bytes), π1-rec3's
   recorded graph = its verifier, the recursion's knowledge soundness as an explicit reduction and its completeness under
@@ -155,7 +159,7 @@ transaction gas without the 21,000 base (EIP-7623) and without the frame's per-f
 - **WHIR's parameters.** The code's proximity-gap accounting omits a factor `2^(ℓ-1)` that leanerVM's theorems carry;
   leanerVM's certified parameters account for it.
 - **Hiding.** The reference openings (leanVM's WHIR) are not zero knowledge: the membership proof's zero knowledge
-  assumes the EIP's ZK-WHIR.
+  is proved for the protocol over a zero-knowledge PCS (the EIP's ZK-WHIR), not for the deployed openings.
 - **Integrating the membership contract**: deploy with no owner; a proof carries no application context; never
   `DELEGATECALL` it ([`PROTOCOL.md`](docs/membership/PROTOCOL.md), "Integration").
 - **The prover's low-memory paths** make the dense prover's commitments and proofs (differential tests in

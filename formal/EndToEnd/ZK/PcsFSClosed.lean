@@ -51,13 +51,14 @@ theorem fiatShamirUniform_closed : FiatShamirUniform εfs₀ := by
   rw [ideal_joint]
   exact add_le_add le_rfl (phase_bound stmt ([], a₀) rfl)
 
-/-- **Zero knowledge of the membership proof, assuming a zero-knowledge PCS**, with the Fiat–Shamir term proved:
-for every PCS simulator `sim` within `εpcs` (`PcsZeroKnowledge`), if the revealed scalars are within `δr` of uniform
-at all but `εr` of the challenges (`RevealedUniform`), the simulator `zkSimulator sim` is within
-`εpcs Q + εr + δr + εfs₀` of the honest prover, `εfs₀ ≤ 2^-163` (`εfs₀_le`). -/
-theorem zeroKnowledge_pcs_closed (sim : PcsSimulator) (εpcs : ℕ → ℝ≥0∞) (εr δr : ℝ≥0∞)
-    (hpcs : PcsZeroKnowledge sim εpcs) (hrev : RevealedUniform εr δr) :
-    ZeroKnowledgeWith sim.s₀ (zkSimulator sim) sim.oracle (fun Q ↦ εpcs Q + εr + δr + εfs₀) :=
-  zeroKnowledge_pcs sim εpcs εr δr εfs₀ hpcs hrev fiatShamirUniform_closed
+/-- **Zero knowledge of the membership proof over any zero-knowledge PCS**, with the Fiat–Shamir term proved: for
+every PCS `pcs` and PCS simulator `sim` within `εpcs` (`PcsZeroKnowledge pcs sim εpcs`), if the revealed scalars are
+within `δr` of uniform at all but `εr` of the challenges (`RevealedUniform`), the simulator `zkSimulator sim` is
+within `εpcs Q + εr + δr + εfs₀` of the honest prover over `pcs`, `εfs₀ ≤ 2^-163` (`εfs₀_le`). -/
+theorem zeroKnowledge_pcs_closed {Hd : Type} (pcs : PcsOps (OracleComp RandomPermutationOracles) Hd)
+    (sim : PcsSimulator) (εpcs : ℕ → ℝ≥0∞) (εr δr : ℝ≥0∞)
+    (hpcs : PcsZeroKnowledge pcs sim εpcs) (hrev : RevealedUniform εr δr) :
+    ZeroKnowledgeWith pcs sim.s₀ (zkSimulator sim) sim.oracle (fun Q ↦ εpcs Q + εr + δr + εfs₀) :=
+  zeroKnowledge_pcs pcs sim εpcs εr δr εfs₀ hpcs hrev fiatShamirUniform_closed
 
 end PcsQuotient.EndToEnd

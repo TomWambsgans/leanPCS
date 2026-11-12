@@ -50,8 +50,9 @@ theorem slack_fold (coins : Coins) (a b : Prop) [Decidable a] [Decidable b] (i :
   simp only [show slackWords = 4 from rfl, show List.range 4 = [0, 1, 2, 3] from rfl, List.foldl,
     Finset.sum_range_succ, Finset.sum_range_zero, zero_add]
   simp only [← show slackWords = 4 from rfl]
-  by_cases ha : a <;> by_cases hb : b <;> simp only [ha, hb, true_and, false_and, ite_false, add_zero] <;>
-    simp only [slackAt, slackVal] <;> split_ifs <;> simp_all <;> omega
+  by_cases ha : a <;> by_cases hb : b <;> simp only [ha, hb, true_and, false_and, ite_false, add_zero]
+  simp only [slackAt, slackVal]
+  split_ifs <;> simp_all
 
 /-- The slack words' contribution to a word. -/
 def slackPart (n : ℕ) (coins : Coins) (w : ℕ) : K :=
@@ -131,7 +132,7 @@ theorem oodT_eq (stmt : Statement) (cells₀ : Array K) (coins : Coins) (α β �
     rw [quotientTable_getD _ _ _ _ _ _ _ w hw', ofK_add₂, add_mul, slackPart, ofK_sum₂, Finset.sum_mul,
       cellVars_membership]
     refine congrArg _ (Finset.sum_congr rfl fun k _ ↦ ?_)
-    split_ifs <;> simp [ofK_zero₂]
+    split_ifs <;> simp
   rw [Finset.sum_congr rfl hw, Finset.sum_add_distrib, Finset.sum_comm]
   refine congrArg _ (Finset.sum_congr rfl fun k _ ↦ ?_)
   rw [slackWeight, Finset.mul_sum]
@@ -144,7 +145,7 @@ def svAt (sw : Fin slackWords → K) (k : ℕ) : K := if h : k < slackWords then
 /-- **The slack map** at the out-of-domain point `z`: the slack words' contribution to `T`'s answer. -/
 noncomputable def slackMap (z : List E) : (Fin slackWords → K) →+ E where
   toFun sw := ∑ k ∈ Finset.range slackWords, ofK (svAt sw k) * slackWeight z k
-  map_zero' := Finset.sum_eq_zero fun k _ ↦ by simp [svAt, ofK_zero₂]
+  map_zero' := Finset.sum_eq_zero fun k _ ↦ by simp [svAt]
   map_add' a b := by
     rw [← Finset.sum_add_distrib]
     refine Finset.sum_congr rfl fun k _ ↦ ?_
@@ -237,7 +238,7 @@ theorem coinsDist_eq : coinsDist = (do
   simp only [bind_assoc, pure_bind]
   refine bind_congr_of_forall_mem_support _ fun w2 _ ↦ ?_
   congr 1
-  simp only [mkCoins, withSlack, Function.comp_def]
+  simp only [mkCoins, withSlack]
   have hlo : ∀ j, j < 38 → (w1 ++ w2).getD j 0 = w1.getD j 0 := fun j hj ↦ by
     simp [List.getD_eq_getElem?_getD, List.getElem?_append_left (hl ▸ hj)]
   congr 1
@@ -414,9 +415,10 @@ theorem revealedUniform_of_group1 (ε1 : ℝ≥0∞) (h : Group1Uniform ε1) : R
 
 /-- **Zero knowledge from the PCS hypothesis and group 1's uniformity**: `zeroKnowledge_pcs_closed` with
 `RevealedUniform` discharged at `δr = 0` but for group 1 (`revealedUniform_of_group1`). -/
-theorem zeroKnowledge_pcs_group1 (sim : PcsSimulator) (εpcs : ℕ → ℝ≥0∞) (ε1 : ℝ≥0∞)
-    (hpcs : PcsZeroKnowledge sim εpcs) (h1 : Group1Uniform ε1) :
-    ZeroKnowledgeWith sim.s₀ (zkSimulator sim) sim.oracle (fun Q ↦ εpcs Q + (ε1 + spanFail) + 0 + εfs₀) :=
-  zeroKnowledge_pcs_closed sim εpcs (ε1 + spanFail) 0 hpcs (revealedUniform_of_group1 ε1 h1)
+theorem zeroKnowledge_pcs_group1 {Hd : Type} (pcs : PcsOps (OracleComp RandomPermutationOracles) Hd)
+    (sim : PcsSimulator) (εpcs : ℕ → ℝ≥0∞) (ε1 : ℝ≥0∞)
+    (hpcs : PcsZeroKnowledge pcs sim εpcs) (h1 : Group1Uniform ε1) :
+    ZeroKnowledgeWith pcs sim.s₀ (zkSimulator sim) sim.oracle (fun Q ↦ εpcs Q + (ε1 + spanFail) + 0 + εfs₀) :=
+  zeroKnowledge_pcs_closed pcs sim εpcs (ε1 + spanFail) 0 hpcs (revealedUniform_of_group1 ε1 h1)
 
 end PcsQuotient.EndToEnd

@@ -29,22 +29,24 @@ deployed Keccak-f[1600], independent of `π`.
 * **Completeness** (`Completeness δ`): for every statement and witness of the relation, the honest
   prover's (`prover`) proof, with uniform coins (random rows, blinding), is rejected with probability at
   most `δ`.
-* **Zero knowledge** (`ZeroKnowledgeWith s₀ sim simOracle ζ`, statistical, the permutation programmable): for
-  every statement and witness of the relation and every distinguisher of at most `Q` calls of `π` and
-  `π⁻¹`, its verdict on the honest proof in the model and on the simulator `sim`'s proof, the simulator's
-  oracle `simOracle` answering its queries, differ in probability by at most `ζ Q`. One proof, from an empty
-  `π`, the distinguisher's queries after it: no query before the proof, no second proof under the same `π`.
-  The protocol is zero-knowledge **assuming a zero-knowledge PCS** (`docs/membership/PROTOCOL.md`, "Zero
-  knowledge"): the end
-  theorem (`formal/EndToEnd/ZK`) states its hypothesis on the PCS explicitly.
+* **Zero knowledge** (`ZeroKnowledgeWith pcs s₀ sim simOracle ζ`, statistical, the permutation programmable),
+  **for the protocol over a PCS `pcs`** (`pcsExperiment`: the honest prover with its two secret tables committed
+  and opened by `pcs`): for every statement and witness of the relation and every distinguisher of at most `Q`
+  calls of `π` and `π⁻¹`, its verdict on the honest proof in the model and on the simulator `sim`'s proof, the
+  simulator's oracle `simOracle` answering its queries, differ in probability by at most `ζ Q`. One proof, from an
+  empty `π`, the distinguisher's queries after it: no query before the proof, no second proof under the same `π`.
+  The protocol is zero-knowledge **over any zero-knowledge PCS** (`docs/membership/PROTOCOL.md`, "Zero
+  knowledge"): the end theorem (`formal/EndToEnd/ZK`) is quantified over the PCS and assumes it zero-knowledge
+  (`Zk.lean`'s `PcsZeroKnowledge`). The deployed PCS (`realPcs`: leanVM's WHIR, its Merkle roots and opened
+  leaves in the clear) is not zero-knowledge, and no theorem states `ZeroKnowledgeWith` for it.
 
 **The bounds are parameters** (`ε`, `δ`, `ζ`). A bound is part of what is proved: `KnowledgeSoundness ε`
 for `ε = 1` says nothing. The end theorems (`formal/EndToEnd`) fix them (`README.md`, "What is proved").
 
 **Zero knowledge rests on a zero-knowledge PCS and the prover's randomness** (`docs/membership/PROTOCOL.md`,
-"Zero knowledge"): the openings are assumed to reveal nothing beyond their claims; the random rows and the
-blinding of `h` make the revealed scalars (the two out-of-domain answers and the three values `X`, `C`, `V + Y`
-at `t`) uniform.
+"Zero knowledge"): the PCS's roots and openings are assumed to reveal nothing beyond the out-of-domain answers and
+the claims; the random rows, the blinding of `h` and the quotient table's slack words make the revealed scalars (the
+two out-of-domain answers and the three values `X`, `C`, `V + Y` at `t`) uniform.
 The statement's prover takes its randomness uniform; the deployed one derives it from a 32-byte seed by a
 Keccak-256 KDF (outside this model).
 
@@ -201,13 +203,30 @@ and oracle access to `π` and `π⁻¹`. It may depend on the statement and the 
 after them). -/
 abbrev Distinguisher : Type := Option Proof → OracleComp RandomPermutationOracles Bool
 
-/-- **The real experiment**: the honest prover's proof of `stmt` from `w` with uniform coins over `π`,
-then the distinguisher, against the lazily sampled permutation. -/
+/-- **The experiment of the protocol over the PCS `pcs`**: the honest prover's proof of `stmt` from `w` with
+uniform coins over `π`, its two secret tables (`W`, `T`) committed and opened by `pcs` (`proveWithPcs`; the
+circuit's commitment and the wiring claim's opening, public, are WHIR's), then the distinguisher, against the
+lazily sampled permutation. The PCS is a program in the model (`PcsOps` over `OracleComp RandomPermutationOracles`):
+it may draw coins and query `π`, `π⁻¹`, and does not program `π`. -/
+noncomputable def pcsExperiment {Hd : Type} (pcs : PcsOps (OracleComp RandomPermutationOracles) Hd)
+    (stmt : Statement) (w : Secret) (D : Distinguisher) : ProbComp Bool :=
+  runWithRandomPermutation do
+    let coins ← sampleCoins
+    D (← proveWithPcs queryPermutation pcs nonceFuel (membership logRows) stmt
+      ((membership logRows).cells (membershipInputs w)) coins)
+
+/-- **The experiment of the deployed prover** (`prover`: the PCS `realPcs`, leanVM's WHIR). Its openings are not
+zero-knowledge (their Merkle leaves reveal the tables' words): no theorem states zero knowledge for it. -/
 noncomputable def realExperiment (stmt : Statement) (w : Secret) (D : Distinguisher) :
     ProbComp Bool :=
   runWithRandomPermutation do
     let coins ← sampleCoins
     D (← prover queryPermutation stmt w coins)
+
+/-- The deployed prover's experiment is the protocol's over the deployed PCS. -/
+theorem realExperiment_eq (stmt : Statement) (w : Secret) (D : Distinguisher) :
+    realExperiment stmt w D = pcsExperiment (realPcs queryPermutation nonceFuel) stmt w D :=
+  rfl
 
 /-- **The ideal experiment of a simulator**: `sim`'s proof of `stmt`, without the witness, then the
 distinguisher, its every query answered by the simulator's oracle `simOracle`, the simulator's state
@@ -219,25 +238,27 @@ def idealExperimentWith {S : Type} (s₀ : S) (sim : Statement → StateT S Prob
     let proof ← sim stmt
     simulateQ simOracle (D proof)).run' s₀
 
-/-- **Statistical zero knowledge in the programmable random-permutation model, for a simulator**
-`sim` with its oracle `simOracle` (from the state `s₀`), with the error `ζ Q` for a distinguisher of at
-most `Q` calls of `π` and `π⁻¹` (its coins free): its verdicts in the real experiment and in the ideal
-experiment of `sim` differ in probability by at most `ζ Q`. The simulator is a parameter so that the end
-theorem can name the simulator it proves (`README.md`, "The simulator").
+/-- **Statistical zero knowledge of the protocol over the PCS `pcs`, in the programmable random-permutation
+model, for a simulator** `sim` with its oracle `simOracle` (from the state `s₀`), with the error `ζ Q` for a
+distinguisher of at most `Q` calls of `π` and `π⁻¹` (its coins free): its verdicts in the protocol's experiment
+over `pcs` (`pcsExperiment`) and in the ideal experiment of `sim` differ in probability by at most `ζ Q`. The PCS
+and the simulator are parameters so that the end theorem can be stated for every zero-knowledge PCS and name the
+simulator it proves (`README.md`, "The simulator").
 
-**Scope: one proof, the distinguisher after it.** `realExperiment` starts from an empty, lazily sampled
+**Scope: one proof, the distinguisher after it.** `pcsExperiment` starts from an empty, lazily sampled
 `π`; the prover goes first and makes every query before the distinguisher's; the distinguisher, quantified
 after the statement and the witness, queries `π` and `π⁻¹` only after it is given the proof (`Distinguisher`
 is a function of the proof). Not covered: oracle queries before the proof (a distinguisher's precomputation,
 or auxiliary input that depends on `π`), and several proofs under one `π`. -/
-def ZeroKnowledgeWith {S : Type} (s₀ : S) (sim : Statement → StateT S ProbComp (Option Proof))
+def ZeroKnowledgeWith {Hd : Type} (pcs : PcsOps (OracleComp RandomPermutationOracles) Hd) {S : Type} (s₀ : S)
+    (sim : Statement → StateT S ProbComp (Option Proof))
     (simOracle : QueryImpl RandomPermutationOracles (StateT S ProbComp)) (ζ : ℕ → ℝ≥0∞) : Prop :=
   ∀ (stmt : Statement) (w : Secret), Relation stmt w →
   ∀ (D : Distinguisher) (Q : ℕ), (∀ proof, QueryCostAtMost (D proof) permutationCallCost Q) →
-    Pr{let b ← realExperiment stmt w D}[b = true] ≤
+    Pr{let b ← pcsExperiment pcs stmt w D}[b = true] ≤
         Pr{let b ← idealExperimentWith s₀ sim simOracle stmt D}[b = true] + ζ Q ∧
       Pr{let b ← idealExperimentWith s₀ sim simOracle stmt D}[b = true] ≤
-        Pr{let b ← realExperiment stmt w D}[b = true] + ζ Q
+        Pr{let b ← pcsExperiment pcs stmt w D}[b = true] + ζ Q
 
 /-! ### Collisions of the deployed Keccak-256 -/
 
@@ -252,10 +273,13 @@ def StatementBinds : Prop :=
 
 /-! ### The end theorems -/
 
-/-- **The end theorems** with no hypothesis, at the bounds `ε`, `δ`. Both fields are proved in
-`formal/EndToEnd` (`Soundness.knowledgeSoundness`, `E2ECompleteness.completeness_end`); `statementBinds` is
-immediate and not proved in Lean. Zero knowledge (`ZeroKnowledgeWith`) is proved under a hypothesis on the PCS,
-stated in its theorem (`formal/EndToEnd/ZK`; `README.md`, "What is proved"). -/
+/-- **The end theorems** at the bounds `ε`, `δ`, for the deployed PCS (`realPcs`). Knowledge soundness is proved
+with no hypothesis (`Soundness.knowledgeSoundness`, `formal/EndToEnd`); completeness under one evaluated fact about
+the public wiring table, `WiringCheck` (its entry `2^24 − 2` is not zero; computed by
+`lake exe membership-wiring-check`, not proved: `E2ECompleteness.completeness_end`); `statementBinds` is immediate
+and not proved in Lean. Zero knowledge is not a field: it is proved for the protocol over any zero-knowledge PCS
+(`ZeroKnowledgeWith pcs …` under `Zk.lean`'s `PcsZeroKnowledge pcs …`, `formal/EndToEnd/ZK`; `README.md`, "What is
+proved"), and the deployed `realPcs` is not zero-knowledge. -/
 structure Theorems (ε : ℕ → ℝ≥0∞) (δ : ℝ≥0∞) : Prop where
   /-- Knowledge soundness for the straight-line `extractor`. -/
   knowledgeSoundness : KnowledgeSoundness ε

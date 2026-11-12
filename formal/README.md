@@ -69,12 +69,25 @@ straight-line extractor and the simulator, in one random permutation; `EndToEnd/
   `q = q₀ + b₂ E` on the coset of `4 n` points, `mulX`/`divX` the products and quotients by `x` in the novel basis,
   `Kc3Deployed.sat_honest` for the randomized cells). For the Statement's prover; the deployed Rust prover is trusted
   for completeness.
-- **Zero knowledge, under two hypotheses.** `PcsQuotient.EndToEnd.zeroKnowledge_pcs_slack : PcsZeroKnowledge sim
-  εpcs → Group1Uniform ε1 → ZeroKnowledgeWith sim.s₀ (zkSimulator sim) sim.oracle (fun Q ↦ εpcs Q + ε1 + εslack +
-  εfs₀)` (`EndToEnd/ZK/PcsSpan.lean`; the simulator and `PcsZeroKnowledge` in `Statement/PcsQuotient/Zk.lean`),
-  `εslack = 2^-127 + 27·2^-192 ≤ 2^-126` and `εfs₀ = 58 · δq L ≤ 2^-163` proved (`spanFail_le`,
-  `fiatShamirUniform_closed`). `PcsZeroKnowledge` is the EIP's ZK-WHIR assumption (the reference openings are not
-  zero knowledge). `Group1Uniform ε1` (outside `ε1` of the challenges, `W`'s answer and `X`, `C`, `V + Y` are uniform
+- **Zero knowledge of the protocol over any zero-knowledge PCS, under `Group1Uniform`.**
+  `PcsQuotient.EndToEnd.zeroKnowledge_pcs_slack (pcs : PcsOps (OracleComp RandomPermutationOracles) Hd)
+  (sim : PcsSimulator) : PcsZeroKnowledge pcs sim εpcs → Group1Uniform ε1 → ZeroKnowledgeWith pcs sim.s₀
+  (zkSimulator sim) sim.oracle (fun Q ↦ εpcs Q + ε1 + εslack + εfs₀)` (`EndToEnd/ZK/PcsSpan.lean`; the experiment
+  `pcsExperiment pcs` and `ZeroKnowledgeWith pcs` in `Statement/PcsQuotient/Security.lean`, the simulator and
+  `PcsZeroKnowledge` in `Statement/PcsQuotient/Zk.lean`), `εslack = 2^-127 + 27·2^-192 ≤ 2^-126` and
+  `εfs₀ = 58 · δq L ≤ 2^-163` proved (`spanFail_le`, `εfs₀_le`, `fiatShamirUniform_closed`). The theorem is for the
+  protocol whose two secret tables are committed and opened by the PCS `pcs`, any program of the model (coins and
+  `π`, `π⁻¹`, no programming of `π`); `PcsZeroKnowledge pcs sim εpcs` says that protocol is within `εpcs Q` of its
+  hybrid over the ideal PCS (roots uniform and independent of the tables, the tables' out-of-domain answers, the
+  openings `sim.simOpen`'s, which see only the commitment and the claim and may program `π`): the EIP's ZK-WHIR
+  assumption in the prover's use of the PCS, not a stand-alone PCS game. It is satisfiable:
+  `PcsParam.pcsZeroKnowledge_idealOf` proves it with `εpcs = 0` for the model's ideal PCS `PcsOps.idealOf simO` (uniform
+  roots, any opening program `simO` of the commitment and the claim) and `PcsSimulator.ofOpen simO`, the protocol's
+  experiment over it being its hybrid (`pcsExperiment_idealOf`), so `zeroKnowledge_idealOf` gives zero knowledge over
+  that PCS within `ε1 + εslack + εfs₀` (`EndToEnd/ZK/PcsIdeal.lean`). **The deployed PCS is not an instance**:
+  `realPcs` (leanVM's WHIR: Merkle roots of the tables' words, opened leaves in the clear) is not zero knowledge, and no
+  theorem states zero knowledge for the deployed prover (`realExperiment = pcsExperiment (realPcs …)`); soundness,
+  completeness and the EVM theorem are about `realPcs`. `Group1Uniform ε1` (outside `ε1` of the challenges, `W`'s answer and `X`, `C`, `V + Y` are uniform
   under uniform random rows: the 32 words' `K`-linear map, fixed by the challenges, of rank 12) is not proved: it
   needs the map's `K`-linearity through the transforms and a non-vanishing certificate of a `12 × 12` minor on the
   circuit's last rows (heuristically `ε1 ≈ |K|^-20`). `T`'s answer is proved uniform given everything else

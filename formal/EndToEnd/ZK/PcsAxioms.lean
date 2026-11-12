@@ -2,6 +2,7 @@
 import ZK.PcsFSClosed
 import ZK.PcsSlack
 import ZK.PcsSpan
+import ZK.PcsIdeal
 
 /-! # The axioms of the zero-knowledge theorem (PCS claims) -/
 
@@ -64,3 +65,15 @@ import ZK.PcsSpan
 /-- info: 'PcsQuotient.EndToEnd.zeroKnowledge_pcs_slack' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in
 #print axioms PcsQuotient.EndToEnd.zeroKnowledge_pcs_slack
+
+/-- info: 'PcsQuotient.EndToEnd.PcsParam.pcsExperiment_idealOf' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms PcsQuotient.EndToEnd.PcsParam.pcsExperiment_idealOf
+
+/-- info: 'PcsQuotient.EndToEnd.PcsParam.pcsZeroKnowledge_idealOf' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms PcsQuotient.EndToEnd.PcsParam.pcsZeroKnowledge_idealOf
+
+/-- info: 'PcsQuotient.EndToEnd.PcsParam.zeroKnowledge_idealOf' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms PcsQuotient.EndToEnd.PcsParam.zeroKnowledge_idealOf

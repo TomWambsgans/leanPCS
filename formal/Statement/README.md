@@ -63,10 +63,11 @@ computes on bits), independent of `π`. Each PCS opening seeds its transcript wi
     13. [`Extractor.lean`](PcsQuotient/Extractor.lean): the transcript's evaluations and Merkle inversion; Gao's unique
     decoder; **the extractor** (`transcriptExtractorFor`).
 14. [`Security.lean`](PcsQuotient/Security.lean): the deployed system (`setupWith`, `deployedIndex`,
-    `deployedVerifier`), `sampleCoins`, the experiments, **`KnowledgeSoundness`, `Completeness`,
-    `ZeroKnowledgeWith`**, `StatementBinds`, collected in `Theorems`.
-15. [`Zk.lean`](PcsQuotient/Zk.lean): the ideal PCS, the hybrid experiment, **`PcsZeroKnowledge`, `RevealedUniform`**,
-    `FiatShamirUniform`, and `zkSimulator`.
+    `deployedVerifier`), `sampleCoins`, the experiments (`pcsExperiment pcs`: the protocol over a PCS),
+    **`KnowledgeSoundness`, `Completeness`, `ZeroKnowledgeWith pcs`**, `StatementBinds`; the first two (for the
+    deployed PCS) collected in `Theorems`.
+15. [`Zk.lean`](PcsQuotient/Zk.lean): the ideal PCS (the hybrid's, and `PcsOps.idealOf`, a PCS of the model), the
+    hybrid experiment, **`PcsZeroKnowledge pcs`, `RevealedUniform`**, `FiatShamirUniform`, and `zkSimulator`.
 
 **The circuit and its commitment are named data**: `PcsQuotient.membership 22`, transcribed from
 `quotient::circuit::membership`; `setupWith F` its wiring table's PCS commitment over `F`; `deployedIndex ()` the same
@@ -104,14 +105,20 @@ not need it.
 
 ## The simulator
 
-Zero knowledge assumes a zero-knowledge PCS ([`docs/membership/PROTOCOL.md`](../../docs/membership/PROTOCOL.md),
-"Zero knowledge"; the deployed openings, leanVM's WHIR, are not zero knowledge).
+Zero knowledge is stated for the protocol over a PCS `pcs` (`pcsExperiment pcs`, `ZeroKnowledgeWith pcs`: its two
+secret tables committed and opened by `pcs`, a program of the model) and proved for every zero-knowledge `pcs`
+([`docs/membership/PROTOCOL.md`](../../docs/membership/PROTOCOL.md), "Zero knowledge"). The deployed PCS (`realPcs`,
+leanVM's WHIR) is not zero knowledge and is not an instance: `realExperiment` is `pcsExperiment (realPcs …)`, about which
+no zero-knowledge theorem is stated.
 
 * **`PcsSimulator`**: its state and an opening simulator `simOpen`, which sees only the commitment and the claim and may
   program the permutation (mumbai's lazily sampled permutation, `edgeOracle`).
 * **The hybrid** (`hybridExperiment`): the honest prover, its two secret tables committed with uniform roots and opened
   by `simOpen` (`idealPcs`); the circuit's commitment and the wiring opening real.
-* **`PcsZeroKnowledge sim εpcs`**: real and hybrid within `εpcs Q`. **`RevealedUniform εr`**: outside challenge tuples
+* **`PcsZeroKnowledge pcs sim εpcs`**: the protocol over `pcs` and the hybrid within `εpcs Q` (the PCS's roots hiding,
+  its openings simulated by `simOpen`, in the prover's use of it). Satisfiable: `PcsOps.idealOf simO` (uniform roots,
+  openings any program `simO` of the commitment and the claim) meets it at `εpcs = 0` with `PcsSimulator.ofOpen simO`
+  (`formal/EndToEnd/ZK/PcsIdeal.lean`). **`RevealedUniform εr`**: outside challenge tuples
   of probability `εr`, the five revealed scalars (two out-of-domain answers, `X`, `C`, `V + Y` at `t`) are uniform when
   the prover's randomness is (`PROTOCOL.md`'s two rank conditions).
 * **`zkSimulator sim`** reads no witness: the circuit committed, uniform secret roots, uniformly drawn revealed scalars,

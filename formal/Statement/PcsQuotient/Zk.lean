@@ -12,8 +12,11 @@ public import PcsQuotient.Security
 `docs/membership/PROTOCOL.md`, "Zero knowledge": the EIP's PCS is assumed zero-knowledge — a commitment's root and
 an opening reveal nothing beyond the commitment's out-of-domain answer and the claim — and the protocol makes
 everything else it reveals (the two out-of-domain answers and the three values `X`, `C`, `V + Y` at `t`) uniform with
-its randomness (the random rows, the blinding of `h`). The deployed openings are leanVM's WHIR, which is not
-zero-knowledge: this is a statement about the protocol over an ideal PCS.
+its randomness (the random rows, the blinding of `h`, the quotient table's slack words). The statement is about the
+protocol **over any PCS** `pcs` (`Security.lean`'s `pcsExperiment pcs`, `ZeroKnowledgeWith pcs`) that is
+zero-knowledge in the prover's use of it (`PcsZeroKnowledge pcs sim εpcs`). The deployed PCS (`realPcs`, leanVM's
+WHIR: Merkle roots of the tables' words, opened leaves in the clear) is not zero-knowledge — two witnesses of one
+statement differ in words its opened leaves reveal — so it is not an instance; the EIP's ZK-WHIR is meant to be.
 
 **The simulator's model** (`edgeOracle`): mumbai's lazily sampled permutation (`lazyRandomPermutation`) on the
 edges component of a state `Edges × A`, coins forwarded; the extra component `A` is a PCS simulator's own.
@@ -28,8 +31,17 @@ edges component of a state `Edges × A`, coins forwarded; the extra component `A
 * **The hybrid experiment** (`hybridExperiment`): the honest prover with the witness, its two secret tables
   committed and opened by the ideal PCS (`proveWithPcs`), the circuit's commitment and the wiring opening (public)
   real, then the distinguisher, every query answered by the simulator's oracle.
-* **`PcsZeroKnowledge sim εpcs`**, the hypothesis on the PCS: the real experiment (`Security.lean`'s
-  `realExperiment`) and the hybrid differ by at most `εpcs Q` for a distinguisher of `Q` calls.
+* **`PcsZeroKnowledge pcs sim εpcs`**, the hypothesis on the PCS `pcs`: the protocol's experiment over `pcs`
+  (`Security.lean`'s `pcsExperiment pcs`) and the hybrid of `sim` differ by at most `εpcs Q` for a distinguisher of
+  `Q` calls. It holds for `pcs` exactly when `pcs`'s roots look uniform and independent of the tables (hiding), its
+  out-of-domain answers are the tables' (as the claims are), and its openings are simulated by `sim.simOpen` from the
+  commitment and the claim alone, each within `εpcs`, in the prover's use of it (two commitments, the second table
+  chosen after the first root, and two openings): the EIP's ZK-WHIR assumption, stated for this protocol's
+  experiment rather than as a stand-alone PCS game.
+* **It is satisfiable**: the ideal PCS of the model (`PcsOps.idealOf simO`: the root uniform from the coins, the
+  out-of-domain answer the table's, the opening any program `simO` of the commitment and the claim in the model)
+  meets it with `εpcs = 0` for the simulator `PcsSimulator.ofOpen simO` (`formal/EndToEnd/ZK`,
+  `pcsZeroKnowledge_idealOf`), so the end theorem is not vacuous (`zeroKnowledge_idealOf`).
 * **The revealed scalars** (`revealed`): the answers `revealAnswer` gives to the five queries `revealQueries c` of
   the challenges `c`: the two out-of-domain answers and the three values at `t`.
 * **`RevealedUniform εr δr`**, the protocol's own randomness: for every witness, outside a set of challenge tuples
@@ -77,10 +89,11 @@ edges component of a state `Edges × A`, coins forwarded; the extra component `A
    answer after the chain's seed, `T`'s after `α, β, μ`, `X` after `C` and `V + Y`); `revealQueries` lists them in
    that order and `sampleChallenges` draws in the reduction's order (the same distributions).
 
-The end theorems (`formal/EndToEnd/ZK`): `PcsQuotient.EndToEnd.zeroKnowledge_pcs` states `ZeroKnowledgeWith` for
-`zkSimulator sim` under `PcsZeroKnowledge`, `RevealedUniform` and `FiatShamirUniform`, with
-`ζ Q = εpcs Q + εr + δr + εfs`; `zeroKnowledge_pcs_closed` under the first two only,
-`ζ Q = εpcs Q + εr + δr + εfs₀`.
+The end theorems (`formal/EndToEnd/ZK`), each for every PCS `pcs` and PCS simulator `sim`:
+`PcsQuotient.EndToEnd.zeroKnowledge_pcs` states `ZeroKnowledgeWith pcs` for `zkSimulator sim` under
+`PcsZeroKnowledge pcs sim εpcs`, `RevealedUniform` and `FiatShamirUniform`, with `ζ Q = εpcs Q + εr + δr + εfs`;
+`zeroKnowledge_pcs_closed` under the first two only, `ζ Q = εpcs Q + εr + δr + εfs₀`; `zeroKnowledge_pcs_slack`
+under `PcsZeroKnowledge` and `Group1Uniform ε1` only, `ζ Q = εpcs Q + ε1 + εslack + εfs₀`.
 -/
 
 @[expose] public section
@@ -158,7 +171,28 @@ noncomputable def idealPcs : PcsOps (StateT sim.S ProbComp) Unit where
     return ((), ⟨root, tableEval table z⟩)
   openClaim _ c claim := sim.simOpen c claim
 
+/-- **The PCS simulator of an opening program** `simO` of the model (no programming of `π`): no state of its own,
+its opening `simO` run with the model's oracle. -/
+noncomputable def ofOpen (simO : Commitment → Claim → OracleComp RandomPermutationOracles (Option Compile.Proof)) :
+    PcsSimulator where
+  Aux := Unit
+  aux₀ := ()
+  simOpen c claim := simulateQ edgeOracle (simO c claim)
+
 end PcsSimulator
+
+/-- **The ideal PCS of the model** with the opening program `simO`, a PCS in the model (`PcsOps` over the model's
+oracles, as `pcsExperiment` takes): a commitment's root uniform from the coins, independent of the table, its
+out-of-domain answer the table's polynomial at the root's point (over `π`); an opening `simO` of the commitment and
+the claim alone. It is zero-knowledge with `εpcs = 0` for `PcsSimulator.ofOpen simO` (`formal/EndToEnd/ZK`,
+`pcsZeroKnowledge_idealOf`). -/
+def PcsOps.idealOf (simO : Commitment → Claim → OracleComp RandomPermutationOracles (Option Compile.Proof)) :
+    PcsOps (OracleComp RandomPermutationOracles) Unit where
+  commit μ table := do
+    let root ← sampleDigest
+    let z ← oodPointWith queryPermutation μ root
+    return ((), ⟨root, tableEval table z⟩)
+  openClaim _ c claim := simO c claim
 
 /-! ### The hypothesis on the PCS -/
 
@@ -173,14 +207,18 @@ noncomputable def hybridExperiment (sim : PcsSimulator) (stmt : Statement) (w : 
       (circuit.cells (membershipInputs w)) coins
     simulateQ sim.oracle (D proof)).run' sim.s₀
 
-/-- **The PCS is zero-knowledge for the prover's use of it** (the hypothesis): the real experiment and the hybrid
-of the simulator `sim` differ by at most `εpcs Q` for every statement and witness of the relation and every
-distinguisher of at most `Q` calls of `π`, `π⁻¹`. -/
-def PcsZeroKnowledge (sim : PcsSimulator) (εpcs : ℕ → ℝ≥0∞) : Prop :=
+/-- **The PCS `pcs` is zero-knowledge for the prover's use of it** (the hypothesis), with the simulator `sim`: the
+protocol's experiment over `pcs` (`pcsExperiment`) and the hybrid of `sim` (the ideal PCS: uniform roots, the
+tables' out-of-domain answers, `sim.simOpen`'s openings) differ by at most `εpcs Q` for every statement and witness
+of the relation and every distinguisher of at most `Q` calls of `π`, `π⁻¹`. -/
+def PcsZeroKnowledge {Hd : Type} (pcs : PcsOps (OracleComp RandomPermutationOracles) Hd) (sim : PcsSimulator)
+    (εpcs : ℕ → ℝ≥0∞) : Prop :=
   ∀ (stmt : Statement) (w : Secret), Relation stmt w →
   ∀ (D : Distinguisher) (Q : ℕ), (∀ proof, QueryCostAtMost (D proof) permutationCallCost Q) →
-    Pr{let b ← realExperiment stmt w D}[b = true] ≤ Pr{let b ← hybridExperiment sim stmt w D}[b = true] + εpcs Q ∧
-      Pr{let b ← hybridExperiment sim stmt w D}[b = true] ≤ Pr{let b ← realExperiment stmt w D}[b = true] + εpcs Q
+    Pr{let b ← pcsExperiment pcs stmt w D}[b = true] ≤
+        Pr{let b ← hybridExperiment sim stmt w D}[b = true] + εpcs Q ∧
+      Pr{let b ← hybridExperiment sim stmt w D}[b = true] ≤
+        Pr{let b ← pcsExperiment pcs stmt w D}[b = true] + εpcs Q
 
 /-! ### The revealed scalars -/
 

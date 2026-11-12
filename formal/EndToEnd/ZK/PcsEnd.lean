@@ -8,11 +8,13 @@ import ZK.PcsCoins
 /-!
 # Zero knowledge, assuming a zero-knowledge PCS
 
-**`zeroKnowledge_pcs`**: `PcsZeroKnowledge sim εpcs → RevealedUniform εr δr → FiatShamirUniform εfs →
-ZeroKnowledgeWith sim.s₀ (zkSimulator sim) sim.oracle (fun Q ↦ εpcs Q + εr + δr + εfs)`, the three hypotheses those
-of `formal/Statement/PcsQuotient/Zk.lean`.
+**`zeroKnowledge_pcs`**: for every PCS `pcs` (a program in the model) and PCS simulator `sim`,
+`PcsZeroKnowledge pcs sim εpcs → RevealedUniform εr δr → FiatShamirUniform εfs →
+ZeroKnowledgeWith pcs sim.s₀ (zkSimulator sim) sim.oracle (fun Q ↦ εpcs Q + εr + δr + εfs)`, the three hypotheses
+those of `formal/Statement/PcsQuotient/Zk.lean`.
 
-1. Real ≈ hybrid: `PcsZeroKnowledge` (the PCS idealized in the prover's use of it), within `εpcs Q`.
+1. The protocol over `pcs` ≈ hybrid: `PcsZeroKnowledge pcs sim` (the PCS idealized in the prover's use of it),
+   within `εpcs Q`.
 2. The hybrid is the mixture over the prover's coins of the full program (`fullProg`: the challenge phase, its
    five reveals answered by `revealAnswer` of the coins, then the openings and the distinguisher; `hybrid_eq`, from
    `hybrid_run_eq`); the ideal experiment of `zkSimulator` is the full program with uniform answers (`ideal_eq`).
@@ -210,14 +212,16 @@ theorem shortfall_eq (sim : PcsSimulator) (stmt : Statement) (D : Distinguisher)
 
 /-! ### The end theorem -/
 
-/-- **Zero knowledge of the membership proof, assuming a zero-knowledge PCS**: for every PCS simulator `sim`
-whose ideal PCS the real one is within `εpcs` of (`PcsZeroKnowledge`), if the revealed scalars are within `δr` of
-uniform at all but `εr` of the challenges (`RevealedUniform`) and the simulator's challenges and scalars are
-within `εfs` of uniform (`FiatShamirUniform`), the simulator `zkSimulator sim` (no witness read) is within
-`εpcs Q + εr + δr + εfs` of the honest prover for every distinguisher of `Q` calls of `π`, `π⁻¹`. -/
-theorem zeroKnowledge_pcs (sim : PcsSimulator) (εpcs : ℕ → ℝ≥0∞) (εr δr εfs : ℝ≥0∞)
-    (hpcs : PcsZeroKnowledge sim εpcs) (hrev : RevealedUniform εr δr) (hfs : FiatShamirUniform εfs) :
-    ZeroKnowledgeWith sim.s₀ (zkSimulator sim) sim.oracle (fun Q ↦ εpcs Q + εr + δr + εfs) := by
+/-- **Zero knowledge of the membership proof over any zero-knowledge PCS**: for every PCS `pcs` and PCS simulator
+`sim` such that the protocol over `pcs` is within `εpcs` of its hybrid over `sim`'s ideal PCS
+(`PcsZeroKnowledge pcs sim εpcs`), if the revealed scalars are within `δr` of uniform at all but `εr` of the
+challenges (`RevealedUniform`) and the simulator's challenges and scalars are within `εfs` of uniform
+(`FiatShamirUniform`), the simulator `zkSimulator sim` (no witness read) is within `εpcs Q + εr + δr + εfs` of the
+honest prover over `pcs` for every distinguisher of `Q` calls of `π`, `π⁻¹`. -/
+theorem zeroKnowledge_pcs {Hd : Type} (pcs : PcsOps (OracleComp RandomPermutationOracles) Hd) (sim : PcsSimulator)
+    (εpcs : ℕ → ℝ≥0∞) (εr δr εfs : ℝ≥0∞)
+    (hpcs : PcsZeroKnowledge pcs sim εpcs) (hrev : RevealedUniform εr δr) (hfs : FiatShamirUniform εfs) :
+    ZeroKnowledgeWith pcs sim.s₀ (zkSimulator sim) sim.oracle (fun Q ↦ εpcs Q + εr + δr + εfs) := by
   classical
   intro stmt w hrel D Q hQ
   obtain ⟨h1, h2⟩ := hpcs stmt w hrel D Q hQ
@@ -258,7 +262,7 @@ theorem zeroKnowledge_pcs (sim : PcsSimulator) (εpcs : ℕ → ℝ≥0∞) (εr
       Pr{let y ← semL (fun _ ↦ eDist) (fullProg sim stmt D) sim.s₀ []}[y.1 = true] := by
     rw [ideal_eq, prEvent_map]
   rw [← hhyb, ← hid] at t1 t2
-  generalize Pr{let b ← realExperiment stmt w D}[b = true] = pr at h1 h2 ⊢
+  generalize Pr{let b ← pcsExperiment pcs stmt w D}[b = true] = pr at h1 h2 ⊢
   generalize Pr{let b ← hybridExperiment sim stmt w D}[b = true] = ph at h1 h2 t1 t2 ⊢
   generalize Pr{let b ← idealExperimentWith sim.s₀ (zkSimulator sim) sim.oracle stmt D}[b = true] = pi at t1 t2 ⊢
   generalize ∑' o, Pr{let y ← semL (fun _ ↦ eDist) (fullProg sim stmt D) sim.s₀ []}[y = o] *
