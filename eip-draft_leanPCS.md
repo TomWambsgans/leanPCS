@@ -79,11 +79,11 @@ This EIP replaces the dependency format of EIP-8288, its `(scheme, data_hash, ve
 EIP-8288 applies, with these changes:
 
 - **Frames.** A dependency verification frame is valid only if its `data` is `scheme || payload_0 || ... || payload_{k-1}`, with `scheme` one of the two above and `1 <= k <= MAX_DEPENDENCIES_PER_FRAME`. It declares the dependencies `scheme || payload_j`.
-- **`dependencies(tx)`** is the sorted, deduplicated list of the dependencies the transaction's frames declare, a `msg_hash` of 32 zero bytes standing for `compute_sig_hash(tx)`.
+- **`dependencies(tx)`** is the list of the dependencies the transaction's frames declare, each `msg_hash` of 32 zero bytes replaced by `compute_sig_hash(tx)`, then deduplicated and sorted. Every list of dependencies (of a transaction, a block or a wrapper) is sorted byte by byte (lexicographic order).
 - **`get_deps_hash(deps)`** is `keccak256(concat(deps))`, in place of `DEPS_HASH`.
 - **The recursive STARK** proves a PCS dependency from a `PCS_claim` hashing to its payload and an `opening_proof` with `pcs_verify(PCS_claim, opening_proof)`. A false or ill-formed claim cannot be proven, so its transaction cannot be included.
-- **Limits.** A transaction declaring more than `MAX_PCS_CLAIMS_PER_TX` PCS dependencies, is invalid. PCS dependencies travel only in mode 1 wrappers.
-- **Gas.** leanSPHINCS dependencies are priced as in EIP-8288. A frame of PCS dependencies has `limits.execution = 0` and adds nothing to `recursive_stark_gas(tx)`. Instead, a transaction declaring `c > 0` PCS dependencies, adds `pcs_gas(tx) = PCS_TX_GAS + PCS_CLAIM_GAS * c` to both `frame_tx_intrinsic_gas` and `calldata_floor_gas` (EIP-8141).
+- **Limits.** A transaction declaring more than `MAX_PCS_CLAIMS_PER_TX` PCS dependencies, duplicates included, is invalid. PCS dependencies travel only in mode 1 wrappers.
+- **Gas.** leanSPHINCS dependencies are priced as in EIP-8288. A frame of PCS dependencies has `limits.execution = 0` and adds nothing to `recursive_stark_gas(tx)`. Instead, a transaction declaring `c > 0` PCS dependencies, duplicates included, adds `pcs_gas(tx) = PCS_TX_GAS + PCS_CLAIM_GAS * c` to both `frame_tx_intrinsic_gas` and `calldata_floor_gas` (EIP-8141).
 
 ### Reading PCS claims
 
